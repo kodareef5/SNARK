@@ -5,7 +5,6 @@
 import { expect, test } from "bun:test";
 import { NO_CLIPS } from "../../shared/anim/clip.ts";
 import { BTN_JUMP, Body } from "../../shared/sim/character.ts";
-import { ROLE_FOUNDATION } from "../../shared/world/snap.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
 import { flatMap } from "../fixtures/map.ts";
 import { Harness } from "../fixtures/net.ts";
@@ -53,7 +52,7 @@ test("settled cars' heartbeats are answered from the last, and each answer is wh
 test("a change of shape anywhere, or to the car, makes the next heartbeat a real step, and a car whose floor goes falls", () => {
   const { h, cars, run } = lot();
   try {
-    const foundation = h.reg.role.findIndex((role) => role === ROLE_FOUNDATION);
+    const foundation = h.reg.index.get("core:foundation_metal")!;
     // A piece set down far off still changes the world's shapes: every car steps once, then is answered again.
     const far = start(h.world, foundation, 200, 0, 200, 0, 777, 1000);
     expect(far).toBeGreaterThanOrEqual(0);

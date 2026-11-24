@@ -140,14 +140,17 @@ test("a roof that runs on down from another lies under its eave board, which lap
   }
 });
 
-test("a sloped wall's top lies in the plane of the roof's corner heights, inside the roof's boards, and its two hands meet the roof alike", () => {
+/** Metres between a gable's top and the roof boards over it, as wood's recipe has them today. A change may lower it. */
+const GABLE_GAP = 0.215;
+
+test("a sloped wall's top lies in the plane of the roof's underside, under its boards, and its two hands meet the roof alike", () => {
   const roof = ALL.roof!;
   for (let level = 0; level < TEXTURED; level++) {
     for (const [hand, x, turn] of [["sloped_wall_left", 1.5, -90], ["sloped_wall_right", -1.5, 90]] as const) {
       // On the roof's east side its front looks east, and on the west side west: either way it is high where the roof is.
       const wall = standing({ form: hand, x, z: 0, turn }, level);
       const over0 = standing({ form: "roof", x: 0, z: 0, turn: 0 }, level);
-      // The plane through the roof's corner heights: from its slot's level at its low side to 1.5 m at its high one.
+      // The plane of the roof's underside, which its row's corner heights stand a slab over: from its slot's level at its low side to 1.5 m at its high one.
       const plane = (z: number): number => ((z + 1.5) / 3) * (roof.corner![0]! - roof.corner![2]!);
       let most = 0, tops = 0;
       for (const t of wall) for (let k = 0; k < 9; k += 3) {
@@ -161,13 +164,15 @@ test("a sloped wall's top lies in the plane of the roof's corner heights, inside
       }
       expect(tops, `${hand} level ${level}: points on the plane`).toBeGreaterThanOrEqual(4);
       expect(most).toBeLessThanOrEqual(0.002);
-      // Under the roof's side, from its eave to its high side: the wall's top is over the roof's underside and under its top.
+      // Under the roof's side, from its eave to its high side: nothing of the roof is under the wall's top. The roof
+      // stands on its corner heights since 2026-11-24, and its rim timbers are 0.115 m in from its sides, so over the
+      // wall only its boards run: they begin 0.21 m over the wall's top at the finest level, which is open to the day.
       for (const z of [-1.45, -1.2, -0.6, 0, 0.7, 1.3, 1.45]) for (const inward of [0.02, 0.05, 0.09]) {
         const px = x - Math.sign(x) * inward;
         const [w, r] = [over(wall, px, z), over(over0, px, z)!];
         if (!w) continue;
-        expect(w[1], `${hand} level ${level} at ${z}: no gap under the roof`).toBeGreaterThanOrEqual(r[0] - 1e-6);
-        expect(w[1], `${hand} level ${level} at ${z}: nothing through the roof`).toBeLessThanOrEqual(r[1] + 1e-6);
+        expect(r[0], `${hand} level ${level} at ${z}: nothing of the roof in the wall`).toBeGreaterThanOrEqual(w[1] - 0.003);
+        expect(r[0] - w[1], `${hand} level ${level} at ${z}: the gap under the boards`).toBeLessThanOrEqual(GABLE_GAP);
       }
     }
   }
@@ -296,7 +301,7 @@ test("a thatch roof that runs on down from another lies under its eave course, w
   if (process.env.SNARK_MEETS) console.log(said.join("\n"));
 });
 
-test("a thatch gable's top lies in the plane of the roof's corner heights to 2 mm, with no gap under the roof and nothing through it", () => {
+test("a thatch gable's top lies in the plane of the roof's underside to 2 mm, under its thatch, with nothing through it", () => {
   const roof = ALL.roof!;
   const said: string[] = [];
   for (let level = 0; level < TEXTURED; level++) {
@@ -328,9 +333,157 @@ test("a thatch gable's top lies in the plane of the roof's corner heights to 2 m
         through = Math.max(through, w[1] - r[1]);
       }
       said.push(`thatch: ${hand} level ${level}: top within ${(most * 1000).toFixed(2)} mm of the plane, gap under the roof ${(Math.max(0, gap) * 1000).toFixed(2)} mm, through it ${(Math.max(0, through) * 1000).toFixed(2)} mm`);
-      expect(gap, `${hand} level ${level}: no gap under the roof`).toBeLessThanOrEqual(1e-6);
+      // The roof stands on its corner heights since 2026-11-24, and over a gable only its thatch runs out: as wood's boards do.
+      expect(gap, `${hand} level ${level}: the gap under the thatch`).toBeLessThanOrEqual(GABLE_GAP);
       expect(through, `${hand} level ${level}: nothing through the roof`).toBeLessThanOrEqual(1e-6);
     }
+  }
+  if (process.env.SNARK_MEETS) console.log(said.join("\n"));
+});
+
+// Stone: the same meetings, measured on the stone recipe's own meshes.
+
+import { STONE } from "../../tools/pack/pieces/stone.ts";
+
+const stoneCache = new Map<string, Tri[]>();
+/** A stone piece's triangles in the world at `level`, as `standing` gives wood's. */
+function stoneStanding(s: Set, level: number): Tri[] {
+  const key = `${s.form},${s.x},${s.z},${s.turn},${s.level ?? 0},${level}`;
+  let out = stoneCache.get(key);
+  if (out) return out;
+  const form = ALL[s.form]!;
+  const shapes = levelsOf(STONE, s.form, form);
+  const [c, sn] = [Math.cos((s.turn * Math.PI) / 180), Math.sin((s.turn * Math.PI) / 180)];
+  const at = (p: readonly number[]): number[] => [s.x + c * p[0]! + sn * p[1]!, (s.level ?? 0) + form.at[1] + p[2]!, s.z + sn * p[0]! - c * p[1]!];
+  const corners = shapes[Math.min(level, shapes.length - 1)]!.corners();
+  out = [];
+  for (let t = 0; t < corners.length; t += 3) out.push([...at(corners[t]!), ...at(corners[t + 1]!), ...at(corners[t + 2]!)] as unknown as Tri);
+  stoneCache.set(key, out);
+  return out;
+}
+
+/** How far apart two stone pieces' top surfaces stand along the side they share, as `apart` measures wood's. */
+function stoneApart(a: Set, b: Set, edge: readonly [number, number, number, number], level: number, from = 4): number {
+  const [x0, z0, x1, z1] = edge;
+  const l = Math.hypot(x1 - x0, z1 - z0);
+  const [nx, nz] = [-(z1 - z0) / l, (x1 - x0) / l];
+  const side = (s: Set): number => {
+    const o = ALL[s.form]!.outline;
+    const [c, sn] = [Math.cos((s.turn * Math.PI) / 180), Math.sin((s.turn * Math.PI) / 180)];
+    const [mx, mz] = [o.reduce((sum, q) => sum + q[0], 0) / o.length - ALL[s.form]!.at[0], o.reduce((sum, q) => sum + q[1], 0) / o.length - ALL[s.form]!.at[2]];
+    return Math.sign((s.x + c * mx - sn * mz - x0) * nx + (s.z + sn * mx + c * mz - z0) * nz);
+  };
+  const [sa, sb, ta, tb] = [side(a), side(b), stoneStanding(a, level), stoneStanding(b, level)];
+  expect(sa * sb, "the two pieces lie either side of the edge").toBe(-1);
+  let most = 0;
+  for (let k = from; k < 116; k++) {
+    const [x, z] = [x0 + ((x1 - x0) * (k + 0.37)) / 120, z0 + ((z1 - z0) * (k + 0.37)) / 120];
+    const [ha, hb] = [over(ta, x + nx * sa * 0.0005, z + nz * sa * 0.0005), over(tb, x + nx * sb * 0.0005, z + nz * sb * 0.0005)];
+    expect(ha !== null && hb !== null, `both pieces reach the edge at ${k}`).toBe(true);
+    most = Math.max(most, Math.abs(ha![1] - hb![1]));
+  }
+  return most;
+}
+
+test("stone roof faces that share a side, a ridge or a hip meet along it to a millimetre at every textured level", () => {
+  const said: string[] = [];
+  for (const [name, a, b, edge] of [...FLUSH, ...HIPPED]) {
+    for (let level = 0; level < TEXTURED; level++) {
+      // A valley's slates stand back from its fold over its gutter stone, as wood's boards do: its ends are left out alike.
+      const most = stoneApart(a, b, edge, level, name.startsWith("a valley") ? 14 : 4);
+      said.push(`stone, ${name}, level ${level}: ${(most * 1000).toFixed(2)} mm`);
+      expect(most, `${name}, level ${level}`).toBeLessThanOrEqual(0.001);
+    }
+  }
+  if (process.env.SNARK_MEETS) console.log(said.join("\n"));
+});
+
+test("a stone roof that runs on down from another lies under its eave course, which laps it", () => {
+  const [upper, lower] = [stoneStanding({ form: "roof", x: 0, z: 0, turn: 0, level: 1.5 }, 0), stoneStanding({ form: "roof", x: 0, z: -3, turn: 0 }, 0)];
+  for (const x of [-1.2, -0.4, 0.3, 1.1]) for (const out of [0.05, 0.15, 0.28]) {
+    const [hu, hl] = [over(upper, x, -1.5 - out)!, over(lower, x, -1.5 - out)!];
+    expect(hu[1] - hl[1], `${x}, ${out} m down`).toBeGreaterThan(0.005);
+    expect(hu[1] - hl[1], `${x}, ${out} m down`).toBeLessThan(0.07);
+  }
+});
+
+test("a stone gable's top lies in the plane its row gives it to 2 mm, under the roof beside it, and its hands meet the roof alike", () => {
+  const roof = ALL.roof!;
+  const said: string[] = [];
+  for (let level = 0; level < TEXTURED; level++) {
+    for (const [hand, x, turn] of [["sloped_wall_left", 1.5, -90], ["sloped_wall_right", -1.5, 90]] as const) {
+      const wall = stoneStanding({ form: hand, x, z: 0, turn }, level);
+      const over0 = stoneStanding({ form: "roof", x: 0, z: 0, turn: 0 }, level);
+      // The plane through the gable's own top, which its row draws from the low end of its foot to its high end's head.
+      const row = ALL[hand]!;
+      const head = Math.max(...row.outline.map((q) => q[1]));
+      const plane = (z: number): number => ((z + 1.5) / 3) * head;
+      let most = 0, tops = 0;
+      for (const t of wall) for (let k = 0; k < 9; k += 3) {
+        const off = t[k + 1]! - plane(t[k + 2]!);
+        expect(off, `${hand} level ${level}`).toBeLessThanOrEqual(0.002);
+        if (off > -0.002) {
+          tops++;
+          most = Math.max(most, Math.abs(off));
+        }
+      }
+      expect(tops, `${hand} level ${level}: points on the plane`).toBeGreaterThanOrEqual(4);
+      expect(most).toBeLessThanOrEqual(0.002);
+      said.push(`stone, ${hand}, level ${level}: ${(most * 1000).toFixed(3)} mm off its plane at ${tops} points`);
+      // As the rows stand, that plane is the one through the roof's corner heights: the gable's top is under the roof's top and over its underside.
+      expect(head).toBe(roof.corner![0]! - roof.corner![2]!);
+      for (const z of [-1.45, -1.2, -0.6, 0, 0.7, 1.3, 1.45]) for (const inward of [0.02, 0.05, 0.09]) {
+        const px = x - Math.sign(x) * inward;
+        const [w, r] = [over(wall, px, z), over(over0, px, z)!];
+        if (!w) continue;
+        // The roof stands on its corner heights since 2026-11-24. Stone's slates then run out over a gable as wood's boards do.
+        expect(r[0] - w[1], `${hand} level ${level} at ${z}: the gap under the slates`).toBeLessThanOrEqual(GABLE_GAP);
+        expect(w[1], `${hand} level ${level} at ${z}: nothing through the roof`).toBeLessThanOrEqual(r[1] + 1e-6);
+      }
+    }
+  }
+  if (process.env.SNARK_MEETS) console.log(said.join("\n"));
+});
+
+test("a stone triangle of floor and a square share their side's two corners, and neither crosses it", () => {
+  const said: string[] = [];
+  for (const [tri, square] of [["triangle_foundation", "foundation"], ["triangle_ceiling", "ceiling"]] as const) {
+    for (let level = 0; level < 4; level++) {
+      const [a, b] = [stoneStanding({ form: tri, x: 0, z: 0, turn: 0 }, level), stoneStanding({ form: square, x: 1.5, z: -1.5, turn: 0 }, level)];
+      const top = Math.max(...a.map((t) => Math.max(t[1], t[4], t[7])));
+      const corner = (tris: readonly Tri[], x: number): boolean => tris.some((t) => [0, 3, 6].some((k) => t[k] === x && t[k + 2] === 0 && Math.abs(t[k + 1]! - top) < 1e-9));
+      // Past the finest level each has a vertex exactly on each corner of the side, at the floor's top.
+      if (level > 0) expect([tri, level, corner(a, 0), corner(a, 3), corner(b, 0), corner(b, 3)]).toEqual([tri, level, true, true, true, true]);
+      // Each keeps to its side of the line, but for the 3 cm a plinth's corner block and its battered stones stand proud at the finest level.
+      const [reachA, reachB] = [Math.min(...a.map((t) => Math.min(t[2], t[5], t[8]))), Math.max(...b.map((t) => Math.max(t[2], t[5], t[8])))];
+      const proud = level === 0 && tri === "triangle_foundation" ? 0.031 : level === 0 ? 0.006 : 1e-9;
+      expect(reachA, `${tri} level ${level}`).toBeGreaterThanOrEqual(-proud);
+      expect(reachB, `${square} level ${level}`).toBeLessThanOrEqual(proud);
+      const tops = Math.abs(Math.max(...b.map((t) => Math.max(t[1], t[4], t[7]))) - top);
+      expect(tops, `${tri} level ${level}: tops level`).toBeLessThanOrEqual(0.0026);
+      said.push(`stone, ${tri} beside ${square}, level ${level}: ${(-reachA * 1000).toFixed(1)} and ${(reachB * 1000).toFixed(1)} mm over the line, tops ${(tops * 1000).toFixed(2)} mm apart`);
+    }
+  }
+  if (process.env.SNARK_MEETS) console.log(said.join("\n"));
+});
+
+test("a stone hatch's leaf fills its frame's hole to 5 mm a side, and the frame keeps out of the hole", () => {
+  const hole = ALL.trapdoor_frame!.openings![0]!;
+  const said: string[] = [];
+  for (let level = 0; level < 4; level++) {
+    const [leaf, frame] = [stoneStanding({ form: "trapdoor", x: 0, z: 0, turn: 0 }, level), stoneStanding({ form: "trapdoor_frame", x: 0, z: 0, turn: 0 }, level)];
+    const reach = (tris: readonly Tri[], k: number, way: number): number => Math.max(...tris.map((t) => Math.max(way * t[k]!, way * t[k + 3]!, way * t[k + 6]!)));
+    for (const [k, lo, hi] of [[0, hole.x0, hole.x1], [2, hole.y0, hole.y1]] as const) {
+      for (const clear of [hi - reach(leaf, k, 1), lo * -1 - reach(leaf, k, -1)]) {
+        expect(clear, `level ${level}`).toBeGreaterThan(0);
+        expect(clear, `level ${level}`).toBeLessThanOrEqual(0.005);
+        if (k === 0) said.push(`stone, hatch level ${level}: ${(clear * 1000).toFixed(2)} mm clear`);
+      }
+    }
+    for (const t of frame) for (let k = 0; k < 9; k += 3) expect(t[k]! > hole.x0 + 1e-6 && t[k]! < hole.x1 - 1e-6 && t[k + 2]! > hole.y0 + 1e-6 && t[k + 2]! < hole.y1 - 1e-6, `level ${level}`).toBe(false);
+    const [leafTop, floor] = [Math.max(...leaf.map((t) => Math.max(t[1], t[4], t[7]))), Math.max(...frame.map((t) => Math.max(t[1], t[4], t[7])))];
+    // Its planks lie 4 mm under the floor, and the ring it is lifted by 2 cm over it.
+    expect(leafTop - floor, `level ${level}`).toBeLessThanOrEqual(level === 0 ? 0.02 : 0.004);
   }
   if (process.env.SNARK_MEETS) console.log(said.join("\n"));
 });

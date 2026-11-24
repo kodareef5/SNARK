@@ -4,12 +4,12 @@
 
 import { CHUNK_SIZE, STRUCT_UNITS } from "../../coords.ts";
 import { PLACED_ENTITY, PLACED_NONE, PLACED_STRUCTURE, RESULT_BODY, RESULT_ENEMY_NEAR, RESULT_FAR, RESULT_INVALID, RESULT_LIMIT, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_OK, RESULT_TERRAIN, RESULT_TOO_HIGH } from "../../net/protocol.ts";
-import { BUILD_REACH, SNAP_SEARCH, buried, crosses, obstructed, obstruction, tooHigh, type PieceTables, type Pose } from "../snap.ts";
+import { BUILD_REACH, GROUNDED, SNAP_SEARCH, buried, crosses, obstructed, obstruction, tooHigh, type PieceTables, type Pose } from "../snap.ts";
 import { Found, type StructureStore } from "../structures.ts";
 import { levelY, worldOf } from "./basis.ts";
-import { FORM_LAYERS, HALF_SIDE_M, LEVEL_M, SLOT_CLASSES, type FormLayer, type FormTable, type Rel } from "./forms.ts";
-import { baseOrigin, keyFits, ownDir, poseOf, type Frame, type LatticeKey, type LatticePose } from "./frames.ts";
-import { CLS_EDGE, CLS_SQUARE, CLS_TRIANGLE, CLS_VERTEX, LVL_MOST, M_MOST, SIDE, canon, canonical, cellOf, dirTurn, edgesOverlap, elementCorners, facesOverlap, key0, key1, keyAnchor, keyCls, keyDir, keyFlip, keyLayer, keyLvl, keyM0, keyM1, keyM2, keyM3, tupleEqual, tupleStep, tupleWithin } from "./module.ts";
+import { FORM_LAYERS, HALF_SIDE_M, LEVEL_M, SLOT_CLASSES, STOREY_LEVELS, type FormLayer, type FormTable, type Rel } from "./forms.ts";
+import { baseOrigin, keyFits, ownDir, poseOf, riseAt, rotsOf, type Frame, type LatticeKey, type LatticePose } from "./frames.ts";
+import { CLS_EDGE, CLS_SQUARE, CLS_STEP, CLS_TRIANGLE, CLS_VERTEX, LVL_MOST, M_MOST, SIDE, canon, canonical, cellOf, dirTurn, edgesOverlap, elementCorners, facesOverlap, key0, key1, keyAnchor, keyCls, keyDir, keyFlip, keyLayer, keyLvl, keyM0, keyM1, keyM2, keyM3, tupleEqual, tupleStep, tupleWithin } from "./module.ts";
 import { Cells, cellAt, edgeFaces, elementVertices, faceEdges, formCells, vertexFaces } from "./occupancy.ts";
 
 /** Metres from the builder's eye to the piece's middle. The 3 allows for the piece's own size. */
@@ -31,39 +31,61 @@ const GIVE_FRAME = 0.01;
 const GIVE_OTHER = 0.05;
 
 /** Which of an offering piece's neighbours a row offers. */
-export const SAME = 0, SIDES = 1, ACROSS = 2, POINTS = 3, FACES = 4, ROUND = 5;
-/** The level a row offers them at: the offering piece's own, the one its top is on, or the one the held piece's top reaches it from. */
-export const LEVEL = 0, TOP = 1, UNDER = 2;
+export const SAME = 0, SIDES = 1, ACROSS = 2, POINTS = 3, FACES = 4, ROUND = 5, SPOKES = 6, NEXT = 7, ENDS = 8, CORNERS = 9;
+/** The level a row offers them at: the offering piece's own, the one its top is on, the one the held piece's top reaches it from, or the one that sets the held piece's top level with its own. */
+export const LEVEL = 0, TOP = 1, UNDER = 2, HEAD = 3;
 
 export interface Offer {
   readonly from: FormLayer;
   readonly to: FormLayer;
-  /** SAME is its own cell; SIDES a face's edges; ACROSS the faces over each of a face's edges; POINTS a face's corners, the middles of its sides and its centre; FACES the faces either side of an edge; ROUND the faces round a vertex. */
+  /**
+   * SAME is its own cell, and for a leaf each cell of its host; SIDES a face's edges; ACROSS the faces over each of a
+   * face's edges; POINTS a face's corners, the middles of its sides and its centre; FACES the faces either side of an
+   * edge; ROUND the faces round a vertex that lie on the base's own squares; SPOKES the edges of the base's own
+   * squares that end at a vertex; NEXT the edge on from either end of an edge; ENDS every edge from either end of an
+   * edge; CORNERS the edges from a face's corners along its sides and out from them.
+   */
   readonly rel: number;
   readonly at: readonly number[];
-  /** The offering piece must close its cell this way: a leaf goes only in a doorway. */
-  readonly host?: "doorway";
+  /** The offering piece must hold what stands on it. */
+  readonly carries?: boolean;
+  /** Neither piece is a roof. */
+  readonly flat?: boolean;
+  /** The held piece stands at most this many levels: a beam, a rail. */
+  readonly most?: number;
+  /** The offering piece stands by itself wherever it is: a foundation. */
+  readonly ground?: boolean;
 }
 
 /**
- * What offers what. A row gives slots of the held form's class only. Two rules are not rows: a form that is always a
- * root joins only another, at each level the ground allows; and a whole piece lies on whole sides from its base's origin.
+ * What offers what. A row gives slots of the held form's class only. These rules are not rows: a form that is always a
+ * root joins only another, at each level the ground allows, and so does a footing; a whole piece lies on whole sides
+ * from its base's origin; a leaf goes only where the offering piece takes it (`takes`, `hangs`); a roof is offered a
+ * rise above and below a slab as well as level with it; and a piece over two edges is offered from either.
  */
 export const OFFERS: readonly Offer[] = [
   { from: "slab", to: "slab", rel: ACROSS, at: [LEVEL] },
-  { from: "slab", to: "fill", rel: SAME, at: [LEVEL] },
-  { from: "slab", to: "wall", rel: SIDES, at: [LEVEL] },
-  { from: "slab", to: "post", rel: POINTS, at: [LEVEL, UNDER] },
-  { from: "slab", to: "leaf", rel: SAME, at: [LEVEL], host: "doorway" },
-  { from: "wall", to: "wall", rel: SAME, at: [TOP] },
-  { from: "wall", to: "slab", rel: FACES, at: [TOP] },
-  { from: "wall", to: "leaf", rel: SAME, at: [LEVEL], host: "doorway" },
+  { from: "slab", to: "fill", rel: SAME, at: [LEVEL], flat: true },
+  { from: "slab", to: "wall", rel: SIDES, at: [LEVEL], flat: true },
+  { from: "slab", to: "wall", rel: SIDES, at: [UNDER], flat: true, most: 1 },
+  { from: "slab", to: "post", rel: POINTS, at: [LEVEL, UNDER], flat: true },
+  { from: "slab", to: "leaf", rel: SAME, at: [LEVEL] },
+  { from: "slab", to: "leaf", rel: SIDES, at: [UNDER] },
+  { from: "slab", to: "footing", rel: CORNERS, at: [LEVEL], ground: true },
+  { from: "wall", to: "wall", rel: SAME, at: [TOP], carries: true },
+  { from: "wall", to: "wall", rel: NEXT, at: [HEAD], most: 1 },
+  { from: "wall", to: "slab", rel: FACES, at: [TOP], carries: true },
+  { from: "wall", to: "leaf", rel: SAME, at: [LEVEL] },
   { from: "post", to: "post", rel: SAME, at: [TOP, UNDER] },
-  { from: "post", to: "slab", rel: ROUND, at: [TOP] },
+  { from: "post", to: "slab", rel: ROUND, at: [TOP], flat: true },
+  { from: "post", to: "wall", rel: SPOKES, at: [HEAD], most: 1 },
   { from: "footing", to: "wall", rel: SAME, at: [TOP] },
+  { from: "footing", to: "footing", rel: ENDS, at: [LEVEL] },
 ];
 
 const LEAF = FORM_LAYERS.indexOf("leaf");
+const SLAB = FORM_LAYERS.indexOf("slab");
+const FOOTING = FORM_LAYERS.indexOf("footing");
 const ROWS: (Offer[] | undefined)[] = [];
 for (const o of OFFERS) (ROWS[FORM_LAYERS.indexOf(o.from) * 8 + FORM_LAYERS.indexOf(o.to)] ??= []).push(o);
 
@@ -72,8 +94,6 @@ export interface Site {
   readonly structs: StructureStore;
   readonly tables: PieceTables;
   heightAt(x: number, z: number): number;
-  /** Slots 30 and 60 degrees from their frame are offered and taken. Off until a piece of that turn is drawn and held up as it stands. */
-  readonly turned?: boolean;
   /** The entity index of a body or a vehicle in the place (metres) of a piece of turn class `tw`, or -1. */
   body?(kind: number, x: number, y: number, z: number, yaw: number, tw: number): number;
   /** Whether another tribe has built too near (x, z). It fills the verdict's detail. */
@@ -112,12 +132,17 @@ export function makeCandidates(): Candidates {
   return { n: 0, fr: new Uint32Array(64), k0: new Uint32Array(64), k1: new Uint32Array(64), score: new Float64Array(64) };
 }
 
+/** The most slots one piece offers: a fence's footing at each of nine levels from both its ends. */
+const OFFERS_MOST = 256;
+/** The levels a roof rises: a roof is offered that far above and below a slab's level. */
+const ROOF_LEVELS = 2;
+
 /** The slots one piece offers: keys with no turn, and for a foundation the levels each is from its neighbour's. */
 class Offers {
   n = 0;
-  readonly k0 = new Uint32Array(96);
-  readonly k1 = new Uint32Array(96);
-  readonly steps = new Int8Array(96);
+  readonly k0 = new Uint32Array(OFFERS_MOST);
+  readonly k1 = new Uint32Array(OFFERS_MOST);
+  readonly steps = new Int8Array(OFFERS_MOST);
 }
 
 const U = STRUCT_UNITS;
@@ -130,14 +155,14 @@ const round = new Cells();
 const cells = new Cells();
 const offers = new Offers();
 const near = new Found();
-const cell = { k0: 0, k1: 0 };
+const cell: LatticeKey = { fr: 0, k0: 0, k1: 0 };
 const pose: LatticePose = { x: 0, y: 0, z: 0, yaw: 0, tw: 0 };
 const A = new Int32Array(24);
 const B = new Int32Array(24);
 const PA = new Int32Array(16);
 const PB = new Int32Array(16);
 const E = new Int32Array(16);
-const m = new Int32Array(8);
+const m = new Int32Array(16);
 const v = new Int32Array(2);
 
 /** Whether a whole piece's key lies on whole sides from its base's origin. A post stands on any point. */
@@ -146,41 +171,52 @@ function onGrid(k0: number, k1: number): boolean {
 }
 
 let taking = offers;
-let takeTurned = false;
 
 /** Adds the cell (c0, c1) to the offers being made, `steps` levels from its neighbour's. */
 function take(c0: number, c1: number, steps: number): void {
   const out = taking;
-  if (c0 === 0 || !onGrid(c0, c1) || (!takeTurned && keyDir(c1) % 3 !== 0) || out.n === out.k0.length) return;
+  if (c0 === 0 || !onGrid(c0, c1) || out.n === out.k0.length) return;
   out.k0[out.n] = c0;
   out.k1[out.n] = c1;
   out.steps[out.n++] = steps;
 }
 
+/** Adds the edge from the tuple at `m[at]` along `d`, at `lvl` in `layer`. */
+function takeEdge(at: number, d: number, lvl: number, layer: number): void {
+  canonical(CLS_EDGE, m, at, dirTurn(d, 0), m, 4);
+  if (tupleWithin(m, 4, M_MOST)) take(key0(CLS_EDGE, m[4]!, m[5]!, m[6]!), key1(m[7]!, lvl, canon.dir, layer, 0, 0), 0);
+}
+
 /**
- * The slots the piece of kind `by` keyed (k0, k1) offers a piece of kind `held`, to `out`. Slots off the lattice, off the
- * whole sides, or turned where `turned` is off, are left out. Nothing here knows what is built.
+ * The slots the piece of kind `by` keyed (k0, k1) offers a piece of kind `held`, to `out`. Slots off the lattice or off
+ * the whole sides are left out. Nothing here knows what is built.
  */
-function offersOf(forms: FormTable, turned: boolean, held: number, by: number, k0: number, k1: number, out: Offers): void {
+function offersOf(forms: FormTable, held: number, by: number, k0: number, k1: number, out: Offers): void {
   out.n = 0;
   const rows = ROWS[forms.layer[by]! * 8 + forms.layer[held]!];
   const from = forms.def[by]!;
-  const root = forms.def[held]!.root === "always";
+  const to = forms.def[held]!;
+  const root = to.root === "always";
   // A quarter piece offers nothing and is offered nothing yet: the neighbours here are whole sides.
   if (!rows || (root && from.root !== "always") || forms.size[by] !== SIDE || forms.size[held] !== SIDE) return;
   const cls = forms.cls[held]!;
   const layer = forms.layer[held]!;
   const mine = keyCls(k0);
+  const sloped = forms.rise[by] !== 0 || forms.rise[held] !== 0;
+  // A leaf goes only where the offering piece takes it.
+  if (layer === LEAF && (from.takes === undefined || !to.hangs!.includes(from.takes))) return;
   taking = out;
-  takeTurned = turned;
   for (const row of rows) {
-    if (row.host !== undefined && from.closes !== row.host) continue;
+    if ((row.carries && !from.carries) || (row.flat && sloped) || (row.most !== undefined && forms.span[held]! > row.most) || (row.ground && from.root !== "always")) continue;
     for (const at of row.at) {
-      const lvl = keyLvl(k1) + (at === TOP ? forms.span[by]! : at === UNDER ? -forms.span[held]! : 0);
+      const lvl = keyLvl(k1) + (at === TOP ? forms.span[by]! : at === UNDER ? -forms.span[held]! : at === HEAD ? forms.span[by]! - forms.span[held]! : 0);
       if (Math.abs(lvl) > LVL_MOST) continue;
       const first = out.n;
       if (row.rel === SAME) {
-        if (mine === cls) take(k0, cellAt(k1, lvl, layer), 0);
+        if (mine !== cls) continue;
+        if (layer !== LEAF || mine !== CLS_EDGE || forms.wide[held]! > 1 || forms.span[held]! > STOREY_LEVELS) take(k0, cellAt(k1, lvl, layer), 0);
+        // A leaf of one cell hangs in any storey of its host: a ladder at each storey of a tall wall.
+        else if (formCells(forms, by, k0, k1, sides)) for (let i = 0; i < sides.n; i++) take(sides.k0[i]!, cellAt(sides.k1[i]!, keyLvl(sides.k1[i]!), layer), 0);
       } else if (row.rel === SIDES) {
         if (mine < CLS_SQUARE || cls !== CLS_EDGE) continue;
         faceEdges(k0, k1, lvl, layer, sides);
@@ -221,22 +257,64 @@ function offersOf(forms: FormTable, turned: boolean, held: number, by: number, k
         }
       } else if (row.rel === FACES) {
         if (mine !== CLS_EDGE || cls < CLS_SQUARE) continue;
-        edgeFaces(k0, k1, lvl, layer, round);
-        for (let j = cls === CLS_SQUARE ? 0 : 2, end = j + 2; j < end; j++) take(round.k0[j]!, round.k1[j]!, 0);
+        // The faces beside each edge it is wide.
+        for (let e = 0; e < forms.wide[by]!; e++) {
+          if (!runKey(k0, k1, keyDir(k1), e, cell)) continue;
+          edgeFaces(cell.k0, cell.k1, lvl, layer, round);
+          for (let j = cls === CLS_SQUARE ? 0 : 2, end = j + 2; j < end; j++) take(round.k0[j]!, round.k1[j]!, 0);
+        }
       } else if (row.rel === ROUND) {
         if (mine !== CLS_VERTEX || cls < CLS_SQUARE) continue;
-        // Twelve squares with a corner there, twelve triangles, then the three squares it is the middle of.
+        // Twelve squares with a corner there, twelve triangles, then the three squares it is the middle of. A post
+        // has no turn of its own, so it offers the base's own: its squares, and the six triangles that close round it.
         vertexFaces(k0, k1, lvl, layer, round);
-        for (let j = 0; j < round.n; j++) if ((j >= 12 && j < 24) === (cls === CLS_TRIANGLE)) take(round.k0[j]!, round.k1[j]!, 0);
+        for (let j = 0; j < round.n; j++) if (cls === CLS_TRIANGLE ? j >= 12 && j < 24 && (j & 1) === 0 : j === 24 || (j < 12 && j % 3 === 0)) take(round.k0[j]!, round.k1[j]!, 0);
+      } else if (row.rel === SPOKES) {
+        if (mine !== CLS_VERTEX || cls !== CLS_EDGE) continue;
+        keyAnchor(k0, k1, m, 0);
+        for (let d = 0; d < 12; d += 3) takeEdge(0, d, lvl, layer);
+      } else if (row.rel === NEXT) {
+        if (mine !== CLS_EDGE || cls !== CLS_EDGE) continue;
+        const d = keyDir(k1);
+        keyAnchor(k0, k1, m, 0);
+        tupleStep(m, 0, d, forms.wide[by]! * SIDE, m, 8);
+        takeEdge(8, d, lvl, layer);
+        takeEdge(0, d + 6, lvl, layer);
+      } else if (row.rel === ENDS) {
+        if (mine !== CLS_EDGE || cls !== CLS_EDGE) continue;
+        const d = keyDir(k1);
+        keyAnchor(k0, k1, m, 0);
+        tupleStep(m, 0, d, forms.wide[by]! * SIDE, m, 8);
+        for (let e = 0; e < 12; e++) {
+          if (e !== d) takeEdge(0, e, lvl, layer);
+          if (e !== dirTurn(d, 6)) takeEdge(8, e, lvl, layer);
+        }
+      } else if (row.rel === CORNERS) {
+        if (mine < CLS_SQUARE || cls !== CLS_EDGE) continue;
+        // From each corner, along the face's own turn: on along its sides and out from them, never across it.
+        keyAnchor(k0, k1, m, 8);
+        const n = elementCorners(mine, m, 8, keyDir(k1), A, 0);
+        const turn = mine === CLS_SQUARE ? 3 : 2;
+        for (let c = 0; c < n; c++) {
+          const leaves = keyDir(k1) + c * CLS_STEP[mine]!;
+          m.set(A.subarray(4 * c, 4 * c + 4), 0);
+          for (let e = 0; e < 12; e += turn) if (mine === CLS_SQUARE || e !== 0) takeEdge(0, leaves + e, lvl, layer);
+        }
       }
-      // A foundation beside a foundation: the same cells at the levels round its neighbour's.
-      if (row.rel !== ACROSS || !root) continue;
+      // A foundation beside a foundation, or a fence's footing: the same cells at the levels round its neighbour's.
+      if (!(row.rel === ACROSS ? root || sloped : layer === FOOTING)) continue;
       const last = out.n;
       for (let steps = -TERRACE; steps <= TERRACE; steps++) {
-        if (steps === 0 || Math.abs(lvl + steps) > LVL_MOST) continue;
-        for (let i = first; i < last; i++) take(out.k0[i]!, cellAt(out.k1[i]!, lvl + steps, layer), steps);
+        // A roof stands a rise over a slab or under it, and nowhere between.
+        if (steps === 0 || Math.abs(lvl + steps) > LVL_MOST || (sloped && Math.abs(steps) !== ROOF_LEVELS)) continue;
+        for (let i = first; i < last; i++) take(out.k0[i]!, cellAt(out.k1[i]!, lvl + steps, layer), sloped ? 0 : steps);
       }
     }
+  }
+  // A piece over two edges may lie either way from the edge it is offered: that one its first, or its last.
+  const wide = layer === LEAF || cls !== CLS_EDGE ? 1 : forms.wide[held]!;
+  for (let i = 0, n = out.n; wide > 1 && i < n; i++) {
+    for (let back = 1; back < wide; back++) if (runKey(out.k0[i]!, out.k1[i]!, keyDir(out.k1[i]!), -back, cell)) take(cell.k0, cell.k1, out.steps[i]!);
   }
 }
 
@@ -410,6 +488,11 @@ function grow(): void {
   table = new Int32Array(cap * 4);
 }
 
+/** How far down the list a slot `steps` levels off its neighbour's comes: by how far off it is, and for a fence's footing the highest first, which is the least buried. */
+function rank(forms: FormTable, kind: number, steps: number): number {
+  return forms.layer[kind] === FOOTING ? TERRACE - steps : Math.abs(steps);
+}
+
 /** Adds a slot, or keeps the fewer steps of one found before. Returns the count. */
 function note(n: number, fr: number, k0: number, k1: number, steps: number): number {
   const mask = table.length - 1;
@@ -477,6 +560,8 @@ export function candidates(site: Site, kind: number, team: number, ox: number, o
     const py = pose.y / U - oy;
     const pz = pose.z / U - oz;
     if (px * px + py * py + pz * pz > reach || tooHigh(site.heightAt, site.tables, kind, pose, pose.tw) || buried(site.heightAt, site.tables, kind, pose, pose.tw)) continue;
+    // A fence's footing is offered only at the levels its foot is in the ground at: where it would stand.
+    if (forms.layer[kind] === FOOTING && pose.y - Math.round(site.tables.halfY[kind]! * U) > Math.ceil(site.heightAt(pose.x / U, pose.z / U) * U) + GROUNDED) continue;
     const end = far(sx, sy, sz, sx, sy, sz);
     scores[i] = END_SHARE * end + (1 - END_SHARE) * far(ox, oy, oz, sx, sy, sz) + uSteps[i]! * SNAP_SEARCH;
     order[kept++] = i;
@@ -524,11 +609,11 @@ export function slotsOf(site: Site, kind: number, ref: number, out: Candidates):
   const t = structs.chunks[Math.floor(ref / 65536)];
   const slot = ref & 0xffff;
   if (!forms || !(kind > 0 && kind < forms.cls.length) || forms.cls[kind]! < 0 || !t || !t.fr || slot >= t.high || t.fr[slot] === 0) return 0;
-  offersOf(forms, site.turned === true, kind, t.kind[slot]!, t.k0![slot]!, t.k1![slot]!, offers);
+  offersOf(forms, kind, t.kind[slot]!, t.k0![slot]!, t.k1![slot]!, offers);
   table.fill(0);
   while (offers.n * 2 > cap) grow();
   let n = 0;
-  for (let i = 0; i < offers.n; i++) n = note(n, t.fr[slot]!, offers.k0[i]!, offers.k1[i]!, Math.abs(offers.steps[i]!));
+  for (let i = 0; i < offers.n; i++) n = note(n, t.fr[slot]!, offers.k0[i]!, offers.k1[i]!, rank(forms, kind, offers.steps[i]!));
   for (let i = 0; i < n; i++) {
     scores[i] = 0;
     order[i] = i;
@@ -565,7 +650,6 @@ function gather(site: Site, forms: FormTable, kind: number, team: number, ex: nu
   const pad = SNAP_SEARCH + 3;
   const rows = structs.query(ex - pad, ez - pad, ex + pad, ez + pad, near);
   const refs = near.refs;
-  const turned = site.turned === true;
   // Half the held piece's height, and for a foundation the levels it may be off its neighbour's.
   const tall = (structs.top[kind]! - structs.low[kind]!) / 2 + (forms.def[kind]!.root === "always" ? TERRACE * LEVEL_M : 0);
   table.fill(0);
@@ -589,14 +673,14 @@ function gather(site: Site, forms: FormTable, kind: number, team: number, ex: nu
     if (!mine) continue;
     const blocks = forms.def[by]!.blocks;
     if (blocks) for (const rel of blocks) if (relCell(forms, by, t.k0![slot]!, t.k1![slot]!, rel)) blocked.push(fr, cell.k0, cell.k1);
-    offersOf(forms, turned, kind, by, t.k0![slot]!, t.k1![slot]!, offers);
+    offersOf(forms, kind, by, t.k0![slot]!, t.k1![slot]!, offers);
     for (let i = 0; i < offers.n; i++) {
       if ((n + 1) * 2 > cap) {
         // The table is made again from the slots found.
         grow();
         for (let k = 0; k < n; k++) note(k, uFr[k]!, uK0[k]!, uK1[k]!, uSteps[k]!);
       }
-      n = note(n, fr, offers.k0[i]!, offers.k1[i]!, Math.abs(offers.steps[i]!));
+      n = note(n, fr, offers.k0[i]!, offers.k1[i]!, rank(forms, kind, offers.steps[i]!));
     }
   }
   return n;
@@ -632,7 +716,9 @@ function offered(site: Site, forms: FormTable, kind: number, f: Frame, k0: numbe
   const x = at.x / U;
   const z = at.z / U;
   const y = at.y / U;
-  const rows = structs.query(x - ROW_REACH, z - ROW_REACH, x + ROW_REACH, z + ROW_REACH, near, y - ROW_REACH, y + ROW_REACH);
+  // A tall piece's middle is half its height from what offers it, and so is a tall piece's that offers.
+  const tall = ROW_REACH + (structs.top[kind]! - structs.low[kind]!) / 2;
+  const rows = structs.query(x - ROW_REACH, z - ROW_REACH, x + ROW_REACH, z + ROW_REACH, near);
   for (let r = 0; r < rows; r++) {
     const t = structs.chunks[Math.floor(near.refs[r]! / 65536)]!;
     const slot = near.refs[r]! & 0xffff;
@@ -640,8 +726,8 @@ function offered(site: Site, forms: FormTable, kind: number, f: Frame, k0: numbe
     const dx = t.x[slot]! - x;
     const dy = t.y[slot]! - y;
     const dz = t.z[slot]! - z;
-    if (dx * dx + dy * dy + dz * dz > ROW_REACH * ROW_REACH) continue;
-    offersOf(forms, site.turned === true, kind, t.kind[slot]!, t.k0![slot]!, t.k1![slot]!, offers);
+    if (dx * dx + dz * dz > ROW_REACH * ROW_REACH || Math.abs(dy) > tall + (structs.top[t.kind[slot]!]! - structs.low[t.kind[slot]!]!) / 2) continue;
+    offersOf(forms, kind, t.kind[slot]!, t.k0![slot]!, t.k1![slot]!, offers);
     for (let i = 0; i < offers.n; i++) if (offers.k0[i] === k0 && offers.k1[i] === want) return true;
   }
   return false;
@@ -668,10 +754,19 @@ function outline(cls: number, corners: Int32Array, n: number, out: Int32Array): 
   return count;
 }
 
-/** Whether a piece on `la` standing `sa` levels and one on `lb` standing `sb` share a height. A slab lies on what ends at its level. */
-function levelsMeet(la: number, sa: number, lb: number, sb: number): boolean {
+/**
+ * Whether a piece on `la` standing `sa` levels and one on `lb` standing `sb` share a height. A slab stands 0 and lies on
+ * what ends at its level; a roof stands as high as it rises, and two slabs meet where what they reach does.
+ */
+function levelsMeet(la: number, sa: number, lb: number, sb: number, slabs: boolean): boolean {
+  if (slabs) return la < lb + Math.max(1, sb) && lb < la + Math.max(1, sa);
   if (sa === 0) return sb === 0 ? la === lb : lb < la && la < lb + sb;
   return sb === 0 ? la < lb && lb < la + sa : la < lb + sb && lb < la + sa;
+}
+
+/** The levels a piece of `kind` stands for `levelsMeet`: its span, or what a roof reaches. */
+function stands(forms: FormTable, kind: number): number {
+  return forms.rise[kind] !== 0 ? forms.reach[kind]! : forms.span[kind]!;
 }
 
 /**
@@ -690,7 +785,8 @@ function crowding(site: Site, forms: FormTable, kind: number, f: Frame, k0: numb
   const rows = structs.query(x - reach, z - reach, x + reach, z + reach, near);
   const cls = keyCls(k0);
   const lvl = keyLvl(k1);
-  const span = forms.span[kind]!;
+  const span = stands(forms, kind);
+  const slab = keyLayer(k1) === SLAB;
   const leaf = keyLayer(k1) === LEAF;
   const na = cornersOf(forms, kind, k0, k1, A);
   const pa = outline(cls, A, na, PA);
@@ -705,7 +801,7 @@ function crowding(site: Site, forms: FormTable, kind: number, f: Frame, k0: numb
     const other = t.kind[slot]!;
     const b0 = t.k0![slot]!;
     const b1 = t.k1![slot]!;
-    if (!levelsMeet(lvl, span, keyLvl(b1), forms.span[other]!)) continue;
+    if (!levelsMeet(lvl, span, keyLvl(b1), stands(forms, other), slab && keyLayer(b1) === SLAB)) continue;
     // A leaf stands in its host's own cell.
     if ((leaf || keyLayer(b1) === LEAF) && b0 === k0 && ((b1 ^ k1) & COLUMN & ~(7 << 23)) === 0) continue;
     const their = keyCls(b0);
@@ -787,7 +883,7 @@ function judge(site: Site, forms: FormTable, kind: number, f: Frame, k0: number,
   const y = at.y / U;
   const z = at.z / U;
   if (!(x >= 0 && z >= 0 && x < structs.dims.chunksX * CHUNK_SIZE && z < structs.dims.chunksZ * CHUNK_SIZE)) return refuse(out, RESULT_INVALID);
-  if ((forms.size[kind] === SIDE && !onGrid(k0, k1)) || (site.turned !== true && at.tw !== 0) || (!plan && !offered(site, forms, kind, f, k0, k1, at))) return refuse(out, RESULT_NO_SNAP);
+  if ((forms.size[kind] === SIDE && !onGrid(k0, k1)) || (!plan && !offered(site, forms, kind, f, k0, k1, at))) return refuse(out, RESULT_NO_SNAP);
   if ((x - ex) * (x - ex) + (y - ey) * (y - ey) + (z - ez) * (z - ez) > reach * reach) return refuse(out, RESULT_FAR);
   let by = taken(structs, forms, kind, fr, k0, k1);
   if (by < 0) by = blocking(structs, forms, kind, fr, k0, k1);
@@ -846,4 +942,139 @@ export function startBase(structs: StructureStore, kind: number, at: Pose, team:
   const ref = structs.place(kind, f.gid, key0(forms.cls[kind]!, 0, 0, 0), key1(0, 0, 0, forms.layer[kind]!, 0, 0), team, hp);
   if (ref < 0) structs.frames.drop(f.gid);
   return ref;
+}
+
+// ---------------------------------------------------------------- proposing a form
+
+/** What `propose` found: which of an item's forms, and its turn in the slot. `held` where the pieces round it leave no other form: it is said again at every turn the builder gives. */
+export interface Proposal {
+  variant: number;
+  rot: number;
+  held: boolean;
+}
+
+/** What weighs in a roof's choice: a corner that agrees with a slab beside it, one that does not, and the order the forms come in. */
+const AGREES = 1000;
+const CLASHES = 10000;
+const WALL = FORM_LAYERS.indexOf("wall");
+
+/** The levels over `lvl` the slab `ref` has its underside at the lattice point `p[pi]`, or -1 where that is no corner of it or it is under `lvl`. */
+function slabRise(structs: StructureStore, forms: FormTable, ref: number, lvl: number, p: Int32Array, pi: number): number {
+  const t = structs.chunks[Math.floor(ref / 65536)]!;
+  const slot = ref & 0xffff;
+  const b0 = t.k0![slot]!;
+  const b1 = t.k1![slot]!;
+  const rise = riseAt(forms, t.kind[slot]!, b0, b1);
+  keyAnchor(b0, b1, B, 0);
+  const n = elementCorners(keyCls(b0), B, 0, keyDir(b1), B, 0);
+  for (let k = 0; k < n; k++) if (tupleEqual(B, 4 * k, p, pi)) return Math.max(-1, keyLvl(b1) + ((rise >> (3 * k)) & 7) - lvl);
+  return -1;
+}
+
+/**
+ * Which of the forms `kinds` an item places, and which turn, fits the slot (k0, k1) of frame `fr` best by what stands
+ * round it, to `out`. `rot` is the turn the builder has it at. False where the pieces round it say nothing, or none of
+ * the forms is a roof or a sloped wall of the slot's class.
+ *
+ * A roof's corners are made to agree with the slabs across its sides: a slope beside a slope carries it on, the corner
+ * between two slopes that meet from outside is a hip, and from inside a valley. With nothing beside it, it is a slope
+ * that is low over a wall under it. A sloped wall is high at the end the roof over it is high at, or the end a taller
+ * wall stands at, whichever face the builder turns to the front.
+ */
+export function propose(structs: StructureStore, kinds: ArrayLike<number>, fr: number, k0: number, k1: number, rot: number, out: Proposal): boolean {
+  const forms = structs.forms;
+  const occupied = structs.occupied;
+  if (!forms) return false;
+  const cls = keyCls(k0);
+  const lvl = keyLvl(k1);
+  const dir = keyDir(k1);
+  if (cls === CLS_EDGE) {
+    // The roof over this edge, by its height at the edge's two ends.
+    keyAnchor(k0, k1, A, 0);
+    tupleStep(A, 0, dir, SIDE, A, 4);
+    let first = -1;
+    let far = -1;
+    edgeFaces(k0, k1, lvl, SLAB, round);
+    for (let f = 0; f < round.n && first === far; f++) {
+      const ref = round.k0[f] === 0 ? -1 : occupied.covering(fr, round.k0[f]!, round.k1[f]!);
+      if (ref < 0) continue;
+      first = slabRise(structs, forms, ref, lvl, A, 0);
+      far = slabRise(structs, forms, ref, lvl, A, 4);
+      if (first < 0 || far < 0) first = far = -1;
+    }
+    if (first === far) {
+      // No roof: a wall that stands on from one end at this level, and none at the other.
+      const on = [0, 0];
+      for (let end = 0; end < 2; end++) {
+        m.set(A.subarray(4 * end, 4 * end + 4), 0);
+        canonical(CLS_EDGE, m, 0, dirTurn(dir, end === 0 ? 6 : 0), m, 4);
+        if (tupleWithin(m, 4, M_MOST) && occupied.covering(fr, key0(CLS_EDGE, m[4]!, m[5]!, m[6]!), key1(m[7]!, lvl, canon.dir, WALL, 0, 0)) >= 0) on[end] = 1;
+      }
+      if (on[0] === on[1]) return false;
+      [first, far] = [on[0]!, on[1]!];
+    }
+    for (let v = 0; v < kinds.length; v++) {
+      const f = forms.def[kinds[v]!];
+      const top = f?.cls === "edge" ? f.edges?.[0]?.profile : undefined;
+      if (top !== "slopeL" && top !== "slopeR") continue;
+      // Its own -X end is the edge's first unless it is turned about.
+      const turned = (((rot % 2) + 2) % 2) === 1;
+      if ((top === "slopeL") === (first > far !== turned)) {
+        [out.variant, out.rot, out.held] = [v, rot, true];
+        return true;
+      }
+    }
+    return false;
+  }
+  if (cls !== CLS_SQUARE && cls !== CLS_TRIANGLE) return false;
+  // What each corner should rise, from the slabs across each side: -1 where none says.
+  keyAnchor(k0, k1, A, 0);
+  const n = elementCorners(cls, A, 0, dir, A, 0);
+  const want = [-1, -1, -1, -1];
+  let walled = 0;
+  let said = false;
+  faceEdges(k0, k1, lvl, SLAB, sides);
+  for (let s = 0; s < n; s++) {
+    if (sides.k0[s] === 0) continue;
+    const to = s + 1 === n ? 0 : s + 1;
+    for (let up = ROOF_LEVELS; up >= -ROOF_LEVELS; up -= ROOF_LEVELS) {
+      if (Math.abs(lvl + up) > LVL_MOST) continue;
+      edgeFaces(sides.k0[s]!, sides.k1[s]!, lvl + up, SLAB, round);
+      for (let f = 0; f < round.n; f++) {
+        if (round.k0[f] === 0 || (round.k0[f] === k0 && ((round.k1[f]! ^ k1) & COLUMN & ~LVL_BITS) === 0)) continue;
+        const ref = occupied.covering(fr, round.k0[f]!, round.k1[f]!);
+        if (ref < 0) continue;
+        const a = slabRise(structs, forms, ref, lvl, A, 4 * s);
+        const b = slabRise(structs, forms, ref, lvl, A, 4 * to);
+        if (a < 0 || b < 0 || a > ROOF_LEVELS || b > ROOF_LEVELS) continue;
+        if (want[s]! < 0) want[s] = a;
+        if (want[to]! < 0) want[to] = b;
+        said = true;
+      }
+    }
+    // A wall that ends under this side at the slot's level: the roof is low along it.
+    const under = lvl > -LVL_MOST ? occupied.covering(fr, sides.k0[s]!, cellAt(sides.k1[s]!, lvl - 1, WALL)) : -1;
+    if (under >= 0) {
+      const t = structs.chunks[Math.floor(under / 65536)]!;
+      if (keyLvl(t.k1![under & 0xffff]!) + forms.span[t.kind[under & 0xffff]!]! === lvl) walled |= 1 << s;
+    }
+  }
+  if (!said && walled === 0) return false;
+  let best = -Infinity;
+  for (let v = 0; v < kinds.length; v++) {
+    const kind = kinds[v]!;
+    if (forms.cls[kind] !== cls || forms.rise[kind] === 0) continue;
+    for (let r = 0, rots = rotsOf(forms, kind); r < rots; r++) {
+      const rise = riseAt(forms, kind, k0, (cellOf(k1) | (r << 26)) >>> 0);
+      let score = (kinds.length - v) * 10 - r / 8;
+      for (let c = 0; c < n; c++) {
+        const at = (rise >> (3 * c)) & 7;
+        if (want[c]! >= 0) score += want[c] === at ? AGREES : -CLASHES;
+        // Low all along a walled side.
+        if ((walled >> c) & 1 && at === 0 && ((rise >> (3 * (c + 1 === n ? 0 : c + 1))) & 7) === 0) score += 1;
+      }
+      if (score > best) [best, out.variant, out.rot, out.held] = [score, v, r, false];
+    }
+  }
+  return best > -Infinity;
 }

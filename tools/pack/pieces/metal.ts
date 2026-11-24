@@ -873,7 +873,8 @@ function gable(form: FormDef, level: number): Shape | null {
     const [xa, xb] = [-f.hx + band, f.hx - band];
     const where = (z: number): number => f.hx - ((z - f.foot) * 2 * f.hx) / rise;
     const part = (points: readonly Cell[], half: number, mat: Mat): void => void p.extrude(points.map(([x, z]) => [z, x] as const), "y", -half, half, tone(mat));
-    part([[-f.hx, f.foot], [xa, f.foot], [xa, at(xa) - 0.004], [-f.hx, f.top - 0.004]], FACE, "frame");
+    // The post is alone in its band, so its top is the wall's there.
+    part([[-f.hx, f.foot], [xa, f.foot], [xa, at(xa)], [-f.hx, f.top]], FACE, "frame");
     part([[xa, f.foot], [xb, f.foot], [xb, at(xb) - 0.004], [where(sill) , sill], [xa, sill]], FACE, "frame");
     part([[xa, f.foot + 0.01], [xb, f.foot + 0.01], [xb, at(xb) - 0.01], [xa, at(xa) - 0.01]], SKIN, "plate");
     part([[xa, at(xa)], [xa, at(xa) - deep], [where(f.foot + deep), f.foot], [xb, f.foot], [xb, at(xb)]], rake, "trim");

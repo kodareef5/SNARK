@@ -6,17 +6,18 @@
 import type { Assets } from "../../assets/assets.ts";
 import { STRUCT_UNITS } from "../../../../shared/coords.ts";
 import { poseOf, type LatticePose } from "../../../../shared/world/lattice/frames.ts";
-import { CLS_EDGE, CLS_SQUARE, CLS_VERTEX } from "../../../../shared/world/lattice/module.ts";
+import { CLS_EDGE, CLS_SQUARE, CLS_TRIANGLE, CLS_VERTEX } from "../../../../shared/world/lattice/module.ts";
 import type { StructureStore } from "../../../../shared/world/structures.ts";
 import { DRAW_BLEND, DRAW_PIECE, MAX_HOLOGRAMS, MAX_PREDICTED, TRANSIENT_BUFFER } from "../packet.ts";
 import type { Frame, Pass } from "../pass.ts";
 import { FrameTable, PIECE_FRAMED, pieceWord, plainYaw, writePiece } from "../piece-fit.ts";
 import type { PieceLooks } from "../piece-state.ts";
 
-/** The pack's meshes for a slot's mark: a side's strip, a square's outline, a corner's pad (tools/pack/slots.ts). */
+/** The pack's meshes for a slot's mark: a side's strip, a square's outline, a triangle's, a corner's pad (tools/pack/slots.ts). */
 export const SLOT_EDGE_MESH = "core:slot_edge";
 export const SLOT_SQUARE_MESH = "core:slot_square";
 export const SLOT_VERTEX_MESH = "core:slot_vertex";
+export const SLOT_TRIANGLE_MESH = "core:slot_triangle";
 /** Marks one frame may hold: a plan's holograms, and what the builder shows. One past that is not drawn. */
 export const MARKS_MOST = MAX_HOLOGRAMS + 320;
 
@@ -80,6 +81,7 @@ export class Ghost implements Pass {
     this.slotMesh[CLS_VERTEX] = assets.table.find(SLOT_VERTEX_MESH);
     this.slotMesh[CLS_EDGE] = assets.table.find(SLOT_EDGE_MESH);
     this.slotMesh[CLS_SQUARE] = assets.table.find(SLOT_SQUARE_MESH);
+    this.slotMesh[CLS_TRIANGLE] = assets.table.find(SLOT_TRIANGLE_MESH);
   }
 
   /** Forgets the frame's marks. */
@@ -101,10 +103,13 @@ export class Ghost implements Pass {
     return true;
   }
 
-  /** Marks a slot of class `cls` (a CLS_ of the lattice) by its outline: a side at its middle, a square at its middle, a corner at its point. */
-  slot(cls: number, x: number, y: number, z: number, yaw: number, color: number, fade = 0): void {
+  /**
+   * Marks a slot of class `cls` (a CLS_ of the lattice) by its outline: a side at its middle, a square at its middle, a
+   * triangle from its first corner, a corner at its point. `tw` is its turn class in its base.
+   */
+  slot(cls: number, x: number, y: number, z: number, yaw: number, color: number, fade = 0, tw = 0): void {
     const mesh = this.slotMesh[cls] ?? -1;
-    if (mesh >= 0) this.mark(0, mesh, x, y, z, yaw, 0, color, fade);
+    if (mesh >= 0) this.mark(0, mesh, x, y, z, yaw, tw, color, fade);
   }
 
   private mark(kind: number, mesh: number, x: number, y: number, z: number, yaw: number, tw: number, color: number, fade: number): void {

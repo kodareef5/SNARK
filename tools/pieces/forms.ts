@@ -1,11 +1,12 @@
 // Draws the forms past the first nine as a tier's recipe makes them, with their pictures, under var/pieces/:
 //
-//   bun tools/pieces/forms.ts                       new-wood.png, new-levels-wood.png, trims-wood.png, village-wood.png
+//   bun tools/pieces/forms.ts                       new-wood.png, new-levels-wood.png, trims-wood.png, corners-wood.png, village-wood.png
 //   bun tools/pieces/forms.ts --only roof,ramp      those alone, large and from four sides: look-<names>.png
 //   bun tools/pieces/forms.ts --only roof --level 1 at another level
 //   bun tools/pieces/forms.ts --village             the village alone; --shots 1,7 those of its views
 //   bun tools/pieces/forms.ts --tier thatch         thatch's share of them, and its hamlet for a village
 //   bun tools/pieces/forms.ts --village --look 1.5,3,1.5,4,200,10   one view of it: the point looked at, the radius, round and above
+//   bun tools/pieces/forms.ts --tier stone          another tier's: its village is a keep, with its joints laid
 //
 // The pieces are baked from the recipe as it stands, not read from a pack, so a change is seen at once.
 
@@ -16,6 +17,8 @@ import type { FormDef } from "../../shared/world/lattice/forms.ts";
 import type { PiecesAsset } from "../art/spec.ts";
 import { SOURCE } from "../art/source.ts";
 import { colliderBox } from "../pack/pieces/lod.ts";
+import type { TierRecipe } from "../pack/pieces/lod.ts";
+import { STONE } from "../pack/pieces/stone.ts";
 import { THATCH_FORMS, THATCH_PLANNED } from "../pack/pieces/thatch.ts";
 import { bakeMetal } from "../pack/pieces/metal.ts";
 import { bakeTier } from "../pack/pieces/tier.ts";
@@ -24,11 +27,13 @@ import type { SourceMesh } from "../pack/write.ts";
 import { piecesPack, tierMeshes } from "./joints.ts";
 import type { Placed } from "./layout.ts";
 import { Canvas, Studio } from "./sheet.ts";
-import { FORT_SHOTS, HAMLET_SHOTS, VILLAGE_SHOTS, fort, hamlet, village, type VillageShot } from "./village.ts";
+import { CORNERS, FORT_SHOTS, HAMLET_SHOTS, KEEP_SHOTS, VILLAGE_SHOTS, corner, cutJoints, fort, hamlet, keep, village, type VillageShot } from "./village.ts";
 
 const SMOOTH = 2;
 /** The tier drawn: wood unless `--tier` names another. */
 let TIER = "wood";
+/** The tiers whose recipes the tier's own bake makes the forms from. Thatch bakes its own. */
+const RECIPES: Readonly<Record<string, TierRecipe>> = { wood: WOOD, stone: STONE };
 const ALL: Readonly<Record<string, FormDef>> = { ...FORMS, ...PLANNED_FORMS };
 /** The forms a tier is made in where that is not all of them, the first nine and the rest. */
 const MADE: Readonly<Record<string, readonly [readonly string[], readonly string[]]>> = { thatch: [THATCH_FORMS, THATCH_PLANNED] };
@@ -50,16 +55,9 @@ export async function baked(names?: readonly string[]): Promise<SourceMesh[]> {
   // bakes every piece each time, since a picture that says nothing of tiling takes its span from all that wear it.
   if (TIER === "thatch") return source.bakeThatch(Object.fromEntries(made.map((name) => [name, ALL[name]!])), true);
   // Metal has no pictures: its bake is flat, and needs nothing of its asset.
-  if (TIER === "metal") return [...bakeMetal(forms, trims), ...(trims ? cutJoints(bakeMetal({}, true)) : [])];
-  return bakeTier(WOOD, forms, dir, asset.materials!, 2048, trims);
-}
-
-/** Metres a trim cut to `quarters` quarter storeys ends at (client/core/render/piece-fit.ts). */
-const cutAt = (quarters: number): number => quarters * 0.75 + 0.01;
-
-/** Each joint again as the client draws it cut to one and to two quarter storeys, its vertices clamped as the fit clamps them: `<id>_cut<n>`. */
-function cutJoints(trims: readonly SourceMesh[]): SourceMesh[] {
-  return trims.filter((m) => m.id.includes(":joint_")).flatMap((m) => [1, 2].map((n): SourceMesh => ({ ...m, id: `${m.id}_cut${n}`, lods: m.lods.map((lod) => ({ ...lod, positions: lod.positions.map((v, i) => (i % 3 === 1 ? Math.min(v, cutAt(n)) : v)) })) })));
+  if (TIER === "metal") return bakeMetal(forms, trims);
+  if (!(TIER in RECIPES)) throw new Error(`no recipe makes the new forms in ${TIER}`);
+  return bakeTier(RECIPES[TIER]!, forms, dir, asset.materials!, 2048, trims);
 }
 
 /** A ball round a piece's box: its middle and its radius. */
@@ -78,13 +76,27 @@ function boxOf(mesh: SourceMesh): number[] {
   return box;
 }
 
+/** Puts the middle square of a picture on a canvas `size` pixels across at (x, y), each pixel the mean of what it covers. */
+function shrunk(canvas: Canvas, src: Uint8ClampedArray, sw: number, sh: number, size: number, x: number, y: number): void {
+  const side = Math.min(sw, sh), [x0, y0] = [(sw - side) / 2, (sh - side) / 2];
+  for (let py = 0; py < size; py++) for (let px = 0; px < size; px++) {
+    const [u0, u1, v0, v1] = [Math.floor(x0 + (px * side) / size), Math.ceil(x0 + ((px + 1) * side) / size), Math.floor(y0 + (py * side) / size), Math.ceil(y0 + ((py + 1) * side) / size)];
+    const sum = [0, 0, 0];
+    for (let v = v0; v < v1; v++) for (let u = u0; u < u1; u++) for (let c = 0; c < 3; c++) sum[c]! += src[(v * sw + u) * 4 + c]!;
+    const n = Math.max(1, (u1 - u0) * (v1 - v0));
+    canvas.pixels.set([sum[0]! / n, sum[1]! / n, sum[2]! / n, 255], ((y + py) * canvas.width + x + px) * 4);
+  }
+}
+
 export async function main(args: readonly string[], say: (line: string) => void = console.log): Promise<void> {
   const value = (name: string): string | undefined => (args.includes(`--${name}`) ? args[args.indexOf(`--${name}`) + 1] : undefined);
   const out = resolve(value("out") ?? "var/pieces");
   mkdirSync(out, { recursive: true });
   TIER = value("tier") ?? "wood";
   const only = value("only")?.split(",");
-  const meshes = await baked(only);
+  const made0 = await baked(only);
+  // A joint cut to a lower wall is the client's clamp on the one mesh: for a picture, a mesh of its own.
+  const meshes = [...made0, ...cutJoints(made0)];
   // The other tiers as installed, and this one's installed pieces under those the recipe makes now.
   const mine = new Set(meshes.map((m) => m.id));
   // Metal is drawn alone: it has no pictures, and the other tiers' are 2 GB a view.
@@ -134,14 +146,16 @@ export async function main(args: readonly string[], say: (line: string) => void 
       const [, radius] = ball(name);
       lods.forEach((lod, level) => {
         const [x, y] = [8 + (k % 2) * (LEVEL_FROM.length * (lw + 4) + 12) + level * (lw + 4), 30 + Math.floor(k / 2) * (lh + 4)];
-        levels.shrink(one(name, lw, lh, 35, 18, level), lw * SMOOTH, lh * SMOOTH, SMOOTH, x, y);
+        const large = one(name, lw, lh, 35, 18, level);
+        levels.shrink(large, lw * SMOOTH, lh * SMOOTH, SMOOTH, x, y);
         levels.text(`${level === 0 ? `${name} ` : ""}${lod.indices.length / 3}`, x + 4, y + 4);
         const small = Math.max(4, Math.round((PIXELS * 2 * radius) / Math.max(LEVEL_FROM[level]!, 6)));
-        if (level > 0 && small < lw / 2) levels.shrink(one(name, small, small, 35, 18, level), small * SMOOTH, small * SMOOTH, SMOOTH, x + lw - small - 2, y + lh - small - 2);
+        // The small one is the large one's middle square shrunk: a picture of each size is a view of its own, with every texture again.
+        if (level > 0 && small < lw / 2) shrunk(levels, large, lw * SMOOTH, lh * SMOOTH, small, x + lw - small - 2, y + lh - small - 2);
       });
     });
     write(`new-levels-${TIER}.png`, levels);
-    const trims = meshes.filter((m) => m.id.endsWith(`_${TIER}`) && !(m.id.slice(5, -TIER.length - 1) in ALL)).map((m) => m.id.slice(5, -TIER.length - 1));
+    const trims = made0.filter((m) => !(m.id.slice(5, -TIER.length - 1) in ALL)).map((m) => m.id.slice(5, -TIER.length - 1));
     if (trims.length > 0) {
       const [tw, th] = [200, 300];
       const sheet = new Canvas(8 + trims.length * 4 * (tw + 4), 30 + th + 4);
@@ -154,14 +168,27 @@ export async function main(args: readonly string[], say: (line: string) => void 
       write(`trims-${TIER}.png`, sheet);
     }
   }
+  if (!args.includes("--village") && made0.some((m) => m.id === id("joint_sq"))) {
+    // Each corner with the joints the client would lay at it, from outside and from above.
+    const [jw, jh] = [216, 250];
+    const sheet = new Canvas(8 + CORNERS.length * (jw + 4), 30 + 2 * (jh + 4));
+    sheet.text(`${TIER}: corners with their joints, from outside and from above`, 8, 6, undefined, 2);
+    CORNERS.forEach(([name, ways, storeys], k) => {
+      const laid = corner(TIER, ways, storeys);
+      const tall = Math.max(1, storeys ?? 1) * 3;
+      [[225, 12], [225, 58]].forEach(([around, above], row) => sheet.shrink(studio.shoot(laid, jw * SMOOTH, jh * SMOOTH, [0, 0.375 + tall / 2, 0], tall * 0.62 + 0.4, around!, above!, 0, null), jw * SMOOTH, jh * SMOOTH, SMOOTH, 8 + k * (jw + 4), 30 + row * (jh + 4)));
+      sheet.text(name, 12 + k * (jw + 4), 34);
+    });
+    write(`corners-${TIER}.png`, sheet);
+  }
   const turn = Number(value("turn") ?? 17);
-  const built: Placed[] = TIER === "wood" ? village(TIER) : TIER === "metal" ? fort(TIER, turn) : hamlet(TIER, value("joints") !== undefined);
+  const built: Placed[] = TIER === "wood" ? village(TIER) : TIER === "stone" ? keep(TIER) : TIER === "metal" ? fort(TIER, turn) : hamlet(TIER, value("joints") !== undefined);
   // The fort's views are of its base, which is turned.
   const turned = ([name, centre, radius, around, above, only]: VillageShot): VillageShot => {
     const [c, s] = [Math.cos((turn * Math.PI) / 180), Math.sin((turn * Math.PI) / 180)];
     return [name, [c * centre[0] - s * centre[2], centre[1], s * centre[0] + c * centre[2]], radius, around - turn, above, only];
   };
-  const shots = TIER === "wood" ? VILLAGE_SHOTS : TIER === "metal" ? FORT_SHOTS.map(turned) : HAMLET_SHOTS;
+  const shots = TIER === "wood" ? VILLAGE_SHOTS : TIER === "stone" ? KEEP_SHOTS : TIER === "metal" ? FORT_SHOTS.map(turned) : HAMLET_SHOTS;
   const [vw, vh] = [1000, 720];
   const wanted = value("shots")?.split(",").map(Number);
   // One view of one's own: --look x,y,z,radius,around,above.

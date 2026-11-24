@@ -8,7 +8,9 @@ import { FORMS, PLANNED_FORMS } from "../../content/building/forms.ts";
 import { STRUCT_UNITS } from "../../shared/coords.ts";
 import { FORM_LAYERS, makeFormTable, setForm, type FormDef } from "../../shared/world/lattice/forms.ts";
 import { Frame, poseOf, rotsOf, type LatticePose } from "../../shared/world/lattice/frames.ts";
+import { levelY, worldOf, yawOf } from "../../shared/world/lattice/basis.ts";
 import { CLS_EDGE, CLS_SQUARE, CLS_TRIANGLE, CLS_VERTEX, canon, canonical, key0, key1, tupleStep } from "../../shared/world/lattice/module.ts";
+import type { SourceMesh } from "../pack/write.ts";
 import type { Placed } from "./layout.ts";
 
 /**
@@ -45,7 +47,15 @@ function step(a: Tuple, d: number, sides = 1): Tuple {
   return [m[4]!, m[5]!, m[6]!, m[7]!];
 }
 
-/** What sets pieces of `tier` down in a base at the origin by their slots, and the pieces set down so far. */
+/** A wall's end at a corner, as the client's trims see it: the corner, the level, the way the wall leaves it by, in twelfths of a turn, and the quarter storeys it stands. */
+interface End {
+  at: Tuple;
+  lvl: number;
+  way: number;
+  reach: number;
+}
+
+/** Sets pieces down in a base at the origin as the game would, each posed from its key, and keeps what a trim is laid from. */
 function builder(tier: string) {
   const forms = makeFormTable(NAMES.length + 1);
   NAMES.forEach((name, k) => setForm(forms, k + 1, ALL[name]!));
@@ -53,6 +63,9 @@ function builder(tier: string) {
   const out: Placed[] = [];
   /** Each piece again by its form's name and its key, for a store to place it by. */
   const keys: { name: string; k0: number; k1: number }[] = [];
+  const ends: End[] = [];
+  const posts = new Set<string>();
+  const floors: { x: number; z: number }[][] = [];
   const pose: LatticePose = { x: 0, y: 0, z: 0, yaw: 0, tw: 0 };
   const m = new Int32Array(8);
   /** The piece of form `name` in the slot of class `cls` named from corner `a` along `d`, its own +X along `own`. */
@@ -67,14 +80,72 @@ function builder(tier: string) {
     const [k0, k1] = [key0(cls, m[4]!, m[5]!, m[6]!), key1(m[7]!, lvl, canon.dir, FORM_LAYERS.indexOf(ALL[name]!.layer), rot, 0)];
     keys.push({ name, k0, k1 });
     poseOf(frame, k0, k1, forms, kind, pose);
-    out.push({ id: `core:${name}_${tier}`, x: pose.x / STRUCT_UNITS, y: pose.y / STRUCT_UNITS, z: pose.z / STRUCT_UNITS, yaw: plainYaw(pose.yaw, pose.tw) });
+    const placed: Placed = { id: `core:${name}_${tier}`, x: pose.x / STRUCT_UNITS, y: pose.y / STRUCT_UNITS, z: pose.z / STRUCT_UNITS, yaw: plainYaw(pose.yaw, pose.tw) };
+    out.push(placed);
+    const form = ALL[name]!;
+    if (cls === CLS_VERTEX) posts.add(`${a.join()},${lvl}`);
+    if (form.layer === "wall") {
+      // Its two outer ends, at each storey it stands through.
+      const wide = new Set((form.cells ?? [[0, 0]]).map((c) => c[0])).size;
+      for (let up = 0; up < Math.max(1, form.span); up += 4) for (const [at, way] of [[a, d], [step(a, d, wide), (d + 6) % 12]] as const) ends.push({ at, lvl: lvl + up, way, reach: Math.min(4, Math.max(1, form.span) - up) });
+    }
+    if (form.root === "always" && (form.size ?? 2) === 2) {
+      // Its outline on the ground, turned as it is drawn.
+      const turn = (placed.yaw / 65536) * 2 * Math.PI, [c, sn] = [Math.cos(turn), Math.sin(turn)];
+      floors.push(form.outline.map(([u, v]) => ({ x: placed.x + c * (u - form.at[0]) + sn * (v - form.at[2]), z: placed.z - sn * (u - form.at[0]) + c * (v - form.at[2]) })));
+    }
   };
   const square = (name: string, i: number, j: number, lvl: number, own = 0): void => put(name, CLS_SQUARE, at(i, j), 0, lvl, own);
   /** On the edge from `a` along `d`, its front to the left of that way, or to the right with `flip`. */
   const edge = (name: string, a: Tuple, d: number, lvl: number, flip = false): void => put(name, CLS_EDGE, a, d, lvl, flip ? (d + 6) % 12 : d);
   const tri = (name: string, a: Tuple, d: number, lvl: number, corner = 0): void => put(name, CLS_TRIANGLE, a, d, lvl, (d + 4 * corner) % 12);
   const post = (name: string, a: Tuple, lvl: number): void => put(name, CLS_VERTEX, a, 0, lvl, 0);
-  return { out, keys, put, square, edge, tri, post };
+  /**
+   * The joints and skirts the client would lay round what was set down (client/core/render/trims.ts), by its rule: a
+   * joint where walls end, none in a straight run of two alike nor at a pillar nor where a wall comes up from under,
+   * square where its walls lie along one square's ways and round where they do not, cut to its tallest wall; a skirt
+   * under each side of a foundation that no other foundation lies against.
+   */
+  const trims = (): void => {
+    const corners = new Map<string, End[]>();
+    for (const e of ends) corners.set(`${e.at.join()},${e.lvl}`, [...(corners.get(`${e.at.join()},${e.lvl}`) ?? []), e]);
+    const world = new Int32Array(2);
+    for (const [key, here] of corners) {
+      const { at: a, lvl } = here[0]!;
+      if (posts.has(key)) continue;
+      const mask = here.reduce((bits, e) => bits | (1 << e.way), 0);
+      const lowest = 31 - Math.clz32(mask & -mask);
+      const alike = here.every((e) => e.reach === here[0]!.reach);
+      if (here.length > 1 && mask === ((1 << lowest) | (1 << (lowest + 6))) && alike) continue;
+      const tall = Math.max(...here.map((e) => e.reach));
+      const fold = (mask | (mask >> 3) | (mask >> 6) | (mask >> 9)) & 7;
+      let [name, dir] = ["joint_sq", fold >> 1];
+      if ((fold & (fold - 1)) !== 0) {
+        let gap = 12;
+        for (let d = lowest + 1, before = lowest; d <= lowest + 12; d++) {
+          if ((mask & (1 << (d % 12))) === 0) continue;
+          gap = Math.min(gap, d - before);
+          before = d;
+        }
+        [name, dir] = [gap >= 3 ? "joint_r15" : "joint_r21", lowest];
+      }
+      m.set(a);
+      worldOf(frame.basis, frame.ox, frame.oz, m, 0, world, 0);
+      out.push({ id: cutId(`core:${name}_${tier}`, tall), x: world[0]! / STRUCT_UNITS, y: levelY(frame.oy, lvl) / STRUCT_UNITS, z: world[1]! / STRUCT_UNITS, yaw: plainYaw(yawOf(frame.yaw, dir), dir % 3) });
+    }
+    const sides = floors.flatMap((poly) => poly.map((q, k) => {
+      const r = poly[(k + 1) % poly.length]!;
+      const mid = { x: poly.reduce((sum, c) => sum + c.x, 0) / poly.length, z: poly.reduce((sum, c) => sum + c.z, 0) / poly.length };
+      return { x: (q.x + r.x) / 2, z: (q.z + r.z) / 2, ox: (q.x + r.x) / 2 - mid.x, oz: (q.z + r.z) / 2 - mid.z };
+    }));
+    for (const side of sides) {
+      if (sides.some((other) => other !== side && Math.hypot(other.x - side.x, other.z - side.z) < 0.02)) continue;
+      // Its +Z out of the foundation, which a yaw turns to (sin, cos).
+      const yaw = Math.round((Math.atan2(side.ox, side.oz) / (2 * Math.PI)) * 65536) & 65535;
+      out.push({ id: `core:skirt_${tier}`, x: side.x, y: FLOOR, z: side.z, yaw });
+    }
+  };
+  return { out, keys, put, square, edge, tri, post, trims };
 }
 
 /** The pieces of the village in the frame of a base at the origin, of `tier`. A trim is set down by hand, as the client would lay it. */
@@ -253,6 +324,114 @@ export function hamlet(tier: string, joints = false): Placed[] {
   }
   return out;
 }
+
+/** The quarter storeys a joint may be cut to, and the id its mesh is drawn under in a picture when it is. */
+export const cutId = (id: string, cut: number): string => (cut > 0 && cut < 4 ? `${id}_cut${cut}` : id);
+
+/**
+ * A tier's joints as the client's clamp leaves them when it cuts one to a lower wall (client/core/render/piece-fit.ts):
+ * every point over n quarter storeys and a centimetre is set down onto that height. A picture has no clamp, so each is
+ * a mesh of its own.
+ */
+export function cutJoints(meshes: readonly SourceMesh[]): SourceMesh[] {
+  return meshes.filter((m) => /:joint_/.test(m.id)).flatMap((m) => [1, 2, 3].map((cut): SourceMesh => ({
+    ...m,
+    id: cutId(m.id, cut),
+    lods: m.lods.map((lod) => {
+      const positions = Float32Array.from(lod.positions);
+      for (let v = 1; v < positions.length; v += 3) positions[v] = Math.min(positions[v]!, cut * 0.75 + 0.01);
+      return { ...lod, positions };
+    }),
+  })));
+}
+
+export const KEEP_SHOTS: readonly VillageShot[] = [
+  ["the hall, its tower and the gatehouse from the south", [3.5, 3.2, 2], 12.5, 200, 22],
+  ["the tower, its piers and its battlements from the south-west", [-3, 4.4, 3], 6.4, 236, 16],
+  ["the gatehouse and the curtain wall from the east", [13.5, 3.6, 0.5], 9.4, 52, 16],
+  ["the roofs, the tower's floor and the terrace from above", [2.5, 4, 3.5], 11.5, 200, 62],
+  ["a quoin at the hall's corner, close", [6, 2, 0], 2.7, 138, 10],
+  ["the terrace: the ramp, the balustrade, the hatch and the pillars from the north", [4.5, 2, 7.5], 6.6, 12, 26],
+  ["the hall's gables beside the tower from the north-west", [-0.5, 4, 5.2], 5.6, 310, 30],
+  ["the gateway's arch and the tall wall's quoins, and the hall's hips beyond", [5.4, 4, 0.6], 3.6, 112, 20],
+  ["the floors alone: triangles round a point, the hatch and the terrace", [2.5, 0.4, 3.6], 11.5, 200, 58, FLOORS],
+];
+
+/**
+ * A keep of the forms past the first nine, with its joints and skirts laid as the client lays them: a hall two cells
+ * by two under a pitched roof, gabled at its west end and hipped at its east; against its west side a six-sided tower
+ * two storeys high with battlements; a terrace to the north-east with a ramp, a balustrade and a hatch; and to the
+ * east a curtain wall with a gatehouse and its gate.
+ */
+export function keep(tier: string): Placed[] {
+  const { out, put, square, edge, tri, post, trims } = builder(tier);
+  // The hall: two cells by two, a doorway two edges wide in its south front.
+  for (const i of [0, 1]) for (const j of [0, 1]) square("foundation", i, j, 0);
+  edge("double_doorway", at(1, 0), 0, 0, true);
+  edge("windowframe", at(2, 0), 3, 0, true);
+  edge("wall", at(2, 1), 3, 0, true);
+  edge("wall", at(0, 2), 0, 0);
+  edge("windowframe", at(1, 2), 0, 0);
+  edge("doorframe", at(0, 0), 3, 0);
+  edge("wall", at(0, 1), 3, 0);
+  // Its roof: slopes to a ridge over the west cells with a gable under each at the west end, and hips over the east ones.
+  square("roof", 0, 0, 4, 0);
+  square("roof", 0, 1, 4, 6);
+  square("roof_hip", 1, 0, 4, 0);
+  square("roof_hip", 1, 1, 4, 3);
+  edge("sloped_wall_right", at(0, 0), 3, 4);
+  edge("sloped_wall_left", at(0, 1), 3, 4);
+  out.push({ id: `core:ridge_${tier}`, x: 1.5, y: FLOOR + 3 + 1.5, z: 3, yaw: 0 });
+  // The tower: six triangles round a point west of the hall, walled two storeys high, floored, and battlemented.
+  const heart = step(at(0, 1), 6);
+  for (let k = 0; k < 6; k++) {
+    const from = step(heart, 2 * k);
+    tri("triangle_foundation", heart, 2 * k, 0);
+    for (const lvl of [4, 8]) tri("triangle_ceiling", heart, 2 * k, lvl);
+    // Its outer side runs on from one spoke's end to the next, its front outward.
+    const way = (2 * k + 4) % 12;
+    for (const lvl of [0, 4]) edge(k === 5 && lvl === 0 ? "doorframe" : lvl === 4 && k % 2 === 0 ? "windowframe" : "wall", from, way, lvl, true);
+    edge("half_wall", from, way, 8, true);
+  }
+  // The terrace north of the hall: a ramp up to a floor on pillars, a hatch in it with a ladder under it, and a balustrade.
+  for (const i of [0, 1, 2]) square("foundation", i, 2, 0);
+  tri("triangle_foundation", at(3, 2), 3, 0);
+  put("quarter_foundation", CLS_SQUARE, [6, 0, 0, 2], 0, 0, 0);
+  square("ramp", 2, 2, 0, 0);
+  for (const i of [0, 1]) square(i === 0 ? "trapdoor_frame" : "ceiling", i, 2, 4, 0);
+  square("trapdoor", 0, 2, 4, 0);
+  edge("ladder", at(0, 2), 0, 0);
+  post("corner_pillar", at(0, 3), 0);
+  post("thin_pillar", at(1, 3), 0);
+  post("pillar", at(2, 3), 0);
+  edge("beam", at(0, 3), 0, 3);
+  edge("railing", at(0, 3), 0, 4);
+  edge("railing", at(1, 3), 0, 4);
+  edge("railing", at(0, 2), 3, 4);
+  edge("quarter_wall", at(3, 2), 3, 0, true);
+  // The curtain wall to the east: a strip of foundation, a wall four storeys high, the gatehouse and its gate, a wall with a battlement, and a low wall.
+  for (const j of [-2, -1, 0, 1, 2]) edge("fence_foundation", at(4.5, j), 3, 0, true);
+  edge("large_wall", at(4.5, -2), 3, 0, true);
+  edge("gateway", at(4.5, -1), 3, 0, true);
+  edge("gate", at(4.5, -1), 3, 0, true);
+  edge("wall", at(4.5, 1), 3, 0, true);
+  edge("half_wall", at(4.5, 1), 3, 4, true);
+  edge("half_wall", at(4.5, 2), 3, 0, true);
+  trims();
+  return out;
+}
+
+/** Corners to look at with their joints, by the ways their walls leave them, in twelfths of a turn: a straight run has none. */
+export const CORNERS: readonly (readonly [name: string, ways: readonly number[], storeys?: number])[] = [["walls 90", [0, 3]], ["tee", [0, 3, 6]], ["cross", [0, 3, 6, 9]], ["two storeys", [0, 3], 2], ["walls 180", [0, 6]], ["walls 60", [0, 2]], ["walls 120", [0, 4]], ["walls 150", [0, 5]], ["a half wall beside a wall", [0, 3], -1]];
+
+/** Walls of `tier` that leave one corner by `ways`, on `storeys` storeys, with the joints the client would lay; with -1 storeys, the second wall is a half wall. */
+export function corner(tier: string, ways: readonly number[], storeys = 1): Placed[] {
+  const { out, edge, trims } = builder(tier);
+  for (let storey = 0; storey < Math.max(1, storeys); storey++) ways.forEach((way, k) => edge(storeys < 0 && k > 0 ? "half_wall" : "wall", at(0, 0), way, storey * 4, k % 2 === 1));
+  trims();
+  return out;
+}
+
 
 /** Where a lattice point is in the base's own metres: x, and z. */
 function where(a: Tuple): [number, number] {

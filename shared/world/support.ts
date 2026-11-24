@@ -19,10 +19,10 @@
 
 import { STRUCT_UNITS } from "../coords.ts";
 import { FORM_LAYERS, HALF_SIDE_M, STOREY_LEVELS, type FormTable } from "./lattice/forms.ts";
-import { poseOf, type Frame, type LatticeKey, type LatticePose } from "./lattice/frames.ts";
-import { CLS_CORNERS, CLS_EDGE, CLS_SQUARE, CLS_TRIANGLE, CLS_VERTEX, LVL_MOST, M_MOST, SIDE, canon, canonical, cellOf, dirTurn, key0, key1, keyAnchor, keyCls, keyDir, keyLvl, tupleStep, tupleWithin } from "./lattice/module.ts";
+import { poseOf, riseAt, type Frame, type LatticeKey, type LatticePose } from "./lattice/frames.ts";
+import { CLS_CORNERS, CLS_EDGE, CLS_SQUARE, CLS_VERTEX, LVL_MOST, M_MOST, SIDE, canon, canonical, cellOf, dirTurn, elementCorners, key0, key1, keyAnchor, keyCls, keyDir, keyLvl, tupleEqual, tupleStep, tupleWithin } from "./lattice/module.ts";
 import { Cells, cellAt, edgeFaces, elementVertices, faceEdges, formCells, vertexEdges, vertexFaces, type Occupancy } from "./lattice/occupancy.ts";
-import { ROLE_CEILING, ROLE_FOUNDATION, ROLE_PILLAR, ROLE_THING, floorTop, units, type PieceTables } from "./snap.ts";
+import { GROUNDED, ROLE_CEILING, ROLE_FOUNDATION, ROLE_PILLAR, ROLE_THING, floorTop, units, type PieceTables } from "./snap.ts";
 import { Found, type StructureStore } from "./structures.ts";
 
 /** The stability of a piece that stands by itself, for a material that says no other. */
@@ -40,8 +40,6 @@ export const FALL_MOST = 256;
 /** Metres on the flat a link moves support for each unit it costs, at most: a slab to the next is two for a side of 3 m. */
 const METRES_A_COST = (SIDE * HALF_SIDE_M) / COST_BESIDE;
 
-/** Lattice units. A pillar whose foot is at most this far above the ground stands on the ground. */
-const FOOT = STRUCT_UNITS / 4;
 /** Metres. The middle of a floor a thing rests on is at most this far from the thing's. */
 const NEAR = 3.1;
 /** Metres a floor's box may fall short of a thing's foot by lattice rounding and still be looked at. */
@@ -67,6 +65,10 @@ const key: LatticeKey = { fr: 0, k0: 0, k1: 0 };
 const pose: LatticePose = { x: 0, y: 0, z: 0, yaw: 0, tw: 0 };
 const NONE: number[] = [];
 const m = new Int32Array(8);
+const C = new Int32Array(16);
+const D = new Int32Array(16);
+/** The bits of a cell's second word but its level: m3, direction and layer. */
+const COLUMN = ((1 << 26) - 1) & ~(511 << 10);
 
 /** Adds the square named from the tuple at `m[0]` along `d`, at `lvl` in the slab layer, to `out`. A cell off the lattice has a first word of 0. */
 function square(out: Cells, d: number, lvl: number): void {
@@ -234,14 +236,22 @@ export class Support {
   private readonly capMost: number;
   /** Per kind: 1 if its form is one cell, of one edge and at most a storey. */
   private readonly single: Uint8Array;
-  /** Whether no form fills a triangle, so the only slab across a square's side is a square. Reading triangles too gives the same answers. */
+  /** Per kind: 1 for a leaf that hangs under a hatch's frame, 2 for a slab that takes a hatch. */
+  private readonly hatched: Uint8Array;
+  /** With no triangle built, the only slab across a square's side is a square and triangles are not read. False reads them always, which gives the same answers. */
   plain = true;
   /** Pieces to count as built beside the rows, or null. Set it, ask by `node(pretendRef(i))`, and `forget()` when it changes. */
   pretend: Pretend | null = null;
   /** Whether some form is a footing. */
   private footed = false;
-  /** Metres on the flat within which a lost piece may have been holding another. */
+  /** Metres on the flat within which a lost piece may have been holding another, both placed by the middle of what they join by. */
   private readonly far: number;
+  /** Metres more with a broad wall on the way, and per kind whether it is one. */
+  private readonly farBroad: number;
+  private readonly broad: Uint8Array;
+  /** Per kind, metres from its place to the middle of what it joins by, and the most of them. */
+  private readonly end: Float32Array;
+  private readonly endMost: number;
   /** The search's pieces still to read, by their cost: each one's ref, the piece it was met from, and whether it hangs from that. */
   private readonly refs: number[][] = [];
   private readonly vias: SupportNode[][] = [];
@@ -267,9 +277,12 @@ export class Support {
     this.rooted = new Uint8Array(n);
     this.cap = new Uint8Array(n).fill(STABILITY);
     this.single = new Uint8Array(n);
+    this.hatched = new Uint8Array(n);
     let most = STABILITY;
-    // Metres a piece of some form may reach past what its class does: a triangle from its corner, a wall along its further sides.
-    let slack = 0;
+    this.end = new Float32Array(n);
+    this.broad = new Uint8Array(n);
+    let endMost = 0;
+    let broadest = 0;
     for (let k = 0; k < n; k++) {
       const f = forms && k < forms.cls.length ? forms.def[k] : null;
       // A kind with no form is never in a base: where a row of it stands by itself is its role's to say.
@@ -282,21 +295,38 @@ export class Support {
       this.rooted[k] = f.root === "always" ? 1 : f.root === "grounded" ? 2 : 0;
       this.cap[k] = tables.stabilityCap?.[k] || STABILITY;
       this.single[k] = f.cells === undefined && f.span <= STOREY_LEVELS ? 1 : 0;
-      if (f.cls === "triangle") this.plain = false;
+      this.hatched[k] = f.layer === "slab" && f.takes === "hatch" ? 2 : f.cls === "edge" && f.hangs?.includes("hatch") ? 1 : 0;
       if (f.layer === "footing") this.footed = true;
       most = Math.max(most, this.cap[k]!);
-      let along = Math.abs(forms!.atI[k]!);
-      for (const c of f.cells ?? []) along = Math.max(along, Math.abs(c[0] * SIDE - forms!.atI[k]!));
-      slack = Math.max(slack, (Math.max(along, Math.abs(forms!.atJ[k]!)) + (forms!.cls[k] === CLS_TRIANGLE ? 1 : 0)) * HALF_SIDE_M);
+      // How far its place is from the middle of what it joins by. A face's piece is placed by its middle but a triangle,
+      // which is placed by a corner; a wall over two edges joins by either edge's middle; a ladder may hang a side off its hatch.
+      let end = 0;
+      if (f.plane === "flat") {
+        const cx = f.outline.reduce((sum, c) => sum + c[0], 0) / f.outline.length - f.at[0];
+        const cz = f.outline.reduce((sum, c) => sum + c[1], 0) / f.outline.length - f.at[2];
+        end = f.layer === "slab" || f.layer === "fill" ? Math.sqrt(cx * cx + cz * cz) : 0;
+      } else for (const c of f.cells ?? []) end = Math.max(end, Math.abs(c[0] * SIDE * HALF_SIDE_M - f.at[0]));
+      if (f.cls === "edge" && f.hangs?.includes("hatch")) end = Math.max(end, SIDE * HALF_SIDE_M / 2);
+      this.end[k] = end;
+      endMost = Math.max(endMost, end);
+      // A wall over several edges that holds what stands on it carries support from one edge to another.
+      if (f.plane !== "flat" && f.carries && end > 0) {
+        this.broad[k] = 1;
+        broadest = Math.max(broadest, end);
+      }
     }
+    this.endMost = endMost;
     this.capMost = most;
     for (let d = 0; d <= most; d++) {
       this.refs.push([]);
       this.vias.push([]);
       this.hungs.push([]);
     }
-    // Links that cost nothing are followed by `over`. The rest move support METRES_A_COST for each unit, and each piece on the way its slack twice.
-    this.far = most * METRES_A_COST + (most + 1) * 2 * slack + 0.1;
+    // Links that cost nothing are followed by `over`. The rest move support METRES_A_COST for each unit between the
+    // middles of what two pieces join by: a slab's middle, a wall's edge's. A piece's own place may be `end` from that.
+    // A broad wall on the way adds its `end` coming and going, and a way of `most` has room for one at every other link.
+    this.far = most * METRES_A_COST + 0.1;
+    this.farBroad = Math.floor(most / 2) * 2 * broadest;
   }
 
   /** Drops every cached node. Call when the world may have changed. */
@@ -387,7 +417,7 @@ export class Support {
   private rootAt(kind: number, x: number, y: number, z: number): boolean {
     const rooted = this.rooted[kind]!;
     if (rooted !== 2) return rooted === 1;
-    return y - units(this.tables.halfY[kind]!) <= Math.ceil(this.heightAt(x / STRUCT_UNITS, z / STRUCT_UNITS) * STRUCT_UNITS) + FOOT;
+    return y - units(this.tables.halfY[kind]!) <= Math.ceil(this.heightAt(x / STRUCT_UNITS, z / STRUCT_UNITS) * STRUCT_UNITS) + GROUNDED;
   }
 
   /** Notes a link of the piece being described. A piece met twice keeps its cheaper link. */
@@ -452,14 +482,62 @@ export class Support {
     return keyLvl(k1) + own.reach[0] - 1 <= LVL_MOST;
   }
 
-  /** Notes each slab at `lvl` beside the edge of a cell, at `cost`, or at what it adds as the lower piece where `cost` is -1. */
-  private beside(fr: number, k0: number, k1: number, lvl: number, cost: number, self: number): void {
-    if (this.plain) edgeSquares(k0, k1, lvl, faces);
+  /**
+   * Notes each slab at `lvl` beside the edge of a cell, at `cost`, or at what it adds as the lower piece where `cost` is -1.
+   * With `roofs`, a roof too whose side over the edge is level at `lvl`: a wall holds a roof's level side, and a roof
+   * holds nothing that stands on it.
+   */
+  private beside(fr: number, k0: number, k1: number, lvl: number, cost: number, self: number, roofs = false): void {
+    if (this.square()) edgeSquares(k0, k1, lvl, faces);
     else edgeFaces(k0, k1, lvl, SLAB, faces);
+    const deep = roofs && this.sloped();
     for (let f = 0; f < faces.n; f++) {
-      const ref = this.at(fr, faces.k0[f]!, faces.k1[f]!, self);
-      if (ref >= 0) this.put(ref, cost < 0 ? this.loose[this.kindOf(ref)]! : cost);
+      const ref = deep ? this.covering(fr, faces.k0[f]!, faces.k1[f]!, self) : this.at(fr, faces.k0[f]!, faces.k1[f]!, self);
+      if (ref < 0) continue;
+      const kind = this.kindOf(ref);
+      if (this.forms!.rise[kind] !== 0) {
+        if (!roofs) continue;
+        keyAnchor(k0, k1, C, 0);
+        tupleStep(C, 0, keyDir(k1), SIDE, C, 4);
+        if (this.cornerLvl(ref, C, 0) !== lvl || this.cornerLvl(ref, C, 4) !== lvl) continue;
+      }
+      this.put(ref, cost < 0 ? this.loose[kind]! : cost);
     }
+  }
+
+  /** Whether triangles may be left unread: none is built, here or pretended. */
+  private square(): boolean {
+    return this.plain && !this.structs.occupied.triangles && !(this.pretend !== null && this.pretend.occupied.triangles);
+  }
+
+  /** Whether some roof is built: a slab whose cell reaches over its own level. */
+  private sloped(): boolean {
+    return this.structs.occupied.deep[SLAB]! > 0 || (this.pretend !== null && this.pretend.occupied.deep[SLAB]! > 0);
+  }
+
+  /** The key of the piece `ref`, to `key`. */
+  private keyOf(ref: number): void {
+    if (pretended(ref)) {
+      key.k0 = this.pretend!.k0[Math.floor(ref / 65536)]!;
+      key.k1 = this.pretend!.k1[Math.floor(ref / 65536)]!;
+      return;
+    }
+    const t = this.structs.chunks[Math.floor(ref / 65536)]!;
+    key.k0 = t.k0![ref & 0xffff]!;
+    key.k1 = t.k1![ref & 0xffff]!;
+  }
+
+  /** The level of the underside of slab `ref` at the lattice point `p[pi]`, a corner of its face: its own level, and for a roof what it rises to there. NaN where the point is no corner of it. */
+  private cornerLvl(ref: number, p: Int32Array, pi: number): number {
+    const kind = this.kindOf(ref);
+    this.keyOf(ref);
+    const lvl = keyLvl(key.k1);
+    const rise = riseAt(this.forms!, kind, key.k0, key.k1);
+    if (rise === 0) return lvl;
+    keyAnchor(key.k0, key.k1, D, 0);
+    const n = elementCorners(keyCls(key.k0), D, 0, keyDir(key.k1), D, 0);
+    for (let k = 0; k < n; k++) if (tupleEqual(D, 4 * k, p, pi)) return lvl + ((rise >> (3 * k)) & 7);
+    return NaN;
   }
 
   /**
@@ -468,19 +546,27 @@ export class Support {
    */
   private around(fr: number, k0: number, k1: number, lvl: number, corner: number, middle: number, side: number, more: number, self: number): void {
     vertexFaces(k0, k1, lvl, SLAB, faces);
+    const square = this.square();
     for (let f = 0; f < faces.n; f++) {
-      if (this.plain && f >= 12 && f < 24) continue;
+      if (square && f >= 12 && f < 24) continue;
       const ref = this.at(fr, faces.k0[f]!, faces.k1[f]!, self);
       const cost = f < 24 ? corner : middle;
-      if (ref >= 0) this.put(ref, cost < 0 ? this.loose[this.kindOf(ref)]! : cost + more);
+      // A post and a roof hold nothing of each other.
+      if (ref >= 0 && this.forms!.rise[this.kindOf(ref)] === 0) this.put(ref, cost < 0 ? this.loose[this.kindOf(ref)]! : cost + more);
     }
     vertexEdges(k0, k1, lvl, SLAB, mids);
     for (let e = 12; e < mids.n; e++) if (mids.k0[e] !== 0) this.beside(fr, mids.k0[e]!, mids.k1[e]!, lvl, side < 0 ? -1 : side + more, self);
   }
 
-  /** Notes each slab across a side of the slab a key names, square or triangle. */
-  private across(fr: number, k0: number, k1: number, lvl: number, self: number): void {
-    if (this.plain && keyCls(k0) === CLS_SQUARE) {
+  /**
+   * Notes each slab across a side of the slab of `kind` a key names, square or triangle, where the two undersides are
+   * as high as each other at both ends of the side: level slabs on one level, a roof beside the roof that carries its
+   * slope on, a ridge's two faces, a roof's high side and the floor it rises to.
+   */
+  private across(kind: number, fr: number, k0: number, k1: number, lvl: number, self: number): void {
+    const rise = riseAt(this.forms!, kind, k0, k1);
+    const deep = rise !== 0 || this.sloped();
+    if (!deep && keyCls(k0) === CLS_SQUARE && this.square()) {
       squaresAcross(k0, k1, lvl, faces);
       for (let f = 0; f < 4; f++) {
         const ref = this.at(fr, faces.k0[f]!, faces.k1[f]!, self);
@@ -488,15 +574,33 @@ export class Support {
       }
       return;
     }
-    const mine = cellOf(cellAt(k1, lvl, SLAB));
     faceEdges(k0, k1, lvl, SLAB, sides);
-    for (let s = 0; s < sides.n; s++) {
+    if (!deep) {
+      const mine = cellOf(cellAt(k1, lvl, SLAB));
+      for (let s = 0; s < sides.n; s++) {
+        if (sides.k0[s] === 0) continue;
+        edgeFaces(sides.k0[s]!, sides.k1[s]!, lvl, SLAB, faces);
+        for (let f = 0; f < faces.n; f++) {
+          if (faces.k0[f] === k0 && faces.k1[f] === mine) continue;
+          const ref = this.at(fr, faces.k0[f]!, faces.k1[f]!, self);
+          if (ref >= 0) this.put(ref, COST_BESIDE);
+        }
+      }
+      return;
+    }
+    keyAnchor(k0, k1, C, 0);
+    const n = elementCorners(keyCls(k0), C, 0, keyDir(k1), C, 0);
+    for (let s = 0; s < n; s++) {
       if (sides.k0[s] === 0) continue;
-      edgeFaces(sides.k0[s]!, sides.k1[s]!, lvl, SLAB, faces);
+      const to = s + 1 === n ? 0 : s + 1;
+      const a = lvl + ((rise >> (3 * s)) & 7);
+      const b = lvl + ((rise >> (3 * to)) & 7);
+      // The slab whose cell holds the side's lower end: one level with it, or a roof that reaches it.
+      edgeFaces(sides.k0[s]!, sides.k1[s]!, Math.min(a, b), SLAB, faces);
       for (let f = 0; f < faces.n; f++) {
-        if (faces.k0[f] === k0 && faces.k1[f] === mine) continue;
-        const ref = this.at(fr, faces.k0[f]!, faces.k1[f]!, self);
-        if (ref >= 0) this.put(ref, COST_BESIDE);
+        if (faces.k0[f] === 0 || (faces.k0[f] === k0 && ((faces.k1[f]! ^ k1) & COLUMN) === 0)) continue;
+        const ref = this.covering(fr, faces.k0[f]!, faces.k1[f]!, self);
+        if (ref >= 0 && this.cornerLvl(ref, C, 4 * s) === a && this.cornerLvl(ref, C, 4 * to) === b) this.put(ref, COST_BESIDE);
       }
     }
   }
@@ -512,13 +616,22 @@ export class Support {
     const loose = this.loose;
     const low = lvl > -LVL_MOST;
     if (layer === SLAB) {
-      this.across(fr, k0, k1, lvl, self);
+      this.across(kind, fr, k0, k1, lvl, self);
       if (!low || flat) return;
+      const rise = riseAt(forms, kind, k0, k1);
       faceEdges(k0, k1, lvl - 1, WALL, sides);
       for (let s = 0; s < sides.n; s++) {
         const e0 = sides.k0[s]!;
         const e1 = sides.k1[s]!;
         if (e0 === 0) continue;
+        // A roof lies on the wall under each side it is level along, at that side's height. No post holds it.
+        if (rise !== 0) {
+          const a = (rise >> (3 * s)) & 7;
+          if (a !== ((rise >> (3 * (s + 1 === sides.n ? 0 : s + 1))) & 7)) continue;
+          const wall = this.ending(fr, e0, cellAt(e1, lvl + a - 1, WALL), lvl + a, self);
+          if (wall >= 0) this.put(wall, COST_SIDE + loose[this.kindOf(wall)]!);
+          continue;
+        }
         // The wall under this side, and the post under its middle.
         const wall = this.ending(fr, e0, e1, lvl, self);
         if (wall >= 0) this.put(wall, COST_SIDE + loose[this.kindOf(wall)]!);
@@ -526,6 +639,7 @@ export class Support {
         const post = this.ending(fr, mids.k0[0]!, mids.k1[0]!, lvl, self);
         if (post >= 0) this.put(post, COST_SIDE + loose[this.kindOf(post)]!);
       }
+      if (rise !== 0) return;
       // The posts under its corners, and under its middle if it has one.
       elementVertices(k0, k1, lvl - 1, POST, verts);
       const corners = CLS_CORNERS[keyCls(k0)]!;
@@ -546,6 +660,14 @@ export class Support {
         if (footing >= 0) this.put(footing, loose[this.kindOf(footing)]!);
         this.beside(fr, c0, c1, lvl, -1, self);
       }
+      // A rail or a beam is also held by a post that stands through its level at either end.
+      if (loose[kind] !== 0 && this.single[kind] === 1) {
+        elementVertices(k0, k1, lvl, POST, verts);
+        for (let v = 0; v < 2; v++) {
+          const post = this.covering(fr, verts.k0[v]!, verts.k1[v]!, self);
+          if (post >= 0) this.put(post, COST_SIDE);
+        }
+      }
     } else if (layer === POST) {
       const under = low ? this.ending(fr, k0, cellAt(k1, lvl - 1, POST), lvl, self) : -1;
       if (under >= 0) this.put(under, loose[this.kindOf(under)]!);
@@ -560,7 +682,17 @@ export class Support {
       const edge = keyCls(k0) === CLS_EDGE;
       for (let c = 0; c < own.n; c++) {
         const host = edge ? this.covering(fr, own.k0[c]!, cellAt(own.k1[c]!, keyLvl(own.k1[c]!), WALL), self) : this.at(fr, own.k0[c]!, cellAt(own.k1[c]!, lvl, SLAB), self);
-        if (host >= 0) this.put(host, 0);
+        // In a wall it hangs storey for storey: a wall that only passes its level, begun under it, is no host.
+        if (host >= 0 && (!edge || (keyLvl(own.k1[c]!) - this.lvlOf(host)) % STOREY_LEVELS === 0)) this.put(host, 0);
+      }
+      // A ladder also hangs under the side of a hatch's frame over its head.
+      const top = lvl + forms.span[kind]!;
+      if (edge && top <= LVL_MOST && this.hatched[kind] === 1) {
+        edgeFaces(k0, k1, top, SLAB, faces);
+        for (let f = 0; f < faces.n; f++) {
+          const frame = this.at(fr, faces.k0[f]!, faces.k1[f]!, self);
+          if (frame >= 0 && this.hatched[this.kindOf(frame)] === 2) this.put(frame, 0);
+        }
       }
     }
   }
@@ -577,7 +709,7 @@ export class Support {
       if (!this.cells(kind, k0, k1)) return;
       for (let c = 0; c < own.n; c++) {
         const end = keyLvl(own.k1[c]!) + own.reach[c]!;
-        if (end <= LVL_MOST) this.beside(fr, own.k0[c]!, own.k1[c]!, end, COST_SIDE + mine, self);
+        if (end <= LVL_MOST) this.beside(fr, own.k0[c]!, own.k1[c]!, end, COST_SIDE + mine, self, true);
       }
     } else if (layer === POST) {
       const top = keyLvl(k1) + forms.span[kind]!;
@@ -593,12 +725,21 @@ export class Support {
     const mine = this.loose[kind]!;
     const low = lvl > -LVL_MOST;
     if (layer === SLAB) {
-      this.across(fr, k0, k1, lvl, self);
+      this.across(kind, fr, k0, k1, lvl, self);
+      const rise = riseAt(forms, kind, k0, k1);
       faceEdges(k0, k1, lvl, WALL, sides);
       for (let s = 0; s < sides.n; s++) {
         const e0 = sides.k0[s]!;
         const e1 = sides.k1[s]!;
         if (e0 === 0) continue;
+        // A roof: the wall hung under each side it is level along, and nothing on it.
+        if (rise !== 0) {
+          const a = (rise >> (3 * s)) & 7;
+          if (a !== ((rise >> (3 * (s + 1 === sides.n ? 0 : s + 1))) & 7) || lvl + a <= -LVL_MOST) continue;
+          const hung = this.ending(fr, e0, cellAt(e1, lvl + a - 1, WALL), lvl + a, self);
+          if (hung >= 0) this.put(hung, COST_HUNG + HUNG);
+          continue;
+        }
         const wall = this.starting(fr, e0, e1, lvl, self);
         if (wall >= 0) this.put(wall, mine);
         edgeMiddle(e0, e1, lvl, mids, 0);
@@ -611,6 +752,12 @@ export class Support {
         if (hung >= 0) this.put(hung, COST_HUNG + HUNG);
         const below = this.ending(fr, m0, cellAt(m1, lvl - 1, POST), lvl, self);
         if (below >= 0) this.put(below, COST_HUNG + HUNG);
+      }
+      if (rise !== 0) return;
+      // A hatch's frame: the ladder hung under each of its sides.
+      for (let s = 0; low && this.hatched[kind] === 2 && s < sides.n; s++) {
+        const ladder = sides.k0[s] === 0 ? -1 : this.ending(fr, sides.k0[s]!, cellAt(sides.k1[s]!, lvl - 1, LEAF), lvl, self);
+        if (ladder >= 0 && this.hatched[this.kindOf(ladder)] === 1) this.put(ladder, 0);
       }
       elementVertices(k0, k1, lvl, POST, verts);
       for (let v = 0; v < verts.n; v++) {
@@ -642,6 +789,15 @@ export class Support {
       this.tops(kind, fr, k0, k1, self);
       const on = this.starting(fr, k0, cellAt(k1, top, POST), top, self);
       if (on >= 0) this.put(on, mine);
+      // The rails and beams that end at it, at each level it stands through.
+      vertexEdges(k0, k1, lvl, WALL, mids);
+      for (let e = 0; e < 12; e++) {
+        if (mids.k0[e] === 0) continue;
+        for (let up = 0; up < forms.span[kind]!; up++) {
+          const rail = this.at(fr, mids.k0[e]!, cellAt(mids.k1[e]!, lvl + up, WALL), self);
+          if (rail >= 0 && this.loose[this.kindOf(rail)] !== 0 && this.single[this.kindOf(rail)] === 1) this.put(rail, COST_SIDE);
+        }
+      }
     } else if (layer === FOOTING) {
       const on = this.starting(fr, k0, cellAt(k1, lvl, WALL), lvl, self);
       if (on >= 0) this.put(on, mine);
@@ -994,7 +1150,7 @@ export class Support {
           const o = this.node(above);
           if (o && !column.includes(o)) column.push(o);
         }
-        const n = this.dependents(from.x, from.z, -1, rows);
+        const n = this.dependents(from.x, from.z, -1, rows, from.kind);
         for (let k = 0; k < n; k++) {
           const r = rows.refs[k]!;
           if (absent.has(r) || waiting.has(r)) continue;
@@ -1026,12 +1182,23 @@ export class Support {
    * Every building piece that a piece at (x, z) lattice units could have been helping to hold up: all within reach
    * horizontally, at any height. Writes their refs to `out` and returns how many.
    */
-  dependents(x: number, z: number, self: number, found: Found): number {
+  dependents(x: number, z: number, self: number, found: Found, kind = 0): number {
     const { structs, tables } = this;
     const mx = x / STRUCT_UNITS;
     const mz = z / STRUCT_UNITS;
-    const far = this.far;
-    const n = structs.query(mx - far, mz - far, mx + far, mz + far, found);
+    // The lost piece's own reach from its place, the worst where its kind is not said.
+    let far = this.far + (kind > 0 ? this.end[kind]! : this.endMost);
+    let box = far + this.endMost;
+    let n = structs.query(mx - box, mz - box, mx + box, mz + box, found);
+    // A broad wall within that reach may have carried its support a side further at each end.
+    for (let i = 0; i < n && this.farBroad > 0; i++) {
+      const ref = found.refs[i]!;
+      if (this.broad[structs.chunks[Math.floor(ref / 65536)]!.kind[ref & 0xffff]!] !== 1) continue;
+      far += this.farBroad;
+      box += this.farBroad;
+      n = structs.query(mx - box, mz - box, mx + box, mz + box, found);
+      break;
+    }
     const out = found.refs;
     // A piece listed costs half a search step.
     this.work += COST_NODE + (n >> 1);
@@ -1044,7 +1211,8 @@ export class Support {
       if (tables.role[t.kind[slot]!]! < 0) continue;
       const dx = t.x[slot]! - mx;
       const dz = t.z[slot]! - mz;
-      if (dx * dx + dz * dz <= far * far) out[count++] = ref;
+      const reach = far + this.end[t.kind[slot]!]!;
+      if (dx * dx + dz * dz <= reach * reach) out[count++] = ref;
     }
     return count;
   }

@@ -277,7 +277,8 @@ test("a piece over the structure cap is refused with both numbers", () => {
   };
   // ARK's default of 10,500 is far off. Another tribe's wall counts with her two foundations.
   expect([found(), found()]).toEqual([RESULT_OK, RESULT_OK]);
-  structs.add(id("wall_wood"), at.x, at.y + 20, at.z + 12, 0, 77, 100);
+  // It hangs in the air, so it stands far enough off that taking a foundation down puts it in no doubt.
+  structs.add(id("wall_wood"), at.x, at.y + 20, at.z + 40, 0, 77, 100);
   expect(h.world.claims.near(at.x, at.z)).toBe(3);
   expect(h.say(ada, "setting TheMaxStructuresInRange 3")[0]).toContain("TheMaxStructuresInRange=3");
   const had = count(ada, "foundation");
