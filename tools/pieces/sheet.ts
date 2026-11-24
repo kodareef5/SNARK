@@ -99,6 +99,9 @@ async function tierAsset(tier: string): Promise<Asset> {
 }
 
 /** Draws placed pieces of a pack with their materials, as the art sheet draws one piece. */
+/** How many sizes of picture a studio keeps a view for. Each is a gigabyte and a half with three tiers' textures. */
+const VIEWS_KEPT = 2;
+
 export class Studio {
   private readonly views = new Map<string, ModelView>();
   private readonly index: ReadonlyMap<string, number>;
@@ -118,6 +121,8 @@ export class Studio {
     const key = `${width}x${height}`;
     let view = this.views.get(key);
     if (view) return view;
+    // A view holds every texture of the pack again: only the last few sizes asked for are kept.
+    if (this.views.size >= VIEWS_KEPT) this.views.delete(this.views.keys().next().value!);
     this.views.set(key, (view = new ModelView(this.pack, width, height, [BACK[0] / 255, BACK[1] / 255, BACK[2] / 255])));
     const materials = this.assets.flatMap(materialsOf);
     (this.pack.header.textures ?? []).forEach((t, slot) => {

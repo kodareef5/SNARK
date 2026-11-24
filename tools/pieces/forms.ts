@@ -58,6 +58,18 @@ function boxOf(mesh: SourceMesh): number[] {
   return box;
 }
 
+/** Puts the middle square of a picture on a canvas `size` pixels across at (x, y), each pixel the mean of what it covers. */
+function shrunk(canvas: Canvas, src: Uint8ClampedArray, sw: number, sh: number, size: number, x: number, y: number): void {
+  const side = Math.min(sw, sh), [x0, y0] = [(sw - side) / 2, (sh - side) / 2];
+  for (let py = 0; py < size; py++) for (let px = 0; px < size; px++) {
+    const [u0, u1, v0, v1] = [Math.floor(x0 + (px * side) / size), Math.ceil(x0 + ((px + 1) * side) / size), Math.floor(y0 + (py * side) / size), Math.ceil(y0 + ((py + 1) * side) / size)];
+    const sum = [0, 0, 0];
+    for (let v = v0; v < v1; v++) for (let u = u0; u < u1; u++) for (let c = 0; c < 3; c++) sum[c]! += src[(v * sw + u) * 4 + c]!;
+    const n = Math.max(1, (u1 - u0) * (v1 - v0));
+    canvas.pixels.set([sum[0]! / n, sum[1]! / n, sum[2]! / n, 255], ((y + py) * canvas.width + x + px) * 4);
+  }
+}
+
 export async function main(args: readonly string[], say: (line: string) => void = console.log): Promise<void> {
   const value = (name: string): string | undefined => (args.includes(`--${name}`) ? args[args.indexOf(`--${name}`) + 1] : undefined);
   const out = resolve(value("out") ?? "var/pieces");
@@ -114,10 +126,12 @@ export async function main(args: readonly string[], say: (line: string) => void 
       const [, radius] = ball(name);
       lods.forEach((lod, level) => {
         const [x, y] = [8 + (k % 2) * (LEVEL_FROM.length * (lw + 4) + 12) + level * (lw + 4), 30 + Math.floor(k / 2) * (lh + 4)];
-        levels.shrink(one(name, lw, lh, 35, 18, level), lw * SMOOTH, lh * SMOOTH, SMOOTH, x, y);
+        const large = one(name, lw, lh, 35, 18, level);
+        levels.shrink(large, lw * SMOOTH, lh * SMOOTH, SMOOTH, x, y);
         levels.text(`${level === 0 ? `${name} ` : ""}${lod.indices.length / 3}`, x + 4, y + 4);
         const small = Math.max(4, Math.round((PIXELS * 2 * radius) / Math.max(LEVEL_FROM[level]!, 6)));
-        if (level > 0 && small < lw / 2) levels.shrink(one(name, small, small, 35, 18, level), small * SMOOTH, small * SMOOTH, SMOOTH, x + lw - small - 2, y + lh - small - 2);
+        // The small one is the large one's middle square shrunk: a picture of each size is a view of its own, with every texture again.
+        if (level > 0 && small < lw / 2) shrunk(levels, large, lw * SMOOTH, lh * SMOOTH, small, x + lw - small - 2, y + lh - small - 2);
       });
     });
     write(`new-levels-${TIER}.png`, levels);
