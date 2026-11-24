@@ -7,6 +7,7 @@ import type { Screen } from "../../client/core/ui/screen.ts";
 import type { ChoosingScreen } from "../../client/core/ui/choosing.ts";
 import type { CreatorScreen } from "../../client/core/ui/creator.ts";
 import type { StructMenu } from "../../client/core/ui/structure.ts";
+import type { AirRadio } from "../../client/core/ui/air-support.ts";
 import { flatWorld } from "../fixtures/world.ts";
 import { CHOOSE_DIED, RESULT_DENIED, SESSION_ALIVE, SESSION_CREATING, SESSION_DEAD } from "../../shared/net/protocol.ts";
 import { KEY_TRAVEL_BUTTON, type TravelScreen } from "../../client/core/ui/travel.ts";
@@ -31,7 +32,7 @@ function fakeSession(): { session: ClientSession; sent: number[] } {
     state: "active", airSupport: emptyAirSupport(), inventory: new Inventory(40 + HOTBAR_SLOTS + ARMOR_SLOTS, 40), held: 0, tamed: [],
     serverTick: 1000, logVersion: 0, log: [], globalChat: true, tribe: { name: "", team: 0 }, world: { hf }, markers: [], tactical: null, mapLocation: true, own: { x: 100, y: 0, z: 100 }, ownKind: reg.index.get("core:survivor")!,
     progress: { level: 1, xp: 0, statPoints: 0, engramPoints: 0, jobs: [], engrams: [], version: 1 },
-    command: (op: number) => (sent.push(op), 1), emote: () => (sent.push(-1), 1),
+    command: (op: number) => (sent.push(op), 1), emote: () => (sent.push(-1), 1), airCommand: () => (sent.push(-2), 1),
   } as unknown as ClientSession;
   return { session, sent };
 }
@@ -87,6 +88,12 @@ const opens: Record<string, (ui: Ui, session: ClientSession) => { s: Screen; shu
   creator: (ui, session) => {
     Object.assign(session, { sessionState: SESSION_CREATING, name: "Ada" });
     return { s: ui.screen<CreatorScreen>("creator"), shut: () => (session.sessionState = SESSION_ALIVE) };
+  },
+  air: (ui, session) => {
+    Object.assign(session, { sessionState: SESSION_ALIVE, airSupport: { ...emptyAirSupport(), pod: 1, pods: [{ id: 1, ent: 0, hitched: false, open: 1, slots: 3, selected: 0, x: 0, y: 0, z: 0, yaw: 0 }] } });
+    const s = ui.screen<AirRadio>("air");
+    s.open = true;
+    return { s, shut: () => s.close() };
   },
   choosing: (ui, session) => {
     Object.assign(session, { sessionState: SESSION_DEAD, choosing: CHOOSE_DIED, placesList: 0, respawnPoints: [{ kind: 0, name: "Beach", x: 10, z: 10, readyAt: 0 }, { kind: 1, name: "Bed", x: 40, z: 30, readyAt: 0 }] });
@@ -202,4 +209,29 @@ test("the map takes a finger's drag through the list, with no click", () => {
   ui.pointer(1, KEY_MAP_IMAGE, cx + 60, cy, 0, session, 1);
   expect(hud.chart.fullU).toBeLessThan(before);
   expect(heard).toEqual([]);
+});
+
+test("the radio's play button works while it is closed, J opens it, and Tab keeps to its own buttons", () => {
+  const ui = new Ui(), { session } = fakeSession();
+  const { s: air, shut } = opens.air!(ui, session);
+  shut();
+  // Closed, it draws its button with the HUD, and a press on that button opens it.
+  drawn(ui, air, session);
+  const radio = ui.frame.nodes.slice(0, ui.frame.count).find((n) => n.owner === ui.screens.indexOf(air) && n.interactive)!;
+  expect(radio.inPlay).toBe(true);
+  ui.pointer(0, radio.key, radio.x + 1, radio.y + 1, 0, session);
+  expect(air.isOpen()).toBe(true);
+  // Escape closes it, and J from play opens it again.
+  ui.key("Escape", true, false, session);
+  expect(air.isOpen()).toBe(false);
+  ui.key("KeyJ", true, false, session);
+  expect(air.isOpen()).toBe(true);
+  // Tab walks the radio's buttons only, and the console stays shut.
+  const nodes = drawn(ui, air, session);
+  const own = new Set(nodes.filter((n) => n.interactive).map((n) => n.key));
+  for (let i = 0; i < own.size + 2; i++) {
+    ui.key("Tab", true, false, session);
+    expect(own.has(ui.navigate(0))).toBe(true);
+  }
+  expect(ui.console.open).toBe(false);
 });

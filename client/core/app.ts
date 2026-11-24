@@ -79,6 +79,7 @@ import { canvasHeight, textWidth, wrapText } from "./ui/nodes.ts";
 import { glass } from "./ui/skin.ts";
 import type { EmoteMenu } from "./ui/emotes.ts";
 import type { StructMenu } from "./ui/structure.ts";
+import type { AirRadio } from "./ui/air-support.ts";
 import { TouchPlay, type TouchTarget } from "./touch.ts";
 import { Ui } from "./ui/ui.ts";
 import { TRAVEL_REFRESH_MS, type TravelScreen } from "./ui/travel.ts";
@@ -239,8 +240,8 @@ export class App {
       get inspecting() { return app.ui.inspect; },
       get flying() { return app.controls.onFlyer; },
       get skating() { return app.controls.onBoard; },
-      get airRadio() { return app.ui.air.available(app.session); },
-      get airMarking() { return app.ui.air.marking; },
+      get airRadio() { return app.ui.screen<AirRadio>("air").available(app.session); },
+      get airMarking() { return app.ui.screen<AirRadio>("air").marking; },
       get patrol() { return app.session.driving >= 0 && app.vehicleTelemetry.lightMode >= 0; },
       get zooming() { return app.zooming; },
       zoom: (notches, alt) => void this.zoomBy(notches, alt),
@@ -280,7 +281,6 @@ export class App {
     };
     this.ui.inventory.onDeploy = slot => this.vehiclePlacement.begin(slot);
     session.onResult = (seq, code) => {
-      this.ui.air.result(seq, code, session.tickClock);
       this.ui.inventory.result(seq, code, session.tickClock);
       this.builder.result(seq, code, this.nowMs);
       this.vehiclePlacement.result(seq, code, this.nowMs);
@@ -454,7 +454,7 @@ export class App {
       if (Number.isInteger(slot) && slot >= 0 && slot < this.hud.hotbar.length) this.session.command(CMD_SELECT, (w) => w.u8(this.session.held === slot ? 255 : slot));
     }
     this.ui.pointer(kind, key, x, y, button, this.session, finger);
-    if (this.ui.menu || this.ui.air.open) this.blur();
+    if (this.ui.menu || this.ui.opened("air")) this.blur();
   }
 
   zoomMini(turn: number): void {
@@ -875,8 +875,9 @@ export class App {
       }
       session.impacts.length = 0;
     }
-    this.ui.air.update(session, this.remote, world, cam);
-    scene.airSupport.preview = this.ui.air.marking ? this.ui.air.spot : null;
+    const air = this.ui.screen<AirRadio>("air");
+    air.update(session, this.remote, world, cam);
+    scene.airSupport.preview = air.marking ? air.spot : null;
     scene.airSupport.view = session.airSupport;
     scene.airSupport.tick = session.tickClock;
     this.supply.list = session.supply;

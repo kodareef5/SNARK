@@ -2,6 +2,7 @@
 // screens in this order. A new screen is a file of its own (screen.ts) and one line here.
 
 import type { ScreenRow } from "./screen.ts";
+import { AirRadio } from "./air-support.ts";
 import { CharacterScreen } from "./character.ts";
 import { ChoosingScreen } from "./choosing.ts";
 import { CreatorScreen } from "./creator.ts";
@@ -18,4 +19,5 @@ export const SCREENS: readonly ScreenRow[] = [
   () => new MapScreen(),
   () => new TravelScreen(),
   () => new StructMenu(),
+  () => new AirRadio(),
 ];

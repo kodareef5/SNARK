@@ -55,13 +55,21 @@ export interface Screen {
   quiet?: boolean;
   /** A field of it has the keyboard: keys type and do not drive the body. */
   keyboard?(): boolean;
+  /** While open it holds the keys from the body, though no field types: they come to its `key`. */
+  holdsKeys?: boolean;
+  /** While open, Tab and the arrows move the focus among its buttons, and Enter or Space presses the focused one. */
+  focusNav?: boolean;
   /** A text field is wanted, so a touch device raises its keyboard. */
   typing?(): boolean;
   /** A key while open. True if the screen used it. */
   key?(code: string, down: boolean, repeat: boolean, c: ScreenCtx): boolean;
+  /** A key while the body is played and no screen has the pointer, open or not. True if the screen used it. */
+  playKey?(code: string, down: boolean, repeat: boolean, c: ScreenCtx): boolean;
   /** What the controls guide says of its keys. */
   guide?: readonly GuideWords[];
   build(f: UiFrame, c: ScreenCtx): void;
+  /** Drawn with the HUD while the body is played, open or not. A press on what it draws reaches `pointer` even closed. */
+  play?(f: UiFrame, c: ScreenCtx): void;
   /** `kind` 0 for a press, 1 a release, 2 a move, over a node this screen drew. True if it used the event. */
   pointer?(kind: number, key: number, x: number, y: number, button: number, c: ScreenCtx): boolean;
   /** A field's new text. True if the field was this screen's. */

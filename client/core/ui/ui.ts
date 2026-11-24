@@ -4,7 +4,6 @@ import type { HudModel } from "../hud.ts";
 import type { ClientSession } from "../session.ts";
 import { ConsoleState, KEY_CONSOLE_INPUT } from "./console.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
-import { AirRadio } from "./air-support.ts";
 import { buildFeed } from "../hud/air-feed.ts";
 import { ChatState, KEY_CHAT_INPUT, KEY_CHAT_SEND, KEY_CHAT_TAG } from "./chat.ts";
 import { buildCombat } from "./combat.ts";
@@ -35,7 +34,6 @@ export class Ui {
   readonly console = new ConsoleState();
   readonly chat = new ChatState();
   readonly inventory = new InventoryScreen();
-  readonly air = new AirRadio();
   readonly naming = new NamePrompt();
   /** The screens of SCREENS, made for this interface, in its order. */
   readonly screens: readonly Screen[] = SCREENS.map((make) => make());
@@ -108,8 +106,8 @@ export class Ui {
 
   /** A text field has the keyboard, so keys must not also drive the body. */
   get captureKeyboard(): boolean {
-    if (this.air.open || this.menu || this.inspect || this.console.open || this.chat.open || this.naming.open) return true;
-    for (const s of this.screens) if (s.isOpen() && s.keyboard?.()) return true;
+    if (this.menu || this.inspect || this.console.open || this.chat.open || this.naming.open) return true;
+    for (const s of this.screens) if (s.isOpen() && (s.holdsKeys || s.keyboard?.())) return true;
     return false;
   }
 
@@ -123,7 +121,7 @@ export class Ui {
   /** True when the mouse should steer the camera, with the shell holding pointer lock. */
   get wantsPointerLock(): boolean {
     for (const s of this.screens) if (s.isOpen() && !s.keepsPointer) return false;
-    return !this.air.open && !this.menu && !this.inspect && !this.console.open && !this.chat.open && !this.naming.open && !this.inventory.open && !this.options && !this.dead && !this.creating && !(this.debug?.holdsPointer ?? false);
+    return !this.menu && !this.inspect && !this.console.open && !this.chat.open && !this.naming.open && !this.inventory.open && !this.options && !this.dead && !this.creating && !(this.debug?.holdsPointer ?? false);
   }
 
   /** Whether a screen of `group` is open. */
@@ -212,7 +210,10 @@ export class Ui {
   private focusTo(key: number): void { this.menuFocus = this.focusNext = key; }
 
   private moveFocus(by: number): void {
-    const keys = this.frame.nodes.slice(0, this.frame.count).filter((n) => n.interactive && (!this.air.open || this.air.ownsButton(n.key))).map((n) => n.key);
+    // A screen that moves its own focus keeps it among its own buttons.
+    const own = this.focusing();
+    const at0 = own ? this.screens.indexOf(own) : -1;
+    const keys = this.frame.nodes.slice(0, this.frame.count).filter((n) => n.interactive && (!own || (n.owner === at0 && !n.inPlay))).map((n) => n.key);
     const at = keys.indexOf(this.menuFocus);
     if (keys.length) this.focusTo(keys[at < 0 ? (by > 0 ? 0 : keys.length - 1) : (at + by + keys.length) % keys.length]!);
   }
@@ -270,27 +271,30 @@ export class Ui {
       else chat.submit(session);
       return true;
     }
-    if (code === "Backquote" || (code === "Tab" && !con.open && !this.air.open)) {
+    const focusing = this.focusing();
+    if (code === "Backquote" || (code === "Tab" && !con.open && !focusing)) {
       // A held key opens or closes once, not once per repeat.
       if (down && !repeat) con.open = !con.open;
       return true;
     }
     if (!con.open) {
-      if (this.air.open && (code === "ShiftLeft" || code === "ShiftRight")) this.menuShift = down;
-      if (this.air.open && (code === "Tab" || code === "ArrowDown" || code === "ArrowUp")) {
+      if (focusing && (code === "ShiftLeft" || code === "ShiftRight")) this.menuShift = down;
+      if (focusing && (code === "Tab" || code === "ArrowDown" || code === "ArrowUp")) {
         if (down) this.moveFocus(code === "ArrowUp" || (code === "Tab" && this.menuShift) ? -1 : 1);
         return true;
       }
-      if (this.air.open && down && !repeat && (code === "Enter" || code === "Space") && this.frame.find(this.menuFocus)?.interactive && session) {
-        return this.air.click(this.menuFocus, session);
+      const focused = this.frame.find(this.menuFocus);
+      if (focusing && down && !repeat && (code === "Enter" || code === "Space") && focused?.interactive && session) {
+        return focusing.pointer?.(0, this.menuFocus, focused.x + focused.w / 2, focused.y + focused.h / 2, 0, this.at(session)) ?? false;
       }
-      if (session && (this.wantsPointerLock || this.air.open) && this.air.key(code, down, repeat, session)) return true;
+      // An open screen of the list has its keys, then a screen's keys in play.
+      for (const s of this.screens) if (s.isOpen() && s.key?.(code, down, repeat, this.at(session))) return true;
+      if (session && this.wantsPointerLock) for (const s of this.screens) if (s.playKey?.(code, down, repeat, this.at(session))) return true;
       if (code === "KeyH" && (this.inspect || this.wantsPointerLock)) { this.inspect = down; return true; }
       if (code === "Escape" && this.inspect) { if (down && !repeat) this.inspect = false; return true; }
       if (code === "KeyL" && (this.inspect || this.wantsPointerLock)) { if (down && !repeat) { this.settings.minimap = !this.settings.minimap; this.settings.changed(); } return true; }
       if (code === "Escape" && this.debug?.holdsPointer) { if (down && !repeat) this.debug.close(); return true; }
-      // An open screen of the list has its keys next, and a screen of no group opens by its hotkey from play.
-      for (const s of this.screens) if (s.isOpen() && s.key?.(code, down, repeat, this.at(session))) return true;
+      // A screen of no group opens by its hotkey from play.
       const own = this.hotkeyed(undefined, code);
       if (own && this.wantsPointerLock && !this.creating) {
         if (down && !repeat) own.show?.(this.at(session));
@@ -410,11 +414,11 @@ export class Ui {
     if (listed) {
       const c = this.at(session);
       c.finger = finger;
-      if (listed.isOpen()) listed.pointer?.(kind, key, x, y, button, c);
+      // What a screen draws with the HUD takes a press while the screen is closed.
+      if (listed.isOpen() || this.frame.find(key)!.inPlay) listed.pointer?.(kind, key, x, y, button, c);
       c.finger = 0;
       return;
     }
-    if (kind === 0 && !button && this.air.click(key, session)) return;
     if (kind === 0 && this.options && settingsClick(key, this.settings)) return;
     if (this.inventory.open) this.inventory.pointer(kind, key, button, session);
   }
@@ -458,7 +462,7 @@ export class Ui {
         // The drone's feed and its tracking boxes stand in for the HUD (hud/air-feed.ts).
         buildFeed(f, hud, this.inputDevice);
         if (play) this.touchShown = layer!.touchDrone(this.frame, this.touchPlay!);
-        this.air.hud(f, session, this.inputDevice);
+        this.buildPlay(f, session, hud);
         return;
       }
       // Marks over creatures are under the rest of the HUD.
@@ -477,9 +481,8 @@ export class Ui {
         const slots = hud.hotbar.length;
         if (play) this.touchShown |= layer!.touchControls(f, this.touchPlay, hud, this.placing ? "placing" : this.building ? "building" : this.flyer ? "flyer" : "foot", slots ? hotbarLeft(f, slots) + slots * (hotbarCell(f, slots) + 3) - 3 : 0, slots ? hotbarTop(f, slots) : f.height, this.settings.minimap ? f.top + 12 + plan.map : 0, this.creatureAhead);
       }
-      if (controls && session) this.air.hud(f, session, this.inputDevice);
+      if (controls && session) this.buildPlay(f, session, hud);
     } else if (this.creating) this.chat.close();
-    if (this.dead || this.creating || session?.state === "closed") this.air.open = this.air.marking = false;
     // While the console or the chat box is open, the screen under it is not built, so nothing clickable hides behind either.
     // The Creative entry follows the server's rule, and so does the screen if it was open.
     if (this.creative && !session?.creative) { this.creative = false; this.focusTo(KEY_MENU_RESUME); }
@@ -498,7 +501,6 @@ export class Ui {
           if (!f.find(this.menuFocus)?.interactive && !this.focusNext) this.focusTo(this.creativeScreen.first(session));
         } else buildMenu(f, hud, session?.state === "active", this.menuFocus, this.links, session?.creative ?? false);
       } else if (this.options) buildSettings(f, this.settings, hud.micLevel);
-      else if (this.air.open && session) this.air.build(f, session, this.menuFocus);
       else if (!this.buildModal(f, session, hud)) {
         this.inventory.build(f, session, this.registry, this.palette);
       }
@@ -517,6 +519,25 @@ export class Ui {
     if (session) this.console.absorb(session);
     this.console.build(f);
     if (this.focusNext) { const node = f.find(this.focusNext); if (node) node.focus = true; this.focusNext = 0; }
+  }
+
+  /** What the screens of the list draw with the HUD while the body is played. */
+  private buildPlay(f: UiFrame, session: ClientSession, hud: HudModel): void {
+    f.inPlay = true;
+    for (let i = 0; i < this.screens.length; i++) {
+      const s = this.screens[i]!;
+      if (!s.play) continue;
+      f.owner = i;
+      s.play(f, this.at(session, hud));
+    }
+    f.owner = -1;
+    f.inPlay = false;
+  }
+
+  /** The open screen of the list that moves its own focus, if any. */
+  private focusing(): Screen | null {
+    for (const s of this.screens) if (s.focusNav && s.isOpen()) return s;
+    return null;
   }
 
   /** Builds the first open modal screen of the list; false where none is open. */
