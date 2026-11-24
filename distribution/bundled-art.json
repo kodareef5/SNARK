@@ -4,5 +4,6 @@
   "core/vehicles/skateboard",
   "core/vehicles/air_carrier",
   "core/vehicles/air_trailer",
-  "core/vehicles/survey_drone"
+  "core/vehicles/survey_drone",
+  "core/items/weapons/plasma"
 ]
