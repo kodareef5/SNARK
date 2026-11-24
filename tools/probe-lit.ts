@@ -77,9 +77,10 @@ function unpack(p, f, blob) {
   const previous = [p.street, p.previousStreet];
   p.beginFrame();
   for (const [name, value] of Object.entries(f.scalars)) if (name === "tier") p.tier = tierOf(value); else p[name] = value;
-  if (p.tier.reflectionHz !== f.reflectionHz) {
-    const key = p.tier.name + "/" + f.reflectionHz;
-    if (!reflectionTiers.has(key)) reflectionTiers.set(key, { ...p.tier, reflectionHz: f.reflectionHz });
+  // A tier made for a check is its named tier but for these: its street picture's rate, and whether it lights by an orb.
+  if (p.tier.reflectionHz !== f.reflectionHz || p.tier.orb.light !== f.orbLight) {
+    const key = p.tier.name + "/" + f.reflectionHz + "/" + f.orbLight;
+    if (!reflectionTiers.has(key)) reflectionTiers.set(key, { ...p.tier, reflectionHz: f.reflectionHz, orb: { ...p.tier.orb, light: f.orbLight } });
     p.tier = reflectionTiers.get(key);
   }
   // An array longer than the packet's own, as the far shadow's rows are, is taken as it comes.

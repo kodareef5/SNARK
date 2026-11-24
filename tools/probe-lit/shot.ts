@@ -62,6 +62,7 @@ class Bytes {
 /** A frame as the page rebuilds it: its numbers and tier, each array as far as it is used, and its uploads, with where their bytes are. */
 export interface Frame {
   reflectionHz: number;
+  orbLight: boolean;
   previousStreet: Frame["street"];
   street: { revision: number; pixels: [number, number] } | null;
   scalars: Record<string, number | boolean | string>;
@@ -154,6 +155,7 @@ export class Shot {
     if (read) this.read.push(this.frames.length);
     this.frames.push({
       reflectionHz: p.tier.reflectionHz,
+      orbLight: p.tier.orb.light,
       street: image(p.street), previousStreet: image(p.previousStreet),
       scalars,
       arrays,
