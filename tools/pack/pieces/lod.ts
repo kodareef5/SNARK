@@ -4,7 +4,7 @@
 import { nearestColour } from "../../../shared/pack/palette.ts";
 import { formBounds, outlineBox, type FormDef } from "../../../shared/world/lattice/forms.ts";
 import type { SourceLod } from "../write.ts";
-import { slice, uprightPlane, planeMoved, type Flat, type Plane, type Shape } from "./kit.ts";
+import { slice, tidy, uprightPlane, planeMoved, type Flat, type Plane, type Shape } from "./kit.ts";
 
 /**
  * Metres each level after the finest may lie from it. On medium a level is drawn from 3,505 times its error, so these
@@ -63,7 +63,10 @@ export function levelsOf(recipe: TierRecipe, name: string, form: FormDef): Shape
     const shape = recipe.split(name, form, level);
     if (!shape) break;
     if (level < TEXTURED) for (const [axis, at] of yieldPlanes(form)) shape.cut(axis, at);
-    if (level < TEXTURED) for (const plane of yieldSlants(form)) slice(shape, plane);
+    const slants = level < TEXTURED ? yieldSlants(form) : [];
+    for (const plane of slants) slice(shape, plane);
+    // Rings that cross a hair apart near a corner leave points a hair apart: a fifth of a millimetre is one point.
+    if (slants.length > 0) tidy(shape, 2e-4);
     out.push(shape);
   }
   if (out.length < 2 || out.length > LEVEL_ERRORS.length + 1) throw new Error(`${recipe.name} ${name}: ${out.length} levels`);

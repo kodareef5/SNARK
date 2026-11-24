@@ -966,7 +966,10 @@ export function slice(shape: Shape, plane: Plane, from = 0): Shape {
   return shape;
 }
 
-/** Texture coordinates carried on from a face over the whole of space: as its picture runs across it, and the same straight through it. */
+/**
+ * Texture coordinates carried on from a face over the whole of space: as its picture runs across it, and on through it
+ * the way its first side runs, so a face that closes a cut square to it wears the picture too and none of it is a line.
+ */
 function carried(f: Face): (p: Vec) => Uv {
   const o = f.points[0]!;
   let best: [Vec, Vec, Uv, Uv] | null = null, most = 0;
@@ -979,11 +982,15 @@ function carried(f: Face): (p: Vec) => Uv {
   const [e1, e2, d1, d2] = best;
   const [a, b, c] = [dot(e1, e1), dot(e1, e2), dot(e2, e2)];
   const det = a * c - b * b;
+  const through = unit(cross(e1, e2));
+  // Across the picture from the way the first side runs it, at the picture's own size.
+  const size = Math.hypot(d1[0], d1[1]) || 1;
+  const deep: Uv = [(-d1[1] / size) * (size / Math.sqrt(a)), (d1[0] / size) * (size / Math.sqrt(a))];
   return (p) => {
     const r = sub(p, o);
-    const [x, y] = [dot(r, e1), dot(r, e2)];
+    const [x, y, z] = [dot(r, e1), dot(r, e2), dot(r, through)];
     const [s, t] = [(x * c - y * b) / det, (y * a - x * b) / det];
-    return [f.uvs[0]![0] + s * d1[0] + t * d2[0], f.uvs[0]![1] + s * d1[1] + t * d2[1]];
+    return [f.uvs[0]![0] + s * d1[0] + t * d2[0] + z * deep[0], f.uvs[0]![1] + s * d1[1] + t * d2[1] + z * deep[1]];
   };
 }
 
@@ -1065,6 +1072,47 @@ export function clip(shape: Shape, plane: Plane, cap?: ((p: Vec) => readonly [st
     const made: Face = { points, uvs: got.map((g) => g[1]), mat: got[0]![0], tris: earcut(joined) };
     if (l.of.along !== undefined) made.along = l.of.along;
     shape.faces.push(made);
+  }
+  return shape;
+}
+
+/**
+ * Makes one point of every few that lie within `within` of each other, and drops what that leaves with no area. Two
+ * cuts that cross a hair apart leave such points, and a triangle between them that no card can light either way.
+ */
+export function tidy(shape: Shape, within = 2e-5): Shape {
+  const cell = within * 4;
+  const held = new Map<string, Vec[]>();
+  const one = (p: Vec): Vec => {
+    const at = p.map((c) => Math.floor(c / cell));
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) for (let k = -1; k <= 1; k++) {
+      for (const q of held.get(`${at[0]! + i},${at[1]! + j},${at[2]! + k}`) ?? []) if (Math.abs(q[0] - p[0]) <= within && Math.abs(q[1] - p[1]) <= within && Math.abs(q[2] - p[2]) <= within) return q;
+    }
+    held.set(at.join(), [...(held.get(at.join()) ?? []), p]);
+    return p;
+  };
+  const round = roundOf(shape);
+  const faces = shape.faces as Face[];
+  for (let n = faces.length - 1; n >= 0; n--) {
+    const f = faces[n]!;
+    f.points = f.points.map(one);
+    if (f.tris) {
+      const kept: number[] = [];
+      for (let t = 0; t < f.tris.length; t += 3) {
+        const [a, b, c] = [f.points[f.tris[t]!]!, f.points[f.tris[t + 1]!]!, f.points[f.tris[t + 2]!]!];
+        if (a !== b && b !== c && a !== c) kept.push(f.tris[t]!, f.tris[t + 1]!, f.tris[t + 2]!);
+      }
+      f.tris = kept;
+      if (kept.length === 0) faces.splice(n, 1);
+      continue;
+    }
+    const keep = f.points.map((p, k) => p !== f.points[(k + 1) % f.points.length]);
+    if (keep.every(Boolean)) continue;
+    const normals = round?.get(f);
+    f.points = f.points.filter((_, k) => keep[k]);
+    f.uvs = f.uvs.filter((_, k) => keep[k]);
+    if (normals) round!.set(f, normals.filter((_, k) => keep[k]));
+    if (f.points.length < 3) faces.splice(n, 1);
   }
   return shape;
 }

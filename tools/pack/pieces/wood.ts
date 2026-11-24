@@ -339,14 +339,14 @@ function endStrips(p: Shape, f: Frame, level: number, bands: readonly [number, n
 }
 
 /** A knee brace from a post up to the plate, bolted at both ends; with `curve` it is arched, bowing toward the corner it braces. */
-function knee(p: Shape, level: number, from: Cell, to: Cell, band: number, seed: number, curve = 0): void {
+function knee(p: Shape, level: number, from: Cell, to: Cell, band: number, seed: number, curve = 0, lengths = 5): void {
   const [a, b]: [Vec, Vec] = [[from[0], 0, from[1]], [to[0], 0, to[1]]];
   if (level === 0 && curve) {
     const corner: Vec = [a[0], 0, b[2]];
     const half = scale(add(a, b), 0.5);
     const mid = add(half, scale(sub(corner, half), curve));
-    bent(p, Array.from({ length: 6 }, (_, i) => {
-      const t = i / 5;
+    bent(p, Array.from({ length: lengths + 1 }, (_, i) => {
+      const t = i / lengths;
       return add(add(scale(a, (1 - t) ** 2), scale(mid, 2 * t * (1 - t))), scale(b, t * t));
     }), 0.1, 2 * BRACE_T, Y, band);
   } else member(p, level, a, b, 0.09, 2 * BRACE_T, Y, [band, band + 1, band, band + 1], null, seed);
@@ -426,8 +426,8 @@ function wallFamily(form: FormDef, level: number, strips: boolean): Shape | null
     const mid = (xa + xb) / 2;
     if (level < 2) member(p, level, [mid, 0, lintelTop], [mid, 0, head], 0.14, 2 * MID_T, Y, [11, 11, 10, 10], null, 231, ROUGH * 0.4);
     if (level < 2) {
-      knee(p, level, [-(f.hx - POST), head - 0.76], [ra + 0.06, head], 10, 239, 0.45);
-      knee(p, level, [f.hx - POST, head - 0.76], [rb - 0.06, head], 2, 241, 0.45);
+      knee(p, level, [-(f.hx - POST), head - 0.76], [ra + 0.06, head], 10, 239, 0.45, f.hx > H ? 3 : 5);
+      knee(p, level, [f.hx - POST, head - 0.76], [rb - 0.06, head], 2, 241, 0.45, f.hx > H ? 3 : 5);
       bay(p, level, -edge, xa - jamb + 0.02, sill, head, 250, 0, f.foot, f.hx > H);
       bay(p, level, xb + jamb - 0.02, edge, sill, head, 251, 0.5, f.foot, f.hx > H);
       bay(p, level, xa - jamb, mid - 0.05, lintelTop, head, 252, 0.25, f.foot, f.hx > H);
@@ -1071,9 +1071,9 @@ function roof(form: FormDef, level: number): Shape | null {
       timber(p, [a[0] - ((b[0] - a[0]) * reach) / run, a[1] - ((b[1] - a[1]) * reach) / run, za - (reach * (zb - za)) / run + 0.036], [b[0], b[1], zb + 0.036], 0.09, 0.06, Z, [1, 2, 1, 2], { chamfer: level === 0 ? 0.014 : 0, end: level === 0 ? [3, 1] : null });
       for (const side of plan.map((q, k) => planeMoved(uprightPlane(q, plan[(k + 1) % n]!), kindOf(k) === "eave" ? EAVE : 0))) clip(p, side, null, from);
     } else {
-      // The board that lines a valley.
-      timber(p, [a[0], a[1], za + 0.03], [b[0], b[1], zb + 0.03], 0.26, 0.036, Z, [8, 9, 8, 9], { chamfer: 0 });
-      for (const side of within) clip(p, side, null, from);
+      // The board that lines a valley, its ends square and just short of the corners.
+      const [t0, t1] = [0.14 / run, 1 - 0.14 / run];
+      timber(p, [a[0] + (b[0] - a[0]) * t0, a[1] + (b[1] - a[1]) * t0, za + (zb - za) * t0 + 0.03], [a[0] + (b[0] - a[0]) * t1, a[1] + (b[1] - a[1]) * t1, za + (zb - za) * t1 + 0.03], 0.26, 0.036, Z, [8, 9, 8, 9], { chamfer: 0 });
     }
   }
   facets.forEach((f, i) => {
@@ -1195,7 +1195,7 @@ function fanDeck(p: Shape, plan: readonly Flat[], top: number, thick: number, un
       const uv = (q: Vec): Uv => [((q[0] - a[0]) * dx + (q[1] - a[1]) * dy) / 3, ((row + 4 * k) % 12 + (-(q[0] - a[0]) * dy + (q[1] - a[1]) * dx - from) / across) / 12];
       const first = p.faces.length;
       p.loft(rings, (_, i, j) => ["deck", uv(rings[i]![j]!)], (i, j) => ["deck", uv(rings[i]![j]!)]);
-      for (const mitre of mitres) clip(p, mitre, (q) => ["deck", uv(q)], first);
+      for (const mitre of mitres) clip(p, mitre, (q) => ["deck", [0.1 + (q[2] - top) / 3, uv(q)[1]]], first);
       d += w;
     });
   });
@@ -1740,6 +1740,138 @@ function gate(form: FormDef, level: number): Shape | null {
   return p;
 }
 
+// Trims: what the client draws where pieces meet (client/core/render/trims.ts). A joint stands on its corner from the
+// level up a storey, and is cut to a lower wall's height by clamping every vertex over n quarter storeys and a
+// centimetre down onto that height (piece-fit.ts). So a joint's shaft is the same section all the way up, with a ring
+// of vertices at each height it may be cut to, and its head lies inside that section: cut, the head folds flat onto
+// the shaft and the post ends in a level top, its end grain in a rim of timber, and has no pegs.
+
+/** The heights a joint may be cut to, a centimetre over one, two and three quarter storeys, and its own. */
+const JOINT_RINGS = [0.76, 1.51, 2.26] as const;
+const JOINT_HIGH = 3;
+const JOINT_CAP = 0.01;
+
+/** A face a trim has no back for: given looking outward, into a level that is drawn open where it is never seen. */
+function sheet(p: Shape, points: Vec[], mat: string, uv: (q: Vec) => Uv): void {
+  p.faces.push({ points, uvs: points.map(uv), mat });
+}
+
+/**
+ * A post on a corner: `sides` sides, `reach` from the corner to each of its arrises, turned so that an arris lies
+ * `turn` round from +x. On the finest level it is hewn a little out of true between its foot and its head, its head
+ * is drawn in to a flat a centimetre over the storey, and `pegged` puts an oak peg through each face under the head.
+ */
+function post(level: number, sides: number, reach: number, turn: number, pegged: boolean, band: number, seed: number): Shape {
+  const p = new Shape();
+  const rng = new PyRandom(seed);
+  // A square post's arrises are taken off on the finest level: two points to a corner.
+  const eased = sides === 4 && level === 0 ? 0.022 : 0;
+  const count = eased ? 8 : sides;
+  const ring = (z: number, r: number, rough: number): Vec[] => Array.from({ length: count }, (_, k): Vec => {
+    const corner = eased ? Math.floor(k / 2) : k;
+    const t = turn + (2 * Math.PI * corner) / sides;
+    const at = r + rng.uniform(-1, 1) * rough;
+    // Back along the side before the corner, or on along the side after it.
+    const along = eased ? t + (k % 2 === 0 ? -1 : 1) * ((3 * Math.PI) / 4) : 0;
+    return [Math.cos(t) * at + Math.cos(along) * eased, Math.sin(t) * at + Math.sin(along) * eased, z];
+  });
+  // Each face a strip of one timber's band, its grain running up.
+  const side = (k: number, i: number, j: number, rings: Vec[][]): readonly [string, Uv] => {
+    const wide = eased && k % 2 === 0 ? eased * Math.SQRT2 : 2 * reach * Math.sin(Math.PI / sides) - 2 * eased;
+    return ["timber", [rings[i]![j]![2] / 3, bandV((band + (sides === 4 ? k >> (eased ? 1 : 0) : k % 2)) % 12) + ((j === k ? -0.5 : 0.5) * wide) / 3]];
+  };
+  const grain = (q: Vec): Uv => [cellUv(1, 0)[0] + q[0] / 2.4, cellUv(1, 0)[1] + q[1] / 2.4];
+  if (level === 3) {
+    // Far off, a post of three sides: eight triangles close nothing wider.
+    const three = Array.from({ length: 3 }, (_, k): Cell => [Math.cos((2 * Math.PI * k) / 3) * reach * 1.25, Math.sin((2 * Math.PI * k) / 3) * reach * 1.25]);
+    return p.extrude(three, "z", 0, JOINT_HIGH + JOINT_CAP, tone("timber"));
+  }
+  if (level === 2) {
+    const half = reach * Math.cos(Math.PI / sides) * (sides === 4 ? 1 : 0.96);
+    const c = sides === 4 ? reach * Math.SQRT1_2 : half;
+    if (sides === 4 && Math.abs(Math.cos(turn)) > 0.99) throw new Error("a square post's sides are along the axes");
+    return p.box([-c, -c, 0], [c, c, JOINT_HIGH + JOINT_CAP], beam("z", band));
+  }
+  // Past the finest level a round post is one length: cut, its picture squeezes, from 19 m off.
+  const heights = level === 0 || sides === 4 ? [0, ...JOINT_RINGS, JOINT_HIGH - 0.06] : [0];
+  const rings = heights.map((z, i) => ring(z, reach, level === 0 && i > 0 && i < heights.length - 1 ? ROUGH * 0.3 : 0));
+  // The head: drawn in over its last six centimetres to a flat that stands a centimetre over the storey.
+  rings.push(ring(JOINT_HIGH + JOINT_CAP, reach * 0.8, 0));
+  p.loft(rings, (k, i, j) => side(k, i, j, rings), (i, j) => ["fittings", grain(rings[i]![j]!)]);
+  if (pegged && level === 0) {
+    for (let k = 0; k < sides; k++) {
+      const t = turn + (2 * Math.PI * (k + 0.5)) / sides;
+      const out = reach * Math.cos(Math.PI / sides);
+      stud(p, [Math.cos(t) * out, Math.sin(t) * out, JOINT_HIGH - 0.2], [Math.cos(t), Math.sin(t), 0], 0.02, 0.01, 4, PEG_UV);
+    }
+  }
+  return p;
+}
+
+/**
+ * The skirt under a foundation's open side: a bearer with a weathered top, upright boards hanging from it, and a post
+ * at each end and in the middle. It hangs from the middle of the side, its top at the foundation's, 0.12 m out from
+ * the side: 2 cm proud of a wall's face. It is drawn sunk into the ground, so nothing is spent on its foot.
+ */
+function skirt(level: number): Shape {
+  const p = new Shape();
+  const [out, deep, bear, lip] = [0.12, 2.4, 0.2, 0.035];
+  const boards: (q: Vec) => Uv = (q) => [q[2] / 3, (q[0] + H) / 3];
+  if (level === 3) {
+    // Its face alone: two triangles close nothing.
+    sheet(p, [[-H, -out, -deep], [H, -out, -deep], [H, -out, -lip], [-H, -out, -lip]], "boards", boards);
+    return p;
+  }
+  // Its face and its weathered top, closed by a back that slants in to its foot.
+  if (level === 2) return p.extrude([[0, 0], [-out, -deep], [-out, -lip]], "x", -H, H, (label) => (label === "-y" ? ["boards", boards] : ["timber", (q) => [(q[0] + H) / 3, bandV(4) + q[1] / 3]]));
+  // The bearer, (y, z) going round as seen from +x.
+  p.extrude([[0, 0], [0, -bear], [-out, -bear], [-out, -lip]], "x", -H, H, (label) => [label[1] === "x" ? "fittings" : "timber", label[1] === "x" ? (q) => [cellUv(2, 1)[0] + q[1] + out / 2, cellUv(2, 1)[1] + q[2] + bear / 2] : (q) => [(q[0] + H) / 3, bandV(label === "+z" ? 5 : 4) + (label === "+z" ? q[1] : q[2] + bear / 2) / 3]]);
+  p.box([-H, -out + 0.02, -deep], [H, -0.015, -bear], custom("boards", (_, q) => boards(q)));
+  if (level === 1) return p;
+  for (const [x0, x1, band] of [[-H, -H + 0.08, 2], [-0.08, 0.08, 7], [H - 0.08, H, 10]] as const) {
+    p.box([x0, -out, -deep], [x1, -0.01, -bear + 0.004], beam("z", band));
+    stud(p, [(x0 + x1) / 2, -out, -bear / 2 - 0.02], [0, -1, 0], 0.018, 0.01, 4, PEG_UV);
+  }
+  return p;
+}
+
+/**
+ * The capping along a ridge where two roofs' high sides meet: two boards laid to the slopes and a roll along their
+ * joint, nailed down. It lies along x on the ridge's own line, which is at its origin's height. No client draws it yet.
+ */
+function ridge(level: number): Shape {
+  const p = new Shape();
+  const [wide, top, drop] = [0.22, 0.075, 0.068];
+  const wing = (s: number, q: Vec): Uv => [(q[0] + H) / 3, (s < 0 ? 3 : 8) / 12 - BOARD_ROLL_V + Math.abs(q[1]) / 3];
+  if (level === 3) {
+    sheet(p, [[-H, wide, 0.02], [-H, -wide, 0.02], [H, -wide, 0.02], [H, wide, 0.02]], "boards", () => [0, 0]);
+    return p;
+  }
+  // Its two slopes over a flat underside.
+  if (level === 2) return p.extrude([[0, top], [wide, -drop], [-wide, -drop]], "x", -H, H, () => ["boards", (q) => wing(Math.sign(q[1]) || 1, q)]);
+  // The two boards as one solid, (y, z) going round as seen from +x.
+  p.extrude([[0, top], [wide, -drop], [wide, -drop - 0.032], [0, top - 0.03], [-wide, -drop - 0.032], [-wide, -drop]], "x", -H, H, () => ["boards", (q) => wing(Math.sign(q[1]) || 1, q)]);
+  if (level === 1) return p;
+  timber(p, [-H, 0, top + 0.012], [H, 0, top + 0.012], 0.05, 0.05, [0, 1, 1], [1, 1, 2, 2], { chamfer: 0, end: [3, 0] });
+  for (const x of [-1.05, 1.05]) for (const s of [-1, 1]) stud(p, [x, s * 0.14, top - (0.14 * (top + drop)) / wide], [0, s * (top + drop), wide], 0.012, 0.006, 4, BOLT_UV);
+  return p;
+}
+
+/** Wood's trims by the names the client finds them under, each at its four levels. */
+function woodTrims(): Record<string, Shape[]> {
+  const levels = (make: (level: number) => Shape): Shape[] => [0, 1, 2, 3].map(make);
+  return {
+    // A hewn corner post with a pegged head, as wide as two walls' corner posts side by side.
+    joint_sq: levels((level) => post(level, 4, POST * Math.SQRT2, Math.PI / 4, true, 1, 2300)),
+    // Round posts where walls meet off the square: a flat faces each wall at 120 and 150 degrees, and an arris lies
+    // in the notch between two walls at 60, where the wider post is.
+    joint_r15: levels((level) => post(level, 12, 0.15, Math.PI / 12, false, 5, 2301)),
+    joint_r21: levels((level) => post(level, 12, 0.21, 0, false, 8, 2302)),
+    skirt: levels(skirt),
+    ridge: levels(ridge),
+  };
+}
+
 /** The forms past the first nine, by name: each is built from its row's numbers alone. */
 const PLANNED: Readonly<Record<string, (form: FormDef, level: number, strips: boolean) => Shape | null>> = {
   half_wall: wallFamily,
@@ -1789,6 +1921,7 @@ export function woodRecipe(strips: boolean): TierRecipe {
       if (form.layer === "fill" && form.steps !== undefined) return stairs(form, level);
       throw new Error(`wood has no recipe for ${name} yet`);
     },
+    trims: woodTrims,
   };
 }
 
