@@ -27,7 +27,7 @@ import type { SiteBuilding } from "./buildings.ts";
 import { own } from "./known.ts";
 import { readSurvey, surveyInventory } from "./survey.ts";
 import { makeSigns, nearSign } from "./signs.ts";
-import type { Footprint, Site, StaticLayer, StaticPiece } from "./statics.ts";
+import type { Footprint, Site, SiteOrb, StaticLayer, StaticPiece } from "./statics.ts";
 import { StreetPoint, streetAt, walkOf } from "../../shared/world/streets.ts";
 
 interface NamedPlace { id: string; name: string; footprint: number; layout: string; recipe: string; retain: number; finish: RuinFinish; note: string; source: string; }
@@ -93,6 +93,7 @@ export function makeRuins(site: Site): StaticPiece[] {
   const pieces: StaticPiece[] = [];
   const counts = new Uint32Array(chunksX * (grid.sizeZ / 64));
   const records: RuinRecord[] = [];
+  const orbRecords = new Map<SiteOrb, number>();
   const made: SiteBuilding[] = [];
   const assemblies: StaticPiece[][] = [];
   const rejected: { part: number; reason: string }[] = [];
@@ -178,7 +179,8 @@ export function makeRuins(site: Site): StaticPiece[] {
     }
     if (!built) { rejected.push({ part: f.building.id, reason: samples.length === 0 ? "no 4 m tile fits" : "budget or bounds" }); continue; }
     assemblies.push(...built.assemblies);
-    for (const o of built.orbs) site.orbs.push({ name: p.named?.name ?? (p.facts.label.name || "Orb"), ...o });
+    // An orb's pieces are its place's building's, as a ruin's are: its record is the next.
+    for (const o of built.orbs) { const orb: SiteOrb = { name: p.named?.name ?? (p.facts.label.name || "Orb"), ...o }; site.orbs.push(orb); orbRecords.set(orb, records.length); }
     planAccess.reserve(approaches);
     levelFloor(site, frame, ownerIndex.get(f.building.id)!, base, roadGround);
     gradeApproaches(site, approaches, ownerIndex.get(f.building.id)!, roadGround);
@@ -347,6 +349,7 @@ export function makeRuins(site: Site): StaticPiece[] {
     for (let i = r.firstPiece; i < r.firstPiece + r.blocks; i++) own(pieces[i]!, site.buildings.length + k);
     if (made[k]!.storeys === 0) made[k] = { ...made[k]!, storeys: Math.max(1, Math.ceil(r.height / 4)) };
   });
+  for (const [orb, k] of orbRecords) orb.building = site.buildings.length + k;
   for (const b of made) site.buildings.push(b);
   const folder = join(site.source, "reports", site.world.ruins?.report ?? "ruins"); mkdirSync(folder, { recursive: true });
   const put = (name: string, value: unknown): void => writeFileSync(join(folder, name), `${JSON.stringify(value, null, 2)}\n`);
