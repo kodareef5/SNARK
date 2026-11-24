@@ -38,7 +38,7 @@ const FAMILIES: Record<string, { ops: number[]; share: number }> = {
   stations: { ops: [P.CMD_CRAFT_AT, P.CMD_CRAFT_BLUEPRINT], share: 0.25 },
   creatures: { ops: [P.CMD_ORDER, P.CMD_NAME, P.CMD_FEED, P.CMD_OPEN, P.CMD_CARRY, P.CMD_TAKE], share: 0.2 },
   vehicles: { ops: [P.CMD_VEHICLE], share: 0.4 },
-  session: { ops: [P.CMD_TEXT, P.CMD_CHAT, P.CMD_VIEW, P.CMD_MAP_ZOOM, P.CMD_FAR, P.CMD_RESPAWN, P.CMD_CREATE, P.CMD_CLOSE, P.CMD_STATICS, P.CMD_TRAVEL], share: 0.3 },
+  session: { ops: [P.CMD_TEXT, P.CMD_CHAT, P.CMD_VIEW, P.CMD_MAP_ZOOM, P.CMD_FAR, P.CMD_RESPAWN, P.CMD_CREATE, P.CMD_CLOSE, P.CMD_STATICS, P.CMD_TRAVEL, P.CMD_HAVE], share: 0.3 },
 };
 /** Answers that stop a command at its first checks. */
 const EARLY = new Set([P.RESULT_INVALID, P.RESULT_DENIED, P.RESULT_STALE, P.RESULT_BUSY]);
@@ -360,13 +360,19 @@ function fuzz(seed: number): { codes: Map<number, Map<number, number>>; faults: 
       if (action === P.VEHICLE_REFUEL) w.u8(chance(0.5) ? 0 : rng.int(256));
     },
     [P.CMD_STATICS]: () => {},
+    // Chunks it never kept, at versions it never held, and more of them than may be said.
+    [P.CMD_HAVE]: (w) => {
+      const n = chance(0.9) ? rng.int(P.HAVE_MOST + 1) : rng.int(256);
+      w.u8(n);
+      for (let i = 0; i < n && i < 40; i++) (w.u16(rng.int(65536)), w.u32(chance(0.5) ? rng.int(64) : rng.int(0x100000000)));
+    },
   };
   /** How often each op is sent, by weight. The families the review found least reached are sent most. */
   const weights: [number, number][] = [
     [P.CMD_MOVE, 8], [P.CMD_USE, 4], [P.CMD_DROP, 2], [P.CMD_SELECT, 4], [P.CMD_LOAD, 2], [P.CMD_ATTACH, 2], [P.CMD_DETACH, 1], [P.CMD_UNLOAD, 1], [P.CMD_REPAIR, 2],
     [P.CMD_SPEND, 2], [P.CMD_LEARN, 2], [P.CMD_CRAFT, 3], [P.CMD_PLACE, 10], [P.CMD_STRUCT, 10], [P.CMD_CRAFT_AT, 2], [P.CMD_CRAFT_BLUEPRINT, 2], [P.CMD_CLOSE, 1],
     [P.CMD_ORDER, 4], [P.CMD_NAME, 1], [P.CMD_FEED, 1], [P.CMD_OPEN, 3], [P.CMD_CARRY, 2], [P.CMD_TAKE, 2], [P.CMD_VEHICLE, 8],
-    [P.CMD_TEXT, 1], [P.CMD_CHAT, 1], [P.CMD_VIEW, 1], [P.CMD_MAP_ZOOM, 1], [P.CMD_FAR, 1], [P.CMD_RESPAWN, 1], [P.CMD_CREATE, 1], [P.CMD_TRAVEL, 1], [P.CMD_STATICS, 1],
+    [P.CMD_TEXT, 1], [P.CMD_CHAT, 1], [P.CMD_VIEW, 1], [P.CMD_MAP_ZOOM, 1], [P.CMD_FAR, 1], [P.CMD_RESPAWN, 1], [P.CMD_CREATE, 1], [P.CMD_TRAVEL, 1], [P.CMD_STATICS, 1], [P.CMD_HAVE, 1],
   ];
   const total = weights.reduce((n, [, k]) => n + k, 0);
   const opOf = (): number => {

@@ -6,7 +6,7 @@ import { OWN_STRIDE_BITS, ownStrideWord } from "../shared/anim/pose.ts";
 import { MODE_WALK } from "../shared/sim/character.ts";
 import { CHUNK_SIZE, STRUCT_UNITS, TICK_RATE, chunkAt, chunkCount, chunkCx, chunkCz } from "../shared/coords.ts";
 import { type BitReader, type BitWriter, Named } from "../shared/net/codec.ts";
-import { BUTTON_BITS, MARGIN_UNKNOWN, OWN_SESSION, REMOVAL_NEWS_TICKS, RESULT_INVALID, RESULT_OK, SESSION_ALIVE, S_CHUNK, S_CHUNK_DROP, S_OWN, S_SNAPSHOT, writeBody } from "../shared/net/protocol.ts";
+import { BUTTON_BITS, HAVE_MOST, MARGIN_UNKNOWN, OWN_SESSION, REMOVAL_NEWS_TICKS, RESULT_INVALID, RESULT_OK, SESSION_ALIVE, S_CHUNK, S_CHUNK_DROP, S_OWN, S_SNAPSHOT, writeBody } from "../shared/net/protocol.ts";
 import { CH_RELIABLE, CH_UNRELIABLE } from "../shared/net/transport.ts";
 import { MAX_VIEW, SentView, VIEW_DEFAULT, VIEW_RING, quantX, quantY, writeViewDelta } from "../shared/net/view.ts";
 import { ContactSnapshot, writeContacts } from "../shared/net/contact.ts";
@@ -34,6 +34,8 @@ const ROW_BITS = 205;
  * so what was sent since its newest acknowledged snapshot is still coming, ahead of the snapshots after it.
  */
 const CHUNK_WINDOW = 16 * 1024;
+/** Dropped chunks whose version a session is remembered to have held, for when it says it kept them (CMD_HAVE). */
+const PARK_KEPT = 16;
 /** Ticks a chunk a sight's cone had sent is held after the cone leaves it: turning about or lowering it makes no churn (D1087). */
 export const CONE_KEEP = 150;
 /** The most entities a session's sight's cone adds to its view (D1079). */
@@ -96,6 +98,8 @@ export class Replication {
   private readonly aroundAt: Uint16Array;
   /** A slot changed, times 2, plus 1 where it was moved, made or emptied. */
   private readonly changed = new Uint32Array(RECENT);
+  /** The chunks and versions of the CMD_HAVE being read. */
+  private readonly said = new Uint32Array(HAVE_MOST * 2);
   /** Kept through the rows of one chunk message: the last row's slot and height, and the values it has named. */
   private rowSlot = -1;
   private rowY = 0;
@@ -190,6 +194,43 @@ export class Replication {
   takeStatics(c: Client): number {
     if (!this.world.statics) return RESULT_INVALID;
     c.statics = true;
+    return RESULT_OK;
+  }
+
+  /**
+   * CMD_HAVE. A chunk it names at the version it was dropped at is taken as held at that version, and its next turn
+   * sends what changed since. One the server is sending or has sent since is passed over: its rows went first. Any
+   * other is dropped again, so the client lets go of what it kept.
+   */
+  have(c: Client, r: BitReader): number {
+    const n = r.u8();
+    if (r.overflow || n > HAVE_MOST) return RESULT_INVALID;
+    const said = this.said;
+    const chunks = this.world.structs.chunks;
+    for (let i = 0; i < n; i++) {
+      said[i * 2] = r.u16();
+      said[i * 2 + 1] = r.u32();
+      if (said[i * 2]! >= chunks.length) return RESULT_INVALID;
+    }
+    if (r.overflow) return RESULT_INVALID;
+    for (let i = 0; i < n; i++) {
+      const chunk = said[i * 2]!, version = said[i * 2 + 1]!;
+      if (c.known[chunk] !== 0 || c.syncChunk === chunk) continue;
+      const t = chunks[chunk];
+      const kept = c.parked.get(chunk) === version && !!t && t.version >= version;
+      c.parked.delete(chunk);
+      if (kept) {
+        c.known[chunk] = version;
+        if (!c.subscribed.includes(chunk)) c.subscribed.push(chunk);
+        if (!c.claimed.includes(chunk)) c.claimed.push(chunk);
+        continue;
+      }
+      const w = this.w;
+      w.reset();
+      w.u8(S_CHUNK_DROP);
+      w.u16(chunk);
+      c.conn.send(CH_RELIABLE, w.bytes());
+    }
     return RESULT_OK;
   }
 
@@ -435,6 +476,14 @@ export class Replication {
     const offsets = this.structOffsets;
     let budget = this.opts.chunkSlotsPerTick;
     this.room = this.windowLeft(c, T);
+    // What it kept and said so is brought up to date first, wherever it is, by a header alone where nothing changed: the
+    // client holds it apart until then.
+    while (c.claimed.length > 0 && budget > 0 && this.room > 0) {
+      const chunk = c.claimed[c.claimed.length - 1]!;
+      const t = world.structs.chunks[chunk];
+      if (t && c.known[chunk] !== 0) budget = this.sendChunk(c, chunk, t, budget);
+      if (c.syncChunk !== chunk) c.claimed.pop();
+    }
     for (let o = 0; o < offsets.length && budget > 0 && this.room > 0; o += 2) {
       const cx = ccx + offsets[o]!;
       const cz = ccz + offsets[o + 1]!;
@@ -469,6 +518,12 @@ export class Replication {
         c.coneKept.delete(chunk);
         c.subscribed[i] = c.subscribed[c.subscribed.length - 1]!;
         c.subscribed.pop();
+        if (c.known[chunk] !== 0) {
+          // Set again, it is the newest.
+          c.parked.delete(chunk);
+          c.parked.set(chunk, c.known[chunk]!);
+          if (c.parked.size > PARK_KEPT) c.parked.delete(c.parked.keys().next().value!);
+        }
         c.known[chunk] = 0;
         if (c.syncChunk === chunk) c.syncChunk = -1;
         w.reset();
@@ -565,6 +620,8 @@ export class Replication {
    */
   refill(chunk: number): void {
     for (const c of this.clients) {
+      // What it kept of the chunk from a drop is not what the chunk was set back from.
+      c?.parked.delete(chunk);
       if (!c || c.known[chunk] === 0) continue;
       c.known[chunk] = 0;
       if (c.syncChunk === chunk) c.syncChunk = -1;

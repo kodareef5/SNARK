@@ -823,6 +823,42 @@ export class StructureStore {
     this.onChunkChanged?.(chunk, false);
   }
 
+  /**
+   * Takes the chunk's table out of the store with its rows as they are, and returns it, or null if it has none. The store
+   * then holds nothing of the chunk, as after dropChunk. For a client that keeps a chunk it was told to drop.
+   */
+  detach(chunk: number): ChunkTable | null {
+    const t = this.chunks[chunk];
+    if (!t) return null;
+    for (let s = t.high - 1; s >= 0; s--) if (t.kind[s] !== 0) this.unlink(chunk, t, s);
+    this.count -= t.live;
+    this.chunks[chunk] = null;
+    this.held.splice(this.heldAt(chunk), 1);
+    this.shapes++;
+    this.shaped(chunk);
+    this.onChunkChanged?.(chunk, false);
+    return t;
+  }
+
+  /** Puts back a table `detach` gave for `chunk`, in place of what the chunk holds. Its shape counts as changed. */
+  attach(chunk: number, t: ChunkTable): void {
+    this.dropChunk(chunk);
+    this.chunks[chunk] = t;
+    this.held.splice(this.heldAt(chunk), 0, chunk);
+    for (let s = 0; s < t.high; s++) {
+      const kind = t.kind[s]!;
+      if (kind === 0) continue;
+      this.footprint(kind, t.x[s]!, t.z[s]!, t.yaw[s]!);
+      this.link(chunk * 65536 + s, kind, t.y[s]!);
+    }
+    this.count += t.live;
+    t.shape++;
+    t.placed++;
+    this.shapes++;
+    this.shaped(chunk);
+    this.onChunkChanged?.(chunk, false);
+  }
+
   /** The chunk's table, made if it has none. */
   private tableOf(chunk: number): ChunkTable {
     let t = this.chunks[chunk];
@@ -997,6 +1033,29 @@ export class StructureStore {
 
   private erase(chunk: number, t: ChunkTable, slot: number, mod: number, inPlace = false): void {
     if (!inPlace) t.placed++;
+    this.unlink(chunk, t, slot);
+    // Empty slots hold zeros, so equal tables are equal byte for byte. A map's slot keeps its place and turn, which are the map's.
+    const was = this.differsAt(t, slot);
+    t.kind[slot] = 0;
+    if (slot >= t.mapped) {
+      t.x[slot] = 0;
+      t.y[slot] = 0;
+      t.z[slot] = 0;
+      t.yaw[slot] = 0;
+    }
+    t.owner[slot] = 0;
+    t.hp[slot] = 0;
+    this.tally(t, slot, was);
+    t.mod[slot] = mod;
+    t.shape++;
+    this.shapes++;
+    this.shaped(chunk);
+    t.live--;
+    this.count--;
+  }
+
+  /** Takes the structure in `slot` out of every grid cell it lies in. Its row stands. */
+  private unlink(chunk: number, t: ChunkTable, slot: number): void {
     this.footprint(t.kind[slot]!, t.x[slot]!, t.z[slot]!, t.yaw[slot]!);
     const ref = chunk * 65536 + slot;
     for (let cz = this.fz0; cz <= this.fz1; cz++) {
@@ -1018,24 +1077,6 @@ export class StructureStore {
         this.nodeFree = node;
       }
     }
-    // Empty slots hold zeros, so equal tables are equal byte for byte. A map's slot keeps its place and turn, which are the map's.
-    const was = this.differsAt(t, slot);
-    t.kind[slot] = 0;
-    if (slot >= t.mapped) {
-      t.x[slot] = 0;
-      t.y[slot] = 0;
-      t.z[slot] = 0;
-      t.yaw[slot] = 0;
-    }
-    t.owner[slot] = 0;
-    t.hp[slot] = 0;
-    this.tally(t, slot, was);
-    t.mod[slot] = mod;
-    t.shape++;
-    this.shapes++;
-    this.shaped(chunk);
-    t.live--;
-    this.count--;
   }
 
   /** Writes the grid cells a structure's rotated box covers to fx0..fz1. */

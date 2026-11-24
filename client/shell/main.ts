@@ -19,7 +19,7 @@ import { loadIdentity } from "../core/identity.ts";
 import { PassClock } from "../core/passes.ts";
 import { giveSky, SKY_FILE } from "../core/render/sky.ts";
 import { groundSize } from "../core/render/terrain.ts";
-import { ClientSession } from "../core/session.ts";
+import { ClientSession, PARK_CHUNKS_TOUCH } from "../core/session.ts";
 import { arrivalOf, socketAddress } from "../core/travel.ts";
 import { GlRenderer } from "./gl.ts";
 import { bindInput } from "./input.ts";
@@ -213,6 +213,7 @@ async function boot(): Promise<void> {
   app.steer = driveCheck || selfcheck && params.has("dinosaur") || !selfcheck && !device;
   app.plainSky = selfcheck; app.fromEye = measured || params.has("look") || params.has("trip");
   app.ui.settings.touchFirst = matchMedia("(pointer: coarse)").matches;
+  if (app.ui.settings.touchFirst) session.parkMost = PARK_CHUNKS_TOUCH;
   if (app.ui.settings.touchFirst) app.ui.inputDevice = 2;
   // The textures the card makes come as a file of their own, which the first frame does not wait for; a touch-first device makes none.
   if (!app.ui.settings.touchFirst) void import("../core/texgen/late.ts").then((m) => renderer.makeWith((app.texgen = m.texgen(renderer.gl))), () => {});
