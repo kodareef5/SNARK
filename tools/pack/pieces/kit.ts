@@ -509,3 +509,107 @@ export function flatLod(shape: Shape, colour: (mat: string) => number, edges = f
   if (edges) out.bones = Uint8Array.from(bones);
   return out;
 }
+
+/** A face a recipe gives whole and already looking outward, with a normal at each corner where it is shaded round. */
+export interface Facet {
+  points: Vec[];
+  uvs: Uv[];
+  mat: string;
+  normals?: Vec[];
+  along?: number;
+}
+
+/** The triangles of a flat convex polygon that has corners in a line along its sides, none of them empty. */
+export function cornerTriangles(points: readonly Vec[]): number[] {
+  const left = points.map((_, i) => i);
+  const bend = (a: number, b: number, c: number): number => length(cross(sub(points[b]!, points[a]!), sub(points[c]!, points[b]!)));
+  const size = Math.max(...points.map((p) => length(sub(p, points[0]!)))) ** 2 * 1e-9;
+  const out: number[] = [];
+  while (left.length > 3) {
+    const m = left.length;
+    // An ear is a true corner, and what is left when it is cut must still turn somewhere else.
+    const at = left.findIndex((_, i) => bend(left[(i + m - 1) % m]!, left[i]!, left[(i + 1) % m]!) > size && left.some((_, k) => {
+      const rest = left.filter((__, j) => j !== i);
+      return bend(rest[(k + rest.length - 1) % rest.length]!, rest[k % rest.length]!, rest[(k + 1) % rest.length]!) > size;
+    }));
+    if (at < 0) break;
+    out.push(left[(at + m - 1) % m]!, left[at]!, left[(at + 1) % m]!);
+    left.splice(at, 1);
+  }
+  for (let k = 1; k + 1 < left.length; k++) out.push(left[0]!, left[k]!, left[k + 1]!);
+  return out;
+}
+
+/**
+ * A shape that also takes faces one by one, some shaded round: a stone's crown drawn as normals on a flat face. A round
+ * face keeps its normals only whole, so it must lie clear of every yield ring or run along it.
+ */
+export class Carved extends Shape {
+  private readonly round = new Map<object, Vec[]>();
+
+  face(f: Facet): this {
+    const made = { points: f.points, uvs: f.uvs, mat: f.mat, ...(f.along === undefined ? {} : { along: f.along }) };
+    this.faces.push(made);
+    if (f.normals) this.round.set(made, f.normals);
+    return this;
+  }
+
+  /**
+   * Closes the faces from `from` on where one's corner lies along another's side: each takes the corners of the others
+   * that lie along its sides, and a face so given is cut into triangles. Faces tiled apart then make one closed solid.
+   */
+  weld(from: number): this {
+    const EPS = 1e-7;
+    const faces = this.faces.splice(from);
+    const seen = new Map<string, Vec>();
+    for (const f of faces) for (const p of f.points) seen.set(p.map((c) => Math.round(c / EPS)).join(), p);
+    const corners = [...seen.values()];
+    for (const f of faces) {
+      const normals = this.round.get(f);
+      const points: Vec[] = [], uvs: Uv[] = [], bent: Vec[] = [];
+      f.points.forEach((a, i) => {
+        const j = (i + 1) % f.points.length;
+        const b = f.points[j]!;
+        const d = sub(b, a);
+        const l2 = dot(d, d);
+        points.push(a);
+        uvs.push(f.uvs[i]!);
+        if (normals) bent.push(normals[i]!);
+        const on: number[] = [];
+        for (const c of corners) {
+          const t = dot(sub(c, a), d) / l2;
+          if (t > 1e-6 && t < 1 - 1e-6 && length(sub(add(a, scale(d, t)), c)) < EPS) on.push(t);
+        }
+        for (const t of on.sort((x, y) => x - y)) {
+          points.push(add(a, scale(d, t)));
+          uvs.push([f.uvs[i]![0] + (f.uvs[j]![0] - f.uvs[i]![0]) * t, f.uvs[i]![1] + (f.uvs[j]![1] - f.uvs[i]![1]) * t]);
+          if (normals) bent.push(unit(add(scale(normals[i]!, 1 - t), scale(normals[j]!, t))));
+        }
+      });
+      if (points.length === f.points.length) {
+        this.faces.push(f);
+        continue;
+      }
+      this.round.delete(f);
+      const tris = cornerTriangles(points);
+      for (let t = 0; t < tris.length; t += 3) {
+        const of = [tris[t]!, tris[t + 1]!, tris[t + 2]!];
+        this.face({ points: of.map((k) => points[k]!), uvs: of.map((k) => uvs[k]!), mat: f.mat, ...(normals ? { normals: of.map((k) => bent[k]!) } : {}), ...(f.along === undefined ? {} : { along: f.along }) });
+      }
+    }
+    return this;
+  }
+
+  override lod(materials: readonly string[] | null, colour: (mat: string) => number): SourceLod & { sections?: Uint8Array } {
+    const out = super.lod(materials, colour);
+    if (!out.normals || this.round.size === 0) return out;
+    let first = 0;
+    for (const f of this.faces) {
+      // As the level is turned: +Y up and +Z out.
+      this.round.get(f)?.forEach((n, k) => out.normals!.set([n[0], n[2], -n[1]], (first + k) * 3));
+      first += f.points.length;
+    }
+    out.tangents = tangentsOf({ positions: out.positions, indices: out.indices, uvs: out.uvs!, normals: out.normals });
+    return out;
+  }
+}
