@@ -20,6 +20,7 @@ const KITS: Readonly<Record<string, readonly (readonly [string, number])[]>> = {
   bola: [["bola", 10]],
   clouds: [["grenade_smoke", 10], ["grenade_poison", 10]],
   flare: [["flare_gun", 3]],
+  plasma: [["rifle_plasma", 1], ["pistol_plasma", 1], ["plasma_cell", 200], ["plasma_charge", 200]],
 };
 // The practice mannequin has its own fitted meshes. Meridian is cut for the survivor rigs.
 const TARGET_ARMOR: readonly string[] = ["cloth", "hide", "chitin", "flak"];

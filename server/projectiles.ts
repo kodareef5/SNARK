@@ -3,7 +3,9 @@
 // goes off where it ends, and one that carries a light (the flare) flies as a prop every client draws (weapons-plan.md, W6).
 
 import { TAU } from "../shared/math/scalar.ts";
-import { EVENT_BLAST, EVENT_SHOT, S_EVENT } from "../shared/net/protocol.ts";
+import { BOLTS_MOST, packBolt, writeBolt } from "../shared/net/bolts.ts";
+import type { BitWriter } from "../shared/net/codec.ts";
+import { EVENT_BLAST, EVENT_BOLTS, EVENT_SHOT, S_EVENT } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
 import { aimSeed, aimShot, scopeFitted, shotAim, shotDir, zeroUnits } from "../shared/sim/aim.ts";
 import { Body } from "../shared/sim/character.ts";
@@ -33,6 +35,8 @@ const PICKUP_REACH = 1.2;
 const PICKUP_EVERY = 5;
 /** Clients within this many metres of a shot are sent it. */
 const HEARD = 260;
+/** Rounds kept to be told together. One more and those kept are told at once. */
+const TOLD_MOST = 1024;
 /** A stuck arrow stands this many metres back from what it hit. */
 const STAND_OUT = 0.06;
 const MAX_THROWN = 256;
@@ -134,6 +138,18 @@ export class Projectiles {
   onCloud: ((item: number, x: number, y: number, z: number, by: number) => void) | null = null;
   /** While `fling` sends a throw: `tell` tells the thrower too. */
   private toShooter = false;
+  /**
+   * The rounds that left at full speed since the last step, told together when it ends (EVENT_BOLTS): where each left
+   * on the ground and the tick it was fired, its start and way as the message says them, then its ammunition, the ticks
+   * since it left, its silencer and whose it is (a client's id, or -1 for one its shooter is told too).
+   */
+  private readonly told = new Float64Array(TOLD_MOST * 3);
+  private readonly toldPacked = new Uint32Array(TOLD_MOST * 5);
+  private readonly toldAmmo = new Uint16Array(TOLD_MOST);
+  private readonly toldBack = new Uint8Array(TOLD_MOST);
+  private readonly toldSilenced = new Uint8Array(TOLD_MOST);
+  private readonly toldBy = new Int32Array(TOLD_MOST);
+  private toldCount = 0;
   private readonly stuckKind: number;
   private readonly liveKind: number;
   private readonly flareKind: number;
@@ -361,15 +377,19 @@ export class Projectiles {
     const now = world.tick;
     const sea = world.hf.waterAt(ox, oz);
     const wet = reg.weapon[weapon]?.wet ?? false;
-    const speed = launchSpeed(reg.ammoSpeed[ammo]!, draw) * (wet && oy < sea ? WATER_SPEED : 1);
+    const full = reg.ammoSpeed[ammo]!;
+    const speed = launchSpeed(full, draw) * (wet && oy < sea ? WATER_SPEED : 1);
+    const back = now - view;
+    // A round with a reach is gone that far from where it left, which was `back` ticks ago.
+    const life = reg.ammoFlightTicks[ammo]!;
     const f: Flying = {
       x: ox, y: oy, z: oz, vx: d[0]! * speed, vy: d[1]! * speed, vz: d[2]! * speed,
       gravity: reg.ammoGravity[ammo]!, ammo, weapon, quality, draw, by: rec.pid, self: c.ent, ox, oy, oz,
-      until: now + FLIGHT_TICKS, flown: now, wet, under: oy < sea, silenced,
+      until: life < FLIGHT_TICKS ? Math.floor(view) + life : now + FLIGHT_TICKS, flown: now, wet, under: oy < sea, silenced,
     };
-    // Nearby clients get its launch state and fly their own copy from there.
-    const back = now - view;
-    this.tell(c, ox, oy, oz, ammo, true, f.vx, f.vy, f.vz, Math.round(back), 1, 0, silenced);
+    // Nearby clients get its launch state and fly their own copy from there. One at full speed is told with the tick's others.
+    if (speed === full) this.keep(c, ox, oy, oz, d, ammo, back, silenced);
+    else this.tell(c, ox, oy, oz, ammo, true, f.vx, f.vy, f.vz, Math.round(back), 1, 0, silenced);
     // Fly it from the view tick to now, one tick's piece at a time, each against the bodies of that tick,
     // then the leftover part of a tick.
     const whole = Math.floor(back);
@@ -423,6 +443,66 @@ export class Projectiles {
       if (this.stands(s)) ents.destroy(s.ent);
     }
     if (tick % PICKUP_EVERY === 0 && stuck.length > 0) this.pickUp();
+    this.tellKept();
+  }
+
+  /** Keeps a round that left `c`'s body at its ammunition's full speed along the unit way `d`, to be told when the step ends. */
+  private keep(c: Client, ox: number, oy: number, oz: number, d: readonly number[], ammo: number, back: number, silenced: boolean): void {
+    for (const l of this.heard) l("shot", ox, oz, c.name, silenced);
+    if (this.toldCount >= TOLD_MOST) this.tellKept();
+    const n = this.toldCount++;
+    const t = this.told;
+    t[n * 3] = ox;
+    t[n * 3 + 1] = oz;
+    t[n * 3 + 2] = this.ctx.world.tick;
+    packBolt(ox, oy, oz, d[0]!, d[1]!, d[2]!, this.toldPacked, n * 5);
+    this.toldAmmo[n] = ammo;
+    this.toldBack[n] = Math.min(255, Math.round(back));
+    this.toldSilenced[n] = silenced ? 1 : 0;
+    this.toldBy[n] = this.toShooter ? -1 : c.id;
+  }
+
+  /** Tells each client the rounds kept that left within its hearing, its own left out, in as few messages as hold them. */
+  private tellKept(): void {
+    const count = this.toldCount;
+    if (count === 0) return;
+    this.toldCount = 0;
+    const { world, game } = this.ctx;
+    const ents = world.ents;
+    const t = this.told;
+    const now = world.tick;
+    for (const other of game.clients) {
+      if (!other?.active || other.closed) continue;
+      const bx = other.ent >= 0 ? ents.x[other.ent]! : other.body.x;
+      const bz = other.ent >= 0 ? ents.z[other.ent]! : other.body.z;
+      let w: BitWriter | null = null;
+      let said = 0;
+      let last = 0;
+      for (let n = 0; n < count; n++) {
+        const ox = t[n * 3]!;
+        const oz = t[n * 3 + 1]!;
+        if (this.toldBy[n] === other.id || (bx - ox) * (bx - ox) + (bz - oz) * (bz - oz) > HEARD * HEARD) continue;
+        if (!w) {
+          w = game.begin(S_EVENT);
+          w.u8(EVENT_BOLTS);
+          w.u8(0);
+        }
+        // One kept from a tick before has flown that much longer.
+        writeBolt(w, this.toldPacked, n * 5, this.toldAmmo[n]!, this.toldBack[n]! + (now - t[n * 3 + 2]!), this.toldSilenced[n] === 1, last);
+        last = this.toldAmmo[n]!;
+        if (++said === BOLTS_MOST) {
+          // The count is the message's third byte, written last.
+          w.bytes()[2] = said;
+          game.endOwn(other);
+          w = null;
+          said = last = 0;
+        }
+      }
+      if (w) {
+        w.bytes()[2] = said;
+        game.endOwn(other);
+      }
+    }
   }
 
   /** Flies `f` for `share` of a tick, to tick `t`, which is now or a tick the history remembers. Returns false if it ended. */

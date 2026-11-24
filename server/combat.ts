@@ -113,7 +113,7 @@ export interface CombatContext {
 const DAMAGE = event("damage");
 const DAMAGED = event("damaged");
 /** A damage type as a module is told it. */
-const TYPE_WORDS: readonly string[] = ["melee", "pierce", "bullet", "fire", "explosive"];
+const TYPE_WORDS: readonly string[] = DAMAGE_TYPES;
 
 /** Ticks behind its newest acked snapshot a client is assumed to draw other bodies, when no input for the tick says. */
 const VIEW_BEHIND = 2;
