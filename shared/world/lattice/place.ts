@@ -80,8 +80,8 @@ export interface Site {
   enemy?(x: number, z: number, out: Verdict): boolean;
   /** Whether as many pieces stand round (x, z) as may. It fills the verdict's detail. */
   full?(x: number, z: number, out: Verdict): boolean;
-  /** Whether a piece at this pose (lattice units) would be held up. */
-  stands?(kind: number, x: number, y: number, z: number, yaw: number): boolean;
+  /** Whether a piece at this pose (lattice units) would be held up: in the slot (k0, k1) of frame `fr`, or with `fr` 0 joined to nothing. */
+  stands?(kind: number, x: number, y: number, z: number, yaw: number, fr: number, k0: number, k1: number): boolean;
 }
 
 /** What `validate` decided: a RESULT_ code, a PLACED_ detail and its numbers, and the pose in lattice units. */
@@ -448,6 +448,118 @@ export function candidates(site: Site, kind: number, team: number, ox: number, o
   const sx = ox + dx * short;
   const sy = oy + dy * short;
   const sz = oz + dz * short;
+  const n = gather(site, forms, kind, team, ex, ez, sx, sy, sz);
+  let kept = 0;
+  const reach = PLACE_REACH * PLACE_REACH;
+  for (let i = 0; i < n; i++) {
+    const fr = uFr[i]!;
+    const k0 = uK0[i]!;
+    const k1 = uK1[i]!;
+    const f = structs.frames.get(fr)!;
+    shapeOf(f, forms, kind, k0, k1);
+    // Its middle is in reach of the look's end, as a socket's place was. Most slots found are not, so this is asked first.
+    let mx = 0;
+    let mz = 0;
+    for (let c = 0; c < shape.n; c++) {
+      mx += shape.x[c]! / shape.n;
+      mz += shape.z[c]! / shape.n;
+    }
+    const my = (shape.y0 + shape.y1) / 2;
+    if ((mx - sx) * (mx - sx) + (my - sy) * (my - sy) + (mz - sz) * (mz - sz) > SNAP_SEARCH * SNAP_SEARCH) continue;
+    if (taken(structs, forms, kind, fr, k0, k1) >= 0 || blocking(structs, forms, kind, fr, k0, k1) >= 0) continue;
+    let shut = false;
+    for (let b = 0; b < blocked.length && !shut; b += 3) shut = blocked[b] === fr && covers(blocked[b + 1]!, blocked[b + 2]!);
+    if (shut) continue;
+    poseOf(f, k0, k1, forms, kind, pose);
+    const px = pose.x / U - ox;
+    const py = pose.y / U - oy;
+    const pz = pose.z / U - oz;
+    if (px * px + py * py + pz * pz > reach || tooHigh(site.heightAt, site.tables, kind, pose, pose.tw) || buried(site.heightAt, site.tables, kind, pose, pose.tw)) continue;
+    const end = far(sx, sy, sz, sx, sy, sz);
+    scores[i] = END_SHARE * end + (1 - END_SHARE) * far(ox, oy, oz, sx, sy, sz) + uSteps[i]! * SNAP_SEARCH;
+    order[kept++] = i;
+  }
+  return give(out, kept);
+}
+
+/**
+ * Every slot that rows of `team` near (x, y, z) metres offer a piece of `kind`, built on or not, whose middle is within
+ * SNAP_SEARCH of the point, to `out`, the nearest first. For a builder that names a place and not a look: no reach is
+ * asked, and nothing of what stands in a slot. Returns how many.
+ */
+export function slotsNear(site: Site, kind: number, team: number, x: number, y: number, z: number, out: Candidates): number {
+  out.n = 0;
+  const structs = site.structs;
+  const forms = structs.forms;
+  if (!forms || !(kind > 0 && kind < forms.cls.length) || forms.cls[kind]! < 0 || team === 0) return 0;
+  const n = gather(site, forms, kind, team, x, z, x, y, z);
+  let kept = 0;
+  for (let i = 0; i < n; i++) {
+    shapeOf(structs.frames.get(uFr[i]!)!, forms, kind, uK0[i]!, uK1[i]!);
+    let mx = 0;
+    let mz = 0;
+    for (let c = 0; c < shape.n; c++) {
+      mx += shape.x[c]! / shape.n;
+      mz += shape.z[c]! / shape.n;
+    }
+    const my = (shape.y0 + shape.y1) / 2;
+    const far2 = (mx - x) * (mx - x) + (my - y) * (my - y) + (mz - z) * (mz - z);
+    if (far2 > SNAP_SEARCH * SNAP_SEARCH) continue;
+    scores[i] = Math.sqrt(far2) + uSteps[i]! * SNAP_SEARCH;
+    order[kept++] = i;
+  }
+  return give(out, kept);
+}
+
+/**
+ * The slots the piece `ref` offers a piece of `kind`, built on or not, to `out` in the order OFFERS gives them: a
+ * foundation's other levels after its neighbour's own. Each has a score of 0. Returns how many.
+ */
+export function slotsOf(site: Site, kind: number, ref: number, out: Candidates): number {
+  out.n = 0;
+  const structs = site.structs;
+  const forms = structs.forms;
+  const t = structs.chunks[Math.floor(ref / 65536)];
+  const slot = ref & 0xffff;
+  if (!forms || !(kind > 0 && kind < forms.cls.length) || forms.cls[kind]! < 0 || !t || !t.fr || slot >= t.high || t.fr[slot] === 0) return 0;
+  offersOf(forms, site.turned === true, kind, t.kind[slot]!, t.k0![slot]!, t.k1![slot]!, offers);
+  table.fill(0);
+  while (offers.n * 2 > cap) grow();
+  let n = 0;
+  for (let i = 0; i < offers.n; i++) n = note(n, t.fr[slot]!, offers.k0[i]!, offers.k1[i]!, Math.abs(offers.steps[i]!));
+  for (let i = 0; i < n; i++) {
+    scores[i] = 0;
+    order[i] = i;
+  }
+  return give(out, n, false);
+}
+
+/** The first `kept` of `order` to `out`, by score, then by fewest levels off, frame and key; or as they stand. */
+function give(out: Candidates, kept: number, sort = true): number {
+  const sorted = order.subarray(0, kept);
+  if (sort) sorted.sort((a, b) => scores[a]! - scores[b]! || uFr[a]! - uFr[b]! || uK0[a]! - uK0[b]! || uK1[a]! - uK1[b]!);
+  if (out.fr.length < kept) {
+    out.fr = new Uint32Array(cap);
+    out.k0 = new Uint32Array(cap);
+    out.k1 = new Uint32Array(cap);
+    out.score = new Float64Array(cap);
+  }
+  for (let i = 0; i < kept; i++) {
+    const from = sorted[i]!;
+    out.fr[i] = uFr[from]!;
+    out.k0[i] = uK0[from]!;
+    out.k1[i] = uK1[from]!;
+    out.score[i] = scores[from]!;
+  }
+  return (out.n = kept);
+}
+
+/**
+ * Notes every slot that rows of `team` near the point (ex, ez) offer a piece of `kind`, each once, and what the rows
+ * block. A row is asked if its middle is near enough (sx, sy, sz) for a slot of it to be in reach of there. Returns how many.
+ */
+function gather(site: Site, forms: FormTable, kind: number, team: number, ex: number, ez: number, sx: number, sy: number, sz: number): number {
+  const structs = site.structs;
   const pad = SNAP_SEARCH + 3;
   const rows = structs.query(ex - pad, ez - pad, ex + pad, ez + pad, near);
   const refs = near.refs;
@@ -485,51 +597,7 @@ export function candidates(site: Site, kind: number, team: number, ox: number, o
       n = note(n, fr, offers.k0[i]!, offers.k1[i]!, Math.abs(offers.steps[i]!));
     }
   }
-  let kept = 0;
-  const reach = PLACE_REACH * PLACE_REACH;
-  for (let i = 0; i < n; i++) {
-    const fr = uFr[i]!;
-    const k0 = uK0[i]!;
-    const k1 = uK1[i]!;
-    const f = structs.frames.get(fr)!;
-    shapeOf(f, forms, kind, k0, k1);
-    // Its middle is in reach of the look's end, as a socket's place was. Most slots found are not, so this is asked first.
-    let mx = 0;
-    let mz = 0;
-    for (let c = 0; c < shape.n; c++) {
-      mx += shape.x[c]! / shape.n;
-      mz += shape.z[c]! / shape.n;
-    }
-    const my = (shape.y0 + shape.y1) / 2;
-    if ((mx - sx) * (mx - sx) + (my - sy) * (my - sy) + (mz - sz) * (mz - sz) > SNAP_SEARCH * SNAP_SEARCH) continue;
-    if (taken(structs, forms, kind, fr, k0, k1) >= 0 || blocking(structs, forms, kind, fr, k0, k1) >= 0) continue;
-    let shut = false;
-    for (let b = 0; b < blocked.length && !shut; b += 3) shut = blocked[b] === fr && covers(blocked[b + 1]!, blocked[b + 2]!);
-    if (shut) continue;
-    poseOf(f, k0, k1, forms, kind, pose);
-    const px = pose.x / U - ox;
-    const py = pose.y / U - oy;
-    const pz = pose.z / U - oz;
-    if (px * px + py * py + pz * pz > reach || tooHigh(site.heightAt, site.tables, kind, pose, pose.tw) || buried(site.heightAt, site.tables, kind, pose, pose.tw)) continue;
-    const end = far(sx, sy, sz, sx, sy, sz);
-    scores[i] = END_SHARE * end + (1 - END_SHARE) * far(ox, oy, oz, sx, sy, sz) + uSteps[i]! * SNAP_SEARCH;
-    order[kept++] = i;
-  }
-  const sorted = order.subarray(0, kept).sort((a, b) => scores[a]! - scores[b]! || uFr[a]! - uFr[b]! || uK0[a]! - uK0[b]! || uK1[a]! - uK1[b]!);
-  if (out.fr.length < kept) {
-    out.fr = new Uint32Array(cap);
-    out.k0 = new Uint32Array(cap);
-    out.k1 = new Uint32Array(cap);
-    out.score = new Float64Array(cap);
-  }
-  for (let i = 0; i < kept; i++) {
-    const from = sorted[i]!;
-    out.fr[i] = uFr[from]!;
-    out.k0[i] = uK0[from]!;
-    out.k1[i] = uK1[from]!;
-    out.score[i] = scores[from]!;
-  }
-  return (out.n = kept);
+  return n;
 }
 
 /**
@@ -660,7 +728,7 @@ function refuse(out: Verdict, code: number, detail = PLACED_NONE, a = 0): number
 }
 
 /** What is asked of any piece once its pose is known, in the order a builder is told of it: bodies, the ground, other tribes, the cap, support. */
-function rest(site: Site, kind: number, at: Pose, tw: number, out: Verdict): number {
+function rest(site: Site, kind: number, at: Pose, tw: number, fr: number, k0: number, k1: number, out: Verdict): number {
   const x = at.x / U;
   const y = at.y / U;
   const z = at.z / U;
@@ -671,7 +739,7 @@ function rest(site: Site, kind: number, at: Pose, tw: number, out: Verdict): num
   out.detail = PLACED_NONE;
   if (site.enemy?.(x, z, out)) return (out.code = RESULT_ENEMY_NEAR);
   if (site.full?.(x, z, out)) return (out.code = RESULT_LIMIT);
-  if (site.stands && !site.stands(kind, at.x, at.y, at.z, at.yaw)) return refuse(out, RESULT_NO_SUPPORT);
+  if (site.stands && !site.stands(kind, at.x, at.y, at.z, at.yaw, fr, k0, k1)) return refuse(out, RESULT_NO_SUPPORT);
   return (out.code = RESULT_OK);
 }
 
@@ -715,7 +783,7 @@ export function validate(site: Site, kind: number, team: number, fr: number, k0:
   }
   if (by < 0) by = crowding(site, forms, kind, f, k0, k1, at);
   if (by >= 0) return refuse(out, RESULT_OBSTRUCTED, PLACED_STRUCTURE, by);
-  return rest(site, kind, at, at.tw, out);
+  return rest(site, kind, at, at.tw, fr, k0, k1, out);
 }
 
 /**
@@ -736,12 +804,12 @@ export function validateFree(site: Site, kind: number, at: Pose, ex: number, ey:
   if ((x - ex) * (x - ex) + (y - ey) * (y - ey) + (z - ez) * (z - ez) > PLACE_REACH * PLACE_REACH) return refuse(out, RESULT_FAR);
   if (!structs.forms || structs.forms.cls[kind]! < 0) {
     if (obstructed(structs, site.tables.parts, kind, x, y, z, at.yaw)) return refuse(out, RESULT_OBSTRUCTED, PLACED_STRUCTURE, obstruction.ref);
-    return rest(site, kind, at, 0, out);
+    return rest(site, kind, at, 0, 0, 0, 0, out);
   }
   const reach = structs.spread[kind]!;
   const rows = structs.query(x - reach, z - reach, x + reach, z + reach, near);
   for (let r = 0; r < rows; r++) if (crosses(structs, site.tables.parts, kind, x, y, z, at.yaw, 0, near.refs[r]!, 0, 0, GIVE_OTHER, 0)) return refuse(out, RESULT_OBSTRUCTED, PLACED_STRUCTURE, near.refs[r]!);
-  return rest(site, kind, at, 0, out);
+  return rest(site, kind, at, 0, 0, 0, 0, out);
 }
 
 const origin = { ox: 0, oy: 0, oz: 0 };

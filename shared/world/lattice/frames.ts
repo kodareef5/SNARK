@@ -12,7 +12,7 @@
 import { YAW_UNITS } from "../../coords.ts";
 import { basisOf, dirVector, levelY, twOf, worldOf, yawOf } from "./basis.ts";
 import type { FormTable } from "./forms.ts";
-import { CLS_EDGE, CLS_SQUARE, CLS_TRIANGLE, DIRECTIONS, SIDE, dirTurn, keyAnchor, keyCls, keyDir, keyFlip, keyLayer, keyLvl, keyRot, keyValid, tupleStep } from "./module.ts";
+import { CLS_EDGE, CLS_SQUARE, CLS_TRIANGLE, DIRECTIONS, LVL_MOST, M_MOST, SIDE, canon, canonical, dirTurn, key0, key1, keyAnchor, keyCls, keyDir, keyFlip, keyLayer, keyLvl, keyRot, keyValid, tupleStep, tupleWithin } from "./module.ts";
 
 /** A piece's address: its frame's gid and the two words of its key. */
 export interface LatticeKey {
@@ -227,10 +227,40 @@ export function poseOf(f: Frame, k0: number, k1: number, forms: FormTable, kind:
   // The slot's +Z is its +X a quarter turn on.
   out.x = v[0]! + i * v[2]! - j * v[3]!;
   out.z = v[1]! + i * v[3]! + j * v[2]!;
-  // By this a pillar under a foundation ends at its top plane; one hung from its underside today is on no level (structures.ts adopt).
+  // A level is a plane, so a pillar under a foundation ends at the foundation's top, not its underside.
   out.y = levelY(f.oy, keyLvl(k1)) + forms.atY[kind]!;
   out.yaw = yawOf(f.yaw, own);
   out.tw = twOf(own);
+}
+
+/**
+ * The key of a piece of `kind` at level `lvl` whose slot has its reference point at the tuple `p[pi]` and whose own +X
+ * is direction `own`, to `out`, whose frame is left as it is: poseOf the other way, in the lattice's own numbers. A
+ * vertex's reference point is itself, an edge's its middle, a whole square's its centre, a triangle's and a quarter
+ * square's the corner its own +X leaves. False where its form has no slot so turned, or the slot is off the lattice.
+ */
+export function keyAt(forms: FormTable, kind: number, p: Int32Array, pi: number, lvl: number, own: number, out: LatticeKey): boolean {
+  const cls = forms.cls[kind]!;
+  const side = forms.size[kind]!;
+  if (cls < 0 || Math.abs(lvl) > LVL_MOST) return false;
+  m[0] = p[pi]!;
+  m[1] = p[pi + 1]!;
+  m[2] = p[pi + 2]!;
+  m[3] = p[pi + 3]!;
+  const small = cls === CLS_SQUARE && side !== SIDE;
+  // Back from the reference point to the corner the element is named from along its own +X.
+  if (cls === CLS_EDGE || (cls === CLS_SQUARE && !small)) tupleStep(m, 0, own, -SIDE / 2, m, 0);
+  if (cls === CLS_SQUARE && !small) tupleStep(m, 0, dirTurn(own, 3), -SIDE / 2, m, 0);
+  // A quarter square is named from the one corner however it is turned.
+  if (small) canon.dir = own % 3;
+  else canonical(cls, m, 0, own, m, 0, side);
+  const rots = rotsOf(forms, kind);
+  // A triangle named from its corner `turn` has its own +X 4·turn on from its cell's direction.
+  const rot = cls === CLS_TRIANGLE ? (3 - canon.turn) % 3 : (dirTurn(canon.dir, -own) * rots) / DIRECTIONS;
+  if (!Number.isInteger(rot) || rot >= rots || !tupleWithin(m, 0, M_MOST)) return false;
+  out.k0 = key0(cls, m[0]!, m[1]!, m[2]!);
+  out.k1 = key1(m[3]!, lvl, canon.dir, forms.layer[kind]!, rot, 0);
+  return true;
 }
 /**
  * The origin of a new base whose first piece is of `kind` with its collider origin at (x, y, z) lattice units, turned
