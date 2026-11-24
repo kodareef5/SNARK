@@ -205,6 +205,8 @@ export const SNAP_SEARCH = 4;
 export const MAX_ABOVE_GROUND = 2;
 /** Metres a foundation's top may lie under the highest ground it covers. A guess. */
 export const MAX_BURIED = 1;
+/** Lattice units. A piece that stands by itself on the ground has its foot at most this far over the ground at its middle: a pillar, a fence's footing. */
+export const GROUNDED = STRUCT_UNITS / 4;
 /** Lattice units. On open ground a foundation's top sits FREE_TOP above the highest ground under it. A pillar's foot sinks PILLAR_SINK in. */
 const FREE_TOP = STRUCT_UNITS / 8;
 const PILLAR_SINK = STRUCT_UNITS / 8;

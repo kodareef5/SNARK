@@ -126,8 +126,8 @@ const WIDE = {
 
 /** Rows this work added to the 34 the tiers' recipes were written to: leaves stood open, and the double door. No tier draws them yet. */
 const OPEN_HATCH = {
-  // Open, the leaf hangs from its hinge along the hole's -Z side.
-  trapdoor_open: { ...hatchLeaf, closes: "none", at: [0, -HATCH / 2, 0], outline: plan(-HATCH / 2, -HATCH / 2, HATCH, HATCH_LEAF), thick: HATCH },
+  // Open, the leaf hangs from its hinge along the hole's -Z side. Its origin is the shut leaf's: opening swaps the kind where it stands.
+  trapdoor_open: { ...hatchLeaf, closes: "none", at: [0, -HATCH_LEAF / 2, 0], outline: plan(-HATCH / 2, -HATCH / 2, HATCH, HATCH_LEAF), thick: HATCH },
 } satisfies Record<string, FormDef>;
 const WIDE_LEAVES = {
   double_door: { ...leaf, closes: "full", hangs: ["double"], cells: [[0, 0], [1, 0]], at: [SIDE / 2, DOOR.high / 2, 0], plane: "upright", outline: rect(doubleDoor.x0, 0, doubleDoor.x1, DOOR.high) },
@@ -163,7 +163,7 @@ export const PLANNED_FORMS = {
 } satisfies Record<string, FormDef>;
 
 /** The pieces content places, by the name of their shape. A row here that no tier draws is drawn as its collider. */
-export const LIVE_FORMS = { ...FORMS, ...LOW, ...TRIANGLES, ...SLOPES } satisfies Record<string, FormDef>;
+export const LIVE_FORMS = { ...FORMS, ...LOW, ...TRIANGLES, ...SLOPES, ...FOOTINGS, ...OPEN_HATCH } satisfies Record<string, FormDef>;
 
 const box = (x: number, y: number, z: number, hx: number, hy: number, hz: number): ShapeBox => ({ at: [x, y, z], half: [hx, hy, hz] });
 

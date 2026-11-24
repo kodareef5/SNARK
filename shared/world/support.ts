@@ -22,7 +22,7 @@ import { FORM_LAYERS, HALF_SIDE_M, STOREY_LEVELS, type FormTable } from "./latti
 import { poseOf, riseAt, type Frame, type LatticeKey, type LatticePose } from "./lattice/frames.ts";
 import { CLS_CORNERS, CLS_EDGE, CLS_SQUARE, CLS_VERTEX, LVL_MOST, M_MOST, SIDE, canon, canonical, cellOf, dirTurn, elementCorners, key0, key1, keyAnchor, keyCls, keyDir, keyLvl, tupleEqual, tupleStep, tupleWithin } from "./lattice/module.ts";
 import { Cells, cellAt, edgeFaces, elementVertices, faceEdges, formCells, vertexEdges, vertexFaces, type Occupancy } from "./lattice/occupancy.ts";
-import { ROLE_CEILING, ROLE_FOUNDATION, ROLE_PILLAR, ROLE_THING, floorTop, units, type PieceTables } from "./snap.ts";
+import { GROUNDED, ROLE_CEILING, ROLE_FOUNDATION, ROLE_PILLAR, ROLE_THING, floorTop, units, type PieceTables } from "./snap.ts";
 import { Found, type StructureStore } from "./structures.ts";
 
 /** The stability of a piece that stands by itself, for a material that says no other. */
@@ -40,8 +40,6 @@ export const FALL_MOST = 256;
 /** Metres on the flat a link moves support for each unit it costs, at most: a slab to the next is two for a side of 3 m. */
 const METRES_A_COST = (SIDE * HALF_SIDE_M) / COST_BESIDE;
 
-/** Lattice units. A pillar whose foot is at most this far above the ground stands on the ground. */
-const FOOT = STRUCT_UNITS / 4;
 /** Metres. The middle of a floor a thing rests on is at most this far from the thing's. */
 const NEAR = 3.1;
 /** Metres a floor's box may fall short of a thing's foot by lattice rounding and still be looked at. */
@@ -238,6 +236,8 @@ export class Support {
   private readonly capMost: number;
   /** Per kind: 1 if its form is one cell, of one edge and at most a storey. */
   private readonly single: Uint8Array;
+  /** Per kind: 1 for a leaf that hangs under a hatch's frame, 2 for a slab that takes a hatch. */
+  private readonly hatched: Uint8Array;
   /** Whether no form fills a triangle, so the only slab across a square's side is a square. Reading triangles too gives the same answers. */
   plain = true;
   /** Pieces to count as built beside the rows, or null. Set it, ask by `node(pretendRef(i))`, and `forget()` when it changes. */
@@ -277,6 +277,7 @@ export class Support {
     this.rooted = new Uint8Array(n);
     this.cap = new Uint8Array(n).fill(STABILITY);
     this.single = new Uint8Array(n);
+    this.hatched = new Uint8Array(n);
     let most = STABILITY;
     this.end = new Float32Array(n);
     this.broad = new Uint8Array(n);
@@ -294,6 +295,7 @@ export class Support {
       this.rooted[k] = f.root === "always" ? 1 : f.root === "grounded" ? 2 : 0;
       this.cap[k] = tables.stabilityCap?.[k] || STABILITY;
       this.single[k] = f.cells === undefined && f.span <= STOREY_LEVELS ? 1 : 0;
+      this.hatched[k] = f.layer === "slab" && f.takes === "hatch" ? 2 : f.cls === "edge" && f.hangs?.includes("hatch") ? 1 : 0;
       if (f.cls === "triangle") this.plain = false;
       if (f.layer === "footing") this.footed = true;
       most = Math.max(most, this.cap[k]!);
@@ -416,7 +418,7 @@ export class Support {
   private rootAt(kind: number, x: number, y: number, z: number): boolean {
     const rooted = this.rooted[kind]!;
     if (rooted !== 2) return rooted === 1;
-    return y - units(this.tables.halfY[kind]!) <= Math.ceil(this.heightAt(x / STRUCT_UNITS, z / STRUCT_UNITS) * STRUCT_UNITS) + FOOT;
+    return y - units(this.tables.halfY[kind]!) <= Math.ceil(this.heightAt(x / STRUCT_UNITS, z / STRUCT_UNITS) * STRUCT_UNITS) + GROUNDED;
   }
 
   /** Notes a link of the piece being described. A piece met twice keeps its cheaper link. */
@@ -677,6 +679,15 @@ export class Support {
         const host = edge ? this.covering(fr, own.k0[c]!, cellAt(own.k1[c]!, keyLvl(own.k1[c]!), WALL), self) : this.at(fr, own.k0[c]!, cellAt(own.k1[c]!, lvl, SLAB), self);
         if (host >= 0) this.put(host, 0);
       }
+      // A ladder also hangs under the side of a hatch's frame over its head.
+      const top = lvl + forms.span[kind]!;
+      if (edge && top <= LVL_MOST && this.hatched[kind] === 1) {
+        edgeFaces(k0, k1, top, SLAB, faces);
+        for (let f = 0; f < faces.n; f++) {
+          const frame = this.at(fr, faces.k0[f]!, faces.k1[f]!, self);
+          if (frame >= 0 && this.hatched[this.kindOf(frame)] === 2) this.put(frame, 0);
+        }
+      }
     }
   }
 
@@ -737,6 +748,11 @@ export class Support {
         if (below >= 0) this.put(below, COST_HUNG + HUNG);
       }
       if (rise !== 0) return;
+      // A hatch's frame: the ladder hung under each of its sides.
+      for (let s = 0; low && this.hatched[kind] === 2 && s < sides.n; s++) {
+        const ladder = sides.k0[s] === 0 ? -1 : this.ending(fr, sides.k0[s]!, cellAt(sides.k1[s]!, lvl - 1, LEAF), lvl, self);
+        if (ladder >= 0 && this.hatched[this.kindOf(ladder)] === 1) this.put(ladder, 0);
+      }
       elementVertices(k0, k1, lvl, POST, verts);
       for (let v = 0; v < verts.n; v++) {
         const post = this.starting(fr, verts.k0[v]!, verts.k1[v]!, lvl, self);

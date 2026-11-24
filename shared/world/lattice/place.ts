@@ -4,7 +4,7 @@
 
 import { CHUNK_SIZE, STRUCT_UNITS } from "../../coords.ts";
 import { PLACED_ENTITY, PLACED_NONE, PLACED_STRUCTURE, RESULT_BODY, RESULT_ENEMY_NEAR, RESULT_FAR, RESULT_INVALID, RESULT_LIMIT, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_OK, RESULT_TERRAIN, RESULT_TOO_HIGH } from "../../net/protocol.ts";
-import { BUILD_REACH, SNAP_SEARCH, buried, crosses, obstructed, obstruction, tooHigh, type PieceTables, type Pose } from "../snap.ts";
+import { BUILD_REACH, GROUNDED, SNAP_SEARCH, buried, crosses, obstructed, obstruction, tooHigh, type PieceTables, type Pose } from "../snap.ts";
 import { Found, type StructureStore } from "../structures.ts";
 import { levelY, worldOf } from "./basis.ts";
 import { FORM_LAYERS, HALF_SIDE_M, LEVEL_M, SLOT_CLASSES, STOREY_LEVELS, type FormLayer, type FormTable, type Rel } from "./forms.ts";
@@ -488,6 +488,11 @@ function grow(): void {
   table = new Int32Array(cap * 4);
 }
 
+/** How far down the list a slot `steps` levels off its neighbour's comes: by how far off it is, and for a fence's footing the highest first, which is the least buried. */
+function rank(forms: FormTable, kind: number, steps: number): number {
+  return forms.layer[kind] === FOOTING ? TERRACE - steps : Math.abs(steps);
+}
+
 /** Adds a slot, or keeps the fewer steps of one found before. Returns the count. */
 function note(n: number, fr: number, k0: number, k1: number, steps: number): number {
   const mask = table.length - 1;
@@ -555,6 +560,8 @@ export function candidates(site: Site, kind: number, team: number, ox: number, o
     const py = pose.y / U - oy;
     const pz = pose.z / U - oz;
     if (px * px + py * py + pz * pz > reach || tooHigh(site.heightAt, site.tables, kind, pose, pose.tw) || buried(site.heightAt, site.tables, kind, pose, pose.tw)) continue;
+    // A fence's footing is offered only at the levels its foot is in the ground at: where it would stand.
+    if (forms.layer[kind] === FOOTING && pose.y - Math.round(site.tables.halfY[kind]! * U) > Math.ceil(site.heightAt(pose.x / U, pose.z / U) * U) + GROUNDED) continue;
     const end = far(sx, sy, sz, sx, sy, sz);
     scores[i] = END_SHARE * end + (1 - END_SHARE) * far(ox, oy, oz, sx, sy, sz) + uSteps[i]! * SNAP_SEARCH;
     order[kept++] = i;
@@ -606,7 +613,7 @@ export function slotsOf(site: Site, kind: number, ref: number, out: Candidates):
   table.fill(0);
   while (offers.n * 2 > cap) grow();
   let n = 0;
-  for (let i = 0; i < offers.n; i++) n = note(n, t.fr[slot]!, offers.k0[i]!, offers.k1[i]!, Math.abs(offers.steps[i]!));
+  for (let i = 0; i < offers.n; i++) n = note(n, t.fr[slot]!, offers.k0[i]!, offers.k1[i]!, rank(forms, kind, offers.steps[i]!));
   for (let i = 0; i < n; i++) {
     scores[i] = 0;
     order[i] = i;
@@ -673,7 +680,7 @@ function gather(site: Site, forms: FormTable, kind: number, team: number, ex: nu
         grow();
         for (let k = 0; k < n; k++) note(k, uFr[k]!, uK0[k]!, uK1[k]!, uSteps[k]!);
       }
-      n = note(n, fr, offers.k0[i]!, offers.k1[i]!, Math.abs(offers.steps[i]!));
+      n = note(n, fr, offers.k0[i]!, offers.k1[i]!, rank(forms, kind, offers.steps[i]!));
     }
   }
   return n;
@@ -709,7 +716,9 @@ function offered(site: Site, forms: FormTable, kind: number, f: Frame, k0: numbe
   const x = at.x / U;
   const z = at.z / U;
   const y = at.y / U;
-  const rows = structs.query(x - ROW_REACH, z - ROW_REACH, x + ROW_REACH, z + ROW_REACH, near, y - ROW_REACH, y + ROW_REACH);
+  // A tall piece's middle is half its height over what offers it.
+  const up = ROW_REACH + (structs.top[kind]! - structs.low[kind]!) / 2;
+  const rows = structs.query(x - ROW_REACH, z - ROW_REACH, x + ROW_REACH, z + ROW_REACH, near, y - up, y + up);
   for (let r = 0; r < rows; r++) {
     const t = structs.chunks[Math.floor(near.refs[r]! / 65536)]!;
     const slot = near.refs[r]! & 0xffff;
@@ -717,7 +726,7 @@ function offered(site: Site, forms: FormTable, kind: number, f: Frame, k0: numbe
     const dx = t.x[slot]! - x;
     const dy = t.y[slot]! - y;
     const dz = t.z[slot]! - z;
-    if (dx * dx + dy * dy + dz * dz > ROW_REACH * ROW_REACH) continue;
+    if (dx * dx + dz * dz > ROW_REACH * ROW_REACH || Math.abs(dy) > up) continue;
     offersOf(forms, kind, t.kind[slot]!, t.k0![slot]!, t.k1![slot]!, offers);
     for (let i = 0; i < offers.n; i++) if (offers.k0[i] === k0 && offers.k1[i] === want) return true;
   }

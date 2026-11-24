@@ -18,7 +18,7 @@ import { lookDirection } from "../../shared/world/ray.ts";
 import { NO_PIN, STRUCT_USE } from "../../shared/world/upkeep.ts";
 import { builder } from "../fixtures/build.ts";
 import { Harness } from "../fixtures/net.ts";
-import { O, Plot, build, found, hand, keyOf, leaks, mid, plotOf, rowsOf, stand, step, type Tuple } from "../fixtures/pieces.ts";
+import { O, Plot, at, build, found, hand, keyOf, leaks, mid, plotOf, rowsOf, stand, step, type Tuple } from "../fixtures/pieces.ts";
 import { coreRegistry, type TestWorld } from "../fixtures/world.ts";
 
 const reg = coreRegistry();
@@ -161,4 +161,108 @@ test("a hexagon tower with a tent of six triangle roofs: built at an odd yaw, sh
   expect(rowsOf(h.world.structs, h.reg.ids)).toEqual([]);
   expect(h.host.build.fallen).toBe(12);
   expect(rowsOf(s.world!.structs, h.reg.ids)).toEqual([]);
+});
+
+/** Joins a second survivor of another tribe, with cheats, 9 m east of the lattice point `at`. */
+function stranger(h: Harness, p: Plot, at: Tuple): ClientSession {
+  const [x, z] = p.metres(at);
+  const late = h.join("bob");
+  h.say(late, "enablecheats");
+  h.say(late, `tp ${(x + 9).toFixed(3)} ${z.toFixed(3)}`);
+  h.run(900);
+  return late;
+}
+
+/** A survivor's body walked along the heading from one point toward another for `ticks`, from rest on what is under the first: where it ends. */
+function walked(w: TestWorld, from: readonly [number, number], to: readonly [number, number], drop: number, ticks: number): Body {
+  const move = reg.move[id("survivor")]!;
+  const b = new Body();
+  [b.x, b.z, b.y] = [from[0], from[1], drop];
+  while (capsuleFree(w, b.x, b.y - 0.01, b.z, move.radius, move.height) && b.y > 0) b.y -= 0.01;
+  b.grounded = true;
+  const heading = Math.round((Math.atan2(to[0] - from[0], to[1] - from[1]) / (2 * Math.PI)) * 65536) & 0xffff;
+  for (let t = 0; t < ticks; t++) stepBody(w, b, 0, 127, heading, 0, 0, move, TICK_DT);
+  return b;
+}
+
+test("a ramp up to a second floor with a railing round it: walked up, stopped at the rail, kept over a restart, and its floor down with its walls", () => {
+  const dbPath = join(dir, "ramp.db");
+  let { h, sessions } = builder(["ada"], 40, 40, { dbPath });
+  let s = sessions[0]!;
+  const { w, p } = plotOf(h, s);
+  found(h, s, p, "piece_foundation_wood", 3001);
+  build(h, s, p, "piece_foundation_wood", "core:foundation_wood", at(3, 1), 0, 0);
+  // Walls round the east square on three sides, a floor on them, and the ramp on the west square rising east to it.
+  for (const [m, own] of [[at(3, 0), 0], [at(4, 1), 3], [at(3, 2), 6]] as const) build(h, s, p, "piece_wall_wood", "core:wall_wood", m, 0, own);
+  build(h, s, p, "piece_ceiling_wood", "core:ceiling_wood", at(3, 1), 4, 0);
+  const ramp = build(h, s, p, "piece_stairs_wood", "core:ramp_wood", at(1, 1), 0, 9);
+  for (const [m, own] of [[at(3, 0), 0], [at(4, 1), 3], [at(3, 2), 6]] as const) build(h, s, p, "piece_railing_wood", "core:railing_wood", m, 4, own);
+  h.run(300);
+  const built = rowsOf(h.world.structs, h.reg.ids);
+  expect(built.length).toBe(2 + 3 + 1 + 1 + 3);
+  expect([p.stability(ramp), ...refsOf(h, "ceiling_wood", "railing_wood").map((ref) => p.stability(ref))]).toEqual([4, 3, 4, 4, 4]);
+  // From the ramp's foot a body walks up onto the floor, on to the rail at its far side, and no further.
+  const up = walked(w, p.metres(at(0, 1)), p.metres(at(4, 1)), p.height(0) + 1, 600);
+  const [ex, ez] = p.metres(at(4, 1));
+  expect(Math.abs(up.y - p.height(4))).toBeLessThan(0.05);
+  const short = Math.hypot(up.x - ex, up.z - ez);
+  expect(short).toBeGreaterThan(0.3);
+  expect(short).toBeLessThan(0.6);
+  expect(rowsOf(s.world!.structs, h.reg.ids)).toEqual(built);
+  expect(rowsOf(stranger(h, p, at(4, 1)).world!.structs, h.reg.ids)).toEqual(built);
+
+  h.host.shutdown();
+  h = new Harness({}, 1, 60, { dev: true, dbPath });
+  s = h.join("ada");
+  h.run(900);
+  expect(rowsOf(h.world.structs, h.reg.ids)).toEqual(built);
+  // The walls gone, the floor and its rails come down; the ramp stands on its foundation.
+  destroy(h, refsOf(h, "wall_wood"));
+  expect(rowsOf(h.world.structs, h.reg.ids).map((row) => row.split(" ")[0]).sort()).toEqual(["core:foundation_wood", "core:foundation_wood", "core:ramp_wood"]);
+  expect(h.host.build.fallen).toBe(4);
+  expect(rowsOf(s.world!.structs, h.reg.ids).length).toBe(3);
+});
+
+test("a cellar under a trapdoor with a ladder: shut it is a room and a floor, open a way down; locked to others, kept over a restart, down with its walls", () => {
+  const dbPath = join(dir, "cellar.db");
+  let { h, sessions } = builder(["ada"], 40, 40, { dbPath });
+  let s = sessions[0]!;
+  const { w, p } = plotOf(h, s);
+  found(h, s, p, "piece_foundation_wood", 11001);
+  for (const [m, own] of [[at(1, 0), 0], [at(2, 1), 3], [at(1, 2), 6], [at(0, 1), 9]] as const) build(h, s, p, "piece_wall_wood", "core:wall_wood", m, 0, own);
+  build(h, s, p, "piece_trapdoor_frame_wood", "core:trapdoor_frame_wood", at(1, 1), 4, 0);
+  const leaf = build(h, s, p, "piece_trapdoor_wood", "core:trapdoor_wood", at(1, 1), 4, 0);
+  const ladder = build(h, s, p, "piece_ladder_wood", "core:ladder_wood", at(1, 2), 0, 0);
+  h.run(300);
+  const built = rowsOf(h.world.structs, h.reg.ids);
+  expect(built.length).toBe(1 + 4 + 1 + 1 + 1);
+  expect([p.stability(leaf), p.stability(ladder), inside(w, p)]).toEqual([3, 4, 1]);
+  // Shut, the leaf is a floor: a body let down on it stays up there.
+  const [x, z] = p.metres(at(1, 1));
+  expect(Math.abs(settled(w, x, z, p.height(4) + 1).y - p.height(4))).toBeLessThan(0.05);
+  // Another tribe's survivor finds it locked. Its own opens it from inside the cellar, looking up at it.
+  const bob = stranger(h, p, at(1, 1));
+  expect(use(h, bob, leaf)).not.toBe(RESULT_OK);
+  stand(h, s, p, at(1, 1));
+  expect(use(h, s, leaf)).toBe(RESULT_OK);
+  const open = h.world.structs.chunks[Math.floor(leaf / 65536)]!.kind[leaf & 0xffff];
+  expect([open, inside(w, p)]).toEqual([id("trapdoor_open_wood"), 0]);
+  expect(bob.world!.structs.chunks[Math.floor(leaf / 65536)]!.kind[leaf & 0xffff]).toBe(open);
+  // Open, a body let down over the hole lands on the cellar's floor.
+  stand(h, s, p, at(-3, 1));
+  expect(Math.abs(settled(w, x, z, p.height(4) + 1).y - p.height(0))).toBeLessThan(0.05);
+
+  h.host.shutdown();
+  h = new Harness({}, 1, 60, { dev: true, dbPath });
+  s = h.join("ada");
+  h.run(900);
+  // It comes back open, as it was left.
+  expect(rowsOf(h.world.structs, h.reg.ids)).toEqual(rowsOf(w.structs, h.reg.ids));
+  expect(rowsOf(s.world!.structs, h.reg.ids).length).toBe(8);
+  // The wall the ladder hangs on gone, the ladder still hangs under the frame's side; the rest of the walls gone, the frame, its leaf and the ladder come down.
+  destroy(h, [refsOf(h, "wall_wood")[2]!]);
+  expect([refsOf(h, "ladder_wood").length, h.host.build.fallen]).toEqual([1, 0]);
+  destroy(h, refsOf(h, "wall_wood"));
+  expect(rowsOf(h.world.structs, h.reg.ids).map((row) => row.split(" ")[0])).toEqual(["core:foundation_wood"]);
+  expect(h.host.build.fallen).toBe(3);
 });
