@@ -4,7 +4,7 @@ import { expect, test } from "bun:test";
 import { App } from "../../client/core/app.ts";
 import { BUILD_REASONS, Builder, ENEMY_FOUNDATION as CLIENT_FOUNDATION, ENEMY_PILLAR as CLIENT_PILLAR, GHOST_BAD, GHOST_OK, PLACE_REACH, buildReason } from "../../client/core/build.ts";
 import { BUILD_HINT } from "../../client/core/hud/action.ts";
-import { PredictBuild } from "../../client/core/predict-build.ts";
+import { PredictBuild, REFUSED } from "../../client/core/predict-build.ts";
 import { DRAW_BLEND, type FramePacket } from "../../client/core/render/packet.ts";
 import type { ClientSession } from "../../client/core/session.ts";
 import { KEY_TOUCH_BUTTON, KEY_ZONE_LOOK, LONG_MS, T_CANCEL } from "../../client/core/touch.ts";
@@ -121,12 +121,19 @@ test("under 150 ms each way a piece is drawn on the click frame and one piece st
   const rows = s.world!.structs.count;
   click();
   // The very next frame draws it as built, and the hotbar's count has given it up, before the server has heard.
+  const at = [app.scene!.ghost.x, app.scene!.ghost.z];
   p = run(1);
-  expect([built(p, kind), app.scene!.ghost.kind, h.host.build.placed]).toEqual([1, 0, 0]);
+  expect([built(p, kind), h.host.build.placed]).toEqual([1, 0]);
   expect([app.hud.hotbar[0]!.number, s.inventory!.total(item)]).toEqual(["2", 3]);
+  // The preview has gone on to the place beside it, which the piece offers before the server has answered for it.
+  expect(app.scene!.ghost.kind).toBe(kind);
+  expect(Math.hypot(app.scene!.ghost.x - at[0]!, app.scene!.ghost.z - at[1]!)).toBeCloseTo(3, 3);
   // It is no row: nothing collides with it and no chunk has changed.
   expect(s.world!.structs.count).toBe(rows);
-  // A second click on the same place asks for nothing more.
+  // Held to the place the piece stands on, a second click asks for nothing more.
+  app.builder.free = true;
+  p = run(1);
+  expect(app.scene!.ghost.kind).toBe(0);
   click();
   expect(app.predict.entries.length).toBe(1);
   // In every frame until long after the answer exactly one stands, and the count never goes back up.
@@ -217,10 +224,11 @@ test("2,000 seeded placements under loss: the client's rows end as the server's,
   });
   const pilot = h.pilots[0]!, b = new Builder(), predict = new PredictBuild(), rng = new Rng(4242);
   // Wired as the app wires them.
-  b.pending = (item) => predict.pending(item);
+  b.predict = predict;
   s.onPlaced = (p) => {
     predict.placed(p, s, h.now);
-    b.answered(p.seq, p.code, p.code === RESULT_OK ? "" : buildReason(h.reg, s, p.code, p), h.now);
+    const quiet = predict.quiet(p.seq) && p.code !== RESULT_OK;
+    b.answered(p.seq, quiet ? RESULT_OK : p.code, p.code === RESULT_OK || quiet ? "" : buildReason(h.reg, s, p.code, p), h.now);
   };
   s.onRow = (ref) => predict.row(ref);
   s.onResult = (seq, code) => {
@@ -236,7 +244,13 @@ test("2,000 seeded placements under loss: the client's rows end as the server's,
     }
     return refs;
   };
-  const counts = { asked: 0, drawn: 0, most: 0, undone: 0 };
+  const counts = { asked: 0, drawn: 0, most: 0, undone: 0, held: 0, deep: 0 };
+  // Pieces drawn at the click that the server then refused, or that went with one it refused.
+  const refused = new Set<number>();
+  const step = (): void => {
+    for (const e of predict.entries) if (e.state === REFUSED && !e.undo) refused.add(e.id);
+    predict.step(s, h.now);
+  };
   for (let i = 0; counts.asked < 2000 && i < 12000; i++) {
     if (i % 150 === 149) {
       for (const ref of mine()) structs.remove(ref);
@@ -261,7 +275,11 @@ test("2,000 seeded placements under loss: the client's rows end as the server's,
       h.host.items.mint(rec, item, 20);
       for (let k = 0; k < stock.hotbar; k++) if (stock.item[k] === item) h.host.items.move(rec, k, rec, slot, 0);
     }
-    if (s.held !== piece) s.command(CMD_SELECT, (w: BitWriter) => w.u8(piece));
+    if (s.held !== piece) {
+      s.command(CMD_SELECT, (w: BitWriter) => w.u8(piece));
+      // Three times in four the builder waits for the piece to be in hand, as one who looks at what they hold does.
+      for (let k = 0; rng.int(4) !== 0 && k < 40 && s.handChanging; k++) h.run(20);
+    }
     pilot.yaw = rng.range(-Math.PI, Math.PI);
     pilot.pitch = rng.range(-1.3, -0.15);
     // Often too short a wait for the last answer to be back.
@@ -269,14 +287,18 @@ test("2,000 seeded placements under loss: the client's rows end as the server's,
     for (let k = rng.int(3); k > 0; k--) b.key("KeyR", true, false, h.now, h.reg);
     for (let k = rng.int(3); k > 0; k--) b.key("KeyT", true, false, h.now, h.reg);
     if (rng.int(10) === 0) b.free = !b.free;
+    step();
     preview(h, s, pilot, b, h.now);
-    predict.step(s, h.now);
-    if (!b.active || b.problem === RESULT_NO_SNAP || b.problem === RESULT_SHORT) continue;
-    const x = b.pose.x / U, y = b.pose.y / U, z = b.pose.z / U;
-    if (predict.covers(x, y, z)) continue;
-    const fine = b.problem === 0, seq = b.place(s, h.reg);
+    // While the hand is changing nothing is shown, so nothing is set down as the piece being put away.
+    if (s.handChanging) expect(b.active).toBe(false);
+    if (!b.active) continue;
+    const before = predict.entries.length, seq = b.setDown(s, h.reg, h.now);
     counts.asked += seq !== 0 ? 1 : 0;
-    if (fine && predict.add(seq, b.kind, b.inHand, x, y, z, b.pose.yaw, h.now)) counts.drawn++;
+    counts.held += seq < 0 ? 1 : 0;
+    if (predict.entries.length > before) {
+      counts.drawn++;
+      if (predict.entries[before]!.on.length > 0 || seq < 0) counts.deep++;
+    }
     counts.most = Math.max(counts.most, predict.entries.length);
     // A predicted piece is never a row.
     expect(s.world!.structs.count).toBeLessThanOrEqual(structs.count + 64);
@@ -284,12 +306,18 @@ test("2,000 seeded placements under loss: the client's rows end as the server's,
   }
   for (let k = 0; k < 40; k++) {
     h.run(100);
-    predict.step(s, h.now);
+    step();
   }
   expect(counts.asked).toBe(2000);
   expect(counts.drawn).toBeGreaterThan(600);
   expect(counts.most).toBeGreaterThan(1);
   expect(counts.undone).toBeGreaterThan(10);
+  // Some were set on a piece the server had not answered for, a few of them on a base whose frame it had yet to say.
+  expect(counts.deep).toBeGreaterThan(10);
+  expect(counts.held).toBeGreaterThan(5);
+  // Under one in twenty of the pieces drawn at the click went again. Those left joined a piece broken behind the builder's
+  // back in the 50 ms before the click, which no client can know.
+  expect(refused.size / counts.drawn).toBeLessThan(0.05);
   // A key names its piece's slot, so one sent while the hand was still changing on the server is refused, not built as another piece.
   expect(h.host.build.placed).toBeGreaterThan(400);
   expect(h.host.build.refused).toBeGreaterThan(100);

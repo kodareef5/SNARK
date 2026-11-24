@@ -9,14 +9,17 @@ import { STRUCT_UNITS, YAW_UNITS } from "../../shared/coords.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
 import { handleIndex } from "../../shared/ids.ts";
 import { PLACE_JOIN, PLACE_NEW, PLACE_REST, writeJoin, writeNew, writeRest } from "../../shared/net/place.ts";
-import { BOX_SELF, CMD_MOVE, CMD_PLACE, CMD_SELECT, PLACED_COUNTS, PLACED_ENTITY, PLACED_METRES, PLACED_NONE, PLACED_STRUCTURE, RESULT_BODY, RESULT_FAR, RESULT_FULL, RESULT_LIMIT, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_NO_SUPPORT, RESULT_ENEMY_NEAR, RESULT_OBSTRUCTED, RESULT_OK, RESULT_RATE, RESULT_SHORT, RESULT_TERRAIN, RESULT_TOO_HIGH } from "../../shared/net/protocol.ts";
+import { BOX_SELF, CMD_MOVE, CMD_PLACE, CMD_SELECT, PLACED_COUNTS, PLACED_ENTITY, PLACED_METRES, PLACED_NONE, PLACED_STRUCTURE, RESULT_BODY, RESULT_FAR, RESULT_FULL, RESULT_LIMIT, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_NO_SUPPORT, RESULT_ENEMY_NEAR, RESULT_OBSTRUCTED, RESULT_OK, RESULT_RATE, RESULT_SHORT, RESULT_TERRAIN, RESULT_TOO_HIGH, RESULT_WAIT } from "../../shared/net/protocol.ts";
 import { HOTBAR_SLOTS } from "../../shared/sim/items.ts";
 import { capsuleKind, type CollisionWorld } from "../../shared/world/collide.ts";
-import { keyLvl } from "../../shared/world/lattice/module.ts";
+import { HALF_SIDE_M } from "../../shared/world/lattice/forms.ts";
+import { SIDE, keyLvl } from "../../shared/world/lattice/module.ts";
 import { PLACE_REACH, candidates, choose, makeCandidates, makeVerdict, validate, validateFree, type Site } from "../../shared/world/lattice/place.ts";
 import { HIT_STRUCTURE, HIT_TERRAIN, castWorld, rayHit } from "../../shared/world/ray.ts";
 import { BUILD_REACH, LIFT_MAX, LIFT_MIN, ROLE_THING, enemyGap, enemyGapFound, freePose, restPose, type Pose } from "../../shared/world/snap.ts";
 import { Support } from "../../shared/world/support.ts";
+import { BuildView, PROVISIONAL } from "./build-view.ts";
+import { ASKED, type Asking, type PredictBuild } from "./predict-build.ts";
 import type { ClientSession } from "./session.ts";
 import { structName } from "./ui/structure.ts";
 
@@ -29,6 +32,14 @@ const AWAY_MS = 1000;
 const BODY_SLACK = 0.1;
 export const ENEMY_FOUNDATION = 50;
 export const ENEMY_PILLAR = 10;
+/** The view of the rows is let go this long after the piece was put away. */
+const VIEW_IDLE_MS = 10000;
+/** Metres round the builder that the view must hold whole before the preview asks it. */
+const VIEW_NEED = PLACE_REACH + 20;
+/** Metres from a slot within which a piece not yet answered for may be what offers it or holds it up. */
+const ON_REACH = 1.75 * SIDE * HALF_SIDE_M;
+/** Pieces not yet answered for that may stand one on another: a third waits for the first's answer. */
+const UNSURE_MOST = 2;
 /** Palette indices for the ghost. */
 export const GHOST_OK = 16;
 export const GHOST_BAD = 8;
@@ -48,6 +59,8 @@ export const BUILD_REASONS: Readonly<Record<number, string>> = {
   [RESULT_SHORT]: "You have none left",
   [RESULT_FULL]: "This area holds no more pieces",
   [RESULT_LIMIT]: "No more structures may stand here",
+  // The preview's own: a piece under it is two answers away.
+  [RESULT_WAIT]: "Waiting for the piece it joins",
 };
 
 /** What stands in a piece's way, as S_PLACED tells it and the preview finds it: a PLACED_ detail and its numbers. */
@@ -61,9 +74,9 @@ export interface Blocker {
  * Why a piece may not go where it was asked, naming the cause where one is known: the piece or the body in the way, or
  * the metres to another tribe's foundation. `nameOf` gives a body's name by its entity index, "" for one not in view.
  */
-export function buildReason(reg: Registry, session: ClientSession, code: number, by: Blocker, nameOf?: (entity: number) => string): string {
+export function buildReason(reg: Registry, session: ClientSession, code: number, by: Blocker, nameOf?: (entity: number) => string, structs = session.world?.structs): string {
   if (code === RESULT_OBSTRUCTED && by.detail === PLACED_STRUCTURE) {
-    const t = session.world?.structs.chunks[Math.floor(by.a / 65536)];
+    const t = structs?.chunks[Math.floor(by.a / 65536)];
     const kind = t && (by.a & 0xffff) < t.high ? t.kind[by.a & 0xffff]! : 0;
     if (kind !== 0) return `Blocked by ${structName(reg, kind)}`;
   }
@@ -76,6 +89,14 @@ export function buildReason(reg: Registry, session: ClientSession, code: number,
   if (code === RESULT_ENEMY_NEAR && by.detail === PLACED_METRES) return `${by.a} m from another tribe's ${by.b <= ENEMY_PILLAR ? "pillar" : "foundation"}; ${by.b} needed`;
   return BUILD_REASONS[code] ?? "It cannot be built there";
 }
+
+/** What the shared checks ask of this client about a place in one store, and that store's support. */
+interface Asked {
+  readonly site: Site;
+  readonly support: Support;
+}
+
+const NO_PIECES: readonly never[] = [];
 
 export class Builder {
   /** A building piece is in hand. */
@@ -90,6 +111,8 @@ export class Builder {
   readonly by: Blocker = { detail: PLACED_NONE, a: 0, b: 0 };
   /** How many of an item have been set down and not yet taken from the inventory (PredictBuild.pending). */
   pending: ((item: number) => number) | null = null;
+  /** The pieces set down that are not rows yet. With them the preview sees those pieces and may build on them. */
+  predict: PredictBuild | null = null;
   /** The item in hand that places a piece, or 0. */
   get inHand(): number { return this.item; }
   /** free means the piece joins nothing. `turn` is its turn in a slot, or quarter turns on open ground. */
@@ -113,15 +136,21 @@ export class Builder {
   private item = 0;
   private readonly offered = makeCandidates();
   private readonly verdict = makeVerdict();
-  /** What the shared checks ask of this client about a place, and the session and registry it answers from. */
-  private site: Site | null = null;
+  private readonly alone = makeVerdict();
+  /** What the shared checks ask of this client about a place, for each store asked, and the session and registry it answers from. */
+  private readonly sites: Asked[] = [];
   private session: ClientSession | null = null;
   private reg: Registry | null = null;
-  private support: Support | null = null;
-  /** The last question support was asked (kind, pose, the store's shapes) and its answer, 1 if it stands. */
-  private readonly stood = new Float64Array(7).fill(-1);
-  /** The same for the other tribes' foundations near: the place, the team and the store's shapes, then 1 if one is too near, its metres and what it needs. */
-  private readonly near = new Float64Array(7).fill(-1);
+  /** The rows as the preview sees them, with the pieces that are not rows yet; and when a piece was last in hand. */
+  private view: BuildView | null = null;
+  private activeAt = 0;
+  /** The world last asked: the view's, or the session's own while the view is not whole. */
+  private seen: CollisionWorld | null = null;
+  /** The pieces not yet answered for that the piece shown joins or stands on. */
+  private readonly on: number[] = [];
+  private readonly off: number[] = [];
+  /** What the preview was last worked out from. While none of it changes, it stands. */
+  private readonly from = new Float64Array(20).fill(NaN);
   /** The problem and its cause the notice was last worded for. */
   private readonly worded = [-1, -1, -1, -1];
   private words = "";
@@ -141,13 +170,14 @@ export class Builder {
   private asked = 0;
 
   /** The checks of a place that are this client's to answer: its own body, the other tribes it has been sent, what holds a piece up. The cap is the server's. */
-  private siteFor(world: CollisionWorld): Site {
-    if (this.site?.structs === world.structs) return this.site;
+  private siteFor(world: CollisionWorld): Asked {
+    for (const a of this.sites) if (a.site.structs === world.structs) return a;
     const structs = world.structs;
     const heightAt = (x: number, z: number): number => world.hf.heightAt(x, z);
-    this.support = new Support(structs, this.reg!, heightAt);
-    this.stood[5] = -1;
-    return (this.site = {
+    const support = new Support(structs, this.reg!, heightAt);
+    const stood = new Float64Array(7).fill(-1);
+    const near = new Float64Array(7).fill(-1);
+    const site: Site = {
       structs,
       tables: this.reg!,
       heightAt,
@@ -158,20 +188,38 @@ export class Builder {
         return capsuleKind(reg.parts, kind, x, y, z, yaw, tw, own.x, own.y, own.z, reg.bodyRadius[session.ownKind]!, reg.bodyHeight[session.ownKind]!, BODY_SLACK) ? handleIndex(session.ownHandle) : -1;
       },
       enemy: (x, z, out) => {
-        if (!this.enemyNear(structs, this.reg!, this.session!.tribe.team, x, z)) return false;
-        [out.detail, out.a, out.b] = [PLACED_METRES, Math.floor(this.near[5]!), this.near[6]!];
+        if (!this.enemyNear(structs, near, this.reg!, this.session!.tribe.team, x, z)) return false;
+        [out.detail, out.a, out.b] = [PLACED_METRES, Math.floor(near[5]!), near[6]!];
         return true;
       },
       // Asked again only when the piece, its pose or any piece's place has changed.
       stands: (kind, x, y, z, yaw) => {
-        const s = this.stood;
-        if (s[0] !== kind || s[1] !== x || s[2] !== y || s[3] !== z || s[4] !== yaw || s[5] !== structs.shapes) {
-          s.set([kind, x, y, z, yaw, structs.shapes]);
-          s[6] = this.support!.stands(kind, x, y, z, yaw) ? 1 : 0;
+        if (stood[0] !== kind || stood[1] !== x || stood[2] !== y || stood[3] !== z || stood[4] !== yaw || stood[5] !== structs.shapes) {
+          stood.set([kind, x, y, z, yaw, structs.shapes]);
+          stood[6] = support.stands(kind, x, y, z, yaw) ? 1 : 0;
         }
-        return s[6] === 1;
+        return stood[6] === 1;
       },
-    });
+    };
+    // The session's own store and the view's: a world left behind is forgotten with its first.
+    if (this.sites.length >= 2) this.sites.shift();
+    const made = { site, support };
+    this.sites.push(made);
+    return made;
+  }
+
+  /**
+   * The world the preview asks: the view of the rows with the pieces not yet rows laid over them, brought up to date, or
+   * the session's own while the view round the builder is still being read.
+   */
+  private look(world: CollisionWorld, reg: Registry, x: number, z: number, team: number): CollisionWorld {
+    if (!this.view?.of(world)) {
+      this.view = new BuildView(world, reg.halfX, reg.halfY, reg.halfZ);
+      this.sites.length = 0;
+    }
+    const view = this.view;
+    view.update(x, z, this.predict?.live ?? NO_PIECES, this.predict?.stamp ?? 0, team, this.predict?.taken);
+    return view.ready(x - VIEW_NEED, z - VIEW_NEED, x + VIEW_NEED, z + VIEW_NEED) ? view.world : world;
   }
 
   /** The eye is at (ox, oy, oz), looking along the unit direction (dx, dy, dz). `yaw` is the body's facing in radians. */
@@ -180,14 +228,21 @@ export class Builder {
     const slot = inv && inv.hotbar >= 0 && session.held >= 0 ? inv.hotbar + session.held : -1;
     const item = slot >= 0 && inv!.count[slot]! > 0 ? inv!.item[slot]! : 0;
     if (this.awaySlot >= 0 && (session.held !== this.awaySlot || nowMs - this.awayAt >= AWAY_MS)) this.awaySlot = -1;
-    const forms = this.awaySlot >= 0 ? null : (reg.places[item] ?? null);
+    // While the hand is changing the slot in it is the one being left: nothing is shown or set down by it.
+    const forms = this.awaySlot >= 0 || session.handChanging ? null : (reg.places[item] ?? null);
     this.active = forms !== null;
     if (!forms) {
       this.item = 0;
       this.notice = "";
       this.looked = -1;
+      this.from[0] = NaN;
+      if (this.view && nowMs - this.activeAt >= VIEW_IDLE_MS) {
+        this.view = null;
+        this.sites.length = 0;
+      }
       return;
     }
+    this.activeAt = nowMs;
     if (item !== this.item) {
       this.item = item;
       this.variant = this.turn = this.lift = this.next = this.raise = 0;
@@ -203,16 +258,39 @@ export class Builder {
     this.kind = kind;
     this.session = session;
     this.reg = reg;
-    const structs = world.structs;
-    const site = this.siteFor(world);
     const team = session.tribe.team;
-    const hit = castWorld(world, ox, oy, oz, dx, dy, dz, BUILD_REACH);
-    const looked = (this.looked = hit === HIT_STRUCTURE ? rayHit.ref : -1);
+    const seen = (this.seen = this.look(world, reg, ox, oz, team));
+    const have = inv!.count[slot]! - (this.predict ? this.predict.pending(item) : (this.pending?.(item) ?? 0));
+    // Nothing the preview is worked out from has changed: it stands as it is.
+    const from = this.from;
+    const now = [ox, oy, oz, dx, dy, dz, yaw, kind, this.turn, this.free ? 1 : 0, this.lift, seen === world ? 0 : 1, seen.structs.shapes, world.structs.shapes, this.predict?.stamp ?? 0, team, have, item, this.view!.version];
+    let same = this.next === 0 && this.raise === 0;
+    for (let i = 0; same && i < now.length; i++) same = from[i] === now[i];
+    if (!same) {
+      this.work(session, seen, world, reg, kind, team, have, ox, oy, oz, dx, dy, dz, yaw);
+      // What it asked may have turned the view's rows over and back.
+      now[12] = seen.structs.shapes;
+      from.set(now);
+    }
+    this.notice = nowMs < this.refusalUntil ? this.refusal : this.words;
+  }
+
+  /** Works the preview out: where the piece would go in the world `seen`, and what is wrong with it there. */
+  private work(session: ClientSession, seen: CollisionWorld, world: CollisionWorld, reg: Registry, kind: number, team: number, have: number, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, yaw: number): void {
+    const structs = seen.structs;
+    const site = this.siteFor(seen).site;
+    const view = seen === world ? null : this.view!;
+    const hit = castWorld(seen, ox, oy, oz, dx, dy, dz, BUILD_REACH);
+    const looked = hit === HIT_STRUCTURE ? rayHit.ref : -1;
+    // A piece that is no row yet is not one to pick, mend or rest a thing on.
+    const unbuilt = looked >= 0 && view !== null && view.idAt(looked) !== 0;
+    this.looked = unbuilt ? -1 : looked;
     const reach = rayHit.t;
     const verdict = this.verdict;
     const p = this.pose;
     let problem = 0;
     this.mode = -1;
+    this.on.length = 0;
     // The free point is where the look ends, facing as the builder does, turned by quarters. Open ground and a thing on a floor use it.
     this.freeX = Math.round((ox + dx * reach) * STRUCT_UNITS);
     this.freeZ = Math.round((oz + dz * reach) * STRUCT_UNITS);
@@ -223,8 +301,10 @@ export class Builder {
       const t = structs.chunks[Math.floor(looked / 65536)]!;
       if (!restPose(structs, reg, looked, kind, this.freeX / STRUCT_UNITS, this.freeZ / STRUCT_UNITS, this.freeYaw, p)) problem = RESULT_NO_SNAP;
       else if (t.owner[looked & 0xffff] !== team || team === 0) problem = RESULT_NOT_YOURS;
+      // The floor is no row yet, so the command has no ref to name it by.
+      else if (unbuilt) problem = RESULT_WAIT;
       else problem = validateFree(site, kind, p, ox, oy, oz, verdict);
-      if (problem !== RESULT_NO_SNAP) this.mode = PLACE_REST;
+      if (problem !== RESULT_NO_SNAP && problem !== RESULT_WAIT) this.mode = PLACE_REST;
     } else if (!this.free && candidates(site, kind, team, ox, oy, oz, dx, dy, dz, reach, this.offered) > 0) {
       const c = this.offered;
       const at = this.slot;
@@ -252,9 +332,10 @@ export class Builder {
       this.mode = PLACE_JOIN;
       problem = validate(site, kind, team, at.fr, at.k0, this.keyed(reg), ox, oy, oz, verdict);
       [p.x, p.y, p.z, p.yaw] = [verdict.pose.x, verdict.pose.y, verdict.pose.z, verdict.pose.yaw];
+      if (problem === 0 && view && this.unsure(view, site, kind, team, ox, oy, oz)) problem = RESULT_WAIT;
     } else {
       // A bed is set only on a floor.
-      if (hit !== HIT_TERRAIN || (reg.defs[kind] as StructureDef).floor === true || !freePose(site.heightAt, reg, kind, this.freeX / STRUCT_UNITS, this.freeZ / STRUCT_UNITS, this.freeYaw, this.lift, p)) problem = RESULT_NO_SNAP;
+      if (hit !== HIT_TERRAIN || (reg.defs[kind] as StructureDef).floor === true || !freePose(site.heightAt, reg, kind, this.freeX / STRUCT_UNITS, this.freeZ / STRUCT_UNITS, this.freeYaw, this.lift, p)) problem = unbuilt && reg.role[kind] === ROLE_THING ? RESULT_WAIT : RESULT_NO_SNAP;
       else {
         this.mode = PLACE_NEW;
         problem = validateFree(site, kind, p, ox, oy, oz, verdict);
@@ -264,16 +345,46 @@ export class Builder {
     if (this.mode !== PLACE_JOIN) this.pinned = false;
     const by = this.by;
     by.detail = PLACED_NONE;
-    if (problem !== 0 && this.mode >= 0) [by.detail, by.a, by.b] = [verdict.detail, verdict.a, verdict.b];
+    if (problem !== 0 && problem !== RESULT_WAIT && this.mode >= 0) [by.detail, by.a, by.b] = [verdict.detail, verdict.a, verdict.b];
     // Every one carried is already on its way down.
-    if (problem !== RESULT_NO_SNAP && inv!.count[slot]! - (this.pending?.(item) ?? 0) <= 0) problem = RESULT_SHORT;
+    if (problem !== RESULT_NO_SNAP && have <= 0) problem = RESULT_SHORT;
     this.problem = problem;
     const w = this.worded;
     if (w[0] !== problem || w[1] !== by.detail || w[2] !== by.a || w[3] !== by.b) {
       [w[0], w[1], w[2], w[3]] = [problem, by.detail, by.a, by.b];
-      this.words = problem === 0 ? "" : buildReason(reg, session, problem, by);
+      this.words = problem === 0 ? "" : buildReason(reg, session, problem, by, undefined, structs);
     }
-    this.notice = nowMs < this.refusalUntil ? this.refusal : this.words;
+  }
+
+  /**
+   * Fills `on` with pieces not yet answered for that the piece shown, fine in the view, needs: the fewest of those near
+   * it, the deepest left out first. True if one of them itself stands on such a piece: then this one waits for an answer.
+   */
+  private unsure(view: BuildView, site: Site, kind: number, team: number, ox: number, oy: number, oz: number): boolean {
+    const predict = this.predict;
+    const on = this.on;
+    if (!predict) return false;
+    const at = this.slot;
+    const p = this.pose;
+    for (const e of predict.entries) {
+      if (e.state !== ASKED || !e.drawn || e.over.mode < 0 || e.over.fr !== at.fr) continue;
+      const far = Math.hypot(e.x - p.x / STRUCT_UNITS, e.y - p.y / STRUCT_UNITS, e.z - p.z / STRUCT_UNITS);
+      if (far <= ON_REACH) on.push(e.id);
+    }
+    if (on.length === 0) return false;
+    on.sort((a, b) => predict.unsure(b) - predict.unsure(a));
+    const k1 = this.keyed(this.reg!);
+    const off = this.off;
+    off.length = 0;
+    for (const id of on) {
+      off.push(id);
+      if (view.without(off, predict.live, team, () => validate(site, kind, team, at.fr, at.k0, k1, ox, oy, oz, this.alone)) !== RESULT_OK) off.pop();
+    }
+    let kept = 0;
+    for (const id of on) if (!off.includes(id)) on[kept++] = id;
+    on.length = kept;
+    for (const id of on) if (predict.unsure(id) >= UNSURE_MOST) return true;
+    return false;
   }
 
   /** The shown slot's second word with the piece's turn in it: as many turns as its form has. */
@@ -283,8 +394,7 @@ export class Builder {
   }
 
   /** Whether another tribe's foundation or pillar stands too near (x, z), asked again only when the place or any piece's has changed. */
-  private enemyNear(structs: CollisionWorld["structs"], reg: Registry, team: number, x: number, z: number): boolean {
-    const n = this.near;
+  private enemyNear(structs: CollisionWorld["structs"], n: Float64Array, reg: Registry, team: number, x: number, z: number): boolean {
     if (n[0] !== x || n[1] !== z || n[2] !== team || n[3] !== structs.shapes) {
       n[0] = x; n[1] = z; n[2] = team; n[3] = structs.shapes;
       n[4] = enemyGap(structs, reg.role, team, x, z, ENEMY_FOUNDATION, ENEMY_PILLAR) ? 1 : 0;
@@ -374,9 +484,36 @@ export class Builder {
     return true;
   }
 
+  /**
+   * Sets down what the preview shows, as a click does. The command is sent, or held back for a base whose frame the server
+   * has yet to say; a piece the preview finds nothing wrong with goes to `predict`, to be drawn at once. A place already
+   * asked for, or blocked by a piece of the builder's own that is no row yet, is not asked for again. Returns the
+   * command's sequence number, -1 for one held back, 0 if nothing was asked.
+   */
+  setDown(session: ClientSession, reg: Registry, nowMs: number): number {
+    const predict = this.predict;
+    const p = this.pose;
+    const x = p.x / STRUCT_UNITS, y = p.y / STRUCT_UNITS, z = p.z / STRUCT_UNITS;
+    if (!this.active || this.mode < 0 || (predict !== null && predict.covers(x, y, z))) return 0;
+    const view = this.view !== null && this.seen === this.view.world ? this.view : null;
+    if (this.problem === RESULT_OBSTRUCTED && this.by.detail === PLACED_STRUCTURE && view !== null && view.idAt(this.by.a) !== 0) return 0;
+    const fine = this.problem === 0;
+    const held = this.mode === PLACE_JOIN && this.slot.fr >= PROVISIONAL;
+    if (held && (!fine || !predict)) return 0;
+    const seq = held ? 0 : this.place(session, reg);
+    if (!held && seq === 0) return 0;
+    if (fine && predict) {
+      const at: Asking = { mode: this.mode, variant: this.variant % reg.places[this.item]!.length, fr: this.slot.fr, k0: this.slot.k0, k1: this.keyed(reg), on: this.on, index: 0, count: 1, step: 0 };
+      if (!predict.add(seq, this.kind, this.item, x, y, z, p.yaw, nowMs, view ? at : null) && held) return 0;
+    }
+    return held ? -1 : seq;
+  }
+
   /** Returns the command's sequence number, or 0 if nothing was sent. */
   place(session: ClientSession, reg: Registry): number {
-    if (!this.active || this.mode < 0 || this.problem === RESULT_NO_SNAP || this.problem === RESULT_SHORT) return 0;
+    if (!this.active || this.mode < 0 || this.problem === RESULT_NO_SNAP || this.problem === RESULT_SHORT || this.problem === RESULT_WAIT) return 0;
+    // A base the server has not answered for has no frame a command can name.
+    if (this.mode === PLACE_JOIN && this.slot.fr >= PROVISIONAL) return 0;
     const variant = this.variant % reg.places[this.item]!.length;
     const mode = this.mode;
     const { fr, k0 } = this.slot;

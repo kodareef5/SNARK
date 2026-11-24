@@ -165,7 +165,7 @@ import { NodeField, type NodeSource } from "../../shared/world/nodes.ts";
 import { heapAt, heapHealth } from "../../shared/world/breaking.ts";
 import { FramesTold, ROW_EMPTY, ROW_IN_PLACE, ROW_KEYED, RowCoder } from "../../shared/world/rows.ts";
 import { GONE_BLAST, GONE_TAKEN, PUT_AS_IS, PUT_FREE, StructureStore, withSurfaces, type ChunkTable } from "../../shared/world/structures.ts";
-import { CMD_FAR, CMD_HAVE, CMD_STATICS, HAVE_MOST, HAVE_REACH, RESULT_BUSY, RESULT_OK, S_FAR, S_MARKS, S_TACTICAL } from "../../shared/net/protocol.ts";
+import { CMD_FAR, CMD_HAVE, CMD_SELECT, CMD_STATICS, HAVE_MOST, HAVE_REACH, RESULT_BUSY, RESULT_OK, S_FAR, S_MARKS, S_TACTICAL } from "../../shared/net/protocol.ts";
 import { FarStore } from "./farcells.ts";
 import { GoneStore } from "./gonelists.ts";
 import type { FarSource } from "./render/far.ts";
@@ -378,6 +378,8 @@ const PARK_BYTES = 4 * 1024 * 1024;
 const SLOT_BYTES = 32;
 /** In `whole`: the chunk was put back from those kept, and the server's next rows for it bring it up to date. */
 const CAUGHT_UP_NEXT = 2;
+/** Milliseconds after a hand change is answered that its slot is still awaited. */
+const HAND_GRACE_MS = 80;
 /** Milliseconds with no snapshot past which the game's socket is taken as held back (`behind`): some snapshots' worth. */
 export const BEHIND_MS = 300;
 /** A view or far request the server was too busy to take is sent again this long after. The server reads either once a second. */
@@ -588,6 +590,13 @@ export class ClientSession {
   ownLook: Uint8Array | null = null;
   /** Hotbar slot in hand, 0 to 9, or -1. */
   held = -1;
+  /** The last CMD_SELECT not yet answered, and until when its answer's slot may still be on its way. */
+  private handSeq = 0;
+  private handGrace = -1;
+  /** Whether the hand is changing: `held` is then the slot the server is leaving. */
+  get handChanging(): boolean {
+    return this.handSeq !== 0 || this.lastNow < this.handGrace;
+  }
   /** Added to the tick to get the time of day. */
   dayOffset = 0;
   /** Text from the server, oldest first. `logVersion` counts every line ever added. */
@@ -916,6 +925,7 @@ export class ClientSession {
       return 0;
     }
     this.commandSeq = seq;
+    if (op === CMD_SELECT) this.handSeq = seq;
     this.send(CH_RELIABLE, C_COMMAND, op);
     return seq;
   }
@@ -1611,6 +1621,11 @@ export class ClientSession {
           else if (code === RESULT_BUSY) s.staticsSeq = 0;
         }
         if (seq !== 0 && seq === s.haveSeq) s.unpark(code === RESULT_OK);
+        if (seq !== 0 && seq === s.handSeq) {
+          // The slot it left in hand comes after this, in the same tick's own state.
+          s.handSeq = 0;
+          s.handGrace = code === RESULT_OK ? s.lastNow + HAND_GRACE_MS : -1;
+        }
         // The newest view or far request, refused, is forgotten so that it is asked again.
         if (code === RESULT_BUSY && seq !== 0 && (seq === s.viewSeq || seq === s.farSeq)) {
           if (seq === s.viewSeq) s.viewCap = s.viewBytes = -1;
@@ -2061,7 +2076,9 @@ export class ClientSession {
       kind: OWN_HELD,
       read(s, r) {
         const held = r.u8();
-        if (!r.overflow) s.held = held === 255 ? -1 : held;
+        if (r.overflow) return;
+        s.held = held === 255 ? -1 : held;
+        if (s.handSeq === 0) s.handGrace = -1;
       },
     });
     ownKinds.add({

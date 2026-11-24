@@ -298,10 +298,12 @@ export class App {
       this.ui.emotes.result(seq, code, this.nowMs);
       if (code === RESULT_LOCKED) this.ui.hear?.("door/locked");
     };
-    this.builder.pending = (item) => this.predict.pending(item);
+    this.builder.predict = this.predict;
     session.onPlaced = (p) => {
       this.predict.placed(p, session, this.nowMs);
-      this.builder.answered(p.seq, p.code, p.code === RESULT_OK ? "" : buildReason(this.reg, session, p.code, p, (entity) => this.nameOf(entity)), this.nowMs);
+      // A piece that went with the one it stood on has been shown going: its own refusal says nothing new.
+      const quiet = this.predict.quiet(p.seq) && p.code !== RESULT_OK;
+      this.builder.answered(p.seq, quiet ? RESULT_OK : p.code, p.code === RESULT_OK || quiet ? "" : buildReason(this.reg, session, p.code, p, (entity) => this.nameOf(entity)), this.nowMs);
     };
     session.onRow = (ref) => this.predict.row(ref);
     this.ui.structure.onUndo = () => this.undo();
@@ -419,12 +421,8 @@ export class App {
       return;
     }
     if (button === 0 && this.builder.active) {
-      const b = this.builder, x = b.pose.x / STRUCT_UNITS, y = b.pose.y / STRUCT_UNITS, z = b.pose.z / STRUCT_UNITS;
       // A place already asked for is not asked for twice. A piece the preview finds nothing wrong with is drawn at once.
-      if (down && !this.predict.covers(x, y, z)) {
-        const fine = b.problem === 0, seq = b.place(this.session, this.reg);
-        if (fine) this.predict.add(seq, b.kind, b.inHand, x, y, z, b.pose.yaw, this.nowMs);
-      }
+      if (down) this.builder.setDown(this.session, this.reg, this.nowMs);
       return;
     }
     // The button that would strike throws what is in the arms, where the body looks.
