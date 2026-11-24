@@ -657,13 +657,13 @@ test("a thatch gable's two hands are each other in a mirror, point for point", (
   }
 });
 
-test("a thatch roof reads its row: raised by its slab's thickness, it is the same roof that much higher", () => {
-  // What the row may become if a roof is made to stand on its level: its top and its origin a slab's thickness up, and nothing under the level.
+test("a thatch roof reads its row: let down by its slab's thickness, as the row was, it is the same roof that much lower", () => {
+  // The row stands a roof on its level since 2026-11-24: its top and its origin are a slab's thickness over where they hung, and nothing is under the level.
   const row = THATCH_NEW.roof_hip!;
-  const stood: FormDef = { ...row, span: 2, corner: row.corner!.map((h) => h + row.thick), at: [row.at[0], row.at[1] + row.thick, row.at[2]] };
-  expect(colliderBox(stood)).toEqual(colliderBox(row));
-  const [as, raised] = [levelsOf(THATCH, "roof_hip", row), levelsOf(THATCH, "roof_hip", stood)];
-  as.forEach((shape, level) => expect(Bun.hash(Float64Array.from(raised[level]!.corners().flat())), `level ${level}`).toBe(Bun.hash(Float64Array.from(shape.corners().flat()))));
+  const hung: FormDef = { ...row, corner: row.corner!.map((h) => h - row.thick), at: [row.at[0], row.at[1] - row.thick, row.at[2]] };
+  expect(colliderBox(hung)).toEqual(colliderBox(row));
+  const [as, lower] = [levelsOf(THATCH, "roof_hip", row), levelsOf(THATCH, "roof_hip", hung)];
+  as.forEach((shape, level) => expect(Bun.hash(Float64Array.from(lower[level]!.corners().flat())), `level ${level}`).toBe(Bun.hash(Float64Array.from(shape.corners().flat()))));
 });
 
 test("with no post of its own, every thatch wall ends on its collider's ends, and with one it stands past its left", () => {

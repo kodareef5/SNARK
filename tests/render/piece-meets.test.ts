@@ -301,7 +301,7 @@ test("a thatch roof that runs on down from another lies under its eave course, w
   if (process.env.SNARK_MEETS) console.log(said.join("\n"));
 });
 
-test("a thatch gable's top lies in the plane of the roof's corner heights to 2 mm, with no gap under the roof and nothing through it", () => {
+test("a thatch gable's top lies in the plane of the roof's underside to 2 mm, under its thatch, with nothing through it", () => {
   const roof = ALL.roof!;
   const said: string[] = [];
   for (let level = 0; level < TEXTURED; level++) {
@@ -333,7 +333,8 @@ test("a thatch gable's top lies in the plane of the roof's corner heights to 2 m
         through = Math.max(through, w[1] - r[1]);
       }
       said.push(`thatch: ${hand} level ${level}: top within ${(most * 1000).toFixed(2)} mm of the plane, gap under the roof ${(Math.max(0, gap) * 1000).toFixed(2)} mm, through it ${(Math.max(0, through) * 1000).toFixed(2)} mm`);
-      expect(gap, `${hand} level ${level}: no gap under the roof`).toBeLessThanOrEqual(1e-6);
+      // The roof stands on its corner heights since 2026-11-24, and over a gable only its thatch runs out: as wood's boards do.
+      expect(gap, `${hand} level ${level}: the gap under the thatch`).toBeLessThanOrEqual(GABLE_GAP);
       expect(through, `${hand} level ${level}: nothing through the roof`).toBeLessThanOrEqual(1e-6);
     }
   }
