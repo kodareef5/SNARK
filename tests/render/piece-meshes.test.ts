@@ -7,6 +7,8 @@ import { MADE_PIECE_TRIANGLES, measureSurface } from "../../tools/art/check.ts";
 import { TEXTURED, colliderBox, levelsOf, yieldPlanes } from "../../tools/pack/pieces/lod.ts";
 import { tierShapes } from "../../tools/pack/pieces/tier.ts";
 import { WOOD } from "../../tools/pack/pieces/wood.ts";
+import { METAL, bakeMetal, metalColours } from "../../tools/pack/pieces/metal.ts";
+import { REGION_BASE } from "../../shared/pack/palette.ts";
 
 /** Metres a mesh may stand out of its collider: a sill under its foot, a peg, a hewn timber's bow. */
 const PROUD = 0.04;
@@ -65,4 +67,89 @@ test("every wood level is closed, looks outward and costs no more than a made pi
 test("a recipe makes the same mesh each time it is asked", () => {
   const [a, b] = [tierShapes(WOOD, FORMS), tierShapes(WOOD, FORMS)];
   expect(a.map((m) => m.lods.map((l) => Bun.hash(l.positions)))).toEqual(b.map((m) => m.lods.map((l) => Bun.hash(l.positions))));
+});
+
+// Metal (tools/pack/pieces/metal.ts): flat levels in two steel greys, the plate's faces the piece's own colour.
+
+/** Metres a metal piece may stand out of its collider: a nut on a member that is flush with it. */
+const METAL_PROUD = 0.015;
+/** A metal door's pull and hinges stand off its face, as wood's do. */
+const METAL_PROUD_LEAF = 0.045;
+/** What metal aims at under the made piece's budget, by form and level: flat plate is cheap. */
+const METAL_MOST: Record<string, readonly number[]> = { wall: [1300, 420, 96, 12], doorframe: [1500, 520, 140, 40, 12], windowframe: [1500, 520, 140, 40, 12], foundation: [900, 300, 48, 12], ceiling: [900, 260, 64, 12], pillar: [600, 200, 48, 12], door: [900, 300, 64, 12], door_open: [900, 300, 64, 12], stairs: [1400, 480, 124, 30, 12] };
+
+const metalLevels = Object.entries(FORMS).map(([name, form]) => ({ name, form, shapes: levelsOf(METAL, name, form) }));
+
+test("every metal level lies in its collider but for its nuts and a door's fittings", () => {
+  for (const { name, form, shapes } of metalLevels) {
+    const box = colliderBox(form);
+    shapes.forEach((shape, level) => {
+      let most = 0;
+      for (const p of shape.corners()) {
+        const at = [p[0], p[2], -p[1]];
+        for (let a = 0; a < 3; a++) most = Math.max(most, box[a]! - at[a]!, at[a]! - box[a + 3]!);
+      }
+      expect(most, `${name} level ${level}`).toBeLessThanOrEqual(form.layer === "leaf" ? METAL_PROUD_LEAF : METAL_PROUD);
+      // Only the finest level has nuts: the rest stand in their colliders to the 2 mm a nosing overhangs.
+      if (level > 0 && form.layer !== "leaf") expect(most, `${name} level ${level}`).toBeLessThanOrEqual(0.0021);
+    });
+  }
+});
+
+test("a near metal level has a ring on each yield plane, crossed only by prisms", () => {
+  for (const { name, form, shapes } of metalLevels) {
+    for (const [axis, at] of yieldPlanes(form)) {
+      shapes.slice(0, TEXTURED).forEach((shape, level) => {
+        let on = 0;
+        for (const f of shape.faces) {
+          const side = f.points.map((p) => p[axis]! - at);
+          on += side.filter((d) => Math.abs(d) < 1e-7).length;
+          if (side.some((d) => d > 1e-6) && side.some((d) => d < -1e-6)) expect(f.along, `${name} level ${level}: a ${f.mat} face crosses ${"xyz"[axis]} = ${at}`).toBe(axis);
+        }
+        expect(on, `${name} level ${level}: vertices on ${"xyz"[axis]} = ${at}`).toBeGreaterThanOrEqual(4);
+      });
+    }
+  }
+});
+
+test("a metal wall ends flat on its collider's ends at every level", () => {
+  for (const { name, form, shapes } of metalLevels.filter((l) => l.form.layer === "wall")) {
+    const box = colliderBox(form);
+    shapes.forEach((shape, level) => {
+      const xs = shape.corners().map((p) => p[0]);
+      expect([name, level, Math.min(...xs), Math.max(...xs)]).toEqual([name, level, box[0], box[3]]);
+    });
+  }
+});
+
+test("every metal level is closed, flat and within what metal aims at", () => {
+  for (const mesh of bakeMetal(FORMS)) {
+    const aim = METAL_MOST[mesh.id.slice(5, -6)]!;
+    expect(mesh.lods.length, mesh.id).toBe(aim.length);
+    mesh.lods.forEach((lod, level) => {
+      const s = measureSurface(lod);
+      expect([mesh.id, level, s.holes, s.flipped, s.insideOut]).toEqual([mesh.id, level, 0, 0, 0]);
+      expect(lod.indices.length / 3, `${mesh.id} level ${level}`).toBeLessThanOrEqual(Math.min(aim[level]!, MADE_PIECE_TRIANGLES[level]![1]));
+      expect(lod.uvs, `${mesh.id} level ${level} is flat`).toBeUndefined();
+    });
+  }
+});
+
+test("a metal piece is two-toned: plate in its own colour, frame a fixed grey", () => {
+  const colour = metalColours();
+  expect([colour("plate"), colour("frame")]).toEqual([REGION_BASE, 91]);
+  for (const mesh of bakeMetal(FORMS)) {
+    // To the level its frame is drawn at; past it a slab or a pillar is a box of one of the two.
+    mesh.lods.slice(0, 3).forEach((lod, level) => {
+      const used = new Set(lod.colors);
+      expect([mesh.id, level, used.has(REGION_BASE), used.has(91)]).toEqual([mesh.id, level, true, true]);
+    });
+    // Outer edges are said where a wall is seen close, in the byte a static's corner has, and nowhere past it.
+    expect([mesh.id, mesh.lods[0]!.bones!.some((b) => b >> 2 !== 0), mesh.lods[mesh.lods.length - 1]!.bones]).toEqual([mesh.id, true, undefined]);
+  }
+});
+
+test("the metal recipe makes the same mesh each time it is asked", () => {
+  const [a, b] = [bakeMetal(FORMS), bakeMetal(FORMS)];
+  expect(a.map((m) => m.lods.map((l) => [Bun.hash(l.positions), Bun.hash(l.bones ?? new Uint8Array(0))]))).toEqual(b.map((m) => m.lods.map((l) => [Bun.hash(l.positions), Bun.hash(l.bones ?? new Uint8Array(0))])));
 });

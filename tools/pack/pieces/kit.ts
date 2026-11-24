@@ -439,3 +439,73 @@ export function beamRings(rng: { uniform(a: number, b: number): number }, a: Vec
   }
   return { rings, base, length: len, n, c, hw, hh };
 }
+
+/** The triangles of a level's solids in the recipe's frame, nine numbers each, and each one's normal times twice its area. */
+function soup(shape: Shape): { at: Float64Array; normal: Float64Array } {
+  const corners = shape.corners(), n = corners.length / 3;
+  const at = new Float64Array(n * 9), normal = new Float64Array(n * 3);
+  for (let t = 0; t < n; t++) {
+    const [a, b, c] = [corners[t * 3]!, corners[t * 3 + 1]!, corners[t * 3 + 2]!];
+    at.set([...a, ...b, ...c], t * 9);
+    normal.set(cross(sub(b, a), sub(c, a)), t * 3);
+  }
+  return { at, normal };
+}
+
+/** How many of the solids hold `p`: the faces a ray from it leaves by, less those it enters by. */
+function holds(tris: { at: Float64Array; normal: Float64Array }, p: Vec): number {
+  // A way no face of a piece lies along.
+  const d: Vec = [0.5377, 0.6719, 0.5093];
+  let count = 0;
+  for (let t = 0; t < tris.normal.length / 3; t++) {
+    const o = t * 9, a = tris.at;
+    const e1: Vec = [a[o + 3]! - a[o]!, a[o + 4]! - a[o + 1]!, a[o + 5]! - a[o + 2]!], e2: Vec = [a[o + 6]! - a[o]!, a[o + 7]! - a[o + 1]!, a[o + 8]! - a[o + 2]!];
+    const h = cross(d, e2), det = dot(e1, h);
+    if (Math.abs(det) < 1e-14) continue;
+    const s: Vec = [p[0] - a[o]!, p[1] - a[o + 1]!, p[2] - a[o + 2]!], u = dot(s, h) / det;
+    if (u < 0 || u > 1) continue;
+    const q = cross(s, e1), v = dot(d, q) / det;
+    if (v < 0 || u + v > 1 || dot(e2, q) / det <= 0) continue;
+    count += d[0] * tris.normal[t * 3]! + d[1] * tris.normal[t * 3 + 1]! + d[2] * tris.normal[t * 3 + 2]! > 0 ? 1 : -1;
+  }
+  return count;
+}
+
+/**
+ * A level with no materials, each face in the palette colour or colour region `colour` gives its material, as a pack
+ * takes a flat level. With `edges`, each four-cornered face at least `least` metres across also says its corners and
+ * which of its borders are outer edges, in the byte a body's bone has (shared/world/city.ts cornerByte), so the flat
+ * program wears them as it wears a static's: a border is outer unless the level's solids go on past it, or it is the
+ * foot of an upright face on the level's lowest plane, where the piece stands on what is under it.
+ */
+export function flatLod(shape: Shape, colour: (mat: string) => number, edges = false, least = 0.04): SourceLod {
+  const positions: number[] = [], colors: number[] = [], indices: number[] = [], bones: number[] = [];
+  const tris = edges ? soup(shape) : null;
+  const lowest = Math.min(...shape.faces.flatMap((f) => f.points.map((q) => q[2])));
+  for (const f of shape.faces) {
+    const first = positions.length / 3, list = triangles(f), tone = colour(f.mat);
+    let outer = 0;
+    const q = f.points;
+    if (tris && !f.tris && q.length === 4) {
+      const n = unit(cross(sub(q[1]!, q[0]!), sub(q[3]!, q[0]!)));
+      const middle = scale(q.reduce((sum, c) => add(sum, c), [0, 0, 0] as Vec), 0.25);
+      // Borders in cornerByte's order: across at 0 and at 1, up at 0 and at 1.
+      ([[3, 0], [1, 2], [0, 1], [2, 3]] as const).forEach(([a, b], k) => {
+        const mid = scale(add(q[a]!, q[b]!), 0.5), away = sub(mid, middle), reach = length(away);
+        if (reach * 2 < least || length(sub(q[a]!, q[b]!)) < least) return;
+        if (Math.abs(n[2]) < 0.5 && Math.max(q[a]![2], q[b]![2]) <= lowest + 1e-6) return;
+        // A point just past the border and just under the face: in a solid, the surface goes on there.
+        if (holds(tris, sub(add(mid, scale(away, 0.006 / reach)), scale(n, 0.003))) <= 0) outer |= 1 << k;
+      });
+    }
+    q.forEach((c, k) => {
+      positions.push(c[0], c[2], -c[1]);
+      colors.push(tone);
+      bones.push(outer ? [0, 1, 3, 2][k]! | (outer << 2) : 0);
+    });
+    for (const v of list) indices.push(first + v);
+  }
+  const out: SourceLod = { positions: Float32Array.from(positions), colors: Uint8Array.from(colors), indices: Uint32Array.from(indices) };
+  if (edges) out.bones = Uint8Array.from(bones);
+  return out;
+}

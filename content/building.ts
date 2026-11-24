@@ -33,6 +33,8 @@ interface Tier {
   readonly name: string;
   readonly color: number;
   readonly hp: { readonly [piece: string]: number };
+  /** The material made from a recipe (content/texgen/materials.ts) its pieces' faces in their own colour wear, where the tier has no pictures. */
+  readonly made?: string;
 }
 
 /** Wood, stone and metal come in every piece, at the same health. */
@@ -41,12 +43,13 @@ const TIERS: readonly Tier[] = [
   { name: "thatch", color: 18, hp: { foundation: 2400, wall: 1600, doorframe: 1600, ceiling: 1600, door: 1000 } },
   { name: "wood", color: 3, hp: FULL },
   { name: "stone", color: 5, hp: FULL },
-  { name: "metal", color: 11, hp: FULL },
+  // A steel grey, whose painted finish is steel (content/surfaces.ts); its pieces are made by tools/pack/pieces/metal.ts.
+  { name: "metal", color: 89, hp: FULL, made: "plate" },
 ];
 
 function piece(tier: Tier, name: string, shapeName = name): StructureDef {
   const form = SHAPES.find((s) => s.id === `core:shape_${shapeName}`)!;
-  const base: StructureDef = { type: "structure", class: "piece", id: `core:${name}_${tier.name}`, mesh: "shape", shape: form.id, half: shapeHalf(form.boxes), color: tier.color, hp: tier.hp[name.replace("_open", "")]!, material: `core:mat_${tier.name}` };
+  const base: StructureDef = { type: "structure", class: "piece", id: `core:${name}_${tier.name}`, mesh: "shape", shape: form.id, half: shapeHalf(form.boxes), color: tier.color, hp: tier.hp[name.replace("_open", "")]!, material: `core:mat_${tier.name}`, ...(tier.made ? { made: tier.made } : {}) };
   if (name === "door") return { ...base, opens: `core:door_open_${tier.name}`, locked: true };
   if (name === "door_open") return { ...base, opens: `core:door_${tier.name}`, locked: true };
   return base;

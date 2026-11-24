@@ -8,6 +8,8 @@
 // joints-<tier>.png is each junction from outside, from above and from inside with its materials, then as the joint
 // test sees it, with the pixels it counts marked: red shows through, yellow is an unfilled outside corner.
 // forms-<tier>.png is every form of the tier alone, and a small house of them.
+// levels-<tier>.png is every form at each of its levels, with its triangles, and in the corner at the size it is on a
+// 1,080-row screen where medium first draws that level.
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -22,6 +24,12 @@ import { GLYPH_HEIGHT, GLYPH_WIDTH, glyphPixel } from "../snap/font.ts";
 import { encodePng } from "../snap/png.ts";
 import { COUNTS, JointBench, countsOf, fights, piecesPack, registry, tierMeshes } from "./joints.ts";
 import { JUNCTIONS, TIERS, formRow, house, mixedWith, tierJunction, type Junction, type Placed, type TierName } from "./layout.ts";
+import { BUILDING_CONTENT } from "../../content/building.ts";
+import { FORMS } from "../../content/building/forms.ts";
+import { bakeMetal } from "../pack/pieces/metal.ts";
+
+/** A flat piece's faces in its own colours are drawn in its kind's: metal's steel greys, and dev orange for the rest. */
+const OWN_COLOURS = new Map(BUILDING_CONTENT.flatMap((d) => (d.type === "structure" && d.made ? [[d.id, [d.color, ...(d.colors ?? [])]] as const] : [])));
 
 type Rgb = readonly [number, number, number];
 const PAPER: Rgb = [242, 243, 245];
@@ -132,7 +140,8 @@ export class Studio {
     const least = Math.min(...parts.map(([m]) => header[m]!.lods.length - 1));
     const at = Math.min(level, least);
     const surfaced = parts.every(([m]) => (header[m]!.lods[at]!.sections?.length ?? 0) > 0);
-    view.draw({ mesh: parts[0]![0], level: at, placed: parts, around, above, centre, radius, rig: null, colors: [3, 3, 3, 3, 3, 3], textured: surfaced, ...(floor === null ? {} : { floor }) });
+    const own = placed.map((p) => OWN_COLOURS.get(p.id)).find((c) => c !== undefined) ?? [];
+    view.draw({ mesh: parts[0]![0], level: at, placed: parts, around, above, centre, radius, rig: null, colors: Array.from({ length: 6 }, (_, k) => own[k] ?? 3), textured: surfaced, ...(floor === null ? {} : { floor }) });
     return view.raster.color;
   }
 }
@@ -197,12 +206,36 @@ function formSheet(tier: TierName, studio: Studio, has: (id: string) => boolean,
   return canvas;
 }
 
+/** Metres on medium at which a made piece's levels begin (tools/pack/pieces/lod.ts LEVEL_ERRORS), and pixels a metre is a metre off at 1,080 rows. */
+const LEVEL_FROM = [0, 19, 60, 147, 386] as const;
+const PIXELS = 935;
+
+/** One tier's forms at each level: large, and small at the size it is first drawn at. */
+function levelSheet(tier: TierName, studio: Studio, has: (id: string) => boolean, half: (id: string) => readonly [number, number, number], meshes: ReadonlyMap<string, SourceMesh>): Canvas {
+  const forms = formRow(tier, 0, 0, has, half);
+  const [cw, ch, gap, head] = [168, 176, 4, 30];
+  const canvas = new Canvas(8 + LEVEL_FROM.length * (cw + gap), head + forms.length * (ch + gap));
+  canvas.text(`${tier}: each form's levels, from ${LEVEL_FROM.join(", ")} m on medium`, 8, 6, INK, 2);
+  forms.forEach((p, row) => {
+    const h = half(p.id), lods = meshes.get(p.id)!.lods;
+    const radius = Math.max(h[1], Math.hypot(h[0], h[2]) * 0.8) * 1.15 + 0.1;
+    lods.forEach((lod, level) => {
+      const [x, y] = [8 + level * (cw + gap), head + row * (ch + gap)];
+      canvas.shrink(studio.shoot([p], cw * SMOOTH, ch * SMOOTH, [p.x, p.y, p.z], radius, 40, 14, level), cw * SMOOTH, ch * SMOOTH, SMOOTH, x, y);
+      canvas.text(`${p.id.slice(5, -tier.length - 1)} ${level}: ${lod.indices.length / 3}`, x + 4, y + 4);
+      const small = Math.max(4, Math.round((PIXELS * 2 * radius) / Math.max(LEVEL_FROM[level]!, 6)));
+      if (level > 0 && small < cw / 2) canvas.shrink(studio.shoot([p], small * SMOOTH, small * SMOOTH, [p.x, p.y, p.z], radius, 40, 14, level), small * SMOOTH, small * SMOOTH, SMOOTH, x + cw - small - 2, y + ch - small - 2);
+    });
+  });
+  return canvas;
+}
+
 export async function main(args: readonly string[], say: (line: string) => void = console.log): Promise<void> {
   const out = resolve(args.includes("--out") ? args[args.indexOf("--out") + 1]! : "var/pieces");
   const named = args.filter((a, i) => !a.startsWith("--") && args[i - 1] !== "--out");
   const tiers = TIERS.filter((t) => named.length === 0 || named.includes(t));
   mkdirSync(out, { recursive: true });
-  const pack = piecesPack(tierMeshes());
+  const pack = piecesPack([...tierMeshes(), ...bakeMetal(FORMS)]);
   const meshes = new Map(unpackMeshes(pack).map((m) => [m.id, m] as const));
   const reg = registry();
   const has = (id: string): boolean => reg.index.has(id);
@@ -219,7 +252,7 @@ export async function main(args: readonly string[], say: (line: string) => void 
   }
   const studio = await Studio.of(pack);
   tiers.forEach((tier, t) => {
-    for (const [name, canvas] of [["joints", jointSheet(tier, studio, bench, laid[t]!, meshes)], ["forms", formSheet(tier, studio, has, half)]] as const) {
+    for (const [name, canvas] of [["joints", jointSheet(tier, studio, bench, laid[t]!, meshes)], ["forms", formSheet(tier, studio, has, half)], ["levels", levelSheet(tier, studio, has, half, meshes)]] as const) {
       const file = join(out, `${name}-${slug(tier)}.png`);
       writeFileSync(file, canvas.png());
       say(file);

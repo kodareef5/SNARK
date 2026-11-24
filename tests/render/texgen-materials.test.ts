@@ -36,6 +36,8 @@ test("every cell, grain, course and rib of a recipe fits its tile a whole number
     if (r.grain) expect([r.name, whole(r.metres / r.grain.size)]).toEqual([r.name, true]);
     if (r.course) expect([r.name, whole(r.metres / r.course.size[0]), whole(r.metres / r.course.size[1] / (r.course.bond ? 2 : 1))]).toEqual([r.name, true, true]);
     if (r.rib) expect([r.name, whole(r.metres / r.rib.pitch)]).toEqual([r.name, true]);
+    // Rivets stand along a course's joints, more than one to a side and clear of each other and of the joint.
+    if (r.rivet) expect([r.name, r.course !== undefined && Math.min(...r.course.size) > 2 * r.rivet.inset + r.rivet.pitch, r.rivet.inset > r.rivet.radius + (r.course?.joint ?? 0), r.rivet.pitch > 2 * r.rivet.radius]).toEqual([r.name, true, true, true]);
     expect(materialRows(r, 0).length).toBe(MATERIAL_ROWS * 4);
   }
 });

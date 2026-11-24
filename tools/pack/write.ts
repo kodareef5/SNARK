@@ -337,7 +337,8 @@ export function unpackMeshes(pack: Pack): SourceMesh[] {
         bones[v] = verts[v * VERTEX_BYTES + 7]!;
       }
       const out: SourceLod = { positions, colors, indices: readIndices(pack, lod) };
-      if (m.skeleton) out.bones = bones;
+      // A rigid mesh's byte says its faces' corners and outer edges, where it says anything (shared/world/city.ts cornerByte).
+      if (m.skeleton || bones.some((b) => b !== 0)) out.bones = bones;
       if (level > 0) out.error = lod.error;
       const surface = lodSurface(pack, lod);
       const skin = lodSkin(pack, lod);
