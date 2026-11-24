@@ -180,6 +180,20 @@ test("experience given on a server reaches the bar, the gain and the call to spe
   expect([shown(view, WORDS), shown(view, GAIN)]).toEqual(["Lv 3", null]);
 });
 
+test("a server's cap on experience short of a level leaves no level to show ahead", () => {
+  const ramp = "(ExperiencePointsForLevel[0]=10,ExperiencePointsForLevel[1]=30,ExperiencePointsForLevel[2]=60)";
+  const { h, ada } = camp({ screen: true, rules: { LevelExperienceRampOverrides: ramp, OverrideMaxExperiencePointsPlayer: 45, GenericXPMultiplier: 0 } });
+  const view = screen(h, ada);
+  // Level 4 takes 60, which the cap of 45 never lets her have.
+  expect(levelTable(ada.registry)).toEqual([0, 10, 30]);
+  h.say(ada, "addxp 1000");
+  expect([ada.progress.xp, ada.progress.level]).toEqual([45, 3]);
+  expect(view.app.ui.frame.find(BAR)!.value).toBe(1);
+  view.app.ui.character = true;
+  h.run(100);
+  expect([shown(view, KEY_CHAR_TITLE), view.app.ui.frame.find(KEY_CHAR_XP)!.value]).toEqual(["Level 3 · 45 xp", 1]);
+});
+
 test("the level's line fits and overlaps nothing at four window shapes", () => {
   const { h, ada } = camp({ screen: true, gear: ["pistol"] });
   const view = screen(h, ada);

@@ -858,7 +858,6 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     const e = records.entOf.get(mount.pid);
     return e === undefined ? null : (urban.riderOf(e) ?? riding.riderOf(e) ?? carry.carrierOf(e));
   };
-  if (harvest) harvest.riderOf = combat.riderOf;
   combat.damageModifier = rec => creatureTraits.damageOf(rec);
   combat.resistanceModifier = rec => creatureTraits.takenOf(rec);
   const impale = new CreatureImpale({ world, records, survival,

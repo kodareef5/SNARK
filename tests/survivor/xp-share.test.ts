@@ -2,7 +2,7 @@
 
 import { expect, test } from "bun:test";
 import { XP_CRAFT, XP_GIVEN, XP_HARVEST, XP_KILL, XP_TIME } from "../../server/progression.ts";
-import { SHARE_RANGE } from "../../server/experience.ts";
+import { Experience, SHARE_RANGE } from "../../server/experience.ts";
 import { camp, put, record, ride, survivor, tame, type CampOptions } from "../kit/kit.ts";
 
 /** Ada and bob of one tribe and cy of none, 3 m apart, with no drip to blur what each earns. */
@@ -87,8 +87,27 @@ test("a ridden tame shares as its rider does; a loose tame gets nothing", () => 
   was = tames();
   prog.addXp(me, 10, XP_CRAFT);
   expect([...gained(), ...tames().map((v, i) => v - was[i]!)]).toEqual([10, 5, 0, 5, 0]);
-  // The mount earns: bob has half. Ada's half is the deed's to give (server/combat.ts), not the share's.
-  was = tames();
-  prog.addXp(mount.rec, 10, XP_KILL);
-  expect([...gained(), ...tames().map((v, i) => v - was[i]!)]).toEqual([0, 5, 0, 10, 0]);
+  // The mount earns, by a kill or from a corpse: its rider has one half, not two, and bob has his.
+  for (const source of [XP_KILL, XP_HARVEST]) {
+    was = tames();
+    prog.addXp(mount.rec, 10, source);
+    expect([source, ...gained(), ...tames().map((v, i) => v - was[i]!)]).toEqual([source, 5, 5, 0, 10, 0]);
+  }
+});
+
+test("a rider of no tribe has half of what its mount earns; a tame two sit on has one part", () => {
+  const { h, ada, bob, cy, me, him, prog, gained } = crew();
+  const mount = tame(h, ada, "raptor", { saddled: true }).rec;
+  const yours = record(h, cy);
+  const ctx = { world: h.host.world, records: h.host.records, game: h.server, progression: prog, awake: (): [number[], number] => [[], 0] };
+  // Cy steers a creature of a tribe that is not cy's, as a carrier holds a wild one.
+  new Experience({ ...ctx, mountOf: () => null, riderOf: (rec) => (rec === mount ? yours : null) });
+  gained();
+  prog.addXp(mount, 10, XP_KILL);
+  expect([...gained(), mount.xp]).toEqual([5, 5, 5, 10]);
+  // Ada and bob both sit on it, and cy earns nothing of theirs. Ada earns: bob has half, and the tame half once.
+  new Experience({ ...ctx, mountOf: (rec) => (rec === me || rec === him ? mount : null), riderOf: () => null });
+  void [ada, bob];
+  prog.addXp(me, 10, XP_CRAFT);
+  expect([...gained(), mount.xp]).toEqual([10, 5, 0, 15]);
 });

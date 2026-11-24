@@ -68,8 +68,6 @@ export class Harvest {
   told = 0;
   /** A node whose boxes reach `reach` from (x, z) grew back in a chunk that is loaded, so a body may now be inside it. */
   onGrown: ((x: number, z: number, reach: number) => void) | null = null;
-  /** The steering rider receives half the raw harvest XP, through the same XP rules as its mount. */
-  riderOf: ((mount: EntityRecord) => EntityRecord | null) | null = null;
 
   private readonly world: ServerWorld;
   private readonly game: GameServer;
@@ -248,8 +246,6 @@ export class Harvest {
       if (got > 0) this.items.bus.after(HARVEST, { pid: rec.pid, node: def.id, item: y.item, n: got });
     }
     this.progression.addXp(rec, def.xp * blows, XP_HARVEST);
-    const rider = profile ? this.riderOf?.(rec) : null;
-    if (rider && rider !== rec && !rider.dead && !rider.out) this.progression.addXp(rider, def.xp * blows / 2, XP_HARVEST, false);
     this.hits++;
 
     const left = table.hp[index]! - blows;

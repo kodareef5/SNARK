@@ -1,7 +1,8 @@
 // Experience no one deed earns alone. The drip comes with time: to a living survivor whose session is here, and to a
 // tame with such a survivor of its team near it. The share is half of what a kill, a harvest or a craft earned, given to
-// each other living survivor of the earner's team near it, and to the tame each of them sits on. The earner keeps its
-// own. Both figures are the reference game's (ark.wiki.gg, Experience, 2026-11-23); it gives the drip for tames only.
+// whoever steers the earner, to each other living survivor of the earner's team near it, and once to each tame one of
+// them sits on. The earner keeps its own. Both figures are the reference game's (ark.wiki.gg, Experience, 2026-11-23);
+// it gives the drip for tames only.
 
 import { TICK_RATE } from "../shared/coords.ts";
 import type { GameServer } from "./game.ts";
@@ -36,6 +37,8 @@ export class Experience {
   private readonly teams: number[] = [];
   private readonly bodies: number[] = [];
   private readonly found: EntityRecord[] = [];
+  /** The tames given their part of the share being made. */
+  private readonly paid: EntityRecord[] = [];
   private readonly survivor: number;
 
   constructor(ctx: ExperienceContext) {
@@ -67,22 +70,27 @@ export class Experience {
     }
   }
 
-  /** Gives those near `rec` their part of `amount`, which it earned before any multiplier. */
+  /** Gives its rider and those near `rec` their part of `amount`, which it earned before any multiplier. */
   private share(rec: EntityRecord, amount: number, source: number): void {
     const { world, records, progression } = this.ctx;
+    const part = amount * SHARE_PART;
+    // Whoever steers the earner has its half whatever the deed and whoever's the earner is: a mount's rider, a held creature's carrier.
+    const rider = this.ctx.riderOf(rec);
+    if (rider && rider !== rec && !rider.dead) progression.addXp(rider, part, source, false);
     const from = records.entOf.get(rec.pid);
     if (rec.team === 0 || from === undefined) return;
-    // A mount's rider has had its half of this already, from the deed itself.
-    const rider = this.ctx.riderOf(rec);
-    const part = amount * SHARE_PART;
     this.gather();
-    const { teams, bodies, found } = this;
+    const { teams, bodies, found, paid } = this;
+    paid.length = 0;
     for (let i = 0; i < found.length; i++) {
       const mate = found[i]!;
       if (teams[i] !== rec.team || !near(world.ents, from, bodies[i]!)) continue;
       if (mate !== rec && mate !== rider) progression.addXp(mate, part, source, false);
+      // A tame with several on it has one part, not one for each.
       const mount = this.ctx.mountOf(mate);
-      if (mount && mount !== rec && mount.team === rec.team && !mount.dead) progression.addXp(mount, part, source, false);
+      if (!mount || mount === rec || mount.team !== rec.team || paid.includes(mount)) continue;
+      paid.push(mount);
+      progression.addXp(mount, part, source, false);
     }
   }
 

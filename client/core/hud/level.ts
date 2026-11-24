@@ -21,16 +21,25 @@ export const GAIN_LEAST = 0.5;
 const GAIN_W = 72;
 const GAP = 6;
 
-/** The experience each level takes in all, as the server's content has it; null where it has no table. */
+const TABLES = new WeakMap<Registry, readonly number[] | null>();
+
+/**
+ * The experience each level that can be reached takes in all, as the server's content has it: its table, cut short where
+ * its cap on experience (OverrideMaxExperiencePointsPlayer) stops before a level. Null where content has no table.
+ */
 export function levelTable(reg: Registry): readonly number[] | null {
-  for (let i = 0; i < reg.defs.length; i++) {
+  let table = TABLES.get(reg);
+  if (table !== undefined) return table;
+  table = null;
+  for (let i = 0; i < reg.defs.length && table === null; i++) {
     const d = reg.defs[i];
-    if (d?.type === "levels") return d.xp;
+    if (d?.type === "levels") table = d.most === undefined ? d.xp : d.xp.filter((v) => v <= d.most!);
   }
-  return null;
+  TABLES.set(reg, table);
+  return table;
 }
 
-/** How far `xp` is from `level`'s threshold to the next one's, 0 to 1. Full at the last level, and with no table. */
+/** How far `xp` is from `level`'s threshold to the next one's, 0 to 1. Full at the last level that can be reached, and with no table. */
 export function levelFraction(table: readonly number[] | null, level: number, xp: number): number {
   const to = table?.[level];
   if (to === undefined) return 1;
