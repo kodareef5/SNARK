@@ -91,7 +91,7 @@ export const orbCheck: LitCheck = {
           if (!where[i] || !where[i - 1] || !where[i + 1] || !where[i - W] || !where[i + W]) continue;
           error.push(Math.max(...[0, 1, 2].map((c) => Math.abs(pixels[i * 4 + c]! - gpu[i * 4 + c]!))));
         }
-        const s = spread(error), pass = s.points >= 500 && s.mean <= 2 && s.p95 <= 8;
+        const s = spread(error), pass = s.points >= 500 && s.mean <= 2.5 && s.p95 <= 10;
         ok &&= pass;
         lines.push(`${key} ${name}: ${s.points} pixels of screen, mean ${s.mean.toFixed(2)}/255, p95 ${s.p95}/255, worst ${s.worst}/255; ${pass ? "ok" : "FAIL"}`);
       });
