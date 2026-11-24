@@ -336,9 +336,9 @@ const MOVES_: readonly Move[] = [
   // A steep chop from over the shoulder: lifted, cocked, driven down, a bite, a short way on, and drawn back.
   compile("human/chop_a", GRIP_RIGHT, [
     { t: 0, r: CARRY, l: FREE_L },
-    { t: 1.8, r: { at: [-0.3, 1.38, 0.12], eye: [-0.32, -0.1, 0.2], pole: [-0.8, -0.5, -0.4], haft: [-0.1, 0.85, -0.5] }, twist: -8, lean: -2 },
-    { t: 3.5, r: { at: [-0.27, 1.62, -0.02], eye: [-0.3, 0.1, 0.1], pole: OUT, haft: [-0.15, 0.35, -0.92] }, l: { at: [0.24, 1.02, 0.12] }, twist: -18, lean: -4 },
-    { t: 4.3, r: { at: [-0.2, 1.58, 0.2], eye: [-0.24, 0.04, 0.24], pole: OUT, haft: [-0.05, 0.95, 0.3] }, twist: -6, lean: 2 },
+    { t: 1.3, r: { at: [-0.3, 1.38, 0.12], eye: [-0.32, -0.1, 0.2], pole: [-0.8, -0.5, -0.4], haft: [-0.1, 0.85, -0.5] }, twist: -8, lean: -2 },
+    { t: 2.6, r: { at: [-0.27, 1.62, -0.02], eye: [-0.3, 0.1, 0.1], pole: OUT, haft: [-0.15, 0.35, -0.92] }, l: { at: [0.24, 1.02, 0.12] }, twist: -18, lean: -4 },
+    { t: 3.9, r: { at: [-0.2, 1.58, 0.2], eye: [-0.24, 0.04, 0.24], pole: OUT, haft: [-0.05, 0.95, 0.3] }, twist: -6, lean: 2 },
     { t: 5, r: { at: [-0.1, 1.34, 0.34], eye: [-0.15, -0.2, 0.27], pole: DOWN, haft: [0.12, 0.62, 0.77] }, l: { at: [0.26, 1.0, -0.02] }, twist: 14, lean: 10 },
     { t: 5.9, r: { at: [-0.07, 1.26, 0.35], eye: [-0.13, -0.25, 0.28], haft: [0.18, 0.4, 0.9] }, twist: 17, lean: 13 },
     { t: 8.2, r: { at: [-0.14, 1.22, 0.33], eye: [-0.2, -0.27, 0.26], pole: [-0.7, -0.6, -0.4], haft: [0.14, 0.5, 0.85] }, twist: 9, lean: 6 },
@@ -348,9 +348,9 @@ const MOVES_: readonly Move[] = [
   // A flatter chop from out at the side, across the body.
   compile("human/chop_b", GRIP_RIGHT, [
     { t: 0, r: CARRY, l: FREE_L },
-    { t: 1.8, r: { at: [-0.38, 1.3, 0.06], eye: [-0.38, -0.14, 0.18], pole: [-0.8, -0.6, -0.4], haft: [-0.5, 0.8, -0.3] }, twist: -10, lean: -1 },
-    { t: 3.5, r: { at: [-0.45, 1.45, -0.08], eye: [-0.42, 0, 0.1], pole: [-0.7, -0.5, -0.5], haft: [-0.8, 0.3, -0.5] }, l: { at: [0.24, 1.02, 0.12] }, twist: -24, lean: -2 },
-    { t: 4.3, r: { at: [-0.34, 1.4, 0.18], eye: [-0.32, -0.1, 0.24], pole: [-0.8, -0.6, -0.1], haft: [-0.75, 0.3, 0.55] }, twist: -8, lean: 2 },
+    { t: 1.3, r: { at: [-0.38, 1.3, 0.06], eye: [-0.38, -0.14, 0.18], pole: [-0.8, -0.6, -0.4], haft: [-0.5, 0.8, -0.3] }, twist: -10, lean: -1 },
+    { t: 2.6, r: { at: [-0.45, 1.45, -0.08], eye: [-0.42, 0, 0.1], pole: [-0.7, -0.5, -0.5], haft: [-0.8, 0.3, -0.5] }, l: { at: [0.24, 1.02, 0.12] }, twist: -24, lean: -2 },
+    { t: 3.9, r: { at: [-0.34, 1.4, 0.18], eye: [-0.32, -0.1, 0.24], pole: [-0.8, -0.6, -0.1], haft: [-0.75, 0.3, 0.55] }, twist: -8, lean: 2 },
     { t: 5, r: { at: [-0.04, 1.32, 0.36], eye: [-0.03, -0.2, 0.28], pole: [-0.7, -0.7, 0], haft: [-0.25, 0.2, 0.95] }, l: { at: [0.26, 1.0, -0.02] }, twist: 16, lean: 7 },
     { t: 5.9, r: { at: [0.04, 1.28, 0.34], eye: [0.05, -0.23, 0.27], haft: [0.05, 0.15, 0.98] }, twist: 20, lean: 8 },
     { t: 8.2, r: { at: [-0.1, 1.22, 0.33], eye: [-0.15, -0.27, 0.26], pole: [-0.7, -0.6, -0.4], haft: [0.05, 0.4, 0.9] }, twist: 10, lean: 5 },
@@ -360,9 +360,9 @@ const MOVES_: readonly Move[] = [
   // Both hands on the haft, up over the head and straight down.
   compile("human/pick_a", GRIP_BOTH, [
     { t: 0, r: CARRY, l: FREE_L, join: 0 },
-    { t: 1.8, r: { at: [-0.14, 1.42, 0.18], eye: [-0.14, -0.1, 0.24], pole: [-0.9, -0.4, -0.2], haft: [0.05, 0.9, -0.4] }, l: { curl: 1 }, join: 1, lean: -3 },
-    { t: 3.5, r: { at: [-0.1, 1.72, 0], eye: [-0.1, 0.14, 0.14], pole: [-1, -0.1, 0.3], haft: [0.05, 0.4, -0.9] }, lean: -8 },
-    { t: 4.3, r: { at: [-0.08, 1.66, 0.22], eye: [-0.09, 0.06, 0.26], pole: [-1, -0.2, 0.2], haft: [0.03, 0.95, 0.3] }, lean: 0 },
+    { t: 1.3, r: { at: [-0.14, 1.42, 0.18], eye: [-0.14, -0.1, 0.24], pole: [-0.9, -0.4, -0.2], haft: [0.05, 0.9, -0.4] }, l: { curl: 1 }, join: 1, lean: -3 },
+    { t: 2.6, r: { at: [-0.1, 1.72, 0], eye: [-0.1, 0.14, 0.14], pole: [-1, -0.1, 0.3], haft: [0.05, 0.4, -0.9] }, lean: -8 },
+    { t: 3.9, r: { at: [-0.08, 1.66, 0.22], eye: [-0.09, 0.06, 0.26], pole: [-1, -0.2, 0.2], haft: [0.03, 0.95, 0.3] }, lean: 0 },
     { t: 5, r: { at: [-0.06, 1.3, 0.34], eye: [-0.07, -0.22, 0.28], pole: [-0.9, -0.5, 0], haft: [0.04, 0.5, 0.86] }, lean: 16 },
     { t: 5.9, r: { at: [-0.06, 1.22, 0.35], eye: [-0.07, -0.27, 0.29], haft: [0.04, 0.3, 0.95] }, lean: 19 },
     { t: 8.2, r: { at: [-0.1, 1.22, 0.33], eye: [-0.12, -0.28, 0.27], pole: [-0.8, -0.6, -0.3], haft: [0.06, 0.45, 0.89] }, lean: 9 },
@@ -372,9 +372,9 @@ const MOVES_: readonly Move[] = [
   // The same from over the right shoulder, the chest turning into it.
   compile("human/pick_b", GRIP_BOTH, [
     { t: 0, r: CARRY, l: FREE_L, join: 0 },
-    { t: 1.8, r: { at: [-0.24, 1.4, 0.14], eye: [-0.24, -0.1, 0.22], pole: [-0.9, -0.4, -0.2], haft: [-0.2, 0.85, -0.45] }, l: { curl: 1 }, join: 1, twist: -8, lean: -2 },
-    { t: 3.5, r: { at: [-0.26, 1.68, -0.02], eye: [-0.26, 0.12, 0.12], pole: [-1, -0.1, 0.2], haft: [-0.3, 0.4, -0.85] }, twist: -20, lean: -6 },
-    { t: 4.3, r: { at: [-0.2, 1.62, 0.2], eye: [-0.2, 0.04, 0.25], pole: [-1, -0.2, 0.1], haft: [-0.15, 0.93, 0.3] }, twist: -8, lean: 0 },
+    { t: 1.3, r: { at: [-0.24, 1.4, 0.14], eye: [-0.24, -0.1, 0.22], pole: [-0.9, -0.4, -0.2], haft: [-0.2, 0.85, -0.45] }, l: { curl: 1 }, join: 1, twist: -8, lean: -2 },
+    { t: 2.6, r: { at: [-0.26, 1.68, -0.02], eye: [-0.26, 0.12, 0.12], pole: [-1, -0.1, 0.2], haft: [-0.3, 0.4, -0.85] }, twist: -20, lean: -6 },
+    { t: 3.9, r: { at: [-0.2, 1.62, 0.2], eye: [-0.2, 0.04, 0.25], pole: [-1, -0.2, 0.1], haft: [-0.15, 0.93, 0.3] }, twist: -8, lean: 0 },
     { t: 5, r: { at: [-0.06, 1.3, 0.34], eye: [-0.07, -0.22, 0.28], pole: [-0.9, -0.5, 0], haft: [0.12, 0.5, 0.85] }, twist: 12, lean: 15 },
     { t: 5.9, r: { at: [-0.04, 1.22, 0.35], eye: [-0.05, -0.27, 0.29], haft: [0.16, 0.3, 0.94] }, twist: 15, lean: 18 },
     { t: 8.2, r: { at: [-0.1, 1.22, 0.33], eye: [-0.12, -0.28, 0.27], pole: [-0.8, -0.6, -0.3], haft: [0.1, 0.45, 0.89] }, twist: 8, lean: 8 },
@@ -394,7 +394,7 @@ export function strikeMove(hold: number, pick: boolean, odd: boolean): Move | nu
 }
 
 /** Frames of a baked swing for each tick of it. */
-const FRAMES_A_TICK = 2;
+const FRAMES_A_TICK = 4;
 
 let clips: readonly Clip[] | null = null;
 

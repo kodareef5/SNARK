@@ -569,7 +569,7 @@ const UPPER_FROM = B_SPINE;
 const UPPER_TO = B_UPPER_LEG_L;
 const HANDS_FROM = B_FINGERS_L;
 /** Ticks to ease a swing in and out. A blow of shared/anim/strikes.ts leaves and meets its rest pose within them. */
-const SWING_IN = 3;
+const SWING_IN = 2;
 const SWING_OUT = 4;
 /** A carried tool is on the right arm alone: the shoulder through the hand, then its fingers, prop and fingertips. */
 const CARRY_FROM = B_SHOULDER_R;

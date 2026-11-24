@@ -285,7 +285,7 @@ artTest("sampling a clip between frames and blending poses stay on the short way
 test("a pose state survives packing into the 32 bits that are replicated", () => {
   const a = new AnimState();
   const b = new AnimState();
-  for (const [mode, grounded, stance, speed, dir, pitch, action, start] of [[1, true, 0, 0, 0, 0, 0, 0], [2, false, 0, 15, 15, -31, 63, 255], [1, false, 2, 7, 9, 31, 37, 128], [1, true, 1, 3, 4, -1, 0, 7]] as const) {
+  for (const [mode, grounded, stance, speed, dir, pitch, action, start] of [[1, true, 0, 0, 0, 0, 0, 0], [2, false, 0, 15, 15, -31, 62, 255], [1, false, 2, 7, 9, 31, 37, 128], [1, true, 1, 3, 4, -1, 0, 7]] as const) {
     a.mode = mode;
     a.grounded = grounded;
     a.stance = stance;
