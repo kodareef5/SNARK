@@ -1,6 +1,6 @@
 // Deterministic torque converter/automatic transmission seam. Units are kg, N*m, rpm and seconds.
 // No input, inventory, presentation or world dependencies: authority and prediction carry the same small state.
-import { clamp, TAU } from "../math/scalar.ts";
+import { approach, clamp, TAU } from "../math/scalar.ts";
 
 export interface VehicleDrivetrainSpec {
   readonly torqueCurve: readonly (readonly [rpm: number, torqueNm: number])[];
@@ -103,7 +103,6 @@ export interface DrivetrainForce {
   /** Signed pedal opposed to travel is a service brake until the car actually stops. */
   opposingBrake: number;
 }
-const approach = (value: number, target: number, delta: number): number => value < target ? Math.min(value + delta, target) : Math.max(value - delta, target);
 const STOP_SPEED = 0.025;
 
 /** Shared mechanical/audio/wire predicate: cooldown after clutch engagement is not a torque interruption. */

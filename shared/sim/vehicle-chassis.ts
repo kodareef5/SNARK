@@ -1,7 +1,7 @@
 // Four fixed substeps, unilateral wheel springs, and one freely rotating rigid chassis.
 import { TICK_DT } from "../coords.ts";
 import { quatRotate } from "../math/quat.ts";
-import { clamp, detAtan2, detCos, detSin, len3, TAU } from "../math/scalar.ts";
+import { approach, clamp, detAtan2, detCos, detSin, len3, square, wrapAngle } from "../math/scalar.ts";
 import { resolveVehicleContacts, separateVehicleOverlap, type VehicleContactQueries } from "./vehicle-contact.ts";
 import { DEFAULT_DRIVETRAIN, stepDrivetrain } from "./vehicle-drivetrain.ts";
 import { vehicleRotation } from "./vehicle-frame.ts";
@@ -14,10 +14,7 @@ import type { CarState, VehicleInput, VehicleSpec, VehicleState, VehicleStep, Ve
 const q = new Float64Array(4), up = new Float64Array(3), ahead = new Float64Array(3), local = new Float64Array(3), pointV = new Float64Array(3);
 interface Wheel { x: number; y: number; z: number; nx: number; ny: number; nz: number; load: number; offset: number; closing: number; front: boolean; surface: VehicleSurface }
 const wheels: Wheel[] = [];
-const square = (n: number): number => n * n;
 const command = (n: number, lo: number, hi: number): number => Number.isFinite(n) ? clamp(n, lo, hi) : 0;
-const approach = (n: number, target: number, by: number): number => n < target ? Math.min(n + by, target) : Math.max(n - by, target);
-const wrap = (n: number): number => n - Math.floor((n + TAU / 2) / TAU) * TAU;
 
 
 function wheelSupports(s: VehicleState, p: VehicleSpec, w: VehicleWorld, mass: number): void {
@@ -207,7 +204,7 @@ export function vehicleSubstep(t: VehicleTick, substep: number): void {
   integrateVehiclePose(s, p, dt); resolveVehicleContacts(s, prior, p, contacts, dt, result); integrateVehiclePose(s, p, 0);
   s.vx = clamp(s.vx, -120, 120); s.vy = clamp(s.vy, -100, 100); s.vz = clamp(s.vz, -120, 120);
   s.pitchRate = clamp(s.pitchRate, -12, 12); s.yawRate = clamp(s.yawRate, -12, 12); s.rollRate = clamp(s.rollRate, -12, 12);
-  s.wheelAngle = wrap(s.wheelAngle + forward * dt / p.wheelRadius);
+  s.wheelAngle = wrapAngle(s.wheelAngle + forward * dt / p.wheelRadius);
 }
 
 export function endVehicleTick(t: VehicleTick): VehicleStep {

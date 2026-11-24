@@ -2,7 +2,8 @@
 // The keel origin follows a rigid body: attitude never substitutes for actual translation or a water-height snap.
 import { TICK_DT } from "../coords.ts";
 import { quatAxis, quatMul, quatNormalize, quatRotate, quatUnrotate } from "../math/quat.ts";
-import { clamp, detAtan2, detCos, detSin, len3, TAU } from "../math/scalar.ts";
+import { writeAttitude } from "./rigid-attitude.ts";
+import { approach, clamp, detCos, detSin, len3, square, TAU, unitCommand } from "../math/scalar.ts";
 import { resolveVehicleContacts, separateVehicleOverlap, type VehicleContactQueries } from "./vehicle-contact.ts";
 import { boatDrives, validateBoatSpec, type BoatDrive, type BoatSpec, type BoatVehicleDefinition, type VehicleContact, type VehicleState } from "./vehicle.ts";
 
@@ -32,9 +33,6 @@ const q = new Float64Array(4), turn = new Float64Array(4);
 const localV = new Float64Array(3), point = new Float64Array(3), buoy = new Float64Array(3), up = new Float64Array(3), ahead = new Float64Array(3), com = new Float64Array(3);
 const force = new Float64Array(3), torque = new Float64Array(3), worldForce = new Float64Array(3);
 const propellerPoint = new Float64Array(3);
-const unit = (n: number): number => Number.isFinite(n) ? clamp(n, -1, 1) : 0;
-const approach = (n: number, target: number, by: number): number => n < target ? Math.min(target, n + by) : Math.max(target, n - by);
-const square = (n: number): number => n * n;
 
 /** Physical propeller centre in the keel frame, including the steering joint used by the rendered outboard. */
 export function boatPropellerPoint(p: BoatDrive, steering: number, out: Float64Array | number[]): void {
@@ -67,14 +65,7 @@ function rotation(s: BoatState): void {
   q.set([s.qx, s.qy, s.qz, s.qw]); quatNormalize(q, 0);
   quatRotate(q, 0, 0, 1, 0, up, 0); quatRotate(q, 0, 0, 0, 1, ahead, 0);
 }
-function writeRotation(s: BoatState): void {
-  s.qx = q[0]!; s.qy = q[1]!; s.qz = q[2]!; s.qw = q[3]!;
-  quatRotate(q, 0, 0, 1, 0, up, 0); quatRotate(q, 0, 0, 0, 1, ahead, 0);
-  const horizontal = Math.sqrt(square(ahead[0]!) + square(ahead[2]!));
-  if (horizontal > 1e-5) s.yaw = detAtan2(ahead[0]!, ahead[2]!);
-  s.pitch = detAtan2(ahead[1]!, horizontal);
-  s.roll = detAtan2(-(up[0]! * detCos(s.yaw) - up[2]! * detSin(s.yaw)), up[1]!);
-}
+const writeRotation = (s: BoatState): void => writeAttitude(s, q, up, ahead);
 function addForce(x: number, y: number, z: number, fx: number, fy: number, fz: number): void {
   force[0] += fx; force[1] += fy; force[2] += fz;
   torque[0] += y * fz - z * fy; torque[1] += z * fx - x * fz; torque[2] += x * fy - y * fx;
@@ -84,7 +75,7 @@ function immersion(world: BoatWorld, x: number, y: number, z: number, height: nu
   return Number.isFinite(water) && water > bottom ? clamp((water - y) / height + .5, 0, 1) : 0;
 }
 function motor(s: BoatState, input: Readonly<BoatInput>, p: BoatSpec, wet: number, capsized: boolean): void {
-  const request = input.pilot && !input.neutral ? unit(input.throttle) : 0;
+  const request = input.pilot && !input.neutral ? unitCommand(input.throttle) : 0;
   const usable = s.fuel > 0 && s.engineCondition > .08 && s.hullCondition > 0 && s.flooding < .75 && !capsized;
   if (input.pilot && Math.abs(request) > .01 && usable) s.engineOn = true;
   if (!usable || !input.pilot) s.engineOn = false;
@@ -101,7 +92,7 @@ function motor(s: BoatState, input: Readonly<BoatInput>, p: BoatSpec, wet: numbe
     s.engineRpm = approach(s.engineRpm, s.engineOn ? p.idleRpm + (p.maxRpm - p.idleRpm) * drive : 0, p.rpmRate * TICK_DT);
   }
   if (!s.engineOn) { s.gear = 0; s.engineRpm = approach(s.engineRpm, 0, p.rpmRate * TICK_DT); }
-  s.steering = approach(s.steering, input.pilot ? unit(input.steer) * p.maxSteer : 0, p.steerRate * TICK_DT);
+  s.steering = approach(s.steering, input.pilot ? unitCommand(input.steer) * p.maxSteer : 0, p.steerRate * TICK_DT);
   if (s.engineOn) s.fuel = Math.max(0, s.fuel - p.fuelPerSecond * (.16 + .84 * square(s.engineRpm / p.maxRpm)) * TICK_DT);
   // An exposed prop may rev but cannot drive. This field is a presentation phase, already carried by vehicle state.
   s.wheelAngle = (s.wheelAngle + s.engineRpm * s.gear * TAU / 60 * TICK_DT) % TAU;
