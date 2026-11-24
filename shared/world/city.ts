@@ -24,6 +24,7 @@ import type { Heightfield } from "./heightfield.ts";
 import { MapStatics, type MapStatic } from "./mapfile.ts";
 import { TACTICAL_CELL, farTopByte } from "./tactical.ts";
 import { EYE_COLLIDERS } from "./tide-eye.ts";
+import { orbCollider } from "./orb.ts";
 
 const QUARTER = YAW_UNITS / 4;
 
@@ -182,12 +183,13 @@ function* kindSteps(reg: Registry): Generator<void, KindTables> {
 const landmarksOf = new WeakMap<Registry, Uint8Array>();
 
 /**
- * Per content index, 1 for a kind a landmark brings or a tide eye's collider, which the far drawings leave to a landmark's
- * far mesh: one array a registry, so a city made with them is known by it (cityReach).
+ * Per content index, 1 for a kind a landmark brings, a tide eye's collider or a piece of an orb's shell, which the far
+ * drawings leave to a landmark's far mesh or to the eye's or the orb's own pass: one array a registry, so a city made
+ * with them is known by it (cityReach).
  */
 export function landmarkKinds(reg: Registry): Uint8Array {
   let kinds = landmarksOf.get(reg);
-  if (!kinds) landmarksOf.set(reg, (kinds = Uint8Array.from(reg.defs, (def, k) => (reg.own.has(k) || (def && EYE_COLLIDERS.has(def.id)) ? 1 : 0))));
+  if (!kinds) landmarksOf.set(reg, (kinds = Uint8Array.from(reg.defs, (def, k) => (reg.own.has(k) || (def && (EYE_COLLIDERS.has(def.id) || orbCollider(def.id))) ? 1 : 0))));
   return kinds;
 }
 

@@ -11,6 +11,7 @@ import { RUIN_BLOCKS } from "../../content/miami-ruins.ts";
 import { SLOPE_BLOCKS, SLOPE_SHAPES } from "../../content/slopes.ts";
 import { LETTER_BLOCKS } from "../../content/lettering.ts";
 import { TERMINALS } from "../../content/terminals.ts";
+import { ORBS } from "../../content/orb.ts";
 import { MARINE_FLEET } from "../../content/vehicles/marine-fleet.ts";
 import { HARBOUR_WRECKS } from "../../content/vehicles/harbour-wrecks.ts";
 import { SKATEBOARDS } from "../../content/vehicles/skateboard.ts";
@@ -81,8 +82,8 @@ test("the core pack's definitions fall into the classes, each passing its row", 
     // harbours', a shape each vessel and a static each of its hulk and forms (content/vehicles/harbour-wrecks.ts), and
     // the street furniture, a shape and a static each piece (content/street.ts), and a marina's dock kit and moored
     // hulls, a shape each module and the launch's hull and a static each module and each hull's paint (content/docks.ts).
-    "structure/static": 9 + RUIN_BLOCKS.filter((d) => d.type === "structure").length + TERMINALS.filter((d) => d.type === "structure").length + SLOPE_SHAPES.length + LETTER_BLOCKS.length / 2 + WRECKS.filter((d) => d.type === "structure").length + TANKER_WRECKS.filter((d) => d.type === "structure").length + HARBOUR_WRECKS.filter((d) => d.type === "structure").length + STREET.filter((d) => d.type === "structure").length + DOCKS.filter((d) => d.type === "structure").length + BREAK_BLOCKS.filter((d) => d.type === "structure").length,
-    shape: 18 + TERMINALS.filter((d) => d.type === "shape").length + RUIN_BLOCKS.filter((d) => d.type === "shape").length + SLOPE_SHAPES.length + LETTER_BLOCKS.length / 2 + WRECKS.filter((d) => d.type === "shape").length + TANKER_WRECKS.filter((d) => d.type === "shape").length + HARBOUR_WRECKS.filter((d) => d.type === "shape").length + STREET.filter((d) => d.type === "shape").length + DOCKS.filter((d) => d.type === "shape").length + BREAK_BLOCKS.filter((d) => d.type === "shape").length,
+    "structure/static": 9 + RUIN_BLOCKS.filter((d) => d.type === "structure").length + TERMINALS.filter((d) => d.type === "structure").length + ORBS.filter((d) => d.type === "structure").length + SLOPE_SHAPES.length + LETTER_BLOCKS.length / 2 + WRECKS.filter((d) => d.type === "structure").length + TANKER_WRECKS.filter((d) => d.type === "structure").length + HARBOUR_WRECKS.filter((d) => d.type === "structure").length + STREET.filter((d) => d.type === "structure").length + DOCKS.filter((d) => d.type === "structure").length + BREAK_BLOCKS.filter((d) => d.type === "structure").length,
+    shape: 18 + TERMINALS.filter((d) => d.type === "shape").length + ORBS.filter((d) => d.type === "shape").length + RUIN_BLOCKS.filter((d) => d.type === "shape").length + SLOPE_SHAPES.length + LETTER_BLOCKS.length / 2 + WRECKS.filter((d) => d.type === "shape").length + TANKER_WRECKS.filter((d) => d.type === "shape").length + HARBOUR_WRECKS.filter((d) => d.type === "shape").length + STREET.filter((d) => d.type === "shape").length + DOCKS.filter((d) => d.type === "shape").length + BREAK_BLOCKS.filter((d) => d.type === "shape").length,
     material: 4 + CITY_MATERIALS.length,
     node: 14,
     "prop/container": 2,
@@ -93,7 +94,7 @@ test("the core pack's definitions fall into the classes, each passing its row", 
     map: 5, // miami-coast became Miami (D810)
   });
   // 253 with the supply drop's capsule (content/core.ts), and air support's three vehicles.
-  expect(rest.length).toBe(253 + 3 + FREIGHT_ORDER.length + SKATEBOARDS.length + ROAD_FLEET.length + MARINE_FLEET.length + RUIN_BLOCKS.length + TERMINALS.length + SLOPE_BLOCKS.length + LETTER_BLOCKS.length + WRECKS.length + TANKER_WRECKS.length + HARBOUR_WRECKS.length + STREET.length + DOCKS.length + BREAK_BLOCKS.length + CITY_MATERIALS.length);
+  expect(rest.length).toBe(253 + 3 + FREIGHT_ORDER.length + SKATEBOARDS.length + ROAD_FLEET.length + MARINE_FLEET.length + RUIN_BLOCKS.length + TERMINALS.length + ORBS.length + SLOPE_BLOCKS.length + LETTER_BLOCKS.length + WRECKS.length + TANKER_WRECKS.length + HARBOUR_WRECKS.length + STREET.length + DOCKS.length + BREAK_BLOCKS.length + CITY_MATERIALS.length);
   // Each creature file has one species, and what else it has is the egg it lays, its saddle and how the saddle is made.
   expect(CORE_CONTENT.length).toBe(rest.length + CREATURES.length + FEATURES_CONTENT.length);
   const brought: Record<string, number> = {};
