@@ -80,6 +80,10 @@ async function preview(): Promise<void> {
     if (server.host.game.playerCount < people.length) throw Error(`Could not join ${city.name}: ${people.map(p => p.closeText || p.state).join(", ")}`);
     recordPreview(server);
     people.forEach((session, i) => session.chat(TEXT_GLOBAL, city.chat[i]!));
+    const operator = people[0]!;
+    operator.text("enablecheats");
+    await Bun.sleep(350);
+    operator.text("give stone 12");
   }
   console.log(`Admin preview at http://127.0.0.1:${front.port}/admin/\nDisposable saves in ${run}`);
   const close = () => {
