@@ -242,7 +242,7 @@ export function freePose(heightAt: (x: number, z: number) => number, tables: Pie
     return true;
   }
   const steps = lift < LIFT_MIN ? LIFT_MIN : lift > LIFT_MAX ? LIFT_MAX : Math.trunc(lift);
-  out.y = Math.ceil(groundUnder(heightAt, out, true) * STRUCT_UNITS) + FREE_TOP + steps * LIFT_STEP - half;
+  out.y = Math.ceil(groundUnder(heightAt, tables, kind, out, true) * STRUCT_UNITS) + FREE_TOP + steps * LIFT_STEP - half;
   return true;
 }
 
@@ -325,27 +325,53 @@ function squareAxes(yaw: number, tw: number): void {
   axes[3] = axes[0]!;
 }
 
-/** The highest (or lowest) ground under a piece one side square at `p`, of turn class `tw`, sampled at its middle and four corners. Metres. */
-function groundUnder(heightAt: (x: number, z: number) => number, p: Pose, highest: boolean, tw = 0): number {
-  squareAxes(p.yaw, tw);
-  let h = heightAt(p.x / STRUCT_UNITS, p.z / STRUCT_UNITS);
-  for (let k = 0; k < 4; k++) {
-    const i = k & 1 ? 1 : -1;
-    const j = k & 2 ? 1 : -1;
-    const g = heightAt((p.x + i * axes[0]! + j * axes[2]!) / STRUCT_UNITS, (p.z + i * axes[1]! + j * axes[3]!) / STRUCT_UNITS);
+/**
+ * The highest (or lowest) ground under a piece of `kind` at `p`, of turn class `tw`, in metres: sampled at its middle and
+ * at the corners of what it covers. A whole square, and a kind with no form, covers a side square about its middle; a
+ * triangle its own three corners, from the one it is placed by; a footing the two ends of its side.
+ */
+function groundUnder(heightAt: (x: number, z: number) => number, tables: PieceTables, kind: number, p: Pose, highest: boolean, tw = 0): number {
+  const f = tables.parts.forms?.def[kind];
+  if (!f || (f.cls === "square" && (f.size ?? 2) === 2)) {
+    squareAxes(p.yaw, tw);
+    let h = heightAt(p.x / STRUCT_UNITS, p.z / STRUCT_UNITS);
+    for (let k = 0; k < 4; k++) {
+      const i = k & 1 ? 1 : -1;
+      const j = k & 2 ? 1 : -1;
+      const g = heightAt((p.x + i * axes[0]! + j * axes[2]!) / STRUCT_UNITS, (p.z + i * axes[1]! + j * axes[3]!) / STRUCT_UNITS);
+      if (highest ? g > h : g < h) h = g;
+    }
+    return h;
+  }
+  frameOf(p.yaw, tw);
+  const { cos, sin, stretch } = frame;
+  const flat = f.plane === "flat";
+  let h = highest ? -Infinity : Infinity;
+  let mx = 0;
+  let mz = 0;
+  // The outline's corners about the collider's origin, an upright piece's along its own line.
+  for (const [u, v] of f.outline) {
+    const lx = u - f.at[0];
+    const lz = (flat ? v : (f.off ?? 0)) - f.at[2];
+    const x = p.x / STRUCT_UNITS + (cos * lx + sin * lz) * stretch;
+    const z = p.z / STRUCT_UNITS + (cos * lz - sin * lx) * stretch;
+    mx += x / f.outline.length;
+    mz += z / f.outline.length;
+    const g = heightAt(x, z);
     if (highest ? g > h : g < h) h = g;
   }
-  return h;
+  const g = heightAt(mx, mz);
+  return (highest ? g > h : g < h) ? g : h;
 }
 
 /** True when a foundation at this pose breaks MAX_ABOVE_GROUND. False for any other role. */
 export function tooHigh(heightAt: (x: number, z: number) => number, tables: PieceTables, kind: number, p: Pose, tw = 0): boolean {
   if (tables.role[kind] !== ROLE_FOUNDATION) return false;
-  return (p.y - units(tables.halfY[kind]!)) / STRUCT_UNITS - groundUnder(heightAt, p, false, tw) > MAX_ABOVE_GROUND;
+  return (p.y - units(tables.halfY[kind]!)) / STRUCT_UNITS - groundUnder(heightAt, tables, kind, p, false, tw) > MAX_ABOVE_GROUND;
 }
 
 /** True when a foundation at this pose breaks MAX_BURIED: the ground is in its way. False for any other role. */
 export function buried(heightAt: (x: number, z: number) => number, tables: PieceTables, kind: number, p: Pose, tw = 0): boolean {
   if (tables.role[kind] !== ROLE_FOUNDATION) return false;
-  return groundUnder(heightAt, p, true, tw) - (p.y + units(tables.halfY[kind]!)) / STRUCT_UNITS > MAX_BURIED;
+  return groundUnder(heightAt, tables, kind, p, true, tw) - (p.y + units(tables.halfY[kind]!)) / STRUCT_UNITS > MAX_BURIED;
 }

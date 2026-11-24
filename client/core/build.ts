@@ -76,10 +76,11 @@ const stepKey: LatticeKey = { fr: 0, k0: 0, k1: 0 };
 const WHEEL_DEAD = 18;
 const WHEEL_REACH = 70;
 
-/** What a form is called on the wheel: its kind's own word, as "doorframe" of core:doorframe_wood. */
+/** What a form is called on the wheel: its kind's own words, as "doorframe" of core:doorframe_wood. */
 export function formName(reg: Registry, kind: number): string {
   const id = reg.ids[kind] ?? "";
-  return id.slice(id.indexOf(":") + 1).split("_")[0]!.replaceAll("-", " ");
+  // The id less its namespace and its material: "half wall" of core:half_wall_wood.
+  return id.slice(id.indexOf(":") + 1, id.lastIndexOf("_")).replace(/_open$/, "").replaceAll("_", " ").replaceAll("-", " ");
 }
 
 /** A slot's outline: its class (a CLS_ of the lattice, -1 for none), its middle in metres and its turn in wire units. */

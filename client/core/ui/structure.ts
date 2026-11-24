@@ -63,8 +63,8 @@ export function structName(reg: Registry, kind: number): string {
   if (label === "") return id.slice(id.indexOf(":") + 1).replace(/_/g, " ");
   if (reg.places[item]![0] === kind) return label;
   // Another form of the same piece. A doorframe is set down from a wall.
-  const form = id.slice(id.indexOf(":") + 1).split("_")[0]!;
-  return `${label.slice(0, label.lastIndexOf(" ") + 1)}${form}`;
+  const form = id.slice(id.indexOf(":") + 1, id.lastIndexOf("_")).replace(/_open$/, "").replace(/_/g, " ");
+  return `${label.slice(0, label.indexOf(" ") + 1)}${form}`;
 }
 
 /** Formats the shared `cost` buffer, as in "40 wood, 10 thatch". */

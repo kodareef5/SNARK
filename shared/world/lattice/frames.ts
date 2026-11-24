@@ -187,6 +187,31 @@ export function keyFits(forms: FormTable, kind: number, k0: number, k1: number):
   return keyValid(k0, k1) && keyCls(k0) === forms.cls[kind] && keyLayer(k1) === forms.layer[kind] && keyRot(k1) < rotsOf(forms, kind);
 }
 
+/**
+ * The levels a roof of `kind` with this key rises at each corner of its face, three bits a corner, the face's corners in
+ * the order elementCorners gives them; 0 for a piece that is no roof. A form's square outline starts at its -X, +Z
+ * corner and goes round against the face's; a triangle's starts at its reference corner.
+ */
+export function riseAt(forms: FormTable, kind: number, k0: number, k1: number): number {
+  const corners = forms.rise[kind]!;
+  if (corners === 0) return 0;
+  const turned = dirTurn(ownDir(forms, kind, k1), -keyDir(k1));
+  const flip = keyFlip(k1);
+  let rise = 0;
+  if (keyCls(k0) === CLS_SQUARE) {
+    for (let k = 0; k < 4; k++) {
+      const j = (3 + turned / 3 - k) & 3;
+      rise |= ((corners >> (3 * (flip ? j ^ 1 : j))) & 7) << (3 * k);
+    }
+  } else {
+    for (let k = 0; k < 3; k++) {
+      const j = [0, 2, 1][(k - turned / 4 + 3) % 3]!;
+      rise |= ((corners >> (3 * (flip ? 2 - j : j))) & 7) << (3 * k);
+    }
+  }
+  return rise;
+}
+
 const m = new Int32Array(4);
 const v = new Int32Array(4);
 const basis = new Int32Array(8);

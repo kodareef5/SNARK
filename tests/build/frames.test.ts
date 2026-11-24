@@ -2,7 +2,7 @@
 
 import { expect, test } from "bun:test";
 import { FOUNDATION_THICK, WALL_HEIGHT } from "../../content/building.ts";
-import { FORMS, PLANNED_FORMS, formBoxes } from "../../content/building/forms.ts";
+import { ALL_FORMS, FORMS, formBoxes } from "../../content/building/forms.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import type { Def } from "../../shared/content/defs.ts";
 import { compileContent, type Registry } from "../../shared/content/registry.ts";
@@ -495,7 +495,7 @@ test("a table put back gives up the keys of rows whose cells were taken while it
 const T = FOUNDATION_THICK / 2;
 const TRIANGLE: HullDef = { sixty: true, corners: [[0, -T, 0], [0, T, 0], [3, -T, 0], [3, T, 0], [0, -T, 3], [0, T, 3]] };
 /** A triangle that may be turned, as a triangle roof may. */
-const TURNED: FormDef = { ...PLANNED_FORMS.triangle_foundation, turns: 3 };
+const TURNED: FormDef = { ...ALL_FORMS.triangle_foundation, turns: 3 };
 const PLANNED = ["half_wall", "quarter_wall", "large_wall", "double_doorway", "gateway", "gate", "quarter_foundation", "thin_pillar", "fence_foundation", "triangle_foundation", "triangle_turned"] as const;
 let wide: Registry | null = null;
 
@@ -503,7 +503,7 @@ let wide: Registry | null = null;
 function plannedRegistry(): Registry {
   if (wide) return wide;
   const defs = PLANNED.flatMap((name): Def[] => {
-    const form: FormDef = name === "triangle_turned" ? TURNED : PLANNED_FORMS[name];
+    const form: FormDef = name === "triangle_turned" ? TURNED : ALL_FORMS[name];
     return [
       { type: "shape", id: `test:shape_${name}`, role: "thing", boxes: form.cls === "triangle" ? [] : formBoxes(form), ...(form.cls === "triangle" ? { hulls: [TRIANGLE] } : {}), form },
       { type: "structure", class: "piece", id: `test:${name}`, mesh: "shape", shape: `test:shape_${name}`, half: formHalf(form), color: 5, hp: 100, material: "core:mat_stone" },
@@ -667,7 +667,7 @@ test("a key's turn is formPose's: own +X is direction dir - rot * (12 / turns)",
 test("a key a blueprint turns has the pose its piece had in a frame turned back", () => {
   const { reg } = plannedWorld();
   const forms = reg.forms;
-  const rows: BlueprintForms = { wall: FORMS.wall, stairs: FORMS.stairs, triangle: TURNED, ceiling: FORMS.ceiling, pillar: FORMS.pillar, double_doorway: PLANNED_FORMS.double_doorway };
+  const rows: BlueprintForms = { wall: FORMS.wall, stairs: FORMS.stairs, triangle: TURNED, ceiling: FORMS.ceiling, pillar: FORMS.pillar, double_doorway: ALL_FORMS.double_doorway };
   const kinds: Record<string, number> = { wall: reg.index.get("core:wall_wood")!, stairs: reg.index.get("core:stairs_wood")!, triangle: reg.index.get("test:triangle_turned")!, ceiling: reg.index.get("core:ceiling_wood")!, pillar: reg.index.get("core:pillar_wood")!, double_doorway: reg.index.get("test:double_doorway")! };
   const frames = new StructureStore({ chunksX: 4, chunksZ: 4 }, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts).frames;
   const rng = new Rng(5);

@@ -145,7 +145,9 @@ test("the smithy makes the guns, rounds, grenade, tranquilizer dart, scope and s
   expect(Object.keys(SMITHY).length).toBe(27);
   for (const name of Object.keys(SMITHY)) expect([name, made(name)]).toEqual([name, SMITHY[name]!]);
   // What it makes is these and the fabricator and the Rex, Spino and Brachio saddles.
-  expect(recipes("smithy")).toEqual([...Object.keys(SMITHY), "piece_fabricator", "saddle_brachio", "saddle_rex", "saddle_spino"].sort());
+  // The metal pieces past the first six are held by the building tests (tests/build).
+  const later = (name: string): boolean => /^piece_.*_metal$/.test(name) && !(name in SMITHY);
+  expect(recipes("smithy").filter((name) => !later(name))).toEqual([...Object.keys(SMITHY), "piece_fabricator", "saddle_brachio", "saddle_rex", "saddle_spino"].sort());
   // Each armor piece weighs what its page says (Chitin Helmet to Flak Boots); the metal pieces 4 (Metal Foundation to Metal Stairs).
   const weight = (name: string): number => item(name).weight!;
   expect(["hat", "shirt", "gloves", "pants", "boots"].map((p) => [weight(`chitin_${p}`), weight(`flak_${p}`)])).toEqual([[4, 4], [6, 10], [3, 2], [6, 10], [3, 4]]);

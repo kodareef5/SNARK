@@ -2,22 +2,17 @@
 
 import { expect, test } from "bun:test";
 import { FOUNDATION_THICK } from "../../content/building.ts";
-import { PLANNED_FORMS, formBoxes } from "../../content/building/forms.ts";
-import { CORE_CONTENT } from "../../content/core.ts";
-import type { Def } from "../../shared/content/defs.ts";
-import { compileContent, type Registry } from "../../shared/content/registry.ts";
+import type { Registry } from "../../shared/content/registry.ts";
 import { STRUCT_UNITS } from "../../shared/coords.ts";
 import { PLACED_STRUCTURE, RESULT_FAR, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_OK, RESULT_TERRAIN, RESULT_TOO_HIGH } from "../../shared/net/protocol.ts";
 import { Rng } from "../../shared/rng.ts";
-import type { Heightfield } from "../../shared/world/heightfield.ts";
-import { formHalf } from "../../shared/world/lattice/forms.ts";
 import { poseOf, rotsOf, type LatticeKey, type LatticePose } from "../../shared/world/lattice/frames.ts";
 import { CLS_EDGE, CLS_SQUARE, CLS_VERTEX, cellOf, elementCorners, facesOverlap, key0, key1, keyAnchor, keyCls, keyDir, keyLvl, keyM0, keyM3 } from "../../shared/world/lattice/module.ts";
 import { OFFERS, SWITCH_MARGIN, candidates, choose, makeCandidates, makeVerdict, runKey, startBase, validate, validateFree, type Candidates, type Site } from "../../shared/world/lattice/place.ts";
 import { MAX_BURIED, frameAxes, freePose, restPose, units, type Pose } from "../../shared/world/snap.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { count, places, poseIn, slot, start } from "../fixtures/slots.ts";
-import { flatWorld, wrap, type TestWorld } from "../fixtures/world.ts";
+import { flatWorld, type TestWorld } from "../fixtures/world.ts";
 
 const U = STRUCT_UNITS;
 const TEAM = 7;
@@ -27,8 +22,8 @@ const made: LatticePose = { x: 0, y: 0, z: 0, yaw: 0, tw: 0 };
 const out = makeCandidates();
 const verdict = makeVerdict();
 
-function siteOf(w: TestWorld, heightAt: (x: number, z: number) => number = (x, z) => w.hf.heightAt(x, z), turned = false): Site {
-  return { structs: w.structs, tables: w.reg, heightAt, turned };
+function siteOf(w: TestWorld, heightAt: (x: number, z: number) => number = (x, z) => w.hf.heightAt(x, z)): Site {
+  return { structs: w.structs, tables: w.reg, heightAt };
 }
 
 /** A row as whole lattice units: x, y, z, yaw. */
@@ -108,7 +103,7 @@ test("every place one piece has for another is offered as a slot, with the pose 
 });
 
 test("what offers what is a table over layers; a lone foundation's slots", () => {
-  expect(OFFERS.map((o) => `${o.from}>${o.to}`)).toEqual(["slab>slab", "slab>fill", "slab>wall", "slab>post", "slab>leaf", "wall>wall", "wall>slab", "wall>leaf", "post>post", "post>slab", "footing>wall"]);
+  expect(OFFERS.map((o) => `${o.from}>${o.to}`)).toEqual(["slab>slab", "slab>fill", "slab>wall", "slab>wall", "slab>post", "slab>leaf", "slab>leaf", "slab>footing", "wall>wall", "wall>wall", "wall>slab", "wall>leaf", "post>post", "post>slab", "post>wall", "footing>wall", "footing>footing"]);
   const w = flatWorld(4);
   const site = siteOf(w);
   start(w, w.kind("core:foundation_wood"), 100, FOUNDATION_THICK / 2, 100, 3000, TEAM);
@@ -149,37 +144,19 @@ test("two pieces offering one edge give one candidate; a taken edge is not offer
   expect(validate(site, wall, TEAM, shared.fr, shared.k0, (shared.k1 | (1 << 26)) >>> 0, 101.5, 2, 100, verdict)).toBe(RESULT_OBSTRUCTED);
 });
 
-const PLANNED = ["half_wall", "quarter_wall"] as const;
-let wide: Registry | null = null;
-
-/** The core content and two of the rows to come as kinds `test:<row>`. */
-function plannedWorld(chunks = 4): TestWorld {
-  if (!wide) {
-    const defs = PLANNED.flatMap((name): Def[] => [
-      { type: "shape", id: `test:shape_${name}`, role: "thing", boxes: formBoxes(PLANNED_FORMS[name]), form: PLANNED_FORMS[name] },
-      { type: "structure", class: "piece", id: `test:${name}`, mesh: "shape", shape: `test:shape_${name}`, half: formHalf(PLANNED_FORMS[name]), color: 5, hp: 100, material: "core:mat_stone" },
-    ]);
-    const { registry, errors } = compileContent([...CORE_CONTENT, ...defs]);
-    if (!registry) throw new Error(errors.join("\n"));
-    wide = registry;
-  }
-  const flat = flatWorld(chunks);
-  return wrap(flat.dims, flat.hf as Heightfield, wide);
-}
-
 test("a wall is not offered or taken where a taller piece covers that level", () => {
-  const w = plannedWorld();
+  const w = flatWorld(4);
   const { structs } = w;
   const site = siteOf(w);
   const wall = w.kind("core:wall_wood");
-  const quarter = w.kind("test:quarter_wall");
+  const quarter = w.kind("core:quarter_wall_wood");
   const a = start(w, w.kind("core:foundation_wood"), 100, FOUNDATION_THICK / 2, 100, 0, TEAM);
   // A whole wall on the east edge. A half wall on the west with a floor on it, half a storey up, whose east edge is the wall's.
   const tall = join(w, a, "wall", 1);
   structs.keyAt(tall, key);
   const east = { ...key };
   expect(slot(w, a, wall, 3, 0, key)).toBe(true);
-  const half = structs.place(w.kind("test:half_wall"), key.fr, key.k0, key.k1, TEAM, 1);
+  const half = structs.place(w.kind("core:half_wall_wood"), key.fr, key.k0, key.k1, TEAM, 1);
   structs.keyAt(a, key);
   const floor = structs.place(w.kind("core:ceiling_wood"), key.fr, key.k0, key1(keyM3(key.k1), 2, 0, 0, 0, 0), TEAM, 1);
   expect([half >= 0, floor >= 0]).toEqual([true, true]);
@@ -427,7 +404,7 @@ test("far from a base's origin a real overlap is refused that the exact test pas
   for (const yaw of [57600, 57988]) {
     const w = flatWorld(8);
     const { structs } = w;
-    const site = siteOf(w, () => 3.9, true);
+    const site = siteOf(w, () => 3.9);
     const f = structs.frames.make(100 * U, 4 * U, 100 * U, yaw, TEAM);
     const foundation = w.kind("core:foundation_wood");
     const ceiling = w.kind("core:ceiling_wood");
@@ -465,8 +442,7 @@ test("far from a base's origin a real overlap is refused that the exact test pas
       // At this yaw the corner has drifted centimetres into the first arm.
       expect(deep).toBeGreaterThan(0.03);
       expect([code, verdict.detail, ends.includes(verdict.a)]).toEqual([RESULT_OBSTRUCTED, PLACED_STRUCTURE, true]);
-      // Without turned slots it is not a place at all, and with the first arm's end gone it is a free one.
-      expect(validate({ ...site, turned: false }, ceiling, TEAM, f.gid, k0, k1, ...eye, verdict)).toBe(RESULT_NO_SNAP);
+      // With the first arm's end gone it is a free one.
       for (const ref of ends) structs.remove(ref);
       expect(validate(site, ceiling, TEAM, f.gid, k0, k1, ...eye, verdict)).toBe(RESULT_OK);
     } else {

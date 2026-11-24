@@ -166,7 +166,8 @@ function push(out: Cells, cls: number, at: number, d: number, lvl: number, layer
  * lists (one, unless it lists more), one cell for each storey of its span. False if one is off the lattice.
  */
 export function formCells(forms: FormTable, kind: number, k0: number, k1: number, out: Cells): boolean {
-  const span = Math.max(1, forms.span[kind]!);
+  // A roof's cell reaches as high as its slab does, so nothing is floored through it.
+  const span = forms.reach[kind]!;
   const listed = forms.def[kind]!.cells;
   const lvl = keyLvl(k1);
   const dir = keyDir(k1);

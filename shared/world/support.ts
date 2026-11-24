@@ -546,6 +546,14 @@ export class Support {
         if (footing >= 0) this.put(footing, loose[this.kindOf(footing)]!);
         this.beside(fr, c0, c1, lvl, -1, self);
       }
+      // A rail or a beam is also held by a post that stands through its level at either end.
+      if (loose[kind] !== 0 && this.single[kind] === 1) {
+        elementVertices(k0, k1, lvl, POST, verts);
+        for (let v = 0; v < 2; v++) {
+          const post = this.covering(fr, verts.k0[v]!, verts.k1[v]!, self);
+          if (post >= 0) this.put(post, COST_SIDE);
+        }
+      }
     } else if (layer === POST) {
       const under = low ? this.ending(fr, k0, cellAt(k1, lvl - 1, POST), lvl, self) : -1;
       if (under >= 0) this.put(under, loose[this.kindOf(under)]!);
@@ -642,6 +650,15 @@ export class Support {
       this.tops(kind, fr, k0, k1, self);
       const on = this.starting(fr, k0, cellAt(k1, top, POST), top, self);
       if (on >= 0) this.put(on, mine);
+      // The rails and beams that end at it, at each level it stands through.
+      vertexEdges(k0, k1, lvl, WALL, mids);
+      for (let e = 0; e < 12; e++) {
+        if (mids.k0[e] === 0) continue;
+        for (let up = 0; up < forms.span[kind]!; up++) {
+          const rail = this.at(fr, mids.k0[e]!, cellAt(mids.k1[e]!, lvl + up, WALL), self);
+          if (rail >= 0 && this.loose[this.kindOf(rail)] !== 0 && this.single[this.kindOf(rail)] === 1) this.put(rail, COST_SIDE);
+        }
+      }
     } else if (layer === FOOTING) {
       const on = this.starting(fr, k0, cellAt(k1, lvl, WALL), lvl, self);
       if (on >= 0) this.put(on, mine);
