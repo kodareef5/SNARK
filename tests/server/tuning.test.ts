@@ -74,17 +74,17 @@ test("engrams: a level and a cost of the server's, not offered, learned without 
 
 test("levels: the survivors' table and the tames', the most each may have, and the engram points of each level", () => {
   const was = levels(base);
-  expect([was.xp.slice(0, 4), was.most, was.tame]).toEqual([[0, 5, 20, 40], undefined, undefined]);
+  expect([was.xp.slice(0, 4), was.most, was.tame!.xp.slice(0, 4), was.tame!.most]).toEqual([[0, 5, 20, 40], undefined, [0, 10, 30, 60], undefined]);
   // With only the survivors' table set, tames keep the table they had. A level past the content's last gives the last level's engram points.
   let l = levels(deriveRegistry(base, { xp: [0, 10, 30], points: [0, 4] }));
-  expect([l.xp, l.engramPoints, l.most, l.tame]).toEqual([[0, 10, 30], [0, 4, was.engramPoints[2]!], undefined, { xp: was.xp }]);
+  expect([l.xp, l.engramPoints, l.most, l.tame]).toEqual([[0, 10, 30], [0, 4, was.engramPoints[2]!], undefined, was.tame]);
   const tall = Array.from({ length: 150 }, (_, i) => i * 100);
   l = levels(deriveRegistry(base, { xp: tall }));
   expect([l.xp.length, l.engramPoints.length, l.engramPoints[149]]).toEqual([150, 150, was.engramPoints[99]!]);
   l = levels(deriveRegistry(base, { tameXp: [0, 12, 30], most: 99999, tameMost: 25 }));
   expect([l.xp, l.most, l.tame]).toEqual([was.xp, 99999, { xp: [0, 12, 30], most: 25 }]);
   l = levels(deriveRegistry(base, { tameMost: 25 }));
-  expect(l.tame).toEqual({ xp: was.xp, most: 25 });
+  expect(l.tame).toEqual({ xp: was.tame!.xp, most: 25 });
   // A table that does not start at 0 or does not rise is ignored.
   for (const bad of [[5, 10], [0, 10, 10], [0], [0, 5, "x"], "ramp"]) expect(levels(deriveRegistry(base, { xp: bad as number[], stack: 2 }))).toBe(was);
 });

@@ -588,8 +588,8 @@ export const CHOOSE_ARRIVED = 1;
 export const CHOOSE_TRAVEL = 2;
 
 /**
- * experience u32, level u16, unspent stat points u16, unspent engram points varint, learned engrams (count varint, content
- * index u16 each), crafting jobs (count u8, then recipe u16, units left u8, tick the current unit is done u32 each).
+ * unspent engram points varint, learned engrams (count varint, content index u16 each), crafting jobs (count u8, then
+ * recipe u16, units left u8, tick the current unit is done u32 each). Experience and level are OWN_XP's.
  */
 export const OWN_PROGRESSION = ownKind();
 
@@ -650,6 +650,8 @@ export const OWN_STATION = ownKind();
  * string (empty for one not named). A session is told only of balls in its own inventory and in the box it has open.
  */
 export const OWN_KEPT = ownKind();
+/** experience f64, level u16, unspent stat points u16. Sent at each gain, so it carries nothing that a gain leaves as it was. */
+export const OWN_XP = ownKind();
 
 export const MARKER_DEATH = 1;
 

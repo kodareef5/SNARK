@@ -249,7 +249,7 @@ export class Harvest {
     }
     this.progression.addXp(rec, def.xp * blows, XP_HARVEST);
     const rider = profile ? this.riderOf?.(rec) : null;
-    if (rider && rider !== rec && !rider.dead && !rider.out) this.progression.addXp(rider, def.xp * blows / 2, XP_HARVEST);
+    if (rider && rider !== rec && !rider.dead && !rider.out) this.progression.addXp(rider, def.xp * blows / 2, XP_HARVEST, false);
     this.hits++;
 
     const left = table.hp[index]! - blows;

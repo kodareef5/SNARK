@@ -321,6 +321,22 @@ const MAKING: Def[] = [
 ];
 
 /**
+ * The experience a tame needs in all for each of its 88 levels past the one it was tamed at, as the reference game's
+ * Leveling page gives it for multiplayer, with 0 for that first level. Its cap is the last.
+ */
+export const TAME_XP: readonly number[] = [
+  0, 10, 30, 60, 100, 150, 210, 280, 360, 450,
+  550, 660, 780, 910, 1050, 1200, 1360, 1530, 1710, 1900,
+  2100, 2310, 2530, 2760, 3000, 3250, 3510, 3780, 4060, 4350,
+  4650, 4960, 5280, 5610, 5950, 6545, 7199, 7919, 8711, 9582,
+  10540, 11594, 12985, 14933, 17173, 19749, 23106, 27106, 31506, 36006,
+  41000, 47000, 55000, 65000, 80000, 98000, 120000, 150000, 185000, 225000,
+  275000, 340000, 415000, 500000, 600000, 730000, 900000, 1115000, 1380000, 1700000,
+  2080000, 2525000, 3000000, 3550000, 4100000, 4700000, 5405000, 6080625, 6840703, 7695791,
+  8657765, 9739986, 10957484, 12327170, 13868070, 15601570, 17551770, 19745740, 22213960,
+];
+
+/**
  * The reference game's survivor levels: the experience each of the 105 takes in all, fractions included, and the engram
  * points each gives. Levels past 105 are its ascensions, which are not built.
  */
@@ -341,24 +357,8 @@ const LEVELS: Def = (() => {
   // The first level that gives each number of points.
   const steps: readonly (readonly [level: number, points: number])[] = [[2, 8], [10, 12], [20, 16], [30, 20], [40, 24], [50, 28], [60, 40], [73, 50], [87, 60], [99, 70]];
   const engramPoints = xp.map((_, i) => steps.findLast(([level]) => i + 1 >= level)?.[1] ?? 0);
-  return { type: "levels", id: id("levels"), xp, engramPoints };
+  return { type: "levels", id: id("levels"), xp, engramPoints, tame: { xp: TAME_XP } };
 })();
-
-/**
- * The experience a tame needs in all for each of its 88 levels past the one it was tamed at, as the reference game's
- * Leveling page gives it for multiplayer, with 0 for that first level. Its cap is the last. Not yet LEVELS' `tame`.
- */
-export const TAME_XP: readonly number[] = [
-  0, 10, 30, 60, 100, 150, 210, 280, 360, 450,
-  550, 660, 780, 910, 1050, 1200, 1360, 1530, 1710, 1900,
-  2100, 2310, 2530, 2760, 3000, 3250, 3510, 3780, 4060, 4350,
-  4650, 4960, 5280, 5610, 5950, 6545, 7199, 7919, 8711, 9582,
-  10540, 11594, 12985, 14933, 17173, 19749, 23106, 27106, 31506, 36006,
-  41000, 47000, 55000, 65000, 80000, 98000, 120000, 150000, 185000, 225000,
-  275000, 340000, 415000, 500000, 600000, 730000, 900000, 1115000, 1380000, 1700000,
-  2080000, 2525000, 3000000, 3550000, 4100000, 4700000, 5405000, 6080625, 6840703, 7695791,
-  8657765, 9739986, 10957484, 12327170, 13868070, 15601570, 17551770, 19745740, 22213960,
-];
 
 // Stats are [base, gain per wild level, gain per level an owner gives]. The creatures are in content/creatures.
 const ALL: readonly Def[] = [

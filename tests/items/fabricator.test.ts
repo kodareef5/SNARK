@@ -41,6 +41,8 @@ const fab = compilePacks([
 /** A Harness on `reg` with ada joined, cheats on, beside a level spot, and a station of `kind` placed there. */
 function workshop(reg: Registry, kind: string, host: ConstructorParameters<typeof Harness>[3] = {}) {
   const h = new Harness({}, 1, 60, { dev: true, startingCreatures: 0, ...host }, reg);
+  // No drip: the experience below is the deeds' alone.
+  h.host.setSetting("GenericXPMultiplier", "0");
   const s = h.join("ada");
   h.run(400);
   const at = flatGround(h, 30, 30);
@@ -168,6 +170,7 @@ test("the fabricator takes no job while out and never burns wood; lit on one gas
     // The paused unit and its queue are saved, and stay paused while it is out.
     h.host.shutdown();
     h = new Harness({}, 1, 60, { dev: true, startingCreatures: 0, dbPath }, fab);
+    h.host.setSetting("GenericXPMultiplier", "0");
     s = h.join("ada");
     h.run(600);
     rec = h.host.fixtures.find(ref)!;

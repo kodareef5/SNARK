@@ -96,8 +96,10 @@ export class EntityRecord {
   xp = 0;
   readonly engrams: number[] = [];
   readonly jobs: Job[] = [];
-  /** Counts every change to the three above, for sending. */
+  /** Counts every change to the engrams, the jobs and the level, for sending. */
   progVersion = 0;
+  /** Counts every change to the experience, the level and the stat points, for sending. */
+  xpVersion = 0;
   /** The owning team: a survivor's own, a tribe's, or 0 for a wild creature. `rank` is its standing in a tribe. */
   team = 0;
   rank = 0;

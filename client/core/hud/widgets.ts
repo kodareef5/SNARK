@@ -10,6 +10,7 @@ import { DOTS } from "./dots.ts";
 import { FALLEN } from "./fallen.ts";
 import { HOTBAR } from "./hotbar.ts";
 import { JET } from "./jet.ts";
+import { LEVEL } from "./level.ts";
 import { MARKS } from "./marks.ts";
 import { MINIMAP, MINIMAP_TOGGLE } from "./minimap.ts";
 import { PROMPT } from "./prompt.ts";
@@ -45,6 +46,7 @@ export const HUD_WIDGETS: readonly HudWidget<any>[] = [
   VITALS,
   BUFFS,
   HOTBAR,
+  LEVEL,
   CROSSHAIR,
   PROMPT,
   ACTION,

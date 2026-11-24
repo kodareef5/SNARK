@@ -1,0 +1,108 @@
+// Experience no one deed earns alone. The drip comes with time: to a living survivor whose session is here, and to a
+// tame with such a survivor of its team near it. The share is half of what a kill, a harvest or a craft earned, given to
+// each other living survivor of the earner's team near it, and to the tame each of them sits on. The earner keeps its
+// own. Both figures are the reference game's (ark.wiki.gg, Experience, 2026-11-23); it gives the drip for tames only.
+
+import { TICK_RATE } from "../shared/coords.ts";
+import type { GameServer } from "./game.ts";
+import { XP_TIME, type Progression } from "./progression.ts";
+import type { EntityRecord, Records } from "./records.ts";
+import type { ServerWorld } from "./world.ts";
+
+/** Experience a minute, before GenericXPMultiplier. */
+export const DRIP_PER_MINUTE = 0.66;
+/** Ticks between drips. One a tick would send each survivor its experience thirty times a second. */
+export const DRIP_TICKS = 10 * TICK_RATE;
+/** Metres from a survivor within which its team shares what is earned, and its tames get the drip. */
+export const SHARE_RANGE = 100;
+export const SHARE_PART = 0.5;
+
+export interface ExperienceContext {
+  readonly world: ServerWorld;
+  readonly records: Records;
+  readonly game: GameServer;
+  readonly progression: Progression;
+  /** The creatures that are awake, and how many of the list they are. */
+  awake(): readonly [list: ArrayLike<number>, count: number];
+  /** The creature a survivor sits on, or null. */
+  mountOf(rec: EntityRecord): EntityRecord | null;
+  /** Who steers a creature, or null. */
+  riderOf(rec: EntityRecord): EntityRecord | null;
+}
+
+export class Experience {
+  private readonly ctx: ExperienceContext;
+  /** The living survivors whose sessions are here, as of the last gathering: each one's team and entity. */
+  private readonly teams: number[] = [];
+  private readonly bodies: number[] = [];
+  private readonly found: EntityRecord[] = [];
+  private readonly survivor: number;
+
+  constructor(ctx: ExperienceContext) {
+    this.ctx = ctx;
+    this.survivor = ctx.world.reg.index.get("core:survivor") ?? 0;
+    ctx.progression.onShare = (rec, amount, source) => this.share(rec, amount, source);
+  }
+
+  step(tick: number): void {
+    if (tick % DRIP_TICKS !== 0) return;
+    const { world, records, progression } = this.ctx;
+    const ents = world.ents;
+    const amount = (DRIP_PER_MINUTE * DRIP_TICKS) / (60 * TICK_RATE);
+    this.gather();
+    const { teams, bodies, found } = this;
+    for (let i = 0; i < found.length; i++) progression.addXp(found[i]!, amount, XP_TIME);
+    if (found.length === 0) return;
+    const [list, count] = this.ctx.awake();
+    for (let k = 0; k < count; k++) {
+      const e = list[k]!;
+      const rec = records.byPid.get(ents.pid[e]!);
+      // The list holds every body that is awake. Only a tamed creature is given this.
+      if (!rec || rec.team === 0 || !rec.genome || rec.kind === this.survivor) continue;
+      for (let i = 0; i < teams.length; i++) {
+        if (teams[i] !== rec.team || !near(ents, e, bodies[i]!)) continue;
+        progression.addXp(rec, amount, XP_TIME);
+        break;
+      }
+    }
+  }
+
+  /** Gives those near `rec` their part of `amount`, which it earned before any multiplier. */
+  private share(rec: EntityRecord, amount: number, source: number): void {
+    const { world, records, progression } = this.ctx;
+    const from = records.entOf.get(rec.pid);
+    if (rec.team === 0 || from === undefined) return;
+    // A mount's rider has had its half of this already, from the deed itself.
+    const rider = this.ctx.riderOf(rec);
+    const part = amount * SHARE_PART;
+    this.gather();
+    const { teams, bodies, found } = this;
+    for (let i = 0; i < found.length; i++) {
+      const mate = found[i]!;
+      if (teams[i] !== rec.team || !near(world.ents, from, bodies[i]!)) continue;
+      if (mate !== rec && mate !== rider) progression.addXp(mate, part, source, false);
+      const mount = this.ctx.mountOf(mate);
+      if (mount && mount !== rec && mount.team === rec.team && !mount.dead) progression.addXp(mount, part, source, false);
+    }
+  }
+
+  private gather(): void {
+    const { records, game } = this.ctx;
+    const { teams, bodies, found } = this;
+    teams.length = bodies.length = found.length = 0;
+    for (const c of game.clients) {
+      if (!c || !c.active || c.closed || c.pid === 0) continue;
+      const rec = records.byPid.get(c.pid);
+      const e = rec ? records.entOf.get(rec.pid) : undefined;
+      if (!rec || e === undefined || rec.dead || rec.out) continue;
+      teams.push(rec.team);
+      bodies.push(e);
+      found.push(rec);
+    }
+  }
+}
+
+function near(ents: { x: Float32Array; y: Float32Array; z: Float32Array }, a: number, b: number): boolean {
+  const dx = ents.x[a]! - ents.x[b]!, dy = ents.y[a]! - ents.y[b]!, dz = ents.z[a]! - ents.z[b]!;
+  return dx * dx + dy * dy + dz * dz <= SHARE_RANGE * SHARE_RANGE;
+}

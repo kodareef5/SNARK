@@ -57,6 +57,8 @@ test("cementing paste, the narcotic and gunpowder are made at the mortar and pes
  */
 function makesEach(kind: string, names: readonly string[], fuel?: [string, number]): void {
   const h = new Harness({}, 1, 60, { dev: true, startingCreatures: 0 }, reg);
+  // No drip: the experience below is the deeds' alone.
+  h.host.setSetting("GenericXPMultiplier", "0");
   try {
     const s = h.join("ada");
     h.run(200);
@@ -199,6 +201,8 @@ test("cooked meat jerky and prime meat jerky are ARK's, made by the lit preservi
 
 test("a lit preserving bin makes both jerkies at once in 36 minutes with nobody looking, spending its own sparkpowder, and neither is made by hand or by a job", () => {
   const h = new Harness({}, 1, 60, { dev: true, startingCreatures: 0 }, reg);
+  // No drip: the experience below is the deeds' alone.
+  h.host.setSetting("GenericXPMultiplier", "0");
   try {
     const s = h.join("ada");
     h.run(200);

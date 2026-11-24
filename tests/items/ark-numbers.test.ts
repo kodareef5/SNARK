@@ -42,7 +42,7 @@ test("a stack saved above the size its item now has stays whole: it takes no mor
 
 test("a survivor has ARK's 105 levels, the experience each takes, and its engram points for each (Leveling)", () => {
   const levels = reg.defs.find((d) => d?.type === "levels") as LevelsDef;
-  expect([levels.xp.length, levels.engramPoints.length, levels.most, levels.tame]).toEqual([105, 105, undefined, undefined]);
+  expect([levels.xp.length, levels.engramPoints.length, levels.most, levels.tame?.xp.length, levels.tame?.most]).toEqual([105, 105, undefined, 89, undefined]);
   // The page's "XP total" for these levels. Levels 66 to 72 and 93 to 95 are not whole numbers there either.
   const xp = (level: number): number => levels.xp[level - 1]!;
   expect([1, 2, 3, 7, 10, 20, 60, 61, 62, 66, 73, 95, 100, 105].map(xp)).toEqual([0, 5, 20, 190, 450, 1900, 17700, 18850, 21078, 27498.96, 73000, 971538.1, 1798538, 4098538]);

@@ -27,6 +27,8 @@ const contents = (inv: Inventory): string[] => {
 test("a survivor gathers, crafts, eats, levels up, learns, swims, drowns, dies, finds its cache by the marker, and returns after a restart with nothing lost or duplicated", () => {
   const db = join(dir, "life.db");
   const h = new Harness({}, 1, 30, { dbPath: db, dev: true });
+  // No drip: the experience below is the deeds' alone.
+  h.host.setSetting("GenericXPMultiplier", "0");
   const s = h.join("eve", { latencyMs: 40 });
   h.run(500);
   h.say(s, "enablecheats");

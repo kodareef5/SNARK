@@ -194,7 +194,7 @@ test("engrams and levels are the server's: its level table and the tames', the m
   // With only the survivors' line, tames keep content's table. Each is capped where its own table ends.
   const one = served([], ["LevelExperienceRampOverrides=(ExperiencePointsForLevel[0]=10,ExperiencePointsForLevel[1]=30)"]);
   const p = one.h.host.progression;
-  expect([p.levelOf(5), p.levelOf(5, true), p.levelOf(10), p.most(one.me)]).toEqual([1, 2, 2, 30]);
+  expect([p.levelOf(5), p.levelOf(60), p.levelOf(60, true), p.most(one.me)]).toEqual([1, 3, 4, 30]);
   const capped = served([], ["OverrideMaxExperiencePointsDino=150"]);
   const pet = capped.h.host.records.byPid.get(((e: number) => capped.h.world.ents.pid[e]!)(capped.h.host.spawnCreature("core:parasaur", capped.at.x + 6, capped.at.z + 6, 1)))!;
   capped.h.host.taming.give(pet, capped.me, 1);
