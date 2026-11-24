@@ -223,6 +223,13 @@ export class Projectiles {
     this.madeOf = Uint8Array.from(ctx.world.reg.defs, (d) => (d?.type === "structure" || d?.type === "node" ? madeBy(d.material) : MADE_UNKNOWN));
     this.toldWide = ctx.game.clients.length;
     this.numberTold = new Uint8Array(ROCKET_IDS * this.toldWide);
+    // A new connection has seen none of the rockets its slot was told about.
+    const forget = (c: Client): void => {
+      if (c.closed || this.numbered === 0 || c.id >= this.toldWide) return;
+      for (let at = c.id; at < this.numberTold.length; at += this.toldWide) this.numberTold[at] = 0;
+    };
+    ctx.game.sessions.onEnter.on(forget);
+    ctx.game.sessions.onPresence.on(forget);
   }
 
   get flyingCount(): number {
