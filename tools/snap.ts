@@ -15,6 +15,7 @@ import { zoomed } from "../client/core/optics.ts";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 import { App } from "../client/core/app.ts";
+import type { CreatorScreen } from "../client/core/ui/creator.ts";
 import { Camera } from "../client/core/render/camera.ts";
 import { FakeNet, type NetOptions } from "../tests/fixtures/assetnet.ts";
 import { Harness } from "../tests/fixtures/net.ts";
@@ -89,6 +90,7 @@ import { saddleAsset, saddleMeshes, type Ways } from "../tests/fixtures/saddles.
 import { frame as frameFlight, moments, recordFlight, stage } from "./snap/flight.ts";
 import { strikeSheet } from "./snap/strikes.ts";
 import { frozenPack } from "../tests/fixtures/pack.ts";
+import type { InventoryScreen } from "../client/core/ui/inventory.ts";
 
 /** A house two pieces square near the spawn point, seen from its corner, with an open door, windows, stairs to half an upper floor, and a pillar. */
 export function houseScene(view: ProvingView, tier: string): void {
@@ -1117,9 +1119,9 @@ if (import.meta.main) {
   if (args.includes("--creator")) {
     const tab = Number(arg("creator") ?? 0) || 0;
     const pixels = clientPicture(w!, h!, null, (app) => {
-      app.ui.creator.tab = tab;
+      app.ui.screen<CreatorScreen>("creator").tab = tab;
       // A random look, so the controls show what they do.
-      randomLook(new Rng(5), app.ui.creator.look);
+      randomLook(new Rng(5), app.ui.screen<CreatorScreen>("creator").look);
     });
     const out = resolve(arg("out") ?? "artifacts/creator.png");
     mkdirSync(dirname(out), { recursive: true });
@@ -1665,9 +1667,9 @@ if (import.meta.main) {
       session.inventory = inv;
       ui.registry = view.reg;
       ui.palette = view.pack.palette;
-      ui.inventory.open = true;
-      ui.inventory.held = 1;
-      ui.inventory.hover = 2;
+      ui.screen<InventoryScreen>("inventory").open = true;
+      ui.screen<InventoryScreen>("inventory").held = 1;
+      ui.screen<InventoryScreen>("inventory").hover = 2;
     }
     const stationId = arg("station");
     if (stationId !== undefined) {
@@ -1689,7 +1691,7 @@ if (import.meta.main) {
       session.progress.level = 100;
       ui.registry = view.reg;
       ui.palette = view.pack.palette;
-      ui.inventory.open = true;
+      ui.screen<InventoryScreen>("inventory").open = true;
     }
     if (args.includes("--chat")) {
       // Lines on each channel, and the chat box open on the tribe channel with a line being typed.

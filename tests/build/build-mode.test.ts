@@ -28,6 +28,10 @@ import { Harness, type Pilot } from "../fixtures/net.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
 import { PANEL, sceneWorld } from "../fixtures/sceneworld.ts";
 import { coreRegistry } from "../fixtures/world.ts";
+import type { StructMenu } from "../../client/core/ui/structure.ts";
+import type { MenuScreen } from "../../client/core/ui/menu-screen.ts";
+import type { InventoryScreen } from "../../client/core/ui/inventory.ts";
+import type { EmoteMenu } from "../../client/core/ui/emotes.ts";
 
 /** What a server waits before a harmed piece may be mended, as its settings have it unless changed. */
 const REPAIR_WAIT = Math.round(new Rules().num("StructureDamageRepairCooldown") * TICK_RATE);
@@ -430,7 +434,7 @@ test("in the whole client each build key does its action, E uses, cancel puts th
   // Z takes the last piece back, and is not the emotes' key while a piece is in hand.
   expect(tap("KeyZ")).toBe(true);
   run(300);
-  expect([h.host.build.pickedUp, s.inventory!.total(id("piece_wall_wood")), app.ui.emotes.open]).toEqual([1, 6, false]);
+  expect([h.host.build.pickedUp, s.inventory!.total(id("piece_wall_wood")), app.ui.screen<EmoteMenu>("emotes").open]).toEqual([1, 6, false]);
   click();
   run(300);
   expect(h.host.build.placed).toBe(3);
@@ -450,7 +454,7 @@ test("in the whole client each build key does its action, E uses, cancel puts th
   app.key("KeyE", true);
   run(500);
   app.key("KeyE", false);
-  expect(app.ui.structure.open).toBe(true);
+  expect(app.ui.screen<StructMenu>("structure").open).toBe(true);
   // The list's last line undoes the last piece, for a pad or a finger.
   expect(app.ui.frame.find(KEY_STRUCT_BUTTON + 3)!.text).toBe("4  Undo your last piece");
   app.key("Digit2", true);
@@ -532,7 +536,7 @@ test("in the whole client each build key does its action, E uses, cancel puts th
   expect(b.variant).toBe(form + 1);
   press(1);
   run(300);
-  expect([s.held, app.ui.inventory.open]).toEqual([-1, false]);
+  expect([s.held, app.ui.screen<InventoryScreen>("inventory").open]).toEqual([-1, false]);
 
   // A finger held still on a built piece picks it, and its Cancel puts the piece away.
   app.key("Digit3", true);
@@ -550,7 +554,7 @@ test("in the whole client each build key does its action, E uses, cancel puts th
   app.pointer(0, KEY_TOUCH_BUTTON + T_CANCEL, 10, 10, 0, 1);
   app.pointer(1, KEY_TOUCH_BUTTON + T_CANCEL, 10, 10, 0, 1);
   run(300);
-  expect([s.held, app.ui.menu]).toEqual([-1, false]);
+  expect([s.held, app.ui.screen<MenuScreen>("menu").menu]).toEqual([-1, false]);
   expect(BUILD_REASONS[RESULT_SHORT]).toBe("You have none left");
   expect(built(run(50), id("foundation_wood"))).toBe(1);
   expect(h.host.items.audit()).toEqual([]);

@@ -8,8 +8,10 @@ import {
 import { hashString } from "../../../shared/hash.ts";
 import { EYE_BASE, EYE_COLORS, HAIR_BASE, HAIR_COLORS, SKIN_BASE, SKIN_TONES } from "../../../shared/pack/palette.ts";
 import { Rng } from "../../../shared/rng.ts";
+import { RESULT_OK, SESSION_CREATING } from "../../../shared/net/protocol.ts";
 import type { ClientSession } from "../session.ts";
 import { K_BUTTON, K_PANEL, lineHeight, type UiFrame } from "./nodes.ts";
+import type { Screen, ScreenCtx } from "./screen.ts";
 import { S_BUTTON, S_LABEL, S_MARK_SELF, S_PANEL, S_SWATCH, S_TITLE } from "./style.ts";
 import { slider } from "./slider.ts";
 
@@ -46,7 +48,12 @@ const CHOSEN = 0x3f6ea8;
 
 const TAB_LOOK = 0;
 
-export class CreatorScreen {
+export class CreatorScreen implements Screen {
+  readonly name = "creator";
+  readonly layer = "modal";
+  /** A press on it makes no click: it is the whole interface, turned and dragged. */
+  readonly quiet = true;
+  readonly bands = [{ from: KEY_CREATOR_PANEL, count: KEY_CREATOR_REGION + REGION_COUNT * 4 - KEY_CREATOR_PANEL }];
   readonly look = defaultLook();
   tab = TAB_LOOK;
   /** Radians. The body starts facing the viewer, a little to one side. */
@@ -55,8 +62,25 @@ export class CreatorScreen {
   refused = false;
   private sent = 0;
   private rng: Rng | null = null;
+  /** The session it last read: the screen is up while that session is in the creator. */
+  private session: ClientSession | null = null;
 
-  build(f: UiFrame, palette: Uint8Array | null, name: string): void {
+  isOpen(): boolean {
+    return this.session?.sessionState === SESSION_CREATING;
+  }
+
+  absorb(c: ScreenCtx): void {
+    this.session = c.session;
+  }
+
+  /** Only the session closes it, once the survivor is made. */
+  close(): void {}
+
+  build(f: UiFrame, c: ScreenCtx): void {
+    if (c.session) this.draw(f, c.palette, c.session.name);
+  }
+
+  draw(f: UiFrame, palette: Uint8Array | null, name: string): void {
     const look = this.look;
     const w = Math.min(380, f.width - 16);
     const x = f.width - w - 8;
@@ -152,8 +176,8 @@ export class CreatorScreen {
   }
 
   /** Sets `refused` from the answer to the "Create" command. Other results are ignored. */
-  result(seq: number, ok: boolean): void {
-    if (seq === this.sent && seq !== 0) this.refused = !ok;
+  result(seq: number, code: number): void {
+    if (seq === this.sent && seq !== 0) this.refused = code !== RESULT_OK;
   }
 
   value(key: number, value: number): boolean {
@@ -163,8 +187,9 @@ export class CreatorScreen {
   }
 
   /** `kind` is 0 for down, 1 for up, 2 for move. Returns true if `key` is one of this screen's nodes. */
-  pointer(kind: number, key: number, session: ClientSession): boolean {
-    if (key < KEY_CREATOR_PANEL || key >= KEY_CREATOR_REGION + REGION_COUNT * 4) return false;
+  pointer(kind: number, key: number, _x: number, _y: number, _button: number, c: ScreenCtx): boolean {
+    const session = c.session;
+    if (!session || key < KEY_CREATOR_PANEL || key >= KEY_CREATOR_REGION + REGION_COUNT * 4) return false;
     const look = this.look;
     if (kind !== 0) return true;
     const region = key >= KEY_CREATOR_REGION ? Math.floor((key - KEY_CREATOR_REGION) / 4) : -1;

@@ -7,6 +7,8 @@ import type { Registry } from "../../../shared/content/registry.ts";
 import { planCost, pieceBook, placePieces } from "../../../shared/world/plan.ts";
 import type { Hammer } from "../hammer.ts";
 import type { ClientSession } from "../session.ts";
+import { SESSION_CREATING, SESSION_DEAD } from "../../../shared/net/protocol.ts";
+import type { Screen, ScreenCtx } from "./screen.ts";
 import { K_BUTTON, K_INPUT, K_PANEL, lineHeight, wrapText, type UiFrame } from "./nodes.ts";
 import { structName } from "./structure.ts";
 import { S_BUTTON, S_INPUT, S_LABEL, S_PANEL, S_TITLE } from "./style.ts";
@@ -38,7 +40,11 @@ export const HAMMER_ACT = 0, HAMMER_LIST = 1, HAMMER_TURN = 2, HAMMER_MIRROR = 3
 /** Each action's key by the keyboard and the pad, as the guide names them. */
 const KEYS: readonly (readonly [string, string])[] = [["Click", "RT"], ["T", "Y"], ["R", "RB"], ["Q", "Left"], ["Up", "Up"], ["Down", "Down"], ["X", "B"], ["F", "Right"], ["Del", ""], ["G", ""]];
 
-export class HammerPanel {
+/** Its list of templates is a screen; its strip is drawn with the HUD while the hammer is held. */
+export class HammerPanel implements Screen {
+  readonly name = "hammer";
+  readonly layer = "modal";
+  readonly bands = [{ from: KEY_HAMMER_PANEL, count: KEY_HAMMER_NAME_INPUT - KEY_HAMMER_PANEL + 1 }];
   /** The app's hammer, once it has one. */
   hammer: Hammer | null = null;
   /** The name being typed for the chosen row. */
@@ -52,6 +58,43 @@ export class HammerPanel {
 
   close(): void {
     if (this.hammer) this.hammer.panel = false;
+  }
+
+  isOpen(): boolean {
+    return this.open;
+  }
+
+  /** A survivor who dies or goes to the creator puts the list away. */
+  absorb(c: ScreenCtx): void {
+    const state = c.session?.sessionState;
+    if (state === SESSION_DEAD || state === SESSION_CREATING) this.close();
+  }
+
+  /** Its fields have the keyboard while the list is open. */
+  keyboard(): boolean {
+    return true;
+  }
+
+  typing(): boolean {
+    return true;
+  }
+
+  pointer(kind: number, key: number): boolean {
+    return kind === 0 && this.click(key);
+  }
+
+  text(key: number, value: string): boolean {
+    if (!this.field(key)) return false;
+    this.edit(key, value);
+    return true;
+  }
+
+  build(f: UiFrame, c: ScreenCtx): void {
+    if (c.session && c.registry) this.draw(f, c.session, c.registry, c.inputDevice);
+  }
+
+  play(f: UiFrame, c: ScreenCtx): void {
+    if (c.session && c.registry && !this.open) this.draw(f, c.session, c.registry, c.inputDevice);
   }
 
   /** Returns true if the list used the key. */
@@ -139,7 +182,7 @@ export class HammerPanel {
     return cost.slice(0, 3).map((c) => `${c.count} ${structName(reg, reg.places[c.item]![0]!)}`).join(", ") + (cost.length > 3 ? ` and ${cost.length - 3} more kinds` : "");
   }
 
-  build(f: UiFrame, session: ClientSession, reg: Registry, device: number): void {
+  draw(f: UiFrame, session: ClientSession, reg: Registry, device: number): void {
     const h = this.hammer;
     this.reg = reg;
     if (!h?.active) return;

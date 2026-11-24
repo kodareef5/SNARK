@@ -8,7 +8,7 @@ import { DRAW_NEAR, DRAW_SKINNED } from "../../client/core/render/packet.ts";
 import { RemoteSample } from "../../client/core/session.ts";
 import {
   KEY_CREATOR_BEARD, KEY_CREATOR_CREATE, KEY_CREATOR_HAIR, KEY_CREATOR_HAIR_COLOR, KEY_CREATOR_NOTE, KEY_CREATOR_PANEL, KEY_CREATOR_RANDOM, KEY_CREATOR_REGION,
-  KEY_CREATOR_RESET, KEY_CREATOR_SEX, KEY_CREATOR_SKIN, KEY_CREATOR_TAB, KEY_CREATOR_TITLE, KEY_CREATOR_TURN,
+  KEY_CREATOR_RESET, KEY_CREATOR_SEX, KEY_CREATOR_SKIN, KEY_CREATOR_TAB, KEY_CREATOR_TITLE, KEY_CREATOR_TURN, type CreatorScreen,
 } from "../../client/core/ui/creator.ts";
 import { KEY_CROSS, KEY_VITAL } from "../../client/core/ui/hud.ts";
 import { K_BAR, K_TEXT, textWidth, type UiFrame } from "../../client/core/ui/nodes.ts";
@@ -106,16 +106,16 @@ artTest("a new name arrives in the creator with no body; it makes a look, and th
 
   for (const [name, aspect] of ASPECTS) {
     for (const tab of [0, 1]) {
-      ui.creator.tab = tab;
+      ui.screen<CreatorScreen>("creator").tab = tab;
       ui.build(aspect, app.hud, session);
       fits(f, `${name} tab ${tab}`);
     }
   }
-  ui.creator.tab = 0;
+  ui.screen<CreatorScreen>("creator").tab = 0;
   run(34);
 
   // Female, the eighth skin tone, long hair, the tenth hair colour.
-  const look = ui.creator.look;
+  const look = ui.screen<CreatorScreen>("creator").look;
   expect([...look]).toEqual([...defaultLook()]);
   click(KEY_CREATOR_SEX + 1);
   click(KEY_CREATOR_SKIN + 7);
@@ -148,10 +148,10 @@ artTest("a new name arrives in the creator with no body; it makes a look, and th
   for (let i = 0; i < 30; i++) app.pointer(0, KEY_CREATOR_REGION + 3, 0, 0, 0);
   expect(regionOf(look, 0)).toBe(1);
   // The turn buttons turn only the drawn body.
-  const turned = ui.creator.turn;
+  const turned = ui.screen<CreatorScreen>("creator").turn;
   click(KEY_CREATOR_TURN + 1);
-  expect(ui.creator.turn).toBeGreaterThan(turned);
-  expect(app.scene!.own!.yaw).toBe(ui.creator.turn);
+  expect(ui.screen<CreatorScreen>("creator").turn).toBeGreaterThan(turned);
+  expect(app.scene!.own!.yaw).toBe(ui.screen<CreatorScreen>("creator").turn);
   click(KEY_CREATOR_RANDOM);
   const first = [...look];
   click(KEY_CREATOR_RANDOM);

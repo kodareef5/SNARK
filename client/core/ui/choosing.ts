@@ -10,6 +10,7 @@ import type { ClientSession } from "../session.ts";
 import { wholeMap } from "../tactical.ts";
 import { IMAGE_MAP } from "./hud.ts";
 import { K_BUTTON, K_IMAGE, K_INPUT, K_PANEL, lineHeight, type UiFrame } from "./nodes.ts";
+import type { Screen, ScreenCtx } from "./screen.ts";
 import { S_BUTTON, S_FRAME, S_INPUT, S_LABEL, S_MARK_DEATH, S_MARK_SELF, S_MARK_SPAWN, S_PANEL, S_TITLE } from "./style.ts";
 import { fitBytes } from "./tame.ts";
 
@@ -43,7 +44,12 @@ export function waitText(readyAt: number, tick: number): string {
   return readyAt === 0 || s <= 0 ? "" : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
-export class ChoosingScreen {
+export class ChoosingScreen implements Screen {
+  readonly name = "choosing";
+  readonly layer = "modal";
+  readonly bands = [{ from: KEY_CHOOSE_PANEL, count: KEY_CHOOSE_PAGE + 3 - KEY_CHOOSE_PANEL }, { from: KEY_CHOOSE_PIN, count: 256 }];
+  /** The session it last read: the screen is up while that session has no body. */
+  private session: ClientSession | null = null;
   page = 0;
   /** As of the last build. */
   pages = 1;
@@ -59,7 +65,45 @@ export class ChoosingScreen {
   /** Where the map was drawn at the last build, in interface units, and the part of the map it showed. */
   private readonly box = { x: 0, y: 0, size: 0, u0: 0, v0: 0, du: 1, dv: 1 };
 
-  build(f: UiFrame, session: ClientSession, hud: HudModel | null): void {
+  isOpen(): boolean {
+    return this.session?.sessionState === SESSION_DEAD;
+  }
+
+  /** It opens with death and closes with a body, and the filter is for one spell of choosing. */
+  absorb(c: ScreenCtx): void {
+    this.session = c.session;
+    if (!this.isOpen() && (this.filtering || this.filter !== "")) {
+      this.filtering = false;
+      this.edit("");
+    }
+  }
+
+  /** Only the session closes it, by rising. */
+  close(): void {}
+
+  keyboard(): boolean {
+    return this.filtering;
+  }
+
+  typing(): boolean {
+    return this.filtering;
+  }
+
+  build(f: UiFrame, c: ScreenCtx): void {
+    if (c.session) this.draw(f, c.session, c.hud);
+  }
+
+  pointer(kind: number, key: number, x: number, y: number, _button: number, c: ScreenCtx): boolean {
+    return kind === 0 && c.session !== null && this.click(key, x, y, c.session);
+  }
+
+  text(key: number, value: string): boolean {
+    if (key !== KEY_CHOOSE_FILTER) return false;
+    this.edit(value);
+    return true;
+  }
+
+  draw(f: UiFrame, session: ClientSession, hud: HudModel | null): void {
     if (session.sessionState !== SESSION_DEAD) return;
     const points = session.respawnPoints;
     if (this.pickedList !== session.placesList) {
@@ -161,6 +205,7 @@ export class ChoosingScreen {
 
   /** While the filter has the keyboard: Enter keeps what it holds, Escape empties it, and every other key is typing. */
   key(code: string, down: boolean, repeat: boolean): boolean {
+    if (!this.filtering) return false;
     if (code !== "Enter" && code !== "NumpadEnter" && code !== "Escape") return false;
     if (down && !repeat) {
       if (code === "Escape") this.edit("");

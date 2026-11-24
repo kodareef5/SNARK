@@ -6,6 +6,7 @@ import { CMD_TRAVEL } from "../../../shared/net/protocol.ts";
 import type { ClientSession } from "../session.ts";
 import type { ClusterList, ClusterServer } from "../travel.ts";
 import { K_BUTTON, K_PANEL, type UiFrame } from "./nodes.ts";
+import type { Screen, ScreenCtx } from "./screen.ts";
 import { S_BUTTON, S_LABEL, S_PANEL, S_TITLE } from "./style.ts";
 
 export const KEY_TRAVEL_PANEL = 6000;
@@ -19,7 +20,11 @@ const TRAVEL_ROWS = 12;
 /** Milliseconds between two asks of the server for the list while it is open. */
 export const TRAVEL_REFRESH_MS = 3000;
 
-export class TravelScreen {
+export class TravelScreen implements Screen {
+  readonly name = "travel";
+  readonly layer = "modal";
+  readonly group = "bag";
+  readonly bands = [{ from: KEY_TRAVEL_PANEL, count: 100 }];
   open = false;
   /** Null until the server has answered. */
   list: ClusterList | null = null;
@@ -40,7 +45,17 @@ export class TravelScreen {
     this.askedAt = -Infinity;
   }
 
-  build(f: UiFrame, session: ClientSession): void {
+  isOpen(): boolean {
+    return this.open;
+  }
+
+  close(): void {
+    this.open = false;
+  }
+
+  build(f: UiFrame, c: ScreenCtx): void {
+    const session = c.session;
+    if (!session) return;
     const servers = this.list?.servers ?? [];
     const rows = Math.min(TRAVEL_ROWS, servers.length);
     const w = 420;
@@ -61,6 +76,10 @@ export class TravelScreen {
       b.interactive = away || s.why === "";
       if (!away && s.why !== "") f.text(KEY_TRAVEL_WHY + i, x + 16, top + rowH + 2, w - 32, S_LABEL, s.why);
     }
+  }
+
+  pointer(kind: number, key: number, _x: number, _y: number, _button: number, c: ScreenCtx): boolean {
+    return kind === 0 && c.session !== null && this.click(key, c.session);
   }
 
   /** Returns true if the key was one of this screen's buttons. */

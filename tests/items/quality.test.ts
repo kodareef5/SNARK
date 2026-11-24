@@ -93,20 +93,20 @@ test("give makes stacks at a quality and blueprints, which stack only with their
   screen.open = true;
   const f = new UiFrame();
   f.begin(16 / 9);
-  screen.pointer(2, KEY_INV_SLOT + free * 3, 0, s);
-  screen.build(f, s, reg, null);
+  screen.press(2, KEY_INV_SLOT + free * 3, 0, s);
+  screen.draw(f, s, reg, null);
   expect(f.find(KEY_INV_SLOT + free * 3 + 2)?.text).toBe("BP");
   expect(f.find(KEY_INV_INFO)?.text).toBe("journeyman hatchet blueprint: 4 flint, 4 wood, 37 thatch");
   expect(f.find(KEY_INV_SLOT + free * 3)?.tint).not.toBe(-1);
   expect(f.find(KEY_INV_CRAFT)).toBeNull();
-  screen.pointer(0, KEY_INV_SLOT + free * 3, 0, s);
+  screen.press(0, KEY_INV_SLOT + free * 3, 0, s);
   f.begin(16 / 9);
-  screen.build(f, s, reg, null);
+  screen.draw(f, s, reg, null);
   expect(f.find(KEY_INV_CRAFT)?.text).toBe("Craft");
   // Without the ingredients the server refuses it.
   let code = -1;
   s.onResult = (seq, c) => void (seq !== 0 && (code = c));
-  screen.pointer(0, KEY_INV_CRAFT, 0, s);
+  screen.press(0, KEY_INV_CRAFT, 0, s);
   h.run(150);
   expect(code).toBe(RESULT_SHORT);
   expect(items.audit()).toEqual([]);

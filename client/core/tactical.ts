@@ -503,8 +503,9 @@ export const CHART_KEYS: readonly KeyRow[] = [{
   when: (c) => c.hud.chart !== null,
   press(c, code, down, repeat) {
     const chart = c.hud.chart!;
-    if (!chart.key(code, down && !repeat, c.ui.map)) return undefined;
-    if (!c.ui.map && down && !repeat) { c.ui.settings.minimapZoom = chart.miniZoom; c.ui.settings.changed(); }
+    const map = c.ui.opened("map");
+    if (!chart.key(code, down && !repeat, map)) return undefined;
+    if (!map && down && !repeat) { c.ui.settings.minimapZoom = chart.miniZoom; c.ui.settings.changed(); }
     return true;
   },
 }];

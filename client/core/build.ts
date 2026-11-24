@@ -1027,7 +1027,7 @@ export const BUILD_FIRST_KEYS: readonly KeyRow[] = [{
   keys: ["Escape", "KeyZ"],
   touch: { Escape: T_CANCEL },
   guide: [{ code: "KeyZ", group: G_BUILD, title: "Undo", detail: "Take back the piece you set down last, while it can still be picked up.", sheet: G_BUILD }],
-  when: (c) => building(c) && !c.ui.emotes.open,
+  when: (c) => building(c) && !c.ui.opened("emotes"),
   press(c, code, down, repeat, source) {
     if (code === "KeyZ") {
       if (down && !repeat) c.undo();

@@ -24,6 +24,7 @@ import { corePackBytes } from "../fixtures/pack.ts";
 import { start } from "../fixtures/slots.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 import { previewRows } from "../../tools/bench/preview.ts";
+import type { StructMenu } from "../../client/core/ui/structure.ts";
 
 const reg = coreRegistry();
 const id = (name: string): number => reg.index.get(`core:${name}`)!;
@@ -596,13 +597,13 @@ test("a piece's list says how many pieces would fall with it and shows them; in 
   run(500);
   app.key("KeyE", false);
   run(50);
-  expect([app.ui.structure.open, text(KEY_STRUCT_FALLS)]).toEqual([true, "2 pieces would fall with it"]);
+  expect([app.ui.screen<StructMenu>("structure").open, text(KEY_STRUCT_FALLS)]).toEqual([true, "2 pieces would fall with it"]);
   expect(shown()).toEqual([`ceiling_wood:${GHOST_BAD}:${FALL_FADE}`, `ceiling_wood:${GHOST_BAD}:${FALL_FADE}`]);
   // Taken down, those two fall and nothing else.
   app.key("Digit3", true);
   app.key("Digit3", false);
   run(2000);
-  expect([app.ui.structure.open, mine().length, shown()]).toEqual([false, 1, []]);
+  expect([app.ui.screen<StructMenu>("structure").open, mine().length, shown()]).toEqual([false, 1, []]);
   expect(mine().map((ref) => h.world.structs.chunks[Math.floor(ref / 65536)]!.kind[ref & 0xffff])).toEqual([id("foundation_wood")]);
   // A piece that holds nothing up has no such line.
   aim(ox, top, oz + 4);
@@ -611,7 +612,7 @@ test("a piece's list says how many pieces would fall with it and shows them; in 
   run(500);
   app.key("KeyE", false);
   run(50);
-  expect([app.ui.structure.open, app.ui.frame.find(KEY_STRUCT_FALLS), shown()]).toEqual([true, null, []]);
+  expect([app.ui.screen<StructMenu>("structure").open, app.ui.frame.find(KEY_STRUCT_FALLS), shown()]).toEqual([true, null, []]);
 });
 
 test("the form key held opens a wheel of the piece's forms, chosen by the look, the scroll, a pad's stick or a finger's drag; a tap still cycles", () => {

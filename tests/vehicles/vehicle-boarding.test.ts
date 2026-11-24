@@ -131,7 +131,7 @@ function shown(code: number, piece: number, def: VehicleDefinition): string {
   const notice = new SeatNotice(), menu = new StructMenu();
   notice.pressed(riddenOf(reg, reg.index.get(def.id)!, false));
   if (notice.result(0, code, 0)) return notice.notice;
-  menu.result(0, code, 0, null, piece);
+  menu.answer(0, code, 0, null, piece);
   return menu.notice;
 }
 /** Every unasked answer session `i` has had since `from`, as the client words it, the crosshair on `piece`. */
@@ -380,7 +380,7 @@ artTest("in the whole client: the open skiff is offered from its stern, and a pa
       app.key("KeyE", true); run(80); app.key("KeyE", false); run(600);
       expect(app.hud.prompt).toBe("Land first");
       expect(h.host.urban.occupancy.seatOf(passenger.pid)?.seat).toBe("front");
-      expect(app.ui.structure.open).toBe(false);
+      expect(app.ui.screen<StructMenu>("structure").open).toBe(false);
     } finally { h.host.shutdown(); }
   }
 });

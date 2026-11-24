@@ -81,10 +81,15 @@ import { SplitPort } from "./sound/split.ts";
 import { IMAGE_MAP, IMAGE_MINIMAP, KEY_HOTBAR, KEY_MINIMAP_TOGGLE, KEY_MINIMAP_OUT, KEY_MINIMAP_IN, KEY_VITAL } from "./ui/hud.ts";
 import { canvasHeight, textWidth, wrapText } from "./ui/nodes.ts";
 import { glass } from "./ui/skin.ts";
+import type { EmoteMenu } from "./ui/emotes.ts";
+import type { StructMenu } from "./ui/structure.ts";
+import type { HammerPanel } from "./ui/hammer.ts";
+import type { AirRadio } from "./ui/air-support.ts";
+import type { InventoryScreen } from "./ui/inventory.ts";
+import type { MenuScreen } from "./ui/menu-screen.ts";
 import { TouchPlay, type TouchTarget } from "./touch.ts";
-import { mapPointer } from "./ui/screens.ts";
 import { Ui } from "./ui/ui.ts";
-import { TRAVEL_REFRESH_MS } from "./ui/travel.ts";
+import { TRAVEL_REFRESH_MS, type TravelScreen } from "./ui/travel.ts";
 import { arrivalAddress, joinAddress, serverAddress, siteLinks, type ClusterList, type Page } from "./travel.ts";
 
 /** What hands round a creature cannot do, so a body holding one neither sends nor predicts them (server/carry.ts). */
@@ -243,8 +248,8 @@ export class App {
       get inspecting() { return app.ui.inspect; },
       get flying() { return app.controls.onFlyer; },
       get skating() { return app.controls.onBoard; },
-      get airRadio() { return app.ui.air.available(app.session); },
-      get airMarking() { return app.ui.air.marking; },
+      get airRadio() { return app.ui.screen<AirRadio>("air").available(app.session); },
+      get airMarking() { return app.ui.screen<AirRadio>("air").marking; },
       get patrol() { return app.session.driving >= 0 && app.vehicleTelemetry.lightMode >= 0; },
       get zooming() { return app.zooming; },
       get building() { return (app.builder.active || app.hammer.active) && app.session.driving < 0; },
@@ -259,13 +264,13 @@ export class App {
       },
     };
     // Within the press that chose it, which is when a browser lets a page open another.
-    this.ui.openLink = (url) => this.page?.open?.(url);
+    this.ui.screen<MenuScreen>("menu").openLink = (url) => this.page?.open?.(url);
     this.ui.local = (line) => this.debugWord(line) ?? (this.sounds ? App.late!.soundCommand(line, this.sounds, this.session.own, this.controls.yaw, this.nowMs) : null);
     this.ui.chat.local = (line) => this.debugWord(line);
     // The inventory pictures the build drew, fetched as they are first shown.
     if (stream?.manifest.icons) new Icons(stream.manifest, reg.defs).install(this.ui.frame);
     // The Storage tab's page comes as its own file, which the first frame does not wait for, and draws with these (D906).
-    void import("./ui/storage.ts").then((m) => (this.ui.storage = new m.StoragePage({ textWidth, wrapText, glass })), () => {});
+    void import("./ui/storage.ts").then((m) => (this.ui.screen<MenuScreen>("menu").storage = new m.StoragePage({ textWidth, wrapText, glass })), () => {});
     this.shots = new Shots(reg);
     this.supply = new SupplyView(reg, pack);
     this.breaks = new BreakEffects(reg, pack.palette);
@@ -284,11 +289,8 @@ export class App {
       this.scene.details.nodeBreak(nodeSpot.kind, chunk * 256 + index, nodeSpot.x, nodeSpot.y, nodeSpot.z,
         session.renderClock - session.remoteDelay, field.forms.size[form]! / 64);
     };
-    this.ui.inventory.onDeploy = slot => this.vehiclePlacement.begin(slot);
+    this.ui.screen<InventoryScreen>("inventory").onDeploy = slot => this.vehiclePlacement.begin(slot);
     session.onResult = (seq, code) => {
-      this.ui.air.result(seq, code, session.tickClock);
-      this.ui.creator.result(seq, code === RESULT_OK);
-      this.ui.inventory.result(seq, code, session.tickClock);
       // The answer to an undo; else a placement the server never judged, whose predicted piece goes.
       const undone = this.predict.result(seq, code, this.nowMs);
       if (undone > RESULT_OK) this.builder.say(undone === RESULT_WAIT ? "Too late to take it back" : (STRUCT_REASONS[undone] ?? "It cannot be taken back"), this.nowMs);
@@ -296,12 +298,12 @@ export class App {
       this.hammer.result(seq, code);
       this.vehiclePlacement.result(seq, code, this.nowMs);
       // An unasked result answers the last press of the use key: on a seat it is the seat's, else the built piece's.
-      if (!this.seatNotice.result(seq, code, this.nowMs)) this.ui.structure.result(seq, code, this.nowMs, this.session, this.aimed);
-      this.ui.emotes.result(seq, code, this.nowMs);
+      if (!this.seatNotice.result(seq, code, this.nowMs)) this.ui.screen<StructMenu>("structure").answer(seq, code, this.nowMs, this.session, this.aimed);
+      this.ui.results(seq, code);
       if (code === RESULT_LOCKED) this.ui.hear?.("door/locked");
     };
     this.builder.predict = this.predict;
-    this.ui.tool.hammer = this.hammer;
+    this.ui.screen<HammerPanel>("hammer").hammer = this.hammer;
     this.builder.planSlot = (forms, team, ox, oy, oz, dx, dy, dz, reach) => (session.world ? this.hammer.slots.find(session, session.world, this.reg, forms, team, ox, oy, oz, dx, dy, dz, reach) : null);
     session.onPlaced = (p) => {
       // A fill of the hammer's is its own to answer.
@@ -312,7 +314,7 @@ export class App {
       this.builder.answered(p.seq, quiet ? RESULT_OK : p.code, p.code === RESULT_OK || quiet ? "" : buildReason(this.reg, session, p.code, p, (entity) => this.nameOf(entity)), this.nowMs);
     };
     session.onRow = (ref) => this.predict.row(ref);
-    this.ui.structure.onUndo = () => this.undo();
+    this.ui.screen<StructMenu>("structure").onUndo = () => this.undo();
     this.parts = this.listed();
   }
 
@@ -529,7 +531,6 @@ export class App {
   pointer(kind: number, key: number, x: number, y: number, button: number, finger = 0): void {
     if (finger > 0) this.ui.inputDevice = 2;
     if (this.touch.pointer(kind, key, x, y, finger, this.nowMs, this.touchTarget, this.unit)) return;
-    if (!this.ui.menu && this.ui.map && mapPointer(this.hud, kind, key, x, y, finger)) return;
     if ((this.ui.wantsPointerLock || this.ui.inspect) && kind === 0 && button === 0) {
       if (key >= KEY_VITAL && key < KEY_VITAL + this.hud.vitals.length * 2) { this.ui.settings.vitalLabels = !this.ui.settings.vitalLabels; this.ui.settings.changed(); }
       if (key === KEY_MINIMAP_TOGGLE) { this.ui.settings.minimap = !this.ui.settings.minimap; this.ui.settings.changed(); }
@@ -537,8 +538,8 @@ export class App {
       const slot = (key - KEY_HOTBAR) / 3;
       if (Number.isInteger(slot) && slot >= 0 && slot < this.hud.hotbar.length) this.session.command(CMD_SELECT, (w) => w.u8(this.session.held === slot ? 255 : slot));
     }
-    this.ui.pointer(kind, key, x, y, button, this.session);
-    if (this.ui.menu || this.ui.air.open) this.blur();
+    this.ui.pointer(kind, key, x, y, button, this.session, finger);
+    if (this.ui.screen<MenuScreen>("menu").menu || this.ui.opened("air")) this.blur();
   }
 
   zoomMini(turn: number): void {
@@ -650,13 +651,13 @@ export class App {
    */
   private travel(nowMs: number): void {
     const { page, session } = this;
-    const t = this.ui.travel;
+    const t = this.ui.screen<TravelScreen>("travel");
     if (!page || this.leaving) return;
     if (session.state === "active" && !this.arrived) {
       this.arrived = true;
       page.arrived();
       // Asked for once the world is in, so the first frame waits for nothing more.
-      page.json("links.json").then((answer) => (this.ui.links = siteLinks(answer)), () => {});
+      page.json("links.json").then((answer) => (this.ui.screen<MenuScreen>("menu").links = siteLinks(answer)), () => {});
     }
     if (session.state === "closed" && (session.closeReason === REJECT_TRAVEL || session.closeReason === REJECT_FULL) && !this.turnedAway) {
       this.turnedAway = t.open = true;
@@ -807,7 +808,7 @@ export class App {
     ui.canTalk = this.voice !== null && this.voice.notice === "";
     ui.creatureAhead = this.lookedAt >= 0;
     this.touch.frame(nowMs, ui.touch ? ui.touchShown : 0, this.touchTarget);
-    ui.storage?.step(ui, forTouch(tierOf(ui.settings.tier), ui.settings.touchFirst), this.stream?.port ?? null, this.scene?.assets.residency ?? null, this.sounds?.library ?? null, nowMs);
+    ui.screen<MenuScreen>("menu").storage?.step(ui, forTouch(tierOf(ui.settings.tier), ui.settings.touchFirst), this.stream?.port ?? null, this.scene?.assets.residency ?? null, this.sounds?.library ?? null, nowMs);
     this.nowMs = nowMs;
     // The debug bar is a file of its own, fetched once Settings.debug is first on.
     if (ui.settings.debug && !this.debugAsked) {
@@ -830,8 +831,9 @@ export class App {
     }
 
     this.travel(nowMs);
-    if (this.ui.leftWorld) { this.ui.leftWorld=false; this.page?.go("./?screen=roster"); }
-    if (this.ui.reconnectRequested) { this.ui.reconnectRequested = false; this.page?.reload?.(); }
+    const menu = this.ui.screen<MenuScreen>("menu");
+    if (menu.leftWorld) { menu.leftWorld = false; this.page?.go("./?screen=roster"); }
+    if (menu.reconnectRequested) { menu.reconnectRequested = false; this.page?.reload?.(); }
     if (session.state === "closed") {
       this.dash.none(hud);
       // Only the reasons a player can act on are spelled out.
@@ -841,7 +843,7 @@ export class App {
       if (this.sound) this.sounds?.hush(this.sound);
       return false;
     }
-    if (this.ui.menu || this.ui.inspect) this.blur();
+    if (this.ui.screen<MenuScreen>("menu").menu || this.ui.inspect) this.blur();
     this.prompts.pulse(c);
     this.sight.hold(nowMs, c);
     f.holding = this.holding = this.heldInArms();
@@ -883,7 +885,7 @@ export class App {
       this.scene = new Scene(world, this.reg, this.pack, this.split ? { manifest: this.stream!.manifest, port: this.split.assets } : this.stream, { farPalms: this.tools?.farPalms ?? false });
       this.scene.shots = this.shots;
       this.scene.supply = this.supply;
-      this.ui.emotes.has = (n) => this.scene!.characters.emoteKnown(n);
+      this.ui.screen<EmoteMenu>("emotes").has = (n) => this.scene!.characters.emoteKnown(n);
       this.tools?.dress(this.scene, world);
       if (this.timer) this.scene.time(this.timer, this.spans.build);
       this.falling = this.scene.falling = new Falling(this.reg.halfY, (x, z) => world.hf.heightAt(x, z), {
@@ -963,8 +965,9 @@ export class App {
     this.predict.step(session, f.nowMs);
     this.predict.fill(scene.predicted, GHOST_BAD, f.nowMs);
     if (scene.ghost.kind !== 0 && this.predict.covers(scene.ghost.x, scene.ghost.y, scene.ghost.z)) scene.ghost.kind = 0;
-    this.ui.air.update(session, this.remote, world, cam);
-    scene.airSupport.preview = this.ui.air.marking ? this.ui.air.spot : null;
+    const air = this.ui.screen<AirRadio>("air");
+    air.update(session, this.remote, world, cam);
+    scene.airSupport.preview = air.marking ? air.spot : null;
     scene.airSupport.view = session.airSupport;
     scene.airSupport.tick = session.tickClock;
     this.supply.list = session.supply;
@@ -984,7 +987,7 @@ export class App {
     beams.length = 0;
     if (session.corpseLocator) for (const m of session.markers) if (m.kind === MARKER_DEATH) beams.push(m.x, m.y, m.z);
     hud.dpr = this.dpr;
-    scene.hour = this.hud.hour = this.sky.step(session.serverTick, session.dayOffset, session.clock, this.interval, this.ui.creativeScreen.sundial.held, session.creative);
+    scene.hour = this.hud.hour = this.sky.step(session.serverTick, session.dayOffset, session.clock, this.interval, this.ui.screen<MenuScreen>("menu").creativeScreen.sundial.held, session.creative);
     scene.viewHeight = f.height;
     scene.now = sceneMs;
     scene.eyeSeconds = session.renderClock / TICK_RATE;
@@ -1034,7 +1037,7 @@ export class App {
   private fillHud(f: AppFrame): void {
     const session = this.session, hud = this.hud, cam = this.cam, c = this.controls, alive = f.alive, nowMs = f.nowMs;
     const fill = this.hudFill, body = f.body;
-    f.menu = this.ui.menu; f.inCar = alive && !!f.car; f.rivalry = f.riding && body.state.rivalry && !body.state.out; f.building = this.builder.active; f.device = this.ui.inputDevice;
+    f.menu = this.ui.screen<MenuScreen>("menu").menu; f.inCar = alive && !!f.car; f.rivalry = f.riding && body.state.rivalry && !body.state.out; f.building = this.builder.active; f.device = this.ui.inputDevice;
     // The count shows without the pieces on their way down, and without a dragged row's while it is held.
     f.spendItem = this.builder.inHand; f.spend = this.predict.pending(f.spendItem) + (this.builder.row.on ? this.builder.row.ok : 0);
     f.buildSays = this.builder.active ? this.builder.says() : "";
@@ -1093,7 +1096,7 @@ export class App {
     } else { b.active = false; v.active = false; this.hammer.active = false; }
     this.hammer.holograms(marks, session, this.pack.palette, this.cam.x, this.cam.y, this.cam.z, nowMs);
     const predict = this.predict;
-    this.ui.structure.undoable = b.active && predict.undoable;
+    this.ui.screen<StructMenu>("structure").undoable = b.active && predict.undoable;
     // Where a piece just set down stands, the preview has nothing to add.
     if (b.active && b.problem !== RESULT_NO_SNAP && !predict.covers(b.pose.x / STRUCT_UNITS, b.pose.y / STRUCT_UNITS, b.pose.z / STRUCT_UNITS)) {
       ghost.kind = b.kind;
@@ -1111,7 +1114,7 @@ export class App {
       if (row.code !== 0 && row.ok > 0) marks.piece(row.kind, row.x[row.ok]!, row.y[row.ok]!, row.z[row.ok]!, row.yaw[row.ok]!, row.tw[row.ok]!, GHOST_BAD);
     }
     // With a piece's list open, the pieces that would fall with it, each drawn over itself a little toward the eye.
-    const menu = this.ui.structure;
+    const menu = this.ui.screen<StructMenu>("structure");
     for (let i = 0; menu.open && i < menu.falling; i++) {
       const ref = menu.falls[i]!, t = world.structs.chunks[Math.floor(ref / 65536)], k = ref & 0xffff;
       if (!t || k >= t.high || t.kind[k] === 0) continue;

@@ -22,6 +22,7 @@ import { KORU_QUAY, koruMapFile, koruPack, koruPoint } from "../fixtures/koru.ts
 import { artTest } from "../fixtures/needs-art.ts";
 import { corePack } from "../fixtures/pack.ts";
 import { coreRegistry } from "../fixtures/world.ts";
+import type { MenuScreen } from "../../client/core/ui/menu-screen.ts";
 
 const MEDIUM = forTouch(tierOf("medium"), true);
 const HEADINGS = 4;
@@ -182,8 +183,8 @@ test("the HUD holds at most 500 nodes in every mode, the vehicles' dashes and th
   for (const mode of ["play", "car", "helicopter", "boat", "menu", "settings", "audio", "controls", "controller"] as const) {
     [dash.rotor, dash.boat] = [mode === "helicopter", mode === "boat"];
     hud.vehicle = mode === "car" || mode === "helicopter" || mode === "boat" ? dash : null;
-    [ui.menu, ui.options, ui.settings.tab] = [!["play", "car", "helicopter", "boat"].includes(mode), mode === "settings" || mode === "audio", mode === "audio" ? 1 : 0];
-    [ui.help, ui.helpDevice] = [mode === "controls" || mode === "controller", mode === "controller" ? 1 : 0];
+    [ui.screen<MenuScreen>("menu").menu, ui.screen<MenuScreen>("menu").options, ui.settings.tab] = [!["play", "car", "helicopter", "boat"].includes(mode), mode === "settings" || mode === "audio", mode === "audio" ? 1 : 0];
+    [ui.screen<MenuScreen>("menu").help, ui.screen<MenuScreen>("menu").helpDevice] = [mode === "controls" || mode === "controller", mode === "controller" ? 1 : 0];
     const frame = (i: number): void => {
       [hud.vitals[0]!.fraction, dash.speed] = [(i % 100) / 100, i % 40];
       ui.build(16 / 9, hud, null);
