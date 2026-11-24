@@ -478,9 +478,12 @@ export class RoomFinder {
       for (let i = 0; i < this.count; i++) this.resort(t, rooms, this.changed[i]!);
       // Where cells came or went the doors are listed lowest slot first, as sorting every piece lists them.
       if (rebuilt && rooms.doors.size > 1) {
-        const doors = [...rooms.doors].sort((a, b) => a[0] - b[0]);
-        rooms.doors.clear();
-        for (const [slot, flags] of doors) rooms.doors.set(slot, flags);
+        const slots = [...rooms.doors.keys()].sort((a, b) => a - b);
+        for (const slot of slots) {
+          const flags = rooms.doors.get(slot)!;
+          rooms.doors.delete(slot);
+          rooms.doors.set(slot, flags);
+        }
       }
     }
     return rooms.inside;

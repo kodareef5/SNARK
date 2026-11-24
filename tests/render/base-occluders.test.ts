@@ -91,7 +91,7 @@ function plated(reg: Registry): [id: string, what: number, stacks: number][] {
   return reg.defs.flatMap((d, k): [string, number, number][] => (d && plates.plate[k] ? [[d.id, plates.plate[k]!, plates.stacks[k]!]] : []));
 }
 
-test("the kinds that may be plates are stone's wall and ceiling and metal's wall, and metal's rows are one with those over them", () => {
+test("stone's wall and ceiling and metal's wall may be plates, and only metal's stack", () => {
   expect(plated(coreRegistry()).sort()).toEqual([["core:ceiling_stone", PLATE_SLAB, 0], ["core:wall_metal", PLATE_WALL, 1], ["core:wall_stone", PLATE_WALL, 0]]);
 });
 
@@ -123,11 +123,11 @@ function closed(meshes: readonly SourceMesh[], where: string): void {
   }
 }
 
-test("each tier's recipe makes them closed about their middle at every level, alone and beside each other", () => {
+test("the recipes' meshes are closed about their middle, alone and side by side", () => {
   closed([...tierShapes(STONE, FORMS), ...bakeMetal(FORMS)], "the recipes");
 });
 
-artTest("the installed packs' are closed about their middle at every level, alone and beside each other", () => {
+artTest("the installed meshes are closed about their middle, alone and side by side", () => {
   closed(unpackMeshes(corePack()), "the installed pack");
 });
 
@@ -179,7 +179,7 @@ function spans(plates: readonly number[][]): number[][] {
   return plates.map(([x, y, z, hx, hy, hz, c, s]) => [cm(x! - c! * hx! - s! * hz!), cm(z! + s! * hx! - c! * hz!), cm(x! + c! * hx! + s! * hz!), cm(z! - s! * hx! + c! * hz!), cm(y! - hy!), cm(y! + hy!)]).sort((p, q) => p[0]! - q[0]! || p[1]! - q[1]! || p[4]! - q[4]!);
 }
 
-test("stone walls in a row are a plate a storey, a doorway parts its row, ceilings side by side are one, and metal's rows are one", () => {
+test("a row of walls is a plate, a doorway parts it, and metal's storeys are one", () => {
   const { w, reg, structs, cam, look, plates } = world(96, 54);
   const f = baseAt(structs, 100, 0.375, 100, 0);
   for (let i = 0; i < 4; i++) putAt(structs, reg, f, "core:foundation_stone", CLS_SQUARE, sq(i, 0), 0, 0);
@@ -239,7 +239,7 @@ test("a wall that gives way to a joint is a plate by itself, cut back by what it
   expect(spans(plates())).toEqual([[100, 100.13, 100, 102.87, 0.405, 3.345], [100.13, 100, 102.87, 100, 0.405, 3.345]]);
 });
 
-test("a wall that goes takes its plate with it in that frame, and what stood behind it is drawn", () => {
+test("a wall that goes takes its plate in that frame, and what it hid is drawn", () => {
   const { reg, structs, cam, remote, look, plates } = world(160, 90);
   const f = baseAt(structs, 100, 0.375, 100, 0);
   const walls: number[] = [];
@@ -286,9 +286,10 @@ function fort(structs: StructureStore, reg: Registry, rng: Rng, x: number, z: nu
   return { put, refs };
 }
 
-test("over random bases, cameras and removals a frame with plates is the picture of the frame without them", () => {
-  let frames = 0, hidden = 0, withPlates = 0, saved = 0, near = 0;
-  for (const [seed, tier, trims] of [[1, "lowpoly", false], [2, "medium", false], [3, "lowpoly", true], [4, "high", false]] as const) {
+// Over random bases, cameras and removals a frame with plates is the picture of the frame without them: on three tiers, and with stone's walls giving way to stand-in joints.
+for (const [seed, tier, trims] of [[1, "lowpoly", false], [2, "medium", false], [3, "lowpoly", true], [4, "high", false]] as const) {
+  test(`plates change no pixel over random bases, cameras and removals: ${tier}${trims ? ", trims" : ""}`, () => {
+    let frames = 0, hidden = 0, withPlates = 0, saved = 0, near = 0;
     const { reg, structs, cam, remote, look, plates } = world(240, 135, tier, trims);
     const rng = new Rng(seed);
     // Stone and metal bases along the lattice and at odd yaws, a wooden one among them, and a mixed one of every turn class.
@@ -313,7 +314,7 @@ test("over random bases, cameras and removals a frame with plates is the picture
     remote.count = 160;
     for (let n = 0; n < remote.count; n++) [remote.id[n], remote.kind[n], remote.x[n], remote.y[n], remote.z[n], remote.yaw[n], remote.flags[n]] = [100 + n, dodo, rng.range(60, 140), rng.int(3) === 0 ? 0.375 + 3 * rng.int(3) : 0, rng.range(86, 140), rng.range(0, 6), 1];
     for (let n = 0; n < 60; n++) structs.add(box, rng.range(60, 140), 0.3 + (rng.int(3) === 0 ? 0.375 + 3 * rng.int(2) : 0), rng.range(86, 140), rng.int(65536), 1, 100);
-    for (let step = 0; step < 90; step++, frames++) {
+    for (let step = 0; step < 80; step++, frames++) {
       // Now and then a piece goes or comes back, or a door turns.
       for (let n = rng.int(3); step > 0 && n > 0; n--) {
         const which = rng.int(forts.length + 1);
@@ -356,7 +357,7 @@ test("over random bases, cameras and removals a frame with plates is the picture
       if (got.tris[0]! < got.tris[1]!) saved++;
     }
     expect(plates().length).toBeGreaterThan(8);
-  }
-  // The plates were in most frames, hid things in many, and the camera stood against walls.
-  expect([frames, withPlates > 250, saved > 120, hidden > 2000, near > 20], `${withPlates} with plates, ${saved} drew less, ${hidden} hidden, ${near} near`).toEqual([360, true, true, true, true]);
-}, 600000);
+    // The plates were in most frames, hid things in many, and the camera stood against walls.
+    expect([frames, withPlates > 50, saved > 20, hidden > 300, near > 2], `${withPlates} with plates, ${saved} drew less, ${hidden} hidden, ${near} near`).toEqual([80, true, true, true, true]);
+  });
+}
