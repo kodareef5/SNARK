@@ -60,7 +60,7 @@ function indexOf(c: Candidates, fr: number, k0: number, k1: number): number {
 
 const list = (c: Candidates): string[] => Array.from({ length: c.n }, (_, i) => `${c.fr[i]} ${c.k0[i]} ${c.k1[i]} ${c.score[i]}`);
 
-test("every place a socket allows today is offered as a slot, and its key gives the socket's pose", () => {
+test("every place a socket allows is offered as a slot with the socket's pose", () => {
   const sockets = makeSockets();
   let pairs = 0;
   for (const yaw of [0, 8048, 21384, 40000, 65535]) {
@@ -101,7 +101,7 @@ test("every place a socket allows today is offered as a slot, and its key gives 
   expect(pairs).toBeGreaterThan(400);
 });
 
-test("the table of what offers what is over layers, and a foundation alone offers these slots", () => {
+test("what offers what is a table over layers; a lone foundation's slots", () => {
   expect(OFFERS.map((o) => `${o.from}>${o.to}`)).toEqual(["slab>slab", "slab>fill", "slab>wall", "slab>post", "slab>leaf", "wall>wall", "wall>slab", "wall>leaf", "post>post", "post>slab", "footing>wall"]);
   const w = flatWorld(4);
   const site = siteOf(w);
@@ -119,7 +119,7 @@ test("the table of what offers what is over layers, and a foundation alone offer
   expect(lookDown(site, w.kind("core:storage_box"), 100, FOUNDATION_THICK, 100)).toBe(0);
 });
 
-test("two pieces offering one edge give one candidate, and a taken edge is not offered", () => {
+test("two pieces offering one edge give one candidate; a taken edge is not offered", () => {
   const w = flatWorld(4);
   const { structs, reg } = w;
   const site = siteOf(w);
@@ -236,7 +236,7 @@ test("candidates and their order are the same on two stores built in different o
   }
 });
 
-test("the slot shown is kept until another beats it by a quarter of a metre or it is no longer offered", () => {
+test("the slot shown is kept until another is 0.25 m better or it drops out", () => {
   const w = flatWorld(4);
   const site = siteOf(w);
   const wall = w.kind("core:wall_wood");
@@ -260,7 +260,7 @@ test("the slot shown is kept until another beats it by a quarter of a metre or i
   expect(SWITCH_MARGIN).toBe(0.25);
 });
 
-test("a foundation beside a base is offered at each level the ground allows, and not buried or left in the air", () => {
+test("a foundation beside a base is offered at each level the ground allows", () => {
   const w = flatWorld(4);
   const { structs } = w;
   const foundation = w.kind("core:foundation_wood");
@@ -316,7 +316,7 @@ test("a thing still rests on a floor, and what it overlaps is named", () => {
   expect([validate(site, w.kind("core:stairs_wood"), TEAM, key.fr, key.k0, key.k1, 100, 2, 100, verdict), verdict.a]).toEqual([RESULT_OBSTRUCTED, first]);
 });
 
-test("walls at the corners of a base and over each other are never in each other's way, with no shrink", () => {
+test("walls meeting at a base's corners never overlap, with no shrink", () => {
   const wall = "core:wall_wood";
   for (const yaw of [0, 4111, 12000, 29876, 50001]) {
     const w = flatWorld(4);
@@ -381,7 +381,7 @@ function into(ax: number, az: number, ayaw: number, ah: number, bx: number, bz: 
   return least;
 }
 
-test("a second base beside the first at another yaw is refused only where the two really overlap", () => {
+test("a second base at another yaw is refused only where the two really overlap", () => {
   const rng = new Rng(2718);
   let [refused, taken, close] = [0, 0, 0];
   for (const yaw of [0, 4111, 29876]) {
@@ -411,7 +411,7 @@ test("a second base beside the first at another yaw is refused only where the tw
   expect([refused > 300, taken > 300, close < 40]).toEqual([true, true, true]);
 });
 
-test("two arms of a base that meet far from its origin: a real overlap is refused that the exact test passes", () => {
+test("far from a base's origin a real overlap is refused that the exact test passes", () => {
   // 194 sides along 30 degrees and 112 back along 120 end 0.75 cm over the edge 224 half-sides along the frame's own +X.
   const [along, back, out0] = [194, 112, 224];
   const A = new Int32Array(16);
@@ -472,7 +472,7 @@ test("two arms of a base that meet far from its origin: a real overlap is refuse
   expect(judged).toEqual([RESULT_OBSTRUCTED, RESULT_OK]);
 });
 
-test("over two thousand looks: every slot offered is one the same store takes or refuses for what is built, never for its key", () => {
+test("2,400 looks: a slot offered is taken or refused for what is built, never its key", () => {
   const rng = new Rng(8086);
   const w = flatWorld(4);
   const { structs, reg } = w;

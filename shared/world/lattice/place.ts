@@ -7,7 +7,7 @@ import { PLACED_ENTITY, PLACED_NONE, PLACED_STRUCTURE, RESULT_BODY, RESULT_ENEMY
 import { BUILD_REACH, SNAP_SEARCH, buried, crosses, obstructed, obstruction, tooHigh, type PieceTables, type Pose } from "../snap.ts";
 import { Found, type StructureStore } from "../structures.ts";
 import { levelY, worldOf } from "./basis.ts";
-import { FORM_LAYERS, SLOT_CLASSES, type FormLayer, type FormTable, type Rel } from "./forms.ts";
+import { FORM_LAYERS, HALF_SIDE_M, LEVEL_M, SLOT_CLASSES, type FormLayer, type FormTable, type Rel } from "./forms.ts";
 import { baseOrigin, keyFits, ownDir, poseOf, type Frame, type LatticeKey, type LatticePose } from "./frames.ts";
 import { CLS_EDGE, CLS_SQUARE, CLS_TRIANGLE, CLS_VERTEX, LVL_MOST, M_MOST, SIDE, canon, canonical, cellOf, dirTurn, edgesOverlap, elementCorners, facesOverlap, key0, key1, keyAnchor, keyCls, keyDir, keyFlip, keyLayer, keyLvl, keyM0, keyM1, keyM2, keyM3, tupleEqual, tupleStep, tupleWithin } from "./module.ts";
 import { Cells, cellAt, edgeFaces, elementVertices, faceEdges, formCells, vertexFaces } from "./occupancy.ts";
@@ -18,6 +18,10 @@ export const PLACE_REACH = BUILD_REACH + 3;
 export const SWITCH_MARGIN = 0.25;
 /** Metres short of where a look landed that slots are measured from. */
 const END_SHORT = 0.05;
+/** Metres round a slot's place that a piece offering it stands within: what `validate` searches. */
+const ROW_REACH = 4.5;
+/** A whole side in metres. */
+const SIDE_M = SIDE * HALF_SIDE_M;
 /** How much of a slot's score is its distance from the look's end. The rest is its distance from the look's whole line. */
 const END_SHARE = 0.75;
 /** Levels either side of its neighbour's that a foundation is offered at, where the ground allows. */
@@ -170,53 +174,65 @@ function offersOf(forms: FormTable, turned: boolean, held: number, by: number, k
   for (const row of rows) {
     if (row.host !== undefined && from.closes !== row.host) continue;
     for (const at of row.at) {
-      const base = keyLvl(k1) + (at === TOP ? forms.span[by]! : at === UNDER ? -forms.span[held]! : 0);
-      const reach = row.rel === ACROSS && root ? TERRACE : 0;
-      for (let steps = -reach; steps <= reach; steps++) {
-        const lvl = base + steps;
-        if (Math.abs(lvl) > LVL_MOST) continue;
-        if (row.rel === SAME) {
-          if (mine === cls) take(k0, cellAt(k1, lvl, layer), steps);
-        } else if (row.rel === SIDES) {
-          if (mine < CLS_SQUARE || cls !== CLS_EDGE) continue;
-          faceEdges(k0, k1, lvl, layer, sides);
-          for (let i = 0; i < sides.n; i++) take(sides.k0[i]!, sides.k1[i]!, steps);
-        } else if (row.rel === ACROSS) {
-          if (mine < CLS_SQUARE || cls < CLS_SQUARE) continue;
+      const lvl = keyLvl(k1) + (at === TOP ? forms.span[by]! : at === UNDER ? -forms.span[held]! : 0);
+      if (Math.abs(lvl) > LVL_MOST) continue;
+      const first = out.n;
+      if (row.rel === SAME) {
+        if (mine === cls) take(k0, cellAt(k1, lvl, layer), 0);
+      } else if (row.rel === SIDES) {
+        if (mine < CLS_SQUARE || cls !== CLS_EDGE) continue;
+        faceEdges(k0, k1, lvl, layer, sides);
+        for (let i = 0; i < sides.n; i++) take(sides.k0[i]!, sides.k1[i]!, 0);
+      } else if (row.rel === ACROSS) {
+        if (mine < CLS_SQUARE || cls < CLS_SQUARE) continue;
+        const own = cellAt(k1, lvl, layer);
+        let na = 0;
+        if (cls !== mine) {
           keyAnchor(k0, k1, m, 0);
-          const na = elementCorners(mine, m, 0, keyDir(k1), A, 0);
-          faceEdges(k0, k1, lvl, layer, sides);
-          for (let i = 0; i < sides.n; i++) {
-            if (sides.k0[i] === 0) continue;
-            edgeFaces(sides.k0[i]!, sides.k1[i]!, lvl, layer, round);
-            // The square to each side of the edge, then the triangle to each: the ones over the offering face are its own side.
-            for (let j = cls === CLS_SQUARE ? 0 : 2, end = j + 2; j < end; j++) {
-              if (round.k0[j] === 0) continue;
-              keyAnchor(round.k0[j]!, round.k1[j]!, m, 0);
-              const nb = elementCorners(cls, m, 0, keyDir(round.k1[j]!), B, 0);
-              if (!facesOverlap(A, 0, na, B, 0, nb)) take(round.k0[j]!, round.k1[j]!, steps);
-            }
-          }
-        } else if (row.rel === POINTS) {
-          if (mine < CLS_SQUARE || cls !== CLS_VERTEX) continue;
-          elementVertices(k0, k1, lvl, layer, round);
-          for (let i = 0; i < round.n; i++) take(round.k0[i]!, round.k1[i]!, steps);
-          faceEdges(k0, k1, lvl, layer, sides);
-          for (let i = 0; i < sides.n; i++) {
-            if (sides.k0[i] === 0) continue;
-            elementVertices(sides.k0[i]!, sides.k1[i]!, lvl, layer, round);
-            take(round.k0[2]!, round.k1[2]!, steps);
-          }
-        } else if (row.rel === FACES) {
-          if (mine !== CLS_EDGE || cls < CLS_SQUARE) continue;
-          edgeFaces(k0, k1, lvl, layer, round);
-          for (let j = cls === CLS_SQUARE ? 0 : 2, end = j + 2; j < end; j++) take(round.k0[j]!, round.k1[j]!, steps);
-        } else if (row.rel === ROUND) {
-          if (mine !== CLS_VERTEX || cls < CLS_SQUARE) continue;
-          // Twelve squares with a corner there, twelve triangles, then the three squares it is the middle of.
-          vertexFaces(k0, k1, lvl, layer, round);
-          for (let j = 0; j < round.n; j++) if ((j >= 12 && j < 24) === (cls === CLS_TRIANGLE)) take(round.k0[j]!, round.k1[j]!, steps);
+          na = elementCorners(mine, m, 0, keyDir(k1), A, 0);
         }
+        faceEdges(k0, k1, lvl, layer, sides);
+        for (let i = 0; i < sides.n; i++) {
+          if (sides.k0[i] === 0) continue;
+          edgeFaces(sides.k0[i]!, sides.k1[i]!, lvl, layer, round);
+          // The square to each side of the edge, then the triangle to each. The one on the offering face's side is itself, or lies over it.
+          for (let j = cls === CLS_SQUARE ? 0 : 2, end = j + 2; j < end; j++) {
+            if (round.k0[j] === 0) continue;
+            if (cls === mine) {
+              if (round.k0[j] !== k0 || round.k1[j] !== own) take(round.k0[j]!, round.k1[j]!, 0);
+              continue;
+            }
+            keyAnchor(round.k0[j]!, round.k1[j]!, m, 0);
+            const nb = elementCorners(cls, m, 0, keyDir(round.k1[j]!), B, 0);
+            if (!facesOverlap(A, 0, na, B, 0, nb)) take(round.k0[j]!, round.k1[j]!, 0);
+          }
+        }
+      } else if (row.rel === POINTS) {
+        if (mine < CLS_SQUARE || cls !== CLS_VERTEX) continue;
+        elementVertices(k0, k1, lvl, layer, round);
+        for (let i = 0; i < round.n; i++) take(round.k0[i]!, round.k1[i]!, 0);
+        faceEdges(k0, k1, lvl, layer, sides);
+        for (let i = 0; i < sides.n; i++) {
+          if (sides.k0[i] === 0) continue;
+          elementVertices(sides.k0[i]!, sides.k1[i]!, lvl, layer, round);
+          take(round.k0[2]!, round.k1[2]!, 0);
+        }
+      } else if (row.rel === FACES) {
+        if (mine !== CLS_EDGE || cls < CLS_SQUARE) continue;
+        edgeFaces(k0, k1, lvl, layer, round);
+        for (let j = cls === CLS_SQUARE ? 0 : 2, end = j + 2; j < end; j++) take(round.k0[j]!, round.k1[j]!, 0);
+      } else if (row.rel === ROUND) {
+        if (mine !== CLS_VERTEX || cls < CLS_SQUARE) continue;
+        // Twelve squares with a corner there, twelve triangles, then the three squares it is the middle of.
+        vertexFaces(k0, k1, lvl, layer, round);
+        for (let j = 0; j < round.n; j++) if ((j >= 12 && j < 24) === (cls === CLS_TRIANGLE)) take(round.k0[j]!, round.k1[j]!, 0);
+      }
+      // A foundation beside a foundation: the same cells at the levels round its neighbour's.
+      if (row.rel !== ACROSS || !root) continue;
+      const last = out.n;
+      for (let steps = -TERRACE; steps <= TERRACE; steps++) {
+        if (steps === 0 || Math.abs(lvl + steps) > LVL_MOST) continue;
+        for (let i = first; i < last; i++) take(out.k0[i]!, cellAt(out.k1[i]!, lvl + steps, layer), steps);
       }
     }
   }
@@ -280,7 +296,9 @@ function taken(structs: StructureStore, forms: FormTable, kind: number, fr: numb
 
 /** The ref of a piece in a slot that a piece of `kind` keyed (k0, k1) would block, or -1. */
 function blocking(structs: StructureStore, forms: FormTable, kind: number, fr: number, k0: number, k1: number): number {
-  for (const rel of forms.def[kind]!.blocks ?? []) {
+  const blocks = forms.def[kind]!.blocks;
+  if (!blocks) return -1;
+  for (const rel of blocks) {
     if (!relCell(forms, kind, k0, k1, rel)) continue;
     const ref = structs.covering(fr, cell.k0, cell.k1);
     if (ref >= 0) return ref;
@@ -434,16 +452,29 @@ export function candidates(site: Site, kind: number, team: number, ox: number, o
   const rows = structs.query(ex - pad, ez - pad, ex + pad, ez + pad, near);
   const refs = near.refs;
   const turned = site.turned === true;
+  // Half the held piece's height, and for a foundation the levels it may be off its neighbour's.
+  const tall = (structs.top[kind]! - structs.low[kind]!) / 2 + (forms.def[kind]!.root === "always" ? TERRACE * LEVEL_M : 0);
   table.fill(0);
   blocked.length = 0;
   let n = 0;
+  let lastFr = 0;
+  let mine = false;
   for (let r = 0; r < rows; r++) {
     const t = structs.chunks[Math.floor(refs[r]! / 65536)]!;
     const slot = refs[r]! & 0xffff;
     const fr = t.fr ? t.fr[slot]! : 0;
-    if (fr === 0 || structs.frames.get(fr)!.team !== team) continue;
+    if (fr === 0) continue;
     const by = t.kind[slot]!;
-    for (const rel of forms.def[by]!.blocks ?? []) if (relCell(forms, by, t.k0![slot]!, t.k1![slot]!, rel)) blocked.push(fr, cell.k0, cell.k1);
+    // A piece offers nothing whose middle is farther from its own than a side along and the two pieces' half heights up.
+    const rx = t.x[slot]! - sx;
+    const ry = t.y[slot]! - sy;
+    const rz = t.z[slot]! - sz;
+    const up = (structs.top[by]! - structs.low[by]!) / 2 + tall;
+    if (rx * rx + ry * ry + rz * rz > SNAP_SEARCH * SNAP_SEARCH + 2 * SNAP_SEARCH * Math.sqrt(SIDE_M * SIDE_M + up * up) + SIDE_M * SIDE_M + up * up) continue;
+    if (fr !== lastFr) mine = structs.frames.get((lastFr = fr))!.team === team;
+    if (!mine) continue;
+    const blocks = forms.def[by]!.blocks;
+    if (blocks) for (const rel of blocks) if (relCell(forms, by, t.k0![slot]!, t.k1![slot]!, rel)) blocked.push(fr, cell.k0, cell.k1);
     offersOf(forms, turned, kind, by, t.k0![slot]!, t.k1![slot]!, offers);
     for (let i = 0; i < offers.n; i++) {
       if ((n + 1) * 2 > cap) {
@@ -460,18 +491,9 @@ export function candidates(site: Site, kind: number, team: number, ox: number, o
     const fr = uFr[i]!;
     const k0 = uK0[i]!;
     const k1 = uK1[i]!;
-    if (taken(structs, forms, kind, fr, k0, k1) >= 0 || blocking(structs, forms, kind, fr, k0, k1) >= 0) continue;
-    let shut = false;
-    for (let b = 0; b < blocked.length && !shut; b += 3) shut = blocked[b] === fr && covers(blocked[b + 1]!, blocked[b + 2]!);
-    if (shut) continue;
     const f = structs.frames.get(fr)!;
-    poseOf(f, k0, k1, forms, kind, pose);
-    const px = pose.x / U - ox;
-    const py = pose.y / U - oy;
-    const pz = pose.z / U - oz;
-    if (px * px + py * py + pz * pz > reach || tooHigh(site.heightAt, site.tables, kind, pose, pose.tw) || buried(site.heightAt, site.tables, kind, pose, pose.tw)) continue;
     shapeOf(f, forms, kind, k0, k1);
-    // Its middle is in reach of the look's end, as a socket's place was.
+    // Its middle is in reach of the look's end, as a socket's place was. Most slots found are not, so this is asked first.
     let mx = 0;
     let mz = 0;
     for (let c = 0; c < shape.n; c++) {
@@ -480,6 +502,15 @@ export function candidates(site: Site, kind: number, team: number, ox: number, o
     }
     const my = (shape.y0 + shape.y1) / 2;
     if ((mx - sx) * (mx - sx) + (my - sy) * (my - sy) + (mz - sz) * (mz - sz) > SNAP_SEARCH * SNAP_SEARCH) continue;
+    if (taken(structs, forms, kind, fr, k0, k1) >= 0 || blocking(structs, forms, kind, fr, k0, k1) >= 0) continue;
+    let shut = false;
+    for (let b = 0; b < blocked.length && !shut; b += 3) shut = blocked[b] === fr && covers(blocked[b + 1]!, blocked[b + 2]!);
+    if (shut) continue;
+    poseOf(f, k0, k1, forms, kind, pose);
+    const px = pose.x / U - ox;
+    const py = pose.y / U - oy;
+    const pz = pose.z / U - oz;
+    if (px * px + py * py + pz * pz > reach || tooHigh(site.heightAt, site.tables, kind, pose, pose.tw) || buried(site.heightAt, site.tables, kind, pose, pose.tw)) continue;
     const end = far(sx, sy, sz, sx, sy, sz);
     scores[i] = END_SHARE * end + (1 - END_SHARE) * far(ox, oy, oz, sx, sy, sz) + uSteps[i]! * SNAP_SEARCH;
     order[kept++] = i;
@@ -530,11 +561,16 @@ function offered(site: Site, forms: FormTable, kind: number, f: Frame, k0: numbe
   const want = cellOf(k1);
   const x = at.x / U;
   const z = at.z / U;
-  const rows = structs.query(x - SNAP_SEARCH, z - SNAP_SEARCH, x + SNAP_SEARCH, z + SNAP_SEARCH, near);
+  const y = at.y / U;
+  const rows = structs.query(x - ROW_REACH, z - ROW_REACH, x + ROW_REACH, z + ROW_REACH, near, y - ROW_REACH, y + ROW_REACH);
   for (let r = 0; r < rows; r++) {
     const t = structs.chunks[Math.floor(near.refs[r]! / 65536)]!;
     const slot = near.refs[r]! & 0xffff;
-    if (!t.fr || t.fr[slot] !== f.gid) continue;
+    if (!t.fr || t.fr[slot] !== f.gid || !ROWS[forms.layer[t.kind[slot]!]! * 8 + forms.layer[kind]!]) continue;
+    const dx = t.x[slot]! - x;
+    const dy = t.y[slot]! - y;
+    const dz = t.z[slot]! - z;
+    if (dx * dx + dy * dy + dz * dz > ROW_REACH * ROW_REACH) continue;
     offersOf(forms, site.turned === true, kind, t.kind[slot]!, t.k0![slot]!, t.k1![slot]!, offers);
     for (let i = 0; i < offers.n; i++) if (offers.k0[i] === k0 && offers.k1[i] === want) return true;
   }
@@ -641,7 +677,8 @@ function rest(site: Site, kind: number, at: Pose, tw: number, out: Verdict): num
 
 /**
  * Judges a piece of `kind` set by a builder of `team`, whose eye is at (ex, ey, ez) metres, in the slot (k0, k1) of frame
- * `fr`. Returns a RESULT_ code, which `out` holds too with its detail and the pose. In this order: the frame is made and
+ * `fr`. An eye of NaN is not asked for its reach: a row's later pieces are reached through the row.
+ * Returns a RESULT_ code, which `out` holds too with its detail and the pose. In this order: the frame is made and
  * the team's; the key is one the kind may have, on the lattice; some piece standing offers the slot; the pose is on the
  * map; the eye reaches it; its cells are free and nothing blocks them or is blocked by it; it overlaps nothing built
  * (`crowding`); then bodies, the ground, other tribes, the cap and support, as the site answers them.
@@ -672,7 +709,8 @@ export function validate(site: Site, kind: number, team: number, fr: number, k0:
       const t = structs.chunks[Math.floor(near.refs[r]! / 65536)]!;
       const slot = near.refs[r]! & 0xffff;
       if (!t.fr || t.fr[slot] !== fr) continue;
-      for (const rel of forms.def[t.kind[slot]!]!.blocks ?? []) if (relCell(forms, t.kind[slot]!, t.k0![slot]!, t.k1![slot]!, rel) && covers(cell.k0, cell.k1)) by = near.refs[r]!;
+      const blocks = forms.def[t.kind[slot]!]!.blocks;
+      if (blocks) for (const rel of blocks) if (relCell(forms, t.kind[slot]!, t.k0![slot]!, t.k1![slot]!, rel) && covers(cell.k0, cell.k1)) by = near.refs[r]!;
     }
   }
   if (by < 0) by = crowding(site, forms, kind, f, k0, k1, at);

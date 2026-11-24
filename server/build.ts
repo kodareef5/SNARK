@@ -689,7 +689,8 @@ export class Build {
     const ez = ents.z[e]!;
     this.team = rec.team;
     let code: number;
-    if (req.mode === PLACE_JOIN) code = validate(this.site, kind, rec.team, req.fr, k0, k1, ex, ey, ez, verdict);
+    // A row is reached by its first piece.
+    if (req.mode === PLACE_JOIN) code = validate(this.site, kind, rec.team, req.fr, k0, k1, k0 === req.k0 && k1 === req.k1 ? ex : NaN, ey, ez, verdict);
     else {
       if (req.mode === PLACE_NEW) {
         // Open ground takes only a piece that stands on the ground by itself, and only inside the map.

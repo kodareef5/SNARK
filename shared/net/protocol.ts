@@ -359,10 +359,11 @@ export const CMD_DROP = command();
 /** Channel 3 bits (TEXT_GLOBAL, TEXT_LOCAL or TEXT_TRIBE), then the text string. */
 export const CMD_CHAT = command();
 /**
- * Places the building piece in hand: form index u8, then target u32. A structure ref is followed by its socket u8, and for
- * socket 255 (a thing set on top of it) by x and z (s32 lattice units) and yaw u16. 0xffffffff means open ground and is
- * followed by x and z (s32 lattice units), yaw u16 and lift (s8 steps). Last is the turn in place u8. The server works
- * the position out again itself.
+ * Places the building piece in hand (shared/net/place.ts): form index u8, then a mode, 2 bits. 0 joins a base: its frame's
+ * gid varint and the key's two words u32 each, the turn in the second; then 1 bit for a row, and if set the direction each
+ * piece is a whole side on from the last, 4 bits, and the count less one, 5 bits. 1 is open ground, for a base's first
+ * piece or a thing: x and z (s32 lattice units), yaw u16 and lift (s8 steps). 2 is a thing on a floor: the floor's ref u32,
+ * x and z (s32 lattice units) and yaw u16. The server works the position and every check out again itself.
  */
 export const CMD_PLACE = command();
 /**

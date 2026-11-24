@@ -23,6 +23,8 @@ import { StructureStore } from "../world/structures.ts";
 import { MapWater } from "../world/water.ts";
 import { frameAxes, makeAim, makeSockets, obstructed, pickSnap, poseAt, socketsOf, type Pose as SnapPose } from "../world/snap.ts";
 import { basisOf, classAxis, twOf, worldOf, yawOf } from "../world/lattice/basis.ts";
+import { rotsOf } from "../world/lattice/frames.ts";
+import { candidates, makeCandidates, makeVerdict, validate, type Site } from "../world/lattice/place.ts";
 import { canon, canonical, dotSign, edgesOverlap, elementCorners, exact, facesOverlap, key0, key1, orient, tupleSet, tupleStep } from "../world/lattice/module.ts";
 
 /** A tuning with an entry of every kind and numbers that do not come out even, as a server's settings might produce. */
@@ -390,8 +392,9 @@ export function hullHash(base: Registry): string {
 }
 
 /**
- * Joins random building pieces onto a first piece at many facings, and hashes each pose, whether its place is free, and
- * what a look from above picks. Equal hashes mean the client's preview and the server's check agree on both engines.
+ * Joins random building pieces onto a first piece at many facings, and hashes each pose, whether its place is free, what
+ * a look from above picks, the slots a look offers with their scores, and how the best is judged. Equal hashes mean the
+ * client's preview and the server's check agree on both engines.
  */
 export function snapHash(reg: Registry): string {
   const kinds = ["foundation", "wall", "doorframe", "windowframe", "ceiling", "pillar", "door", "stairs"].map((p) => reg.index.get(`core:${p}_stone`)!);
@@ -406,8 +409,13 @@ export function snapHash(reg: Registry): string {
     h1 = Math.imul(h1 ^ (v | 0), 0x01000193);
     h2 = Math.imul(h2 + (v | 0), 0x85ebca6b) ^ (h2 >>> 13);
   };
+  const slots = makeCandidates();
+  const verdict = makeVerdict();
+  const score = new Float64Array(1);
+  const scoreBits = new Int32Array(score.buffer);
   for (let trial = 0; trial < 120; trial++) {
     const structs = new StructureStore(PROVING_DIMS, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
+    const site: Site = { structs, tables: reg, heightAt: () => 3.5 };
     const yaw = rng.int(65536);
     frameAxes(yaw, axes);
     for (const v of axes) mix(v);
@@ -426,9 +434,31 @@ export function snapHash(reg: Registry): string {
       mix(taken ? 1 : 0);
       if (!taken) built.push(structs.add(kind, pose.x / 512, pose.y / 512, pose.z / 512, pose.yaw, 1, 1));
       // A look straight down onto somewhere near it.
-      pickSnap(structs, reg, kinds[rng.int(kinds.length)]!, pose.x / 512 + rng.range(-3, 3), pose.y / 512 + 6, pose.z / 512 + rng.range(-3, 3), 0, -1, 0, -1, 6, false, aim);
+      const [lx, ly, lz] = [pose.x / 512 + rng.range(-3, 3), pose.y / 512 + 6, pose.z / 512 + rng.range(-3, 3)];
+      pickSnap(structs, reg, kinds[rng.int(kinds.length)]!, lx, ly, lz, 0, -1, 0, -1, 6, false, aim);
       mix(aim.target);
       for (let k = 0; k < aim.count; k++) mix(aim.order[k]!);
+      // The slots a slanting look offers another piece, their scores to the last bit, and what the best is judged as.
+      const held = kinds[rng.int(kinds.length)]!;
+      const offered = candidates(site, held, 1, lx - 2, ly, lz - 1, 4 / 13, -12 / 13, 3 / 13, 6.5, slots);
+      mix(offered);
+      for (let k = 0; k < offered; k++) {
+        mix(slots.fr[k]!);
+        mix(slots.k0[k]!);
+        mix(slots.k1[k]!);
+        score[0] = slots.score[k]!;
+        mix(scoreBits[0]!);
+        mix(scoreBits[1]!);
+      }
+      if (offered === 0) continue;
+      const turned = (slots.k1[0]! | (rng.int(rotsOf(reg.forms, held)) << 26)) >>> 0;
+      mix(validate(site, held, 1, slots.fr[0]!, slots.k0[0]!, turned, lx - 2, ly, lz - 1, verdict));
+      mix(verdict.pose.x);
+      mix(verdict.pose.y);
+      mix(verdict.pose.z);
+      mix(verdict.pose.yaw);
+      mix(verdict.a);
+      if (verdict.code === 0 && rng.int(2) === 0) built.push(structs.place(held, slots.fr[0]!, slots.k0[0]!, turned, 1, 1));
     }
   }
   return (h1 >>> 0).toString(16).padStart(8, "0") + (h2 >>> 0).toString(16).padStart(8, "0");

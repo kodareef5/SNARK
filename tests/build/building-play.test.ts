@@ -12,15 +12,16 @@ import { parsePack } from "../../shared/pack/pack.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
 import type { ClientSession } from "../../client/core/session.ts";
 import { DOOR_WIDTH, FOUNDATION_THICK, RISE, WALL_HEIGHT } from "../../content/building.ts";
-import { NO_TARGET } from "../../server/build.ts";
 import { STRUCT_UNITS } from "../../shared/coords.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
-import { BOX_SELF, CMD_CRAFT, CMD_LEARN, CMD_MOVE, CMD_PLACE, CMD_SELECT, RESULT_BODY, RESULT_DENIED, RESULT_ENEMY_NEAR, RESULT_NO_SUPPORT, RESULT_FAR, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_OBSTRUCTED, RESULT_OK } from "../../shared/net/protocol.ts";
+import { BOX_SELF, CMD_CRAFT, CMD_LEARN, CMD_MOVE, CMD_PLACE, CMD_SELECT, RESULT_BODY, RESULT_DENIED, RESULT_ENEMY_NEAR, RESULT_NO_SUPPORT, RESULT_FAR, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_OBSTRUCTED, RESULT_OK, RESULT_RATE, RESULT_SHORT, PLACED_STRUCTURE } from "../../shared/net/protocol.ts";
 import { writeJoin, writeNew } from "../../shared/net/place.ts";
 import { Rng } from "../../shared/rng.ts";
 import { stanceEye } from "../../shared/sim/character.ts";
 import { capsuleKind } from "../../shared/world/collide.ts";
+import { CLS_SQUARE, key0, key1 } from "../../shared/world/lattice/module.ts";
 import { lookDirection } from "../../shared/world/ray.ts";
+import { PLACE_RATE } from "../../server/build.ts";
 import { makeSockets, poseAt, socketsOf, type Pose } from "../../shared/world/snap.ts";
 import { GONE_DESTROYED, GONE_FELL } from "../../shared/world/structures.ts";
 import { flatGround } from "../fixtures/arena.ts";
@@ -297,6 +298,8 @@ test("what the server will not build: on another tribe's work, out of reach, now
   expect(free("foundation", at.x + 3, at.z + 4)).toBe(RESULT_DENIED);
 
   const before = structs.count;
+  const built = h.host.build.placed;
+  structs.keyAt(base, taken);
   const rng = new Rng(88);
   let answers = 0;
   bob.onResult = () => void answers++;
@@ -305,11 +308,17 @@ test("what the server will not build: on another tribe's work, out of reach, now
     const n = rng.int(14);
     sent++;
     bob.command(CMD_PLACE, (w: BitWriter) => {
-      if (rng.int(3) === 0) {
+      const shape = rng.int(4);
+      if (shape === 0) {
         // Shaped like a real command, with random numbers in it.
         w.u8(rng.int(4));
-        w.u32(rng.int(2) === 0 ? NO_TARGET : rng.int(3) === 0 ? base : rng.int(0x7fffffff));
+        w.bits(rng.int(4), 2);
+        w.varint(rng.int(2) === 0 ? taken.fr : rng.int(0x7fffffff));
         for (let k = 0; k < n; k++) w.u8(rng.int(256));
+      } else if (shape === 1) {
+        // A slot of his own base with a bit or two of its key changed, alone or as a row.
+        const bit = (v: number): number => (rng.int(3) === 0 ? v : (v ^ (1 << rng.int(32))) >>> 0);
+        writeJoin(w, rng.int(2), taken.fr, bit(taken.k0), bit(taken.k1), rng.int(3) === 0 ? 1 + rng.int(32) : 1, rng.int(12));
       } else for (let k = 0; k < n; k++) w.u8(rng.int(256));
     });
     if (i % 8 === 7) h.run(300);
@@ -326,8 +335,92 @@ test("what the server will not build: on another tribe's work, out of reach, now
       expect(Math.hypot(t.x[k]! - at.x, t.z[k]! - at.z)).toBeLessThan(40);
     }
   }
-  expect(structs.count - before).toBe(h.host.build.placed - 3);
+  expect(structs.count - before).toBe(h.host.build.placed - built);
   expect(h.host.items.audit()).toEqual([]);
+});
+
+test("a row of 32 floors by one command stops at the first refusal and is rate limited", () => {
+  const { h, sessions, hold, structs, at } = builder(["ada"], 110, 30);
+  const s = sessions[0]!;
+  const rec = h.host.records.byPid.get(h.client(s)!.pid)!;
+  const g = { x: at.x - 55, z: at.z - 4, y: at.y };
+  const foundation = id("foundation_wood");
+  h.host.items.mint(rec, id("piece_foundation_wood"), 240);
+  h.run(200);
+  h.say(s, `tp ${(g.x + 2).toFixed(3)} ${(g.z + 11).toFixed(3)}`);
+  h.run(300);
+  hold(s, "foundation");
+  const answers: { seq: number; refs: number[]; code: number; detail: number; a: number }[] = [];
+  const results: number[] = [];
+  s.onPlaced = (p) => void answers.push({ seq: p.seq, refs: [...p.refs], code: p.code, detail: p.detail, a: p.a });
+  s.onResult = (_seq, code) => void results.push(code);
+  const send = (write: (w: BitWriter) => void, ms = 300): typeof answers[number] => {
+    const seq = s.command(CMD_PLACE, write);
+    h.run(ms);
+    return answers.find((a) => a.seq === seq)!;
+  };
+  // A base, and a column of four more up its +Z side: five places for rows to start beside.
+  const first = send((w) => writeNew(w, 0, Math.round((g.x + 5) * U), Math.round((g.z + 5) * U), 0));
+  expect([first.code, first.refs.length]).toEqual([RESULT_OK, 1]);
+  structs.keyAt(first.refs[0]!, taken);
+  const fr = taken.fr;
+  const cell = (i: number, j: number): [number, number] => [key0(CLS_SQUARE, 2 * i, 0, 0), key1(2 * j, 0, 0, 0, 0, 0)];
+  const column = send((w) => writeJoin(w, 0, fr, ...cell(0, 1), 5, 3));
+  expect([column.code, column.refs.length]).toEqual([RESULT_OK, 5]);
+  const had = s.inventory!.total(id("piece_foundation_wood"));
+  const before = structs.count;
+  // Thirty-two along +X from beside the base: 96 m of floor, reached through the row from its first piece.
+  const row = send((w) => writeJoin(w, 0, fr, ...cell(1, 0), 32, 0), 600);
+  expect([row.code, row.refs.length, new Set(row.refs).size, results[results.length - 1]]).toEqual([RESULT_OK, 32, 32, RESULT_OK]);
+  expect([structs.count - before, had - s.inventory!.total(id("piece_foundation_wood"))]).toEqual([32, 32]);
+  for (const [n, ref] of row.refs.entries()) {
+    const t = structs.chunks[Math.floor(ref / 65536)]!;
+    const k = ref & 0xffff;
+    expect([n, t.kind[k], Math.round(t.x[k]! * U), Math.round(t.z[k]! * U)]).toEqual([n, foundation, Math.round((g.x + 5) * U) + (n + 1) * 3 * U, Math.round((g.z + 5) * U)]);
+    // The client holds each as the row the server made, in the server's own frame.
+    expect(s.world!.structs.frameAt(ref)).toBe(fr);
+  }
+  // A row whose first piece is out of the eye's reach does not start.
+  const out = send((w) => writeJoin(w, 0, fr, ...cell(33, 0), 4, 0));
+  expect([out.code, out.refs.length]).toEqual([RESULT_FAR, 0]);
+
+  // A box stands where the fifth of the next row would: four go down, and the answer names the box.
+  const box = structs.add(id("storage_box"), g.x + 5 + 15, g.y + 0.4, g.z + 5 + 3, 0, rec.team, 1);
+  h.run(200);
+  const stopped = send((w) => writeJoin(w, 0, fr, ...cell(1, 1), 12, 0), 600);
+  expect([stopped.code, stopped.refs.length, stopped.detail, stopped.a, results[results.length - 1]]).toEqual([RESULT_OBSTRUCTED, 4, PLACED_STRUCTURE, box, RESULT_OBSTRUCTED]);
+  expect(structs.count - before).toBe(32 + 1 + 4);
+  // A row off the lattice's end, and one that is not a row at all.
+  expect(send((w) => (w.u8(0), w.bits(0, 2), w.varint(fr), w.u32(cell(1, 2)[0]), w.u32(cell(1, 2)[1]), w.bool(true), w.bits(13, 4), w.bits(3, 5))).code).toBe(RESULT_INVALID);
+
+  // A row that uses the last piece in hand stops there, short.
+  const left = h.host.items.inv(rec).count[h.host.items.inv(rec).hotbar]!;
+  expect(left).toBeLessThan(32);
+  const short = send((w) => writeJoin(w, 0, fr, ...cell(1, 2), 32, 0), 600);
+  expect([short.code, short.refs.length]).toEqual([RESULT_SHORT, left]);
+  const restock = (): void => {
+    const stock = h.host.items.inv(rec);
+    for (let k = 0; k < stock.hotbar; k++) if (stock.item[k] === id("piece_foundation_wood")) h.host.items.move(rec, k, rec, stock.hotbar, 0);
+    h.run(300);
+    hold(s, "foundation");
+  };
+  restock();
+  expect(h.host.items.inv(rec).count[h.host.items.inv(rec).hotbar]!).toBeGreaterThanOrEqual(96);
+
+  // Three rows of 32 asked for at once: the first two are the 64 a session has saved up, and the third is told to slow down.
+  h.run(1500);
+  const asked = [3, 4, 5].map((j) => s.command(CMD_PLACE, (w: BitWriter) => writeJoin(w, 0, fr, ...cell(1, j), 32, 0)));
+  h.run(900);
+  const got = asked.map((seq) => answers.find((a) => a.seq === seq)!);
+  expect(got.map((a) => [a.code, a.refs.length])).toEqual([[RESULT_OK, 32], [RESULT_OK, 32], [RESULT_RATE, got[2]!.refs.length]]);
+  expect(got[2]!.refs.length).toBeLessThan(32);
+  // A second later it may go on from where it stopped.
+  h.run(1000);
+  const on = send((w) => writeJoin(w, 0, fr, ...cell(1 + got[2]!.refs.length, 5), 32 - got[2]!.refs.length, 0), 600);
+  expect([on.code, on.refs.length]).toEqual([RESULT_OK, 32 - got[2]!.refs.length]);
+  expect(PLACE_RATE).toBe(64);
+  expect(h.host.items.audit()).toEqual([]);
+  expect(s.stats.undecodable).toBe(0);
 });
 
 test("what is shown is what is built: over two thousand looks with every piece, turned and changed at random, the server's place is the preview's", () => {

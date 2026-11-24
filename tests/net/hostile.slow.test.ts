@@ -11,7 +11,7 @@ import { dirname, join } from "node:path";
 import { STRUCT_UNITS, TICK_RATE } from "../../shared/coords.ts";
 import { BitWriter } from "../../shared/net/codec.ts";
 import * as P from "../../shared/net/protocol.ts";
-import { writeNew } from "../../shared/net/place.ts";
+import { writeJoin, writeNew, writeRest } from "../../shared/net/place.ts";
 import { BOX_OPEN, BOX_SELF } from "../../shared/net/protocol.ts";
 import { defaultLook } from "../../shared/anim/look.ts";
 import { Rng } from "../../shared/rng.ts";
@@ -19,12 +19,13 @@ import { BTN_CROUCH, BTN_JUMP, BTN_PRIMARY, BTN_RELOAD, BTN_SECONDARY, BTN_SPRIN
 import { F_ALIVE, F_PROP } from "../../shared/sim/entities.ts";
 import { FLAG_BLUEPRINT } from "../../shared/sim/items.ts";
 import { NO_PIN, STRUCT_LIGHT, STRUCT_NAME, STRUCT_PIN, STRUCT_TRAVEL, STRUCT_USE } from "../../shared/world/upkeep.ts";
-import { ON_TOP } from "../../shared/world/snap.ts";
-import { NO_TARGET } from "../../server/build.ts";
+import { slotAt } from "../../shared/world/snap.ts";
 import type { Client } from "../../server/game.ts";
 import type { ItemDef } from "../../shared/content/defs.ts";
 import { PIECES, builder } from "../fixtures/build.ts";
 import { Harness } from "../fixtures/net.ts";
+
+const slot = { fr: 0, k0: 0, k1: 0 };
 
 const SEEDS = process.env.SNARK_FUZZ_SEED ? [Number(process.env.SNARK_FUZZ_SEED)] : Array.from({ length: 24 }, (_, i) => i + 1);
 /** Commands one world is sent: 480,000 in all, each world saved and loaded again, about 9 s on the development machine. */
@@ -283,19 +284,19 @@ function fuzz(seed: number): { codes: Map<number, Map<number, number>>; faults: 
     [P.CMD_PLACE]: (w) => {
       const o = own();
       const forms = o.rec && o.inv && o.rec.held >= 0 ? reg.places[o.inv.item[o.inv.hotbar + o.rec.held]!] : null;
-      w.u8(forms && chance(0.85) ? rng.int(forms.length) : rng.int(4));
       const b = c().body;
+      const variant = forms && chance(0.85) ? rng.int(forms.length) : rng.int(4);
+      const [x, z] = [Math.round((b.x + rng.range(-6, 6)) * STRUCT_UNITS), Math.round((b.z + rng.range(-6, 6)) * STRUCT_UNITS)];
       if (near.mine.length > 0 && chance(0.75)) {
         const on = pick(near.mine);
-        w.u32(on);
-        const socket = chance(0.15) ? ON_TOP : chance(0.9) ? rng.int(8) : rng.int(256);
-        w.u8(socket);
-        if (socket === ON_TOP) w.sbits(Math.round((b.x + rng.range(-3, 3)) * STRUCT_UNITS), 32), w.sbits(Math.round((b.z + rng.range(-3, 3)) * STRUCT_UNITS), 32), w.u16(rng.int(65536));
-      } else {
-        w.u32(chance(0.9) ? NO_TARGET : rng.int(2 ** 32));
-        w.sbits(Math.round((b.x + rng.range(-6, 6)) * STRUCT_UNITS), 32), w.sbits(Math.round((b.z + rng.range(-6, 6)) * STRUCT_UNITS), 32), w.u16(rng.int(65536)), w.sbits(rng.int(5) - 2, 8);
+        if (chance(0.15)) return writeRest(w, variant, on, x, z, rng.int(65536));
+        // A socket of the piece as its slot, or a key of numbers.
+        const found = forms !== null && forms !== undefined && slotAt(h.world.structs, reg, on, forms[variant] ?? forms[0]!, rng.int(8), rng.int(4), slot);
+        if (found && chance(0.9)) return writeJoin(w, variant, slot.fr, slot.k0, slot.k1, chance(0.1) ? 1 + rng.int(32) : 1, rng.int(12));
+        return writeJoin(w, variant, chance(0.5) ? h.world.structs.frameAt(on) : rng.int(2 ** 31), rng.int(2 ** 32), rng.int(2 ** 32));
       }
-      w.u8(chance(0.8) ? rng.int(4) : rng.int(256));
+      if (chance(0.9)) return writeNew(w, variant, x, z, rng.int(65536), rng.int(5) - 2);
+      w.u8(variant), w.bits(3, 2), w.u32(rng.int(2 ** 32));
     },
     [P.CMD_STRUCT]: (w) => {
       // With nothing open it mostly opens something to work at; the forge is lit and put out.
