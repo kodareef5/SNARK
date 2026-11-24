@@ -247,12 +247,18 @@ for (const latencyMs of [40, 150]) {
   });
 }
 
-test("a client whose assets stream, as the browser's do, draws its own bolt and another's, their flashes and their bursts", () => {
-  // The build's own split: the boot pack holds no mesh of any shot, and each comes in a page when first asked for.
+test("both streamed clients draw every plasma effect glowing from its first frame", () => {
   const whole = corePackBytes();
   const { files, manifest } = splitPack(whole, "core", paging(reg, parsePack(whole)));
   const boot = parsePack(files[manifest.boot]!.bytes);
-  expect(boot.meshIndex.has("core:plasma_bolt")).toBe(false);
+  const effects = ["core:plasma_bolt", "core:plasma_flash", "core:plasma_burst"];
+  for (const id of effects) {
+    const level = manifest.meshes.find((mesh) => mesh.id === id)!.levels[0]!;
+    expect(level.file).toBe(manifest.boot);
+    expect(level.parts.length).toBeGreaterThan(1);
+    expect(level.surface).toBeUndefined();
+  }
+  expect(boot.meshIndex.has("core:rifle_plasma")).toBe(false);
   const first = (): Manifest => parseManifest(JSON.stringify(bootManifest(manifest)));
   const h = new Harness({}, 1, 60, { dev: true });
   // Every fetch takes 150 ms to begin, so what a shot is drawn with must have been asked for before the shot.
@@ -272,7 +278,11 @@ test("a client whose assets stream, as the browser's do, draws its own bolt and 
           if ((p.drawFlags[d]! & DRAW_SKINNED) === 0) continue;
           const mesh = manifest.meshes[p.drawMesh[d]!]!.id;
           drawn[k]!.add(mesh);
-          if (mesh === "core:plasma_bolt" && (p.drawFlags[d]! & DRAW_TEXTURED) !== 0 && manifest.materials![p.drawMaterial[d]!]!.id === "core:plasma/plasma") lit = true;
+          if (effects.includes(mesh)) {
+            expect(p.drawFlags[d]! & DRAW_TEXTURED).toBe(DRAW_TEXTURED);
+            expect(manifest.materials![p.drawMaterial[d]!]!.id).toBe("core:plasma/plasma");
+            if (mesh === "core:plasma_bolt") lit = true;
+          }
         }
         if (k === 0 && a.shots.flying.length > 0) {
           flying++;
@@ -307,7 +317,7 @@ test("a client whose assets stream, as the browser's do, draws its own bolt and 
   run(1500);
   app.controls.mouseButton(0, false);
   run(500);
-  for (const seen of drawn) expect(["core:plasma_bolt", "core:plasma_flash", "core:plasma_burst"].filter((m) => !seen.has(m))).toEqual([]);
+  for (const seen of drawn) expect(effects.filter((m) => !seen.has(m))).toEqual([]);
   expect(drawn[0]!.has("core:rifle_plasma")).toBe(true);
   // From the first shot on: no frame had a bolt in the air and nothing glowing drawn for it.
   expect(flying).toBeGreaterThan(20);

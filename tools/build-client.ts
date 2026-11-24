@@ -69,9 +69,10 @@ export { withoutNotes };
  * the order of the content, so a page holds what is seen together: a node's living forms apart from what is left of
  * one used up. A mesh no slot names goes with the nearest name that one does.
  */
-export function paging(reg: Registry, pack: Pack): { boot: (id: string) => boolean; place: (id: string) => readonly [number, number] } {
+export function paging(reg: Registry, pack: Pack): { bootSurfaces: ReadonlySet<string>; boot: (id: string) => boolean; place: (id: string) => readonly [number, number] } {
   const has = (asset: string, id: string): boolean => asset === "mesh" && pack.meshIndex.has(id);
   const boot = new Set([MISSING_MESH, WATER_MESH, BEAM_MESH, FAR_MESH]);
+  const bootSurfaces = new Set<string>();
   const places = new Map<string, readonly [number, number]>();
   const kinds = new Map<string, number>();
   const note = (id: string, kind: string): void => {
@@ -87,6 +88,7 @@ export function paging(reg: Registry, pack: Pack): { boot: (id: string) => boole
     // A body on the human skeleton is drawn at one level for all its parts, worked out as the scene starts.
     const d = reg.defs[owner]!;
     if (d.type === "species" && d.skeleton === HUMAN.id && ["body", "hair", "beard"].includes(u.slot) && id !== "") boot.add(id);
+    if (d.type === "item" && d.ammo?.bolt && ["shot", "flash", "burst"].includes(u.slot) && id !== "") bootSurfaces.add(id);
     note(id, kindOf(owner));
   }
   const forms = nodeForms(reg);
@@ -108,7 +110,7 @@ export function paging(reg: Registry, pack: Pack): { boot: (id: string) => boole
     const near = [ids[before], ids[after]].filter((n): n is string => n !== undefined).sort((a, b) => common(id, b) - common(id, a))[0];
     places.set(id, near === undefined ? [kinds.size, 0] : places.get(near)!);
   });
-  return { boot: (id) => boot.has(id), place: (id) => places.get(id) ?? [kinds.size, 0] };
+  return { bootSurfaces, boot: (id) => boot.has(id) || bootSurfaces.has(id), place: (id) => places.get(id) ?? [kinds.size, 0] };
 }
 
 /** The materials the client finds by name, whose rows what it reads first holds: the world's finishes, the sky's, the water's and the facades' atlases. */
