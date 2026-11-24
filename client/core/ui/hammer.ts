@@ -65,7 +65,7 @@ export class HammerPanel {
     }
     if (code === "Enter" || code === "NumpadEnter") {
       if (down && !repeat) {
-        if (h.importText.trim() !== "") h.import();
+        if (h.importText.trim() !== "") h.takeText();
         else this.rename(h);
       }
       return true;
@@ -103,7 +103,7 @@ export class HammerPanel {
     }
     if (!h.panel) return false;
     if (key === KEY_HAMMER_CLOSE) h.panel = false;
-    else if (key === KEY_HAMMER_IMPORT) h.import();
+    else if (key === KEY_HAMMER_IMPORT) h.takeText();
     else if (key >= KEY_HAMMER_ROW && key < KEY_HAMMER_ROW + ROWS_MOST) h.selected = this.first(h) + key - KEY_HAMMER_ROW;
     else if (key >= KEY_HAMMER_PLACE && key < KEY_HAMMER_PLACE + ROWS_MOST) h.choose(this.first(h) + key - KEY_HAMMER_PLACE);
     else if (key >= KEY_HAMMER_EXPORT && key < KEY_HAMMER_EXPORT + ROWS_MOST) h.export((h.selected = this.first(h) + key - KEY_HAMMER_EXPORT));

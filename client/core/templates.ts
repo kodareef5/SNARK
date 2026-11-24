@@ -157,7 +157,7 @@ export class Templates {
   }
 
   /** Keeps the template a text holds. Returns why the text was refused, or "". */
-  import(text: string, book: PieceBook): string {
+  takeText(text: string, book: PieceBook): string {
     const got = decodeBlueprintText(text.trim(), book.forms);
     return got.ok ? this.add(got.blueprint, book) : faultWords(got.fault);
   }

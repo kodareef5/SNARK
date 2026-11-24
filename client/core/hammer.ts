@@ -451,9 +451,9 @@ export class Hammer {
   }
 
   /** Keeps the template a text holds. */
-  import(text = this.importText): void {
+  takeText(text = this.importText): void {
     if (!this.book) return;
-    const why = this.templates.import(text, this.book);
+    const why = this.templates.takeText(text, this.book);
     if (why !== "") return this.say(why);
     this.importText = "";
     this.selected = 0;

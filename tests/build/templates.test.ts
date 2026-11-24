@@ -250,7 +250,7 @@ test("the same template joined to the side of a base, turned a quarter and mirro
 });
 
 test("a piece in hand fills the hologram looked at, where it would stand: a wall's hologram waits for its foundation", () => {
-  const { h, app, s, rec, g, run, look, click, tap, press } = client(["piece_foundation_wood", "piece_wall_wood"]);
+  const { h, app, s, rec, run, look, click, tap, press } = client(["piece_foundation_wood", "piece_wall_wood"]);
   const hammer = app.hammer;
   const bp = makeBlueprint("Hut", "ada", "", [at(reg, "foundation", WOOD, grid(0, 0), 0, 0), at(reg, "wall", WOOD, grid(0, 1), 0, 0)]);
   hammer.templates.add(bp, book);
