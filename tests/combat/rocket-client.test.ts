@@ -10,9 +10,9 @@ import type { FramePacket } from "../../client/core/render/packet.ts";
 import { ClientSession, RemoteSample } from "../../client/core/session.ts";
 import { AWAIT_MS, Shots } from "../../client/core/shots.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
-import { packBolt } from "../../shared/net/bolts.ts";
+import { BOLTS_MOST, packBolt, writeBolt } from "../../shared/net/bolts.ts";
 import { BitWriter } from "../../shared/net/codec.ts";
-import { EVENT_BLAST, EVENT_ROCKET, EVENT_SHOT, S_EVENT } from "../../shared/net/protocol.ts";
+import { EVENT_BLAST, EVENT_BOLTS, EVENT_HIT, EVENT_ROCKET, EVENT_SHOT, S_EVENT } from "../../shared/net/protocol.ts";
 import { SURFACE_BUILT, SURFACE_GROUND, MADE_WOOD, blastSeed, writeBlast, writeRocket } from "../../shared/net/rockets.ts";
 import { shotDir } from "../../shared/sim/aim.ts";
 import type { Connection } from "../../shared/net/transport.ts";
@@ -48,11 +48,12 @@ function client(wall = 0): { session: ClientSession; shots: Shots; fire: Fire; w
   const shots = new Shots(reg, corePack());
   const fire = new Fire();
   shots.fire = fire as unknown as Blasts;
-  const w = new BitWriter(64);
+  const w = new BitWriter(4096);
   const send = (write: (w: BitWriter) => void): void => {
     w.reset();
     w.u8(S_EVENT);
     write(w);
+    expect(w.overflow).toBe(false);
     conn.onMessage!(0, w.bytes().slice());
   };
   return { session, shots, fire, world, send };
@@ -70,6 +71,17 @@ const blast = (id: number, x: number, y: number, z: number, item = ROCKET, surfa
   writeBlast(w, x, y, z, 0, 1, 0, reg.ammoBlast[item]! || 6, item, id, surface, made);
 };
 
+const hit = (damage: number) => (w: BitWriter): void => {
+  w.u8(EVENT_HIT);
+  w.f32(100);
+  w.f32(20);
+  w.f32(125);
+  w.bits(0, 4);
+  w.u16(damage);
+  w.bool(false);
+  w.bool(false);
+};
+
 /** Frames of 60 a second for `ms`, from `from`. Returns the time reached. */
 function run(c: ReturnType<typeof client>, from: number, ms: number, remote: RemoteSample | null = null): number {
   let now = from;
@@ -79,6 +91,52 @@ function run(c: ReturnType<typeof client>, from: number, ms: number, remote: Rem
   }
   return now;
 }
+
+test("a delayed frame keeps rocket endings and hit feedback through plasma fire", () => {
+  const c = client();
+  const ammo = reg.index.get("core:plasma_cell")!;
+  const volley = Array.from({ length: 100 }, (_, i) => i + 1);
+  for (const id of volley) c.send(rocket(id, 0));
+  c.send(hit(150));
+  for (const id of volley) c.send(blast(id, 100, 20, 125));
+  const bolts = (from: number) => (w: BitWriter): void => {
+    w.u8(EVENT_BOLTS);
+    w.u8(BOLTS_MOST);
+    for (let n = 0; n < BOLTS_MOST; n++) {
+      packBolt(from + n, 3, 12, 0, 0, 1, packed, 0);
+      writeBolt(w, packed, 0, ammo, 0, 0, n === 0 ? 0 : ammo);
+    }
+  };
+  c.send(bolts(0));
+  const waiting = c.session.events.length;
+  c.send(bolts(BOLTS_MOST));
+  expect(c.session.events.length).toBe(waiting);
+  const kept = c.session.events.filter((ev) => ev.kind === EVENT_SHOT);
+  expect(kept.length).toBeGreaterThan(0);
+  expect(kept.map((ev) => ev.x)).toEqual(kept.map((_, i) => 2 * BOLTS_MOST - kept.length + i));
+  c.shots.absorb(c.session, c.world, 800);
+  expect(c.fire.of("fly").map((call) => call[0])).toEqual(volley);
+  expect(c.fire.of("end").map((call) => call[0])).toEqual(volley);
+  expect(c.fire.of("burst")).toHaveLength(volley.length);
+  expect(c.shots.flying.every((f) => f.ammo === ammo)).toBe(true);
+  expect(c.session.events.map((ev) => [ev.kind, ev.damage])).toEqual([[EVENT_HIT, 150]]);
+});
+
+test("a stalled frame bounds blast and hit feedback and retains the latest of each", () => {
+  const c = client();
+  const fill = (from: number): void => {
+    for (let i = from; i < from + 500; i++) {
+      c.send(blast(i, 100, 20, 125));
+      c.send(hit(i));
+    }
+  };
+  fill(1);
+  const waiting = c.session.events.length;
+  fill(501);
+  expect(c.session.events.length).toBe(waiting);
+  const last = c.session.events.slice(-2);
+  expect(last.map((ev) => [ev.kind, ev.id, ev.damage])).toEqual([[EVENT_BLAST, 1000, 0], [EVENT_HIT, 0, 1000]]);
+});
 
 test("a told rocket is flown ahead by its age, and its fire is told when it left", () => {
   const c = client();
@@ -173,16 +231,26 @@ test("a blast ends its rocket in the air, wherever this client had flown it to",
   expect(c.shots.ends.length).toBe(1);
 });
 
-test("a remote rocket is never ended by a drawn body, where an arrow is", () => {
+test("rockets skip the body grid until an arrow needs it", () => {
   const c = client();
   const crowd = new RemoteSample();
   crowd.count = 1;
   crowd.id[0] = 5;
   crowd.kind[0] = reg.index.get("core:survivor")!;
   [crowd.x[0], crowd.y[0], crowd.z[0]] = [100, 0, 120];
+  const kinds = crowd.kind;
+  let reads = 0;
+  Object.defineProperty(crowd, "kind", { get: () => { reads++; return kinds; } });
   c.send(rocket(2, 0, false, 100, 1, 100));
-  c.session.events.push({ ...c.session.events[0]!, kind: EVENT_SHOT, item: reg.index.get("core:arrow_stone")!, id: 0, vz: 70 });
-  run(c, 0, 600, crowd);
+  const shot = c.session.events[0]!;
+  const start = run(c, 0, 100, crowd);
+  expect(reads).toBe(0);
+  c.session.events.push({ ...shot, kind: EVENT_SHOT, item: reg.index.get("core:arrow_stone")!, id: 0, vz: 70 });
+  const end = run(c, start, 600, crowd);
+  expect(reads).toBeGreaterThan(0);
+  reads = 0;
+  run(c, end, 100, crowd);
+  expect(reads).toBe(0);
   // The arrow stopped at the body; the rocket flew through where it is drawn and on.
   expect(c.shots.flying.map((f) => [f.id, f.waits])).toEqual([[2, 0]]);
   expect(c.shots.flying[0]!.z).toBeGreaterThan(125);
