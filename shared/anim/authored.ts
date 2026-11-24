@@ -9,13 +9,14 @@ import { glideClips } from "./glide-clips.ts";
 import { strikeClips } from "./strikes.ts";
 import {
   B_CHEST, B_FOOT_L, B_FOOT_R, B_HAND_L, B_HAND_R, B_HEAD, B_HIPS, B_LOWER_ARM_L, B_LOWER_ARM_R, B_LOWER_LEG_L, B_LOWER_LEG_R, B_NECK,
-  B_SPINE, B_UPPER_ARM_L, B_UPPER_ARM_R, B_UPPER_CHEST, B_UPPER_LEG_L, B_UPPER_LEG_R, HUMAN, HUMAN_BONES,
+  B_SHOULDER_L, B_SHOULDER_R, B_SPINE, B_UPPER_ARM_L, B_UPPER_ARM_R, B_UPPER_CHEST, B_UPPER_LEG_L, B_UPPER_LEG_R, HUMAN, HUMAN_BONES,
 } from "./human.ts";
 
 const DEG = TAU / 360;
 
 /** A limb bone's rest axis runs from its joint to the joint of the bone it maps to. */
 const TOWARD: Readonly<Record<number, number>> = {
+  [B_SHOULDER_L]: B_UPPER_ARM_L, [B_SHOULDER_R]: B_UPPER_ARM_R,
   [B_UPPER_ARM_L]: B_LOWER_ARM_L, [B_LOWER_ARM_L]: B_HAND_L, [B_UPPER_ARM_R]: B_LOWER_ARM_R, [B_LOWER_ARM_R]: B_HAND_R,
   [B_UPPER_LEG_L]: B_LOWER_LEG_L, [B_LOWER_LEG_L]: B_FOOT_L, [B_UPPER_LEG_R]: B_LOWER_LEG_R, [B_LOWER_LEG_R]: B_FOOT_R,
 };
@@ -29,6 +30,7 @@ const chains = Array.from(HUMAN.parent, (_, bone) => {
 /** Builds one pose. Set bones from the hips outward, because turning a parent carries its children with it. */
 export class PoseBuilder {
   readonly pose = new Pose(HUMAN_BONES);
+  rest = HUMAN.rest;
   /** Model-space rotation of each bone. */
   private readonly world = new Float64Array(HUMAN_BONES * 4);
   private readonly q = new Float64Array(4);
@@ -42,7 +44,8 @@ export class PoseBuilder {
   }
 
   /** Starts from `pose` in place of rest, to turn some of its bones where it stands. */
-  from(pose: Pose): this {
+  from(pose: Pose, rest = HUMAN.rest): this {
+    this.rest = rest;
     this.pose.rot.set(pose.rot);
     this.pose.root.set(pose.root);
     this.worldReady = 0;
@@ -51,9 +54,9 @@ export class PoseBuilder {
 
   /** In model space. */
   hips(x: number, y: number, z: number): this {
-    this.pose.root[0] = x - HUMAN.rest[0]!;
-    this.pose.root[1] = y - HUMAN.rest[1]!;
-    this.pose.root[2] = z - HUMAN.rest[2]!;
+    this.pose.root[0] = x - this.rest[0]!;
+    this.pose.root[1] = y - this.rest[1]!;
+    this.pose.root[2] = z - this.rest[2]!;
     return this;
   }
 
@@ -73,9 +76,9 @@ export class PoseBuilder {
   aim(bone: number, dx: number, dy: number, dz: number, roll = 0): this {
     const to = TOWARD[bone];
     if (to === undefined) throw new Error(`bone ${HUMAN.names[bone]} has no axis to aim`);
-    let ax = HUMAN.rest[to * 3]! - HUMAN.rest[bone * 3]!;
-    let ay = HUMAN.rest[to * 3 + 1]! - HUMAN.rest[bone * 3 + 1]!;
-    let az = HUMAN.rest[to * 3 + 2]! - HUMAN.rest[bone * 3 + 2]!;
+    let ax = this.rest[to * 3]! - this.rest[bone * 3]!;
+    let ay = this.rest[to * 3 + 1]! - this.rest[bone * 3 + 1]!;
+    let az = this.rest[to * 3 + 2]! - this.rest[bone * 3 + 2]!;
     const al = Math.sqrt(ax * ax + ay * ay + az * az);
     ax /= al;
     ay /= al;
@@ -154,7 +157,7 @@ export class PoseBuilder {
   /** The joint's position in model space, for the pose so far. */
   joint(bone: number): [number, number, number] {
     this.refresh(HUMAN.parent[bone]! + 1);
-    const rest = HUMAN.rest;
+    const rest = this.rest;
     const at: [number, number, number] = [rest[0]! + this.pose.root[0]!, rest[1]! + this.pose.root[1]!, rest[2]! + this.pose.root[2]!];
     for (const b of chains[bone]!) {
       const p = HUMAN.parent[b]!;
