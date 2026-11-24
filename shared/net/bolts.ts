@@ -34,16 +34,34 @@ export function packBolt(x: number, y: number, z: number, dx: number, dy: number
   out[at + 4] = Math.round((Math.asin(dy < -1 ? -1 : dy > 1 ? 1 : dy) / Math.PI + 0.5) * PITCH_STEPS);
 }
 
-/**
- * Writes the round packed at `at` of `packed`. `last` is the ammunition of the round written before it in this message, 0
- * for the first: a round of the same is said in one bit.
- */
-export function writeBolt(w: BitWriter, packed: Uint32Array, at: number, ammo: number, back: number, silenced: boolean, last: number): void {
+/** Writes the start and way packed at `at` of `packed`: 93 bits. A rocket and a blast are told with it too (rockets.ts). */
+export function writeStart(w: BitWriter, packed: Uint32Array, at: number): void {
   w.bits(packed[at]!, LEVEL_BITS);
   w.bits(packed[at + 1]!, UP_BITS);
   w.bits(packed[at + 2]!, LEVEL_BITS);
   w.bits(packed[at + 3]!, YAW_BITS);
   w.bits(packed[at + 4]!, PITCH_BITS);
+}
+
+/** Reads a start and a unit way into `out`. */
+export function readStart(r: BitReader, out: { x: number; y: number; z: number; dx: number; dy: number; dz: number }): void {
+  out.x = r.bits(LEVEL_BITS) / LEVEL;
+  out.y = r.bits(UP_BITS) / UP - DEEP;
+  out.z = r.bits(LEVEL_BITS) / LEVEL;
+  const yaw = (r.bits(YAW_BITS) / YAW_STEPS) * 2 * Math.PI;
+  const pitch = (r.bits(PITCH_BITS) / PITCH_STEPS - 0.5) * Math.PI;
+  const level = Math.cos(pitch);
+  out.dx = Math.sin(yaw) * level;
+  out.dy = Math.sin(pitch);
+  out.dz = Math.cos(yaw) * level;
+}
+
+/**
+ * Writes the round packed at `at` of `packed`. `last` is the ammunition of the round written before it in this message, 0
+ * for the first: a round of the same is said in one bit.
+ */
+export function writeBolt(w: BitWriter, packed: Uint32Array, at: number, ammo: number, back: number, silenced: boolean, last: number): void {
+  writeStart(w, packed, at);
   w.bool(ammo === last);
   if (ammo !== last) w.u16(ammo);
   w.bits(clamp(Math.round(back), BOLT_BACK_MOST), 4);
@@ -52,15 +70,7 @@ export function writeBolt(w: BitWriter, packed: Uint32Array, at: number, ammo: n
 
 /** Reads one round into `bolt`. `last` as for writeBolt. */
 export function readBolt(r: BitReader, last: number): void {
-  bolt.x = r.bits(LEVEL_BITS) / LEVEL;
-  bolt.y = r.bits(UP_BITS) / UP - DEEP;
-  bolt.z = r.bits(LEVEL_BITS) / LEVEL;
-  const yaw = (r.bits(YAW_BITS) / YAW_STEPS) * 2 * Math.PI;
-  const pitch = (r.bits(PITCH_BITS) / PITCH_STEPS - 0.5) * Math.PI;
-  const level = Math.cos(pitch);
-  bolt.dx = Math.sin(yaw) * level;
-  bolt.dy = Math.sin(pitch);
-  bolt.dz = Math.cos(yaw) * level;
+  readStart(r, bolt);
   bolt.ammo = r.bool() ? last : r.u16();
   bolt.back = r.bits(4);
   bolt.silenced = r.bool();

@@ -675,7 +675,10 @@ export const EVENT_KILL = eventKind();
  * planning/reference/weapons-plan.md), and silenced 1 bit (its weapon has a silencer, and no flash is drawn: M10).
  */
 export const EVENT_SHOT = eventKind();
-/** BLAST, to clients nearby: position (3 x f32), reach f32 in metres. */
+/**
+ * BLAST, to clients nearby (shared/net/rockets.ts): where, the way out of what it went off on, its reach, the item that
+ * blew, its round's number (0 for none) and what it met.
+ */
 export const EVENT_BLAST = eventKind();
 /**
  * TAMED, to the new owner: entity handle u32, species content index u16, level u16, taming effectiveness u8 in percent (255
@@ -717,6 +720,12 @@ export const EVENT_GROAN = eventKind();
  * a count u8, then each round's start, way, ammunition and the ticks since it left. The round's speed is its ammunition's.
  */
 export const EVENT_BOLTS = eventKind();
+/**
+ * ROCKET, to clients within hearing of a round that will go off where it ends, its shooter among them
+ * (shared/net/rockets.ts): its start, way, ammunition, number and the ticks since it left. One who comes within hearing of
+ * it later is told then. Its blast says its number.
+ */
+export const EVENT_ROCKET = eventKind();
 
 /** A removal older than this many ticks is sent as taken, without its cause. */
 export const REMOVAL_NEWS_TICKS = 60;

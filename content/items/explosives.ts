@@ -16,7 +16,7 @@ export const EXPLOSIVES: readonly Def[] = [
   // to the point the table gives, so every structure takes what it took when the grenade did 788 to all. DEV31 its falloff.
   {
     type: "item", class: "weapon", id: id("grenade"), stack: 10, weight: 0.5, color: 7,
-    weapon: { kind: "thrown", damage: 175, structures: 788 / 175, type: "explosive", speed: 18, fuse: 5, blast: 6, uses: 1, mesh: id("grenade"), hold: "tool" },
+    weapon: { kind: "thrown", damage: 175, structures: 788 / 175, type: "explosive", speed: 18, fuse: 5, blast: 6, burst: "grenade", uses: 1, mesh: id("grenade"), hold: "tool" },
   },
 
   // From the same infobox on 2026-11-15: requiredlevel 38, engrampoints 20, the ingredients and the Crafting XP shown (its

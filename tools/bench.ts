@@ -512,6 +512,34 @@ const pack = parsePack(buildCorePack());
   record("things built that 20 blasts damaged", host.combat.structureHits - builtBefore, "");
   record("one blast in a 2,000-piece base, median", percentile(blasts, 0.5), "ms", 1);
   record("one blast in a 2,000-piece base, worst", blasts[blasts.length - 1]!, "ms", 4);
+
+  // A rocket's blast in another base: half as far again, so more than twice the pieces, and what the shooter is sent of it.
+  const [rx, rz] = centers[1] ?? centers[0]!;
+  const ry = hf.heightAt(rx, rz) + 1;
+  const shooter = host.game.clients.find((c) => !!c?.active && c.ent >= 0)!;
+  const rocket = { ...src, by: host.records.byPid.get(shooter.pid) ?? null, x: rx, z: rz, item: k("rocket_launcher"), base: 250 };
+  const reach = reg.ammoBlast[k("rocket")]!;
+  const hitBefore = host.combat.structureHits;
+  // Events ended for the shooter alone: each is a message of its own on the reliable line.
+  let toldShooter = 0;
+  const game = host.game as unknown as { endOwn(c: unknown): void };
+  const endOwn = game.endOwn;
+  game.endOwn = function (this: unknown, c: unknown): void {
+    if (c === shooter) toldShooter++;
+    endOwn.call(this, c);
+  };
+  const rockets: number[] = [];
+  for (let n = 0; n < 20; n++) {
+    const t = performance.now();
+    host.combat.blast(rocket, rx + n * 1.5 - 15, ry, rz + (n % 5) * 2 - 4, reach);
+    rockets.push(performance.now() - t);
+  }
+  game.endOwn = endOwn;
+  rockets.sort((a, b) => a - b);
+  record("things built that 20 rocket blasts damaged", host.combat.structureHits - hitBefore, "");
+  record("messages the shooter was sent for a rocket's blast, mean", toldShooter / 20, "", 1);
+  record("one rocket's blast in a 2,000-piece base, median", percentile(rockets, 0.5), "ms", 1);
+  record("one rocket's blast in a 2,000-piece base, worst", rockets[rockets.length - 1]!, "ms", 4);
   record("items the ledger cannot account for", host.items.audit().length, "", 0);
 }
 

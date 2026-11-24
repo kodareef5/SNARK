@@ -40,6 +40,8 @@ export interface FirefightGun {
   readonly added?: number;
   /** Most milliseconds of the processor a tick it may cost over the first gun. */
   readonly over?: number;
+  /** Ticks between one's shots, where its reload sets them: without it, the fight's ten a second. */
+  readonly every?: number;
 }
 
 /** The assault rifle is what the plasma rifle is held against. The sniper's round flies its ten seconds, and stands nowhere. */
@@ -47,6 +49,8 @@ export const FIREFIGHT_GUNS: readonly FirefightGun[] = [
   { label: "assault rifle", weapon: "rifle_assault", ammo: "round_advanced_rifle" },
   { label: "sniper's round", weapon: "rifle_sniper", ammo: "round_advanced_sniper" },
   { label: "plasma rifle", weapon: "rifle_plasma", ammo: "plasma_cell", flying: 700, added: 3, over: 0.5 },
+  // A rocket each reload, four seconds: 12.5 a second from the 50, each a blast among them.
+  { label: "rocket launcher", weapon: "rocket_launcher", ammo: "rocket", flying: 200, added: 1, over: 0.5, every: 120 },
 ];
 export const SHOT_ROUNDS = [{ label: "arrows", ammo: "arrow_stone" }, { label: "plasma bolts", ammo: "plasma_cell", budget: 0.3 }];
 
@@ -129,7 +133,7 @@ export function benchFirefight(section: Section, record: Row, host: Host, centre
       const t = performance.now();
       for (let k = 0; gun && k < firing && k < fighters.length; k++) {
         const c = fighters[k]!;
-        if ((world.tick + k) % EVERY !== 0 || c.ent < 0) continue;
+        if ((world.tick + k * 7) % (gun.every ?? EVERY) !== 0 || c.ent < 0) continue;
         const rec = host.records.byPid.get(c.pid);
         const at = fighters[(k + 1 + aim.int(fighters.length - 1)) % fighters.length]!;
         if (!rec || at.ent < 0) continue;
