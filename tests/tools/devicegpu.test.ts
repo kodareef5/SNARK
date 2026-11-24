@@ -125,7 +125,9 @@ test("the fake context refuses the probe's SURFACE pass as the dome left it, and
   expect(link(SURFACE_VERTEX, surfaceFragment("astc", AIR))).toBe("");
   // The shadow lookup's branches are taken as the defines say: SHADOW_SIZE is a name only where shadows are defined.
   const shadows = shadowDefines(tierOf("high").shadows, true);
-  const sized = surfaceFragment("astc", AIR).replace("float sunShadow(vec3 rel, vec3 normal) {\n  return 1.0;", "float sunShadow(vec3 rel, vec3 normal) {\n  return SHADOW_SIZE;");
+  // The lookup with no shadows ends "return 1.0;" after its lines for an orb's light (orb-light.ts), which came before it.
+  const sized = surfaceFragment("astc", AIR).replace("#endif\n  return 1.0;\n}", "#endif\n  return SHADOW_SIZE;\n}");
+  expect(sized).toContain("return SHADOW_SIZE;");
   expect([link(SURFACE_VERTEX, withDefines(surfaceFragment("astc", AIR), shadows)), link(SURFACE_VERTEX, withDefines(sized, shadows))]).toEqual(["", ""]);
   expect(link(SURFACE_VERTEX, sized)).toMatch(/^ERROR: 0:\d+: 'SHADOW_SIZE' : undeclared identifier$/);
   // A name the frame block does not have, a call with an argument too many, and a line before the version.
