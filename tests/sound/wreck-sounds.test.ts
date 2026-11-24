@@ -79,7 +79,10 @@ test("a wreck's rows are heard once, by its cell, and never as a piece taken up"
 });
 
 /** The attacker's hit on something built, as the session reads one, with what the app found it landed on. */
-const hit = (struck?: number): CombatEvent => ({ kind: EVENT_HIT, x: 12, y: 1, z: 10, zone: ZONE_NONE, damage: 333, kill: false, blocked: false, bearing: 0, side: false, silenced: false, name: "", item: 0, far: 0, level: 0, xp: 0, flies: false, vx: 0, vy: 0, vz: 0, back: 0, rays: 1, seed: 0, ...(struck === undefined ? {} : { struck }) });
+const hit = (struck?: number): CombatEvent => ({
+  kind: EVENT_HIT, x: 12, y: 1, z: 10, zone: ZONE_NONE, damage: 333, kill: false, blocked: false, bearing: 0, side: false, silenced: false, name: "", item: 0, far: 0, level: 0, xp: 0, flies: false, vx: 0, vy: 0, vz: 0, back: 0, rays: 1, seed: 0,
+  id: 0, own: false, surface: 0, made: 0, ...(struck === undefined ? {} : { struck }),
+});
 
 test("a blow on a wreck is heard as metal, and on anything else built as stone", () => {
   const a = new ActionSounds(reg, () => -1);
