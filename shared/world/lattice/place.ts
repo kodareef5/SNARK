@@ -716,9 +716,9 @@ function offered(site: Site, forms: FormTable, kind: number, f: Frame, k0: numbe
   const x = at.x / U;
   const z = at.z / U;
   const y = at.y / U;
-  // A tall piece's middle is half its height over what offers it.
-  const up = ROW_REACH + (structs.top[kind]! - structs.low[kind]!) / 2;
-  const rows = structs.query(x - ROW_REACH, z - ROW_REACH, x + ROW_REACH, z + ROW_REACH, near, y - up, y + up);
+  // A tall piece's middle is half its height from what offers it, and so is a tall piece's that offers.
+  const tall = ROW_REACH + (structs.top[kind]! - structs.low[kind]!) / 2;
+  const rows = structs.query(x - ROW_REACH, z - ROW_REACH, x + ROW_REACH, z + ROW_REACH, near);
   for (let r = 0; r < rows; r++) {
     const t = structs.chunks[Math.floor(near.refs[r]! / 65536)]!;
     const slot = near.refs[r]! & 0xffff;
@@ -726,7 +726,7 @@ function offered(site: Site, forms: FormTable, kind: number, f: Frame, k0: numbe
     const dx = t.x[slot]! - x;
     const dy = t.y[slot]! - y;
     const dz = t.z[slot]! - z;
-    if (dx * dx + dz * dz > ROW_REACH * ROW_REACH || Math.abs(dy) > up) continue;
+    if (dx * dx + dz * dz > ROW_REACH * ROW_REACH || Math.abs(dy) > tall + (structs.top[t.kind[slot]!]! - structs.low[t.kind[slot]!]!) / 2) continue;
     offersOf(forms, kind, t.kind[slot]!, t.k0![slot]!, t.k1![slot]!, offers);
     for (let i = 0; i < offers.n; i++) if (offers.k0[i] === k0 && offers.k1[i] === want) return true;
   }

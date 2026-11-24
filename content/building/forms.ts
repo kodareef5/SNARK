@@ -163,7 +163,7 @@ export const PLANNED_FORMS = {
 } satisfies Record<string, FormDef>;
 
 /** The pieces content places, by the name of their shape. A row here that no tier draws is drawn as its collider. */
-export const LIVE_FORMS = { ...FORMS, ...LOW, ...TRIANGLES, ...SLOPES, ...FOOTINGS, ...OPEN_HATCH } satisfies Record<string, FormDef>;
+export const LIVE_FORMS = { ...FORMS, ...LOW, ...TRIANGLES, ...SLOPES, ...FOOTINGS, ...OPEN_HATCH, ...WIDE, ...WIDE_LEAVES } satisfies Record<string, FormDef>;
 
 const box = (x: number, y: number, z: number, hx: number, hy: number, hz: number): ShapeBox => ({ at: [x, y, z], half: [hx, hy, hz] });
 

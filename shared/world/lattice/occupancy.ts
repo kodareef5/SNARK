@@ -44,6 +44,8 @@ export class Occupancy {
   private slots = new Uint32Array(16 * WORDS);
   /** Per layer, how many levels under a level an entry that covers it may be: the longest reach put there, less one. */
   readonly deep = new Uint8Array(8);
+  /** Whether a triangle was ever entered. Until one is, the faces beside an edge and round a point are squares alone. */
+  triangles = false;
 
   /** Bytes the table holds. */
   get bytes(): number {
@@ -77,6 +79,7 @@ export class Occupancy {
     this.size++;
     const layer = cell >>> 23;
     if (reach - 1 > this.deep[layer]!) this.deep[layer] = reach - 1;
+    if (k0 >>> 30 === CLS_TRIANGLE) this.triangles = true;
     return true;
   }
 

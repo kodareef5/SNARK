@@ -175,10 +175,11 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // The launcher's and its round's stand-in meshes and the fire's cone and lobe move the mesh numbers: 45ebac35 without them.
   // They were 2469b535 and 787bba7d until a built piece's draws said so (packet.ts DRAW_PIECE): the metal wall's flag
   // alone, and with that bit left out of the fold they are those again.
-  expect(beforePlain).toBe("6efa9fd5");
+  // The building pieces past the first nine (content/building.ts) move the kind and mesh numbers again.
+  expect(beforePlain).toBe("d7394b7d");
   // And 8a56e259 without them.
   // And abaec19d without the launcher's and the fire's.
-  expect(hash).toBe("7b9626ed");
+  expect(hash).toBe("4f7eca1d");
   // What the hash cannot say: the 300 frames' draws, triangles and bytes put on the card. A change that moves the hash
   // and leaves the frames as they were leaves these.
   expect(counts).toEqual([34500, 32934000, 0]);
@@ -207,9 +208,9 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // And 3bc3899d until the things blocked out and their box.
   // And 72c44dd1 until the launcher's and the fire's meshes.
   // And da3d705d and bf469505 until a built piece's draws said so, as above.
-  expect(saddled.beforePlain).toBe("50de34b9");
+  expect(saddled.beforePlain).toBe("78cbed4d");
   // And e2d31e0d until the things blocked out and their box.
   // And 8e058329 until the launcher's and the fire's meshes.
-  expect(saddled.hash).toBe("187d0b61");
+  expect(saddled.hash).toBe("cff7a70d");
   expect(saddled.counts).toEqual([34800, 32952000, 0]);
 });

@@ -238,7 +238,7 @@ export class Support {
   private readonly single: Uint8Array;
   /** Per kind: 1 for a leaf that hangs under a hatch's frame, 2 for a slab that takes a hatch. */
   private readonly hatched: Uint8Array;
-  /** Whether no form fills a triangle, so the only slab across a square's side is a square. Reading triangles too gives the same answers. */
+  /** With no triangle built, the only slab across a square's side is a square and triangles are not read. False reads them always, which gives the same answers. */
   plain = true;
   /** Pieces to count as built beside the rows, or null. Set it, ask by `node(pretendRef(i))`, and `forget()` when it changes. */
   pretend: Pretend | null = null;
@@ -296,7 +296,6 @@ export class Support {
       this.cap[k] = tables.stabilityCap?.[k] || STABILITY;
       this.single[k] = f.cells === undefined && f.span <= STOREY_LEVELS ? 1 : 0;
       this.hatched[k] = f.layer === "slab" && f.takes === "hatch" ? 2 : f.cls === "edge" && f.hangs?.includes("hatch") ? 1 : 0;
-      if (f.cls === "triangle") this.plain = false;
       if (f.layer === "footing") this.footed = true;
       most = Math.max(most, this.cap[k]!);
       // How far its place is from the middle of what it joins by. A face's piece is placed by its middle but a triangle,
@@ -489,7 +488,7 @@ export class Support {
    * holds nothing that stands on it.
    */
   private beside(fr: number, k0: number, k1: number, lvl: number, cost: number, self: number, roofs = false): void {
-    if (this.plain) edgeSquares(k0, k1, lvl, faces);
+    if (this.square()) edgeSquares(k0, k1, lvl, faces);
     else edgeFaces(k0, k1, lvl, SLAB, faces);
     const deep = roofs && this.sloped();
     for (let f = 0; f < faces.n; f++) {
@@ -504,6 +503,11 @@ export class Support {
       }
       this.put(ref, cost < 0 ? this.loose[kind]! : cost);
     }
+  }
+
+  /** Whether triangles may be left unread: none is built, here or pretended. */
+  private square(): boolean {
+    return this.plain && !this.structs.occupied.triangles && !(this.pretend !== null && this.pretend.occupied.triangles);
   }
 
   /** Whether some roof is built: a slab whose cell reaches over its own level. */
@@ -542,8 +546,9 @@ export class Support {
    */
   private around(fr: number, k0: number, k1: number, lvl: number, corner: number, middle: number, side: number, more: number, self: number): void {
     vertexFaces(k0, k1, lvl, SLAB, faces);
+    const square = this.square();
     for (let f = 0; f < faces.n; f++) {
-      if (this.plain && f >= 12 && f < 24) continue;
+      if (square && f >= 12 && f < 24) continue;
       const ref = this.at(fr, faces.k0[f]!, faces.k1[f]!, self);
       const cost = f < 24 ? corner : middle;
       // A post and a roof hold nothing of each other.
@@ -561,7 +566,7 @@ export class Support {
   private across(kind: number, fr: number, k0: number, k1: number, lvl: number, self: number): void {
     const rise = riseAt(this.forms!, kind, k0, k1);
     const deep = rise !== 0 || this.sloped();
-    if (!deep && this.plain && keyCls(k0) === CLS_SQUARE) {
+    if (!deep && keyCls(k0) === CLS_SQUARE && this.square()) {
       squaresAcross(k0, k1, lvl, faces);
       for (let f = 0; f < 4; f++) {
         const ref = this.at(fr, faces.k0[f]!, faces.k1[f]!, self);
@@ -677,7 +682,8 @@ export class Support {
       const edge = keyCls(k0) === CLS_EDGE;
       for (let c = 0; c < own.n; c++) {
         const host = edge ? this.covering(fr, own.k0[c]!, cellAt(own.k1[c]!, keyLvl(own.k1[c]!), WALL), self) : this.at(fr, own.k0[c]!, cellAt(own.k1[c]!, lvl, SLAB), self);
-        if (host >= 0) this.put(host, 0);
+        // In a wall it hangs storey for storey: a wall that only passes its level, begun under it, is no host.
+        if (host >= 0 && (!edge || (keyLvl(own.k1[c]!) - this.lvlOf(host)) % STOREY_LEVELS === 0)) this.put(host, 0);
       }
       // A ladder also hangs under the side of a hatch's frame over its head.
       const top = lvl + forms.span[kind]!;

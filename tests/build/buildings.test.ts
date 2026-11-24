@@ -266,3 +266,53 @@ test("a cellar under a trapdoor with a ladder: shut it is a room and a floor, op
   expect(rowsOf(h.world.structs, h.reg.ids).map((row) => row.split(" ")[0])).toEqual(["core:foundation_wood"]);
   expect(h.host.build.fallen).toBe(3);
 });
+
+test("a fenced yard with a gate: begun with a fence's footing on open ground, walled waist high, shut and opened at its gate, kept over a restart", () => {
+  const dbPath = join(dir, "yard.db");
+  let { h, sessions } = builder(["ada"], 40, 40, { dbPath });
+  let s = sessions[0]!;
+  const { w, p } = plotOf(h, s);
+  // The first footing is the yard's south-west one: a base's first piece, as a foundation may be.
+  found(h, s, p, "piece_fence_foundation_wood", 13001);
+  const fence: [Tuple, number][] = [[at(3, 0), 0], [at(4, 1), 3], [at(4, 3), 3], [at(3, 4), 0], [at(1, 4), 0], [at(0, 3), 3], [at(0, 1), 3]];
+  for (const [m, own] of fence) build(h, s, p, "piece_fence_foundation_wood", "core:fence_foundation_wood", m, 0, own);
+  // The builder stands in the yard. A gateway over the two south footings, its front turned out, and half walls on the other six.
+  stand(h, s, p, at(2, 3));
+  const gateway = build(h, s, p, "piece_gateway_wood", "core:gateway_wood", at(1, 0), 0, 6);
+  const gate = build(h, s, p, "piece_gate_wood", "core:gate_wood", at(1, 0), 0, 6);
+  for (const [m, own] of fence.slice(1)) build(h, s, p, "piece_half_wall_wood", "core:half_wall_wood", m, 0, own);
+  h.run(300);
+  const built = rowsOf(h.world.structs, h.reg.ids);
+  expect(built.length).toBe(8 + 1 + 1 + 6);
+  expect([gateway, gate, ...refsOf(h, "half_wall_wood")].map((ref) => p.stability(ref))).toEqual([4, 4, 4, 4, 4, 4, 4, 4]);
+  // Shut, no look at knee or chest height gets out of the yard, and a body walked at the gate stops at it.
+  const [x, z] = p.metres(at(2, 2));
+  for (const y of [0.4, 1.2]) expect(leaks(w, x, p.height(0) + y, z, 9, 1440)).toBe(0);
+  const out = p.metres(step(at(2, 0), 9, 4));
+  const stopped = walked(w, [x, z], out, p.height(0) + 0.5, 300);
+  expect(Math.hypot(stopped.x - x, stopped.z - z)).toBeLessThan(3);
+  // Another tribe's survivor cannot open it; the builder opens it from inside, and walks out through it.
+  const bob = stranger(h, p, at(2, 2));
+  expect(use(h, bob, gate)).not.toBe(RESULT_OK);
+  expect(use(h, s, gate)).toBe(RESULT_OK);
+  expect(h.world.structs.chunks[Math.floor(gate / 65536)]!.kind[gate & 0xffff]).toBe(id("gate_open_wood"));
+  expect(leaks(w, x, p.height(0) + 1.2, z, 9, 1440)).toBeGreaterThan(0);
+  const through = walked(w, [x, z], out, p.height(0) + 0.5, 300);
+  expect(Math.hypot(through.x - x, through.z - z)).toBeGreaterThan(5);
+  expect(use(h, s, gate)).toBe(RESULT_OK);
+  expect(rowsOf(s.world!.structs, h.reg.ids)).toEqual(rowsOf(h.world.structs, h.reg.ids));
+  expect(rowsOf(bob.world!.structs, h.reg.ids)).toEqual(rowsOf(h.world.structs, h.reg.ids));
+
+  h.host.shutdown();
+  h = new Harness({}, 1, 60, { dev: true, dbPath });
+  s = h.join("ada");
+  h.run(900);
+  expect(rowsOf(h.world.structs, h.reg.ids)).toEqual(built);
+  expect(rowsOf(s.world!.structs, h.reg.ids)).toEqual(built);
+  // A footing under a half wall gone, that wall falls alone. Both under the gateway gone, it and its gate come down.
+  const footings = refsOf(h, "fence_foundation_wood");
+  destroy(h, [footings[3]!]);
+  expect([refsOf(h, "half_wall_wood").length, h.host.build.fallen]).toEqual([5, 1]);
+  destroy(h, footings.slice(0, 2));
+  expect([refsOf(h, "gateway_wood", "gate_wood").length, h.host.build.fallen]).toEqual([0, 3]);
+});
