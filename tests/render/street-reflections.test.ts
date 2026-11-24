@@ -80,6 +80,26 @@ test("a nearby worn visor can anchor the shared picture until it is removed or l
   expect(p.street).toBeNull();
 });
 
+test("a helmet is reflected for its visor, not its id", () => {
+  // A head piece of another name with a visor, and the flak helmet, which has none.
+  const made = compileContent([...CORE_CONTENT, { type: "item", class: "armor", id: "test:scout_helm", stack: 1, weight: 4, color: 2, wear: { slot: "head", set: "hide", armor: 100, uses: 120, colors: [2, 11, 6] }, optic: { min: 2, max: 8, window: [0.8, 0.3], shape: "visor" } }]);
+  expect(made.errors).toEqual([]);
+  const other = made.registry!;
+  const capture = new StreetReflections(other, defaultPalette(), nodeForms(other));
+  const { world, cam, cars, p, hidden } = street();
+  cars.count = 1;
+  cars.kind[0] = other.index.get("core:survivor")!;
+  cars.id[0] = 7;
+  cars.x[0] = 40;
+  cars.z[0] = 42;
+  const worn = (id: string, now: number): boolean => {
+    cars.gear[GEAR_WORN] = other.index.get(id)!;
+    capture.frame(p, cam, world, cars, hidden, now);
+    return p.street !== null;
+  };
+  expect([worn("core:flak_hat", 0), worn("test:scout_helm", 250), worn("core:meridian_hat", 500), worn("core:flak_hat", 750)]).toEqual([false, true, true, false]);
+});
+
 test("a car shares the street picture, movement updates at the tier rate, turning still changes the lookup between captures", () => {
   const { p, tick, car, cars } = street();
   car(0, 40, 44);

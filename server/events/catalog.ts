@@ -104,7 +104,7 @@ ev("structure.act", "before", "byPid ref action", "demolish, pick-up and access"
 ev("structure.gone", "after", "ref kind team cause byPid", "the structure's death, and auto-demolish", "server/build.ts", "wired", "A piece is gone: destroyed, fallen, picked up, demolished or decayed.");
 ev("structure.owner", "after", "from to n", "the change of team", "server/tribes.ts", "wired", "Structures changed owner.");
 
-ev("item.gain", "before", "pid item why n!", "the allow-add question and the item-added notice", "server/items.ts", "wired", "A stack is about to be made: harvested, crafted, given by an admin.", true);
+ev("item.gain", "before", "pid item why n!", "the allow-add question and the item-added notice", "server/items.ts", "wired", "A stack is about to be made: harvested, crafted, given by an admin. One handed out by a loadout is asked with the reason \"loadout\".", true);
 ev("item.move", "before", "byPid from to item n", "the remote-inventory questions", "server/own.ts", "wired", "A stack is about to move between two inventories.");
 ev("item.use", "before", "byPid item", "the allow-use question and the use request", "server/own.ts", "wired", "An item is about to be eaten, drunk or used.");
 ev("item.drop", "before", "byPid item n", "the drop request", "server/own.ts", "wired", "A stack is about to be dropped.");

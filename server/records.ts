@@ -43,8 +43,8 @@ export interface FireState extends Fire {
 
 /**
  * A feature's own state on a record, in place of a field on EntityRecord. The feature declares one in its own file,
- * `export const ISSUED = part(() => ({ to: 0 }))`: `rec.part(ISSUED)` is that state, or undefined for a record that has
- * none, and `rec.own(ISSUED)` makes it. What of it is saved is a component declared beside it (server/saved.ts).
+ * `export const BREEDING = part(() => ({ mateReadyAt: 0 }))`: `rec.part(BREEDING)` is that state, or undefined for a record
+ * that has none, and `rec.own(BREEDING)` makes it. What of it is saved is a component declared beside it (server/saved.ts).
  */
 export class Part<S> {
   /** Its place among a record's parts: the order parts were declared in on this run, which nothing saves. */

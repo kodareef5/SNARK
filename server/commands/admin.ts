@@ -3,6 +3,7 @@ import type { SpeciesDef } from "../../shared/content/defs.ts";
 import { MODE_FLY, MODE_GHOST, MODE_WALK } from "../../shared/sim/character.ts";
 import { Genome, POINT_CAP, STAT_NAMES } from "../../shared/sim/genome.ts";
 import { FLAG_BLUEPRINT, QUALITY_NAMES } from "../../shared/sim/items.ts";
+import { loadoutCommands } from "./loadout.ts";
 import { lootCommands } from "./loot.ts";
 import { supplyCommands } from "./supply.ts";
 import { groundUnder } from "../../shared/world/collide.ts";
@@ -321,5 +322,5 @@ export function addAdminCommands(con: Console): void {
       },
     },
   ];
-  con.add(...commands, ...lootCommands(), ...supplyCommands());
+  con.add(...commands, ...lootCommands(), ...supplyCommands(), ...loadoutCommands());
 }

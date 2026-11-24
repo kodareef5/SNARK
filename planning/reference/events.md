@@ -193,7 +193,7 @@ same purpose. ARK has no event API, so plugins hook the game's own functions.
 | `craft.done` | after | `pid`, `item`, `n` |  | the finish-crafting call | `server/progression.ts` | wired |
 | `harvest` | after | `pid`, `node`, `item`, `n` |  | the harvested call | `server/harvest.ts` | wired |
 
-- **`item.gain`.** A stack is about to be made: harvested, crafted, given by an admin.
+- **`item.gain`.** A stack is about to be made: harvested, crafted, given by an admin. One handed out by a loadout is asked with the reason "loadout".
 - **`item.move`.** A stack is about to move between two inventories.
 - **`item.use`.** An item is about to be eaten, drunk or used.
 - **`item.drop`.** A stack is about to be dropped.

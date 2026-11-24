@@ -36,9 +36,7 @@ import { Corpses } from "./corpses.ts";
 import { CorpseReplication } from "./corpse-motion.ts";
 import { CMD_CLOCK, CMD_CORPSE } from "../shared/net/protocol.ts";
 import { Creative } from "./creative.ts";
-import { issueSuit } from "./suit.ts";
 import { Balls } from "./balls.ts";
-import { Mounts, issuedTo } from "./mount.ts";
 import { Eggs } from "./eggs.ts";
 import { MountedRoars } from "./creature-roar.ts";
 import { Feces } from "./feces.ts";
@@ -109,6 +107,9 @@ import { catalogOf } from "../shared/supply/catalog.ts";
 import { SETTING as ARK_CRATES, arkCrates } from "./supply/ark.ts";
 import { Supply } from "./supply.ts";
 import { BookStore } from "./supply/store.ts";
+import { builtinLoadouts } from "../content/loadouts.ts";
+import { Loadouts } from "./loadout/loadouts.ts";
+import { LoadoutStore } from "./loadout/store.ts";
 import { spawnTables } from "./settings/spawns.ts";
 import { parseMap, type MapFile } from "../shared/world/mapfile.ts";
 import { Tactical } from "./tactical.ts";
@@ -237,8 +238,6 @@ export interface Host {
   /** Survivors knocked off their feet, lying as ragdolls (server/falls.ts). */
   readonly falls: Falls;
   readonly balls: Balls;
-  /** Each survivor's starter pteranodon in its issued soul ball (server/mount.ts). */
-  readonly mounts: Mounts;
   readonly overhead: Overhead;
   readonly gaze: Gaze;
   readonly hurt: Hurt;
@@ -249,6 +248,10 @@ export interface Host {
   /** Supply drops, and the drop book they are rolled from (server/supply.ts). */
   readonly supply: Supply;
   readonly supplyBook: BookStore;
+  /** The loadouts new survivors are given, kept beside the save (server/loadout/store.ts). */
+  readonly loadoutBook: LoadoutStore;
+  /** Hands loadouts out: to a new survivor, after a death, and when an admin asks (server/loadout/loadouts.ts). */
+  readonly loadouts: Loadouts;
   /** Where a survivor without a body may rise, and its choosing (server/beds.ts). */
   readonly beds: Beds;
   /** The cluster the server is part of (-clusterid), or null for one alone. */
@@ -615,9 +618,6 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   if (persistence && !loaded!.fresh) tribes.restore(persistence.store.meta("tribes"));
   const survivorLog = new SurvivorLog({ world, records, tribes, rules, persistence, opAdmin: OP_ADMIN, opDeath: OP_DEATH, causes: CAUSE_WORDS, say }, opts.survivorLog);
   opened.push({ close: () => survivorLog.stop() });
-  // The starter mounts are made below, after the soul balls; a survivor the folder hands back as the save loads gets its
-  // mount at its next rise.
-  let starter: Mounts | null = null;
   // What the cluster's folder says came and went that the save does not know is done again now, before anything resumes.
   cluster?.start(
     {
@@ -644,8 +644,6 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
         survival.forget(rec.pid);
         inHand.delete(rec.pid);
       },
-      issueMount: (rec) => starter?.issue(rec),
-      dropMount: (rec) => starter?.left(rec),
       say,
     },
     loaded!.fresh,
@@ -751,8 +749,6 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   // What a slot stood for goes with its item: an egg's young (server/eggs.ts), or a soul ball's tame.
   items.onRefGone.on((ref) => balls.gone(ref));
   combat.onBall.on((c, rec, slot) => balls.click(c, rec, slot));
-  const mounts = new Mounts({ world, records, items, rules, balls, buffs, survival }, (opts.seed ?? 1) + 113);
-  starter = mounts;
   const feces = new Feces({ world, records, items, deadlines, rules, eggs, woke: creatures.onWake, place: (rec) => death.place(rec) }, (opts.seed ?? 1) + 107);
   const roars = new MountedRoars({ world, records, creatures, feces });
   game.players.onMountSecondary.on(e => roars.use(e));
@@ -871,14 +867,10 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   }
   const beds = new Beds({
     world, game, records, tribes, fixtures, rules, bus,
-    // Whyever it rises, it comes to life in the Meridian set, with its starter mount.
     rise: (c, p, why) => {
       const code = rise(c, p, why);
-      const rec = records.byPid.get(c.pid);
-      if (code === RESULT_OK && rec) {
-        issueSuit(items, reg, rules, rec);
-        mounts.issue(rec);
-      }
+      const rec = code === RESULT_OK ? records.byPid.get(c.pid) : undefined;
+      if (rec) loadouts.risen(c, rec, why);
       return code;
     },
     mayLeave: (c, rec) => (rec.out ? "you are unconscious" : riding.riding(c) ? "get off your mount first" : urban.riding(c) ? "get out of the vehicle first" : carry.holding(c) >= 0 ? "put down what is in your arms first" : ""),
@@ -952,9 +944,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     buffs.died(rec);
     spawner?.left(rec);
     if (reg.vehicle[rec.kind]?.movement === "boat") urban.releaseHost(rec.pid);
-    // A starter mount leaves no body to harvest and no saddle: they were issued with it. What it carried lies in a cache.
-    if (issuedTo(rec) !== 0) rec.saddle = 0;
-    else corpses.fell(rec, cause, by, impact);
+    corpses.fell(rec, cause, by, impact);
     if (rec.kind === survivor) beds.died(rec, by !== 0 ? (records.byPid.get(by)?.team ?? 0) : 0);
     death.die(rec, cause);
   };
@@ -1268,6 +1258,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   // drops that are live are the save's, written in the commit that writes their capsules.
   // The starter book comes with the map's own sites and circuits (content/supply/sites.ts).
   const supplyBook = new BookStore(opts.dbPath ? `${opts.dbPath}.supply.json` : null, world.mapId, () => withSites(starterBook(), world.mapId), say);
+  const loadoutBook = new LoadoutStore(opts.dbPath ? `${opts.dbPath}.loadouts.json` : null, builtinLoadouts, reg, say);
   const supply = new Supply({ world, game, records, items, death, containers, progression, deadlines, bus, book: supplyBook, seed: opts.seed ?? 1, rules, say });
   /** ARK's own override of what a crate holds wins over the book, tier by tier, as an ARK operator expects. */
   const recrate = (): void => {
@@ -1341,12 +1332,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       records.entOf.set(rec.pid, c.ent);
       world.ents.pid[c.ent] = rec.pid;
     }
-    // A new survivor comes to life in the Meridian set, with its starter mount, as it does at each rise after (the beds'
-    // rise above). One that logs back in, or stops spectating, has what it had.
-    if (first) {
-      issueSuit(items, reg, rules, rec);
-      mounts.issue(rec);
-    }
+    if (first) loadouts.first(c, rec);
     refreshBody(rec);
     survival.suspend(rec, false);
     // A save from a server that stopped without standing its drivers down has them inside their cars.
@@ -1380,6 +1366,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     }
   });
   const creative = new Creative(world, game, rules, bus, persistence);
+  const loadouts = new Loadouts({ world, records, items, creative, store: loadoutBook, refresh: (rec) => refreshBody(rec) }, (opts.seed ?? 1) + 113);
   game.sessions.onEnter.on((c) => {
     // A survivor that joins dead gets no onBody call, so its pid is set here.
     if (c.pid === 0) c.pid = recordOf(c.name)?.pid ?? 0;
@@ -1707,8 +1694,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       for (let k = 0; k < ARMOR_SLOTS; k++) {
         const slot = inv.armor + k, id = inv.item[slot]!;
         gear[GEAR_WORN + k] = id;
-        const piece = reg.defs[id];
-        if (piece?.type === "item" && piece.wear?.set === "meridian" && inv.dur[slot]! > 0) suit |= 1 << k;
+        // A piece that flies (WearFacet.jet) and is not worn out lends its slot's bit.
+        if (inv.dur[slot]! > 0) suit |= reg.wearJet[id]! << k;
       }
       const helmetChanged = ((ents.jetGear[e]! ^ suit) & JET_HELMET) !== 0;
       ents.jetGear[e] = suit;
@@ -1890,7 +1877,6 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     loose,
     falls,
     balls,
-    mounts,
     overhead,
     gaze,
     hurt,
@@ -1898,6 +1884,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     carReturn,
     supply,
     supplyBook,
+    loadoutBook,
+    loadouts,
     beds,
     cluster,
     settled,

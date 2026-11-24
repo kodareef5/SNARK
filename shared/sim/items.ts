@@ -27,15 +27,6 @@ export const FLAG_BLUEPRINT = 1;
  * taking another thing in hand, switches it off, as ARK's flashlight must be switched on again (server/items.ts).
  */
 export const FLAG_ON = 2;
-/**
- * The piece was issued to the survivor that holds it as it came to life: the Meridian set (server/suit.ts, D957), and the
- * soul ball of its starter mount (server/mount.ts). It never leaves that survivor's inventory and is never spent; it goes
- * when the survivor dies or leaves the world. Only the server keeps this bit. A client is not sent it, so the protocol has
- * no SLOT_ bit for it.
- */
-export const FLAG_ISSUED = 4;
-/** Slots that are never spent: a blueprint, and an issued piece. */
-const UNSPENT = FLAG_BLUEPRINT | FLAG_ISSUED;
 /** Kilograms a blueprint weighs, whatever it makes. Chosen: the wiki gives no weight for one. */
 export const BLUEPRINT_KG = 0.1;
 
@@ -107,8 +98,7 @@ export class Inventory {
   readonly dur: Uint16Array;
   /**
    * FLAG_ bits. A blueprint (FLAG_BLUEPRINT) of an item lies alone in its slot, never spoils, and is never spent. A weapon
-   * whose attachment is switched on has FLAG_ON, which changes nothing of how the slot is counted, spent or stacked. An
-   * issued piece (FLAG_ISSUED) moves about its survivor's inventory as any piece does, but is never spent.
+   * whose attachment is switched on has FLAG_ON, which changes nothing of how the slot is counted, spent or stacked.
    */
   readonly flags: Uint8Array;
   /** Tick at which the stack's top item spoils. 0 for a stack that does not. */
@@ -209,10 +199,10 @@ export class Inventory {
     }
   }
 
-  /** How many of an item there are to spend. A blueprint is not one of them, nor an issued piece. */
+  /** How many of an item there are to spend. A blueprint is not one of them. */
   total(item: number): number {
     let n = 0;
-    for (let s = 0; s < this.cap; s++) if (this.item[s] === item && (this.flags[s]! & UNSPENT) === 0) n += this.count[s]!;
+    for (let s = 0; s < this.cap; s++) if (this.item[s] === item && (this.flags[s]! & FLAG_BLUEPRINT) === 0) n += this.count[s]!;
     return n;
   }
 
@@ -296,11 +286,11 @@ export class Inventory {
     return -1;
   }
 
-  /** Last slots first. All or nothing. A blueprint or an issued piece is never taken. */
+  /** Last slots first. All or nothing. A blueprint is never taken. */
   take(item: number, n: number): boolean {
     if (this.total(item) < n) return false;
     for (let s = this.cap - 1; s >= 0 && n > 0; s--) {
-      if (this.item[s] !== item || (this.flags[s]! & UNSPENT) !== 0) continue;
+      if (this.item[s] !== item || (this.flags[s]! & FLAG_BLUEPRINT) !== 0) continue;
       const k = Math.min(n, this.count[s]!);
       this.remove(s, k);
       n -= k;
@@ -352,8 +342,7 @@ export function carried(at: number, now: number, from: number, to: number): numb
 
 /**
  * The clock the stack in slot `sa` of `a` has once it lies in `b`: scaled by how the two keep things, or, for a charge,
- * held full where `b` charges and run down from full where it leaves `a` that did. Within one inventory it stays as it is,
- * so an issued ball's charge, held full anywhere (server/mount.ts), stays held as it is moved about.
+ * held full where `b` charges and run down from full where it leaves `a` that did. Within one inventory it stays as it is.
  */
 export function clockMoved(a: Inventory, sa: number, b: Inventory, now: number, t: ItemTable): number {
   const at = a.spoilAt[sa]!;

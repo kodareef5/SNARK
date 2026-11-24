@@ -3,7 +3,6 @@
 // time stood still (EntityRecord.stored), and the ball becomes a full one that stands for that record (Inventory.ref), as
 // a fertilised egg taken up stands for its young (server/eggs.ts). A click with a full ball looses the tame where the
 // survivor looks. A full ball's spoil clock is its charge: run out, or the ball lost any other way, the tame is gone too.
-// A survivor's starter mount has an issued ball of its own, which keeps only that tame (server/mount.ts).
 
 import { rebaseTicks } from "./persist/codec.ts";
 import { EVENT_BALL, OWN_KEPT, S_EVENT } from "../shared/net/protocol.ts";
@@ -23,7 +22,6 @@ import type { Death } from "./death.ts";
 import type { Client, GameServer } from "./game.ts";
 import type { Items } from "./items.ts";
 import { freeAt, freePlace } from "./place.ts";
-import { issuedTo } from "./mount.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import type { Riding } from "./riding.ts";
 import { moved, saved } from "./saved.ts";
@@ -54,8 +52,6 @@ const NO_ROOM = "There is no room for it there.";
 const NO_BODY = "The world has no room for another creature now.";
 const CARGO = "What it carried lies in a bag where it stood.";
 const NOT_A_BALL = "That is not a soul ball to do that with.";
-const ONLY_ITS_OWN = "This soul ball was issued with your pteranodon, and keeps only that one.";
-const ITS_OWN_BALL = "It goes only into the soul ball it was issued with.";
 
 /**
  * Sends the tames kept in the soul balls of `inv` (OWN_KEPT), whole, if it holds one or `told` says the session was last
@@ -145,22 +141,16 @@ export class Balls {
     else if (reg.ballEmpty[item] !== 0) this.loose(c, me, slot);
   }
 
-  /**
-   * Why the creature with body `e` may not be kept by `me` in the ball in `slot`, or "" if it may. A starter mount goes only
-   * into the issued ball of the survivor it was issued to, and into that one whatever tribe it is in now (server/mount.ts).
-   */
+  /** Why the creature with body `e` may not be kept by `me` in the ball in `slot`, or "" if it may. */
   refusal(me: EntityRecord, e: number, slot: number): string {
-    const { world, records, items, tribes, riding, carry, buffs } = this.ctx;
+    const { world, records, tribes, riding, carry, buffs } = this.ctx;
     const ents = world.ents;
     const reg = world.reg;
     if (e < 0 || (ents.flags[e]! & (F_ALIVE | F_PROP)) !== F_ALIVE) return NOTHING;
     const rec = records.byPid.get(ents.pid[e]!);
     if (!rec || records.entOf.get(rec.pid) !== e || rec.keyHash !== null || rec.egg !== null || rec.dead || reg.defs[rec.kind]?.type !== "species" || reg.vehicle[rec.kind]) return NOT_A_TAME;
     if (rec.team === 0) return NOT_A_TAME;
-    const issued = items.issued(me, slot);
-    if (issued && issuedTo(rec) !== me.pid) return ONLY_ITS_OWN;
-    if (!issued && issuedTo(rec) !== 0) return ITS_OWN_BALL;
-    if (!issued && !tribes.may(me, rec.team)) return NOT_YOURS;
+    if (!tribes.may(me, rec.team)) return NOT_YOURS;
     // The sickness knocks it out, and is the reason to give of the two.
     if (this.sick !== 0 && buffs.has(rec, this.sick)) return SICK;
     if (rec.out || rec.tame) return NOT_AWAKE;
@@ -274,9 +264,7 @@ export class Balls {
       this.mended++;
       return "";
     }
-    // A starter mount's issued ball is never held back: no tame limit counts it, and loosing it neither chills nor sickens.
-    const issued = items.issued(me, slot);
-    const limit = issued ? "" : taming.full(me.team);
+    const limit = taming.full(me.team);
     if (limit !== "") return limit;
     if (ents.room < STORE_RESERVE) return NO_BODY;
     const p = reg.tamedMove[rec.kind] ?? reg.move[rec.kind];
@@ -291,6 +279,8 @@ export class Balls {
     rec.y = freeAt.y;
     rec.z = freeAt.z;
     rec.yaw = yaw;
+    // One with no vitals has never had a body: it was made kept (server/loadout/tame.ts).
+    const unborn = !rec.vitals;
     const e = creatures.adopt(rec);
     if (e < 0) {
       // No body after all: it stays kept, as it was.
@@ -317,12 +307,12 @@ export class Balls {
     breeding.loosed(rec);
     taming.meal(rec);
     this.ctx.refresh(rec);
-    // A starter comes out rested: a new body has 100 stamina whatever its most, and a mount for travel wants all of it.
-    if (issued) ents.stamina[e] = ents.staminaMax[e]! * STAMINA_UNITS;
+    // Its first body comes out rested: a new body has 100 stamina whatever its most.
+    if (unborn) ents.stamina[e] = ents.staminaMax[e]! * STAMINA_UNITS;
     this.loosed++;
     // ARK's cryo sickness: loosed within the survivor's wait after the last, it is knocked out and takes ten times the harm.
     // It is always so on PvP, and on PvE only where the server says (EnableCryoSicknessPVE).
-    if (!issued && this.chill !== 0 && this.sick !== 0 && (!rules.on("serverPVE") || rules.on("EnableCryoSicknessPVE"))) {
+    if (this.chill !== 0 && this.sick !== 0 && (!rules.on("serverPVE") || rules.on("EnableCryoSicknessPVE"))) {
       if (buffs.has(me, this.chill)) {
         buffs.give(rec, this.sick, me.pid);
         survival.add(rec, V_TORPOR, 1e9);

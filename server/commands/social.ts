@@ -17,7 +17,7 @@ function survivorOf(host: Host, c: Client | null): EntityRecord | null {
 }
 
 /** The session a typed name means (server/names.ts), null if none does, or NAME_UNCLEAR. */
-function sessionNamed(host: Host, name: string): Client | null | typeof NAME_UNCLEAR {
+export function sessionNamed(host: Host, name: string): Client | null | typeof NAME_UNCLEAR {
   const here = host.game.clients.filter((c): c is Client => !!c?.active && !c.closed);
   const which = meant(here.map((c) => c.name), name);
   return which === NAME_UNCLEAR ? NAME_UNCLEAR : (here[which] ?? null);

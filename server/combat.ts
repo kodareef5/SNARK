@@ -45,7 +45,6 @@ import type { Items } from "./items.ts";
 import { XP_KILL, type Progression } from "./progression.ts";
 import type { Rules } from "./settings/rules.ts";
 import type { Lists } from "./settings/lists.ts";
-import { issuedTo } from "./mount.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import { STAT_MELEE, statOf, type Survival } from "./survival.ts";
 import type { ServerWorld } from "./world.ts";
@@ -1432,8 +1431,7 @@ export class Combat {
     this.died = true;
     const { world, records, progression, game } = this.ctx;
     const killer = by !== 0 ? records.byPid.get(by) : undefined;
-    // A starter mount is worth nothing killed: a new one is issued at its survivor's next rise (server/mount.ts).
-    if (!killer || killer === rec || killer.dead || issuedTo(rec) !== 0) return;
+    if (!killer || killer === rec || killer.dead) return;
     const reg = world.reg;
     const def = reg.defs[rec.kind] as SpeciesDef;
     const level = rec.kind === this.survivor ? progression.levelOf(rec.xp) : (rec.genome?.level ?? 1);

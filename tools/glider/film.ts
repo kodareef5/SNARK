@@ -7,8 +7,7 @@
 //
 // The client is one built apart (`bun tools/build-client.ts --quick --dist DIR`). With no --map the world is the proving
 // ground. It writes glide.mp4 at 12 frames a second from the page's own screencast, each frame the newest the page had
-// drawn, and a still at each moment of the flight. A survivor spawns in the Meridian set (D957); it is taken off unless
-// --suit.
+// drawn, and a still at each moment of the flight. A survivor spawns with nothing on; --suit puts the Meridian set on it.
 
 import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -29,7 +28,7 @@ const [winW, winH] = values.canvas!.split("x").map(Number);
 mkdirSync(out, { recursive: true });
 
 const work = mkdtempSync(join(tmpdir(), "snark-glider-film-"));
-const orders = ["enablecheats", "settime 15", ...(values.suit ? [] : ["armor off"]), "give frond_glider 1"];
+const orders = ["enablecheats", "settime 15", ...(values.suit ? ["armor meridian"] : []), "give frond_glider 1"];
 const server = startServer({ dev: true, hostname: "127.0.0.1", port: 0, dbPath: join(work, "world.db"), config: loadConfigFolder(DEV_CONFIG, []).rules, ...(values.map ? { map: values.map } : {}), clientDir: values.dist });
 const profile = join(work, "profile");
 const port = 9300 + Math.floor(Math.random() * 500);

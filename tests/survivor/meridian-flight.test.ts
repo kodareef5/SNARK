@@ -1,9 +1,11 @@
 import { expect, test } from "bun:test";
 import { AnimState, CUE_JET } from "../../shared/anim/pose.ts";
-import { BTN_JUMP, BTN_MELEE, BTN_SPRINT, JET_UP, JET_FIST, JET_DASH, JET_CAPACITY, JET_FULL_SUIT, JET_HOVER, JET_LIFT, JET_STRIDE } from "../../shared/sim/character.ts";
+import { BTN_JUMP, BTN_MELEE, BTN_SPRINT, JET_UP, JET_FIST, JET_DASH, JET_CAPACITY, JET_CUIRASS, JET_FULL_SUIT, JET_HOVER, JET_LIFT, JET_STRIDE } from "../../shared/sim/character.ts";
 import { JET_SPENT_BITS } from "../../shared/net/protocol.ts";
 import { V_HEALTH, V_OXYGEN } from "../../shared/sim/vitals.ts";
 import { RemoteSample } from "../../client/core/session.ts";
+import { CORE_CONTENT } from "../../content/core.ts";
+import { compileContent } from "../../shared/content/registry.ts";
 import { Harness } from "../fixtures/net.ts";
 import { HudModel, updateHud } from "../../client/core/hud.ts";
 import { buildHud, KEY_JET_FUEL } from "../../client/core/ui/hud.ts";
@@ -272,4 +274,42 @@ test("the flying punch can connect with a second airborne survivor through the a
   expect(h.host.combat.last.victim).toBe(h.world.ents.pid[h.ent(target)]!);
   expect(h.host.combat.last.damage).toBeGreaterThan(0);
   expect(wearer.own.jetRecovery).toBeGreaterThan(0);
+});
+
+test("flight is each piece's own jet property, not its set's name", () => {
+  // A cuirass of the hide set that flies, beside the game's own pieces.
+  const made = compileContent([...CORE_CONTENT, { type: "item", class: "armor", id: "test:lift_vest", stack: 1, weight: 6, color: 2, wear: { slot: "torso", set: "hide", armor: 100, uses: 120, colors: [2, 11, 6], jet: true } }]);
+  expect(made.errors).toEqual([]);
+  const reg = made.registry!;
+  const flies = reg.ids.filter((_, k) => reg.wearJet[k] === 1).sort();
+  expect(flies).toEqual(["core:meridian_boots", "core:meridian_gloves", "core:meridian_hat", "core:meridian_pants", "core:meridian_shirt", "test:lift_vest"]);
+  const h = new Harness({}, 1, 60, { dev: true }, reg);
+  const wearer = h.join("pilot");
+  h.run(500);
+  h.say(wearer, "enablecheats");
+  h.say(wearer, "tp 245 255");
+  // The whole flak set flies nothing.
+  h.say(wearer, "armor flak");
+  h.run(400);
+  const input = h.pilots[0]!;
+  const floor = wearer.own.y;
+  expect(wearer.own.jetGear).toBe(0);
+  input.buttons = BTN_JUMP;
+  h.run(2000);
+  expect([wearer.own.jetThrust, wearer.own.y < floor + 2]).toEqual([0, true]);
+  input.buttons = 0;
+  h.run(1000);
+  // The vest in the flak cuirass's place lifts her, whatever its set is called.
+  const rec = h.host.records.byPid.get(h.world.ents.pid[h.ent(wearer)]!)!;
+  const items = h.host.items, inv = items.inv(rec);
+  items.burn(rec, inv.armor + 1, 1);
+  const vest = reg.index.get("test:lift_vest")!;
+  expect(items.mint(rec, vest, 1)).toBe(1);
+  expect(items.move(rec, inv.item.indexOf(vest), rec, inv.armor + 1, 0)).toBe(1);
+  h.run(400);
+  expect(wearer.own.jetGear).toBe(JET_CUIRASS);
+  input.buttons = BTN_JUMP;
+  h.run(2000);
+  expect(wearer.own.jetThrust).toBe(JET_LIFT);
+  expect(wearer.own.y).toBeGreaterThan(floor + 4);
 });
