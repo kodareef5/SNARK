@@ -9,6 +9,7 @@ import type { Characters } from "../../client/core/render/characters.ts";
 import type { FramePacket } from "../../client/core/render/packet.ts";
 import { ClientSession, RemoteSample } from "../../client/core/session.ts";
 import { AWAIT_MS, Shots } from "../../client/core/shots.ts";
+import { ZONE_NONE } from "../../shared/anim/human.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { BOLTS_MOST, packBolt, writeBolt } from "../../shared/net/bolts.ts";
 import { BitWriter } from "../../shared/net/codec.ts";
@@ -76,10 +77,11 @@ const hit = (damage: number) => (w: BitWriter): void => {
   w.f32(100);
   w.f32(20);
   w.f32(125);
-  w.bits(0, 4);
+  w.bits(ZONE_NONE, 4);
   w.u16(damage);
   w.bool(false);
   w.bool(false);
+  w.u16(0); // A body hit names no structure.
 };
 
 /** Frames of 60 a second for `ms`, from `from`. Returns the time reached. */
