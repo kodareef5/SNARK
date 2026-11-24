@@ -23,6 +23,10 @@ import { EYE_SKY, aperture, eyePhase, eyePower, eyeSeed, eyeStorm, strike } from
 
 /** The radius the shell's mesh is made at, in metres. */
 export const ORB_SHELL = 78;
+/** The Watcher's look is held between these, as the sine of its height over level: about 25 degrees up and 12 down. */
+export const GAZE_LIFT = 0.42, GAZE_DIP = -0.2;
+/** Metres past which the ball is drawn at its coarsest level: it is under a hundred pixels across there. */
+export const ORB_FAR = 2000;
 /** Octaves of a scene's noise where a tier does not say (`#define ORB_OCTAVES`). */
 export const ORB_OCTAVES = 4;
 
@@ -851,6 +855,12 @@ export function writeOrb(frame: Float32Array, sites: readonly OrbSite[] | undefi
       break;
     }
   }
+  // The eye strains up at what is overhead but keeps its heading and stays where the streets can see it.
+  const ol = Math.hypot(ox, oz) || 1, flat = Math.hypot(look[0]!, look[2]!);
+  const lift = Math.min(GAZE_LIFT, Math.max(GAZE_DIP, look[1]!)), out = Math.sqrt(1 - lift * lift);
+  look[0] = out * (flat < 1e-3 ? ox / ol : look[0]! / flat);
+  look[2] = out * (flat < 1e-3 ? oz / ol : look[2]! / flat);
+  look[1] = lift;
   // Directions go into the orb's own frame, which its heading turns.
   frame[ORB_AT + 12] = cs * look[0]! - sn * look[2]!;
   frame[ORB_AT + 13] = look[1]!;
@@ -861,7 +871,6 @@ export function writeOrb(frame: Float32Array, sites: readonly OrbSite[] | undefi
   frame[ORB_AT + 18] = sn * sunAt[0]! + cs * sunAt[2]!;
   frame[ORB_AT + 19] = orbFill(phase);
   // A change starts level with the ball's middle, on the side the blue eye stands.
-  const ol = Math.hypot(ox, oz) || 1;
   frame[ORB_AT + 20] = (cs * ox - sn * oz) / ol;
   frame[ORB_AT + 22] = (sn * ox + cs * oz) / ol;
 }

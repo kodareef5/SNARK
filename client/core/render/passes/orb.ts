@@ -5,7 +5,7 @@
 import type { OrbSite } from "../../../../shared/world/orb.ts";
 import { SIZE_UNITS } from "../../../../shared/world/nodes.ts";
 import type { Assets } from "../../assets/assets.ts";
-import { ORB_SHELL, nearestOrb } from "../orb.ts";
+import { ORB_FAR, ORB_SHELL, nearestOrb } from "../orb.ts";
 import { BONE_FLOATS, DRAW_ORB, DRAW_PLAIN, DRAW_SIZED, DRAW_SKINNED, MAX_BONES, MAX_DRAWS, TRANSIENT_BUFFER } from "../packet.ts";
 import type { Frame, Pass } from "../pass.ts";
 
@@ -42,7 +42,8 @@ export class Orbs implements Pass {
     if (boned && p.boneCount >= Math.min(p.tier.bones, MAX_BONES)) return;
     const first = p.transientCount++;
     const distance = Math.max(1, Math.hypot(x, y, z) - r);
-    const level = f.assets.choose(f.assets.table.error[mesh]!, distance / scale, -1);
+    const errors = f.assets.table.error[mesh]!;
+    const level = distance >= ORB_FAR ? Math.max(0, errors.length - 1) : f.assets.choose(errors, distance / scale, -1);
     // The screen is drawn flat; the plinth with its materials.
     if ((flags & DRAW_ORB) !== 0) f.assets.want(mesh, level, distance);
     else f.assets.wantTextured(mesh, level, distance);

@@ -3,7 +3,7 @@
 import { expect, test } from "bun:test";
 import { tierOf, TIERS } from "../../client/core/assets/tiers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
-import { ORB_FLAT, ORB_FRAGMENT, ORB_SHELL, PUCK, PUCK_FROM, orbFill, orbLevel, orbLight, orbPick, orbPuck, orbRaw, orbScene, puckRings, writeOrb, type Puck } from "../../client/core/render/orb.ts";
+import { GAZE_DIP, GAZE_LIFT, ORB_FAR, ORB_FLAT, ORB_FRAGMENT, ORB_SHELL, PUCK, PUCK_FROM, orbFill, orbLevel, orbLight, orbPick, orbPuck, orbRaw, orbScene, puckRings, writeOrb, type Puck } from "../../client/core/render/orb.ts";
 import "../../client/core/render/orb-late.ts";
 import { DRAW_ORB, DRAW_TEXTURED, FRAME, FRAME_FLOATS, FramePacket, InstanceWriter, ORB_AT, ORB_LANES } from "../../client/core/render/packet.ts";
 import type { Frame } from "../../client/core/render/pass.ts";
@@ -282,13 +282,23 @@ test("the lanes hold the nearest orb, its scene and the Watcher's look for every
   };
   const sun = [0, 0, 0];
   // By day the sun, by night the moon opposite it, with the blue eye dark (its cycle's first seconds).
+  // The look keeps a target's heading and is held low enough for the streets to see the eye.
+  const held = (x: number, y: number, z: number): number[] => {
+    const l = Math.hypot(x, y, z), lift = Math.min(GAZE_LIFT, Math.max(GAZE_DIP, y / l)), flat = Math.hypot(x, z), out = Math.sqrt(1 - lift * lift);
+    return [(out * x) / flat, lift, (out * z) / flat];
+  };
   sunDirection(10, sun);
-  expect(toward(lanes(0, 362, 10), sun[0]!, sun[1]!, sun[2]!)).toBeGreaterThan(0.9999);
+  expect(toward(lanes(0, 362, 10), ...(held(sun[0]!, sun[1]!, sun[2]!) as [number, number, number]))).toBeGreaterThan(0.9999);
   sunDirection(23, sun);
-  expect(toward(lanes(0, 362, 23), -sun[0]!, -sun[1]!, -sun[2]!)).toBeGreaterThan(0.9999);
+  expect(toward(lanes(0, 362, 23), ...(held(-sun[0]!, -sun[1]!, -sun[2]!) as [number, number, number]))).toBeGreaterThan(0.9999);
+  for (let hour = 0; hour < 24; hour += 0.5) {
+    const up = gaze(lanes(0, 362, hour))[1]!;
+    expect(up).toBeLessThanOrEqual(GAZE_LIFT + 1e-6);
+    expect(up).toBeGreaterThanOrEqual(GAZE_DIP - 1e-6);
+  }
   // The blue eye's figure while it stands at power.
   const knot = eyeKnot(BLUE);
-  expect(toward(lanes(0, 380, 23), knot.x - SITE.x, EYE_SKY - SITE.y - SITE.centre, knot.z - SITE.z)).toBeGreaterThan(0.9999);
+  expect(toward(lanes(0, 380, 23), ...(held(knot.x - SITE.x, EYE_SKY - SITE.y - SITE.centre, knot.z - SITE.z) as [number, number, number]))).toBeGreaterThan(0.9999);
   // A drop in flight before either.
   const tick380 = 380 * RATE;
   const row = { id: 1, tier: 0, cls: 0, ringed: false, landed: false, opened: false, announce: 0, sender: 0, eye: 0, look: 0, called: tick380 - 600, release: tick380 - 300, land: tick380 + 300, brake: 90, end: tick380 + 9000, left: 0, ox: BLUE.x, oy: 2790, oz: BLUE.z, x: SITE.x - 900, y: SITE.y, z: SITE.z - 200 };
@@ -348,6 +358,8 @@ test("the pass draws shell and plinth at any distance and skips missing meshes",
   }
   // Coarser levels with distance, and nothing where the ball is behind the eye.
   expect([whole.from(150)[0]!.level, whole.from(900)[0]!.level, whole.from(8000)[0]!.level]).toEqual([0, 1, 2]);
+  // Past ORB_FAR the coarsest level is drawn, whatever the tier's error rule would pick.
+  for (const d of whole.from(ORB_FAR + 150)) expect(d.level).toBe(2);
   expect(whole.from(900, Math.PI)).toEqual([]);
   // A marked draw is the orb program's, whatever its mesh's materials.
   const p = whole.packet;
