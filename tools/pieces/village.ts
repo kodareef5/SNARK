@@ -51,6 +51,8 @@ function builder(tier: string) {
   NAMES.forEach((name, k) => setForm(forms, k + 1, ALL[name]!));
   const frame = new Frame(1, 0, Math.round(FLOOR * STRUCT_UNITS), 0, 0, 0);
   const out: Placed[] = [];
+  /** Each piece again by its form's name and its key, for a store to place it by. */
+  const keys: { name: string; k0: number; k1: number }[] = [];
   const pose: LatticePose = { x: 0, y: 0, z: 0, yaw: 0, tw: 0 };
   const m = new Int32Array(8);
   /** The piece of form `name` in the slot of class `cls` named from corner `a` along `d`, its own +X along `own`. */
@@ -62,7 +64,9 @@ function builder(tier: string) {
     const rots = rotsOf(forms, kind);
     const rot = (((canon.dir - own) % 12) + 12) % 12 / (12 / rots);
     if (!Number.isInteger(rot)) throw new Error(`${name} cannot lie along ${own} in a slot along ${d}`);
-    poseOf(frame, key0(cls, m[4]!, m[5]!, m[6]!), key1(m[7]!, lvl, canon.dir, FORM_LAYERS.indexOf(ALL[name]!.layer), rot, 0), forms, kind, pose);
+    const [k0, k1] = [key0(cls, m[4]!, m[5]!, m[6]!), key1(m[7]!, lvl, canon.dir, FORM_LAYERS.indexOf(ALL[name]!.layer), rot, 0)];
+    keys.push({ name, k0, k1 });
+    poseOf(frame, k0, k1, forms, kind, pose);
     out.push({ id: `core:${name}_${tier}`, x: pose.x / STRUCT_UNITS, y: pose.y / STRUCT_UNITS, z: pose.z / STRUCT_UNITS, yaw: plainYaw(pose.yaw, pose.tw) });
   };
   const square = (name: string, i: number, j: number, lvl: number, own = 0): void => put(name, CLS_SQUARE, at(i, j), 0, lvl, own);
@@ -70,7 +74,7 @@ function builder(tier: string) {
   const edge = (name: string, a: Tuple, d: number, lvl: number, flip = false): void => put(name, CLS_EDGE, a, d, lvl, flip ? (d + 6) % 12 : d);
   const tri = (name: string, a: Tuple, d: number, lvl: number, corner = 0): void => put(name, CLS_TRIANGLE, a, d, lvl, (d + 4 * corner) % 12);
   const post = (name: string, a: Tuple, lvl: number): void => put(name, CLS_VERTEX, a, 0, lvl, 0);
-  return { out, put, square, edge, tri, post };
+  return { out, keys, put, square, edge, tri, post };
 }
 
 /** The pieces of the village in the frame of a base at the origin, of `tier`. A trim is set down by hand, as the client would lay it. */
@@ -264,25 +268,35 @@ function where(a: Tuple): [number, number] {
  * A fort of the end-game tier: a keep three cells by two under a pitched roof, a gable at its west end and two hips
  * at its east; a flat-roofed annex with a parapet, a railing on it, a hatch and its ladder, and a ramp up to it; a
  * porch on thin pillars and beams; a twelve-sided tower of two storeys on six squares round a hexagon of triangles,
- * with a parapet and a lantern under six triangles of roof; and a curtain of large walls with a gateway and its gate.
+ * with a parapet and a lantern under six triangles of roof; and a gatehouse of four large walls with the gateway and
+ * its gate set back between them under two storeys of wall.
  * A corner post stands at every corner, as the client would lay it, cut to a low wall's height, and a skirt hangs
  * under the keep's south and west sides. The base is turned `turn` degrees.
  */
 export const FORT_SHOTS: readonly VillageShot[] = [
-  ["the fort from the south-west", [0, 3, 0], 17, 122, 22],
-  ["the keep: its gable, its roof and the porch", [4.5, 2.6, 2], 7.6, 128, 20],
-  ["the tower", [-9, 4.6, 3], 8.8, 150, 16],
-  ["the gateway, its gate and the curtain", [3, 5.2, -9], 9.2, 100, 8],
+  ["the fort", [0, 4, -1], 15.5, 60, 26],
+  ["the keep: its gable, its roof and the porch", [3.5, 2.6, 1], 8, 118, 18],
+  ["the tower", [-9, 5, 3], 8.6, 200, 14],
+  ["the gatehouse, the gateway and its gate", [3, 5.6, -7.5], 9.4, 92, 6],
   ["the roofs from above", [0, 4, 3], 15, 100, 60],
-  ["the annex: its parapet, the railing, the hatch and the ramp", [10.8, 3.2, 1.6], 5.6, 52, 30],
-  ["the gate, close", [3, 2.4, -9], 4.2, 110, 4],
-  ["a corner post between two walls, and the skirts under them", [0, 1.2, 0], 2.6, 135, 12],
-  ["the tower's parapet and lantern", [-9, 8.2, 3], 5.4, 160, 30],
-  ["the hips, the gutter and a parapet's cut post", [9.2, 4, 0.6], 3.6, 60, 22],
+  ["the annex: its parapet, the railing, the hatch and the ramp", [10.8, 3.2, 1], 6, 52, 30],
+  ["the gate, close", [3, 2.6, -6], 4.4, 96, 3],
+  ["a corner post between two walls, and the skirts under them", [0, 1.1, 0], 2.8, 135, 12],
+  ["the tower's parapet and lantern", [-9, 8.2, 3], 5.6, 160, 34],
+  ["the hips, the gutter and a parapet's cut post", [9.4, 4, 0.4], 3.8, 60, 24],
 ];
 
 export function fort(tier: string, turn = 17): Placed[] {
-  const { out, put, square, edge, tri, post } = builder(tier);
+  return fortBuilt(tier, turn).placed;
+}
+
+/** The fort's pieces by form and key in a base of their own, with no trims: a store that places them lays its own. */
+export function fortKeys(tier: string): { name: string; k0: number; k1: number }[] {
+  return fortBuilt(tier, 0).keys;
+}
+
+function fortBuilt(tier: string, turn: number): { placed: Placed[]; keys: { name: string; k0: number; k1: number }[] } {
+  const { out, keys, put, square, edge, tri, post } = builder(tier);
   const yawOf = (d: number): number => (65536 - Math.round((d * 65536) / 12)) & 65535;
   /** A joint on a lattice point at a level: the square post, or a tube `r15` or `r21`, cut to `cut` quarter storeys. */
   const joint = (a: Tuple, lvl: number, kind = "sq", cut = 0): void => {
@@ -378,14 +392,25 @@ export function fort(tier: string, turn = 17): Placed[] {
     tri("triangle_roof", centre, 2 * k, 10, 1);
   }
 
-  // The curtain south of it: large walls on a kerb, the gateway and its gate, a post at each end and each side of the gateway.
-  for (let i = -2; i < 4; i++) edge("fence_foundation", at(i, -3), 0, 0, true);
-  for (const i of [-2, -1, 2, 3]) edge("large_wall", at(i, -3), 0, 0, true);
-  edge("gateway", at(0, -3), 0, 0, true);
-  edge("gate", at(0, -3), 0, 0, true);
-  for (const i of [-2, 0, 2, 4]) for (const lvl of [0, 4, 8, 12]) joint(at(i, -3), lvl);
+  // The gatehouse south of it: a large wall each side on a kerb, two more turned back from them, and between those
+  // the gateway and its gate under two storeys of wall. A corner post stands on every storey of each of its four corners.
+  for (const i of [-1, 2]) {
+    edge("fence_foundation", at(i, -3), 0, 0, true);
+    edge("large_wall", at(i, -3), 0, 0, true);
+  }
+  for (const [i, flip] of [[0, true], [2, false]] as const) {
+    edge("fence_foundation", at(i, -3), 3, 0, flip);
+    edge("large_wall", at(i, -3), 3, 0, flip);
+  }
+  for (const i of [0, 1]) {
+    edge("fence_foundation", at(i, -2), 0, 0, true);
+    for (const lvl of [8, 12]) edge(lvl === 8 ? "windowframe" : "wall", at(i, -2), 0, lvl, true);
+  }
+  edge("gateway", at(0, -2), 0, 0, true);
+  edge("gate", at(0, -2), 0, 0, true);
+  for (const [i, j] of [[-1, -3], [0, -3], [0, -2], [2, -2], [2, -3], [3, -3]] as const) for (const lvl of [0, 4, 8, 12]) joint(at(i, j), lvl);
 
   // The whole base turned, as a base stands at any yaw.
   const [c, s] = [Math.cos((turn * Math.PI) / 180), Math.sin((turn * Math.PI) / 180)];
-  return out.map((q) => ({ ...q, x: c * q.x - s * q.z, z: s * q.x + c * q.z, yaw: (q.yaw - Math.round((turn * 65536) / 360)) & 65535 }));
+  return { placed: out.map((q) => ({ ...q, x: c * q.x - s * q.z, z: s * q.x + c * q.z, yaw: (q.yaw - Math.round((turn * 65536) / 360)) & 65535 })), keys };
 }

@@ -967,17 +967,20 @@ function iBeam(form: FormDef, level: number): Shape | null {
   const f = frameOf(form);
   const p = new Shape();
   const half = form.thick / 2;
-  if (level === 3) return p.box([-f.hx, -half, f.foot], [f.hx, half, f.top], tone("trim"));
+  // Far off its web is what is seen of it: plate between two dark flanges.
+  if (level === 3) return p.box([-f.hx, -half, f.foot], [f.hx, half, f.top], walled);
   const band = form.yieldBand || POST;
   const [in0, in1, flange, web] = [-f.hx + band, f.hx - band, 0.04, 0.02];
-  p.box([in0, -half, f.top - flange], [in1, half, f.top], tone("trim"));
+  // It is wider than a wall, so a ceiling that yields to it still lies over its edge: its top is 4 mm under the floor's.
+  const top = f.top - 0.004;
+  p.box([in0, -half, top - flange], [in1, half, top], tone("trim"));
   p.box([in0, -half, f.foot], [in1, half, f.foot + flange], tone("trim"));
-  p.box([in0, -web, f.foot + flange - 0.005], [in1, web, f.top - flange + 0.005], tone("plate"));
-  for (const s of [-1, 1]) p.box([Math.min(s * f.hx, s * in1), -half, f.foot], [Math.max(s * f.hx, s * in1), half, f.top], tone("trim"));
+  p.box([in0, -web, f.foot + flange - 0.005], [in1, web, top - flange + 0.005], tone("plate"));
+  for (const s of [-1, 1]) p.box([Math.min(s * f.hx, s * in1), -half, f.foot], [Math.max(s * f.hx, s * in1), half, top], tone("trim"));
   if (level === 2) return p;
   const marks: number[] = [0];
   for (let x = GRID; x < in1 - 0.2; x += GRID) marks.push(-x, x);
-  for (const x of marks) p.box([x - 0.012, -half + 0.02, f.foot + flange - 0.003], [x + 0.012, half - 0.02, f.top - flange + 0.003], tone("trim"));
+  for (const x of marks) p.box([x - 0.012, -half + 0.02, f.foot + flange - 0.003], [x + 0.012, half - 0.02, top - flange + 0.003], tone("trim"));
   if (level === 0) nuts(p, marks.flatMap((x): Cell[] => [[x - GRID / 2, (f.foot + f.top) / 2], [x + GRID / 2, (f.foot + f.top) / 2]]).filter(([x], k, all) => Math.abs(x) < in1 - 0.1 && all.findIndex((q) => Math.abs(q[0] - x) < 1e-9) === k), web);
   return p;
 }
