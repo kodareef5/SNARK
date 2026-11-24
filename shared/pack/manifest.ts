@@ -29,9 +29,9 @@ export interface ManifestFile {
   /**
    * "boot" is fetched whole at start. "mesh", "page", "tex", "clip" and "sound" are fetched a level, a page, a step, a
    * skeleton's clips or a sound at a time. "icon" is a PNG sheet of inventory pictures (shared/pack/icons.ts), fetched
-   * whole when one of its pictures is first shown.
+   * whole when one of its pictures is first shown. "details" holds the finer RGBA mips of the boot atlas.
    */
-  role: "boot" | "mesh" | "page" | "tex" | "clip" | "icon" | "sound";
+  role: "boot" | "mesh" | "page" | "tex" | "clip" | "icon" | "sound" | "details";
   /** For a texture file, the variant it holds. */
   format?: TextureFormat;
 }

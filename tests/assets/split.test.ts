@@ -26,7 +26,7 @@ artTest("a split pack holds every level once, byte for byte, with the coarsest o
   const whole = corePackBytes();
   const pack = parsePack(whole);
   const { files, manifest } = splitPack(whole, "core");
-  expect(files.map((f) => [f.name, f.role])).toEqual([["core.boot.snpk", "boot"], ["core.mesh.snpk", "mesh"], ["core.clip.snpt", "clip"]]);
+  expect(files.map((f) => [f.name, f.role])).toEqual([["core.boot.snpk", "boot"], ["core.mesh.snpk", "mesh"], ["core.clip.snpt", "clip"], ["core.details.bin", "details"]]);
   expect(parseManifest(JSON.stringify(manifest))).toEqual(manifest);
   const [boot, rest] = files.slice(0, 2).map((f) => parsePack(f.bytes));
   // The boot file is a pack with the palette, every rig, and some level of every mesh.
@@ -49,7 +49,7 @@ artTest("a split pack holds every level once, byte for byte, with the coarsest o
     });
   });
   expect(streamed).toBeGreaterThan(40);
-  // The three files together are little more than the one.
+  // The split files together are little more than the whole pack.
   expect(files.reduce((sum, f) => sum + f.bytes.length, 0)).toBeLessThan(whole.length * 1.06);
   expect(files[0]!.bytes.length).toBeLessThan(whole.length * 0.6);
 });
@@ -60,7 +60,7 @@ artTest("paged, the boot file holds only the meshes it is told to, and every oth
   const boot = new Set(["core:missing", "core:far", "core:human_m/torso"]);
   const group = (id: string): number => (id.includes("ruin") ? 0 : 1);
   const { files, manifest, blobs } = splitPack(whole, "core", { boot: (id) => boot.has(id), place: (id) => [group(id), 0] });
-  expect(files.map((f) => f.role)).toEqual(["boot", "mesh", "clip", "page"]);
+  expect(files.map((f) => f.role)).toEqual(["boot", "mesh", "clip", "page", "details"]);
   expect(parsePack(files[0]!.bytes).header.meshes.map((m) => m.id).sort()).toEqual([...boot].sort());
   // What a client reads first names every mesh, and holds the rows of the boot file's alone, and of a material it finds
   // by name though paged meshes alone are drawn with it.

@@ -1,6 +1,7 @@
 // Splits a whole pack into the file a client fetches at start, the file it fetches a level at a time, the file it
 // fetches a creature skeleton's clips from and the file of pages, and writes the manifest that says where everything is.
 
+import { CELL, mipOffset } from "../../shared/pack/details.ts";
 import { EMOTE_GROUP } from "../../shared/anim/emotes.ts";
 import { MANIFEST_VERSION, type Manifest, type ManifestClips, type ManifestFile, type ManifestLevel, type ManifestMesh, type MeshStub, type PageRows } from "../../shared/pack/manifest.ts";
 import { CLIP_ROOT_BYTES, HIT_PLANE_UNITS, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, clipRotBytes, detailsAtlas, lodVertices, meshReach, parsePack, textureOf, type PackClip, type PackHeader, type PackLod } from "../../shared/pack/pack.ts";
@@ -62,14 +63,18 @@ export function splitPack(whole: Uint8Array, name: string, opts: SplitOptions = 
   if (pack.header.materials) headers[1]!.materials = pack.header.materials;
   if (pack.header.textures) headers[1]!.textures = pack.header.textures;
   const details = pack.header.details;
+  let finer: Uint8Array | undefined;
   if (details) {
-    // Keep every mip and texel. Neighbouring bytes of one channel compress together at first paint.
-    const rgba = detailsAtlas(pack), pixels = rgba.length / 4;
+    if (details.atlas.firstMip) throw new Error("splitPack needs the full details atlas");
+    const side = details.atlas.side, firstMip = Math.max(0, Math.log2(side / CELL));
+    const all = detailsAtlas(pack), at = mipOffset(side, firstMip);
+    if (at > 0) finer = all.subarray(0, at);
+    const rgba = all.subarray(at), pixels = rgba.length / 4;
     const planes = new Uint8Array(rgba.length);
     for (let c = 0; c < 4; c++) {
       for (let i = 0; i < pixels; i++) planes[c * pixels + i] = rgba[4 * i + c]!;
     }
-    headers[0]!.details = { ...details, atlas: { side: details.atlas.side, offset: blobs[0]!.append(planes), planar: true } };
+    headers[0]!.details = { ...details, atlas: { side, ...(firstMip ? { firstMip } : {}), offset: blobs[0]!.append(planes), planar: true } };
   }
   // A landmark's far mesh is fetched a level at a time like the finer levels of any other.
   const far = new Set((pack.header.landmarks ?? []).map((row) => farMeshId(row.name)));
@@ -182,6 +187,7 @@ export function splitPack(whole: Uint8Array, name: string, opts: SplitOptions = 
   const pageFile = files.length;
   const pageBlobs = pages.map(joined);
   if (pages.length > 0) files.push({ name: `${name}.page.snpt`, role: "page", bytes: new Uint8Array(PARTS_HEADER_BYTES) });
+  if (finer) files.push({ name: `${name}.details.bin`, role: "details", bytes: finer });
   const blobAt = files.slice(0, 2).map((f) => parsePack(f.bytes).blobAt);
   const meshes = pack.header.meshes.map((m, i): ManifestMesh => {
     const out: ManifestMesh = { id: m.id, center: m.center, half: m.half, reach: meshReach(pack, m), levels: [] };

@@ -10,7 +10,7 @@ import {
 } from "../core/render/packet.ts";
 import { MASK_LAYER, MASK_MATERIALS, SURFACE_NAMES, SURFACE_PREFIX } from "../../content/surfaces.ts";
 import { SKY_MATERIAL } from "../core/render/atmosphere.ts";
-import { MOST_LOD } from "../core/render/detailtext.ts";
+import { DetailAtlas, type ReadAtlas } from "./detail-atlas.ts";
 import { PIECE_KEYS, PIECE_ROWS } from "../core/render/pieces.ts";
 import { PROGRAM, PROGRAMS, UNIFORMS, UNIT, drawProgram, tierPrograms, type ProgramText } from "../core/render/programs.ts";
 import {
@@ -31,7 +31,6 @@ import type { AssetUpload } from "../core/assets/residency.ts";
 import type { Tier } from "../core/assets/tiers.ts";
 import type { Manifest, ManifestMesh } from "../../shared/pack/manifest.ts";
 import { finishTable, type FinishTable } from "../../shared/pack/finish.ts";
-import { mipOffset } from "../../shared/pack/details.ts";
 import {
   INSTANCE_BYTES, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, detailsAtlas, textureOf, type Pack, type PackMaterial,
 } from "../../shared/pack/pack.ts";
@@ -257,7 +256,7 @@ export class GlRenderer {
   private readonly noReflection = new Float32Array(1);
   private tileVao!: WebGLVertexArrayObject;
   /** Small details: their atlas, bound to its unit for their draws alone, and their particles' buffer and vertex array. */
-  private detailAtlas: WebGLTexture | null = null;
+  private readonly detailAtlas: DetailAtlas | null;
   private detailVao!: WebGLVertexArrayObject;
   private detailBuffer!: WebGLBuffer;
   private tileBuffer!: WebGLBuffer;
@@ -267,7 +266,6 @@ export class GlRenderer {
   private readonly tileData = new Float32Array(1024 * 6);
   /** The frame block, bound to the point every lit program's block "Frame" reads. */
   private frame!: WebGLBuffer;
-  private readonly pack: Pack;
   private readonly hf: Heightfield;
   /** The terrain's pictures (terrain.ts), and the two copies of the window's pair, heights then tints. */
   private readonly ground: GroundSize;
@@ -290,12 +288,13 @@ export class GlRenderer {
   private readonly forced: string | null;
 
   private readonly transparentStage: boolean;
-  constructor(canvas: HTMLCanvasElement, pack: Pack, hf: Heightfield, manifest: Manifest, forced: string | null = null, transparentStage = false) {
+  constructor(canvas: HTMLCanvasElement, pack: Pack, hf: Heightfield, manifest: Manifest, forced: string | null = null, transparentStage = false, readAtlas?: ReadAtlas) {
     this.transparentStage = transparentStage;
     const gl = canvas.getContext("webgl2", { alpha: transparentStage, antialias: true, powerPreference: "high-performance" });
     if (!gl) throw new Error("WebGL2 is not available in this browser");
     this.gl = gl;
-    this.pack = pack;
+    const atlas = pack.header.details?.atlas;
+    this.detailAtlas = atlas ? new DetailAtlas(gl, atlas, detailsAtlas(pack), manifest.files.find(f => f.role === "details"), readAtlas) : null;
     this.hf = hf;
     this.ground = groundSize(hf);
     this.materials = manifest.materials ?? [];
@@ -450,25 +449,7 @@ export class GlRenderer {
       gl.vertexAttribDivisor(a, 1);
     }
     this.vertexArray(null);
-    const d = this.pack.header.details;
-    if (d) {
-      gl.activeTexture(gl.TEXTURE0 + UNIT.details);
-      gl.bindTexture(gl.TEXTURE_2D, (this.detailAtlas = gl.createTexture()));
-      const atlas = detailsAtlas(this.pack);
-      for (let level = 0, side = d.atlas.side; side >= 1; level++, side >>= 1) {
-        const picture = atlas.subarray(mipOffset(d.atlas.side, level), mipOffset(d.atlas.side, level + 1));
-        gl.texImage2D(gl.TEXTURE_2D, level, gl.RGBA8, side, side, 0, gl.RGBA, gl.UNSIGNED_BYTE, picture);
-      }
-      const read = [
-        [gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR],
-        [gl.TEXTURE_MAG_FILTER, gl.LINEAR],
-        [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE],
-        [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE],
-        [gl.TEXTURE_MAX_LOD, MOST_LOD],
-      ] as const;
-      for (const p of read) gl.texParameterf(gl.TEXTURE_2D, p[0], p[1]);
-      gl.bindTexture(gl.TEXTURE_2D, null);
-    }
+    this.detailAtlas?.init();
     gl.enable(gl.DEPTH_TEST);
   }
 
@@ -481,7 +462,7 @@ export class GlRenderer {
     this.drawn.flags = p.drawFlags[d]!;
     this.give(prog, prog.draw);
     gl.activeTexture(gl.TEXTURE0 + UNIT.details);
-    gl.bindTexture(gl.TEXTURE_2D, this.detailAtlas);
+    gl.bindTexture(gl.TEXTURE_2D, this.detailAtlas?.texture ?? null);
     this.vertexArray(this.detailVao);
     this.array(this.detailBuffer);
     const stride = DETAIL_FLOATS * 4, at = p.drawFirst[d]! * stride;
@@ -1208,6 +1189,7 @@ export class GlRenderer {
       this.askFrame = this.serial;
     }
     this.mark(-1);
+    this.detailAtlas?.afterDraw(performance.now());
   }
 
   /** Pass `pass` begins, or for -1 the frame's draws end: on the card's clock, and on the page's while the bar reads it. */

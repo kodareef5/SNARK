@@ -1289,6 +1289,7 @@ export class Rasterizer {
     const side = this.pack.header.details?.atlas.side ?? CELL;
     const atlas = detailsAtlas(this.pack);
     const cells = side / CELL;
+    const firstMip = this.pack.header.details?.atlas.firstMip ?? 0;
     const [W, H, m] = [this.width, this.height, this.matrix];
     const src = this.quad;
     const poly = this.wide;
@@ -1405,7 +1406,7 @@ export class Rasterizer {
               else rotorOf(cx, cy, grey, shape);
               [texel[0], texel[1], texel[2], texel[3]] = [shape[2]!, shape[1]!, 0, shape[0]!];
             }
-            else if (p.lit) this.detailTexel(atlas, side, cells, cell, cx, cy, level, texel);
+            else if (p.lit) this.detailTexel(atlas, side >> firstMip, cells, cell, cx, cy, Math.max(0, level - firstMip), texel);
             else {
               shapeOf(flags & 7, cx, cy, shape);
               [texel[0], texel[1], texel[2], texel[3]] = [shape[2]!, shape[1]!, 0, shape[0]!];

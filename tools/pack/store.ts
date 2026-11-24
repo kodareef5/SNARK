@@ -224,7 +224,7 @@ export class PartStore {
 export async function storeParts(files: readonly SplitFile[], manifest: Manifest, opts: StoreOptions = {}): Promise<{ files: SplitFile[]; report: StoreReport }> {
   const store = new PartStore(opts);
   const report: StoreReport = { parts: 0, deflated: 0, made: 0, raw: 0, stored: 0 };
-  const only = (f: number): boolean => files[f]!.role !== "boot" && (opts.only?.includes(f) ?? true);
+  const only = (f: number): boolean => files[f]!.role !== "boot" && files[f]!.role !== "details" && (opts.only?.includes(f) ?? true);
   const lists = partsOf(files, manifest);
   const stored: Uint8Array[][] = lists.map(() => []);
   /** Parts not yet begun, as file and place in its list. A few more are under way than there are threads, so no more than those are held filtered. */

@@ -80,7 +80,7 @@ async function run() {
     manifest,
     port,
   });
-  const gl = new GlRenderer(canvas, pack, hf, manifest, "rgba", true),
+  const gl = new GlRenderer(canvas, pack, hf, manifest, "rgba", true, async file => files[manifest.files.indexOf(file)]!),
     cam = new Camera(),
     actor = new RemoteSample(),
     anim = new AnimState();

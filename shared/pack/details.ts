@@ -8,7 +8,7 @@
 
 /** Pixels across a cell of the atlas. */
 export const CELL = 128;
-/** The largest atlas the boot file carries. */
+/** The largest atlas at full resolution. */
 export const ATLAS_MOST = 512;
 
 /** The shapes low poly draws in place of a picture, and that a picture names as its own. */
@@ -107,8 +107,8 @@ export interface DetailSheet {
 }
 
 export interface PackDetails {
-  /** A boot file can group channel bytes for Brotli. parsePack restores interleaved RGBA. */
-  atlas: { offset: number; side: number; planar?: true };
+  /** The full side fixes the cell grid. The boot blob starts at firstMip, or level zero when whole. */
+  atlas: { offset: number; side: number; firstMip?: number; planar?: true };
   pictures: DetailPicture[];
   effects: DetailEffect[];
   sheets: DetailSheet[];

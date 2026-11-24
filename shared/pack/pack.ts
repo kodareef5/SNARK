@@ -318,7 +318,9 @@ export function parsePack(file: Uint8Array): Pack {
   const d = header.details;
   if (d && !(d.atlas.side >= CELL && d.atlas.side <= ATLAS_MOST && (d.atlas.side & (d.atlas.side - 1)) === 0)) throw new Error(`pack: the details atlas is ${d.atlas.side} pixels across`);
   if (d) {
-    const { offset, side, planar } = d.atlas, bytes = atlasBytes(side);
+    const { offset, side, firstMip = 0, planar } = d.atlas;
+    if (!Number.isInteger(firstMip) || firstMip < 0 || firstMip > Math.log2(side / CELL)) throw new Error("pack: invalid first mip of the details atlas");
+    const bytes = atlasBytes(side >> firstMip);
     if (!Number.isInteger(offset) || offset < 0 || offset + bytes > blob.length) throw new Error("pack: the details atlas is outside the file");
     if (planar) {
       // A caller may cache, hash or parse the same file again. Own the decoded blob.
@@ -383,10 +385,10 @@ export function decodeClips(list: readonly PackClip[], blob: Uint8Array): ClipSe
   return { clips, index, hash };
 }
 
-/** The details atlas, every mip largest first, as a view into the pack; empty for a pack without details. */
+/** The resident mips of the details atlas, largest first, as a view into the pack; empty for a pack without details. */
 export function detailsAtlas(pack: Pack): Uint8Array {
   const d = pack.header.details;
-  return d ? pack.blob.subarray(d.atlas.offset, d.atlas.offset + atlasBytes(d.atlas.side)) : new Uint8Array(0);
+  return d ? pack.blob.subarray(d.atlas.offset, d.atlas.offset + atlasBytes(d.atlas.side >> (d.atlas.firstMip ?? 0))) : new Uint8Array(0);
 }
 
 /** lodVertices and lodIndices return views into the pack. Indices are little-endian, `indexBytes` each. */

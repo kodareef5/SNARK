@@ -216,6 +216,10 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
   const report = Object.fromEntries((["parts", "raw", "stored", "deflated", "made"] as const).map((k) => [k, parts.reduce((sum, r) => sum + r[k], 0)])) as Record<keyof StoreReport, number>;
   console.log(`parts        ${report.parts} in ${manifest.files.length - 1} files, ${report.raw} bytes stored in ${report.stored}: ${report.deflated} deflated, ${report.made} of them anew, ${manifest.pages!.length} pages in ${pages.stored} bytes, ${(performance.now() - t0).toFixed(0)} ms`);
   files.forEach(write);
+  for (const file of manifest.files) if (file.role === "details") {
+    const path = join(dist, "assets", file.name);
+    writeFileSync(`${path}.br`, brotli(readFileSync(path), opts.quick ?? false));
+  }
   manifest.farColours = wholeFarColours(registry!, whole);
   // The inventory pictures, drawn from the meshes and the textures as written, in sheets after the other files.
   const read = (file: number, at: number, bytes: number): Uint8Array => {
