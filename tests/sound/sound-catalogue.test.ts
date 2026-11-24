@@ -381,6 +381,23 @@ test("a kill is heard once: the blow that killed and the kill the server credits
   expect(heard).toContain("hit/marker");
 });
 
+test("a shot told from past hearing, for its round's sake, has no report; one within hearing has", () => {
+  const a = new ActionSounds(reg, () => -1);
+  const heard: string[] = [];
+  const hear: Hear = (_o, key) => heard.push(KEYS[key]!.key);
+  const own = ownState();
+  const update = (): void => a.update(new RemoteSample(), own.x, own.y + 1.6, own.z, own, -1, 0, 1, () => false, hear, () => {});
+  update();
+  const cell = reg.index.get("core:plasma_cell")!;
+  // 280 m up the range a client is told of a bolt coming its way. One 280 m to the side is told nothing, so neither hears it.
+  a.absorb([combatEvent(EVENT_SHOT, { x: own.x, y: own.y + 1.5, z: own.z - 280, item: cell, flies: true })], [], 0);
+  update();
+  expect(heard).toEqual([]);
+  a.absorb([combatEvent(EVENT_SHOT, { x: own.x, y: own.y + 1.5, z: own.z - 240, item: cell, flies: true })], [], 0);
+  update();
+  expect(heard).toEqual(["fire/far"]);
+});
+
 test("a throw is heard as a throw, and a thrown bola, which is its own round, is not heard again as a shot", () => {
   const a = new ActionSounds(reg, () => -1);
   const heard: string[] = [];

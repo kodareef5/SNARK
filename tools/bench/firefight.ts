@@ -1,7 +1,8 @@
 // Rows for a firefight (planning/workstreams/plasma.md): 50 survivors within 40 m of each other holding automatic fire,
 // 500 shots a second, each aimed at another of them. The server's tick with nobody firing and with each gun, turn about so
-// that a busy machine weighs on each alike; what a shot costs by part; the rounds in the air; and what the shots add to a
-// listener's line. Then a client's work on 256 rounds in the air among 2,048 bodies.
+// that a busy machine weighs on each alike; what a shot costs by part; the rounds in the air; and what the shots and their
+// hits add to a listener's line. Those hit are harmed, a fiftieth as much, and mended each tick. Then a client's work on
+// 256 rounds in the air among 2,048 bodies.
 // `bun tools/bench/firefight.ts` runs these alone, on a small world of its own.
 
 import { heapStats } from "bun:jsc";
@@ -19,8 +20,9 @@ import { compileContent, type Registry } from "../../shared/content/registry.ts"
 import { TICK_RATE, YAW_UNITS } from "../../shared/coords.ts";
 import { hashBytes } from "../../shared/hash.ts";
 import { LoopbackNet, type LoopbackEnd } from "../../shared/net/loopback.ts";
-import { EVENT_BLAST, EVENT_ROCKET, EVENT_SHOT, S_EVENT } from "../../shared/net/protocol.ts";
+import { EVENT_BLAST, EVENT_BOLTS, EVENT_ROCKET, EVENT_SHOT, S_EVENT } from "../../shared/net/protocol.ts";
 import { ROCKET_IDS } from "../../shared/net/rockets.ts";
+import { V_HEALTH } from "../../shared/sim/vitals.ts";
 import { parsePack, type Pack } from "../../shared/pack/pack.ts";
 import { Rng } from "../../shared/rng.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
@@ -111,17 +113,31 @@ export function benchFirefight(section: Section, record: Row, host: Host, centre
     fighters.forEach((c, i) => c.ent >= 0 && ents.setPosition(c.ent, spots[i]![0], world.hf.heightAt(spots[i]![0], spots[i]![1]), spots[i]![1]));
     run(15, null);
   };
-  for (const c of fighters) host.survival.gods.add(c.pid);
+  // Each takes a fiftieth of what hits it and is made whole every tick, so that a hit is told, marked and flinched from as
+  // in any fight and nobody dies of it. One who cannot be harmed is told nothing.
+  const pids = new Set(fighters.map((c) => c.pid));
+  const gods = fighters.filter((c) => host.survival.gods.delete(c.pid));
+  const resist = combat.resistanceModifier;
+  combat.resistanceModifier = (rec) => (resist?.(rec) ?? 1) * (pids.has(rec.pid) ? 0.02 : 1);
+  const mend = (): void => {
+    for (const c of fighters) {
+      const rec = host.records.byPid.get(c.pid);
+      if (rec) host.survival.add(rec, V_HEALTH, 1000);
+    }
+  };
   gather();
   run(75, null);
   const sent = (): number => fighters.reduce((n, c) => n + (c.conn as LoopbackEnd).bytesSent, 0);
   // The bytes of events alone, as a socket frames them: what shots add, without the snapshots, which a herd's wandering moves.
   let events = 0;
+  let others = 0;
   const game = host.game as unknown as { endOwn(c: Client): void; w: { bytes(): Uint8Array } };
   const endOwn = game.endOwn;
   game.endOwn = function (this: unknown, c: Client): void {
     const bytes = game.w.bytes();
-    if (bytes[0] === S_EVENT) events += bytes.length + 1;
+    // The shots themselves apart from what their hits tell: the hit, the hurt, the mark on the body. A rocket's blast is its own.
+    if (bytes[0] === S_EVENT && (bytes[1] === EVENT_SHOT || bytes[1] === EVENT_BOLTS || bytes[1] === EVENT_ROCKET || bytes[1] === EVENT_BLAST)) events += bytes.length + 1;
+    else if (bytes[0] === S_EVENT) others += bytes.length + 1;
     endOwn.call(this, c);
   };
   /** The processor's milliseconds this process has had. A busy machine stretches a tick's time on the clock, and not these. */
@@ -129,7 +145,7 @@ export function benchFirefight(section: Section, record: Row, host: Host, centre
     const u = process.cpuUsage();
     return (u.user + u.system) / 1000;
   };
-  const last = { events: 0, cpu: 0 };
+  const last = { events: 0, others: 0, cpu: 0 };
   const aim = new Rng(505);
   let most = 0;
   /** Steps `ticks` with the first `firing` of them shooting, each tick's time and its shots' into `times`. Returns the KB/s each of the 50 was sent. */
@@ -139,6 +155,7 @@ export function benchFirefight(section: Section, record: Row, host: Host, centre
     gather();
     const before = sent();
     const eventsBefore = events;
+    const othersBefore = others;
     const cpuBefore = worked();
     const one: number[] = [];
     for (let i = 0; i < ticks; i++) {
@@ -160,11 +177,13 @@ export function benchFirefight(section: Section, record: Row, host: Host, centre
       const launched = performance.now() - t;
       one.length = 0;
       run(1, one);
+      mend();
       times?.push(launched + one[0]!);
       if (shots.flyingCount > most) most = shots.flyingCount;
     }
     last.cpu = (worked() - cpuBefore) / ticks;
     last.events = (events - eventsBefore) / fighters.length / (ticks / TICK_RATE) / 1024;
+    last.others = (others - othersBefore) / fighters.length / (ticks / TICK_RATE) / 1024;
     return (sent() - before) / fighters.length / (ticks / TICK_RATE) / 1024;
   };
   /** Steps until nothing a turn fired is still in the air. */
@@ -173,24 +192,27 @@ export function benchFirefight(section: Section, record: Row, host: Host, centre
     for (let i = 0; i < 330 && shots.flyingCount > 0; i++) run(1, null);
   };
   const guns = all.filter((g) => reg.index.has(`core:${g.weapon}`) && reg.index.has(`core:${g.ammo}`));
-  const quiet = { ticks: [] as number[], kb: [] as number[], events: [] as number[], cpu: [] as number[] };
-  const arms = guns.map((gun) => ({ gun, ticks: [] as number[], kb: [] as number[], twenty: [] as number[], events: [] as number[], cpu: [] as number[], most: 0, fired: 0, struck: 0 }));
+  const quiet = { ticks: [] as number[], kb: [] as number[], events: [] as number[], others: [] as number[], cpu: [] as number[] };
+  const arms = guns.map((gun) => ({ gun, ticks: [] as number[], kb: [] as number[], twenty: [] as number[], twentyOthers: [] as number[], events: [] as number[], others: [] as number[], cpu: [] as number[], most: 0, fired: 0, struck: 0 }));
   hold(null, 0, TURN, null);
   for (let turn = 0; turn < TURNS; turn++) {
     quiet.kb.push(hold(null, 0, TURN, quiet.ticks));
     quiet.events.push(last.events);
+    quiet.others.push(last.others);
     quiet.cpu.push(last.cpu);
     // Each turn begins with another gun, so that none is always the one the turn's drift favours.
     for (let k = 0; k < arms.length; k++) {
       const a = arms[(k + turn) % arms.length]!;
       hold(a.gun, 20, TURN, null);
       a.twenty.push(last.events);
+      a.twentyOthers.push(last.others);
       clear();
       most = 0;
       const fired = shots.fired;
       const struck = shots.struck;
       a.kb.push(hold(a.gun, FIGHTERS, TURN, a.ticks));
       a.events.push(last.events);
+      a.others.push(last.others);
       a.cpu.push(last.cpu);
       a.fired += shots.fired - fired;
       a.struck += shots.struck - struck;
@@ -203,7 +225,7 @@ export function benchFirefight(section: Section, record: Row, host: Host, centre
   /** The middle of what each turn's run was over the same turn's run of `under`. */
   const over = (run: number[], under: number[]): number => median(run.map((v, turn) => v - under[turn]!));
   record("nobody firing: processor time a tick", median(quiet.cpu), "ms");
-  record("nobody firing: events to a listener", median(quiet.events), "KB/s");
+  record("nobody firing: events to a listener", median(quiet.events) + median(quiet.others), "KB/s");
   record("nobody firing: tick time, median", still, "ms", 8);
   record("nobody firing: tick time, 99th percentile", high(quiet.ticks), "ms", 16);
   record("nobody firing: downstream per listener", line, "KB/s");
@@ -219,8 +241,10 @@ export function benchFirefight(section: Section, record: Row, host: Host, centre
     // The clock's medians are a busy machine's too. The processor's time, turn against turn, is what the gun costs.
     record(`${label}: processor time a tick over nobody firing`, over(a.cpu, quiet.cpu), "ms");
     if (a !== arms[0] && a.gun.over !== undefined) record(`${label}: processor time a tick over the first gun's`, over(a.cpu, arms[0]!.cpu), "ms", a.gun.over);
-    record(`${label}: 20 firing add events to a listener`, over(a.twenty, quiet.events), "KB/s", a.gun.added ?? null);
-    record(`${label}: all firing add events to a listener`, over(a.events, quiet.events), "KB/s");
+    record(`${label}: 20 firing add shots to a listener`, over(a.twenty, quiet.events), "KB/s", a.gun.added ?? null);
+    record(`${label}: and what their hits tell`, over(a.twentyOthers, quiet.others), "KB/s");
+    record(`${label}: all firing add shots to a listener`, over(a.events, quiet.events), "KB/s");
+    record(`${label}: and what their hits tell`, over(a.others, quiet.others), "KB/s");
     record(`${label}: downstream per listener, all firing`, median(a.kb), "KB/s");
     // What a shot costs, by part. The parts nest in the launch and in the step, so they are timed in a run of their own.
     const ms: Record<string, number> = {};
@@ -239,6 +263,8 @@ export function benchFirefight(section: Section, record: Row, host: Host, centre
     clear();
   }
   game.endOwn = endOwn;
+  combat.resistanceModifier = resist;
+  for (const c of gods) host.survival.gods.add(c.pid);
   fighters.forEach((c, i) => c.ent >= 0 && ents.setPosition(c.ent, home[i]![0], home[i]![1], home[i]![2]));
   run(30, null);
 }
@@ -267,68 +293,86 @@ export function benchShots(section: Section, record: Row, scene: Scene, cam: Cam
   }
   crowd.count = BODIES;
   const kept = scene.shots;
+  /** The processor's milliseconds this process has had: a busy machine stretches the clock's, and not these. */
+  const worked = (): number => {
+    const u = process.cpuUsage();
+    return (u.user + u.system) / 1000;
+  };
+  const mean = (a: number[]): number => a.reduce((n, v) => n + v, 0) / a.length;
   for (const round of rounds) {
     const ammo = reg.index.get(`core:${round.ammo}`);
     if (ammo === undefined) continue;
-    const shots = new Shots(reg, pack);
-    scene.shots = shots;
     const speed = reg.ammoSpeed[ammo]!;
-    const events: unknown[] = [];
-    const session = { fired: [], inventory: null, held: -1, events } as unknown as ClientSession;
-    const aim = new Rng(707);
-    const ms = { draw: 0 };
-    const undo = timed(shots, "draw", ms);
-    const stepped: number[] = [];
-    const drawn: number[] = [];
-    let most = 0;
-    let objects = 0;
-    let id = 0;
-    const blastEvery = round.blasts ? Math.round(60 / round.blasts) : 0;
-    for (let f = 0; f < FRAMES * 2; f++) {
-      if (f === FRAMES) {
-        Bun.gc(true);
-        objects = heapStats().objectCount;
+    // Three runs, and the least of each figure: whatever else the machine is doing only adds to one.
+    const best = { flown: Infinity, drawn: Infinity, whole: Infinity, high: Infinity, cpu: Infinity, most: 0, made: 0 };
+    for (let pass = 0; pass < 3; pass++) {
+      const shots = new Shots(reg, pack);
+      scene.shots = shots;
+      const events: unknown[] = [];
+      const session = { fired: [], inventory: null, held: -1, events, ownHandle: 1, driving: -1, own: { x: cam.x, y: world.hf.heightAt(cam.x, cam.z), z: cam.z, kind: survivor, stance: 0, seat: 0 } } as unknown as ClientSession;
+      const aim = new Rng(707);
+      const ms = { draw: 0 };
+      const undo = timed(shots, "draw", ms);
+      const stepped: number[] = [];
+      const drawn: number[] = [];
+      let cpu = 0;
+      let objects = 0;
+      let id = 0;
+      const blastEvery = round.blasts ? Math.round(60 / round.blasts) : 0;
+      for (let f = 0; f < FRAMES * 2; f++) {
+        if (f === FRAMES) {
+          Bun.gc(true);
+          objects = heapStats().objectCount;
+        }
+        const now = f * (1000 / 60);
+        const tick = 200 + f / 2;
+        crowd.tick = tick;
+        // As many leave each frame as keep the air full: nearly level, from among the crowd, each its own way.
+        for (let n = shots.flying.length; n < (round.flying ?? FLYING); n++) {
+          const yaw = aim.float() * Math.PI * 2;
+          const x = cam.x + aim.range(-120, 120);
+          const z = cam.z + aim.range(-120, 120);
+          // A round with blasts is told as a rocket is, by a number.
+          if (blastEvery > 0) id = (id % (ROCKET_IDS - 1)) + 1;
+          events.push({ kind: blastEvery > 0 ? EVENT_ROCKET : EVENT_SHOT, x, y: world.hf.heightAt(x, z) + 1.5, z, item: ammo, flies: true, vx: Math.sin(yaw) * speed, vy: speed * 0.02, vz: Math.cos(yaw) * speed, back: 2, rays: 1, seed: 0, silenced: false, id: blastEvery > 0 ? id : 0, own: false, surface: 0, made: 0, far: 0 });
+        }
+        if (blastEvery > 0 && f % blastEvery === 0 && shots.flying.length > 0) {
+          // The oldest goes off where it is.
+          const o = shots.flying[0]!;
+          events.push({ kind: EVENT_BLAST, x: o.x, y: o.y, z: o.z, item: ammo, flies: false, vx: 0, vy: 1, vz: 0, back: 0, rays: 1, seed: 0, silenced: false, id: o.id, own: false, surface: 1, made: 0, far: reg.ammoBlast[ammo]! });
+        }
+        const c = worked();
+        const t = performance.now();
+        shots.absorb(session, world, now);
+        shots.step(world, crowd, tick, now);
+        const flown = performance.now() - t;
+        const used = worked() - c;
+        if (shots.flying.length > best.most) best.most = shots.flying.length;
+        ms.draw = 0;
+        scene.build(cam, crowd);
+        if (f < FRAMES) continue;
+        stepped.push(flown);
+        drawn.push(ms.draw);
+        cpu += used;
       }
-      const now = f * (1000 / 60);
-      const tick = 200 + f / 2;
-      crowd.tick = tick;
-      // As many leave each frame as keep the air full: nearly level, from among the crowd, each its own way.
-      for (let n = shots.flying.length; n < (round.flying ?? FLYING); n++) {
-        const yaw = aim.float() * Math.PI * 2;
-        const x = cam.x + aim.range(-120, 120);
-        const z = cam.z + aim.range(-120, 120);
-        // A round with blasts is told as a rocket is, by a number.
-        if (blastEvery > 0) id = (id % (ROCKET_IDS - 1)) + 1;
-        events.push({ kind: blastEvery > 0 ? EVENT_ROCKET : EVENT_SHOT, x, y: world.hf.heightAt(x, z) + 1.5, z, item: ammo, flies: true, vx: Math.sin(yaw) * speed, vy: speed * 0.02, vz: Math.cos(yaw) * speed, back: 2, rays: 1, seed: 0, silenced: false, id: blastEvery > 0 ? id : 0, own: false, surface: 0, made: 0, far: 0 });
-      }
-      if (blastEvery > 0 && f % blastEvery === 0 && shots.flying.length > 0) {
-        // The oldest goes off where it is.
-        const o = shots.flying[0]!;
-        events.push({ kind: EVENT_BLAST, x: o.x, y: o.y, z: o.z, item: ammo, flies: false, vx: 0, vy: 1, vz: 0, back: 0, rays: 1, seed: 0, silenced: false, id: o.id, own: false, surface: 1, made: 0, far: reg.ammoBlast[ammo]! });
-      }
-      const t = performance.now();
-      shots.absorb(session, world, now);
-      shots.step(world, crowd, tick, now);
-      const flown = performance.now() - t;
-      if (shots.flying.length > most) most = shots.flying.length;
-      ms.draw = 0;
-      scene.build(cam, crowd);
-      if (f < FRAMES) continue;
-      stepped.push(flown);
-      drawn.push(ms.draw);
+      best.made = heapStats().objectCount - objects;
+      undo();
+      // A tick comes every other frame, so half the frames fly nothing: the mean and the worst say more than the median.
+      const whole = stepped.map((v, i) => v + drawn[i]!);
+      best.flown = Math.min(best.flown, mean(stepped));
+      best.drawn = Math.min(best.drawn, mean(drawn));
+      best.whole = Math.min(best.whole, mean(whole));
+      best.high = Math.min(best.high, high(whole));
+      best.cpu = Math.min(best.cpu, cpu / FRAMES);
     }
-    const made = heapStats().objectCount - objects;
-    undo();
-    record(`${round.label}: rounds in the air at most`, most, "");
-    // A tick comes every other frame, so half the frames fly nothing: the mean and the worst say more than the median.
-    const whole = stepped.map((s, i) => s + drawn[i]!);
-    const mean = (a: number[]): number => a.reduce((n, v) => n + v, 0) / a.length;
-    record(`${round.label}: told and flown a frame, mean`, mean(stepped), "ms");
-    record(`${round.label}: drawn a frame, mean`, mean(drawn), "ms");
-    record(`${round.label}: a frame's shots in all, mean`, mean(whole), "ms", round.mean ?? null);
-    record(`${round.label}: a frame's shots in all, 99th percentile`, high(whole), "ms", round.budget ?? null);
+    record(`${round.label}: rounds in the air at most`, best.most, "");
+    record(`${round.label}: told and flown a frame, mean`, best.flown, "ms");
+    record(`${round.label}: of that, the processor's time`, best.cpu, "ms");
+    record(`${round.label}: drawn a frame, mean`, best.drawn, "ms");
+    record(`${round.label}: a frame's shots in all, mean`, best.whole, "ms", round.mean ?? null);
+    record(`${round.label}: a frame's shots in all, 99th percentile`, best.high, "ms", round.budget ?? null);
     // Not collected first: what the frames made and left for the collector, less whatever it took meanwhile.
-    record(`${round.label}: objects left by ${FRAMES} frames`, made, "");
+    record(`${round.label}: objects left by ${FRAMES} frames`, best.made, "");
   }
   scene.shots = kept;
 }

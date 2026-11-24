@@ -305,8 +305,13 @@ export class Scene {
   private readonly reachOfStatic: Float32Array;
   /** Per species. The size a newborn is drawn at, as a share of a grown one. */
   private readonly birthScale: Float32Array;
-  /** Shots in the air, and the moment to draw them at, in ticks. The app sets both. */
-  shots: Shots | null = null;
+  /** Shots in the air, and the moment to draw them at, in ticks. The app sets both. Given here, the shots find their meshes among this scene's assets. */
+  get shots(): Shots | null { return this.shotsDrawn; }
+  set shots(shots: Shots | null) {
+    this.shotsDrawn = shots;
+    shots?.bind(this.assets);
+  }
+  private shotsDrawn: Shots | null = null;
   shotTick = 0;
   /** What burns: rockets' flames and smoke, and blasts. The shots are given it as the frame meets them. */
   readonly blasts: Blasts;

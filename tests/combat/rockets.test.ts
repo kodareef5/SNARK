@@ -118,8 +118,8 @@ test("the launcher and its rocket are ARK's, and the rocket flies 300 m nearly l
   ]);
   const w = (byId.get("core:rocket_launcher") as ItemDef).weapon!;
   expect([w.kind, w.ammo, w.clip, w.reload, w.uses, w.power]).toEqual(["gun", ["core:rocket"], 1, 4, 20, 1]);
-  // 250 to a body within 7.5 m, and 7,350 to wood. Its speed, its fall and its reach are ours: 150 ticks of flight.
-  expect([reg.damage[ROCKET], reg.ammoBlast[ROCKET], reg.structureMul[LAUNCHER]! * 250, SPEED, reg.ammoGravity[ROCKET], reg.ammoFlightTicks[ROCKET]]).toEqual([250, 7.5, 7350, 60, 2, 150]);
+  // 250 to a body within 7.5 m, and 7,350 to wood. Its speed, its fall and its reach are ours: 300 m of flight.
+  expect([reg.damage[ROCKET], reg.ammoBlast[ROCKET], reg.structureMul[LAUNCHER]! * 250, SPEED, reg.ammoGravity[ROCKET], reg.ammoReach[ROCKET]]).toEqual([250, 7.5, 7350, 60, 2, 300]);
 });
 
 test("a rocket and a blast are read as written, in 16 and 17 bytes", () => {
@@ -189,10 +189,10 @@ test("a rocket is told to its shooter as its own and to others by number, and bu
   expect([shots.flyingCount, shots.blasts]).toEqual([1, 0]);
   land();
   expect(shots.blasts).toBe(1);
-  // 300 m at 60 m/s is 150 ticks from when it left, and it goes off on the tick after.
+  // It is gone at 300 m of its way: 150 ticks at 60 m/s, and a tenth more as its fall slows the climb.
   const ticks = mine.blasts[0]!.tick - told.tick + told.age;
   expect(ticks).toBeGreaterThanOrEqual(150);
-  expect(ticks).toBeLessThanOrEqual(152);
+  expect(ticks).toBeLessThanOrEqual(167);
   // In the open air, its way out straight up, no further from where it left than its reach.
   expect(mine.blasts.map((b) => [b.id, b.item, b.radius, b.surface, b.made, b.dy > 0.999])).toEqual([[number, ROCKET, 7.5, SURFACE_AIR, MADE_UNKNOWN, true]]);
   expect(theirs.blasts.map((b) => b.id)).toEqual([number]);

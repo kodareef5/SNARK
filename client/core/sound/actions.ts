@@ -8,9 +8,9 @@ import { AnimState } from "../../../shared/anim/pose.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
 import { BURST_LOOKS } from "../../../shared/content/kinds/weapons.ts";
 import { TICK_RATE } from "../../../shared/coords.ts";
-import { EVENT_BALL, EVENT_BLAST, EVENT_DEATH, EVENT_HIT, EVENT_HURT, EVENT_KILL, EVENT_ROCKET, EVENT_SHOT } from "../../../shared/net/protocol.ts";
+import { EVENT_BALL, EVENT_BLAST, EVENT_DEATH, EVENT_HIT, EVENT_HURT, EVENT_KILL, EVENT_ROCKET, EVENT_SHOT, SHOT_HEARD } from "../../../shared/net/protocol.ts";
 import { shotDir } from "../../../shared/sim/aim.ts";
-import { launchSpeed } from "../../../shared/sim/projectiles.ts";
+import { FLIGHT_TICKS, launchSpeed } from "../../../shared/sim/projectiles.ts";
 import { GEAR_COUNT, GEAR_HELD } from "../../../shared/sim/entities.ts";
 import { V_FOOD, V_HEALTH, V_WATER, type Vitals } from "../../../shared/sim/vitals.ts";
 import { ACT_DRAW, ACT_EQUIP, ACT_RELOAD, ACT_SWING, FISTS, HOLD_NAMES, HOLD_PISTOL, HOLD_RIFLE, HOLD_THROW, POSE_LAUNCHER } from "../../../shared/sim/weapon.ts";
@@ -212,7 +212,10 @@ export class ActionSounds {
   private whoosh(id: number, own: boolean, ammo: number, x: number, y: number, z: number, vx: number, vy: number, vz: number, ago: number): void {
     const born = this.nowMs - ago;
     this.loops = (this.loops + 1) % ROCKET_LOOP_MOST;
-    this.rockets.push({ id, own, ammo, x, y, z, vx, vy, vz, born, until: born + (this.reg.ammoFlightTicks[ammo]! * 1000) / TICK_RATE, loop: ROCKET_LOOPS + this.loops });
+    // It is heard to its reach, or for as long as a round with none flies.
+    const reach = this.reg.ammoReach[ammo]!, speed = Math.hypot(vx, vy, vz);
+    const flies = reach > 0 && speed > 0 ? Math.min(FLIGHT_TICKS / TICK_RATE, reach / speed) : FLIGHT_TICKS / TICK_RATE;
+    this.rockets.push({ id, own, ammo, x, y, z, vx, vy, vz, born, until: born + flies * 1000, loop: ROCKET_LOOPS + this.loops });
   }
 
   /** `place` plays a loop where something is; without it no flying round is heard. */
@@ -268,6 +271,8 @@ export class ActionSounds {
       } else if (e.kind === EVENT_SHOT) {
         // A thrown weapon that is its own round, the bola, was heard as it was thrown.
         if (this.reg.weapon[e.item]?.hold === HOLD_THROW) continue;
+        // One told for its round's sake, from past hearing on the ground, as the server measures it, has no report.
+        if (Math.hypot(e.x - ex, e.z - ez) > SHOT_HEARD) continue;
         const d = Math.hypot(e.x - ex, e.y - ey, e.z - ez);
         const h = this.ammoHold[e.item]! >= 0 ? this.ammoHold[e.item]! : HOLD_RIFLE;
         const gun = h === HOLD_RIFLE || h === HOLD_PISTOL;

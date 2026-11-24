@@ -3,7 +3,6 @@
 
 import { TICK_RATE } from "../../coords.ts";
 import { DAMAGE_TYPES } from "../../sim/damage.ts";
-import { FLIGHT_TICKS } from "../../sim/projectiles.ts";
 import { HOLD_BOW, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_SPEAR, HOLD_THROW, HOLD_TOOL, POSE_LAUNCHER, POSE_PLAIN, SWING_TICKS, W_BOW, W_GUN, W_MELEE, W_THROWN, type WeaponParams } from "../../sim/weapon.ts";
 import type { Content } from "../defs.ts";
 import { f, f32, f64, list, paletteIndex, u16, u32, u8, type Checking, type Fields, type Kind } from "../kind.ts";
@@ -165,7 +164,7 @@ export interface AmmoFacet {
    * D436); until then the flare is its bright mesh.
    */
   readonly light?: { readonly reach: number; readonly color: number };
-  /** Metres a round that flies goes before it is gone, at full speed. Without one it flies its ten seconds (FLIGHT_TICKS). */
+  /** Metres a round that flies goes before it is gone, to the metre whenever it was fired. Without one it flies its ten seconds (FLIGHT_TICKS). */
   readonly reach?: number;
   /**
    * A bolt of light: the mesh drawn where it leaves and the one drawn where it ends, each a metre across, and how many
@@ -368,8 +367,8 @@ const columns = (n: number) => ({
    */
   ammoLight: f32(n),
   ammoLightColor: u8(n),
-  /** Per ammunition: the ticks a round flies before it is gone, its reach at full speed or FLIGHT_TICKS. */
-  ammoFlightTicks: u16(n, FLIGHT_TICKS),
+  /** Per ammunition: the metres a round flies before it is gone, 0 for one that flies its ten seconds. */
+  ammoReach: f32(n),
   /** Per ammunition: how many times its own size a bolt of light is drawn, 0 for a round that is not one. */
   ammoBoltSize: f32(n),
   /** Per ammunition: the metres of flame its motor burns, 0 for none. */
@@ -435,7 +434,7 @@ export const weapons: Kind<ItemDef, ReturnType<typeof columns>> = {
       reg.ammoPierce[i] = d.ammo.pierce ?? 0;
       reg.ammoLight[i] = d.ammo.light?.reach ?? 0;
       reg.ammoLightColor[i] = d.ammo.light?.color ?? 0;
-      if (d.ammo.reach !== undefined && d.ammo.speed) reg.ammoFlightTicks[i] = Math.max(1, Math.min(FLIGHT_TICKS, Math.ceil((d.ammo.reach / d.ammo.speed) * TICK_RATE)));
+      reg.ammoReach[i] = d.ammo.reach ?? 0;
       reg.ammoBoltSize[i] = d.ammo.bolt?.size ?? 0;
       reg.ammoFlame[i] = d.ammo.motor?.flame ?? 0;
       if (d.ammo.burst) reg.burstLook[i] = BURST_LOOKS.indexOf(d.ammo.burst);

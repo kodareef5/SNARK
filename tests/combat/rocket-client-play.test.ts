@@ -66,9 +66,9 @@ test("a rocket one client fires flies on both and ends on both at its blast", ()
   const meshes = (p: typeof packet): string[] => [...p!.drawMesh.subarray(0, p!.drawCount)].filter((_, d) => (p!.drawFlags[d]! & DRAW_SKINNED) !== 0).map((m) => pack.header.meshes[m]!.id);
   // Loaded, the round is drawn in her tube on both screens.
   expect(meshes(seen).filter((m) => m === "core:rocket_round").length).toBe(1);
-  // Up and north, to come down far up the range.
+  // Up and north, steeply enough that its 300 m end within her hearing of the blast.
   app.controls.yaw = 0;
-  app.controls.pitch = 0.5;
+  app.controls.pitch = 0.7;
   run(300);
   app.controls.mouseButton(0, true);
   run(70);
