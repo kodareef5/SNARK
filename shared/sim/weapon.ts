@@ -27,6 +27,8 @@ export const HOLD_THROW = 6;
 export const HOLD_NAMES: readonly string[] = ["hands", "tool", "spear", "bow", "rifle", "pistol", "throw"];
 /** No item's: both arms round a creature held to the chest (server/carry.ts, shared/anim/hold.ts). */
 export const HOLD_CARRY = 7;
+/** Added to a hold given to a pose: its swing is a pick's blow, not a chop (shared/anim/strikes.ts). */
+export const HOLD_PICK = 8;
 
 /** ACT_EQUIP lasts this long. Code outside the step sets it when the held item changes. */
 export const EQUIP_TICKS = 15;
@@ -47,6 +49,8 @@ export interface WeaponParams {
   readonly clip: number;
   /** Works under water. */
   readonly wet: boolean;
+  /** Its swing is drawn as a pick's blow. */
+  readonly pick?: boolean;
   // The fire modes of planning/reference/weapons-plan.md, M4 (W2). Each is absent where the facet does not say.
   /** The held primary button fires every `swingTicks`. */
   readonly auto?: boolean;
@@ -76,6 +80,11 @@ export const SWING_TICKS = 15;
 
 /** Bare hands, and anything held that is not a weapon. */
 export const FISTS: WeaponParams = { kind: W_MELEE, hold: HOLD_HANDS, swingTicks: SWING_TICKS, strikeTick: 5, drawTicks: 0, minDrawTicks: 0, reloadTicks: 0, clip: 0, wet: true };
+
+/** The hold a pose is given for a weapon: its hold, and whether it swings as a pick. */
+export function poseHold(w: WeaponParams): number {
+  return w.pick ? w.hold | HOLD_PICK : w.hold;
+}
 
 /** What the last stepAction call did. Each flag is for that tick only. */
 export const actionOut = {

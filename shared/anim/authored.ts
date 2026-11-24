@@ -6,6 +6,7 @@ import { TAU, detSin } from "../math/scalar.ts";
 import { Pose, type Clip } from "./clip.ts";
 import { emoteClips } from "./emote-clips.ts";
 import { glideClips } from "./glide-clips.ts";
+import { strikeClips } from "./strikes.ts";
 import {
   B_CHEST, B_FOOT_L, B_FOOT_R, B_HAND_L, B_HAND_R, B_HEAD, B_HIPS, B_LOWER_ARM_L, B_LOWER_ARM_R, B_LOWER_LEG_L, B_LOWER_LEG_R, B_NECK,
   B_SPINE, B_UPPER_ARM_L, B_UPPER_ARM_R, B_UPPER_CHEST, B_UPPER_LEG_L, B_UPPER_LEG_R, HUMAN, HUMAN_BONES,
@@ -109,6 +110,17 @@ export class PoseBuilder {
     const w = this.world;
     w[bone * 4] = w[bone * 4 + 1] = w[bone * 4 + 2] = 0;
     w[bone * 4 + 3] = 1;
+    return this.store(bone);
+  }
+
+  /** Copies a bone's model-space rotation, for the pose so far, to `out` at `o`. */
+  rotation(bone: number, out: Float64Array, o: number): void {
+    quatCopy(out, o, this.world, bone * 4);
+  }
+
+  /** Gives a bone the model-space rotation in `q` at `o`, regardless of its parents. */
+  rotate(bone: number, q: Float64Array, o: number): this {
+    quatCopy(this.world, bone * 4, q, o);
     return this.store(bone);
   }
 
@@ -242,5 +254,6 @@ export function authoredClips(): readonly Clip[] {
     clip("human/pistol_lowered", 1, true, pistolLowered),
     ...emoteClips(),
     ...glideClips(),
+    ...strikeClips(),
   ]);
 }

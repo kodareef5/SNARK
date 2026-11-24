@@ -8,6 +8,7 @@
 // --orbit ROUND,DOWN,NOTCHES with --ride or --fight draws the scene from the orbit camera, swung round by degrees (tools/snap/orbit.ts).
 // --flight draws the pteranodon ridden through a flight, a picture at each moment (tools/snap/flight.ts), with --each DIR each on its own too.
 // --hud MODE draws the HUD or one of its screens in the whole client (tools/snap/hud.ts).
+// --strikes fists|hatchet|pick draws a blow as a sheet of its moments (tools/snap/strikes.ts).
 
 import { zoomed } from "../client/core/optics.ts";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -82,6 +83,7 @@ import { orbitScene } from "./snap/orbit.ts";
 import { HUD_MODES, hudScene, type HudMode } from "./snap/hud.ts";
 import { saddleAsset, saddleMeshes, type Ways } from "../tests/fixtures/saddles.ts";
 import { frame as frameFlight, moments, recordFlight, stage } from "./snap/flight.ts";
+import { strikeSheet } from "./snap/strikes.ts";
 import { frozenPack } from "../tests/fixtures/pack.ts";
 
 /** A house two pieces square near the spawn point, seen from its corner, with an open door, windows, stairs to half an upper floor, and a pillar. */
@@ -1121,6 +1123,20 @@ if (import.meta.main) {
     mkdirSync(dirname(out), { recursive: true });
     writeFileSync(out, encodePng(W, H, pixels));
     console.log(`${out}\n${W}x${H}  ${shots.length} moments of ${f.ticks.length} ticks  ${(performance.now() - t0).toFixed(0)} ms`);
+    process.exit(0);
+  }
+  if (args.includes("--strikes")) {
+    // A blow's moments from outside, a tile each (tools/snap/strikes.ts).
+    const [tw, th] = (arg("size") ?? "250x400").split("x").map(Number) as [number, number];
+    const columns = Number(arg("columns") ?? 8), step = Number(arg("step") ?? 1), from = Number(arg("from") ?? 0);
+    const what = arg("strikes") ?? "fists";
+    const view = provingView(tw, th);
+    const pixels = new Uint8ClampedArray(tw * columns * th * 2 * 4);
+    strikeSheet(view, { what, face: (Number(arg("face") ?? 35) * Math.PI) / 180, look: Number(arg("look") ?? 0), crouch: args.includes("--crouch"), speed: Number(arg("speed") ?? 0), close: args.includes("--close"), columns, from, step, width: tw, height: th }, pixels);
+    const out = resolve(arg("out") ?? `artifacts/strikes-${what}.png`);
+    mkdirSync(dirname(out), { recursive: true });
+    writeFileSync(out, encodePng(tw * columns, th * 2, pixels));
+    console.log(out);
     process.exit(0);
   }
   if (args.includes("--fight")) {

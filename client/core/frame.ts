@@ -5,7 +5,7 @@
 import { AnimState } from "../../shared/anim/pose.ts";
 import { handleIndex } from "../../shared/ids.ts";
 import type { MoveParams } from "../../shared/sim/character.ts";
-import { FISTS } from "../../shared/sim/weapon.ts";
+import { FISTS, poseHold } from "../../shared/sim/weapon.ts";
 import type { VehicleDefinition } from "../../shared/sim/vehicle.ts";
 import type { VehicleFrame } from "../../shared/sim/vehicle-frame.ts";
 import type { Registry } from "../../shared/content/registry.ts";
@@ -169,7 +169,7 @@ export class AppFrame implements HudFrame {
     if (s.driving >= 0 || !b.seat || !b.seatSlot) return false;
     st.mode = b.mode; st.grounded = b.grounded; st.stance = b.stance;
     st.setMotion(b.vx, b.vz, yaw, pitch, b.vy);
-    st.setAction(b.act, (this.reg.weapon[b.held] ?? FISTS).hold, actionTick - b.actTicks);
+    st.setAction(b.act, poseHold(this.reg.weapon[b.held] ?? FISTS), actionTick - b.actTicks);
     st.seed = bodySeed(handleIndex(s.ownHandle));
     if (!this.seatedAim.pose(remote, s.ownKind, b.seat, b.seatGen, b.seatSlot, st, yaw, tick)) return false;
     this.seatedAim.eye(world, out, clip);
