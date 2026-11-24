@@ -136,6 +136,54 @@ for (const [recipe, what] of [[WOOD_JOINTED, "with no strips"], [WOOD, "with its
   });
 }
 
+// Thatch with its own joints, as the client lays and fits them: the corner pole in place of each wall's own post.
+
+import { THATCH_JOINTED } from "../../tools/pack/pieces/thatch.ts";
+
+/** Corners the client lays a thatch joint at, by the ways of their walls: the corner pole, and the stouter one where walls meet at 60 degrees. */
+const THATCH_JOINTS: readonly (readonly [name: string, joint: string, ways: readonly (readonly [way: number, left: boolean, storey?: number])[]])[] = [
+  ["walls 90", "joint_sq_thatch", [[0, false], [90, true]]],
+  ["tee", "joint_sq_thatch", [[0, false], [180, true], [90, true]]],
+  ["cross", "joint_sq_thatch", [[0, false], [90, true], [180, true], [270, false]]],
+  ["two storeys", "joint_sq_thatch", [[0, false], [90, true], [0, false, 1], [90, true, 1]]],
+  ["walls 180", "joint_sq_thatch", [[0, false], [180, true]]],
+  ["walls 60", "joint_r21_thatch", [[0, false], [60, true]]],
+  ["walls 120", "joint_r15_thatch", [[0, false], [120, true]]],
+  ["walls 150", "joint_r15_thatch", [[0, false], [150, true]]],
+];
+
+for (const [recipe, what] of [[THATCH_JOINTED, "with no posts of its own"], [THATCH, "with its posts left on"]] as const) {
+  test(`thatch ${what} and its own joints shows through nowhere and leaves no corner open`, () => {
+    const forms = Object.fromEntries(THATCH_FORMS.map((name) => [name, FORMS[name]]));
+    const pack = piecesPack([...tierMeshes(["wood", "stone"]), ...tierShapes(recipe, forms), ...trimShapes(recipe)]);
+    const laid: Junction[] = [];
+    const bench = new JointBench(pack, [], SIDE, (structs, reg) => {
+      THATCH_JOINTS.forEach(([name, , ways], k) => {
+        const storeys = name === "two storeys";
+        const [vx, vz] = [64 + (k % 4) * 32, 64 + Math.floor(k / 4) * 32];
+        const ends = ways.map(([way, left, storey]): WallEnd => ({ form: "wall", tier: "thatch", way, left, storey: storey ?? 0 }));
+        laid.push(layJunction(structs, reg, baseAt(structs, vx, storeys ? FOUNDATION_THICK : 0, vz, 0), name, vx, vz, 0, ends, storeys ? "thatch" : null));
+      });
+    });
+    bench.draw({ vertex: [64, 64] }, 1.5, 30, 20);
+    const got = drawn(bench.scene, { chunksX: 8, chunksZ: 8 }, pack, meshesOf(pack));
+    const said: string[] = [];
+    laid.forEach((j, k) => {
+      const [near, far, fought] = [bench.measure(j), bench.measure(j, COARSE, COARSE_VIEWS), fightsOf(round(got, j.vertex[0], j.vertex[1], 4.7))];
+      const joints = round(got, j.vertex[0], j.vertex[1], 0.4).filter((d) => d.trim && d.id.includes("joint")).map((d) => d.id.slice(5));
+      said.push(`thatch ${what}, ${j.name}: leak ${near.leak}, notch ${near.notch}, from across a yard ${far.leak} and ${far.notch}, faces in one plane ${fought.faces}, ${fought.area} cm2`);
+      // The joint its walls' ways ask for stands there, one a storey.
+      expect([j.name, ...new Set(joints)]).toEqual([j.name, THATCH_JOINTS[k]![1]]);
+      // No pixel shows through and no outside corner is open, near or from across a yard: the post left 45 and 93, and 1,615 and 3,494.
+      expect([j.name, near.leak, near.notch, far.leak, far.notch]).toEqual([j.name, 0, 0, 0, 0]);
+      // With no posts, faces lie in one plane no more than they did with none of this: nowhere but under a second storey.
+      const most = AT_MOST.thatch[j.name] ?? [0, 0, 0, 0, 0, 0];
+      if (recipe === THATCH_JOINTED) expect([j.name, fought.faces <= most[4]!, fought.area <= most[5]!]).toEqual([j.name, true, true]);
+    });
+    if (process.env.SNARK_MEETS) console.log(said.join("\n"));
+  });
+}
+
 // Stone with its own joints: a quoin where its walls lie square, a pier of drums where they do not.
 
 /** Corners of stone walls by their ways, and the joint the client lays at each: none in a straight run, where stone's pattern runs on. */

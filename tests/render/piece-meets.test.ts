@@ -209,6 +209,132 @@ test("a hatch's leaf fills its frame's hole to 5 mm a side, and the frame keeps 
   }
 });
 
+// Thatch: its three roofs along the sides they share, a hip's and a valley's own fold, one roof's eave over the next
+// roof down, and the gable's two hands under a roof. Measured on the thatch recipe's meshes, as wood's are above.
+
+import { THATCH } from "../../tools/pack/pieces/thatch.ts";
+
+const thatchCache = new Map<string, Tri[]>();
+/** A thatch piece's triangles in the world at `level`. */
+function thatchStanding(s: Set, level: number): Tri[] {
+  const key = `${s.form},${s.x},${s.z},${s.turn},${s.level ?? 0},${level}`;
+  let out = thatchCache.get(key);
+  if (out) return out;
+  const form = ALL[s.form]!;
+  const shapes = levelsOf(THATCH, s.form, form);
+  const [c, sn] = [Math.cos((s.turn * Math.PI) / 180), Math.sin((s.turn * Math.PI) / 180)];
+  const at = (p: readonly number[]): number[] => [s.x + c * p[0]! + sn * p[1]!, (s.level ?? 0) + form.at[1] + p[2]!, s.z + sn * p[0]! - c * p[1]!];
+  const corners = shapes[Math.min(level, shapes.length - 1)]!.corners();
+  out = [];
+  for (let t = 0; t < corners.length; t += 3) out.push([...at(corners[t]!), ...at(corners[t + 1]!), ...at(corners[t + 2]!)] as unknown as Tri);
+  thatchCache.set(key, out);
+  return out;
+}
+
+/** The most two thatch pieces' tops differ along the line from (x0, z0) to (x1, z1), each read half a millimetre to its own side of it: `a` to the line's left. */
+function thatchApart(a: Tri[], b: Tri[], edge: readonly [number, number, number, number], from = 4): number {
+  const [x0, z0, x1, z1] = edge;
+  const l = Math.hypot(x1 - x0, z1 - z0);
+  const [nx, nz] = [(-(z1 - z0) / l) * 0.0005, ((x1 - x0) / l) * 0.0005];
+  let most = 0;
+  for (let k = from; k < 120 - from; k++) {
+    const [x, z] = [x0 + ((x1 - x0) * (k + 0.37)) / 120, z0 + ((z1 - z0) * (k + 0.37)) / 120];
+    const [ha, hb] = [over(a, x + nx, z + nz), over(b, x - nx, z - nz)];
+    expect(ha !== null && hb !== null, `both reach the line at ${k}`).toBe(true);
+    most = Math.max(most, Math.abs(ha![1] - hb![1]));
+  }
+  return most;
+}
+
+/** Pairs of thatch roofs and the side they share, the first piece on the left of the way the side is given. */
+const THATCH_FLUSH: [string, Set, Set, [number, number, number, number]][] = [
+  ["two slopes side by side", roofAt("roof", 0, 0), roofAt("roof", 3, 0), [1.5, -1.5, 1.5, 1.5]],
+  ["two slopes back to back at their ridge", roofAt("roof", 0, 3, 180), roofAt("roof", 0, 0), [-1.5, 1.5, 1.5, 1.5]],
+  ["a slope and the hip that ends it", roofAt("roof", 0, 0), roofAt("roof_hip", 3, 0), [1.5, -1.5, 1.5, 1.5]],
+  ["the two hips of a hipped end", roofAt("roof_hip", 3, 3, 90), roofAt("roof_hip", 3, 0), [1.5, 1.5, 4.5, 1.5]],
+  ["a valley and the slope that runs into it", roofAt("roof_valley", -3, 0), roofAt("roof", 0, 0), [-1.5, -1.5, -1.5, 1.5]],
+  ["a valley and the slope over its ridge", roofAt("roof", -3, 3, 180), roofAt("roof_valley", -3, 0), [-4.5, 1.5, -1.5, 1.5]],
+];
+
+test("thatch roofs that share a side meet along it to a millimetre at every textured level, eave to ridge", () => {
+  const said: string[] = [];
+  for (const [name, a, b, edge] of THATCH_FLUSH) {
+    for (let level = 0; level < TEXTURED; level++) {
+      // The whole side but its last 2.5 cm at each end, where a hip's faces come to a point.
+      const most = thatchApart(thatchStanding(a, level), thatchStanding(b, level), edge, 1);
+      said.push(`thatch: ${name}, level ${level}: ${(most * 1000).toFixed(2)} mm`);
+      expect(most, `${name}, level ${level}`).toBeLessThanOrEqual(0.001);
+    }
+  }
+  if (process.env.SNARK_MEETS) console.log(said.join("\n"));
+});
+
+test("a thatch hip turns each course round its fold at one height, and a valley gathers them at one", () => {
+  const said: string[] = [];
+  // A hip is folded from its high corner at (-1.5, 1.5) to (1.5, -1.5), and a valley from its low one at (1.5, -1.5).
+  for (const form of ["roof_hip", "roof_valley"]) {
+    for (let level = 0; level < TEXTURED; level++) {
+      const tris = thatchStanding(roofAt(form, 0, 0), level);
+      const most = thatchApart(tris, tris, [-1.5, 1.5, 1.5, -1.5], 1);
+      said.push(`thatch: ${form} across its fold, level ${level}: ${(most * 1000).toFixed(2)} mm`);
+      expect(most, `${form} level ${level}`).toBeLessThanOrEqual(0.001);
+    }
+  }
+  if (process.env.SNARK_MEETS) console.log(said.join("\n"));
+});
+
+test("a thatch roof that runs on down from another lies under its eave course, which laps it", () => {
+  const [upper, lower] = [thatchStanding({ form: "roof", x: 0, z: 0, turn: 0, level: 1.5 }, 0), thatchStanding({ form: "roof", x: 0, z: -3, turn: 0 }, 0)];
+  const said: string[] = [];
+  // Out to where the shortest bundle's reed ends: past it the tips hang, a sheet to a bundle.
+  for (const x of [-1.2, -0.4, 0.3, 1.1]) for (const out of [0.03, 0.09, 0.16]) {
+    const [hu, hl] = [over(upper, x, -1.5 - out)!, over(lower, x, -1.5 - out)!];
+    said.push(`thatch: the upper eave over the lower roof at ${x}, ${out} m down: ${((hu[1] - hl[1]) * 1000).toFixed(1)} mm`);
+    expect(hu[1] - hl[1], `${x}, ${out} m down`).toBeGreaterThan(0.005);
+    expect(hu[1] - hl[1], `${x}, ${out} m down`).toBeLessThan(0.08);
+  }
+  if (process.env.SNARK_MEETS) console.log(said.join("\n"));
+});
+
+test("a thatch gable's top lies in the plane of the roof's corner heights to 2 mm, with no gap under the roof and nothing through it", () => {
+  const roof = ALL.roof!;
+  const said: string[] = [];
+  for (let level = 0; level < TEXTURED; level++) {
+    for (const [hand, x, turn] of [["sloped_wall_left", 1.5, -90], ["sloped_wall_right", -1.5, 90]] as const) {
+      const wall = thatchStanding({ form: hand, x, z: 0, turn }, level);
+      const over0 = thatchStanding({ form: "roof", x: 0, z: 0, turn: 0 }, level);
+      // The plane through the roof row's corner heights: its top where the slab hangs under them, its underside where it stands on them.
+      const plane = (z: number): number => ((z + 1.5) / 3) * (roof.corner![0]! - roof.corner![2]!);
+      let most = 0, tops = 0, over1 = -Infinity;
+      for (const t of wall) for (let k = 0; k < 9; k += 3) {
+        const off = t[k + 1]! - plane(t[k + 2]!);
+        over1 = Math.max(over1, off);
+        if (off > -0.002) {
+          tops++;
+          most = Math.max(most, Math.abs(off));
+        }
+      }
+      // Nothing of it stands over the plane, and the points of its cut top are on it.
+      expect(over1, `${hand} level ${level}`).toBeLessThanOrEqual(0.002);
+      expect(tops, `${hand} level ${level}: points on the plane`).toBeGreaterThanOrEqual(4);
+      expect(most).toBeLessThanOrEqual(0.002);
+      let [gap, through] = [0, 0];
+      for (const z of [-1.45, -1.2, -0.6, 0, 0.7, 1.3, 1.45]) for (const inward of [0.02, 0.05, 0.09]) {
+        const px = x - Math.sign(x) * inward;
+        const [w, r] = [over(wall, px, z), over(over0, px, z)!];
+        if (!w) continue;
+        // The wall's top is no lower than the lowest of the roof over it, and no higher than its thatch.
+        gap = Math.max(gap, r[0] - w[1]);
+        through = Math.max(through, w[1] - r[1]);
+      }
+      said.push(`thatch: ${hand} level ${level}: top within ${(most * 1000).toFixed(2)} mm of the plane, gap under the roof ${(Math.max(0, gap) * 1000).toFixed(2)} mm, through it ${(Math.max(0, through) * 1000).toFixed(2)} mm`);
+      expect(gap, `${hand} level ${level}: no gap under the roof`).toBeLessThanOrEqual(1e-6);
+      expect(through, `${hand} level ${level}: nothing through the roof`).toBeLessThanOrEqual(1e-6);
+    }
+  }
+  if (process.env.SNARK_MEETS) console.log(said.join("\n"));
+});
+
 // Stone: the same meetings, measured on the stone recipe's own meshes.
 
 import { STONE } from "../../tools/pack/pieces/stone.ts";
