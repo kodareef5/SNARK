@@ -29,7 +29,7 @@ import { BAG } from "./render/dropped.ts";
 import { SeatNotice, type Ridden } from "./seat-notice.ts";
 import type { ClientSession, RemoteSample } from "./session.ts";
 import { itemLabel, waitWords } from "./ui/inventory.ts";
-import { structName } from "./ui/structure.ts";
+import { structName, type StructMenu } from "./ui/structure.ts";
 import type { EmoteMenu } from "./ui/emotes.ts";
 import type { VehiclePlacement } from "./vehicle-placement.ts";
 import { lookAt, nearbyBoard, riddenOf, vehiclePrompt } from "./vehicle-prompt.ts";
@@ -133,7 +133,7 @@ export class Prompts implements FramePart {
   step(f: AppFrame): void {
     const session = f.session, r = f.remote, world = f.world, nowMs = f.nowMs, alive = f.alive, eyeNow = f.eyeNow;
     const b = this.builder, v = this.placement;
-    const menu = f.ui.structure;
+    const menu = f.ui.screen<StructMenu>("structure");
     menu.tick(nowMs);
     this.seatNotice.tick(nowMs);
     const built = alive && !b.active && !v.active && session.driving < 0 ? this.builtAt(f, world, eyeNow) : ((this.aimed = this.terminalAimed = -1), "");

@@ -21,6 +21,7 @@ import { flatGround } from "../fixtures/arena.ts";
 import { PIECES, STOCK, builder } from "../fixtures/build.ts";
 import { Harness } from "../fixtures/net.ts";
 import { coreRegistry } from "../fixtures/world.ts";
+import type { StructMenu } from "../../client/core/ui/structure.ts";
 
 const reg = coreRegistry();
 const id = (name: string): number => reg.index.get(`core:${name}`)!;
@@ -288,17 +289,17 @@ test("in the whole client: a piece looked at is named with how whole it is; the 
   run(100);
   app.key("KeyE", false);
   run(400);
-  expect(app.ui.structure.open).toBe(false);
+  expect(app.ui.screen<StructMenu>("structure").open).toBe(false);
   app.key("KeyE", true);
   run(500);
-  expect([app.ui.structure.open, app.ui.structure.ref, app.ui.wantsPointerLock]).toEqual([true, wall, false]);
+  expect([app.ui.screen<StructMenu>("structure").open, app.ui.screen<StructMenu>("structure").ref, app.ui.wantsPointerLock]).toEqual([true, wall, false]);
   expect([f.find(KEY_STRUCT_TITLE)!.text, f.find(KEY_STRUCT_HEALTH)!.text]).toEqual(["wooden wall", "10000 of 10000"]);
   expect([0, 1, 2].map((n) => f.find(KEY_STRUCT_BUTTON + n)!.text)).toEqual(["1  Take it back", "2  Mend it", "3  Take it down"]);
   expect([0, 1, 2].map((n) => f.find(KEY_STRUCT_DETAIL + n)!.text)).toEqual(["into your hands, as it was", "it is whole", "gives 20 wood, 5 thatch, 3 fiber"]);
   app.key("KeyE", false);
   expect(app.key("Escape", true)).toBe(true);
   run(100);
-  expect([app.ui.structure.open, f.find(KEY_STRUCT_PANEL), h.host.build.demolished]).toEqual([false, null, 0]);
+  expect([app.ui.screen<StructMenu>("structure").open, f.find(KEY_STRUCT_PANEL), h.host.build.demolished]).toEqual([false, null, 0]);
   h.world.structs.damage(wall, 5000, h.world.tick);
   run(300);
   expect(f.find(KEY_PROMPT)!.text).toBe("hold E  wooden wall  5000/10000");
@@ -308,7 +309,7 @@ test("in the whole client: a piece looked at is named with how whole it is; the 
   expect([0, 1].map((n) => f.find(KEY_STRUCT_DETAIL + n)!.text)).toEqual(["not while it is damaged", "costs 20 wood, 5 thatch, 4 fiber"]);
   expect(app.key("Digit1", true)).toBe(true);
   run(300);
-  expect([app.ui.structure.open, f.find(KEY_PROMPT)!.text, h.host.build.pickedUp]).toEqual([false, "It is damaged: mend it first", 0]);
+  expect([app.ui.screen<StructMenu>("structure").open, f.find(KEY_PROMPT)!.text, h.host.build.pickedUp]).toEqual([false, "It is damaged: mend it first", 0]);
   run(3000);
   expect(f.find(KEY_PROMPT)!.text).toBe("hold E  wooden wall  5000/10000");
   app.key("KeyE", true);

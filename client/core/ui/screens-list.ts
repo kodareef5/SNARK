@@ -6,6 +6,7 @@ import { CharacterScreen } from "./character.ts";
 import { ChoosingScreen } from "./choosing.ts";
 import { EmoteMenu } from "./emotes.ts";
 import { MapScreen } from "./screens.ts";
+import { StructMenu } from "./structure.ts";
 import { TravelScreen } from "./travel.ts";
 
 export const SCREENS: readonly ScreenRow[] = [
@@ -14,4 +15,5 @@ export const SCREENS: readonly ScreenRow[] = [
   () => new EmoteMenu(),
   () => new MapScreen(),
   () => new TravelScreen(),
+  () => new StructMenu(),
 ];

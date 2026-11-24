@@ -3,11 +3,12 @@
 
 import type { Registry } from "../../../shared/content/registry.ts";
 import type { ItemDef } from "../../../shared/content/defs.ts";
-import { CMD_STRUCT, MAX_NAME_BYTES, RESULT_DAMAGED, RESULT_DENIED, RESULT_FAR, RESULT_FULL, RESULT_LOCKED, RESULT_NOT_EMPTY, RESULT_NOT_YOURS, RESULT_OBSTRUCTED, RESULT_OK, RESULT_PIN, RESULT_SHORT, RESULT_WAIT } from "../../../shared/net/protocol.ts";
+import { CMD_STRUCT, MAX_NAME_BYTES, SESSION_CREATING, SESSION_DEAD, RESULT_DAMAGED, RESULT_DENIED, RESULT_FAR, RESULT_FULL, RESULT_LOCKED, RESULT_NOT_EMPTY, RESULT_NOT_YOURS, RESULT_OBSTRUCTED, RESULT_OK, RESULT_PIN, RESULT_SHORT, RESULT_WAIT } from "../../../shared/net/protocol.ts";
 import { NO_PIN, STRUCT_DEMOLISH, STRUCT_LIGHT, STRUCT_LOCK, STRUCT_NAME, STRUCT_PICKUP, STRUCT_PIN, STRUCT_REPAIR, STRUCT_TRAVEL, STRUCT_UNLOCK, STRUCT_USE, cost, refundOf, repairCostOf } from "../../../shared/world/upkeep.ts";
 import { fitBytes } from "./tame.ts";
 import type { ClientSession } from "../session.ts";
 import { K_BUTTON, K_INPUT, K_PANEL, lineHeight, textWidth, type UiFrame } from "./nodes.ts";
+import type { Screen, ScreenCtx } from "./screen.ts";
 import { S_BUTTON, S_INPUT, S_LABEL, S_PANEL, S_TITLE } from "./style.ts";
 
 export const KEY_STRUCT_PANEL = 2400;
@@ -80,7 +81,10 @@ function listed(reg: Registry, lead: string, width: number): string {
   return `${lead} ${parts.length} things`;
 }
 
-export class StructMenu {
+export class StructMenu implements Screen {
+  readonly name = "structure";
+  readonly layer = "modal";
+  readonly bands = [{ from: KEY_STRUCT_PANEL, count: KEY_STRUCT_NAME_INPUT + 1 - KEY_STRUCT_PANEL }];
   open = false;
   /** Structure ref of the piece: chunk * 65536 + slot. */
   ref = -1;
@@ -117,6 +121,34 @@ export class StructMenu {
   close(): void {
     this.open = false;
     this.pad = 0;
+  }
+
+  isOpen(): boolean {
+    return this.open;
+  }
+
+  /** A survivor who dies or goes to the creator leaves the piece. */
+  absorb(c: ScreenCtx): void {
+    const state = c.session?.sessionState;
+    if (state === SESSION_DEAD || state === SESSION_CREATING) this.close();
+  }
+
+  keyboard(): boolean {
+    return this.naming;
+  }
+
+  typing(): boolean {
+    return this.naming;
+  }
+
+  pointer(kind: number, key: number, _x: number, _y: number, _button: number, c: ScreenCtx): boolean {
+    return kind === 0 && c.session !== null && this.click(key, c.session);
+  }
+
+  text(key: number, value: string): boolean {
+    if (key !== KEY_STRUCT_NAME_INPUT) return false;
+    this.edit(value);
+    return true;
   }
 
   private send(session: ClientSession, ref: number, action: number, pin = NO_PIN): void {
@@ -162,7 +194,8 @@ export class StructMenu {
   }
 
   /** Returns true if the panel used the key. */
-  key(code: string, down: boolean, repeat: boolean, session: ClientSession | null): boolean {
+  key(code: string, down: boolean, repeat: boolean, c: ScreenCtx): boolean {
+    const session = c.session;
     if (!this.open) return false;
     if (this.pad === STRUCT_NAME) {
       // The field has the keyboard: Enter names the bed, Escape gives up, and every other key is typing.
@@ -214,7 +247,7 @@ export class StructMenu {
    * forgotten. `seq` 0 is an unasked result about the piece at `aimed`. RESULT_PIN then sends a remembered PIN or asks for one.
    * Only a command that gave a PIN is refused for a wrong one: RESULT_DENIED to anything else is no word about a PIN.
    */
-  result(seq: number, code: number, nowMs: number, session: ClientSession | null = null, aimed = -1): void {
+  answer(seq: number, code: number, nowMs: number, session: ClientSession | null = null, aimed = -1): void {
     if (seq === 0) {
       if (code === RESULT_PIN && aimed >= 0 && session) {
         const known = this.pins.get(aimed);
@@ -242,7 +275,11 @@ export class StructMenu {
     if (this.notice !== "" && nowMs >= this.noticeUntil) this.notice = "";
   }
 
-  build(f: UiFrame, session: ClientSession, reg: Registry): void {
+  build(f: UiFrame, c: ScreenCtx): void {
+    if (c.session && c.registry) this.draw(f, c.session, c.registry);
+  }
+
+  draw(f: UiFrame, session: ClientSession, reg: Registry): void {
     if (!this.open) return;
     const t = session.world?.structs.chunks[Math.floor(this.ref / 65536)];
     const slot = this.ref & 0xffff;

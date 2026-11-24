@@ -5,6 +5,8 @@ import type { CharacterScreen } from "../../client/core/ui/character.ts";
 import { KEY_EMOTE_BUTTON, type EmoteMenu } from "../../client/core/ui/emotes.ts";
 import type { Screen } from "../../client/core/ui/screen.ts";
 import type { ChoosingScreen } from "../../client/core/ui/choosing.ts";
+import type { StructMenu } from "../../client/core/ui/structure.ts";
+import { flatWorld } from "../fixtures/world.ts";
 import { CHOOSE_DIED, RESULT_DENIED, SESSION_ALIVE, SESSION_DEAD } from "../../shared/net/protocol.ts";
 import { KEY_TRAVEL_BUTTON, type TravelScreen } from "../../client/core/ui/travel.ts";
 import { Ui } from "../../client/core/ui/ui.ts";
@@ -73,6 +75,14 @@ const opens: Record<string, (ui: Ui, session: ClientSession) => { s: Screen; shu
   character: (ui) => { const s = ui.screen<CharacterScreen>("character"); s.open = true; return { s, shut: () => s.close() }; },
   emotes: (ui) => { const s = ui.screen<EmoteMenu>("emotes"); s.open = true; return { s, shut: () => s.close() }; },
   map: (ui) => { const s = ui.screen<MapScreen>("map"); s.open = true; return { s, shut: () => s.close() }; },
+  structure: (ui, session) => {
+    const world = flatWorld(2);
+    const ref = world.structs.add(reg.index.get("core:storage_large")!, 20, 1, 20, 0, 7, 1);
+    Object.assign(session, { sessionState: SESSION_ALIVE, world });
+    const s = ui.screen<StructMenu>("structure");
+    s.begin(ref);
+    return { s, shut: () => s.close() };
+  },
   choosing: (ui, session) => {
     Object.assign(session, { sessionState: SESSION_DEAD, choosing: CHOOSE_DIED, placesList: 0, respawnPoints: [{ kind: 0, name: "Beach", x: 10, z: 10, readyAt: 0 }, { kind: 1, name: "Bed", x: 40, z: 30, readyAt: 0 }] });
     return { s: ui.screen<ChoosingScreen>("choosing"), shut: () => (session.sessionState = SESSION_ALIVE) };

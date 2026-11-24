@@ -15,7 +15,7 @@ import { KEY_INV_INFO, KEY_INV_PANEL, KEY_INV_SLOT } from "../../client/core/ui/
 import { KEY_MAP_IMAGE, KEY_MAP_LINE, KEY_MAP_PIN } from "../../client/core/ui/screens.ts";
 import { KEY_CHOOSE_FILTER, KEY_CHOOSE_MAP, KEY_CHOOSE_PAGE, KEY_CHOOSE_PANEL, KEY_CHOOSE_PIN, KEY_CHOOSE_RISE, KEY_CHOOSE_ROW, KEY_CHOOSE_TITLE, type ChoosingScreen } from "../../client/core/ui/choosing.ts";
 import { KEY_CHAR_ENGRAM, KEY_CHAR_JOBS, KEY_CHAR_PAGE, KEY_CHAR_PANEL, KEY_CHAR_POINTS, KEY_CHAR_RECIPE, KEY_CHAR_STAT, KEY_CHAR_TAB, KEY_CHAR_TITLE, engramOrder, type CharacterScreen } from "../../client/core/ui/character.ts";
-import { KEY_PIN_BUTTON, KEY_PIN_CLEAR, KEY_PIN_DIGITS, KEY_PIN_PANEL, KEY_STRUCT_BUTTON, KEY_STRUCT_NAME_INPUT, KEY_STRUCT_PANEL } from "../../client/core/ui/structure.ts";
+import { KEY_PIN_BUTTON, KEY_PIN_CLEAR, KEY_PIN_DIGITS, KEY_PIN_PANEL, KEY_STRUCT_BUTTON, KEY_STRUCT_NAME_INPUT, KEY_STRUCT_PANEL, type StructMenu } from "../../client/core/ui/structure.ts";
 import { Ui } from "../../client/core/ui/ui.ts";
 import { NO_PIN, STRUCT_DEMOLISH, STRUCT_LOCK, STRUCT_NAME, STRUCT_PICKUP, STRUCT_PIN, STRUCT_TRAVEL, STRUCT_USE } from "../../shared/world/upkeep.ts";
 import { KEY_OPEN_LEVEL, KEY_OPEN_MATE, KEY_OPEN_ORDER, KEY_OPEN_PAGE, KEY_OPEN_SLOT, KEY_OPEN_SUBJECT, KEY_OPEN_UNSADDLE, waitWords } from "../../client/core/ui/inventory.ts";
@@ -979,7 +979,7 @@ test("the list of what can be done to a piece fits every window shape, whatever 
       Object.assign(session, { sessionState: SESSION_ALIVE, world });
       const ui = newUi();
       ui.registry = reg;
-      ui.structure.begin(ref);
+      ui.screen<StructMenu>("structure").begin(ref);
       ui.build(aspect, fullHud(), session);
       const f = ui.frame;
       expect(ui.wantsPointerLock).toBe(false);
@@ -998,25 +998,25 @@ test("the list of what can be done to a piece fits every window shape, whatever 
       // The third digit demolishes the piece and closes the list. With the list closed a digit is not the list's.
       expect(ui.key("Digit3", true, false, session)).toBe(true);
       expect(sent.map((c) => [c.op, new BitReader(c.bytes).u32(), c.bytes[4]])).toEqual([[CMD_STRUCT, ref, STRUCT_DEMOLISH]]);
-      expect([ui.structure.open, ui.key("Digit3", true, false, session)]).toEqual([false, false]);
+      expect([ui.screen<StructMenu>("structure").open, ui.key("Digit3", true, false, session)]).toEqual([false, false]);
       // A press on the first line asks to pick the piece up.
-      ui.structure.begin(ref);
+      ui.screen<StructMenu>("structure").begin(ref);
       ui.pointer(0, KEY_STRUCT_BUTTON, 0, 0, 0, session);
       expect(sent[1]!.bytes[4]).toBe(STRUCT_PICKUP);
       // Another screen closes it. If the piece has gone, there is nothing to list.
-      ui.structure.begin(ref);
+      ui.screen<StructMenu>("structure").begin(ref);
       ui.key("KeyM", true, false, session);
-      expect(ui.structure.open).toBe(false);
+      expect(ui.screen<StructMenu>("structure").open).toBe(false);
     }
   }
   const { session } = fakeSession(new Inventory(40));
   Object.assign(session, { sessionState: SESSION_ALIVE, world });
   const ui = newUi();
   ui.registry = reg;
-  ui.structure.begin(refs[0]!);
+  ui.screen<StructMenu>("structure").begin(refs[0]!);
   world.structs.remove(refs[0]!);
   ui.build(16 / 9, fullHud(), session);
-  expect([ui.structure.open, ui.frame.find(KEY_STRUCT_PANEL)]).toEqual([false, null]);
+  expect([ui.screen<StructMenu>("structure").open, ui.frame.find(KEY_STRUCT_PANEL)]).toEqual([false, null]);
 });
 
 test("what can be used can be locked and given a PIN from the list; the PIN panel takes four digits, fits every window, and remembers a PIN that worked", () => {
@@ -1032,7 +1032,7 @@ test("what can be used can be locked and given a PIN from the list; the PIN pane
     Object.assign(session, { sessionState: SESSION_ALIVE, world });
     const ui = newUi();
     ui.registry = reg;
-    const menu = ui.structure;
+    const menu = ui.screen<StructMenu>("structure");
     const fits = (): void => {
       ui.build(aspect, fullHud(), session);
       const f = ui.frame;
@@ -1078,21 +1078,21 @@ test("what can be used can be locked and given a PIN from the list; the PIN pane
     expect(sentOf(sent[2]!)).toEqual([CMD_STRUCT, door, STRUCT_PIN, NO_PIN]);
 
     // When someone outside its tribe uses it, the server answers that it wants its PIN, and the panel asks.
-    menu.result(0, RESULT_PIN, 1000, session, door);
+    menu.answer(0, RESULT_PIN, 1000, session, door);
     expect([menu.open, menu.pad]).toEqual([true, STRUCT_USE]);
     fits();
     expect([ui.frame.find(KEY_PIN_PANEL) !== null, ui.frame.find(KEY_PIN_CLEAR)]).toEqual([true, null]);
     for (const code of ["Digit1", "Digit2", "Digit3", "Digit4"]) ui.key(code, true, false, session);
     expect(sentOf(sent[3]!)).toEqual([CMD_STRUCT, door, STRUCT_USE, 1234]);
     // A wrong PIN is reported and not remembered. The next press asks again.
-    menu.result(sent.length, RESULT_DENIED, 2000);
+    menu.answer(sent.length, RESULT_DENIED, 2000);
     expect(menu.notice).toBe("That is not its PIN");
-    menu.result(0, RESULT_PIN, 3000, session, door);
+    menu.answer(0, RESULT_PIN, 3000, session, door);
     expect(menu.pad).toBe(STRUCT_USE);
     for (const code of ["Digit4", "Digit0", "Digit7", "Digit1"]) ui.key(code, true, false, session);
-    menu.result(sent.length, RESULT_OK, 4000);
+    menu.answer(sent.length, RESULT_OK, 4000);
     // After a right PIN, that door is sent its PIN without asking.
-    menu.result(0, RESULT_PIN, 5000, session, door);
+    menu.answer(0, RESULT_PIN, 5000, session, door);
     expect([menu.open, sentOf(sent[sent.length - 1]!)]).toEqual([false, [CMD_STRUCT, door, STRUCT_USE, 4071]]);
     menu.ask(wall);
     const n = sent.length;
@@ -1328,11 +1328,11 @@ test("a bed's list names it and travels from it: the name is typed in a field th
     Object.assign(session, { sessionState: SESSION_ALIVE, world });
     const ui = newUi();
     ui.registry = reg;
-    ui.structure.begin(bed);
+    ui.screen<StructMenu>("structure").begin(bed);
     ui.build(aspect, fullHud(), session);
     expect([3, 4].map((n) => ui.frame.find(KEY_STRUCT_BUTTON + n)!.text), name).toEqual(["4  Name it", "5  Travel from it"]);
     ui.key("Digit4", true, false, session);
-    expect([ui.structure.naming, ui.captureKeyboard, ui.key("KeyW", true, false, session)]).toEqual([true, true, false]);
+    expect([ui.screen<StructMenu>("structure").naming, ui.captureKeyboard, ui.key("KeyW", true, false, session)]).toEqual([true, true, false]);
     ui.build(aspect, fullHud(), session);
     const field = ui.frame.find(KEY_STRUCT_NAME_INPUT)!;
     expect([field.focus, field.x + field.w <= ui.frame.width + 0.01]).toEqual([true, true]);
@@ -1340,8 +1340,8 @@ test("a bed's list names it and travels from it: the name is typed in a field th
     expect(ui.key("Enter", true, false, session)).toBe(true);
     const r = new BitReader(sent[0]!.bytes);
     expect([sent[0]!.op, r.u32(), r.u8(), r.string(MAX_NAME_BYTES)]).toEqual([CMD_STRUCT, bed, STRUCT_NAME, "Home by the sea, with a"]);
-    expect([ui.structure.open, ui.captureKeyboard]).toEqual([false, false]);
-    ui.structure.begin(bed);
+    expect([ui.screen<StructMenu>("structure").open, ui.captureKeyboard]).toEqual([false, false]);
+    ui.screen<StructMenu>("structure").begin(bed);
     ui.key("Digit5", true, false, session);
     expect([sent[1]!.op, new BitReader(sent[1]!.bytes).u32(), sent[1]!.bytes[4]]).toEqual([CMD_STRUCT, bed, STRUCT_TRAVEL]);
   }

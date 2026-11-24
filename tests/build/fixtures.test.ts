@@ -26,6 +26,7 @@ import { builder } from "../fixtures/build.ts";
 import { ROOF_RISE, ROOF_THICK, hullRegistry } from "../fixtures/hulls.ts";
 import { Harness } from "../fixtures/net.ts";
 import { coreRegistry } from "../fixtures/world.ts";
+import type { StructMenu } from "../../client/core/ui/structure.ts";
 
 const reg = coreRegistry();
 const id = (name: string): number => reg.index.get(`core:${name}`)!;
@@ -453,22 +454,22 @@ test("in the whole client: a box is named with the key that opens it; another tr
   };
   // The server answers that it wants a PIN, so the PIN panel opens and frees the mouse.
   tap();
-  expect([s.open, app.ui.structure.open, app.ui.structure.pad, app.ui.wantsPointerLock, f.find(KEY_PIN_PANEL) !== null]).toEqual([null, true, STRUCT_USE, false, true]);
+  expect([s.open, app.ui.screen<StructMenu>("structure").open, app.ui.screen<StructMenu>("structure").pad, app.ui.wantsPointerLock, f.find(KEY_PIN_PANEL) !== null]).toEqual([null, true, STRUCT_USE, false, true]);
   // Four digits send the PIN. 1111 is wrong.
   for (const code of ["Digit1", "Digit1", "Digit1", "Digit1"]) app.key(code, true);
   run(300);
-  expect([s.open, app.ui.structure.open, f.find(KEY_PROMPT)!.text]).toEqual([null, false, "That is not its PIN"]);
+  expect([s.open, app.ui.screen<StructMenu>("structure").open, f.find(KEY_PROMPT)!.text]).toEqual([null, false, "That is not its PIN"]);
   tap();
-  expect(app.ui.structure.pad).toBe(STRUCT_USE);
+  expect(app.ui.screen<StructMenu>("structure").pad).toBe(STRUCT_USE);
   for (const code of ["Digit2", "Digit5", "Digit8", "Digit0"]) app.key(code, true);
   run(300);
-  expect([s.open?.name, s.open?.inventory.total(id("flint")), app.ui.inventory.open, app.ui.structure.open]).toEqual(["storage box", 12, true, false]);
+  expect([s.open?.name, s.open?.inventory.total(id("flint")), app.ui.inventory.open, app.ui.screen<StructMenu>("structure").open]).toEqual(["storage box", 12, true, false]);
   // The client remembers the PIN that worked and sends it with the next use.
   app.key("Escape", true);
   run(300);
   expect(s.open).toBeNull();
   tap();
-  expect([s.open?.name, app.ui.structure.open]).toEqual(["storage box", false]);
+  expect([s.open?.name, app.ui.screen<StructMenu>("structure").open]).toEqual(["storage box", false]);
   app.key("Escape", true);
   run(300);
 
@@ -483,7 +484,7 @@ test("in the whole client: a box is named with the key that opens it; another tr
   run(500);
   app.key("KeyE", false);
   run(300);
-  expect([app.ui.structure.open, app.ui.structure.ref, s.open, h.host.build.used - used]).toEqual([true, own, null, 0]);
+  expect([app.ui.screen<StructMenu>("structure").open, app.ui.screen<StructMenu>("structure").ref, s.open, h.host.build.used - used]).toEqual([true, own, null, 0]);
   expect([3, 4, 5].map((n) => f.find(KEY_STRUCT_BUTTON + n)!.text)).toEqual(["4  Lock it", "5  Unlock it", "6  Give it a PIN"]);
   app.key("Escape", true);
   run(100);

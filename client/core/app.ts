@@ -78,6 +78,7 @@ import { IMAGE_MAP, IMAGE_MINIMAP, KEY_HOTBAR, KEY_MINIMAP_TOGGLE, KEY_MINIMAP_O
 import { canvasHeight, textWidth, wrapText } from "./ui/nodes.ts";
 import { glass } from "./ui/skin.ts";
 import type { EmoteMenu } from "./ui/emotes.ts";
+import type { StructMenu } from "./ui/structure.ts";
 import { TouchPlay, type TouchTarget } from "./touch.ts";
 import { Ui } from "./ui/ui.ts";
 import { TRAVEL_REFRESH_MS, type TravelScreen } from "./ui/travel.ts";
@@ -285,7 +286,7 @@ export class App {
       this.builder.result(seq, code, this.nowMs);
       this.vehiclePlacement.result(seq, code, this.nowMs);
       // An unasked result answers the last press of the use key: on a seat it is the seat's, else the built piece's.
-      if (!this.seatNotice.result(seq, code, this.nowMs)) this.ui.structure.result(seq, code, this.nowMs, this.session, this.aimed);
+      if (!this.seatNotice.result(seq, code, this.nowMs)) this.ui.screen<StructMenu>("structure").answer(seq, code, this.nowMs, this.session, this.aimed);
       this.ui.results(seq, code);
       if (code === RESULT_LOCKED) this.ui.hear?.("door/locked");
     };

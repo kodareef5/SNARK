@@ -20,7 +20,6 @@ import { CANVAS_HEIGHT, K_SLIDER, UiFrame } from "./nodes.ts";
 import { Settings } from "../settings.ts";
 import { buildSettings, settingsAdjust, settingsClick, settingsValue } from "./settings.ts";
 import type { StoragePage } from "./storage.ts";
-import { KEY_STRUCT_NAME_INPUT, StructMenu } from "./structure.ts";
 import { KEY_NAME_INPUT, NamePrompt, buildOverhead } from "./tame.ts";
 import type { Screen, ScreenCtx } from "./screen.ts";
 import { SCREENS } from "./screens-list.ts";
@@ -39,7 +38,6 @@ export class Ui {
   readonly inventory = new InventoryScreen();
   readonly creator = new CreatorScreen();
   readonly air = new AirRadio();
-  readonly structure = new StructMenu();
   readonly naming = new NamePrompt();
   /** The screens of SCREENS, made for this interface, in its order. */
   readonly screens: readonly Screen[] = SCREENS.map((make) => make());
@@ -112,14 +110,14 @@ export class Ui {
 
   /** A text field has the keyboard, so keys must not also drive the body. */
   get captureKeyboard(): boolean {
-    if (this.air.open || this.menu || this.inspect || this.console.open || this.chat.open || this.naming.open || this.structure.naming) return true;
+    if (this.air.open || this.menu || this.inspect || this.console.open || this.chat.open || this.naming.open) return true;
     for (const s of this.screens) if (s.isOpen() && s.keyboard?.()) return true;
     return false;
   }
 
   /** A text field is wanted: the shell of a touch device raises its keyboard within the press that asked. */
   get typing(): boolean {
-    if (this.console.open || this.chat.open || this.naming.open || this.structure.naming) return true;
+    if (this.console.open || this.chat.open || this.naming.open) return true;
     for (const s of this.screens) if (s.isOpen() && s.typing?.()) return true;
     return false;
   }
@@ -127,7 +125,7 @@ export class Ui {
   /** True when the mouse should steer the camera, with the shell holding pointer lock. */
   get wantsPointerLock(): boolean {
     for (const s of this.screens) if (s.isOpen() && !s.keepsPointer) return false;
-    return !this.air.open && !this.menu && !this.inspect && !this.console.open && !this.chat.open && !this.naming.open && !this.inventory.open && !this.options && !this.dead && !this.creating && !this.structure.open && !(this.debug?.holdsPointer ?? false);
+    return !this.air.open && !this.menu && !this.inspect && !this.console.open && !this.chat.open && !this.naming.open && !this.inventory.open && !this.options && !this.dead && !this.creating && !(this.debug?.holdsPointer ?? false);
   }
 
   /** Whether a screen of `group` is open. */
@@ -257,7 +255,6 @@ export class Ui {
     }
     // The name prompt has the keyboard until it is answered.
     if (this.naming.open && !con.open) return this.naming.key(code, down, repeat, session);
-    if (this.structure.naming && !con.open) return this.structure.key(code, down, repeat, session);
     // A listed screen whose field has the keyboard takes every key, and a key it does not use is typing.
     if (!con.open) for (const s of this.screens) if (s.isOpen() && s.keyboard?.()) return s.key?.(code, down, repeat, this.at(session)) ?? false;
     if (chat.open && !con.open) {
@@ -288,8 +285,6 @@ export class Ui {
       if (code === "Escape" && this.inspect) { if (down && !repeat) this.inspect = false; return true; }
       if (code === "KeyL" && (this.inspect || this.wantsPointerLock)) { if (down && !repeat) { this.settings.minimap = !this.settings.minimap; this.settings.changed(); } return true; }
       if (code === "Escape" && this.debug?.holdsPointer) { if (down && !repeat) this.debug.close(); return true; }
-      // The structure menu takes its digits and Escape. Opening any other screen closes it.
-      if (this.structure.key(code, down, repeat, session)) return true;
       // An open screen of the list has its keys next, and a screen of no group opens by its hotkey from play.
       for (const s of this.screens) if (s.isOpen() && s.key?.(code, down, repeat, this.at(session))) return true;
       const own = this.hotkeyed(undefined, code);
@@ -307,7 +302,6 @@ export class Ui {
       const hot = this.hotkeyed("bag", code);
       if (code === "KeyI" || code === "KeyO" || hot || (code === "Escape" && (this.inventory.open || this.options || this.openIn("bag")))) {
         if (down && !repeat) {
-          this.structure.close();
           // Opening one screen closes the others.
           const listed = hot && !hot.isOpen() ? hot : null;
           const options = code === "KeyO" && !this.options;
@@ -419,7 +413,6 @@ export class Ui {
       return;
     }
     if (kind === 0 && !button && this.air.click(key, session)) return;
-    if (kind === 0 && this.structure.click(key, session)) return;
     if (kind === 0 && this.options && settingsClick(key, this.settings)) return;
     if (this.inventory.open) this.inventory.pointer(kind, key, button, session);
   }
@@ -434,7 +427,6 @@ export class Ui {
     }
     if (key === KEY_CREATIVE_PASSWORD) this.creativeScreen.edit(value);
     else if (key === KEY_NAME_INPUT) this.naming.edit(value);
-    else if (key === KEY_STRUCT_NAME_INPUT) this.structure.edit(value);
     else if (key === KEY_CONSOLE_INPUT) this.console.edit(value);
     else if (key === KEY_CHAT_INPUT) this.chat.edit(value);
     else for (const s of this.screens) if (s.text?.(key, value)) return;
@@ -487,7 +479,6 @@ export class Ui {
     } else if (this.creating) this.chat.close();
     if (this.dead || this.creating || session?.state === "closed") this.air.open = this.air.marking = false;
     // While the console or the chat box is open, the screen under it is not built, so nothing clickable hides behind either.
-    if (this.dead || this.creating) this.structure.close();
     // The Creative entry follows the server's rule, and so does the screen if it was open.
     if (this.creative && !session?.creative) { this.creative = false; this.focusTo(KEY_MENU_RESUME); }
     const creative = this.menu && this.creative && !this.console.open && !this.chat.open;
@@ -509,7 +500,6 @@ export class Ui {
       else if (this.air.open && session) this.air.build(f, session, this.menuFocus);
       else if (!this.buildModal(f, session, hud)) {
         this.inventory.build(f, session, this.registry, this.palette);
-        if (session && this.registry && !this.inventory.open) this.structure.build(f, session, this.registry);
       }
     }
     // The name prompt goes over every other screen, but under the console.
