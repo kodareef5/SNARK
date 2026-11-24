@@ -3,9 +3,9 @@
 //
 //   bun tools/pieces/compare.ts --old var/pieces/old/wood.snpk     against a pack kept from before the recipe
 //   bun tools/pieces/compare.ts --old PACK --numbers               the distances and no pictures
-//   bun tools/pieces/compare.ts --tier stone --old PACK            another tier than wood
+//   bun tools/pieces/compare.ts --tier thatch --old PACK --new PACK  another tier (stone, thatch), and a built pack kept elsewhere
 //
-// The new side is the tier's pack as `bun run art -- core:<tier>` last built it, or the pack --new names.
+// The new side is the tier's pack as `bun run art -- core:wood` last built it, or the one --new names.
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -14,17 +14,14 @@ import { FORMS } from "../../content/building/forms.ts";
 import { parsePack, type Pack } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
 import { SOURCE } from "../art/source.ts";
+import type { FormDef } from "../../shared/world/lattice/forms.ts";
+import type { Shape } from "../pack/pieces/kit.ts";
 import { levelsOf, type TierRecipe } from "../pack/pieces/lod.ts";
 import { STONE } from "../pack/pieces/stone.ts";
+import { THATCH, THATCH_FORMS } from "../pack/pieces/thatch.ts";
 import { WOOD } from "../pack/pieces/wood.ts";
 import { buildPack, unpackMeshes, type SourceLod } from "../pack/write.ts";
 import { Canvas, Studio } from "./sheet.ts";
-
-/** The tiers a recipe makes. */
-const RECIPES: Readonly<Record<string, TierRecipe>> = {
-  wood: WOOD,
-  stone: STONE,
-};
 
 /** Pixels a metre stands on a 1,080-row screen from one metre off, and the error in pixels medium lets pass: what the art check counts levels by. */
 const SCALE = 1080 / (2 * Math.tan(1.2217 / 2));
@@ -71,20 +68,62 @@ function samples(lod: Pick<SourceLod, "positions" | "indices">): number[] {
 
 const mm = (metres: number): string => (metres * 1000).toFixed(1);
 
+type Close = readonly [form: string, centre: readonly [number, number, number], radius: number, around: number, above: number];
+
+/** A tier made by a recipe: its forms, what its distances are told apart by, and where it is looked at close to. */
+interface Made {
+  recipe: TierRecipe;
+  forms: Readonly<Record<string, FormDef>>;
+  /** The part a face is of, where a material is more than one thing. */
+  part?: (face: Shape["faces"][number]) => string;
+  close: readonly Close[];
+}
+
+const MADE: Readonly<Record<string, Made>> = {
+  wood: {
+    recipe: WOOD, forms: FORMS,
+    // A wall's corner and boards, a floor from standing height, a doorway's head.
+    close: [
+      ["wall", [1.05, 0.9, 0.1], 0.62, 30, 8], ["wall", [-0.7, -1.2, 0.1], 0.5, -20, 20], ["doorframe", [0.6, 0.85, 0.1], 0.6, 25, -10], ["windowframe", [0, 0.1, 0.1], 0.75, 20, 10],
+      ["ceiling", [0.9, 0.12, 0.9], 0.75, 40, 35], ["ceiling", [0.6, -0.1, 0.6], 0.9, 30, -40], ["foundation", [1.2, 0, 1.2], 0.55, 40, 22], ["stairs", [0.9, 0.2, 0.4], 0.7, 40, 30], ["door", [0.3, 0, 0], 0.6, 20, 5], ["pillar", [0, 1.15, 0], 0.5, 35, 10],
+    ],
+  },
+  stone: {
+    recipe: STONE, forms: FORMS,
+    // A wall's corner, its stones and its end, a doorway's head, a floor, the stairs' flank.
+    close: [
+      ["wall", [0.9, 0.9, 0.1], 0.62, 30, 8], ["wall", [-0.6, -0.9, 0.1], 0.5, -62, 12], ["wall", [0.2, 0.1, 0.1], 0.5, 76, 4], ["doorframe", [0.6, 0.85, 0.1], 0.6, 25, -10], ["windowframe", [0.2, 0.1, 0.1], 0.75, 20, 10], ["windowframe", [-0.75, 0.1, 0.1], 0.4, -35, 5],
+      ["ceiling", [0.9, 0.12, 0.9], 0.75, 40, 35], ["ceiling", [0.6, -0.1, 0.6], 0.9, 30, -40], ["foundation", [1.2, 0, 1.2], 0.55, 40, 22], ["stairs", [0.9, 0.2, 0.4], 0.7, 40, 30], ["stairs", [1.5, -0.4, 0.3], 0.7, 70, 10], ["stairs", [0, 0, 1.5], 0.8, 160, 8], ["door", [0.3, 0, 0], 0.6, 20, 5], ["pillar", [0, 1.15, 0], 0.5, 35, 10],
+    ],
+  },
+  thatch: {
+    recipe: THATCH, forms: Object.fromEntries(THATCH_FORMS.map((name) => [name, FORMS[name]])),
+    // The wood sheet's cord band is rows 1,434 to 1,782 of 2,048: a face laid in it is cord, and any other is a pole.
+    part: (f) => (f.mat !== "wood" ? f.mat : f.uvs.every((uv) => uv[1] > 1 - 1782 / 2048 - 1e-9 && uv[1] < 1 - 1434 / 2048 + 1e-9) ? "cord" : "poles"),
+    // A wall's skirt and post, its foot, its inside; a doorway's head from both sides; an eave from below and above.
+    close: [
+      ["wall", [-1.0, 0.05, 0.1], 0.6, 62, 4], ["wall", [0.4, -1.25, 0.1], 0.5, 110, 12], ["wall", [0.5, 0.2, 0], 0.85, 250, 6], ["wall", [-1.3, 1.0, 0.1], 0.45, 50, 30],
+      ["doorframe", [0, 0.95, 0.1], 0.75, 75, -12], ["doorframe", [0.3, 0.9, 0], 0.7, 255, -8], ["ceiling", [1.2, -0.05, 1.3], 0.6, 52, -24], ["ceiling", [1.25, 0.1, 1.25], 0.7, 45, 32],
+      ["foundation", [1.3, 0, 1.3], 0.5, 45, 22], ["door", [0.25, -0.75, 0], 0.6, 70, 5], ["door", [-0.2, 0.3, 0], 0.6, 250, 5], ["ceiling", [0.3, -0.1, 0.4], 0.9, 60, -50],
+    ],
+  },
+};
+
 /**
  * How far the recipe's finest level lies from the old pack's, a line a form: from the recipe's faces of each material
  * to the old surface, which holds its frame to the old frame, and from the old surface to the recipe's, which shows what
  * the recipe left out.
  */
-export function distanceLines(old: Pack, recipe: TierRecipe = WOOD): string[] {
+export function distanceLines(old: Pack, tier = "wood"): string[] {
+  const { recipe, forms, part: partOf = (f) => f.mat } = MADE[tier]!;
   const was = new Map(unpackMeshes(old).map((m) => [m.id, m.lods[0]!]));
-  return Object.entries(FORMS).map(([name, form]) => {
-    const before = was.get(`core:${name}_${recipe.name}`)!;
+  return Object.entries(forms).map(([name, form]) => {
+    const before = was.get(`core:${name}_${tier}`)!;
     const shape = levelsOf(recipe, name, form)[0]!;
-    const mats = [...new Set(shape.faces.map((f) => f.mat))];
+    const mats = [...new Set(shape.faces.map(partOf))];
     const forward = mats.map((mat) => {
       const part = new (shape.constructor as new () => typeof shape)();
-      part.faces.push(...shape.faces.filter((f) => f.mat === mat));
+      part.faces.push(...shape.faces.filter((f) => partOf(f) === mat));
       const d = distances(samples(part.lod(null, () => 0)), before);
       return `${mat} ${mm(d[d.length - 1]!)}`;
     });
@@ -93,6 +132,17 @@ export function distanceLines(old: Pack, recipe: TierRecipe = WOOD): string[] {
   });
 }
 
+/** The level of a mesh medium draws from `metres` off. */
+function levelAt(pack: Pack, id: string, metres: number): number {
+  const lods = pack.header.meshes[pack.meshIndex.get(id)!]!.lods;
+  let level = 0;
+  lods.forEach((l, k) => {
+    if (k > 0 && l.error > 0 && (l.error * SCALE) / THRESHOLD <= metres && !lods.slice(k + 1).some((far) => far.error <= l.error)) level = k;
+  });
+  return level;
+}
+
+/** Pages of old beside new: each form near, then as large as it stands on a 1,080-row screen from where each new level begins, enlarged. */
 /**
  * Where the recipe's finest level has a corner at a corner of the old pack's, on a face that looks the same way, how far
  * apart the two lay the picture there: a line a form, with how many such corners there are.
@@ -102,7 +152,7 @@ export function pictureLines(old: Pack, made: Pack, tier: string): string[] {
   const [was, now] = [finest(old), finest(made)];
   // A pack stores a corner to a fraction of a millimetre and a texture coordinate to one part in some thousands.
   const key = (lod: SourceLod, v: number): string => [0, 1, 2].map((a) => Math.round(lod.positions[v * 3 + a]! * 2000)).join();
-  return Object.keys(FORMS).map((name) => {
+  return Object.keys(MADE[tier]!.forms).map((name) => {
     const [before, after] = [was.get(`core:${name}_${tier}`)!, now.get(`core:${name}_${tier}`)!];
     if (!before.uvs || !before.normals || !after.uvs || !after.normals) return `${name.padEnd(12)} no picture to compare`;
     const at = new Map<string, number[]>();
@@ -119,32 +169,9 @@ export function pictureLines(old: Pack, made: Pack, tier: string): string[] {
   });
 }
 
-/** The level of a mesh medium draws from `metres` off. */
-function levelAt(pack: Pack, id: string, metres: number): number {
-  const lods = pack.header.meshes[pack.meshIndex.get(id)!]!.lods;
-  let level = 0;
-  lods.forEach((l, k) => {
-    if (k > 0 && l.error > 0 && (l.error * SCALE) / THRESHOLD <= metres && !lods.slice(k + 1).some((far) => far.error <= l.error)) level = k;
-  });
-  return level;
-}
-
-/** What each tier is looked at close to: a form, where the eye rests on it, the ball that fills the picture, and the degrees round and above. */
-const CLOSE: Readonly<Record<string, readonly (readonly [string, readonly [number, number, number], number, number, number])[]>> = {
-  wood: [
-    ["wall", [1.05, 0.9, 0.1], 0.62, 30, 8], ["wall", [-0.7, -1.2, 0.1], 0.5, -20, 20], ["doorframe", [0.6, 0.85, 0.1], 0.6, 25, -10], ["windowframe", [0, 0.1, 0.1], 0.75, 20, 10],
-    ["ceiling", [0.9, 0.12, 0.9], 0.75, 40, 35], ["ceiling", [0.6, -0.1, 0.6], 0.9, 30, -40], ["foundation", [1.2, 0, 1.2], 0.55, 40, 22], ["stairs", [0.9, 0.2, 0.4], 0.7, 40, 30], ["door", [0.3, 0, 0], 0.6, 20, 5], ["pillar", [0, 1.15, 0], 0.5, 35, 10],
-  ],
-  stone: [
-    ["wall", [0.9, 0.9, 0.1], 0.62, 30, 8], ["wall", [-0.6, -0.9, 0.1], 0.5, -62, 12], ["wall", [0.2, 0.1, 0.1], 0.5, 76, 4], ["doorframe", [0.6, 0.85, 0.1], 0.6, 25, -10], ["windowframe", [0.2, 0.1, 0.1], 0.75, 20, 10], ["windowframe", [-0.75, 0.1, 0.1], 0.4, -35, 5],
-    ["ceiling", [0.9, 0.12, 0.9], 0.75, 40, 35], ["ceiling", [0.6, -0.1, 0.6], 0.9, 30, -40], ["foundation", [1.2, 0, 1.2], 0.55, 40, 22], ["stairs", [0.9, 0.2, 0.4], 0.7, 40, 30], ["stairs", [1.5, -0.4, 0.3], 0.7, 70, 10], ["stairs", [0, 0, 1.5], 0.8, 160, 8], ["door", [0.3, 0, 0], 0.6, 20, 5], ["pillar", [0, 1.15, 0], 0.5, 35, 10],
-  ],
-};
-
-/** Pages of old beside new: each form near, then as large as it stands on a 1,080-row screen from where each new level begins, enlarged. */
-async function pages(old: Pack, made: Pack, out: string, say: (line: string) => void, tier = "wood"): Promise<void> {
+async function pages(old: Pack, made: Pack, out: string, say: (line: string) => void, tier: string): Promise<void> {
   const [before, after] = [await Studio.of(old, [tier]), await Studio.of(made, [tier])];
-  const names = Object.keys(FORMS);
+  const names = Object.keys(MADE[tier]!.forms);
   const [near, far, gap, head] = [300, 150, 4, 34];
   const row = near + 18;
   const perPage = 3;
@@ -182,8 +209,7 @@ async function pages(old: Pack, made: Pack, out: string, say: (line: string) => 
     writeFileSync(file, canvas.png());
     say(file);
   }
-  // Close to: a wall's corner and boards or stones, a floor from standing height, a doorway's head.
-  const close: readonly (readonly [string, readonly [number, number, number], number, number, number])[] = CLOSE[tier] ?? CLOSE.wood!;
+  const close = MADE[tier]!.close;
   const side = 380;
   const canvas = new Canvas(8 + 4 * (side + gap) + 4, head + Math.ceil(close.length / 2) * (side + 16 + gap));
   canvas.text(`${tier} close to, old | recipe`, 8, 6, [28, 32, 38], 2);
@@ -203,11 +229,10 @@ export async function main(args: readonly string[], say: (line: string) => void 
   const from = value("old");
   if (!from) throw new Error("--old PACK: the pack to set the recipe beside");
   const tier = value("tier") ?? "wood";
-  const recipe = RECIPES[tier];
-  if (!recipe) throw new Error(`--tier ${tier}: no recipe makes it. There are: ${Object.keys(RECIPES).join(", ")}`);
+  if (!MADE[tier]) throw new Error(`--tier ${tier}: no recipe makes it. There are ${Object.keys(MADE).join(", ")}`);
   const old = parsePack(new Uint8Array(readFileSync(from)));
-  const made = parsePack(new Uint8Array(readFileSync(value("new") ?? join(SOURCE, `core/structures/${tier}/${tier}.snpk`))));
-  for (const line of distanceLines(old, recipe)) say(line);
+  const made = parsePack(new Uint8Array(readFileSync(value("new") ?? join(SOURCE, "core/structures", tier, `${tier}.snpk`))));
+  for (const line of distanceLines(old, tier)) say(line);
   for (const line of pictureLines(old, made, tier)) say(line);
   if (args.includes("--numbers")) return;
   const out = resolve(value("out") ?? "var/pieces");
