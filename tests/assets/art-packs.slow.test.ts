@@ -38,16 +38,20 @@ artTest("every asset folder has its pack, named as the folder is, and the pack p
   }
 });
 
-artTest("each road vehicle's exported paint, wheel joints and glass opening fit its declared finish", () => {
+artTest("each wheeled vehicle's wheel joints fit its axles, and each driven one's paint and glass its finish", () => {
   for (const vehicle of coreRegistry().vehicle) {
     if (!vehicle || !isWheelVehicle(vehicle) || isSkateboard(vehicle)) continue;
     const asset = ASSETS.find(a => a.id === vehicle.id);
     expect(asset, vehicle.id).toBeDefined();
     const pack = parsePack(new Uint8Array(readFileSync(asset!.file)));
-    expect(pack.header.materials?.some(m => streetMaterial(m.id) === PAINT), vehicle.id).toBe(true);
     const rig = pack.header.rigs?.find(r => r.id === vehicle.id);
     const wheels = rig?.names?.filter(bone => bone.startsWith("wheel_"));
-    expect(wheels?.length, vehicle.id).toBe((vehicle.spec.axles?.length ?? 2)*2);
+    // A trailer parked on its legs counts them as a contact line; it rolls on the axles it has when towed.
+    expect(wheels?.length, vehicle.id).toBe(((vehicle.towed ?? vehicle.spec).axles?.length ?? 2) * 2);
+    expect(vehicle.wheels.every(w => wheels?.includes(w.bone)), vehicle.id).toBe(true);
+    // A trailer has no cab: no street paint, no windscreen.
+    if (!vehicle.seats.some(s => s.driver)) continue;
+    expect(pack.header.materials?.some(m => streetMaterial(m.id) === PAINT), vehicle.id).toBe(true);
     const mesh = unpackMeshes(pack).find(m => m.id === vehicle.id)!;
     const windscreen = vehicle.breakablePanels?.find(panel => panel.bone === "glass_front");
     if (windscreen) {
