@@ -1,6 +1,7 @@
 // Tuned content end to end. The server tunes its definitions and sends the tuning in the welcome.
 // The client derives the same content or disconnects.
 
+import { ORB_SCENES } from "../../shared/world/orb.ts";
 import { expect, test } from "bun:test";
 import { App } from "../../client/core/app.ts";
 import { CLOSED_BAD_CONTENT, type ClientSession } from "../../client/core/session.ts";
@@ -342,6 +343,29 @@ test("what a client shows by the server's leave: the body from behind, the cross
   tap("KeyV");
   stir();
   expect(seen()).toEqual({ third: true, cross: false, mark: false, self: false, beams: 1 });
+});
+
+test("an admin holds the orb to a scene and sets its brightness while the server runs", () => {
+  const h = new Harness({}, 1, 60, { dev: true });
+  const app = new App(h.join("ada", {}, { manual: true }), reg, pack);
+  const s = app.session;
+  const run = (ms: number): void => h.run(ms, (now) => void app.frame(now, 1280, 720));
+  run(600);
+  s.text("enablecheats");
+  run(300);
+  const set = (name: string, value: string): void => {
+    s.text(`setting ${name} ${value}`);
+    run(300);
+  };
+  // As shipped the programme runs at full brightness.
+  expect([s.orbOnly, s.orbGain, app.scene!.orbOnly, app.scene!.orbGain]).toEqual([-1, 1, -1, 1]);
+  set("OrbScene", "Storm");
+  set("OrbBrightness", "0.5");
+  expect([app.scene!.orbOnly, app.scene!.orbGain]).toEqual([ORB_SCENES.indexOf("storm"), 0.5]);
+  // A word that names no scene leaves the programme running, and 0 turns the screen off.
+  set("OrbScene", "sunset");
+  set("OrbBrightness", "0");
+  expect([app.scene!.orbOnly, app.scene!.orbGain]).toEqual([-1, 0]);
 });
 
 test("the server's name and message of the day stay up for as long as the server says, whatever is said after them", () => {

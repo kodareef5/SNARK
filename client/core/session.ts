@@ -155,7 +155,7 @@ import { V_COUNT, Vitals } from "../../shared/sim/vitals.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 import type { TideEyeSite } from "../../shared/world/tide-eye.ts";
-import type { OrbSite } from "../../shared/world/orb.ts";
+import { ORB_GAIN_UNITS, type OrbSite } from "../../shared/world/orb.ts";
 import { staticKinds, type MapLandmark, type MapStatics } from "../../shared/world/mapfile.ts";
 import type { Buildings } from "../../shared/world/buildings.ts";
 import { NodeField, type NodeSource } from "../../shared/world/nodes.ts";
@@ -781,6 +781,9 @@ export class ClientSession {
   private readonly blockers = new Blockers();
   /** SurvivorsBlock is off on this server: survivors pass through one another (server/blocking.ts). */
   survivorsPass = false;
+  /** What the server holds an orb's screen to: a scene's number or -1 for its programme, and its brightness. */
+  orbOnly = -1;
+  orbGain = 1;
   private blockReach = -1;
   /** Per tick stepped, the snapshot its input acknowledges, which its step meets the bodies in. */
   private readonly blockAck = new Uint32Array(HISTORY);
@@ -1969,7 +1972,7 @@ export class ClientSession {
     ownKinds.add({
       kind: OWN_RULES,
       read(s, r) {
-        const flags = r.u16();
+        const flags = r.u16(), only = r.u8() - 1, gain = r.u8() / ORB_GAIN_UNITS;
         if (r.overflow) return;
         s.damageNumbers = (flags & RULE_DAMAGE_NUMBERS) !== 0;
         s.globalChat = (flags & RULE_GLOBAL_CHAT) !== 0;
@@ -1980,6 +1983,8 @@ export class ClientSession {
         s.corpseLocator = (flags & RULE_CORPSE_LOCATOR) !== 0;
         s.creative = (flags & RULE_CREATIVE) !== 0;
         s.survivorsPass = (flags & RULE_SURVIVORS_PASS) !== 0;
+        s.orbOnly = only;
+        s.orbGain = gain;
       },
     });
     ownKinds.add({

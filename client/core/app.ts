@@ -933,6 +933,8 @@ export class App {
     scene.characters.corpseMotions = session.corpseMotions;
     // Damage numbers are drawn with the world, where the server's rule and the reader's setting let them.
     scene.damage.enabled = session.damageNumbers && this.ui.settings.damageNumbers;
+    scene.orbOnly = session.orbOnly;
+    scene.orbGain = session.orbGain;
     scene.wants = this.texgen?.wants ?? null;
     f.packet = scene.build(this.cam, this.remote);
     session.requestCorpseMotions(scene.characters.corpseCheckpointRequests);
