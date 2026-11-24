@@ -1,0 +1,23 @@
+import { copyFileSync, mkdirSync } from "node:fs";
+import { join, resolve } from "node:path";
+
+/** Builds the operator pages separately from the playable client and its art. */
+export async function buildAdmin(dist: string): Promise<void> {
+  const client = resolve(import.meta.dir, "../client");
+  const out = join(dist, "admin");
+  mkdirSync(out, { recursive: true });
+  const entries = ["shell", "cluster", "admin", "settings", "cast", "loadouts", "first-frame", "board"];
+  const result = await Bun.build({
+    entrypoints: [...entries.map(name => join(client, "admin", name + ".ts")), join(client, "drops/drops.ts")],
+    outdir: out, naming: "[name].[ext]", target: "browser", minify: true, sourcemap: "linked",
+  });
+  if (!result.success) throw Error(result.logs.map(String).join("\n"));
+  for (const page of ["cluster", "cast", "loadouts", "settings", "first-frame"])
+    copyFileSync(join(client, "admin", page + ".html"), join(out, page + ".html"));
+  for (const css of ["admin.css", "investigate.css", "overview.css"])
+    copyFileSync(join(client, "admin", css), join(out, css));
+  copyFileSync(join(client, "admin/admin.html"), join(out, "index.html"));
+  copyFileSync(join(client, "drops/drops.html"), join(out, "drops.html"));
+  copyFileSync(join(client, "sound/sounds.html"), join(out, "sounds.html"));
+}
+if (import.meta.main) await buildAdmin(resolve(process.argv[2] ?? "client/dist"));

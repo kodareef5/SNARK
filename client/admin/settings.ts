@@ -1,10 +1,11 @@
+import { adminContext } from "./shell.ts";
 // The admin's settings page: every setting that takes effect (server/admin/settings.ts's settings.json), each in a box
 // that sends its change as it is left (POST settings). What it shows is made in client/core/admin/settings.ts; this is
 // the page's wiring. The rows are made once, so a box being written in is never replaced under the hand.
 
 import type { SettingRow, SettingsPage } from "../../shared/admin.ts";
 import { $, ask } from "./dom.ts";
-import { SHOWS, SHOW_WORDS, boxLines, boxValue, countText, isSwitch, matches, sentValue, settingsHtml, sourceText, stopText, type Show } from "../core/admin/settings.ts";
+import { SHOWS, SHOW_WORDS, boxLines, boxValue, countText, isSwitch, matches, sentValue, settingsHtml, sourceText, type Show } from "../core/admin/settings.ts";
 
 type Box = HTMLInputElement | HTMLTextAreaElement;
 let page: SettingsPage = { ok: true, why: "", note: "", keeps: false, stopLeft: -1, rows: [] };
@@ -17,7 +18,7 @@ const say = (text: string, kind = "dim"): void => {
 };
 
 async function send(body: object, done: string): Promise<void> {
-  const r = await fetch("settings", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const r = await fetch((await adminContext()).api("settings"), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   if (r.status !== 200 && r.status !== 400) return say(`The server answered ${r.status}.`, "bad");
   const p = (await r.json()) as SettingsPage;
   show(p);
@@ -59,17 +60,7 @@ function show(got: SettingsPage): void {
     const reset = document.getElementById(`b-${r.name}`);
     if (reset) reset.hidden = !r.kept;
   }
-  $("stop-line").textContent = stopText(got.stopLeft);
-  $("stop-cancel").hidden = got.stopLeft < 0;
   filter();
-}
-
-/** A stop for an update, or its taking back (POST stop): the page then shows what the server says of it. */
-async function stop(body: object): Promise<void> {
-  const r = await fetch("stop", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-  const j = (r.status === 200 || r.status === 400 ? await r.json() : { ok: false, why: `The server answered ${r.status}.` }) as { ok: boolean; why: string };
-  say(j.ok ? "" : j.why, j.ok ? "dim" : "bad");
-  void refresh();
 }
 
 function filter(): void {
@@ -90,8 +81,6 @@ async function refresh(): Promise<void> {
 
 $("show").innerHTML = SHOWS.map((s) => `<option value="${s}">${SHOW_WORDS[s]}</option>`).join("");
 $<HTMLSelectElement>("show").value = "live";
-$("stop").onclick = () => void stop({ seconds: Number($<HTMLInputElement>("stop-seconds").value) });
-$("stop-cancel").onclick = () => void stop({ cancel: true });
 $("search").oninput = filter;
 $("show").onchange = filter;
 const tick = () => void refresh().catch((e: unknown) => say(String(e), "bad"));

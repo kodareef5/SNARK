@@ -21,7 +21,7 @@ function address(world: AdminWorld, origin: string): URL {
 
 export function resolveAdmin(href: string, worlds: AdminWorld[]) {
   const { origin, pathname } = new URL(href);
-  const route = /^\/admin\/worlds\/(local|\d+)\/([a-z-]+)\/?$/.exec(pathname);
+  const route = /\/admin\/worlds\/(local|\d+)\/([a-z-]+)\/?$/.exec(pathname);
   const world = route ? worlds.find(row => String(row.id) === route[1]) : null;
   if (route && !world) throw Error("This world is unavailable. Return to the overview to choose a running world.");
   const view = route?.[2] ?? (pathname.split("/")[2] || "overview");

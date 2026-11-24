@@ -1,129 +1,21 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="color-scheme" content="dark" />
-    <title>SNARK drops</title>
-    <style>
-      /* face */
-      :root {
-        --ink: #dbe8f3;
-        --dim: #93a9bd;
-        --faint: #5f778c;
-        --glass: rgba(20, 36, 56, 0.78);
-        --glass-hi: rgba(36, 60, 88, 0.62);
-        --edge: rgba(168, 204, 234, 0.22);
-        --edge-hi: rgba(206, 230, 250, 0.62);
-        --ice: #a9d6f2;
-        --well: #8fd9c4;
-        --warn: #ecb048;
-        --bad: #ec6a52;
-        --cut: 10px;
-        font: 15px/1.35 "Barlow Semi Condensed", "Barlow", system-ui, sans-serif;
-        font-variant-numeric: tabular-nums;
-        color: var(--ink);
-        background: #08111c;
-      }
-      * { box-sizing: border-box; }
-      [hidden] { display: none !important; }
-      body { margin: 0; min-height: 100vh; background: radial-gradient(120% 80% at 18% -10%, #21405f 0%, #102136 46%, #08111c 100%) fixed; }
-      a { color: var(--ice); }
-      h1, h2, h3 { font-weight: 500; margin: 0; letter-spacing: 0.02em; }
-      h1 { font-size: 22px; }
-      h2 { font-size: 17px; }
-      button, input, select, textarea { font: inherit; color: inherit; }
-      button, select, input, textarea { background: rgba(8, 17, 28, 0.6); border: 1px solid var(--edge); padding: 4px 9px; }
-      button { cursor: pointer; }
-      button:hover:not(:disabled), button.on { border-color: var(--edge-hi); background: rgba(60, 96, 132, 0.5); }
-      button:disabled { opacity: 0.45; cursor: default; }
-      button.go { border-color: var(--well); color: var(--well); }
-      button.risk { border-color: var(--bad); color: var(--bad); }
-      .page { max-width: 1680px; margin: 0 auto; padding: 14px 16px 60px; display: grid; gap: 12px; }
-      .glass {
-        position: relative;
-        padding: 12px 14px;
-        background: linear-gradient(180deg, var(--glass-hi), var(--glass) 42px);
-        border: 1px solid var(--edge);
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 10px 30px rgba(0, 0, 0, 0.25);
-        clip-path: polygon(0 0, calc(100% - var(--cut)) 0, 100% var(--cut), 100% 100%, 0 100%);
-      }
-      .label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.09em; color: var(--dim); }
-      .dim { color: var(--dim); }
-      .faint { color: var(--faint); }
-      .well { color: var(--well); }
-      .warn { color: var(--warn); }
-      .bad { color: var(--bad); }
-      .row { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
-      .grow { flex: 1 1 auto; }
-      .chip { border: 1px solid var(--edge); padding: 1px 8px; font-size: 13px; white-space: nowrap; }
-      .chip.warn { border-color: var(--warn); }
-      .chip.bad { border-color: var(--bad); }
-      .tabs { display: flex; flex-wrap: wrap; gap: 6px; }
-      table { border-collapse: collapse; width: 100%; }
-      th, td { padding: 4px 8px; text-align: left; vertical-align: top; border-bottom: 1px solid rgba(168, 204, 234, 0.1); }
-      th { font-weight: 500; color: var(--dim); font-size: 13px; }
-      td.n, th.n { text-align: right; }
-      .scroll { overflow-x: auto; }
-      /* The matrix: a tier a row, a class a column, each cell its worth against its target. */
-      .matrix td, .matrix th { text-align: center; min-width: 104px; }
-      .matrix th.tier { text-align: left; min-width: 150px; white-space: nowrap; }
-      .swatch { display: inline-block; width: 12px; height: 12px; vertical-align: -1px; margin-right: 6px; border: 1px solid rgba(255, 255, 255, 0.35); }
-      .cell { display: block; width: 100%; padding: 5px 6px; border: 1px solid transparent; background: rgba(8, 17, 28, 0.35); text-align: center; }
-      .cell.open { border-color: var(--edge-hi); background: rgba(60, 96, 132, 0.5); }
-      .cell .of { font-size: 17px; }
-      .cell .sub { font-size: 12px; color: var(--dim); }
-      .cell.lean .of, .cell.rich .of { color: var(--warn); }
-      .cell.dormant .of { color: var(--faint); }
-      .meter { height: 4px; margin-top: 3px; background: rgba(168, 204, 234, 0.14); position: relative; }
-      .meter i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--well); }
-      .cell.lean .meter i, .cell.rich .meter i { background: var(--warn); }
-      .meter b { position: absolute; top: -2px; bottom: -2px; width: 1px; left: 66.7%; background: var(--edge-hi); }
-      /* A table opened. */
-      .slots { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 10px; }
-      .slot { border: 1px solid var(--edge); padding: 8px 10px; background: rgba(8, 17, 28, 0.35); }
-      .entry { display: grid; grid-template-columns: 46px 1fr auto; gap: 2px 8px; padding: 3px 0; border-top: 1px solid rgba(168, 204, 234, 0.08); font-size: 14px; }
-      .entry.gone { color: var(--faint); text-decoration: line-through; }
-      .entry .tag { font-size: 12px; color: var(--dim); text-decoration: none; display: inline-block; }
-      /* The fields of an opened table, and one that holds what it may not. */
-      .slots.one { grid-template-columns: 1fr; margin-top: 8px; }
-      .line { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; padding: 4px 0; border-top: 1px solid rgba(168, 204, 234, 0.08); font-size: 14px; }
-      .line label, .slot label { color: var(--dim); font-size: 13px; white-space: nowrap; }
-      input.wrong { border-color: var(--bad); background: rgba(236, 106, 82, 0.14); }
-      input[type="checkbox"] { padding: 0; vertical-align: -2px; }
-      /* The map beside what it shows of a site and of the world. */
-      .mapgrid { display: grid; grid-template-columns: minmax(0, 880px) minmax(260px, 1fr); gap: 14px; margin-top: 8px; }
-      .mapbox { overflow: auto; max-height: 880px; border: 1px solid var(--edge); background: #0b1622; }
-      #map { display: block; cursor: crosshair; touch-action: none; }
-      @media (max-width: 1100px) { .mapgrid { grid-template-columns: 1fr; } }
-      /* The simulator. */
-      .bars { display: flex; align-items: flex-end; gap: 2px; height: 120px; padding: 6px 0; }
-      .bars i { flex: 1 1 0; background: var(--ice); min-height: 1px; opacity: 0.85; }
-      .mix { display: flex; height: 16px; border: 1px solid var(--edge); }
-      .mix i { display: block; }
-      .figures { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
-      .figures div b { display: block; font-size: 20px; font-weight: 500; }
-      #said { min-height: 1.35em; }
-    </style>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Supply drops · SNARK Admin</title>
+    <link rel="stylesheet" href="/admin/ui/admin.css">
   </head>
   <body>
-    <div class="page">
-      <header class="glass">
-        <div class="row">
-          <h1>Drops</h1>
-          <span id="world" class="dim"></span>
-          <span id="chips" class="row"></span>
-          <span class="grow"></span>
-          <a href="./">the world's admin page</a>
-        </div>
-        <div class="row" style="margin-top: 8px">
-          <nav id="tabs" class="tabs"></nav>
-          <span class="grow"></span>
-          <span id="said" class="dim"></span>
-        </div>
-      </header>
-      <main id="main"></main>
-    </div>
-    <script type="module" src="drops.js"></script>
+    <main class="tool-page drops-page">
+      <header class="tool-intro"><h1>Supply drops</h1><p>Inspect loot tables, edit supply routes and simulate their rewards.</p></header>
+      <section class="tool-panel">
+        <div class="row"><span id="world"></span><span id="chips" class="row"></span></div>
+        <nav id="tabs" class="tabs" aria-label="Supply tools"></nav>
+        <p id="said" role="status"></p>
+      </section>
+      <div id="main"></div>
+    </main>
+    <script type="module" src="/admin/ui/drops.js"></script>
   </body>
 </html>

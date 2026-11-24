@@ -1,3 +1,4 @@
+import { adminContext } from "./shell.ts";
 // The admin's Cast page: what the city's background people are doing (server/admin/cast.ts's cast.json, every two seconds)
 // and the knobs an admin turns (POST cast: a Cast setting live, a scene played now, a story ended). What it shows is made
 // in client/core/admin/cast.ts; this is the page's wiring.
@@ -8,7 +9,7 @@ import { CAST_KNOBS, castMarks, castView, type CastJson } from "../core/admin/ca
 let last: CastJson | null = null;
 
 async function act(body: object): Promise<void> {
-  const r = await fetch("cast", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const r = await fetch((await adminContext()).api("cast"), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   const j = (await r.json()) as { ok: boolean; why: string };
   $("msg").textContent = j.ok ? "Done." : j.why;
   void refresh();

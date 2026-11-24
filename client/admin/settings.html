@@ -1,69 +1,21 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="color-scheme" content="dark" />
-    <title>SNARK admin: Settings</title>
-    <style>
-      /* face */
-      :root { --ink: #dbe8f3; --dim: #93a9bd; --faint: #5f778c; --edge: rgba(168, 204, 234, 0.22); --ice: #a9d6f2; --well: #8fd9c4; --warn: #ecb048; --bad: #ec6a52;
-        font: 15px/1.35 "Barlow Semi Condensed", "Barlow", system-ui, sans-serif; font-variant-numeric: tabular-nums; color: var(--ink); background: #08111c; }
-      * { box-sizing: border-box; }
-      body { margin: 0; background: radial-gradient(120% 80% at 18% -10%, #21405f 0%, #102136 46%, #08111c 100%) fixed; min-height: 100vh; }
-      a { color: var(--ice); }
-      h1, h2 { font-weight: 500; margin: 0; letter-spacing: 0.02em; }
-      h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.09em; color: var(--dim); margin-bottom: 4px; }
-      button, input, select, textarea { font: inherit; color: inherit; background: rgba(36, 60, 88, 0.62); border: 1px solid var(--edge); padding: 3px 9px; border-radius: 0; }
-      button:hover, input:focus, select:focus, textarea:focus { border-color: var(--ice); outline: none; }
-      input:disabled, textarea:disabled { color: var(--faint); background: rgba(20, 36, 56, 0.4); }
-      input[type=checkbox] { width: 18px; height: 18px; margin: 2px 0; padding: 0; accent-color: var(--ice); }
-      textarea { width: 100%; resize: vertical; font-family: ui-monospace, Menlo, monospace; font-size: 12px; white-space: pre; }
-      .page { max-width: 1180px; margin: 0 auto; padding: 14px 16px 40px; display: grid; gap: 12px; }
-      header { display: flex; gap: 18px; align-items: baseline; flex-wrap: wrap; }
-      header nav { margin-left: auto; display: flex; gap: 16px; font-size: 14px; }
-      .glass { background: rgba(20, 36, 56, 0.78); border: 1px solid var(--edge); padding: 12px 14px; }
-      .bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-      .bar.find { position: sticky; top: 0; z-index: 1; }
-      .bar input[type=search] { flex: 1 1 220px; min-width: 0; }
-      #msg { flex: 1 1 100%; margin: 0; } #msg:empty { display: none; }
-      .row { display: grid; grid-template-columns: minmax(0, 1fr) 300px 150px; gap: 4px 16px; padding: 8px 0; border-top: 1px solid rgba(168, 204, 234, 0.08); align-items: start; }
-      .what b { display: block; font-weight: 500; overflow-wrap: anywhere; }
-      .what span { font-size: 14px; }
-      .box { display: grid; gap: 3px; justify-items: start; }
-      .box input[type=number], .box input[type=text], .box input[type=password] { width: 100%; }
-      .box > span { font-size: 12px; overflow-wrap: anywhere; }
-      .from { display: grid; gap: 4px; justify-items: start; font-size: 13px; color: var(--dim); }
-      .row.kept b, .row.kept .from > span { color: var(--well); }
-      .row.fixed b { color: var(--dim); }
-      .dim { color: var(--dim); } .faint { color: var(--faint); } .warn { color: var(--warn); } .bad { color: var(--bad); } .well { color: var(--well); }
-      [hidden] { display: none !important; }
-      @media (max-width: 760px) {
-        .row { grid-template-columns: minmax(0, 1fr); }
-        .from { grid-auto-flow: column; justify-content: start; align-items: center; gap: 12px; }
-      }
-    </style>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Settings · SNARK Admin</title>
+    <link rel="stylesheet" href="/admin/ui/admin.css">
   </head>
   <body>
-    <div class="page">
-      <header>
-        <h1>Settings</h1><span class="dim">changed here, in force at once</span><span id="count" class="dim"></span>
-        <nav><a href="./">Admin</a><a href="../">Play</a></nav>
-      </header>
-      <section class="glass bar find">
-        <input id="search" type="search" placeholder="Find a setting" aria-label="Find a setting" />
-        <select id="show" aria-label="Which settings"></select>
-        <p id="msg" class="dim"></p>
+    <main class="tool-page settings-page">
+      <header class="tool-intro"><h1>Settings</h1><p>Changes take effect when you leave a field.</p></header>
+      <section class="tool-panel bar" aria-label="Filter settings">
+        <input id="search" type="search" placeholder="Find a setting" aria-label="Find a setting">
+        <select id="show" aria-label="Setting type"></select>
+        <span id="count"></span><span id="msg" role="status"></span>
       </section>
-      <section class="glass bar">
-        <span class="dim">Update</span>
-        <input id="stop-seconds" type="number" min="0" max="86400" step="1" value="60" aria-label="Seconds until the stop" style="width: 6em" />
-        <button id="stop">Stop the server</button>
-        <button id="stop-cancel" hidden>Cancel the stop</button>
-        <span id="stop-line" class="dim">Every page waits by itself and comes back when the server is up again.</span>
-      </section>
-      <div id="groups" class="page" style="padding: 0"></div>
-    </div>
-    <script type="module" src="settings.js"></script>
+      <div id="groups"></div>
+    </main>
+    <script type="module" src="/admin/ui/settings.js"></script>
   </body>
 </html>
