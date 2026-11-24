@@ -3,8 +3,9 @@
 //
 //   bun tools/pieces/compare.ts --old var/pieces/old/wood.snpk     against a pack kept from before the recipe
 //   bun tools/pieces/compare.ts --old PACK --numbers               the distances and no pictures
+//   bun tools/pieces/compare.ts --tier stone --old PACK            another tier than wood
 //
-// The new side is the tier's pack as `bun run art -- core:wood` last built it.
+// The new side is the tier's pack as `bun run art -- core:<tier>` last built it, or the pack --new names.
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -13,10 +14,17 @@ import { FORMS } from "../../content/building/forms.ts";
 import { parsePack, type Pack } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
 import { SOURCE } from "../art/source.ts";
-import { levelsOf } from "../pack/pieces/lod.ts";
+import { levelsOf, type TierRecipe } from "../pack/pieces/lod.ts";
+import { STONE } from "../pack/pieces/stone.ts";
 import { WOOD } from "../pack/pieces/wood.ts";
 import { buildPack, unpackMeshes, type SourceLod } from "../pack/write.ts";
 import { Canvas, Studio } from "./sheet.ts";
+
+/** The tiers a recipe makes. */
+const RECIPES: Readonly<Record<string, TierRecipe>> = {
+  wood: WOOD,
+  stone: STONE,
+};
 
 /** Pixels a metre stands on a 1,080-row screen from one metre off, and the error in pixels medium lets pass: what the art check counts levels by. */
 const SCALE = 1080 / (2 * Math.tan(1.2217 / 2));
@@ -68,11 +76,11 @@ const mm = (metres: number): string => (metres * 1000).toFixed(1);
  * to the old surface, which holds its frame to the old frame, and from the old surface to the recipe's, which shows what
  * the recipe left out.
  */
-export function distanceLines(old: Pack): string[] {
+export function distanceLines(old: Pack, recipe: TierRecipe = WOOD): string[] {
   const was = new Map(unpackMeshes(old).map((m) => [m.id, m.lods[0]!]));
   return Object.entries(FORMS).map(([name, form]) => {
-    const before = was.get(`core:${name}_wood`)!;
-    const shape = levelsOf(WOOD, name, form)[0]!;
+    const before = was.get(`core:${name}_${recipe.name}`)!;
+    const shape = levelsOf(recipe, name, form)[0]!;
     const mats = [...new Set(shape.faces.map((f) => f.mat))];
     const forward = mats.map((mat) => {
       const part = new (shape.constructor as new () => typeof shape)();
@@ -82,6 +90,32 @@ export function distanceLines(old: Pack): string[] {
     });
     const back = distances(samples(before), shape.lod(null, () => 0));
     return `${name.padEnd(12)} recipe to old, furthest mm: ${forward.join(", ").padEnd(52)} old to recipe: furthest ${mm(back[back.length - 1]!).padStart(6)}, 99 in 100 within ${mm(back[Math.floor(back.length * 0.99)]!).padStart(5)}, 95 in 100 within ${mm(back[Math.floor(back.length * 0.95)]!).padStart(5)}`;
+  });
+}
+
+/**
+ * Where the recipe's finest level has a corner at a corner of the old pack's, on a face that looks the same way, how far
+ * apart the two lay the picture there: a line a form, with how many such corners there are.
+ */
+export function pictureLines(old: Pack, made: Pack, tier: string): string[] {
+  const finest = (pack: Pack) => new Map(unpackMeshes(pack).map((m) => [m.id, m.lods[0]!]));
+  const [was, now] = [finest(old), finest(made)];
+  // A pack stores a corner to a fraction of a millimetre and a texture coordinate to one part in some thousands.
+  const key = (lod: SourceLod, v: number): string => [0, 1, 2].map((a) => Math.round(lod.positions[v * 3 + a]! * 2000)).join();
+  return Object.keys(FORMS).map((name) => {
+    const [before, after] = [was.get(`core:${name}_${tier}`)!, now.get(`core:${name}_${tier}`)!];
+    if (!before.uvs || !before.normals || !after.uvs || !after.normals) return `${name.padEnd(12)} no picture to compare`;
+    const at = new Map<string, number[]>();
+    for (let v = 0; v < before.positions.length / 3; v++) at.set(key(before, v), [...(at.get(key(before, v)) ?? []), v]);
+    let [shared, worst] = [0, 0];
+    for (let v = 0; v < after.positions.length / 3; v++) {
+      // Of the old corners here, those on a face turned within 8 degrees of this one, the one whose picture lies nearest.
+      const same = (at.get(key(after, v)) ?? []).filter((o) => [0, 1, 2].reduce((sum, a) => sum + before.normals![o * 3 + a]! * after.normals![v * 3 + a]!, 0) > 0.99);
+      if (same.length === 0) continue;
+      shared++;
+      worst = Math.max(worst, Math.min(...same.map((o) => Math.max(Math.abs(before.uvs![o * 2]! - after.uvs![v * 2]!), Math.abs(before.uvs![o * 2 + 1]! - after.uvs![v * 2 + 1]!)))));
+    }
+    return `${name.padEnd(12)} ${String(shared).padStart(5)} of ${String(after.positions.length / 3).padStart(5)} corners at an old corner; their pictures furthest apart by ${(worst * 2048).toFixed(2)} pixels of 2048`;
   });
 }
 
@@ -95,9 +129,21 @@ function levelAt(pack: Pack, id: string, metres: number): number {
   return level;
 }
 
+/** What each tier is looked at close to: a form, where the eye rests on it, the ball that fills the picture, and the degrees round and above. */
+const CLOSE: Readonly<Record<string, readonly (readonly [string, readonly [number, number, number], number, number, number])[]>> = {
+  wood: [
+    ["wall", [1.05, 0.9, 0.1], 0.62, 30, 8], ["wall", [-0.7, -1.2, 0.1], 0.5, -20, 20], ["doorframe", [0.6, 0.85, 0.1], 0.6, 25, -10], ["windowframe", [0, 0.1, 0.1], 0.75, 20, 10],
+    ["ceiling", [0.9, 0.12, 0.9], 0.75, 40, 35], ["ceiling", [0.6, -0.1, 0.6], 0.9, 30, -40], ["foundation", [1.2, 0, 1.2], 0.55, 40, 22], ["stairs", [0.9, 0.2, 0.4], 0.7, 40, 30], ["door", [0.3, 0, 0], 0.6, 20, 5], ["pillar", [0, 1.15, 0], 0.5, 35, 10],
+  ],
+  stone: [
+    ["wall", [0.9, 0.9, 0.1], 0.62, 30, 8], ["wall", [-0.6, -0.9, 0.1], 0.5, -62, 12], ["wall", [0.2, 0.1, 0.1], 0.5, 76, 4], ["doorframe", [0.6, 0.85, 0.1], 0.6, 25, -10], ["windowframe", [0.2, 0.1, 0.1], 0.75, 20, 10], ["windowframe", [-0.75, 0.1, 0.1], 0.4, -35, 5],
+    ["ceiling", [0.9, 0.12, 0.9], 0.75, 40, 35], ["ceiling", [0.6, -0.1, 0.6], 0.9, 30, -40], ["foundation", [1.2, 0, 1.2], 0.55, 40, 22], ["stairs", [0.9, 0.2, 0.4], 0.7, 40, 30], ["stairs", [1.5, -0.4, 0.3], 0.7, 70, 10], ["stairs", [0, 0, 1.5], 0.8, 160, 8], ["door", [0.3, 0, 0], 0.6, 20, 5], ["pillar", [0, 1.15, 0], 0.5, 35, 10],
+  ],
+};
+
 /** Pages of old beside new: each form near, then as large as it stands on a 1,080-row screen from where each new level begins, enlarged. */
-async function pages(old: Pack, made: Pack, out: string, say: (line: string) => void): Promise<void> {
-  const [before, after] = [await Studio.of(old, ["wood"]), await Studio.of(made, ["wood"])];
+async function pages(old: Pack, made: Pack, out: string, say: (line: string) => void, tier = "wood"): Promise<void> {
+  const [before, after] = [await Studio.of(old, [tier]), await Studio.of(made, [tier])];
   const names = Object.keys(FORMS);
   const [near, far, gap, head] = [300, 150, 4, 34];
   const row = near + 18;
@@ -105,9 +151,9 @@ async function pages(old: Pack, made: Pack, out: string, say: (line: string) => 
   for (let page = 0; page * perPage < names.length; page++) {
     const forms = names.slice(page * perPage, (page + 1) * perPage);
     const canvas = new Canvas(8 + 2 * (near + gap) + 8 * (far + gap) + 8, head + forms.length * (row + gap) + 4);
-    canvas.text("wood, old | recipe: near, then from where each of the recipe's levels begins on medium at 1080 rows", 8, 6, [28, 32, 38], 2);
+    canvas.text(`${tier}, old | recipe: near, then from where each of the recipe's levels begins on medium at 1080 rows`, 8, 6, [28, 32, 38], 2);
     forms.forEach((name, r) => {
-      const id = `core:${name}_wood`;
+      const id = `core:${name}_${tier}`;
       const header = made.header.meshes[made.meshIndex.get(id)!]!;
       const centre = header.center as [number, number, number];
       const radius = Math.max(header.half[1], Math.hypot(header.half[0], header.half[2]) * 0.8) * 1.12 + 0.05;
@@ -132,25 +178,22 @@ async function pages(old: Pack, made: Pack, out: string, say: (line: string) => 
         });
       });
     });
-    const file = join(out, `compare-wood-${page + 1}.png`);
+    const file = join(out, `compare-${tier}-${page + 1}.png`);
     writeFileSync(file, canvas.png());
     say(file);
   }
-  // Close to: a wall's corner and boards, a floor from standing height, a doorway's head.
-  const close: readonly (readonly [string, readonly [number, number, number], number, number, number])[] = [
-    ["wall", [1.05, 0.9, 0.1], 0.62, 30, 8], ["wall", [-0.7, -1.2, 0.1], 0.5, -20, 20], ["doorframe", [0.6, 0.85, 0.1], 0.6, 25, -10], ["windowframe", [0, 0.1, 0.1], 0.75, 20, 10],
-    ["ceiling", [0.9, 0.12, 0.9], 0.75, 40, 35], ["ceiling", [0.6, -0.1, 0.6], 0.9, 30, -40], ["foundation", [1.2, 0, 1.2], 0.55, 40, 22], ["stairs", [0.9, 0.2, 0.4], 0.7, 40, 30], ["door", [0.3, 0, 0], 0.6, 20, 5], ["pillar", [0, 1.15, 0], 0.5, 35, 10],
-  ];
+  // Close to: a wall's corner and boards or stones, a floor from standing height, a doorway's head.
+  const close: readonly (readonly [string, readonly [number, number, number], number, number, number])[] = CLOSE[tier] ?? CLOSE.wood!;
   const side = 380;
   const canvas = new Canvas(8 + 4 * (side + gap) + 4, head + Math.ceil(close.length / 2) * (side + 16 + gap));
-  canvas.text("wood close to, old | recipe", 8, 6, [28, 32, 38], 2);
+  canvas.text(`${tier} close to, old | recipe`, 8, 6, [28, 32, 38], 2);
   close.forEach(([name, centre, radius, around, above], k) => {
-    const piece = [{ id: `core:${name}_wood`, x: 0, y: 0, z: 0, yaw: 0 }];
+    const piece = [{ id: `core:${name}_${tier}`, x: 0, y: 0, z: 0, yaw: 0 }];
     const [x, y] = [8 + (k % 2) * 2 * (side + gap), head + Math.floor(k / 2) * (side + 16 + gap)];
     [before, after].forEach((studio, s) => canvas.shrink(studio.shoot(piece, side * 2, side * 2, centre, radius, around, above, 0, null), side * 2, side * 2, 2, x + s * (side + gap), y));
     canvas.text(name, x + 4, y + side + 3);
   });
-  const file = join(out, "compare-wood-close.png");
+  const file = join(out, `compare-${tier}-close.png`);
   writeFileSync(file, canvas.png());
   say(file);
 }
@@ -159,15 +202,19 @@ export async function main(args: readonly string[], say: (line: string) => void 
   const value = (name: string): string | undefined => (args.includes(`--${name}`) ? args[args.indexOf(`--${name}`) + 1] : undefined);
   const from = value("old");
   if (!from) throw new Error("--old PACK: the pack to set the recipe beside");
+  const tier = value("tier") ?? "wood";
+  const recipe = RECIPES[tier];
+  if (!recipe) throw new Error(`--tier ${tier}: no recipe makes it. There are: ${Object.keys(RECIPES).join(", ")}`);
   const old = parsePack(new Uint8Array(readFileSync(from)));
-  for (const line of distanceLines(old)) say(line);
+  const made = parsePack(new Uint8Array(readFileSync(value("new") ?? join(SOURCE, `core/structures/${tier}/${tier}.snpk`))));
+  for (const line of distanceLines(old, recipe)) say(line);
+  for (const line of pictureLines(old, made, tier)) say(line);
   if (args.includes("--numbers")) return;
   const out = resolve(value("out") ?? "var/pieces");
   mkdirSync(out, { recursive: true });
-  const made = parsePack(new Uint8Array(readFileSync(join(SOURCE, "core/structures/wood/wood.snpk"))));
   // Both packs again in today's form, so one drawing serves them.
   const again = (pack: Pack): Pack => parsePack(buildPack(unpackMeshes(pack), defaultPalette()));
-  await pages(again(old), again(made), out, say);
+  await pages(again(old), again(made), out, say, tier);
 }
 
 if (import.meta.main) await main(process.argv.slice(2));
