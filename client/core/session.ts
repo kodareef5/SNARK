@@ -164,7 +164,7 @@ import type { Buildings } from "../../shared/world/buildings.ts";
 import { NodeField, type NodeSource } from "../../shared/world/nodes.ts";
 import { heapAt, heapHealth } from "../../shared/world/breaking.ts";
 import { FramesTold, ROW_EMPTY, ROW_IN_PLACE, ROW_KEYED, RowCoder } from "../../shared/world/rows.ts";
-import { GONE_BLAST, GONE_TAKEN, StructureStore, withSurfaces, type ChunkTable } from "../../shared/world/structures.ts";
+import { GONE_BLAST, GONE_TAKEN, PUT_AS_IS, PUT_FREE, StructureStore, withSurfaces, type ChunkTable } from "../../shared/world/structures.ts";
 import { CMD_FAR, CMD_HAVE, CMD_STATICS, HAVE_MOST, HAVE_REACH, RESULT_BUSY, RESULT_OK, S_FAR, S_MARKS, S_TACTICAL } from "../../shared/net/protocol.ts";
 import { FarStore } from "./farcells.ts";
 import { GoneStore } from "./gonelists.ts";
@@ -2794,7 +2794,7 @@ export class ClientSession {
       if (r.overflow || at + n > statics.first[chunk + 1]!) return;
       for (let m = at; m < at + n; m++) {
         const kind = this.staticKinds![statics.kind[m]!]!;
-        structs.put(chunk, m - at + first, kind, statics.x[m]!, statics.y[m]!, statics.z[m]!, statics.yaw[m]!, 0, maxHp[kind]!, version, 0);
+        structs.put(chunk, m - at + first, kind, statics.x[m]!, statics.y[m]!, statics.z[m]!, statics.yaw[m]!, 0, maxHp[kind]!, version, PUT_FREE);
       }
     }
     const x0 = chunkCx(world.dims, chunk) * CHUNK_SIZE;
@@ -2820,7 +2820,7 @@ export class ClientSession {
         const hp = row.health(maxHp[now]!);
         if (was === 0) continue;
         if (told && (was !== now || hpWas !== Math.fround(hp))) told(was, now, rows!.x[slot]!, rows!.y[slot]!, rows!.z[slot]!, hpWas, hp, -1);
-        structs.put(chunk, slot, now, rows!.x[slot]!, rows!.y[slot]!, rows!.z[slot]!, rows!.yaw[slot]!, row.owner, hp, version, 0);
+        structs.put(chunk, slot, now, rows!.x[slot]!, rows!.y[slot]!, rows!.z[slot]!, rows!.yaw[slot]!, row.owner, hp, version, PUT_AS_IS);
         continue;
       }
       if (row.form === ROW_EMPTY) {
@@ -2829,7 +2829,7 @@ export class ClientSession {
         continue;
       }
       if (kind === 0) return;
-      let [x, y, z, yaw, fr] = [row.x, row.y, row.z, row.yaw, 0];
+      let [x, y, z, yaw, fr] = [row.x, row.y, row.z, row.yaw, PUT_FREE];
       if (row.form === ROW_KEYED) {
         // Its place and turn are its key's in its frame, as the server's are.
         if (row.def) this.framesTold.take(row.def);
@@ -2841,7 +2841,7 @@ export class ClientSession {
       if (told && (was !== kind || hpWas !== Math.fround(hp))) told(was, kind, x, y, z, hpWas, hp, -1);
       structs.put(chunk, slot, kind, x, y, z, yaw, row.owner, hp, version, fr, row.k0, row.k1);
       // A frame is its rows' owner's.
-      if (fr !== 0) structs.frames.get(fr)!.team = row.owner;
+      if (fr !== PUT_FREE) structs.frames.get(fr)!.team = row.owner;
       this.onRow?.(chunk * 65536 + slot);
     }
     this.framesTold.settle();
@@ -2879,7 +2879,7 @@ export class ClientSession {
               this.rubble.push({ kind, x, y, z, yaw, cause, ox, oy, oz, tick, radius, into, map: t.owner[slot] === 0 ? this.mapKind(chunk, slot) : 0 });
             }
             // A heap is as old as its batch, so a later batch of the same message may still take it.
-            if (into !== 0) world.structs.put(chunk, slot, into, x, y, z, yaw, t.owner[slot]!, heapHealth(reg, into), at, 0);
+            if (into !== 0) world.structs.put(chunk, slot, into, x, y, z, yaw, t.owner[slot]!, heapHealth(reg, into), at, PUT_AS_IS);
             else world.structs.put(chunk, slot, 0, 0, 0, 0, 0, 0, 0, version);
           }
         }

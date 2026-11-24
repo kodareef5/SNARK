@@ -334,10 +334,10 @@ test("a save of format 1 is refused with a plain message", () => {
   forged.exec(`UPDATE meta SET value = ${SCHEMA_VERSION} WHERE key = 'schema_version'`);
   forged.query("UPDATE chunk_structs SET data = ?").run(new Uint8Array(1 + 28 * 30).fill(1, 0, 1));
   forged.close();
-  expect(() => new Harness({}, 1, 60, { dbPath: db })).toThrow(`chunk ${chunk}: its structures were saved in format 1, and this build reads 2: old saves are not read, so start a new save`);
+  expect(() => new Harness({}, 1, 60, { dbPath: db })).toThrow(`chunk ${chunk}: its structures were saved in format 1, and this build reads 3: old saves are not read, so start a new save`);
   // Bytes cut short are refused too, by the chunk's number.
   const cut = new Database(db);
-  cut.query("UPDATE chunk_structs SET data = ?").run(Uint8Array.of(2, mapped, 0, 1, 3));
+  cut.query("UPDATE chunk_structs SET data = ?").run(Uint8Array.of(3, mapped, 0, 1, 3));
   cut.close();
   expect(() => new Harness({}, 1, 60, { dbPath: db })).toThrow(`chunk ${chunk}: unreadable structure data`);
 });

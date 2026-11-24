@@ -109,9 +109,9 @@ export class RowCoder {
   private readonly owners = new Named();
   private readonly syms = new Named();
   private readonly frames = new Named(FRAMES_NAMED);
-  /** The last keyed row's frame, anchor and level, and the last two syms with their places. */
+  /** The last keyed row's frame and the place of its sym, -1 before the first, and the last two syms with their places. */
   private frame = 0;
-  private readonly at = new Int16Array(5);
+  private lastCtx = -1;
   private sym0 = -1;
   private sym1 = -1;
   private ctx0 = 0;
@@ -123,6 +123,9 @@ export class RowCoder {
   /** The frames the reader is held to have been told, or null where frames are not defined in the rows (a save). */
   private told: Set<number> | null = null;
   private readonly scratch: FrameDef = { gid: 0, ox: 0, oy: 0, oz: 0, yaw: 0, team: 0 };
+  /** A row's bits held back while it is written, and how many. */
+  private acc = 0;
+  private held = 0;
 
   constructor(forms: FormTable | null, maxHp: Float32Array, opts: RowOptions = {}) {
     this.forms = forms;
@@ -148,7 +151,7 @@ export class RowCoder {
     this.syms.reset();
     this.frames.reset();
     this.frame = 0;
-    this.at.fill(0);
+    this.lastCtx = -1;
     this.sym0 = this.sym1 = -1;
     this.told = told;
     this.defined.length = 0;
@@ -174,7 +177,8 @@ export class RowCoder {
       turn.set(this.turn);
       this.turn = turn;
     }
-    this.mem.set(this.at, i * 5);
+    const from = this.lastCtx * 5;
+    for (let k = 0; k < 5; k++) this.mem[i * 5 + k] = from < 0 ? 0 : this.mem[from + k]!;
     this.along[i] = dir;
     this.turn[i] = 0;
   }
@@ -182,44 +186,75 @@ export class RowCoder {
   /**
    * Writes the row of slot `s` of `t`. In place, only its owner and health, and its kind if `swapped`. Otherwise an
    * empty slot says only that, and a row with a key goes by it, its frame defined first where the reader has not been told.
+   * A row's short fields are gathered in `a`, `n` of its low bits, and go to the writer together.
    */
   write(w: BitWriter, t: ChunkTable, s: number, inPlace: boolean, swapped: boolean, frames: Frames): void {
     const gap = s - this.slot - 1;
     this.slot = s;
-    w.bool(gap === 0);
+    let a = 1;
+    let n = 1;
     if (gap !== 0) {
       const which = gap <= 16 ? 0 : gap <= 256 ? 1 : gap <= 4096 ? 2 : 3;
-      w.bits(which, 2);
-      w.bits(gap - 1, 4 * which + 4);
+      a = (which << 1) | ((gap - 1) << 3);
+      n = 7 + 4 * which;
     }
     const kind = s < t.high ? t.kind[s]! : 0;
     const gid = t.fr !== null && kind !== 0 ? t.fr[s]! : 0;
     const form = inPlace ? ROW_IN_PLACE : kind === 0 ? ROW_EMPTY : gid !== 0 ? ROW_KEYED : ROW_FREE;
-    w.bool(form === this.last);
-    if (form !== this.last) w.bits(form, 2);
-    this.last = form;
-    if (form === ROW_EMPTY) return;
+    if (form === this.last) a |= 1 << n++;
+    else {
+      a |= form << (n + 1);
+      n += 3;
+      this.last = form;
+    }
+    if (form === ROW_EMPTY) return w.bits(a, n);
     const out = this.kindOut ? this.kindOut[kind]! : kind;
     const owner = t.owner[s]!;
-    if (form === ROW_IN_PLACE) {
-      w.bool(swapped);
-      if (swapped) this.kinds.write(w, out, 16);
-    } else if (form === ROW_FREE) {
+    if (form === ROW_KEYED) {
+      this.acc = a;
+      this.held = n;
+      this.writeKey(w, out, gid, t.k0![s]!, t.k1![s]!, owner, frames);
+      a = this.acc;
+      n = this.held;
+    } else if (form === ROW_IN_PLACE && !swapped) n++;
+    else {
+      w.bits(form === ROW_IN_PLACE ? a | (1 << n) : a, form === ROW_IN_PLACE ? n + 1 : n);
+      a = n = 0;
       this.kinds.write(w, out, 16);
-      w.bits(Math.round(t.x[s]! * STRUCT_UNITS) - this.x0, 15);
-      w.bits(Math.round(t.z[s]! * STRUCT_UNITS) - this.z0, 15);
-      this.writeHeight(w, Math.round(t.y[s]! * STRUCT_UNITS));
-      this.yaws.write(w, t.yaw[s]!, 16);
-    } else this.writeKey(w, out, gid, t.k0![s]!, t.k1![s]!, owner, frames);
-    this.owners.write(w, owner, 0);
+      if (form === ROW_FREE) {
+        w.bits(Math.round(t.x[s]! * STRUCT_UNITS) - this.x0, 15);
+        w.bits(Math.round(t.z[s]! * STRUCT_UNITS) - this.z0, 15);
+        this.writeHeight(w, Math.round(t.y[s]! * STRUCT_UNITS));
+        this.yaws.write(w, t.yaw[s]!, 16);
+      }
+    }
+    const place = this.owners.find(owner);
+    if (place < 0 || n > 16) {
+      w.bits(a, n);
+      a = n = 0;
+    }
+    if (place < 0) this.owners.write(w, owner, 0);
+    else {
+      a |= place << (n + 1);
+      n += 1 + this.owners.width;
+    }
     const max = this.maxHp[kind]!;
     const hp = t.hp[s]!;
     // Nobody's piece (the map's) is told exactly, since its forms turn on its health. An owned one is told its stage.
-    const stage = this.exact || owner === 0 ? (hp === max ? STAGE_FULL : 0) : healthStage(hp, max);
-    w.bool(stage === STAGE_FULL);
-    if (stage === STAGE_FULL) return;
-    if (this.exact || owner === 0) w.f32(hp);
-    else w.bits(stage, 8);
+    const exact = this.exact || owner === 0;
+    const stage = exact ? (hp === max ? STAGE_FULL : 0) : healthStage(hp, max);
+    if (n > 23) {
+      w.bits(a, n);
+      a = n = 0;
+    }
+    if (stage === STAGE_FULL) a |= 1 << n++;
+    else if (exact) n++;
+    else {
+      a |= stage << (n + 1);
+      n += 9;
+    }
+    w.bits(a, n);
+    if (stage !== STAGE_FULL && exact) w.f32(hp);
   }
 
   private writeHeight(w: BitWriter, y: number): void {
@@ -228,16 +263,22 @@ export class RowCoder {
     this.height = y;
   }
 
+  /** The key's part of a row, begun with the bits held in `acc` and leaving its last there. */
   private writeKey(w: BitWriter, kind: number, gid: number, k0: number, k1: number, owner: number, frames: Frames): void {
+    let a = this.acc;
+    let n = this.held;
     const dir = keyDir(k1);
     const sym = kind | (dir << 16);
     let i = this.ctx0;
-    if (sym === this.sym0) w.bool(true);
+    if (sym === this.sym0) a |= 1 << n++;
     else {
-      w.bool(false);
-      w.bool(sym === this.sym1);
-      if (sym === this.sym1) i = this.ctx1;
-      else {
+      if (sym === this.sym1) {
+        a |= 2 << n;
+        n += 2;
+        i = this.ctx1;
+      } else {
+        w.bits(a, n + 2);
+        a = n = 0;
         this.syms.write(w, sym, 20);
         i = this.syms.at;
         if (this.syms.whole) this.open(i, dir);
@@ -247,8 +288,10 @@ export class RowCoder {
       this.sym0 = sym;
       this.ctx0 = i;
     }
-    w.bool(gid === this.frame);
-    if (gid !== this.frame) {
+    if (gid === this.frame) a |= 1 << n++;
+    else {
+      w.bits(a, n + 1);
+      a = n = 0;
       this.frames.write(w, gid, 0);
       if (this.frames.whole) {
         const f = this.told !== null && !this.told.has(gid) && !this.defined.includes(gid) ? frames.get(gid) : undefined;
@@ -269,8 +312,8 @@ export class RowCoder {
       }
       this.frame = gid;
     }
+    // At most 25 bits are held here, and the anchor's short forms are 7 at most.
     const mem = this.mem;
-    const at = this.at;
     const o = i * 5;
     const a0 = keyM0(k0);
     const a1 = keyM1(k0);
@@ -280,44 +323,65 @@ export class RowCoder {
     const d1 = a1 - mem[o + 1]!;
     const d2 = a2 - mem[o + 2]!;
     const d3 = a3 - mem[o + 3]!;
-    if (d0 === 0 && d1 === 0 && d2 === 0 && d3 === 0) w.bits(0, 2);
+    if (d0 === 0 && d1 === 0 && d2 === 0 && d3 === 0) n += 2;
     else {
-      const step = stepOf(d0, d1, d2, d3);
+      // The way the last step ran is tried first: a row of pieces runs one way.
+      const e = this.along[i]! * 4;
+      const step = d0 === SIDE * DIRS[e]! && d1 === SIDE * DIRS[e + 1]! && d2 === SIDE * DIRS[e + 2]! && d3 === SIDE * DIRS[e + 3]! ? this.along[i]! : stepOf(d0, d1, d2, d3);
       if (step >= 0) {
-        w.bits(1, 2);
-        w.bool(step !== this.along[i]);
-        if (step !== this.along[i]) w.bits(step, 4);
-        this.along[i] = step;
-      } else if (Math.max(d0, d1, d2, d3) <= NEAR_MOST && Math.min(d0, d1, d2, d3) >= -NEAR_MOST - 1) {
-        w.bits(2, 2);
-        w.bool(d0 !== 0);
-        if (d0 !== 0) w.sbits(d0, NEAR_BITS);
-        w.bool(d1 !== 0);
-        if (d1 !== 0) w.sbits(d1, NEAR_BITS);
-        w.bool(d2 !== 0);
-        if (d2 !== 0) w.sbits(d2, NEAR_BITS);
-        w.bool(d3 !== 0);
-        if (d3 !== 0) w.sbits(d3, NEAR_BITS);
+        a |= 1 << n;
+        n += 3;
+        if (step !== this.along[i]) {
+          a |= (1 | (step << 1)) << (n - 1);
+          n += 4;
+          this.along[i] = step;
+        }
       } else {
-        w.bits(3, 2);
-        w.sbits(a0, FAR_BITS);
-        w.sbits(a1, FAR_BITS);
-        w.sbits(a2, FAR_BITS);
-        w.sbits(a3, FAR_BITS);
+        const near = Math.max(d0, d1, d2, d3) <= NEAR_MOST && Math.min(d0, d1, d2, d3) >= -NEAR_MOST - 1;
+        w.bits(a | ((near ? 2 : 3) << n), n + 2);
+        a = n = 0;
+        if (near) {
+          w.bool(d0 !== 0);
+          if (d0 !== 0) w.sbits(d0, NEAR_BITS);
+          w.bool(d1 !== 0);
+          if (d1 !== 0) w.sbits(d1, NEAR_BITS);
+          w.bool(d2 !== 0);
+          if (d2 !== 0) w.sbits(d2, NEAR_BITS);
+          w.bool(d3 !== 0);
+          if (d3 !== 0) w.sbits(d3, NEAR_BITS);
+        } else {
+          w.sbits(a0, FAR_BITS);
+          w.sbits(a1, FAR_BITS);
+          w.sbits(a2, FAR_BITS);
+          w.sbits(a3, FAR_BITS);
+        }
       }
     }
+    if (n > 16) {
+      w.bits(a, n);
+      a = n = 0;
+    }
     const lvl = keyLvl(k1);
-    w.bool(lvl === mem[o + 4]);
-    if (lvl !== mem[o + 4]) w.sbits(lvl - mem[o + 4]!, LEVEL_BITS);
+    if (lvl === mem[o + 4]) a |= 1 << n++;
+    else {
+      a |= ((lvl - mem[o + 4]!) & ((1 << LEVEL_BITS) - 1)) << (n + 1);
+      n += 1 + LEVEL_BITS;
+    }
     const turn = keyRot(k1) | (keyFlip(k1) << 2);
-    w.bool(turn === this.turn[i]);
-    if (turn !== this.turn[i]) w.bits(turn, 3);
-    this.turn[i] = turn;
-    mem[o] = at[0] = a0;
-    mem[o + 1] = at[1] = a1;
-    mem[o + 2] = at[2] = a2;
-    mem[o + 3] = at[3] = a3;
-    mem[o + 4] = at[4] = lvl;
+    if (turn === this.turn[i]) a |= 1 << n++;
+    else {
+      a |= turn << (n + 1);
+      n += 4;
+      this.turn[i] = turn;
+    }
+    mem[o] = a0;
+    mem[o + 1] = a1;
+    mem[o + 2] = a2;
+    mem[o + 3] = a3;
+    mem[o + 4] = lvl;
+    this.lastCtx = i;
+    this.acc = a;
+    this.held = n;
   }
 
   /** Reads the next row to this coder's fields. The caller looks at the reader's `overflow` once it has. */
@@ -351,13 +415,19 @@ export class RowCoder {
     const def = this.def as FrameDef | null;
     if (def && def.team === -1) def.team = this.owner;
     const forms = this.forms;
-    const at = this.at;
+    const mem = this.mem;
+    const o = this.ctx0 * 5;
     this.k0 = this.k1 = 0;
     if (!forms || kind >= forms.cls.length || forms.cls[kind]! < 0) return;
-    if (Math.max(Math.abs(at[0]!), Math.abs(at[1]!), Math.abs(at[2]!), Math.abs(at[3]!)) > M_MOST || Math.abs(at[4]!) > LVL_MOST) return;
+    const m0 = mem[o]!;
+    const m1 = mem[o + 1]!;
+    const m2 = mem[o + 2]!;
+    const m3 = mem[o + 3]!;
+    const lvl = mem[o + 4]!;
+    if (m0 > M_MOST || m0 < -M_MOST || m1 > M_MOST || m1 < -M_MOST || m2 > M_MOST || m2 < -M_MOST || m3 > M_MOST || m3 < -M_MOST || lvl > LVL_MOST || lvl < -LVL_MOST) return;
     const turn = this.turn[this.ctx0]!;
-    this.k0 = key0(forms.cls[kind]!, at[0]!, at[1]!, at[2]!);
-    this.k1 = key1(at[3]!, at[4]!, this.dir, forms.layer[kind]!, turn & 3, turn >> 2);
+    this.k0 = key0(forms.cls[kind]!, m0, m1, m2);
+    this.k1 = key1(m3, lvl, this.dir, forms.layer[kind]!, turn & 3, turn >> 2);
   }
 
   private readKey(r: BitReader): void {
@@ -395,22 +465,23 @@ export class RowCoder {
     }
     this.fr = this.frame;
     const mem = this.mem;
-    const at = this.at;
     const o = i * 5;
     const which = r.bits(2);
-    at.set(mem.subarray(o, o + 5));
     if (which === 1) {
       if (r.bool()) this.along[i] = r.bits(4) % DIRECTIONS;
       const e = this.along[i]! * 4;
-      for (let k = 0; k < 4; k++) at[k] = at[k]! + SIDE * DIRS[e + k]!;
+      mem[o] = mem[o]! + SIDE * DIRS[e]!;
+      mem[o + 1] = mem[o + 1]! + SIDE * DIRS[e + 1]!;
+      mem[o + 2] = mem[o + 2]! + SIDE * DIRS[e + 2]!;
+      mem[o + 3] = mem[o + 3]! + SIDE * DIRS[e + 3]!;
     } else if (which === 2) {
-      for (let k = 0; k < 4; k++) if (r.bool()) at[k] = at[k]! + r.sbits(NEAR_BITS);
+      for (let k = 0; k < 4; k++) if (r.bool()) mem[o + k] = mem[o + k]! + r.sbits(NEAR_BITS);
     } else if (which === 3) {
-      for (let k = 0; k < 4; k++) at[k] = r.sbits(FAR_BITS);
+      for (let k = 0; k < 4; k++) mem[o + k] = r.sbits(FAR_BITS);
     }
-    if (!r.bool()) at[4] = at[4]! + r.sbits(LEVEL_BITS);
+    if (!r.bool()) mem[o + 4] = mem[o + 4]! + r.sbits(LEVEL_BITS);
     if (!r.bool()) this.turn[i] = r.bits(3);
-    mem.set(at, o);
+    this.lastCtx = i;
   }
 
   /** The health of the row last read, for a piece whose kind's most is `max`. */

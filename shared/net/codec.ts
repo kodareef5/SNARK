@@ -387,6 +387,16 @@ export class Named {
     this.seen.length = 0;
   }
 
+  /** The place of a value named before, or -1. A writer that packs its own bits writes a 0 and the place in `width` bits. */
+  find(v: number): number {
+    return this.seen.indexOf(v);
+  }
+
+  /** The bits a place takes now. */
+  get width(): number {
+    return widthOf(this.seen.length);
+  }
+
   /** `bits` of the value, or 0 for a varint. */
   write(w: BitWriter, v: number, bits: number): void {
     const i = this.seen.indexOf(v);

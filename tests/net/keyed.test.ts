@@ -12,11 +12,12 @@ import { CLS_SQUARE, key0, key1 } from "../../shared/world/lattice/module.ts";
 import { Cells, formCells } from "../../shared/world/lattice/occupancy.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
 import { FRAMES_TOLD, ROW_BITS_MOST, ROW_FREE, ROW_KEYED, RowCoder } from "../../shared/world/rows.ts";
-import { StructureStore, toldHealth } from "../../shared/world/structures.ts";
+import { Found, StructureStore, toldHealth } from "../../shared/world/structures.ts";
 import { boxBase } from "../../tools/bench/base.ts";
 import { flatMap } from "../fixtures/map.ts";
 import { Harness } from "../fixtures/net.ts";
-import { coreRegistry } from "../fixtures/world.ts";
+import { Base, dodecagon, mixedHouse, turnedRegistry } from "../fixtures/turned.ts";
+import { coreRegistry, type TestWorld } from "../fixtures/world.ts";
 
 /** A flat map with no statics, so a chunk message is its header and its rows. */
 const MAP = writeMap(flatMap(12));
@@ -100,9 +101,23 @@ function tap(h: Harness, s: ClientSession, only = -1): { bytes: number; messages
   return seen;
 }
 
+const found = new Found();
+
+/** The refs the grid lists in each 2 m square of the 40 m round (x, z): what a body or a ray there is tested against. */
+function listed(structs: StructureStore, x: number, z: number): string[] {
+  const out: string[] = [];
+  for (let i = -10; i < 10; i++) {
+    for (let j = -10; j < 10; j++) {
+      const n = structs.query(x + 2 * i, z + 2 * j, x + 2 * i + 2, z + 2 * j + 2, found);
+      out.push([...found.refs.subarray(0, n)].sort((a, b) => a - b).join());
+    }
+  }
+  return out;
+}
+
 /** A survivor in the middle of the flat map, and its chunk's corner. */
-function watcher(link: LinkOptions = {}, seed = 1) {
-  const h = new Harness({}, seed, 30, { map: MAP });
+function watcher(link: LinkOptions = {}, seed = 1, reg = coreRegistry()) {
+  const h = new Harness({}, seed, 30, { map: MAP }, reg);
   const s = h.join("ada", link);
   h.run(1000);
   const chunk = h.world.ents.chunk[h.ent(s)]!;
@@ -164,7 +179,7 @@ test("a lone foundation costs no more than a free row and its frame's number", (
   const [free, none] = field(0);
   const [keyed, frames, defined] = field(7);
   expect([none, frames, defined]).toEqual([0, 200, 200]);
-  // 9.6 bytes each by its pose and 11.8 by its key: its frame's origin is its place, and its number and a dozen bits more.
+  // 8.7 bytes each by its pose and 11.2 by its key: its frame's origin is its place, and its number and a dozen bits more.
   expect((keyed! - free!) / 200).toBeLessThanOrEqual(3);
 });
 
@@ -248,6 +263,37 @@ test("a kept chunk comes back with its keys and its frame, though no row defines
   expect([wrong(h, s), held.frames.get(gid)!.live, seen.rows, seen.defined]).toEqual([[], 5001, 1, [gid]]);
 });
 
+test("pieces 30 and 60 degrees round in their base reach a client turned so, in the grid cells they cover", () => {
+  const { h, s, chunk, structs, x0, z0, go } = watcher({}, 1, turnedRegistry());
+  const w = { dims: h.world.dims, hf: h.world.hf, structs, reg: h.reg, kind: (id: string) => h.reg.index.get(id)! } as TestWorld;
+  // A triangle with a square on each side, walled and roofed, and a dodecagon of foundations, in bases at turns of their own.
+  const house = mixedHouse(new Base(w, x0 + 20, z0 + 20, 5000));
+  const round = dodecagon(new Base(w, x0 + 44, z0 + 40, 61234), 1);
+  h.run(1000);
+  const held = s.world!.structs;
+  const classes = (of: StructureStore): number[] => [...house.refs, ...round.refs].map((ref) => of.chunks[Math.floor(ref / 65536)]!.twAt(ref & 0xffff));
+  expect([0, 1, 2].map((tw) => classes(structs).filter((c) => c === tw).length > 4)).toEqual([true, true, true]);
+  expect([wrong(h, s), classes(held)]).toEqual([[], classes(structs)]);
+  for (const [x, z] of [[x0 + 20, z0 + 20], [x0 + 44, z0 + 40]] as const) expect(listed(held, x, z)).toEqual(listed(structs, x, z));
+  // Kept aside and put back, each is turned as it was and listed in the same cells.
+  go(chunk - 5);
+  h.run(2000);
+  expect(held.chunks[chunk]).toBeNull();
+  go(chunk - 4);
+  h.run(1000);
+  go(chunk);
+  h.run(1000);
+  expect([wrong(h, s), classes(held)]).toEqual([[], classes(structs)]);
+  for (const [x, z] of [[x0 + 20, z0 + 20], [x0 + 44, z0 + 40]] as const) expect(listed(held, x, z)).toEqual(listed(structs, x, z));
+  // A turned wall taken up and a turned square harmed come as any row does.
+  const wall = house.walls.find(([ref]) => structs.chunks[chunk]!.twAt(ref & 0xffff) !== 0)![0];
+  structs.remove(wall);
+  structs.damage(round.refs[1]!, 30);
+  h.run(500);
+  expect(wrong(h, s)).toEqual([]);
+  expect(listed(held, x0 + 20, z0 + 20)).toEqual(listed(structs, x0 + 20, z0 + 20));
+});
+
 test("clients hold the server's rows, keys and frames through building, breaking and leaving, on bad lines", () => {
   const h = new Harness({}, 5, 30, { map: MAP });
   const links: LinkOptions[] = [{}, { tcp: true, latencyMs: 60, jitterMs: 30, loss: 0.03 }, { latencyMs: 40, jitterMs: 40, loss: 0.05, burstMs: 60 }];
@@ -260,7 +306,7 @@ test("clients hold the server's rows, keys and frames through building, breaking
   const home = cz * 12 + cx;
   const [x0, z0] = [cx * CHUNK_SIZE, cz * CHUNK_SIZE];
   // A base of team 7 across the border to the east, one of team 8 beside it, and things with no key.
-  const plans = [boxBase(reg, "wood", x0 + 32.5, 120, z0 + 0.5, 10, 1, 1500), boxBase(reg, "stone", x0 + 2, 140, z0 + 40, 5, 2, 400)];
+  const plans = [boxBase(reg, "wood", x0 + 47.5, 120, z0 + 0.5, 10, 1, 1500), boxBase(reg, "stone", x0 + 2, 140, z0 + 40, 5, 2, 400)];
   const next = [0, 0];
   const owners = [7, 8];
   const live: number[] = [];
@@ -326,7 +372,8 @@ test("clients hold the server's rows, keys and frames through building, breaking
       if (wholeOf(h, s).includes(home)) checks++;
     }
   }
-  expect([moved > 30, checks > 5, retaken > 3, swapped > 0, lone > 3, structs.frames.count > 2]).toEqual([true, true, true, true, true, true]);
+  const spans = [...structs.frames.all()].some((f) => f.chunks.length > 1);
+  expect([moved > 30, checks > 5, retaken > 3, swapped > 0, lone > 3, structs.frames.count > 2, spans]).toEqual([true, true, true, true, true, true, true]);
 });
 
 test("the worst row is within the bound the message's guard leaves for one", () => {
