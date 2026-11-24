@@ -27,6 +27,8 @@ export interface SplitFile {
 export interface SplitOptions {
   /** Whether the boot file holds a mesh's smallest levels. Each mesh it does not is in a page. Every mesh where not given. */
   boot?: (id: string) => boolean;
+  /** Boot meshes whose held levels need their material surface at first draw. */
+  bootSurfaces?: ReadonlySet<string>;
   /** Where a paged mesh goes: meshes of two groups share no page, and in a group they go by place, then as the pack has them. */
   place?: (id: string) => readonly [group: number, place: number];
 }
@@ -45,8 +47,7 @@ interface Placed {
 /**
  * The boot file holds the palette, the rigs, the survivor's clips, the details atlas and the smallest levels of the
  * meshes `boot` names: the coarsest and every one of HELD_LEVEL_BYTES or less, so a client that has it can draw those,
- * coarsely, and pose its own body. A landmark's far mesh has none held. Each other mesh's smallest levels are in its page, with its row. Both hold them flat:
- * the surface and the skin of a level are always in the mesh file, with every other level. The boot and mesh files are
+ * coarsely, and pose its own body. A landmark's far mesh has none held. Each other mesh's smallest levels are in its page, with its row. Surfaces and skins go in the mesh file unless bootSurfaces keeps them with their levels. The boot and mesh files are
  * packs, though only the manifest says where the mesh file has the surface of a level held elsewhere. Each creature
  * skeleton's clips are one part of the clip file. Neither the clip file's parts nor the pages are yet deflated. The bytes
  * of a part are what they were in the whole pack. `blobs` are the pages' blobs.
@@ -105,8 +106,9 @@ export function splitPack(whole: Uint8Array, name: string, opts: SplitOptions = 
       const rest = (sizes[1] ?? 0) + (sizes[2] ?? 0);
       const file = !held(m, level, bytes) ? 1 : pageOf[i]! < 0 ? 0 : 2;
       const blob = file === 2 ? pages[pageOf[i]!]! : blobs[file]!;
-      const at = blob.append(pack.blob.subarray(lod.indexOffset, lod.indexOffset + bytes + (file === 1 ? rest : 0)));
-      const surfaceAt = file !== 1 && rest > 0 ? blobs[1]!.append(pack.blob.subarray(lod.indexOffset + bytes, lod.indexOffset + bytes + rest)) : -1;
+      const keepSurface = file === 1 || (file === 0 && opts.bootSurfaces?.has(m.id));
+      const at = blob.append(pack.blob.subarray(lod.indexOffset, lod.indexOffset + bytes + (keepSurface ? rest : 0)));
+      const surfaceAt = !keepSurface && rest > 0 ? blobs[1]!.append(pack.blob.subarray(lod.indexOffset + bytes, lod.indexOffset + bytes + rest)) : -1;
       const { surfaceOffset, skinOffset, sections, ...flat } = lod;
       const moved: PackLod = { ...(file === 1 ? lod : flat), indexOffset: at, vertexOffset: at + pad4(lod.indexCount * lod.indexBytes) };
       if (file === 1 && surfaceOffset !== undefined) moved.surfaceOffset = at + bytes;
