@@ -5,8 +5,8 @@ import { defaultLook, LOOK_SEX, LOOK_BEARD, randomLook, setRegion } from "../../
 import { Rng } from "../../shared/rng.ts";
 import { loadIdentity } from "../core/identity.ts";
 import { readLaunch, launchKey, savedName, validName, type EntrySurvivor, type Launch, type Remembered } from "../core/entry-state.ts";
-import { appearanceFields, bodyFields, identityFields, stepper, button, esc, field } from "./forms.ts";
-import { preloadWorld } from "./preload.ts";
+import { appearanceFields, bodyFields, identityFields, button, esc, field } from "./forms.ts";
+import { defaultEntrySpawn, playSurvivor, playWorld } from "../core/player-flow.ts";
 import { sceneFor } from "./scenery.ts";
 import { listingsOf, mergeListings, type Listing } from "../core/directories.ts";
 
@@ -56,7 +56,8 @@ function remembered(): Remembered[] {
     return [];
   }
 }
-let waitingForDirectScreen = direct && ["roster","link","create"].includes(new URLSearchParams(location.search).get("screen") ?? "");
+const route = new URLSearchParams(location.search).get("screen");
+const directScreen = direct && ["roster", "link", "create"].includes(route ?? "");
 let screen: Screen = "title",
   worlds: World[] = [],
   listed: Listing[] = [],
@@ -70,18 +71,19 @@ let screen: Screen = "title",
   accessFilter = "";
 let draft = "",
   look = defaultLook(),
-  step = 0,
+  customise = false,
+  editor: "appearance" | "build" = "appearance",
   group = 0,
   chart = false,
-  spawn = 0,
+  spawn = -1,
   turn = 0.25,
   code = "",
   backup = "",
   password = "",
   connecting = false,
-  fromWorld = false,
-  preloaded = false;
+  fromWorld = false;
 let prep: AbortController | null = null,
+  selectionPrep: AbortController | null = null,
   version = 0,
   loadingWorld = false,
   loadError = false,
@@ -89,8 +91,17 @@ let prep: AbortController | null = null,
 let pending: Launch | null = null;
 let afterWorld: Screen = "roster";
 let directoryOffline = false;
-let mapsOpen = matchMedia("(min-width:761px)").matches;
+let mapsOpen = false;
+let worldChoice = "";
+let recoveryName = "";
+let warmers: Promise<typeof import("./preload.ts")> | null = null;
+const loadWarmers = () => (warmers ??= import("./preload.ts"));
+let lastWorldRequest: { screen: Screen; wanted: string } | null = null;
+let priorLaunch: Launch | null = null;
 const base = () => selected?.address || home;
+const directWorld = (): World | null => direct
+  ? worlds.find((w) => w.address === home) ?? { address: home, name: "World", map: "", mapId: "", players: 0, max: 0 }
+  : null;
 const selectedRow = () => known.find((r) => r.name === pick);
 const getInput = (id: string) => document.querySelector<HTMLInputElement>("#" + id)?.value ?? "";
 async function json(url: string, opts?: RequestInit) {
@@ -142,51 +153,56 @@ function remember(world: World, rows: EntrySurvivor[]) {
 }
 function warm() {
   prep?.abort();
-  prep = new AbortController();
-  const job = prep;
-  preloaded = false;
+  const job = new AbortController();
+  prep = job;
   const survivor = screen === "roster" ? selectedRow() : undefined;
-  const p =
-    survivor && !survivor.dead && typeof survivor.x === "number" && typeof survivor.z === "number"
-      ? { name: survivor.name, x: survivor.x, z: survivor.z }
-      : data?.spawns[spawn];
+  const p = survivor && !survivor.dead && typeof survivor.x === "number" && typeof survivor.z === "number"
+    ? { x: survivor.x, z: survivor.z }
+    : data?.spawns[spawn];
   if (!p) return;
-  status.textContent = "Preparing " + p.name;
-  preloadWorld(base(), p.x, p.z, job.signal, (s) => {
-    if (prep === job) status.textContent = s;
-  })
-    .then(() => {
-      if (prep !== job) return;
-      preloaded = true;
-      status.textContent = "World ready";
-      if (screen === "spawn") render();
-    })
-    .catch(() => {
-      if (prep !== job || job.signal.aborted) return;
-      status.textContent = "World preload interrupted";
-      if (screen === "spawn") {
-        notice = "Loading was interrupted. Retry to prepare this spawn.";
-        render();
-      }
-    });
+  const address = base();
+  void loadWarmers().then(({ preloadWorld }) => {
+    if (!job.signal.aborted) return preloadWorld(address, p.x, p.z, job.signal);
+  }).catch(() => {});
 }
-async function selectWorld(w: World, to: Screen = "roster", wanted = "") {
+
+function createDraft(): void {
+  const prior = read("snark.name");
+  draft = savedName(prior) && !known.some((r) => r.name === prior) ? prior : "";
+  look = defaultLook();
+  priorLaunch = null;
+  customise = false;
+  editor = "appearance";
+  group = 0;
+  chart = false;
+  turn = 0.25;
+}
+
+async function selectWorld(w: World, to: Screen = "roster", wanted = ""): Promise<boolean> {
   const address = worldUrl(w.address, home);
   if (new URL(address).origin !== location.origin) {
     const dest = new URL(address);
     dest.searchParams.set("screen", to);
+    if (wanted) dest.searchParams.set("survivor", wanted);
     location.assign(dest.href);
-    return;
+    return false;
   }
   prep?.abort();
   prep = null;
+  selectionPrep?.abort();
+  const selection = new AbortController();
+  selectionPrep = selection;
+  void loadWarmers().then(({ preloadLaunch }) => {
+    if (!selection.signal.aborted) return preloadLaunch(address, selection.signal);
+  }).catch(() => {});
+  lastWorldRequest = { screen: to, wanted };
   status.textContent = "";
   const v = ++version;
   selected = { ...w, address };
   data = null;
   known = [];
   pick = wanted;
-  spawn = 0;
+  spawn = -1;
   password = "";
   loadingWorld = true;
   loadError = false;
@@ -197,16 +213,20 @@ async function selectWorld(w: World, to: Screen = "roster", wanted = "") {
   topOfPage();
   try {
     const [info, roster] = await Promise.all([json(new URL("entry-world.json", address).href), owner("roster")]);
-    if (v !== version) return;
+    if (v !== version) return false;
     data = info;
     known = roster.survivors;
     const current: World = { ...w, ...info, address };
     selected = current;
-    pick = known.some((r) => r.name === wanted) ? wanted : (known[0]?.name ?? "");
+    const chosen = playSurvivor(known, wanted) ?? playSurvivor(known, "");
+    pick = chosen?.name ?? "";
+    spawn = address === home && priorLaunch?.intent === "create" && info.spawns[priorLaunch.spawn!]
+      ? priorLaunch.spawn!
+      : defaultEntrySpawn(info.spawns, read("snark.spawn." + address));
     remember(current, known);
     warm();
   } catch (e) {
-    if (v !== version) return;
+    if (v !== version) return false;
     notice = String((e as Error).message);
     loadError = true;
   }
@@ -214,11 +234,18 @@ async function selectWorld(w: World, to: Screen = "roster", wanted = "") {
     loadingWorld = false;
     render();
   }
+  return v === version && !loadError;
 }
 async function worldsRefresh() {
   try {
     const rows: World[] = await json(new URL("entry-worlds.json", home).href);
-    worlds = rows.map((w) => ({ ...w, address: worldUrl(w.address, home) }));
+    worlds = rows.flatMap((w) => {
+      try {
+        return [{ ...w, address: worldUrl(w.address, home) }];
+      } catch {
+        return [];
+      }
+    });
   } catch {}
   if (screen !== "servers" || !dirs().length) return;
   const ask = (url: string) =>
@@ -234,14 +261,22 @@ async function worldsRefresh() {
   refreshFilters();
 }
 function nav(next: Screen) {
-  if (next === "title") waitingForDirectScreen = false;
   if (screen === "link" && code && next !== "link") void owner("cancel", { code }).catch(() => {});
   if (next === "title" || next === "servers") {
+    fromWorld = false;
+    loadError = false;
     prep?.abort();
     prep = null;
+    selectionPrep?.abort();
+    selectionPrep = null;
+    void warmers?.then(({ stopPreloading }) => {
+      if (!selectionPrep) stopPreloading();
+    }).catch(() => {});
     status.textContent = "";
   }
   if (loadingWorld) {
+    selectionPrep?.abort();
+    selectionPrep = null;
     version++;
     loadingWorld = false;
   }
@@ -251,30 +286,30 @@ function nav(next: Screen) {
   screen = next;
   render();
   topOfPage();
-  if (next === "servers") void worldsRefresh();
+  if (next === "servers") {
+    void worldsRefresh().then(() => {
+      if (screen !== "servers") return;
+      if (!worldChoice) worldChoice = playWorld(worlds, direct ? home : null, location.origin)?.address ?? "";
+      refreshFilters();
+    });
+  }
 }
 function syncScene() {
   const saved = screen === "roster" && fromWorld ? selectedRow()?.look : null;
   const portrait = screen === "create" || !!saved;
-  sceneFor(selected?.address ?? "", portrait, saved ? Uint8Array.from(saved) : look, spawn, turn, screen === "create", screen === "title" && !waitingForDirectScreen);
+  const cover = screen === "spawn" ? mapArt(selected?.mapId, selected?.map)?.cover : undefined;
+  document.body.style.setProperty("--world-cover", cover ? "url(" + JSON.stringify(cover) + ")" : "");
+  sceneFor(selected?.address ?? "", portrait, saved ? Uint8Array.from(saved) : look, Math.max(0, spawn), turn, false, screen === "title");
 }
-function panel(title: string, inside: string, style = "", back = "back") {
-  return (
-    '<section class="panel ' +
-    style +
-    '"><div class="topline">' +
-    button(back, "← Back", "quiet") +
-    "<span>" +
-    esc(fromWorld ? (selected?.name ?? "") : "") +
-    '</span></div><h1 tabindex="-1">' +
-    esc(title) +
-    "</h1>" +
-    inside +
-    '<p role="alert" class="message">' +
-    esc(notice) +
-    "</p></section>"
-  );
+
+function panel(title: string, inside: string, primary = "", style = "") {
+  const retry = loadError && fromWorld ? button("retry-world", "Retry world", "primary") : primary;
+  return `<section class="panel ${style}" aria-labelledby="flow-title"><div class="entry-content"><h1 id="flow-title" tabindex="-1">${esc(title)}</h1>${inside}</div>
+    <div class="entry-actions"><p role="alert" class="message">${esc(notice)}</p><div class="advance-row">
+      ${retry}${button("back", "← Back", "back")}
+    </div></div></section>`;
 }
+
 function visibleWorlds() {
   const dedupe = new Map<string, World>();
   for (const w of [...listed, ...worlds]) dedupe.set(w.address, w);
@@ -287,13 +322,8 @@ function visibleWorlds() {
 }
 function topOfPage() {
   window.scrollTo({ top: 0, behavior: "instant" });
+  root.querySelector(".entry-content")?.scrollTo({ top: 0, behavior: "instant" });
   root.querySelector<HTMLElement>("h1")?.focus({ preventScroll: true });
-}
-function goStep(next: number) {
-  step = next;
-  notice = "";
-  render();
-  topOfPage();
 }
 const previousCards = new WeakMap<Element, string>();
 function updateCards(parent: Element, markup: string) {
@@ -320,11 +350,17 @@ function renderList() {
   const list = root.querySelector("#results");
   if (!list) return;
   const rows = visibleWorlds();
-  updateCards(list, rows.map(serverCard).join("") || "<p>No matching servers.</p>");
+  updateCards(list, rows.map((world) => serverCard(world, world.address === worldChoice)).join("") || "<p>No matching servers.</p>");
   const n = root.querySelector("#result-count");
-  if (n) n.textContent = rows.length + " " + (rows.length === 1 ? "server" : "servers");
+  if (n) n.textContent = rows.length + " " + (rows.length === 1 ? "world" : "worlds");
+  const chosen = rows.find((w) => w.address === worldChoice);
+  const advance = root.querySelector<HTMLButtonElement>('[data-action="choose-world"]');
+  if (advance) {
+    advance.disabled = !chosen || chosen.online === false;
+    advance.textContent = chosen ? "Use " + chosen.name : "Select a world";
+  }
 }
-function survivors() {
+function survivors(): { content: string; primary: string } {
   const local = fromWorld ? known : remembered();
   const cards = local
     .map((r) => {
@@ -358,21 +394,22 @@ function survivors() {
     })
     .join("");
   const chosen = fromWorld && selectedRow();
-  return (
-    '<p class="context">' +
-    esc(fromWorld ? selected?.map : "On this browser") +
-    '</p><div class="roster-grid">' +
-    (loadingWorld ? "<p>Finding survivors…</p>" : cards || "<p>No survivors here yet.</p>") +
-    '</div><div class="actions">' +
-    (chosen ? button("continue", "Continue as " + pick, "primary") : "") +
-    button("new", "New survivor", chosen ? "secondary" : "primary", fromWorld && (loadingWorld || loadError) ? "disabled" : "") +
-    (loadError ? button("retry-world", "Retry world") : "") +
-    '</div><div class="support">' +
-    button(fromWorld ? "link" : "link-world", "Link this browser", "quiet") +
-    (chosen ? button("approve", "Link another browser", "quiet") + button("backup", "Save recovery code", "quiet") : "") +
-    "</div>"
-  );
+  const primary = loadError ? button("retry-world", "Retry world", "primary") :
+    loadingWorld ? button("wait", "Finding survivors…", "primary", "disabled") :
+    chosen ? button("continue", chosen.dead ? "Return as " + pick : "Play as " + pick, "primary") :
+    button("new", "Create a survivor", "primary");
+  return {
+    primary,
+    content: (chosen && chosen.dead ? '<p class="lead">Choose a respawn point after entering the world.</p>' : "")
+      + '<div class="roster-grid">' + (loadingWorld ? "<p>Finding survivors…</p>" : cards || "<p>No survivors yet.</p>") + '</div>'
+      + '<div class="support">'
+      + (chosen ? button("new", "Create a survivor", "quiet") : "")
+      + button(fromWorld ? "link" : "link-world", "Link this browser", "quiet")
+      + (chosen ? button("approve", "Link another browser", "quiet") + button("backup", "Save recovery code", "quiet") : "")
+      + "</div>",
+  };
 }
+
 function render() {
   const focused = document.activeElement instanceof HTMLElement && root.contains(document.activeElement) ? document.activeElement : null;
   const focusKey = focused?.dataset.action;
@@ -381,161 +418,81 @@ function render() {
         .map(([k, v]) => "[data-" + k + '="' + CSS.escape(v ?? "") + '"]')
         .join("")
     : "";
+  const scroll = root.querySelector(".entry-content")?.scrollTop ?? 0;
   const last = lastPlayed();
   let html = "";
   if (screen === "title") {
-    html =
-      '<section class="home"><img class="title-emblem" src="title/snark-emblem.webp" alt="SNARK · Miami Devolved" width="480" height="480"><div class="home-actions">' +
-      (last ? button("last", "Continue as " + last.name, "primary") : "") +
-      button("servers", "Find a server", last ? "" : "primary") +
-      button("all", "My survivors", "") +
-      "</div>" +
-      (last ? "<p>" + esc(last.server) + " · " + esc(last.map) + "</p>" : "") +
-      "</section>";
+    html = `<section class="home entry-title" aria-labelledby="entry-title">
+      <div class="title-identity"><h1 id="entry-title" tabindex="-1"><img class="title-emblem" src="title/snark-emblem.webp" alt="SNARK · Miami Devolved" width="480" height="480"></h1></div>
+      <div class="home-actions">
+        ${last ? `<p class="return-world">${esc([...new Set([last.server, last.map].filter(Boolean))].join(" · "))}</p>` : ""}
+        <p class="message" role="alert">${esc(notice)}</p>
+        <div class="title-options">${button("servers", "Browse worlds", "quiet")}${button("all", "My survivors", "quiet")}</div>
+        ${button("begin", last ? "Continue as " + last.name : "Play", "primary")}
+      </div></section>`;
   } else if (screen === "servers") {
-    const filters = [
-      ["", "Any access"],
-      ["open", "Open"],
-      ["locked", "Password"],
-    ];
-    html = panel(
-      "Find a server",
-      '<div class="filters"><label class="search"><span>Search servers or cities</span><input type="search" id="query" value="' +
-        esc(query) +
-        '" placeholder="Search servers or cities"></label><div class="chips" role="group" aria-label="Server access">' +
-        filters
-          .map(([id, name]) => button("access", name!, "chip", 'data-filter="' + id + '" aria-pressed="' + (accessFilter === id) + '"'))
-          .join("") +
-        '</div></div><details id="map-shelf" ' +
-        (mapsOpen ? "open" : "") +
-        "><summary>Browse maps" +
-        (mapFilter ? " · " + esc(mapFilter) : "") +
-        '</summary><div id="map-filter" class="map-options"></div></details><div class="results-heading"><p class="context" id="result-count"></p>' +
-        (mapFilter ? button("choose-map", "Clear map filter", "quiet", 'data-map=""') : "") +
-        '</div><div id="results" class="server-grid"></div><p id="directory-offline" ' +
-        (directoryOffline ? "" : "hidden") +
-        '>Public directory unavailable. Cluster worlds and direct joins are available.</p><div class="support">' +
-        button("direct", "Join by address", "quiet") +
-        "</div>",
-      "wide",
-    );
-  } else if (screen === "roster") html = panel("My survivors", survivors(), "roster");
-  else if (screen === "create") {
-    const title = ["New survivor", "Appearance", "Body proportions"][step]!;
-    const edit = step === 0 ? identityFields(look, draft) : step === 1 ? appearanceFields(look) : bodyFields(look, group);
-    const toolbar = step
-      ? '<div class="support">' +
-        button("rotate", "Rotate preview", "quiet") +
-        button("random", "Randomize", "quiet") +
-        button("reset", "Reset", "quiet") +
-        "</div>"
+    const filters = [["", "Any access"], ["open", "Open"], ["locked", "Password"]];
+    html = panel("Choose a world", `<div class="filters"><label class="search"><span>Search worlds</span><input type="search" id="query" value="${esc(query)}" placeholder="World name or city"></label>
+      <div class="chips" role="group" aria-label="World access">${filters.map(([id, name]) => button("access", name!, "chip", `data-filter="${id}" aria-pressed="${accessFilter === id}"`)).join("")}</div></div>
+      <details id="map-shelf" ${mapsOpen ? "open" : ""}><summary>Maps${mapFilter ? " · " + esc(mapFilter) : ""}</summary><div id="map-filter" class="map-options"></div></details>
+      <div class="results-heading"><p class="context" id="result-count"></p>${mapFilter ? button("choose-map", "Clear map filter", "quiet", 'data-map=""') : ""}</div>
+      <div id="results" class="server-grid"></div>
+      <p id="directory-offline" ${directoryOffline ? "" : "hidden"}>Public directory unavailable. Cluster worlds and direct joins are available.</p>
+      <div class="support">${button("direct", "Join by address", "quiet")}</div>`, button("choose-world", "Select a world", "primary", "disabled"), "world-browser");
+  } else if (screen === "roster") {
+    const r = survivors();
+    html = panel("Your survivors", r.content, r.primary, "roster");
+  } else if (screen === "create") {
+    const controls = customise
+      ? `<div class="appearance-editor"><div class="chips" role="group" aria-label="Appearance options">
+        ${button("editor", "Appearance", "chip", `data-editor="appearance" aria-pressed="${editor === "appearance"}"`)}
+        ${button("editor", "Proportions", "chip", `data-editor="build" aria-pressed="${editor === "build"}"`)}
+      </div>${editor === "appearance" ? appearanceFields(look) : bodyFields(look, group)}
+      <div class="support">${button("rotate", "Rotate preview", "quiet")}${button("random", "Randomize", "quiet")}${button("reset", "Reset appearance", "quiet")}</div></div>`
       : "";
-    html = panel(
-      title,
-      stepper(step) +
-        edit +
-        toolbar +
-        '<div class="actions">' +
-        button(step === 2 ? "spawn" : "next-step", ["Choose appearance", "Continue to build", "Choose spawn"][step]!, "primary") +
-        "</div>",
-      "creator",
-    );
+    html = panel("Create a survivor", `<div class="identity-fields">${identityFields(look, draft)}</div>
+      <div class="support">${button("customise", customise ? "Hide appearance options" : "Customize appearance", "quiet", `aria-expanded="${customise}"`)}</div>${controls}`,
+      button("spawn", "Choose spawn", "primary", loadingWorld || loadError ? "disabled" : ""), "creator");
   } else if (screen === "spawn") {
-    const points = data?.spawns ?? [],
-      point = points[spawn],
-      art = mapArt(selected?.mapId, selected?.map);
-    const pins = points
-      .map(
-        (p, i) =>
-          '<button type="button" class="pin" aria-label="' +
-          esc(p.name) +
-          '" title="' +
-          esc(p.name) +
-          '" data-action="place" data-index="' +
-          i +
-          '" aria-pressed="' +
-          (i === spawn) +
-          '" style="left:' +
-          (1 - p.x / data!.width) * 100 +
-          "%;top:" +
-          (1 - p.z / data!.height) * 100 +
-          '%"></button>',
-      )
-      .join("");
-    const content = chart
-      ? '<div class="chart" ' + (art?.overview ? 'style="background-image:url(' + esc(art.overview) + ')"' : "") + ">" + pins + "</div>"
+    const points = data?.spawns ?? [], point = points[spawn], art = mapArt(selected?.mapId, selected?.map);
+    const pins = points.map((p, i) => `<button type="button" class="pin" aria-label="${esc(p.name)}" title="${esc(p.name)}" data-action="place" data-index="${i}" aria-pressed="${i === spawn}" style="left:${(1 - p.x / data!.width) * 100}%;top:${(1 - p.z / data!.height) * 100}%"></button>`).join("");
+    const places = chart
+      ? `<div class="chart" ${art?.overview ? `style="background-image:url('${esc(art.overview)}')"` : ""}>${pins}</div>`
       : regionTiles(points, art, spawn, data?.width ?? 1, data?.height ?? 1);
-    html = panel(
-      "Choose spawn",
-      stepper(3) +
-        '<div class="spawn-flow"><div class="spawn-choice"><span><small>' +
-        esc(draft) +
-        " · " +
-        esc(selected?.map) +
-        "</small><strong>" +
-        esc(point?.name ?? "Loading world…") +
-        "</strong></span>" +
-        '</div><div class="place-tools"><div class="chips" role="group" aria-label="Spawn view">' +
-        button("places", "Places", "chip", 'aria-pressed="' + !chart + '"') +
-        button("chart", "Map", "chip", 'aria-pressed="' + chart + '"') +
-        "</div>" +
-        (notice && !preloaded ? button("warm", "Retry preload", "quiet") : "") +
-        "</div>" +
-        content +
-        button("commit", preloaded && point ? "Create at " + point.name : notice ? "Preload interrupted" : "Preparing spawn…", "primary", preloaded ? "" : "disabled") +
-        "</div>",
-      "wide spawn-page",
-    );
-  } else if (screen === "direct")
-    html = panel(
-      "Join by address",
-      field("address", "Server address (include http:// for LAN)", "", 'placeholder="https://play.example.org/"') +
-        button("go-direct", "Open server", "primary"),
-    );
-  else if (screen === "link")
-    html = panel(
-      "Link this browser",
-      code
-        ? '<p>Enter this code in your other browser. Select your survivor there and choose Link another browser.</p><output class="code">' +
-            esc(code.slice(0, 4) + " " + code.slice(4)) +
-            "</output><p>Waiting for approval · Expires in five minutes</p>"
-        : button("pair", "Get a linking code", "primary") + button("recover", "Use a recovery code", "quiet"),
-    );
-  else if (screen === "approve")
-    html = panel(
-      "Approve another browser",
-      "<p>" +
-        esc(pick) +
-        " · " +
-        esc(selected?.name) +
-        "</p>" +
-        field("pair-code", "Code shown in the new browser", "", 'autocomplete="off"') +
-        button("grant", "Approve handoff", "primary"),
-    );
-  else if (screen === "backup")
-    html = panel(
-      "Recovery code",
-      backup
-        ? '<p>Save this one-use code with your survivor name and world. Keep it private.</p><output class="code">' + esc(backup) + "</output>"
-        : "<p>Generate a new recovery code for " +
-            esc(pick) +
-            ". Any previous recovery code will expire.</p>" +
-            button("make-backup", "Generate recovery code", "primary"),
-    );
-  else if (screen === "recover")
-    html = panel(
-      "Recover a survivor",
-      field("who", "Survivor name") +
-        field("recovery", "Saved recovery code", "", 'autocomplete="off"') +
-        button("restore", "Recover survivor", "primary"),
-    );
-  else if (screen === "password")
-    html = panel(
-      "Server password",
-      field("password", "Password for " + (selected?.name ?? "this world"), "", 'type="password" autocomplete="current-password"') +
-        button("unlock", "Join world", "primary"),
-    );
+    html = panel("Choose a spawn", `<div class="spawn-current"><div><p class="context">${esc(draft)} · ${esc(selected?.map)}</p><strong>${esc(point?.name ?? "No spawn selected")}</strong></div>
+      ${art?.overview ? `<div class="chips" role="group" aria-label="Spawn view">${button("places", "Places", "chip", `aria-pressed="${!chart}"`)}${button("chart", "Map", "chip", `aria-pressed="${chart}"`)}</div>` : ""}</div>${places}`,
+      button("commit", point ? "Enter at " + point.name : "Enter world", "primary", point ? "" : "disabled"), "spawn-page");
+  } else if (screen === "direct") {
+    html = panel("Join by address",
+      field("address", "Server address", "", 'placeholder="https://play.example.org/" inputmode="url" autocomplete="url"'),
+      button("go-direct", "Open world", "primary"));
+  } else if (screen === "link") {
+    html = panel("Link this browser", code
+      ? `<p>Enter this code in the browser that owns your survivor, under Link another browser.</p><output class="code">${esc(code.slice(0, 4) + " " + code.slice(4))}</output><p>Waiting for approval · Expires in five minutes</p>`
+      : `<div class="support">${button("recover", "Use a recovery code", "quiet")}</div>`,
+      code ? button("wait", "Waiting for approval", "primary", "disabled") : button("pair", "Get a linking code", "primary"));
+  } else if (screen === "approve") {
+    html = panel("Approve another browser",
+      `<p>${esc(pick)} · ${esc(selected?.name)}</p>` + field("pair-code", "Code shown on the new browser", "", 'autocomplete="off"'),
+      button("grant", "Approve link", "primary"));
+  } else if (screen === "backup") {
+    html = panel("Recovery code", backup
+      ? `<p>Keep this one-use code private. Save it with your survivor name and world.</p><output class="code">${esc(backup)}</output>`
+      : `<p>Generate a new code for ${esc(pick)}. Any previous recovery code will expire.</p>`,
+      backup ? button("back", "Done", "primary") : button("make-backup", "Generate recovery code", "primary"));
+  } else if (screen === "recover") {
+    html = panel("Recover a survivor",
+      field("who", "Survivor name", recoveryName) + field("recovery", "Saved recovery code", "", 'autocomplete="off"'),
+      button("restore", "Recover survivor", "primary"));
+  } else if (screen === "password") {
+    html = panel("World password",
+      field("password", "Password for " + (selected?.name ?? "this world"), "", 'type="password" autocomplete="current-password"'),
+      button("unlock", "Enter world", "primary"));
+  }
   root.innerHTML = html;
+  const content = root.querySelector<HTMLElement>(".entry-content");
+  if (content) content.scrollTop = scroll;
+  document.body.dataset.entryScreen = screen;
   if (screen === "servers") {
     refreshFilters();
     const shelf = root.querySelector<HTMLDetailsElement>("#map-shelf");
@@ -545,7 +502,8 @@ function render() {
       };
   }
   if (focusKey && focusAttr) root.querySelector<HTMLElement>(focusAttr)?.focus({ preventScroll: true });
-  document.querySelector("#world-label")!.textContent = selected && screen !== "title" ? selected.name : "";
+  document.querySelector("#world-label")!.textContent = selected && fromWorld && !["title", "servers"].includes(screen)
+    ? [...new Set([selected.name, selected.map].filter(Boolean))].join(" · ") : "";
   syncScene();
 }
 function enter(launch: Launch) {
@@ -591,13 +549,10 @@ async function poll(world: string, token: string) {
 }
 async function action(a: string, b: HTMLElement) {
   if (a === "back") {
-    if (screen === "create" && step > 0) {
-      goStep(step - 1);
-      return;
-    }
     if (screen === "spawn") nav("create");
     else if (screen === "password" && pending?.intent === "create") nav("spawn");
-    else if (["create", "link", "approve", "backup", "password", "recover"].includes(screen)) nav("roster");
+    else if (screen === "recover") nav("link");
+    else if (["create", "link", "approve", "backup", "password"].includes(screen)) nav("roster");
     else if (screen === "direct" || (screen === "roster" && fromWorld)) nav("servers");
     else nav("title");
     return;
@@ -608,11 +563,39 @@ async function action(a: string, b: HTMLElement) {
     nav("servers");
     return;
   }
-  if (a === "last") {
+  if (a === "begin") {
+    const mark = version;
+    if (!direct && worlds.length === 0) {
+      status.textContent = "Finding worlds…";
+      await firstWorlds;
+      if (screen !== "title" || mark !== version) return;
+      status.textContent = "";
+    }
     const last = lastPlayed();
     if (last) {
-      await selectWorld({ address: last.world, name: last.server, map: last.map, mapId: "", players: 0, max: 0 }, "roster", last.name);
-      if (!loadError && pick === last.name) enter({ intent: "resume", name: pick, password: "" });
+      const knownWorld = worlds.find((w) => w.address === last.world);
+      const rememberedWorld = { address: last.world, name: last.server, map: last.map, mapId: "", players: 0, max: 0 };
+      if (await selectWorld(knownWorld ?? rememberedWorld, "roster", last.name)) {
+        if (pick === last.name) enter({ intent: "resume", name: pick, password: "" });
+        else {
+          notice = `${last.name} is no longer available on this browser.`;
+          render();
+        }
+      }
+      return;
+    }
+    const world = directWorld() ?? playWorld(worlds, null, location.origin);
+    if (!world) {
+      fromWorld = false;
+      nav("servers");
+      return;
+    }
+    if (!(await selectWorld(world))) return;
+    if (known.length) {
+      enter({ intent: "resume", name: pick, password: "" });
+    } else {
+      createDraft();
+      nav("create");
     }
     return;
   }
@@ -623,17 +606,21 @@ async function action(a: string, b: HTMLElement) {
     void discoverSurvivors();
     return;
   }
-  if (a === "world" || a === "retry-world") {
-    const w = a === "world" ? visibleWorlds().find((w) => w.address === b.dataset.world) : selected;
-    if (w) {
-      if (afterWorld === "create") {
-        draft = "";
-        look = defaultLook();
-        step = group = 0;
-        chart = false;
-      }
-      await selectWorld(w, afterWorld);
-      afterWorld = "roster";
+  if (a === "world") {
+    worldChoice = b.dataset.world ?? "";
+    renderList();
+    return;
+  }
+  if (a === "retry-world" && lastWorldRequest && selected) {
+    await selectWorld(selected, lastWorldRequest.screen, lastWorldRequest.wanted);
+    return;
+  }
+  if (a === "choose-world") {
+    const w = visibleWorlds().find((w) => w.address === worldChoice);
+    if (w && w.online !== false) {
+      const next = afterWorld;
+      if (next === "create") createDraft();
+      if (await selectWorld(w, next)) afterWorld = "roster";
     }
     return;
   }
@@ -655,11 +642,7 @@ async function action(a: string, b: HTMLElement) {
       nav("servers");
       return;
     }
-    draft = "";
-    look = defaultLook();
-    step = group = 0;
-    chart = false;
-    turn = 0.25;
+    createDraft();
     nav("create");
     return;
   }
@@ -673,17 +656,11 @@ async function action(a: string, b: HTMLElement) {
     render();
     return;
   }
-  if (a === "next-step") {
-    if (step === 0) {
-      if (!data) throw Error("Wait for the selected world.");
-      if (!validName(draft)) throw Error("Use 1–24 letters, numbers, spaces, hyphens or underscores.");
-      const checking = draft,
-        selectedVersion = version;
-      const { available } = await owner("available", { name: checking });
-      if (screen !== "create" || step !== 0 || checking !== draft || selectedVersion !== version) return;
-      if (!available) throw Error("That name is already in use on this world.");
-    }
-    goStep(Math.min(2, step + 1));
+  if (a === "customise" || a === "editor") {
+    if (a === "customise") customise = !customise;
+    else editor = b.dataset.editor === "build" ? "build" : "appearance";
+    render();
+    if (customise && a === "customise") root.querySelector(".appearance-editor")?.scrollIntoView({ block: "nearest" });
     return;
   }
   if (a === "group") {
@@ -713,29 +690,30 @@ async function action(a: string, b: HTMLElement) {
     return;
   }
   if (a === "spawn") {
-    if (!validName(draft)) throw Error("Use 1–24 letters, numbers, spaces, hyphens or underscores.");
-    const checking = draft,
-      selectedVersion = version;
+    if (!validName(draft) || draft.trim() === "") throw Error("Enter 1–24 letters, numbers, spaces, hyphens or underscores.");
+    if (!data || spawn < 0) throw Error("This world has no public spawn points.");
+    const checking = draft, selectedVersion = version;
     const answer = await owner("available", { name: checking });
-    if (screen !== "create" || step !== 2 || checking !== draft || selectedVersion !== version) return;
-    if (!answer.available) {
-      goStep(0);
-      throw Error("That name is already in use on this world.");
-    }
-    if (!data?.spawns.length) throw Error("This world has no public spawn points.");
-    warm();
+    if (screen !== "create" || checking !== draft || selectedVersion !== version) return;
+    if (!answer.available) throw Error("That name is already in use on this world.");
     nav("spawn");
+    warm();
     return;
   }
-  if (a === "place" || a === "warm") {
-    if (a === "place") spawn = Number(b.dataset.index);
+  if (a === "place") {
+    const next = Number(b.dataset.index);
+    if (!data?.spawns[next] || next === spawn) return;
+    spawn = next;
     notice = "";
     warm();
     render();
     return;
   }
-  if (a === "commit" && preloaded) {
-    enter({ intent: "create", name: draft, look: Array.from(look), spawn, password: "" });
+  if (a === "commit" && data?.spawns[spawn]) {
+    write("snark.spawn." + base(), data.spawns[spawn]!.name);
+    const request = priorLaunch?.intent === "create" && priorLaunch.name === draft && priorLaunch.spawn === spawn
+      && priorLaunch.look?.every((n, i) => n === look[i]) ? priorLaunch.request : undefined;
+    enter({ intent: "create", name: draft, look: Array.from(look), spawn, password: "", request });
     return;
   }
   if (a === "unlock" && pending) {
@@ -754,48 +732,66 @@ async function action(a: string, b: HTMLElement) {
     return;
   }
   if (a === "backup") backup = "";
+  if (a === "recover") recoveryName = pick;
   if (["direct", "link", "approve", "recover", "backup"].includes(a)) {
     nav(a as Screen);
     return;
   }
   if (a === "pair") {
-    code = (await owner("pair")).code;
+    const world = base(), accessVersion = version;
+    const { code: issued } = await owner("pair");
+    if (screen !== "link" || base() !== world || accessVersion !== version) {
+      void json(new URL("survivors", world).href, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "cancel", key, code: issued }),
+      }).catch(() => {});
+      return;
+    }
+    code = issued;
     render();
-    void poll(base(), code);
+    void poll(world, issued);
     return;
   }
   if (a === "grant") {
+    const at = version;
     await owner("approve", { name: pick, code: getInput("pair-code") });
+    if (screen !== "approve" || at !== version) return;
     nav("roster");
     notice = "Browser approved. Continue from the new browser.";
     render();
     return;
   }
   if (a === "make-backup") {
-    backup = (await owner("backup", { name: pick })).code;
+    const at = version;
+    const { code: secret } = await owner("backup", { name: pick });
+    if (screen !== "backup" || at !== version) return;
+    backup = secret;
     render();
     return;
   }
   if (a === "restore") {
+    const at = version;
     const r = await owner("recover", { name: getInput("who"), code: getInput("recovery") });
-    await selectWorld(selected!, "roster", r.survivor.name);
+    if (screen === "recover" && at === version) await selectWorld(selected!, "roster", r.survivor.name);
     return;
   }
 }
+let actionVersion = 0;
 root.addEventListener("click", async (e) => {
   const b = (e.target as HTMLElement).closest<HTMLElement>("[data-action]");
-  if (!b || connecting) return;
+  if (!b || (connecting && b.dataset.action !== "back")) return;
   connecting = true;
+  const actionId = ++actionVersion, screenAt = screen;
   notice = "";
   try {
     await action(b.dataset.action!, b);
   } catch (err) {
+    if (screen !== screenAt || actionId !== actionVersion) return;
     notice = (err as Error).message;
     const msg = root.querySelector(".message");
     if (msg) msg.textContent = notice;
     else render();
   } finally {
-    connecting = false;
+    if (actionId === actionVersion) connecting = false;
   }
 });
 root.addEventListener("input", (e) => {
@@ -818,10 +814,11 @@ root.addEventListener("input", (e) => {
   }
 });
 root.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && (e.target as HTMLInputElement).id === "name") {
-    e.preventDefault();
-    root.querySelector<HTMLButtonElement>('[data-action="next-step"]')?.click();
-  }
+  if (e.key !== "Enter" || !(e.target instanceof HTMLInputElement) || !["text", "password", "url"].includes(e.target.type)) return;
+  const advance = root.querySelector<HTMLButtonElement>(".entry-actions .primary");
+  if (!advance || advance.disabled) return;
+  e.preventDefault();
+  advance.click();
 });
 document.querySelector(".brand")?.addEventListener("click", (e) => {
   e.preventDefault();
@@ -845,54 +842,40 @@ async function discoverSurvivors() {
   }
   if (screen === "roster" && !fromWorld) render();
 }
+let firstWorlds: Promise<void> = Promise.resolve();
+
 async function start() {
   if (location.hash.startsWith("#travel=")) {
     location.replace("play.html" + location.search + location.hash);
     return;
   }
-  await Promise.all([worldsRefresh(), loadGallery().catch(() => {})]);
-  if (screen === "servers") refreshFilters();
-  if (screen === "spawn" || screen === "roster") render();
-  if (screen === "title" && !root.querySelector(".opening")) render();
-  const cur =
-    worlds.find((w) => w.address === home) ?? (direct ? { address: home, name: "World", map: "", mapId: "", players: 0, max: 0 } : null);
-  const wanted = new URLSearchParams(location.search).get("screen");
-  if (cur && wanted === "roster") await selectWorld(cur);
-  else if (cur && (wanted === "link" || wanted === "create")) {
-    if (wanted === "create") {
+  const cue = window as Window & { snarkTitleAction?: "begin" | "servers" | "all" };
+  root.dataset.mounted = "true";
+  const titleAction = cue.snarkTitleAction;
+  delete cue.snarkTitleAction;
+  mountChangelog();
+  firstWorlds = worldsRefresh();
+  void loadGallery().then(() => {
+    if (screen !== "title") render();
+  }).catch(() => {});
+  if (directScreen) {
+    if (route === "create") {
       try {
         const prior = readLaunch(sessionStorage.getItem(launchKey(new URL("play.html", home).pathname)));
         if (prior?.intent === "create") {
+          priorLaunch = prior;
           draft = prior.name;
           look = Uint8Array.from(prior.look!);
         }
       } catch {}
     }
-    await selectWorld(cur, wanted);
-  } else if (screen === "title" && !root.querySelector(".opening")) render();
-}
-if (!location.hash.startsWith("#travel=")) {
-  mountChangelog();
-  syncScene();
-  let seen = false;
-  try {
-    seen = !!sessionStorage.getItem("snark.intro");
-    sessionStorage.setItem("snark.intro", "1");
-  } catch {}
-  const intro = () => {
-    if (root.querySelector(".opening")) render();
-  };
-  const skip = (e: KeyboardEvent) => {
-    if (e.key === "Escape" || e.key === "Enter") {
-      intro();
-      removeEventListener("keydown", skip);
-    }
-  };
-  if (!seen) addEventListener("keydown", skip);
-  if (seen || matchMedia("(prefers-reduced-motion: reduce)").matches) intro();
-  else {
-    setTimeout(intro, 1400);
-    root.addEventListener("click", intro, { once: true });
+    const wanted = new URLSearchParams(location.search).get("survivor") ?? "";
+    await selectWorld(directWorld()!, route as Screen, wanted);
+  } else {
+    render();
+    if (titleAction) root.querySelector<HTMLButtonElement>(`[data-action="${titleAction}"]`)?.click();
+    await firstWorlds;
+    if (screen === "title") render();
   }
 }
 setInterval(() => {

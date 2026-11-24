@@ -25,13 +25,30 @@ export interface MapArt {
 }
 type Catalog = Record<string, MapArt>;
 let catalogue: Catalog = {};
+const miami: MapArt = {
+  label: "Miami",
+  mapTile: "title/miami-flight.webp",
+  cover: "title/miami-flight.webp",
+  regions: {
+    "Bayfront Park": "title/atlas/miami/spawn-bayfront-park.webp",
+    "Belle Isle": "title/atlas/miami/spawn-belle-isle.webp",
+    "Brickell Key": "title/atlas/miami/spawn-brickell-key.webp",
+    "Edgewater": "title/atlas/miami/spawn-edgewater.webp",
+    "Fisher Island": "title/atlas/miami/spawn-fisher-island.webp",
+    "South Beach": "title/atlas/miami/spawn-south-beach.webp",
+    "South Pointe": "title/atlas/miami/spawn-south-pointe.webp",
+    "Virginia Key": "title/atlas/miami/spawn-virginia-key.webp",
+    "Watson Island": "title/atlas/miami/spawn-watson-island.webp",
+    "Wynwood": "title/atlas/miami/spawn-wynwood.webp",
+  },
+};
 export async function loadGallery() {
   const res = await fetch("title/maps.json");
   if (res.ok) catalogue = await res.json();
 }
 export function mapArt(id: string | undefined, label: string | undefined) {
   const key = id || "core:" + (label ?? "").toLowerCase().replace(/\s+/g, "-");
-  return catalogue[key];
+  return catalogue[key] ?? (key === "core:miami" || key === "miami" ? miami : undefined);
 }
 export function imageTile(src: string | undefined, extra = "") {
   return (
@@ -39,7 +56,7 @@ export function imageTile(src: string | undefined, extra = "") {
   );
 }
 /** A server in the list: the card that opens it, and beside it its Discord, a link of its own since a button holds none. */
-export function serverCard(w: WorldCard) {
+export function serverCard(w: WorldCard, selected = false) {
   const art = mapArt(w.mapId, w.map),
     live = w.online !== false,
     tags = Object.entries(w.tags ?? {}).slice(0, 4),
@@ -47,7 +64,7 @@ export function serverCard(w: WorldCard) {
   return (
     '<div class="server-entry"><button type="button" class="server-card" data-action="world" data-world="' +
     esc(w.address) +
-    '">' +
+    '" aria-pressed="' + selected + '">' +
     imageTile(art?.cover) +
     '<span class="server-copy"><span class="map-label">' +
     esc(w.map) +
@@ -60,7 +77,7 @@ export function serverCard(w: WorldCard) {
     (live ? "<i></i>" + esc(w.players) + " / " + esc(w.max) + " players" : "Offline") +
     '</span></span><span class="card-foot">' +
     (w.pve === undefined ? access : (w.pve ? "PvE" : "PvP") + " · " + access) +
-    '<span aria-hidden="true">↗</span></span></button>' +
+    '<span aria-hidden="true">' + (selected ? "✓" : "›") + "</span></span></button>" +
     (w.discord ? '<a class="server-link" href="' + esc(w.discord) + '" target="_blank" rel="noopener noreferrer">Discord ↗</a>' : "") +
     "</div>"
   );
