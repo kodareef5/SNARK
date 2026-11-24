@@ -74,24 +74,23 @@ test("each body has its own tick of the drip, so no tick gives it to all of them
   expect(new Set(when.flat()).size).toBe(bodies.length);
 });
 
-test("the drip writes no record of its own, and is saved within the minute with where the body stands", () => {
+test("passive XP waits for the survivor's scheduled position save", () => {
   const { h, me } = camp({ rules: DRIP, save: true });
-  const saved = (): number => h.host.persistence!.store.loadEntities().find((rec) => rec.pid === me.pid)?.xp ?? -1;
-  h.run(2000);
-  const dirty = h.host.records.dirty;
-  // Over a round of the drip, the tick that gives it leaves her record as the tick before it did.
-  let gained = 0;
-  for (let t = 0; t < DRIP_TICKS; t++) {
-    const was = me.xp;
-    dirty.delete(me.pid);
-    h.server.tick();
-    if (me.xp > was) gained += dirty.has(me.pid) ? 100 : 1;
+  try {
+    const saved = () => h.host.persistence!.store.loadEntities().find((rec) => rec.pid === me.pid)!.xp;
+    h.run(2000);
+    const onDisk = saved();
+    const before = me.xp;
+    expect(until(h, () => me.xp > before, 11)).toBe(true);
+    const earned = me.xp;
+    h.run(250);
+    expect(saved()).toBe(onDisk);
+    h.run(MINUTE);
+    expect(saved()).toBeGreaterThanOrEqual(earned);
+    expect(me.xp - saved()).toBeLessThanOrEqual(DRIP_PER_MINUTE + 1e-9);
+  } finally {
+    h.host.shutdown();
   }
-  expect(gained).toBe(1);
-  h.run(MINUTE);
-  // The save has all but the last minute's.
-  expect(me.xp - saved()).toBeLessThanOrEqual(DRIP_PER_MINUTE + 1e-9);
-  expect(saved()).toBeGreaterThan(0);
 });
 
 test("a stationary tame keeps its last passive XP after sleeping and restarting", () => {
