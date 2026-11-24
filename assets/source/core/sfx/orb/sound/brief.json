@@ -1,0 +1,29 @@
+{
+  "asset": "core/sfx/orb",
+  "about": "The orb, the great lit sphere on the Las Vegas map: the hum of its skin of lamps, heard at the nearest point of the sphere.",
+  "bits": 16,
+  "notes": "Asked 2026-11-24. No take is made yet, so there is no sounds.json here: the cue orb/hum plays core:tech/sound/obelisk at 0.8 of its rate until this slot has one (shared/sound/cues.ts). The hum should be low, plain mains, with no shimmer and no pulse, so that it does not pass for a Tide Eye or a drop's shaft.",
+  "slots": {
+    "hum": {
+      "kind": "impact",
+      "range": 150,
+      "level": -22,
+      "vary": 0.03,
+      "want": "a wall of lamps humming",
+      "prompts": [
+        {
+          "id": "v1-28000",
+          "models": [
+            "moss"
+          ],
+          "seed": 28000,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 20,
+          "text": "A vast wall of electric lamps and their power supplies hums: a low steady mains hum with a faint electrical buzz over it and soft fan air beneath, constant and unchanging. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    }
+  }
+}

@@ -8,6 +8,7 @@ import { hourOfDay } from "../../../shared/sim/clock.ts";
 import { handleIndex } from "../../../shared/ids.ts";
 import { Found, type ChunkTable } from "../../../shared/world/structures.ts";
 import type { NodeSpot } from "../../../shared/world/nodes.ts";
+import type { OrbSite } from "../../../shared/world/orb.ts";
 import type { ClientSession } from "../session.ts";
 import type { SkyClock } from "../sky.ts";
 import type { SoundView, Sounds } from "./sounds.ts";
@@ -42,6 +43,8 @@ export function soundView(session: ClientSession, sky: SkyClock | null = null): 
     airSupport: session.airSupport,
     // The supply drops are heard at the tick they are drawn at.
     supply: { list: session.supply, tick: session.tickClock },
+    // The session's world does not name its orbs yet, so the field is read as one that may be missing.
+    orbs: (session.world as { orbs?: readonly OrbSite[] } | null)?.orbs,
     hour: sky ? sky.hour : hourOfDay(session.serverTick, session.dayOffset, session.clock),
     turned: sky?.turned ?? false,
     trees: (x, z, r) => (field ? field.store.query(x - r, z - r, x + r, z + r, found) : 0),
