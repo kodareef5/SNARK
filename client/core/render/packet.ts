@@ -316,8 +316,8 @@ export const MAX_TIRE_CONTACTS = 8;
 /** The supply drops' streaks in the sky a frame holds, and the vec4 lanes of their section (`drops`). */
 export const DROP_STREAKS = 4;
 export const DROP_LANES = DROP_STREAKS * 2 + 3;
-/** The vec4 lanes of the orb's section (`orb`). */
-export const ORB_LANES = 8;
+/** The vec4 lanes of the orb's section (`orb`): the scenes' eight, then the screen's eleven (orb.ts SCREEN_AT). */
+export const ORB_LANES = 19;
 
 /** A section of the frame block: its name, the first of FRAME_BLOCK's members it holds, and its floats, whole vec4s. */
 export interface FrameSection {
@@ -553,7 +553,8 @@ export const MADE_AT = SECTION.made;
  * scene's clock and the clock of the scene before; the scene, the one before, how far the change has crossed and the
  * screen's level; where it looks and the blue eye's power; the way to the sun and how full the tide is; where a change
  * starts and how hard lightning strikes; which strike it is, and the colour of the light it casts by night
- * (orb-light.ts); what a mirror shows of it (ORB_SEEN). Directions but the centre are in the orb's own frame.
+ * (orb-light.ts); what a mirror shows of it (ORB_SEEN); then the screen's picture, where it stands and its edges'
+ * colours (orb.ts SCREEN_AT). Directions but the centre are in the orb's own frame.
  */
 export const ORB_AT = SECTION.orb;
 export const OPTIC_NONE = 0;
@@ -716,6 +717,15 @@ export class FramePacket {
    */
   roofSide = 0;
   roofMap: Uint8Array = NO_OPEN;
+  /**
+   * The picture an orb's screen shows (video/player.ts), which the shell puts on UNIT.screen: a video or an image the
+   * shell knows how to upload, its size, whether it has a new frame this frame, and whether its mip levels are made after.
+   */
+  screenSource: unknown = null;
+  screenWidth = 0;
+  screenHeight = 0;
+  screenFresh = false;
+  screenMips = false;
   /** The draw before which the dome goes, on a lit frame. */
   skyAt = 0;
   /** The samples the light target is drawn with (post.ts lightSamples), on a frame drawn into one. */
@@ -962,6 +972,8 @@ export class FramePacket {
     this.openRows = this.openWidth = this.openHeight = 0;
     this.roofMap = NO_OPEN;
     this.roofSide = 0;
+    this.screenSource = null;
+    this.screenFresh = this.screenMips = false;
     this.triangles = 0;
     this.detailCount = 0;
     this.detailFill = 0;

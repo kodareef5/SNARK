@@ -89,7 +89,8 @@ import { AirSupport } from "./passes/air-support.ts";
 import { SupplyDrops } from "./passes/supply-drops.ts";
 import { TideEyes } from "./passes/tide-eyes.ts";
 import type { Orbs } from "./passes/orb.ts";
-import type { writeOrb } from "./orb.ts";
+import type { OrbScreen, writeOrb } from "./orb.ts";
+import type { ScreenPlayer } from "../video/player.ts";
 import { Water } from "./passes/water.ts";
 import { FarLayers } from "./passes/far-layers.ts";
 import { LooseEntities } from "./passes/loose-entities.ts";
@@ -441,11 +442,13 @@ export class Scene {
   static get late(): typeof FarLayers.late { return FarLayers.late; }
   static set late(code: typeof FarLayers.late) { FarLayers.late = code; }
   /** The orbs' pass and their frame lanes (orb-late.ts), which come after the first frame. Until then a scene draws no orb. */
-  static orb: { Orbs: typeof Orbs; writeOrb: typeof writeOrb } | null = null;
+  static orb: { Orbs: typeof Orbs; writeOrb: typeof writeOrb; ScreenPlayer: typeof ScreenPlayer } | null = null;
   private orbs: Orbs | null = null;
   /** The scene every orb is held on, its place in ORB_SCENES, or -1 for the programme; and what its level is scaled by, 0 for dark. */
   orbOnly = -1;
   orbGain = 1;
+  /** What the nearest orb's screen holds, from its video player (video/player.ts), or null for the scenes alone. */
+  orbScreen: OrbScreen | null = null;
   /** Whether the nearest orb's halo is drawn (passes.ts `orbglow`). */
   orbGlow = true;
   /** Bodies out of view whose shadows may fall in it: which remote entity each is, and its place (x, y, z, yaw). */
@@ -854,7 +857,7 @@ export class Scene {
     if (!p.lit) p.frame[FRAME.exposure] = 0;
     writeEyeSky(p.frame, this.world.tideEyes ?? [], this.eyeSeconds, cam.x, cam.y, cam.z, this.sextantScale, this.eyeHold);
     writeDropSky(p.frame, this.supply?.list ?? null, this.supply?.tick ?? 0, TICK_RATE, cam.x, cam.y, cam.z, this.world.tideEyes ?? [], this.eyeSeconds);
-    if (this.world.orbs) Scene.orb?.writeOrb(p.frame, this.world.orbs, this.world.tideEyes ?? NO_EYES, this.eyeSeconds, this.hour, cam.x, cam.y, cam.z, this.supply?.list ?? null, this.supply?.tick ?? 0, TICK_RATE, this.orbOnly, this.orbGain);
+    if (this.world.orbs) Scene.orb?.writeOrb(p.frame, this.world.orbs, this.world.tideEyes ?? NO_EYES, this.eyeSeconds, this.hour, cam.x, cam.y, cam.z, this.supply?.list ?? null, this.supply?.tick ?? 0, TICK_RATE, this.orbOnly, this.orbGain, this.orbScreen);
     // The street lamps' cards, and the one lamp that lights as a light where the tier lets it, the one by the viewer's own
     // body, before what casts is chosen.
     const shadows = p.tier.shadows;
@@ -964,6 +967,11 @@ export class Scene {
         },
       ],
     ];
+  }
+
+  /** Whether the nearest orb's screen was put in this frame's draws. */
+  get orbDrawn(): boolean {
+    return this.orbs?.screenDrawn ?? false;
   }
 
   /** The orbs' pass, made once its code has come (orb-late.ts), where the map has an orb. */

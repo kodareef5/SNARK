@@ -3,8 +3,9 @@
 
 import { expect, test } from "bun:test";
 import { Readers } from "../../client/core/readers.ts";
-import { BitReader } from "../../shared/net/codec.ts";
-import { OWN_BUFFS, OWN_HELD, OWN_LOOK, OWN_MARKERS, OWN_PROGRESSION, OWN_RULES, OWN_SESSION, OWN_SLOTS, OWN_TRIBE, OWN_VITALS, OWN_VOICE, OWN_XP, S_OWN, TEXT_NOTICE } from "../../shared/net/protocol.ts";
+import { BitReader, BitWriter } from "../../shared/net/codec.ts";
+import { newScreenState, writeScreens, SHOW_VIDEO } from "../../shared/video/screen.ts";
+import { OWN_BUFFS, OWN_HELD, OWN_LOOK, OWN_MARKERS, OWN_PROGRESSION, OWN_RULES, OWN_SCREEN, OWN_SESSION, OWN_SLOTS, OWN_TRIBE, OWN_VITALS, OWN_VOICE, OWN_XP, S_OWN, TEXT_NOTICE } from "../../shared/net/protocol.ts";
 import { CH_RELIABLE } from "../../shared/net/transport.ts";
 import { Harness } from "../fixtures/net.ts";
 
@@ -89,4 +90,15 @@ test("a gain of experience sends twelve bytes; a level sends the engrams and poi
   h.say(ada, "addxp 2.5");
   expect(sent.filter((m) => m[0] === OWN_XP || m[0] === OWN_PROGRESSION).map((m) => m[0])).toEqual([OWN_XP, OWN_PROGRESSION]);
   expect([ada.progress.xp, ada.progress.level, ada.progress.statPoints, ada.progress.engramPoints]).toEqual([5, 2, 1, 8]);
+});
+
+test("a session keeps what the server says its screens play", () => {
+  const h = new Harness({}, 1, 30);
+  const ada = h.join("ada");
+  h.run(400);
+  const w = new BitWriter(64);
+  writeScreens(w, [{ ...newScreenState(), manifest: "0123456789abcdef", show: SHOW_VIDEO, flags: 3, clip: 2, start: -450, next: 0 }]);
+  h.client(ada)!.conn.send(CH_RELIABLE, new Uint8Array([S_OWN, OWN_SCREEN, ...w.bytes()]));
+  h.run(60);
+  expect(ada.screens).toEqual([{ manifest: "0123456789abcdef", show: SHOW_VIDEO, flags: 3, clip: 2, start: -450, next: 0 }]);
 });

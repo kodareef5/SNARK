@@ -40,6 +40,8 @@ export class Settings {
   keepPaused = false;
   /** Applies only if the server allows it. */
   damageNumbers = true;
+  /** A screen in the world plays its clip (video/player.ts); off, it shows its scenes and fetches nothing. */
+  videoScreens = true;
   /** A blast near, or the player's own launcher, shakes the view (view/shake.ts). */
   viewShake = true;
   /** A blow of the viewer's own turns its view a little, and one that lands kicks it (sight.ts). */
@@ -115,7 +117,7 @@ export class Settings {
   }
 }
 
-const SAVED_FLAGS = ["minimap", "compass", "thirdPerson", "diagnostics", "debug", "vitalLabels", "damageNumbers", "toggleTalk", "steady", "muted", "keepAll", "keepPaused", "viewShake", "viewKick"] as const;
+const SAVED_FLAGS = ["minimap", "compass", "thirdPerson", "diagnostics", "debug", "vitalLabels", "damageNumbers", "toggleTalk", "steady", "muted", "keepAll", "keepPaused", "viewShake", "viewKick", "videoScreens"] as const;
 const SAVED_NUMBERS = [["sensitivity", .2, 3], ["zoomSensitivity", .5, 1.5], ["fov", 50, 100], ["voiceVolume", 0, 2], ["masterVolume", 0, 2], ["soundVolume", 0, 2], ["ambienceVolume", 0, 2], ["musicVolume", 0, 2], ["interfaceVolume", 0, 2], ["minimapZoom", -1, 3], ["padGlyphs", 0, 1], ["finishGloss", 0.5, 2], ["roadFinish", 0, 2], ["resolution", 0, RESOLUTIONS.length - 1]] as const;
 
 export const VOLUME_MAX = 2;
@@ -188,6 +190,7 @@ export const SETTING_ROWS: readonly SettingRow[] = [
   { label: "View shake", value: (s) => (s.viewShake ? "on" : "off"), step: (s) => void (s.viewShake = !s.viewShake) },
   // Shown in the Input group, after the zoom's.
   { label: "View kick", value: (s) => (s.viewKick ? "on" : "off"), step: (s) => void (s.viewKick = !s.viewKick) },
+  { label: "Video on screens", value: (s) => (s.videoScreens ? "on" : "off"), step: (s) => void (s.videoScreens = !s.videoScreens) },
 ];
 
 /** `/debug` in chat or the console: the debug bar on or off. Returns what the console says. */

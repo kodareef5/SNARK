@@ -44,6 +44,7 @@ import { Camera } from "./render/camera.ts";
 import { SQUEEZE_MOST } from "./render/budget.ts";
 import type { FramePacket } from "./render/packet.ts";
 import { Scene, type OwnBody } from "./render/scene.ts";
+import type { ScreenPlayer, VideoHost } from "./video/player.ts";
 import { Feedback } from "./feedback.ts";
 import { Shots } from "./shots.ts";
 import { SupplyView } from "./supply.ts";
@@ -388,6 +389,9 @@ export class App {
   soundDecoder: SoundDecoder | null = null;
   /** The music tracks the build lists (assets/music/music.json), once fetched; null for none. */
   musicTracks: readonly MusicTrack[] | null = null;
+  /** The page's side of the screens' video (client/shell/screen-video.ts), set on a map with an orb, and the player made with it. */
+  screenHost: VideoHost | null = null;
+  private screenPlayer: ScreenPlayer | null = null;
   /** The volumes the sounds play at, as the settings have them this frame. */
   private readonly volumes = { master: 0, effects: 0, ambience: 0, music: 0, interface: 0 };
   /** Tames already heard of the session's queue, which the naming prompt empties. */
@@ -1025,8 +1029,11 @@ export class App {
     scene.damage.enabled = session.damageNumbers && this.ui.settings.damageNumbers;
     scene.orbOnly = session.orbOnly;
     scene.orbGain = session.orbGain;
+    const player = this.screenHost && Scene.orb ? (this.screenPlayer ??= new Scene.orb.ScreenPlayer(this.screenHost)) : null;
+    scene.orbScreen = player?.step({ state: session.screens[0], tick: session.renderClock, option: this.ui.settings.videoScreens, tierVideo: scene.assets.tier.orb.video, sites: session.world?.orbs, cam: this.cam, height, now: nowMs }) ?? null;
     scene.wants = this.texgen?.wants ?? null;
     f.packet = scene.build(this.cam, this.remote);
+    player?.upload(f.packet, scene.orbDrawn, this.cam.fovY / Math.max(1, scene.canvasHeight));
     session.requestCorpseMotions(scene.characters.corpseCheckpointRequests);
   }
 
