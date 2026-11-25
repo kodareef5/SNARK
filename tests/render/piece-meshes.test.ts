@@ -595,16 +595,16 @@ const thatchNew = Object.entries(THATCH_NEW).map(([name, form]) => ({ name, form
 /**
  * What each new thatch form's levels cost on 2026-11-24. A change may lower a number and may not raise one. The roofs
  * were 694 / 104 / 60, 1,020 / 148 / 60 and 592 / 108 / 60 before their verges, plates and beams were as deep as their
- * slabs and a hip had its roll and saddle; the gables 636 / 162 before their inner pole stood up into the cut.
+ * slabs and a hip had its roll and saddle; the gables 636 / 162 before a split pole lay on their inner pole.
  */
 const THATCH_NEW_MOST: Record<string, readonly number[]> = {
   roof: [782, 116, 72, 12],
   roof_hip: [1280, 314, 116, 12],
   roof_valley: [664, 108, 60, 12],
-  sloped_wall_left: [670, 168, 72, 8],
-  sloped_wall_right: [670, 168, 72, 8],
+  sloped_wall_left: [668, 194, 72, 8],
+  sloped_wall_right: [668, 194, 72, 8],
   half_wall: [820, 112, 72, 12],
-  railing: [380, 108, 68, 24],
+  railing: [380, 108, 68, 24, 12],
 };
 /** A thatch roof's tips reach 0.30 m past a low side and hang 0.10 m under its slab; its eave course stands 0.08 m over its plane, and a hip's saddle 0.105 m over its high corner, where the faces fall away under it. */
 const THATCH_EAVE = 0.3;

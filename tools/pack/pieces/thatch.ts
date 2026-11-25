@@ -1500,14 +1500,13 @@ function gable(form: FormDef, level: number, posts: boolean): Shape | null {
   const look = LOW_LOOKS[level]!;
   const rng = new PyRandom("gable0");
   const from = hut.shape.faces.length;
-  // The poles along the cut: one outside that the thatch is tied to, and a lighter one inside, which the roof's verge
-  // bears on: it stands up into the cut, which planes its top flat across the inner half of the wall.
-  const along = (z: number, radius: number, band: string, how: Drawn | null, sunk = radius + 0.012 / k): void => {
-    const drop = sunk * k;
+  // The poles along the cut: one outside that the thatch is tied to, and a lighter one inside.
+  const along = (z: number, radius: number, band: string, how: Drawn | null): void => {
+    const drop = radius * k + 0.012;
     drawPole(hut, poleOf(rng, [hx + 0.2, top(hx + 0.2) - drop, z], [-hx - 0.2, top(-hx - 0.2) - drop, z], radius, radius * 0.92, { band, segments: 3, sides: 6, caps: ["flat", "flat"] }), how);
   };
   along(ROD_Z + 0.012, 0.036, "bark", look.pole);
-  along(RAIL_Z, 0.036, "peeled", look.pole, 0.014);
+  along(RAIL_Z, 0.036, "peeled", look.pole);
   clip(hut.shape, planeAt([0, 0, -lift - 0.02], [0, 0, -1]), null, from);
   // Half a post on the high end's own line, where the other hand's half meets it.
   drawPole(hut, poleOf(rng, [-hx, -0.02, POST_Z], [-hx, high + 0.1, POST_Z - 0.004], POST_R[0], POST_R[1] + 0.004, { band: "bark", caps: ["flat", "flat"], segments: 3 }), posts ? look.post : null);
@@ -1517,6 +1516,14 @@ function gable(form: FormDef, level: number, posts: boolean): Shape | null {
   // Each is cut to the wall's ends and its top, and the two along the top to its foot; a cut wears the pole's own skin carried through.
   for (const plane of [planeAt([-hx, 0, 0], [-1, 0, 0]), planeAt([hx, 0, 0], [1, 0, 0]), planeMoved(slope, -0.004)]) clip(hut.shape, plane, null, from);
   retile(hut.shape);
+  if (level < 2) {
+    // A split pole laid flat on the inner pole, across the wall's inner half under the cut: the roof's verge bears on it.
+    const plank: Flat[] = [[-hx, 0.026], [hx, 0.026], [hx, 0.1], [-hx, 0.1]];
+    const [vTop, vBottom] = bandV("peeled");
+    const batten = hut.shape.faces.length;
+    slabOn(hut.shape, plank, plank.map(([x]) => top(x) - lift - 0.0015), 0.03, () => ["wood", (q) => [q[0] / TILE.wood, vBottom + (vTop - vBottom) * (0.5 + (q[1] - q[2]) / 0.3)]]);
+    clip(hut.shape, planeAt([0, 0, -lift - 0.02], [0, 0, -1]), null, batten);
+  }
   // A rod outside and a rail inside, each as far as the cut lets it run.
   const rise = rng.uniform(-0.006, 0.006);
   const far = (y: number): number => hx - ((y + 0.09) * 2 * hx) / high;
@@ -1561,9 +1568,14 @@ function halfWall(form: FormDef, level: number, posts: boolean): Shape | null {
  * makes whole.
  */
 function fence(form: FormDef, level: number): Shape | null {
-  if (level > 3) return null;
+  if (level > 4) return null;
   const { hx, high, lift } = lowOf(form);
   const hut = new Hut(0);
+  // From 386 m its rails are one board: twelve triangles are all a piece may be from there.
+  if (level === 4) {
+    hut.box([-hx, 0.1 - lift, -0.02], [hx, high - 0.02 - lift, 0.02], "wood", NO_UV);
+    return hut.shape;
+  }
   if (level === 3) {
     // A top rail and a foot rail as one thin board each: two boxes.
     for (const y of [high - 0.1, 0.1]) hut.box([-hx, y - lift, -0.02], [hx, y + 0.08 - lift, 0.02], "wood", NO_UV);
