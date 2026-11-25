@@ -117,6 +117,7 @@ export interface Registering {
   readonly known: readonly Issue[];
 }
 
+const NO_STAFF = "You are in no staff group, so there is no password to claim. An admin puts you in one first.";
 /** What a claim is refused with when the survivor gave a password replaced or cleared within the last day, as enablecheats is. */
 const RETIRED_PASSWORD = "that password was replaced or cleared";
 
@@ -485,19 +486,28 @@ export class Permissions {
     let wrong = false;
     let was = "";
     if (!isSurvivorId(id) || !isHash(hash)) return { why: "That is no password to claim.", wrong };
+    // Anyone may type it, so one in no staff group is answered from a look at the file, with no write lock taken.
+    // The check inside the write still decides a claim that passes this one.
+    if (this.staffRank(id) < RANK_STAFF) {
+      try {
+        this.lookNow();
+      } catch {
+        // A file that cannot be read leaves the view as it is.
+      }
+      if (this.staffRank(id) < RANK_STAFF) return { why: NO_STAFF, wrong };
+    }
     let began = false;
     let held: PermissionSnapshot | null = null;
     try {
       this.store.transaction(() => {
         began = true;
         if (this.store.revision() !== this.revision) this.load(this.store.read());
-        held = this.snapshot();
         if (this.store.issued(id) === null) {
           why = `No survivor has the ID ${id}.`;
           return;
         }
         if (this.staffRank(id) < RANK_STAFF) {
-          why = "You are in no staff group, so there is no password to claim. An admin puts you in one first.";
+          why = NO_STAFF;
           return;
         }
         was = this.secretOf(id);
@@ -517,6 +527,8 @@ export class Permissions {
           why = `You claimed a password a short while ago. A new one can be claimed in ${minutes} ${minutes === 1 ? "minute" : "minutes"}.`;
           return;
         }
+        // Taken only now, when the view is about to change, so a refused claim copies nothing.
+        held = this.snapshot();
         const secret: Secret = { id, hash, at: this.now() };
         this.store.putSecret(secret);
         this.secrets.set(id, secret);

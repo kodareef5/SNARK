@@ -1035,3 +1035,18 @@ test("a regular admin on B cannot reach A's map admin through her tribe's number
     expect(b.h.say(ada, `Permissions.RemoveTribe ${team} Vip`).at(-1)).toContain("is out of Vip");
   });
 });
+
+test("signing in again with a map's or the cluster's password writes no second act", async () => {
+  await maps(({ cluster, a }) => {
+    const mia = hostAdmin(a, cluster, "mia", MAP_A);
+    const signIns = (): number => keptActs(a).filter((act) => act.kind === "sign-in" && act.name === "mia").length;
+    const once = signIns();
+    expect(once).toBe(1);
+    for (let i = 0; i < 5; i++) a.h.say(mia, `enablecheats ${MAP_A}`);
+    expect(signIns()).toBe(once);
+    // The cluster's password raises her, and that is a sign-in of its own; given again it is not.
+    a.h.say(mia, `enablecheats ${CLUSTER}`);
+    a.h.say(mia, `enablecheats ${CLUSTER}`);
+    expect(signIns()).toBe(once + 1);
+  });
+});

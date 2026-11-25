@@ -276,7 +276,8 @@ test("a file another process holds locked costs a short wait, throws nothing, an
   const [why, applyMs] = timed(() => a.apply(cluster, { op: "addGroup", group: "Vip" }));
   const [claimed, claimMs] = timed(() => a.claim(B, "ab".repeat(32), ""));
   const [registered, registerMs] = timed(() => a.register({ origin: 1, survivors: 5, teams: 5, minted: [], known: [] }));
-  expect([polled, why, claimed.why, registered]).toEqual([false, "The permissions could not be written.", "The permissions could not be written.", null]);
+  // Bob is in no staff group, so his claim is answered from the view, and with the file locked that is still a refusal.
+  expect([polled, why, claimed.why, registered]).toEqual([false, "The permissions could not be written.", "You are in no staff group, so there is no password to claim. An admin puts you in one first.", null]);
   for (const ms of [pollMs, applyMs, claimMs, registerMs]) expect(ms).toBeLessThan(1000);
   // It keeps what it had, says so once, and reads the file again when it can.
   expect(a.has(bob, "Cheat.god")).toBe(true);
@@ -377,4 +378,22 @@ test("a file whose register kept no teams opens, gains them, and the rule asks t
   // Once the register knows her out of it, the tribe is an admin's to manage.
   expect(perms.register({ origin: 2, minted: [], known: [{ id: A, name: "ada", team: 2 * 1048576 + 8 }] })).toBe(0);
   expect(perms.apply(far, { op: "addMember", kind: "tribe", key: String(team), group: "Muted" })).toBe("");
+});
+
+test("a claim by one in no staff group takes no write lock, and one just added elsewhere is still taken", () => {
+  const file = fresh();
+  const clock = { t: 1_000_000 };
+  const store = new PermissionStore(file);
+  const one = new Permissions({ store, world: 2, now: () => clock.t });
+  const two = new Permissions({ store: new PermissionStore(file), world: 5, now: () => clock.t });
+  issue(one, A);
+  const writes = spyOn(store, "transaction");
+  const NO_STAFF = "You are in no staff group, so there is no password to claim. An admin puts you in one first.";
+  for (let i = 0; i < 20; i++) expect(one.claim(A, "ab".repeat(32), "").why).toBe(NO_STAFF);
+  expect(writes.mock.calls.length).toBe(0);
+  // Put in a staff group on another world a moment ago, before this one's poll: the claim looks at the file and is made.
+  expect(two.apply(cluster, { op: "addMember", kind: "survivor", key: A, group: "Admins", world: 0 })).toBe("");
+  expect(one.claim(A, "ab".repeat(32), "").why).toBe("");
+  expect(writes.mock.calls.length).toBe(1);
+  writes.mockRestore();
 });

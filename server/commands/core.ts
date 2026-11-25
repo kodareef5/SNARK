@@ -139,6 +139,8 @@ export function addCoreCommands(con: Console): void {
         const was = { admin: c.admin, rank: c.rank };
         // Signed in already with this very password: giving it again is no new sign-in, and writes no act a flood could be made of.
         const again = asOwn && c.signed && c.signedHash === own;
+        // A host password that gives no more than this connection already had from one is no new sign-in either.
+        const hostAgain = rank > RANK_STAFF && c.passwordRank >= rank;
         if (rank >= 0) raise(ctx.host.bus, c, rank, true);
         let groups = RANK_OPEN;
         if (asOwn) {
@@ -150,7 +152,7 @@ export function addCoreCommands(con: Console): void {
         // Only a sign-in that reached the highest host password there is forgives the count: else a map admin could clear it between guesses at the cluster's.
         if (Math.max(rank, groups) >= (cluster !== null ? RANK_CLUSTER : map !== null ? RANK_MAP : RANK_OPEN)) guesses.right(who);
         const actor = sessionActor(c, ctx.host.records);
-        if (rank > RANK_STAFF) ctx.host.acts.write(actor, `enablecheats with the ${asCluster ? "cluster's" : "map's"} password`, "sign-in");
+        if (rank > RANK_STAFF && !hostAgain) ctx.host.acts.write(actor, `enablecheats with the ${asCluster ? "cluster's" : "map's"} password`, "sign-in");
         if (asOwn && !again) ctx.host.acts.write(actor, "enablecheats with their own password", "sign-in");
         const gained = c.admin !== was.admin || c.rank > was.rank;
         if (asOwn && !gained && groups < RANK_STAFF) return "signed in, but no group of yours counts on this map";

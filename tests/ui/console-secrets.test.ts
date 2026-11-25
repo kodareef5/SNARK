@@ -7,7 +7,8 @@ import { ChatState } from "../../client/core/ui/chat.ts";
 import { ConsoleState, KEY_CONSOLE_DONE } from "../../client/core/ui/console.ts";
 import { UiFrame } from "../../client/core/ui/nodes.ts";
 import { Ui } from "../../client/core/ui/ui.ts";
-import { SECRET_COMMANDS, maskSecret } from "../../shared/console.ts";
+import { SECRET_COMMANDS, SECRET_SETTINGS, maskSecret } from "../../shared/console.ts";
+import { CATALOG } from "../../server/settings/catalog.ts";
 import { TEXT_CONSOLE, TEXT_GLOBAL } from "../../shared/net/protocol.ts";
 import { Harness } from "../fixtures/net.ts";
 
@@ -67,6 +68,21 @@ test("every command the server keeps secret is masked on the client", () => {
   h.host.shutdown();
   expect(secret.length).toBeGreaterThan(0);
   for (const name of secret) expect(SECRET_COMMANDS).toContain(name);
+});
+
+test("a secret setting's value typed at the console is masked and not remembered", () => {
+  expect(typed("setting ServerPassword hunter2")).toEqual({ sent: ["setting ServerPassword hunter2"], lines: ["> setting ServerPassword ****"], history: [], up: "" });
+  expect(typed("cheat setting castmodelkey sk-or-123").lines).toEqual(["> cheat setting castmodelkey ****"]);
+  expect(maskSecret("/admincheat SETTING ClusterAdminPassword a b")).toBe("/admincheat SETTING ClusterAdminPassword ****");
+  // Asking what a secret setting is, or setting one that is no secret, shows as typed and is remembered.
+  expect(typed("setting ServerPassword").history).toEqual(["setting ServerPassword"]);
+  expect(typed("setting TamingSpeedMultiplier 2").lines).toEqual(["> setting TamingSpeedMultiplier 2"]);
+});
+
+test("every setting the server keeps secret is masked on the client", () => {
+  const secret = CATALOG.filter((r) => r.secret).map((r) => r.name.toLowerCase());
+  expect(secret).toContain("castmodelkey");
+  for (const name of secret) expect(SECRET_SETTINGS).toContain(name);
 });
 
 const SECRET = "ABCD-EFGH-JKLM-NPQR";
