@@ -869,14 +869,19 @@ function pillow(hut: Hut): void {
   hut.solid(patches);
 }
 
-function ceiling(level: number): Shape | null {
+/**
+ * The ceiling: reed on a mat over six joists between two edge beams, its eaves drooping past every side. With no
+ * `eaves` it ends square on its sides, and the client lays `eave_thatch` (`eaveTrim`) along a side that wants one.
+ */
+function ceiling(level: number, eaves = true): Shape | null {
   if (level > 3) return null;
   const hut = new Hut(0);
   if (level === 3) {
     hut.box([-H, -C_TOP + 0.01, -H], [H, C_TOP, H], "roof", NO_UV);
     return hut.shape;
   }
-  if (level === 2) {
+  if (level === 2 && !eaves) hut.box([-H, C_TOP - 0.23, -H], [H, C_TOP, H], "roof", roofUv);
+  else if (level === 2) {
     // The roof's top, its eaves drooping out past it and cut across at the corners, and one flat underside.
     const [r, cut, low] = [H + 0.24, 0.22, C_TOP - 0.23];
     const top: Vec[] = [[-H, C_TOP, -H], [H, C_TOP, -H], [H, C_TOP, H], [-H, C_TOP, H]];
@@ -887,14 +892,16 @@ function ceiling(level: number): Shape | null {
       for (const points of [[a, b, ring[2 * k + 1]!, ring[2 * k]!], [b, ring[(2 * k + 2) % 8]!, ring[2 * k + 1]!]]) patches.push({ points, uvs: points.map(roofUv), mat: "roof" });
     }
     hut.solid(patches);
-    return hut.shape;
   }
-  if (level === 1) pillow(hut);
+  if (level === 2) return hut.shape;
+  if (level === 1 && !eaves) hut.box([-H, MAT_Y, -H], [H, C_TOP - 0.012, H], "roof", roofUv);
+  else if (level === 1) pillow(hut);
   else {
     // The body: thatch between the mat over the joists and the top. The top is laid in courses half a metre wide,
     // each a centimetre thicker at its butts than where the next covers it, so from above it shows its rows.
     const zs: [number, number][] = [[-H, C_TOP - 0.012]];
-    for (let k = 0; k < 6; k++) zs.push([-1.25 + 0.5 * k, C_TOP - 0.006], [-1.25 + 0.5 * k + 0.47, C_TOP - 0.019]);
+    // The last course ends on the side, where it ran 0.22 m past it and back: a fin over the eave's tips.
+    for (let k = 0; k < 6; k++) zs.push([-1.25 + 0.5 * k, C_TOP - 0.006], [Math.min(-1.25 + 0.5 * k + 0.47, H), C_TOP - 0.019]);
     zs.push([H, C_TOP - 0.012]);
     const patches: Patch[] = [];
     const quad = (points: Vec[]): void => void patches.push({ points, uvs: points.map(roofUv), mat: "roof" });
@@ -903,7 +910,7 @@ function ceiling(level: number): Shape | null {
     for (const x of [-H, H]) quad([...zs.map(([z, y]): Vec => [x, y, z]), [x, MAT_Y, H], [x, MAT_Y, -H]]);
     for (const z of [-H, H]) quad([[-H, MAT_Y, z], [H, MAT_Y, z], [H, C_TOP - 0.012, z], [-H, C_TOP - 0.012, z]]);
     hut.solid(patches);
-    for (let side = 0; side < 4; side++) eave(hut, side);
+    for (let side = 0; side < (eaves ? 4 : 0); side++) eave(hut, side);
   }
   // The joists under the mat, their ends showing past two edges, and the edge beams along the other two, which the
   // eaves hide from further off.
@@ -1725,6 +1732,45 @@ function ridgeRoll(level: number): Shape {
   return hut.shape;
 }
 
+/**
+ * A flat ceiling's eave along one side, as the client lays it where a side wants one: the reed run on over the edge and
+ * drooping, and a skirt of tips from its lip, as the ceiling's own eave is. From the middle of the side, +x along it and
+ * out at -y, its top at the ceiling's top. Each end is mitred out to the corner's diagonal, so two laid at an outside
+ * corner meet there with nothing between them; a ring at each corner's line lets a run fold the mitre flat.
+ */
+function eaveTrim(level: number): Shape {
+  const hut = new Hut(0);
+  // (out from the side's line, height from the ceiling's top) round the section, as `eave` has it from its root 6 cm in.
+  const root = EAVE_ROOT - H;
+  const lip = root + EAVE_BODY;
+  const sections: readonly (readonly [number, number])[][] = [
+    [[root, -0.012], [root + 0.07, -0.04], [lip, -0.1], [lip, MAT_Y - 0.03 - C_TOP], [root, MAT_Y + 0.02 - C_TOP]],
+    [[root, -0.012], [lip, -0.1], [lip, MAT_Y - 0.03 - C_TOP], [root, MAT_Y + 0.02 - C_TOP]],
+    [[root, -0.012], [root + 0.3, -0.23], [root, MAT_Y + 0.02 - C_TOP]],
+  ];
+  const end = (out: number): number => H + out;
+  const at = (x: number, out: number, h: number): Vec => [x, h, out];
+  const lipUv = (p: Vec): Uv => [(p[0] + H) / TILE.roof, (p[2] + 2 * H) / TILE.roof];
+  if (level === 3) return openSheet(hut.shape, [[-end(0.24), -0.24, -0.23], [end(0.24), -0.24, -0.23], [end(0), 0, -0.03], [-end(0), 0, -0.03]], "roof");
+  const section = sections[level]!;
+  const patches: Patch[] = section.map((a, k) => {
+    const b = section[(k + 1) % section.length]!;
+    const points = [at(-end(a[0]), a[0], a[1]), at(end(a[0]), a[0], a[1]), at(end(b[0]), b[0], b[1]), at(-end(b[0]), b[0], b[1])];
+    return { points, uvs: points.map(lipUv), mat: "roof" };
+  });
+  for (const s of [-1, 1]) patches.push({ points: section.map(([out, h]) => at(s * end(out), out, h)), uvs: section.map(([out, h]) => lipUv(at(s * end(out), out, h))), mat: "roof" });
+  hut.solid(patches);
+  if (level < 2) {
+    // The tips hang from the lip's top edge, a sheet seen from above and from under the eave.
+    const [far, fall] = [lip + EAVE_HANG, -0.1 - EAVE_FALL];
+    const card: Vec[] = [at(-end(lip), lip, -0.1), at(end(lip), lip, -0.1), at(end(far), far, fall), at(-end(far), far, fall)];
+    hut.card([{ points: card, uvs: card.map((p, i) => eaveTipUv(p[0], i < 2 ? 0 : 1)), mat: TIPS }]);
+  }
+  // A ring on each corner's line, where a straight run folds the mitre onto it.
+  if (level === 0) for (const x of [-H, H]) hut.shape.cut(0, x);
+  return hut.shape;
+}
+
 /** Thatch's trims by the names the client finds them under, each at its four levels. */
 function thatchTrims(): Record<string, Shape[]> {
   const levels = (make: (level: number) => Shape): Shape[] => [0, 1, 2, 3].map(make);
@@ -1736,6 +1782,8 @@ function thatchTrims(): Record<string, Shape[]> {
     joint_r21: levels((level) => cornerPole(level, JOINT_R21, "joint21")),
     skirt: levels(skirt),
     ridge: levels(ridgeRoll),
+    // A flat ceiling's eave, which a ceiling drawn with no eaves of its own leaves to the client.
+    eave: levels(eaveTrim),
   };
 }
 
@@ -1763,8 +1811,11 @@ const PLANNED: Readonly<Record<string, (form: FormDef, level: number, posts: boo
   railing: fence,
 };
 
-/** The thatch tier. With `posts`, a wall has the post at its left end that fills a corner where no joint is drawn. */
-export function thatchRecipe(posts: boolean): TierRecipe {
+/**
+ * The thatch tier. With `posts`, a wall has the post at its left end that fills a corner where no joint is drawn; with
+ * `eaves`, a flat ceiling has its eaves on every side, where no client lays `eave_thatch`.
+ */
+export function thatchRecipe(posts: boolean, eaves = true): TierRecipe {
   return {
     name: "thatch",
     rank: 0,
@@ -1781,7 +1832,7 @@ export function thatchRecipe(posts: boolean): TierRecipe {
       const o = form.openings?.[0];
       if (form.layer === "wall" && fits(SPAN, WALL_H) && form.openings?.length === 1 && o && o.y0 === 0 && Math.abs(o.x1 - o.x0 - DOOR_W) < 1e-9 && Math.abs(o.y1 - DOOR_H) < 1e-9) return doorframe(level, posts);
       if (form.layer === "slab" && form.root === "always" && fits(SPAN, SPAN) && form.thick === FOUND_T) return foundation(level);
-      if (form.layer === "slab" && fits(SPAN, SPAN) && form.thick === FLOOR_T && !form.corner && !form.openings) return ceiling(level);
+      if (form.layer === "slab" && fits(SPAN, SPAN) && form.thick === FLOOR_T && !form.corner && !form.openings) return ceiling(level, eaves);
       if (form.layer === "leaf" && fits(DOOR_W, DOOR_H)) return door(level, form.plane === "across");
       throw new Error(`thatch has no recipe for ${name} yet`);
     },
@@ -1794,3 +1845,7 @@ export function thatchRecipe(posts: boolean): TierRecipe {
 export const THATCH: TierRecipe = thatchRecipe(true);
 /** Thatch as it is with joints drawn: no wall has a post of its own. */
 export const THATCH_JOINTED: TierRecipe = thatchRecipe(false);
+// THE EAVE SWITCH. A flat ceiling keeps its own eaves until the client lays core:eave_thatch where a side wants one.
+// Make THATCH `thatchRecipe(…, false)` in the commit that publishes a pack holding it and lands that client rule.
+/** Thatch as it is once the client lays eaves: no ceiling has eaves of its own. */
+export const THATCH_EAVELESS: TierRecipe = thatchRecipe(true, false);

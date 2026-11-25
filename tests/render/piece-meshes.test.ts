@@ -588,7 +588,7 @@ void planOf;
 
 // Thatch's share of the forms past the first nine, its trims, and the switch that takes a wall's own post away.
 
-import { THATCH_JOINTED, THATCH_PLANNED } from "../../tools/pack/pieces/thatch.ts";
+import { THATCH_EAVELESS, THATCH_JOINTED, THATCH_PLANNED } from "../../tools/pack/pieces/thatch.ts";
 
 const THATCH_NEW: Record<string, FormDef> = Object.fromEntries(THATCH_PLANNED.map((name) => [name, PLANNED[name]!]));
 const thatchNew = Object.entries(THATCH_NEW).map(([name, form]) => ({ name, form, shapes: levelsOf(THATCH, name, form) }));
@@ -734,9 +734,9 @@ test("with no post of its own, every thatch wall ends on its collider's ends, an
   }
 });
 
-test("thatch's trims are the five the client looks for, within their budgets, and closed but where two triangles are a sheet", () => {
+test("thatch's trims are the six the client looks for, within their budgets, and closed but where two triangles are a sheet", () => {
   const trims = trimShapes(THATCH);
-  expect(trims.map((m) => m.id)).toEqual(["core:joint_sq_thatch", "core:joint_r15_thatch", "core:joint_r21_thatch", "core:skirt_thatch", "core:ridge_thatch"]);
+  expect(trims.map((m) => m.id)).toEqual(["core:joint_sq_thatch", "core:joint_r15_thatch", "core:joint_r21_thatch", "core:skirt_thatch", "core:ridge_thatch", "core:eave_thatch"]);
   for (const mesh of trims) {
     const most = TRIM_TRIANGLES[mesh.id.slice(5, -7)]!;
     expect(mesh.lods.length, mesh.id).toBe(most.length);
@@ -751,6 +751,50 @@ test("thatch's trims are the five the client looks for, within their budgets, an
   const [sq, r15] = [trims[0]!, trims[1]!];
   expect(sq.lods.map((l) => Bun.hash(l.positions))).toEqual(r15.lods.map((l) => Bun.hash(l.positions)));
   expect(trimShapes(THATCH_JOINTED).map((m) => m.lods.map((l) => Bun.hash(l.positions)))).toEqual(trims.map((m) => m.lods.map((l) => Bun.hash(l.positions))));
+});
+
+test("a thatch eave runs along its side's line, each end mitred on the corner's diagonal, with a ring on each corner's line", () => {
+  const eave = THATCH.trims!().eave!;
+  eave.forEach((shape, level) => {
+    // In the recipe's frame: +x along the side from its middle, out at -y, up from the ceiling's top.
+    const points = shape.corners();
+    for (const p of points) expect(Math.abs(p[0]) - (1.5 - p[1]), `level ${level}: past its corner's diagonal`).toBeLessThanOrEqual(1e-9);
+    // Each end lies on the diagonal: two laid at an outside corner meet there, and leave nothing between them.
+    const ends = points.filter((p) => Math.abs(Math.abs(p[0]) - (1.5 - p[1])) < 1e-9);
+    expect(new Set(ends.map((p) => p.join())).size, `level ${level}: corners on the diagonals`).toBeGreaterThanOrEqual(level === 3 ? 4 : 6);
+    // It is the same either way along, so it lies alike at both ends of a run.
+    const name = (p: Vec, flip: number): string => [flip * p[0], p[1], p[2]].map((c) => (Math.round(c * 1e6) / 1e6 || 0).toFixed(6)).join();
+    expect([...new Set(points.map((p) => name(p, -1)))].sort()).toEqual([...new Set(points.map((p) => name(p, 1)))].sort());
+    // It reaches 0.30 m out, its tips past its lip, and hangs no lower than a ceiling's eave.
+    expect(Math.max(...points.map((p) => -p[1])), `level ${level}`).toBeLessThanOrEqual(0.3 + 1e-9);
+    expect(Math.min(...points.map((p) => p[2])), `level ${level}`).toBeGreaterThanOrEqual(-0.31);
+    expect(Math.max(...points.map((p) => p[2])), `level ${level}`).toBeLessThanOrEqual(0);
+  });
+  // At the finest a straight run folds the mitre onto the corner's line, which has a ring of its own.
+  for (const x of [-1.5, 1.5]) expect(eave[0]!.corners().filter((p) => Math.abs(p[0] - x) < 1e-9).length, `a ring at ${x}`).toBeGreaterThanOrEqual(8);
+});
+
+test("with no eaves of its own, a thatch ceiling ends on its sides but for its joists, and nothing else changes", () => {
+  const ceiling = FORMS.ceiling;
+  const [eaved, bare] = [levelsOf(THATCH, "ceiling", ceiling), levelsOf(THATCH_EAVELESS, "ceiling", ceiling)];
+  const box = colliderBox(ceiling);
+  bare.forEach((shape, level) => {
+    expect(shape.triangles, `level ${level}`).toBeLessThanOrEqual(eaved[level]!.triangles);
+    const lod = shape.lod(null, () => 0);
+    const s = measureSurface(lod);
+    expect([level, s.holes, s.flipped, s.insideOut]).toEqual([level, 0, 0, 0]);
+    for (const p of shape.corners()) {
+      // Its joists' axe-cut ends run 0.16 m past two sides, as under its eaves; nothing else stands past a side or over its top.
+      expect(Math.abs(p[0]), `level ${level}`).toBeLessThanOrEqual(1.5 + 0.16);
+      expect(Math.abs(p[1]), `level ${level}`).toBeLessThanOrEqual(1.5 + 1e-9);
+      expect(p[2], `level ${level}`).toBeLessThanOrEqual(box[4]! + 1e-9);
+    }
+  });
+  expect(bare.map((shape) => shape.triangles)).toEqual([616, 108, 60, 12]);
+  for (const name of ["foundation", "wall", "doorframe", "door", "door_open"]) {
+    const form = (FORMS as Record<string, FormDef>)[name]!;
+    expect(levelsOf(THATCH_EAVELESS, name, form).map((shape) => Bun.hash(Float64Array.from(shape.corners().flat()))), name).toEqual(levelsOf(THATCH, name, form).map((shape) => Bun.hash(Float64Array.from(shape.corners().flat()))));
+  }
 });
 
 test("a thatch joint is a pole that thins upward, with a ring at each height it may be cut to and its lashing in its own skin", () => {
