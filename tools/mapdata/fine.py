@@ -97,8 +97,10 @@ def main():
         r[(m.burn(below, size, t) > 0) & (r == 0)] = 4
         r[(m.burn(gaps, size, t) > 0) & (r == 3)] = 5
         path = m.base / f'roads{suffix}.png'
-        if path.exists():
-            report[f'roads{suffix}_changes'] = int((r != np.asarray(Image.open(path))).sum())
+        before = np.asarray(Image.open(path)) if path.exists() else None
+        # A layer made on another grid (the fine grid's pitch changed) has no samples to compare.
+        if before is not None and before.shape == r.shape:
+            report[f'roads{suffix}_changes'] = int((r != before).sum())
         save(r, path)
     r_fine = np.asarray(Image.open(m.base / 'roads_fine.png'))
     for name, fine in [('water', w_fine), ('buildings', b_fine), ('roads', r_fine)]:
