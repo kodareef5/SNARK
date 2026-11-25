@@ -6,6 +6,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CLIP_MAX_BYTES, CLIP_MAX_HIGH, CLIP_MAX_KBPS, CLIP_MAX_SECONDS, CLIP_MAX_WIDE, COLOUR_PARTS, COLOUR_RATE, isClipId } from "../../shared/video/clip.ts";
+import { probeMp4 } from "../../shared/video/mp4.ts";
 import { CLIPS_DIR, SOURCES, SOURCES_FILE, frameColours } from "../../tools/video/clips.ts";
 import { copyStarterClips, type StarterList } from "../../tools/video/starter.ts";
 import { artTest } from "../fixtures/needs-art.ts";
@@ -104,4 +105,13 @@ test("a build without the clips writes no starter.json and does not fail", () =>
   expect(copyStarterClips(join(top, "nowhere"), join(top, "dist-none"))).toBe(0);
   expect(existsSync(join(top, "dist-none/media"))).toBe(false);
   expect(readdirSync(top)).not.toContain("dist-none");
+});
+
+artTest("each clip passes the server's MP4 check and is already faststart", () => {
+  for (const c of list.clips) {
+    const probe = probeMp4(new Uint8Array(readFileSync(join(CLIPS_DIR, c.file))));
+    if (typeof probe === "string") throw new Error(`${c.file}: ${probe}`);
+    expect([probe.width, probe.height, probe.audio, probe.faststart]).toEqual([c.width, c.height, c.audio, true]);
+    expect(probe.seconds).toBeCloseTo(c.seconds, 1);
+  }
 });
