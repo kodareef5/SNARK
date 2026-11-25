@@ -389,6 +389,7 @@ export class Replication {
   private spareAt = 0;
 
   private snapshot(c: Client, T: number): void {
+    if (c.conn.admit?.(CH_UNRELIABLE) === false) return;
     const ents = this.world.ents;
     // The client predicts its own body, so the view leaves it out. While it drives a mount, both bodies are in the view.
     const self = c.drive >= 0 ? -1 : c.ent;
