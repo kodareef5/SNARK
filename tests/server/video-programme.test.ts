@@ -3,7 +3,7 @@ import { expect, test } from "bun:test";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { COLOUR_PARTS, defaultScreen, trackColour, type Channel, type Screen } from "../../shared/video/clip.ts";
 import { changesAt, channelAt, screenAt, type Timed } from "../../shared/video/programme.ts";
-import { NO_CLIP, SCREEN_FILL, SCREEN_THEATRE, SHOW_VIDEO, newScreenState, readScreens, writeScreens } from "../../shared/video/screen.ts";
+import { NO_CLIP, SCREEN_FILL, SCREEN_FACING, SHOW_VIDEO, newScreenState, readScreens, writeScreens } from "../../shared/video/screen.ts";
 
 const clips = new Map<string, Timed>([
   ["a", { id: "a", seconds: 10 }],
@@ -73,7 +73,7 @@ test("the screen message reads back what was written, in 8 bytes and 14 a screen
   const s = newScreenState();
   s.manifest = "0123456789abcdef";
   s.show = SHOW_VIDEO;
-  s.flags = SCREEN_THEATRE | SCREEN_FILL;
+  s.flags = SCREEN_FACING | SCREEN_FILL;
   s.clip = 3;
   s.start = -1234.5;
   s.next = NO_CLIP;

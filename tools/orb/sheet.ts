@@ -1,6 +1,6 @@
 // The orb's contact sheet: every scene at six moments, each as the whole ball, as the ball close up where its pucks
 // show, and as the ball far off, about 40 pixels across, in one PNG; and the screen scene showing a test frame
-// (frame.ts) in theatre from four sides and from above, and in band. Every pixel is the twin's (client/core/render/orb.ts
+// (frame.ts) wrapped and facing from four sides and from above, and fixed. Every pixel is the twin's (client/core/render/orb.ts
 // orbLight, orbShown), with the frame's lanes written as a scene writes them and the hour's own exposure and grade on
 // medium, so it is what the tests and the probe hold the card to.
 //
@@ -85,7 +85,7 @@ function dropAt(tick: number): SupplyList {
 }
 
 /** What the screen scene shows: the test frame, 640 by 360, its camera's up set by each view. */
-const SCREEN: OrbScreen = { shows: 0, width: 640, height: 360, texWidth: 640, texHeight: 360, levels: 9, theatre: true, fill: false, track: null, seconds: 0, upX: 0, upY: 1, upZ: 0 };
+const SCREEN: OrbScreen = { shows: 0, width: 640, height: 360, texWidth: 640, texHeight: 360, levels: 9, facing: true, fill: true, track: null, seconds: 0, upX: 0, upY: 1, upZ: 0 };
 const orb = new OrbView(SITE, [BLUE], TIER, SCREEN), frame = orb.frame;
 /** The frame's lanes for a moment of scene `which`, the eye at (x, y, z). */
 const lanes = (which: number, m: Moment, x: number, y: number, z: number): void => orb.lanes(which, withDrop(m), x, y, z);
@@ -140,23 +140,23 @@ ORB_SCENES.forEach((scene, s) => {
   strip.set(sheet.subarray(s * cellH * sheetW * 4, (s + 1) * cellH * sheetW * 4));
   writeFileSync(resolve(out, `${scene}.png`), encodePng(sheetW, cellH, strip));
 });
-// The screen scene: the test frame in theatre from the four sides, from above and from the street close by, then in band.
+// The screen scene: the test frame facing from the four sides, from above and from the street close by, then fixed.
 setScreenPicture(screenPicture(640, 360, screenFrame(640, 360)));
 // Its colour track: the frame's mean, then its top, right, bottom and left edges, the same every sample.
 SCREEN.track = Uint8Array.from({ length: 40 * 15 }, (_, i) => [[128, 125, 125], [128, 200, 50], [215, 125, 125], [128, 50, 200], [40, 125, 125]][Math.floor(i / 3) % 5]![i % 3]!);
 const screenH = WHOLE + TEXT + GAP, screenSheet = new Uint8ClampedArray(sheetW * screenH * 4).fill(24);
 for (let i = 3; i < screenSheet.length; i += 4) screenSheet[i] = 255;
-const SCREEN_VIEWS: { label: string; from: number; distance: number; lift: number; theatre: boolean; fill?: boolean }[] = [
-  { label: "theatre from the south", from: SOUTH, distance: 400, lift: 2, theatre: true },
-  { label: "theatre from the west", from: WEST, distance: 400, lift: 2, theatre: true },
-  { label: "theatre from the north, filled", from: NORTH, distance: 400, lift: 2, theatre: true, fill: true },
-  { label: "theatre from the east", from: -WEST, distance: 400, lift: 2, theatre: true },
-  { label: "theatre from above", from: SOUTH, distance: 1, lift: 520, theatre: true },
-  { label: "band from the north, a copy whole", from: NORTH, distance: 400, lift: 2, theatre: false },
+const SCREEN_VIEWS: { label: string; from: number; distance: number; lift: number; facing: boolean; fill?: boolean }[] = [
+  { label: "facing from the south", from: SOUTH, distance: 400, lift: 2, facing: true, fill: true },
+  { label: "facing from the west", from: WEST, distance: 400, lift: 2, facing: true, fill: true },
+  { label: "facing from the north, fitted", from: NORTH, distance: 400, lift: 2, facing: true },
+  { label: "facing from the east", from: -WEST, distance: 400, lift: 2, facing: true, fill: true },
+  { label: "facing from above", from: SOUTH, distance: 1, lift: 520, facing: true, fill: true },
+  { label: "fixed from the north", from: NORTH, distance: 400, lift: 2, facing: false, fill: true },
 ];
 SCREEN_VIEWS.forEach((v, k) => {
   const left = k * cellW + GAP, m: Moment = { label: v.label, seconds: at(40), hour: 22, from: v.from };
-  SCREEN.theatre = v.theatre;
+  SCREEN.facing = v.facing;
   SCREEN.fill = v.fill ?? false;
   words(screenSheet, sheetW, left, 2, `screen: ${v.label}`);
   const far = Math.hypot(v.distance, v.lift - SITE.centre);

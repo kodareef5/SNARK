@@ -49,7 +49,7 @@ test("a fresh library makes the strip channel of the starters and leaves the orb
   const { lib } = library(() => 5_000_000);
   const view = lib.view();
   expect(view.doc.channels).toEqual([{ name: "strip", items: [SNEEZE, TRAIN], shuffle: false, epoch: 5_000_000 }]);
-  expect(view.screens.get("orb")).toMatchObject({ show: "scenes", once: null, mode: "theatre" });
+  expect(view.screens.get("orb")).toMatchObject({ show: "scenes", once: null, mode: "facing" });
   expect(view.manifest.map((c) => c.id)).toEqual([SNEEZE, TRAIN, BOLT]);
   // A second page or world opening the same file finds the channel as it was made.
   const again = new VideoLibrary({ db: join(root, `lib${made}`, "video.sqlite"), media: lib.media, tmp: lib.tmp, now: () => 9_000_000 });

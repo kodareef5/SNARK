@@ -11,7 +11,7 @@ import { BitReader } from "../../shared/net/codec.ts";
 import { OWN_SCREEN, S_OWN } from "../../shared/net/protocol.ts";
 import { offsetForHour } from "../../shared/sim/clock.ts";
 import type { Clip } from "../../shared/video/clip.ts";
-import { NO_CLIP, SCREEN_FILL, SCREEN_SOUND, SCREEN_THEATRE, SHOW_SCENES, SHOW_VIDEO, readScreens, type ScreenState } from "../../shared/video/screen.ts";
+import { NO_CLIP, SCREEN_FILL, SCREEN_SOUND, SCREEN_FACING, SHOW_SCENES, SHOW_VIDEO, readScreens, type ScreenState } from "../../shared/video/screen.ts";
 import { Harness } from "../fixtures/net.ts";
 
 const root = mkdtempSync(join(tmpdir(), "snark-video-screen-"));
@@ -62,10 +62,10 @@ test("the world sends the screens on a welcome and again only when the item chan
   h.join("ada");
   const sent = screensSent(h, 0);
   h.run(400);
-  // The orb is on the scenes until an admin picks something.
+  // The orb is on the scenes until an admin picks something, set to fill the ball facing each viewer.
   expect(sent.length).toBe(1);
   const manifest = lib.view().manifestId;
-  expect(sent[0]).toEqual([{ manifest, show: SHOW_SCENES, flags: SCREEN_THEATRE, clip: NO_CLIP, start: 0, next: NO_CLIP }]);
+  expect(sent[0]).toEqual([{ manifest, show: SHOW_SCENES, flags: SCREEN_FACING | SCREEN_FILL, clip: NO_CLIP, start: 0, next: NO_CLIP }]);
 
   lib.edit(null, (doc) => ((doc.screens[0] = { ...doc.screens[0]!, show: "strip", fill: true, sound: true }), null));
   wall += 3_000;
@@ -74,7 +74,7 @@ test("the world sends the screens on a welcome and again only when the item chan
   h.run(200);
   expect(sent.length).toBe(2);
   // The strip's epoch is the library's birth, three seconds ago, so A has played three seconds.
-  expect(sent[1]![0]).toEqual({ manifest, show: SHOW_VIDEO, flags: SCREEN_THEATRE | SCREEN_FILL | SCREEN_SOUND, clip: 0, start: at - 3 * TICK_RATE, next: 1 });
+  expect(sent[1]![0]).toEqual({ manifest, show: SHOW_VIDEO, flags: SCREEN_FACING | SCREEN_FILL | SCREEN_SOUND, clip: 0, start: at - 3 * TICK_RATE, next: 1 });
 
   // The same item a few seconds on is no news, whatever the ticks did meanwhile.
   for (let s = 0; s < 5; s++) {
@@ -118,16 +118,16 @@ test("a night-only screen shows the scenes by day, and night is the sun below th
   const lib = library(() => wall);
   const h = new Harness({}, 1, 30);
   const feed = new ScreenFeed(lib, h.world);
-  lib.edit(null, (doc) => ((doc.screens[0] = { ...doc.screens[0]!, show: "strip", night: true, mode: "band" }), null));
+  lib.edit(null, (doc) => ((doc.screens[0] = { ...doc.screens[0]!, show: "strip", night: true, mode: "fixed" }), null));
   h.world.dayOffset = offsetForHour(h.world.tick, 12, h.world.clock);
   expect(worldNight(h.world)).toBe(false);
   feed.poll(wall);
-  expect(feed.states[0]).toMatchObject({ show: SHOW_SCENES, flags: 0, clip: NO_CLIP });
+  expect(feed.states[0]).toMatchObject({ show: SHOW_SCENES, flags: SCREEN_FILL, clip: NO_CLIP });
   const version = feed.version;
   h.world.dayOffset = offsetForHour(h.world.tick, 21, h.world.clock);
   expect(worldNight(h.world)).toBe(true);
   feed.poll(wall + 1_000);
-  expect(feed.states[0]).toMatchObject({ show: SHOW_VIDEO, flags: 0, clip: 0 });
+  expect(feed.states[0]).toMatchObject({ show: SHOW_VIDEO, flags: SCREEN_FILL, clip: 0 });
   expect(feed.version).toBe(version + 1);
   lib.close();
 });

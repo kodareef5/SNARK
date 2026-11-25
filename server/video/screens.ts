@@ -5,7 +5,7 @@ import { OWN_SCREEN } from "../../shared/net/protocol.ts";
 import { isDay } from "../../shared/sim/clock.ts";
 import { SCREENS, defaultScreen } from "../../shared/video/clip.ts";
 import { screenAt, type Playing } from "../../shared/video/programme.ts";
-import { NO_CLIP, SCREEN_FILL, SCREEN_SOUND, SCREEN_THEATRE, SHOW_SCENES, SHOW_VIDEO, writeScreens, type ScreenState } from "../../shared/video/screen.ts";
+import { NO_CLIP, SCREEN_FILL, SCREEN_SOUND, SCREEN_FACING, SHOW_SCENES, SHOW_VIDEO, writeScreens, type ScreenState } from "../../shared/video/screen.ts";
 import type { GameServer } from "../game.ts";
 import { worldHour, type ServerWorld } from "../world.ts";
 import type { LibraryView } from "./library.ts";
@@ -71,7 +71,7 @@ export class ScreenFeed {
       const screen = view.screens.get(id) ?? defaultScreen(id);
       const now = screenAt(screen, view.channels, view.timed, wall, night), was = this.playing[i] ?? null;
       const s = this.states[i] ?? (this.states[i] = { manifest: "", show: SHOW_SCENES, flags: 0, clip: NO_CLIP, start: 0, next: NO_CLIP });
-      const flags = (screen.mode === "theatre" ? SCREEN_THEATRE : 0) | (screen.fill ? SCREEN_FILL : 0) | (screen.sound ? SCREEN_SOUND : 0);
+      const flags = (screen.mode === "facing" ? SCREEN_FACING : 0) | (screen.fill ? SCREEN_FILL : 0) | (screen.sound ? SCREEN_SOUND : 0);
       const same = !!now && !!was && now.clip === was.clip && now.start === was.start;
       const next: ScreenState = now
         ? { manifest: view.manifestId, show: SHOW_VIDEO, flags, clip: index.get(now.clip) ?? NO_CLIP, start: same ? s.start : startTick(this.world.tick, wall, now.start), next: now.next === null ? NO_CLIP : (index.get(now.next) ?? NO_CLIP) }

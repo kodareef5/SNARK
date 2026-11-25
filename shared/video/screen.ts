@@ -5,7 +5,7 @@ import type { BitReader, BitWriter } from "../net/codec.ts";
 export const SHOW_SCENES = 0;
 export const SHOW_VIDEO = 1;
 
-export const SCREEN_THEATRE = 1;
+export const SCREEN_FACING = 1;
 export const SCREEN_FILL = 2;
 export const SCREEN_SOUND = 4;
 
@@ -24,7 +24,7 @@ export interface ScreenState {
   next: number;
 }
 
-export const newScreenState = (): ScreenState => ({ manifest: "", show: SHOW_SCENES, flags: SCREEN_THEATRE, clip: NO_CLIP, start: 0, next: NO_CLIP });
+export const newScreenState = (): ScreenState => ({ manifest: "", show: SHOW_SCENES, flags: SCREEN_FACING, clip: NO_CLIP, start: 0, next: NO_CLIP });
 
 /** Every screen's state, in SCREENS order (clip.ts). The manifest is 8 bytes; each screen is 14. */
 export function writeScreens(w: BitWriter, screens: readonly ScreenState[]): void {

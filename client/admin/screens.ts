@@ -141,8 +141,8 @@ function screenHtml(): string {
       <span>Play once</span><div class="row"><select id="once-${name}" aria-label="Clip to play once">${visible.map((c) => `<option value="${c.id}">${esc(c.title)}</option>`).join("")}</select>
         <button data-do="once" data-screen="${name}"${visible.length ? "" : " disabled"}>Play once</button>
         <button data-do="stop" data-screen="${name}"${showing ? "" : " disabled"}>Stop the showing</button></div>
-      <span>Picture</span><div class="row">${pick("mode", "theatre", "Theatre: faces each viewer", s.mode === "theatre")}${pick("mode", "band", "Band: wrapped round", s.mode === "band")}</div>
-      <span>Frame</span><div class="row">${pick("fill", "false", "Fit whole", !s.fill)}${pick("fill", "true", "Fill the face", s.fill)}</div>
+      <span>Picture</span><div class="row">${pick("mode", "facing", "Wrapped, facing each viewer", s.mode === "facing")}${pick("mode", "fixed", "Wrapped, fixed to the ball", s.mode === "fixed")}</div>
+      <span>Frame</span><div class="row">${pick("fill", "false", "Fit the whole picture", !s.fill)}${pick("fill", "true", "Fill the ball", s.fill)}</div>
       <span>Sound</span><label><input type="checkbox" data-do="flag" data-screen="${name}" data-field="sound"${s.sound ? " checked" : ""}> Play the clip's sound near the screen</label>
       <span>When</span><label><input type="checkbox" data-do="flag" data-screen="${name}" data-field="night"${s.night ? " checked" : ""}> Night only (the scenes run by day; it is ${st.night ? "night" : "day"} now)</label>
     </div><div id="now-${name}" class="now"></div>`;
@@ -305,7 +305,7 @@ async function drawBall(): Promise<void> {
   canvas.width = PREVIEW_SIZE * twin.PREVIEW_VIEWS.length;
   canvas.height = PREVIEW_SIZE;
   const out = new ImageData(canvas.width, canvas.height);
-  twin.drawPreview(out.data, PREVIEW_SIZE, picture, flat.width, flat.height, Uint8Array.from(atob(clip.colours), (ch) => ch.charCodeAt(0)), orb.mode === "theatre", orb.fill);
+  twin.drawPreview(out.data, PREVIEW_SIZE, picture, flat.width, flat.height, Uint8Array.from(atob(clip.colours), (ch) => ch.charCodeAt(0)), orb.mode === "facing", orb.fill);
   canvas.getContext("2d")!.putImageData(out, 0, 0);
   $("preview").querySelector("p")!.textContent = `${clip.title} at night, ${twin.PREVIEW_VIEWS.map((v) => v.label).join(", ")}.`;
 }

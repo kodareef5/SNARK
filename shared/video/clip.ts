@@ -48,7 +48,7 @@ export interface Channel {
 }
 
 /** How a screen draws a picture: facing each viewer, or wrapped round the ball in copies. */
-export type ScreenMode = "theatre" | "band";
+export type ScreenMode = "facing" | "fixed";
 
 /** What one screen shows. `show` is "scenes" or a channel's name; `once` plays one clip from `from` (wall ms), then returns. */
 export interface Screen {
@@ -66,7 +66,7 @@ export interface Screen {
 /** The screens there are. The orb is the first; billboards and TVs come later. */
 export const SCREENS = ["orb"] as const;
 
-export const defaultScreen = (screen: string): Screen => ({ screen, show: "scenes", once: null, mode: "theatre", fill: false, sound: false, night: false });
+export const defaultScreen = (screen: string): Screen => ({ screen, show: "scenes", once: null, mode: "facing", fill: true, sound: false, night: false });
 
 /** One sample of a clip's track, `part` of COLOUR_PARTS, as sRGB from 0 to 1 into `out`; black where it has none. */
 export function trackColour(track: Uint8Array, seconds: number, part: number, out: number[] | Float64Array): void {

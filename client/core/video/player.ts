@@ -7,7 +7,7 @@
 
 import { TICK_RATE } from "../../../shared/coords.ts";
 import type { Clip } from "../../../shared/video/clip.ts";
-import { NO_CLIP, SCREEN_FILL, SCREEN_SOUND, SCREEN_THEATRE, SHOW_VIDEO, manifestPath, screenSeconds, type ScreenState } from "../../../shared/video/screen.ts";
+import { NO_CLIP, SCREEN_FILL, SCREEN_SOUND, SCREEN_FACING, SHOW_VIDEO, manifestPath, screenSeconds, type ScreenState } from "../../../shared/video/screen.ts";
 import type { OrbSite } from "../../../shared/world/orb.ts";
 import { SCREEN_LOD, nearestOrb, screenTexels, topLevel, type OrbScreen } from "../render/orb.ts";
 import type { FramePacket } from "../render/packet.ts";
@@ -192,7 +192,7 @@ export class ScreenPlayer {
   /** Whether the map's art has let a clip start (WAIT_FOR_ART), and when a clip was first wanted, in ms, or -1. */
   private settled = false;
   private wanted = -1;
-  private readonly out: OrbScreen = { shows: -1, width: 0, height: 0, texWidth: 0, texHeight: 0, levels: 0, theatre: true, fill: false, track: null, seconds: 0, upX: 0, upY: 1, upZ: 0 };
+  private readonly out: OrbScreen = { shows: -1, width: 0, height: 0, texWidth: 0, texHeight: 0, levels: 0, facing: true, fill: false, track: null, seconds: 0, upX: 0, upY: 1, upZ: 0 };
 
   private readonly host: VideoHost;
 
@@ -292,7 +292,7 @@ export class ScreenPlayer {
     o.width = o.texWidth = held.width;
     o.height = o.texHeight = held.height;
     o.levels = this.mips ? topLevel(held.width, held.height) : 0;
-    o.theatre = !s || (s.flags & SCREEN_THEATRE) !== 0;
+    o.facing = !s || (s.flags & SCREEN_FACING) !== 0;
     o.fill = !!s && (s.flags & SCREEN_FILL) !== 0;
     o.track = track?.track ?? null;
     o.seconds = Math.max(0, Math.min(track?.clip.seconds ?? 0, seconds));

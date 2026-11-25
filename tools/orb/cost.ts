@@ -39,8 +39,8 @@ void main() {
   gl_Position = vec4(at, 0.0, 1.0);
 }`;
 
-/** The screen scene's picture: the timing page's 512 square test frame on unit 29, in theatre, fitted. */
-const SCREEN: OrbScreen = { shows: 0, width: 512, height: 512, texWidth: 512, texHeight: 512, levels: 9, theatre: true, fill: false, track: null, seconds: 0, upX: 0, upY: 1, upZ: 0 };
+/** The screen scene's picture: the timing page's 512 square test frame on unit 29, wrapped facing, filling the ball. */
+const SCREEN: OrbScreen = { shows: 0, width: 512, height: 512, texWidth: 512, texHeight: 512, levels: 9, facing: true, fill: true, track: null, seconds: 0, upX: 0, upY: 1, upZ: 0 };
 /** The scenes timed: the five, then the screen. */
 const TIMED = [...ORB_SCENES, "screen"] as const;
 

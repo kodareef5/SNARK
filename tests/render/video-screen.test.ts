@@ -1,10 +1,10 @@
-// The orb's screen scene (client/core/render/orb.ts): a video's picture in theatre, facing each viewer, and in band round
-// the ball; the change to and from it; the light it casts from the clip's colour track; and the player that plays it
+// The orb's screen scene (client/core/render/orb.ts): a video's picture wrapped round the ball, facing each viewer or
+// fixed; the change to and from it; the light it casts from the clip's colour track; and the player that plays it
 // (client/core/video/player.ts), its rules tested without a page.
 import { expect, test } from "bun:test";
 import { TIERS } from "../../client/core/assets/tiers.ts";
 import { srgbToLinear } from "../../client/core/render/color-space.ts";
-import { ORB_BAND, ORB_FRAGMENT, ORB_SCREEN, OrbCast, SCREEN_AT, orbScene, orbScreenUv, screenCover, screenPicture, screenUv, setScreenPicture, writeOrb, type OrbScreen } from "../../client/core/render/orb.ts";
+import { ORB_FRAGMENT, ORB_SCREEN, OrbCast, SCREEN_AT, groundLine, orbScene, orbScreenUv, screenPicture, screenUv, screenWrap, setScreenPicture, writeOrb, type OrbScreen } from "../../client/core/render/orb.ts";
 import "../../client/core/render/orb-late.ts";
 import { ORB_COLOUR } from "../../client/core/render/orb-light.ts";
 import { FRAME, FRAME_FLOATS, ORB_AT } from "../../client/core/render/packet.ts";
@@ -12,7 +12,7 @@ import { PROGRAMS, withDefines } from "../../client/core/render/programs.ts";
 import { exposureFor, theSky } from "../../client/core/render/sky.ts";
 import { MIN_PIXELS, ScreenPlayer, WAIT_FOR_ART, base64Bytes, mayPlay, mustSeek, orbPixels, readManifest, syncRate, type Picture, type VideoHost, type VideoLike, type Watch } from "../../client/core/video/player.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
-import { NO_CLIP, SCREEN_THEATRE, SHOW_SCENES, SHOW_VIDEO, newScreenState, type ScreenState } from "../../shared/video/screen.ts";
+import { NO_CLIP, SCREEN_FACING, SHOW_SCENES, SHOW_VIDEO, newScreenState, type ScreenState } from "../../shared/video/screen.ts";
 import { ORB_WIPE, type OrbSite } from "../../shared/world/orb.ts";
 import { cellColour, flatTrack, screenFrame } from "../../tools/orb/frame.ts";
 import { compileErrors, linkErrors } from "../fixtures/glsl.ts";
@@ -23,9 +23,9 @@ const PICTURE = screenPicture(W, H, screenFrame(W, H));
 const NIGHT = 23;
 
 /** What the player hands writeOrb: the test frame, its track `track`, seen by a camera looking `yaw` round and `pitch` up. */
-function held(theatre: boolean, fill: boolean, yaw: number, pitch: number, shows = 0, track: Uint8Array | null = null): OrbScreen {
+function held(facing: boolean, fill: boolean, yaw: number, pitch: number, shows = 0, track: Uint8Array | null = null): OrbScreen {
   const sy = Math.sin(yaw), cy = Math.cos(yaw), sp = Math.sin(pitch), cp = Math.cos(pitch);
-  return { shows, width: W, height: H, texWidth: W, texHeight: H, levels: 0, theatre, fill, track, seconds: 1, upX: -sy * sp, upY: cp, upZ: -cy * sp };
+  return { shows, width: W, height: H, texWidth: W, texHeight: H, levels: 0, facing, fill, track, seconds: 1, upX: -sy * sp, upY: cp, upZ: -cy * sp };
 }
 
 /** A view of the ball: the eye, its forward to the ball's centre and its camera's yaw and pitch. */
@@ -46,7 +46,7 @@ function side(bearing: number, distance = 400): View {
 const above = (yaw: number): View => ({ ex: SITE.x, ey: SITE.y + SITE.centre + 500, ez: SITE.z, yaw, pitch: -Math.PI / 2 + 1e-4 });
 
 /** The frame's lanes at night with the screen showing, seen from `v`. */
-function frameFor(v: View, theatre = true, fill = false, site = SITE, screen = held(theatre, fill, v.yaw, v.pitch)): Float32Array {
+function frameFor(v: View, facing = true, fill = false, site = SITE, screen = held(facing, fill, v.yaw, v.pitch)): Float32Array {
   const f = new Float32Array(FRAME_FLOATS);
   f[FRAME.exposure] = exposureFor(NIGHT, theSky().lights);
   writeOrb(f, [site], [], 500, NIGHT, v.ex, v.ey, v.ez, null, 500 * TICK_RATE, TICK_RATE, -1, 1, null);
@@ -76,7 +76,7 @@ function hit(v: View, a: number, b: number, site = SITE): number[] | null {
 /** The picture's (u, v) along a ray of `v`, or null where it misses the ball. */
 function uvAt(f: Float32Array, v: View, a: number, b: number): number[] | null {
   const n = hit(v, a, b);
-  if (!n || !orbScreenUv(f, n[0]!, n[1]!, n[2]!, 1e-4)) return null;
+  if (!n || !orbScreenUv(f, n[0]!, n[1]!, n[2]!)) return null;
   return [screenUv[0]!, screenUv[1]!];
 }
 
@@ -88,135 +88,120 @@ function seenSpan(v: View): number[] {
 }
 
 const colour = [0, 0, 0];
-/** The twin's colour, linear, along a ray of `v`. */
-function seen(f: Float32Array, v: View, a: number, b: number): number[] {
-  const n = hit(v, a, b)!;
-  orbScene(colour, f, ORB_SCREEN, n[0]!, n[1]!, n[2]!, 0, 1e-4);
-  return [...colour];
-}
 const linear = (c: readonly number[]): number[] => c.map((x) => srgbToLinear(x / 255));
 const near = (a: readonly number[], b: readonly number[], by: number): boolean => a.every((x, k) => Math.abs(x - b[k]!) <= by);
 
 const VIEWS: readonly [string, View][] = [["south", side(0)], ["east", side(Math.PI / 2)], ["north", side(Math.PI)], ["west", side(-Math.PI / 2)], ["above", above(0.7)], ["above, turned", above(2.9)]];
+const SIDES = VIEWS.slice(0, 4);
 
-test("theatre is upright and centred on the seen part from four sides and above", () => {
+/** The twin's colour, linear, where the picture is at (u, w) on the copy the lanes face. */
+function seenAt(f: Float32Array, u: number, w: number): number[] {
+  const s = SCREEN_AT, lon = f[s]! + u * f[s + 4]!, y = f[s + 5]! + w * f[s + 6]!, c = Math.sqrt(1 - y * y);
+  orbScene(colour, f, ORB_SCREEN, c * Math.sin(lon), y, c * Math.cos(lon), 0, 1e-4);
+  return [...colour];
+}
+
+test("facing wraps the ball with a copy's middle toward each viewer, upright", () => {
   setScreenPicture(PICTURE);
-  for (const [name, v] of VIEWS) {
+  for (const [name, v] of SIDES) {
     const f = frameFor(v), [low, high] = seenSpan(v), mid = (low! + high!) / 2, span = high! - low!;
-    // The seen part's middle is the picture's; up the view is up the picture, right is right.
+    // The middle of what is seen is the copy's middle across; up the view is up the picture, right is right.
     const at = uvAt(f, v, 0, mid)!;
     expect(Math.abs(at[0]!), name).toBeLessThan(0.02);
-    expect(Math.abs(at[1]!), name).toBeLessThan(0.05);
-    expect(uvAt(f, v, 0, mid + span * 0.2)![1]!, name).toBeGreaterThan(0.1);
+    expect(uvAt(f, v, 0, mid + span * 0.2)![1]!, name).toBeGreaterThan(at[1]! + 0.1);
     expect(uvAt(f, v, span * 0.15, mid)![0]!, name).toBeGreaterThan(0.1);
-    // The test frame reads as drawn: the arrow at the middle, the top row's green at the top, red growing to the right.
-    expect(Math.min(...seen(f, v, 0, mid)), name).toBeGreaterThan(0.9);
-    const top = uvFind(f, v, 0.85, 0.8), bottom = uvFind(f, v, 0.85, -0.8), left = uvFind(f, v, -0.8, 0), right = uvFind(f, v, 0.8, 0);
-    const t = seen(f, v, top[0]!, top[1]!), d = seen(f, v, bottom[0]!, bottom[1]!), l = seen(f, v, left[0]!, left[1]!), r = seen(f, v, right[0]!, right[1]!);
-    expect(near(t, linear(cellColour(3, 0)), 0.03), `${name}: ${t}`).toBe(true);
-    expect(near(d, linear(cellColour(3, 2)), 0.03), `${name}: ${d}`).toBe(true);
-    expect(near(l, linear(cellColour(0, 1)), 0.03), `${name}: ${l}`).toBe(true);
-    expect(near(r, linear(cellColour(3, 1)), 0.03), `${name}: ${r}`).toBe(true);
+    // It reaches the ball's outline on both sides and its top: the picture is on the ball, not a card in front of it.
+    let edge = 0;
+    while (hit(v, edge + 0.0005, mid)) edge += 0.0005;
+    expect(uvAt(f, v, edge, mid)![0]!, name).toBeGreaterThan(0.8);
+    expect(uvAt(f, v, -edge, mid)![0]!, name).toBeLessThan(-0.8);
+    expect(uvAt(f, v, 0, high! - 0.0005)![1]!, name).toBeGreaterThan(0.85);
   }
+  for (const [name, v] of VIEWS.slice(4)) {
+    // From over the top the copy faces the side the camera's up leaves behind, so the picture stands up on the screen.
+    const f = frameFor(v), down = uvAt(f, v, 0, -0.08)!, lower = uvAt(f, v, 0, -0.12)!;
+    expect(Math.abs(down[0]!), name).toBeLessThan(0.02);
+    expect(lower[1]!, name).toBeLessThan(down[1]!);
+  }
+  // The test frame reads as drawn: the top row's green at the top, red growing to the right, the arrow at the middle.
+  const f = frameFor(side(0));
+  expect(near(seenAt(f, 0.85, 0.8), linear(cellColour(3, 0)), 0.03)).toBe(true);
+  expect(near(seenAt(f, 0.85, -0.8), linear(cellColour(3, 2)), 0.03)).toBe(true);
+  expect(near(seenAt(f, -0.8, 0), linear(cellColour(0, 1)), 0.03)).toBe(true);
+  expect(near(seenAt(f, 0.8, 0), linear(cellColour(3, 1)), 0.03)).toBe(true);
+  expect(Math.min(...seenAt(f, 0, 0))).toBeGreaterThan(0.9);
   setScreenPicture(null);
 });
 
-/** The angles (right, up) of the ray of `v` that meets the picture at (u, w): up the view, then across it, then up again. */
-function uvFind(f: Float32Array, v: View, u: number, w: number): number[] {
-  let a = 0, b = 0;
-  for (let pass = 0; pass < 3; pass++) {
-    const axis = pass === 1 ? 0 : 1, want = axis === 0 ? u : w;
-    let best = axis === 0 ? a : b, gap = Infinity;
-    for (let k = -0.4; k <= 0.4; k += 0.0002) {
-      const at = uvAt(f, v, axis === 0 ? k : a, axis === 0 ? b : k);
-      if (at && Math.abs(at[axis]! - want) < gap) [best, gap] = [k, Math.abs(at[axis]! - want)];
-    }
-    if (axis === 0) a = best;
-    else b = best;
-  }
-  return [a, b];
-}
-
-test("fit shows the whole frame inside the outline above the ground; fill covers it", () => {
+test("fill covers every seen part of the ball; fit keeps the picture's shape", () => {
   for (const [name, v] of VIEWS) {
-    const fit = frameFor(v), fill = frameFor(v, true, true);
-    let inside = 0, covered = 0, all = 0;
+    const fill = frameFor(v, true, true);
+    let covered = 0, all = 0;
     for (let a = -0.25; a <= 0.25; a += 0.004) for (let b = -0.25; b <= 0.25; b += 0.004) {
       const n = hit(v, a, b);
       if (!n) continue;
       all++;
-      orbScreenUv(fill, n[0]!, n[1]!, n[2]!, 1e-4);
+      orbScreenUv(fill, n[0]!, n[1]!, n[2]!);
       if (Math.abs(screenUv[0]!) <= 1.001 && Math.abs(screenUv[1]!) <= 1.001) covered++;
-      orbScreenUv(fit, n[0]!, n[1]!, n[2]!, 1e-4);
-      if (Math.abs(screenUv[0]!) <= 1 && Math.abs(screenUv[1]!) <= 1) inside++;
     }
     expect(covered, name).toBe(all);
-    // Fit's picture is the outline's: its four corners each meet the ball's seen part.
-    for (const [cu, cv] of [[-0.98, -0.98], [0.98, -0.98], [-0.98, 0.98], [0.98, 0.98]]) {
-      const ray = cornerRay(fit, v, cu!, cv!);
-      expect(hit(v, ray[0]!, ray[1]!), `${name} corner ${cu} ${cv}`).not.toBeNull();
-    }
-    // And it takes a good share of what is seen, as screenCover says of a 16:9 picture in a circle.
-    expect(inside / all, name).toBeGreaterThan(0.4);
+  }
+  // Seen from in front, fit's copy is as wide against its height as the picture.
+  const fit = frameFor(side(0), true, false), s = SCREEN_AT;
+  expect(Math.sin(fit[s + 4]!) / fit[s + 6]!).toBeCloseTo(W / H, 4);
+  expect(fit[s + 43]!).toBeGreaterThan(0.6);
+  expect(fit[s + 43]!).toBeLessThan(1);
+});
+
+test("the picture runs from where the ground meets the ball to its top", () => {
+  const f = frameFor(side(0.4), true, true), s = SCREEN_AT;
+  expect(f[s + 5]! - f[s + 6]!).toBeCloseTo(groundLine(SITE), 5);
+  expect(f[s + 5]! + f[s + 6]!).toBeCloseTo(1, 5);
+  expect(groundLine(SITE)).toBeCloseTo(-34 / 78, 5);
+  // A ball clear of the ground has the picture from pole to pole.
+  const clear = frameFor(side(0.4), true, true, { ...SITE, centre: 90 });
+  expect(clear[s + 5]! - clear[s + 6]!).toBeCloseTo(-1, 5);
+});
+
+test("copies round the ball follow the picture's shape", () => {
+  const low = groundLine(SITE);
+  expect([screenWrap(16 / 9, low, true).copies, screenWrap(4 / 3, low, true).copies, screenWrap(3, low, true).copies]).toEqual([2, 2, 2]);
+  expect(screenWrap(9 / 16, low, true).copies).toBeGreaterThanOrEqual(6);
+  expect(screenWrap(9 / 16, low, true).cover).toBeCloseTo(1, 5);
+  // Fit narrows a tall picture or shortens a wide one, never past what it covers.
+  for (const aspect of [9 / 16, 1, 4 / 3, 16 / 9, 3]) {
+    const w = screenWrap(aspect, low, false);
+    expect(w.halfWide).toBeLessThanOrEqual(Math.PI / w.copies + 1e-9);
+    expect(w.halfHigh).toBeLessThanOrEqual((1 - low) / 2 + 1e-9);
+    expect(Math.sin(w.halfWide) / w.halfHigh).toBeCloseTo(aspect, 4);
   }
 });
 
-/** The ray's angles (right, up) of `v` through the point of the picture's plane at (u, v). */
-function cornerRay(f: Float32Array, v: View, u: number, w: number): number[] {
-  const yaw = (SITE.yaw * Math.PI) / 32768, cs = Math.cos(yaw), sn = Math.sin(yaw), s = SCREEN_AT;
-  // The point on the plane in the orb's frame, then in the world from the eye.
-  const ox = f[s]! + u * f[s + 7]! * f[s + 4]! + w * f[s + 11]! * f[s + 8]!, oy = f[s + 1]! + u * f[s + 7]! * f[s + 5]! + w * f[s + 11]! * f[s + 9]!, oz = f[s + 2]! + u * f[s + 7]! * f[s + 6]! + w * f[s + 11]! * f[s + 10]!;
-  const wx = cs * ox + sn * oz + f[ORB_AT]!, wy = oy + f[ORB_AT + 1]!, wz = -sn * ox + cs * oz + f[ORB_AT + 2]!;
-  const [fw, r, up] = axes(v), along = wx * fw![0]! + wy * fw![1]! + wz * fw![2]!;
-  return [Math.atan((wx * r![0]! + wy * r![1]! + wz * r![2]!) / along), Math.atan((wx * up![0]! + wy * up![1]! + wz * up![2]!) / along)];
-}
-
-test("the buried part of the ball is left out: the picture rises off the ground", () => {
-  const v = side(0.4), f = frameFor(v), middle = f[SCREEN_AT + 1]!;
-  // From the street the picture's middle stands over the ball's; a ball clear of the ground has it at the centre.
-  expect(middle).toBeGreaterThan(10);
-  const clear = frameFor(v, true, false, { ...SITE, centre: 90 });
-  expect(Math.abs(clear[SCREEN_AT + 1]!)).toBeLessThan(2);
-  // From over the top nothing is buried.
-  expect(Math.hypot(frameFor(above(0.3))[SCREEN_AT]!, frameFor(above(0.3))[SCREEN_AT + 2]!)).toBeLessThan(1);
-  // Fit's bottom corners are seen, over the ground, not under it.
-  for (const u of [-0.98, 0, 0.98]) {
-    const ray = cornerRay(f, v, u, -0.98);
-    expect(hit(v, ray[0]!, ray[1]!)).not.toBeNull();
-  }
-});
-
-test("theatre turns smoothly from the side to over the top and never spins", () => {
-  let last: number[] | null = null;
+test("facing turns smoothly from the side to over the top and never spins", () => {
+  let last: number | null = null;
   for (let k = 0; k <= 90; k++) {
     const lift = (k / 90) * (Math.PI / 2 - 0.01), d = 450, yaw = 0.3;
     const ex = SITE.x - d * Math.cos(lift) * Math.sin(yaw), ez = SITE.z - d * Math.cos(lift) * Math.cos(yaw), ey = SITE.y + SITE.centre + d * Math.sin(lift);
-    const f = frameFor({ ex, ey, ez, yaw, pitch: -lift });
-    const up = [f[SCREEN_AT + 8]!, f[SCREEN_AT + 9]!, f[SCREEN_AT + 10]!];
-    if (last) expect(up[0]! * last[0]! + up[1]! * last[1]! + up[2]! * last[2]!).toBeGreaterThan(0.99);
-    last = up;
+    const facing = frameFor({ ex, ey, ez, yaw, pitch: -lift })[SCREEN_AT]!;
+    if (last !== null) expect(Math.abs(Math.atan2(Math.sin(facing - last), Math.cos(facing - last)))).toBeLessThan(0.02);
+    last = facing;
   }
 });
 
-test("band is three copies round the ball, with no seam where longitude wraps", () => {
+test("fixed holds the copies to the ball, with no seam where longitude wraps", () => {
   setScreenPicture(PICTURE);
-  const v = side(0), f = frameFor(v, false, false, SITE, held(false, false, v.yaw, v.pitch, 0, flatTrack(40, 200, 120, 60)));
+  const views = SIDES.map(([, v]) => frameFor(v, false, true, SITE, held(false, true, v.yaw, v.pitch, 0, flatTrack(40, 200, 120, 60))));
+  for (const f of views) expect(f[SCREEN_AT]).toBe(0);
+  const f = views[0]!, copies = f[SCREEN_AT + 1]!;
   const at = (lon: number, lat: number): number[] => {
     orbScene(colour, f, ORB_SCREEN, Math.cos(lat) * Math.sin(lon), Math.sin(lat), Math.cos(lat) * Math.cos(lon), 0, 1e-3);
     return [...colour];
   };
   for (const lat of [-0.3, 0, 0.2]) {
-    for (const lon of [0, 0.4, 1.3, 2.2, -0.9]) for (let k = 1; k < ORB_BAND; k++) expect(near(at(lon, lat), at(lon + (k * 2 * Math.PI) / ORB_BAND, lat), 1e-4)).toBe(true);
-    // Either side of longitude 0 and of its wrap the picture runs on.
+    for (const lon of [0, 0.4, 1.3, 2.2, -0.9]) for (let k = 1; k < copies; k++) expect(near(at(lon, lat), at(lon + (k * 2 * Math.PI) / copies, lat), 1e-4)).toBe(true);
     expect(near(at(-1e-4, lat), at(1e-4, lat), 0.02)).toBe(true);
     expect(near(at(Math.PI - 1e-4, lat), at(-Math.PI - 1e-4, lat), 1e-4)).toBe(true);
   }
-  // Its height keeps the picture's aspect: a copy is a third of the way round.
-  const half = f[SCREEN_AT + 27]!;
-  expect((2 * Math.PI) / ORB_BAND / (2 * half)).toBeCloseTo(W / H, 5);
-  // Over and under it the edges glow, fading off.
-  const over = at(0, half + 0.05), far = at(0, half + 0.6);
-  expect(Math.max(...over)).toBeGreaterThan(Math.max(...far));
   setScreenPicture(null);
 });
 
@@ -262,11 +247,10 @@ test("the clip's colour track lights the streets, as much as the picture covers"
   const r = castOf(red, true), b = castOf(blue, true), fit = castOf(red, false);
   expect(r[0]!).toBeGreaterThan(5 * r[2]!);
   expect(b[2]!).toBeGreaterThan(5 * b[0]!);
-  // Fit covers about half of a round face with a 16:9 picture; the rest is the edges' glow, dimmer.
+  // Fill covers the ball; fit leaves a little of it to the edges' dimmer glow.
   expect(fit[0]!).toBeLessThan(r[0]!);
-  expect(fit[0]!).toBeGreaterThan(0.4 * r[0]!);
-  expect(screenCover(16 / 9, true, false)).toBeCloseTo(0.544, 2);
-  expect(screenCover(16 / 9, false, false)).toBeCloseTo(Math.sin(Math.PI / (3 * 16 / 9)), 5);
+  expect(fit[0]!).toBeGreaterThan(0.6 * r[0]!);
+  expect(screenWrap(16 / 9, groundLine(SITE), true).cover).toBeCloseTo(1, 5);
 });
 
 test("a clip plays only when the ball is seen large enough, on a tier that plays it", () => {
@@ -354,7 +338,7 @@ const flush = () => new Promise((r) => setTimeout(r, 0));
 
 test("the player plays the clip in view, shows its poster while it loads, and fetches nothing out of view", async () => {
   const host = fakeHost(), player = new ScreenPlayer(host);
-  const state: ScreenState = { ...newScreenState(), manifest: "0123456789abcdef", show: SHOW_VIDEO, flags: SCREEN_THEATRE, clip: 0, start: 0, next: 1 };
+  const state: ScreenState = { ...newScreenState(), manifest: "0123456789abcdef", show: SHOW_VIDEO, flags: SCREEN_FACING, clip: 0, start: 0, next: 1 };
   const step = (tick: number, facing = true, option = true, tier = true) => player.step({ state, tick, option, tierVideo: tier, sites: [SITE], cam: cam(facing), height: 1080, now: tick * 33, artIdle: true });
   expect(step(0)).toBeNull();
   await flush();
@@ -413,7 +397,7 @@ test("the player plays the clip in view, shows its poster while it loads, and fe
 
 test("a tier that plays no video shows the poster; a clip that fails falls back to the scenes", async () => {
   const host = fakeHost(), player = new ScreenPlayer(host);
-  const state: ScreenState = { ...newScreenState(), manifest: "00000000000000aa", show: SHOW_VIDEO, flags: SCREEN_THEATRE, clip: 2, start: 0, next: NO_CLIP };
+  const state: ScreenState = { ...newScreenState(), manifest: "00000000000000aa", show: SHOW_VIDEO, flags: SCREEN_FACING, clip: 2, start: 0, next: NO_CLIP };
   const p = { frame: new Float32Array(FRAME_FLOATS), tier: TIERS[0]!, screenSource: null as unknown, screenWidth: 0, screenHeight: 0, screenFresh: false, screenMips: false };
   const step = (tick: number, tier: boolean) => player.step({ state, tick, option: true, tierVideo: tier, sites: [SITE], cam: cam(true), height: 1080, now: tick * 33, artIdle: true });
   step(0, false);
@@ -437,7 +421,7 @@ test("a tier that plays no video shows the poster; a clip that fails falls back 
 test("a clip waits for the map's art, then plays, or plays after WAIT_FOR_ART", async () => {
   for (const idleAt of [5_000, Infinity]) {
     const host = fakeHost(), player = new ScreenPlayer(host);
-    const state: ScreenState = { ...newScreenState(), manifest: "0123456789abcdef", show: SHOW_VIDEO, flags: SCREEN_THEATRE, clip: 0, start: 0, next: NO_CLIP };
+    const state: ScreenState = { ...newScreenState(), manifest: "0123456789abcdef", show: SHOW_VIDEO, flags: SCREEN_FACING, clip: 0, start: 0, next: NO_CLIP };
     const step = (ms: number) => player.step({ state, tick: (ms / 1000) * 30, option: true, tierVideo: true, sites: [SITE], cam: cam(true), height: 1080, now: ms, artIdle: ms >= idleAt });
     step(0);
     await flush();

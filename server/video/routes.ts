@@ -69,7 +69,7 @@ function setScreen(doc: LibraryDoc, body: Record<string, unknown>): Refusal | nu
     next.show = body.show as string;
   }
   if (body.mode !== undefined) {
-    if (body.mode !== "theatre" && body.mode !== "band") return bad("The mode is theatre or band.");
+    if (body.mode !== "facing" && body.mode !== "fixed") return bad("The mode is facing or fixed.");
     next.mode = body.mode;
   }
   for (const flag of ["fill", "sound", "night"] as const) {

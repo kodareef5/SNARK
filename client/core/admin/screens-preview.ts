@@ -14,16 +14,16 @@ export const PREVIEW_VIEWS = [
   { label: "from above", from: Math.PI, distance: 1, lift: 520 },
 ] as const;
 
-const screen: OrbScreen = { shows: 0, width: 0, height: 0, texWidth: 0, texHeight: 0, levels: 0, theatre: true, fill: false, track: null, seconds: 0, upX: 0, upY: 1, upZ: 0 };
+const screen: OrbScreen = { shows: 0, width: 0, height: 0, texWidth: 0, texHeight: 0, levels: 0, facing: true, fill: false, track: null, seconds: 0, upX: 0, upY: 1, upZ: 0 };
 const view = new OrbView(SITE, [], tierOf("medium"), screen);
 
 /**
  * The preview into `pixels` (RGBA), the views side by side, each `size` square: `picture` (RGBA sRGB, `width` by
- * `height`) in theatre or band, fitted or filled, with the clip's colour track for the glow about it.
+ * `height`) wrapped facing the viewer or fixed, fitted or filled, with the clip's colour track for the glow about it.
  */
-export function drawPreview(pixels: Uint8ClampedArray, size: number, picture: ArrayLike<number>, width: number, height: number, track: Uint8Array, theatre: boolean, fill: boolean): void {
+export function drawPreview(pixels: Uint8ClampedArray, size: number, picture: ArrayLike<number>, width: number, height: number, track: Uint8Array, facing: boolean, fill: boolean): void {
   setScreenPicture(screenPicture(width, height, picture));
-  Object.assign(screen, { width, height, texWidth: width, texHeight: height, levels: Math.floor(Math.log2(Math.max(width, height))), theatre, fill, track, seconds: 0 });
+  Object.assign(screen, { width, height, texWidth: width, texHeight: height, levels: Math.floor(Math.log2(Math.max(width, height))), facing, fill, track, seconds: 0 });
   const stride = size * PREVIEW_VIEWS.length, moment = { seconds: 400, hour: 22, from: 0 };
   PREVIEW_VIEWS.forEach((v, k) => {
     const far = Math.hypot(v.distance, v.lift - SITE.centre);
