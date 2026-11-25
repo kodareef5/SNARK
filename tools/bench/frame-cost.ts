@@ -1,18 +1,22 @@
-// The client frame section of tools/bench.ts on its own, with where its time goes: bun tools/bench/frame-cost.ts [--profile] [--repeat n]
+// The client frame section of tools/bench.ts on its own, and where its time goes: bun tools/bench/frame-cost.ts [options]
 //
-// --eager lays out every chunk held on the first frame, as before chunks waited to be seen. The same world as the bench's: an 8 km map, 250 box bases of 2,000 pieces in wood, stone and thatch, and the siege's
-// 20,000-piece wooden chunk, drawn with the packs installed. Rows as the bench prints them. --profile times the passes
-// of the first frame and of the steady ones, by wrapping the methods that do the work.
+// The bench's world: an 8 km map, 250 box bases of 2,000 pieces in wood, stone and thatch, and the siege's 20,000-piece
+// wooden chunk, drawn with the packs installed. The rows are the bench's, in its order, with its budgets.
+//   --profile    times the passes and the methods that do the work, by wrapping them, and counts the draws by mesh
+//   --eager      lays out every chunk held on the first frame, as before a chunk waited to be seen
+//   --first      the first frame alone; --steady the three bases alone; --damage the 20,000-piece chunk alone
+//   --frames n   frames a row is timed over (300); --repeat n  scenes made one after another, each from nothing
 
 import { Camera } from "../../client/core/render/camera.ts";
 import { Scene } from "../../client/core/render/scene.ts";
 import "../../client/core/render/city-late.ts";
+import type { FramePacket } from "../../client/core/render/packet.ts";
 import { NearStore } from "../../client/core/render/passes/near-store.ts";
+import { Occlusion } from "../../client/core/render/passes/occlusion.ts";
 import { Trims } from "../../client/core/render/trims.ts";
 import { RoomFinder } from "../../client/core/render/rooms.ts";
 import { BasePlates } from "../../client/core/render/base-occluders.ts";
 import { Hiding } from "../../client/core/render/hide.ts";
-import { Occlusion } from "../../client/core/render/passes/occlusion.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { chunkAt } from "../../shared/coords.ts";
@@ -23,22 +27,18 @@ import { StructureStore } from "../../shared/world/structures.ts";
 import { buildCorePack } from "../pack/build.ts";
 import { BASE_TIERS, asTextured, benchBases, boxBase, layBase } from "./base.ts";
 
-const profile = process.argv.includes("--profile");
-const firstOnly = process.argv.includes("--first");
-const damageOnly = process.argv.includes("--damage");
-const steadyOnly = process.argv.includes("--steady");
-const at = process.argv.indexOf("--repeat");
-const repeat = at >= 0 ? Number(process.argv[at + 1]) : 1;
-const framesAt = process.argv.indexOf("--frames");
-const FRAMES = framesAt >= 0 ? Number(process.argv[framesAt + 1]) : 300;
+const flag = (name: string): boolean => process.argv.includes(name);
+const number = (name: string, or: number): number => (process.argv.includes(name) ? Number(process.argv[process.argv.indexOf(name) + 1]) : or);
+const profile = flag("--profile");
+const FRAMES = number("--frames", 300);
 const percentile = (sorted: number[], q: number): number => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * q))]!;
 const row = (name: string, value: number, unit: string, budget?: number): void => console.log(`${name.padEnd(78)} ${value.toFixed(unit === "ms" ? 3 : 0)} ${unit}${budget === undefined ? "" : value <= budget ? `  ok (budget ${budget})` : `  MISS (budget ${budget})`}`);
 
-// Time spent in each wrapped method, inclusive of what it calls, and how many calls.
+// Time spent in each wrapped method, what it calls with it, and how many calls.
 const spent = new Map<string, [number, number]>();
-function wrap(proto: object, name: string, label = name): void {
+function wrap(proto: object, name: string, label: string): void {
   const p = proto as Record<string, (...args: unknown[]) => unknown>;
-  const was = p[name]!;
+  const was = p[name];
   if (typeof was !== "function") throw new Error(`no method ${name}`);
   p[name] = function (this: unknown, ...args: unknown[]): unknown {
     const t = performance.now();
@@ -53,9 +53,18 @@ function wrap(proto: object, name: string, label = name): void {
   };
 }
 function report(title: string, frames: number): void {
-  console.log(`  ${title}, ms a frame (calls a frame):`);
-  for (const [name, [ms, n]] of [...spent].sort((a, b) => b[1][0] - a[1][0])) console.log(`    ${name.padEnd(40)} ${(ms / frames).toFixed(3).padStart(9)}  (${(n / frames).toFixed(1)})`);
+  console.log(`  ${title}, ms a frame (calls a frame), the wrapping's own cost in each:`);
+  for (const [name, [ms, n]] of [...spent].sort((a, b) => b[1][0] - a[1][0])) if (ms / frames >= 0.001) console.log(`    ${name.padEnd(40)} ${(ms / frames).toFixed(3).padStart(9)}  (${(n / frames).toFixed(1)})`);
   spent.clear();
+}
+/** The draws of a frame by mesh, its tier named <tier>, and level. */
+function drawsByMesh(scene: Scene, p: FramePacket): void {
+  const draws = new Map<string, number>(), meshes = scene.assets.manifest.meshes;
+  for (let d = 0; d < p.drawCount; d++) {
+    const key = `${(meshes[p.drawMesh[d]!]?.id ?? `mesh ${p.drawMesh[d]}`).replace(/_(wood|stone|thatch|metal)$/, "_<tier>")} level ${p.drawLod[d]}`;
+    draws.set(key, (draws.get(key) ?? 0) + 1);
+  }
+  for (const [k, n] of [...draws].sort((a, b) => b[1] - a[1])) console.log(`    ${k.padEnd(48)} ${n}`);
 }
 
 const DIMS = { chunksX: 128, chunksZ: 128 };
@@ -82,19 +91,19 @@ console.log(`pack built in ${(performance.now() - t0).toFixed(0)} ms, ${pack.hea
 
 if (profile) {
   const near = NearStore.prototype as unknown as object;
-  for (const name of ["draw", "rebuild", "layTrims", "ranges", "zones", "castChunk", "keeps", "reform", "bordering"]) wrap(near, name, `near.${name}`);
+  for (const name of ["draw", "rebuild", "layTrims", "ranges", "zones", "castChunk", "reform", "bordering", "mayShow", "ahead"]) wrap(near, name, `near.${name}`);
   wrap(Trims.prototype, "lay", "trims.lay");
   wrap(RoomFinder.prototype, "find", "rooms.find");
   wrap(BasePlates.prototype, "of", "plates.of");
   wrap(Scene.prototype, "build", "scene.build");
   for (const name of ["begin", "box", "end", "hidesOver"]) wrap(Hiding.prototype, name, `hide.${name}`);
-  for (const name of ["hideDrawn", "platesIn", "nearPiece"]) wrap(Occlusion.prototype, name, `occlusion.${name}`);
+  for (const name of ["hideDrawn", "platesIn"]) wrap(Occlusion.prototype, name, `occlusion.${name}`);
 }
 
-for (let r = 0; r < repeat; r++) {
+for (let r = 0; r < number("--repeat", 1); r++) {
   const scene = new Scene({ dims: DIMS, hf, structs }, reg, pack);
   asTextured(scene);
-  if (process.argv.includes("--eager")) scene.lazyLayout = false;
+  if (flag("--eager")) scene.lazyLayout = false;
   if (profile) {
     for (const [name, pass] of scene.passes) {
       if (pass.update) wrap(pass, "update", `pass ${name} update`);
@@ -111,14 +120,15 @@ for (let r = 0; r < repeat; r++) {
     cam.yaw = Math.PI / 2 + Math.PI;
   };
   spent.clear();
-  for (const b of damageOnly ? [] : [3, 1, 2]) {
+  // The first base reaches into the siege's chunk in the bench, so the wooden one is the fourth.
+  for (const b of flag("--damage") ? [] : [3, 1, 2]) {
     const tier = BASE_TIERS[b % 3]!;
     standOff(b);
     t0 = performance.now();
     packet = scene.build(cam, null);
     row(`${tier}: first frame, building instance buffers`, performance.now() - t0, "ms", 100);
     if (profile) report(`${tier}: first frame`, 1);
-    if (firstOnly) break;
+    if (flag("--first")) break;
     const frame: number[] = [];
     for (let i = 0; i < FRAMES; i++) {
       cam.yaw += 0.002 * (i % 600 < 300 ? 1 : -1);
@@ -131,55 +141,31 @@ for (let r = 0; r < repeat; r++) {
     row(`${tier}: frame build, 99th percentile`, percentile(frame, 0.99), "ms", 2);
     row(`${tier}: draw calls, structures within 256 m`, packet.drawCount, "", 300);
     row(`${tier}: triangles submitted`, packet.triangles, "", 1500000);
-    if (profile) report(`${tier}: steady frames`, FRAMES);
+    if (profile) {
+      report(`${tier}: steady frames`, FRAMES);
+      console.log(`  ${tier}: draws by mesh and level:`);
+      drawsByMesh(scene, packet);
+    }
   }
-  if (firstOnly || steadyOnly) continue;
+  if (flag("--first") || flag("--steady")) continue;
   standOff(0);
   scene.structureDistance = Infinity;
   t0 = performance.now();
   packet = scene.build(cam, null);
   row("the frame that first draws every base to the horizon, laying out those in view", performance.now() - t0, "ms");
+  packet = scene.build(cam, null);
   row("draw calls if every base to the horizon were instanced", packet.drawCount, "");
   row("triangles if every base to the horizon were instanced", packet.triangles, "");
   if (profile) {
-    const draws = new Map<string, number>();
-    const names = scene.assets.manifest.meshes;
-    for (let d = 0; d < packet.drawCount; d++) {
-      const id = names[packet.drawMesh[d]!]?.id ?? `mesh ${packet.drawMesh[d]}`;
-      const key = `${id.replace(/_(wood|stone|thatch|metal)$/, "_<tier>")} level ${packet.drawLod[d]}`;
-      draws.set(key, (draws.get(key) ?? 0) + 1);
-    }
-    const per = new Map<string, number>();
-    for (let d = 0; d < packet.drawCount; d++) {
-      const key = `${packet.drawBuffer[d]}/${packet.drawMesh[d]}`;
-      per.set(key, (per.get(key) ?? 0) + 1);
-    }
-    let twice = 0, levels = 0, parts = 0, joinable = 0;
-    for (const [key, n] of per) {
-      if (n < 2) continue;
-      twice += n - 1;
-      const [buffer, mesh] = key.split("/").map(Number);
-      const lods = new Set<number>(), firsts = new Set<number>();
-      for (let d = 0; d < packet.drawCount; d++) if (packet.drawBuffer[d] === buffer && packet.drawMesh[d] === mesh) (lods.add(packet.drawLod[d]!), firsts.add(packet.drawFirst[d]!));
-      if (lods.size > 1) levels += n - 1;
-      if (firsts.size < n) parts += n - firsts.size;
-      for (let d = 0; d < packet.drawCount; d++) {
-        if (packet.drawBuffer[d] !== buffer || packet.drawMesh[d] !== mesh) continue;
-        for (let e = 0; e < packet.drawCount; e++) if (e !== d && packet.drawBuffer[e] === buffer && packet.drawMesh[e] === mesh && packet.drawLod[e] === packet.drawLod[d] && packet.drawFirst[e] === packet.drawFirst[d]! + packet.drawInstances[d]!) joinable++;
-      }
-    }
     console.log(`  boxes tested against what hides what ${scene.hiding.stats.tested}, hidden ${scene.hiding.stats.hidden}; occluders ${scene.hiding.stats.occluders}`);
-    console.log(`  draws past the first of a mesh in a chunk: ${twice}, of which at another level ${levels}, of one span by its parts ${parts}, beginning where another of its level ends ${joinable}`);
     console.log("  draws to the horizon by mesh and level:");
-    for (const [k, n] of [...draws].sort((a, b) => b[1] - a[1]).slice(0, 40)) console.log(`    ${k.padEnd(48)} ${n}`);
-    spent.clear();
+    drawsByMesh(scene, packet);
   }
 
   const t = structs.chunks[siegeChunk]!;
   const hit = new Rng(80);
   const times: number[] = [];
   let uploaded = 0;
-  scene.build(cam, null);
   spent.clear();
   for (let i = 0; i < FRAMES; i++) {
     const version = t.version + 1;
@@ -197,6 +183,6 @@ for (let r = 0; r < repeat; r++) {
   times.sort((a, b) => a - b);
   row("20,000-piece chunk told of 50 damaged pieces: rows in and frame built, median", percentile(times, 0.5), "ms", 1);
   row("the same, 99th percentile", percentile(times, 0.99), "ms", 2);
-  row("instance bytes uploaded again in those 300 frames", uploaded, "bytes", 4096);
+  row(`instance bytes uploaded again in those ${FRAMES} frames`, uploaded, "bytes", 4096);
   if (profile) report("50 damaged pieces, to the horizon", FRAMES);
 }

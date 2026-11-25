@@ -82,6 +82,13 @@ const AHEAD_PIECES = 2048;
 const RUN = 13;
 const CAST_RUN = 5;
 
+/** What is known of a chunk never laid out: the table and its `shape` when its box was found round its pieces. */
+interface Unlaid {
+  table: ChunkTable;
+  shape: number;
+  box: Float64Array;
+}
+
 export interface ChunkBatch {
   /** The table's `shape` and `placed` when the instances were built. */
   shape: number;
@@ -321,11 +328,12 @@ export class NearStore implements Pass {
   readonly pieces: PieceLooks;
   readonly trims: Trims;
   /**
-   * Whether a chunk of built pieces never laid out waits until something of it could be seen or cast. Per such chunk, its
-   * table's `shape` and the box round its pieces then, and the chunks waiting this frame.
+   * Whether a chunk of built pieces never laid out waits until something of it could be seen or cast. By chunk, what is
+   * known of each such, and how many; and the chunks waiting this frame.
    */
   lazy = true;
-  private readonly unlaid = new Map<number, { table: ChunkTable; shape: number; box: Float64Array }>();
+  private readonly unlaid: (Unlaid | undefined)[] = [];
+  private unlaidCount = 0;
   private readonly waiting: number[] = [];
   /** Scratch for a chunk being laid out: the yaws its pieces stand at, less their quarter turns, and how many at each. */
   private readonly turns: number[] = [];
@@ -457,7 +465,9 @@ export class NearStore implements Pass {
     // Chunks that no longer exist on this client free their buffers.
     for (const id of this.batches.keys()) if (id >= base && id < base + NODE_BUFFERS && !chunks[id - base]) this.drop(id);
     // What was found of chunks since laid out or gone is let go once it outnumbers the chunks held.
-    if (base === 0 && this.unlaid.size > store.held.length) for (const chunk of this.unlaid.keys()) if (!chunks[chunk] || this.batches.has(chunk)) this.unlaid.delete(chunk);
+    if (base === 0 && this.unlaidCount > store.held.length) {
+      for (let chunk = 0; chunk < this.unlaid.length; chunk++) if (this.unlaid[chunk] && (!chunks[chunk] || this.batches.has(chunk))) this.forgetUnlaid(chunk);
+    }
 
     const held = store.held;
     // Each chunk's pieces are found before any chunk is drawn, so that one that left shows what it hid in the chunks
@@ -488,7 +498,7 @@ export class NearStore implements Pass {
       const own = near?.chunk(chunk) ?? null;
       const mesh = own?.mesh ?? null;
       let batch = this.batches.get(id);
-      if (!batch && base === 0 && !mesh && this.lazy && !this.mayShow(cam, t, chunk, x0, z0, meshOf)) {
+      if (!batch && base === 0 && !mesh && this.lazy && !this.mayShow(cam, t, chunk, meshOf)) {
         waiting.push(chunk);
         continue;
       }
@@ -582,9 +592,12 @@ export class NearStore implements Pass {
    * each as far round as its mesh reaches and UNLAID_PAD more, tested as a laid chunk's box is. A chunk with a bent piece
    * is always laid out.
    */
-  private mayShow(cam: Camera, t: ChunkTable, chunk: number, x0: number, z0: number, meshOf: Uint16Array): boolean {
-    let u = this.unlaid.get(chunk);
-    if (!u) this.unlaid.set(chunk, (u = { table: t, shape: t.shape - 1, box: new Float64Array(7) }));
+  private mayShow(cam: Camera, t: ChunkTable, chunk: number, meshOf: Uint16Array): boolean {
+    let u = this.unlaid[chunk];
+    if (!u) {
+      this.unlaid[chunk] = u = { table: t, shape: t.shape - 1, box: new Float64Array(6) };
+      this.unlaidCount++;
+    }
     const box = u.box;
     if (u.table !== t || u.shape !== t.shape) {
       u.table = t;
@@ -605,19 +618,25 @@ export class NearStore implements Pass {
         if (y + r > maxY) maxY = y + r;
         if (z + r > maxZ) maxZ = z + r;
       }
-      box[1] = minX - UNLAID_PAD;
-      box[2] = minY - UNLAID_PAD;
-      box[3] = minZ - UNLAID_PAD;
-      box[4] = maxX + UNLAID_PAD;
-      box[5] = maxY + UNLAID_PAD;
-      box[6] = maxZ + UNLAID_PAD;
+      box[0] = minX - UNLAID_PAD;
+      box[1] = minY - UNLAID_PAD;
+      box[2] = minZ - UNLAID_PAD;
+      box[3] = maxX + UNLAID_PAD;
+      box[4] = maxY + UNLAID_PAD;
+      box[5] = maxZ + UNLAID_PAD;
     }
-    if (box[1] === -Infinity) return true;
-    const ax = box[1]! - cam.x, ay = box[2]! - cam.y, az = box[3]! - cam.z, bx = box[4]! - cam.x, by = box[5]! - cam.y, bz = box[6]! - cam.z;
+    if (box[0] === -Infinity) return true;
+    const ax = box[0]! - cam.x, ay = box[1]! - cam.y, az = box[2]! - cam.z, bx = box[3]! - cam.x, by = box[4]! - cam.y, bz = box[5]! - cam.z;
     const dx = ax > 0 ? ax : bx < 0 ? -bx : 0, dy = ay > 0 ? ay : by < 0 ? -by : 0, dz = az > 0 ? az : bz < 0 ? -bz : 0;
     const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-    if (cam.boxVisible(ax, ay, az, bx, by, bz) && dist <= this.view && dist <= this.structureDistance) return true;
+    if (dist <= this.view && dist <= this.structureDistance && cam.boxVisible(ax, ay, az, bx, by, bz)) return true;
     return this.casting.on && this.casting.castBox(ax, ay, az, bx, by, bz) !== 0;
+  }
+
+  private forgetUnlaid(chunk: number): void {
+    if (!this.unlaid[chunk]) return;
+    this.unlaid[chunk] = undefined;
+    this.unlaidCount--;
   }
 
   /**
@@ -661,7 +680,7 @@ export class NearStore implements Pass {
   /** Lets go of a chunk's instances, and the card of its buffer. */
   private drop(id: number): void {
     const b = this.batches.get(id);
-    if (id < NODE_BUFFERS) this.unlaid.delete(id);
+    if (id < NODE_BUFFERS) this.forgetUnlaid(id);
     if (!b) return;
     if (b.uploaded || b.onCard > 0) this.packet.drops.push(id);
     if (this.bendsOnCard.delete(id)) this.packet.drops.push(id + BEND_BUFFERS);
@@ -767,8 +786,11 @@ export class NearStore implements Pass {
         b.crown[q] = crown;
         b.thin[q] = tree ? thinning(squeeze, dist, to, b.thin[q]!) : 0;
         levels.fill(near, q * cells, (q + 1) * cells);
-        crowns.fill(crown, q * cells, (q + 1) * cells);
-        thins.fill(b.thin[q]!, q * cells, (q + 1) * cells);
+        // Only a tree's cells read their crown and thinning back.
+        if (tree) {
+          crowns.fill(crown, q * cells, (q + 1) * cells);
+          thins.fill(b.thin[q]!, q * cells, (q + 1) * cells);
+        }
         let whole = this.wholeView;
         for (let c = 0; light && !whole && c < cells; c++) whole = this.firstOf(b, at0, c + 1) !== this.firstOf(b, at0, c) && this.cellShows(cam, b, q, c, mesh);
         if (whole) {

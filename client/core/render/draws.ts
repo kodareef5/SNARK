@@ -285,7 +285,10 @@ export class Draws {
       p.drawFlags[d] = flags | this.groundFlags[mesh]! | this.bentFlags[mesh]! | (material < 0 ? this.flatFlags[mesh]! : this.materialFlags[material]!);
       p.drawHand[d] = hand;
       p.drawSwap[d] = material < 0 ? 0 : this.swap;
-      p.drawEffect.set(this.effect, d * 4);
+      p.drawEffect[d * 4] = this.effect[0]!;
+      p.drawEffect[d * 4 + 1] = this.effect[1]!;
+      p.drawEffect[d * 4 + 2] = this.effect[2]!;
+      p.drawEffect[d * 4 + 3] = this.effect[3]!;
       p.drawTint[d * 2] = this.tint;
       p.drawTint[d * 2 + 1] = this.fade;
       p.drawLayer[d] = layer > 0 && material >= 0 && this.assets.layered(material) ? layer % WEAR_KEY : 0;
