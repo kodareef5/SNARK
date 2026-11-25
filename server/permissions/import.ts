@@ -232,6 +232,16 @@ export interface ArkApiFiles {
   readonly folder?: string;
 }
 
+/** The most changes one import makes: they are one write, made inside the server's tick. */
+export const IMPORT_CHANGES_MOST = 1000;
+
+/** A draft as its plan, or the reason it is too large to be one. */
+function finished(draft: Draft): Planned {
+  const plan = draft.plan();
+  if (plan.ops.length <= IMPORT_CHANGES_MOST) return { ok: true, plan };
+  return { ok: false, reason: `That import would make ${plan.ops.length} changes, and one import makes ${IMPORT_CHANGES_MOST} at most. Bring it in as several.` };
+}
+
 const NOT_SQLITE: Planned = { ok: false, reason: "That file is not an SQLite database." };
 const DAMAGED: Planned = { ok: false, reason: "That database is damaged, so nothing was read from it. Copy it again with the ARK server stopped." };
 const NO_FOLDER: Planned = { ok: false, reason: "The server could not open that database in a folder of its own." };
@@ -360,7 +370,7 @@ function readArkApi(db: Database, opts: ImportOptions, note?: string): Planned {
     };
     members(find(PLAYER_TABLES), "survivor");
     members(find(TRIBE_TABLES), "tribe");
-    return { ok: true, plan: draft.plan() };
+    return finished(draft);
   } catch {
     return { ok: false, reason: "That database could not be read as ArkApi's Permissions database." };
   }
@@ -415,7 +425,7 @@ export function planCommands(source: string, opts: ImportOptions): Planned {
   const was = (n: number): string => (n === 1 ? "was" : "were");
   if (listings > 0) draft.note(`${plural(listings, "line that only lists", "lines that only list")} ${was(listings)} skipped.`);
   if (removals > 0) draft.note(`${plural(removals, "line that takes a member out", "lines that take members out")} ${was(removals)} skipped.`);
-  return { ok: true, plan: draft.plan() };
+  return finished(draft);
 }
 
 // ---- CrossChat ----
@@ -508,21 +518,25 @@ export function planCrossChat(source: string, opts: ImportOptions): Planned {
       draft.note(`The muted group ${given.mutedGroup} is not a group yet; Permissions.AddGroup ${given.mutedGroup} makes it.`);
     }
   }
-  return { ok: true, plan: draft.plan() };
+  return finished(draft);
 }
 
 // ---- Applying ----
 
-/** Runs each op of a plan through `make` as `actor`. A refusal stops nothing. The caller checks the actor's rank. */
-export function applyPlan(perms: Pick<Permissions, "make">, actor: PermissionActor, plan: ImportPlan): Applied {
+/**
+ * Makes a plan's changes as `actor` in one write, since each write of its own would hold the server's tick for its commit.
+ * A refusal stops nothing. The caller checks the actor's rank.
+ */
+export function applyPlan(perms: Pick<Permissions, "makeAll">, actor: PermissionActor, plan: ImportPlan): Applied {
   let done = 0;
   let rank: number | null = null;
   const refused: { op: PermissionOp; reason: string }[] = [];
-  for (const op of plan.ops) {
-    const made = perms.make(actor, op);
-    rank = Math.min(rank ?? made.rank, made.rank);
-    if (made.why === "") done++;
-    else refused.push({ op, reason: made.why });
+  const made = perms.makeAll(actor, plan.ops);
+  for (let i = 0; i < made.length; i++) {
+    const m = made[i]!;
+    rank = Math.min(rank ?? m.rank, m.rank);
+    if (m.why === "") done++;
+    else refused.push({ op: plan.ops[i]!, reason: m.why });
   }
   return { done, refused, rank };
 }

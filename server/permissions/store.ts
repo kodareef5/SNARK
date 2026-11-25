@@ -311,8 +311,9 @@ export class PermissionStore {
   /** Adds a row of history and drops what falls past the newest kept. Call it inside the change's own `transaction`. */
   putHistory(row: Omit<HistoryRow, "seq">): void {
     const db = this.open();
-    db.query("INSERT INTO history (at, world, name, id, rank, via, what, revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(row.at, row.world, row.name, row.id, row.rank, row.via, row.what, row.revision);
-    db.query("DELETE FROM history WHERE seq < (SELECT seq FROM history ORDER BY seq DESC LIMIT 1 OFFSET ?)").run(this.historyKept - 1);
+    const made = db.query("INSERT INTO history (at, world, name, id, rank, via, what, revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(row.at, row.world, row.name, row.id, row.rank, row.via, row.what, row.revision);
+    // Sequence numbers only rise and none is skipped, so the newest kept are those within the count of the last.
+    db.query("DELETE FROM history WHERE seq <= ?").run(Number(made.lastInsertRowid) - this.historyKept);
   }
 
   /** At most `most` rows of history whose seq is below `before`, newest first. */

@@ -251,7 +251,10 @@ test("an import makes its changes as one act and reports what was refused", asyn
   expect([status, made.ok, made.ops, made.refused]).toEqual([200, true, 2, [{ what: "Permissions.Grant Top Cheat.fly", why: "That needs the cluster rank." }]]);
   expect(s.host.permissions.group("VIP")!.permissions).toEqual(["Cheat.fly"]);
   const acts = s.host.acts.recent().filter((a) => a.name === "(kody)" && a.kind !== "sign-in");
-  expect(acts.map((a) => [a.kind, a.what])).toEqual([["change", "imported a list of Permissions commands: 2 changes"]]);
+  expect(acts.map((a) => [a.kind, a.what])).toEqual([
+    ["change", "imported a list of Permissions commands: 2 changes"],
+    ["refused", "1 of the import's 3 changes, the first Permissions.Grant Top Cheat.fly: That needs the cluster rank."],
+  ]);
 });
 
 test("an import below the top rank is refused", async () => {

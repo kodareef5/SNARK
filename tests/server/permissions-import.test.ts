@@ -1,5 +1,5 @@
 // ArkApi's Permissions database, a pasted command list and a CrossChat config, planned and applied.
-import { afterAll, expect, test } from "bun:test";
+import { afterAll, expect, spyOn, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, readdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { readChatFormat, readChatSettings, readLooseJson } from "../../shared/permissions/chat.ts";
 import type { PermissionActor } from "../../shared/permissions/model.ts";
 import { RANK_ADMIN, RANK_CLUSTER, RANK_MAP, RANK_OPEN } from "../../shared/ranks.ts";
-import { applyPlan, CHAT_DOCUMENT, planArkApi, planCommands, planCrossChat, type ArkApiFiles, type ImportPlan, type Planned } from "../../server/permissions/import.ts";
+import { applyPlan, CHAT_DOCUMENT, IMPORT_CHANGES_MOST, planArkApi, planCommands, planCrossChat, type ArkApiFiles, type ImportPlan, type Planned } from "../../server/permissions/import.ts";
 import { Permissions } from "../../server/permissions/permissions.ts";
 import { PermissionStore } from "../../server/permissions/store.ts";
 import { STEAM, TRIBE, pluginDatabase, removeDatabase, runningArkApi } from "../fixtures/arkapi.ts";
@@ -401,4 +401,62 @@ test("no file or folder is left behind, also when a read fails", () => {
     expect(planArkApi(bytes, opts(fresh()), { wal: log, folder }).ok).toBe(ok);
     expect(readdirSync(folder)).toEqual([]);
   }
+});
+
+/** A pasted list that makes `groups` groups, each holding one permission. */
+const manyGroups = (groups: number): string => Array.from({ length: groups }, (_, i) => `Permissions.Grant Group${i} Kit.k${i}`).join("\n");
+
+test("a plan is applied in one write, however many changes it makes", () => {
+  const store = new PermissionStore(":memory:");
+  const perms = new Permissions({ store, world: 3 });
+  const plan = planOf(planCommands(manyGroups(40), opts(perms)));
+  expect(plan.ops.length).toBe(80);
+  const writes = spyOn(store, "transaction");
+  const before = perms.version;
+  const applied = applyPlan(perms, cluster, plan);
+  expect([applied.done, applied.refused, writes.mock.calls.length]).toEqual([80, [], 1]);
+  writes.mockRestore();
+  // Each change still has its own row of history and its own revision, and the view moved once.
+  expect(perms.history(undefined, 200).map((row) => row.revision).sort((a, b) => a - b)).toEqual(Array.from({ length: 80 }, (_, i) => perms.snapshot().revision - 79 + i));
+  expect([perms.version - before, perms.group("Group39")?.permissions]).toEqual([1, ["Kit.k39"]]);
+});
+
+test("a plan's write that fails leaves none of its changes, in the file or the view", () => {
+  const file = join(root, "half.sqlite");
+  const store = new PermissionStore(file);
+  const perms = new Permissions({ store, world: 3 });
+  const plan = planOf(planCommands(manyGroups(5), opts(perms)));
+  const raise = store.raise.bind(store);
+  let raised = 0;
+  store.raise = () => {
+    if (++raised === 4) throw new Error("the disk is full");
+    return raise();
+  };
+  const applied = applyPlan(perms, cluster, plan);
+  store.raise = raise;
+  expect([applied.done, applied.refused.length, applied.refused[0]?.reason]).toEqual([0, 10, "The permissions could not be written."]);
+  expect([perms.groups().map((g) => g.name), perms.history().length]).toEqual([["Default", "Admins"], 0]);
+  const other = new Permissions({ store: new PermissionStore(file), world: 5 });
+  expect(other.groups().map((g) => g.name)).toEqual(["Default", "Admins"]);
+});
+
+test("an import of more changes than one may make is refused at the check", () => {
+  const perms = fresh();
+  const most = planCommands(manyGroups(IMPORT_CHANGES_MOST / 2), opts(perms));
+  expect(most.ok && most.plan.ops.length).toBe(IMPORT_CHANGES_MOST);
+  const over = planCommands(manyGroups(IMPORT_CHANGES_MOST / 2 + 1), opts(perms));
+  expect(over.ok).toBe(false);
+  if (!over.ok) expect(over.reason).toBe(`That import would make ${IMPORT_CHANGES_MOST + 2} changes, and one import makes ${IMPORT_CHANGES_MOST} at most. Bring it in as several.`);
+});
+
+test("the largest import holds the server for a moment, not for seconds", () => {
+  const file = join(root, "largest.sqlite");
+  const perms = new Permissions({ store: new PermissionStore(file), world: 3 });
+  const plan = planOf(planCommands(manyGroups(IMPORT_CHANGES_MOST / 2), opts(perms)));
+  const from = performance.now();
+  const applied = applyPlan(perms, cluster, plan);
+  const ms = performance.now() - from;
+  expect(applied.done).toBe(IMPORT_CHANGES_MOST);
+  // On a file, with its commit: a tick is 33 ms, and the old way took four of them for each change.
+  expect(ms).toBeLessThan(500);
 });

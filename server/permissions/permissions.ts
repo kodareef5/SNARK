@@ -402,47 +402,61 @@ export class Permissions {
 
   /** As `apply`, and answers the words the change was written into the history in, for the world's act to use. */
   make(actor: Acting, op: PermissionOp): Made {
-    let reason = "";
-    let was = "";
-    let words = "";
+    return this.makeAll(actor, [op])[0]!;
+  }
+
+  /**
+   * Makes each change of a list in one write, as an import's are: each is judged and worded as `make` would, by the store
+   * as the changes before it left it, and a refusal stops nothing. A write that fails makes none of them.
+   */
+  makeAll(actor: Acting, ops: readonly PermissionOp[]): Made[] {
+    const out: Made[] = [];
+    /** What follows each change made, once the write is in the file. */
+    const after: (() => void)[] = [];
     let began = false;
-    // Set inside the transaction: who the actor was judged as there.
-    const inside: { judged: PermissionActor | null } = { judged: null };
     try {
       this.store.transaction(() => {
         began = true;
         if (this.store.revision() !== this.revision) this.load(this.store.read());
-        const as: PermissionActor = { rank: this.actingRank(actor), world: actor.world, name: actor.name };
-        inside.judged = as;
-        const needs = actor.needs ?? RANK_OPEN;
-        was = op?.op === "clearSecret" ? this.secretOf(op.id) : "";
-        reason = (as.rank < needs ? `That needs the ${RANK_NAMES[needs]} rank.` : "") || editRule(as, op, this.look) || (this.stale(op) ? CHANGED_MEANWHILE : "");
-        // Worked out before the change, so a group removed is still named as it was kept.
-        if (!reason) words = this.wordsOf(as, op);
-        reason ||= this.change(as, op);
-        if (reason) return;
-        if (was !== "") this.store.putRetired(was, this.now());
-        this.written();
-        if (op.op !== "tag") this.wrote(actor.name, actor.id ?? "", as.rank, actor.via ?? "", words);
+        for (const op of ops) out.push(this.one(actor, op, after));
+        if (after.length > 0) this.tidy();
       });
     } catch {
       // A write that never began, as one a lock kept out, changed nothing here.
       if (began) this.reread();
-      return { why: "The permissions could not be written.", words: "", rank: inside.judged?.rank ?? this.actingRank(actor) };
+      const rank = out[0]?.rank ?? this.actingRank(actor);
+      return ops.map(() => ({ why: "The permissions could not be written.", words: "", rank }));
     }
-    const judged = inside.judged;
-    if (!judged) return { why: reason || "The permissions could not be written.", words: "", rank: this.actingRank(actor) };
-    // The store already was as asked: nothing was written, and that is no refusal.
-    if (reason === AS_IT_IS) return { why: "", words: "", rank: judged.rank };
-    if (reason) return { why: reason, words: "", rank: judged.rank };
-    if (was !== "" && "id" in op) this.retire(op.id, was);
-    if (op.op !== "tag") {
-      const typed = "group" in op ? op.group : "";
-      this.note("key" in op ? op.key : "id" in op ? op.id : "", this.group(typed)?.name ?? typed);
-    }
+    if (after.length === 0) return out;
+    for (const run of after) run();
     this.version++;
-    this.onApplied?.(judged, op);
-    return { why: "", words, rank: judged.rank };
+    return out;
+  }
+
+  /** Inside a write: judges one change, makes it and writes its row of history. */
+  private one(actor: Acting, op: PermissionOp, after: (() => void)[]): Made {
+    const as: PermissionActor = { rank: this.actingRank(actor), world: actor.world, name: actor.name };
+    const needs = actor.needs ?? RANK_OPEN;
+    const was = op?.op === "clearSecret" ? this.secretOf(op.id) : "";
+    let reason = (as.rank < needs ? `That needs the ${RANK_NAMES[needs]} rank.` : "") || editRule(as, op, this.look) || (this.stale(op) ? CHANGED_MEANWHILE : "");
+    // Worked out before the change, so a group removed is still named as it was kept.
+    const words = reason ? "" : this.wordsOf(as, op);
+    reason ||= this.change(as, op);
+    // The store already was as asked: nothing was written, and that is no refusal.
+    if (reason === AS_IT_IS) return { why: "", words: "", rank: as.rank };
+    if (reason) return { why: reason, words: "", rank: as.rank };
+    if (was !== "") this.store.putRetired(was, this.now());
+    this.revision = this.store.raise();
+    if (op.op !== "tag") this.wrote(actor.name, actor.id ?? "", as.rank, actor.via ?? "", words);
+    after.push(() => {
+      if (was !== "" && "id" in op) this.retire(op.id, was);
+      if (op.op !== "tag") {
+        const typed = "group" in op ? op.group : "";
+        this.note("key" in op ? op.key : "id" in op ? op.id : "", this.group(typed)?.name ?? typed);
+      }
+      this.onApplied?.(as, op);
+    });
+    return { why: "", words, rank: as.rank };
   }
 
   /**
@@ -586,13 +600,18 @@ export class Permissions {
 
   /** Inside a write that changed the store: drops what ran out and raises the revision. */
   private written(): void {
+    this.tidy();
+    this.revision = this.store.raise();
+  }
+
+  /** Inside a write that changed the store: drops the memberships and the retired passwords whose time ran out. */
+  private tidy(): void {
     const now = this.now();
     this.passEdges(now);
     this.store.dropExpired(now);
     this.store.dropRetired(now - RETIRED_MS);
     this.dropExpired(now);
     this.nextEdge = this.edgeAfter(now);
-    this.revision = this.store.raise();
   }
 
   /** Whether a whole value's change began from another value than the store holds now. The edit rule passed it. */

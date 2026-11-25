@@ -1718,7 +1718,10 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     }
     const actor: Acting = { ...acting(by), needs: top };
     const applied = applyPlan(permissions, actor, plan);
-    acts.write(by, `imported ${what}: ${applied.done} ${applied.done === 1 ? "change" : "changes"}`, "change", applied.rank ?? permissions.actingRank(actor));
+    const rank = applied.rank ?? permissions.actingRank(actor);
+    acts.write(by, `imported ${what}: ${applied.done} ${applied.done === 1 ? "change" : "changes"}`, "change", rank);
+    const first = applied.refused[0];
+    if (first) acts.refused(by, rank, `${applied.refused.length} of the import's ${plan.ops.length} changes, the first ${changeWords(first.op, false)}`, first.reason);
     settleStanding();
     return { why: "", ...applied };
   };
