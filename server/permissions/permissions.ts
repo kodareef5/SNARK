@@ -327,6 +327,7 @@ export class Permissions {
   private readonly look: RuleLook = {
     groupRank: (name) => this.groupsByName.get(name.toLowerCase())?.group.rank,
     staffRank: (id) => this.staffRank(id),
+    hasMembers: (name) => this.membersIn(name).some((m) => m.forever || m.until > this.now()),
   };
 
   /** Writes `op` to the store and to memory, or answers why there is nothing to do. */

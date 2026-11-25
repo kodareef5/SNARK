@@ -3,7 +3,31 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { castAct, castState } from "../../server/admin/cast.ts";
+import { changedNothing, type AdminGate } from "../../server/admin/gate.ts";
+import { TickMeter } from "../../server/admin/meter.ts";
+import { AdminPages } from "../../server/admin/routes.ts";
+import { gaugesOf } from "../../server/admin/stats.ts";
+import { Guesses } from "../../server/guesses.ts";
 import { Harness } from "../fixtures/net.ts";
+
+const MAP = "map-kiwi";
+const gate: AdminGate = { dev: false, password: MAP, guesses: new Guesses(), tick: () => 0 };
+
+/** The admin pages of a harness, and a POST to the Cast panel signed in as kody with the map's password. */
+function castPage(h: Harness): (body: unknown) => Promise<{ status: number; req: Request }> {
+  const pages = new AdminPages({ host: h.host, meter: new TickMeter(() => gaugesOf(h.host)), dir: tmpdir(), start: { tick: 0, wall: 0 } });
+  return async (body) => {
+    const req = new Request("http://localhost/admin/cast", {
+      method: "POST",
+      headers: { authorization: `Basic ${btoa(`kody:${MAP}`)}`, "content-type": "application/json" },
+      body: typeof body === "string" ? body : JSON.stringify(body),
+    });
+    const res = await pages.answer(req, "1.2.3.4", gate, "/admin/cast")!;
+    return { status: res.status, req };
+  };
+}
+
+const kodys = (h: Harness): string[] => h.host.acts.recent().filter((a) => a.name === "(kody)").map((a) => a.what);
 
 test("Cast is there but idle unless set; its settings change live; the admin page reads it and plays a scene", () => {
   const h = new Harness({ entityRadius: 1 }, 2, 30, { wakeRadius: 1 });
@@ -67,4 +91,51 @@ test("every Cast setting takes hold live within seconds (CastModelKey is read wi
   // No model and no CastModelKey: the planner is off and Cast runs on its rules.
   expect(h.host.rules.text("CastModelKey")).toBe("");
   expect(h.host.cast.gate.ask).toBeNull();
+});
+
+test("each Cast action is logged by what it did and to what, as who was signed in", async () => {
+  const h = new Harness({ entityRadius: 1 }, 2, 30, { wakeRadius: 1 });
+  h.join("Ana");
+  h.run(1000);
+  const cast = castPage(h);
+  expect((await cast({ op: "set", name: "CastEnabled", value: "true" })).status).toBe(200);
+  expect((await cast({ op: "set", name: "CastActivity", value: "1.5" })).status).toBe(200);
+  h.run(6000);
+  expect((await cast({ op: "spawn", scene: "cast:flash_mob" })).status).toBe(200);
+  const story = [...h.host.cast.cast.stories.values()].find((s) => s.history.includes("asked for on the admin page"))!;
+  expect((await cast({ op: "retire", story: story.id })).status).toBe(200);
+  expect(kodys(h)).toEqual([
+    "setting CastEnabled true",
+    "setting CastActivity 1.5",
+    `started Cast's scene Flash mob near Ana (story ${story.id})`,
+    `retired Cast's story ${story.id} (Flash mob)`,
+  ]);
+  h.host.shutdown();
+});
+
+test("Cast's secret key is refused in any spelling and never logged", async () => {
+  const h = new Harness({ entityRadius: 1 }, 2, 30, { wakeRadius: 1 });
+  const cast = castPage(h);
+  for (const name of ["CastModelKey", "CastModelkey", "castmodelkey"]) expect((await cast({ op: "set", name, value: "sk-or-hidden" })).status).toBe(400);
+  expect(h.host.rules.text("CastModelKey")).toBe("");
+  expect(JSON.stringify(h.host.acts.recent())).not.toContain("sk-or-hidden");
+  h.host.shutdown();
+});
+
+test("a Cast request that changed nothing writes no act", async () => {
+  const h = new Harness({ entityRadius: 1 }, 2, 30, { wakeRadius: 1 });
+  h.join("Ana");
+  h.run(1000);
+  const cast = castPage(h);
+  for (const body of [{ op: "retire", story: "s999" }, { op: "spawn", scene: "cast:nowhere" }, { op: "set", name: "XPMultiplier", value: "2" }, { op: "dance" }, "{"]) expect((await cast(body)).status).toBe(400);
+  expect(kodys(h)).toEqual([]);
+  // A story already over is retired again with nothing changed, which the log of a page's changes leaves out.
+  castAct(h.host, { op: "set", name: "CastEnabled", value: "true" });
+  h.run(6000);
+  castAct(h.host, { op: "spawn", scene: "cast:flash_mob" });
+  const story = [...h.host.cast.cast.stories.values()].find((s) => s.history.includes("asked for on the admin page"))!;
+  h.host.cast.cast.finish(story, h.host.world.tick);
+  const again = await cast({ op: "retire", story: story.id });
+  expect([again.status, changedNothing(again.req), kodys(h)]).toEqual([200, true, []]);
+  h.host.shutdown();
 });

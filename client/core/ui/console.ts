@@ -1,5 +1,6 @@
 // Sending a line and receiving text are the session's job. This file only edits the console's state.
 
+import { maskSecret } from "../../../shared/console.ts";
 import { TEXT_NOTICE } from "../../../shared/net/protocol.ts";
 import type { ClientSession } from "../session.ts";
 import { columns, lineHeight, wrap, K_INPUT, K_PANEL, type UiFrame } from "./nodes.ts";
@@ -18,11 +19,12 @@ const PAD = 10;
 export class ConsoleState {
   open = false;
   input = "";
+  /** Lines sent, oldest first. A line with a password is left out (maskSecret). */
   readonly history: string[] = [];
   /** Position in history while browsing it. -1 while typing a new line. */
   private at = -1;
   private draft = "";
-  /** Unwrapped lines: echoes of what was typed, and text from the server. */
+  /** Unwrapped lines: echoes of what was typed, a password masked, and text from the server. */
   readonly lines: string[] = [];
   /** Rows scrolled up from the newest. */
   scroll = 0;
@@ -41,11 +43,12 @@ export class ConsoleState {
     this.at = -1;
     this.scroll = 0;
     if (line === "") return;
-    if (this.history[this.history.length - 1] !== line) {
+    const masked = maskSecret(line);
+    if (masked === null && this.history[this.history.length - 1] !== line) {
       this.history.push(line);
       if (this.history.length > HISTORY) this.history.shift();
     }
-    this.print("> " + line);
+    this.print("> " + (masked ?? line));
     send(line);
   }
 

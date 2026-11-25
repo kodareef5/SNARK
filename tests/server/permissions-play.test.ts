@@ -140,6 +140,34 @@ test("a change made on one world reaches a session on another within the poll", 
   }
 });
 
+test("in a cluster a map's admin manages members but cannot change a group", () => {
+  const cluster = new TestCluster();
+  try {
+    const a = cluster.server("a", "f", { ms: 1_000_000 }, { host: quiet });
+    const { session: ada } = cluster.survivor(a, "ada");
+    const { session: bob } = cluster.survivor(a, "bob");
+    admin(a.h, ada);
+    op(a.h, "Permissions.AddGroup Vip");
+    const refused = "In a cluster, only the cluster's admins change groups and chat settings.";
+    for (const line of ["Permissions.Revoke Admins *", "Permissions.Grant Default *", "Permissions.Rank Admins open", "Permissions.AddGroup Mods", "Permissions.RemoveGroup Vip"]) {
+      expect([line, a.h.say(ada, line)]).toEqual([line, [refused]]);
+    }
+    a.h.say(ada, "Permissions.Add bob Vip");
+    expect(a.h.host.permissions.membersIn("Vip").map((m) => m.key)).toEqual([idOf(a.h, bob)]);
+    // The cluster's own rank cannot open Admins either while ada is in it.
+    expect(a.h.host.exec("Permissions.Rank Admins open")).toBe("A group's rank changes only while it has no members. Take them out first.");
+    expect([a.h.host.permissions.group("Admins"), a.h.host.permissions.group("Default")?.permissions, a.h.client(ada)!.rank]).toEqual([
+      { name: "Admins", rank: RANK_ADMIN, permissions: ["*"], chat: "" },
+      [],
+      RANK_ADMIN,
+    ]);
+    a.h.say(ada, "Permissions.Remove bob Vip");
+    expect(a.h.host.permissions.membersIn("Vip")).toEqual([]);
+  } finally {
+    cluster.cleanup();
+  }
+});
+
 test("every change is an act that names who made it and reads as the command", () => {
   const ears = listener("ears", ["perm.changed"]);
   const { h, ada } = camp({ host: { modules: [ears.def], ...quiet } });

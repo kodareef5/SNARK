@@ -3,10 +3,10 @@ import { CATALOG, rowOf } from "../settings/catalog.ts";
 import { FEATURES, NOT_HERE, type Feature, type NotHere, type Row } from "../settings/row.ts";
 import type { Rules } from "../settings/rules.ts";
 
-/** A password is never shown. */
+/** A secret row's value (a password, a key) is never shown. */
 function shown(row: Row, rules: Rules): string {
   const v = rules.valueOf(row);
-  if (/password/i.test(row.name)) return v === "" ? "(none)" : "****";
+  if (row.secret) return v === "" ? "(none)" : "****";
   if (Array.isArray(v)) return row.kind === "indexed" ? v.join(",") : `${v.length} ${v.length === 1 ? "entry" : "entries"}`;
   return typeof v === "boolean" ? (v ? "True" : "False") : String(v);
 }
@@ -40,8 +40,8 @@ export function addSettingsCommands(con: Console): void {
       examples: ["setting TamingSpeedMultiplier", "setting TamingSpeedMultiplier 2"],
       help: "What a setting is and does; with a value, set it until the server is started again (only those that may change while it runs).",
       admin: true,
-      // Keeps a password out of the admin journal.
-      redact: (args) => `setting ${args[0] ?? ""}${args.length > 1 ? (/password/i.test(args[0] ?? "") ? " ****" : ` ${args.slice(1).join(" ")}`) : ""}`,
+      // Keeps a secret row's value out of the admin journal, the events modules hear and the AdminLogging notice.
+      redact: (args) => `setting ${args[0] ?? ""}${args.length > 1 ? (rowOf(args[0] ?? "")?.secret ? " ****" : ` ${args.slice(1).join(" ")}`) : ""}`,
       run(ctx, args) {
         const row = args[0] === undefined ? undefined : rowOf(args[0]);
         if (!row) return args[0] === undefined ? "usage: setting <name> [value]" : `there is no setting called ${args[0]}`;

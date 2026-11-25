@@ -20,6 +20,8 @@ const B = idOf(3, 2);
 const cluster: PermissionActor = { rank: RANK_CLUSTER, world: 3, name: "cluster" };
 const mapAdmin: PermissionActor = { rank: RANK_MAP, world: 3, name: "map" };
 const admin: PermissionActor = { rank: RANK_ADMIN, world: 3, name: "admin" };
+/** The same actor on a world that is in no cluster. */
+const outside = (actor: PermissionActor): PermissionActor => ({ ...actor, world: 0 });
 
 function world(world = 3, start = 1_000_000) {
   const clock = { t: start };
@@ -175,23 +177,24 @@ test("an actor below admin manages nothing, but a tag choice needs no rank", () 
 });
 
 test("an actor edits groups of its own rank and below", () => {
-  const { perms, ok } = world();
-  expect(perms.apply(admin, { op: "addGroup", group: "Mods", rank: RANK_MAP })).not.toBe("");
+  const { perms, ok } = world(0);
+  const [admin0, map0] = [outside(admin), outside(mapAdmin)];
+  expect(perms.apply(admin0, { op: "addGroup", group: "Mods", rank: RANK_MAP })).not.toBe("");
   ok({ op: "addGroup", group: "Mods", rank: RANK_MAP });
-  expect(perms.apply(admin, { op: "grant", group: "Mods", permission: "Cheat.kick" })).not.toBe("");
-  expect(perms.apply(admin, { op: "removeGroup", group: "Mods" })).not.toBe("");
-  expect(perms.apply(admin, { op: "setChat", group: "Mods", chat: "{}" })).not.toBe("");
-  expect(perms.apply(mapAdmin, { op: "grant", group: "Mods", permission: "Cheat.kick" })).toBe("");
+  expect(perms.apply(admin0, { op: "grant", group: "Mods", permission: "Cheat.kick" })).not.toBe("");
+  expect(perms.apply(admin0, { op: "removeGroup", group: "Mods" })).not.toBe("");
+  expect(perms.apply(admin0, { op: "setChat", group: "Mods", chat: "{}" })).not.toBe("");
+  expect(perms.apply(map0, { op: "grant", group: "Mods", permission: "Cheat.kick" })).toBe("");
   expect(perms.group("mods")?.permissions).toEqual(["Cheat.kick"]);
-  ok({ op: "addGroup", group: "Helpers" }, admin);
-  expect(perms.apply(admin, { op: "setRank", group: "Helpers", rank: RANK_MAP })).not.toBe("");
-  expect(perms.apply(mapAdmin, { op: "setRank", group: "Mods", rank: RANK_OPEN })).toBe("");
-  expect(perms.apply(admin, { op: "setRank", group: "Mods", rank: RANK_STAFF })).toBe("");
+  ok({ op: "addGroup", group: "Helpers" }, admin0);
+  expect(perms.apply(admin0, { op: "setRank", group: "Helpers", rank: RANK_MAP })).not.toBe("");
+  expect(perms.apply(map0, { op: "setRank", group: "Mods", rank: RANK_OPEN })).toBe("");
+  expect(perms.apply(admin0, { op: "setRank", group: "Mods", rank: RANK_STAFF })).toBe("");
 });
 
 test("a cluster group is for every world and only the cluster edits it", () => {
   const { perms, ok } = world();
-  expect(perms.apply(mapAdmin, { op: "addGroup", group: "Owners", rank: RANK_CLUSTER })).not.toBe("");
+  expect(perms.apply(outside(mapAdmin), { op: "addGroup", group: "Owners", rank: RANK_CLUSTER })).toBe("That needs the cluster rank.");
   ok({ op: "addGroup", group: "Owners", rank: RANK_CLUSTER });
   expect(perms.apply(mapAdmin, { op: "addMember", kind: "survivor", key: A, group: "Owners" })).not.toBe("");
   expect(perms.apply(cluster, { op: "addMember", kind: "survivor", key: A, group: "Owners", world: 3 })).not.toBe("");
@@ -229,12 +232,14 @@ test("a map admin's staff membership holds on its own world only", () => {
 });
 
 test("a tribe goes only in an open group", () => {
-  const { perms, ok } = world();
+  const { perms } = world();
   expect(perms.apply(cluster, { op: "addMember", kind: "tribe", key: "7", group: "Admins" })).not.toBe("");
-  ok({ op: "addGroup", group: "Raiders" });
-  ok({ op: "addMember", kind: "tribe", key: "7", group: "Raiders" });
-  ok({ op: "setRank", group: "Raiders", rank: RANK_STAFF });
-  expect(perms.inGroup(who(A, { team: 7, signed: true }), "Raiders")).toBe(false);
+  // A store written before a rank waited for an empty group may hold a tribe in a staff group. It gives nothing.
+  const store = new PermissionStore(":memory:");
+  store.putGroup({ name: "Raiders", rank: RANK_STAFF, permissions: ["*"], chat: "" });
+  store.putMember({ kind: "tribe", key: "7", group: "Raiders", world: 0, forever: true, from: 0, until: 0 });
+  const old = new Permissions({ store, world: 3 });
+  expect([old.membersIn("Raiders").length, old.inGroup(who(A, { team: 7, signed: true }), "Raiders")]).toEqual([1, false]);
 });
 
 test("the starting groups cannot be removed and Default stays open", () => {
@@ -287,30 +292,120 @@ test("bad input is a plain reason and never a throw", () => {
 });
 
 test("a document is an admin's to set and comes back untouched", () => {
-  const { perms, ok } = world();
+  const { perms, ok } = world(0);
   const text = '{ "MapColors": { "Island": [1, 0, 0, 1] } }';
-  expect(perms.apply({ ...admin, rank: RANK_STAFF }, { op: "setDocument", name: "CrossChat", text })).not.toBe("");
-  ok({ op: "setDocument", name: "CrossChat", text }, admin);
+  expect(perms.apply(outside({ ...admin, rank: RANK_STAFF }), { op: "setDocument", name: "CrossChat", text })).not.toBe("");
+  ok({ op: "setDocument", name: "CrossChat", text }, outside(admin));
   expect(perms.document("crosschat")).toBe(text);
   ok({ op: "setChat", group: "Admins", chat: '{"Tag":"[Admin]"}' });
   expect(perms.group("Admins")?.chat).toBe('{"Tag":"[Admin]"}');
 });
 
 test("each change is passed to the callback and raises the version", () => {
-  const { perms, ok } = world();
+  const { perms, ok } = world(0);
   const seen: string[] = [];
   perms.onApplied = (actor, op) => seen.push(`${actor.name} ${op.op}`);
   const v = perms.version;
-  ok({ op: "addGroup", group: "Vip" }, admin);
-  expect(perms.apply(admin, { op: "removeGroup", group: "Default" })).not.toBe("");
+  ok({ op: "addGroup", group: "Vip" }, outside(admin));
+  expect(perms.apply(outside(admin), { op: "removeGroup", group: "Default" })).not.toBe("");
   expect(seen).toEqual(["admin addGroup"]);
   expect(perms.version).toBeGreaterThan(v);
 });
 
 test("the edit rule reads the survivor's highest staff group", () => {
-  const look = (staff: number): RuleLook => ({ groupRank: (n) => (n.toLowerCase() === "vip" ? RANK_OPEN : undefined), staffRank: () => staff });
+  const look = (staff: number): RuleLook => ({ groupRank: (n) => (n.toLowerCase() === "vip" ? RANK_OPEN : undefined), staffRank: () => staff, hasMembers: () => false });
   const op: PermissionOp = { op: "addMember", kind: "survivor", key: A, group: "Vip" };
   expect(editRule(admin, op, look(RANK_ADMIN))).toBe("");
   expect(editRule(admin, op, look(RANK_MAP))).not.toBe("");
   expect(editRule(mapAdmin, op, look(RANK_MAP))).toBe("");
+});
+
+const CLUSTER_ONLY = "In a cluster, only the cluster's admins change groups and chat settings.";
+const EMPTY_FIRST = "A group's rank changes only while it has no members. Take them out first.";
+/** Each change to what a group is, in an order the cluster's admin can make them all. */
+const definitions: PermissionOp[] = [
+  { op: "addGroup", group: "Mods" },
+  { op: "setRank", group: "Vip", rank: RANK_STAFF },
+  { op: "grant", group: "Vip", permission: "Cheat.fly" },
+  { op: "grant", group: "Default", permission: "*" },
+  { op: "revoke", group: "Admins", permission: "*" },
+  { op: "removeGroup", group: "Vip" },
+];
+const chats: PermissionOp[] = [
+  { op: "setChat", group: "Admins", chat: '{"Tag":"[Admin]"}' },
+  { op: "setDocument", name: "chat", text: "{}" },
+];
+
+test("in a cluster an admin or map admin cannot grant, revoke, rank, make or remove", () => {
+  const { perms, ok } = world();
+  ok({ op: "addGroup", group: "Vip" });
+  const before = perms.snapshot();
+  for (const actor of [admin, mapAdmin]) expect(definitions.map((op) => perms.apply(actor, op))).toEqual(definitions.map(() => CLUSTER_ONLY));
+  expect(perms.snapshot()).toEqual(before);
+});
+
+test("in a cluster an admin or map admin cannot set a chat block or the chat settings", () => {
+  const { perms } = world();
+  for (const actor of [admin, mapAdmin]) expect(chats.map((op) => perms.apply(actor, op))).toEqual(chats.map(() => CLUSTER_ONLY));
+  expect([perms.group("Admins")?.chat, perms.document("chat")]).toEqual(["", ""]);
+});
+
+test("in a cluster the cluster's admin makes each of those changes", () => {
+  const { perms, ok } = world();
+  ok({ op: "addGroup", group: "Vip" });
+  for (const op of [...definitions, ...chats]) ok(op);
+  expect([perms.group("Mods")?.name, perms.group("Vip"), perms.group("Default")?.permissions, perms.group("Admins")?.permissions]).toEqual(["Mods", undefined, ["*"], []]);
+  expect(perms.document("chat")).toBe("{}");
+});
+
+test("in a cluster a regular admin manages members and passwords, not the groups", () => {
+  const { perms, ok } = world();
+  ok({ op: "addGroup", group: "Vip" });
+  ok({ op: "addMember", kind: "survivor", key: A, group: "Vip" }, admin);
+  ok({ op: "addMember", kind: "tribe", key: "7", group: "Vip", hours: 2 }, admin);
+  ok({ op: "addMember", kind: "survivor", key: B, group: "Admins" }, admin);
+  expect(perms.membersOf("survivor", B)[0]?.world).toBe(3);
+  ok({ op: "setSecret", id: B, hash: "ab".repeat(16) }, admin);
+  ok({ op: "clearSecret", id: B }, admin);
+  ok({ op: "removeMember", kind: "survivor", key: A, group: "Vip" }, admin);
+  ok({ op: "removeMember", kind: "survivor", key: B, group: "Admins" }, admin);
+  expect(perms.apply(admin, { op: "grant", group: "Vip", permission: "Cheat.fly" })).toBe(CLUSTER_ONLY);
+  expect([perms.membersIn("Vip").map((m) => m.key), perms.secretOf(B), perms.group("Vip")?.permissions]).toEqual([["7"], "", []]);
+});
+
+test("outside a cluster an admin still edits the groups of its rank", () => {
+  const here = world(0);
+  const there = world(3);
+  here.ok({ op: "addGroup", group: "Vip" }, outside(admin));
+  there.ok({ op: "addGroup", group: "Vip" });
+  for (const op of [...definitions, ...chats]) {
+    expect(there.perms.apply(admin, op)).toBe(CLUSTER_ONLY);
+    here.ok(op, outside(admin));
+  }
+  expect(here.perms.apply(outside(admin), { op: "addGroup", group: "Owners", rank: RANK_MAP })).toBe("That needs the map rank.");
+});
+
+test("a group's rank changes only while it has no members", () => {
+  const { perms, clock, ok } = world();
+  const rank: PermissionOp = { op: "setRank", group: "Vip", rank: RANK_STAFF };
+  ok({ op: "addGroup", group: "Vip" });
+  ok({ op: "addMember", kind: "tribe", key: "7", group: "Vip" });
+  expect([perms.apply(cluster, rank), perms.apply(outside(mapAdmin), rank)]).toEqual([EMPTY_FIRST, EMPTY_FIRST]);
+  ok({ op: "removeMember", kind: "tribe", key: "7", group: "Vip" });
+  // One whose time has not yet begun is a member already.
+  ok({ op: "addMember", kind: "survivor", key: A, group: "Vip", hours: 1, delayHours: 1 });
+  expect(perms.apply(cluster, rank)).toBe(EMPTY_FIRST);
+  clock.t += 3 * HOUR;
+  ok(rank);
+  expect(perms.group("Vip")?.rank).toBe(RANK_STAFF);
+});
+
+test("Admins cannot be made open while anyone is in it", () => {
+  const { perms, ok } = world();
+  ok({ op: "addMember", kind: "survivor", key: A, group: "Admins" }, mapAdmin);
+  const open: PermissionOp = { op: "setRank", group: "Admins", rank: RANK_OPEN };
+  expect([perms.apply(cluster, open), perms.apply(outside(mapAdmin), open)]).toEqual([EMPTY_FIRST, EMPTY_FIRST]);
+  expect([perms.group("Admins")?.rank, perms.has(who(A), "Cheat.give")]).toEqual([RANK_ADMIN, false]);
+  ok({ op: "removeMember", kind: "survivor", key: A, group: "Admins" });
+  ok(open);
 });
