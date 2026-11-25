@@ -1,10 +1,13 @@
 import { expect, test } from "bun:test";
-import { VehiclePlacement } from "../../client/core/vehicle-placement.ts";
+import { VEHICLE_PLACEMENT_REASONS, VehiclePlacement } from "../../client/core/vehicle-placement.ts";
 import type { ClientSession } from "../../client/core/session.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import type { Def } from "../../shared/content/defs.ts";
-import { RESULT_NO_SUPPORT, RESULT_OK } from "../../shared/net/protocol.ts";
+import { CMD_VEHICLE, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_OK, VEHICLE_DEPLOY } from "../../shared/net/protocol.ts";
+import { writeMap } from "../../shared/world/mapfile.ts";
+import { flatMap } from "../fixtures/map.ts";
+import { Harness } from "../fixtures/net.ts";
 import { familyOf } from "../../shared/sim/families.ts";
 import { Inventory } from "../../shared/sim/items.ts";
 import { groundUnder } from "../../shared/world/collide.ts";
@@ -36,4 +39,34 @@ test("a car's kit can be set down on level ground, where every car was refused f
   expect(preview.active).toBe(true);
   expect(preview.problem).not.toBe(RESULT_NO_SUPPORT);
   expect(preview.problem).toBe(RESULT_OK);
+});
+
+test("a car's kit aimed at a parked car is refused by the preview and the server alike, and a clear spot by neither", () => {
+  const h = new Harness({}, 1, 60, { map: writeMap(flatMap()) }, reg);
+  const s = h.join("ada");
+  h.run(400);
+  const c = h.client(s)!, actor = h.host.records.byPid.get(c.pid)!, kit = reg.index.get("core:compact_kit")!;
+  const def = reg.vehicle[reg.index.get("core:compact")!]!, x0 = 40, z0 = 40;
+  h.world.ents.setPosition(c.ent, x0, groundUnder(h.world.hf, x0, z0, .4), z0);
+  expect(h.host.spawnVehicle("core:compact", x0 + 8, z0, 0, Math.PI / 2)).toBeGreaterThanOrEqual(0);
+  h.host.items.mint(actor, kit, 1);
+  h.run(400);
+  const slot = s.inventory!.item.indexOf(kit);
+  /** The preview's verdict on aiming at `x, z`, and the server's on the pose it would send. */
+  const aim = (x: number, z: number): number[] => {
+    const preview = new VehiclePlacement(), eyeY = s.own.y + 1.6, y = groundUnder(h.world.hf, x, z, def.spec.halfWidth);
+    const dx = x - s.own.x, dy = y - eyeY, dz = z - s.own.z, length = Math.hypot(dx, dy, dz);
+    preview.begin(slot);
+    preview.update(s, h.world, reg, s.own.x, eyeY, s.own.z, dx / length, dy / length, dz / length, Math.atan2(dx, dz), 0);
+    let code = -1;
+    s.onResult = (_, result) => { code = result; };
+    s.command(CMD_VEHICLE, (w) => { w.u8(VEHICLE_DEPLOY); w.u8(slot); w.f32(preview.pose.x); w.f32(preview.pose.y); w.f32(preview.pose.z); w.u16(preview.pose.yaw); });
+    h.run(300);
+    return [preview.problem, code];
+  };
+  expect(aim(x0 + 8, z0)).toEqual([RESULT_OBSTRUCTED, RESULT_OBSTRUCTED]);
+  expect(VEHICLE_PLACEMENT_REASONS[RESULT_OBSTRUCTED]).toBe("A body or vehicle is in the way");
+  expect(aim(x0, z0 + 8)).toEqual([RESULT_OK, RESULT_OK]);
+  expect(s.log.at(-1)?.text).toBe("Compact assembled. Add gasoline before starting.");
+  h.host.shutdown();
 });

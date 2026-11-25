@@ -5,7 +5,7 @@ import { CONTROL_GROUPS } from "./controls-guide.ts";
 import { buildControls, KEY_CONTROL_GLYPHS, KEY_CONTROL_GROUP } from "./controls-help.ts";
 import { CreativeScreen, KEY_CREATIVE_PASSWORD } from "./creative.ts";
 import { buildMenu, KEY_CONTROLS_DEVICE, KEY_MENU, KEY_MENU_BACK, KEY_MENU_CONTROLS, KEY_MENU_CREATIVE, KEY_MENU_LEAVE, KEY_MENU_RESUME, KEY_MENU_SETTINGS, menuLink } from "./menu.ts";
-import { K_SLIDER, type UiFrame } from "./nodes.ts";
+import { K_INPUT, K_SECRET, K_SLIDER, type UiFrame } from "./nodes.ts";
 import type { Screen, ScreenCtx } from "./screen.ts";
 import { buildSettings, KEY_SETTINGS_PANEL, KEY_SETTINGS_PARTS, KEY_SETTINGS_ROW, KEY_SETTINGS_TAB, MOST_SETTING_TABS, settingsAdjust, settingsClick, settingsPart, settingsValue } from "./settings.ts";
 import { PART_KEYS } from "./screen.ts";
@@ -104,9 +104,9 @@ export class MenuScreen implements Screen {
 
   key(code: string, down: boolean, repeat: boolean, c: ScreenCtx): boolean {
     const session = c.session;
-    // The password's field has the keys a field types with; the menu keeps those that move between its controls.
-    const typing = this.creative && c.focus === KEY_CREATIVE_PASSWORD;
-    if (typing && !FIELD_KEEPS.includes(code)) return false;
+    // A focused field, the password's or a part's, has the keys a field types with; the menu keeps those that move between its controls.
+    const typing = this.creative && c.focus === KEY_CREATIVE_PASSWORD, kind = c.frame.find(c.focus)?.kind;
+    if ((typing || kind === K_INPUT || kind === K_SECRET) && !FIELD_KEEPS.includes(code)) return false;
     if (down && ["ArrowLeft", "ArrowRight", "Home", "End"].includes(code) && c.adjust(code === "ArrowLeft" || code === "Home" ? -1 : 1, code === "Home" || code === "End")) return true;
     if (code === "ShiftLeft" || code === "ShiftRight") this.shift = down;
     if (code === "Escape" && down && !repeat) {
