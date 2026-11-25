@@ -25,7 +25,8 @@ import { foundVehicle, vehiclePlaceFree, VehicleService, VEHICLE_ORIGIN, type Ve
 import { vehicleRotation } from "../shared/sim/vehicle-frame.ts";
 import { carShapes } from "../shared/world/vehicle-shapes.ts";
 import { StaticVehicleSolids } from "../shared/world/vehicle-solid.ts";
-import { isBoatVehicle, isSkateboard, isRotorVehicle, isWheelVehicle } from "../shared/sim/vehicle.ts";
+import { isAircraft, isBoatVehicle, isJetVehicle, isSkateboard, isRotorVehicle, isWheelVehicle } from "../shared/sim/vehicle.ts";
+import { jetRestY } from "../shared/world/jet.ts";
 import { boatRestY } from "../shared/sim/boat.ts";
 import { groundUnder } from "../shared/world/collide.ts";
 import { VehicleContacts } from "./vehicle-contacts.ts";
@@ -558,10 +559,13 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     const kind = reg.index.get(id);
     if (kind === undefined || !reg.vehicle[kind] || !Number.isSafeInteger(ownerTeam) || ownerTeam < 0 || !Number.isFinite(yaw)) return -1;
     const def = reg.vehicle[kind]!;
-    const y = start.y ?? (isBoatVehicle(def) ? boatRestY(def.spec, world.hf.waterAt(x, z)) : groundUnder(world.hf, x, z, def.spec.halfWidth));
+    // A jet stands where its three wheels find the ground.
+    const y = start.y ?? (isBoatVehicle(def) ? boatRestY(def.spec, world.hf.waterAt(x, z))
+      : isJetVehicle(def) ? jetRestY(world, x, z, yaw, groundUnder(world.hf, x, z, def.spec.halfWidth) + 2, 8, def)
+      : groundUnder(world.hf, x, z, def.spec.halfWidth));
     if (!Number.isFinite(y) || [start.hull, start.engine, start.rotor, start.fuel].some(n => n !== undefined && (!Number.isFinite(n) || n < 0 || n > 1))) return -1;
     if (start.airborne && isRotorVehicle(def)) { if (!helicopterAirspace(world, x, y, z, yaw, def)) return -1; }
-    else if ((isRotorVehicle(def) || isBoatVehicle(def)) && !vehiclePlaceFree(world, x, y, z, yaw, def)) return -1;
+    else if ((isAircraft(def) || isBoatVehicle(def)) && !vehiclePlaceFree(world, x, y, z, yaw, def)) return -1;
     const e = creatures.spawn(kind, x, z, 1, why, y);
     if (e < 0) return e;
     const rec = records.byPid.get(world.ents.pid[e]!)!;

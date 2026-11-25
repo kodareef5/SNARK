@@ -22,7 +22,7 @@ import { fitSeatControls } from "../../../shared/anim/seat-controls.ts";
 import { vehicleRotation, type VehicleFrame } from "../../../shared/sim/vehicle-frame.ts";
 import { vehicleDoor } from "../../../shared/sim/vehicle-body.ts";
 import type { Seat } from "../../../shared/sim/seats.ts";
-import { isSkateboard, isBoatVehicle, isWheelVehicle, type VehicleDefinition } from "../../../shared/sim/vehicle.ts";
+import { isAircraft, isSkateboard, isBoatVehicle, isWheelVehicle, type VehicleDefinition } from "../../../shared/sim/vehicle.ts";
 import { quatAxis, quatMul, quatRotate } from "../../../shared/math/quat.ts";
 import { TAU } from "../../../shared/math/scalar.ts";
 import { B_HEAD, B_HIPS, B_NECK, B_PROP_L, B_PROP_R, B_SHOULDER_L, B_SHOULDER_R, B_UPPER_CHEST, SOCKET_EYE, HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_HEAD, SLOT_FEET, SLOT_HANDS, SLOT_NAMES } from "../../../shared/anim/human.ts";
@@ -725,7 +725,7 @@ export class Characters {
     out.engineRpm = vehicle.engineRpm; out.engineOn = vehicle.engineOn; out.hullCondition = vehicle.hullCondition; out.flooding = vehicle.flooding;
     out.groundPitch = vehicle.groundPitch; out.groundRoll = vehicle.groundRoll; out.rideOffset = vehicle.rideOffset; out.grounded = vehicle.grounded; out.doors = vehicle.doors; out.missingPanels = vehicle.missingPanels;
     out.definition = seat; out.x = at[0]!; out.y = at[1]!; out.z = at[2]!; out.yaw = yaw; out.driver = seat.driver === true;
-    out.steer = def.movement === "rotor" ? 0 : vehicle.steering / def.spec.maxSteer;
+    out.steer = isAircraft(def) ? 0 : vehicle.steering / def.spec.maxSteer;
     out.skateMove = vehicle.skateMove; out.skateTrick = vehicle.skateTrick; out.crouch = vehicle.crouch; out.switched = vehicle.switched; out.role = seat.pose; out.weapons = seat.weapons; out.aimYaw = aimYaw;
     return out;
   }
@@ -1231,10 +1231,10 @@ export class Characters {
         // Wheel contact follows the support plane while the sprung body and its occupants roll, pitch and heave.
         this.turn(undefined, yaw, vehicle?.groundPitch ?? vehicle?.pitch ?? 0, vehicle?.groundRoll ?? vehicle?.roll ?? 0, this.groundRotation);
         // Without a full attitude, a wheel in the air hangs a quarter of its travel below the body.
-        const droop = v.def.movement !== "rotor" && v.def.movement !== "boat" ? (v.def.spec.suspensionTravel ?? 0.18) / 4 : 0;
+        const droop = isWheelVehicle(v.def) ? (v.def.spec.suspensionTravel ?? 0.18) / 4 : 0;
         for (const b of v.wheels) {
           if (b < 0) continue;
-          if (vehicle?.qw !== undefined && v.def.movement !== "rotor" && v.def.movement !== "boat") {
+          if (vehicle?.qw !== undefined && isWheelVehicle(v.def)) {
             // A rigid car's wheels travel along its local spring axes, also when it rolls onto its roof. The ride offset is
             // that travel, all of it where no wheel has ground. The grounded bit is the hull's contact too, and a rolled car
             // rocking on its side or roof touches and leaves the ground from tick to tick, so it does not move the wheels.

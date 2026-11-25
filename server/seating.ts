@@ -7,8 +7,7 @@ import { STANCE_CROUCH, STANCE_PRONE, STANCE_STAND, stanceHeight } from "../shar
 import { F_ALIVE } from "../shared/sim/entities.ts";
 import { capsuleFree } from "../shared/world/collide.ts";
 import { isWheelVehicle } from "../shared/sim/vehicle.ts";
-import { boatMeetsCapsule } from "../shared/world/boat.ts";
-import { carMeetsCapsule } from "../shared/world/vehicle.ts";
+import { familyOf } from "../shared/sim/families.ts";
 import type { Records } from "./records.ts";
 import type { ServerWorld } from "./world.ts";
 
@@ -60,7 +59,8 @@ export class Seating {
       const vehicle = world.reg.vehicle[ents.kind[e]!];
       const dx = p.x - ents.x[e]!, dz = p.z - ents.z[e]!;
       if (vehicle?.movement === "boat" && vehicle.boarding && dx * dx + dz * dz > pad * pad) continue;
-      if (vehicle && !isWheelVehicle(vehicle) && !(vehicle.movement === "boat" && vehicle.boarding)) {
+      // A jet's half width is its wing's, so its exact parts are met instead: its pilot climbs in ahead of the wing.
+      if (vehicle && !isWheelVehicle(vehicle) && vehicle.movement !== "jet" && !(vehicle.movement === "boat" && vehicle.boarding)) {
         // Boarding corridors intentionally permit stepping over skids/through the stern ladder.
         // Aircraft/boat interaction queries include those parts (and rotor hazards), so retain their boarding proxy.
         if (p.y >= ents.y[e]! + world.reg.bodyHeight[ents.kind[e]!]! || p.y + (height ?? move.height) <= ents.y[e]!) continue;
@@ -72,8 +72,7 @@ export class Seating {
         const v = ents.vrow[e]!;
         const frame = { x: ents.x[e]!, y: ents.y[e]!, z: ents.z[e]!, yaw: ents.vehicleYaw[v]!, pitch: ents.vehiclePitch[v]!, roll: ents.vehicleRoll[v]!,
           qx: ents.vehicleQx[v]!, qy: ents.vehicleQy[v]!, qz: ents.vehicleQz[v]!, qw: ents.vehicleQw[v]!, steering: ents.steering[v]! };
-        const hit = vehicle.movement === "boat" ? boatMeetsCapsule(vehicle, frame, p.x, p.y, p.z, move.radius, height ?? move.height)
-          : carMeetsCapsule(vehicle.spec, frame, p.x, p.y, p.z, move.radius, height ?? move.height);
+        const hit = familyOf(vehicle)!.meetsCapsule(vehicle, frame, p.x, p.y, p.z, move.radius, height ?? move.height);
         if (hit) return false;
       } else {
         if (p.y >= ents.y[e]! + world.reg.bodyHeight[ents.kind[e]!]! || p.y + (height ?? move.height) <= ents.y[e]!) continue;

@@ -6,6 +6,7 @@ import type { PartTable } from "../world/structures.ts";
 import type { ContactGeometry, Shape, SolidFrame, SolidJoint } from "../world/vehicle-solid.ts";
 import type { Body } from "./character.ts";
 import { BOAT } from "./families/boat.ts";
+import { JET } from "./families/jet.ts";
 import { ROTOR } from "./families/rotor.ts";
 import { WHEELED } from "./families/wheeled.ts";
 import type { VehicleDefinition, VehicleWorld } from "./vehicle.ts";
@@ -25,9 +26,10 @@ export interface VehicleFamily<D extends VehicleDefinition = VehicleDefinition> 
   validateRig(d: D): void;
   /**
    * One fixed tick of a body driven by `moveX`, `moveZ` and `buttons`, the ordinary signed bytes and buttons; each family
-   * reads them its own way. What happened is left in `vehicleStep` (vehicle-state.ts).
+   * reads them its own way. `yaw` and `pitch` are the look the input holds, in 1/65536 turns, for a family that flies by
+   * it. What happened is left in `vehicleStep` (vehicle-state.ts).
    */
-  step(w: CollisionWorld, b: Body, moveX: number, moveZ: number, buttons: number, def: D, pilot: boolean, environment?: VehicleWorld): void;
+  step(w: CollisionWorld, b: Body, moveX: number, moveZ: number, buttons: number, def: D, pilot: boolean, environment?: VehicleWorld, yaw?: number, pitch?: number): void;
   /** The parts it meets the world and other vehicles with, its hazard parts first. */
   parts(def: D): readonly Shape[];
   /** Where its jointed parts stand at `frame`, by joint (a boat's outboards); null where no part turns on a joint. */
@@ -66,6 +68,7 @@ export function families(): readonly VehicleFamily[] {
     family(WHEELED),
     family(ROTOR),
     family(BOAT),
+    family(JET),
   ];
 }
 

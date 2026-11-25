@@ -719,6 +719,14 @@ export const OWN_XP = ownKind();
 export const OWN_STRUCTURES = ownKind();
 /** What the screens play (shared/video/screen.ts writeScreens): the manifest's id, then per screen show, flags, clip, start tick, next clip. */
 export const OWN_SCREEN = ownKind();
+/**
+ * An armed vehicle's weapons, to its driver (server/vehicle-weapons.ts): armed 1 bit; then rounds u16 and their most u16,
+ * missiles u8 and their most u8, the lock 2 bits (0 none, 1 seeking, 2 locked), its progress u8 (255ths), and what it is
+ * on 2 bits: 1 an entity, its handle u32; 2 a craft in the sky, its middle 3 x f32 and its name string; 0 nothing.
+ */
+export const OWN_ARMS = ownKind();
+/** What a seeker does to whatever its owner drives or sits in, u8: 0 nothing, 1 looked for, 2 locked, 3 a missile coming. */
+export const OWN_WARNED = ownKind();
 
 export const MARKER_DEATH = 1;
 
@@ -844,11 +852,11 @@ export const INPUT_KEPT = BTN_CROUCH | BTN_PRONE;
 /** Ticks a body's last input goes on when none comes: `driven`, a vehicle someone drives or flies. Both ends step by it. */
 export const holdTicks = (driven: boolean): number => (driven ? VEHICLE_HOLD_TICKS : INPUT_HOLD_TICKS);
 /**
- * The buttons a body is stepped with once its input is let go: a car stands on its handbrake, a rotor vehicle has none,
+ * The buttons a body is stepped with once its input is let go: a car stands on its handbrake, an aircraft has none,
  * and a body on foot keeps its stance of `buttons`. Both ends step by it.
  */
 export function letGoButtons(vehicle: { readonly movement?: string } | null | undefined, buttons: number): number {
-  return vehicle ? (vehicle.movement === "rotor" ? 0 : BTN_JUMP) : buttons & INPUT_KEPT;
+  return vehicle ? (vehicle.movement === "rotor" || vehicle.movement === "jet" ? 0 : BTN_JUMP) : buttons & INPUT_KEPT;
 }
 /** In bytes. */
 export const MAX_CLIENT_MESSAGE = 512;

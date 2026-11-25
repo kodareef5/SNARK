@@ -131,6 +131,49 @@ interface VehicleDefinitionBase {
   readonly breakablePanels?: readonly VehiclePanel[];
   /** Solid cabin panels above the belt in vehicle-local metres. Openings between them admit shots. */
   readonly shotPanels?: readonly (readonly [VehiclePoint3, VehiclePoint3, VehiclePoint3, VehiclePoint3])[];
+  /** Guns and missiles the driver fires (server/vehicle-weapons.ts). Omitted, the vehicle is unarmed. */
+  readonly weapons?: VehicleWeapons;
+}
+
+/**
+ * A gun fixed to the hull: hitscan rounds of `ammo` along the nose from `muzzle`, through the round path of a survivor's
+ * shot (server/projectiles.ts). `weapon` and `ammo` are item ids, so damage and its type are the ammunition's and the
+ * kill line names the weapon. `interval` is seconds between rounds; `spread` a cone in radians.
+ */
+export interface VehicleCannon {
+  readonly weapon: string;
+  readonly ammo: string;
+  readonly rounds: number;
+  readonly interval: number;
+  readonly muzzle: VehiclePoint3;
+  readonly spread: number;
+}
+/**
+ * Guided missiles. SECONDARY held looks for a target in a `cone` (half angle, radians) out to `range` metres with a clear
+ * line and holds it `lock` seconds; let go, a missile flies at `speed` by proportional navigation of gain `navigation`,
+ * turning at most `turn` m/s², for `life` seconds. It goes off within `fuse` metres of its target, or on what it meets,
+ * as `ammo`'s blast. `prop` is the live missile every client draws. The next rail is ready `reload` seconds after a
+ * launch; the vehicle service fills the racks again (`count`). `rail` is where a missile leaves from.
+ */
+export interface VehicleMissiles {
+  readonly weapon: string;
+  readonly ammo: string;
+  readonly prop: string;
+  readonly count: number;
+  readonly reload: number;
+  readonly lock: number;
+  readonly cone: number;
+  readonly range: number;
+  readonly speed: number;
+  readonly navigation: number;
+  readonly turn: number;
+  readonly life: number;
+  readonly fuse: number;
+  readonly rail: VehiclePoint3;
+}
+export interface VehicleWeapons {
+  readonly cannon?: VehicleCannon;
+  readonly missiles?: VehicleMissiles;
 }
 
 /** A lens surface in chassis-local metres. A lens with no facing is visible from every side. */
@@ -279,8 +322,68 @@ export function boatDrives(p: BoatSpec): readonly BoatDrive[] {
   return drives;
 }
 
-export type VehicleDefinition = WheelVehicleDefinition | RotorVehicleDefinition | BoatVehicleDefinition;
+/**
+ * Fixed-wing tuning with a vectored-thrust hover, in metres, seconds, kilograms and radians (shared/sim/jet.ts). Speeds
+ * set the drag: full military thrust holds `cruiseSpeed` level and the afterburner `topSpeed`. The wing at its
+ * `criticalAngle` carries one weight at `stallSpeed`. The origin is on the ground under the wheels.
+ */
+export interface JetSpec extends VehicleHullSpec {
+  readonly mass: number;
+  readonly cruiseSpeed: number;
+  readonly topSpeed: number;
+  /** Acceleration from full military thrust, m/s². The afterburner's follows from the two speeds. */
+  readonly thrust: number;
+  readonly stallSpeed: number;
+  readonly criticalAngle: number;
+  /** The wing's angle to the body's axis: lift at a level nose. */
+  readonly incidence: number;
+  /** Lift drag at the critical angle, as a share of that lift. */
+  readonly inducedDrag: number;
+  /** The most the flight controls let the wing pull, in weights. */
+  readonly gLimit: number;
+  readonly pitchRate: number;
+  readonly rollRate: number;
+  readonly yawRate: number;
+  /** Angular acceleration of the controls, rad/s². */
+  readonly turnAcceleration: number;
+  /** How hard the flight controls chase the aim, 1/s. */
+  readonly aimResponse: number;
+  /** Below this speed the lift fan and swivel nozzle carry the jet; they fade out over `vtolFade` more. */
+  readonly vtolSpeed: number;
+  readonly vtolFade: number;
+  /** Vertical acceleration the lift fan and nozzle can give, m/s². */
+  readonly vtolLift: number;
+  readonly climbSpeed: number;
+  readonly descendSpeed: number;
+  /** Fractions of full thrust a second the engine gains and loses. */
+  readonly spoolUp: number;
+  readonly spoolDown: number;
+  readonly gravity: number;
+  /** Nose wheel and main wheels: local Z of each, and the main wheels' half track. */
+  readonly noseGear: number;
+  readonly mainGear: number;
+  readonly gearTrack: number;
+  /** Speed from which the nose may lift on the runway. */
+  readonly rotateSpeed: number;
+  /** Wheel braking deceleration, m/s². */
+  readonly brake: number;
+  readonly minGroundNormal: number;
+  /** Fuselage, wings and tails in the chassis frame, above `clearance`. */
+  readonly bodyBoxes: readonly VehicleCollisionBox[];
+}
+export interface JetVehicleDefinition extends VehicleDefinitionBase {
+  readonly movement: "jet";
+  readonly spec: JetSpec;
+}
+
+/** The fastest any jet may be tuned: lag compensation pads each rewound shot, and structures are known 192 m ahead. */
+export const JET_SPEED_CAP = 180;
+
+export type VehicleDefinition = WheelVehicleDefinition | RotorVehicleDefinition | BoatVehicleDefinition | JetVehicleDefinition;
 export const isRotorVehicle = (d: VehicleDefinition): d is RotorVehicleDefinition => d.movement === "rotor";
+export const isJetVehicle = (d: VehicleDefinition): d is JetVehicleDefinition => d.movement === "jet";
+/** Aircraft keep their whole attitude as a quaternion, have no handbrake and are refused an exit while airborne. */
+export const isAircraft = (d: VehicleDefinition): d is RotorVehicleDefinition | JetVehicleDefinition => d.movement === "rotor" || d.movement === "jet";
 export const isBoatVehicle = (d: VehicleDefinition): d is BoatVehicleDefinition => d.movement === "boat";
 export const isWheelVehicle = (d: VehicleDefinition): d is WheelVehicleDefinition => d.movement === undefined || d.movement === "wheeled";
 
@@ -332,11 +435,44 @@ export function validateHelicopterSpec(s: HelicopterSpec): void {
     !Number.isFinite(s.tail.radius) || s.tail.radius <= 0 || s.tail.radius > 2) throw new Error("inconsistent helicopter specification");
 }
 
+export function validateJetSpec(s: JetSpec): void {
+  if (!s || typeof s !== "object" || Array.isArray(s)) throw new Error("invalid jet specification");
+  for (const key of ["halfWidth", "halfLength", "height", "clearance", "mass", "maxForward", "maxReverse", "fuelCapacity", "fuelPerSecond", "cruiseSpeed", "topSpeed", "thrust", "stallSpeed", "criticalAngle", "inducedDrag", "gLimit", "pitchRate", "rollRate", "yawRate", "turnAcceleration", "aimResponse", "vtolSpeed", "vtolFade", "vtolLift", "climbSpeed", "descendSpeed", "spoolUp", "spoolDown", "gravity", "noseGear", "gearTrack", "rotateSpeed", "brake", "minGroundNormal"] as const) {
+    if (!Number.isFinite(s[key]) || s[key] <= 0) throw new Error(`missing or invalid jet ${key}`);
+  }
+  const vec = (v: unknown): boolean => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite);
+  if (!Number.isFinite(s.incidence) || Math.abs(s.incidence) > .2 || !Number.isFinite(s.mainGear) || s.mainGear >= 0 || -s.mainGear > s.halfLength ||
+    s.noseGear > s.halfLength || s.gearTrack > s.halfWidth || s.clearance >= s.height || s.mass < 50 || s.mass > 1000000 ||
+    s.topSpeed > JET_SPEED_CAP || s.maxForward > JET_SPEED_CAP || s.cruiseSpeed >= s.topSpeed || s.stallSpeed >= s.cruiseSpeed ||
+    s.vtolSpeed > s.stallSpeed || s.rotateSpeed > s.cruiseSpeed || s.criticalAngle > .6 || s.gLimit > 12 || s.inducedDrag > 1 ||
+    s.pitchRate > 5 || s.rollRate > 8 || s.yawRate > 2 || s.aimResponse > 12 || s.minGroundNormal > 1 || s.vtolLift > s.gravity * 3 ||
+    s.climbSpeed > 30 || s.descendSpeed > 30 ||
+    !Array.isArray(s.bodyBoxes) || s.bodyBoxes.length < 1 || s.bodyBoxes.length > 12 ||
+    !s.bodyBoxes.every(b => !!b && vec(b.at) && vec(b.half) && b.half.every((n: number) => n > 0 && n <= 12) && b.at[1] - b.half[1] >= s.clearance - .0001)) throw new Error("inconsistent jet specification");
+}
+
+function validateWeapons(w: VehicleWeapons): void {
+  const id = (v: unknown): boolean => typeof v === "string" && v.includes(":");
+  const vec = (v: unknown): boolean => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite);
+  const positive = (v: unknown, most: number): boolean => typeof v === "number" && Number.isFinite(v) && v > 0 && v <= most;
+  const c = w.cannon, m = w.missiles;
+  if (c && (!id(c.weapon) || !id(c.ammo) || !Number.isInteger(c.rounds) || !positive(c.rounds, 65535) || !positive(c.interval, 10) ||
+    !vec(c.muzzle) || !Number.isFinite(c.spread) || c.spread < 0 || c.spread > .2)) throw new Error("invalid vehicle cannon");
+  if (m && (!id(m.weapon) || !id(m.ammo) || !id(m.prop) || !Number.isInteger(m.count) || !positive(m.count, 255) || !positive(m.reload, 3600) ||
+    !positive(m.lock, 30) || !positive(m.cone, 1.2) || !positive(m.range, 3000) || !positive(m.speed, 400) || !positive(m.navigation, 8) ||
+    !positive(m.turn, 2000) || !positive(m.life, 30) || !positive(m.fuse, 30) || !vec(m.rail))) throw new Error("invalid vehicle missiles");
+}
+
 /** Content checks beyond the spec's, so a definition that compiles always registers and draws. Throws on the first fault. */
 export function validateVehicleDefinition(d: VehicleDefinition): void {
   const family = familyOf(d);
   if (!family) throw new Error("invalid vehicle movement");
   family.validateSpec(d);
+  if (d.weapons !== undefined) {
+    // A helicopter's PRIMARY and SECONDARY are its yaw pedals, so it can hold no trigger.
+    if (isRotorVehicle(d)) throw new Error("a helicopter carries no weapons");
+    validateWeapons(d.weapons);
+  }
   const vec = (v: unknown): boolean => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite);
   const bone = (n: unknown): boolean => typeof n === "string" && n.length > 0 && n.length <= 64;
   if (!Array.isArray(d.doors) || d.doors.length > MAX_VEHICLE_DOORS) throw new Error("a vehicle has at most 4 doors");

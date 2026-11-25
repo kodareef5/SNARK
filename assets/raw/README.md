@@ -67,3 +67,12 @@ What was kept from each archive:
 
 Downloaded on 2026-11-20. The file says its mesh and motion were made with AI by Patch's anymove
 (github.com/patch-gg/anymove). It is kept unchanged.
+
+## mgg8
+
+| Folder | Source | License | Used for |
+| --- | --- | --- | --- |
+| `mgg8/f-35b` | [F-35B Lightning II - RAF 617 Squadron](https://sketchfab.com/3d-models/f-35b-lightning-ii-raf-617-squadron-1161f64164ce481189ce67d39502c068), `f-35b_lightning_ii__raf_617_squadron.glb` (SHA-256 `2066fa8e60e65892e4f474b615a75a26c6056f33e4f517ca7254d334f0d0e6f9`) | Sketchfab API `license.label` "CC0 Public Domain", captured in `LICENSE.txt` | The XF-51 Wraith's airframe (`assets/source/core/vehicles/jet/`), reshaped, repainted and renamed: none of its markings or pictures are kept |
+
+The author calls it an "AI-assisted procedural Blender model". Downloaded by the owner on 2026-11-22 and copied
+unchanged on 2026-11-23. Only `LICENSE.txt` is kept in the repository; the model itself stays out of it.

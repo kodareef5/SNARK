@@ -2,6 +2,7 @@
 // A click picks a stack up or puts it down, a middle click picks up half, and a right click eats, uses or puts on.
 
 import { isSkateboard } from "../../../shared/sim/vehicle.ts";
+import { jetSpoolAt } from "../../../shared/sim/jet.ts";
 import { ballInfo } from "../balls.ts";
 import { CUE_HURT_SHIFT } from "../../../shared/anim/pose.ts";
 import { makeHandle } from "../../../shared/ids.ts";
@@ -417,7 +418,9 @@ export class InventoryScreen implements Screen {
       else if (def && index >= 0) {
         const fuel = r.vehicleFuel[index]!, engine = r.vehicleEngineCondition[index]!, rotor = r.vehicleRotorCondition[index]!;
         const boat = def.movement === "boat", car = def.movement === undefined || def.movement === "wheeled";
-        const stopped = boat ? !r.vehicleEngineOn[index] && r.vehicleRpm[index]! <= 30 : r.vehicleGrounded[index] !== 0 && (def.movement !== "rotor" || (!r.vehicleEngineOn[index] && r.vehicleRotorRpm[index]! <= 30));
+        // A jet's spool is a share of its thrust, which the same limit at a thirtieth says has wound down.
+        const jet = def.movement === "jet", wound = !r.vehicleEngineOn[index] && (jet ? jetSpoolAt(r, index) <= .02 : r.vehicleRotorRpm[index]! <= 30);
+        const stopped = boat ? !r.vehicleEngineOn[index] && r.vehicleRpm[index]! <= 30 : r.vehicleGrounded[index] !== 0 && ((def.movement !== "rotor" && !jet) || wound);
         const gasoline = reg.index.get("core:gasoline")!, haveFuel = own.total(gasoline);
         const repairItems = VEHICLE_REPAIR_BILL.map(([id]) => own.total(reg.index.get(id)!));
         const maxCost = VEHICLE_REPAIR_BILL.map(([, n]) => Math.ceil(n * VEHICLE_REPAIR_STEP));
@@ -429,8 +432,9 @@ export class InventoryScreen implements Screen {
         const lines = [`Hull ${hull} | Fuel ${(fuel * def.spec.fuelCapacity).toFixed(1)}/${def.spec.fuelCapacity}`];
         if (boat || car) lines.push(`Health ${health}`);
         if (def.movement === "rotor") lines.push(`Engine ${Math.round(engine * 100)}% | Rotor ${Math.round(rotor * 100)}%`);
+        if (jet) lines.push(`Engine ${Math.round(engine * 100)}% | Repair also rearms`);
         if (boat || car) lines.push(`Engine ${Math.round(engine * 100)}% | ${boat ? "Bilge" : "Flooding"} ${Math.round(r.vehicleFlooding[index]! * 100)}%`);
-        lines.push(boat ? "To service: release throttle, exit and let boat settle" : car ? "To service: stop and get out; recover from water before repair" : stopped ? "Service available when stationary" : "To service: land, exit and wait for rotors");
+        lines.push(boat ? "To service: release throttle, exit and let boat settle" : car ? "To service: stop and get out; recover from water before repair" : stopped ? "Service available when stationary" : jet ? "To service: land, exit and let the engine wind down" : "To service: land, exit and wait for rotors");
         if (car) lines.push("Stand beside a stopped car to flip it. Push or pull a flooded car.");
         lines.push(`Refuel: ${VEHICLE_FUEL_PER_GASOLINE} fuel per gasoline | carrying ${haveFuel}`);
         lines.push(`Repair: up to ${VEHICLE_REPAIR_STEP * 100}%; at most ${maxCost[0]} ingots, ${maxCost[1]} polymer, ${maxCost[2]} electronics`);

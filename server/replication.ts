@@ -14,6 +14,8 @@ import { packVehicleDrive, packVehiclePose, quantVehicleWheel, packVehicleRide }
 import { packSkateWord } from "../shared/sim/skate-state.ts";
 import { packVehicleRotor, packVehicleSystems, packVehicleQuaternionPair, packBoatWater } from "../shared/sim/vehicle-presentation.ts";
 import { drivetrainShifting } from "../shared/sim/vehicle-drivetrain.ts";
+import { isWheelVehicle } from "../shared/sim/vehicle.ts";
+import { jetNozzleAt, packJetNozzle } from "../shared/sim/jet.ts";
 import { F_ALIVE, F_PLAYER, F_PROP, F_GROUNDED } from "../shared/sim/entities.ts";
 import { ROW_BITS_MOST, RowCoder } from "../shared/world/rows.ts";
 import { GONE_BLAST, GONE_TAKEN, RECENT, TOUCH_KIND, TOUCH_LEFT, TOUCH_MOVED } from "../shared/world/structures.ts";
@@ -387,16 +389,17 @@ export class Replication {
   /** Adds entity `i` as it stands to `view`, and whether its changes go first. */
   private pushEntity(view: SentView, i: number): void {
     const ents = this.world.ents;
-    const vehicle = this.world.reg.vehicle[ents.kind[i]!], rotor = vehicle?.movement === "rotor", v = ents.vrow[i]!;
+    const vehicle = this.world.reg.vehicle[ents.kind[i]!], rotor = vehicle?.movement === "rotor", jet = vehicle?.movement === "jet", v = ents.vrow[i]!;
     const skate = vehicle ? ents.skate.get(v) : undefined;
     view.push(i, ents.gen[i]!, ents.kind[i]!, quantX(ents.x[i]!), quantY(ents.y[i]!), quantX(ents.z[i]!), ents.yaw[i]! >>> 6,
       (ents.flags[i]! >>> 1) & 0xf, ents.anim[i]!, ents.rev[i]!, ents.cue[i]!,
       vehicle ? packVehiclePose(ents.vehiclePitch[v]!, ents.vehicleRoll[v]!, ents.steering[v]!) : 0,
       vehicle ? quantVehicleWheel(ents.wheelAngle[v]!) : 0,
       vehicle ? packVehicleRide(ents.vehicleGroundPitch[v]!, ents.vehicleGroundRoll[v]!, ents.vehicleRideOffset[v]!, (ents.flags[i]! & F_GROUNDED) !== 0) : 0,
-      ents.vehicleDoors[v]!, vehicle && !rotor ? packVehicleDrive(skate?.move ?? ents.vehicleGear[v]!, skate ? Math.hypot(ents.vx[i]!, ents.vz[i]!) * 100 : ents.vehicleRpm[v]!, skate ? skate.switched : vehicle.movement === "boat" ? ents.vehicleShiftTime[v]! > 0 : drivetrainShifting(ents.vehicleShiftTime[v]!, vehicle.spec.drivetrain), (ents.flags[i]! & F_PROP) === 0 ? ents.vehicleLightMode[v]! : 0, ents.vehicleMissingPanels[v]!) : 0,
+      ents.vehicleDoors[v]!, vehicle && !rotor ? packVehicleDrive(skate?.move ?? ents.vehicleGear[v]!, skate ? Math.hypot(ents.vx[i]!, ents.vz[i]!) * 100 : ents.vehicleRpm[v]!, skate ? skate.switched : !isWheelVehicle(vehicle) ? ents.vehicleShiftTime[v]! > 0 : drivetrainShifting(ents.vehicleShiftTime[v]!, vehicle.spec.drivetrain), (ents.flags[i]! & F_PROP) === 0 ? ents.vehicleLightMode[v]! : 0, ents.vehicleMissingPanels[v]!) : 0,
       // A car's rotor word is its thrusters' state, what fired on its last tick among it (shared/sim/vehicle-thrusters.ts).
-      rotor ? packVehicleRotor(ents.vehicleRotorRpm[v]!, ents.vehicleRotorPhase[v]!) : skate ? packSkateWord(skate) : vehicle?.movement !== "boat" && vehicle?.spec.thrusters ? ents.vehicleThrust[v]! : 0,
+      // A jet's drive word is its wheels down, its engine speed and its afterburner, and its rotor word its nozzle alone.
+      rotor ? packVehicleRotor(ents.vehicleRotorRpm[v]!, ents.vehicleRotorPhase[v]!) : jet ? packJetNozzle(jetNozzleAt(ents, v)) : skate ? packSkateWord(skate) : vehicle && isWheelVehicle(vehicle) && vehicle.spec.thrusters ? ents.vehicleThrust[v]! : 0,
       vehicle ? packVehicleSystems(ents.fuel[v]!, vehicle.spec.fuelCapacity, ents.vehicleEngineCondition[v]!, ents.vehicleRotorCondition[v]!, ents.vehicleEngineOn[v] !== 0) : 0,
       vehicle ? packVehicleQuaternionPair(ents.vehicleQx[v]!, ents.vehicleQy[v]!) : 0,
       vehicle ? packVehicleQuaternionPair(ents.vehicleQz[v]!, ents.vehicleQw[v]!) : 0,

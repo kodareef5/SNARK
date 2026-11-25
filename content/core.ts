@@ -34,6 +34,7 @@ import { SKATEBOARDS } from "./vehicles/skateboard.ts";
 import { SKATE_PARK } from "./skate-park.ts";
 import { HELICOPTERS } from "./vehicles/helicopter.ts";
 import { HELICOPTER_ITEMS } from "./vehicles/helicopter-items.ts";
+import { JET_ARMS, JETS } from "./vehicles/jet.ts";
 import { CIVILIAN } from "./civilians.ts";
 import type { ContentPack } from "../shared/content/packs.ts";
 
@@ -430,6 +431,8 @@ const ALL: readonly Def[] = [
   ...CREATURES,
   ...ROAD_FLEET,
   ...HELICOPTERS,
+  ...JETS,
+  ...JET_ARMS,
   ...SKATEBOARDS,
   ...SKATE_PARK,
   ...BOATS,

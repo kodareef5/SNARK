@@ -251,7 +251,7 @@ export class Players {
           const quiet = remote || c.closed || T - c.inputAt > VEHICLE_HOLD_TICKS;
           const moveX = quiet ? 0 : c.heldX, moveZ = quiet ? 0 : c.heldZ, buttons = quiet ? letGoButtons(vehicle, c.heldButtons) : c.heldButtons;
           this.driving = c.pid;
-          if (!this.pairStep?.(e, b, moveX, moveZ, buttons, vehicle, !quiet)) this.vehicleStep(world, b, moveX, moveZ, buttons, vehicle, TICK_DT, c.heldYaw, !quiet);
+          if (!this.pairStep?.(e, b, moveX, moveZ, buttons, vehicle, !quiet)) this.vehicleStep(world, b, moveX, moveZ, buttons, vehicle, TICK_DT, c.heldYaw, !quiet, undefined, c.heldPitch);
           this.driving = 0;
         } else if (!passenger) {
           // A survivor's tamed numbers are its own. A body that is driven is a tame's.

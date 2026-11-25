@@ -321,7 +321,7 @@ cue("vehicle/thruster/burst", VEHICLE, "vehicle", "body", vstatus("vehicle/thrus
 /** The shared families a vehicle may belong to, each by the words that name it, and the family each one also falls back to. */
 export const VEHICLE_FAMILIES: Readonly<Record<string, { words: readonly string[]; also?: string }>> = {
   helicopter: { words: ["helicopter", "heli", "chopper", "gyrocopter"] },
-  plane: { words: ["plane", "airplane", "aeroplane", "aircraft", "biplane", "seaplane", "glider"] },
+  plane: { words: ["plane", "airplane", "aeroplane", "aircraft", "jet", "biplane", "seaplane", "glider"] },
   speedboat: { words: ["speedboat", "powerboat", "jetski"], also: "boat" },
   boat: { words: ["boat", "motorboat", "dinghy", "skiff"] },
   raft: { words: ["raft", "canoe", "kayak"], also: "boat" },

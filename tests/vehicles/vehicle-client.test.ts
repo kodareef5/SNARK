@@ -157,7 +157,7 @@ test("suspension holds all wheel hubs on the support plane while chassis, occupa
 
 test("a rolled car's wheels hang still at the end of their travel while its hull touches and leaves the ground, own and observed", () => {
   const def = reg.vehicle[compact]!;
-  if (def.movement === "rotor" || def.movement === "boat") throw new Error("compact must be wheeled");
+  if (def.movement === "rotor" || def.movement === "boat" || def.movement === "jet") throw new Error("compact must be wheeled");
   const travel = def.spec.suspensionTravel!, dims = { chunksX: 4, chunksZ: 4 }, hf = new Heightfield(dims, 1, -64, 1 / 256);
   for (let z = 0; z < hf.nz; z++) for (let x = 0; x < hf.nx; x++) hf.setSample(x, z, Math.tan(12 * Math.PI / 180) * (z - 64));
   const world = { hf, structs: new StructureStore(dims, new Float32Array([0]), new Float32Array([0]), new Float32Array([0])) };
@@ -235,7 +235,7 @@ test("camera target damping is frame-rate independent and snaps safely across a 
 
 test("driving instruments read mechanical gear/RPM, including neutral, and never invent a speed-based shift", () => {
   const v = new VehicleTelemetry(), b = new Body(), definition = reg.vehicle[compact]!;
-  if (definition.movement === 'rotor' || definition.movement === 'boat') throw new Error('compact telemetry requires its wheeled controller');
+  if (definition.movement === 'rotor' || definition.movement === 'boat' || definition.movement === 'jet') throw new Error('compact telemetry requires its wheeled controller');
   const spec = definition.spec;
   b.vehicle = b.grounded = true; b.fuel = spec.fuelCapacity;
   b.vehicleGear = 2; b.vehicleRpm = 3700; b.vz = 35;
