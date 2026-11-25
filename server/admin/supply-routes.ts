@@ -20,7 +20,7 @@ import { BANDS, bandDocs } from "../../content/supply/sites.ts";
 import { parseIni } from "../settings/ini.ts";
 import { Lists } from "../settings/lists.ts";
 import { SETTING, arkCrates, arkDocs } from "../supply/ark.ts";
-import { actorOf, sameOrigin } from "./gate.ts";
+import { actorOf, onlyRead, sameOrigin } from "./gate.ts";
 
 const JSON_HEADERS = { "content-type": "application/json", "cache-control": "no-store" };
 const json = (body: unknown, status = 200): Response => new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
@@ -92,6 +92,8 @@ export class SupplyRoutes {
     const no = refusedWrite(req);
     if (no) return no;
     const by = actorOf(req);
+    // A pasted override is only read into the page's draft.
+    if (what === "ark") onlyRead(req);
     return body(req).then((b) => (b === null ? json({ error: "Expected a JSON object no larger than a book." }, 400) : this.write(what, b, by)));
   }
 

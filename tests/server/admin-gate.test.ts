@@ -13,6 +13,7 @@ import { Guesses } from "../../server/guesses.ts";
 import { startServer, type RunningServer } from "../../server/main.ts";
 import { loadConfig } from "../../server/settings/config.ts";
 import type { Act } from "../../shared/acts.ts";
+import { OPENING_SHOT } from "../../shared/title-scene.ts";
 import { RANK_CLUSTER, RANK_MAP, RANK_STAFF } from "../../shared/ranks.ts";
 import { splitPack } from "../../tools/pack/split.ts";
 import { Harness } from "../fixtures/net.ts";
@@ -190,18 +191,43 @@ test("a setting changed from a page is logged under who changed it", async () =>
   expect(changes[0]!.from).toEndWith("127.0.0.1");
 });
 
+/** A POST of JSON to a server's page, signed in as kody with the map's password. */
+const posted = (at: string, path: string, body: unknown): Promise<Response> => fetch(`${at}${path}`, {
+  method: "POST",
+  headers: { authorization: `Basic ${btoa(`kody:${MAP}`)}`, "content-type": "application/json" },
+  body: JSON.stringify(body),
+});
+
+const commands = (s: RunningServer): [string, number, string][] => s.host.acts.recent().filter((a) => a.kind === "command").map((a) => [a.name, a.rank, a.what]);
+
 test("a page's change that logs nothing itself is logged by its path", async () => {
   const { s, at } = serve();
-  const cast = (body: unknown): Promise<Response> => fetch(`${at}/admin/cast`, {
-    method: "POST",
-    headers: { authorization: `Basic ${btoa(`kody:${MAP}`)}`, "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  expect((await cast({ op: "set", name: "CastActivity", value: "2" })).status).toBe(200);
+  // A handler that writes no act of its own, as one added later might.
+  (s.host as { pageSetting: unknown }).pageSetting = () => ({ why: "" });
+  expect((await posted(at, "/admin/settings", { op: "set", name: "XPMultiplier", value: "3" })).status).toBe(200);
   // A change refused is no change, and is not logged.
-  expect((await cast({ op: "set", name: "CastModelKey", value: "x" })).status).toBe(400);
-  const changes = s.host.acts.recent().filter((a) => a.kind === "command");
-  expect(changes.map((a) => [a.name, a.rank, a.what])).toEqual([["(kody)", RANK_MAP, "POST /admin/cast"]]);
+  expect((await posted(at, "/admin/cast", { op: "set", name: "CastModelKey", value: "x" })).status).toBe(400);
+  expect(commands(s)).toEqual([["(kody)", RANK_MAP, "POST /admin/settings"]]);
+});
+
+test("the studio's and the screens' changes are logged by what they did", async () => {
+  const { s, at } = serve();
+  const shot = { ...OPENING_SHOT, id: "harbor", name: "Harbor" };
+  expect((await posted(at, "/admin/scenes/api?category=title", { shot, revision: 0, publish: false })).status).toBe(200);
+  const state = (await (await fetch(`${at}/admin/screens/state`, { headers: { authorization: `Basic ${btoa(`kody:${MAP}`)}` } })).json()) as { revision: number };
+  expect((await posted(at, "/admin/screens/edit", { revision: state.revision, op: "screen", screen: "orb", mode: "fixed" })).status).toBe(200);
+  expect((await posted(at, "/admin/cast", { op: "set", name: "CastActivity", value: "2" })).status).toBe(200);
+  expect(commands(s)).toEqual([
+    ["(kody)", RANK_MAP, 'saved the shot "Harbor" for the title screen as a draft'],
+    ["(kody)", RANK_MAP, "set screen orb: mode fixed"],
+    ["(kody)", RANK_MAP, "setting CastActivity 2"],
+  ]);
+});
+
+test("a page that only reads writes no act, though it is sent a POST", async () => {
+  const { s, at } = serve();
+  for (const path of ["/admin/stats.json", "/admin/settings.json", "/admin/cast.json", "/admin/supply/ark"]) expect([path, (await posted(at, path, { text: "" })).status]).toEqual([path, 200]);
+  expect(commands(s)).toEqual([]);
 });
 
 test("a sign-in never puts the password in an act", async () => {

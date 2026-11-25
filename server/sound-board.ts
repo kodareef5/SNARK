@@ -5,7 +5,7 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { basename, dirname, join, normalize, posix, relative, resolve, sep } from "node:path";
 import type { Registry } from "../shared/content/registry.ts";
-import { adminPath, refused, type AdminGate } from "./admin/gate.ts";
+import { adminPath, onlyRead, refused, type AdminGate } from "./admin/gate.ts";
 
 export const SOURCE_DIR = resolve(import.meta.dir, "../assets/source");
 /** Files of a sound folder, and the cue sheet beside an asset's art, that the board links to. */
@@ -91,6 +91,8 @@ export function soundBoard(req: Request, who: string, gate: AdminGate, page: str
   if (!boardAsked(pathname)) return null;
   const no = refused(req, who, gate);
   if (no) return no;
+  // The board only reads, whatever the method.
+  onlyRead(req);
   // An address's path, which has / between its parts on every system, and the same folded for matching.
   const path = posix.normalize(decodeURIComponent(pathname)), at = path.toLowerCase();
   const fresh = { "cache-control": "no-store" };

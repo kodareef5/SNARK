@@ -41,7 +41,7 @@ import { castAct, castState } from "./cast.ts";
 import { settingsAnswer } from "./settings.ts";
 import { stopAnswer } from "./stop.ts";
 import { originAllowed } from "../origin.ts";
-import { actorOf, adminAsked, adminPath, refused, type AdminGate } from "./gate.ts";
+import { actorOf, adminAsked, adminPath, onlyRead, refused, type AdminGate } from "./gate.ts";
 import { SupplyRoutes } from "./supply-routes.ts";
 import { LoadoutRoutes } from "./loadout-routes.ts";
 import { LogRoutes } from "./log-routes.ts";
@@ -112,6 +112,9 @@ export interface AdminOptions {
   /** Wall ms. */
   now?: () => number;
 }
+
+/** The paths besides the page's files that only read, whatever the method, so a POST to one is not logged as a change. */
+const READS = new Set(["/admin/stats.json", "/admin/overview.json", "/admin/chat.json", "/admin/terrain.rgba", "/admin/survivors.json", "/admin/minutes.json", "/admin/ticks.json", "/admin/content.json", "/admin/cast.json", "/admin/bases.bin", "/admin/settings.json"]);
 
 /** Paint the preview while the map's colour data is available at startup. */
 export function adminTerrain(map: MapData): Uint8Array<ArrayBuffer> {
@@ -203,6 +206,7 @@ export class AdminPages {
     const no = refused(req, who, gate);
     if (no) return no;
     const at = adminPath(pathname)!;
+    if (FILES[at] || READS.has(at) || at.startsWith("/admin/log/")) onlyRead(req);
     const url = new URL(req.url);
     if (at === "/admin") return new Response(null, { status: 308, headers: { location: `admin/${url.search}` } });
     const file = FILES[at];
@@ -235,8 +239,11 @@ export class AdminPages {
     if (at === "/admin/cast" && req.method === "POST") {
       // A change is taken only from a page this server served (the scene studio's rule), whatever the password.
       if (!originAllowed(req.headers.get("origin"), req.headers.get("host"), "")) return new Response(JSON.stringify({ ok: false, why: "open the admin page on this server" }), { status: 403, headers: JSON_HEADERS });
+      const by = actorOf(req);
       return req.json().then((body: unknown) => {
-        const why = castAct(this.o.host, body);
+        const why = castAct(this.o.host, body, by);
+        // Every change writes its act, so a request that wrote none changed nothing.
+        if (!this.o.host.acts.wroteFor(by)) onlyRead(req);
         return new Response(JSON.stringify({ ok: why === "", why }), { status: why === "" ? 200 : 400, headers: JSON_HEADERS });
       }, () => new Response(JSON.stringify({ ok: false, why: "not JSON" }), { status: 400, headers: JSON_HEADERS }));
     }

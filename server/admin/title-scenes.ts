@@ -3,7 +3,9 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { initialShots, loaderScene, type EditableSceneCategory, type ShotCatalog, type WikiSceneCatalog } from "../../shared/player-scenes.ts";
 import { OPENING_SHOT, validShot, type TitleShot } from "../../shared/title-scene.ts";
+import type { Acts } from "../acts.ts";
 import { entryReply, readEntryJson } from "../survivor-access.ts";
+import { actorOf } from "./gate.ts";
 
 const rowOf = (category: EditableSceneCategory): number => category === "title" ? 1 : 2;
 
@@ -92,7 +94,8 @@ export class TitleScenes {
   private wiki(): WikiSceneCatalog {
     return { recipes: this.built("scene-catalog.json", []), media: this.built("wiki/scene-media.json", {}) };
   }
-  async admin(req: Request): Promise<Response> {
+  /** The studio's API. A save is written in `acts` as the request's actor's. */
+  async admin(req: Request, acts?: Pick<Acts, "write">): Promise<Response> {
     const category = new URL(req.url).searchParams.get("category") ?? "title";
     if (category === "wiki") {
       return req.method === "GET" ? entryReply(this.wiki()) : new Response(null, { status: 405, headers: { Allow: "GET" } });
@@ -133,7 +136,10 @@ export class TitleScenes {
     db.query("INSERT OR IGNORE INTO title (id,revision,catalog) VALUES (?,0,?)").run(row, JSON.stringify(initialShots(category)));
     const result = db.query("UPDATE title SET revision=?,catalog=?,poster=coalesce(?,poster),portrait=coalesce(?,portrait) WHERE id=? AND revision=?")
       .run(c.revision, JSON.stringify(c), poster, portrait, row, revision);
-    return result.changes === 1 ? entryReply(c) : entryReply({ error: "Another editor saved first. Reload to see their work." }, 409);
+    if (result.changes !== 1) return entryReply({ error: "Another editor saved first. Reload to see their work." }, 409);
+    const named = `the shot "${shot.name.replace(/\s+/g, " ")}" for ${category === "title" ? "the title screen" : "the loading screen"}`;
+    acts?.write(actorOf(req), body.publish ? `published ${named}` : `saved ${named} as a draft`);
+    return entryReply(c);
   }
   close() {
     this.db?.close();

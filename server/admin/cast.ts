@@ -7,9 +7,13 @@
 
 import type { Host } from "../host.ts";
 import type { Story } from "../../shared/cast/state.ts";
+import { PAGE_ACTOR, type Actor } from "../acts.ts";
+import { rowOf } from "../settings/catalog.ts";
 
 /** Stories and people the panel lists at most, the newest and the most recently met first. */
 const MOST_STORIES = 300, MOST_PEOPLE = 120;
+/** Letters of a setting's value that its act keeps at the most. */
+const VALUE_SHOWN = 80;
 
 export function castState(host: Host, now: number): string {
   const ch = host.cast, cast = ch.cast, w = cast.world;
@@ -34,18 +38,26 @@ export function castState(host: Host, now: number): string {
   });
 }
 
-/** Carries out an admin's action; "" when done, else why not. */
-export function castAct(host: Host, body: unknown): string {
+/** Carries out an admin's action, and writes an act as `by` for what it changed; "" when done, else why not. */
+export function castAct(host: Host, body: unknown, by: Actor = PAGE_ACTOR): string {
   const ch = host.cast, cast = ch.cast;
   const b = (body ?? {}) as { op?: unknown; name?: unknown; value?: unknown; scene?: unknown; story?: unknown };
   if (b.op === "set") {
-    if (typeof b.name !== "string" || !b.name.startsWith("Cast") || b.name === "CastModelKey") return "only Cast's settings, and never its key";
-    return host.setSetting(b.name, String(b.value ?? ""));
+    // A setting is named in any case, so its key is known by the row, not by the spelling.
+    const row = typeof b.name === "string" ? rowOf(b.name) : undefined;
+    if (!row || !row.name.startsWith("Cast") || row.secret) return "only Cast's settings, and never its key";
+    const words = String(b.value ?? "");
+    const why = host.setSetting(row.name, words);
+    const shown = words.replace(/\s+/g, " ").trim();
+    if (why === "") host.acts.write(by, `setting ${row.name} ${shown.length > VALUE_SHOWN ? `${shown.slice(0, VALUE_SHOWN)}…` : shown}`);
+    return why;
   }
   if (b.op === "retire") {
     const s = typeof b.story === "string" ? cast.stories.get(b.story) : undefined;
     if (!s) return "no such story";
+    if (s.phase === "done") return "";
     cast.finish(s, host.world.tick);
+    host.acts.write(by, `retired Cast's story ${s.id} (${cast.scenes.get(s.scene)?.name ?? s.scene})`);
     return "";
   }
   if (b.op === "spawn") {
@@ -68,7 +80,10 @@ export function castAct(host: Host, body: unknown): string {
     const story: Story = { id: `a${host.world.tick}`, scene: sc.id, spot, x: at.x, z: at.z, region, phase: "planned", parts: [], choices, slots: {}, for: [], engaged: [], importance: 0.5, made: host.world.tick, since: host.world.tick, planned: -Infinity, history: ["asked for on the admin page"] };
     cast.stories.set(story.id, story);
     cast.wake(story, host.world.tick, cast.world.players());
-    return story.phase === "planned" ? "no room for its people now (the body caps)" : "";
+    // A story with no room yet stays planned, and may start later.
+    const waits = story.phase === "planned";
+    host.acts.write(by, `${waits ? "planned" : "started"} Cast's scene ${sc.name} near ${p.name} (story ${story.id})${waits ? ", to start when there is room" : ""}`);
+    return waits ? "no room for its people now (the body caps)" : "";
   }
   return "unknown op";
 }
