@@ -178,8 +178,8 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
     // The lab goes beside the files it plays: assets/music/listen.html on the dev server.
     cpSync(music, join(dist, "assets/music"), { recursive: true, filter: (f) => statSync(f).isDirectory() || (/\.(opus|json|js|html)$/.test(f) && !f.slice(music.length).includes(`${sep}sound${sep}`)) });
   }
-  const starter = copyStarterClips(join(root, "assets/source/core/video/clips"), dist);
-  console.log(`video        ${starter ? `${starter} starter clips in media/` : "no starter clips: the art is not installed"}`);
+  const starter = copyStarterClips(join(root, "assets/source/core/video"), dist);
+  console.log(`video        ${starter ? `${starter} default clips in media/` : "no default clips: the art is not installed (bun run media art core-video)"}`);
   const { registry, errors } = compileContent(CORE_CONTENT);
   if (!registry) throw new Error(`Content cannot be built:\n${errors.join("\n")}`);
   const core = orderPack(buildCorePack([...importedMeshes(), ...(opts.stress ? stressMeshes() : [])]));

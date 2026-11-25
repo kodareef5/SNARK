@@ -30,7 +30,7 @@ const SNEEZE = "a1a1a1a1a1a1a1a1", TRAIN = "b2b2b2b2b2b2b2b2", BOLT = "c3c3c3c3c
 function library(now: () => number = Date.now): { lib: VideoLibrary; dir: string } {
   const dir = join(root, `lib${++made}`), dist = join(dir, "dist", "media");
   mkdirSync(dist, { recursive: true });
-  writeFileSync(join(dist, "starter.json"), JSON.stringify({ clips: [starter(SNEEZE, 6), starter(TRAIN, 120), starter(BOLT, 30)], strip: [SNEEZE, TRAIN, "ffffffffffffffff"] }));
+  writeFileSync(join(dist, "starter.json"), JSON.stringify({ clips: [starter(SNEEZE, 6), starter(TRAIN, 120), starter(BOLT, 30)], channels: [{ name: "strip", items: [SNEEZE, TRAIN, "ffffffffffffffff"] }] }));
   const lib = new VideoLibrary({ db: join(dir, "video.sqlite"), media: join(dir, "media"), tmp: join(dir, "tmp"), starters: join(dist, "starter.json"), now });
   return { lib, dir };
 }
@@ -241,7 +241,8 @@ test("a cluster world takes an upload through the front and serves it from the c
   try {
     for (let k = 0; k < 200 && (await fetch(`${at}/admin/screens/state`)).status === 503; k++) await Bun.sleep(50);
     const state = (await (await fetch(`${at}/admin/screens/state`)).json()) as { manifest: { path: string }; channels: unknown[] };
-    expect(state.channels).toEqual([{ name: "strip", items: [], shuffle: false, epoch: expect.any(Number) }]);
+    // With no default clips there is no default channel.
+    expect(state.channels).toEqual([]);
     // The manifest comes from the cluster's own folder, which the front reads from disk.
     expect((await fetch(`${at}${state.manifest.path}`)).status).toBe(200);
     const bytes = fixture("late.mp4");

@@ -25,7 +25,7 @@ const A = "a1a1a1a1a1a1a1a1", B = "b2b2b2b2b2b2b2b2";
 function library(now: () => number): VideoLibrary {
   const dir = mkdtempSync(join(root, "lib-"));
   mkdirSync(join(dir, "media"));
-  writeFileSync(join(dir, "starter.json"), JSON.stringify({ clips: [starter(A, 10), starter(B, 20)], strip: [A, B] }));
+  writeFileSync(join(dir, "starter.json"), JSON.stringify({ clips: [starter(A, 10), starter(B, 20)], channels: [{ name: "strip", items: [A, B] }] }));
   return new VideoLibrary({ db: ":memory:", media: join(dir, "media"), tmp: join(dir, "tmp"), starters: join(dir, "starter.json"), now });
 }
 

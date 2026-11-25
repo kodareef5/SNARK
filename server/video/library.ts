@@ -29,10 +29,17 @@ export interface Pending {
   readonly at: number;
 }
 
-/** What a starter file lists: the built clips, and the ones a fresh library's first channel plays. */
+/** A default channel as the starter file lists it: its name, its clips' ids in order, and whether it shuffles. */
+export interface StarterChannel {
+  readonly name: string;
+  readonly items: readonly string[];
+  readonly shuffle?: boolean;
+}
+
+/** What a starter file lists: the built clips, and the channels a fresh library starts with. */
 export interface Starters {
   readonly clips: readonly Clip[];
-  readonly strip: readonly string[];
+  readonly channels: readonly StarterChannel[];
 }
 
 /** The library as a world reads it: the doc, the manifest the clients are sent, and lookups the programme needs. */
@@ -91,7 +98,7 @@ export class VideoLibrary {
   private readonly path: string;
   private readonly startersFile: string;
   private readonly now: () => number;
-  private starters: Starters = { clips: [], strip: [] };
+  private starters: Starters = { clips: [], channels: [] };
   private startersAt = -1;
   /** Changes made through this object, so a memory library has a stamp. */
   private writes = 0;
@@ -120,7 +127,7 @@ export class VideoLibrary {
     this.readStarters();
     const fresh: LibraryDoc = {
       clips: [],
-      channels: [{ name: "strip", items: [...this.starters.strip], shuffle: false, epoch: this.now() }],
+      channels: this.starters.channels.map((c) => ({ name: c.name, items: [...c.items], shuffle: c.shuffle === true, epoch: this.now() })),
       screens: SCREENS.map((s) => defaultScreen(s)),
       hidden: [],
     };
@@ -140,9 +147,12 @@ export class VideoLibrary {
     this.startersAt = at;
     try {
       const read = JSON.parse(readFileSync(this.startersFile, "utf8")) as Starters;
-      this.starters = { clips: read.clips.map((c) => ({ ...c, starter: true })), strip: read.strip.filter((id) => read.clips.some((c) => c.id === id)) };
+      const ids = new Set(read.clips.map((c) => c.id));
+      // A channel keeps the clips the file holds; one left with none is left out.
+      const channels = (read.channels ?? []).map((c) => ({ name: c.name, items: c.items.filter((id) => ids.has(id)), shuffle: c.shuffle === true })).filter((c) => c.items.length > 0);
+      this.starters = { clips: read.clips.map((c) => ({ ...c, starter: true })), channels };
     } catch {
-      this.starters = { clips: [], strip: [] };
+      this.starters = { clips: [], channels: [] };
     }
   }
 

@@ -2,7 +2,7 @@
   "repository": "kodareef5/SNARK",
   "art": {
     "release": "art",
-    "id": "fdae771d66ab8352",
+    "id": "044565af62150c03",
     "files": [
       {"name": "core-creatures-allosaur", "file": "core-creatures-allosaur.5eb2682fdf0a.tar.zst", "bytes": 2833562, "sha256": "5eb2682fdf0abb902fa1807673cf9dc46c3111e728eda23299b3a910d74129e2"},
       {"name": "core-creatures-ankylo", "file": "core-creatures-ankylo.d19e9025be7c.tar.zst", "bytes": 1901178, "sha256": "d19e9025be7ccaeb84f4bf80f6554f9e9a6a2971b062a6666ab9f50e8901146b"},
@@ -207,7 +207,8 @@
       {"name": "core-vehicles-veloce", "file": "core-vehicles-veloce.995e77b63b20.tar.zst", "bytes": 604108, "sha256": "995e77b63b20232858244760b1085a9997ae36e6d369ec55b929850348561b42"},
       {"name": "core-vehicles-veloce_abandoned", "file": "core-vehicles-veloce_abandoned.b6f636ec666d.tar.zst", "bytes": 650282, "sha256": "b6f636ec666da1a55ff0c8be700000785ed7b22d3ad52cde3b56af859d123e12"},
       {"name": "core-vehicles-zephyr", "file": "core-vehicles-zephyr.c076fd490b08.tar.zst", "bytes": 608618, "sha256": "c076fd490b08cb6d127986749e3f3cd2018a3791cb0a7fa4843f2a3010908dda"},
-      {"name": "core-video-clips", "file": "core-video-clips.81c073b98826.tar.zst", "bytes": 11049603, "sha256": "81c073b98826dbd7226f18cca69f66d4b4cd42406b8436d893d153492fd30137", "repository": "kodareef5/snark_private"},
+      {"name": "core-video-clouds", "file": "core-video-clouds.1c917510c815.tar.zst", "bytes": 935328, "sha256": "1c917510c8154b218409d6f91726397f4fcf8bc68158f578af909334abef5937", "repository": "kodareef5/snark_private"},
+      {"name": "core-video-lightning", "file": "core-video-lightning.919882ba1bec.tar.zst", "bytes": 1892960, "sha256": "919882ba1bec34d21149dc79c4811fe80c768818b9b313d085d6205095d58810", "repository": "kodareef5/snark_private"},
       {"name": "core-water", "file": "core-water.dc08af5e16cd.tar.zst", "bytes": 485936, "sha256": "dc08af5e16cdddfd6e8ae413f113906607973b6ce7b7d858992b943e32860e55"},
       {"name": "core-water-pictures", "file": "core-water-pictures.1a233564f712.tar.zst", "bytes": 1481380, "sha256": "1a233564f712fae380d9c2872bb4bb639f998fb4314c13abfdb8b6f882b06968"},
       {"name": "core-world-asphalt", "file": "core-world-asphalt.6993862c04bd.tar.zst", "bytes": 27029484, "sha256": "6993862c04bd14a5d01c401ffb84b285db766d99a115b9520a64a4654c27c327"},

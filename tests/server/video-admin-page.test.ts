@@ -166,7 +166,7 @@ const starter = (id: string, seconds: number): Clip => ({
 test("an upload the page publishes passes, and the page's programme is the server's", async () => {
   const dir = join(root, "lib"), dist = join(dir, "dist");
   mkdirSync(dist, { recursive: true });
-  writeFileSync(join(dist, "starter.json"), JSON.stringify({ clips: [starter("a1a1a1a1a1a1a1a1", 6), starter("b2b2b2b2b2b2b2b2", 120)], strip: ["a1a1a1a1a1a1a1a1", "b2b2b2b2b2b2b2b2"] }));
+  writeFileSync(join(dist, "starter.json"), JSON.stringify({ clips: [starter("a1a1a1a1a1a1a1a1", 6), starter("b2b2b2b2b2b2b2b2", 120)], channels: [{ name: "strip", items: ["a1a1a1a1a1a1a1a1", "b2b2b2b2b2b2b2b2"] }] }));
   const lib = new VideoLibrary({ db: join(dir, "video.sqlite"), media: join(dir, "media"), tmp: join(dir, "tmp"), starters: join(dist, "starter.json") });
   const call = async (path: string, init: RequestInit = {}, query = ""): Promise<Response> => (await screensAdmin(new Request(`http://snark.test${path}${query}`, init), path, lib, () => NIGHT))!;
   const post = (path: string, body: unknown): Promise<Response> => call(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });

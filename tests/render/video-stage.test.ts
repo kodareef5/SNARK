@@ -29,7 +29,7 @@ const starter = (id: string, title: string, seconds: number): Clip => ({
 async function library(world: ScreenWorld = { night: true, seconds: 500, hour: 23, only: -1, gain: 1 }) {
   const dir = mkdtempSync(join(root, "lib-")), dist = join(dir, "dist");
   mkdirSync(dist, { recursive: true });
-  writeFileSync(join(dist, "starter.json"), JSON.stringify({ clips: [starter(A, "Sneeze", 10), starter(B, "Train", 60), starter(C, "Clouds", 30)], strip: [A, B] }));
+  writeFileSync(join(dist, "starter.json"), JSON.stringify({ clips: [starter(A, "Sneeze", 10), starter(B, "Train", 60), starter(C, "Clouds", 30)], channels: [{ name: "strip", items: [A, B] }] }));
   const lib = new VideoLibrary({ db: join(dir, "video.sqlite"), media: join(dir, "media"), tmp: join(dir, "tmp"), starters: join(dist, "starter.json") });
   const call = async (path: string, body?: unknown): Promise<ScreensState> => {
     const init = body ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : {};
