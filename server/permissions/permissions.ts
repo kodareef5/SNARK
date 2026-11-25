@@ -24,8 +24,10 @@ import {
   isSurvivorId,
 } from "../../shared/permissions/model.ts";
 import { WRONG_PASSWORD } from "../../shared/console.ts";
+import { idParts } from "../../shared/ids.ts";
+import { TEAM_RANGE } from "../records.ts";
 import { DUMMY_HASH, Retired, sameHash } from "./secrets.ts";
-import type { PermissionStore } from "./store.ts";
+import type { Issued, PermissionStore } from "./store.ts";
 
 /** How often `poll` looks at the file. */
 export const POLL_MS = 5000;
@@ -61,6 +63,25 @@ export interface Changed {
 export interface Claim {
   readonly why: string;
   readonly wrong: boolean;
+}
+
+/** A survivor ID and its survivor's name, for the register. */
+export interface Issue {
+  readonly id: string;
+  readonly name: string;
+}
+
+/** One write to the register (`Permissions.register`). */
+export interface Registering {
+  /** The world whose counters these are: the world part of the IDs and team numbers it makes. */
+  readonly origin: number;
+  /** Its next survivor and team counts (Records.nextSurvivor, Records.nextTeam); left out, its marks of that kind stay. */
+  readonly survivors?: number;
+  readonly teams?: number;
+  /** IDs this world just made. */
+  readonly minted: readonly Issue[];
+  /** IDs known here that were not made here now: arrivals, and the survivors of a save at its start. */
+  readonly known: readonly Issue[];
 }
 
 /** What a claim is refused with when the survivor gave a password replaced or cleared within the last day, as enablecheats is. */
@@ -377,6 +398,82 @@ export class Permissions {
     this.stampSeen = this.store.stamp();
     this.version++;
     return { why: "", wrong: false };
+  }
+
+  /**
+   * Writes the register in one transaction: each ID just made, with nothing that named it before; each ID known here; and
+   * marks that only rise. Tribe memberships of the team numbers this world's mark rises over go too. Answers how many
+   * membership, password and tag rows went, or null when the file could not be written.
+   */
+  register(r: Registering): number | null {
+    let dropped = 0;
+    const now = this.now();
+    try {
+      this.store.transaction(() => {
+        const marks = new Map<number, number>();
+        const counted = (id: string): void => {
+          const p = idParts(id)!;
+          marks.set(p.world, Math.max(marks.get(p.world) ?? 0, p.n + 1));
+        };
+        for (const m of r.minted) {
+          if (!isSurvivorId(m.id)) continue;
+          dropped += this.store.dropRowsOf(m.id);
+          this.store.putMinted({ id: m.id, name: m.name, world: this.world, at: now });
+          counted(m.id);
+        }
+        for (const k of r.known) {
+          if (!isSurvivorId(k.id)) continue;
+          this.store.putKnown({ id: k.id, name: k.name, world: this.world, at: now });
+          counted(k.id);
+        }
+        if (r.survivors !== undefined) marks.set(r.origin, Math.max(marks.get(r.origin) ?? 0, r.survivors));
+        for (const [world, next] of marks) this.store.raiseMark(world, "survivor", next);
+        if (r.teams !== undefined) {
+          // A store from before the register has no mark: what it holds is taken as it is.
+          const had = this.store.mark(r.origin, "team");
+          if (had !== undefined && r.teams > had) dropped += this.store.dropTribes(r.origin * TEAM_RANGE + had, r.origin * TEAM_RANGE + r.teams);
+          this.store.raiseMark(r.origin, "team", r.teams);
+        }
+        if (dropped > 0) this.store.raise();
+      });
+    } catch {
+      return null;
+    }
+    if (dropped > 0) {
+      try {
+        this.load(this.store.read());
+      } catch {
+        // The revision rose, so the next poll reads it.
+      }
+    }
+    return dropped;
+  }
+
+  /** The register's row for survivor ID `id`, or null where no world issued it. */
+  issued(id: string): Issued | null {
+    return this.store.issued(id);
+  }
+
+  /** The register's survivors of a name, in any case. */
+  issuedNamed(name: string): Issued[] {
+    return this.store.issuedNamed(name);
+  }
+
+  /** Every survivor ID the register knows. */
+  allIssued(): Issued[] {
+    return this.store.allIssued();
+  }
+
+  /** Whether team number `key` was made: its world's team mark is above it. */
+  teamMade(key: string): boolean {
+    const team = Number(key);
+    if (!Number.isSafeInteger(team) || team < 1 || team % TEAM_RANGE === 0) return false;
+    return (this.store.mark(Math.floor(team / TEAM_RANGE), "team") ?? 0) > team % TEAM_RANGE;
+  }
+
+  /** The next survivor and team counts world `origin` may hand out, as the register has them; 0 for none. */
+  marks(origin: number): { survivor: number; team: number } {
+    return { survivor: this.store.mark(origin, "survivor") ?? 0, team: this.store.mark(origin, "team") ?? 0 };
   }
 
   /** Inside a write that changed the store: drops what ran out and raises the revision. */

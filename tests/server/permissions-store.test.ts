@@ -8,6 +8,7 @@ import type { PermissionActor } from "../../shared/permissions/model.ts";
 import { RANK_ADMIN, RANK_CLUSTER, RANK_OPEN } from "../../shared/ranks.ts";
 import { Permissions, POLL_MS } from "../../server/permissions/permissions.ts";
 import { PermissionStore } from "../../server/permissions/store.ts";
+import { issue } from "../fixtures/permissions.ts";
 
 const root = mkdtempSync(join(tmpdir(), "snark-perms-"));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
@@ -34,6 +35,7 @@ test("what one store writes another on the same file sees after its poll", () =>
   const clock = { t: 1_000_000 };
   const one = new Permissions({ store: new PermissionStore(file), world: 2, now: () => clock.t });
   const two = new Permissions({ store: new PermissionStore(file), world: 5, now: () => clock.t });
+  issue(one, A);
   two.poll();
   expect(one.apply(cluster, { op: "addGroup", group: "Vip" })).toBe("");
   expect(one.apply(cluster, { op: "addMember", kind: "survivor", key: A, group: "Vip" })).toBe("");
@@ -62,6 +64,7 @@ test("everything survives a close and reopen", () => {
   const file = fresh();
   const store = new PermissionStore(file);
   const perms = new Permissions({ store, world: 2, now: () => 5_000 });
+  issue(perms, A, B, "9");
   const ops = [
     { op: "addGroup", group: "Vip" },
     { op: "setChat", group: "Vip", chat: '{"Tag":"[VIP]"}' },
@@ -140,7 +143,45 @@ test("a file made before claims were dated is read, and takes a dated claim", ()
   const store = new PermissionStore(file);
   expect(store.read().secrets).toEqual([{ id: A, hash: "abcdefabcdefabcd", at: 0 }]);
   const perms = new Permissions({ store, world: 2, now: () => 7_000 });
+  issue(perms, A);
   expect(perms.apply(cluster, { op: "addMember", kind: "survivor", key: A, group: "Admins", world: 0 })).toBe("");
   expect(perms.claim(A, "0123456789abcdef", "abcdefabcdefabcd")).toEqual({ why: "", wrong: false });
   expect(new PermissionStore(file).read().secrets).toEqual([{ id: A, hash: "0123456789abcdef", at: 7_000 }]);
+});
+
+test("a file made before the register opens, gains it and keeps what it held", () => {
+  const file = fresh();
+  const db = new Database(file);
+  db.exec(
+    "CREATE TABLE meta (id INTEGER PRIMARY KEY CHECK (id = 1), revision INTEGER NOT NULL); INSERT INTO meta VALUES (1, 4);" +
+      "CREATE TABLE groups (name TEXT PRIMARY KEY COLLATE NOCASE, rank INTEGER NOT NULL, permissions TEXT NOT NULL, chat TEXT NOT NULL);" +
+      "CREATE TABLE members (kind TEXT NOT NULL, key TEXT NOT NULL, grp TEXT NOT NULL COLLATE NOCASE, world INTEGER NOT NULL, forever INTEGER NOT NULL, start INTEGER NOT NULL, until INTEGER NOT NULL, PRIMARY KEY (kind, key, grp, world));" +
+      "INSERT INTO groups VALUES ('Admins', 2, '*', '');" +
+      `INSERT INTO members VALUES ('survivor', '${A}', 'Admins', 0, 1, 0, 0);`,
+  );
+  db.close();
+  const perms = new Permissions({ store: new PermissionStore(file), world: 2, now: () => 9_000 });
+  expect([perms.snapshot().revision, perms.membersOf("survivor", A).length, perms.marks(2), perms.issued(A)]).toEqual([4, 1, { survivor: 0, team: 0 }, null]);
+  expect(perms.register({ origin: 2, survivors: 3, teams: 2, minted: [], known: [{ id: A, name: "ada" }] })).toBe(0);
+  expect([perms.issued(A), perms.marks(2), perms.snapshot().revision]).toEqual([{ id: A, name: "ada", world: 2, at: 9_000 }, { survivor: 3, team: 2 }, 4]);
+  const tables = (new Database(file).query("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[]).map((t) => t.name);
+  expect(tables).toEqual(expect.arrayContaining(["issued", "marks", "secrets", "tags", "documents"]));
+});
+
+test("the register keeps the first time an ID was seen, follows its name, and its marks only rise", () => {
+  const clock = { t: 1_000 };
+  const perms = new Permissions({ store: new PermissionStore(fresh()), world: 2, now: () => clock.t });
+  const v = perms.version;
+  expect(perms.register({ origin: 2, survivors: 5, teams: 4, minted: [{ id: A, name: "ada" }], known: [] })).toBe(0);
+  clock.t = 2_000;
+  expect(perms.register({ origin: 2, survivors: 3, teams: 2, minted: [], known: [{ id: A, name: "Ada" }, { id: idOf(7, 9), name: "kit" }] })).toBe(0);
+  expect([perms.issued(A), perms.issuedNamed("ADA").map((r) => r.id), perms.marks(2), perms.marks(7)]).toEqual([
+    { id: A, name: "Ada", world: 2, at: 1_000 },
+    [A],
+    { survivor: 5, team: 4 },
+    { survivor: 10, team: 0 },
+  ]);
+  expect([perms.teamMade(String(2 * 1048576 + 3)), perms.teamMade(String(2 * 1048576 + 4)), perms.teamMade(String(7 * 1048576 + 1))]).toEqual([true, false, false]);
+  // Nothing anyone may do changed, so the revision and this view stayed.
+  expect([perms.snapshot().revision, perms.version]).toEqual([0, v]);
 });

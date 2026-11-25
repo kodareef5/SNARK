@@ -1,5 +1,6 @@
 // The cluster's permissions, kept in permissions.sqlite beside its worlds and shared by them all. Each write raises one
 // revision in the same transaction, so a world that sees the file's stamp change knows by the revision whether to read it.
+// The register (`issued`, `marks`) is apart: it is read a row at a time, and its writes raise no revision.
 import { Database } from "bun:sqlite";
 import { statSync } from "node:fs";
 import { RANK_ADMIN, RANK_OPEN } from "../../shared/ranks.ts";
@@ -35,7 +36,24 @@ const SCHEMA =
   " forever INTEGER NOT NULL, start INTEGER NOT NULL, until INTEGER NOT NULL, PRIMARY KEY (kind, key, grp, world));" +
   "CREATE TABLE IF NOT EXISTS secrets (id TEXT PRIMARY KEY, hash TEXT NOT NULL, at INTEGER NOT NULL DEFAULT 0);" +
   "CREATE TABLE IF NOT EXISTS documents (name TEXT PRIMARY KEY COLLATE NOCASE, body TEXT NOT NULL);" +
-  "CREATE TABLE IF NOT EXISTS tags (id TEXT NOT NULL, tag TEXT NOT NULL COLLATE NOCASE, show INTEGER NOT NULL, PRIMARY KEY (id, tag));";
+  "CREATE TABLE IF NOT EXISTS tags (id TEXT NOT NULL, tag TEXT NOT NULL COLLATE NOCASE, show INTEGER NOT NULL, PRIMARY KEY (id, tag));" +
+  "CREATE TABLE IF NOT EXISTS issued (id TEXT PRIMARY KEY, name TEXT NOT NULL, world INTEGER NOT NULL, at INTEGER NOT NULL);" +
+  "CREATE INDEX IF NOT EXISTS issued_name ON issued (name COLLATE NOCASE);" +
+  "CREATE TABLE IF NOT EXISTS marks (world INTEGER NOT NULL, kind TEXT NOT NULL, next INTEGER NOT NULL, PRIMARY KEY (world, kind));";
+
+/** A survivor ID the register knows: its survivor's name and the world it was on, as last known, and when it was first registered. */
+export interface Issued {
+  readonly id: string;
+  readonly name: string;
+  readonly world: number;
+  readonly at: number;
+}
+
+/** What a world's mark counts. */
+export type MarkKind = "survivor" | "team";
+
+const issuedOf = (r: { id: unknown; name: unknown; world: unknown; at: unknown } | null): Issued | null =>
+  r && typeof r.id === "string" && typeof r.name === "string" && typeof r.world === "number" && typeof r.at === "number" ? { id: r.id, name: r.name, world: r.world, at: r.at } : null;
 
 interface GroupRow {
   name: unknown;
@@ -195,6 +213,59 @@ export class PermissionStore {
 
   putTag(id: string, tag: string, show: boolean): void {
     this.open().query("INSERT OR REPLACE INTO tags (id, tag, show) VALUES (?, ?, ?)").run(id, tag, show ? 1 : 0);
+  }
+
+  /** The register's row for survivor ID `id`, or null where it was never issued. */
+  issued(id: string): Issued | null {
+    return issuedOf(this.open().query("SELECT id, name, world, at FROM issued WHERE id = ?").get(id) as Issued | null);
+  }
+
+  /** The register's rows for survivors of a name, in any case. */
+  issuedNamed(name: string): Issued[] {
+    const rows = this.open().query("SELECT id, name, world, at FROM issued WHERE name = ? COLLATE NOCASE ORDER BY id").all(name) as Issued[];
+    return rows.map(issuedOf).filter((r): r is Issued => r !== null);
+  }
+
+  /** Every row of the register. */
+  allIssued(): Issued[] {
+    return (this.open().query("SELECT id, name, world, at FROM issued ORDER BY id").all() as Issued[]).map(issuedOf).filter((r): r is Issued => r !== null);
+  }
+
+  /** The next number world `world` may hand out of a kind, or undefined where it has no mark yet. */
+  mark(world: number, kind: MarkKind): number | undefined {
+    const row = this.open().query("SELECT next FROM marks WHERE world = ? AND kind = ?").get(world, kind) as { next: unknown } | null;
+    return typeof row?.next === "number" ? row.next : undefined;
+  }
+
+  /** Raises a mark to at least `next`, or sets it where there is none. A mark never goes down. */
+  raiseMark(world: number, kind: MarkKind, next: number): void {
+    this.open().query("INSERT INTO marks (world, kind, next) VALUES (?, ?, ?) ON CONFLICT (world, kind) DO UPDATE SET next = MAX(next, excluded.next)").run(world, kind, next);
+  }
+
+  /** Registers an ID just made, over any row it had. */
+  putMinted(row: Issued): void {
+    this.open().query("INSERT OR REPLACE INTO issued (id, name, world, at) VALUES (?, ?, ?, ?)").run(row.id, row.name, row.world, row.at);
+  }
+
+  /** Registers an ID made before or elsewhere: it is added where absent, and its name and world follow. */
+  putKnown(row: Issued): void {
+    this.open()
+      .query("INSERT INTO issued (id, name, world, at) VALUES (?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET name = excluded.name, world = excluded.world WHERE name IS NOT excluded.name OR world IS NOT excluded.world")
+      .run(row.id, row.name, row.world, row.at);
+  }
+
+  /** Removes every membership, password and tag that names survivor `id`, and answers how many rows went. */
+  dropRowsOf(id: string): number {
+    const db = this.open();
+    let n = db.query("DELETE FROM members WHERE kind = 'survivor' AND key = ?").run(id).changes;
+    n += db.query("DELETE FROM secrets WHERE id = ?").run(id).changes;
+    n += db.query("DELETE FROM tags WHERE id = ?").run(id).changes;
+    return n;
+  }
+
+  /** Removes the tribe memberships of team numbers from `from` up to but not including `to`, and answers how many went. */
+  dropTribes(from: number, to: number): number {
+    return this.open().query("DELETE FROM members WHERE kind = 'tribe' AND CAST(key AS INTEGER) >= ? AND CAST(key AS INTEGER) < ?").run(from, to).changes;
   }
 
   close(): void {
