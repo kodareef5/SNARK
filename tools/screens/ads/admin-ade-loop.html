@@ -1,0 +1,92 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Admin-Ade loop</title>
+<link rel="stylesheet" href="ads.css">
+<script type="application/json" id="ad">{ "name": "admin-ade-loop", "title": "Admin-Ade: a winking admin in bulbs", "type": "billboard", "kind": "clip", "seconds": 8, "poster": 2 }</script>
+<style>
+  .ad { background: var(--navy); }
+  .bulbs { left: 0; top: 0; width: 1280px; height: 420px; }
+  .man { left: 40px; top: 30px; width: 290px; height: 390px; }
+  .line { left: 340px; width: 680px; top: 40px; font-size: 76px; color: var(--cream); text-align: center; --shadow: var(--tomato); }
+  .logo { left: 330px; width: 700px; top: 140px; font-size: 156px; color: var(--mustard); text-align: center; line-height: 1.05; --stroke: 8px; --stroke-colour: var(--tomato); text-shadow: 0 0 22px rgba(234, 177, 58, 0.55); }
+  .fine { left: 340px; width: 680px; top: 360px; font-size: 21px; color: var(--mint); text-align: center; }
+  .bottle { left: 1030px; top: 30px; width: 130px; height: 370px; }
+  .star1 { left: 1146px; top: 270px; width: 126px; height: 126px; }
+  .star1 span { font-size: 17px; line-height: 0.92; color: var(--tomato); white-space: normal; }
+</style></head>
+<body>
+<div class="ad" data-w="1280" data-h="420">
+  <svg class="rays" id="rays" data-rays="28 185 300 deep navy"></svg>
+  <svg class="abs man offset" viewBox="0 0 300 400" style="--off: var(--ink)">
+    <path d="M40 400 Q40 290 150 280 Q260 290 260 400 Z" fill="#e0482e"/>
+    <path d="M128 282 L150 330 L172 282 Z" fill="#f4e9cc"/>
+    <path d="M132 296 L150 306 L168 296 L168 318 L150 308 L132 318 Z" fill="#213a5a"/>
+    <rect x="122" y="230" width="56" height="56" fill="#f3a797"/>
+    <ellipse cx="150" cy="170" rx="78" ry="88" fill="#f3a797" stroke="#2b211d" stroke-width="5"/>
+    <path d="M74 150 Q74 70 150 72 Q226 70 226 150 Q206 110 150 108 Q110 106 74 150 Z" fill="#2b211d"/>
+    <path d="M84 96 L100 40 L128 80 L150 30 L172 80 L200 40 L216 96 Z" fill="#eab13a" stroke="#2b211d" stroke-width="5" stroke-linejoin="round"/>
+    <circle cx="122" cy="164" r="8" fill="#2b211d"/>
+    <circle id="open" cx="178" cy="164" r="8" fill="#2b211d"/>
+    <path id="wink" d="M166 164 q12 -10 24 0" stroke="#2b211d" stroke-width="6" fill="none" stroke-linecap="round"/>
+    <path d="M108 200 Q150 250 194 200 Q150 220 108 200 Z" fill="#fbf6e8" stroke="#2b211d" stroke-width="5" stroke-linejoin="round"/>
+    <g id="thumb"><path d="M232 300 q24 -60 8 -96 q-4 -14 10 -12 q14 4 10 40 h22 q14 0 12 14 l-6 40 q-4 18 -24 18 z" fill="#f3a797" stroke="#2b211d" stroke-width="5"/></g>
+  </svg>
+  <div class="abs cond line misreg" id="line1">Trust your admin.</div>
+  <div class="abs cond line misreg" id="line2">Drink</div>
+  <div class="abs script logo outline">Admin-Ade</div>
+  <div class="abs fine small">He would never use god mode on you. Probably.</div>
+  <svg class="abs bottle offset" viewBox="0 0 130 380" style="--off: var(--ink)">
+    <defs><clipPath id="glass"><path d="M44 20 h42 v60 q30 40 30 90 v190 q0 14 -14 14 h-74 q-14 0 -14 -14 v-190 q0 -50 30 -90 z"/></clipPath></defs>
+    <path d="M44 20 h42 v60 q30 40 30 90 v190 q0 14 -14 14 h-74 q-14 0 -14 -14 v-190 q0 -50 30 -90 z" fill="#2a8c8a" stroke="#2b211d" stroke-width="6"/>
+    <g id="fizz" clip-path="url(#glass)" fill="#9fd2c4"></g>
+    <rect x="40" y="4" width="50" height="22" rx="4" fill="#eab13a" stroke="#2b211d" stroke-width="5"/>
+    <ellipse cx="65" cy="230" rx="44" ry="56" fill="#f4e9cc" stroke="#2b211d" stroke-width="5"/>
+    <text x="65" y="232" text-anchor="middle" font-family="AdScript" font-size="27" fill="#e0482e" stroke="#e0482e" stroke-width="1">Admin</text>
+    <text x="65" y="262" text-anchor="middle" font-family="AdNarrow" font-weight="700" font-size="17" fill="#213a5a">-ADE-</text>
+  </svg>
+  <div class="abs star star1" id="star" data-star="18 0.8"><span class="cond">Only<br><b style="font-size:36px">99¢</b></span></div>
+  <svg class="abs bulbs" id="bulbs" viewBox="0 0 1280 420"></svg>
+</div>
+<script>
+  const T = 8;
+  const $ = (id) => document.getElementById(id);
+  const NS = "http://www.w3.org/2000/svg";
+  const bulbs = [];
+  const put = (x, y) => {
+    const c = document.createElementNS(NS, "circle");
+    c.setAttribute("cx", x); c.setAttribute("cy", y); c.setAttribute("r", 7);
+    $("bulbs").appendChild(c); bulbs.push(c);
+  };
+  for (let x = 14; x < 1280; x += 32) put(x, 12);
+  for (let y = 44; y < 410; y += 32) put(1268, y);
+  for (let x = 1266 - 32; x > 0; x -= 32) put(x, 408);
+  for (let y = 376; y > 30; y -= 32) put(12, y);
+  // Bubbles at fixed places, each rising through the bottle a whole number of times a loop.
+  const fizz = Array.from({ length: 14 }, (_, i) => {
+    const c = document.createElementNS(NS, "circle");
+    c.setAttribute("r", 2 + (i % 3) * 1.5);
+    $("fizz").appendChild(c);
+    return { c, x: 24 + ((i * 37) % 84), phase: (i * 0.137) % 1, laps: 2 + (i % 3) };
+  });
+  function frame(t) {
+    t = Ad.wrap(t, T);
+    const step = Math.floor(t * 4);
+    bulbs.forEach((b, i) => b.setAttribute("fill", (i + step) % 4 < 2 ? "#eab13a" : "#2b211d"));
+    Ad.rays($("rays"), (t / T) * (360 / 28));
+    // He winks for a third of a second every two seconds.
+    const wink = Ad.wrap(t, 2) > 1.6 && Ad.wrap(t, 2) < 1.93;
+    $("wink").style.display = wink ? "" : "none";
+    $("open").style.display = wink ? "none" : "";
+    $("thumb").setAttribute("transform", `rotate(${Math.sin((t / T) * 8 * Math.PI) * 4} 250 300)`);
+    const second = Ad.ease(t, 3.6, 4.0) * (1 - Ad.ease(t, 7.6, 8));
+    $("line1").style.opacity = 1 - second;
+    $("line2").style.opacity = second;
+    fizz.forEach(({ c, x, phase, laps }) => {
+      const y = 370 - Ad.wrap(phase + (t / T) * laps, 1) * 300;
+      c.setAttribute("cx", x); c.setAttribute("cy", y);
+    });
+    $("star").style.transform = `rotate(${-8 + Math.sin((t / T) * 4 * Math.PI) * 6}deg)`;
+    $("star").style.background = Ad.blink(t, 1) ? "var(--cream)" : "var(--mustard)";
+  }
+</script>
+<script src="ads.js"></script>
+</body></html>

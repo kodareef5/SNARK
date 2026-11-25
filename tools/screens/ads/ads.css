@@ -1,0 +1,85 @@
+/* The look every ad shares: flat mid-century inks, local fonts, paper grain and halftone. */
+/* The URW base 35 faces (Debian's fonts-urw-base35), read from where the package puts them. */
+@font-face { font-family: "AdScript"; src: url("file:///usr/share/fonts/opentype/urw-base35/Z003-MediumItalic.otf"); font-weight: 400; font-style: normal; }
+@font-face { font-family: "AdBookman"; src: url("file:///usr/share/fonts/opentype/urw-base35/URWBookman-Light.otf"); font-weight: 400; font-style: normal; }
+@font-face { font-family: "AdBookman"; src: url("file:///usr/share/fonts/opentype/urw-base35/URWBookman-LightItalic.otf"); font-weight: 400; font-style: italic; }
+@font-face { font-family: "AdBookman"; src: url("file:///usr/share/fonts/opentype/urw-base35/URWBookman-Demi.otf"); font-weight: 700; font-style: normal; }
+@font-face { font-family: "AdBookman"; src: url("file:///usr/share/fonts/opentype/urw-base35/URWBookman-DemiItalic.otf"); font-weight: 700; font-style: italic; }
+@font-face { font-family: "AdCentury"; src: url("file:///usr/share/fonts/opentype/urw-base35/C059-Roman.otf"); font-weight: 400; font-style: normal; }
+@font-face { font-family: "AdCentury"; src: url("file:///usr/share/fonts/opentype/urw-base35/C059-Italic.otf"); font-weight: 400; font-style: italic; }
+@font-face { font-family: "AdCentury"; src: url("file:///usr/share/fonts/opentype/urw-base35/C059-Bold.otf"); font-weight: 700; font-style: normal; }
+@font-face { font-family: "AdCentury"; src: url("file:///usr/share/fonts/opentype/urw-base35/C059-BdIta.otf"); font-weight: 700; font-style: italic; }
+@font-face { font-family: "AdNarrow"; src: url("file:///usr/share/fonts/opentype/urw-base35/NimbusSansNarrow-Regular.otf"); font-weight: 400; font-style: normal; }
+@font-face { font-family: "AdNarrow"; src: url("file:///usr/share/fonts/opentype/urw-base35/NimbusSansNarrow-Bold.otf"); font-weight: 700; font-style: normal; }
+@font-face { font-family: "AdGothic"; src: url("file:///usr/share/fonts/opentype/urw-base35/URWGothic-Book.otf"); font-weight: 400; font-style: normal; }
+@font-face { font-family: "AdGothic"; src: url("file:///usr/share/fonts/opentype/urw-base35/URWGothic-Demi.otf"); font-weight: 700; font-style: normal; }
+@font-face { font-family: "AdMono"; src: url("file:///usr/share/fonts/opentype/urw-base35/NimbusMonoPS-Regular.otf"); font-weight: 400; font-style: normal; }
+@font-face { font-family: "AdMono"; src: url("file:///usr/share/fonts/opentype/urw-base35/NimbusMonoPS-Bold.otf"); font-weight: 700; font-style: normal; }
+
+:root {
+  --cream: #f4e9cc;
+  --paper: #ecdcb2;
+  --white: #fbf6e8;
+  --teal: #2a8c8a;
+  --deep: #155a5d;
+  --mint: #9fd2c4;
+  --tomato: #e0482e;
+  --brick: #a8301f;
+  --mustard: #eab13a;
+  --pink: #f3a797;
+  --navy: #213a5a;
+  --ink: #2b211d;
+}
+
+html, body { margin: 0; padding: 0; overflow: hidden; background: var(--ink); }
+* { box-sizing: border-box; }
+
+/* The stage is drawn at its authored size and scaled to the window by ads.js. */
+.ad {
+  position: absolute; left: 0; top: 0; overflow: hidden;
+  transform-origin: 0 0; background: var(--cream); color: var(--ink);
+}
+.abs { position: absolute; white-space: nowrap; }
+.center { display: flex; align-items: center; justify-content: center; text-align: center; }
+
+.script { font-family: "AdScript", cursive; -webkit-text-stroke: 0.05em currentColor; paint-order: stroke fill; letter-spacing: 0.01em; }
+.slab { font-family: "AdBookman", serif; font-weight: 700; }
+.cent { font-family: "AdCentury", serif; font-weight: 700; }
+.cond { font-family: "AdNarrow", sans-serif; font-weight: 700; text-transform: uppercase; letter-spacing: 0.01em; }
+.geo { font-family: "AdGothic", sans-serif; font-weight: 700; }
+.mono { font-family: "AdMono", monospace; }
+.tight { line-height: 0.92; }
+.caps { text-transform: uppercase; }
+
+/* Two inks printed a little out of register. */
+.misreg { text-shadow: 0.05em 0.04em 0 var(--shadow, var(--tomato)); }
+.thick { -webkit-text-stroke: 0.035em currentColor; paint-order: stroke fill; }
+.outline { -webkit-text-stroke: var(--stroke, 6px) var(--stroke-colour, var(--ink)); paint-order: stroke fill; }
+
+/* A flat colour printed off register behind a cutout. */
+.offset { filter: drop-shadow(var(--ox, 7px) var(--oy, 5px) 0 var(--off, var(--tomato))); }
+
+.star { display: flex; align-items: center; justify-content: center; text-align: center; }
+.rays { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+.dino { position: absolute; }
+.dino > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.dino > .dots {
+  position: absolute; inset: 0; mix-blend-mode: multiply;
+  -webkit-mask-size: contain; -webkit-mask-repeat: no-repeat; -webkit-mask-position: center;
+  background-image: radial-gradient(circle, var(--dot, rgba(43, 33, 29, 0.55)) 32%, transparent 36%);
+  background-size: var(--dot-size, 7px) var(--dot-size, 7px);
+}
+
+/* Paper fibre and a little ink starvation over the whole sheet. */
+.grain { position: absolute; inset: 0; pointer-events: none; mix-blend-mode: multiply; opacity: 0.32; }
+.wear { position: absolute; inset: 0; pointer-events: none; mix-blend-mode: screen; opacity: 0.14; }
+.halftone {
+  position: absolute; pointer-events: none;
+  background-image: radial-gradient(circle, var(--dot, rgba(43, 33, 29, 0.18)) 30%, transparent 34%);
+  background-size: var(--dot-size, 9px) var(--dot-size, 9px);
+}
+
+.small { font-family: "AdCentury", serif; font-weight: 400; font-style: italic; }
+.panel { border: 6px solid var(--ink); border-radius: 18px; }
+.rule { height: 0; border-top: 4px solid var(--ink); }

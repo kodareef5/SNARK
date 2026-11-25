@@ -1,0 +1,46 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Lag-Away Tonic</title>
+<link rel="stylesheet" href="ads.css">
+<script type="application/json" id="ad">{ "name": "lag-away", "title": "Lag-Away Tonic: feeling rubber-banded?", "type": "billboard", "kind": "image" }</script>
+<style>
+  .ad { background: var(--cream); }
+  .men { left: 40px; top: 70px; width: 420px; height: 300px; color: var(--navy); }
+  .head { left: 40px; top: 18px; font-size: 56px; color: var(--navy); }
+  .logo { left: 440px; top: 84px; font-size: 118px; color: var(--tomato); line-height: 1; --shadow: var(--navy); }
+  .tonic { left: 690px; top: 190px; font-size: 92px; color: var(--navy); line-height: 1; }
+  .tag { left: 446px; top: 304px; font-size: 34px; color: var(--navy); }
+  .fine { left: 448px; top: 368px; font-size: 19px; color: var(--deep); }
+  .bottle { left: 1110px; top: 56px; width: 150px; height: 350px; }
+  .star1 { left: 950px; top: 200px; width: 170px; height: 150px; background: var(--mustard); transform: rotate(10deg); }
+  .star1 span { font-size: 21px; line-height: 0.95; color: var(--navy); white-space: normal; }
+</style></head>
+<body>
+<div class="ad" data-w="1280" data-h="420">
+  <svg class="rays" data-rays="30 1136 300 mint cream" style="clip-path: polygon(940px 0, 100% 0, 100% 100%, 900px 100%)"></svg>
+  <svg class="abs men" viewBox="0 0 420 300">
+    <use href="#run" x="10" y="40" width="130" height="250" opacity="0.18"/>
+    <use href="#run" x="70" y="40" width="130" height="250" opacity="0.32"/>
+    <use href="#run" x="130" y="40" width="130" height="250" opacity="0.5"/>
+    <use href="#run" x="250" y="40" width="130" height="250" style="color: var(--tomato)"/>
+    <path d="M220 160 q20 -40 40 0 q20 40 40 0" stroke="#2b211d" stroke-width="5" fill="none"/>
+    <path d="M330 34 l-30 24 l40 6 l-30 26" stroke="#e0482e" stroke-width="7" fill="none" stroke-linejoin="round"/>
+  </svg>
+  <div class="abs cond head misreg">Feeling rubber-banded?</div>
+  <div class="abs cent logo misreg">Lag-Away</div>
+  <div class="abs script tonic">Tonic</div>
+  <div class="abs tag slab">Restores your ping!</div>
+  <div class="abs fine small">Not a substitute for a cable. Do not drink during a raid.</div>
+  <svg class="abs bottle offset" viewBox="0 0 150 350" style="--off: var(--navy)">
+    <rect x="52" y="0" width="46" height="34" rx="5" fill="#2b211d"/>
+    <path d="M56 34 h38 v40 q42 24 42 70 v186 q0 16 -16 16 h-90 q-16 0 -16 -16 v-186 q0 -46 42 -70 z" fill="#a8301f" stroke="#2b211d" stroke-width="6"/>
+    <rect x="20" y="150" width="110" height="140" fill="#f4e9cc" stroke="#2b211d" stroke-width="5"/>
+    <text x="75" y="180" text-anchor="middle" font-family="AdCentury" font-weight="700" font-size="11" fill="#213a5a">DR. PINGWELL'S</text>
+    <text x="75" y="226" text-anchor="middle" font-family="AdScript" font-size="26" fill="#e0482e" stroke="#e0482e" stroke-width="1">Lag-Away</text>
+    <text x="75" y="256" text-anchor="middle" font-family="AdNarrow" font-weight="700" font-size="11" fill="#213a5a">FOR DESYNC, JITTER</text>
+    <text x="75" y="276" text-anchor="middle" font-family="AdNarrow" font-weight="700" font-size="11" fill="#213a5a">&amp; SPIKES · 0 MS</text>
+    <path d="M36 70 q10 -6 18 -6" stroke="#fbf6e8" stroke-width="5" fill="none" opacity="0.6"/>
+  </svg>
+  <div class="abs star star1" data-star="16 0.8"><span class="cond">New!<br>40% less<br>packet loss</span></div>
+</div>
+<script src="ads.js"></script>
+</body></html>
