@@ -258,10 +258,23 @@ function draw(): void {
 // ---- Preview
 
 const PREVIEW_SIZE = 160;
-/** Where the preview's own bundle is served; a name the bundler does not follow. */
-const PREVIEW_URL: string = "/admin/ui/screens-preview.js";
 type PreviewModule = typeof import("../core/admin/screens-preview.ts");
 let previewModule: Promise<PreviewModule> | null = null;
+/** The preview's own bundle (screens-preview.ts), loaded once as a module script that leaves its exports on the page. */
+function loadPreview(): Promise<PreviewModule> {
+  return (previewModule ??= new Promise((ok, no) => {
+    const script = document.createElement("script");
+    script.type = "module";
+    script.src = "/admin/ui/screens-preview.js";
+    script.onload = () => {
+      const loaded = (globalThis as { screensPreview?: PreviewModule }).screensPreview;
+      if (loaded) ok(loaded);
+      else no(new Error("The preview did not load."));
+    };
+    script.onerror = () => no(new Error("The preview did not load."));
+    document.head.append(script);
+  }));
+}
 let previewKey = "";
 /** The ball showing the clip it plays, else the one picked to play once, drawn by the game's own twin when either changes. */
 async function drawBall(): Promise<void> {
@@ -275,7 +288,7 @@ async function drawBall(): Promise<void> {
   poster.src = clip.poster;
   let twin: PreviewModule;
   try {
-    [twin] = await Promise.all([(previewModule ??= import(PREVIEW_URL) as Promise<PreviewModule>), poster.decode()]);
+    [twin] = await Promise.all([loadPreview(), poster.decode()]);
   } catch {
     previewModule = null;
     previewKey = "";
