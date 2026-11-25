@@ -40,7 +40,7 @@ const kept = mkdtempSync(join(ROOT, "var/permissions/world-"));
 const dbPath = join(kept, "world.db");
 const server = startServer({ port: Number(values.port), clientDir: dist, adminPassword: passwords.map, clusterPassword: passwords.cluster, config, dbPath, noBackups: true });
 const origin = `http://127.0.0.1:${server.port}`;
-console.log(`the permissions page: ${origin}/admin/permissions/`);
+console.log(`the permissions page: ${origin}/admin/worlds/local/permissions/`);
 let code = 0;
 if (values.drive || values.shots) {
   try {

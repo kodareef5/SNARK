@@ -98,10 +98,11 @@ export interface PermissionActor {
 export type PermissionOp =
   | { readonly op: "addGroup"; readonly group: string; readonly rank?: number }
   | { readonly op: "removeGroup"; readonly group: string }
-  | { readonly op: "setRank"; readonly group: string; readonly rank: number }
+  /** `was` on a whole value is what its editor started from: a change made meanwhile refuses it (CHANGED_MEANWHILE). */
+  | { readonly op: "setRank"; readonly group: string; readonly rank: number; readonly was?: number }
   | { readonly op: "grant"; readonly group: string; readonly permission: string }
   | { readonly op: "revoke"; readonly group: string; readonly permission: string }
-  | { readonly op: "setChat"; readonly group: string; readonly chat: string }
+  | { readonly op: "setChat"; readonly group: string; readonly chat: string; readonly was?: string }
   | {
       readonly op: "addMember";
       readonly kind: MemberKind;
@@ -123,8 +124,11 @@ export type PermissionOp =
       readonly timedOnly?: boolean;
     }
   | { readonly op: "clearSecret"; readonly id: string }
-  | { readonly op: "setDocument"; readonly name: string; readonly text: string }
+  | { readonly op: "setDocument"; readonly name: string; readonly text: string; readonly was?: string }
   | { readonly op: "tag"; readonly id: string; readonly tag: string; readonly show: boolean };
+
+/** Why a whole value's change was refused: its `was` is not what the store holds now. */
+export const CHANGED_MEANWHILE = "Someone changed it meanwhile. Yours is not saved: look at theirs, then send yours again over it or keep theirs.";
 
 export const MAX_CHAT_LENGTH = 16384;
 export const MAX_DOCUMENT_LENGTH = 65536;
@@ -305,6 +309,7 @@ export function editRule(actor: PermissionActor, op: PermissionOp, look: RuleLoo
       const rank = existing(op.group);
       if (typeof rank === "string") return rank;
       if (!isRank(op.rank)) return "That is not a rank.";
+      if (op.was !== undefined && !isRank(op.was)) return "That is not a rank it was.";
       if (op.group.toLowerCase() === DEFAULT_GROUP.toLowerCase() && op.rank !== RANK_OPEN) return `${DEFAULT_GROUP} stays open.`;
       const why = define(rank) || above(op.rank);
       if (why || op.rank === rank || !look.hasMembers(op.group)) return why;
@@ -320,6 +325,7 @@ export function editRule(actor: PermissionActor, op: PermissionOp, look: RuleLoo
       const rank = existing(op.group);
       if (typeof rank === "string") return rank;
       if (typeof op.chat !== "string" || op.chat.length > MAX_CHAT_LENGTH) return "A chat block is text of at most 16384 letters.";
+      if (op.was !== undefined && typeof op.was !== "string") return "That is not a chat block it was.";
       return define(rank);
     }
     case "addMember":
@@ -356,6 +362,7 @@ export function editRule(actor: PermissionActor, op: PermissionOp, look: RuleLoo
     case "setDocument":
       if (!isGroupName(op.name)) return "A document's name is up to 32 letters, digits and _ . : -";
       if (typeof op.text !== "string" || op.text.length > MAX_DOCUMENT_LENGTH) return "A document is text of at most 65536 letters.";
+      if (op.was !== undefined && typeof op.was !== "string") return "That is not a document it was.";
       return define(RANK_ADMIN);
     default:
       return "That is not a permission change.";

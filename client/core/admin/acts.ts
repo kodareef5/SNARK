@@ -31,7 +31,7 @@ export const KINDS: readonly ActKind[] = ["command", "sign-in", "change", "refus
 export const KIND_WORDS: Record<ActKind, string> = { command: "Commands", "sign-in": "Sign-ins", change: "Permission changes", refused: "Refused attempts" };
 const KIND_CHIPS: Record<ActKind, string> = { command: "", "sign-in": "sign-in", change: "permissions", refused: "refused" };
 export const OPEN_TITLE = "Run with what everyone may do: creative mode for all, or an open group's permission. No password was given.";
-const VIA_WORDS: Record<ActVia, string> = { session: "In game", page: "On a page", operator: "At the terminal", module: "By a module" };
+export const VIA_WORDS: Record<ActVia, string> = { session: "In game", page: "On a page", operator: "At the terminal", module: "By a module" };
 
 export interface ActFilter {
   /** Letters of the name or digits of the ID. */

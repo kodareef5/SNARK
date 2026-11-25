@@ -1,23 +1,23 @@
-// The Permissions admin page (client/admin/permissions.ts): its parts that need no browser (client/core/admin/permissions.ts),
-// its place in the cluster's navigation and build, the gate in front of it, and the front that passes what it sends.
+// A world's Permissions admin page (client/admin/permissions.ts): its parts that need no browser (client/core/admin/permissions.ts),
+// its place in a world's navigation and build, the gate in front of it, and the front that passes what it sends.
 import { afterAll, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  FREE_CHEATS, addGroupPost, addMemberPost, blankChatForm, blankTag, chatBlockOf, chatFormOf, chatGroupHtml, chatPost, clearPasswordPost, coloured, defineWhy, firstInk, freeCheats, grantPost, groupsHtml, importPost, manageWhy,
-  memberRows,
+  FREE_CHEATS, addGroupPost, addMemberPost, blankChatForm, blankTag, chatBlockOf, chatFormOf, chatGroupHtml, chatPost, clearPasswordPost, coloured, defineWhy, editAfter, editOf,
+  everyMapOf, firstInk, freeCheats, grantPost, groupsHtml, headingOf, historyHtml, importHtml, importPost, manageWhy, memberRows, rankPost,
   memberRowsHtml, readFault, passwordRows, passwordRowsHtml, removeGroupPost, sampleRuns, settingsFormOf, settingsHtml, settingsPost, settingsTextOf, spanWords, type MemberForm,
 } from "../../client/core/admin/permissions.ts";
-import { cluster, resolveAdmin } from "../../client/core/admin/navigation.ts";
+import { cluster, resolveAdmin, sections } from "../../client/core/admin/navigation.ts";
 import { adminSite } from "../../server/admin/site.ts";
 import { START_BOOK } from "../../server/permissions/chat-tags.ts";
-import { sitePost } from "../../server/front.ts";
+import { frontPasses, sitePost } from "../../server/front.ts";
 import { Guesses } from "../../server/guesses.ts";
 import { idOf } from "../../shared/ids.ts";
 import { readChatSettings } from "../../shared/permissions/chat.ts";
-import type { Member } from "../../shared/permissions/model.ts";
-import { PERMISSIONS_API, PERMISSIONS_STATE, type PermissionsState } from "../../shared/permissions/page.ts";
+import { CHANGED_MEANWHILE, type HistoryRow, type Member } from "../../shared/permissions/model.ts";
+import { OLD_PERMISSIONS_PATHS, PERMISSIONS_API, PERMISSIONS_STATE, type PermissionsState } from "../../shared/permissions/page.ts";
 import { readRichColor } from "../../shared/permissions/richcolor.ts";
 import { RANK_ADMIN, RANK_CLUSTER, RANK_MAP, RANK_STAFF } from "../../shared/ranks.ts";
 import { buildAdmin } from "../../tools/build-admin.ts";
@@ -34,6 +34,7 @@ const GOLD = 0xffd700;
 /** Miami, where Mara is a map admin and Kade an admin; Pip has a timed VIP membership, and a tribe builds. World 0 is in no cluster. */
 function stateAt(rank: number, world = 1): PermissionsState {
   return {
+    key: "k1",
     me: { name: "Kade", id: KADE, rank, world },
     saved: true,
     revision: 7,
@@ -100,7 +101,7 @@ test("a map admin in a cluster finds a group's permissions and rank off, with th
   expect(markers.map((m) => control(groups, m).includes(` disabled title="${CLUSTER_ONLY}"`))).toEqual(markers.map(() => true));
   const vip = map.groups.find((g) => g.name === "VIP")!;
   expect(enabled(chatGroupHtml(map, vip, blankChatForm(), []) + settingsHtml(map, settingsFormOf(map.document).form, []))).toEqual([]);
-  expect([chatPost(map, "VIP", "{}").why, settingsPost(map, "{}").why, defineWhy(map), manageWhy(map)]).toEqual([CLUSTER_ONLY, CLUSTER_ONLY, CLUSTER_ONLY, ""]);
+  expect([chatPost(map, "VIP", "{}", "").why, settingsPost(map, "{}", "").why, defineWhy(map), manageWhy(map)]).toEqual([CLUSTER_ONLY, CLUSTER_ONLY, CLUSTER_ONLY, ""]);
   // An import may be checked, not applied.
   expect([importPost(map, "commands", "Permissions.AddGroup VIP", false).why, importPost(map, "commands", "Permissions.AddGroup VIP", true).why]).toEqual(["", CLUSTER_ONLY]);
   // Who is in which group is still theirs.
@@ -201,10 +202,16 @@ test("what is typed becomes the right op, and a bad one is refused before it is 
   ]);
   expect(addGroupPost(alone, " Mods ", RANK_STAFF).post).toEqual({ do: "op", op: { op: "addGroup", group: "Mods", rank: RANK_STAFF } });
   expect(grantPost(alone, "VIP", "Cheat.kick").post).toEqual({ do: "op", op: { op: "grant", group: "VIP", permission: "Cheat.kick" } });
-  expect([clearPasswordPost(admin, KADE).post, importPost(alone, "arkapi", "", true).why, importPost(alone, "crosschat", "{}", true).post]).toEqual([
+  expect([clearPasswordPost(admin, KADE).post, importPost(alone, "arkapi", "", true).why, importPost(alone, "crosschat", "{}", true).why, importPost(alone, "crosschat", "{}", true, "d1").post]).toEqual([
     { do: "op", op: { op: "clearSecret", id: KADE } },
     "Choose the ArkApi Permissions file first.",
-    { do: "import", kind: "crosschat", text: "{}" },
+    "Check it first.",
+    { do: "import", kind: "crosschat", text: "{}", digest: "d1" },
+  ]);
+  // An ArkApi database's -wal file goes beside it, and beside nothing else.
+  expect([importPost(alone, "arkapi", "AAAA", false, "", "BBBB").post, importPost(alone, "commands", "x", false, "", "BBBB").why]).toEqual([
+    { do: "plan", kind: "arkapi", text: "AAAA", wal: "BBBB" },
+    "A -wal file goes only beside an ArkApi database.",
   ]);
 });
 
@@ -266,10 +273,16 @@ test("an open group holding a cheat is flagged as needing no password", () => {
   expect(groupsHtml(state).split(FREE_CHEATS).length).toBe(2);
 });
 
-test("the cluster nav lists Permissions, which opens at /admin/permissions/", () => {
-  expect(cluster.map(([slug]) => slug)).toContain("permissions");
-  const at = resolveAdmin("https://snark.test/admin/permissions/", [], (href, base) => new URL(href, base));
-  expect([at.view, at.title, at.world]).toEqual(["permissions", "Permissions", null]);
+test("a world's navigation lists Permissions, which opens at its own address", () => {
+  expect(cluster.map(([slug]) => slug)).not.toContain("permissions");
+  expect(sections.find(([label]) => label === "Manage")![1].map(([slug]) => slug)).toContain("permissions");
+  const worlds = [{ id: 2, name: "Tampa", map: "Miami", mapId: "core:miami", address: "/tampa/", players: 0, max: 10 }];
+  const at = resolveAdmin("https://snark.test/admin/worlds/2/permissions/", worlds, (href, base) => new URL(href, base));
+  expect([at.view, at.title, at.world?.id, at.worldUrl("permissions")]).toEqual(["permissions", "Permissions", 2, "/admin/worlds/2/permissions/"]);
+  expect([at.api(PERMISSIONS_STATE.slice("/admin/".length)), at.api(PERMISSIONS_API.slice("/admin/".length))]).toEqual([
+    "https://snark.test/tampa/admin/permissions.json",
+    "https://snark.test/tampa/admin/permissions-change",
+  ]);
 });
 
 test("the page and its script are built, and served only past the gate", async () => {
@@ -283,16 +296,85 @@ test("the page and its script are built, and served only past the gate", async (
     const headers: Record<string, string> = password ? { authorization: `Basic ${btoa(`admin:${password}`)}` } : {};
     return (await adminSite(new Request(`http://snark.test${path}`, { headers }), new URL(`http://snark.test${path}`), site))!;
   };
-  expect([(await get("/admin/permissions/")).status, (await get("/admin/permissions/", "wrong")).status, (await get(PERMISSIONS_STATE)).status]).toEqual([401, 401, 401]);
-  const page = await get("/admin/permissions/", "hunter2");
-  expect([page.status, (await page.text()).includes('src="/admin/ui/permissions.js"')]).toEqual([200, true]);
-  expect((await get("/admin/permissions", "hunter2")).headers.get("location")).toBe("/admin/permissions/");
+  const at = "/admin/worlds/local/permissions/";
+  expect([(await get(at)).status, (await get(at, "wrong")).status]).toEqual([401, 401]);
+  const page = await get(at, "hunter2");
+  const html = await page.text();
+  expect([page.status, html.includes('src="/admin/ui/permissions.js"'), html.includes('data-tab="history"'), html.includes('id="import-wal"')]).toEqual([200, true, true, true]);
+  // The cluster's old address goes to this world's page, its query kept; the old API is gone.
+  for (const old of ["/admin/permissions", "/admin/permissions/"]) expect((await get(`${old}?x=1`)).headers.get("location")).toBe(`${at}?x=1`);
+  for (const old of OLD_PERMISSIONS_PATHS) expect((await get(old, "hunter2")).status).toBe(404);
   const script = await get("/admin/ui/permissions.js");
   expect([script.status, (await script.text()).length > 1000]).toEqual([200, true]);
 });
 
-test("the front passes the page's POST to the site", () => {
-  expect([sitePost(PERMISSIONS_API), sitePost(PERMISSIONS_STATE), sitePost("/admin/permissions/")]).toEqual([true, false, false]);
+test("the front passes the page's POST to its world, and none to the site", () => {
+  expect([frontPasses("POST", PERMISSIONS_API), sitePost(PERMISSIONS_API), ...OLD_PERMISSIONS_PATHS.map(sitePost)]).toEqual([true, false, false, false]);
+});
+
+test("the heading names the map the page acts on and says what is whose", () => {
+  expect(headingOf(stateAt(RANK_ADMIN, 2))).toEqual({
+    title: "Permissions on Tampa",
+    scope: "Groups and memberships are the whole cluster's, while a staff membership made here and your sign-in to this page are this map's.",
+  });
+  const alone: PermissionsState = { ...stateAt(RANK_ADMIN, 0), worlds: [{ id: 0, name: "Kiwi" }] };
+  expect(headingOf(alone).title).toBe("Permissions on Kiwi");
+});
+
+test("Every map starts unticked and is offered only to a cluster admin for a staff group", () => {
+  const top = stateAt(RANK_CLUSTER);
+  const mapAdmin = stateAt(RANK_MAP);
+  expect([everyMapOf(top, "Admins"), everyMapOf(mapAdmin, "Admins"), everyMapOf(top, "VIP"), everyMapOf(stateAt(RANK_CLUSTER, 0), "Admins")]).toEqual([
+    { offer: true, note: "A staff membership holds on this map unless you tick Every map." },
+    { offer: false, note: "A staff membership made here holds on this map only." },
+    { offer: false, note: "An open group's membership holds on every map." },
+    { offer: false, note: "" },
+  ]);
+  const add = (state: PermissionsState, everyMap: boolean) => addMemberPost(state, { kind: "survivor", who: PIP, group: "Admins", hours: "", delay: "", everyMap });
+  expect([add(top, false).post, add(top, true).post]).toMatchObject([{ op: { world: 1 } }, { op: { world: 0 } }]);
+  expect(add(mapAdmin, true)).toEqual({ post: null, why: "Only a cluster admin makes a staff membership for every map." });
+  expect(add(mapAdmin, false).post).toEqual({ do: "op", op: { op: "addMember", kind: "survivor", key: PIP, group: "Admins" } });
+  const html = readFileSync(join(import.meta.dir, "../../client/admin/permissions.html"), "utf8");
+  expect(html).toMatch(/<input id="member-every" type="checkbox">/);
+});
+
+test("a whole value is sent with what it began from, and a conflict keeps the draft", () => {
+  const base = stateAt(RANK_CLUSTER);
+  const state: PermissionsState = { ...base, groups: [...base.groups, { name: "Empty", rank: 0, permissions: [], chat: "" }] };
+  expect([chatPost(state, "VIP", "{}", "old").post, settingsPost(state, "{}", "doc").post, rankPost(state, "Empty", 1, 0).post]).toEqual([
+    { do: "op", op: { op: "setChat", group: "VIP", chat: "{}", was: "old" } },
+    { do: "op", op: { op: "setDocument", name: "chat", text: "{}", was: "doc" } },
+    { do: "op", op: { op: "setRank", group: "Empty", rank: 1, was: 0 } },
+  ]);
+  const draft = { ...blankChatForm(), priority: "9" };
+  const edit = editOf("old", draft);
+  const overtaken = editAfter(edit, { ok: false, why: CHANGED_MEANWHILE, current: "theirs" })!;
+  // The draft stays as it was, and the next send goes over theirs.
+  expect([overtaken.draft, overtaken.from, overtaken.theirs]).toEqual([draft, "theirs", "theirs"]);
+  expect(chatPost(state, "VIP", "{}", String(overtaken.from)).post).toMatchObject({ op: { was: "theirs" } });
+  expect([editAfter(edit, { ok: true, why: "" }), editAfter(edit, { ok: false, why: "That needs the map rank." })]).toEqual([null, edit]);
+  const box = chatGroupHtml(state, state.groups[3]!, draft, [], '<b>theirs</b>');
+  expect([box.includes("Someone saved this meanwhile"), box.includes("&#60;b&#62;theirs"), box.includes('data-act="chat-again"'), box.includes('data-act="chat-keep"')]).toEqual([true, true, true, true]);
+  const ranks = new Map([["builders", { from: 2, draft: 1, theirs: 2 }]]);
+  const groups = groupsHtml(state, ranks);
+  expect([groups.includes('data-act="rank-again" data-group="Builders"'), groups.includes("Make it staff over theirs")]).toEqual([true, true]);
+});
+
+test("an apply whose plan changed shows the plan as it is now", () => {
+  const html = importHtml({ ok: false, why: "What the import would do changed since it was checked.", ops: 2, digest: "d2", notes: ["Permissions.AddGroup <x>"] }, true);
+  expect([html.includes("changed since it was checked. It would make 2 changes."), html.includes("&#60;x&#62;")]).toEqual([true, true]);
+  expect(importHtml({ ok: false, why: "That needs the map rank." }, true)).toBe('<p class="bad">That needs the map rank.</p>');
+});
+
+test("the history says when, who, at which rank and how, on which map, and escapes it all", () => {
+  const state = stateAt(RANK_ADMIN);
+  const rows: HistoryRow[] = [
+    { seq: 9, at: NOW, world: 2, name: "<i>Mara</i>", id: MARA, rank: RANK_MAP, via: "session", what: "Permissions.Add <x> VIP all", revision: 4 },
+    { seq: 8, at: NOW, world: 1, name: "(server)", id: "", rank: -1, via: "server", what: "took out 1 row", revision: 3 },
+  ];
+  const html = historyHtml(state, rows);
+  expect([html.includes("&#60;i&#62;Mara"), html.includes(MARA), html.includes("map, In game"), html.includes("Tampa"), html.includes("By the server"), html.includes("&#60;x&#62;")]).toEqual([true, true, true, true, true, true]);
+  expect(historyHtml(state, [])).toContain("No changes yet.");
 });
 
 test("the page adds a survivor of another map by name, and no ID never issued", () => {

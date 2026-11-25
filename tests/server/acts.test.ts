@@ -6,13 +6,12 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ACTS_KEPT, ACTS_OPEN_KEPT, OP_ADMIN, type Actor } from "../../server/acts.ts";
-import type { AdminGate } from "../../server/admin/gate.ts";
+import { refused as gateRefused, type AdminGate } from "../../server/admin/gate.ts";
 import { TickMeter } from "../../server/admin/meter.ts";
 import { AdminPages } from "../../server/admin/routes.ts";
 import { gaugesOf } from "../../server/admin/stats.ts";
 import { Guesses } from "../../server/guesses.ts";
 import { WorldStore } from "../../server/persist/store.ts";
-import { adminSite } from "../../server/admin/site.ts";
 import { permissionsAdmin } from "../../server/permissions/routes.ts";
 import { staffPasswords } from "../../server/permissions/secrets.ts";
 import { idText } from "../../server/survivor-ids.ts";
@@ -182,13 +181,10 @@ test("rubbish sent to the permissions page is logged in short clean words", asyn
   const said: string[] = [];
   const h = new Harness({}, 1, 60, { adminPassword: "hunter2", log: (line) => said.push(line) });
   const gate = { dev: false, password: "hunter2", cluster: null, guesses: h.host.game.sessions.cheatGuesses, tick: () => h.world.tick, staff: staffPasswords(h.host) };
-  const site = {
-    dir, base: "", port: 0, id: "local" as const, who: "1.2.3.4", gate, destinations: () => [], scenes: () => new Response(null),
-    permissions: (call: Request, at: string) => permissionsAdmin(call, at, h.host),
-  };
   const send = async (op: unknown): Promise<number> => {
     const init = { method: "POST", headers: { authorization: `Basic ${btoa("kody:hunter2")}`, "content-type": "application/json" }, body: JSON.stringify({ do: "op", op }) };
-    return (await adminSite(new Request(`http://localhost${PERMISSIONS_API}`, init), new URL(`http://localhost${PERMISSIONS_API}`), site))!.status;
+    const req = new Request(`http://localhost${PERMISSIONS_API}`, init);
+    return (gateRefused(req, "1.2.3.4", gate) ?? (await permissionsAdmin(req, PERMISSIONS_API, h.host))!).status;
   };
   const HUGE = "Q".repeat(200_000);
   const HASH = "7".repeat(64);

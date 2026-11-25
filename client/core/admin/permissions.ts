@@ -5,13 +5,13 @@
 import type { TextRun } from "../../../shared/net/chat.ts";
 import { DEFAULT_CHAT_FORMAT, PART_KEYS, START_CHAT_SETTINGS, chooseTags, formatLine, mapInk, readChatFormat, readChatSettings, readLooseJson, type ChatFormat, type PartKey } from "../../../shared/permissions/chat.ts";
 import {
-  DEFAULT_GROUP, MAX_CHAT_LENGTH, MAX_DOCUMENT_LENGTH, editRule, isGroupName, memberHolds, permissionKey, type Group, type Member, type MemberKind, type PermissionActor,
-  type PermissionOp, type RuleLook,
+  CHANGED_MEANWHILE, DEFAULT_GROUP, MAX_CHAT_LENGTH, MAX_DOCUMENT_LENGTH, editRule, isGroupName, memberHolds, permissionKey, type Group, type HistoryRow, type Member, type MemberKind,
+  type PermissionActor, type PermissionOp, type RuleLook,
 } from "../../../shared/permissions/model.ts";
 import { CHAT_DOCUMENT, type ImportKind, type PermissionsAnswer, type PermissionsPost, type PermissionsState } from "../../../shared/permissions/page.ts";
 import { readRichColor, stripRichColor, writeRichColor } from "../../../shared/permissions/richcolor.ts";
 import { RANK_CLUSTER, RANK_NAMES, RANK_OPEN, RANK_STAFF } from "../../../shared/ranks.ts";
-import { whenText } from "./acts.ts";
+import { TYPED, VIA_WORDS, typedName, whenText } from "./acts.ts";
 import { counted, esc, spanText } from "./format.ts";
 
 type State = PermissionsState;
@@ -104,6 +104,18 @@ export function survivorName(state: State, id: string): string {
 /** What the page says when the state was not read: a refused sign-in is only answered by the browser's own, on a reload. */
 export function readFault(status: number, body: string): string {
   return status === 401 ? "You are signed out, or your password changed. Reload the page to sign in again." : `The permissions answered ${status}: ${body}`;
+}
+
+/** The map the page acts on: the world it is served by. */
+export function mapName(state: State): string {
+  return state.me.world === 0 ? (state.worlds[0]?.name || "this server") : worldName(state, state.me.world);
+}
+
+/** The page's heading, which names the map it acts on, and the sentence under it that says what is whose. */
+export function headingOf(state: State): { title: string; scope: string } {
+  const title = `Permissions on ${mapName(state)}`;
+  if (state.me.world === 0) return { title, scope: "This server is in no cluster: its groups, memberships and sign-ins are its own." };
+  return { title, scope: "Groups and memberships are the whole cluster's, while a staff membership made here and your sign-in to this page are this map's." };
 }
 
 export function meText(state: State): string {
@@ -200,10 +212,11 @@ function built(state: State, op: PermissionOp): Built {
 
 export const addGroupPost = (state: State, name: string, rank: number): Built => built(state, { op: "addGroup", group: name.trim(), rank });
 export const removeGroupPost = (state: State, group: string): Built => built(state, { op: "removeGroup", group });
-export const rankPost = (state: State, group: string, rank: number): Built => built(state, { op: "setRank", group, rank });
+/** A rank, a chat block and the chat settings are sent with `was`, the value the editor began from, which the server checks. */
+export const rankPost = (state: State, group: string, rank: number, was: number): Built => built(state, { op: "setRank", group, rank, was });
 export const revokePost = (state: State, group: string, permission: string): Built => built(state, { op: "revoke", group, permission });
-export const chatPost = (state: State, group: string, chat: string): Built => built(state, { op: "setChat", group, chat });
-export const settingsPost = (state: State, text: string): Built => built(state, { op: "setDocument", name: CHAT_DOCUMENT, text });
+export const chatPost = (state: State, group: string, chat: string, was: string): Built => built(state, { op: "setChat", group, chat, was });
+export const settingsPost = (state: State, text: string, was: string): Built => built(state, { op: "setDocument", name: CHAT_DOCUMENT, text, was });
 export const clearPasswordPost = (state: State, id: string): Built => built(state, { op: "clearSecret", id });
 
 export function grantPost(state: State, group: string, typed: string): Built {
@@ -256,11 +269,25 @@ function hoursOf(typed: string, what: string): number | undefined | string {
   return Number.isFinite(n) ? n : `${what} are a number.`;
 }
 
+/** Whether the member form offers its Every map box for a group, which starts unticked, and what it says of the map instead. */
+export function everyMapOf(state: State, group: string): { offer: boolean; note: string } {
+  const g = lookOf(state).group(group);
+  if (!g || state.me.world === 0) return { offer: false, note: "" };
+  if (g.rank < RANK_STAFF) return { offer: false, note: "An open group's membership holds on every map." };
+  if (g.rank >= RANK_CLUSTER) return { offer: false, note: "A cluster group's membership holds on every map." };
+  if (state.me.rank >= RANK_CLUSTER) return { offer: true, note: "A staff membership holds on this map unless you tick Every map." };
+  return { offer: false, note: "A staff membership made here holds on this map only." };
+}
+
+const NOT_EVERY_MAP = "Only a cluster admin makes a staff membership for every map.";
+
 /** ArkApi's Add or AddTimed. Below cluster rank the server chooses the map: every map for an open group, its own for staff. */
 export function addMemberPost(state: State, form: MemberForm): Built {
   const found = findMember(state, form.kind, form.who);
   if (found.why) return refuse(found.why);
   if (form.group === "") return refuse("Choose a group.");
+  const rank = lookOf(state).group(form.group)?.rank ?? RANK_OPEN;
+  if (form.everyMap && state.me.rank < RANK_CLUSTER && rank >= RANK_STAFF && rank < RANK_CLUSTER) return refuse(NOT_EVERY_MAP);
   const hours = hoursOf(form.hours, "Hours");
   const delay = hoursOf(form.delay, "The hours before it starts");
   if (typeof hours === "string") return refuse(hours);
@@ -272,11 +299,76 @@ export function addMemberPost(state: State, form: MemberForm): Built {
   });
 }
 
-export function importPost(state: State, kind: ImportKind, text: string, apply: boolean): Built {
+/** An import's check, or with the check's `digest` its apply. An ArkApi database's `wal` is its -wal file as base64, or "". */
+export function importPost(state: State, kind: ImportKind, text: string, apply: boolean, digest = "", wal = ""): Built {
   const why = apply ? defineWhy(state) : manageWhy(state);
   if (why) return refuse(why);
   if (text.trim() === "") return refuse(kind === "arkapi" ? "Choose the ArkApi Permissions file first." : "Paste the text first.");
-  return { post: { do: apply ? "import" : "plan", kind, text }, why: "" };
+  if (wal !== "" && kind !== "arkapi") return refuse("A -wal file goes only beside an ArkApi database.");
+  const files = { kind, text, ...(wal === "" ? {} : { wal }) };
+  if (!apply) return { post: { do: "plan", ...files }, why: "" };
+  return digest === "" ? refuse("Check it first.") : { post: { do: "import", ...files, digest }, why: "" };
+}
+
+// ---- Edits of a whole value ----
+
+/**
+ * A rank, a chat block or the chat settings being edited: the value the edit began from, which its change is sent with as
+ * `was`; the draft; and the value someone else saved meanwhile, once the server said so, else null.
+ */
+export interface Edit<T> {
+  readonly from: string | number;
+  readonly draft: T;
+  readonly theirs: string | number | null;
+}
+
+export const editOf = <T>(from: string | number, draft: T): Edit<T> => ({ from, draft, theirs: null });
+
+/**
+ * What becomes of an edit once its change is answered: gone once saved; kept when someone changed the value meanwhile,
+ * beginning from theirs so that the next send goes over it; as it was after any other answer.
+ */
+export function editAfter<T>(edit: Edit<T>, answer: PermissionsAnswer): Edit<T> | null {
+  if (answer.ok) return null;
+  if (answer.why === CHANGED_MEANWHILE && answer.current !== undefined) return { from: answer.current, draft: edit.draft, theirs: answer.current };
+  return edit;
+}
+
+/** The box beside a draft someone else's change overtook: theirs, and a button to send the draft over it or keep theirs. */
+export function conflictHtml(act: string, group: string, theirs: string, saveWords: string): string {
+  const at = group === "" ? "" : ` data-group="${esc(group)}"`;
+  return `<div class="conflict" role="alert"><p class="warn">Someone saved this meanwhile. Yours is kept here, not saved. Theirs:</p>
+    <pre>${esc(theirs === "" ? "(nothing)" : theirs)}</pre>
+    <div class="bar"><button class="primary" data-act="${act}-again"${at}>${esc(saveWords)}</button><button data-act="${act}-keep"${at}>Keep theirs</button></div></div>`;
+}
+
+// ---- History ----
+
+const HOW: Record<HistoryRow["via"], string> = { ...VIA_WORDS, server: "By the server", "": "Not known" };
+
+/** One row of the cluster's history in words: when, who, which map and what. */
+export function historyRow(state: State, r: HistoryRow): { when: string; name: string; nameTitle: string; id: string; rank: string; how: string; map: string; what: string } {
+  return {
+    when: whenText(r.at, 0),
+    name: r.name === "" ? "Not known" : r.name,
+    nameTitle: typedName(r.name) ? TYPED : "",
+    id: r.id,
+    rank: r.rank < 0 ? "" : (RANK_NAMES[r.rank] ?? "not known"),
+    how: HOW[r.via] ?? "Not known",
+    map: r.world === 0 && state.me.world === 0 ? mapName(state) : worldName(state, r.world),
+    what: r.what,
+  };
+}
+
+export function historyHtml(state: State, rows: readonly HistoryRow[]): string {
+  if (rows.length === 0) return '<tr><td colspan="5" class="dim">No changes yet.</td></tr>';
+  return rows.map((row) => {
+    const r = historyRow(state, row);
+    const title = r.nameTitle === "" ? "" : ` title="${esc(r.nameTitle)}" class="typed"`;
+    const id = r.id === "" ? "" : ` <code>${esc(r.id)}</code>`;
+    return `<tr><td class="when">${esc(r.when)}</td><td class="who"><span${title}>${esc(r.name)}</span>${id} <br><span class="dim">${esc([r.rank, r.how].filter((w) => w).join(", "))}</span></td>` +
+      `<td>${esc(r.map)}</td><td class="what">${esc(r.what)}</td></tr>`;
+  }).join("");
 }
 
 // ---- Colours ----
@@ -456,8 +548,11 @@ export function rankOptions(current: number, why: (rank: number) => string): str
   }).join("");
 }
 
-export function groupsHtml(state: State): string {
+/** Each group, a rank someone changed meanwhile shown as the draft beside theirs, by group name in lower case. */
+export function groupsHtml(state: State, ranks: ReadonlyMap<string, Edit<number>> = new Map()): string {
   return state.groups.map((g) => {
+    const edit = ranks.get(g.name.toLowerCase());
+    const shown = edit?.theirs !== null && edit?.theirs !== undefined ? edit.draft : g.rank;
     const others = RANK_NAMES.map((_, r) => (r === g.rank ? "" : whyNot(state, { op: "setRank", group: g.name, rank: r })));
     const stuck = others.every((w, r) => r === g.rank || w !== "");
     const rankWhyOf = (r: number) => others[r]!;
@@ -467,9 +562,10 @@ export function groupsHtml(state: State): string {
       `<span class="chip">${esc(p)} <button class="x" data-act="revoke" data-group="${esc(g.name)}" data-perm="${esc(p)}" aria-label="Take ${esc(p)} from ${esc(g.name)}"${off(whyNot(state, { op: "revoke", group: g.name, permission: p }))}>×</button></span>`).join("");
     return `<div class="group" data-group="${esc(g.name)}">
       <div class="bar"><h3 class="grow">${esc(g.name)}</h3>
-        <label>Rank <select data-act="rank" data-group="${esc(g.name)}"${off(stuck ? others.find((w) => w !== "") ?? "" : "")}>${rankOptions(g.rank, rankWhyOf)}</select></label>
+        <label>Rank <select data-act="rank" data-group="${esc(g.name)}"${off(stuck ? others.find((w) => w !== "") ?? "" : "")}>${rankOptions(shown, rankWhyOf)}</select></label>
         <span class="dim">${g.name.toLowerCase() === DEFAULT_GROUP.toLowerCase() ? "Everyone" : counted(n, "member")}</span>
         <button class="risk" data-act="remove-group" data-group="${esc(g.name)}"${off(whyNot(state, { op: "removeGroup", group: g.name }))}>Remove group</button></div>
+      ${edit && edit.theirs !== null ? conflictHtml("rank", g.name, RANK_NAMES[Number(edit.theirs)] ?? String(edit.theirs), `Make it ${RANK_NAMES[edit.draft] ?? ""} over theirs`) : ""}
       ${freeCheats(g) ? `<p class="warn">${FREE_CHEATS}</p>` : ""}
       <div class="marks">${chips || '<span class="dim">No permissions.</span>'}</div>
       <div class="bar"><input data-grant="${esc(g.name)}" list="permission-list" placeholder="Add a permission, such as Cheat.kick" aria-label="A permission for ${esc(g.name)}" autocomplete="off"${off(grantWhy)}>
@@ -515,11 +611,12 @@ export function passwordRowsHtml(rows: readonly PasswordRow[]): string {
 }
 
 /** One group's chat block: its form, the faults beside their fields, and a place for its sample line. */
-export function chatGroupHtml(state: State, g: Group, form: ChatForm | null, faults: readonly Fault[]): string {
+export function chatGroupHtml(state: State, g: Group, form: ChatForm | null, faults: readonly Fault[], theirs: string | null = null): string {
   const why = whyNot(state, { op: "setChat", group: g.name, chat: "" });
+  const conflict = theirs === null ? "" : conflictHtml("chat", g.name, theirs, "Save mine over theirs");
   const head = `<div class="bar"><h3 class="grow">${esc(g.name)}</h3>`;
   if (!form) {
-    return `<div class="chat-block" data-chat="${esc(g.name)}">${head}<button data-act="chat-add" data-group="${esc(g.name)}"${off(why)}>Give it a chat format</button></div>
+    return `<div class="chat-block" data-chat="${esc(g.name)}">${head}<button data-act="chat-add" data-group="${esc(g.name)}"${off(why)}>Give it a chat format</button></div>${conflict}
       <p class="dim">No chat format of its own. A member's lines take another group's, or <code>${esc(DEFAULT_CHAT_FORMAT)}</code>.</p>
       <p class="sample" data-sample="${esc(g.name)}"></p></div>`;
   }
@@ -529,7 +626,7 @@ export function chatGroupHtml(state: State, g: Group, form: ChatForm | null, fau
       <button data-act="plain" data-part="${key}"${off(why)}>No colour</button>
       ${faultsHtml(faults, `part.${key}`)}</div>`).join("");
   return `<div class="chat-block" data-chat="${esc(g.name)}">${head}
-      <label>Priority <input type="number" step="any" data-field="priority" value="${esc(form.priority)}"${off(why)}></label>${faultsHtml(faults, "priority")}</div>
+      <label>Priority <input type="number" step="any" data-field="priority" value="${esc(form.priority)}"${off(why)}></label>${faultsHtml(faults, "priority")}</div>${conflict}
     <label class="line">Format line <input data-field="format" value="${esc(form.format)}" autocomplete="off"${off(why)}></label>${faultsHtml(faults, "format")}
     <div class="parts">${parts}</div>
     <p class="sample" data-sample="${esc(g.name)}"></p>
@@ -539,8 +636,9 @@ export function chatGroupHtml(state: State, g: Group, form: ChatForm | null, fau
       <button class="risk" data-act="chat-remove" data-group="${esc(g.name)}"${off(why)}>Remove chat format</button></div></div>`;
 }
 
-export function settingsHtml(state: State, form: SettingsForm, faults: readonly Fault[]): string {
+export function settingsHtml(state: State, form: SettingsForm, faults: readonly Fault[], theirs: string | null = null): string {
   const why = defineWhy(state);
+  const conflict = theirs === null ? "" : conflictHtml("settings", "", theirs, "Save mine over theirs");
   const tags = form.tags.map((t, i) => `<tr data-tag="${i}">
       <td><input data-set="tag.name" value="${esc(t.name)}" list="group-list" aria-label="The tag's group" autocomplete="off"${off(why)}></td>
       <td><input data-set="tag.text" value="${esc(t.text)}" aria-label="The tag's text" autocomplete="off"${off(why)}>
@@ -553,7 +651,7 @@ export function settingsHtml(state: State, form: SettingsForm, faults: readonly 
       <td><input data-set="map.map" value="${esc(m.map)}" list="world-list" aria-label="The map's name" autocomplete="off"${off(why)}></td>
       <td><input type="color" data-set="map.colour" value="${esc(m.colour)}" aria-label="The map's colour"${off(why)}></td>
       <td><button class="risk" data-act="map-del" data-map="${i}"${off(why)}>Remove</button> ${faultsHtml(faults, `map.${i}`)}</td></tr>`).join("");
-  return `<div class="bar"><label><input type="checkbox" data-set="stack"${form.stack ? " checked" : ""}${off(why)}> Show every tag a speaker has. Off, only the highest shows.</label></div>
+  return `${conflict}<div class="bar"><label><input type="checkbox" data-set="stack"${form.stack ? " checked" : ""}${off(why)}> Show every tag a speaker has. Off, only the highest shows.</label></div>
     <div class="bar"><label>Muted group <input data-set="muted" value="${esc(form.muted)}" list="group-list" autocomplete="off"${off(why)}></label>
       <span class="dim">Its members may not speak in global chat.</span>${faultsHtml(faults, "muted")}</div>
     <h3>Tags</h3>
@@ -571,12 +669,15 @@ export function settingsHtml(state: State, form: SettingsForm, faults: readonly 
 
 /** What an import's check or apply answered. */
 export function importHtml(answer: PermissionsAnswer, applied: boolean): string {
-  if (!answer.ok) return `<p class="bad">${esc(answer.why || "The import was refused.")}</p>`;
+  // An apply refused because the plan changed since its check carries the plan as it is now.
+  const changed = !answer.ok && answer.digest !== undefined;
+  if (!answer.ok && !changed) return `<p class="bad">${esc(answer.why || "The import was refused.")}</p>`;
   const ops = answer.ops ?? 0;
-  const head = applied ? `Made ${counted(ops, "change")}.` : ops === 0 ? "It would change nothing." : `It would make ${counted(ops, "change")}. Apply makes them.`;
+  const would = ops === 0 ? "It would change nothing." : `It would make ${counted(ops, "change")}. Apply makes them.`;
+  const head = changed ? `${answer.why} ${would}` : applied ? `Made ${counted(ops, "change")}.` : would;
   const notes = (answer.notes ?? []).map((n) => `<li>${esc(n)}</li>`).join("");
   const refused = (answer.refused ?? []).map((r) => `<li><b>${esc(r.what)}</b>: ${esc(r.why)}</li>`).join("");
-  return `<p class="${applied ? "well" : ""}">${head}</p>
+  return `<p class="${changed ? "warn" : applied ? "well" : ""}">${esc(head)}</p>
     ${notes ? `<h3>Notes</h3><ul>${notes}</ul>` : ""}
     ${refused ? `<h3 class="bad">Refused</h3><ul>${refused}</ul>` : ""}`;
 }

@@ -137,6 +137,12 @@ export class PermissionStore {
     }
   }
 
+  /** Changes with each commit to the file, by this object or another, and costs one small query. */
+  commits(): string {
+    const row = this.open().query("PRAGMA data_version").get() as { data_version?: unknown } | null;
+    return `${String(row?.data_version ?? 0)}:${this.writes}`;
+  }
+
   revision(): number {
     const row = this.open().query("SELECT revision FROM meta WHERE id = 1").get() as { revision: number } | null;
     return row?.revision ?? 0;

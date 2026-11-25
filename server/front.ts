@@ -28,6 +28,7 @@ const WORLD_POSTS = new Set([
   "/admin/loadouts/book", "/admin/loadouts/reset", "/admin/loadouts/apply",
   "/admin/supply/book", "/admin/supply/reset", "/admin/supply/restore", "/admin/supply/call",
   "/admin/supply/land", "/admin/supply/cancel", "/admin/supply/ark",
+  PERMISSIONS_API,
 ]);
 
 /** The front passes reads, registered writes at a world's path, and the site's scene editor. */
@@ -38,7 +39,7 @@ export function frontPasses(method: string, path: string): boolean {
 
 /** Whether the front passes a POST to the site's cluster-wide pages. */
 export function sitePost(path: string): boolean {
-  return path === "/admin/scenes/api" || path === "/cluster/admin/scenes/api" || SCREEN_POSTS.includes(path) || path === PERMISSIONS_API;
+  return path === "/admin/scenes/api" || path === "/cluster/admin/scenes/api" || SCREEN_POSTS.includes(path);
 }
 
 /** The most a request may carry: a clip at its cap, and room for its headers. */

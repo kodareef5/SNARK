@@ -26,6 +26,7 @@
 //   /admin/me.json          who the viewer is: the gate's name, ID and rank, and the cluster's world id or 0
 //   /admin/acts.json        the latest acts, after=<seq> those after it, open=1 with the open commands too, with
 //                           addresses for the map's rank and up
+//   /admin/permissions...   the Permissions page's state, history and changes (server/permissions/routes.ts)
 
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -47,6 +48,7 @@ import { actorOf, adminAsked, adminPath, onlyRead, refused, type AdminGate } fro
 import { SupplyRoutes } from "./supply-routes.ts";
 import { LoadoutRoutes } from "./loadout-routes.ts";
 import { LogRoutes } from "./log-routes.ts";
+import { permissionsAdmin } from "../permissions/routes.ts";
 import type { TickMeter } from "./meter.ts";
 import { BackupList, bodiesOf, statsOf } from "./stats.ts";
 import { onlinePositions, survivorsOf, type RunStart } from "./survivors.ts";
@@ -255,7 +257,8 @@ export class AdminPages {
       if (!(level >= 0 && level <= 3 && Number.isInteger(level))) return new Response("level is 0 to 3", { status: 400 });
       return new Response(this.basesAt(level, now), { headers: { ...FRESH, "content-type": "application/octet-stream" } });
     }
-    return this.log.answer(at, url) ?? settingsAnswer(this.o.host, req, at) ?? stopAnswer(this.o.host, req, at) ?? this.supply.answer(req, at, url) ?? this.loadouts.answer(req, at, url) ?? new Response("not found", { status: 404 });
+    return this.log.answer(at, url) ?? settingsAnswer(this.o.host, req, at) ?? stopAnswer(this.o.host, req, at) ?? this.supply.answer(req, at, url) ?? this.loadouts.answer(req, at, url) ??
+      permissionsAdmin(req, at, this.o.host) ?? new Response("not found", { status: 404 });
   }
 
   private terrainImage(req: Request): Response {

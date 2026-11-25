@@ -169,3 +169,16 @@ test("a store file from before the history opens and gains it", () => {
   expect(perms.apply(boss, { op: "addGroup", group: "Vip" })).toBe("");
   expect(perms.history().map((r) => [r.what, r.revision])).toEqual([["Permissions.AddGroup Vip", 7]]);
 });
+
+test("a store's commit count moves with another map's write, the register's too", () => {
+  const file = fresh();
+  const two = new Permissions({ store: new PermissionStore(file), world: 2 });
+  const five = new Permissions({ store: new PermissionStore(file), world: 5 });
+  const seen = five.commits();
+  expect(five.commits()).toBe(seen);
+  issue(two, A);
+  const after = five.commits();
+  expect(after).not.toBe(seen);
+  expect(two.apply(boss, { op: "addGroup", group: "Vip" })).toBe("");
+  expect(five.commits()).not.toBe(after);
+});

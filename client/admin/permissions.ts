@@ -1,37 +1,55 @@
-// The cluster's Permissions page: groups, members and staff passwords, chat formats and settings, and imports from
-// ArkApi, over /admin/permissions/. What it shows and sends is made in client/core/admin/permissions.ts; this is the
-// page's wiring. No staff password ever reaches it: each survivor claims their own in game.
+// A world's Permissions page: groups, members and staff passwords, chat formats and settings, imports from ArkApi, and
+// the cluster's history of changes, over the world's own admin address. What it shows and sends is made in
+// client/core/admin/permissions.ts; this is the page's wiring. No staff password ever reaches it: each survivor claims
+// their own in game. While it is open and no field is in hand it asks every ten seconds whether anything changed.
 
-import "./shell.ts";
+import { adminContext } from "./shell.ts";
 import {
-  addGroupPost, addMemberPost, blankChatForm, blankTag, chatBlockOf, chatFormOf, chatGroupHtml, chatPost, clearPasswordPost, coloured, grantPost, groupsHtml, hexInk, importHtml,
-  importPost, defineWhy, manageWhy, meText, readFault, memberGroupOptions, memberRows, memberRowsHtml, passwordRows, passwordRowsHtml, permissionListHtml, rankOptions, rankPost,
-  rankWhy, removeGroupPost, removeMemberPost, revokePost, sampleRuns, settingsFormOf, settingsHtml, settingsPost, settingsTextOf, survivorName, tagRuns, whoOptions,
-  type Built, type ChatForm, type Fault, type MemberRow, type SettingsForm,
+  addGroupPost, addMemberPost, blankChatForm, blankTag, chatBlockOf, chatFormOf, chatGroupHtml, chatPost, clearPasswordPost, coloured, editAfter, editOf, everyMapOf, grantPost,
+  groupsHtml, headingOf, hexInk, historyHtml, importHtml, importPost, defineWhy, manageWhy, meText, readFault, memberGroupOptions, memberRows, memberRowsHtml, passwordRows,
+  passwordRowsHtml, permissionListHtml, rankOptions, rankPost, rankWhy, removeGroupPost, removeMemberPost, revokePost, sampleRuns, settingsFormOf, settingsHtml, settingsPost,
+  settingsTextOf, survivorName, tagRuns, whoOptions, type Built, type ChatForm, type Edit, type Fault, type MemberRow, type SettingsForm,
 } from "../core/admin/permissions.ts";
 import { esc } from "../core/admin/format.ts";
 import { base64 } from "../core/admin/screens.ts";
 import type { TextRun } from "../../shared/net/chat.ts";
 import type { PartKey } from "../../shared/permissions/chat.ts";
-import type { MemberKind } from "../../shared/permissions/model.ts";
-import { PERMISSIONS_API, PERMISSIONS_STATE, type ImportKind, type PermissionsAnswer, type PermissionsPost, type PermissionsState } from "../../shared/permissions/page.ts";
-import { RANK_CLUSTER } from "../../shared/ranks.ts";
+import type { HistoryRow, MemberKind } from "../../shared/permissions/model.ts";
+import {
+  PERMISSIONS_API, PERMISSIONS_HISTORY, PERMISSIONS_REFRESH_MS, PERMISSIONS_STATE, WAL_MISSING, type ImportKind, type PermissionsAnswer, type PermissionsHistory, type PermissionsPost,
+  type PermissionsSame, type PermissionsState,
+} from "../../shared/permissions/page.ts";
+import { RANK_NAMES } from "../../shared/ranks.ts";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
-const TABS = ["groups", "members", "chat", "import"] as const;
+const TABS = ["groups", "members", "chat", "import", "history"] as const;
 
-/** The page's state: the store as last read, the rows drawn from it, and drafts of the chat forms that outlive a read. */
+/** The page's state: the store as last read, the rows drawn from it, and the drafts that outlive a read. */
 const S = {
   state: null as PermissionsState | null,
   rows: [] as MemberRow[],
-  /** Chat forms being edited, by group name in lower case; null where the draft is to have no block. */
-  chat: new Map<string, ChatForm | null>(),
+  /** Chat forms being edited, by group name in lower case; a draft of null is to have no block. */
+  chat: new Map<string, Edit<ChatForm | null>>(),
   settings: null as SettingsForm | null,
   settingsChanged: false,
-  /** The text the last good check was of, which Apply sends. */
-  checked: null as { kind: ImportKind; text: string } | null,
+  /** The chat settings' text the form began from, and theirs once someone saved over it meanwhile. */
+  settingsFrom: "",
+  settingsTheirs: null as string | null,
+  /** Ranks someone else changed while this admin chose one, by group name in lower case. */
+  ranks: new Map<string, Edit<number>>(),
+  /** What the last good check was of and its digest, which Apply sends. */
+  checked: null as { kind: ImportKind; text: string; wal: string; digest: string } | null,
+  history: [] as HistoryRow[],
+  historyMore: false,
   loading: false,
+  /** The last read was refused a sign-in: the page stops asking until it is read again by hand. */
+  signedOut: false,
 };
+
+/** An address of this world's admin API, as the shell resolves it under the world's own path. */
+async function api(path: string): Promise<string> {
+  return (await adminContext()).api(path.slice("/admin/".length));
+}
 
 function say(text: string, kind = "dim"): void {
   $("msg").textContent = text;
@@ -91,10 +109,12 @@ function runsInto(el: Element, runs: readonly TextRun[]): void {
   }));
 }
 
+const savedChat = (name: string): string => S.state?.groups.find((g) => g.name.toLowerCase() === name.toLowerCase())?.chat ?? "";
+
 const chatForm = (name: string): ChatForm | null => {
   const key = name.toLowerCase();
-  if (S.chat.has(key)) return S.chat.get(key)!;
-  return chatFormOf(S.state?.groups.find((g) => g.name.toLowerCase() === key)?.chat ?? "").form;
+  if (S.chat.has(key)) return S.chat.get(key)!.draft;
+  return chatFormOf(savedChat(name)).form;
 };
 
 function drawSamples(): void {
@@ -114,15 +134,19 @@ function showFaults(root: Element, faults: readonly Fault[]): void {
 function chatFaults(name: string): Fault[] {
   const form = chatForm(name);
   if (!form) return [];
-  const read = S.chat.has(name.toLowerCase()) ? [] : chatFormOf(S.state?.groups.find((g) => g.name.toLowerCase() === name.toLowerCase())?.chat ?? "").faults;
+  const read = S.chat.has(name.toLowerCase()) ? [] : chatFormOf(savedChat(name)).faults;
   return [...read.map((text) => ({ at: "", text: `As saved: ${text}` })), ...chatBlockOf(form).faults];
 }
 
 function drawChat(): void {
   const state = S.state!;
   // Typing changes the fields and not the HTML they were drawn from, so these are always drawn anew.
-  paint($("chat-groups"), state.groups.map((g) => chatGroupHtml(state, g, chatForm(g.name), chatFaults(g.name))).join(""), true);
-  paint($("chat-settings"), settingsHtml(state, S.settings!, settingsTextOf(S.settings!).faults), true);
+  const theirs = (name: string): string | null => {
+    const t = S.chat.get(name.toLowerCase())?.theirs;
+    return t === null || t === undefined ? null : String(t);
+  };
+  paint($("chat-groups"), state.groups.map((g) => chatGroupHtml(state, g, chatForm(g.name), chatFaults(g.name), theirs(g.name))).join(""), true);
+  paint($("chat-settings"), settingsHtml(state, S.settings!, settingsTextOf(S.settings!).faults, S.settingsTheirs), true);
   drawSamples();
 }
 
@@ -131,45 +155,64 @@ function draw(): void {
   if (!state) return;
   const manage = manageWhy(state);
   const define = defineWhy(state);
+  const heading = headingOf(state);
+  $("title").textContent = heading.title;
+  $("scope").textContent = heading.scope;
   $("me").textContent = meText(state);
   $("unsaved").hidden = state.saved;
-  paint($("groups"), groupsHtml(state));
+  paint($("groups"), groupsHtml(state, S.ranks));
   paint($("permission-list"), permissionListHtml(state));
   paint($("group-list"), state.groups.map((g) => `<option value="${esc(g.name)}">`).join(""));
   paint($("world-list"), state.worlds.map((w) => `<option value="${esc(w.name)}">`).join(""));
   const rank = $<HTMLSelectElement>("group-rank");
   paint(rank, rankOptions(Number(rank.value || 0), (r) => define || rankWhy(state, r)));
   for (const id of ["group-name", "add-group"]) allow($<HTMLInputElement>(id), define);
-  for (const id of ["member-kind", "member-who", "member-group", "member-hours", "member-delay", "add-member", "import-kind", "import-file", "import-text", "import-check"]) {
+  for (const id of ["member-kind", "member-who", "member-group", "member-hours", "member-delay", "add-member", "import-kind", "import-file", "import-wal", "import-text", "import-check"]) {
     allow($<HTMLInputElement>(id), manage);
   }
   const group = $<HTMLSelectElement>("member-group");
   paint(group, memberGroupOptions(state, group.value));
   paint($("who-list"), whoOptions(state, $<HTMLSelectElement>("member-kind").value as MemberKind));
-  $("member-every-label").hidden = state.me.rank < RANK_CLUSTER;
+  drawEvery(false);
   S.rows = memberRows(state, Date.now());
   paint($("members"), memberRowsHtml(S.rows));
   paint($("passwords"), passwordRowsHtml(passwordRows(state)));
   if (!S.settingsChanged) {
     const read = settingsFormOf(state.document);
     S.settings = read.form;
+    S.settingsFrom = state.document;
     $("settings-read").textContent = read.faults.length ? `As saved: ${read.faults.join(" ")}` : "";
   }
   drawChat();
   allow($<HTMLButtonElement>("import-apply"), define || (S.checked ? "" : "Check it first."));
 }
 
+/** The Every map box: offered unticked for a staff group to a cluster admin, else a word on where the membership holds. */
+function drawEvery(reset: boolean): void {
+  const state = S.state;
+  if (!state) return;
+  const every = everyMapOf(state, $<HTMLSelectElement>("member-group").value);
+  $("member-every-label").hidden = !every.offer;
+  $("member-every-note").textContent = every.note;
+  if (reset || !every.offer) $<HTMLInputElement>("member-every").checked = false;
+}
+
 // ---- Reading and sending ----
 
-async function load(): Promise<void> {
+/** Reads the state again. With `ifChanged`, the server answers "the same" while nothing it is made from moved. */
+async function load(ifChanged = false): Promise<void> {
   if (S.loading) return;
   S.loading = true;
   try {
-    const r = await fetch(PERMISSIONS_STATE, { cache: "no-store" });
+    const key = ifChanged && S.state ? `?key=${encodeURIComponent(S.state.key)}` : "";
+    const r = await fetch(`${await api(PERMISSIONS_STATE)}${key}`, { cache: "no-store" });
+    S.signedOut = r.status === 401;
     if (!r.ok) throw new Error(readFault(r.status, await r.text()));
-    S.state = (await r.json()) as PermissionsState;
+    const got = (await r.json()) as PermissionsState | PermissionsSame;
     if ($("msg").textContent === "Loading…") say("");
     $("reload").hidden = true;
+    if ("same" in got) return;
+    S.state = got;
     draw();
   } catch (e) {
     failed(e);
@@ -181,13 +224,51 @@ async function load(): Promise<void> {
 
 /** Sends one change, says what came of it, and reads the store again. */
 async function send(post: PermissionsPost, done: string): Promise<PermissionsAnswer> {
-  const r = await fetch(PERMISSIONS_API, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(post) });
+  const r = await fetch(await api(PERMISSIONS_API), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(post) });
   const answer = (await r.json().catch(() => ({}))) as Partial<PermissionsAnswer>;
   const ok = r.ok && answer.ok === true;
   if (ok) say(done, "well");
-  else say(answer.why || `The server answered ${r.status}.`, "bad");
+  else say(answer.why || `The server answered ${r.status}.`, r.status === 409 ? "warn" : "bad");
   await load();
+  if (!$("tab-history").hidden) await loadHistory(false);
   return { ...answer, ok, why: answer.why ?? "" };
+}
+
+/** The history's newest page, put before what is held, or with `older` the page after the oldest held. */
+async function loadHistory(older: boolean): Promise<void> {
+  const before = older ? S.history.at(-1)?.seq ?? 0 : 0;
+  try {
+    const r = await fetch(`${await api(PERMISSIONS_HISTORY)}${before > 0 ? `?before=${before}` : ""}`, { cache: "no-store" });
+    if (!r.ok) throw new Error(readFault(r.status, await r.text()));
+    const got = (await r.json()) as PermissionsHistory;
+    if (older) [S.history, S.historyMore] = [[...S.history, ...got.rows], got.more];
+    else {
+      const top = S.history[0]?.seq ?? 0;
+      const fresh = got.rows.filter((row) => row.seq > top);
+      // More is new than one page holds: the newest page alone, with the rest a press away.
+      const gap = fresh.length === got.rows.length && got.more && S.history.length > 0;
+      [S.history, S.historyMore] = gap || S.history.length === 0 ? [got.rows, got.more] : [[...fresh, ...S.history], S.historyMore];
+    }
+    if (S.state) paint($("history"), historyHtml(S.state, S.history));
+    $("history-older").hidden = !S.historyMore;
+  } catch (e) {
+    failed(e);
+  }
+}
+
+/** A field in hand, which a refresh would draw away under the typing. */
+const editing = (): boolean => {
+  const held = document.activeElement;
+  return held !== null && /^(INPUT|SELECT|TEXTAREA)$/.test(held.tagName);
+};
+
+/** While the page is seen and no field is in hand, asks whether anything changed. A draft is kept whatever comes. */
+async function refresh(): Promise<void> {
+  if (document.visibilityState === "visible" && !editing() && S.state && !S.signedOut) {
+    await load(true);
+    if (!$("tab-history").hidden) await loadHistory(false);
+  }
+  setTimeout(() => void refresh(), PERMISSIONS_REFRESH_MS);
 }
 
 /** Sends a built change, or says why it was not sent. */
@@ -201,11 +282,49 @@ async function sendBuilt(b: Built, done: string): Promise<PermissionsAnswer | nu
 
 // ---- Acts ----
 
-/** The text an import sends: the file as base64, or what was pasted. */
-async function importText(kind: ImportKind): Promise<string> {
-  if (kind !== "arkapi") return $<HTMLTextAreaElement>("import-text").value;
-  const file = $<HTMLInputElement>("import-file").files?.[0];
-  return file ? base64(new Uint8Array(await file.arrayBuffer())) : "";
+/** The text an import sends: the file as base64, or what was pasted; and an ArkApi database's -wal file as base64, or "". */
+async function importText(kind: ImportKind): Promise<{ text: string; wal: string }> {
+  if (kind !== "arkapi") return { text: $<HTMLTextAreaElement>("import-text").value, wal: "" };
+  const read = async (id: string): Promise<string> => {
+    const file = $<HTMLInputElement>(id).files?.[0];
+    return file ? base64(new Uint8Array(await file.arrayBuffer())) : "";
+  };
+  return { text: await read("import-file"), wal: await read("import-wal") };
+}
+
+/** Saves a group's chat draft over the value it began from. */
+async function saveChat(group: string, chat: string, done: string): Promise<void> {
+  const key = group.toLowerCase();
+  const edit = S.chat.get(key) ?? editOf<ChatForm | null>(savedChat(group), chatForm(group));
+  const answer = await sendBuilt(chatPost(S.state!, group, chat, String(edit.from)), done);
+  if (!answer) return;
+  const after = editAfter(edit, answer);
+  if (after === null) S.chat.delete(key);
+  else if (S.chat.has(key) || after.theirs !== null) S.chat.set(key, after);
+  drawChat();
+}
+
+/** Saves the chat settings' draft over the text it began from. */
+async function saveSettings(): Promise<void> {
+  const made = settingsTextOf(S.settings!);
+  if (made.faults.length > 0) return say("Not sent: the chat settings have faults. Each is shown beside its field.", "warn");
+  const b = settingsPost(S.state!, made.text, S.settingsFrom);
+  if (!b.post) return say(b.why, "warn");
+  const draft = S.settings!;
+  const after = editAfter(editOf(S.settingsFrom, draft), await send(b.post, "Saved the chat settings."));
+  if (after === null) [S.settingsChanged, S.settingsTheirs] = [false, null];
+  else [S.settings, S.settingsChanged, S.settingsFrom, S.settingsTheirs] = [draft, true, String(after.from), after.theirs === null ? S.settingsTheirs : String(after.theirs)];
+  draw();
+}
+
+/** Sends a rank chosen for a group over the rank it began from. */
+async function saveRank(group: string, rank: number, from: number, label: string): Promise<void> {
+  const key = group.toLowerCase();
+  const answer = await sendBuilt(rankPost(S.state!, group, rank, from), `${group} is of the ${label} rank now.`);
+  const after = answer ? editAfter(editOf(from, rank), answer) : null;
+  if (after && after.theirs !== null) S.ranks.set(key, after);
+  else S.ranks.delete(key);
+  paint($("groups"), groupsHtml(S.state!, S.ranks), true);
 }
 
 function forgetCheck(): void {
@@ -266,26 +385,35 @@ async function act(at: HTMLElement): Promise<void> {
       return;
     }
     case "chat-add":
-      S.chat.set(key, blankChatForm());
+      S.chat.set(key, editOf(savedChat(group), blankChatForm()));
       return drawChat();
     case "chat-undo":
+    case "chat-keep":
       S.chat.delete(key);
       return drawChat();
-    case "chat-save": {
+    case "chat-save":
+    case "chat-again": {
       const form = chatForm(group);
-      if (!form) return;
+      // A draft of no block, someone's saved over: sent again, it takes theirs away.
+      if (!form) return S.chat.has(key) ? saveChat(group, "", `${group} has no chat format now.`) : undefined;
       const block = chatBlockOf(form);
       if (block.faults.length > 0) return say("Not sent: the chat format has faults. Each is shown beside its field.", "warn");
-      const done = await sendBuilt(chatPost(state, group, block.text), `Saved the chat format of ${group}.`);
-      if (done?.ok) S.chat.delete(key), drawChat();
-      return;
+      return saveChat(group, block.text, `Saved the chat format of ${group}.`);
     }
     case "chat-remove": {
       if (!confirm(`Remove the chat format of ${group}?`)) return;
-      const done = await sendBuilt(chatPost(state, group, ""), `${group} has no chat format now.`);
-      if (done?.ok) S.chat.delete(key), drawChat();
+      if (!S.chat.has(key)) S.chat.set(key, editOf(savedChat(group), null));
+      else S.chat.set(key, { ...S.chat.get(key)!, draft: null });
+      return saveChat(group, "", `${group} has no chat format now.`);
+    }
+    case "rank-again": {
+      const edit = S.ranks.get(key);
+      if (edit) await saveRank(group, edit.draft, Number(edit.from), RANK_NAMES[edit.draft] ?? "");
       return;
     }
+    case "rank-keep":
+      S.ranks.delete(key);
+      return void paint($("groups"), groupsHtml(state, S.ranks), true);
     case "plain": {
       const block = at.closest<HTMLElement>("[data-chat]")!;
       const name = block.dataset.chat!;
@@ -313,49 +441,44 @@ async function act(at: HTMLElement): Promise<void> {
       S.settingsChanged = true;
       return drawChat();
     case "settings-undo":
-      S.settingsChanged = false;
+    case "settings-keep":
+      [S.settingsChanged, S.settingsTheirs] = [false, null];
       return draw();
-    case "settings-save": {
-      const made = settingsTextOf(S.settings!);
-      if (made.faults.length > 0) return say("Not sent: the chat settings have faults. Each is shown beside its field.", "warn");
-      const b = settingsPost(state, made.text);
-      if (!b.post) return say(b.why, "warn");
-      const draft = S.settings!;
-      S.settingsChanged = false;
-      const done = await send(b.post, "Saved the chat settings.");
-      if (!done.ok) [S.settings, S.settingsChanged] = [draft, true], draw();
-      return;
-    }
+    case "settings-save":
+    case "settings-again":
+      return saveSettings();
     case "import-check":
     case "import-apply": {
       const apply = what === "import-apply";
       const kind = apply && S.checked ? S.checked.kind : ($<HTMLSelectElement>("import-kind").value as ImportKind);
-      const text = apply && S.checked ? S.checked.text : await importText(kind);
-      const b = importPost(state, kind, text, apply);
+      const files = apply && S.checked ? S.checked : await importText(kind);
+      const b = importPost(state, kind, files.text, apply, S.checked?.digest ?? "", files.wal);
       if (!b.post) return say(b.why, "warn");
       if (apply && !confirm("Make these changes?")) return;
       const answer = await send(b.post, apply ? "Imported." : "Checked. Nothing is changed until Apply.");
       $("import-out").innerHTML = importHtml(answer, apply);
-      if (apply || !answer.ok) forgetCheck();
-      else {
-        S.checked = { kind, text };
+      // A plan that changed since the check is shown as it is now, to be applied in its turn.
+      if (answer.digest && (!apply || !answer.ok)) {
+        S.checked = { kind, text: files.text, wal: files.wal, digest: answer.digest };
         allow($<HTMLButtonElement>("import-apply"), defineWhy(state));
-      }
+      } else forgetCheck();
       return;
     }
+    case "history-older":
+      return loadHistory(true);
     case "reload":
       return load();
   }
 }
 
-/** The chat form of a group to change: its draft, begun from what is saved. */
+/** The chat form of a group to change: its draft, begun from what is saved, which it is sent over. */
 function draftOf(name: string): ChatForm | null {
   const key = name.toLowerCase();
   if (!S.chat.has(key)) {
     const form = chatForm(name);
-    S.chat.set(key, form ? structuredClone(form) : null);
+    S.chat.set(key, editOf(savedChat(name), form ? structuredClone(form) : null));
   }
-  return S.chat.get(key) ?? null;
+  return S.chat.get(key)?.draft ?? null;
 }
 
 function chatChanged(block: HTMLElement, name: string): void {
@@ -410,7 +533,11 @@ function typed(at: HTMLInputElement): void {
 document.addEventListener("click", (e) => {
   const at = (e.target as HTMLElement).closest("button");
   if (!at || at.disabled) return;
-  if (at.dataset.tab) return showTab(at.dataset.tab);
+  if (at.dataset.tab) {
+    showTab(at.dataset.tab);
+    if (at.dataset.tab === "history") void loadHistory(false);
+    return;
+  }
   void act(at).catch(failed);
 });
 
@@ -426,24 +553,35 @@ document.addEventListener("change", (e) => {
   if (!state) return;
   if (at instanceof HTMLSelectElement && at.dataset.act === "rank") {
     const group = at.dataset.group!;
-    // A refused change leaves the page's HTML as it was, so the choice is put back by hand.
-    const back = (): void => void (at.value = String(S.state?.groups.find((g) => g.name === group)?.rank ?? at.value));
-    void sendBuilt(rankPost(state, group, Number(at.value)), `${group} is of the ${at.selectedOptions[0]?.textContent ?? ""} rank now.`).then(back, (e: unknown) => (back(), failed(e)));
+    // A refused change leaves the page's HTML as it was, so the choice is put back by hand; one overtaken shows theirs beside it.
+    const back = (): void => void (S.ranks.has(group.toLowerCase()) || (at.value = String(S.state?.groups.find((g) => g.name === group)?.rank ?? at.value)));
+    const edit = S.ranks.get(group.toLowerCase());
+    const from = edit ? Number(edit.from) : (state.groups.find((g) => g.name === group)?.rank ?? 0);
+    void saveRank(group, Number(at.value), from, at.selectedOptions[0]?.textContent ?? "").then(back, (e: unknown) => (back(), failed(e)));
   } else if (at.id === "member-kind") {
     paint($("who-list"), whoOptions(state, $<HTMLSelectElement>("member-kind").value as MemberKind));
     $<HTMLInputElement>("member-who").placeholder = $<HTMLSelectElement>("member-kind").value === "tribe" ? "Tribe name or number" : "Name or 17-digit ID";
+  } else if (at.id === "member-group") {
+    drawEvery(true);
   } else if (at.id === "import-kind") {
     const pasted = $<HTMLSelectElement>("import-kind").value !== "arkapi";
     $("import-file-bar").hidden = pasted;
     $("import-text").hidden = !pasted;
     forgetCheck();
-  } else if (at.id === "import-file") forgetCheck();
+  } else if (at.id === "import-file" || at.id === "import-wal") forgetCheck();
 });
 
 addEventListener("beforeunload", (e) => {
   if (S.settingsChanged || S.chat.size > 0) e.preventDefault();
 });
 
-addEventListener("hashchange", () => showTab(location.hash.slice(1)));
+addEventListener("hashchange", () => {
+  showTab(location.hash.slice(1));
+  if (location.hash === "#history") void loadHistory(false);
+});
+$("wal-words").textContent = WAL_MISSING;
 showTab(location.hash.slice(1));
-void load();
+void load().then(() => {
+  if (location.hash === "#history") void loadHistory(false);
+  setTimeout(() => void refresh(), PERMISSIONS_REFRESH_MS);
+});

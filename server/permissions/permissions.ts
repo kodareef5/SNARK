@@ -5,6 +5,7 @@ import { actText, type ActVia } from "../../shared/acts.ts";
 import { changeWords } from "../../shared/permissions/commands.ts";
 import { RANK_CLUSTER, RANK_NAMES, RANK_OPEN, RANK_STAFF } from "../../shared/ranks.ts";
 import {
+  CHANGED_MEANWHILE,
   DEFAULT_GROUP,
   HOUR_MS,
   commandPermission,
@@ -373,7 +374,7 @@ export class Permissions {
         inside.judged = as;
         const needs = actor.needs ?? RANK_OPEN;
         was = op?.op === "clearSecret" ? this.secretOf(op.id) : "";
-        reason = (as.rank < needs ? `That needs the ${RANK_NAMES[needs]} rank.` : "") || editRule(as, op, this.look);
+        reason = (as.rank < needs ? `That needs the ${RANK_NAMES[needs]} rank.` : "") || editRule(as, op, this.look) || (this.stale(op) ? CHANGED_MEANWHILE : "");
         // Worked out before the change, so a group removed is still named as it was kept.
         if (!reason) words = this.wordsOf(as, op);
         reason ||= this.change(as, op);
@@ -499,6 +500,11 @@ export class Permissions {
     return dropped;
   }
 
+  /** Changes with each commit to the store by any world, the register's included, which raise no revision. */
+  commits(): string {
+    return this.store.commits();
+  }
+
   /** At most `most` rows of the cluster's history whose seq is below `before`, newest first, read from the store. */
   history(before = Number.MAX_SAFE_INTEGER, most = 50): HistoryRow[] {
     return this.store.history(before, Math.max(1, Math.min(HISTORY_PAGE_MOST, Math.floor(most) || 1)));
@@ -539,6 +545,14 @@ export class Permissions {
     this.dropExpired(now);
     this.nextEdge = this.edgeAfter(now);
     this.revision = this.store.raise();
+  }
+
+  /** Whether a whole value's change began from another value than the store holds now. The edit rule passed it. */
+  private stale(op: PermissionOp): boolean {
+    if (op.op === "setChat") return op.was !== undefined && this.group(op.group)?.chat !== op.was;
+    if (op.op === "setRank") return op.was !== undefined && this.group(op.group)?.rank !== op.was;
+    if (op.op === "setDocument") return op.was !== undefined && this.document(op.name) !== op.was;
+    return false;
   }
 
   /** Inside a write, after `written`: the row of history for the change it made. */

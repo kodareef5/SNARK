@@ -10,6 +10,7 @@ import { RANK_ADMIN, RANK_CLUSTER, RANK_MAP, RANK_OPEN } from "../../shared/rank
 import { applyPlan, CHAT_DOCUMENT, planArkApi, planCommands, planCrossChat, type ArkApiFiles, type ImportPlan, type Planned } from "../../server/permissions/import.ts";
 import { Permissions } from "../../server/permissions/permissions.ts";
 import { PermissionStore } from "../../server/permissions/store.ts";
+import { STEAM, TRIBE, pluginDatabase, removeDatabase, runningArkApi } from "../fixtures/arkapi.ts";
 
 const root = mkdtempSync(join(tmpdir(), "snark-import-"));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
@@ -18,8 +19,6 @@ const cluster: PermissionActor = { rank: RANK_CLUSTER, world: 3, name: "cluster"
 /** On a world in no cluster, where an admin edits the groups of its rank. */
 const admin: PermissionActor = { rank: RANK_ADMIN, world: 0, name: "admin" };
 const COMMANDS = ["kick", "give", "tp", "save", "settime", "ghost", "fly"];
-const STEAM = ["76561198011111111", "76561198022222222"];
-const TRIBE = "1234567";
 
 const fresh = () => new Permissions({ store: new PermissionStore(":memory:"), world: 3 });
 
@@ -49,31 +48,6 @@ function arkApiFile(): Uint8Array {
   return bytes;
 }
 
-// The plugin's tables, as its source creates them.
-const PLUGIN_TABLES = `create table if not exists Players (Id integer primary key autoincrement not null, SteamId integer default 0 UNIQUE, Groups text default 'Default,' COLLATE NOCASE, TimedGroups text default '' COLLATE NOCASE);
-create table if not exists Tribes (Id integer primary key autoincrement not null, TribeId integer default 0, Groups text default '' COLLATE NOCASE, TimedGroups text default '' COLLATE NOCASE);
-create table if not exists Groups (Id integer primary key autoincrement not null, GroupName text not null COLLATE NOCASE, Permissions text default '' COLLATE NOCASE);`;
-
-/** ArkApi's database opened as the plugin opens it: write-ahead-log mode first, then its tables and starting groups. */
-function pluginDatabase(path: string, pageSize?: number): Database {
-  const db = new Database(path, { create: true });
-  if (pageSize) db.exec(`PRAGMA page_size=${pageSize};`);
-  db.exec("PRAGMA journal_mode=WAL;");
-  db.exec(PLUGIN_TABLES);
-  const group = db.query("INSERT INTO Groups (GroupName, Permissions) VALUES (?, ?)");
-  group.run("Admins", "*,");
-  group.run("Default", "");
-  group.run("Vip", "ArkShop.Kits.vip,Cheat.KickPlayer,");
-  group.run("Builders", "Build.Fast,");
-  db.query("INSERT INTO Players (SteamId, Groups, TimedGroups) VALUES (?, ?, ?)").run(STEAM[0]!, "Default,Vip,", "0;1800000000;Vip,");
-  db.query("INSERT INTO Tribes (TribeId, Groups) VALUES (?, ?)").run(TRIBE, "Builders,");
-  return db;
-}
-
-const removeDatabase = (path: string) => {
-  for (const end of ["", "-wal", "-shm"]) rmSync(path + end, { force: true });
-};
-
 /** ArkApi's database from a server stopped cleanly: its log was folded into it and removed. */
 function stoppedFile(): Uint8Array {
   const path = join(root, `stopped-${++files}.db`);
@@ -85,18 +59,7 @@ function stoppedFile(): Uint8Array {
 }
 
 /** ArkApi's database and its log, copied while the server runs: the group Late is only in the log. */
-function runningFiles(pageSize?: number, late = "Late"): { main: Uint8Array; wal: Uint8Array } {
-  const path = join(root, `running-${++files}.db`);
-  const db = pluginDatabase(path, pageSize);
-  db.exec("PRAGMA wal_autocheckpoint=0;");
-  db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
-  db.query("INSERT INTO Groups (GroupName, Permissions) VALUES (?, ?)").run(late, "ArkShop.Kits.late,");
-  db.query("INSERT INTO Players (SteamId, Groups) VALUES (?, ?)").run(STEAM[1]!, `${late},`);
-  const copy = { main: readFileSync(path), wal: readFileSync(`${path}-wal`) };
-  db.close();
-  removeDatabase(path);
-  return copy;
-}
+const runningFiles = (pageSize?: number, late = "Late"): { main: Uint8Array; wal: Uint8Array } => runningArkApi(join(root, `running-${++files}.db`), pageSize, late);
 
 /** The log of a database in write-ahead-log mode that is not ArkApi's. */
 function otherLog(): Uint8Array {

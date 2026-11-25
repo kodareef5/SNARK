@@ -2,7 +2,7 @@ import { serveFile } from "../files.ts";
 import { pathOf, worldAddress, type SiteWorld } from "../site.ts";
 import type { Destination } from "../cluster/cluster.ts";
 import { SCREEN_PATHS } from "../video/routes.ts";
-import { PERMISSIONS_PATHS } from "../../shared/permissions/page.ts";
+import { OLD_PERMISSIONS_PATHS } from "../../shared/permissions/page.ts";
 import { adminPath, refused, type AdminGate } from "./gate.ts";
 
 const WORLD_PAGES = {
@@ -19,6 +19,7 @@ const WORLD_PAGES = {
   restart: "index.html",
   "first-frame": "first-frame.html",
   sounds: "sounds.html",
+  permissions: "permissions.html",
 };
 
 type WorldPage = keyof typeof WORLD_PAGES;
@@ -73,8 +74,6 @@ interface AdminSite {
   scenes: (req: Request) => Promise<Response> | Response;
   /** The cluster's screens API (server/video/routes.ts), behind the gate; null where this server keeps no library. */
   screens?: (req: Request, path: string) => Promise<Response> | Response | null;
-  /** The cluster's permissions API, behind the gate; null where this server does not answer it. */
-  permissions?: (req: Request, path: string) => Promise<Response> | Response | null;
 }
 
 /** A named proxy can reach another world by its mount even when it sends site routes to this one. */
@@ -116,10 +115,9 @@ export function adminSite(req: Request, url: URL, o: AdminSite): Promise<Respons
   if (path === "/admin/screens" || path === "/admin/screens/") {
     return refused(req, o.who, o.gate) ?? (!mayRead(req) ? refuseMethod() : path === "/admin/screens/" ? privatePage(o.dir, req, "screens.html") : redirect(`/admin/screens/${url.search}`));
   }
-  if (PERMISSIONS_PATHS.includes(path)) return refused(req, o.who, o.gate) ?? o.permissions?.(req, path) ?? notFound();
-  if (path === "/admin/permissions" || path === "/admin/permissions/") {
-    return refused(req, o.who, o.gate) ?? (!mayRead(req) ? refuseMethod() : path === "/admin/permissions/" ? privatePage(o.dir, req, "permissions.html") : redirect(`/admin/permissions/${url.search}`));
-  }
+  // Permissions was the cluster's page. It is a world's now: its old address goes to this world's, and its old API is gone.
+  if (OLD_PERMISSIONS_PATHS.includes(path)) return notFound();
+  if (path === "/admin/permissions" || path === "/admin/permissions/") return mayRead(req) ? redirect(worldLink(o.id, "permissions") + url.search) : refuseMethod();
 
   const mounted = o.base !== "" && path.startsWith(`${o.base}/`);
   const route = worldAdminPage(mounted ? path.slice(o.base.length) : path);

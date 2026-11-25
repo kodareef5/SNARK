@@ -18,7 +18,7 @@ import {
   type PermissionActor,
   type PermissionOp,
 } from "../../shared/permissions/model.ts";
-import { CHAT_DOCUMENT } from "../../shared/permissions/page.ts";
+import { CHAT_DOCUMENT, WAL_MISSING } from "../../shared/permissions/page.ts";
 import { RANK_OPEN } from "../../shared/ranks.ts";
 import type { Permissions } from "./permissions.ts";
 
@@ -235,8 +235,6 @@ export interface ArkApiFiles {
 const NOT_SQLITE: Planned = { ok: false, reason: "That file is not an SQLite database." };
 const DAMAGED: Planned = { ok: false, reason: "That database is damaged, so nothing was read from it. Copy it again with the ARK server stopped." };
 const NO_FOLDER: Planned = { ok: false, reason: "The server could not open that database in a folder of its own." };
-const WAL_MISSING =
-  "This database keeps its newest changes in the file beside it whose name ends in -wal until the ARK server is stopped. Stop the server first, or give that file too, or those changes are left out.";
 const WAL_WRONG = "The -wal file does not belong to this database or is damaged, so it was left out. The plan reads what the database file holds.";
 
 const isSqlite = (b: Uint8Array): boolean => b.length >= 100 && new TextDecoder().decode(b.subarray(0, 16)) === "SQLite format 3\0";

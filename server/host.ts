@@ -64,7 +64,7 @@ import { Console, OP_ADMIN } from "./console.ts";
 import { Acts, PAGE_ACTOR, sessionActor, type Actor } from "./acts.ts";
 import { PermissionStore } from "./permissions/store.ts";
 import { Permissions, type Acting, type PermissionSubject } from "./permissions/permissions.ts";
-import type { PermissionOp } from "../shared/permissions/model.ts";
+import { CHANGED_MEANWHILE, type PermissionOp } from "../shared/permissions/model.ts";
 import { changeWords } from "../shared/permissions/commands.ts";
 import { makePassword, passwordHash } from "./permissions/secrets.ts";
 import { applyPlan, type Applied, type ImportPlan } from "./permissions/import.ts";
@@ -334,6 +334,8 @@ export interface Host {
   readonly harvest: Harvest | null;
   readonly deadlines: DeadlineHeap;
   readonly persistence: Persistence | null;
+  /** The folder the world's save is in, for a page's passing files; null for a world with no save. */
+  readonly saveFolder: string | null;
   /** Who did what as an admin, and when (server/acts.ts). */
   readonly acts: Acts;
   /** The cluster's permission groups as this world holds them (server/permissions/permissions.ts). */
@@ -1664,7 +1666,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     // The act says it in the words and at the rank the store's history row does: as judged inside the write.
     const { why, words, rank } = permissions.make(actor, op);
     if (why === "") acts.write(by, words, "change", rank);
-    else {
+    // An editor who began from a value since changed is answered, not logged: they did nothing wrong.
+    else if (why !== CHANGED_MEANWHILE) {
       // An op from a page may be any JSON: changeWords copes, and the act holds no value of a secret.
       const everyWorld = op?.op === "addMember" && permissions.world !== 0 && op.world === 0;
       acts.refused(by, rank, changeWords(op, everyWorld), why);
@@ -2377,6 +2380,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     harvest,
     deadlines,
     persistence,
+    saveFolder: opts.dbPath ? dirname(resolve(opts.dbPath)) : null,
     acts,
     permissions,
     changePermissions,

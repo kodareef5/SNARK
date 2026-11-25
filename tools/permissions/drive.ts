@@ -275,7 +275,8 @@ export async function drive(o: DriveOptions): Promise<string[]> {
   const snap = () => host.permissions.snapshot();
   const group = (name: string) => snap().groups.find((g) => g.name.toLowerCase() === name.toLowerCase());
   const members = (name: string) => snap().members.filter((m) => m.group.toLowerCase() === name.toLowerCase());
-  const pagePath = `${origin}/admin/permissions/`;
+  // A world's own page: this world is in no cluster, so it is the local one.
+  const pagePath = `${origin}/admin/worlds/local/permissions/`;
   const here: Survivor[] = [];
   const passwordsSeen: string[] = [];
   try {
@@ -292,6 +293,10 @@ export async function drive(o: DriveOptions): Promise<string[]> {
       // 1. The state, who is signed in, and the two groups there from the start.
       if (!(await page.wait(`${q("#me")}.textContent !== ""`, 100))) fault(`the page did not show who is signed in: ${await text("#msg")}`);
       check("the page says who is signed in, and the rank", await text("#me"), "Signed in as (Kody), by the host password, at the cluster rank, on a world outside a cluster.");
+      const title = await text("#title");
+      check("the heading names the map it acts on", /^Permissions on \S/.test(title) && title !== "Permissions on this server", true);
+      console.log(`       ${title}: ${await text("#scope")}`);
+      check("the old cluster address comes to this world's page", await page.run(`fetch("/admin/permissions/?x=1", { redirect: "manual" }).then((r) => r.type)`), "opaqueredirect");
       check("the page lists Default and Admins", await page.run(`[...document.querySelectorAll("#groups .group")].map((g) => g.dataset.group)`), ["Default", "Admins"]);
       errorsOf(page, "loading the page");
 
@@ -349,6 +354,7 @@ export async function drive(o: DriveOptions): Promise<string[]> {
       await addMember(cy.id, "Wardens");
       await addMember("Bea", "Admins");
       check("Cy is in Wardens and Bea in Admins", [members("Wardens").map((m) => m.key), members("Admins").map((m) => m.key)], [[cy.id], [bea.id]]);
+      check("a world in no cluster offers no Every map box", await page.run(`${q("#member-every-label")}.hidden`), true);
       errorsOf(page, "adding members");
 
       // 4. Bea claims her own password in game: only her session is sent it, once. The page shows that she has, and nothing more.
@@ -411,16 +417,18 @@ export async function drive(o: DriveOptions): Promise<string[]> {
         check("the old one no longer works", await say(bea, `enablecheats ${password}`), "that password was replaced or cleared");
         check("and was not counted as a guess", host.game.clients.find((c) => c?.pid === bea.pid)?.cheatAttempts, 0);
         check("the new one signs her in", await say(bea, `enablecheats ${again.password}`), "cheats enabled");
-        await page.go(`${pagePath}?again=2#members`);
-        await page.wait(`${q("#me")}.textContent !== ""`);
-        check("the page says she has claimed one again", (await beaRow()).startsWith("Claimed on "), true);
+        // Kody's page is not read again by hand: it asks every ten seconds whether anything changed.
+        await page.run("document.activeElement?.blur()");
+        const shown = await page.wait(`[...document.querySelectorAll("#passwords tr")].some((tr) => tr.textContent.includes(${JSON.stringify(bea.id)}) && tr.textContent.includes("Claimed on"))`, 250);
+        check("the page shows she has claimed one again, without a reload", shown, true);
         await as.press('[data-tab="groups"]');
         await as.type("#group-name", "Late");
         await as.press("#add-group");
         await as.wait(`${q("#msg")}.className === "bad"`);
         check("Bea's page, signed out, says how to sign in again", [await atext("#msg"), await as.run(`!${q("#reload")}.hidden`), group("Late")], ["You are signed out, or your password changed. Reload the page to sign in again.", true, undefined]);
-        errorsOf(as, "Bea's page", [/request: 403 .*\/admin\/permissions\/api/, /request: 403 .*\/admin\/permissions\/api/, /log: .*403/, /log: .*403/,
-          /request: 401 .*\/admin\/permissions\/api/, /log: .*401/, /request: 401 .*\/admin\/permissions\/state/, /log: .*401/]);
+        // Her page may ask once more on its own before it is signed out, and then stops asking.
+        errorsOf(as, "Bea's page", [/request: 403 .*\/admin\/permissions-change/, /request: 403 .*\/admin\/permissions-change/, /log: .*403/, /log: .*403/,
+          /request: 401 .*\/admin\/permissions-change/, /log: .*401/, /request: 401 .*\/admin\/permissions\.json/, /log: .*401/, /request: 401 .*\/admin\/permissions\.json/, /log: .*401/]);
       });
 
       // 7. A chat format on Veterans with a colour and a priority, and a tag with text and colour.
@@ -459,6 +467,22 @@ export async function drive(o: DriveOptions): Promise<string[]> {
       errorsOf(page, "the chat tab");
       await picture(page, "chat");
 
+      // Two editors of one chat block: Kody's draft is kept when another admin saves first, and goes over theirs when sent again.
+      await page.type(`${block} [data-field="priority"]`, "7");
+      const THEIRS = JSON.stringify({ Priority: 1, ChatFormat: "{sender}: {message}" });
+      if (host.changePermissions(OPERATOR, { op: "setChat", group: "Veterans", chat: THEIRS }) !== "") fault("the operator could not set Veterans' chat format");
+      await page.press(`button[data-act="chat-save"][data-group="Veterans"]`);
+      await page.wait(q(`${block} .conflict`));
+      check("the second save is refused, theirs shown beside the draft, which is kept", [
+        (await text(`${block} .conflict pre`)) === THEIRS, await page.run(`${q(`${block} [data-field="priority"]`)}.value`), group("Veterans")?.chat === THEIRS,
+      ], [true, "7", true]);
+      await picture(page, "chat-conflict");
+      await page.press(`button[data-act="chat-again"][data-group="Veterans"]`);
+      await page.wait(`${q("#msg")}.textContent === "Saved the chat format of Veterans."`);
+      check("sent again, it goes over theirs", (JSON.parse(group("Veterans")?.chat || "{}") as { Priority?: number }).Priority, 7);
+      check("and no refused act was written for it", host.acts.recent().filter((a) => a.kind === "refused" && a.what.includes("Veterans")).length, 0);
+      errorsOf(page, "the chat conflict", [/request: 409 .*\/admin\/permissions-change/, /log: .*409/]);
+
       const before = cy.session.log.length;
       ada.session.chat(TEXT_GLOBAL, "meet at the river");
       let line: { text: string; runs?: readonly { text: string; ink?: number }[] } | undefined;
@@ -486,6 +510,20 @@ export async function drive(o: DriveOptions): Promise<string[]> {
       await importOf("commands", "Permissions.AddGroup Builders\nPermissions.Grant Builders Cheat.fly\nPermissions.Grant Veterans Kit.vet\n", "commands", "It would make 3 changes.", "Made 3 changes.",
         () => group("Builders")?.permissions.includes("Cheat.fly") === true && group("Veterans")?.permissions.includes("Kit.vet") === true);
       check("the page asked before applying", page.dialogs.splice(0), ["Make these changes?"]);
+      // An import applies only what its check showed: a change made since, and Apply shows the plan as it is now.
+      await page.choose("#import-kind", "commands");
+      await page.type("#import-text", "Permissions.AddGroup Masons\nPermissions.Grant Masons Build.fast\n");
+      await page.press("#import-check");
+      await page.wait(`${q("#import-out")}.textContent.includes("It would make 2 changes")`);
+      if (host.changePermissions(OPERATOR, { op: "addGroup", group: "Masons" }) !== "") fault("the operator could not add Masons");
+      await page.press("#import-apply");
+      await page.wait(`${q("#import-out")}.textContent.includes("changed since it was checked")`);
+      check("an Apply over a changed plan changes nothing and shows it as it is now", [(await text("#import-out")).includes("It would make 1 change."), group("Masons")?.permissions], [true, []]);
+      await page.press("#import-apply");
+      await page.wait(`${q("#msg")}.textContent === "Imported."`);
+      check("applied again, it makes the plan it showed", group("Masons")?.permissions, ["Build.fast"]);
+      check("the page asked before each apply", page.dialogs.splice(0), ["Make these changes?", "Make these changes?"]);
+      errorsOf(page, "the import's digest", [/request: 409 .*\/admin\/permissions-change/, /log: .*409/]);
       const CROSSCHAT = `{
   // CrossChat's config, with comments as its sample has
   "PermissionsFormatting": {
@@ -499,7 +537,20 @@ export async function drive(o: DriveOptions): Promise<string[]> {
       check("the page asked before applying", page.dialogs.splice(0), ["Make these changes?"]);
       errorsOf(page, "the import tab");
 
-      // 9. The Admin log: what was just done, newest first, with names, IDs, ranks and times; each filter narrows it.
+      // 9. The History tab: the cluster's changes, newest first, with who, rank, how and map, and no secret.
+      await page.press('[data-tab="history"]');
+      await page.wait(`document.querySelectorAll("#history tr").length > 5`);
+      const history = (await page.run(`[...document.querySelectorAll("#history tr")].map((tr) => [...tr.cells].map((c) => c.textContent.trim().replace(/\\s+/g, " ")))`)) as string[][];
+      const stored = host.permissions.history(Number.MAX_SAFE_INTEGER, 1)[0];
+      check("the newest row of the history is the newest change", history[0]?.[3], stored?.what);
+      check("Kody's changes show at the cluster rank, on a page", history.some((r) => r[1] === "(Kody) cluster, On a page"), true);
+      check("Bea's claims are there, with her ID", history.filter((r) => r[1]?.startsWith(`Bea ${bea.id}`) && r[3] === "claimed their own password").length, 2);
+      check("no row holds a password", history.some((r) => passwordsSeen.some((p) => r.join(" ").includes(p))), false);
+      check("each row names the map", history.every((r) => (r[2] ?? "") !== ""), true);
+      await picture(page, "history");
+      errorsOf(page, "the history tab");
+
+      // 10. The Admin log: what was just done, newest first, with names, IDs, ranks and times; each filter narrows it.
       await page.go(`${origin}/admin/worlds/local/acts/`);
       if (!(await page.wait(`document.querySelectorAll("#acts tr").length > 5`, 100))) fault(`the log shows nothing: ${await text("#msg")}`);
       const actRows = async (): Promise<string[][]> => page.run(`[...document.querySelectorAll("#acts tr")].map((tr) => [...tr.cells].map((c) => c.textContent.trim()))`);
@@ -550,14 +601,14 @@ export async function drive(o: DriveOptions): Promise<string[]> {
       await page.wait(`${q("#me")}.textContent !== ""`);
       await page.go(`${pagePath}#members`);
       check("a new address on the open page shows its tab", await page.run(`[${q("#tab-members")}.hidden, ${q("#tab-chat")}.hidden]`), [false, true]);
-      for (const tab of ["groups", "members", "chat", "import"]) {
+      for (const tab of ["groups", "members", "chat", "import", "history"]) {
         await page.press(`[data-tab="${tab}"]`);
         await picture(page, `tab-${tab}`);
       }
       errorsOf(page, "the tabs again");
     });
 
-    // 10. The dashboard signs in with the cluster's password and a typed name, then with the map's.
+    // 11. The dashboard signs in with the cluster's password and a typed name, then with the map's.
     await browse(chrome, `${origin}/admin/`, scratch, null, async (page) => {
       const text = (selector: string): Promise<string> => page.run(`${q(selector)}?.textContent ?? ""`);
       const signIn = async (name: string, password: string, want: string): Promise<void> => {

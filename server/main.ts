@@ -35,7 +35,6 @@ import { boardOwners, soundBoard } from "./sound-board.ts";
 import { TitleScenes } from "./admin/title-scenes.ts";
 import { actorOf, adminAsked, changedNothing, type AdminGate } from "./admin/gate.ts";
 import { staffPasswords } from "./permissions/secrets.ts";
-import { permissionsAdmin } from "./permissions/routes.ts";
 import { PAGE_ACTOR, type Actor } from "./acts.ts";
 import { adminSite, oldAdminPage } from "./admin/site.ts";
 import { TickMeter } from "./admin/meter.ts";
@@ -533,8 +532,6 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
           ? titleScenes.admin(call, host.acts) : entryReply({ error: "Open the studio on this cluster." }, 403),
         screens: (call, at) => call.method === "POST" && !originAllowed(call.headers.get("origin"), call.headers.get("host"), "")
           ? entryReply({ error: "Open the screens page on this cluster." }, 403) : screensAdmin(call, at, video, () => screenWorld(host), host.acts),
-        permissions: (call, at) => call.method === "POST" && !originAllowed(call.headers.get("origin"), call.headers.get("host"), "")
-          ? entryReply({ ok: false, why: "Open the permissions page on this cluster." }, 403) : permissionsAdmin(call, at, host),
       }));
       if (siteAdmin) return siteAdmin;
       const { at, path } = placeOf(base, url.pathname);

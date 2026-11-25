@@ -223,6 +223,8 @@ th { color: var(--dim); font-weight: 650; font-size: .78rem }
 
 .permissions-page .group,.permissions-page .chat-block { border-top: 1px solid var(--edge); padding-block: 12px; display: grid; gap: 8px }
 .permissions-page .group h3,.permissions-page .chat-block h3 { margin: 0 }
+.permissions-page .conflict { border: 1px solid var(--warn); border-radius: 6px; padding: 8px 10px; display: grid; gap: 6px }
+.permissions-page .conflict pre { margin: 0; white-space: pre-wrap; word-break: break-all; max-height: 10em; overflow: auto }
 .permissions-page .chip { display: inline-flex; align-items: center; gap: 4px; font-family: ui-monospace, monospace }
 .permissions-page .chip .x { border: 0; background: none; padding: 0 2px; line-height: 1; color: var(--bad) }
 .permissions-page code { font-size: .85em; color: var(--dim) }

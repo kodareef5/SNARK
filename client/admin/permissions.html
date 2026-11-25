@@ -8,7 +8,7 @@
   </head>
   <body>
     <main class="tool-page permissions-page">
-      <header class="tool-intro"><h1>Permissions</h1><p>Groups as ArkApi's Permissions plugin keeps them, who is in them, their chat tags and colours, and imports from ArkApi. Every world of the cluster shares these.</p></header>
+      <header class="tool-intro"><h1 id="title">Permissions</h1><p id="scope"></p><p class="dim">Groups as ArkApi's Permissions plugin keeps them, who is in them, their chat tags and colours, imports from ArkApi, and who changed what.</p></header>
       <section class="glass">
         <p id="me" class="dim"></p>
         <p id="unsaved" class="warn" hidden>This server keeps permissions in memory only. They last until it stops.</p>
@@ -19,6 +19,7 @@
           <button role="tab" data-tab="members">Members</button>
           <button role="tab" data-tab="chat">Chat</button>
           <button role="tab" data-tab="import">Import</button>
+          <button role="tab" data-tab="history">History</button>
         </div>
       </section>
 
@@ -47,9 +48,10 @@
           <label>Group <select id="member-group"></select></label>
           <label>Hours <input id="member-hours" type="number" min="0" step="any" placeholder="For good"></label>
           <label>Starting in hours <input id="member-delay" type="number" min="0" step="any" placeholder="Now"></label>
-          <label id="member-every-label" hidden><input id="member-every" type="checkbox" checked> Every map</label>
+          <label id="member-every-label" hidden><input id="member-every" type="checkbox"> Every map</label>
           <button id="add-member">Add member</button>
         </div>
+        <p id="member-every-note" class="dim"></p>
         <p class="dim">Hours make a timed membership, as ArkApi's AddTimed does. A tribe joins open groups only. A staff membership holds on the map it was made on, unless a cluster admin makes it for every map.</p>
         <h3>Staff passwords</h3>
         <p class="dim">A member of a staff group claims their own password in game: they type <code>claimpassword</code> in the console, and the password is shown to them once. Nobody else ever sees it, here or anywhere. They use their group's powers after signing in with it: <code>enablecheats</code> and the password in game, or their name or ID and the password on these pages. Clearing a password ends their sign-ins, and they may claim a new one.</p>
@@ -77,11 +79,23 @@
             <option value="crosschat">CrossChat config, pasted</option>
           </select></label>
         </div>
-        <div class="bar" id="import-file-bar"><input id="import-file" type="file" aria-label="The ArkApi Permissions database file"></div>
+        <div class="bar" id="import-file-bar"><label>Database <input id="import-file" type="file" aria-label="The ArkApi Permissions database file"></label>
+          <label>Its -wal file, if there is one <input id="import-wal" type="file" aria-label="The database's -wal file"></label>
+          <p id="wal-words" class="dim"></p></div>
         <textarea id="import-text" rows="12" hidden aria-label="The text to import" spellcheck="false"></textarea>
         <div class="bar"><button id="import-check">Check</button><button id="import-apply" class="primary" disabled>Apply</button></div>
         <p class="dim">Old Steam ids and their memberships are not imported: a survivor here has an ID of their own. Imported groups arrive open, and a group that holds cheats is flagged on the Groups tab.</p>
         <div id="import-out"></div>
+      </section>
+
+      <section class="glass" id="tab-history" role="tabpanel" hidden>
+        <h2>History</h2>
+        <p class="dim">Every change to the cluster's permissions, on any map, newest first: who made it, at which rank and how, and on which map. Times are your own.</p>
+        <div class="scroll"><table>
+          <thead><tr><th>When</th><th>Who</th><th>Map</th><th>What</th></tr></thead>
+          <tbody id="history"></tbody>
+        </table></div>
+        <div class="bar"><button id="history-older" hidden>Older changes</button></div>
       </section>
 
       <datalist id="permission-list"></datalist>

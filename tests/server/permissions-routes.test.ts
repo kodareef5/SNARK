@@ -1,13 +1,14 @@
-// The Permissions page's API (server/permissions/routes.ts): the state it reads, the changes, clears and imports it sends,
-// who each is made as, what the admin log keeps of them, and what is refused: it never makes, sets or shows a password.
+// A world's Permissions page's API (server/permissions/routes.ts): the state it reads, the changes, clears and imports it
+// sends, who each is made as and on which map, what the admin log and the history keep of them, and what is refused: it
+// never makes, sets or shows a password.
 import { afterAll, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ClientSession } from "../../client/core/session.ts";
 import { OPERATOR } from "../../server/acts.ts";
-import { adminSite } from "../../server/admin/site.ts";
-import { sitePost, startFront } from "../../server/front.ts";
+import { refused } from "../../server/admin/gate.ts";
+import { frontPasses, sitePost, startFront } from "../../server/front.ts";
 import type { Host } from "../../server/host.ts";
 import { startServer, type RunningServer } from "../../server/main.ts";
 import { permissionsAdmin, permissionsState } from "../../server/permissions/routes.ts";
@@ -16,11 +17,16 @@ import { loadConfig } from "../../server/settings/config.ts";
 import { TEAM_RANGE } from "../../server/records.ts";
 import { idText } from "../../server/survivor-ids.ts";
 import { idOf } from "../../shared/ids.ts";
-import type { PermissionOp } from "../../shared/permissions/model.ts";
-import { PERMISSIONS_API, PERMISSIONS_STATE, type PermissionsAnswer, type PermissionsPost, type PermissionsState } from "../../shared/permissions/page.ts";
+import { CHANGED_MEANWHILE, type PermissionOp } from "../../shared/permissions/model.ts";
+import {
+  CHAT_DOCUMENT, OLD_PERMISSIONS_PATHS, PERMISSIONS_API, PERMISSIONS_HISTORY, PERMISSIONS_STATE, type ImportKind, type PermissionsAnswer, type PermissionsHistory, type PermissionsPost,
+  type PermissionsSame, type PermissionsState,
+} from "../../shared/permissions/page.ts";
 import { RANK_ADMIN, RANK_CLUSTER, RANK_MAP, RANK_STAFF } from "../../shared/ranks.ts";
 import { splitPack } from "../../tools/pack/split.ts";
+import { runningArkApi } from "../fixtures/arkapi.ts";
 import { TestCluster, rec } from "../fixtures/cluster.ts";
+import { issue } from "../fixtures/permissions.ts";
 import { Harness } from "../fixtures/net.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
 
@@ -35,6 +41,7 @@ mkdirSync(join(dir, "assets"));
 for (const [f, file] of files.entries()) if (file.role !== "mesh") writeFileSync(join(dir, "assets", manifest.files[f]!.name), file.bytes);
 writeFileSync(join(dir, "assets/manifest.json"), JSON.stringify(manifest));
 mkdirSync(join(dir, "admin"));
+writeFileSync(join(dir, "admin/permissions.html"), "<title>the permissions page</title>");
 const running: { stop(): void }[] = [];
 afterAll(() => {
   for (const s of running) s.stop();
@@ -55,18 +62,24 @@ function serve(): { s: RunningServer; at: string; kody: Record<string, string> }
   return { s, at: `http://127.0.0.1:${s.port}`, kody: signIn("kody", MAP) };
 }
 
-/** A world with the map's password and ada joined, whose pages are asked through the site and its gate. */
+/** A world with the map's password and ada joined, whose page's API is asked past its gate, as the world's admin pages are. */
 function world(opts: { dev?: boolean; log?: (line: string) => void } = {}): { h: Harness; ada: ClientSession; adaId: string; ask: (path: string, init?: RequestInit) => Promise<Response> } {
   const h = new Harness({}, 1, 60, { adminPassword: MAP, log: opts.log ?? (() => {}) });
   const ada = h.join("ada");
   h.run(500);
   const gate = { dev: opts.dev ?? false, password: MAP, cluster: null, guesses: h.host.game.sessions.cheatGuesses, tick: () => h.world.tick, staff: staffPasswords(h.host) };
-  const site = {
-    dir, base: "", port: 0, id: "local" as const, who: "1.2.3.4", gate, destinations: () => [], scenes: () => new Response(null),
-    permissions: (call: Request, at: string) => permissionsAdmin(call, at, h.host),
+  const ask = async (path: string, init: RequestInit = {}): Promise<Response> => {
+    const req = new Request(`http://localhost${path}`, init);
+    return refused(req, "1.2.3.4", gate) ?? (await permissionsAdmin(req, new URL(req.url).pathname, h.host))!;
   };
-  const ask = async (path: string, init: RequestInit = {}): Promise<Response> => (await adminSite(new Request(`http://localhost${path}`, init), new URL(`http://localhost${path}`), site))!;
   return { h, ada, adaId: idText(h.host.records.byPid.get(h.client(ada)!.pid)!), ask };
+}
+
+/** The digest of what an import of `text` would do now, as its check answers it. */
+async function checkedDigest(ask: (path: string, init?: RequestInit) => Promise<Response>, kind: ImportKind, text: string, as: Record<string, string>): Promise<string> {
+  const [status, check] = await ask(PERMISSIONS_API, posted({ do: "plan", kind, text }, as)).then(answered);
+  if (status !== 200 || !check.digest) throw new Error(`the check answered ${status}: ${check.why}`);
+  return check.digest;
 }
 
 /** Makes `op` as the operator, which must be done. */
@@ -113,7 +126,7 @@ test("a viewer below admin rank reads the state and can change nothing", async (
   const refusals = await Promise.all([
     ask(PERMISSIONS_API, posted({ do: "op", op: { op: "addGroup", group: "VIP" } }, {})).then(answered),
     ask(PERMISSIONS_API, posted({ do: "op", op: { op: "clearSecret", id: adaId } }, {})).then(answered),
-    ask(PERMISSIONS_API, posted({ do: "import", kind: "commands", text: "Permissions.AddGroup VIP" }, {})).then(answered),
+    ask(PERMISSIONS_API, posted({ do: "import", kind: "commands", text: "Permissions.AddGroup VIP", digest: await checkedDigest(ask, "commands", "Permissions.AddGroup VIP", {}) }, {})).then(answered),
   ]);
   expect(refusals).toEqual([
     [403, { ok: false, why: "Permissions are managed from an admin's rank." }],
@@ -187,7 +200,7 @@ test("the page neither makes nor shows a password, and clears one", async () => 
   h.host.shutdown();
 });
 
-test("a change from another site's page is refused, and the front passes ours", async () => {
+test("a change from another site's page is refused, and the front passes ours to its world", async () => {
   const saves = mkdtempSync(join(tmpdir(), "snark-permission-front-"));
   const log = console.log;
   console.log = () => {};
@@ -197,15 +210,15 @@ test("a change from another site's page is refused, and the front passes ours", 
   const at = `http://127.0.0.1:${front.port}`;
   const top = signIn("kody", CLUSTER);
   try {
-    for (let k = 0; k < 200 && (await fetch(`${at}${PERMISSIONS_STATE}`, { headers: top })).status === 503; k++) await Bun.sleep(50);
-    const state = (await (await fetch(`${at}${PERMISSIONS_STATE}`, { headers: top })).json()) as PermissionsState;
+    for (let k = 0; k < 200 && (await fetch(`${at}/miami${PERMISSIONS_STATE}`, { headers: top })).status === 503; k++) await Bun.sleep(50);
+    const state = (await (await fetch(`${at}/miami${PERMISSIONS_STATE}`, { headers: top })).json()) as PermissionsState;
     expect([state.saved, state.me.rank, state.worlds.map((w) => w.id)]).toEqual([true, RANK_CLUSTER, [miami.host.permissions.world]]);
     const add = { do: "op", op: { op: "addGroup", group: "VIP" } } as const;
-    const other = await fetch(`${at}${PERMISSIONS_API}`, posted(add, { ...top, origin: "https://elsewhere.example" })).then(answered);
-    expect(other).toEqual([403, { ok: false, why: "Open the permissions page on this cluster." }]);
+    const other = await fetch(`${at}/miami${PERMISSIONS_API}`, posted(add, { ...top, origin: "https://elsewhere.example" })).then(answered);
+    expect(other).toEqual([403, { ok: false, why: "Open the permissions page on this world." }]);
     expect(miami.host.permissions.group("VIP")).toBeUndefined();
-    expect(sitePost(PERMISSIONS_API)).toBe(true);
-    const ours = await fetch(`${at}${PERMISSIONS_API}`, posted(add, { ...top, origin: at })).then(answered);
+    expect([sitePost(PERMISSIONS_API), frontPasses("POST", PERMISSIONS_API)]).toEqual([false, true]);
+    const ours = await fetch(`${at}/miami${PERMISSIONS_API}`, posted(add, { ...top, origin: at })).then(answered);
     expect(ours).toEqual([200, { ok: true, why: "" }]);
     expect(miami.host.permissions.group("VIP")?.name).toBe("VIP");
   } finally {
@@ -232,7 +245,9 @@ test("an import's check changes nothing and lists what it would do", async () =>
 test("an import makes its changes as one act and reports what was refused", async () => {
   const { s, at, kody } = serve();
   operator(s.host, { op: "addGroup", group: "Top", rank: RANK_CLUSTER });
-  const [status, made] = await fetch(`${at}${PERMISSIONS_API}`, posted({ do: "import", kind: "commands", text: LIST }, kody)).then(answered);
+  const ask = (path: string, init?: RequestInit): Promise<Response> => fetch(`${at}${path}`, init);
+  const digest = await checkedDigest(ask, "commands", LIST, kody);
+  const [status, made] = await fetch(`${at}${PERMISSIONS_API}`, posted({ do: "import", kind: "commands", text: LIST, digest }, kody)).then(answered);
   expect([status, made.ok, made.ops, made.refused]).toEqual([200, true, 2, [{ what: "Permissions.Grant Top Cheat.fly", why: "That needs the cluster rank." }]]);
   expect(s.host.permissions.group("VIP")!.permissions).toEqual(["Cheat.fly"]);
   const acts = s.host.acts.recent().filter((a) => a.name === "(kody)" && a.kind !== "sign-in");
@@ -244,7 +259,7 @@ test("an import below the top rank is refused", async () => {
   const ada = regular(h, session, adaId);
   const check = (await ask(PERMISSIONS_API, posted({ do: "plan", kind: "commands", text: LIST }, ada)).then(answered))[1];
   expect([check.ok, check.notes?.at(-1)]).toEqual([true, "Applying it needs the map rank."]);
-  expect(await ask(PERMISSIONS_API, posted({ do: "import", kind: "commands", text: LIST }, ada)).then(answered)).toEqual([403, { ok: false, why: "An import needs the map rank." }]);
+  expect(await ask(PERMISSIONS_API, posted({ do: "import", kind: "commands", text: LIST, digest: check.digest! }, ada)).then(answered)).toEqual([403, { ok: false, why: "An import needs the map rank." }]);
   expect(h.host.permissions.group("VIP")).toBeUndefined();
   h.host.shutdown();
 });
@@ -302,4 +317,186 @@ test("the state names a member of another map from the register", () => {
   } finally {
     cluster.cleanup();
   }
+});
+
+/** Two worlds of one cluster behind a front, each with its own map password; the cluster's password too. */
+async function twoWorlds(): Promise<{ at: string; one: RunningServer; two: RunningServer; stop: () => void }> {
+  const saves = mkdtempSync(join(tmpdir(), "snark-permission-two-"));
+  const log = console.log;
+  console.log = () => {};
+  const start = (name: string, password: string): RunningServer => {
+    const config = loadConfig({}, ["-clusterid=perms", `-ClusterDirOverride=${saves}`, `?SessionName=${name}`]).rules;
+    return startServer({ port: 0, clientDir: dir, publicUrl: `/${name.toLowerCase()}`, dbPath: join(saves, `${name}.db`), noBackups: true, config, adminPassword: password, clusterPassword: CLUSTER });
+  };
+  const one = start("Miami", "one-password");
+  const two = start("Tampa", "two-password");
+  const front = startFront(join(saves, "perms"), 0, "127.0.0.1");
+  const at = `http://127.0.0.1:${front.port}`;
+  for (let k = 0; k < 200 && (await fetch(`${at}/tampa${PERMISSIONS_STATE}`)).status === 503; k++) await Bun.sleep(50);
+  return {
+    at, one, two,
+    stop: () => {
+      front.stop();
+      one.stop();
+      two.stop();
+      console.log = log;
+      rmSync(saves, { recursive: true, force: true });
+    },
+  };
+}
+
+test("behind a front, a world's page is answered by that world, with its own gate", async () => {
+  const { at, one, two, stop } = await twoWorlds();
+  try {
+    const [w1, w2] = [one.host.cluster!.world, two.host.cluster!.world];
+    expect(w1).not.toBe(w2);
+    const mine = signIn("kody", "two-password");
+    const theirs = signIn("kody", "one-password");
+    const page = `${at}/admin/worlds/${w2}/permissions/`;
+    expect([(await fetch(page, { headers: mine })).status, (await fetch(page, { headers: theirs })).status]).toEqual([200, 401]);
+    expect([(await fetch(`${at}/tampa${PERMISSIONS_STATE}`, { headers: theirs })).status]).toEqual([401]);
+    const state = (await (await fetch(`${at}/tampa${PERMISSIONS_STATE}`, { headers: mine })).json()) as PermissionsState;
+    expect([state.me, state.worlds.map((w) => w.id)]).toEqual([{ name: "(kody)", id: "", rank: RANK_MAP, world: w2 }, [w1, w2].sort((a, b) => a - b)]);
+    // A staff membership made on Tampa's page holds on Tampa, and Tampa's log has it.
+    const ada = idOf(w1, 1);
+    issue(two.host.permissions, ada);
+    const add = { do: "op", op: { op: "addMember", kind: "survivor", key: ada, group: "Admins" } } as const;
+    expect(await fetch(`${at}/tampa${PERMISSIONS_API}`, posted(add, { ...mine, origin: at })).then(answered)).toEqual([200, { ok: true, why: "" }]);
+    expect(two.host.permissions.membersIn("Admins").map((m) => m.world)).toEqual([w2]);
+    const changes = (s: RunningServer) => s.host.acts.recent().filter((a) => a.kind === "change").map((a) => a.what);
+    expect([changes(two), changes(one)]).toEqual([[`Permissions.Add ${ada} Admins`], []]);
+    // A map admin may not make it for every map; the cluster's admin makes it for this map unless asked.
+    const every = { do: "op", op: { ...add.op, world: 0 } } as const;
+    expect(await fetch(`${at}/tampa${PERMISSIONS_API}`, posted(every, { ...mine, origin: at })).then(answered)).toEqual([403, { ok: false, why: "A staff membership is made on its own world, or by the cluster." }]);
+    const top = signIn("kody", CLUSTER);
+    const here = { do: "op", op: { op: "addMember", kind: "survivor", key: ada, group: "Admins", world: w2, hours: 1 } } as const;
+    expect(await fetch(`${at}/tampa${PERMISSIONS_API}`, posted(here, { ...top, origin: at })).then(answered)).toEqual([200, { ok: true, why: "" }]);
+    expect(two.host.permissions.membersIn("Admins").map((m) => m.world)).toEqual([w2]);
+    // The history is the cluster's: Miami reads Tampa's changes with Tampa's number.
+    const read = (await (await fetch(`${at}/miami${PERMISSIONS_HISTORY}`, { headers: signIn("kody", "one-password") })).json()) as PermissionsHistory;
+    expect(read.rows.map((r) => [r.world, r.name, r.what])).toEqual([
+      [w2, "(kody)", `Permissions.AddTimed ${ada} Admins 1 0`],
+      [w2, "(kody)", `Permissions.Add ${ada} Admins`],
+    ]);
+  } finally {
+    stop();
+  }
+});
+
+test("the front passes the world's POST, and the old cluster addresses go", async () => {
+  const { at, one, stop } = await twoWorlds();
+  try {
+    const w1 = one.host.cluster!.world;
+    const top = signIn("kody", CLUSTER);
+    expect([frontPasses("POST", PERMISSIONS_API), ...OLD_PERMISSIONS_PATHS.map(sitePost)]).toEqual([true, false, false]);
+    for (const old of OLD_PERMISSIONS_PATHS) {
+      expect((await fetch(`${at}${old}`, { headers: top })).status).toBe(404);
+      expect((await fetch(`${at}${old}`, posted({ do: "op", op: { op: "addGroup", group: "VIP" } }, { ...top, origin: at }))).status).toBe(405);
+    }
+    for (const old of ["/admin/permissions", "/admin/permissions/"]) {
+      const res = await fetch(`${at}${old}?tab=1`, { redirect: "manual" });
+      expect([res.status, res.headers.get("location")]).toEqual([308, `/admin/worlds/${w1}/permissions/?tab=1`]);
+    }
+    expect(one.host.permissions.group("VIP")).toBeUndefined();
+  } finally {
+    stop();
+  }
+});
+
+test("a second editor of a whole value is answered 409 with it, and wins sent again", async () => {
+  const { h, ask } = world();
+  const kody = signIn("kody", MAP);
+  operator(h.host, { op: "addGroup", group: "Vip" });
+  const send = (op: PermissionOp) => ask(PERMISSIONS_API, posted({ do: "op", op }, kody)).then(answered);
+  const cases: [PermissionOp, PermissionOp, (was: string | number) => PermissionOp, () => string | number][] = [
+    [{ op: "setChat", group: "Vip", chat: '{"Priority":1}', was: "" }, { op: "setChat", group: "Vip", chat: '{"Priority":2}', was: "" }, (was) => ({ op: "setChat", group: "Vip", chat: '{"Priority":2}', was: was as string }), () => h.host.permissions.group("Vip")!.chat],
+    [{ op: "setDocument", name: CHAT_DOCUMENT, text: "{}", was: "" }, { op: "setDocument", name: CHAT_DOCUMENT, text: '{"x":1}', was: "" }, (was) => ({ op: "setDocument", name: CHAT_DOCUMENT, text: '{"x":1}', was: was as string }), () => h.host.permissions.document(CHAT_DOCUMENT)],
+    [{ op: "setRank", group: "Vip", rank: RANK_ADMIN, was: 0 }, { op: "setRank", group: "Vip", rank: RANK_STAFF, was: 0 }, (was) => ({ op: "setRank", group: "Vip", rank: RANK_STAFF, was: was as number }), () => h.host.permissions.group("Vip")!.rank],
+  ];
+  for (const [first, second, again, now] of cases) {
+    expect(await send(first)).toEqual([200, { ok: true, why: "" }]);
+    const won = now();
+    expect(await send(second)).toEqual([409, { ok: false, why: CHANGED_MEANWHILE, current: won }]);
+    expect(now()).toEqual(won);
+    expect(await send(again(won))).toEqual([200, { ok: true, why: "" }]);
+    expect(now()).not.toEqual(won);
+  }
+  // A refusal over a value changed meanwhile is no refused act: the editor did nothing wrong.
+  expect(h.host.acts.recent().filter((a) => a.kind === "refused")).toEqual([]);
+  // A command sends no `was`, and is never refused for one.
+  expect(h.host.exec("Permissions.Rank Vip open")).not.toMatch(/meanwhile/);
+  h.host.shutdown();
+});
+
+test("an import applies only the plan it showed", async () => {
+  const { s, at, kody } = serve();
+  const ask = (path: string, init?: RequestInit): Promise<Response> => fetch(`${at}${path}`, init);
+  const digest = await checkedDigest(ask, "commands", LIST, kody);
+  const send = (post: PermissionsPost) => ask(PERMISSIONS_API, posted(post, kody)).then(answered);
+  // Another admin makes VIP meanwhile: the import would now make one change fewer.
+  operator(s.host, { op: "addGroup", group: "VIP" });
+  const before = s.host.permissions.snapshot();
+  const [status, changed] = await send({ do: "import", kind: "commands", text: LIST, digest });
+  expect([status, changed.ok, changed.ops, changed.digest !== digest, changed.notes]).toEqual([409, false, 3, true, expect.arrayContaining(["Permissions.Grant VIP Cheat.fly"])]);
+  expect(changed.why).toStartWith("What the import would do changed since it was checked.");
+  expect(s.host.permissions.snapshot()).toEqual(before);
+  expect(await send(JSON.parse(JSON.stringify({ do: "import", kind: "commands", text: LIST })) as PermissionsPost)).toEqual([400, { ok: false, why: "Check the import first: Apply makes only the changes the check showed." }]);
+  expect(s.host.permissions.snapshot()).toEqual(before);
+  const [ok, made] = await send({ do: "import", kind: "commands", text: LIST, digest: changed.digest! });
+  expect([ok, made.ok, made.ops]).toEqual([200, true, 3]);
+  expect(s.host.permissions.group("Top")?.permissions).toEqual(["Cheat.fly"]);
+});
+
+test("a running ArkApi server's database and its -wal give the group only in the log", async () => {
+  const { s, at, kody } = serve();
+  const { main, wal } = runningArkApi(join(dir, "running.db"));
+  const b64 = (b: Uint8Array): string => Buffer.from(b).toString("base64");
+  const check = async (post: PermissionsPost): Promise<PermissionsAnswer> => (await fetch(`${at}${PERMISSIONS_API}`, posted(post, kody)).then(answered))[1];
+  const alone = await check({ do: "plan", kind: "arkapi", text: b64(main) });
+  const both = await check({ do: "plan", kind: "arkapi", text: b64(main), wal: b64(wal) });
+  expect([alone.notes?.includes("Permissions.AddGroup Late"), both.notes?.includes("Permissions.AddGroup Late")]).toEqual([false, true]);
+  expect(alone.notes?.some((n) => n.includes("ends in -wal"))).toBe(true);
+  expect(await check({ do: "plan", kind: "commands", text: LIST, wal: b64(wal) })).toEqual({ ok: false, why: "A -wal file goes only beside an ArkApi database." });
+  const made = await check({ do: "import", kind: "arkapi", text: b64(main), wal: b64(wal), digest: both.digest! });
+  expect([made.ok, s.host.permissions.group("Late")?.permissions]).toEqual([true, ["ArkShop.Kits.late"]]);
+});
+
+test("the history pages newest first and holds no password, hash or address", async () => {
+  const { h, ada, adaId, ask } = world();
+  const kody = signIn("kody", MAP);
+  const password = claimed(h, ada, adaId);
+  for (const g of ["G1", "G2"]) expect(await ask(PERMISSIONS_API, posted({ do: "op", op: { op: "addGroup", group: g } }, kody)).then(answered)).toEqual([200, { ok: true, why: "" }]);
+  const page = async (query: string): Promise<PermissionsHistory> => (await (await ask(`${PERMISSIONS_HISTORY}${query}`, { headers: kody })).json()) as PermissionsHistory;
+  const first = await page("?most=2");
+  expect([first.rows.map((r) => [r.name, r.via, r.what]), first.more]).toEqual([[["(kody)", "page", "Permissions.AddGroup G2"], ["(kody)", "page", "Permissions.AddGroup G1"]], true]);
+  const rest = await page(`?before=${first.rows[1]!.seq}&most=2`);
+  expect([rest.rows.map((r) => [r.name, r.id, r.what]), rest.more]).toEqual([[["ada", adaId, "claimed their own password"], ["(operator)", "", `Permissions.Add ${adaId} Admins`]], false]);
+  const text = JSON.stringify([first, rest]);
+  for (const secret of [password, passwordHash(password), h.host.permissions.secretOf(adaId), "1.2.3.4"]) expect(text).not.toContain(secret);
+  expect((await ask(PERMISSIONS_HISTORY, { method: "POST", headers: kody })).status).toBe(405);
+  h.host.shutdown();
+});
+
+test("the state is answered the same while its key holds, and in full once anything moved", async () => {
+  const { h, ada, adaId, ask } = world();
+  const kody = signIn("kody", MAP);
+  const read = async (key = ""): Promise<PermissionsState | PermissionsSame> => (await (await ask(`${PERMISSIONS_STATE}${key ? `?key=${key}` : ""}`, { headers: kody })).json()) as PermissionsState | PermissionsSame;
+  const full = (await read()) as PermissionsState;
+  expect(await read(full.key)).toEqual({ same: true, key: full.key });
+  const moved = async (what: string, act: () => void): Promise<string> => {
+    const was = ((await read()) as PermissionsState).key;
+    act();
+    const now = (await read(was)) as PermissionsState;
+    expect([what, "same" in now]).toEqual([what, false]);
+    return now.key;
+  };
+  await moved("a change", () => operator(h.host, { op: "addGroup", group: "Vip" }));
+  // A claim, a new survivor, one leaving, a register write and a change from another map each raise no revision here at once.
+  await moved("a claim", () => void claimed(h, ada, adaId));
+  await moved("a new survivor", () => (h.join("bea"), h.run(500)));
+  await moved("a register write", () => issue(h.host.permissions, idOf(7, 3)));
+  await moved("a survivor leaving", () => (ada.close(), h.run(1000)));
+  const older = (await read("stale")) as PermissionsState;
+  expect([older.key !== "", "groups" in older]).toEqual([true, true]);
+  h.host.shutdown();
 });
