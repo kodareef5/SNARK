@@ -258,6 +258,11 @@ export class Permissions {
     return this.reloadIfChanged();
   }
 
+  /** Whether the file could be read at the last look. */
+  get readable(): boolean {
+    return !this.unread;
+  }
+
   /** The accounts and groups whose standing changed since the last call: here, on another world, or by the clock. */
   takeChanged(): Changed[] {
     const out = [...this.changed.values()];

@@ -529,9 +529,9 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
         dir: clientDir, base, port: srv.port ?? 0, id, who, gate,
         destinations: () => host.cluster?.destinations() ?? [],
         scenes: (call) => originAllowed(call.headers.get("origin"), call.headers.get("host"), "")
-          ? titleScenes.admin(call, host.acts) : entryReply({ error: "Open the studio on this cluster." }, 403),
+          ? titleScenes.admin(call, host.acts, host) : entryReply({ error: "Open the studio on this cluster." }, 403),
         screens: (call, at) => call.method === "POST" && !originAllowed(call.headers.get("origin"), call.headers.get("host"), "")
-          ? entryReply({ error: "Open the screens page on this cluster." }, 403) : screensAdmin(call, at, video, () => screenWorld(host), host.acts),
+          ? entryReply({ error: "Open the screens page on this cluster." }, 403) : screensAdmin(call, at, video, () => screenWorld(host), host.acts, host),
       }));
       if (siteAdmin) return siteAdmin;
       const { at, path } = placeOf(base, url.pathname);

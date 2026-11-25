@@ -5,7 +5,7 @@ import { initialShots, loaderScene, type EditableSceneCategory, type ShotCatalog
 import { OPENING_SHOT, validShot, type TitleShot } from "../../shared/title-scene.ts";
 import type { Acts } from "../acts.ts";
 import { entryReply, readEntryJson } from "../survivor-access.ts";
-import { actorOf } from "./gate.ts";
+import { actorOf, stillHolds, type Recheck } from "./gate.ts";
 
 const rowOf = (category: EditableSceneCategory): number => category === "title" ? 1 : 2;
 
@@ -94,8 +94,8 @@ export class TitleScenes {
   private wiki(): WikiSceneCatalog {
     return { recipes: this.built("scene-catalog.json", []), media: this.built("wiki/scene-media.json", {}) };
   }
-  /** The studio's API. A save is written in `acts` as the request's actor's. */
-  async admin(req: Request, acts?: Pick<Acts, "write">): Promise<Response> {
+  /** The studio's API. A save is written in `acts` as the request's actor's, who with `recheck` is judged again once the body is in. */
+  async admin(req: Request, acts?: Pick<Acts, "write">, recheck?: Recheck): Promise<Response> {
     const category = new URL(req.url).searchParams.get("category") ?? "title";
     if (category === "wiki") {
       return req.method === "GET" ? entryReply(this.wiki()) : new Response(null, { status: 405, headers: { Allow: "GET" } });
@@ -109,6 +109,8 @@ export class TitleScenes {
     } catch {
       return entryReply({ error: "Expected a small JSON shot." }, 400);
     }
+    const lost = recheck ? stillHolds(req, recheck) : null;
+    if (lost) return lost;
     if (body.category !== undefined && body.category !== category) return entryReply({ error: "The shot belongs to another category." }, 400);
     const c = this.catalog(category),
       input = body.shot;

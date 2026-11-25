@@ -1,7 +1,7 @@
-// The Permissions page, the Admin log and the dashboard worked in headless Chrome as an admin works them, signed in with
-// HTTP's basic sign-in as a person is, each act judged by what the server then holds. A survivor claims their own password
-// in game over their socket, as a player does. Every console error, uncaught exception and failed request is a fault too,
-// but for those a step expects. No password is printed or written down.
+// The Permissions page, the Admin log, the dashboard and the settings page worked in headless Chrome as an admin works
+// them, signed in with HTTP's basic sign-in as a person is, each act judged by what the server then holds. A survivor
+// claims their own password in game over their socket, as a player does. Every console error, uncaught exception and
+// failed request is a fault too, but for those a step expects. No password is printed or written down.
 
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -11,10 +11,13 @@ import type { ClientSession } from "../../client/core/session.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { OPERATOR } from "../../server/acts.ts";
 import type { Host } from "../../server/host.ts";
+import { Permissions } from "../../server/permissions/permissions.ts";
+import { PermissionStore } from "../../server/permissions/store.ts";
 import { idText } from "../../server/survivor-ids.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { KEY_BYTES, TEXT_CONSOLE, TEXT_GLOBAL } from "../../shared/net/protocol.ts";
 import { CHAT_DOCUMENT, PERMISSIONS_API, PERMISSIONS_STATE } from "../../shared/permissions/page.ts";
+import { RANK_CLUSTER } from "../../shared/ranks.ts";
 import { CHROME_FLAGS } from "../chrome.ts";
 
 /** A survivor the tool stands in the world, with the game's own client session. */
@@ -279,6 +282,8 @@ export async function drive(o: DriveOptions): Promise<string[]> {
   const pagePath = `${origin}/admin/worlds/local/permissions/`;
   const here: Survivor[] = [];
   const passwordsSeen: string[] = [];
+  /** Bea's own password, once she has claimed it again. */
+  let beaPassword = "";
   try {
     const ada = await enter(host, socket, "Ada");
     const bea = await enter(host, socket, "Bea");
@@ -413,6 +418,7 @@ export async function drive(o: DriveOptions): Promise<string[]> {
         // Bea claims again. The old password is refused without being counted, and the new one signs her in.
         const again = await claim(bea);
         if (again.password !== "") passwordsSeen.push(again.password);
+        beaPassword = again.password;
         check("Bea claims a new password", [/^[A-HJ-NP-Z2-9]{4}(?:-[A-HJ-NP-Z2-9]{4}){3}$/.test(again.password), again.password !== password], [true, true]);
         check("the old one no longer works", await say(bea, `enablecheats ${password}`), "that password was replaced or cleared");
         check("and was not counted as a guess", host.game.clients.find((c) => c?.pid === bea.pid)?.cheatAttempts, 0);
@@ -626,6 +632,32 @@ export async function drive(o: DriveOptions): Promise<string[]> {
       await page.press("#sign-out");
       await signIn("", passwords.map, "Signed in as (admin), at the map rank.");
       errorsOf(page, "the dashboard, map password", Array.from({ length: 6 }, () => /401 .*\/admin\/(overview|me)\.json|status of 401/));
+    });
+
+    // 12. Bea on the settings page. Another program takes her out of Admins in the file, as another map would, and her
+    // next change is refused with the reason before this world's poll has read it.
+    await browse(chrome, `${origin}/admin/worlds/local/settings/`, scratch, { user: "Bea", password: beaPassword }, async (as) => {
+      const box = q("#v-XPMultiplier");
+      const set = (value: string): Promise<unknown> => as.run(`(() => { const b = ${box}; b.value = ${JSON.stringify(value)}; b.dispatchEvent(new Event("change")); })()`);
+      if (!(await as.wait(`!!${box}`, 100))) fault("Bea's settings page shows no XPMultiplier");
+      await set("3");
+      await as.wait(`${q("#msg")}.className === "well"`);
+      check("Bea sets a rate from the settings page", host.rules.num("XPMultiplier"), 3);
+      const file = join(scratch, "world.db.permissions.sqlite");
+      if (!existsSync(file)) fault(`no permissions file at ${file}`);
+      // This world looks now, so its next poll is 5 s off: only a look made with the change can see the other write.
+      host.permissions.lookNow();
+      const store = new PermissionStore(file);
+      const elsewhere = new Permissions({ store, world: host.permissions.world });
+      const why = elsewhere.apply({ rank: RANK_CLUSTER, world: host.permissions.world, name: "(another map)" }, { op: "removeMember", kind: "survivor", key: bea.id, group: "Admins", world: host.permissions.world });
+      store.close();
+      if (why !== "") fault(`the other program could not take Bea out of Admins: ${why}`);
+      await set("4");
+      await as.wait(`${q("#msg")}.className === "bad"`);
+      const lowered = "Your groups no longer give you the admin rank. Nothing was changed.";
+      check("her next change is refused with the reason, and changes nothing", [await as.run(`${q("#msg")}.textContent`), host.rules.num("XPMultiplier")], [lowered, 3]);
+      check("the log has it", host.acts.recent().some((a) => a.kind === "refused" && a.name === "Bea" && a.what === `POST /admin/settings: ${lowered}`), true);
+      errorsOf(as, "Bea's settings page", [/request: 403 .*\/admin\/settings/, /log: .*403/]);
     });
   } catch (err) {
     fault(err instanceof Error ? (err.stack ?? err.message) : String(err));

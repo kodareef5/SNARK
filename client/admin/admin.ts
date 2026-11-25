@@ -350,7 +350,7 @@ async function stop(body: { seconds: number } | { cancel: true }): Promise<void>
   $<HTMLButtonElement>("stop-review").disabled = $<HTMLButtonElement>("stop-cancel").disabled = true;
   try {
     const r = await fetch(ctx.api("stop"), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-    if (r.status !== 200 && r.status !== 400) throw Error(`The world answered ${r.status}.`);
+    if (r.status !== 200 && r.status !== 400) throw Error(((await r.json().catch(() => null)) as { why?: string } | null)?.why ?? `The world answered ${r.status}.`);
     const result = await r.json() as { ok: boolean; why: string };
     $("stop-message").textContent = result.ok ? ("cancel" in body ? "Scheduled stop canceled." : "Stop scheduled.") : result.why;
   } catch (e) {

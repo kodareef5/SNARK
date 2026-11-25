@@ -4,10 +4,11 @@
 // own password where their groups make them an admin, with wrong guesses counted as that command counts them.
 
 import { posix } from "node:path";
-import { RANK_ADMIN, RANK_CLUSTER, RANK_MAP, RANK_OPEN, RANK_STAFF } from "../../shared/ranks.ts";
-import { PAGE_ACTOR, type Actor } from "../acts.ts";
+import { RANK_ADMIN, RANK_CLUSTER, RANK_MAP, RANK_NAMES, RANK_OPEN, RANK_STAFF } from "../../shared/ranks.ts";
+import { PAGE_ACTOR, type Actor, type Acts } from "../acts.ts";
 import { sameSecret } from "../commands/core.ts";
 import type { Guesses } from "../guesses.ts";
+import type { Permissions } from "../permissions/permissions.ts";
 import { DUMMY_HASH, passwordHash, sameHash } from "../permissions/secrets.ts";
 import { NAME as SURVIVOR_NAME } from "../sessions.ts";
 
@@ -113,6 +114,34 @@ export function refused(req: Request, who: string, gate: AdminGate): Response | 
   // Round brackets are in no survivor's name, so a typed name can never pass as a survivor's.
   const name = SURVIVOR_NAME.test(typed) ? `(${typed})` : asCluster ? "(cluster password)" : "(map password)";
   return pass(req, gate, { name, id: "", pid: 0, rank, via: "page", from: who, baseRank: rank, open: false });
+}
+
+/** What a change asks of its world as it is made: the view of the permissions, and the log. */
+export interface Recheck {
+  readonly permissions: Pick<Permissions, "lookNow" | "readable" | "actingRank" | "secretOf" | "world">;
+  readonly acts: Pick<Acts, "refused">;
+}
+
+/**
+ * Null where the actor of `req` still holds `need` by the permissions file as it is now, else the logged refusal. A
+ * handler calls it once the body is in, just before its change: the gate judged by a view up to 5 s old, and a body may
+ * come later still. A rank from a host password or a development page is not in the file and is not asked again.
+ */
+export function stillHolds(req: Request, world: Recheck, need = RANK_ADMIN): Response | null {
+  const by = actorOf(req);
+  if (!by.signedHash || by.baseRank >= need) return null;
+  const { permissions } = world;
+  permissions.lookNow();
+  const rank = permissions.actingRank({ rank: by.rank, name: by.name, world: permissions.world, baseRank: by.baseRank, signedIn: { id: by.id, hash: by.signedHash } });
+  if (permissions.readable && rank >= need) return null;
+  const [status, why] = !permissions.readable
+    ? [503, "The permissions file could not be read, so nothing was changed. Try again in a moment."]
+    : permissions.secretOf(by.id) !== by.signedHash
+      ? [403, "Your password was replaced or cleared since this page signed in. Nothing was changed."]
+      : [403, `Your groups no longer give you the ${RANK_NAMES[need]} rank. Nothing was changed.`];
+  // At the rank the gate gave, which the actor proved moments ago.
+  world.acts.refused(by, by.rank, `${req.method} ${new URL(req.url).pathname}`, why);
+  return new Response(JSON.stringify({ ok: false, why, error: why }), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
 }
 
 /** Stamps a request that passed with its own actor, and tells the gate's listener. */

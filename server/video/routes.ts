@@ -5,7 +5,7 @@ import { CLIP_MAX_BYTES, CLIP_MAX_HIGH, CLIP_MAX_KBPS, CLIP_MAX_SECONDS, CLIP_MA
 import { screenAt } from "../../shared/video/programme.ts";
 import { manifestPath } from "../../shared/video/screen.ts";
 import type { Acts } from "../acts.ts";
-import { actorOf, onlyRead } from "../admin/gate.ts";
+import { actorOf, onlyRead, stillHolds, type Recheck } from "../admin/gate.ts";
 import { entryReply, readEntryJson } from "../survivor-access.ts";
 import { type LibraryDoc, type LibraryView, type Refusal, type VideoLibrary } from "./library.ts";
 import { publishClip, takeUpload } from "./upload.ts";
@@ -201,13 +201,15 @@ function editWords(before: LibraryView, after: LibraryView, body: Record<string,
 }
 
 /** POST /admin/screens/edit {revision, op, ...}: one change, refused with 409 if the library moved on. Answers the state. */
-async function edit(req: Request, lib: VideoLibrary, world: ScreenWorld, did: (what: string) => void): Promise<Response> {
+async function edit(req: Request, lib: VideoLibrary, world: ScreenWorld, did: (what: string) => void, holds: () => Response | null): Promise<Response> {
   let body: Record<string, unknown>;
   try {
     body = await readEntryJson(req, 128 * 1024);
   } catch {
     return entryReply({ error: "Expected a small JSON edit." }, 400);
   }
+  const lost = holds();
+  if (lost) return lost;
   if (!Number.isSafeInteger(body.revision)) return entryReply({ error: "Send the revision the page was showing." }, 400);
   const now = Date.now(), before = lib.view(), was = typeof body.clip === "string" ? before.all.get(body.clip) : undefined;
   const done = lib.edit(body.revision as number, (doc, view) => change(doc, view, body, now));
@@ -222,15 +224,17 @@ async function edit(req: Request, lib: VideoLibrary, world: ScreenWorld, did: (w
 
 /**
  * Answers a request under /admin/screens/, or null for any other path. `world` is this world as its players see the ball,
- * and each change is written in `acts` as the request's actor's.
+ * and each change is written in `acts` as the request's actor's. With `recheck`, the actor's rank is judged again once
+ * a change's body is in (gate.ts stillHolds).
  */
-export function screensAdmin(req: Request, path: string, lib: VideoLibrary, world: () => ScreenWorld, acts: Pick<Acts, "write"> | null = null): Promise<Response> | Response | null {
+export function screensAdmin(req: Request, path: string, lib: VideoLibrary, world: () => ScreenWorld, acts: Pick<Acts, "write"> | null = null, recheck: Recheck | null = null): Promise<Response> | Response | null {
   if (!(SCREEN_PATHS as readonly string[]).includes(path)) return null;
   const did = (what: string): void => void acts?.write(actorOf(req), what);
+  const holds = (): Response | null => (recheck ? stillHolds(req, recheck) : null);
   const read = req.method === "GET" || req.method === "HEAD";
   if (path === "/admin/screens/state") return read ? (lib.sweep(), entryReply(screensState(lib, world()))) : new Response(null, { status: 405, headers: { allow: "GET" } });
   if (req.method !== "POST") return new Response(null, { status: 405, headers: { allow: "POST" } });
-  if (path === "/admin/screens/upload") return (lib.sweep(), takeUpload(req, lib, did));
-  if (path === "/admin/screens/clip") return publishClip(req, lib, did);
-  return edit(req, lib, world(), did);
+  if (path === "/admin/screens/upload") return (lib.sweep(), takeUpload(req, lib, did, holds));
+  if (path === "/admin/screens/clip") return publishClip(req, lib, did, holds);
+  return edit(req, lib, world(), did, holds);
 }
