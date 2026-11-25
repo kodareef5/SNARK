@@ -26,6 +26,7 @@ import { BASE_TIERS, asTextured, benchBases, boxBase, layBase } from "./base.ts"
 const profile = process.argv.includes("--profile");
 const firstOnly = process.argv.includes("--first");
 const damageOnly = process.argv.includes("--damage");
+const steadyOnly = process.argv.includes("--steady");
 const at = process.argv.indexOf("--repeat");
 const repeat = at >= 0 ? Number(process.argv[at + 1]) : 1;
 const framesAt = process.argv.indexOf("--frames");
@@ -131,7 +132,7 @@ for (let r = 0; r < repeat; r++) {
     row(`${tier}: triangles submitted`, packet.triangles, "", 1500000);
     if (profile) report(`${tier}: steady frames`, FRAMES);
   }
-  if (firstOnly) continue;
+  if (firstOnly || steadyOnly) continue;
   standOff(0);
   scene.structureDistance = Infinity;
   packet = scene.build(cam, null);

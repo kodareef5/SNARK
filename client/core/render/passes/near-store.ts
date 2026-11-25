@@ -116,6 +116,8 @@ export interface ChunkBatch {
   since: number;
   /** Per range and cell: the box its level is chosen by, x, y, z least then most, in metres: its nodes' trunks, or its pieces whole. */
   cellBox: Float32Array;
+  /** Per range, the box round all its cells as `boxRun` finds it, made when first asked for; NaN for one not yet asked. Null until then. */
+  whole: Float64Array | null;
   /** Per cell: the box round all it draws, as `cellBox` lays them out, tested against the view and the cascades. */
   zone: Float32Array;
   /** Per range and cell, the level it was last drawn at, or -1. */
@@ -192,6 +194,8 @@ export interface ChunkBatch {
   /** The chunks round it whose pieces its trims turn on, a bit each, and the sum of their tables' `placed` when it was built. */
   borders: number;
   borderSum: number;
+  /** The chunks `borders` names that are on the map, by index. */
+  bordered: Int32Array;
   /** What its built pieces hide, as these instances draw them (base-occluders.ts): hide.ts OCCLUDER numbers a plate. */
   plates: Float64Array;
 }
@@ -508,7 +512,7 @@ export class NearStore implements Pass {
       const turned = batch !== undefined && batch.shape !== t.shape && !batch.sized && batch.placed === t.placed;
       const flood = batch !== undefined && ((batch.differ > 0 && this.now - batch.since >= SETTLE) || (batch.holed >= 0 && (this.now - batch.holedLast >= SETTLE || this.now - batch.holed >= FLOOD_MOST)));
       // A chunk whose trims turn on the pieces of the chunks round it is laid out again when one of those gains or loses a piece.
-      const met = batch !== undefined && batch.borders !== 0 && this.bordering(store, chunk, batch.borders) !== batch.borderSum;
+      const met = batch !== undefined && batch.borders !== 0 && this.bordering(store, batch.bordered) !== batch.borderSum;
       if (!batch || learnt || met || batch.mesh !== mesh || (batch.unbent && statics?.bent.bends.has(chunk)) || (batch.shape !== t.shape && !(turned && this.reform(batch, t, chunk, meshOf, colorOf) && (!own || !batch.mesh || this.keeps(batch, t, meshOf, own.drawn, x0, z0)))) || flood) {
         batch = this.rebuild(store, chunk, id, batch, meshOf, colorOf, sizeOf, mesh, own?.drawn ?? null);
         laid += t.high;
@@ -666,16 +670,22 @@ export class NearStore implements Pass {
     if (id < NODE_BUFFERS) this.trims.forget(id);
   }
 
-  /** The sum of `placed` of the tables of the chunks round `chunk` that `borders` names (trims.ts borderBit). */
-  private bordering(store: StructureStore, chunk: number, borders: number): number {
-    const dims = this.world.dims, cx = chunkCx(dims, chunk), cz = chunkCz(dims, chunk);
-    let sum = 0;
+  /** The chunks round `chunk` that `borders` names (trims.ts borderBit) and the map has. */
+  private bordersOf(chunk: number, borders: number): Int32Array {
+    const dims = this.world.dims, cx = chunkCx(dims, chunk), cz = chunkCz(dims, chunk), out: number[] = [];
     for (let dz = -1; dz <= 1; dz++) {
       for (let dx = -1; dx <= 1; dx++) {
         if ((dx === 0 && dz === 0) || (borders & borderBit(dx, dz)) === 0 || cx + dx < 0 || cz + dz < 0 || cx + dx >= dims.chunksX || cz + dz >= dims.chunksZ) continue;
-        sum += store.chunks[(cz + dz) * dims.chunksX + cx + dx]?.placed ?? 0;
+        out.push((cz + dz) * dims.chunksX + cx + dx);
       }
     }
+    return out.length === 0 ? NO_CHUNKS : Int32Array.from(out);
+  }
+
+  /** The sum of `placed` of the tables of `chunks`. */
+  private bordering(store: StructureStore, chunks: Int32Array): number {
+    let sum = 0;
+    for (let k = 0; k < chunks.length; k++) sum += store.chunks[chunks[k]!]?.placed ?? 0;
     return sum;
   }
 
@@ -1082,6 +1092,13 @@ export class NearStore implements Pass {
    */
   private boxRun(from: number, b: ChunkBatch, q: number, mesh: number, c0: number, c1: number, cam: Camera): void {
     const box = b.cellBox, cells = b.cells;
+    // A range drawn whole is boxed as it was the last time.
+    const whole = c0 === 0 && c1 === cells ? (b.whole ??= new Float64Array((b.ranges.length / 3) * 6).fill(NaN)) : null;
+    if (whole && !Number.isNaN(whole[q * 6]!)) {
+      const k = q * 6;
+      if (whole[k]! <= whole[k + 3]!) this.put.boxRows(from, this.packet.drawCount, whole[k]! - cam.x, whole[k + 1]! - cam.y, whole[k + 2]! - cam.z, whole[k + 3]! - cam.x, whole[k + 4]! - cam.y, whole[k + 5]! - cam.z);
+      return;
+    }
     let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
     for (let c = c0; c < c1; c++) {
       const k = (q * cells + c) * 6;
@@ -1094,6 +1111,7 @@ export class NearStore implements Pass {
       y1 = Math.max(y1, box[k + 4]!);
       z1 = Math.max(z1, box[k + 5]! + spread);
     }
+    if (whole) whole.set([x0, y0, z0, x1, y1, z1], q * 6);
     if (x0 <= x1) this.put.boxRows(from, this.packet.drawCount, x0 - cam.x, y0 - cam.y, z0 - cam.z, x1 - cam.x, y1 - cam.y, z1 - cam.z);
   }
 
@@ -1205,6 +1223,7 @@ export class NearStore implements Pass {
         const mesh = meshOf[kind]!, rad = this.radiusOfMesh[mesh]!, cell = block % b.cells;
         const x = t.x[slot]!, y = t.y[slot]!, z = t.z[slot]!;
         grow(b.cellBox, (to * b.cells + cell) * 6, x - rad, y - rad, z - rad, x + rad, y + rad, z + rad);
+        b.whole = null;
         grow(b.zone, cell * 6, x - rad, y - rad, z - rad, x + rad, y + rad, z + rad);
         b.minX = Math.min(b.minX, x - rad);
         b.minY = Math.min(b.minY, y - rad);
@@ -1402,6 +1421,7 @@ export class NearStore implements Pass {
     // as they come, so a sector's are drawn once it has (city.ts CityStatics.bent).
     const city = bent > 0 ? this.world.city?.statics : undefined, map = city?.bent, from = map ? map.first[chunk]! : 0, rows = map ? map.first[chunk + 1]! - from : 0;
     const bends = bent > 0 ? new Int16Array(count * 8) : null, chunkBends = map?.bends.get(chunk);
+    const bordered = trims && trims.borders !== 0 ? this.bordersOf(chunk, trims.borders) : NO_CHUNKS;
     const b: ChunkBatch = {
       bends,
       unbent: bent > 0 && !chunkBends,
@@ -1412,7 +1432,8 @@ export class NearStore implements Pass {
       trimFirst: trimCount > 0 ? trimFirst : null,
       trimAt: trimCount > 0 ? new Uint32Array(trimCount) : null,
       borders: trims?.borders ?? 0,
-      borderSum: trims && trims.borders !== 0 ? this.bordering(store, chunk, trims.borders) : 0,
+      bordered,
+      borderSum: this.bordering(store, bordered),
       plates: NO_PLATES,
       shape: t.shape,
       placed: t.placed,
@@ -1432,6 +1453,7 @@ export class NearStore implements Pass {
       since: this.now,
       cellFirst: new Uint32Array(n * (blocks + 1)),
       cellBox: new Float32Array(n * cells * 6),
+      whole: null,
       zone: new Float32Array(cells * 6),
       cellLevel: new Int8Array(n * cells).fill(-1),
       crown: new Int8Array(n).fill(-1),
@@ -1701,8 +1723,10 @@ export class NearStore implements Pass {
   }
 }
 
-/** Sets boxes of six, least then most, to hold nothing. */
 const NO_PLATES = new Float64Array(0);
+const NO_CHUNKS = new Int32Array(0);
+
+/** Sets boxes of six, least then most, to hold nothing. */
 
 function emptyBoxes(box: Float32Array): void {
   for (let k = 0; k < box.length; k += 6) {
