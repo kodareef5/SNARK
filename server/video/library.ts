@@ -8,12 +8,16 @@ import { join } from "node:path";
 import { SCREENS, channelType, defaultScreen, isImage, type Channel, type Clip, type Screen, type ScreenType } from "../../shared/video/clip.ts";
 import type { Timed } from "../../shared/video/programme.ts";
 
-/** What the database keeps: uploaded clips in the order they were added, the channels, the screens, the hidden starters. */
+/**
+ * What the database keeps: uploaded items in the order they were added, the channels, the screens, the hidden starters,
+ * and the types a starter is offered on where an admin changed them.
+ */
 export interface LibraryDoc {
   clips: Clip[];
   channels: Channel[];
   screens: Screen[];
   hidden: string[];
+  types?: Record<string, ScreenType[]>;
 }
 
 /** An upload checked and in place but not yet published, with what its boxes said. */
@@ -27,6 +31,8 @@ export interface Pending {
   readonly bytes: number;
   readonly audio: boolean;
   readonly at: number;
+  /** "image" for a still, whose seconds, rate and sound are 0. */
+  readonly kind?: "image";
 }
 
 /** A default channel as the starter file lists it: its name, its clips' ids in order, and whether it shuffles. */
@@ -80,9 +86,9 @@ export const PENDING_MS = 60 * 60 * 1000;
 export const MANIFEST_KEEP_MS = 60 * 60 * 1000;
 
 /** A file name's part from a title: lower case, dashes between words, at most 40 letters. */
-export function slugOf(title: string): string {
+export function slugOf(title: string, none = "clip"): string {
   const s = title.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40).replace(/-+$/, "");
-  return s || "clip";
+  return s || none;
 }
 
 /** An edit that failed: the status to answer and what to say. */
@@ -153,7 +159,9 @@ export class VideoLibrary {
       const read = JSON.parse(readFileSync(this.startersFile, "utf8")) as Starters;
       const ids = new Set(read.clips.map((c) => c.id));
       // A channel keeps the clips the file holds; one left with none is left out.
-      const channels = (read.channels ?? []).map((c) => ({ name: c.name, items: c.items.filter((id) => ids.has(id)), shuffle: c.shuffle === true })).filter((c) => c.items.length > 0);
+      const channels = (read.channels ?? [])
+        .map((c) => ({ name: c.name, items: c.items.filter((id) => ids.has(id)), shuffle: c.shuffle === true, ...(c.type ? { type: c.type } : {}), ...(c.still ? { still: c.still } : {}) }))
+        .filter((c) => c.items.length > 0);
       this.starters = { clips: read.clips.map((c) => ({ ...c, starter: true })), channels };
     } catch {
       this.starters = { clips: [], channels: [] };
@@ -182,8 +190,8 @@ export class VideoLibrary {
     // A type the doc was written before has its screen as a new library's: on its first channel, if it has one.
     for (const s of SCREENS) if (!screens.has(s)) screens.set(s, defaultScreen(s, doc.channels.find((c) => channelType(c) === s)?.name));
     doc.screens = [...screens.values()];
-    const all = new Map<string, Clip>();
-    for (const c of [...this.starters.clips, ...doc.clips]) if (!all.has(c.id)) all.set(c.id, c);
+    const all = new Map<string, Clip>(), types = doc.types ?? {};
+    for (const c of [...this.starters.clips, ...doc.clips]) if (!all.has(c.id)) all.set(c.id, c.starter && types[c.id] ? { ...c, types: types[c.id] } : c);
     const hidden = new Set(doc.hidden);
     const manifest = [...all.values()].filter((c) => !(c.starter && hidden.has(c.id)));
     const manifestId = this.writeManifest(manifest, doc.channels);
@@ -250,7 +258,7 @@ export class VideoLibrary {
 
   /** A media file's place on disk from its served path, or "" for a path that is not one of ours. */
   fileOf(served: string): string {
-    const name = /^\/media\/([a-z0-9-]+\.[0-9a-f]{16}\.(?:mp4|jpg))$/.exec(served)?.[1];
+    const name = /^\/media\/([a-z0-9-]+\.[0-9a-f]{16}\.(?:mp4|jpg|png|webp))$/.exec(served)?.[1];
     return name ? join(this.media, name) : "";
   }
 

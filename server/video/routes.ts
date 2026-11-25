@@ -1,18 +1,24 @@
 // The admin page's API for the cluster's screens, under /admin/screens/: what the library holds and plays, uploads, and
 // edits. The caller has checked the admin password and, for a POST, the page's origin (server/admin/site.ts).
 import { rmSync } from "node:fs";
-import { CLIP_MAX_BYTES, CLIP_MAX_HIGH, CLIP_MAX_KBPS, CLIP_MAX_SECONDS, CLIP_MAX_WIDE, COLOUR_PARTS, COLOUR_RATE, SCENE_SHOW, SCREENS, heldSceneOf, type Channel, type Screen } from "../../shared/video/clip.ts";
+import {
+  CLIP_MAX_BYTES, CLIP_MAX_HIGH, CLIP_MAX_KBPS, CLIP_MAX_SECONDS, CLIP_MAX_WIDE, COLOUR_PARTS, COLOUR_RATE, IMAGE_MAX_BYTES, IMAGE_MAX_LONG, IMAGE_TYPES, SCENE_SHOW, SCREENS, STILL_SECONDS,
+  channelType, heldSceneOf, isImage, isScreenType, offeredOn, type Channel, type Clip, type Screen, type ScreenType,
+} from "../../shared/video/clip.ts";
 import { screenAt } from "../../shared/video/programme.ts";
 import { manifestPath } from "../../shared/video/screen.ts";
 import { entryReply, readEntryJson } from "../survivor-access.ts";
 import { type LibraryDoc, type LibraryView, type Refusal, type VideoLibrary } from "./library.ts";
-import { publishClip, takeUpload } from "./upload.ts";
+import { publishClip, takeImage, takeUpload, typesOf } from "./upload.ts";
 
 const CHANNELS_MAX = 32;
 const ITEMS_MAX = 200;
 const NAME_MAX = 40;
+/** The seconds a channel may hold each image for. */
+const STILL_MIN = 2;
+const STILL_MAX = 120;
 
-export const SCREEN_PATHS = ["/admin/screens/state", "/admin/screens/upload", "/admin/screens/clip", "/admin/screens/edit"] as const;
+export const SCREEN_PATHS = ["/admin/screens/state", "/admin/screens/upload", "/admin/screens/clip", "/admin/screens/edit", "/admin/screens/image"] as const;
 /** The paths that take a POST, which the front passes on (server/front.ts). */
 export const SCREEN_POSTS: readonly string[] = SCREEN_PATHS.slice(1);
 
@@ -38,13 +44,18 @@ export function screensState(lib: VideoLibrary, world: ScreenWorld, now = Date.n
     night,
     world,
     manifest: { id: view.manifestId, path: manifestPath(view.manifestId) },
-    caps: { wide: CLIP_MAX_WIDE, high: CLIP_MAX_HIGH, kbps: CLIP_MAX_KBPS, seconds: CLIP_MAX_SECONDS, bytes: CLIP_MAX_BYTES, colourRate: COLOUR_RATE, colourParts: COLOUR_PARTS },
+    caps: {
+      wide: CLIP_MAX_WIDE, high: CLIP_MAX_HIGH, kbps: CLIP_MAX_KBPS, seconds: CLIP_MAX_SECONDS, bytes: CLIP_MAX_BYTES, colourRate: COLOUR_RATE, colourParts: COLOUR_PARTS,
+      imageLong: IMAGE_MAX_LONG, imageBytes: IMAGE_MAX_BYTES, imageTypes: IMAGE_TYPES, still: STILL_SECONDS, stillMin: STILL_MIN, stillMax: STILL_MAX,
+    },
     clips: [...view.all.values()].map((c) => ({
       ...c,
+      kind: isImage(c) ? "image" : "clip",
+      types: SCREENS.filter((s) => offeredOn(c, s)),
       hidden: c.starter && hidden.has(c.id),
-      kbps: Math.round((c.bytes * 8) / c.seconds / 1000),
-      // What each player watching it downloads a second.
-      kBps: Math.round(c.bytes / c.seconds / 100) / 10,
+      kbps: isImage(c) ? 0 : Math.round((c.bytes * 8) / c.seconds / 1000),
+      // What each player watching it downloads a second; an image is fetched once.
+      kBps: isImage(c) ? 0 : Math.round(c.bytes / c.seconds / 100) / 10,
     })),
     channels: view.doc.channels,
     screens: view.doc.screens.map((s) => ({ ...s, playing: screenAt(s, view.channels, view.timed, now, night) })),
@@ -54,34 +65,55 @@ export function screensState(lib: VideoLibrary, world: ScreenWorld, now = Date.n
 
 const bad = (error: string): Refusal => ({ status: 400, error });
 const isName = (n: unknown): n is string => typeof n === "string" && n.trim() === n && n.length > 0 && n.length <= NAME_MAX && n !== "scenes" && !n.startsWith(SCENE_SHOW);
-/** Whether `show` is something a screen can show: the scenes, a scene held, or a channel there is. */
-const canShow = (doc: LibraryDoc, show: unknown): show is string =>
-  typeof show === "string" && (show === "scenes" || heldSceneOf(show) >= 0 || doc.channels.some((c) => c.name === show));
+const noScreen = (): Refusal => bad(`There are screens ${SCREENS.join(", ")}.`);
 
-/** The channels a page sent, as the library keeps them: each epoch kept by name unless it is reset. */
+/** Whether `show` is something a screen of `type` can show: the scenes, a channel of its type, or for the ball a scene held. */
+const canShow = (channels: readonly Channel[], type: ScreenType, show: unknown): show is string =>
+  typeof show === "string" && (show === "scenes" || (type === "orb" && heldSceneOf(show) >= 0) || channels.some((c) => c.name === show && channelType(c) === type));
+const cannotShow = (type: ScreenType): Refusal => bad(type === "orb" ? "Show the scenes, a scene, or a channel there is." : `Show nothing, or a channel for ${type} screens.`);
+
+/** A screen showing what it can no longer show goes back to the scenes, or dark; a once of an item it is not offered stops. */
+function settle(doc: LibraryDoc, all: ReadonlyMap<string, Clip>): void {
+  doc.screens = doc.screens.map((s) => {
+    let next = canShow(doc.channels, s.screen, s.show) ? s : { ...s, show: "scenes" };
+    const once = next.once ? all.get(next.once.clip) : undefined;
+    if (next.once && !(once && offeredOn(once, s.screen))) next = { ...next, once: null };
+    return next;
+  });
+}
+
+/** The channels a page sent, every type's, as the library keeps them: each epoch kept by name unless it is reset. */
 function setChannels(doc: LibraryDoc, view: LibraryView, sent: unknown, now: number): Refusal | null {
   if (!Array.isArray(sent) || sent.length > CHANNELS_MAX) return bad(`Send up to ${CHANNELS_MAX} channels.`);
   const out: Channel[] = [];
   for (const c of sent as Record<string, unknown>[]) {
     if (!c || !isName(c.name)) return bad(`A channel's name is 1 to ${NAME_MAX} letters, and not "scenes" or "${SCENE_SHOW}…".`);
+    // One list holds every type's channels, so a name is unique across them all.
     if (out.some((o) => o.name === c.name)) return bad(`Two channels are named ${c.name}.`);
+    if (c.type !== undefined && !isScreenType(c.type)) return bad(`Channel ${c.name} is for ${SCREENS.join(", ")} screens.`);
+    const type: ScreenType = c.type ?? "orb";
+    if (c.still !== undefined && !(typeof c.still === "number" && c.still >= STILL_MIN && c.still <= STILL_MAX)) return bad(`Channel ${c.name} holds an image ${STILL_MIN} to ${STILL_MAX} seconds.`);
     if (!Array.isArray(c.items) || c.items.length > ITEMS_MAX || !c.items.every((i) => typeof i === "string" && view.all.has(i))) return bad(`Channel ${c.name} lists a clip the library does not hold.`);
+    const off = (c.items as string[]).find((i) => !offeredOn(view.all.get(i)!, type));
+    if (off) return bad(`Channel ${c.name} lists ${view.all.get(off)!.title}, which is not offered on ${type} screens.`);
     const was = view.channels.get(c.name);
-    out.push({ name: c.name, items: c.items as string[], shuffle: c.shuffle === true, epoch: was && c.reset !== true ? was.epoch : now });
+    out.push({
+      name: c.name, items: c.items as string[], shuffle: c.shuffle === true, epoch: was && channelType(was) === type && c.reset !== true ? was.epoch : now,
+      ...(type !== "orb" ? { type } : {}), ...(c.still !== undefined ? { still: c.still as number } : {}),
+    });
   }
   doc.channels = out;
-  // A screen showing a channel that is gone goes back to the scenes.
-  doc.screens = doc.screens.map((s) => (s.show === "scenes" || heldSceneOf(s.show) >= 0 || out.some((c) => c.name === s.show) ? s : { ...s, show: "scenes" }));
+  settle(doc, view.all);
   return null;
 }
 
 /** One screen's fields changed: show, mode, fill, sound, night. */
 function setScreen(doc: LibraryDoc, body: Record<string, unknown>): Refusal | null {
   const at = doc.screens.findIndex((s) => s.screen === body.screen);
-  if (at < 0) return bad(`There are screens ${SCREENS.join(", ")}.`);
+  if (at < 0) return noScreen();
   const was = doc.screens[at]!, next: { -readonly [K in keyof Screen]: Screen[K] } = { ...was };
   if (body.show !== undefined) {
-    if (!canShow(doc, body.show)) return bad("Show the scenes, a scene, or a channel there is.");
+    if (!canShow(doc.channels, was.screen, body.show)) return cannotShow(was.screen);
     next.show = body.show;
   }
   if (body.mode !== undefined) {
@@ -97,35 +129,52 @@ function setScreen(doc: LibraryDoc, body: Record<string, unknown>): Refusal | nu
   return null;
 }
 
+/** The types an item is offered on, changed: an upload's own, a starter's kept apart. It leaves channels of types it is taken from. */
+function setTypes(doc: LibraryDoc, view: LibraryView, clip: Clip | undefined, sent: unknown): Refusal | null {
+  if (!clip) return bad("Offer an item the library holds.");
+  const types = typesOf(sent, undefined);
+  if (typeof types === "string" || !types) return bad(typeof types === "string" ? types : "Send the types it is offered on.");
+  const at = doc.clips.findIndex((c) => c.id === clip.id);
+  if (at >= 0) doc.clips[at] = { ...doc.clips[at]!, types };
+  else doc.types = { ...doc.types, [clip.id]: types };
+  doc.channels = doc.channels.map((c) => (types.includes(channelType(c)) ? c : { ...c, items: c.items.filter((i) => i !== clip.id) }));
+  settle(doc, new Map([...view.all, [clip.id, { ...clip, types }]]));
+  return null;
+}
+
 /** The change an edit names, made to `doc`. */
 function change(doc: LibraryDoc, view: LibraryView, body: Record<string, unknown>, now: number): Refusal | null {
   const screen = doc.screens.findIndex((s) => s.screen === body.screen);
+  const type = screen >= 0 ? doc.screens[screen]!.screen : null;
   const clip = typeof body.clip === "string" ? view.all.get(body.clip) : undefined;
+  /** Plays `clip` once on the screen, if the library shows it and it is offered there. */
+  const once = (): Refusal | null => {
+    if (screen < 0) return noScreen();
+    if (!clip || !view.timed.has(clip.id)) return bad("Play a clip the library shows.");
+    if (!offeredOn(clip, type!)) return bad(`${clip.title} is not offered on ${type} screens.`);
+    doc.screens[screen] = { ...doc.screens[screen]!, once: { clip: clip.id, from: now } };
+    return null;
+  };
   switch (body.op) {
     case "channels":
       return setChannels(doc, view, body.channels, now);
     case "screen":
       return setScreen(doc, body);
     case "once":
-      if (screen < 0) return bad(`There are screens ${SCREENS.join(", ")}.`);
-      if (!clip || !view.timed.has(clip.id)) return bad("Play a clip the library shows.");
-      doc.screens[screen] = { ...doc.screens[screen]!, once: { clip: clip.id, from: now } };
-      return null;
+      return once();
     case "take":
-      // What goes live now: a clip plays once over what the screen shows; anything else becomes what it shows.
-      if (screen < 0) return bad(`There are screens ${SCREENS.join(", ")}.`);
-      if (body.clip !== undefined) {
-        if (!clip || !view.timed.has(clip.id)) return bad("Play a clip the library shows.");
-        doc.screens[screen] = { ...doc.screens[screen]!, once: { clip: clip.id, from: now } };
-        return null;
-      }
-      if (!canShow(doc, body.show)) return bad("Show the scenes, a scene, or a channel there is.");
+      // What goes live now: an item plays once over what the screen shows; anything else becomes what it shows.
+      if (screen < 0) return noScreen();
+      if (body.clip !== undefined) return once();
+      if (!canShow(doc.channels, type!, body.show)) return cannotShow(type!);
       doc.screens[screen] = { ...doc.screens[screen]!, show: body.show, once: null };
       return null;
     case "stop":
-      if (screen < 0) return bad(`There are screens ${SCREENS.join(", ")}.`);
+      if (screen < 0) return noScreen();
       doc.screens[screen] = { ...doc.screens[screen]!, once: null };
       return null;
+    case "types":
+      return setTypes(doc, view, clip, body.types);
     case "rename": {
       const at = doc.clips.findIndex((c) => c.id === body.clip);
       const title = typeof body.title === "string" ? body.title.replace(/\s+/g, " ").trim() : "";
@@ -150,7 +199,7 @@ function change(doc: LibraryDoc, view: LibraryView, body: Record<string, unknown
       if (body.op === "hide") doc.hidden.push(clip.id);
       return null;
     default:
-      return bad("The op is channels, screen, take, once, stop, rename, delete, hide or unhide.");
+      return bad("The op is channels, screen, take, once, stop, types, rename, delete, hide or unhide.");
   }
 }
 
@@ -178,6 +227,7 @@ export function screensAdmin(req: Request, path: string, lib: VideoLibrary, worl
   if (path === "/admin/screens/state") return read ? (lib.sweep(), entryReply(screensState(lib, world()))) : new Response(null, { status: 405, headers: { allow: "GET" } });
   if (req.method !== "POST") return new Response(null, { status: 405, headers: { allow: "POST" } });
   if (path === "/admin/screens/upload") return (lib.sweep(), takeUpload(req, lib));
+  if (path === "/admin/screens/image") return (lib.sweep(), takeImage(req, lib));
   if (path === "/admin/screens/clip") return publishClip(req, lib);
   return edit(req, lib, world());
 }

@@ -2,7 +2,7 @@
 // file checked against the caps with the ffmpeg line that brings it under them, and a clip's colour track made from
 // small frames, each band averaged in linear light and each second cut into COLOUR_RATE samples.
 
-import { COLOUR_PARTS, type Channel, type Clip, type Screen } from "../../../shared/video/clip.ts";
+import { COLOUR_PARTS, isImage, type Channel, type Clip, type Screen, type ScreenType } from "../../../shared/video/clip.ts";
 import type { Playing, Timed } from "../../../shared/video/programme.ts";
 
 /** The caps as the state sends them. */
@@ -14,9 +14,23 @@ export interface Caps {
   readonly bytes: number;
   readonly colourRate: number;
   readonly colourParts: number;
+  /** A still's longest side and size, the types it may be, and the seconds a channel holds one: by default, at least and at most. */
+  readonly imageLong?: number;
+  readonly imageBytes?: number;
+  readonly imageTypes?: readonly string[];
+  readonly still?: number;
+  readonly stillMin?: number;
+  readonly stillMax?: number;
 }
 
-export type StateClip = Clip & { readonly hidden: boolean; readonly kbps: number; readonly kBps: number };
+/** An item as the state lists it: its kind, and every type it is offered on. An image's rates are 0. */
+export type StateClip = Omit<Clip, "kind" | "types"> & {
+  readonly kind: "clip" | "image";
+  readonly types: readonly ScreenType[];
+  readonly hidden: boolean;
+  readonly kbps: number;
+  readonly kBps: number;
+};
 export type StateScreen = Screen & { readonly playing: Playing | null };
 
 /** An upload that has its file in place and waits for its poster and colour track. */
@@ -27,6 +41,7 @@ export interface PendingClip {
   readonly seconds: number;
   readonly bytes: number;
   readonly at: number;
+  readonly kind?: "image";
 }
 
 /** GET /admin/screens/state (server/video/routes.ts). */
@@ -44,8 +59,9 @@ export interface ScreensState {
   readonly pending: readonly PendingClip[];
 }
 
-/** What a screen may play: the clips that are not hidden, by id. */
-export const timedOf = (clips: readonly StateClip[]): Map<string, Timed> => new Map(clips.filter((c) => !c.hidden).map((c) => [c.id, { id: c.id, seconds: c.seconds }]));
+/** What a screen may play: the items that are not hidden, by id, an image marked so its channel times it. */
+export const timedOf = (clips: readonly StateClip[]): Map<string, Timed> =>
+  new Map(clips.filter((c) => !c.hidden).map((c) => [c.id, isImage(c) ? { id: c.id, seconds: 0, image: true } : { id: c.id, seconds: c.seconds }]));
 
 /** Seconds as m:ss, or h:mm:ss from an hour. */
 export function lengthText(seconds: number): string {
