@@ -67,3 +67,11 @@ What was kept from each archive:
 
 Downloaded on 2026-11-20. The file says its mesh and motion were made with AI by Patch's anymove
 (github.com/patch-gg/anymove). It is kept unchanged.
+
+## FlexUnit
+
+| Folder | Source | License | Used for |
+| --- | --- | --- | --- |
+| `flexunit/ufo-spaceship` | [3D Game Ready UFO spaceship](https://flexunit.itch.io/3d-game-ready-ufo-spaceship), `UFO_Source.blend` (SHA-256 `5ce0afd1beb27a2e1c1ee626e4c2ef21dbd79b5e8a6727266d09243ee9de093a`) and `UFO_Low_Poly.fbx` (`fc0bc64722dda4694df3d94f34ac7caed14195df76ef40473030beee6821ca92`) | itch.io "Creative Commons Zero v1.0 Universal", captured in `LICENSE.txt` | The map events' UFO, its wreck and its core (`assets/source/core/events/ufo/`): its turned profile, windows and lights, read by `convert.py` into `ref/flexunit.json` |
+
+Downloaded by the owner on 2026-11-22 and copied unchanged on 2026-11-23.
