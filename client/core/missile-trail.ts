@@ -88,7 +88,8 @@ export class MissileTrail implements FramePart {
       }
       fire.at(t.key, x, y, z, dx, dy, dz);
     }
-    for (const [id, t] of this.trails) {
+    for (const id of this.trails.keys()) {
+      const t = this.trails.get(id)!;
       if (t.seen === frame) continue;
       if (t.leg) fire.end(t.key, nowMs);
       this.trails.delete(id);

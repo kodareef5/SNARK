@@ -126,6 +126,6 @@ export class JetParts {
   /** Forgets the jets not drawn for a while. Once a frame. */
   sweep(clock: number): void {
     if (this.eased.size === 0) return;
-    for (const [id, e] of this.eased) if (clock - e.at > FORGET) this.eased.delete(id);
+    for (const id of this.eased.keys()) if (clock - this.eased.get(id)!.at > FORGET) this.eased.delete(id);
   }
 }
