@@ -5,11 +5,12 @@
 // and whatever look/ holds. This lays them over tools/maps/defaults.json and sources.json into a work folder,
 // var/mapdata/<city>/<cut>/<city>/, one for each centre and bounds so a new cut never reads another's downloads, and runs
 // the stages there. Each stage is run again only when what it reads, its own code or a stage before it changed
-// (stages.json beside them). The map is var/maps/<city>.snmap. Nothing it makes goes into git: the downloads are
-// a build's, kept on a machine that does map work and fetched again where they are gone.
+// (stages.json beside them). The map is var/maps/<city>.snmap, shared by every cut: var/maps/<city>/stamp.json names the
+// cut and build key that made it, and the build runs again unless they are this run's. Nothing it makes goes into git:
+// the downloads are a build's, kept on a machine that does map work and fetched again where they are gone.
 
 import { createHash } from "node:crypto";
-import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dir, "../..");
@@ -52,7 +53,16 @@ const COMMON = join(LEGACY, "common.py");
 // A stage's key is the stage before it's, its code, and what it reads beyond the city's settings (`own`: authored files
 // in the city's folder and settings sections no stage before it reads). Too eager is safe; a key that misses an input
 // keeps a stale layer, so a section goes in `own` only where one stage alone reads it.
-const STAGES: { name: string; run: (work: string, city: string) => string[]; code: string[]; own?: { files: string[]; sections: string[]; folders?: string[] } }[] = [
+export interface Stage {
+  name: string;
+  run: (work: string, city: string) => string[];
+  code: string[];
+  own?: { files: string[]; sections: string[]; folders?: string[] };
+  /** It writes `<maps>/<city>.snmap`, which every cut shares, and stands done only while the stamp beside it is its own. */
+  stamped?: boolean;
+}
+
+export const STAGES: Stage[] = [
   { name: "frame", run: py("frame.py", "--force"), code: [join(LEGACY, "frame.py")] },
   { name: "fetch", run: py("fetch.py", "tiger", "dem", "nlcd", "fema", "bathymetry", "osm"), code: [join(LEGACY, "fetch.py"), join(LEGACY, "osm_local.py"), ...["buildings", "features", "osm", "streets", "ways"].map((q) => join(LEGACY, `${q}.overpassql`))] },
   { name: "prepare", run: py("prepare.py"), code: [join(LEGACY, "prepare.py"), join(LEGACY, "streets.py")] },
@@ -67,7 +77,7 @@ const STAGES: { name: string; run: (work: string, city: string) => string[]; cod
   { name: "vocabulary", run: py("vocabulary.py"), code: [join(LEGACY, "vocabulary.py"), join(HERE, "rules/tables.json"), join(ROOT, "tools/mapworld/rules/default.json")],
     own: { files: ["rules.json", "places.json", "compositions.json", "districts.json"], sections: ["ruins"] } },
   // The build reads the city's street overlay (streets/*.jsonl) alone, so an entry there builds the map again and no stage before it.
-  { name: "build", run: (work) => ["bun", join(ROOT, "tools/mapworld/build.ts"), work], code: importGraph(join(ROOT, "tools/mapworld/build.ts")), own: { files: [], sections: [], folders: ["streets"] } },
+  { name: "build", run: (work) => ["bun", join(ROOT, "tools/mapworld/build.ts"), work], code: importGraph(join(ROOT, "tools/mapworld/build.ts")), own: { files: [], sections: [], folders: ["streets"] }, stamped: true },
 ];
 
 const readJson = (path: string): Json => JSON.parse(readFileSync(path, "utf8")) as Json;
@@ -123,26 +133,70 @@ function preflight(name: string, settings: Json, source: string): void {
   if (long.length > 0) fail(`spawn point names over 48 bytes: ${long.join(", ")}`);
 }
 
-function main(): void {
-  const args = process.argv.slice(2);
-  const name = args[0];
-  if (!name || name.startsWith("-")) {
-    console.error("bun tools/maps/city.ts <city> [--from <stage>] [--to <stage>] [--only <stage>]");
-    process.exit(2);
+/** Where a run reads and writes, and which stages it runs; a test gives its own table and folders. */
+export interface CityRun {
+  stages?: Stage[];
+  /** The city's authored folder; assets/source/maps/<city>. */
+  source?: string;
+  /** Where the cuts' work folders go; var/mapdata. */
+  mapdata?: string;
+  /** Where the map and its stamp go; var/maps. */
+  maps?: string;
+  /** The stages' working directory; the repository. */
+  cwd?: string;
+  from?: string;
+  to?: string;
+  only?: string;
+}
+
+/** `from` copied to `to` with nothing more: a file gone from `from` goes from `to`, and so does `to` when `from` is gone. */
+function mirror(from: string, to: string): void {
+  if (!existsSync(from)) {
+    rmSync(to, { recursive: true, force: true });
+    return;
   }
-  const opt = (flag: string): string | undefined => (args.includes(flag) ? args[args.indexOf(flag) + 1] : undefined);
-  const names = STAGES.map((s) => s.name);
-  const only = opt("--only");
-  const from = names.indexOf(only ?? opt("--from") ?? names[0]!);
-  const to = names.indexOf(only ?? opt("--to") ?? names[names.length - 1]!);
+  cpSync(from, to, { recursive: true });
+  const prune = (dir: string): void => {
+    for (const e of readdirSync(join(to, dir), { withFileTypes: true })) {
+      const rel = join(dir, e.name);
+      if (!existsSync(join(from, rel))) rmSync(join(to, rel), { recursive: true, force: true });
+      else if (e.isDirectory()) prune(rel);
+    }
+  };
+  prune("");
+}
+
+/** Whether `<maps>/<city>/stamp.json` names this cut and key, and the map beside it is the file it describes. */
+function stampHolds(maps: string, city: string, cut: string, key: string): boolean {
+  const path = join(maps, city, "stamp.json");
+  const file = join(maps, `${city}.snmap`);
+  if (!existsSync(path) || !existsSync(file)) return false;
+  try {
+    const stamp = readJson(path) as { cut?: string; key?: string; bytes?: number; mtimeMs?: number };
+    const made = statSync(file);
+    return stamp.cut === cut && stamp.key === key && stamp.bytes === made.size && stamp.mtimeMs === made.mtimeMs;
+  } catch {
+    return false;
+  }
+}
+
+/** One run of a city's stages: the CLI's whole work, its folders and stage table open to a test. */
+export function runCity(name: string, o: CityRun = {}): { cut: string; work: string; ran: string[]; current: boolean } {
+  const stages = o.stages ?? STAGES;
+  const cwd = o.cwd ?? ROOT;
+  const maps = o.maps ?? join(ROOT, "var/maps");
+  const names = stages.map((s) => s.name);
+  const only = o.only;
+  const from = names.indexOf(only ?? o.from ?? names[0]!);
+  const to = names.indexOf(only ?? o.to ?? names[names.length - 1]!);
   if (from < 0 || to < 0) throw new Error(`the stages are ${names.join(", ")}`);
 
-  const source = join(ROOT, "assets/source/maps", name);
+  const source = o.source ?? join(ROOT, "assets/source/maps", name);
   const city = readJson(join(source, "city.json"));
   const settings = compose(city);
   preflight(name, settings, source);
   const cut = sha(JSON.stringify([settings.centre, settings.bounds])).slice(0, 10);
-  const top = join(ROOT, "var/mapdata", name);
+  const top = join(o.mapdata ?? join(ROOT, "var/mapdata"), name);
   const work = join(top, cut, name);
   mkdirSync(join(work, "ruins"), { recursive: true });
   // One run of a city at a time, taken before the run writes anything: two wrote one stages.json and one set of layers,
@@ -158,7 +212,24 @@ function main(): void {
     unlinkSync(lock);
     if (!take()) throw new Error(`${name}: another run took ${lock} as this one found it left behind`);
   }
-  process.on("exit", () => { try { if (readFileSync(lock, "utf8") === String(process.pid)) unlinkSync(lock); } catch { /* gone already */ } });
+  const release = (): void => { try { if (readFileSync(lock, "utf8") === String(process.pid)) unlinkSync(lock); } catch { /* gone already */ } };
+  process.on("exit", release);
+  try {
+    return stagesOf(name, { stages, names, cwd, maps, source, settings, cut, top, work, from, to, only });
+  } finally {
+    release();
+    process.off("exit", release);
+  }
+}
+
+interface Prepared {
+  stages: Stage[]; names: string[]; cwd: string; maps: string; source: string; settings: Json;
+  cut: string; top: string; work: string; from: number; to: number; only: string | undefined;
+}
+
+function stagesOf(name: string, p: Prepared): { cut: string; work: string; ran: string[]; current: boolean } {
+  const { stages, names, cwd, maps, source, settings, cut, top, work, from, to, only } = p;
+  const ran: string[] = [];
   // TIGER's roads and water come a county a file: the counties the cut touches, unless city.json names them.
   const tiger = settings.tiger as Json;
   if (!tiger.counties) {
@@ -194,8 +265,9 @@ function main(): void {
   for (const [from, to] of [["places.json", "ruins/places.authored.json"], ["heights.json", "blocks/heights.authored.json"], ["compositions.json", "ruins/compositions.json"], ["districts.json", "ruins/districts.json"],
     ["world.json", "world/authored.json"]] as const) {
     if (existsSync(join(source, from))) write(to, readFileSync(join(source, from), "utf8"));
+    else rmSync(join(work, to), { force: true });
   }
-  if (existsSync(join(source, "look"))) cpSync(join(source, "look"), join(work, "look"), { recursive: true });
+  mirror(join(source, "look"), join(work, "look"));
   // The street overlay as written, its files alone: one taken out of the city's folder is taken out here too.
   const overlay = (dir: string): string[] => (existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith(".jsonl")).sort() : []);
   for (const f of overlay(join(work, "streets"))) if (!existsSync(join(source, "streets", f))) unlinkSync(join(work, "streets", f));
@@ -203,7 +275,7 @@ function main(): void {
 
   const keysPath = join(work, "stages.json");
   const keys = (existsSync(keysPath) ? readJson(keysPath) : {}) as Record<string, string>;
-  const ownSections = new Set(STAGES.flatMap((s) => s.own?.sections ?? []));
+  const ownSections = new Set(stages.flatMap((s) => s.own?.sections ?? []));
   // A section a later stage owns keys from that stage on; of `world`, prepare reads the sea's height alone, which stays
   // in the chain, so moving a spawn point costs the world stage onward and not prepare's half hour.
   const sea = ((settings.world ?? {}) as Json).seaNavd88 ?? null;
@@ -211,7 +283,9 @@ function main(): void {
   console.log(`${name}: cut ${cut}, ${(settings.bounds as number[]).join(", ")}; work ${work}`);
   // Each stage's key as the inputs and code stand now, run or not, for `current` below.
   const now: Record<string, string> = {};
-  for (const [i, stage] of STAGES.entries()) {
+  // A stage stands done when its key is today's; the map's stage also needs the stamp beside the map to be its own.
+  const done = (s: Stage): boolean => keys[s.name] === now[s.name] && (!s.stamped || stampHolds(maps, name, cut, now[s.name]!));
+  for (const [i, stage] of stages.entries()) {
     const own = stage.own ? [JSON.stringify(stage.own.sections.map((s) => settings[s] ?? null)),
       ...stage.own.files.map((f) => (existsSync(join(source, f)) ? readFileSync(join(source, f)) : `no ${f}`)),
       ...(stage.own.folders ?? []).flatMap((d) => overlay(join(source, d)).flatMap((f) => [`${d}/${f}`, readFileSync(join(source, d, f))]))] : [];
@@ -220,15 +294,16 @@ function main(): void {
     chain = key;
     now[stage.name] = key;
     if (i < from || i > to) continue;
-    if (keys[stage.name] === key && !only) {
+    if (done(stage) && !only) {
       console.log(`== ${stage.name}: unchanged`);
       continue;
     }
+    if (keys[stage.name] === key && stage.stamped) console.log(`== ${stage.name}: ${name}.snmap is another cut's or build's`);
     // A kit's work folder (tools/maps/kit.ts) has no downloads: a stage that reads them runs after fetch makes them.
     const kitted = join(work, "raw/KIT");
-    if (existsSync(kitted) && i >= names.indexOf("prepare") && i <= names.indexOf("ways")) {
+    if (existsSync(kitted) && names.includes("prepare") && i >= names.indexOf("prepare") && i <= names.indexOf("ways")) {
       console.log(`== ${stage.name} reads the downloads a kit leaves out: fetching them first`);
-      const fetched = Bun.spawnSync(STAGES[names.indexOf("fetch")]!.run(work, name), { cwd: ROOT, stdout: "inherit", stderr: "inherit" });
+      const fetched = Bun.spawnSync(stages[names.indexOf("fetch")]!.run(work, name), { cwd, stdout: "inherit", stderr: "inherit" });
       if (fetched.exitCode !== 0) throw new Error(`${name}: fetch failed with ${fetched.exitCode}`);
       unlinkSync(kitted);
     }
@@ -236,10 +311,13 @@ function main(): void {
     console.log(`== ${stage.name}`);
     // This stage and every one after it are out of date from now until each runs again: a run that dies half way must
     // not leave a key standing over half-written layers.
-    for (const later of STAGES.slice(i)) delete keys[later.name];
+    for (const later of stages.slice(i)) delete keys[later.name];
     writeFileSync(keysPath, `${JSON.stringify(keys, null, 2)}\n`);
-    const run = Bun.spawnSync(stage.run(work, name), { cwd: ROOT, stdout: "inherit", stderr: "inherit" });
+    const env = stage.stamped ? { ...process.env, SNARK_MAP_STAMP: JSON.stringify({ cut, key }) } : process.env;
+    const run = Bun.spawnSync(stage.run(work, name), { cwd, env, stdout: "inherit", stderr: "inherit" });
+    ran.push(stage.name);
     if (run.exitCode !== 0) throw new Error(`${name}: ${stage.name} failed with ${run.exitCode}`);
+    if (stage.stamped && !stampHolds(maps, name, cut, key)) throw new Error(`${name}: ${stage.name} left no stamp for cut ${cut} beside ${join(maps, `${name}.snmap`)}`);
     keys[stage.name] = key;
     writeFileSync(keysPath, `${JSON.stringify(keys, null, 2)}\n`);
     console.log(`== ${stage.name} done in ${((performance.now() - t0) / 1000).toFixed(1)} s`);
@@ -247,11 +325,23 @@ function main(): void {
   // current: the cut built last, once every stage of it stands done with today's inputs and code (a run --to fetch, or
   // a stage whose key no longer matches, leaves it where it was), so a tool
   // reading it never meets a cut half built. A new link under another name, renamed over the old: no moment without one.
-  if (!STAGES.every((s) => keys[s.name] === now[s.name])) return;
+  if (!stages.every(done)) return { cut, work, ran, current: false };
   const current = join(top, "current");
   const next = `${current}.${process.pid}`;
   symlinkSync(join(cut, name), next);
   renameSync(next, current);
+  return { cut, work, ran, current: true };
+}
+
+function main(): void {
+  const args = process.argv.slice(2);
+  const name = args[0];
+  if (!name || name.startsWith("-")) {
+    console.error("bun tools/maps/city.ts <city> [--from <stage>] [--to <stage>] [--only <stage>]");
+    process.exit(2);
+  }
+  const opt = (flag: string): string | undefined => (args.includes(flag) ? args[args.indexOf(flag) + 1] : undefined);
+  runCity(name, { from: opt("--from"), to: opt("--to"), only: opt("--only") });
 }
 
 if (import.meta.main) main();

@@ -6,7 +6,7 @@
 // var/maps/<name>/layers, then the map file var/maps/<name>.snmap, and says what it holds. The same inputs give the same
 // bytes. Its copies for the wire take a few seconds; --release writes the tightest, as a map that ships has (tools/map/pack.ts).
 
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync, writeSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { compileContent } from "../../shared/content/registry.ts";
@@ -45,7 +45,10 @@ import type { Buildings } from "../../shared/world/buildings.ts";
 
 const ROOT = resolve(import.meta.dir, "../..");
 
-export async function buildMap(named: string, release = false, output = join(ROOT, "var/maps"), options: { streets?: boolean } = {}): Promise<{ file: string; stats: Record<string, unknown> }> {
+/** Which cut and build key made a map, beside it as `<name>/stamp.json`: tools/maps/city.ts builds again unless they are its own. */
+export interface MapStamp { cut: string; key: string; bytes: number; mtimeMs: number }
+
+export async function buildMap(named: string, release = false, output = join(ROOT, "var/maps"), options: { streets?: boolean; stamp?: { cut: string; key: string } } = {}): Promise<{ file: string; stats: Record<string, unknown> }> {
   const t0 = performance.now();
   // Each step with the process's memory as it ends it and the most it has held: what a machine of 32 GB can build is
   // read here (/proc, so Linux alone; elsewhere the time alone).
@@ -59,6 +62,9 @@ export async function buildMap(named: string, release = false, output = join(ROO
   const lap = (what: string): void => console.log(`${((performance.now() - t0) / 1000).toFixed(1).padStart(5)} s  ${what}${memory()}`);
   const source = named.includes("/") ? resolve(named) : workFolder(named);
   const name = basename(source);
+  // The map about to be written is no longer the one any stamp names, even if this build dies.
+  const stampPath = join(output, name, "stamp.json");
+  rmSync(stampPath, { force: true });
   const base = new Base(source);
   const world = JSON.parse(readFileSync(join(source, "world/world.json"), "utf8")) as World;
   const { grid } = base;
@@ -440,6 +446,11 @@ export async function buildMap(named: string, release = false, output = join(ROO
     surfaceSquareMetres: surfaces,
   };
   writeFileSync(join(output, name, "stats.json"), `${JSON.stringify(stats, null, 2)}\n`);
+  if (options.stamp) {
+    const made = statSync(file);
+    const stamp: MapStamp = { ...options.stamp, bytes: made.size, mtimeMs: made.mtimeMs };
+    writeFileSync(stampPath, `${JSON.stringify(stamp, null, 2)}\n`);
+  }
   lap("numbers");
   return { file, stats };
 }
@@ -450,6 +461,8 @@ if (import.meta.main) {
   const words = process.argv.slice(2), out = words.indexOf("--out");
   const output = out >= 0 ? resolve(words[out + 1] ?? "") : join(ROOT, "var/maps");
   const named = words.filter((w, k) => !w.startsWith("--") && (out < 0 || k !== out + 1))[0];
-  const { stats } = await buildMap(named ?? (() => { throw new Error("Map name required"); })(), words.includes("--release"), output, { streets: !words.includes("--no-streets") });
+  // tools/maps/city.ts names the cut and the build's key in SNARK_MAP_STAMP ({"cut", "key"}).
+  const stamp = process.env.SNARK_MAP_STAMP ? (JSON.parse(process.env.SNARK_MAP_STAMP) as { cut: string; key: string }) : undefined;
+  const { stats } = await buildMap(named ?? (() => { throw new Error("Map name required"); })(), words.includes("--release"), output, { streets: !words.includes("--no-streets"), stamp });
   console.log(JSON.stringify({ ...stats, spawns: undefined, surfaceSquareMetres: undefined }, null, 2));
 }
