@@ -1,6 +1,6 @@
 // Forwards keys and the mouse to the app, and keeps the mouse lock in step with what the interface wants (pointer-lock.ts).
 import type { App } from "../core/app.ts";
-import { LOCK_FREE, LOCK_TAKE, LockRule } from "../core/pointer-lock.ts";
+import { LOCK_FREE, LOCK_TAKE, LOST_ESCAPE, LOST_TO_FIELD, LockRule, lostLock } from "../core/pointer-lock.ts";
 
 export function bindInput(canvas: HTMLCanvasElement, app: App): void {
   const rule = new LockRule();
@@ -29,6 +29,8 @@ export function bindInput(canvas: HTMLCanvasElement, app: App): void {
   addEventListener("keyup", e => key(e, false));
   addEventListener("blur", clear);
   document.addEventListener("visibilitychange", () => { if (document.hidden) clear(); });
+  // A phone turned lets go of every finger: a contact held through it would stay pressed. The address bar's resize does not.
+  matchMedia("(orientation: portrait)").addEventListener("change", () => { if (app.ui.touch) clear(); });
   const coarse = matchMedia("(pointer: coarse)");
   coarse.addEventListener("change", () => { clear(); app.ui.inputDevice = coarse.matches ? 2 : 0; });
   canvas.addEventListener("pointerdown", e => { app.ui.inputDevice = e.pointerType === "touch" ? 2 : 0; });
@@ -42,12 +44,15 @@ export function bindInput(canvas: HTMLCanvasElement, app: App): void {
   document.addEventListener("pointerlockchange", () => {
     // Escape lets go of the lock without telling the page which key it was.
     if (!locked() && lockedBefore) {
+      const lost = lostLock(app.ui.wantsPointerLock, app.ui.playingField);
+      for (const button of mouse) app.mouseButton(button, false);
       mouse.clear();
-      if (app.ui.wantsPointerLock) {
+      if (lost === LOST_ESCAPE) {
         app.ui.escaped();
         escapedAt = performance.now();
       }
-      app.blur();
+      // The dock opened by a key keeps its page, and the keys keep moving the body.
+      if (lost !== LOST_TO_FIELD) app.blur();
     }
     lockedBefore = locked();
   });

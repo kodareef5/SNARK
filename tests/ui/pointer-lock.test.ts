@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { LOCK_FREE, LOCK_KEEP, LOCK_TAKE, LockRule } from "../../client/core/pointer-lock.ts";
+import { LOCK_FREE, LOCK_KEEP, LOCK_TAKE, LOST_ESCAPE, LOST_TO_FIELD, LOST_TO_SCREEN, LockRule, lostLock } from "../../client/core/pointer-lock.ts";
 
 test("The mouse is taken only after a click on the world", () => {
   const rule = new LockRule();
@@ -32,4 +32,13 @@ test("A request already out is not made twice", () => {
   rule.click();
   rule.pending = true;
   expect(rule.step(true, false)).toBe(LOCK_KEEP);
+});
+
+test("A lost lock opens the menu on Escape, keeps the dock, and lets go for other screens", () => {
+  // Escape: the body was played and still wants the mouse.
+  expect(lostLock(true, true)).toBe(LOST_ESCAPE);
+  // F2 opened the dock, which keeps the field: it must not be shut by letting go.
+  expect(lostLock(false, true)).toBe(LOST_TO_FIELD);
+  // The inventory opened: everything held lets go.
+  expect(lostLock(false, false)).toBe(LOST_TO_SCREEN);
 });

@@ -24,3 +24,15 @@ export class LockRule {
     return LOCK_KEEP;
   }
 }
+
+/** The lock was lost by Escape, with the body played and nothing asking for the mouse: the menu opens. */
+export const LOST_ESCAPE = 0;
+/** A screen that keeps the field took the mouse, as the dock does: only the mouse's held buttons let go. */
+export const LOST_TO_FIELD = 1;
+/** Another screen took the mouse: every held input lets go. */
+export const LOST_TO_SCREEN = 2;
+
+/** What a lost lock means, from whether the interface `wants` the mouse and whether the body is still `playing`. */
+export function lostLock(wants: boolean, playing: boolean): number {
+  return wants ? LOST_ESCAPE : playing ? LOST_TO_FIELD : LOST_TO_SCREEN;
+}
