@@ -14,7 +14,7 @@ import { packVehicleDrive, packVehiclePose, quantVehicleWheel, packVehicleRide }
 import { packSkateWord } from "../shared/sim/skate-state.ts";
 import { packVehicleRotor, packVehicleSystems, packVehicleQuaternionPair, packBoatWater } from "../shared/sim/vehicle-presentation.ts";
 import { drivetrainShifting } from "../shared/sim/vehicle-drivetrain.ts";
-import { F_PLAYER, F_PROP, F_GROUNDED } from "../shared/sim/entities.ts";
+import { F_ALIVE, F_PLAYER, F_PROP, F_GROUNDED } from "../shared/sim/entities.ts";
 import { ROW_BITS_MOST, RowCoder } from "../shared/world/rows.ts";
 import { GONE_BLAST, GONE_TAKEN, RECENT, TOUCH_KIND, TOUCH_LEFT, TOUCH_MOVED } from "../shared/world/structures.ts";
 import { sortU32 } from "../shared/sort.ts";
@@ -361,28 +361,63 @@ export class Replication {
     return wide;
   }
 
+  /**
+   * Whether body `e` of generation `gen`, left out of a view by a cap, may be kept as the client has it (writeViewDelta):
+   * alive, not a player, still within the square round `spareAt`, and in `spareHeld`, the view the newest snapshot sent
+   * left the client, so that one taken away is not kept again.
+   */
+  private readonly spare = (e: number, gen: number): boolean => {
+    const ents = this.world.ents;
+    const dims = this.world.dims;
+    if (ents.gen[e] !== gen || (ents.flags[e]! & (F_ALIVE | F_PLAYER)) !== F_ALIVE || ents.driven[e] !== 0) return false;
+    const chunk = ents.chunk[e]!;
+    const r = this.opts.entityRadius;
+    if (chunk < 0 || Math.abs(chunkCx(dims, chunk) - chunkCx(dims, this.spareAt)) > r || Math.abs(chunkCz(dims, chunk) - chunkCz(dims, this.spareAt)) > r) return false;
+    const held = this.spareHeld!;
+    let lo = 0;
+    let hi = held.count - 1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      const id = held.id[mid]!;
+      if (id === e) return held.gen[mid] === gen;
+      if (id < e) lo = mid + 1;
+      else hi = mid - 1;
+    }
+    return false;
+  };
+  private spareHeld: SentView | null = null;
+  private spareAt = 0;
+
   private snapshot(c: Client, T: number): void {
     const ents = this.world.ents;
     // The client predicts its own body, so the view leaves it out. While it drives a mount, both bodies are in the view.
     const self = c.drive >= 0 ? -1 : c.ent;
-    const at = this.viewAround(this.cameraChunk?.(c) ?? c.chunk, T);
-    let cur = this.viewFor ? this.viewFor(c, this.around[at]!) : this.around[at]!;
+    const centre = this.cameraChunk?.(c) ?? c.chunk;
+    const at = this.viewAround(centre, T);
+    let cur = this.around[at]!;
     let ranks = this.ranks[at]!;
     const cone = this.cone ? this.cone(c) : null;
     if (cone && (cone.count > 0 || (cone.players?.length ?? 0) > 0)) {
       cur = this.widen(c, cur, ranks, cone);
       ranks = c.wideRanks!;
     }
+    // Masked once the view is whole, so a body the cone adds is masked too. The masked copy keeps each entry's place.
+    if (this.viewFor) cur = this.viewFor(c, cur);
     // What it asked for takes effect once a second at most, so that it cannot have its view sent over and over.
     if ((c.wantView !== c.viewCap || c.wantBytes !== c.snapshotBytes) && T >= c.viewReadyAt) {
       c.viewCap = c.wantView;
       c.snapshotBytes = c.wantBytes;
       c.viewReadyAt = T + TICK_RATE;
     }
-    const limit = c.viewCap !== 0 ? c.viewCap : Math.min(VIEW_DEFAULT, this.cap);
+    // Held to the server's cap as it is now: one lowered since the client was granted its view counts at once.
+    const limit = Math.min(this.cap, c.viewCap !== 0 ? c.viewCap : VIEW_DEFAULT);
 
     const age = T - c.ackTick;
     const base = c.ackTick > 0 && age < VIEW_RING ? c.views.find(c.ackTick) : null;
+    // With a cap leaving bodies out, those the newest snapshot sent left the client may be kept (writeViewDelta).
+    const held = base && (limit < cur.count || cur.count >= this.cap) && c.lastSnapshot > 0 && T - c.lastSnapshot < VIEW_RING ? c.views.find(c.lastSnapshot) : null;
+    this.spareHeld = held;
+    this.spareAt = centre;
     const next = c.views.alloc(T);
 
     const w = this.w;
@@ -422,7 +457,8 @@ export class Replication {
     if (c.drive >= 0 && this.world.reg.vehicle[c.body.kind]) this.contactProxies?.(c, contacts);
     // Leave at least two thirds of the remaining packet for the ordinary view, and never exceed the selected snapshot budget.
     writeContacts(w, contacts, Math.min(320 * 8, Math.floor((bytes * 8 - w.pos) / 3)));
-    c.rotate = writeViewDelta(w, base, cur, next, bytes * 8 - w.pos, c.rotate, ents, self, limit < cur.count ? ranks : null, limit, c.views);
+    c.rotate = writeViewDelta(w, base, cur, next, bytes * 8 - w.pos, c.rotate, ents, self, limit < cur.count ? ranks : null, limit, c.views, held ? this.spare : null);
+    this.spareHeld = null;
     if (w.overflow) {
       // Part of a snapshot is of no use. Nothing is sent, and the view the client would have held is forgotten.
       this.stats.overflows++;
