@@ -201,18 +201,56 @@ test("a cluster group is for every world and only the cluster edits it", () => {
   expect(perms.apply(outside(mapAdmin), { op: "addGroup", group: "Owners", rank: RANK_CLUSTER })).toBe("That needs the cluster rank.");
   ok({ op: "addGroup", group: "Owners", rank: RANK_CLUSTER });
   expect(perms.apply(mapAdmin, { op: "addMember", kind: "survivor", key: A, group: "Owners" })).not.toBe("");
-  expect(perms.apply(cluster, { op: "addMember", kind: "survivor", key: A, group: "Owners", world: 3 })).not.toBe("");
   ok({ op: "addMember", kind: "survivor", key: A, group: "Owners" });
   expect(perms.membersOf("survivor", A)[0]?.world).toBe(0);
+});
+
+test("a cluster group's membership is kept for every world, whatever world was said", () => {
+  const { perms, ok } = world();
+  ok({ op: "addGroup", group: "Owners", rank: RANK_CLUSTER });
+  ok({ op: "addMember", kind: "survivor", key: A, group: "Owners", world: 3 });
+  expect(perms.membersOf("survivor", A).map((m) => m.world)).toEqual([0]);
+  ok({ op: "removeMember", kind: "survivor", key: A, group: "Owners", world: 3 });
+  expect(perms.membersOf("survivor", A)).toEqual([]);
+});
+
+test("below cluster rank a password is cleared for staff of the admin's own map", () => {
+  const { perms, ok } = world();
+  const far: PermissionActor = { rank: RANK_MAP, world: 4, name: "map of 4" };
+  const farAdmin: PermissionActor = { rank: RANK_ADMIN, world: 4, name: "admin of 4" };
+  const hash = (x: string): string => x.repeat(32);
+  const claimed = (id: string, x: string): void => expect(perms.claim(id, hash(x), "").why).toBe("");
+  // A is staff on world 3 alone: nobody of world 4 below the cluster's rank clears her password.
+  ok({ op: "addMember", kind: "survivor", key: A, group: "Admins", world: 3 });
+  claimed(A, "a1");
+  expect(perms.apply(far, { op: "clearSecret", id: A })).toBe("That survivor's staff groups are on other maps. An admin there or the cluster's clears their password.");
+  expect(perms.apply(admin, { op: "clearSecret", id: A })).toBe("");
+  // B is staff on every world: world 4's regular admin, her equal, does not, and its map admin, who outranks her, does.
+  ok({ op: "addMember", kind: "survivor", key: B, group: "Admins", world: 0 });
+  claimed(B, "b2");
+  expect(perms.apply(farAdmin, { op: "clearSecret", id: B })).toBe("That survivor's staff groups reach beyond this map. A higher rank or the cluster's admin clears their password.");
+  expect(perms.secretOf(B)).toBe(hash("b2"));
+  expect(perms.apply(far, { op: "clearSecret", id: B })).toBe("");
+  // One left with a password and no staff group is anyone's to clear, and the cluster's admin is held to no map.
+  claimed(A, "c3");
+  ok({ op: "removeMember", kind: "survivor", key: A, group: "Admins" });
+  expect(perms.apply(farAdmin, { op: "clearSecret", id: A })).toBe("");
+  ok({ op: "addMember", kind: "survivor", key: A, group: "Admins", world: 3 });
+  claimed(A, "d4");
+  expect(perms.apply({ ...cluster, world: 4 }, { op: "clearSecret", id: A })).toBe("");
+  // A world in no cluster has one map, so rank alone decides.
+  claimed(A, "e5");
+  expect(perms.apply(outside(admin), { op: "clearSecret", id: A })).toBe("");
 });
 
 test("a regular admin can neither add to nor remove from a map admin's groups, nor clear its password", () => {
   const { perms, ok } = world();
   ok({ op: "addGroup", group: "Mods", rank: RANK_MAP });
   ok({ op: "addGroup", group: "Vip" });
-  ok({ op: "addMember", kind: "survivor", key: A, group: "Mods" });
+  // Both are staff of this world alone, so its admins clear their passwords by rank.
+  ok({ op: "addMember", kind: "survivor", key: A, group: "Mods", world: 3 });
   ok({ op: "addMember", kind: "survivor", key: A, group: "Vip" });
-  ok({ op: "addMember", kind: "survivor", key: B, group: "Admins" });
+  ok({ op: "addMember", kind: "survivor", key: B, group: "Admins", world: 3 });
   expect([perms.claim(A, "ab".repeat(16), ""), perms.claim(B, "ef".repeat(16), "")]).toEqual([{ why: "", wrong: false }, { why: "", wrong: false }]);
   expect(perms.apply(admin, { op: "addMember", kind: "survivor", key: A, group: "Admins" })).not.toBe("");
   expect(perms.apply(admin, { op: "removeMember", kind: "survivor", key: A, group: "Vip" })).not.toBe("");
@@ -336,6 +374,7 @@ test("the edit rule reads the survivor's highest staff group", () => {
   const look = (staff: number): RuleLook => ({
     groupRank: (n) => (n.toLowerCase() === "vip" ? RANK_OPEN : undefined),
     staffRank: () => staff,
+    staffReach: () => "here",
     hasMembers: () => false,
     issued: () => true,
     teamMade: () => true,
@@ -437,7 +476,7 @@ test("Admins cannot be made open while anyone is in it", () => {
 });
 
 test("the edit rule adds only an ID that was issued and a team number that was made", () => {
-  const look = (issued: boolean, made: boolean): RuleLook => ({ groupRank: () => RANK_OPEN, staffRank: () => 0, hasMembers: () => false, issued: () => issued, teamMade: () => made });
+  const look = (issued: boolean, made: boolean): RuleLook => ({ groupRank: () => RANK_OPEN, staffRank: () => 0, staffReach: () => "none", hasMembers: () => false, issued: () => issued, teamMade: () => made });
   const add: PermissionOp = { op: "addMember", kind: "survivor", key: C, group: "Vip" };
   const tribe: PermissionOp = { op: "addMember", kind: "tribe", key: "9", group: "Vip" };
   expect([editRule(cluster, add, look(false, true)), editRule(cluster, tribe, look(true, false))]).toEqual([`No survivor has the ID ${C}.`, "No tribe has the number 9."]);

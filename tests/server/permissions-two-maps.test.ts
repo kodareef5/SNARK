@@ -272,8 +272,8 @@ test("a regular admin manages members up to her rank and nothing above it", asyn
     for (const line of ["Permissions.AddGroup Vip", "Permissions.AddGroup Mods", "Permissions.Rank Mods staff", "Permissions.AddGroup Owners", "Permissions.Rank Owners map", "Permissions.AddGroup Council", "Permissions.Rank Council cluster"]) must(a, line);
     must(a, `Permissions.Add ${adaId} Admins`);
     // A cluster group's membership is typed with all: without it the command is refused.
-    expect(a.h.host.exec(`Permissions.Add ${eveId} Council`)).toBe("A cluster group holds on every world.");
-    must(a, `Permissions.Add ${eveId} Council all`);
+    // A cluster group's membership is for every map without saying so.
+    expect(a.h.host.exec(`Permissions.Add ${eveId} Council`)).toContain(`is in Council on every map`);
     must(a, `Permissions.Add ${eveId} Vip`);
     // Dan is a map admin of B, made there.
     poll(b, clock);
@@ -965,5 +965,35 @@ test("A's map admin cannot reach B's staff, nor raise herself to the cluster", a
     expect(b.h.say(there, `enablecheats ${hers}`)).toEqual([NOT_HERE]);
     expect(b.h.client(there)!.rank).toBe(RANK_OPEN);
     expect(b.h.say(there, `Permissions.Add ${dan} Owners`)).toEqual(["denied: this needs the admin rank or above"]);
+  });
+});
+
+test("A's admins clear the password of A's staff, and never of B's alone", async () => {
+  await maps((m) => {
+    const { cluster, clock, a, b } = m;
+    const mia = hostAdmin(a, cluster, "mia", MAP_A);
+    const { session: dan } = cluster.survivor(b, "dan");
+    const { session: ada } = cluster.survivor(a, "ada");
+    const [danId, adaId] = [idIn(b, "dan"), idIn(a, "ada")];
+    // Dan is an admin on B alone, by B's own grant; Ada on A alone.
+    must(b, `Permissions.Add ${danId} Admins`);
+    must(a, `Permissions.Add ${adaId} Admins`);
+    const [dans, adas] = [claim(b, dan), claim(a, ada)];
+    signIn(b, dan, dans);
+    signIn(a, ada, adas);
+    poll(a, clock);
+    const ELSEWHERE = "That survivor's staff groups are on other maps. An admin there or the cluster's clears their password.";
+    // Neither A's map admin nor A's regular admin reaches him, and the attempt is in A's log.
+    expect(a.h.say(mia, `Permissions.Password ${danId} clear`)).toEqual([ELSEWHERE]);
+    expect(a.h.say(ada, `Permissions.Password ${danId} clear`)).toEqual([ELSEWHERE]);
+    expect(keptActs(a).filter((act) => act.kind === "refused" && act.what.includes(danId)).map((act) => act.name)).toEqual(["mia", "ada"]);
+    poll(b, clock);
+    expect([b.h.client(dan)!.signed, b.h.host.permissions.secretOf(danId) !== ""]).toEqual([true, true]);
+    // A's map admin clears the password of A's own staff, and the cluster's admin, from A, clears Dan's.
+    expect(a.h.say(mia, `Permissions.Password ${adaId} clear`)).toEqual([`ada (${adaId}) has no password now`]);
+    expect(a.h.client(ada)!.signed).toBe(false);
+    expect(a.h.host.exec(`Permissions.Password ${danId} clear`)).toContain("has no password now");
+    poll(b, clock);
+    expect(b.h.client(dan)!.signed).toBe(false);
   });
 });

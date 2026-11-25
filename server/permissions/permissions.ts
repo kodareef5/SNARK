@@ -19,6 +19,7 @@ import {
   type PermissionSnapshot,
   type RuleLook,
   type Secret,
+  type StaffReach,
   type TagChoice,
   isHash,
   isSurvivorId,
@@ -26,7 +27,7 @@ import {
 import { WRONG_PASSWORD } from "../../shared/console.ts";
 import { idParts } from "../../shared/ids.ts";
 import { TEAM_RANGE } from "../records.ts";
-import { DUMMY_HASH, Retired, sameHash } from "./secrets.ts";
+import { DUMMY_HASH, RETIRED_MS, Retired, sameHash } from "./secrets.ts";
 import type { Issued, PermissionStore } from "./store.ts";
 
 /** How often `poll` looks at the file. */
@@ -173,6 +174,15 @@ export class Permissions {
     this.load(this.store.read(), false);
   }
 
+  /** Takes in the passwords other worlds retired within the day, which this view may never have held: it started since, or they came and went between its polls. */
+  private learnRetired(): void {
+    try {
+      this.retiredHashes.merge(this.store.retired(this.now() - RETIRED_MS));
+    } catch {
+      // What this view saw retire is remembered without the file.
+    }
+  }
+
   /** Reads the file again when its stamp changed, looking at most once every 5 seconds. Says whether anything changed. */
   poll(): boolean {
     const was = this.version;
@@ -251,6 +261,21 @@ export class Permissions {
       if (g && g.group.rank >= RANK_STAFF && g.group.rank > rank) rank = g.group.rank;
     }
     return rank;
+  }
+
+  /** Where survivor `id`'s staff groups count, as seen from `world`: a membership for every world counts there and beyond. */
+  staffReach(id: string, world: number): StaffReach {
+    let here = false;
+    let beyond = false;
+    const now = this.now();
+    for (const m of this.members.get(subjectKey("survivor", id)) ?? []) {
+      if (!m.forever && m.until <= now) continue;
+      const g = this.groupsByName.get(m.group.toLowerCase());
+      if (!g || g.group.rank < RANK_STAFF) continue;
+      if (m.world === 0 || m.world === world) here = true;
+      if (m.world !== world) beyond = true;
+    }
+    return here ? (beyond ? "wider" : "here") : beyond ? "elsewhere" : "none";
   }
 
   /** The hash of survivor `id`'s own password, or "". */
@@ -340,7 +365,9 @@ export class Permissions {
         const needs = actor.needs ?? RANK_OPEN;
         was = op?.op === "clearSecret" ? this.secretOf(op.id) : "";
         reason = (judged.rank < needs ? `That needs the ${RANK_NAMES[needs]} rank.` : "") || editRule(judged, op, this.look) || this.change(judged, op);
-        if (!reason) this.written();
+        if (reason) return;
+        if (was !== "") this.store.putRetired(was, this.now());
+        this.written();
       });
     } catch {
       this.load(this.store.read());
@@ -390,6 +417,7 @@ export class Permissions {
         const secret: Secret = { id, hash, at: this.now() };
         this.store.putSecret(secret);
         this.secrets.set(id, secret);
+        if (was !== "") this.store.putRetired(was, secret.at);
         this.written();
       });
     } catch {
@@ -485,6 +513,7 @@ export class Permissions {
     const now = this.now();
     this.passEdges(now);
     this.store.dropExpired(now);
+    this.store.dropRetired(now - RETIRED_MS);
     this.dropExpired(now);
     this.nextEdge = this.edgeAfter(now);
     this.revision = this.store.raise();
@@ -493,6 +522,7 @@ export class Permissions {
   private readonly look: RuleLook = {
     groupRank: (name) => this.groupsByName.get(name.toLowerCase())?.group.rank,
     staffRank: (id) => this.staffRank(id),
+    staffReach: (id, world) => this.staffReach(id, world),
     hasMembers: (name) => this.membersIn(name).some((m) => m.forever || m.until > this.now()),
     issued: (id) => this.store.issued(id) !== null,
     teamMade: (key) => this.teamMade(key),
@@ -662,6 +692,7 @@ export class Permissions {
       mine.set(t.tag.toLowerCase(), t);
     }
     if (was) this.noteRead(was.groups, was.members, before, was.documents, now);
+    this.learnRetired();
     this.nextEdge = this.edgeAfter(now);
     this.version++;
   }

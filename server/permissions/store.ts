@@ -39,7 +39,8 @@ const SCHEMA =
   "CREATE TABLE IF NOT EXISTS tags (id TEXT NOT NULL, tag TEXT NOT NULL COLLATE NOCASE, show INTEGER NOT NULL, PRIMARY KEY (id, tag));" +
   "CREATE TABLE IF NOT EXISTS issued (id TEXT PRIMARY KEY, name TEXT NOT NULL, world INTEGER NOT NULL, at INTEGER NOT NULL);" +
   "CREATE INDEX IF NOT EXISTS issued_name ON issued (name COLLATE NOCASE);" +
-  "CREATE TABLE IF NOT EXISTS marks (world INTEGER NOT NULL, kind TEXT NOT NULL, next INTEGER NOT NULL, PRIMARY KEY (world, kind));";
+  "CREATE TABLE IF NOT EXISTS marks (world INTEGER NOT NULL, kind TEXT NOT NULL, next INTEGER NOT NULL, PRIMARY KEY (world, kind));" +
+  "CREATE TABLE IF NOT EXISTS retired (hash TEXT PRIMARY KEY, at INTEGER NOT NULL);";
 
 /** A survivor ID the register knows: its survivor's name and the world it was on, as last known, and when it was first registered. */
 export interface Issued {
@@ -213,6 +214,22 @@ export class PermissionStore {
 
   putTag(id: string, tag: string, show: boolean): void {
     this.open().query("INSERT OR REPLACE INTO tags (id, tag, show) VALUES (?, ?, ?)").run(id, tag, show ? 1 : 0);
+  }
+
+  /** Keeps the hash of a password replaced or cleared at `at`, so every world refuses it without counting a guess. */
+  putRetired(hash: string, at: number): void {
+    this.open().query("INSERT OR REPLACE INTO retired (hash, at) VALUES (?, ?)").run(hash.toLowerCase(), at);
+  }
+
+  /** Forgets the passwords retired before `before`. */
+  dropRetired(before: number): void {
+    this.open().query("DELETE FROM retired WHERE at < ?").run(before);
+  }
+
+  /** The passwords retired at `since` or later, oldest first. */
+  retired(since: number): { hash: string; at: number }[] {
+    const rows = this.open().query("SELECT hash, at FROM retired WHERE at >= ? ORDER BY at").all(since) as { hash: unknown; at: unknown }[];
+    return rows.filter((r): r is { hash: string; at: number } => isHash(r.hash) && typeof r.at === "number");
   }
 
   /** The register's row for survivor ID `id`, or null where it was never issued. */

@@ -7,6 +7,7 @@ import { idOf } from "../../shared/ids.ts";
 import type { PermissionActor } from "../../shared/permissions/model.ts";
 import { RANK_ADMIN, RANK_CLUSTER, RANK_OPEN } from "../../shared/ranks.ts";
 import { Permissions, POLL_MS } from "../../server/permissions/permissions.ts";
+import { RETIRED_MS } from "../../server/permissions/secrets.ts";
 import { PermissionStore } from "../../server/permissions/store.ts";
 import { issue } from "../fixtures/permissions.ts";
 
@@ -184,4 +185,36 @@ test("the register keeps the first time an ID was seen, follows its name, and it
   expect([perms.teamMade(String(2 * 1048576 + 3)), perms.teamMade(String(2 * 1048576 + 4)), perms.teamMade(String(7 * 1048576 + 1))]).toEqual([true, false, false]);
   // Nothing anyone may do changed, so the revision and this view stayed.
   expect([perms.snapshot().revision, perms.version]).toEqual([0, v]);
+});
+
+test("a view opened later still knows a password retired within the day", () => {
+  const file = fresh();
+  const clock = { t: 1_000_000 };
+  const one = new Permissions({ store: new PermissionStore(file), world: 2, now: () => clock.t });
+  issue(one, A, B);
+  expect(one.apply(cluster, { op: "addMember", kind: "survivor", key: A, group: "Admins" })).toBe("");
+  expect(one.apply(cluster, { op: "addMember", kind: "survivor", key: B, group: "Admins" })).toBe("");
+  const [first, second, third, gone] = ["a1", "b2", "c3", "d4"].map((x) => x.repeat(32));
+  expect([one.claim(A, first!, "").why, one.claim(B, gone!, "").why]).toEqual(["", ""]);
+  // A view that was open all along and never saw the first two: both were replaced between its polls.
+  const two = new Permissions({ store: new PermissionStore(file), world: 5, now: () => clock.t });
+  expect(one.claim(A, second!, first!).why).toBe("");
+  expect(one.claim(A, third!, second!).why).toBe("");
+  expect(one.apply(cluster, { op: "clearSecret", id: B })).toBe("");
+  clock.t += POLL_MS;
+  two.poll();
+  expect([first, second, gone, third].map((h) => two.retired(h!))).toEqual([true, true, true, false]);
+  // A world that starts after it all, as one restarted does.
+  clock.t += 3600_000;
+  const late = new Permissions({ store: new PermissionStore(file), world: 6, now: () => clock.t });
+  expect([first, second, gone, third].map((h) => late.retired(h!))).toEqual([true, true, true, false]);
+  // After a day none is remembered, in memory or in the file.
+  clock.t += RETIRED_MS;
+  expect([first, second, gone].map((h) => late.retired(h!))).toEqual([false, false, false]);
+  expect(one.apply(cluster, { op: "addGroup", group: "Vip" })).toBe("");
+  const after = new Permissions({ store: new PermissionStore(file), world: 7, now: () => clock.t });
+  expect([first, second, gone].map((h) => after.retired(h!))).toEqual([false, false, false]);
+  const db = new Database(file);
+  expect((db.query("SELECT COUNT(*) AS n FROM retired").get() as { n: number }).n).toBe(0);
+  db.close();
 });
