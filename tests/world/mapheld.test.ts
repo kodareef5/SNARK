@@ -25,7 +25,9 @@ test("the ledger counts the page's ground and the statics it holds", async () =>
   for (let k = 0; k < 500 && !loader.progress().settled; k++) await settle();
   const rows = mapLedger({ loader, city: loader.staged, skip: [] });
   const hf = loader.staged.hf;
-  expect(rows.find((r) => r.name === "ground")!.bytes).toBe(hf.heights.byteLength + hf.tint.byteLength + hf.ground.byteLength + hf.exact.byteLength + hf.bounds!.byteLength);
+  // The ground is its pages, which hold no dense array, and the overviews their blocks.
+  expect([hf.heights.length, hf.count > 0, rows.find((r) => r.name === "ground")!.bytes]).toEqual([0, true, hf.bytes + hf.exact.byteLength + hf.bounds!.byteLength]);
+  expect(rows.find((r) => r.name === "overviews")!.bytes).toBe(loader.staged.overviews.held().reduce((n, b) => n + b.heights.byteLength + b.tint.byteLength, 0));
   const pieces = loader.statics.pieces;
   expect([pieces > 0, pieces < head.counts.reduce((n, c) => n + c, 0), rows.find((r) => r.name === "statics")!.bytes >= pieces * 16]).toEqual([true, true, true]);
   // The city named here is the staged map again, all of it counted already.

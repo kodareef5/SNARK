@@ -1,8 +1,9 @@
 // Which parts of its map a page wants, from where it looks: the body and where it heads, the camera, a sight's focus and
 // the map screen while it is open. Each kind is wanted within its reach of a centre: overviews and tops within the view,
 // statics and their buildings within the statics reach (the far city's, nearer on a phone), and ground within the larger
-// of that and the fine window's reach. A part held is kept until it is a sector past its reach from every centre, so a
-// body on a border does not ask for a part and let it go by turns (client/core/mapload.ts).
+// of that and the fine window's reach, as far as its budget, but always within the fine window's. A part held is kept
+// until it is a sector past its reach from every centre, so a body on a border does not ask for a part and let it go by
+// turns (client/core/mapload.ts).
 
 import { CHUNK_SIZE, SECTOR_CHUNKS } from "../../shared/coords.ts";
 import { TERRAIN_CELL } from "../../shared/world/heightfield.ts";
@@ -45,6 +46,8 @@ export interface WantFrom {
   readonly statics: number;
   /** Bytes of statics held at most: past it those kept beyond their reach go, farthest first. */
   readonly budget?: number;
+  /** Bytes of ground pages held at most, as `budget` is for statics; those round the body and the camera are kept past it. */
+  readonly ground?: number;
   readonly camera?: { readonly x: number; readonly z: number } | null;
   readonly focus?: { readonly x: number; readonly z: number } | null;
   /** The map screen's middle and half its window's diagonal, in metres. */
@@ -60,9 +63,13 @@ export const staticsReach = (tier: Tier, touchFirst: boolean): number => (touchF
 /** Bytes of statics a tier holds at most, and a touch-first device on any tier. */
 export const STATICS_BUDGET: Readonly<Record<Tier["name"] | "touch", number>> = { lowpoly: 30e6, medium: 30e6, high: 40e6, ultra: 40e6, touch: 14e6 };
 
+/** Bytes of ground pages a tier holds at most, and a touch-first device on any tier. */
+export const GROUND_BUDGET: Readonly<Record<Tier["name"] | "touch", number>> = { lowpoly: 14e6, medium: 14e6, high: 17e6, ultra: 22e6, touch: 10e6 };
+
 /** What a tier wants with nothing else to look from. */
 export function tierWant(tier: Tier, touchFirst = false): WantFrom {
-  return { view: tier.viewDistance, statics: staticsReach(tier, touchFirst), budget: STATICS_BUDGET[touchFirst ? "touch" : tier.name] };
+  const name = touchFirst ? "touch" : tier.name;
+  return { view: tier.viewDistance, statics: staticsReach(tier, touchFirst), budget: STATICS_BUDGET[name], ground: GROUND_BUDGET[name] };
 }
 
 /** The centres the page wants its map round: the body and where it will be, then whatever else `from` names. */

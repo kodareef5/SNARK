@@ -11,6 +11,7 @@ import { FarStore } from "../../client/core/farcells.ts";
 import { nextTask, type Get } from "../../client/core/fetched.ts";
 import { AFTER_AT_ONCE, BAND_CHUNKS, DAMAGED_MOST, FIRST_REACH, LOOK_EVERY, MapLoader, RETRY_FIRST, RETRY_MOST, RING, ROADS_AT_ONCE, ROAD_EVERY, ROAD_REACH, StagedMap, URGENT_AT_ONCE, firstFrameParts, handOverParts, type Place } from "../../client/core/mapload.ts";
 import { HeldStatics } from "../../client/core/map-statics.ts";
+import { pageBytes } from "../../client/core/ground/pages.ts";
 import { KEEP_PAST, type WantFrom } from "../../client/core/map-want.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { NodeChanges } from "../../client/core/render/farnodes.ts";
@@ -22,12 +23,13 @@ import { CHUNK_SIZE, SECTOR_CHUNKS, chunkAt } from "../../shared/coords.ts";
 import { Rng } from "../../shared/rng.ts";
 import { BEND_SHORTS, packBend, placeKerb } from "../../shared/world/bends.ts";
 import { CityStatics } from "../../shared/world/city.ts";
-import { TERRAIN_CELL, type Heightfield } from "../../shared/world/heightfield.ts";
-import { OVERVIEW_CHUNKS, OVERVIEW_STEP, mapHeightfield, mapTops, nodeLayers, parseMap, partsOf, readHead, readPart, squareOf, writeMap, type MapData, type MapPart, type MapStatic, type MapStatics, type NodeLayer, type OverviewPiece, type StaticsPiece } from "../../shared/world/mapfile.ts";
+import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
+import { COARSE_STEP, OVERVIEW_CHUNKS, OVERVIEW_STEP, mapHeightfield, mapTops, nodeLayers, parseMap, partsOf, readHead, readPart, squareOf, writeMap, type MapData, type MapPart, type MapStatic, type MapStatics, type NodeLayer, type OverviewPiece, type StaticsPiece } from "../../shared/world/mapfile.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { ROAD_PLANES, roadSamples } from "../../shared/world/roadframe.ts";
 import { Rasterizer } from "../../tools/snap/raster.ts";
 import { cornerMap, flatMap, wideMap } from "../fixtures/map.ts";
+import { denseOf, nodesOf } from "../fixtures/paged-ground.ts";
 import { nodePack, nodeRegistry } from "../fixtures/nodeworld.ts";
 import { corePack } from "../fixtures/pack.ts";
 import { coreRegistry } from "../fixtures/world.ts";
@@ -41,6 +43,11 @@ function landed(): MapData {
 const file = writeMap(landed());
 const whole = parseMap(file);
 const head = readHead(file);
+
+/** What a staged map holds, read through its methods: its samples, their tints and the nodes its layers stand. */
+const heldOf = (staged: StagedMap): unknown[] => [denseOf(staged.hf).heights, denseOf(staged.hf).tint, nodesOf(staged.hf, coreRegistry(), staged.nodes)];
+/** The same of a map held whole. */
+const mapOf = (map: MapData): unknown[] => [map.heights, map.tint, nodesOf(mapHeightfield(map), coreRegistry(), map.nodes)];
 
 /** No wait between asks, where nothing fails. */
 const NOW = { wait: () => Promise.resolve() };
@@ -369,7 +376,7 @@ test("the page asks for the head, then the land, then nothing until it knows whe
     }
   }
   await s.drain();
-  expect([staged.hf.heights, staged.hf.tint, [...staged.nodes]]).toEqual([whole.heights, whole.tint, [...whole.nodes]]);
+  expect(heldOf(staged)).toEqual(mapOf(whole));
   expect(wholeStatics(handed)).toBe(true);
 });
 
@@ -550,7 +557,7 @@ test("after a failure a sector goes back among those left by its distance: asked
     check();
   }
   await s.drain();
-  expect([s.asked.filter((u) => u === nameOf(failing)).length, loader!.staged.hf.heights]).toEqual([2, whole.heights]);
+  expect([s.asked.filter((u) => u === nameOf(failing)).length, denseOf(loader!.staged.hf).heights]).toEqual([2, whole.heights]);
 });
 
 /** What a request for a part may come to on the wire: an answer of `status`, no answer, its bytes changed, or another part's. */
@@ -688,7 +695,7 @@ test("a part that fails once, three times or for good, before the first frame or
       if (times !== Infinity) {
         // Each ask after the first waited: 0.5 s, then 1 and 2.
         expect([where, times, asks, t.waits, t.first, wholeStatics(t.statics)]).toEqual([where, times, times + 1, [500, 1000, 2000].slice(0, times), "drawn", true]);
-        expect([where, times, t.loader!.staged.hf.heights, [...t.loader!.staged.nodes]]).toEqual([where, times, whole.heights, [...whole.nodes]]);
+        expect([where, times, heldOf(t.loader!.staged)]).toEqual([where, times, mapOf(whole)]);
       } else {
         // For good: the waits double to 8 s and stay there, the page asking all the while; what came is kept.
         expect([where, asks, t.waits]).toEqual([where, 13, [500, 1000, 2000, 4000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000]]);
@@ -770,7 +777,7 @@ test("a map with a listed node layer brings all its ground before any node sourc
   await s.drain();
   const loader = await loading;
   const map = parseMap(listed);
-  expect([s.asked.filter((u) => u.includes("/ground.")).length, loader.staged.hf.heights, [...loader.staged.nodes]]).toEqual([4, map.heights, [...map.nodes]]);
+  expect([s.asked.filter((u) => u.includes("/ground.")).length, heldOf(loader.staged)]).toEqual([4, mapOf(map)]);
   let near = false;
   void loader.follow(() => null).then(() => (near = true));
   await settle();
@@ -830,14 +837,15 @@ test("parts come late and in a scrambled order: every frame's ground is the map'
       if (came) await s.answer(rng.int(s.waiting.length));
       await settle();
       if (!drawn) continue;
-      for (let k = 0; k < hf.heights.length; k++) if (hf.heights[k] !== map.heights[k] && hf.heights[k] !== filled.hf.heights[k]) wrong++;
+      const [now, stand] = [denseOf(hf).heights, denseOf(filled.hf).heights];
+      for (let k = 0; k < now.length; k++) if (now[k] !== map.heights[k] && now[k] !== stand[k]) wrong++;
       scene.frame(came);
       frames++;
       if (came) pictures++;
     }
     await s.drain();
     for (let f = 0; f < 40; f++) scene.frame(false);
-    expect([wrong, frames > 60, pictures > 0, hf.heights, scene.frame()]).toEqual([0, true, true, map.heights, picture]);
+    expect([wrong, frames > 60, pictures > 0, denseOf(hf).heights, scene.frame()]).toEqual([0, true, true, map.heights, picture]);
   }
 });
 
@@ -866,6 +874,44 @@ test("standing still, nothing is asked for once the page has settled, however of
   await settle();
   expect([s.waiting.length > 0, loader!.progress().settled]).toEqual([true, false]);
   await s.drain();
+});
+
+test("ground pages past their budget go farthest first but round the body, and an overview past the view goes; both come again", async () => {
+  const s = heldServer(file);
+  let loader: MapLoader | null = null;
+  void MapLoader.start(s.get, `map/${head.name}`, NOW).then((l) => (loader = l));
+  await s.drain();
+  const grounds = head.parts.filter((p) => p.kind === "ground"), page = (p: MapPart): number => pageBytes(squareOf(head.dims, SECTOR_CHUNKS, p.col, p.row)!);
+  const body = { x: 100, z: 448, vx: 0, vz: 0 };
+  const pinned = (x: number): MapPart[] => grounds.filter((p) => off(p, x, 448) <= ROAD_REACH);
+  // Room for the pages round the body and the nearest one more of those wanted.
+  const budget = pinned(100).reduce((n, p) => n + page(p), 0) + Math.max(...grounds.map(page));
+  const go = async (): Promise<void> => {
+    loader!.look();
+    for (let k = 0; k < 10; k++) {
+      await s.drain();
+      await settle();
+    }
+  };
+  void loader!.follow(() => body, { want: () => ({ view: 1500, statics: 2500, ground: budget }) });
+  await go();
+  const staged = loader!.staged, hf = staged.hf, sq = (p: MapPart) => squareOf(head.dims, SECTOR_CHUNKS, p.col, p.row)!;
+  const held = (): MapPart[] => grounds.filter((p) => hf.holds(sq(p)));
+  const nearest = (x: number): MapPart => grounds.filter((p) => !pinned(x).includes(p)).sort((a, b) => off(a, x, 448) - off(b, x, 448))[0]!;
+  expect([pinned(100).every((p) => held().includes(p)), held().length, held().includes(nearest(100)), hf.bytes <= budget]).toEqual([true, pinned(100).length + 1, true, true]);
+  const before = denseOf(hf);
+  const west = staged.overviews.held().find((b) => b.sq.cx0 === 0)!;
+  expect(west.sq.cx1 * CHUNK_SIZE).toBeLessThan(4400 - 1500 - KEEP_PAST);
+  body.x = 4400;
+  await go();
+  // The west's pages and overview are gone: its samples stand in with the coarse picture, and none of its nodes stands.
+  const coarse = new StagedMap(head).hf;
+  const westNodes = nodesOf(hf, coreRegistry(), staged.nodes).filter((line) => Number(line.split(" ")[0]) % head.dims.chunksX < west.sq.cx1);
+  const room = budget - pinned(4400).reduce((n, p) => n + page(p), 0) >= page(nearest(4400)) ? 1 : 0;
+  expect([pinned(4400).every((p) => held().includes(p)), held().length, held().some((p) => pinned(100).includes(p)), staged.overviews.held().includes(west), hf.stepsAt(50, 50), westNodes]).toEqual([true, pinned(4400).length + room, false, false, coarse.stepsAt(50, 50), []]);
+  body.x = 100;
+  await go();
+  expect(denseOf(hf)).toEqual(before);
 });
 
 test("past the budget, the statics kept beyond their reach go farthest first", async () => {
@@ -900,18 +946,20 @@ test("past the budget, the statics kept beyond their reach go farthest first", a
 });
 
 test("an overview is filled a band of chunk rows a step, to the samples one fill gives", () => {
-  const staged = new StagedMap(head), once = new StagedMap(head);
+  const staged = new StagedMap(head), once = new Heightfield(head.dims, TERRAIN_CELL, head.minY, head.stepY);
+  once.holdNone();
+  once.fill(0, 0, head.dims.chunksX, head.dims.chunksZ, COARSE_STEP, head.coarse.heights, head.coarse.tint);
   const overviews = head.parts.filter((p) => p.kind === "overview");
   for (const p of overviews) {
     const piece = readPart(head, p, file.subarray(p.at, p.at + p.length)) as OverviewPiece;
     let steps = 0;
     for (const g = staged.steps(piece); !g.next().done; ) steps++;
     const sq = piece.sq;
-    once.hf.fill(sq.cx0, sq.cz0, sq.cx1, sq.cz1, OVERVIEW_STEP, piece.heights, piece.tint);
+    once.fill(sq.cx0, sq.cz0, sq.cx1, sq.cz1, OVERVIEW_STEP, piece.heights, piece.tint);
     expect(steps).toBe(Math.ceil((sq.cz1 - sq.cz0) / BAND_CHUNKS) - 1);
   }
   expect(Math.max(...overviews.map((p) => squareOf(head.dims, OVERVIEW_CHUNKS, p.col, p.row)!).map((sq) => sq.cz1 - sq.cz0))).toBeGreaterThan(BAND_CHUNKS);
-  expect([staged.hf.heights, staged.hf.tint]).toEqual([once.hf.heights, once.hf.tint]);
+  expect([denseOf(staged.hf).heights, denseOf(staged.hf).tint]).toEqual([once.heights, once.tint]);
 });
 
 test("the store of statics finds a chunk's rows in its sector, and in the table made of those held", () => {

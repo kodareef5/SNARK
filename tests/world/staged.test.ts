@@ -23,6 +23,7 @@ import { BAND_CHUNKS, StagedMap } from "../../client/core/mapload.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { Rasterizer } from "../../tools/snap/raster.ts";
 import { cornerMap, wideMap } from "../fixtures/map.ts";
+import { denseOf, nodesOf } from "../fixtures/paged-ground.ts";
 import { nodePack, nodeRegistry } from "../fixtures/nodeworld.ts";
 
 const PER = CHUNK_SIZE / TERRAIN_CELL;
@@ -297,15 +298,17 @@ function reached(root: object): Set<ArrayBufferLike> {
   return buffers;
 }
 
-test("a sector's ground is copied into the heightfield and let go: the staged map keeps no sector's piece, and of a listed node layer's rows only those", () => {
+test("a sector's ground is a page of its part's own arrays, the dense one is gone, and of a listed layer's rows only those are kept", () => {
   for (const listed of [false, true]) {
     const file = writeMap(cornerMap(listed));
+    const map = parseMap(file);
     const { staged, grounds } = cornerStaged(file);
     for (const g of grounds) staged.take(g);
     const held = reached(staged);
     const rows = grounds.flatMap((g) => g.listed.filter((r) => r !== null)).map((r) => r!.kind.buffer);
-    expect([listed, grounds.some((g) => held.has(g.heights.buffer) || held.has(g.tint.buffer)), rows.length > 0, rows.every((b) => held.has(b))]).toEqual([listed, false, listed, true]);
-    expect([listed, staged.hf.heights, [...staged.nodes]]).toEqual([listed, mapHeightfield(parseMap(file)).heights, [...parseMap(file).nodes]]);
+    expect([listed, grounds.every((g) => held.has(g.heights.buffer) && held.has(g.tint.buffer)), rows.length > 0, rows.every((b) => held.has(b)), staged.hf.heights.length]).toEqual([listed, true, listed, true, 0]);
+    const chunks = map.dims.chunksX * map.dims.chunksZ, reg = nodeRegistry();
+    expect([listed, denseOf(staged.hf).heights, standing(nodeLayers(map.dims, staged.hf, reg, staged.nodes)!, chunks)]).toEqual([listed, mapHeightfield(map).heights, standing(nodeLayers(map.dims, mapHeightfield(map), reg, map.nodes)!, chunks)]);
   }
 });
 
@@ -331,10 +334,11 @@ test("before any overview the ground is the head's coarse picture as a 64 m tile
   // The coarse picture as a heightfield of 64 m, whose heightAt is the triangles a tile that coarse draws; a sample's tint the nearest corner's.
   const coarse = new Heightfield(head.dims, CHUNK_SIZE, head.minY, head.stepY, Uint16Array.from(head.coarse.heights));
   let wrong = 0;
+  const got = denseOf(hf);
   for (let j = 0; j < hf.nz; j++) {
     for (let i = 0; i < hf.nx; i++) {
       const want = Math.round((coarse.heightAt(i * hf.cell, j * hf.cell) - head.minY) / head.stepY);
-      if (hf.heights[j * hf.nx + i] !== want || hf.tint[j * hf.nx + i] !== head.coarse.tint[Math.round(j / PER) * 7 + Math.round(i / PER)]) wrong++;
+      if (got.heights[j * hf.nx + i] !== want || got.tint[j * hf.nx + i] !== head.coarse.tint[Math.round(j / PER) * 7 + Math.round(i / PER)]) wrong++;
     }
   }
   // Most of the 64 m square round the corner in the pond's middle is under it: that corner names it and stands under its surface.
@@ -377,7 +381,8 @@ test("a sector's ground that comes before its overview waits for it: none of its
   expect([staged.hf.exact.every((e) => e === 0), staged.hf.changes.length / 4]).toEqual([true, 1]);
   staged.take(o);
   let off = 0;
-  for (let j = g.sq.cz0 * PER; j <= g.sq.cz1 * PER; j++) for (let i = g.sq.cx0 * PER; i <= g.sq.cx1 * PER; i++) if (staged.hf.heights[j * whole.nx + i] !== whole.heights[j * whole.nx + i]) off++;
+  const got = denseOf(staged.hf).heights;
+  for (let j = g.sq.cz0 * PER; j <= g.sq.cz1 * PER; j++) for (let i = g.sq.cx0 * PER; i <= g.sq.cx1 * PER; i++) if (got[j * whole.nx + i] !== whole.heights[j * whole.nx + i]) off++;
   const [x0, z0, x1, z1] = [g.sq.cx0 * CHUNK_SIZE, g.sq.cz0 * CHUNK_SIZE, g.sq.cx1 * CHUNK_SIZE - 0.01, g.sq.cz1 * CHUNK_SIZE - 0.01];
   // The coarse picture, the overview a band at a time, and the sector held.
   const bands = Math.ceil((o.sq.cz1 - o.sq.cz0) / BAND_CHUNKS);
@@ -414,11 +419,11 @@ test("the whole map's pair on the card, made once and sent again where a fill ch
 
 /** Each chunk's lowest and highest sample, edges among them, in stored steps. */
 function ranges(hf: Heightfield): Uint16Array {
-  const { chunksX, chunksZ } = hf.dims, out = new Uint16Array(chunksX * chunksZ * 2);
+  const { chunksX, chunksZ } = hf.dims, out = new Uint16Array(chunksX * chunksZ * 2), heights = denseOf(hf).heights;
   for (let cz = 0; cz < chunksZ; cz++) {
     for (let cx = 0; cx < chunksX; cx++) {
       let [a, b] = [65535, 0];
-      for (let j = cz * PER; j <= cz * PER + PER; j++) for (let i = cx * PER; i <= cx * PER + PER; i++) [a, b] = [Math.min(a, hf.heights[j * hf.nx + i]!), Math.max(b, hf.heights[j * hf.nx + i]!)];
+      for (let j = cz * PER; j <= cz * PER + PER; j++) for (let i = cx * PER; i <= cx * PER + PER; i++) [a, b] = [Math.min(a, heights[j * hf.nx + i]!), Math.max(b, heights[j * hf.nx + i]!)];
       [out[(cz * chunksX + cx) * 2], out[(cz * chunksX + cx) * 2 + 1]] = [a, b];
     }
   }
@@ -452,4 +457,29 @@ test("a staged map's chunk bounds hold every sample at every step, with no scan 
     const fresh = new TerrainLod(whole);
     for (let k = 0; k < 50; k++) expect(lod.lowest(k * 90, k * 25, k * 90 + 300, k * 25 + 64)).toBe(fresh.lowest(k * 90, k * 25, k * 90 + 300, k * 25 + 64));
   }
+});
+
+test("an overview let go a band a step stands in with the coarse picture, its water and nodes gone; taken again it is as before", () => {
+  const file = writeMap(cornerMap());
+  const { head, overviews } = partsOf(file);
+  const staged = new StagedMap(head), bare = new StagedMap(head), reg = nodeRegistry();
+  const o = overviews.find((q) => q.sq.cx0 === 0 && q.sq.cz0 === 0)!;
+  const g = partsOf(file).grounds.find((q) => q.sq.cx0 === 0 && q.sq.cz0 === 0)!;
+  for (const q of overviews) staged.take(q);
+  staged.take(g);
+  const [held, nodes, water] = [denseOf(staged.hf), nodesOf(staged.hf, reg, staged.nodes), [...staged.hf.water!.squares]];
+  const seen = staged.hf.changes.length;
+  let steps = 0;
+  for (const s = staged.release(o.sq.col, o.sq.row); !s.next().done; ) steps++;
+  const bands = Math.ceil((o.sq.cz1 - o.sq.cz0) / BAND_CHUNKS);
+  // Its sector's page stays; every other sample of it is the coarse picture's, as a map with no overview has it.
+  const now = denseOf(staged.hf), coarse = denseOf(bare.hf), page = (k: number): boolean => k % staged.hf.nx <= g.sq.cx1 * PER && Math.floor(k / staged.hf.nx) <= g.sq.cz1 * PER;
+  let wrong = 0;
+  for (let k = 0; k < now.heights.length; k++) if (Math.floor(k / staged.hf.nx) < o.sq.cz1 * PER && k % staged.hf.nx < o.sq.cx1 * PER && now.heights[k] !== (page(k) ? held.heights[k] : coarse.heights[k])) wrong++;
+  expect([steps, (staged.hf.changes.length - seen) / 4, staged.hf.filled.slice(seen / 4).every((f) => f), wrong]).toEqual([bands - 1, bands, true, 0]);
+  let wet = 0;
+  for (let z = 1; z < o.sq.cz1 * CHUNK_SIZE; z += 2) for (let x = 1; x < o.sq.cx1 * CHUNK_SIZE; x += 2) if (staged.hf.water!.bodyAt(x, z) !== bare.hf.water!.bodyAt(x, z)) wet++;
+  expect([wet, nodesOf(staged.hf, reg, staged.nodes).length < nodes.length]).toEqual([0, true]);
+  staged.take(o);
+  expect([denseOf(staged.hf), nodesOf(staged.hf, reg, staged.nodes), [...staged.hf.water!.squares]]).toEqual([held, nodes, water]);
 });

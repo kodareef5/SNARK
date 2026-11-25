@@ -190,3 +190,15 @@ test("a scene drawn from paged ground hands the card and the rasterizer what the
     expect(v.raster.color).toEqual(w.raster.color);
   }
 });
+
+test("a scene drawn from ground pages, every sector held, hands the card and the rasterizer what dense ground does", () => {
+  const ground = (x: number, z: number): number => 25 * Math.sin(x / 90) * Math.cos(z / 70) + 2 * Math.sin(x / 7);
+  const tint = (x: number, z: number): number => (Math.floor(x / 6) * 7 + Math.floor(z / 10) * 3) & 255;
+  const [w, v] = [farWorld({ chunks: 40, ground, tint }), farWorld({ chunks: 40, ground, tint, paged: "pages" })];
+  for (const k of [0, 1, 2]) {
+    for (const s of [w, v]) s.look(980 + k * 200, 10, 1040, 140, 0.6 + k, 12);
+    const [p, q] = [w.frame(true), v.frame(true)];
+    expect(handed(q)).toEqual(handed(p));
+    expect(v.raster.color).toEqual(w.raster.color);
+  }
+});

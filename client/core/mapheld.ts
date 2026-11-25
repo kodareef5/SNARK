@@ -53,12 +53,13 @@ export function mapLedger(roots: MapRoots): MapHeld[] {
   };
   const staged = roots.loader?.staged;
   if (staged) {
-    const hf = staged.hf;
-    add("ground", hf.heights, hf.tint, hf.ground, hf.exact, hf.bounds);
+    const hf = staged.hf, blocks = staged.overviews.held();
+    add("ground", hf.heights, hf.tint, hf.ground, hf.exact, hf.bounds, hf.held());
+    add("overviews", ...blocks.map((b) => [b.heights, b.tint]));
     add("water", hf.water);
     add("road", hf.road);
     add("streets", hf.streets);
-    add("nodes", staged.nodes);
+    add("nodes", staged.nodes, ...blocks.map((b) => [b.pictures, b.out, b.other]));
     add("tops", staged.tops);
     add("buildings", staged.buildings);
     add("head", staged.head);
