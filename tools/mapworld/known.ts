@@ -1,6 +1,7 @@
 // What the build knows of a piece beyond its place: the building it is a piece of, and the tile and storey its maker had
-// in hand when it placed it. Kept beside the piece, not on it, so a piece is in every file and every test what it was. A
-// copy of a piece is told to carry it (`carry`). The map's buildings section is made from it (tools/mapworld/buildings.ts).
+// in hand when it placed it. Kept on the piece as a hidden property, which no file, spread copy or test sees, so a piece
+// is in every file and every test what it was: a table beside 10 M pieces held 1.7 GB. A copy of a piece is told to
+// carry it (`carry`). The map's buildings section is made from it (tools/mapworld/buildings.ts).
 
 /** A storey not said, of a piece no layout placed: told by its height over its building's base when the pieces are put in order. */
 export const STOREY_UNSAID = 255;
@@ -17,7 +18,14 @@ export interface Known {
   readonly storey: number;
 }
 
-const kept = new WeakMap<object, number>();
+const KEPT = Symbol("known");
+const kept = {
+  get: (piece: object): number | undefined => (piece as { [KEPT]?: number })[KEPT],
+  set: (piece: object, v: number): void => {
+    if (KEPT in piece) (piece as { [KEPT]: number })[KEPT] = v;
+    else Object.defineProperty(piece, KEPT, { value: v, writable: true });
+  },
+};
 
 /** Tile and storey in 31 bits, an owner over them. */
 const pack = (owner: number, i: number, j: number, storey: number): number => (owner + 1) * 2147483648 + (((i + 1) << 19) | ((j + 1) << 8) | storey);

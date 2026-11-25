@@ -201,6 +201,8 @@ export function makeRuins(site: Site): StaticPiece[] {
       form: rule.formName ?? rule.recipe, collapse: rule.collapse ?? "shear", rooms: built.rooms, falls: built.falls, exposure: rule.event?.exposure, shelter: rule.event?.shelter, party: rule.party,
       blocks: built.pieces.length, detail, approaches, entries: built.entries, escapes: built.escapes, wings: built.wings, routes: built.routes, provisional: rule.provisional, modifiers: rule.matched, lore: p.facts.research?.lore ?? null, kind: p.facts.kind, sourceHeight: p.facts.height, heightFrom: p.facts.heightFrom, kindFrom: p.facts.kindFrom, researchFrom: p.facts.researchFrom ?? null });
   }
+  // Each pass leaves garbage the next would lay its own peak on: the buildings' tries here, the walks' and the cars' below.
+  Bun.gc(true);
   const clearance = clearCirculation(pieces, records, infrastructureCount, assemblies, bridges.records);
   if (reconcileRubble(pieces, records)) {
     const more = clearCirculation(pieces, records, records[0]?.firstPiece ?? pieces.length, assemblies, bridges.records);
@@ -329,6 +331,7 @@ export function makeRuins(site: Site): StaticPiece[] {
   // Where the rules ask and the map has the streets' lines, the street's edge is bent sections on their kerb lines
   // (bent-walks.ts) in place of the walk kit.
   const walks = (v.street.walks?.bent && site.ground.streets ? makeBentWalks : makeWalks)(site, v, (m) => { if (!accept(m)) return false; for (const p of m.pieces) obstacles.add(p); return true; }, (box) => crosses(box, ways), obstacles, roads, roadGround, entrances);
+  Bun.gc(true);
   const carGround = carGroundOf(site, data.places);
   const streets = makeStreetPieces(site, v, acceptProp, obstacles, roads, roadGround, carGround);
   // Lettered signs come after the passes that read every piece as a box of the ruin kit.
@@ -357,6 +360,7 @@ export function makeRuins(site: Site): StaticPiece[] {
   });
   for (const [orb, k] of orbRecords) orb.building = site.buildings.length + k;
   for (const b of made) site.buildings.push(b);
+  Bun.gc(true);
   const folder = join(site.source, "reports", site.world.ruins?.report ?? "ruins"); mkdirSync(folder, { recursive: true });
   const put = (name: string, value: unknown): void => writeFileSync(join(folder, name), `${JSON.stringify(value, null, 2)}\n`);
   // A long list written a row at a time, the same bytes as put's: as one string a big city's buildings were 0.3 to 0.55 GB.
