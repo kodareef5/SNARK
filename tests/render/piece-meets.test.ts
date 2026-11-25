@@ -142,9 +142,6 @@ test("a roof that runs on down from another lies under its eave board, which lap
   }
 });
 
-/** Metres between a gable's top and the roof over it in stone and thatch, until their roofs' sides are as deep as their slabs. */
-const GABLE_GAP = 0.215;
-
 /** Metres of air a wall may have under a roof's edge: a hewn timber's stray at the finest level, a coarser level's own error past it. */
 const UNDER_ROOF = [0.005, 0.02, 0.02] as const;
 
@@ -411,13 +408,12 @@ test("a thatch roof that runs on down from another lies under its eave course, w
   if (process.env.SNARK_MEETS) console.log(said.join("\n"));
 });
 
-test("a thatch gable's top lies in the plane of the roof's underside to 2 mm, under its thatch, with nothing through it", () => {
+test("a thatch gable's top lies in the roof's underside, under a verge, eave wall and high wall meeting solid roof", () => {
   const roof = ALL.roof!;
   const said: string[] = [];
   for (let level = 0; level < TEXTURED; level++) {
     for (const [hand, x, turn] of [["sloped_wall_left", 1.5, -90], ["sloped_wall_right", -1.5, 90]] as const) {
       const wall = thatchStanding({ form: hand, x, z: 0, turn }, level);
-      const over0 = thatchStanding({ form: "roof", x: 0, z: 0, turn: 0 }, level);
       // The plane through the roof row's corner heights: its top where the slab hangs under them, its underside where it stands on them.
       const plane = (z: number): number => ((z + 1.5) / 3) * (roof.corner![0]! - roof.corner![2]!);
       let most = 0, tops = 0, over1 = -Infinity;
@@ -433,20 +429,16 @@ test("a thatch gable's top lies in the plane of the roof's underside to 2 mm, un
       expect(over1, `${hand} level ${level}`).toBeLessThanOrEqual(0.002);
       expect(tops, `${hand} level ${level}: points on the plane`).toBeGreaterThanOrEqual(4);
       expect(most).toBeLessThanOrEqual(0.002);
-      let [gap, through] = [0, 0];
-      for (const z of [-1.45, -1.2, -0.6, 0, 0.7, 1.3, 1.45]) for (const inward of [0.02, 0.05, 0.09]) {
-        const px = x - Math.sign(x) * inward;
-        const [w, r] = [over(wall, px, z), over(over0, px, z)!];
-        if (!w) continue;
-        // The wall's top is no lower than the lowest of the roof over it, and no higher than its thatch.
-        gap = Math.max(gap, r[0] - w[1]);
-        through = Math.max(through, w[1] - r[1]);
-      }
-      said.push(`thatch: ${hand} level ${level}: top within ${(most * 1000).toFixed(2)} mm of the plane, gap under the roof ${(Math.max(0, gap) * 1000).toFixed(2)} mm, through it ${(Math.max(0, through) * 1000).toFixed(2)} mm`);
-      // The roof stands on its corner heights since 2026-11-24, and over a gable only its thatch runs out: as wood's boards do.
-      expect(gap, `${hand} level ${level}: the gap under the thatch`).toBeLessThanOrEqual(GABLE_GAP);
-      expect(through, `${hand} level ${level}: nothing through the roof`).toBeLessThanOrEqual(1e-6);
+      said.push(`thatch: ${hand} level ${level}: top within ${(most * 1000).toFixed(2)} mm of the plane`);
     }
+    // The roof's verge of reed, the plate on the eave wall's head and the beam at its high side, as deep as its slab.
+    // A thatch wall's top is its head, 4 cm through: past it the tiers fall away under any roof.
+    const met = roofOnWalls(thatchStanding, level, { across: [-0.02, 0, 0.02] });
+    said.push(`thatch level ${level}: air over a gable ${(met.gable * 1000).toFixed(1)} mm, over the eave wall ${(met.eave * 1000).toFixed(1)} mm, at a wall past the high side ${(met.high * 1000).toFixed(1)} mm, through the roof ${(met.through * 1000).toFixed(1)} mm`);
+    expect(met.gable, `level ${level}: over a gable`).toBeLessThanOrEqual(UNDER_ROOF[level]!);
+    expect(met.eave, `level ${level}: over the eave wall`).toBeLessThanOrEqual(UNDER_ROOF[level]!);
+    expect(met.high, `level ${level}: at a wall past the high side`).toBeLessThanOrEqual(UNDER_ROOF[level]!);
+    expect(met.through, `level ${level}: nothing through the roof`).toBeLessThanOrEqual(1e-6);
   }
   if (process.env.SNARK_MEETS) console.log(said.join("\n"));
 });
