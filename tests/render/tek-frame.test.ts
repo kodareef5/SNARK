@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { TEK_WALL } from "../../content/building/tek-wall.ts";
-import { frameSpill, tekFinishNormal, tekFrameSurface, tekPlateSurface, tekRailLight } from "../../client/core/render/tek-frame.ts";
+import { frameSpill, tekFinishNormal, tekFrameSurface, tekIndicator, tekPlateSurface, tekRailLight } from "../../client/core/render/tek-frame.ts";
 import { BLOOM_FROM } from "../../client/core/render/post.ts";
 
 test("machined titanium reflects more light than the dark seal", () => {
@@ -50,4 +50,14 @@ test("the plate catches a violet reflection at grazing angles", () => {
   expect(edge[0]! - silver[0]!).toBeGreaterThan(0.12);
   expect(edge[1]).toBe(silver[1]);
   expect(edge[2]! - silver[2]!).toBeGreaterThan(0.12);
+});
+
+test("structural indicator lenses keep the same cyan across a wide panel", () => {
+  const middle = new Float64Array(3), side = new Float64Array(3);
+  tekRailLight(middle, .2, 0, true, 1, tekIndicator(0, 0, 0));
+  tekRailLight(side, 1.4, 0, true, 1, tekIndicator(2 * Math.PI, 0, 0));
+  expect(middle).toEqual(side);
+  expect(tekIndicator(Math.PI, 0, 0)).toBeGreaterThan(tekIndicator(0, 0, 0));
+  expect(tekIndicator(Math.PI, 0, 8)).toBe(tekIndicator(0, 0, 0));
+  expect(middle[1]!).toBeGreaterThan(middle[0]! * 2);
 });

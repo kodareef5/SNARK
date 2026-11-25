@@ -18,12 +18,12 @@ import { FACADE_COLOURS, FACADE_TIERS, KIND, ROOM_OPEN_LEAST, ROOM_OUT, facadeFa
 import { TEK_WALL } from "../../content/building/tek-wall.ts";
 import { rippleOf } from "../../client/core/render/tek-ripple.ts";
 import { TEK_RAIL_COLOUR } from "../../content/building/tek-wall.ts";
-import { tekFinishNormal, tekFrameSurface, tekPlateSurface, tekRailLight } from "../../client/core/render/tek-frame.ts";
-import { FIELD_PHASE, TEK_FIELD, pieceFinish, tekFieldLight } from "../../client/core/render/tek-field.ts";
+import { tekFinishNormal, tekFrameSurface, tekIndicator, tekPlateSurface, tekRailLight } from "../../client/core/render/tek-frame.ts";
+import { FIELD_PHASE, TEK_FIELD, tekFieldLight } from "../../client/core/render/tek-field.ts";
 import { texgenSide } from "../../client/core/texgen/layers.ts";
 import { weatherTwin } from "../../client/core/texgen/weather.ts";
 import { TWIN_SLOTS, madeTwin } from "../../client/core/texgen/materials.ts";
-import { fieldConductor, fieldRelief, MADE_MARK, PIECE_FIXED, PIECE_OWN, PIECE_PLAIN, PIECE_SEED, ownFace, pieceSeed, type PiecePixel, SPALL_LINEAR, SPALL_PALETTE, SPALL_RIM, SPALL_SURFACE, spalled, coatLost, GROUND_BAND, GROUND_SCALE, GROUND_WALK, ROAD_FRAME, alongOf, edgeOf, edged, groundCover, groundMeet, groundWander, higher, roadFrameAt, roadWorn, streetCover, walkMeet, walkWorn, staticPlace, weathered, worldSharp, worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
+import { fieldConductor, fieldRelief, MADE_MARK, PIECE_ALLOY, PIECE_FIXED, PIECE_OWN, PIECE_PLAIN, PIECE_SEED, ownFace, pieceSeed, type PiecePixel, SPALL_LINEAR, SPALL_PALETTE, SPALL_RIM, SPALL_SURFACE, spalled, coatLost, GROUND_BAND, GROUND_SCALE, GROUND_WALK, ROAD_FRAME, alongOf, edgeOf, edged, groundCover, groundMeet, groundWander, higher, roadFrameAt, roadWorn, streetCover, walkMeet, walkWorn, staticPlace, weathered, worldSharp, worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
 import { STREET_CHUNKS, StreetPlanes } from "../../client/core/render/streets.ts";
 import { PAVED_VERGE, kerbOf, type StreetSectors } from "../../shared/world/streets.ts";
 import { FAR_FROM, NEAR_BODY } from "../../client/core/render/camera.ts";
@@ -43,7 +43,7 @@ import { lampSees, lensOfWord, poolShade } from "../../client/core/render/lamp.t
 import { orbMirror, orbSees, orbShade } from "../../client/core/render/orb-light.ts";
 import { MOST_LOD, detailKeeps, lampOf, poolOf, rotorOf, scorchOf, shapeOf, smokeOf, wakeFoam, wireOf } from "../../client/core/render/detailtext.ts";
 import { drawFire, type FireLook, type FireTarget } from "./fire.ts";
-import { FACE_PLAIN, FACE_WEARS, PIECE_FIT_AT, PIECE_MADE_AT, PIECE_MADE_BITS, PIECE_STAGE, PIECE_STATE_AT, PieceFit } from "../../client/core/render/piece-fit.ts";
+import { FACE_PLAIN, FACE_WEARS, PIECE_MADE_AT, PIECE_MADE_BITS, PIECE_STAGE, PIECE_STATE_AT, PieceFit } from "../../client/core/render/piece-fit.ts";
 import { WEAR_OVER_MADE, WEAR_STAGE, pieceMade, pieceShown, pieceWear, wearShade } from "../../client/core/render/pieces.ts";
 import { MADE_AT, DROPS_AT, DROP_STREAKS, ATLAS_REGION, ATLAS_WIDTH, BEND_BUFFERS, BONE_FLOATS, DRAW_BENT, DRAW_HEAT_SHIFT, GLASS_AT, DETAIL, DETAIL_FLOATS, DETAIL_TEK, DETAIL_DIGITS, DETAIL_GLOW, DETAIL_SCORCH, DETAIL_SMOKE, GLOW_STEPS, SMOKE_STEPS, DRAW_FIRE, DETAIL_GLASS, DETAIL_TIRE, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_WAKE, DETAIL_WIRE, DRAW_ORB, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_SKYLINE, SKYLINE_MAX_FOG, DRAW_ONE_BONE, DRAW_PIECE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, WORLD_LAYERS, quadIndices, stepOf, type TextureUpload, SHORE_AT, DETAIL_SHADED_POOL, MAX_CONTACTS } from "../../client/core/render/packet.ts";
 import { HALF_HEIGHT, OUTLINE_RGB, digitsOf, halfWidth } from "../../client/core/render/digits.ts";
@@ -484,22 +484,24 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
     facadeIO.room.fill(0);
     facadeIO.farShare = 0;
     if (facade && facade[0]! >= 0 && facadeSample && tier && p.frame[FRAME.facade + 1]! > 0.5) glass = facadeFlat(facade, nx, ny, nz, rx, ry, rz, dist, over, p.frame[FRAME.facade]!, tier, facadeSample, wear);
-    const field = !touch && made === TEK_FIELD && piece !== null && (piece[5]! & (PIECE_OWN | PIECE_FIXED)) === PIECE_OWN;
+    const plate = !touch && made === TEK_FIELD && piece !== null && (piece[5]! & (PIECE_OWN | PIECE_FIXED)) === PIECE_OWN;
+    const solid = piece !== null && (piece[5]! & PIECE_ALLOY) !== 0;
+    const field = plate && !solid;
     const hardware = !touch && made === TEK_FIELD && piece !== null && (piece[5]! & PIECE_FIXED) !== 0;
     const emitter = hardware && (piece[5]! & PIECE_PLAIN) === 0;
     const surfaceHeight = side > 0 ? fieldRelief : 0.5;
-    if (field) {
-      tekFinishNormal(normal, piece[0]!, piece[1]!, piece[3]!, piece[4]!, true, 1);
+    if (plate) {
+      if (field) tekFinishNormal(normal, piece[0]!, piece[1]!, piece[3]!, piece[4]!, true, 1);
       const facing = normal[0]! * eye[0]! + normal[1]! * eye[1]! + normal[2]! * eye[2]!;
       tekPlateSurface(albedo, worldOrm, surfaceHeight, facing, piece[3]! * eye[0]! - piece[4]! * eye[2]!);
     } else if (hardware && !emitter) {
       for (let c = 0; c < 3; c++) tekPalette[c] = srgbToLinear((pal[colorIndex * 4 + c]! / 255) * dim);
       tekFrameSurface(albedo, worldOrm, tekPalette, surfaceHeight);
-      tekFinishNormal(normal, piece[0]!, piece[1]!, piece[3]!, piece[4]!, false, worldOrm[2]!);
+      if (!solid) tekFinishNormal(normal, piece[0]!, piece[1]!, piece[3]!, piece[4]!, false, worldOrm[2]!);
     }
     const twice = 2 * (normal[0]! * eye[0]! + normal[1]! * eye[1]! + normal[2]! * eye[2]!);
     for (let c = 0; c < 3; c++) reflected[c] = twice * normal[c]! - eye[c]!;
-    const sharp = field || glass || worldSharp(worldOrm[1]!);
+    const sharp = plate || glass || worldSharp(worldOrm[1]!);
     if (worldOrm[1]! >= 1) mirrored.fill(0);
     else if (!sharp) skyLight(mirrored, p.frame, reflected);
     else if (look) skyFrom(mirrored, p.frame, reflected, look);
@@ -521,8 +523,9 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
     if (field) {
       const facing = nx * eye[0]! + ny * eye[1]! + nz * eye[2]!;
       tekFieldLight(light, piece[0]!, piece[1]!, (piece[5]! & 65535) >> PIECE_SEED, facing, footprint, p.frame[MADE_AT + FIELD_PHASE]!, p.frame[FRAME.exposure]!, surfaceHeight, piece[3]! * eye[0]! - piece[4]! * eye[2]!, eye[1]!, side > 0 ? fieldConductor : 0);
-    } else if (hardware) {
-      tekRailLight(light, piece[0]!, piece[1]!, emitter, p.frame[FRAME.exposure]!);
+    } else if (hardware && (!solid || emitter)) {
+      const indicator = solid ? tekIndicator(p.frame[MADE_AT + FIELD_PHASE]!, piece[0]! + piece[1]! + piece[2]!, (piece[5]! & 65535) >> PIECE_SEED) : 0;
+      tekRailLight(light, piece[0]!, piece[1]!, emitter, p.frame[FRAME.exposure]!, indicator);
     }
     if (facadeIO.room[0]! + facadeIO.room[1]! + facadeIO.room[2]! > 0) {
       facadeSky[0] = nx; facadeSky[1] = ny; facadeSky[2] = nz;
@@ -1353,12 +1356,13 @@ export class Rasterizer {
         // As ownVertex's vMade: a near chunk's piece's material, but on a face in the core's colour, and over it its wear.
         this.made = piece ? (data[at + PIECE_STATE_AT]! & PIECE_STAGE) << WEAR_OVER_MADE : word !== 0 ? (color === SPALL_PALETTE ? 0 : pieceMade(p.pieces, p.pieceRows, rows, word)) | (pieceWear(p.pieces, p.pieceRows, rows, word) << WEAR_OVER_MADE) : !skinned && color >= REGION_BASE && data[at + 18] === MADE_MARK ? data[at + 19]! : 0;
         // As ownVertex's piece bits: a face that wears the piece's material is read in the piece's frame, by its seed.
-        const material = piece ? pieceFinish(data[at + PIECE_MADE_AT]! & PIECE_MADE_BITS, data[at + PIECE_FIT_AT]!) : 0;
+        const material = piece ? data[at + PIECE_MADE_AT]! & PIECE_MADE_BITS : 0;
         const finish = material === TEK_FIELD || (lod.bones[last]! & FACE_WEARS) !== 0;
         const plain = material === TEK_FIELD ? color < REGION_BASE && color !== TEK_RAIL_COLOUR : (lod.bones[last]! & FACE_PLAIN) !== 0;
+        const solid = material === TEK_FIELD && (lod.bones[last]! & FACE_PLAIN) !== 0;
         const worn = color >= REGION_BASE || finish ? material : 0;
         this.made |= worn;
-        this.pieceBits = worn === 0 ? 0 : PIECE_OWN | (plain ? PIECE_PLAIN : 0) | (color >= REGION_BASE ? 0 : PIECE_FIXED) | (pieceSeed(view.getUint32(at, true), view.getUint32(at + 4, true), view.getUint32(at + 8, true)) << PIECE_SEED);
+        this.pieceBits = worn === 0 ? 0 : PIECE_OWN | (plain ? PIECE_PLAIN : 0) | (solid ? PIECE_ALLOY : 0) | (color >= REGION_BASE ? 0 : PIECE_FIXED) | (pieceSeed(view.getUint32(at, true), view.getUint32(at + 4, true), view.getUint32(at + 8, true)) << PIECE_SEED);
         if (piece && color < REGION_BASE && (lod.bones[last]! & FACE_WEARS) !== 0) this.pieceBits += (data[at + 14]! + 1) * 65536;
         if (color >= REGION_BASE) color = data[at + 14 + color - REGION_BASE]!;
         // As FLAT_MESH_VERTEX's uOneColor: a piece about to be built is one colour.

@@ -1,12 +1,8 @@
 // The emitter sweeps one interference pattern through the inset plate, in the wall's own metres.
 import { TEK_WALL } from "../../../content/building/tek-wall.ts";
-import { FIT_CLASS_SHIFT, FIT_WALL } from "./piece-fit.ts";
 import { MADE_FLOATS, materialIndex } from "../texgen/layers.ts";
 
 export const TEK_FIELD = materialIndex("tek_field");
-export const TEK_TRIM = materialIndex("plate");
-/** The borrowed metal joint has the owner's dye and its own fit class. */
-export const pieceFinish = (material: number, fit: number): number => material === TEK_FIELD && (fit >> FIT_CLASS_SHIFT) !== FIT_WALL ? TEK_TRIM : material;
 export const FIELD_PHASE = (TEK_FIELD - 1) * MADE_FLOATS + 2;
 export const FIELD_PERIOD = 12500;
 export const fieldPhase = (ms: number): number => ((ms % FIELD_PERIOD) / FIELD_PERIOD) * 2 * Math.PI;

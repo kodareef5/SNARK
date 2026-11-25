@@ -1,12 +1,16 @@
 import { TEK_JAW, TEK_LATCH, TEK_RAIL_COLOUR, TEK_WALL, jawContact, jawDepth, latchDepth } from "../../../content/building/tek-wall.ts";
 import { defaultPalette, nearestColour, REGION_BASE } from "../../../shared/pack/palette.ts";
 import type { FormDef } from "../../../shared/world/lattice/forms.ts";
+import { FACE_PLAIN } from "../../../client/core/render/piece-fit.ts";
+import { tekDeck } from "./tek-decks.ts";
+import { tekOpening } from "./tek-openings.ts";
+import { tekTrims } from "./tek-trims.ts";
 import type { SourceMesh } from "../write.ts";
 import { Shape, flatLod, type FaceMap, type Flat, type Vec } from "./kit.ts";
 import { errorOf, levelsOf, type TierRecipe } from "./lod.ts";
 
 const TONES = {
-  field: [40, 51, 65], gasket: [24, 27, 33], socket: [47, 53, 61], bevel: [94, 103, 111],
+  alloy: [40, 51, 65], field: [40, 51, 65], gasket: [24, 27, 33], socket: [47, 53, 61], bevel: [94, 103, 111],
   titanium: [140, 147, 153], chamfer: [158, 166, 174], cover: [106, 112, 121],
   emitter: [109, 229, 233], lens: [48, 153, 174], copper: [197, 116, 79],
 } as const;
@@ -132,16 +136,43 @@ function wall(name: string, form: FormDef, level: number): Shape | null {
   return shape;
 }
 
-export const TEK: TierRecipe = { name: "tek", rank: 3, runPost: false, jointHalf: .11, tones: TONES, split: wall };
+export const TEK: TierRecipe = {
+  name: "tek", rank: 4, runPost: false, jointHalf: .11, tones: TONES, trims: tekTrims,
+  split(name, form, level) {
+    if (name === "wall") return wall(name, form, level);
+    return tekDeck(name, form, level) ?? tekOpening(name, form, level);
+  },
+};
+
+const palette = defaultPalette();
+const colours = new Map(Object.entries(TONES).map(([name, rgb]) => [name, nearestColour(palette, rgb[0], rgb[1], rgb[2])]));
+function colour(mat: string): number {
+  if (mat === "field" || mat === "alloy") return REGION_BASE;
+  if (mat === "emitter") return TEK_RAIL_COLOUR;
+  const index = colours.get(mat);
+  if (index === undefined) throw new Error(`Unknown Tek finish ${mat}`);
+  return index;
+}
+
+function bake(name: string, shapes: Shape[]): SourceMesh {
+  return {
+    id: `core:${name}_tek`,
+    lods: shapes.map((shape, level) => {
+      const lod = flatLod(shape, colour, level < 3 && shape.triangles > 2);
+      if (name !== "wall") {
+        const bones = lod.bones ??= new Uint8Array(lod.colors.length);
+        for (let i = 0; i < bones.length; i++) bones[i]! |= FACE_PLAIN;
+      }
+      return { ...lod, ...(level ? { error: errorOf(shape, level) } : {}) };
+    }),
+  };
+}
 
 export function bakeTekWall(form: FormDef): SourceMesh {
-  const palette = defaultPalette();
-  const colours = new Map(Object.entries(TONES).map(([name, rgb]) => [name, nearestColour(palette, rgb[0], rgb[1], rgb[2])]));
-  return {
-    id: "core:wall_tek",
-    lods: levelsOf(TEK, "wall", form).map((shape, level) => ({
-      ...flatLod(shape, mat => mat === "field" ? REGION_BASE : mat === "emitter" ? TEK_RAIL_COLOUR : colours.get(mat)!, level < 3),
-      ...(level ? { error: errorOf(shape, level) } : {}),
-    })),
-  };
+  return bake("wall", levelsOf(TEK, "wall", form));
+}
+
+export function bakeTek(forms: Readonly<Record<string, FormDef>>): SourceMesh[] {
+  return [...Object.entries(forms).map(([name, form]) => bake(name, levelsOf(TEK, name, form))),
+    ...Object.entries(tekTrims()).map(([name, shapes]) => bake(name, shapes))];
 }

@@ -79,7 +79,7 @@ const TIERS: readonly Tier[] = [
   { name: "stone", color: 5, hp: STONE },
   // A light steel grey, whose painted finish is steel (content/surfaces.ts); its pieces are made by tools/pack/pieces/metal.ts.
   { name: "metal", color: 90, hp: FULL, made: "plate" },
-  { name: "tek", color: 83, hp: { wall: 12500 }, material: "metal", made: "tek_field" },
+  { name: "tek", color: 83, hp: Object.fromEntries(Object.entries(FULL).map(([form, hp]) => [form, Math.round(hp * 1.25)])), material: "metal", made: "tek_field" },
 ];
 /** The forms a tier is made in: those it has a health for that content places. */
 const formsOf = (tier: Tier): string[] => Object.keys(tier.hp).filter((name) => name in ROWS);
@@ -88,7 +88,7 @@ export const TIER_FORMS: Readonly<Record<string, readonly string[]>> = Object.fr
 
 function piece(tier: Tier, name: string): StructureDef {
   const form = SHAPES.find((s) => s.id === `core:shape_${name}`)!;
-  const base: StructureDef = { type: "structure", class: "piece", id: `core:${name}_${tier.name}`, mesh: "shape", shape: form.id, half: shapeHalf(form.boxes, form.hulls), color: tier.color, hp: tier.hp[SHUTS[name] ?? name]!, material: `core:mat_${tier.material ?? tier.name}`, ...(tier.made ? { made: tier.made } : {}) };
+  const base: StructureDef = { type: "structure", class: "piece", id: `core:${name}_${tier.name}`, mesh: "shape", shape: form.id, half: shapeHalf(form.boxes, form.hulls), color: tier.color, hp: tier.hp[SHUTS[name] ?? name]!, material: `core:mat_${tier.material ?? tier.name}`, ...(tier.made ? { made: tier.made } : {}), ...(tier.material ? { trimTier: tier.name } : {}) };
   const other = OPENS[name] ?? SHUTS[name];
   return other === undefined ? base : { ...base, opens: `core:${other}_${tier.name}`, locked: true };
 }
@@ -163,15 +163,27 @@ interface Making {
   readonly pieces: { readonly [piece: string]: { readonly level: number; readonly cost?: number; readonly xp?: number; readonly needs: Needs; readonly requires?: readonly string[] } };
 }
 
+/** Ingot, polymer, crystal and electronics for each item on the Tek building wheel. */
+const TEK_COSTS: Record<string, readonly [number, number, number, number]> = {
+  foundation: [100, 45, 20, 4], wall: [35, 20, 15, 2], ceiling: [50, 25, 15, 2], door: [25, 12, 15, 8],
+  pillar: [40, 18, 8, 2], stairs: [55, 26, 14, 3], half_wall: [18, 10, 8, 1], railing: [18, 8, 5, 1],
+  triangle_foundation: [50, 23, 10, 2], triangle_ceiling: [25, 13, 8, 1], roof: [50, 25, 15, 2],
+  triangle_roof: [25, 13, 8, 1], sloped_wall: [18, 10, 8, 1], fence_foundation: [14, 6, 3, 1],
+  trapdoor_frame: [45, 22, 12, 2], trapdoor: [16, 8, 5, 2], ladder: [12, 5, 4, 1],
+  double_doorway: [50, 28, 20, 3], double_door: [40, 20, 18, 4], large_wall: [140, 80, 60, 8],
+  gateway: [220, 90, 44, 10], gate: [85, 40, 25, 6],
+};
+
 const MAKING: { readonly [tier: string]: Making } = {
   tek: {
     label: "Tek",
     weight: 6,
     cost: 12,
     at: "core:fabricator",
-    pieces: {
-      wall: { level: 90, needs: [["ingot", 35], ["polymer", 20], ["crystal", 15], ["electronics", 2]], requires: ["core:engram-piece_fabricator", "core:engram-piece_wall_metal"] },
-    },
+    pieces: Object.fromEntries(Object.entries(TEK_COSTS).map(([name, [ingot, polymer, crystal, electronics]]) => [name, {
+      level: 90, needs: [["ingot", ingot], ["polymer", polymer], ["crystal", crystal], ["electronics", electronics]] satisfies Needs,
+      requires: ["core:engram-piece_fabricator", `core:engram-piece_${name}_metal`],
+    }])),
   },
   thatch: {
     label: "Thatch",

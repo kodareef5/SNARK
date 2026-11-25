@@ -13,7 +13,7 @@ test("Tek wall fits Metal and unlocks at the Fabricator after the Metal wall", (
   if (metal?.type !== "structure" || wall?.type !== "structure") throw new Error("Missing wall");
   expect(wall).toMatchObject({ shape: metal.shape, half: metal.half, material: metal.material, made: "tek_field", hp: 12500 });
   expect(def("piece_wall_tek")).toMatchObject({
-    places: ["core:wall_tek"], craft: { at: "core:fabricator", needs: [
+    places: ["core:wall_tek", "core:doorframe_tek", "core:windowframe_tek"], craft: { at: "core:fabricator", needs: [
       { item: "core:ingot", count: 35 }, { item: "core:polymer", count: 20 },
       { item: "core:crystal", count: 15 }, { item: "core:electronics", count: 2 },
     ] },

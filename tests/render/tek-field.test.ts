@@ -1,8 +1,6 @@
 import { expect, test } from "bun:test";
 import { MATERIAL_RECIPES } from "../../content/texgen/materials.ts";
-import { FIT_CLASS_SHIFT, FIT_ENDS, FIT_WALL } from "../../client/core/render/piece-fit.ts";
-import { materialIndex } from "../../client/core/texgen/layers.ts";
-import { FIELD_PERIOD, TEK_FIELD, fieldPhase, pieceFinish, tekFieldLight } from "../../client/core/render/tek-field.ts";
+import { FIELD_PERIOD, TEK_FIELD, fieldPhase, tekFieldLight } from "../../client/core/render/tek-field.ts";
 import { materialRows, materialTexel } from "../../client/core/texgen/materials.ts";
 
 function emitted(ms: number, footprint = 0.004, facing = 1, exposure = 1): number[] {
@@ -41,10 +39,4 @@ test("the plate texture cuts a bent pair of conductors into the brushed finish",
       expect(height(blank, x, y + 0.012) - height(relief, x, y + 0.012)).toBeGreaterThan(0.24);
     }
   }
-});
-
-
-test("each wall keeps its field and its borrowed Metal post keeps its plate", () => {
-  expect(pieceFinish(TEK_FIELD, (FIT_WALL << FIT_CLASS_SHIFT) | 3)).toBe(TEK_FIELD);
-  for (const trim of [0, 3, FIT_ENDS | 2]) expect(pieceFinish(TEK_FIELD, trim)).toBe(materialIndex("plate"));
 });

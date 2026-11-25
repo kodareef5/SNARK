@@ -1,6 +1,6 @@
 // The light from the inset lens falls across its metal housing in the wall's own metres.
 import { TEK_WALL } from "../../../content/building/tek-wall.ts";
-import { RAIL_LIGHT } from "./tek-field.ts";
+import { RAIL_LIGHT, TEK_FIELD } from "./tek-field.ts";
 
 const aperture = [0.80, 0.94, 1.14] as const;
 const flux = [0.055, 0.62, 0.83] as const;
@@ -55,9 +55,16 @@ export function tekPlateSurface(base: Float64Array, orm: Float64Array, height: n
   orm[2] = 0.56 + 0.13 * height + 0.10 * film;
 }
 
-export function tekRailLight(light: Float64Array, x: number, y: number, emitter: boolean, exposure: number): void {
-  const intensity = (emitter ? 3.6 : frameSpill(x, y)) / Math.max(exposure, 0.001);
-  const projector = emitter && Math.abs(x) < 1.10;
+/** A short travelling highlight crosses the pilot lenses once per wall-field cycle. */
+export function tekIndicator(phase: number, lane: number, seed: number): number {
+  const u = phase / (2 * Math.PI) - lane * 0.09 + (seed & 15) / 16;
+  const crest = Math.max(0, 1 - 6 * Math.abs(2 * (u - Math.floor(u)) - 1));
+  return 2.65 + 1.45 * crest * crest;
+}
+
+export function tekRailLight(light: Float64Array, x: number, y: number, emitter: boolean, exposure: number, indicator = 0): void {
+  const intensity = (indicator || (emitter ? 3.6 : frameSpill(x, y))) / Math.max(exposure, 0.001);
+  const projector = !indicator && emitter && Math.abs(x) < 1.10;
   const colour = projector ? aperture : emitter ? RAIL_LIGHT : flux;
   for (let c = 0; c < 3; c++) light[c]! += intensity * colour[c]!;
 }
@@ -86,7 +93,13 @@ void tekPlateSurface(inout vec3 base, inout vec3 orm, float height, float facing
   base = vec3(0.86, 0.95, 1.0) * base + vec3(0.026, 0.051, 0.076) * (0.55 + 0.65 * height) + vec3(0.21, 0.0, 0.20) * film;
   orm.yz = vec2(clamp(0.17 + 0.82 * (orm.y - 0.19), 0.16, 0.55), 0.56 + 0.13 * height + 0.10 * film);
 }
-vec3 tekRailLight(vec2 p, bool emitter) {
+float tekIndicator(float lane, int seed) {
+  float u = fMade[${(TEK_FIELD - 1) * 2}].z * 0.159154943 - lane * 0.09 + float(seed & 15) / 16.0;
+  float crest = max(0.0, 1.0 - 6.0 * abs(2.0 * fract(u) - 1.0));
+  return 2.65 + 1.45 * crest * crest;
+}
+vec3 tekRailLight(vec2 p, bool emitter, float indicator) {
+  if (indicator > 0.0) return vec3(${RAIL_LIGHT.join(", ")}) * indicator / max(fSunColor.w, 0.001);
   vec2 d = vec2(abs(p.x) - ${TEK_WALL.railX}, max(0.0, abs(p.y) - ${TEK_WALL.railY}));
   float d2 = dot(d, d);
   float spill = 0.59 / (1.0 + 2100.0 * d2) + 0.095 / (1.0 + 150.0 * d2);

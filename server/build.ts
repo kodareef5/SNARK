@@ -16,9 +16,10 @@ import { PLAN_FILL_REACH } from "../shared/world/plan.ts";
 import type { Plans } from "./plans.ts";
 import { ROLE_FOUNDATION, ROLE_PILLAR, enemyGap, enemyGapFound, floorTop, freePose, restPose, units, type Pose } from "../shared/world/snap.ts";
 import { Collapse } from "../shared/world/collapse.ts";
-import { Found, GONE_FELL, GONE_TAKEN, toldHealth } from "../shared/world/structures.ts";
+import { Found, GONE_FELL, GONE_TAKEN, toldHealth, type PartTable } from "../shared/world/structures.ts";
 import { Support } from "../shared/world/support.ts";
 import { ACT_REACH, NO_PIN, PIN_TRIES, PIN_WAIT_TICKS, STRUCT_DEMOLISH, STRUCT_LIGHT, STRUCT_LOCK, STRUCT_NAME, STRUCT_PICKUP, STRUCT_PIN, STRUCT_REPAIR, STRUCT_TRAVEL, STRUCT_UNLOCK, STRUCT_USE, cost, refundOf, repairCostOf } from "../shared/world/upkeep.ts";
+import { TekDoors } from "./tek-doors.ts";
 import type { Fixtures } from "./fixtures.ts";
 import { TICK_RATE } from "../shared/coords.ts";
 import { Decay } from "./decay.ts";
@@ -142,6 +143,7 @@ export class Build {
   private readonly guesses = new Guesses(PIN_TRIES, PIN_WAIT_TICKS);
   /** By survivor pid: the box it last opened with a PIN, and the PIN it gave. */
   private readonly entered = new Map<number, { box: number; pin: number }>();
+  private readonly tekDoors: TekDoors;
   private readonly near = new Found();
   private readonly look = [0, 0, 0];
   private readonly inWay: number[] = [];
@@ -167,6 +169,11 @@ export class Build {
     this.support = new Support(structs, world.reg, heightAt);
     this.collapse = new Collapse(structs, world.reg, heightAt);
     this.decay = new Decay(world, ctx.rules);
+    this.tekDoors = new TekDoors(ctx, (e, ref, x, y, z) => this.inSight(e, ref, x, y, z, true), (ref, sweep) => this.inSwing(ref, sweep), (ref, to, byPid, sweep) => {
+      if (ctx.bus.before(STRUCTURE_ACT, { byPid, ref, action: "use" }) !== "" || !this.swing(ref, to, sweep)) return false;
+      this.used++;
+      return true;
+    });
     this.site = {
       structs,
       tables: world.reg,
@@ -220,6 +227,7 @@ export class Build {
     };
     // Any removal may leave what the piece held unsupported. The collapse already knows about the pieces it fells itself.
     structs.onRemove = (ref, cause) => {
+      this.tekDoors.removed(ref);
       this.hurtAt.delete(ref);
       this.placedAt.delete(ref);
       this.leaving(ref, cause);
@@ -274,7 +282,7 @@ export class Build {
   }
 
   /** Whether nothing stands between the eye of body `e` and piece `ref`, along the line to the piece's middle or along where the body looks. */
-  private inSight(e: number, ref: number, x: number, y: number, z: number): boolean {
+  private inSight(e: number, ref: number, x: number, y: number, z: number, centreOnly = false): boolean {
     const world = this.ctx.world;
     const ents = world.ents;
     const ex = ents.x[e]!;
@@ -284,6 +292,7 @@ export class Build {
     if (far < 1e-6) return true;
     const hit = castWorld(world, ex, ey, ez, (x - ex) / far, (y - ey) / far, (z - ez) / far, far);
     if (hit === HIT_NONE || (hit === HIT_STRUCTURE && rayHit.ref === ref)) return true;
+    if (centreOnly) return false;
     const d = this.look;
     lookDirection(ents.yaw[e]!, ents.pitch[e]!, d);
     return castWorld(world, ex, ey, ez, d[0]!, d[1]!, d[2]!, far + 2) === HIT_STRUCTURE && rayHit.ref === ref;
@@ -426,14 +435,8 @@ export class Build {
       this.guesses.right(who);
     }
     if (opens !== 0) {
-      // A door swaps to its other kind, unless a body is in the way.
-      if (this.bodyIn(opens, t.x[slot]!, t.y[slot]!, t.z[slot]!, t.yaw[slot]!, t.twAt(slot)) >= 0) return RESULT_OBSTRUCTED;
-      structs.swap(ref, opens);
-      if (state) {
-        state.kind = opens;
-        records.dirty.add(state.pid);
-      }
-      if (this.collapse.busy) this.collapse.built();
+      if (!this.swing(ref, opens)) return RESULT_OBSTRUCTED;
+      this.tekDoors.manual(ref, opens);
     } else {
       const box = fixtures.ensure(ref);
       if (c.open !== box.pid && !this.ctx.game.mayOpen(c, box.pid)) return RESULT_DENIED;
@@ -443,6 +446,27 @@ export class Build {
     }
     this.used++;
     return RESULT_OK;
+  }
+
+  private inSwing(ref: number, parts: PartTable): boolean {
+    const t = this.ctx.world.structs.chunks[ref >>> 16]!, slot = ref & 65535;
+    return this.bodyIn(0, t.x[slot]!, t.y[slot]!, t.z[slot]!, t.yaw[slot]!, t.twAt(slot), parts, 0) >= 0;
+  }
+
+  /** A swing keeps the row, lock and PIN and tells the normal structure and save paths. */
+  private swing(ref: number, to: number, sweep?: PartTable): boolean {
+    const { world, fixtures, records } = this.ctx;
+    const t = world.structs.chunks[ref >>> 16], slot = ref & 65535;
+    if (!t || world.reg.opens[t.kind[slot]!] !== to) return false;
+    if (sweep ? this.inSwing(ref, sweep) : this.bodyIn(to, t.x[slot]!, t.y[slot]!, t.z[slot]!, t.yaw[slot]!, t.twAt(slot)) >= 0) return false;
+    if (!world.structs.swap(ref, to)) return false;
+    const state = fixtures.find(ref);
+    if (state) {
+      state.kind = to;
+      records.dirty.add(state.pid);
+    }
+    if (this.collapse.busy) this.collapse.built();
+    return true;
   }
 
   /**
@@ -478,6 +502,7 @@ export class Build {
 
   /** Goes on with the collapse a save caught midway, from what `unsettled` wrote. */
   resume(saved: string | number | null): void {
+    this.tekDoors.restore();
     const was = typeof saved === "string" ? (JSON.parse(saved) as { at: [number, number, number]; chunks: number[] } | null) : null;
     if (was) this.collapse.resume(was.chunks, was.at[0], was.at[1], was.at[2]);
   }
@@ -502,6 +527,7 @@ export class Build {
       this.listed = collapse.listed;
       this.unsettled.dirty = true;
     }
+    this.tekDoors.step();
     this.decay.step(world.tick, this.visitors);
   }
 
@@ -880,7 +906,7 @@ export class Build {
   onPlaced: ((by: EntityRecord, ref: number) => void) | null = null;
 
   /** The entity index of something alive that stands where a piece of `kind` at this pose would be, or -1. */
-  private bodyIn(kind: number, x: number, y: number, z: number, yaw: number, tw: number): number {
+  private bodyIn(kind: number, x: number, y: number, z: number, yaw: number, tw: number, parts = this.ctx.world.reg.parts, slack = BODY_SLACK): number {
     const world = this.ctx.world;
     const ents = world.ents;
     const reg = world.reg;
@@ -899,10 +925,10 @@ export class Build {
               x: ents.x[i]!, y: ents.y[i]!, z: ents.z[i]!, yaw: ents.vehicleYaw[v]!, pitch: ents.vehiclePitch[v]!, roll: ents.vehicleRoll[v]!,
               qx: ents.vehicleQx[v]!, qy: ents.vehicleQy[v]!, qz: ents.vehicleQz[v]!, qw: ents.vehicleQw[v]!, steering: ents.steering[v]!,
             };
-            if (familyOf(car)!.meetsKind(car, reg.parts, kind, x, y, z, yaw, tw, frame, BODY_SLACK)) return i;
+            if (familyOf(car)!.meetsKind(car, parts, kind, x, y, z, yaw, tw, frame, slack)) return i;
             continue;
           }
-          if (capsuleKind(reg.parts, kind, x, y, z, yaw, tw, ents.x[i]!, ents.y[i]!, ents.z[i]!, reg.bodyRadius[k]!, reg.bodyHeight[k]!, BODY_SLACK)) return i;
+          if (capsuleKind(parts, kind, x, y, z, yaw, tw, ents.x[i]!, ents.y[i]!, ents.z[i]!, reg.bodyRadius[k]!, reg.bodyHeight[k]!, slack)) return i;
         }
       }
     }

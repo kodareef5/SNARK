@@ -1,5 +1,5 @@
 import { TEK_RAIL_COLOUR } from "../../../content/building/tek-wall.ts";
-import { TEK_FIELD, TEK_TRIM } from "./tek-field.ts";
+import { TEK_FIELD } from "./tek-field.ts";
 import { fixtureShader } from "./street-finish.ts";
 // Metre-space materials for terrain and meshes without authored surfaces. CPU and GLSL deliberately use the same
 // projection, integer hash, noises, blends and weather fields. There is no animation clock here.
@@ -14,7 +14,7 @@ import { STEP0_SIZE, topIn, type TextureFormat } from "../../../shared/pack/text
 import type { Tier } from "../assets/tiers.ts";
 import { WEIGHT } from "../assets/residency.ts";
 import { REGION_BASE, defaultPalette } from "../../../shared/pack/palette.ts";
-import { FACE_PLAIN, FACE_WEARS, FIT_CLASS_SHIFT, FIT_WALL, PIECE_MADE_BITS, PIECE_STAGE } from "./piece-fit.ts";
+import { FACE_PLAIN, FACE_WEARS, PIECE_MADE_BITS, PIECE_STAGE } from "./piece-fit.ts";
 import { PIECE_MADE, PIECE_WEAR, PIECE_WEAR_SHIFT, WEAR_OVER_MADE } from "./pieces.ts";
 import { FRAME, WORLD_LAYERS, type FramePacket } from "./packet.ts";
 import { srgbToLinear } from "./surface.ts";
@@ -318,7 +318,7 @@ const MOTTLE = [2.3, 0.9] as const;
  * PIECE_FIXED where its colour is the mesh's and not the piece's, and from PIECE_SEED its instance's seed.
  */
 export interface PiecePixel { x: number; y: number; z: number; c: number; s: number; bits: number }
-export const PIECE_OWN = 1, PIECE_PLAIN = 2, PIECE_FIXED = 4, PIECE_SEED = 3, PIECE_SEEDS = 4096;
+export const PIECE_OWN = 1, PIECE_PLAIN = 2, PIECE_FIXED = 4, PIECE_ALLOY = 8, PIECE_SEED = 4, PIECE_SEEDS = 4096;
 /** Where ownVertex puts those bits in vMade, over the material's five and the wear's three. */
 export const PIECE_OVER_WEAR = 8;
 /** A sheet's own light either way, its own lean, and the share of sheets left in primer, on a piece. */
@@ -393,7 +393,7 @@ function made(k: number, id: number, axis: number, x: number, y: number, z: numb
     u = (axis === 0 ? piece.z : piece.x) / m;
     v = (axis === 1 ? piece.z : -piece.y) / m;
   }
-  const uprightStock = k === TEK_FIELD && piece !== null && (piece.bits & PIECE_PLAIN) !== 0 && Math.abs(piece.x) > Math.abs(piece.y);
+  const uprightStock = k === TEK_FIELD && piece !== null && (piece.bits & (PIECE_PLAIN | PIECE_ALLOY)) === PIECE_PLAIN && Math.abs(piece.x) > Math.abs(piece.y);
   if (uprightStock) {
     const cross = u;
     u = v;
@@ -1202,13 +1202,13 @@ export function spalled(x: number, y: number, z: number, nx: number, ny: number,
 const PIECE_MADE_TEXT = `  if (uPiece > 0.5) {
     bool region = aColor >= ${REGION_BASE}u;
     uint material = iRegA.w & ${PIECE_MADE_BITS}u;
-    if (material == ${TEK_FIELD}u && (iRegB.y >> ${FIT_CLASS_SHIFT}u) != ${FIT_WALL}u) material = ${TEK_TRIM}u;
     bool field = material == ${TEK_FIELD}u;
+    bool alloy = field && (aBone & ${FACE_PLAIN}u) != 0u;
     bool plain = field ? (!region && aColor != ${TEK_RAIL_COLOUR}u) : (aBone & ${FACE_PLAIN}u) != 0u;
     uint wears = region || field || (aBone & ${FACE_WEARS}u) != 0u ? material : 0u;
     uint h = floatBitsToUint(iPos.x) * 2654435761u ^ floatBitsToUint(iPos.y) * 2246822519u ^ floatBitsToUint(iPos.z) * 3266489917u;
     h = (h ^ (h >> 15u)) * 2246822519u;
-    vMade = int(wears | ((iRegB.x & ${PIECE_STAGE}u) << ${WEAR_OVER_MADE}u) | (wears == 0u ? 0u : ${PIECE_OWN << PIECE_OVER_WEAR}u | (plain ? ${PIECE_PLAIN << PIECE_OVER_WEAR}u : 0u) | (region ? 0u : ${PIECE_FIXED << PIECE_OVER_WEAR}u) | ((h >> 20u) << ${PIECE_OVER_WEAR + PIECE_SEED}u)));
+    vMade = int(wears | ((iRegB.x & ${PIECE_STAGE}u) << ${WEAR_OVER_MADE}u) | (wears == 0u ? 0u : ${PIECE_OWN << PIECE_OVER_WEAR}u | (plain ? ${PIECE_PLAIN << PIECE_OVER_WEAR}u : 0u) | (alloy ? ${PIECE_ALLOY << PIECE_OVER_WEAR}u : 0u) | (region ? 0u : ${PIECE_FIXED << PIECE_OVER_WEAR}u) | ((h >> 20u) << ${PIECE_OVER_WEAR + PIECE_SEED}u)));
   }
 `;
 const PIECE_TURN_TEXT = `  if (uPiece > 0.5) {
@@ -1398,7 +1398,7 @@ bool made(int k, int id, inout int axis, vec3 face, vec3 rel, vec3 dpx, vec3 dpy
   vec4 s = fMade[k * 2 - 2];
   vec3 ph = fMade[k * 2 - 1].xyz, p = rel + uWorldEye;
   bool turn = axis == 1 && abs(face.x) > abs(face.z), own = (worldPiece & 1) != 0;
-  int seed = worldPiece >> 3;
+  int seed = worldPiece >> ${PIECE_SEED};
   if (own) {
     vec3 on = abs(ownOf(face));
     axis = on.y >= max(on.x, on.z) ? 1 : on.x > on.z ? 0 : 2;
@@ -1418,7 +1418,7 @@ bool made(int k, int id, inout int axis, vec3 face, vec3 rel, vec3 dpx, vec3 dpy
     dx = dx.yx;
     dy = dy.yx;
   }
-  bool uprightStock = k == ${TEK_FIELD} && (worldPiece & ${PIECE_PLAIN}) != 0 && abs(worldOwn.x) > abs(worldOwn.y);
+  bool uprightStock = k == ${TEK_FIELD} && (worldPiece & ${PIECE_PLAIN | PIECE_ALLOY}) == ${PIECE_PLAIN} && abs(worldOwn.x) > abs(worldOwn.y);
   if (uprightStock) { q = q.yx; dx = dx.yx; dy = dy.yx; }
   tone = clamp((surfaceNoise(qf * ${fl(WORLD_PATCH)} + vec2(5.3, 1.7)) - 0.35) / 0.3, 0.0, 1.0);
   tone = tone * tone * (3.0 - 2.0 * tone);

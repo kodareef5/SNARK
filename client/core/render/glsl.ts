@@ -20,7 +20,7 @@ import { OVER_GROUND_GLSL, SKY_OPEN_GLSL } from "./skyopen.ts";
 import { ROOF_GLSL } from "./roof.ts";
 import { LIGHT, THROUGH } from "./surface.ts";
 import { FACADE_GLSL, ROOM_OPEN_LEAST } from "./facade.ts";
-import { GROUND_BAND, GROUND_GLSL, GROUND_SCALE, PIECE_FIXED, PIECE_OVER_WEAR, PIECE_OWN, PIECE_PLAIN, PIECE_SEED, ROAD_GLSL, SPALL_RIM, SPALL_SURFACE, STREETS_GLSL, WORLD_GLSL, WORLD_SHARP } from "./world-surfaces.ts";
+import { GROUND_BAND, GROUND_GLSL, GROUND_SCALE, PIECE_ALLOY, PIECE_FIXED, PIECE_OVER_WEAR, PIECE_OWN, PIECE_PLAIN, PIECE_SEED, ROAD_GLSL, SPALL_RIM, SPALL_SURFACE, STREETS_GLSL, WORLD_GLSL, WORLD_SHARP } from "./world-surfaces.ts";
 import { WET_DARK, WET_GLSL, WET_ROUGH } from "./bank.ts";
 
 const f = (n: number): string => n.toFixed(4);
@@ -178,18 +178,23 @@ void main() {
 #ifdef WORLD_WEATHER
   if (worldMade == ${TEK_FIELD} && (worldPiece & ${PIECE_OWN | PIECE_FIXED}) == ${PIECE_OWN}) {
     vec3 sight = ownOf(v);
-    n = tekFinishNormal(n, vOwn.xy, worldTurn, true, 1.0);
+    bool field = (worldPiece & ${PIECE_ALLOY}) == 0;
+    if (field) n = tekFinishNormal(n, vOwn.xy, worldTurn, true, 1.0);
     tekPlateSurface(albedo, orm, fieldRelief, dot(n, v), sight.x);
     worldSharp = true;
-    localLight += tekFieldLight(vOwn.xy, worldPiece >> ${PIECE_SEED}, dot(geometric, v), max(length(dx), length(dy)), fieldRelief, sight.x, sight.y, fieldConductor);
+    if (field) localLight += tekFieldLight(vOwn.xy, worldPiece >> ${PIECE_SEED}, dot(geometric, v), max(length(dx), length(dy)), fieldRelief, sight.x, sight.y, fieldConductor);
   } else if (worldMade == ${TEK_FIELD} && (worldPiece & ${PIECE_FIXED}) != 0) {
+    bool solid = (worldPiece & ${PIECE_ALLOY}) != 0;
     bool emitter = (worldPiece & ${PIECE_PLAIN}) == 0;
     if (!emitter) {
       tekFrameSurface(albedo, orm, vColor, fieldRelief);
-      n = tekFinishNormal(n, vOwn.xy, worldTurn, false, orm.z);
+      if (!solid) n = tekFinishNormal(n, vOwn.xy, worldTurn, false, orm.z);
       worldSharp = orm.y < ${f(WORLD_SHARP)};
     }
-    localLight += tekRailLight(vOwn.xy, emitter);
+    if (emitter || !solid) {
+      float indicator = solid ? tekIndicator(vOwn.x + vOwn.y + vOwn.z, worldPiece >> ${PIECE_SEED}) : 0.0;
+      localLight += tekRailLight(vOwn.xy, emitter, indicator);
+    }
   }
 #endif
   vec3 r = reflect(-v,n);

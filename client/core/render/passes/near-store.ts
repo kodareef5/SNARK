@@ -1629,7 +1629,7 @@ export class NearStore implements Pass {
       w.set(i, x - x0, y, z - z0, 0, colorOf[dye]!);
       data[i * INSTANCE_BYTES + 15] = regions[dye * 5]!;
       data[i * INSTANCE_BYTES + 16] = regions[dye * 5 + 1]!;
-      writePiece(data, i, at < 0 ? plainYaw(yaw, tw) : pieceWord(at, yaw, tw), this.pieces.made[dye]!, (at < 0 ? 0 : PIECE_FRAMED) | this.pieces.stage(t, s) | trims.ends[k]!, trims.cut[k]!);
+      writePiece(data, i, at < 0 ? plainYaw(yaw, tw) : pieceWord(at, yaw, tw), this.trims.finish[mesh]!, (at < 0 ? 0 : PIECE_FRAMED) | this.pieces.stage(t, s) | trims.ends[k]!, trims.cut[k]!);
       b.slots[i] = s;
       b.kinds[i] = kind;
       b.trimmed![i] = 1;
