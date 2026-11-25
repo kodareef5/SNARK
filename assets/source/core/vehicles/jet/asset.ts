@@ -27,7 +27,7 @@ export function jetAsset(scripts: readonly string[] = ["model.py"]): CreatureAss
       // Smoked glass, its inside never drawn: from the seat the canopy's faces look away and are not there.
       glass: { base: "tex/glass_base.png", packed: "tex/glass_packed.png", flat: [40, 46, 54] },
       // Cyan-white lines of light, and the burner's core; as bright as a lamp by day, held to their colour by night.
-      glow: { base: "tex/glow_base.png", packed: "tex/glow_packed.png", emissive: 2.4, indicator: true, flat: [190, 245, 255] },
+      glow: { base: "tex/glow_base.png", packed: "tex/glow_packed.png", emissive: 2.4, flat: [190, 245, 255] },
     },
     preserveBones: ["stabilator_left", "stabilator_right"], holdParts: true,
     flat: 2,
