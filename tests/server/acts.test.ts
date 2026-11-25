@@ -12,9 +12,13 @@ import { AdminPages } from "../../server/admin/routes.ts";
 import { gaugesOf } from "../../server/admin/stats.ts";
 import { Guesses } from "../../server/guesses.ts";
 import { WorldStore } from "../../server/persist/store.ts";
+import { adminSite } from "../../server/admin/site.ts";
+import { permissionsAdmin } from "../../server/permissions/routes.ts";
+import { staffPasswords } from "../../server/permissions/secrets.ts";
 import { idText } from "../../server/survivor-ids.ts";
 import { decodeAct, type Act } from "../../shared/acts.ts";
 import type { ActsAnswer } from "../../shared/admin-acts.ts";
+import { PERMISSIONS_API } from "../../shared/permissions/page.ts";
 import { TEXT_NOTICE } from "../../shared/net/protocol.ts";
 import { RANK_ADMIN, RANK_MAP, RANK_STAFF } from "../../shared/ranks.ts";
 import { adminLines, savedActs } from "../fixtures/acts.ts";
@@ -172,6 +176,57 @@ test("an entry from before the flag, or before ranks, shows in the latest acts",
   const second = world({ db });
   expect(second.h.host.acts.recent().map((a) => [a.name, a.rank, a.open, a.what])).toEqual([["pip", RANK_STAFF, false, "kick carl"], ["ada", -1, false, "settime 6:30"]]);
   second.h.host.shutdown();
+});
+
+test("rubbish sent to the permissions page is logged in short clean words", async () => {
+  const said: string[] = [];
+  const h = new Harness({}, 1, 60, { adminPassword: "hunter2", log: (line) => said.push(line) });
+  const gate = { dev: false, password: "hunter2", cluster: null, guesses: h.host.game.sessions.cheatGuesses, tick: () => h.world.tick, staff: staffPasswords(h.host) };
+  const site = {
+    dir, base: "", port: 0, id: "local" as const, who: "1.2.3.4", gate, destinations: () => [], scenes: () => new Response(null),
+    permissions: (call: Request, at: string) => permissionsAdmin(call, at, h.host),
+  };
+  const send = async (op: unknown): Promise<number> => {
+    const init = { method: "POST", headers: { authorization: `Basic ${btoa("kody:hunter2")}`, "content-type": "application/json" }, body: JSON.stringify({ do: "op", op }) };
+    return (await adminSite(new Request(`http://localhost${PERMISSIONS_API}`, init), new URL(`http://localhost${PERMISSIONS_API}`), site))!.status;
+  };
+  const HUGE = "Q".repeat(200_000);
+  const HASH = "7".repeat(64);
+  const CHAT = "SECRET-CHAT-".repeat(2000);
+  const statuses = [
+    await send({ op: "grant", group: { toString: 1 }, permission: [1, 2] }),
+    await send({ op: "addGroup", group: HUGE, rank: "cluster" }),
+    await send({ op: "revoke", group: "Ad\u0000mins\u001b[31m\n", permission: "Cheat.\u202efly\r\nadmin: x" }),
+    await send({ op: "clearSecret", id: "1", hash: HASH }),
+    await send({ op: "setSecret", id: "1", password: "swordfish" }),
+    await send({ op: "setChat", group: "Admins", chat: CHAT }),
+    await send({ op: "addMember", kind: "survivor", key: HUGE, group: "Admins", hours: "x", world: {} }),
+    await send({ op: "nonsense", group: HUGE }),
+  ];
+  expect(statuses.every((s) => s === 403)).toBe(true);
+  const refused = h.host.acts.recent().filter((a) => a.kind === "refused");
+  expect(refused.length).toBe(statuses.length);
+  for (const act of refused) {
+    expect([act.name, act.rank, act.via, act.open]).toEqual(["(kody)", RANK_MAP, "page", false]);
+    expect(act.what.length).toBeLessThan(400);
+    expect(act.what).not.toMatch(/[\p{Cc}\p{Cf}]/u);
+    for (const secret of ["QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ", HASH, "swordfish", "SECRET-CHAT"]) expect(act.what).not.toContain(secret);
+  }
+  expect(refused.map((a) => a.what.split(": ")[0])).toEqual([
+    "Permissions.Grant ? ?",
+    expect.stringMatching(/^Permissions\.AddGroup Q+…; Permissions\.Rank Q+… \?$/),
+    "Permissions.Revoke Ad mins [31m Cheat.fly admin",
+    "set a password",
+    "set a password",
+    "set the chat format of Admins",
+    expect.stringMatching(/^Permissions\.AddTimed Q+… Admins \? 0$/),
+    "a change of no known kind",
+  ]);
+  expect(refused[5]!.what).toBe("set the chat format of Admins: A chat block is text of at most 16384 letters.");
+  const lines = said.filter((line) => line.includes("refused: "));
+  expect(lines.length).toBe(statuses.length);
+  expect(lines.join("\n")).not.toContain(HASH);
+  h.host.shutdown();
 });
 
 test("a world with no save still lists its latest acts", () => {

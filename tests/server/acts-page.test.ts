@@ -4,7 +4,7 @@ import { afterAll, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { NO_FILTER, TYPED, actRow, actsHtml, countText, mergeActs, moreAfter, nextAfter, shownActs } from "../../client/core/admin/acts.ts";
+import { KINDS, KIND_WORDS, NO_FILTER, TYPED, actRow, actsHtml, countText, mergeActs, moreAfter, nextAfter, shownActs } from "../../client/core/admin/acts.ts";
 import { resolveAdmin, sections } from "../../client/core/admin/navigation.ts";
 import { adminSite } from "../../server/admin/site.ts";
 import { Guesses } from "../../server/guesses.ts";
@@ -80,6 +80,12 @@ test("the rows escape what the server gave", () => {
   expect(html).toContain("&#60;b&#62;&#34;Pip&#34;&#60;/b&#62;");
   expect(actsHtml([log[1]!])).toContain(`title="${TYPED}"`);
   expect(actsHtml([log[0]!])).toContain(MARA);
+});
+
+test("a refused attempt has a kind of its own, in the filter and on its row", () => {
+  const tried = act(8, { kind: "refused", what: "Permissions.Rank Owners cluster: That needs the cluster rank." });
+  expect([KINDS.includes("refused"), KIND_WORDS.refused, actRow(tried).kind]).toEqual([true, "Refused attempts", "refused"]);
+  expect(shownActs([...log, tried], { ...NO_FILTER, kind: "refused" }).map((a) => a.seq)).toEqual([8]);
 });
 
 test("the count says how many of how many it shows", () => {

@@ -2,8 +2,8 @@
 // kept here and printed one line each to the server's own output. The latest open commands, which creative mode for all
 // and open groups' permissions let anyone run, are kept apart in a smaller list. Both are read back from the journal at start.
 
-import { decodeAct, encodeAct, openOnly, type Act, type ActKind, type ActVia } from "../shared/acts.ts";
-import { RANK_CLUSTER, RANK_NAMES, RANK_OPEN, RANK_STAFF } from "../shared/ranks.ts";
+import { actText, decodeAct, encodeAct, openOnly, type Act, type ActKind, type ActVia } from "../shared/acts.ts";
+import { RANK_ADMIN, RANK_CLUSTER, RANK_NAMES, RANK_OPEN, RANK_STAFF } from "../shared/ranks.ts";
 import type { Client } from "./game.ts";
 import type { Persistence } from "./persist/persistence.ts";
 import type { Records } from "./records.ts";
@@ -15,6 +15,9 @@ export const OP_ADMIN = 2;
 export const ACTS_KEPT = 2000;
 /** The latest open commands kept in memory, apart from those. */
 export const ACTS_OPEN_KEPT = 500;
+/** The most letters of what was tried, and of why it was refused, in a refused act. */
+const TRIED_MOST = 300;
+const WHY_MOST = 200;
 
 /** Who does an act. */
 export interface Actor {
@@ -44,6 +47,11 @@ export function sessionActor(c: Client, records: Records): Actor {
     name: c.name, id: rec ? idText(rec) : "", pid: c.pid, rank: c.rank, via: "session", from: c.conn.address ?? "", baseRank: c.passwordRank,
     signedHash: c.signedHash, open: c.proved < RANK_STAFF,
   };
+}
+
+/** What a refused act says: what was tried, then why, each short and on one line. */
+function refusedWords(tried: string, why: string): string {
+  return `${actText(tried, TRIED_MOST)}: ${actText(why, WHY_MOST)}`;
 }
 
 /** What the server's output says of an act. It leaves out the address, which every session with cheats could read there. */
@@ -126,6 +134,11 @@ export class Acts {
     }
     if (kind === "command" && this.ctx.shown()) this.ctx.tellAll(`${name}: ${what}`);
     return act;
+  }
+
+  /** Logs an attempt refused to an actor judged at `rank` if that is an admin's rank: below it, anyone could fill the journal. */
+  refused(actor: Actor, rank: number, tried: string, why: string): void {
+    if (rank >= RANK_ADMIN) this.write(actor, refusedWords(tried, why), "refused");
   }
 
   /** Whether an act was written for this very actor object. */

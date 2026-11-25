@@ -1,6 +1,7 @@
 // ArkApi's `Permissions.*` console commands, read from a command's name and its words. ARK took a Steam id where this game
 // takes a survivor's ID or name, and a tribe id where it takes a tribe's number or name. The reader does not know who
 // exists: it hands back the word as typed, and the caller finds the survivor or tribe and makes the op with `memberOp`.
+import { actText } from "../acts.ts";
 import { rankNamed, RANK_NAMES } from "../ranks.ts";
 import type { MemberKind, PermissionOp } from "./model.ts";
 import { CHAT_DOCUMENT } from "./page.ts";
@@ -169,38 +170,64 @@ export function memberOp(request: Extract<PermissionsRequest, { type: "member" }
   return { ...c, key, world: request.everyWorld ? 0 : world };
 }
 
+/** The most letters of one word of a change in the log: a name, a key or a permission. */
+const WORD_MOST = 64;
+/** The most letters of the words of a change. */
+const WORDS_MOST = 300;
+
+/** A word of an op as the log says it: a string cleaned and cut, a finite number, else "?". */
+function word(v: unknown): string {
+  if (typeof v === "number") return Number.isFinite(v) ? String(v) : "?";
+  if (typeof v !== "string") return "?";
+  return actText(v, WORD_MOST) || "?";
+}
+
+/** A rank as the log says it: its name, else "?". */
+const rankWord = (v: unknown): string => (typeof v === "number" && Number.isInteger(v) && RANK_NAMES[v] !== undefined ? RANK_NAMES[v]! : "?");
+/** A number of hours as the log says it, else "?". */
+const hoursWord = (v: unknown): string => (typeof v === "number" && Number.isFinite(v) ? String(v) : "?");
+
 /**
  * The `Permissions.*` command a change amounts to, as an ARK admin would type it, for the log; `everyWorld` says a
- * membership holds on every map. A chat block or a document is said only to be set, never what it is.
+ * membership holds on every map. A chat block, a document or a password is said only to be set, never what it is. An op
+ * as a page sent it may be any JSON: the words are then short, on one line, and "?" for what is not of its type.
  */
 export function changeWords(op: PermissionOp, everyWorld: boolean): string {
+  if (typeof op !== "object" || op === null) return "a change of no known kind";
+  if ("hash" in op || (op.op as string) === "setSecret") return "set a password";
+  return actText(opWords(op, everyWorld), WORDS_MOST);
+}
+
+function opWords(op: PermissionOp, everyWorld: boolean): string {
   const all = everyWorld ? " all" : "";
   switch (op.op) {
     case "addGroup":
-      return `Permissions.AddGroup ${op.group}${op.rank ? `; Permissions.Rank ${op.group} ${RANK_NAMES[op.rank]}` : ""}`;
+      return `Permissions.AddGroup ${word(op.group)}${op.rank ? `; Permissions.Rank ${word(op.group)} ${rankWord(op.rank)}` : ""}`;
     case "removeGroup":
-      return `Permissions.RemoveGroup ${op.group}`;
+      return `Permissions.RemoveGroup ${word(op.group)}`;
     case "setRank":
-      return `Permissions.Rank ${op.group} ${RANK_NAMES[op.rank]}`;
+      return `Permissions.Rank ${word(op.group)} ${rankWord(op.rank)}`;
     case "grant":
-      return `Permissions.Grant ${op.group} ${op.permission}`;
+      return `Permissions.Grant ${word(op.group)} ${word(op.permission)}`;
     case "revoke":
-      return `Permissions.Revoke ${op.group} ${op.permission}`;
+      return `Permissions.Revoke ${word(op.group)} ${word(op.permission)}`;
     case "setChat":
-      return `set the chat format of ${op.group}`;
+      return `set the chat format of ${word(op.group)}`;
     case "addMember": {
       const tribe = op.kind === "tribe";
       const name = `Permissions.Add${tribe ? "Tribe" : ""}${op.hours !== undefined ? "Timed" : ""}`;
-      const hours = op.hours !== undefined ? ` ${op.hours} ${op.delayHours ?? 0}` : "";
-      return `${name} ${op.key} ${op.group}${hours}${tribe ? "" : all}`;
+      const hours = op.hours !== undefined ? ` ${hoursWord(op.hours)} ${hoursWord(op.delayHours ?? 0)}` : "";
+      return `${name} ${word(op.key)} ${word(op.group)}${hours}${tribe ? "" : all}`;
     }
     case "removeMember":
-      return `Permissions.Remove${op.kind === "tribe" ? "Tribe" : ""}${op.timedOnly ? "Timed" : ""} ${op.key} ${op.group}`;
+      return `Permissions.Remove${op.kind === "tribe" ? "Tribe" : ""}${op.timedOnly ? "Timed" : ""} ${word(op.key)} ${word(op.group)}`;
     case "clearSecret":
-      return `cleared the password of ${op.id}`;
+      return `cleared the password of ${word(op.id)}`;
     case "setDocument":
-      return op.name === CHAT_DOCUMENT ? "set the chat settings" : `set the document ${op.name}`;
+      return op.name === CHAT_DOCUMENT ? "set the chat settings" : `set the document ${word(op.name)}`;
     case "tag":
-      return `${op.show ? "showed" : "hid"} the tag ${op.tag} of ${op.id}`;
+      return `${op.show ? "showed" : "hid"} the tag ${word(op.tag)} of ${word(op.id)}`;
+    default:
+      return "a change of no known kind";
   }
 }

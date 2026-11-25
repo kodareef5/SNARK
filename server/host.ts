@@ -1657,6 +1657,10 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       const judged = { rank: permissions.actingRank(actor), name: by.name, world: permissions.world };
       const everyWorld = op.op === "addMember" && permissions.world !== 0 && memberWorld(judged, permissions.group(group)?.rank ?? 0, op.world) === 0;
       acts.write(by, changeWords("group" in op ? { ...op, group } : op, everyWorld), "change");
+    } else {
+      // An op from a page may be any JSON: changeWords copes, and the act holds no value of a secret.
+      const everyWorld = op?.op === "addMember" && permissions.world !== 0 && op.world === 0;
+      acts.refused(by, permissions.actingRank(actor), changeWords(op, everyWorld), why);
     }
     settleStanding();
     return why;
@@ -1684,7 +1688,11 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   };
   const importPermissions = (by: Actor, what: string, plan: ImportPlan): Applied & { why: string } => {
     const top = cluster ? RANK_CLUSTER : RANK_MAP;
-    if (by.rank < top) return { why: `An import needs the ${RANK_NAMES[top]} rank.`, done: 0, refused: [] };
+    if (by.rank < top) {
+      const why = `An import needs the ${RANK_NAMES[top]} rank.`;
+      acts.refused(by, permissions.actingRank(acting(by)), `import ${what}`, why);
+      return { why, done: 0, refused: [] };
+    }
     const actor: Acting = { ...acting(by), needs: top };
     const applied = applyPlan(permissions, actor, plan);
     acts.write(by, `imported ${what}: ${applied.done} ${applied.done === 1 ? "change" : "changes"}`, "change");

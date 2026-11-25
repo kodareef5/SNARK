@@ -24,9 +24,9 @@ export function nextAfter(held: readonly Act[]): number {
 /** Whether an answer of `count` acts may have left more behind it, so the page asks again at once. */
 export const moreAfter = (count: number): boolean => count >= ACTS_PAGE;
 
-export const KINDS: readonly ActKind[] = ["command", "sign-in", "change"];
-export const KIND_WORDS: Record<ActKind, string> = { command: "Commands", "sign-in": "Sign-ins", change: "Permission changes" };
-const KIND_CHIPS: Record<ActKind, string> = { command: "", "sign-in": "sign-in", change: "permissions" };
+export const KINDS: readonly ActKind[] = ["command", "sign-in", "change", "refused"];
+export const KIND_WORDS: Record<ActKind, string> = { command: "Commands", "sign-in": "Sign-ins", change: "Permission changes", refused: "Refused attempts" };
+const KIND_CHIPS: Record<ActKind, string> = { command: "", "sign-in": "sign-in", change: "permissions", refused: "refused" };
 const VIA_WORDS: Record<ActVia, string> = { session: "In game", page: "On a page", operator: "At the terminal", module: "By a module" };
 
 export interface ActFilter {

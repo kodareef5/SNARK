@@ -3,8 +3,8 @@
 
 /** How the act reached the server. */
 export type ActVia = "session" | "page" | "operator" | "module";
-/** A command or a page's action, a sign-in, or a change to permissions. */
-export type ActKind = "command" | "sign-in" | "change";
+/** A command or a page's action, a sign-in, a change to permissions, or an admin's attempt at one that was refused. */
+export type ActKind = "command" | "sign-in" | "change" | "refused";
 
 export interface Act {
   /** The journal's sequence number, or the world's own count where it has no save. */
@@ -31,13 +31,20 @@ export interface Act {
 /** Whether an act belongs with the open acts, apart from the latest kept: an open command. Every other kind is kept. */
 export const openOnly = (act: Pick<Act, "open" | "kind">): boolean => act.open && act.kind === "command";
 
+/** Text fit for an act: no control or format characters, spaces run together, at most `most` letters with a mark where cut. */
+export function actText(text: string, most: number): string {
+  const clean = text.slice(0, most * 4).replace(/\p{Cf}/gu, "").replace(/\p{Cc}/gu, " ").replace(/\s+/g, " ").trim();
+  const letters = Array.from(clean);
+  return letters.length > most ? letters.slice(0, most).join("") + "…" : clean;
+}
+
 // The shared zone's types leave out the DOM's, so the text codecs are typed here as pack.ts types its own.
 const codecs = globalThis as unknown as { TextEncoder: new () => { encode(s: string): Uint8Array }; TextDecoder: new () => { decode(bytes: Uint8Array): string } };
 const UTF8_OUT = new codecs.TextEncoder();
 const UTF8_IN = new codecs.TextDecoder();
 
 const VIAS: readonly string[] = ["session", "page", "operator", "module"];
-const KINDS: readonly string[] = ["command", "sign-in", "change"];
+const KINDS: readonly string[] = ["command", "sign-in", "change", "refused"];
 
 /** An act's bytes for the journal, which keeps the sequence number and the tick itself. `open` is written only when true. */
 export function encodeAct(act: Omit<Act, "seq" | "tick">): Uint8Array {
