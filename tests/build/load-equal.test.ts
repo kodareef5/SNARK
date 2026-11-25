@@ -1,6 +1,6 @@
-// The fast ways a store is filled give what the plain ways give. A save's load reads every chunk first and sizes its tables,
-// and is held to rows put one by one as the load used to; the pose, the cells and the direction sums are held to their
-// former forms over random keys.
+// The fast ways a store is filled give what the plain ways give. A save's load sizes its tables from the chunks' heads, and
+// is held to rows put one by one as the load used to; the pose, the cells and the direction sums are held to their former
+// forms over random keys.
 
 import { afterAll, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -75,7 +75,7 @@ function claimed(s: StructureStore, claims: Claims, teams: number[]): unknown[] 
   return out;
 }
 
-test("a load by the batch equals rows put one by one, bases at odd yaws", () => {
+test("a save's load equals its rows put one by one, bases at odd yaws", () => {
   const w = turnedWorld(6);
   const { structs, reg } = w;
   const claims = new Claims(structs, reg.role);
@@ -127,7 +127,7 @@ test("a load by the batch equals rows put one by one, bases at odd yaws", () => 
     const s = new StructureStore(w.dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
     return [s, new Claims(s, reg.role)];
   };
-  // The batch: the save's own load.
+  // The save's own load.
   const [fast, fastClaims] = fresh();
   const loader = new WorldStore(db, reg);
   loader.loadChunks(fast);
