@@ -340,12 +340,24 @@ const HAMMER: readonly Def[] = [
   ...making("template_hammer", "Template hammer", 26, 5, 1, 5, [["wood", 30], ["stone", 10], ["fiber", 20], ["hide", 10]]),
 ];
 
+/** The same lattice wall carries its neighbours while its field is down. */
+function phaseWalls(tier: Tier): Def[] {
+  const wall = piece(tier, "wall"), form = FORMS.wall;
+  const openShape: ShapeDef = {
+    type: "shape", id: "core:shape_phase_wall_open", role: "wall", boxes: [],
+    look: { boxes: formBoxes(form) }, form: { ...form, closes: "none" },
+  };
+  const door = { ...wall, id: "core:phase_wall_tek", mesh: wall.id, kit: "core:piece_wall_tek" };
+  return [openShape, door, { ...door, id: "core:phase_wall_open_tek", shape: openShape.id }];
+}
+
 export const BUILDING_CONTENT: readonly Def[] = [
   ...SHAPES,
   ...TIERS.flatMap((tier) => [
     // A leaf stood open is a structure of its own.
     ...formsOf(tier).flatMap((name) => (name in OPENS ? [piece(tier, name), piece(tier, OPENS[name]!)] : [piece(tier, name)])),
     ...Object.keys(MAKING[tier.name]!.pieces).flatMap((name) => kit(tier, name)),
+    ...(tier.name === "tek" ? phaseWalls(tier) : []),
   ]),
   ...STORES.flatMap(store),
   ...BEDS.flatMap(bed),

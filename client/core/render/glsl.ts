@@ -2,6 +2,7 @@
 // low poly has always been drawn with, and a test pins its hash so that it stays so. A WebGL2 shell compiles it as is.
 // The lit tiers draw the same vertices with LIT, which lights them as surface.ts does.
 
+import { TEK_SPAN_GLSL } from "./tek-phase.ts";
 import { TEK_INLAY_GLSL } from "./tek-inlay.ts";
 import { TEK_FRAME_GLSL } from "./tek-frame.ts";
 import { TEK_FIELD, TEK_FIELD_GLSL } from "./tek-field.ts";
@@ -88,6 +89,9 @@ out vec4 o;
 ${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${AIR}${WORLD_GLSL.replace("WORLD_NORMAL", "rg")}${FACADE_GLSL}${STREET_GLSL}
 #ifdef WORLD_WEATHER
 ${TEK_FIELD_GLSL}
+#ifdef TEK_CELLS
+${TEK_SPAN_GLSL}
+#endif
 ${TEK_FRAME_GLSL}
 ${TEK_INLAY_GLSL}
 #endif
@@ -106,6 +110,14 @@ void main() {
   worldPiece = vMade >> ${PIECE_OVER_WEAR};
   worldOwn = vOwn;
   if (worldPiece > 0) worldTurn = vPlace;
+#ifdef TEK_CELLS
+  int seams = int(floor(vTekCell.w + 0.5)) >> 8;
+  if (seams != 0 && worldMade == ${TEK_FIELD} && (worldPiece & ${PIECE_OWN | PIECE_FIXED | PIECE_ALLOY}) == ${PIECE_OWN}) {
+    worldTurn *= sign(abs(worldTurn.x) > abs(worldTurn.y) ? worldTurn.x : -worldTurn.y);
+    worldOwn = ownOf(vRel + uWorldEye);
+    worldPiece &= ${(1 << PIECE_SEED) - 1};
+  }
+#endif
   float rim = 0.0;
   if ((wear & ${WEAR_STAGE}) >= 2 && uSolid < 1.5 && uSkin < 0.5 && uWorldReady > 0.5) {
     vec2 lost = spalled(vRel + uWorldEye, geometric, wear & ${WEAR_STAGE});
@@ -181,16 +193,24 @@ void main() {
   if (worldMade == ${TEK_FIELD} && (worldPiece & ${PIECE_OWN | PIECE_FIXED}) == ${PIECE_OWN}) {
     vec3 sight = ownOf(v);
     if ((worldPiece & ${PIECE_ALLOY}) == 0) {
-      n = tekFinishNormal(n, vOwn.xy, worldTurn, true, 1.0);
+      vec2 press = vOwn.xy;
+#ifdef TEK_CELLS
+      if (seams != 0) press = vec2(0.54*sin(0.67*worldOwn.x+0.30*worldOwn.y),0.48*sin(0.83*worldOwn.y-0.29*worldOwn.x));
+#endif
+      n = tekFinishNormal(n, press, worldTurn, true, 1.0);
       tekPlateSurface(albedo, orm, fieldRelief, dot(n, v), sight.x);
       worldSharp = true;
+#ifdef TEK_CELLS
+      if (seams != 0) localLight += tekSpanLight(vTekCell.xyz, vOwn.xy, seams, dot(geometric,v), max(length(dx),length(dy)), fMade[${(TEK_FIELD - 1) * 2}].z);
+      else
+#endif
       localLight += tekFieldLight(vOwn.xy, worldPiece >> ${PIECE_SEED}, dot(geometric, v), max(length(dx), length(dy)), fieldRelief, sight.x, sight.y, fieldConductor);
     } else if ((worldPiece & ${PIECE_PLAIN}) != 0) {
       tekGlass(albedo, orm, fieldRelief);
       worldSharp = false;
       localLight += tekInlayLight(vOwn, ownOf(geometric), sight, worldPiece >> ${PIECE_SEED}, max(length(dx), length(dy)));
     } else {
-      worldSharp = tekCasting(albedo, orm, vColor, fieldRelief, false);
+      worldSharp = tekCasting(albedo, orm, vColor, fieldRelief, false, vOwn, ownOf(geometric), max(length(dx),length(dy)));
     }
   } else if (worldMade == ${TEK_FIELD} && (worldPiece & ${PIECE_FIXED}) != 0) {
     bool solid = (worldPiece & ${PIECE_ALLOY}) != 0;

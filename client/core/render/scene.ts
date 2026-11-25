@@ -910,6 +910,7 @@ export class Scene {
     f.skip = this.skip;
     f.tier = this.assets.tier;
     f.now = this.now;
+    f.tick = this.shotTick;
     f.view = this.viewDistance;
     f.under = under;
     f.hider = undefined;

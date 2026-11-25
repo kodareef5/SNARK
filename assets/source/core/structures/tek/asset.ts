@@ -1,7 +1,7 @@
 import { ALL_FORMS } from "../../../../../content/building/forms.ts";
 import { MADE_PIECE_TRIANGLES, TRIM_TRIANGLES } from "../../../../../tools/art/check.ts";
 import type { PiecesAsset } from "../../../../../tools/art/spec.ts";
-import { errorOf, statedErrors } from "../../../../../tools/pack/pieces/lod.ts";
+import { errorOf, LEVEL_ERRORS, statedErrors } from "../../../../../tools/pack/pieces/lod.ts";
 import { bakeTek, TEK } from "../../../../../tools/pack/pieces/tek.ts";
 
 export default {
@@ -9,6 +9,9 @@ export default {
   source: { bake: () => bakeTek(ALL_FORMS) },
   pieces: [
     ...Object.entries(ALL_FORMS).map(([name, form]) => ({ id: `core:${name}_tek`, object: name, errors: statedErrors(TEK, name, form) })),
+    ...Array.from({ length: 15 }, (_, i) => ({
+      id: `core:wall_join_${i + 1}_tek`, object: `wall_join_${i + 1}`, errors: [...LEVEL_ERRORS],
+    })),
     ...Object.entries(TEK.trims!()).map(([name, levels]) => ({
       id: `core:${name}_tek`, object: name, errors: levels.slice(1).map((shape, i) => errorOf(shape, i + 1)),
       triangles: TRIM_TRIANGLES[name]!, ...(levels[3]!.triangles < 4 ? { open: 3 } : {}),

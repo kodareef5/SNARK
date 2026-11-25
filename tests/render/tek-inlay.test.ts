@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+import { materialRead } from "../../client/core/texgen/materials.ts";
+import { TEK_FIELD } from "../../client/core/render/tek-field.ts";
 import { tekCasting, tekGlass, tekInlayLight } from "../../client/core/render/tek-inlay.ts";
 import { TEK_INLAY_COLOUR } from "../../content/building/tek-wall.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
@@ -19,6 +21,55 @@ test("the armor takes dye and soft sky while machined edges catch the horizon", 
   expect(seal.orm[1]!).toBeGreaterThan(.65);
   expect(seal.orm[2]!).toBeLessThan(.15);
   expect(copper.base[0]!).toBeGreaterThan(2 * copper.base[1]!);
+});
+
+test("a filtered machining cut stays matte beside satin titanium on a body panel", () => {
+  const paint = new Float64Array([.030, .037, .042]);
+  const section = (x: number, y: number) => {
+    const relief = new Float64Array(4), base = new Float64Array([.04, .05, .06]);
+    materialRead(TEK_FIELD, 1, 64, x / 3, y / 3, Math.log2(.06 / 3), relief);
+    const orm = new Float64Array([.92, relief[2]!, 0]);
+    expect(tekCasting(base, orm, paint, relief[3]!, false)).toBe(false);
+    return { base, orm };
+  };
+  const cut = section(1.02, .52), raised = section(1.07, .74), body = section(.5, .3);
+  expect(body.base[1]!).toBeGreaterThan(.28);
+  expect(body.orm[2]!).toBeLessThan(.25);
+  expect(raised.base[1]! - cut.base[1]!).toBeGreaterThan(.13);
+  expect(cut.orm[1]! - raised.orm[1]!).toBeGreaterThan(.16);
+  expect(raised.orm[2]! - cut.orm[2]!).toBeGreaterThan(.20);
+  expect(cut.orm[0]).toBe(.92);
+});
+
+test("tool tracks follow a plate on every facing and converge at distance", () => {
+  const paint = new Float64Array([.03, .037, .042]);
+  const plate = (u: number, v: number, footprint: number, axis: number) => {
+    const base = new Float64Array([.04, .05, .06]), orm = new Float64Array([1, .39, 0]);
+    const x = axis === 0 ? 10 : u, y = axis === 1 ? 10 : v, z = axis === 0 ? u : axis === 1 ? v : 10;
+    tekCasting(base, orm, paint, .50, false, x, y, z, +(axis === 0), +(axis === 1), +(axis === 2), footprint);
+    return [base[1]!, orm[1]!];
+  };
+  const heights = [];
+  for (let i = 0; i < 50; i++) {
+    const v = i * .008, floor = plate(.31, v, .003, 1);
+    expect(plate(.31, v, .003, 0)).toEqual(floor);
+    expect(plate(.31, v, .003, 2)).toEqual(floor);
+    heights.push(floor[0]!);
+  }
+  expect(Math.max(...heights) - Math.min(...heights)).toBeGreaterThan(.10);
+  expect(plate(.31, .02, .13, 1)).toEqual(plate(.73, -.52, .13, 1));
+});
+
+test("black dye stays dark and a blue ceramic plate keeps its pigment", () => {
+  const coat = (paint: number[]) => {
+    const base = new Float64Array([.03, .04, .05]), orm = new Float64Array([1, .39, 0]);
+    tekCasting(base, orm, new Float64Array(paint), .5, false);
+    return base;
+  };
+  const black = coat([.007, .007, .007]), blue = coat([.035, .09, .48]);
+  expect(Math.max(...black)).toBeLessThan(.025);
+  expect(blue[2]!).toBeGreaterThan(blue[0]! * 5);
+  expect(Math.max(...coat([1, 1, 1]))).toBeLessThanOrEqual(1);
 });
 
 type Vec = [number, number, number];

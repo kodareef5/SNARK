@@ -53,11 +53,12 @@ function covered(faces: readonly Polygon[], x: number, y: number, dx: number, dy
 }
 
 /** From the field out to the collider, dx and dy are local travel per metre of depth. */
-export function hardwareBlocks(u: number, v: number, entryU: number, entryV: number, dx: number, dy: number): boolean {
-  if (Math.max(u, entryU) > 1.07 && Math.min(u, entryU) < 1.25 && Math.max(v, entryV) > -.46 && Math.min(v, entryV) < -.24 &&
+export function hardwareBlocks(u: number, v: number, entryU: number, entryV: number, dx: number, dy: number, joins = 0): boolean {
+  if (!(joins & (2 | 4)) && Math.max(u, entryU) > 1.07 && Math.min(u, entryU) < 1.25 && Math.max(v, entryV) > -.46 && Math.min(v, entryV) < -.24 &&
       covered(latch, u, v, dx, dy)) return true;
   if (Math.max(Math.abs(u), Math.abs(entryU)) < .82 || Math.max(Math.abs(v), Math.abs(entryV)) < .82) return false;
   for (const sx of [-1, 1]) for (const sy of [-1, 1]) {
+    if (joins & ((sx < 0 ? 1 : 2) | (sy < 0 ? 4 : 8))) continue;
     if (Math.max(sx * u, sx * entryU) < .82 || Math.max(sy * v, sy * entryV) < .82) continue;
     const run = (2 * TEK_JAW.origin - sx * u - sy * v) * Math.SQRT1_2, cross = (sy * v - sx * u) * Math.SQRT1_2;
     const dr = (-sx * dx - sy * dy) * Math.SQRT1_2, dc = (sy * dy - sx * dx) * Math.SQRT1_2;

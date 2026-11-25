@@ -3,9 +3,11 @@ import { TEK_WALL as wall } from "../../../content/building/tek-wall.ts";
 export const RIPPLE_SPEED = 0.0048;
 export const RIPPLE_MS = 590;
 
-export function inField(x: number, y: number): boolean {
+export function inField(x: number, y: number, joins = 0): boolean {
   const u = Math.abs(x), v = Math.abs(y);
-  return u <= wall.panelX && v <= wall.panelY && u + v <= wall.panelX + wall.panelY - wall.corner;
+  const across = joins & (x < 0 ? 1 : 2), up = joins & (y < 0 ? 4 : 8);
+  return u <= (across ? wall.width / 2 : wall.panelX) && v <= (up ? wall.height / 2 : wall.panelY) &&
+    (!!(across || up) || u + v <= wall.panelX + wall.panelY - wall.corner);
 }
 
 /** The two card colours carry the wall coordinates of its centre and the point struck. */
@@ -23,9 +25,9 @@ function dash(x: number, y: number, half: number, pixel: number): number {
 }
 
 /** Premultiplied light and the fraction of the underlying field absorbed in the trough. */
-export function rippleOf(out: number[] | Float64Array, x: number, y: number, dx: number, dy: number, radius: number, pixelSize: number): void {
+export function rippleOf(out: number[] | Float64Array, x: number, y: number, dx: number, dy: number, radius: number, pixelSize: number, joins = 0): void {
   out[0] = out[1] = out[2] = out[3] = 0;
-  if (!inField(x, y)) return;
+  if (!inField(x, y, joins)) return;
   const d = Math.hypot(dx, dy), offset = d - radius, reach = Math.min(1.3, radius);
   if ((offset > 0.20 + 0.18 * reach || offset < -0.77 - 0.18 * reach) && (radius > 0.92 || d > 0.54)) return;
   const pixel = Math.min(0.045, 0.5 * pixelSize), length = Math.max(d, 0.025);
@@ -67,7 +69,10 @@ float fieldDash(vec2 p, float halfWidth, float pixel) {
 vec4 rippleOf() {
   vec2 at = vBulge.xy, edge = abs(at);
   float pixel = min(0.045, 0.5 * max(length(dFdx(at)), length(dFdy(at))));
-  if (edge.x > ${wall.panelX} || edge.y > ${wall.panelY} || edge.x + edge.y > ${(wall.panelX + wall.panelY - wall.corner).toFixed(4)}) return vec4(0.0);
+  int joins = int(vGrey * 255.0 + 0.5);
+  bool across = (joins & (at.x < 0.0 ? 1 : 2)) != 0, up = (joins & (at.y < 0.0 ? 4 : 8)) != 0;
+  if (edge.x > (across ? 1.5 : ${wall.panelX}) || edge.y > (up ? 1.5 : ${wall.panelY}) ||
+      (!across && !up && edge.x + edge.y > ${(wall.panelX + wall.panelY - wall.corner).toFixed(4)})) return vec4(0.0);
   vec2 from = at - vB.xy;
   float d = length(from), offset = d - vFloor, reach = min(1.3, vFloor);
   if ((offset > 0.20 + 0.18 * reach || offset < -0.77 - 0.18 * reach) && (vFloor > 0.92 || d > 0.54)) return vec4(0.0);

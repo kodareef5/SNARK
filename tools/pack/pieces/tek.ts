@@ -6,7 +6,7 @@ import { tekDeck } from "./tek-decks.ts";
 import { tekOpening } from "./tek-openings.ts";
 import { tekTrims } from "./tek-trims.ts";
 import type { SourceMesh } from "../write.ts";
-import { Shape, flatLod, type FaceMap, type Flat, type Vec } from "./kit.ts";
+import { Shape, clip, place, flatLod, type FaceMap, type Flat, type Vec } from "./kit.ts";
 import { errorOf, levelsOf, type TierRecipe } from "./lod.ts";
 
 const TONES = {
@@ -160,7 +160,7 @@ function bake(name: string, shapes: Shape[]): SourceMesh {
     id: `core:${name}_tek`,
     lods: shapes.map((shape, level) => {
       const lod = flatLod(shape, colour, level < 3 && shape.triangles > 2);
-      if (name !== "wall") {
+      if (name !== "wall" && !name.startsWith("wall_join_")) {
         const bones = lod.bones ??= new Uint8Array(lod.colors.length);
         for (let i = 0; i < bones.length; i++) bones[i]! |= FACE_PLAIN;
       }
@@ -173,7 +173,26 @@ export function bakeTekWall(form: FormDef): SourceMesh {
   return bake("wall", levelsOf(TEK, "wall", form));
 }
 
+/** A shared edge takes a slice from the middle of a longer field, including its plate and closed cut ends. */
+export function joinedTekWall(form: FormDef, mask: number, level: number): Shape | null {
+  const shape = wall("wall", form, level);
+  if (!shape || mask === 0 || level === 4) return shape;
+  const edge = (v: number, negative: number, positive: number): number =>
+    v < 0 && (mask & negative) ? v - 3 : v > 0 && (mask & positive) ? v + 3 : v;
+  place(shape, ([x, y, z]) => [edge(x, 1, 2), y, edge(z, 4, 8)]);
+  const ends: readonly Vec[] = [[-1, 0, 0], [1, 0, 0], [0, 0, -1], [0, 0, 1]];
+  for (let i = 0; i < ends.length; i++) if (mask & (1 << i)) clip(shape, [ends[i]!, 1.5], () => ["socket", [0, 0]]);
+  return shape;
+}
+
 export function bakeTek(forms: Readonly<Record<string, FormDef>>): SourceMesh[] {
-  return [...Object.entries(forms).map(([name, form]) => bake(name, levelsOf(TEK, name, form))),
-    ...Object.entries(tekTrims()).map(([name, shapes]) => bake(name, shapes))];
+  const meshes = Object.entries(forms).map(([name, form]) => bake(name, levelsOf(TEK, name, form)));
+  const wallForm = forms.wall;
+  if (wallForm) for (let mask = 1; mask < 16; mask++) {
+    const name = `wall_join_${mask}`;
+    const levels = levelsOf({ ...TEK, split: (_, form, level) => joinedTekWall(form, mask, level) }, name, wallForm);
+    meshes.push(bake(name, levels));
+  }
+  for (const [name, shapes] of Object.entries(tekTrims())) meshes.push(bake(name, shapes));
+  return meshes;
 }

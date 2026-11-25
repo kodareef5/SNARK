@@ -72,20 +72,51 @@ export function stageOutpost(w: Built, team: number): number[] {
   return placed;
 }
 
-export function outpostCrew(host: () => Host): ModuleDef {
+/** The entrance faces the spawn point, with a permanent wall along its right edge. */
+export function stagePhaseBay(w: Built, team: number): number[] {
+  const foundation = w.reg.index.get("core:foundation_tek")!;
+  const base = start(w, foundation, PROVING_SPAWN.x + 1.15, .025, PROVING_SPAWN.z + 9.60, 880, team, w.reg.maxHp[foundation]);
+  const frame = w.structs.frameAt(base), placed = [base];
+  const put = (name: string, i: number, j: number, level = 0, facing = 0): void => {
+    const kind = w.reg.index.get(`core:${name}_tek`)!;
+    const ref = set(w, frame, kind, i, j, level, facing, w.reg.maxHp[kind]);
+    if (ref < 0) throw new Error(`No phase bay slot for ${name} at ${i}, ${j}, ${level}`);
+    placed.push(ref);
+  };
+  for (const i of [-1, 1, 3]) for (const j of [-3, -1, 1, 3, 5]) {
+    if (i !== 1 || j !== 1) put("foundation", i, j);
+  }
+  for (const level of [0, 4]) {
+    for (const i of [-1, 1]) put("phase_wall", i, 0, level, 6);
+    put("wall", 3, 0, level, 6);
+  }
+  for (const j of [1, 3]) put("railing", -2, j, 0, 3);
+  put("windowframe", 4, 1, 0, 3);
+  put("pillar", 3, 3);
+  put("ceiling", 3, 3, 4);
+  return placed;
+}
+
+type CrewScene = (host: Host, team: number) => void;
+
+function stageLab(preview: Host, team: number): void {
+  const placed = stageOutpost(preview.world, team);
+  stageTekSamples(preview, placed[0]!, team);
+}
+
+export function outpostCrew(host: () => Host, stage: CrewScene = stageLab): ModuleDef {
   let founder = 0;
   return {
     name: "tek_preview", api: 1,
     setup(m) {
       m.on("session.join", event => {
         const preview = host();
-        const { records, tribes, world } = preview;
+        const { records, tribes } = preview;
         const rec = records.byPid.get(Number(event.data.pid));
         if (!rec) return;
         if (founder === 0) {
           if (tribes.create(rec, "Outpost crew")) throw new Error("The preview needs a building crew");
-          const placed = stageOutpost(world, rec.team);
-          stageTekSamples(preview, placed[0]!, rec.team);
+          stage(preview, rec.team);
           founder = rec.pid;
         } else {
           const owner = records.byPid.get(founder)!;
@@ -97,18 +128,26 @@ export function outpostCrew(host: () => Host): ModuleDef {
 }
 
 if (import.meta.main) {
+  const phase = process.argv.includes("--phase");
   const outpost = process.argv.includes("--outpost");
+  const crew = phase || outpost;
+  const day = phase ? "/phase" : outpost ? "/outpost" : "/wall";
+  const dusk = phase ? "/phase-dusk" : outpost ? "/outpost-dusk" : "/dusk";
   const server = startServer({
-    dev: true, hostname: "127.0.0.1", port: Number(process.env.PORT ?? (outpost ? 18795 : 18794)), probeScene: !outpost,
+    dev: true, hostname: "127.0.0.1", port: Number(process.env.PORT ?? (phase ? 18796 : outpost ? 18795 : 18794)), probeScene: !crew,
     clientDir: process.env.TEK_PREVIEW_DIST,
-    modules: outpost ? [outpostCrew(() => server.host)] : undefined,
-    config: loadConfigFolder(DEV_CONFIG, ["?AllowThirdPersonPlayer=False", ...(outpost ? ["?DinoCountMultiplier=0", "?bDisableLootCrates=True"] : [])]).rules,
+    modules: crew ? [outpostCrew(() => server.host, phase ? (host, team) => { stagePhaseBay(host.world, team); } : stageLab)] : undefined,
+    config: loadConfigFolder(DEV_CONFIG, ["?AllowThirdPersonPlayer=False", ...(crew ? ["?DinoCountMultiplier=0", "?bDisableLootCrates=True"] : [])]).rules,
     routes: (req, url) => {
       if (url.pathname === "/tek-wall.mp4" || (outpost && [
         "/tek-outpost.mp4", "/tek-outpost-in-game.webp", "/tek-outpost-entry.webp", "/tek-outpost-deck.webp",
         "/tek-outpost-gate.webp", "/tek-outpost-threshold.webp", "/tek-outpost-comparison.webp",
       ].includes(url.pathname))) return serveFile(resolve(import.meta.dir, "../../planning/workstreams/art"), req);
-      const day = outpost ? "/outpost" : "/wall", dusk = outpost ? "/outpost-dusk" : "/dusk";
+      if (phase && [
+        "/tek-phase-walkthrough.mp4", "/tek-phase-bay.webp", "/tek-phase-deck.webp", "/tek-phase-opening.webp",
+      ].includes(url.pathname)) {
+        return serveFile(resolve(import.meta.dir, "../../planning/workstreams/art"), req);
+      }
       if (url.pathname !== day && url.pathname !== dusk) return null;
       const w = server.host.world;
       w.dayOffset = offsetForHour(w.tick, url.pathname === dusk ? 18.75 : 15.5, w.clock);
@@ -116,7 +155,7 @@ if (import.meta.main) {
       return Response.redirect(new URL("/play.html?quick&name=Builder", url).href);
     },
   });
-  if (!outpost) stageWalls(server.host.world);
+  if (!crew) stageWalls(server.host.world);
   const { store } = server.host.loadouts;
   const kit: Loadout = {
     id: "field", label: "Wall preview", note: "The silencer leaves the impact visible.", respawn: true,
@@ -126,6 +165,6 @@ if (import.meta.main) {
     ],
   };
   const book = { ...store.book, loadouts: [...store.book.loadouts, kit], assign: { player: kit.id, admin: kit.id } };
-  if (!store.save(book, store.book.revision, "preview", "Wall review").ok) throw new Error("The preview needs its field kit");
-  console.log(`Tek preview at http://127.0.0.1:${server.port}/${outpost ? "outpost or /outpost-dusk" : "wall or /dusk"}`);
+  if (!phase && !store.save(book, store.book.revision, "preview", "Wall review").ok) throw new Error("The preview needs its field kit");
+  console.log(`Tek preview at http://127.0.0.1:${server.port}${day} or ${dusk}`);
 }

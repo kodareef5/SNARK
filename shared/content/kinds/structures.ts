@@ -94,6 +94,8 @@ export interface StructureDef extends Named, StationFields {
   readonly under?: number;
   /** The material made from a recipe its faces wear in place of its colour's painted finish (content/texgen/materials.ts), which its colour dyes. */
   readonly made?: string;
+  /** The existing building kit returned by an alternate state. */
+  readonly kit?: string;
   /** The mesh tier of its joints and skirts when it differs from its damage material. */
   readonly trimTier?: string;
   /** Drawn near only: a street piece or a building's small kit, left out of the far city's lattice and mass levels. */
@@ -162,6 +164,7 @@ const FIELDS = {
   mesh: f("text"),
   color: f("number"),
   under: f("number", "the colour of its faces that look down"),
+  kit: f("text", "the item returned for this alternate state of a built piece", { refs: { "": "item" } }),
   trimTier: f("text", "the mesh tier of its joints and skirts"),
   made: f("text", "the material made from a recipe its faces wear, which its colour dyes"),
   near: f("switch", "drawn near only, left out of the far city's lattice and mass"),
@@ -280,7 +283,7 @@ export const structures: Kind<StructureDef, ReturnType<typeof columns>> = {
   fields: FIELDS,
   rows: [
     row("structure", "structure", FIELDS, { abstract: true, ark: "APrimalStructure", shelf: "structures", doc: "Anything built or standing in the world that is not alive." }),
-    row("structure/piece", "structure", FIELDS, { parent: "structure", ark: "a structure with snap points", shelf: "structures/pieces", must: [...BUILT, "shape", "material"], may: ["opens", "locked", "decayDays", "falls", "grindLine", "vehicleSurface", "made", "trimTier"], slots: STRUCTURE_SLOTS, doc: "A foundation, wall, ceiling, pillar, door or stair: it joins others and holds them up. A tier with no pictures names the material made from a recipe that its faces in its own colour wear." }),
+    row("structure/piece", "structure", FIELDS, { parent: "structure", ark: "a structure with snap points", shelf: "structures/pieces", must: [...BUILT, "shape", "material"], may: ["opens", "locked", "decayDays", "falls", "grindLine", "vehicleSurface", "made", "trimTier", "kit"], slots: STRUCTURE_SLOTS, doc: "A foundation, wall, ceiling, pillar, door or stair: it joins others and holds them up. A tier with no pictures names the material made from a recipe that its faces in its own colour wear." }),
     row("structure/container", "structure", FIELDS, { parent: "structure", ark: "an item container", shelf: "structures/containers", must: [...BUILT, "slots"], may: ["shape", "material", "decayDays", "locked", "falls", "keeps"], slots: STRUCTURE_SLOTS, doc: "Holds stacks: a box, a vault." }),
     row("structure/station", "structure", FIELDS, { parent: "structure/container", ark: "a crafting inventory with its engrams and speed", status: "partial", waits: "stations", shelf: "structures/stations", must: BUILT, may: ["shape", "material", "decayDays", "locked", "falls", "slots", "lights", "lit", "burns", "cooks", "keeps", "charges", "powered", "dry"], slots: STRUCTURE_SLOTS, doc: "Things are made or changed at it. An item whose craft names it in `at` is made from what lies in it, for whoever queued it, and lands in it; a lit station and the same station out are one station to that. One that `lights` burns fuel while lit: every item's own `fuel`, or only what it names in `burns`, at its own times. A `powered` one (the fabricator) makes things only while it burns: it takes no job while out, and a unit under way when its fuel runs out waits with its ticks left until it is lit again. A fire makes its `fired` recipes by itself while it burns, and cooks what has `cooks` unless `cooks` is false. How fast it makes things waits: every station makes at the recipe's seconds." }),
     row("structure/bed", "structure", FIELDS, { parent: "structure", ark: "a bed", shelf: "structures/beds", must: [...BUILT, "bed"], may: ["shape", "material", "decayDays", "falls", "wait", "once", "floor", "rise"], slots: STRUCTURE_SLOTS, doc: "Its tribe may come back to life at it, after its wait, and travel to it from another; a sleeping bag once, and only for whoever set it down." }),
@@ -395,6 +398,7 @@ export const structures: Kind<StructureDef, ReturnType<typeof columns>> = {
     if (d.salvage) reg.salvageWork[i] = d.salvage.work;
   },
   link(d, i, reg) {
+    if (d.kit) reg.pieceItem[i] = reg.index.get(d.kit)!;
     if (d.salvage) {
       const totals = new Map<number, number>();
       reg.salvageYield[i] = d.salvage.rungs.map((rung) => {

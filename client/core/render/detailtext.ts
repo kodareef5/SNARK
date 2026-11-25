@@ -86,7 +86,9 @@ ${lit ? SMOKE_SHADE : ""}${FIELD_COORDS_GLSL}void main() {
   // A puff bulges toward the eye: where a point of its card is across it and along it, and across alone for a length of rope.
   if (vFlags == ${DETAIL_TEK}u) {
     vBulge = vec3(fieldCoords(iA) + c * vec2(length(iAcross), vHalf), 0.0);
-    vB.xy = fieldCoords(iB);
+    uint side = iMisc.w >> 4u;
+    vec2 cell = vec2(side == 1u ? -1.0 : side == 2u ? 1.0 : 0.0, side == 3u ? -1.0 : side == 4u ? 1.0 : 0.0);
+    vB.xy = fieldCoords(iB) - 3.0 * cell;
   } else vBulge = c.x * normalize(iAcross) + (iMisc.w > ${Math.round(1.5 * SMOKE_STEPS)}u ? 0.0 : c.y) * normalize(iAlong);
 ${lit ? `#ifdef SHADOW_CASCADES
   vShade = iMisc.y == ${DETAIL_SMOKE}u ? smokeShade(iMiddle) : 1.0;

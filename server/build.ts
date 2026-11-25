@@ -18,7 +18,8 @@ import { ROLE_FOUNDATION, ROLE_PILLAR, enemyGap, enemyGapFound, floorTop, freePo
 import { Collapse } from "../shared/world/collapse.ts";
 import { Found, GONE_FELL, GONE_TAKEN, toldHealth, type PartTable } from "../shared/world/structures.ts";
 import { Support } from "../shared/world/support.ts";
-import { ACT_REACH, NO_PIN, PIN_TRIES, PIN_WAIT_TICKS, STRUCT_DEMOLISH, STRUCT_LIGHT, STRUCT_LOCK, STRUCT_NAME, STRUCT_PICKUP, STRUCT_PIN, STRUCT_REPAIR, STRUCT_TRAVEL, STRUCT_UNLOCK, STRUCT_USE, cost, refundOf, repairCostOf } from "../shared/world/upkeep.ts";
+import { ACT_REACH, NO_PIN, PIN_TRIES, PIN_WAIT_TICKS, STRUCT_DEMOLISH, STRUCT_LIGHT, STRUCT_LOCK, STRUCT_NAME, STRUCT_PICKUP, STRUCT_PIN, STRUCT_REPAIR, STRUCT_TRAVEL, STRUCT_TEK_DOOR, STRUCT_TEK_SOLID, STRUCT_UNLOCK, STRUCT_USE, cost, refundOf, repairCostOf } from "../shared/world/upkeep.ts";
+import { TekPhaseWalls } from "./tek-phase-walls.ts";
 import { TekDoors } from "./tek-doors.ts";
 import type { Fixtures } from "./fixtures.ts";
 import { TICK_RATE } from "../shared/coords.ts";
@@ -82,7 +83,7 @@ const BUILD_PLACED = event("build.placed");
 const STRUCTURE_ACT = event("structure.act");
 const STRUCTURE_GONE = event("structure.gone");
 /** What is done to a piece, as a module is told it, by STRUCT_ action. And why one is gone, by GONE_ cause. */
-const ACT_WORDS: readonly string[] = ["pickup", "demolish", "repair", "lock", "unlock", "pin", "use", "light", "name", "travel"];
+const ACT_WORDS: readonly string[] = ["pickup", "demolish", "repair", "lock", "unlock", "pin", "use", "light", "name", "travel", "tekDoor", "tekSolid"];
 const GONE_WORDS: readonly string[] = ["taken", "destroyed", "fell"];
 
 /** A survivor who picked up or demolished a piece is owed what stood on it. `action` says which. `cache` takes what does not fit. */
@@ -144,6 +145,7 @@ export class Build {
   /** By survivor pid: the box it last opened with a PIN, and the PIN it gave. */
   private readonly entered = new Map<number, { box: number; pin: number }>();
   private readonly tekDoors: TekDoors;
+  private readonly phaseWalls: TekPhaseWalls;
   private readonly near = new Found();
   private readonly look = [0, 0, 0];
   private readonly inWay: number[] = [];
@@ -174,6 +176,12 @@ export class Build {
       this.used++;
       return true;
     });
+    this.phaseWalls = new TekPhaseWalls(ctx, (e, ref, x, y, z) => this.inSight(e, ref, x, y, z, true), (ref, kind, entity) => {
+      const row = structs.chunks[ref >>> 16]!, i = ref & 65535;
+      const x = row.x[i]!, y = row.y[i]!, z = row.z[i]!, yaw = row.yaw[i]!, tw = row.twAt(i);
+      return entity === undefined ? this.bodyIn(kind, x, y, z, yaw, tw, world.reg.parts, 0) >= 0
+        : this.bodyMeets(entity, kind, x, y, z, yaw, tw, world.reg.parts, 0);
+    }, (ref, kind) => this.changeKind(ref, kind), (ref, byPid) => ctx.bus.before(STRUCTURE_ACT, { byPid, ref, action: "use" }) !== "");
     this.site = {
       structs,
       tables: world.reg,
@@ -228,6 +236,7 @@ export class Build {
     // Any removal may leave what the piece held unsupported. The collapse already knows about the pieces it fells itself.
     structs.onRemove = (ref, cause) => {
       this.tekDoors.removed(ref);
+      this.phaseWalls.removed(ref);
       this.hurtAt.delete(ref);
       this.placedAt.delete(ref);
       this.leaving(ref, cause);
@@ -455,11 +464,22 @@ export class Build {
 
   /** A swing keeps the row, lock and PIN and tells the normal structure and save paths. */
   private swing(ref: number, to: number, sweep?: PartTable): boolean {
-    const { world, fixtures, records } = this.ctx;
+    const { world } = this.ctx;
     const t = world.structs.chunks[ref >>> 16], slot = ref & 65535;
     if (!t || world.reg.opens[t.kind[slot]!] !== to) return false;
     if (sweep ? this.inSwing(ref, sweep) : this.bodyIn(to, t.x[slot]!, t.y[slot]!, t.z[slot]!, t.yaw[slot]!, t.twAt(slot)) >= 0) return false;
+    return this.changeKind(ref, to);
+  }
+
+  private changeKind(ref: number, to: number): boolean {
+    const { world, fixtures, records } = this.ctx;
+    const table = world.structs.chunks[ref >>> 16], slot = ref & 65535;
+    if (!table) return false;
+    const from = table.kind[slot]!;
+    const lastPhase = table.phaseTick?.get(slot);
     if (!world.structs.swap(ref, to)) return false;
+    if (this.phaseWalls.crosses(from, to)) table.setPhaseTick(slot, world.tick);
+    else if (lastPhase !== undefined && this.phaseWalls.accepts(to)) table.setPhaseTick(slot, lastPhase);
     const state = fixtures.find(ref);
     if (state) {
       state.kind = to;
@@ -503,6 +523,7 @@ export class Build {
   /** Goes on with the collapse a save caught midway, from what `unsettled` wrote. */
   resume(saved: string | number | null): void {
     this.tekDoors.restore();
+    this.phaseWalls.restore();
     const was = typeof saved === "string" ? (JSON.parse(saved) as { at: [number, number, number]; chunks: number[] } | null) : null;
     if (was) this.collapse.resume(was.chunks, was.at[0], was.at[1], was.at[2]);
   }
@@ -528,6 +549,7 @@ export class Build {
       this.unsettled.dirty = true;
     }
     this.tekDoors.step();
+    this.phaseWalls.step();
     this.decay.step(world.tick, this.visitors);
   }
 
@@ -574,6 +596,12 @@ export class Build {
     const mine = tribes.may(rec, t.owner[slot]!);
     const item = reg.pieceItem[kind]!;
     const tick = world.tick;
+    if (action === STRUCT_TEK_DOOR || action === STRUCT_TEK_SOLID) {
+      if (!this.phaseWalls.accepts(kind)) return RESULT_INVALID;
+      if (!mine) return RESULT_NOT_YOURS;
+      if (!this.inSight(e, ref, x, y, z)) return RESULT_FAR;
+      return this.phaseWalls.configure(ref, action === STRUCT_TEK_DOOR);
+    }
     if (action === STRUCT_USE) {
       // Every client is sent the ref and place of every piece near it, so reach alone would open a box through a wall.
       if (!this.inSight(e, ref, x, y, z)) return RESULT_FAR;
@@ -909,7 +937,6 @@ export class Build {
   private bodyIn(kind: number, x: number, y: number, z: number, yaw: number, tw: number, parts = this.ctx.world.reg.parts, slack = BODY_SLACK): number {
     const world = this.ctx.world;
     const ents = world.ents;
-    const reg = world.reg;
     const dims = world.dims;
     const cx = Math.floor(x / 64);
     const cz = Math.floor(z / 64);
@@ -918,20 +945,24 @@ export class Build {
         if (cx + ox < 0 || cz + oz < 0 || cx + ox >= dims.chunksX || cz + oz >= dims.chunksZ) continue;
         for (let i = ents.chunkHead[(cz + oz) * dims.chunksX + cx + ox]!; i >= 0; i = ents.next[i]!) {
           if ((ents.flags[i]! & (F_ALIVE | F_PROP)) !== F_ALIVE) continue;
-          const k = ents.kind[i]!, car = reg.vehicle[k], v = ents.vrow[i]!;
-          // A vehicle is its whole hull, nose to boot, not a body of its half width.
-          if (car) {
-            const frame = {
-              x: ents.x[i]!, y: ents.y[i]!, z: ents.z[i]!, yaw: ents.vehicleYaw[v]!, pitch: ents.vehiclePitch[v]!, roll: ents.vehicleRoll[v]!,
-              qx: ents.vehicleQx[v]!, qy: ents.vehicleQy[v]!, qz: ents.vehicleQz[v]!, qw: ents.vehicleQw[v]!, steering: ents.steering[v]!,
-            };
-            if (familyOf(car)!.meetsKind(car, parts, kind, x, y, z, yaw, tw, frame, slack)) return i;
-            continue;
-          }
-          if (capsuleKind(parts, kind, x, y, z, yaw, tw, ents.x[i]!, ents.y[i]!, ents.z[i]!, reg.bodyRadius[k]!, reg.bodyHeight[k]!, slack)) return i;
+          if (this.bodyMeets(i, kind, x, y, z, yaw, tw, parts, slack)) return i;
         }
       }
     }
     return -1;
+  }
+
+  private bodyMeets(i: number, kind: number, x: number, y: number, z: number, yaw: number, tw: number, parts: PartTable, slack: number): boolean {
+    const { ents, reg } = this.ctx.world;
+    const k = ents.kind[i]!, car = reg.vehicle[k], v = ents.vrow[i]!;
+    // A vehicle is its whole hull, nose to boot, not a body of its half width.
+    if (car) {
+      const frame = {
+        x: ents.x[i]!, y: ents.y[i]!, z: ents.z[i]!, yaw: ents.vehicleYaw[v]!, pitch: ents.vehiclePitch[v]!, roll: ents.vehicleRoll[v]!,
+        qx: ents.vehicleQx[v]!, qy: ents.vehicleQy[v]!, qz: ents.vehicleQz[v]!, qw: ents.vehicleQw[v]!, steering: ents.steering[v]!,
+      };
+      return !!familyOf(car)!.meetsKind(car, parts, kind, x, y, z, yaw, tw, frame, slack);
+    }
+    return capsuleKind(parts, kind, x, y, z, yaw, tw, ents.x[i]!, ents.y[i]!, ents.z[i]!, reg.bodyRadius[k]!, reg.bodyHeight[k]!, slack);
   }
 }

@@ -1,6 +1,7 @@
 // Pictures of shots: arrows and darts in the air, and tracer lines. They decide nothing. The server flies every shot
 // (server/projectiles.ts), and the client draws its own with the same arithmetic (shared/sim/projectiles.ts).
 
+import { tekWallKinds } from "../../shared/world/lattice/tek-walls.ts";
 import { Assets } from "./assets/assets.ts";
 import type { ItemDef } from "../../shared/content/defs.ts";
 import type { Registry } from "../../shared/content/registry.ts";
@@ -202,7 +203,7 @@ export class Shots {
 
   constructor(reg: Registry, pack?: Pack) {
     this.reg = reg;
-    this.tekImpacts = new TekImpacts(reg.index.get("core:wall_tek") ?? -1);
+    this.tekImpacts = new TekImpacts(tekWallKinds(reg.index));
     if (pack) this.name(new Assets(reg, pack));
   }
 
@@ -335,7 +336,7 @@ export class Shots {
     if (castWorld(world, x, y, z, dx, dy, dz, HITSCAN_RANGE) === HIT_NONE) return HITSCAN_RANGE;
     const { kind, ref, t, nx, nz } = rayHit;
     const ex = x + dx * t, ey = y + dy * t, ez = z + dz * t;
-    if (kind !== HIT_STRUCTURE || world.structs.chunks[ref >>> 16]?.kind[ref & 65535] !== this.tekImpacts.kind || !this.nearImpact(ex, ey, ez)) return t;
+    if (kind !== HIT_STRUCTURE || !this.tekImpacts.accepts(world.structs.chunks[ref >>> 16]?.kind[ref & 65535]) || !this.nearImpact(ex, ey, ez)) return t;
     const sea = world.hf.seaLevel;
     if (y > sea && ey < sea && seaHere(world.hf.water, x + dx * (sea - y) / dy, z + dz * (sea - y) / dy)) return t;
     if (bodyAlong(world.hf.water, x, y, z, dx, dy, dz, t) < t || this.bodyReach(own, !own, x, z, x, y, z, dx, dy, dz, t, remote) < t) return t;
@@ -345,7 +346,7 @@ export class Shots {
 
   /** The server supplies another shooter's endpoint. A short probe recovers the struck face. */
   private terminalContact(world: CollisionWorld, x: number, y: number, z: number, ex: number, ey: number, ez: number, now: number): void {
-    if (this.tekImpacts.kind < 1 || !this.nearImpact(ex, ey, ez)) return;
+    if (!this.tekImpacts.kinds.solid || !this.nearImpact(ex, ey, ez)) return;
     const length = Math.hypot(ex - x, ey - y, ez - z);
     if (length < 0.03) return;
     const dx = (ex - x) / length, dy = (ey - y) / length, dz = (ez - z) / length;
@@ -577,7 +578,7 @@ export class Shots {
     }
     if (whole && length > 0 && castWorld(world, x, y, z, dx, dy, dz, length) !== HIT_NONE) {
       length = rayHit.t;
-      if (rayHit.kind === HIT_STRUCTURE && world.structs.chunks[rayHit.ref >>> 16]?.kind[rayHit.ref & 65535] === this.tekImpacts.kind) {
+      if (rayHit.kind === HIT_STRUCTURE && this.tekImpacts.accepts(world.structs.chunks[rayHit.ref >>> 16]?.kind[rayHit.ref & 65535])) {
         f.fieldRef = rayHit.ref;
         f.fieldNx = rayHit.nx;
         f.fieldNz = rayHit.nz;

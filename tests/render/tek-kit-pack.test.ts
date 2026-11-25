@@ -13,10 +13,10 @@ test("every Tek form and fitted trim bakes its intended opaque finish", () => {
   const shipped = readFileSync(new URL("../../assets/source/core/structures/tek/tek.snpk", import.meta.url));
   expect(shipped.equals(buildPack(kit, defaultPalette()))).toBe(true);
   expect(new Set(kit.map(mesh => mesh.id))).toEqual(new Set(
-    [...Object.keys(ALL_FORMS), ...Object.keys(TRIM_TRIANGLES)].map(name => `core:${name}_tek`),
+    [...Object.keys(ALL_FORMS), ...Object.keys(TRIM_TRIANGLES), ...Array.from({ length: 15 }, (_, i) => `wall_join_${i + 1}`)].map(name => `core:${name}_tek`),
   ));
   for (const mesh of kit) {
-    const name = mesh.id.slice(5, -4), wall = name === "wall";
+    const name = mesh.id.slice(5, -4), wall = name === "wall" || name.startsWith("wall_join_");
     const limits = TRIM_TRIANGLES[name] ?? MADE_PIECE_TRIANGLES.map(([, max]) => max);
     for (const [i, lod] of mesh.lods.entries()) {
       expect(lod.indices.length / 3).toBeLessThanOrEqual(limits[i]!);

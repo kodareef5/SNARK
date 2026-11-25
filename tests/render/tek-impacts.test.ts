@@ -8,6 +8,7 @@ import { Shots } from "../../client/core/shots.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
 import { corePack } from "../fixtures/pack.ts";
 import { EVENT_SHOT } from "../../shared/net/protocol.ts";
+import { set, start } from "../fixtures/slots.ts";
 import { flatWorld } from "../fixtures/world.ts";
 
 function setup(pack?: Pack) {
@@ -226,4 +227,23 @@ test("a glancing shot catches the latch before its ray reaches open field", () =
   const ref = wall(32), dz = 1 / Math.sqrt(65);
   shots.tekImpacts.hit(world.structs, ref, 33.14, 1.15, 31.90, 0, -1, -8 * dz, 0, dz, 0);
   expect(cards(0)).toBeEmpty();
+});
+
+test("a strike crosses the bare edge of a joined phase wall in either axis", () => {
+  for (const vertical of [false, true]) {
+    const { world, cam, shots, cards } = setup();
+    const { solid, door, open } = shots.tekImpacts.kinds;
+    const base = start(world, world.kind("core:foundation_tek"), 31, 0, 32, 0, 3);
+    const fr = world.structs.frameAt(base);
+    const a = set(world, fr, door, 1, 0), b = set(world, fr, solid, vertical ? 1 : 3, 0, vertical ? 4 : 0);
+    const t = world.structs.chunks[a >>> 16]!, slot = a & 65535;
+    const x = t.x[slot]!, y = t.y[slot]!, z = t.z[slot]!;
+    cam.x = x; cam.y = y; cam.z = z - 5;
+    shots.tekImpacts.hit(world.structs, a, x + (vertical ? 0 : 1.45), y + (vertical ? 1.45 : 0), z - .1, 0, -1, 0, 0, 1, 0);
+    expect(cards(110).map(c => c.flag)).toEqual([DETAIL_TEK, DETAIL_TEK]);
+    world.structs.swap(b, open);
+    expect(cards(120).map(c => c.flag)).toEqual([DETAIL_TEK]);
+    world.structs.swap(a, open);
+    expect(cards(130)).toBeEmpty();
+  }
 });
