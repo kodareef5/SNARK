@@ -84,8 +84,9 @@ async function post(host: Host, req: Request): Promise<Response> {
     case "op": {
       const op = sent.op as PermissionOp;
       if (typeof op !== "object" || op === null) return no("That is not a permission change.");
-      if ((op.op as string) === "setSecret" || "hash" in op) return no("A survivor claims their own password in game. Nobody sets one here.", 403);
-      if (op.op === "tag") return no("A tag is shown or hidden by its survivor, in game.", 403);
+      const refuse = (why: string): Response => (host.acts.refused(by, by.rank, changeWords(op, false), why), no(why, 403));
+      if ((op.op as string) === "setSecret" || "hash" in op) return refuse("A survivor claims their own password in game. Nobody sets one here.");
+      if (op.op === "tag") return refuse("A tag is shown or hidden by its survivor, in game.");
       const why = host.changePermissions(by, op);
       return why === "" ? answer({ ok: true, why: "" }) : no(why, 403);
     }

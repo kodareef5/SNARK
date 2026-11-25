@@ -1,7 +1,7 @@
 // The Admin log page's parts that need no browser (client/admin/acts.ts): holding the acts the world answers with, in
 // order and once each, what the next question asks for, the filters, and each row's words and HTML.
 
-import type { Act, ActKind, ActVia } from "../../../shared/acts.ts";
+import { openOnly, type Act, type ActKind, type ActVia } from "../../../shared/acts.ts";
 import { ACTS_PAGE } from "../../../shared/admin-acts.ts";
 import { RANK_NAMES } from "../../../shared/ranks.ts";
 import { counted, esc } from "./format.ts";
@@ -21,12 +21,16 @@ export function nextAfter(held: readonly Act[]): number {
   return after;
 }
 
+/** The page's question: the acts after `after`, with the open commands too when its box is ticked. */
+export const actsAsked = (after: number, open: boolean): string => `acts.json?after=${after}${open ? "&open=1" : ""}`;
+
 /** Whether an answer of `count` acts may have left more behind it, so the page asks again at once. */
 export const moreAfter = (count: number): boolean => count >= ACTS_PAGE;
 
-export const KINDS: readonly ActKind[] = ["command", "sign-in", "change"];
-export const KIND_WORDS: Record<ActKind, string> = { command: "Commands", "sign-in": "Sign-ins", change: "Permission changes" };
-const KIND_CHIPS: Record<ActKind, string> = { command: "", "sign-in": "sign-in", change: "permissions" };
+export const KINDS: readonly ActKind[] = ["command", "sign-in", "change", "refused"];
+export const KIND_WORDS: Record<ActKind, string> = { command: "Commands", "sign-in": "Sign-ins", change: "Permission changes", refused: "Refused attempts" };
+const KIND_CHIPS: Record<ActKind, string> = { command: "", "sign-in": "sign-in", change: "permissions", refused: "refused" };
+export const OPEN_TITLE = "Run with what everyone may do: creative mode for all, or an open group's permission. No password was given.";
 const VIA_WORDS: Record<ActVia, string> = { session: "In game", page: "On a page", operator: "At the terminal", module: "By a module" };
 
 export interface ActFilter {
@@ -80,6 +84,8 @@ export interface ActRow {
   how: string;
   /** What kind of act, where it is not a command. */
   kind: string;
+  /** A command run with what everyone may do, shown only with the page's box ticked. */
+  open: boolean;
   what: string;
   from: string;
 }
@@ -95,6 +101,7 @@ export function actRow(act: Act): ActRow {
     rank: RANK_NAMES[act.rank] ?? "not known",
     how: VIA_WORDS[act.via],
     kind: KIND_CHIPS[act.kind],
+    open: openOnly(act),
     what: act.what,
     from: act.from,
   };
@@ -107,8 +114,9 @@ export function actsHtml(acts: readonly Act[]): string {
     const title = r.nameTitle === "" ? "" : ` title="${esc(r.nameTitle)}" class="typed"`;
     const id = r.id === "" ? "" : `<span class="dim id">${esc(r.id)}</span>`;
     const kind = r.kind === "" ? "" : `<span class="chip">${esc(r.kind)}</span> `;
-    return `<tr><td class="when">${esc(r.when)}</td><td class="who"><span${title}>${esc(r.name)}</span>${id}</td><td>${esc(r.rank)}</td>` +
-      `<td>${esc(r.how)}</td><td class="what">${kind}${esc(r.what)}</td><td class="from">${esc(r.from)}</td></tr>`;
+    const open = r.open ? `<span class="chip open" title="${esc(OPEN_TITLE)}">open</span> ` : "";
+    return `<tr${r.open ? ` class="open"` : ""}><td class="when">${esc(r.when)}</td><td class="who"><span${title}>${esc(r.name)}</span>${id}</td><td>${esc(r.rank)}</td>` +
+      `<td>${esc(r.how)}</td><td class="what">${open}${kind}${esc(r.what)}</td><td class="from">${esc(r.from)}</td></tr>`;
   }).join("");
 }
 

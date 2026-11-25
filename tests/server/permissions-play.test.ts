@@ -3,6 +3,7 @@
 import { expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import type { ClientSession } from "../../client/core/session.ts";
+import { sessionActor } from "../../server/acts.ts";
 import { idText } from "../../server/survivor-ids.ts";
 import { SESSION_SPECTATING } from "../../shared/net/protocol.ts";
 import { RANK_ADMIN, RANK_CLUSTER, RANK_OPEN, RANK_STAFF } from "../../shared/ranks.ts";
@@ -16,12 +17,13 @@ const quiet = { log: () => {} };
 const idOf = (h: Harness, s: ClientSession): string => idText(record(h, s));
 const lines = (said: string[]): string[] => said.join("\n").split("\n");
 
-/** The operator's changes, each of which must be made: it is an act. */
+/** The operator's changes, each of which must be made: it is an act of the kind "change". */
 function op(h: Harness, ...said: string[]): void {
   for (const line of said) {
-    const before = h.host.acts.recent(0, Number.MAX_SAFE_INTEGER).length;
+    const before = h.host.acts.recent(0, Number.MAX_SAFE_INTEGER);
     const out = h.host.exec(line);
-    if (h.host.acts.recent(0, Number.MAX_SAFE_INTEGER).length !== before + 1) throw new Error(`${line}: ${out}`);
+    const after = h.host.acts.recent(0, Number.MAX_SAFE_INTEGER);
+    if (after.length !== before.length + 1 || after.at(-1)!.kind !== "change") throw new Error(`${line}: ${out}`);
   }
 }
 
@@ -176,7 +178,7 @@ test("every change is an act that names who made it and reads as the command", (
   admin(h, ada);
   const [me, him] = [idOf(h, ada), idOf(h, bob)];
   for (const line of ["Permissions.AddGroup Vip", "Permissions.Grant Vip Cheat.kick", "Permissions.Add bob Vip", "Permissions.AddTimed bob Vip 2 0.5", "Permissions.RemoveTimed bob Vip", "Permissions.Revoke Vip Cheat.kick"]) h.say(ada, line);
-  // A refused change is no act.
+  // A refused change is no change: it is logged as refused.
   expect(h.say(ada, "Permissions.Grant Nobody Cheat.kick")).toEqual(["There is no group Nobody."]);
   const changes = h.host.acts.recent().filter((a) => a.kind === "change").map((a) => [a.name, a.id, a.rank, a.what]);
   expect(changes).toEqual([
@@ -190,7 +192,7 @@ test("every change is an act that names who made it and reads as the command", (
     ["ada", me, RANK_ADMIN, "Permissions.Revoke Vip Cheat.kick"],
   ]);
   const told = lines(h.say(ada, "acts 2"));
-  expect(told.map((l) => l.replace(/^\S+ \S+ UTC {2}/, ""))).toEqual([`ada ${me}  admin  change: Permissions.RemoveTimed ${him} Vip`, `ada ${me}  admin  change: Permissions.Revoke Vip Cheat.kick`]);
+  expect(told.map((l) => l.replace(/^\S+ \S+ UTC {2}/, ""))).toEqual([`ada ${me}  admin  change: Permissions.Revoke Vip Cheat.kick`, `ada ${me}  admin  refused: Permissions.Grant Nobody Cheat.kick: There is no group Nobody.`]);
   expect(h.say(bob, "acts")).toEqual(["denied: this needs the admin rank or above"]);
   h.run(100);
   expect(ears.heard.lines.slice(0, 5)).toEqual([
@@ -271,4 +273,62 @@ test("a saved world keeps its groups beside its save through a restart", () => {
   expect(next.host.exec(`Permissions.PlayerGroups ${id}`)).toBe(`ada (${id}):\nVip: for good`);
   const back = survivor(next, "ada", { cheats: false });
   expect(next.say(back, "groups")).toEqual(["your groups: Vip, Default"]);
+});
+
+test("a moderator's kick is kept, printed and listed by acts", () => {
+  const said: string[] = [];
+  const { h } = camp({ host: { log: (line) => said.push(line) } });
+  const bob = survivor(h, "bob", { cheats: false });
+  survivor(h, "carl", { cheats: false });
+  op(h, "Permissions.AddGroup Mods", "Permissions.Rank Mods staff", "Permissions.Grant Mods Cheat.kick", "Permissions.Add bob Mods");
+  h.say(bob, "claimpassword");
+  expect(h.say(bob, `enablecheats ${bob.secret}`)).toEqual(["cheats enabled"]);
+  expect(h.say(bob, "kick carl")).toEqual(["kicked carl"]);
+  const act = h.host.acts.recent().at(-1)!;
+  expect([act.name, act.id, act.rank, act.open, act.what]).toEqual(["bob", idOf(h, bob), RANK_STAFF, false, "kick carl"]);
+  expect(said).toContain("admin: bob (staff rank) kick carl");
+  expect(h.host.exec("acts 1")).toEndWith(`bob ${idOf(h, bob)}  staff  kick carl`);
+});
+
+test("an open group's perk is open, and left out of the latest acts", () => {
+  const { h } = camp({ host: quiet });
+  const bob = survivor(h, "bob", { cheats: false });
+  op(h, "Permissions.AddGroup Flyers", "Permissions.Grant Flyers Cheat.fly", "Permissions.Add bob Flyers");
+  expect(h.say(bob, "fly")[0]).toStartWith("fly");
+  expect(h.host.acts.recent().some((a) => a.name === "bob")).toBe(false);
+  const act = h.host.acts.recentWithOpen().at(-1)!;
+  expect([act.name, act.rank, act.open, act.what]).toEqual(["bob", RANK_OPEN, true, "fly"]);
+});
+
+test("a signed-in admin is not open, also under creative mode for all", () => {
+  const { h } = camp({ host: quiet });
+  expect([h.host.setSetting("bShowCreativeMode", "True"), h.host.setSetting("CreativeForAll", "True")]).toEqual(["", ""]);
+  const bob = survivor(h, "bob", { cheats: false });
+  h.run(100);
+  expect(h.client(bob)!.admin).toBe(true);
+  h.say(bob, "settime 6");
+  admin(h, bob);
+  h.say(bob, "settime 7");
+  const his = h.host.acts.recentWithOpen().filter((a) => a.name === "bob" && a.kind === "command").map((a) => [a.rank, a.open, a.what]);
+  expect(his).toEqual([[RANK_STAFF, true, "settime 6"], [RANK_ADMIN, false, "settime 7"]]);
+  expect(h.host.acts.recent().filter((a) => a.name === "bob").map((a) => a.what)).toEqual(["claimed their own password", "enablecheats with their own password", "settime 7"]);
+});
+
+test("an admin refused above their rank is logged, one below admin is not", () => {
+  const said: string[] = [];
+  const { h, ada } = camp({ host: { log: (line) => said.push(line) } });
+  const bob = survivor(h, "bob", { cheats: false });
+  op(h, "Permissions.AddGroup Owners", "Permissions.Rank Owners map", "Permissions.AddGroup Mods", "Permissions.Rank Mods staff", `Permissions.Add ${idOf(h, bob)} Mods`);
+  admin(h, ada);
+  expect(h.say(ada, "Permissions.Grant Owners Cheat.fly")).toEqual(["That needs the map rank."]);
+  const act = h.host.acts.recent().at(-1)!;
+  expect([act.name, act.rank, act.kind, act.open, act.what]).toEqual(["ada", RANK_ADMIN, "refused", false, "Permissions.Grant Owners Cheat.fly: That needs the map rank."]);
+  expect(said).toContain("admin: ada (admin rank) refused: Permissions.Grant Owners Cheat.fly: That needs the map rank.");
+  h.say(bob, "claimpassword");
+  h.say(bob, `enablecheats ${bob.secret}`);
+  expect(h.client(bob)!.rank).toBe(RANK_STAFF);
+  const before = h.host.acts.recentWithOpen(0, Number.MAX_SAFE_INTEGER).length;
+  expect(h.say(bob, "Permissions.AddGroup Vip")).toEqual(["denied: this needs the admin rank or above"]);
+  expect(h.host.changePermissions(sessionActor(h.client(bob)!, h.host.records), { op: "addGroup", group: "Vip" })).toBe("Permissions are managed from an admin's rank.");
+  expect(h.host.acts.recentWithOpen(0, Number.MAX_SAFE_INTEGER).length).toBe(before);
 });

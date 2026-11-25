@@ -10,7 +10,10 @@ export interface AdminMe {
   world: number;
 }
 
-/** GET <world>/admin/acts.json?after=<seq>: the acts above `after`, oldest first, at most ACTS_PAGE of them. */
+/**
+ * GET <world>/admin/acts.json?after=<seq>: the kept acts above `after`, oldest first, at most ACTS_PAGE of them. With
+ * &open=1 the open commands come too, in the same order of sequence numbers.
+ */
 export interface ActsAnswer {
   acts: Act[];
 }

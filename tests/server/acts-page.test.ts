@@ -1,10 +1,10 @@
 // The Admin log page (client/admin/acts.ts): its parts that need no browser (client/core/admin/acts.ts), its place in a
 // world's navigation and build, and the gate in front of it.
 import { afterAll, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { NO_FILTER, TYPED, actRow, actsHtml, countText, mergeActs, moreAfter, nextAfter, shownActs } from "../../client/core/admin/acts.ts";
+import { KINDS, KIND_WORDS, NO_FILTER, OPEN_TITLE, TYPED, actRow, actsAsked, actsHtml, countText, mergeActs, moreAfter, nextAfter, shownActs } from "../../client/core/admin/acts.ts";
 import { resolveAdmin, sections } from "../../client/core/admin/navigation.ts";
 import { adminSite } from "../../server/admin/site.ts";
 import { Guesses } from "../../server/guesses.ts";
@@ -19,7 +19,7 @@ afterAll(() => rmSync(root, { recursive: true, force: true }));
 
 const MARA = idOf(1, 1);
 const act = (seq: number, o: Partial<Act> = {}): Act => ({
-  seq, at: 0, tick: seq * 30, name: "Mara", id: MARA, pid: 1, rank: RANK_ADMIN, via: "session", from: "", kind: "command", what: `cmd ${seq}`, ...o,
+  seq, at: 0, tick: seq * 30, name: "Mara", id: MARA, pid: 1, rank: RANK_ADMIN, via: "session", from: "", kind: "command", what: `cmd ${seq}`, open: false, ...o,
 });
 
 /** Mara at admin, a map password typed as (kody), the cluster at the terminal, and Pip's staff sign-in. */
@@ -80,6 +80,26 @@ test("the rows escape what the server gave", () => {
   expect(html).toContain("&#60;b&#62;&#34;Pip&#34;&#60;/b&#62;");
   expect(actsHtml([log[1]!])).toContain(`title="${TYPED}"`);
   expect(actsHtml([log[0]!])).toContain(MARA);
+});
+
+test("an open command is marked, and an open act of another kind is not", () => {
+  const cheat = act(6, { name: "Bo", rank: RANK_STAFF, open: true, what: "fly" });
+  const claim = act(7, { name: "Bo", rank: RANK_STAFF, open: true, kind: "change", what: "claimed their own password" });
+  expect([actRow(cheat).open, actRow(claim).open, actRow(log[0]!).open]).toEqual([true, false, false]);
+  expect(actsHtml([cheat])).toContain(`<span class="chip open" title="${OPEN_TITLE}">open</span>`);
+  expect(actsHtml([claim, log[0]!])).not.toContain(OPEN_TITLE);
+});
+
+test("a refused attempt has a kind of its own, in the filter and on its row", () => {
+  const tried = act(8, { kind: "refused", what: "Permissions.Rank Owners cluster: That needs the cluster rank." });
+  expect([KINDS.includes("refused"), KIND_WORDS.refused, actRow(tried).kind]).toEqual([true, "Refused attempts", "refused"]);
+  expect(shownActs([...log, tried], { ...NO_FILTER, kind: "refused" }).map((a) => a.seq)).toEqual([8]);
+});
+
+test("the page asks for the open acts only with its box ticked", () => {
+  expect([actsAsked(12, false), actsAsked(12, true), actsAsked(0, true)]).toEqual(["acts.json?after=12", "acts.json?after=12&open=1", "acts.json?after=0&open=1"]);
+  const html = readFileSync(join(import.meta.dir, "../../client/admin/acts.html"), "utf8");
+  expect(html).toMatch(/<label[^>]*><input id="open" type="checkbox"> Also show what everyone may do[^<]*<\/label>/);
 });
 
 test("the count says how many of how many it shows", () => {

@@ -522,6 +522,23 @@ export async function drive(o: DriveOptions): Promise<string[]> {
       await narrowed("words", () => page.type("#words", "Wardens"), (r) => /wardens/i.test(r[4]!), async () => void (await page.run(`${q("#words")}.value = ""; ${q("#words")}.dispatchEvent(new Event("input"))`)));
       await narrowed("kind", () => page.choose("#kind", "sign-in"), (r) => /sign-in/.test(r[4]!), () => page.choose("#kind", ""));
       check("the filters let go show it all again", (await actRows()).length, all.length);
+      check("Bea's removal of Wardens sent anyway is there, refused with the reason", all.some((r) => r[1] === `Bea${bea.id}` && /^refused Permissions\.RemoveGroup Wardens: \S/.test(r[4] ?? "")), true);
+      await narrowed("kind", () => page.choose("#kind", "refused"), (r) => r[4]!.startsWith("refused "), () => page.choose("#kind", ""));
+
+      // The box adds what everyone may do: Ada flies by her open group's permission, with no password.
+      if (host.changePermissions(OPERATOR, { op: "grant", group: "Veterans", permission: "Cheat.fly" }) !== "") fault("the operator could not grant Veterans Cheat.fly");
+      check("Ada flies by Veterans' permission", /^fly/.test(await say(ada, "fly")), true);
+      await page.wait(`(${q("#acts tr")}?.textContent ?? "").includes("Veterans Cheat.fly")`, 60);
+      const adas = async (): Promise<string[][]> => (await actRows()).filter((r) => r[1] === `Ada${ada.id}`);
+      check("the box is off at first, and Ada's flight is not shown", [await page.run(`${q("#open")}.checked`), (await adas()).length], [false, 0]);
+      await page.press("#open");
+      const shown = await page.wait(`[...document.querySelectorAll("#acts tr.open")].some((tr) => tr.textContent.includes("Ada"))`, 60);
+      check("ticked, it shows Ada's flight marked open, at the open rank", shown ? (await adas()).map((r) => [r[2], r[4]]) : [], [["open", "open fly"]]);
+      check("and the mark says why", await page.run(`${q("#acts tr.open .chip.open")}?.title ?? ""`), "Run with what everyone may do: creative mode for all, or an open group's permission. No password was given.");
+      await picture(page, "acts-open");
+      await page.press("#open");
+      await page.wait(`![...document.querySelectorAll("#acts tr")].some((tr) => tr.textContent.includes("Ada"))`, 60);
+      check("unticked, the flight goes and the rest stays", [(await adas()).length, (await actRows()).length > all.length], [0, true]);
       await picture(page, "acts");
       const why = host.changePermissions(OPERATOR, { op: "addGroup", group: "Latecomers" });
       if (why !== "") fault(`the operator could not add Latecomers: ${why}`);

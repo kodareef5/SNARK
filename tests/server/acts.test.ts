@@ -5,12 +5,22 @@ import { afterAll, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { OP_ADMIN, type Actor } from "../../server/acts.ts";
+import { ACTS_KEPT, ACTS_OPEN_KEPT, OP_ADMIN, type Actor } from "../../server/acts.ts";
+import type { AdminGate } from "../../server/admin/gate.ts";
+import { TickMeter } from "../../server/admin/meter.ts";
+import { AdminPages } from "../../server/admin/routes.ts";
+import { gaugesOf } from "../../server/admin/stats.ts";
+import { Guesses } from "../../server/guesses.ts";
 import { WorldStore } from "../../server/persist/store.ts";
+import { adminSite } from "../../server/admin/site.ts";
+import { permissionsAdmin } from "../../server/permissions/routes.ts";
+import { staffPasswords } from "../../server/permissions/secrets.ts";
 import { idText } from "../../server/survivor-ids.ts";
-import { decodeAct } from "../../shared/acts.ts";
+import { decodeAct, type Act } from "../../shared/acts.ts";
+import type { ActsAnswer } from "../../shared/admin-acts.ts";
+import { PERMISSIONS_API } from "../../shared/permissions/page.ts";
 import { TEXT_NOTICE } from "../../shared/net/protocol.ts";
-import { RANK_ADMIN, RANK_MAP } from "../../shared/ranks.ts";
+import { RANK_ADMIN, RANK_MAP, RANK_STAFF } from "../../shared/ranks.ts";
 import { adminLines, savedActs } from "../fixtures/acts.ts";
 import { Harness } from "../fixtures/net.ts";
 
@@ -25,6 +35,16 @@ function world(opts: { db?: string; password?: string } = {}): { h: Harness; sai
   h = new Harness({}, 1, 60, { ...(opts.db ? { dbPath: opts.db } : {}), ...(opts.password ? { adminPassword: opts.password } : { dev: true }), log: (line) => said.push(line), survivorLog: { wall: () => W0 + Math.round(h?.now ?? 0) } });
   return { h, said };
 }
+
+/** Creative mode for all, switched on while the world runs. */
+function everyonesCheats(h: Harness): void {
+  expect([h.host.setSetting("bShowCreativeMode", "True"), h.host.setSetting("CreativeForAll", "True")]).toEqual(["", ""]);
+  h.run(100);
+}
+
+/** One who proved nothing, and an admin on a page. */
+const OPEN_ONE: Actor = { name: "bo", id: "", pid: 2, rank: RANK_STAFF, via: "session", from: "", baseRank: 0, open: true };
+const PAGE_ADA: Actor = { name: "ada", id: "", pid: 0, rank: RANK_ADMIN, via: "page", from: "", baseRank: RANK_ADMIN, open: false };
 
 test("an admin command is kept with who ran it, their ID, rank and the time", () => {
   const db = join(dir, "kept.db");
@@ -48,19 +68,165 @@ test("an admin command is kept with who ran it, their ID, rank and the time", ()
   expect(kept).toEqual(act);
 });
 
-test("a cheat by a session with cheats only is journalled and not in the latest acts", () => {
+test("a cheat under creative mode for all is journalled as open and kept apart", () => {
   const db = join(dir, "cheats.db");
   const { h, said } = world({ db });
+  everyonesCheats(h);
+  const bo = h.join("bo");
+  h.run(500);
+  expect(bo.admin).toBe(true);
+  expect(h.say(bo, "settime 6:30")).toEqual(["time is 06:30"]);
+  expect(h.host.acts.recent().map((a) => a.what)).not.toContain("settime 6:30");
+  expect(said.filter((line) => line.includes("settime"))).toEqual([]);
+  const open = h.host.acts.recentWithOpen().find((a) => a.what === "settime 6:30");
+  expect([open?.name, open?.open]).toEqual(["bo", true]);
+  h.host.shutdown();
+  const store = new WorldStore(db, h.reg);
+  expect(adminLines(store)).toEqual(["bo\tsettime 6:30"]);
+  expect(savedActs(store).map((a) => a.open)).toEqual([true]);
+  store.close();
+});
+
+test("a development server's own cheats are not open, so they are kept", () => {
+  const { h, said } = world();
   const bo = h.join("bo");
   h.run(500);
   expect(h.say(bo, "enablecheats")).toEqual(["cheats enabled"]);
   expect(h.say(bo, "settime 6:30")).toEqual(["time is 06:30"]);
-  expect(h.host.acts.recent().map((a) => a.what)).not.toContain("settime 6:30");
-  expect(said.filter((line) => line.startsWith("admin:"))).toEqual([]);
+  expect(h.host.acts.recent().map((a) => [a.name, a.open, a.what])).toEqual([["bo", false, "settime 6:30"]]);
+  expect(said).toContain("admin: bo (staff rank) settime 6:30");
   h.host.shutdown();
-  const store = new WorldStore(db, h.reg);
-  expect(adminLines(store)).toEqual(["bo\tsettime 6:30"]);
-  store.close();
+});
+
+test("a host password's admin is never open, also under creative mode for all", () => {
+  const { h, said } = world({ password: "hunter2" });
+  everyonesCheats(h);
+  const ada = h.join("ada");
+  h.run(500);
+  h.say(ada, "settime 6");
+  h.say(ada, "enablecheats hunter2");
+  h.say(ada, "settime 7");
+  const mine = h.host.acts.recentWithOpen().filter((a) => a.name === "ada").map((a) => [a.kind, a.open, a.what]);
+  expect(mine).toEqual([["command", true, "settime 6"], ["sign-in", false, "enablecheats with the map's password"], ["command", false, "settime 7"]]);
+  expect(h.host.acts.recent().map((a) => a.what)).toEqual(["enablecheats with the map's password", "settime 7"]);
+  expect(said).toContain("admin: ada (map rank) settime 7");
+  h.host.shutdown();
+});
+
+test("many open acts never push a kept act out", () => {
+  const { h, said } = world();
+  h.host.exec("settime 6:30");
+  h.host.acts.write(OPEN_ONE, "claimed their own password", "change");
+  for (let i = 0; i < ACTS_KEPT + ACTS_OPEN_KEPT; i++) h.host.acts.write(OPEN_ONE, `fly ${i}`);
+  expect(h.host.acts.recent().map((a) => a.what)).toEqual(["settime 6:30", "claimed their own password"]);
+  const open = h.host.acts.recentWithOpen(0, Number.MAX_SAFE_INTEGER).filter((a) => a.open && a.kind === "command");
+  expect(open.length).toBe(ACTS_OPEN_KEPT);
+  expect([open[0]!.what, open.at(-1)!.what]).toEqual([`fly ${ACTS_KEPT}`, `fly ${ACTS_KEPT + ACTS_OPEN_KEPT - 1}`]);
+  expect(said.some((line) => line.includes("fly"))).toBe(false);
+  h.host.shutdown();
+});
+
+test("both lists come back from the save, and paging the two misses nothing", () => {
+  const db = join(dir, "rings.db");
+  const first = world({ db });
+  for (let i = 0; i < 40; i++) first.h.host.acts.write(i % 3 === 0 ? PAGE_ADA : OPEN_ONE, `act ${i}`);
+  const was = first.h.host.acts.recentWithOpen(0, Number.MAX_SAFE_INTEGER);
+  const kept = first.h.host.acts.recent(0, Number.MAX_SAFE_INTEGER);
+  first.h.host.shutdown();
+
+  const second = world({ db });
+  expect(second.h.host.acts.recentWithOpen(0, Number.MAX_SAFE_INTEGER)).toEqual(was);
+  expect(second.h.host.acts.recent(0, Number.MAX_SAFE_INTEGER)).toEqual(kept);
+  expect(was.map((a) => a.what)).toEqual(Array.from({ length: 40 }, (_, i) => `act ${i}`));
+  const paged: Act[] = [];
+  for (let after = 0; ; ) {
+    const got = second.h.host.acts.recentWithOpen(after, 7);
+    paged.push(...got);
+    if (got.length < 7) break;
+    after = got.at(-1)!.seq;
+  }
+  expect(paged).toEqual(was);
+  second.h.host.shutdown();
+});
+
+test("the acts answer adds the open acts only when asked, and pages them", async () => {
+  const { h } = world({ password: "hunter2" });
+  for (let i = 0; i < 12; i++) h.host.acts.write(i % 4 === 0 ? PAGE_ADA : OPEN_ONE, `act ${i}`);
+  const pages = new AdminPages({ host: h.host, meter: new TickMeter(() => gaugesOf(h.host)), dir, start: { tick: 0, wall: 0 } });
+  const gate: AdminGate = { dev: false, password: "hunter2", guesses: new Guesses(), tick: () => 0 };
+  const read = async (query: string): Promise<Act[]> => {
+    const req = new Request(`http://localhost/admin/acts.json?${query}`, { headers: { authorization: `Basic ${btoa("kody:hunter2")}` } });
+    return ((await (await pages.answer(req, "1.2.3.4", gate, "/admin/acts.json"))!.json()) as ActsAnswer).acts;
+  };
+  expect((await read("after=0")).map((a) => a.what)).toEqual(["act 0", "act 4", "act 8"]);
+  const all = await read("after=0&open=1");
+  expect(all.map((a) => a.what)).toEqual(Array.from({ length: 12 }, (_, i) => `act ${i}`));
+  expect(all.filter((a) => a.open).length).toBe(9);
+  expect((await read(`after=${all[5]!.seq}&open=1`)).map((a) => a.what)).toEqual(all.slice(6).map((a) => a.what));
+  h.host.shutdown();
+});
+
+test("an entry from before the flag, or before ranks, shows in the latest acts", () => {
+  const db = join(dir, "older.db");
+  const first = world({ db });
+  const older = { at: W0, name: "pip", id: "", pid: 3, rank: RANK_STAFF, via: "session", from: "", kind: "command", what: "kick carl" };
+  first.h.host.persistence!.journal(OP_ADMIN, new TextEncoder().encode(JSON.stringify(older)));
+  first.h.host.persistence!.journal(OP_ADMIN, new TextEncoder().encode("ada\tsettime 6:30"));
+  first.h.host.shutdown();
+  const second = world({ db });
+  expect(second.h.host.acts.recent().map((a) => [a.name, a.rank, a.open, a.what])).toEqual([["pip", RANK_STAFF, false, "kick carl"], ["ada", -1, false, "settime 6:30"]]);
+  second.h.host.shutdown();
+});
+
+test("rubbish sent to the permissions page is logged in short clean words", async () => {
+  const said: string[] = [];
+  const h = new Harness({}, 1, 60, { adminPassword: "hunter2", log: (line) => said.push(line) });
+  const gate = { dev: false, password: "hunter2", cluster: null, guesses: h.host.game.sessions.cheatGuesses, tick: () => h.world.tick, staff: staffPasswords(h.host) };
+  const site = {
+    dir, base: "", port: 0, id: "local" as const, who: "1.2.3.4", gate, destinations: () => [], scenes: () => new Response(null),
+    permissions: (call: Request, at: string) => permissionsAdmin(call, at, h.host),
+  };
+  const send = async (op: unknown): Promise<number> => {
+    const init = { method: "POST", headers: { authorization: `Basic ${btoa("kody:hunter2")}`, "content-type": "application/json" }, body: JSON.stringify({ do: "op", op }) };
+    return (await adminSite(new Request(`http://localhost${PERMISSIONS_API}`, init), new URL(`http://localhost${PERMISSIONS_API}`), site))!.status;
+  };
+  const HUGE = "Q".repeat(200_000);
+  const HASH = "7".repeat(64);
+  const CHAT = "SECRET-CHAT-".repeat(2000);
+  const statuses = [
+    await send({ op: "grant", group: { toString: 1 }, permission: [1, 2] }),
+    await send({ op: "addGroup", group: HUGE, rank: "cluster" }),
+    await send({ op: "revoke", group: "Ad\u0000mins\u001b[31m\n", permission: "Cheat.\u202efly\r\nadmin: x" }),
+    await send({ op: "clearSecret", id: "1", hash: HASH }),
+    await send({ op: "setSecret", id: "1", password: "swordfish" }),
+    await send({ op: "setChat", group: "Admins", chat: CHAT }),
+    await send({ op: "addMember", kind: "survivor", key: HUGE, group: "Admins", hours: "x", world: {} }),
+    await send({ op: "nonsense", group: HUGE }),
+  ];
+  expect(statuses.every((s) => s === 403)).toBe(true);
+  const refused = h.host.acts.recent().filter((a) => a.kind === "refused");
+  expect(refused.length).toBe(statuses.length);
+  for (const act of refused) {
+    expect([act.name, act.rank, act.via, act.open]).toEqual(["(kody)", RANK_MAP, "page", false]);
+    expect(act.what.length).toBeLessThan(400);
+    expect(act.what).not.toMatch(/[\p{Cc}\p{Cf}]/u);
+    for (const secret of ["QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ", HASH, "swordfish", "SECRET-CHAT"]) expect(act.what).not.toContain(secret);
+  }
+  expect(refused.map((a) => a.what.split(": ")[0])).toEqual([
+    "Permissions.Grant ? ?",
+    expect.stringMatching(/^Permissions\.AddGroup Q+…; Permissions\.Rank Q+… \?$/),
+    "Permissions.Revoke Ad mins [31m Cheat.fly admin",
+    "set a password",
+    "set a password",
+    "set the chat format of Admins",
+    expect.stringMatching(/^Permissions\.AddTimed Q+… Admins \? 0$/),
+    "a change of no known kind",
+  ]);
+  expect(refused[5]!.what).toBe("set the chat format of Admins: A chat block is text of at most 16384 letters.");
+  const lines = said.filter((line) => line.includes("refused: "));
+  expect(lines.length).toBe(statuses.length);
+  expect(lines.join("\n")).not.toContain(HASH);
+  h.host.shutdown();
 });
 
 test("a world with no save still lists its latest acts", () => {
@@ -94,7 +260,7 @@ test("the latest acts are read back from the save after a restart", () => {
 
 test("a page's command is named for who asked and runs with the operator's rights", () => {
   const { h, said } = world();
-  const by: Actor = { name: "ada", id: "", pid: 0, rank: RANK_ADMIN, via: "page", from: "203.0.113.9", baseRank: RANK_ADMIN };
+  const by: Actor = { name: "ada", id: "", pid: 0, rank: RANK_ADMIN, via: "page", from: "203.0.113.9", baseRank: RANK_ADMIN, open: false };
   expect(h.host.console.exec({ host: h.host, client: null, actor: by }, "settime 6:30")).toBe("time is 06:30");
   const act = h.host.acts.recent().at(-1)!;
   expect([act.name, act.rank, act.via, act.from, act.what]).toEqual(["ada", RANK_ADMIN, "page", "203.0.113.9", "settime 6:30"]);
@@ -125,7 +291,7 @@ test("a password never reaches an act", () => {
 
 test("an old name tab line entry still reads", () => {
   const old = (line: string) => decodeAct(new TextEncoder().encode(line), 7, 90);
-  expect(old("ada\tsettime 6:30")).toEqual({ seq: 7, at: 0, tick: 90, name: "ada", id: "", pid: 0, rank: -1, via: "session", from: "", kind: "command", what: "settime 6:30" });
+  expect(old("ada\tsettime 6:30")).toEqual({ seq: 7, at: 0, tick: 90, name: "ada", id: "", pid: 0, rank: -1, via: "session", from: "", kind: "command", what: "settime 6:30", open: false });
   expect([old("(operator)\tsettime 12").via, old("(admin page)\tdoexit 90").via]).toEqual(["operator", "page"]);
   expect([old("no tab").name, old("no tab").what]).toEqual(["", "no tab"]);
 });

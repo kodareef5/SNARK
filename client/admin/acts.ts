@@ -5,12 +5,14 @@ import { adminContext } from "./shell.ts";
 import type { Act } from "../../shared/acts.ts";
 import type { ActsAnswer } from "../../shared/admin-acts.ts";
 import { RANK_NAMES, RANK_STAFF } from "../../shared/ranks.ts";
-import { KINDS, KIND_WORDS, actsHtml, countText, mergeActs, moreAfter, nextAfter, shownActs, type ActFilter } from "../core/admin/acts.ts";
+import { KINDS, KIND_WORDS, actsAsked, actsHtml, countText, mergeActs, moreAfter, nextAfter, shownActs, type ActFilter } from "../core/admin/acts.ts";
 import { esc } from "../core/admin/format.ts";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
 let held: Act[] = [];
 let drawn = "";
+/** Counts each tick or untick of the box, so an answer to the question before it is let go. */
+let asking = 0;
 
 function say(text: string, kind = "dim"): void {
   $("msg").textContent = text;
@@ -37,16 +39,19 @@ function draw(): void {
 async function pull(): Promise<void> {
   const ctx = await adminContext();
   for (;;) {
-    const r = await fetch(ctx.api(`acts.json?after=${nextAfter(held)}`), { cache: "no-store" });
+    const at = asking;
+    const r = await fetch(ctx.api(actsAsked(nextAfter(held), $<HTMLInputElement>("open").checked)), { cache: "no-store" });
     if (!r.ok) throw Error(`The log answered ${r.status}.`);
     const { acts } = (await r.json()) as ActsAnswer;
+    if (at !== asking) return;
     held = mergeActs(held, acts);
     draw();
     if (!moreAfter(acts.length)) return;
   }
 }
 
-async function poll(): Promise<void> {
+/** Asks for what is new, and says why not where the world did not answer. */
+async function ask(): Promise<void> {
   try {
     await pull();
     say("");
@@ -54,8 +59,20 @@ async function poll(): Promise<void> {
     const why = e instanceof Error && e.message.startsWith("The log") ? e.message : "The world did not answer.";
     say(`${why} Trying again.`, "bad");
   }
+}
+
+async function poll(): Promise<void> {
+  await ask();
   setTimeout(() => void poll(), 3000);
 }
+
+// The open commands of the past are asked for from the start, so the page lets go of what it holds.
+$("open").onchange = () => {
+  asking++;
+  held = [];
+  draw();
+  void ask();
+};
 
 $("rank").innerHTML = `<option value="-1">Any rank</option>` +
   RANK_NAMES.slice(RANK_STAFF).map((name, i) => `<option value="${i + RANK_STAFF}">${esc(name)} and above</option>`).join("");

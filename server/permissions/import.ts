@@ -231,6 +231,7 @@ export interface ArkApiFiles {
 }
 
 const NOT_SQLITE: Planned = { ok: false, reason: "That file is not an SQLite database." };
+const DAMAGED: Planned = { ok: false, reason: "That database is damaged, so nothing was read from it. Copy it again with the ARK server stopped." };
 const NO_FOLDER: Planned = { ok: false, reason: "The server could not open that database in a folder of its own." };
 const WAL_MISSING =
   "This database keeps its newest changes in the file beside it whose name ends in -wal until the ARK server is stopped. Stop the server first, or give that file too, or those changes are left out.";
@@ -314,11 +315,18 @@ function planLogged(path: string, bytes: Uint8Array, wal: Uint8Array, opts: Impo
   }
 }
 
+/** Whether a file from outside is whole. It is read with its schema untrusted, its cells measured, and nothing written. */
+function sound(db: Database): boolean {
+  db.exec("PRAGMA trusted_schema=OFF; PRAGMA cell_size_check=ON; PRAGMA query_only=ON;");
+  return (db.query("PRAGMA quick_check(1)").get() as { quick_check?: unknown } | null)?.quick_check === "ok";
+}
+
 /** Reads the plugin's tables from an open database. */
 function readArkApi(db: Database, opts: ImportOptions, note?: string): Planned {
   try {
     let tables: string[];
     try {
+      if (!sound(db)) return DAMAGED;
       tables = (db.query("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: unknown }[]).map((r) => text(r.name));
     } catch {
       return NOT_SQLITE;
@@ -335,7 +343,7 @@ function readArkApi(db: Database, opts: ImportOptions, note?: string): Planned {
     const draft = new Draft(opts);
     if (note) draft.note(note);
     const order = groupColumns.has("id") ? " ORDER BY Id" : "";
-    for (const row of db.query(`SELECT GroupName AS name, Permissions AS permissions FROM "${groupTable}"${order}`).all() as Record<string, unknown>[]) {
+    for (const row of db.query(`SELECT GroupName AS name, Permissions AS permissions FROM "${groupTable}"${order}`).iterate() as Iterable<Record<string, unknown>>) {
       const g = draft.ensure(text(row.name).trim());
       if (g) for (const p of list(row.permissions)) draft.grant(g, p);
     }
@@ -344,7 +352,8 @@ function readArkApi(db: Database, opts: ImportOptions, note?: string): Planned {
       const cols = columns(table);
       const picks = [cols.has("groups") ? "Groups AS groups" : "", cols.has("timedgroups") ? "TimedGroups AS timed" : ""].filter((s) => s !== "");
       if (picks.length === 0) return;
-      for (const row of db.query(`SELECT ${picks.join(", ")} FROM "${table}"`).all() as Record<string, unknown>[]) {
+      // A big server's Players table has a row for everyone who ever joined: they are walked, not gathered.
+      for (const row of db.query(`SELECT ${picks.join(", ")} FROM "${table}"`).iterate() as Iterable<Record<string, unknown>>) {
         for (const g of list(row.groups)) draft.leaveBehind(g, kind, false);
         for (const entry of list(row.timed)) draft.leaveBehind(timedGroup(entry), kind, true);
       }

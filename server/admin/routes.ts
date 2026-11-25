@@ -24,11 +24,13 @@
 //   /admin/first-frame.html what the client's first frame downloads (client/admin/first-frame.ts), and
 //                           /admin/first-frame.json the build's weighing of it, beside the client (tools/first-frame.ts)
 //   /admin/me.json          who the viewer is: the gate's name, ID and rank, and the cluster's world id or 0
-//   /admin/acts.json        the latest acts, after=<seq> those after it, with addresses for the map's rank and up
+//   /admin/acts.json        the latest acts, after=<seq> those after it, open=1 with the open commands too, with
+//                           addresses for the map's rank and up
 
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { ADMIN_TERRAIN_SIDE, type AdminOverview, type Stats, type Survivors } from "../../shared/admin.ts";
+import { ACTS_PAGE } from "../../shared/admin-acts.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
 import { RANK_MAP } from "../../shared/ranks.ts";
 import { BUILDING_SPANS, blankFrame, type Buildings } from "../../shared/world/buildings.ts";
@@ -228,7 +230,8 @@ export class AdminPages {
       if (req.method !== "GET" && req.method !== "HEAD") return new Response(null, { status: 405, headers: { allow: "GET, HEAD" } });
       const by = actorOf(req);
       if (at === "/admin/me.json") return new Response(JSON.stringify({ name: by.name, id: by.id, rank: by.rank, world: this.o.host.cluster?.world ?? 0 }), { headers: JSON_HEADERS });
-      const acts = this.o.host.acts.recent(Number(url.searchParams.get("after")) || 0, 200);
+      const after = Number(url.searchParams.get("after")) || 0;
+      const acts = url.searchParams.get("open") === "1" ? this.o.host.acts.recentWithOpen(after, ACTS_PAGE) : this.o.host.acts.recent(after, ACTS_PAGE);
       return new Response(JSON.stringify({ acts: by.rank >= RANK_MAP ? acts : acts.map((a) => ({ ...a, from: "" })) }), { headers: JSON_HEADERS });
     }
     if (at === "/admin/survivors.json") return this.survivors.get(now).then((text) => new Response(text, { headers: JSON_HEADERS }));

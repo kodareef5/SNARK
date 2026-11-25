@@ -1,8 +1,9 @@
-// Who did what as an admin, and when. Every act goes to the save's journal; the latest worth an admin's reading are also
-// kept here, read back from the journal at start, and printed one line each to the server's own output.
+// Who did what as an admin, and when. Every act goes to the save's journal. The latest by an actor who proved a rank are
+// kept here and printed one line each to the server's own output. The latest open commands, which creative mode for all
+// and open groups' permissions let anyone run, are kept apart in a smaller list. Both are read back from the journal at start.
 
-import { decodeAct, encodeAct, type Act, type ActKind, type ActVia } from "../shared/acts.ts";
-import { RANK_ADMIN, RANK_CLUSTER, RANK_NAMES, RANK_OPEN } from "../shared/ranks.ts";
+import { actText, decodeAct, encodeAct, openOnly, type Act, type ActKind, type ActVia } from "../shared/acts.ts";
+import { RANK_ADMIN, RANK_CLUSTER, RANK_NAMES, RANK_OPEN, RANK_STAFF } from "../shared/ranks.ts";
 import type { Client } from "./game.ts";
 import type { Persistence } from "./persist/persistence.ts";
 import type { Records } from "./records.ts";
@@ -10,8 +11,13 @@ import { idText } from "./survivor-ids.ts";
 
 /** Journal op for an act (shared/acts.ts). */
 export const OP_ADMIN = 2;
-/** The latest acts worth reading that are kept in memory. */
+/** The latest acts by an actor who proved a rank that are kept in memory. */
 export const ACTS_KEPT = 2000;
+/** The latest open commands kept in memory, apart from those. */
+export const ACTS_OPEN_KEPT = 500;
+/** The most letters of what was tried, and of why it was refused, in a refused act. */
+const TRIED_MOST = 300;
+const WHY_MOST = 200;
 
 /** Who does an act. */
 export interface Actor {
@@ -25,22 +31,27 @@ export interface Actor {
   readonly baseRank: number;
   /** The hash of the survivor's own password it signed in with. Only the permissions' own check reads it. */
   readonly signedHash?: string;
+  /** It proved nothing: what it runs, it runs under creative mode for all or by an open group's permission. Only a session is. */
+  readonly open: boolean;
 }
 
 /** The operator at the server's terminal, who may do anything. */
-export const OPERATOR: Actor = Object.freeze({ name: "(operator)", id: "", pid: 0, rank: RANK_CLUSTER, via: "operator", from: "", baseRank: RANK_CLUSTER });
+export const OPERATOR: Actor = Object.freeze({ name: "(operator)", id: "", pid: 0, rank: RANK_CLUSTER, via: "operator", from: "", baseRank: RANK_CLUSTER, open: false });
 /** An admin page whose viewer is not known. */
-export const PAGE_ACTOR: Actor = Object.freeze({ name: "(admin page)", id: "", pid: 0, rank: RANK_OPEN, via: "page", from: "", baseRank: RANK_OPEN });
+export const PAGE_ACTOR: Actor = Object.freeze({ name: "(admin page)", id: "", pid: 0, rank: RANK_OPEN, via: "page", from: "", baseRank: RANK_OPEN, open: false });
 
 /** A session as the actor of what it does. */
 export function sessionActor(c: Client, records: Records): Actor {
   const rec = records.byPid.get(c.pid);
-  return { name: c.name, id: rec ? idText(rec) : "", pid: c.pid, rank: c.rank, via: "session", from: c.conn.address ?? "", baseRank: c.passwordRank, signedHash: c.signedHash };
+  return {
+    name: c.name, id: rec ? idText(rec) : "", pid: c.pid, rank: c.rank, via: "session", from: c.conn.address ?? "", baseRank: c.passwordRank,
+    signedHash: c.signedHash, open: c.proved < RANK_STAFF,
+  };
 }
 
-/** Cheats alone are not worth it: where every session has them, they would push out the rest. */
-export function worthReading(act: Pick<Act, "rank" | "kind">): boolean {
-  return act.rank >= RANK_ADMIN || act.kind !== "command";
+/** What a refused act says: what was tried, then why, each short and on one line. */
+function refusedWords(tried: string, why: string): string {
+  return `${actText(tried, TRIED_MOST)}: ${actText(why, WHY_MOST)}`;
 }
 
 /** What the server's output says of an act. It leaves out the address, which every session with cheats could read there. */
@@ -60,11 +71,41 @@ export interface ActsContext {
   tellAll(text: string): void;
 }
 
+/** The latest acts, oldest first, each list in the order of its sequence numbers. */
+class Ring {
+  private readonly acts: Act[] = [];
+  /** Where the next act goes once the ring is full. */
+  private head = 0;
+  readonly most: number;
+
+  constructor(most: number) {
+    this.most = most;
+  }
+
+  push(act: Act): void {
+    if (this.acts.length < this.most) this.acts.push(act);
+    else {
+      this.acts[this.head] = act;
+      this.head = (this.head + 1) % this.most;
+    }
+  }
+
+  /** At most `most` acts whose seq is above `after`, oldest first. */
+  after(after: number, most: number): Act[] {
+    const n = this.acts.length;
+    const out: Act[] = [];
+    for (let i = 0; i < n && out.length < most; i++) {
+      const act = this.acts[(this.head + i) % n]!;
+      if (act.seq > after) out.push(act);
+    }
+    return out;
+  }
+}
+
 export class Acts {
   private readonly ctx: ActsContext;
-  private readonly ring: Act[] = [];
-  /** Where the next kept act goes once the ring is full. */
-  private head = 0;
+  private readonly kept = new Ring(ACTS_KEPT);
+  private readonly open = new Ring(ACTS_OPEN_KEPT);
   /** The count of a world with no save, which has no journal to number its acts. It starts at the clock, so it never goes back over a restart. */
   private seq: number;
   /** Each actor object an act was written for, so a page's request can tell whether its handler logged anything. */
@@ -76,21 +117,28 @@ export class Acts {
     this.refill();
   }
 
-  /** Journals an act, keeps it if it is worth reading, and returns it. */
+  /** Journals an act, keeps it in one list or the other, and returns it. Only a kept act is printed. */
   write(actor: Actor, what: string, kind: ActKind = "command"): Act {
     const { persistence } = this.ctx;
     const at = this.ctx.wall();
     const { name, id, pid, rank, via, from } = actor;
-    const bytes = encodeAct({ at, name, id, pid, rank, via, from, kind, what });
+    const open = actor.open === true;
+    const bytes = encodeAct({ at, name, id, pid, rank, via, from, kind, what, open });
     const seq = persistence ? persistence.journal(OP_ADMIN, bytes) : ++this.seq;
-    const act: Act = { seq, at, tick: this.ctx.tick(), name, id, pid, rank, via, from, kind, what };
+    const act: Act = { seq, at, tick: this.ctx.tick(), name, id, pid, rank, via, from, kind, what, open };
     this.wrote.add(actor);
-    if (worthReading(act)) {
-      this.keep(act);
+    if (openOnly(act)) this.open.push(act);
+    else {
+      this.kept.push(act);
       this.ctx.say(actLine(act));
     }
     if (kind === "command" && this.ctx.shown()) this.ctx.tellAll(`${name}: ${what}`);
     return act;
+  }
+
+  /** Logs an attempt refused to an actor judged at `rank` if that is an admin's rank: below it, anyone could fill the journal. */
+  refused(actor: Actor, rank: number, tried: string, why: string): void {
+    if (rank >= RANK_ADMIN) this.write(actor, refusedWords(tried, why), "refused");
   }
 
   /** Whether an act was written for this very actor object. */
@@ -98,39 +146,39 @@ export class Acts {
     return this.wrote.has(actor);
   }
 
-  /** At most `most` of the kept acts whose seq is above `after`, oldest first. */
+  /** At most `most` of the kept acts whose seq is above `after`, oldest first. The open commands are left out. */
   recent(after = 0, most = 200): Act[] {
-    const n = this.ring.length;
+    return this.kept.after(after, most);
+  }
+
+  /** At most `most` acts of both lists whose seq is above `after`, oldest first. */
+  recentWithOpen(after = 0, most = 200): Act[] {
+    const a = this.kept.after(after, most);
+    const b = this.open.after(after, most);
     const out: Act[] = [];
-    for (let i = 0; i < n && out.length < most; i++) {
-      const act = this.ring[(this.head + i) % n]!;
-      if (act.seq > after) out.push(act);
+    for (let i = 0, j = 0; out.length < most && (i < a.length || j < b.length); ) {
+      out.push(j >= b.length || (i < a.length && a[i]!.seq < b[j]!.seq) ? a[i++]! : b[j++]!);
     }
     return out;
   }
 
-  private keep(act: Act): void {
-    if (this.ring.length < ACTS_KEPT) this.ring.push(act);
-    else {
-      this.ring[this.head] = act;
-      this.head = (this.head + 1) % ACTS_KEPT;
-    }
-  }
-
-  /** Reads the latest acts worth reading back from the journal, newest first, until the ring would be full. */
+  /** Reads the latest of each list back from the journal, newest first, until both would be full or the journal ends. */
   private refill(): void {
     const store = this.ctx.persistence?.store;
     if (!store) return;
-    const found: Act[] = [];
-    for (let before = Number.MAX_SAFE_INTEGER; found.length < ACTS_KEPT; ) {
+    const kept: Act[] = [];
+    const open: Act[] = [];
+    for (let before = Number.MAX_SAFE_INTEGER; kept.length < ACTS_KEPT || open.length < ACTS_OPEN_KEPT; ) {
       const rows = store.journalBack(OP_ADMIN, before, ACTS_KEPT);
       for (const r of rows) {
         const act = decodeAct(r.data, r.seq, r.tick);
-        if (worthReading(act) && found.length < ACTS_KEPT) found.push(act);
+        const into = openOnly(act) ? open : kept;
+        if (into.length < (into === open ? ACTS_OPEN_KEPT : ACTS_KEPT)) into.push(act);
       }
       if (rows.length < ACTS_KEPT) break;
       before = rows.at(-1)!.seq;
     }
-    for (let i = found.length - 1; i >= 0; i--) this.ring.push(found[i]!);
+    for (let i = kept.length - 1; i >= 0; i--) this.kept.push(kept[i]!);
+    for (let i = open.length - 1; i >= 0; i--) this.open.push(open[i]!);
   }
 }

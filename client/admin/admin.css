@@ -103,6 +103,9 @@ th { color: var(--dim); font-weight: 650; font-size: .78rem }
 .acts-page .who .id { display: block; font-size: .8rem }
 .acts-page .typed { text-decoration: underline dotted; cursor: help }
 .acts-page .what { overflow-wrap: anywhere }
+.acts-page tr.open { color: var(--dim) }
+.acts-page .chip.open { cursor: help; border-style: dashed }
+.acts-page .bar label { display: inline-flex; align-items: center; gap: 6px; color: var(--dim) }
 .loadout-editor { display: grid; grid-template-columns: minmax(150px, 230px) minmax(0,1fr); gap: 18px; align-items: start }
 .loadouts-page .pick { text-align: left; display: grid }
 .loadouts-page .pick span,.loadouts-page .faint,.loadouts-page .lines { font-size: .82rem }
