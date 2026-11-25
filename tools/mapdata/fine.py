@@ -8,7 +8,6 @@ import sys
 from pathlib import Path
 import numpy as np
 from PIL import Image
-from rasterio.warp import Resampling, reproject
 from scipy import ndimage as nd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -110,9 +109,11 @@ def main():
         report[f'{name}_endpoint_corrections'] = int((a != before).sum())
 
     rule = m.city['canopy']
-    biome = np.zeros(fine_grid, np.uint8)
-    reproject(np.asarray(Image.open(m.base / 'biome.png')), biome, src_transform=m.grid, src_crs=m.crs,
-              dst_transform=tx, dst_crs=m.crs, resampling=Resampling.nearest)
+    # The 2 m sample nearest each metre pixel's middle, and below the metre pixel each 2 m sample falls in: plain index
+    # arithmetic on the one projection, the same for every cut.
+    step = m.cfg['spacing_m']
+    near = lambda n, size: np.minimum(np.round((np.arange(n) + .5) / step).astype(np.int64), size - 1)
+    biome = np.asarray(Image.open(m.base / 'biome.png'))[near(fine_grid[0], m.shape[0])][:, near(fine_grid[1], m.shape[1])]
     free = (w_fine == 0) & (b_fine == 0) & (r_fine == 0) & (biome != 6)
     seed = rule.get('seed', 7)
     tops = {classes: threshold(seed, 1 - share) for classes, share in [((3, 4, 5), rule['share_of_vegetation']), ((2,), rule['share_of_open'])]}
@@ -128,8 +129,8 @@ def main():
     crown = nd.binary_opening(crown, iterations=1) & free
     fine = crown.astype(np.uint8)
     save(fine, m.base / 'painted_canopy_fine.png')
-    base = np.zeros(m.shape, np.uint8)
-    reproject(fine, base, src_transform=tx, dst_transform=m.grid, src_crs=m.crs, dst_crs=m.crs, resampling=Resampling.nearest)
+    under = lambda n, size: np.minimum(np.arange(n) * int(step), size - 1)
+    base = fine[under(m.shape[0], fine_grid[0])][:, under(m.shape[1], fine_grid[1])]
     save(edges(m, base, fine), m.base / 'painted_canopy.png')
     (m.base / 'painted_canopy.json').write_text(json.dumps({
         'origin': 'Authored vegetation by rule, not a survey of present-day trees and not traced from a painting.',

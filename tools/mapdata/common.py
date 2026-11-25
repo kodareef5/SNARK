@@ -98,6 +98,29 @@ def relation_polygon(members, to_map):
     return None if area.is_empty else area
 
 
+def nearest_from(m, path, band=512):
+    """A raster in its own projection sampled at the 2 m grid's samples, each taking the pixel its point falls in, the
+    point projected exactly: GDAL's warp picks pixels by the output's extent, so two cuts disagreed where they meet."""
+    import rasterio
+    from pyproj import Transformer
+    with rasterio.open(path) as src:
+        a, t, crs = src.read(1), src.transform, src.crs
+    to = Transformer.from_crs(m.crs, crs, always_xy=True)
+    step = m.cfg['spacing_m']
+    out = np.zeros(m.shape, a.dtype)
+    east = m.b[0] + step * np.arange(m.shape[1])
+    for r0 in range(0, m.shape[0], band):
+        rows = np.arange(r0, min(m.shape[0], r0 + band))
+        x, y = to.transform(*np.meshgrid(east, m.b[3] - step * rows))
+        c = np.floor((x - t.c) / t.a).astype(np.int64)
+        r = np.floor((y - t.f) / t.e).astype(np.int64)
+        ok = (c >= 0) & (c < a.shape[1]) & (r >= 0) & (r < a.shape[0])
+        v = np.zeros(c.shape, a.dtype)
+        v[ok] = a[r[ok], c[ok]]
+        out[rows] = v
+    return out
+
+
 def save(a, path):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)

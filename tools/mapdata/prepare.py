@@ -20,7 +20,7 @@ from shapely.geometry import Polygon, box, shape
 from shapely.ops import transform as project, unary_union
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import folder_arg, relation_polygon, save  # noqa: E402
+from common import folder_arg, nearest_from, relation_polygon, save  # noqa: E402
 import streets  # noqa: E402
 
 HIGHWAY = ('S1100', 'S1200')
@@ -282,10 +282,7 @@ def main():
     street_areas = []
     if elements is not None:
         street_areas = streets.ground_use(m, dims, streets.walks(m, elements, roads), *streets.areas(m, elements, roads, [g for g, p in bld]), street_stats)
-    lc = np.zeros(dims, np.uint8)
-    with rasterio.open(m.raw / m.city['nlcd']['file']) as src:
-        reproject(rasterio.band(src, 1), lc, src_transform=src.transform, src_crs=src.crs,
-                  dst_transform=m.grid, dst_crs=m.crs, resampling=Resampling.nearest)
+    lc = nearest_from(m, m.raw / m.city['nlcd']['file']).astype(np.uint8)
     save(lc, m.base / 'landcover.png')
     # Fictional succession, the rule Miami's was made by; distinct from NLCD.
     coast = nd.distance_transform_edt(w == 0) * 2 if w.any() else np.full(dims, np.inf, np.float32)
