@@ -17,14 +17,20 @@
         <div>
           <h2 id="access-title">Admin access</h2>
           <p id="access-note" role="status"></p>
+          <p id="signed-in-as" hidden></p>
         </div>
         <form id="sign-in">
           <div class="cluster-field" id="sign-in-world-field" hidden>
             <label for="sign-in-world">World</label>
             <select id="sign-in-world"></select>
           </div>
+          <div class="cluster-field" id="name-field">
+            <label for="sign-in-name">Name</label>
+            <input id="sign-in-name" type="text" autocomplete="username" spellcheck="false" placeholder="Optional"
+              title="With a shared password, any name: the admin log shows it. With your own password, your survivor's name or 17-digit ID." />
+          </div>
           <div class="cluster-field" id="password-field">
-            <label id="password-label" for="password">Admin password</label>
+            <label id="password-label" for="password">Password</label>
             <input id="password" type="password" required autocomplete="current-password" />
           </div>
           <button class="cluster-primary" id="submit-password" type="submit">Sign in</button>

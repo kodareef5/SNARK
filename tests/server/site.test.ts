@@ -27,7 +27,7 @@ mkdirSync(join(dir, "wiki"));
 writeFileSync(join(dir, "wiki/index.html"), "<!doctype html><title>the wiki</title>");
 const adminDir = join(dir, "admin");
 mkdirSync(adminDir);
-for (const file of ["index", "cluster", "scene-studio", "settings", "loadouts", "drops", "cast", "first-frame", "sounds"]) {
+for (const file of ["index", "cluster", "scene-studio", "settings", "loadouts", "drops", "cast", "first-frame", "sounds", "acts"]) {
   writeFileSync(join(adminDir, `${file}.html`), `<title>admin ${file}</title>`);
 }
 writeFileSync(join(adminDir, "cluster.js"), "export {};");
@@ -137,7 +137,7 @@ test("standalone admin serves public navigation and gates each world tool", asyn
     const res = await get(`${at}${from}?tab=chat`);
     expect([res.status, res.headers.get("location")]).toEqual([308, `${to}?tab=chat`]);
   }
-  for (const page of ["map", "survivors", "items", "health", "saves", "restart", "settings", "loadouts", "drops", "cast", "first-frame", "sounds"]) {
+  for (const page of ["map", "survivors", "items", "acts", "health", "saves", "restart", "settings", "loadouts", "drops", "cast", "first-frame", "sounds"]) {
     const path = `${at}/admin/worlds/local/${page}/`;
     expect((await get(path)).status).toBe(401);
     const res = await get(path, good);

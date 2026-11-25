@@ -98,6 +98,11 @@ th { color: var(--dim); font-weight: 650; font-size: .78rem }
 .settings-page .what,.settings-page .box,.settings-page .from { display: grid; gap: 3px; justify-items: start; overflow-wrap: anywhere }
 .settings-page .group :is(.dim,.faint,.from) { font-size: .81rem }
 .settings-page .kept { border-left: 3px solid var(--copper); padding-left: 8px !important }
+.acts-page td { vertical-align: top }
+.acts-page .when { white-space: nowrap }
+.acts-page .who .id { display: block; font-size: .8rem }
+.acts-page .typed { text-decoration: underline dotted; cursor: help }
+.acts-page :is(.what,.from) { overflow-wrap: anywhere }
 .loadout-editor { display: grid; grid-template-columns: minmax(150px, 230px) minmax(0,1fr); gap: 18px; align-items: start }
 .loadouts-page .pick { text-align: left; display: grid }
 .loadouts-page .pick span,.loadouts-page .faint,.loadouts-page .lines { font-size: .82rem }

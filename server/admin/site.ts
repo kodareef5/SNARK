@@ -9,6 +9,7 @@ const WORLD_PAGES = {
   map: "index.html",
   survivors: "index.html",
   items: "index.html",
+  acts: "acts.html",
   settings: "settings.html",
   loadouts: "loadouts.html",
   drops: "drops.html",
@@ -26,7 +27,7 @@ type WorldId = SiteWorld["id"];
 const UI_FILES = new Set([
   "admin.css", "investigate.css", "overview.css", "scene-studio.css",
   "admin.js", "cluster.js", "overview.js", "chat.js", "shell.js", "investigate.js", "map.js",
-  "settings.js", "loadouts.js", "drops.js", "cast.js", "first-frame.js", "sounds.js", "board.js", "scene-studio.js", "screens.js", "screens-stage.js", "permissions.js",
+  "settings.js", "loadouts.js", "drops.js", "cast.js", "first-frame.js", "sounds.js", "board.js", "scene-studio.js", "screens.js", "screens-stage.js", "permissions.js", "acts.js",
 ]);
 const OLD_UI_FILES = /^(?:(?:scene-studio|board)\.js(?:\.map)?|scene-studio\.css)$/;
 

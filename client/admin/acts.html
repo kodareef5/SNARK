@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Admin log · SNARK Admin</title>
+    <link rel="stylesheet" href="/admin/ui/admin.css">
+  </head>
+  <body>
+    <main class="tool-page acts-page">
+      <header class="tool-intro"><h1>Admin log</h1><p>Who did what, and when: commands, sign-ins and changes to permissions, newest first. Times are your own.</p></header>
+      <section class="tool-panel bar" aria-label="Filter the log">
+        <input id="who" type="search" placeholder="Name or ID" aria-label="Who">
+        <select id="rank" aria-label="Lowest rank"></select>
+        <input id="words" type="search" placeholder="Words in what was done" aria-label="What was done">
+        <select id="kind" aria-label="Kind"></select>
+        <span id="count"></span><span id="msg" role="status"></span>
+      </section>
+      <section class="glass">
+        <div class="scroll"><table>
+          <thead><tr><th>When</th><th>Who</th><th>Rank</th><th>How</th><th>What was done</th><th>Address</th></tr></thead>
+          <tbody id="acts"></tbody>
+        </table></div>
+      </section>
+    </main>
+    <script type="module" src="/admin/ui/acts.js"></script>
+  </body>
+</html>

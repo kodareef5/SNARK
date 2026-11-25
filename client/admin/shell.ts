@@ -21,6 +21,7 @@ const shapes: Record<string, string> = {
   map: "M3 5l6-2 6 2 6-2v16l-6 2-6-2-6 2z M9 3v16m6-14v16",
   survivors: "M5 20v-2a5 5 0 0110 0v2 M14 13a5 5 0 015 5v2 M13 7a3 3 0 11-6 0 3 3 0 016 0z M16 4a3 3 0 010 6",
   items: "M3 7l9-5 9 5v10l-9 5-9-5z M3 7l9 5 9-5m-9 5v10",
+  acts: "M5 3h14v18H5z M8 8h8m-8 4h8m-8 4h5",
   settings: "M3 6h7m5 0h6M3 12h12m4 0h2M3 18h3m5 0h10 M10 3v6m5 0v6m-9 0v6",
   loadouts: "M4 8h16v12H4z M8 8V5h8v3 M4 13h16m-10 0v2h4v-2",
   drops: "M2 10a10 8 0 0120 0z M2 10l8 7m12-7-8 7m-6-7 3 7m5-7-3 7 M9 17h6v4H9z",

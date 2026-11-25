@@ -1,12 +1,15 @@
 // The cluster dashboard's discovery and per-world reads. Each world authorizes its own data, and credentials are sent
-// only to the chosen world on this origin. Clearing sign-ins invalidates private reads still in flight.
+// only to the chosen world on this origin, and to the others only when the chosen one says the sign-in is the cluster's.
+// Clearing sign-ins invalidates private reads still in flight.
 
 import { ADMIN_TERRAIN_SIDE, type AdminChatLine, type AdminOverview } from "../../../shared/admin.ts";
+import type { AdminMe } from "../../../shared/admin-acts.ts";
 import { CHUNK_SIZE } from "../../../shared/coords.ts";
 import { defaultPalette } from "../../../shared/pack/palette.ts";
 import { Heightfield } from "../../../shared/world/heightfield.ts";
 import { readHead, type MapHead } from "../../../shared/world/mapfile.ts";
 import { MapWater } from "../../../shared/world/water.ts";
+import { RANK_CLUSTER, RANK_NAMES } from "../../../shared/ranks.ts";
 import type { LiveWorld } from "../wiki/world.ts";
 import { baseSquares, readBases, type BaseSquare } from "./bases.ts";
 import { inChannel } from "./chat.ts";
@@ -104,10 +107,34 @@ export function publicGround(head: MapHead): Uint8ClampedArray<ArrayBuffer> {
   return groundPicture(hf, paper, side);
 }
 
+// The client zone's types leave out the browser's, so the two this needs are typed here as shared/acts.ts types its own.
+const web = globalThis as unknown as { TextEncoder: new () => { encode(s: string): Uint8Array }; btoa(s: string): string };
+
+/** The Authorization header for a name and password: the name is "admin" when none was typed. */
+export function basicAuth(name: string, password: string): string {
+  const bytes = new web.TextEncoder().encode(`${name.trim() || "admin"}:${password}`);
+  return `Basic ${web.btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join(""))}`;
+}
+
+/** Who the dashboard is signed in as, with the rank's name, or "" before a world has said. */
+export function signedInText(me: AdminMe | null): string {
+  if (!me) return "";
+  const who = me.id ? `${me.name} (${me.id})` : me.name || "admin";
+  return `Signed in as ${who}, at the ${RANK_NAMES[me.rank] ?? "unknown"} rank.`;
+}
+
+/** A me.json answer, or null for anything else. */
+function readMe(body: unknown): AdminMe | null {
+  const o = body as Partial<AdminMe> | null;
+  if (typeof o?.rank !== "number" || typeof o.name !== "string") return null;
+  return { name: o.name, id: typeof o.id === "string" ? o.id : "", rank: o.rank, world: typeof o.world === "number" ? o.world : 0 };
+}
+
 export class ClusterAdmin {
   readonly worlds = new Map<string, ClusterWorld>();
   discovered = false;
   private authorization = new WeakMap<ClusterWorld, string>();
+  private me = new WeakMap<ClusterWorld, AdminMe>();
   private signingIn: ClusterWorld | null = null;
   private run = 0;
   private busy = false;
@@ -126,6 +153,16 @@ export class ClusterAdmin {
     return [...this.worlds.values()].some((card) => this.authorization.has(card));
   }
 
+  /** Who a world still signed in says the dashboard is, the highest rank where they differ. */
+  get signedInAs(): AdminMe | null {
+    let best: AdminMe | null = null;
+    for (const card of this.worlds.values()) {
+      const me = this.authorization.has(card) ? this.me.get(card) : undefined;
+      if (me && (!best || me.rank > best.rank)) best = me;
+    }
+    return best;
+  }
+
   get authenticating(): boolean {
     return this.signingIn !== null;
   }
@@ -141,8 +178,36 @@ export class ClusterAdmin {
     if (this.run !== run) return;
     if (accepted) this.authorization.set(card, auth);
     card.locked = !accepted;
+    const me = accepted ? await this.whoAmI(api, auth) : null;
+    if (this.run !== run) return;
+    if (me) this.me.set(card, me);
+    // Any password but the cluster's would count as a wrong guess on every other world, and three lock the admin out.
+    if (me?.rank === RANK_CLUSTER) {
+      const others = [...this.worlds.values()].filter((other) => other !== card && other.locked && other.admin.api);
+      await Promise.all(others.map((other) => this.offer(other, auth, me, run)));
+      if (this.run !== run) return;
+    }
     this.signingIn = null;
     this.busy = false;
+  }
+
+  private async whoAmI(api: string, auth: string): Promise<AdminMe | null> {
+    try {
+      const reply = await this.get(api + "me.json", auth);
+      return reply.status === 200 ? readMe(await reply.json()) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Sends a cluster sign-in to another locked world, which keeps it only if it accepts. */
+  private async offer(card: ClusterWorld, auth: string, me: AdminMe, run: number): Promise<void> {
+    const api = card.admin.api!;
+    const accepted = await this.loadProtected(card, (file) => this.get(api + file, auth), run);
+    if (this.run !== run || !accepted) return;
+    this.authorization.set(card, auth);
+    this.me.set(card, me);
+    card.locked = false;
   }
 
   signOut(): void {
@@ -157,6 +222,7 @@ export class ClusterAdmin {
     }
     this.signingIn = null;
     this.authorization = new WeakMap();
+    this.me = new WeakMap();
   }
 
   totals(): { players: number; max: number; locked: number } {
@@ -242,6 +308,7 @@ export class ClusterAdmin {
       if (this.run !== run) return false;
       if (reply.status === 401 || reply.status === 429) {
         this.authorization.delete(card);
+        this.me.delete(card);
         card.locked = true;
         clearMap(card);
         const purpose = this.view === "chat" ? "Sign in to read this world's chat." : "Sign in to see live positions and health.";
