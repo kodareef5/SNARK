@@ -183,6 +183,8 @@ export interface AdminChatLine {
   channel: AdminChatChannel;
   speaker: string;
   text: string;
+  /** The names of the tags it was said with; absent for none. */
+  tags?: string[];
 }
 
 /** /admin/overview.json, the live data for one card in the cluster admin. */

@@ -115,11 +115,10 @@ test("the console is typed into, answered by the server, and holds the keyboard 
   app.key("Enter", true);
   run(300);
   expect(app.ui.frame.find(KEY_CONSOLE_INPUT)!.text).toBe("");
-  const rows = consoleRows(app);
   // The answer may run past the console's page: the line typed is above it.
   expect(app.ui.console.lines).toContain("> help");
-  expect(rows).toContain("enablecheats <password>");
-  expect(rows).not.toContain("kick <name>");
+  expect(app.ui.console.lines).toContain("enablecheats <password>");
+  expect(app.ui.console.lines).not.toContain("kick <name>");
 
   app.textInput(KEY_CONSOLE_INPUT, "enablecheats");
   app.key("Enter", true);

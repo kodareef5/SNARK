@@ -65,6 +65,10 @@ export class Chat {
   mapName = "";
   /** Where it is set, told of every global line said here, with the runs the cluster's other maps show (server/cluster/chat-relay.ts). */
   relay: ((speaker: string, runs: TextRun[]) => void) | null = null;
+  /** Why a survivor may not use global chat now, or "". Asked before the line is counted against them. */
+  globalRefused: (c: Client) => string = () => "";
+  /** The names of the tags a survivor's line is said with, for the admin's feed. */
+  tagsOf: (c: Client) => string[] = () => [];
 
   constructor(ctx: ChatContext) {
     this.ctx = ctx;
@@ -110,6 +114,8 @@ export class Chat {
       return code;
     };
     if (channel === TEXT_GLOBAL && rules.on("ProximityChat")) return refuse(RESULT_DENIED, "There is no global channel on this server; Insert speaks to those near you.");
+    const shut = channel === TEXT_GLOBAL ? this.globalRefused(c) : "";
+    if (shut !== "") return refuse(RESULT_DENIED, shut);
     // Local chat needs a position and tribe chat needs a tribe, so both need a survivor.
     if (channel !== TEXT_GLOBAL && (!rec || c.state === SESSION_SPECTATING)) return refuse(RESULT_DENIED, "Only a survivor can say that.");
     const tribe = channel === TEXT_TRIBE ? tribes.of(rec!) : null;
@@ -152,7 +158,8 @@ export class Chat {
       this.delivered++;
     }
     if (this.recent.length === RECENT_LINES) this.recent.shift();
-    this.recent.push({ at: Date.now(), channel, speaker: c.name, text: line });
+    const tags = this.tagsOf(c);
+    this.recent.push({ at: Date.now(), channel, speaker: c.name, text: line, ...(tags.length > 0 ? { tags } : {}) });
     if (channel === TEXT_GLOBAL && this.relay) this.relay(c.name, this.format(c, channel, line, this.mapName));
     bus.after(CHAT_SAID, { pid: c.pid, channel, text: line, heard: this.delivered - heard });
     for (const l of this.listeners) l(c.name, channel, x, z, line);

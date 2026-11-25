@@ -15,6 +15,7 @@ import {
   type PermissionActor,
   type PermissionOp,
 } from "../../shared/permissions/model.ts";
+import { CHAT_DOCUMENT } from "../../shared/permissions/page.ts";
 import { RANK_OPEN } from "../../shared/ranks.ts";
 import type { Permissions } from "./permissions.ts";
 
@@ -45,8 +46,7 @@ export interface Applied {
   readonly refused: readonly { readonly op: PermissionOp; readonly reason: string }[];
 }
 
-/** The name of the chat settings' document. */
-export const CHAT_DOCUMENT = "chat";
+export { CHAT_DOCUMENT };
 
 interface DraftGroup {
   name: string;

@@ -7,6 +7,7 @@ import { EMOTE_JOIN, EMOTE_PLAY, EMOTE_STOP } from "../emote.ts";
 import type { Client } from "../game.ts";
 import type { Host } from "../host.ts";
 import { NAME_UNCLEAR, meant } from "../names.ts";
+import { heldTags } from "../permissions/chat-tags.ts";
 import type { EntityRecord } from "../records.ts";
 import { INVITE_RANGE } from "../tribes.ts";
 
@@ -24,6 +25,34 @@ export function sessionNamed(host: Host, name: string): Client | null | typeof N
 }
 
 const MAX_MUTED = 100;
+
+/** `enabletag` and `disabletag`: a survivor shows or hides one of their own chat tags. */
+function tagCommand(show: boolean): ConsoleCommand {
+  const word = show ? "enabletag" : "disabletag";
+  return {
+    name: word,
+    usage: "[tag]",
+    help: show ? "Show one of your chat tags again; with no tag, list yours." : "Hide one of your chat tags from your lines; with no tag, list yours.",
+    admin: false,
+    run(ctx, args) {
+      const c = ctx.client;
+      const host = ctx.host;
+      const subject = c ? host.subjectOf(c) : null;
+      if (!c || !subject) return needsSurvivor;
+      const held = heldTags(host.permissions, subject, c.rank);
+      const name = args.join(" ");
+      if (name === "") {
+        if (held.length === 0) return "You have no chat tags.";
+        return `Your tags: ${held.map((h) => `${h.tag.name} (${h.shown ? "shown" : "hidden"})`).join(", ")}`;
+      }
+      const mine = held.find((h) => h.tag.name.toLowerCase() === name.toLowerCase());
+      if (!mine) return `You have no tag called ${name}.`;
+      if (!show && !mine.tag.canBeDisabled) return `Your tag ${mine.tag.name} cannot be switched off.`;
+      const why = host.permissions.apply({ rank: c.rank, world: host.permissions.world, name: c.name }, { op: "tag", id: subject.id, tag: mine.tag.name, show });
+      return why || `Your lines ${show ? "show" : "no longer show"} the tag ${mine.tag.name}.`;
+    },
+  };
+}
 
 export function addSocialCommands(con: Console): void {
   const commands: ConsoleCommand[] = [
@@ -129,6 +158,8 @@ export function addSocialCommands(con: Console): void {
         return which >= 0 && ctx.host.chat.mute(c.name, all[which]!, false) ? `You will hear ${name} again.` : `${name} was not muted.`;
       },
     },
+    tagCommand(true),
+    tagCommand(false),
     {
       name: "emote",
       usage: "<emote> [survivor] | stop | join <survivor>",
