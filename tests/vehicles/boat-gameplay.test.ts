@@ -6,7 +6,7 @@ import { NO_CLIPS } from "../../shared/anim/clip.ts";
 import { BOAT_ART } from "../../content/vehicles/boat-art.ts";
 import { makeHandle } from "../../shared/ids.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
-import { RESULT_BUSY, RESULT_FAR, RESULT_INVALID, RESULT_NO_SUPPORT, RESULT_NOT_YOURS, RESULT_OK, RESULT_SHORT, VEHICLE_DEPLOY } from "../../shared/net/protocol.ts";
+import { RESULT_BUSY, RESULT_FAR, RESULT_INVALID, RESULT_NO_SUPPORT, RESULT_NOT_YOURS, RESULT_OBSTRUCTED, RESULT_OK, RESULT_SHORT, VEHICLE_DEPLOY } from "../../shared/net/protocol.ts";
 import { boatRestY } from "../../shared/sim/boat.ts";
 import { MODE_SWIM } from "../../shared/sim/character.ts";
 import { F_GROUNDED } from "../../shared/sim/entities.ts";
@@ -46,7 +46,7 @@ test("boat assembly requires real depth and exact waterline, spends once, and re
     const boat = [...h.host.records.byPid.values()].find(r => h.reg.ids[r.kind] === "core:boat")!, e = h.host.records.entOf.get(boat.pid)!;
     expect(boat.team).toBe(actor.team); expect(h.world.ents.fuel[h.world.ents.vrow[e]!]).toBe(0); expect(h.world.ents.vehicleHullCondition[h.world.ents.vrow[e]!]).toBe(1);
     h.host.items.mint(actor, kit, 1);
-    expect(h.host.vehicles.deploy(c, slot, 65, y, 64, 0)).toBe(RESULT_NO_SUPPORT);
+    expect(h.host.vehicles.deploy(c, slot, 65, y, 64, 0)).toBe(RESULT_OBSTRUCTED);
     expect(inv.total(kit)).toBe(1); expect(h.host.items.audit()).toEqual([]);
   } finally { h.host.shutdown(); }
 });

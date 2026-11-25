@@ -12,6 +12,7 @@ import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { castWorld, HIT_NONE, rayHit } from "../../shared/world/ray.ts";
 import { RemoteSample, type ClientSession } from "./session.ts";
 import { familyOf } from "../../shared/sim/families.ts";
+import { hullParts, partMeetsBody } from "../../shared/sim/vehicle-hull.ts";
 
 const REACH = 11;
 export const VEHICLE_PLACEMENT_REASONS: Readonly<Record<number, string>> = {
@@ -86,7 +87,20 @@ export class VehiclePlacement {
     const angle = p.yaw * 2 * Math.PI / 65536, frame = { ...p, yaw: angle, pitch: 0, roll: 0 };
     let problem = session.driving >= 0 || session.own.seat > 0 ? RESULT_DENIED : (isBoatVehicle(def) ? !waterHit : hit === HIT_NONE || rayHit.ny < (isSkateboard(def) ? .82 : .94)) ? RESULT_NO_SUPPORT : 0;
     if (!problem && !familyOf(def)!.supports(world, p.x, p.y, p.z, angle, def)) problem = RESULT_NO_SUPPORT;
-    if (!problem && (isRotorVehicle(def) || isBoatVehicle(def) || isSkateboard(def))) {
+    if (!problem && !(isRotorVehicle(def) || isBoatVehicle(def))) {
+      // A car or a board: its hull's bodies against the bodies near, the test the server makes (vehiclePlaceProblem).
+      session.sampleRemote(this.remote);
+      const r = this.remote, own = session.ownKind;
+      for (const part of hullParts(p.x, p.y, p.z, angle, def)) {
+        if (partMeetsBody(part, session.own.x, session.own.y, session.own.z, reg.bodyHeight[own]!, reg.bodyRadius[own]!, null, 0)) problem = RESULT_OBSTRUCTED;
+        for (let i = 0; !problem && i < r.count; i++) {
+          const kind = r.kind[i]!;
+          if (r.id[i] === handleIndex(session.ownHandle) || Math.hypot(r.x[i]! - p.x, r.y[i]! - p.y, r.z[i]! - p.z) > 18) continue;
+          if (partMeetsBody(part, r.x[i]!, r.y[i]!, r.z[i]!, reg.bodyHeight[kind]!, reg.bodyRadius[kind]!, reg.vehicle[kind], r.yaw[i]!)) problem = RESULT_OBSTRUCTED;
+        }
+        if (problem) break;
+      }
+    } else if (!problem) {
       const family = familyOf(def)!;
       const meetsCapsule = (x: number, y: number, z: number, r: number, h: number) => family.meetsCapsule(def, frame, x, y, z, r, h);
       const me = reg.move[session.ownKind];
