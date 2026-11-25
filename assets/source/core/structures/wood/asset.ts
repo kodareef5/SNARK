@@ -4,7 +4,7 @@
 // a trim are in the pack for the lanes that draw them.
 // model.py and parts.py are what the recipe was ported from, kept until every tier is made this way.
 
-import { FORMS, PLANNED_FORMS } from "../../../../../content/building/forms.ts";
+import { ALL_FORMS } from "../../../../../content/building/forms.ts";
 import type { FormDef } from "../../../../../shared/world/lattice/forms.ts";
 import type { MaterialSpec, PiecesAsset } from "../../../../../tools/art/spec.ts";
 import { MADE_PIECE_TRIANGLES, TRIM_TRIANGLES } from "../../../../../tools/art/check.ts";
@@ -26,7 +26,8 @@ const material = (name: string, tiles?: number): MaterialSpec => ({
 const MATERIALS = { boards: material("boards", 3), deck: material("deck", 3), timber: material("timber", 3), fittings: material("fittings") };
 const TOP = 2048;
 
-const ALL: Readonly<Record<string, FormDef>> = { ...FORMS, ...PLANNED_FORMS };
+// Every row by its name: the nine, the 25 past them, and the leaves stood open with the double door.
+const ALL: Readonly<Record<string, FormDef>> = ALL_FORMS;
 
 export default {
   kind: "pieces",
