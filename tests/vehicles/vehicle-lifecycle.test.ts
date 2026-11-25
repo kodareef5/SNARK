@@ -104,7 +104,7 @@ test('a saved car loads clamped to a retuned definition, and a component of anot
     h.host.shutdown(); active = null;
     const restored = new Harness({}, 1, 60, { dev: true, clips: NO_CLIPS, rigs: [], dbPath }); active = restored;
     const definition = restored.reg.vehicle[restored.reg.index.get('core:compact')!]!;
-    if (definition.movement === 'rotor' || definition.movement === 'boat') throw new Error('compact must keep its wheeled controller');
+    if (definition.movement === 'rotor' || definition.movement === 'boat' || definition.movement === 'jet') throw new Error('compact must keep its wheeled controller');
     const spec = definition.spec;
     const ents = restored.world.ents, e = restored.host.records.entOf.get(pid)!, v = ents.vrow[e]!;
     expect(ents.fuel[v]).toBe(Math.fround(spec.fuelCapacity));
@@ -172,7 +172,7 @@ test('destroying a car under a low ceiling recovers a fitting crouched capsule',
     expect(h.host.urban.mount(me, car)).toBe(RESULT_OK); h.run(800);
     h.world.structs.add(h.reg.index.get('core:ceiling')!, x, ground.y + 1.7, z, 0, 0, 100);
     const definition = h.reg.vehicle[ents.kind[car]!]!;
-    if (definition.movement === 'rotor' || definition.movement === 'boat') throw new Error('compact must keep its wheeled controller');
+    if (definition.movement === 'rotor' || definition.movement === 'boat' || definition.movement === 'jet') throw new Error('compact must keep its wheeled controller');
     const spec = definition.spec, parked = createVehicle(spec, x, ground.y, z);
     expect(new StaticVehicleWorld(h.world).blocked(parked, parked, spec)).toBeNull();
     h.host.survival.hurt(h.host.records.byPid.get(ents.pid[car]!)!, 1e6, 0);

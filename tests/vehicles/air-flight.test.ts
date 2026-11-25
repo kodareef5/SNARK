@@ -9,7 +9,7 @@ import { NO_CLIPS } from "../../shared/anim/clip.ts";
 import { handleIndex } from "../../shared/ids.ts";
 import { chunkAt } from "../../shared/coords.ts";
 import { EVENT_BLAST, RESULT_OK } from "../../shared/net/protocol.ts";
-import { SURFACE_GROUND } from "../../shared/net/rockets.ts";
+import { SURFACE_GROUND, SURFACE_VEHICLE } from "../../shared/net/rockets.ts";
 import { AIR_ACTION, emptyAirSupport } from "../../shared/sim/air-support.ts";
 import { BTN_AIR_REMOTE, BTN_PRIMARY, BTN_SPRINT } from "../../shared/sim/character.ts";
 import { InputBuffer } from "../../shared/net/protocol.ts";
@@ -18,6 +18,7 @@ import { writeMap } from "../../shared/world/mapfile.ts";
 import { flatMap } from "../fixtures/map.ts";
 import { frozenPack } from "../fixtures/pack.ts";
 import { Harness } from "../fixtures/net.ts";
+import type { SkyTarget } from "../../server/sky.ts";
 
 test("the drone camera predicts the look at once and takes the server's word", () => {
   const camera = new AirCamera(), view = emptyAirSupport(), inputs = new InputBuffer(128);
@@ -216,6 +217,40 @@ test("the flight stops at the ground and its payload applies once", () => {
     h.run(1000);
     expect(hits).toBe(1);
     expect(pilot.airSupport.pods.find(p => p.id === pod)!.slots & (1 << 5)).toBe(0);
+  } finally { h.host.shutdown(); }
+});
+
+test("a drone flown into a craft in the sky goes off on its hull", () => {
+  const { h, pilot, pod, c } = setup();
+  try {
+    pilot.airCommand(AIR_ACTION.launch, pod, 4);
+    waitFor(h, () => !!pilot.airCamera.id);
+    const controls = h.pilots[0]!;
+    controls.yaw = 0; controls.pitch = 0;
+    h.run(500);
+    const f = h.host.airSupport.flights.camera(c)!;
+    // A ball 15 m round, hanging 60 m ahead of it at its height.
+    const at = { x: f.x, y: f.y, z: f.z + 60 }, radius = 15;
+    const took: boolean[] = [];
+    const ball: SkyTarget = {
+      name: "ball", lockable: false, radius,
+      at: (_t, out) => (out.x = at.x, out.y = at.y, out.z = at.z, out.vx = out.vy = out.vz = 0, true),
+      ray: (ox, oy, oz, dx, dy, dz, maxT) => {
+        const px = ox - at.x, py = oy - at.y, pz = oz - at.z, b = px * dx + py * dy + pz * dz, k = px * px + py * py + pz * pz - radius * radius;
+        if (k <= 0) return 0;
+        const t = -b - Math.sqrt(Math.max(0, b * b - k));
+        return b < 0 && b * b >= k && t <= maxT ? t : Infinity;
+      },
+      gap: (x, y, z) => Math.hypot(x - at.x, y - at.y, z - at.z) - radius,
+      take: (_src, _share, heavy) => (took.push(heavy), { taken: 1, blocked: false, killed: false }),
+    };
+    h.host.combat.sky.add(ball);
+    waitFor(h, () => !pilot.airCamera.id, 10);
+    expect(pilot.airSupport.notice).toContain("payload");
+    const burst = pilot.events.find(event => event.kind === EVENT_BLAST)!;
+    expect(burst.surface).toBe(SURFACE_VEHICLE);
+    expect(Math.abs(Math.hypot(burst.x - at.x, burst.y - at.y, burst.z - at.z) - radius)).toBeLessThan(1);
+    expect(took).toEqual([true]);
   } finally { h.host.shutdown(); }
 });
 

@@ -47,6 +47,7 @@ import { originAllowed } from "../origin.ts";
 import { actorOf, adminAsked, adminPath, onlyRead, refused, stillHolds, type AdminGate } from "./gate.ts";
 import { SupplyRoutes } from "./supply-routes.ts";
 import { LoadoutRoutes } from "./loadout-routes.ts";
+import { EventRoutes } from "./event-routes.ts";
 import { LogRoutes } from "./log-routes.ts";
 import { permissionsAdmin } from "../permissions/routes.ts";
 import type { TickMeter } from "./meter.ts";
@@ -99,6 +100,10 @@ const FILES: Readonly<Record<string, [string, string]>> = {
   "/admin/loadouts.html": ["loadouts.html", "text/html; charset=utf-8"],
   "/admin/loadouts.js": ["loadouts.js", "text/javascript"],
   "/admin/loadouts.js.map": ["loadouts.js.map", "application/json"],
+  // The map events' page: its requests are event-routes.ts's.
+  "/admin/events.html": ["events.html", "text/html; charset=utf-8"],
+  "/admin/events.js": ["events.js", "text/javascript"],
+  "/admin/events.js.map": ["events.js.map", "application/json"],
   "/admin/first-frame.html": ["first-frame.html", "text/html; charset=utf-8"],
   "/admin/first-frame.js": ["first-frame.js", "text/javascript"],
   "/admin/first-frame.js.map": ["first-frame.js.map", "application/json"],
@@ -176,6 +181,8 @@ export class AdminPages {
   /** The drop book's page: the one part of these pages that may change the world (supply-routes.ts). */
   readonly supply: SupplyRoutes;
   private readonly loadouts: LoadoutRoutes;
+  /** The map events' page, which also calls and ends events (event-routes.ts). */
+  readonly events: EventRoutes;
 
   constructor(o: AdminOptions) {
     this.o = o;
@@ -199,6 +206,7 @@ export class AdminPages {
     this.log = new LogRoutes(o.host, this.now);
     this.supply = new SupplyRoutes(o.host, this.now);
     this.loadouts = new LoadoutRoutes(o.host);
+    this.events = new EventRoutes(o.host, this.now);
   }
 
   /**
@@ -260,7 +268,7 @@ export class AdminPages {
       return new Response(this.basesAt(level, now), { headers: { ...FRESH, "content-type": "application/octet-stream" } });
     }
     return this.log.answer(at, url) ?? settingsAnswer(this.o.host, req, at) ?? stopAnswer(this.o.host, req, at) ?? this.supply.answer(req, at, url) ?? this.loadouts.answer(req, at, url) ??
-      permissionsAdmin(req, at, this.o.host) ?? new Response("not found", { status: 404 });
+      this.events.answer(req, at, url) ?? permissionsAdmin(req, at, this.o.host) ?? new Response("not found", { status: 404 });
   }
 
   private terrainImage(req: Request): Response {

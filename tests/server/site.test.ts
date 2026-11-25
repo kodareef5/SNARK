@@ -27,7 +27,7 @@ mkdirSync(join(dir, "wiki"));
 writeFileSync(join(dir, "wiki/index.html"), "<!doctype html><title>the wiki</title>");
 const adminDir = join(dir, "admin");
 mkdirSync(adminDir);
-for (const file of ["index", "cluster", "scene-studio", "settings", "loadouts", "drops", "cast", "first-frame", "sounds", "acts"]) {
+for (const file of ["index", "cluster", "scene-studio", "settings", "loadouts", "drops", "events", "cast", "first-frame", "sounds", "acts", "permissions"]) {
   writeFileSync(join(adminDir, `${file}.html`), `<title>admin ${file}</title>`);
 }
 writeFileSync(join(adminDir, "cluster.js"), "export {};");
@@ -137,7 +137,7 @@ test("standalone admin serves public navigation and gates each world tool", asyn
     const res = await get(`${at}${from}?tab=chat`);
     expect([res.status, res.headers.get("location")]).toEqual([308, `${to}?tab=chat`]);
   }
-  for (const page of ["map", "survivors", "items", "acts", "health", "saves", "restart", "settings", "loadouts", "drops", "cast", "first-frame", "sounds"]) {
+  for (const page of ["map", "survivors", "items", "acts", "health", "saves", "restart", "settings", "loadouts", "drops", "events", "cast", "first-frame", "sounds", "permissions"]) {
     const path = `${at}/admin/worlds/local/${page}/`;
     expect((await get(path)).status).toBe(401);
     const res = await get(path, good);
@@ -146,7 +146,7 @@ test("standalone admin serves public navigation and gates each world tool", asyn
   }
   const map = await get(`${at}/admin/worlds/local/?survivor=Ada`, good);
   expect([map.status, map.headers.get("location")]).toEqual([308, "/admin/worlds/local/map/?survivor=Ada"]);
-  for (const [old, page] of [["/sounds.html", "sounds"], ["/admin/index.html", "map"], ["/admin/drops.html", "drops"]]) {
+  for (const [old, page] of [["/sounds.html", "sounds"], ["/admin/index.html", "map"], ["/admin/drops.html", "drops"], ["/admin/events.html", "events"]]) {
     const res = await get(at + old, good);
     expect([res.status, res.headers.get("location")]).toEqual([308, `/admin/worlds/local/${page}/`]);
   }

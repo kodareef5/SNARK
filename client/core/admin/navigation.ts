@@ -5,7 +5,7 @@ export interface AdminWorld extends LiveWorld { id: number | "local" }
 export const cluster = [["overview", "Overview"], ["chat", "Chat"], ["scenes", "Scene studio"], ["screens", "Screens"]] as const;
 export const sections = [
   ["Investigate", [["map", "Map & replay"], ["survivors", "Survivors"], ["items", "Item history"], ["acts", "Admin log"]]],
-  ["Manage", [["settings", "Settings"], ["permissions", "Permissions"], ["loadouts", "Loadouts"], ["drops", "Supply drops"], ["cast", "Cast"]]],
+  ["Manage", [["settings", "Settings"], ["permissions", "Permissions"], ["loadouts", "Loadouts"], ["drops", "Supply drops"], ["events", "Map events"], ["cast", "Cast"]]],
   ["Diagnostics", [["health", "Server health"], ["saves", "Saves"], ["restart", "Restart"], ["first-frame", "First frame"], ["sounds", "Sound board"]]],
 ] as const;
 const worldPages = sections.flatMap(([, pages]) => [...pages]);

@@ -5,7 +5,7 @@ edit it by hand: change the catalogue and run the tool.
 
 A server is configured as ARK's is ([how](round5-settings.md), and [what the
 values mean](round5-game-ini.md)). Every setting an ARK dedicated server reads
-is listed here, 604 of them: 240 take effect,
+is listed here, 621 of them: 257 take effect,
 174 wait for a feature that is not built yet, and 190 have no meaning in this
 engine. A setting that does not take effect is still read, checked and
 reported when the server starts.
@@ -122,6 +122,7 @@ the admin's settings page may change a setting without a restart.
 
 | Setting | Default | What it does | While running |
 | --- | --- | --- | --- |
+| `ModulesOff` | none | The game's own modules not to load, by name, separated by commas or spaces: ufo keeps the UFO out of the world. Read as the server starts. --no-module <name> on the command line does the same. *Ours. ARK has no key. A module of the same name may then be loaded from the config folder's modules in its place.* | no |
 | `ViewCap` | 1024 | The most bodies any survivor is shown at once. A client asks for what its graphics setting names, up to this. *Ours. ARK has no key.* | yes |
 | `SnapshotBytesMax` | 1100 | The most bytes of a snapshot a client may ask for. Thirty snapshots are sent a second, so 1100 is 33 KB/s to each survivor. *Ours. ARK has no key.* | yes |
 | `MaxEntities` | 524288 | The most bodies the world holds at once: creatures wild and tamed, survivors, eggs, bags, caches, arrows left standing and things thrown. Memory is taken as the world fills, 188 bytes a body: 0.8 MB to start with and 94 MB for all 524288. A place is kept for each of MaxPlayers. *Ours. ARK has no key.* | yes |
@@ -177,6 +178,7 @@ the admin's settings page may change a setting without a restart.
 | `AirDroneDamage` | 180 | Base game damage from one drone payload. | yes |
 | `AirDroneRadius` | 5 | Game payload radius in metres. | yes |
 | `FoundCarReturnDays` | 3 | Days of the game's clock after a place where the map parks a car has lost its car, destroyed or driven off, before another is parked there, owned by nobody, its condition and fuel rolled again. One comes only while no survivor is near enough to see it come, nothing a tribe built stands within 60 m, and no body stands where it would. 0 brings none back. *Ours. ARK has no cars. A place is looked at every ten minutes.* | yes |
+| `JetReturnHours` | 6 | Real hours after the last jet from a map's hangar is destroyed before another is parked there, owned by nobody. While one lives anywhere, flown off or kept by a tribe, none comes. One comes whether or not anyone is near, once nothing stands where it would. 0 brings none back. *Ours. ARK has no jets. The hangar is looked at every ten minutes.* | yes |
 | `ThrusterBoostCooldown` | 4 | Seconds after a thruster car's boost ends before it may boost again (the Zephyr; Shift at the wheel). 0 is none: held, the boost runs on. *Ours. ARK has no cars.* | yes |
 | `ThrusterFlipCooldown` | 3 | Seconds from a thruster car's flip before it may flip again (Q at the wheel, with a direction held or none). 0 is none. *Ours.* | yes |
 | `SurfaceGripAsphalt` | 7 | Grip a wheel finds on asphalt: streets, highways, lots, and road pieces of asphalt. Higher holds the road; lower slides and spins. Each car's own tyres multiply it. *Ours. ARK has no cars.* | yes |
@@ -186,6 +188,21 @@ the admin's settings page may change a setting without a restart.
 | `SurfaceGripSand` | 2.6 | Grip a wheel finds on sand: beaches and dunes. *Ours. ARK has no cars.* | yes |
 | `SurfaceGripMud` | 1.8 | Grip a wheel finds on mud: marsh, pools, fords, and road pieces of mud. *Ours. ARK has no cars.* | yes |
 | `FoundBoatReturnDays` | 3 | Days of the game's clock after a berth where the map moors a vessel has lost it, sunk or sailed off, before another of its kind is moored there, owned by nobody, its condition and fuel rolled again. One comes as a car does, and only while the berth still has water enough under its keel. 0 brings none back. *Ours. ARK's rafts and boats are only built. Its own setting, so the yachts can be made rarer than the cars.* | yes |
+| `JetHealth` | 2400 | The jet's health. *Ours. ARK has no jets.* | yes |
+| `JetCruiseSpeed` | 120 | Metres a second the jet flies at on full military thrust. Kept below its top speed and above its stall. *Ours. ARK has no jets. Clamped between the stall and the top speed.* | yes |
+| `JetTopSpeed` | 160 | Metres a second the jet flies at on its burner (Shift), 180 at the most. *Ours. ARK has no jets. The faster it flies, the further back a shot at it is judged.* | yes |
+| `JetStallSpeed` | 46 | Metres a second under which the jet's wings stop holding it up; VTOL holds it below 40. *Ours. ARK has no jets.* | yes |
+| `JetGLimit` | 9 | The most g the jet pulls in a turn: higher turns tighter. *Ours. ARK has no jets.* | yes |
+| `JetCannonRounds` | 220 | Rounds in the jet's cannon drum, filled again at a vehicle bench. *Ours. ARK has no jets.* | yes |
+| `JetCannonDamage` | 60 | Damage of one cannon round. *Ours. ARK has no jets.* | yes |
+| `JetCannonInterval` | 0.1 | Seconds between the cannon's rounds: 0.1 is ten a second. *Ours. ARK has no jets.* | yes |
+| `JetMissiles` | 6 | Missiles on the jet's rails, filled again at a vehicle bench. *Ours. ARK has no jets.* | yes |
+| `JetMissileDamage` | 2400 | Damage of a missile's blast at its middle. *Ours. ARK has no jets.* | yes |
+| `JetMissileBlast` | 10 | Metres a missile's blast reaches. *Ours. ARK has no jets.* | yes |
+| `JetMissileLockSeconds` | 1.5 | Seconds a target must stay in the jet's sights, right mouse held, before a missile locks it. *Ours. ARK has no jets.* | yes |
+| `JetMissileRange` | 1800 | Metres out a missile may lock a target. *Ours. ARK has no jets.* | yes |
+| `JetMissileSpeed` | 240 | Metres a second a missile flies. *Ours. ARK has no jets.* | yes |
+| `JetMissileReloadSeconds` | 1.5 | Seconds between one missile's launch and the next one's being ready. *Ours. ARK has no jets.* | yes |
 | `AllowCityDamage` | True | The map's buildings break: a piece is worn, breached in the half that was hit, opened, and falls to a heap or to nothing; tools, bullets, fire and ramming harm what its material takes. Off, only explosives harm a piece of the map, heaps included, and one out of health is gone at once: none takes a broken form, none leaves a heap, and nothing is rammed through or mined. What already stands broken stays as it is. *Ours. ARK's maps do not break.* | yes |
 | `CityResistanceMultiplier` | 1 | How much the map's pieces stand. Higher takes more: at 2 every hit on one does half, and ramming through one takes twice the energy. *Ours. It divides, where StructureResistanceMultiplier multiplies; both apply to a piece of the map.* | yes |
 | `CityRamming` | True | A car that hits a piece of the map with its material's energy for one half breaks through that half, panes first, and loses that energy. Concrete that holds a building up is never rammed through. *Ours. Creatures do not ram.* | yes |

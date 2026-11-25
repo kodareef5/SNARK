@@ -1,5 +1,7 @@
 import { SurvivorActivity } from "./survivor-activity.ts";
 import { SurvivorIds, idText } from "./survivor-ids.ts";
+// The jet's family code, which a browser fetches late (shared/sim/families.ts JET_FAMILY): the server has it from the start.
+import "../shared/sim/families/jet.ts";
 import { CREATE_REQUEST,ownsSurvivor } from "./survivor-access.ts";
 import { ZONE_NONE, ZONE_TORSO } from "../shared/anim/human.ts";
 import { IMPALE_SLOT } from "../shared/sim/seats.ts";
@@ -26,7 +28,8 @@ import { foundVehicle, vehiclePlaceFree, VehicleService, VEHICLE_ORIGIN, type Ve
 import { vehicleRotation } from "../shared/sim/vehicle-frame.ts";
 import { carShapes } from "../shared/world/vehicle-shapes.ts";
 import { StaticVehicleSolids } from "../shared/world/vehicle-solid.ts";
-import { isBoatVehicle, isSkateboard, isRotorVehicle, isWheelVehicle } from "../shared/sim/vehicle.ts";
+import { isAircraft, isBoatVehicle, isJetVehicle, isSkateboard, isRotorVehicle, isWheelVehicle } from "../shared/sim/vehicle.ts";
+import { jetRestY } from "../shared/world/jet.ts";
 import { boatRestY } from "../shared/sim/boat.ts";
 import { groundUnder } from "../shared/world/collide.ts";
 import { VehicleContacts } from "./vehicle-contacts.ts";
@@ -87,6 +90,7 @@ import { JET_BOOTS, JET_CUIRASS, JET_HELMET, MODE_WALK, stanceEye } from "../sha
 import { V_HEALTH } from "../shared/sim/vitals.ts";
 import { ACT_EQUIP, ACT_NONE, FISTS, HOLD_CARRY, poseHold } from "../shared/sim/weapon.ts";
 import { GameServer, type Client, type GameOptions } from "./game.ts";
+import { VehicleWeapons } from "./vehicle-weapons.ts";
 import { walk, type System } from "./system.ts";
 import { Items } from "./items.ts";
 import { COMMAND_FAMILIES } from "./commands/families.ts";
@@ -119,6 +123,7 @@ import { Spawner, wildStep } from "./spawner.ts";
 import { PART } from "./admin/parts.ts";
 import { LANE_ROW } from "./lane.ts";
 import { CarReturn } from "./car-return.ts";
+import { HANGARS, type HangarSite } from "../content/vehicles/hangars.ts";
 import { withSites } from "../content/supply/sites.ts";
 import { starterBook } from "../content/supply/starter.ts";
 import { catalogOf } from "../shared/supply/catalog.ts";
@@ -127,12 +132,14 @@ import { AirSupport } from "./air-support.ts";
 import { helicopterAirspace } from "../shared/world/helicopter.ts";
 import { Hitches } from "./hitches.ts";
 import { Supply } from "./supply.ts";
-import { BookStore } from "./supply/store.ts";
+import { BookStore, Store } from "./supply/store.ts";
+import { MapEvents } from "./mapevent/events.ts";
+import type { EventBook } from "../shared/mapevent/book.ts";
 import { builtinLoadouts } from "../content/loadouts.ts";
 import { Loadouts } from "./loadout/loadouts.ts";
 import { LoadoutStore } from "./loadout/store.ts";
 import { spawnTables } from "./settings/spawns.ts";
-import { parseMap, type MapFile } from "../shared/world/mapfile.ts";
+import { parseMap, type MapFile, type MapVehicle } from "../shared/world/mapfile.ts";
 import { Tactical } from "./tactical.ts";
 import type { ClipSet } from "../shared/anim/clip.ts";
 import { defaultLook } from "../shared/anim/look.ts";
@@ -182,6 +189,8 @@ export interface HostOptions {
   startingCreatures?: number;
   startingSpecies?: string;
   startingHunters?: number;
+  /** Where the jet is parked, for a map content/vehicles/hangars.ts has no site for, or null for none. */
+  hangar?: HangarSite | null;
   /** Chunks around a player in which creatures are simulated. */
   wakeRadius?: number;
   /**
@@ -302,6 +311,9 @@ export interface Host {
   /** Trailers on fifth wheels (server/hitches.ts). */
   readonly hitches: Hitches;
   readonly supplyBook: BookStore;
+  /** Map events, the kinds modules define, and the event book that switches, schedules and tunes them (server/mapevent/events.ts). */
+  readonly mapEvents: MapEvents;
+  readonly eventBook: Store<EventBook>;
   /** The loadouts new survivors are given, kept beside the save (server/loadout/store.ts). */
   readonly loadoutBook: LoadoutStore;
   /** Hands loadouts out: to a new survivor, after a death, and when an admin asks (server/loadout/loadouts.ts). */
@@ -335,6 +347,7 @@ export interface Host {
   /** The setting values a loaded save's timers were computed under. Null for a new world. */
   readonly loadedUnder: Record<string, number> | null;
   readonly projectiles: Projectiles;
+  readonly vehicleWeapons: VehicleWeapons;
   /** Smoke and gas where grenades went off (W5). */
   readonly clouds: Clouds;
   readonly progression: Progression;
@@ -501,6 +514,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   if (parsed) opts.onMapLoaded?.(parsed);
   // Every world starts from the map's statics. A save's chunks are laid over them (Persistence.load).
   const world = opts.world ?? createMapWorld(reg, parsed!, { entityMax: opts.entityMax ?? rules.num("MaxEntities"), entityStart: opts.entityStart });
+  // The map's hangar: its one jet, a place of its own that keeps one to a world (server/car-return.ts). Its id makes its origin <map>/hangar.
+  const site = opts.hangar !== undefined ? opts.hangar : HANGARS[world.mapId] ?? null;
+  const hangar: MapVehicle[] = site && reg.index.has("core:jet") ? [{ kind: "core:jet", id: "hangar", x: site.x, z: site.z, yaw: Math.round(site.yaw / (2 * Math.PI) * 65536) & 65535 }] : [];
   world.clock.cycle = rules.num("DayCycleSpeedScale");
   world.clock.day = rules.num("DayTimeSpeedScale");
   world.clock.night = rules.num("NightTimeSpeedScale");
@@ -618,10 +634,13 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     const kind = reg.index.get(id);
     if (kind === undefined || !reg.vehicle[kind] || !Number.isSafeInteger(ownerTeam) || ownerTeam < 0 || !Number.isFinite(yaw)) return -1;
     const def = reg.vehicle[kind]!;
-    const y = start.y ?? (isBoatVehicle(def) ? boatRestY(def.spec, world.hf.waterAt(x, z)) : groundUnder(world.hf, x, z, def.spec.halfWidth));
+    // A jet stands where its three wheels find the ground.
+    const y = start.y ?? (isBoatVehicle(def) ? boatRestY(def.spec, world.hf.waterAt(x, z))
+      : isJetVehicle(def) ? jetRestY(world, x, z, yaw, groundUnder(world.hf, x, z, def.spec.halfWidth) + 2, 8, def)
+      : groundUnder(world.hf, x, z, def.spec.halfWidth));
     if (!Number.isFinite(y) || [start.hull, start.engine, start.rotor, start.fuel].some(n => n !== undefined && (!Number.isFinite(n) || n < 0 || n > 1))) return -1;
     if (start.airborne && isRotorVehicle(def)) { if (!helicopterAirspace(world, x, y, z, yaw, def)) return -1; }
-    else if ((isRotorVehicle(def) || isBoatVehicle(def)) && !vehiclePlaceFree(world, x, y, z, yaw, def)) return -1;
+    else if ((isAircraft(def) || isBoatVehicle(def)) && !vehiclePlaceFree(world, x, y, z, yaw, def)) return -1;
     const e = creatures.spawn(kind, x, z, 1, why, y);
     if (e < 0) return e;
     const rec = records.byPid.get(world.ents.pid[e]!)!;
@@ -1130,6 +1149,12 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   combat.onFire.on((c, rec, weapon, quality, ammo, draw) => projectiles.launch(c, rec, weapon, quality, ammo, draw));
   // A thrown thing with an ammo facet of its own flies and hits (the bola); any other is lobbed and goes off on its fuse.
   combat.onThrow.on((c, rec, item, quality, draw) => (reg.ammoSpeed[item]! > 0 ? projectiles.fling(c, rec, item, quality, draw) : projectiles.lob(c, rec, item, quality)));
+  // A vehicle's own guns and missiles, through the same rounds and blasts (planning/workstreams/jet.md).
+  const vehicleWeapons = new VehicleWeapons({ world, game, records, combat, projectiles, remote: (c, tick) => game.players.remoteInput?.(c, tick) ?? false,
+    far: (e, reach) => game.replication.far(e, reach) }, (opts.seed ?? 1) + 101);
+  vehicles.ctx.arms = (rec) => vehicleWeapons.words(rec);
+  vehicles.ctx.armed = (rec) => vehicleWeapons.full(rec);
+  vehicles.ctx.rearm = (rec) => vehicleWeapons.rearm(rec);
   const clouds = new Clouds({ world, records, buffs, rules });
   projectiles.onCloud = (item, x, y, z, by) => clouds.make(item, x, y, z, by);
   // The killer is credited before death.die, which may delete the record.
@@ -1450,7 +1475,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     scatter(world.zones[world.zones.length - 1], "core:raptor", opts.startingHunters ?? 0);
     // The map's parked vehicles, owned by nobody. From here on the save keeps them, as it keeps any record.
     const missed = new Map<string, number>();
-    for (const v of parsed?.vehicles ?? []) {
+    for (const v of [...parsed?.vehicles ?? [], ...hangar]) {
       if (parkVehicle(v.kind, v.x, v.z, 0, (v.yaw / 65536) * 2 * Math.PI, "wild", foundVehicle(world.mapId, v, opts.seed ?? 1)) < 0) missed.set(v.kind, (missed.get(v.kind) ?? 0) + 1);
     }
     if (missed.size > 0) say(`not parked, for want of the content or of room: ${[...missed].map(([id, n]) => `${n} of the map's ${id}`).join(", ")}`);
@@ -1467,7 +1492,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   }
   // A place where the map parks a car gets another some days after its car went (server/car-return.ts).
   const returning = new CarReturn({ world, game, records, rules, deadlines, seed: opts.seed ?? 1,
-    park: (v, start) => parkVehicle(v.kind, v.x, v.z, 0, (v.yaw / 65536) * 2 * Math.PI, "wild", start) }, parsed?.vehicles ?? []);
+    park: (v, start) => parkVehicle(v.kind, v.x, v.z, 0, (v.yaw / 65536) * 2 * Math.PI, "wild", start) }, parsed?.vehicles ?? [], hangar);
   const carReturn = returning.places.length > 0 ? returning : null;
   if (carReturn) {
     carReturn.begin(persistence && !loaded!.fresh ? (persistence.store.meta("carReturn") as string | null) : null);
@@ -1489,6 +1514,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   recrate();
   supply.begin(persistence && !loaded!.fresh ? (persistence.store.meta("supply") as string | null) : null);
   persistence?.sidecar("supply", supply.saved);
+  // Map events (server/mapevent/events.ts). Made before the modules, which define its kinds; begun after them.
+  const mapEvents = new MapEvents({ world, game, records, items, death, combat, projectiles, supply, containers, deadlines, bus, seed: opts.seed ?? 1, say, now: opts.now });
   hitches.begin(persistence && !loaded!.fresh ? persistence.store.meta("hitches") as string | null : null);
   persistence?.sidecar("hitches", hitches.saved);
   const airSupport = new AirSupport({ world, game, records, rules, combat, projectiles, urban, hitches, items, wake: wakeView,
@@ -2205,6 +2232,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
           for (const c of game.clients) if (c?.active && !c.closed) game.sendText(c, TEXT_NOTICE, text);
         },
       },
+      defineEvent: (module, def) => mapEvents.define(module, def),
+      events: (module) => mapEvents.api(module),
       addCommand: (module, c) => {
         if (con.commands.has(c.name.toLowerCase())) throw new Error(`module ${module}: there is already a command "${c.name}"`);
         con.add({ name: c.name.toLowerCase(), usage: c.usage, help: c.help, admin: c.admin, run: (ctx, args) => c.run({ pid: ctx.client?.pid ?? 0, id: idOfPid(ctx.client?.pid ?? 0), name: ctx.client?.name ?? "(operator)", operator: ctx.client === null }, args) });
@@ -2213,6 +2242,11 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     },
     opts.modules ?? [],
   );
+  // The event book is a file beside the save, as the drop book is, checked against the kinds the modules defined. The
+  // events that are live are the save's, written in the commit that writes their crates.
+  const eventBook = new Store<EventBook>(mapEvents.bookKind(), opts.dbPath ? `${opts.dbPath}.events.json` : null, world.mapId, () => mapEvents.starterBook(), say);
+  mapEvents.begin(persistence && !loaded!.fresh ? (persistence.store.meta("mapevent") as string | null) : null, eventBook);
+  persistence?.sidecar("mapevent", mapEvents.saved);
   const mark = (part: number): System => ({ step: () => parts.mark(part) });
   /** Physics: its time is the lane's, kept in row `row` (server/lane.ts). */
   const physics = (s: System, row: number): System => ({ step: (tick) => { lane.enter(row); s.step!(tick); lane.leave(); } });
@@ -2255,6 +2289,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     // Combat resolves this tick's swings and shots now that every body has moved.
     combat,
     projectiles,
+    vehicleWeapons,
+    // After this tick's shots and missiles, so the kinds hear of what they did in the same tick.
+    mapEvents,
     physics(loose, LANE_ROW.loose),
     clouds,
     mark(PART.combat),
@@ -2298,6 +2335,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     { replicate: (c) => tactical.sync(c) },
     { replicate: (c) => supply.sync(c) },
     { replicate: (c) => airSupport.sync(c) },
+    { replicate: (c) => mapEvents.sync(c) },
     { snapshot: (c, view) => corpseReplication.sync(c, view) },
   ];
   const tick = walk(systems);
@@ -2357,6 +2395,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     airSupport,
     hitches,
     supplyBook,
+    mapEvents,
+    eventBook,
     loadoutBook,
     loadouts,
     creative,
@@ -2416,6 +2456,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     readLive,
     loadedUnder,
     projectiles,
+    vehicleWeapons,
     clouds,
     progression, activity, survivorLog,
     harvest,

@@ -17,6 +17,8 @@ export const HELI_W = 244;
 export const HELI_H = 178;
 export const BOAT_W = 254;
 export const BOAT_H = 178;
+/** A jet's glass: the helicopter's width, two lines taller for its weapons. */
+export const JET_GLASS_H = 214;
 export const MARGIN = 12;
 export const HOTBAR_CELL = 52;
 
@@ -59,8 +61,8 @@ function panelOf(f: UiFrame, m: HudModel, touch: TouchPlan | null): { w: number;
   const dash = m.vehicle?.active ? m.vehicle : null, lean = touch !== null, jet = jetHeight(f, m);
   if (!dash && !jet) return null;
   return {
-    w: !dash ? JET_W : dash.board && !lean ? 236 : dash.rotor ? HELI_W : dash.boat ? BOAT_W : DASH_W,
-    h: (!dash ? jet : dash.board ? (lean ? 69 : 78) : lean ? (dash.rotor ? 124 : dash.boat ? 106 : 88) : dash.rotor ? HELI_H : dash.boat ? BOAT_H : DASH_H) + (dash?.thrusters && !dash.rotor && !dash.boat ? 26 : 0),
+    w: !dash ? JET_W : dash.board && !lean ? 236 : dash.rotor || dash.jet ? HELI_W : dash.boat ? BOAT_W : DASH_W,
+    h: (!dash ? jet : dash.board ? (lean ? 69 : 78) : lean ? (dash.rotor ? 124 : dash.jet ? 142 : dash.boat ? 106 : 88) : dash.rotor ? HELI_H : dash.jet ? JET_GLASS_H : dash.boat ? BOAT_H : DASH_H) + (dash?.thrusters && !dash.rotor && !dash.boat ? 26 : 0),
     lean,
     aside: dash !== null && touch !== null && f.width > f.height,
   };

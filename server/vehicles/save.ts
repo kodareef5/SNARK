@@ -3,7 +3,8 @@
 
 import { detAtan2, TAU } from "../../shared/math/scalar.ts";
 import type { Body } from "../../shared/sim/character.ts";
-import { isBoatVehicle, isRotorVehicle, isWheelVehicle, type VehicleDefinition } from "../../shared/sim/vehicle.ts";
+import { afterburnerRatio } from "../../shared/sim/jet.ts";
+import { JET_SPEED_CAP, isAircraft, isBoatVehicle, isJetVehicle, isWheelVehicle, type VehicleDefinition } from "../../shared/sim/vehicle.ts";
 import type { EntityRecord } from "../records.ts";
 
 /** Namespaced extension, preserved by the normal record codec even in builds without vehicles. */
@@ -11,7 +12,7 @@ export const VEHICLE_COMPONENT = 0x757262;
 /** A single optional byte for a parked vehicle’s warning lights, independent of the saved chassis layout. */
 export const PATROL_LAMPS = 0x6c616d;
 /**
- * The saved component, little-endian: a version u8 (8 wheeled, 5 rotor, 9 boat), these fields as f32 in this order and
+ * The saved component, little-endian: a version u8 (8 wheeled, 5 rotor, 9 boat, 10 jet), these fields as f32 in this order and
  * whether it stands on its wheels u8, then its mechanical/attitude fields as f32 and whether its engine runs u8.
  */
 const VEHICLE_FIELDS = ["vehicleYaw", "vehiclePitch", "vehicleRoll", "steering", "wheelAngle", "fuel", "vehicleYawRate", "vehiclePitchRate", "vehicleRollRate", "vehicleGroundPitch", "vehicleGroundRoll", "vehicleRideOffset", "vehicleRideVelocity", "vx", "vy", "vz", "vehicleGear", "vehicleRpm", "vehicleShiftTime", "vehiclePayloadMass"] as const;
@@ -19,7 +20,7 @@ const ROTOR_FIELDS = ["vehicleRotorRpm", "vehicleRotorPhase", "vehicleEngineCond
 const HULL_FIELDS = ["vehicleEngineCondition", "vehicleQx", "vehicleQy", "vehicleQz", "vehicleQw", "vehicleFlooding", "vehicleHullCondition"] as const;
 const BASE_BYTES = 2 + VEHICLE_FIELDS.length * 4;
 const formOf = (movement: VehicleDefinition['movement']): { version: number; extra: readonly (typeof ROTOR_FIELDS[number] | typeof HULL_FIELDS[number])[] } =>
-  movement === 'rotor' ? { version: 5, extra: ROTOR_FIELDS } : movement === 'boat' ? { version: 9, extra: HULL_FIELDS } : { version: 8, extra: HULL_FIELDS };
+  movement === 'rotor' ? { version: 5, extra: ROTOR_FIELDS } : movement === 'jet' ? { version: 10, extra: ROTOR_FIELDS } : movement === 'boat' ? { version: 9, extra: HULL_FIELDS } : { version: 8, extra: HULL_FIELDS };
 
 /** A vehicle body as one never saved starts: at rest, full of fuel, its engine off, facing the way the body faced. */
 export function startVehicle(b: Body, definition: VehicleDefinition): void {
@@ -35,6 +36,8 @@ export function startVehicle(b: Body, definition: VehicleDefinition): void {
   b.vehicleHullCondition = 1; b.vehicleFlooding = 0;
   b.vehicleQx = b.vehicleQz = b.vehicleCollective = 0;
   b.vehicleQy = Math.fround(Math.sin(b.vehicleYaw / 2)); b.vehicleQw = Math.fround(Math.cos(b.vehicleYaw / 2));
+  // A new jet stands on its wheels with its nozzle swung down, ready to lift straight out of its hangar.
+  if (isJetVehicle(definition)) { b.vehicleGear = 1; b.vehicleRotorPhase = 1; }
 }
 
 /** Reads a saved component into `b`, clamped to the current definition, which settings may have retuned. */
@@ -58,24 +61,27 @@ export function restoreVehicle(b: Body, pid: number, saved: Uint8Array, definiti
   b.vehicleRoll = wrapped(b.vehicleRoll);
   b.vehicleGroundPitch = clampTo(b.vehicleGroundPitch, -grade, grade);
   b.vehicleGroundRoll = clampTo(b.vehicleGroundRoll, -grade, grade);
-  const steer = isRotorVehicle(definition) ? 0 : definition.spec.maxSteer;
+  const steer = isAircraft(definition) ? 0 : definition.spec.maxSteer;
   b.steering = clampTo(b.steering, -steer, steer);
   b.vehicleYawRate = clampTo(b.vehicleYawRate, -12, 12);
   b.vehiclePitchRate = clampTo(b.vehiclePitchRate, -12, 12);
   b.vehicleRollRate = clampTo(b.vehicleRollRate, -12, 12);
   b.vehicleRideOffset = clampTo(b.vehicleRideOffset, -Math.min(travel * 0.65, spec.clearance * 0.65), travel);
   b.vehicleRideVelocity = clampTo(b.vehicleRideVelocity, -60, 60);
-  // Engine/cruise speed is a powered target, not a limit on downhill, impact or dive momentum, including boats.
-  b.vx = clampTo(b.vx, -120, 120); b.vy = clampTo(b.vy, -100, 100); b.vz = clampTo(b.vz, -120, 120);
+  // Engine/cruise speed is a powered target, not a limit on downhill, impact or dive momentum, including boats. A jet
+  // keeps up to its own cap.
+  const fast = isJetVehicle(definition) ? JET_SPEED_CAP : 120, rise = isJetVehicle(definition) ? JET_SPEED_CAP : 100;
+  b.vx = clampTo(b.vx, -fast, fast); b.vy = clampTo(b.vy, -rise, rise); b.vz = clampTo(b.vz, -fast, fast);
   b.fuel = clampTo(b.fuel, 0, definition.spec.fuelCapacity);
-  b.vehicleGear = Math.round(clampTo(b.vehicleGear, -1, isBoatVehicle(definition) ? 1 : train?.forwardRatios.length ?? 12));
+  b.vehicleGear = Math.round(clampTo(b.vehicleGear, isJetVehicle(definition) ? 0 : -1, isBoatVehicle(definition) || isJetVehicle(definition) ? 1 : train?.forwardRatios.length ?? 12));
   b.vehicleRpm = clampTo(b.vehicleRpm, 0, isBoatVehicle(definition) ? definition.spec.maxRpm : train?.redlineRpm ?? 32767);
   b.vehicleShiftTime = clampTo(b.vehicleShiftTime, 0, isBoatVehicle(definition) ? definition.spec.shiftDelay : train?.shiftCooldown ?? 1);
   // Payload is recomputed from records right after loading.
   b.vehiclePayloadMass = 0;
-  if (isRotorVehicle(definition)) {
-    b.vehicleRotorRpm = clampTo(rotor[0]!, 0, definition.spec.rotorRpm);
-    b.vehicleRotorPhase = wrapped(rotor[1]!);
+  if (isAircraft(definition)) {
+    // A jet keeps its spool in the rotor speed, its nozzle in the rotor phase and its throttle in the collective.
+    b.vehicleRotorRpm = clampTo(rotor[0]!, 0, isJetVehicle(definition) ? afterburnerRatio(definition.spec) : definition.spec.rotorRpm);
+    b.vehicleRotorPhase = isJetVehicle(definition) ? clampTo(rotor[1]!, 0, 1) : wrapped(rotor[1]!);
     b.vehicleEngineCondition = clampTo(rotor[2]!, 0, 1);
     b.vehicleRotorCondition = clampTo(rotor[3]!, 0, 1);
     b.vehicleEngineOn = saved[size - 1] === 1;
@@ -86,7 +92,7 @@ export function restoreVehicle(b: Body, pid: number, saved: Uint8Array, definiti
     } else throw new Error(`vehicle ${pid}: its saved attitude is unreadable`);
     b.vehicleCollective = clampTo(rotor[8]!, 0, 1);
   }
-  if (!isRotorVehicle(definition)) {
+  if (!isAircraft(definition)) {
     b.vehicleEngineCondition = clampTo(rotor[0]!, 0, 1);
     b.vehicleFlooding = clampTo(rotor[5]!, 0, 1);
     b.vehicleHullCondition = clampTo(rotor[6]!, 0, 1);

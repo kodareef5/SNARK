@@ -26,6 +26,7 @@ import type { Items } from "./items.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import type { ServerWorld } from "./world.ts";
 import { event, type Bus } from "./events/bus.ts";
+import type { SkyTarget } from "./sky.ts";
 
 /** One more than this in flight and the oldest is dropped. */
 export const MAX_FLYING = 4096;
@@ -63,6 +64,8 @@ export const FLARE_TICKS = 90 * TICK_RATE;
 const FLARE_KEEP = Math.pow(FLARE_DRIFT, 1 / TICK_RATE);
 /** A round that goes off on something stops this many metres short of it, so the blast is on the near side. */
 const BLAST_OUT = 0.05;
+/** `at.target` for a round that met a craft in the sky (server/sky.ts), as -1 is the world and -2 water. */
+const SKY_TARGET = -3;
 /** Ticks between the times a numbered round looks for clients that have come within hearing of it. A power of two. */
 const LATE_EVERY = 8;
 /** A grenade this near over the ground goes off on it. */
@@ -145,6 +148,18 @@ interface Stuck {
   until: number;
 }
 
+/** What a missile met as it went off (Projectiles.detonate). */
+export interface MissileEnd {
+  /** The body it struck, or -1. */
+  body: number;
+  /** The world as castWorld met it (HIT_NONE for nothing), what it met there and the way out of it. */
+  what: number;
+  ref: number;
+  nx: number; ny: number; nz: number;
+  water: boolean;
+  sky: boolean;
+}
+
 export class Projectiles {
   /** Counters for tests and measurement. */
   fired = 0;
@@ -206,7 +221,7 @@ export class Projectiles {
   /** A round's own, filled by `bring`, so the share its distance leaves it never reaches a blast. */
   private readonly round: Source = { by: null, x: 0, z: 0, item: 0, base: 0, type: 0, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0, far: 1 };
   /** Where the last ray `cast` ended: the point, metres from its origin, the body it hit (-1 for none), its zone, the structure it met (-1 for none), `on` as lastEnd's, and what castWorld said of the world it met. */
-  private readonly at = { x: 0, y: 0, z: 0, t: 0, target: -1, zone: 0, panel: -1, built: -1, on: -1, what: HIT_NONE, ref: 0, nx: 0, ny: 1, nz: 0 };
+  private readonly at = { x: 0, y: 0, z: 0, t: 0, target: -1, zone: 0, panel: -1, built: -1, on: -1, what: HIT_NONE, ref: 0, nx: 0, ny: 1, nz: 0, sky: null as SkyTarget | null };
   /** Rays the last shot sent, and how many of them hit a body: for tests and measurement. */
   readonly lastShot = { rays: 0, hits: 0 };
 
@@ -400,8 +415,15 @@ export class Projectiles {
       a.ny = rayHit.ny;
       a.nz = rayHit.nz;
     }
-    const target = combat.castBodies(self, ox, oy, oz, d[0]!, d[1]!, d[2]!, reach, 0, view);
-    const t = target >= 0 ? combat.t : reach;
+    let target = combat.castBodies(self, ox, oy, oz, d[0]!, d[1]!, d[2]!, reach, 0, view);
+    let t = target >= 0 ? combat.t : reach;
+    // A craft in the sky nearer than what it met, judged where it was at the view tick (server/sky.ts).
+    const sky = combat.sky.targets.length > 0 ? combat.sky.ray(ox, oy, oz, d[0]!, d[1]!, d[2]!, t, view) : null;
+    if (sky) {
+      target = SKY_TARGET;
+      t = combat.sky.t;
+    }
+    a.sky = sky;
     a.x = ox + d[0]! * t;
     a.y = oy + d[1]! * t;
     a.z = oz + d[2]! * t;
@@ -417,6 +439,17 @@ export class Projectiles {
   /** Lands the round the last `cast` ended: on the body it hit, or on the structure it met, at the share its distance leaves it. */
   private strike(rec: EntityRecord, weapon: number, quality: number, ammo: number, ox: number, oy: number, oz: number): void {
     const a = this.at;
+    if (a.target === SKY_TARGET && a.sky) {
+      this.lastShot.hits++;
+      this.ended(a.x, a.y, a.z, -1);
+      // A round with a blast goes off on the hull, and its blast is the whole of its harm, as on a body.
+      if (this.ctx.world.reg.ammoBlast[ammo]! > 0) {
+        const per = a.t > 0 ? 1 / a.t : 0;
+        this.meet(SURFACE_VEHICLE, MADE_METAL, (ox - a.x) * per, (oy - a.y) * per, (oz - a.z) * per);
+        this.explode(rec, weapon, quality, ammo, 1, ox, oz, a.x, a.y, a.z, -1);
+      } else this.ctx.combat.sky.strike(a.sky, this.bring(rec, weapon, quality, ammo, 1, ox, oz, a.t), false, a.x, a.y, a.z);
+      return;
+    }
     // A round with a blast goes off where it ended, on a body or a little short of the world or the water. A miss into the
     // sky meets nothing and is lost.
     if (this.ctx.world.reg.ammoBlast[ammo]! > 0 && (a.target >= 0 || a.t < HITSCAN_RANGE)) {
@@ -756,6 +789,21 @@ export class Projectiles {
     // are met where they were until then, not where they went in what was left of the tick.
     const took = (share * length) / piece.length;
     const target = combat.castBodies(shooter, x, y, z, dx, dy, dz, length, 0, t - share + took, took);
+    // A craft in the sky nearer than what it met, judged where it was halfway through the piece (server/sky.ts).
+    const sky = combat.sky.targets.length > 0 ? combat.sky.ray(x, y, z, dx, dy, dz, target >= 0 ? combat.t : length, t - share + took * 0.5) : null;
+    if (sky) {
+      const at = combat.sky.t;
+      const hx = x + dx * at, hy = y + dy * at, hz = z + dz * at;
+      const by = records.byPid.get(f.by) ?? null;
+      f.gone += at;
+      this.stopped = true;
+      this.ended(hx, hy, hz, -1);
+      if (blast) {
+        this.meet(SURFACE_VEHICLE, MADE_METAL, -dx, -dy, -dz);
+        this.explode(by, f.weapon, f.quality, f.ammo, f.draw, f.ox, f.oz, hx, hy, hz, -1, f.id);
+      } else combat.sky.strike(sky, this.bring(by, f.weapon, f.quality, f.ammo, f.draw, f.ox, f.oz, Math.sqrt((hx - f.ox) * (hx - f.ox) + (hy - f.oy) * (hy - f.oy) + (hz - f.oz) * (hz - f.oz))), false, hx, hy, hz);
+      return false;
+    }
     if (target >= 0) {
       const at = combat.t;
       f.gone += at;
@@ -972,6 +1020,42 @@ export class Projectiles {
     this.toShooter = true;
     this.launch(c, rec, item, quality, item, draw);
     this.toShooter = false;
+  }
+
+  /**
+   * A gun fixed to a vehicle (server/vehicle-weapons.ts): one round of `ammo` from `weapon` along the unit `d` from (ox, oy,
+   * oz), cast and struck as a round with no speed is, at `c`'s view tick, so its rewind, its credit to `rec` and its tracer
+   * for those near are a hand-held shot's. The pilot and the vehicle it sits in are not in the round's way. The pilot is
+   * told of it too, since its client predicts no round for a vehicle's gun.
+   */
+  vehicleRound(c: Client, rec: EntityRecord, weapon: number, ammo: number, ox: number, oy: number, oz: number, d: readonly number[]): void {
+    if (c.ent < 0 || ammo === 0) return;
+    const view = this.ctx.combat.viewTick(c);
+    this.fired++;
+    this.lastShot.rays = 1;
+    this.lastShot.hits = 0;
+    this.silencedShot = false;
+    this.toShooter = true;
+    try {
+      this.ray(c, rec, weapon, 0, ammo, ox, oy, oz, d, view);
+    } finally {
+      this.toShooter = false;
+    }
+  }
+
+  /**
+   * A guided missile goes off at (x, y, z), going along (dx, dy, dz), as a round of `ammo` with a blast does: told to those
+   * near with what it met, and its blast the whole of its harm to bodies, structures and craft in the sky. What it met is
+   * `end`: the body struck, else the world as its cast found it, else water, a craft in the sky or the open air.
+   */
+  detonate(by: EntityRecord | null, weapon: number, ammo: number, ox: number, oz: number, x: number, y: number, z: number, dx: number, dy: number, dz: number, end: MissileEnd): void {
+    if (end.body >= 0) this.metBody(end.body, dx, dy, dz);
+    else if (end.what !== HIT_NONE) this.metWorld(end.what, end.ref, end.nx, end.ny, end.nz, dx, dy, dz);
+    else if (end.water) this.meet(SURFACE_WATER, MADE_UNKNOWN, 0, 1, 0);
+    else if (end.sky) this.meet(SURFACE_VEHICLE, MADE_METAL, -dx, -dy, -dz);
+    else this.meet(SURFACE_AIR, MADE_UNKNOWN, 0, 1, 0);
+    this.ended(x, y, z, end.body);
+    this.explode(by, weapon, 0, ammo, 1, ox, oz, x, y, z, end.body);
   }
 
   /** Throws one `item` from the eye of `c`'s body. It goes off when its fuse runs out, wherever it then is. */

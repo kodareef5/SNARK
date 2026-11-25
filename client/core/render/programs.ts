@@ -167,11 +167,13 @@ const MAKE = {
   // clock (tide-eye.ts eyeEnergy), along the instrument by where the point is and hotter on the faces turned to the eye,
   // as light that blooms where the frame is drawn into the light target, and never fogged. A supply drop's lights
   // drawn flat are its own (supply-light.ts), which the draw's effect says: a tube of its tier's colour, hot along its middle.
+  // Drawn see-through, as a map event's beam is, it shows its share of what is behind it (uAlpha).
   signal: (tier, _, __, light = false) => ({ vertex: FLAT_MESH_VERTEX, fragment: `#version 300 es
 precision highp float;
 in vec3 vRel;
 flat in vec3 vColor;
 uniform vec4 uEffect;
+uniform float uAlpha;
 out vec4 o;
 ${FRAME_BLOCK}${EYE_STRIKE_GLSL}${EYE_ENERGY_GLSL}${DROP_GLSL}
 void main() {
@@ -180,9 +182,9 @@ void main() {
   vec3 light = uEffect.y > 0. ? dropLight(0., sqrt(max(0., 1.-facing*facing)), uEffect)
     : fEyes[0].w > 0. ? eyeEnergy(vRel, -2.e9, .85*sqrt(max(0., 1.-facing*facing)), length(fwidth(vRel))) : vColor*vColor;
 #ifdef LIGHT_TARGET
-  o = vec4(light, 1.);
+  o = vec4(light, uAlpha);
 #else
-  o = vec4(1.-exp(-light), 1.);
+  o = vec4(1.-exp(-light), uAlpha);
 #endif
 }`, defines: drawsLight(tier, light) ? "#define LIGHT_TARGET\n" : "", samplers: MESH }),
   depthTerrainWindow: () => ({ vertex: clampDepth(FLAT_TERRAIN_VERTEX), fragment: DEPTH_FRAGMENT, defines: "", samplers: { ...GROUND, ...WINDOW } }),

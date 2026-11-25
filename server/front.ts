@@ -30,6 +30,8 @@ export const WORLD_POSTS: ReadonlySet<string> = new Set([
   "/admin/supply/book", "/admin/supply/reset", "/admin/supply/restore", "/admin/supply/call",
   "/admin/supply/land", "/admin/supply/cancel", "/admin/supply/ark",
   PERMISSIONS_API,
+  "/admin/events/book", "/admin/events/reset", "/admin/events/restore", "/admin/events/call",
+  "/admin/events/hurry", "/admin/events/down", "/admin/events/cancel",
 ]);
 
 /** The front passes reads, registered writes at a world's path, and the site's scene editor. */

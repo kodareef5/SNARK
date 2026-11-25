@@ -30,6 +30,7 @@ import { KEY_ROWS } from "./keys.ts";
 import { HudModel, VehicleTelemetry, fillHud, fillOverhead } from "./hud.ts";
 import { HudFill } from "./hud/widget.ts";
 import { AppFrame, type FramePart, type PartRow } from "./frame.ts";
+import { JET_CODE } from "./jet-load.ts";
 import type { Probe } from "./probe.ts";
 import { GLIDER_KEY_TICKS, Prompts } from "./prompts.ts";
 import { Sight } from "./sight.ts";
@@ -67,6 +68,7 @@ import { HOTBAR_SLOTS } from "../../shared/sim/items.ts";
 import type { Builder } from "./build.ts";
 import { FALL_FADE, FALL_NEAR, GHOST_BAD, GHOST_OK, GHOST_SLOT, OTHERS_FADE, buildReason } from "./build-words.ts";
 import { askEditor, editorNow, editsWith, plansWaiting, readHeldPlans, type EditorCode } from "./editor-load.ts";
+import { MapEventPart } from "./mapevent/part.ts";
 import type { Hammer } from "./hammer.ts";
 import { PredictBuild } from "./predict-build.ts";
 import { STRUCT_REASONS } from "./ui/structure.ts";
@@ -119,6 +121,9 @@ export class App {
   readonly sky = new SkyClock();
   /** The dash's readings of the vehicle driven, which its part of the frame reads (hud/vehicle.ts). */
   private readonly dash = new Dash();
+  private missileTrail: FramePart | null = null;
+  /** A guided missile's smoke, once the jet's code has come (jet-load.ts). */
+  private readonly missileTrails: FramePart = { step: (f) => (this.missileTrail ??= JET_CODE.code?.trail() ?? null)?.step(f) };
   /** Tells the voice port where each speaker is (voice/heard.ts). */
   private readonly heard = new Heard();
   get vehicleTelemetry(): VehicleTelemetry { return this.dash.telemetry; }
@@ -137,6 +142,8 @@ export class App {
   readonly sight = new Sight();
   /** A launched drone's camera feed while it is flown (air-feed.ts). */
   readonly feed = new AirFeed();
+  /** The map events told, read once their code has come (mapevent/part.ts). */
+  readonly mapEvents = new MapEventPart(() => this.sounds);
   get visor(): Visor { return this.sight.visor; }
   get glass(): Glass { return this.sight.glass; }
   get visorOptic(): OpticFacet | null { return this.sight.visorOptic; }
@@ -632,6 +639,8 @@ export class App {
     if (flyer !== this.flying) c.fly(flyer, flyer && s.own.mode === MODE_FLYER);
     this.flying = flyer;
     c.heli(s.sessionState === SESSION_ALIVE && s.driving >= 0 && this.reg.vehicle[s.own.kind]?.movement === "rotor");
+    // A jet taken at rest or in the hover starts with VTOL on, so it lifts straight out of its hangar.
+    c.jet(s.sessionState === SESSION_ALIVE && s.driving >= 0 && this.reg.vehicle[s.own.kind]?.movement === "jet", s.own.grounded || Math.hypot(s.own.vx, s.own.vy, s.own.vz) < 40);
     c.skate(s.sessionState === SESSION_ALIVE && s.driving >= 0 && isSkateboard(this.reg.vehicle[s.own.kind]));
     c.thrusterCar(s.sessionState === SESSION_ALIVE && s.driving >= 0 && thrustersOf(this.reg.vehicle[s.own.kind]) !== undefined);
     if (c.wing && !this.wingWas) this.wingFrom = s.simTick;
@@ -825,8 +834,12 @@ export class App {
       ["place", this.director.place],
       // A drone flown: its feed's zoom, view and interference, over the camera placed at it.
       ["feed", this.feed],
+      // The map events told, read and handed to the scene at the tick the remote bodies are shown at.
+      ["map events", this.mapEvents],
       // What the session brought is handed to what draws it, and the frame is built at the tier chosen.
       ["absorb", { step: (f) => this.absorb(f) }],
+      // A guided missile's smoke, from the missile drawn.
+      ["missile trails", this.missileTrails],
       ...(tools ? [["tool stage", tools.stage] as const] : []),
       ["build", { step: (f) => this.build(f) }],
       ...(tools ? [["tool finish", tools.finish] as const] : []),

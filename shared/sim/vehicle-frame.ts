@@ -2,7 +2,7 @@ import { quatAxis, quatMul, quatNormalize, quatRotate, quatUnrotate, type Number
 import { detCos, detSin } from "../math/scalar.ts";
 import { rayBox } from "../world/ray.ts";
 import { panelBounds, vehicleDoor } from "./vehicle-panels.ts";
-import { boatDrives, isWheelVehicle, type VehicleDefinition } from "./vehicle.ts";
+import { boatDrives, isJetVehicle, isWheelVehicle, type VehicleDefinition } from "./vehicle.ts";
 
 /**
  * Distance along a ray (unit direction) to a vehicle's hull at (x, y, z) turned `yaw` radians, or Infinity. The hull is the
@@ -11,7 +11,7 @@ import { boatDrives, isWheelVehicle, type VehicleDefinition } from "./vehicle.ts
  */
 export function rayVehicle(def: VehicleDefinition, x: number, y: number, z: number, yaw: number, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, top: number, attitude?: Pick<VehicleFrame, "pitch" | "roll" | "qx" | "qy" | "qz" | "qw" | "steering">): number {
   const s = def.spec, sn = detSin(yaw), cs = detCos(yaw), rx = ox - x, rz = oz - z;
-  const boxes = def.movement === "boat" ? def.spec.hullBoxes : isWheelVehicle(def) ? def.spec.bodyBoxes : undefined;
+  const boxes = def.movement === "boat" ? def.spec.hullBoxes : isWheelVehicle(def) || isJetVehicle(def) ? def.spec.bodyBoxes : undefined;
   if (boxes) {
     vehicleRotation({ x, y, z, yaw, pitch: 0, roll: 0, ...attitude }, rayRotation);
     quatUnrotate(rayRotation, 0, rx, oy - y, rz, rayOrigin, 0);

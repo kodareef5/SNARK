@@ -25,9 +25,10 @@ export interface VehicleFamily<D extends VehicleDefinition = VehicleDefinition> 
   validateRig(d: D): void;
   /**
    * One fixed tick of a body driven by `moveX`, `moveZ` and `buttons`, the ordinary signed bytes and buttons; each family
-   * reads them its own way. What happened is left in `vehicleStep` (vehicle-state.ts).
+   * reads them its own way. `yaw` and `pitch` are the look the input holds, in 1/65536 turns, for a family that flies by
+   * it. What happened is left in `vehicleStep` (vehicle-state.ts).
    */
-  step(w: CollisionWorld, b: Body, moveX: number, moveZ: number, buttons: number, def: D, pilot: boolean, environment?: VehicleWorld): void;
+  step(w: CollisionWorld, b: Body, moveX: number, moveZ: number, buttons: number, def: D, pilot: boolean, environment?: VehicleWorld, yaw?: number, pitch?: number): void;
   /** The parts it meets the world and other vehicles with, its hazard parts first. */
   parts(def: D): readonly Shape[];
   /** Where its jointed parts stand at `frame`, by joint (a boat's outboards); null where no part turns on a joint. */
@@ -55,6 +56,55 @@ export interface VehicleFamily<D extends VehicleDefinition = VehicleDefinition> 
 /** The one place a row is widened to take any definition: a family only ever gets definitions its `is` accepts. */
 const family = <D extends VehicleDefinition>(row: VehicleFamily<D>): VehicleFamily => row as unknown as VehicleFamily;
 
+/** A family whose code may come after the rest: its row answers as that code once it is given. */
+export interface LaterFamily extends VehicleFamily {
+  /** Whether its code has come. Until then a vehicle of it does not move, meets nothing, and is not checked. */
+  readonly ready: boolean;
+  give(code: VehicleFamily): void;
+}
+
+/**
+ * Asked each time a row whose code has not come is wanted for more than a check: a browser fetches the code the first
+ * time (client/core/jet-load.ts). The server and the tools load every family as they start.
+ */
+export const familyWanted: { ask: ((name: string) => void) | null } = { ask: null };
+
+/** The row of a family whose code is given later (the jet's: families/jet.ts gives it as it loads). */
+export function laterFamily(name: string): LaterFamily {
+  let code: VehicleFamily | null = null;
+  const want = (): VehicleFamily | null => {
+    if (!code) familyWanted.ask?.(name);
+    return code;
+  };
+  return {
+    name,
+    get ready() { return code !== null; },
+    give(c) { code = c; },
+    is: (d): d is VehicleDefinition => d.movement === name,
+    // The server checks what it sends; a browser that has not the code yet takes it as checked.
+    validateSpec: (d) => code?.validateSpec(d),
+    validateRig: (d) => code?.validateRig(d),
+    step: (w, b, moveX, moveZ, buttons, def, pilot, environment, yaw, pitch) => want()?.step(w, b, moveX, moveZ, buttons, def, pilot, environment, yaw, pitch),
+    parts: (def) => want()?.parts(def) ?? [],
+    mounts: (def, frame) => want()?.mounts(def, frame) ?? null,
+    joints: (def, from, to) => want()?.joints(def, from, to),
+    jointPivot: (def, joint) => want()?.jointPivot(def, joint),
+    get hazard() { return code?.hazard ?? null; },
+    get clearSlack() { return code?.clearSlack ?? 0; },
+    meetsCapsule: (def, frame, x, y, z, radius, height) => want()?.meetsCapsule(def, frame, x, y, z, radius, height) ?? null,
+    meetsVehicle: (def, frame, other, otherFrame) => want()?.meetsVehicle(def, frame, other, otherFrame) ?? null,
+    meetsKind: (def, parts, kind, sx, sy, sz, syaw, stw, frame, slack) => want()?.meetsKind(def, parts, kind, sx, sy, sz, syaw, stw, frame, slack) ?? false,
+    supports: (world, x, y, z, yaw, def) => want()?.supports(world, x, y, z, yaw, def) ?? false,
+    movers: (def) => want()?.movers(def) ?? [],
+  };
+}
+
+/** The jet's row: its flight and shapes are a browser's only once it has met a jet. */
+export const JET_FAMILY: LaterFamily = laterFamily("jet");
+
+/** Whether `f`'s code is here: false only for a later family whose code has not come, whose answers are not to be kept. */
+export const familyReady = (f: VehicleFamily): boolean => (f as Partial<LaterFamily>).ready !== false;
+
 let rows: readonly VehicleFamily[] | null = null;
 
 /**
@@ -66,6 +116,7 @@ export function families(): readonly VehicleFamily[] {
     family(WHEELED),
     family(ROTOR),
     family(BOAT),
+    JET_FAMILY,
   ];
 }
 

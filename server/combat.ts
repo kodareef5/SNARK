@@ -58,6 +58,7 @@ import { creatureSize } from "./young-move.ts";
 import type { EventData } from "./api/module.ts";
 import { event, type Bus } from "./events/bus.ts";
 import { Signal } from "./signal.ts";
+import { Sky, type SkyTaken } from "./sky.ts";
 
 const CHUNK_METRES = 64;
 /** Metres a structure may stand above or below a blast before the storeys between shield it. */
@@ -178,6 +179,8 @@ export interface Blow {
 export class Combat {
   /** Blows landed on bodies. */
   hits = 0;
+  /** Craft in the sky that are met analytically, not in the chunk lists (server/sky.ts): a map event's craft. */
+  readonly sky = new Sky();
   readonly last: Blow = { by: 0, victim: 0, zone: 0, damage: 0, blocked: 0, wear: 0, killed: false };
 
   private readonly ctx: CombatContext;
@@ -317,6 +320,25 @@ export class Combat {
     // A creature whose skeleton came with its model is hit on that rig's capsules, as posed.
     this.anims = ctx.world.anims;
     this.dose = reg.index.get("core:tranquilized") ?? 0;
+    this.sky.marker = (by, x, y, z, got) => this.skyHit(by, x, y, z, got);
+  }
+
+  /** Tells the one who struck a sky target of the blow, as a blow on a body is told: no zone, and a shield's stop as armor's. */
+  private skyHit(by: EntityRecord | null, x: number, y: number, z: number, got: SkyTaken): void {
+    const ac = by ? this.clientOf(by.pid) ?? this.controllingRider(by) : null;
+    if (!ac) return;
+    const w = this.ctx.game.begin(S_EVENT);
+    w.u8(EVENT_HIT);
+    w.f32(x);
+    w.f32(y);
+    w.f32(z);
+    w.bits(ZONE_NONE, 4);
+    w.u16(Math.min(65535, Math.max(got.taken > 0 ? 1 : 0, Math.round(got.taken))));
+    w.bool(got.killed);
+    w.bool(got.blocked);
+    // Nothing built was struck.
+    w.u16(0);
+    this.ctx.game.endOwn(ac);
   }
 
   /** Call once a tick, after every body has stepped. */
@@ -1491,6 +1513,8 @@ export class Combat {
       this.land(src, i, ZONE_NONE, ents.x[i]!, by, ents.z[i]!, Math.sqrt((ents.x[i]! - x) * (ents.x[i]! - x) + (by - y) * (by - y) + (ents.z[i]! - z) * (ents.z[i]! - z)));
     }
     src.base = base;
+    // A craft in the sky within reach takes it too (server/sky.ts).
+    this.sky.blast(src, x, y, z, radius, world.tick);
     // Structures take the blast by the distance to their nearest point, so none wholly above or below its reach can.
     const structs = world.structs;
     const n = structs.query(x - radius, z - radius, x + radius, z + radius, this.inBlast, y - radius, y + radius);

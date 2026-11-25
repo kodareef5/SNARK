@@ -5,6 +5,8 @@ import type { PermissionOp } from "../../shared/permissions/model.ts";
 import { RANK_ADMIN } from "../../shared/ranks.ts";
 import type { Actor } from "../acts.ts";
 import type { Actions, Caller, ModuleCommand, ModuleContext, ModuleDef, PermissionsView, WorldView } from "../api/module.ts";
+import type { EventKindDef, EventsApi } from "../api/event.ts";
+import type { Fields } from "../../shared/mapevent/fields.ts";
 import type { Bus } from "./bus.ts";
 import { eventIndex } from "./catalog.ts";
 
@@ -32,6 +34,9 @@ export interface ModuleHost {
   /** Adds a console command. Throws if the name is taken. */
   addCommand(module: string, c: ModuleCommand): void;
   log(line: string): void;
+  /** Defines a kind of map event for a module, and what a module may do with map events. */
+  defineEvent(module: string, def: EventKindDef<Fields>): void;
+  events(module: string): EventsApi;
 }
 
 export class Modules {
@@ -119,6 +124,11 @@ export class Modules {
         removeFromGroup: (pid, group) => member(pid, (key) => ({ op: "removeMember", kind: "survivor", key, group })),
       },
       log: (line) => host.log(`[${module}] ${line}`),
+      mapEvent: (def) => {
+        late("map events");
+        host.defineEvent(module, def as unknown as EventKindDef<Fields>);
+      },
+      mapEvents: host.events(module),
     };
   }
 }
