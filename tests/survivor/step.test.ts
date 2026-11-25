@@ -15,7 +15,7 @@ import { nodeForms } from "../../shared/world/nodes.ts";
 import { ROLE_CEILING, ROLE_DOOR, ROLE_FOUNDATION, ROLE_PILLAR, ROLE_STAIRS, ROLE_WALL, freePose, type Pose } from "../../shared/world/snap.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { hullRegistry } from "../fixtures/hulls.ts";
-import { join as joinTo, start } from "../fixtures/slots.ts";
+import { join as joinTo, start, takes } from "../fixtures/slots.ts";
 import { flatWorld, type TestWorld } from "../fixtures/world.ts";
 
 const reg = hullRegistry();
@@ -182,6 +182,11 @@ test("every piece content means to be walked onto still is, and every piece mean
   const pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
   const foundation = reg.role.indexOf(ROLE_FOUNDATION);
   const doorframe = reg.doorway.indexOf(1);
+  /** The first wall that takes a door of `k`, as a double door its double doorway; a leaf no wall takes, the doorframe. */
+  const frameFor = (k: number): number => {
+    for (let at = 1; at < reg.defs.length; at++) if (reg.role[at] === ROLE_WALL && reg.defs[at]?.id.startsWith("core:") && takes(reg, at, k)) return at;
+    return doorframe;
+  };
   /** A piece in place `place` of `target` as the game joins it, or on open ground as it begins a base. Returns its ref. */
   const put = (w: TestWorld, k: number, target = -1, place = 0): number => {
     if (target >= 0) {
@@ -236,15 +241,17 @@ test("every piece content means to be walked onto still is, and every piece mean
     } else {
       // On the north edge, atop the foundation for a pillar, or in a doorframe there for a door: never climbed, and gone
       // through head on only where a survivor fits in the doorway.
-      if (role === ROLE_DOOR) put(w, k, put(w, doorframe, f, 0), 0);
-      else put(w, k, f, 0);
+      const ref = role === ROLE_DOOR ? put(w, k, put(w, frameFor(k), f, 0), 0) : put(w, k, f, 0);
+      // Walked at along the edge from the piece's middle: a double door's is half a side along it.
+      const mid = role === ROLE_DOOR ? w.structs.chunks[Math.floor(ref / 65536)]!.x[ref & 0xffff]! : 64;
       const z = role === ROLE_PILLAR ? 64 : 65.5;
-      const open = capsuleFree(w, 64, floor, z, survivor.radius, survivor.height);
-      for (const x of [62.9, 64, 65.1]) {
+      const open = capsuleFree(w, mid, floor, z, survivor.radius, survivor.height);
+      for (const along of [-1.1, 0, 1.1]) {
+        const x = mid + along;
         for (const deg of [-30, 0, 30]) {
           const { high, b } = walk(w, survivor, x, z, deg, { from: 1, ticks: 60 });
           if (high > floor + 0.01) wrong.push(`${d.id} at ${x}, ${deg} degrees: stood ${high.toFixed(3)} m up`);
-          if (x === 64 && deg === 0 && b.z > z + 0.5 !== open) wrong.push(`${d.id} head on: ${open ? "stopped" : "went through"}`);
+          if (along === 0 && deg === 0 && b.z > z + 0.5 !== open) wrong.push(`${d.id} head on: ${open ? "stopped" : "went through"}`);
         }
       }
       // A doorway's threshold, the foundation's edge, is stepped over from the ground outside.

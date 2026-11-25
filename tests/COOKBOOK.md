@@ -308,9 +308,9 @@ A new piece. Place it from the hand with `CMD_PLACE`, check every client has it,
 
 ```ts
 import { expect, test } from "bun:test";
-import { NO_TARGET } from "../../../server/build.ts";
 import { STRUCT_UNITS as U } from "../../../shared/coords.ts";
 import { CMD_PLACE, CMD_STRUCT, RESULT_NOT_YOURS, RESULT_OK } from "../../../shared/net/protocol.ts";
+import { writeNew } from "../../../shared/net/place.ts";
 import { STRUCT_DEMOLISH } from "../../../shared/world/upkeep.ts";
 import { takeInHand } from "../../fixtures/gather.ts";
 import { camp, count, id, send, survivor } from "../kit.ts";
@@ -320,7 +320,7 @@ test("a foundation is set down from the hand; only its builder may demolish it",
   const bob = survivor(h, "bob", { at: { x: at.x + 2, z: at.z } });
   takeInHand(h, ada, id("piece_foundation_wood"));
   const [x, z] = [Math.round(at.x * U), Math.round((at.z + 4) * U)];
-  expect(send(h, ada, CMD_PLACE, (w) => (w.u8(0), w.u32(NO_TARGET), w.sbits(x, 32), w.sbits(z, 32), w.u16(0), w.sbits(0, 8), w.u8(0)))).toBe(RESULT_OK);
+  expect(send(h, ada, CMD_PLACE, (w) => writeNew(w, 0, x, z, 0))).toBe(RESULT_OK);
   const ref = h.host.build.last;
   expect([h.world.structs.count, bob.world!.structs.count, count(h, ada, "piece_foundation_wood")]).toEqual([1, 1, 0]);
 
