@@ -120,6 +120,8 @@ export class Client {
   /** What a host password gave this connection: a rank, and whether every cheat (server/creative.ts stand). */
   passwordRank = 0;
   passwordCheats = false;
+  /** The rank it proved: the higher of its host password's and its groups' that count, nothing from creative mode for all. */
+  proved = 0;
   /** Tick of its last input change or command, for the idle kick. */
   activeAt = 0;
   cheatAttempts = 0;
@@ -295,6 +297,7 @@ export class Client {
     this.toldSignIn = false;
     this.passwordRank = 0;
     this.passwordCheats = false;
+    this.proved = 0;
     this.cheatAttempts = 0;
     this.entered = false;
     this.joined = false;

@@ -36,6 +36,7 @@ export const NO_GROUPS: GroupStanding = { rank: RANK_OPEN, every: false };
 /** Raises a session by a password it gave to `rank`, and with `full` gives it every cheat. Never lowers. Modules hear only the first grant of cheats. */
 export function raise(bus: Bus, c: Client, rank: number, full: boolean): void {
   c.passwordRank = Math.max(c.passwordRank, rank);
+  c.proved = Math.max(c.proved, c.passwordRank);
   if (full) c.passwordCheats = true;
   const gained = full && !c.admin;
   if (!gained && rank <= c.rank) return;
@@ -100,12 +101,14 @@ export class Creative {
   /**
    * Works out what a connection stands at from the three things that give it anything: CreativeForAll (every cheat at staff
    * rank), the host password it gave, and its survivor's groups. Its rank is the highest, and it has every cheat if any
-   * gives them. Without every cheat, what a cheat left running ends unless its groups still let it run that cheat.
+   * gives them. Without every cheat, what a cheat left running ends unless its groups still let it run that cheat. What it
+   * proved, apart from creative mode for all, is kept for the admin log.
    */
   stand(c: Client): void {
     const all = this.forAll;
     const groups = this.groups(c);
-    const rank = Math.max(all ? RANK_STAFF : RANK_OPEN, c.passwordRank, groups.rank);
+    c.proved = Math.max(c.passwordRank, groups.rank);
+    const rank = Math.max(all ? RANK_STAFF : RANK_OPEN, c.proved);
     const full = all || c.passwordCheats || groups.every;
     if (rank !== c.rank || full !== c.admin) {
       const gained = full && !c.admin;

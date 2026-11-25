@@ -272,3 +272,42 @@ test("a saved world keeps its groups beside its save through a restart", () => {
   const back = survivor(next, "ada", { cheats: false });
   expect(next.say(back, "groups")).toEqual(["your groups: Vip, Default"]);
 });
+
+test("a moderator's kick is kept, printed and listed by acts", () => {
+  const said: string[] = [];
+  const { h } = camp({ host: { log: (line) => said.push(line) } });
+  const bob = survivor(h, "bob", { cheats: false });
+  survivor(h, "carl", { cheats: false });
+  op(h, "Permissions.AddGroup Mods", "Permissions.Rank Mods staff", "Permissions.Grant Mods Cheat.kick", "Permissions.Add bob Mods");
+  h.say(bob, "claimpassword");
+  expect(h.say(bob, `enablecheats ${bob.secret}`)).toEqual(["cheats enabled"]);
+  expect(h.say(bob, "kick carl")).toEqual(["kicked carl"]);
+  const act = h.host.acts.recent().at(-1)!;
+  expect([act.name, act.id, act.rank, act.open, act.what]).toEqual(["bob", idOf(h, bob), RANK_STAFF, false, "kick carl"]);
+  expect(said).toContain("admin: bob (staff rank) kick carl");
+  expect(h.host.exec("acts 1")).toEndWith(`bob ${idOf(h, bob)}  staff  kick carl`);
+});
+
+test("an open group's perk is open, and left out of the latest acts", () => {
+  const { h } = camp({ host: quiet });
+  const bob = survivor(h, "bob", { cheats: false });
+  op(h, "Permissions.AddGroup Flyers", "Permissions.Grant Flyers Cheat.fly", "Permissions.Add bob Flyers");
+  expect(h.say(bob, "fly")[0]).toStartWith("fly");
+  expect(h.host.acts.recent().some((a) => a.name === "bob")).toBe(false);
+  const act = h.host.acts.recentWithOpen().at(-1)!;
+  expect([act.name, act.rank, act.open, act.what]).toEqual(["bob", RANK_OPEN, true, "fly"]);
+});
+
+test("a signed-in admin is not open, also under creative mode for all", () => {
+  const { h } = camp({ host: quiet });
+  expect([h.host.setSetting("bShowCreativeMode", "True"), h.host.setSetting("CreativeForAll", "True")]).toEqual(["", ""]);
+  const bob = survivor(h, "bob", { cheats: false });
+  h.run(100);
+  expect(h.client(bob)!.admin).toBe(true);
+  h.say(bob, "settime 6");
+  admin(h, bob);
+  h.say(bob, "settime 7");
+  const his = h.host.acts.recentWithOpen().filter((a) => a.name === "bob" && a.kind === "command").map((a) => [a.rank, a.open, a.what]);
+  expect(his).toEqual([[RANK_STAFF, true, "settime 6"], [RANK_ADMIN, false, "settime 7"]]);
+  expect(h.host.acts.recent().filter((a) => a.name === "bob").map((a) => a.what)).toEqual(["claimed their own password", "enablecheats with their own password", "settime 7"]);
+});

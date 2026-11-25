@@ -253,7 +253,7 @@ test("a sign-in never puts the password in an act", async () => {
 
 test("the acts answer hides addresses from a viewer below the map's rank", async () => {
   const h = new Harness({}, 1, 60, { adminPassword: MAP, log: () => {} });
-  h.host.acts.write({ name: "ada", id: "", pid: 0, rank: RANK_MAP, via: "page", from: "203.0.113.9", baseRank: RANK_MAP }, "settime 6:30");
+  h.host.acts.write({ name: "ada", id: "", pid: 0, rank: RANK_MAP, via: "page", from: "203.0.113.9", baseRank: RANK_MAP, open: false }, "settime 6:30");
   const pages = new AdminPages({ host: h.host, meter: new TickMeter(() => gaugesOf(h.host)), dir, start: { tick: 0, wall: 0 } });
   const read = async (g: AdminGate, password?: string): Promise<string[]> => {
     const res = await pages.answer(asked("/admin/acts.json?after=0", "kody", password), "1.2.3.4", g, "/admin/acts.json")!;

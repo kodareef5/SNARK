@@ -87,7 +87,7 @@ export class Modules {
       return id;
     };
     // The round brackets keep it from being any survivor's name.
-    const by: Actor = Object.freeze({ name: `(${module})`, id: "", pid: 0, rank: RANK_ADMIN, via: "module", from: "", baseRank: RANK_ADMIN });
+    const by: Actor = Object.freeze({ name: `(${module})`, id: "", pid: 0, rank: RANK_ADMIN, via: "module", from: "", baseRank: RANK_ADMIN, open: false });
     const member = (pid: number, op: (key: string) => PermissionOp): string => {
       const key = host.perms.id(pid);
       if (key === "") return "No survivor with an ID has that pid.";

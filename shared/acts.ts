@@ -24,7 +24,12 @@ export interface Act {
   from: string;
   kind: ActKind;
   what: string;
+  /** The actor had proved nothing: no host password, no staff group that counted. Older entries read as false. */
+  open: boolean;
 }
+
+/** Whether an act belongs with the open acts, apart from the latest kept: an open command. Every other kind is kept. */
+export const openOnly = (act: Pick<Act, "open" | "kind">): boolean => act.open && act.kind === "command";
 
 // The shared zone's types leave out the DOM's, so the text codecs are typed here as pack.ts types its own.
 const codecs = globalThis as unknown as { TextEncoder: new () => { encode(s: string): Uint8Array }; TextDecoder: new () => { decode(bytes: Uint8Array): string } };
@@ -34,10 +39,10 @@ const UTF8_IN = new codecs.TextDecoder();
 const VIAS: readonly string[] = ["session", "page", "operator", "module"];
 const KINDS: readonly string[] = ["command", "sign-in", "change"];
 
-/** An act's bytes for the journal, which keeps the sequence number and the tick itself. */
+/** An act's bytes for the journal, which keeps the sequence number and the tick itself. `open` is written only when true. */
 export function encodeAct(act: Omit<Act, "seq" | "tick">): Uint8Array {
-  const { at, name, id, pid, rank, via, from, kind, what } = act;
-  return UTF8_OUT.encode(JSON.stringify({ at, name, id, pid, rank, via, from, kind, what }));
+  const { at, name, id, pid, rank, via, from, kind, what, open } = act;
+  return UTF8_OUT.encode(JSON.stringify({ at, name, id, pid, rank, via, from, kind, what, ...(open ? { open } : {}) }));
 }
 
 /** The act in a journal entry's bytes, in either form. */
@@ -56,12 +61,12 @@ export function decodeAct(data: Uint8Array, seq = 0, tick = 0): Act {
       return {
         seq, at: num(o.at, 0), tick, name: str(o.name), id: str(o.id), pid: num(o.pid, 0), rank: num(o.rank, -1),
         via: VIAS.includes(o.via as string) ? (o.via as ActVia) : "session", from: str(o.from),
-        kind: KINDS.includes(o.kind as string) ? (o.kind as ActKind) : "command", what: str(o.what),
+        kind: KINDS.includes(o.kind as string) ? (o.kind as ActKind) : "command", what: str(o.what), open: o.open === true,
       };
     }
   }
   const tab = line.indexOf("\t");
   const name = tab < 0 ? "" : line.slice(0, tab);
   const via: ActVia = name === "(operator)" ? "operator" : name === "(admin page)" ? "page" : "session";
-  return { seq, at: 0, tick, name, id: "", pid: 0, rank: -1, via, from: "", kind: "command", what: tab < 0 ? line : line.slice(tab + 1) };
+  return { seq, at: 0, tick, name, id: "", pid: 0, rank: -1, via, from: "", kind: "command", what: tab < 0 ? line : line.slice(tab + 1), open: false };
 }

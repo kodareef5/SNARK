@@ -19,7 +19,7 @@ afterAll(() => rmSync(root, { recursive: true, force: true }));
 
 const MARA = idOf(1, 1);
 const act = (seq: number, o: Partial<Act> = {}): Act => ({
-  seq, at: 0, tick: seq * 30, name: "Mara", id: MARA, pid: 1, rank: RANK_ADMIN, via: "session", from: "", kind: "command", what: `cmd ${seq}`, ...o,
+  seq, at: 0, tick: seq * 30, name: "Mara", id: MARA, pid: 1, rank: RANK_ADMIN, via: "session", from: "", kind: "command", what: `cmd ${seq}`, open: false, ...o,
 });
 
 /** Mara at admin, a map password typed as (kody), the cluster at the terminal, and Pip's staff sign-in. */
