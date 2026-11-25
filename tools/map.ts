@@ -79,9 +79,8 @@ import { partsTable, writeMapFile } from "./map/pack.ts";
 const registry = () => compileContent(CORE_CONTENT).registry!;
 const WEBGL2_TEXTURE = 2048;
 
-/** What a map holds, in lines, and the content ids it names that the core pack lacks. */
-export function describe(file: Uint8Array): string[] {
-  const map = parseMap(file);
+/** What a map holds, in lines, and the content ids it names that the core pack lacks; `map` is the file parsed, if held. */
+export function describe(file: Uint8Array, map: ReturnType<typeof parseMap> = parseMap(file)): string[] {
   const { chunksX, chunksZ, frameX, frameZ, originX, originZ } = map.dims;
   let low = 65535;
   let high = 0;

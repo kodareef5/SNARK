@@ -28,11 +28,12 @@ import { join } from "node:path";
 import { STREET_PIECES, streetKind } from "../../content/street.ts";
 import { hullPoint } from "../../shared/world/convex.ts";
 import { S } from "./ground.ts";
+import { SLACK } from "./cell-lists.ts";
 import { binKey, hash3 } from "./raster.ts";
 import { boxOf, meets, obstacleIndex, type Box } from "./ruin-obstacles.ts";
 import { vocabulary } from "./ruin-vocabulary.ts";
 import type { Site, StaticLayer, StaticPiece } from "./statics.ts";
-import { nodeKey, streetGraph, type Marked, type Segment } from "./street-graph.ts";
+import { byText, nodeKey, streetGraph, type Marked, type Segment } from "./street-graph.ts";
 import { cornersOf, filletIndex, returnIndex, type Corner } from "./corners.ts";
 import { CURB_RETURN, isCurbReturn } from "../../content/curbs.ts";
 import { StreetPoint, streetAt } from "../../shared/world/streets.ts";
@@ -205,6 +206,10 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
   const { clear } = rules; const seed = rules.seed;
   const graph = streetGraph(site);
   const segments: Segment[] = graph.segments;
+  // A line by its piece's id, not its row in the data: what seeds its stations, and which of two keeps a tie.
+  const lineSeed = (line: number): number => graph.pieces[line]!.seed;
+  const byId = (a: number, b: number): number => byText(graph.pieces[a]!.id, graph.pieces[b]!.id) || a - b;
+  const crossings = [...graph.crossings].sort((a, b) => a.ax - b.ax || a.az - b.az || a.bx - b.bx || a.bz - b.bz);
   const classOf = (s: { mtfcc: string }): string | undefined => rules.classes[s.mtfcc];
   // Every road's stretches in 16 m bins, to keep the lanes clear of every way, named or not.
   const laneBins = new Map<number, Segment[]>();
@@ -435,7 +440,7 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
     const owner = ground.heaps?.owner; if (!owner) return "";
     for (let d = 2; d <= deep; d += 2) {
       const o = owner[sample(x + vx * d, z + vz * d)]!;
-      if (o >= 0) return uses.get(Math.floor(ground.heaps.ruins[o]!.building.id / 4)) ?? "";
+      if (o >= 0) return uses.get(ground.heaps.ruins[o]!.building.row) ?? "";
     }
     return "";
   };
@@ -467,7 +472,7 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
   // A street the data draws twice (two names for one way) is one arm, the wider.
   const armsAt = (e: { arms: Arm[] }): Arm[] => {
     const arms: Arm[] = [];
-    for (const a of e.arms.filter((q) => q.cls !== "").sort((p, q) => q.half - p.half || p.line - q.line)) if (!arms.some((b) => a.dx * b.dx + a.dz * b.dz > 0.97)) arms.push(a);
+    for (const a of e.arms.filter((q) => q.cls !== "").sort((p, q) => q.half - p.half || byId(p.line, q.line))) if (!arms.some((b) => a.dx * b.dx + a.dz * b.dz > 0.97)) arms.push(a);
     return arms.sort((a, b) => Math.atan2(a.dz, a.dx) - Math.atan2(b.dz, b.dx));
   };
   for (const e of ends.values()) {
@@ -475,6 +480,8 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
     if (arms.length < 3) continue;
     junctions.push({ x: e.x, z: e.z, arms, reach: Math.max(...arms.map((a) => a.half)) + clear.junction });
   }
+  // By place, not in the order the data's rows gave their nodes.
+  junctions.sort((a, b) => a.x - b.x || a.z - b.z);
   const junctionBins = new Map<number, Junction[]>();
   for (const j of junctions) { const k = binKey(Math.floor(j.x / 32), Math.floor(j.z / 32)); if (!junctionBins.has(k)) junctionBins.set(k, []); junctionBins.get(k)!.push(j); }
   const nearJunction = (x: number, z: number, more = 0): boolean => {
@@ -604,7 +611,7 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
   // a driveway or where two ways meet, a give-way, a junction's stop that found no room there): at its own point, on the
   // right of each way of traffic it governs, along that way's line. A signal stands past the point, its arm over the
   // lanes; a sign before it, facing the traffic, further back where the first place has no room.
-  for (const m of graph.marked) {
+  for (const m of [...graph.marked].sort((a, b) => a.x - b.x || a.z - b.z)) {
     if (stood.has(m) || signalled.has(m) || !(m.kind === "signal" || m.kind === "stop" || (m.kind === "give_way" && rules.forms.yield))) continue;
     const h = hash3(Math.round(m.x * 4), Math.round(m.z * 4), seed + 17);
     const rule = m.kind === "signal" ? "signals" : m.kind === "stop" ? "stops" : "yields";
@@ -632,9 +639,11 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
   // Each line of the named classes, walked from its first point: where the `d`th metre of it is, and which way it runs.
   const lines = new Map<number, Segment[]>();
   for (const s of segments) if (classOf(s) !== undefined) { if (!lines.has(s.line)) lines.set(s.line, []); lines.get(s.line)!.push(s); }
+  // In the order of their ids.
+  for (const [line, run] of [...lines].sort(([a], [b]) => byId(a, b))) { lines.delete(line); lines.set(line, run); }
   // A line that runs along another for most of its length is the same street drawn twice: the wider, or the first, keeps it.
   const width = (line: number): number => lines.get(line)![0]!.half;
-  const order = [...lines.keys()].sort((a, b) => width(b) - width(a) || a - b);
+  const order = [...lines.keys()].sort((a, b) => width(b) - width(a) || byId(a, b));
   const kept = new Set<number>();
   for (const line of order) {
     let near = 0; let all = 0;
@@ -650,13 +659,13 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
     }
     if (all === 0 || near / all < 0.8) kept.add(line);
   }
-  order.splice(0, order.length, ...[...kept].sort((a, b) => a - b));
+  order.splice(0, order.length, ...[...kept].sort(byId));
   /** Calls `at` for each station `spacing` metres apart along each line of `classes`, from a phase of the line's hash. */
   const along = (classes: readonly string[], spacing: (cls: string) => number, salt: number, at: (x: number, z: number, dx: number, dz: number, half: number, k: number, line: number, cls: string) => void, phase?: (line: number, every: number) => number): void => {
     for (const line of order) {
       const run = lines.get(line)!; const cls = classOf(run[0]!)!; if (!classes.includes(cls)) continue;
       const every = spacing(cls); if (!(every > 0)) continue;
-      let next = phase ? phase(line, every) : hash3(line, salt, seed) % Math.max(1, Math.floor(every)); let walked = 0; let k = 0;
+      let next = phase ? phase(line, every) : hash3(lineSeed(line), salt, seed) % Math.max(1, Math.floor(every)); let walked = 0; let k = 0;
       for (const s of run) {
         const length = Math.hypot(s.bx - s.ax, s.bz - s.az); const dx = (s.bx - s.ax) / length; const dz = (s.bz - s.az) / length;
         while (next <= walked + length) { const t = next - walked; at(s.ax + dx * t, s.az + dz * t, dx, dz, s.half, k++, line, cls); next += every; }
@@ -672,7 +681,7 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
   const B = rules.shelters;
   along(B.classes, () => B.spacing, 7, (x, z, dx, dz, half, k, line) => {
     if (nearJunction(x, z, 6)) return;
-    const s = k % 2 === 0 ? 1 : -1; const h = hash3(line, k, seed + 7);
+    const s = k % 2 === 0 ? 1 : -1; const h = hash3(lineSeed(line), k, seed + 7);
     if (!walked(line, s)) return;
     if (chance(h, B.shelter)) { const [px, pz, yaw] = side(x, z, dx, dz, half + B.set + 0.8, s); if (put("shelters", form("shelter", hash3(h, 1, seed)), px, pz, yaw)) return; }
     const [px, pz, yaw] = side(x, z, dx, dz, half + B.bench, s);
@@ -682,7 +691,7 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
   const L = rules.lamps;
   along(Object.keys(L.spacing), (cls) => L.spacing[cls]!, 1, (x, z, dx, dz, half, k, line, cls) => {
     if (nearJunction(x, z) || litTag(line) === false) return;
-    const h = hash3(line, k, seed + 1);
+    const h = hash3(lineSeed(line), k, seed + 1);
     for (const s of L.both.includes(cls) ? [1, -1] : [k % 2 === 0 ? 1 : -1]) {
       let name = form("lamp", hash3(h, s + 2, seed));
       if (name === "lamp" && chance(hash3(h, s + 5, seed), L.lit[cls] ?? 0) && !L.dark.includes(districtOf(x, z).style)) name = "lamp_lit";
@@ -693,15 +702,15 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
   const P = rules.poles;
   along(P.classes, () => P.spacing, 2, (x, z, dx, dz, half, k, line) => {
     if (!P.styles.includes(districtOf(x, z).style) || nearJunction(x, z, -2)) return;
-    const s = hash3(line, 0, seed + 2) % 2 === 0 ? 1 : -1;
-    putOut("poles", form("pole", hash3(line, k, seed + 3)), P.set, (set) => side(x, z, dx, dz, half + set, s));
+    const s = hash3(lineSeed(line), 0, seed + 2) % 2 === 0 ? 1 : -1;
+    putOut("poles", form("pole", hash3(lineSeed(line), k, seed + 3)), P.set, (set) => side(x, z, dx, dz, half + set, s));
   });
   // Hydrants, the first a few metres in from where a line starts.
   const H = rules.hydrants;
   along(H.classes, () => H.spacing, 3, (x, z, dx, dz, half, k, line) => {
     if (nearJunction(x, z, -4) || !walked(line, k % 2 === 0 ? 1 : -1)) return;
     putOut("hydrants", "hydrant", H.set, (set) => side(x, z, dx, dz, half + set, k % 2 === 0 ? 1 : -1));
-  }, (line, every) => H.first + hash3(line, 3, seed) % Math.max(1, Math.floor(every / 4)));
+  }, (line, every) => H.first + hash3(lineSeed(line), 3, seed) % Math.max(1, Math.floor(every / 4)));
   // Parking meters in runs, before shops and offices in the denser districts.
   const M = rules.meters;
   along(M.classes, () => M.block, 4, (x, z, dx, dz, half, k, line) => {
@@ -710,7 +719,7 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
       // nothing, before the uses that would have them.
       const kerb = parkingOf(line, s);
       if (!walked(line, s) || kerb === "no" || districtOf(x, z).tall < M.tall) continue;
-      const h = hash3(line, k * 2 + (s > 0 ? 0 : 1), seed + 4);
+      const h = hash3(lineSeed(line), k * 2 + (s > 0 ? 0 : 1), seed + 4);
       if (kerb === null) {
         if (!chance(h, M.chance)) continue;
         const [ux, uz] = side(x, z, dx, dz, half + 0.5, s);
@@ -741,7 +750,7 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
   const G = rules.signs;
   along(Object.keys(G.spacing), (cls) => G.spacing[cls]!, 5, (x, z, dx, dz, half, k, line, cls) => {
     if (nearJunction(x, z)) return;
-    const h = hash3(line, k, seed + 5); const mph = speedOf(line);
+    const h = hash3(lineSeed(line), k, seed + 5); const mph = speedOf(line);
     const rule = chance(hash3(h, 1, seed), G.evacuation[cls] ?? 0) ? "evacuation" : mph !== null && rules.forms[`speed${mph}`] ? `speed${mph}` : G.limits[cls];
     if (!rule) return;
     putOut("signs", form(rule, h), G.set, (set) => { const [px, pz] = side(x, z, dx, dz, half + set, 1); return [px, pz, yawOf(-dx, -dz)]; });
@@ -754,7 +763,7 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
       const [ex, ez] = side(x, z, dx, dz, half + 0.5, s); const [fx, fz] = side(x, z, dx, dz, half + 4, s); const [wx, wz] = side(x, z, dx, dz, half + R.water, s);
       const drop = site.groundAt(ex, ez) - site.groundAt(fx, fz) > R.drop; const water = site.groundAt(wx, wz) < 0.1 || site.groundAt(fx, fz) < 0.1;
       if (!drop && !water) continue;
-      const [px, pz, yaw] = side(x + dx * 2, z + dz * 2, dx, dz, half + R.set, s); put("rails", form("rail", hash3(line, k * 2 + s, seed + 6)), px, pz, yaw, -0.05);
+      const [px, pz, yaw] = side(x + dx * 2, z + dz * 2, dx, dz, half + R.set, s); put("rails", form("rail", hash3(lineSeed(line), k * 2 + s, seed + 6)), px, pz, yaw, -0.05);
     }
   }, () => 0);
   // Chain-link fence along the street line of open lots and yards: open ground from the fence line `depth` metres in, no
@@ -775,15 +784,15 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
       const yards = [-F.least / 2, 0, F.least / 2].map((d) => lot(px + dx * d, pz + dz * d, -dz * s, dx * s));
       if (yards.some((y) => y < 0)) continue;
       // A lot is fenced or not as a whole: by the hash of its street's line and side, and of which 60 m of it this is.
-      const h = hash3(line, Math.floor(k / 20) * 2 + (s > 0 ? 0 : 1), seed + 8);
-      if (!chance(h, yards.some((y) => y > 0) ? F.yard : F.open) || chance(hash3(line, k * 2 + s, seed + 9), F.gap)) continue;
+      const h = hash3(lineSeed(line), Math.floor(k / 20) * 2 + (s > 0 ? 0 : 1), seed + 8);
+      if (!chance(h, yards.some((y) => y > 0) ? F.yard : F.open) || chance(hash3(lineSeed(line), k * 2 + s, seed + 9), F.gap)) continue;
       put("fences", form("fence", hash3(h, k, seed)), px, pz, yaw, -0.05);
     }
   }, () => 0);
   // Billboards set back from the largest roads, facing them.
   const W = rules.billboards;
   along(W.classes, () => W.spacing, 10, (x, z, dx, dz, half, k, line) => {
-    const h = hash3(line, k, seed + 10); if (!chance(h, W.chance) || nearJunction(x, z, 20)) return;
+    const h = hash3(lineSeed(line), k, seed + 10); if (!chance(h, W.chance) || nearJunction(x, z, 20)) return;
     const back = W.set[0] + (hash3(h, 1, seed) % 1000) / 1000 * (W.set[1] - W.set[0]);
     const [px, pz, yaw] = side(x, z, dx, dz, half + back, h % 2 === 0 ? 1 : -1); put("billboards", form("billboard", hash3(h, 2, seed)), px, pz, yaw);
   });
@@ -801,7 +810,7 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
   const T = rules.stripes;
   if (T) {
     const sizes = Object.entries(T.pieces).sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
-    for (const c of graph.crossings) {
+    for (const c of crossings) {
       if ((c.type !== null && T.bare.includes(c.type)) || c.markings === "no") continue;
       const ex = c.bx - c.ax; const ez = c.bz - c.az; const cl = Math.hypot(ex, ez); if (cl < 1) continue;
       const vx = ex / cl; const vz = ez / cl;
@@ -945,7 +954,7 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
         // Traffic on the right side (1) goes as the line is drawn; on the left, against it, where the street is two-way.
         const t = s > 0 ? 1 : -1; if (flow.has(line) && flow.get(line)! !== t) continue;
         const zx = dz * t * Math.cos(turn) - dx * t * Math.sin(turn); const zz = -dx * t * Math.cos(turn) - dz * t * Math.sin(turn);
-        putOut("noparking", form("noparking", hash3(line, k * 2 + (s > 0 ? 0 : 1), seed + 13)), P.set, (set) => { const [px, pz] = side(x, z, dx, dz, half + set, s); return [px, pz, yawOf(zx, zz)]; });
+        putOut("noparking", form("noparking", hash3(lineSeed(line), k * 2 + (s > 0 ? 0 : 1), seed + 13)), P.set, (set) => { const [px, pz] = side(x, z, dx, dz, half + set, s); return [px, pz, yawOf(zx, zz)]; });
       }
     });
     crossingSigns(flow);
@@ -969,7 +978,15 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
    */
   function crossingSigns(flow: ReadonlyMap<number, number>): void {
     const X = rules.regulations.crossing;
-    graph.crossings.forEach((c) => {
+    // The held junctions by 32 m bins, each in every bin its reach and 6 m touch: a point's bin holds all that reach it.
+    const heldBins = new Map<number, typeof held>();
+    for (const q of held) {
+      const r = q.reach + 6 + SLACK;
+      for (let bz = Math.floor((q.z - r) / 32); bz <= Math.floor((q.z + r) / 32); bz++) for (let bx = Math.floor((q.x - r) / 32); bx <= Math.floor((q.x + r) / 32); bx++) {
+        const bin = heldBins.get(binKey(bx, bz)); if (bin) bin.push(q); else heldBins.set(binKey(bx, bz), [q]);
+      }
+    }
+    crossings.forEach((c) => {
       if (c.signal === true) return;
       const mx = (c.ax + c.bx) / 2; const mz = (c.az + c.bz) / 2;
       if (graph.mapped.points && markedNear(mx, mz, c.half + 2).some((m) => m.kind === "signal")) return;
@@ -977,7 +994,7 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
       if (c.type !== null ? !X.marked.includes(c.type) : !c.drawn) return;
       const road = roadAt(mx, mz, 2); if (!road) return;
       const cls = classOf(road.s)!; if (!J.major.includes(cls) && !J.minor.includes(cls)) return;
-      if (held.some((q) => Math.hypot(q.x - road.fx, q.z - road.fz) < q.reach + 6 && (q.lines === null || q.lines.has(road.s.line)))) return;
+      if ((heldBins.get(binKey(Math.floor(road.fx / 32), Math.floor(road.fz / 32))) ?? []).some((q) => Math.hypot(q.x - road.fx, q.z - road.fz) < q.reach + 6 && (q.lines === null || q.lines.has(road.s.line)))) return;
       const h = hash3(Math.round(mx * 4), Math.round(mz * 4), seed + 14); if (!chance(h, X.chance)) return;
       for (const t of [1, -1]) {
         if (flow.has(road.s.line) && flow.get(road.s.line)! !== t) continue;

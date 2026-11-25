@@ -25,8 +25,11 @@ export const STOREY = 4;
  * slab's middle lies under its top, so a slab is the lid of the storey below it.
  */
 export const STOREY_SLACK = 1 / 16;
-/** The version of a sector's buildings as a part holds them, and of the head's names. */
+/** The version of the head's names (a map's BLDG). */
 export const BUILDINGS_VERSION = 1;
+/** The version of a sector's buildings as a part holds them: 2 names its own tables, 1 the head's (maps of version 11). */
+const PART_VERSION = 2;
+const HEAD_NAMED = 1;
 /** A building's flags: a stair climbs in it, one reaches its roof, it is a place its city names by hand, it has a row in another sector. */
 export const BUILDING_STAIRS = 1;
 export const BUILDING_ROOF = 2;
@@ -201,6 +204,17 @@ class Bytes {
     const at = this.take(src.length);
     this.bytes.set(src, at);
   }
+}
+
+/** The five tables of `names` in the order a part holds them. */
+const tablesOf = (names: BuildingNames): readonly (readonly string[])[] => [names.kinds, names.recipes, names.forms, names.districts, names.collapses];
+
+const placesOf = new WeakMap<readonly string[], Map<string, number>>();
+/** A table's names by their places, made once a table. */
+function placeIn(table: readonly string[]): Map<string, number> {
+  let m = placesOf.get(table);
+  if (!m) placesOf.set(table, (m = new Map(table.map((name, k) => [name, k]))));
+  return m;
 }
 
 /** Bytes read one after another; a read past their end throws a RangeError, as a map's reader expects. */
@@ -390,13 +404,31 @@ export class SectorBuildings {
     }
   }
 
-  /** Its bytes as a map's part holds them (shared/world/mapfile.ts). */
-  encode(): Uint8Array {
+  /**
+   * Its bytes as a map's part holds them (shared/world/mapfile.ts), its numbers those of `names`: each of the five tables
+   * written as the names it uses, in their order there, so its bytes depend on its own buildings alone.
+   */
+  encode(names: BuildingNames): Uint8Array {
     const o = new Bytes(), n = this.n;
-    o.u8(BUILDINGS_VERSION);
+    o.u8(PART_VERSION);
     o.planes(1, 2, () => n);
+    const columns = [this.kind, this.recipe, this.form, this.district, this.collapse];
+    const own = tablesOf(names).map((table, t) => {
+      const column = columns[t]!, used = new Uint8Array(table.length), place = new Uint8Array(table.length);
+      for (let k = 0; k < n; k++) used[column[k]!] = 1;
+      let count = 0;
+      for (let k = 0; k < table.length; k++) if (used[k]) place[k] = count++;
+      o.u8(count);
+      for (let k = 0; k < table.length; k++) {
+        if (!used[k]) continue;
+        const w = new BitWriter(4 + table[k]!.length * 3);
+        w.string(table[k]!);
+        o.put(w.bytes());
+      }
+      return Uint8Array.from(column, (v) => place[v]!);
+    });
     o.planes(n, 6, (k) => this.id[k]!);
-    for (const column of [this.kind, this.recipe, this.form, this.district, this.collapse, this.flags, this.storeys, this.playable, this.bay]) o.put(column);
+    for (const column of [...own, this.flags, this.storeys, this.playable, this.bay]) o.put(column);
     for (const column of [this.name, this.number, this.street]) o.planes(n, 2, (k) => column[k]!);
     for (const column of [this.ux, this.uz]) o.planes(n, 4, (k) => column[k]! >>> 0);
     for (const column of [this.yaw, this.base, this.width, this.depth, this.cols, this.rows]) o.planes(n, 2, (k) => column[k]! & 0xffff);
@@ -429,8 +461,20 @@ export class SectorBuildings {
   static decode(dims: FramedDims, names: BuildingNames, counts: ArrayLike<number> | null, col: number, row: number, bytes: Uint8Array): SectorBuildings {
     const sq = heldOf(dims, col, row) ?? fail(`its buildings of sector ${col}, ${row} lie off the map`);
     const s = new Read(bytes);
-    if (s.take(1)[0] !== BUILDINGS_VERSION) fail("its buildings are of a version this build does not read: build the map again");
+    const version = s.take(1)[0];
+    if (version !== PART_VERSION && version !== HEAD_NAMED) fail("its buildings are of a version this build does not read: build the map again");
     const n = s.planes(new Uint16Array(1), 2)[0]!;
+    // Each table's names as their places in the head's, or null where the part names the head's.
+    const own = version === HEAD_NAMED ? null : tablesOf(names).map((table) => {
+      const place = placeIn(table), count = s.take(1)[0]!, out = new Uint8Array(count);
+      for (let k = 0; k < count; k++) {
+        const name = decodeUtf8(s.take(s.varint()));
+        const at = place.get(name);
+        if (at === undefined) fail("a building is of a kind, a form or a district its head does not name");
+        out[k] = at!;
+      }
+      return out;
+    });
     const head = s.take(n * ROW_BYTES);
     // A building's count of stairs is the last of its columns, two bytes.
     const stairsOf = (k: number): number => head[(ROW_BYTES - 2) * n + k]! | (head[(ROW_BYTES - 1) * n + k]! << 8);
@@ -453,6 +497,15 @@ export class SectorBuildings {
     const columns = new Read(head);
     columns.planes(t.id, 6);
     for (const column of [t.kind, t.recipe, t.form, t.district, t.collapse, t.flags, t.storeys, t.playable, t.bay]) column.set(columns.take(n));
+    if (own) {
+      [t.kind, t.recipe, t.form, t.district, t.collapse].forEach((column, c) => {
+        const table = own[c]!;
+        for (let k = 0; k < n; k++) {
+          if (column[k]! >= table.length) fail("a building is of a kind, a form or a district its head does not name");
+          column[k] = table[column[k]!]!;
+        }
+      });
+    }
     for (const column of [t.name, t.number, t.street]) columns.planes(column, 2);
     for (const column of [t.ux, t.uz]) columns.planes(column, 4);
     columns.planes(t.yaw, 2);

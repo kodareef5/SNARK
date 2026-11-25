@@ -99,9 +99,17 @@ ground (`resolveNodes`), then the growth takes out what would stand in a
 structure's, a route's or a canopy's way, and the file says both; `stats.json`
 counts the slots the ground took (`nodeSlotsTaken`). The far feed's cells of
 every chunk are baked from the statics into the overviews' tops (`mapTops`).
-A ruin's ground colour is drawn from its footprint's id and the statics'
-kinds are numbered in the order of their ids, so a footprint added or taken
-away changes only the parts near it.
+Nothing at a place is seeded by a row of the data, a running count or the
+cut's size. A building is seeded by its id from its footprint's place and
+shape (`building-id.ts`): its heap, layout, vocabulary's choices, ground
+colour and roof plant. A street's pieces are seeded by its id in the data and
+the metres along it, and its rows are read in the order of their ids. Parked
+cars and trailers are counted by sector of the lattice, and the city's piece
+budget stops the build rather than skip a building. So a footprint added or
+taken away changes only the sectors near it. A map's head numbers the
+kinds and the buildings' names it holds, so two cuts' sectors of the same
+content may differ in their bytes: `bun tools/maps/diff.ts a b --names` tells
+those apart.
 
 ## Lakes above the sea
 
@@ -366,13 +374,17 @@ by `street.cars.parked`:
   the kind's `minGroundNormal` (0.85 for the road fleet), with margin enough to
   drive off.
 - A marked stall draws only from vehicles whose bumpers can fit within half a metre of its ends. The full body and door clearances still apply. Buses and freight tractors use long kerbs. Detached trailers may stand on level industrial lots and yards.
-- A district takes its car parks first: up to `lots.perDistrict` of its car
-  parks' roads, in an order by a hash, each holding `lots.least` to `lots.most`
-  cars together along it, `lots.apart` metres from each other and `apart`
-  metres from any car outside it. Then its streets: a density per
-  kilometre of such street, clamped to a few per district, the quietest streets
-  first and then by a hash of the map's seed, and spread apart. The build drops
-  one within 40 m of a spawn point or an obelisk.
+- Each sector of the lattice (1,024 m a side) takes its car parks first: up to
+  `lots.perSector` of its car parks, in an order by a hash of each one's id,
+  each holding `lots.least` to `lots.most` cars together along it, `lots.apart`
+  metres from each other and `apart` metres from the sector's other cars. Then
+  its streets: a density per kilometre of such street, clamped to `least` and
+  `most` a sector, the quietest streets first and then by a hash of the map's
+  seed, and spread apart. A sector chooses among its own places only, so a
+  sector a map holds whole parks the same cars in any cut; a car beyond its
+  edge only keeps one from standing in its room. The build drops one within
+  40 m of a spawn point or an obelisk. Freight trailers are `trailers.perSector`
+  a sector, in its districts of the listed styles.
 - A share `hurt.share` of them, by a hash of where each stands, are hurt: its row
   in `vehicles.json` gives `hurt.condition` as the range its condition is rolled
   in, one that leaves it able to drive (an engine stops at 0.08). The rest are

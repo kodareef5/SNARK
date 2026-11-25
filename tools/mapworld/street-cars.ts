@@ -6,12 +6,20 @@ import { join } from "node:path";
 import { STREET_KINDS, STREET_LOOKS, wreckLook } from "../../content/vehicles/wrecks.ts";
 import type { WheelVehicleDefinition } from "../../shared/sim/vehicle.ts";
 import { S } from "./ground.ts";
-import { binKey, hash3 } from "./raster.ts";
+import { binKey, hash3, textSeed } from "./raster.ts";
+import { byText, lineId } from "./street-graph.ts";
+import { CHUNK_SIZE, SECTOR_CHUNKS } from "../../shared/coords.ts";
 import { meets, obstacleIndex, type Box } from "./ruin-obstacles.ts";
 import type { Site, StaticPiece } from "./statics.ts";
 
-/** A centreline's stretch between two of its points, in engine metres, with its class (TIGER MTFCC) and half width. */
-interface Segment { ax: number; az: number; bx: number; bz: number; half: number; mtfcc: string; line: number; }
+/** Metres a side of a sector of the lattice, by which parked cars and trailers are counted. */
+export const SECTOR = CHUNK_SIZE * SECTOR_CHUNKS;
+
+/**
+ * A centreline's stretch between two of its points, in engine metres, with its class (TIGER MTFCC) and half width; its
+ * line's row in the data, its line's id and 32 bits of that id, and the metres along its line before it starts.
+ */
+interface Segment { ax: number; az: number; bx: number; bz: number; half: number; mtfcc: string; line: number; id: string; seed: number; from: number; }
 /** The nearest stretch to a point: its unit direction, the foot of the point on it, and how far off and to which side. */
 export interface Near { segment: Segment; dx: number; dz: number; fx: number; fz: number; distance: number; right: boolean; }
 /** Weights by a vehicle's content id, or by a body's name. */
@@ -27,8 +35,8 @@ export interface Cars {
   apart: number; perChunk: number;
   parked: {
     perKm: number; least: number; most: number; apart: number; junction: number; clear: number; fromSpawn: number; classes: string[];
-    lots: { classes: string[]; least: number; most: number; apart: number; perDistrict: number };
-    trailers?: { styles: string[]; perDistrict: number };
+    lots: { classes: string[]; least: number; most: number; apart: number; perSector: number };
+    trailers?: { styles: string[]; perSector: number };
     kinds: Mix; styles: Record<string, Mix>; districts: Record<string, Mix>; near: NearRule<Mix>[];
     hurt: { share: number; condition: [number, number] };
     /** Bands of a tank's fraction as [from, to, weight]. */
@@ -51,6 +59,7 @@ export function roadIndex(site: Site): { near: (x: number, z: number, reach: num
     const lines = (JSON.parse(readFileSync(file, "utf8")) as { features: { geometry: { type: string; coordinates: number[][] | number[][][] }; properties: { mtfcc?: string; width_m?: number } }[] }).features;
     lines.forEach((f, line) => {
       const runs = f.geometry.type === "MultiLineString" ? f.geometry.coordinates as number[][][] : [f.geometry.coordinates as number[][]];
+      const id = lineId(f, line); const seed = textSeed(id); let from = 0;
       for (const run of runs) {
         const points = run.map(([e, n]) => site.toLattice(e!, n!));
         // A junction is a point two lines share, or a line's end (README, "Cars"). Keyed by its half metres, kept
@@ -61,17 +70,22 @@ export function roadIndex(site: Site): { near: (x: number, z: number, reach: num
         }
         for (let i = 1; i < points.length; i++) {
           const [ax, az] = points[i - 1]!; const [bx, bz] = points[i]!;
-          if (Math.hypot(bx - ax, bz - az) < .01) continue;
-          const s: Segment = { ax, az, bx, bz, half: (f.properties.width_m ?? 8) / 2, mtfcc: f.properties.mtfcc ?? "", line };
-          segments.push(s);
           const length = Math.hypot(bx - ax, bz - az);
-          for (let d = 0; d <= length + 32; d += 16) {
-            const t = Math.min(1, d / length); const k = key(ax + (bx - ax) * t, az + (bz - az) * t);
-            if (!bins.has(k)) bins.set(k, []); const bin = bins.get(k)!; if (bin.at(-1) !== s) bin.push(s);
-          }
+          if (length < .01) continue;
+          segments.push({ ax, az, bx, bz, half: (f.properties.width_m ?? 8) / 2, mtfcc: f.properties.mtfcc ?? "", line, id, seed, from });
+          from += length;
         }
       }
     });
+  }
+  // In the order of their pieces' ids and then along each, which another order of the rows does not change.
+  segments.sort((a, b) => byText(a.id, b.id) || a.from - b.from);
+  for (const s of segments) {
+    const length = Math.hypot(s.bx - s.ax, s.bz - s.az);
+    for (let d = 0; d <= length + 32; d += 16) {
+      const t = Math.min(1, d / length); const k = key(s.ax + (s.bx - s.ax) * t, s.az + (s.bz - s.az) * t);
+      if (!bins.has(k)) bins.set(k, []); const bin = bins.get(k)!; if (bin.at(-1) !== s) bin.push(s);
+    }
   }
   const junctions: [number, number][] = [];
   for (const [k, lines] of ends) if (lines.size > 1 || [...lines].some((l) => l < 0)) junctions.push([(Math.floor(k / 131072) - 65536) / 2, ((k % 131072) - 65536) / 2]);
@@ -198,9 +212,11 @@ export interface Fleet { id: string; def: WheelVehicleDefinition; }
  * Drivable cars a new world parks, owned by nobody (README, "Cars"): at the right kerb of a street or a car park's road
  * of the listed classes, turned along it, away from junctions, on dry street ground level enough for the kind to drive
  * off, its envelope, door room and a margin clear of every piece, every reserved route and every other parked car. Each
- * place's kind is drawn by the weights of its district and the places near it. A district takes a few car parks first, each holding several,
- * then so many a kilometre of street, within its least and most, chosen by a hash and spread apart; intact streets, with
- * fewest pieces near, first. A share of them are hurt, and each one's fuel is drawn from a band.
+ * place's kind is drawn by the weights of its district and the places near it. Each sector of the lattice takes a few
+ * car parks first, each holding several, then so many a kilometre of its street, within its least and most, chosen by a
+ * hash and spread apart; intact streets, with fewest pieces near, first. A share of them are hurt, and each one's fuel is
+ * drawn from a band. A sector's cars are chosen among its own places, so what a map parks in a sector it holds whole is
+ * the same however far the map runs.
  */
 export function parkCars(site: Site, pieces: readonly StaticPiece[], roads: ReturnType<typeof roadIndex>, cars: Cars, seed: number, fleet: readonly Fleet[], near: CarGround["near"] = () => false): Parked[] {
   const rules = cars.parked; const { ground } = site; const { nx, nz, x0, z0, x1, z1 } = ground.grid;
@@ -250,13 +266,15 @@ export function parkCars(site: Site, pieces: readonly StaticPiece[], roads: Retu
     }
     return false;
   };
-  type Candidate = Omit<Parked, "condition" | "fuel"> & { rank: number; clutter: number; line: number; room: Room };
-  const candidates: Candidate[] = []; const length: Record<string, number> = {};
+  // A candidate's car park (a lot's or its road's id, hashed) and its sector of the lattice.
+  type Candidate = Omit<Parked, "condition" | "fuel"> & { rank: number; clutter: number; group: number; sector: number; room: Room };
+  const candidates: Candidate[] = []; const length = new Map<number, number>();
+  const sectorOf = (x: number, z: number): number => binKey(Math.floor(x / SECTOR), Math.floor(z / SECTOR));
   const STREETS = new Set<number>([S.STREET, S.HIGHWAY]);
   // A lot's car stands in its stall, on the lot's ground or its aisle's.
   const LOT_GROUND = new Set<number>([S.LOT, S.STREET]);
   /** A car of a kind drawn for its district at (x, z), nose along (dx, dz), if every test passes there. */
-  const tryPlace = (x: number, z: number, dx: number, dz: number, lot: boolean, line: number, under: ReadonlySet<number>, chosen?: string, stallHalfLength = Infinity): void => {
+  const tryPlace = (x: number, z: number, dx: number, dz: number, lot: boolean, group: number, under: ReadonlySet<number>, chosen?: string, stallHalfLength = Infinity): void => {
     const index = ground.district[at(x, z)]!; const district = site.world.districts[index - 1]?.name ?? "";
     if (!district) return;
     const districtMix = mixOf(index, x, z);
@@ -279,20 +297,18 @@ export function parkCars(site: Site, pieces: readonly StaticPiece[], roads: Retu
     if (1 / Math.hypot(1, along, across) < spec.minGroundNormal + .1 || Math.max(...h) - Math.min(...h) > spec.maxRise) return;
     const degrees = yaw * 180 / Math.PI;
     if (obstacles.hits({ x, y: y + (spec.height + 1) / 2, z, yaw: degrees, size: [room.side * 2, spec.height + 1, room.end * 2] }) || crossesRoute(x, z, c, sn, y, room)) return;
-    candidates.push({ kind: id, x, z, yaw: degrees, district, lot, rank: hash3(Math.round(x), Math.round(z), seed + 1213), clutter: obstacles.count(x, z, 12), line, room });
+    candidates.push({ kind: id, x, z, yaw: degrees, district, lot, rank: hash3(Math.round(x), Math.round(z), seed + 1213), clutter: obstacles.count(x, z, 12), group, sector: sectorOf(x, z), room });
   };
   // A lot's stalls where the streets stage drew them (tools/mapdata/streets.py), in the map's projection metres: a car
   // in a stall, nose to the aisle it drives out by. Where there are none, a lot's cars stand along its road's kerb.
   const stallsFile = join(site.source, "base", "stalls.json");
   const stalls = existsSync(stallsFile) ? JSON.parse(readFileSync(stallsFile, "utf8")) as { lot: string; e: number; n: number; fe: number; fn: number }[] : [];
   const { west, north } = ground.grid;
-  const lotLine = new Map<string, number>();
   for (const st of stalls) {
-    if (!lotLine.has(st.lot)) lotLine.set(st.lot, -1 - lotLine.size);
     const x = x1 - (st.e - west); const z = z1 - (north - st.n);
     const fx = x1 - (st.fe - west); const fz = z1 - (north - st.fn);
     const span = Math.hypot(fx - x, fz - z) || 1;
-    tryPlace(x, z, (fx - x) / span, (fz - z) / span, true, lotLine.get(st.lot)!, LOT_GROUND, undefined, span);
+    tryPlace(x, z, (fx - x) / span, (fz - z) / span, true, textSeed(st.lot), LOT_GROUND, undefined, span);
   }
   for (const s of roads.segments) {
     const lot = rules.lots.classes.includes(s.mtfcc);
@@ -302,14 +318,14 @@ export function parkCars(site: Site, pieces: readonly StaticPiece[], roads: Retu
       const cx = s.ax + dx * d; const cz = s.az + dz * d;
       const index = ground.district[at(cx, cz)]!; const district = site.world.districts[index - 1]?.name ?? "";
       if (!district) continue;
-      if (!lot) length[district] = (length[district] ?? 0) + 4;
+      if (!lot) length.set(sectorOf(cx, cz), (length.get(sectorOf(cx, cz)) ?? 0) + 4);
       // A car park's road may take a car at every step, a street one step in six.
       if ((!lot && hash3(Math.round(cx), Math.round(cz), seed + 1201) % 6 !== 0) || roads.junction(cx, cz, rules.junction)) continue;
       // At the right kerb of the way it was drawn, nose along it: the kind's half width in from the kerb.
       const mix = mixOf(index, cx, cz); if (mix.length === 0) continue;
       const { id } = pick(mix, hash3(Math.round(cz), Math.round(cx), seed + 1207)); const { spec } = rooms.get(id)!;
       const off = s.half - spec.halfWidth - .3;
-      tryPlace(cx - dz * off, cz + dx * off, dx, dz, lot, s.line, STREETS, id);
+      tryPlace(cx - dz * off, cz + dx * off, dx, dz, lot, s.seed, STREETS, id);
     }
   }
   // Neither one's room meets the other's body: each may open its doors, and they stand clear of each other.
@@ -317,27 +333,32 @@ export function parkCars(site: Site, pieces: readonly StaticPiece[], roads: Retu
   const clash = (p: Candidate, q: Candidate): boolean => meets(flat(p, p.room.side, p.room.end), flat(q, q.room.spec.halfWidth, q.room.spec.halfLength)) || meets(flat(q, q.room.side, q.room.end), flat(p, p.room.spec.halfWidth, p.room.spec.halfLength));
   const free = (p: Candidate, others: readonly Candidate[], apart: number): boolean => !others.some((q) => Math.hypot(q.x - p.x, q.z - p.z) < apart || clash(p, q));
   const out: Candidate[] = []; const { lots } = rules;
-  for (const district of [...new Set([...Object.keys(length), ...candidates.map((p) => p.district)])].sort()) {
-    const mine = candidates.filter((p) => p.district === district).sort((a, b) => a.clutter - b.clutter || a.rank - b.rank);
-    // Its car parks first, each a car park's road holding several nose to tail, each kept `apart` from every other car.
+  const bySector = new Map<number, Candidate[]>();
+  for (const p of candidates) { const list = bySector.get(p.sector); if (list) list.push(p); else bySector.set(p.sector, [p]); }
+  for (const sector of [...new Set([...length.keys(), ...bySector.keys()])].sort((a, b) => a - b)) {
+    const mine = (bySector.get(sector) ?? []).sort((a, b) => a.clutter - b.clutter || a.rank - b.rank);
+    // Kept `apart` from the sector's other cars, and clear of every car's room: one beyond its edge decides only a clash.
+    const here: Candidate[] = [];
+    const fits = (p: Candidate): boolean => free(p, here, rules.apart) && !out.some((q) => q.sector !== sector && clash(p, q));
+    // Its car parks first, each a car park's road holding several nose to tail.
     const roadsOf = new Map<number, Candidate[]>();
-    for (const p of mine) if (p.lot) { if (!roadsOf.has(p.line)) roadsOf.set(p.line, []); roadsOf.get(p.line)!.push(p); }
+    for (const p of mine) if (p.lot) { if (!roadsOf.has(p.group)) roadsOf.set(p.group, []); roadsOf.get(p.group)!.push(p); }
     let held = 0;
-    for (const line of [...roadsOf.keys()].sort((a, b) => hash3(a, 0, seed + 1229) - hash3(b, 0, seed + 1229) || a - b)) {
-      if (held >= lots.perDistrict) break;
-      const want = lots.least + hash3(line, 1, seed + 1229) % Math.max(1, lots.most - lots.least + 1);
-      const road = roadsOf.get(line)!; const first = road.find((p) => free(p, out, rules.apart));
+    for (const group of [...roadsOf.keys()].sort((a, b) => hash3(a, 0, seed + 1229) - hash3(b, 0, seed + 1229) || a - b)) {
+      if (held >= lots.perSector) break;
+      const want = lots.least + hash3(group, 1, seed + 1229) % Math.max(1, lots.most - lots.least + 1);
+      const road = roadsOf.get(group)!; const first = road.find(fits);
       if (!first) continue;
       // The rest nearest the first, so the car park's cars stand together.
       const chosen = [first];
-      for (const p of [...road].sort((a, b) => Math.hypot(a.x - first.x, a.z - first.z) - Math.hypot(b.x - first.x, b.z - first.z))) if (chosen.length < want && free(p, chosen, lots.apart) && free(p, out, rules.apart)) chosen.push(p);
-      if (chosen.length >= lots.least) { out.push(...chosen); held++; }
+      for (const p of [...road].sort((a, b) => Math.hypot(a.x - first.x, a.z - first.z) - Math.hypot(b.x - first.x, b.z - first.z))) if (chosen.length < want && free(p, chosen, lots.apart) && fits(p)) chosen.push(p);
+      if (chosen.length >= lots.least) { out.push(...chosen); here.push(...chosen); held++; }
     }
-    const want = Math.max(rules.least, Math.min(rules.most, Math.round((length[district] ?? 0) / 1000 * rules.perKm)));
+    const want = Math.max(rules.least, Math.min(rules.most, Math.round((length.get(sector) ?? 0) / 1000 * rules.perKm)));
     let streets = 0;
     for (const p of mine) {
       if (streets >= want) break;
-      if (!p.lot && free(p, out, rules.apart)) { out.push(p); streets++; }
+      if (!p.lot && fits(p)) { out.push(p); here.push(p); streets++; }
     }
   }
   const bands = rules.fuel.map((b) => [b, b[2]] as const);

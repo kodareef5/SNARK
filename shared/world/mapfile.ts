@@ -3,7 +3,7 @@
 //
 // The head:
 //   0   "SNMP"
-//   4   u16 version 14, u16 reserved
+//   4   u16 version 15, u16 reserved
 //   8   u32 hash        FNV-1a of every byte of the head after it: the map's hash, which names each part by its own
 //   12  u32 bytes of the head. Its parts follow it in the order of its table, each where the one before ends.
 //   16  u16 chunksX, u16 chunksZ
@@ -49,12 +49,12 @@
 //   LAND  what the map adds to the content: u8 count of its landmarks and each a name, whose files a client fetches
 //         (assets/landmarks/<name>.json), then f64 x, y, z of its origin and u16 yaw as it was placed. The definitions
 //         they add are the land part.
-//   STAT  u16 count and that many content ids in the order of their characters, which a sector's statics name by their
-//         place here. Then how many statics each of the map's chunks holds, row by row, as u16 planes, so a reader lays out
-//         every chunk's rows before any sector's statics come.
-//   BLDG  Optional. What its sectors' buildings name by number (shared/world/buildings.ts BuildingNames): u8 version 1, then
-//         five tables, each a u8 count and that many strings: kinds, recipes, forms, ways of falling, districts. A map
-//         without it has no buildings part and no buildings.
+//   STAT  u16 count and that many content ids in the order of their characters: every kind its statics are of, a reader's
+//         numbers for them. Then how many statics each of the map's chunks holds, row by row, as u16 planes, so a reader lays
+//         out every chunk's rows before any sector's statics come.
+//   BLDG  Optional. Every name its sectors' buildings hold (shared/world/buildings.ts BuildingNames), a reader's numbers for
+//         them: u8 version 1, then five tables, each a u8 count and that many strings: kinds, recipes, forms, ways of
+//         falling, districts. A map without it has no buildings part and no buildings.
 //   PART  u16 count, then each part's u8 kind, u8 column and u8 row of its square, u32 byte length, and its hash
 //         (partHash) as two u32s.
 //
@@ -80,11 +80,12 @@
 //               among them: sample (i, j)'s cell is (i >> 1, j >> 1), 257 a side of a whole sector. Then for each
 //               listed layer, for each of its chunks row by row, a u16 count and 7-byte rows: u8 kind, u16 x, u16 z in
 //               1/1024 m from the chunk's corner, u16 yaw.
-//   4 statics   a sector's statics, where it has some: u32 count n, then columns of n in the map's order, each as byte
-//               planes (every value's low byte, then the next): u16 kind, its place in STAT; u16 yaw less the piece
-//               before's, modulo 65,536; and x, y, z in 1/512 m from the square's corner and the datum, as zigzagged
-//               differences from the piece before's modulo 2^24, in 3 bytes (the first's from 0). Slot s of a chunk holds
-//               its s-th piece here. Then, where some of its pieces are bent along the street (shared/world/bends.ts), a
+//   4 statics   a sector's statics, where it has some: a u16 count and that many content ids, the kinds it holds in STAT's
+//               order, so its bytes depend on its own pieces alone; then u32 count n, then columns of n in the map's order,
+//               each as byte planes (every value's low byte, then the next): u16 kind, its place in its own kinds; u16 yaw
+//               less the piece before's, modulo 65,536; and x, y, z in 1/512 m from the square's corner and the datum, as
+//               zigzagged differences from the piece before's modulo 2^24, in 3 bytes (the first's from 0). Slot s of a
+//               chunk holds its s-th piece here. Then, where some of its pieces are bent along the street (shared/world/bends.ts), a
 //               u32 count of them, how many pieces lie before each one's since the one before it as a varint (its place
 //               in the columns' order, ascending), and each one's bend as eight 16-bit numbers (packBend) less what the
 //               bend before predicts (bendGuess), modulo 65,536, in planes: every bend's first number's low byte, then
@@ -107,8 +108,10 @@
 //               its places from the square's corner. A page asks for those round its body, for the ground's edges and its
 //               own car's grip; a server reads them all, for what a wheel meets at a street's and a walk's edge.
 //   8 buildings a sector's buildings (shared/world/buildings.ts SectorBuildings), where a building has a piece in it. u8
-//               version 1 and a u16 count n. Then columns of n as byte planes: a 6-byte id; u8 kind, recipe, form, district
-//               and way of falling, each its place in BLDG's table; u8 flags (1 a stair climbs in it, 2 one reaches its
+//               version 2 and a u16 count n. Then its own five tables, the names of BLDG's its buildings hold in BLDG's order,
+//               each a u8 count and that many strings: kinds, recipes, forms, districts, ways of falling. Then columns of n
+//               as byte planes: a 6-byte id; u8 kind, recipe, form, district and way of falling, each its place in its own
+//               table; u8 flags (1 a stair climbs in it, 2 one reaches its
 //               roof, 4 a place the city names by hand, 8 it has a row in another sector too); u8 storeys, u8 storeys
 //               walked, u8 metres a bay; u16 name, u16 address number and u16 street, each a string's number counting from
 //               1 or 0 for none; its frame's middle as i32 x and z in 1/512 m from the square's corner, u16 turn, i16 base
@@ -142,8 +145,8 @@ import { StreetSectors, decodeStreets } from "./streets.ts";
 import { HIT_PREFIX, bentNext, madeHits, walkedFlush } from "./bends.ts";
 import { BUILDINGS_VERSION, Buildings, SectorBuildings, type BuildingNames } from "./buildings.ts";
 
-export const MAP_VERSION = 14;
-/** Read too, until the city maps in var/maps are built again: they are 11, which is 14 with no streets part and no bent piece. */
+export const MAP_VERSION = 15;
+/** Read too, until the city maps in var/maps are built again: 11 is 15 with no streets part, no bent piece, and parts that name the head's kinds. */
 const KEPT_VERSION = 11;
 const MAGIC = 0x504d4e53;
 const HEADER_BYTES = 56;
@@ -1234,10 +1237,20 @@ function sectorStatics(statics: MapStatics | readonly MapStatic[], dims: FramedD
   for (let k = 0; k < n; k++) order[at[sector[k]!]!++] = k;
   // A difference is taken modulo 2^24, which the reader undoes: a square's widest is 2^19 units.
   const zigzag = (v: number): number => (v = (v << 8) >> 8, (v << 1) ^ (v >> 31));
+  const byId = [...ids.keys()];
+  // A kind's place in the sector's own table, which is the map's kinds it holds in the same order.
+  const local = new Uint16Array(ids.size);
+  const used = new Uint8Array(ids.size);
   const parts = sectors.map((sq, s): Uint8Array | null => {
     const count = counts[s + 1]! - counts[s]!;
     if (count === 0) return null;
     const o = new Out();
+    used.fill(0);
+    for (let i = 0; i < count; i++) used[id[order[counts[s]! + i]!]!] = 1;
+    let kinds = 0;
+    for (let g = 0; g < used.length; g++) if (used[g]) local[g] = kinds++;
+    o.u16(kinds);
+    for (let g = 0; g < used.length; g++) if (used[g]) o.text(byId[g]!);
     o.u32(count);
     const at = o.take(count * STAT_ROW);
     const b = o.bytes;
@@ -1254,7 +1267,7 @@ function sectorStatics(statics: MapStatics | readonly MapStatic[], dims: FramedD
       const bend = bends.has(k) ? Int16Array.from(bends.get(k)!) : null;
       if (bend && was) bentNext(px, py, pz, pyaw, was, bend, next);
       const [gx, gy, gz, gyaw] = bend && was ? next : [px, py, pz, pyaw];
-      plane(0, i, id[k]!, 2);
+      plane(0, i, local[id[k]!]!, 2);
       plane(2, i, yaw[k]! - gyaw!, 2);
       plane(4, i, zigzag(x - gx!), 3);
       plane(7, i, zigzag(y - gy!), 3);
@@ -1525,7 +1538,7 @@ export function writeMap(m: MapData): Uint8Array<ArrayBuffer> {
   for (const t of built?.sectors ?? []) {
     if (!t) continue;
     t.check(dims, built!.names, statics.chunks);
-    parts.push({ kind: "buildings", sq: squareOf(dims, SECTOR_CHUNKS, t.col, t.row)!, bytes: t.encode() });
+    parts.push({ kind: "buildings", sq: squareOf(dims, SECTOR_CHUNKS, t.col, t.row)!, bytes: t.encode(built!.names) });
   }
   const tops = m.tops;
   if (tops) {
@@ -2014,6 +2027,17 @@ function readTops(head: MapHead, sq: Square, s: In): TopsPiece {
 }
 
 function* readStatics(head: MapHead, sq: Square, s: In): Generator<void, StaticsPiece> {
+  const kindOf = kindIndex(head.kinds);
+  // The part's own kinds as the head's; a map of version 11 names the head's.
+  let own: Uint16Array | null = null;
+  if (head.version !== KEPT_VERSION) {
+    own = new Uint16Array(s.u16());
+    for (let k = 0; k < own.length; k++) {
+      const name = s.text(), at = kindOf.get(name);
+      if (at === undefined) throw new Error(`map: a sector's statics name a ${name}, which its head does not`);
+      own[k] = at;
+    }
+  }
   const n = s.u32();
   const b = s.take(n * STAT_ROW);
   // Its bent pieces first: a bent piece after a bent piece is coded against the guess of the one before.
@@ -2050,8 +2074,9 @@ function* readStatics(head: MapHead, sq: Square, s: In): Generator<void, Statics
   const off = (kind: number, x: number, y: number, z: number, what: string): Error => new Error(`map: a ${head.kinds[kind]} at ${x / STRUCT_UNITS}, ${y / STRUCT_UNITS}, ${z / STRUCT_UNITS} is off ${what}`);
   let [x, y, z, turn] = [0, 0, 0, 0];
   for (let i = 0, q = 0; i < n; i++) {
-    id[i] = b[i]! | (b[n + i]! << 8);
-    if (id[i]! >= head.kinds.length) throw new Error("map: a static piece is of a kind its table does not name");
+    const k = b[i]! | (b[n + i]! << 8);
+    if (k >= (own ? own.length : head.kinds.length)) throw new Error("map: a static piece is of a kind its table does not name");
+    id[i] = own ? own[k]! : k;
     // A bent piece after a bent piece: from where it would stand as the next of that one's line.
     const bent = q < bendAt.length && bendAt[q] === i;
     if (bent && q > 0 && bendAt[q - 1] === i - 1) {
@@ -2076,7 +2101,6 @@ function* readStatics(head: MapHead, sq: Square, s: In): Generator<void, Statics
   if (bendAt.length === 0) return { kind: "statics", sq, id, yaw, x: xs, y: ys, z: zs, chunk, bendAt, bend };
   // The collision pieces under its bent pieces, made from them as the writer counted them, those in this sector after its
   // own pieces.
-  const kindOf = kindIndex(head.kinds);
   const made: number[][] = [[], [], [], [], [], []];
   for (let q = 0; q < bendAt.length; q++) {
     const i = bendAt[q]!;
