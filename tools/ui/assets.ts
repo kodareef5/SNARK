@@ -2,6 +2,7 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join, resolve } from "node:path";
+import { FIELD_HEIGHT, FIELD_WIDTH } from "../../client/core/ui/field-icons.ts";
 import { GLASS_SIZE, GLASS_X, GLASS_Y, SKIN_WIDTH, skinPixels } from "../../client/core/ui/skin.ts";
 import { readPng } from "../pack/png-read.ts";
 import { partHash } from "../pack/manifest.ts";
@@ -38,7 +39,7 @@ export function uiSheet(): ReturnType<typeof skinPixels> {
 }
 
 /** `touch` is the touch controls' painted sheet, "" where it is not installed: a page fetches it only once it is touched. */
-export function buildUiAssets(dist: string): { atlas: string; touch: string; faces: HudFace[]; bytes: number; decodedBytes: number } {
+export function buildUiAssets(dist: string): { atlas: string; field: string; equipment: string; contacts: string; touch: string; faces: HudFace[]; bytes: number; decodedBytes: number; fieldDecodedBytes: number } {
   mkdirSync(join(dist, "assets"), { recursive: true });
   const sheet = uiSheet(), png = encodePng(sheet.width, sheet.height, sheet.data, 9);
   // Keep transparent RGB as well as coverage. The world and the wiki sample this same sheet.
@@ -55,10 +56,19 @@ export function buildUiAssets(dist: string): { atlas: string; touch: string; fac
     touch = `assets/touch.${partHash(sheet)}.${shipped.endsWith(".webp") ? "webp" : "png"}`;
     writeFileSync(join(dist, touch), sheet);
   }
+  const copyField = (name: string) => {
+    const bytes = readFileSync(resolve(import.meta.dir, "../../assets/source/ui", name + ".webp"));
+    const path = `assets/${name}.${partHash(bytes)}.webp`;
+    writeFileSync(join(dist, path), bytes);
+    return { path, size: bytes.length };
+  };
+  const field = copyField("field-icons");
+  const equipment = copyField("field-equipment");
+  const contacts = copyField("field-touch");
   const faces = hudFaces();
   for (const f of faces) writeFileSync(join(dist, f.url), f.bytes);
   copyFileSync(join(FONT_SOURCE, "OFL.txt"), join(dist, "assets/hud-font-license.txt"));
-  return { atlas: atlasName, touch, faces, bytes: atlas.length + faces[0]!.bytes.length, decodedBytes: sheet.data.byteLength };
+  return { atlas: atlasName, field: field.path, equipment: equipment.path, contacts: contacts.path, touch, faces, bytes: atlas.length + field.size + faces[0]!.bytes.length, decodedBytes: sheet.data.byteLength, fieldDecodedBytes: FIELD_WIDTH * FIELD_HEIGHT * 4 };
 }
 
 const FONT_SOURCE = resolve(import.meta.dir, "../../assets/raw/fonts/barlow");

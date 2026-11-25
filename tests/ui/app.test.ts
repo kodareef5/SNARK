@@ -60,8 +60,10 @@ test("opening the menu releases held movement and attacks until a deliberate res
 test("a headless client boots, draws, walks, and its interface says where it is", () => {
   const h = new Harness();
   const app = client(h, "ada");
-  // The readout is on at first start. The eye's own view is asked for, to measure from.
-  expect(app.ui.settings.diagnostics).toBe(true);
+  expect(app.ui.settings.diagnostics).toBe(false);
+  app.key("F3", true);
+  app.key("F3", false);
+  expect(app.ui.settings.debug).toBe(false);
   app.ui.settings.thirdPerson = false;
   expect(app.frame(0, 1280, 720)).toBeNull();
   expect(app.ui.frame.find(KEY_STATUS)!.text).toBe("connecting");
@@ -72,7 +74,8 @@ test("a headless client boots, draws, walks, and its interface says where it is"
   expect(app.ui.frame.find(KEY_STATUS)).toBeNull();
   expect(app.ui.frame.find(KEY_CROSS)).not.toBeNull();
   // The proving ground reads 5 to 10 each way, a unit 102.4 m (this was "53.1 lat  50.0 lon" when a map read 0 to 100).
-  expect(app.ui.frame.find(KEY_READOUT)!.text).toBe("7.7 lat  7.5 lon  N 0");
+  expect(app.ui.frame.find(KEY_READOUT)!.text).toContain("FPS");
+  expect(app.hud.readout[0]).toBe("7.7 lat  7.5 lon  N 0");
   expect(app.ui.frame.find(KEY_VITAL + 3)!.value).toBe(1); // stamina, from the predicted body
 
   app.key("KeyW", true);
@@ -84,7 +87,7 @@ test("a headless client boots, draws, walks, and its interface says where it is"
   expect(app.session.own.z).toBe(h.world.ents.z[e]!);
   expect(app.cam.z).toBe(app.session.own.z);
   expect(app.cam.y).toBeCloseTo(app.session.own.y + 1.62, 5);
-  expect(app.ui.frame.find(KEY_READOUT + 1)!.text).toContain(`z ${app.session.own.z.toFixed(1)}`);
+  expect(app.ui.frame.find(KEY_READOUT)!.text).toContain(`Z ${app.session.own.z.toFixed(1)}`);
 });
 
 test("the console is typed into, answered by the server, and holds the keyboard while it is open", () => {
@@ -257,9 +260,8 @@ test("two whole clients form a tribe, talk on three channels through the chat bo
 
   say(ada, "Enter", "hello, island");
   say(bob, "Insert", "right behind you");
-  // The tribe's channel is two Tabs on from Global in the open box.
+  // Enter reopens the last channel, Local, one Tab from Tribe.
   expect(bob.key("Enter", true)).toBe(true);
-  bob.key("Tab", true);
   bob.key("Tab", true);
   run(50);
   expect(bob.ui.frame.find(KEY_CHAT_TAG)!.text).toBe("Tribe");

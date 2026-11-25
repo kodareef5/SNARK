@@ -32,6 +32,8 @@ export const COMPASS: HudWidget<CompassModel> = {
       const at = tapeLayout(f, held, options.minimap || touch ? mapX - 2 : right - (mapTools ? 36 : 0) + 8);
       const degrees = inspect || options.diagnostics;
       if (at) {
+        at.y = f.top + 2;
+        at.width = Math.min(at.width, touch ? 144 : 198);
         buildCompass(f, m, at, degrees);
         m.compassBottom = at.y + TAPE_HEIGHT + 8 + (degrees ? lineHeight(S_LABEL) : 0);
       }

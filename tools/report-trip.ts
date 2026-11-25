@@ -1,7 +1,7 @@
 // `bun tools/report-trip.ts [--dist folder] [--canvas 1920x1080@1] [--tier high] [--seconds 10] [--reports folder]`: the
 // proof of the debug bar. A development server runs here on the proving ground with a reports folder of its own (a
 // temporary one unless --reports names one, never var/reports), and a headless Chrome joins at its spawn. Through the
-// DevTools protocol it becomes an admin, presses F3, throws an error in the page, has the server print a line, takes a
+// DevTools protocol it becomes an admin, presses Shift+F3, throws an error in the page, has the server print a line, takes a
 // picture of the page at each of the drawer's tabs, waits --seconds and saves a capture with words. The reader's tool
 // reads it back, and the trip holds: three pictures or more and the last at full size, none blank; a place within a
 // metre of the server's; 300 rows of the record or more, and where a frame went by slot; the page's error and the
@@ -59,7 +59,7 @@ try {
   await p.send("Page.enable");
   // The page exactly the size asked for, in points and device pixels, whatever the window keeps of it.
   await p.send("Emulation.setDeviceMetricsOverride", { width: cssW, height: cssH, deviceScaleFactor: dpr, mobile: false });
-  // The tier chosen, as the settings keep it (client/core/settings.ts); the bar is off until F3 below.
+  // The tier chosen, as the settings keep it (client/core/settings.ts); the bar is off until Shift+F3 below.
   await p.send("Page.addScriptToEvaluateOnNewDocument", { source: `localStorage.setItem("snark.interface", ${JSON.stringify(JSON.stringify({ version: 2, tier, debug: false, muted: true }))})` });
   // The ms each frame's callbacks take, summed, for the bar's cost below: the game's frame is its one callback.
   await p.send("Page.addScriptToEvaluateOnNewDocument", { source: "globalThis.tripRafMs = 0; { const raf = requestAnimationFrame.bind(globalThis); globalThis.requestAnimationFrame = (cb) => raf((t) => { const t0 = performance.now(); try { cb(t); } finally { globalThis.tripRafMs += performance.now() - t0; } }); }" });
@@ -92,7 +92,9 @@ try {
   // A development server needs no password to make the page an admin, whose bar saves and hears the server.
   await chat("/enablecheats");
   await until("the session an admin", `${app}.session.admin === true`, 20_000);
+  await p.send("Input.dispatchKeyEvent", { type: "keyDown", code: "ShiftLeft", key: "Shift", windowsVirtualKeyCode: 16 });
   await key("F3", 114);
+  await p.send("Input.dispatchKeyEvent", { type: "keyUp", code: "ShiftLeft", key: "Shift", windowsVirtualKeyCode: 16 });
   await until("the bar on, its drawer open and its port come", `${bar}?.open === true && ${bar}.port !== null`, 30_000);
   await until("the record running", `(${bar}.perf.rows ?? 0) > 240`, 60_000);
   // An error the page meets, and a line the server prints: both belong in the bar's one log.

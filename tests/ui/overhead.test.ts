@@ -47,6 +47,7 @@ test("the marks over creatures fit every window shape: on the canvas wherever th
         for (const heart of [false, true]) {
           const ui = new Ui();
           ui.settings.diagnostics = true;
+          ui.settings.diagnostics = true;
           ui.build(aspect, fullest(u, v, heart), null);
           const f: UiFrame = ui.frame;
           const where = `${name} at ${u}, ${v}${heart ? " with a heart" : ""}`;

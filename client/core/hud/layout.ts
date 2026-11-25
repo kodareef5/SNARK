@@ -25,7 +25,9 @@ export const HOTBAR_CELL = 52;
  * ammo line and the status line. It does not move as those come and go.
  */
 export function chatBand(f: UiFrame, _m: HudModel): { top: number; bottom: number } {
-  return { top: f.height / 2 + 92, bottom: f.height - f.bottom - MARGIN - HOTBAR_CELL - (f.width < 1100 ? 102 : 20) };
+  const beside = hotbarLeft(f, 10) - 132 > Math.min(285, f.width * .22) + MARGIN;
+  const bottom = f.height - f.bottom - MARGIN - (beside ? 8 : HOTBAR_CELL + 30);
+  return { top: Math.max(f.top + MARGIN, Math.min(f.height / 2 + 32, bottom - 178)), bottom };
 }
 
 /** A hotbar cell's side for `slots` of them on this canvas, the bar's left edge and its top. */
@@ -69,7 +71,7 @@ function panelOf(f: UiFrame, m: HudModel, touch: TouchPlan | null): { w: number;
 /** The top of the HUD's column in the top left, where the readout starts: by touch under the bar, and under the panel where it stands there. */
 function columnTop(f: UiFrame, m: HudModel, touch: TouchPlan | null): number {
   const p = panelOf(f, m, touch);
-  return touch ? touch.stackY + (p?.aside ? p.h + 8 : 0) : f.top + MARGIN;
+  return touch ? touch.stackY + (p?.aside ? p.h + 8 : 0) : f.top + MARGIN + 47;
 }
 
 const layout: HudLayout = {
@@ -86,7 +88,7 @@ export function layoutHud(f: UiFrame, m: HudModel, options: Pick<Settings, "mini
   at.options = options; at.controls = controls; at.inspect = inspect; at.touch = touch;
   const left = (at.left = f.left + MARGIN), right = (at.right = W - f.right - MARGIN);
   at.foot = f.height - f.bottom - MARGIN;
-  const MAP = (at.MAP = touch ? touch.map : MINIMAP_SIZE);
+  const MAP = (at.MAP = touch ? touch.map : Math.round(Math.max(92, Math.min(MINIMAP_SIZE + 26, (right - left) * .24))));
   const panel = panelOf(f, m, touch);
   at.dash = m.vehicle?.active ? m.vehicle : null;
   at.panel = panel !== null;
@@ -97,16 +99,16 @@ export function layoutHud(f: UiFrame, m: HudModel, options: Pick<Settings, "mini
   // The readout, and the voice's lines under it. On a narrow canvas the readout keeps left of the minimap.
   const readout = (at.readout = options.diagnostics);
   at.readW = Math.min(right - left - (W < NARROW && options.minimap ? MAP + 8 : 0), 400);
-  const columnFoot = (at.columnFoot = readout ? top + m.readout.length * lh + 4 : top);
+  const columnFoot = (at.columnFoot = readout ? top + (inspect ? m.readout.length * lh : 19) + 4 : top);
   at.voiceY = columnFoot;
   at.mapX = right - MAP;
   const mapY = (at.mapY = f.top + MARGIN);
-  at.mapTools = controls && (inspect || touch !== null);
+  at.mapTools = controls && (inspect || (touch !== null && !options.minimap));
   // The car's instruments sit under the minimap and its clock, or in the minimap's place while it is hidden. A
   // helicopter's and a boat's are taller, with their state and their keys. The jet fuel stands there too, without a
   // vehicle. On a narrow canvas they stand under the readout where it has the minimap's width.
   let dashY = aside && touch ? touch.stackY : options.minimap ? mapY + MAP + 28 : mapY;
-  if (W < NARROW && !aside) dashY = Math.max(dashY, options.minimap || !readout ? 0 : columnFoot + 8);
+  if (W < NARROW && !aside) dashY = Math.max(dashY, options.minimap ? 0 : readout ? columnFoot + 8 : top);
   at.dashY = dashY;
   at.dashX = aside ? left : right - at.dashW;
   return at;

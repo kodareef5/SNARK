@@ -76,8 +76,8 @@ export class Settings {
   compass = true;
   /** The view a survivor rises in: from behind, or from the eye. V changes it, and it is kept. */
   thirdPerson = true;
-  diagnostics = true;
-  /** The debug bar at the screen's foot (debug/debug.ts): F3, `/debug` or the Interface tab turn it on, and it is kept. */
+  diagnostics = false;
+  /** The debug bar at the screen's foot (debug/debug.ts): Shift+F3, `/debug` or the Interface tab turn it on, and it is kept. */
   debug = false;
   vitalLabels = false;
   minimapZoom = -1;
@@ -197,6 +197,6 @@ export const SETTING_ROWS: readonly SettingRow[] = [
 export function toggleDebug(s: Settings): string {
   s.debug = !s.debug;
   s.changed();
-  return s.debug ? "debug bar on: F3 opens its drawer" : "debug bar off";
+  return s.debug ? "debug bar on: Shift+F3 opens its drawer" : "debug bar off";
 }
 

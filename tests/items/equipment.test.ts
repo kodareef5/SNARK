@@ -558,7 +558,7 @@ artTest("the client draws what is worn and held, and the hotbar and inventory sc
     fits(f, name);
     expect(f.find(cell(inv.hotbar + 9))!.interactive).toBe(true);
     expect(f.find(cell(inv.armor + 4))!.interactive).toBe(true);
-    expect(f.find(KEY_INV_ROW_LABEL)!.text).toBe("Hotbar: keys 1 to 0");
+    expect(f.find(KEY_INV_ROW_LABEL)!.text).toBe("Hotbar");
     expect(f.find(KEY_INV_ACTION + 3)!.text).toBe("Detach");
   }
   run(50);

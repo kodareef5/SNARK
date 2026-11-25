@@ -89,3 +89,6 @@ __pycache__/
 /planning/**/*.txt
 /planning/**/*.zip
 !/assets/source/maps/*/art/map.png
+!/assets/source/ui/field-icons.webp
+!/assets/source/ui/field-touch.webp
+!/assets/source/ui/field-equipment.webp

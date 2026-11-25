@@ -18,7 +18,7 @@ import { K_BUTTON, K_INPUT, K_SLIDER, baseKey } from "../../client/core/ui/nodes
 import { KEY_SETTINGS_PARTS, KEY_SETTINGS_TAB, SETTING_GROUPS, type SettingsTab } from "../../client/core/ui/settings.ts";
 import { INPUT_SETTINGS } from "../../client/core/ui/settings-input.ts";
 import { Chart } from "../../client/core/tactical.ts";
-import { KEY_MAP_IMAGE, type MapScreen } from "../../client/core/ui/screens.ts";
+import { KEY_MAP_IMAGE, KEY_MAP_TOOLS, type MapScreen } from "../../client/core/ui/screens.ts";
 import { buildProvingHeightfield } from "../../shared/world/proving.ts";
 import { corePack } from "../fixtures/pack.ts";
 import { compileContent } from "../../shared/content/registry.ts";
@@ -234,6 +234,8 @@ test("the map takes a finger's drag through the list, with no click", () => {
   const picture = ui.frame.find(KEY_MAP_IMAGE)!;
   expect(picture.owner).toBe(ui.screens.indexOf(map));
   const [cx, cy] = [picture.x + picture.w / 2, picture.y + picture.h / 2];
+  ui.pointer(0, KEY_MAP_TOOLS, cx, cy, 0, session);
+  ui.build(16 / 9, hud, session);
   const before = hud.chart.fullU;
   ui.pointer(0, KEY_MAP_IMAGE, cx, cy, 0, session, 1);
   ui.pointer(2, KEY_MAP_IMAGE, cx + 60, cy, 0, session, 1);

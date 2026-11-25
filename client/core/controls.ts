@@ -40,6 +40,8 @@ export class Controls {
   yaw = 0;
   pitch = 0;
   buttons = 0;
+  /** Buttons held only by a finger. */
+  touchOnly = 0;
   /** Scales LOOK_SPEED. It is the player's sensitivity, reduced while the view is narrowed to aim. */
   zoom = 1;
   /**
@@ -89,7 +91,7 @@ export class Controls {
   heli(on: boolean): void {
     if (on === this.helicopter) return;
     this.helicopter = on; this.directFlight = false; this.stance = 0; this.wing = false;
-    this.held.clear(); this.padHeld.clear(); this.mouse = this.padMouse = 0; this.refresh();
+    this.held.clear(); this.padHeld.clear(); this.mouse = this.padMouse = this.touchMouse = 0; this.refresh();
   }
   /** At the wheel of a car with thrusters, or not. */
   thrusterCar(on: boolean): void {
@@ -100,6 +102,7 @@ export class Controls {
   private readonly padHeld = new Set<string>();
   private mouse = 0;
   private padMouse = 0;
+  private touchMouse = 0;
   private analogX = 0;
   private analogZ = 0;
   /** The touch stick's, apart from the pad's: a pad not there sends its stick at rest every frame. */
@@ -155,11 +158,12 @@ export class Controls {
     return true;
   }
 
-  mouseButton(button: number, down: boolean, source = 0): void {
+  mouseButton(button: number, down: boolean, source = 0, singleTick = false): void {
     const bit = this.helicopter ? 0 : MOUSE[button] ?? 0;
     if (bit === 0) return;
-    if (this.board && down) this.pulses.set(bit, this.tick + SKATE_PULSE);
+    if (this.board && down && !singleTick) this.pulses.set(bit, this.tick + SKATE_PULSE);
     if (source === 1) this.padMouse = down ? this.padMouse | bit : this.padMouse & ~bit;
+    else if (source === 2) this.touchMouse = down ? this.touchMouse | bit : this.touchMouse & ~bit;
     else this.mouse = down ? this.mouse | bit : this.mouse & ~bit;
     this.refresh();
   }
@@ -175,7 +179,7 @@ export class Controls {
   release(): void {
     this.held.clear();
     this.padHeld.clear();
-    this.mouse = 0;
+    this.mouse = this.touchMouse = 0;
     this.padMouse = this.analogX = this.analogZ = this.touchX = this.touchZ = 0;
     this.refresh();
   }
@@ -202,6 +206,7 @@ export class Controls {
     for (const code of k) buttons |= bindings[code] ?? 0;
     for (const code of this.padHeld) buttons |= bindings[code] ?? 0;
     if (this.board) for (const [bit, until] of this.pulses) if (until >= this.tick) buttons |= bit;
-    this.buttons = buttons;
+    this.touchOnly = this.touchMouse & ~buttons;
+    this.buttons = buttons | this.touchMouse;
   }
 }

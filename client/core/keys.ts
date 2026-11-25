@@ -17,13 +17,16 @@ import { PLACEMENT_KEYS } from "./vehicle-placement.ts";
 import { VISOR_KEYS } from "./visor.ts";
 import type { TravelScreen } from "./ui/travel.ts";
 
-// F3 opens the debug bar's drawer and F8 saves what the bar holds, from any screen (debug/debug.ts).
+// F3 toggles field telemetry. Shift+F3 opens the debug drawer and F8 saves its report.
 const DEBUG: KeyRow = {
   name: "debug",
   keys: ["F3", "F8"],
   press(c, code, down, repeat) {
     if (code === "F8" && !c.ui.settings.debug) return undefined;
-    if (down && !repeat) c.ui.debugKey(code);
+    if (down && !repeat) {
+      if (code === "F3" && !c.shift) c.ui.toggleDiagnostics();
+      else c.ui.debugKey(code);
+    }
     return true;
   },
 };

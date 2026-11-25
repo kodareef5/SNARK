@@ -84,8 +84,7 @@ test("inspection releases the camera and exposes details only until its key is r
 test("saved preferences bound numeric values and never restore transient actions", () => {
   const settings = new Settings();
   for (const bad of [null, "{", "null", "[]", '{"version":99,"minimap":false}', '{"minimap":"false","diagnostics":3}']) settings.restoreInterface(bad);
-  // At first start the view is from behind, the readout is on and the debug bar off; a saved choice wins over each.
-  expect([settings.minimap, settings.thirdPerson, settings.diagnostics, settings.debug]).toEqual([true, true, true, false]);
+  expect([settings.minimap, settings.thirdPerson, settings.diagnostics, settings.debug]).toEqual([true, true, false, false]);
   settings.restoreInterface('{"version":1,"minimap":false,"tier":"ultra"}');
   expect([settings.minimap, settings.tier, settings.chosen]).toEqual([true, "medium", false]);
   settings.restoreInterface('{"version":2,"minimap":false,"vitalLabels":true,"thirdPerson":false,"diagnostics":false,"debug":true}');
@@ -298,7 +297,7 @@ test("the dashboard sits under the minimap or in its place, clear of the readout
     v.rotor = kind === "helicopter"; v.boat = kind === "boat";
     const build = (map: boolean): UiFrame => {
       const ui = new Ui(), hud = new HudModel();
-      if (!numbers) ui.settings.diagnostics = false;
+      ui.settings.diagnostics = numbers;
       hud.vehicle = v;
       hud.readout.fill("25.8 N 80.2 W  NE 41");
       // Every vital shows: oxygen short, torpor up.
@@ -321,7 +320,7 @@ test("the dashboard sits under the minimap or in its place, clear of the readout
     // Hidden, the minimap leaves its place; on a narrow canvas the readout takes its width, and the panel stands under it.
     const map = minimap ? f : build(true), picture = map.find(KEY_MINIMAP)!, clock = map.find(KEY_CLOCK), readout = f.find(KEY_READOUT + 2);
     if (minimap) expect(top, where).toBeGreaterThanOrEqual((clock ?? picture).y + (clock ?? picture).h);
-    else expect(top, where).toBeCloseTo(f.width < 640 && readout ? Math.max(picture.y, readout.y + readout.h + 4 + 8) : picture.y, 5);
+    else expect(top, where).toBeCloseTo(f.width < 640 ? (readout ? readout.y + readout.h + 12 : picture.y + 47) : picture.y, 5);
     const toggle = f.find(KEY_MINIMAP_TOGGLE)!;
     expect(toggle.x + toggle.w <= left - 2 || toggle.y + toggle.h <= top || toggle.y >= bottom, where).toBe(true);
     for (const n of nodes) if (n.key >= KEY_BUFF && n.key < KEY_BUFF + 16) expect(n.y >= bottom || n.x + n.w <= left, `${where}: buff ${n.key}`).toBe(true);

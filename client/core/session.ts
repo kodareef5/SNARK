@@ -163,7 +163,7 @@ import type { Heightfield } from "../../shared/world/heightfield.ts";
 import type { TideEyeSite } from "../../shared/world/tide-eye.ts";
 import { ORB_GAIN_UNITS, type OrbSite } from "../../shared/world/orb.ts";
 import { readScreens, type ScreenState } from "../../shared/video/screen.ts";
-import { staticKinds, type MapLandmark, type MapStatics } from "../../shared/world/mapfile.ts";
+import { staticKinds, type MapLandmark, type MapSpawn, type MapStatics } from "../../shared/world/mapfile.ts";
 import type { Buildings } from "../../shared/world/buildings.ts";
 import { NodeField, type NodeSource } from "../../shared/world/nodes.ts";
 import { heapAt, heapHealth } from "../../shared/world/breaking.ts";
@@ -212,6 +212,8 @@ export interface SessionOptions {
   statics?: MapStatics;
   /** The landmarks that map file sets down (MapContent). Past the near rows the scene draws each from its far mesh. */
   landmarks?: readonly MapLandmark[];
+  /** Named public places baked into this map header. */
+  chartPlaces?: readonly MapSpawn[];
   tideEyes?: readonly TideEyeSite[];
   /** The orbs in that map's head, which the scene draws at any distance. */
   orbs?: readonly OrbSite[];
@@ -836,6 +838,8 @@ export class ClientSession {
 
   private readonly conn: Connection;
   private readonly opts: SessionOptions;
+
+  get chartPlaces(): readonly MapSpawn[] | undefined { return this.opts.chartPlaces; }
   private move: MoveParams | null = null;
   private readonly inputs = new InputBuffer(HISTORY);
   /** Buttons seen down on any frame since the last tick was sampled. */
@@ -1015,9 +1019,9 @@ export class ClientSession {
 
   /**
    * Samples the given input for every tick that elapses. moveX and moveZ are -1..1 (right, forward). yaw and pitch are radians.
-   * A button down on any frame since the last tick is down for the next one, so a press shorter than a tick is not lost between two.
+   * A held button seen between ticks reaches the next tick. The caller keeps single-tick buttons until sampled or canceled.
    */
-  update(nowMs: number, moveX: number, moveZ: number, yaw: number, pitch: number, buttons: number): void {
+  update(nowMs: number, moveX: number, moveZ: number, yaw: number, pitch: number, buttons: number, singleTick = 0): void {
     if (this.state !== "active") return;
     let dt = this.lastNow < 0 ? 0 : nowMs - this.lastNow;
     const frameMs = dt;
@@ -1060,6 +1064,8 @@ export class ClientSession {
     this.ownYaw = yaw;
     this.ownPitch = pitch;
 
+    const once = buttons & singleTick;
+    buttons &= ~singleTick;
     this.tapped |= buttons;
     this.holdGround();
     const target = Math.floor(this.tickClock);
@@ -1072,7 +1078,7 @@ export class ClientSession {
     while (this.simTick < target && steps < MAX_STEPS_PER_UPDATE) {
       const t = ++this.simTick;
       steps++;
-      this.inputs.set(t, qx, qz, qyaw, qpitch, this.tapped | buttons, fineYaw, finePitch);
+      this.inputs.set(t, qx, qz, qyaw, qpitch, this.tapped | buttons | (steps === 1 ? once : 0), fineYaw, finePitch);
       this.letGo[t & (HISTORY - 1)] = 0;
       this.tapped = 0;
       this.ownPrev.copy(this.own);
