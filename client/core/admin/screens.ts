@@ -60,6 +60,31 @@ export interface ScreensState {
   readonly pending: readonly PendingClip[];
 }
 
+/** GET /admin/screens/live: what the page polls between full reads. `manifest` is the manifest's id, `pending` the waiting uploads' ids. */
+export interface ScreensLive {
+  readonly revision: number;
+  readonly now: number;
+  readonly night: boolean;
+  readonly world: ScreensState["world"];
+  readonly manifest: string;
+  readonly pending: readonly string[];
+  readonly screens: readonly StateScreen[];
+}
+
+/**
+ * What the page does with a live answer: read the whole state again where the library or its waiting uploads moved on,
+ * drop an answer older than what it shows, or run its clocks and screens on from it.
+ */
+export function liveStep(state: ScreensState, live: ScreensLive): "state" | "drop" | "merge" {
+  if (live.revision < state.revision) return "drop";
+  const pending = state.pending.map((p) => p.id);
+  const same = live.revision === state.revision && live.manifest === state.manifest.id && live.pending.length === pending.length && live.pending.every((id, i) => id === pending[i]);
+  return same ? "merge" : "state";
+}
+
+/** The state with a live answer's clocks and screens. */
+export const withLive = (state: ScreensState, live: ScreensLive): ScreensState => ({ ...state, now: live.now, night: live.night, world: live.world, screens: live.screens });
+
 /** What a screen may play: the items that are not hidden, by id, an image marked so its channel times it. */
 export const timedOf = (clips: readonly StateClip[]): Map<string, Timed> =>
   new Map(clips.filter((c) => !c.hidden).map((c) => [c.id, isImage(c) ? { id: c.id, seconds: 0, image: true } : { id: c.id, seconds: c.seconds }]));

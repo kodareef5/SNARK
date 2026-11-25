@@ -8,8 +8,8 @@ import "./shell.ts";
 import { esc } from "../core/admin/format.ts";
 import {
   ColourTrack, POSTER_BYTES, POSTER_LONG, POSTER_QUALITIES, SAMPLE_LONG, TYPE_LINES, addToChannel, bandMeans, base64, batchWords, channelsLeft, checkImage, draftChannels, draftDiffers,
-  draftFault, ffmpegLine, findClips, fitLong, freeChannelName, kbpsOf, lengthText, moveIn, overCaps, progressOf, searchOfType, sentChannels, sortClips, stillColours, timedOf, titleOf,
-  typeOfSearch, typeWords, withType, type ChannelDraft, type ClipSort, type Probe, type ScreensState, type StateClip,
+  draftFault, ffmpegLine, findClips, fitLong, freeChannelName, kbpsOf, lengthText, liveStep, moveIn, overCaps, progressOf, searchOfType, sentChannels, sortClips, stillColours, timedOf, titleOf,
+  typeOfSearch, typeWords, withLive, withType, type ChannelDraft, type ClipSort, type Probe, type ScreensLive, type ScreensState, type StateClip,
 } from "../core/admin/screens.ts";
 import type { FaceWipe } from "../core/admin/screens-faces.ts";
 import type { StageFrame, StageLook, Target, Tile } from "../core/admin/screens-stage.ts";
@@ -138,6 +138,32 @@ async function load(): Promise<void> {
   } finally {
     S.loading = false;
   }
+}
+
+/** Reads what plays now, and the whole library only where it changed. */
+async function poll(): Promise<void> {
+  if (!S.state) return load();
+  if (S.loading) return;
+  S.loading = true;
+  let full = false;
+  try {
+    const r = await fetch(API + "live", { cache: "no-store" });
+    if (!r.ok) throw new Error(r.status === 401 ? "Sign in on the overview first." : `The library answered ${r.status}: ${await r.text()}`);
+    const live = (await r.json()) as ScreensLive, step = liveStep(S.state, live);
+    full = step === "state";
+    if (step === "merge") {
+      S.state = withLive(S.state, live);
+      S.at = performance.now();
+      draw();
+    }
+    $("reload").hidden = true;
+  } catch (e) {
+    failed(e);
+    $("reload").hidden = false;
+  } finally {
+    S.loading = false;
+  }
+  if (full) await load();
 }
 
 async function post(path: string, body: unknown): Promise<{ status: number; answer: Record<string, unknown> }> {
@@ -1254,7 +1280,7 @@ drop.ondrop = (e) => {
 };
 
 void load().then(() => startStage());
-// The library is read again every five seconds while the page is in view, and what plays is run on each second.
-setInterval(() => !document.hidden && void load(), 5000);
+// What plays is read every five seconds while the page is in view, the library only when it changed; the clock runs on each second.
+setInterval(() => !document.hidden && void poll(), 5000);
 setInterval(() => !document.hidden && drawNow(), 1000);
-document.addEventListener("visibilitychange", () => !document.hidden && void load());
+document.addEventListener("visibilitychange", () => !document.hidden && void poll());

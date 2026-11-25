@@ -8,16 +8,15 @@ import {
 import { screenAt } from "../../shared/video/programme.ts";
 import { manifestPath } from "../../shared/video/screen.ts";
 import { entryReply, readEntryJson } from "../survivor-access.ts";
-import { type LibraryDoc, type LibraryView, type Refusal, type VideoLibrary } from "./library.ts";
+import { CHANNELS_MAX, NAME_MAX, type LibraryDoc, type LibraryView, type Refusal, type VideoLibrary } from "./library.ts";
 import { publishClip, takeImage, takeUpload, typesOf } from "./upload.ts";
 
-const CHANNELS_MAX = 32;
 const ITEMS_MAX = 200;
-const NAME_MAX = 40;
 
-export const SCREEN_PATHS = ["/admin/screens/state", "/admin/screens/upload", "/admin/screens/clip", "/admin/screens/edit", "/admin/screens/image"] as const;
+export const SCREEN_PATHS = ["/admin/screens/state", "/admin/screens/upload", "/admin/screens/clip", "/admin/screens/edit", "/admin/screens/image", "/admin/screens/live"] as const;
+const SCREEN_GETS: readonly string[] = ["/admin/screens/state", "/admin/screens/live"];
 /** The paths that take a POST, which the front passes on (server/front.ts). */
-export const SCREEN_POSTS: readonly string[] = SCREEN_PATHS.slice(1);
+export const SCREEN_POSTS: readonly string[] = SCREEN_PATHS.filter((p) => !SCREEN_GETS.includes(p));
 
 /**
  * The world that answers, as its players see the ball: night or day, its clock's seconds (the orb's programme runs on
@@ -55,9 +54,22 @@ export function screensState(lib: VideoLibrary, world: ScreenWorld, now = Date.n
       kBps: isImage(c) ? 0 : Math.round(c.bytes / c.seconds / 100) / 10,
     })),
     channels: view.doc.channels,
-    screens: view.doc.screens.map((s) => ({ ...s, playing: screenAt(s, view.channels, view.timed, now, night) })),
+    screens: playing(view, now, night),
     pending: lib.allPending(),
   };
+}
+
+/** Each screen's record with what it plays at `now`. */
+const playing = (view: LibraryView, now: number, night: boolean): Record<string, unknown>[] =>
+  view.doc.screens.map((s) => ({ ...s, playing: screenAt(s, view.channels, view.timed, now, night) }));
+
+/**
+ * What the page polls between full reads: the revision, the manifest's id and the waiting uploads' ids (so it knows to
+ * read the state again), the clocks, and each screen with what it plays now. No items, so no colour tracks.
+ */
+export function screensLive(lib: VideoLibrary, world: ScreenWorld, now = Date.now()): Record<string, unknown> {
+  const view = lib.view();
+  return { revision: view.revision, now, night: world.night, world, manifest: view.manifestId, pending: lib.allPending().map((p) => p.id), screens: playing(view, now, world.night) };
 }
 
 const bad = (error: string): Refusal => ({ status: 400, error });
@@ -221,7 +233,10 @@ async function edit(req: Request, lib: VideoLibrary, world: ScreenWorld): Promis
 export function screensAdmin(req: Request, path: string, lib: VideoLibrary, world: () => ScreenWorld): Promise<Response> | Response | null {
   if (!(SCREEN_PATHS as readonly string[]).includes(path)) return null;
   const read = req.method === "GET" || req.method === "HEAD";
-  if (path === "/admin/screens/state") return read ? (lib.sweep(), entryReply(screensState(lib, world()))) : new Response(null, { status: 405, headers: { allow: "GET" } });
+  if (SCREEN_GETS.includes(path)) {
+    if (!read) return new Response(null, { status: 405, headers: { allow: "GET" } });
+    return path === "/admin/screens/live" ? entryReply(screensLive(lib, world())) : (lib.sweep(), entryReply(screensState(lib, world())));
+  }
   if (req.method !== "POST") return new Response(null, { status: 405, headers: { allow: "POST" } });
   if (path === "/admin/screens/upload") return (lib.sweep(), takeUpload(req, lib));
   if (path === "/admin/screens/image") return (lib.sweep(), takeImage(req, lib));
