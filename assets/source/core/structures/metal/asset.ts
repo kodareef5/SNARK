@@ -5,14 +5,15 @@
 // piece's own colour and wear the "plate" material the card makes from a recipe (content/texgen/materials.ts), the
 // frame and the bolts are palette colours.
 
-import { FORMS, PLANNED_FORMS } from "../../../../../content/building/forms.ts";
+import { ALL_FORMS } from "../../../../../content/building/forms.ts";
 import type { FormDef } from "../../../../../shared/world/lattice/forms.ts";
 import type { PiecesAsset } from "../../../../../tools/art/spec.ts";
 import { MADE_PIECE_TRIANGLES, TRIM_TRIANGLES } from "../../../../../tools/art/check.ts";
 import { errorOf, statedErrors } from "../../../../../tools/pack/pieces/lod.ts";
 import { METAL, bakeMetal } from "../../../../../tools/pack/pieces/metal.ts";
 
-const ALL: Readonly<Record<string, FormDef>> = { ...FORMS, ...PLANNED_FORMS };
+// Every row by its name: the nine, the 25 past them, and the leaves stood open with the double door.
+const ALL: Readonly<Record<string, FormDef>> = ALL_FORMS;
 
 export default {
   kind: "pieces",
