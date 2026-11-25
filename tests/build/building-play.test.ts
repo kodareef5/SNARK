@@ -870,7 +870,9 @@ test("a house that comes down: whoever watches is told of it as a few removals a
   expect(fell.every((r) => r.ox === began[0] && r.oy === began[1] && r.oz === began[2] && r.tick > from && r.tick < from + 60)).toBe(true);
   expect(new Set(bob.rubble.map((r) => `${r.kind} ${r.x} ${r.y} ${r.z}`)).size).toBe(pieces);
   expect(new Set(fell.map((r) => r.tick)).size).toBe(h.host.build.collapse.waves - waves);
-  expect([s.rubble.length, app.falling!.taken, app.falling!.dropped, app.falling!.count]).toEqual([0, pieces, 0, 0]);
+  // What fell whole is gone; the destroyed foundations still lie in fragments until they shrink out.
+  expect([s.rubble.length, app.falling!.taken, app.falling!.dropped, app.falling!.count]).toEqual([0, pieces, 0, N * N]);
+  expect(Array.from({ length: N * N }, (_, i) => app.falling!.sets[i] !== null)).toEqual(Array.from({ length: N * N }, () => true));
   expect(most).toBeGreaterThan(pieces / 2);
   expect(drawn).toBeGreaterThan(10);
 
