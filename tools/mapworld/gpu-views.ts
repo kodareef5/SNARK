@@ -4,9 +4,12 @@
 //   bun tools/mapworld/gpu-views.ts <file.snmap> <cameras.json> <out folder> --dist <built client> [--tiers high,medium]
 //                                   [--seconds 40] [--only name,name] [--off effect,effect] [--hide-hud] [--film]
 //                                   [--canvas 1920x1080@1] [--page key=value] [--suffix name]
+//                                   [--screen once:<clip>|channel:<name>] [--band] [--fill]
 //
 // --canvas is the page in points and the device pixels a point (1800x962@2 is a laptop's 3,600 by 1,924 canvas), --page
-// adds to each page's address (`scale=1`, client/core/app.ts address), and --suffix ends each picture's name.
+// adds to each page's address (`scale=1`, client/core/app.ts address), and --suffix ends each picture's name. --screen
+// sets the orb, through the Screens page's own route, to play a starter clip whose title holds <clip>, or a channel;
+// --band wraps it round the ball and --fill crops it to the face.
 //
 // The client is one built apart (`bun run build -- --dist DIR`), never the checkout's client/dist. A server on the map
 // answers each view's /__look with its orders (cheats, the hour, the way to face) and holds the survivor there as a ghost,
@@ -33,7 +36,7 @@ import { placeFileCameras } from "./obelisk-cameras.ts";
 
 interface Camera { run?: string[]; cast?: { before?: number; after?: number }; obelisk?: string; fromSpawn?: string; hour?: number; eyeSeconds?: number; replayEyeSeconds?: number; replayDuration?: number; name: string; x: number; z: number; up?: number; y?: number; look?: [number, number, number?]; yaw?: number; pitch?: number }
 
-const { values, positionals } = parseArgs({ allowPositionals: true, options: { film: { type: "boolean" }, "hide-hud": { type: "boolean" }, dist: { type: "string" }, tiers: { type: "string", default: "high,medium" }, seconds: { type: "string", default: "40" }, only: { type: "string" }, off: { type: "string" }, canvas: { type: "string", default: "1920x1080@1" }, page: { type: "string", multiple: true, default: [] }, suffix: { type: "string", default: "" } } });
+const { values, positionals } = parseArgs({ allowPositionals: true, options: { film: { type: "boolean" }, "hide-hud": { type: "boolean" }, dist: { type: "string" }, tiers: { type: "string", default: "high,medium" }, seconds: { type: "string", default: "40" }, only: { type: "string" }, off: { type: "string" }, canvas: { type: "string", default: "1920x1080@1" }, page: { type: "string", multiple: true, default: [] }, suffix: { type: "string", default: "" }, screen: { type: "string" }, band: { type: "boolean" }, fill: { type: "boolean" } } });
 const [size, dpr = "1"] = values.canvas!.split("@"), [winW, winH] = size!.split("x").map(Number), scale = Number(dpr);
 const [map, list, out] = positionals;
 if (!map || !list || !out || !values.dist) throw new Error("bun tools/mapworld/gpu-views.ts <file.snmap> <cameras.json> <out folder> --dist <built client>");
@@ -77,6 +80,7 @@ const server = startServer({
   dev: true, hostname: "127.0.0.1", port: 0, dbPath: join(work, "world.db"), config: loadConfigFolder(DEV_CONFIG, []).rules, map, clientDir: values.dist,
   routes: (_req, url) => (url.pathname === "/__look" ? (orders.has(url.searchParams.get("view") ?? "") ? Response.json(orders.get(url.searchParams.get("view")!)) : new Response("no such view", { status: 404 })) : null),
 });
+if (values.screen) await showOnOrb(`http://127.0.0.1:${server.port}`, values.screen, values.band ?? false, values.fill ?? false);
 const hf = server.host.world.hf;
 const ground = (x: number, z: number): number => Math.max(hf.heightAt(x, z), hf.seaLevel);
 for (const v of views) {
@@ -179,3 +183,19 @@ try {
   writeFileSync(join(out, "views.json"), `${JSON.stringify({ map, cameras: list, hour: file.hour ?? 14, seconds, pictures: report }, null, 2)}\n`);
 }
 process.exit(0);
+
+/** Sets the orb as the Screens page would (server/video/routes.ts): `once:<words of a clip's title>` or `channel:<name>`. */
+async function showOnOrb(base: string, what: string, band: boolean, fill: boolean): Promise<void> {
+  const state = async (): Promise<{ revision: number; clips: { id: string; title: string }[] }> => (await (await fetch(`${base}/admin/screens/state`)).json()) as { revision: number; clips: { id: string; title: string }[] };
+  const edit = async (body: object): Promise<void> => {
+    const res = await fetch(`${base}/admin/screens/edit`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ revision: (await state()).revision, ...body }) });
+    if (!res.ok) throw new Error(`--screen: ${res.status} ${await res.text()}`);
+  };
+  const [kind, name = ""] = what.split(":");
+  await edit({ op: "screen", screen: "orb", mode: band ? "band" : "theatre", fill, ...(kind === "channel" ? { show: name } : {}) });
+  if (kind === "once") {
+    const clip = (await state()).clips.find((c) => c.title.toLowerCase().includes(name.toLowerCase()));
+    if (!clip) throw new Error(`--screen: no clip's title holds "${name}"`);
+    await edit({ op: "once", screen: "orb", clip: clip.id });
+  } else if (kind !== "channel") throw new Error("--screen once:<clip> or channel:<name>");
+}
