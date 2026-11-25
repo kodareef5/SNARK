@@ -128,15 +128,21 @@ try {
   let id = 0;
   const waiting = new Map<number, (v: any) => void>();
   const lines: string[] = [];
+  const media = new Set<string>();
+  let mediaBytes = 0;
   ws.onmessage = (m) => {
     const d = JSON.parse(String(m.data));
     if (d.id && waiting.has(d.id)) waiting.get(d.id)!(d.result);
     if (d.method === "Runtime.consoleAPICalled" && (d.params.type === "error" || d.params.type === "warning")) lines.push(`${d.params.type}: ${d.params.args.map((a: { value?: unknown; description?: string }) => a.value ?? a.description).join(" ")}`);
+    // Bytes fetched for the screens (client/core/video/player.ts), counted to the view being taken.
+    if (d.method === "Network.responseReceived" && d.params.response.url.includes("/media/")) media.add(d.params.requestId);
+    if (d.method === "Network.dataReceived" && media.has(d.params.requestId)) mediaBytes += d.params.encodedDataLength || d.params.dataLength;
     if (d.method === "Runtime.exceptionThrown") lines.push(`exception: ${d.params.exceptionDetails.exception?.description ?? d.params.exceptionDetails.text}`);
   };
   const send = (method: string, params: object = {}): Promise<any> => new Promise((r) => { waiting.set(++id, r); ws.send(JSON.stringify({ id, method, params })); });
   await send("Runtime.enable");
   await send("Page.enable");
+  await send("Network.enable");
   await send("Emulation.setDeviceMetricsOverride", { width: winW!, height: winH!, deviceScaleFactor: scale, mobile: false });
   // Each view logs in as one of NAMES survivors in turn, so it comes in as the first view does. With one survivor for the
   // run, the next page came back within the 5 s a body lingers and took the session over, and every view after the first
@@ -148,6 +154,7 @@ try {
   for (const tier of values.tiers!.split(",")) {
     for (const v of views) {
       lines.length = 0;
+      mediaBytes = 0;
       at = orders.get(v.name)!.at;
       await send("Page.navigate", { url: `http://127.0.0.1:${server.port}/?quick&name=look${who}v${taken++ % NAMES}&tier=${tier}&look=${encodeURIComponent(v.name)}${values.film && (v.replayEyeSeconds !== undefined || v.cast) ? "&trip" : ""}${values.off ? `&off=${values.off}` : ""}${values.page!.map((p) => `&${p}`).join("")}` });
       // The first view fetches the map and the art as well.
@@ -170,7 +177,9 @@ try {
         await recordIgnition(send, from, drop.land / TICK_RATE + (v.cast!.after ?? 10) - from, join(out, `${v.name}-${tier}.mp4`));
       }
       const gl = await send("Runtime.evaluate", { expression: "(() => { const c = document.querySelector('canvas'); const g = c && c.getContext('webgl2'); const i = g && g.getExtension('WEBGL_debug_renderer_info'); return JSON.stringify({ renderer: i ? g.getParameter(i.UNMASKED_RENDERER_WEBGL) : null }); })()", returnByValue: true });
-      report.push({ name, ...(v.hour !== undefined ? { hour: v.hour } : {}), ...JSON.parse(gl.result.value), console: lines.slice(0, 8) });
+      const videos = values.screen ? (await send("Runtime.evaluate", { expression: "JSON.stringify([...document.querySelectorAll('video')].map((v) => ({ src: v.currentSrc.split('/').pop(), at: +v.currentTime.toFixed(2), paused: v.paused, ready: v.readyState })))", returnByValue: true })).result.value : "[]";
+      report.push({ name, ...(v.hour !== undefined ? { hour: v.hour } : {}), ...JSON.parse(gl.result.value), ...(values.screen ? { mediaBytes, videos: JSON.parse(videos) } : {}), console: lines.slice(0, 8) });
+      if (values.screen) console.log(`${name}: ${mediaBytes} bytes from /media/, videos ${videos}`);
       console.log(`${name}${lines.length ? `\n  ${lines.slice(0, 8).join("\n  ")}` : ""}`);
     }
   }

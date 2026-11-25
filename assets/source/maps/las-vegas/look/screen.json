@@ -5,6 +5,7 @@
     {"name": "screen-west", "up": 30, "x": -213.5, "z": -82.6, "look": [64.8, -199.8, 45], "obelisk": "Sphere"},
     {"name": "screen-east", "up": 30, "x": 343.1, "z": -317.0, "look": [64.8, -199.8, 45], "obelisk": "Sphere"},
     {"name": "screen-south", "up": 30, "x": 64.8, "z": -499.8, "look": [64.8, -199.8, 45], "obelisk": "Sphere"},
+    {"name": "screen-away", "up": 30, "x": -213.5, "z": -82.6, "look": [-600, 80, 30], "obelisk": "Sphere"},
     {"name": "screen-foot", "up": 1.7, "x": -24.7, "z": -162.1, "look": [64.8, -199.8, 75], "obelisk": "Sphere"}
   ]
 }
