@@ -26,7 +26,8 @@ import { TICK_RATE, chunkAt } from "../shared/coords.ts";
 import { hashBytes } from "../shared/hash.ts";
 import { SURFACE_BUILT } from "../shared/net/rockets.ts";
 import { LoopbackNet, type LoopbackEnd } from "../shared/net/loopback.ts";
-import { KEY_BYTES } from "../shared/net/protocol.ts";
+import { BitReader } from "../shared/net/codec.ts";
+import { KEY_BYTES, S_CHUNK } from "../shared/net/protocol.ts";
 import { defaultLook } from "../shared/anim/look.ts";
 import { nodeForms, scatterNodes, type NodeSpot } from "../shared/world/nodes.ts";
 import { parsePack } from "../shared/pack/pack.ts";
@@ -648,6 +649,23 @@ const FALL_PARTS = [PART.build, PART.world, PART.modules, PART.save, PART.own, P
   run(60, calm);
   const calmParts = spent.splice(0);
   const sentBytes = host.game.stats.chunkBytes;
+  // Each client's bytes of the house's own chunks, read off its line as they go: the server counts chunk bytes in all only.
+  const houseChunks = new Set(structs.chunks.map((t, c) => (t && t.owner.subarray(0, t.high).includes(9000) ? c : -1)).filter((c) => c >= 0));
+  const houseBytes = new Map<number, number>();
+  const header = new BitReader();
+  const taps = host.game.clients.filter((c) => c?.active).map((c) => {
+    const conn = c!.conn as LoopbackEnd;
+    const send = conn.send;
+    conn.send = (channel, data) => {
+      if (data[0] === S_CHUNK) {
+        header.reset(data);
+        header.u8();
+        if (houseChunks.has(header.u16())) houseBytes.set(c!.id, (houseBytes.get(c!.id) ?? 0) + data.length);
+      }
+      send.call(conn, channel, data);
+    };
+    return () => void (conn.send = send);
+  });
   const fallenBefore = build.fallen;
   const wavesBefore = build.collapse.waves;
   t0 = performance.now();
@@ -698,7 +716,12 @@ const FALL_PARTS = [PART.build, PART.world, PART.modules, PART.save, PART.own, P
     console.log(`    parts: ${PARTS.join(" ")}`);
     for (let k = 0; k < byTick.length; k++) console.log(`    ${k}: ${spent[k]!.map((v) => v.toFixed(2)).join(" ")}`);
   }
-  record("sent to each watcher for all of it", (host.game.stats.chunkBytes - sentBytes) / watchers, "bytes", pieces * 2);
+  for (const untap of taps) untap();
+  const told = [...houseBytes.values()];
+  record("watchers sent the house's chunks", told.length, "");
+  record("the house's chunks sent a watcher, mean", told.reduce((a, b) => a + b, 0) / Math.max(1, told.length), "bytes");
+  record("the house's chunks sent a watcher, most", Math.max(0, ...told), "bytes", pieces * 2);
+  record("structure chunks sent all clients meanwhile, any chunk", host.game.stats.chunkBytes - sentBytes, "bytes");
 }
 
 // ---------------------------------------------------------------- voice
