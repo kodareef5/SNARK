@@ -567,6 +567,11 @@ export class WorldStore {
     return this.db.query("SELECT seq, tick, op, data FROM journal WHERE seq > ? ORDER BY seq").all(afterSeq) as JournalEntry[];
   }
 
+  /** At most `most` entries of `op` below `beforeSeq`, newest first. */
+  journalBack(op: number, beforeSeq: number, most: number): JournalEntry[] {
+    return this.db.query("SELECT seq, tick, op, data FROM journal WHERE seq < ? AND op = ? ORDER BY seq DESC LIMIT ?").all(beforeSeq, op, most) as JournalEntry[];
+  }
+
   saveTransfer(t: TransferRow): void {
     this.putTransfer.run(t.id, t.dir, t.pid, t.name, t.hop, t.peer, t.at);
   }

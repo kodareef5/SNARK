@@ -10,6 +10,7 @@ import { PAGE } from "../../server/admin/supply-routes.ts";
 import { OP_ADMIN } from "../../server/console.ts";
 import type { Host } from "../../server/host.ts";
 import { WorldStore } from "../../server/persist/store.ts";
+import { decodeAct } from "../../shared/acts.ts";
 import { compileContent, type Registry } from "../../shared/content/registry.ts";
 import { isTame, type Entry, type ItemEntry, type LoadoutBook } from "../../shared/loadout/book.ts";
 import { KEY_BYTES } from "../../shared/net/protocol.ts";
@@ -296,7 +297,7 @@ export async function drive(chrome: string, url: string, host: Host, socket: str
       /** Presses Apply, and waits for the console's reply that begins with `reply`. */
       const apply = async (loadout: string, who: Survivor, clear: boolean, reply: string): Promise<void> => {
         await press("#apply");
-        if (await said(reply)) journal.push(`(operator)\tloadout ${loadout} #${who.pid}${clear ? " -clear" : ""}`);
+        if (await said(reply)) journal.push(`${PAGE}\tloadout ${loadout} #${who.pid}${clear ? " -clear" : ""}`);
       };
 
       // The page reads the book in force: the built-in one, of a world nobody has joined.
@@ -558,7 +559,8 @@ export function journalFaults(dbPath: string, reg: Registry, want: readonly stri
   const lines = kept
     .journal()
     .filter((j) => j.op === OP_ADMIN)
-    .map((j) => new TextDecoder().decode(j.data));
+    .map((j) => decodeAct(j.data))
+    .map((a) => `${a.name}\t${a.what}`);
   kept.close();
   const [g, w] = [JSON.stringify(lines), JSON.stringify(want)];
   console.log(`  ${g === w ? "ok  " : "FAIL"} the admin journal has each save and each loadout handed out${g === w ? "" : `: ${g}, not ${w}`}`);

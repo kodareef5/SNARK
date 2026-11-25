@@ -4,13 +4,13 @@ import { afterAll, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { OP_ADMIN } from "../../server/console.ts";
 import { WorldStore } from "../../server/persist/store.ts";
 import { rowOf } from "../../server/settings/catalog.ts";
 import { applyLive, emptyReport, formatReport, loadConfig, loadConfigFolder } from "../../server/settings/config.ts";
 import { timersOf } from "../../server/settings/rules.ts";
 import type { SpeciesDef } from "../../shared/content/defs.ts";
 import { Harness } from "../fixtures/net.ts";
+import { adminLines } from "../fixtures/acts.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "snark-settings-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -198,7 +198,7 @@ test("a folder is read from disk, any of its files missing; a server started on 
   h.run(500);
   h.host.shutdown();
   const store = new WorldStore(dbPath, h.reg);
-  const typed = store.journal().filter((j) => j.op === OP_ADMIN).map((j) => new TextDecoder().decode(j.data));
+  const typed = adminLines(store);
   store.close();
   expect(typed).toContain("ada\tsetting EggHatchSpeedMultiplier 80");
   expect(typed).toContain("ada\tsetting ServerAdminPassword ****");

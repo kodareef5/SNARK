@@ -3,6 +3,7 @@
 // `enablecheats` takes, as the password of HTTP's basic sign-in, with wrong guesses counted as that command counts them.
 
 import { posix } from "node:path";
+import { PAGE_ACTOR, type Actor } from "../acts.ts";
 import { sameSecret } from "../commands/core.ts";
 import type { Guesses } from "../guesses.ts";
 
@@ -15,6 +16,14 @@ export interface AdminGate {
   guesses: Guesses;
   tick: () => number;
   world?: number;
+}
+
+/** Who each request that passed the gate is from. */
+const actors = new WeakMap<Request, Actor>();
+
+/** Who a request to an admin page is from: the nameless page where the gate did not say. */
+export function actorOf(req: Request): Actor {
+  return actors.get(req) ?? PAGE_ACTOR;
 }
 
 /** Null where the admin pages may be shown, else the answer that says why not. */

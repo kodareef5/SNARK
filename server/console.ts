@@ -6,6 +6,7 @@ import type { Def } from "../shared/content/defs.ts";
 import { find } from "../shared/content/find.ts";
 import type { Registry } from "../shared/content/registry.ts";
 import { RANK_CLUSTER, RANK_NAMES } from "../shared/ranks.ts";
+import { OPERATOR, sessionActor, type Actor } from "./acts.ts";
 import { NO_BUS, event, type Bus } from "./events/bus.ts";
 import type { Client } from "./game.ts";
 import type { Host } from "./host.ts";
@@ -14,6 +15,8 @@ export interface CommandContext {
   readonly host: Host;
   /** Null for the operator, who may do anything. */
   readonly client: Client | null;
+  /** Who the act is by where it is not the session or the operator: an admin page runs commands with the operator's rights. */
+  readonly actor?: Actor;
 }
 
 export interface ConsoleCommand {
@@ -42,8 +45,8 @@ export function named(reg: Registry, name: string | undefined, type: Def["type"]
   return several === "" ? `no ${type} "${name ?? ""}"` : `"${name}" ${several}; say which`;
 }
 
-/** Journal op for an admin command: the session's name, a tab, the line. */
-export const OP_ADMIN = 2;
+/** Journal op for an admin's act (server/acts.ts). */
+export { OP_ADMIN } from "./acts.ts";
 
 const COMMAND = event("command");
 const COMMAND_RAN = event("command.ran");
@@ -93,7 +96,7 @@ export class Console {
       return `${name} failed: ${err instanceof Error ? err.message : String(err)}`;
     }
     if (cmd.admin && !cmd.secret) {
-      ctx.host.persistence?.journal(OP_ADMIN, new TextEncoder().encode(`${ctx.client ? ctx.client.name : "(operator)"}\t${cmd.redact ? cmd.redact(words.slice(1)) : line}`));
+      ctx.host.acts.write(ctx.actor ?? (ctx.client ? sessionActor(ctx.client, ctx.host.records) : OPERATOR), cmd.redact ? cmd.redact(words.slice(1)) : line);
     }
     this.bus.after(COMMAND_RAN, told);
     return out;

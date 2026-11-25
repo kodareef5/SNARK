@@ -59,6 +59,7 @@ import { Chat } from "./chat.ts";
 import { Tribes } from "./tribes.ts";
 import { Voice } from "./voice.ts";
 import { Console, OP_ADMIN } from "./console.ts";
+import { Acts, PAGE_ACTOR, type Actor } from "./acts.ts";
 import { DeadlineHeap } from "../shared/sim/schedule.ts";
 import { Buffs } from "./buffs.ts";
 import { CityCollapse } from "./city-collapse.ts";
@@ -305,7 +306,7 @@ export interface Host {
    * (settings/kept.ts). Null words take the page's value away. `why` is "" if it was done; `unkept` says why the
    * change, though made, was not written beside the save.
    */
-  pageSetting(name: string, words: string | null): { why: string; unkept?: string };
+  pageSetting(name: string, words: string | null, by?: Actor): { why: string; unkept?: string };
   /** What the admin page set. */
   readonly kept: KeptSettings;
   /** Reads the live file again now. Returns the report lines. */
@@ -320,6 +321,8 @@ export interface Host {
   readonly harvest: Harvest | null;
   readonly deadlines: DeadlineHeap;
   readonly persistence: Persistence | null;
+  /** Who did what as an admin, and when (server/acts.ts). */
+  readonly acts: Acts;
   readonly loaded: LoadReport | null;
   readonly console: Console;
   /** Carries events to modules. */
@@ -1524,7 +1527,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       records.entOf.delete(c.pid);
     }
   });
-  const creative = new Creative(world, game, rules, bus, persistence);
+  // Timed by the survivor log's clock, so a command's mark there stands at its own time.
+  const acts = new Acts({ persistence, tick: () => world.tick, wall: opts.survivorLog?.wall ?? Date.now, say, shown: () => rules.on("AdminLogging"), tellAll });
+  const creative = new Creative(world, game, rules, bus, acts, records);
   const loadouts = new Loadouts({ world, records, items, creative, store: loadoutBook, refresh: (rec) => refreshBody(rec) }, (opts.seed ?? 1) + 113);
   game.sessions.onEnter.on((c) => {
     // A survivor that joins dead gets no onBody call, so its pid is set here.
@@ -2100,7 +2105,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       rules.put(row, was.value, was.source);
       return `${row.name} gives content that does not compile: ${fault}`;
     },
-    pageSetting(name, words) {
+    pageSetting(name, words, by = PAGE_ACTOR) {
       const row = rowNamed(name);
       if (!row) return { why: `there is no setting called ${name}` };
       const fixed = fixedWhy(row);
@@ -2109,7 +2114,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       if (did.why !== "") return { why: words === null ? did.why : `${row.name} ${did.why}` };
       // In the admin journal as the console's `setting` is, a list by its size and a secret not at all.
       const shown = words === null ? "(as before the page set it)" : row.secret ? "****" : words.includes("\n") ? `(${words.split("\n").length} lines)` : words;
-      persistence?.journal(OP_ADMIN, new TextEncoder().encode(`(admin page)\tsetting ${name} ${shown}`));
+      acts.write(by, `setting ${name} ${shown}`);
       return did;
     },
     kept,
@@ -2141,6 +2146,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     harvest,
     deadlines,
     persistence,
+    acts,
     loaded,
     console: con,
     bus,

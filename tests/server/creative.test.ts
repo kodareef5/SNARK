@@ -14,7 +14,6 @@ import { S_MENU_WARN } from "../../client/core/ui/style.ts";
 import { KEY_SUNDIAL, angleOfHour } from "../../client/core/ui/sundial.ts";
 import { Ui } from "../../client/core/ui/ui.ts";
 import { refused, type AdminGate } from "../../server/admin/gate.ts";
-import { OP_ADMIN } from "../../server/console.ts";
 import { WorldStore } from "../../server/persist/store.ts";
 import { loadConfig } from "../../server/settings/config.ts";
 import { Rules } from "../../server/settings/rules.ts";
@@ -25,6 +24,7 @@ import { CLOCK_SHARES, UNIT_CLOCK, hourOfDay, shareOfHour } from "../../shared/s
 import { listener } from "../fixtures/module.ts";
 import { Harness, asShipped } from "../fixtures/net.ts";
 import type { MenuScreen } from "../../client/core/ui/menu-screen.ts";
+import { adminLines } from "../fixtures/acts.ts";
 
 /** A survivor as `who` lists it to an admin: its name and its ID. */
 const named = (h: Harness, name: string): string => `${name}  ${idText(h.host.survivorRecord(name)!)}`;
@@ -275,7 +275,7 @@ test("a drag of the dial is one entry in the journal, reaches everyone while it 
     h.host.shutdown();
 
     const store = new WorldStore(db, h.reg);
-    const lines = store.journal().filter((j) => j.op === OP_ADMIN).map((j) => new TextDecoder().decode(j.data));
+    const lines = adminLines(store);
     store.close();
     expect(lines).toEqual(["ada\tsettime 17:30", "ada\tsettime 18:15"]);
   } finally {

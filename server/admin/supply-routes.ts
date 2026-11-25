@@ -8,7 +8,7 @@
 // (server/supply/store.ts), and a drop is called, landed and cancelled by the console's own `supply` command, so the
 // page and an operator at the console do one thing and both are in the admin journal.
 
-import { OP_ADMIN } from "../console.ts";
+import { PAGE_ACTOR, type Actor } from "../acts.ts";
 import type { Host } from "../host.ts";
 import { bookFaults, type BookFault, type SupplyBook } from "../../shared/supply/book.ts";
 import { MOST } from "../../shared/supply/book.ts";
@@ -20,7 +20,7 @@ import { BANDS, bandDocs } from "../../content/supply/sites.ts";
 import { parseIni } from "../settings/ini.ts";
 import { Lists } from "../settings/lists.ts";
 import { SETTING, arkCrates, arkDocs } from "../supply/ark.ts";
-import { sameOrigin } from "./gate.ts";
+import { actorOf, sameOrigin } from "./gate.ts";
 
 const JSON_HEADERS = { "content-type": "application/json", "cache-control": "no-store" };
 const json = (body: unknown, status = 200): Response => new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
@@ -31,8 +31,8 @@ export const ARK_TEXT_MOST = 600000;
  * pasted override at its largest, whose quotes and line ends JSON writes as two characters each.
  */
 export const SUPPLY_BODY_MOST = MOST.bytes + 2 * ARK_TEXT_MOST + 8192;
-/** Who a change from the page is by, in the book's revisions and the admin journal. */
-export const PAGE = "(admin page)";
+/** Who a change from a page whose viewer is not known is by, in the book's revisions and the admin journal. */
+export const PAGE = PAGE_ACTOR.name;
 /** The acts the page has lately done here, newest last, for its log. */
 const ACTS_KEPT = 200;
 
@@ -91,7 +91,8 @@ export class SupplyRoutes {
     }
     const no = refusedWrite(req);
     if (no) return no;
-    return body(req).then((b) => (b === null ? json({ error: "Expected a JSON object no larger than a book." }, 400) : this.write(what, b)));
+    const by = actorOf(req);
+    return body(req).then((b) => (b === null ? json({ error: "Expected a JSON object no larger than a book." }, 400) : this.write(what, b, by)));
   }
 
   private read(what: string, url: URL): Response {
@@ -162,11 +163,11 @@ export class SupplyRoutes {
     return json({ error: "No such page." }, 404);
   }
 
-  private write(what: string, b: Record<string, unknown>): Response {
+  private write(what: string, b: Record<string, unknown>, by: Actor): Response {
     const { supplyBook: store, supply } = this.host;
     const saved = (r: ReturnType<typeof store.save>, did: string): Response => {
       if (r.ok) {
-        this.did(`${did}: revision ${r.revision}${r.unkept ? ` (${r.unkept})` : ""}`);
+        this.did(by, `${did}: revision ${r.revision}${r.unkept ? ` (${r.unkept})` : ""}`);
         return json({ revision: r.revision, ...(r.unkept ? { unkept: r.unkept } : {}) });
       }
       if ("conflict" in r) return json({ error: "The book was saved by another editor since this page read it.", revision: r.conflict }, 409);
@@ -180,22 +181,22 @@ export class SupplyRoutes {
       const note = typeof b.note === "string" ? b.note.replace(/[\r\n\t]+/g, " ").trim().slice(0, 200) : "";
       if (what === "book") {
         if (typeof b.book !== "object" || b.book === null) return json({ error: "A save carries the book." }, 400);
-        return saved(store.save(b.book, expected, PAGE, note), `supply book saved${note === "" ? "" : ` (${note})`}`);
+        return saved(store.save(b.book, expected, by.name, note), `supply book saved${note === "" ? "" : ` (${note})`}`);
       }
       // The starter and an old revision come back as a new revision, so they too are a save another editor can lose to.
       if (expected !== store.book.revision) return json({ error: "The book was saved by another editor since this page read it.", revision: store.book.revision }, 409);
-      if (what === "reset") return saved(store.reset(PAGE), "supply book reset to the starter");
+      if (what === "reset") return saved(store.reset(by.name), "supply book reset to the starter");
       const to = whole(b.to);
       const old = to === null ? undefined : store.revisions().find((r) => r.revision === to);
       if (!old) return json({ error: "That revision is not kept." }, 404);
-      return saved(store.save(old.book, expected, PAGE, `revision ${old.revision} again`), `supply book restored from revision ${old.revision}`);
+      return saved(store.save(old.book, expected, by.name, `revision ${old.revision} again`), `supply book restored from revision ${old.revision}`);
     }
     if (what === "call") {
       const [x, z, tier, cls] = [metres(b.x), metres(b.z), word(b.tier), word(b.cls)];
       const seconds = b.seconds === undefined ? null : whole(b.seconds);
       if (x === null || z === null || tier === null || cls === null || (b.seconds !== undefined && seconds === null)) return json({ error: "A test drop names a place, a tier and a class." }, 400);
       const had = new Set(supply.drops.map((d) => d.id));
-      const said = this.console(`supply call ${x} ${z} ${tier} ${cls} ${b.ringed === true ? "ringed" : "plain"}${seconds === null ? "" : ` ${seconds}`}`);
+      const said = this.console(by, `supply call ${x} ${z} ${tier} ${cls} ${b.ringed === true ? "ringed" : "plain"}${seconds === null ? "" : ` ${seconds}`}`);
       const made = supply.drops.find((d) => !had.has(d.id));
       return made ? json({ id: made.id, said }) : json({ error: said }, 422);
     }
@@ -203,7 +204,7 @@ export class SupplyRoutes {
       const id = b.id === "all" ? "all" : whole(b.id);
       const seconds = b.seconds === undefined ? null : whole(b.seconds);
       if (id === null || (b.seconds !== undefined && seconds === null)) return json({ error: "Name a drop by its number, or all." }, 400);
-      return json({ said: this.console(`supply ${what} ${id}${what === "land" && seconds !== null ? ` ${seconds}` : ""}`) });
+      return json({ said: this.console(by, `supply ${what} ${id}${what === "land" && seconds !== null ? ` ${seconds}` : ""}`) });
     }
     if (what === "ark") {
       // ARK's own override, as pasted from a Game.ini: what it would make of a book, and what it names that this build
@@ -218,17 +219,17 @@ export class SupplyRoutes {
     return json({ error: "No such act." }, 404);
   }
 
-  /** Runs a console line as the operator would, which journals it, and keeps it for the page's log. */
-  private console(line: string): string {
-    const said = this.host.console.exec({ host: this.host, client: null }, line);
+  /** Runs a console line with the operator's rights, which journals it as `by`'s, and keeps it for the page's log. */
+  private console(by: Actor, line: string): string {
+    const said = this.host.console.exec({ host: this.host, client: null, actor: by }, line);
     this.acts.push({ at: Math.floor(this.now() / 1000), tick: this.host.world.tick, what: `${line}: ${said.split("\n")[0]}` });
     if (this.acts.length > ACTS_KEPT) this.acts.splice(0, this.acts.length - ACTS_KEPT);
     return said;
   }
 
   /** A save is not a console line: it is journaled here as one would be. */
-  private did(what: string): void {
-    this.host.persistence?.journal(OP_ADMIN, new TextEncoder().encode(`${PAGE}\t${what}`));
+  private did(by: Actor, what: string): void {
+    this.host.acts.write(by, what);
     this.acts.push({ at: Math.floor(this.now() / 1000), tick: this.host.world.tick, what });
     if (this.acts.length > ACTS_KEPT) this.acts.splice(0, this.acts.length - ACTS_KEPT);
   }

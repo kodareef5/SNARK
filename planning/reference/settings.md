@@ -5,8 +5,8 @@ edit it by hand: change the catalogue and run the tool.
 
 A server is configured as ARK's is ([how](round5-settings.md), and [what the
 values mean](round5-game-ini.md)). Every setting an ARK dedicated server reads
-is listed here, 602 of them: 237 take effect,
-175 wait for a feature that is not built yet, and 190 have no meaning in this
+is listed here, 602 of them: 238 take effect,
+174 wait for a feature that is not built yet, and 190 have no meaning in this
 engine. A setting that does not take effect is still read, checked and
 reported when the server starts.
 
@@ -94,6 +94,7 @@ the admin's settings page may change a setting without a restart.
 | `ServerAdminPassword` | none | Asked of whoever would use cheats, and of a browser that opens the admin pages. | no |
 | `KickIdlePlayersPeriod` | 3600 | Seconds without doing anything before a survivor is put off the server. Needs -EnableIdlePlayerKick. | yes |
 | `AutoSavePeriodMinutes` | 15 | Minutes between saves. Here the world is saved continuously; this is how often the live file is read again. | yes |
+| `AdminLogging` | False | Every admin command is shown to everyone. *As a notice: who ran it, then the line, with any password left out.* | yes |
 
 ### GameUserSettings.ini `[SessionSettings]`
 
@@ -501,7 +502,6 @@ what is built next.
 | `RCONEnabled` | False | The server may be commanded from outside. | GameUserSettings.ini |
 | `RCONPort` | 27020 | The port for that. | GameUserSettings.ini |
 | `RCONServerGameLogBuffer` | 600 | Lines of the game's log it may be sent. | GameUserSettings.ini |
-| `AdminLogging` | False | Every admin command is shown to everyone. | GameUserSettings.ini |
 | `EnableAFKKickPlayerCountPercent` | 0 | The idle are put off only when the server is at least this full. | GameUserSettings.ini |
 | `BanListURL` | none | A list of those who may not join. | GameUserSettings.ini |
 | `AdminListURL` | none | A list of admins. | GameUserSettings.ini |
