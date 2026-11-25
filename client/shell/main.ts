@@ -232,6 +232,10 @@ async function boot(): Promise<void> {
   app.dpr = devicePixelRatio;
   app.tierReady = (tier) => renderer.ready(tier);
   app.address((name) => params.get(name), measured, orders);
+  // The people bench's crowd (tools/bench/people.ts) comes only to a bench page that asks for one.
+  const crowd = bench ? (await import("../core/people-crowd.ts")) : null;
+  const asked = crowd?.crowdAsked((name) => params.get(name));
+  if (crowd && asked) new crowd.Crowd(session, hf, reg, asked.scene, asked.looks);
   // A trip's page is a tool's too: nobody is at it to unmute, and its pictures are of the world.
   if (params.has("trip")) app.ui.settings.muted = false;
   app.page = {
@@ -374,7 +378,7 @@ async function boot(): Promise<void> {
     }
     if (progress?.frames === 45) loser?.restoreContext();
     const r = app.scene!.assets.residency;
-    const result = bench?.frame(now, ours, gpu, packet, r.flying + r.waiting === 0, { drawCalls: renderer.drawCalls, canvas: [width, height], renderer: renderer.rendererName, userAgent: navigator.userAgent, card: { bytes: r.ledger, textures: r.texLedger }, squeeze: app.scene!.budget.squeeze, map: () => loader.progress() }, app.scene!.assets.table.tris);
+    const result = bench?.frame(now, ours, gpu, packet, r.flying + r.waiting === 0, { drawCalls: renderer.drawCalls, canvas: [width, height], renderer: renderer.rendererName, userAgent: navigator.userAgent, card: { bytes: r.ledger, textures: r.texLedger }, squeeze: app.scene!.budget.squeeze, map: () => loader.progress(), posed: app.scene!.characters.posed, fresh: app.scene!.characters.fresh }, app.scene!.assets.table.tris);
     if (result) document.title = `SNARK ${result.frameMs.median} ms`;
     if (result) void fetch("__bench", { method: "POST", body: JSON.stringify(result) });
 

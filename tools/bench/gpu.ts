@@ -246,7 +246,7 @@ const COUNT_CALLS = `new Promise((done) => {
 })`;
 
 /** The page of a Chrome started with a profile and a debugging port of its own: a call to it over the DevTools protocol. */
-async function devtools(profile: string): Promise<{ send: (method: string, params?: object) => Promise<any>; close: () => void }> {
+export async function devtools(profile: string): Promise<{ send: (method: string, params?: object) => Promise<any>; close: () => void }> {
   const file = join(profile, "DevToolsActivePort");
   for (let i = 0; i < 100 && !existsSync(file); i++) await Bun.sleep(100);
   const port = Number(readFileSync(file, "utf8").split("\n")[0]);
@@ -264,7 +264,7 @@ async function devtools(profile: string): Promise<{ send: (method: string, param
 }
 
 /** Holds every survivor on `server` at `p` as a ghost, still, from the moment it has a body. */
-function holdAt(server: ReturnType<typeof startServer>, p: Place): ReturnType<typeof setInterval> {
+export function holdAt(server: ReturnType<typeof startServer>, p: Place): ReturnType<typeof setInterval> {
   const { world, game } = server.host;
   const [x, y, z] = placeOf([world.hf.sizeX / 2, world.hf.sizeZ / 2], world.hf, p);
   return setInterval(() => {
@@ -287,7 +287,7 @@ const HOUR_HELD = 0.01;
  * to come, so two runs of a row, a minute or two apart, draw it in one place. Left to the server's clock, the day moves an
  * hour in a little over two minutes.
  */
-function holdHour(server: ReturnType<typeof startServer>, hour: number): ReturnType<typeof setInterval> {
+export function holdHour(server: ReturnType<typeof startServer>, hour: number): ReturnType<typeof setInterval> {
   const w = server.host.world;
   const set = (): void => {
     w.dayOffset = offsetForHour(w.tick, hour, w.clock);
