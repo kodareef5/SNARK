@@ -8,6 +8,7 @@ import { COMPASS } from "./compass.ts";
 import { CROSSHAIR } from "./crosshair.ts";
 import { DOTS } from "./dots.ts";
 import { FALLEN } from "./fallen.ts";
+import { FIGHTER } from "./fighter.ts";
 import { FORMS } from "./forms.ts";
 import { HOTBAR } from "./hotbar.ts";
 import { JET } from "./jet.ts";
@@ -43,6 +44,7 @@ export const HUD_WIDGETS: readonly HudWidget<any>[] = [
   MINIMAP_TOGGLE,
   JET,
   VEHICLE,
+  FIGHTER,
   SKATE,
   VITALS,
   BUFFS,
