@@ -39,6 +39,8 @@ import type { Issued, PermissionStore } from "./store.ts";
 export const POLL_MS = 5000;
 /** The longest a running world waits for another process's lock on the file: every wait is inside its tick. */
 export const BUSY_MS = 250;
+/** How long a survivor waits to replace a password they claimed: each claim is a write every map reads and a row of history. */
+export const CLAIM_WAIT_MS = 3600 * 1000;
 
 /** Who is asking: a survivor's ID, its tribe's team number (0 for none), whether it signed in, and the world it is on. */
 export interface PermissionSubject {
@@ -124,6 +126,8 @@ export interface PermissionsOptions {
   readonly now?: () => number;
   /** The server's own output, told when the file cannot be read and when it can again. */
   readonly say?: (line: string) => void;
+  /** How long a survivor waits to replace a password they claimed; CLAIM_WAIT_MS unless said. */
+  readonly claimWaitMs?: number;
   /** The survivor IDs of a tribe's members, as far as this world knows them: the edit rule asks their ranks. */
   readonly tribeMembers?: (team: number) => readonly string[];
 }
@@ -186,6 +190,7 @@ export class Permissions {
   private lookedAt = -Infinity;
   private readonly say: (line: string) => void;
   private readonly tribeMembers: (team: number) => readonly string[];
+  private readonly claimWaitMs: number;
   /** The file could not be read at the last look. */
   private unread = false;
   /** When a timed membership next starts or ends. */
@@ -211,6 +216,7 @@ export class Permissions {
     this.now = opts.now ?? Date.now;
     this.say = opts.say ?? (() => {});
     this.tribeMembers = opts.tribeMembers ?? (() => []);
+    this.claimWaitMs = opts.claimWaitMs ?? CLAIM_WAIT_MS;
     this.load(this.store.read(), false);
     this.store.patience(BUSY_MS);
   }
@@ -499,6 +505,15 @@ export class Permissions {
         if (was !== "" && !right) {
           wrong = given !== "" && !this.retired(given);
           why = given === "" ? "You have a password already. To replace it, give it: claimpassword <your password>" : wrong ? WRONG_PASSWORD : RETIRED_PASSWORD;
+          return;
+        }
+        // Each replacement is a write every map reads, a row of the cluster's history and an act, so they are spaced out.
+        // One whose time is not known, as an older file's, does not wait.
+        const since = this.claimedAt(id);
+        const wait = was === "" || since <= 0 ? 0 : since + this.claimWaitMs - this.now();
+        if (wait > 0 && wait <= this.claimWaitMs) {
+          const minutes = Math.ceil(wait / 60_000);
+          why = `You claimed a password a short while ago. A new one can be claimed in ${minutes} ${minutes === 1 ? "minute" : "minutes"}.`;
           return;
         }
         const secret: Secret = { id, hash, at: this.now() };

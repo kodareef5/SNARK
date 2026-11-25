@@ -160,6 +160,8 @@ export interface HostOptions {
   commitEvery?: number;
   /** Journal entries the save keeps; a hundred thousand unless said. */
   journalKeep?: number;
+  /** Milliseconds a survivor waits to replace a password they claimed; an hour unless said. */
+  claimWaitMs?: number;
   /** "worker" gives checkpoints and backups to a thread of their own, as a running server wants. The default does them on the calling thread. */
   keeper?: "inline" | "worker";
   /** Back the save up beside itself at every autosave mark (AutoSavePeriodMinutes). */
@@ -706,6 +708,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     world: cluster?.world ?? 0,
     now: opts.survivorLog?.wall ?? Date.now,
     say,
+    ...(opts.claimWaitMs === undefined ? {} : { claimWaitMs: opts.claimWaitMs }),
     tribeMembers: (team) => (tribes.byId.get(team)?.members ?? []).map((pid) => records.byPid.get(pid)).map((rec) => (rec ? idText(rec) : "")).filter((id) => id !== ""),
   });
   // Before anything can make an ID or a team, so a save put back from a backup or started afresh makes none twice.

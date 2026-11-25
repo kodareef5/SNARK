@@ -5,6 +5,7 @@
 import { Database } from "bun:sqlite";
 import { statSync } from "node:fs";
 import { RANK_ADMIN, RANK_OPEN } from "../../shared/ranks.ts";
+import { RETIRED_MOST } from "./secrets.ts";
 import {
   ADMINS_GROUP,
   DEFAULT_GROUP,
@@ -263,10 +264,10 @@ export class PermissionStore {
     this.open().query("DELETE FROM retired WHERE at < ?").run(before);
   }
 
-  /** The passwords retired at `since` or later, oldest first. */
+  /** The newest passwords retired at `since` or later, as many as a view remembers, oldest first. */
   retired(since: number): { hash: string; at: number }[] {
-    const rows = this.open().query("SELECT hash, at FROM retired WHERE at >= ? ORDER BY at").all(since) as { hash: unknown; at: unknown }[];
-    return rows.filter((r): r is { hash: string; at: number } => isHash(r.hash) && typeof r.at === "number");
+    const rows = this.open().query("SELECT hash, at FROM retired WHERE at >= ? ORDER BY at DESC LIMIT ?").all(since, RETIRED_MOST) as { hash: unknown; at: unknown }[];
+    return rows.filter((r): r is { hash: string; at: number } => isHash(r.hash) && typeof r.at === "number").reverse();
   }
 
   /** The register's row for survivor ID `id`, or null where it was never issued. */

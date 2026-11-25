@@ -6,8 +6,8 @@ import { join } from "node:path";
 import { idOf } from "../../shared/ids.ts";
 import type { PermissionActor } from "../../shared/permissions/model.ts";
 import { RANK_ADMIN, RANK_CLUSTER, RANK_OPEN } from "../../shared/ranks.ts";
-import { Permissions, POLL_MS } from "../../server/permissions/permissions.ts";
-import { RETIRED_MS } from "../../server/permissions/secrets.ts";
+import { CLAIM_WAIT_MS, Permissions, POLL_MS } from "../../server/permissions/permissions.ts";
+import { RETIRED_MOST, RETIRED_MS } from "../../server/permissions/secrets.ts";
 import { PermissionStore } from "../../server/permissions/store.ts";
 import { issue } from "../fixtures/permissions.ts";
 
@@ -198,7 +198,9 @@ test("a view opened later still knows a password retired within the day", () => 
   expect([one.claim(A, first!, "").why, one.claim(B, gone!, "").why]).toEqual(["", ""]);
   // A view that was open all along and never saw the first two: both were replaced between its polls.
   const two = new Permissions({ store: new PermissionStore(file), world: 5, now: () => clock.t });
+  clock.t += CLAIM_WAIT_MS;
   expect(one.claim(A, second!, first!).why).toBe("");
+  clock.t += CLAIM_WAIT_MS;
   expect(one.claim(A, third!, second!).why).toBe("");
   expect(one.apply(cluster, { op: "clearSecret", id: B })).toBe("");
   clock.t += POLL_MS;
@@ -339,4 +341,17 @@ test("a change the file rolled back does not count here, even if the file cannot
   put2.mockRestore();
   read2.mockRestore();
   expect([perms.secretOf(A), perms.staffRank(A)]).toEqual(["", RANK_ADMIN]);
+});
+
+test("a view takes in the newest retired passwords only, however many the file holds", () => {
+  const file = fresh();
+  const store = new PermissionStore(file);
+  const at = 5_000_000;
+  store.transaction(() => {
+    for (let i = 0; i < RETIRED_MOST + 500; i++) store.putRetired(i.toString(16).padStart(64, "0"), at + i);
+  });
+  expect(store.retired(0).length).toBe(RETIRED_MOST);
+  const view = new Permissions({ store: new PermissionStore(file), world: 2, now: () => at + 10_000 });
+  const hash = (i: number): string => i.toString(16).padStart(64, "0");
+  expect([view.retired(hash(RETIRED_MOST + 499)), view.retired(hash(500)), view.retired(hash(0))]).toEqual([true, true, false]);
 });

@@ -14,7 +14,7 @@ export const PASSWORD_LETTERS = 16;
 /** How long a retired password is remembered. */
 export const RETIRED_MS = 24 * 3600 * 1000;
 /** Retired passwords remembered at most; the oldest is forgotten first. */
-const RETIRED_MOST = 1024;
+export const RETIRED_MOST = 1024;
 
 /** A new password, written in four groups of four: ABCD-EFGH-JKLM-NPQR. */
 export function makePassword(): string {

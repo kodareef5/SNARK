@@ -11,7 +11,7 @@ import {
   type RuleLook,
 } from "../../shared/permissions/model.ts";
 import { RANK_ADMIN, RANK_CLUSTER, RANK_MAP, RANK_OPEN, RANK_STAFF } from "../../shared/ranks.ts";
-import { Permissions, POLL_MS, type PermissionSubject } from "../../server/permissions/permissions.ts";
+import { CLAIM_WAIT_MS, Permissions, POLL_MS, type PermissionSubject } from "../../server/permissions/permissions.ts";
 import { PermissionStore } from "../../server/permissions/store.ts";
 import { issue } from "../fixtures/permissions.ts";
 
@@ -262,7 +262,7 @@ test("a regular admin can neither add to nor remove from a map admin's groups, n
 });
 
 test("a claim needs a staff group, and the password it replaces", () => {
-  const { perms, ok } = world();
+  const { perms, ok, clock } = world();
   ok({ op: "addGroup", group: "Vip" });
   ok({ op: "addMember", kind: "survivor", key: A, group: "Vip" });
   expect(perms.claim(A, "ab".repeat(16), "")).toEqual({ why: "You are in no staff group, so there is no password to claim. An admin puts you in one first.", wrong: false });
@@ -270,6 +270,7 @@ test("a claim needs a staff group, and the password it replaces", () => {
   expect(perms.claim(A, "ab".repeat(16), "")).toEqual({ why: "", wrong: false });
   expect(perms.claim(A, "cd".repeat(16), "")).toEqual({ why: "You have a password already. To replace it, give it: claimpassword <your password>", wrong: false });
   expect(perms.claim(A, "cd".repeat(16), "ef".repeat(16))).toEqual({ why: "wrong password", wrong: true });
+  clock.t += CLAIM_WAIT_MS;
   expect(perms.claim(A, "cd".repeat(16), "AB".repeat(16))).toEqual({ why: "", wrong: false });
   expect(perms.claim(A, "ef".repeat(16), "ab".repeat(16))).toEqual({ why: "that password was replaced or cleared", wrong: false });
   expect([perms.secretOf(A), perms.retired("ab".repeat(16)), perms.takeGone()]).toEqual(["cd".repeat(16), true, [A]]);
@@ -540,4 +541,22 @@ test("a membership not yet begun does not make a survivor an admin's own to clea
   expect(perms.rankOf({ id: A, team: 0, signed: true, world: 4 })).toBe(RANK_OPEN);
   expect(perms.apply(far, { op: "clearSecret", id: A })).toBe(ELSEWHERE);
   expect(perms.secretOf(A)).toBe("ab".repeat(32));
+});
+
+test("a password is replaced once an hour at most, and a wrong guess is still a guess", () => {
+  const { perms, ok, clock } = world();
+  const hash = (x: string): string => x.repeat(32);
+  ok({ op: "addMember", kind: "survivor", key: A, group: "Admins" });
+  expect(perms.claim(A, hash("a1"), "").why).toBe("");
+  const at = [perms.snapshot().revision, perms.history().length];
+  // Each replacement is a write every map reads, a row of the cluster's history and an act: one a second would bury both.
+  clock.t += 60_000;
+  expect(perms.claim(A, hash("b2"), hash("a1"))).toEqual({ why: "You claimed a password a short while ago. A new one can be claimed in 59 minutes.", wrong: false });
+  expect(perms.claim(A, hash("b2"), hash("ff"))).toEqual({ why: "wrong password", wrong: true });
+  expect([perms.secretOf(A), perms.snapshot().revision, perms.history().length]).toEqual([hash("a1"), ...at]);
+  clock.t += CLAIM_WAIT_MS;
+  expect(perms.claim(A, hash("b2"), hash("a1")).why).toBe("");
+  // An admin's clear is an act of its own, so a claim after one does not wait.
+  ok({ op: "clearSecret", id: A });
+  expect(perms.claim(A, hash("c3"), "").why).toBe("");
 });

@@ -53,7 +53,8 @@ async function maps(run: (m: Maps) => void | Promise<void>, events: string[] = [
   try {
     const clock = { ms: 1_000_000_000 };
     const ears = { a: listener("ears", events), b: listener("ears", events) };
-    const host = (password: string, def: ModuleDef) => ({ host: { adminPassword: password, clusterPassword: CLUSTER, survivorLog: { wall: () => clock.ms }, modules: [def] } });
+    // These maps replace a password as soon as it is claimed, which a real one makes a survivor wait an hour for.
+    const host = (password: string, def: ModuleDef) => ({ host: { adminPassword: password, clusterPassword: CLUSTER, claimWaitMs: 0, survivorLog: { wall: () => clock.ms }, modules: [def] } });
     const a = cluster.server("a", "f", clock, host(MAP_A, ears.a.def));
     const b = cluster.server("b", "f", clock, host(MAP_B, ears.b.def));
     beat(a, b);

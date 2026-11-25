@@ -54,9 +54,10 @@ afterAll(() => {
 });
 
 /** A world with no development cheats, the map's password if given, and one survivor joined without cheats. */
-function world(opts: { password?: string; creative?: boolean } = {}): { h: Harness; ada: ClientSession } {
+function world(opts: { password?: string; creative?: boolean; wait?: number } = {}): { h: Harness; ada: ClientSession } {
   const config = opts.creative ? asShipped(new Rules()) : undefined;
-  const h = new Harness({}, 1, 60, { adminPassword: opts.password, config, log: () => {} });
+  // These worlds replace a password as soon as it is claimed, which a real one makes a survivor wait an hour for.
+  const h = new Harness({}, 1, 60, { adminPassword: opts.password, config, claimWaitMs: opts.wait ?? 0, log: () => {} });
   const ada = h.join("ada");
   h.run(500);
   return { h, ada };
@@ -459,7 +460,7 @@ test("the password is in no act, event, answer, log line, journal entry or page 
   const said: string[] = [];
   const saves = mkdtempSync(join(tmpdir(), "snark-staff-save-"));
   const dbPath = join(saves, "world.db");
-  const h = new Harness({}, 1, 60, { modules: [ears.def], log: (line) => said.push(line), dbPath });
+  const h = new Harness({}, 1, 60, { modules: [ears.def], log: (line) => said.push(line), dbPath, claimWaitMs: 0 });
   try {
     const ada = h.join("ada");
     h.run(500);
@@ -548,8 +549,8 @@ test("two maps over one store keep a claim whole when both write at once", () =>
   const root = mkdtempSync(join(tmpdir(), "snark-claim-"));
   try {
     const file = join(root, "permissions.sqlite");
-    const one = new Permissions({ store: new PermissionStore(file), world: 1 });
-    const two = new Permissions({ store: new PermissionStore(file), world: 2 });
+    const one = new Permissions({ store: new PermissionStore(file), world: 1, claimWaitMs: 0 });
+    const two = new Permissions({ store: new PermissionStore(file), world: 2, claimWaitMs: 0 });
     const id = idOf(1, 1);
     issue(one, id);
     const actor = { rank: RANK_CLUSTER, world: 1, name: "cluster" };
@@ -563,4 +564,35 @@ test("two maps over one store keep a claim whole when both write at once", () =>
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("a survivor who has just claimed a password waits to replace it, and floods nothing", () => {
+  const { h, ada } = world({ wait: 3600_000 });
+  op(h, "Permissions.Add ada Mods".replace("Mods", "Admins"));
+  const first = claimed(h, ada);
+  const before = [h.host.permissions.snapshot().revision, h.host.permissions.history().length, h.host.acts.recent(0, Number.MAX_SAFE_INTEGER).length];
+  for (let i = 0; i < 20; i++) {
+    const again = claim(h, ada, first);
+    expect([again.password, again.said[0]]).toEqual(["", "You claimed a password a short while ago. A new one can be claimed in 60 minutes."]);
+  }
+  expect([h.host.permissions.snapshot().revision, h.host.permissions.history().length, h.host.acts.recent(0, Number.MAX_SAFE_INTEGER).length]).toEqual(before);
+  expect(h.host.permissions.secretOf(idOfSession(h, ada))).toBe(passwordHash(first));
+  h.host.shutdown();
+});
+
+test("signing in again with the same password writes no second act", () => {
+  const { h, ada } = world({ password: MAP });
+  op(h, "Permissions.AddGroup Mods");
+  op(h, "Permissions.Rank Mods staff");
+  op(h, "Permissions.Add ada Mods");
+  const hers = claimed(h, ada);
+  expect(h.say(ada, `enablecheats ${hers}`)[0]).toBeDefined();
+  const signIns = (): number => h.host.acts.recent(0, Number.MAX_SAFE_INTEGER).filter((a) => a.kind === "sign-in").length;
+  const once = signIns();
+  for (let i = 0; i < 10; i++) h.say(ada, `enablecheats ${hers}`);
+  expect([signIns(), h.client(ada)!.signed]).toEqual([once, true]);
+  // The map's password still raises her, and that is a sign-in of its own.
+  expect(h.say(ada, `enablecheats ${MAP}`)).toEqual(["cheats enabled"]);
+  expect(signIns()).toBe(once + 1);
+  h.host.shutdown();
 });
