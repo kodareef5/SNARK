@@ -129,7 +129,7 @@ test("a tier's programs are every one its frames may draw with, each once, the s
       const tier = forTouch(base, touch);
       const names = tierPrograms(tier).map(named);
       expect(new Set(names).size).toBe(names.length);
-      if (!tier.lit) expect(names).toEqual(["flat", "terrain", "terrainWindow", "far", "pulled", "sky", "details", "skyline", "signal", "fire", "orb"]);
+      if (!tier.lit) expect(names).toEqual(["flat", "terrain", "terrainWindow", "far", "pulled", "sky", "details", "skyline", "signal", "fire", "orb", "screens"]);
       else expect(names).toEqual(Object.keys(PROGRAMS).filter((n) => tier.post !== null || !["bloomDown", "bloomUp", "finish"].includes(n)));
       const texts = new Set(names.map((n) => JSON.stringify(PROGRAMS[n]!(tier, "astc"))));
       expect(texts.size).toBe(names.length);

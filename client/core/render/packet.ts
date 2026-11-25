@@ -182,6 +182,30 @@ export const DRAW_ORB = 1 << 20;
  * and a fit, and where it is framed its yaw's place holds a slot of `frameTables` for the draw's buffer and a direction.
  */
 export const DRAW_PIECE = 1 << 21;
+/**
+ * Screens on props (render/screens.ts): a draw of the packet's `faces`, `drawInstances` of them from the first, each a
+ * quad laid on a screen's face. It names no mesh, level or buffer.
+ */
+export const DRAW_SCREENS = 1 << 22;
+/** Screens a frame may draw, and the floats of each, as `faces` lays them out (FACE). */
+export const MAX_FACES = 32;
+export const FACE_FLOATS = 24;
+/**
+ * Where each value of a screen's quad is, in floats: its bottom left corner (camera-relative) and its sides across and
+ * up, whole; how the picture shown is cropped to fill it, s and t scale then offset, and the one before; the layer of
+ * the faces' array each is in, -1 for none; how far the change from the one before has come, 0 to 1; its brightness,
+ * the level by exposure and how much it shows; then three words: its FACE_ flags and the mean colours of the picture
+ * and of the one before, sRGB bytes.
+ */
+export const FACE = { corner: 0, across: 3, up: 6, crop: 9, cropBefore: 13, layer: 17, before: 18, wipe: 19, bright: 20, flags: 21, mean: 22, meanBefore: 23 } as const;
+/**
+ * A face drawn as LED pixels, and one as an old tube's; and from FACE_TOP and FACE_TOP_BEFORE, four bits each, the last
+ * level of its picture's layer and of the one before's that holds that picture, which the program reads no further than.
+ */
+export const FACE_LED = 1, FACE_CRT = 2, FACE_TOP = 8, FACE_TOP_BEFORE = 12;
+/** The faces' pictures: their side in texels, the levels each keeps, and the pictures a frame may put on the card. */
+export const FACE_WIDE = 640, FACE_HIGH = 360, FACE_LEVELS = 6;
+export const MAX_FACE_UPLOADS = 8;
 export const HEAT_WORLD = 0;
 export const HEAT_COLD = 1;
 export const HEAT_WARM = 2;
@@ -726,6 +750,20 @@ export class FramePacket {
   screenHeight = 0;
   screenFresh = false;
   screenMips = false;
+  /**
+   * The screens on props' pictures (render/screens.ts), which the shell keeps on UNIT.faces: the layers its array holds,
+   * 0 for none, which lets it go; the pictures to put in layers this frame, an image of FACE_WIDE by FACE_HIGH or a
+   * video the shell draws at that size, each by its layer, size, whether it is a video, and how many of the layer's
+   * levels the shell makes from it by halving: all of them for an image, fewer for a clip's frame seen near.
+   */
+  faceLayers = 0;
+  faceUploads = 0;
+  readonly faceLayer = new Int16Array(MAX_FACE_UPLOADS);
+  readonly faceSource: unknown[] = new Array<unknown>(MAX_FACE_UPLOADS).fill(null);
+  readonly faceWidth = new Uint16Array(MAX_FACE_UPLOADS);
+  readonly faceHeight = new Uint16Array(MAX_FACE_UPLOADS);
+  readonly faceVideo = new Uint8Array(MAX_FACE_UPLOADS);
+  readonly faceMade = new Uint8Array(MAX_FACE_UPLOADS);
   /** The draw before which the dome goes, on a lit frame. */
   skyAt = 0;
   /** The samples the light target is drawn with (post.ts lightSamples), on a frame drawn into one. */
@@ -885,6 +923,11 @@ export class FramePacket {
 
   triangles = 0;
 
+  /** Screens on props this frame, FACE_FLOATS each as FACE lays them out; the words are the same memory. */
+  faceCount = 0;
+  readonly faces = new Float32Array(MAX_FACES * FACE_FLOATS);
+  readonly faceWords = new Uint32Array(this.faces.buffer);
+
   /** Small details this frame, DETAIL_FLOATS each, as DETAIL lays them out; the words are the same memory. */
   detailCount = 0;
   readonly details = new Float32Array(MAX_DETAILS * DETAIL_FLOATS);
@@ -974,6 +1017,8 @@ export class FramePacket {
     this.roofSide = 0;
     this.screenSource = null;
     this.screenFresh = this.screenMips = false;
+    for (let k = 0; k < this.faceUploads; k++) this.faceSource[k] = null;
+    this.faceUploads = this.faceCount = 0;
     this.triangles = 0;
     this.detailCount = 0;
     this.detailFill = 0;

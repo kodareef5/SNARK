@@ -3,7 +3,7 @@
 // (tests/fixtures/device.ts).
 
 import { expect, test } from "bun:test";
-import { JOIN_MS } from "../../client/core/governor.ts";
+import { JOIN_MS, STEPS } from "../../client/core/governor.ts";
 import { DeviceProbe, MEMORY_MB, RUNGS, type RungReport } from "../../client/core/device.ts";
 import { deviceTable } from "../../client/core/devicetext.ts";
 import { bases, lacking } from "../../tools/device.ts";
@@ -111,11 +111,13 @@ test("the governed soak lets the governor act, says beside each minute what it d
   expect([probe.report.done, probe.report.errors, held, app.governor.held, s.minutes.length]).toEqual([true, [], null, 0, 1]);
   // Two missed windows took a step, said with when it was taken. The harness is not touch-first, so high's first step is
   // what a desktop draws beyond a phone, its scene's pixels; a phone's soak, drawn as forTouch has it, begins with levels.
-  expect(s.governed!.map((x) => x.level)).toEqual([1]);
-  expect([s.minutes[0]!.level, s.minutes[0]!.most, s.minutes[0]!.steps!.length]).toEqual([1, 1, 1]);
+  // The screens' steps before it are passed by, as the harness draws no screen.
+  const first = STEPS.filter((x) => x.screens).length + 1;
+  expect(s.governed!.map((x) => x.level)).toEqual([first]);
+  expect([s.minutes[0]!.level, s.minutes[0]!.most, s.minutes[0]!.steps!.length]).toEqual([first, first, 1]);
   const table = deviceTable(probe.report);
   expect(table.some((line) => line.includes("the governor on"))).toBe(true);
-  expect(table.some((line) => /^ {10}at 0:\d\d to 1: the scene at 90% a side \(30 ms a frame\)$/.test(line))).toBe(true);
+  expect(table.some((line) => new RegExp(`^ {10}at 0:\\d\\d to ${first}: the scene at 90% a side \\(30 ms a frame\\)$`).test(line))).toBe(true);
   const lacks = lacking(probe.report, "governed");
   expect([lacks.includes("the soak did not run its minutes"), lacks.includes("the governed soak does not say what the governor did")]).toEqual([false, false]);
 });

@@ -174,6 +174,8 @@ const STATICS: readonly StructureDef[] = STREET_PIECES.map((p) => ({
   color: p.color, hp: p.hp, ...(p.material ? { material: p.material } : {}), ...(p.paint ? { paint: true as const } : {}),
   // Drawn near only: left out of the far city's lattice and mass, where a lamp would take a whole cell. A billboard is seen from afar.
   ...(p.name.startsWith("billboard") ? {} : { near: true as const }),
+  // A working billboard's panel is an LED screen on its road side.
+  ...(p.name === "billboard" ? { screen: { type: "billboard" as const, face: [-7.4, 7.4, 9.55, 14.4, 1.55] as const, led: true } } : {}),
 }));
 // The curb returns at street corners (content/curbs.ts) are the street's too.
 export const STREET: readonly Def[] = [...SHAPES, ...STATICS, ...CURB_RETURNS, ...BENT_SECTIONS];

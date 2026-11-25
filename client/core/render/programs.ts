@@ -12,7 +12,8 @@ import { FIRE_FRAGMENT, FIRE_VERTEX } from "./fire-light.ts";
 import { FAR_MESH_VERTEX, FLAT_FAR_FRAGMENT, FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_SPLIT_FRAGMENT, FLAT_TERRAIN_VERTEX, LIT_FAR_FRAGMENT, LIT_MESH_FRAGMENT, LIT_SPLIT_FRAGMENT, LIT_TERRAIN_FRAGMENT, LIT_TERRAIN_VERTEX, PULLED_VERTEX, finishVertex } from "./glsl.ts";
 import { EYE_DOME_FRAGMENT, EYE_DOME_VERTEX, EYE_ENERGY_GLSL, EYE_STRIKE_GLSL } from "./tide-eye.ts";
 import { DROP_GLSL } from "./supply-light.ts";
-import { DRAW_BLEND, DRAW_EMISSIVE, DRAW_FIRE, DRAW_ORB, DRAW_SKYLINE, FRAME_BLOCK, SKYLINE_MAX_FOG, DRAW_CUTOUT, DRAW_PULLED, DRAW_TEXTURED, DRAW_WATER, SOURCE_MAP, SOURCE_WINDOW, WATER_MARK_COUNT, type FramePacket } from "./packet.ts";
+import { FACE_FRAGMENT, FACE_VERTEX } from "./screen-shade.ts";
+import { DRAW_BLEND, DRAW_EMISSIVE, DRAW_FIRE, DRAW_ORB, DRAW_SCREENS, DRAW_SKYLINE, FRAME_BLOCK, SKYLINE_MAX_FOG, DRAW_CUTOUT, DRAW_PULLED, DRAW_TEXTURED, DRAW_WATER, SOURCE_MAP, SOURCE_WINDOW, WATER_MARK_COUNT, type FramePacket } from "./packet.ts";
 import { BLOOM_DOWN, BLOOM_UP, FINISH, POST_VERTEX, drawsLight } from "./post.ts";
 import { DEPTH_CUTOUT_FRAGMENT, DEPTH_FRAGMENT, DEPTH_VERTEX, clampDepth, shadowDefines } from "./shadowtext.ts";
 import { PIECE_SPALL_RIM, PIECE_SPALL_TEXT, SURFACE_ANY, surfaceFragment, surfaceVertex, type SurfaceVariant } from "./surface.ts";
@@ -30,10 +31,10 @@ import { WATER_FRAGMENT } from "./water.ts";
  * (skyopen.ts); 17 to 21 a facade's atlases, 22 the terrain window's roads' frame, 23 the local reflection, 24 what stands
  * overhead (roof.ts), 25 and 26 the streets' distances and kinds round the camera (streets.ts), 27 the textures the
  * card makes (client/core/texgen), and 28 the states of the near chunks' pieces (pieces.ts), which only vertex texts
- * read; 29 an orb's screen picture (video/player.ts). WebGL2 has 32 units at the least, and no program's fragment text
- * reads more than sixteen.
+ * read; 29 an orb's screen picture (video/player.ts), and 30 the pictures of the screens on props (screens.ts). WebGL2
+ * has 32 units at the least, and no program's fragment text reads more than sixteen.
  */
-export const UNIT = { palette: 0, heights: 1, tint: 2, bones: 3, maps: 4, shadow: 9, sky: 10, windowHeights: 11, windowTint: 12, atlas: 13, layer: 14, details: 15, open: 16, facade: 17, road: 22, street: 23, roof: 24, streets: 25, streetKinds: 26, texgen: 27, pieces: 28, screen: 29 } as const;
+export const UNIT = { palette: 0, heights: 1, tint: 2, bones: 3, maps: 4, shadow: 9, sky: 10, windowHeights: 11, windowTint: 12, atlas: 13, layer: 14, details: 15, open: 16, facade: 17, road: 22, street: 23, roof: 24, streets: 25, streetKinds: 26, texgen: 27, pieces: 28, screen: 29, faces: 30 } as const;
 
 export interface ProgramText {
   readonly vertex: string;
@@ -191,6 +192,8 @@ void main() {
   fire: (tier, _, __, light = false) => ({ vertex: FIRE_VERTEX, fragment: FIRE_FRAGMENT, defines: (tier.lit ? "#define FIRE_LIT\n" : "") + (tier.bursts.noise > 0 ? "#define FIRE_NOISE\n" : "") + (tier.bursts.noise > 1 ? "#define FIRE_FINE\n" : "") + (drawsLight(tier, light) ? "#define LIGHT_TARGET\n" : ""), samplers: {} }),
   // An orb's screen (packet.ts DRAW_ORB, orb.ts): the tier's octaves of noise, its pucks or none, and its picture. Signal's text stands in until the late one has come.
   orb: (tier, format, hard, light = false): ProgramText => LATE.orb === null ? MAKE.signal(tier, format, hard, light) : { vertex: FLAT_MESH_VERTEX, fragment: LATE.orb, defines: `#define ORB_OCTAVES ${tier.orb.octaves}\n` + (tier.orb.pucks ? "#define ORB_PUCKS\n" : "") + (drawsLight(tier, light) ? "#define LIGHT_TARGET\n" : ""), samplers: { ...MESH, uScreen: UNIT.screen } },
+  // The screens on props (packet.ts DRAW_SCREENS, screen-shade.ts): a quad on each face, its picture a layer of theirs.
+  screens: (tier, _, __, light = false): ProgramText => ({ vertex: FACE_VERTEX, fragment: FACE_FRAGMENT, defines: drawsLight(tier, light) ? "#define LIGHT_TARGET\n" : "", samplers: { uFaces: UNIT.faces } }),
   // The finish (post.ts): bloom's chain down and up, and the pass into the canvas.
   bloomDown: () => post(BLOOM_DOWN, { uSource: UNIT.details }),
   bloomUp: () => post(BLOOM_UP, { uSource: UNIT.details }),
@@ -239,6 +242,7 @@ const ROWS: Readonly<Record<keyof typeof MAKE, readonly UniformRow[]>> = {
   depthTerrainWindow: WINDOW_TILES,
   fire: [...FRAME_ROWS, ...MESH_ROWS],
   orb: FLAT_DRAW,
+  screens: FRAME_ROWS,
   bloomDown: [],
   bloomUp: [],
   finish: [],
@@ -247,7 +251,7 @@ const ROWS: Readonly<Record<keyof typeof MAKE, readonly UniformRow[]>> = {
 export const UNIFORMS: readonly (readonly UniformRow[])[] = Object.keys(MAKE).map((name) => ROWS[name as keyof typeof MAKE]);
 
 /** The programs low poly draws with: no materials, dome, sea or shadows. */
-const UNLIT = ["skyline", "signal", "sky", "flat", "terrain", "terrainWindow", "seeThrough", "far", "pulled", "details", "fire", "orb"];
+const UNLIT = ["skyline", "signal", "sky", "flat", "terrain", "terrainWindow", "seeThrough", "far", "pulled", "details", "fire", "orb", "screens"];
 const POST = ["bloomDown", "bloomUp", "finish"];
 
 /** The programs a frame of `tier` may ask for, by number, which a shell may begin making before one does. */
@@ -280,6 +284,7 @@ const DROPS = DRAW_CUTOUT | IS_HANDED | IS_SWAPPING;
  * new kind of draw is a row here, before the first row that would take it otherwise.
  */
 export const CHOICE: readonly Choice[] = [
+  pick(PROGRAM.screens, DRAW_SCREENS),
   pick(PROGRAM.fire, DRAW_FIRE),
   pick(PROGRAM.orb, DRAW_ORB),
   // An instrument's light with its strip is a SURFACE draw, which its street material draws as a channel of energy.

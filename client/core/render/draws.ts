@@ -7,7 +7,7 @@ import { sortF64 } from "../../../shared/sort.ts";
 import type { Assets } from "../assets/assets.ts";
 import type { FrameBudget } from "./budget.ts";
 import { FAR_FROM } from "./camera.ts";
-import { DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_NEAR, DRAW_ORB, DRAW_SKYLINE, DRAW_TEXTURED, MAX_DRAWS, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR, STEP_NEAR_SEE, type FramePacket } from "./packet.ts";
+import { DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_NEAR, DRAW_ORB, DRAW_SCREENS, DRAW_SKYLINE, DRAW_TEXTURED, MAX_DRAWS, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR, STEP_NEAR_SEE, type FramePacket } from "./packet.ts";
 import { PROGRAM, drawProgram } from "./programs.ts";
 import { WEAR_KEY } from "./wear.ts";
 
@@ -351,6 +351,33 @@ export class Draws {
     p.drawFirst[d] = first;
     p.drawInstances[d] = count;
     p.drawFlags[d] = DRAW_DETAILS | flags;
+    p.drawOffset.fill(0, d * 3, d * 3 + 3);
+    this.passOf[d] = passes;
+    this.doubled += copies - 1;
+    p.drawCount = d + 1;
+    p.triangles += count * 2 * copies;
+  }
+
+  /** The packet's first `count` screens on props (packet.ts faces), one draw in the depth ranges `passes`. */
+  drawFaces(count: number, passes: number): void {
+    const p = this.packet;
+    const d = p.drawCount;
+    if (count === 0) return;
+    const copies = passes === (NEAR | FAR) ? 2 : 1;
+    if (d + this.doubled + copies > MAX_DRAWS) {
+      p.dropped++;
+      return;
+    }
+    this.nearOf[d] = 0;
+    p.drawMesh[d] = 0;
+    p.drawLod[d] = 0;
+    p.drawSlot[d] = 0;
+    p.drawBuffer[d] = 0;
+    p.drawMaterial[d] = 0;
+    p.drawLayer[d] = p.drawHand[d] = p.drawSwap[d] = p.drawFade[d] = 0;
+    p.drawFirst[d] = 0;
+    p.drawInstances[d] = count;
+    p.drawFlags[d] = DRAW_SCREENS;
     p.drawOffset.fill(0, d * 3, d * 3 + 3);
     this.passOf[d] = passes;
     this.doubled += copies - 1;

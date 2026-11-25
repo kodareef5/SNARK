@@ -265,6 +265,8 @@ async function boot(): Promise<void> {
   app.sound = sound;
   // A map with an orb plays its screen's video through a file of its own.
   if (head.orbs?.length) void import("./screen-video.ts").then((m) => (app.screenHost = m.videoHost(sound)), () => {});
+  // The screens on props fetch their page's side the first frame one is in reach.
+  app.loadFaceHost = () => void import("./screen-faces.ts").then((m) => (app.faceHost = m.faceHost()), () => {});
   if (sound && typeof Worker !== "undefined") app.soundDecoder = new WorkerDecoder();
   // The music the build lists; without it the game has no music and plays on.
   if (sound) void fetch("assets/music/music.json").then((r) => (r.ok ? r.json() : null)).then((m) => (app.musicTracks = m?.tracks ?? null)).catch(() => {});
