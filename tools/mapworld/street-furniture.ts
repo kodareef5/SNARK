@@ -665,7 +665,9 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
     for (const line of order) {
       const run = lines.get(line)!; const cls = classOf(run[0]!)!; if (!classes.includes(cls)) continue;
       const every = spacing(cls); if (!(every > 0)) continue;
-      let next = phase ? phase(line, every) : hash3(lineSeed(line), salt, seed) % Math.max(1, Math.floor(every)); let walked = 0; let k = 0;
+      // Stations stand on the whole piece's own spacing, so a line the frame cut keeps another cut's stations and numbers.
+      const from = graph.pieces[line]!.from; let next = phase ? phase(line, every) : hash3(lineSeed(line), salt, seed) % Math.max(1, Math.floor(every));
+      let k = next < from ? Math.ceil((from - next) / every) : 0; next += k * every; let walked = from;
       for (const s of run) {
         const length = Math.hypot(s.bx - s.ax, s.bz - s.az); const dx = (s.bx - s.ax) / length; const dz = (s.bz - s.az) / length;
         while (next <= walked + length) { const t = next - walked; at(s.ax + dx * t, s.az + dz * t, dx, dz, s.half, k++, line, cls); next += every; }

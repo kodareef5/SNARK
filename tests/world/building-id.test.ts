@@ -76,9 +76,10 @@ test("two buildings never share an id, a footprint listed twice among them", () 
   expect(ids.includes(moved[0]!)).toBe(false);
 });
 
-test("a footprint of five polygons stops the build rather than alias ids", () => {
+test("a footprint of five polygons keeps each its own, with ids apart", () => {
   const five = [0, 1, 2, 3, 4].map((k) => [rect(100 + k * 30, 100, 10, 10)]);
   const feature = (polys: Ring[][]): Feature => ({ properties: { id: 9 }, geometry: { type: "MultiPolygon", coordinates: polys } });
-  expect(readBuildings({ features: [feature(five.slice(0, 4))] }).map((b) => b.id)).toEqual([36, 37, 38, 39]);
-  expect(() => readBuildings({ features: [feature(five)] })).toThrow("footprint 9 has 5 polygons");
+  const read = readBuildings({ features: [feature(five)] }, toLattice);
+  expect(read.map((b) => [b.row, b.polygon]).sort()).toEqual([[9, 0], [9, 1], [9, 2], [9, 3], [9, 4]]);
+  expect(new Set(read.map((b) => b.id)).size).toBe(5);
 });

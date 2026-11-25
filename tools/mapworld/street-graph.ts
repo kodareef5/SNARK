@@ -17,6 +17,8 @@ export interface Piece {
   id: string; mtfcc: string; highway: string | null; name: string | null; lanes: number; half: number;
   /** 32 bits of its id, what seeds what stands along it. */
   seed: number;
+  /** Metres along the whole piece where this cut's line of it starts: 0 but where the frame cut it. */
+  from: number;
   /** 1 one way as drawn, -1 one way against it, 0 both ways. */
   oneway: number;
   sidewalk: string | null; bridge: boolean; tunnel: boolean;
@@ -96,7 +98,7 @@ export function readStreetGraph(source: string, toLattice: (e: number, n: number
     const oneway = num(p.oneway_dir) ?? (p.oneway === true ? 1 : 0);
     if ("oneway_dir" in p || "maxspeed_mph" in p || "lit" in p) tags = true;
     pieces.push({
-      id: lineId(f, line), seed: textSeed(lineId(f, line)), mtfcc: text(p.mtfcc) ?? "", highway: text(p.highway), name: text(p.name), lanes: num(p.lanes) ?? 2,
+      id: lineId(f, line), seed: textSeed(lineId(f, line)), from: num(p.from_m) ?? 0, mtfcc: text(p.mtfcc) ?? "", highway: text(p.highway), name: text(p.name), lanes: num(p.lanes) ?? 2,
       half: (num(p.width_m) ?? 8) / 2, oneway, sidewalk: text(p.sidewalk), bridge: p.bridge === true, tunnel: p.tunnel === true,
       maxspeed: num(p.maxspeed_mph), lit: typeof p.lit === "boolean" ? p.lit : null, parking: [text(p.parking_left), text(p.parking_right)],
     });

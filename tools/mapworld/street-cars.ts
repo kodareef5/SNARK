@@ -56,10 +56,11 @@ export function roadIndex(site: Site): { near: (x: number, z: number, reach: num
   const bins = new Map<number, Segment[]>(); const ends = new Map<number, Set<number>>();
   const key = (x: number, z: number): number => binKey(Math.floor(x / 32), Math.floor(z / 32));
   if (existsSync(file)) {
-    const lines = (JSON.parse(readFileSync(file, "utf8")) as { features: { geometry: { type: string; coordinates: number[][] | number[][][] }; properties: { mtfcc?: string; width_m?: number } }[] }).features;
+    const lines = (JSON.parse(readFileSync(file, "utf8")) as { features: { geometry: { type: string; coordinates: number[][] | number[][][] }; properties: { mtfcc?: string; width_m?: number; from_m?: number } }[] }).features;
     lines.forEach((f, line) => {
       const runs = f.geometry.type === "MultiLineString" ? f.geometry.coordinates as number[][][] : [f.geometry.coordinates as number[][]];
-      const id = lineId(f, line); const seed = textSeed(id); let from = 0;
+      // Metres from the whole piece's start, where the frame cut it (tools/mapdata/streets.py from_m).
+    const id = lineId(f, line); const seed = textSeed(id); let from = typeof f.properties.from_m === "number" ? f.properties.from_m : 0;
       for (const run of runs) {
         const points = run.map(([e, n]) => site.toLattice(e!, n!));
         // A junction is a point two lines share, or a line's end (README, "Cars"). Keyed by its half metres, kept
