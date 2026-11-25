@@ -1,7 +1,7 @@
 // ArkApi's Permissions database, a pasted command list and a CrossChat config, planned and applied.
 import { afterAll, expect, spyOn, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { existsSync, mkdirSync, readdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readChatFormat, readChatSettings, readLooseJson } from "../../shared/permissions/chat.ts";
@@ -48,11 +48,18 @@ function arkApiFile(): Uint8Array {
   return bytes;
 }
 
-/** ArkApi's database from a server stopped cleanly: its log was folded into it and removed. */
+/** A stopped server's database, with all WAL frames folded into the main file. */
 function stoppedFile(): Uint8Array {
   const path = join(root, `stopped-${++files}.db`);
-  pluginDatabase(path).close();
-  if (existsSync(`${path}-wal`)) throw new Error("the log outlived the server");
+  const db = pluginDatabase(path);
+  try {
+    db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+  } finally {
+    db.close();
+  }
+  const wal = `${path}-wal`;
+  // Some SQLite builds keep the empty sidecar after closing the last connection.
+  if (existsSync(wal) && statSync(wal).size !== 0) throw new Error("the stopped fixture still has WAL frames");
   const bytes = readFileSync(path);
   removeDatabase(path);
   return bytes;
@@ -333,6 +340,7 @@ test("a database from a server stopped cleanly gives its groups", () => {
   expect(added(plan)).toEqual(["Vip", "Builders"]);
   expect(noteWith(plan, "Vip: 2 memberships left behind (2 players; 1 timed)")).toBeDefined();
   expect(noteWith(plan, "Builders: 1 membership left behind (1 tribe)")).toBeDefined();
+  expect(planArkApi(bytes, opts(fresh()), { wal: new Uint8Array(0) })).toEqual({ ok: true, plan });
 });
 
 test("a database copied from a running server reads its newest groups from its -wal", () => {

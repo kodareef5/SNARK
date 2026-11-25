@@ -60,6 +60,9 @@ interface Row {
   hold: number;
 }
 
+const fadeOf = (row: Row, now: number): number =>
+  Math.max(0, Math.min(1, (row.at + row.hold - now) / Math.max(1, Math.min(FADE_TICKS, row.hold))));
+
 export class ChatState {
   open = false;
   channel = TEXT_GLOBAL;
@@ -73,6 +76,7 @@ export class ChatState {
   private readonly live: number[] = [];
   private seen = 0;
   private readonly rows: Row[] = [];
+  private readonly welcomeRows: number[] = [];
   private rowsFor = "";
   private version = 0;
   /** The tick until which the console's lines show here: the answer to a slash command. */
@@ -168,8 +172,11 @@ export class ChatState {
 
   /** `runs` are a chat line's (S_CHAT), whose text joined is `text`. */
   print(channel: number, text: string, at: number, hold = SHOW_TICKS, runs?: readonly TextRun[]): void {
-    this.lines.push({ channel, text, runs, at, hold: hold > FADE_TICKS ? hold : FADE_TICKS });
-    if (this.lines.length > LINES) this.lines.shift();
+    this.lines.push({ channel, text, runs, at, hold: Math.max(channel === TEXT_MOTD ? 0 : FADE_TICKS, hold) });
+    if (this.lines.length > LINES) {
+      const oldest = this.lines.findIndex(line => line.channel !== TEXT_MOTD || at - line.at >= line.hold);
+      this.lines.splice(Math.max(0, oldest), 1);
+    }
     this.version++;
   }
 
@@ -209,49 +216,56 @@ export class ChatState {
     if (sig !== this.rowsFor) {
       this.rowsFor = sig;
       this.rows.length = 0;
+      this.welcomeRows.length = 0;
       const parts: string[] = [];
       const runRows: TextRun[][] = [];
       for (const line of this.lines) {
         const prefix = PREFIX[line.channel] ?? "";
+        const first = this.rows.length;
         if (line.runs) {
           runRows.length = 0;
           wrapRuns(prefix === "" ? line.runs : [{ text: prefix }, ...line.runs], w - 8, S_CHAT, runRows);
           for (const runs of runRows) this.rows.push({ text: runText(runs), runs, channel: line.channel, at: line.at, hold: line.hold });
-          continue;
+        } else {
+          parts.length = 0;
+          wrapText(prefix + line.text, w - 8, S_CHAT, parts);
+          for (const text of parts) this.rows.push({ text, runs: null, channel: line.channel, at: line.at, hold: line.hold });
         }
-        parts.length = 0;
-        wrapText(prefix + line.text, w - 8, S_CHAT, parts);
-        for (const text of parts) this.rows.push({ text, runs: null, channel: line.channel, at: line.at, hold: line.hold });
+        if (line.channel === TEXT_MOTD) for (let i = first; i < this.rows.length; i++) this.welcomeRows.push(i);
       }
     }
-    const room = Math.max(1, Math.floor((bottom - top - inputH - 4) / lh));
-    const most = Math.min(this.open ? MAX_ROWS : SHUT_ROWS, room);
+    const room = Math.min(MAX_ROWS, Math.max(1, Math.floor((bottom - top - inputH - 4) / lh)));
     const rowsBottom = bottom - (this.open ? inputH + 4 : 0);
-    // Shut, a row shows until its hold runs out. Open, every row may show. The newest `most` are taken, in arrival order.
     const live = this.live;
     live.length = 0;
+    let welcome = 0;
+    // The server's welcome keeps its room while the closed radio shows recent chat beside it.
+    if (!this.open) for (const index of this.welcomeRows) {
+      const alpha = fadeOf(this.rows[index]!, now);
+      if (alpha === 0) continue;
+      live.push(index);
+      welcome = Math.max(welcome, alpha);
+      if (live.length === room) break;
+    }
+    const most = this.open ? room : Math.min(room, live.length + SHUT_ROWS);
     for (let i = this.rows.length - 1; i >= 0 && live.length < most; i--) {
       const row = this.rows[i]!;
-      if (this.open || (!touch && CHANNELS.includes(row.channel)) || now - row.at < row.hold) live.push(i);
+      if (this.open || (row.channel !== TEXT_MOTD && ((!touch && CHANNELS.includes(row.channel)) || now - row.at < row.hold))) live.push(i);
     }
-    live.reverse();
+    if (welcome > 0) live.sort((a, b) => a - b);
+    else live.reverse();
     const shown = live.length;
     if (this.open) {
       const h = most * lh + inputH + 12;
       f.add(KEY_CHAT_PANEL, K_PANEL, x0 - 4, bottom - h + 4, w + 8, h, S_CHAT_PANEL);
     }
     let y = rowsBottom - shown * lh;
-    // Shut, the box stands behind its lines while the server's welcome is among them, and fades with it: a survivor who
-    // has just joined sees where chat is. By touch the shut lines stand over the stick at rest, which a box would hide,
-    // and the bar's Chat button opens the box at the top: there the welcome is a line like any other.
-    let welcome = 0;
-    for (let k = 0; k < shown && !this.open && !touch; k++) {
-      const row = this.rows[live[k]!]!;
-      if (row.channel === TEXT_MOTD) welcome = Math.max(welcome, Math.min(1, (row.hold - (now - row.at)) / FADE_TICKS));
-    }
+    // A welcome gets a backdrop that fades with it. Touch leaves the stick visible behind the closed radio.
+    const headerY = y - (controls ? 21 : 0);
+    if (!touch && welcome > 0)
+      f.add(KEY_CHAT_PANEL, K_PANEL, x0 - 4, headerY - 4, w + 8, rowsBottom - headerY + 8, S_CHAT_PANEL).alpha = welcome;
     if (!this.open && !touch && controls) {
-      const headerY = y - 21;
-      glass(f, welcome ? KEY_CHAT_PANEL : KEY_RADIO_EDGE + 1, x0 - 4, headerY - 2, w + 4, shown * lh + 25, welcome ? .72 : shown ? .57 : .27);
+      if (welcome === 0) glass(f, KEY_RADIO_EDGE + 1, x0 - 4, headerY - 2, w + 4, shown * lh + 25, shown ? .57 : .27);
       f.add(KEY_RADIO_EDGE, K_PANEL, x0 - 4, headerY, 1, shown * lh + 19, S_ICE).alpha = .55;
       const radio = f.add(KEY_CHAT_OPEN, K_BUTTON, x0 - 3, headerY - 2, 100, 23, S_HUD_HIT);
       radio.label = "Open radio chat"; radio.interactive = true;
@@ -263,8 +277,7 @@ export class ChatState {
       const n = f.text(KEY_CHAT_ROW + k, x0, y, w - 8, ROW_STYLE[row.channel] ?? S_CHAT, row.text);
       n.runs = row.runs;
       if (!this.open) {
-        const left = row.hold - (now - row.at);
-        const fade = Math.max(0, Math.min(1, left / FADE_TICKS));
+        const fade = fadeOf(row, now);
         n.alpha = !touch && CHANNELS.includes(row.channel) ? .65 + .35 * fade : fade;
       }
       y += lh;
