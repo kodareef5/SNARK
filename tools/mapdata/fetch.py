@@ -103,6 +103,8 @@ def dem_tiles(m, man, d):
 def nlcd(m, man):
     c = m.city['nlcd']
     b = Transformer.from_crs(m.crs, 3857, always_xy=True).transform_bounds(*m.b, densify_pts=21)
+    # The box on a fixed 30 m grid of its projection, so every cut of a city gets the same pixels where they meet.
+    b = (math.floor(b[0] / 30) * 30, math.floor(b[1] / 30) * 30, math.ceil(b[2] / 30) * 30, math.ceil(b[3] / 30) * 30)
     keep(m, man, c['file'], c['url'], c['source'], c['licence'], params={
         'service': 'WCS', 'version': '1.0.0', 'request': 'GetCoverage', 'coverage': c['coverage'], 'crs': 'EPSG:3857',
         'bbox': ','.join(map(str, b)), 'resx': 30, 'resy': 30, 'format': 'GeoTIFF'}, accept=lambda b: b[:2] in (b'II', b'MM'))

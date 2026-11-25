@@ -111,6 +111,15 @@ def resolve_places(m, features):
         if p.get('osm_way') is not None and not p.get('osm_part') and not p.get('parts_remainder'):
             pieces.setdefault(p['osm_way'], []).append((shape(f['geometry']).area, p['id']))
     changed = False
+    # A place another cut holds is that cut's: only one whose point stands inside this frame must find its building.
+    from pyproj import Transformer
+    to_map = Transformer.from_crs(4326, m.cfg['crs_proj'], always_xy=True)
+    west, south, east, north = m.b
+    inside = lambda p: 'at' not in p or (lambda e, n: west <= e <= east and south <= n <= north)(*to_map.transform(*p['at']))
+    elsewhere = [p['name'] for p in places if not inside(p)]
+    places = [p for p in places if inside(p)]
+    if elsewhere:
+        print(f"places: {len(elsewhere)} stand outside this cut: {', '.join(elsewhere)}")
     at_places = [p for p in places if 'osm_way' not in p and 'at' in p]
     if at_places:
         changed |= resolve_by_position(m, features, at_places)
