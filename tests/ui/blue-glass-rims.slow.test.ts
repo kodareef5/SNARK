@@ -10,20 +10,37 @@ const chrome = findChrome();
 const url = new URL("../../planning/reference/interface-study/blue-glass.html", import.meta.url);
 type Page = Awaited<ReturnType<typeof devtools>>;
 
-async function stroke(page: Page, selector: string, dx = 0, dy = 0, cancel = false): Promise<void> {
-  const [x, y] = await page.value<[number, number]>(`(() => {
+async function point(page: Page, selector: string): Promise<{ x: number; y: number }> {
+  return page.value(`(() => {
     const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();
-    return [r.x + r.width / 2, r.y + r.height / 2];
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
   })()`);
+}
+
+async function paint(page: Page): Promise<void> {
+  await page.send("Runtime.evaluate", { expression: "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))", awaitPromise: true });
+}
+
+function dock(page: Page) {
+  return page.value<{ slot: number; bottom: number; top: number; width: number; hitHeight: number }[]>(`
+    Array.from(document.querySelectorAll('#bar button:not([hidden]):not([inert])'), button => {
+      const art = button.querySelector('img').getBoundingClientRect();
+      return { slot: Number(button.dataset.slot), bottom: art.bottom, top: art.top, width: art.width,
+        hitHeight: button.getBoundingClientRect().height };
+    })`);
+}
+
+async function stroke(page: Page, selector: string, dx = 0, dy = 0, cancel = false): Promise<void> {
+  const { x, y } = await point(page, selector);
   await page.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
   if (dx || dy) {
     await page.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: x + dx, y: y + dy }] });
   }
   await page.send("Input.dispatchTouchEvent", { type: cancel ? "touchCancel" : "touchEnd", touchPoints: [] });
-  await page.send("Runtime.evaluate", { expression: "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))", awaitPromise: true });
+  await paint(page);
 }
 
-test.skipIf(!chrome)("Two wheel levels browse safely and the bottom wheel equips on release", async () => {
+test.skipIf(!chrome)("The dock magnifies under touch and both action levels browse safely", async () => {
   const profile = mkdtempSync(join(tmpdir(), "snark-rims-"));
   const browser = Bun.spawn([chrome!, "--headless=new", ...CHROME_FLAGS, "--no-first-run", "--disable-extensions",
     "--remote-debugging-port=0", "--user-data-dir=" + profile, "about:blank"], { stdout: "ignore", stderr: "ignore" });
@@ -40,17 +57,29 @@ test.skipIf(!chrome)("Two wheel levels browse safely and the bottom wheel equips
       const track = () => page.value<string>("document.querySelector('#bar .chosen').ariaLabel");
       const depth = () => page.value<string>("document.querySelector('#rightWheel').dataset.depth");
       const order = () => page.value<string>("document.querySelector('#stage').dataset.tameOrder || ''");
-      const centers = await page.value<{ x: number; y: number }[]>(`
-        Array.from(document.querySelectorAll('#bar button:not([hidden]):not([inert])'), button => {
-          const rect = button.getBoundingClientRect();
-          return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-        }).sort((a, b) => a.x - b.x)`);
-      // Equal turns of a circular wheel put neighboring slot centers the same distance apart.
-      const gaps = centers.slice(1).map((point, i) => Math.hypot(point.x - centers[i]!.x, point.y - centers[i]!.y));
-      expect(gaps.length).toBeGreaterThan(1);
-      expect(Math.max(...gaps) - Math.min(...gaps)).toBeLessThan(1);
+      const idle = await dock(page);
+      const unselected = idle.filter(item => item.slot !== 0);
+      const artWidth = (items: typeof idle, slot: number) => items.find(item => item.slot === slot)!.width;
+      expect(unselected.length).toBeGreaterThanOrEqual(2);
+      expect(Math.max(...unselected.map(item => item.bottom)) - Math.min(...unselected.map(item => item.bottom))).toBeLessThan(2);
+      expect(height - Math.min(...idle.map(item => item.top))).toBeLessThanOrEqual(idle[0]!.hitHeight + 8);
+      expect(artWidth(idle, 0)).toBeGreaterThan(artWidth(idle, 1));
+
+      const neighbor = await point(page, "#bar [data-slot='1']");
+      await page.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [neighbor] });
+      await paint(page);
+      const held = await dock(page);
+      const growth = (slot: number) => artWidth(held, slot) - artWidth(idle, slot);
+      expect(growth(1)).toBeGreaterThan(growth(0));
+      expect(growth(0)).toBeGreaterThan(0);
+      expect(await track()).toBe("1 · Stone pick");
+      await page.send("Input.dispatchTouchEvent", { type: "touchCancel", touchPoints: [] });
+      await paint(page);
+      expect(artWidth(await dock(page), 1)).toBeCloseTo(artWidth(idle, 1));
+      expect(await track()).toBe("1 · Stone pick");
       await stroke(page, "#bar [data-slot='1']");
       expect(await track()).toBe("2 · Stone hatchet");
+      expect(artWidth(await dock(page), 1)).toBeCloseTo(artWidth(idle, 0));
       await stroke(page, "#bar [data-slot='0']");
       await stroke(page, "[data-action-open]");
       await stroke(page, "[data-family='0']", -55);
@@ -71,10 +100,13 @@ test.skipIf(!chrome)("Two wheel levels browse safely and the bottom wheel equips
       expect(await track()).toBe("3 · Spear");
       expect(await page.value<string>("document.querySelector('#reticle').dataset.uses || ''")).toBe("");
     }
-    const [x, y] = await page.value<[number, number]>(`(() => {
-      const r = document.querySelector("#bar .chosen").getBoundingClientRect();
-      return [r.x + r.width / 2, r.y + r.height / 2];
-    })()`);
+    for (const key of ["0", "3"]) {
+      await page.send("Input.dispatchKeyEvent", { type: "keyDown", key, code: "Digit" + key });
+      await page.send("Input.dispatchKeyEvent", { type: "keyUp", key, code: "Digit" + key });
+      await paint(page);
+      expect(await page.value<string>("document.querySelector('#bar [aria-pressed=true]').ariaLabel")).toStartWith(key + " · ");
+    }
+    const { x, y } = await point(page, "#bar .chosen");
     await page.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
     await page.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: x - 57, y }] });
     await page.send("Emulation.setDeviceMetricsOverride", { width: 844, height: 390, deviceScaleFactor: 1, mobile: true });
