@@ -75,29 +75,33 @@ function vehicleParts(v: SentView, i: number, out: Uint32Array | number[]): void
   out[9] = v.vehicleWater[i]!;
 }
 
-/** The bits an update's vehicle takes after its own bit: 0 when no part changed. */
+/** A bit for each vehicle part that differs between the base's entry and the true one, lowest bit the first part. */
 function vehicleChange(base: SentView, i: number, cur: SentView, j: number): number {
   vehicleParts(base, i, partsA);
   vehicleParts(cur, j, partsB);
-  let bits = 0;
-  let any = false;
-  for (let p = 0; p < VEHICLE_PART_BITS.length; p++) {
-    bits += 1;
-    if (partsA[p] !== partsB[p]) { bits += VEHICLE_PART_BITS[p]!; any = true; }
-  }
-  return any ? bits : 0;
+  let changed = 0;
+  for (let p = 0; p < VEHICLE_PART_BITS.length; p++) if (partsA[p] !== partsB[p]) changed |= 1 << p;
+  return changed;
 }
 
-/** Each part with its bit, the part only where it differs from the base's (always, without a base). */
-function writeVehicleParts(w: BitWriter, base: SentView | null, i: number, cur: SentView, j: number): void {
-  if (base) vehicleParts(base, i, partsA);
+/** The bits an update's vehicle takes after its own bit, by `vehicleChange`'s mask: 0 when no part changed. */
+const VEHICLE_CHANGE_BITS = Uint16Array.from({ length: 1 << VEHICLE_PART_BITS.length }, (_, changed) => {
+  let bits = 0;
+  for (let p = 0; p < VEHICLE_PART_BITS.length; p++) bits += 1 + ((changed >>> p) & 1) * VEHICLE_PART_BITS[p]!;
+  return changed === 0 ? 0 : bits;
+});
+
+/** Each part with its bit, the part only where `changed` (`vehicleChange`'s mask) has its bit; every part when it is all ones. */
+function writeVehicleParts(w: BitWriter, changed: number, cur: SentView, j: number): void {
   vehicleParts(cur, j, partsB);
   for (let p = 0; p < VEHICLE_PART_BITS.length; p++) {
-    const sent = !base || partsA[p] !== partsB[p];
+    const sent = ((changed >>> p) & 1) === 1;
     w.bool(sent);
     if (sent) w.bits(partsB[p]!, VEHICLE_PART_BITS[p]!);
   }
 }
+/** `writeVehicleParts`'s mask for a create, which sends every part. */
+const VEHICLE_ALL = (1 << VEHICLE_PART_BITS.length) - 1;
 
 function readVehicleParts(r: BitReader, base: SentView | null, i: number, out: number[]): void {
   if (base) vehicleParts(base, i, out);
@@ -553,6 +557,8 @@ const urgIndex = new Int16Array(MAX_VIEW * 2);
 const optIndex = new Int16Array(MAX_VIEW * 2);
 /** Bits each deferrable op takes. Exact for an update but for its id gap, an upper bound for a create, new or again. */
 const opBits = new Uint16Array(MAX_OPS);
+/** An update's vehicle parts that changed, as `vehicleChange` found them while it was sized. */
+const opVehicle = new Uint16Array(MAX_OPS);
 let admitted = 0;
 const K_KEEP = 0;
 const K_UPDATE = 1;
@@ -745,7 +751,8 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
         const strideChanged = cur.stride[j] !== base!.stride[i];
         const reacted = cur.react[j] !== base!.react[i];
         const cued = cur.cue[j] !== base!.cue[i] || emoted || reacted;
-        const vehicleBits = vehicleChange(base!, i, cur, j);
+        const vehicleChanged = vehicleChange(base!, i, cur, j);
+        const vehicleBits = VEHICLE_CHANGE_BITS[vehicleChanged]!;
         if (!moved && changed === 0 && !strideChanged && !cued && vehicleBits === 0 && base!.yaw[i] === cur.yaw[j] && base!.flags[i] === cur.flags[j]) {
           if (th < 0) {
             opKind[n] = K_KEEP;
@@ -766,6 +773,7 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
           // As the baseline has it, but the client may show what it was told since. An update with no parts says so.
         }
         opKind[n] = K_UPDATE;
+        opVehicle[n] = vehicleChanged;
         // The id gap, the op, and one bit for each of the seven parts that may follow.
         bits = varintBits(cid + 1 - last) + 2 + 7 + vehicleBits;
         if (moved) bits += dx >= -128 && dx <= 127 && dy >= -128 && dy <= 127 && dz >= -128 && dz <= 127 ? 25 : 65;
@@ -892,7 +900,7 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
       w.bool(cur.react[ci] !== 0);
       if (cur.react[ci] !== 0) w.bits(cur.react[ci]!, REACT_BITS);
       w.bool(cur.vehiclePose[ci] !== 0);
-      if (cur.vehiclePose[ci] !== 0) writeVehicleParts(w, null, 0, cur, ci);
+      if (cur.vehiclePose[ci] !== 0) writeVehicleParts(w, VEHICLE_ALL, cur, ci);
       w.bits(cur.rev[ci]!, 4);
       w.varint(looks.level[id]!);
       const c0 = id * 6;
@@ -983,9 +991,9 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
         w.bool(reacted);
         if (reacted) w.bits(cur.react[ci]!, REACT_BITS);
       }
-      const vehicleChanged = vehicleChange(base!, bi, cur, ci) !== 0;
-      w.bool(vehicleChanged);
-      if (vehicleChanged) writeVehicleParts(w, base!, bi, cur, ci);
+      const vehicleChanged = opVehicle[k]!;
+      w.bool(vehicleChanged !== 0);
+      if (vehicleChanged !== 0) writeVehicleParts(w, vehicleChanged, cur, ci);
       next.copyFrom(cur, ci);
     }
   }

@@ -22,6 +22,7 @@
 | `preload.ts` | Loaded before each test file (`bunfig.toml`): collects what the last file in the worker left, sets that limit, and under the check says what each worker is running and what each file cost |
 | `needs-art.ts` | `test` and `artTest` for tests that need the art in `assets/`, skipped where it is not here: in the code as shown outside, never in the repository |
 | `frames.ts`, `device-reports/` | Frame traces for the governor, and the iPhone's three soaks they replay |
+| `view-before.ts` | The snapshot writer before an update kept its vehicle comparison, which the writer's bytes are held to |
 | `cityslice.ts`, `miami-slice.gz` | Downtown Miami's 9 by 9 chunks of the 16 km map as built, its statics and ground (136 KB), for the city census; cut again by `bun tools/bench/census.ts <map> --cut` |
 
 Fixtures are deterministic: seeded randomness, virtual clocks, generated data.

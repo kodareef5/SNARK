@@ -29,6 +29,7 @@ import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { buildCorePack } from "../pack/build.ts";
 import { Bot } from "./bot.ts";
+import { CreatureLoad } from "./load.ts";
 
 type Section = (title: string) => void;
 type Row = (name: string, value: number, unit: string, budget?: number | null) => void;
@@ -151,6 +152,7 @@ export function benchFirefight(section: Section, record: Row, host: Host, centre
     return (u.user + u.system) / 1000;
   };
   const last = { events: 0, others: 0, cpu: 0 };
+  const load = new CreatureLoad(host);
   const aim = new Rng(505);
   let most = 0;
   /** Steps `ticks` with the first `firing` of them shooting, each tick's time and its shots' into `times`. Returns the KB/s each of the 50 was sent. */
@@ -184,6 +186,7 @@ export function benchFirefight(section: Section, record: Row, host: Host, centre
       run(1, one);
       mend();
       times?.push(launched + one[0]!);
+      if (times) load.sample();
       if (shots.flyingCount > most) most = shots.flyingCount;
     }
     last.cpu = (worked() - cpuBefore) / ticks;
@@ -229,6 +232,7 @@ export function benchFirefight(section: Section, record: Row, host: Host, centre
   const line = median(quiet.kb);
   /** The middle of what each turn's run was over the same turn's run of `under`. */
   const over = (run: number[], under: number[]): number => median(run.map((v, turn) => v - under[turn]!));
+  load.rows(record);
   record("nobody firing: processor time a tick", median(quiet.cpu), "ms");
   record("nobody firing: events to a listener", median(quiet.events) + median(quiet.others), "KB/s");
   record("nobody firing: tick time, median", still, "ms", 8);

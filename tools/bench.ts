@@ -91,6 +91,7 @@ import { benchGpu } from "./bench/gpu.ts";
 import { benchUi } from "./bench/ui.ts";
 import { Bot } from "./bench/bot.ts";
 import { FIREFIGHT_GUNS, SHOT_ROUNDS, benchFirefight, benchShots } from "./bench/firefight.ts";
+import { CreatureLoad } from "./bench/load.ts";
 
 const PLAYERS = 100;
 const STRUCTURES = 500000;
@@ -232,13 +233,18 @@ let now = 0;
 const tickMs = 1000 / TICK_RATE;
 /** How long each database checkpoint between ticks took, in ms. */
 const checkpoints: number[] = [];
+/** The creatures awake and stepped on each timed tick, for the sections that print them beside their times. */
+const load = new CreatureLoad(host);
 function run(ticks: number, times: number[] | null): void {
   for (let i = 0; i < ticks; i++) {
     now += tickMs;
     net.advance(now);
     const t = performance.now();
     host.game.tick();
-    if (times) times.push(performance.now() - t);
+    if (times) {
+      times.push(performance.now() - t);
+      load.sample();
+    }
     // As the server's loop does between ticks. It is timed apart, because it runs in the time a tick leaves over.
     const idleAt = performance.now();
     host.idle();
@@ -646,6 +652,7 @@ const FALL_PARTS = [PART.build, PART.world, PART.modules, PART.save, PART.own, P
     endParts(tick);
   };
   const calm: number[] = [];
+  load.reset();
   run(60, calm);
   const calmParts = spent.splice(0);
   const sentBytes = host.game.stats.chunkBytes;
@@ -699,6 +706,7 @@ const FALL_PARTS = [PART.build, PART.world, PART.modules, PART.save, PART.own, P
   record("most pieces removed in a tick", Math.max(...removed), "", FALL_MOST);
   record("collapse work in a tick, median", percentile(work, 0.5), "ms", 1.5);
   record("collapse work in a tick, worst", work[work.length - 1]!, "ms", 3);
+  load.rows(record);
   // The whole tick is the fight's, which the firefight above leaves several times its own median. So the fall is held to
   // what it adds, in the parts of a tick a removal's work lands in: the worst of their sum, over its worst just before.
   record("whole tick just before, median", percentile(calm, 0.5), "ms");
@@ -844,6 +852,7 @@ let siegeChunk = -1;
   // 1,024 rows a tick to each client at most: 20 ticks for the chunk or more, and the bots' own fists keep changing it meanwhile.
   run(200, null);
   const quiet: number[] = [];
+  load.reset();
   run(150, quiet);
   quiet.sort((a, b) => a - b);
   commitTimes.length = 0;
@@ -866,6 +875,7 @@ let siegeChunk = -1;
   }
   fire.sort((a, b) => a - b);
   commitTimes.sort((a, b) => a - b);
+  load.rows(record);
   record("tick time before the damage, median", percentile(quiet, 0.5), "ms");
   record("tick time under it, median", percentile(fire, 0.5), "ms", 8);
   record("tick time under it, 99th percentile", percentile(fire, 0.99), "ms", 16);
@@ -900,6 +910,7 @@ section("A breeding base: 300 tames all told to mate, 150 young, 100 eggs, and t
   stand();
   run(90, null);
   const quiet: number[] = [];
+  load.reset();
   run(300, quiet);
   quiet.sort((a, b) => a - b);
 
@@ -958,6 +969,7 @@ section("A breeding base: 300 tames all told to mate, 150 young, 100 eggs, and t
   run(300, busy);
   busy.sort((a, b) => a - b);
   const perKeeper = keepers.reduce((sum, c, i) => sum + (c.conn as LoopbackEnd).bytesSent - sentAt[i]!, 0) / keepers.length / (300 / TICK_RATE) / 1024;
+  load.rows(record);
   record("tick time there before the base, median", percentile(quiet, 0.5), "ms");
   record("tick time with the base awake and mating, median", percentile(busy, 0.5), "ms", Math.round((percentile(quiet, 0.5) * 1.5 + 0.5) * 100) / 100);
   record("tick time with the base awake and mating, 99th percentile", percentile(busy, 0.99), "ms", 16);
@@ -993,7 +1005,9 @@ section("A breeding base: 300 tames all told to mate, 150 young, 100 eggs, and t
 
 // ---------------------------------------------------------------- crowd
 // Back where the brawl was. The second real client is alive, and asks for all a view holds.
+load.reset();
 crowdRows({ section, record, percentile }, host, run, sessions[1]!, centers[0]![0] + 70, centers[0]![1]);
+load.rows(record);
 
 // ---------------------------------------------------------------- restart
 section("Between ticks");
