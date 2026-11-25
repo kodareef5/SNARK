@@ -1,12 +1,13 @@
 import { Database } from "bun:sqlite";
 import { afterAll, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, statSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { idOf } from "../../shared/ids.ts";
 import type { PermissionActor } from "../../shared/permissions/model.ts";
 import { RANK_ADMIN, RANK_CLUSTER, RANK_OPEN } from "../../shared/ranks.ts";
 import { Permissions, POLL_MS } from "../../server/permissions/permissions.ts";
+import { RETIRED_MS } from "../../server/permissions/secrets.ts";
 import { PermissionStore } from "../../server/permissions/store.ts";
 import { issue } from "../fixtures/permissions.ts";
 
@@ -184,4 +185,124 @@ test("the register keeps the first time an ID was seen, follows its name, and it
   expect([perms.teamMade(String(2 * 1048576 + 3)), perms.teamMade(String(2 * 1048576 + 4)), perms.teamMade(String(7 * 1048576 + 1))]).toEqual([true, false, false]);
   // Nothing anyone may do changed, so the revision and this view stayed.
   expect([perms.snapshot().revision, perms.version]).toEqual([0, v]);
+});
+
+test("a view opened later still knows a password retired within the day", () => {
+  const file = fresh();
+  const clock = { t: 1_000_000 };
+  const one = new Permissions({ store: new PermissionStore(file), world: 2, now: () => clock.t });
+  issue(one, A, B);
+  expect(one.apply(cluster, { op: "addMember", kind: "survivor", key: A, group: "Admins" })).toBe("");
+  expect(one.apply(cluster, { op: "addMember", kind: "survivor", key: B, group: "Admins" })).toBe("");
+  const [first, second, third, gone] = ["a1", "b2", "c3", "d4"].map((x) => x.repeat(32));
+  expect([one.claim(A, first!, "").why, one.claim(B, gone!, "").why]).toEqual(["", ""]);
+  // A view that was open all along and never saw the first two: both were replaced between its polls.
+  const two = new Permissions({ store: new PermissionStore(file), world: 5, now: () => clock.t });
+  expect(one.claim(A, second!, first!).why).toBe("");
+  expect(one.claim(A, third!, second!).why).toBe("");
+  expect(one.apply(cluster, { op: "clearSecret", id: B })).toBe("");
+  clock.t += POLL_MS;
+  two.poll();
+  expect([first, second, gone, third].map((h) => two.retired(h!))).toEqual([true, true, true, false]);
+  // A world that starts after it all, as one restarted does.
+  clock.t += 3600_000;
+  const late = new Permissions({ store: new PermissionStore(file), world: 6, now: () => clock.t });
+  expect([first, second, gone, third].map((h) => late.retired(h!))).toEqual([true, true, true, false]);
+  // After a day none is remembered, in memory or in the file.
+  clock.t += RETIRED_MS;
+  expect([first, second, gone].map((h) => late.retired(h!))).toEqual([false, false, false]);
+  expect(one.apply(cluster, { op: "addGroup", group: "Vip" })).toBe("");
+  const after = new Permissions({ store: new PermissionStore(file), world: 7, now: () => clock.t });
+  expect([first, second, gone].map((h) => after.retired(h!))).toEqual([false, false, false]);
+  const db = new Database(file);
+  expect((db.query("SELECT COUNT(*) AS n FROM retired").get() as { n: number }).n).toBe(0);
+  db.close();
+});
+
+/** Two worlds over one file, with A already holding what B wrote: bob in a group that gives every cheat. */
+function twoWorlds() {
+  const file = fresh();
+  const clock = { t: 1_800_000_000_000 };
+  const said: string[] = [];
+  const a = new Permissions({ store: new PermissionStore(file), world: 1, now: () => clock.t, say: (line) => said.push(line) });
+  const b = new Permissions({ store: new PermissionStore(file), world: 2, now: () => clock.t });
+  issue(b, B);
+  for (const op of [{ op: "addGroup", group: "Gods" }, { op: "grant", group: "Gods", permission: "*" }, { op: "addMember", kind: "survivor", key: B, group: "Gods" }] as const) expect(b.apply(cluster, op)).toBe("");
+  clock.t += POLL_MS;
+  a.poll();
+  const bob = { id: B, team: 0, signed: false, world: 1 };
+  expect(a.has(bob, "Cheat.god")).toBe(true);
+  return { file, clock, a, b, bob, said };
+}
+
+test("another world's change is seen at the next poll, whatever the file's time and size say", () => {
+  const { file, clock, a, b, bob } = twoWorlds();
+  // A file system with coarse times, as FAT's or a network share's, gives two commits one time, and SQLite's pages one size.
+  const coarse = Math.floor(statSync(file).mtimeMs / 1000);
+  expect(b.apply(cluster, { op: "grant", group: "Gods", permission: "Cheat.fly" })).toBe("");
+  utimesSync(file, coarse, coarse);
+  clock.t += POLL_MS;
+  a.poll();
+  expect(b.apply(cluster, { op: "removeMember", kind: "survivor", key: B, group: "Gods" })).toBe("");
+  utimesSync(file, coarse, coarse);
+  clock.t += POLL_MS;
+  expect(a.poll()).toBe(true);
+  expect(a.has(bob, "Cheat.god")).toBe(false);
+});
+
+test("a clock put back does not stop a world from looking at the file", () => {
+  const { clock, a, b, bob } = twoWorlds();
+  clock.t -= 3_600_000;
+  expect(b.apply(cluster, { op: "removeMember", kind: "survivor", key: B, group: "Gods" })).toBe("");
+  clock.t += 2 * POLL_MS;
+  a.poll();
+  expect(a.has(bob, "Cheat.god")).toBe(false);
+});
+
+test("a file another process holds locked costs a short wait, throws nothing, and is read once free", () => {
+  const { file, clock, a, b, bob, said } = twoWorlds();
+  expect(b.apply(cluster, { op: "removeMember", kind: "survivor", key: B, group: "Gods" })).toBe("");
+  const holder = new Database(file);
+  holder.exec("BEGIN EXCLUSIVE");
+  const timed = <T>(run: () => T): [T, number] => {
+    const from = performance.now();
+    const out = run();
+    return [out, performance.now() - from];
+  };
+  clock.t += POLL_MS;
+  const [polled, pollMs] = timed(() => a.poll());
+  const [why, applyMs] = timed(() => a.apply(cluster, { op: "addGroup", group: "Vip" }));
+  const [claimed, claimMs] = timed(() => a.claim(B, "ab".repeat(32), ""));
+  const [registered, registerMs] = timed(() => a.register({ origin: 1, survivors: 5, teams: 5, minted: [], known: [] }));
+  expect([polled, why, claimed.why, registered]).toEqual([false, "The permissions could not be written.", "The permissions could not be written.", null]);
+  for (const ms of [pollMs, applyMs, claimMs, registerMs]) expect(ms).toBeLessThan(1000);
+  // It keeps what it had, says so once, and reads the file again when it can.
+  expect(a.has(bob, "Cheat.god")).toBe(true);
+  clock.t += POLL_MS;
+  a.poll();
+  expect(said.filter((line) => line.includes("could not be read")).length).toBe(1);
+  holder.exec("ROLLBACK");
+  holder.close();
+  clock.t += POLL_MS;
+  expect(a.poll()).toBe(true);
+  expect(a.has(bob, "Cheat.god")).toBe(false);
+  expect(said.at(-1)).toContain("read again");
+  expect(a.apply(cluster, { op: "addGroup", group: "Vip" })).toBe("");
+});
+
+test("a write that fails half way leaves nothing of itself in the view", () => {
+  const file = fresh();
+  const store = new PermissionStore(file);
+  const perms = new Permissions({ store, world: 2 });
+  issue(perms, A);
+  // The membership reaches the view and the file, and then the transaction fails as it ends.
+  const raise = store.raise.bind(store);
+  store.raise = () => {
+    throw new Error("the disk is full");
+  };
+  expect(perms.apply(cluster, { op: "addMember", kind: "survivor", key: A, group: "Admins" })).toBe("The permissions could not be written.");
+  store.raise = raise;
+  expect([perms.membersOf("survivor", A), perms.staffRank(A)]).toEqual([[], RANK_OPEN]);
+  const other = new Permissions({ store: new PermissionStore(file), world: 5 });
+  expect(other.membersOf("survivor", A)).toEqual([]);
 });

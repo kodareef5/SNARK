@@ -55,6 +55,19 @@ export class Retired {
     if (this.by.size > RETIRED_MOST) this.by.delete(this.by.keys().next().value!);
   }
 
+  /** Takes in hashes retired elsewhere, as the store kept them, each at its own time. */
+  merge(rows: readonly { readonly hash: string; readonly at: number }[]): void {
+    if (rows.length === 0) return;
+    const all = new Map(this.by);
+    for (const r of rows) {
+      const key = r.hash.toLowerCase();
+      all.set(key, Math.max(all.get(key) ?? 0, r.at));
+    }
+    const ordered = [...all].sort((x, y) => x[1] - y[1]).slice(-RETIRED_MOST);
+    this.by.clear();
+    for (const [key, at] of ordered) this.by.set(key, at);
+  }
+
   has(hash: string, now: number): boolean {
     for (const [key, at] of this.by) {
       if (now - at < RETIRED_MS) break;

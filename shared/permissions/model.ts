@@ -243,18 +243,28 @@ export function mayRunCommand(permissions: readonly string[], command: string): 
   return holds(permissions, commandPermission(command));
 }
 
+/**
+ * Where a survivor's staff groups count, as seen from one world: in none at all, on that world alone, there and on others
+ * too, or only on others.
+ */
+export type StaffReach = "none" | "here" | "wider" | "elsewhere";
+
 /** What the edit rule needs to know of the store. */
 export interface RuleLook {
   /** A group's rank, or undefined when there is none of that name. */
   groupRank(name: string): number | undefined;
   /** The highest rank of a staff group (rank 1 and up) the survivor is in, on any world, or 0. */
   staffRank(id: string): number;
+  /** Where survivor `id`'s staff groups count, as seen from `world`. */
+  staffReach(id: string, world: number): StaffReach;
   /** Whether a group has a member on any world, whose time has not run out. */
   hasMembers(name: string): boolean;
   /** Whether a world ever issued survivor ID `id`. */
   issued(id: string): boolean;
   /** Whether a world ever made team number `key`. */
   teamMade(key: string): boolean;
+  /** The highest staff rank among the members of tribe `key` that this world knows, or 0. */
+  tribeRank(key: string): number;
 }
 
 /**
@@ -341,13 +351,14 @@ export function editRule(actor: PermissionActor, op: PermissionOp, look: RuleLoo
       const ranked = above(rank);
       if (ranked) return ranked;
       if (op.kind === "tribe" && rank > RANK_OPEN) return "A tribe is put only in an open group.";
+      // A tribe's groups are its members', so one who outranks the actor is no more reached through it than directly.
+      if (op.kind === "tribe" && actor.rank < look.tribeRank(op.key)) return "A member of that tribe holds a higher rank than yours.";
       if (op.kind === "survivor") {
         const why = survivor(op.key);
         if (why) return why;
       }
       if (op.world !== undefined) {
         if (!isWorld(op.world)) return "That is not a world.";
-        if (rank >= RANK_CLUSTER && op.world !== 0) return "A cluster group holds on every world.";
         if (rank >= RANK_STAFF && actor.rank < RANK_CLUSTER && op.world !== actor.world) return "A staff membership is made on its own world, or by the cluster.";
       }
       if (op.op === "removeMember") return op.timedOnly === undefined || typeof op.timedOnly === "boolean" ? "" : "Say whether only the timed part goes.";
@@ -357,8 +368,17 @@ export function editRule(actor: PermissionActor, op: PermissionOp, look: RuleLoo
       if (typeof delay !== "number" || !(delay >= 0) || delay > MAX_HOURS) return "A delay is no hours or more, and at most a hundred years.";
       return "";
     }
-    case "clearSecret":
-      return survivor(op.id);
+    case "clearSecret": {
+      const why = survivor(op.id);
+      if (why) return why;
+      if (actor.world === 0 || actor.rank >= RANK_CLUSTER) return "";
+      // A cleared password can be claimed again with the character's key alone, and it is the survivor's on every map. Below
+      // the cluster's rank an admin clears it for staff of their own map, and for staff of other maps too only from a higher rank.
+      const reach = look.staffReach(op.id, actor.world);
+      if (reach === "elsewhere") return "That survivor's staff groups are on other maps. An admin there or the cluster's clears their password.";
+      if (reach === "wider" && actor.rank <= look.staffRank(op.id)) return "That survivor's staff groups reach beyond this map. A higher rank or the cluster's admin clears their password.";
+      return "";
+    }
     case "setDocument":
       if (!isGroupName(op.name)) return "A document's name is up to 32 letters, digits and _ . : -";
       if (typeof op.text !== "string" || op.text.length > MAX_DOCUMENT_LENGTH) return "A document is text of at most 65536 letters.";

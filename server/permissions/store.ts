@@ -43,7 +43,8 @@ const SCHEMA =
   "CREATE INDEX IF NOT EXISTS issued_name ON issued (name COLLATE NOCASE);" +
   "CREATE TABLE IF NOT EXISTS marks (world INTEGER NOT NULL, kind TEXT NOT NULL, next INTEGER NOT NULL, PRIMARY KEY (world, kind));" +
   "CREATE TABLE IF NOT EXISTS history (seq INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, world INTEGER NOT NULL, name TEXT NOT NULL," +
-  " id TEXT NOT NULL, rank INTEGER NOT NULL, via TEXT NOT NULL, what TEXT NOT NULL, revision INTEGER NOT NULL);";
+  " id TEXT NOT NULL, rank INTEGER NOT NULL, via TEXT NOT NULL, what TEXT NOT NULL, revision INTEGER NOT NULL);" +
+  "CREATE TABLE IF NOT EXISTS retired (hash TEXT PRIMARY KEY, at INTEGER NOT NULL);";
 
 /** The newest rows of history a store keeps. */
 export const HISTORY_KEPT = 10_000;
@@ -124,6 +125,14 @@ export class PermissionStore {
     }).immediate();
     this.db = db;
     return db;
+  }
+
+  /**
+   * How long a read or write waits for another process's lock, in milliseconds. A world sets a short wait once it has
+   * started, since every later use is inside its tick.
+   */
+  patience(ms: number): void {
+    this.open().exec(`PRAGMA busy_timeout=${Math.max(0, Math.floor(ms))};`);
   }
 
   /** Changes when the file may have changed. */
@@ -242,6 +251,22 @@ export class PermissionStore {
 
   putTag(id: string, tag: string, show: boolean): void {
     this.open().query("INSERT OR REPLACE INTO tags (id, tag, show) VALUES (?, ?, ?)").run(id, tag, show ? 1 : 0);
+  }
+
+  /** Keeps the hash of a password replaced or cleared at `at`, so every world refuses it without counting a guess. */
+  putRetired(hash: string, at: number): void {
+    this.open().query("INSERT OR REPLACE INTO retired (hash, at) VALUES (?, ?)").run(hash.toLowerCase(), at);
+  }
+
+  /** Forgets the passwords retired before `before`. */
+  dropRetired(before: number): void {
+    this.open().query("DELETE FROM retired WHERE at < ?").run(before);
+  }
+
+  /** The passwords retired at `since` or later, oldest first. */
+  retired(since: number): { hash: string; at: number }[] {
+    const rows = this.open().query("SELECT hash, at FROM retired WHERE at >= ? ORDER BY at").all(since) as { hash: unknown; at: unknown }[];
+    return rows.filter((r): r is { hash: string; at: number } => isHash(r.hash) && typeof r.at === "number");
   }
 
   /** The register's row for survivor ID `id`, or null where it was never issued. */

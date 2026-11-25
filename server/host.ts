@@ -68,7 +68,7 @@ import { CHANGED_MEANWHILE, type PermissionOp } from "../shared/permissions/mode
 import { changeWords } from "../shared/permissions/commands.ts";
 import { makePassword, passwordHash } from "./permissions/secrets.ts";
 import { applyPlan, type Applied, type ImportPlan } from "./permissions/import.ts";
-import { IdRegister, catchUp } from "./permissions/register.ts";
+import { IdRegister, catchUp, tellLost } from "./permissions/register.ts";
 import { RANK_CLUSTER, RANK_MAP, RANK_NAMES, RANK_STAFF } from "../shared/ranks.ts";
 import { CHEAT_GUESSES } from "../shared/console.ts";
 import { DeadlineHeap } from "../shared/sim/schedule.ts";
@@ -147,6 +147,10 @@ import { Cluster, mapLabel } from "./cluster/cluster.ts";
 import { SurvivorLog, type SurvivorLogOptions } from "./survivor-log/log.ts";
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+
+/** A connection changes its chat tags at most this often: each change is a write that every map reads. */
+const TAG_CHANGES = 3;
+const TAG_CHANGES_TICKS = 10 * TICK_RATE;
 
 export interface HostOptions {
   /** SQLite file. Omit for a world that lives only in memory. */
@@ -694,9 +698,15 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   // The cluster's permission groups, kept in its folder for every world, else beside the save, else in memory.
   const permissionStore = new PermissionStore(cluster ? join(cluster.folder.root, "permissions.sqlite") : opts.dbPath ? `${opts.dbPath}.permissions.sqlite` : ":memory:");
   opened.push(permissionStore);
-  const permissions = new Permissions({ store: permissionStore, world: cluster?.world ?? 0, now: opts.survivorLog?.wall ?? Date.now });
+  const permissions: Permissions = new Permissions({
+    store: permissionStore,
+    world: cluster?.world ?? 0,
+    now: opts.survivorLog?.wall ?? Date.now,
+    say,
+    tribeMembers: (team) => (tribes.byId.get(team)?.members ?? []).map((pid) => records.byPid.get(pid)).map((rec) => (rec ? idText(rec) : "")).filter((id) => id !== ""),
+  });
   // Before anything can make an ID or a team, so a save put back from a backup or started afresh makes none twice.
-  catchUp(permissions, records, say);
+  const behindFrom = catchUp(permissions, records, say);
   const register = new IdRegister(permissions, records, say);
   // What the cluster's folder says came and went that the save does not know is done again now, before anything resumes.
   cluster?.start(
@@ -739,6 +749,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     else register.knows(rec);
   }
   register.write();
+  if (behindFrom >= 0) tellLost(permissions, records.worldId, behindFrom, (id) => ids.find(id) !== null, say);
   const taming = new Taming({ world, game, records, items, survival, buffs, rules, lists, tribes, deadlines, creatures, progression, onNotice: (pid, text) => notice(pid, text), openOf: (c) => containers.openOf(c), refresh: (rec) => refreshBody(rec), onTamed: (rec) => {
     const e = records.entOf.get(rec.pid);
     spawner?.left(rec);
@@ -1665,7 +1676,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     const actor = acting(by);
     // The act says it in the words and at the rank the store's history row does: as judged inside the write.
     const { why, words, rank } = permissions.make(actor, op);
-    if (why === "") acts.write(by, words, "change", rank);
+    // A change the store already held wrote nothing, and has no words.
+    if (why === "") { if (words !== "") acts.write(by, words, "change", rank); }
     // An editor who began from a value since changed is answered, not logged: they did nothing wrong.
     else if (why !== CHANGED_MEANWHILE) {
       // An op from a page may be any JSON: changeWords copes, and the act holds no value of a secret.
@@ -1710,9 +1722,15 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     settleStanding();
     return { why: "", ...applied };
   };
+  /** The ticks of each connection's latest tag changes. */
+  const tagged = new WeakMap<Client, number[]>();
   const chooseTag = (c: Client, tag: string, show: boolean): string => {
     const subject = subjectOf(c);
     if (!subject) return "That needs a survivor with an ID.";
+    if (permissions.tagChoice(subject.id, tag) !== false === show) return "";
+    const recent = (tagged.get(c) ?? []).filter((at) => world.tick - at < TAG_CHANGES_TICKS);
+    if (recent.length >= TAG_CHANGES) return "You changed your tags a moment ago. Try again shortly.";
+    tagged.set(c, [...recent, world.tick]);
     const why = permissions.apply(acting(sessionActor(c, records)), { op: "tag", id: subject.id, tag, show });
     settleStanding();
     return why;

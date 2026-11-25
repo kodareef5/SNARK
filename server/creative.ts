@@ -62,6 +62,8 @@ export class Creative {
   /** The sundial turns under way, by session: the hour last set and the tick it was set at. */
   private readonly turns = new Map<Client, Turn>();
   private seen = -1;
+  /** Whether everyone had the role at the last look, so a switch either way is seen. */
+  private wasForAll = false;
   private readonly world: ServerWorld;
   private readonly game: GameServer;
   private readonly rules: Rules;
@@ -139,11 +141,17 @@ export class Creative {
     if (c.state === SESSION_SPECTATING && this.game.opts.spectators === "admin") this.game.sessions.setSpectating(c, false);
   }
 
-  /** Each tick. CreativeForAll switched on while the server runs reaches those already in, and a turn left open is journalled. */
+  /**
+   * Each tick. CreativeForAll switched while the server runs reaches those already in: on, they get it; off, those with no
+   * other reason for it lose it at once, with what a cheat left running. A turn left open is journalled.
+   */
   step(tick: number): void {
     if (this.seen !== this.rules.version) {
       this.seen = this.rules.version;
-      if (this.forAll) for (const c of this.game.clients) if (c?.active && !c.closed) this.stand(c);
+      if (this.forAll !== this.wasForAll) {
+        this.wasForAll = this.forAll;
+        for (const c of this.game.clients) if (c?.active && !c.closed) this.stand(c);
+      }
     }
     if (this.turns.size === 0) return;
     for (const [c, t] of this.turns) if (c.closed || tick - t.at >= TURN_IDLE) this.end(c, t);

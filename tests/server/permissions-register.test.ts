@@ -76,6 +76,9 @@ test("a restored save gives its next survivor an ID no earlier survivor had", ()
   said.length = 0;
   h = world(db, said);
   expect(said).toContain(behind("survivor", 4, 3));
+  // The operator is told who was lost and still holds something: only they can decide whether it should stay.
+  expect(said).toContain(`the save no longer has cyd (${cydId}), who is still in Admins and has a password: Permissions.Remove and Permissions.Password ${cydId} clear take those away`);
+  expect(said.filter((line) => line.includes("the save no longer has")).length).toBe(1);
   const dan = joined(h, "dan");
   const danId = idOfSession(h, dan);
   expect(danId).toBe(idOf(1, 4));

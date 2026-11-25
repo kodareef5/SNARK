@@ -32,21 +32,33 @@ export function lookOf(state: State): Lookup {
   const groups = new Map(state.groups.map((g) => [g.name.toLowerCase(), g]));
   const issued = new Set([...state.register.map((r) => r.id), ...state.survivors.map((s) => s.id)]);
   const staff = new Map<string, number>();
+  /** The worlds each survivor's staff groups count on; 0 is every world. */
+  const reach = new Map<string, Set<number>>();
   const peopled = new Set<string>();
   for (const m of state.members) {
     peopled.add(m.group.toLowerCase());
     const rank = groups.get(m.group.toLowerCase())?.rank ?? RANK_OPEN;
-    if (m.kind === "survivor" && rank >= RANK_STAFF && rank > (staff.get(m.key) ?? 0)) staff.set(m.key, rank);
+    if (m.kind !== "survivor" || rank < RANK_STAFF) continue;
+    if (rank > (staff.get(m.key) ?? 0)) staff.set(m.key, rank);
+    (reach.get(m.key) ?? reach.set(m.key, new Set()).get(m.key)!).add(m.world);
   }
   look = {
     group: (name) => groups.get(name.toLowerCase()),
     groupRank: (name) => groups.get(name.toLowerCase())?.rank,
     staffRank: (id) => staff.get(id) ?? 0,
+    staffReach: (id, world) => {
+      const worlds = reach.get(id);
+      if (!worlds) return "none";
+      const here = worlds.has(0) || worlds.has(world);
+      const beyond = [...worlds].some((w) => w !== world);
+      return here ? (beyond ? "wider" : "here") : "elsewhere";
+    },
     // A row whose time ran out counts here until it is taken out; the server's rule skips it.
     hasMembers: (name) => peopled.has(name.toLowerCase()),
     issued: (id) => issued.has(id),
     // The page knows no other world's tribes: the server decides.
     teamMade: () => true,
+    tribeRank: () => RANK_OPEN,
   };
   looks.set(state, look);
   return look;
