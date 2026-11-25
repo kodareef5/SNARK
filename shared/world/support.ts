@@ -1200,20 +1200,25 @@ export class Support {
       break;
     }
     const out = found.refs;
-    // A piece listed costs half a search step.
-    this.work += COST_NODE + (n >> 1);
+    // The box is as wide as the widest piece there is. The kinds found here say how wide it had to be.
+    let near = 0;
+    for (let i = 0; i < n; i++) near = Math.max(near, this.end[structs.chunks[Math.floor(out[i]! / 65536)]!.kind[out[i]! & 0xffff]!]!);
+    near += far;
     let count = 0;
+    let inside = 0;
     for (let i = 0; i < n; i++) {
       const ref = out[i]!;
-      if (ref === self) continue;
       const t = structs.chunks[Math.floor(ref / 65536)]!;
       const slot = ref & 0xffff;
-      if (tables.role[t.kind[slot]!]! < 0) continue;
       const dx = t.x[slot]! - mx;
       const dz = t.z[slot]! - mz;
+      if (Math.abs(dx) <= near && Math.abs(dz) <= near) inside++;
+      if (ref === self || tables.role[t.kind[slot]!]! < 0) continue;
       const reach = far + this.end[t.kind[slot]!]!;
       if (dx * dx + dz * dz <= reach * reach) out[count++] = ref;
     }
+    // A piece in the box it needed costs half a search step, and one in the rest of it a quarter of that.
+    this.work += COST_NODE + (inside >> 1) + ((n - inside) >> 3);
     return count;
   }
 
