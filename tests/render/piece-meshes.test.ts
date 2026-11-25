@@ -798,10 +798,16 @@ test("a thatch skirt is a bank under the crib, 2.4 m down from the foundation's 
 
 // Stone: the forms past the first nine, and stone's trims.
 
-/** A stone roof's lowest course runs out as far as wood's, and stands as high over its plane: the two are built to one rule. */
+/** A stone roof's lowest course runs out as far as wood's, and a hip's roll climbs as high at its high corner, onto a saddle as tall as a ridge's: the two are built to one rule. */
 const STONE_EAVE = 0.3;
-const STONE_ROOF_PROUD = 0.09;
-/** What each new stone form's levels cost on 2026-11-24. A change may lower a number and may not raise one. */
+const STONE_ROOF_PROUD = 0.131;
+/** A low side's plate bears on the wall under it, whose top is 4 mm under the roof's level, and 2 mm into it. */
+const STONE_ROOF_SEAT = 0.006;
+/**
+ * What each new stone form's levels cost on 2026-11-24. A change may lower a number and may not raise one. The roofs
+ * were 702, 1380, 1062, 962 and 866 at the finest and 60 or 44 at the third, before their rims were oak on their sides'
+ * own lines: the third level gained a plate and an eave of its own to each low side.
+ */
 const STONE_NEW_MOST: Record<string, readonly number[]> = {
   half_wall: [768, 224, 40, 12],
   quarter_wall: [464, 144, 40, 12],
@@ -813,11 +819,11 @@ const STONE_NEW_MOST: Record<string, readonly number[]> = {
   triangle_foundation: [620, 56, 8, 8],
   triangle_ceiling: [636, 238, 62, 8],
   quarter_foundation: [408, 44, 12, 12],
-  roof: [702, 284, 60, 12],
-  roof_hip: [1380, 524, 60, 12],
-  roof_valley: [1062, 394, 60, 12],
-  triangle_roof: [962, 354, 44, 8],
-  triangle_roof_low: [866, 252, 44, 8],
+  roof: [456, 176, 84, 12],
+  roof_hip: [1084, 399, 108, 12],
+  roof_valley: [828, 318, 60, 12],
+  triangle_roof: [616, 172, 84, 8],
+  triangle_roof_low: [520, 104, 44, 8],
   sloped_wall_left: [462, 150, 48, 8],
   sloped_wall_right: [462, 150, 48, 8],
   fence_foundation: [252, 52, 28, 12],
@@ -850,7 +856,7 @@ test("every level of every new stone form lies in its form's box and the margin 
       over.forEach((most, k) => {
         const a = k % 3;
         // A roof's eave course runs out past a low side. A wall, a beam, a railing and a footing end flat on their boxes, for a quoin to butt against. A leaf's fittings stand off it.
-        const margin = isRoof(form) ? (a === 1 ? (k === 1 ? 0.002 : STONE_ROOF_PROUD) : STONE_EAVE + 0.001) : form.layer === "leaf" ? PROUD_LEAF : form.plane === "upright" && a === 0 ? 0 : STONE_PROUD;
+        const margin = isRoof(form) ? (a === 1 ? (k === 1 ? STONE_ROOF_SEAT : STONE_ROOF_PROUD) : STONE_EAVE + 0.001) : form.layer === "leaf" ? PROUD_LEAF : form.plane === "upright" && a === 0 ? 0 : STONE_PROUD;
         expect(most, `${name} level ${level} past its ${k < 3 ? "least" : "most"} ${"xyz"[a]}`).toBeLessThanOrEqual(margin + 1e-9);
       });
     });
