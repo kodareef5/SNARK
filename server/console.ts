@@ -95,6 +95,12 @@ export class Console {
     if (!name) return "";
     const cmd = this.commands.get(name);
     if (!cmd) return `unknown command "${name}"; try help`;
+    // A session whose powers come from its groups is judged by the file as it is now: another map may have just lowered it.
+    const c = ctx.client;
+    if (c && c.signed && (cmd.admin || cmd.rank !== undefined) && !ctx.host.freshStanding(c)) {
+      const covered = (!cmd.admin || c.passwordCheats || ctx.host.creative.forAll) && (cmd.rank === undefined || c.passwordRank >= cmd.rank);
+      if (!covered) return "denied: the permissions file could not be read just now; try again in a moment";
+    }
     if (cmd.admin && !this.isAdmin(ctx) && !this.granted(ctx, cmd)) return "denied: cheats are not enabled for you";
     if (cmd.rank !== undefined && this.rankOf(ctx) < cmd.rank) return `denied: this needs the ${RANK_NAMES[cmd.rank]} rank or above`;
     // A module hears the line as the journal would have it: without a password, and for a secret command without anything.

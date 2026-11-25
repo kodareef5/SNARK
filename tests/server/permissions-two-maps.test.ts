@@ -1050,3 +1050,24 @@ test("signing in again with a map's or the cluster's password writes no second a
     expect(signIns()).toBe(once + 1);
   });
 });
+
+test("an admin lowered on A a moment ago runs no admin command in game on B", async () => {
+  await maps(({ cluster, clock, a, b }) => {
+    const { session: ada } = cluster.survivor(b, "ada");
+    const id = idIn(b, "ada");
+    must(a, "Permissions.AddGroup Fliers");
+    must(a, "Permissions.Grant Fliers Cheat.fly");
+    must(a, `Permissions.Add ${id} Admins all`);
+    must(a, `Permissions.Add ${id} Fliers`);
+    poll(b, clock);
+    signIn(b, ada, claim(b, ada));
+    expect(b.h.client(ada)!.rank).toBe(RANK_ADMIN);
+    const xp = b.h.host.rules.num("XPMultiplier");
+    // On A, before B has looked at the file again.
+    must(a, `Permissions.Remove ${id} Admins`);
+    must(a, `Permissions.Remove ${id} Fliers`);
+    expect(b.h.say(ada, "setting XPMultiplier 7")).toEqual(["denied: cheats are not enabled for you"]);
+    expect(b.h.say(ada, "fly")).toEqual(["denied: cheats are not enabled for you"]);
+    expect([b.h.host.rules.num("XPMultiplier"), b.h.client(ada)!.rank]).toEqual([xp, RANK_OPEN]);
+  });
+});

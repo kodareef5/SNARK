@@ -355,6 +355,11 @@ export interface Host {
    * is in the answer and nowhere else. A wrong one given is counted as `enablecheats` counts a wrong password.
    */
   claimPassword(c: Client, typed: string): { readonly why: string; readonly password: string };
+  /**
+   * Works a session's standing out again from the permissions file as it is now, before it acts on what its groups give:
+   * this map's view may be a poll behind another map's change. Answers false where the file could not be read.
+   */
+  freshStanding(c: Client): boolean;
   /** Takes survivor `id`'s password away as `by`. Answers "" or why not. */
   clearPassword(by: Actor, id: string): string;
   /** Shows or hides one of the session's survivor's own chat tags. Answers "" or why not. */
@@ -2416,6 +2421,11 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     permissions,
     changePermissions,
     claimPassword,
+    freshStanding: (c) => {
+      permissions.lookNow();
+      settleStanding();
+      return permissions.readable && !c.closed;
+    },
     clearPassword: (by, id) => changePermissions(by, { op: "clearSecret", id }),
     chooseTag,
     importPermissions,
