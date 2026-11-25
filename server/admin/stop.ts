@@ -6,7 +6,7 @@
 // Behind the admin pages' gate, which the caller has passed. The answer says the seconds left, -1 for no stop.
 
 import type { Host } from "../host.ts";
-import { actorOf } from "./gate.ts";
+import { actorOf, stillHolds } from "./gate.ts";
 import { body, refusedWrite } from "./supply-routes.ts";
 
 const JSON_HEADERS = { "content-type": "application/json", "cache-control": "no-store" };
@@ -19,6 +19,8 @@ export function stopAnswer(host: Host, req: Request, at: string): Response | Pro
   const by = actorOf(req);
   return body(req, 1024).then((b) => {
     if (b === null) return json(false, 'A stop is {"seconds":60} or {"cancel":true}.');
+    const lost = stillHolds(req, host);
+    if (lost) return lost;
     const say = (line: string): void => void host.acts.write(by, line);
     if (b.cancel === true) {
       const was = host.stopCancel();

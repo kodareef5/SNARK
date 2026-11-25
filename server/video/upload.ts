@@ -29,8 +29,11 @@ function writeParts(tmp: string, file: string, parts: readonly Uint8Array[]): vo
   renameSync(part, file);
 }
 
-/** POST /admin/screens/upload?name=<title>: the raw MP4. Answers what its boxes say, and the id to publish it by. `did` is told what it did. */
-export async function takeUpload(req: Request, lib: VideoLibrary, did: (what: string) => void = () => {}): Promise<Response> {
+/**
+ * POST /admin/screens/upload?name=<title>: the raw MP4. Answers what its boxes say, and the id to publish it by. `did` is
+ * told what it did, and `holds` refuses it once the body is in where the sender may no longer change anything.
+ */
+export async function takeUpload(req: Request, lib: VideoLibrary, did: (what: string) => void = () => {}, holds: () => Response | null = () => null): Promise<Response> {
   if (req.method !== "POST") return new Response(null, { status: 405, headers: { allow: "POST" } });
   // The length comes first, so a body over the cap is not read: a browser sending a File always says it.
   const length = Number(req.headers.get("content-length") ?? Number.NaN);
@@ -62,6 +65,8 @@ export async function takeUpload(req: Request, lib: VideoLibrary, did: (what: st
   }
   closeSync(fd);
   try {
+    const lost = holds();
+    if (lost) return lost;
     if (over) return entryReply({ error: `A clip is ${CLIP_MAX_BYTES / 1048576} MB at most.` }, 413);
     if (size === 0) return entryReply({ error: "The upload was empty." }, 400);
     const id = clipId(hash.digest("hex"));
@@ -98,14 +103,16 @@ function line(text: unknown, most: number): string | null {
   return t.length > 0 && t.length <= most ? t : null;
 }
 
-/** POST /admin/screens/clip {id, title, rights, poster, colours}: publishes an upload. Answers the clip. `did` is told what it did. */
-export async function publishClip(req: Request, lib: VideoLibrary, did: (what: string) => void = () => {}): Promise<Response> {
+/** POST /admin/screens/clip {id, title, rights, poster, colours}: publishes an upload. Answers the clip. `did` and `holds` are as takeUpload's. */
+export async function publishClip(req: Request, lib: VideoLibrary, did: (what: string) => void = () => {}, holds: () => Response | null = () => null): Promise<Response> {
   let body: Record<string, unknown>;
   try {
     body = await readEntryJson(req, 4 * POSTER_BYTES_MAX + 256 * 1024);
   } catch {
     return entryReply({ error: "Expected a JSON clip." }, 400);
   }
+  const lost = holds();
+  if (lost) return lost;
   const id = typeof body.id === "string" && isClipId(body.id) ? body.id : "";
   const pending = id ? lib.pending(id) : null;
   if (!pending) return entryReply({ error: "That upload is not waiting: send the clip again." }, 404);

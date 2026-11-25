@@ -14,7 +14,7 @@ import { carried } from "../loadout/capture.ts";
 import type { LoadoutSave } from "../loadout/store.ts";
 import { NAME_NONE, NAME_UNCLEAR, meant } from "../names.ts";
 import type { EntityRecord } from "../records.ts";
-import { actorOf } from "./gate.ts";
+import { actorOf, stillHolds } from "./gate.ts";
 import { body, refusedWrite } from "./supply-routes.ts";
 
 const JSON_HEADERS = { "content-type": "application/json", "cache-control": "no-store" };
@@ -48,7 +48,7 @@ export class LoadoutRoutes {
     const no = refusedWrite(req);
     if (no) return no;
     const by = actorOf(req);
-    return body(req, LOADOUT_BODY_MOST).then((b) => (b === null ? json({ error: "Expected a JSON object no larger than a book." }, 400) : this.write(what, b, by)));
+    return body(req, LOADOUT_BODY_MOST).then((b) => (b === null ? json({ error: "Expected a JSON object no larger than a book." }, 400) : stillHolds(req, this.host) ?? this.write(what, b, by)));
   }
 
   private read(what: string, url: URL): Response {

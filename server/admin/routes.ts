@@ -44,7 +44,7 @@ import { castAct, castState } from "./cast.ts";
 import { settingsAnswer } from "./settings.ts";
 import { stopAnswer } from "./stop.ts";
 import { originAllowed } from "../origin.ts";
-import { actorOf, adminAsked, adminPath, onlyRead, refused, type AdminGate } from "./gate.ts";
+import { actorOf, adminAsked, adminPath, onlyRead, refused, stillHolds, type AdminGate } from "./gate.ts";
 import { SupplyRoutes } from "./supply-routes.ts";
 import { LoadoutRoutes } from "./loadout-routes.ts";
 import { LogRoutes } from "./log-routes.ts";
@@ -246,6 +246,8 @@ export class AdminPages {
       if (!originAllowed(req.headers.get("origin"), req.headers.get("host"), "")) return new Response(JSON.stringify({ ok: false, why: "open the admin page on this server" }), { status: 403, headers: JSON_HEADERS });
       const by = actorOf(req);
       return req.json().then((body: unknown) => {
+        const lost = stillHolds(req, this.o.host);
+        if (lost) return lost;
         const why = castAct(this.o.host, body, by);
         // Every change writes its act, so a request that wrote none changed nothing.
         if (!this.o.host.acts.wroteFor(by)) onlyRead(req);

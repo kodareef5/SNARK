@@ -14,7 +14,7 @@ import type { Host } from "../host.ts";
 import { AT_START, CATALOG, fixedWhy } from "../settings/catalog.ts";
 import type { Row } from "../settings/row.ts";
 import { slotOf, wordsOf } from "../settings/rules.ts";
-import { actorOf } from "./gate.ts";
+import { actorOf, stillHolds } from "./gate.ts";
 import { body, refusedWrite } from "./supply-routes.ts";
 
 const JSON_HEADERS = { "content-type": "application/json", "cache-control": "no-store" };
@@ -57,6 +57,8 @@ export function settingsAnswer(host: Host, req: Request, at: string): Response |
   const by = actorOf(req);
   return body(req, SETTING_BODY_MOST).then((b) => {
     if (b === null) return json(settingsPage(host, false, "Expected a JSON object no larger than a list."), 400);
+    const lost = stillHolds(req, host);
+    if (lost) return lost;
     const page = act(host, b, by);
     return json(page, page.ok ? 200 : 400);
   });
