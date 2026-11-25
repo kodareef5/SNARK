@@ -354,8 +354,9 @@ export class CityBlocks {
   /** A hash of the ground tile `t`'s blocks stand on, never 0. */
   private groundHash(t: number): number {
     const hf = this.hf, { i0, j0, w, rows } = this.groundOf(t);
+    const v = hf.view(i0 * COARSE, j0 * COARSE, (i0 + w - 1) * COARSE, (j0 + rows - 1) * COARSE);
     let h = 2166136261;
-    for (let j = 0; j < rows; j++) for (let i = 0; i < w; i++) h = Math.imul(h ^ hf.heights[(j0 + j) * COARSE * hf.nx + (i0 + i) * COARSE]!, 16777619);
+    for (let j = 0; j < rows; j++) for (let i = 0; i < w; i++) h = Math.imul(h ^ v.heights[v.off + (j0 + j) * COARSE * v.stride + (i0 + i) * COARSE]!, 16777619);
     return h >>> 0 || 1;
   }
 
@@ -397,7 +398,8 @@ export class CityBlocks {
     tile.ground = this.groundHash(t);
     const hf = this.hf, { i0, j0, w, rows } = this.groundOf(t);
     const heights = new Uint16Array(w * rows);
-    for (let j = 0; j < rows; j++) for (let i = 0; i < w; i++) heights[j * w + i] = hf.heights[(j0 + j) * COARSE * hf.nx + (i0 + i) * COARSE]!;
+    const v = hf.view(i0 * COARSE, j0 * COARSE, (i0 + w - 1) * COARSE, (j0 + rows - 1) * COARSE);
+    for (let j = 0; j < rows; j++) for (let i = 0; i < w; i++) heights[j * w + i] = v.heights[v.off + (j0 + j) * COARSE * v.stride + (i0 + i) * COARSE]!;
     return { id, chunksX, ox: cx0 * CHUNK_SIZE, oz: cz0 * CHUNK_SIZE, chunks: Int32Array.from(chunks), size, top, tint, i0, j0, w, heights, minY: hf.minY, stepY: hf.stepY };
   }
 

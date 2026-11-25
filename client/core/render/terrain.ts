@@ -2,13 +2,15 @@
 // Every tile has the same triangle count, so cost follows screen coverage. Level 0 tiles are single chunks and match the collision surface.
 // A tile reads its heights and tints from one of two pairs of pictures on the card (D253): the whole map at every COARSE-th
 // sample, or a window WINDOW samples a side round the camera. Tiles of COARSE samples a quad and coarser read the whole
-// map's; finer ones read the window's, and a node is cut into those only where it lies inside the window.
+// map's; finer ones read the window's, and a node is cut into those only where it lies inside the window. The window's
+// pictures hold map sample (i, j) at texel (i, j) modulo their size, as the streets' do (streets.ts), so a move writes
+// only the columns or rows it gains; core puts them together from the heightfield, a rectangle at a time.
 
 import { CHUNK_SIZE } from "../../../shared/coords.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import { ROAD_PLANES, ROAD_STEP, roadSamples, type RoadSectors } from "../../../shared/world/roadframe.ts";
 import type { Camera } from "./camera.ts";
-import { MAX_TILES, SOURCE_MAP, SOURCE_WINDOW, TILE_CASTS, TILE_QUADS, type FramePacket } from "./packet.ts";
+import { GROUND_PARTS, MAX_TILES, SOURCE_MAP, SOURCE_WINDOW, TILE_CASTS, TILE_QUADS, type FramePacket } from "./packet.ts";
 import { groundCover, groundWander } from "./world-surfaces.ts";
 import { StreetRegion } from "./streets.ts";
 
@@ -16,7 +18,7 @@ import { StreetRegion } from "./streets.ts";
 export const COARSE = 4;
 /** The window's side in samples: 2 km at 2 m. */
 export const WINDOW = 1025;
-/** The window is filled again round the camera once the camera is this many metres from its middle along either axis. */
+/** The window moves round the camera once the camera is this many metres from its middle along either axis. */
 export const WINDOW_MOVE = 256;
 /** A height of 16 bits and a tint of 8. */
 const SAMPLE_BYTES = 3;
@@ -38,7 +40,7 @@ export interface GroundSize {
   readonly width: readonly number[];
   readonly height: readonly number[];
   readonly cell: readonly number[];
-  /** Bytes on the card: the whole map's pair and two copies of the window's, one drawn while the other is filled. */
+  /** Bytes on the card: the whole map's pair and the window's. */
   readonly bytes: number;
 }
 
@@ -50,7 +52,7 @@ function cellOf(v: number, size: number, n: number): number {
 export function groundSize(hf: Pick<Heightfield, "nx" | "nz" | "cell">): GroundSize {
   const width = [Math.ceil((hf.nx - 1) / COARSE) + 1, Math.min(WINDOW, hf.nx)];
   const height = [Math.ceil((hf.nz - 1) / COARSE) + 1, Math.min(WINDOW, hf.nz)];
-  return { width, height, cell: [hf.cell * COARSE, hf.cell], bytes: (width[0]! * height[0]! + 2 * width[1]! * height[1]!) * SAMPLE_BYTES };
+  return { width, height, cell: [hf.cell * COARSE, hf.cell], bytes: (width[0]! * height[0]! + width[1]! * height[1]!) * SAMPLE_BYTES };
 }
 
 /** The whole map's pair: the height and tint of every COARSE-th sample. A map's side is whole chunks, so its last sample is one. */
@@ -68,13 +70,11 @@ export function coarseArea(hf: Heightfield, cx0: number, cz0: number, cx1: numbe
   const w = cx1 * per - i0 + 1, h = cz1 * per - j0 + 1;
   const heights = new Uint16Array(w * h);
   const tint = new Uint8Array(w * h);
-  for (let j = 0; j < h; j++) {
-    for (let i = 0; i < w; i++) {
-      const at = (j0 + j) * COARSE * hf.nx + (i0 + i) * COARSE;
-      heights[j * w + i] = hf.heights[at]!;
-      tint[j * w + i] = hf.tint[at]!;
-    }
-  }
+  const a0 = i0 * COARSE, b0 = j0 * COARSE, a1 = (i0 + w - 1) * COARSE, b1 = (j0 + h - 1) * COARSE;
+  const v = hf.view(a0, b0, a1, b1);
+  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) heights[j * w + i] = v.heights[v.off + (j0 + j) * COARSE * v.stride + (i0 + i) * COARSE]!;
+  const t = hf.tints(a0, b0, a1, b1);
+  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) tint[j * w + i] = t.tint[t.off + (j0 + j) * COARSE * t.stride + (i0 + i) * COARSE]!;
   return { i: i0, j: j0, w, h, heights, tint };
 }
 
@@ -108,11 +108,11 @@ export function tilePicture(p: FramePacket, t: number, size: GroundSize, out: Gr
  * `at`.
  */
 export function groundNormal(hf: Heightfield, pic: GroundPicture, i: number, j: number, stride: number, out: Float64Array, at: number): void {
-  const h = hf.heights, nx = hf.nx;
   const l = Math.max(i - stride, pic.i), r = Math.min(i + stride, pic.i + pic.lastI * pic.step);
   const b = Math.max(j - stride, pic.j), f = Math.min(j + stride, pic.j + pic.lastJ * pic.step);
-  const gx = ((h[j * nx + r]! - h[j * nx + l]!) * hf.stepY) / ((r - l) * hf.cell);
-  const gz = ((h[f * nx + i]! - h[b * nx + i]!) * hf.stepY) / ((f - b) * hf.cell);
+  const v = hf.view(l, b, r, f), h = v.heights, s = v.stride, o = v.off;
+  const gx = ((h[o + j * s + r]! - h[o + j * s + l]!) * hf.stepY) / ((r - l) * hf.cell);
+  const gz = ((h[o + f * s + i]! - h[o + b * s + i]!) * hf.stepY) / ((f - b) * hf.cell);
   const n = Math.hypot(gx, 1, gz);
   out[at] = -gx / n;
   out[at + 1] = 1 / n;
@@ -131,8 +131,9 @@ export function groundTint(hf: Heightfield, pic: GroundPicture, x: number, z: nu
   const s = Math.min(Math.max((x + wander[0]!) / metres - pic.i / pic.step, 0), pic.lastI);
   const t = Math.min(Math.max((z + wander[1]!) / metres - pic.j / pic.step, 0), pic.lastJ);
   const i = Math.min(Math.floor(s), pic.lastI - 1), j = Math.min(Math.floor(t), pic.lastJ - 1);
-  const at = (pic.j + j * pic.step) * hf.nx + pic.i + i * pic.step, down = pic.step * hf.nx;
-  return groundCover(hf.tint[at]!, hf.tint[at + pic.step]!, hf.tint[at + down]!, hf.tint[at + down + pic.step]!, s - i, t - j);
+  const a = pic.i + i * pic.step, b = pic.j + j * pic.step;
+  const v = hf.tints(a, b, a + pic.step, b + pic.step), at = v.off + b * v.stride + a, down = pic.step * v.stride;
+  return groundCover(v.tint[at]!, v.tint[at + pic.step]!, v.tint[at + down]!, v.tint[at + down + pic.step]!, s - i, t - j);
 }
 
 /**
@@ -193,28 +194,44 @@ export class TerrainLod {
   private readonly width: number[] = [];
   private readonly stack = new Int32Array(4 * 64);
   /**
-   * The window drawn with: its copy, 0 or 1, or -1 while there is none, and the sample of its corner. Then the copy
-   * being filled, or -1, the corner it is filled round and the next row to fill.
+   * The window drawn with: 0 while the pictures hold the one whose corner is sample (drawnI, drawnJ) whole, -1 while
+   * they hold none; and the corner it steps to, a strip of columns or rows a frame (`step`).
    */
   private drawn = -1;
   private drawnI = 0;
   private drawnJ = 0;
-  private fill = -1;
+  private goalI = 0;
+  private goalJ = 0;
+  /** While no window is held, the corner the pictures are filled round, rows a frame from `row`. */
+  private filling = false;
   private fillI = 0;
   private fillJ = 0;
   private row = 0;
-  /** Rows of the window drawn whose samples changed since they went on the card, from `patch` up to `patchEnd`: put again in place. */
-  private patch = 0;
-  private patchEnd = 0;
+  /** No window was held since the pictures were made: the first is filled whole. */
+  private fresh = true;
+  /** Samples of the window drawn that changed since they went on the card, from (patchI, patchJ) up to (patchI1, patchJ1): put again. */
+  private patchI = 0;
+  private patchJ = 0;
+  private patchI1 = 0;
+  private patchJ1 = 0;
+  /** This frame's samples put together for the card (packet groundHeights), and the roads' frame's bytes; made when first needed. */
+  private heights = new Uint16Array(0);
+  private tint = new Uint8Array(0);
+  private roadBytes = new Uint8Array(0);
+  private used = 0;
+  private roadUsed = 0;
   /**
-   * The roads' frame as its picture holds it: the window drawn it was copied for, its corner, the frame held and its
-   * version; then its rows still to copy again, from `roadRow` up to `roadEnd`.
+   * The roads' frame as its picture holds it: 0 while it holds that of the window drawn whole, else -1, and its corner in
+   * the frame's cells; the frame held and its version; then its cells still to copy again, from (roadI, roadJ) up to
+   * (roadI1, roadJ1).
    */
   private readonly roadFor = Int32Array.of(-1, 0, 0);
   private roadOf: RoadSectors | null = null;
   private roadVersion = 0;
-  private roadRow = 0;
-  private roadEnd = 0;
+  private roadI = 0;
+  private roadJ = 0;
+  private roadI1 = 0;
+  private roadJ1 = 0;
   private readonly roadChanges: number[] = [];
   /** The heightfield's changes taken in. */
   private seen: number;
@@ -247,7 +264,7 @@ export class TerrainLod {
     const per = Math.round(CHUNK_SIZE / hf.cell);
     const w0 = this.width[0]!, lo0 = this.minY[0]!, hi0 = this.maxY[0]!;
     // The stored steps' least and most, a sample's height rising with its step: a whole map's are 66 million samples.
-    const { heights, nx, bounds } = hf;
+    const bounds = hf.bounds;
     for (let tz = cz0; tz < cz1; tz++) {
       for (let tx = cx0; tx < cx1; tx++) {
         let a = 65535;
@@ -255,8 +272,8 @@ export class TerrainLod {
         if (bounds) {
           a = bounds[(tz * w0 + tx) * 2]!;
           b = bounds[(tz * w0 + tx) * 2 + 1]!;
-        } else for (let j = tz * per; j <= (tz + 1) * per; j++) {
-          for (let k = j * nx + tx * per, end = k + per; k <= end; k++) {
+        } else for (let j = tz * per, v = hf.view(tx * per, j, (tx + 1) * per, (tz + 1) * per), heights = v.heights; j <= (tz + 1) * per; j++) {
+          for (let k = v.off + j * v.stride + tx * per, end = k + per; k <= end; k++) {
             const q = heights[k]!;
             if (q < a) a = q;
             if (q > b) b = q;
@@ -308,12 +325,13 @@ export class TerrainLod {
       const i0 = cx0 * per, j0 = cz0 * per, i1 = cx1 * per, j1 = cz1 * per;
       const meets = (i: number, j: number, rows: number): boolean => i0 < i + w && i1 >= i && j0 < j + rows && j1 >= j;
       if (this.drawn >= 0 && meets(this.drawnI, this.drawnJ, h)) {
-        const from = Math.max(0, j0 - this.drawnJ), to = Math.min(h, j1 - this.drawnJ + 1);
-        const open = this.patch < this.patchEnd;
-        this.patch = open ? Math.min(this.patch, from) : from;
-        this.patchEnd = open ? Math.max(this.patchEnd, to) : to;
+        const open = this.patchI < this.patchI1 && this.patchJ < this.patchJ1;
+        this.patchI = open ? Math.min(this.patchI, i0) : i0;
+        this.patchJ = open ? Math.min(this.patchJ, j0) : j0;
+        this.patchI1 = open ? Math.max(this.patchI1, i1 + 1) : i1 + 1;
+        this.patchJ1 = open ? Math.max(this.patchJ1, j1 + 1) : j1 + 1;
       }
-      if (this.fill >= 0 && meets(this.fillI, this.fillJ, this.row)) this.row = Math.max(0, j0 - this.fillJ);
+      if (this.filling && meets(this.fillI, this.fillJ, this.row)) this.row = Math.max(0, j0 - this.fillJ);
     }
   }
 
@@ -321,8 +339,10 @@ export class TerrainLod {
   readonly streets = new StreetRegion();
   /** After a lost context the card holds no window and no roads' frame, and the next frame fills them whole. */
   reset(): void {
-    this.drawn = this.fill = -1;
-    this.patch = this.patchEnd = 0;
+    this.drawn = -1;
+    this.filling = false;
+    this.fresh = true;
+    this.patchI1 = this.patchI;
     this.roadFor[0] = -1;
     this.streets.reset();
   }
@@ -461,102 +481,224 @@ export class TerrainLod {
   }
 
   /**
-   * Keeps a window round the camera. Once the camera is WINDOW_MOVE from the middle of the one drawn, or the samples it
-   * holds have changed, the other copy is filled round it, rows a frame within the frame's upload allowance, and drawn
-   * from the frame its last rows go. The first is filled whole: until a window is in, nothing finer than the whole map's
-   * pair is drawn.
-   */
-  /**
    * Where the fine window is centred: on the camera, or through a sight that magnifies far on what it is on (D1087), where
    * the ground round the body cannot be seen. NaN for the camera.
    */
   centreX = NaN;
   centreZ = NaN;
 
+  /**
+   * Keeps a window round the camera. Once the camera is WINDOW_MOVE from the middle of the one drawn, the window steps to
+   * a corner round it, a strip of the columns or rows it gains a frame, SNAP of them at least and more within the frame's
+   * upload allowance; each frame's window is whole. A corner that shares nothing with the window drawn is filled again,
+   * rows a frame within the allowance, drawn from the frame its last rows go and nothing finer than the whole map's pair
+   * meanwhile. The first is filled whole. Samples of the window drawn that changed are put again, a band a frame.
+   */
   private follow(cam: Camera, p: FramePacket, budget?: GroundBudget): void {
     const hf = this.hf;
     const w = this.size.width[SOURCE_WINDOW]!, h = this.size.height[SOURCE_WINDOW]!;
     const corner = (at: number, n: number, side: number): number => Math.max(0, Math.min(n - side, Math.round((at / hf.cell - (side - 1) / 2) / SNAP) * SNAP));
     const cx = Number.isNaN(this.centreX) ? cam.x : this.centreX, cz = Number.isNaN(this.centreZ) ? cam.z : this.centreZ;
-    let i = corner(cx, hf.nx, w), j = corner(cz, hf.nz, h);
-    const off = Math.max(Math.abs(cx / hf.cell - this.drawnI - (w - 1) / 2), Math.abs(cz / hf.cell - this.drawnJ - (h - 1) / 2)) * hf.cell;
-    const moved = this.drawn < 0 || (off >= WINDOW_MOVE && (i !== this.drawnI || j !== this.drawnJ));
-    // A window filling holds the samples as they are, and takes the place of the one drawn.
-    if (this.fill >= 0) this.patch = this.patchEnd = 0;
-    if (moved && (this.fill < 0 || i !== this.fillI || j !== this.fillJ)) {
-      if (this.drawn < 0) budget?.reserve("terrain", this.size.bytes);
-      this.fill = this.drawn < 0 ? 0 : 1 - this.drawn;
-      this.fillI = i;
-      this.fillJ = j;
-      this.row = 0;
-      this.patch = this.patchEnd = 0;
-    }
+    const i = corner(cx, hf.nx, w), j = corner(cz, hf.nz, h);
     const g = p.groundWindow;
     g[3] = -1;
-    const bytes = w * SAMPLE_BYTES;
-    const band = (left: number): number => (this.drawn < 0 || !budget ? left : Math.min(left, Math.max(1, Math.floor(budget.left / bytes))));
-    if (this.fill >= 0) {
-      const rows = band(h - this.row);
-      budget?.spend(rows * bytes);
-      g[3] = this.fill;
-      g[4] = this.fillI;
-      g[5] = this.fillJ;
-      g[6] = this.row;
-      g[7] = rows;
+    p.groundPartCount = 0;
+    this.used = 0;
+    if (this.drawn >= 0) {
+      const off = Math.max(Math.abs(cx / hf.cell - this.drawnI - (w - 1) / 2), Math.abs(cz / hf.cell - this.drawnJ - (h - 1) / 2)) * hf.cell;
+      if (off >= WINDOW_MOVE && (i !== this.drawnI || j !== this.drawnJ)) {
+        this.goalI = i;
+        this.goalJ = j;
+      }
+      if (Math.abs(this.goalI - this.drawnI) >= w || Math.abs(this.goalJ - this.drawnJ) >= h) this.refill(this.goalI, this.goalJ);
+    } else if (!this.filling || i !== this.fillI || j !== this.fillJ) {
+      if (this.fresh) budget?.reserve("terrain", this.size.bytes);
+      this.refill(i, j);
+    }
+    // Rows a frame within the allowance, at least one; all of them while the first window comes or with no allowance.
+    const band = (left: number, bytes: number): number => (this.fresh || !budget ? left : Math.min(left, Math.max(1, Math.floor(budget.left / bytes))));
+    if (this.filling) {
+      const rows = band(h - this.row, w * SAMPLE_BYTES);
+      budget?.spend(rows * w * SAMPLE_BYTES);
+      this.put(p, this.fillI, this.fillJ + this.row, w, rows);
       this.row += rows;
-      if (this.row === h) { this.drawn = this.fill; this.drawnI = this.fillI; this.drawnJ = this.fillJ; this.fill = -1; }
-    } else if (this.patch < this.patchEnd) {
-      // Rows of the window drawn are put again into its own copy, a band a frame.
-      const rows = band(this.patchEnd - this.patch);
-      budget?.spend(rows * bytes);
-      g[3] = this.drawn;
-      g[4] = this.drawnI;
-      g[5] = this.drawnJ;
-      g[6] = this.patch;
-      g[7] = rows;
-      this.patch += rows;
+      if (this.row === h) {
+        this.drawn = 0;
+        this.drawnI = this.goalI = this.fillI;
+        this.drawnJ = this.goalJ = this.fillJ;
+        this.filling = this.fresh = false;
+      }
+    } else if (this.drawnI !== this.goalI || this.drawnJ !== this.goalJ) this.step(p, w, h, budget);
+    else {
+      // Of the samples that changed, those inside the window drawn, a band of their rows a frame.
+      const i0 = Math.max(this.patchI, this.drawnI), i1 = Math.min(this.patchI1, this.drawnI + w);
+      const j0 = Math.max(this.patchJ, this.drawnJ), j1 = Math.min(this.patchJ1, this.drawnJ + h);
+      if (i0 < i1 && j0 < j1) {
+        const rows = band(j1 - j0, (i1 - i0) * SAMPLE_BYTES);
+        budget?.spend(rows * (i1 - i0) * SAMPLE_BYTES);
+        this.put(p, i0, j0, i1 - i0, rows);
+        this.patchI = i0;
+        this.patchJ = j0 + rows;
+        this.patchI1 = i1;
+        this.patchJ1 = j1;
+      } else this.patchI1 = this.patchI;
+    }
+    if (p.groundPartCount > 0) {
+      g[3] = 0;
+      p.groundHeights = this.heights;
+      p.groundTint = this.tint;
     }
     g[0] = this.drawn;
     g[1] = this.drawnI;
     g[2] = this.drawnJ;
   }
 
+  /** From now on no window is held: the pictures are filled round corner (i, j), rows a frame. */
+  private refill(i: number, j: number): void {
+    this.drawn = -1;
+    this.filling = true;
+    this.fillI = this.goalI = i;
+    this.fillJ = this.goalJ = j;
+    this.row = 0;
+    this.patchI1 = this.patchI;
+  }
+
   /**
-   * The rows of the roads' frame (Heightfield `road`) the window drawn's picture takes this frame, into `p.roadWindow`:
-   * all of them the frame a window is first drawn, as the picture is read by the window's corner, and otherwise those
-   * the squares that came or went since cover, a band a frame within the upload allowance.
+   * The window drawn a step on towards its goal: along x, SNAP columns at least and as many more as the allowance has room
+   * for, then along z with what is left; the samples it gains go on the card.
+   */
+  private step(p: FramePacket, w: number, h: number, budget?: GroundBudget): void {
+    this.framing = p;
+    const fromI = this.drawnI, fromJ = this.drawnJ;
+    const along = (left: number, bytes: number, least: number): number => (budget ? Math.min(left, Math.max(least, Math.floor(budget.left / bytes / SNAP) * SNAP)) : left);
+    const di = along(Math.abs(this.goalI - fromI), h * SAMPLE_BYTES, SNAP);
+    budget?.spend(di * h * SAMPLE_BYTES);
+    this.drawnI += Math.sign(this.goalI - fromI) * di;
+    const dj = along(Math.abs(this.goalJ - fromJ), w * SAMPLE_BYTES, di > 0 ? 0 : SNAP);
+    budget?.spend(dj * w * SAMPLE_BYTES);
+    this.drawnJ += Math.sign(this.goalJ - fromJ) * dj;
+    gained(fromI, fromJ, this.drawnI, this.drawnJ, w, h, this.putGained);
+  }
+
+  private framing: FramePacket | null = null;
+  private readonly putGained = (i0: number, j0: number, w: number, h: number): void => this.put(this.framing!, i0, j0, w, h);
+
+  /**
+   * The samples of map rectangle (i0, j0) of `w` by `h` put together for the card from the heightfield: in rectangles that
+   * do not cross the pictures' edges, where they wrap, a view of each.
+   */
+  private put(p: FramePacket, i0: number, j0: number, w: number, h: number): void {
+    const hf = this.hf, side = this.size.width[SOURCE_WINDOW]!, down = this.size.height[SOURCE_WINDOW]!;
+    if (this.heights.length === 0) {
+      this.heights = new Uint16Array(side * down);
+      this.tint = new Uint8Array(side * down);
+    }
+    for (let y = j0; y < j0 + h; ) {
+      const ty = y % down, rows = Math.min(j0 + h - y, down - ty);
+      for (let x = i0; x < i0 + w; ) {
+        const tx = x % side, cols = Math.min(i0 + w - x, side - tx), n = p.groundPartCount++, at = this.used;
+        if (n >= GROUND_PARTS) throw new Error("the terrain window's parts overflow the frame's list");
+        const parts = p.groundParts;
+        parts[n * 5] = tx;
+        parts[n * 5 + 1] = ty;
+        parts[n * 5 + 2] = cols;
+        parts[n * 5 + 3] = rows;
+        parts[n * 5 + 4] = at;
+        const v = hf.view(x, y, x + cols - 1, y + rows - 1);
+        for (let r = 0; r < rows; r++) this.heights.set(v.heights.subarray(v.off + (y + r) * v.stride + x, v.off + (y + r) * v.stride + x + cols), at + r * cols);
+        const t = hf.tints(x, y, x + cols - 1, y + rows - 1);
+        if (t.tint.length > 0) for (let r = 0; r < rows; r++) this.tint.set(t.tint.subarray(t.off + (y + r) * t.stride + x, t.off + (y + r) * t.stride + x + cols), at + r * cols);
+        this.used += cols * rows;
+        x += cols;
+      }
+      y += rows;
+    }
+  }
+
+  /**
+   * The cells of the roads' frame (Heightfield `road`) the picture under the window drawn takes this frame, into
+   * `p.roadParts`: all of them the frame a window is first drawn round a corner that shares none of the one before,
+   * those the window gains as it steps, and those the squares that came or went since cover, a band a frame within the
+   * upload allowance.
    */
   private followRoad(p: FramePacket, budget?: GroundBudget): void {
-    const road = this.hf.road, out = p.roadWindow, f = this.roadFor;
-    out[0] = out[1] = 0;
+    const road = this.hf.road, f = this.roadFor;
+    p.roadPartCount = 0;
+    this.roadUsed = 0;
     if (!road || this.drawn < 0) return;
     const rw = roadSamples(this.size.width[SOURCE_WINDOW]!), rh = roadSamples(this.size.height[SOURCE_WINDOW]!);
-    const ci = this.drawnI / ROAD_STEP, cj = this.drawnJ / ROAD_STEP;
-    const whole = road !== this.roadOf || f[0] !== this.drawn || f[1] !== this.drawnI || f[2] !== this.drawnJ || !road.changedSince(this.roadVersion, this.roadChanges);
+    const ci = this.drawnI / ROAD_STEP, cj = this.drawnJ / ROAD_STEP, bytes = ROAD_PLANES;
+    const whole = road !== this.roadOf || f[0]! < 0 || Math.abs(ci - f[1]!) >= rw || Math.abs(cj - f[2]!) >= rh || !road.changedSince(this.roadVersion, this.roadChanges);
     this.roadOf = road;
     this.roadVersion = road.version;
-    f[0] = this.drawn;
-    f[1] = this.drawnI;
-    f[2] = this.drawnJ;
     if (whole) {
-      this.roadRow = 0;
-      this.roadEnd = rh;
+      this.roadI1 = this.roadI;
+      budget?.spend(rw * rh * bytes);
+      this.putRoad(p, ci, cj, rw, rh);
     } else {
       const c = this.roadChanges;
       for (let k = 0; k < c.length; k += 4) {
         if (c[k]! >= ci + rw || c[k + 2]! <= ci || c[k + 1]! >= cj + rh || c[k + 3]! <= cj) continue;
-        const from = Math.max(0, c[k + 1]! - cj), to = Math.min(rh, c[k + 3]! - cj);
-        const open = this.roadRow < this.roadEnd;
-        this.roadRow = open ? Math.min(this.roadRow, from) : from;
-        this.roadEnd = open ? Math.max(this.roadEnd, to) : to;
+        const open = this.roadI < this.roadI1 && this.roadJ < this.roadJ1;
+        this.roadI = open ? Math.min(this.roadI, c[k]!) : c[k]!;
+        this.roadJ = open ? Math.min(this.roadJ, c[k + 1]!) : c[k + 1]!;
+        this.roadI1 = open ? Math.max(this.roadI1, c[k + 2]!) : c[k + 2]!;
+        this.roadJ1 = open ? Math.max(this.roadJ1, c[k + 3]!) : c[k + 3]!;
+      }
+      if (ci !== f[1] || cj !== f[2]) {
+        budget?.spend((rw * rh - (rw - Math.abs(ci - f[1]!)) * (rh - Math.abs(cj - f[2]!))) * bytes);
+        this.framing = p;
+        gained(f[1]!, f[2]!, ci, cj, rw, rh, this.putRoadGained);
+      } else {
+        const i0 = Math.max(this.roadI, ci), i1 = Math.min(this.roadI1, ci + rw), j0 = Math.max(this.roadJ, cj), j1 = Math.min(this.roadJ1, cj + rh);
+        if (i0 < i1 && j0 < j1) {
+          const rows = !budget ? j1 - j0 : Math.min(j1 - j0, Math.max(1, Math.floor(budget.left / ((i1 - i0) * bytes))));
+          budget?.spend(rows * (i1 - i0) * bytes);
+          this.putRoad(p, i0, j0, i1 - i0, rows);
+          this.roadI = i0;
+          this.roadJ = j0 + rows;
+          this.roadI1 = i1;
+          this.roadJ1 = j1;
+        } else this.roadI1 = this.roadI;
       }
     }
-    if (this.roadRow >= this.roadEnd) return;
-    const bytes = rw * ROAD_PLANES;
-    const rows = whole || !budget ? this.roadEnd - this.roadRow : Math.min(this.roadEnd - this.roadRow, Math.max(1, Math.floor(budget.left / bytes)));
-    budget?.spend(rows * bytes);
-    out[0] = this.roadRow;
-    out[1] = rows;
-    this.roadRow += rows;
+    f[0] = 0;
+    f[1] = ci;
+    f[2] = cj;
+    if (p.roadPartCount > 0) p.roadBytes = this.roadBytes;
   }
+
+  private readonly putRoadGained = (i0: number, j0: number, w: number, h: number): void => this.putRoad(this.framing!, i0, j0, w, h);
+
+  /** The roads' frame's cells of rectangle (i0, j0) of `w` by `h` copied for the card, in rectangles that do not cross the picture's edges. */
+  private putRoad(p: FramePacket, i0: number, j0: number, w: number, h: number): void {
+    const road = this.hf.road!, side = roadSamples(this.size.width[SOURCE_WINDOW]!), down = roadSamples(this.size.height[SOURCE_WINDOW]!);
+    if (this.roadBytes.length === 0) this.roadBytes = new Uint8Array(side * down * ROAD_PLANES);
+    for (let y = j0; y < j0 + h; ) {
+      const ty = y % down, rows = Math.min(j0 + h - y, down - ty);
+      for (let x = i0; x < i0 + w; ) {
+        const tx = x % side, cols = Math.min(i0 + w - x, side - tx), n = p.roadPartCount++, at = this.roadUsed;
+        if (n >= GROUND_PARTS) throw new Error("the roads' frame's parts overflow the frame's list");
+        const parts = p.roadParts;
+        parts[n * 5] = tx;
+        parts[n * 5 + 1] = ty;
+        parts[n * 5 + 2] = cols;
+        parts[n * 5 + 3] = rows;
+        parts[n * 5 + 4] = at;
+        road.copy(x, y, cols, rows, this.roadBytes.subarray(at * ROAD_PLANES));
+        this.roadUsed += cols * rows;
+        x += cols;
+      }
+      y += rows;
+    }
+  }
+}
+
+/**
+ * What a window `w` by `h` gains moving its corner from (i0, j0) to (i1, j1), which it overlaps: the columns it gains
+ * with all its new rows, then the rows it gains with the columns it kept, each to `put` as a map rectangle.
+ */
+export function gained(i0: number, j0: number, i1: number, j1: number, w: number, h: number, put: (i: number, j: number, w: number, h: number) => void): void {
+  if (i1 !== i0) put(i1 > i0 ? i0 + w : i1, j1, Math.abs(i1 - i0), h);
+  if (j1 !== j0) put(Math.max(i0, i1), j1 > j0 ? j0 + h : j1, w - Math.abs(i1 - i0), Math.abs(j1 - j0));
 }

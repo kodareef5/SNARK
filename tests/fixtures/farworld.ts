@@ -24,6 +24,7 @@ import { mannequinMeshes } from "../../tools/pack/mannequin.ts";
 import { weaponMeshes } from "../../tools/pack/weapons.ts";
 import { buildPack } from "../../tools/pack/write.ts";
 import { PICK_FAR, PICK_STRUCTURE, Rasterizer } from "../../tools/snap/raster.ts";
+import { PagedGround } from "./paged-ground.ts";
 
 let registry: Registry | null = null;
 let pack: Pack | null = null;
@@ -46,6 +47,9 @@ export interface FarWorldOptions {
   width?: number;
   height?: number;
   pack?: Pack;
+  /** Drawn from ground held in pieces (paged-ground.ts), its tint set by `tint` where given. */
+  paged?: boolean;
+  tint?: (x: number, z: number) => number;
 }
 
 export type FarWorld = ReturnType<typeof farWorld>;
@@ -53,9 +57,11 @@ export type FarWorld = ReturnType<typeof farWorld>;
 export function farWorld(o: FarWorldOptions) {
   const reg = farRegistry();
   const dims: MapDims = { chunksX: o.chunks, chunksZ: o.chunks };
-  const hf = new Heightfield(dims, TERRAIN_CELL, -64, 1 / 64);
-  for (let j = 0; j < hf.nz; j++) for (let i = 0; i < hf.nx; i++) hf.setSample(i, j, o.ground?.(i * hf.cell, j * hf.cell) ?? 0);
-  hf.tint.fill(12);
+  const dense = new Heightfield(dims, TERRAIN_CELL, -64, 1 / 64);
+  for (let j = 0; j < dense.nz; j++) for (let i = 0; i < dense.nx; i++) dense.setSample(i, j, o.ground?.(i * dense.cell, j * dense.cell) ?? 0);
+  dense.tint.fill(12);
+  if (o.tint) for (let j = 0; j < dense.nz; j++) for (let i = 0; i < dense.nx; i++) dense.tint[j * dense.nx + i] = o.tint(i * dense.cell, j * dense.cell);
+  const hf = o.paged ? new PagedGround(dense) : dense;
   const server = new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
   const structs = new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
   const cells = new FarStore();

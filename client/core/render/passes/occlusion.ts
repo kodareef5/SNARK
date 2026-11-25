@@ -105,7 +105,9 @@ export class Occlusion implements Pass {
     if (cam.x < 0 || cam.z < 0 || cam.x >= hf.sizeX || cam.z >= hf.sizeZ) return;
     const ci = Math.floor(cam.x / cell / stride) * stride, cj = Math.floor(cam.z / cell / stride) * stride;
     let ground = -Infinity;
-    for (let j = cj - stride; j <= cj + 2 * stride; j += stride) for (let i = ci - stride; i <= ci + 2 * stride; i += stride) ground = Math.max(ground, hf.sample(Math.min(Math.max(i, 0), hf.nx - 1), Math.min(Math.max(j, 0), hf.nz - 1)));
+    const held = (i: number, n: number): number => Math.min(Math.max(i, 0), n - 1);
+    const v = hf.view(held(ci - stride, hf.nx), held(cj - stride, hf.nz), held(ci + 2 * stride, hf.nx), held(cj + 2 * stride, hf.nz));
+    for (let j = cj - stride; j <= cj + 2 * stride; j += stride) for (let i = ci - stride; i <= ci + 2 * stride; i += stride) ground = Math.max(ground, hf.minY + v.heights[v.off + held(j, hf.nz) * v.stride + held(i, hf.nx)]! * hf.stepY);
     if (cam.y - ground <= reach) return;
     h.begin(cam);
     // Under each tile drawn wholly within the view, a box from far under the ground up to its lowest sample; but where

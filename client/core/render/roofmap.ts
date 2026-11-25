@@ -79,7 +79,7 @@ export function* roofSteps(city: CityStatics, hf: Heightfield, gone: (chunk: num
   for (let c = 0; c < side * side; c++) {
     const x = c % side, z = (c - x) / side;
     const i = Math.min(hf.nx - 1, Math.max(0, Math.round((x0 + x + 0.5) / hf.cell))), j = Math.min(hf.nz - 1, Math.max(0, Math.round((z0 + z + 0.5) / hf.cell)));
-    groundColour(ground, c, palette, palette && hf.tint.length > 0 ? hf.tint[j * hf.nx + i]! : -1);
+    groundColour(ground, c, palette, palette && hf.tint.length > 0 ? hf.tintOf(i, j) : -1);
   }
   const d: MapDims = city.dims;
   const i0 = Math.max(0, Math.floor(x0 / CHUNK_SIZE) - 1), i1 = Math.min(d.chunksX - 1, Math.floor((x0 + side) / CHUNK_SIZE) + 1);
