@@ -212,3 +212,24 @@ th { color: var(--dim); font-weight: 650; font-size: .78rem }
 @media(max-width:900px) { .screens-page .monitors { grid-template-columns: 1fr } }
 .screens-page .send { margin-top: 10px }
 .screens-page .bar h2 { margin: 0 }
+.screens-page .type-tabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 2px solid var(--edge); margin-bottom: 14px }
+.screens-page .type-tabs a { padding: 8px 16px; border: 2px solid transparent; border-bottom: 0; border-radius: 6px 6px 0 0; margin-bottom: -2px; color: var(--dim); text-decoration: none; font-weight: 650 }
+.screens-page .type-tabs a:hover { color: var(--ink); background: #f4f7fa }
+.screens-page .type-tabs a.on { color: var(--ink); background: #fff; border-color: var(--edge); border-bottom: 2px solid #fff }
+.screens-page[data-type]:not([data-type="orb"]) .monitor canvas { cursor: default }
+.screens-page .clip-table tr.elsewhere > td:not(.offers) { opacity: .55 }
+.screens-page .clip-table td.offers { font-size: .8rem; min-width: 9em }
+.screens-page .clip-table td.offers label { display: block; white-space: nowrap; color: var(--dim) }
+.screens-page .offer { margin-top: 10px; flex-wrap: wrap; gap: 6px 14px }
+.screens-page .offer label { white-space: nowrap }
+.screens-page .still-list { display: grid; gap: 6px; margin-block: 8px; max-height: 50vh; overflow: auto }
+.screens-page .still { display: grid; grid-template-columns: 96px minmax(0, 1fr) auto; gap: 10px; align-items: center; border: 1px solid var(--edge); border-radius: 6px; padding: 6px }
+.screens-page .still img { width: 96px; aspect-ratio: 16 / 10; object-fit: contain; background: #0b1424; border-radius: 4px; display: block }
+.screens-page .still-words { display: grid; gap: 2px; font-size: .85rem; min-width: 0 }
+.screens-page .still-words input { max-width: 50ch }
+.screens-page .still.bad-still { border-color: var(--bad) }
+.screens-page .still-channel { flex-wrap: wrap; gap: 6px 10px; margin-top: 10px }
+.screens-page .still-channel input[type=number] { width: 5em }
+.screens-page .channel input[type=number] { width: 4.5em }
+.screens-page #stills h3 { margin-top: 16px }
+.screens-page #views-row { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center }
