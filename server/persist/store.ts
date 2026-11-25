@@ -559,8 +559,14 @@ export class WorldStore {
   }
 
   /** Keeps the newest `keep` entries. */
-  pruneJournal(keep: number): void {
-    this.db.query("DELETE FROM journal WHERE seq <= (SELECT MAX(seq) FROM journal) - ?").run(keep);
+  /**
+   * Keeps the latest `keep` entries. Each op in `apart` is counted on its own and keeps its own latest `keep`, so entries
+   * anyone can make many of never push those out.
+   */
+  pruneJournal(keep: number, apart: readonly number[] = []): void {
+    const ops = apart.filter((op) => Number.isInteger(op));
+    this.db.query(`DELETE FROM journal WHERE seq <= (SELECT MAX(seq) FROM journal) - ?${ops.length > 0 ? ` AND op NOT IN (${ops.join(",")})` : ""}`).run(keep);
+    for (const op of ops) this.db.query("DELETE FROM journal WHERE op = ? AND seq <= (SELECT seq FROM journal WHERE op = ? ORDER BY seq DESC LIMIT 1 OFFSET ?)").run(op, op, keep);
   }
 
   journal(afterSeq = 0): JournalEntry[] {

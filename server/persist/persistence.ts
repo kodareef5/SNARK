@@ -23,6 +23,8 @@ export interface PersistenceOptions {
   positionTicks: number;
   /** Journal entries kept. Older ones are deleted. */
   journalKeep: number;
+  /** Journal ops counted on their own, each keeping its own latest `journalKeep`: an admin's acts, which no other entry may push out. */
+  journalApart: readonly number[];
 }
 
 /**
@@ -127,7 +129,7 @@ export class Persistence {
     this.records = records;
     this.store = store;
     this.saveId = store.saveId;
-    this.opts = { positionTicks: 1800, journalKeep: 100_000, ...opts };
+    this.opts = { positionTicks: 1800, journalKeep: 100_000, journalApart: [], ...opts };
     this.keeper = this.keep(store);
     this.keeper.onBackup = (r) => this.onBackup?.(r);
     world.structs.onChunkChanged = (chunk, healthOnly) => (healthOnly ? this.hurtChunks : this.dirtyChunks).add(chunk);
@@ -199,6 +201,11 @@ export class Persistence {
   }
 
   /** The entry is written in the same transaction as the state it produced. */
+  /** Drops the journal's entries past those kept, as every few hundred commits do. */
+  prune(): void {
+    this.store.pruneJournal(this.opts.journalKeep, this.opts.journalApart);
+  }
+
   journal(op: number, data: Uint8Array): number {
     const seq = ++this.journalSeq;
     this.pending.push({ seq, tick: this.world.tick, op, data: data.slice() });
@@ -393,7 +400,7 @@ export class Persistence {
           this.written.push(i);
         });
         // The journal is an audit trail, not the state, so only the recent part is kept.
-        if (this.commits % PRUNE_EVERY === PRUNE_EVERY - 1) store.pruneJournal(this.opts.journalKeep);
+        if (this.commits % PRUNE_EVERY === PRUNE_EVERY - 1) store.pruneJournal(this.opts.journalKeep, this.opts.journalApart);
         for (const [name, pid] of this.newSurvivors) store.saveSurvivor(name, pid);
         for (const t of this.transfers) store.saveTransfer(t);
         store.setMeta("tick", world.tick);

@@ -57,6 +57,8 @@ export interface LogWorld {
   mapId: string;
   world: number;
   opAdmin: number;
+  /** The journal op of an open command, which is an act too; left out where there is none. */
+  opOpen?: number;
   opDeath: number;
   causes: readonly string[];
 }
@@ -841,8 +843,9 @@ export class LogStore {
               done = true;
               break;
             }
-            if (r.op !== this.info.opAdmin && r.op !== this.info.opDeath) continue;
-            const act = r.op === this.info.opAdmin ? decodeAct(r.data, r.seq, r.tick) : null;
+            const acted = r.op === this.info.opAdmin || r.op === this.info.opOpen;
+            if (!acted && r.op !== this.info.opDeath) continue;
+            const act = acted ? decodeAct(r.data, r.seq, r.tick) : null;
             // An act keeps its own time; an older save's entry has only the tick, which the log gives a time.
             const wall = act && act.at > 0 ? act.at : this.wallAt(r.tick);
             if (wall === null || wall < from || wall > to) continue;

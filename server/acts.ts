@@ -9,8 +9,10 @@ import type { Persistence } from "./persist/persistence.ts";
 import type { Records } from "./records.ts";
 import { idText } from "./survivor-ids.ts";
 
-/** Journal op for an act (shared/acts.ts). */
+/** Journal op for an act (shared/acts.ts). The save counts these on their own, so no other entry pushes them out. */
 export const OP_ADMIN = 2;
+/** Journal op for an open command: anyone may make many, so they are counted with the rest. A save from before has them under OP_ADMIN. */
+export const OP_OPEN = 4;
 /** The latest acts by an actor who proved a rank that are kept in memory. */
 export const ACTS_KEPT = 2000;
 /** The latest open commands kept in memory, apart from those. */
@@ -133,7 +135,8 @@ export class Acts {
     what = actText(what, WHAT_MOST);
     const open = actor.open === true;
     const bytes = encodeAct({ at, name, id, pid, rank, via, from, kind, what, open });
-    const seq = persistence ? persistence.journal(OP_ADMIN, bytes) : ++this.seq;
+    const apart = openOnly({ open, kind });
+    const seq = persistence ? persistence.journal(apart ? OP_OPEN : OP_ADMIN, bytes) : ++this.seq;
     const act: Act = { seq, at, tick: this.ctx.tick(), name, id, pid, rank, via, from, kind, what, open };
     this.wrote.add(actor);
     if (openOnly(act)) this.open.push(act);
@@ -171,23 +174,29 @@ export class Acts {
     return out;
   }
 
-  /** Reads the latest of each list back from the journal, newest first, until both would be full or the journal ends. */
+  /** Reads the latest of each list back from the journal, newest first, until each would be full or its entries end. */
   private refill(): void {
     const store = this.ctx.persistence?.store;
     if (!store) return;
     const kept: Act[] = [];
     const open: Act[] = [];
-    for (let before = Number.MAX_SAFE_INTEGER; kept.length < ACTS_KEPT || open.length < ACTS_OPEN_KEPT; ) {
-      const rows = store.journalBack(OP_ADMIN, before, ACTS_KEPT);
-      for (const r of rows) {
-        const act = decodeAct(r.data, r.seq, r.tick);
-        const into = openOnly(act) ? open : kept;
-        if (into.length < (into === open ? ACTS_OPEN_KEPT : ACTS_KEPT)) into.push(act);
+    const most = (list: Act[]): number => (list === open ? ACTS_OPEN_KEPT : ACTS_KEPT);
+    // Each op is read until its own list is full. A save from before open commands had an op of their own has both
+    // kinds under OP_ADMIN, and those met on the way are taken.
+    for (const [op, wanted] of [[OP_ADMIN, kept], [OP_OPEN, open]] as const) {
+      for (let before = Number.MAX_SAFE_INTEGER; wanted.length < most(wanted); ) {
+        const rows = store.journalBack(op, before, ACTS_KEPT);
+        for (const r of rows) {
+          const act = decodeAct(r.data, r.seq, r.tick);
+          const into = openOnly(act) ? open : kept;
+          if (into.length < most(into)) into.push(act);
+        }
+        if (rows.length < ACTS_KEPT) break;
+        before = rows.at(-1)!.seq;
       }
-      if (rows.length < ACTS_KEPT) break;
-      before = rows.at(-1)!.seq;
     }
-    for (let i = kept.length - 1; i >= 0; i--) this.kept.push(kept[i]!);
-    for (let i = open.length - 1; i >= 0; i--) this.open.push(open[i]!);
+    for (const list of [kept, open]) list.sort((a, b) => a.seq - b.seq);
+    for (const act of kept) this.kept.push(act);
+    for (const act of open.slice(-ACTS_OPEN_KEPT)) this.open.push(act);
   }
 }

@@ -125,6 +125,35 @@ test("many open acts never push a kept act out", () => {
   h.host.shutdown();
 });
 
+test("open commands, however many, never push an admin's act out of the save", () => {
+  const db = join(dir, "pruned.db");
+  // A save that keeps only its latest 20 journal entries, where a real one keeps a hundred thousand.
+  const said: string[] = [];
+  const open = (): Harness => new Harness({}, 1, 60, { dbPath: db, dev: true, journalKeep: 20, log: (line) => said.push(line) });
+  const first = open();
+  first.host.acts.write(PAGE_ADA, "settime 6:30");
+  first.host.acts.write(PAGE_ADA, "Permissions.Add bo Admins", "change");
+  for (let i = 0; i < 200; i++) first.host.acts.write(OPEN_ONE, `fly ${i}`);
+  first.host.persistence!.commit();
+  first.host.persistence!.prune();
+  first.host.shutdown();
+
+  const second = open();
+  expect(second.host.acts.recent(0, Number.MAX_SAFE_INTEGER).map((a) => a.what)).toEqual(["settime 6:30", "Permissions.Add bo Admins"]);
+  // The open commands are the ones that went: only the latest are left.
+  const left = second.host.acts.recentWithOpen(0, Number.MAX_SAFE_INTEGER).filter((a) => a.open);
+  expect([left.length, left.at(-1)?.what]).toEqual([20, "fly 199"]);
+  // Admin acts are counted on their own, so they too are bounded.
+  for (let i = 0; i < 30; i++) second.host.acts.write(PAGE_ADA, `kick ${i}`);
+  second.host.persistence!.commit();
+  second.host.persistence!.prune();
+  second.host.shutdown();
+  const third = open();
+  const kept = third.host.acts.recent(0, Number.MAX_SAFE_INTEGER).map((a) => a.what);
+  expect([kept.length, kept[0], kept.at(-1)]).toEqual([20, "kick 10", "kick 29"]);
+  third.host.shutdown();
+});
+
 test("both lists come back from the save, and paging the two misses nothing", () => {
   const db = join(dir, "rings.db");
   const first = world({ db });

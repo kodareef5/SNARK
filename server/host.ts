@@ -61,7 +61,7 @@ import { globalRefused, shownTagNames, speakerLine } from "./permissions/chat-ta
 import { Tribes } from "./tribes.ts";
 import { Voice } from "./voice.ts";
 import { Console, OP_ADMIN } from "./console.ts";
-import { Acts, PAGE_ACTOR, sessionActor, type Actor } from "./acts.ts";
+import { Acts, OP_OPEN, PAGE_ACTOR, sessionActor, type Actor } from "./acts.ts";
 import { PermissionStore } from "./permissions/store.ts";
 import { Permissions, type Acting, type PermissionSubject } from "./permissions/permissions.ts";
 import { CHANGED_MEANWHILE, type PermissionOp } from "../shared/permissions/model.ts";
@@ -158,6 +158,8 @@ export interface HostOptions {
   worldId?: number;
   /** Ticks between commits. 6 ticks is 200 ms. */
   commitEvery?: number;
+  /** Journal entries the save keeps; a hundred thousand unless said. */
+  journalKeep?: number;
   /** "worker" gives checkpoints and backups to a thread of their own, as a running server wants. The default does them on the calling thread. */
   keeper?: "inline" | "worker";
   /** Back the save up beside itself at every autosave mark (AutoSavePeriodMinutes). */
@@ -544,7 +546,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   /** Creates the entity store had refused when the log last said so, and the tick from which it may say so again. */
   let refusedTold = 0;
   let refusedNext = 0;
-  const persistence = store ? new Persistence(world, records, store) : null;
+  // An admin's acts are counted apart in the journal, so no number of deaths or open commands pushes them out of the save.
+  const persistence = store ? new Persistence(world, records, store, { journalApart: [OP_ADMIN], ...(opts.journalKeep ? { journalKeep: opts.journalKeep } : {}) }) : null;
   const loaded = persistence ? persistence.load() : null;
   const commitEvery = opts.commitEvery ?? 6;
   const survivor = reg.index.get("core:survivor")!;
@@ -692,7 +695,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   tribes.rules = rules;
   tribes.bus = bus;
   if (persistence && !loaded!.fresh) tribes.restore(persistence.store.meta("tribes"));
-  const survivorLog = new SurvivorLog({ world, records, tribes, rules, persistence, opAdmin: OP_ADMIN, opDeath: OP_DEATH, causes: CAUSE_WORDS, say }, opts.survivorLog);
+  const survivorLog = new SurvivorLog({ world, records, tribes, rules, persistence, opAdmin: OP_ADMIN, opOpen: OP_OPEN, opDeath: OP_DEATH, causes: CAUSE_WORDS, say }, opts.survivorLog);
   opened.push({ close: () => survivorLog.stop() });
   const ids = new SurvivorIds(records);
   // The cluster's permission groups, kept in its folder for every world, else beside the save, else in memory.

@@ -1,6 +1,6 @@
 // A save's admin acts, read as tests compare them: decoded whole, or as `name`, a tab and what was done.
 
-import { OP_ADMIN } from "../../server/acts.ts";
+import { OP_ADMIN, OP_OPEN } from "../../server/acts.ts";
 import type { WorldStore } from "../../server/persist/store.ts";
 import { decodeAct, type Act } from "../../shared/acts.ts";
 
@@ -8,7 +8,7 @@ import { decodeAct, type Act } from "../../shared/acts.ts";
 export function savedActs(store: WorldStore): Act[] {
   return store
     .journal()
-    .filter((j) => j.op === OP_ADMIN)
+    .filter((j) => j.op === OP_ADMIN || j.op === OP_OPEN)
     .map((j) => decodeAct(j.data, j.seq, j.tick));
 }
 
