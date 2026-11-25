@@ -184,7 +184,6 @@ const FIELDS = {
   lights: f("text", "", { refs: { "": "structure" } }),
   lit: f("switch"),
   bed: f("switch"),
-  screen: f("facet", "a screen's face: its type, its rectangle and how it is drawn"),
   wait: f("number"),
   once: f("switch"),
   floor: f("switch"),
