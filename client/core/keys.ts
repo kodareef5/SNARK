@@ -17,13 +17,16 @@ import { PLACEMENT_KEYS } from "./vehicle-placement.ts";
 import { VISOR_KEYS } from "./visor.ts";
 import type { TravelScreen } from "./ui/travel.ts";
 
-// F3 opens the debug bar's drawer and F8 saves what the bar holds, from any screen (debug/debug.ts).
+// F3 toggles field telemetry. Shift+F3 opens the debug drawer and F8 saves its report.
 const DEBUG: KeyRow = {
   name: "debug",
   keys: ["F3", "F8"],
   press(c, code, down, repeat) {
     if (code === "F8" && !c.ui.settings.debug) return undefined;
-    if (down && !repeat) c.ui.debugKey(code);
+    if (down && !repeat) {
+      if (code === "F3" && !c.shift) c.ui.toggleDiagnostics();
+      else c.ui.debugKey(code);
+    }
     return true;
   },
 };
@@ -54,7 +57,7 @@ const TYPING: KeyRow = { name: "typing", keys: ANY_KEY, when: (c) => c.ui.captur
 
 // Returning true keeps the browser from opening its menu.
 const ALT: KeyRow = { name: "alt", keys: ["AltLeft", "AltRight"], press: (c, _code, down) => ((c.alt = down), true) };
-const SHIFT: KeyRow = { name: "shift", keys: ["ShiftLeft", "ShiftRight"], press: (c, _code, down) => ((c.shift = down), undefined) };
+const SHIFT: KeyRow = { name: "shift", keys: ["ShiftLeft", "ShiftRight"], press: (c, _code, down) => ((c.shift = c.ui.shift = down), undefined) };
 
 // The use key on an egg takes it up with a command of its own, and the body does not get the press.
 const TAKE: KeyRow = {

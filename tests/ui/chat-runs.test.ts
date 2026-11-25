@@ -40,6 +40,8 @@ test("a chat line with no coloured run shows as the same rows as a plain line, i
   const words = "bob: over here, by the tall rock past the river; bring the spare hatchet and some berries";
   const plain = new ChatState();
   const runs = new ChatState();
+  plain.begin(TEXT_GLOBAL, null);
+  runs.begin(TEXT_GLOBAL, null);
   for (const channel of [TEXT_GLOBAL, TEXT_LOCAL, TEXT_TRIBE]) {
     plain.print(channel, words, 0);
     runs.print(channel, words, 0, undefined, [{ text: "bob" }, { text: words.slice(3) }]);
@@ -68,6 +70,10 @@ test("a line coloured by the server's formatter reaches the chat box in its inks
   expect(line.runs).toEqual([{ text: "ada", ink: RED }, { text: ": meet at the old radio tower before the storm comes in, and bring rope", ink: BLUE }]);
   const chat = new ChatState();
   chat.absorb(bob);
+  const preview = rows(chat, 260);
+  expect(preview.map((n) => n.text).join(" ")).toBe(line.text);
+  expect(preview.flatMap((n) => n.runs!).slice(1).every((r) => r.ink === BLUE)).toBe(true);
+  chat.begin(TEXT_GLOBAL, bob);
   const shown = rows(chat, 260);
   expect(shown.length).toBe(2);
   expect(shown[0]!.runs![0]).toEqual({ text: "ada", ink: RED });

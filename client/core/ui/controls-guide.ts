@@ -1,11 +1,19 @@
-// Descriptions of implemented actions, with explicit context. These do not promise ARK's absent radial menus.
+// The controls guide describes each action in the context where it works.
 // A key that has a row in the key table is described on its row (keys.ts). Written here are the rest: the keys that
 // move the body and its held buttons (controls.ts), the mouse, the interface's own keys (ui/ui.ts), and the pad.
 import { KEY_ROWS } from "../keys.ts";
 export const CONTROL_GROUPS=["Move","Combat","World","Build","Flight","Menus","Skate"] as const;
 export interface Binding { title: string; detail: string; group: number }
 const b=(group:number,title:string,detail=""):Binding=>({group,title,detail});
+const FIELD_KEYS: Readonly<Record<string,Binding>>={
+  F2:b(5,"Field menus","Browse destinations with the arrow keys and open one with Enter. Comma does the same."),
+  Comma:b(5,"Field menus","As F2, where the F keys need Fn."),
+  F3:b(5,"Diagnostics","Show frame rate and coordinates. Shift+F3 opens the debug drawer."),
+  F4:b(5,"Action menus","Choose a family and command with the arrows and Enter. Escape returns. Semicolon does the same."),
+  Semicolon:b(5,"Action menus","As F4, where the F keys need Fn."),
+};
 const KEYS: Readonly<Record<string,Binding>>={
+  ...FIELD_KEYS,
   KeyW:b(0,"Forward"),KeyA:b(0,"Strafe left"),KeyS:b(0,"Back","Under a glider, flare: it slows to a stop and sinks more gently."),KeyD:b(0,"Strafe right"),ShiftLeft:b(0,"Sprint","Hold while moving. Sprint stands up from crouch. With Meridian greaves and a cuirass, double-tap Sprint while steering in the air to dash. Under a glider, hold to dive. At the wheel of a thruster car (the Zephyr), boost: its tail nozzles fire, and fire again once its cooldown has run."),
   Space:b(0,"Jump","From crouch or prone, press to stand. With a Meridian cuirass, hold to climb, add Sprint for level flight, or double-tap Jump to burst upward. Carrying a glider and out of the cuirass, press in the air to throw it open, and again to fold it."),KeyC:b(0,"Crouch / glider","Press again to stand. Carrying a glider, press in the air to throw it open, and again to fold it."),KeyX:b(0,"Prone","Press again to stand."),
   Mouse0:b(1,"Attack","Hold to use the equipped weapon. While building, place the preview. With a soul ball in hand, click one of your tribe's creatures to keep it in the ball, and click again to let it out where you look. A survivor comes to life with one in its first hotbar slot (key 1) that holds a saddled pteranodon of its own, unless the server gives none."),Mouse2:b(1,"Aim / alternate attack"),MouseMove:b(0,"Look","Move the mouse to aim and steer the camera."),
@@ -43,7 +51,7 @@ function fromRows(code:string,sheet:number):Binding|undefined {
 export function keyBinding(code:string,group:number):Binding|undefined {
   if(group===3 || group===4) { const own=fromRows(code,group)??(group===4?FLIGHT[code]:undefined); if(own)return own; }
   if(group===6)return SKATE[code]??fromRows(code,0)??KEYS[code];
-  if(group===5)return fromRows(code,5)??MENUS[code];
+  if(group===5)return fromRows(code,5)??MENUS[code]??FIELD_KEYS[code];
   return fromRows(code,0)??KEYS[code];
 }
 const PAD_MENU:Readonly<Record<number,Binding>>={0:b(5,"Select / drag","Hold to pick up an inventory stack; release over its destination."),1:b(5,"Back"),9:b(5,"Menu / back"),12:b(5,"Previous control"),13:b(5,"Next control"),14:b(5,"Decrease / previous"),15:b(5,"Increase / next"),10:b(5,"Navigate","Left stick: move focus. Horizontal movement adjusts the focused slider.")};

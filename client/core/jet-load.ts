@@ -15,11 +15,15 @@ export interface JetPartsCode {
   sweep(clock: number): void;
 }
 
+export const KEY_FIGHTER = 6720;
+export const KEY_LOCK = KEY_FIGHTER + 13;
+export const KEY_LOCK_WARNING = KEY_LOCK + 4;
+
 /** What the late file gives: the parts, the missiles' smoke and the jet's glass. */
 export interface JetCode {
   parts(): JetPartsCode;
   trail(): FramePart;
-  readonly fighter: HudWidget<FighterModel>;
+  readonly fighter: Required<Pick<HudWidget<FighterModel>, "fill" | "build">>;
 }
 
 /** The jet's code, once it has come. */

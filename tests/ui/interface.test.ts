@@ -5,6 +5,7 @@ import { KEY_CONTROL_DETAIL, KEY_CONTROL_GROUP, KEY_CONTROL_GLYPHS } from "../..
 import { KEY_CONTROL_PAD } from "../../client/core/ui/controller.ts";
 import { KEY_SETTINGS_PAGE, KEY_SETTINGS_ROW, KEY_SETTINGS_TAB, SETTING_GROUPS } from "../../client/core/ui/settings.ts";
 import { siteLinks } from "../../client/core/travel.ts";
+import { KEY_HOTBAR_NUMBER } from "../../client/core/hud/hotbar.ts";
 import { KEY_BUFF, KEY_CLOCK, KEY_HOTBAR, KEY_MINIMAP, KEY_MINIMAP_TOGGLE, KEY_READOUT, KEY_VEHICLE, KEY_VITAL } from "../../client/core/ui/hud.ts";
 import { glassBox, meets } from "../fixtures/boxes.ts";
 import { KEY_CONTROLS_DEVICE, KEY_MENU, KEY_MENU_BACK, KEY_MENU_CONTROLS, KEY_MENU_LINK, KEY_MENU_RESUME, KEY_MENU_SETTINGS, KEY_UNMUTE } from "../../client/core/ui/menu.ts";
@@ -28,7 +29,7 @@ test("the quiet HUD keeps ten numbered slots fixed when status and contextual vi
     expect(ui.frame.find(KEY_VITAL + 9)).toBeNull();
     expect(ui.frame.find(KEY_VITAL + 11)).toBeNull();
     const bottom = ui.frame.find(KEY_HOTBAR)!.y;
-    for (let i = 0; i < 10; i++) expect(ui.frame.find(5520 + i)!.text).toBe(String((i + 1) % 10));
+    for (let i = 0; i < 10; i++) expect(ui.frame.find(KEY_HOTBAR_NUMBER + i)!.text).toBe(String((i + 1) % 10));
     hud.status = "Connection lost";
     hud.vitals[4]!.fraction = .3;
     hud.vitals[5]!.fraction = .2;
@@ -84,8 +85,7 @@ test("inspection releases the camera and exposes details only until its key is r
 test("saved preferences bound numeric values and never restore transient actions", () => {
   const settings = new Settings();
   for (const bad of [null, "{", "null", "[]", '{"version":99,"minimap":false}', '{"minimap":"false","diagnostics":3}']) settings.restoreInterface(bad);
-  // At first start the view is from behind, the readout is on and the debug bar off; a saved choice wins over each.
-  expect([settings.minimap, settings.thirdPerson, settings.diagnostics, settings.debug]).toEqual([true, true, true, false]);
+  expect([settings.minimap, settings.thirdPerson, settings.diagnostics, settings.debug]).toEqual([true, true, false, false]);
   settings.restoreInterface('{"version":1,"minimap":false,"tier":"ultra"}');
   expect([settings.minimap, settings.tier, settings.chosen]).toEqual([true, "medium", false]);
   settings.restoreInterface('{"version":2,"minimap":false,"vitalLabels":true,"thirdPerson":false,"diagnostics":false,"debug":true}');
@@ -298,7 +298,7 @@ test("the dashboard sits under the minimap or in its place, clear of the readout
     v.rotor = kind === "helicopter"; v.boat = kind === "boat";
     const build = (map: boolean): UiFrame => {
       const ui = new Ui(), hud = new HudModel();
-      if (!numbers) ui.settings.diagnostics = false;
+      ui.settings.diagnostics = numbers;
       hud.vehicle = v;
       hud.readout.fill("25.8 N 80.2 W  NE 41");
       // Every vital shows: oxygen short, torpor up.
@@ -321,7 +321,7 @@ test("the dashboard sits under the minimap or in its place, clear of the readout
     // Hidden, the minimap leaves its place; on a narrow canvas the readout takes its width, and the panel stands under it.
     const map = minimap ? f : build(true), picture = map.find(KEY_MINIMAP)!, clock = map.find(KEY_CLOCK), readout = f.find(KEY_READOUT + 2);
     if (minimap) expect(top, where).toBeGreaterThanOrEqual((clock ?? picture).y + (clock ?? picture).h);
-    else expect(top, where).toBeCloseTo(f.width < 640 && readout ? Math.max(picture.y, readout.y + readout.h + 4 + 8) : picture.y, 5);
+    else expect(top, where).toBeCloseTo(f.width < 640 ? (readout ? readout.y + readout.h + 12 : picture.y + 47) : picture.y, 5);
     const toggle = f.find(KEY_MINIMAP_TOGGLE)!;
     expect(toggle.x + toggle.w <= left - 2 || toggle.y + toggle.h <= top || toggle.y >= bottom, where).toBe(true);
     for (const n of nodes) if (n.key >= KEY_BUFF && n.key < KEY_BUFF + 16) expect(n.y >= bottom || n.x + n.w <= left, `${where}: buff ${n.key}`).toBe(true);

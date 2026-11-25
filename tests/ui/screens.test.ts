@@ -18,7 +18,7 @@ import { K_BUTTON, K_INPUT, K_SLIDER, baseKey } from "../../client/core/ui/nodes
 import { KEY_SETTINGS_PARTS, KEY_SETTINGS_TAB, SETTING_GROUPS, type SettingsTab } from "../../client/core/ui/settings.ts";
 import { INPUT_SETTINGS } from "../../client/core/ui/settings-input.ts";
 import { Chart } from "../../client/core/tactical.ts";
-import { KEY_MAP_IMAGE, type MapScreen } from "../../client/core/ui/screens.ts";
+import { KEY_MAP_IMAGE, KEY_MAP_TOOLS, type MapScreen } from "../../client/core/ui/screens.ts";
 import { buildProvingHeightfield } from "../../shared/world/proving.ts";
 import { corePack } from "../fixtures/pack.ts";
 import { compileContent } from "../../shared/content/registry.ts";
@@ -29,6 +29,7 @@ import { CORE_CONTENT } from "../../content/core.ts";
 import type { InventoryScreen } from "../../client/core/ui/inventory.ts";
 import type { MenuScreen } from "../../client/core/ui/menu-screen.ts";
 import type { HammerPanel } from "../../client/core/ui/hammer.ts";
+import type { FieldDock } from "../../client/core/ui/field-dock.ts";
 import { Hammer } from "../../client/core/hammer.ts";
 
 const reg = compileContent(CORE_CONTENT).registry!;
@@ -58,6 +59,7 @@ function drawn(ui: Ui, s: Screen, session: ClientSession) {
   ui.registry = reg;
   const hud = new HudModel();
   hud.chart = new Chart(hf, palette);
+  for (let i = 0; i < HOTBAR_SLOTS; i++) hud.hotbar.push({ label: "", tint: -1, number: "" });
   ui.build(16 / 9, hud, session);
   const at = ui.screens.indexOf(s);
   return ui.frame.nodes.slice(0, ui.frame.count).filter((n) => n.owner === at);
@@ -117,6 +119,11 @@ const opens: Record<string, (ui: Ui, session: ClientSession) => { s: Screen; shu
     s.open = true;
     return { s, shut: () => s.shut(session) };
   },
+  dock: (ui) => {
+    const s = ui.screen<FieldDock>("dock");
+    s.page = "emblem";
+    return { s, shut: () => s.close() };
+  },
   menu: (ui) => {
     const s = ui.screen<MenuScreen>("menu");
     ui.escaped();
@@ -159,8 +166,10 @@ test("a press that comes after its screen closed, before the next frame, does no
   for (const name of new Ui().screens.map((s) => s.name)) {
     const ui = new Ui(), { session, sent } = fakeSession();
     const { s, shut } = opens[name]!(ui, session);
-    const keys = drawn(ui, s, session).filter((n) => n.interactive).map((n) => n.key);
-    expect(keys.length, name).toBeGreaterThan(0);
+    const all = drawn(ui, s, session).filter((n) => n.interactive);
+    expect(all.length, name).toBeGreaterThan(0);
+    // What a screen draws with the HUD works while it is shut, as the hotbar's slots do.
+    const keys = all.filter((n) => !n.inPlay).map((n) => n.key);
     shut();
     for (const key of keys) ui.pointer(0, key, 0, 0, 0, session);
     expect([s.isOpen(), sent], name).toEqual([false, []]);
@@ -234,6 +243,8 @@ test("the map takes a finger's drag through the list, with no click", () => {
   const picture = ui.frame.find(KEY_MAP_IMAGE)!;
   expect(picture.owner).toBe(ui.screens.indexOf(map));
   const [cx, cy] = [picture.x + picture.w / 2, picture.y + picture.h / 2];
+  ui.pointer(0, KEY_MAP_TOOLS, cx, cy, 0, session);
+  ui.build(16 / 9, hud, session);
   const before = hud.chart.fullU;
   ui.pointer(0, KEY_MAP_IMAGE, cx, cy, 0, session, 1);
   ui.pointer(2, KEY_MAP_IMAGE, cx + 60, cy, 0, session, 1);

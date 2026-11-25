@@ -7,7 +7,7 @@ import { ACT_COOL, ACT_DRAW, ACT_EQUIP, ACT_HOLD, ACT_RELOAD } from "../../../sh
 import type { ClientSession } from "../session.ts";
 import { K_BAR } from "../ui/nodes.ts";
 import { S_OXYGEN, S_STAMINA } from "../ui/style.ts";
-import type { HudWidget } from "./widget.ts";
+import { band, type HudWidget } from "./widget.ts";
 
 export const KEY_ACTION = 34;
 
@@ -70,6 +70,7 @@ export function fillAction(m: ActionModel & { ammo: string; buildSays?: string }
 
 export const ACTION: HudWidget<ActionModel> = {
   name: "action",
+  bands: [band(KEY_ACTION, 1)],
   make: () => ({ actionKind: ACTION_NONE, actionFraction: 0 }),
   fill(m, c) {
     const a = c.frame;

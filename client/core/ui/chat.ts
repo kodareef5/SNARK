@@ -1,23 +1,29 @@
 // The server decides who reads a line.
 
+import { maskSecret } from "../../../shared/console.ts";
 import { runText, type TextRun } from "../../../shared/net/chat.ts";
 import { MAX_CHAT_CHARS, TEXT_CONSOLE, TEXT_GLOBAL, TEXT_LOCAL, TEXT_MOTD, TEXT_NOTICE, TEXT_TRIBE } from "../../../shared/net/protocol.ts";
 import type { ClientSession } from "../session.ts";
+import { glass } from "./skin.ts";
 import { lineHeight, wrapRuns, wrapText, K_BUTTON, K_INPUT, K_PANEL, type UiFrame } from "./nodes.ts";
-import { S_CHAT, S_CHAT_LOCAL, S_CHAT_NOTICE, S_CHAT_PANEL, S_CHAT_TAG, S_CHAT_TRIBE, S_INPUT } from "./style.ts";
+import { S_CHAT, S_CHAT_LOCAL, S_CHAT_NOTICE, S_CHAT_PANEL, S_CHAT_TAG, S_CHAT_TRIBE, S_HUD_HIT, S_HUD_KEY, S_ICE, S_INPUT } from "./style.ts";
 
 export const KEY_CHAT_PANEL = 13;
 export const KEY_CHAT_INPUT = 14;
 export const KEY_CHAT_TAG = 15;
 /** By touch, beside the field: sends what was typed, as Enter does. */
 export const KEY_CHAT_SEND = 5397;
+export const KEY_CHAT_OPEN = 9100;
+const KEY_RADIO_ICON = 9101;
+const KEY_RADIO_LABEL = 9102;
+const KEY_RADIO_EDGE = 9103;
 const SEND_WIDTH = 64;
 /** Per row shown, up to MAX_ROWS. */
 export const KEY_CHAT_ROW = 16;
 
 const MAX_ROWS = 8;
 /** Rows shown while the box is shut. */
-const SHUT_ROWS = 6;
+const SHUT_ROWS = 3;
 const LINES = 100;
 const WIDTH = 380;
 const MARGIN = 12;
@@ -29,7 +35,8 @@ const FADE_TICKS = 2 * 30;
 const HELP: readonly string[] = [
   "Enter opens chat; Tab in the box changes channel (Global, Local, Tribe).",
   "A line that begins with / is a command: /who, /pos, /time, /help give. The ` key opens the console.",
-  "V changes the view, O opens Settings, I the inventory, M the map, F3 the debug bar.",
+  "V changes the view, O opens Settings, I the inventory, M the corner map (Shift+M the whole map), F3 diagnostics.",
+  "F2 or , opens the field menus and F4 or ; the actions: arrows browse, Enter chooses, Escape goes back.",
   "Hold N (or the middle button) to raise the helmet's visor: the wheel zooms it, a tap of N changes its view (plain, night, heat).",
 ];
 const HELP_TICKS = 20 * 30;
@@ -40,6 +47,8 @@ const TAG: Record<number, string> = { [TEXT_GLOBAL]: "Global", [TEXT_LOCAL]: "Lo
 const ROW_STYLE: Record<number, number> = { [TEXT_NOTICE]: S_CHAT_NOTICE, [TEXT_MOTD]: S_CHAT_NOTICE, [TEXT_GLOBAL]: S_CHAT, [TEXT_LOCAL]: S_CHAT_LOCAL, [TEXT_TRIBE]: S_CHAT_TRIBE };
 /** A line's prefix, so that colour is not the only sign of its channel. */
 const PREFIX: Record<number, string> = { [TEXT_NOTICE]: "", [TEXT_MOTD]: "", [TEXT_GLOBAL]: "", [TEXT_LOCAL]: "[Local] ", [TEXT_TRIBE]: "[Tribe] " };
+
+const canRemember = (line: string): boolean => !line.trimStart().startsWith("/") || maskSecret(line) === null;
 
 interface Row {
   text: string;
@@ -57,6 +66,10 @@ export class ChatState {
   input = "";
   /** Oldest first. `at` is the tick a line arrived. */
   readonly lines: { channel: number; text: string; runs?: readonly TextRun[]; at: number; hold: number }[] = [];
+  private readonly drafts = new Map<number, string>();
+  private readonly sent = new Map<number, string[]>();
+  private recalled = -1;
+  private scratch = "";
   private readonly live: number[] = [];
   private seen = 0;
   private readonly rows: Row[] = [];
@@ -73,22 +86,37 @@ export class ChatState {
   /** On a server with no global chat, the global key opens the local channel. */
   begin(channel: number, session: ClientSession | null): void {
     this.open = true;
-    this.input = "";
-    this.channel = channel === TEXT_GLOBAL && !this.usable(channel, session) ? TEXT_LOCAL : channel;
+    this.channel = this.usable(channel, session) ? channel : TEXT_LOCAL;
+    this.input = this.drafts.get(this.channel) || "";
+    this.recalled = -1;
   }
 
   /** Moves to the next channel this session can speak on. */
   cycle(session: ClientSession | null): void {
+    this.rememberDraft();
     let at = CHANNELS.indexOf(this.channel);
     for (let n = 0; n < CHANNELS.length; n++) {
       at = (at + 1) % CHANNELS.length;
       if (this.usable(CHANNELS[at]!, session)) break;
     }
     this.channel = CHANNELS[at]!;
+    this.input = this.drafts.get(this.channel) || "";
+    this.recalled = -1;
   }
 
   edit(value: string): void {
     this.input = value.length > MAX_CHAT_CHARS ? value.slice(0, MAX_CHAT_CHARS) : value;
+  }
+
+  recall(by: number): void {
+    const history = this.sent.get(this.channel);
+    if (!history?.length) return;
+    if (this.recalled < 0) {
+      this.scratch = canRemember(this.input) ? this.input : "";
+      this.recalled = history.length;
+    }
+    this.recalled = Math.max(0, Math.min(history.length, this.recalled + by));
+    this.input = history[this.recalled] ?? this.scratch;
   }
 
   /** A command this client answers itself, as the console's (Ui.local): what to show, or null to pass the line on. */
@@ -98,7 +126,15 @@ export class ChatState {
     const line = this.input.trim();
     this.input = "";
     this.open = false;
+    this.drafts.delete(this.channel);
+    this.scratch = "";
     if (line === "") return;
+    if (canRemember(line)) {
+      const history = this.sent.get(this.channel) ?? [];
+      if (history[history.length - 1] !== line) history.push(line);
+      if (history.length > 32) history.shift();
+      this.sent.set(this.channel, history);
+    }
     if (line.startsWith("/")) return this.command(line.slice(1).trim(), session);
     if (!session || (session.chat(this.channel, line) === 0 && session.state !== "active")) this.print(TEXT_NOTICE, "Not connected; nothing was said.", session ? session.serverTick : 0);
   }
@@ -118,7 +154,14 @@ export class ChatState {
     } else this.answers = at + ANSWER_TICKS;
   }
 
+  private rememberDraft(): void {
+    if (canRemember(this.input)) this.drafts.set(this.channel, this.input);
+    else this.drafts.delete(this.channel);
+    this.scratch = "";
+  }
+
   close(): void {
+    if (this.open) this.rememberDraft();
     this.open = false;
     this.input = "";
   }
@@ -157,9 +200,9 @@ export class ChatState {
    * The log, and the box while it is open, between `top` and `bottom`. With `touch` the field and its buttons are a
    * finger's size and a Send button stands beside the field.
    */
-  build(f: UiFrame, top: number, bottom: number, now: number, touch = false): void {
+  build(f: UiFrame, top: number, bottom: number, now: number, touch = false, controls = true): void {
     const x0 = f.left + MARGIN;
-    const w = Math.min(WIDTH, f.width - f.left - f.right - MARGIN * 2);
+    const w = Math.min(touch || this.open ? WIDTH : Math.max(180, Math.min(285, f.width * .22)), f.width - f.left - f.right - MARGIN * 2);
     const lh = lineHeight(S_CHAT);
     const inputH = touch && this.open ? 44 : lineHeight(S_INPUT) + 6;
     const sig = `${w}:${this.version}`;
@@ -183,11 +226,14 @@ export class ChatState {
     }
     const room = Math.max(1, Math.floor((bottom - top - inputH - 4) / lh));
     const most = Math.min(this.open ? MAX_ROWS : SHUT_ROWS, room);
-    const rowsBottom = bottom - inputH - 4;
+    const rowsBottom = bottom - (this.open ? inputH + 4 : 0);
     // Shut, a row shows until its hold runs out. Open, every row may show. The newest `most` are taken, in arrival order.
     const live = this.live;
     live.length = 0;
-    for (let i = this.rows.length - 1; i >= 0 && live.length < most; i--) if (this.open || now - this.rows[i]!.at < this.rows[i]!.hold) live.push(i);
+    for (let i = this.rows.length - 1; i >= 0 && live.length < most; i--) {
+      const row = this.rows[i]!;
+      if (this.open || (!touch && CHANNELS.includes(row.channel)) || now - row.at < row.hold) live.push(i);
+    }
     live.reverse();
     const shown = live.length;
     if (this.open) {
@@ -203,14 +249,23 @@ export class ChatState {
       const row = this.rows[live[k]!]!;
       if (row.channel === TEXT_MOTD) welcome = Math.max(welcome, Math.min(1, (row.hold - (now - row.at)) / FADE_TICKS));
     }
-    if (welcome > 0) f.add(KEY_CHAT_PANEL, K_PANEL, x0 - 4, y - 4, w + 8, shown * lh + 8, S_CHAT_PANEL).alpha = welcome;
+    if (!this.open && !touch && controls) {
+      const headerY = y - 21;
+      glass(f, welcome ? KEY_CHAT_PANEL : KEY_RADIO_EDGE + 1, x0 - 4, headerY - 2, w + 4, shown * lh + 25, welcome ? .72 : shown ? .57 : .27);
+      f.add(KEY_RADIO_EDGE, K_PANEL, x0 - 4, headerY, 1, shown * lh + 19, S_ICE).alpha = .55;
+      const radio = f.add(KEY_CHAT_OPEN, K_BUTTON, x0 - 3, headerY - 2, 100, 23, S_HUD_HIT);
+      radio.label = "Open radio chat"; radio.interactive = true;
+      f.picture(KEY_RADIO_ICON, x0 + 1, headerY, 17, 17, S_CHAT, "ui:glass-radio");
+      f.text(KEY_RADIO_LABEL, x0 + 21, headerY + 2, 110, S_HUD_KEY, (TAG[this.channel] ?? "Radio") + "   ↵");
+    }
     for (let k = 0; k < shown; k++) {
       const row = this.rows[live[k]!]!;
       const n = f.text(KEY_CHAT_ROW + k, x0, y, w - 8, ROW_STYLE[row.channel] ?? S_CHAT, row.text);
       n.runs = row.runs;
       if (!this.open) {
         const left = row.hold - (now - row.at);
-        n.alpha = left >= FADE_TICKS ? 1 : Math.max(0, left / FADE_TICKS);
+        const fade = Math.max(0, Math.min(1, left / FADE_TICKS));
+        n.alpha = !touch && CHANNELS.includes(row.channel) ? .65 + .35 * fade : fade;
       }
       y += lh;
     }

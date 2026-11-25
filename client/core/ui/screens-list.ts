@@ -7,6 +7,7 @@ import { CharacterScreen } from "./character.ts";
 import { ChoosingScreen } from "./choosing.ts";
 import { CreatorScreen } from "./creator.ts";
 import { EmoteMenu } from "./emotes.ts";
+import { FieldDock } from "./field-dock.ts";
 import { HammerPanel } from "./hammer.ts";
 import { InventoryScreen } from "./inventory.ts";
 import { MapScreen } from "./screens.ts";
@@ -28,4 +29,5 @@ export const SCREENS: readonly ScreenRow[] = [
   () => new StructMenu(),
   () => new HammerPanel(),
   () => new AirRadio(),
+  () => new FieldDock(),
 ];

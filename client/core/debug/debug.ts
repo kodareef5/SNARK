@@ -1,4 +1,4 @@
-// The debug bar: a strip at the screen's foot that pulls up into a drawer of tabs (F3), in the manner of a web
+// The debug bar: a strip at the screen's foot that pulls up into a drawer of tabs (Shift+F3), in the manner of a web
 // framework's debug bar. While it is on it keeps the last minutes of each frame's times by part, lag events, the socket's
 // counts, the page's and the server's log lines, and pictures; F8 saves them for a reader to open with tools/reports.ts.
 // The app fetches this file once Settings.debug is first on. Turned off, it lets go of every hook and costs nothing.
@@ -549,7 +549,7 @@ export class DebugBar {
     const d = this.draw, admin = this.app.session.admin;
     d.box(0, y, f.width, BAR_H, D_BAR, -1, 1, ACT_DRAWER);
     let x = f.left + 8;
-    d.button(x, y + 2, 22, BAR_H - 4, this.open ? D_TAB_ON : D_TAB, this.open ? "▾" : "▴", ACT_OPEN, 0, this.open ? "Close the drawer (F3)" : "Open the drawer (F3)");
+    d.button(x, y + 2, 22, BAR_H - 4, this.open ? D_TAB_ON : D_TAB, this.open ? "▾" : "▴", ACT_OPEN, 0, this.open ? "Close the drawer (Shift+F3)" : "Open the drawer (Shift+F3)");
     x += 26;
     for (let i = 0; i < this.tabs.length; i++) {
       const t = this.tabs[i]!;

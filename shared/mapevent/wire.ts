@@ -316,4 +316,3 @@ export function readMapEvents(r: BitReader): MapEventFeed | null {
   }
   return r.overflow ? null : { looks, rows };
 }
-

@@ -2,11 +2,11 @@
 
 import { K_PANEL, lineHeight } from "../ui/nodes.ts";
 import { S_PANEL, S_PROMPT } from "../ui/style.ts";
-import type { HudWidget } from "./widget.ts";
+import { band, type HudWidget } from "./widget.ts";
 
 /** The box behind the form the wheel is on, then a form's name: KEY_FORM_NAME + its place on the wheel. */
-export const KEY_FORM_ON = 5559;
-export const KEY_FORM_NAME = 5560;
+export const KEY_FORM_ON = 9490;
+export const KEY_FORM_NAME = 9491;
 /** Units from the crosshair to a name's middle, and a name's width. */
 const REACH = 84;
 const WIDE = 112;
@@ -19,6 +19,7 @@ export interface FormsModel {
 
 export const FORMS: HudWidget<FormsModel> = {
   name: "forms",
+  bands: [band(KEY_FORM_ON, 1), band(KEY_FORM_NAME, 40)],
   make: () => ({ formsOpen: false, formAt: 0, formNames: [] }),
   fill(m, c) {
     const a = c.frame;

@@ -2,6 +2,8 @@
 // here, and draws what frame() returns. Tests drive this class directly.
 
 import { heldScene } from "../../shared/video/screen.ts";
+import { zoomMinimap } from "./hud/minimap.ts";
+import { installFieldIcons } from "./ui/field-icons.ts";
 import { Icons } from "./assets/icons.ts";
 import { Visor } from "./visor.ts";
 import { Glass } from "./glass.ts";
@@ -19,7 +21,7 @@ import type { Manifest } from "../../shared/pack/manifest.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { MODE_FLYER, MODE_WALK } from "../../shared/sim/character.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
-import { CARRY_THROW, CMD_CARRY, CMD_SELECT, MARKER_DEATH, REJECT_FULL, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION, RESULT_LOCKED, RESULT_OK, RESULT_WAIT, SESSION_ALIVE, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
+import { CARRY_THROW, CMD_CARRY, MARKER_DEATH, REJECT_FULL, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION, RESULT_LOCKED, RESULT_OK, RESULT_WAIT, SESSION_ALIVE, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
 import { HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayHit } from "../../shared/world/ray.ts";
 import { BUILD_REACH } from "../../shared/world/snap.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
@@ -85,7 +87,7 @@ import { SkyClock } from "./sky.ts";
 import type { SoundCode } from "./sound-late.ts";
 import { SplitPort } from "./sound/split.ts";
 
-import { IMAGE_MAP, IMAGE_MINIMAP, KEY_HOTBAR, KEY_MINIMAP_TOGGLE, KEY_MINIMAP_OUT, KEY_MINIMAP_IN, KEY_VITAL } from "./ui/hud.ts";
+import { IMAGE_MAP, IMAGE_MINIMAP, pressHud } from "./ui/hud.ts";
 import { canvasHeight, textWidth, wrapText } from "./ui/nodes.ts";
 import { glass } from "./ui/skin.ts";
 import type { EmoteMenu } from "./ui/emotes.ts";
@@ -94,7 +96,7 @@ import type { HammerPanel } from "./ui/hammer.ts";
 import type { AirRadio } from "./ui/air-support.ts";
 import type { InventoryScreen } from "./ui/inventory.ts";
 import type { MenuScreen } from "./ui/menu-screen.ts";
-import { TouchPlay, type TouchTarget } from "./touch.ts";
+import { KEY_ZONE_LOOK, KEY_ZONE_MOVE, TouchPlay, type TouchTarget } from "./touch.ts";
 import { Ui } from "./ui/ui.ts";
 import { TRAVEL_REFRESH_MS, type TravelScreen } from "./ui/travel.ts";
 import { arrivalAddress, joinAddress, serverAddress, siteLinks, type ClusterList, type Page } from "./travel.ts";
@@ -219,8 +221,13 @@ export class App {
   /** Play by touch: its state, and what it drives. */
   readonly touch = new TouchPlay();
   private readonly touchTarget: TouchTarget = {
+    cancelPrimary: () => {
+      if (this.earlySource === 2) this.earlyTap = 0;
+      this.builder?.cancel();
+      this.controls.mouseButton(0, false, 2);
+    },
     key: (code, down) => { this.key(code, down, false, 2); }, mouse: (button, down) => this.mouseButton(button, down, 2),
-    move: (x, z) => this.controls.touchMove(x, z), look: (dx, dy) => this.look(dx, dy),
+    move: (x, z) => this.controls.touchMove(x, z), look: (dx, dy) => this.look(dx, dy, 2),
     longPress: (x, y) => this.pickAt(x, y),
   };
   /** What the screen's edges take from each side, in CSS pixels: left, top, right, bottom. The shell sets them. */
@@ -255,6 +262,7 @@ export class App {
     this.ui.registry = reg;
     this.ui.palette = pack.palette;
     this.ui.touchPlay = this.touch;
+    this.ui.pressKey = (code) => { this.key(code, true, false, this.ui.inputDevice); this.key(code, false, false, this.ui.inputDevice); };
     const app = this;
     this.padTarget = {
       get inMenu() { return !app.ui.wantsPointerLock; },
@@ -282,6 +290,7 @@ export class App {
     this.ui.chat.local = (line) => this.debugWord(line);
     // The inventory pictures the build drew, fetched as they are first shown.
     if (stream?.manifest.icons) new Icons(stream.manifest, reg.defs).install(this.ui.frame);
+    installFieldIcons(this.ui.frame);
     // The Storage tab's page comes as its own file, which the first frame does not wait for, and draws with these (D906).
     void import("./ui/storage.ts").then((m) => (this.ui.screen<MenuScreen>("menu").storage = new m.StoragePage({ textWidth, wrapText, glass })), () => {});
     this.shots = new Shots(reg);
@@ -482,13 +491,14 @@ export class App {
       return;
     }
     const builder = this.builder, hammer = this.hammer;
-    const building = !!builder?.active && this.session.driving < 0 && this.ui.wantsPointerLock;
+    const field = source === 2 ? this.ui.playingField : this.ui.wantsPointerLock;
+    const building = !!builder?.active && this.session.driving < 0 && field;
     // The middle button holds a helmet's visor up (visor.ts). With a piece in hand it picks the built piece looked at.
     if (button === 1) {
       // With the template hammer it fills the plan, as F does: a pad's d-pad right presses it.
-      if (hammer?.active && this.session.driving < 0 && this.ui.wantsPointerLock) { if (down) hammer.fill(); }
+      if (hammer?.active && this.session.driving < 0 && field) { if (down) hammer.fill(); }
       else if (building && down) builder!.pick(this.session, this.reg);
-      else this.visor.held = down && this.ui.wantsPointerLock;
+      else this.visor.held = down && field;
       return;
     }
     // The mouse's own secondary button puts the piece in hand away. A pad's aim and a finger's do not.
@@ -497,7 +507,7 @@ export class App {
       if (down && !builder!.cancel()) builder!.putAway(this.session, this.nowMs);
       return;
     }
-    if (!this.ui.wantsPointerLock) { if (!down) this.controls.mouseButton(button, false, source); return; }
+    if (!field) { if (!down) this.controls.mouseButton(button, false, source); return; }
     if (button === 0 && this.vehiclePlacement.active) {
       if (down) this.vehiclePlacement.place(this.session);
       return;
@@ -520,7 +530,7 @@ export class App {
       this.session.command(CMD_CARRY, (w) => w.u8(CARRY_THROW));
       return;
     }
-    this.controls.mouseButton(button, down, source);
+    this.controls.mouseButton(button, down, source, source === 2 && button === 0 && this.touch.pendingPrimary);
   }
 
   /** A finger held still on the view at (x, y) canvas units: with a piece in hand, picks the built piece under it. */
@@ -535,8 +545,8 @@ export class App {
     if (this.steer) this.pad.update(pads, now, this.padTarget);
   }
 
-  look(dx: number, dy: number): void {
-    if (!this.ui.wantsPointerLock) return;
+  look(dx: number, dy: number, source = 0): void {
+    if (!(source === 2 ? this.ui.playingField : this.ui.wantsPointerLock)) return;
     // With the forms' wheel open the look chooses a form, and the view stays where it was.
     if (this.builder?.wheelOpen) this.builder.turnWheel(dx, dy);
     else this.director.look(this.f, dx, dy);
@@ -573,7 +583,9 @@ export class App {
   }
 
   blur(): void {
+    if (this.touch.primary) this.touchTarget.cancelPrimary?.();
     this.controls.release();
+    this.ui.cancelPresses();
     this.touch.reset();
     this.prompts.release();
     this.alt = this.shift = false;
@@ -599,24 +611,18 @@ export class App {
    */
   pointer(kind: number, key: number, x: number, y: number, button: number, finger = 0): void {
     if (finger > 0) this.ui.inputDevice = 2;
-    if (this.touch.pointer(kind, key, x, y, finger, this.nowMs, this.touchTarget, this.unit)) return;
-    if ((this.ui.wantsPointerLock || this.ui.inspect) && kind === 0 && button === 0) {
-      if (key >= KEY_VITAL && key < KEY_VITAL + this.hud.vitals.length * 2) { this.ui.settings.vitalLabels = !this.ui.settings.vitalLabels; this.ui.settings.changed(); }
-      if (key === KEY_MINIMAP_TOGGLE) { this.ui.settings.minimap = !this.ui.settings.minimap; this.ui.settings.changed(); }
-      if (key === KEY_MINIMAP_OUT || key === KEY_MINIMAP_IN) this.zoomMini(key === KEY_MINIMAP_OUT ? -1 : 1);
-      const slot = (key - KEY_HOTBAR) / 3;
-      if (Number.isInteger(slot) && slot >= 0 && slot < this.hud.hotbar.length) this.session.command(CMD_SELECT, (w) => w.u8(this.session.held === slot ? 255 : slot));
+    if (kind === 0 && (key === KEY_ZONE_MOVE || key === KEY_ZONE_LOOK)) {
+      if (this.ui.fieldPress(finger)) return;
+      if (!this.ui.playingField) return;
     }
+    if (this.touch.pointer(kind, key, x, y, finger, this.nowMs, this.touchTarget, this.unit)) return;
+    if ((this.ui.playingField || this.ui.inspect) && kind === 0 && button === 0) pressHud(this.hud, key, this.ui.settings);
     this.ui.pointer(kind, key, x, y, button, this.session, finger);
     if (this.ui.screen<MenuScreen>("menu").menu || this.ui.opened("air")) this.blur();
   }
 
   zoomMini(turn: number): void {
-    const chart = this.hud.chart;
-    if (!chart) return;
-    chart.key(turn > 0 ? "Equal" : "Minus", true, false);
-    this.ui.settings.minimapZoom = chart.miniZoom;
-    this.ui.settings.changed();
+    zoomMinimap(this.hud, this.ui.settings, turn);
   }
 
   /** The entity index of the creature the server shows in the arms of the viewer's own body, or -1. */
@@ -882,7 +888,8 @@ export class App {
     ui.placing = this.vehiclePlacement.active;
     ui.canTalk = this.voice !== null && this.voice.notice === "";
     ui.creatureAhead = this.lookedAt >= 0;
-    this.touch.frame(nowMs, ui.touch ? ui.touchShown : 0, this.touchTarget);
+    ui.aimed = this.target >= 0;
+    this.touch.frame(nowMs, ui.touch ? ui.touchShown : 0, this.touchTarget, ui.touch && ui.playingField && !!ui.frame.find(KEY_ZONE_LOOK));
     ui.screen<MenuScreen>("menu").storage?.step(ui, forTouch(tierOf(ui.settings.tier), ui.settings.touchFirst), this.stream?.port ?? null, this.scene?.assets.residency ?? null, this.sounds?.library ?? null, nowMs);
     this.nowMs = nowMs;
     // The debug bar is a file of its own, fetched once Settings.debug is first on.
@@ -927,8 +934,13 @@ export class App {
     this.director.airControls(f);
     if (!session.airCamera.id) this.director.cockpitNow(f);
     const updating = this.timer ? this.timer.now() : 0;
-    if (f.steer) session.update(nowMs, c.moveX, c.moveZ, c.yaw, c.pitch, this.sight.buttons(this.holding >= 0 ? c.buttons & ~HANDS_FULL : c.buttons));
-    else session.update(nowMs, 0, 0, c.yaw, c.pitch, 0);
+    const previousTick = session.simTick;
+    if (f.steer) {
+      const buttons = this.sight.buttons(this.holding >= 0 ? c.buttons & ~HANDS_FULL : c.buttons);
+      const once = this.touch.pendingPrimary ? c.touchOnly & BTN_PRIMARY : 0;
+      session.update(nowMs, c.moveX, c.moveZ, c.yaw, c.pitch, buttons, once);
+    } else session.update(nowMs, 0, 0, c.yaw, c.pitch, 0);
+    if (session.simTick !== previousTick) this.touch.sampled(this.touchTarget);
     this.lap(this.spans.update, updating);
     // Once a tick has stepped with its jump held, a flyer not in the air came down or would not go up.
     if (flyer && c.wing && session.simTick > this.wingFrom && session.own.mode !== MODE_FLYER) c.land();

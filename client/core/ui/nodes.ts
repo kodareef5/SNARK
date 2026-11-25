@@ -86,11 +86,14 @@ export interface UiNode {
   tint: number;
   /** Opacity of the whole node, 0 to 1. */
   alpha: number;
-  /** The index in SCREENS of the screen that drew it, or -1. */
+  /** Who drew it: the index in SCREENS of a screen, WIDGET_OWNER - i for HUD widget i, or -1 for the interface itself. */
   owner: number;
   /** Its screen drew it with the HUD (Screen.play), not as the open screen. */
   inPlay: boolean;
 }
+
+/** HUD widget i stamps its nodes with this less i. */
+export const WIDGET_OWNER = -2;
 
 export interface UiImage {
   width: number;

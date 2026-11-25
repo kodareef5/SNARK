@@ -17,6 +17,7 @@ import { idText } from "../../server/survivor-ids.ts";
 import { VideoLibrary } from "../../server/video/library.ts";
 import { SCREEN_POSTS, screensAdmin } from "../../server/video/routes.ts";
 import { PERMISSIONS_API } from "../../shared/permissions/page.ts";
+import { RANK_ADMIN } from "../../shared/ranks.ts";
 import { OPENING_SHOT } from "../../shared/title-scene.ts";
 import { TestCluster, beat, rec, type Clock, type Server } from "../fixtures/cluster.ts";
 
@@ -182,6 +183,24 @@ test("Cast, a loadout reset and a drop book reset on their way are refused on B"
   }
 });
 
+test("a signed-in admin owns the event book revision and its journal entry", async () => {
+  await maps(async (m) => {
+    const { id, password } = adminOnB(m);
+    const pages = pagesOf(m.b, join(m.cluster.dir, "pages"));
+    try {
+      const book = m.b.h.host.eventBook;
+      const res = await pages.post("/admin/events/book", id, password, JSON.stringify({ revision: book.book.revision, book: book.book }));
+      expect(res.status).toBe(200);
+      expect(book.revisions().at(-1)).toMatchObject({ by: "ada", revision: 1 });
+      expect(keptActs(m.b).filter((a) => a.what.startsWith("event book"))).toMatchObject([
+        { id, name: "ada", rank: RANK_ADMIN, via: "page", what: "event book saved: revision 1" },
+      ]);
+    } finally {
+      pages.close();
+    }
+  });
+});
+
 test("every admin POST the front passes is judged again once its body is in", async () => {
   const clip = readFileSync(join(import.meta.dir, "../fixtures/video/small.mp4"));
   /** What each route is sent, and whether it changes anything: a pasted override is only read into the page's draft. */
@@ -199,6 +218,13 @@ test("every admin POST the front passes is judged again once its body is in", as
     "/admin/supply/land": { body: JSON.stringify({ id: "all" }) },
     "/admin/supply/cancel": { body: JSON.stringify({ id: "all" }) },
     "/admin/supply/ark": { body: JSON.stringify({ text: "" }), reads: true },
+    "/admin/events/book": { body: JSON.stringify({ revision: 0, book: {} }) },
+    "/admin/events/reset": { body: JSON.stringify({ revision: 0 }) },
+    "/admin/events/restore": { body: JSON.stringify({ revision: 0, to: 0 }) },
+    "/admin/events/call": { body: JSON.stringify({ kind: "ufo", seed: 5 }) },
+    "/admin/events/hurry": { body: JSON.stringify({ id: "all", seconds: 0 }) },
+    "/admin/events/down": { body: JSON.stringify({ id: "all" }) },
+    "/admin/events/cancel": { body: JSON.stringify({ id: "all" }) },
     "/admin/screens/upload": { body: clip, headers: { "content-type": "video/mp4", "content-length": String(clip.length) } },
     "/admin/screens/clip": { body: JSON.stringify({ id: "0000000000000000", title: "x", rights: "x" }) },
     "/admin/screens/edit": { body: JSON.stringify({ revision: 0, op: "screen", screen: "orb", show: "night" }) },
@@ -222,6 +248,7 @@ test("every admin POST the front passes is judged again once its body is in", as
       // The upload left no clip, waiting or kept, and no file of its own.
       const files = ["media", "tmp"].flatMap((f) => readdirSync(join(m.cluster.dir, "pages", f))).filter((f) => !f.endsWith(".json"));
       expect([pages.lib.view().doc.clips.length, files, m.b.h.host.stopLeft]).toEqual([0, [], -1]);
+      expect([m.b.h.host.eventBook.book.revision, m.b.h.host.mapEvents.calls]).toEqual([0, 0]);
     } finally {
       pages.close();
     }

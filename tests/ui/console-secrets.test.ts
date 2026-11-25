@@ -43,7 +43,10 @@ test("a password typed as a slash command in the chat box is sent and shown nowh
   const s = { serverTick: 100, state: "active", log, logVersion: 0, motdSeconds: 20, globalChat: true, tribe: { name: "" }, text: (line: string) => (sent.push(line), 1), chat: () => 1 };
   const session = s as unknown as ClientSession;
   const chat = new ChatState();
-  for (const line of ["/enablecheats hunter2", "/cheat enablecheats hunter2"]) {
+  chat.begin(TEXT_GLOBAL, session);
+  chat.edit("Meet at the bridge");
+  chat.submit(session);
+  for (const line of ["/enablecheats hunter2", "/cheat enablecheats hunter2", "/admincheat setting ServerPassword hunter2"]) {
     chat.begin(TEXT_GLOBAL, session);
     chat.edit(line);
     chat.submit(session);
@@ -51,8 +54,43 @@ test("a password typed as a slash command in the chat box is sent and shown nowh
   log.push({ channel: TEXT_CONSOLE, text: "cheats enabled" });
   s.logVersion++;
   chat.absorb(session);
-  expect(sent).toEqual(["enablecheats hunter2", "cheat enablecheats hunter2"]);
+  expect(sent).toEqual(["enablecheats hunter2", "cheat enablecheats hunter2", "admincheat setting ServerPassword hunter2"]);
   expect([chat.input, chat.lines.map((l) => l.text)]).toEqual(["", ["cheats enabled"]]);
+  chat.begin(TEXT_GLOBAL, session);
+  chat.recall(-1);
+  expect(chat.input).toBe("Meet at the bridge");
+  chat.recall(1);
+  expect(chat.input).toBe("");
+});
+
+test("radio drafts and recall do not keep unsent slash passwords", () => {
+  const chat = new ChatState();
+  chat.begin(TEXT_GLOBAL, null);
+  chat.edit("Meet at the bridge");
+  chat.submit(null);
+  chat.begin(TEXT_GLOBAL, null);
+  chat.edit("Ordinary draft");
+  chat.close();
+  chat.begin(TEXT_GLOBAL, null);
+  expect(chat.input).toBe("Ordinary draft");
+
+  const secret = "/claimpassword hunter2";
+  chat.edit(secret);
+  chat.close();
+  chat.begin(TEXT_GLOBAL, null);
+  expect(chat.input).toBe("");
+
+  chat.edit(secret);
+  chat.cycle(null);
+  chat.cycle(null);
+  chat.cycle(null);
+  expect(chat.input).toBe("");
+
+  chat.edit(secret);
+  chat.recall(-1);
+  expect(chat.input).toBe("Meet at the bridge");
+  chat.recall(1);
+  expect(chat.input).toBe("");
 });
 
 test("a line that is no secret is echoed and remembered as before", () => {

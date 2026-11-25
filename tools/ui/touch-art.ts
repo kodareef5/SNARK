@@ -42,7 +42,7 @@ export interface Picture { width: number; height: number; channels: number; data
 /** Premultiplied RGBA, 0 to 1. */
 export interface Layer { w: number; h: number; data: Float32Array }
 type Region = readonly [x: number, y: number, w: number, h: number];
-type Shape = "disc" | "square" | "pill" | "ring";
+export type Shape = "disc" | "square" | "pill" | "ring";
 export interface Box { l: number; t: number; r: number; b: number }
 
 export const smooth = (lo: number, hi: number, v: number): number => { const t = Math.max(0, Math.min(1, (v - lo) / (hi - lo))); return t * t * (3 - 2 * t); };
@@ -120,7 +120,7 @@ export function extent(l: Layer, level: number): Box {
 }
 
 /** A rounded square's corner, from how far in along its diagonal the rim is. */
-function corner(l: Layer, b: Box): number {
+export function corner(l: Layer, b: Box): number {
   const side = Math.min(b.r - b.l, b.b - b.t), n = Math.floor(side / 2), x0 = Math.round(b.l), y0 = Math.round(b.t), diagonal = new Float32Array(n);
   for (let i = 0; i < n; i++) { const o = ((y0 + i) * l.w + x0 + i) * 4; diagonal[i] = Math.max(l.data[o]!, l.data[o + 1]!, l.data[o + 2]!); }
   // A corner of radius r meets the diagonal r less r over root 2 in from the box's corner, along each axis.
@@ -135,7 +135,7 @@ function inside(shape: Shape, b: Box, radius: number, x: number, y: number): num
 }
 
 /** Dark glass under the body, `much` of it, where the picture's own light does not already cover. */
-function underlay(l: Layer, shape: Shape, b: Box, radius: number, much: number): void {
+export function underlay(l: Layer, shape: Shape, b: Box, radius: number, much: number): void {
   if (shape === "ring" || much <= 0) return;
   for (let y = 0; y < l.h; y++) for (let x = 0; x < l.w; x++) {
     const o = (y * l.w + x) * 4, glass = much * smooth(1.5, 5, inside(shape, b, radius, x + 0.5, y + 0.5)) * (1 - l.data[o + 3]!);

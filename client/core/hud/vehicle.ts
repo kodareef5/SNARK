@@ -15,7 +15,7 @@ import { K_BAR } from "../ui/nodes.ts";
 import { glass } from "../ui/skin.ts";
 import { S_MENU_FOCUS, S_MENU_MAIN, S_MENU_NOTE, S_OXYGEN, S_WARNING } from "../ui/style.ts";
 import { BOAT_W, DASH_W, HELI_W } from "./layout.ts";
-import type { HudWidget } from "./widget.ts";
+import { band, type HudWidget } from "./widget.ts";
 
 /** Small driving instruments below the minimap, outside the chat and survivor's vitals. */
 export const KEY_VEHICLE = 3500;
@@ -178,6 +178,7 @@ export interface VehicleModel {
 
 export const VEHICLE: HudWidget<VehicleModel> = {
   name: "vehicle instruments",
+  bands: [band(KEY_VEHICLE, 20)],
   make: () => ({ vehicle: null }),
   fill(m, c) {
     const f = c.frame;
