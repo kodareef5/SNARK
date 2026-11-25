@@ -736,6 +736,8 @@ export class ClientSession {
    */
   private readonly waitingRows: (Uint8Array | number)[] = [];
   private readonly waitingReader = new BitReader();
+  /** Chunk messages kept waiting at most (WAITING_MOST). */
+  waitingMost = WAITING_MOST;
   private readonly wholeRows: MapRows = { kind: new Uint16Array(0), yaw: new Uint16Array(0), x: new Float32Array(0), y: new Float32Array(0), z: new Float32Array(0), from: 0, to: 0 };
   /** Reads a chunk message's rows (shared/world/rows.ts), made with the world. */
   private rows: RowCoder | null = null;
@@ -2417,7 +2419,7 @@ export class ClientSession {
     this.nodeChanges = field ? new NodeChanges(dims) : null;
     const nodes = field ? { nodes: field.store, farNodes: { nodes: field.source, held: (c: number) => field.isLoaded(c), gone: (c: number) => this.nodeGone.get(c), changes: this.nodeChanges!, city: () => this.world?.city?.statics ?? this.nodeCity(), ground: hf } } : {};
     // The file's dims, which say where the map sits on the lattice as the welcome's do not.
-    this.world = { mapId, tideEyes: this.opts.tideEyes, ...(this.opts.orbs?.length ? { orbs: this.opts.orbs } : {}), dims: hf.dims, hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), far, ...nodes, ...(reg.motion.some((t) => t !== null) ? { motion: this.motionSource } : {}), ...(this.opts.landmarks?.length ? { landmarks: this.opts.landmarks } : {}), ...(this.opts.tops ? { tops: { tops: this.opts.tops, ...(this.opts.cityMaker ? { maker: this.opts.cityMaker } : {}) } } : {}) };
+    this.world = { mapId, tideEyes: this.opts.tideEyes, ...(this.opts.orbs?.length ? { orbs: this.opts.orbs } : {}), dims: hf.dims, hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), far, ...nodes, ...(reg.motion.some((t) => t !== null) ? { motion: this.motionSource } : {}), ...(this.opts.landmarks?.length ? { landmarks: this.opts.landmarks } : {}), ...(this.opts.tops ? { tops: { tops: this.opts.tops, ...(this.opts.cityMaker ? { maker: this.opts.cityMaker } : {}), ...(this.opts.held ? { rows: this.opts.held, kinds: this.opts.held.kinds } : {}) } } : {}) };
     this.vehicleTrees = field ? new PredictedTrees(this.world, reg, field) : null;
     this.startCity(this.arrived);
     this.vehicleContacts = new VehiclePrediction(this.world, reg, field ? () => new PredictedTrees(this.world!, reg, field) : undefined, this.vehicleTrees ?? undefined);
@@ -2830,7 +2832,7 @@ export class ClientSession {
     r.pos = start;
     if (chunk >= 0) this.opts.held?.need(chunk);
     this.waitingRows.push(r.rest());
-    if (this.waitingRows.length > WAITING_MOST) this.readWaiting(true);
+    if (this.waitingRows.length > this.waitingMost) this.readWaiting(true);
   }
 
   /** The chunk whose sector a chunk message read from `r` takes slots from where that is not held; else -1. */

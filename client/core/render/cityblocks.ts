@@ -22,6 +22,7 @@ import type { CityMaker } from "./citymake.ts";
 import { FAR_SLOTS, FAR_SPAN } from "./far.ts";
 import { CITY_BUFFER, CITY_TILE } from "./farcity.ts";
 import type { Hider } from "./hide.ts";
+import type { TopFix, TopRows } from "./topfix.ts";
 import type { FramePacket } from "./packet.ts";
 import { COARSE } from "./terrain.ts";
 
@@ -56,6 +57,9 @@ const FROM = [COARSER_FROM, COARSEST_FROM];
 export interface BlocksSource {
   readonly tops: HeldTops;
   readonly maker?: CityMaker;
+  /** Where a sector's rows are asked for once, for the tops that are wrong (topfix.ts), and the map's kinds they index. */
+  readonly rows?: TopRows;
+  readonly kinds?: readonly string[];
 }
 
 /** What stands of the map's pieces once its statics have come, as the far city follows it (farcity.ts goneOf, goneVersion). */
@@ -123,6 +127,9 @@ export class CityBlocks {
   private readonly landmarks: Uint8Array;
   /** The statics' squares as last taken in (CityStatics.news). */
   private seenSquares = new Uint32Array(0);
+  /** The tops made of what stands where the map's are wrong past the statics held, and their count of changes taken in. */
+  fix: TopFix | null = null;
+  private seenFix = 0;
   private readonly asked = new Map<number, number>();
   private next = 0;
   private sent = false;
@@ -316,6 +323,12 @@ export class CityBlocks {
         this.seenGone[c] = g;
       }
     }
+    // Tops made of what stands: a tile they change is made at once, the wait for its sector having been the wait for its pieces.
+    const fix = this.fix;
+    if (fix && fix.version !== this.seenFix) {
+      for (const [c, f] of fix.fixes) if (f.stamp > this.seenFix) this.tiles[this.tileOf(c)]!.dirty = true;
+      this.seenFix = fix.version;
+    }
     // Ground that came: a tile whose blocks stand on samples that changed, or whose feet reach into them, is made again.
     const ch = this.hf.changes;
     for (; this.seenGround < ch.length; this.seenGround += 4) {
@@ -388,9 +401,13 @@ export class CityBlocks {
     return { id, chunksX, ox: cx0 * CHUNK_SIZE, oz: cz0 * CHUNK_SIZE, chunks: Int32Array.from(chunks), size, top, tint, i0, j0, w, heights, minY: hf.minY, stepY: hf.stepY };
   }
 
-  /** `chunk`'s tops as its standing pieces but a landmark's make them, where the statics have come and it has a piece gone or a landmark's; else null. */
+  /**
+   * `chunk`'s tops as its standing pieces but a landmark's make them, where it has a piece gone or a landmark's: of its
+   * statics where they are held, else as made where the map's are wrong (topfix.ts); else null.
+   */
   private standingTops(chunk: number): Uint8Array | null {
     const statics = this.statics, gone = this.standing?.goneOf(chunk) ?? null;
+    if (!statics?.holds(chunk)) return this.fix?.fixOf(chunk)?.blocks ?? null;
     if (!statics || statics.in(chunk) === 0 || (gone === null && this.landmarks[chunk] === 0)) return null;
     const t = statics.rows(chunk)!, from = t.from(chunk);
     const left = new Uint8Array(statics.in(chunk));

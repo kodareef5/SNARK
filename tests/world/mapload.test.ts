@@ -223,6 +223,38 @@ test("the statics are handed over once those within reach have come, and again a
   expect(s.asked.filter((url) => url === nameOf(gone)).length).toBe(2);
 });
 
+test("a sector a reader still holds chunks of is kept past what is wanted, and tops go a sector past the view", async () => {
+  const map = landed();
+  const f = writeMap({ ...map, tops: mapTops(map, coreRegistry()) });
+  const h = readHead(f);
+  const s = heldServer(f);
+  let loader: MapLoader | null = null;
+  void MapLoader.start(s.get, `map/${h.name}`, NOW).then((l) => (loader = l));
+  await s.drain();
+  const body = { x: 100, z: 448, vx: 0, vz: 0 };
+  const start = chunkAt(h.dims, body.x, body.z);
+  let keep: MapPart | null = null;
+  loader!.held.keep = (p) => p === keep;
+  void loader!.follow(() => body, { want: () => ({ view: 1500, statics: 1200 }) });
+  for (let k = 0; k < 20; k++) {
+    await s.drain();
+    await settle();
+  }
+  keep = loader!.held.partOf(start);
+  const statics = loader!.held.parts.filter((p) => loader!.held.has(p));
+  expect([keep !== null && loader!.held.has(keep), statics.length > 1, loader!.staged.tops.top(start) !== null]).toEqual([true, true, true]);
+  body.x = 4400;
+  loader!.look();
+  await s.drain();
+  // The sector the reader holds stays; the rest round the start go, and so do the tops there.
+  expect([loader!.held.has(keep!), statics.filter((p) => p !== keep && loader!.held.has(p)).length, loader!.staged.tops.top(start)]).toEqual([true, 0, null]);
+  // Once it holds none, it goes too.
+  const kept = keep!;
+  keep = null;
+  loader!.look();
+  expect(loader!.held.has(kept)).toBe(false);
+});
+
 /** A flat map three sectors wide, west to east, with a straight raised kerb in the middle of each. */
 function kerbed(): MapData {
   const dims = { chunksX: 3 * SECTOR_CHUNKS, chunksZ: SECTOR_CHUNKS };

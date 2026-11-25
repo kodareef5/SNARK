@@ -262,3 +262,73 @@ test("a page holding the map a sector at a time says so at once and keeps chunk 
   h.run(500);
   expect(differ(structs, dana.world!.structs, window)).toBe(0);
 });
+
+/** A map `chunks` wide whose 7 by 7 chunks round the first spawn hold 64 crates each, and a client holding its statics a sector at a time, none yet. */
+function sectorPage(chunks = 9) {
+  const crates: MapStatic[] = [];
+  const mid = Math.floor(chunks / 2);
+  for (let cz = mid - 3; cz <= mid + 3; cz++) for (let cx = mid - 3; cx <= mid + 3; cx++) for (let k = 0; k < 64; k++) crates.push({ kind: "core:crate", x: cx * CHUNK_SIZE + 4 + (k % 8) * 8, y: 40, z: cz * CHUNK_SIZE + 4 + Math.floor(k / 8) * 8, yaw: 0 });
+  const file = writeMap(flatMap(chunks, { statics: crates }));
+  const h = new Harness({}, 1, 30, { map: file });
+  const head = readHead(file);
+  const held = new HeldStatics(head);
+  const said: string[] = [];
+  held.say = (line) => void said.push(line);
+  const dana = h.join("dana", {}, { statics: false, held });
+  const set = (n = 0): void => {
+    const part = held.parts[n]!;
+    const steps = held.set(part, readPart(head, part, file.subarray(part.at, part.at + part.length)) as StaticsPiece);
+    while (!steps.next().done);
+  };
+  const waiting = (): number => (dana as unknown as { waitingRows: unknown[] }).waitingRows.length;
+  return { h, held, said, dana, set, waiting, structs: h.world.structs, middle: mid * chunks + mid, chunks };
+}
+
+test("a broken sector's chunk messages are read without its map slots, and sync goes on", () => {
+  const { h, held, dana, waiting, structs, middle, chunks } = sectorPage();
+  h.run(1000);
+  expect([waiting() > 0, held.needed.size]).toEqual([true, 1]);
+  held.broke(held.parts[0]!);
+  expect([waiting(), held.needed.size]).toEqual([0, 0]);
+  // A piece built after it comes as rows do.
+  const ref = structs.add(h.reg.index.get("core:wall")!, (middle % chunks) * CHUNK_SIZE + 2, 1.88, Math.floor(middle / chunks) * CHUNK_SIZE + 60, 0, 1, 100);
+  h.run(500);
+  const t = dana.world!.structs.chunks[middle]!, slot = ref % 65536;
+  expect([waiting(), t.kind[slot], t.x[slot]]).toEqual([0, structs.chunks[middle]!.kind[slot], structs.chunks[middle]!.x[slot]]);
+});
+
+test("past the most chunk messages kept waiting, the first is read without its map slots", () => {
+  const { h, said, dana, waiting } = sectorPage();
+  dana.waitingMost = 2;
+  h.run(1000);
+  expect([waiting() <= 2, said.length > 0, said[0]?.includes("waited for too long")]).toEqual([true, true, true]);
+});
+
+test("a chunk dropped while messages wait is kept aside in order, and CMD_HAVE takes it back", () => {
+  const { h, dana, set, waiting, structs, chunks } = sectorPage(13);
+  h.run(1000);
+  const c = h.client(dana)!;
+  c.admin = true;
+  expect(waiting()).toBeGreaterThan(0);
+  // Off to the far corner: chunks round the start are dropped while the messages still wait.
+  h.say(dana, `tp ${12 * CHUNK_SIZE + 32} ${12 * CHUNK_SIZE + 32}`);
+  h.run(1500);
+  expect(waiting()).toBeGreaterThan(0);
+  set();
+  const parked = (dana as unknown as { parked: Map<number, unknown> }).parked;
+  expect([waiting(), parked.size > 0]).toEqual([0, true]);
+  // Back: the server is told which it kept, and they are put back as the server has them.
+  h.say(dana, `tp ${6 * CHUNK_SIZE + 32} ${6 * CHUNK_SIZE + 32}`);
+  h.run(2000);
+  const window = c.subscribed.filter((k) => structs.chunks[k] && c.known[k] === structs.chunks[k]!.version);
+  expect([window.length > 0, differ(structs, dana.world!.structs, window), chunks]).toEqual([true, 0, 13]);
+});
+
+test("a sector the near store holds chunks of is kept, and its map kinds read", () => {
+  const { h, held, dana, set, structs, middle } = sectorPage(20);
+  h.run(1000);
+  set(0);
+  h.run(500);
+  const near = held.partOf(middle)!, other = held.parts.find((p) => p !== near && p.row === near.row)!;
+  expect([held.keep!(near), held.keep!(other), dana.mapKind(middle, 0)]).toEqual([true, false, structs.chunks[middle]!.kind[0]]);
+});

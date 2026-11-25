@@ -33,6 +33,7 @@ import type { CityMaker } from "./citymake.ts";
 import { CAST_AT, FRAME, ROOF_AT, type FramePacket } from "./packet.ts";
 import { SkyOpen, openMeasure, type OpenMap } from "./skyopen.ts";
 import type { RoofMap } from "./roofmap.ts";
+import type { TopFix } from "./topfix.ts";
 
 /** Metres a side of the cells solid heights are made in: the tops' own (shared/world/tactical.ts). */
 export const TOP_CELL = TACTICAL_CELL;
@@ -332,6 +333,9 @@ export class FarShadow {
   private readonly marks = new Set<number>();
   /** The statics' squares as last taken in (CityStatics.news). */
   private seenSquares = new Uint32Array(0);
+  /** The tops made of what stands where the map's are wrong past the statics held, and their count of changes taken in. */
+  fix: TopFix | null = null;
+  private seenFix = 0;
   /** Chunks last made from what the far city says stands, made again when another far city takes over. */
   private readonly fromStanding = new Set<number>();
   /**
@@ -568,6 +572,11 @@ export class FarShadow {
       this.mark(c);
       gone = true;
     }
+    const fix = this.fix;
+    if (fix && fix.version !== this.seenFix) {
+      for (const [c, f] of fix.fixes) if (f.stamp > this.seenFix) this.mark(c);
+      this.seenFix = fix.version;
+    }
     if (gone && this.made) this.roof?.changed();
     const tops = this.tops;
     if (tops && tops.version !== this.seenTops) {
@@ -741,6 +750,8 @@ export class FarShadow {
       const solid = this.standing.topsOf(chunk);
       return { solid, bare: solid };
     }
+    const fix = s?.holds(chunk) ? null : this.fix?.fixOf(chunk);
+    if (fix) return { solid: fix.solid ?? fix.blocks, bare: fix.blocks };
     const held = this.tops && this.tops.came[chunk]! > 0 ? this.tops.top(chunk) : null;
     const solid = held ?? (s && s.in(chunk) > 0 ? cityTops(s, chunk, this.hf, null) : null);
     return { solid, bare: solid };

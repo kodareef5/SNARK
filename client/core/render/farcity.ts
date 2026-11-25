@@ -430,6 +430,8 @@ export class FarCity {
     this.dropping.length = 0;
     this.now = now;
     this.follow();
+    // Tiles made again are found again among those in reach.
+    if (this.regrow.size > 0) this.aroundAt[2] = -1;
     for (const t of this.regrow) this.grow(t, p.assetDrops);
     this.regrow.clear();
     this.standing(near, cells, lists);
