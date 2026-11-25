@@ -50,7 +50,7 @@ export async function enter(host: Host, socket: string, name: string): Promise<S
 }
 
 /** The page in Chrome, as the drive works it. */
-interface Page {
+export interface Page {
   send(method: string, params?: object): Promise<any>;
   /** The value of `expression` on the page. */
   run(expression: string): Promise<any>;
@@ -78,7 +78,7 @@ const q = (selector: string): string => `document.querySelector(${JSON.stringify
 const HELD_MS = 60;
 
 /** Opens `url` in headless Chrome, its profile kept under `scratch`, and gives the page to `work`. */
-async function browse<T>(chrome: string, url: string, scratch: string, work: (page: Page) => Promise<T>): Promise<T> {
+export async function browse<T>(chrome: string, url: string, scratch: string, work: (page: Page) => Promise<T>): Promise<T> {
   const profile = mkdtempSync(join(scratch, "chrome-"));
   const browser = Bun.spawn([chrome, "--headless=new", ...CHROME_FLAGS, "--mute-audio", "--no-first-run", "--disable-extensions", "--hide-scrollbars", "--window-size=1500,1300", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"], { stdout: "ignore", stderr: "ignore" });
   try {
