@@ -548,7 +548,9 @@ export class WorldStore {
           structs.put(chunk, slot, now, saved.a[i]!, saved.b[i]!, saved.c[i]!, saved.yaw[i]!, saved.owner[i]!, hp, version, PUT_FREE);
           continue;
         }
-        const [fr, k0, k1] = [saved.a[i]!, saved.b[i]!, saved.c[i]!];
+        const fr = saved.a[i]!;
+        const k0 = saved.b[i]!;
+        const k1 = saved.c[i]!;
         const at = forms ? structs.keyedPose(chunk, now, fr, k0, k1) : null;
         if (!at) throw new Error(`chunk ${chunk}: the piece in slot ${slot} was saved by a key that is no slot of its form in a frame the save has: old saves are not read, so start a new save`);
         structs.put(chunk, slot, now, at.x / STRUCT_UNITS, at.y / STRUCT_UNITS, at.z / STRUCT_UNITS, at.yaw, saved.owner[i]!, hp, version, fr, k0, k1);
