@@ -20,7 +20,9 @@ import {
   S_RESTART,
   S_TEXT,
   S_TUNING,
+  S_CHAT,
 } from "../shared/net/protocol.ts";
+import { writeChat, type TextRun } from "../shared/net/chat.ts";
 import { CH_RELIABLE, type Connection } from "../shared/net/transport.ts";
 import { PassengerView } from "./passenger-view.ts";
 import { OwnState } from "./ownstate.ts";
@@ -395,6 +397,16 @@ export class GameServer {
       w.string(line.length > 330 ? line.slice(0, 330) : line);
       c.conn.send(CH_RELIABLE, w.bytes());
     }
+  }
+
+  /** A chat line in runs (S_CHAT). */
+  sendChat(c: Client, channel: number, runs: readonly TextRun[]): void {
+    if (c.closed) return;
+    const w = this.w;
+    w.reset();
+    w.u8(S_CHAT);
+    writeChat(w, channel, runs);
+    c.conn.send(CH_RELIABLE, w.bytes());
   }
 
   /**

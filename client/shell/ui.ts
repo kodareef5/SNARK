@@ -4,6 +4,7 @@
 import { K_BAR, K_BUTTON, K_DIAL, K_HOLD, K_IMAGE, K_INPUT, K_SECRET, K_SLIDER, type UiFrame, type UiNode } from "../core/ui/nodes.ts";
 import { bindTextInput, type UiEvents } from "../core/ui/events.ts";
 import { STYLES } from "../core/ui/style.ts";
+import type { TextRun } from "../../shared/net/chat.ts";
 const LENS = ["none", "radial-gradient(closest-side,#0000 99%,#000 100%)", "radial-gradient(circle closest-side at 28.4% 50%,#0000 99%,#000 100%),radial-gradient(circle closest-side at 71.6% 50%,#0000 99%,#000 100%)",
   "repeating-linear-gradient(#0000 0 2px,#000 2px 3px)", "radial-gradient(farthest-corner,#0000 45%,#000 100%)"];
 
@@ -18,6 +19,7 @@ interface Bound {
   h: number;
   style: number;
   text: string;
+  runs: readonly TextRun[] | null;
   value: number;
   version: number;
   /** For a picture in a file: the background that shows the part of it drawn. */
@@ -32,6 +34,17 @@ interface Bound {
 
 const rgba = (c: number): string => `rgba(${c >>> 24},${(c >>> 16) & 255},${(c >>> 8) & 255},${(c & 255) / 255})`;
 const rgb = (c: number): string => `#${c.toString(16).padStart(6, "0")}`;
+
+/** One span a run, each set as text; a run with no ink takes the node's. */
+function spans(el: HTMLElement, runs: readonly TextRun[]): void {
+  el.textContent = "";
+  for (const r of runs) {
+    const span = document.createElement("span");
+    span.textContent = r.text;
+    if (r.ink !== undefined) span.style.color = rgb(r.ink);
+    el.append(span);
+  }
+}
 
 export class UiView {
   private readonly root: HTMLElement;
@@ -129,9 +142,13 @@ export class UiView {
         b.value = n.value;
         if (n.kind === K_SLIDER && b.text !== n.text) field.setAttribute("aria-valuetext", n.text);
         b.text = n.text;
-      } else if (b.text !== n.text) {
+      } else if (b.text !== n.text || b.runs !== n.runs) {
         b.text = n.text;
-        if (!b.fill && n.kind !== K_IMAGE) b.el.textContent = n.text;
+        b.runs = n.runs;
+        if (!b.fill && n.kind !== K_IMAGE) {
+          if (n.runs) spans(b.el, n.runs);
+          else b.el.textContent = n.text;
+        }
       }
       if (b.fill && b.value !== n.value) {
         b.value = n.value;
@@ -214,7 +231,7 @@ export class UiView {
     el.dataset.k = String(n.key);
     el.style.pointerEvents = "none";
     this.root.append(el);
-    const b: Bound = { el, fill, kind: n.kind, x: NaN, y: NaN, w: NaN, h: NaN, style: -1, text: "", label: "", value: NaN, version: 0, src: "", interactive: false, tint: -2, alpha: 1, order: -1, seen: 0 };
+    const b: Bound = { el, fill, kind: n.kind, x: NaN, y: NaN, w: NaN, h: NaN, style: -1, text: "", runs: null, label: "", value: NaN, version: 0, src: "", interactive: false, tint: -2, alpha: 1, order: -1, seen: 0 };
     this.bound.set(n.key, b);
     return b;
   }

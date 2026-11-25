@@ -1,8 +1,9 @@
 // The server decides who reads a line.
 
+import { runText, type TextRun } from "../../../shared/net/chat.ts";
 import { MAX_CHAT_CHARS, TEXT_CONSOLE, TEXT_GLOBAL, TEXT_LOCAL, TEXT_MOTD, TEXT_NOTICE, TEXT_TRIBE } from "../../../shared/net/protocol.ts";
 import type { ClientSession } from "../session.ts";
-import { lineHeight, wrapText, K_BUTTON, K_INPUT, K_PANEL, type UiFrame } from "./nodes.ts";
+import { lineHeight, wrapRuns, wrapText, K_BUTTON, K_INPUT, K_PANEL, type UiFrame } from "./nodes.ts";
 import { S_CHAT, S_CHAT_LOCAL, S_CHAT_NOTICE, S_CHAT_PANEL, S_CHAT_TAG, S_CHAT_TRIBE, S_INPUT } from "./style.ts";
 
 export const KEY_CHAT_PANEL = 13;
@@ -42,6 +43,8 @@ const PREFIX: Record<number, string> = { [TEXT_NOTICE]: "", [TEXT_MOTD]: "", [TE
 
 interface Row {
   text: string;
+  /** A chat line's row in runs, the channel's prefix the first; null for a plain line's. */
+  runs: readonly TextRun[] | null;
   channel: number;
   at: number;
   /** Ticks it stays up with the box shut. */
@@ -53,7 +56,7 @@ export class ChatState {
   channel = TEXT_GLOBAL;
   input = "";
   /** Oldest first. `at` is the tick a line arrived. */
-  readonly lines: { channel: number; text: string; at: number; hold: number }[] = [];
+  readonly lines: { channel: number; text: string; runs?: readonly TextRun[]; at: number; hold: number }[] = [];
   private readonly live: number[] = [];
   private seen = 0;
   private readonly rows: Row[] = [];
@@ -120,8 +123,9 @@ export class ChatState {
     this.input = "";
   }
 
-  print(channel: number, text: string, at: number, hold = SHOW_TICKS): void {
-    this.lines.push({ channel, text, at, hold: hold > FADE_TICKS ? hold : FADE_TICKS });
+  /** `runs` are a chat line's (S_CHAT), whose text joined is `text`. */
+  print(channel: number, text: string, at: number, hold = SHOW_TICKS, runs?: readonly TextRun[]): void {
+    this.lines.push({ channel, text, runs, at, hold: hold > FADE_TICKS ? hold : FADE_TICKS });
     if (this.lines.length > LINES) this.lines.shift();
     this.version++;
   }
@@ -136,7 +140,7 @@ export class ChatState {
       const l = log[i]!;
       // The message of the day stays up for the server's motdSeconds.
       if (l.channel === TEXT_MOTD) this.print(l.channel, l.text, session.serverTick, session.motdSeconds * 30);
-      else if (l.channel >= TEXT_NOTICE && l.channel <= TEXT_TRIBE) this.print(l.channel, l.text, session.serverTick);
+      else if (l.channel >= TEXT_NOTICE && l.channel <= TEXT_TRIBE) this.print(l.channel, l.text, session.serverTick, SHOW_TICKS, l.runs);
       else if (l.channel === TEXT_CONSOLE && session.serverTick < this.answers) for (const text of l.text.split("\n")) this.print(TEXT_NOTICE, text, session.serverTick);
     }
   }
@@ -163,10 +167,18 @@ export class ChatState {
       this.rowsFor = sig;
       this.rows.length = 0;
       const parts: string[] = [];
+      const runRows: TextRun[][] = [];
       for (const line of this.lines) {
+        const prefix = PREFIX[line.channel] ?? "";
+        if (line.runs) {
+          runRows.length = 0;
+          wrapRuns(prefix === "" ? line.runs : [{ text: prefix }, ...line.runs], w - 8, S_CHAT, runRows);
+          for (const runs of runRows) this.rows.push({ text: runText(runs), runs, channel: line.channel, at: line.at, hold: line.hold });
+          continue;
+        }
         parts.length = 0;
-        wrapText((PREFIX[line.channel] ?? "") + line.text, w - 8, S_CHAT, parts);
-        for (const text of parts) this.rows.push({ text, channel: line.channel, at: line.at, hold: line.hold });
+        wrapText(prefix + line.text, w - 8, S_CHAT, parts);
+        for (const text of parts) this.rows.push({ text, runs: null, channel: line.channel, at: line.at, hold: line.hold });
       }
     }
     const room = Math.max(1, Math.floor((bottom - top - inputH - 4) / lh));
@@ -195,6 +207,7 @@ export class ChatState {
     for (let k = 0; k < shown; k++) {
       const row = this.rows[live[k]!]!;
       const n = f.text(KEY_CHAT_ROW + k, x0, y, w - 8, ROW_STYLE[row.channel] ?? S_CHAT, row.text);
+      n.runs = row.runs;
       if (!this.open) {
         const left = row.hold - (now - row.at);
         n.alpha = left >= FADE_TICKS ? 1 : Math.max(0, left / FADE_TICKS);

@@ -93,7 +93,14 @@ export function drawUi(color: Uint8ClampedArray, width: number, height: number, 
     const tx = st.align === 1 ? n.x + (n.w - textW) / 2 : st.align === 2 ? n.x + n.w - textW : n.x + pad;
     const ty = n.y + (n.h - dot * GLYPH_HEIGHT) / 2;
     let advance = 0;
+    // A run's ink holds for its characters; a run with none takes the style's.
+    const runs = n.kind === K_SECRET ? null : n.runs;
+    let run = 0, end = runs?.[0]?.text.length ?? 0, at = 0;
     for (const character of text) {
+      while (runs && run < runs.length - 1 && at >= end) end += runs[++run]!.text.length;
+      const ink = runs?.[run]?.ink;
+      const cr = ink === undefined ? ir : (ink >> 16) & 255, cg = ink === undefined ? ig : (ink >> 8) & 255, cb = ink === undefined ? ib : ink & 255;
+      at += character.length;
       const code = character.codePointAt(0)!;
       const cell = glyphAdvance(code, n.style), dx = Math.min(dot, cell / (GLYPH_WIDTH + 1));
       for (let col = 0; col < GLYPH_WIDTH; col++) {
@@ -103,7 +110,7 @@ export function drawUi(color: Uint8ClampedArray, width: number, height: number, 
           const gy = ty + row * dot;
           if (gx < n.x || gx + dot > n.x + n.w + 0.5) continue;
           if (st.shadow) rect(gx + dx, gy + dot, dx, dot, 0, 0, 0, 0.7 * n.alpha);
-          rect(gx, gy, dx, dot, ir, ig, ib, n.alpha);
+          rect(gx, gy, dx, dot, cr, cg, cb, n.alpha);
         }
       }
       advance += cell;

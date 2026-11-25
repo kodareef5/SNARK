@@ -199,7 +199,8 @@ export function fitBytes(s: string, max: number): string {
   return out;
 }
 
-function utf8Length(s: string): number {
+/** Bytes of `s` as UTF-8, as `string` writes it. */
+export function utf8Length(s: string): number {
   let n = 0;
   for (let i = 0; i < s.length; i++) {
     const c = s.charCodeAt(i);

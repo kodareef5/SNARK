@@ -294,6 +294,12 @@ export const S_PLAN = serverKind();
 export const S_PLAN_GONE = serverKind();
 /** What became of a CMD_PLAN_COMMIT (shared/net/plan.ts PlanReport). Reliable. */
 export const S_PLAN_REPORT = serverKind();
+/**
+ * A chat line as runs of text (shared/net/chat.ts). Reliable. channel u8, count of runs 4 bits (1 to 8), then per run: 1 bit
+ * for an ink, and if set its colour 24 bits (0xRRGGBB), then its text string. The runs' text takes at most
+ * MAX_SERVER_TEXT_BYTES. A run with no ink is in its channel's colour. Notices and other plain lines stay on S_TEXT.
+ */
+export const S_CHAT = serverKind();
 
 export const REJECT_VERSION = 1;
 export const REJECT_CONTENT = 2;
@@ -801,7 +807,7 @@ export const REMOVAL_NEWS_TICKS = 60;
 
 export const TEXT_CONSOLE = 0;
 export const TEXT_NOTICE = 1;
-/** Chat channels: everyone, those nearby, the tribe. The text is "name: words". */
+/** Chat channels: everyone, those nearby, the tribe. A line comes as S_CHAT, the speaker's name its first run, then ": words". */
 export const TEXT_GLOBAL = 2;
 export const TEXT_LOCAL = 3;
 export const TEXT_TRIBE = 4;
