@@ -72,6 +72,8 @@ export class HeldStatics {
   /** Sectors a reader waits for: chunks the server sent as the map has them (session.ts). */
   readonly needed = new Set<MapPart>();
   private readonly told: ((part: MapPart) => void)[] = [];
+  /** Called as a sector is first needed, so that it is asked for at once. */
+  wake: (() => void) | null = null;
   private readonly found: MapRows = { kind: NO_U16, yaw: NO_U16, x: NO_F32, y: NO_F32, z: NO_F32, from: 0, to: 0 };
 
   constructor(head: MapHead) {
@@ -124,7 +126,9 @@ export class HeldStatics {
   /** Says a reader waits for `chunk`'s sector. */
   need(chunk: number): void {
     const p = this.partOf(chunk);
-    if (p && !this.has(p)) this.needed.add(p);
+    if (!p || this.has(p) || this.needed.has(p)) return;
+    this.needed.add(p);
+    this.wake?.();
   }
 
   /** Pieces held. */
@@ -132,9 +136,14 @@ export class HeldStatics {
     return this.sectors.reduce((n, t) => n + (t?.count ?? 0), 0);
   }
 
-  /** Bytes of the rows held, a kind, a turn and a place a piece, and of their bends. */
+  /** Bytes held: the rows, a kind, a turn and a place a piece, their bends, and the indexes by chunk of the store and its table. */
   get bytes(): number {
-    return this.parts.reduce((n, p, k) => n + (this.sectors[k] ? this.took.get(p)! : 0), 0);
+    return this.parts.reduce((n, p, k) => n + (this.sectors[k] ? this.took.get(p)! : 0), this.index);
+  }
+
+  /** Bytes of the indexes by chunk alone. */
+  get index(): number {
+    return this.sectorAt.byteLength + (this.head.counts.length + 1) * 4;
   }
 
   /** Bytes sector `part`'s statics take: as they did when last held, else by the head's count of its rows. */
@@ -192,6 +201,8 @@ export class HeldStatics {
     const k = this.parts.indexOf(part);
     if (!this.sectors[k]) return;
     this.sectors[k] = null;
+    // The last rows found may be its own.
+    [this.found.kind, this.found.yaw, this.found.x, this.found.y, this.found.z] = [NO_U16, NO_U16, NO_F32, NO_F32, NO_F32];
     this.version++;
   }
 

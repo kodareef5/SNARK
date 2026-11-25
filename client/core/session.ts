@@ -2800,19 +2800,22 @@ export class ClientSession {
   private chunkOrKeep(r: BitReader): void {
     if (!this.world) return;
     const start = r.pos;
-    const chunk = r.u16();
-    if (this.waitingRows.length === 0) {
-      r.u32();
-      r.bool();
-      r.bits(16);
-      const filling = !r.overflow && chunk < this.world.structs.chunks.length && this.mapCount(chunk) > 0 && r.bool();
-      r.pos = start;
-      if (!filling || this.mapRows(chunk)) return this.chunk(r);
-    }
+    const chunk = this.waitsFor(r);
     r.pos = start;
-    this.forget(chunk);
-    this.opts.held?.need(chunk);
+    if (this.waitingRows.length === 0 && chunk < 0) return this.chunk(r);
+    this.forget(r.u16());
+    r.pos = start;
+    if (chunk >= 0) this.opts.held?.need(chunk);
     this.waitingRows.push(r.rest());
+  }
+
+  /** The chunk whose sector a chunk message read from `r` takes slots from where that is not held; else -1. */
+  private waitsFor(r: BitReader): number {
+    const chunk = r.u16();
+    r.u32();
+    r.bool();
+    r.bits(16);
+    return !r.overflow && chunk < this.world!.structs.chunks.length && this.mapCount(chunk) > 0 && r.bool() && !this.mapRows(chunk) ? chunk : -1;
   }
 
   /** Reads the chunk messages waiting, in order, up to the first that still takes slots from a sector not held. */
@@ -2826,14 +2829,8 @@ export class ClientSession {
         continue;
       }
       r.reset(m);
-      const chunk = r.u16();
-      r.u32();
-      r.bool();
-      r.bits(16);
-      if (!r.overflow && chunk < this.world.structs.chunks.length && this.mapCount(chunk) > 0 && r.bool() && !this.mapRows(chunk)) {
-        this.opts.held?.need(chunk);
-        return;
-      }
+      const chunk = this.waitsFor(r);
+      if (chunk >= 0) return this.opts.held?.need(chunk);
       this.waitingRows.shift();
       r.reset(m);
       this.chunk(r);

@@ -412,6 +412,7 @@ export class MapLoader {
     this.at = at;
     this.staged = staged;
     this.held = new HeldStatics(staged.head);
+    this.held.wake = () => this.look();
     this.boxes = new PartBoxes(staged.head);
   }
 
@@ -496,7 +497,7 @@ export class MapLoader {
   private cap(budget: number): void {
     if (budget === Infinity) return;
     const held = this.held, statics: [MapPart, number][] = [];
-    let room = budget;
+    let room = budget - held.index;
     for (const [p, off] of this.want.parts) {
       if (p.kind !== "statics") continue;
       if (held.needed.has(p)) room -= held.bytesOf(p);
@@ -524,6 +525,7 @@ export class MapLoader {
     }
   }
 
+  /** For as long as the page lives, a look at what is wanted each LOOK_EVERY ms of `every`. */
   private async followWant(every: (ms: number) => Promise<void>): Promise<void> {
     for (;;) {
       await every(LOOK_EVERY);

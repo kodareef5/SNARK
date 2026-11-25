@@ -46,6 +46,8 @@ const head = readHead(file);
 const NOW = { wait: () => Promise.resolve() };
 /** A page that wants all of this map: a view and a statics reach past its corners. */
 const ALL = (): WantFrom => ({ view: 1e5, statics: 1e5 });
+/** Bytes the store of statics holds with no sector: its sector of each chunk, and its table's first row of each. */
+const INDEX = head.counts.length * 2 + (head.counts.length + 1) * 4;
 
 /** Lets every promise the answers so far started run its course. */
 const settle = (): Promise<void> => new Promise((go) => setTimeout(go, 0));
@@ -835,7 +837,7 @@ test("past the budget, the statics kept beyond their reach go farthest first", a
   // Room for what is wanted where the body goes and one more of those kept past their reach.
   const there = statics.filter((p) => off(p, 2600, 448) <= reach), spare = statics.filter((p) => off(p, 100, 448) <= reach && !there.includes(p) && off(p, 2600, 448) <= reach + KEEP_PAST);
   expect(spare.length).toBeGreaterThan(1);
-  const budget = (there.reduce((n, p) => n + rows(p), 0) + Math.max(...spare.map(rows))) * 16;
+  const budget = (there.reduce((n, p) => n + rows(p), 0) + Math.max(...spare.map(rows))) * 16 + INDEX;
   void loader!.follow(() => body, { want: () => ({ view: 1e5, statics: reach, budget }) });
   await s.drain();
   body.x = 2600;
@@ -886,7 +888,7 @@ test("the store of statics finds a chunk's rows in its sector, and in the table 
       for (let k = 0; k < n; k++) for (const col of ["kind", "yaw", "x", "y", "z"] as const) if (r[col][r.from + k] !== all[col][all.first[c]! + k]) return false;
       return true;
     });
-  expect([same(), told, held.size, held.bytes, held.pieces > 0]).toEqual([true, [a, b], 2, held.pieces * 16, true]);
+  expect([same(), told, held.size, held.bytes, held.pieces > 0]).toEqual([true, [a, b], 2, held.pieces * 16 + INDEX, true]);
   // The table holds both; the sectors read their rows from it from then on, and one let go is found no more.
   const g = held.table();
   let t = g.next();
@@ -908,7 +910,7 @@ test("a budget short of the statics wanted holds the nearest of them, as far as 
   const held = new HeldStatics(head);
   const wanted = head.parts.filter((p) => p.kind === "statics" && off(p, body.x, body.z) <= 1500).sort((a, b) => off(a, body.x, body.z) - off(b, body.x, body.z));
   expect(wanted.length).toBeGreaterThan(3);
-  const budget = (held.rows.get(wanted[0]!)! + held.rows.get(wanted[1]!)! + held.rows.get(wanted[2]!)!) * 16;
+  const budget = (held.rows.get(wanted[0]!)! + held.rows.get(wanted[1]!)! + held.rows.get(wanted[2]!)!) * 16 + INDEX;
   void loader!.follow(() => body, { want: () => ({ view: 1e5, statics: 1500, budget }) });
   await s.drain();
   const names = new Set(loader!.held.parts.filter((p) => loader!.held.has(p)).map((p) => p.name));
