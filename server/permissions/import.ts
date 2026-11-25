@@ -47,6 +47,8 @@ export interface ImportOptions {
 export interface Applied {
   readonly done: number;
   readonly refused: readonly { readonly op: PermissionOp; readonly reason: string }[];
+  /** The lowest rank any of its changes was judged at inside its write, or null for a plan of none. */
+  readonly rank: number | null;
 }
 
 export { CHAT_DOCUMENT };
@@ -513,14 +515,16 @@ export function planCrossChat(source: string, opts: ImportOptions): Planned {
 
 // ---- Applying ----
 
-/** Runs each op of a plan through `apply` as `actor`. A refusal stops nothing. The caller checks the actor's rank. */
-export function applyPlan(perms: Pick<Permissions, "apply">, actor: PermissionActor, plan: ImportPlan): Applied {
+/** Runs each op of a plan through `make` as `actor`. A refusal stops nothing. The caller checks the actor's rank. */
+export function applyPlan(perms: Pick<Permissions, "make">, actor: PermissionActor, plan: ImportPlan): Applied {
   let done = 0;
+  let rank: number | null = null;
   const refused: { op: PermissionOp; reason: string }[] = [];
   for (const op of plan.ops) {
-    const reason = perms.apply(actor, op);
-    if (reason === "") done++;
-    else refused.push({ op, reason });
+    const made = perms.make(actor, op);
+    rank = Math.min(rank ?? made.rank, made.rank);
+    if (made.why === "") done++;
+    else refused.push({ op, reason: made.why });
   }
-  return { done, refused };
+  return { done, refused, rank };
 }

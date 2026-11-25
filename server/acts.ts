@@ -117,11 +117,14 @@ export class Acts {
     this.refill();
   }
 
-  /** Journals an act, keeps it in one list or the other, and returns it. Only a kept act is printed. */
-  write(actor: Actor, what: string, kind: ActKind = "command"): Act {
+  /**
+   * Journals an act, keeps it in one list or the other, and returns it. Only a kept act is printed. `rank` is the rank it
+   * was judged at, where that is not the actor's own, as a permission change is judged inside its write.
+   */
+  write(actor: Actor, what: string, kind: ActKind = "command", rank = actor.rank): Act {
     const { persistence } = this.ctx;
     const at = this.ctx.wall();
-    const { name, id, pid, rank, via, from } = actor;
+    const { name, id, pid, via, from } = actor;
     const open = actor.open === true;
     const bytes = encodeAct({ at, name, id, pid, rank, via, from, kind, what, open });
     const seq = persistence ? persistence.journal(OP_ADMIN, bytes) : ++this.seq;
@@ -136,9 +139,9 @@ export class Acts {
     return act;
   }
 
-  /** Logs an attempt refused to an actor judged at `rank` if that is an admin's rank: below it, anyone could fill the journal. */
+  /** Logs an attempt refused to an actor judged at `rank`, at that rank, if it is an admin's: below it, anyone could fill the journal. */
   refused(actor: Actor, rank: number, tried: string, why: string): void {
-    if (rank >= RANK_ADMIN) this.write(actor, refusedWords(tried, why), "refused");
+    if (rank >= RANK_ADMIN) this.write(actor, refusedWords(tried, why), "refused", rank);
   }
 
   /** Whether an act was written for this very actor object. */

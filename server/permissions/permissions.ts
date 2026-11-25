@@ -67,10 +67,11 @@ export interface Claimant {
   readonly via: ActVia;
 }
 
-/** What became of a change: "" or why not, and the words its row of history says it in ("" when refused). */
+/** What became of a change: "" or why not, the words its row of history says it in ("" when refused), and the rank it was judged at. */
 export interface Made {
   readonly why: string;
   readonly words: string;
+  readonly rank: number;
 }
 
 /** The most rows of history one read answers. */
@@ -363,26 +364,30 @@ export class Permissions {
     let reason = "";
     let was = "";
     let words = "";
-    let judged: PermissionActor = actor;
+    // Set inside the transaction: who the actor was judged as there.
+    const inside: { judged: PermissionActor | null } = { judged: null };
     try {
       this.store.transaction(() => {
         if (this.store.revision() !== this.revision) this.load(this.store.read());
-        judged = { rank: this.actingRank(actor), world: actor.world, name: actor.name };
+        const as: PermissionActor = { rank: this.actingRank(actor), world: actor.world, name: actor.name };
+        inside.judged = as;
         const needs = actor.needs ?? RANK_OPEN;
         was = op?.op === "clearSecret" ? this.secretOf(op.id) : "";
-        reason = (judged.rank < needs ? `That needs the ${RANK_NAMES[needs]} rank.` : "") || editRule(judged, op, this.look);
+        reason = (as.rank < needs ? `That needs the ${RANK_NAMES[needs]} rank.` : "") || editRule(as, op, this.look);
         // Worked out before the change, so a group removed is still named as it was kept.
-        if (!reason) words = this.wordsOf(judged, op);
-        reason ||= this.change(judged, op);
+        if (!reason) words = this.wordsOf(as, op);
+        reason ||= this.change(as, op);
         if (reason) return;
         this.written();
-        if (op.op !== "tag") this.wrote(actor.name, actor.id ?? "", judged.rank, actor.via ?? "", words);
+        if (op.op !== "tag") this.wrote(actor.name, actor.id ?? "", as.rank, actor.via ?? "", words);
       });
     } catch {
       this.load(this.store.read());
-      return { why: "The permissions could not be written.", words: "" };
+      return { why: "The permissions could not be written.", words: "", rank: inside.judged?.rank ?? this.actingRank(actor) };
     }
-    if (reason) return { why: reason, words: "" };
+    const judged = inside.judged;
+    if (!judged) return { why: reason || "The permissions could not be written.", words: "", rank: this.actingRank(actor) };
+    if (reason) return { why: reason, words: "", rank: judged.rank };
     if (was !== "" && "id" in op) this.retire(op.id, was);
     if (op.op !== "tag") {
       const typed = "group" in op ? op.group : "";
@@ -391,7 +396,7 @@ export class Permissions {
     this.stampSeen = this.store.stamp();
     this.version++;
     this.onApplied?.(judged, op);
-    return { why: "", words };
+    return { why: "", words, rank: judged.rank };
   }
 
   /**

@@ -4,7 +4,7 @@ import { expect, test } from "bun:test";
 import type { ClientSession } from "../../client/core/session.ts";
 import { OPERATOR, PAGE_ACTOR, sessionActor, type Actor } from "../../server/acts.ts";
 import { idText } from "../../server/survivor-ids.ts";
-import { RANK_ADMIN, RANK_CLUSTER, RANK_OPEN } from "../../shared/ranks.ts";
+import { RANK_ADMIN, RANK_CLUSTER, RANK_MAP, RANK_OPEN } from "../../shared/ranks.ts";
 import { TestCluster, rec, type Clock, type Server } from "../fixtures/cluster.ts";
 import { listener } from "../fixtures/module.ts";
 
@@ -151,5 +151,28 @@ test("an actor the server builds never acts at a rank it only claims", () => {
     // @ts-expect-error An actor without the rank it holds apart from any group is not an actor.
     const bare: Actor = { name: "x", id: "", pid: 0, rank: RANK_CLUSTER, via: "page", from: "" };
     expect(bare.rank).toBe(RANK_CLUSTER);
+  });
+});
+
+test("an act and its history row name the rank the change was judged at", () => {
+  maps((a, b, _clock, cluster) => {
+    for (const line of ["Permissions.AddGroup Owners", "Permissions.Rank Owners map", "Permissions.AddGroup Wardens", "Permissions.Rank Wardens map", "Permissions.AddGroup Vip"]) must(a, line);
+    const { session: ada } = cluster.survivor(b, "ada");
+    cluster.survivor(b, "bob");
+    const [id, bob] = [idText(rec(b, "ada")!), idText(rec(b, "bob")!)];
+    must(b, `Permissions.Add ${id} Owners all`);
+    must(b, `Permissions.Add ${id} Admins all`);
+    b.h.say(ada, "claimpassword");
+    expect(b.h.say(ada, `enablecheats ${ada.secret}`)).toEqual(["cheats enabled"]);
+    expect(b.h.client(ada)!.rank).toBe(RANK_MAP);
+    // Map a takes her out of Owners, and before map b reads the store she acts there at the admin rank she has left.
+    must(a, `Permissions.Remove ${id} Owners`);
+    expect(b.h.say(ada, `Permissions.Add ${bob} Vip`)[0]).not.toMatch(/^(There|That|denied)/);
+    expect(b.h.say(ada, `Permissions.Add ${bob} Wardens`)).toEqual(["That needs the map rank."]);
+    const [made, tried] = b.h.host.acts.recent().filter((x) => x.name === "ada" && (x.kind === "change" || x.kind === "refused")).slice(-2);
+    expect([made!.kind, made!.rank, made!.what]).toEqual(["change", RANK_ADMIN, `Permissions.Add ${bob} Vip all`]);
+    expect([tried!.kind, tried!.rank, tried!.what]).toEqual(["refused", RANK_ADMIN, `Permissions.Add ${bob} Wardens: That needs the map rank.`]);
+    const row = b.h.host.permissions.history()[0]!;
+    expect([row.name, row.rank, row.what]).toEqual(["ada", RANK_ADMIN, made!.what]);
   });
 });

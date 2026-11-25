@@ -1661,13 +1661,13 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const changePermissions = (by: Actor, op: PermissionOp): string => {
     register.write();
     const actor = acting(by);
-    const { why, words } = permissions.make(actor, op);
-    // The act says it in the words the store's history row does.
-    if (why === "") acts.write(by, words, "change");
+    // The act says it in the words and at the rank the store's history row does: as judged inside the write.
+    const { why, words, rank } = permissions.make(actor, op);
+    if (why === "") acts.write(by, words, "change", rank);
     else {
       // An op from a page may be any JSON: changeWords copes, and the act holds no value of a secret.
       const everyWorld = op?.op === "addMember" && permissions.world !== 0 && op.world === 0;
-      acts.refused(by, permissions.actingRank(actor), changeWords(op, everyWorld), why);
+      acts.refused(by, rank, changeWords(op, everyWorld), why);
     }
     settleStanding();
     return why;
@@ -1699,11 +1699,11 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     if (by.rank < top) {
       const why = `An import needs the ${RANK_NAMES[top]} rank.`;
       acts.refused(by, permissions.actingRank(acting(by)), `import ${what}`, why);
-      return { why, done: 0, refused: [] };
+      return { why, done: 0, refused: [], rank: null };
     }
     const actor: Acting = { ...acting(by), needs: top };
     const applied = applyPlan(permissions, actor, plan);
-    acts.write(by, `imported ${what}: ${applied.done} ${applied.done === 1 ? "change" : "changes"}`, "change");
+    acts.write(by, `imported ${what}: ${applied.done} ${applied.done === 1 ? "change" : "changes"}`, "change", applied.rank ?? permissions.actingRank(actor));
     settleStanding();
     return { why: "", ...applied };
   };
