@@ -284,6 +284,8 @@ export interface Host {
   readonly loadoutBook: LoadoutStore;
   /** Hands loadouts out: to a new survivor, after a death, and when an admin asks (server/loadout/loadouts.ts). */
   readonly loadouts: Loadouts;
+  /** Creative mode and what a connection has with no sign-in (server/creative.ts). */
+  readonly creative: Creative;
   /** Where a survivor without a body may rise, and its choosing (server/beds.ts). */
   readonly beds: Beds;
   /** The cluster the server is part of (-clusterid), or null for one alone. */
@@ -1544,6 +1546,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     // One who joins during the countdown to a stop is told of it too.
     if (stopAt >= 0) game.sendRestart(Math.max(1, Math.ceil((stopAt - world.tick) / TICK_RATE)), c);
   });
+  game.sessions.onRelink.on((c) => creative.floor(c));
   game.sessions.onPresence.on((c) => {
     if (c.closed) activity.leave(c.pid);
     else activity.login(c.pid);
@@ -2076,6 +2079,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     supplyBook,
     loadoutBook,
     loadouts,
+    creative,
     beds,
     cluster,
     settled,

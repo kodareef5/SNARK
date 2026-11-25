@@ -5,6 +5,7 @@ import { tokenize } from "../shared/console.ts";
 import type { Def } from "../shared/content/defs.ts";
 import { find } from "../shared/content/find.ts";
 import type { Registry } from "../shared/content/registry.ts";
+import { RANK_CLUSTER, RANK_NAMES } from "../shared/ranks.ts";
 import { NO_BUS, event, type Bus } from "./events/bus.ts";
 import type { Client } from "./game.ts";
 import type { Host } from "./host.ts";
@@ -24,6 +25,8 @@ export interface ConsoleCommand {
   readonly examples?: readonly string[];
   /** Requires cheats to be enabled on the session. */
   readonly admin: boolean;
+  /** The lowest rank that may run it (shared/ranks.ts). */
+  readonly rank?: number;
   /** Not written to the journal even when admin (it would record a password). */
   readonly secret?: boolean;
   /** Returns the line for the journal, without arguments that must not be kept (a password). Without it the journal gets the line as typed. */
@@ -61,6 +64,15 @@ export class Console {
     return ctx.client === null || ctx.client.admin;
   }
 
+  rankOf(ctx: CommandContext): number {
+    return ctx.client === null ? RANK_CLUSTER : ctx.client.rank;
+  }
+
+  /** Whether this session or the operator may run `cmd`. */
+  allows(ctx: CommandContext, cmd: ConsoleCommand): boolean {
+    return (!cmd.admin || this.isAdmin(ctx)) && (cmd.rank === undefined || this.rankOf(ctx) >= cmd.rank);
+  }
+
   /** Returns what to print. Never throws. */
   exec(ctx: CommandContext, line: string): string {
     const words = tokenize(line);
@@ -69,6 +81,7 @@ export class Console {
     const cmd = this.commands.get(name);
     if (!cmd) return `unknown command "${name}"; try help`;
     if (cmd.admin && !this.isAdmin(ctx)) return "denied: cheats are not enabled for you";
+    if (cmd.rank !== undefined && this.rankOf(ctx) < cmd.rank) return `denied: this needs the ${RANK_NAMES[cmd.rank]} rank or above`;
     // A module hears the line as the journal would have it: without a password, and for a secret command without anything.
     const told = { byPid: ctx.client?.pid ?? 0, name, line: cmd.secret ? name : cmd.redact ? cmd.redact(words.slice(1)) : line, source: ctx.client ? "session" : "operator" };
     const refused = this.bus.before(COMMAND, { ...told });
