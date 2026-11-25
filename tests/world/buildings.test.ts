@@ -197,6 +197,24 @@ test("the buildings survive the file: written again the same, read a part at a t
   expect(() => writeMap({ ...city.map, statics: city.statics.slice(0, 50) })).toThrow("do not lie in their chunks' statics");
 });
 
+test("a building of a new kind and district changes its own sector's part alone", () => {
+  const house = city.buildings.findIndex((b) => b.kind === "house");
+  const rows = city.buildings.map((b, k) => (k === house ? { ...b, kind: "aaa_new", district: "Aaa" } : b));
+  const write = (r: readonly BuildingRow[]): Uint8Array => writeMap({ ...city.map, buildings: Buildings.of(city.map.dims, r, city.statics, city.of, city.storey) });
+  const other = write(rows);
+  const [a, b] = [readHead(write(city.buildings)), readHead(other)];
+  expect(a.buildings!.kinds).not.toEqual(b.buildings!.kinds);
+  const hashes = (h: typeof a): string[] => h.parts.filter((p) => p.kind === "buildings").map((p) => `${p.col}-${p.row} ${p.hash}`);
+  const changed = hashes(b).filter((p) => !hashes(a).includes(p));
+  expect(changed).toHaveLength(1);
+  // Its own sector's part reads back the new names.
+  const part = b.parts.find((p) => p.kind === "buildings" && `${p.col}-${p.row} ${p.hash}` === changed[0])!;
+  const piece = readPart(b, part, other.subarray(part.at, part.at + part.length)) as BuildingsPiece;
+  const back = new Buildings(b.dims, b.buildings!);
+  back.set(piece.table);
+  expect([...back.handles()].map((h) => [back.kind(h), back.district(h)])).toContainEqual(["aaa_new", "Aaa"]);
+});
+
 test("a page takes a sector's buildings after its statics, and nothing waits for them", async () => {
   const head = readHead(file);
   const parts = head.parts.filter((p) => p.kind === "buildings");

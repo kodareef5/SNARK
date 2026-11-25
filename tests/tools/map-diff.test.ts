@@ -37,7 +37,7 @@ test("a square one map holds only in part is told as clipped, and one only the o
   expect(rows.filter((r) => r.state === "only b")).toEqual([]);
 });
 
-test("a kind new to one head renumbers other sectors, and by names only its own differs", () => {
+test("a kind new to one head changes its own sector's statics alone", () => {
   const base = wideMap(), list = base.statics as readonly MapStatic[];
   const at = list.findIndex((s) => s.x > 1100 && s.x < 1900 && s.z > 300 && s.z < 700);
   const renamed = { ...base, statics: list.map((s, k) => (k === at ? { ...s, kind: "core:aaa" } : s)) };
@@ -45,9 +45,9 @@ test("a kind new to one head renumbers other sectors, and by names only its own 
   const [a, b] = [readHead(ba), readHead(bb)];
   const compared = diffMaps(a, b);
   const changed = (rows: readonly PartDiff[]): PartDiff[] => rows.filter((r) => r.kind === "statics" && r.state === "changed");
-  expect(changed(compared).length).toBeGreaterThan(1);
+  expect(changed(compared)).toHaveLength(1);
+  // Read by names, it still differs: its pieces are not the same.
   const rows = byNames(compared, a, b, (h, p) => (h === a ? ba : bb).subarray(p.at, p.at + p.length));
-  expect(changed(rows)).toHaveLength(1);
-  expect(rows.some((r) => r.state === "renumbered")).toBe(true);
-  expect(report(rows, false).some((l) => /^statics: \d+ same, \d+ renumbered, 1 differ/.test(l))).toBe(true);
+  expect([changed(rows).length, rows.some((r) => r.state === "renumbered")]).toEqual([1, false]);
+  expect(report(rows, false).some((l) => /^statics: \d+ same, 1 differ/.test(l))).toBe(true);
 });

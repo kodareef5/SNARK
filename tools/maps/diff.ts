@@ -6,9 +6,8 @@
 // that differs is told with how far its square stands inside the edge the two maps share, and from --near (metres on the
 // lattice, a chunk's column times 64) where given. A square a map holds only in part is "clipped": its bytes differ by
 // the cut alone. With --names a sector's statics or buildings whose bytes differ are read, and where they hold the same
-// pieces and buildings by the names the heads give their numbers they are "renumbered": each head numbers the kinds and
-// districts its own map holds, so a sector of the same content can differ in its bytes. Exits 1 when any part differs,
-// renumbered aside.
+// pieces and buildings by name they are "renumbered": a map before version 15 numbers kinds and districts by its head's
+// tables, so a sector of the same content can differ in its bytes. Exits 1 when any part differs, renumbered aside.
 
 import { closeSync, openSync, readSync } from "node:fs";
 import { CHUNK_SIZE, SECTOR_CHUNKS } from "../../shared/coords.ts";
