@@ -157,3 +157,34 @@ th { color: var(--dim); font-weight: 650; font-size: .78rem }
 .board-page .count i { padding: 1px 5px; border-radius: 3px; font-style: normal }
 .board-page .count :is(.own,.shared) { background: #e2edf6; color: #244d79 }
 .board-page .count :is(.none,.stand-in) { background: #f7ece4; color: #7c4625 }
+
+.screens-page .clips { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr)); gap: 12px }
+.screens-page .clip { border: 1px solid var(--edge); border-radius: 6px; overflow: hidden; display: grid; align-content: start; background: #fff }
+.screens-page .clip.hidden-clip { opacity: .6 }
+.screens-page .clip img { width: 100%; aspect-ratio: 16/9; object-fit: contain; background: #18314a; display: block }
+.screens-page .clip .body { padding: 10px 12px; display: grid; gap: 4px; font-size: .85rem }
+.screens-page .clip h3 { margin: 0; overflow-wrap: anywhere }
+.screens-page .clip .rights { color: var(--dim); font-size: .8rem; overflow-wrap: anywhere }
+.screens-page .clip .bar { margin-top: 6px }
+.screens-page .clip input { width: 100% }
+.screens-page .drop { display: grid; place-items: center; min-height: 92px; border: 2px dashed var(--edge-hi); border-radius: 8px; padding: 14px; text-align: center; cursor: pointer; color: var(--dim) }
+.screens-page .drop.over { background: #ecf2f8; border-color: var(--ice) }
+.screens-page .facts { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: .88rem; margin-block: 10px }
+.screens-page .fields { display: grid !important; grid-template-columns: minmax(0, 1fr); gap: 8px; max-width: 70ch }
+.screens-page .fields label { display: grid; gap: 3px; font-size: .85rem; color: var(--dim) }
+.screens-page code.line { display: block; white-space: pre-wrap; overflow-wrap: anywhere; background: #eef3f8; padding: 8px 10px; border-radius: 5px; font-size: .8rem }
+.screens-page progress { width: 100%; height: 10px }
+.screens-page .time { position: relative; height: 8px; background: #e1e9f0; border-radius: 3px; overflow: hidden; margin-block: 6px }
+.screens-page .time i { position: absolute; inset: 0 auto 0 0; background: var(--ice) }
+.screens-page .channel { border-top: 1px solid var(--edge); padding-block: 12px; display: grid; gap: 8px }
+.screens-page .channel ol { margin: 0; padding-left: 1.6em; display: grid; gap: 4px }
+.screens-page .channel li .row { gap: 6px }
+.screens-page .channel li button { padding: .1em .5em }
+.screens-page .screen-grid { display: grid; grid-template-columns: minmax(0, 1fr) 180px; gap: 18px; align-items: start }
+.screens-page .knobs { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 14px; align-items: center }
+.screens-page .knobs > span { color: var(--dim); font-size: .85rem }
+.screens-page #preview { display: grid; justify-items: center; gap: 4px }
+.screens-page #preview canvas { width: 160px; height: 160px; background: #11223a; border-radius: 6px }
+@media(max-width:640px) { .screens-page .screen-grid { grid-template-columns: 1fr } }
+.screens-page .send { margin-top: 10px }
+.screens-page .bar h2 { margin: 0 }
