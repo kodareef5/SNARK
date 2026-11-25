@@ -9,6 +9,8 @@ import {
   ColourTrack, bandMeans, base64, draftChannels, draftDiffers, draftFault, ffmpegLine, fitLong, freeChannelName, moveIn, overCaps, progressOf, timedOf, toLinear,
   toSrgb, type Caps, type ScreensState,
 } from "../../client/core/admin/screens.ts";
+import { PREVIEW_VIEWS, drawPreview } from "../../client/core/admin/screens-preview.ts";
+import { flatTrack, screenFrame } from "../../tools/orb/frame.ts";
 import { adminSite } from "../../server/admin/site.ts";
 import { VideoLibrary } from "../../server/video/library.ts";
 import { screensAdmin } from "../../server/video/routes.ts";
@@ -185,4 +187,21 @@ test("an upload the page publishes passes, and the page's programme is the serve
   expect(orb.playing?.clip).toBe("a1a1a1a1a1a1a1a1");
   expect((await post("/admin/screens/edit", { revision: state.revision, op: "stop", screen: "orb" })).status).toBe(409);
   lib.close();
+});
+
+test("the preview shows the picture upright on the ball from each side", () => {
+  const size = 96, out = new Uint8ClampedArray(size * PREVIEW_VIEWS.length * size * 4);
+  const started = performance.now();
+  drawPreview(out, size, screenFrame(320, 180), 320, 180, flatTrack(8, 128, 125, 125), true, false);
+  const took = performance.now() - started, stride = size * PREVIEW_VIEWS.length;
+  const at = (x: number, y: number): number[] => Array.from(out.subarray((y * stride + x) * 4, (y * stride + x) * 4 + 3));
+  for (let k = 0; k < PREVIEW_VIEWS.length; k++) {
+    // The frame's top row is green and its bottom row blue (tools/orb/frame.ts); beside the ball the sky is dark.
+    const [high, low] = k < 2 ? [0.27, 0.45] : [0.35, 0.65], x = k * size + Math.round(size * 0.35);
+    const top = at(x, Math.round(size * high)), bottom = at(x, Math.round(size * low));
+    expect(top[1]! - top[2]!).toBeGreaterThan(40);
+    expect(bottom[2]! - bottom[1]!).toBeGreaterThan(40);
+    expect(Math.max(...at(k * size + 1, 1))).toBeLessThan(40);
+  }
+  expect(took).toBeLessThan(2000);
 });

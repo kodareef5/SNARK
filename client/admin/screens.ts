@@ -252,6 +252,49 @@ function draw(): void {
   paint($("channels"), channelsHtml());
   drawChannelBar();
   drawNow();
+  void drawBall();
+}
+
+// ---- Preview
+
+const PREVIEW_SIZE = 160;
+/** Where the preview's own bundle is served; a name the bundler does not follow. */
+const PREVIEW_URL: string = "/admin/ui/screens-preview.js";
+type PreviewModule = typeof import("../core/admin/screens-preview.ts");
+let previewModule: Promise<PreviewModule> | null = null;
+let previewKey = "";
+/** The ball showing the clip it plays, else the one picked to play once, drawn by the game's own twin when either changes. */
+async function drawBall(): Promise<void> {
+  const st = S.state, orb = st?.screens.find((s) => s.screen === "orb");
+  if (!st || !orb) return;
+  const id = orb.playing?.clip ?? document.querySelector<HTMLSelectElement>("#once-orb")?.value ?? "";
+  const clip = st.clips.find((c) => c.id === id), key = `${id} ${orb.mode} ${orb.fill}`;
+  if (!clip || key === previewKey) return;
+  previewKey = key;
+  const poster = new Image();
+  poster.src = clip.poster;
+  let twin: PreviewModule;
+  try {
+    [twin] = await Promise.all([(previewModule ??= import(PREVIEW_URL) as Promise<PreviewModule>), poster.decode()]);
+  } catch {
+    previewModule = null;
+    previewKey = "";
+    return;
+  }
+  if (previewKey !== key) return;
+  const flat = document.createElement("canvas");
+  flat.width = poster.naturalWidth;
+  flat.height = poster.naturalHeight;
+  const fc = flat.getContext("2d")!;
+  fc.drawImage(poster, 0, 0);
+  const picture = fc.getImageData(0, 0, flat.width, flat.height).data;
+  const canvas = document.querySelector<HTMLCanvasElement>("#preview canvas")!;
+  canvas.width = PREVIEW_SIZE * twin.PREVIEW_VIEWS.length;
+  canvas.height = PREVIEW_SIZE;
+  const out = new ImageData(canvas.width, canvas.height);
+  twin.drawPreview(out.data, PREVIEW_SIZE, picture, flat.width, flat.height, Uint8Array.from(atob(clip.colours), (ch) => ch.charCodeAt(0)), orb.mode === "theatre", orb.fill);
+  canvas.getContext("2d")!.putImageData(out, 0, 0);
+  $("preview").querySelector("p")!.textContent = `${clip.title} at night, ${twin.PREVIEW_VIEWS.map((v) => v.label).join(", ")}.`;
 }
 
 /** The draft changed: draw the channels again. */
@@ -546,6 +589,7 @@ document.addEventListener("click", (e) => {
 
 document.addEventListener("change", (e) => {
   const el = e.target as HTMLInputElement & HTMLSelectElement;
+  if (el.id === "once-orb") void drawBall();
   if (!S.state || !el.dataset.do) return;
   const d = S.draft[num(el, "ch")];
   if (el.dataset.do === "show") void edit({ op: "screen", screen: el.dataset.screen, show: el.value }).catch(failed);

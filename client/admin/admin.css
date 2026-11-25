@@ -184,7 +184,7 @@ th { color: var(--dim); font-weight: 650; font-size: .78rem }
 .screens-page .knobs { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 14px; align-items: center }
 .screens-page .knobs > span { color: var(--dim); font-size: .85rem }
 .screens-page #preview { display: grid; justify-items: center; gap: 4px }
-.screens-page #preview canvas { width: 160px; height: 160px; background: #11223a; border-radius: 6px }
+.screens-page #preview canvas { width: 100%; max-width: 480px; aspect-ratio: 3 / 1; background: #11223a; border-radius: 6px }
 @media(max-width:640px) { .screens-page .screen-grid { grid-template-columns: 1fr } }
 .screens-page .send { margin-top: 10px }
 .screens-page .bar h2 { margin: 0 }

@@ -8,10 +8,9 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { tierOf } from "../../client/core/assets/tiers.ts";
-import { ORB_SCREEN, orbLight, orbShown, screenPicture, setScreenPicture, strikeAt, writeOrb, type OrbScreen } from "../../client/core/render/orb.ts";
-import { FRAME_FLOATS, ORB_AT } from "../../client/core/render/packet.ts";
-import { postFrame } from "../../client/core/render/post.ts";
-import { skyFrame, theSky } from "../../client/core/render/sky.ts";
+import { ORB_SCREEN, screenPicture, setScreenPicture, strikeAt, type OrbScreen } from "../../client/core/render/orb.ts";
+import { OrbView, type OrbMoment } from "../../client/core/render/orb-view.ts";
+import { ORB_AT } from "../../client/core/render/packet.ts";
 import type { SupplyList } from "../../shared/sim/supply.ts";
 import { ORB_SCENES, type OrbSite } from "../../shared/world/orb.ts";
 import type { TideEyeSite } from "../../shared/world/tide-eye.ts";
@@ -85,65 +84,15 @@ function dropAt(tick: number): SupplyList {
   return { tiers: [], classes: [], rows: [row] };
 }
 
-const frame = new Float32Array(FRAME_FLOATS), light = [0, 0, 0];
 /** What the screen scene shows: the test frame, 640 by 360, its camera's up set by each view. */
 const SCREEN: OrbScreen = { shows: 0, width: 640, height: 360, texWidth: 640, texHeight: 360, levels: 9, theatre: true, fill: false, track: null, seconds: 0, upX: 0, upY: 1, upZ: 0 };
+const orb = new OrbView(SITE, [BLUE], TIER, SCREEN), frame = orb.frame;
 /** The frame's lanes for a moment of scene `which`, the eye at (x, y, z). */
-function lanes(which: number, m: Moment, x: number, y: number, z: number): void {
-  frame.fill(0);
-  skyFrame(m.hour, theSky(), frame);
-  postFrame(frame, TIER, m.hour, 1080);
-  const tick = Math.round(m.seconds * RATE);
-  writeOrb(frame, [SITE], [BLUE], m.seconds, m.hour, x, y, z, m.drop ? dropAt(tick) : null, tick, RATE, which === ORB_SCREEN ? -1 : which, 1, which === ORB_SCREEN ? SCREEN : null);
-  // Shown for good, with no wipe from the scenes.
-  if (which === ORB_SCREEN) frame[ORB_AT + 9] = ORB_SCREEN;
-}
-
-/**
- * A picture `w` by `h` of the ball from `distance` metres from its axis on bearing `from`, the eye `lift` metres up (2
- * by default) and aimed at its centre, with `across` its angle of view.
- */
-function view(pixels: Uint8ClampedArray, stride: number, left: number, top: number, w: number, h: number, which: number, m: Moment, distance: number, across: number, lift = 2): void {
-  const ex = SITE.x + distance * Math.sin(m.from), ey = SITE.y + lift, ez = SITE.z + distance * Math.cos(m.from);
-  const cx = SITE.x - ex, cy = SITE.y + SITE.centre - ey, cz = SITE.z - ez, r = SITE.radius, far = Math.hypot(cx, cy, cz);
-  // The view's forward, right and up.
-  const fx = cx / far, fy = cy / far, fz = cz / far;
-  const rl = Math.hypot(fz, fx), rx = -fz / rl, rz = fx / rl;
-  const ux = -rz * fy, uy = rz * fx - rx * fz, uz = rx * fy;
-  [SCREEN.upX, SCREEN.upY, SCREEN.upZ] = [ux, uy, uz];
-  lanes(which, m, ex, ey, ez);
-  const span = Math.tan(across / 2) / (w / 2);
-  /** Where the ray through pixel (px, py) meets the shell, into `hit`; false where it misses or meets it under its cut. */
-  const hit = [0, 0, 0];
-  const cast = (px: number, py: number): boolean => {
-    const a = (px - w / 2) * span, b = (h / 2 - py) * span;
-    let dx = fx + a * rx + b * ux, dy = fy + b * uy, dz = fz + a * rz + b * uz;
-    const dl = Math.hypot(dx, dy, dz);
-    dx /= dl; dy /= dl; dz /= dl;
-    const along = dx * cx + dy * cy + dz * cz, disc = along * along - (far * far - r * r);
-    if (disc <= 0) return false;
-    const t = along - Math.sqrt(disc);
-    hit[0] = dx * t; hit[1] = dy * t; hit[2] = dz * t;
-    return hit[1]! - cy > -40;
-  };
-  for (let py = 0; py < h; py++) {
-    for (let px = 0; px < w; px++) {
-      const o = ((top + py) * stride + left + px) * 4;
-      pixels[o] = pixels[o + 1] = pixels[o + 2] = 10;
-      pixels[o + 3] = 255;
-      if (!cast(px + 0.5, py + 0.5)) continue;
-      const x = hit[0]!, y = hit[1]!, z = hit[2]!;
-      // The metres a pixel spans there, as the card's fwidth has them: the place a pixel across and a pixel down.
-      let wide = Math.hypot(x, y, z) * span * 1.5;
-      if (cast(px + 1.5, py + 0.5)) {
-        const ax = hit[0]! - x, ay = hit[1]! - y, az = hit[2]! - z;
-        if (cast(px + 0.5, py + 1.5)) wide = Math.hypot(Math.abs(ax) + Math.abs(hit[0]! - x), Math.abs(ay) + Math.abs(hit[1]! - y), Math.abs(az) + Math.abs(hit[2]! - z));
-      }
-      orbLight(frame, x, y, z, wide, light, TIER.orb.octaves, TIER.orb.pucks);
-      orbShown(pixels, light, frame, o);
-    }
-  }
-}
+const lanes = (which: number, m: Moment, x: number, y: number, z: number): void => orb.lanes(which, withDrop(m), x, y, z);
+/** A picture of the ball (client/core/render/orb-view.ts OrbView.view). */
+const view = (pixels: Uint8ClampedArray, stride: number, left: number, top: number, w: number, h: number, which: number, m: Moment, distance: number, across: number, lift = 2): void =>
+  orb.view(pixels, stride, left, top, w, h, which, withDrop(m), distance, across, lift);
+const withDrop = (m: Moment): OrbMoment => ({ ...m, supply: m.drop ? dropAt(Math.round(m.seconds * RATE)) : null });
 
 function words(pixels: Uint8ClampedArray, stride: number, left: number, top: number, text: string): void {
   for (let i = 0; i < text.length; i++) for (let col = 0; col < GLYPH_WIDTH; col++) for (let row = 0; row < GLYPH_HEIGHT; row++) {
