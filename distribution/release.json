@@ -2,7 +2,7 @@
   "repository": "kodareef5/SNARK",
   "art": {
     "release": "art",
-    "id": "afe77e10435eeb52",
+    "id": "d800ec94a29d34b5",
     "files": [
       {"name": "core-creatures-allosaur", "file": "core-creatures-allosaur.5eb2682fdf0a.tar.zst", "bytes": 2833562, "sha256": "5eb2682fdf0abb902fa1807673cf9dc46c3111e728eda23299b3a910d74129e2"},
       {"name": "core-creatures-ankylo", "file": "core-creatures-ankylo.d19e9025be7c.tar.zst", "bytes": 1901178, "sha256": "d19e9025be7ccaeb84f4bf80f6554f9e9a6a2971b062a6666ab9f50e8901146b"},
@@ -75,6 +75,7 @@
       {"name": "core-nodes-rocks", "file": "core-nodes-rocks.d477d2e27a55.tar.zst", "bytes": 539753632, "sha256": "d477d2e27a556ef131c1db017cfa51d184a8dd7b45a27e8f5a900ae070a09cb0"},
       {"name": "core-nodes-trees", "file": "core-nodes-trees.34307f9cf0db.tar.zst", "bytes": 602402195, "sha256": "34307f9cf0db78bc92a0d17e1acd1c723509e160d72c3de27ceede8ea5ff6209"},
       {"name": "core-props-eggs", "file": "core-props-eggs.981f91f8390a.tar.zst", "bytes": 4354020, "sha256": "981f91f8390adf10e8850975bd935a2353a08a850cace92a90c52331a3031c23"},
+      {"name": "core-props-screens", "file": "core-props-screens.a36f52e7b6c4.tar.zst", "bytes": 18447969, "sha256": "a36f52e7b6c409572d22f4c5f12f1bdaabbac38a0639cf3f03fb4fd4903c9887", "repository": "kodareef5/snark_private"},
       {"name": "core-props-street", "file": "core-props-street.7c612b80fdf5.tar.zst", "bytes": 37798025, "sha256": "7c612b80fdf5809fc58f4d6550ec89befc06a59e63bfc1913ae432df37d00c8e"},
       {"name": "core-screens-admin-ade", "file": "core-screens-admin-ade.b609e8ed1a15.tar.zst", "bytes": 147051, "sha256": "b609e8ed1a15feb952185197e7e359c70881681980b4bcaff5d32bcb7d8fd8a5", "repository": "kodareef5/snark_private"},
       {"name": "core-screens-admin-ade-loop", "file": "core-screens-admin-ade-loop.a24e39b26530.tar.zst", "bytes": 631972, "sha256": "a24e39b265301d6e5c6a90b86cdceff2e81745fa1841ce25042417499c029e0a", "repository": "kodareef5/snark_private"},

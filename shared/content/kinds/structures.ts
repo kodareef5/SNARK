@@ -13,7 +13,10 @@ import { ID, drawnFaults, f, f32, i8, list, mesh, row, u16, u8, type Fields, typ
 import { materialsById } from "./materials.ts";
 import { MAX_STRUCTURE_HALF, PIECE_ROLES, shapeHalf, shapesById, type ShapeDef } from "./shapes.ts";
 import { STATION_FIELDS, fuelFaults, type StationFields } from "./stations.ts";
-import type { ScreenFace } from "../../video/face.ts";
+import { faceFault, type ScreenFace } from "../../video/face.ts";
+
+/** The types of screen a structure may carry: every type but the Vegas ball's. */
+const SCREEN_PROPS: readonly string[] = ["billboard", "tv", "laptop"];
 
 /** Parts a moving static may move, and the farthest one may stand from it in metres. */
 export const MAX_MOVING_PARTS = 32;
@@ -152,7 +155,7 @@ export interface StructureDef extends Named, StationFields {
   readonly breaks?: BreaksFacet;
   /** A wreck a map places: what salvaging it takes and gives. */
   readonly salvage?: SalvageFacet;
-  /** A screen on it: the rectangle a picture is drawn on, in its own frame (shared/video/face.ts). */
+  /** A screen on it: the rectangle in its own frame a picture is drawn on, and how (shared/video/face.ts). */
   readonly screen?: ScreenFace;
 }
 
@@ -188,6 +191,7 @@ const FIELDS = {
   rise: f("vec3"),
   breaks: f("facet"),
   salvage: f("facet", "", { refs: { "rungs[].gives[].item": "item" } }),
+  screen: f("facet", "a screen: the rectangle a picture is drawn on, a billboard's, a TV's or a laptop's"),
   ...STATION_FIELDS,
 } satisfies Fields<StructureDef>;
 
@@ -234,7 +238,7 @@ const columns = (n: number) => ({
   lights: u16(n),
   burning: u8(n),
   isBed: u8(n),
-  /** Per structure: the screen on it, or null (shared/video/face.ts). */
+  /** Per structure: its screen's face (StructureDef.screen), or null for one with none. */
   screenFace: list<ScreenFace>(n),
   /**
    * Per structure that breaks (StructureDef.breaks): its break set's number, 0 for one that never breaks; its family
@@ -300,6 +304,11 @@ export const structures: Kind<StructureDef, ReturnType<typeof columns>> = {
     if (d.motion !== undefined) errors.push(...motionFaults(d));
     if (d.grindLine !== undefined && (!Array.isArray(d.grindLine) || d.grindLine.length === 1 || d.grindLine.length > 64 || !d.grindLine.every(p => Array.isArray(p) && p.length === 3 && p.every(Number.isFinite)))) errors.push(`${d.id}: invalid grindLine`);
     if (d.vehicleSurface !== undefined && !validVehicleSurface(d.vehicleSurface)) errors.push(`${d.id}: invalid vehicleSurface grip/resistance`);
+    if (d.screen !== undefined) {
+      if (!SCREEN_PROPS.includes(d.screen.type)) errors.push(`${d.id}: a screen is a billboard, a tv or a laptop`);
+      else if (!Array.isArray(d.screen.face) || d.screen.face.length !== 5) errors.push(`${d.id}: a screen's face is x0, x1, y0, y1 and z`);
+      else if (faceFault(d.screen)) errors.push(`${d.id}: ${faceFault(d.screen)}`);
+    }
     positive(d, "half[0]", d.half[0], MAX_STRUCTURE_HALF);
     positive(d, "half[1]", d.half[1], MAX_STRUCTURE_HALF);
     positive(d, "half[2]", d.half[2], MAX_STRUCTURE_HALF);
