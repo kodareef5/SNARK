@@ -1,0 +1,19 @@
+// The lit probe's shadow truth: rays against the staged boxes, grown or shrunk by the filter's reach.
+import { expect, test } from "bun:test";
+import { enter } from "../../tools/probe-lit/shadow.ts";
+
+const up = [0, 1, 0];
+/** A wall 20 cm thick, 3 m tall, along x. */
+const wall = { min: [-1.5, 0, -0.1], max: [1.5, 3, 0.1] };
+
+test("a wall shrunk by more than half its thickness surely shades nothing", () => {
+  expect(enter([0, -1, 0], up, wall, -0.05)).toBe(1.05);
+  expect(enter([0, -1, 0], up, wall, -0.28)).toBe(Infinity);
+  // Turned inside out it would stand 36 cm thick, past its own faces.
+  expect(enter([0, -1, 0.15], up, wall, -0.28)).toBe(Infinity);
+});
+
+test("a wall grown by the filter's reach maybe shades past its faces", () => {
+  expect(enter([0, -1, 0.15], up, wall, 0)).toBe(Infinity);
+  expect(enter([0, -1, 0.15], up, wall, 0.28)).toBe(0.72);
+});
