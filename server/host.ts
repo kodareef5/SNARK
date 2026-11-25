@@ -75,6 +75,7 @@ import { JET_BOOTS, JET_CUIRASS, JET_HELMET, MODE_WALK, stanceEye } from "../sha
 import { V_HEALTH } from "../shared/sim/vitals.ts";
 import { ACT_EQUIP, ACT_NONE, FISTS, HOLD_CARRY, poseHold } from "../shared/sim/weapon.ts";
 import { GameServer, type Client, type GameOptions } from "./game.ts";
+import { VehicleWeapons } from "./vehicle-weapons.ts";
 import { walk, type System } from "./system.ts";
 import { Items } from "./items.ts";
 import { COMMAND_FAMILIES } from "./commands/families.ts";
@@ -309,6 +310,7 @@ export interface Host {
   /** The setting values a loaded save's timers were computed under. Null for a new world. */
   readonly loadedUnder: Record<string, number> | null;
   readonly projectiles: Projectiles;
+  readonly vehicleWeapons: VehicleWeapons;
   /** Smoke and gas where grenades went off (W5). */
   readonly clouds: Clouds;
   readonly progression: Progression;
@@ -1027,6 +1029,11 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   combat.onFire.on((c, rec, weapon, quality, ammo, draw) => projectiles.launch(c, rec, weapon, quality, ammo, draw));
   // A thrown thing with an ammo facet of its own flies and hits (the bola); any other is lobbed and goes off on its fuse.
   combat.onThrow.on((c, rec, item, quality, draw) => (reg.ammoSpeed[item]! > 0 ? projectiles.fling(c, rec, item, quality, draw) : projectiles.lob(c, rec, item, quality)));
+  // A vehicle's own guns and missiles, through the same rounds and blasts (planning/workstreams/jet.md).
+  const vehicleWeapons = new VehicleWeapons({ world, game, records, combat, projectiles, remote: (c, tick) => game.players.remoteInput?.(c, tick) ?? false }, (opts.seed ?? 1) + 101);
+  vehicles.ctx.arms = (rec) => vehicleWeapons.words(rec);
+  vehicles.ctx.armed = (rec) => vehicleWeapons.full(rec);
+  vehicles.ctx.rearm = (rec) => vehicleWeapons.rearm(rec);
   const clouds = new Clouds({ world, records, buffs, rules });
   projectiles.onCloud = (item, x, y, z, by) => clouds.make(item, x, y, z, by);
   // The killer is credited before death.die, which may delete the record.
@@ -1965,6 +1972,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     // Combat resolves this tick's swings and shots now that every body has moved.
     combat,
     projectiles,
+    vehicleWeapons,
     physics(loose, LANE_ROW.loose),
     clouds,
     mark(PART.combat),
@@ -2123,6 +2131,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     readLive,
     loadedUnder,
     projectiles,
+    vehicleWeapons,
     clouds,
     progression, activity, survivorLog,
     harvest,

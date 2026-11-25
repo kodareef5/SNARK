@@ -722,7 +722,8 @@ export const OWN_SCREEN = ownKind();
 /**
  * An armed vehicle's weapons, to its driver (server/vehicle-weapons.ts): armed 1 bit; then rounds u16 and their most u16,
  * missiles u8 and their most u8, the lock 2 bits (0 none, 1 seeking, 2 locked), its progress u8 (255ths), and what it is
- * on 2 bits: 1 an entity, its handle u32; 2 a craft in the sky, its middle 3 x f32 and its name string; 0 nothing.
+ * on 2 bits: 1 an entity, its handle u32; 2 a craft in the sky; 0 nothing. For 1 and 2, its middle 3 x f32, and for 2
+ * its name string.
  */
 export const OWN_ARMS = ownKind();
 /** What a seeker does to whatever its owner drives or sits in, u8: 0 nothing, 1 looked for, 2 locked, 3 a missile coming. */

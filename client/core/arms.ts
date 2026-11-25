@@ -6,7 +6,7 @@ import { ownKinds } from "./readers.ts";
 
 /**
  * An armed vehicle's weapons: rounds and missiles left and their most, the lock (0 none, 1 seeking, 2 locked) and how far
- * it has come, 0 to 1, and what it is on: 1 an entity by handle, 2 a craft in the sky at (x, y, z) by name, 0 nothing.
+ * it has come, 0 to 1, and what it is on: 1 an entity by handle, 2 a craft in the sky by name, 0 nothing; and where it is.
  */
 export interface VehicleArms {
   rounds: number; roundsMax: number; missiles: number; missilesMax: number;
@@ -29,7 +29,8 @@ ownKinds.add({
     if (!r.bool()) { if (!r.overflow) s.arms.now = null; return; }
     const a: VehicleArms = { rounds: r.u16(), roundsMax: r.u16(), missiles: r.u8(), missilesMax: r.u8(), lock: r.bits(2), progress: r.u8() / 255, target: r.bits(2), handle: 0, x: 0, y: 0, z: 0, name: "" };
     if (a.target === 1) a.handle = r.u32();
-    else if (a.target === 2) { a.x = r.f32(); a.y = r.f32(); a.z = r.f32(); a.name = r.string(EVENT_NAME_BYTES); }
+    if (a.target !== 0) { a.x = r.f32(); a.y = r.f32(); a.z = r.f32(); }
+    if (a.target === 2) a.name = r.string(EVENT_NAME_BYTES);
     if (!r.overflow) s.arms.now = a;
   },
 });

@@ -148,6 +148,18 @@ interface Stuck {
   until: number;
 }
 
+/** What a missile met as it went off (Projectiles.detonate). */
+export interface MissileEnd {
+  /** The body it struck, or -1. */
+  body: number;
+  /** The world as castWorld met it (HIT_NONE for nothing), what it met there and the way out of it. */
+  what: number;
+  ref: number;
+  nx: number; ny: number; nz: number;
+  water: boolean;
+  sky: boolean;
+}
+
 export class Projectiles {
   /** Counters for tests and measurement. */
   fired = 0;
@@ -1008,6 +1020,42 @@ export class Projectiles {
     this.toShooter = true;
     this.launch(c, rec, item, quality, item, draw);
     this.toShooter = false;
+  }
+
+  /**
+   * A gun fixed to a vehicle (server/vehicle-weapons.ts): one round of `ammo` from `weapon` along the unit `d` from (ox, oy,
+   * oz), cast and struck as a round with no speed is, at `c`'s view tick, so its rewind, its credit to `rec` and its tracer
+   * for those near are a hand-held shot's. The pilot and the vehicle it sits in are not in the round's way. The pilot is
+   * told of it too, since its client predicts no round for a vehicle's gun.
+   */
+  vehicleRound(c: Client, rec: EntityRecord, weapon: number, ammo: number, ox: number, oy: number, oz: number, d: readonly number[]): void {
+    if (c.ent < 0 || ammo === 0) return;
+    const view = this.ctx.combat.viewTick(c);
+    this.fired++;
+    this.lastShot.rays = 1;
+    this.lastShot.hits = 0;
+    this.silencedShot = false;
+    this.toShooter = true;
+    try {
+      this.ray(c, rec, weapon, 0, ammo, ox, oy, oz, d, view);
+    } finally {
+      this.toShooter = false;
+    }
+  }
+
+  /**
+   * A guided missile goes off at (x, y, z), going along (dx, dy, dz), as a round of `ammo` with a blast does: told to those
+   * near with what it met, and its blast the whole of its harm to bodies, structures and craft in the sky. What it met is
+   * `end`: the body struck, else the world as its cast found it, else water, a craft in the sky or the open air.
+   */
+  detonate(by: EntityRecord | null, weapon: number, ammo: number, ox: number, oz: number, x: number, y: number, z: number, dx: number, dy: number, dz: number, end: MissileEnd): void {
+    if (end.body >= 0) this.metBody(end.body, dx, dy, dz);
+    else if (end.what !== HIT_NONE) this.metWorld(end.what, end.ref, end.nx, end.ny, end.nz, dx, dy, dz);
+    else if (end.water) this.meet(SURFACE_WATER, MADE_UNKNOWN, 0, 1, 0);
+    else if (end.sky) this.meet(SURFACE_VEHICLE, MADE_METAL, -dx, -dy, -dz);
+    else this.meet(SURFACE_AIR, MADE_UNKNOWN, 0, 1, 0);
+    this.ended(x, y, z, end.body);
+    this.explode(by, weapon, 0, ammo, 1, ox, oz, x, y, z, end.body);
   }
 
   /** Throws one `item` from the eye of `c`'s body. It goes off when its fuse runs out, wherever it then is. */
