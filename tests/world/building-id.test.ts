@@ -74,3 +74,10 @@ test("two buildings never share an id, a footprint listed twice among them", () 
   const moved = buildingIds(readBuildings({ features: [{ properties: { id: 1 }, geometry: { type: "Polygon", coordinates: [rect(501.25, 700.5, 20, 10)] } }] }), toLattice);
   expect(ids.includes(moved[0]!)).toBe(false);
 });
+
+test("a footprint of five polygons stops the build rather than alias ids", () => {
+  const five = [0, 1, 2, 3, 4].map((k) => [rect(100 + k * 30, 100, 10, 10)]);
+  const feature = (polys: Ring[][]): Feature => ({ properties: { id: 9 }, geometry: { type: "MultiPolygon", coordinates: polys } });
+  expect(readBuildings({ features: [feature(five.slice(0, 4))] }).map((b) => b.id)).toEqual([36, 37, 38, 39]);
+  expect(() => readBuildings({ features: [feature(five)] })).toThrow("footprint 9 has 5 polygons");
+});

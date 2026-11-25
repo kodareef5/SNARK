@@ -363,7 +363,7 @@ test("the front answers a world's built files and map parts from disk itself, wh
   mkdirSync(join(client, "assets"), { recursive: true });
   mkdirSync(parts);
   writeFileSync(join(client, "assets", "core.tex.0123456789abcdef.bin"), new Uint8Array(4096).map((_, i) => i & 255));
-  writeFileSync(join(parts, "ground.1-1.0123456789abcdef.part"), new Uint8Array(100));
+  // A map's parts folder holds only the copies: the raw bytes are the map file's, which only the world reads.
   writeFileSync(join(parts, "ground.1-1.0123456789abcdef.part.br"), new Uint8Array(7));
   // The world's port answers nothing: whatever the front passes on comes back as a world not answering.
   const gone = Bun.listen({ hostname: "127.0.0.1", port: 0, socket: { data() {} } });
@@ -378,6 +378,8 @@ test("the front answers a world's built files and map parts from disk itself, wh
   expect([range.status, [...new Uint8Array(await range.arrayBuffer())]]).toEqual([206, [10, 11, 12, 13, 14, 15, 16, 17, 18, 19]]);
   const part = await get(`${at}/map/ground.1-1.0123456789abcdef.part`, { headers: { "accept-encoding": "br" }, decompress: false } as RequestInit);
   expect([part.status, part.headers.get("content-encoding"), (await part.arrayBuffer()).byteLength]).toEqual([200, "br", 7]);
+  const raw = await get(`${at}/map/ground.1-1.0123456789abcdef.part`, { headers: { "accept-encoding": "identity" } });
+  expect(raw.status).toBe(502);
   expect([(await get(`${at}/map.json`)).status, (await get(`${at}/assets/missing.bin`)).status, (await get(`http://127.0.0.1:${front.port}/assets/core.tex.0123456789abcdef.bin`)).status]).toEqual([502, 502, 502]);
 });
 

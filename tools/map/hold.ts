@@ -1,5 +1,5 @@
 // What a page fetches and holds of a built map over time, with no browser: the page's own loader (client/core/mapload.ts)
-// in Bun, over the map's parts folder, behind a modelled link, on a clock of its own.
+// in Bun, over the map's file and its parts' copies, behind a modelled link, on a clock of its own.
 //
 //   bun tools/map/hold.ts <file.snmap> [--seconds 300] [--mbit 20] [--every 10] [--at x,z] [--drive dx,dz] [--speed 80]
 //
@@ -9,7 +9,7 @@
 // statics handed over among them as the session makes it. The far shadow is told by its sizes, since it is made in the
 // renderer. Time here is the link's alone: the loader's own work takes none.
 
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, openSync, readSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { CORE_CONTENT } from "../../content/core.ts";
 import type { Get } from "../../client/core/fetched.ts";
@@ -48,19 +48,25 @@ const later = (ms: number, go: () => void): void => {
   timers.push({ at: now + ms, go });
 };
 const stats = { asked: 0, came: 0, wire: 0, raw: 0 };
+// A part's raw bytes are the map file's; its folder holds only the copies for the wire (tools/map/pack.ts).
+const fd = openSync(file, "r");
+const where = new Map([[head.name, { at: 0, length: head.bytes }], ...head.parts.map((p): [string, { at: number; length: number }] => [p.name, p])]);
 const get: Get = (url) =>
   new Promise((done) => {
-    const path = join(folder, url.slice(url.lastIndexOf("/") + 1));
+    const name = url.slice(url.lastIndexOf("/") + 1);
+    const part = where.get(name);
     stats.asked++;
-    if (!existsSync(path)) return later(RTT, () => done(new Response("not found", { status: 404 })));
-    const wire = existsSync(`${path}.br`) ? statSync(`${path}.br`).size : statSync(path).size;
+    if (!part) return later(RTT, () => done(new Response("not found", { status: 404 })));
+    const copy = join(folder, `${name}.br`);
+    const wire = existsSync(copy) ? statSync(copy).size : part.length;
     linkFree = Math.max(now + RTT / 2, linkFree) + wire / BYTES_PER_MS;
     timers.push({
       at: linkFree + RTT / 2,
       go: () => {
         stats.came++;
         stats.wire += wire;
-        const bytes = readFileSync(path);
+        const bytes = new Uint8Array(part.length);
+        readSync(fd, bytes, 0, part.length, part.at);
         stats.raw += bytes.length;
         done(new Response(bytes));
       },
