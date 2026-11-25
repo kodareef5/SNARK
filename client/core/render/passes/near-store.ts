@@ -456,7 +456,8 @@ export class NearStore implements Pass {
 
     // Chunks that no longer exist on this client free their buffers.
     for (const id of this.batches.keys()) if (id >= base && id < base + NODE_BUFFERS && !chunks[id - base]) this.drop(id);
-    if (base === 0) for (const chunk of this.unlaid.keys()) if (!chunks[chunk] || this.batches.has(chunk)) this.unlaid.delete(chunk);
+    // What was found of chunks since laid out or gone is let go once it outnumbers the chunks held.
+    if (base === 0 && this.unlaid.size > store.held.length) for (const chunk of this.unlaid.keys()) if (!chunks[chunk] || this.batches.has(chunk)) this.unlaid.delete(chunk);
 
     const held = store.held;
     // Each chunk's pieces are found before any chunk is drawn, so that one that left shows what it hid in the chunks

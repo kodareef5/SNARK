@@ -60,6 +60,8 @@ function frames(name: string, each: () => void = () => {}, after: () => void = (
 }
 
 console.log(`drawing built pieces${trims ? ", wood with stand-in trims" : ""}`);
+// Every chunk laid out on the first frame, as a scene that lays out only what it may see or cast does over a turn round.
+scene.lazyLayout = false;
 let at = performance.now();
 let packet = scene.build(cam, null);
 row("first frame, every chunk laid out", performance.now() - at, "ms");

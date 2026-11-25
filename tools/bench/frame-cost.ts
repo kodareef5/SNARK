@@ -1,6 +1,6 @@
 // The client frame section of tools/bench.ts on its own, with where its time goes: bun tools/bench/frame-cost.ts [--profile] [--repeat n]
 //
-// The same world as the bench's: an 8 km map, 250 box bases of 2,000 pieces in wood, stone and thatch, and the siege's
+// --eager lays out every chunk held on the first frame, as before chunks waited to be seen. The same world as the bench's: an 8 km map, 250 box bases of 2,000 pieces in wood, stone and thatch, and the siege's
 // 20,000-piece wooden chunk, drawn with the packs installed. Rows as the bench prints them. --profile times the passes
 // of the first frame and of the steady ones, by wrapping the methods that do the work.
 
@@ -94,6 +94,7 @@ if (profile) {
 for (let r = 0; r < repeat; r++) {
   const scene = new Scene({ dims: DIMS, hf, structs }, reg, pack);
   asTextured(scene);
+  if (process.argv.includes("--eager")) scene.lazyLayout = false;
   if (profile) {
     for (const [name, pass] of scene.passes) {
       if (pass.update) wrap(pass, "update", `pass ${name} update`);
@@ -115,7 +116,7 @@ for (let r = 0; r < repeat; r++) {
     standOff(b);
     t0 = performance.now();
     packet = scene.build(cam, null);
-    row(`${tier}: first frame, building instance buffers`, performance.now() - t0, "ms");
+    row(`${tier}: first frame, building instance buffers`, performance.now() - t0, "ms", 100);
     if (profile) report(`${tier}: first frame`, 1);
     if (firstOnly) break;
     const frame: number[] = [];
@@ -135,7 +136,9 @@ for (let r = 0; r < repeat; r++) {
   if (firstOnly || steadyOnly) continue;
   standOff(0);
   scene.structureDistance = Infinity;
+  t0 = performance.now();
   packet = scene.build(cam, null);
+  row("the frame that first draws every base to the horizon, laying out those in view", performance.now() - t0, "ms");
   row("draw calls if every base to the horizon were instanced", packet.drawCount, "");
   row("triangles if every base to the horizon were instanced", packet.triangles, "");
   if (profile) {
@@ -146,6 +149,27 @@ for (let r = 0; r < repeat; r++) {
       const key = `${id.replace(/_(wood|stone|thatch|metal)$/, "_<tier>")} level ${packet.drawLod[d]}`;
       draws.set(key, (draws.get(key) ?? 0) + 1);
     }
+    const per = new Map<string, number>();
+    for (let d = 0; d < packet.drawCount; d++) {
+      const key = `${packet.drawBuffer[d]}/${packet.drawMesh[d]}`;
+      per.set(key, (per.get(key) ?? 0) + 1);
+    }
+    let twice = 0, levels = 0, parts = 0, joinable = 0;
+    for (const [key, n] of per) {
+      if (n < 2) continue;
+      twice += n - 1;
+      const [buffer, mesh] = key.split("/").map(Number);
+      const lods = new Set<number>(), firsts = new Set<number>();
+      for (let d = 0; d < packet.drawCount; d++) if (packet.drawBuffer[d] === buffer && packet.drawMesh[d] === mesh) (lods.add(packet.drawLod[d]!), firsts.add(packet.drawFirst[d]!));
+      if (lods.size > 1) levels += n - 1;
+      if (firsts.size < n) parts += n - firsts.size;
+      for (let d = 0; d < packet.drawCount; d++) {
+        if (packet.drawBuffer[d] !== buffer || packet.drawMesh[d] !== mesh) continue;
+        for (let e = 0; e < packet.drawCount; e++) if (e !== d && packet.drawBuffer[e] === buffer && packet.drawMesh[e] === mesh && packet.drawLod[e] === packet.drawLod[d] && packet.drawFirst[e] === packet.drawFirst[d]! + packet.drawInstances[d]!) joinable++;
+      }
+    }
+    console.log(`  boxes tested against what hides what ${scene.hiding.stats.tested}, hidden ${scene.hiding.stats.hidden}; occluders ${scene.hiding.stats.occluders}`);
+    console.log(`  draws past the first of a mesh in a chunk: ${twice}, of which at another level ${levels}, of one span by its parts ${parts}, beginning where another of its level ends ${joinable}`);
     console.log("  draws to the horizon by mesh and level:");
     for (const [k, n] of [...draws].sort((a, b) => b[1] - a[1]).slice(0, 40)) console.log(`    ${k.padEnd(48)} ${n}`);
     spent.clear();
