@@ -270,6 +270,7 @@ new Sheet(SERVER_ROWS, "map", "Other")
   .i("VolcanoInterval", 0, "One of ARK's maps.", none("expansion", { game: "E" }));
 
 new Sheet(SERVER_ROWS, "snark", "Admin and session")
+  .t("ModulesOff", "", "The game's own modules not to load, by name, separated by commas or spaces: ufo keeps the UFO out of the world. Read as the server starts. --no-module <name> on the command line does the same.", live({ note: "Ours. ARK has no key. A module of the same name may then be loaded from the config folder's modules in its place." }))
   .i("ViewCap", 1024, "The most bodies any survivor is shown at once. A client asks for what its graphics setting names, up to this.", live({ live: true, min: 64, max: 2048, note: "Ours. ARK has no key." }))
   .i("SnapshotBytesMax", 1100, "The most bytes of a snapshot a client may ask for. Thirty snapshots are sent a second, so 1100 is 33 KB/s to each survivor.", live({ live: true, min: 600, max: 2200, note: "Ours. ARK has no key." }))
   .i("MaxEntities", 524288, "The most bodies the world holds at once: creatures wild and tamed, survivors, eggs, bags, caches, arrows left standing and things thrown. Memory is taken as the world fills, 188 bytes a body: 0.8 MB to start with and 94 MB for all 524288. A place is kept for each of MaxPlayers.", live({ live: true, min: 4096, max: 1048576, note: "Ours. ARK has no key." }))

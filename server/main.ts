@@ -3,7 +3,7 @@ import { ServerDirectory, listingAddress } from "./directory.ts";
 import { ABOUT_MAX, discordOf, plain, tagsOf } from "../shared/listing.ts";
 import type { Server, ServerWebSocket } from "bun";
 import { SurvivorAccess, entryReply } from "./survivor-access.ts";
-// bun server/main.ts [--dev] [--reports folder] [--client-dir folder] [--config dir] [--port 8787] [--host address] [--public-url https://name.example | /path] [--map file.snmap] [--db var/world.db] [--allow-missing-content] [--restore backup-folder] [--no-backups] [--module file.ts] [--cert cert.pem --key key.pem] [?Key=Value?Key2=Value2] [-Flag[=value]]
+// bun server/main.ts [--dev] [--reports folder] [--client-dir folder] [--config dir] [--port 8787] [--host address] [--public-url https://name.example | /path] [--map file.snmap] [--db var/world.db] [--allow-missing-content] [--restore backup-folder] [--no-backups] [--module file.ts] [--no-module name] [--cert cert.pem --key key.pem] [?Key=Value?Key2=Value2] [-Flag[=value]]
 // SNARK_ADMIN_PASSWORD sets the `enablecheats` password. In a terminal, typed lines run as console commands with full rights.
 
 import { CORE_CONTENT } from "../content/core.ts";
@@ -309,6 +309,34 @@ function timed<A extends unknown[], R>(parts: TickParts, part: number, fn: (...a
       parts.between(part, performance.now() - began);
     }
   };
+}
+
+/** The game's own modules: each file at the top of this folder is one, named for its file. */
+export const OWN_MODULES = resolve(import.meta.dir, "../modules");
+
+/**
+ * The modules a server runs: the game's own (modules/*.ts) but those `off` names (ModulesOff) or `--no-module` names,
+ * then each `--module <file>`, then every file of the config folder's `modules`, each by name.
+ */
+export async function loadModules(args: readonly string[], folder: string, off = ""): Promise<ModuleDef[]> {
+  const skip = new Set([...off.split(/[\s,]+/), ...args.flatMap((a, i) => (a === "--no-module" && args[i + 1] ? [args[i + 1]!] : []))].filter((n) => n !== ""));
+  const files: string[] = [];
+  const own = existsSync(OWN_MODULES) ? readdirSync(OWN_MODULES).sort().filter((n) => n.endsWith(".ts")) : [];
+  for (const name of own) if (!skip.has(name.slice(0, -3))) files.push(resolve(OWN_MODULES, name));
+  files.push(...args.flatMap((a, i) => (a === "--module" && args[i + 1] ? [resolve(args[i + 1]!)] : [])));
+  const beside = folder === "" ? "" : join(folder, "modules");
+  if (beside !== "" && existsSync(beside)) for (const name of readdirSync(beside).sort()) if (name.endsWith(".ts")) files.push(resolve(beside, name));
+  const modules: ModuleDef[] = [];
+  for (const file of files) {
+    const def = ((await import(file)) as { default?: ModuleDef }).default;
+    if (!def || typeof def.setup !== "function") throw new Error(`${file} is not a module: it exports no default with a setup`);
+    // One of the game's own is named for its file, so it can be left out by that name before it is read.
+    if (file.startsWith(OWN_MODULES) && `${def.name}.ts` !== file.slice(OWN_MODULES.length + 1)) throw new Error(`${file}: the game's own module is named for its file, and this one is called ${def.name}`);
+    if (skip.has(def.name)) continue;
+    modules.push(def);
+  }
+  if (modules.length > 0) console.log(`modules: ${modules.map((m) => m.name).join(", ")}${skip.size > 0 ? `; left out: ${[...skip].join(", ")}` : ""}`);
+  return modules;
 }
 
 export function startServer(opts: ServerOptions = {}): RunningServer {
@@ -750,16 +778,7 @@ if (import.meta.main) {
   const { rules, report } = loadConfigFolder(folder, args);
   for (const line of formatReport(report, rules)) console.log(line);
   const live = liveFileOf(folder);
-  // Modules: each `--module <file>`, then every file of the config folder's `modules`, by name.
-  const files = args.flatMap((a, i) => (a === "--module" && args[i + 1] ? [resolve(args[i + 1]!)] : []));
-  const beside = folder === "" ? "" : join(folder, "modules");
-  if (beside !== "" && existsSync(beside)) for (const name of readdirSync(beside).sort()) if (name.endsWith(".ts")) files.push(resolve(beside, name));
-  const modules: ModuleDef[] = [];
-  for (const file of files) {
-    const def = ((await import(file)) as { default?: ModuleDef }).default;
-    if (!def || typeof def.setup !== "function") throw new Error(`${file} is not a module: it exports no default with a setup`);
-    modules.push(def);
-  }
+  const modules = await loadModules(args, folder, rules.text("ModulesOff"));
   const restore = value("--restore");
   if (restore !== undefined) {
     if (!value("--db")) throw new Error("--restore needs --db: the save to put the backup in place of");

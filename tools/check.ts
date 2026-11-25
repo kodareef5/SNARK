@@ -94,7 +94,7 @@ const DETERMINISTIC_DIRS = ["shared/sim", "shared/world", "shared/math", "shared
 const DETERMINISTIC_FILES = ["tools/pack/simplify.ts", "tools/pack/error.ts", "tools/pack/surface.ts"];
 const NONDETERMINISTIC = /\bMath\.(sin|cos|tan|asin|acos|atan|atan2|sinh|cosh|tanh|asinh|acosh|atanh|exp|expm1|log|log2|log10|log1p|pow|hypot|cbrt|random)\b|\*\*|\bDate\.now\b|\bperformance\.now\b/;
 /** Seeded randomness only, wherever game state is produced. */
-const SEEDED_ONLY_DIRS = ["shared", "server", "client/core", "content"];
+const SEEDED_ONLY_DIRS = ["shared", "server", "client/core", "content", "modules"];
 /** The frame's build and the shell's work each frame, where an array made on every call is garbage every frame (madeArrays). */
 const FRAME_DIRS = ["client/core/render", "client/core/details", "client/shell"];
 const MADE_ARRAY = {

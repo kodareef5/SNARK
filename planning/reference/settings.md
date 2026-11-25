@@ -5,7 +5,7 @@ edit it by hand: change the catalogue and run the tool.
 
 A server is configured as ARK's is ([how](round5-settings.md), and [what the
 values mean](round5-game-ini.md)). Every setting an ARK dedicated server reads
-is listed here, 602 of them: 237 take effect,
+is listed here, 603 of them: 238 take effect,
 175 wait for a feature that is not built yet, and 190 have no meaning in this
 engine. A setting that does not take effect is still read, checked and
 reported when the server starts.
@@ -119,6 +119,7 @@ the admin's settings page may change a setting without a restart.
 
 | Setting | Default | What it does | While running |
 | --- | --- | --- | --- |
+| `ModulesOff` | none | The game's own modules not to load, by name, separated by commas or spaces: ufo keeps the UFO out of the world. Read as the server starts. --no-module <name> on the command line does the same. *Ours. ARK has no key. A module of the same name may then be loaded from the config folder's modules in its place.* | no |
 | `ViewCap` | 1024 | The most bodies any survivor is shown at once. A client asks for what its graphics setting names, up to this. *Ours. ARK has no key.* | yes |
 | `SnapshotBytesMax` | 1100 | The most bytes of a snapshot a client may ask for. Thirty snapshots are sent a second, so 1100 is 33 KB/s to each survivor. *Ours. ARK has no key.* | yes |
 | `MaxEntities` | 524288 | The most bodies the world holds at once: creatures wild and tamed, survivors, eggs, bags, caches, arrows left standing and things thrown. Memory is taken as the world fills, 188 bytes a body: 0.8 MB to start with and 94 MB for all 524288. A place is kept for each of MaxPlayers. *Ours. ARK has no key.* | yes |
