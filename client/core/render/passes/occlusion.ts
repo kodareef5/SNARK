@@ -171,18 +171,21 @@ export class Occlusion implements Pass {
     p.tileCount = tiles;
     // The near store's draws, and its chunks' casters.
     const tris = this.trisOfMesh, box = this.put.boxOf;
-    let kept = 0;
+    // The rows kept, which once the first is hidden are moved down together.
+    const keep = this.keep;
+    let kept = 0, from = -1;
     for (let d = 0; d < p.drawCount; d++) {
       const o = d * 6;
       if (this.put.boxed[d] === 0 || !h.hidesOver(box[o]!, box[o + 1]!, box[o + 2]!, box[o + 3]!, box[o + 4]!, box[o + 5]!)) {
-        if (kept !== d) this.put.moveRow(d, kept);
-        kept++;
+        keep[kept++] = d;
         continue;
       }
+      if (from < 0) from = kept;
       const copies = this.put.passOf[d] === (NEAR | FAR) ? 2 : 1;
       p.triangles -= ((p.drawFlags[d]! & (DRAW_TEXTURED | DRAW_RANGED)) !== 0 ? p.drawIndexCount[d]! / 3 : tris[p.drawMesh[d]!]![p.drawLod[d]!]!) * p.drawInstances[d]! * copies;
       this.put.doubled -= copies - 1;
     }
+    if (from >= 0) this.put.keepRows(keep, from, kept);
     // The rows let go take what beginFrame gives every row, which draws that leave them alone count on.
     p.drawFade.fill(0, kept, p.drawCount);
     p.drawHand.fill(0, kept, p.drawCount);
@@ -249,6 +252,9 @@ export class Occlusion implements Pass {
     }
     return true;
   }
+
+  /** Scratch: the draws kept, by row. */
+  private readonly keep = new Uint16Array(MAX_DRAWS);
 
   /** Per chunk asked of this frame, whether it leaves no face of a neighbour's open (`sealed`). */
   private readonly closes = new Map<number, boolean>();

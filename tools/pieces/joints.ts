@@ -141,6 +141,8 @@ export class JointBench {
     lay?.(structs, this.reg);
     this.scene = new Scene({ dims, hf, structs }, this.reg, pack);
     this.scene.viewHeight = side;
+    // Its users read every chunk's instances after one frame, seen or not.
+    this.scene.lazyLayout = false;
     const wide = Math.round(side / 3);
     this.raster = new Rasterizer(wide, side, pack, hf);
     [this.cam.aspect, this.cam.fovY] = [wide / side, FOV];

@@ -1077,7 +1077,8 @@ for (const b of [3, 1, 2]) {
   standOff(b);
   t0 = performance.now();
   packet = scene.build(cam, null);
-  record(`${tier}: first frame, building instance buffers`, performance.now() - t0, "ms");
+  // Only the chunks that may be seen or cast are laid out, and those near laid out ahead over the frames after.
+  record(`${tier}: first frame, building instance buffers`, performance.now() - t0, "ms", 100);
   const frame: number[] = [];
   for (let i = 0; i < 300; i++) {
     cam.yaw += 0.002;
