@@ -68,7 +68,7 @@ import { memberWorld, type PermissionOp } from "../shared/permissions/model.ts";
 import { changeWords } from "../shared/permissions/commands.ts";
 import { makePassword, passwordHash } from "./permissions/secrets.ts";
 import { applyPlan, type Applied, type ImportPlan } from "./permissions/import.ts";
-import { IdRegister, catchUp } from "./permissions/register.ts";
+import { IdRegister, catchUp, tellLost } from "./permissions/register.ts";
 import { RANK_CLUSTER, RANK_MAP, RANK_NAMES, RANK_STAFF } from "../shared/ranks.ts";
 import { CHEAT_GUESSES } from "../shared/console.ts";
 import { DeadlineHeap } from "../shared/sim/schedule.ts";
@@ -704,7 +704,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     tribeMembers: (team) => (tribes.byId.get(team)?.members ?? []).map((pid) => records.byPid.get(pid)).map((rec) => (rec ? idText(rec) : "")).filter((id) => id !== ""),
   });
   // Before anything can make an ID or a team, so a save put back from a backup or started afresh makes none twice.
-  catchUp(permissions, records, say);
+  const behindFrom = catchUp(permissions, records, say);
   const register = new IdRegister(permissions, records, say);
   // What the cluster's folder says came and went that the save does not know is done again now, before anything resumes.
   cluster?.start(
@@ -747,6 +747,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     else register.knows(rec);
   }
   register.write();
+  if (behindFrom >= 0) tellLost(permissions, records.worldId, behindFrom, (id) => ids.find(id) !== null, say);
   const taming = new Taming({ world, game, records, items, survival, buffs, rules, lists, tribes, deadlines, creatures, progression, onNotice: (pid, text) => notice(pid, text), openOf: (c) => containers.openOf(c), refresh: (rec) => refreshBody(rec), onTamed: (rec) => {
     const e = records.entOf.get(rec.pid);
     spawner?.left(rec);

@@ -1,15 +1,24 @@
 // A world's part in the permissions register (server/permissions/store.ts): its counters never go back past what the
 // register holds, and each survivor ID it makes or comes to know is written there, a write only on a tick that has one.
+import { idParts } from "../../shared/ids.ts";
+import { RANK_STAFF } from "../../shared/ranks.ts";
 import type { EntityRecord, Records } from "../records.ts";
 import { idText } from "../survivor-ids.ts";
 import { POLL_MS, type Issue, type Permissions } from "./permissions.ts";
 
+/** The most lost survivors the operator is told of one by one. */
+const LOST_MOST = 20;
+
 /** What the operator is told when a write fails. */
 const FAILED = `the permissions register could not be written: it is tried again in ${POLL_MS / 1000} s`;
 
-/** Raises the world's counters to the register's marks where the save is behind them, as after a restore or a wipe. */
-export function catchUp(permissions: Pick<Permissions, "marks">, records: Records, say: (line: string) => void): void {
+/**
+ * Raises the world's counters to the register's marks where the save is behind them, as after a restore or a wipe.
+ * Answers the survivor count the save had if it was behind, else -1.
+ */
+export function catchUp(permissions: Pick<Permissions, "marks">, records: Records, say: (line: string) => void): number {
   const marks = permissions.marks(records.worldId);
+  const had = marks.survivor > records.nextSurvivor ? records.nextSurvivor : -1;
   if (marks.survivor > records.nextSurvivor) {
     say(`the save is behind the permissions register: survivor numbers go on from ${marks.survivor}, not ${records.nextSurvivor}`);
     records.nextSurvivor = marks.survivor;
@@ -18,6 +27,34 @@ export function catchUp(permissions: Pick<Permissions, "marks">, records: Record
     say(`the save is behind the permissions register: team numbers go on from ${marks.team}, not ${records.nextTeam}`);
     records.nextTeam = marks.team;
   }
+  return had;
+}
+
+/**
+ * After a save was behind: tells the operator of each survivor this world made from count `from` on that is in no save
+ * here now and still holds a staff group or a password. Their password still opens the admin pages, and only the
+ * operator knows whether it should.
+ */
+export function tellLost(permissions: Permissions, origin: number, from: number, here: (id: string) => boolean, say: (line: string) => void): void {
+  let more = 0;
+  let told = 0;
+  for (const row of permissions.allIssued()) {
+    const parts = idParts(row.id);
+    // One last known on another map travelled there, and is that map's.
+    if (!parts || parts.world !== origin || parts.n < from || row.world !== permissions.world || here(row.id)) continue;
+    const groups = [...new Set(permissions.membersOf("survivor", row.id).filter((m) => (permissions.group(m.group)?.rank ?? 0) >= RANK_STAFF).map((m) => m.group))];
+    const password = permissions.secretOf(row.id) !== "";
+    if (groups.length === 0 && !password) continue;
+    if (told >= LOST_MOST) {
+      more++;
+      continue;
+    }
+    told++;
+    const holds = [groups.length > 0 ? `is still in ${groups.join(", ")}` : "", password ? "has a password" : ""].filter((part) => part !== "").join(" and ");
+    const undo = [groups.length > 0 ? "Permissions.Remove" : "", password ? `Permissions.Password ${row.id} clear` : ""].filter((part) => part !== "").join(" and ");
+    say(`the save no longer has ${row.name || "a survivor"} (${row.id}), who ${holds}: ${undo} ${groups.length > 0 && password ? "take those" : "takes that"} away`);
+  }
+  if (more > 0) say(`the save no longer has ${more} more who hold a staff group or a password: the Permissions page lists them`);
 }
 
 export class IdRegister {
