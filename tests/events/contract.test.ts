@@ -172,6 +172,12 @@ test("a saved event's values are fitted again to its kind's fields as they are n
   ({ h } = world([changed], db));
   h.run(100);
   expect(resumed).toEqual({ factor: 2, minutes: 5, bonus: 7, saved: 1 });
+  h.run(2000);
+  h.host.shutdown();
+  // Taken up by version 2 once, it is kept as version 2's: a second restart does not migrate it again.
+  ({ h } = world([changed], db));
+  h.run(100);
+  expect(resumed.saved).toBe(2);
   h.host.shutdown();
 });
 
@@ -216,9 +222,17 @@ test("a module hears map events on the bus, may refuse a call, and calls and end
   expect(caller!.mapEvents.cancel(id as number, "enough")).toBe("");
   expect(caller!.mapEvents.cancel(id as number)).toBe(`no live event ${id}`);
   h.run(200);
-  const names = heard.lines.map((l) => l.split(":")[0]);
+  // Switched off in the book, a module may not call it; the console still may.
+  tune(h, "xp_hour", {});
+  const store = h.host.eventBook;
+  expect(store.save({ ...store.book, kinds: { xp_hour: { on: false } } }, store.book.revision, "test", "").ok).toBe(true);
+  expect(caller!.mapEvents.call("xp_hour")).toBe("xp_hour is switched off in the event book");
+  expect(h.say(h.sessions[0]!, "enablecheats")).toBeDefined();
+  const called = h.say(h.sessions[0]!, "event call xp_hour 1");
+  expect(called.some((l) => l.startsWith("called"))).toBe(true);
+  const names = heard.lines.slice(0, 5).map((l) => l.split(":")[0]);
   expect(names).toEqual(["mapevent.call", "mapevent.call", "mapevent.called", "mapevent.started", "mapevent.ended"]);
-  expect(heard.lines.at(-1)).toContain(`"why":"enough"`);
+  expect(heard.lines[4]).toContain(`"why":"enough"`);
 });
 
 test("a kind whose start throws makes nothing, and one that keeps throwing is switched off", () => {
@@ -247,4 +261,33 @@ test("a kind whose start throws makes nothing, and one that keeps throwing is sw
   throws = false;
   expect(events.call("broken", { source: "test" })).toContain("is off");
   expect(h.say(h.sessions[0]!, "event kinds")[0]).toContain("off, its handlers threw");
+});
+
+test("a preview applies a start's own acts on its parts: one made and taken out is not shown", () => {
+  const fleeting: ModuleDef = {
+    name: "fleeting",
+    api: 1,
+    setup: (m) =>
+      m.mapEvent({
+        id: "fleeting",
+        label: "Fleeting",
+        about: "",
+        tuning: {},
+        on: {
+          start(run) {
+            const column = { kind: "light" as const, rgb: 0xffffff, height: 20, wide: 1, sound: "" };
+            const gone = run.site({ x: 500, z: 500, column });
+            run.site({ x: 520, z: 500, column });
+            if (run.part(gone)?.type === "site") run.remove(gone);
+          },
+        },
+      }),
+  };
+  const { h, events } = world([fleeting]);
+  const preview = events.preview("fleeting", 9);
+  if (typeof preview === "string") throw new Error(preview);
+  const made = events.call("fleeting", { source: "test", seed: 9 });
+  if (typeof made === "string") throw new Error(made);
+  expect([preview.sites.map((s) => s.spec.x), made.sites.map((s) => s.x)]).toEqual([[520], [520]]);
+  h.host.shutdown();
 });

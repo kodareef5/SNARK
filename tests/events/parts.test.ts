@@ -317,3 +317,31 @@ test("a module may scale a blow on a craft, or refuse it", () => {
   fire(ev, "pistol", "round_pistol");
   expect(health(ev)).toBe(was);
 });
+
+test("three events of six sites, each its own colour, reach every session whole", () => {
+  const beacons: ModuleDef = {
+    name: "beacons",
+    api: 1,
+    setup: (m) =>
+      m.mapEvent({
+        id: "beacons",
+        label: "Beacons",
+        about: "",
+        tuning: {},
+        on: {
+          start(run) {
+            for (let k = 0; k < 6; k++) run.site({ x: 400 + k * 10, z: 400 + run.rng.range(0, 100), column: { kind: "light", rgb: (run.seed * 6 + k) * 40503 & 0xffffff, height: 40, wide: 2, sound: "" } });
+          },
+        },
+      }),
+  };
+  const { h } = world([beacons]);
+  const of = feeds(h);
+  for (let k = 0; k < 3; k++) {
+    const made = h.host.mapEvents.call("beacons", { source: "test", seed: k + 1 });
+    if (typeof made === "string") throw new Error(made);
+  }
+  h.run(300);
+  const last = of("ada").at(-1)!;
+  expect([last.looks.length, last.rows.map((r) => r.parts.length)]).toEqual([18, [6, 6, 6]]);
+});

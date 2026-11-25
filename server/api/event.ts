@@ -56,7 +56,10 @@ export interface EventRun<F extends Fields = Fields> {
   /** "schedule", "console", "page", "module", or a module's name, and the schedule's key or "". */
   readonly source: string;
   readonly schedule: string;
-  /** A preview for the events page: parts and lines are recorded and nothing is made, told or kept. */
+  /**
+   * A preview for the events page: parts and lines are recorded and nothing is made, told or kept. `part`, `parts` and
+   * `remove` act on what was recorded, so a preview shows what the call would leave.
+   */
   readonly dry: boolean;
   readonly map: EventMap;
   /** Places the call asked its event to be near, or where each survivor in the world stands. */

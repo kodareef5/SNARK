@@ -17,12 +17,14 @@ export const MAPEVENT_ENDED = 2;
 export const MAPEVENT_STATES = ["notice", "live", "ended"] as const;
 
 const ROWS_BITS = 4;
-/** The most rows a message carries (live events, and those that have just ended), and the most looks. */
+/** The most rows a message carries: live events, and those that have just ended. */
 export const MAPEVENT_ROWS = (1 << ROWS_BITS) - 1;
-export const MAPEVENT_LOOKS = (1 << ROWS_BITS) - 1;
 const PARTS_BITS = 3;
 /** The most parts of one event a message carries. */
 export const ROW_PARTS = (1 << PARTS_BITS) - 1;
+/** Looks are counted and named in 7 bits: room for a look to every part of every row (15 × 7). */
+const LOOK_BITS = 7;
+export const MAPEVENT_LOOKS = (1 << LOOK_BITS) - 1;
 /**
  * Bytes the feed may take. The server encodes it once a change into a writer this big, leaving out what does not fit
  * (those that ended first), and sends each session that as one blob.
@@ -178,7 +180,7 @@ function readLook(r: BitReader): Look {
 function writePart(w: BitWriter, p: PartRow, start: number): void {
   w.bool(p.type === "site");
   w.u8(p.id);
-  w.bits(p.look, ROWS_BITS);
+  w.bits(p.look, LOOK_BITS);
   if (p.type === "site") {
     w.bits(pos(p.x), POS_BITS);
     w.sbits(height(p.y), HEIGHT_BITS);
@@ -219,7 +221,7 @@ function writePart(w: BitWriter, p: PartRow, start: number): void {
 function readPart(r: BitReader, start: number): PartRow | null {
   const site = r.bool();
   const id = r.u8();
-  const look = r.bits(ROWS_BITS);
+  const look = r.bits(LOOK_BITS);
   if (site) {
     const x = r.bits(POS_BITS) / 32;
     const y = r.sbits(HEIGHT_BITS) / 32;
@@ -265,8 +267,10 @@ function readPart(r: BitReader, start: number): PartRow | null {
 export function writeMapEvents(w: BitWriter, feed: MapEventFeed): void {
   // Reserved for the day a change is sent as a difference: true says the list that follows replaces the one held.
   w.bool(true);
-  const looks = Math.min(MAPEVENT_LOOKS, feed.looks.length);
-  w.bits(looks, ROWS_BITS);
+  // A feed the server made never has more: one that did would name looks it did not carry.
+  if (feed.looks.length > MAPEVENT_LOOKS) throw new Error(`a feed has ${MAPEVENT_LOOKS} looks at the most`);
+  const looks = feed.looks.length;
+  w.bits(looks, LOOK_BITS);
   for (let i = 0; i < looks; i++) writeLook(w, feed.looks[i]!);
   const n = Math.min(MAPEVENT_ROWS, feed.rows.length);
   w.bits(n, ROWS_BITS);
@@ -290,7 +294,7 @@ export function writeMapEvents(w: BitWriter, feed: MapEventFeed): void {
 export function readMapEvents(r: BitReader): MapEventFeed | null {
   if (!r.bool()) return null;
   const looks: Look[] = [];
-  for (let n = r.bits(ROWS_BITS); n > 0; n--) looks.push(readLook(r));
+  for (let n = r.bits(LOOK_BITS); n > 0; n--) looks.push(readLook(r));
   const rows: MapEventRow[] = [];
   for (let n = r.bits(ROWS_BITS); n > 0; n--) {
     const id = r.u16();

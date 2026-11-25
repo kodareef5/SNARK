@@ -105,9 +105,9 @@ export interface EventSite {
 export interface MapEvent {
   id: number;
   readonly kind: string;
-  /** The module that defined its kind when it was called, and that kind's version. */
+  /** The module that defined its kind when it was called, and the version of the kind it was last kept by. */
   readonly module: string;
-  readonly version: number;
+  version: number;
   state: number;
   readonly called: number;
   start: number;
@@ -468,6 +468,8 @@ export class MapEvents implements RunHost {
       kinds: () => [...this.kinds.values()].map((k) => ({ id: k.def.id, label: k.def.label, module: k.module })),
       list: () => this.events.map((e) => this.info(e)),
       call: (kind, o = {}) => {
+        // Switched off in the book, a kind is called from the console and the page alone.
+        if (this.kinds.has(kind) && !kindOn(this.book, kind)) return `${kind} is switched off in the event book`;
         const made = this.call(kind, { source: module, notice: o.notice, seed: o.seed, near: o.near });
         return typeof made === "string" ? made : made.id;
       },
@@ -1177,7 +1179,12 @@ export class MapEvents implements RunHost {
         else if (c.down === 0 && !c.gone) deadlines.push(Math.max(tick + 1, ev.start + c.after + c.ticks + 1), this.deadline, ev.id, 0);
         if (ev.state === MAPEVENT_LIVE) this.sky(ev, c);
       }
-      if (k && !k.off) this.later(ev, "resume", (run) => k.def.on.resume?.(run, s.version));
+      // Once its kind has taken it up without throwing, it is that kind's version's: the next restart does not migrate it again.
+      if (k && !k.off)
+        this.later(ev, "resume", (run) => {
+          k.def.on.resume?.(run, s.version);
+          ev.version = k.def.version ?? 1;
+        });
     }
     for (const rec of [...records.byPid.values()]) {
       if (claimed.has(rec.pid) || !rec.extra.has(MAPEVENT_TAG)) continue;

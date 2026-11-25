@@ -147,16 +147,31 @@ export class Run implements EventRun {
     if (!this.preview) this.host.down(this.ev, craft);
   }
 
+  /** On a preview a part is taken out of what was recorded, so the preview shows what the call would leave. */
   remove(part: number): void {
-    if (!this.preview) this.host.remove(this.ev, part);
+    const p = this.preview;
+    if (!p) return this.host.remove(this.ev, part);
+    p.crafts = p.crafts.filter((c) => c.id !== part);
+    p.crates = p.crates.filter((c) => c.id !== part);
+    p.sites = p.sites.filter((c) => c.id !== part);
   }
 
   part(id: number): PartView | null {
-    return this.preview ? null : this.host.view(this.ev, id);
+    return this.parts().find((p) => p.id === id) ?? null;
   }
 
+  /** On a preview, the parts recorded so far, as a call would have them as it is made: craft still to come. */
   parts(): readonly PartView[] {
-    return this.preview ? [] : this.host.views(this.ev);
+    const p = this.preview;
+    if (!p) return this.host.views(this.ev);
+    const out: PartView[] = [];
+    for (const { id, spec } of p.crafts) {
+      const first = spec.points[0]!;
+      out.push({ type: "craft", id, state: "coming", x: first.x, y: first.y, z: first.z, low: 0, health: spec.health, most: spec.health, shield: spec.shield ? "closed" : "none" });
+    }
+    for (const { id, spec } of p.crates) out.push({ type: "crate", id, pid: 0, x: spec.x, y: 0, z: spec.z, stacks: 0 });
+    for (const { id, spec } of p.sites) out.push({ type: "site", id, x: spec.x, z: spec.z });
+    return out.sort((a, b) => a.id - b.id);
   }
 
   private record<T>(list: { id: number; spec: T }[], spec: T): number {

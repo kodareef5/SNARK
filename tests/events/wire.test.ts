@@ -100,3 +100,16 @@ test("a message cut short, one naming a look it did not carry, and one giving a 
   writeMapEvents(wrong, { looks: [{ type: "column", column: FIRE }], rows: [row] });
   expect(readMapEvents(new BitReader(wrong.bytes()))).toBeNull();
 });
+
+test("a feed with more looks than its rows' count is read whole: three events of six sites, each its own colour", () => {
+  const columns = Array.from({ length: 18 }, (_, k): ColumnLook => ({ ...FIRE, rgb: 0x100000 + k * 4099 }));
+  const rows: MapEventRow[] = [0, 1, 2].map((e) => ({ id: e + 1, kind: "beacons", sound: "", state: MAPEVENT_LIVE, called: 0, start: 0, ended: 0, parts: Array.from({ length: 6 }, (_, k): SiteRow => ({ type: "site", id: k + 1, look: e * 6 + k, x: 100 + k, y: 0, z: 100 + e, from: 0, to: 0 })) }));
+  const { read } = send({ looks: columns.map((column) => ({ type: "column", column })), rows });
+  expect(read?.rows.flatMap((r) => r.parts.map((p) => p.look))).toEqual(Array.from({ length: 18 }, (_, k) => k));
+  // Seven parts to every one of fifteen rows, each its own look: the most a server makes, and still read whole.
+  const most: MapEventRow[] = Array.from({ length: 15 }, (_, e) => ({ ...rows[0]!, id: e + 1, parts: Array.from({ length: 7 }, (_, k): SiteRow => ({ type: "site", id: k + 1, look: e * 7 + k, x: k, y: 0, z: e, from: 0, to: 0 })) }));
+  const many = Array.from({ length: 105 }, (_, k): ColumnLook => ({ ...FIRE, rgb: k }));
+  expect(send({ looks: many.map((column) => ({ type: "column", column })), rows: most }).read?.rows.length).toBe(15);
+  // More than a feed can name is refused at the writer, never sent short.
+  expect(() => writeMapEvents(new BitWriter(MAPEVENT_BYTES), { looks: Array.from({ length: 128 }, () => ({ type: "column", column: FIRE })), rows: [] })).toThrow("looks at the most");
+});
