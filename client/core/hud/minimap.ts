@@ -8,12 +8,13 @@ import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import { MARK_MATE, MARK_OTHER, MARK_SPOT, MARK_TAME, MAX_MARKS, PLAYERS_OFF, type Marks } from "../../../shared/world/tactical.ts";
 import type { ClientSession, RemoteSample } from "../session.ts";
 import type { Chart } from "../tactical.ts";
+import type { Settings } from "../settings.ts";
 import { IMAGE_ARROW, arrowSheet, placeArrow } from "../ui/arrow.ts";
 import { K_BUTTON, K_IMAGE, K_PANEL, fitText } from "../ui/nodes.ts";
 import { chartEdge } from "../ui/field-finish.ts";
 import { S_FRAME, S_HUD_HIT, S_HUD_KEY, S_ICE, S_LABEL, S_MARK_CREATURE, S_MARK_DEATH, S_MARK_PLAYER, S_MARK_SELF, S_MARK_SPAWN } from "../ui/style.ts";
 import { SPOT_INK } from "./marks.ts";
-import type { HudWidget } from "./widget.ts";
+import { band, type HudWidget } from "./widget.ts";
 
 /** One of the reader's tribe is a mate and one of its creatures a tame. A player is a survivor of another tribe, and a creature is not the tribe's. */
 export type MarkerKind = "self" | "mate" | "tame" | "death" | "spawn" | "player" | "creature" | "drop" | "dropPip" | "spotted";
@@ -48,6 +49,9 @@ export const KEY_MINIMAP_IN = 5392;
 export const KEY_MARKER = 4000;
 /** The reader's arrow on the minimap. */
 export const KEY_SELF_ARROW = 6590;
+/** Named places on the corner chart, then its edge, its north and its scale. */
+const KEY_CHART_PLACE = 9170;
+const KEY_CHART_EDGE = 9210;
 /** The arrow's side on a minimap MINIMAP_SIZE across. */
 const ARROW_SIZE = 24;
 /** Indices of the minimap's picture and the map screen's in the frame's image table. */
@@ -166,8 +170,23 @@ function fillMarkers(model: MinimapModel, session: ClientSession, remote: Remote
   markView(model, hf, remote, team, false, false, "creature");
 }
 
+/** The minimap a step closer (`turn` 1) or further, kept in the settings. */
+export function zoomMinimap(m: { chart: Chart | null }, settings: Settings, turn: number): void {
+  const chart = m.chart;
+  if (!chart) return;
+  chart.key(turn > 0 ? "Equal" : "Minus", true, false);
+  settings.minimapZoom = chart.miniZoom;
+  settings.changed();
+}
+
 export const MINIMAP: HudWidget<MinimapModel> = {
   name: "minimap",
+  bands: [band(KEY_MINIMAP_FRAME, 3), band(KEY_MARKER, MAX_MARKERS), band(KEY_MINIMAP_OUT, 4), band(KEY_SELF_ARROW, 1), band(KEY_CHART_PLACE, 4), band(KEY_CHART_EDGE, 7)],
+  press(key, m, settings) {
+    if (key !== KEY_MINIMAP_OUT && key !== KEY_MINIMAP_IN) return false;
+    zoomMinimap(m, settings, key === KEY_MINIMAP_OUT ? -1 : 1);
+    return true;
+  },
   make: () => ({ markers: [], unmarked: 0, pool: [], chart: null, minimapVisible: true, mapSeen: -2, mapBox: { x: 0, y: 0, size: 1 }, pointedU: -1, pointedV: -1, zoomAsked: -1000, marksSeen: -1, inView: new Uint8Array(MAX_MARKS), clock: "", privateU: -1, privateV: -1, chartWorld: null, miniPixels: MINIMAP_SIZE, chartName: "", chartPlaces: [] }),
   fill(model, c) {
     const session = c.session, world = session.world!, b = session.own, scale = c.scale, a = c.frame;
@@ -201,7 +220,7 @@ export const MINIMAP: HudWidget<MinimapModel> = {
     if (options.minimap) {
       const mapTop = mapY;
       m.miniPixels = MAP;
-      chartEdge(f, 9210, mapX, mapTop, MAP);
+      chartEdge(f, KEY_CHART_EDGE, mapX, mapTop, MAP);
       f.add(KEY_MINIMAP_FRAME, K_PANEL, mapX, mapTop, MAP, MAP, S_FRAME).alpha = .8;
       const picture = f.add(KEY_MINIMAP, K_IMAGE, mapX, mapTop, MAP, MAP, S_FRAME);
       picture.image = IMAGE_MINIMAP;
@@ -232,31 +251,31 @@ export const MINIMAP: HudWidget<MinimapModel> = {
         for (const place of m.chartPlaces) {
           const u = (place.u - view.u0) / view.du, v = (place.v - view.v0) / view.dv;
           if (u <= 0 || u >= 1 || v <= 0 || v >= 1) continue;
-          f.add(9170 + shownPlaces++, K_PANEL, mapX + u * (MAP - 3), mapTop + v * (MAP - 3), 3, 3, S_MARK_SELF).tint = 0xb2d2e3;
+          f.add(KEY_CHART_PLACE + shownPlaces++, K_PANEL, mapX + u * (MAP - 3), mapTop + v * (MAP - 3), 3, 3, S_MARK_SELF).tint = 0xb2d2e3;
           if (shownPlaces === 4) break;
         }
       }
       if (view && m.privateU >= 0) {
         const u = (m.privateU - view.u0) / view.du, v = (m.privateV - view.v0) / view.dv;
         if (u >= 0 && u <= 1 && v >= 0 && v <= 1) {
-          f.add(5393, K_PANEL, mapX + Math.min(MAP - 3, Math.max(3, u * MAP)) - 3, mapY + Math.min(MAP - 3, Math.max(3, v * MAP)) - 3, 6, 6, S_MARK_SELF).tint = 0xeebd72;
+          f.add(KEY_MINIMAP_OUT + 2, K_PANEL, mapX + Math.min(MAP - 3, Math.max(3, u * MAP)) - 3, mapY + Math.min(MAP - 3, Math.max(3, v * MAP)) - 3, 6, 6, S_MARK_SELF).tint = 0xeebd72;
         }
       }
       if (at.controls && !at.touch) {
-        f.text(9214, mapX + MAP - 19, mapY + 3, 13, S_HUD_KEY, "N");
+        f.text(KEY_CHART_EDGE + 4, mapX + MAP - 19, mapY + 3, 13, S_HUD_KEY, "N");
         if (view && !mapTools) {
           const metres = m.mapSizeX * view.du;
           const power = 10 ** Math.floor(Math.log10(Math.max(1, metres * .25)));
           const length = (metres * .25 >= power * 2 ? 2 : 1) * power;
           const width = Math.max(2, MAP * length / metres);
-          f.add(9215, K_PANEL, mapX + 6, mapY + MAP - 6, width, 1, S_ICE).alpha = .85;
-          f.text(9216, mapX + 6, mapY + MAP - 21, 52, S_HUD_KEY, length >= 1000 ? (length / 1000) + " km" : length + " m");
+          f.add(KEY_CHART_EDGE + 5, K_PANEL, mapX + 6, mapY + MAP - 6, width, 1, S_ICE).alpha = .85;
+          f.text(KEY_CHART_EDGE + 6, mapX + 6, mapY + MAP - 21, 52, S_HUD_KEY, length >= 1000 ? (length / 1000) + " km" : length + " m");
         }
       }
       if (at.controls && !at.touch && m.chartName) {
         const self = m.markers[0];
         const grid = self?.kind === "self" ? "  " + String.fromCharCode(65 + Math.min(7, Math.max(0, Math.floor(self.u * 8)))) + (1 + Math.min(7, Math.max(0, Math.floor(self.v * 8)))) : "";
-        f.text(5394, mapX + 6, mapY + 4, MAP - 12, S_HUD_KEY, fitText((/^\d+$/.test(m.chartName) ? "" : m.chartName) + grid, MAP - 32, S_HUD_KEY));
+        f.text(KEY_MINIMAP_OUT + 3, mapX + 6, mapY + 4, MAP - 12, S_HUD_KEY, fitText((/^\d+$/.test(m.chartName) ? "" : m.chartName) + grid, MAP - 32, S_HUD_KEY));
       }
       if (inspect || options.diagnostics) f.text(KEY_CLOCK, mapX, mapTop + MAP + 4, MAP, S_LABEL, m.clock);
       if (mapTools) for (let i = 0; i < 2; i++) {
@@ -272,6 +291,13 @@ export const MINIMAP: HudWidget<MinimapModel> = {
 /** The button that hides and shows the minimap, over the compass. */
 export const MINIMAP_TOGGLE: HudWidget = {
   name: "minimap toggle",
+  bands: [band(KEY_MINIMAP_TOGGLE, 1)],
+  press(key, _m, settings) {
+    if (key !== KEY_MINIMAP_TOGGLE) return false;
+    settings.minimap = !settings.minimap;
+    settings.changed();
+    return true;
+  },
   build(f, _m, at) {
     const { options, dash, dashW, right, MAP, mapY, mapTools } = at;
     if (mapTools) {

@@ -9,7 +9,7 @@ import {
 import { K_BAR, type UiFrame } from "../ui/nodes.ts";
 import { glass } from "../ui/skin.ts";
 import { S_MENU_FOCUS, S_MENU_HEADING, S_MENU_NOTE, S_SKATE_BAD, S_SKATE_GOOD, S_SKATE_LINE, S_SKATE_METER, S_SKATE_SCORE, S_SKATE_TRICK, S_WARNING } from "../ui/style.ts";
-import type { HudWidget } from "./widget.ts";
+import { band, type HudWidget } from "./widget.ts";
 
 export const KEY_SKATE = 3540;
 export const KEY_TRICKS = 3800;
@@ -57,6 +57,7 @@ function lineShape(s: { count: number; pending: number; move: number; trick: num
 
 export const SKATE: HudWidget<SkateModel> = {
   name: "skate feed",
+  bands: [band(KEY_SKATE, 8), band(KEY_TRICKS, 100)],
   make: () => ({ skateFeed: new SkateFeed() }),
   fill(m, c) {
     const feed = m.skateFeed, dash = c.frame?.dash, s = dash?.board ? c.session.own.skate : null, now = c.nowMs;

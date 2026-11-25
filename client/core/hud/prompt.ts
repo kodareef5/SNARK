@@ -2,7 +2,7 @@
 
 import { fitText, lineHeight } from "../ui/nodes.ts";
 import { S_PROMPT } from "../ui/style.ts";
-import type { HudWidget } from "./widget.ts";
+import { band, type HudWidget } from "./widget.ts";
 
 export const KEY_PROMPT = 33;
 /** The prompt's second line, under the first: how a city piece stands, under its building's name. */
@@ -14,6 +14,7 @@ export interface PromptModel {
 
 export const PROMPT: HudWidget<PromptModel> = {
   name: "prompt",
+  bands: [band(KEY_PROMPT, 1), band(KEY_PROMPT_UNDER, 1)],
   make: () => ({ prompt: "" }),
   fill(m, c) {
     if (c.frame) m.prompt = c.frame.prompt;

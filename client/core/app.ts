@@ -2,8 +2,7 @@
 // here, and draws what frame() returns. Tests drive this class directly.
 
 import { heldScene } from "../../shared/video/screen.ts";
-import { KEY_FIELD_TELEMETRY } from "./hud/readout.ts";
-import { runDockAction } from "./ui/dock-actions.ts";
+import { zoomMinimap } from "./hud/minimap.ts";
 import { installFieldIcons } from "./ui/field-icons.ts";
 import { Icons } from "./assets/icons.ts";
 import { Visor } from "./visor.ts";
@@ -86,7 +85,7 @@ import { SkyClock } from "./sky.ts";
 import type { SoundCode } from "./sound-late.ts";
 import { SplitPort } from "./sound/split.ts";
 
-import { IMAGE_MAP, IMAGE_MINIMAP, KEY_MINIMAP_TOGGLE, KEY_MINIMAP_OUT, KEY_MINIMAP_IN, KEY_VITAL } from "./ui/hud.ts";
+import { IMAGE_MAP, IMAGE_MINIMAP, pressHud } from "./ui/hud.ts";
 import { canvasHeight, textWidth, wrapText } from "./ui/nodes.ts";
 import { glass } from "./ui/skin.ts";
 import type { EmoteMenu } from "./ui/emotes.ts";
@@ -256,7 +255,7 @@ export class App {
     this.ui.registry = reg;
     this.ui.palette = pack.palette;
     this.ui.touchPlay = this.touch;
-    this.ui.dispatchDock = action => runDockAction(action, this);
+    this.ui.pressKey = (code) => { this.key(code, true, false, this.ui.inputDevice); this.key(code, false, false, this.ui.inputDevice); };
     const app = this;
     this.padTarget = {
       get inMenu() { return !app.ui.wantsPointerLock; },
@@ -579,7 +578,7 @@ export class App {
   blur(): void {
     if (this.touch.primary) this.touchTarget.cancelPrimary?.();
     this.controls.release();
-    this.ui.chart.cancelContact();
+    this.ui.cancelPresses();
     this.touch.reset();
     this.prompts.release();
     this.alt = this.shift = false;
@@ -606,27 +605,17 @@ export class App {
   pointer(kind: number, key: number, x: number, y: number, button: number, finger = 0): void {
     if (finger > 0) this.ui.inputDevice = 2;
     if (kind === 0 && (key === KEY_ZONE_MOVE || key === KEY_ZONE_LOOK)) {
-      if (this.ui.dock.open) { this.ui.dock.reset(); return; }
+      if (this.ui.fieldPress(finger)) return;
       if (!this.ui.playingField) return;
     }
     if (this.touch.pointer(kind, key, x, y, finger, this.nowMs, this.touchTarget, this.unit)) return;
-    if ((this.ui.playingField || this.ui.inspect) && this.ui.dock.pointer(kind, key, x, y, button, finger, this.ui.frame, this.ui.dispatchDock)) return;
-    if ((this.ui.playingField || this.ui.inspect) && kind === 0 && button === 0) {
-      if (key === KEY_FIELD_TELEMETRY) this.ui.toggleDiagnostics();
-      if (key >= KEY_VITAL && key < KEY_VITAL + this.hud.vitals.length * 2) { this.ui.settings.vitalLabels = !this.ui.settings.vitalLabels; this.ui.settings.changed(); }
-      if (key === KEY_MINIMAP_TOGGLE) { this.ui.settings.minimap = !this.ui.settings.minimap; this.ui.settings.changed(); }
-      if (key === KEY_MINIMAP_OUT || key === KEY_MINIMAP_IN) this.zoomMini(key === KEY_MINIMAP_OUT ? -1 : 1);
-    }
+    if ((this.ui.playingField || this.ui.inspect) && kind === 0 && button === 0) pressHud(this.hud, key, this.ui.settings);
     this.ui.pointer(kind, key, x, y, button, this.session, finger);
     if (this.ui.screen<MenuScreen>("menu").menu || this.ui.opened("air")) this.blur();
   }
 
   zoomMini(turn: number): void {
-    const chart = this.hud.chart;
-    if (!chart) return;
-    chart.key(turn > 0 ? "Equal" : "Minus", true, false);
-    this.ui.settings.minimapZoom = chart.miniZoom;
-    this.ui.settings.changed();
+    zoomMinimap(this.hud, this.ui.settings, turn);
   }
 
   /** The entity index of the creature the server shows in the arms of the viewer's own body, or -1. */
@@ -886,7 +875,7 @@ export class App {
     ui.placing = this.vehiclePlacement.active;
     ui.canTalk = this.voice !== null && this.voice.notice === "";
     ui.creatureAhead = this.lookedAt >= 0;
-    ui.hasAttackTarget = this.target >= 0;
+    ui.aimed = this.target >= 0;
     this.touch.frame(nowMs, ui.touch ? ui.touchShown : 0, this.touchTarget, ui.touch && ui.playingField && !!ui.frame.find(KEY_ZONE_LOOK));
     ui.screen<MenuScreen>("menu").storage?.step(ui, forTouch(tierOf(ui.settings.tier), ui.settings.touchFirst), this.stream?.port ?? null, this.scene?.assets.residency ?? null, this.sounds?.library ?? null, nowMs);
     this.nowMs = nowMs;

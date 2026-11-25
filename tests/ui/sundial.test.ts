@@ -215,6 +215,22 @@ test("a drag turns the hour under the hand at once, tells the server at most ten
   expect(sent.length - before).toBe(1);
 });
 
+test("A cancelled touch on the dial ends the turn where the hand stands", () => {
+  const f = new UiFrame(), dial = new Sundial(), { session, sent } = fakeSession();
+  dial.build(f, 0, 0, 392, 500, session, hudAt(9), KEY_SUNDIAL);
+  const { cx, cy, radius } = dial.box;
+  const a = angleOfHour(15, UNIT_CLOCK) * TAU;
+  const x = cx + radius * 0.8 * Math.sin(a), y = cy - radius * 0.8 * Math.cos(a);
+  dial.pointer(0, KEY_SUNDIAL, x, y, session);
+  dial.pointer(3, KEY_SUNDIAL, x, y, session);
+  expect(sent.at(-1)!.last).toBe(true);
+  // The next drag starts a new turn instead of carrying on the old one.
+  const before = sent.length;
+  dial.pointer(2, KEY_SUNDIAL, x + 5, y, session);
+  dial.pump(session, true);
+  expect(sent.length).toBe(before);
+});
+
 test("keys and the pad nudge by quarter hours, or whole ones, and a run of nudges is one turn", () => {
   const f = new UiFrame(), dial = new Sundial(), { s, session, sent } = fakeSession();
   dial.build(f, 0, 0, 392, 500, session, hudAt(17.4), KEY_SUNDIAL);

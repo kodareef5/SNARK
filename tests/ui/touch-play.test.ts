@@ -375,7 +375,7 @@ test("the bag by touch: a stack picked up is used with Use, and Half puts down h
 test("each situation has its own cluster on the same arcs, at every window", () => {
   const helm = (boat: boolean, rotor: boolean, more: object = {}) => (d: Direct): void => { d.hud.vehicle = Object.assign(new VehicleTelemetry(), { active: true, rotor, boat }, more); };
   const SITUATIONS: [string, (d: Direct) => void, readonly number[], readonly number[]][] = [
-    ["the second page", (d) => { d.ui.touchPlay!.tools = d.ui.touchPlay!.more = true; }, ...SECOND_PAGE],
+    ["the second page", (d) => { d.ui.settings.playControls = d.ui.touchPlay!.more = true; }, ...SECOND_PAGE],
     ["building", (d) => { d.ui.building = true; }, [T_ATTACK, T_RELOAD, T_FOLLOW_ONE, T_SNAP, T_RAISE, T_LOWER, T_CANCEL], [T_JUMP, T_STANCE, T_MORE, T_ROTATE]],
     ["placing a vehicle", (d) => { d.ui.placing = true; }, [T_ATTACK, T_ROTATE, T_SNAP, T_CANCEL], [T_JUMP, T_STANCE, T_MORE, T_RAISE]],
     ["a flyer", (d) => { d.ui.flyer = true; }, [T_ATTACK, T_JUMP, T_ROLL, T_HOLD, T_MORE], [T_STANCE, T_AIM]],
@@ -548,7 +548,7 @@ test("with voice the bar has Talk; one creature is whistled to; chat stands unde
     d.ui.touchPlay!.pointer(1, KEY_TOUCH_BUTTON + T_MIC, 0, 0, 1, 0, target, unit);
     expect(keys, name).toEqual(["KeyB true", "KeyB false"]);
     // The second page's whistles are to every creature that hears, or to the one looked at.
-    d.ui.touchPlay!.tools = d.ui.touchPlay!.more = true;
+    d.ui.settings.playControls = d.ui.touchPlay!.more = true;
     d.build();
     expect([f.find(KEY_TOUCH_BUTTON + T_FOLLOW) !== null, f.find(KEY_TOUCH_BUTTON + T_FOLLOW_ONE)], name).toEqual([true, null]);
     d.ui.creatureAhead = true;
@@ -588,7 +588,7 @@ test("a whole client by touch builds what its models build", () => {
   run(50);
   clusterFits(app.ui, window, ...SECOND_PAGE, name);
   const turned = touched(window, true, stood(app), app);
-  turned.ui.touchPlay!.tools = turned.ui.touchPlay!.more = true;
+  turned.ui.settings.playControls = turned.ui.touchPlay!.more = true;
   expect(nodes(turned.build())).toEqual(nodes(f));
   // Talk, held, talks.
   app.pointer(0, KEY_TOUCH_BUTTON + T_MIC, 0, 0, 0, 1);

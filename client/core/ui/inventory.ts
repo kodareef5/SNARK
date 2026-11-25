@@ -106,6 +106,7 @@ export class InventoryScreen implements Screen {
   readonly layer = "modal";
   readonly group = "bag";
   readonly hotkey = "KeyI";
+  readonly dock = [{ id: "bag", label: "Inventory", art: "bag", rank: 10, open: (c: ScreenCtx) => c.pressKey("KeyI") }];
   readonly catchAll = true;
   readonly focusNav = true;
   private readonly card = new EquipmentCard();

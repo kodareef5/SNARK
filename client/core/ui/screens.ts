@@ -37,9 +37,19 @@ export class MapScreen implements Screen {
   readonly layer = "modal";
   readonly group = "bag";
   readonly hotkey = "KeyM";
+  readonly dock = [{ id: "map", label: "Map", art: "map", rank: 40, open: (c: ScreenCtx) => c.pressKey("KeyM") }];
   readonly quiet = true;
   mode: "peek" | "tools" | "mark" | "atlas" = "peek";
   get cornerOpen(): boolean { return this.open && this.mode !== "atlas"; }
+  /** The corner chart leaves the body to be played around it. */
+  get keepsField(): boolean { return this.cornerOpen; }
+  /** A mouse's press on the world puts the corner chart away; a finger's moves or acts, and leaves it up. */
+  pressWorld(_c: ScreenCtx, finger: number): boolean {
+    if (finger !== 0) return false;
+    this.close();
+    return false;
+  }
+  letGo(): void { this.cancelContact(); }
   get bareHud(): boolean { return this.open && this.mode === "atlas"; }
   private readonly grip = mapGrip();
   private picking = -1;

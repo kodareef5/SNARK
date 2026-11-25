@@ -6,13 +6,14 @@ import { K_BUTTON, K_PANEL } from "../ui/nodes.ts";
 import { S_HUD_HIT, S_HUD_COUNT, S_HUD_KEY, S_ICE, S_KEY_SMALL, S_WARNING } from "../ui/style.ts";
 import { filledVital } from "../ui/vitals.ts";
 
-import type { HudWidget } from "./widget.ts";
+import { band, type HudWidget } from "./widget.ts";
 
 /** Per vital: its optional label, then its filled icon. */
 export const KEY_VITAL = 80;
 /** From one vital to the next in their row by touch: an icon and the room a finger's press of it takes. */
 export const VITAL_PITCH = 32;
-const KEY_VITAL_ART = 9140;
+/** Eight keys a vital: its picture, bar, fill, number and mark. */
+const KEY_VITAL_ART = 9300;
 
 export interface Vital {
   id: string;
@@ -31,6 +32,13 @@ export interface VitalsModel {
 
 export const VITALS: HudWidget<VitalsModel> = {
   name: "vitals",
+  bands: [band(KEY_VITAL, 12), band(KEY_VITAL_ART, 48)],
+  press(key, m, settings) {
+    if (key < KEY_VITAL || key >= KEY_VITAL + m.vitals.length * 2) return false;
+    settings.vitalLabels = !settings.vitalLabels;
+    settings.changed();
+    return true;
+  },
   make: () => ({
     vitalTick: 0,
     vitals: [

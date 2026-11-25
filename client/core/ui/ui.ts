@@ -1,8 +1,5 @@
 // Screens write their nodes into `frame` every frame. The shell draws that list and sends events back here.
 
-import { FieldDock, type DockAction } from "./field-dock.ts";
-import type { EmoteMenu } from "./emotes.ts";
-import type { MapScreen } from "./screens.ts";
 import type { HudModel } from "../hud.ts";
 import type { ClientSession } from "../session.ts";
 import { ConsoleState, KEY_CONSOLE_INPUT } from "./console.ts";
@@ -32,12 +29,12 @@ export class Ui {
   readonly frame = new UiFrame();
   readonly console = new ConsoleState();
   readonly chat = new ChatState();
-  readonly dock = new FieldDock();
-  dispatchDock: (action: DockAction) => void = () => {};
-  hasAttackTarget = false;
+  /** Presses a key through the app's key rows: the app sets it. */
+  pressKey: (code: string) => void = () => {};
+  /** The view rests on something that can be attacked: the app sets it each frame. */
+  aimed = false;
   /** The screens of SCREENS, made for this interface, in its order. */
   readonly screens: readonly Screen[] = SCREENS.map((make) => make());
-  readonly chart = this.screen<MapScreen>("map");
   /** The session is in the creator, which is then the whole interface. */
   creating = false;
   /** What the player last used: 0 the keyboard and mouse, 1 a pad, 2 a finger. The HUD's controls and words follow it. */
@@ -77,6 +74,9 @@ export class Ui {
     hover: (key) => (this.menuFocus = key),
     press: (key, x, y) => this.pointer(0, key, x, y, 0, this.ctx.session),
     adjust: (by, end) => this.adjustFocused(by, end),
+    pressKey: (code) => this.pressKey(code),
+    screens: this.screens,
+    aimed: false,
   };
   /** The session has no body and chooses where to rise, so the mouse is free. */
   private dead = false;
@@ -113,13 +113,26 @@ export class Ui {
 
   /** True when the mouse should steer the camera, with the shell holding pointer lock. */
   get wantsPointerLock(): boolean {
-    return !this.dock.open && !this.chart.cornerOpen && this.playingField;
+    for (const s of this.screens) if (s.isOpen() && !s.keepsPointer) return false;
+    return this.playingField;
   }
 
-  /** A corner chart leaves the surrounding field available for movement and touch. */
+  /** The body is played: no screen is open but those that keep the field (Screen.keepsField), and nothing types. */
   get playingField(): boolean {
-    for (const s of this.screens) if (s.isOpen() && !s.keepsPointer && !(s === this.chart && this.chart.cornerOpen)) return false;
+    for (const s of this.screens) if (s.isOpen() && !s.keepsPointer && !s.keepsField) return false;
     return !this.inspect && !this.console.open && !this.chat.open && !this.dead && !this.creating && !(this.debug?.holdsPointer ?? false);
+  }
+
+  /** A screen that keeps the field is open. */
+  private openedField(): boolean {
+    for (const s of this.screens) if (s.keepsField && s.isOpen()) return true;
+    return false;
+  }
+
+  /** An open screen takes the right thumb's place by touch. */
+  private thumbsCovered(): boolean {
+    for (const s of this.screens) if (s.coversThumbs && s.isOpen()) return true;
+    return false;
   }
 
   /** Whether a screen of `group` is open. */
@@ -167,6 +180,7 @@ export class Ui {
     c.inputDevice = this.inputDevice;
     c.covered = this.console.open || this.chat.open;
     c.focusPending = this.focusNext !== 0;
+    c.aimed = this.aimed;
     return c;
   }
 
@@ -218,9 +232,25 @@ export class Ui {
 
   /** A press on the world itself, where no node took it: the debug bar's drawer gives the pointer back to the game. */
   clickWorld(): void {
-    this.dock.reset();
-    if (this.chart.cornerOpen) this.chart.close();
+    this.fieldPress(0);
     this.debug?.clickWorld();
+  }
+
+  /** A press on the world by `finger` (0 for the mouse), told to each open screen that keeps the field. True if one took it. */
+  fieldPress(finger: number): boolean {
+    let took = false;
+    for (const s of this.screens) if (s.isOpen() && s.pressWorld?.(this.at(this.ctx.session), finger)) took = true;
+    return took;
+  }
+
+  /** The window lost focus: every screen lets go of a press in progress. */
+  cancelPresses(): void {
+    for (const s of this.screens) s.letGo?.(this.at(this.ctx.session));
+  }
+
+  /** Shuts the screens that keep the field, as chat takes the keyboard or the HUD goes. */
+  private closeField(): void {
+    for (const s of this.screens) if (s.keepsField && s.isOpen()) s.close(this.at(this.ctx.session));
   }
 
   /** The wheel while the pointer is free; true where something took it. */
@@ -290,7 +320,6 @@ export class Ui {
       return true;
     }
     if (!con.open) {
-      if (!focusing && !this.openIn("bag") && this.dock.key(code, down, repeat, this.dispatchDock)) return true;
       if (focusing && (code === "ShiftLeft" || code === "ShiftRight")) this.menuShift = down;
       if (focusing && (code === "Tab" || code === "ArrowDown" || code === "ArrowUp")) {
         if (down) this.moveFocus(code === "ArrowUp" || (code === "Tab" && this.menuShift) ? -1 : 1);
@@ -316,7 +345,7 @@ export class Ui {
       // Chat does not open while the session is in the creator.
       if (CHAT_KEYS[code] !== undefined && !this.creating) {
         // The slash key opens the box with the slash typed, for a command (chat.ts); Tab in the box reaches the tribe's channel.
-        if (down && !repeat) { if (this.chart.cornerOpen) this.chart.close(); chat.begin(code === "Enter" || code === "NumpadEnter" ? chat.channel : CHAT_KEYS[code]!, session); if (code === "Slash") chat.input = "/"; }
+        if (down && !repeat) { this.closeField(); chat.begin(code === "Enter" || code === "NumpadEnter" ? chat.channel : CHAT_KEYS[code]!, session); if (code === "Slash") chat.input = "/"; }
         return true;
       }
       // Screens leave the keyboard to the body, so the survivor can keep walking with one open.
@@ -381,7 +410,7 @@ export class Ui {
     if (kind === 0 && key === KEY_MENU_OPEN) return this.escaped();
     if (!session || this.console.open) return;
     if (kind === 0 && key === KEY_CHAT_OPEN && this.playingField) {
-      this.dock.reset(); if (this.chart.cornerOpen) this.chart.close();
+      this.closeField();
       this.chat.begin(this.chat.channel, session);
       return;
     }
@@ -439,11 +468,9 @@ export class Ui {
     // A survivor still in the creator has no vitals, no position and nothing to aim at.
     if (session) this.chat.absorb(session);
     if (session && (this.creating || this.dead)) this.chat.wait(session.serverTick);
-    if (this.hudHidden()) this.dock.reset();
+    if (this.hudHidden()) this.closeField();
     if (!this.hudHidden()) {
       const controls = (this.playingField || this.inspect) && !session?.open;
-      this.dock.prepare(session, this.registry, this.hasAttackTarget, !!plan, controls && !this.chart.open && !session?.airSupport.flight, this.screen<EmoteMenu>("emotes").has);
-      hud.dock = this.dock;
       // A finger's zones lie under the whole HUD while the body is being played.
       const play = plan !== null && this.touchPlay !== null && session !== null && controls && this.playingField;
       if (play) layer!.touchZones(f);
@@ -463,12 +490,13 @@ export class Ui {
       if (session) {
         // A finger's keyboard covers the foot of the screen, so the box it types in stands at the top.
         const band = plan && this.chat.open ? layer!.chatTop(f, plan) : chatBand(f, hud);
-        this.chat.build(f, band.top, band.bottom, session.serverTick, plan !== null, controls && !this.chart.open);
+        this.chat.build(f, band.top, band.bottom, session.serverTick, plan !== null, controls && !this.openedField());
       }
       if (plan && this.touchPlay && controls) {
+        this.touchPlay.tools = this.settings.playControls;
         this.touchShown = layer!.touchBar(f, this.touchPlay, plan.mic);
         const slots = hud.hotbar.length;
-        if (play) this.touchShown |= layer!.touchControls(f, this.touchPlay, hud, this.placing ? "placing" : this.building ? "building" : this.flyer ? "flyer" : "foot", slots ? hotbarLeft(f, slots) + slots * (hotbarCell(f, slots) + 3) - 3 : 0, slots ? hotbarTop(f, slots) : f.height, this.settings.minimap ? f.top + 12 + plan.map : 0, this.creatureAhead, !this.dock.open);
+        if (play) this.touchShown |= layer!.touchControls(f, this.touchPlay, hud, this.placing ? "placing" : this.building ? "building" : this.flyer ? "flyer" : "foot", slots ? hotbarLeft(f, slots) + slots * (hotbarCell(f, slots) + 3) - 3 : 0, slots ? hotbarTop(f, slots) : f.height, this.settings.minimap ? f.top + 12 + plan.map : 0, this.creatureAhead, !this.thumbsCovered());
       }
       if (controls && session) this.buildPlay(f, session, hud);
     } else if (this.creating) this.chat.close();
@@ -477,7 +505,7 @@ export class Ui {
     // The screens over the rest, such as the name prompt, go over every other screen but under the console.
     if (!this.creating && !this.console.open && !this.takingAll()) this.buildOver(f, session, hud);
     // A screen, the chat box or a prompt that a keyboard would leave by Escape has a button for it by touch.
-    if (plan && this.touchPlay && !this.dock.open && !this.chart.cornerOpen && !this.wantsPointerLock && !this.hudHidden() && !this.dead && !this.console.open) this.touchShown |= layer!.touchClose(f, this.touchPlay);
+    if (plan && this.touchPlay && !this.openedField() && !this.wantsPointerLock && !this.hudHidden() && !this.dead && !this.console.open) this.touchShown |= layer!.touchClose(f, this.touchPlay);
     // The offer to unmute is over every screen, where a free pointer, a finger or the pad's focus reaches it.
     // Not while a finger types in the chat box, which has its place.
     if (this.settings.muted && !this.console.open && !(plan && this.chat.open)) unmuteButton(f, plan, layer?.pill ?? null, this.hudHidden() ? 0 : hud.compassBottom, this.hudHidden() ? null : hud);

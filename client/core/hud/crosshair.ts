@@ -6,7 +6,7 @@ import { PI, TAU } from "../../../shared/math/scalar.ts";
 import { HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayBox, rayHit } from "../../../shared/world/ray.ts";
 import { K_PANEL } from "../ui/nodes.ts";
 import { S_CROSS } from "../ui/style.ts";
-import type { HudFill, HudFrame, HudWidget } from "./widget.ts";
+import { band, type HudFill, type HudFrame, type HudWidget } from "./widget.ts";
 
 export const KEY_CROSS = 30;
 /** Four strokes about the crosshair at the held weapon's cone. */
@@ -74,6 +74,7 @@ function holoTint(c: HudFill, f: HudFrame): number {
 
 export const CROSSHAIR: HudWidget<CrosshairModel> = {
   name: "crosshair",
+  bands: [band(KEY_CONE, 4), band(KEY_CROSS, 1)],
   make: () => ({ orbit: false, behind: false, cone: -1, holo: false, crossTint: -1 }),
   fill(m, c) {
     const f = c.frame;

@@ -5,7 +5,7 @@ import type { HudModel } from "../hud.ts";
 import { layoutHud } from "../hud/layout.ts";
 import { HUD_WIDGETS } from "../hud/widgets.ts";
 import type { Settings } from "../settings.ts";
-import type { UiFrame } from "./nodes.ts";
+import { WIDGET_OWNER, baseKey, type UiFrame } from "./nodes.ts";
 import type { TouchPlan } from "./touch.ts";
 
 export { KEY_ACTION } from "../hud/action.ts";
@@ -19,7 +19,7 @@ export { KEY_GLINT, KEY_SPOT } from "../hud/marks.ts";
 export { IMAGE_MAP, IMAGE_MINIMAP, KEY_CLOCK, KEY_MARKER, KEY_MINIMAP, KEY_MINIMAP_FRAME, KEY_MINIMAP_IN, KEY_MINIMAP_OUT, KEY_MINIMAP_TOGGLE, KEY_SELF_ARROW, MARKER_STYLE, MARKER_TINT, MINIMAP_SIZE } from "../hud/minimap.ts";
 export { KEY_PROMPT } from "../hud/prompt.ts";
 export { KEY_READOUT } from "../hud/readout.ts";
-export { KEY_GLASS, KEY_MAGNIFY, KEY_MIL, KEY_SIGHT, KEY_SIGHT_SHADE, KEY_TINT, KEY_VISOR } from "../hud/sight.ts";
+export { KEY_GLASS, KEY_MAGNIFY, KEY_MIL, KEY_MIL_ZERO, KEY_SIGHT, KEY_SIGHT_SHADE, KEY_TINT, KEY_VISOR } from "../hud/sight.ts";
 export { KEY_BANNER, KEY_OUT, KEY_STATUS } from "../hud/state.ts";
 export { KEY_VEHICLE } from "../hud/vehicle.ts";
 export { KEY_VITAL, VITAL_PITCH } from "../hud/vitals.ts";
@@ -34,5 +34,16 @@ const SHOWN: Pick<Settings, "minimap" | "diagnostics" | "vitalLabels" | "compass
  */
 export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minimap" | "diagnostics" | "vitalLabels" | "compass"> = SHOWN, controls = true, inspect = false, touch: TouchPlan | null = null): void {
   const at = layoutHud(f, m, options, controls, inspect, touch);
-  for (let i = 0; i < HUD_WIDGETS.length; i++) HUD_WIDGETS[i]!.build?.(f, m, at);
+  for (let i = 0; i < HUD_WIDGETS.length; i++) {
+    f.owner = WIDGET_OWNER - i;
+    HUD_WIDGETS[i]!.build?.(f, m, at);
+  }
+  f.owner = -1;
+}
+
+/** A press on a HUD node while the body is played: to the widget whose bands hold it. True if it used it. */
+export function pressHud(m: HudModel, key: number, settings: Settings): boolean {
+  const base = baseKey(key);
+  for (const w of HUD_WIDGETS) if (w.press && w.bands.some((b) => base >= b.from && base < b.from + b.count)) return w.press(key, m, settings);
+  return false;
 }

@@ -27,7 +27,7 @@ export const KEY_CHOOSE_ROW = 910;
 /** Previous page, next page, and "page 2 of 5". */
 export const KEY_CHOOSE_PAGE = 930;
 /** One pin for each place, in the list's order. */
-export const KEY_CHOOSE_PIN = 5000;
+export const KEY_CHOOSE_PIN = 47000;
 /** Places listed at once. */
 const ROWS = 8;
 

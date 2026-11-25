@@ -5,7 +5,7 @@ import { latLonText } from "../../../shared/world/coords.ts";
 import type { HudModel } from "../hud.ts";
 import { K_BUTTON, K_PANEL, fitText } from "../ui/nodes.ts";
 import { S_HUD_HIT, S_HUD_KEY, S_ICE, S_TEXT } from "../ui/style.ts";
-import type { HudWidget } from "./widget.ts";
+import { band, type HudWidget } from "./widget.ts";
 
 export const KEY_READOUT = 1;
 export const KEY_FIELD_TELEMETRY = 9180;
@@ -32,6 +32,13 @@ export function formatReadout(m: HudModel): void {
 
 export const READOUT: HudWidget<ReadoutModel> = {
   name: "readout",
+  bands: [band(KEY_READOUT, 3), band(KEY_FIELD_TELEMETRY, 2)],
+  press(key, _m, settings) {
+    if (key !== KEY_FIELD_TELEMETRY) return false;
+    settings.diagnostics = !settings.diagnostics;
+    settings.changed();
+    return true;
+  },
   make: () => ({ pingMs: 0, fps: 0, steady: "", corrections: 0, nearby: 0, readout: ["", "", ""], readoutAge: 0, compactReadout: "" }),
   fill(m, c) {
     m.pingMs = Math.max(0, (c.session.stats.rttTicks * 1000) / TICK_RATE);

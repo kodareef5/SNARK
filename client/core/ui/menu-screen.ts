@@ -21,6 +21,10 @@ export class MenuScreen implements Screen {
   readonly group = "bag";
   /** O opens the settings, with the menu under them. */
   readonly hotkey = "KeyO";
+  readonly dock = [
+    { id: "settings", label: "Settings", art: "settings", rank: 60, open: (c: ScreenCtx) => c.pressKey("KeyO") },
+    { id: "menu", label: "Menu", art: "emblem", rank: 70, touchOnly: true, open: (c: ScreenCtx) => c.pressKey("Escape") },
+  ];
   /** The bag's sounds call it by the page O opens. */
   readonly sound = "options";
   readonly bands = [

@@ -5,6 +5,7 @@ import { KEY_CONTROL_DETAIL, KEY_CONTROL_GROUP, KEY_CONTROL_GLYPHS } from "../..
 import { KEY_CONTROL_PAD } from "../../client/core/ui/controller.ts";
 import { KEY_SETTINGS_PAGE, KEY_SETTINGS_ROW, KEY_SETTINGS_TAB, SETTING_GROUPS } from "../../client/core/ui/settings.ts";
 import { siteLinks } from "../../client/core/travel.ts";
+import { KEY_HOTBAR_NUMBER } from "../../client/core/hud/hotbar.ts";
 import { KEY_BUFF, KEY_CLOCK, KEY_HOTBAR, KEY_MINIMAP, KEY_MINIMAP_TOGGLE, KEY_READOUT, KEY_VEHICLE, KEY_VITAL } from "../../client/core/ui/hud.ts";
 import { glassBox, meets } from "../fixtures/boxes.ts";
 import { KEY_CONTROLS_DEVICE, KEY_MENU, KEY_MENU_BACK, KEY_MENU_CONTROLS, KEY_MENU_LINK, KEY_MENU_RESUME, KEY_MENU_SETTINGS, KEY_UNMUTE } from "../../client/core/ui/menu.ts";
@@ -28,7 +29,7 @@ test("the quiet HUD keeps ten numbered slots fixed when status and contextual vi
     expect(ui.frame.find(KEY_VITAL + 9)).toBeNull();
     expect(ui.frame.find(KEY_VITAL + 11)).toBeNull();
     const bottom = ui.frame.find(KEY_HOTBAR)!.y;
-    for (let i = 0; i < 10; i++) expect(ui.frame.find(5520 + i)!.text).toBe(String((i + 1) % 10));
+    for (let i = 0; i < 10; i++) expect(ui.frame.find(KEY_HOTBAR_NUMBER + i)!.text).toBe(String((i + 1) % 10));
     hud.status = "Connection lost";
     hud.vitals[4]!.fraction = .3;
     hud.vitals[5]!.fraction = .2;
