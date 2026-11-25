@@ -22,6 +22,7 @@ import { hashBytes } from "../../shared/hash.ts";
 import { LoopbackNet, type LoopbackEnd } from "../../shared/net/loopback.ts";
 import { EVENT_BLAST, EVENT_BOLTS, EVENT_ROCKET, EVENT_SHOT, S_EVENT } from "../../shared/net/protocol.ts";
 import { ROCKET_IDS } from "../../shared/net/rockets.ts";
+import { F_ALIVE } from "../../shared/sim/entities.ts";
 import { V_HEALTH } from "../../shared/sim/vitals.ts";
 import { parsePack, type Pack } from "../../shared/pack/pack.ts";
 import { Rng } from "../../shared/rng.ts";
@@ -49,8 +50,9 @@ export interface FirefightGun {
 }
 
 /** The assault rifle is what the plasma rifle is held against. The sniper's round flies its ten seconds, and stands nowhere. */
+export const ASSAULT_RIFLE: FirefightGun = { label: "assault rifle", weapon: "rifle_assault", ammo: "round_advanced_rifle" };
 export const FIREFIGHT_GUNS: readonly FirefightGun[] = [
-  { label: "assault rifle", weapon: "rifle_assault", ammo: "round_advanced_rifle" },
+  ASSAULT_RIFLE,
   { label: "sniper's round", weapon: "rifle_sniper", ammo: "round_advanced_sniper" },
   { label: "plasma rifle", weapon: "rifle_plasma", ammo: "plasma_cell", flying: 700, added: 3, over: 0.5 },
   // A rocket each reload, four seconds: 12.5 a second from the 50, each a blast among them.
@@ -108,8 +110,12 @@ export function benchFirefight(section: Section, record: Row, host: Host, centre
   const { world, projectiles: shots, combat } = host;
   const ents = world.ents;
   const reg = world.reg;
-  section(`Firefight: ${FIGHTERS} survivors within 40 m hold automatic fire, ${(FIGHTERS * TICK_RATE) / EVERY} shots a second`);
   const fighters = host.game.clients.filter((c): c is Client => !!c?.active && c.ent >= 0).slice(0, FIGHTERS);
+  const grazer = reg.index.get("core:grazer");
+  let grazers = 0;
+  for (let i = 0; i < ents.cap; i++) if ((ents.flags[i]! & F_ALIVE) !== 0 && ents.kind[i] === grazer) grazers++;
+  section(`Firefight: ${fighters.length} survivors within 40 m, ${grazers} grazers in the world`);
+  record("live grazers before the fight", grazers, "");
   record("survivors in the fight", fighters.length, "");
   const home = fighters.map((c) => [ents.x[c.ent]!, ents.y[c.ent]!, ents.z[c.ent]!] as const);
   const spot = new Rng(404);
@@ -152,11 +158,10 @@ export function benchFirefight(section: Section, record: Row, host: Host, centre
     return (u.user + u.system) / 1000;
   };
   const last = { events: 0, others: 0, cpu: 0 };
-  const load = new CreatureLoad(host);
   const aim = new Rng(505);
   let most = 0;
   /** Steps `ticks` with the first `firing` of them shooting, each tick's time and its shots' into `times`. Returns the KB/s each of the 50 was sent. */
-  const hold = (gun: FirefightGun | null, firing: number, ticks: number, times: number[] | null): number => {
+  const hold = (gun: FirefightGun | null, firing: number, ticks: number, sample: { ticks: number[]; load: CreatureLoad } | null): number => {
     const weapon = gun ? reg.index.get(`core:${gun.weapon}`)! : 0;
     const ammo = gun ? reg.index.get(`core:${gun.ammo}`)! : 0;
     gather();
@@ -185,8 +190,10 @@ export function benchFirefight(section: Section, record: Row, host: Host, centre
       one.length = 0;
       run(1, one);
       mend();
-      times?.push(launched + one[0]!);
-      if (times) load.sample();
+      if (sample) {
+        sample.ticks.push(launched + one[0]!);
+        sample.load.sample();
+      }
       if (shots.flyingCount > most) most = shots.flyingCount;
     }
     last.cpu = (worked() - cpuBefore) / ticks;
@@ -200,11 +207,11 @@ export function benchFirefight(section: Section, record: Row, host: Host, centre
     for (let i = 0; i < 330 && shots.flyingCount > 0; i++) run(1, null);
   };
   const guns = all.filter((g) => reg.index.has(`core:${g.weapon}`) && reg.index.has(`core:${g.ammo}`));
-  const quiet = { ticks: [] as number[], kb: [] as number[], events: [] as number[], others: [] as number[], cpu: [] as number[] };
-  const arms = guns.map((gun) => ({ gun, ticks: [] as number[], kb: [] as number[], twenty: [] as number[], twentyOthers: [] as number[], events: [] as number[], others: [] as number[], cpu: [] as number[], most: 0, fired: 0, struck: 0 }));
+  const quiet = { load: new CreatureLoad(host), ticks: [] as number[], kb: [] as number[], events: [] as number[], others: [] as number[], cpu: [] as number[] };
+  const arms = guns.map((gun) => ({ gun, load: new CreatureLoad(host), ticks: [] as number[], kb: [] as number[], twenty: [] as number[], twentyOthers: [] as number[], events: [] as number[], others: [] as number[], cpu: [] as number[], most: 0, fired: 0, struck: 0 }));
   hold(null, 0, TURN, null);
   for (let turn = 0; turn < TURNS; turn++) {
-    quiet.kb.push(hold(null, 0, TURN, quiet.ticks));
+    quiet.kb.push(hold(null, 0, TURN, quiet));
     quiet.events.push(last.events);
     quiet.others.push(last.others);
     quiet.cpu.push(last.cpu);
@@ -218,7 +225,7 @@ export function benchFirefight(section: Section, record: Row, host: Host, centre
       most = 0;
       const fired = shots.fired;
       const struck = shots.struck;
-      a.kb.push(hold(a.gun, FIGHTERS, TURN, a.ticks));
+      a.kb.push(hold(a.gun, FIGHTERS, TURN, a));
       a.events.push(last.events);
       a.others.push(last.others);
       a.cpu.push(last.cpu);
@@ -232,7 +239,7 @@ export function benchFirefight(section: Section, record: Row, host: Host, centre
   const line = median(quiet.kb);
   /** The middle of what each turn's run was over the same turn's run of `under`. */
   const over = (run: number[], under: number[]): number => median(run.map((v, turn) => v - under[turn]!));
-  load.rows(record);
+  quiet.load.rows(record, "nobody firing: ");
   record("nobody firing: processor time a tick", median(quiet.cpu), "ms");
   record("nobody firing: events to a listener", median(quiet.events) + median(quiet.others), "KB/s");
   record("nobody firing: tick time, median", still, "ms", 8);
@@ -240,6 +247,7 @@ export function benchFirefight(section: Section, record: Row, host: Host, centre
   record("nobody firing: downstream per listener", line, "KB/s");
   for (const a of arms) {
     const label = a.gun.label;
+    a.load.rows(record, `${label}: `);
     const whole = median(a.ticks);
     record(`${label}: shots fired`, a.fired, "");
     record(`${label}: shots that hit a body`, a.struck, "");

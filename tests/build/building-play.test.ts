@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+// The editor's code at once, as a page has it once it has come (client/core/editor-load.ts).
+import "../../client/core/editor.ts";
 import { App } from "../../client/core/app.ts";
 import { BUILD_REASONS, Builder, GHOST_OK } from "../../client/core/build.ts";
 import { DRAW_BLEND, DRAW_PIECE, TRANSIENT_BUFFER } from "../../client/core/render/packet.ts";

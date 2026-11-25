@@ -42,14 +42,14 @@ import { HIT_STRUCTURE, HIT_TERRAIN, castWorld, rayHit } from "../../shared/worl
 import { BUILD_REACH, ROLE_FOUNDATION, ROLE_PILLAR } from "../../shared/world/snap.ts";
 import { Support } from "../../shared/world/support.ts";
 import { BUILD_REASONS, ENEMY_FOUNDATION, ENEMY_PILLAR, GHOST_BAD } from "./build.ts";
-import { G_BUILD, type KeyContext, type KeyRow } from "./key-row.ts";
 import { PlanSlots, open, plansOf, reportWords, type PlanView } from "./plans.ts";
 import { MAX_HOLOGRAMS } from "./render/packet.ts";
 import type { Ghost } from "./render/passes/ghost.ts";
 import type { ClientSession } from "./session.ts";
 import { Templates, copyBase, copyBox, faultWords } from "./templates.ts";
 
-export const HAMMER_ITEM = "core:template_hammer";
+export { HAMMER_ITEM } from "./editor-load.ts";
+import { HAMMER_ITEM } from "./editor-load.ts";
 /** Pieces of the template being set down that are judged a frame. */
 const JUDGE_FRAME = 240;
 /** Parts of an upload sent and not yet answered. */
@@ -668,6 +668,20 @@ export class Hammer {
     return out;
   }
 
+  /** Gives template `i` a new name, keeping its description. */
+  renameTemplate(i: number, name: string, reg: Registry): void {
+    const t = this.templates.list[i];
+    if (t) this.templates.rename(i, name, t.description, pieceBook(reg));
+  }
+
+  /** What template `i` costs to build whole, the most first; null where it has a piece this game does not build. */
+  templateCost(reg: Registry, i: number): readonly { item: number; count: number }[] | null {
+    const book = pieceBook(reg);
+    const bp = this.templates.blueprint(this.templates.list[i]!, book);
+    const placed = bp ? placePieces(book, bp, false, 0, [0, 0, 0, 0], 0) : null;
+    return placed?.ok ? planCost(reg, placed.placed, () => false) : null;
+  }
+
   /**
    * Adds the holograms to the frame's marks (the ghost pass's): the template being set down, each piece in the colour of
    * what the judge says of it, then the open pieces of the tribe's plans. Where there are more than MAX_HOLOGRAMS, the
@@ -713,40 +727,3 @@ export class Hammer {
     }
   }
 }
-
-/** With the hammer in hand and on foot, in play. */
-const hammering = (c: KeyContext): boolean => c.hammer.active && c.session.driving < 0 && c.ui.wantsPointerLock;
-
-// The hammer's keys while it is in hand: the builder's own for turning, raising and putting away, T for the list of
-// templates, F to fill and G to copy a box. The first button copies or sets down, and the middle one fills, which is
-// the pad's d-pad right (App.mouseButton).
-export const HAMMER_KEYS: readonly KeyRow[] = [{
-  name: "hammer",
-  keys: ["KeyQ", "KeyR", "KeyT", "KeyX", "KeyF", "KeyG", "Delete", "ArrowUp", "ArrowDown"],
-  pad: { KeyX: 1, KeyT: 3, KeyQ: 14, ArrowUp: 12, ArrowDown: 13 },
-  guide: [
-    { code: "Mouse0", group: G_BUILD, title: "Hammer: copy / set down", detail: "With the template hammer: copy the base you look at, or set down the template in hand.", sheet: G_BUILD },
-    { code: "KeyF", group: G_BUILD, title: "Hammer: fill the plan", detail: "Build every piece of the plan that you carry the piece for, foundations first.", sheet: G_BUILD },
-    { code: "KeyG", group: G_BUILD, title: "Hammer: copy a box", detail: "Mark one corner, then the other: what of the base lies between is copied.", sheet: G_BUILD },
-    { code: "Delete", group: G_BUILD, title: "Hammer: take a plan away", detail: "Press twice.", sheet: G_BUILD },
-  ],
-  when: (c) => hammering(c),
-  press(c, code, down, repeat) {
-    const h = c.hammer;
-    if (!down) return true;
-    if (code === "ArrowUp" || code === "ArrowDown") h.lift(code === "ArrowUp" ? 1 : -1);
-    else if (repeat) return true;
-    else if (code === "KeyR") h.rotate(1);
-    else if (code === "KeyQ") h.flip();
-    else if (code === "KeyT") h.panel = true;
-    else if (code === "KeyF") h.fill();
-    else if (code === "KeyG") h.box();
-    else if (code === "Delete") h.cancel();
-    else if (code === "KeyX") {
-      if (h.chosen >= 0) h.choose(-1);
-      else if (h.corner >= 0) h.corner = -1;
-      else return undefined;
-    }
-    return true;
-  },
-}];
