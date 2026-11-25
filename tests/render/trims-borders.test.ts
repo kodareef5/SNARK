@@ -18,7 +18,7 @@ import { fortKeys } from "../../tools/pieces/village.ts";
 
 const DIMS = { chunksX: 4, chunksZ: 4 };
 const TEAM = 7;
-const MESHES = ["wood", "stone", "metal"].flatMap((tier) => ["joint_sq", "joint_r15", "joint_r21", "skirt", "eave", "ridge"].map((name) => `core:${name}_${tier}`));
+const MESHES = ["wood", "stone", "metal"].flatMap((tier) => ["joint_sq", "joint_r15", "joint_r21", "skirt", "eave", "ridge", "hip", "saddle"].map((name) => `core:${name}_${tier}`));
 const WALLS = ["wall", "wall", "wall", "doorframe", "windowframe", "half_wall", "quarter_wall", "large_wall", "gateway", "double_doorway", "sloped_wall_left", "sloped_wall_right", "railing", "beam", "fence_foundation"];
 const SQUARES = ["foundation", "foundation", "foundation", "ceiling", "ceiling", "trapdoor_frame", "roof", "roof", "roof_hip", "roof_valley"];
 const TRIANGLES = ["triangle_foundation", "triangle_ceiling", "triangle_roof", "triangle_roof_low"];
@@ -91,7 +91,7 @@ const OFFSETS: readonly (readonly [number, number])[] = [[64, 96], [96, 64.4], [
 
 test("a base has the same trims and yields wherever the chunks' sides fall across it", () => {
   const reg = registry();
-  let trims = 0, yielding = 0;
+  let trims = 0, yielding = 0, hips = 0;
   for (let seed = 1; seed <= 80; seed++) {
     const rng = new Rng(seed * 104729);
     const sets = scatter(reg, rng, 60 + rng.int(200));
@@ -99,10 +99,13 @@ test("a base has the same trims and yields wherever the chunks' sides fall acros
     const want = laid(reg, sets, 96, 96, yaw);
     trims += want.trims.length;
     yielding += want.yields.length;
+    hips += want.trims.filter((t) => t.startsWith("core:hip") || t.startsWith("core:saddle")).length;
     for (const [x, z] of OFFSETS) expect(laid(reg, sets, x, z, yaw), `seed ${seed}, base at ${x}, ${z}`).toEqual(want);
   }
   expect(trims).toBeGreaterThan(3000);
   expect(yielding).toBeGreaterThan(1500);
+  // Hips and saddles among them, from the triangle roofs that fall so.
+  expect(hips).toBeGreaterThan(20);
 });
 
 test("the metal fort has the same trims and yields across a chunk's side as inside one", () => {

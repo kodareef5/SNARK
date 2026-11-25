@@ -457,15 +457,16 @@ const SHAPED: readonly Shaped[] = [
 /**
  * What each of SHAPED counted on 2026-11-24 with the tier's own trims laid, after leak and notch pixels, near and from
  * across a yard, which are all 0: faces in one plane and their square centimetres, where there are any. A change may
- * lower one and not raise it. A ridge's ends lie in the plane of its roofs' sides (thatch's cap is the widest), rails
+ * lower one and not raise it. A ridge stands 2 cm past its roofs' sides, so only thatch's gable has faces in one plane
+ * there (6 and 1,335 cm2 while a ridge ended in that plane, wood's, stone's and metal's 4 and 33 to 36), rails
  * and beams cross at their corner as they do with no trims, two footings overlap at theirs, and three foundations'
  * sides lie in one plane under a floor held up in the air.
  */
 const SHAPED_FIGHTS: Record<string, Record<string, readonly [number, number]>> = {
-  wood: { "gable at ridge": [4, 36], "railing corner": [3, 92], "beam corner": [2, 234], "walls on fence foundations at a corner": [2, 117], "skirts at an inside corner": [10, 261] },
-  stone: { "gable at ridge": [4, 35], "railing corner": [2, 50], "beam corner": [2, 242], "walls on fence foundations at a corner": [1, 42], "skirts at an inside corner": [2, 264] },
-  metal: { "gable at eave": [1, 16], "gable at ridge": [4, 33], "railing corner": [4, 333], "beam corner": [2, 500], "walls on fence foundations at a corner": [3, 398] },
-  thatch: { "gable at eave": [1, 8], "gable at ridge": [6, 1335], "gable at a lean-to's head": [3, 24], "railing corner": [2, 26], "skirts at an inside corner": [8, 100] },
+  wood: { "railing corner": [3, 92], "beam corner": [2, 234], "walls on fence foundations at a corner": [2, 117], "skirts at an inside corner": [10, 261] },
+  stone: { "railing corner": [2, 50], "beam corner": [2, 242], "walls on fence foundations at a corner": [1, 42], "skirts at an inside corner": [2, 264] },
+  metal: { "gable at eave": [1, 16], "railing corner": [4, 333], "beam corner": [2, 500], "walls on fence foundations at a corner": [3, 398] },
+  thatch: { "gable at eave": [1, 8], "gable at ridge": [2, 16], "gable at a lean-to's head": [3, 24], "railing corner": [2, 26], "skirts at an inside corner": [8, 100] },
 };
 
 /** The forms SHAPED sets down, as a tier's recipe makes them. */

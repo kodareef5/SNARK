@@ -1,5 +1,5 @@
 // The metal tier's building pieces, made by the metal recipe (tools/pack/pieces/metal.ts) from the forms content places
-// and the forms to come, and its trims: the joints at corners, the skirt and the ridge. `bun run art -- core:metal`
+// and the forms to come, and its trims: the joints at corners, the skirt, the ridge, the hip and its saddle. `bun run art -- core:metal`
 // builds them with no Blender and no pictures. Each replaces the grey box of the structure with its id; a form no kind
 // uses yet and a trim are in the pack for the lanes that draw them. Every level is flat: the plate's faces are the
 // piece's own colour and wear the "plate" material the card makes from a recipe (content/texgen/materials.ts), the

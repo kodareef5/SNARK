@@ -12,6 +12,7 @@
 
 import { HALF_SIDE_M, outlineBox, type FormDef } from "../../../shared/world/lattice/forms.ts";
 import { Carved, add, beamRings, clip, cross, dot, gateLeaves, inset as insetPlan, length, mirror, place, planeAt, planeMoved, rimStrips, scale, slabOn, sub, unit, uprightPlane, type Flat, type Plane as KitPlane, type Shape, type SlabMap, type Uv, type Vec } from "./kit.ts";
+import { HIP_FALL, HIP_FROM, SADDLE_FOOT, alongHip, onHip, revolve } from "./hips.ts";
 import { planOf, yieldPlanes, type TierRecipe } from "./lod.ts";
 import { PyRandom } from "./mt.ts";
 
@@ -3365,15 +3366,19 @@ function skirt(level: number): Build {
   return b;
 }
 
+/** How far a ridge's saddle stones run past each end of its side: an open end stands proud of the roofs' ends, and the client lays an end square where the next ridge runs on. */
+const RIDGE_PROUD = 0.02;
+
 /**
  * The capping along a ridge where two roofs' high sides meet: saddle stones of dressed stone, six to a side's length,
- * each shaded as a block. It lies along x on the ridge's own line, which is at its origin's height. No client draws it yet.
+ * each shaded as a block. It lies along x on the ridge's own line, which is at its origin's height.
  */
 function ridgeStones(level: number): Build {
   const b = new Build();
   b.free = true;
   const [wide, top, drop, thick] = [0.22, 0.075, 0.068, 0.034];
-  const uv: UvMap = (q) => [(q[0] + H) / TILE, 0.5 + q[2] / TILE];
+  const H = HALF_SIDE_M + RIDGE_PROUD;
+  const uv: UvMap = (q) => [(q[0] + HALF_SIDE_M) / TILE, 0.5 + q[2] / TILE];
   if (level === 3) {
     b.flat([[-H, 0.02, -wide], [H, 0.02, -wide], [H, 0.02, wide], [-H, 0.02, wide]], [0, 1, 0], "dressed", uv);
     return b;
@@ -3386,7 +3391,7 @@ function ridgeStones(level: number): Build {
   // Its section in (z, y): the two wings' tops, their edges and their undersides.
   const section: P2[] = [[0, top], [wide, -drop], [wide, -drop - thick], [0, top - thick], [-wide, -drop - thick], [-wide, -drop]];
   const g = rng("ridge stones");
-  const cuts = level === 0 ? [-H, ...[1, 2, 3, 4, 5].map((i) => -H + (TILE * (i + g.uniform(-0.12, 0.12))) / 6), H] : [-H, H];
+  const cuts = level === 0 ? [-H, ...[1, 2, 3, 4, 5].map((i) => -HALF_SIDE_M + (TILE * (i + g.uniform(-0.12, 0.12))) / 6), H] : [-H, H];
   section.forEach((a, k) => {
     const c = section[(k + 1) % section.length]!;
     const l = Math.hypot(c[0] - a[0], c[1] - a[1]);
@@ -3414,7 +3419,52 @@ function stoneTrims(): Record<string, Shape[]> {
     joint_r21: levels((level) => pier(level, 0.22, 0, "r21")),
     skirt: levels(skirt),
     ridge: levels(ridgeStones),
+    hip: levels(hipStones),
+    saddle: levels(apexStone),
   };
+}
+
+/** A hip's roll between two roofs, as the roll on a hip's own fold: its width, its depth upright, and its middle over the line. */
+const HIP_ROLL = { wide: 0.11, deep: 0.07, lift: 0.025 } as const;
+
+/**
+ * The roll that caps a hip between two roofs: the dressed roll a hip's own fold has (`roof`), in four stones from the
+ * eaves' corner up the side the two share to the high corner. Its underside lies in both faces' slates.
+ */
+function hipStones(level: number): Build {
+  const b = new Build();
+  const p = b.shape;
+  const { wide, deep, lift } = HIP_ROLL;
+  const [w, top, foot] = [wide / 2, lift + deep / 2, lift - deep / 2];
+  const uv = (q: Vec): Uv => [0.5 + q[0] / TILE, 0.5 + q[1] / TILE];
+  if (level === 3) {
+    const points = [onHip(HIP_FROM, -w, top), onHip(HALF_SIDE_M, -w, top), onHip(HALF_SIDE_M, w, top), onHip(HIP_FROM, w, top)];
+    p.faces.push({ points, uvs: points.map(uv), mat: "dressed" });
+    return b;
+  }
+  if (level === 2) {
+    alongHip(p, [[0, top], [-w, foot - HIP_FALL * w], [w, foot - HIP_FALL * w]], HIP_FROM, HALF_SIDE_M, (_, __, q) => ["dressed", uv(q)], (q) => ["dressed", uv(q)]);
+    return b;
+  }
+  const cuts = level === 0 ? [HIP_FROM, -0.75, 0.15, 0.95, HALF_SIDE_M] : [HIP_FROM, HALF_SIDE_M];
+  for (let k = 0; k + 1 < cuts.length; k++) member(p, level, onHip(cuts[k]!, 0, lift), onHip(cuts[k + 1]!, 0, lift), wide, deep, [0, 0, 1], `hip ${k}`, "dressed", 0.018);
+  return b;
+}
+
+/**
+ * The saddle on a high corner hips end at: an apex stone over the hips' rolls and a ridge's end, its foot in every
+ * face round the corner, under a knob. It stands about its corner, at the corner's height.
+ */
+function apexStone(level: number): Build {
+  const b = new Build();
+  const p = b.shape;
+  const side = (q: Vec, around: number): readonly [string, Uv] => ["dressed", [0.5 + around / TILE, 0.5 + q[2] / TILE]];
+  const cap = (q: Vec): readonly [string, Uv] => ["dressed", [0.5 + q[0] / TILE, 0.5 + q[1] / TILE]];
+  if (level === 3) revolve(p, [[0.17, SADDLE_FOOT(0.17)], [0.02, 0.15]], 3, cap, cap);
+  else if (level === 2) revolve(p, [[0.17, SADDLE_FOOT(0.17)], [0.07, 0.15]], 4, cap, cap);
+  else if (level === 1) revolve(p, [[0.16, SADDLE_FOOT(0.16)], [0.16, 0.03], [0.05, 0.15]], 8, side, cap);
+  else revolve(p, [[0.16, SADDLE_FOOT(0.16)], [0.16, 0.03], [0.11, 0.12], [0.045, 0.15], [0.07, 0.2], [0.035, 0.24]], 12, side, cap);
+  return b;
 }
 
 type Maker = (name: string, form: FormDef, level: number) => Build | null;

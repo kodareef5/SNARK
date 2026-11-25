@@ -5,10 +5,12 @@
 //
 // A tier's trims are meshes of its pack, by name: <ns>:joint_sq_<tier> a square joint, <ns>:joint_r15_<tier> and
 // <ns>:joint_r21_<tier> twelve-sided ones of 0.15 m and 0.21 m, <ns>:skirt_<tier>, <ns>:eave_<tier> and
-// <ns>:ridge_<tier>. <ns> and <tier> are its pieces' material's, core:mat_<tier>. A joint's mesh stands on its corner
-// from the level up a storey. A skirt's hangs from the middle of a foundation's side, its +X along the side and its +Z
-// outward, and an eave's lies so on a ceiling's side. A ridge's lies along the side two roofs' high sides share, at the
-// height their tops meet. A tier with no square joint has no trims, and its pieces yield nothing.
+// <ns>:ridge_<tier>, <ns>:hip_<tier> and <ns>:saddle_<tier>. <ns> and <tier> are its pieces' material's, core:mat_<tier>.
+// A joint's mesh stands on its corner from the level up a storey. A skirt's hangs from the middle of a foundation's side,
+// its +X along the side and its +Z outward, and an eave's lies so on a ceiling's side. A ridge's lies along the side two
+// roofs' high sides share, at the height their tops meet. A hip's lies along a sloped side two roofs share where neither
+// face rises from it and they are not in one plane, from the side's middle at its top's height, +X up the slope. A
+// saddle's stands on the high corner a hip ends at. A tier with no square joint has no trims, and its pieces yield nothing.
 //
 // A skirt or an eave meets the next one round a corner on the plane that halves the corner: each end's turn is in its
 // instance (piece-fit.ts), so a mesh that ends flat closes an outside corner and clears an inside one at any angle.
@@ -20,7 +22,7 @@
 import type { Registry } from "../../../shared/content/registry.ts";
 import { CHUNK_SIZE, STRUCT_UNITS, chunkCx, chunkCz } from "../../../shared/coords.ts";
 import { levelY, worldOf, yawOf } from "../../../shared/world/lattice/basis.ts";
-import { FORM_LAYERS, STOREY_LEVELS, type FormTable } from "../../../shared/world/lattice/forms.ts";
+import { FORM_LAYERS, LEVEL_M, STOREY_LEVELS, type FormTable } from "../../../shared/world/lattice/forms.ts";
 import { ownDir, riseAt, type Frame } from "../../../shared/world/lattice/frames.ts";
 import { CLS_CORNERS, CLS_SQUARE, CLS_STEP, CLS_TRIANGLE, CLS_VERTEX, DIRECTIONS, LVL_MOST, M_MOST, SIDE, dirTurn, elementCorners, key0, key1, keyAnchor, keyCls, keyDir, keyFlip, keyLvl, keyM3, tupleStep, tupleWithin } from "../../../shared/world/lattice/module.ts";
 import { Cells, cellAt, edgeFaces, elementVertices, faceEdges, formCells, vertexEdges, vertexFaces } from "../../../shared/world/lattice/occupancy.ts";
@@ -65,6 +67,8 @@ const W_JOINTED = 1, W_HIGH_MINUS = 2, W_HIGH_PLUS = 4;
 
 /** What a slab's kind takes on its sides: a foundation skirts, a ceiling eaves, a roof ridges. */
 const SIDES_SKIRT = 1, SIDES_EAVE = 2, SIDES_RIDGE = 3;
+/** In a slab's word: its yields, the sides with a skirt, an eave or a ridge, the sides with a hip it draws, and the corners with a saddle it draws, four bits each. */
+const SLAB_HIPS = 8, SLAB_SADDLES = 12;
 
 const WALL = FORM_LAYERS.indexOf("wall");
 const POST = FORM_LAYERS.indexOf("post");
@@ -80,6 +84,8 @@ interface Tier {
   readonly skirt: number;
   readonly eave: number;
   readonly ridge: number;
+  readonly hip: number;
+  readonly saddle: number;
 }
 
 /** What a chunk's trims are, as `lay` leaves them until it is next called. */
@@ -164,8 +170,8 @@ class Laid {
   enext = new Int32Array(256);
   /**
    * Per slot: the kind, frame and key it was told with, 0 for none; what it is (S_); its base among `bases`; its side
-   * (INSIDE); its ends, the first and how many; a slab's yield in the low four bits under the sides it has a trim on;
-   * and for each such side a byte, the turn at its trim's -X end under the turn at its +X end.
+   * (INSIDE); its ends, the first and how many; a slab's word (SLAB_); and for each side with a skirt, an eave or a
+   * ridge a byte, the turn at its trim's -X end under the turn at its +X end.
    */
   high = 0;
   sKind = new Uint16Array(0);
@@ -177,7 +183,7 @@ class Laid {
   sNear = new Uint8Array(0);
   sEnd = new Int32Array(0);
   sEnds = new Uint8Array(0);
-  sSlab = new Uint8Array(0);
+  sSlab = new Uint16Array(0);
   sTurn = new Uint32Array(0);
 
   /** Forgets everything, with room for `high` slots and a table for about `keys` cells. */
@@ -238,15 +244,32 @@ export class Trims {
   /** Per kind of slab a whole side wide, what its sides take (SIDES_), and for a roof the metres its high corners' tops stand over its level. */
   private readonly sidesOf: Uint8Array;
   private readonly ridgeUp: Float32Array;
+  /** Per kind of roof, metres its slab is through: its top is that over its underside's rise at each corner. */
+  private readonly thick: Float32Array;
   /** Whether any tier has an eave: then a wall set down or taken up asks the ceilings beside it again. */
   private readonly eaves: boolean;
-  /** Whether any tier has a ridge: then a roof set down or taken up asks the roofs at its corners again, whose ridges may run on. */
+  /** Whether any tier has a ridge, a hip or a saddle: then a roof set down or taken up asks the roofs at its corners again, whose ridges may run on and whose saddles may move. */
   private readonly ridged: boolean;
+  /** Whether any tier has a hip. */
+  private readonly hipped: boolean;
   private readonly out: TrimLayout = { count: 0, mesh: new Uint16Array(64), owner: new Uint16Array(64), x: new Float32Array(64), y: new Float32Array(64), z: new Float32Array(64), yaw: new Uint16Array(64), tw: new Uint8Array(64), cut: new Uint8Array(64), ends: new Uint8Array(64), yields: new Uint8Array(0), borders: 0 };
   private readonly cells = new Cells();
   private readonly round = new Cells();
   private readonly faces = new Cells();
   private readonly spokes = new Cells();
+  /** Scratch for the hips: a roof's sides, the faces by one, the sides of the roof beyond, a roof's corners and the faces round a corner. */
+  private readonly hipSides = new Cells();
+  private readonly hipBy = new Cells();
+  private readonly hipThem = new Cells();
+  private readonly hipAt = new Cells();
+  private readonly hipRound = new Cells();
+  /** The corners' keys of the roof `hipsOf` reads, and of the roof whose saddles are being found. */
+  private readonly hipKeys = new Uint32Array(8);
+  private readonly ownKeys = new Uint32Array(8);
+  /** Per slot of the chunk being laid, what `hipsOf` found of it in this laying, and the laying it was found in: a saddle asks it of every roof round a corner. */
+  private hipMemo = new Int32Array(0);
+  private hipSeen = new Uint32Array(0);
+  private laying = 0;
   private readonly m = new Int32Array(24);
   private readonly at = new Int32Array(2);
   /** What is kept of each chunk laid, and the chunk being laid: its store, table and corner. */
@@ -274,6 +297,7 @@ export class Trims {
     this.wallOf = new Uint8Array(reg.defs.length);
     this.sidesOf = new Uint8Array(reg.defs.length);
     this.ridgeUp = new Float32Array(reg.defs.length);
+    this.thick = new Float32Array(reg.defs.length);
     const named = new Map<string, number>();
     for (let k = 1; k < reg.defs.length; k++) {
       const d = reg.defs[k]!, form = this.forms?.def[k];
@@ -285,7 +309,10 @@ export class Trims {
       if (form.layer === "slab" && (form.size ?? SIDE) === SIDE && form.span === 0) {
         const roof = this.forms!.rise[k] !== 0;
         this.sidesOf[k] = roof ? SIDES_RIDGE : form.corner !== undefined ? 0 : form.root !== undefined ? SIDES_SKIRT : SIDES_EAVE;
-        if (roof) this.ridgeUp[k] = Math.max(...form.corner!);
+        if (roof) {
+          this.ridgeUp[k] = Math.max(...form.corner!);
+          this.thick[k] = form.thick;
+        }
       }
       const made = /^([^:]+):mat_(.+)$/.exec(d.material ?? "");
       if (!made) continue;
@@ -296,15 +323,16 @@ export class Trims {
         const sq = mesh("joint_sq");
         named.set(id, this.tiers.length);
         // Without the square joint the tier's meshes are not made to give way, so it has none of the rest either.
-        this.tiers.push({ rank: rule[0], runsOn: rule[1], sq, r15: sq < 0 ? -1 : mesh("joint_r15"), r21: sq < 0 ? -1 : mesh("joint_r21"), skirt: sq < 0 ? -1 : mesh("skirt"), eave: sq < 0 ? -1 : mesh("eave"), ridge: sq < 0 ? -1 : mesh("ridge") });
+        this.tiers.push({ rank: rule[0], runsOn: rule[1], sq, r15: sq < 0 ? -1 : mesh("joint_r15"), r21: sq < 0 ? -1 : mesh("joint_r21"), skirt: sq < 0 ? -1 : mesh("skirt"), eave: sq < 0 ? -1 : mesh("eave"), ridge: sq < 0 ? -1 : mesh("ridge"), hip: sq < 0 ? -1 : mesh("hip"), saddle: sq < 0 ? -1 : mesh("saddle") });
       }
       this.tierOf[k] = named.get(id)!;
     }
     this.any = this.tiers.some((t) => t.sq >= 0);
     // A trim is laid out as a piece is, so its mesh is drawn as one.
-    for (const t of this.tiers) for (const mesh of [t.sq, t.r15, t.r21, t.skirt, t.eave, t.ridge]) if (mesh >= 0) looks.flag[mesh] = DRAW_PIECE;
+    for (const t of this.tiers) for (const mesh of [t.sq, t.r15, t.r21, t.skirt, t.eave, t.ridge, t.hip, t.saddle]) if (mesh >= 0) looks.flag[mesh] = DRAW_PIECE;
     this.eaves = this.tiers.some((t) => t.eave >= 0);
-    this.ridged = this.tiers.some((t) => t.ridge >= 0);
+    this.hipped = this.tiers.some((t) => t.hip >= 0);
+    this.ridged = this.hipped || this.tiers.some((t) => t.ridge >= 0);
   }
 
   /** Lets go of what is kept of `chunk`. */
@@ -332,6 +360,11 @@ export class Trims {
     this.x0 = x0;
     this.z0 = z0;
     this.lastGid = 0;
+    this.laying = (this.laying + 1) >>> 0 || 1;
+    if (this.hipMemo.length < t.high) {
+      this.hipMemo = new Int32Array(Math.max(t.high, this.hipMemo.length * 2));
+      this.hipSeen = new Uint32Array(this.hipMemo.length);
+    }
     const round = this.around();
     if (!(this.incremental && w.store === store && w.t === t && !w.partial && this.update(round))) this.whole();
     return this.list();
@@ -493,9 +526,10 @@ export class Trims {
   }
 
   /**
-   * The trims on the sides of the slab in slot `s` that `sides` names, a bit each: a skirt or an eave at the middle of
-   * its side, +X back along it so that +Z is the way out, its ends turned as `slab` found; a ridge along its side, at
-   * the height the roof's top has there.
+   * The trims of the slab in slot `s` that `sides` names, a bit each, from its word less its yields: on its sides a
+   * skirt or an eave at the middle of its side, +X back along it so that +Z is the way out, its ends turned as `slab`
+   * found; a ridge along its side, at the height the roof's top has there; then the hips on its sides, +X up the slope;
+   * then the saddles at its corners.
    */
   private sides(s: number, sides: number): void {
     const t = this.t, m = this.m, out = this.out, kind = t.kind[s]!, k0 = t.k0![s]!, k1 = t.k1![s]!;
@@ -522,6 +556,36 @@ export class Trims {
       out.cut[i] = turn === 0 ? 0 : FIT_ENDS | (turn & 15);
       out.ends[i] = (turn >> 4) << PIECE_END_SHIFT;
     }
+    if (sides >> (SLAB_HIPS - 4) === 0) return;
+    const rise = riseAt(this.forms!, kind, k0, k1), n = CLS_CORNERS[cls]!, under = levelY(f.oy, keyLvl(k1)) / STRUCT_UNITS + this.thick[kind]!;
+    const up = (k: number): number => ((rise >> (3 * (k % n))) & 7) * LEVEL_M;
+    for (let j = 0; j < n; j++) {
+      const hip = (sides & (1 << (SLAB_HIPS - 4 + j))) !== 0, saddle = (sides & (1 << (SLAB_SADDLES - 4 + j))) !== 0;
+      if (hip) {
+        const along = dirTurn(dir, step * j), way = up(j) < up(j + 1) ? along : dirTurn(along, 6);
+        tupleStep(m, 4 * j, along, SIDE / 2, m, 16);
+        worldOf(f.basis, f.ox, f.oz, m, 16, this.at, 0);
+        this.put(tier.hip, s, under + (up(j) + up(j + 1)) / 2, way);
+      }
+      if (saddle) {
+        worldOf(f.basis, f.ox, f.oz, m, 4 * j, this.at, 0);
+        this.put(tier.saddle, s, under + up(j), 0);
+      }
+    }
+  }
+
+  /** Lays a trim of `mesh` owned by slot `s` at `this.at` and height `y`, its +X along `way` of its base, its ends as made. */
+  private put(mesh: number, s: number, y: number, way: number): void {
+    const out = this.out, f = this.frame(this.t.fr![s]!)!, i = this.room();
+    out.mesh[i] = mesh;
+    out.owner[i] = s;
+    out.x[i] = this.at[0]! / STRUCT_UNITS;
+    out.y[i] = y;
+    out.z[i] = this.at[1]! / STRUCT_UNITS;
+    out.yaw[i] = yawOf(f.yaw, way);
+    out.tw[i] = way % 3;
+    out.cut[i] = 0;
+    out.ends[i] = 0;
   }
 
   /** The table's slot of a base's cell, or -1; with `add`, a slot made for it, holding NONE until it is given a number. */
@@ -1019,7 +1083,10 @@ export class Trims {
     const step = CLS_STEP[cls]!, sides = cls === CLS_SQUARE ? 4 : 3;
     if (what === SIDES_RIDGE) {
       const ridged = tier.ridge < 0 ? 0 : this.ridges(f.gid, me, kind, k0, k1);
-      if (ridged === 0) return 0;
+      const hips = this.hipped ? this.hipsOf(f.gid, me, kind, k0, k1) : 0;
+      const saddles = hips >> 8 !== 0 && tier.saddle >= 0 ? this.saddles(f.gid, me, k0, k1, hips >> 8) : 0;
+      const word = ((hips >> 4) & 15) << SLAB_HIPS | saddles << SLAB_SADDLES;
+      if (ridged === 0) return word;
       // A ridge's end is laid square where the next ridge runs on in line, and an open end is left as its mesh has it.
       const m = this.m;
       keyAnchor(k0, k1, m, 0);
@@ -1032,7 +1099,7 @@ export class Trims {
         if (this.runsOn(f.gid, 4 * ((j + 1) % sides), along, lvl)) turns |= PIECE_END_RUN << (8 * j + 4);
       }
       w.sTurn[s] = turns >>> 0;
-      return ridged << 4;
+      return (ridged << 4) | word;
     }
     const lx = t.x[s]! - this.x0, lz = t.z[s]! - this.z0;
     const inside = lx > SLAB_BORDER && lz > SLAB_BORDER && lx < CHUNK_SIZE - SLAB_BORDER && lz < CHUNK_SIZE - SLAB_BORDER;
@@ -1175,6 +1242,94 @@ export class Trims {
     return false;
   }
 
+  /**
+   * The hips on the sides of the roof `ref`: sloped sides it shares with a roof at its level whose corners there rise as
+   * its own, where neither face rises from the side and the two are not in one plane, and a tier of the two has a hip.
+   * In the low four bits those sides, a bit each; over them those it draws, being the lower key of the two or the one
+   * whose tier has a hip; over those the corners that are such a side's high end.
+   */
+  private hipsOf(gid: number, ref: number, kind: number, k0: number, k1: number): number {
+    const own = Math.floor(ref / 65536) === this.chunk, slot = ref & 0xffff;
+    if (own && this.hipSeen[slot] === this.laying) return this.hipMemo[slot]!;
+    const forms = this.forms!, occ = this.store.occupied, sides = this.hipSides, by = this.hipBy, them = this.hipThem, at = this.hipAt, keys = this.hipKeys;
+    const lvl = keyLvl(k1), n = CLS_CORNERS[keyCls(k0)]!, rise = riseAt(forms, kind, k0, k1), tier = this.tierOf[kind]!;
+    const mine = tier >= 0 && this.tiers[tier]!.hip >= 0;
+    faceEdges(k0, k1, lvl, SLAB, sides);
+    elementVertices(k0, k1, lvl, SLAB, at);
+    for (let c = 0; c < n; c++) {
+      keys[2 * c] = at.k0[c]!;
+      keys[2 * c + 1] = at.k1[c]!;
+    }
+    let laid = 0, drawn = 0, ends = 0;
+    for (let j = 0; j < n; j++) {
+      const a = (rise >> (3 * j)) & 7, b = (rise >> (3 * ((j + 1) % n))) & 7, fall = fallFrom(rise, n, j);
+      if (a === b || fall > 0 || sides.k0[j] === 0) continue;
+      const ek0 = sides.k0[j]!, ek1 = sides.k1[j]!;
+      edgeFaces(ek0, ek1, lvl, SLAB, by);
+      for (let c = 0; c < by.n; c++) {
+        const o = by.k0[c] === 0 ? -1 : occ.at(gid, by.k0[c]!, by.k1[c]!);
+        if (o < 0 || o === ref) continue;
+        const u = this.store.chunks[Math.floor(o / 65536)]!, os = o & 0xffff, ok = u.kind[os]!, ok0 = u.k0![os]!, ok1 = u.k1![os]!;
+        if (this.sidesOf[ok] !== SIDES_RIDGE || keyLvl(ok1) !== lvl) continue;
+        const on = CLS_CORNERS[keyCls(ok0)]!, orise = riseAt(forms, ok, ok0, ok1);
+        faceEdges(ok0, ok1, lvl, SLAB, them);
+        let i = 0;
+        while (i < on && (them.k0[i] !== ek0 || them.k1[i] !== ek1)) i++;
+        if (i === on) continue;
+        // Which of its side's two corners is this side's first.
+        elementVertices(ok0, ok1, lvl, SLAB, at);
+        const same = at.k0[i] === keys[2 * j] && at.k1[i] === keys[2 * j + 1];
+        const oa = (orise >> (3 * (same ? i : (i + 1) % on))) & 7, ob = (orise >> (3 * (same ? (i + 1) % on : i))) & 7, ofall = fallFrom(orise, on, i);
+        const ot = this.tierOf[ok]!, theirs = ot >= 0 && this.tiers[ot]!.hip >= 0;
+        if (oa === a && ob === b && ofall <= 0 && fall + ofall !== 0 && (mine || theirs)) {
+          laid |= 1 << j;
+          ends |= 1 << (a > b ? j : (j + 1) % n);
+          if (mine && (!theirs || ok0 > k0 || (ok0 === k0 && ok1 > k1))) drawn |= 1 << j;
+        }
+        break;
+      }
+    }
+    const found = laid | (drawn << 4) | (ends << 8);
+    if (own) {
+      this.hipSeen[slot] = this.laying;
+      this.hipMemo[slot] = found;
+    }
+    return found;
+  }
+
+  /**
+   * The corners of the roof `me` that `ends` names, each a hip's high end, at which it draws a saddle: no roof at its
+   * level with a lower key has a hip ending there and a tier with a saddle. Its tier has one.
+   */
+  private saddles(gid: number, me: number, k0: number, k1: number, ends: number): number {
+    const occ = this.store.occupied, round = this.hipRound, own = this.ownKeys, at = this.hipAt, lvl = keyLvl(k1);
+    elementVertices(k0, k1, lvl, SLAB, at);
+    for (let c = 0; c < CLS_CORNERS[keyCls(k0)]!; c++) {
+      own[2 * c] = at.k0[c]!;
+      own[2 * c + 1] = at.k1[c]!;
+    }
+    let out = 0;
+    for (let c = 0; c < CLS_CORNERS[keyCls(k0)]!; c++) {
+      if ((ends & (1 << c)) === 0) continue;
+      const vk0 = own[2 * c]!, vk1 = own[2 * c + 1]!;
+      vertexFaces(vk0, vk1, lvl, SLAB, round);
+      let mine = true;
+      // The squares and triangles with a corner there, not those it is the middle of.
+      for (let n = 0; n < 2 * DIRECTIONS && mine; n++) {
+        const q = round.k0[n] === 0 ? -1 : occ.at(gid, round.k0[n]!, round.k1[n]!);
+        if (q < 0 || q === me) continue;
+        const u = this.store.chunks[Math.floor(q / 65536)]!, qs = q & 0xffff, qk = u.kind[qs]!, qk0 = u.k0![qs]!, qk1 = u.k1![qs]!, qt = this.tierOf[qk]!;
+        if (this.sidesOf[qk] !== SIDES_RIDGE || keyLvl(qk1) !== lvl || !(qk0 < k0 || (qk0 === k0 && qk1 < k1)) || qt < 0 || this.tiers[qt]!.saddle < 0) continue;
+        const theirs = this.hipsOf(gid, q, qk, qk0, qk1) >> 8;
+        if (theirs === 0) continue;
+        elementVertices(qk0, qk1, lvl, SLAB, at);
+        for (let i = 0; i < CLS_CORNERS[keyCls(qk0)]!; i++) if ((theirs & (1 << i)) !== 0 && at.k0[i] === vk0 && at.k1[i] === vk1) mine = false;
+      }
+      if (mine) out |= 1 << c;
+    }
+    return out;
+  }
+
   /** Whether a ridge lies on the edge that leaves the corner at `m[at]` by the way `way`: two roofs' highest sides meet on it. */
   private runsOn(gid: number, at: number, way: number, lvl: number): boolean {
     const m = this.m, spokes = this.spokes, round = this.round, occ = this.store.occupied;
@@ -1190,6 +1345,20 @@ export class Trims {
     }
     return false;
   }
+}
+
+/**
+ * Which way a roof's face goes from its side `i` into it, `rise` its `n` corners' rises three bits each: under 0 where
+ * it falls away, 0 where it is level across, over 0 where it rises. Only the sign is to be read.
+ */
+function fallFrom(rise: number, n: number, i: number): number {
+  const r = (k: number): number => (rise >> (3 * ((i + k) % n))) & 7;
+  // A triangle's far corner against the side's middle.
+  if (n === 3) return 2 * r(2) - r(0) - r(1);
+  // A square is folded on the diagonal through the corner no other is level with: the face by this side holds that diagonal's far end.
+  let odd = -1;
+  for (let k = 0; k < 4; k++) if (r(k + 1) === r(k + 2) && r(k + 2) === r(k + 3) && r(k) !== r(k + 1)) odd = k;
+  return odd === 0 || odd === 2 ? r(2) - r(1) : r(3) - r(0);
 }
 
 /** The most a roof rises at any of its `n` corners, three bits each in `rise`. */

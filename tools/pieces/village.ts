@@ -52,7 +52,7 @@ function step(a: Tuple, d: number, sides = 1): Tuple {
 }
 
 /** The trims a tier may have, by the names the client finds them under. */
-const TRIMS = ["joint_sq", "joint_r15", "joint_r21", "skirt", "eave", "ridge"] as const;
+const TRIMS = ["joint_sq", "joint_r15", "joint_r21", "skirt", "eave", "ridge", "hip", "saddle"] as const;
 /** Where the base stands in the world the client's trims are laid in: well inside one chunk. */
 const BASE = 96;
 const DIMS = { chunksX: 4, chunksZ: 4 };
@@ -312,6 +312,94 @@ export function hamlet(tier: string, has: (id: string) => boolean): Placed[] {
 
   trims();
   return out;
+}
+
+/**
+ * Roofs that meet at hips between pieces, and a ridge's open end: a tower of six triangles round one corner, two slopes
+ * to a ridge hipped at its east end by three triangles and closed by a gable at its west, and a house in an L whose
+ * ridges meet over a valley and a hip. A tier with no triangle (thatch) has the slopes and the L alone, the ridge ending
+ * at two hips.
+ */
+export const ROOF_SHOTS: readonly VillageShot[] = [
+  ["a tower of six triangles round one corner", [3, 4, 3], 4.6, 140, 30],
+  ["its apex, close", [3, 5, 3], 1.3, 150, 38],
+  ["a ridge hipped at its east end by three triangles", [14.4, 4, 3], 5.2, 120, 30],
+  ["the hipped end, close", [15, 4.9, 3], 1.4, 100, 34],
+  ["the ridge's open end over its gable, close", [12, 5.1, 3], 1, 165, 25],
+  ["a roof turning a corner: an L over a valley and a hip", [25.5, 4, 1.5], 8.4, 135, 28],
+];
+
+export function roofs(tier: string, has: (id: string) => boolean): Placed[] {
+  return roofsBuilt(tier, has).placed;
+}
+
+/** The roofs' pieces by their form's name and key, for a store to place them by. */
+export function roofKeys(tier: string): { name: string; k0: number; k1: number }[] {
+  return roofsBuilt(tier, () => false).keys;
+}
+
+function roofsBuilt(tier: string, has: (id: string) => boolean): { placed: Placed[]; keys: { name: string; k0: number; k1: number }[] } {
+  const { out, keys, square, edge, tri, trims } = builder(tier, has);
+  const triangles = tier !== "thatch";
+  const wall = (name: string, i: number, j: number, d: 0 | 3, lvl: number, flip: boolean): void => edge(name, at(i, j), d, lvl, flip);
+
+  // The tower: six triangles of floor round its middle, a wall on each outer side, and six faces up to the middle.
+  const v = at(1, 1);
+  for (let k = 0; triangles && k < 6; k++) {
+    tri("triangle_foundation", v, 2 * k, 0);
+    edge(k === 4 ? "doorframe" : "wall", step(v, 2 * k), (2 * k + 4) % 12, 0, true);
+    tri("triangle_roof", v, 2 * k, 4, 1);
+  }
+
+  // The ridge: two slopes over cells (4, 0) and (4, 1), a gable at the west end, and three faces high at its east end.
+  const q = at(5, 1);
+  for (const j of [0, 1]) square("foundation", 4, j, 0);
+  wall("doorframe", 4, 0, 0, 0, true);
+  wall("wall", 4, 2, 0, 0, false);
+  for (const j of [0, 1]) wall("wall", 4, j, 3, 0, false);
+  square("roof", 4, 0, 4, 0);
+  square("roof", 4, 1, 4, 6);
+  edge("sloped_wall_right", at(4, 0), 3, 4);
+  edge("sloped_wall_left", at(4, 1), 3, 4);
+  if (triangles) {
+    for (const [d, way] of [[9, 1], [11, 3], [1, 5]] as const) {
+      tri("triangle_foundation", q, d, 0);
+      edge("wall", step(q, d), way, 0, true);
+      tri("triangle_roof", q, d, 4, 1);
+    }
+  } else {
+    for (const j of [0, 1]) square("foundation", 5, j, 0);
+    wall("wall", 5, 0, 0, 0, true);
+    wall("wall", 5, 2, 0, 0, false);
+    for (const j of [0, 1]) wall("wall", 6, j, 3, 0, true);
+    square("roof_hip", 5, 0, 4, 0);
+    square("roof_hip", 5, 1, 4, 3);
+  }
+
+  // The house in an L, as the hamlet's: a wing to the east and a wing to the south, their ridges meeting over the corner.
+  const o = 7;
+  const cells: [number, number][] = [[0, -1], [1, -1], [0, 0], [1, 0], [0, 1], [1, 1], [2, 0], [2, 1]];
+  for (const [i, j] of cells) square("foundation", o + i, j, 0);
+  for (const i of [0, 1]) wall("wall", o + i, -1, 0, 0, true);
+  wall("wall", o + 2, -1, 3, 0, true);
+  wall("doorframe", o + 2, 0, 0, 0, true);
+  for (const j of [0, 1]) wall("wall", o + 3, j, 3, 0, true);
+  for (const i of [0, 1, 2]) wall("wall", o + i, 2, 0, 0, false);
+  for (const j of [-1, 0, 1]) wall("wall", o, j, 3, 0, false);
+  square("roof_valley", o + 1, 0, 4, 0);
+  square("roof_hip", o, 1, 4, 6);
+  square("roof", o + 1, 1, 4, 6);
+  square("roof", o, 0, 4, 9);
+  square("roof", o + 2, 0, 4, 0);
+  square("roof", o + 2, 1, 4, 6);
+  edge("sloped_wall_left", at(o + 3, 0), 3, 4, true);
+  edge("sloped_wall_right", at(o + 3, 1), 3, 4, true);
+  square("roof", o, -1, 4, 9);
+  square("roof", o + 1, -1, 4, 3);
+  edge("sloped_wall_left", at(o, -1), 0, 4, true);
+  edge("sloped_wall_right", at(o + 1, -1), 0, 4, true);
+  trims();
+  return { placed: out, keys };
 }
 
 export const KEEP_SHOTS: readonly VillageShot[] = [

@@ -1716,24 +1716,27 @@ function skirt(level: number): Shape {
   return hut.shape;
 }
 
+/** How far a ridge's roll runs past each end of its side: an open end stands proud of the roofs' ends, cut square as reed is, and the client lays an end square where the next ridge runs on. */
+const RIDGE_PROUD = 0.02;
+
 /**
  * The roll along a ridge where two roofs' high sides meet: a saddle of reed laid over both top courses, held by a rod
- * along each flank that is pegged down. It lies along x on the ridge's own line, at its origin's height. No client
- * draws it yet.
+ * along each flank that is pegged down. It lies along x on the ridge's own line, at its origin's height.
  */
 function ridgeRoll(level: number): Shape {
   const hut = new Hut(0);
+  const end = H + RIDGE_PROUD;
   const reed = (p: Vec): Uv => [(p[0] + H) / TILE.roof, 0.42 + (p[1] + Math.sign(p[1]) * Math.max(0, p[2]) * 0.6) / TILE.roof];
-  if (level === 3) return openSheet(hut.shape, [[-H, 0.24, -0.06], [-H, -0.24, -0.06], [H, -0.24, -0.06], [H, 0.24, -0.06]], "roof");
+  if (level === 3) return openSheet(hut.shape, [[-end, 0.24, -0.06], [-end, -0.24, -0.06], [end, -0.24, -0.06], [end, 0.24, -0.06]], "roof");
   // Its section over the ridge, (y, z) going round: the saddle's back, and an underside that lies inside both roofs.
   const back: Flat[] = level === 0 ? [[0.27, -0.085], [0.16, 0.012], [0.06, 0.105], [-0.06, 0.105], [-0.16, 0.012], [-0.27, -0.085]] : level === 1 ? [[0.27, -0.085], [0.08, 0.1], [-0.08, 0.1], [-0.27, -0.085]] : [[0.27, -0.1], [0, 0.11], [-0.27, -0.1]];
   const section: Flat[] = level === 2 ? back : [...back, [-0.27, -0.16], [0.27, -0.16]];
   const round = hut.shape.group();
   hut.raw([...section.map((a, k): Patch => {
     const b = section[(k + 1) % section.length]!;
-    const points: Vec[] = [[-H, a[0], a[1]], [H, a[0], a[1]], [H, b[0], b[1]], [-H, b[0], b[1]]];
+    const points: Vec[] = [[-end, a[0], a[1]], [end, a[0], a[1]], [end, b[0], b[1]], [-end, b[0], b[1]]];
     return { points, uvs: points.map(reed), mat: "roof", ...(level < 2 && k + 1 < back.length ? { group: round } : {}) };
-  }), ...[-H, H].map((x): Patch => ({ points: section.map(([y, z]): Vec => [x, y, z]), uvs: section.map(([y, z]): Uv => [0.5 + z / TILE.roof, 0.42 + y / TILE.roof]), mat: "roof" }))]);
+  }), ...[-end, end].map((x): Patch => ({ points: section.map(([y, z]): Vec => [x, y, z]), uvs: section.map(([y, z]): Uv => [0.5 + z / TILE.roof, 0.42 + y / TILE.roof]), mat: "roof" }))]);
   if (level > 0) return hut.shape;
   const rng = new PyRandom("ridge0");
   for (const s of [-1, 1]) {

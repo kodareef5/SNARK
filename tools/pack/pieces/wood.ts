@@ -11,6 +11,7 @@
 
 import { HALF_SIDE_M, outlineBox, type FormDef } from "../../../shared/world/lattice/forms.ts";
 import { Shape, add, beamRings, clip, clipTo, cross, dot, fanSlab, gateLeaves, inset, ladderSticks, length, mirror, place, planeAt, planeMoved, railingSticks, rimStrips, roundEven, scale, slabOn, sub, unit, uprightPlane, widths, type FaceMap, type Flat, type Plane, type SlabMap, type Stick, type Uv, type Vec } from "./kit.ts";
+import { HIP_FALL, HIP_FROM, SADDLE_FOOT, alongHip, onHip, revolve } from "./hips.ts";
 import { planOf, type TierRecipe } from "./lod.ts";
 import { PyRandom } from "./mt.ts";
 
@@ -1973,26 +1974,69 @@ function skirt(level: number): Shape {
   return p;
 }
 
+/** How far a ridge's capping runs past each end of its side: an open end stands proud of the roofs' ends, and the client lays an end square where the next ridge runs on. */
+const RIDGE_PROUD = 0.02;
+
 /**
  * The capping along a ridge where two roofs' high sides meet: two boards laid to the slopes and a roll along their
- * joint, nailed down. It lies along x on the ridge's own line, which is at its origin's height. No client draws it yet.
+ * joint, nailed down. It lies along x on the ridge's own line, which is at its origin's height. Its boards' ends show
+ * their grain where it stands past a gable.
  */
 function ridge(level: number): Shape {
   const p = new Shape();
-  const [wide, top, drop] = [0.22, 0.075, 0.068];
+  const [wide, top, drop, end] = [0.22, 0.075, 0.068, H + RIDGE_PROUD];
   const wing = (s: number, q: Vec): Uv => [(q[0] + H) / 3, (s < 0 ? 3 : 8) / 12 - BOARD_ROLL_V + Math.abs(q[1]) / 3];
+  const boards: FaceMap = (label) => (label.endsWith("x") && level < 2 ? ["fittings", (q) => [cellUv(2, 0)[0] + q[1], cellUv(2, 0)[1] + q[2] / 2]] : ["boards", (q) => wing(Math.sign(q[1]) || 1, q)]);
   if (level === 3) {
-    sheet(p, [[-H, wide, 0.02], [-H, -wide, 0.02], [H, -wide, 0.02], [H, wide, 0.02]], "boards", () => [0, 0]);
+    sheet(p, [[-end, wide, 0.02], [-end, -wide, 0.02], [end, -wide, 0.02], [end, wide, 0.02]], "boards", () => [0, 0]);
     return p;
   }
   // Its two slopes over a flat underside.
-  if (level === 2) return p.extrude([[0, top], [wide, -drop], [-wide, -drop]], "x", -H, H, () => ["boards", (q) => wing(Math.sign(q[1]) || 1, q)]);
+  if (level === 2) return p.extrude([[0, top], [wide, -drop], [-wide, -drop]], "x", -end, end, boards);
   // The two boards as one solid, (y, z) going round as seen from +x.
-  p.extrude([[0, top], [wide, -drop], [wide, -drop - 0.032], [0, top - 0.03], [-wide, -drop - 0.032], [-wide, -drop]], "x", -H, H, () => ["boards", (q) => wing(Math.sign(q[1]) || 1, q)]);
+  p.extrude([[0, top], [wide, -drop], [wide, -drop - 0.032], [0, top - 0.03], [-wide, -drop - 0.032], [-wide, -drop]], "x", -end, end, boards);
   if (level === 1) return p;
-  timber(p, [-H, 0, top + 0.012], [H, 0, top + 0.012], 0.05, 0.05, [0, 1, 1], [1, 1, 2, 2], { chamfer: 0, end: [3, 0] });
+  timber(p, [-end, 0, top + 0.012], [end, 0, top + 0.012], 0.05, 0.05, [0, 1, 1], [1, 1, 2, 2], { chamfer: 0, end: [3, 0] });
   for (const x of [-1.05, 1.05]) for (const s of [-1, 1]) stud(p, [x, s * 0.14, top - (0.14 * (top + drop)) / wide], [0, s * (top + drop), wide], 0.012, 0.006, 4, BOLT_UV);
   return p;
+}
+
+/** A hip's roll between two roofs, as the roll on a hip's own fold: its width, its depth upright, and its middle over the line. */
+const HIP_ROLL = { wide: 0.09, deep: 0.07, lift: 0.025 } as const;
+
+/**
+ * The roll that caps a hip between two roofs: the planed roll a hip's own fold has (`roof`), from the eaves' corner up
+ * the side the two share to the high corner, pegged down. Its underside lies in both faces' courses.
+ */
+function hip(level: number): Shape {
+  const p = new Shape();
+  const { wide, deep, lift } = HIP_ROLL;
+  const [w, top, foot] = [wide / 2, lift + deep / 2, lift - deep / 2];
+  const grain = (q: Vec): Uv => [q[0] / 3, bandV(1) + q[1] / 3];
+  if (level === 3) {
+    sheet(p, [onHip(HIP_FROM, -w, top), onHip(H, -w, top), onHip(H, w, top), onHip(HIP_FROM, w, top)], "timber", grain);
+    return p;
+  }
+  if (level === 2) return alongHip(p, [[0, top], [-w, foot - HIP_FALL * w], [w, foot - HIP_FALL * w]], HIP_FROM, H, (_, __, q) => ["timber", grain(q)], (q) => ["timber", grain(q)]);
+  if (level === 1) return alongHip(p, [[w, foot - HIP_FALL * w], [w, top], [-w, top], [-w, foot - HIP_FALL * w]], HIP_FROM, H, (_, __, q) => ["timber", grain(q)], (q) => ["timber", grain(q)]);
+  bent(p, [onHip(HIP_FROM, 0, lift), onHip(H, 0, lift)], wide, deep, Z, 1);
+  for (const x of [-1, 0, 1]) stud(p, onHip(x, 0, top), Z, 0.012, 0.006, 4, PEG_UV);
+  return p;
+}
+
+/**
+ * The saddle on a high corner hips end at: a hewn boss over the hips' rolls and a ridge's end, its foot in every face
+ * round the corner, under a short turned post. It stands about its corner, at the corner's height.
+ */
+function saddle(level: number): Shape {
+  const p = new Shape();
+  const side = (q: Vec, around: number): readonly [string, Uv] => ["timber", [around / 3, bandV(6) + q[2] / 3]];
+  const cap = (q: Vec): readonly [string, Uv] => ["fittings", [cellUv(2, 0)[0] + q[0], cellUv(2, 0)[1] + q[1]]];
+  const flat = (q: Vec): readonly [string, Uv] => ["timber", [q[0] / 3, bandV(6) + q[1] / 3]];
+  if (level === 3) return revolve(p, [[0.17, SADDLE_FOOT(0.17)], [0.02, 0.15]], 3, flat, flat);
+  if (level === 2) return revolve(p, [[0.17, SADDLE_FOOT(0.17)], [0.07, 0.15]], 4, flat, flat);
+  if (level === 1) return revolve(p, [[0.16, SADDLE_FOOT(0.16)], [0.16, 0.02], [0.06, 0.15]], 8, side, cap);
+  return revolve(p, [[0.16, SADDLE_FOOT(0.16)], [0.16, 0.02], [0.13, 0.11], [0.06, 0.15], [0.035, 0.16], [0.035, 0.26]], 12, side, cap);
 }
 
 /** Wood's trims by the names the client finds them under, each at its four levels. */
@@ -2008,6 +2052,8 @@ function woodTrims(): Record<string, Shape[]> {
     joint_r21: levels((level) => post(level, 12, 0.21, 0, false, 8, 2302)),
     skirt: levels(skirt),
     ridge: levels(ridge),
+    hip: levels(hip),
+    saddle: levels(saddle),
   };
 }
 
