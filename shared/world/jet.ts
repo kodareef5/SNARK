@@ -1,5 +1,6 @@
 // A jet against terrain, structures and resource nodes: its wheels on the ground, and its swept parts against the rest.
 // The same parts meet a survivor, another vehicle and a structure being placed.
+import { WORLD_MAX_Y, WORLD_MIN_Y } from "../coords.ts";
 import { detAtan2, detCos, detSin } from "../math/scalar.ts";
 import { createJet, type JetContact, type JetState, type JetSupport, type JetWorld } from "../sim/jet.ts";
 import { vehicleRotation, type VehicleFrame } from "../sim/vehicle-frame.ts";
@@ -8,7 +9,7 @@ import type { CollisionWorld } from "./collide.ts";
 import { boxSolid, partSolid, type Solid } from "./convex.ts";
 import { frame, frameOf } from "./frame.ts";
 import { castWorld, HIT_NONE, rayHit } from "./ray.ts";
-import type { PartTable } from "./structures.ts";
+import { Found, type PartTable } from "./structures.ts";
 import { meetOther } from "./vehicle-meet.ts";
 import { bounds, makeSolid, solidContact, StaticVehicleSolids, sweep, tube, type ContactGeometry, type Swept } from "./vehicle-solid.ts";
 import { jetShapes } from "./vehicle-shapes.ts";
@@ -20,9 +21,19 @@ export class StaticJetWorld implements JetWorld {
   private readonly hit: JetContact = { reason: "", nx: 0, ny: 1, nz: 0 };
   private readonly supportHit: JetSupport = { y: 0, pitch: 0, roll: 0 };
   private readonly heights = new Float64Array(3);
+  private readonly found = new Found();
   readonly world: CollisionWorld;
   constructor(world: CollisionWorld) { this.world = world; this.collision = new StaticVehicleSolids(world); this.supportWorld = { hf: world.hf, structs: world.structs }; }
   waterAt(x: number, z: number): number { return this.world.hf.waterAt(x, z); }
+  open(minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number): boolean {
+    const hf = this.world.hf;
+    if (minX < 0 || minZ < 0 || maxX >= hf.sizeX || maxZ >= hf.sizeZ || minY < WORLD_MIN_Y || maxY > WORLD_MAX_Y) return false;
+    for (let z = Math.floor(minZ / hf.cell), z1 = Math.min(hf.nz - 1, Math.ceil(maxZ / hf.cell)); z <= z1; z++) {
+      for (let x = Math.floor(minX / hf.cell), x1 = Math.min(hf.nx - 1, Math.ceil(maxX / hf.cell)); x <= x1; x++) if (hf.sample(x, z) >= minY) return false;
+    }
+    if (this.world.structs.query(minX, minZ, maxX, maxZ, this.found, minY, maxY) > 0) return false;
+    return !this.world.nodes || this.world.nodes.query(minX, minZ, maxX, maxZ, this.found, minY, maxY) === 0;
+  }
   /** The nose wheel and the two main wheels each find ground within `reach`; the plane through them is the support. */
   support(x: number, y: number, z: number, yaw: number, reach: number, p: JetSpec): JetSupport | null {
     const sn = detSin(yaw), cs = detCos(yaw), hf = this.world.hf, heights = this.heights;

@@ -38,6 +38,11 @@ export interface JetInput {
 export interface JetSupport { y: number; pitch: number; roll: number }
 export interface JetContact { reason: string; nx?: number; ny?: number; nz?: number }
 export interface JetWorld {
+  /**
+   * Whether nothing the jet could meet is in the box, nor the map's edge: a tick whose whole path is in open air steps
+   * with no sweep. Without it every substep is swept.
+   */
+  open?(minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number): boolean;
   /** The ground under the three wheels with the jet at (x, y, z) turned `yaw`, within `reach` below y, or null. */
   support(x: number, y: number, z: number, yaw: number, reach: number, p: JetSpec): JetSupport | null;
   blocked(from: Readonly<JetState>, to: Readonly<JetState>, def: JetVehicleDefinition): JetContact | null;
@@ -90,6 +95,52 @@ const approach = (value: number, target: number, amount: number): number => valu
 const unit = (value: number): number => Number.isFinite(value) ? clamp(value, -1, 1) : 0;
 const square = (value: number): number => value * value;
 const wrap = (value: number): number => value - Math.floor((value + TAU / 2) / TAU) * TAU;
+const box = new Float64Array(6);
+/** The box about the origin the jet's boxes and wheels fill at the attitude in `q`, into `box`. */
+function partsBox(p: JetSpec): void {
+  const x = q[0]!, y = q[1]!, z = q[2]!, w = q[3]!;
+  // The rotation's matrix, and each part's middle turned and its half sizes laid along the world's axes.
+  const m00 = 1 - 2 * (y * y + z * z), m01 = 2 * (x * y - w * z), m02 = 2 * (x * z + w * y);
+  const m10 = 2 * (x * y + w * z), m11 = 1 - 2 * (x * x + z * z), m12 = 2 * (y * z - w * x);
+  const m20 = 2 * (x * z - w * y), m21 = 2 * (y * z + w * x), m22 = 1 - 2 * (x * x + y * y);
+  box[0] = box[1] = box[2] = Infinity; box[3] = box[4] = box[5] = -Infinity;
+  const parts = partsOf(p);
+  for (let i = 0; i < parts.length; i += 6) {
+    const ax = parts[i]!, ay = parts[i + 1]!, az = parts[i + 2]!, hx = parts[i + 3]!, hy = parts[i + 4]!, hz = parts[i + 5]!;
+    const cx = m00 * ax + m01 * ay + m02 * az, cy = m10 * ax + m11 * ay + m12 * az, cz = m20 * ax + m21 * ay + m22 * az;
+    const ex = Math.abs(m00) * hx + Math.abs(m01) * hy + Math.abs(m02) * hz;
+    const ey = Math.abs(m10) * hx + Math.abs(m11) * hy + Math.abs(m12) * hz;
+    const ez = Math.abs(m20) * hx + Math.abs(m21) * hy + Math.abs(m22) * hz;
+    if (cx - ex < box[0]!) box[0] = cx - ex; if (cy - ey < box[1]!) box[1] = cy - ey; if (cz - ez < box[2]!) box[2] = cz - ez;
+    if (cx + ex > box[3]!) box[3] = cx + ex; if (cy + ey > box[4]!) box[4] = cy + ey; if (cz + ez > box[5]!) box[5] = cz + ez;
+  }
+}
+const partLists = new WeakMap<JetSpec, Float64Array>();
+/** A jet's boxes and its three wheels' (as world/jet.ts's shapes have them, a little wider), six numbers each. */
+function partsOf(p: JetSpec): Float64Array {
+  let parts = partLists.get(p);
+  if (!parts) {
+    const rows: number[] = [];
+    for (const b of p.bodyBoxes) rows.push(b.at[0], b.at[1], b.at[2], b.half[0], b.half[1], b.half[2]);
+    const middle = p.clearance / 2;
+    rows.push(0, middle, p.noseGear, .2, middle, .3);
+    for (const side of [-1, 1]) rows.push(side * p.gearTrack, middle, p.mainGear, .25, middle, .35);
+    parts = Float64Array.from(rows);
+    partLists.set(p, parts);
+  }
+  return parts;
+}
+const reaches = new WeakMap<JetSpec, number>();
+/** The farthest any of a jet's parts is from its origin, whatever its attitude. */
+function reachOf(p: JetSpec): number {
+  let r = reaches.get(p);
+  if (r === undefined) {
+    r = len3(p.gearTrack + .15, p.clearance, Math.max(p.noseGear, -p.mainGear) + .25);
+    for (const b of p.bodyBoxes) r = Math.max(r, len3(Math.abs(b.at[0]) + b.half[0], Math.abs(b.at[1]) + b.half[1], Math.abs(b.at[2]) + b.half[2]));
+    reaches.set(p, r);
+  }
+  return r;
+}
 /** The thrust ratio of the afterburner to military: it holds topSpeed where military holds cruiseSpeed. */
 export const afterburnerRatio = (p: JetSpec): number => square(p.topSpeed / p.cruiseSpeed);
 
@@ -277,14 +328,22 @@ export function stepJet(s: JetState, input: Readonly<JetInput>, def: JetVehicleD
   const span = Math.max(p.halfWidth, p.halfLength);
   const travel = speed0 * TICK_DT + len3(s.pitchRate, s.yawRate, s.rollRate) * span * TICK_DT;
   const count = Math.max(2, Math.min(12, Math.ceil(travel / 1.2))), dt = TICK_DT / count;
+  // A substep in open air needs no sweep: its parts' box as they stand, widened by twice as far as they may go in it.
+  const reach = reachOf(p);
   for (let step = 0; step < count; step++) {
-    const previous = { ...s };
     readRotation(s);
+    let clear = false;
+    if (!s.grounded && s.gear === 0 && world.open) {
+      partsBox(p);
+      const go = (len3(s.vx, s.vy, s.vz) + len3(s.pitchRate, s.yawRate, s.rollRate) * reach) * dt * 2 + .3;
+      clear = world.open(s.x + box[0]! - go, s.y + box[1]! - go, s.z + box[2]! - go, s.x + box[3]! + go, s.y + box[4]! + go, s.z + box[5]! + go);
+    }
+    const previous = clear ? s : { ...s }, previousY = s.y;
     if (s.grounded) {
       rotation = approach(rotation, rotate, .5 * dt);
       s.yawRate = approach(s.yawRate, groundYaw, 3 * dt);
       const yaw = s.yaw + s.yawRate * dt;
-      const support = world.support(s.x, previous.y + .08, s.z, yaw, .16 + raised(.3) + speed0 * dt, p);
+      const support = world.support(s.x, previousY + .08, s.z, yaw, .16 + raised(.3) + speed0 * dt, p);
       if (!support) { s.grounded = false; writeRotation(s); }
       else {
         targetRotation(yaw, support.pitch + rotation, support.roll); q.set(wanted); writeRotation(s);
@@ -338,9 +397,9 @@ export function stepJet(s: JetState, input: Readonly<JetInput>, def: JetVehicleD
       s.x += s.vx * dt; s.y += s.vy * dt; s.z += s.vz * dt;
       if (s.y > WORLD_MAX_Y - p.height) { s.y = WORLD_MAX_Y - p.height; s.vy = Math.min(0, s.vy); }
       // The main wheels meet the ground first in a nose-high landing; the nose then comes down as the rotation does.
-      const support = s.gear !== 0 && upright[1]! > .85 && s.vy <= 0 ? world.support(s.x, previous.y + .04, s.z, s.yaw, Math.max(.12, previous.y - s.y + .06) + raised(.3), p) : null;
+      const support = s.gear !== 0 && upright[1]! > .85 && s.vy <= 0 ? world.support(s.x, previousY + .04, s.z, s.yaw, Math.max(.12, previousY - s.y + .06) + raised(.3), p) : null;
       const lifted = support ? raised(Math.min(.3, s.pitch - support.pitch)) : 0;
-      if (support && s.y - lifted <= support.y + .012 && previous.y - lifted >= support.y - .012) {
+      if (support && s.y - lifted <= support.y + .012 && previousY - lifted >= support.y - .012) {
         const sink = -s.vy;
         result.landSpeed = Math.max(result.landSpeed, sink);
         result.impactSpeed = Math.max(result.impactSpeed, sink);
@@ -349,7 +408,7 @@ export function stepJet(s: JetState, input: Readonly<JetInput>, def: JetVehicleD
         s.pitchRate = s.rollRate = 0;
       }
     }
-    const hit = world.blocked(previous, s, def);
+    const hit = clear ? null : world.blocked(previous, s, def);
     if (hit) {
       const vx = s.vx, vy = s.vy, vz = s.vz;
       const nx = hit.nx ?? 0, ny = hit.ny ?? 0, nz = hit.nz ?? 0;
