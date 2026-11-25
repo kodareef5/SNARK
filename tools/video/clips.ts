@@ -381,7 +381,8 @@ function sourcesPage(dir = VIDEO_DIR): string {
   const cell = (s: string): string => s.replaceAll("|", "\\|").replaceAll("\n", " ");
   const rows = clipNames(dir).map((name) => {
     const r = readRecipe(name, dir), c = readClip(name, dir);
-    const from = r.from.url ? `[page](${r.from.page}), [file](${r.from.url})` : `supplied by ${cell(r.from.by ?? "")}`;
+    const source = r.from.url ? `[file](${r.from.url})` : `supplied by ${cell(r.from.by ?? "")}`;
+    const from = r.from.page ? `[page](${r.from.page}), ${source}` : source;
     return `| ${cell(r.title)} | ${r.year ?? ""} | ${from} | ${cell(r.licence)} | ${cell(r.changes ?? "")} | \`${name}\` \`${c?.id ?? "not encoded"}\` |`;
   });
   return [

@@ -1,0 +1,12 @@
+{
+  "title": "The Electric Derby",
+  "from": {
+    "page": "https://commons.wikimedia.org/wiki/File:Horse_in_Motion_-_Sallie_Gardner_(animation).webm",
+    "by": "Vegas ball collection",
+    "sha256": "5282e15806e2b65a88c9226a27ce06e80746be5f47913bdff62ac40467fb4a2b"
+  },
+  "rights": "Eadweard Muybridge. Public domain. Sphere adaptation dedicated to CC0 1.0.",
+  "licence": "Horse in Motion - Sallie Gardner (animation).webm — Public domain (https://creativecommons.org/publicdomain/mark/1.0/). New adaptation contributions are offered under CC0 1.0.",
+  "changes": "Horse and rider isolated from the photographic plates. Reconstructed the jacket silhouette, tinted the racers and animated them around an illustrated track. Encoded the supplied spherical cut at 640×320.",
+  "audio": false
+}

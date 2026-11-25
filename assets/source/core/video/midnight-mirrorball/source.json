@@ -1,0 +1,12 @@
+{
+  "title": "Midnight Mirrorball",
+  "from": {
+    "page": "https://polyhaven.com/a/shanghai_bund",
+    "by": "Vegas ball collection",
+    "sha256": "58e1288aaf276cf3f55533915cf1e26e35a54f56548321c97fc86a0a11c5f39b"
+  },
+  "rights": "Greg Zaal / Poly Haven. CC0 1.0. Sphere adaptation dedicated to CC0 1.0.",
+  "licence": "Shanghai Bund — CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/). New adaptation contributions are offered under CC0 1.0.",
+  "changes": "Photographic panorama sampled per mirror tile with added stage lighting and animated rotation. Encoded the supplied spherical cut at 640×320. [Source notes](https://polyhaven.com/license)",
+  "audio": false
+}
