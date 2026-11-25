@@ -2098,7 +2098,6 @@ function gatehouse(name: string, form: FormDef, level: number): Build | null {
     const points = doorwayOutline(w, d, w.top).map(([x, y]): Vec => [x, 0, y]);
     const tris = [0, 1, 2, 0, 2, 7, 2, 3, 7, 3, 6, 7, 3, 5, 6, 3, 4, 5];
     for (const front of [true, false]) b.shape.faces.push({ points, uvs: points.map(() => [0, 0] as const), mat: "dressed", tris: front ? tris.flatMap((_, i) => (i % 3 === 0 ? [tris[i]!, tris[i + 2]!, tris[i + 1]!] : [])) : tris });
-    b.shape.error = w.half;
     return b;
   }
   if (level < 3) b.rings = yieldPlanes(form);
@@ -2522,9 +2521,14 @@ const HATCH_CLEAR = 0.004;
  * has, trimmers the whole way across beside the hole and headers between them, and rough stone in the bays.
  */
 function hatchFrame(name: string, form: FormDef, level: number): Build | null {
-  if (level > 3) return null;
+  if (level > 4) return null;
   const b = new Build();
   b.free = true;
+  // From 386 m the hole is not drawn: twelve triangles hold none.
+  if (level === 4) {
+    b.box([-H, -form.thick / 2, -H], [H, form.thick / 2, H], (n) => (n[1] > 0.5 ? "flags" : "masonry"));
+    return b;
+  }
   if (level < 3) b.rings = yieldPlanes(form);
   const o = form.openings?.[0];
   if (!o || form.outline.length !== 4) throw new Error(`stone ${name}: a square slab with one hole`);
@@ -3076,10 +3080,15 @@ function column(form: FormDef, level: number): Build | null {
  * in its middle, and square balusters set on the diagonal between them. Far off it is its two rails and its post.
  */
 function balustrade(form: FormDef, level: number): Build | null {
-  if (level > 3) return null;
+  if (level > 4) return null;
   const w = wallBox(form);
   const b = new Build();
   b.free = true;
+  // From 386 m it is one block: twelve triangles are all a piece may be from there.
+  if (level === 4) {
+    b.box([w.x0, w.foot, -w.half], [w.x1, w.top, w.half], "dressed");
+    return b;
+  }
   if (level < 3) b.rings = yieldPlanes(form);
   const [low, high] = [w.foot + 0.11, w.top - 0.1];
   const out = w.half + 0.02;

@@ -811,7 +811,7 @@ const STONE_ROOF_SEAT = 0.006;
 const STONE_NEW_MOST: Record<string, readonly number[]> = {
   half_wall: [768, 224, 40, 12],
   quarter_wall: [464, 144, 40, 12],
-  railing: [284, 236, 140, 36],
+  railing: [284, 236, 140, 36, 12],
   corner_pillar: [408, 52, 52, 12],
   thin_pillar: [360, 52, 52, 12],
   beam: [224, 76, 28, 12],
@@ -827,7 +827,7 @@ const STONE_NEW_MOST: Record<string, readonly number[]> = {
   sloped_wall_left: [462, 150, 48, 8],
   sloped_wall_right: [462, 150, 48, 8],
   fence_foundation: [252, 52, 28, 12],
-  trapdoor_frame: [556, 176, 104, 32],
+  trapdoor_frame: [556, 176, 104, 32, 12],
   trapdoor: [276, 136, 60, 12],
   ladder: [208, 144, 84, 24],
   double_doorway: [1572, 488, 116, 36, 12],
