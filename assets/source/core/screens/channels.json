@@ -3,6 +3,15 @@
     "name": "strip",
     "shuffle": false,
     "items": [
+      "royal-flush",
+      "the-electric-derby",
+      "midnight-mirrorball",
+      "serpentine-silk",
+      "under-the-pacific",
+      "jovian-jets",
+      "solar-furnace",
+      "ink-acrobat",
+      "neon-rain",
       "clouds"
     ]
   },

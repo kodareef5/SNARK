@@ -201,6 +201,22 @@ test("a cascade's depth map drawn from the list holds a pillar, a body and a hil
   if (process.env.SHADOW_PICTURE) writeFileSync(process.env.SHADOW_PICTURE, picture(w.raster, map, size));
 });
 
+test("a built wall turned a quarter casts along its own line, as it is drawn", () => {
+  const w = world();
+  w.scene.hour = 12;
+  // A wall 3 m long, its length along z once turned, 12 m ahead: its depth is drawn by its base's vectors, not its raw turn.
+  expect(w.structs.add(w.kind("core:wall_wood"), 112, 1.5, 128, 16384, 0, 1)).toBeGreaterThanOrEqual(0);
+  const p = w.frame();
+  const size = 1024;
+  const map = w.raster.cascade(p, 1, size);
+  const casts = (x: number, z: number): boolean => {
+    const [i, j] = texelOf(p, 1, size, x, 2.5, z);
+    return map[j * size + i]! < 1;
+  };
+  expect([casts(112, 126.8), casts(112, 129.2)]).toEqual([true, true]);
+  expect([casts(110.8, 128), casts(113.2, 128)]).toEqual([false, false]);
+});
+
 /**
  * The view four times its size beside a depth map's casters, a square round them 360 pixels a side, nearest the sun
  * darkest and white where nothing casts, the light space's +y up.

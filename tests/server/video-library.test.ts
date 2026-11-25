@@ -9,7 +9,7 @@ import { startServer } from "../../server/main.ts";
 import { loadConfig } from "../../server/settings/config.ts";
 import { splitPack } from "../../tools/pack/split.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
-import { VideoLibrary, slugOf, type LibraryView } from "../../server/video/library.ts";
+import { VideoLibrary, slugOf, type LibraryView, type Starters } from "../../server/video/library.ts";
 import { screensAdmin } from "../../server/video/routes.ts";
 import { CLIP_MAX_BYTES, COLOUR_PARTS, COLOUR_RATE, type Clip } from "../../shared/video/clip.ts";
 import { chunkOffsets, probeMp4, type Mp4Info } from "../../shared/video/mp4.ts";
@@ -25,14 +25,32 @@ const starter = (id: string, seconds: number): Clip => ({
   audio: false, rights: "public domain", starter: true, colours: "",
 });
 const SNEEZE = "a1a1a1a1a1a1a1a1", TRAIN = "b2b2b2b2b2b2b2b2", BOLT = "c3c3c3c3c3c3c3c3";
+const CLOUDS = "fb06d4910de294c6";
+const TEST_STRIP: Starters = { clips: [starter(SNEEZE, 6), starter(TRAIN, 120), starter(BOLT, 30)], channels: [{ name: "strip", items: [SNEEZE, TRAIN, "ffffffffffffffff"] }] };
+const FORMER_STRIP: Starters = { clips: [starter(CLOUDS, 60), starter(BOLT, 30)], channels: [{ name: "strip", items: [CLOUDS] }] };
+const CURATED_STRIP: Starters = { clips: [...FORMER_STRIP.clips, starter(TRAIN, 120)], channels: [{ name: "strip", items: [TRAIN, CLOUDS] }] };
+
+function builtStarters(dir: string): string {
+  return join(dir, "dist", "media", "starter.json");
+}
+
+function reopen(dir: string, now: () => number): VideoLibrary {
+  return new VideoLibrary({ db: join(dir, "video.sqlite"), media: join(dir, "media"), tmp: join(dir, "tmp"), starters: builtStarters(dir), now });
+}
+
+function installCuratedStrip(dir: string): void {
+  const file = builtStarters(dir);
+  const replaced = new Date(statSync(file).mtimeMs + 2_000);
+  writeFileSync(file, JSON.stringify(CURATED_STRIP));
+  utimesSync(file, replaced, replaced);
+}
 
 /** A library in a folder of its own, with a built client's starter list beside it. */
-function library(now: () => number = Date.now): { lib: VideoLibrary; dir: string } {
+function library(now: () => number = Date.now, starters = TEST_STRIP): { lib: VideoLibrary; dir: string } {
   const dir = join(root, `lib${++made}`), dist = join(dir, "dist", "media");
   mkdirSync(dist, { recursive: true });
-  writeFileSync(join(dist, "starter.json"), JSON.stringify({ clips: [starter(SNEEZE, 6), starter(TRAIN, 120), starter(BOLT, 30)], channels: [{ name: "strip", items: [SNEEZE, TRAIN, "ffffffffffffffff"] }] }));
-  const lib = new VideoLibrary({ db: join(dir, "video.sqlite"), media: join(dir, "media"), tmp: join(dir, "tmp"), starters: join(dist, "starter.json"), now });
-  return { lib, dir };
+  writeFileSync(builtStarters(dir), JSON.stringify(starters));
+  return { lib: reopen(dir, now), dir };
 }
 
 const call = (lib: VideoLibrary, path: string, init: RequestInit = {}, query = ""): Promise<Response> =>
@@ -45,17 +63,69 @@ const upload = (lib: VideoLibrary, bytes: Uint8Array, name = "Test Card"): Promi
 const POSTER = Buffer.from([0xff, 0xd8, 1, 2, 3, 0xff, 0xd9]).toString("base64");
 const track = (seconds: number): string => Buffer.alloc(Math.round(seconds * COLOUR_RATE) * COLOUR_PARTS * 3, 9).toString("base64");
 
-test("a fresh library makes the strip channel of the starters and leaves the orb on the scenes", () => {
-  const { lib } = library(() => 5_000_000);
+test("a fresh library starts the orb on the shipped Strip channel", () => {
+  const { lib, dir } = library(() => 5_000_000);
   const view = lib.view();
   expect(view.doc.channels).toEqual([{ name: "strip", items: [SNEEZE, TRAIN], shuffle: false, epoch: 5_000_000 }]);
-  expect(view.screens.get("orb")).toMatchObject({ show: "scenes", once: null, mode: "facing" });
+  expect(view.screens.get("orb")).toMatchObject({ show: "strip", once: null, mode: "facing", fill: true, sound: false, night: false });
   expect(view.manifest.map((c) => c.id)).toEqual([SNEEZE, TRAIN, BOLT]);
   // A second page or world opening the same file finds the channel as it was made.
-  const again = new VideoLibrary({ db: join(root, `lib${made}`, "video.sqlite"), media: lib.media, tmp: lib.tmp, now: () => 9_000_000 });
+  const again = reopen(dir, () => 9_000_000);
   expect(again.view().doc.channels[0]!.epoch).toBe(5_000_000);
   again.close();
   lib.close();
+});
+
+test("a fresh orb keeps rotating scenes without a playable Strip channel", () => {
+  const { lib } = library(Date.now, { clips: [starter(TRAIN, 120)], channels: [{ name: "strip", items: [CLOUDS] }, { name: "rail", items: [TRAIN] }] });
+  expect(lib.view().screens.get("orb")!.show).toBe("scenes");
+  expect(lib.view().channels.has("rail")).toBe(true);
+  lib.close();
+});
+
+test("the former starter playlist gains the curated order without changing the orb", async () => {
+  const birth = 5_000_000;
+  const { lib, dir } = library(() => birth, FORMER_STRIP);
+  expect((await edit(lib, { op: "screen", screen: "orb", show: "scene:core", sound: true, mode: "fixed" })).status).toBe(200);
+  const old = lib.view(), stamp = lib.stamp();
+  installCuratedStrip(dir);
+  expect(lib.stamp()).not.toBe(stamp);
+  const again = reopen(dir, () => birth + 60_000);
+  const reply = await call(again, "/admin/screens/state");
+  expect(reply.status).toBe(200);
+  const state = (await reply.json()) as { revision: number; channels: unknown[]; screens: unknown[] };
+  expect(state).toMatchObject({ revision: old.revision + 1, channels: [{ name: "strip", items: [TRAIN, CLOUDS], epoch: birth, shuffle: false }] });
+  expect(state.screens[0]).toMatchObject({ screen: "orb", show: "scene:core", sound: true, mode: "fixed" });
+  expect(lib.view().revision).toBe(old.revision + 1);
+  expect((await call(lib, "/admin/screens/edit", json({ revision: old.revision, op: "channels", channels: [] }))).status).toBe(409);
+
+  expect((await edit(lib, { op: "channels", channels: [{ name: "strip", items: [CLOUDS] }] })).status).toBe(200);
+  const restored = again.view();
+  expect(restored.revision).toBe(old.revision + 2);
+  expect(restored.channels.get("strip")!.items).toEqual([CLOUDS]);
+  again.close();
+  lib.close();
+});
+
+test("the curated release preserves edited, shuffled, deleted and hidden channels", async () => {
+  const changes = [
+    { op: "channels", channels: [{ name: "strip", items: [BOLT, CLOUDS] }] },
+    { op: "channels", channels: [{ name: "strip", items: [CLOUDS], shuffle: true }] },
+    { op: "channels", channels: [{ name: "storms", items: [BOLT] }] },
+    { op: "hide", clip: CLOUDS },
+  ];
+  for (const change of changes) {
+    const { lib, dir } = library(Date.now, FORMER_STRIP);
+    expect((await edit(lib, change)).status).toBe(200);
+    const old = lib.view().doc;
+    installCuratedStrip(dir);
+    const fresh = lib.view();
+    expect(fresh.doc.channels).toEqual(old.channels);
+    expect(fresh.doc.screens).toEqual(old.screens);
+    expect(fresh.doc.hidden).toEqual(old.hidden);
+    expect(fresh.timed.has(TRAIN)).toBe(true);
+    lib.close();
+  }
 });
 
 test("the manifest is written under its own hash and changes with the visible clips", async () => {
@@ -203,7 +273,7 @@ test("the state says what each screen plays now", async () => {
   const { lib } = library();
   expect((await edit(lib, { op: "once", screen: "orb", clip: TRAIN })).status).toBe(200);
   const state = (await (await call(lib, "/admin/screens/state")).json()) as { screens: { screen: string; playing: { clip: string } | null }[] };
-  expect(state.screens[0]).toMatchObject({ screen: "orb", show: "scenes", playing: { clip: TRAIN, next: null } });
+  expect(state.screens[0]).toMatchObject({ screen: "orb", show: "strip", playing: { clip: TRAIN } });
   expect((await edit(lib, { op: "stop", screen: "orb" })).status).toBe(200);
   expect((await call(lib, "/admin/screens/state", { method: "POST" })).status).toBe(405);
   lib.close();

@@ -1,8 +1,7 @@
 @font-face {
+  /* The build puts the game's own face here, in its parts (tools/build-entry.ts). */
   font-family: Barlow;
-  src: local("Barlow"), url("title/barlow.ttf") format("truetype");
-  font-weight: 100 900;
-  font-display: swap;
+  src: local("Arial");
 }
 :root {
   color-scheme: dark;

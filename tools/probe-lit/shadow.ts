@@ -56,7 +56,7 @@ const BODY_SAME = 7;
 /** Of the points judged against SAME, the share that may be off: edges the rasterizer and the GPU's samples split differently. */
 const MOST_OFF = 0.01;
 
-interface Box {
+export interface Box {
   min: number[];
   max: number[];
 }
@@ -177,10 +177,12 @@ function settle(w: World, shot: Shot): void {
 }
 
 /** Where a ray from `o` along `d` enters a box grown by `grow`, and through which face: its distance, or Infinity. */
-function enter(o: number[], d: number[], b: Box, grow: number, face?: number[]): number {
+export function enter(o: number[], d: number[], b: Box, grow: number, face?: number[]): number {
   let [near, far, axis] = [-Infinity, Infinity, -1];
   for (let a = 0; a < 3; a++) {
     const [lo, hi] = [b.min[a]! - grow, b.max[a]! + grow];
+    // Shrunk past its middle, a box is nothing, not one turned inside out and as thick as it was shrunk.
+    if (lo > hi) return Infinity;
     if (Math.abs(d[a]!) < 1e-12) {
       if (o[a]! < lo || o[a]! > hi) return Infinity;
       continue;
@@ -196,6 +198,33 @@ function enter(o: number[], d: number[], b: Box, grow: number, face?: number[]):
     face[axis] = -Math.sign(d[axis]!);
   }
   return Math.max(near, 0);
+}
+
+/** Rays across a square this many a side: the square's edges and four lines between. */
+const ACROSS = 5;
+
+/**
+ * Whether every ray along `d` from a square about `o`, `margin` out on each side across the light, meets one of `boxes`:
+ * the filter's reach lies in the cascade's plane, so the boxes are not shrunk along the light, and pieces that touch
+ * shade together, as a ceiling 25 cm thick does over a floor.
+ */
+export function surelyShaded(boxes: readonly Box[], o: number[], d: number[], margin: number): boolean {
+  const n = Math.hypot(d[0]!, d[1]!, d[2]!);
+  const s = d.map((v) => v / n);
+  const side = Math.abs(s[1]!) < 0.9 ? [0, 1, 0] : [1, 0, 0];
+  const cross = (a: number[], b: number[]): number[] => [a[1]! * b[2]! - a[2]! * b[1]!, a[2]! * b[0]! - a[0]! * b[2]!, a[0]! * b[1]! - a[1]! * b[0]!];
+  const u = cross(s, side);
+  const un = Math.hypot(u[0]!, u[1]!, u[2]!);
+  for (let a = 0; a < 3; a++) u[a] = u[a]! / un;
+  const v = cross(s, u);
+  for (let i = 0; i < ACROSS; i++) {
+    for (let j = 0; j < ACROSS; j++) {
+      const [a, b] = [((2 * i) / (ACROSS - 1) - 1) * margin, ((2 * j) / (ACROSS - 1) - 1) * margin];
+      const from = o.map((x, k) => x + u[k]! * a + v[k]! * b);
+      if (!boxes.some((box) => enter(from, d, box, 0) < Infinity)) return false;
+    }
+  }
+  return true;
 }
 
 /** The nearest thing pixel (x, y) sees of the ground and the staged boxes: the point, the box (-1 for the ground) and the normal there. */
@@ -284,14 +313,9 @@ function judge(w: World, p: FramePacket, name: string, frame: number, lookup: st
       const m = p.cascades.subarray(cascade * 16, cascade * 16 + 3);
       const margin = ((taps + 1) * 2) / (p.tier.shadows.size * Math.hypot(m[0]!, m[1]!, m[2]!)) + 0.01 + slack;
       const from = point.map((v, a) => v + normal[a]! * 1e-3);
-      let [maybe, surely] = [false, false];
-      w.boxes.forEach((b, i) => {
-        if (i === own || b.max[1]! <= point[1]! + 1e-3) return;
-        if (enter(from, sun, b, margin) < Infinity) maybe = true;
-        if (enter(from, sun, b, -margin) < Infinity) surely = true;
-      });
-      if (!maybe) want[at] = 1;
-      else if (surely) want[at] = 2;
+      const casters = w.boxes.filter((b, i) => i !== own && b.max[1]! > point[1]! + 1e-3);
+      if (!casters.some((b) => enter(from, sun, b, margin) < Infinity)) want[at] = 1;
+      else if (surelyShaded(casters, from, sun, margin)) want[at] = 2;
     }
   }
   made.judged.push({ name, frame, want, sunlit, shaded, lookup });

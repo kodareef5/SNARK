@@ -3,12 +3,12 @@
 // Each piece is set down by its collider's origin and a turn, as a base's lattice would set it.
 
 import { expect, test } from "bun:test";
-import { FORMS, PLANNED_FORMS } from "../../content/building/forms.ts";
+import { ALL_FORMS, formBoxes } from "../../content/building/forms.ts";
 import type { FormDef } from "../../shared/world/lattice/forms.ts";
-import { TEXTURED, levelsOf } from "../../tools/pack/pieces/lod.ts";
+import { TEXTURED, levelsOf, type TierRecipe } from "../../tools/pack/pieces/lod.ts";
 import { WOOD } from "../../tools/pack/pieces/wood.ts";
 
-const ALL: Record<string, FormDef> = { ...FORMS, ...PLANNED_FORMS };
+const ALL: Record<string, FormDef> = ALL_FORMS;
 type Tri = readonly [number, number, number, number, number, number, number, number, number];
 /** A piece where it stands: its form, its collider's origin on the plan, the height of its slot's level, and degrees it is turned from +X toward +Z. */
 interface Set {
@@ -84,6 +84,8 @@ function apart(a: Set, b: Set, edge: readonly [number, number, number, number], 
 
 const ROOT3 = Math.sqrt(3);
 const roofAt = (form: string, x: number, z: number, turn = 0): Set => ({ form, x, z, turn });
+/** Fortieths of a metre from a valley's low corner at which its courses, clear of the fold's lining, meet the slope beside it. */
+const VALLEY_FROM = 5;
 /** Roof faces that lie in one plane across the side they share, or fall away from it alike: every level must meet there. */
 const FLUSH: [string, Set, Set, [number, number, number, number]][] = [
   ["two slopes side by side", roofAt("roof", 0, 0), roofAt("roof", 3, 0), [1.5, -1.5, 1.5, 1.5]],
@@ -105,10 +107,10 @@ test("roof faces that share a side in one plane, or a ridge, meet along it to a 
   const said: string[] = [];
   for (const [name, a, b, edge] of FLUSH) {
     for (let level = 0; level < TEXTURED; level++) {
-      // A valley's courses stand back from its fold, where its lining board shows. For 0.35 m from each end of the fold
-      // the board, not a course, meets the roof beside it: 1.5 cm over a ridge's last course at its high corner, and
-      // up to 6 cm under a slope's eave board at its low one, where it has no eave of its own.
-      const most = apart(a, b, edge, level, name.startsWith("a valley") ? 14 : 4);
+      // A valley's courses stand back from its fold, where its lining board shows. For 0.35 m from the fold's high end
+      // the board, not a course, meets the roof beside it, 1.5 cm over a ridge's last course. At its low end its lowest
+      // course is an eave board as the slope's beside it is, and they meet from 0.13 m on.
+      const most = apart(a, b, edge, level, name.endsWith("over its ridge") ? 14 : name.startsWith("a valley") ? VALLEY_FROM : 4);
       said.push(`${name}, level ${level}: ${(most * 1000).toFixed(2)} mm`);
       expect(most, `${name}, level ${level}`).toBeLessThanOrEqual(0.001);
     }
@@ -140,16 +142,53 @@ test("a roof that runs on down from another lies under its eave board, which lap
   }
 });
 
-/** Metres between a gable's top and the roof boards over it, as wood's recipe has them today. A change may lower it. */
-const GABLE_GAP = 0.215;
+/** Metres of air a wall may have under a roof's edge: a hewn timber's stray at the finest level, a coarser level's own error past it. */
+const UNDER_ROOF = [0.005, 0.02, 0.02] as const;
 
-test("a sloped wall's top lies in the plane of the roof's underside, under its boards, and its two hands meet the roof alike", () => {
+/**
+ * A slope on the walls that carry it, in any tier, `stand` giving a piece's triangles: the most air between a wall's
+ * top and the lowest of the roof over it, and the most a wall stands through the roof's top. Under each sloped side a
+ * gable, read at `inward` from the side's line across the half of it the roof covers. Under the low side a wall whose
+ * top is the roof's level, read across its thickness at `across` from the side's line, the eave over its outer half. At the high side the inner face
+ * of a wall that stands on past the roof: how far the roof's lowest there is over its slab's underside.
+ */
+function roofOnWalls(stand: (s: Set, level: number) => Tri[], level: number, { inward: band = [0.02, 0.05, 0.09], across = [-0.09, -0.05, -0.02, 0.02, 0.05, 0.09] }: { inward?: readonly number[]; across?: readonly number[] } = {}): { gable: number; eave: number; high: number; through: number } {
+  const row = ALL.roof!;
+  const roof = stand(roofAt("roof", 0, 0), level);
+  const out = { gable: 0, eave: 0, high: 0, through: 0 };
+  for (const [hand, x, turn] of [["sloped_wall_left", 1.5, -90], ["sloped_wall_right", -1.5, 90]] as const) {
+    const wall = stand({ form: hand, x, z: 0, turn }, level);
+    for (const z of [-1.45, -1.2, -0.6, 0, 0.7, 1.3, 1.45]) for (const inward of band) {
+      const px = x - Math.sign(x) * inward;
+      const [w, r] = [over(wall, px, z), over(roof, px, z)];
+      if (!w) continue;
+      out.gable = Math.max(out.gable, r ? r[0] - w[1] : Infinity);
+      out.through = Math.max(out.through, r ? w[1] - r[1] : 0);
+    }
+  }
+  const low = stand({ form: "wall", x: 0, z: -1.5, turn: 0, level: -3 }, level);
+  for (const x of [-1.38, -1.2, -0.6, -0.3, 0.2, 0.7, 1.3, 1.38]) for (const off of across) {
+    const [w, r] = [over(low, x, -1.5 + off), over(roof, x, -1.5 + off)];
+    if (!w) continue;
+    out.eave = Math.max(out.eave, r ? r[0] - w[1] : Infinity);
+    out.through = Math.max(out.through, r ? w[1] - r[1] : 0);
+  }
+  // The slab's underside half a millimetre inside the wall's face, a yield band in from the high side.
+  const z = 1.5 - 0.0995;
+  const under = ((z + 1.5) / 3) * (row.corner![0]! - row.corner![2]!);
+  for (const x of [-1.38, -0.6, 0.2, 1.3]) {
+    const r = over(roof, x, z);
+    out.high = Math.max(out.high, r ? r[0] - under : Infinity);
+  }
+  return out;
+}
+
+test("a sloped wall's top lies in the plane of the roof's underside, and its two hands meet the roof alike", () => {
   const roof = ALL.roof!;
   for (let level = 0; level < TEXTURED; level++) {
     for (const [hand, x, turn] of [["sloped_wall_left", 1.5, -90], ["sloped_wall_right", -1.5, 90]] as const) {
       // On the roof's east side its front looks east, and on the west side west: either way it is high where the roof is.
       const wall = standing({ form: hand, x, z: 0, turn }, level);
-      const over0 = standing({ form: "roof", x: 0, z: 0, turn: 0 }, level);
       // The plane of the roof's underside, which its row's corner heights stand a slab over: from its slot's level at its low side to 1.5 m at its high one.
       const plane = (z: number): number => ((z + 1.5) / 3) * (roof.corner![0]! - roof.corner![2]!);
       let most = 0, tops = 0;
@@ -164,18 +203,86 @@ test("a sloped wall's top lies in the plane of the roof's underside, under its b
       }
       expect(tops, `${hand} level ${level}: points on the plane`).toBeGreaterThanOrEqual(4);
       expect(most).toBeLessThanOrEqual(0.002);
-      // Under the roof's side, from its eave to its high side: nothing of the roof is under the wall's top. The roof
-      // stands on its corner heights since 2026-11-24, and its rim timbers are 0.115 m in from its sides, so over the
-      // wall only its boards run: they begin 0.21 m over the wall's top at the finest level, which is open to the day.
-      for (const z of [-1.45, -1.2, -0.6, 0, 0.7, 1.3, 1.45]) for (const inward of [0.02, 0.05, 0.09]) {
-        const px = x - Math.sign(x) * inward;
-        const [w, r] = [over(wall, px, z), over(over0, px, z)!];
-        if (!w) continue;
-        expect(r[0], `${hand} level ${level} at ${z}: nothing of the roof in the wall`).toBeGreaterThanOrEqual(w[1] - 0.003);
-        expect(r[0] - w[1], `${hand} level ${level} at ${z}: the gap under the boards`).toBeLessThanOrEqual(GABLE_GAP);
-      }
     }
   }
+});
+
+test("a wood roof's sides are as deep as its slab: a gable, the wall under its eave and a wall past its high side meet timber", () => {
+  const said: string[] = [];
+  for (let level = 0; level < TEXTURED; level++) {
+    const met = roofOnWalls(standing, level);
+    said.push(`wood level ${level}: air over a gable ${(met.gable * 1000).toFixed(1)} mm, over the eave wall ${(met.eave * 1000).toFixed(1)} mm, at a wall past the high side ${(met.high * 1000).toFixed(1)} mm, through the roof ${(met.through * 1000).toFixed(1)} mm`);
+    // A rake board along each sloped side, a plate along the low one that bears on the wall, a beam along the high one.
+    expect(met.gable, `level ${level}: over a gable`).toBeLessThanOrEqual(UNDER_ROOF[level]!);
+    expect(met.eave, `level ${level}: over the eave wall`).toBeLessThanOrEqual(UNDER_ROOF[level]!);
+    expect(met.high, `level ${level}: at a wall past the high side`).toBeLessThanOrEqual(UNDER_ROOF[level]!);
+    expect(met.through, `level ${level}: nothing through the roof`).toBeLessThanOrEqual(1e-6);
+  }
+  if (process.env.SNARK_MEETS) console.log(said.join("\n"));
+});
+
+/** Metres a leaf's iron may stand in its frame: a hinge's knuckle is on the jamb's own face, and its pin in the jamb as a pintle is. */
+const HINGE_IN = 0.04;
+
+/**
+ * An open leaf against its shut one and its frame, in any tier. The line a leaf turns on is the one line its shut
+ * row's box turns a quarter on to become its open row's: for a pair, each leaf on its own. The most any corner of the
+ * open mesh lies from the nearest corner of the shut mesh so turned, and the deepest any lies inside the frame's boxes.
+ */
+function leafTurned(recipe: TierRecipe, shut: string, open: string, frame: string, level: number): { off: number; inFrame: number; extra: number } {
+  const [s, o, host] = [ALL[shut]!, ALL[open]!, ALL[frame]!];
+  // A level's corners in its slot's frame: x along, y up, z out.
+  const corners = (name: string, form: FormDef): number[][] => {
+    const shapes = levelsOf(recipe, name, form);
+    return shapes[Math.min(level, shapes.length - 1)]!.corners().map((p) => [p[0] + form.at[0], p[2] + form.at[1], -p[1] + form.at[2]]);
+  };
+  const turned: number[][] = [];
+  if (s.plane === "flat") {
+    // A hatch: about the line along X half its thickness in from the open row's side and half its thickness down.
+    const [c, d] = [-s.thick / 2, o.outline[2]![1] + s.thick / 2];
+    for (const p of corners(shut, s)) turned.push([p[0]!, c - (p[2]! - d), d + (p[1]! - c)]);
+  } else {
+    // A door: about the upright line the row's numbers give, at its hung edge. A pair's other leaf turns the other way about that line in the pair's mirror.
+    const edge = Math.min(...s.outline.map((q) => q[0]));
+    const [a, b] = [((o.off ?? 0) + edge) / 2, ((o.off ?? 0) - edge) / 2];
+    for (const p of corners(shut, s)) {
+      if (o.pair === undefined || p[0]! <= o.pair + 1e-9) turned.push([a + b - p[2]!, p[1]!, b + p[0]! - a]);
+      if (o.pair !== undefined && p[0]! >= o.pair - 1e-9) turned.push([2 * o.pair - (a + b - p[2]!), p[1]!, b + (2 * o.pair - p[0]!) - a]);
+    }
+  }
+  const key = (p: readonly number[], dx = 0, dy = 0, dz = 0): string => `${Math.round(p[0]! * 1e3) + dx},${Math.round(p[1]! * 1e3) + dy},${Math.round(p[2]! * 1e3) + dz}`;
+  const cells = new Map<string, number[][]>();
+  for (const p of turned) cells.set(key(p), [...(cells.get(key(p)) ?? []), p]);
+  const boxes = formBoxes(host).map((box) => [0, 1, 2].map((k) => [box.at[k]! + host.at[k]! - box.half[k]!, box.at[k]! + host.at[k]! + box.half[k]!] as const));
+  const out = { off: 0, inFrame: 0, extra: 0 };
+  const mine = corners(open, o);
+  out.extra = mine.length - turned.length;
+  for (const p of mine) {
+    let near = Infinity;
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) for (const q of cells.get(key(p, dx, dy, dz)) ?? []) near = Math.min(near, Math.hypot(p[0]! - q[0]!, p[1]! - q[1]!, p[2]! - q[2]!));
+    out.off = Math.max(out.off, near);
+    for (const box of boxes) out.inFrame = Math.max(out.inFrame, Math.min(...box.map(([lo, hi], k) => Math.min(p[k]! - lo, hi - p[k]!))));
+  }
+  return out;
+}
+
+/** Each open leaf with its shut one and the frame it hangs in. */
+const LEAVES: readonly (readonly [shut: string, open: string, frame: string])[] = [["door", "door_open", "doorframe"], ["trapdoor", "trapdoor_open", "trapdoor_frame"], ["double_door", "double_door_open", "double_doorway"], ["gate", "gate_open", "gateway"]];
+
+test("an open wood leaf is its shut one turned a quarter on its hinge line, and stands clear of its frame", () => {
+  const said: string[] = [];
+  for (const [shut, open, frame] of LEAVES) {
+    for (let level = 0; level < 4; level++) {
+      const met = leafTurned(WOOD, shut, open, frame, level);
+      said.push(`wood ${open} level ${level}: ${(met.off * 1000).toFixed(3)} mm from its shut leaf turned, ${(Math.max(0, met.inFrame) * 1000).toFixed(1)} mm in its frame`);
+      // The same boards and iron, to a millimetre: only a gate's bar, which is lifted out, is not on the open one.
+      // Past the pictures a shut gate is one box and an open one two, which have corners where the leaves part.
+      if (level < TEXTURED) expect(met.off, `${open} level ${level}: from its shut leaf turned on the hinge line`).toBeLessThanOrEqual(0.001);
+      if (level < TEXTURED) expect(met.extra, `${open} level ${level}: nothing the shut leaf has not`).toBeLessThanOrEqual(0);
+      expect(met.inFrame, `${open} level ${level}: in its frame`).toBeLessThanOrEqual(HINGE_IN);
+    }
+  }
+  if (process.env.SNARK_MEETS) console.log(said.join("\n"));
 });
 
 test("a triangle of floor and a square share their side's two corners, and neither crosses it", () => {
@@ -301,13 +408,12 @@ test("a thatch roof that runs on down from another lies under its eave course, w
   if (process.env.SNARK_MEETS) console.log(said.join("\n"));
 });
 
-test("a thatch gable's top lies in the plane of the roof's underside to 2 mm, under its thatch, with nothing through it", () => {
+test("a thatch gable's top lies in the roof's underside, under a verge, eave wall and high wall meeting solid roof", () => {
   const roof = ALL.roof!;
   const said: string[] = [];
   for (let level = 0; level < TEXTURED; level++) {
     for (const [hand, x, turn] of [["sloped_wall_left", 1.5, -90], ["sloped_wall_right", -1.5, 90]] as const) {
       const wall = thatchStanding({ form: hand, x, z: 0, turn }, level);
-      const over0 = thatchStanding({ form: "roof", x: 0, z: 0, turn: 0 }, level);
       // The plane through the roof row's corner heights: its top where the slab hangs under them, its underside where it stands on them.
       const plane = (z: number): number => ((z + 1.5) / 3) * (roof.corner![0]! - roof.corner![2]!);
       let most = 0, tops = 0, over1 = -Infinity;
@@ -323,20 +429,16 @@ test("a thatch gable's top lies in the plane of the roof's underside to 2 mm, un
       expect(over1, `${hand} level ${level}`).toBeLessThanOrEqual(0.002);
       expect(tops, `${hand} level ${level}: points on the plane`).toBeGreaterThanOrEqual(4);
       expect(most).toBeLessThanOrEqual(0.002);
-      let [gap, through] = [0, 0];
-      for (const z of [-1.45, -1.2, -0.6, 0, 0.7, 1.3, 1.45]) for (const inward of [0.02, 0.05, 0.09]) {
-        const px = x - Math.sign(x) * inward;
-        const [w, r] = [over(wall, px, z), over(over0, px, z)!];
-        if (!w) continue;
-        // The wall's top is no lower than the lowest of the roof over it, and no higher than its thatch.
-        gap = Math.max(gap, r[0] - w[1]);
-        through = Math.max(through, w[1] - r[1]);
-      }
-      said.push(`thatch: ${hand} level ${level}: top within ${(most * 1000).toFixed(2)} mm of the plane, gap under the roof ${(Math.max(0, gap) * 1000).toFixed(2)} mm, through it ${(Math.max(0, through) * 1000).toFixed(2)} mm`);
-      // The roof stands on its corner heights since 2026-11-24, and over a gable only its thatch runs out: as wood's boards do.
-      expect(gap, `${hand} level ${level}: the gap under the thatch`).toBeLessThanOrEqual(GABLE_GAP);
-      expect(through, `${hand} level ${level}: nothing through the roof`).toBeLessThanOrEqual(1e-6);
+      said.push(`thatch: ${hand} level ${level}: top within ${(most * 1000).toFixed(2)} mm of the plane`);
     }
+    // The roof's verge of reed, the plate on the eave wall's head and the beam at its high side, as deep as its slab.
+    // A thatch wall's top is its head, 4 cm through: past it the tiers fall away under any roof.
+    const met = roofOnWalls(thatchStanding, level, { across: [-0.02, 0, 0.02] });
+    said.push(`thatch level ${level}: air over a gable ${(met.gable * 1000).toFixed(1)} mm, over the eave wall ${(met.eave * 1000).toFixed(1)} mm, at a wall past the high side ${(met.high * 1000).toFixed(1)} mm, through the roof ${(met.through * 1000).toFixed(1)} mm`);
+    expect(met.gable, `level ${level}: over a gable`).toBeLessThanOrEqual(UNDER_ROOF[level]!);
+    expect(met.eave, `level ${level}: over the eave wall`).toBeLessThanOrEqual(UNDER_ROOF[level]!);
+    expect(met.high, `level ${level}: at a wall past the high side`).toBeLessThanOrEqual(UNDER_ROOF[level]!);
+    expect(met.through, `level ${level}: nothing through the roof`).toBeLessThanOrEqual(1e-6);
   }
   if (process.env.SNARK_MEETS) console.log(said.join("\n"));
 });
@@ -389,8 +491,8 @@ test("stone roof faces that share a side, a ridge or a hip meet along it to a mi
   const said: string[] = [];
   for (const [name, a, b, edge] of [...FLUSH, ...HIPPED]) {
     for (let level = 0; level < TEXTURED; level++) {
-      // A valley's slates stand back from its fold over its gutter stone, as wood's boards do: its ends are left out alike.
-      const most = stoneApart(a, b, edge, level, name.startsWith("a valley") ? 14 : 4);
+      // A valley's slates stand back from its fold over its gutter stone, as wood's boards do, and its lowest course is an eave course: its ends are left out alike.
+      const most = stoneApart(a, b, edge, level, name.endsWith("over its ridge") ? 14 : name.startsWith("a valley") ? VALLEY_FROM : 4);
       said.push(`stone, ${name}, level ${level}: ${(most * 1000).toFixed(2)} mm`);
       expect(most, `${name}, level ${level}`).toBeLessThanOrEqual(0.001);
     }
@@ -413,7 +515,6 @@ test("a stone gable's top lies in the plane its row gives it to 2 mm, under the 
   for (let level = 0; level < TEXTURED; level++) {
     for (const [hand, x, turn] of [["sloped_wall_left", 1.5, -90], ["sloped_wall_right", -1.5, 90]] as const) {
       const wall = stoneStanding({ form: hand, x, z: 0, turn }, level);
-      const over0 = stoneStanding({ form: "roof", x: 0, z: 0, turn: 0 }, level);
       // The plane through the gable's own top, which its row draws from the low end of its foot to its high end's head.
       const row = ALL[hand]!;
       const head = Math.max(...row.outline.map((q) => q[1]));
@@ -432,15 +533,21 @@ test("a stone gable's top lies in the plane its row gives it to 2 mm, under the 
       said.push(`stone, ${hand}, level ${level}: ${(most * 1000).toFixed(3)} mm off its plane at ${tops} points`);
       // As the rows stand, that plane is the one through the roof's corner heights: the gable's top is under the roof's top and over its underside.
       expect(head).toBe(roof.corner![0]! - roof.corner![2]!);
-      for (const z of [-1.45, -1.2, -0.6, 0, 0.7, 1.3, 1.45]) for (const inward of [0.02, 0.05, 0.09]) {
-        const px = x - Math.sign(x) * inward;
-        const [w, r] = [over(wall, px, z), over(over0, px, z)!];
-        if (!w) continue;
-        // The roof stands on its corner heights since 2026-11-24. Stone's slates then run out over a gable as wood's boards do.
-        expect(r[0] - w[1], `${hand} level ${level} at ${z}: the gap under the slates`).toBeLessThanOrEqual(GABLE_GAP);
-        expect(w[1], `${hand} level ${level} at ${z}: nothing through the roof`).toBeLessThanOrEqual(r[1] + 1e-6);
-      }
     }
+  }
+  if (process.env.SNARK_MEETS) console.log(said.join("\n"));
+});
+
+test("a stone roof's sides are as deep as its slab: a gable, the wall under its eave and a wall past its high side meet oak", () => {
+  const said: string[] = [];
+  for (let level = 0; level < TEXTURED; level++) {
+    // Read over a wall's core: its face stones' crowns and a cut top's arris fall away 9 mm in its last 4 cm, under any roof.
+    const met = roofOnWalls(stoneStanding, level, { inward: [0.02, 0.05, 0.06], across: [-0.05, -0.02, 0.02, 0.05] });
+    said.push(`stone level ${level}: air over a gable ${(met.gable * 1000).toFixed(1)} mm, over the eave wall ${(met.eave * 1000).toFixed(1)} mm, at a wall past the high side ${(met.high * 1000).toFixed(1)} mm, through the roof ${(met.through * 1000).toFixed(1)} mm`);
+    expect(met.gable, `level ${level}: over a gable`).toBeLessThanOrEqual(UNDER_ROOF[level]!);
+    expect(met.eave, `level ${level}: over the eave wall`).toBeLessThanOrEqual(UNDER_ROOF[level]!);
+    expect(met.high, `level ${level}: at a wall past the high side`).toBeLessThanOrEqual(UNDER_ROOF[level]!);
+    expect(met.through, `level ${level}: nothing through the roof`).toBeLessThanOrEqual(1e-6);
   }
   if (process.env.SNARK_MEETS) console.log(said.join("\n"));
 });
@@ -484,6 +591,21 @@ test("a stone hatch's leaf fills its frame's hole to 5 mm a side, and the frame 
     const [leafTop, floor] = [Math.max(...leaf.map((t) => Math.max(t[1], t[4], t[7]))), Math.max(...frame.map((t) => Math.max(t[1], t[4], t[7])))];
     // Its planks lie 4 mm under the floor, and the ring it is lifted by 2 cm over it.
     expect(leafTop - floor, `level ${level}`).toBeLessThanOrEqual(level === 0 ? 0.02 : 0.004);
+  }
+  if (process.env.SNARK_MEETS) console.log(said.join("\n"));
+});
+
+test("an open stone leaf is its shut one turned a quarter on its hinge line, and stands clear of its frame", () => {
+  const said: string[] = [];
+  for (const [shut, open, frame] of LEAVES) {
+    for (let level = 0; level < 4; level++) {
+      const met = leafTurned(STONE, shut, open, frame, level);
+      said.push(`stone ${open} level ${level}: ${(met.off * 1000).toFixed(3)} mm from its shut leaf turned, ${(Math.max(0, met.inFrame) * 1000).toFixed(1)} mm in its frame`);
+      // The same planks and iron, to a millimetre, but a gate's bar, which is lifted out.
+      if (level < TEXTURED) expect(met.off, `${open} level ${level}: from its shut leaf turned on the hinge line`).toBeLessThanOrEqual(0.001);
+      if (level < TEXTURED) expect(met.extra, `${open} level ${level}: nothing the shut leaf has not`).toBeLessThanOrEqual(0);
+      expect(met.inFrame, `${open} level ${level}: in its frame`).toBeLessThanOrEqual(HINGE_IN);
+    }
   }
   if (process.env.SNARK_MEETS) console.log(said.join("\n"));
 });
@@ -565,7 +687,7 @@ test("a metal roof that runs on down from another lies under its gutter, which l
   if (process.env.SNARK_MEETS) console.log(said.join("\n"));
 });
 
-test("a metal gable's top lies in the plane of the roof's corner heights to 2 mm, with no gap under the roof and nothing through it", () => {
+test("a metal gable's top lies in the roof's corner plane, and a gable, eave wall and high wall meet solid roof", () => {
   const roof = ALL.roof!;
   const said: string[] = [];
   for (let level = 0; level < TEXTURED; level++) {
@@ -598,6 +720,28 @@ test("a metal gable's top lies in the plane of the roof's corner heights to 2 mm
       said.push(`metal: ${hand} level ${level}: top within ${(most * 1000).toFixed(2)} mm of the plane, gap under the roof ${(Math.max(0, gap) * 1000).toFixed(2)} mm, through it ${(Math.max(0, through) * 1000).toFixed(2)} mm`);
       expect(gap, `${hand} level ${level}: no gap under the roof`).toBeLessThanOrEqual(1e-6);
       expect(through, `${hand} level ${level}: nothing through the roof`).toBeLessThanOrEqual(1e-6);
+    }
+    // A wall plate along the low side, level on the eave wall's top: the slab's underside rises from the side.
+    const met = roofOnWalls(metalStanding, level, { inward: [0.02, 0.05, 0.08] });
+    said.push(`metal level ${level}: air over a gable ${(met.gable * 1000).toFixed(1)} mm, over the eave wall ${(met.eave * 1000).toFixed(1)} mm, at a wall past the high side ${(met.high * 1000).toFixed(1)} mm, through the roof ${(met.through * 1000).toFixed(1)} mm`);
+    expect(met.gable, `level ${level}: over a gable`).toBeLessThanOrEqual(UNDER_ROOF[level]!);
+    expect(met.eave, `level ${level}: over the eave wall`).toBeLessThanOrEqual(UNDER_ROOF[level]!);
+    expect(met.high, `level ${level}: at a wall past the high side`).toBeLessThanOrEqual(UNDER_ROOF[level]!);
+    expect(met.through, `level ${level}: nothing through the roof`).toBeLessThanOrEqual(1e-6);
+  }
+  if (process.env.SNARK_MEETS) console.log(said.join("\n"));
+});
+
+test("an open metal leaf is its shut one turned a quarter on its hinge line, and stands clear of its frame", () => {
+  const said: string[] = [];
+  for (const [shut, open, frame] of LEAVES) {
+    for (let level = 0; level < 4; level++) {
+      const met = leafTurned(METAL, shut, open, frame, level);
+      said.push(`metal ${open} level ${level}: ${(met.off * 1000).toFixed(3)} mm from its shut leaf turned, ${(Math.max(0, met.inFrame) * 1000).toFixed(1)} mm in its frame`);
+      // The same plate and bar, to a millimetre, but a gate's drop bar, which is lifted out.
+      if (level < TEXTURED) expect(met.off, `${open} level ${level}: from its shut leaf turned on the hinge line`).toBeLessThanOrEqual(0.001);
+      if (level < TEXTURED) expect(met.extra, `${open} level ${level}: nothing the shut leaf has not`).toBeLessThanOrEqual(0);
+      expect(met.inFrame, `${open} level ${level}: in its frame`).toBeLessThanOrEqual(HINGE_IN);
     }
   }
   if (process.env.SNARK_MEETS) console.log(said.join("\n"));

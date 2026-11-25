@@ -1,5 +1,5 @@
 // The forms of built pieces: one row each, with every dimension written once. content/building.ts makes its colliders
-// from LIVE_FORMS, and the mesh generator reads the same rows.
+// from FORMS, and the mesh generator reads the same rows.
 // What each field means is in shared/world/lattice/forms.ts.
 
 import type { ShapeBox } from "../../shared/content/defs.ts";
@@ -40,11 +40,8 @@ const leaf = { cls: "edge", layer: "leaf", span: 4, turns: 2, at: [0, DOOR.high 
 const over: readonly Rel[] = [{ cls: "square", layer: "slab", i: 0, j: 0, lvl: 4 }];
 const flight = { cls: "square", layer: "fill", span: 4, need: 1, turns: 4, at: [0, STOREY / 2, 0], blocks: over, plane: "flat", outline: square, yieldBand: 0 } as const;
 
-/**
- * The first nine pieces, by the name of their shape: what every tier's recipe makes, and what each tier's asset and
- * tests read as such. It keeps its nine names; what content places is LIVE_FORMS.
- */
-export const FORMS = {
+/** The first nine forms, the start of FORMS. The mesh tests and look tools hold them to the budgets they were drawn to. */
+export const FIRST_FORMS = {
   foundation: { cls: "square", ...slab, root: "always", carries: true, turns: 1, at: [0, -FOUNDATION / 2, 0], outline: square, thick: FOUNDATION, yieldBand: 0 },
   wall: { ...wall, closes: "full", takes: "ladder" },
   doorframe: { ...wall, closes: "doorway", takes: "door", openings: [doorway] },
@@ -78,23 +75,20 @@ const gable = { ...wall, span: 2, carries: false, closes: "full", at: [0, LEVEL,
 const gateCells = [[0, 0], [0, 4], [1, 0], [1, 4]] as const;
 const gateway = { x0: -SIDE / 2 + GATE.post, x1: (3 * SIDE) / 2 - GATE.post, y0: 0, y1: GATE.high - GATE.lintel };
 const doubleDoor = { x0: SIDE / 2 - DOOR.wide, x1: SIDE / 2 + DOOR.wide, y0: 0, y1: DOOR.high };
+const hatchLeaf = { cls: "square", layer: "leaf", span: 0, hangs: ["hatch"], turns: 4, plane: "flat", yieldBand: 0 } as const;
 
-/** Walls by height, rails and thin posts. */
-const LOW = {
+/** Every form content places, by the name of its shape. A row here that no tier draws is drawn as its collider. */
+export const FORMS = {
+  ...FIRST_FORMS,
+  // Walls by height, rails and thin posts.
   half_wall: { ...wall, span: 2, closes: "none", at: [0, LEVEL, 0], outline: rect(-SIDE / 2, 0, SIDE / 2, 2 * LEVEL) },
   quarter_wall: { ...wall, span: 1, closes: "none", at: [0, LEVEL / 2, 0], outline: rect(-SIDE / 2, 0, SIDE / 2, LEVEL) },
   railing: { ...wall, span: 1, carries: false, closes: "none", at: [0, LEVEL / 2, 0], outline: rect(-SIDE / 2, 0, SIDE / 2, LEVEL), thick: 0.1 },
-  thin_pillar: { ...FORMS.pillar, outline: plan(-0.15, -0.15, 0.3) },
+  thin_pillar: { ...FIRST_FORMS.pillar, outline: plan(-0.15, -0.15, 0.3) },
   // Its top is level with the top of the wall it stands in for.
   beam: { ...wall, span: 1, carries: false, closes: "none", turns: 1, at: [0, LEVEL - 0.25, 0], outline: rect(-SIDE / 2, LEVEL - 0.5, SIDE / 2, LEVEL), thick: 0.3 },
-} satisfies Record<string, FormDef>;
-
-const TRIANGLES = {
-  triangle_foundation: { ...FORMS.foundation, cls: "triangle", outline: triangle },
-  triangle_ceiling: { ...FORMS.ceiling, cls: "triangle", outline: triangle },
-} satisfies Record<string, FormDef>;
-
-const SLOPES = {
+  triangle_foundation: { ...FIRST_FORMS.foundation, cls: "triangle", outline: triangle },
+  triangle_ceiling: { ...FIRST_FORMS.ceiling, cls: "triangle", outline: triangle },
   ramp: { ...flight, thick: RAMP_RISE, corner: [RAMP_RISE, RAMP_RISE, 0, 0] },
   // A slope rises toward +Z. A hip has one corner up and a valley one down, each folded on the diagonal through it.
   roof: roof("square", [R, R, 0, 0], 4),
@@ -105,31 +99,18 @@ const SLOPES = {
   // The gable under a roof's sloped side, high at its left or its right as seen from the front.
   sloped_wall_left: { ...gable, outline: [[-SIDE / 2, 0], [SIDE / 2, 0], [-SIDE / 2, R]], edges: [{ lvl: 0, profile: "slopeL" }] },
   sloped_wall_right: { ...gable, outline: [[-SIDE / 2, 0], [SIDE / 2, 0], [SIDE / 2, R]], edges: [{ lvl: 0, profile: "slopeR" }] },
-} satisfies Record<string, FormDef>;
-
-const hatchLeaf = { cls: "square", layer: "leaf", span: 0, hangs: ["hatch"], turns: 4, plane: "flat", yieldBand: 0 } as const;
-const FOOTINGS = {
   fence_foundation: { cls: "edge", layer: "footing", span: 0, root: "grounded", carries: true, turns: 1, at: [0, -FOUNDATION / 2, 0], plane: "upright", outline: rect(-SIDE / 2, -FOUNDATION, SIDE / 2, 0), thick: WALL, yieldBand: YIELD },
-  trapdoor_frame: { ...FORMS.ceiling, closes: "doorway", takes: "hatch", openings: [{ x0: -HATCH / 2, x1: HATCH / 2, y0: -HATCH / 2, y1: HATCH / 2 }] },
+  trapdoor_frame: { ...FIRST_FORMS.ceiling, closes: "doorway", takes: "hatch", openings: [{ x0: -HATCH / 2, x1: HATCH / 2, y0: -HATCH / 2, y1: HATCH / 2 }] },
   trapdoor: { ...hatchLeaf, closes: "full", at: [0, -HATCH_LEAF / 2, 0], outline: plan(-HATCH / 2, -HATCH / 2, HATCH), thick: HATCH_LEAF },
   // It hangs on the front of a wall, clear of its face and of a wood wall's straps, or under a hatch's side.
   ladder: { ...leaf, closes: "none", hangs: ["ladder", "hatch"], at: [0, STOREY / 2, 0], plane: "upright", outline: rect(-0.3, 0, 0.3, STOREY), thick: 0.12, off: WALL / 2 + 0.09 },
-} satisfies Record<string, FormDef>;
-
-const WIDE = {
+  // Open, the leaf hangs from its hinge along the hole's -Z side. Its origin is the shut leaf's: opening swaps the kind where it stands.
+  trapdoor_open: { ...hatchLeaf, closes: "none", at: [0, -HATCH_LEAF / 2, 0], outline: plan(-HATCH / 2, -HATCH / 2, HATCH, HATCH_LEAF), thick: HATCH },
   // Two edges with one opening, two door leaves wide, about the vertex between them.
   double_doorway: { ...wall, closes: "doorway", takes: "double", cells: [[0, 0], [1, 0]], at: [SIDE / 2, STOREY / 2, 0], outline: rect(-SIDE / 2, 0, (3 * SIDE) / 2, STOREY), openings: [doubleDoor] },
   large_wall: { ...wall, span: 16, closes: "full", takes: "ladder", cells: [[0, 0], [0, 4], [0, 8], [0, 12]], at: [0, 2 * STOREY, 0], outline: rect(-SIDE / 2, 0, SIDE / 2, 4 * STOREY) },
   gateway: { ...wall, span: 8, closes: "doorway", takes: "gate", cells: gateCells, at: [SIDE / 2, GATE.high / 2, 0], outline: rect(-SIDE / 2, 0, (3 * SIDE) / 2, GATE.high), thick: GATE.thick, openings: [gateway] },
   gate: { ...leaf, span: 7, closes: "full", hangs: ["gate"], cells: gateCells, at: [SIDE / 2, gateway.y1 / 2, 0], plane: "upright", outline: rect(gateway.x0, 0, gateway.x1, gateway.y1), thick: WALL },
-} satisfies Record<string, FormDef>;
-
-/** Rows this work added to the 34 the tiers' recipes were written to: leaves stood open, and the double door. No tier draws them yet. */
-const OPEN_HATCH = {
-  // Open, the leaf hangs from its hinge along the hole's -Z side. Its origin is the shut leaf's: opening swaps the kind where it stands.
-  trapdoor_open: { ...hatchLeaf, closes: "none", at: [0, -HATCH_LEAF / 2, 0], outline: plan(-HATCH / 2, -HATCH / 2, HATCH, HATCH_LEAF), thick: HATCH },
-} satisfies Record<string, FormDef>;
-const WIDE_LEAVES = {
   double_door: { ...leaf, closes: "full", hangs: ["double"], cells: [[0, 0], [1, 0]], at: [SIDE / 2, DOOR.high / 2, 0], plane: "upright", outline: rect(doubleDoor.x0, 0, doubleDoor.x1, DOOR.high) },
   // Open, each leaf stands at a right angle at its own jamb.
   double_door_open: { ...leaf, closes: "none", hangs: ["double"], cells: [[0, 0], [1, 0]], at: [SIDE / 2, DOOR.high / 2, 0], plane: "across", outline: rect(0, 0, DOOR.wide, DOOR.high), off: doubleDoor.x0 + DOOR.thick / 2, pair: SIDE / 2 },
@@ -137,33 +118,14 @@ const WIDE_LEAVES = {
 } satisfies Record<string, FormDef>;
 
 /**
- * The 25 rows past the first nine, as wood's recipe draws them. The name is from before any was placed: the tiers'
- * recipes, assets and mesh tests read it, so it keeps its rows whichever are live. The corner pillar is the pillar's
- * own row: a pillar at a square's corner is the pillar in that slot, so it is no form and has no kind.
+ * Rows the tiers draw that no kind places. The corner pillar is the pillar's own row: a pillar at a square's corner is
+ * the pillar in that slot, so it is no form. A quarter foundation has no kind until occupancy relates a quarter square
+ * to the whole one.
  */
-export const PLANNED_FORMS = {
-  half_wall: LOW.half_wall,
-  quarter_wall: LOW.quarter_wall,
-  railing: LOW.railing,
-  corner_pillar: FORMS.pillar,
-  thin_pillar: LOW.thin_pillar,
-  beam: LOW.beam,
-  ramp: SLOPES.ramp,
-  ...TRIANGLES,
-  quarter_foundation: { ...FORMS.foundation, size: 1, outline: plan(0, 0, SIDE / 2) },
-  roof: SLOPES.roof,
-  roof_hip: SLOPES.roof_hip,
-  roof_valley: SLOPES.roof_valley,
-  triangle_roof: SLOPES.triangle_roof,
-  triangle_roof_low: SLOPES.triangle_roof_low,
-  sloped_wall_left: SLOPES.sloped_wall_left,
-  sloped_wall_right: SLOPES.sloped_wall_right,
-  ...FOOTINGS,
-  ...WIDE,
+export const UNPLACED_FORMS = {
+  corner_pillar: FIRST_FORMS.pillar,
+  quarter_foundation: { ...FIRST_FORMS.foundation, size: 1, outline: plan(0, 0, SIDE / 2) },
 } satisfies Record<string, FormDef>;
-
-/** The pieces content places, by the name of their shape. A row here that no tier draws is drawn as its collider. */
-export const LIVE_FORMS = { ...FORMS, ...LOW, ...TRIANGLES, ...SLOPES, ...FOOTINGS, ...OPEN_HATCH, ...WIDE, ...WIDE_LEAVES } satisfies Record<string, FormDef>;
 
 const box = (x: number, y: number, z: number, hx: number, hy: number, hz: number): ShapeBox => ({ at: [x, y, z], half: [hx, hy, hz] });
 
@@ -251,5 +213,5 @@ export function boxed(f: FormDef): boolean {
   return f.corner === undefined && f.outline.length === 4 && f.outline.every((p) => (p[0] === u0 || p[0] === u1) && (p[1] === v0 || p[1] === v1));
 }
 
-/** Every row by its name, placed or not: for tools and tests that name a row whichever it is. */
-export const ALL_FORMS = { ...FORMS, ...PLANNED_FORMS, ...OPEN_HATCH, ...WIDE_LEAVES };
+/** Every row by its name, placed or not: what each tier's asset draws. */
+export const ALL_FORMS = { ...FORMS, ...UNPLACED_FORMS };

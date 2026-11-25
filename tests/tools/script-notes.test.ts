@@ -67,6 +67,7 @@ test("the page is sent without its comments, and is the page", () => {
   const page = readFileSync(join(import.meta.dir, "../../client/index.html"), "utf8")
     .replace("<!-- MODULES -->", '<link rel="modulepreload" href="main.js">')
     .replace("<!-- HUD_FONT_PRELOAD -->", "")
+    .replace("/* HUD_FONT_FACES */", '@font-face { font-family: Hud; src: url("f.woff2") format("woff2"); }')
     .replace("FETCHED", JSON.stringify(["map.json", "assets/manifest.json"]));
   const sent = pageWithoutNotes(page);
   expect(sent).not.toContain("<!--");

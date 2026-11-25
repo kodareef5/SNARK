@@ -37,6 +37,9 @@ export class Claims {
   private spotHigh = 0;
   private spotFree = 0;
   private readonly totals = new Map<number, number>();
+  /** The team last counted and its total, which `totals` is told once another team is counted: rows come by team in runs. */
+  private team0 = 0;
+  private total0 = 0;
 
   /** Counts what `structs` holds, and is told of every change to it from then on, in place of any grid made on it before. `role` is the registry's, by kind. */
   constructor(structs: StructureStore, role: ArrayLike<number>) {
@@ -61,7 +64,7 @@ export class Claims {
 
   /** Pieces `team` owns on the whole map. */
   total(team: number): number {
-    return this.totals.get(team) ?? 0;
+    return team === this.team0 ? this.total0 : (this.totals.get(team) ?? 0);
   }
 
   /** Whether `team` owns a piece in `chunk`. */
@@ -143,14 +146,24 @@ export class Claims {
     }
     const role = this.role[kind];
     if (role === ROLE_FOUNDATION || role === ROLE_PILLAR) this.root((e - 1) * 2 + (role === ROLE_PILLAR ? 1 : 0), x, z, by);
-    this.totals.set(owner, this.total(owner) + by);
+    if (owner !== this.team0) {
+      if (this.team0 !== 0) this.settle();
+      this.total0 = this.totals.get(owner) ?? 0;
+      this.team0 = owner;
+    }
+    this.total0 += by;
     if ((this.count[e - 1]! += by) > 0) return;
     if (before === 0) this.head[cell] = this.next[e - 1]!;
     else this.next[before - 1] = this.next[e - 1]!;
     this.next[e - 1] = this.entryFree;
     this.entryFree = e;
     this.entries--;
-    if (this.total(owner) === 0) this.totals.delete(owner);
+  }
+
+  /** Writes the last team's total to `totals`, which forgets a team with none. */
+  private settle(): void {
+    if (this.total0 === 0) this.totals.delete(this.team0);
+    else this.totals.set(this.team0, this.total0);
   }
 
   /** Adds a foundation or pillar at (x, z) to the list that starts at `first[at]`, or takes one away. */

@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { vehicleFitsWorld } from "../../server/vehicle-service.ts";
 import { NO_CLIPS } from "../../shared/anim/clip.ts";
-import { RESULT_NO_SUPPORT, RESULT_OK } from "../../shared/net/protocol.ts";
+import { RESULT_OBSTRUCTED, RESULT_OK } from "../../shared/net/protocol.ts";
 import { boatRestY } from "../../shared/sim/boat.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
 import { Harness } from "../fixtures/net.ts";
@@ -21,7 +21,7 @@ test("parking and deployment find a flagship whose stern crosses into the next c
     h.world.ents.setPosition(c.ent, x + 7, y, 48);
     expect(h.host.items.mint(actor, kit, 1)).toBe(1);
     const inventory = h.host.items.inv(actor), slot = inventory.item.indexOf(kit);
-    expect(h.host.vehicles.deploy(c, slot, x, y, 48, 0)).toBe(RESULT_NO_SUPPORT);
+    expect(h.host.vehicles.deploy(c, slot, x, y, 48, 0)).toBe(RESULT_OBSTRUCTED);
     expect(inventory.total(kit)).toBe(1);
     h.world.ents.setPosition(c.ent, x + 7, y, 35);
     expect(h.host.vehicles.deploy(c, slot, x, y, 35, 0)).toBe(RESULT_OK);

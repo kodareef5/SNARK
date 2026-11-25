@@ -75,29 +75,33 @@ function vehicleParts(v: SentView, i: number, out: Uint32Array | number[]): void
   out[9] = v.vehicleWater[i]!;
 }
 
-/** The bits an update's vehicle takes after its own bit: 0 when no part changed. */
+/** A bit for each vehicle part that differs between the base's entry and the true one, lowest bit the first part. */
 function vehicleChange(base: SentView, i: number, cur: SentView, j: number): number {
   vehicleParts(base, i, partsA);
   vehicleParts(cur, j, partsB);
-  let bits = 0;
-  let any = false;
-  for (let p = 0; p < VEHICLE_PART_BITS.length; p++) {
-    bits += 1;
-    if (partsA[p] !== partsB[p]) { bits += VEHICLE_PART_BITS[p]!; any = true; }
-  }
-  return any ? bits : 0;
+  let changed = 0;
+  for (let p = 0; p < VEHICLE_PART_BITS.length; p++) if (partsA[p] !== partsB[p]) changed |= 1 << p;
+  return changed;
 }
 
-/** Each part with its bit, the part only where it differs from the base's (always, without a base). */
-function writeVehicleParts(w: BitWriter, base: SentView | null, i: number, cur: SentView, j: number): void {
-  if (base) vehicleParts(base, i, partsA);
+/** The bits an update's vehicle takes after its own bit, by `vehicleChange`'s mask: 0 when no part changed. */
+const VEHICLE_CHANGE_BITS = Uint16Array.from({ length: 1 << VEHICLE_PART_BITS.length }, (_, changed) => {
+  let bits = 0;
+  for (let p = 0; p < VEHICLE_PART_BITS.length; p++) bits += 1 + ((changed >>> p) & 1) * VEHICLE_PART_BITS[p]!;
+  return changed === 0 ? 0 : bits;
+});
+
+/** Each part with its bit, the part only where `changed` (`vehicleChange`'s mask) has its bit; every part when it is all ones. */
+function writeVehicleParts(w: BitWriter, changed: number, cur: SentView, j: number): void {
   vehicleParts(cur, j, partsB);
   for (let p = 0; p < VEHICLE_PART_BITS.length; p++) {
-    const sent = !base || partsA[p] !== partsB[p];
+    const sent = ((changed >>> p) & 1) === 1;
     w.bool(sent);
     if (sent) w.bits(partsB[p]!, VEHICLE_PART_BITS[p]!);
   }
 }
+/** `writeVehicleParts`'s mask for a create, which sends every part. */
+const VEHICLE_ALL = (1 << VEHICLE_PART_BITS.length) - 1;
 
 function readVehicleParts(r: BitReader, base: SentView | null, i: number, out: number[]): void {
   if (base) vehicleParts(base, i, out);
@@ -553,6 +557,8 @@ const urgIndex = new Int16Array(MAX_VIEW * 2);
 const optIndex = new Int16Array(MAX_VIEW * 2);
 /** Bits each deferrable op takes. Exact for an update but for its id gap, an upper bound for a create, new or again. */
 const opBits = new Uint16Array(MAX_OPS);
+/** An update's vehicle parts that changed, as `vehicleChange` found them while it was sized. */
+const opVehicle = new Uint16Array(MAX_OPS);
 let admitted = 0;
 const K_KEEP = 0;
 const K_UPDATE = 1;
@@ -563,6 +569,8 @@ const K_STALE = 5;
 const K_SKIP = 6;
 /** Unchanged from the baseline, and listed in what the client was told. */
 const K_HOLD = 7;
+/** In the baseline, left out of the view by a cap and marked `spare`: kept as the client has it while there is room. */
+const K_SPARE = 8;
 const NONE = 0xffffffff;
 
 function varintBits(v: number): number {
@@ -631,23 +639,34 @@ function everything(ring: ViewRing<SentView>, told: Told, tick: number): void {
   told.turn(told.tick);
 }
 
+/** Rows chosen for one viewer in ascending entity-id order. A negative row is the bitwise complement of an index in extra. */
+export interface ViewSelection {
+  readonly order: Int16Array;
+  readonly extra: SentView;
+  count: number;
+}
+
 /**
- * Encodes `cur` (the true state, sorted by id) against `base` (the view the client has, or null) and fills `next` with the
+ * Encodes the shared view (the true state, sorted by id) against `base` (the view the client has, or null) and fills `next` with the
  * view the client will hold after applying it. `budgetBits` bounds the deferrable ops, which are all but the removes. A
  * deferred op is left out, and `next` records the stale state the client is left with, so later deltas stay correct.
  * Urgent entities are deferred last. `rotate` holds where deferral started last time. Pass back what this returns, and 0
  * the first time. `looks` gives the appearance a create carries.
  *
- * Clients around one place share one `cur`, and each is sent its own part of it. The entry with id `skip` is left out, and
- * so is every entry whose `rank` is `limit` or more. `rank` is each entry's place in the order they were chosen in.
+ * Clients around one place share one view, and each is sent its own part of it. The entry with id `skip` is left out, and
+ * so is every entry whose `rank` is `limit` or more. A selection already has the entries this viewer may see.
  *
  * `ring` is the client's ring, which `next` was allocated from. With it the client is taken to show each body as it was
  * last told of, and is told again of any it may show otherwise until it acknowledges a snapshot that settles it. The
  * snapshot counts as sent unless `w` has overflowed by the time this returns. One that is not sent is as one lost on the way.
+ *
+ * `spare` says of a body in the baseline and not in what is sent whether a cap left it out. Such a body is left as the
+ * client has it, as a deferred update is, while the view has room under `limit`, so that a cap's choice moving does not
+ * take many away at once while the creates in their place wait on the budget.
  */
-export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentView, next: SentView, budgetBits: number, rotate: number, looks: Looks, skip = -1, rank: Uint16Array | null = null, limit = MAX_VIEW, ring: ViewRing<SentView> | null = null): number {
+export function writeViewDelta(w: BitWriter, base: SentView | null, shared: SentView, next: SentView, budgetBits: number, rotate: number, looks: Looks, skip = -1, rank: Uint16Array | null = null, limit = MAX_VIEW, ring: ViewRing<SentView> | null = null, spare: ((id: number, gen: number) => boolean) | null = null, selection: ViewSelection | null = null): number {
   const nb = base ? base.count : 0;
-  const nc = cur.count;
+  const nc = selection ? selection.count : shared.count;
   const tick = next.tick;
   const acked = base ? base.tick : 0;
   const told = ring ? (ring.told ??= new Told()) : null;
@@ -655,7 +674,7 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
   const nt = told ? told.count : 0;
   const order = told ? told.order : null;
   let i = 0;
-  let j = 0;
+  let cursor = 0;
   let h = 0;
   let n = 0;
   let optional = 0;
@@ -663,16 +682,20 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
   let urgent = 0;
   let urgentBits = 0;
   let written = 0;
+  let spares = 0;
   /** One more than the id of the last op, for the size of the next op's id gap. A deferred op between two makes the real gap larger. */
   let last = 0;
   let tid = nt > 0 ? told!.id[order![0]!]! : NONE;
-  while (i < nb || j < nc || h < nt) {
-    if (j < nc && (cur.id[j] === skip || (rank !== null && rank[j]! >= limit))) {
-      j++;
+  while (i < nb || cursor < nc || h < nt) {
+    const row = selection && cursor < nc ? selection.order[cursor]! : cursor;
+    const cur = row < 0 ? selection!.extra : shared;
+    const j = row < 0 ? ~row : row;
+    if (cursor < nc && (cur.id[j] === skip || (rank !== null && rank[j]! >= limit))) {
+      cursor++;
       continue;
     }
     const bid = i < nb ? base!.id[i]! : NONE;
-    const cid = j < nc ? cur.id[j]! : NONE;
+    const cid = cursor < nc ? cur.id[j]! : NONE;
     // The body's slot in what the client was told, or -1.
     let th = -1;
     if (tid <= bid && tid <= cid) {
@@ -707,17 +730,22 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
       opDied[n] = looks.died !== undefined && looks.died[bid] === base!.gen[i] ? 1 : 0;
       opBase[n] = i++;
       opId[n] = bid;
-      written++;
-      last = bid + 1;
+      if (spare !== null && opDied[n] === 0 && (th < 0 || told!.gone[th] === 0) && spare(bid, base!.gen[i - 1]!)) {
+        opKind[n] = K_SPARE;
+        spares++;
+      } else {
+        written++;
+        last = bid + 1;
+      }
     } else if (cid < bid) {
       opKind[n] = K_CREATE;
-      opCur[n] = j;
+      opCur[n] = row;
       opId[n] = cid;
       bits = createBits(looks, cid) + 1 + (cur.stride[j] ? 8 : 0) + (cur.cue[j] !== 0 ? CUE_BITS : 0) + 1 + (cur.emote[j] !== 0 ? EMOTE_BITS : 0) + 1 + (cur.react[j] !== 0 ? REACT_BITS : 0) + (cur.vehiclePose[j] !== 0 ? VEHICLE_BITS : 0);
       last = cid + 1;
     } else {
       opBase[n] = i;
-      opCur[n] = j;
+      opCur[n] = row;
       if (base!.gen[i] !== cur.gen[j] || base!.rev[i] !== cur.rev[j]) {
         // Deferred, it leaves the client the entry it has.
         opKind[n] = K_REPLACE;
@@ -733,12 +761,13 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
         const strideChanged = cur.stride[j] !== base!.stride[i];
         const reacted = cur.react[j] !== base!.react[i];
         const cued = cur.cue[j] !== base!.cue[i] || emoted || reacted;
-        const vehicleBits = vehicleChange(base!, i, cur, j);
+        const vehicleChanged = vehicleChange(base!, i, cur, j);
+        const vehicleBits = VEHICLE_CHANGE_BITS[vehicleChanged]!;
         if (!moved && changed === 0 && !strideChanged && !cued && vehicleBits === 0 && base!.yaw[i] === cur.yaw[j] && base!.flags[i] === cur.flags[j]) {
           if (th < 0) {
             opKind[n] = K_KEEP;
             i++;
-            j++;
+            cursor++;
             n++;
             continue;
           }
@@ -747,13 +776,14 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
             opKind[n] = K_HOLD;
             opTold[n] = th;
             i++;
-            j++;
+            cursor++;
             n++;
             continue;
           }
           // As the baseline has it, but the client may show what it was told since. An update with no parts says so.
         }
         opKind[n] = K_UPDATE;
+        opVehicle[n] = vehicleChanged;
         // The id gap, the op, and one bit for each of the seven parts that may follow.
         bits = varintBits(cid + 1 - last) + 2 + 7 + vehicleBits;
         if (moved) bits += dx >= -128 && dx <= 127 && dy >= -128 && dy <= 127 && dz >= -128 && dz <= 127 ? 25 : 65;
@@ -783,7 +813,7 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
         }
       }
     }
-    if (cid <= bid) j++;
+    if (cid <= bid) cursor++;
     n++;
   }
 
@@ -809,6 +839,26 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
     }
     rotate = urgentFrom * 4096 + othersFrom;
   }
+  if (spares > 0) {
+    // Spares fill what the rest leave of the limit, the own body one of it, lowest id first. The others are taken away. A
+    // body told of and deferred now may still show, so it counts.
+    let room = limit - (skip >= 0 ? 1 : 0);
+    for (let k = 0; k < n; k++) {
+      const kind = opKind[k]!;
+      if (kind === K_KEEP || kind === K_HOLD || kind === K_UPDATE || kind === K_CREATE || kind === K_REPLACE || kind === K_STALE) room--;
+      else if (kind === K_SKIP && opTold[k]! >= 0 && told!.gone[opTold[k]!] === 0) room--;
+    }
+    for (let k = 0; k < n; k++) {
+      if (opKind[k] !== K_SPARE) continue;
+      if (room > 0) {
+        opKind[k] = K_STALE;
+        room--;
+      } else {
+        opKind[k] = K_REMOVE;
+        written++;
+      }
+    }
+  }
 
   w.varint(written);
   let prev = 0;
@@ -830,7 +880,6 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
       if (th >= 0) told!.wait(th, tick);
       continue;
     }
-    const ci = opCur[k]!;
     const id = opId[k]!;
     w.varint(id + 1 - prev);
     prev = id + 1;
@@ -839,6 +888,9 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
       if (told) told.remove(th, id, tick, opDied[k] === 1);
       continue;
     }
+    const row = opCur[k]!;
+    const cur = row < 0 ? selection!.extra : shared;
+    const ci = row < 0 ? ~row : row;
     // Both ops below add it to `next`, at the end. Last told of in the baseline, it is now told something else.
     if (told) told.say(th, id, tick, next.count, th >= 0 && told.gone[th] === 0 && told.at[th] !== acked && same(ring!, told, th, cur, ci));
     if (kind !== K_UPDATE) {
@@ -860,7 +912,7 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
       w.bool(cur.react[ci] !== 0);
       if (cur.react[ci] !== 0) w.bits(cur.react[ci]!, REACT_BITS);
       w.bool(cur.vehiclePose[ci] !== 0);
-      if (cur.vehiclePose[ci] !== 0) writeVehicleParts(w, null, 0, cur, ci);
+      if (cur.vehiclePose[ci] !== 0) writeVehicleParts(w, VEHICLE_ALL, cur, ci);
       w.bits(cur.rev[ci]!, 4);
       w.varint(looks.level[id]!);
       const c0 = id * 6;
@@ -951,9 +1003,9 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
         w.bool(reacted);
         if (reacted) w.bits(cur.react[ci]!, REACT_BITS);
       }
-      const vehicleChanged = vehicleChange(base!, bi, cur, ci) !== 0;
-      w.bool(vehicleChanged);
-      if (vehicleChanged) writeVehicleParts(w, base!, bi, cur, ci);
+      const vehicleChanged = opVehicle[k]!;
+      w.bool(vehicleChanged !== 0);
+      if (vehicleChanged !== 0) writeVehicleParts(w, vehicleChanged, cur, ci);
       next.copyFrom(cur, ci);
     }
   }

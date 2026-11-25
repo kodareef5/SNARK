@@ -104,8 +104,12 @@ artTest("a 20,000-piece base 30 and 60 m off on medium at the iPhone's view draw
   // Pinned at its draws, triangles and triangles cast. It was 15 draws and 8,676,500 and 8,680,596 triangles while the
   // chunk was drawn whole at the level of its box's nearest point; 5,783,676 and 4,311,372 triangles, casting 256,408 and
   // 250,264, by its 16 m cells, each at its own level. From outside air it draws and casts its shell alone (rooms.ts), in
-  // the same draws at the same levels. What it casts is cascade 1's, which holds every cell.
-  expect(frames).toEqual([[21, 1435488, 69052], [27, 1148264, 62908]]);
+  // the same draws at the same levels. What it casts is cascade 1's, which holds every cell. It was 21 and 27 draws and
+  // 1,435,488 and 1,148,264 triangles, casting 69,052 and 62,908, while wood's levels were modelled for 38, 94 and 301 m:
+  // made by its recipe for 19, 60, 147 and 298 m (tools/pack/pieces), three of them with materials, 32 and 15 draws and
+  // 895,308 and 526,976, casting 69,044 and 62,900. With no strips at a wall's ends and the client's joints and skirts
+  // laid, which are draws of their own, it is this.
+  expect(frames).toEqual([[42, 645208, 70052], [18, 363692, 63908]]);
 });
 
 artTest("Koru moored in its bay on medium at the iPhone's view: its eight cells, three doors, sails and rig in a few score draws, and what it casts", () => {

@@ -1,4 +1,4 @@
-import { FORMS, LIVE_FORMS } from "../../content/building/forms.ts";
+import { FIRST_FORMS, FORMS } from "../../content/building/forms.ts";
 import { FREIGHT_ORDER } from "../../content/vehicles/air-freight.ts";
 import { TANKER_WRECKS } from "../../content/vehicles/tanker-wrecks.ts";
 // The class table: sound in itself, and true of the content that exists.
@@ -47,7 +47,7 @@ const ofCreatures = new Set([...CREATURES, ...FEATURES_CONTENT].map((d) => `${d.
 // The building pieces past the first nine forms, with their items and engrams, are held by the building tests
 // (tests/build), so a form that goes live moves no number here.
 const TIER = "_(thatch|wood|stone|metal)$";
-const laterForms = Object.keys(LIVE_FORMS).filter((name) => !(name in FORMS)).join("|");
+const laterForms = Object.keys(FORMS).filter((name) => !(name in FIRST_FORMS)).join("|");
 const laterPiece = new RegExp(`^core:(shape_(${laterForms})$|(${laterForms})${TIER}|(engram-)?piece_(?!(foundation|wall|ceiling|door|pillar|stairs)_[a-z]+$).*${TIER})`);
 const later = CORE_CONTENT.filter((d) => laterPiece.test(d.id));
 const rest = CORE_CONTENT.filter((d) => !ofCreatures.has(`${d.type} ${d.id}`) && !laterPiece.test(d.id));

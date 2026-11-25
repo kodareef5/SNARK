@@ -489,6 +489,9 @@ export class Scene {
   set nearMesh(on: boolean) { this.nearStore.nearMesh = on; }
   get structureDistance(): number { return this.nearStore.structureDistance; }
   set structureDistance(metres: number) { this.nearStore.structureDistance = metres; }
+  /** Whether a chunk of pieces is laid out only once it may be seen or cast (NearStore.lazy); off lays out every chunk held. */
+  get lazyLayout(): boolean { return this.nearStore.lazy; }
+  set lazyLayout(on: boolean) { this.nearStore.lazy = on; }
   hideNode(ref: number, hide: boolean): void { this.nearStore.hideNode(ref, hide); }
   /** The chunks' batches and the rooms' finder, which the rooms' tests read. */
   get batches(): NearStore["batches"] { return this.nearStore.batches; }

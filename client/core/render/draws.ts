@@ -109,6 +109,19 @@ function reorder32(a: Uint32Array, w: number, rows: number, count: number, order
   for (let k = 0; k < count; k++) for (let j = 0; j < w; j++) a[k * w + j] = copy[order[k]! * w + j]!;
 }
 
+/** Row k of `a`, of `w` elements a row, takes row rows[k], for k from `from` up to `count`: as `reorder`, a loop for each width. */
+function keep8(a: Uint8Array, w: number, rows: Uint16Array, from: number, count: number): void {
+  for (let k = from; k < count; k++) for (let j = 0; j < w; j++) a[k * w + j] = a[rows[k]! * w + j]!;
+}
+
+function keep16(a: Uint16Array, w: number, rows: Uint16Array, from: number, count: number): void {
+  for (let k = from; k < count; k++) for (let j = 0; j < w; j++) a[k * w + j] = a[rows[k]! * w + j]!;
+}
+
+function keep32(a: Uint32Array, w: number, rows: Uint16Array, from: number, count: number): void {
+  for (let k = from; k < count; k++) for (let j = 0; j < w; j++) a[k * w + j] = a[rows[k]! * w + j]!;
+}
+
 /** Where an opaque step's cut-out draws go among its others (Draws.cutouts). */
 export type Cutouts = "last" | "made" | "first" | "none";
 export const CUTOUTS: readonly Cutouts[] = ["last", "made", "first", "none"];
@@ -169,6 +182,7 @@ export class Draws {
    * 1, the camera-relative box round all it draws, by which it is left out where hidden. `nearAt` is what `draw` gives.
    */
   readonly nearOf = new Float32Array(MAX_DRAWS);
+  private readonly nearBits = new Uint32Array(this.nearOf.buffer);
   readonly boxed = new Uint8Array(MAX_DRAWS);
   readonly boxOf = new Float32Array(MAX_DRAWS * 6);
   nearAt = 0;
@@ -271,7 +285,10 @@ export class Draws {
       p.drawFlags[d] = flags | this.groundFlags[mesh]! | this.bentFlags[mesh]! | (material < 0 ? this.flatFlags[mesh]! : this.materialFlags[material]!);
       p.drawHand[d] = hand;
       p.drawSwap[d] = material < 0 ? 0 : this.swap;
-      p.drawEffect.set(this.effect, d * 4);
+      p.drawEffect[d * 4] = this.effect[0]!;
+      p.drawEffect[d * 4 + 1] = this.effect[1]!;
+      p.drawEffect[d * 4 + 2] = this.effect[2]!;
+      p.drawEffect[d * 4 + 3] = this.effect[3]!;
       p.drawTint[d * 2] = this.tint;
       p.drawTint[d * 2 + 1] = this.fade;
       p.drawLayer[d] = layer > 0 && material >= 0 && this.assets.layered(material) ? layer % WEAR_KEY : 0;
@@ -416,14 +433,16 @@ export class Draws {
     if (x0 <= x1) this.boxRows(from, to, x0 + ox, y0 + oy, z0 + oz, x1 + ox, y1 + oy, z1 + oz);
   }
 
-  /** Moves draw `from` of the frame to `to`, an earlier row. */
-  moveRow(from: number, to: number): void {
+  /** Keeps of the frame's draws from row `from` on those `rows` names, in its order: row k takes row rows[k], which is k or later. */
+  keepRows(rows: Uint16Array, from: number, count: number): void {
     for (const a of this.columns) {
       const w = a.length / MAX_DRAWS;
-      for (let j = 0; j < w; j++) a[to * w + j] = a[from * w + j]!;
+      if (a instanceof Uint8Array) keep8(a, w, rows, from, count);
+      else if (a instanceof Uint16Array) keep16(a, w, rows, from, count);
+      else keep32(a, w, rows, from, count);
     }
-    this.passOf[to] = this.passOf[from]!;
-    this.nearOf[to] = this.nearOf[from]!;
+    keep8(this.passOf, 1, rows, from, count);
+    keep32(this.nearBits, 1, rows, from, count);
   }
 
   /**

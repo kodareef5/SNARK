@@ -11,7 +11,8 @@
 // Texture coordinates are metres over the 3 m tile from a face's top left corner, as the pictures are painted.
 
 import { HALF_SIDE_M, outlineBox, type FormDef } from "../../../shared/world/lattice/forms.ts";
-import { Carved, add, beamRings, clip, cross, dot, gateLeaves, inset as insetPlan, length, mirror, planeAt, planeMoved, scale, slabOn, sub, unit, uprightPlane, type Flat, type Plane as KitPlane, type Shape, type SlabMap, type Uv, type Vec } from "./kit.ts";
+import { Carved, add, beamRings, clip, cross, dot, gateLeaves, inset as insetPlan, length, mirror, place, planeAt, planeMoved, rimStrips, scale, slabOn, sub, unit, uprightPlane, type Flat, type Plane as KitPlane, type Shape, type SlabMap, type Uv, type Vec } from "./kit.ts";
+import { HIP_FALL, HIP_FROM, SADDLE_FOOT, alongHip, onHip, revolve } from "./hips.ts";
 import { planOf, yieldPlanes, type TierRecipe } from "./lod.ts";
 import { PyRandom } from "./mt.ts";
 
@@ -1478,16 +1479,20 @@ function sidesOf(poly: readonly P2[]): (readonly [number, number, number])[] {
 const DW = 0.7;
 const DT = 0.04;
 const DOOR_FOOT = 0.02; // it clears the threshold
-/** An open door stands at a right angle on its hinge at the doorway's left, swung toward the front. */
-const PIVOT: P2 = [-0.68, 0.02];
 
-function door(form: FormDef, level: number): Build | null {
+/**
+ * The door: five oak planks on ledges and braces, hung on three iron strap hinges, with a ring to pull it by. Open, it
+ * is the same door a quarter turn round its hinge at the doorway's left, swung toward the front: the line its row's
+ * box turns on, 2 cm in from its hung edge and in front of its middle. One of a pair has no ledges from 60 m.
+ */
+function door(form: FormDef, level: number, pair = false): Build | null {
   if (level > 3) return null;
   const b = new Build();
   const [u0, v0, u1, v1] = outlineBox(form);
   if (Math.abs(u1 - u0 - 2 * DW) > 1e-9) throw new Error("stone's door is five planks 1.4 m across");
   const dh = (v1 - v0) / 2;
-  if (form.plane === "across") b.turn = ([x, y, z]) => [PIVOT[0] - (z - PIVOT[1]), y, PIVOT[1] + (x - PIVOT[0])];
+  const off = form.off ?? 0;
+  if (form.plane === "across") b.turn = ([x, y, z]) => [off - z, y, x + DW];
   const [y0, y1] = [-dh + DOOR_FOOT, dh];
   const [faceZ, backZ] = [0.034, -0.016];
   if (level === 3) {
@@ -1521,7 +1526,7 @@ function door(form: FormDef, level: number): Build | null {
     b.convex(loft("x", [[-DW + 0.004, section(0.035)], [DW - 0.16, section(0.035)], [DW - 0.06, section(0.004)]]), "iron", (n) => straight(n, "x"));
   }
   // Ledges across the back, and braces between them rising from the hinge side.
-  for (const yc of straps) {
+  for (const yc of pair && level === 2 ? [] : straps) {
     if (level === 0) b.prism([[backZ, yc - 0.07], [backZ, yc + 0.07], [-DT + 0.006, yc + 0.07], [-DT, yc + 0.064], [-DT, yc - 0.064], [-DT + 0.006, yc - 0.07]], "x", -DW + 0.08, DW - 0.08, "timber", "x");
     else b.box([-DW + 0.08, yc - 0.07, -DT], [DW - 0.08, yc + 0.07, backZ], "timber", "x");
   }
@@ -1564,6 +1569,32 @@ function door(form: FormDef, level: number): Build | null {
     b.face(turned, "iron", straight(newell(turned)));
   }
   return b;
+}
+
+/**
+ * A double door: the door's own leaf hung on the doorway's left jamb, and the same leaf in a mirror on its right. Open,
+ * each is that leaf a quarter turn round on its own jamb, as an open door is: the row's `pair` is the mirror. From 386 m
+ * the shut pair is one block, and an open one a sheet to a leaf, seen from both sides.
+ */
+function doubleDoor(form: FormDef, level: number): Build | null {
+  if (level > 4) return null;
+  const [u0, v0, u1, v1] = outlineBox(form);
+  const open = form.plane === "across";
+  const wide = open ? u1 - u0 : (u1 - u0) / 2;
+  const [y0, y1] = [v0 - form.at[1] + DOOR_FOOT, v1 - form.at[1]];
+  if (level === 4) {
+    const b = new Build();
+    if (!open) b.box([-wide, y0, -DT], [wide, y1, DT], "timber", "y");
+    else for (const s of [-1, 1]) for (const out of [-1, 1]) b.flat([[s * (form.off! - form.at[0]), y0, 0], [s * (form.off! - form.at[0]), y0, wide], [s * (form.off! - form.at[0]), y1, wide], [s * (form.off! - form.at[0]), y1, 0]], [out, 0, 0], "timber");
+    return b;
+  }
+  // One leaf as a door's row has it: about its own middle shut, and open by where its thickness stands from the pair's middle.
+  const row: FormDef = { ...form, outline: [[-wide / 2, v0], [wide / 2, v0], [wide / 2, v1], [-wide / 2, v1]], ...(open ? { off: (form.off ?? 0) - form.at[0] } : {}) };
+  const [left, right] = [door(row, level, true), door(row, level, true)];
+  if (!left || !right) return null;
+  if (!open) for (const leaf of [left, right]) place(leaf.shape, (q) => [q[0] - wide / 2, q[1], q[2]]);
+  left.shape.faces.push(...mirror(right.shape, 0).faces);
+  return left;
 }
 
 // The forms past the first nine. Each is built from its row alone, in the mason's own members: walling is the wall's
@@ -2068,7 +2099,6 @@ function gatehouse(name: string, form: FormDef, level: number): Build | null {
     const points = doorwayOutline(w, d, w.top).map(([x, y]): Vec => [x, 0, y]);
     const tris = [0, 1, 2, 0, 2, 7, 2, 3, 7, 3, 6, 7, 3, 5, 6, 3, 4, 5];
     for (const front of [true, false]) b.shape.faces.push({ points, uvs: points.map(() => [0, 0] as const), mat: "dressed", tris: front ? tris.flatMap((_, i) => (i % 3 === 0 ? [tris[i]!, tris[i + 2]!, tris[i + 1]!] : [])) : tris });
-    b.shape.error = w.half;
     return b;
   }
   if (level < 3) b.rings = yieldPlanes(form);
@@ -2110,15 +2140,32 @@ function gatehouse(name: string, form: FormDef, level: number): Build | null {
 
 /**
  * A gate of two leaves that meet in the middle: oak planks on three ledges and two braces a leaf, hung on long iron
- * strap hinges riveted through, and barred across the back in iron brackets. The front is +z.
+ * strap hinges riveted through, and barred across the back in iron brackets. The front is +z. Open, each leaf is
+ * turned a quarter on its own pier, as an open door is, and the bar is lifted out. From 386 m an open gate is a sheet
+ * to a leaf, seen from both sides.
  */
 function gate(form: FormDef, level: number): Build | null {
-  if (level > 3) return null;
-  const w = wallBox(form);
+  const open = form.plane === "across";
+  if (level > (open ? 4 : 3)) return null;
   const b = new Build();
   b.free = true;
+  // The open row is one leaf across the edge, with its pair: the gate is two of its width, about its pair's middle.
+  const [u0, , u1] = outlineBox(form);
+  const w = open ? { ...wallBox(form), x0: -(u1 - u0), x1: u1 - u0 } : wallBox(form);
+  if (open) {
+    // A quarter turn on the line the shut row's box turns into the open one's on; the right leaf in a mirror.
+    const [off, hx] = [(form.off ?? 0) - form.at[0], u1 - u0];
+    b.turn = ([x, y, z]) => (x < 0 ? [off - z, y, x + hx] : [z - off, y, hx - x]);
+  }
+  if (level === 4) {
+    b.turn = null;
+    const x = (form.off ?? 0) - form.at[0];
+    for (const s of [-1, 1]) for (const out of [-1, 1]) b.flat([[s * x, w.foot, 0], [s * x, w.foot, w.x1], [s * x, w.top, w.x1], [s * x, w.top, 0]], [out, 0, 0], "timber");
+    return b;
+  }
   if (level === 3) {
-    b.box([w.x0, w.foot, -w.half], [w.x1, w.top, w.half], "timber", "y");
+    if (!open) b.box([w.x0, w.foot, -w.half], [w.x1, w.top, w.half], "timber", "y");
+    else for (const [x0, x1] of [[w.x0, -0.006], [0.006, w.x1]] as const) b.box([x0, w.foot, -w.half], [x1, w.top, w.half], "timber", "y");
     return b;
   }
   const [foot, top] = [w.foot + 0.02, w.top - 0.015];
@@ -2173,10 +2220,10 @@ function gate(form: FormDef, level: number): Build | null {
     }
   });
   if (level === 2) return b;
-  // The bar across the back of both leaves, in an iron bracket on each.
+  // The bar across the back of both leaves, in an iron bracket on each. It is lifted out to open the gate.
   const y = foot + 1.3;
   const reach = (w.x1 - w.x0) / 2 - 0.5;
-  b.box([mid - reach, y - 0.08, barZ + 0.006], [mid + reach, y + 0.08, backZ - 0.004], "timber", "x");
+  if (!open) b.box([mid - reach, y - 0.08, barZ + 0.006], [mid + reach, y + 0.08, backZ - 0.004], "timber", "x");
   if (level === 0) for (const x of [-reach * 0.6, reach * 0.6]) b.box([mid + x - 0.05, y - 0.11, barZ], [mid + x + 0.05, y + 0.1, backZ], "iron");
   return b;
 }
@@ -2475,9 +2522,14 @@ const HATCH_CLEAR = 0.004;
  * has, trimmers the whole way across beside the hole and headers between them, and rough stone in the bays.
  */
 function hatchFrame(name: string, form: FormDef, level: number): Build | null {
-  if (level > 3) return null;
+  if (level > 4) return null;
   const b = new Build();
   b.free = true;
+  // From 386 m the hole is not drawn: twelve triangles hold none.
+  if (level === 4) {
+    b.box([-H, -form.thick / 2, -H], [H, form.thick / 2, H], (n) => (n[1] > 0.5 ? "flags" : "masonry"));
+    return b;
+  }
   if (level < 3) b.rings = yieldPlanes(form);
   const o = form.openings?.[0];
   if (!o || form.outline.length !== 4) throw new Error(`stone ${name}: a square slab with one hole`);
@@ -2546,15 +2598,22 @@ function hatchFrame(name: string, form: FormDef, level: number): Build | null {
 
 /**
  * The hatch's leaf: five oak planks on two ledges under them, hung on two iron strap hinges along its -z side, with a
- * ring to lift it by near the other. It lies in its frame's hole, its top a hair under the floor's.
+ * ring to lift it by near the other. It lies in its frame's hole, its top a hair under the floor's. Open, it hangs
+ * from its hinge side: the same leaf a quarter turn down.
  */
 function hatch(form: FormDef, level: number): Build | null {
   if (level > 3) return null;
   const b = new Build();
   b.free = true;
   const [u0, v0, u1, v1] = outlineBox(form);
-  const [x0, x1, z0, z1] = [u0 - form.at[0] + HATCH_CLEAR, u1 - form.at[0] - HATCH_CLEAR, v0 - form.at[2] + HATCH_CLEAR, v1 - form.at[2] - HATCH_CLEAR];
-  const top = form.thick / 2 - 0.004;
+  // The open row is the leaf hanging: its outline is the leaf's thickness along the hinge side, and its `thick` the leaf's length.
+  const open = v1 - v0 < form.thick;
+  const [thick, far] = open ? [v1 - v0, v0 + form.thick] : [form.thick, v1];
+  const [x0, x1, z0, z1] = [u0 - form.at[0] + HATCH_CLEAR, u1 - form.at[0] - HATCH_CLEAR, v0 - form.at[2] + HATCH_CLEAR, far - form.at[2] - HATCH_CLEAR];
+  // It turns down on the line half its thickness in from its hinge side, at the middle of its thickness: the one line the shut row's box turns into the open one's on.
+  const hinge = v0 - form.at[2] + thick / 2;
+  if (open) b.turn = ([x, y, z]) => [x, hinge - z, hinge + y];
+  const top = thick / 2 - 0.004;
   const bottom = top - 0.045;
   if (level === 3) {
     b.box([x0, bottom, z0], [x1, top, z1], "timber", "z");
@@ -2575,8 +2634,8 @@ function hatch(form: FormDef, level: number): Build | null {
       b.convex(loft("z", [[z0, profile], [z1, profile]]), "timber", (n) => straight(n, "z", [((k * 0.31) % 0.5) - 0.25, ((k * 0.17) % 0.4) - 0.2]));
     });
   }
-  // Two ledges under the planks, across them.
-  for (const z of [z0 + 0.3, z1 - 0.3]) b.box([x0 + 0.04, bottom - 0.035, z - 0.07], [x1 - 0.04, bottom, z + 0.07], "timber", "x");
+  // Two ledges under the planks, across them: far enough in that the open leaf's hang clear under its frame.
+  for (const z of [z0 + 0.34, z1 - 0.34]) b.box([x0 + 0.04, bottom - 0.035, z - 0.07], [x1 - 0.04, bottom, z + 0.07], "timber", "x");
   for (const xc of [x0 + 0.3, x1 - 0.3]) {
     // A strap hinge from the hung side, narrowing to a spear point past the middle.
     const section = (half: number): P2[] => [[xc - half, top - 0.002], [xc + half, top - 0.002], [xc + half, top + 0.006], [xc - half, top + 0.006]];
@@ -2684,10 +2743,16 @@ const EAVE_COURSE = 0.062;
 /** The oak boards under the slates, measured upright, and how far their top lies under the roof's own plane. */
 const SARK = 0.04;
 const SARK_DROP = 0.002;
-/** A roof's rim timber is this wide, and stands this far in from the side: clear of the yield ring. */
-const RIM = 0.16;
-const RIM_IN = 0.115;
+/** A roof's rim timbers lie on its sides' own lines, as wide as its yield band and as deep as its slab: a wall under a side meets them, and the ring cuts none along its length. */
+const RIM = 0.1;
+/** A low side's plate runs out over the wall under it, short of its outer face, and down onto the wall's top, which stands 4 mm under the storey's line. */
+const PLATE_OUT = 0.096;
+const SEAT = 0.006;
+/** The rafter under a fold is this wide. */
+const FOLD = 0.16;
 const RAFTER = 0.2;
+/** The saddle stones that cap a ridge (`ridgeStones`): how far each reaches down the slope, and its top over the ridge's line at the ridge and at its edge. */
+const CAP = { wide: 0.22, top: 0.075, drop: 0.068 } as const;
 
 /** One flat face of a roof: its corners in plan, what each side is, and its own axes, along its contours and up its slope. */
 interface Facet {
@@ -2706,8 +2771,6 @@ interface Facet {
 
 /** The point of a facet `a` along its contours, `s` level metres up its slope and `n` upright over its plane. */
 const onFacet = (f: Facet, a: number, s: number, n = 0): Vec => [f.o[0] + a * f.along[0] + s * f.up[0], f.o[1] + a * f.along[1] + s * f.up[1], f.lo + s * f.g + n];
-/** A facet's own plane moved `by` upright, looking up out of it. */
-const facetPlane = (f: Facet, by = 0): KitPlane => planeAt(add(onFacet(f, 0, 0), [0, 0, by]), [-f.g * f.up[0], -f.g * f.up[1], 1]);
 const facetAt = (f: Facet, q: Flat): [number, number] => [(q[0] - f.o[0]) * f.along[0] + (q[1] - f.o[1]) * f.along[1], (q[0] - f.o[0]) * f.up[0] + (q[1] - f.o[1]) * f.up[1]];
 const heightOn = (f: Facet, q: Flat): number => f.lo + facetAt(f, q)[1] * f.g;
 
@@ -2762,8 +2825,7 @@ const slateUv = (f: Facet, rise: number) => (q: Vec): Uv => {
  * of stone along the contour: its slates' joints are the picture's. The lowest runs out over an eave as a double
  * course, which covers the top of the wall the roof stands on. Past the finest level the eave course alone is solid.
  */
-function slates(p: Shape, level: number, f: Facet, rise: number): void {
-  const eave = f.kinds.includes("eave");
+function slates(p: Shape, level: number, f: Facet, rise: number, eave = f.kinds.includes("eave")): void {
   const spans = f.poly.map((q) => facetAt(f, q)[0]);
   const [a0, a1] = [Math.min(...spans) - EAVE - 0.05, Math.max(...spans) + EAVE + 0.05];
   // The same thicknesses on every face of every roof, so courses meet across a hip, a valley and a side.
@@ -2816,9 +2878,11 @@ function member(p: Shape, level: number, a: Vec, c: Vec, w: number, h: number, u
 }
 
 /**
- * A roof: stone slates in lapped courses on oak boards, over a frame like a ceiling's: a beam inside each level side,
- * a rafter inside each sloped one and under a fold, and common rafters between, their tails out under the eave. A
- * hip's fold is capped by a roll of dressed stone and a valley's lined by a dressed gutter stone.
+ * A roof: stone slates in lapped courses on oak boards, over a frame like a ceiling's. Its rim is oak on each side's
+ * own line, as deep as the slab: a rake board along a sloped side, a beam along a high one, and along a low one a plate
+ * that runs out over the wall under it and bears on its top. Common rafters lie between, their tails out under the
+ * eave. A hip's fold is capped by a roll of dressed stone that climbs onto a saddle at its high corner, and a valley's
+ * lined by a dressed gutter stone out to its low corner, where its lowest course is an eave course.
  */
 function roof(form: FormDef, level: number): Build | null {
   if (level > 3) return null;
@@ -2841,82 +2905,103 @@ function roof(form: FormDef, level: number): Build | null {
     if (part === "under") return ["timber", (q) => [facetAt(f, [q[0], q[1]])[0] / TILE, facetAt(f, [q[0], q[1]])[1] / TILE]];
     return ["timber", (q) => [(q[0] + q[1]) / TILE, 0.3 + q[2] / TILE]];
   };
-  if (level >= 2) {
-    // One solid: its top wears the slates, and it runs out to a thin edge over each eave.
-    const moved = insetPlan(plan, plan.map((_, k) => (kindOf(k) === "eave" ? -EAVE : 0)));
+  const lowest = Math.min(...tops) - form.thick;
+  const eaves = plan.map((_, k) => kindOf(k) === "eave");
+  const raked = plan.map((_, k) => kindOf(k) === "rake");
+  const axis = (k: number): number | undefined => axisOf([plan[k]![0], plan[k]![1], 0], [plan[(k + 1) % n]![0], plan[(k + 1) % n]![1], 0]);
+  /** A rim timber's faces: its grain along its side, each on its own strip of the timber picture. */
+  const rimMap = (k: number): SlabMap => {
+    const [a, c] = [plan[k]!, plan[(k + 1) % n]!];
+    const l = Math.hypot(c[0] - a[0], c[1] - a[1]);
+    const f = facetOf(k);
+    return (part) => ["timber", (q) => {
+      const along = ((q[0] - a[0]) * (c[0] - a[0]) + (q[1] - a[1]) * (c[1] - a[1])) / l;
+      const across = (-(q[0] - a[0]) * (c[1] - a[1]) + (q[1] - a[1]) * (c[0] - a[0])) / l;
+      return [along / TILE + 0.17 * k, (part === "side" ? 0.1 : 0.6) + (part === "side" ? q[2] - heightOn(f, [q[0], q[1]]) + form.thick / 2 : across) / TILE];
+    }];
+  };
+  /** The rim's timbers, one a side, from what each carries down to the slab's underside, a plate's onto the wall's top. */
+  const rim = (top: (k: number) => number): void => rimStrips(plan, eaves.map((e) => (e ? PLATE_OUT : 0)), RIM, raked).forEach((quad, k) => {
+    const f = facetOf(k);
+    const from = p.faces.length;
+    slabOn(p, quad, quad.map((q) => heightOn(f, q) - top(k)), eaves[k] ? quad.map(() => lowest - SEAT) : form.thick - top(k), rimMap(k), 0, raked[k] ? undefined : axis(k));
+    // A rake board runs on past a low side to the plate's face, and ends level on the wall there as the plate does.
+    if (raked[k]) clip(p, planeAt([0, 0, lowest - SEAT], [0, 0, -1]), cutOf("timber"), from);
+  });
+  if (level === 3) {
+    // One solid: its top wears the slates' colour, and it runs out to a thin edge over each eave.
+    const moved = insetPlan(plan, eaves.map((e) => (e ? -EAVE : 0)));
     const out = moved.map((q, k) => Math.hypot(q[0] - plan[k]![0], q[1] - plan[k]![1]) > 1e-9);
     const high = moved.map((q, k) => heightOn(out[k] ? facets.find((f) => f.poly.includes(plan[k]!) && f.kinds.includes("eave"))! : facetOf(k), q) + 0.02);
     const low = moved.map((_, k) => (out[k] ? high[k]! - 0.07 : tops[k]! - form.thick));
     slabOn(p, moved, high, low, slab, fold);
     return b;
   }
+  if (level === 2) {
+    // The slab as deep as its row to every side, its top wearing the slates; a thin edge out over each eave; and the plates.
+    slabOn(p, plan, tops.map((h) => h + 0.02), form.thick + 0.02, slab, fold);
+    rimStrips(plan, eaves.map((e) => (e ? EAVE : 0)), 0).forEach((quad, k) => {
+      if (eaves[k]) slabOn(p, quad, quad.map((q) => heightOn(facetOf(k), q) + 0.02), 0.07, slab, 0, axis(k));
+    });
+    rimStrips(plan, eaves.map((e) => (e ? PLATE_OUT : 0)), RIM, raked).forEach((quad, k) => {
+      if (eaves[k]) slabOn(p, quad, quad.map((q) => heightOn(facetOf(k), q) - 0.05), quad.map(() => lowest - SEAT), rimMap(k), 0, axis(k));
+    });
+    return b;
+  }
   facets.forEach((f) => {
     const from = p.faces.length;
-    slates(p, level, f, rise);
+    // A valley's lowest course is an eave course too, as thick as those of the slopes beside it at its low corner.
+    slates(p, level, f, rise, f.kinds.includes("eave") || (folded && !hip));
     // A valley's courses stop short of its fold, where the stone that lines it shows.
     if (folded && !hip) clip(p, planeMoved(facetSides(f)[f.kinds.indexOf("fold")]!, -0.09), null, from);
   });
   // The boards alone, or past the finest the slates and their boards as one sheet that wears the slates.
   if (level === 0) slabOn(p, plan, tops.map((h) => h - SARK_DROP), SARK, slab, fold);
   else slabOn(p, plan, tops.map((h) => h + 0.022), SARK + SARK_DROP + 0.022, slab, fold);
-  const under = facets.map((f) => facetPlane(f, -SARK - SARK_DROP));
+  // A plate stands up to its eave course, and the rest to the boards.
+  rim((k) => (eaves[k] ? 0.003 : SARK + SARK_DROP));
   const edge = insetPlan(plan, 0.004);
   const within = edge.map((a, k) => uprightPlane(a, edge[(k + 1) % n]!));
-  const floor = planeAt([0, 0, Math.min(...tops) - form.thick], [0, 0, -1]);
-  plan.forEach((a, k) => {
-    const c = plan[(k + 1) % n]!;
-    const f = facetOf(k), kind = kindOf(k);
-    const l = Math.hypot(c[0] - a[0], c[1] - a[1]);
-    const inward: Flat = [-(c[1] - a[1]) / l, (c[0] - a[0]) / l];
-    const at = (q: Flat, z: number): Vec => [q[0] + inward[0] * (RIM_IN + RIM / 2), q[1] + inward[1] * (RIM_IN + RIM / 2), z];
-    const [za, zc] = [tops[k]!, tops[(k + 1) % n]!];
-    const from = p.faces.length;
-    if (kind === "rake") {
-      // A principal rafter under the sloped side, from the boards it carries down to the roof's underside: a gable
-      // whose top is that underside is closed against it, and one whose top is the roof's own plane stands in front of it.
-      const deep = form.thick - SARK + 0.06;
-      const drop = SARK - 0.06 + deep / 2;
-      member(p, level, at(a, za - drop), at(c, zc - drop), RIM, deep / Math.hypot(1, (zc - za) / l), [0, 0, 1], `rake ${k}`);
-      for (const plane of [...within.filter((_, j) => j !== k), ...(hip ? under : [under[facets.indexOf(f)]!]), floor]) clip(p, plane, cutOf("timber"), from);
-      // A barge board in the side itself, from the boards down to the roof's underside: the roof's edge is closed
-      // where no gable stands in it, and it lies inside the gable's stone where one does.
-      const barge = form.thick - SARK - SARK_DROP;
-      const verge = (q: Flat, z: number): Vec => [q[0] + inward[0] * 0.05, q[1] + inward[1] * 0.05, z - SARK - SARK_DROP - barge / 2];
-      member(p, 1, verge(a, za), verge(c, zc), 0.09, barge / Math.hypot(1, (zc - za) / l), [0, 0, 1], `verge ${k}`);
-    } else {
-      // A level beam inside a low side or a high one, from the frame's underside up to the boards.
-      const [z0, z1] = [za - form.thick, za + (RIM_IN + RIM) * f.g];
-      member(p, level, at(a, (z0 + z1) / 2), at(c, (z0 + z1) / 2), RIM, z1 - z0, [0, 0, 1], `rim ${k}`);
-    }
-    // Under a hip a rim timber runs on past the fold, under the other face: it is cut to both, and to the roof's own underside, which a hewn face strays past.
-    for (const plane of [...within.filter((_, j) => j !== k), ...(hip ? under : [under[facets.indexOf(f)]!]), floor]) clip(p, plane, cutOf("timber"), from);
-  });
+  const floor = planeAt([0, 0, lowest], [0, 0, -1]);
   if (folded) {
     const [a, c] = [plan[(fold + 2) % n]!, plan[fold]!];
     const [za, zc] = [tops[(fold + 2) % n]!, tops[fold]!];
     const run = Math.hypot(c[0] - a[0], c[1] - a[1]);
     // The rafter under the fold. Under a hip it stands as far down as the faces fall away over its width.
-    const drop = SARK + SARK_DROP + RAFTER / 2 + (hip ? (RIM / 2) * facets[0]!.g * Math.SQRT1_2 : 0);
+    const drop = SARK + SARK_DROP + RAFTER / 2 + (hip ? (FOLD / 2) * facets[0]!.g * Math.SQRT1_2 : 0);
     let from = p.faces.length;
-    member(p, level, [a[0], a[1], za - drop], [c[0], c[1], zc - drop], RIM, RAFTER / Math.hypot(1, (zc - za) / run), [0, 0, 1], "fold");
+    member(p, level, [a[0], a[1], za - drop], [c[0], c[1], zc - drop], FOLD, RAFTER / Math.hypot(1, (zc - za) / run), [0, 0, 1], "fold");
     for (const side of [...within, floor]) clip(p, side, cutOf("timber"), from);
     from = p.faces.length;
     if (hip) {
-      // The dressed roll that caps a hip, out to the corner of the eave course.
+      // The dressed roll that caps a hip, from the corner of the eave courses up the fold. Where the saddle begins it
+      // climbs onto it, and ends as high as the roll of a ridge's saddle stones, whose end it and the next hip's close.
       const reach = facets.every((f) => f.kinds.includes("eave")) ? EAVE * Math.SQRT2 - 0.02 : 0;
-      member(p, level, [a[0] - ((c[0] - a[0]) * reach) / run, a[1] - ((c[1] - a[1]) * reach) / run, za - (reach * (zc - za)) / run + 0.03], [c[0], c[1], zc + 0.03], 0.11, 0.06, [0, 0, 1], "roll", "dressed", 0.018);
-      for (const side of plan.map((q, k) => planeMoved(uprightPlane(q, plan[(k + 1) % n]!), kindOf(k) === "eave" ? EAVE : 0))) clip(p, side, cutOf("dressed"), from);
+      const on = (d: number, lift: number): Vec => [c[0] - ((c[0] - a[0]) * d) / run, c[1] - ((c[1] - a[1]) * d) / run, zc - (d * (zc - za)) / run + lift];
+      const kink = CAP.wide * Math.SQRT2;
+      const path: Vec[] = [on(run + reach, 0.03), on(kink, 0.03), [...on(-0.06, 0).slice(0, 2), zc + CAP.top + 0.012 + (0.06 * (CAP.top + 0.012 + (kink * (zc - za)) / run - 0.03)) / kink] as unknown as Vec];
+      for (const k of [0, 1]) member(p, level, path[k]!, path[k + 1]!, 0.11, 0.06, [0, 0, 1], `roll ${k}`, "dressed", 0.018);
+      for (const side of [...plan.map((q, k) => planeMoved(uprightPlane(q, plan[(k + 1) % n]!), eaves[k] ? EAVE : 0)), planeAt([0, 0, zc + CAP.top + 0.035], [0, 0, 1])]) clip(p, side, cutOf("dressed"), from);
+      // The saddle at its high corner: the end of a ridge's saddle stones, turned down each face to the fold. A ridge's
+      // trim butts its side, and with the hip beside it the three faces close the ridge's end.
+      const [d1, d2] = [plan[(fold + 1) % n]!, plan[(fold + n - 1) % n]!].map((q): Flat => [(q[0] - c[0]) / (2 * H), (q[1] - c[1]) / (2 * H)]);
+      const at = (i: number, j: number): Flat => [c[0] + d1![0] * i + d2![0] * j, c[1] + d1![1] * i + d2![1] * j];
+      const [near, far] = [0.001, CAP.wide];
+      const saddle = [at(near, near), at(far, near), at(far, far), at(near, far)];
+      const dressed: SlabMap = () => ["dressed", (q) => [(q[0] + q[1]) / TILE + 0.5, 0.5 + q[2] / TILE]];
+      slabOn(p, saddle, [zc + CAP.top, zc - CAP.drop, zc - CAP.drop, zc - CAP.drop], saddle.map((q) => Math.min(...facets.map((f) => heightOn(f, q))) - SARK_DROP), dressed, 0);
     } else {
-      // The gutter stone that lines a valley, its ends square and just short of the corners.
-      const [t0, t1] = [0.14 / run, 1 - 0.14 / run];
+      // The gutter stone that lines a valley, from its low corner, where it is cut to the sides, to just short of its high one.
+      const [t0, t1] = [-0.2 / run, 1 - 0.14 / run];
       member(p, level, [a[0] + (c[0] - a[0]) * t0, a[1] + (c[1] - a[1]) * t0, za + (zc - za) * t0 + 0.03], [a[0] + (c[0] - a[0]) * t1, a[1] + (c[1] - a[1]) * t1, za + (zc - za) * t1 + 0.03], 0.26, 0.036, [0, 0, 1], "gutter", "dressed", 0);
+      for (const side of within) clip(p, side, cutOf("dressed"), from);
     }
   }
   facets.forEach((f, i) => {
     const k = Math.sqrt(1 + f.g * f.g);
     const spans = f.poly.map((q) => facetAt(f, q)[1]);
-    // Clear of the yield rings, their ends in the beams.
-    const sides = f.poly.map((a, s2) => planeMoved(uprightPlane(a, f.poly[(s2 + 1) % f.poly.length]!), f.kinds[s2] === "fold" ? -0.07 : -RIM_IN - 0.02));
+    // Their ends on the rim's inner faces, which are the yield rings.
+    const sides = f.poly.map((a, s2) => planeMoved(uprightPlane(a, f.poly[(s2 + 1) % f.poly.length]!), f.kinds[s2] === "fold" ? -0.07 : -RIM));
     for (const [j, a] of level === 0 ? [0.75, 2.25].entries() : []) {
       // A common rafter up the slope, a third of the way in from each side: from 19 m the boards' picture is all of it.
       const from = p.faces.length;
@@ -2996,10 +3081,15 @@ function column(form: FormDef, level: number): Build | null {
  * in its middle, and square balusters set on the diagonal between them. Far off it is its two rails and its post.
  */
 function balustrade(form: FormDef, level: number): Build | null {
-  if (level > 3) return null;
+  if (level > 4) return null;
   const w = wallBox(form);
   const b = new Build();
   b.free = true;
+  // From 386 m it is one block: twelve triangles are all a piece may be from there.
+  if (level === 4) {
+    b.box([w.x0, w.foot, -w.half], [w.x1, w.top, w.half], "dressed");
+    return b;
+  }
   if (level < 3) b.rings = yieldPlanes(form);
   const [low, high] = [w.foot + 0.11, w.top - 0.1];
   const out = w.half + 0.02;
@@ -3276,15 +3366,19 @@ function skirt(level: number): Build {
   return b;
 }
 
+/** How far a ridge's saddle stones run past each end of its side: an open end stands proud of the roofs' ends, and the client lays an end square where the next ridge runs on. */
+const RIDGE_PROUD = 0.02;
+
 /**
  * The capping along a ridge where two roofs' high sides meet: saddle stones of dressed stone, six to a side's length,
- * each shaded as a block. It lies along x on the ridge's own line, which is at its origin's height. No client draws it yet.
+ * each shaded as a block. It lies along x on the ridge's own line, which is at its origin's height.
  */
 function ridgeStones(level: number): Build {
   const b = new Build();
   b.free = true;
   const [wide, top, drop, thick] = [0.22, 0.075, 0.068, 0.034];
-  const uv: UvMap = (q) => [(q[0] + H) / TILE, 0.5 + q[2] / TILE];
+  const H = HALF_SIDE_M + RIDGE_PROUD;
+  const uv: UvMap = (q) => [(q[0] + HALF_SIDE_M) / TILE, 0.5 + q[2] / TILE];
   if (level === 3) {
     b.flat([[-H, 0.02, -wide], [H, 0.02, -wide], [H, 0.02, wide], [-H, 0.02, wide]], [0, 1, 0], "dressed", uv);
     return b;
@@ -3297,7 +3391,7 @@ function ridgeStones(level: number): Build {
   // Its section in (z, y): the two wings' tops, their edges and their undersides.
   const section: P2[] = [[0, top], [wide, -drop], [wide, -drop - thick], [0, top - thick], [-wide, -drop - thick], [-wide, -drop]];
   const g = rng("ridge stones");
-  const cuts = level === 0 ? [-H, ...[1, 2, 3, 4, 5].map((i) => -H + (TILE * (i + g.uniform(-0.12, 0.12))) / 6), H] : [-H, H];
+  const cuts = level === 0 ? [-H, ...[1, 2, 3, 4, 5].map((i) => -HALF_SIDE_M + (TILE * (i + g.uniform(-0.12, 0.12))) / 6), H] : [-H, H];
   section.forEach((a, k) => {
     const c = section[(k + 1) % section.length]!;
     const l = Math.hypot(c[0] - a[0], c[1] - a[1]);
@@ -3325,7 +3419,52 @@ function stoneTrims(): Record<string, Shape[]> {
     joint_r21: levels((level) => pier(level, 0.22, 0, "r21")),
     skirt: levels(skirt),
     ridge: levels(ridgeStones),
+    hip: levels(hipStones),
+    saddle: levels(apexStone),
   };
+}
+
+/** A hip's roll between two roofs, as the roll on a hip's own fold: its width, its depth upright, and its middle over the line. */
+const HIP_ROLL = { wide: 0.11, deep: 0.07, lift: 0.025 } as const;
+
+/**
+ * The roll that caps a hip between two roofs: the dressed roll a hip's own fold has (`roof`), in four stones from the
+ * eaves' corner up the side the two share to the high corner. Its underside lies in both faces' slates.
+ */
+function hipStones(level: number): Build {
+  const b = new Build();
+  const p = b.shape;
+  const { wide, deep, lift } = HIP_ROLL;
+  const [w, top, foot] = [wide / 2, lift + deep / 2, lift - deep / 2];
+  const uv = (q: Vec): Uv => [0.5 + q[0] / TILE, 0.5 + q[1] / TILE];
+  if (level === 3) {
+    const points = [onHip(HIP_FROM, -w, top), onHip(HALF_SIDE_M, -w, top), onHip(HALF_SIDE_M, w, top), onHip(HIP_FROM, w, top)];
+    p.faces.push({ points, uvs: points.map(uv), mat: "dressed" });
+    return b;
+  }
+  if (level === 2) {
+    alongHip(p, [[0, top], [-w, foot - HIP_FALL * w], [w, foot - HIP_FALL * w]], HIP_FROM, HALF_SIDE_M, (_, __, q) => ["dressed", uv(q)], (q) => ["dressed", uv(q)]);
+    return b;
+  }
+  const cuts = level === 0 ? [HIP_FROM, -0.75, 0.15, 0.95, HALF_SIDE_M] : [HIP_FROM, HALF_SIDE_M];
+  for (let k = 0; k + 1 < cuts.length; k++) member(p, level, onHip(cuts[k]!, 0, lift), onHip(cuts[k + 1]!, 0, lift), wide, deep, [0, 0, 1], `hip ${k}`, "dressed", 0.018);
+  return b;
+}
+
+/**
+ * The saddle on a high corner hips end at: an apex stone over the hips' rolls and a ridge's end, its foot in every
+ * face round the corner, under a knob. It stands about its corner, at the corner's height.
+ */
+function apexStone(level: number): Build {
+  const b = new Build();
+  const p = b.shape;
+  const side = (q: Vec, around: number): readonly [string, Uv] => ["dressed", [0.5 + around / TILE, 0.5 + q[2] / TILE]];
+  const cap = (q: Vec): readonly [string, Uv] => ["dressed", [0.5 + q[0] / TILE, 0.5 + q[1] / TILE]];
+  if (level === 3) revolve(p, [[0.17, SADDLE_FOOT(0.17)], [0.02, 0.15]], 3, cap, cap);
+  else if (level === 2) revolve(p, [[0.17, SADDLE_FOOT(0.17)], [0.07, 0.15]], 4, cap, cap);
+  else if (level === 1) revolve(p, [[0.16, SADDLE_FOOT(0.16)], [0.16, 0.03], [0.05, 0.15]], 8, side, cap);
+  else revolve(p, [[0.16, SADDLE_FOOT(0.16)], [0.16, 0.03], [0.11, 0.12], [0.045, 0.15], [0.07, 0.2], [0.035, 0.24]], 12, side, cap);
+  return b;
 }
 
 type Maker = (name: string, form: FormDef, level: number) => Build | null;
@@ -3347,6 +3486,10 @@ const PLANNED: Readonly<Record<string, Maker>> = {
   large_wall: footed(tallWall),
   gateway: footed(gatehouse),
   gate: (_, form, level) => gate(form, level),
+  gate_open: (_, form, level) => gate(form, level),
+  double_door: (_, form, level) => doubleDoor(form, level),
+  double_door_open: (_, form, level) => doubleDoor(form, level),
+  trapdoor_open: (_, form, level) => hatch(form, level),
   triangle_foundation: plinthed,
   quarter_foundation: plinthed,
   triangle_ceiling: triCeiling,

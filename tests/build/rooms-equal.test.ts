@@ -4,7 +4,7 @@
 
 import { expect, test } from "bun:test";
 import { RoomFinder, Rooms } from "../../client/core/render/rooms.ts";
-import { FORMS, PLANNED_FORMS } from "../../content/building/forms.ts";
+import { ALL_FORMS } from "../../content/building/forms.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { CHUNK_SIZE, STRUCT_UNITS, chunkCx, chunkCz } from "../../shared/coords.ts";
 import { Rng } from "../../shared/rng.ts";
@@ -17,7 +17,7 @@ import { Enclosure as EnclosureBefore } from "../fixtures/rooms-before/enclosure
 import { RoomFinder as FinderBefore, Rooms as RoomsBefore } from "../fixtures/rooms-before/finder.ts";
 import { coreRegistry, flatWorld } from "../fixtures/world.ts";
 
-const ROWS: [string, FormDef][] = [...Object.entries(FORMS), ...Object.entries(PLANNED_FORMS)];
+const ROWS: [string, FormDef][] = Object.entries(ALL_FORMS);
 const forms = makeFormTable(ROWS.length + 1);
 ROWS.forEach(([, f], i) => setForm(forms, i + 1, f));
 

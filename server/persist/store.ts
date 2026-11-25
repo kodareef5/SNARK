@@ -86,6 +86,25 @@ function readChunk(chunk: number, data: Uint8Array, rows: RowCoder, x0: number, 
   if (r.overflow || r.remainingBits >= 8) bad();
 }
 
+/** How many rows past the map's slots a chunk's saved structures hold, read from their head alone; 0 for bytes that are not one. */
+function rowsIn(data: Uint8Array): number {
+  if (data[0] !== CHUNK_FORMAT) return 0;
+  const r = reader;
+  r.reset(data);
+  r.u8();
+  r.u16();
+  for (let left = r.varint(); left > 0 && !r.overflow; ) {
+    r.varint();
+    const flags = r.u8();
+    if (flags & SLOT_KIND) r.u16();
+    if (flags & SLOT_HP) r.f32();
+    if (flags & SLOT_OWNER) r.u32();
+    left -= flags & SLOT_RUN ? r.varint() + 1 : 1;
+  }
+  const n = r.varint();
+  return r.overflow ? 0 : n;
+}
+
 // chunk_blobs holds per-chunk state other than structures, keyed by tag. transfers holds what left this world for another
 // of its cluster, and what came (server/cluster/cluster.ts). frames holds each base some saved chunk has a row of: its
 // origin in lattice units, its turn and its team. plans holds each template set down and not yet built (server/plans.ts),
@@ -443,7 +462,11 @@ export class WorldStore {
     structs.frames.next = Math.max(structs.frames.next, Number(this.meta("frame_next") ?? 0));
     const rows = this.db.query("SELECT chunk, version, data FROM chunk_structs").all() as { chunk: number; version: number; data: Uint8Array }[];
     const coder = this.coder(structs);
-    for (const row of rows) {
+    // The chunks' heads say how many rows each holds, so the tables and the grid are made their size before the rows come.
+    const counts = rows.map((row) => rowsIn(row.data));
+    structs.reserveGrid(counts.reduce((sum, n) => sum + n, 0));
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i]!;
       const chunk = row.chunk;
       const named: number[] = [];
       // A kind this build lacks is left out, and counted where the operator chose to go on without it.
@@ -463,6 +486,11 @@ export class WorldStore {
           structs.putMapped(chunk, slot, now, now === 0 ? 0 : owner, now === 0 ? 0 : flags & SLOT_HP ? hp : this.maxHp[now]!, row.version);
         },
         built: (r) => {
+          // Room for the chunk's rows, once its changed map slots are laid.
+          if (counts[i]! > 0) {
+            structs.reserve(chunk, (structs.chunks[chunk]?.mapped ?? 0) + counts[i]!);
+            counts[i] = 0;
+          }
           const now = r.kind;
           if (r.form === ROW_KEYED && named[named.length - 1] !== r.fr && !named.includes(r.fr)) named.push(r.fr);
           if (now === 0) return lost(r.saved);

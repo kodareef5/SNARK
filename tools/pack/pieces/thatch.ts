@@ -16,7 +16,7 @@
 // (the tier's asset points them at the cut-out ones'). Past level 1 nothing is cut out.
 
 import { outlineBox, type FormDef } from "../../../shared/world/lattice/forms.ts";
-import { RoundShape, Shape, add, clip, cross, dot, ears, inset, length, mirror, pathFrames, planeAt, planeMoved, poleRings, railingSticks, retile, roundEven, scale, slabOn, sub, unit, uprightPlane, type Flat, type Patch, type Plane, type Uv, type Vec } from "./kit.ts";
+import { RoundShape, Shape, add, clip, cross, dot, ears, inset, length, mirror, pathFrames, planeAt, planeMoved, poleRings, railingSticks, retile, rimStrips, roundEven, scale, slabOn, sub, unit, uprightPlane, type Flat, type Patch, type Plane, type Uv, type Vec } from "./kit.ts";
 import { colliderBox, planOf, type TierRecipe } from "./lod.ts";
 import { PyRandom, pyMod, pyRepr, pyRound } from "./mt.ts";
 
@@ -869,14 +869,19 @@ function pillow(hut: Hut): void {
   hut.solid(patches);
 }
 
-function ceiling(level: number): Shape | null {
+/**
+ * The ceiling: reed on a mat over six joists between two edge beams, its eaves drooping past every side. With no
+ * `eaves` it ends square on its sides, and the client lays `eave_thatch` (`eaveTrim`) along a side that wants one.
+ */
+function ceiling(level: number, eaves = true): Shape | null {
   if (level > 3) return null;
   const hut = new Hut(0);
   if (level === 3) {
     hut.box([-H, -C_TOP + 0.01, -H], [H, C_TOP, H], "roof", NO_UV);
     return hut.shape;
   }
-  if (level === 2) {
+  if (level === 2 && !eaves) hut.box([-H, C_TOP - 0.23, -H], [H, C_TOP, H], "roof", roofUv);
+  else if (level === 2) {
     // The roof's top, its eaves drooping out past it and cut across at the corners, and one flat underside.
     const [r, cut, low] = [H + 0.24, 0.22, C_TOP - 0.23];
     const top: Vec[] = [[-H, C_TOP, -H], [H, C_TOP, -H], [H, C_TOP, H], [-H, C_TOP, H]];
@@ -887,14 +892,16 @@ function ceiling(level: number): Shape | null {
       for (const points of [[a, b, ring[2 * k + 1]!, ring[2 * k]!], [b, ring[(2 * k + 2) % 8]!, ring[2 * k + 1]!]]) patches.push({ points, uvs: points.map(roofUv), mat: "roof" });
     }
     hut.solid(patches);
-    return hut.shape;
   }
-  if (level === 1) pillow(hut);
+  if (level === 2) return hut.shape;
+  if (level === 1 && !eaves) hut.box([-H, MAT_Y, -H], [H, C_TOP - 0.012, H], "roof", roofUv);
+  else if (level === 1) pillow(hut);
   else {
     // The body: thatch between the mat over the joists and the top. The top is laid in courses half a metre wide,
     // each a centimetre thicker at its butts than where the next covers it, so from above it shows its rows.
     const zs: [number, number][] = [[-H, C_TOP - 0.012]];
-    for (let k = 0; k < 6; k++) zs.push([-1.25 + 0.5 * k, C_TOP - 0.006], [-1.25 + 0.5 * k + 0.47, C_TOP - 0.019]);
+    // The last course ends on the side, where it ran 0.22 m past it and back: a fin over the eave's tips.
+    for (let k = 0; k < 6; k++) zs.push([-1.25 + 0.5 * k, C_TOP - 0.006], [Math.min(-1.25 + 0.5 * k + 0.47, H), C_TOP - 0.019]);
     zs.push([H, C_TOP - 0.012]);
     const patches: Patch[] = [];
     const quad = (points: Vec[]): void => void patches.push({ points, uvs: points.map(roofUv), mat: "roof" });
@@ -903,7 +910,7 @@ function ceiling(level: number): Shape | null {
     for (const x of [-H, H]) quad([...zs.map(([z, y]): Vec => [x, y, z]), [x, MAT_Y, H], [x, MAT_Y, -H]]);
     for (const z of [-H, H]) quad([[-H, MAT_Y, z], [H, MAT_Y, z], [H, C_TOP - 0.012, z], [-H, C_TOP - 0.012, z]]);
     hut.solid(patches);
-    for (let side = 0; side < 4; side++) eave(hut, side);
+    for (let side = 0; side < (eaves ? 4 : 0); side++) eave(hut, side);
   }
   // The joists under the mat, their ends showing past two edges, and the edge beams along the other two, which the
   // eaves hide from further off.
@@ -1025,9 +1032,6 @@ const EAVE_BUTT = 0.075;
 const LIP_UNDER = 0.06;
 const RIDGE_SWELL = 0.045;
 const RAFTER_R = 0.048;
-/** A rafter by a sloped side lies whole inside the yield band, so no ring cuts it along its length. */
-const EDGE_RAFTER_R = 0.036;
-const EDGE_RAFTER_IN = 0.05;
 const BATTEN_R = 0.022;
 /** Level metres up the slope at which a batten lies. */
 const BATTENS = [0.3, 0.9, 1.5, 2.1, 2.7] as const;
@@ -1255,16 +1259,18 @@ function roofFrame(hut: Hut, level: number, r: Roof): void {
       return rake < at ? [rake, at] : [at, rake];
     };
     const upward: Vec = [-f.up[0] * f.g, -f.up[1] * f.g, 1];
+    // One up the middle. Along a sloped side the verge, as deep as the slab, carries the battens' ends: the rafter
+    // there stays in the list, undrawn, so the poles after it are cut from the scripts' stream as they were.
     const rafters: [number, number][] = [];
     f.kinds.forEach((kind, i) => {
-      if (kind === "rake") rafters.push([spans[i]![0] + Math.sign((a0 + a1) / 2 - spans[i]![0]) * EDGE_RAFTER_IN, EDGE_RAFTER_R]);
+      if (kind === "rake") rafters.push([spans[i]![0] + Math.sign((a0 + a1) / 2 - spans[i]![0]) * 0.05, 0.036]);
     });
     rafters.push([(a0 + a1) / 2, RAFTER_R]);
     for (const [a, radius] of rafters) {
       const drop = -r.thick + radius * k + 0.004;
       const from = hut.shape.faces.length;
       const [s0, s1] = [eave ? -ROOF_LIP + 0.04 : 0.13, sTop - 0.13];
-      const how: Drawn | null = fine ? {} : null;
+      const how: Drawn | null = fine && radius === RAFTER_R ? {} : null;
       const [foot, head] = [onSlope(f, a, s0, drop), onSlope(f, a, s1, drop)];
       drawPole(hut, kitPole(rng, foot, head, radius, radius * 0.9, { band: "bark", bow: 0.006, bowDir: upward, segments: 3, sides: 6, caps: ["axe", "flat"] }), how);
       if (foldPlane && how) clip(hut.shape, planeMoved(foldPlane, -0.09), endGrain(foot, head, planeMoved(foldPlane, -0.09)), from);
@@ -1283,7 +1289,7 @@ function roofFrame(hut: Hut, level: number, r: Roof): void {
       // Lashed where it crosses a rafter: every other crossing of the middle one, and on a plain slope the lowest and highest of the others.
       for (const [a, radius] of rafters) {
         if (a < ends[0] + 0.03 || a > ends[1] - 0.03) continue;
-        const tied = radius === RAFTER_R ? row % 2 === 0 : fold < 0 && (row === 0 || row === BATTENS.length - 1);
+        const tied = radius === RAFTER_R && row % 2 === 0;
         const cord = cordOf(rng, py(onSlope(f, a, s - 0.045, -r.thick + radius * k + 0.004)), py([f.up[0], f.up[1], f.g]), radius + 0.008, 0.05);
         drawCord(hut, cord, fine && tied ? radius : null);
       }
@@ -1299,35 +1305,142 @@ function roofFrame(hut: Hut, level: number, r: Roof): void {
   drawPole(hut, kitPole(rng, at(r.hip ? -0.24 : 0.2), at(run - 0.2), RAFTER_R + 0.004, RAFTER_R * 0.92, { band: "bark", bow: 0.006, bowDir: [0, 0, 1], segments: 3, sides: 6, caps: ["axe", "flat"] }), {});
 }
 
+/** A roof's rim lies on its sides' own lines, as wide as its yield band and as deep as its slab, 2 mm in from a side so its face is not the thatch's. */
+const ROOF_RIM = 0.1;
+const RIM_IN = 0.002;
+/** A low side's plate runs out over the wall under it, short of its outer face, and down onto the wall's head, 11 to 14 mm under the storey's line. */
+const PLATE_OUT = 0.096;
+const SEAT = 0.013;
+/** The ridge's roll (`ridgeRoll`) across, at each level: how far from its line each corner of its back lies, and how high over it. A hip's saddle is its end. */
+const RIDGE_BACK: readonly (readonly (readonly [number, number])[])[] = [[[0, 0.105], [0.06, 0.105], [0.16, 0.012], [0.27, -0.085]], [[0, 0.1], [0.08, 0.1], [0.27, -0.085]], [[0, 0.11], [0.27, -0.1]]];
+/** A hip's roll of reed across its fold: its height over the faces at the fold, and how far into each face it lies, where it is on the courses. */
+const HIP_ROLL = { top: 0.085, wide: 0.18, edge: 0.02 } as const;
+
+/** A squared pole's faces in the wood sheet's peeled band, its grain along the side from `a` to `b`: a side across its height, a top or underside across its width. */
+const timberOn = (a: Flat, b: Flat, deep: number) => (part: "top" | "under" | "side"): readonly [string, (q: Vec) => Uv] => {
+  const l = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  const [top, bottom] = bandV("peeled");
+  const round = (t: number): number => bottom + (top - bottom) * (t - Math.floor(t));
+  return ["wood", (q) => {
+    const along = ((q[0] - a[0]) * (b[0] - a[0]) + (q[1] - a[1]) * (b[1] - a[1])) / l;
+    const across = (-(q[0] - a[0]) * (b[1] - a[1]) + (q[1] - a[1]) * (b[0] - a[0])) / l;
+    return [along / TILE.wood, round(part === "side" ? 0.5 * q[2] / deep : 0.25 + across / 0.4)];
+  }];
+};
+
 /**
  * A pitched roof: thatch in courses on battens and rafters of poles. Its top is the plane through the top of its
  * row's box at each corner, the courses standing on it, and its frame hangs in the slab's thickness under it. A hip and
- * a valley are two such faces cut to the fold between them.
+ * a valley are two such faces cut to the fold between them. Its rim is as deep as its slab on its sides' own lines: a
+ * verge of reed along a sloped side, a beam along a high one, and along a low one a plate that runs out over the wall
+ * and bears on its head. A hip's fold is capped by a roll of reed that runs into a saddle at its high corner, the end of
+ * a ridge's roll.
  */
 function roof(form: FormDef, level: number): Shape | null {
   if (level > 3) return null;
   const hut = new Hut(0);
+  const p = hut.shape;
   const r = roofOf(form);
   const n = r.plan.length;
-  if (level >= 2) {
-    // One solid: its top wears the courses' picture, and it runs out to a thin edge over each eave.
-    const sideOf = (k: number): Slope => r.slopes.find((f) => f.poly.includes(r.plan[k]!) && f.poly.includes(r.plan[(k + 1) % n]!))!;
-    const kindOf = (k: number): Slope["kinds"][number] => sideOf(k).kinds[sideOf(k).poly.indexOf(r.plan[k]!)]!;
-    const moved = inset(r.plan, r.plan.map((_, k) => (kindOf(k) === "eave" ? -ROOF_EAVE + 0.04 : 0)));
+  const sideOf = (k: number): Slope => r.slopes.find((f) => f.poly.includes(r.plan[k]!) && f.poly.includes(r.plan[(k + 1) % n]!))!;
+  const kindOf = (k: number): Slope["kinds"][number] => sideOf(k).kinds[sideOf(k).poly.indexOf(r.plan[k]!)]!;
+  const heightOn = (f: Slope, q: Flat): number => f.lo + slopeAt(f, q)[1] * f.g;
+  const wear = (f: Slope) => (q: Vec): Uv => {
+    const [a, s] = slopeAt(f, [q[0], q[1]]);
+    return [a / TILE.roof, (s * f.g) / r.rise + 1 / 12];
+  };
+  const reedSide = (q: Vec): Uv => [(q[0] + q[1]) / TILE.roof, 1 / 12 + (q[2] - r.tops[0]!) / TILE.roof];
+  const lowest = Math.min(...r.tops) - r.thick;
+  const eaves = r.plan.map((_, k) => kindOf(k) === "eave");
+  const raked = r.plan.map((_, k) => kindOf(k) === "rake");
+  const axis = (k: number): number | undefined => {
+    const [a, b] = [r.plan[k]!, r.plan[(k + 1) % n]!];
+    return Math.abs(a[1] - b[1]) < 1e-9 ? 0 : Math.abs(a[0] - b[0]) < 1e-9 ? 1 : undefined;
+  };
+  /** The plates along the low sides, from `top` under the roof's top down onto the wall's head. */
+  const plates = (top: number): void => rimStrips(r.plan, r.plan.map((_, k) => (eaves[k] ? PLATE_OUT : -RIM_IN)), ROOF_RIM, raked).forEach((quad, k) => {
+    if (eaves[k]) slabOn(p, quad, quad.map((q) => heightOn(sideOf(k), q) - top), quad.map(() => lowest - SEAT), timberOn(r.plan[k]!, r.plan[(k + 1) % n]!, r.thick), 0, axis(k));
+  });
+  /** A hip's saddle at its high corner: the end of a ridge's roll at this level, turned down both faces to the fold. */
+  const saddle = (back: readonly (readonly [number, number])[]): void => {
+    const c = r.plan[r.fold]!;
+    const zc = r.tops[r.fold]!;
+    const [d1, d2] = [r.plan[(r.fold + 1) % n]!, r.plan[(r.fold + n - 1) % n]!].map((q): Flat => [(q[0] - c[0]) / SPAN, (q[1] - c[1]) / SPAN]);
+    const at = (i: number, j: number): Flat => [c[0] + d1![0] * i + d2![0] * j, c[1] + d1![1] * i + d2![1] * j];
+    const under = (q: Flat): number => Math.min(...r.slopes.map((f) => heightOn(f, q))) - 0.03;
+    const reed: (part: "top" | "under" | "side", k: number) => readonly [string, (q: Vec) => Uv] = (part) => ["roof", part === "top" ? wear(r.slopes[0]!) : reedSide];
+    // Over each half of the corner its height is the ridge's at its distance from the side it lies nearer: a ring at a
+    // time, the flat top as one square, and a ring that is one slope as one slab folded on the corner's diagonal.
+    const near = 0.001;
+    for (let k = 0; k + 1 < back.length; k++) {
+      const [[t0, h0], [t1, h1]] = [back[k]!, back[k + 1]!];
+      const [lo, hi] = [Math.max(t0, near), t1];
+      if (Math.abs(h0 - h1) < 1e-9) slabOn(p, [at(near, near), at(hi, near), at(hi, hi), at(near, hi)], [0, 1, 2, 3].map(() => zc + h0), [at(near, near), at(hi, near), at(hi, hi), at(near, hi)].map(under), reed, 0);
+      else if (lo === near) slabOn(p, [at(near, near), at(hi, near), at(hi, hi), at(near, hi)], [h0, h1, h1, h1].map((h) => zc + h), [at(near, near), at(hi, near), at(hi, hi), at(near, hi)].map(under), reed, 0);
+      else for (const [quad, tops] of [[[at(lo, near), at(hi, near), at(hi, hi), at(lo, lo)], [h0, h1, h1, h0]], [[at(near, lo), at(lo, lo), at(hi, hi), at(near, hi)], [h0, h0, h1, h1]]] as const) {
+        slabOn(p, quad, tops.map((h) => zc + h), quad.map(under), reed, 0);
+      }
+    }
+  };
+  if (level === 3) {
+    // One solid: its top wears the courses' colour, and it runs out to a thin edge over each eave.
+    const moved = inset(r.plan, eaves.map((e) => (e ? -ROOF_EAVE + 0.04 : 0)));
     const out = moved.map((q, k) => Math.hypot(q[0] - r.plan[k]![0], q[1] - r.plan[k]![1]) > 1e-9);
-    const heightOn = (f: Slope, q: Flat): number => f.lo + slopeAt(f, q)[1] * f.g;
     const high = moved.map((q, k) => heightOn(out[k] ? r.slopes.find((f) => f.poly.includes(r.plan[k]!) && f.kinds.includes("eave"))! : sideOf(k), q) + COURSE_BUTT * 0.6);
     const low = moved.map((_, k) => (out[k] ? high[k]! - 0.16 : r.tops[k]! - r.thick));
-    const wear = (f: Slope) => (q: Vec): Uv => {
-      const [a, s] = slopeAt(f, [q[0], q[1]]);
-      return [a / TILE.roof, (s * f.g) / r.rise + 1 / 12];
-    };
-    slabOn(hut.shape, moved, high, low, (part, k) => ["roof", level === 3 ? NO_UV : part === "side" ? (q) => [(q[0] + q[1]) / TILE.roof, 1 / 12 + (q[2] - r.tops[0]!) / TILE.roof] : wear(r.slopes[Math.min(k, r.slopes.length - 1)]!)], r.fold);
-    return hut.shape;
+    slabOn(p, moved, high, low, () => ["roof", NO_UV], r.fold);
+    return p;
+  }
+  if (level === 2) {
+    // The slab as deep as its row to every side, its top wearing the courses; a thin edge out over each eave; the plates; and a hip's saddle.
+    slabOn(p, r.plan, r.tops.map((h) => h + COURSE_BUTT * 0.6), r.thick + COURSE_BUTT * 0.6, (part, k) => ["roof", part === "side" ? reedSide : wear(r.slopes[Math.min(k, r.slopes.length - 1)]!)], r.fold);
+    // Each eave and its plate as one: out to a thin edge, and in over the wall's head as deep as the plate.
+    rimStrips(r.plan, eaves.map((e) => (e ? ROOF_EAVE - 0.04 : 0)), ROOF_RIM).forEach((quad, k) => {
+      if (!eaves[k]) return;
+      const f = sideOf(k);
+      const tops = quad.map((q) => heightOn(f, q) + COURSE_BUTT * 0.6);
+      slabOn(p, quad, tops, quad.map((q, v) => (v < 2 ? tops[v]! - 0.16 : lowest - SEAT)), (part) => ["roof", part === "side" ? reedSide : wear(f)], 0, axis(k));
+    });
+    if (r.hip) saddle(RIDGE_BACK[2]!);
+    return p;
   }
   for (const f of r.slopes) thatchOn(hut, level, r, f);
   roofFrame(hut, level, r);
-  return hut.shape;
+  if (level === 0) {
+    // The verges and the beams: reed run down to the slab's underside along a sloped side, a squared pole along a high one.
+    rimStrips(r.plan, r.plan.map((_, k) => (eaves[k] ? PLATE_OUT : -RIM_IN)), ROOF_RIM, raked).forEach((quad, k) => {
+      if (eaves[k]) return;
+      const f = sideOf(k);
+      const from = p.faces.length;
+      if (raked[k]) slabOn(p, quad, quad.map((q) => heightOn(f, q) - 0.02), r.thick - 0.02, (part) => ["roof", part === "top" ? wear(f) : reedSide], 0);
+      else slabOn(p, quad, quad.map((q) => heightOn(f, q) - 0.02), r.thick - 0.02, timberOn(r.plan[k]!, r.plan[(k + 1) % n]!, r.thick), 0, axis(k));
+      // A verge runs on past a low side to the plate's face, and ends level on the wall's head there as the plate does.
+      if (raked[k]) clip(p, planeAt([0, 0, lowest - SEAT], [0, 0, -1]), null, from);
+    });
+  }
+  plates(0.02);
+  if (r.hip && level < 2) {
+    // The roll of reed along the fold, from the corner of the eaves up into the saddle, a strip either side.
+    const [a, b] = [r.plan[(r.fold + 2) % n]!, r.plan[r.fold]!];
+    const run = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    const [ux, uy] = [(b[0] - a[0]) / run, (b[1] - a[1]) / run];
+    const reach = r.slopes.every((f) => f.kinds.includes("eave")) ? ROOF_LIP * Math.SQRT2 : 0;
+    const from = p.faces.length;
+    for (const f of r.slopes) {
+      // Into the face: square to the fold, toward the face's own middle.
+      const mid: Flat = [f.poly.reduce((sum, q) => sum + q[0], 0) / 3, f.poly.reduce((sum, q) => sum + q[1], 0) / 3];
+      const side = Math.sign((mid[0] - a[0]) * -uy + (mid[1] - a[1]) * ux);
+      const across = (q: Flat, d: number): Flat => [q[0] - uy * side * d, q[1] + ux * side * d];
+      const [lo, hi]: [Flat, Flat] = [[a[0] - ux * reach, a[1] - uy * reach], [b[0], b[1]]];
+      const quad = [lo, hi, across(hi, HIP_ROLL.wide), across(lo, HIP_ROLL.wide)];
+      slabOn(p, quad, quad.map((q, v) => heightOn(f, q) + (v < 2 ? HIP_ROLL.top : HIP_ROLL.edge)), quad.map((q) => heightOn(f, q) - 0.03), (part) => ["roof", part === "top" ? wear(f) : reedSide], 0);
+    }
+    // Cut to the sides, an eave's past its lip, and a sloped one a millimetre in, as the saddle is: where it nears the
+    // slope beside it, it runs into the saddle and is no part of the face that meets that slope's.
+    for (const side of r.plan.map((q, k) => planeMoved(uprightPlane(q, r.plan[(k + 1) % n]!), eaves[k] ? ROOF_LIP : -0.001))) clip(p, side, null, from);
+    saddle(RIDGE_BACK[level]!);
+  }
+  return p;
 }
 
 // The low walls: a gable under a roof's sloped side, a half wall and a fence -----------------------------------------------
@@ -1402,6 +1515,14 @@ function gable(form: FormDef, level: number, posts: boolean): Shape | null {
   // Each is cut to the wall's ends and its top, and the two along the top to its foot; a cut wears the pole's own skin carried through.
   for (const plane of [planeAt([-hx, 0, 0], [-1, 0, 0]), planeAt([hx, 0, 0], [1, 0, 0]), planeMoved(slope, -0.004)]) clip(hut.shape, plane, null, from);
   retile(hut.shape);
+  if (level < 2) {
+    // A split pole laid flat on the inner pole, across the wall's inner half under the cut: the roof's verge bears on it.
+    const plank: Flat[] = [[-hx, 0.026], [hx, 0.026], [hx, 0.1], [-hx, 0.1]];
+    const [vTop, vBottom] = bandV("peeled");
+    const batten = hut.shape.faces.length;
+    slabOn(hut.shape, plank, plank.map(([x]) => top(x) - lift - 0.0015), 0.03, () => ["wood", (q) => [q[0] / TILE.wood, vBottom + (vTop - vBottom) * (0.5 + (q[1] - q[2]) / 0.3)]]);
+    clip(hut.shape, planeAt([0, 0, -lift], [0, 0, -1]), null, batten);
+  }
   // A rod outside and a rail inside, each as far as the cut lets it run.
   const rise = rng.uniform(-0.006, 0.006);
   const far = (y: number): number => hx - ((y + 0.09) * 2 * hx) / high;
@@ -1446,9 +1567,14 @@ function halfWall(form: FormDef, level: number, posts: boolean): Shape | null {
  * makes whole.
  */
 function fence(form: FormDef, level: number): Shape | null {
-  if (level > 3) return null;
+  if (level > 4) return null;
   const { hx, high, lift } = lowOf(form);
   const hut = new Hut(0);
+  // From 386 m its rails are one board: twelve triangles are all a piece may be from there.
+  if (level === 4) {
+    hut.box([-hx, 0.1 - lift, -0.02], [hx, high - 0.02 - lift, 0.02], "wood", NO_UV);
+    return hut.shape;
+  }
   if (level === 3) {
     // A top rail and a foot rail as one thin board each: two boxes.
     for (const y of [high - 0.1, 0.1]) hut.box([-hx, y - lift, -0.02], [hx, y + 0.08 - lift, 0.02], "wood", NO_UV);
@@ -1590,24 +1716,27 @@ function skirt(level: number): Shape {
   return hut.shape;
 }
 
+/** How far a ridge's roll runs past each end of its side: an open end stands proud of the roofs' ends, cut square as reed is, and the client lays an end square where the next ridge runs on. */
+const RIDGE_PROUD = 0.02;
+
 /**
  * The roll along a ridge where two roofs' high sides meet: a saddle of reed laid over both top courses, held by a rod
- * along each flank that is pegged down. It lies along x on the ridge's own line, at its origin's height. No client
- * draws it yet.
+ * along each flank that is pegged down. It lies along x on the ridge's own line, at its origin's height.
  */
 function ridgeRoll(level: number): Shape {
   const hut = new Hut(0);
+  const end = H + RIDGE_PROUD;
   const reed = (p: Vec): Uv => [(p[0] + H) / TILE.roof, 0.42 + (p[1] + Math.sign(p[1]) * Math.max(0, p[2]) * 0.6) / TILE.roof];
-  if (level === 3) return openSheet(hut.shape, [[-H, 0.24, -0.06], [-H, -0.24, -0.06], [H, -0.24, -0.06], [H, 0.24, -0.06]], "roof");
+  if (level === 3) return openSheet(hut.shape, [[-end, 0.24, -0.06], [-end, -0.24, -0.06], [end, -0.24, -0.06], [end, 0.24, -0.06]], "roof");
   // Its section over the ridge, (y, z) going round: the saddle's back, and an underside that lies inside both roofs.
   const back: Flat[] = level === 0 ? [[0.27, -0.085], [0.16, 0.012], [0.06, 0.105], [-0.06, 0.105], [-0.16, 0.012], [-0.27, -0.085]] : level === 1 ? [[0.27, -0.085], [0.08, 0.1], [-0.08, 0.1], [-0.27, -0.085]] : [[0.27, -0.1], [0, 0.11], [-0.27, -0.1]];
   const section: Flat[] = level === 2 ? back : [...back, [-0.27, -0.16], [0.27, -0.16]];
   const round = hut.shape.group();
   hut.raw([...section.map((a, k): Patch => {
     const b = section[(k + 1) % section.length]!;
-    const points: Vec[] = [[-H, a[0], a[1]], [H, a[0], a[1]], [H, b[0], b[1]], [-H, b[0], b[1]]];
+    const points: Vec[] = [[-end, a[0], a[1]], [end, a[0], a[1]], [end, b[0], b[1]], [-end, b[0], b[1]]];
     return { points, uvs: points.map(reed), mat: "roof", ...(level < 2 && k + 1 < back.length ? { group: round } : {}) };
-  }), ...[-H, H].map((x): Patch => ({ points: section.map(([y, z]): Vec => [x, y, z]), uvs: section.map(([y, z]): Uv => [0.5 + z / TILE.roof, 0.42 + y / TILE.roof]), mat: "roof" }))]);
+  }), ...[-end, end].map((x): Patch => ({ points: section.map(([y, z]): Vec => [x, y, z]), uvs: section.map(([y, z]): Uv => [0.5 + z / TILE.roof, 0.42 + y / TILE.roof]), mat: "roof" }))]);
   if (level > 0) return hut.shape;
   const rng = new PyRandom("ridge0");
   for (const s of [-1, 1]) {
@@ -1617,8 +1746,44 @@ function ridgeRoll(level: number): Shape {
   return hut.shape;
 }
 
-/** Thatch's trims by the names the client finds them under, each at its four levels. */
-function thatchTrims(): Record<string, Shape[]> {
+/**
+ * A flat ceiling's eave along one side, as the client lays it where a side wants one: the reed run on over the edge and
+ * drooping, and a skirt of tips from its lip, as the ceiling's own eave is. From the middle of the side, +x along it and
+ * out at -y, its top at the ceiling's top. It ends square on the side's two ends: the client lays each end on the plane
+ * that halves its corner (piece-fit.ts), so two meet there round an outside corner and clear an inside one.
+ */
+function eaveTrim(level: number): Shape {
+  const hut = new Hut(0);
+  // (out from the side's line, height from the ceiling's top) round the section, as `eave` has it from its root 6 cm in.
+  const root = EAVE_ROOT - H;
+  const lip = root + EAVE_BODY;
+  const sections: readonly (readonly [number, number])[][] = [
+    [[root, -0.012], [root + 0.07, -0.04], [lip, -0.1], [lip, MAT_Y - 0.03 - C_TOP], [root, MAT_Y + 0.02 - C_TOP]],
+    [[root, -0.012], [lip, -0.1], [lip, MAT_Y - 0.03 - C_TOP], [root, MAT_Y + 0.02 - C_TOP]],
+    [[root, -0.012], [root + 0.3, -0.23], [root, MAT_Y + 0.02 - C_TOP]],
+  ];
+  const at = (x: number, out: number, h: number): Vec => [x, h, out];
+  const lipUv = (p: Vec): Uv => [(p[0] + H) / TILE.roof, (p[2] + 2 * H) / TILE.roof];
+  if (level === 3) return openSheet(hut.shape, [[-H, -0.24, -0.23], [H, -0.24, -0.23], [H, 0, -0.03], [-H, 0, -0.03]], "roof");
+  const section = sections[level]!;
+  const patches: Patch[] = section.map((a, k) => {
+    const b = section[(k + 1) % section.length]!;
+    const points = [at(-H, a[0], a[1]), at(H, a[0], a[1]), at(H, b[0], b[1]), at(-H, b[0], b[1])];
+    return { points, uvs: points.map(lipUv), mat: "roof" };
+  });
+  for (const s of [-1, 1]) patches.push({ points: section.map(([out, h]) => at(s * H, out, h)), uvs: section.map(([out, h]) => lipUv(at(s * H, out, h))), mat: "roof" });
+  hut.solid(patches);
+  if (level < 2) {
+    // The tips hang from the lip's top edge, a sheet seen from above and from under the eave.
+    const [far, fall] = [lip + EAVE_HANG, -0.1 - EAVE_FALL];
+    const card: Vec[] = [at(-H, lip, -0.1), at(H, lip, -0.1), at(H, far, fall), at(-H, far, fall)];
+    hut.card([{ points: card, uvs: card.map((p, i) => eaveTipUv(p[0], i < 2 ? 0 : 1)), mat: TIPS }]);
+  }
+  return hut.shape;
+}
+
+/** Thatch's trims by the names the client finds them under, each at its four levels; with `eaves`, a ceiling's eave among them. */
+function thatchTrims(eaves: boolean): Record<string, Shape[]> {
   const levels = (make: (level: number) => Shape): Shape[] => [0, 1, 2, 3].map(make);
   return {
     // The corner pole. Where walls meet at 120 or 150 degrees the same pole fills the corner, so the second is the first again.
@@ -1628,6 +1793,9 @@ function thatchTrims(): Record<string, Shape[]> {
     joint_r21: levels((level) => cornerPole(level, JOINT_R21, "joint21")),
     skirt: levels(skirt),
     ridge: levels(ridgeRoll),
+    // A flat ceiling's eave, which a ceiling drawn with no eaves of its own leaves to the client: the client lays one
+    // wherever the pack has it, so it is in the pack only with those ceilings.
+    ...(eaves ? { eave: levels(eaveTrim) } : {}),
   };
 }
 
@@ -1655,8 +1823,12 @@ const PLANNED: Readonly<Record<string, (form: FormDef, level: number, posts: boo
   railing: fence,
 };
 
-/** The thatch tier. With `posts`, a wall has the post at its left end that fills a corner where no joint is drawn. */
-export function thatchRecipe(posts: boolean): TierRecipe {
+/**
+ * The thatch tier. With `posts`, a wall has the post at its left end that fills a corner where no joint is drawn. With
+ * `eaves`, a flat ceiling has its eaves on every side; without, it ends square and `eave_thatch` is among the trims,
+ * which the client lays where a side wants one.
+ */
+export function thatchRecipe(posts: boolean, eaves = true): TierRecipe {
   return {
     name: "thatch",
     rank: 0,
@@ -1673,16 +1845,18 @@ export function thatchRecipe(posts: boolean): TierRecipe {
       const o = form.openings?.[0];
       if (form.layer === "wall" && fits(SPAN, WALL_H) && form.openings?.length === 1 && o && o.y0 === 0 && Math.abs(o.x1 - o.x0 - DOOR_W) < 1e-9 && Math.abs(o.y1 - DOOR_H) < 1e-9) return doorframe(level, posts);
       if (form.layer === "slab" && form.root === "always" && fits(SPAN, SPAN) && form.thick === FOUND_T) return foundation(level);
-      if (form.layer === "slab" && fits(SPAN, SPAN) && form.thick === FLOOR_T && !form.corner && !form.openings) return ceiling(level);
+      if (form.layer === "slab" && fits(SPAN, SPAN) && form.thick === FLOOR_T && !form.corner && !form.openings) return ceiling(level, eaves);
       if (form.layer === "leaf" && fits(DOOR_W, DOOR_H)) return door(level, form.plane === "across");
       throw new Error(`thatch has no recipe for ${name} yet`);
     },
-    trims: thatchTrims,
+    trims: () => thatchTrims(!eaves),
   };
 }
 
-// THE SWITCH. Thatch's joints are drawn once its pack holds core:joint_sq_thatch (client/core/render/trims.ts), and the
-// corner pole then stands where a wall's own post did. Make this `thatchRecipe(false)` in the commit that publishes that pack.
-export const THATCH: TierRecipe = thatchRecipe(true);
-/** Thatch as it is with joints drawn: no wall has a post of its own. */
-export const THATCH_JOINTED: TierRecipe = thatchRecipe(false);
+// Thatch's pack holds core:joint_sq_thatch and core:eave_thatch, so the client draws a pole at each corner where a
+// wall's own post stood, and lays an eave where a ceiling's side wants one (client/core/render/trims.ts).
+export const THATCH: TierRecipe = thatchRecipe(false, false);
+/** Thatch as it was before joints were drawn: each wall keeps its own post. */
+export const THATCH_POSTED: TierRecipe = thatchRecipe(true, false);
+/** Thatch as it was before the client laid eaves: a flat ceiling has its own on every side, and no eave is a trim. */
+export const THATCH_EAVED: TierRecipe = thatchRecipe(false, true);

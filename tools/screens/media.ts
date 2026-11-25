@@ -486,11 +486,12 @@ function listInInventory(): void {
 }
 
 /** SOURCES.md: every default item, where it is from, its licence as its source words it, and what we changed. */
-function sourcesPage(dir = SCREENS_DIR): string {
+export function sourcesPage(dir = SCREENS_DIR): string {
   const cell = (s: string): string => s.replaceAll("|", "\\|").replaceAll("\n", " ");
   const rows = itemNames(dir).map((name) => {
     const r = readRecipe(name, dir), c = readItem(name, dir);
-    const from = r.from.url ? `[page](${r.from.page}), [file](${r.from.url})` : `supplied by ${cell(r.from.by ?? "")}`;
+    const source = r.from.url ? `[file](${r.from.url})` : `supplied by ${cell(r.from.by ?? "")}`;
+    const from = r.from.page ? `[page](${r.from.page}), ${source}` : source;
     return `| ${cell(r.title)} | ${r.year ?? ""} | ${from} | ${cell(r.licence)} | ${cell(r.changes ?? "")} | \`${name}\` \`${c?.id ?? "not encoded"}\` |`;
   });
   return [

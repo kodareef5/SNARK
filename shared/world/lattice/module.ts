@@ -39,7 +39,9 @@ export const DIRS = new Int32Array([
 
 /** Direction `d` turned `k` steps of 30°, toward +Z for a positive k. */
 export function dirTurn(d: number, k: number): number {
-  return (((d + k) % DIRECTIONS) + DIRECTIONS) % DIRECTIONS;
+  const r = (d + k) % DIRECTIONS;
+  // One remainder, and + 0 makes a negative zero plain zero, as the double remainder did.
+  return r < 0 ? r + DIRECTIONS : r + 0;
 }
 
 /** Direction `d` mirrored across the +X axis. */

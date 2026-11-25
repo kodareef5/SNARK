@@ -27,10 +27,10 @@ export class BodyGrid {
   private readonly reaches: (Float32Array | null)[];
   /** The most any body added since the last clear reaches. */
   private most = 0;
-  /** Chunks holding a body since the last clear, each marked with the clear it follows. */
-  private readonly used: number[] = [];
-  private readonly usedAt: Uint32Array;
-  private clears = 1;
+  /** The cells given a body since the last clear, each by its chunk and its place in the chunk, in the first `dirty`. */
+  private dirtyChunk = new Int32Array(64);
+  private dirtyCell = new Int32Array(64);
+  private dirty = 0;
 
   /** `cell` is the side of a cell in metres, which divides a chunk. */
   constructor(dims: MapDims, cell = BODY_CELL) {
@@ -41,18 +41,19 @@ export class BodyGrid {
     this.rows = dims.chunksZ * this.per;
     this.heads = new Array(dims.chunksX * dims.chunksZ).fill(null);
     this.reaches = new Array(dims.chunksX * dims.chunksZ).fill(null);
-    this.usedAt = new Uint32Array(dims.chunksX * dims.chunksZ);
   }
 
+  /** Empties only the cells given a body: a crowd over a thousand chunks fills few cells of each. */
   clear(): void {
-    for (const c of this.used) {
-      this.heads[c]!.fill(-1);
-      this.reaches[c]!.fill(0);
+    const heads = this.heads, reaches = this.reaches, chunks = this.dirtyChunk, cells = this.dirtyCell;
+    for (let k = 0; k < this.dirty; k++) {
+      const c = chunks[k]!, cell = cells[k]!;
+      heads[c]![cell] = -1;
+      reaches[c]![cell] = 0;
     }
-    this.used.length = 0;
+    this.dirty = 0;
     this.count = 0;
     this.most = 0;
-    this.clears++;
   }
 
   /** Adds body `e` standing at (x, z), reaching `reach` metres from there (for `touching`). */
@@ -67,9 +68,17 @@ export class BodyGrid {
       this.reaches[chunk] = new Float32Array(per * per);
     }
     const cell = (cz % per) * per + (cx % per);
-    if (this.usedAt[chunk] !== this.clears) {
-      this.usedAt[chunk] = this.clears;
-      this.used.push(chunk);
+    if (heads[cell] === -1) {
+      const d = this.dirty++;
+      if (d === this.dirtyChunk.length) {
+        const chunks = new Int32Array(d * 2), cells = new Int32Array(d * 2);
+        chunks.set(this.dirtyChunk);
+        cells.set(this.dirtyCell);
+        this.dirtyChunk = chunks;
+        this.dirtyCell = cells;
+      }
+      this.dirtyChunk[d] = chunk;
+      this.dirtyCell[d] = cell;
     }
     const reaches = this.reaches[chunk]!;
     if (reach > reaches[cell]!) reaches[cell] = reach;

@@ -2,7 +2,6 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join, resolve } from "node:path";
-import { brotliCompressSync } from "node:zlib";
 import { GLASS_SIZE, GLASS_X, GLASS_Y, SKIN_WIDTH, skinPixels } from "../../client/core/ui/skin.ts";
 import { readPng } from "../pack/png-read.ts";
 import { partHash } from "../pack/manifest.ts";
@@ -39,7 +38,7 @@ export function uiSheet(): ReturnType<typeof skinPixels> {
 }
 
 /** `touch` is the touch controls' painted sheet, "" where it is not installed: a page fetches it only once it is touched. */
-export function buildUiAssets(dist: string): { atlas: string; touch: string; font: string; bytes: number; decodedBytes: number } {
+export function buildUiAssets(dist: string): { atlas: string; touch: string; faces: HudFace[]; bytes: number; decodedBytes: number } {
   mkdirSync(join(dist, "assets"), { recursive: true });
   const sheet = uiSheet(), png = encodePng(sheet.width, sheet.height, sheet.data, 9);
   // Keep transparent RGB as well as coverage. The world and the wiki sample this same sheet.
@@ -56,13 +55,34 @@ export function buildUiAssets(dist: string): { atlas: string; touch: string; fon
     touch = `assets/touch.${partHash(sheet)}.${shipped.endsWith(".webp") ? "webp" : "png"}`;
     writeFileSync(join(dist, touch), sheet);
   }
-  const fontSource = resolve(import.meta.dir, "../../assets/raw/fonts/barlow");
-  const fontFile = join(fontSource, "BarlowSemiCondensed-Medium.ttf");
-  if (!existsSync(fontFile)) return { atlas: atlasName, touch, font: "", bytes: atlas.length, decodedBytes: sheet.data.byteLength };
-  const font = readFileSync(fontFile), fontName = `assets/hud-font.${partHash(font)}.ttf`;
-  writeFileSync(join(dist, fontName), font);
-  const compressed = brotliCompressSync(font);
-  writeFileSync(join(dist, `${fontName}.br`), compressed);
-  copyFileSync(join(fontSource, "OFL.txt"), join(dist, "assets/hud-font-license.txt"));
-  return { atlas: atlasName, touch, font: fontName, bytes: atlas.length + compressed.length, decodedBytes: sheet.data.byteLength };
+  const faces = hudFaces();
+  for (const f of faces) writeFileSync(join(dist, f.url), f.bytes);
+  copyFileSync(join(FONT_SOURCE, "OFL.txt"), join(dist, "assets/hud-font-license.txt"));
+  return { atlas: atlasName, touch, faces, bytes: atlas.length + faces[0]!.bytes.length, decodedBytes: sheet.data.byteLength };
+}
+
+const FONT_SOURCE = resolve(import.meta.dir, "../../assets/raw/fonts/barlow");
+
+/** A part of the HUD's face: its file's bytes, the address the game and the title both ask for it at, and its characters. */
+export interface HudFace { bytes: Buffer; url: string; range: string }
+
+/**
+ * The face's WOFF2 parts that tools/ui/font-subset.py made, Latin first. Where the face itself is here and has changed
+ * since, the parts are stale and the build stops.
+ */
+export function hudFaces(): HudFace[] {
+  const list = JSON.parse(readFileSync(join(FONT_SOURCE, "faces.json"), "utf8")) as { face: string; sha256: string; faces: { file: string; range: string }[] };
+  const face = join(FONT_SOURCE, list.face);
+  if (existsSync(face) && new Bun.CryptoHasher("sha256").update(readFileSync(face)).digest("hex") !== list.sha256) {
+    throw new Error(`${list.face} has changed since its parts were made: run tools/ui/font-subset.py (see its first lines)`);
+  }
+  return list.faces.map((f) => {
+    const bytes = readFileSync(join(FONT_SOURCE, f.file));
+    return { bytes, url: `assets/hud-font-${f.file.replace(/\.woff2$/, "")}.${partHash(bytes)}.woff2`, range: f.range };
+  });
+}
+
+/** The @font-face rules of `family` over the face's parts, with the rule's other descriptors. */
+export function fontFaces(family: string, faces: readonly HudFace[], descriptors: string): string {
+  return faces.map((f) => `@font-face { font-family: ${family}; src: url("${f.url}") format("woff2"); unicode-range: ${f.range}; ${descriptors} }`).join("\n");
 }

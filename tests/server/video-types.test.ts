@@ -47,11 +47,11 @@ const png = (w: number, h: number, fill = 0): Uint8Array =>
 const POSTER = Buffer.from([0xff, 0xd8, 1, 2, 3, 0xff, 0xd9]).toString("base64");
 const SAMPLE = Buffer.alloc(COLOUR_PARTS * 3, 40).toString("base64");
 
-test("a fresh library keeps the starter channels' types, and a billboard starts on its own", () => {
+test("a fresh library keeps the starter channels' types; the ball and a billboard start on theirs", () => {
   const lib = library(), view = lib.view();
   expect(view.channels.get("roadside")).toMatchObject({ type: "billboard", still: 6, items: [AD] });
   expect(view.channels.get("strip")!.type).toBeUndefined();
-  expect([...view.screens.values()].map((s) => [s.screen, s.show])).toEqual([["orb", "scenes"], ["billboard", "roadside"], ["tv", "scenes"], ["laptop", "scenes"]]);
+  expect([...view.screens.values()].map((s) => [s.screen, s.show])).toEqual([["orb", "strip"], ["billboard", "roadside"], ["tv", "scenes"], ["laptop", "scenes"]]);
   expect(view.timed.get(AD)).toEqual({ id: AD, seconds: 0, image: true });
   // The billboard's ad holds the channel's 6 s.
   const playing = screenAt(view.screens.get("billboard")!, view.channels, view.timed, view.channels.get("roadside")!.epoch + 1000, false);

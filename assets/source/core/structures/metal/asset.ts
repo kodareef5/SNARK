@@ -1,18 +1,19 @@
 // The metal tier's building pieces, made by the metal recipe (tools/pack/pieces/metal.ts) from the forms content places
-// and the forms to come, and its trims: the joints at corners, the skirt and the ridge. `bun run art -- core:metal`
+// and the forms to come, and its trims: the joints at corners, the skirt, the ridge, the hip and its saddle. `bun run art -- core:metal`
 // builds them with no Blender and no pictures. Each replaces the grey box of the structure with its id; a form no kind
 // uses yet and a trim are in the pack for the lanes that draw them. Every level is flat: the plate's faces are the
 // piece's own colour and wear the "plate" material the card makes from a recipe (content/texgen/materials.ts), the
 // frame and the bolts are palette colours.
 
-import { FORMS, PLANNED_FORMS } from "../../../../../content/building/forms.ts";
+import { ALL_FORMS } from "../../../../../content/building/forms.ts";
 import type { FormDef } from "../../../../../shared/world/lattice/forms.ts";
 import type { PiecesAsset } from "../../../../../tools/art/spec.ts";
 import { MADE_PIECE_TRIANGLES, TRIM_TRIANGLES } from "../../../../../tools/art/check.ts";
 import { errorOf, statedErrors } from "../../../../../tools/pack/pieces/lod.ts";
 import { METAL, bakeMetal } from "../../../../../tools/pack/pieces/metal.ts";
 
-const ALL: Readonly<Record<string, FormDef>> = { ...FORMS, ...PLANNED_FORMS };
+// Every row by its name: the nine, the 25 past them, and the leaves stood open with the double door.
+const ALL: Readonly<Record<string, FormDef>> = ALL_FORMS;
 
 export default {
   kind: "pieces",

@@ -11,7 +11,7 @@ import { SLOT_NAMES } from "../../shared/anim/human.ts";
 import { LOOK_BYTES, randomLook } from "../../shared/anim/look.ts";
 import { AnimState } from "../../shared/anim/pose.ts";
 import type { Registry } from "../../shared/content/registry.ts";
-import { TICK_RATE } from "../../shared/coords.ts";
+import { CHUNK_SIZE, TICK_RATE } from "../../shared/coords.ts";
 import type { LoopbackEnd } from "../../shared/net/loopback.ts";
 import { MAX_VIEW, VIEW_DEFAULT } from "../../shared/net/view.ts";
 import { Rng } from "../../shared/rng.ts";
@@ -49,17 +49,30 @@ export function crowdRows(b: Bench, host: Host, run: (ticks: number, times: numb
     if (host.spawnCreature("core:grazer", x + spot.range(-60, 60), z + spot.range(-60, 60), 1 + spot.int(30)) >= 0) herd++;
   }
   asker.view(MAX_VIEW, 1100);
-  run(150, null);
+  // Ten seconds, so that the asking client, come from far off, holds its whole view before anything is measured.
+  run(300, null);
   const overflows = game.stats.overflows;
   const undecodable = asker.stats.undecodable;
   const sent = game.clients.map((c) => (c ? (c.conn as LoopbackEnd).bytesSent : 0));
+  // The bodies the asking client shows, read after every tick: what it holds swings as it walks over chunk borders.
+  const shown = new RemoteSample();
+  const held: number[] = [];
+  // Read after the client's own update, outside the tick's timer.
+  const update = asker.update.bind(asker);
+  asker.update = (...args: Parameters<ClientSession["update"]>) => {
+    const out = update(...args);
+    asker.sampleRemote(shown);
+    held.push(shown.count);
+    return out;
+  };
   const ticks: number[] = [];
   const TICKS = 600;
   run(TICKS, ticks);
   ticks.sort((p, q) => p - q);
   const down = game.clients.map((c, i) => (c ? ((c.conn as LoopbackEnd).bytesSent - sent[i]!) / (TICKS / TICK_RATE) : 0)).filter((v) => v > 0);
-  const shown = new RemoteSample();
-  asker.sampleRemote(shown);
+  const end = held[held.length - 1]!;
+  const cap = game.opts.viewCap;
+  const short = held.map((n) => cap - 1 - n).sort((p, q) => p - q);
   // A client that never asked, and the view the server holds it to have after its newest snapshot.
   const quiet = game.clients.find((c) => c?.active && !c.closed && c.ent >= 0 && c.viewCap === 0);
   b.record("survivors there", survivors, "");
@@ -67,10 +80,32 @@ export function crowdRows(b: Bench, host: Host, run: (ticks: number, times: numb
   b.record("tick time, median", b.percentile(ticks, 0.5), "ms", 8);
   b.record("tick time, 99th percentile", b.percentile(ticks, 0.99), "ms", 16);
   b.record("downstream per client", down.reduce((a, v) => a + v, 0) / down.length / 1024, "KB/s", 36);
-  b.record("bodies shown to the client that asked for 2,048, of the 1,024 the server allows", shown.count, "", game.opts.viewCap);
+  b.record(`bodies shown to the client that asked for 2,048, of the ${cap.toLocaleString("en-US")} the server allows, at the end`, end, "");
+  b.record(`bodies it was short of the ${(cap - 1).toLocaleString("en-US")} others it may be shown, median over the 600 ticks`, b.percentile(short, 0.5), "", 64);
+  // The floor follows the cap: 88% of what it may be shown, 900 of 1,023.
+  const floor = Math.floor((cap - 1) * 0.88);
+  b.record(`ticks of the 600 it was shown fewer than ${floor.toLocaleString("en-US")}`, held.filter((n) => n < floor).length, "", 30);
   b.record("bodies shown to a client that never asked, of 512", quiet?.views.find(quiet.lastSnapshot)?.count ?? 0, "", VIEW_DEFAULT);
   b.record("snapshots that outgrew the server's writer and were not sent", game.stats.overflows - overflows, "", 0);
   b.record("snapshots the asking client could not decode", asker.stats.undecodable - undecodable, "", 0);
+  // The asking client steps 2 m over the nearest chunk border, still in the crowd: its view is gathered round the next chunk.
+  const e = ents.resolve(asker.ownHandle);
+  held.length = 0;
+  if (e >= 0) {
+    const [ax, az] = [ents.x[e]!, ents.z[e]!];
+    const [ex, ez] = [ax - Math.floor(ax / CHUNK_SIZE) * CHUNK_SIZE, az - Math.floor(az / CHUNK_SIZE) * CHUNK_SIZE];
+    const near = Math.min(ex, CHUNK_SIZE - ex, ez, CHUNK_SIZE - ez);
+    const [px, pz] = near === ex ? [ax - ex - 2, az] : near === CHUNK_SIZE - ex ? [ax - ex + CHUNK_SIZE + 2, az] : near === ez ? [ax, az - ez - 2] : [ax, az - ez + CHUNK_SIZE + 2];
+    ents.setPosition(e, px, hf.heightAt(px, pz), pz);
+    run(3 * TICK_RATE, null);
+  }
+  asker.update = update;
+  const least = Math.min(end, ...held);
+  // None, where it never held fewer than all but 32.
+  const fell = held.findIndex((n) => n < end - 32);
+  const back = fell < 0 ? -1 : held.findIndex((n, i) => i > fell && n >= end - 32);
+  b.record("bodies it lost at worst after a 2 m step into the next chunk", end - least, "", 128);
+  b.record("ticks after the step before it held all but 32 of them again", fell < 0 ? 0 : back < 0 ? held.length : back + 1, "", 45);
 }
 
 /** A whole view of bodies ahead of the camera, drawn on the top graphics tier and then on medium. The camera is turned to face -X. */

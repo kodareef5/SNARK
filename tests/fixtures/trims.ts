@@ -9,7 +9,7 @@ import type { Registry } from "../../shared/content/registry.ts";
 import { CHUNK_SIZE, STRUCT_UNITS, chunkCx, chunkCz, type MapDims } from "../../shared/coords.ts";
 import { INSTANCE_BYTES, type Pack } from "../../shared/pack/pack.ts";
 import { REGION_BASE } from "../../shared/pack/palette.ts";
-import type { Frame } from "../../shared/world/lattice/frames.ts";
+import { rotsOf, type Frame } from "../../shared/world/lattice/frames.ts";
 import { CLS_EDGE, CLS_SQUARE, canon, canonical, dirTurn, key0, key1 } from "../../shared/world/lattice/module.ts";
 import type { StructureStore } from "../../shared/world/structures.ts";
 import type { SourceLod, SourceMesh } from "../../tools/pack/write.ts";
@@ -75,6 +75,14 @@ export function standInTrims(tier: string): SourceMesh[] {
   ];
 }
 
+/** An eave and a ridge as plain solids, for a tier that has `standInTrims` too: the eave 3 m wide, as deep as a ceiling and 0.30 m out from its side; the ridge a bar along its side. */
+export function standInSides(tier: string): SourceMesh[] {
+  return [
+    { id: `core:eave_${tier}`, lods: [prism([[-1.5, 0], [1.5, 0], [1.5, 0.3], [-1.5, 0.3]], -0.25, 0)] },
+    { id: `core:ridge_${tier}`, lods: [prism([[-1.5, -0.2], [1.5, -0.2], [1.5, 0.2], [-1.5, 0.2]], -0.05, 0.1)] },
+  ];
+}
+
 export const TEAM = 7;
 const m = new Int32Array(8);
 const O = [0, 0, 0, 0];
@@ -93,6 +101,19 @@ export function putAt(structs: StructureStore, reg: Registry, f: Frame, id: stri
   // An edge named against the way it was asked along is the same edge turned half round.
   const rot = cls === CLS_EDGE && (canon.turn === 1) !== flipped ? 1 : 0;
   const ref = structs.place(kind, f.gid, key0(cls, m[4]!, m[5]!, m[6]!), key1(m[7]!, lvl, canon.dir, reg.forms!.layer[kind]!, rot, 0), TEAM, reg.maxHp[kind]! * hp);
+  if (ref < 0) throw new Error(`${id} does not fit along ${d} at level ${lvl}`);
+  return ref;
+}
+
+/** Sets a piece down in the element of class `cls` named from the corner `a` along `d`, its own +X along `own`. Returns its ref. */
+export function putOwn(structs: StructureStore, reg: Registry, f: Frame, id: string, cls: number, a: readonly number[], d: number, lvl: number, own = d): number {
+  const kind = reg.index.get(id);
+  if (kind === undefined) throw new Error(`no kind ${id}`);
+  m.set(a);
+  canonical(cls, m, 0, dirTurn(d, 0), m, 4);
+  const rot = dirTurn(canon.dir, -own) / (12 / rotsOf(reg.forms!, kind));
+  if (!Number.isInteger(rot)) throw new Error(`${id} cannot lie along ${own} in a slot along ${d}`);
+  const ref = structs.place(kind, f.gid, key0(cls, m[4]!, m[5]!, m[6]!), key1(m[7]!, lvl, canon.dir, reg.forms!.layer[kind]!, rot, 0), TEAM, reg.maxHp[kind]!);
   if (ref < 0) throw new Error(`${id} does not fit along ${d} at level ${lvl}`);
   return ref;
 }

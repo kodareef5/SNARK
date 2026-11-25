@@ -13,7 +13,7 @@ import { Camera } from "../../client/core/render/camera.ts";
 import { DRAW_TEXTURED } from "../../client/core/render/packet.ts";
 import { Scene } from "../../client/core/render/scene.ts";
 import "../../client/core/render/city-late.ts";
-import { FORMS, PLANNED_FORMS } from "../../content/building/forms.ts";
+import { FORMS } from "../../content/building/forms.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { compileContent, type Registry } from "../../shared/content/registry.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
@@ -67,7 +67,7 @@ export function baseCost(tier: string, art = tierMeshes(), rows = 720, pieces = 
   });
   const roofs = new Set(top.values());
   // A roof's origin stands half its rise over a ceiling's, and every other row is turned to face the row before it.
-  const lift = PLANNED_FORMS.roof.at[1] - FORMS.ceiling.at[1];
+  const lift = FORMS.roof.at[1] - FORMS.ceiling.at[1];
   laid.forEach(([kind, x, y, z, yaw], k) => {
     if (roofs.has(k)) structs.add(roof!, x, y + lift, z, Math.round((z - cz + 21) / 3) % 2 === 0 ? 0 : 32768, 1, 1000);
     else structs.add(kind, x, y, z, yaw, 1, 1000);

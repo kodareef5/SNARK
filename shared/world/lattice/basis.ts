@@ -18,6 +18,8 @@ export const LEVEL_UNITS = (STRUCT_UNITS * 3) / 4;
 export const DRIFT_MOST = 0.71;
 
 const axes = new Int32Array(4);
+/** Quarter turns in each of the twelve directions: d div 3, without a division. */
+const QUARTERS = new Uint8Array([0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3]);
 
 /** The four vectors of a frame turned `yaw`, to `out` as [a0x, a0z, a1x, a1z, a2x, a2z, a3x, a3z]. */
 export function basisOf(yaw: number, out: Int32Array): void {
@@ -35,7 +37,7 @@ export function basisOf(yaw: number, out: Int32Array): void {
 
 /** The world vector of direction `d`, one half-side long, to `out[at]` and `out[at + 1]`: a[d mod 3] turned by R, d div 3 times. */
 export function dirVector(basis: Int32Array, d: number, out: Int32Array, at: number): void {
-  const quarters = Math.floor(d / 3);
+  const quarters = d >= 0 && d < 12 && d === (d | 0) ? QUARTERS[d]! : Math.floor(d / 3);
   const i = (d - quarters * 3) * 2;
   let x = basis[i]!;
   let z = basis[i + 1]!;
@@ -65,12 +67,12 @@ export function levelY(oy: number, lvl: number): number {
 
 /** The yaw of a piece whose +X is direction `d` in a frame turned `frameYaw`. */
 export function yawOf(frameYaw: number, d: number): number {
-  return (frameYaw - Math.floor(d / 3) * QUARTER_YAW) & (YAW_UNITS - 1);
+  return (frameYaw - (d >= 0 && d < 12 && d === (d | 0) ? QUARTERS[d]! : Math.floor(d / 3)) * QUARTER_YAW) & (YAW_UNITS - 1);
 }
 
 /** The turn class of a piece whose +X is direction `d`: 0 for a frame's own squares, 1 and 2 for those 30° and 60° on. */
 export function twOf(d: number): number {
-  return d % 3;
+  return d >= 0 && d < 12 && d === (d | 0) ? d - 3 * QUARTERS[d]! : d % 3;
 }
 
 /** The direction of a piece of yaw `yaw` and class `tw` in a frame turned `frameYaw`, a whole number of quarter turns away. */

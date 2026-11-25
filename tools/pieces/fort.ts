@@ -18,7 +18,7 @@ import { copyFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { forTouch, tierOf, type Tier } from "../../client/core/assets/tiers.ts";
 import { FRAME } from "../../client/core/render/packet.ts";
-import { FORMS, PLANNED_FORMS } from "../../content/building/forms.ts";
+import { ALL_FORMS, FIRST_FORMS, FORMS } from "../../content/building/forms.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import type { Def } from "../../shared/content/defs.ts";
 import { compileContent, type Registry } from "../../shared/content/registry.ts";
@@ -34,7 +34,8 @@ import { fortKeys } from "./village.ts";
 
 const [W, H] = [800, 600];
 const TEAM = 7;
-const PLANNED: Readonly<Record<string, FormDef>> = PLANNED_FORMS;
+/** Every row past the first nine, placed or not. */
+const LATER: Readonly<Record<string, FormDef>> = Object.fromEntries(Object.entries(ALL_FORMS).filter(([name]) => !(name in FIRST_FORMS)));
 /** Where the fort's base has its corner, and the row of single forms theirs: open ground west of the proving ground's plaza. */
 const BASE = [PROVING_SPAWN.x - 70, PROVING_SPAWN.z - 60] as const;
 const ROW = [BASE[0] - 16, BASE[1] - 16] as const;
@@ -47,19 +48,19 @@ const liftOf = (row: FormDef): number => (row.layer === "slab" && row.root === u
 export function registry(tier: string): Registry {
   const like = CORE_CONTENT.find((d) => d.id === `core:wall_${tier}`);
   if (!like || like.type !== "structure") throw new Error(`no tier "${tier}"`);
-  const names = Object.keys(PLANNED).filter((name) => !CORE_CONTENT.some((d) => d.id === `core:${name}_${tier}`));
+  const names = Object.keys(LATER).filter((name) => !CORE_CONTENT.some((d) => d.id === `core:${name}_${tier}`));
   // Each has its form's box for a shape, with no form: a sloped form's collider is convex parts, which are the placing lane's to write.
   const role = (form: FormDef): string => (form.layer === "slab" ? (form.root ? "foundation" : "ceiling") : form.layer === "post" ? "pillar" : form.layer === "leaf" ? "door" : form.layer === "fill" ? "stairs" : "wall");
   const extra = names.flatMap((name): Def[] => {
-    const half = formHalf(PLANNED[name]!);
+    const half = formHalf(LATER[name]!);
     return [
-      { type: "shape", id: `core:shape_lit_${name}`, role: role(PLANNED[name]!), boxes: [{ at: [0, 0, 0], half }] } as Def,
+      { type: "shape", id: `core:shape_lit_${name}`, role: role(LATER[name]!), boxes: [{ at: [0, 0, 0], half }] } as Def,
       { type: "structure", class: "piece", id: `core:${name}_${tier}`, mesh: "shape", shape: `core:shape_lit_${name}`, half, color: like.color, hp: like.hp, material: like.material!, ...(like.made ? { made: like.made } : {}) } as Def,
     ];
   });
   const made = compileContent([...CORE_CONTENT, ...extra]);
   if (!made.registry) throw new Error(made.errors.join("\n"));
-  for (const name of names) setForm(made.registry.forms!, made.registry.index.get(`core:${name}_${tier}`)!, PLANNED[name]!);
+  for (const name of names) setForm(made.registry.forms!, made.registry.index.get(`core:${name}_${tier}`)!, LATER[name]!);
   return made.registry;
 }
 
@@ -100,7 +101,7 @@ export function build(files: GameFiles, tier: Tier, name: string, hour: number |
   const kind = (form: string): number => reg.index.get(`core:${form}_${name}`)!;
   if (what === "row") {
     const ground = hf.heightAt(ROW[0], ROW[1]);
-    Object.entries(PLANNED).forEach(([form, row], k) => {
+    Object.entries(LATER).forEach(([form, row], k) => {
       const [x, z] = [ROW[0] + (k % ACROSS) * STEP, ROW[1] + Math.floor(k / ACROSS) * STEP];
       // Each stands as in a slot of its own: its collider's origin is its row's `at` from there.
       structs.add(kind(form), x + row.at[0], ground + liftOf(row) + row.at[1], z + row.at[2], 0, 0, 1);
@@ -187,7 +188,7 @@ export async function main(args: readonly string[], say: (line: string) => void 
   };
   if (args.includes("--new")) {
     const row = build(files, tierOf("high"), name, hour, 0, "row");
-    const shots = Object.entries(PLANNED).map(([form, def], k) => {
+    const shots = Object.entries(LATER).map(([form, def], k) => {
       const [hx, hy, hz] = formHalf(def);
       const lift = liftOf(def) + def.at[1];
       // From its front left, a little above, and a slab from further above.

@@ -11,7 +11,7 @@ import { FLAG_BLUEPRINT } from "../shared/sim/items.ts";
 import { V_HEALTH } from "../shared/sim/vitals.ts";
 import { VEHICLE_FUEL_PER_GASOLINE as FUEL_PER_ITEM, VEHICLE_REPAIR_STEP as REPAIR_STEP, VEHICLE_REPAIR_BILL as REPAIR_BILL } from "../shared/sim/vehicle-maintenance.ts";
 import { skatePlacement } from "../shared/world/skate-placement.ts";
-import { isSkateboard, PATROL_LIGHT_MODES, boatDrives, isBoatVehicle, isRotorVehicle, isWheelVehicle, type VehicleDefinition } from "../shared/sim/vehicle.ts";
+import { isSkateboard, PATROL_LIGHT_MODES, isBoatVehicle, isRotorVehicle, isWheelVehicle, type VehicleDefinition } from "../shared/sim/vehicle.ts";
 import { vehiclePoint } from "../shared/sim/vehicle-frame.ts";
 import { boatRestY } from "../shared/sim/boat.ts";
 import { capsuleFree, groundUnder, type CollisionWorld } from "../shared/world/collide.ts";
@@ -26,6 +26,7 @@ import type { Urban } from "./urban.ts";
 import type { ServerWorld } from "./world.ts";
 import { supportedCar, uprightCar } from "./vehicle-recovery.ts";
 import { familyOf } from "../shared/sim/families.ts";
+import { hullParts, partMeetsBody } from "../shared/sim/vehicle-hull.ts";
 
 /** Stable authored origin kept by the normal component codec. It never changes when a found aircraft is repaired. */
 export const VEHICLE_ORIGIN = 0x766f72;
@@ -356,53 +357,23 @@ export class VehicleService {
     if (!def || ![x, y, z, yaw].every(Number.isFinite)) return RESULT_INVALID;
     if (Math.hypot(x - ents.x[c.ent]!, y - ents.y[c.ent]!, z - ents.z[c.ent]!) > DEPLOY_REACH) return RESULT_FAR;
     if (y < WORLD_MIN_Y || y > WORLD_MAX_Y || !this.visible(c, x, y + 1, z)) return RESULT_OBSTRUCTED;
-    if (!vehiclePlaceFree(world, x, y, z, yaw, def, under)) return RESULT_NO_SUPPORT;
+    const problem = vehiclePlaceProblem(world, x, y, z, yaw, def, under);
+    if (problem !== RESULT_OK) return problem;
     const hull = isSkateboard(def) && inv.dur[slot] ? Math.min(1, inv.dur[slot]! / 1000) : 1;
     const e = this.ctx.spawn(world.reg.ids[kind]!, x, z, actor.team, yaw, { y, fuel: 0, hull, engine: 1, rotor: 1 });
     if (e < 0) return RESULT_OBSTRUCTED;
     if (inv.item[slot] !== item || !items.burn(actor, slot, 1)) { this.ctx.discard(e); return RESULT_INVALID; }
     this.placed = e;
-    if (under < 0) this.ctx.game.sendText(c, TEXT_NOTICE, isSkateboard(def) ? "Skateboard ready. Look at the deck and press E to ride." : `${isBoatVehicle(def) ? "Motorboat" : "Helicopter"} assembled. Add gasoline before starting.`);
+    if (under < 0) this.ctx.game.sendText(c, TEXT_NOTICE, isSkateboard(def) ? "Skateboard ready. Look at the deck and press E to ride." : `${assembledName(world.reg, item, kind)} assembled. Add gasoline before starting.`);
     return RESULT_OK;
   }
 }
 
-interface HullPart { x: number; y: number; z: number; radius: number; height: number }
-
-/** The upright bodies a vehicle's hull is tested as: along its length, its tail, its rotor's disc, its propeller and outboard. */
-function hullParts(x: number, y: number, z: number, yaw: number, def: VehicleDefinition): HullPart[] {
-  const spec = def.spec, sn = Math.sin(yaw), cs = Math.cos(yaw), parts: HullPart[] = [];
-  const add = (lx: number, ly: number, lz: number, radius: number, height: number): void => { parts.push({ x: x + cs * lx + sn * lz, y: y + ly, z: z - sn * lx + cs * lz, radius, height }); };
-  if (isWheelVehicle(def) && def.spec.bodyBoxes) {
-    for (const b of def.spec.bodyBoxes) {
-      const radius = Math.min(b.half[0], b.half[2]), span = b.half[2] - radius;
-      const steps = Math.max(1, Math.ceil(span / radius));
-      for (let i = -steps; i <= steps; i++) add(b.at[0], b.at[1] - b.half[1], b.at[2] + span * i / steps, radius, b.half[1] * 2);
-    }
-    return parts;
-  }
-  const along = Math.max(0, spec.halfLength - spec.halfWidth);
-  for (let i = -2; i <= 2; i++) add(0, spec.clearance, i * along / 2, spec.halfWidth, spec.height - spec.clearance);
-  if (isRotorVehicle(def)) {
-    const tail = def.spec.tail;
-    for (let i = 0; i <= 8; i++) {
-      const at = tail.from.map((v, axis) => v + (tail.to[axis]! - v) * i / 8);
-      add(at[0]!, at[1]! - tail.radius, at[2]!, tail.radius, tail.radius * 2);
-    }
-    const main = def.rotors[0]!;
-    parts.push({ x: x + cs * main.at[0] + sn * main.at[2], y: y + main.at[1] - .08, z: z - sn * main.at[0] + cs * main.at[2], radius: main.radius, height: .16 });
-  }
-  if (isBoatVehicle(def)) {
-    const drives = boatDrives(def.spec);
-    for (const { propeller: prop } of drives) add(prop.at[0], prop.at[1] - prop.radius, prop.at[2], prop.radius, prop.radius * 2);
-    for (const box of [...def.spec.hullBoxes, ...drives.flatMap(d => d.outboard?.boxes ?? [])]) {
-      if (Math.abs(box.at[2]) + box.half[2] <= spec.halfLength) continue;
-      const radius = Math.min(box.half[0], box.half[2]);
-      const steps = Math.max(1, Math.ceil(box.half[2] / radius));
-      for (let i = -steps; i <= steps; i++) add(box.at[0], box.at[1] - box.half[1], box.at[2] + i / steps * Math.max(0, box.half[2] - radius), radius, box.half[1] * 2);
-    }
-  }
-  return parts;
+/** What a deployed vehicle is called: its kit's label without "assembly", "kit" or "in a kit", else its id's name. */
+function assembledName(reg: ServerWorld["reg"], item: number, kind: number): string {
+  const label = (reg.defs[item] as { label?: string } | null)?.label?.replace(/\s+(?:in an?\s+)?(?:assembly|kit)$/i, "");
+  const name = label || reg.ids[kind]!.slice(reg.ids[kind]!.indexOf(":") + 1).replace(/_/g, " ");
+  return name.charAt(0).toUpperCase() + name.slice(1);
 }
 
 /**
@@ -451,9 +422,16 @@ function largestParkedRadius(reg: ServerWorld["reg"]): number {
 }
 
 /** Shared by authored parking and deployment: the world itself (vehicleFitsWorld), then the bodies standing there. */
-/** `under` is a body the vehicle may be set down beneath: a survivor dropping a board at their feet. */
 export function vehiclePlaceFree(world: ServerWorld, x: number, y: number, z: number, yaw: number, def: VehicleDefinition, under = -1): boolean {
-  if (!vehicleFitsWorld(world, x, y, z, yaw, def)) return false;
+  return vehiclePlaceProblem(world, x, y, z, yaw, def, under) === RESULT_OK;
+}
+
+/**
+ * Why a vehicle may not stand there, or RESULT_OK: no support where the world itself refuses it, obstructed where a body
+ * stands in the way. `under` is a body the vehicle may be set down beneath: a survivor dropping a board at their feet.
+ */
+export function vehiclePlaceProblem(world: ServerWorld, x: number, y: number, z: number, yaw: number, def: VehicleDefinition, under = -1): number {
+  if (!vehicleFitsWorld(world, x, y, z, yaw, def)) return RESULT_NO_SUPPORT;
   const ents = world.ents, parkedRadius = largestParkedRadius(world.reg);
   if (isRotorVehicle(def) || isBoatVehicle(def)) {
     // The whole rigid vehicle against each body near, by its exact shape, adjacent rotor discs included.
@@ -469,11 +447,11 @@ export function vehiclePlaceFree(world: ServerWorld, x: number, y: number, z: nu
           };
           const family = familyOf(def)!;
           const hit = other ? family.meetsVehicle(def, posed, other, frame) : family.meetsCapsule(def, posed, ents.x[e]!, ents.y[e]!, ents.z[e]!, world.reg.bodyRadius[kind]!, world.reg.bodyHeight[kind]!);
-          if (hit) return false;
+          if (hit) return RESULT_OBSTRUCTED;
         }
       }
     }
-    return true;
+    return RESULT_OK;
   }
   // A car's bodies against the bodies near, which are apart from the static world: nearby chunks and vertical overlap.
   for (const part of hullParts(x, y, z, yaw, def)) {
@@ -481,17 +459,12 @@ export function vehiclePlaceFree(world: ServerWorld, x: number, y: number, z: nu
     for (let cz = Math.max(0, Math.floor((part.z - pad) / CHUNK_SIZE)); cz <= Math.min(world.dims.chunksZ - 1, Math.floor((part.z + pad) / CHUNK_SIZE)); cz++) {
       for (let cx = Math.max(0, Math.floor((part.x - pad) / CHUNK_SIZE)); cx <= Math.min(world.dims.chunksX - 1, Math.floor((part.x + pad) / CHUNK_SIZE)); cx++) {
         for (let e = ents.chunkHead[cz * world.dims.chunksX + cx]!; e >= 0; e = ents.next[e]!) {
-          const k = ents.kind[e]!;
-          if (e === under || (ents.flags[e]! & F_ALIVE) === 0 || part.y >= ents.y[e]! + world.reg.bodyHeight[k]! || part.y + part.height <= ents.y[e]!) continue;
-          const other = world.reg.vehicle[k];
-          if (other) {
-            const a = ents.vehicleYaw[ents.vrow[e]!]!, dx = part.x - ents.x[e]!, dz = part.z - ents.z[e]!;
-            const lx = Math.cos(a) * dx - Math.sin(a) * dz, lz = Math.sin(a) * dx + Math.cos(a) * dz;
-            if (Math.hypot(Math.max(0, Math.abs(lx) - other.spec.halfWidth), Math.max(0, Math.abs(lz) - other.spec.halfLength)) < part.radius) return false;
-          } else if (Math.hypot(part.x - ents.x[e]!, part.z - ents.z[e]!) < part.radius + world.reg.bodyRadius[k]!) return false;
+          const k = ents.kind[e]!, other = world.reg.vehicle[k];
+          if (e === under || (ents.flags[e]! & F_ALIVE) === 0) continue;
+          if (partMeetsBody(part, ents.x[e]!, ents.y[e]!, ents.z[e]!, world.reg.bodyHeight[k]!, world.reg.bodyRadius[k]!, other, other ? ents.vehicleYaw[ents.vrow[e]!]! : 0)) return RESULT_OBSTRUCTED;
         }
       }
     }
   }
-  return true;
+  return RESULT_OK;
 }

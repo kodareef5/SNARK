@@ -2,7 +2,7 @@
 
 import { expect, test } from "bun:test";
 import { BUILDING_CONTENT } from "../../content/building.ts";
-import { ALL_FORMS, FORMS, PLANNED_FORMS, formBoxes } from "../../content/building/forms.ts";
+import { ALL_FORMS, FORMS, formBoxes } from "../../content/building/forms.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import type { Def, ShapeDef, StructureDef } from "../../shared/content/defs.ts";
 import { compileContent } from "../../shared/content/registry.ts";
@@ -171,7 +171,7 @@ test("a ramp, a triangle, a roof and a sloped wall of convex parts agree with th
 });
 
 test("every row is sound: its outline, openings, span and cells agree", () => {
-  const rows: [string, FormDef][] = [...Object.entries(FORMS), ...Object.entries(PLANNED_FORMS)];
+  const rows: [string, FormDef][] = Object.entries(ALL_FORMS);
   for (const [name, form] of rows) expect([name, formFaults(form)]).toEqual([name, []]);
   // A row that is a rectangle makes boxes its own check passes.
   let boxed = 0;

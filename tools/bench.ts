@@ -26,7 +26,8 @@ import { TICK_RATE, chunkAt } from "../shared/coords.ts";
 import { hashBytes } from "../shared/hash.ts";
 import { SURFACE_BUILT } from "../shared/net/rockets.ts";
 import { LoopbackNet, type LoopbackEnd } from "../shared/net/loopback.ts";
-import { KEY_BYTES } from "../shared/net/protocol.ts";
+import { BitReader } from "../shared/net/codec.ts";
+import { KEY_BYTES, S_CHUNK } from "../shared/net/protocol.ts";
 import { defaultLook } from "../shared/anim/look.ts";
 import { nodeForms, scatterNodes, type NodeSpot } from "../shared/world/nodes.ts";
 import { parsePack } from "../shared/pack/pack.ts";
@@ -89,7 +90,8 @@ import { benchTransport } from "./bench/transport.ts";
 import { benchGpu } from "./bench/gpu.ts";
 import { benchUi } from "./bench/ui.ts";
 import { Bot } from "./bench/bot.ts";
-import { FIREFIGHT_GUNS, SHOT_ROUNDS, benchFirefight, benchShots } from "./bench/firefight.ts";
+import { ASSAULT_RIFLE, FIREFIGHT_GUNS, SHOT_ROUNDS, benchFirefight, benchShots } from "./bench/firefight.ts";
+import { CreatureLoad } from "./bench/load.ts";
 
 const PLAYERS = 100;
 const STRUCTURES = 500000;
@@ -115,13 +117,19 @@ const section = (title: string): void => console.log(`\n${title}`);
 const percentile = (sorted: number[], q: number): number => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * q))]!;
 const mb = (bytes: number): number => bytes / 1048576;
 
-benchUi(section, record);
-// Focused HUD rows avoid rebuilding the unrelated world sizing target.
-if (process.argv.includes("--ui")) {
+function report(file: string): number {
+  const misses = rows.filter((r) => r.budget !== null && r.value > r.budget);
   mkdirSync(resolve("artifacts"), { recursive: true });
-  writeFileSync(resolve("artifacts/bench-ui.json"), JSON.stringify({ machine: `${cpus()[0]!.model}, ${cpus().length} cores`, bun: Bun.version, rows }, null, 2));
-  process.exit(rows.some(r => r.budget !== null && r.value > r.budget) ? 1 : 0);
+  const out = resolve("artifacts", file);
+  writeFileSync(out, JSON.stringify({ machine: `${cpus()[0]!.model}, ${cpus().length} cores`, bun: Bun.version, rows }, null, 2));
+  console.log(`\n${rows.filter((r) => r.budget !== null).length - misses.length} budgets met, ${misses.length} missed.  ${out}`);
+  return misses.length > 0 ? 1 : 0;
 }
+
+const fightTarget = process.argv.includes("--fight-target");
+if (!fightTarget) benchUi(section, record);
+// Focused HUD rows avoid rebuilding the unrelated world sizing target.
+if (!fightTarget && process.argv.includes("--ui")) process.exit(report("bench-ui.json"));
 
 function buildTerrain(): Heightfield {
   const hf = new Heightfield(DIMS, TERRAIN_CELL, -32, 1 / 64);
@@ -231,13 +239,18 @@ let now = 0;
 const tickMs = 1000 / TICK_RATE;
 /** How long each database checkpoint between ticks took, in ms. */
 const checkpoints: number[] = [];
+/** The creatures awake and stepped on each timed tick, for the sections that print them beside their times. */
+const load = new CreatureLoad(host);
 function run(ticks: number, times: number[] | null): void {
   for (let i = 0; i < ticks; i++) {
     now += tickMs;
     net.advance(now);
     const t = performance.now();
     host.game.tick();
-    if (times) times.push(performance.now() - t);
+    if (times) {
+      times.push(performance.now() - t);
+      load.sample();
+    }
     // As the server's loop does between ticks. It is timed apart, because it runs in the time a tick leaves over.
     const idleAt = performance.now();
     host.idle();
@@ -252,6 +265,17 @@ section("Server tick: 100 players, 500k structures, 30k creatures");
 run(300, null); // join, initial chunk sync, clock sync
 record("players connected", host.game.playerCount, "", null);
 record("creatures awake", host.creatures.awakeCount, "");
+if (fightTarget) {
+  try {
+    if (host.game.playerCount !== PLAYERS) throw new Error(`Only ${host.game.playerCount} of ${PLAYERS} players joined`);
+    world.anim = new HumanAnim(parsePack(buildCorePack()).clips);
+    benchFirefight(section, record, host, centers[0]!, run, [ASSAULT_RIFLE]);
+  } finally {
+    host.shutdown();
+    rmSync(dir, { recursive: true, force: true });
+  }
+  process.exit(report("bench-fight-target.json"));
+}
 const sentBefore = host.game.clients.map((c) => (c ? (c.conn as LoopbackEnd).bytesSent : 0));
 const recvBefore = bots.map((b) => b.end.bytesSent);
 commitTimes.length = 0;
@@ -414,7 +438,7 @@ section("Stored stacks: 600,000 stacks in 10,000 containers nobody is near");
 }
 
 // ---------------------------------------------------------------- dormancy
-section("Dormancy: the same awake load with ten times the creatures");
+section("Dormancy: add 270k grazers outside the awake chunks, then let players wander");
 const baseline = percentile(times, 0.5);
 t0 = performance.now();
 const awakeBefore = host.creatures.awakeCount;
@@ -430,7 +454,7 @@ run(60, null);
 const after: number[] = [];
 run(300, after);
 after.sort((a, b) => a - b);
-record("creatures in the world", host.world.ents.count, "");
+record("live bodies in the world, players included", host.world.ents.count, "");
 record("entity store slots after them", host.world.ents.cap, "");
 record("bodies the entity store has refused", host.world.ents.refused, "", 0);
 record("creatures awake before", awakeBefore, "");
@@ -439,7 +463,7 @@ record("tick time, median, 30k creatures", baseline, "ms");
 record("tick time, median, 300k creatures (same players)", percentile(after, 0.5), "ms", Math.round((baseline * 1.5 + 0.5) * 100) / 100);
 
 // ---------------------------------------------------------------- combat
-section("Combat: 100 players shooting twice a second, things in the air, and a blast in a base");
+section("Combat: 100 players shooting twice a second, things in the air, and a blast in a base (300k stress world)");
 const pack = parsePack(buildCorePack());
 {
   // Zone hits need bodies posed with the clips a real server has.
@@ -576,7 +600,7 @@ const pack = parsePack(buildCorePack());
 benchFirefight(section, record, host, centers[0]!, run, FIREFIGHT_GUNS);
 
 // ---------------------------------------------------------------- collapse
-section("Collapse: a 1,500-piece house loses every foundation at once, with the 40 of the fight watching");
+section("Collapse: a 1,500-piece house loses every foundation at once, with the 40 of the fight watching (300k stress world)");
 /** The house's pieces as the Rubble a client receives, and how many fell in each tick, for the client frame section below. */
 const wreck: Rubble[] = [];
 const fellBy: number[] = [];
@@ -645,9 +669,27 @@ const FALL_PARTS = [PART.build, PART.world, PART.modules, PART.save, PART.own, P
     endParts(tick);
   };
   const calm: number[] = [];
+  load.reset();
   run(60, calm);
   const calmParts = spent.splice(0);
   const sentBytes = host.game.stats.chunkBytes;
+  // Each client's bytes of the house's own chunks, read off its line as they go: the server counts chunk bytes in all only.
+  const houseChunks = new Set(structs.chunks.map((t, c) => (t && t.owner.subarray(0, t.high).includes(9000) ? c : -1)).filter((c) => c >= 0));
+  const houseBytes = new Map<number, number>();
+  const header = new BitReader();
+  const taps = host.game.clients.filter((c) => c?.active).map((c) => {
+    const conn = c!.conn as LoopbackEnd;
+    const send = conn.send;
+    conn.send = (channel, data) => {
+      if (data[0] === S_CHUNK) {
+        header.reset(data);
+        header.u8();
+        if (houseChunks.has(header.u16())) houseBytes.set(c!.id, (houseBytes.get(c!.id) ?? 0) + data.length);
+      }
+      send.call(conn, channel, data);
+    };
+    return () => void (conn.send = send);
+  });
   const fallenBefore = build.fallen;
   const wavesBefore = build.collapse.waves;
   t0 = performance.now();
@@ -681,6 +723,7 @@ const FALL_PARTS = [PART.build, PART.world, PART.modules, PART.save, PART.own, P
   record("most pieces removed in a tick", Math.max(...removed), "", FALL_MOST);
   record("collapse work in a tick, median", percentile(work, 0.5), "ms", 1.5);
   record("collapse work in a tick, worst", work[work.length - 1]!, "ms", 3);
+  load.rows(record);
   // The whole tick is the fight's, which the firefight above leaves several times its own median. So the fall is held to
   // what it adds, in the parts of a tick a removal's work lands in: the worst of their sum, over its worst just before.
   record("whole tick just before, median", percentile(calm, 0.5), "ms");
@@ -698,7 +741,12 @@ const FALL_PARTS = [PART.build, PART.world, PART.modules, PART.save, PART.own, P
     console.log(`    parts: ${PARTS.join(" ")}`);
     for (let k = 0; k < byTick.length; k++) console.log(`    ${k}: ${spent[k]!.map((v) => v.toFixed(2)).join(" ")}`);
   }
-  record("sent to each watcher for all of it", (host.game.stats.chunkBytes - sentBytes) / watchers, "bytes", pieces * 2);
+  for (const untap of taps) untap();
+  const told = [...houseBytes.values()];
+  record("watchers sent the house's chunks", told.length, "");
+  record("the house's chunks sent a watcher, mean", told.reduce((a, b) => a + b, 0) / Math.max(1, told.length), "bytes");
+  record("the house's chunks sent a watcher, most", Math.max(0, ...told), "bytes", pieces * 2);
+  record("structure chunks sent all clients meanwhile, any chunk", host.game.stats.chunkBytes - sentBytes, "bytes");
 }
 
 // ---------------------------------------------------------------- voice
@@ -821,6 +869,7 @@ let siegeChunk = -1;
   // 1,024 rows a tick to each client at most: 20 ticks for the chunk or more, and the bots' own fists keep changing it meanwhile.
   run(200, null);
   const quiet: number[] = [];
+  load.reset();
   run(150, quiet);
   quiet.sort((a, b) => a - b);
   commitTimes.length = 0;
@@ -843,6 +892,7 @@ let siegeChunk = -1;
   }
   fire.sort((a, b) => a - b);
   commitTimes.sort((a, b) => a - b);
+  load.rows(record);
   record("tick time before the damage, median", percentile(quiet, 0.5), "ms");
   record("tick time under it, median", percentile(fire, 0.5), "ms", 8);
   record("tick time under it, 99th percentile", percentile(fire, 0.99), "ms", 16);
@@ -877,6 +927,7 @@ section("A breeding base: 300 tames all told to mate, 150 young, 100 eggs, and t
   stand();
   run(90, null);
   const quiet: number[] = [];
+  load.reset();
   run(300, quiet);
   quiet.sort((a, b) => a - b);
 
@@ -935,6 +986,7 @@ section("A breeding base: 300 tames all told to mate, 150 young, 100 eggs, and t
   run(300, busy);
   busy.sort((a, b) => a - b);
   const perKeeper = keepers.reduce((sum, c, i) => sum + (c.conn as LoopbackEnd).bytesSent - sentAt[i]!, 0) / keepers.length / (300 / TICK_RATE) / 1024;
+  load.rows(record);
   record("tick time there before the base, median", percentile(quiet, 0.5), "ms");
   record("tick time with the base awake and mating, median", percentile(busy, 0.5), "ms", Math.round((percentile(quiet, 0.5) * 1.5 + 0.5) * 100) / 100);
   record("tick time with the base awake and mating, 99th percentile", percentile(busy, 0.99), "ms", 16);
@@ -970,7 +1022,9 @@ section("A breeding base: 300 tames all told to mate, 150 young, 100 eggs, and t
 
 // ---------------------------------------------------------------- crowd
 // Back where the brawl was. The second real client is alive, and asks for all a view holds.
+load.reset();
 crowdRows({ section, record, percentile }, host, run, sessions[1]!, centers[0]![0] + 70, centers[0]![1]);
+load.rows(record);
 
 // ---------------------------------------------------------------- restart
 section("Between ticks");
@@ -1054,7 +1108,8 @@ for (const b of [3, 1, 2]) {
   standOff(b);
   t0 = performance.now();
   packet = scene.build(cam, null);
-  record(`${tier}: first frame, building instance buffers`, performance.now() - t0, "ms");
+  // Only the chunks that may be seen or cast are laid out, and those near laid out ahead over the frames after.
+  record(`${tier}: first frame, building instance buffers`, performance.now() - t0, "ms", 100);
   const frame: number[] = [];
   for (let i = 0; i < 300; i++) {
     cam.yaw += 0.002;
@@ -1338,9 +1393,5 @@ benchTransport(section, record);
 await benchGpu(section, record);
 
 rmSync(dir, { recursive: true, force: true });
-const misses = rows.filter((r) => r.budget !== null && r.value > r.budget);
-const out = resolve(configFolder !== "" ? `artifacts/bench-${configFolder.replace(/\/+$/, "").split("/").pop()}.json` : "artifacts/bench.json");
-mkdirSync(resolve("artifacts"), { recursive: true });
-writeFileSync(out, JSON.stringify({ machine: `${cpus()[0]!.model}, ${cpus().length} cores`, bun: Bun.version, rows }, null, 2));
-console.log(`\n${rows.filter((r) => r.budget !== null).length - misses.length} budgets met, ${misses.length} missed.  ${out}`);
-if (misses.length > 0) process.exit(1);
+const suffix = configFolder !== "" ? `-${configFolder.replace(/\/+$/, "").split("/").pop()}` : "";
+process.exitCode = report(`bench${suffix}.json`);

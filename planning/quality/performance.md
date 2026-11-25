@@ -7,6 +7,8 @@ a player count or a device. How a frame is drawn is in
 The sizing target is one world with 100 players, an 8 km map, 500,000 structures
 and 30,000 creatures, 3,000 awake (D15). `bun run bench` builds it, prints every
 row with its budget, writes `artifacts/bench.json` and exits non-zero on a miss.
+Its combat and house collapse follow the 300,000-creature stress test.
+`bun run bench --fight-target` runs the [firefight at 30,000 creatures](../workstreams/fight-target.md).
 
 ## Where the numbers come from
 
@@ -27,6 +29,7 @@ touch rule, ASTC, 24-bit depth, 16 texture units, no timer queries.
 | S | the support lane's rows, on the same Linux box at load 9 to 11 from other lanes and a second bench: `bun run bench` once for the house's collapse, where the tick at the target was 17.7 ms and the fight's 44 to 50; `bun tools/bench/support.ts` for the rest. Counts do not move with load; times are high | 2026-11-24 | `build/support` |
 | K | the keyed lane's rows on the same Linux box: bytes, a modelled link's own time, and times from `bun tools/bench/keyed.ts` alone while the box was quiet. Rows marked "busy" are from one `bun run bench` at load 17, beside two other benches | 2026-11-24 | `build/keyed` |
 | F | the collapse lane's rows on the same Linux box: `bun tools/bench/falling.ts`, `bun tools/bench/support.ts` and the same house on `main` before keys, each at load 2 to 4; `bun run bench` once before the pace at load 2 to 4 and once after at 9 to 13, which its counts and bytes do not feel | 2026-11-24 | `build/collapse` |
+| P | the fight-tick lane's rows on the same Linux box: `bun run bench` once before and once after, at load 3.8 to 6.5 and 2.4 to 3.1, with `BENCH_TICKS` for the parts of the falling ticks; the grid and the snapshot writer timed by themselves on constructed scenes | 2026-11-24 | `perf/fight-tick` |
 | iPhone | the device page's reports (D349), kept in `planning/reference/device-reports` and named by UTC time, the three soaks the governor's tests replay in `tests/fixtures/device-reports` | 2026-11-15, 16 | |
 
 Rows without a code are E. Counts and bytes do not move with load; times from M are
@@ -173,6 +176,9 @@ are in [networking](../architecture/networking.md).
 | The same before the pace, at load 2 to 4 (F): whole tick just before, median, worst; while it fell | 54.1, 60.7; 51.7, 55.7 ms | |
 | The same by itself, 40 watching (F): whole tick with nothing happening; while it fell, median, worst; a piece removed; a piece fallen, in all | 0.44; 0.84, 1.90 ms; 0.57; 10.2 µs | none; none, 16; none |
 | At the pace (F), a hut of 128; the house; a base of 20,000: ticks first piece to last; removals; most in the air if all were shown | 5, 21, 177; 3, 11, 89; 112, 1,326, 5,219 | 15, 45, 300 |
+| The bench's fight near the fall, before and after the grid and snapshot fixes (P): whole tick, mean; bodies and grid; snapshots; creatures | 52.9, 47.1; 8.88, 5.09; 9.02, 7.80; 31.5, 30.3 ms | none |
+| Creatures awake; stepped, a timed tick's median (P): firefight; collapse; siege; breeding; crowd | 9,451, 6,529; 13,256, 9,183; 525, 377; 3,368, 2,064; 2,537, 1,916 | |
+| Blocking grid cleared and filled, 3,183 bodies over 1,291 chunks (P), before and after | 2.2 to 2.6; 0.12 ms | |
 | A base of 20,000 pieces, every stability in one pass (S) | 8.2 to 9.6 ms | |
 | Voice: relay for a second of 100 talking; who hears whom, median, worst | 3.9 to 4.1; 0.22, 0.28 to 0.31 ms | 20; 0.5, 2 |
 | Breeding base: tick median before and with it; 99th; look for pairs, median, worst | 7.96 to 8.13, 8.39 to 8.67; 10.2 to 15.9; 0.12, 0.16 ms | 1.5 × before + 0.5; 16; 0.5, 2 |
@@ -196,6 +202,10 @@ the fall is held to what it adds. By itself the house's fall adds 13.9 ms over i
 watchers 2.1, saving 0.9, removing 0.8. On `main` before keys the same fall added 37.4 ms over 30 ticks, 31.1 of it
 judging, and with keys and no pace 11.3 over 11. A removal takes 32 pieces, then 20 more each time, 256 at most, every
 other tick: the house's 6 removals of up to 307 are 11 of up to 212.
+
+The P rows are the fight-tick lane's ([fight-tick](../workstreams/fight-tick.md)). The fight's 8 and 16 ms tick
+budgets are a server's with 3,000 creatures awake; the firefight and collapse run with 9,000 to 13,000, so their misses
+say the load, not the change. The counts were the same in both runs.
 
 ### Saves and starts
 
