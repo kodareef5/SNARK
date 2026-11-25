@@ -5,7 +5,7 @@ import { afterAll, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ACTS_KEPT, ACTS_OPEN_KEPT, OP_ADMIN, type Actor } from "../../server/acts.ts";
+import { ACTS_KEPT, ACTS_OPEN_KEPT, ACTS_STAFF_KEPT, OP_ADMIN, type Actor } from "../../server/acts.ts";
 import { refused as gateRefused, type AdminGate } from "../../server/admin/gate.ts";
 import { TickMeter } from "../../server/admin/meter.ts";
 import { AdminPages } from "../../server/admin/routes.ts";
@@ -152,6 +152,34 @@ test("open commands, however many, never push an admin's act out of the save", (
   const kept = third.host.acts.recent(0, Number.MAX_SAFE_INTEGER).map((a) => a.what);
   expect([kept.length, kept[0], kept.at(-1)]).toEqual([20, "kick 10", "kick 29"]);
   third.host.shutdown();
+});
+
+/** A staff member signed in with their own password: below an admin's rank, and no open actor. */
+const STAFF_SAM: Actor = { name: "sam", id: "", pid: 3, rank: RANK_STAFF, via: "session", from: "", baseRank: 0, open: false };
+
+test("a staff member's acts, however many, never push an admin's out of the log or the save", () => {
+  const db = join(dir, "tiers.db");
+  const open = (): Harness => new Harness({}, 1, 60, { dbPath: db, dev: true, journalKeep: 50, log: () => {} });
+  const first = open();
+  first.host.acts.write(PAGE_ADA, "Permissions.AddGroup Evidence", "change");
+  first.host.acts.write(PAGE_ADA, "kick bo");
+  // A moderator's commands, their sign-ins and their claims: all an admin should read, none an admin's own.
+  for (let i = 0; i < ACTS_KEPT + ACTS_STAFF_KEPT; i++) first.host.acts.write(STAFF_SAM, `kick ${i}`, i % 3 === 0 ? "sign-in" : i % 3 === 1 ? "change" : "command");
+  const all = first.host.acts.recent(0, Number.MAX_SAFE_INTEGER);
+  expect(all.slice(0, 2).map((a) => a.what)).toEqual(["Permissions.AddGroup Evidence", "kick bo"]);
+  expect([all.length, all.at(-1)!.what]).toEqual([2 + ACTS_STAFF_KEPT, `kick ${ACTS_KEPT + ACTS_STAFF_KEPT - 1}`]);
+  // In order of their sequence numbers, the two lists read as one.
+  expect(all.every((a, i) => i === 0 || a.seq > all[i - 1]!.seq)).toBe(true);
+  first.host.persistence!.commit();
+  first.host.persistence!.prune();
+  first.host.shutdown();
+
+  const second = open();
+  const back = second.host.acts.recent(0, Number.MAX_SAFE_INTEGER);
+  expect(back.slice(0, 2).map((a) => a.what)).toEqual(["Permissions.AddGroup Evidence", "kick bo"]);
+  // The save kept the staff's latest fifty, counted on their own.
+  expect([back.length, back.at(-1)!.what]).toEqual([52, `kick ${ACTS_KEPT + ACTS_STAFF_KEPT - 1}`]);
+  second.host.shutdown();
 });
 
 test("both lists come back from the save, and paging the two misses nothing", () => {

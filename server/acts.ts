@@ -13,10 +13,22 @@ import { idText } from "./survivor-ids.ts";
 export const OP_ADMIN = 2;
 /** Journal op for an open command: anyone may make many, so they are counted with the rest. A save from before has them under OP_ADMIN. */
 export const OP_OPEN = 4;
+/** Journal op for an act by one who proved less than an admin's rank, counted on its own: a moderator's acts never push an admin's out. */
+export const OP_STAFF = 5;
 /** The latest acts by an actor who proved a rank that are kept in memory. */
 export const ACTS_KEPT = 2000;
+/** The latest acts by actors below an admin's rank kept in memory, apart from an admin's. */
+export const ACTS_STAFF_KEPT = 1000;
 /** The latest open commands kept in memory, apart from those. */
 export const ACTS_OPEN_KEPT = 500;
+
+/**
+ * Whose list an act is kept in: an admin's, a staff member's, or the open commands'. Each is counted on its own, in memory
+ * and in the save, so no number of acts by a lower one pushes a higher one's out. An older entry of no known rank is an admin's.
+ */
+type Tier = "admin" | "staff" | "open";
+const tierOf = (act: Pick<Act, "open" | "kind" | "rank">): Tier => (openOnly(act) ? "open" : act.rank >= RANK_ADMIN || act.rank < 0 ? "admin" : "staff");
+const TIER_OP: Record<Tier, number> = { admin: OP_ADMIN, staff: OP_STAFF, open: OP_OPEN };
 /** The most letters of an act's words and of its actor's name: an act is one line, whatever was typed. */
 const WHAT_MOST = 500;
 const NAME_MOST = 64;
@@ -109,8 +121,7 @@ class Ring {
 
 export class Acts {
   private readonly ctx: ActsContext;
-  private readonly kept = new Ring(ACTS_KEPT);
-  private readonly open = new Ring(ACTS_OPEN_KEPT);
+  private readonly rings: Record<Tier, Ring> = { admin: new Ring(ACTS_KEPT), staff: new Ring(ACTS_STAFF_KEPT), open: new Ring(ACTS_OPEN_KEPT) };
   /** The count of a world with no save, which has no journal to number its acts. It starts at the clock, so it never goes back over a restart. */
   private seq: number;
   /** Each actor object an act was written for, so a page's request can tell whether its handler logged anything. */
@@ -135,15 +146,12 @@ export class Acts {
     what = actText(what, WHAT_MOST);
     const open = actor.open === true;
     const bytes = encodeAct({ at, name, id, pid, rank, via, from, kind, what, open });
-    const apart = openOnly({ open, kind });
-    const seq = persistence ? persistence.journal(apart ? OP_OPEN : OP_ADMIN, bytes) : ++this.seq;
+    const tier = tierOf({ open, kind, rank });
+    const seq = persistence ? persistence.journal(TIER_OP[tier], bytes) : ++this.seq;
     const act: Act = { seq, at, tick: this.ctx.tick(), name, id, pid, rank, via, from, kind, what, open };
     this.wrote.add(actor);
-    if (openOnly(act)) this.open.push(act);
-    else {
-      this.kept.push(act);
-      this.ctx.say(actLine(act));
-    }
+    this.rings[tier].push(act);
+    if (tier !== "open") this.ctx.say(actLine(act));
     if (kind === "command" && this.ctx.shown()) this.ctx.tellAll(`${name}: ${what}`);
     return act;
   }
@@ -158,45 +166,45 @@ export class Acts {
     return this.wrote.has(actor);
   }
 
-  /** At most `most` of the kept acts whose seq is above `after`, oldest first. The open commands are left out. */
+  /** At most `most` of the acts by admins and staff whose seq is above `after`, oldest first. The open commands are left out. */
   recent(after = 0, most = 200): Act[] {
-    return this.kept.after(after, most);
+    return this.merged(["admin", "staff"], after, most);
   }
 
-  /** At most `most` acts of both lists whose seq is above `after`, oldest first. */
+  /** At most `most` acts of every list whose seq is above `after`, oldest first. */
   recentWithOpen(after = 0, most = 200): Act[] {
-    const a = this.kept.after(after, most);
-    const b = this.open.after(after, most);
+    return this.merged(["admin", "staff", "open"], after, most);
+  }
+
+  /** The oldest `most` acts above `after` of several lists, in the order of their sequence numbers. */
+  private merged(tiers: readonly Tier[], after: number, most: number): Act[] {
     const out: Act[] = [];
-    for (let i = 0, j = 0; out.length < most && (i < a.length || j < b.length); ) {
-      out.push(j >= b.length || (i < a.length && a[i]!.seq < b[j]!.seq) ? a[i++]! : b[j++]!);
-    }
-    return out;
+    for (const tier of tiers) out.push(...this.rings[tier].after(after, most));
+    return out.sort((a, b) => a.seq - b.seq).slice(0, most);
   }
 
   /** Reads the latest of each list back from the journal, newest first, until each would be full or its entries end. */
   private refill(): void {
     const store = this.ctx.persistence?.store;
     if (!store) return;
-    const kept: Act[] = [];
-    const open: Act[] = [];
-    const most = (list: Act[]): number => (list === open ? ACTS_OPEN_KEPT : ACTS_KEPT);
-    // Each op is read until its own list is full. A save from before open commands had an op of their own has both
-    // kinds under OP_ADMIN, and those met on the way are taken.
-    for (const [op, wanted] of [[OP_ADMIN, kept], [OP_OPEN, open]] as const) {
-      for (let before = Number.MAX_SAFE_INTEGER; wanted.length < most(wanted); ) {
-        const rows = store.journalBack(op, before, ACTS_KEPT);
+    const found: Record<Tier, Act[]> = { admin: [], staff: [], open: [] };
+    // Each op is read until its own list is full. A save from before the lists had ops of their own has every act under
+    // OP_ADMIN, and those of another list met on the way are taken into it.
+    for (const tier of ["admin", "staff", "open"] as const) {
+      for (let before = Number.MAX_SAFE_INTEGER; found[tier].length < this.rings[tier].most; ) {
+        const rows = store.journalBack(TIER_OP[tier], before, ACTS_KEPT);
         for (const r of rows) {
           const act = decodeAct(r.data, r.seq, r.tick);
-          const into = openOnly(act) ? open : kept;
-          if (into.length < most(into)) into.push(act);
+          const into = tierOf(act);
+          if (found[into].length < this.rings[into].most) found[into].push(act);
         }
         if (rows.length < ACTS_KEPT) break;
         before = rows.at(-1)!.seq;
       }
     }
-    for (const list of [kept, open]) list.sort((a, b) => a.seq - b.seq);
-    for (const act of kept) this.kept.push(act);
-    for (const act of open.slice(-ACTS_OPEN_KEPT)) this.open.push(act);
+    for (const tier of ["admin", "staff", "open"] as const) {
+      const list = found[tier].sort((a, b) => a.seq - b.seq).slice(-this.rings[tier].most);
+      for (const act of list) this.rings[tier].push(act);
+    }
   }
 }
