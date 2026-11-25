@@ -5,7 +5,7 @@
 // layout.py, parts.py and model.py are what the recipe was ported from, kept until every tier is made this way; the
 // textures in tex/ are painted to layout.py's patterns, which the recipe lays joint for joint.
 
-import { FORMS, PLANNED_FORMS } from "../../../../../content/building/forms.ts";
+import { ALL_FORMS } from "../../../../../content/building/forms.ts";
 import type { FormDef } from "../../../../../shared/world/lattice/forms.ts";
 import type { MaterialSpec, PiecesAsset } from "../../../../../tools/art/spec.ts";
 import { MADE_PIECE_TRIANGLES, TRIM_TRIANGLES } from "../../../../../tools/art/check.ts";
@@ -26,7 +26,8 @@ const material = (name: string): MaterialSpec => ({
 const MATERIALS = { masonry: material("masonry"), flags: material("flags"), dressed: material("dressed"), timber: material("timber"), iron: material("iron") };
 const TOP = 2048;
 
-const ALL: Readonly<Record<string, FormDef>> = { ...FORMS, ...PLANNED_FORMS };
+// Every row by its name: the nine, the 25 past them, and the leaves stood open with the double door.
+const ALL: Readonly<Record<string, FormDef>> = ALL_FORMS;
 
 export default {
   kind: "pieces",
