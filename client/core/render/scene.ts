@@ -89,6 +89,8 @@ import { AirSupport } from "./passes/air-support.ts";
 import { SupplyDrops } from "./passes/supply-drops.ts";
 import { TideEyes } from "./passes/tide-eyes.ts";
 import type { Orbs } from "./passes/orb.ts";
+import type { MapEventPass } from "./passes/map-events.ts";
+import type { MapEventsCode, MapEventsShown } from "../mapevent/shown.ts";
 import type { OrbScreen, writeOrb } from "./orb.ts";
 import type { ScreenPlayer } from "../video/player.ts";
 import { Water } from "./passes/water.ts";
@@ -525,6 +527,12 @@ export class Scene {
   private readonly supplyDrops: SupplyDrops;
   get supply(): SupplyView | null { return this.supplyDrops.view; }
   set supply(view: SupplyView | null) { this.supplyDrops.view = view; }
+  /** The map events' code (mapevent-late.ts), which comes once a session is told of one. Until then a scene draws none. */
+  static mapEvents: MapEventsCode | null = null;
+  /** The map events told and the tick to draw them at, which the app sets (mapevent/part.ts); null before any. */
+  mapEventsShown: MapEventsShown | null = null;
+  private eventPass: MapEventPass | null = null;
+  private readonly palette: Uint8Array;
   get cascades(): Cascades {
     return this.casting.cascades;
   }
@@ -652,6 +660,7 @@ export class Scene {
     this.airSupport = new AirSupport(this.assets, this.characters.rotorBlur, this.details);
     this.characters.hiddenBones = (_kind, id) => this.airSupport.hidden(id);
     this.supplyDrops = new SupplyDrops(reg, this.assets, pack.palette, this.details);
+    this.palette = pack.palette;
     this.blasts = new Blasts(reg, this.assets, this.put, this.details);
     this.characters.thrusterPlumes.pictures(pack.header.details);
     this.dust.pictures(pack.header.details);
@@ -938,6 +947,7 @@ export class Scene {
       ["loose entities", this.looseEntities],
       ["bodies", { draw: (f) => this.bodies(f.cam, f.remote) }],
       ["air support", this.airSupport],
+      ["map events", { update: (f) => this.mapEventPass?.update(f), draw: (f) => this.mapEventPass?.draw(f) }],
       ["beams", this.marks],
       ["rubble", this.looseEntities.rubble],
       ["tree falls", { draw: () => { if (this.treeFalls.count > 0) this.treeFalls.frame(this.now, this.fallTree); } }],
@@ -975,6 +985,15 @@ export class Scene {
   /** Whether the nearest orb's screen was put in this frame's draws. */
   get orbDrawn(): boolean {
     return this.orbs?.screenDrawn ?? false;
+  }
+
+  /** The map events' pass, made once their code has come and the app has handed it events (mapevent/part.ts). */
+  get mapEventPass(): MapEventPass | null {
+    const shown = this.mapEventsShown;
+    if (!shown || !Scene.mapEvents) return null;
+    const pass = (this.eventPass ??= new Scene.mapEvents.Pass(this.assets, this.palette));
+    pass.shown = shown;
+    return pass;
   }
 
   /** The orbs' pass, made once its code has come (orb-late.ts), where the map has an orb. */

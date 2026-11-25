@@ -67,6 +67,7 @@ import { HOTBAR_SLOTS } from "../../shared/sim/items.ts";
 import type { Builder } from "./build.ts";
 import { FALL_FADE, FALL_NEAR, GHOST_BAD, GHOST_OK, GHOST_SLOT, OTHERS_FADE, buildReason } from "./build-words.ts";
 import { askEditor, editorNow, editsWith, plansWaiting, readHeldPlans, type EditorCode } from "./editor-load.ts";
+import { MapEventPart } from "./mapevent/part.ts";
 import type { Hammer } from "./hammer.ts";
 import { PredictBuild } from "./predict-build.ts";
 import { STRUCT_REASONS } from "./ui/structure.ts";
@@ -137,6 +138,8 @@ export class App {
   readonly sight = new Sight();
   /** A launched drone's camera feed while it is flown (air-feed.ts). */
   readonly feed = new AirFeed();
+  /** The map events told, read once their code has come (mapevent/part.ts). */
+  readonly mapEvents = new MapEventPart(() => this.sounds);
   get visor(): Visor { return this.sight.visor; }
   get glass(): Glass { return this.sight.glass; }
   get visorOptic(): OpticFacet | null { return this.sight.visorOptic; }
@@ -825,6 +828,8 @@ export class App {
       ["place", this.director.place],
       // A drone flown: its feed's zoom, view and interference, over the camera placed at it.
       ["feed", this.feed],
+      // The map events told, read and handed to the scene at the tick the remote bodies are shown at.
+      ["map events", this.mapEvents],
       // What the session brought is handed to what draws it, and the frame is built at the tier chosen.
       ["absorb", { step: (f) => this.absorb(f) }],
       ...(tools ? [["tool stage", tools.stage] as const] : []),
