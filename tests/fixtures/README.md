@@ -14,6 +14,7 @@
 | `enemy-scan.ts` | The enemy range answered by reading every slot of the chunks in range, which the claims grid is proved against |
 | `gather.ts` | Finding a resource node and standing a survivor in reach of it |
 | `agent.ts` | An agent that plays on the harness: its tools called over the protocol while virtual time runs |
+| `aim-audit.ts` | Drawn equals hit: a survivor drawn in nine motions from five sides with a ray through every pixel, the shares each sex is held to, and looks at every region's extremes |
 | `pack.ts` | The core asset pack: built once by `bun run check` for every test file, or once per test process run alone |
 | `glb.ts` | A glTF binary file written in code, standing in for a Blender export |
 | `crash-child.ts` | A process that trades items and commits until it is killed |
