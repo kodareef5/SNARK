@@ -93,11 +93,14 @@ const arrived = (statics: MapStatics, whole: boolean): void => {
   }
 };
 
-/** The far shadow's bytes by its sizes (client/core/render/farshadow.ts): three grids of 4 m cells, and its first job's copy of the city and the ground for its worker. */
-function farShadowBytes(statics: MapStatics | null, hf: { heights: Uint16Array }): number {
-  const grids = 3 * chunkCount(head.dims) * (CHUNK_SIZE / 4) ** 2 * 2;
-  const copy = statics ? statics.kind.length * 16 + statics.first.byteLength + hf.heights.byteLength : 0;
-  return grids + copy;
+/**
+ * The far shadow's bytes by its sizes (client/core/render/farshadow.ts): the three grids of 4 m cells it keeps, and the
+ * copy of the city and the ground its first job sends its worker, which is let go once the grids are made.
+ */
+function farShadowBytes(statics: MapStatics | null, hf: { heights: Uint16Array }): { held: number; once: number } {
+  const held = 3 * chunkCount(head.dims) * (CHUNK_SIZE / 4) ** 2 * 2;
+  const once = statics ? statics.kind.length * 16 + statics.first.byteLength + hf.heights.byteLength : 0;
+  return { held, once };
 }
 
 const mb = (n: number): string => (n / 1e6).toFixed(1);
@@ -119,9 +122,9 @@ for (;;) {
   for (let k = 0; k < 4; k++) await turn();
   if (now >= nextSample && loader) {
     const rows = mapLedger({ loader, city, skip: [compiled.registry] });
-    const shadow = city ? farShadowBytes(loader.statics, loader.staged.hf) : 0;
+    const shadow = city ? farShadowBytes(loader.statics, loader.staged.hf) : { held: 0, once: 0 };
     const p = loader.progress();
-    console.log(`${(now / 1000).toFixed(0).padStart(4)} s  came ${mb(stats.wire).padStart(6)} MB in ${stats.came} parts, ${p.left} left${ready ? "" : " (before the first frame)"}; holds ${mb(heldTotal(rows) + shadow)} MB: ${line(rows)}${shadow ? `, far shadow ${mb(shadow)} (by its sizes)` : ""}`);
+    console.log(`${(now / 1000).toFixed(0).padStart(4)} s  came ${mb(stats.wire).padStart(6)} MB in ${stats.came} parts, ${p.left} left${ready ? "" : " (before the first frame)"}; holds ${mb(heldTotal(rows) + shadow.held)} MB: ${line(rows)}${shadow.held ? `, far shadow ${mb(shadow.held)} by its sizes, and ${mb(shadow.once)} copied once to its worker` : ""}`);
     nextSample += EVERY;
   }
   if (now >= SECONDS * 1000) break;
