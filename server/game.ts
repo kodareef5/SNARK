@@ -106,6 +106,10 @@ export class Client {
   state = SESSION_ALIVE;
   /** Cheats enabled. Belongs to the connection, never saved. */
   admin = false;
+  /** How far its word reaches (shared/ranks.ts). Belongs to the connection, as `admin` does. */
+  rank = 0;
+  /** The survivor gave their own password on this connection. */
+  signed = false;
   /** Tick of its last input change or command, for the idle kick. */
   activeAt = 0;
   cheatAttempts = 0;
@@ -274,6 +278,8 @@ export class Client {
     this.queue.length = 0;
     this.textReadyAt = 0;
     this.admin = false;
+    this.rank = 0;
+    this.signed = false;
     this.cheatAttempts = 0;
     this.entered = false;
     this.joined = false;

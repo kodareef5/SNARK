@@ -12,6 +12,8 @@ export interface Command {
   usage: string;
   help: string;
   admin: boolean;
+  /** The lowest rank that may run it (shared/ranks.ts), where it needs one. */
+  rank?: number;
   examples: readonly string[];
 }
 
@@ -21,7 +23,7 @@ export function commands(): Command[] {
   for (const [family, add] of COMMAND_FAMILIES) {
     const before = new Set(con.commands.keys());
     add(con);
-    for (const c of con.commands.values()) if (!before.has(c.name)) out.push({ family, name: c.name, usage: c.usage, help: c.help, admin: c.admin, examples: c.examples ?? [] });
+    for (const c of con.commands.values()) if (!before.has(c.name)) out.push({ family, name: c.name, usage: c.usage, help: c.help, admin: c.admin, ...(c.rank === undefined ? {} : { rank: c.rank }), examples: c.examples ?? [] });
   }
   return out;
 }

@@ -6,7 +6,8 @@ import { REJECT_DENIED, REJECT_KICKED, SESSION_ALIVE, SESSION_DEAD, SESSION_SPEC
 import { formatHour, hourOfDay, offsetForHour } from "../../shared/sim/clock.ts";
 import { latLonText, latOf, lonOf } from "../../shared/world/coords.ts";
 import type { Console, ConsoleCommand } from "../console.ts";
-import { admit } from "../creative.ts";
+import { raise } from "../creative.ts";
+import { RANK_MAP, RANK_NAMES, RANK_STAFF } from "../../shared/ranks.ts";
 import { idText } from "../survivor-ids.ts";
 
 const STATE_NAMES: Record<number, string> = { [SESSION_ALIVE]: "alive", [SESSION_DEAD]: "dead", [SESSION_SPECTATING]: "spectating" };
@@ -36,9 +37,8 @@ export function addCoreCommands(con: Console): void {
       admin: false,
       run(ctx, args) {
         const one = args[0] && con.commands.get(args[0].toLowerCase());
-        if (one) return `${one.name} ${one.usage}\n${one.help}${one.admin ? " (cheat)" : ""}`;
-        const admin = con.isAdmin(ctx);
-        const names = [...con.commands.values()].filter((c) => admin || !c.admin).map((c) => (c.usage ? `${c.name} ${c.usage}` : c.name));
+        if (one) return `${one.name} ${one.usage}\n${one.help}${one.admin ? " (cheat)" : ""}${one.rank !== undefined ? ` (${RANK_NAMES[one.rank]} rank)` : ""}`;
+        const names = [...con.commands.values()].filter((c) => con.allows(ctx, c)).map((c) => (c.usage ? `${c.name} ${c.usage}` : c.name));
         return names.sort().join("\n");
       },
     },
@@ -109,8 +109,10 @@ export function addCoreCommands(con: Console): void {
       run(ctx, args) {
         const c = ctx.client;
         if (!c) return "the operator already has cheats";
-        if (c.admin) return "cheats are already enabled";
         const password = ctx.host.adminPassword;
+        // Cheats a development server gives without a password stand at staff rank: it hands out no managing rank.
+        const top = password === null ? RANK_STAFF : RANK_MAP;
+        if (c.admin && (password === null || c.rank >= top)) return "cheats are already enabled";
         if (password === null && !ctx.host.dev) return "cheats are disabled on this server";
         const guesses = ctx.host.game.sessions.cheatGuesses;
         const who = c.conn.address ?? c.name;
@@ -123,7 +125,7 @@ export function addCoreCommands(con: Console): void {
           return WRONG_PASSWORD;
         }
         guesses.right(who);
-        admit(ctx.host.bus, c);
+        raise(ctx.host.bus, c, top, true);
         return "cheats enabled";
       },
     },
