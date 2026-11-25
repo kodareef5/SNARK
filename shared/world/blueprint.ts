@@ -74,7 +74,7 @@ export interface Blueprint {
   readonly pieces: readonly BlueprintPiece[];
 }
 
-/** The form rows by name: content's FORMS, and PLANNED_FORMS where they may be built. */
+/** The form rows by name: content's ALL_FORMS, or those of them a caller builds. */
 export type BlueprintForms = Readonly<Record<string, FormSlot>>;
 
 export type BlueprintFault =

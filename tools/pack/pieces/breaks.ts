@@ -3,9 +3,9 @@
 // texture coordinates and its flat colour from the piece's nearest face that lies in its plane, so a fragment leaves
 // wearing the boards or stones it showed; a face cut through the piece is mapped square to its plane at the same scale.
 
-import { PLACED_FORMS } from "../../../content/building.ts";
+import { TIER_FORMS } from "../../../content/building.ts";
 import { pieceBreak } from "../../../content/building/breaks.ts";
-import { LIVE_FORMS } from "../../../content/building/forms.ts";
+import { FORMS } from "../../../content/building/forms.ts";
 import { MATERIAL_CUTOUT, setTexture, textureOf, type PackMaterial, type PackTexture } from "../../../shared/pack/pack.ts";
 import { TEXTURE_ROLES } from "../../../shared/pack/texture.ts";
 import { hullOf } from "../../../shared/world/convex.ts";
@@ -138,8 +138,8 @@ export function breakMesh(mesh: SourceMesh, form: FormDef, tier: string): Source
 
 /** `meshes` with the break of each piece `tier` places after them, where its pack draws the piece with materials. */
 export function withBreaks(tier: string, meshes: SourceMesh[]): SourceMesh[] {
-  const out = [...meshes], forms: Readonly<Record<string, FormDef>> = LIVE_FORMS;
-  for (const name of PLACED_FORMS[tier] ?? []) {
+  const out = [...meshes], forms: Readonly<Record<string, FormDef>> = FORMS;
+  for (const name of TIER_FORMS[tier] ?? []) {
     const mesh = meshes.find((m) => m.id === `core:${name}_${tier}`);
     const made = mesh ? breakMesh(mesh, forms[name]!, tier) : null;
     if (made) out.push(made);

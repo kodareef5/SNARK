@@ -4,13 +4,13 @@
 
 import { expect, test } from "bun:test";
 import { FIT_CLASS_SHIFT, FIT_TRIANGLE, FrameTable, PIECE_FIT_AT, PIECE_FRAMED, PIECE_STATE_AT, PIECE_YIELD, PieceFit, pieceWord } from "../../client/core/render/piece-fit.ts";
-import { PLANNED_FORMS } from "../../content/building/forms.ts";
+import { FORMS as ROWS } from "../../content/building/forms.ts";
 import { INSTANCE_BYTES } from "../../shared/pack/pack.ts";
 import { STONE } from "../../tools/pack/pieces/stone.ts";
 import { tierShapes } from "../../tools/pack/pieces/tier.ts";
 import { WOOD } from "../../tools/pack/pieces/wood.ts";
 
-const FORMS = { triangle_ceiling: PLANNED_FORMS.triangle_ceiling, triangle_roof: PLANNED_FORMS.triangle_roof, triangle_roof_low: PLANNED_FORMS.triangle_roof_low };
+const FORMS = { triangle_ceiling: ROWS.triangle_ceiling, triangle_roof: ROWS.triangle_roof, triangle_roof_low: ROWS.triangle_roof_low };
 const ROOT3_2 = Math.sqrt(3) / 2, H = 3 * ROOT3_2, BAND = PIECE_YIELD;
 /** How far inside each side a point of a triangle's own frame is: the side along its second axis, the far side, the side along its first. */
 const inside = (x: number, z: number): [number, number, number] => [ROOT3_2 * x - 0.5 * z, H - (ROOT3_2 * x - 0.5 * z) - z, z];

@@ -16,7 +16,7 @@
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { FORMS, PLANNED_FORMS } from "../../content/building/forms.ts";
+import { ALL_FORMS, FIRST_FORMS } from "../../content/building/forms.ts";
 import type { FormDef } from "../../shared/world/lattice/forms.ts";
 import type { PiecesAsset } from "../art/spec.ts";
 import { SOURCE } from "../art/source.ts";
@@ -40,11 +40,11 @@ let TIER = "wood";
 let POSTS = false;
 /** The tiers whose recipes the tier's own bake makes the forms from. Thatch bakes its own. */
 const RECIPES: Readonly<Record<string, TierRecipe>> = { wood: WOOD, stone: STONE };
-const ALL: Readonly<Record<string, FormDef>> = { ...FORMS, ...PLANNED_FORMS };
+const ALL: Readonly<Record<string, FormDef>> = ALL_FORMS;
 /** The forms a tier is made in where that is not all of them, the first nine and the rest. */
 const MADE: Readonly<Record<string, readonly [readonly string[], readonly string[]]>> = { thatch: [THATCH_FORMS, THATCH_PLANNED] };
-const firstOf = (): string[] => MADE[TIER]?.[0].slice() ?? Object.keys(FORMS);
-const plannedOf = (): string[] => MADE[TIER]?.[1].slice() ?? Object.keys(PLANNED_FORMS);
+const firstOf = (): string[] => MADE[TIER]?.[0].slice() ?? Object.keys(FIRST_FORMS);
+const plannedOf = (): string[] => MADE[TIER]?.[1].slice() ?? Object.keys(ALL).filter((name) => !(name in FIRST_FORMS));
 /** Metres on medium at which a made piece's levels begin, and pixels a metre is a metre off at 1,080 rows. */
 const LEVEL_FROM = [0, 19, 60, 147, 386] as const;
 const PIXELS = 935;

@@ -4,7 +4,7 @@
 import { crafting, making } from "./craft.ts";
 import { shapeHalf, type Def, type ShapeBox, type ShapeDef, type StructureDef } from "../shared/content/defs.ts";
 import { outlineBox, type FormDef } from "../shared/world/lattice/forms.ts";
-import { FORMS, LIVE_FORMS, boxed, formBoxes, formHulls } from "./building/forms.ts";
+import { FORMS, boxed, formBoxes, formHulls } from "./building/forms.ts";
 
 const box = (x: number, y: number, z: number, hx: number, hy: number, hz: number): ShapeBox => ({ at: [x, y, z], half: [hx, hy, hz] });
 
@@ -32,15 +32,15 @@ const ROLES: { readonly [name: string]: Role } = {
   fence_foundation: "foundation", trapdoor_frame: "ceiling", trapdoor: "door", trapdoor_open: "door", ladder: "door",
   double_doorway: "wall", double_door: "door", double_door_open: "door", large_wall: "wall", gateway: "wall", gate: "door", gate_open: "door",
 };
-const LIVE: { readonly [name: string]: FormDef } = LIVE_FORMS;
+const ROWS: { readonly [name: string]: FormDef } = FORMS;
 
 /** A leaf and the form it has stood open. Using one swaps its row's kind for the other. */
 const OPENS: { readonly [name: string]: string } = { door: "door_open", trapdoor: "trapdoor_open", double_door: "double_door_open", gate: "gate_open" };
 const SHUTS: { readonly [name: string]: string } = Object.fromEntries(Object.entries(OPENS).map(([shut, open]) => [open, shut]));
 
 /** A rectangle's collider is boxes, and a slope's or a triangle's is convex parts. */
-const SHAPES: readonly ShapeDef[] = Object.keys(LIVE).map((name) => {
-  const form = LIVE[name]!;
+const SHAPES: readonly ShapeDef[] = Object.keys(ROWS).map((name) => {
+  const form = ROWS[name]!;
   const solid = boxed(form) ? { boxes: formBoxes(form) } : { boxes: [], hulls: formHulls(form) };
   return { type: "shape", id: `core:shape_${name}`, role: ROLES[name]!, ...solid, ...(form.takes === "door" ? { doorway: true } : {}), form };
 });
@@ -80,9 +80,9 @@ const TIERS: readonly Tier[] = [
   { name: "metal", color: 90, hp: FULL, made: "plate" },
 ];
 /** The forms a tier is made in: those it has a health for that content places. */
-const formsOf = (tier: Tier): string[] => Object.keys(tier.hp).filter((name) => name in LIVE);
+const formsOf = (tier: Tier): string[] => Object.keys(tier.hp).filter((name) => name in ROWS);
 /** The forms each tier places, by the name of its shape: an open leaf beside the one it opens from. */
-export const PLACED_FORMS: Readonly<Record<string, readonly string[]>> = Object.fromEntries(TIERS.map((t) => [t.name, formsOf(t).flatMap((name) => (name in OPENS ? [name, OPENS[name]!] : [name]))]));
+export const TIER_FORMS: Readonly<Record<string, readonly string[]>> = Object.fromEntries(TIERS.map((t) => [t.name, formsOf(t).flatMap((name) => (name in OPENS ? [name, OPENS[name]!] : [name]))]));
 
 function piece(tier: Tier, name: string): StructureDef {
   const form = SHAPES.find((s) => s.id === `core:shape_${name}`)!;
@@ -295,7 +295,7 @@ const ITEM_FORMS: { readonly [item: string]: readonly string[] } = {
 /** An item, its recipe and its engram, where the material is made in any of its forms. */
 function kit(tier: Tier, name: string): Def[] {
   const m = MAKING[tier.name]!;
-  const forms = (ITEM_FORMS[name] ?? [name]).filter((f) => f in tier.hp && f in LIVE);
+  const forms = (ITEM_FORMS[name] ?? [name]).filter((f) => f in tier.hp && f in ROWS);
   if (forms.length === 0) return [];
   const item = `core:piece_${name}_${tier.name}`;
   const label = `${m.label} ${name.replaceAll("_", " ")}`;

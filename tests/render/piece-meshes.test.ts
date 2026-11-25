@@ -2,7 +2,7 @@
 // own numbers, so it must lie in the form's collider, carry the ring it yields at, and keep to the piece budget.
 
 import { expect, test } from "bun:test";
-import { ALL_FORMS, FORMS, PLANNED_FORMS } from "../../content/building/forms.ts";
+import { ALL_FORMS, FIRST_FORMS, FORMS } from "../../content/building/forms.ts";
 import { MADE_PIECE_TRIANGLES, TRIM_TRIANGLES, measureSurface } from "../../tools/art/check.ts";
 import { Carved, Shape, clip, dot, planeAt, slice, type Vec } from "../../tools/pack/pieces/kit.ts";
 import { TEXTURED, colliderBox, levelsOf, planOf, yieldPlanes, yieldSlants } from "../../tools/pack/pieces/lod.ts";
@@ -21,7 +21,7 @@ const PROUD = 0.04;
 /** A door's pull and hinges stand further off its face. */
 const PROUD_LEAF = 0.05;
 
-const levels = Object.entries(FORMS).map(([name, form]) => ({ name, form, shapes: levelsOf(WOOD, name, form) }));
+const levels = Object.entries(FIRST_FORMS).map(([name, form]) => ({ name, form, shapes: levelsOf(WOOD, name, form) }));
 
 test("every level of every wood piece lies within its collider and the margin its kind is given", () => {
   for (const { name, form, shapes } of levels) {
@@ -58,7 +58,7 @@ test("a textured level of a piece that yields has a ring of vertices on each yie
 });
 
 test("every wood level is closed, looks outward and costs no more than a made piece may from its distance", () => {
-  for (const mesh of tierShapes(WOOD, FORMS)) {
+  for (const mesh of tierShapes(WOOD, FIRST_FORMS)) {
     mesh.lods.forEach((lod, level) => {
       const s = measureSurface(lod);
       expect([mesh.id, level, s.holes, s.flipped, s.insideOut]).toEqual([mesh.id, level, 0, 0, 0]);
@@ -68,7 +68,7 @@ test("every wood level is closed, looks outward and costs no more than a made pi
 });
 
 test("a recipe makes the same mesh each time it is asked", () => {
-  const [a, b] = [tierShapes(WOOD, FORMS), tierShapes(WOOD, FORMS)];
+  const [a, b] = [tierShapes(WOOD, FIRST_FORMS), tierShapes(WOOD, FIRST_FORMS)];
   expect(a.map((m) => m.lods.map((l) => Bun.hash(l.positions)))).toEqual(b.map((m) => m.lods.map((l) => Bun.hash(l.positions))));
 });
 
@@ -81,7 +81,7 @@ const METAL_PROUD_LEAF = 0.045;
 /** What metal aims at under the made piece's budget, by form and level: flat plate is cheap. */
 const METAL_MOST: Record<string, readonly number[]> = { wall: [1300, 420, 96, 12], doorframe: [1500, 520, 140, 40, 12], windowframe: [1500, 520, 140, 40, 12], foundation: [900, 300, 48, 12], ceiling: [900, 260, 64, 12], pillar: [600, 200, 48, 12], door: [900, 300, 64, 12], door_open: [900, 300, 64, 12], stairs: [1400, 480, 124, 30, 12] };
 
-const metalLevels = Object.entries(FORMS).map(([name, form]) => ({ name, form, shapes: levelsOf(METAL, name, form) }));
+const metalLevels = Object.entries(FIRST_FORMS).map(([name, form]) => ({ name, form, shapes: levelsOf(METAL, name, form) }));
 
 test("every metal level lies in its collider but for its nuts and a door's fittings", () => {
   for (const { name, form, shapes } of metalLevels) {
@@ -126,7 +126,7 @@ test("a metal wall ends flat on its collider's ends at every level", () => {
 });
 
 test("every metal level is closed, flat and within what metal aims at", () => {
-  for (const mesh of bakeMetal(FORMS)) {
+  for (const mesh of bakeMetal(FIRST_FORMS)) {
     const aim = METAL_MOST[mesh.id.slice(5, -6)]!;
     expect(mesh.lods.length, mesh.id).toBe(aim.length);
     mesh.lods.forEach((lod, level) => {
@@ -144,7 +144,7 @@ test("a metal piece is two-toned: plate in its own colour, frame and trim a fixe
   // The plate's own colour is the tier's, a lighter steel grey than the slate.
   const tier = CORE_CONTENT.find((d) => d.id === "core:wall_metal");
   expect(tier?.type === "structure" && tier.color).toBe(90);
-  for (const mesh of bakeMetal(FORMS)) {
+  for (const mesh of bakeMetal(FIRST_FORMS)) {
     // To the level its frame is drawn at; past it a slab or a pillar is a box of one of the two.
     mesh.lods.slice(0, 3).forEach((lod, level) => {
       const used = new Set(lod.colors);
@@ -160,12 +160,12 @@ test("a metal piece is two-toned: plate in its own colour, frame and trim a fixe
       }
     }
   }
-  const wall = bakeMetal(FORMS).find((m) => m.id === "core:wall_metal")!.lods[0]!;
+  const wall = bakeMetal(FIRST_FORMS).find((m) => m.id === "core:wall_metal")!.lods[0]!;
   expect(wall.bones!.some((b) => (b & (FACE_WEARS | FACE_PLAIN)) === FACE_WEARS)).toBe(true);
 });
 
 test("the metal recipe makes the same mesh each time it is asked", () => {
-  const [a, b] = [bakeMetal(FORMS), bakeMetal(FORMS)];
+  const [a, b] = [bakeMetal(FIRST_FORMS), bakeMetal(FIRST_FORMS)];
   expect(a.map((m) => m.lods.map((l) => [Bun.hash(l.positions), Bun.hash(l.bones ?? new Uint8Array(0))]))).toEqual(b.map((m) => m.lods.map((l) => [Bun.hash(l.positions), Bun.hash(l.bones ?? new Uint8Array(0))])));
 });
 
@@ -176,7 +176,7 @@ const STONE_PROUD = 0.04;
 /** A window's oak sill stands further out of the wall's face. */
 const STONE_SILL = 0.05;
 
-const stone = Object.entries(FORMS).map(([name, form]) => ({ name, form, shapes: levelsOf(STONE, name, form) }));
+const stone = Object.entries(FIRST_FORMS).map(([name, form]) => ({ name, form, shapes: levelsOf(STONE, name, form) }));
 
 test("every level of every stone piece lies within its collider and its margin, and a wall ends at its box", () => {
   for (const { name, form, shapes } of stone) {
@@ -212,7 +212,7 @@ test("a textured stone level that yields has corners on each yield ring, and onl
 });
 
 test("every stone level is closed, looks outward and costs no more than a made piece may from its distance", () => {
-  for (const mesh of tierShapes(STONE, FORMS)) {
+  for (const mesh of tierShapes(STONE, FIRST_FORMS)) {
     mesh.lods.forEach((lod, level) => {
       const s = measureSurface(lod);
       expect([mesh.id, level, s.holes, s.flipped, s.insideOut]).toEqual([mesh.id, level, 0, 0, 0]);
@@ -222,7 +222,7 @@ test("every stone level is closed, looks outward and costs no more than a made p
 });
 
 test("the stone recipe makes the same mesh each time it is asked", () => {
-  const [a, b] = [tierShapes(STONE, FORMS), tierShapes(STONE, FORMS)];
+  const [a, b] = [tierShapes(STONE, FIRST_FORMS), tierShapes(STONE, FIRST_FORMS)];
   expect(a.map((m) => m.lods.map((l) => Bun.hash(l.positions)))).toEqual(b.map((m) => m.lods.map((l) => Bun.hash(l.positions))));
 });
 
@@ -334,7 +334,9 @@ test("the thatch recipe makes the same mesh each time it is asked", () => {
 
 // The forms past the first nine, in wood, and wood's trims. Another tier holds its own to the same.
 
-const PLANNED: Record<string, FormDef> = PLANNED_FORMS;
+/** The rows past the first nine, bar the open leaves and the double door, whose budgets are apart below. */
+const LEAVES = ["trapdoor_open", "double_door", "double_door_open", "gate_open"];
+const PLANNED: Record<string, FormDef> = Object.fromEntries(Object.entries(ALL_FORMS).filter(([name]) => !(name in FIRST_FORMS) && !LEAVES.includes(name)));
 const planned = Object.entries(PLANNED).map(([name, form]) => ({ name, form, shapes: levelsOf(WOOD, name, form) }));
 const isRoof = (form: FormDef): boolean => form.corner !== undefined && form.span === 0;
 /** A roof's lowest course runs out 0.30 m past a low side, measured level. Its eave board stands 0.065 m over its plane, and a hip's roll climbs at its high corner to the height of a ridge's capping, 0.13 m over the faces that fall away beside it. */
@@ -438,7 +440,7 @@ test("a textured level of a new wood form that yields has a ring on each plane i
 
 test("every new wood level is closed, looks outward and costs no more than a made piece may or than it did", () => {
   const meshes = tierShapes(WOOD, PLANNED);
-  expect(tierShapes(WOOD, { ...FORMS, ...PLANNED }).length).toBe(34);
+  expect(tierShapes(WOOD, { ...FIRST_FORMS, ...PLANNED }).length).toBe(34);
   for (const mesh of meshes) {
     const most = WOOD_NEW_MOST[mesh.id.slice(5, -5)]!;
     expect(mesh.lods.length, mesh.id).toBe(most.length);
@@ -497,7 +499,7 @@ test("a sloped wall's two hands are each other in a mirror, point for point", ()
 
 test("with no strips, every wood wall ends flat on its collider's ends at every level", () => {
   // The joints stand where the strips did (tools/pack/pieces/wood.ts).
-  for (const [name, form] of Object.entries({ ...FORMS, ...PLANNED } as Record<string, FormDef>)) {
+  for (const [name, form] of Object.entries({ ...FIRST_FORMS, ...PLANNED } as Record<string, FormDef>)) {
     if (form.layer !== "wall") continue;
     const box = colliderBox(form);
     levelsOf(WOOD, name, form).forEach((shape, level) => {
@@ -728,7 +730,7 @@ test("with no post of its own, every thatch wall ends on its collider's ends, an
   }
   // Nothing else of the tier changes with the posts.
   for (const name of ["foundation", "ceiling", "door", "door_open", "roof", "roof_hip", "roof_valley", "railing"]) {
-    const form = (name in FORMS ? (FORMS as Record<string, FormDef>)[name] : THATCH_NEW[name])!;
+    const form = (name in FIRST_FORMS ? (FIRST_FORMS as Record<string, FormDef>)[name] : THATCH_NEW[name])!;
     expect(levelsOf(THATCH_POSTED, name, form).map((shape) => Bun.hash(Float64Array.from(shape.corners().flat()))), name).toEqual(levelsOf(THATCH, name, form).map((shape) => Bun.hash(Float64Array.from(shape.corners().flat()))));
   }
 });
@@ -790,7 +792,7 @@ test("with no eaves of its own, a thatch ceiling ends on its sides but for its j
   });
   expect(bare.map((shape) => shape.triangles)).toEqual([616, 108, 60, 12]);
   for (const name of ["foundation", "wall", "doorframe", "door", "door_open"]) {
-    const form = (FORMS as Record<string, FormDef>)[name]!;
+    const form = (FIRST_FORMS as Record<string, FormDef>)[name]!;
     expect(levelsOf(THATCH_EAVED, name, form).map((shape) => Bun.hash(Float64Array.from(shape.corners().flat()))), name).toEqual(levelsOf(THATCH, name, form).map((shape) => Bun.hash(Float64Array.from(shape.corners().flat()))));
   }
 });
@@ -932,7 +934,7 @@ test("a textured level of a new stone form that yields has a ring on each plane 
 
 test("every new stone level is closed, looks outward and costs no more than a made piece may or than it did", () => {
   const meshes = tierShapes(STONE, PLANNED);
-  expect(tierShapes(STONE, { ...FORMS, ...PLANNED }).length).toBe(Object.keys(FORMS).length + Object.keys(PLANNED).length);
+  expect(tierShapes(STONE, { ...FIRST_FORMS, ...PLANNED }).length).toBe(Object.keys(FIRST_FORMS).length + Object.keys(PLANNED).length);
   for (const mesh of meshes) {
     const most = STONE_NEW_MOST[mesh.id.slice(5, -6)]!;
     expect(mesh.lods.length, mesh.id).toBe(most.length);
@@ -988,7 +990,7 @@ test("a stone gable's two hands are each other in a mirror, point for point", ()
 });
 
 test("every stone wall, old and new, ends flat on its collider's ends at every level", () => {
-  for (const [name, form] of Object.entries({ ...FORMS, ...PLANNED } as Record<string, FormDef>)) {
+  for (const [name, form] of Object.entries({ ...FIRST_FORMS, ...PLANNED } as Record<string, FormDef>)) {
     if (form.layer !== "wall") continue;
     const box = colliderBox(form);
     levelsOf(STONE, name, form).forEach((shape, level) => {
@@ -1265,9 +1267,9 @@ test("no face of a near level of a new metal form crosses a ring it yields at bu
 });
 
 test("every new metal level is closed, flat, in the made piece's budget and no dearer than it was or than its like", () => {
-  const first = new Map(bakeMetal(FORMS).map((m) => [m.id.slice(5, -6), m.lods.map((lod) => lod.indices.length / 3)] as const));
+  const first = new Map(bakeMetal(FIRST_FORMS).map((m) => [m.id.slice(5, -6), m.lods.map((lod) => lod.indices.length / 3)] as const));
   const meshes = bakeMetal(PLANNED);
-  expect(bakeMetal({ ...FORMS, ...PLANNED }, true).length).toBe(41);
+  expect(bakeMetal({ ...FIRST_FORMS, ...PLANNED }, true).length).toBe(41);
   for (const mesh of meshes) {
     const name = mesh.id.slice(5, -6);
     const most = METAL_NEW_MOST[name]!, like = first.get(METAL_LIKE[name] ?? ""), spare = METAL_OVER[name];

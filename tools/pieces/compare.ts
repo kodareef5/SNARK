@@ -10,7 +10,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tierOf } from "../../client/core/assets/tiers.ts";
-import { FORMS } from "../../content/building/forms.ts";
+import { FIRST_FORMS, FORMS } from "../../content/building/forms.ts";
 import { parsePack, type Pack } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
 import { SOURCE } from "../art/source.ts";
@@ -81,7 +81,7 @@ interface Made {
 
 const MADE: Readonly<Record<string, Made>> = {
   wood: {
-    recipe: WOOD, forms: FORMS,
+    recipe: WOOD, forms: FIRST_FORMS,
     // A wall's corner and boards, a floor from standing height, a doorway's head.
     close: [
       ["wall", [1.05, 0.9, 0.1], 0.62, 30, 8], ["wall", [-0.7, -1.2, 0.1], 0.5, -20, 20], ["doorframe", [0.6, 0.85, 0.1], 0.6, 25, -10], ["windowframe", [0, 0.1, 0.1], 0.75, 20, 10],
@@ -89,7 +89,7 @@ const MADE: Readonly<Record<string, Made>> = {
     ],
   },
   stone: {
-    recipe: STONE, forms: FORMS,
+    recipe: STONE, forms: FIRST_FORMS,
     // A wall's corner, its stones and its end, a doorway's head, a floor, the stairs' flank.
     close: [
       ["wall", [0.9, 0.9, 0.1], 0.62, 30, 8], ["wall", [-0.6, -0.9, 0.1], 0.5, -62, 12], ["wall", [0.2, 0.1, 0.1], 0.5, 76, 4], ["doorframe", [0.6, 0.85, 0.1], 0.6, 25, -10], ["windowframe", [0.2, 0.1, 0.1], 0.75, 20, 10], ["windowframe", [-0.75, 0.1, 0.1], 0.4, -35, 5],

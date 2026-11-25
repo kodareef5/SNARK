@@ -2,7 +2,7 @@
 // through, leave an outside corner open or lay two faces in one plane more than it did (tools/pieces/joints.ts).
 
 import { expect } from "bun:test";
-import { FORMS } from "../../content/building/forms.ts";
+import { FIRST_FORMS, FORMS } from "../../content/building/forms.ts";
 import { COARSE, COARSE_VIEWS, COUNTS, JointBench, SIDE, fightsOf, piecesPack, tierMeshes } from "../../tools/pieces/joints.ts";
 import { JUNCTIONS, TIERS, mixedWith, type Junction, type TierName, type WallEnd } from "../../tools/pieces/layout.ts";
 import { STONE } from "../../tools/pack/pieces/stone.ts";
@@ -84,10 +84,10 @@ function keyedCounts(pack: JointBench["pack"], tier: TierName): Map<string, numb
 let recipes: JointBench["pack"] | null = null;
 const recipePack = (): JointBench["pack"] =>
   (recipes ??= piecesPack([
-    ...tierShapes(WOOD, FORMS), ...trimShapes(WOOD),
-    ...tierShapes(STONE, FORMS), ...trimShapes(STONE),
+    ...tierShapes(WOOD, FIRST_FORMS), ...trimShapes(WOOD),
+    ...tierShapes(STONE, FIRST_FORMS), ...trimShapes(STONE),
     ...tierShapes(THATCH, Object.fromEntries(THATCH_FORMS.map((name) => [name, FORMS[name]]))), ...trimShapes(THATCH),
-    ...bakeMetal(FORMS, true),
+    ...bakeMetal(FIRST_FORMS, true),
   ]));
 
 for (const tier of TIERS) {
@@ -114,7 +114,7 @@ const JOINTED: readonly (readonly [name: string, joint: string, ways: readonly (
 for (const [recipe, what] of [[WOOD, "with no strips"], [WOOD_STRIPS, "with its strips, which the joints fold away"]] as const) {
   test(`wood ${what} and its own joints closes every corner, square or not`, () => {
     // The recipe's walls and trims as the client lays and fits them (client/core/render/trims.ts).
-    const pack = piecesPack([...tierMeshes(["thatch", "stone"]), ...tierShapes(recipe, FORMS), ...trimShapes(recipe)]);
+    const pack = piecesPack([...tierMeshes(["thatch", "stone"]), ...tierShapes(recipe, FIRST_FORMS), ...trimShapes(recipe)]);
     const laid: Junction[] = [];
     const bench = new JointBench(pack, [], SIDE, (structs, reg) => {
       JOINTED.forEach(([name, , ways], k) => {
@@ -201,7 +201,7 @@ const STONE_JOINTED: readonly (readonly [name: string, joint: string | null, way
 
 test("stone and its own joints closes every corner, square or not, and a straight run is as it was", () => {
   // The recipe's walls and trims as the client lays and fits them (client/core/render/trims.ts).
-  const pack = piecesPack([...tierMeshes(["thatch", "wood"]), ...tierShapes(STONE, FORMS), ...trimShapes(STONE)]);
+  const pack = piecesPack([...tierMeshes(["thatch", "wood"]), ...tierShapes(STONE, FIRST_FORMS), ...trimShapes(STONE)]);
   const laid: Junction[] = [];
   const bench = new JointBench(pack, [], SIDE, (structs, reg) => {
     STONE_JOINTED.forEach(([name, , ways], k) => {
@@ -253,7 +253,7 @@ const METAL_JOINTS: readonly (readonly [name: string, joint: string | null, ways
 ];
 
 test("metal and its own joints closes every corner, square or not, and a straight run is as it was", () => {
-  const pack = piecesPack([...tierMeshes(), ...bakeMetal(FORMS, true)]);
+  const pack = piecesPack([...tierMeshes(), ...bakeMetal(FIRST_FORMS, true)]);
   const laid: Junction[] = [];
   const bench = new JointBench(pack, [], SIDE, (structs, reg) => {
     METAL_JOINTS.forEach(([name, , ways], k) => {
@@ -286,7 +286,6 @@ test("metal and its own joints closes every corner, square or not, and a straigh
 
 // The shapes past the first nine, with each tier's own trims as the client lays and fits them.
 
-import { PLANNED_FORMS } from "../../content/building/forms.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import type { Frame } from "../../shared/world/lattice/frames.ts";
 import { CLS_EDGE, CLS_SQUARE, CLS_TRIANGLE } from "../../shared/world/lattice/module.ts";
@@ -470,7 +469,7 @@ const SHAPED_FIGHTS: Record<string, Record<string, readonly [number, number]>> =
 };
 
 /** The forms SHAPED sets down, as a tier's recipe makes them. */
-const SHAPED_FORMS = { ...FORMS, ...Object.fromEntries(["half_wall", "railing", "beam", "fence_foundation", "double_doorway", "large_wall", "roof", "sloped_wall_left", "sloped_wall_right", "triangle_foundation"].map((name) => [name, PLANNED_FORMS[name as keyof typeof PLANNED_FORMS]])) };
+const SHAPED_FORMS = { ...FIRST_FORMS, ...Object.fromEntries(["half_wall", "railing", "beam", "fence_foundation", "double_doorway", "large_wall", "roof", "sloped_wall_left", "sloped_wall_right", "triangle_foundation"].map((name) => [name, FORMS[name as keyof typeof FORMS]])) };
 
 function shaped(tier: TierName, art: readonly SourceMesh[]): number {
   const pack = piecesPack(art);
