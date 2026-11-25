@@ -37,6 +37,7 @@ import { farMeshId } from "../shared/pack/far.ts";
 import { BEAM_MESH, MISSING_MESH, WATER_MESH, buildCorePack, importedMeshes } from "./pack/build.ts";
 import { writeTextures, type TextureSource } from "./pack/encode.ts";
 import { landmarkArt, landmarkPack } from "./pack/far.ts";
+import { copyStarterClips } from "./video/starter.ts";
 import { gameIcons } from "./pack/icons.ts";
 import { partHash } from "./pack/manifest.ts";
 import { orderPack } from "./pack/order.ts";
@@ -177,6 +178,8 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
     // The lab goes beside the files it plays: assets/music/listen.html on the dev server.
     cpSync(music, join(dist, "assets/music"), { recursive: true, filter: (f) => statSync(f).isDirectory() || (/\.(opus|json|js|html)$/.test(f) && !f.slice(music.length).includes(`${sep}sound${sep}`)) });
   }
+  const starter = copyStarterClips(join(root, "assets/source/core/video/clips"), dist);
+  console.log(`video        ${starter ? `${starter} starter clips in media/` : "no starter clips: the art is not installed"}`);
   const { registry, errors } = compileContent(CORE_CONTENT);
   if (!registry) throw new Error(`Content cannot be built:\n${errors.join("\n")}`);
   const core = orderPack(buildCorePack([...importedMeshes(), ...(opts.stress ? stressMeshes() : [])]));
