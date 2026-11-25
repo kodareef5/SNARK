@@ -15,7 +15,7 @@ import { CHOOSE_DIED, RESULT_DENIED, SESSION_ALIVE, SESSION_CREATING, SESSION_DE
 import { KEY_TRAVEL_BUTTON, type TravelScreen } from "../../client/core/ui/travel.ts";
 import { Ui } from "../../client/core/ui/ui.ts";
 import { K_BUTTON, K_INPUT, K_SLIDER, baseKey } from "../../client/core/ui/nodes.ts";
-import { KEY_SETTINGS_PARTS, KEY_SETTINGS_TAB, SETTING_GROUPS } from "../../client/core/ui/settings.ts";
+import { KEY_SETTINGS_PARTS, KEY_SETTINGS_TAB, SETTING_GROUPS, type SettingsTab } from "../../client/core/ui/settings.ts";
 import { INPUT_SETTINGS } from "../../client/core/ui/settings-input.ts";
 import { Chart } from "../../client/core/tactical.ts";
 import { KEY_MAP_IMAGE, type MapScreen } from "../../client/core/ui/screens.ts";
@@ -385,4 +385,38 @@ test("the settings page's Input tab is a part: its slider moves by pointer, valu
   ui.input(slider.key, ".9");
   ui.key("ArrowRight", true, false, null);
   expect([ui.settings.tab, ui.settings.sensitivity]).toEqual([0, 1.7]);
+});
+
+test("a field on a settings tab of another file types: the menu lets its keys through and the edit reaches the part", () => {
+  const ui = new Ui(), hud = new HudModel(), menu = ui.screen<MenuScreen>("menu");
+  const heard: string[] = [];
+  const part: ScreenPart = {
+    name: "names",
+    label: "Names",
+    build(f, at, k) {
+      f.add(k.key(1), K_INPUT, at.x, at.y, 200, 30, S_BUTTON).interactive = true;
+    },
+    text(local, value) {
+      heard.push(`${local}: ${value}`);
+      return true;
+    },
+  };
+  const groups = SETTING_GROUPS as SettingsTab[];
+  groups.push({ name: "Names", rows: [], part });
+  try {
+    menu.menu = menu.options = true;
+    ui.settings.tab = groups.length - 1;
+    ui.build(16 / 9, hud, null);
+    const field = ui.frame.nodes.slice(0, ui.frame.count).find((n) => n.kind === K_INPUT)!;
+    ui.pointer(0, field.key, field.x, field.y, 0, null);
+    ui.build(16 / 9, hud, null);
+    expect(["KeyR", "Space", "ArrowLeft", "Backspace"].map((code) => ui.key(code, true, false, null))).toEqual([false, false, false, false]);
+    ui.input(field.key, "r");
+    expect(heard).toEqual(["1: r"]);
+    // Escape still leaves the page.
+    expect(ui.key("Escape", true, false, null)).toBe(true);
+    expect(menu.options).toBe(false);
+  } finally {
+    groups.pop();
+  }
 });
