@@ -367,7 +367,7 @@ export function madeShift(r: MaterialRecipe): [number, number] {
  */
 export const madeFar = (r: MaterialRecipe): number => Math.min(r.metres, 4 * Math.min(r.course ? r.course.size[1] : Infinity, r.rib ? r.rib.pitch : Infinity));
 
-export let fieldRelief = 0.5;
+export let fieldRelief = 0.5, fieldConductor = 0;
 
 /**
  * Material `k` made from a recipe (content/texgen/materials.ts, from 1) on finish `id` at world point (x, y, z) of a
@@ -408,6 +408,7 @@ function made(k: number, id: number, axis: number, x: number, y: number, z: numb
   maps.patch = patch;
   if (piece) maps.base[3] = 1 / f.palette;
   fieldRelief = 0.5;
+  fieldConductor = 0;
   if (t <= 0) return;
   const layer = slots[(k - 1) * MADE_FLOATS]!, shift = r.shift;
   const second = piece ? 0 : clamp((surfaceNoise((wu * WORLD_PATCH) / m + 5.3, (wv * WORLD_PATCH) / m + 1.7) - 0.35) / 0.3);
@@ -465,6 +466,7 @@ function made(k: number, id: number, axis: number, x: number, y: number, z: numb
   scales.bump += (1 - scales.bump) * t;
   if (piece && k === TEK_FIELD) {
     fieldRelief = maps.mro[3]!;
+    fieldConductor = madeBase[3]! * t;
     maps.base[3] = 1 / f.palette;
     scales.height = r.relief;
     return;
@@ -1376,7 +1378,7 @@ int worldMade = 0;
 vec3 worldOwn = vec3(0.0);
 vec2 worldTurn = vec2(1.0, 0.0);
 int worldPiece = 0;
-float fieldRelief = 0.5;
+float fieldRelief = 0.5, fieldConductor = 0.0;
 vec3 ownOf(vec3 v) { return vec3(worldTurn.x * v.x - worldTurn.y * v.z, v.y, worldTurn.y * v.x + worldTurn.x * v.z); }
 // A piece's face as its weathering takes it: the piece's own axis nearest its normal, in the world, the same at every pixel of it.
 vec3 ownFace(vec3 n) {
@@ -1471,6 +1473,7 @@ bool made(int k, int id, inout int axis, vec3 face, vec3 rel, vec3 dpx, vec3 dpy
   if (uprightStock) bump = bump.yx;
   if (own && k == ${TEK_FIELD}) {
     fieldRelief = mro.a;
+    fieldConductor = b.a * t;
     base.a = 1.0 / WT[id].w;
     scales = vec3(mix(scales.xy, vec2(1.0), t), MD[k].y);
     return true;

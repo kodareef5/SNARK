@@ -109,9 +109,9 @@ export const MATERIAL_RECIPES: readonly MaterialRecipe[] = [
     rivet: { pitch: 0.108, inset: 0.052, radius: 0.012, height: 0.5, streak: 0.35, run: 0.35, rust: 0.3, wear: 0.3, foot: 0.12, bare: 1 },
   },
   {
-    name: "tek_field", metres: 3, seed: 97, level: 0.49, relief: 10, rough: 0.39, hollow: 0.52, dye: 1, shade: 0.30, mottle: 0.035, means: [1.06, 1, 0.34],
+    name: "tek_field", metres: 3, seed: 97, level: 0.49, relief: 12, rough: 0.39, hollow: 0.52, dye: 1, shade: 0.36, mottle: 0.035, means: [1.07, 0.01, 0.33],
     noise: [{ cell: [0.75, 0.375], height: 0.16, light: 0.12 }, { cell: [0.375, 0.046875], height: 0.22, light: 0.22 },
       { cell: [0.1875, 0.01171875], height: 0.14, light: 0.24 }],
-    trace: { width: 0.012, depth: 0.46, rise: 0.27, sweep: 0.12 },
+    trace: { width: 0.012, depth: 0.46, rise: 0.31, sweep: 0.12 },
   },
 ];

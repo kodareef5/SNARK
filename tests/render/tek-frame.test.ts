@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { TEK_WALL } from "../../content/building/tek-wall.ts";
-import { frameSpill, tekFrameSurface, tekRailLight } from "../../client/core/render/tek-frame.ts";
+import { frameSpill, tekFinishNormal, tekFrameSurface, tekPlateSurface, tekRailLight } from "../../client/core/render/tek-frame.ts";
 import { BLOOM_FROM } from "../../client/core/render/post.ts";
 
 test("machined titanium reflects more light than the dark seal", () => {
@@ -28,4 +28,26 @@ test("the lens blooms and its reflected light stays near the rail", () => {
   expect(frameSpill(x, 0)).toEqual(frameSpill(-x, 0));
   expect(frameSpill(x, y)).toBeGreaterThan(4 * frameSpill(x, y + 0.12));
   expect(frameSpill(x + 0.025, 0)).toBeGreaterThan(4 * frameSpill(x + 0.15, 0));
+});
+
+test("rolled titanium turns the reflected sky with each upright on both faces", () => {
+  for (const sign of [-1, 1]) {
+    const front = new Float64Array([0, 0, sign]), turned = new Float64Array([sign, 0, 0]);
+    tekFinishNormal(front, 1.43, 0.2, 1, 0, false, 1);
+    tekFinishNormal(turned, 1.43, 0.2, 0, 1, false, 1);
+    expect(front[0]!).toBeGreaterThan(0.1);
+    expect(turned[2]!).toBeCloseTo(-front[0]!, 8);
+    expect(turned[0]!).toBeCloseTo(front[2]!, 8);
+    expect(Math.hypot(...turned)).toBeCloseTo(1, 8);
+  }
+});
+
+test("the plate catches a violet reflection at grazing angles", () => {
+  const silver = new Float64Array([0.06, 0.06, 0.06]), edge = silver.slice();
+  const orm = new Float64Array([1, 0.35, 0.5]);
+  tekPlateSurface(silver, orm.slice(), 0.5, 1, 0);
+  tekPlateSurface(edge, orm.slice(), 0.5, 0.12, 0.8);
+  expect(edge[0]! - silver[0]!).toBeGreaterThan(0.12);
+  expect(edge[1]).toBe(silver[1]);
+  expect(edge[2]! - silver[2]!).toBeGreaterThan(0.12);
 });

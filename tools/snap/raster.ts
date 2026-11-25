@@ -16,14 +16,14 @@ import { decodeTexture, sample, type Texture } from "../../client/core/render/cp
 import { DRY_ASPHALT, MASK_LAYER, MASK_MATERIALS, SURFACE_NAMES, surfaceIndex, surfaceMaterial } from "../../content/surfaces.ts";
 import { FACADE_COLOURS, FACADE_TIERS, KIND, ROOM_OPEN_LEAST, ROOM_OUT, facadeFarColour, facadeKind, facadeMarks, facadeOut, facadeSurface, type FacadeSample, type FacadeTier } from "../../client/core/render/facade.ts";
 import { TEK_WALL } from "../../content/building/tek-wall.ts";
-import { rippleStrength, RIPPLE_TINT } from "../../client/core/render/tek-ripple.ts";
+import { rippleOf } from "../../client/core/render/tek-ripple.ts";
 import { TEK_RAIL_COLOUR } from "../../content/building/tek-wall.ts";
-import { tekFrameSurface, tekRailLight } from "../../client/core/render/tek-frame.ts";
+import { tekFinishNormal, tekFrameSurface, tekPlateSurface, tekRailLight } from "../../client/core/render/tek-frame.ts";
 import { FIELD_PHASE, TEK_FIELD, pieceFinish, tekFieldLight } from "../../client/core/render/tek-field.ts";
 import { texgenSide } from "../../client/core/texgen/layers.ts";
 import { weatherTwin } from "../../client/core/texgen/weather.ts";
 import { TWIN_SLOTS, madeTwin } from "../../client/core/texgen/materials.ts";
-import { fieldRelief, MADE_MARK, PIECE_FIXED, PIECE_OWN, PIECE_PLAIN, PIECE_SEED, ownFace, pieceSeed, type PiecePixel, SPALL_LINEAR, SPALL_PALETTE, SPALL_RIM, SPALL_SURFACE, spalled, coatLost, GROUND_BAND, GROUND_SCALE, GROUND_WALK, ROAD_FRAME, alongOf, edgeOf, edged, groundCover, groundMeet, groundWander, higher, roadFrameAt, roadWorn, streetCover, walkMeet, walkWorn, staticPlace, weathered, worldSharp, worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
+import { fieldConductor, fieldRelief, MADE_MARK, PIECE_FIXED, PIECE_OWN, PIECE_PLAIN, PIECE_SEED, ownFace, pieceSeed, type PiecePixel, SPALL_LINEAR, SPALL_PALETTE, SPALL_RIM, SPALL_SURFACE, spalled, coatLost, GROUND_BAND, GROUND_SCALE, GROUND_WALK, ROAD_FRAME, alongOf, edgeOf, edged, groundCover, groundMeet, groundWander, higher, roadFrameAt, roadWorn, streetCover, walkMeet, walkWorn, staticPlace, weathered, worldSharp, worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
 import { STREET_CHUNKS, StreetPlanes } from "../../client/core/render/streets.ts";
 import { PAVED_VERGE, kerbOf, type StreetSectors } from "../../shared/world/streets.ts";
 import { FAR_FROM, NEAR_BODY } from "../../client/core/render/camera.ts";
@@ -484,18 +484,21 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
     facadeIO.room.fill(0);
     facadeIO.farShare = 0;
     if (facade && facade[0]! >= 0 && facadeSample && tier && p.frame[FRAME.facade + 1]! > 0.5) glass = facadeFlat(facade, nx, ny, nz, rx, ry, rz, dist, over, p.frame[FRAME.facade]!, tier, facadeSample, wear);
-    const twice = 2 * (normal[0]! * eye[0]! + normal[1]! * eye[1]! + normal[2]! * eye[2]!);
-    for (let c = 0; c < 3; c++) reflected[c] = twice * normal[c]! - eye[c]!;
     const field = !touch && made === TEK_FIELD && piece !== null && (piece[5]! & (PIECE_OWN | PIECE_FIXED)) === PIECE_OWN;
     const hardware = !touch && made === TEK_FIELD && piece !== null && (piece[5]! & PIECE_FIXED) !== 0;
     const emitter = hardware && (piece[5]! & PIECE_PLAIN) === 0;
+    const surfaceHeight = side > 0 ? fieldRelief : 0.5;
     if (field) {
-      worldOrm[1] = Math.max(0.21, Math.min(0.56, worldOrm[1]!));
-      worldOrm[2] = 0.50;
+      tekFinishNormal(normal, piece[0]!, piece[1]!, piece[3]!, piece[4]!, true, 1);
+      const facing = normal[0]! * eye[0]! + normal[1]! * eye[1]! + normal[2]! * eye[2]!;
+      tekPlateSurface(albedo, worldOrm, surfaceHeight, facing, piece[3]! * eye[0]! - piece[4]! * eye[2]!);
     } else if (hardware && !emitter) {
       for (let c = 0; c < 3; c++) tekPalette[c] = srgbToLinear((pal[colorIndex * 4 + c]! / 255) * dim);
-      tekFrameSurface(albedo, worldOrm, tekPalette, fieldRelief);
+      tekFrameSurface(albedo, worldOrm, tekPalette, surfaceHeight);
+      tekFinishNormal(normal, piece[0]!, piece[1]!, piece[3]!, piece[4]!, false, worldOrm[2]!);
     }
+    const twice = 2 * (normal[0]! * eye[0]! + normal[1]! * eye[1]! + normal[2]! * eye[2]!);
+    for (let c = 0; c < 3; c++) reflected[c] = twice * normal[c]! - eye[c]!;
     const sharp = field || glass || worldSharp(worldOrm[1]!);
     if (worldOrm[1]! >= 1) mirrored.fill(0);
     else if (!sharp) skyLight(mirrored, p.frame, reflected);
@@ -517,7 +520,7 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
     lit(light, albedo, worldOrm, normal, eye, p.frame, (sharp && !look) || worldOrm[1]! >= 1 ? NOTHING : mirrored, cast);
     if (field) {
       const facing = nx * eye[0]! + ny * eye[1]! + nz * eye[2]!;
-      tekFieldLight(light, piece[0]!, piece[1]!, (piece[5]! & 65535) >> PIECE_SEED, facing, footprint, p.frame[MADE_AT + FIELD_PHASE]!, p.frame[FRAME.exposure]!, fieldRelief);
+      tekFieldLight(light, piece[0]!, piece[1]!, (piece[5]! & 65535) >> PIECE_SEED, facing, footprint, p.frame[MADE_AT + FIELD_PHASE]!, p.frame[FRAME.exposure]!, surfaceHeight, piece[3]! * eye[0]! - piece[4]! * eye[2]!, eye[1]!, side > 0 ? fieldConductor : 0);
     } else if (hardware) {
       tekRailLight(light, piece[0]!, piece[1]!, emitter, p.frame[FRAME.exposure]!);
     }
@@ -1484,8 +1487,10 @@ export class Rasterizer {
               const v = cy * half + ((a >>> 16) / 65535 - 0.5) * TEK_WALL.height;
               const dx = u - ((b & 65535) / 65535 - 0.5) * TEK_WALL.width;
               const dy = v - ((b >>> 16) / 65535 - 0.5) * TEK_WALL.height;
-              const glow = shows * rippleStrength(u, v, dx, dy, f[o + DETAIL.floor]!);
-              for (let c = 0; c < 3; c++) this.color[at * 4 + c]! += 255 * RIPPLE_TINT[c]! * glow;
+              const pixel = Math.max(Math.hypot((right[0]! - cx) * wide, (right[1]! - cy) * half), Math.hypot((below[0]! - cx) * wide, (below[1]! - cy) * half));
+              rippleOf(shape, u, v, dx, dy, f[o + DETAIL.floor]!, pixel);
+              const keep = 1 - shows * shape[3]!;
+              for (let c = 0; c < 3; c++) this.color[at * 4 + c] = this.color[at * 4 + c]! * keep + 255 * shows * shape[c]!;
               continue;
             }
             if (flags === DETAIL_GLOW) {

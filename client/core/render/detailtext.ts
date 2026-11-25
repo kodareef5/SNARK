@@ -12,7 +12,7 @@ import { CELL } from "../../../shared/pack/details.ts";
 import { AIR } from "./atmosphere.ts";
 import { FADE_ORDER } from "./hand.ts";
 import { FIRE_BLOOMS, UNGRADED } from "./fire-light.ts";
-import { FIELD_COORDS_GLSL, RIPPLE_GLSL, RIPPLE_TINT } from "./tek-ripple.ts";
+import { FIELD_COORDS_GLSL, RIPPLE_GLSL } from "./tek-ripple.ts";
 import { DIGITS_GLSL } from "./digits.ts";
 import { DETAIL_TEK, DETAIL_DIGITS, DETAIL_GLOW, DETAIL_SCORCH, DETAIL_SMOKE, FRAME_BLOCK, GLOW_STEPS, SMOKE_STEPS, DETAIL_TIRE, DETAIL_GLASS, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_SHADED_POOL, DETAIL_WAKE, DETAIL_WIRE, MAX_CONTACTS } from "./packet.ts";
 import { POOL_ACROSS, POOL_UP, poolShadeGlsl } from "./lamp.ts";
@@ -233,11 +233,7 @@ uniform float uLight;
 out vec4 o;
 ${SHAPES}${ROTOR_SHAPE}${LAMP_SHAPE}${POOL_SHAPE}${KEEPS}${RIPPLE_GLSL}${DIGITS_GLSL}void main() {
   if (vFlags == ${DETAIL_TEK}u) {
-    vec3 glow = vec3(${RIPPLE_TINT.join(", ")}) * covers(rippleOf());
-#ifdef LIGHT_TARGET
-    glow = ${UNGRADED("glow * glow")};
-#endif
-    o = vec4(glow, 0.0);
+    o = rippleOf() * covers(1.0);
     return;
   }
   if (vFlags == ${DETAIL_DIGITS}u) {
@@ -272,11 +268,11 @@ ${LIGHT}${SHADOW_GLSL}${AIR}${STREET_GLSL}${poolShadeGlsl(MAX_CONTACTS)}${ROTOR_
 void main() {
   // A damage number shows its own colours as the HUD would, whatever the light, and is never fogged: it is 2 m off.
   if (vFlags == ${DETAIL_TEK}u) {
-    vec3 glow = vec3(${RIPPLE_TINT.join(", ")}) * covers(rippleOf());
+    vec4 wave = rippleOf() * covers(1.0);
 #ifdef LIGHT_TARGET
-    glow = ${UNGRADED("glow * glow")};
+    wave.rgb = ${UNGRADED("wave.rgb * wave.rgb")};
 #endif
-    o = vec4(glow, 0.0);
+    o = wave;
     return;
   }
   if (vFlags == ${DETAIL_DIGITS}u) {

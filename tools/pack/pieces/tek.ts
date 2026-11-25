@@ -1,4 +1,4 @@
-import { TEK_RAIL_COLOUR, TEK_WALL } from "../../../content/building/tek-wall.ts";
+import { TEK_JAW, TEK_LATCH, TEK_RAIL_COLOUR, TEK_WALL, jawContact, jawDepth, latchDepth } from "../../../content/building/tek-wall.ts";
 import { defaultPalette, nearestColour, REGION_BASE } from "../../../shared/pack/palette.ts";
 import type { FormDef } from "../../../shared/world/lattice/forms.ts";
 import type { SourceMesh } from "../write.ts";
@@ -8,7 +8,7 @@ import { errorOf, levelsOf, type TierRecipe } from "./lod.ts";
 const TONES = {
   field: [40, 51, 65], gasket: [24, 27, 33], socket: [47, 53, 61], bevel: [94, 103, 111],
   titanium: [140, 147, 153], chamfer: [158, 166, 174], cover: [106, 112, 121],
-  emitter: [109, 229, 233], lens: [48, 153, 174], bolt: [77, 82, 88],
+  emitter: [109, 229, 233], lens: [48, 153, 174], copper: [197, 116, 79],
 } as const;
 type Tone = keyof typeof TONES;
 
@@ -54,20 +54,54 @@ function lamps(shape: Shape, near: boolean): void {
   }
 }
 
+/** A casting with a bevel rising from its footprint to its smaller face on either side. */
+function casting(shape: Shape, foot: readonly Flat[], face: readonly Flat[], low: number, height: (p: Flat) => number, top: Tone, bevel: Tone): void {
+  const rings = [-1, 1].flatMap(side => {
+    const base = foot.map(([x, z]): Vec => [x, side * low, z]);
+    const cap = face.map((p): Vec => [p[0], side * height(p), p[1]]);
+    return side < 0 ? [cap, base] : [base, cap];
+  });
+  shape.loft(rings, (_k, i) => [i === 1 ? "socket" : bevel, [0, 0]], () => [top, [0, 0]]);
+}
+
+function toe(shape: Shape, sx: number, sz: number, near: boolean): void {
+  // The first coordinate runs down the diagonal from the corner toward the field.
+  const at = (outline: readonly Flat[], hand = 1): Flat[] => outline.map(([run, across]) =>
+    [sx * (TEK_JAW.origin - (run + hand * across) * Math.SQRT1_2), sz * (TEK_JAW.origin - (run - hand * across) * Math.SQRT1_2)]);
+  const seat: Flat[] = [[.020, -.068], [.143, -.220], [.315, -.251], [.536, -.163], [.773, -.066],
+    [.805, 0], [.773, .066], [.536, .163], [.315, .251], [.143, .220], [.020, .068]];
+  if (!near) {
+    const outer: Flat[] = [[.026, -.065], [.23, -.236], [.49, -.171], [.785, -.031], [.785, .031], [.49, .171], [.23, .236], [.026, .065]];
+    insert(shape, at(outer), .098, "cover", "socket");
+    return;
+  }
+  insert(shape, at(seat), .072, "socket", "gasket");
+  const depth = ([x, z]: Flat): number => jawDepth((2 * TEK_JAW.origin - Math.abs(x) - Math.abs(z)) * Math.SQRT1_2);
+  for (const hand of [-1, 1]) casting(shape, at(TEK_JAW.foot, hand), at(TEK_JAW.cap, hand), TEK_JAW.low, depth, "titanium", "chamfer");
+  // The graphite throat flares between the jaws and ends in a small ceramic aperture.
+  const throat: Flat[] = [[.20, -.028], [.60, -.047], [.747, -.036], [.798, -.018], [.798, .018], [.747, .036], [.60, .047], [.20, .028]];
+  insert(shape, at(throat), .079, "gasket", "socket");
+  for (const run of TEK_JAW.copperRuns) insert(shape, at(jawContact(run)), TEK_JAW.copperZ, "copper", "socket");
+  const tip: Flat[] = [[.638, -.029], [.715, -.026], [.742, -.010], [.742, .010], [.715, .026], [.638, .029]];
+  insert(shape, at(tip), .083, "emitter", "bevel");
+}
+
+function serviceLatch(shape: Shape): void {
+  const seat: Flat[] = [[1.06, -.485], [1.203, -.486], [1.273, -.40], [1.272, -.244],
+    [1.231, -.198], [1.134, -.204], [1.048, -.288], [1.048, -.455]];
+  insert(shape, seat, .063, "gasket", "socket");
+  casting(shape, TEK_LATCH.foot, TEK_LATCH.cap, TEK_LATCH.low, ([x]) => latchDepth(x), "cover", "chamfer");
+  insert(shape, TEK_LATCH.tab, TEK_LATCH.tabZ, "copper", "gasket");
+}
+
 function hardware(shape: Shape, near: boolean): void {
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
-    const reflected = (points: readonly Flat[]): Flat[] => points.map(([x, z]) => [sx * x, sz * z]);
-    const shoe: Flat[] = [[1.132, 1.339], [1.328, 1.119], [1.403, 1.192], [1.463, 1.353], [1.457, 1.452], [1.288, 1.448]];
-    const bore = Array.from({ length: 6 }, (_, i): Flat => {
-      const angle = i * Math.PI / 3;
-      return [1.382 + .023 * Math.cos(angle), 1.376 + .023 * Math.sin(angle)];
-    });
-    insert(shape, reflected(shoe), .1, "cover", "socket", near ? [reflected(bore)] : []);
+    toe(shape, sx, sz, near);
     if (!near) continue;
-    const cap: Flat[] = [[.016, 1.378], [.835, 1.378], [1.008, 1.438], [.971, 1.469], [.062, 1.469], [.016, 1.450]];
-    insert(shape, reflected(cap), .1, "titanium", "socket");
-    insert(shape, reflected(bore), .0977, "socket", "bolt");
+    const cap: Flat[] = [[.018, 1.378], [.698, 1.378], [.933, 1.435], [.899, 1.468], [.062, 1.468], [.018, 1.450]];
+    insert(shape, cap.map(([x, z]) => [sx * x, sz * z]), .1, "titanium", "socket");
   }
+  if (near) serviceLatch(shape);
 }
 
 function wall(name: string, form: FormDef, level: number): Shape | null {

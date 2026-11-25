@@ -61,7 +61,7 @@ export const MADE_READS: readonly { readonly name: string; readonly metres: numb
   { name: "seam", metres: 2, relief: 25, mottle: 0.04, far: 2, shift: [0.25, 0.71], lies: false, coat: false, plain: 1 },
   { name: "gravel", metres: 2, relief: 12, mottle: 0.1, far: 2, shift: [0.37, 0.71], lies: true, coat: false, plain: 1 },
   { name: "plate", metres: 0.75, relief: 8, mottle: 0.05, far: 0.75, shift: [1, 1], lies: false, coat: false, plain: 0.76 },
-  { name: "tek_field", metres: 3, relief: 10, mottle: 0.035, far: 3, shift: [0.37, 0.71], lies: false, coat: false, plain: 1 },
+  { name: "tek_field", metres: 3, relief: 12, mottle: 0.035, far: 3, shift: [0.37, 0.71], lies: false, coat: false, plain: 1 },
 ];
 /** The most materials there may be: a face's key and a look's bits keep room for these (shared/world/city.ts, render/finish-near.ts). */
 export const MOST_MATERIALS = 12;

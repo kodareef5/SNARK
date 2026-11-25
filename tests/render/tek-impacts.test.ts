@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test";
 import { Camera } from "../../client/core/render/camera.ts";
 import { DETAIL, DETAIL_FLOATS, DETAIL_GLOW, DETAIL_TEK, FramePacket } from "../../client/core/render/packet.ts";
-import { inField, rippleStrength, RIPPLE_MS, RIPPLE_SPEED } from "../../client/core/render/tek-ripple.ts";
+import { TEK_WALL } from "../../content/building/tek-wall.ts";
+import { inField, rippleOf, RIPPLE_MS, RIPPLE_SPEED } from "../../client/core/render/tek-ripple.ts";
 import { ClientSession, RemoteSample } from "../../client/core/session.ts";
 import { Shots } from "../../client/core/shots.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
@@ -43,7 +44,7 @@ test("a pistol starts a field ripple at its hit on the plate", () => {
   const [first] = cards(0);
   expect(first?.flag).toBe(DETAIL_TEK);
   expect(first?.x).toBeCloseTo(31.33, 4);
-  expect(first?.z).toBeCloseTo(31.947, 4);
+  expect(first?.z).toBeCloseTo(32 - TEK_WALL.fieldZ, 4);
   expect(cards(120)[0]!.radius).toBeCloseTo(0.025 + 120 * RIPPLE_SPEED);
   expect(world.structs.chunks[ref >>> 16]!.hp[ref & 65535]).toBe(100);
   expect(cards(RIPPLE_MS)).toBeEmpty();
@@ -95,8 +96,9 @@ test("frame hardware and cropped corners stay clear of the wave", () => {
   fire(33.4);
   expect(cards(0)).toBeEmpty();
   expect(inField(1.2, 1.24)).toBe(false);
-  expect(rippleStrength(1.2, 1.24, 0.3, 0, 0.3)).toBe(0);
-  expect(rippleStrength(1, 1, 0.3, 0, 0.3)).toBeCloseTo(1);
+  const light: number[] = [];
+  rippleOf(light, 1.2, 1.24, 0.3, 0, 0.3, 0);
+  expect(light).toEqual([0, 0, 0, 0]);
 });
 
 test("a remote shot ending on the rear face stays on that face", () => {
@@ -111,7 +113,7 @@ test("a remote shot ending on the rear face stays on that face", () => {
   expect(cards(0)).toBeEmpty();
   session.events.push({ ...event, vz: 32.1 });
   shots.absorb(session, world, 20);
-  expect(cards(20)[0]!.z).toBeCloseTo(32.053);
+  expect(cards(20)[0]!.z).toBeCloseTo(32 + TEK_WALL.fieldZ);
   cam.z = 26;
   expect(cards(30)).toBeEmpty();
 });
@@ -137,4 +139,91 @@ test("repeated shots keep a bounded set and a volley shares one crest", () => {
   }
   expect(cards(100)).toHaveLength(4);
   expect(cards(100).every((c) => c.flag === DETAIL_TEK)).toBe(true);
+});
+
+function wave(x: number, y: number, radius: number): number[] {
+  const light: number[] = [];
+  rippleOf(light, x, y, x, y, radius, 0.004);
+  return light;
+}
+
+test("the crest swells and catches more light on the sunward side", () => {
+  const lit = wave(0, .78, .86), shade = wave(0, -.94, .86);
+  expect(Math.min(...lit.slice(0, 3))).toBeGreaterThan(1);
+  expect(lit[0]!).toBeGreaterThan(1.6 * shade[0]!);
+  expect(shade[0]!).toBeGreaterThan(wave(0, .94, .86)[0]! + .4);
+  expect(lit[3]).toBe(0);
+  expect(wave(0, .84, .86)[2]!).toBeGreaterThan(.21);
+  expect(wave(1.22, 0, .86)).toEqual([0, 0, 0, 0]);
+});
+
+test("a dark trough follows the lip and broken caustics brighten the wash", () => {
+  const trough = wave(.75, 0, .86), caustic = wave(.58, 0, .86), wash = wave(-.38, 0, .86);
+  expect(trough[3]).toBeGreaterThan(.83);
+  expect(Math.max(...trough.slice(0, 3))).toBeLessThan(.08);
+  expect(caustic[2]!).toBeGreaterThan(2 * wash[2]!);
+  expect(wash[2]!).toBeGreaterThan(2 * wash[1]!);
+});
+
+test("three separated sheared strokes scatter at the hit and die away", () => {
+  const r = .60, t = r / .92, jump = Math.floor(3 * t) / 2;
+  const dashes = [[.13 + .13 * t + .036 * jump, .07 + .10 * t], [-.16 - .13 * t - .022 * jump, -.10 - .093 * t],
+    [-.12 - .044 * t, .195 + .073 * t + .026 * jump]] as const;
+  for (const [u, y] of dashes) {
+    const x = u + .50 * y;
+    expect(wave(x, y, r)[0]!).toBeGreaterThan(wave(x, y + .047, r)[0]! + .30);
+    expect(wave(x, y, 1.45)).toEqual([0, 0, 0, 0]);
+  }
+});
+
+test("a grazing ray meets the field at depth and cannot pass through its rim", () => {
+  const { world, cam, wall, shots, cards } = setup();
+  const ref = wall(32), impacts = shots.tekImpacts;
+  const slope = Math.sqrt(101), oblique = 10 / slope;
+  for (const face of [-1, 1]) {
+    cam.z = 32 + 5 * face;
+    const z = 32 + 0.1 * face, dz = -face / slope;
+    impacts.hit(world.structs, ref, 33.26, 1.5, z, 0, face, -oblique, 0, dz, 0);
+    impacts.hit(world.structs, ref, 33.18, 1.5, z, 0, face, oblique, 0, dz, 0);
+    expect(cards(0)).toBeEmpty();
+    impacts.hit(world.structs, ref, 32.1, 1.5, z, 0, face, oblique, 0, dz, 10);
+    const mark = cards(10)[0]!;
+    expect(mark.x).toBeCloseTo(32.1 + 10 * (0.1 - TEK_WALL.fieldZ), 4);
+    expect(mark.z).toBeCloseTo(32 + face * TEK_WALL.fieldZ, 4);
+    cards(1000);
+  }
+});
+
+test("raised jaws and the latch intercept shots on both faces of the field", () => {
+  const { world, cam, wall, shots, cards } = setup();
+  const ref = wall(32), impacts = shots.tekImpacts;
+  const corner = (run: number, cross: number) => [1.415 - (run + cross) * Math.SQRT1_2, 1.415 - (run - cross) * Math.SQRT1_2] as const;
+  for (const face of [-1, 1]) {
+    cam.z = 32 + 5 * face;
+    const z = 32 + 0.1 * face;
+    const hit = (u: number, v: number) => {
+      impacts.hit(world.structs, ref, 32 + u, 1.5 + v, z, 0, face, 0, 0, -face, 0);
+      const n = cards(0).length;
+      cards(1000);
+      return n;
+    };
+    for (const sx of [-1, 1]) for (const sy of [-1, 1]) {
+      const [u, v] = corner(.48, .095);
+      expect(hit(sx * u, sy * v)).toBe(0);
+      expect(hit(sx * v, sy * u)).toBe(0);
+    }
+    expect(hit(...corner(.452, 0))).toBe(0);
+    expect(hit(1.14, -.35)).toBe(0);
+    expect(hit(-1.14, -.35)).toBe(1);
+    expect(hit(1.061, -.38)).toBe(1);
+    expect(hit(...corner(.51, 0))).toBe(1);
+    expect(hit(...corner(.63, .07))).toBe(1);
+  }
+});
+
+test("a glancing shot catches the latch before its ray reaches open field", () => {
+  const { world, wall, shots, cards } = setup();
+  const ref = wall(32), dz = 1 / Math.sqrt(65);
+  shots.tekImpacts.hit(world.structs, ref, 33.14, 1.15, 31.90, 0, -1, -8 * dz, 0, dz, 0);
+  expect(cards(0)).toBeEmpty();
 });

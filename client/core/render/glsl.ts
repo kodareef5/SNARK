@@ -177,13 +177,16 @@ void main() {
   vec3 localLight = room * skyLight(geometric) * roomOpen;
 #ifdef WORLD_WEATHER
   if (worldMade == ${TEK_FIELD} && (worldPiece & ${PIECE_OWN | PIECE_FIXED}) == ${PIECE_OWN}) {
-    orm.yz = vec2(clamp(orm.y, 0.21, 0.56), 0.50);
+    vec3 sight = ownOf(v);
+    n = tekFinishNormal(n, vOwn.xy, worldTurn, true, 1.0);
+    tekPlateSurface(albedo, orm, fieldRelief, dot(n, v), sight.x);
     worldSharp = true;
-    localLight += tekFieldLight(vOwn.xy, worldPiece >> ${PIECE_SEED}, dot(geometric, v), max(length(dx), length(dy)), fieldRelief);
+    localLight += tekFieldLight(vOwn.xy, worldPiece >> ${PIECE_SEED}, dot(geometric, v), max(length(dx), length(dy)), fieldRelief, sight.x, sight.y, fieldConductor);
   } else if (worldMade == ${TEK_FIELD} && (worldPiece & ${PIECE_FIXED}) != 0) {
     bool emitter = (worldPiece & ${PIECE_PLAIN}) == 0;
     if (!emitter) {
       tekFrameSurface(albedo, orm, vColor, fieldRelief);
+      n = tekFinishNormal(n, vOwn.xy, worldTurn, false, orm.z);
       worldSharp = orm.y < ${f(WORLD_SHARP)};
     }
     localLight += tekRailLight(vOwn.xy, emitter);

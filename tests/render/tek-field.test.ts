@@ -29,15 +29,17 @@ test("distant field pixels settle into the same tint at both angles and times", 
 
 test("the plate texture cuts a bent pair of conductors into the brushed finish", () => {
   const recipe = MATERIAL_RECIPES[TEK_FIELD - 1]!, relief = materialRows(recipe, 1);
+  const blank = materialRows({ ...recipe, trace: { ...recipe.trace!, depth: 0 } }, 1);
   const texel = new Float64Array(4);
-  const height = (u: number, v: number): number => {
-    materialTexel(relief, u * recipe.metres, v * recipe.metres, texel);
+  const height = (rows: Float32Array, x: number, y: number): number => {
+    materialTexel(rows, x, y, texel);
     return texel[3]!;
   };
-  for (const [u, bend] of [[0.22, 0], [0.34, 0.08], [0.51, 0.16]] as const) {
-    const untouched = height(u, 0.38 + bend);
-    expect(height(u, 0.31 + bend)).toBeLessThan(untouched - 0.24);
-    expect(height(u, 0.34 + bend)).toBeLessThan(untouched - 0.24);
+  for (const [x, bend] of [[0.22, 0], [0.39, 0.13], [0.68, 0.26]] as const) {
+    for (const y of [0.27 + bend, 0.335 + bend]) {
+      expect(height(blank, x, y) - height(relief, x, y)).toBeGreaterThan(0.10);
+      expect(height(blank, x, y + 0.012) - height(relief, x, y + 0.012)).toBeGreaterThan(0.24);
+    }
   }
 });
 

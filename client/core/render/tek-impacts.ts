@@ -3,12 +3,13 @@ import { frame, frameOf } from "../../../shared/world/frame.ts";
 import { Found, type StructureStore } from "../../../shared/world/structures.ts";
 import type { Camera } from "./camera.ts";
 import { DETAIL, DETAIL_GLOW, DETAIL_TEK, GLOW_STEPS } from "./packet.ts";
+import { hardwareBlocks } from "./tek-hardware.ts";
 import { fieldWord, inField, RIPPLE_MS, RIPPLE_SPEED } from "./tek-ripple.ts";
 import { VehicleCards } from "./vehicle-cards.ts";
 
 const MAX_IMPACTS = 4;
 export const TEK_IMPACT_REACH = 48;
-const OFFSET = 0.003;
+const RAIL_OFFSET = 0.003;
 const FLASH_MS = 135;
 
 interface Impact {
@@ -49,12 +50,13 @@ export class TekImpacts extends VehicleCards {
     const face = Math.sign(normal), slope = dx * s + dz * c;
     if (slope * face >= -0.0001) return;
     const wx = t.x[slot]!, wy = t.y[slot]!, wz = t.z[slot]!;
-    if (!inField((x - wx) * c - (z - wz) * s, y - wy)) return;
-    // The collider encloses the frame. Continue the arriving ray to the recessed face.
-    const travel = (face * wall.panelZ - (x - wx) * s - (z - wz) * c) / slope;
+    const entryU = (x - wx) * c - (z - wz) * s, entryV = y - wy;
+    if (!inField(entryU, entryV)) return;
+    // The rim encloses the field. Both ends of this ray segment must fall inside the aperture.
+    const travel = (face * wall.fieldZ - (x - wx) * s - (z - wz) * c) / slope;
     const u = (x + dx * travel - wx) * c - (z + dz * travel - wz) * s;
     const v = y + dy * travel - wy;
-    if (!inField(u, v)) return;
+    if (!inField(u, v) || hardwareBlocks(u, v, entryU, entryV, (dx * c - dz * s) / (slope * face), dy / (slope * face))) return;
     if (this.active.some((h) => h.ref === ref && h.born === now && h.face === face)) return;
     const h: Impact = { ref, x: wx, y: wy, z: wz, yaw, tw, c, s, u, v, face, side: u < 0 ? -1 : 1, adjacent: -1, born: now };
     h.adjacent = this.neighbour(store, h);
@@ -71,12 +73,12 @@ export class TekImpacts extends VehicleCards {
           t.x[slot] !== h.x || t.y[slot] !== h.y || t.z[slot] !== h.z) continue;
       this.active[kept++] = h;
       const vx = cam.x - h.x, vy = cam.y - h.y, vz = cam.z - h.z;
-      if (vx * vx + vy * vy + vz * vz > TEK_IMPACT_REACH ** 2 || (vx * h.s + vz * h.c) * h.face < wall.panelZ) continue;
-      const radius = 0.025 + age * RIPPLE_SPEED, extent = radius + 0.12;
+      if (vx * vx + vy * vy + vz * vz > TEK_IMPACT_REACH ** 2 || (vx * h.s + vz * h.c) * h.face < wall.fieldZ) continue;
+      const radius = 0.025 + age * RIPPLE_SPEED, extent = Math.max(0.54, radius + Math.min(1.3, radius) * 0.18 + 0.20);
       const left = Math.max(-wall.panelX, h.u - extent), right = Math.min(wall.panelX, h.u + extent);
       const bottom = Math.max(-wall.panelY, h.v - extent), top = Math.min(wall.panelY, h.v + extent);
       const u = (left + right) * 0.5, v = (bottom + top) * 0.5;
-      const o = this.card(h, cam, u, v, wall.panelZ, (right - left) * 0.5, (top - bottom) * 0.5);
+      const o = this.card(h, cam, u, v, wall.fieldZ, (right - left) * 0.5, (top - bottom) * 0.5);
       this.cards[o + DETAIL.floor] = radius;
       this.words[o + DETAIL.colourA] = fieldWord(u, v);
       this.words[o + DETAIL.colourB] = fieldWord(h.u, h.v);
@@ -86,7 +88,7 @@ export class TekImpacts extends VehicleCards {
       const arrival = Math.hypot(h.side * wall.railX - h.u, railV - h.v) / RIPPLE_SPEED;
       const flash = age - arrival;
       if (h.adjacent < 0 || flash < 0 || flash > FLASH_MS || !this.adjoins(store, h.adjacent, h)) continue;
-      const rail = this.card(h, cam, h.side * (wall.width - wall.railX), railV, wall.railZ, wall.railHalfWidth * 2.5, 0.32);
+      const rail = this.card(h, cam, h.side * (wall.width - wall.railX), railV, wall.railZ + RAIL_OFFSET, wall.railHalfWidth * 2.5, 0.32);
       this.words[rail + DETAIL.colourA] = 0xffffd196;
       const flicker = (1 - flash / FLASH_MS) * (flash > 43 && flash < 67 ? 0.2 : 1);
       this.words[rail + DETAIL.misc] = ((DETAIL_GLOW << 8) | (Math.round(255 * flicker) << 16) | (3 * GLOW_STEPS << 24)) >>> 0;
@@ -104,7 +106,7 @@ export class TekImpacts extends VehicleCards {
   }
 
   private card(h: Impact, cam: Camera, u: number, v: number, depth: number, w: number, height: number): number {
-    const o = this.next(), f = this.cards, face = (depth + OFFSET) * h.face;
+    const o = this.next(), f = this.cards, face = depth * h.face;
     f[o] = h.x - cam.x + h.c * u + h.s * face;
     f[o + 1] = h.y - cam.y + v;
     f[o + 2] = h.z - cam.z - h.s * u + h.c * face;

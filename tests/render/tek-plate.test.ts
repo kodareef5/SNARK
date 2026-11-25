@@ -27,3 +27,19 @@ test("the cutter grain crosses the Tek pan in long strokes", () => {
   expect(along).toBeGreaterThan(0);
   expect(across).toBeGreaterThan(3 * along);
 });
+
+test("each inlaid conductor has a copper core and a recessed insulating edge", () => {
+  const colour = materialRows(recipe, 0), sample = new Float64Array(4);
+  for (const side of [-1, 1]) {
+    const x = side * 0.68, y = side * 0.53;
+    materialTexel(colour, x, y, sample);
+    expect(sample[3]!).toBeCloseTo(1);
+    expect(sample[0]!).toBeGreaterThan(sample[2]!);
+    materialTexel(relief, x, y, sample);
+    const core = sample[3]!;
+    materialTexel(relief, x, y + side * 0.012, sample);
+    expect(core - sample[3]!).toBeGreaterThan(0.15);
+    materialTexel(colour, x, y + side * 0.033, sample);
+    expect(sample[3]).toBe(0);
+  }
+});

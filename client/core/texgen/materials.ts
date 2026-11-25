@@ -1,6 +1,6 @@
 // The materials made from recipes (content/texgen/materials.ts), as one job of the textures the card makes (engine.ts).
 // A slot is two layers: its base colour, the light about its mean halved in red, green and blue and how much a piece's
-// colour dyes it in alpha; and its relief, the lean across and up the tile in red and green, roughness in blue and
+// colour dyes it in alpha (the Tek plate stores its conductor there), and its relief, the lean across and up the tile in red and green, roughness in blue and
 // height in alpha. A layer's version is the number of the material it holds, so one program makes any of them from
 // its rows, and a slot takes another by its version alone. A wall reads each with a tap (world-surfaces.ts made).
 
@@ -47,7 +47,12 @@ const wrap = (i: number, n: number): number => ((i % n) + n) % n;
  */
 export function materialHeight(f: Float32Array, x: number, y: number, out: Float64Array): number {
   const T = f[0]!, seed = f[1]!;
-  const brushY = f[63]! > 0 ? y + f[63]! * Math.cos(2 * Math.PI * x / T) : y;
+  let brushY = y;
+  if (f[63]! > 0) {
+    const py = y - T * Math.floor(y / T + 0.5), angle = 2 * Math.PI * x / T;
+    const returnCut = smoothstep(0.55, 0.78, Math.abs(py)) * (1 - smoothstep(1.14, 1.40, Math.abs(py)));
+    brushY += f[63]! * (Math.cos(angle) + 1.8 * Math.sign(py) * returnCut * Math.sin(angle));
+  }
   let h = f[2]!, light = 1, dye = f[6]!, warm = 0, before = 0.5, first = 0.5, grit = 0.5;
   for (let i = 0; i < 4; i++) {
     const a = 12 + i * 4, cx = f[a]!;
@@ -112,12 +117,18 @@ export function materialHeight(f: Float32Array, x: number, y: number, out: Float
     const wear = (1 - smoothstep(0.003, 0.015, Math.abs(distance - 0.020))) * smoothstep(0.36, 0.72, grit);
     h += f[62]! * (shoulder - 0.75 * recess - 0.25 * smoothstep(0.04, 0.22, distance));
     light *= 1 + 0.07 * shoulder - 0.15 * recess + 0.23 * wear;
-    const bend = Math.min(0.16, Math.max(0, u - 0.26)) - Math.min(0.16, Math.max(0, u - 0.61));
-    const a = Math.max(0.12 - u, u - 0.88, Math.abs(v - 0.31 - bend));
-    const b = Math.max(0.20 - u, u - 0.76, Math.abs(v - 0.34 - bend));
-    const cut = 1 - smoothstep(f[10]! * 0.3, f[10]!, T * Math.min(a, b));
-    h -= f[11]! * cut;
-    light *= 1 - 0.32 * cut;
+    // Inlaid foil leaves each rail in two tracks and ends at a widened contact pad.
+    const along = py < 0 ? -px : px, across = Math.abs(py);
+    const bend = Math.min(0.26, Math.max(0, along - 0.26));
+    const line = across - 0.27 - bend;
+    const track = Math.min(Math.max(Math.abs(line), 0.06 - along), Math.max(Math.abs(line - 0.065), -0.22 - along));
+    const pad = Math.max(Math.abs(across - 0.335) - 0.014, Math.abs(along + 0.215) - 0.034);
+    const path = Math.max(Math.min(track, pad), along - 1.28);
+    const cut = 1 - smoothstep(f[10]! * 0.55, f[10]! * 1.9, path);
+    dye = 1 - smoothstep(f[10]! * 0.2, f[10]!, path);
+    h += f[11]! * (0.70 * dye - cut);
+    light *= 1 - 0.38 * cut + 0.72 * dye;
+    warm += 0.16 * dye;
   }
   h = Math.min(Math.max(h, 0), 1);
   out[0] = light * (1 + f[5]! * (h - 0.5));
@@ -151,7 +162,11 @@ const MATERIAL_GLSL = `float heightOf(float x, float y, out vec3 look) {
   float T = uJob[2].x, h = uJob[2].z, light = 1.0, dye = uJob[3].z, warm = 0.0, before = 0.5, first = 0.5, grit = 0.5;
   int seed = int(uJob[2].y);
   float brushY = y;
-  if (uJob[17].w > 0.0) brushY += uJob[17].w * cos(6.283185307179586 * x / T);
+  if (uJob[17].w > 0.0) {
+    float py = y - T * floor(y / T + 0.5), angle = 6.283185307179586 * x / T;
+    float returnCut = smoothstep(0.55, 0.78, abs(py)) * (1.0 - smoothstep(1.14, 1.40, abs(py)));
+    brushY += uJob[17].w * (cos(angle) + 1.8 * sign(py) * returnCut * sin(angle));
+  }
   for (int i = 0; i < 4; i++) {
     vec4 n = uJob[5 + i];
     if (n.x <= 0.0) break;
@@ -215,12 +230,16 @@ const MATERIAL_GLSL = `float heightOf(float x, float y, out vec3 look) {
     float wear = (1.0 - smoothstep(0.003, 0.015, abs(seam - 0.020))) * smoothstep(0.36, 0.72, grit);
     h += uJob[17].z * (shoulder - 0.75 * recess - 0.25 * smoothstep(0.04, 0.22, seam));
     light *= 1.0 + 0.07 * shoulder - 0.15 * recess + 0.23 * wear;
-    float bend = clamp(uv.x - 0.26, 0.0, 0.16) - clamp(uv.x - 0.61, 0.0, 0.16);
-    float a = max(max(0.12 - uv.x, uv.x - 0.88), abs(uv.y - 0.31 - bend));
-    float b = max(max(0.20 - uv.x, uv.x - 0.76), abs(uv.y - 0.34 - bend));
-    float cut = 1.0 - smoothstep(uJob[4].z * 0.3, uJob[4].z, T * min(a, b));
-    h -= uJob[4].w * cut;
-    light *= 1.0 - 0.32 * cut;
+    float along = p.y < 0.0 ? -p.x : p.x, across = abs(p.y);
+    float line = across - 0.27 - clamp(along - 0.26, 0.0, 0.26);
+    float track = min(max(abs(line), 0.06 - along), max(abs(line - 0.065), -0.22 - along));
+    float pad = max(abs(across - 0.335) - 0.014, abs(along + 0.215) - 0.034);
+    float path = max(min(track, pad), along - 1.28);
+    float cut = 1.0 - smoothstep(uJob[4].z * 0.55, uJob[4].z * 1.9, path);
+    dye = 1.0 - smoothstep(uJob[4].z * 0.2, uJob[4].z, path);
+    h += uJob[4].w * (0.70 * dye - cut);
+    light *= 1.0 - 0.38 * cut + 0.72 * dye;
+    warm += 0.16 * dye;
   }
   h = clamp(h, 0.0, 1.0);
   look = vec3(light * (1.0 + uJob[3].y * (h - 0.5)), dye, warm);
