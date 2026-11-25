@@ -55,7 +55,9 @@ import { Stations, tellStation } from "./stations.ts";
 import { wirePower } from "./power.ts";
 import { wirePreserve } from "./preserve.ts";
 import { TICK_RATE } from "../shared/coords.ts";
-import { Chat } from "./chat.ts";
+import { Chat, plainRuns } from "./chat.ts";
+import { ChatRelay } from "./cluster/chat-relay.ts";
+import { globalRefused, shownTagNames, speakerLine } from "./permissions/chat-tags.ts";
 import { Tribes } from "./tribes.ts";
 import { Voice } from "./voice.ts";
 import { Console, OP_ADMIN } from "./console.ts";
@@ -139,7 +141,7 @@ import { REACT_RULES, TIER_FALL } from "../shared/sim/react.ts";
 import { Reactions, SHOVE_MOST } from "./reactions.ts";
 import { bodyMass } from "../shared/sim/body-mass.ts";
 import { solidOf } from "../shared/sim/vehicle-movers.ts";
-import { Cluster } from "./cluster/cluster.ts";
+import { Cluster, mapLabel } from "./cluster/cluster.ts";
 import { SurvivorLog, type SurvivorLogOptions } from "./survivor-log/log.ts";
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -938,6 +940,27 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   combat.onHarm.on((victim, points) => taming.harmed(victim, points));
   combat.onHarm.on((victim, points) => hurt.harmed(victim, points));
   const chat = new Chat({ game, records, rules, tribes, bus });
+  // A survivor's line is made from their groups; an NPC's, and one from a session with no survivor yet, stay plain.
+  chat.format = (speaker, channel, text, map) => {
+    const subject = typeof speaker === "string" ? null : subjectOf(speaker);
+    if (typeof speaker === "string" || !subject) return plainRuns(speaker, channel, text, map);
+    const words = { sender: speaker.name, tribe: tribes.byId.get(subject.team)?.name ?? "", message: text };
+    return speakerLine(permissions, subject, speaker.rank, words, map, world.mapId);
+  };
+  chat.globalRefused = (c) => {
+    const subject = subjectOf(c);
+    return subject ? globalRefused(permissions, subject) : "";
+  };
+  chat.tagsOf = (c) => {
+    const subject = subjectOf(c);
+    return subject ? shownTagNames(permissions, subject, c.rank) : [];
+  };
+  // ClusterChat sends global lines to the cluster's other maps and shows theirs here; reading goes on while it is off, so switching it on replays nothing.
+  const chatRelay = cluster ? new ChatRelay({ root: cluster.folder.root, world: cluster.world, now: () => cluster.now(), say, onLine: (l) => void (rules.on("ClusterChat") && chat.fromOtherMap(l.speaker, l.runs)) }) : null;
+  if (chatRelay) {
+    chat.mapName = mapLabel(world.reg, world.mapId);
+    chat.relay = (speaker, runs) => void (rules.on("ClusterChat") && chatRelay.send(speaker, runs));
+  }
   // Cast is always there, doing nothing while CastEnabled is off, so the admin page can turn it on live.
   const castHost = new CastHost({
     world, game, records, creatures, emotes, chat, items, urban, bus, refresh: (rec) => refreshBody(rec), seed: (opts.seed ?? 1) + 907,
@@ -2129,6 +2152,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     { step: keepHouse },
     { step: tellModules },
     ...(cluster ? [cluster] : []),
+    ...(chatRelay ? [{ step: () => void chatRelay.poll() }] : []),
     { step: announceBackup },
     modules,
     { step: () => bus.flush() },

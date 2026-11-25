@@ -4,7 +4,6 @@
 // be given out or taken in.
 
 import type { Registry } from "../../../shared/content/registry.ts";
-import { planCost, pieceBook, placePieces } from "../../../shared/world/plan.ts";
 import type { Hammer } from "../hammer.ts";
 import type { ClientSession } from "../session.ts";
 import { SESSION_CREATING, SESSION_DEAD } from "../../../shared/net/protocol.ts";
@@ -120,7 +119,7 @@ export class HammerPanel implements Screen {
     const t = h.templates.list[h.selected];
     const reg = this.reg;
     if (!t || !reg || this.naming.trim() === "" || this.naming === t.name) return;
-    h.templates.rename(h.selected, this.naming.trim(), t.description, pieceBook(reg));
+    h.renameTemplate(h.selected, this.naming.trim(), reg);
     this.namingFor = h.templates.list[h.selected]!.text;
   }
 
@@ -174,11 +173,8 @@ export class HammerPanel implements Screen {
 
   /** What a template costs to build whole, as "12 wooden wall, 6 wooden foundation". */
   private cost(h: Hammer, reg: Registry, i: number): string {
-    const book = pieceBook(reg);
-    const bp = h.templates.blueprint(h.templates.list[i]!, book);
-    const placed = bp ? placePieces(book, bp, false, 0, [0, 0, 0, 0], 0) : null;
-    if (!placed?.ok) return "it has a piece this game does not build";
-    const cost = planCost(reg, placed.placed, () => false);
+    const cost = h.templateCost(reg, i);
+    if (!cost) return "it has a piece this game does not build";
     return cost.slice(0, 3).map((c) => `${c.count} ${structName(reg, reg.places[c.item]![0]!)}`).join(", ") + (cost.length > 3 ? ` and ${cost.length - 3} more kinds` : "");
   }
 

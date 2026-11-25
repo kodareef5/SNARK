@@ -94,7 +94,7 @@ test("the start screen lists each world with its count and goes to its path, and
 
 test("a server reached at /miami answers its world under it, sends /miami on with its slash, and answers the site around it everywhere else", async () => {
   const config = loadConfig({}, ["?SessionName=Miami", "?WikiUrl=https://wiki.example/snark", "?RepositoryUrl="]).rules;
-  const s = startServer({ port: 0, clientDir: dir, probeScene: true, publicUrl: "/miami", config });
+  const s = startServer({ hostname: "127.0.0.1", port: 0, clientDir: dir, probeScene: true, publicUrl: "/miami", config });
   running.push(s);
   const at = `http://127.0.0.1:${s.port}`;
   const slash = await get(`${at}/miami?name=Ada`);
@@ -128,7 +128,7 @@ test("a server reached at /miami answers its world under it, sends /miami on wit
 });
 
 test("standalone admin serves public navigation and gates each world tool", async () => {
-  const s = startServer({ port: 0, clientDir: dir, probeScene: true, adminPassword: "operator" });
+  const s = startServer({ hostname: "127.0.0.1", port: 0, clientDir: dir, probeScene: true, adminPassword: "operator" });
   running.push(s);
   const at = `http://127.0.0.1:${s.port}`;
   const good = { headers: { authorization: `Basic ${btoa("x:operator")}` } };
@@ -160,7 +160,7 @@ test("standalone admin serves public navigation and gates each world tool", asyn
 });
 
 test("a server at the root of its host is all world as before, and has the page the source link goes to and its links", async () => {
-  const s = startServer({ port: 0, clientDir: dir, probeScene: true });
+  const s = startServer({ hostname: "127.0.0.1", port: 0, clientDir: dir, probeScene: true });
   running.push(s);
   const at = `http://127.0.0.1:${s.port}`;
   expect([await (await get(`${at}/`)).text(), (await get(`${at}/source/`)).status]).toEqual(["<!doctype html><title>the game</title>", 200]);
@@ -170,7 +170,7 @@ test("a server at the root of its host is all world as before, and has the page 
 test("canonical links to an external world go to its announced mount", async () => {
   const saves = mkdtempSync(join(dir, "external-"));
   const config = loadConfig({}, ["-clusterid=external", `-ClusterDirOverride=${saves}`, "?SessionName=Miami"]).rules;
-  const local = startServer({ port: 0, clientDir: dir, publicUrl: "/miami", dbPath: join(saves, "miami.db"), noBackups: true, config });
+  const local = startServer({ hostname: "127.0.0.1", port: 0, clientDir: dir, publicUrl: "/miami", dbPath: join(saves, "miami.db"), noBackups: true, config });
   running.push(local);
   const folder = local.host.cluster!.folder;
   const announcement = folder.announcement(local.host.cluster!.world)!;
@@ -190,7 +190,7 @@ test("a standalone title stays at the proxy origin and the game preloads its map
     cpSync(join(dir, "assets"), join(built, "assets"), { recursive: true });
     cpSync(join(dir, "index.html"), join(built, "index.html"));
     writeFileSync(join(built, "entry.js"), "");
-    const s = startServer({ port: 0, clientDir: built, publicUrl: "https://play.example.org" });
+    const s = startServer({ hostname: "127.0.0.1", port: 0, clientDir: built, publicUrl: "https://play.example.org" });
     try {
       const at = `http://127.0.0.1:${s.port}`;
       const proxy = { host: "play.example.org" };
@@ -217,7 +217,7 @@ test("the front sends each path to its world and the site to the lowest world, s
   const saves = mkdtempSync(join(dir, "cluster-"));
   const world = (name: string, adminPassword?: string): RunningServer => {
     const config = loadConfig({}, ["-clusterid=site", `-ClusterDirOverride=${saves}`, `?SessionName=${name}`]).rules;
-    const s = startServer({ port: 0, clientDir: dir, publicUrl: `/${name.toLowerCase()}`, dbPath: join(saves, `${name}.db`), noBackups: true, config, ...(adminPassword ? { adminPassword } : {}) });
+    const s = startServer({ hostname: "127.0.0.1", port: 0, clientDir: dir, publicUrl: `/${name.toLowerCase()}`, dbPath: join(saves, `${name}.db`), noBackups: true, config, ...(adminPassword ? { adminPassword } : {}) });
     running.push(s);
     return s;
   };

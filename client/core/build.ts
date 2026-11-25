@@ -1,15 +1,13 @@
 // Works out each frame where the building piece in hand would go (shared/world/lattice/place.ts) and whether it may,
 // so a ghost can show it. The server checks all of it again when asked.
 
-import { G_BUILD, type KeyContext, type KeyRow } from "./key-row.ts";
-import { T_CANCEL, T_FOLLOW_ONE, T_LOWER, T_RAISE, T_RELOAD, T_SNAP } from "./touch.ts";
 import type { StructureDef } from "../../shared/content/defs.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { STRUCT_UNITS, YAW_UNITS } from "../../shared/coords.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
 import { handleIndex } from "../../shared/ids.ts";
 import { PLACE_JOIN, PLACE_NEW, PLACE_PLAN, PLACE_REST, PLACE_RUN_MOST, writeFill, writeJoin, writeNew, writeRest } from "../../shared/net/place.ts";
-import { BOX_SELF, CMD_MOVE, CMD_PLACE, CMD_SELECT, PLACED_COUNTS, PLACED_ENTITY, PLACED_METRES, PLACED_NONE, PLACED_STRUCTURE, RESULT_BODY, RESULT_FAR, RESULT_FULL, RESULT_LIMIT, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_NO_SUPPORT, RESULT_ENEMY_NEAR, RESULT_OBSTRUCTED, RESULT_OK, RESULT_RATE, RESULT_SHORT, RESULT_TERRAIN, RESULT_TOO_HIGH, RESULT_WAIT } from "../../shared/net/protocol.ts";
+import { BOX_SELF, CMD_MOVE, CMD_PLACE, CMD_SELECT, PLACED_METRES, PLACED_NONE, PLACED_STRUCTURE, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_OBSTRUCTED, RESULT_OK, RESULT_SHORT, RESULT_WAIT } from "../../shared/net/protocol.ts";
 import { HOTBAR_SLOTS } from "../../shared/sim/items.ts";
 import { capsuleKind, type CollisionWorld } from "../../shared/world/collide.ts";
 import { dirVector, levelY, twOf, worldOf, yawOf } from "../../shared/world/lattice/basis.ts";
@@ -23,18 +21,14 @@ import { STABILITY, Support } from "../../shared/world/support.ts";
 import { BuildView, PROVISIONAL, type Overlaid } from "./build-view.ts";
 import { ASKED, PREDICT_MOST, type Asking, type PredictBuild } from "./predict-build.ts";
 import type { ClientSession } from "./session.ts";
-import { structName } from "./ui/structure.ts";
 import { plansOf, type PlanSlot } from "./plans.ts";
+import { BODY_SLACK, BUILD_REASONS, ENEMY_FOUNDATION, ENEMY_PILLAR, FALL_FADE, FALL_NEAR, GHOST_BAD, GHOST_OK, GHOST_SLOT, GHOST_WARN, OTHERS_FADE, buildReason, type Blocker } from "./build-words.ts";
 
-export { PLACE_REACH };
+export { PLACE_REACH, BUILD_REASONS, ENEMY_FOUNDATION, ENEMY_PILLAR, FALL_FADE, FALL_NEAR, GHOST_BAD, GHOST_OK, GHOST_SLOT, GHOST_WARN, OTHERS_FADE, buildReason, type Blocker };
 /** Holding Q this long toggles free placement. */
 const HOLD_MS = 350;
 /** A piece put away is hidden at once, and shown again if the server has not agreed by then. */
 const AWAY_MS = 1000;
-/** Metres. These match the server's BODY_SLACK, ENEMY_FOUNDATION and ENEMY_PILLAR (server/build.ts). */
-const BODY_SLACK = 0.1;
-export const ENEMY_FOUNDATION = 50;
-export const ENEMY_PILLAR = 10;
 /** The view of the rows is let go this long after the piece was put away. */
 const VIEW_IDLE_MS = 10000;
 /** Metres round the builder that the view must hold whole before the preview asks it. */
@@ -43,24 +37,14 @@ const VIEW_NEED = PLACE_REACH + 20;
 const ON_REACH = 1.75 * SIDE * HALF_SIDE_M;
 /** Pieces not yet answered for that may stand one on another: a third waits for the first's answer. */
 const UNSURE_MOST = 2;
-/** Palette indices for the ghost: fine, fine and at the last step that stands, refused; and for a slot's outline. */
-export const GHOST_OK = 16;
-export const GHOST_WARN = 3;
-export const GHOST_BAD = 8;
-export const GHOST_SLOT = 10;
 /** Under this stability a piece that stands is shown in the warning colour: nothing more hangs far off it. */
 export const STABLE_FROM = 2;
 /** Other free slots marked at most, how many of the look's candidates are gone through for them, and how many are judged anew in one frame. */
 export const OTHERS_MOST = 8;
 const OTHERS_SEEN = 16;
 const OTHERS_A_FRAME = 1;
-/** How see-through the other slots' marks are, 0 to 1. */
-export const OTHERS_FADE = 0.55;
 /** The share of the structure cap past which the preview says how many structures stand in range. */
 export const CAP_SAID_FROM = 0.8;
-/** A piece that would fall is drawn over itself this see-through, this many metres toward the eye so it is not hidden by itself. */
-export const FALL_FADE = 0.3;
-export const FALL_NEAR = 0.04;
 
 /** Pieces one row may have, and how many of a row are judged anew in one frame. */
 export const ROW_MOST = PLACE_RUN_MOST;
@@ -116,52 +100,6 @@ function slotMarkOf(f: Frame, k0: number, k1: number, out: SlotMark): void {
   out.z = z / STRUCT_UNITS;
   out.y = levelY(f.oy, keyLvl(k1)) / STRUCT_UNITS;
   out.yaw = yawOf(f.yaw, keyDir(k1));
-}
-
-/** Keyed by the RESULT_ code from the local check or the server: what is said where no cause is known. */
-export const BUILD_REASONS: Readonly<Record<number, string>> = {
-  [RESULT_OBSTRUCTED]: "Something is in the way",
-  [RESULT_BODY]: "Someone is in the way",
-  [RESULT_TOO_HIGH]: "Too far above the ground",
-  [RESULT_TERRAIN]: "The ground is in the way",
-  [RESULT_RATE]: "Slow down",
-  [RESULT_NO_SUPPORT]: "Nothing would hold it up",
-  [RESULT_ENEMY_NEAR]: "Too near another tribe's foundation",
-  [RESULT_NOT_YOURS]: "That is not your tribe's",
-  [RESULT_NO_SNAP]: "It must join something built",
-  [RESULT_FAR]: "Too far away",
-  [RESULT_SHORT]: "You have none left",
-  [RESULT_FULL]: "This area holds no more pieces",
-  [RESULT_LIMIT]: "No more structures may stand here",
-  // The preview's own: a piece under it is two answers away.
-  [RESULT_WAIT]: "Waiting for the piece it joins",
-};
-
-/** What stands in a piece's way, as S_PLACED tells it and the preview finds it: a PLACED_ detail and its numbers. */
-export interface Blocker {
-  detail: number;
-  a: number;
-  b: number;
-}
-
-/**
- * Why a piece may not go where it was asked, naming the cause where one is known: the piece or the body in the way, or
- * the metres to another tribe's foundation. `nameOf` gives a body's name by its entity index, "" for one not in view.
- */
-export function buildReason(reg: Registry, session: ClientSession, code: number, by: Blocker, nameOf?: (entity: number) => string, structs = session.world?.structs): string {
-  if (code === RESULT_OBSTRUCTED && by.detail === PLACED_STRUCTURE) {
-    const t = structs?.chunks[Math.floor(by.a / 65536)];
-    const kind = t && (by.a & 0xffff) < t.high ? t.kind[by.a & 0xffff]! : 0;
-    if (kind !== 0) return `Blocked by ${structName(reg, kind)}`;
-  }
-  if (code === RESULT_BODY && by.detail === PLACED_ENTITY) {
-    if (by.a === handleIndex(session.ownHandle)) return "You are standing in the way";
-    const name = nameOf?.(by.a) ?? "";
-    if (name !== "") return `Blocked by ${name}`;
-  }
-  if (code === RESULT_LIMIT && by.detail === PLACED_COUNTS) return `${by.a.toLocaleString("en-US")} of ${by.b.toLocaleString("en-US")} structures here`;
-  if (code === RESULT_ENEMY_NEAR && by.detail === PLACED_METRES) return `${by.a} m from another tribe's ${by.b <= ENEMY_PILLAR ? "pillar" : "foundation"}; ${by.b} needed`;
-  return BUILD_REASONS[code] ?? "It cannot be built there";
 }
 
 /** What the shared checks ask of this client about a place in one store, and that store's support. */
@@ -1016,53 +954,3 @@ export class Builder {
     this.refusalUntil = nowMs + 2500;
   }
 }
-
-/** With a piece in hand and on foot, in play: when building's rows apply. */
-const building = (c: KeyContext): boolean => c.builder.active && c.session.driving < 0 && c.ui.wantsPointerLock;
-
-// Before any screen has the key: Z takes the last piece back, where it else opens the emotes; and a finger's Cancel, which
-// presses Escape, puts the piece away. The keyboard's Escape goes on to the menu.
-export const BUILD_FIRST_KEYS: readonly KeyRow[] = [{
-  name: "build cancel",
-  keys: ["Escape", "KeyZ"],
-  touch: { Escape: T_CANCEL },
-  guide: [{ code: "KeyZ", group: G_BUILD, title: "Undo", detail: "Take back the piece you set down last, while it can still be picked up.", sheet: G_BUILD }],
-  when: (c) => building(c) && !c.ui.opened("emotes"),
-  press(c, code, down, repeat, source) {
-    if (code === "KeyZ") {
-      if (down && !repeat) c.undo();
-      return true;
-    }
-    if (source !== 2) return undefined;
-    if (down && !repeat && !c.builder.cancel()) c.builder.putAway(c.session, c.nowMs);
-    return true;
-  },
-}];
-
-// While a piece is being placed its keys are the builder's (Builder.key). The guide's Build tab is these words.
-export const BUILD_KEYS: readonly KeyRow[] = [{
-  name: "build",
-  keys: ["KeyQ", "KeyR", "KeyT", "KeyX", "ArrowUp", "ArrowDown"],
-  touch: { KeyR: T_RELOAD, KeyT: T_FOLLOW_ONE, KeyQ: T_SNAP, ArrowUp: T_RAISE, ArrowDown: T_LOWER },
-  pad: { KeyX: 1, KeyT: 3, KeyQ: 14, ArrowUp: 12, ArrowDown: 13 },
-  guide: [
-    { code: "KeyQ", group: G_BUILD, title: "Next snap point / thruster flip", detail: "Tap to cycle snaps. Hold to toggle free placement. At the wheel of a thruster car (the Zephyr), on or just off the ground, flip: hold W for a front flip, S for a back flip, A or D for a barrel roll, or nothing for a kickflip; its nozzles catch it on its wheels. G flips too." },
-    { code: "KeyQ", group: G_BUILD, title: "Next snap point", detail: "Tap to cycle snaps. Hold to toggle free placement.", sheet: G_BUILD },
-    { code: "KeyR", group: G_BUILD, title: "Rotate", detail: "Rotate the active building preview. The mouse wheel turns it either way.", sheet: G_BUILD },
-    { code: "KeyT", group: G_BUILD, title: "Next form / form wheel", detail: "Tap for the next form of the piece in hand: wall, doorframe, windowframe. Hold for a wheel of them, move the look or scroll to one, and let go.", sheet: G_BUILD },
-    { code: "KeyX", group: G_BUILD, title: "Put away", detail: "Put the piece in hand away. The right mouse button does too.", sheet: G_BUILD },
-    { code: "KeyE", group: G_BUILD, title: "Use / piece menu", detail: "Tap to use what you look at. Hold on a built piece to mend it, take it back or take it down.", sheet: G_BUILD },
-    { code: "ArrowUp", group: G_BUILD, title: "Raise preview", sheet: G_BUILD },
-    { code: "ArrowDown", group: G_BUILD, title: "Lower preview", sheet: G_BUILD },
-    { code: "Mouse0", group: G_BUILD, title: "Place / drag a row", detail: "Click to set the piece down. Hold and sweep the look to lay floors, foundations or walls in a row of up to 32, set down when you let go. X or the right button gives the row up.", sheet: G_BUILD },
-    { code: "Mouse1", group: G_BUILD, title: "Pick piece", detail: "Take in hand the piece that builds what you look at, if you carry one.", sheet: G_BUILD },
-    { code: "Mouse2", group: G_BUILD, title: "Put away", sheet: G_BUILD },
-  ],
-  when: (c) => building(c),
-  press(c, code, down, repeat) {
-    if (code !== "KeyX") return c.builder.key(code, down, repeat, c.nowMs, c.reg) || undefined;
-    // A row being dragged is given up; with none, the piece is put away.
-    if (down && !repeat && !c.builder.cancel()) c.builder.putAway(c.session, c.nowMs);
-    return true;
-  },
-}];

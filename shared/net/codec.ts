@@ -235,6 +235,11 @@ export class BitReader {
     return this.limitBits - this.pos;
   }
 
+  /** A copy of the bytes not yet read, from a byte boundary: a message kept to be read later. */
+  rest(): Uint8Array {
+    return this.buf.slice(this.pos >> 3, this.limitBits >> 3);
+  }
+
   bits(n: number): number {
     let p = this.pos;
     if (p + n > this.limitBits) {

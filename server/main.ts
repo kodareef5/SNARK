@@ -635,6 +635,15 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
           });
           return;
         }
+        function admit(channel: number): boolean {
+          if (!conn.open) return false;
+          const rule = backlog(channel, ws.getBufferedAmount(), host.game.opts.snapshotBytesMax);
+          if (rule === 1) {
+            skipped++;
+            conn.skipped++;
+          } else if (rule === 2) ws.close(1008, "too slow");
+          return rule === 0;
+        }
         // What it sent and skipped, and what waits, are read for the record of play (server/playlog.ts).
         const conn: Connection & { open: boolean; bytesSent: number; skipped: number; readonly buffered: number } = {
           open: true,
@@ -646,11 +655,9 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
           address: ws.data.address,
           onMessage: null,
           onClose: null,
+          admit,
           send(channel, data) {
-            if (!conn.open) return;
-            const rule = backlog(channel, ws.getBufferedAmount(), host.game.opts.snapshotBytesMax);
-            if (rule === 1) return void (skipped++, conn.skipped++);
-            if (rule === 2) return void ws.close(1008, "too slow");
+            if (!admit(channel)) return;
             // Bun copies what it is given before send returns, so every message goes out through one buffer.
             const frame = data.length < outgoing.length ? outgoing.subarray(0, data.length + 1) : new Uint8Array(data.length + 1);
             frame[0] = channel;

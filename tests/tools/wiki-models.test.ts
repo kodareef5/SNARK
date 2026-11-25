@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { fetchContent } from "../../client/core/fetched.ts";
 import { landmarkBounds, studioStatic } from "../../client/core/studio/subject.ts";
 import { BENT_SECTIONS } from "../../content/bends.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
@@ -55,11 +56,15 @@ test("an authored loose mesh can stand in the studio as a static", () => {
   expect(reg.defs[reg.index.get(d.id)!]).toEqual(d);
 });
 
-test("the studio keeps valid content and omits the city's breakable pieces", () => {
+test("the studio keeps valid content and omits the city's breakable pieces", async () => {
   const defs = studioContent(CORE_CONTENT);
   expect(defs.some((def) => def.type === "structure" && def.breaks)).toBe(false);
   const compiled = compileContent([...defs, ...BENT_SECTIONS]);
   expect(compiled.errors).toEqual([]);
   expect(compiled.registry?.index.has("core:raptor")).toBe(true);
   expect(compiled.registry?.index.has("core:piece_foundation_wood")).toBe(true);
+  const get = async () => Response.json(defs);
+  const page = await fetchContent(get, "studio.json", "studio");
+  expect(page.index.has("core:piece_foundation_wood")).toBe(true);
+  expect(page.index.has("core:zruin_wall4_concrete")).toBe(false);
 });

@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+// The editor's code at once, as a page has it once it has come (client/core/editor-load.ts).
+import "../../client/core/editor.ts";
 import { App } from "../../client/core/app.ts";
 import { PAD_BUILD, PAD_HOLDS, PAD_KEYS, PAD_TAPS } from "../../client/core/gamepad.ts";
 import { ANY_KEY, pressKey, type KeyRow } from "../../client/core/key-row.ts";
@@ -94,7 +96,7 @@ test("the body's buttons are the last row, so no row after it is shadowed", () =
 
 test("with a piece in hand E still takes, opens and uses, and R turns the piece", () => {
   const { app, press } = playing();
-  app.builder.active = true;
+  app.builder!.active = true;
   app.eggAimed = 7;
   expect(press("KeyE")).toBe("take");
   app.eggAimed = -1;
@@ -107,14 +109,14 @@ test("with a piece in hand E still takes, opens and uses, and R turns the piece"
 
 test("at a wheel a piece in hand takes no key, so Q and R are the vehicle's", () => {
   const { app, press } = playing();
-  app.builder.active = true;
+  app.builder!.active = true;
   app.session.driving = 5;
   expect([press("KeyQ"), press("KeyR"), press("KeyX")]).toEqual(["body", "body", "body"]);
 });
 
 test("a finger's cancel puts the piece away, and the keyboard's Escape still opens the menu", () => {
   const { app } = playing();
-  app.builder.active = true;
+  app.builder!.active = true;
   expect(app.key("Escape", true, false, 2)).toBe(true);
   expect(app.ui.screen<MenuScreen>("menu").menu).toBe(false);
   app.key("Escape", false, false, 2);
@@ -158,25 +160,25 @@ test("N marks through a glass, then works a visor, then is the body's modifier",
 
 test("the arrows zoom a sight, then lift a piece being placed, then move the map", () => {
   const { app, press } = playing();
-  app.builder.active = true;
+  app.builder!.active = true;
   app.visorOptic = { min: 2, max: 8 } as OpticFacet;
   app.visor.up = true;
   expect(app.zooming).toBe(true);
   expect(press("ArrowUp")).toBe("sight zoom");
-  expect(app.builder.lift).toBe(0);
+  expect(app.builder!.lift).toBe(0);
   app.visor.up = false;
   expect(press("ArrowUp")).toBe("build");
-  expect(app.builder.lift).toBe(1);
-  app.builder.active = false;
+  expect(app.builder!.lift).toBe(1);
+  app.builder!.active = false;
   app.ui.screen<MapScreen>("map").open = true;
   expect(press("ArrowUp")).toBe("chart");
 });
 
 test("Q is the builder's while a piece is placed, and else throws and goes on", () => {
   const { app, press } = playing();
-  app.builder.active = true;
+  app.builder!.active = true;
   expect(press("KeyQ")).toBe("build");
-  app.builder.active = false;
+  app.builder!.active = false;
   // The throw's row lets the key go on, and the body, which has no use for Q on foot, says so.
   expect(press("KeyQ")).toBe("body");
   expect(app.key("KeyQ", true)).toBe(false);

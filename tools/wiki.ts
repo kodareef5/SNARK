@@ -131,7 +131,7 @@ export async function buildWiki(dist = join(ROOT, "client/dist"), maps = join(RO
       writeText(join(out, name), text);
       if (o.kind === "entry-point") js = `${BASE}${name}`;
     }
-    const fontFile = built.asset(/^hud-font\.\w+\.ttf$/, true);
+    const fontFile = built.asset(/^hud-font-latin\.\w+\.woff2$/, true);
     const font = fontFile ? `/assets/${fontFile}` : "";
     const css = readFileSync(join(import.meta.dir, "wiki/wiki.css"), "utf8");
     const cssName = `wiki.${partHash(new TextEncoder().encode(css))}.css`;

@@ -68,7 +68,7 @@ async function start(): Promise<void> {
     modelFrom(params.get("model"), id),
   ]);
   const core = parseManifest(manifestText);
-  const [boot, base, sky] = await Promise.all([fetchBytes(fetch, "assets/" + core.files[core.boot]!.name), fetchContent(fetch, media.studioContent ?? media.content), fetchBytes(fetch, media.sky)]);
+  const [boot, base, sky] = await Promise.all([fetchBytes(fetch, "assets/" + core.files[core.boot]!.name), fetchContent(fetch, media.studioContent ?? media.content, media.studioContent ? "studio" : "world"), fetchBytes(fetch, media.sky)]);
   const land = model?.kind === "landmark" ? model : null;
   const map = land ? { landmarks: [{ name: land.name, x: 0, y: 0, z: 0, yaw: 0 }], defs: [] } : undefined;
   const loaded = await withLandmarks(fetch, map, base, core, parsePack(new Uint8Array(boot)));

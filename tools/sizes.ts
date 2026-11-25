@@ -22,9 +22,10 @@ const MB = 1024 * KB;
  * The rows that fail a build. The first is 0.44 s at 20 Mbit/s and holds no art past the survivor's: it was 647 KB with
  * 660 meshes and is 658 with ten times as many, a mesh adding 4 bytes of its name and page, so its room is for the
  * script and the content as the game is built. It was 1,024 KB until the script filled it (D933): Miami's client waits
- * for 1,039. The rest are waste the build can always avoid.
+ * for 1,039. It was 1,088 KB until building's pieces and the Vegas orb came (planning/workstreams/first-download.md):
+ * Miami's client waits for 1,098. The rest are waste the build can always avoid.
  */
-export const FIRST_FRAME_BUDGET = 1088 * KB;
+export const FIRST_FRAME_BUDGET = 1104 * KB;
 /** The reaction curves, which a page fetches after its first frame and waits for before it joins a world. */
 export const REACTION_CURVES_BUDGET = 96 * KB;
 const BUDGETS: Record<string, number> = {
@@ -63,8 +64,10 @@ export function weigh(dist: string): boolean {
   const seconds = sounds.reduce((s, x) => s + x.takes.reduce((a, t) => a + t.samples, 0) / x.rate, 0);
   const music = join(dist, "assets/music");
   const titleImports = existsSync(join(dist, "entry.js")) ? preloaded(dist, "entry.js").map(name => name + ".br") : [];
+  // The title shows Latin text in the game's own face, its Latin part.
+  const titleFont = readdirSync(join(dist, "assets")).filter((n) => /^hud-font-latin\.\w+\.woff2$/.test(n)).map((n) => `assets/${n}`);
   const rows: [string, number][] = [
-    ["title script, style, font, catalogue and poster", titleBytes(["entry.js.br", ...titleImports, "entry.css.br", "title/barlow.ttf", "title/maps.json", "title/red-tide.webp", "title/snark-emblem.webp"])],
+    ["title script, style, font, catalogue and poster", titleBytes(["entry.js.br", ...titleImports, "entry.css.br", ...titleFont, "title/maps.json", "title/red-tide.webp", "title/snark-emblem.webp"])],
     ["game loading poster", titleBytes(["title/snark-emblem.webp"]) +
       Math.max(titleBytes(["title/loader-wynwood.webp"]), titleBytes(["title/loader-wynwood-portrait.webp"]))],
     ["the page's script, Brotli", script.reduce((s, n) => s + size(n), 0)],
@@ -119,7 +122,9 @@ export function firstFrame(dist: string): { script: string[]; fetched: string[];
   const page = readFileSync(join(dist, "index.html"), "utf8");
   const script = [...page.matchAll(/rel="modulepreload" href="([^"]+)"/g)].map((x) => `${x[1]}.br`);
   const fetched = (JSON.parse(/for \(const href of (\[[^\]]*\])\)/.exec(page)![1]!) as string[]).filter((n) => existsSync(join(dist, n))).map((n) => `${n}.br`);
-  const hud = readdirSync(join(dist, "assets")).filter((n) => /^hud\.\w+\.(?:webp|png)$|^hud-font\.\w+\.ttf\.br$/.test(n)).map((n) => `assets/${n}`);
+  // The HUD's sheet, and the font files the page asks for early: the Latin part. Another part comes only for a character in it.
+  const fonts = [...page.matchAll(/rel="preload" href="([^"]+)" as="font"/g)].map((x) => x[1]!);
+  const hud = [...readdirSync(join(dist, "assets")).filter((n) => /^hud\.\w+\.(?:webp|png)$/.test(n)).map((n) => `assets/${n}`), ...fonts];
   return { script, fetched, first: ["index.html.br", ...script, "assets-worker.js.br", ...fetched, ...hud].reduce((s, n) => s + size(n), 0) };
 }
 
