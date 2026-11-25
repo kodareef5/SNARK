@@ -1036,3 +1036,235 @@ test("no line of sight passes between a stone wall and the foundation it stands 
     }));
   }
 });
+
+// Metal's new forms: half_wall, quarter_wall, railing, corner_pillar, thin_pillar, beam, ramp, triangle_foundation,
+// triangle_ceiling, quarter_foundation, roof, roof_hip, roof_valley, triangle_roof, triangle_roof_low, sloped_wall_left,
+// sloped_wall_right, fence_foundation, trapdoor_frame, trapdoor, ladder, double_doorway, large_wall, gateway, gate; and
+// its trims: joint_sq, joint_r15, joint_r21, skirt, ridge. Flat levels in two steel greys, as its first nine are.
+
+const metalNew = Object.entries(PLANNED).map(([name, form]) => ({ name, form, shapes: levelsOf(METAL, name, form) }));
+/** What each new metal form's levels cost on 2026-11-24. A change may lower a number and may not raise one. */
+const METAL_NEW_MOST: Record<string, readonly number[]> = {
+  half_wall: [420, 180, 60, 12],
+  quarter_wall: [440, 176, 60, 12],
+  railing: [204, 96, 60, 12],
+  corner_pillar: [320, 128, 36, 12],
+  thin_pillar: [168, 72, 36, 12],
+  beam: [192, 96, 60, 12],
+  ramp: [508, 196, 40, 8],
+  triangle_foundation: [424, 244, 16, 8],
+  triangle_ceiling: [332, 200, 44, 8],
+  quarter_foundation: [472, 280, 24, 12],
+  roof: [344, 96, 60, 12],
+  roof_hip: [428, 156, 60, 12],
+  roof_valley: [404, 132, 60, 12],
+  triangle_roof: [332, 98, 44, 8],
+  triangle_roof_low: [304, 70, 44, 8],
+  sloped_wall_left: [372, 180, 56, 8],
+  sloped_wall_right: [372, 180, 56, 8],
+  fence_foundation: [204, 108, 12],
+  trapdoor_frame: [384, 216, 64, 32, 12],
+  trapdoor: [296, 120, 48, 12],
+  ladder: [216, 104, 48, 24, 12],
+  double_doorway: [984, 320, 132, 28, 12],
+  large_wall: [856, 168, 60, 12],
+  gateway: [780, 300, 132, 28, 12],
+  gate: [636, 192, 56, 12],
+};
+/** The first form each new one is nearest to, which it may cost no more than at any level. A ladder is like none of them. */
+const METAL_LIKE: Record<string, string> = {
+  half_wall: "wall", quarter_wall: "wall", railing: "wall", beam: "wall", large_wall: "wall", sloped_wall_left: "wall", sloped_wall_right: "wall", fence_foundation: "wall",
+  corner_pillar: "pillar", thin_pillar: "pillar", ramp: "stairs", triangle_foundation: "foundation", quarter_foundation: "foundation",
+  triangle_ceiling: "ceiling", roof: "ceiling", roof_hip: "ceiling", roof_valley: "ceiling", triangle_roof: "ceiling", triangle_roof_low: "ceiling", trapdoor_frame: "ceiling",
+  trapdoor: "door", gate: "door", double_doorway: "doorframe", gateway: "doorframe",
+};
+/** Triangles a level is over its like's: a slab with a hole through it has two trimmers, is four slabs from 60 m and keeps its hole a level longer than a ceiling has levels. */
+const METAL_OVER: Record<string, readonly number[]> = { trapdoor_frame: [0, 4, 4, 20, 0] };
+/**
+ * A metal roof's seams stand 45 mm over its plane and its gutter 55 mm, 0.30 m out past a low side, with a fascia 56 mm
+ * under the slab's foot there, 65 mm on a triangle's steeper face. From 60 m it is one slab out to its eaves, as deep
+ * there as anywhere.
+ */
+const METAL_ROOF_OVER = 0.056;
+const METAL_ROOF_UNDER = [0.066, 0.066, 0.174, 0.002] as const;
+
+test("every level of every new metal form lies in its box and the margin its kind is given", () => {
+  for (const { name, form, shapes } of metalNew) {
+    const box = colliderBox(form);
+    shapes.forEach((shape, level) => {
+      const over = [0, 0, 0, 0, 0, 0];
+      for (const p of shape.corners()) {
+        const at = [p[0], p[2], -p[1]];
+        for (let a = 0; a < 3; a++) {
+          over[a] = Math.max(over[a]!, box[a]! - at[a]!);
+          over[a + 3] = Math.max(over[a + 3]!, at[a]! - box[a + 3]!);
+        }
+        if (isRoof(form)) expect(at[1]! - roofHeight(form, at[0]!, at[2]!), `${name} level ${level} over its plane`).toBeLessThanOrEqual(METAL_ROOF_OVER);
+      }
+      over.forEach((most, k) => {
+        const a = k % 3;
+        // A leaf's hinges, wheel and brackets; a roof's gutter; and for the rest a nut on the finest level and 2 mm of marker stripe past it.
+        const margin = isRoof(form) ? (a === 1 ? (k === 1 ? METAL_ROOF_UNDER[level]! : METAL_ROOF_OVER) : EAVE + 0.001) : form.layer === "leaf" ? METAL_PROUD_LEAF : level === 0 ? METAL_PROUD : 0.0021;
+        expect(most, `${name} level ${level} past its ${k < 3 ? "least" : "most"} ${"xyz"[a]}`).toBeLessThanOrEqual(margin);
+      });
+    });
+  }
+});
+
+test("no face of a near level of a new metal form crosses a ring it yields at but a prism along the way", () => {
+  for (const { name, form, shapes } of metalNew) {
+    const planes = [...yieldPlanes(form).map(([axis, at]) => ({ n: [0, 1, 2].map((a) => (a === axis ? 1 : 0)) as unknown as Vec, at, axis })), ...yieldSlants(form).map(([n, at]) => ({ n, at, axis: -1 }))];
+    if (form.yieldBand > 0 && form.plane !== "across") expect(planes.length, name).toBeGreaterThanOrEqual(form.plane === "upright" ? 2 : form.outline.length);
+    for (const { n, at, axis } of planes) {
+      shapes.slice(0, TEXTURED).forEach((shape, level) => {
+        let [on, crossed] = [0, 0];
+        for (const f of shape.faces) {
+          const side = f.points.map((p) => dot(n, p) - at);
+          on += side.filter((d) => Math.abs(d) < 1e-7).length;
+          const slack = axis < 0 ? 3e-4 : 1e-6;
+          if (!(side.some((d) => d > slack) && side.some((d) => d < -slack))) continue;
+          crossed++;
+          expect(f.along, `${name} level ${level}: a ${f.mat} face crosses the ring at ${at}`).toBe(axis < 0 ? -2 : axis);
+        }
+        // Nothing here is textured, so a prism is shorter where it yields and needs no ring: a tall wall from 60 m is
+        // prisms alone, and a railing's posts stand whole on one side of a ring or the other. A wall, a slab and a roof have theirs.
+        if (crossed === 0 && !["railing", "fence_foundation"].includes(name)) expect(on, `${name} level ${level}: vertices on the ring at ${at}`).toBeGreaterThanOrEqual(4);
+      });
+    }
+  }
+});
+
+test("every new metal level is closed, flat, in the made piece's budget and no dearer than it was or than its like", () => {
+  const first = new Map(bakeMetal(FORMS).map((m) => [m.id.slice(5, -6), m.lods.map((lod) => lod.indices.length / 3)] as const));
+  const meshes = bakeMetal(PLANNED);
+  expect(bakeMetal({ ...FORMS, ...PLANNED }, true).length).toBe(39);
+  for (const mesh of meshes) {
+    const name = mesh.id.slice(5, -6);
+    const most = METAL_NEW_MOST[name]!, like = first.get(METAL_LIKE[name] ?? ""), spare = METAL_OVER[name];
+    expect(mesh.lods.length, mesh.id).toBe(most.length);
+    mesh.lods.forEach((lod, level) => {
+      const s = measureSurface(lod);
+      const triangles = lod.indices.length / 3;
+      expect([mesh.id, level, s.holes, s.flipped, s.insideOut]).toEqual([mesh.id, level, 0, 0, 0]);
+      expect(triangles, `${mesh.id} level ${level}`).toBeLessThanOrEqual(Math.min(most[level]!, MADE_PIECE_TRIANGLES[level]![1]));
+      // Past its like's last level it is held to that level's count.
+      if (like) expect(triangles, `${mesh.id} level ${level} against ${METAL_LIKE[name]}`).toBeLessThanOrEqual(like[Math.min(level, like.length - 1)]! + (spare?.[level] ?? 0));
+      expect(lod.uvs, `${mesh.id} level ${level} is flat`).toBeUndefined();
+    });
+  }
+  const again = bakeMetal(PLANNED, true);
+  expect(bakeMetal(PLANNED, true).map((m) => m.lods.map((l) => [Bun.hash(l.positions), Bun.hash(l.bones ?? new Uint8Array(0))]))).toEqual(again.map((m) => m.lods.map((l) => [Bun.hash(l.positions), Bun.hash(l.bones ?? new Uint8Array(0))])));
+});
+
+test("a new metal form is two-toned to the level its frame is drawn at, and says which faces wear its material", () => {
+  for (const mesh of bakeMetal(PLANNED)) {
+    mesh.lods.slice(0, 3).forEach((lod, level) => {
+      const used = new Set(lod.colors);
+      expect([mesh.id, level, used.has(REGION_BASE), used.has(4)]).toEqual([mesh.id, level, true, true]);
+    });
+    expect([mesh.id, mesh.lods[0]!.bones!.some((b) => ((b >> 2) & 15) !== 0)]).toEqual([mesh.id, true]);
+    for (const lod of mesh.lods) {
+      for (let v = 0; v < lod.colors.length; v++) {
+        const flags = lod.bones![v]! & (FACE_WEARS | FACE_PLAIN);
+        expect(lod.colors[v] === REGION_BASE ? flags === 0 : flags === FACE_WEARS || flags === (FACE_WEARS | FACE_PLAIN)).toBe(true);
+      }
+    }
+  }
+});
+
+test("a new metal wall ends flat on its collider's ends, and a wall that others stand on has its top and foot on its collider's", () => {
+  for (const { name, form, shapes } of metalNew) {
+    if ((form.layer !== "wall" && form.layer !== "footing") || form.outline.length !== 4) continue;
+    const box = colliderBox(form);
+    shapes.forEach((shape, level) => {
+      const c = shape.corners();
+      expect([name, level, Math.min(...c.map((p) => p[0])), Math.max(...c.map((p) => p[0]))]).toEqual([name, level, box[0], box[3]]);
+      // A low wall, the tall wall and the two portals close on what is over and under them, as a wall does.
+      if (form.carries) expect([name, level, Math.min(...c.map((p) => p[2])), Math.max(...c.map((p) => p[2]))]).toEqual([name, level, box[1], box[4]]);
+    });
+  }
+});
+
+test("a metal sloped wall's two hands are each other in a mirror, point for point", () => {
+  const [left, right] = ["sloped_wall_left", "sloped_wall_right"].map((name) => metalNew.find((p) => p.name === name)!.shapes);
+  left!.forEach((shape, level) => {
+    const name = (p: Vec, flip: number): string => [flip * p[0], p[1], p[2]].map((c) => (Math.round(c * 1e6) / 1e6 || 0).toFixed(6)).join();
+    expect([...new Set(shape.corners().map((p) => name(p, -1)))].sort()).toEqual([...new Set(right![level]!.corners().map((p) => name(p, 1)))].sort());
+    expect(shape.triangles).toBe(right![level]!.triangles);
+  });
+});
+
+test("a metal roof reads its row: where the row stands its slab on its corner heights, the mesh goes up with it", () => {
+  const row = PLANNED.roof!;
+  const stood: FormDef = { ...row, at: [row.at[0], row.at[1] + row.thick, row.at[2]], corner: row.corner!.map((h) => h + row.thick) };
+  for (let level = 0; level < 4; level++) {
+    const [was, is] = [levelsOf(METAL, "roof", row)[level]!.corners(), levelsOf(METAL, "roof", stood)[level]!.corners()];
+    expect(is.length).toBe(was.length);
+    // About its own origin the mesh is the same, and the origin is a slab higher: so its underside is where its top was.
+    for (let k = 0; k < was.length; k++) for (let a = 0; a < 3; a++) expect(is[k]![a]!, `level ${level}`).toBeCloseTo(was[k]![a]!, 9);
+  }
+});
+
+test("metal's trims are the five the client looks for, within their budgets, slate and bolts, closed but where two triangles are a sheet", () => {
+  const trims = bakeMetal({}, true);
+  expect(trims.map((m) => m.id)).toEqual(["core:joint_sq_metal", "core:joint_r15_metal", "core:joint_r21_metal", "core:skirt_metal", "core:ridge_metal"]);
+  for (const mesh of trims) {
+    const most = TRIM_TRIANGLES[mesh.id.slice(5, -6)]!;
+    expect(mesh.lods.length, mesh.id).toBe(most.length);
+    mesh.lods.forEach((lod, level) => {
+      const s = measureSurface(lod);
+      expect(lod.indices.length / 3, `${mesh.id} level ${level}`).toBeLessThanOrEqual(most[level]!);
+      expect([mesh.id, level, s.flipped, s.insideOut]).toEqual([mesh.id, level, 0, 0]);
+      if (lod.indices.length / 3 > 2) expect([mesh.id, level, s.holes]).toEqual([mesh.id, level, 0]);
+      // The frame's slate, a bolt's iron, and on a skirt its foundation's own colour.
+      for (const c of lod.colors) expect([4, 96, ...(mesh.id.includes("skirt") ? [REGION_BASE] : [])]).toContain(c);
+      // A face in a fixed colour wears the piece's material; a round post's and a flashing's keep clear of its joints.
+      for (let v = 0; v < lod.colors.length; v++) expect((lod.bones![v]! & FACE_WEARS) !== 0).toBe(lod.colors[v] !== REGION_BASE);
+    });
+  }
+});
+
+test("a metal joint cut to a lower wall ends flat in its own collar: all that stands over a cut folds inside what is at it", () => {
+  const half: Record<string, number> = { joint_sq: 0.11, joint_r15: 0.15, joint_r21: 0.21 };
+  for (const [name, shapes] of Object.entries(METAL.trims!())) {
+    if (!(name in half)) continue;
+    const finest = shapes[0]!.corners();
+    // Its base plate is sunk 6 mm into the floor it stands on, and its cap stands a centimetre over the storey.
+    expect([name, Math.min(...finest.map((p) => p[2])), Math.max(...finest.map((p) => p[2]))]).toEqual([name, -0.006, 3.01]);
+    // How far a point is out: along an axis for the square post, from the corner for a tube.
+    const out = (p: Vec): number => (name === "joint_sq" ? Math.max(Math.abs(p[0]), Math.abs(p[1])) : Math.hypot(p[0], p[1]));
+    for (const cut of [0.76, 1.51, 2.26]) {
+      // A collar's top is at each height the client clamps it to (client/core/render/piece-fit.ts); a tube has none under its third, where nothing over it is wider than it.
+      const ring = finest.filter((p) => Math.abs(p[2] - cut) < 1e-9);
+      if (name === "joint_sq" || cut < 2) expect(ring.length, `${name} at ${cut}`).toBeGreaterThanOrEqual(12);
+      const reach = Math.max(half[name]!, ...ring.map(out));
+      for (const p of finest) if (p[2] > cut) expect(out(p), `${name} over ${cut}`).toBeLessThanOrEqual(reach + 1e-9);
+    }
+    // A square post stands a centimetre past a wall's faces, and its lowest collar and its bolts 3.2 cm more; a tube's base plate is square.
+    for (const p of finest) expect(p[2] > 0.031 ? out(p) : Math.max(Math.abs(p[0]), Math.abs(p[1])), name).toBeLessThanOrEqual(half[name]! + 0.0321);
+    // Past the finest a post keeps its collars and loses its bolts, and from 60 m it is a box no wider than its shaft.
+    for (const p of shapes[1]!.corners()) expect(out(p), `${name} level 1`).toBeLessThanOrEqual(half[name]! + 0.0241);
+    for (const p of shapes[2]!.corners()) expect(Math.max(Math.abs(p[0]), Math.abs(p[1])), `${name} level 2`).toBeLessThanOrEqual(half[name]! + 1e-9);
+  }
+});
+
+test("a metal skirt hangs 2.4 m from a side's middle, 0.12 m out, and mitres 0.12 m round each end; a ridge lies along its line", () => {
+  const box = (name: string, level: number): number[] => {
+    const p = bakeMetal({}, true).find((m) => m.id === `core:${name}_metal`)!.lods[level]!.positions;
+    return [0, 1, 2].flatMap((a) => [Math.min(...Array.from({ length: p.length / 3 }, (_, v) => p[v * 3 + a]!)), Math.max(...Array.from({ length: p.length / 3 }, (_, v) => p[v * 3 + a]!))]).map((v) => Math.round(v * 1e4) / 1e4 || 0);
+  };
+  // In the engine's frame: +X along the side, +Y up from the foundation's top, +Z outward.
+  // Its ledger's bolts stand 8 mm proud on the finest level.
+  expect(box("skirt", 0)).toEqual([-1.613, 1.613, -2.4, 0, 0, 0.128]);
+  expect(box("skirt", 1)).toEqual([-1.614, 1.614, -2.4, 0, 0, 0.12]);
+  for (const level of [2, 3]) expect(box("skirt", level)).toEqual([-1.5, 1.5, -2.4, level === 2 ? 0 : -0.02, level === 2 ? 0 : 0.12, 0.12]);
+  // A wedge past an end lies inside the next skirt's end post on a straight run: 5 mm under its face and its top.
+  const finest = METAL.trims!().skirt![0]!.corners();
+  for (const p of finest) if (Math.abs(p[0]) > 1.5 + 1e-9) expect(Math.abs(p[0]) - 1.5 <= -p[1] + 1e-9 && -p[1] <= 0.113 + 1e-9 && p[2] <= -0.026 + 1e-9).toBe(true);
+  for (let level = 0; level < 4; level++) {
+    const ridge = box("ridge", level);
+    expect([ridge[0], ridge[1]]).toEqual([-1.5, 1.5]);
+    expect(ridge[3]!, `level ${level}`).toBeLessThanOrEqual(0.12);
+    expect(Math.max(-ridge[4]!, ridge[5]!), `level ${level}`).toBeLessThanOrEqual(0.24);
+  }
+});

@@ -236,6 +236,53 @@ test("stone and its own joints closes every corner, square or not, and a straigh
   });
 });
 
+// Metal with its own joints (joint_sq_metal, joint_r15_metal, joint_r21_metal), as the client lays and fits them: a
+// corner post where walls end, a wall's end pulled back to its ring behind it, and nothing at all in a straight run.
+
+/** Corners of metal walls by their ways, and the joint the client lays at each: none where two walls run on. */
+const METAL_JOINTS: readonly (readonly [name: string, joint: string | null, ways: readonly (readonly [way: number, left: boolean, storey?: number])[]])[] = [
+  ["walls 90", "joint_sq_metal", [[0, false], [90, true]]],
+  ["tee", "joint_sq_metal", [[0, false], [180, true], [90, true]]],
+  ["cross", "joint_sq_metal", [[0, false], [90, true], [180, true], [270, false]]],
+  ["two storeys", "joint_sq_metal", [[0, false], [90, true], [0, false, 1], [90, true, 1]]],
+  ["walls 180", null, [[0, false], [180, true]]],
+  ["walls 60", "joint_r21_metal", [[0, false], [60, true]]],
+  ["walls 120", "joint_r15_metal", [[0, false], [120, true]]],
+  ["walls 150", "joint_r15_metal", [[0, false], [150, true]]],
+];
+
+test("metal and its own joints closes every corner, square or not, and a straight run is as it was", () => {
+  const pack = piecesPack([...tierMeshes(), ...bakeMetal(FORMS, true)]);
+  const laid: Junction[] = [];
+  const bench = new JointBench(pack, [], SIDE, (structs, reg) => {
+    METAL_JOINTS.forEach(([name, , ways], k) => {
+      const storeys = name === "two storeys";
+      const [vx, vz] = [64 + (k % 4) * 32, 64 + Math.floor(k / 4) * 32];
+      const ends = ways.map(([way, left, storey]): WallEnd => ({ form: "wall", tier: "metal", way, left, storey: storey ?? 0 }));
+      laid.push(layJunction(structs, reg, baseAt(structs, vx, storeys ? FOUNDATION_THICK : 0, vz, 0), name, vx, vz, 0, ends, storeys ? "metal" : null));
+    });
+  });
+  bench.draw({ vertex: [64, 64] }, 1.5, 30, 20);
+  const got = drawn(bench.scene, { chunksX: 8, chunksZ: 8 }, pack, meshesOf(pack));
+  const said: string[] = [];
+  laid.forEach((j, k) => {
+    const [near, far, fought] = [bench.measure(j), bench.measure(j, COARSE, COARSE_VIEWS), fightsOf(round(got, j.vertex[0], j.vertex[1], 4.7))];
+    const joints = round(got, j.vertex[0], j.vertex[1], 0.4).filter((d) => d.trim && d.id.includes("joint")).map((d) => d.id.slice(5));
+    said.push(`metal with its joints, ${j.name}: ${[...new Set(joints)].join() || "no joint"}, leak ${near.leak}, notch ${near.notch}, from across a yard ${far.leak} and ${far.notch}, faces in one plane ${fought.faces}, ${fought.area} cm2`);
+    // The joint its walls' ways ask for stands there, one a storey; two walls in a line have none.
+    expect([j.name, ...new Set(joints)]).toEqual([j.name, ...(METAL_JOINTS[k]![1] ? [METAL_JOINTS[k]![1]] : [])]);
+    // Each of those walls still reaches the corner: its end's face is half its thickness from it, and pulled back it would be 0.14 m off.
+    if (!METAL_JOINTS[k]![1]) for (const d of round(got, j.vertex[0], j.vertex[1], 4.7).filter((d) => d.id.includes("wall"))) {
+      let nearest = Infinity;
+      for (let v = 0; v < d.points.length; v += 3) nearest = Math.min(nearest, Math.hypot(d.points[v]! - j.vertex[0], d.points[v + 2]! - j.vertex[1]));
+      expect(nearest, `${j.name}: ${d.id} ends on the corner`).toBeLessThanOrEqual(0.1001);
+    }
+    // No pixel shows through, no outside corner is open, near or from across a yard, and no two faces lie in one plane.
+    expect([j.name, near.leak, near.notch, far.leak, far.notch, fought.faces, fought.area]).toEqual([j.name, 0, 0, 0, 0, 0, 0]);
+  });
+  if (process.env.SNARK_MEETS) console.log(said.join("\n"));
+});
+
 // The shapes past the first nine, with each tier's own trims as the client lays and fits them.
 
 import { PLANNED_FORMS } from "../../content/building/forms.ts";
@@ -246,7 +293,7 @@ import type { StructureStore } from "../../shared/world/structures.ts";
 import type { SourceMesh } from "../../tools/pack/write.ts";
 import { showsOver } from "../../tools/pieces/joints.ts";
 import { junction, skirtCorner, type Prism } from "../../tools/pieces/layout.ts";
-import { putAt, putOwn, standInSides, standInTrims, type Drawn } from "../fixtures/trims.ts";
+import { putAt, putOwn, type Drawn } from "../fixtures/trims.ts";
 
 const O = [0, 0, 0, 0];
 const at = (i: number, j: number): number[] => [2 * i, 0, 0, 2 * j];
@@ -389,12 +436,12 @@ const SHAPED: readonly Shaped[] = [
  * What each of SHAPED counted on 2026-11-24 with the tier's own trims laid, after leak and notch pixels, near and from
  * across a yard, which are all 0: faces in one plane and their square centimetres, where there are any. A change may
  * lower one and not raise it. A ridge's ends lie in the plane of its roofs' sides, rails cross at their corner as they
- * do with no trims, three foundations' sides lie in one plane under a floor held up in the air, and metal is boxes.
+ * do with no trims, and three foundations' sides lie in one plane under a floor held up in the air.
  */
 const SHAPED_FIGHTS: Record<string, Record<string, readonly [number, number]>> = {
   wood: { "gable at ridge": [4, 36], "railing corner": [3, 92], "skirts at an inside corner": [10, 261] },
   stone: { "gable at ridge": [4, 35], "railing corner": [2, 50], "skirts at an inside corner": [2, 264] },
-  metal: { "gable at eave": [6, 100], "gable at ridge": [6, 140], "gable at a lean-to's head": [4, 80], "half wall beside a wall": [6, 100], "railing corner": [2, 50], "wall at a double doorway's middle": [8, 120], "large wall beside a wall": [7, 110] },
+  metal: { "gable at eave": [1, 16], "gable at ridge": [4, 33], "railing corner": [4, 333] },
 };
 
 /** The forms SHAPED sets down, as a tier's recipe makes them. */
@@ -425,7 +472,8 @@ function shaped(tier: TierName, art: readonly SourceMesh[]): void {
     const [near, far, fought] = [bench.measure(j), bench.measure(j, COARSE, COARSE_VIEWS), fightsOf(round(got, j.vertex[0], j.vertex[1], 4.7), -10)];
     const here: Drawn[] = round(got, j.vertex[0], j.vertex[1], 4.7);
     const joints = round(got, j.vertex[0], j.vertex[1], 0.4).filter((d) => d.trim && d.id.includes("joint"));
-    const stands = joints.map((d): [number, number] => [Math.round((d.lo[1]! - foot) * 100) / 100 || 0, Math.round((d.hi[1]! - foot) * 100) / 100]).sort((p, q) => p[0] - q[0]);
+    // A joint's foot to the nearest 5 cm: metal's post is sunk a centimetre under its level.
+    const stands = joints.map((d): [number, number] => [Math.round((d.lo[1]! - foot) * 20) / 20 || 0, Math.round((d.hi[1]! - foot) * 100) / 100]).sort((p, q) => p[0] - q[0]);
     // Every joint and ridge seen from above with a roof behind it: one that stands out of the roof's top.
     const through = showsOver(here.filter((d) => d.trim && d.id.includes("joint")), here.filter((d) => !d.trim && d.id.includes("roof")), j.vertex[0], j.vertex[1]);
     said.push(`${tier} ${j.name}: leak ${near.leak}, notch ${near.notch}, from across a yard ${far.leak} and ${far.notch}, faces in one plane ${fought.faces}, ${fought.area} cm2, joints ${JSON.stringify(stands)}, through a roof ${through}`);
@@ -448,6 +496,6 @@ test("stone's new shapes and its own trims close every junction, and no joint st
   shaped("stone", [...tierMeshes(["thatch", "wood"]), ...tierShapes(STONE, SHAPED_FORMS), ...trimShapes(STONE)]);
 });
 
-test("metal's new shapes as boxes, with stand-in trims, take the joints stone's do", () => {
-  shaped("metal", [...tierMeshes(), ...standInTrims("metal"), ...standInSides("metal")]);
+test("metal's new shapes and its own trims close every junction, and no joint stands out of a roof", () => {
+  shaped("metal", [...tierMeshes(), ...bakeMetal(SHAPED_FORMS, true)]);
 });

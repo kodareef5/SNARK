@@ -23,13 +23,14 @@ import { colliderBox } from "../pack/pieces/lod.ts";
 import type { TierRecipe } from "../pack/pieces/lod.ts";
 import { STONE } from "../pack/pieces/stone.ts";
 import { THATCH_FORMS, THATCH_PLANNED } from "../pack/pieces/thatch.ts";
+import { bakeMetal } from "../pack/pieces/metal.ts";
 import { bakeTier } from "../pack/pieces/tier.ts";
 import { WOOD } from "../pack/pieces/wood.ts";
 import type { SourceMesh } from "../pack/write.ts";
 import { piecesPack, tierMeshes } from "./joints.ts";
 import type { Placed } from "./layout.ts";
 import { Canvas, Studio } from "./sheet.ts";
-import { CORNERS, HAMLET_SHOTS, KEEP_SHOTS, VILLAGE_SHOTS, corner, fitted, hamlet, keep, village } from "./village.ts";
+import { CORNERS, FORT_SHOTS, HAMLET_SHOTS, KEEP_SHOTS, VILLAGE_SHOTS, corner, fitted, fort, hamlet, keep, village, type VillageShot } from "./village.ts";
 
 const SMOOTH = 2;
 /** The tier drawn: wood unless `--tier` names another. */
@@ -58,6 +59,8 @@ export async function baked(names?: readonly string[]): Promise<SourceMesh[]> {
   // Thatch bakes its own: two of its materials are a picture drawn whole, which the tier's bake has no word for. It
   // bakes every piece each time, since a picture that says nothing of tiling takes its span from all that wear it.
   if (TIER === "thatch") return source.bakeThatch(Object.fromEntries(made.map((name) => [name, ALL[name]!])), true, POSTS);
+  // Metal has no pictures: its bake is flat, and needs nothing of its asset.
+  if (TIER === "metal") return bakeMetal(forms, trims);
   if (!(TIER in RECIPES)) throw new Error(`no recipe makes the new forms in ${TIER}`);
   return bakeTier(RECIPES[TIER]!, forms, dir, asset.materials!, 2048, trims);
 }
@@ -100,11 +103,13 @@ export async function main(args: readonly string[], say: (line: string) => void 
   const made0 = await baked(only);
   // The other tiers as installed, and this one's installed pieces under those the recipe makes now.
   const own = new Set(made0.map((m) => m.id));
-  const others = tierMeshes().filter((m) => !own.has(m.id));
+  // Metal is drawn alone: it has no pictures, and the other tiers' are 2 GB a view.
+  const others = TIER === "metal" ? [] : tierMeshes().filter((m) => !own.has(m.id));
+  const turn = Number(value("turn") ?? 17);
   const has = (id: string): boolean => !args.includes("--no-trims") && own.has(id);
   // What is set down, before the pack is made: a piece the client's rule moves the points of is a mesh of its own.
   const corners = !only && !args.includes("--village") && own.has(`core:joint_sq_${TIER}`) ? CORNERS.map(([, ways, storeys]) => corner(TIER, ways, storeys, has)) : [];
-  const built: Placed[] = only ? [] : TIER === "wood" ? village(TIER, has) : TIER === "stone" ? keep(TIER, has) : hamlet(TIER, has);
+  const built: Placed[] = only ? [] : TIER === "wood" ? village(TIER, has) : TIER === "stone" ? keep(TIER, has) : TIER === "metal" ? fort(TIER, turn, has) : hamlet(TIER, has);
   const meshes = [...made0, ...fitted([...others, ...made0], [...corners.flat(), ...built])];
   const pack = piecesPack([...others, ...meshes]);
   const studio = await Studio.of(pack);
@@ -187,7 +192,12 @@ export async function main(args: readonly string[], say: (line: string) => void 
     });
     write(`corners-${TIER}.png`, sheet);
   }
-  const shots = TIER === "wood" ? VILLAGE_SHOTS : TIER === "stone" ? KEEP_SHOTS : HAMLET_SHOTS;
+  // The fort's views are of its base, which is turned.
+  const turned = ([name, centre, radius, around, above, only]: VillageShot): VillageShot => {
+    const [c, s] = [Math.cos((turn * Math.PI) / 180), Math.sin((turn * Math.PI) / 180)];
+    return [name, [c * centre[0] - s * centre[2], centre[1], s * centre[0] + c * centre[2]], radius, around - turn, above, only];
+  };
+  const shots = TIER === "wood" ? VILLAGE_SHOTS : TIER === "stone" ? KEEP_SHOTS : TIER === "metal" ? FORT_SHOTS.map(turned) : HAMLET_SHOTS;
   const [vw, vh] = [1000, 720];
   const wanted = value("shots")?.split(",").map(Number);
   // One view of one's own: --look x,y,z,radius,around,above.

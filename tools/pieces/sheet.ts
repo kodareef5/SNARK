@@ -31,6 +31,9 @@ import { bakeMetal } from "../pack/pieces/metal.ts";
 /** A flat piece's faces in its own colours are drawn in its kind's: metal's steel greys, and dev orange for the rest. */
 const OWN_COLOURS = new Map(BUILDING_CONTENT.flatMap((d) => (d.type === "structure" && d.made ? [[d.id, [d.color, ...(d.colors ?? [])]] as const] : [])));
 
+/** The same by tier, for a form of it that has no kind yet. */
+const TIER_COLOURS = new Map([...OWN_COLOURS].map(([id, colours]) => [id.slice(id.lastIndexOf("_") + 1), colours] as const));
+
 type Rgb = readonly [number, number, number];
 const PAPER: Rgb = [242, 243, 245];
 const INK: Rgb = [28, 32, 38];
@@ -145,7 +148,8 @@ export class Studio {
     const least = Math.min(...parts.map(([m]) => header[m]!.lods.length - 1));
     const at = Math.min(level, least);
     const surfaced = parts.every(([m]) => (header[m]!.lods[at]!.sections?.length ?? 0) > 0);
-    const own = placed.map((p) => OWN_COLOURS.get(p.id)).find((c) => c !== undefined) ?? [];
+    // A piece drawn as the client's rule leaves it has its fit after its id (village.ts fitId).
+    const own = placed.map((p) => p.id.split("~")[0]!).map((id) => OWN_COLOURS.get(id) ?? TIER_COLOURS.get(/_([a-z]+)$/.exec(id)?.[1] ?? "")).find((c) => c !== undefined) ?? [];
     view.draw({ mesh: parts[0]![0], level: at, placed: parts, around, above, centre, radius, rig: null, colors: Array.from({ length: 6 }, (_, k) => own[k] ?? 3), textured: surfaced, ...(floor === null ? {} : { floor }) });
     return view.raster.color;
   }
