@@ -195,13 +195,14 @@ test("the window round the camera is filled again where its sectors come, within
   const lod = new TerrainLod(hf);
   const size = groundSize(hf);
   const [w, h] = [size.width[SOURCE_WINDOW]!, size.height[SOURCE_WINDOW]!];
-  // The card's two copies of the window, filled from the heightfield as the shell fills them.
-  const copies = [new Uint16Array(w * h), new Uint16Array(w * h)];
+  // The card's picture of the window, which holds a sample at its own place modulo its size, filled as the shell fills it.
+  const picture = new Uint16Array(w * h);
+  const texel = (i: number, j: number): number => (j % h) * w + (i % w);
   const budget = allowance(1 << 20);
   const cam = new Camera();
   [cam.y, cam.pitch, cam.aspect] = [200, -0.3, 16 / 9];
   const order = scrambled(grounds, 7);
-  let [drawn, corner, frames, stale] = [-1, [0, 0], 0, 0];
+  let [corner, frames, stale] = [[0, 0], 0, 0];
   for (let f = 0; f < 400; f++) {
     budget.next();
     [cam.x, cam.z] = [600 + f * 6, 300];
@@ -209,28 +210,31 @@ test("the window round the camera is filled again where its sectors come, within
     if (f % 9 === 4 && order.length > 0) land(hf, order.pop()!);
     const p = new FramePacket();
     lod.select(cam, p, 4000, budget);
-    const [d, wi, wj, copy, fi, fj, row, rows] = p.groundWindow;
     expect(budget.spent).toBeLessThanOrEqual(f === 0 ? w * h * 3 : 1 << 20);
-    for (let r = row!; copy! >= 0 && r < row! + rows!; r++) copies[copy!]!.set(hf.heights.subarray((fj! + r) * hf.nx + fi!, (fj! + r) * hf.nx + fi! + w), r * w);
-    [drawn, corner] = [d!, [wi!, wj!]];
+    const parts = p.groundParts;
+    for (let n = 0; n < p.groundPartCount * 5; n += 5) {
+      for (let r = 0; r < parts[n + 3]!; r++) picture.set(p.groundHeights.subarray(parts[n + 4]! + r * parts[n + 2]!, parts[n + 4]! + (r + 1) * parts[n + 2]!), (parts[n + 1]! + r) * w + parts[n]!);
+    }
+    expect(p.groundWindow[0]).toBe(0);
+    corner = [p.groundWindow[1]!, p.groundWindow[2]!];
     // Each sample drawn is the map's own or the overview's.
     let wrong = 0;
     for (let j = 0; j < h; j++) {
       for (let i = 0; i < w; i++) {
-        const k = (corner[1]! + j) * hf.nx + corner[0]! + i, v = copies[drawn]![j * w + i]!;
+        const k = (corner[1]! + j) * hf.nx + corner[0]! + i, v = picture[texel(corner[0]! + i, corner[1]! + j)]!;
         if (v !== whole.heights[k] && v !== filled[k]) wrong++;
       }
     }
     expect(wrong).toBe(0);
     frames++;
     let same = true;
-    for (let j = 0; j < h && same; j++) for (let i = 0; i < w && same; i++) same = copies[drawn]![j * w + i] === hf.heights[(corner[1]! + j) * hf.nx + corner[0]! + i];
+    for (let j = 0; j < h && same; j++) for (let i = 0; i < w && same; i++) same = picture[texel(corner[0]! + i, corner[1]! + j)] === hf.heights[(corner[1]! + j) * hf.nx + corner[0]! + i];
     if (!same) stale++;
   }
-  // Once every sector has come, the window drawn holds the map's own; it was behind it for a few frames at a time.
-  expect([order.length, frames, stale > 0, stale < 200]).toEqual([0, 400, true, true]);
+  // Once every sector has come, the window drawn holds the map's own; a sector's columns go in a frame or a few.
+  expect([order.length, frames, stale < 200]).toEqual([0, 400, true]);
   let off = 0;
-  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) if (copies[drawn]![j * w + i] !== whole.heights[(corner[1]! + j) * hf.nx + corner[0]! + i]) off++;
+  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) if (picture[texel(corner[0]! + i, corner[1]! + j)] !== whole.heights[(corner[1]! + j) * hf.nx + corner[0]! + i]) off++;
   expect(off).toBe(0);
   // Its chunks' height ranges are measured again: the bound under any box is the whole map's.
   const fresh = new TerrainLod(whole);

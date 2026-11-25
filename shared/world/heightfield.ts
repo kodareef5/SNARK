@@ -19,6 +19,13 @@ export interface GroundView {
   off: number;
 }
 
+/** What Heightfield.tints gives: the tint of sample (i, j) of the box asked for is `tint[off + j * stride + i]`. */
+export interface TintView {
+  tint: Uint8Array;
+  stride: number;
+  off: number;
+}
+
 export class Heightfield {
   /** With its frame and display origin, the defaults where the dims it was made with give none. */
   readonly dims: FramedDims;
@@ -79,6 +86,7 @@ export class Heightfield {
    */
   span: number;
   private readonly whole: GroundView;
+  private readonly wholeTint: TintView;
 
   /** Use a power-of-two fraction such as 1/256 for `stepY`, so round heights (sea level, floors) are exact. */
   constructor(dims: MapDims, cell: number, minY: number, stepY: number, heights?: Uint16Array, tint?: Uint8Array, ground?: Uint8Array) {
@@ -101,6 +109,7 @@ export class Heightfield {
     this.exact = new Uint8Array(chunkCount(dims)).fill(1);
     this.span = Math.max(this.nx, this.nz) - 1;
     this.whole = { heights: this.heights, stride: this.nx, off: 0 };
+    this.wholeTint = { tint: this.tint, stride: this.nx, off: 0 };
   }
 
   /**
@@ -109,6 +118,16 @@ export class Heightfield {
    */
   view(_i0: number, _j0: number, _i1: number, _j1: number): GroundView {
     return this.whole;
+  }
+
+  /** The tints of the box from (i0, j0) to (i1, j1), both included, as `TintView` reads them. Good until the next call. */
+  tints(_i0: number, _j0: number, _i1: number, _j1: number): TintView {
+    return this.wholeTint;
+  }
+
+  /** The tint of sample (i, j). */
+  tintOf(i: number, j: number): number {
+    return this.tint[j * this.nx + i]!;
   }
 
   /**

@@ -1879,13 +1879,16 @@ float roadBand(float g, float centre, float wide, float blur) {
 }
 #ifdef GROUND_ROAD
 uniform highp usampler2D uRoad;
+uniform vec2 uRoadWrap;
 // The road's frame at window sample point at (roadFrameAt's twin): along and across into frame, their rise a metre along
-// x and z into rise, the carriageway's half width, lanes, one way and wear into road; and how sure.
+// x and z into rise, the carriageway's half width, lanes, one way and wear into road; and how sure. The picture holds
+// its cells wrapped round its size, as the window's do.
 float roadFrame(vec2 at, out vec2 frame, out vec4 rise, out vec4 road) {
   vec2 q = at / ${fl(ROAD_STEP)};
-  ivec2 i = clamp(ivec2(floor(q)), ivec2(0), textureSize(uRoad, 0) - 2);
+  ivec2 n = textureSize(uRoad, 0), w = ivec2(uRoadWrap);
+  ivec2 i = clamp(ivec2(floor(q)), ivec2(0), n - 2);
   vec2 f = clamp(q - vec2(i), 0.0, 1.0);
-  uvec4 a = texelFetch(uRoad, i, 0), b = texelFetch(uRoad, i + ivec2(1, 0), 0), c = texelFetch(uRoad, i + ivec2(0, 1), 0), d = texelFetch(uRoad, i + ivec2(1, 1), 0);
+  uvec4 a = texelFetch(uRoad, (i + w) % n, 0), b = texelFetch(uRoad, (i + ivec2(1, 0) + w) % n, 0), c = texelFetch(uRoad, (i + ivec2(0, 1) + w) % n, 0), d = texelFetch(uRoad, (i + 1 + w) % n, 0);
   frame = vec2(0.0);
   rise = vec4(0.0);
   road = vec4(0.0);

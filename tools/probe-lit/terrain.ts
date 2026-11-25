@@ -1,8 +1,9 @@
 // The terrain's pictures on a GPU (D253): the whole map at every fourth sample and a window of every sample round the
 // camera. Over 4 km of hills seen at medium, the ground near and 3 km off is held to the software rasterizer, which
-// reads the heightfield itself. Then the camera moves 300 m, so a second window is filled in bands and swapped in: the
-// frame before the swap and the frame of it, from one place, must be the same picture. After a teleport the ground is
-// drawn from the whole map's pair until the new window is in, and after a lost context the pictures are made again.
+// reads the heightfield itself. Then the camera moves 300 m, so the window steps, its pictures taking only the columns
+// it gains, wrapped: the frame before the step and the frame of it, from one place, must be the same picture. After a
+// teleport the ground is drawn from the whole map's pair until the new window is in, and after a lost context the
+// pictures are made again.
 // A view 70 degrees high is held to the rasterizer to 400 m, past which its triangles are under a pixel and the GPU
 // and the rasterizer light them differently; ground farther off is held through a view 10 degrees high.
 
@@ -166,7 +167,7 @@ export const terrainCheck: LitCheck = {
     cam.fovY = new Camera().fovY;
     shots.push(far);
 
-    // A window is filled round one place; 300 m east, held still, a second is filled in bands and swapped in.
+    // A window is filled round one place; 300 m east, held still, it steps there in a frame.
     const walk = new Shot("terrain-walk", W, H, hf, bytes);
     scene.resetUploads();
     place(1500, 2000, Math.PI / 2 + 0.3, -0.12);
@@ -178,7 +179,7 @@ export const terrainCheck: LitCheck = {
       const was = [q.groundWindow[0]!, q.groundWindow[1]!, q.groundWindow[2]!];
       const tiles = String(q.tiles.subarray(0, q.tileCount * 4)) + String(q.tileOrigin.subarray(0, q.tileCount * 2));
       const p = build(walk);
-      if (k === 0 || p.groundWindow[0] === was[0]) continue;
+      if (k === 0 || (p.groundWindow[1] === was[1] && p.groundWindow[2] === was[2])) continue;
       const s = made.swap;
       [s.before, s.after] = [walk.frames.length - 2, walk.frames.length - 1];
       walk.read.push(s.before, s.after);
@@ -188,9 +189,9 @@ export const terrainCheck: LitCheck = {
     }
     // 2 km on, the window drawn holds none of the ground in view: it is drawn from the whole map's pair until the new one is in.
     place(3700, 3400, Math.PI + 0.6, -0.1);
-    const old = scene.packet.groundWindow[0];
+    const old = [scene.packet.groundWindow[1], scene.packet.groundWindow[2]].join();
     build(walk, "just after a teleport, with no window round it");
-    for (let k = 0; k < 8 && scene.packet.groundWindow[0] === old; k++, made.coming++) build(walk);
+    for (let k = 0; k < 8 && (scene.packet.groundWindow[0]! < 0 || [scene.packet.groundWindow[1], scene.packet.groundWindow[2]].join() === old); k++, made.coming++) build(walk);
     build(walk, "once the window has come");
     shots.push(walk);
 
