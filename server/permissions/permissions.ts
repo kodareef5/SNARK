@@ -241,6 +241,12 @@ export class Permissions {
     return this.version !== was;
   }
 
+  /** Looks at the file now, as each poll does, for what must be judged against the newest: an import's plan. Says whether it read it again. */
+  lookNow(): boolean {
+    this.lookedAt = this.now();
+    return this.reloadIfChanged();
+  }
+
   /** The accounts and groups whose standing changed since the last call: here, on another world, or by the clock. */
   takeChanged(): Changed[] {
     const out = [...this.changed.values()];
@@ -314,7 +320,8 @@ export class Permissions {
       if (!m.forever && m.until <= now) continue;
       const g = this.groupsByName.get(m.group.toLowerCase());
       if (!g || g.group.rank < RANK_STAFF) continue;
-      if (m.world === 0 || m.world === world) here = true;
+      // One whose time has not begun gives nothing on this world yet, so it is no reach to its survivor either.
+      if ((m.world === 0 || m.world === world) && memberHolds(m, now)) here = true;
       if (m.world !== world) beyond = true;
     }
     return here ? (beyond ? "wider" : "here") : beyond ? "elsewhere" : "none";
@@ -414,16 +421,18 @@ export class Permissions {
     /** What follows each change made, once the write is in the file. */
     const after: (() => void)[] = [];
     let began = false;
+    let held: PermissionSnapshot | null = null;
     try {
       this.store.transaction(() => {
         began = true;
         if (this.store.revision() !== this.revision) this.load(this.store.read());
+        held = this.snapshot();
         for (const op of ops) out.push(this.one(actor, op, after));
         if (after.length > 0) this.tidy();
       });
     } catch {
       // A write that never began, as one a lock kept out, changed nothing here.
-      if (began) this.reread();
+      if (began) this.reread(held);
       const rank = out[0]?.rank ?? this.actingRank(actor);
       return ops.map(() => ({ why: "The permissions could not be written.", words: "", rank }));
     }
@@ -470,10 +479,12 @@ export class Permissions {
     let was = "";
     if (!isSurvivorId(id) || !isHash(hash)) return { why: "That is no password to claim.", wrong };
     let began = false;
+    let held: PermissionSnapshot | null = null;
     try {
       this.store.transaction(() => {
         began = true;
         if (this.store.revision() !== this.revision) this.load(this.store.read());
+        held = this.snapshot();
         if (this.store.issued(id) === null) {
           why = `No survivor has the ID ${id}.`;
           return;
@@ -498,7 +509,7 @@ export class Permissions {
         this.wrote(by.name, id, by.rank, by.via, "claimed their own password");
       });
     } catch {
-      if (began) this.reread();
+      if (began) this.reread(held);
       return { why: "The permissions could not be written.", wrong: false };
     }
     if (why) return { why, wrong };
@@ -783,11 +794,16 @@ export class Permissions {
     }
   }
 
-  /** After a write that failed part way: the view is read again, or marked to be at the next look. */
-  private reread(): void {
+  /**
+   * After a write that failed part way, with `held` the view as it was before the write changed it: the file is read
+   * again, or where it cannot be, the view goes back to what it held and is marked to be read at the next look. The
+   * file rolled the write back, so nothing of it may count here.
+   */
+  private reread(held: PermissionSnapshot | null): void {
     try {
       this.load(this.store.read());
     } catch {
+      if (held) this.load(held, false);
       this.revision = -1;
     }
   }
@@ -823,7 +839,8 @@ export class Permissions {
     }
     this.secrets.clear();
     for (const s of snap.secrets) this.secrets.set(s.id, s);
-    for (const [id, s] of before) if (this.secretOf(id) !== s.hash) this.retire(id, s.hash);
+    // A view put back after a failed write (`note` false) retires nothing: what differs there was never in the file.
+    if (note) for (const [id, s] of before) if (this.secretOf(id) !== s.hash) this.retire(id, s.hash);
     this.documents.clear();
     for (const d of snap.documents) this.documents.set(d.name.toLowerCase(), d);
     this.tags.clear();

@@ -5,9 +5,9 @@ import { existsSync, mkdirSync, readdirSync, mkdtempSync, readFileSync, rmSync }
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readChatFormat, readChatSettings, readLooseJson } from "../../shared/permissions/chat.ts";
-import type { PermissionActor } from "../../shared/permissions/model.ts";
+import { CHANGED_MEANWHILE, type PermissionActor } from "../../shared/permissions/model.ts";
 import { RANK_ADMIN, RANK_CLUSTER, RANK_MAP, RANK_OPEN } from "../../shared/ranks.ts";
-import { applyPlan, CHAT_DOCUMENT, IMPORT_CHANGES_MOST, planArkApi, planCommands, planCrossChat, type ArkApiFiles, type ImportPlan, type Planned } from "../../server/permissions/import.ts";
+import { applyPlan, CHAT_DOCUMENT, IMPORT_CHANGES_MOST, IMPORT_NOTES_MOST, planArkApi, planCommands, planCrossChat, type ArkApiFiles, type ImportPlan, type Planned } from "../../server/permissions/import.ts";
 import { Permissions } from "../../server/permissions/permissions.ts";
 import { PermissionStore } from "../../server/permissions/store.ts";
 import { STEAM, TRIBE, pluginDatabase, removeDatabase, runningArkApi } from "../fixtures/arkapi.ts";
@@ -459,4 +459,48 @@ test("the largest import holds the server for a moment, not for seconds", () => 
   expect(applied.done).toBe(IMPORT_CHANGES_MOST);
   // On a file, with its commit: a tick is 33 ms, and the old way took four of them for each change.
   expect(ms).toBeLessThan(500);
+});
+
+test("an import never writes over a whole value another map changed since it was planned", () => {
+  const file = join(root, "stale.sqlite");
+  const clock = { t: 1_000_000 };
+  const two = new Permissions({ store: new PermissionStore(file), world: 2, now: () => clock.t });
+  const five = new Permissions({ store: new PermissionStore(file), world: 5, now: () => clock.t });
+  const tag = (name: string) => ({ Priority: 1, Icon: "", Text: `[${name}]`, CanBeDisabled: true });
+  const first = JSON.stringify({ ChatTags: { StackChatTags: true, Old: tag("Old") }, MutedPermissionGroup: "", MapColors: {} });
+  expect(two.apply(cluster, { op: "setDocument", name: "chat", text: first })).toBe("");
+  clock.t += 6000;
+  five.poll();
+  // World 2 plans an import that adds a tag. World 5 then adds another, and world 2 has not looked at the file since.
+  const plan = planOf(planCrossChat(JSON.stringify({ ChatTags: { VIP: tag("VIP") } }), opts(two)));
+  const added = JSON.stringify({ ChatTags: { StackChatTags: true, Old: tag("Old"), Elders: tag("Elders") }, MutedPermissionGroup: "", MapColors: {} });
+  expect(five.apply(cluster, { op: "setDocument", name: "chat", text: added, was: first })).toBe("");
+  const applied = applyPlan(two, cluster, plan);
+  expect(applied.refused.map((r) => [r.op.op, r.reason])).toEqual([["setDocument", CHANGED_MEANWHILE]]);
+  expect(new PermissionStore(file).read().documents.find((d) => d.name === "chat")!.text).toBe(added);
+  // Planned from the file as it is now, as the page's check and apply plan after a look at it, it loses nothing.
+  two.lookNow();
+  const fresh = planOf(planCrossChat(JSON.stringify({ ChatTags: { VIP: tag("VIP") } }), opts(two)));
+  expect(applyPlan(two, cluster, fresh).refused).toEqual([]);
+  const text = new PermissionStore(file).read().documents.find((d) => d.name === "chat")!.text;
+  expect(["Old", "Elders", "VIP"].map((name) => text.includes(`"${name}"`))).toEqual([true, true, true]);
+});
+
+test("an import's notes are cut short, however many lines it was given", () => {
+  const perms = fresh();
+  const planned = planCommands(Array.from({ length: 5000 }, (_, i) => `nonsense ${i}`).join("\n"), opts(perms));
+  const plan = planOf(planned);
+  expect(plan.notes.length).toBe(IMPORT_NOTES_MOST + 1);
+  expect(plan.notes.at(-1)).toBe(`And ${5000 - IMPORT_NOTES_MOST} more notes like these.`);
+});
+
+test("a look at the file now reads another world's change without waiting for the poll", () => {
+  const file = join(root, "look.sqlite");
+  const clock = { t: 1_000_000 };
+  const two = new Permissions({ store: new PermissionStore(file), world: 2, now: () => clock.t });
+  const five = new Permissions({ store: new PermissionStore(file), world: 5, now: () => clock.t });
+  two.poll();
+  expect(five.apply(cluster, { op: "addGroup", group: "Vip" })).toBe("");
+  expect([two.poll(), two.group("Vip")]).toEqual([false, undefined]);
+  expect([two.lookNow(), two.group("Vip")?.name, two.lookNow()]).toEqual([true, "Vip", false]);
 });

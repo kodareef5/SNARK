@@ -126,12 +126,15 @@ test("a viewer below admin rank reads the state and can change nothing", async (
   const refusals = await Promise.all([
     ask(PERMISSIONS_API, posted({ do: "op", op: { op: "addGroup", group: "VIP" } }, {})).then(answered),
     ask(PERMISSIONS_API, posted({ do: "op", op: { op: "clearSecret", id: adaId } }, {})).then(answered),
-    ask(PERMISSIONS_API, posted({ do: "import", kind: "commands", text: "Permissions.AddGroup VIP", digest: await checkedDigest(ask, "commands", "Permissions.AddGroup VIP", {}) }, {})).then(answered),
+    ask(PERMISSIONS_API, posted({ do: "plan", kind: "commands", text: "Permissions.AddGroup VIP" }, {})).then(answered),
+    ask(PERMISSIONS_API, posted({ do: "import", kind: "commands", text: "Permissions.AddGroup VIP", digest: "0".repeat(64) }, {})).then(answered),
   ]);
+  // Even a check is an admin's: it reads what was sent, which is work the server does inside its tick.
   expect(refusals).toEqual([
     [403, { ok: false, why: "Permissions are managed from an admin's rank." }],
     [403, { ok: false, why: "Permissions are managed from an admin's rank." }],
-    [403, { ok: false, why: "An import needs the map rank." }],
+    [403, { ok: false, why: "An import is checked and applied from an admin's rank." }],
+    [403, { ok: false, why: "An import is checked and applied from an admin's rank." }],
   ]);
   expect(h.host.permissions.snapshot()).toEqual(before);
   h.host.shutdown();
@@ -501,5 +504,23 @@ test("the state is answered the same while its key holds, and in full once anyth
   await moved("a survivor leaving", () => (ada.close(), h.run(1000)));
   const older = (await read("stale")) as PermissionsState;
   expect([older.key !== "", "groups" in older]).toEqual([true, true]);
+  h.host.shutdown();
+});
+
+test("a pasted import too long to be one is refused before it is read", async () => {
+  const { h, ask } = world();
+  const kody = signIn("kody", MAP);
+  const long = "Permissions.AddGroup G\n".repeat(20_000);
+  const [status, said] = await ask(PERMISSIONS_API, posted({ do: "plan", kind: "commands", text: long }, kody)).then(answered);
+  expect([status, said.ok, said.why]).toEqual([413, false, "That is too long to paste as one import: 256 KB at most. Bring it in as several."]);
+  h.host.shutdown();
+});
+
+test("the history says there is more when its largest page is full", async () => {
+  const { h, ask } = world();
+  const kody = signIn("kody", MAP);
+  for (let i = 0; i < 501; i++) operator(h.host, { op: "addGroup", group: `G${i}` });
+  const page = (await (await ask(`${PERMISSIONS_HISTORY}?most=500`, { headers: kody })).json()) as PermissionsHistory;
+  expect([page.rows.length <= 500, page.more]).toEqual([true, true]);
   h.host.shutdown();
 });

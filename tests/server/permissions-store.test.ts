@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { afterAll, expect, test } from "bun:test";
+import { afterAll, expect, spyOn, test } from "bun:test";
 import { mkdtempSync, rmSync, statSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -305,4 +305,38 @@ test("a write that fails half way leaves nothing of itself in the view", () => {
   expect([perms.membersOf("survivor", A), perms.staffRank(A)]).toEqual([[], RANK_OPEN]);
   const other = new Permissions({ store: new PermissionStore(file), world: 5 });
   expect(other.membersOf("survivor", A)).toEqual([]);
+});
+
+test("a change the file rolled back does not count here, even if the file cannot be read after", () => {
+  const file = fresh();
+  const store = new PermissionStore(file);
+  const perms = new Permissions({ store, world: 2 });
+  issue(perms, A);
+  // The second change's row of history fails, so the write is rolled back, and then the file cannot be read either.
+  let rows = 0;
+  const put = spyOn(store, "putHistory").mockImplementation(() => {
+    if (++rows === 2) throw new Error("database is locked");
+  });
+  const read = spyOn(store, "read").mockImplementationOnce(() => {
+    throw new Error("database is locked");
+  });
+  const made = perms.makeAll(cluster, [{ op: "grant", group: "Default", permission: "Cheat.*" }, { op: "addGroup", group: "Later" }]);
+  put.mockRestore();
+  read.mockRestore();
+  expect(made.map((m) => m.why)).toEqual(["The permissions could not be written.", "The permissions could not be written."]);
+  const player = { id: A, team: 0, signed: false, world: 2 };
+  expect([perms.group("Default")!.permissions, perms.group("Later"), perms.mayRun(player, "fly")]).toEqual([[], undefined, false]);
+  expect(new PermissionStore(file).read().groups.map((g) => g.name)).toEqual(["Default", "Admins"]);
+  // A claim that fails the same way keeps no password either.
+  expect(perms.apply(cluster, { op: "addMember", kind: "survivor", key: A, group: "Admins" })).toBe("");
+  const put2 = spyOn(store, "putHistory").mockImplementationOnce(() => {
+    throw new Error("database is locked");
+  });
+  const read2 = spyOn(store, "read").mockImplementationOnce(() => {
+    throw new Error("database is locked");
+  });
+  expect(perms.claim(A, "ab".repeat(32), "").why).toBe("The permissions could not be written.");
+  put2.mockRestore();
+  read2.mockRestore();
+  expect([perms.secretOf(A), perms.staffRank(A)]).toEqual(["", RANK_ADMIN]);
 });

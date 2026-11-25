@@ -9,14 +9,14 @@ import {
   CHAT_DOCUMENT, PERMISSIONS_API, PERMISSIONS_HISTORY, PERMISSIONS_STATE, type ImportKind, type PermissionsAnswer, type PermissionsHistory, type PermissionsSame,
   type PermissionsState,
 } from "../../shared/permissions/page.ts";
-import { RANK_CLUSTER, RANK_MAP, RANK_NAMES } from "../../shared/ranks.ts";
+import { RANK_ADMIN, RANK_CLUSTER, RANK_MAP, RANK_NAMES } from "../../shared/ranks.ts";
 import { actorOf, onlyRead } from "../admin/gate.ts";
 import { mapLabel } from "../cluster/cluster.ts";
 import type { Host } from "../host.ts";
 import { originAllowed } from "../origin.ts";
 import { entryReply, readEntryJson } from "../survivor-access.ts";
 import { idText } from "../survivor-ids.ts";
-import { planArkApi, planCommands, planCrossChat, type ImportPlan, type Planned } from "./import.ts";
+import { IMPORT_TEXT_MOST, planArkApi, planCommands, planCrossChat, type ImportPlan, type Planned } from "./import.ts";
 import { HISTORY_PAGE_MOST } from "./permissions.ts";
 
 /** The most a POST may carry: an ArkApi database and its -wal file arrive as base64 inside it. */
@@ -109,6 +109,8 @@ function importFolder(host: Host): string | undefined {
 }
 
 function plan(host: Host, kind: ImportKind, text: string, wal: string | undefined): Planned {
+  // A plan is made from the file as it is now, not as this map last read it: another map may have changed it since.
+  host.permissions.lookNow();
   const opts = { look: host.permissions, commands: cheatCommands(host) };
   if (kind !== "arkapi") return kind === "commands" ? planCommands(text, opts) : planCrossChat(text, opts);
   const folder = importFolder(host);
@@ -163,6 +165,9 @@ async function post(host: Host, req: Request): Promise<Response> {
     case "import": {
       const kind = sent.kind as ImportKind;
       if (!Object.hasOwn(KINDS, kind) || typeof sent.text !== "string") return no("That is not an import the permissions page sends.");
+      // Reading what was sent is work inside the server's tick, so even a check is an admin's.
+      if (by.rank < RANK_ADMIN) return no("An import is checked and applied from an admin's rank.", 403);
+      if (kind !== "arkapi" && sent.text.length > IMPORT_TEXT_MOST) return no(`That is too long to paste as one import: ${IMPORT_TEXT_MOST / 1024} KB at most. Bring it in as several.`, 413);
       if (sent.wal !== undefined && (typeof sent.wal !== "string" || kind !== "arkapi")) return no("A -wal file goes only beside an ArkApi database.");
       if (sent.do === "import" && (typeof sent.digest !== "string" || sent.digest === "")) return no(UNCHECKED);
       const planned = plan(host, kind, sent.text, sent.wal as string | undefined);
@@ -189,7 +194,8 @@ const onlyGet = (): Response => new Response(null, { status: 405, headers: { all
 /** The history, newest first: `before` a sequence number, at most `most` rows. It holds no address and no secret. */
 function history(host: Host, url: URL): PermissionsHistory {
   const before = Number(url.searchParams.get("before"));
-  const most = Math.min(HISTORY_PAGE_MOST, Math.max(1, Math.floor(Number(url.searchParams.get("most"))) || HISTORY_PAGE));
+  // One row more is asked for than answered, to know whether more are left.
+  const most = Math.min(HISTORY_PAGE_MOST - 1, Math.max(1, Math.floor(Number(url.searchParams.get("most"))) || HISTORY_PAGE));
   const rows = host.permissions.history(Number.isSafeInteger(before) && before > 0 ? before : Number.MAX_SAFE_INTEGER, most + 1);
   return { rows: rows.slice(0, most), more: rows.length > most };
 }

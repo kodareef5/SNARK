@@ -526,3 +526,18 @@ test("the edit rule keeps a tribe from an actor one of its members outranks", ()
   expect([editRule(admin, add, look(RANK_MAP)), editRule(admin, remove, look(RANK_MAP))]).toEqual([HIGHER, HIGHER]);
   expect([editRule(admin, add, look(RANK_ADMIN)), editRule(mapAdmin, remove, look(RANK_MAP)), editRule(cluster, add, look(RANK_CLUSTER))]).toEqual(["", "", ""]);
 });
+
+test("a membership not yet begun does not make a survivor an admin's own to clear", () => {
+  const { perms, ok } = world();
+  const far: PermissionActor = { rank: RANK_ADMIN, world: 4, name: "admin of 4" };
+  ok({ op: "addGroup", group: "Helpers", rank: RANK_STAFF });
+  ok({ op: "addMember", kind: "survivor", key: A, group: "Helpers", world: 3 });
+  expect(perms.claim(A, "ab".repeat(32), "").why).toBe("");
+  const ELSEWHERE = "That survivor's staff groups are on other maps. An admin there or the cluster's clears their password.";
+  expect(perms.apply(far, { op: "clearSecret", id: A })).toBe(ELSEWHERE);
+  // World 4's admin may give her time there that starts in a thousand hours. It gives her nothing there yet, and no reach to them.
+  expect(perms.apply(far, { op: "addMember", kind: "survivor", key: A, group: "Helpers", hours: 1, delayHours: 1000 })).toBe("");
+  expect(perms.rankOf({ id: A, team: 0, signed: true, world: 4 })).toBe(RANK_OPEN);
+  expect(perms.apply(far, { op: "clearSecret", id: A })).toBe(ELSEWHERE);
+  expect(perms.secretOf(A)).toBe("ab".repeat(32));
+});

@@ -84,6 +84,8 @@ class Draft {
   private readonly missing = new Set<string>();
   private readonly commands: ReadonlySet<string>;
   private readonly opts: ImportOptions;
+  /** Notes left unsaid past the most a plan carries. */
+  private unsaid = 0;
 
   constructor(opts: ImportOptions) {
     this.opts = opts;
@@ -133,12 +135,14 @@ class Draft {
     this.push({ op: "grant", group: g.name, permission });
   }
 
+  // A whole value is planned from what the store held, and says so: another map's change since then refuses it.
   setChat(g: DraftGroup, chat: string): void {
-    if (g.chat !== chat) this.push({ op: "setChat", group: g.name, chat });
+    if (g.chat !== chat) this.push({ op: "setChat", group: g.name, chat, was: g.chat });
   }
 
   setDocument(name: string, text: string): void {
-    if (this.document(name) !== text) this.push({ op: "setDocument", name, text });
+    const was = this.document(name);
+    if (was !== text) this.push({ op: "setDocument", name, text, was });
   }
 
   /** Counts a membership that is not imported, by its group's name alone. */
@@ -154,7 +158,8 @@ class Draft {
   }
 
   note(text: string): void {
-    this.notes.push(text);
+    if (this.notes.length < IMPORT_NOTES_MOST) this.notes.push(text);
+    else this.unsaid++;
   }
 
   /** Writes an op to the plan and to the draft. */
@@ -188,24 +193,27 @@ class Draft {
 
   /** The plan, with the notes that sum up what this source left behind and what holds cheats. */
   plan(): ImportPlan {
+    // What sums the import up is said whatever else was: the warning of an open group that holds cheats is among it.
+    const sum: string[] = [];
     const rows = [...this.left.values()];
     if (rows.length > 0) {
       const all = rows.reduce((n, r) => n + r.players + r.tribes, 0);
-      this.note(`Memberships by Steam id are not imported: ${plural(all, "membership")} in all were left behind. Hand them out again by survivor ID.`);
+      sum.push(`Memberships by Steam id are not imported: ${plural(all, "membership")} in all were left behind. Hand them out again by survivor ID.`);
       for (const r of rows) {
         const parts = [plural(r.players, "player"), plural(r.tribes, "tribe")].filter((p) => !p.startsWith("0 "));
         const timed = r.timed > 0 ? `; ${r.timed} timed` : "";
-        this.note(`${r.name}: ${plural(r.players + r.tribes, "membership")} left behind (${parts.join(", ")}${timed}).`);
+        sum.push(`${r.name}: ${plural(r.players + r.tribes, "membership")} left behind (${parts.join(", ")}${timed}).`);
       }
     }
     for (const key of this.touched) {
       const g = this.group(key);
       if (g && g.rank === RANK_OPEN && g.permissions.some(isCheat)) {
-        this.note(`${g.name} is open and holds cheats: its members need no password. Permissions.Rank ${g.name} staff asks them for one.`);
+        sum.push(`${g.name} is open and holds cheats: its members need no password. Permissions.Rank ${g.name} staff asks them for one.`);
       }
     }
-    if (this.missing.size > 0) this.note(`These permissions name commands this game does not have, and allow nothing here: ${[...this.missing].join(", ")}.`);
-    return { ops: this.ops, notes: this.notes };
+    if (this.missing.size > 0) sum.push(`These permissions name commands this game does not have, and allow nothing here: ${[...this.missing].join(", ")}.`);
+    const notes = this.unsaid > 0 ? [...this.notes, `And ${this.unsaid} more notes like these.`] : this.notes;
+    return { ops: this.ops, notes: [...notes, ...sum.slice(0, IMPORT_NOTES_MOST)] };
   }
 }
 
@@ -234,6 +242,10 @@ export interface ArkApiFiles {
 
 /** The most changes one import makes: they are one write, made inside the server's tick. */
 export const IMPORT_CHANGES_MOST = 1000;
+/** The most notes a plan carries of what it skipped, line by line. What sums it up is said besides. */
+export const IMPORT_NOTES_MOST = 200;
+/** The most letters of a pasted import, a command list or a config: a thousand changes are far shorter. */
+export const IMPORT_TEXT_MOST = 256 * 1024;
 
 /** A draft as its plan, or the reason it is too large to be one. */
 function finished(draft: Draft): Planned {
