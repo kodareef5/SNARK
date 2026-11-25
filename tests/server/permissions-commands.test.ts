@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { memberOp, PERMISSIONS_COMMANDS, permissionsCommand, readPermissions, type PermissionsRead, type PermissionsRequest } from "../../shared/permissions/commands.ts";
+import { changeWords, memberOp, PERMISSIONS_COMMANDS, permissionsCommand, readPermissions, type PermissionsRead, type PermissionsRequest } from "../../shared/permissions/commands.ts";
 import { idOf } from "../../shared/ids.ts";
 import { RANK_CLUSTER, RANK_STAFF } from "../../shared/ranks.ts";
 
@@ -91,4 +91,9 @@ test("each command has a usage that starts with its name and a help line", () =>
     expect(c.help.length).toBeGreaterThan(0);
     expect(c.help).not.toContain("\n");
   }
+});
+
+test("a change to chat is named in the Permissions page's words", () => {
+  expect(changeWords({ op: "setChat", group: "Vip", chat: "{}" }, false)).toBe("set the chat format of Vip");
+  expect(changeWords({ op: "setDocument", name: "chat", text: "{}" }, false)).toBe("set the chat settings");
 });

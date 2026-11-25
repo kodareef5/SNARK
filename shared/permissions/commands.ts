@@ -3,6 +3,7 @@
 // exists: it hands back the word as typed, and the caller finds the survivor or tribe and makes the op with `memberOp`.
 import { rankNamed, RANK_NAMES } from "../ranks.ts";
 import type { MemberKind, PermissionOp } from "./model.ts";
+import { CHAT_DOCUMENT } from "./page.ts";
 
 /** A survivor or a tribe as typed: an ID, a number or a name, for the caller to find. */
 export interface Who {
@@ -186,7 +187,7 @@ export function changeWords(op: PermissionOp, everyWorld: boolean): string {
     case "revoke":
       return `Permissions.Revoke ${op.group} ${op.permission}`;
     case "setChat":
-      return `set the chat block of ${op.group}`;
+      return `set the chat format of ${op.group}`;
     case "addMember": {
       const tribe = op.kind === "tribe";
       const name = `Permissions.Add${tribe ? "Tribe" : ""}${op.hours !== undefined ? "Timed" : ""}`;
@@ -200,7 +201,7 @@ export function changeWords(op: PermissionOp, everyWorld: boolean): string {
     case "clearSecret":
       return `cleared the password of ${op.id}`;
     case "setDocument":
-      return `set the document ${op.name}`;
+      return op.name === CHAT_DOCUMENT ? "set the chat settings" : `set the document ${op.name}`;
     case "tag":
       return `${op.show ? "showed" : "hid"} the tag ${op.tag} of ${op.id}`;
   }
