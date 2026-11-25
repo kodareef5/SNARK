@@ -31,8 +31,9 @@ export default {
     // coarsest levels lose the debris, a metre or two across each, which their points measure as 4.5 and 7 m out:
     // stated as the size of a piece, they are drawn from about 300 m on medium, where a piece is a pixel.
     { id: "core:ufo_wreck", object: "wreck", triangles: [12000, 4800, 1800, 640, 260], errors: [0.04, 0.11, 1.5, 2.5] },
-    // The core thrown clear of it, a crate anyone may loot (content/core.ts), its light the prop's colour.
-    { id: "core:ufo_core", object: "core", triangles: [1000, 420, 160, 60] },
+    // The core thrown clear of it, a crate anyone may loot (content/core.ts), its light the prop's colour. A survivor walks
+    // up to it, so its coarse levels keep enough of the cage to stay within a hand's width of the finest.
+    { id: "core:ufo_core", object: "core", triangles: [1000, 760, 520, 300] },
   ],
   materials: {
     hull: maps("hull", HULL_TILE),
