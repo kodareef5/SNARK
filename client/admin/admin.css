@@ -98,6 +98,11 @@ th { color: var(--dim); font-weight: 650; font-size: .78rem }
 .settings-page .what,.settings-page .box,.settings-page .from { display: grid; gap: 3px; justify-items: start; overflow-wrap: anywhere }
 .settings-page .group :is(.dim,.faint,.from) { font-size: .81rem }
 .settings-page .kept { border-left: 3px solid var(--copper); padding-left: 8px !important }
+.acts-page td { vertical-align: top }
+.acts-page .when { white-space: nowrap }
+.acts-page .who .id { display: block; font-size: .8rem }
+.acts-page .typed { text-decoration: underline dotted; cursor: help }
+.acts-page :is(.what,.from) { overflow-wrap: anywhere }
 .loadout-editor { display: grid; grid-template-columns: minmax(150px, 230px) minmax(0,1fr); gap: 18px; align-items: start }
 .loadouts-page .pick { text-align: left; display: grid }
 .loadouts-page .pick span,.loadouts-page .faint,.loadouts-page .lines { font-size: .82rem }
@@ -212,3 +217,24 @@ th { color: var(--dim); font-weight: 650; font-size: .78rem }
 @media(max-width:900px) { .screens-page .monitors { grid-template-columns: 1fr } }
 .screens-page .send { margin-top: 10px }
 .screens-page .bar h2 { margin: 0 }
+
+.permissions-page .group,.permissions-page .chat-block { border-top: 1px solid var(--edge); padding-block: 12px; display: grid; gap: 8px }
+.permissions-page .group h3,.permissions-page .chat-block h3 { margin: 0 }
+.permissions-page .chip { display: inline-flex; align-items: center; gap: 4px; font-family: ui-monospace, monospace }
+.permissions-page .chip .x { border: 0; background: none; padding: 0 2px; line-height: 1; color: var(--bad) }
+.permissions-page code { font-size: .85em; color: var(--dim) }
+.permissions-page .line { display: grid; gap: 3px }
+.permissions-page .parts { display: grid; gap: 6px }
+.permissions-page .part { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px }
+.permissions-page .part label { display: flex; align-items: center; gap: 6px; flex: 1; min-width: min(320px, 100%) }
+.permissions-page .part label input,.permissions-page .line input { flex: 1; font-family: ui-monospace, monospace; font-size: .85rem }
+.permissions-page input[type=color] { width: 2.4em; height: 2em; padding: 2px; border: 1px solid #becbd7; border-radius: 5px; background: white; cursor: pointer }
+.permissions-page .sample { display: block; background: #0b1424; color: #eef7ff; padding: 6px 10px; border-radius: 5px; font-size: .9rem; min-height: 2em; white-space: pre-wrap }
+.permissions-page td .sample { display: inline-block; min-width: 6em }
+.permissions-page .fault { font-size: .82rem }
+.permissions-page .fault:empty { display: none }
+.permissions-page .password-box { border: 2px solid var(--warn); border-radius: 6px; padding: 12px; background: #fff8ef; margin-block: 10px }
+.permissions-page .password-box input { font-family: ui-monospace, monospace; font-size: 1.1rem; min-width: min(24ch, 100%) }
+.permissions-page textarea { width: 100%; font-family: ui-monospace, monospace; font-size: .85rem }
+.permissions-page td input:not([type=checkbox],[type=color]) { min-width: 9em }
+.permissions-page td input[type=number] { width: 6em; min-width: 0 }

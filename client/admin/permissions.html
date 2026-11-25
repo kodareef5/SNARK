@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Permissions · SNARK Admin</title>
+    <link rel="stylesheet" href="/admin/ui/admin.css" />
+  </head>
+  <body>
+    <main class="tool-page permissions-page">
+      <header class="tool-intro"><h1>Permissions</h1><p>Groups as ArkApi's Permissions plugin keeps them, who is in them, their chat tags and colours, and imports from ArkApi. Every world of the cluster shares these.</p></header>
+      <section class="glass">
+        <p id="me" class="dim"></p>
+        <p id="unsaved" class="warn" hidden>This server keeps permissions in memory only. They last until it stops.</p>
+        <p id="msg" class="dim" aria-live="polite">Loading…</p>
+        <button id="reload" hidden>Read again</button>
+        <div class="tabs" role="tablist">
+          <button role="tab" data-tab="groups">Groups</button>
+          <button role="tab" data-tab="members">Members</button>
+          <button role="tab" data-tab="chat">Chat</button>
+          <button role="tab" data-tab="import">Import</button>
+        </div>
+      </section>
+
+      <section class="glass" id="tab-groups" role="tabpanel">
+        <h2>Groups</h2>
+        <p class="dim">A group's rank says how its members prove themselves. Open: from the moment they join. Staff, admin, map and cluster: once they sign in with their own password. Admins manage groups up to admin rank, map admins up to map rank, and cluster admins everything.</p>
+        <div id="groups"></div>
+        <h3>Add a group</h3>
+        <div class="bar">
+          <label>Name <input id="group-name" maxlength="32" autocomplete="off" placeholder="Letters, digits and _ . : -"></label>
+          <label>Rank <select id="group-rank"></select></label>
+          <button id="add-group">Add group</button>
+        </div>
+      </section>
+
+      <section class="glass" id="tab-members" role="tabpanel" hidden>
+        <h2>Members</h2>
+        <div class="scroll"><table>
+          <thead><tr><th>Who</th><th>Group</th><th>For how long</th><th>On which map</th><th></th></tr></thead>
+          <tbody id="members"></tbody>
+        </table></div>
+        <h3>Add a member</h3>
+        <div class="bar">
+          <select id="member-kind" aria-label="A survivor or a tribe"><option value="survivor">Survivor</option><option value="tribe">Tribe</option></select>
+          <input id="member-who" list="who-list" autocomplete="off" placeholder="Name or 17-digit ID" aria-label="Who">
+          <label>Group <select id="member-group"></select></label>
+          <label>Hours <input id="member-hours" type="number" min="0" step="any" placeholder="For good"></label>
+          <label>Starting in hours <input id="member-delay" type="number" min="0" step="any" placeholder="Now"></label>
+          <label id="member-every-label" hidden><input id="member-every" type="checkbox" checked> Every map</label>
+          <button id="add-member">Add member</button>
+        </div>
+        <p class="dim">Hours make a timed membership, as ArkApi's AddTimed does. A tribe joins open groups only. A staff membership holds on the map it was made on, unless a cluster admin makes it for every map.</p>
+        <h3>Staff passwords</h3>
+        <p class="dim">A member of a staff group uses its powers after signing in with their own password: <code>enablecheats</code> and the password in game, or their name or ID and the password on these pages.</p>
+        <div class="password-box" id="new-password" hidden>
+          <p><b id="password-for"></b></p>
+          <div class="bar"><input id="password-text" readonly autocomplete="off" aria-label="The new password"><button id="copy-password">Copy</button><button id="done-password">Done</button></div>
+          <p class="warn">This password is not shown again. Copy it now and give it to them.</p>
+        </div>
+        <div class="scroll"><table>
+          <thead><tr><th>Survivor</th><th>Staff groups</th><th>Password</th><th></th></tr></thead>
+          <tbody id="passwords"></tbody>
+        </table></div>
+      </section>
+
+      <section class="glass" id="tab-chat" role="tabpanel" hidden>
+        <h2>Chat formats by group</h2>
+        <p class="dim">A speaker's lines take the chat format of their group with the highest priority. Pick a colour beside a part to colour it; the page writes the <code>&lt;RichColor&gt;</code> markup.</p>
+        <div id="chat-groups"></div>
+        <h2>Chat settings</h2>
+        <p id="settings-read" class="bad"></p>
+        <div id="chat-settings"></div>
+      </section>
+
+      <section class="glass" id="tab-import" role="tabpanel" hidden>
+        <h2>Import from ArkApi</h2>
+        <div class="bar">
+          <label>What <select id="import-kind">
+            <option value="arkapi">ArkApi Permissions database file</option>
+            <option value="commands">Permissions.* commands, pasted</option>
+            <option value="crosschat">CrossChat config, pasted</option>
+          </select></label>
+        </div>
+        <div class="bar" id="import-file-bar"><input id="import-file" type="file" aria-label="The ArkApi Permissions database file"></div>
+        <textarea id="import-text" rows="12" hidden aria-label="The text to import" spellcheck="false"></textarea>
+        <div class="bar"><button id="import-check">Check</button><button id="import-apply" class="primary" disabled>Apply</button></div>
+        <p class="dim">Old Steam ids and their memberships are not imported: a survivor here has an ID of their own. Imported groups arrive open, and a group that holds cheats is flagged on the Groups tab.</p>
+        <div id="import-out"></div>
+      </section>
+
+      <datalist id="permission-list"></datalist>
+      <datalist id="who-list"></datalist>
+      <datalist id="group-list"></datalist>
+      <datalist id="world-list"></datalist>
+    </main>
+    <script type="module" src="/admin/ui/permissions.js"></script>
+  </body>
+</html>

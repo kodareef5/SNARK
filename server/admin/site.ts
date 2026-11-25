@@ -2,12 +2,14 @@ import { serveFile } from "../files.ts";
 import { pathOf, worldAddress, type SiteWorld } from "../site.ts";
 import type { Destination } from "../cluster/cluster.ts";
 import { SCREEN_PATHS } from "../video/routes.ts";
+import { PERMISSIONS_PATHS } from "../../shared/permissions/page.ts";
 import { adminPath, refused, type AdminGate } from "./gate.ts";
 
 const WORLD_PAGES = {
   map: "index.html",
   survivors: "index.html",
   items: "index.html",
+  acts: "acts.html",
   settings: "settings.html",
   loadouts: "loadouts.html",
   drops: "drops.html",
@@ -25,7 +27,7 @@ type WorldId = SiteWorld["id"];
 const UI_FILES = new Set([
   "admin.css", "investigate.css", "overview.css", "scene-studio.css",
   "admin.js", "cluster.js", "overview.js", "chat.js", "shell.js", "investigate.js", "map.js",
-  "settings.js", "loadouts.js", "drops.js", "cast.js", "first-frame.js", "sounds.js", "board.js", "scene-studio.js", "screens.js", "screens-stage.js",
+  "settings.js", "loadouts.js", "drops.js", "cast.js", "first-frame.js", "sounds.js", "board.js", "scene-studio.js", "screens.js", "screens-stage.js", "permissions.js", "acts.js",
 ]);
 const OLD_UI_FILES = /^(?:(?:scene-studio|board)\.js(?:\.map)?|scene-studio\.css)$/;
 
@@ -71,6 +73,8 @@ interface AdminSite {
   scenes: (req: Request) => Promise<Response> | Response;
   /** The cluster's screens API (server/video/routes.ts), behind the gate; null where this server keeps no library. */
   screens?: (req: Request, path: string) => Promise<Response> | Response | null;
+  /** The cluster's permissions API, behind the gate; null where this server does not answer it. */
+  permissions?: (req: Request, path: string) => Promise<Response> | Response | null;
 }
 
 /** A named proxy can reach another world by its mount even when it sends site routes to this one. */
@@ -111,6 +115,10 @@ export function adminSite(req: Request, url: URL, o: AdminSite): Promise<Respons
   if ((SCREEN_PATHS as readonly string[]).includes(path)) return refused(req, o.who, o.gate) ?? o.screens?.(req, path) ?? notFound();
   if (path === "/admin/screens" || path === "/admin/screens/") {
     return refused(req, o.who, o.gate) ?? (!mayRead(req) ? refuseMethod() : path === "/admin/screens/" ? privatePage(o.dir, req, "screens.html") : redirect(`/admin/screens/${url.search}`));
+  }
+  if (PERMISSIONS_PATHS.includes(path)) return refused(req, o.who, o.gate) ?? o.permissions?.(req, path) ?? notFound();
+  if (path === "/admin/permissions" || path === "/admin/permissions/") {
+    return refused(req, o.who, o.gate) ?? (!mayRead(req) ? refuseMethod() : path === "/admin/permissions/" ? privatePage(o.dir, req, "permissions.html") : redirect(`/admin/permissions/${url.search}`));
   }
 
   const mounted = o.base !== "" && path.startsWith(`${o.base}/`);
