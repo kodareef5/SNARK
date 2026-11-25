@@ -616,9 +616,9 @@ export class MapLoader {
   }
 
   /**
-   * One look at the roads' frame and the streets: each road and streets part within ROAD_REACH of the body asked for, once
-   * at a time, and held once it comes if it is still wanted; each held past a sector further let go. Nothing else waits
-   * for them. The streets reach as far: they draw the ground's edges round the camera and give the page's own car its
+   * One look at the roads' frame and the streets: each road and streets part within ROAD_REACH of the body asked for,
+   * nearest first, and held once it comes if it is still wanted; one that failed asked again after its wait, and one
+   * broken never; each held past a sector further let go. Nothing else waits for them. The streets reach as far: they draw the ground's edges round the camera and give the page's own car its
    * grip at a street's edge.
    */
   lookRoads(): void {
