@@ -80,7 +80,7 @@ test("the shell runs from where the ground cuts the ball to its top", () => {
 
 test("taking a scene, a clip and a channel live sets the ball as the tiles say", async () => {
   const { state, edit } = await library(), wall = (): number => state().now + 100;
-  expect([liveKey(state(), wall()), liveLook(state(), wall()).only]).toEqual(["scenes", -1]);
+  expect([liveKey(state(), wall()), liveLook(state(), wall()).clip?.id]).toEqual(["channel:strip", A]);
   await edit(takeBody({ kind: "scene", scene: 3 }));
   expect([state().screens[0]!.show, liveKey(state(), wall()), liveLook(state(), wall()).only]).toEqual(["scene:storm", "scene:storm", 3]);
   // A clip plays once over the scene held, then the ball goes back to it.
@@ -111,6 +111,7 @@ test("the tiles are the scenes in turn, each scene, and each channel with clips 
   expect(tiles.filter((t) => t.group === "scenes").map((t) => t.key)).toEqual(["scenes", "scene:watcher", "scene:moon", "scene:core", "scene:storm", "scene:tide"]);
   // The world's own setting holding a scene is said on the scenes' tile, and the scenes show it.
   expect(tiles[0]!.note).toContain("Moon");
+  await edit(takeBody({ kind: "scenes" }));
   expect(liveLook(state(), state().now).only).toBe(1);
   expect(tiles.filter((t) => t.group === "clips").map((t) => t.key)).toEqual([`clip:${A}`, `clip:${B}`]);
   expect(tiles.filter((t) => t.group === "channels").map((t) => t.key)).toEqual(["channel:strip"]);
