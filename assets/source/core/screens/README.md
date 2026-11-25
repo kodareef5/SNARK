@@ -8,7 +8,7 @@ Each clip is a folder named in lower case words joined by hyphens:
 - `source.json`, tracked: the title, where the original came from and its SHA-256, the rights line players see, the
   licence as its source words it, and how it is cut and encoded.
 - `clip.json`, tracked: what the encode made, with its id, size, length and colour track.
-- `clip.mp4` and `poster.jpg`: art, in the `art` release as `core-video-<folder>`, one archive to a clip.
+- `clip.mp4` and `poster.jpg`: art, in the `art` release as `core-screens-<folder>`, one archive to a clip.
 
 `channels.json` lists the default channels, which a new cluster starts with: a name, the folders in order, and whether
 it shuffles. A clip whose `source.json` says `"flashes": true` may not be in one.
@@ -22,7 +22,7 @@ it shuffles. A clip whose `source.json` says `"flashes": true` may not be in one
 2. `bun run clips add path/to/folder --list sheet.csv`. It checks every row before it does anything, keeps each
    original in `~/.cache/snark/video-sources` by its SHA-256, encodes to 640×360 at 600 kbit/s or the row's rate,
    joins the channels, lists the files in `distribution/source-files.txt` and writes `SOURCES.md`.
-3. `python3 tools/release/pack.py art var/release --only core-video-` packs the clips alone and pins them in
+3. `python3 tools/release/pack.py art var/release --only core-screens-` packs the clips alone and pins them in
    `distribution/release.json`. Upload the archives it names: `gh release upload art var/release/<file>...`.
 4. Commit the folders' JSON, `channels.json`, `SOURCES.md` and the two distribution files.
 

@@ -2,7 +2,7 @@
   "repository": "kodareef5/SNARK",
   "art": {
     "release": "art",
-    "id": "33650b0ea2ecbacb",
+    "id": "76f36b10c025a068",
     "files": [
       {"name": "core-creatures-allosaur", "file": "core-creatures-allosaur.5eb2682fdf0a.tar.zst", "bytes": 2833562, "sha256": "5eb2682fdf0abb902fa1807673cf9dc46c3111e728eda23299b3a910d74129e2"},
       {"name": "core-creatures-ankylo", "file": "core-creatures-ankylo.d19e9025be7c.tar.zst", "bytes": 1901178, "sha256": "d19e9025be7ccaeb84f4bf80f6554f9e9a6a2971b062a6666ab9f50e8901146b"},
@@ -76,6 +76,8 @@
       {"name": "core-nodes-trees", "file": "core-nodes-trees.34307f9cf0db.tar.zst", "bytes": 602402195, "sha256": "34307f9cf0db78bc92a0d17e1acd1c723509e160d72c3de27ceede8ea5ff6209"},
       {"name": "core-props-eggs", "file": "core-props-eggs.981f91f8390a.tar.zst", "bytes": 4354020, "sha256": "981f91f8390adf10e8850975bd935a2353a08a850cace92a90c52331a3031c23"},
       {"name": "core-props-street", "file": "core-props-street.7c612b80fdf5.tar.zst", "bytes": 37798025, "sha256": "7c612b80fdf5809fc58f4d6550ec89befc06a59e63bfc1913ae432df37d00c8e"},
+      {"name": "core-screens-clouds", "file": "core-screens-clouds.cfc2e52aa228.tar.zst", "bytes": 935335, "sha256": "cfc2e52aa228f8ef69ed652c6e230f5a0c1442d1e5f9c0aafc582ca16f8cef74"},
+      {"name": "core-screens-lightning", "file": "core-screens-lightning.23a519cc74ed.tar.zst", "bytes": 1892964, "sha256": "23a519cc74ed047a83226422ec8b4953c391bda873f0f17011690b4616d7b0a3"},
       {"name": "core-sfx-ballistic", "file": "core-sfx-ballistic.3dfca30e5921.tar.zst", "bytes": 3264832, "sha256": "3dfca30e59218de9f6d6a441cc1bae1f1f83fd5107cc6a8e73b262ccf4d721f2"},
       {"name": "core-sfx-bang", "file": "core-sfx-bang.14aec4792430.tar.zst", "bytes": 3641823, "sha256": "14aec4792430f888c3be2570a19cbc6f5fff98daa77e2758c9b3a1a13cbc8ae4"},
       {"name": "core-sfx-bicycle", "file": "core-sfx-bicycle.6a82b5bd7618.tar.zst", "bytes": 4742455, "sha256": "6a82b5bd7618dedfaf322f813508e7fc8ab97b339e07282f8661d0c45c0e7925"},
@@ -208,8 +210,6 @@
       {"name": "core-vehicles-veloce", "file": "core-vehicles-veloce.995e77b63b20.tar.zst", "bytes": 604108, "sha256": "995e77b63b20232858244760b1085a9997ae36e6d369ec55b929850348561b42"},
       {"name": "core-vehicles-veloce_abandoned", "file": "core-vehicles-veloce_abandoned.b6f636ec666d.tar.zst", "bytes": 650282, "sha256": "b6f636ec666da1a55ff0c8be700000785ed7b22d3ad52cde3b56af859d123e12"},
       {"name": "core-vehicles-zephyr", "file": "core-vehicles-zephyr.c076fd490b08.tar.zst", "bytes": 608618, "sha256": "c076fd490b08cb6d127986749e3f3cd2018a3791cb0a7fa4843f2a3010908dda"},
-      {"name": "core-video-clouds", "file": "core-video-clouds.1c917510c815.tar.zst", "bytes": 935328, "sha256": "1c917510c8154b218409d6f91726397f4fcf8bc68158f578af909334abef5937", "repository": "kodareef5/snark_private"},
-      {"name": "core-video-lightning", "file": "core-video-lightning.919882ba1bec.tar.zst", "bytes": 1892960, "sha256": "919882ba1bec34d21149dc79c4811fe80c768818b9b313d085d6205095d58810", "repository": "kodareef5/snark_private"},
       {"name": "core-water", "file": "core-water.dc08af5e16cd.tar.zst", "bytes": 485936, "sha256": "dc08af5e16cdddfd6e8ae413f113906607973b6ce7b7d858992b943e32860e55"},
       {"name": "core-water-pictures", "file": "core-water-pictures.1a233564f712.tar.zst", "bytes": 1481380, "sha256": "1a233564f712fae380d9c2872bb4bb639f998fb4314c13abfdb8b6f882b06968"},
       {"name": "core-world-asphalt", "file": "core-world-asphalt.6993862c04bd.tar.zst", "bytes": 27029484, "sha256": "6993862c04bd14a5d01c401ffb84b285db766d99a115b9520a64a4654c27c327"},

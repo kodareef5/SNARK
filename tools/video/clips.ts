@@ -1,6 +1,6 @@
-// The default clips the Vegas ball ships with (assets/source/core/video/README.md). Each is a folder of
-// assets/source/core/video: source.json, its recipe and rights, and clip.json, what the encode made, are tracked; clip.mp4
-// and poster.jpg are art, one release archive to a clip (core-video-<name>). channels.json lists the default channels.
+// The default clips the Vegas ball ships with (assets/source/core/screens/README.md). Each is a folder of
+// assets/source/core/screens: source.json, its recipe and rights, and clip.json, what the encode made, are tracked; clip.mp4
+// and poster.jpg are art, one release archive to a clip (core-screens-<name>). channels.json lists the default channels.
 // ffmpeg runs here alone: the game never encodes or decodes a clip itself.
 //
 //   bun run clips add <file or folder>... --list sheet.csv [--jobs N]   encode new clips, their words from the sheet
@@ -17,7 +17,7 @@ import { parseArgs } from "node:util";
 import { CLIP_MAX_BYTES, CLIP_MAX_HIGH, CLIP_MAX_KBPS, CLIP_MAX_SECONDS, CLIP_MAX_WIDE, COLOUR_PARTS, COLOUR_RATE, clipId, isClipId, type Clip } from "../../shared/video/clip.ts";
 
 export const ROOT = resolve(import.meta.dir, "../..");
-export const VIDEO_DIR = join(ROOT, "assets/source/core/video");
+export const VIDEO_DIR = join(ROOT, "assets/source/core/screens");
 export const SOURCES_FILE = join(VIDEO_DIR, "SOURCES.md");
 export const CHANNELS_FILE = join(VIDEO_DIR, "channels.json");
 export const INVENTORY = join(ROOT, "distribution/source-files.txt");
@@ -70,7 +70,7 @@ export interface DefaultChannel {
   readonly items: readonly string[];
 }
 
-/** A clip folder's name: lower case words joined by hyphens, which names its release archive core-video-<name>. */
+/** A clip folder's name: lower case words joined by hyphens, which names its release archive core-screens-<name>. */
 export const isClipName = (name: string): boolean => /^[a-z0-9]+(-[a-z0-9]+)*$/.test(name) && name.length <= 48;
 /** A folder name made from a title. */
 export const nameOf = (title: string): string =>
@@ -118,7 +118,7 @@ export function problems(dir = VIDEO_DIR, inventory: readonly string[] = existsS
     if (!(c.seconds > 0) || c.seconds > CLIP_MAX_SECONDS || c.bytes > CLIP_MAX_BYTES || (c.bytes * 8) / c.seconds / 1000 > CLIP_MAX_KBPS) say("its length, size or bit rate is over the caps.");
     const samples = Buffer.from(c.colours, "base64").length / (3 * COLOUR_PARTS);
     if (!Number.isInteger(samples) || Math.abs(samples - c.seconds * COLOUR_RATE) > 1) say("its colour track is not COLOUR_RATE samples a second.");
-    for (const f of ["clip.mp4", "poster.jpg"]) if (inventory.length && !listed.has(`assets/source/core/video/${name}/${f}`)) say(`distribution/source-files.txt does not list ${f}.`);
+    for (const f of ["clip.mp4", "poster.jpg"]) if (inventory.length && !listed.has(`assets/source/core/screens/${name}/${f}`)) say(`distribution/source-files.txt does not list ${f}.`);
   }
   const seen = new Set<string>();
   for (const ch of readChannels(dir)) {
@@ -367,7 +367,7 @@ async function pool<T>(items: readonly T[], jobs: number, each: (item: T) => Pro
 
 /** The inventory with every clip folder's two files listed once, in place of what it listed of them before. */
 function listInInventory(names: readonly string[]): void {
-  const lines = readFileSync(INVENTORY, "utf8").split("\n").filter(Boolean), prefix = "assets/source/core/video/";
+  const lines = readFileSync(INVENTORY, "utf8").split("\n").filter(Boolean), prefix = "assets/source/core/screens/";
   const at = Math.max(0, lines.findIndex((l) => l.startsWith(prefix)));
   const others = lines.filter((l) => !l.startsWith(prefix));
   const ours = [...new Set([...lines.filter((l) => l.startsWith(prefix)), ...names.flatMap((n) => [`${prefix}${n}/clip.mp4`, `${prefix}${n}/poster.jpg`])])]
@@ -437,7 +437,7 @@ async function add(paths: readonly string[], sheet: string, jobs: number): Promi
   writeJson(CHANNELS_FILE, channels);
   listInInventory(done);
   writeFileSync(SOURCES_FILE, sourcesPage());
-  console.log(`added ${done.length} clips. Then: python3 tools/release/pack.py art var/release --only core-video- and upload what it names.`);
+  console.log(`added ${done.length} clips. Then: python3 tools/release/pack.py art var/release --only core-screens- and upload what it names.`);
 }
 
 if (import.meta.main) {

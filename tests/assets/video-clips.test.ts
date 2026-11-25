@@ -1,4 +1,4 @@
-// The default clips (assets/source/core/video, tools/video/clips.ts): every recipe, clip and channel against the caps
+// The default clips (assets/source/core/screens, tools/video/clips.ts): every recipe, clip and channel against the caps
 // and the rights, the sheet `clips add` reads, the files the art release holds, and the copy a client build makes of
 // them (tools/video/starter.ts).
 

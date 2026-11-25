@@ -16,7 +16,7 @@ export interface StarterList {
 
 const sha16 = (bytes: Uint8Array): string => new Bun.CryptoHasher("sha256").update(bytes).digest("hex").slice(0, 16);
 
-/** Copies the default clips in `from` (assets/source/core/video) to `<dist>/media`, and gives how many it copied. */
+/** Copies the default clips in `from` (assets/source/core/screens) to `<dist>/media`, and gives how many it copied. */
 export function copyStarterClips(from: string, dist: string): number {
   const media = join(dist, "media");
   rmSync(media, { recursive: true, force: true });

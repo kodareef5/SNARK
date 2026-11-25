@@ -13,7 +13,7 @@ instead of the public one, and an archive pinned there before stays there. It pr
 repository. tools/private/publish.py won't publish a manifest that pins private archives.
 
 With --only PREFIX, only the assets whose names start with PREFIX are packed, and every other asset keeps the archive
-the manifest pins, so a few new assets need only their own files installed (core-video- for the default clips).
+the manifest pins, so a few new assets need only their own files installed (core-screens- for the default clips).
 """
 import argparse
 from collections import defaultdict
