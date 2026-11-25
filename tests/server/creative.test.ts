@@ -137,11 +137,13 @@ test("CreativeForAll gives the role as each survivor enters while creative mode 
   h.run(200);
   expect(bo.admin).toBe(true);
   expect(h.host.exec("who").split("\n").sort()).toEqual([`${named(h, "ada")}  alive  admin`, `${named(h, "bo")}  alive  admin`]);
-  // Switched off, nobody loses the role before leaving, and a survivor who joins after has none.
+  // Modules heard ada given it at first, and ada and bo as it was shown again: hidden, it had gone from ada too.
+  expect(ears.heard.lines.length).toBe(3);
+  // Switched off, those who had it for no other reason lose it at once, and a survivor who joins after has none.
   expect(h.host.setSetting("CreativeForAll", "False")).toBe("");
   const cy = h.join("cy");
   h.run(500);
-  expect([ada.admin, bo.admin, cy.admin, ears.heard.lines.length]).toEqual([true, true, false, 2]);
+  expect([ada.admin, bo.admin, cy.admin, ears.heard.lines.length]).toEqual([false, false, false, 3]);
 });
 
 test("the server judges every turn: one without the role is refused whatever its client claims, and everyone is while creative mode is off", () => {
