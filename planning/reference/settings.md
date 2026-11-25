@@ -5,7 +5,7 @@ edit it by hand: change the catalogue and run the tool.
 
 A server is configured as ARK's is ([how](round5-settings.md), and [what the
 values mean](round5-game-ini.md)). Every setting an ARK dedicated server reads
-is listed here, 602 of them: 237 take effect,
+is listed here, 603 of them: 238 take effect,
 175 wait for a feature that is not built yet, and 190 have no meaning in this
 engine. A setting that does not take effect is still read, checked and
 reported when the server starts.
@@ -174,6 +174,7 @@ the admin's settings page may change a setting without a restart.
 | `AirDroneDamage` | 180 | Base game damage from one drone payload. | yes |
 | `AirDroneRadius` | 5 | Game payload radius in metres. | yes |
 | `FoundCarReturnDays` | 3 | Days of the game's clock after a place where the map parks a car has lost its car, destroyed or driven off, before another is parked there, owned by nobody, its condition and fuel rolled again. One comes only while no survivor is near enough to see it come, nothing a tribe built stands within 60 m, and no body stands where it would. 0 brings none back. *Ours. ARK has no cars. A place is looked at every ten minutes.* | yes |
+| `JetReturnHours` | 6 | Real hours after the last jet from a map's hangar is destroyed before another is parked there, owned by nobody. While one lives anywhere, flown off or kept by a tribe, none comes. One comes whether or not anyone is near, once nothing stands where it would. 0 brings none back. *Ours. ARK has no jets. The hangar is looked at every ten minutes.* | yes |
 | `ThrusterBoostCooldown` | 4 | Seconds after a thruster car's boost ends before it may boost again (the Zephyr; Shift at the wheel). 0 is none: held, the boost runs on. *Ours. ARK has no cars.* | yes |
 | `ThrusterFlipCooldown` | 3 | Seconds from a thruster car's flip before it may flip again (Q at the wheel, with a direction held or none). 0 is none. *Ours.* | yes |
 | `SurfaceGripAsphalt` | 7 | Grip a wheel finds on asphalt: streets, highways, lots, and road pieces of asphalt. Higher holds the road; lower slides and spins. Each car's own tyres multiply it. *Ours. ARK has no cars.* | yes |

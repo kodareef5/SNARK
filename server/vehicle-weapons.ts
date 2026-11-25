@@ -119,8 +119,7 @@ export class VehicleWeapons {
     const game = ctx.game;
     game.own.add<number>({
       kind: OWN_ARMS,
-      // A new connection is told at once, so a session never keeps another's weapons.
-      unsent: -1,
+      unsent: 0,
       version: (c) => this.armsOf(c)?.rev ?? 0,
       write: (w, c) => {
         const e = c.drive, def = e >= 0 ? ctx.world.reg.vehicle[ctx.world.ents.kind[e]!] : undefined, a = this.armsOf(c);
@@ -141,7 +140,7 @@ export class VehicleWeapons {
     });
     game.own.add<number>({
       kind: OWN_WARNED,
-      unsent: -1,
+      unsent: WARN_NONE,
       version: (c) => this.warnedOf(c),
       write: (w, c) => w.u8(this.warnedOf(c)),
     });

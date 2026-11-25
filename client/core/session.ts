@@ -2346,6 +2346,8 @@ export class ClientSession {
   }
 
   private welcome(r: BitReader): void {
+    // A new connection is told its weapons and warnings afresh, and only when it has some.
+    this.arms.now = null; this.arms.warned = 0;
     this.motions.clear(); this.corpseMotions.clear(); this.corpseRetryAt = -TICK_RATE;
     const version = r.u32();
     const tick = r.u32();
