@@ -1,6 +1,8 @@
 // Build mode: its keys on every device, the placement's own answer, the piece drawn before the server says so, and undo.
 
 import { expect, test } from "bun:test";
+// The editor's code at once, as a page has it once it has come (client/core/editor-load.ts).
+import "../../client/core/editor.ts";
 import { App } from "../../client/core/app.ts";
 import { BUILD_REASONS, Builder, ENEMY_FOUNDATION as CLIENT_FOUNDATION, ENEMY_PILLAR as CLIENT_PILLAR, GHOST_BAD, GHOST_OK, PLACE_REACH, buildReason } from "../../client/core/build.ts";
 import { BUILD_HINT } from "../../client/core/hud/action.ts";
@@ -138,7 +140,7 @@ test("under 150 ms each way a piece is drawn on the click frame and one piece st
   // It is no row: nothing collides with it and no chunk has changed.
   expect(s.world!.structs.count).toBe(rows);
   // Held to the place the piece stands on, a second click asks for nothing more.
-  app.builder.free = true;
+  app.builder!.free = true;
   p = run(1);
   expect(app.scene!.ghost.kind).toBe(0);
   click();
@@ -161,9 +163,9 @@ test("a refusal only the server can know takes the drawn piece away, gives the c
   app.key("Digit1", true);
   look(5);
   let p = run(600);
-  expect(app.builder.problem).toBe(0);
+  expect(app.builder!.problem).toBe(0);
   // Another tribe lays a foundation 32 m off in the tick of the click: the client has not been sent it.
-  const at = app.builder.pose;
+  const at = app.builder!.pose;
   h.world.structs.add(kind, at.x / U + 32.4, at.y / U, at.z / U, 0, 77, 15000);
   click();
   p = run(1);
@@ -179,7 +181,7 @@ test("a refusal only the server can know takes the drawn piece away, gives the c
   p = run(1000);
   expect([built(p, kind), app.predict.entries.length, h.host.build.placed, h.host.build.refused, s.inventory!.total(item)]).toEqual([0, 0, 0, 1, 3]);
   // By now the row has come, and the preview says the same before any click.
-  expect([app.builder.problem, app.builder.notice, app.scene!.ghost.color]).toEqual([RESULT_ENEMY_NEAR, "32 m from another tribe's foundation; 50 needed", GHOST_BAD]);
+  expect([app.builder!.problem, app.builder!.notice, app.scene!.ghost.color]).toEqual([RESULT_ENEMY_NEAR, "32 m from another tribe's foundation; 50 needed", GHOST_BAD]);
   expect(h.host.items.audit()).toEqual([]);
 });
 
@@ -354,7 +356,7 @@ test("2,000 seeded placements under loss: the client's rows end as the server's,
 
 test("in the whole client each build key does its action, E uses, cancel puts the piece away, and a piece in hand does not stop a repair", () => {
   const { h, app, s, rec, run, look, built, click, tap, team } = client(["piece_foundation_wood", "piece_wall_wood", "piece_pillar_wood"], 0, 6);
-  const ghost = app.scene!.ghost, b = app.builder;
+  const ghost = app.scene!.ghost, b = app.builder!;
   const text = (key: number): string => app.ui.frame.find(key)?.text ?? "";
 
   // Without a piece in hand the wheel and the middle button are the sight's and the visor's.

@@ -2,9 +2,11 @@
 // filled; a hologram filled by hand; and the hammer's panel by keyboard, finger and pad.
 
 import { expect, test } from "bun:test";
+// The editor's code at once, as a page has it once it has come (client/core/editor-load.ts).
+import "../../client/core/editor.ts";
 import { App } from "../../client/core/app.ts";
 import { GHOST_OK } from "../../client/core/build.ts";
-import { HAMMER_KEYS } from "../../client/core/hammer.ts";
+import { HAMMER_KEYS } from "../../client/core/editor-keys.ts";
 import { plansOf } from "../../client/core/plans.ts";
 import { DRAW_BLEND, MAX_HOLOGRAMS, type FramePacket } from "../../client/core/render/packet.ts";
 import { Templates, copyBox } from "../../client/core/templates.ts";
@@ -124,7 +126,7 @@ const ALL = [...new Set(house(reg, 3, 2, 2).map((p) => book.kindOf(p.form, p.tie
 
 test("a house is copied, set down at an odd yaw with its report read first, filled in one action, and is the same house", () => {
   const { h, app, s, rec, g, run, tp, look, click, tap, press, text, lines, holograms, stock, carried } = client();
-  const hammer = app.hammer;
+  const hammer = app.hammer!;
   const made = raise(h, house(reg, 3, 2, 2), rec.team, g.x + 20, g.z + 25, 0);
   run(400);
   // The hammer in hand, looking at the house's front: the strip offers to copy it.
@@ -196,7 +198,7 @@ test("a house is copied, set down at an odd yaw with its report read first, fill
 
 test("the same template joined to the side of a base, turned a quarter and mirrored, is built key for key", () => {
   const { h, app, s, rec, g, run, tp, look, click, tap, press, text, lines, stock, carried } = client();
-  const hammer = app.hammer;
+  const hammer = app.hammer!;
   const pieces = house(reg, 3, 2, 2);
   const made = raise(h, pieces, rec.team, g.x + 30, g.z + 30, 0);
   const bp = makeBlueprint("House", "ada", "", pieces);
@@ -251,7 +253,7 @@ test("the same template joined to the side of a base, turned a quarter and mirro
 
 test("a piece in hand fills the hologram looked at, where it would stand: a wall's hologram waits for its foundation", () => {
   const { h, app, s, rec, run, look, click, tap, press } = client(["piece_foundation_wood", "piece_wall_wood"]);
-  const hammer = app.hammer;
+  const hammer = app.hammer!;
   const bp = makeBlueprint("Hut", "ada", "", [at(reg, "foundation", WOOD, grid(0, 0), 0, 0), at(reg, "wall", WOOD, grid(0, 1), 0, 0)]);
   hammer.templates.add(bp, book);
   tap("Digit8");
@@ -276,7 +278,7 @@ test("a piece in hand fills the hologram looked at, where it would stand: a wall
   tap("Digit2");
   aim(wall);
   run(300);
-  const b = app.builder;
+  const b = app.builder!;
   expect([b.active, b.mode, b.kind, b.problem, b.notice]).toEqual([true, PLACE_PLAN, id("wall_wood"), RESULT_NO_SUPPORT, "Nothing would hold it up"]);
   // The foundation's hologram takes the foundation in hand: it goes down on the plan's own key, in a frame made at the plan's pose.
   tap("Digit1");
@@ -301,7 +303,7 @@ test("a piece in hand fills the hologram looked at, where it would stand: a wall
 
 test("templates are shared as text, kept between visits, renamed and deleted from the panel, and a bad text says why", () => {
   const { app, run, tap, press, text } = client();
-  const hammer = app.hammer;
+  const hammer = app.hammer!;
   let clip = "";
   hammer.copyText = (t) => void (clip = t);
   const bp = makeBlueprint("Hut", "bea", "A foundation and a wall.", [at(reg, "foundation", WOOD, grid(0, 0), 0, 0), at(reg, "wall", WOOD, grid(0, 1), 0, 0)]);
@@ -352,7 +354,7 @@ test("templates are shared as text, kept between visits, renamed and deleted fro
 
 test("each of the hammer's actions has a key, a pad button and a button a finger presses", () => {
   const { h, app, rec, g, run, look, tap, press, text } = client();
-  const hammer = app.hammer;
+  const hammer = app.hammer!;
   raise(h, house(reg, 2, 2, 1), rec.team, g.x + 20, g.z + 25, 0);
   hammer.templates.add(makeBlueprint("Hut", "ada", "", [at(reg, "foundation", WOOD, grid(0, 0), 0, 0)]), book);
   run(300);
