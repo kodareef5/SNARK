@@ -1,10 +1,14 @@
-// What every screen's clips share: how a clip is kept in step with the world's clock, and the manifest's colour tracks
-// read from base64. The orb's player (player.ts) and the screens on props (faces.ts) both use them.
+// What every screen's clips share: how a clip is kept in step with the world's clock, the manifest's colour tracks read
+// from base64, and how long a clip waits for a map's art. The orb's player (player.ts) and the screens on props
+// (faces.ts) both use them.
 
 /** Seconds of drift left alone, and past which the element seeks; between, the rate is nudged by NUDGE. Sync is best effort: a seek costs a fetch. */
 export const DRIFT_LEAVE = 0.5;
 export const DRIFT_SEEK = 3;
 export const NUDGE = 0.05;
+
+/** Milliseconds a clip waits for the map's art to stop coming before it plays anyway. A clip is fetched in seconds, and on arrival the map comes first. */
+export const WAIT_FOR_ART = 20_000;
 
 /** The playback rate for a clip `drift` seconds behind where it should be (ahead when negative). */
 export function syncRate(drift: number): number {

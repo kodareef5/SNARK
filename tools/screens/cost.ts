@@ -20,7 +20,7 @@ import { FaceScreens, type FaceHost } from "../../client/core/video/faces.ts";
 import type { VideoLike } from "../../client/core/video/player.ts";
 import { SCREENS } from "../../shared/video/clip.ts";
 import type { ScreenFace } from "../../shared/video/face.ts";
-import { SHOW_VIDEO, newScreenState } from "../../shared/video/screen.ts";
+import { SCREEN_FACING, SCREEN_FILL, SHOW_VIDEO, newScreenState } from "../../shared/video/screen.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { CHROME_FLAGS, findChrome } from "../chrome.ts";
 import { encodePng } from "../snap/png.ts";
@@ -58,8 +58,8 @@ const host: FaceHost = {
 async function codeMs(frames: number): Promise<number> {
   const { structs, cam } = street(), finder = new FaceFinder(FACES), screens = new FaceScreens(), p = new FramePacket();
   screens.attach(host);
-  const states = SCREENS.map((_, i) => ({ ...newScreenState(), manifest: "0123456789abcdef", show: SHOW_VIDEO, channel: i === 1 ? 0 : 0xffff, epoch: 0 }));
-  const view = { states, tick: 0, now: 0, option: true, pixel: cam.fovY / H, count: high.screens.count, layers: high.screens.layers, video: high.screens.video, fps: high.screens.fps };
+  const states = SCREENS.map((_, i) => ({ ...newScreenState(), manifest: "0123456789abcdef", show: SHOW_VIDEO, flags: SCREEN_FACING | SCREEN_FILL, channel: i === 1 ? 0 : 0xffff, epoch: 0 }));
+  const view = { states, tick: 0, now: 0, option: true, pixel: cam.fovY / H, count: high.screens.count, layers: high.screens.layers, video: high.screens.video, fps: high.screens.fps, artIdle: true };
   const frame = (n: number): void => {
     p.beginFrame();
     view.now = n * 16.7;

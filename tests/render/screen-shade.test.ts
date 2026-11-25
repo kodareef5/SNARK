@@ -1,9 +1,10 @@
 // How a screen on a prop is shaded (client/core/render/screen-shade.ts), through the program's twin: LED dots close up
 // that are as bright on the whole as the plain picture, a line that sweeps the new picture down, a tube's scanlines,
-// the mean colour far off; and the program's texts compile and link on every tier.
+// the mean colour far off, a fitted picture's bars; and the program's texts compile and link on every tier.
 import { expect, test } from "bun:test";
 import { TIERS } from "../../client/core/assets/tiers.ts";
 import { FACE, FACE_CRT, FACE_FLOATS, FACE_LED, FACE_LEVELS, FACE_TOP, FACE_TOP_BEFORE } from "../../client/core/render/packet.ts";
+import { pictureCrop } from "../../client/core/render/picture-crop.ts";
 import { PROGRAMS, UNIT, withDefines } from "../../client/core/render/programs.ts";
 import { CRT_DEPTH, CRT_LINES, FACE_FRAGMENT, FACE_VERTEX, LED_FILL, LED_PITCH, faceLight, wordColour, type FaceRead } from "../../client/core/render/screen-shade.ts";
 import { drawsLight } from "../../client/core/render/post.ts";
@@ -89,6 +90,18 @@ test("a change sweeps down an LED face behind a line of light, and fades on a TV
   expect(light(led, 0.5, 1 - (0.5 * 1.1 - 0.05), 0.2)[2]!).toBeGreaterThan(1.5);
   expect(light(tv, 0.5, 0.95, 0.001)[0]!).toBeCloseTo(0.75, 6);
   expect(light(tv, 0.5, 0.1, 0.001)[0]!).toBeCloseTo(0.75, 6);
+});
+
+test("a picture fitted whole has dark bars past its edges, near and far", () => {
+  // A 16:9 picture fitted on a billboard about 3:1: the face runs past its sides.
+  const q = quad(0, 1);
+  q.f.set(pictureCrop(16 / 9, 14.8 / 4.85, false, new Float64Array(4)), FACE.crop);
+  expect(light(q, 0.5, 0.5, 0.001)[0]!).toBeCloseTo(0.5, 6);
+  expect(light(q, 0.1, 0.5, 0.001)).toEqual([0, 0, 0]);
+  expect(light(q, 0.9, 0.5, 2)).toEqual([0, 0, 0]);
+  // Filled, the same point shows the picture.
+  q.f.set(pictureCrop(16 / 9, 14.8 / 4.85, true, new Float64Array(4)), FACE.crop);
+  expect(light(q, 0.1, 0.5, 0.001)[0]!).toBeCloseTo(0.5, 6);
 });
 
 test("a tube has scanlines close up, which give way to an even dimming far off", () => {

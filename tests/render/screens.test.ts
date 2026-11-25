@@ -6,7 +6,9 @@ import { BILLBOARD_FACE } from "../../content/street.ts";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { FACE, FACE_FLOATS, FACE_LED, FACE_TOP, FACE_TOP_BEFORE, FramePacket, MAX_FACES } from "../../client/core/render/packet.ts";
-import { FACE_LIFT, FaceFinder, fillCrop, writeFace, type FaceShow } from "../../client/core/render/screens.ts";
+import { fitPicture } from "../../client/core/admin/screens-faces.ts";
+import { pictureCrop } from "../../client/core/render/picture-crop.ts";
+import { FACE_LIFT, FaceFinder, writeFace, type FaceShow } from "../../client/core/render/screens.ts";
 import { FaceScreens } from "../../client/core/video/faces.ts";
 import type { ScreenFace } from "../../shared/video/face.ts";
 import type { CityStatics } from "../../shared/world/city.ts";
@@ -84,7 +86,7 @@ test("a chunk the client holds is read as it stands, and one it does not as the 
 test("finding faces frame after frame makes nothing", () => {
   const s = store(), finder = new FaceFinder(FACES), cam = eye(), p = new FramePacket(), faces = new FaceScreens();
   for (let k = 0; k < 40; k++) s.add(1 + (k % 2), 1280 + (k % 5) * 10 - 20, 0, 1010 + k * 10, FACING, 0, 1);
-  const view = { states: [], tick: 0, now: 0, option: true, pixel: cam.fovY / 1080, count: 32, layers: 16, video: 2, fps: 30 };
+  const view = { states: [], tick: 0, now: 0, option: true, pixel: cam.fovY / 1080, count: 32, layers: 16, video: 2, fps: 30, artIdle: true };
   const frame = (n: number): void => {
     p.beginFrame();
     cam.yaw = Math.sin(n / 50) * 0.2;
@@ -120,14 +122,24 @@ test("a quad lies on its face, a little toward the eye, turned as its structure 
   expect(FACE_FLOATS).toBe(24);
 });
 
-test("a picture is cropped to fill its face, keeping its own shape", () => {
-  const out = new Float64Array(4);
-  // A 16:9 picture on a billboard about 3:1 keeps its middle rows.
-  fillCrop(16 / 9, 14.8 / 4.85, out);
-  expect([out[0], Math.round(out[1]! * 1000) / 1000, out[2], Math.round(out[3]! * 1000) / 1000]).toEqual([1, 0.583, 0, 0.209]);
-  // A 3:1 picture on a 16:9 TV keeps its middle columns.
-  fillCrop(3, 16 / 9, out);
-  expect([Math.round(out[0]! * 1000) / 1000, out[1], Math.round(out[2]! * 1000) / 1000, out[3]]).toEqual([0.593, 1, 0.204, 0]);
+test("a picture fills its face cropped, or fits it whole with bars, keeping its own shape", () => {
+  const out = new Float64Array(4), r = (): number[] => Array.from(out, (v) => Math.round(v * 1000) / 1000 + 0);
+  const billboard = 14.8 / 4.85, wide = 16 / 9;
+  // A 16:9 picture filling a billboard about 3:1 keeps its middle rows; fitted, the face runs past its sides.
+  pictureCrop(wide, billboard, true, out);
+  expect(r()).toEqual([1, 0.583, 0, 0.209]);
+  pictureCrop(wide, billboard, false, out);
+  expect(r()).toEqual([1.716, 1, -0.358, 0]);
+  // A 3:1 picture filling a 16:9 TV keeps its middle columns; fitted, the face runs past its top and bottom.
+  pictureCrop(3, wide, true, out);
+  expect(r()).toEqual([0.593, 1, 0.204, 0]);
+  pictureCrop(3, wide, false, out);
+  expect(r()).toEqual([1, 1.688, 0, -0.344]);
+  // The Screens page's preview reads the same crop.
+  for (const fill of [true, false]) {
+    const m = fitPicture(wide, billboard, fill);
+    expect([m.sx, m.sy, m.ox, m.oy]).toEqual(Array.from(pictureCrop(wide, billboard, fill, out)));
+  }
 });
 
 test("the billboard's static carries an LED face on its road side, and its bare form none", () => {

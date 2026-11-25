@@ -6,12 +6,23 @@ import type { FaceHost } from "../core/video/faces.ts";
 import type { VideoLike } from "../core/video/player.ts";
 
 export function faceHost(): FaceHost {
+  const fetching = new Map<string, AbortController>();
   return {
     json: (path) => fetch(path).then((r) => (r.ok ? r.json() : Promise.reject(new Error(`${path}: ${r.status}`)))),
     async image(path, width, height) {
-      const r = await fetch(path);
-      if (!r.ok) throw new Error(`${path}: ${r.status}`);
-      return createImageBitmap(await r.blob(), { resizeWidth: width, resizeHeight: height, resizeQuality: "medium", premultiplyAlpha: "none" });
+      const abort = new AbortController();
+      fetching.set(path, abort);
+      try {
+        const r = await fetch(path, { signal: abort.signal });
+        if (!r.ok) throw new Error(`${path}: ${r.status}`);
+        return await createImageBitmap(await r.blob(), { resizeWidth: width, resizeHeight: height, resizeQuality: "medium", premultiplyAlpha: "none" });
+      } finally {
+        if (fetching.get(path) === abort) fetching.delete(path);
+      }
+    },
+    drop(path) {
+      fetching.get(path)?.abort();
+      fetching.delete(path);
     },
     video(): VideoLike {
       const v = document.createElement("video");

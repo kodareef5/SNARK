@@ -12,9 +12,9 @@ import type { OrbSite } from "../../../shared/world/orb.ts";
 import { SCREEN_LOD, nearestOrb, screenTexels, topLevel, type OrbScreen } from "../render/orb.ts";
 import type { FramePacket } from "../render/packet.ts";
 import { distanceGain } from "../sound/place.ts";
-import { DRIFT_SEEK, base64Bytes, mustSeek, syncRate } from "./sync.ts";
+import { DRIFT_SEEK, WAIT_FOR_ART, base64Bytes, mustSeek, syncRate } from "./sync.ts";
 
-export { DRIFT_LEAVE, DRIFT_SEEK, NUDGE, base64Bytes, mustSeek, syncRate } from "./sync.ts";
+export { DRIFT_LEAVE, DRIFT_SEEK, NUDGE, WAIT_FOR_ART, base64Bytes, mustSeek, syncRate } from "./sync.ts";
 
 /** A video element as the player uses it: HTMLVideoElement has all of this. */
 export interface VideoLike {
@@ -89,8 +89,6 @@ export interface Watch {
 /** Whether a clip plays: everything must allow it. Otherwise it is paused and fetches nothing. */
 export const mayPlay = (w: Watch): boolean => w.option && w.tier && w.orb && w.inView && w.pixels >= MIN_PIXELS && w.visible && w.settled;
 
-/** Milliseconds a clip waits for the map's art to stop coming before it plays anyway. A clip is fetched in seconds, and on arrival the map comes first. */
-export const WAIT_FOR_ART = 20_000;
 
 
 /** Pixels across a ball of `radius` spans `d` metres off, on a view `fovY` radians high and `height` pixels. */
