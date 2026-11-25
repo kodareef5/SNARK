@@ -73,6 +73,8 @@ export function readBuildings(geojson: { features: { geometry: { type: string; c
   const out: Building[] = [];
   for (const f of geojson.features) {
     const polys = (f.geometry.type === "Polygon" ? [f.geometry.coordinates] : f.geometry.coordinates) as number[][][][];
+    // A polygon's id is its footprint's times four and its place, so a fifth would take the next footprint's first.
+    if (polys.length > 4) throw new Error(`footprint ${f.properties.id} has ${polys.length} polygons, and a footprint holds four (heaps.ts readBuildings)`);
     polys.forEach((rings, k) => {
       let a = Math.abs(area(rings[0]!));
       for (const hole of rings.slice(1)) a -= Math.abs(area(hole));
