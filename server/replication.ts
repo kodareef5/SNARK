@@ -8,7 +8,7 @@ import { CHUNK_SIZE, TICK_RATE, chunkAt, chunkCount, chunkCx, chunkCz } from "..
 import type { BitReader, BitWriter } from "../shared/net/codec.ts";
 import { BUTTON_BITS, HAVE_MOST, MARGIN_UNKNOWN, OWN_SESSION, REMOVAL_NEWS_TICKS, RESULT_INVALID, RESULT_OK, SESSION_ALIVE, S_CHUNK, S_CHUNK_DROP, S_OWN, S_SNAPSHOT, writeBody } from "../shared/net/protocol.ts";
 import { CH_RELIABLE, CH_UNRELIABLE } from "../shared/net/transport.ts";
-import { MAX_VIEW, SentView, VIEW_DEFAULT, VIEW_RING, quantX, quantY, writeViewDelta } from "../shared/net/view.ts";
+import { MAX_VIEW, SentView, type ViewSelection, VIEW_DEFAULT, VIEW_RING, quantX, quantY, writeViewDelta } from "../shared/net/view.ts";
 import { ContactSnapshot, writeContacts } from "../shared/net/contact.ts";
 import { packVehicleDrive, packVehiclePose, quantVehicleWheel, packVehicleRide } from "../shared/sim/vehicle-body.ts";
 import { packSkateWord } from "../shared/sim/skate-state.ts";
@@ -86,7 +86,7 @@ export class Replication {
   private readonly nearIds = new Uint32Array(NEAR_BODIES);
   private readonly nearDistance = new Float64Array(NEAR_BODIES);
   private readonly nearRanks = new Uint16Array(NEAR_BODIES);
-  private readonly nearView = new SentView();
+  private readonly selection: ViewSelection = { order: new Int16Array(MAX_VIEW), count: 0, extra: new SentView() };
   /**
    * Ticks the loop (server/main.ts) was behind its clock as the tick about to run began. The loop sets it before each
    * tick, so that a wrapper of `tick` cannot lose it. A margin is told against the tick due, so a page's clock keeps to
@@ -340,7 +340,7 @@ export class Replication {
   }
 
   /** Use the shared view unchanged whenever its ordinary ranking already includes everyone in reach we would keep. */
-  private keepNear(c: Client, cur: SentView, ranks: Uint16Array, limit: number, seats: number): SentView {
+  private keepNear(c: Client, cur: SentView, ranks: Uint16Array, limit: number, seats: number): ViewSelection | null {
     const n = this.nearest(c, seats);
     let missing = false;
     this.nearRanks.fill(MAX_VIEW);
@@ -350,24 +350,37 @@ export class Replication {
       this.nearRanks[k] = rank;
       if (rank >= limit) missing = true;
     }
-    if (!missing) return cur;
+    if (!missing) return null;
     // Keep the first ordinary ranks, counting a protected body just once if it already falls among them.
     let cutoff = limit - n;
     this.nearRanks.sort();
     for (let k = 0; k < n && this.nearRanks[k]! < cutoff; k++) cutoff++;
     sortU32(this.nearIds, n);
-    const out = this.nearView;
-    out.count = 0;
-    let j = 0;
-    for (let i = 0; i < cur.count; i++) {
-      const id = cur.id[i]!;
-      while (j < n && this.nearIds[j]! < id) this.pushEntity(out, this.nearIds[j++]!);
-      if (j < n && this.nearIds[j] === id) j++;
-      else if (ranks[i]! >= cutoff) continue;
-      out.copyFrom(cur, i);
-      out.urgent[out.count - 1] = cur.urgent[i]!;
+    const out = this.selection;
+    out.count = out.extra.count = 0;
+    let j = 0, i = 0;
+    while (i < cur.count || j < n) {
+      if (j < n && (i === cur.count || this.nearIds[j]! < cur.id[i]!)) {
+        out.order[out.count++] = ~out.extra.count;
+        this.pushEntity(out.extra, this.nearIds[j++]!);
+      } else {
+        const keep = j < n && this.nearIds[j] === cur.id[i];
+        if (keep || ranks[i]! < cutoff) out.order[out.count++] = i;
+        if (keep) j++;
+        i++;
+      }
     }
-    while (j < n) this.pushEntity(out, this.nearIds[j++]!);
+    // The mask may reuse its storage on the next call for the shared rows. Keep these few private rows here.
+    if (this.viewFor && out.extra.count > 0) {
+      const masked = this.viewFor(c, out.extra);
+      if (masked !== out.extra) {
+        out.extra.count = 0;
+        for (let k = 0; k < masked.count; k++) {
+          out.extra.copyFrom(masked, k);
+          out.extra.urgent[k] = masked.urgent[k]!;
+        }
+      }
+    }
     return out;
   }
 
@@ -481,8 +494,9 @@ export class Replication {
     let cur = this.around[at]!;
     let ranks = this.ranks[at]!;
     const crowded = this.candidates[at]! > limit;
+    let selection: ViewSelection | null = null;
     if (crowded && camera === undefined && c.ent >= 0 && limit > this.playersAndMounts[at]!) {
-      cur = this.keepNear(c, cur, ranks, limit, Math.min(NEAR_BODIES, limit - this.playersAndMounts[at]!));
+      selection = this.keepNear(c, cur, ranks, limit, Math.min(NEAR_BODIES, limit - this.playersAndMounts[at]!));
     }
     // The sight adds bodies after the local ones in rank order.
     const cone = cur.count < limit ? this.cone?.(c) : null;
@@ -537,7 +551,7 @@ export class Replication {
     if (c.drive >= 0 && this.world.reg.vehicle[c.body.kind]) this.contactProxies?.(c, contacts);
     // Leave at least two thirds of the remaining packet for the ordinary view, and never exceed the selected snapshot budget.
     writeContacts(w, contacts, Math.min(320 * 8, Math.floor((bytes * 8 - w.pos) / 3)));
-    c.rotate = writeViewDelta(w, base, cur, next, bytes * 8 - w.pos, c.rotate, ents, self, limit < cur.count ? ranks : null, limit, c.views, held ? this.spare : null);
+    c.rotate = writeViewDelta(w, base, cur, next, bytes * 8 - w.pos, c.rotate, ents, self, !selection && limit < cur.count ? ranks : null, limit, c.views, held ? this.spare : null, selection);
     this.spareHeld = null;
     if (w.overflow) {
       // Part of a snapshot is of no use. Nothing is sent, and the view the client would have held is forgotten.

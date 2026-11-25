@@ -97,9 +97,11 @@ test("each crowded viewer keeps nearby bodies across a border ahead of distant m
   }
   expect(movers.length).toBeGreaterThan(64);
   const rep = h.server.replication, before = rep.onReplicate;
+  const mating: number[] = [];
   rep.onReplicate = (c) => {
     before?.(c);
     for (const e of movers) ents.vx[e] = 1;
+    for (const e of mating) ents.cue[e] = 5 << CUE_MATING_SHIFT;
   };
   const verify = (s: ClientSession, other: ClientSession): number[] => {
     const own = h.ent(s);
@@ -122,8 +124,13 @@ test("each crowded viewer keeps nearby bodies across a border ahead of distant m
     const nearAda = verify(ada, bob), nearBob = verify(bob, ada);
     expect(nearAda.some((e) => ents.x[e]! > x)).toBe(true);
     expect(nearBob.some((e) => nearAda.includes(e))).toBe(false);
+    mating.push(nearAda[0]!, nearBob[0]!, ...movers);
+    h.run(700);
+    expect(step(ada, nearAda[0]!)).toBe(1);
+    expect(step(bob, nearBob[0]!)).toBe(1);
+    mating.length = 0;
   }
-  expect(h.host.setSetting("ViewCap", "2")).toBe("");
+  ada.view(2, 600);
   h.run(2000);
   const r = new RemoteSample();
   ada.sampleRemote(r);
