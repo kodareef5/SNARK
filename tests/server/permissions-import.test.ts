@@ -504,3 +504,19 @@ test("a look at the file now reads another world's change without waiting for th
   expect([two.poll(), two.group("Vip")]).toEqual([false, undefined]);
   expect([two.lookNow(), two.group("Vip")?.name, two.lookNow()]).toEqual([true, "Vip", false]);
 });
+
+test("a -wal that SQLite takes is read whole, and its plan's refusal is said", () => {
+  const path = join(root, `crowded-${++files}.db`);
+  const db = pluginDatabase(path);
+  db.exec("PRAGMA wal_autocheckpoint=0;");
+  db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+  const group = db.query("INSERT INTO Groups (GroupName, Permissions) VALUES (?, ?)");
+  for (let i = 0; i <= IMPORT_CHANGES_MOST / 2; i++) group.run(`Late${i}`, `Kit.k${i},`);
+  const main = readFileSync(path);
+  const wal = readFileSync(`${path}-wal`);
+  db.close();
+  removeDatabase(path);
+  expect(planArkApi(main, opts(fresh())).ok).toBe(true);
+  const both = planArkApi(main, opts(fresh()), { wal });
+  expect(both).toEqual({ ok: false, reason: expect.stringContaining(`one import makes ${IMPORT_CHANGES_MOST} at most`) });
+});

@@ -318,22 +318,37 @@ function planFile(path: string, bytes: Uint8Array, opts: ImportOptions, note?: s
   }
 }
 
-/** The plan with the log applied, or undefined where SQLite takes nothing from it or what it makes cannot be read. */
+/**
+ * The plan with the log applied, or its refusal. Undefined only where the log is not taken: SQLite takes nothing from it,
+ * finds the two damaged, or the log leaves no Groups table, as another database's would. A log taken holds committed
+ * changes, so the database alone is no plan of it.
+ */
 function planLogged(path: string, bytes: Uint8Array, wal: Uint8Array, opts: ImportOptions): Planned | undefined {
-  let db: Database | undefined;
+  let db: Database;
   try {
     writeFileSync(path, bytes);
     writeFileSync(`${path}-wal`, wal);
     db = new Database(path);
-    const frames = (db.query("PRAGMA wal_checkpoint(PASSIVE)").get() as { log?: unknown } | null)?.log;
-    const check = (db.query("PRAGMA quick_check").get() as { quick_check?: unknown } | null)?.quick_check;
-    if (typeof frames !== "number" || frames <= 0 || check !== "ok") return undefined;
-    const planned = readArkApi(db, opts);
-    return planned.ok ? planned : undefined;
   } catch {
     return undefined;
+  }
+  try {
+    return logTaken(db) ? readArkApi(db, opts) : undefined;
   } finally {
-    db?.close();
+    db.close();
+  }
+}
+
+/** Whether SQLite moved the log's frames into the database, finds the two whole, and a Groups table is there after. */
+function logTaken(db: Database): boolean {
+  try {
+    const frames = (db.query("PRAGMA wal_checkpoint(PASSIVE)").get() as { log?: unknown } | null)?.log;
+    const check = (db.query("PRAGMA quick_check").get() as { quick_check?: unknown } | null)?.quick_check;
+    if (typeof frames !== "number" || frames <= 0 || check !== "ok") return false;
+    const tables = db.query("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: unknown }[];
+    return tables.some((t) => GROUP_TABLES.includes(text(t.name).toLowerCase()));
+  } catch {
+    return false;
   }
 }
 
