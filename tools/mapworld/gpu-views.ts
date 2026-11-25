@@ -4,9 +4,12 @@
 //   bun tools/mapworld/gpu-views.ts <file.snmap> <cameras.json> <out folder> --dist <built client> [--tiers high,medium]
 //                                   [--seconds 40] [--only name,name] [--off effect,effect] [--hide-hud] [--film]
 //                                   [--canvas 1920x1080@1] [--page key=value] [--suffix name]
+//                                   [--screen once:<clip>|channel:<name>|scene:<name>] [--fixed] [--fit]
 //
 // --canvas is the page in points and the device pixels a point (1800x962@2 is a laptop's 3,600 by 1,924 canvas), --page
-// adds to each page's address (`scale=1`, client/core/app.ts address), and --suffix ends each picture's name.
+// adds to each page's address (`scale=1`, client/core/app.ts address), and --suffix ends each picture's name. --screen
+// sets the orb, through the Screens page's own route, to play a starter clip whose title holds <clip>, or a channel;
+// --fixed holds the wrap to the ball instead of facing each view, and --fit keeps the picture whole instead of filling the ball.
 //
 // The client is one built apart (`bun run build -- --dist DIR`), never the checkout's client/dist. A server on the map
 // answers each view's /__look with its orders (cheats, the hour, the way to face) and holds the survivor there as a ghost,
@@ -33,7 +36,7 @@ import { placeFileCameras } from "./obelisk-cameras.ts";
 
 interface Camera { run?: string[]; cast?: { before?: number; after?: number }; obelisk?: string; fromSpawn?: string; hour?: number; eyeSeconds?: number; replayEyeSeconds?: number; replayDuration?: number; name: string; x: number; z: number; up?: number; y?: number; look?: [number, number, number?]; yaw?: number; pitch?: number }
 
-const { values, positionals } = parseArgs({ allowPositionals: true, options: { film: { type: "boolean" }, "hide-hud": { type: "boolean" }, dist: { type: "string" }, tiers: { type: "string", default: "high,medium" }, seconds: { type: "string", default: "40" }, only: { type: "string" }, off: { type: "string" }, canvas: { type: "string", default: "1920x1080@1" }, page: { type: "string", multiple: true, default: [] }, suffix: { type: "string", default: "" } } });
+const { values, positionals } = parseArgs({ allowPositionals: true, options: { film: { type: "boolean" }, "hide-hud": { type: "boolean" }, dist: { type: "string" }, tiers: { type: "string", default: "high,medium" }, seconds: { type: "string", default: "40" }, only: { type: "string" }, off: { type: "string" }, canvas: { type: "string", default: "1920x1080@1" }, page: { type: "string", multiple: true, default: [] }, suffix: { type: "string", default: "" }, screen: { type: "string" }, fixed: { type: "boolean" }, fit: { type: "boolean" } } });
 const [size, dpr = "1"] = values.canvas!.split("@"), [winW, winH] = size!.split("x").map(Number), scale = Number(dpr);
 const [map, list, out] = positionals;
 if (!map || !list || !out || !values.dist) throw new Error("bun tools/mapworld/gpu-views.ts <file.snmap> <cameras.json> <out folder> --dist <built client>");
@@ -77,6 +80,7 @@ const server = startServer({
   dev: true, hostname: "127.0.0.1", port: 0, dbPath: join(work, "world.db"), config: loadConfigFolder(DEV_CONFIG, []).rules, map, clientDir: values.dist,
   routes: (_req, url) => (url.pathname === "/__look" ? (orders.has(url.searchParams.get("view") ?? "") ? Response.json(orders.get(url.searchParams.get("view")!)) : new Response("no such view", { status: 404 })) : null),
 });
+if (values.screen) await showOnOrb(`http://127.0.0.1:${server.port}`, values.screen, values.fixed ?? false, !(values.fit ?? false));
 const hf = server.host.world.hf;
 const ground = (x: number, z: number): number => Math.max(hf.heightAt(x, z), hf.seaLevel);
 for (const v of views) {
@@ -124,15 +128,21 @@ try {
   let id = 0;
   const waiting = new Map<number, (v: any) => void>();
   const lines: string[] = [];
+  const media = new Set<string>();
+  let mediaBytes = 0;
   ws.onmessage = (m) => {
     const d = JSON.parse(String(m.data));
     if (d.id && waiting.has(d.id)) waiting.get(d.id)!(d.result);
     if (d.method === "Runtime.consoleAPICalled" && (d.params.type === "error" || d.params.type === "warning")) lines.push(`${d.params.type}: ${d.params.args.map((a: { value?: unknown; description?: string }) => a.value ?? a.description).join(" ")}`);
+    // Bytes fetched for the screens (client/core/video/player.ts), counted to the view being taken.
+    if (d.method === "Network.responseReceived" && d.params.response.url.includes("/media/")) media.add(d.params.requestId);
+    if (d.method === "Network.dataReceived" && media.has(d.params.requestId)) mediaBytes += d.params.encodedDataLength || d.params.dataLength;
     if (d.method === "Runtime.exceptionThrown") lines.push(`exception: ${d.params.exceptionDetails.exception?.description ?? d.params.exceptionDetails.text}`);
   };
   const send = (method: string, params: object = {}): Promise<any> => new Promise((r) => { waiting.set(++id, r); ws.send(JSON.stringify({ id, method, params })); });
   await send("Runtime.enable");
   await send("Page.enable");
+  await send("Network.enable");
   await send("Emulation.setDeviceMetricsOverride", { width: winW!, height: winH!, deviceScaleFactor: scale, mobile: false });
   // Each view logs in as one of NAMES survivors in turn, so it comes in as the first view does. With one survivor for the
   // run, the next page came back within the 5 s a body lingers and took the session over, and every view after the first
@@ -144,6 +154,7 @@ try {
   for (const tier of values.tiers!.split(",")) {
     for (const v of views) {
       lines.length = 0;
+      mediaBytes = 0;
       at = orders.get(v.name)!.at;
       await send("Page.navigate", { url: `http://127.0.0.1:${server.port}/?quick&name=look${who}v${taken++ % NAMES}&tier=${tier}&look=${encodeURIComponent(v.name)}${values.film && (v.replayEyeSeconds !== undefined || v.cast) ? "&trip" : ""}${values.off ? `&off=${values.off}` : ""}${values.page!.map((p) => `&${p}`).join("")}` });
       // The first view fetches the map and the art as well.
@@ -166,7 +177,11 @@ try {
         await recordIgnition(send, from, drop.land / TICK_RATE + (v.cast!.after ?? 10) - from, join(out, `${v.name}-${tier}.mp4`));
       }
       const gl = await send("Runtime.evaluate", { expression: "(() => { const c = document.querySelector('canvas'); const g = c && c.getContext('webgl2'); const i = g && g.getExtension('WEBGL_debug_renderer_info'); return JSON.stringify({ renderer: i ? g.getParameter(i.UNMASKED_RENDERER_WEBGL) : null }); })()", returnByValue: true });
-      report.push({ name, ...(v.hour !== undefined ? { hour: v.hour } : {}), ...JSON.parse(gl.result.value), console: lines.slice(0, 8) });
+      const videos = values.screen ? (await send("Runtime.evaluate", { expression: "JSON.stringify([...document.querySelectorAll('video')].map((v) => ({ src: v.currentSrc.split('/').pop(), at: +v.currentTime.toFixed(2), paused: v.paused, ready: v.readyState })))", returnByValue: true })).result.value : "[]";
+      // Where the server says the playing clip is at this moment, to hold the page's clip to (seconds behind when positive).
+      const drift = values.screen ? await screenDrift(`http://127.0.0.1:${server.port}`, JSON.parse(videos)) : null;
+      report.push({ name, ...(v.hour !== undefined ? { hour: v.hour } : {}), ...JSON.parse(gl.result.value), ...(values.screen ? { mediaBytes, videos: JSON.parse(videos), drift } : {}), console: lines.slice(0, 8) });
+      if (values.screen) console.log(`${name}: ${mediaBytes} bytes from /media/, videos ${videos}, drift ${drift === null ? "none playing" : `${drift.toFixed(3)} s`}`);
       console.log(`${name}${lines.length ? `\n  ${lines.slice(0, 8).join("\n  ")}` : ""}`);
     }
   }
@@ -179,3 +194,27 @@ try {
   writeFileSync(join(out, "views.json"), `${JSON.stringify({ map, cameras: list, hour: file.hour ?? 14, seconds, pictures: report }, null, 2)}\n`);
 }
 process.exit(0);
+
+/** Sets the orb as the Screens page would (server/video/routes.ts): `once:<words of a clip's title>` or `channel:<name>`. */
+async function showOnOrb(base: string, what: string, fixed: boolean, fill: boolean): Promise<void> {
+  const state = async (): Promise<{ revision: number; clips: { id: string; title: string }[] }> => (await (await fetch(`${base}/admin/screens/state`)).json()) as { revision: number; clips: { id: string; title: string }[] };
+  const edit = async (body: object): Promise<void> => {
+    const res = await fetch(`${base}/admin/screens/edit`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ revision: (await state()).revision, ...body }) });
+    if (!res.ok) throw new Error(`--screen: ${res.status} ${await res.text()}`);
+  };
+  const [kind, name = ""] = what.split(":");
+  await edit({ op: "screen", screen: "orb", mode: fixed ? "fixed" : "facing", fill, ...(kind === "channel" ? { show: name } : kind === "scene" ? { show: `scene:${name}` } : {}) });
+  if (kind === "once") {
+    const clip = (await state()).clips.find((c) => c.title.toLowerCase().includes(name.toLowerCase()));
+    if (!clip) throw new Error(`--screen: no clip's title holds "${name}"`);
+    await edit({ op: "once", screen: "orb", clip: clip.id });
+  } else if (kind !== "channel" && kind !== "scene") throw new Error("--screen once:<clip>, channel:<name> or scene:<name>");
+}
+
+/** The playing element's lag behind the server's programme, in seconds, or null with none playing. */
+async function screenDrift(base: string, videos: { src: string; at: number; paused: boolean }[]): Promise<number | null> {
+  const st = (await (await fetch(`${base}/admin/screens/state`)).json()) as { now: number; clips: { id: string; file: string }[]; screens: { screen: string; playing: { clip: string; start: number } | null }[] };
+  const playing = st.screens.find((s) => s.screen === "orb")?.playing, clip = playing && st.clips.find((c) => c.id === playing.clip);
+  const el = clip && videos.find((v) => !v.paused && clip.file.endsWith(v.src));
+  return playing && el ? (st.now - playing.start) / 1000 - el.at : null;
+}

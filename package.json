@@ -25,6 +25,7 @@
     "probe": "bun tools/probe.ts",
     "device": "bun tools/device.ts",
     "art": "bun tools/art.ts",
+    "clips": "bun tools/video/clips.ts",
     "settings": "bun tools/settings.ts",
     "supply": "bun tools/supply.ts",
     "catalogue": "bun tools/catalogue.ts",

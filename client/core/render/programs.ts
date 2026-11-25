@@ -30,9 +30,10 @@ import { WATER_FRAGMENT } from "./water.ts";
  * (skyopen.ts); 17 to 21 a facade's atlases, 22 the terrain window's roads' frame, 23 the local reflection, 24 what stands
  * overhead (roof.ts), 25 and 26 the streets' distances and kinds round the camera (streets.ts), 27 the textures the
  * card makes (client/core/texgen), and 28 the states of the near chunks' pieces (pieces.ts), which only vertex texts
- * read. WebGL2 has 32 units at the least, and no program's fragment text reads more than sixteen.
+ * read; 29 an orb's screen picture (video/player.ts). WebGL2 has 32 units at the least, and no program's fragment text
+ * reads more than sixteen.
  */
-export const UNIT = { palette: 0, heights: 1, tint: 2, bones: 3, maps: 4, shadow: 9, sky: 10, windowHeights: 11, windowTint: 12, atlas: 13, layer: 14, details: 15, open: 16, facade: 17, road: 22, street: 23, roof: 24, streets: 25, streetKinds: 26, texgen: 27, pieces: 28 } as const;
+export const UNIT = { palette: 0, heights: 1, tint: 2, bones: 3, maps: 4, shadow: 9, sky: 10, windowHeights: 11, windowTint: 12, atlas: 13, layer: 14, details: 15, open: 16, facade: 17, road: 22, street: 23, roof: 24, streets: 25, streetKinds: 26, texgen: 27, pieces: 28, screen: 29 } as const;
 
 export interface ProgramText {
   readonly vertex: string;
@@ -188,8 +189,8 @@ void main() {
   // Fire (packet.ts DRAW_FIRE): a rocket's flame and a fireball's lobes, worked out with no texture read (fire-light.ts).
   // A lit tier lights the soot from the frame block, and a tier reads the octaves of value noise it pays for.
   fire: (tier, _, __, light = false) => ({ vertex: FIRE_VERTEX, fragment: FIRE_FRAGMENT, defines: (tier.lit ? "#define FIRE_LIT\n" : "") + (tier.bursts.noise > 0 ? "#define FIRE_NOISE\n" : "") + (tier.bursts.noise > 1 ? "#define FIRE_FINE\n" : "") + (drawsLight(tier, light) ? "#define LIGHT_TARGET\n" : ""), samplers: {} }),
-  // An orb's screen (packet.ts DRAW_ORB, orb.ts): the tier's octaves of noise, and its pucks or none. Signal's text stands in until the late one has come.
-  orb: (tier, format, hard, light = false): ProgramText => LATE.orb === null ? MAKE.signal(tier, format, hard, light) : { vertex: FLAT_MESH_VERTEX, fragment: LATE.orb, defines: `#define ORB_OCTAVES ${tier.orb.octaves}\n` + (tier.orb.pucks ? "#define ORB_PUCKS\n" : "") + (drawsLight(tier, light) ? "#define LIGHT_TARGET\n" : ""), samplers: MESH },
+  // An orb's screen (packet.ts DRAW_ORB, orb.ts): the tier's octaves of noise, its pucks or none, and its picture. Signal's text stands in until the late one has come.
+  orb: (tier, format, hard, light = false): ProgramText => LATE.orb === null ? MAKE.signal(tier, format, hard, light) : { vertex: FLAT_MESH_VERTEX, fragment: LATE.orb, defines: `#define ORB_OCTAVES ${tier.orb.octaves}\n` + (tier.orb.pucks ? "#define ORB_PUCKS\n" : "") + (drawsLight(tier, light) ? "#define LIGHT_TARGET\n" : ""), samplers: { ...MESH, uScreen: UNIT.screen } },
   // The finish (post.ts): bloom's chain down and up, and the pass into the canvas.
   bloomDown: () => post(BLOOM_DOWN, { uSource: UNIT.details }),
   bloomUp: () => post(BLOOM_UP, { uSource: UNIT.details }),

@@ -12,9 +12,11 @@
 // each world's path to that world's port and every other path to any of them.
 
 import type { ServerWebSocket } from "bun";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { backlog, MESSAGE_BYTES_MAX, VOICE_BACKLOG } from "../shared/net/transport.ts";
 import { worldAdminPage } from "./admin/site.ts";
+import { CLIP_MAX_BYTES } from "../shared/video/clip.ts";
+import { SCREEN_POSTS } from "./video/routes.ts";
 import { ClusterFolder, LIVE_MS, type Announcement } from "./cluster/folder.ts";
 import { serveFile } from "./files.ts";
 import { pathOf, placeOf } from "./site.ts";
@@ -34,8 +36,11 @@ export function frontPasses(method: string, path: string): boolean {
 }
 
 function sitePost(path: string): boolean {
-  return path === "/admin/scenes/api" || path === "/cluster/admin/scenes/api";
+  return path === "/admin/scenes/api" || path === "/cluster/admin/scenes/api" || SCREEN_POSTS.includes(path);
 }
+
+/** The most a request may carry: a clip at its cap, and room for its headers. */
+export const BODY_BYTES_MAX = CLIP_MAX_BYTES + 1024 * 1024;
 
 /** A world's mount, port and where to read its built files. */
 export interface FrontWorld {
@@ -99,10 +104,19 @@ export function clientAddress(peer: string, forwarded: string | null): string {
 
 /**
  * A world's built file or map part, `pathname` falling under its path, answered from disk as the world itself answers it
- * (serveFile); null for any other path or for a file not there, which the world answers.
+ * (serveFile); null for any other path or for a file not there, which the world answers. A clip or manifest under /media/
+ * comes from the cluster's `media` folder, else from the starters the world's built client holds.
  */
-export async function fromDisk(req: Request, pathname: string, to: FrontWorld): Promise<Response | null> {
-  const rest = to.path === "" ? pathname : pathname.startsWith(`${to.path}/`) ? pathname.slice(to.path.length) : "";
+export async function fromDisk(req: Request, pathname: string, to: FrontWorld, media = ""): Promise<Response | null> {
+  const rest = to.path === "" ? pathname : pathname.startsWith(`${to.path}/`) ? pathname.slice(to.path.length) : pathname.startsWith("/media/") ? pathname : "";
+  if (rest.startsWith("/media/")) {
+    for (const [dir, path] of [[media, rest.slice("/media".length)], [to.files?.client ?? "", rest]] as const) {
+      if (!dir) continue;
+      const res = await serveFile(dir, req, path);
+      if (res.status !== 404) return res;
+    }
+    return null;
+  }
   const dir = rest.startsWith("/assets/") ? to.files?.client : rest.startsWith("/map/") ? to.files?.parts : "";
   if (!dir) return null;
   const res = await serveFile(dir, req, rest.startsWith("/map/") ? rest.slice(4) : rest);
@@ -179,7 +193,7 @@ export interface RunningFront {
  * `log` hears each change in the worlds it sends to.
  */
 export function startFront(dir: string, port = 8787, hostname?: string, log: (line: string) => void = () => {}): RunningFront {
-  const folder = new ClusterFolder(resolve(dir));
+  const folder = new ClusterFolder(resolve(dir)), media = join(folder.root, "media");
   let known: FrontWorld[] = [];
   let read = 0;
   let said = "";
@@ -194,6 +208,7 @@ export function startFront(dir: string, port = 8787, hostname?: string, log: (li
   };
   const server = Bun.serve<Pipe>({
     port,
+    maxRequestBodySize: BODY_BYTES_MAX,
     ...(hostname ? { hostname } : {}),
     async fetch(req, srv) {
       const url = new URL(req.url);
@@ -207,7 +222,7 @@ export function startFront(dir: string, port = 8787, hostname?: string, log: (li
       const peer = srv.requestIP(req)?.address ?? "";
       const was = req.headers.get("x-forwarded-for");
       const forwarded = was ? `${was}, ${peer}` : peer;
-      if (req.headers.get("upgrade")?.toLowerCase() !== "websocket") return (await fromDisk(req, url.pathname, to)) ?? pass(req, url, to, forwarded);
+      if (req.headers.get("upgrade")?.toLowerCase() !== "websocket") return (await fromDisk(req, url.pathname, to, media)) ?? pass(req, url, to, forwarded);
       // The world checks the page's origin against the host the page asked for, so both go on as the page sent them.
       const headers: Record<string, string> = { "x-forwarded-for": forwarded };
       for (const h of ["origin", "host", "user-agent"]) {

@@ -14,12 +14,12 @@
 //   bun tools/orb/cost.ts           all
 //   bun tools/orb/cost.ts --light   the light and the shadow alone
 import { TIERS } from "../../client/core/assets/tiers.ts";
-import { ORB_FRAGMENT, OrbCast, writeOrb } from "../../client/core/render/orb.ts";
+import { ORB_FRAGMENT, ORB_SCREEN, OrbCast, writeOrb, type OrbScreen } from "../../client/core/render/orb.ts";
 import "../../client/core/render/orb-late.ts";
 import { ORB_SEEN } from "../../client/core/render/orb-light.ts";
 import { FRAME, FRAME_FLOATS, ORB_AT } from "../../client/core/render/packet.ts";
 import { postFrame } from "../../client/core/render/post.ts";
-import { PROGRAMS, withDefines } from "../../client/core/render/programs.ts";
+import { PROGRAMS, UNIT, withDefines } from "../../client/core/render/programs.ts";
 import { skyFrame, theSky } from "../../client/core/render/sky.ts";
 import { ORB_SCENES, type OrbSite } from "../../shared/world/orb.ts";
 import type { TideEyeSite } from "../../shared/world/tide-eye.ts";
@@ -39,12 +39,20 @@ void main() {
   gl_Position = vec4(at, 0.0, 1.0);
 }`;
 
+/** The screen scene's picture: the timing page's 512 square test frame on unit 29, wrapped facing, filling the ball. */
+const SCREEN: OrbScreen = { shows: 0, width: 512, height: 512, texWidth: 512, texHeight: 512, levels: 9, facing: true, fill: true, track: null, seconds: 0, upX: 0, upY: 1, upZ: 0 };
+/** The scenes timed: the five, then the screen. */
+const TIMED = [...ORB_SCENES, "screen"] as const;
+
 /** The frame block with scene `which` held: the eye at power and striking at night, which is the most a scene works out. */
 function frame(which: number): number[] {
   const f = new Float32Array(FRAME_FLOATS);
   skyFrame(23, theSky(), f);
   postFrame(f, TIERS[2]!, 23, 1080);
-  writeOrb(f, [SITE], [BLUE], STRIKE, 23, 0, 0, 0, null, 0, 30, which);
+  const screen = which === ORB_SCREEN;
+  writeOrb(f, [SITE], [BLUE], STRIKE, 23, 0, 0, 0, null, 0, 30, screen ? -1 : which, 1, screen ? SCREEN : null);
+  // The screen held, with no wipe from the scenes, as the contact sheet holds it.
+  if (screen) f[ORB_AT + 9] = ORB_SCREEN;
   f[FRAME.eyeHeight] = 10;
   return [...f];
 }
@@ -104,9 +112,11 @@ function wallFrame(hour: number, orb: boolean, mirror = true): number[] {
 const chrome = findChrome();
 if (!chrome) throw new Error("no Chrome to measure in");
 const matrix = [...look(0, 0, 1)];
+// Each scene's frame is written once, in order: writeOrb keeps what it showed last, to wipe from it to what it shows next.
+const FRAMES = TIMED.map((_, which) => frame(which));
 const scenes = process.argv.includes("--light") ? [] : TIERS.flatMap((tier) => {
   const text = PROGRAMS.orb!(tier, "rgba", false, tier.post !== null);
-  return ORB_SCENES.flatMap((scene, which) => VIEWS.map(([where, span]) => ({ name: `${tier.name} ${scene} ${where}`, vertex: SKIN, fragment: withDefines(text.fragment, text.defines), samplers: {}, frame: frame(which), matrix, uniforms: { uSpan: [span, 0] } })));
+  return TIMED.flatMap((scene, which) => VIEWS.map(([where, span]) => ({ name: `${tier.name} ${scene} ${where}`, vertex: SKIN, fragment: withDefines(text.fragment, text.defines), samplers: { uScreen: UNIT.screen }, frame: FRAMES[which]!, matrix, uniforms: { uSpan: [span, 0] } })));
 });
 if (scenes.length > 0 && scenes[0]!.fragment.indexOf(ORB_FRAGMENT.slice(-200)) < 0) throw new Error("the program's text is not the orb's");
 // LIT with no define but the light's, and with all of high's: each with the light and without, so the two differ by it alone.
@@ -129,7 +139,7 @@ const t = await timeRuns(chrome, [...scenes, ...walls, ...SHADED]);
 if (scenes.length > 0) console.log(`full screen at 1,024 square on ${t.renderer}, ${t.timer ? "by timer query" : "by the clock"}, in ms a megapixel, at second ${STRIKE.toFixed(2)} of the eye's cycle (${VIEWS.map(([where, span]) => `${where}: a puck ${(0.4 / ((span / 1024) * Math.SQRT2)).toFixed(2)} pixels`).join("; ")}):`);
 for (const tier of scenes.length > 0 ? TIERS : []) {
   console.log(`  ${tier.name}`);
-  for (const scene of ORB_SCENES) console.log(`    ${scene.padEnd(8)} ${VIEWS.map(([where]) => `${where} ${(t[`${tier.name} ${scene} ${where}`] as number).toFixed(3)}`).join("  ")}`);
+  for (const scene of TIMED) console.log(`    ${scene.padEnd(8)} ${VIEWS.map(([where]) => `${where} ${(t[`${tier.name} ${scene} ${where}`] as number).toFixed(3)}`).join("  ")}`);
 }
 console.log(`the ball's light on a lit wall, LIT full screen at 1,024 square on ${t.renderer}, ${t.timer ? "by timer query" : "by the clock"}, in ms a megapixel (the gate is 0.05 more than off):`);
 for (const [kind] of KINDS) {

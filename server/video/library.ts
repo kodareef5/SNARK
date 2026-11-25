@@ -1,0 +1,281 @@
+// A cluster's clips, channels and screens, kept in video.sqlite beside its worlds and shared by them all. The starter clips
+// come with the built client (<dist>/media/starter.json); uploaded clips and the manifests live in the media folder.
+// Every change is a compare-and-swap on one revision, so two admin pages never overwrite each other unseen.
+import { Database } from "bun:sqlite";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { SCREENS, defaultScreen, type Channel, type Clip, type Screen } from "../../shared/video/clip.ts";
+import type { Timed } from "../../shared/video/programme.ts";
+
+/** What the database keeps: uploaded clips in the order they were added, the channels, the screens, the hidden starters. */
+export interface LibraryDoc {
+  clips: Clip[];
+  channels: Channel[];
+  screens: Screen[];
+  hidden: string[];
+}
+
+/** An upload checked and in place but not yet published, with what its boxes said. */
+export interface Pending {
+  readonly id: string;
+  readonly file: string;
+  readonly width: number;
+  readonly height: number;
+  readonly seconds: number;
+  readonly kbps: number;
+  readonly bytes: number;
+  readonly audio: boolean;
+  readonly at: number;
+}
+
+/** A default channel as the starter file lists it: its name, its clips' ids in order, and whether it shuffles. */
+export interface StarterChannel {
+  readonly name: string;
+  readonly items: readonly string[];
+  readonly shuffle?: boolean;
+}
+
+/** What a starter file lists: the built clips, and the channels a fresh library starts with. */
+export interface Starters {
+  readonly clips: readonly Clip[];
+  readonly channels: readonly StarterChannel[];
+}
+
+/** The library as a world reads it: the doc, the manifest the clients are sent, and lookups the programme needs. */
+export interface LibraryView {
+  readonly revision: number;
+  readonly doc: LibraryDoc;
+  readonly starters: readonly Clip[];
+  /** Every clip by id, starters and uploads, hidden or not. */
+  readonly all: ReadonlyMap<string, Clip>;
+  /** The visible clips, in manifest order. */
+  readonly manifest: readonly Clip[];
+  /** The manifest's id: the first 16 hex digits of the SHA-256 of its JSON. */
+  readonly manifestId: string;
+  readonly channels: ReadonlyMap<string, Channel>;
+  readonly screens: ReadonlyMap<string, Screen>;
+  /** The visible clips by id, which is what a screen may play. */
+  readonly timed: ReadonlyMap<string, Timed>;
+}
+
+export interface LibraryOptions {
+  /** video.sqlite, or ":memory:". */
+  readonly db: string;
+  /** Where uploads, posters and manifests are kept. Without one a memory library makes a temporary folder. */
+  readonly media?: string;
+  /** Where uploads are written while they arrive; on the same disk as `media`. */
+  readonly tmp?: string;
+  /** The built client's starter.json. */
+  readonly starters?: string;
+  readonly now?: () => number;
+}
+
+/** How long an upload waits to be published, and an old manifest to be fetched by a page that has not reloaded. */
+export const PENDING_MS = 60 * 60 * 1000;
+export const MANIFEST_KEEP_MS = 60 * 60 * 1000;
+
+/** A file name's part from a title: lower case, dashes between words, at most 40 letters. */
+export function slugOf(title: string): string {
+  const s = title.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40).replace(/-+$/, "");
+  return s || "clip";
+}
+
+/** An edit that failed: the status to answer and what to say. */
+export interface Refusal {
+  readonly status: number;
+  readonly error: string;
+}
+
+const sha16 = (text: string): string => new Bun.CryptoHasher("sha256").update(text).digest("hex").slice(0, 16);
+
+export class VideoLibrary {
+  readonly media: string;
+  readonly tmp: string;
+  /** The temporary folder a library without a media folder made, removed at its close. */
+  private readonly temp: string;
+  private db: Database | null = null;
+  private readonly path: string;
+  private readonly startersFile: string;
+  private readonly now: () => number;
+  private starters: Starters = { clips: [], channels: [] };
+  private startersAt = -1;
+  /** Changes made through this object, so a memory library has a stamp. */
+  private writes = 0;
+  private cached: LibraryView | null = null;
+
+  constructor(opts: LibraryOptions) {
+    this.path = opts.db;
+    this.now = opts.now ?? Date.now;
+    this.startersFile = opts.starters ?? "";
+    const temp = (this.temp = opts.media ? "" : mkdtempSync(join(tmpdir(), "snark-video-")));
+    this.media = opts.media ?? join(temp, "media");
+    this.tmp = opts.tmp ?? (temp ? join(temp, "tmp") : `${this.media}.tmp`);
+    for (const dir of [this.media, this.tmp]) mkdirSync(dir, { recursive: true });
+  }
+
+  private open(): Database {
+    if (this.db) return this.db;
+    const db = new Database(this.path, { create: true });
+    // The default journal, not WAL: each commit changes video.sqlite itself, whose time the worlds watch.
+    db.exec(
+      "PRAGMA busy_timeout=2500;" +
+        "CREATE TABLE IF NOT EXISTS library (id INTEGER PRIMARY KEY, revision INTEGER NOT NULL, doc TEXT NOT NULL);" +
+        "CREATE TABLE IF NOT EXISTS pending (id TEXT PRIMARY KEY, info TEXT NOT NULL, at INTEGER NOT NULL);",
+    );
+    this.db = db;
+    this.readStarters();
+    const fresh: LibraryDoc = {
+      clips: [],
+      channels: this.starters.channels.map((c) => ({ name: c.name, items: [...c.items], shuffle: c.shuffle === true, epoch: this.now() })),
+      screens: SCREENS.map((s) => defaultScreen(s)),
+      hidden: [],
+    };
+    if (db.query("INSERT OR IGNORE INTO library (id,revision,doc) VALUES (1,0,?)").run(JSON.stringify(fresh)).changes > 0) this.writes++;
+    return db;
+  }
+
+  private readStarters(): void {
+    if (!this.startersFile) return;
+    let at = -1;
+    try {
+      at = statSync(this.startersFile).mtimeMs;
+    } catch {
+      at = -1;
+    }
+    if (at === this.startersAt) return;
+    this.startersAt = at;
+    try {
+      const read = JSON.parse(readFileSync(this.startersFile, "utf8")) as Starters;
+      const ids = new Set(read.clips.map((c) => c.id));
+      // A channel keeps the clips the file holds; one left with none is left out.
+      const channels = (read.channels ?? []).map((c) => ({ name: c.name, items: c.items.filter((id) => ids.has(id)), shuffle: c.shuffle === true })).filter((c) => c.items.length > 0);
+      this.starters = { clips: read.clips.map((c) => ({ ...c, starter: true })), channels };
+    } catch {
+      this.starters = { clips: [], channels: [] };
+    }
+  }
+
+  /** Changes whenever the library may have: the file's time on disk, or for a memory library its count of writes. */
+  stamp(): string {
+    if (this.path === ":memory:") return `m${this.writes}`;
+    try {
+      const s = statSync(this.path);
+      return `${s.mtimeMs}:${s.size}`;
+    } catch {
+      return "none";
+    }
+  }
+
+  /** The library now, read again only when its revision or the starters changed. */
+  view(): LibraryView {
+    const db = this.open();
+    this.readStarters();
+    const row = db.query("SELECT revision, doc FROM library WHERE id=1").get() as { revision: number; doc: string };
+    if (this.cached && this.cached.revision === row.revision && this.cached.starters === this.starters.clips) return this.cached;
+    const doc = JSON.parse(row.doc) as LibraryDoc;
+    const screens = new Map(doc.screens.map((s) => [s.screen, s]));
+    for (const s of SCREENS) if (!screens.has(s)) screens.set(s, defaultScreen(s));
+    doc.screens = [...screens.values()];
+    const all = new Map<string, Clip>();
+    for (const c of [...this.starters.clips, ...doc.clips]) if (!all.has(c.id)) all.set(c.id, c);
+    const hidden = new Set(doc.hidden);
+    const manifest = [...all.values()].filter((c) => !(c.starter && hidden.has(c.id)));
+    const manifestId = this.writeManifest(manifest);
+    this.cached = {
+      revision: row.revision, doc, starters: this.starters.clips, all, manifest, manifestId,
+      channels: new Map(doc.channels.map((c) => [c.name, c])),
+      screens,
+      timed: new Map(manifest.map((c) => [c.id, { id: c.id, seconds: c.seconds }])),
+    };
+    return this.cached;
+  }
+
+  /** Writes the manifest as media/video.<id>.json unless it is there, and returns its id. */
+  private writeManifest(clips: readonly Clip[]): string {
+    const json = JSON.stringify({ clips });
+    const id = sha16(json), file = join(this.media, `video.${id}.json`);
+    if (!existsSync(file)) {
+      const part = join(this.tmp, `video.${id}.${process.pid}.json`);
+      writeFileSync(part, json);
+      renameSync(part, file);
+    }
+    return id;
+  }
+
+  /**
+   * Changes the doc if `revision` is still the library's: `change` edits it in place, or says why not. A null revision
+   * takes whatever the library holds, for a change no page could have seen to conflict.
+   */
+  edit(revision: number | null, change: (doc: LibraryDoc, view: LibraryView) => Refusal | null): LibraryView | Refusal {
+    for (let tries = 0; tries < 8; tries++) {
+      const view = this.view();
+      if (revision !== null && revision !== view.revision) return { status: 409, error: "The library changed in another page. Reload to see it." };
+      const doc = structuredClone(view.doc);
+      const no = change(doc, view);
+      if (no) return no;
+      const done = this.open().query("UPDATE library SET revision=?, doc=? WHERE id=1 AND revision=?").run(view.revision + 1, JSON.stringify(doc), view.revision);
+      if (done.changes === 1) {
+        this.writes++;
+        return this.view();
+      }
+      if (revision !== null) return { status: 409, error: "Another page saved first. Reload to see its change." };
+    }
+    return { status: 503, error: "The library is busy. Try again." };
+  }
+
+  addPending(p: Pending): void {
+    this.open().query("INSERT OR REPLACE INTO pending (id,info,at) VALUES (?,?,?)").run(p.id, JSON.stringify(p), p.at);
+    this.writes++;
+  }
+
+  pending(id: string): Pending | null {
+    const row = this.open().query("SELECT info FROM pending WHERE id=?").get(id) as { info: string } | null;
+    return row ? (JSON.parse(row.info) as Pending) : null;
+  }
+
+  allPending(): Pending[] {
+    return (this.open().query("SELECT info FROM pending ORDER BY at").all() as { info: string }[]).map((r) => JSON.parse(r.info) as Pending);
+  }
+
+  dropPending(id: string): void {
+    this.open().query("DELETE FROM pending WHERE id=?").run(id);
+    this.writes++;
+  }
+
+  /** A media file's place on disk from its served path, or "" for a path that is not one of ours. */
+  fileOf(served: string): string {
+    const name = /^\/media\/([a-z0-9-]+\.[0-9a-f]{16}\.(?:mp4|jpg))$/.exec(served)?.[1];
+    return name ? join(this.media, name) : "";
+  }
+
+  /** Removes uploads never published, and manifests no world has sent for an hour. */
+  sweep(): void {
+    const now = this.now();
+    const view = this.view();
+    for (const p of this.allPending()) {
+      if (now - p.at < PENDING_MS) continue;
+      this.dropPending(p.id);
+      const file = this.fileOf(p.file);
+      if (file && !view.all.has(p.id)) rmSync(file, { force: true });
+    }
+    // Each world touches its own manifest as it sweeps, so one no world sends goes stale and goes.
+    const current = `video.${view.manifestId}.json`;
+    for (const name of readdirSync(this.media)) {
+      if (!/^video\.[0-9a-f]{16}\.json$/.test(name)) continue;
+      const file = join(this.media, name);
+      try {
+        if (name === current) utimesSync(file, now / 1000, now / 1000);
+        else if (now - statSync(file).mtimeMs >= MANIFEST_KEEP_MS) rmSync(file, { force: true });
+      } catch {
+        // Another world swept it first.
+      }
+    }
+  }
+
+  close(): void {
+    this.db?.close();
+    this.db = null;
+    if (this.temp) rmSync(this.temp, { recursive: true, force: true });
+  }
+}

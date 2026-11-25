@@ -712,6 +712,8 @@ export const OWN_XP = ownKind();
  * while a building piece is in hand, when either has changed, at most once a second.
  */
 export const OWN_STRUCTURES = ownKind();
+/** What the screens play (shared/video/screen.ts writeScreens): the manifest's id, then per screen show, flags, clip, start tick, next clip. */
+export const OWN_SCREEN = ownKind();
 
 export const MARKER_DEATH = 1;
 

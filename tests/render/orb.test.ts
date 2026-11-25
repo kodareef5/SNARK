@@ -8,7 +8,7 @@ import "../../client/core/render/orb-late.ts";
 import { DETAIL, DETAIL_FLOATS, DETAIL_GLOW, DRAW_ORB, DRAW_TEXTURED, FRAME, FRAME_FLOATS, FramePacket, InstanceWriter, ORB_AT, ORB_LANES } from "../../client/core/render/packet.ts";
 import type { Frame } from "../../client/core/render/pass.ts";
 import { Orbs } from "../../client/core/render/passes/orb.ts";
-import { PROGRAM, PROGRAMS, drawProgram, tierPrograms, withDefines } from "../../client/core/render/programs.ts";
+import { PROGRAM, PROGRAMS, UNIT, drawProgram, tierPrograms, withDefines } from "../../client/core/render/programs.ts";
 import { Scene } from "../../client/core/render/scene.ts";
 import { exposureFor, sunDirection, theSky } from "../../client/core/render/sky.ts";
 import { EYE_SKY } from "../../client/core/render/tide-eye.ts";
@@ -569,7 +569,9 @@ test("the program's texts compile on every tier, with the tier's octaves and puc
   // Low poly reads the fewest octaves, and no tier more than four.
   expect(TIERS.map((t) => t.orb.octaves)).toEqual([...TIERS.map((t) => t.orb.octaves)].sort((a, b) => a - b));
   expect(Math.max(...TIERS.map((t) => t.orb.octaves))).toBeLessThanOrEqual(4);
-  // It reads no texture, and its shell's size is the art's.
-  expect(ORB_FRAGMENT).not.toMatch(/sampler|texture\(/);
+  // It reads one texture, the screen's picture, at a level it works out, and its shell's size is the art's.
+  expect(ORB_FRAGMENT).not.toMatch(/texture\(/);
+  expect(ORB_FRAGMENT.match(/textureLod\(uScreen,/g)).toHaveLength(1);
+  expect(PROGRAMS.orb!(TIERS[0]!, "rgba").samplers.uScreen).toBe(UNIT.screen);
   expect(ORB_SHELL).toBe(78);
 });

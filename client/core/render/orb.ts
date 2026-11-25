@@ -1,6 +1,6 @@
-// An orb's screen (shared/world/orb.ts): a great ball whose skin shows scenes. Nothing is played from a picture: each
-// pixel works its colour out from where it is on the ball (a unit vector in the orb's own frame), the scene's clock and
-// the pixel's footprint. A scene treats the ball as a ball, has no seam and no pole, and drops its fine detail as the
+// An orb's screen (shared/world/orb.ts): a great ball whose skin shows scenes, or a video (the screen scene, below). A
+// scene is played from no picture: each pixel works its colour out from where it is on the ball (a unit vector in the
+// orb's own frame), the scene's clock and the pixel's footprint. A scene treats the ball as a ball, has no seam and no pole, and drops its fine detail as the
 // footprint grows, so it costs less and does not shimmer far off.
 //
 // Close up the picture is LED pucks on a brick grid of rings with a dark trellis between; a change of scene is a front
@@ -14,9 +14,10 @@
 
 import type { SupplyList } from "../../../shared/sim/supply.ts";
 import { POSE_BRAKING, POSE_FLYING, POSE_LANDED, newPose, supplyPose } from "../../../shared/sim/supply.ts";
-import { ORB_HOLD, orbShow, type OrbShow, type OrbSite } from "../../../shared/world/orb.ts";
+import { trackColour } from "../../../shared/video/clip.ts";
+import { ORB_HOLD, ORB_WIPE, orbShow, type OrbShow, type OrbSite } from "../../../shared/world/orb.ts";
 import { CAST_PHASE, EYE_PERIOD, eyeKnot, type TideEyeSite } from "../../../shared/world/tide-eye.ts";
-import { linearToSrgb } from "./color-space.ts";
+import { linearToSrgb, srgbToLinear } from "./color-space.ts";
 import { ORB_COLOUR, ORB_SEEN } from "./orb-light.ts";
 import { FRAME, FRAME_BLOCK, ORB_AT, ORB_LANES } from "./packet.ts";
 import { sunDirection } from "./sky.ts";
@@ -653,13 +654,165 @@ vec3 orbTide(vec3 n, float t, float fp) {
   return col+vec3(1.1,1.3,1.3)*orbLine(d,.009,fp);
 }`;
 
-/** Scene `which` (its place in ORB_SCENES) at a direction, its colour into `out`. */
-export function orbScene(out: number[], f: ArrayLike<number>, which: number, nx: number, ny: number, nz: number, t: number, fp: number, octaves = ORB_OCTAVES): void {
+// ---- The screen: a video or its poster (client/core/video/player.ts) on unit 29, which the programme never picks. The
+// picture wraps the ball as the real Sphere's does: its columns run round by longitude and its rows by height, so from
+// the street the rows are evenly spaced. It is laid as copies round the ball, each about the half a viewer sees. Facing
+// turns them so a copy's middle faces each viewer; fixed holds them to the ball. Fill covers the ball; fit keeps the
+// picture's shape and glows in its nearest edge's colour where it does not reach.
+
+/** The screen's number among the scenes, past the programme's five (shared/world/orb.ts ORB_SCENES). */
+export const ORB_SCREEN = 5;
+/** The glow round the picture: its brightness at the edge, and how fast it falls off, a picture's half height at a time. */
+const GLOW = 0.25;
+const GLOW_FADE = 3.5;
+/** The share of the edges' colour the glow gives the ball's mean where the picture does not cover it. */
+const GLOW_SHARE = 0.2;
+/** What the before side of a change from one clip to the next shows: the screen dark. */
+const DARK = 0.01;
+/** The most copies round the ball, for a tall picture. */
+const MOST_COPIES = 12;
+
+/**
+ * The screen's lanes, after the scenes': the longitude a copy's middle faces, the copies round the ball, and the mode
+ * (0 none, 1 facing, 2 fixed); the picture's half width in longitude, its middle's height and its half height (heights
+ * as the sine of latitude); two spare lanes, then fill (1) or fit (0); the texture's used rect (scale u, v, offset u, v);
+ * the picture's texels across and up, its aspect and the highest mip level the texture holds; the top edge's colour;
+ * the right edge's and 1 where the before side of a change is dark; the bottom edge's; the left edge's; the mean the
+ * ball shows (for the light it casts) and the share of it the picture covers. Directions are in the orb's frame.
+ */
+export const SCREEN_AT = ORB_AT + 32;
+export const SCREEN_LANES = 11;
+/** The lane the player sets once it knows which levels the texture holds this frame. */
+export const SCREEN_LOD = SCREEN_AT + 23;
+
+/** A picture as the twin reads it: linear colour, three floats a texel, top row first, with its mip levels after. */
+export interface ScreenPicture {
+  readonly width: number;
+  readonly height: number;
+  readonly levels: readonly Float32Array[];
+}
+
+/** A picture from sRGB bytes, four a texel, top row first, with mip levels made by halving as the card's are. */
+export function screenPicture(width: number, height: number, rgba: ArrayLike<number>): ScreenPicture {
+  const first = new Float32Array(width * height * 3);
+  for (let i = 0; i < width * height; i++) for (let c = 0; c < 3; c++) first[i * 3 + c] = srgbToLinear(rgba[i * 4 + c]! / 255);
+  const levels = [first];
+  let w = width, h = height;
+  while (w > 1 || h > 1) {
+    const nw = Math.max(1, w >> 1), nh = Math.max(1, h >> 1), from = levels.at(-1)!, to = new Float32Array(nw * nh * 3);
+    for (let y = 0; y < nh; y++) for (let x = 0; x < nw; x++) for (let c = 0; c < 3; c++) {
+      let s = 0;
+      for (let k = 0; k < 4; k++) s += from[(Math.min(h - 1, y * 2 + (k >> 1)) * w + Math.min(w - 1, x * 2 + (k & 1))) * 3 + c]!;
+      to[(y * nw + x) * 3 + c] = s / 4;
+    }
+    levels.push(to);
+    w = nw;
+    h = nh;
+  }
+  return { width, height, levels };
+}
+
+/** The highest mip level of a picture `width` by `height`. */
+export const topLevel = (width: number, height: number): number => Math.floor(Math.log2(Math.max(1, width, height)));
+
+/** Level `k` of `p` at (s, t), filtered between texels and held at the edges, into `texel` added by `w`. */
+function readLevel(p: ScreenPicture, k: number, s: number, t: number, w: number, out: number[]): void {
+  const lw = Math.max(1, p.width >> k), lh = Math.max(1, p.height >> k), data = p.levels[k]!;
+  const x = Math.max(0, Math.min(lw - 1, s * lw - 0.5)), y = Math.max(0, Math.min(lh - 1, t * lh - 0.5));
+  const x0 = Math.floor(x), y0 = Math.floor(y), x1 = Math.min(lw - 1, x0 + 1), y1 = Math.min(lh - 1, y0 + 1), fx = x - x0, fy = y - y0;
+  for (let c = 0; c < 3; c++) {
+    const a = mix(data[(y0 * lw + x0) * 3 + c]!, data[(y0 * lw + x1) * 3 + c]!, fx), b = mix(data[(y1 * lw + x0) * 3 + c]!, data[(y1 * lw + x1) * 3 + c]!, fx);
+    out[c]! += mix(a, b, fy) * w;
+  }
+}
+/** `p` at (s, t) and level `lod`, between levels as the card's LINEAR_MIPMAP_LINEAR has it, into `out`. */
+function readPicture(p: ScreenPicture, s: number, t: number, lod: number, out: number[]): void {
+  out[0] = out[1] = out[2] = 0;
+  const l = Math.max(0, Math.min(p.levels.length - 1, lod)), k = Math.floor(l), f = l - k;
+  readLevel(p, k, s, t, 1 - f, out);
+  if (f > 0 && k + 1 < p.levels.length) readLevel(p, k + 1, s, t, f, out);
+}
+
+/** The picture the twin shows on the screen scene, as the texture on unit 29 holds it; with none it shows the glow alone. */
+let twinPicture: ScreenPicture | null = null;
+export function setScreenPicture(p: ScreenPicture | null): void {
+  twinPicture = p;
+}
+
+/** Where a direction on the ball falls on the picture: u and v, -1 to 1 across it, and its latitude's cosine held off 0. */
+export const screenUv = [0, 0, 0];
+/** The picture's (u, v) at direction (dx, dy, dz) on the ball into `screenUv`, with the cosine of its latitude; false with no screen. */
+export function orbScreenUv(f: ArrayLike<number>, dx: number, dy: number, dz: number): boolean {
+  if (f[SCREEN_AT + 3]! < 0.5) return false;
+  const copies = f[SCREEN_AT + 1]!, at = ((Math.atan2(dx, dz + 1e-12) - f[SCREEN_AT]!) * copies) / TAU + 0.5;
+  const y = Math.max(-1, Math.min(1, dy));
+  screenUv[0] = (((at - Math.floor(at)) * 2 - 1) * (Math.PI / copies)) / f[SCREEN_AT + 4]!;
+  screenUv[1] = (y - f[SCREEN_AT + 5]!) / f[SCREEN_AT + 6]!;
+  screenUv[2] = Math.max(Math.sqrt(1 - y * y), 0.05);
+  return true;
+}
+
+/** The glow off the picture's edges at (u, v), by the picture's half sizes, into `out`. */
+function glow(out: number[], f: ArrayLike<number>, u: number, v: number, sx: number, sy: number): void {
+  const ox = (Math.max(Math.abs(u) - 1, 0) * sx) / sy, oy = Math.max(Math.abs(v) - 1, 0);
+  const side = u > 0 ? SCREEN_AT + 28 : SCREEN_AT + 36, cap = v > 0 ? SCREEN_AT + 24 : SCREEN_AT + 32;
+  const w = oy / (ox + oy + 1e-6), k = GLOW * Math.exp(-GLOW_FADE * Math.hypot(ox, oy));
+  for (let c = 0; c < 3; c++) out[c] = mix(f[side + c]!, f[cap + c]!, w) * k;
+}
+
+const glowed = [0, 0, 0];
+/** The screen at direction (dx, dy, dz), its colour into `out`: the twin of `orbScreen`. Without `picture` it is dark. */
+function screen(out: number[], f: ArrayLike<number>, dx: number, dy: number, dz: number, fp: number, picture: boolean): void {
+  out[0] = out[1] = out[2] = picture ? 0 : DARK;
+  if (!picture || !orbScreenUv(f, dx, dy, dz)) return;
+  const u = screenUv[0]!, v = screenUv[1]!, across = screenUv[2]!;
+  // The picture's half sizes in metres where the ball is widest, and the metres a pixel spans on the skin.
+  const radius = Math.max(f[ORB_AT + 3]!, 1), sx = f[SCREEN_AT + 4]! * radius, sy = f[SCREEN_AT + 6]! * radius, metres = fp * radius;
+  const iu = Math.max(-1, Math.min(1, u)), iv = Math.max(-1, Math.min(1, v));
+  const s = f[SCREEN_AT + 18]! + (0.5 + 0.5 * iu) * f[SCREEN_AT + 16]!, t = f[SCREEN_AT + 19]! + (0.5 - 0.5 * iv) * f[SCREEN_AT + 17]!;
+  // Columns close up toward the top and rows spread out, so the level takes the denser of the two.
+  const texels = Math.max(f[SCREEN_AT + 20]! / (2 * sx * across), (f[SCREEN_AT + 21]! * across) / (2 * sy));
+  const lod = Math.max(0, Math.min(f[SCREEN_AT + 23]!, Math.log2(Math.max(metres * texels, 1e-6))));
+  if (twinPicture) readPicture(twinPicture, s, t, lod, out);
+  if (f[SCREEN_AT + 15]! > 0.5) return;
+  glow(glowed, f, u, v, sx, sy);
+  // The picture's edge is soft over a pixel.
+  const soft = Math.max(metres / sy, 0.002), inside = sstep(1 + soft, 1 - soft, Math.abs(u)) * sstep(1 + soft, 1 - soft, Math.abs(v));
+  for (let c = 0; c < 3; c++) out[c] = mix(glowed[c]!, out[c]!, inside);
+}
+
+const SCREEN_GLSL = `
+uniform highp sampler2D uScreen;
+vec3 orbGlow(vec2 uv, vec2 size) {
+  vec2 over = max(abs(uv)-1.,0.)*vec2(size.x/size.y,1.);
+  vec3 side = uv.x > 0. ? fOrb[15].rgb : fOrb[17].rgb, cap = uv.y > 0. ? fOrb[14].rgb : fOrb[16].rgb;
+  return mix(side,cap,over.y/(over.x+over.y+1.e-6))*${g(GLOW)}*exp(-${g(GLOW_FADE)}*length(over));
+}
+vec3 orbScreen(vec3 dir, float fp, bool picture) {
+  float radius = max(fOrb[0].w,1.), copies = fOrb[8].y;
+  if (!picture || fOrb[8].w < .5) return vec3(picture ? 0. : ${g(DARK)});
+  float at = (atan(dir.x,dir.z+1.e-12)-fOrb[8].x)*copies*${g(1 / TAU)}+.5, y = clamp(dir.y,-1.,1.);
+  float across = max(sqrt(1.-y*y),.05), metres = fp*radius;
+  vec2 size = fOrb[9].xz*radius;
+  vec2 uv = vec2((fract(at)*2.-1.)*${g(Math.PI)}/(copies*fOrb[9].x),(y-fOrb[9].y)/fOrb[9].z);
+  vec2 st = fOrb[12].zw+vec2(.5+.5*clamp(uv.x,-1.,1.),.5-.5*clamp(uv.y,-1.,1.))*fOrb[12].xy;
+  float texels = max(fOrb[13].x/(2.*size.x*across),fOrb[13].y*across/(2.*size.y));
+  vec3 pic = textureLod(uScreen,st,clamp(log2(max(metres*texels,1.e-6)),0.,fOrb[13].w)).rgb;
+  if (fOrb[11].w > .5) return pic;
+  float soft = max(metres/size.y,.002);
+  vec2 e = smoothstep(1.+soft,1.-soft,abs(uv));
+  return mix(orbGlow(uv,size),pic,e.x*e.y);
+}`;
+
+
+/** Scene `which` (its place in ORB_SCENES, or ORB_SCREEN) at a direction, its colour into `out`. */
+export function orbScene(out: number[], f: ArrayLike<number>, which: number, nx: number, ny: number, nz: number, t: number, fp: number, octaves = ORB_OCTAVES, picture = true): void {
   if (which < 0.5) watcher(out, f, nx, ny, nz, t, fp);
   else if (which < 1.5) moon(out, f, nx, ny, nz, t, fp, octaves);
   else if (which < 2.5) core(out, f, nx, ny, nz, t, fp);
   else if (which < 3.5) storm(out, f, nx, ny, nz, t, fp, octaves);
-  else tide(out, f, nx, ny, nz, t, fp, octaves);
+  else if (which < 4.5) tide(out, f, nx, ny, nz, t, fp, octaves);
+  else screen(out, f, nx, ny, nz, fp, picture);
 }
 
 /** A puck: its ring from the top, how many its ring holds, its centre's direction, and how far a point is from that centre in pucks. */
@@ -750,7 +903,7 @@ export function orbLight(f: ArrayLike<number>, x: number, y: number, z: number, 
   // The change crosses the skin from the point facing the eye, and a pixel shows one scene or the other.
   const across = 0.5 - 0.5 * (dx * f[ORB_AT + 20]! + dy * f[ORB_AT + 21]! + dz * f[ORB_AT + 22]!), wipe = f[ORB_AT + 10]!, front = wipe * 1.1 - 0.05;
   const on = across < front;
-  orbScene(picture, f, on ? f[ORB_AT + 8]! : f[ORB_AT + 9]!, dx, dy, dz, on ? f[ORB_AT + 6]! : f[ORB_AT + 7]!, fp, octaves);
+  orbScene(picture, f, on ? f[ORB_AT + 8]! : f[ORB_AT + 9]!, dx, dy, dz, on ? f[ORB_AT + 6]! : f[ORB_AT + 7]!, fp, octaves, on || !(f[SCREEN_AT + 31]! > 0.5));
   // The front itself is a line of light.
   const e = (across - front) / Math.max(0.012, fp), lead = wipe < 1 ? Math.exp(-e * e) : 0;
   const level = f[ORB_AT + 11]!, sy = f[SUN + 1]!;
@@ -780,13 +933,14 @@ precision highp float;
 precision highp int;
 in vec3 vRel;
 out vec4 o;
-${FRAME_BLOCK}${TONE}${GRADED}${KIT_GLSL}${WATCHER_GLSL}${MOON_GLSL}${CORE_GLSL}${STORM_GLSL}${TIDE_GLSL}${PUCK_GLSL}
-vec3 orbScene(float which, vec3 n, float t, float fp) {
+${FRAME_BLOCK}${TONE}${GRADED}${KIT_GLSL}${WATCHER_GLSL}${MOON_GLSL}${CORE_GLSL}${STORM_GLSL}${TIDE_GLSL}${PUCK_GLSL}${SCREEN_GLSL}
+vec3 orbScene(float which, vec3 n, float t, float fp, bool picture) {
   if (which < .5) return orbWatcher(n,t,fp);
   if (which < 1.5) return orbMoon(n,t,fp);
   if (which < 2.5) return orbCore(n,t,fp);
   if (which < 3.5) return orbStorm(n,t,fp);
-  return orbTide(n,t,fp);
+  if (which < 4.5) return orbTide(n,t,fp);
+  return orbScreen(n,fp,picture);
 }
 void main() {
   float radius = max(fOrb[0].w,1.);
@@ -804,7 +958,7 @@ void main() {
 #endif
   float across = .5-.5*dot(dir,fOrb[5].xyz), front = fOrb[2].z*1.1-.05;
   bool on = across < front;
-  vec3 col = orbScene(on ? fOrb[2].x : fOrb[2].y,dir,on ? fOrb[1].z : fOrb[1].w,fp);
+  vec3 col = orbScene(on ? fOrb[2].x : fOrb[2].y,dir,on ? fOrb[1].z : fOrb[1].w,fp,on || fOrb[15].w < .5);
   float e = (across-front)/max(.012,fp);
   if (fOrb[2].z < 1.) col += vec3(.75,.9,1.)*exp(-e*e);
   vec3 light = col*fOrb[2].w;
@@ -838,6 +992,139 @@ export function orbFill(phase: number): number {
   return since < 5 ? 1 - sstep(0, 5, since) : (since - 5) / (EYE_PERIOD - 5);
 }
 
+/** What the screen holds for writeOrb (client/core/video/player.ts), as plain numbers. */
+export interface OrbScreen {
+  /** The clip shown, its number in the manifest, or -1 for the scenes. */
+  shows: number;
+  /** The picture the texture holds, in texels, 0 for none, and the texture's own size. */
+  width: number;
+  height: number;
+  texWidth: number;
+  texHeight: number;
+  /** The highest mip level the texture holds made from this picture. */
+  levels: number;
+  /** Facing turns the copies to each viewer; fixed holds them to the ball. */
+  facing: boolean;
+  fill: boolean;
+  /** The clip's colour track (shared/video/clip.ts) and the seconds into the clip. */
+  track: Uint8Array | null;
+  seconds: number;
+  /** The camera's up, in the world. */
+  upX: number;
+  upY: number;
+  upZ: number;
+}
+
+/** The screen's wrap, from `screenWrap`: copies round the ball, the picture's half width in longitude, its middle's height and half height, and the share of the ball it covers. */
+export const wrap = { copies: 2, halfWide: Math.PI / 2, middle: 0, halfHigh: 1, cover: 1 };
+/**
+ * The wrap of a picture of `aspect` on a ball the ground cuts at height `low` (the sine of its latitude there). The
+ * copies are as many as make a copy, seen from in front, nearest the picture's shape; at least two, so a copy is never
+ * wider than what a viewer sees. Fill stretches the picture over its copy; fit narrows or shortens it to keep its shape.
+ */
+export function screenWrap(aspect: number, low: number, fill: boolean): typeof wrap {
+  const high = 1 - low;
+  const seen = (k: number): number => (2 * Math.sin(Math.PI / k)) / high;
+  let copies = 2;
+  for (let k = 3; k <= MOST_COPIES; k++) if (Math.abs(Math.log(seen(k) / aspect)) < Math.abs(Math.log(seen(copies) / aspect))) copies = k;
+  let halfWide = Math.PI / copies, halfHigh = high / 2;
+  if (!fill && aspect < seen(copies)) halfWide = Math.asin(Math.min(1, (aspect * high) / 2));
+  else if (!fill) halfHigh = Math.sin(Math.PI / copies) / aspect;
+  wrap.copies = copies;
+  wrap.halfWide = halfWide;
+  wrap.middle = (low + 1) / 2;
+  wrap.halfHigh = halfHigh;
+  wrap.cover = ((halfWide * copies) / Math.PI) * ((2 * halfHigh) / high);
+  return wrap;
+}
+
+/** Where the ground cuts the ball, as the sine of the latitude there. */
+export const groundLine = (site: OrbSite): number => Math.max(-1, Math.min(0.5, -site.centre / Math.max(site.radius, 1)));
+
+/**
+ * What an orb showed and since when, so a change is a wipe: between the scenes and a clip, or two clips (`key`, `at`,
+ * `before`, `dark`), and from one scene to another that is held or let go (`scene`, `sceneFrom`, `sceneAt`, with the
+ * `only` and the clock `seconds` it last saw).
+ */
+export interface OrbMemory {
+  key: number;
+  at: number;
+  before: number;
+  dark: boolean;
+  scene: number;
+  sceneFrom: number;
+  sceneAt: number;
+  only: number;
+  seconds: number;
+}
+export const newOrbMemory = (): OrbMemory => ({ key: -1, at: -Infinity, before: 0, dark: false, scene: -1, sceneFrom: 0, sceneAt: -Infinity, only: -1, seconds: -Infinity });
+/** The game's own: one view of one orb a frame. */
+const shown = newOrbMemory();
+const edge3 = [0, 0, 0];
+
+/**
+ * The screen's lanes for `screen` seen from the eye at (ex, ey, ez) from the ball's centre in the orb's frame, the
+ * camera's up turned into it by (cs, sn). Facing turns the copies to the eye's side; from over the top, to the side the
+ * camera's up leaves behind, so the picture stands up on the screen and never spins.
+ */
+function screenLanes(frame: Float32Array, screen: OrbScreen, site: OrbSite, ex: number, ey: number, ez: number, cs: number, sn: number): void {
+  const at = SCREEN_AT, aspect = screen.width / Math.max(1, screen.height);
+  const w = screenWrap(aspect, groundLine(site), screen.fill);
+  frame[at + 1] = w.copies;
+  frame[at + 3] = screen.facing ? 1 : 2;
+  frame[at + 4] = w.halfWide;
+  frame[at + 5] = w.middle;
+  frame[at + 6] = w.halfHigh;
+  frame[at + 15] = screen.fill ? 1 : 0;
+  frame[at + 16] = screen.width / Math.max(1, screen.texWidth);
+  frame[at + 17] = screen.height / Math.max(1, screen.texHeight);
+  frame[at + 20] = screen.width;
+  frame[at + 21] = screen.height;
+  frame[at + 22] = aspect;
+  frame[at + 23] = screen.levels;
+  // The edges' colours and the mean, linear, at the clip's time.
+  const track = screen.track ?? new Uint8Array(0);
+  let er = 0, eg = 0, eb = 0;
+  for (let part = 1; part < 5; part++) {
+    trackColour(track, screen.seconds, part, edge3);
+    const to = at + 24 + (part - 1) * 4;
+    for (let c = 0; c < 3; c++) frame[to + c] = srgbToLinear(edge3[c]!);
+    er += frame[to]!;
+    eg += frame[to + 1]!;
+    eb += frame[to + 2]!;
+  }
+  trackColour(track, screen.seconds, 0, edge3);
+  frame[at + 40] = w.cover * srgbToLinear(edge3[0]!) + (1 - w.cover) * GLOW_SHARE * er / 4;
+  frame[at + 41] = w.cover * srgbToLinear(edge3[1]!) + (1 - w.cover) * GLOW_SHARE * eg / 4;
+  frame[at + 42] = w.cover * srgbToLinear(edge3[2]!) + (1 - w.cover) * GLOW_SHARE * eb / 4;
+  frame[at + 43] = w.cover;
+  if (!screen.facing) return;
+  const side = Math.hypot(ex, ez), over = sstep(0.8, 0.98, ey / Math.max(Math.hypot(ex, ey, ez), 1e-6));
+  const ux = cs * screen.upX - sn * screen.upZ, uz = sn * screen.upX + cs * screen.upZ, up = Math.hypot(ux, uz);
+  let fx = 0, fz = 0;
+  if (side > 1e-6) {
+    fx += ((1 - over) * ex) / side;
+    fz += ((1 - over) * ez) / side;
+  }
+  if (up > 1e-6) {
+    fx -= (over * ux) / up;
+    fz -= (over * uz) / up;
+  }
+  frame[at] = Math.atan2(fx, fz + 1e-12);
+}
+
+/**
+ * Texels of the picture a pixel spans where the ball is widest as the lanes have it, with `pixel` the radians a pixel
+ * spans and the pucks shown where the tier draws them: over 1, the texture wants its mip levels.
+ */
+export function screenTexels(frame: ArrayLike<number>, pixel: number, pucks: boolean): number {
+  const radius = frame[ORB_AT + 3]!;
+  if (!(frame[SCREEN_AT + 3]! > 0.5) || !(radius > 0)) return 0;
+  const far = Math.hypot(frame[ORB_AT]!, frame[ORB_AT + 1]!, frame[ORB_AT + 2]!);
+  const skin = Math.max(1, far - radius) * pixel, metres = Math.max(skin, pucks && PUCK / Math.max(skin, 1e-5) > PUCK_FROM ? PUCK : 0);
+  return metres * Math.max(frame[SCREEN_AT + 20]! / (2 * Math.max(frame[SCREEN_AT + 4]!, 1e-3) * radius), frame[SCREEN_AT + 21]! / (2 * Math.max(frame[SCREEN_AT + 6]!, 1e-3) * radius));
+}
+
 const BLUE = { color: "blue" } as const;
 const show: OrbShow = { scene: 0, before: 0, wipe: 1 };
 const pose = newPose();
@@ -864,7 +1151,7 @@ function lean(x: number, y: number, z: number, w: number): void {
  * The Watcher looks at a supply drop in flight, else at the blue eye's figure by its power, else at the sun or the moon,
  * and glides from one to the next.
  */
-export function writeOrb(frame: Float32Array, sites: readonly OrbSite[] | undefined, eyes: readonly TideEyeSite[], seconds: number, hour: number, x: number, y: number, z: number, supply: SupplyList | null, tick: number, rate: number, only = -1, gain = 1): void {
+export function writeOrb(frame: Float32Array, sites: readonly OrbSite[] | undefined, eyes: readonly TideEyeSite[], seconds: number, hour: number, x: number, y: number, z: number, supply: SupplyList | null, tick: number, rate: number, only = -1, gain = 1, screen: OrbScreen | null = null, memory: OrbMemory = shown): void {
   frame.fill(0, ORB_AT, ORB_AT + ORB_LANES * 4);
   const nearest = sites ? nearestOrb(sites, x, y, z) : -1;
   if (nearest < 0) return;
@@ -878,6 +1165,21 @@ export function writeOrb(frame: Float32Array, sites: readonly OrbSite[] | undefi
   frame[ORB_AT + 5] = sn;
   // A scene's clock starts with its showing, moved on by the showing's own share; one held for good wraps.
   orbShow(seconds, show, only);
+  // A scene changed by hand, held or let go, wipes from the one shown, as the programme's own changes do; a clock that
+  // jumped is no change seen.
+  const running = seconds > memory.seconds && seconds - memory.seconds < 2;
+  if (running && only !== memory.only && show.wipe >= 1 && memory.scene >= 0 && show.scene !== memory.scene) {
+    memory.sceneFrom = memory.scene;
+    memory.sceneAt = seconds;
+  }
+  memory.scene = show.scene;
+  memory.only = only;
+  memory.seconds = seconds;
+  const turned = (seconds - memory.sceneAt) / ORB_WIPE;
+  if (show.wipe >= 1 && turned >= 0 && turned < 1) {
+    show.before = memory.sceneFrom;
+    show.wipe = turned;
+  }
   const since = seconds - CAST_PHASE, slot = Math.floor(since / ORB_HOLD), into = since - slot * ORB_HOLD;
   frame[ORB_AT + 6] = only >= 0 ? ((seconds % HELD_WRAP) + HELD_WRAP) % HELD_WRAP : into + CLOCK_SPREAD * orbHash(slot, 7, 0, 3);
   frame[ORB_AT + 7] = only >= 0 ? frame[ORB_AT + 6]! : into + ORB_HOLD + CLOCK_SPREAD * orbHash(slot - 1, 7, 0, 3);
@@ -885,6 +1187,33 @@ export function writeOrb(frame: Float32Array, sites: readonly OrbSite[] | undefi
   frame[ORB_AT + 9] = show.before;
   frame[ORB_AT + 10] = show.wipe;
   frame[ORB_AT + 11] = orbLevel(frame[FRAME.exposure]!) * gain;
+  // A clip, its poster or the scenes: a change of what shows is a wipe, from what showed.
+  // With no screen at all, nothing is wiped from.
+  if (!screen) memory.key = -1;
+  const key = screen && screen.shows >= 0 && screen.width > 0 ? screen.shows : -1;
+  if (key !== memory.key) {
+    memory.dark = memory.key >= 0 && key >= 0;
+    memory.before = memory.key >= 0 ? ORB_SCREEN : show.scene;
+    memory.key = key;
+    memory.at = seconds;
+  }
+  const wiped = (seconds - memory.at) / ORB_WIPE;
+  if (!(wiped >= 0) || wiped >= 1) memory.at = -Infinity;
+  const wiping = wiped >= 0 && wiped < 1;
+  if (key >= 0 || wiping) {
+    if (key >= 0) {
+      frame[ORB_AT + 7] = frame[ORB_AT + 6]!;
+      frame[ORB_AT + 6] = screen!.seconds;
+      frame[ORB_AT + 8] = ORB_SCREEN;
+    }
+    frame[ORB_AT + 9] = wiping ? memory.before : ORB_SCREEN;
+    frame[ORB_AT + 10] = wiping ? wiped : 1;
+    frame[SCREEN_AT + 31] = wiping && memory.dark ? 1 : 0;
+  }
+  if (screen && screen.width > 0) {
+    const ex = -frame[ORB_AT]!, ey = -frame[ORB_AT + 1]!, ez = -frame[ORB_AT + 2]!;
+    screenLanes(frame, screen, site, cs * ex - sn * ez, ey, sn * ex + cs * ez, cs, sn);
+  }
   // The blue eye's clock runs whether the map has a blue eye or not.
   let blue: TideEyeSite | null = null;
   for (let i = 0; i < eyes.length && !blue; i++) if (eyes[i]!.color === "blue") blue = eyes[i]!;
@@ -969,8 +1298,16 @@ function orbPart(out: Float64Array, at: number, f: ArrayLike<number>, part: numb
   const front = f[ORB_AT + 10]! * 1.1 - 0.05;
   for (let i = part * 3; i < MEAN_WAYS * 3; i += MEAN_PARTS * 3) {
     const x = ways[i]!, y = ways[i + 1]!, z = ways[i + 2]!;
-    const on = 0.5 - 0.5 * (x * f[ORB_AT + 20]! + y * f[ORB_AT + 21]! + z * f[ORB_AT + 22]!) < front;
-    orbScene(seen, f, on ? f[ORB_AT + 8]! : f[ORB_AT + 9]!, x, y, z, on ? f[ORB_AT + 6]! : f[ORB_AT + 7]!, MEAN_FOOTPRINT, 2);
+    const on = 0.5 - 0.5 * (x * f[ORB_AT + 20]! + y * f[ORB_AT + 21]! + z * f[ORB_AT + 22]!) < front, which = on ? f[ORB_AT + 8]! : f[ORB_AT + 9]!;
+    // The screen's mean is the clip's colour track's, the same for every viewer and with no picture read back.
+    if (which > 4.5) {
+      const dark = !on && f[SCREEN_AT + 31]! > 0.5;
+      r += dark ? DARK : f[SCREEN_AT + 40]!;
+      g += dark ? DARK : f[SCREEN_AT + 41]!;
+      b += dark ? DARK : f[SCREEN_AT + 42]!;
+      continue;
+    }
+    orbScene(seen, f, which, x, y, z, on ? f[ORB_AT + 6]! : f[ORB_AT + 7]!, MEAN_FOOTPRINT, 2);
     r += seen[0]!;
     g += seen[1]!;
     b += seen[2]!;

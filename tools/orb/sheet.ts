@@ -1,21 +1,22 @@
 // The orb's contact sheet: every scene at six moments, each as the whole ball, as the ball close up where its pucks
-// show, and as the ball far off, about 40 pixels across, in one PNG. Every pixel is the twin's (client/core/render/orb.ts
+// show, and as the ball far off, about 40 pixels across, in one PNG; and the screen scene showing a test frame
+// (frame.ts) wrapped and facing from four sides and from above, and fixed. Every pixel is the twin's (client/core/render/orb.ts
 // orbLight, orbShown), with the frame's lanes written as a scene writes them and the hour's own exposure and grade on
 // medium, so it is what the tests and the probe hold the card to.
 //
-//   bun tools/orb/sheet.ts            var/orb/sheet.png, and a strip a scene beside it
+//   bun tools/orb/sheet.ts            var/orb/sheet.png, and a strip a scene beside it (screen.png the screen's)
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { tierOf } from "../../client/core/assets/tiers.ts";
-import { orbLight, orbShown, strikeAt, writeOrb } from "../../client/core/render/orb.ts";
-import { FRAME_FLOATS, ORB_AT } from "../../client/core/render/packet.ts";
-import { postFrame } from "../../client/core/render/post.ts";
-import { skyFrame, theSky } from "../../client/core/render/sky.ts";
+import { ORB_SCREEN, screenPicture, setScreenPicture, strikeAt, type OrbScreen } from "../../client/core/render/orb.ts";
+import { OrbView, type OrbMoment } from "../../client/core/render/orb-view.ts";
+import { ORB_AT } from "../../client/core/render/packet.ts";
 import type { SupplyList } from "../../shared/sim/supply.ts";
 import { ORB_SCENES, type OrbSite } from "../../shared/world/orb.ts";
 import type { TideEyeSite } from "../../shared/world/tide-eye.ts";
 import { GLYPH_HEIGHT, GLYPH_WIDTH, glyphPixel } from "../snap/font.ts";
 import { encodePng } from "../snap/png.ts";
+import { screenFrame } from "./frame.ts";
 
 const RATE = 30;
 /** Las Vegas's, as its map has them: the ball, and the blue eye 210 m north of it. */
@@ -83,57 +84,15 @@ function dropAt(tick: number): SupplyList {
   return { tiers: [], classes: [], rows: [row] };
 }
 
-const frame = new Float32Array(FRAME_FLOATS), light = [0, 0, 0];
+/** What the screen scene shows: the test frame, 640 by 360, its camera's up set by each view. */
+const SCREEN: OrbScreen = { shows: 0, width: 640, height: 360, texWidth: 640, texHeight: 360, levels: 9, facing: true, fill: true, track: null, seconds: 0, upX: 0, upY: 1, upZ: 0 };
+const orb = new OrbView(SITE, [BLUE], TIER, SCREEN), frame = orb.frame;
 /** The frame's lanes for a moment of scene `which`, the eye at (x, y, z). */
-function lanes(which: number, m: Moment, x: number, y: number, z: number): void {
-  frame.fill(0);
-  skyFrame(m.hour, theSky(), frame);
-  postFrame(frame, TIER, m.hour, 1080);
-  const tick = Math.round(m.seconds * RATE);
-  writeOrb(frame, [SITE], [BLUE], m.seconds, m.hour, x, y, z, m.drop ? dropAt(tick) : null, tick, RATE, which);
-}
-
-/** A picture `w` by `h` of the ball from `distance` metres from its axis on bearing `from`, the eye 2 m up and aimed at its centre, with `across` its angle of view. */
-function view(pixels: Uint8ClampedArray, stride: number, left: number, top: number, w: number, h: number, which: number, m: Moment, distance: number, across: number): void {
-  const ex = SITE.x + distance * Math.sin(m.from), ey = SITE.y + 2, ez = SITE.z + distance * Math.cos(m.from);
-  lanes(which, m, ex, ey, ez);
-  const cx = frame[ORB_AT]!, cy = frame[ORB_AT + 1]!, cz = frame[ORB_AT + 2]!, r = SITE.radius, far = Math.hypot(cx, cy, cz);
-  // The view's forward, right and up.
-  const fx = cx / far, fy = cy / far, fz = cz / far;
-  const rl = Math.hypot(fz, fx), rx = -fz / rl, rz = fx / rl;
-  const ux = -rz * fy, uy = rz * fx - rx * fz, uz = rx * fy;
-  const span = Math.tan(across / 2) / (w / 2);
-  /** Where the ray through pixel (px, py) meets the shell, into `hit`; false where it misses or meets it under its cut. */
-  const hit = [0, 0, 0];
-  const cast = (px: number, py: number): boolean => {
-    const a = (px - w / 2) * span, b = (h / 2 - py) * span;
-    let dx = fx + a * rx + b * ux, dy = fy + b * uy, dz = fz + a * rz + b * uz;
-    const dl = Math.hypot(dx, dy, dz);
-    dx /= dl; dy /= dl; dz /= dl;
-    const along = dx * cx + dy * cy + dz * cz, disc = along * along - (far * far - r * r);
-    if (disc <= 0) return false;
-    const t = along - Math.sqrt(disc);
-    hit[0] = dx * t; hit[1] = dy * t; hit[2] = dz * t;
-    return hit[1]! - cy > -40;
-  };
-  for (let py = 0; py < h; py++) {
-    for (let px = 0; px < w; px++) {
-      const o = ((top + py) * stride + left + px) * 4;
-      pixels[o] = pixels[o + 1] = pixels[o + 2] = 10;
-      pixels[o + 3] = 255;
-      if (!cast(px + 0.5, py + 0.5)) continue;
-      const x = hit[0]!, y = hit[1]!, z = hit[2]!;
-      // The metres a pixel spans there, as the card's fwidth has them: the place a pixel across and a pixel down.
-      let wide = Math.hypot(x, y, z) * span * 1.5;
-      if (cast(px + 1.5, py + 0.5)) {
-        const ax = hit[0]! - x, ay = hit[1]! - y, az = hit[2]! - z;
-        if (cast(px + 0.5, py + 1.5)) wide = Math.hypot(Math.abs(ax) + Math.abs(hit[0]! - x), Math.abs(ay) + Math.abs(hit[1]! - y), Math.abs(az) + Math.abs(hit[2]! - z));
-      }
-      orbLight(frame, x, y, z, wide, light, TIER.orb.octaves, TIER.orb.pucks);
-      orbShown(pixels, light, frame, o);
-    }
-  }
-}
+const lanes = (which: number, m: Moment, x: number, y: number, z: number): void => orb.lanes(which, withDrop(m), x, y, z);
+/** A picture of the ball (client/core/render/orb-view.ts OrbView.view). */
+const view = (pixels: Uint8ClampedArray, stride: number, left: number, top: number, w: number, h: number, which: number, m: Moment, distance: number, across: number, lift = 2): void =>
+  orb.view(pixels, stride, left, top, w, h, which, withDrop(m), distance, across, lift);
+const withDrop = (m: Moment): OrbMoment => ({ ...m, supply: m.drop ? dropAt(Math.round(m.seconds * RATE)) : null });
 
 function words(pixels: Uint8ClampedArray, stride: number, left: number, top: number, text: string): void {
   for (let i = 0; i < text.length; i++) for (let col = 0; col < GLYPH_WIDTH; col++) for (let row = 0; row < GLYPH_HEIGHT; row++) {
@@ -181,6 +140,32 @@ ORB_SCENES.forEach((scene, s) => {
   strip.set(sheet.subarray(s * cellH * sheetW * 4, (s + 1) * cellH * sheetW * 4));
   writeFileSync(resolve(out, `${scene}.png`), encodePng(sheetW, cellH, strip));
 });
+// The screen scene: the test frame facing from the four sides, from above and from the street close by, then fixed.
+setScreenPicture(screenPicture(640, 360, screenFrame(640, 360)));
+// Its colour track: the frame's mean, then its top, right, bottom and left edges, the same every sample.
+SCREEN.track = Uint8Array.from({ length: 40 * 15 }, (_, i) => [[128, 125, 125], [128, 200, 50], [215, 125, 125], [128, 50, 200], [40, 125, 125]][Math.floor(i / 3) % 5]![i % 3]!);
+const screenH = WHOLE + TEXT + GAP, screenSheet = new Uint8ClampedArray(sheetW * screenH * 4).fill(24);
+for (let i = 3; i < screenSheet.length; i += 4) screenSheet[i] = 255;
+const SCREEN_VIEWS: { label: string; from: number; distance: number; lift: number; facing: boolean; fill?: boolean }[] = [
+  { label: "facing from the south", from: SOUTH, distance: 400, lift: 2, facing: true, fill: true },
+  { label: "facing from the west", from: WEST, distance: 400, lift: 2, facing: true, fill: true },
+  { label: "facing from the north, fitted", from: NORTH, distance: 400, lift: 2, facing: true },
+  { label: "facing from the east", from: -WEST, distance: 400, lift: 2, facing: true, fill: true },
+  { label: "facing from above", from: SOUTH, distance: 1, lift: 520, facing: true, fill: true },
+  { label: "fixed from the north", from: NORTH, distance: 400, lift: 2, facing: false, fill: true },
+];
+SCREEN_VIEWS.forEach((v, k) => {
+  const left = k * cellW + GAP, m: Moment = { label: v.label, seconds: at(40), hour: 22, from: v.from };
+  SCREEN.facing = v.facing;
+  SCREEN.fill = v.fill ?? false;
+  words(screenSheet, sheetW, left, 2, `screen: ${v.label}`);
+  const far = Math.hypot(v.distance, v.lift - SITE.centre);
+  view(screenSheet, sheetW, left, TEXT, WHOLE, WHOLE, ORB_SCREEN, m, v.distance, 2 * Math.asin(78 / far) * (WHOLE / 220), v.lift);
+  view(screenSheet, sheetW, left + WHOLE + GAP, TEXT, NEAR, NEAR, ORB_SCREEN, m, 78 + 25, 0.7);
+  view(screenSheet, sheetW, left + WHOLE + GAP + NEAR + GAP, TEXT, FAR, FAR, ORB_SCREEN, m, v.distance, 2 * Math.asin(78 / far) * (FAR / 40), v.lift);
+});
+setScreenPicture(null);
+writeFileSync(resolve(out, "screen.png"), encodePng(sheetW, screenH, screenSheet));
 const path = resolve(out, "sheet.png");
 writeFileSync(path, encodePng(sheetW, sheetH, sheet));
 console.log(path);

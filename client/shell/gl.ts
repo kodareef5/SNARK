@@ -159,6 +159,8 @@ export class GlRenderer {
   private shadow = { texture: null as WebGLTexture | null, targets: [] as WebGLFramebuffer[], size: 0 };
   /** The sky's openness (skyopen.ts) on its unit, and its cells across times 65536 and down. */
   private open = { texture: null as WebGLTexture | null, size: 0 };
+  /** An orb's screen picture on UNIT.screen (core/video/player.ts): its texture with every level, and its size. */
+  private screen = { texture: null as WebGLTexture | null, w: 0, h: 0 };
   private boneRows = 0;
   /**
    * Each tier's programs by number, as client/core/render/programs.ts numbers them, all begun when a frame of that tier
@@ -342,6 +344,7 @@ export class GlRenderer {
     this.post = { size: "", w: 0, h: 0, drawn: [0, 0], extent: this.post.extent, fbs: [], tex: [], bufs: [] };
     this.shadow = { texture: null, targets: [], size: 0 };
     this.open = { texture: null, size: 0 };
+    this.screen = { texture: null, w: 0, h: 0 };
     this.programs.clear();
     this.linked.clear();
     this.neutral = [];
@@ -400,6 +403,8 @@ export class GlRenderer {
     texture(UNIT.pieces, gl.RGBA8UI, PIECE_KEYS, PIECE_ROWS, gl.RGBA_INTEGER, gl.UNSIGNED_BYTE, null);
     // What stands overhead (roof.ts), filtered, on its unit alone: each map is put on it as it comes.
     texture(UNIT.roof, gl.RGBA8, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, null, gl.LINEAR);
+    // An orb's screen reads black until its first picture comes.
+    texture(UNIT.screen, gl.SRGB8_ALPHA8, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, null, gl.LINEAR);
     this.roadRows = new Uint8Array(roadSamples(g.width[SOURCE_WINDOW]!) * roadSamples(g.height[SOURCE_WINDOW]!) * ROAD_PLANES);
     // Each bone is three texels of four floats, read by exact texel. The texture stays bound on its unit, as tall as the tier's bones.
     texture(UNIT.bones, gl.RGBA32F, BONES_PER_ROW * 3, (this.boneRows = 1), gl.RGBA, gl.FLOAT, null);
@@ -673,6 +678,31 @@ export class GlRenderer {
   }
 
   /** Begins the programs of the tier being drawn that a late file has just brought (programs.ts LATE), so their first draw waits for less. */
+  /**
+   * An orb's screen picture, a video's frame or a poster, on UNIT.screen as sRGB, so a read gives linear light: made
+   * again with all its levels at a new size, and its levels made from it where `mips` asks.
+   */
+  private screenPicture(source: TexImageSource, w: number, h: number, mips: boolean): void {
+    const gl = this.gl;
+    if (w <= 0 || h <= 0) return;
+    gl.activeTexture(gl.TEXTURE0 + UNIT.screen);
+    if (w !== this.screen.w || h !== this.screen.h) {
+      gl.deleteTexture(this.screen.texture);
+      gl.bindTexture(gl.TEXTURE_2D, (this.screen = { texture: gl.createTexture(), w, h }).texture);
+      gl.texStorage2D(gl.TEXTURE_2D, Math.floor(Math.log2(Math.max(w, h))) + 1, gl.SRGB8_ALPHA8, w, h);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    } else gl.bindTexture(gl.TEXTURE_2D, this.screen.texture);
+    try {
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, source);
+      if (mips) gl.generateMipmap(gl.TEXTURE_2D);
+    } catch {
+      this.errors++;
+    }
+  }
+
   late(): void {
     this.asked.clear();
     if (!this.warmed) return;
@@ -1107,6 +1137,7 @@ export class GlRenderer {
       for (const q of read) if (open > 0) gl.texParameteri(gl.TEXTURE_2D, q[0], q[1]);
     }
     if (p.openRows > 0) gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, p.openRow, p.openWidth, p.openRows, gl.RGBA, gl.UNSIGNED_BYTE, p.openMap);
+    if (p.screenFresh && p.screenSource) this.screenPicture(p.screenSource as TexImageSource, p.screenWidth, p.screenHeight, p.screenMips);
     // What stands overhead and the ground's colour (roof.ts) on its unit, one layer over the other, each map whole.
     if (p.roofMap.length > 0) {
       gl.activeTexture(gl.TEXTURE0 + UNIT.roof);

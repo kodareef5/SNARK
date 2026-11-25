@@ -50,8 +50,9 @@ export class Orbs implements Pass {
   /** The colour of the light the nearest orb casts, and its halo, which the scene draws among its details. */
   readonly cast = new OrbCast();
   readonly cards = new OrbCards();
-  /** Whether the halo is drawn (passes.ts `orbglow`). */
+  /** Whether the halo is drawn (passes.ts `orbglow`), and whether this frame drew the nearest's screen. */
   glow = true;
+  screenDrawn = false;
 
   constructor(assets: Assets) {
     this.shell = assets.table.find("core:orb/shell");
@@ -77,25 +78,27 @@ export class Orbs implements Pass {
 
   draw(f: Frame): void {
     const sites = f.world.orbs;
+    this.screenDrawn = false;
     if (!sites) return;
     const cam = f.cam, screen = nearestOrb(sites, cam.x, cam.y, cam.z);
     for (let i = 0; i < sites.length; i++) {
       const site = sites[i]!, scale = site.radius / ORB_SHELL;
       const x = site.x - cam.x, y = site.y - cam.y, z = site.z - cam.z;
-      this.piece(f, site, this.shell, x, y + site.centre, z, site.radius, scale, i === screen ? DRAW_ORB : 0);
+      const drawn = this.piece(f, site, this.shell, x, y + site.centre, z, site.radius, scale, i === screen ? DRAW_ORB : 0);
+      if (i === screen) this.screenDrawn = drawn;
       if (this.plinth >= 0) this.piece(f, site, this.plinth, x, y, z, f.assets.table.radius[this.plinth]! * scale, scale, 0);
     }
   }
 
   /** One mesh of a site at `scale`, its origin at (x, y, z) from the camera and reaching `r` from it. */
-  private piece(f: Frame, site: OrbSite, mesh: number, x: number, y: number, z: number, r: number, scale: number, flags: number): void {
-    if (mesh < 0) return;
+  private piece(f: Frame, site: OrbSite, mesh: number, x: number, y: number, z: number, r: number, scale: number, flags: number): boolean {
+    if (mesh < 0) return false;
     const p = f.packet, cam = f.cam;
-    if (!cam.boxVisible(x - r, y - r, z - r, x + r, y + r, z + r)) return;
-    if (p.transientCount >= p.transientIds.length || p.drawCount + f.put.doubled >= MAX_DRAWS) return;
+    if (!cam.boxVisible(x - r, y - r, z - r, x + r, y + r, z + r)) return false;
+    if (p.transientCount >= p.transientIds.length || p.drawCount + f.put.doubled >= MAX_DRAWS) return false;
     // A size is a byte of SIZE_UNITS: a ball too big for one is sized by a bone.
     const boned = scale > 255 / SIZE_UNITS;
-    if (boned && p.boneCount >= Math.min(p.tier.bones, MAX_BONES)) return;
+    if (boned && p.boneCount >= Math.min(p.tier.bones, MAX_BONES)) return false;
     const first = p.transientCount++;
     const distance = Math.max(1, Math.hypot(x, y, z) - r);
     const errors = f.assets.table.error[mesh]!;
@@ -124,5 +127,6 @@ export class Orbs implements Pass {
     f.put.draw(mesh, level, TRANSIENT_BUFFER, first, 1, 0, 0, 0, flags, cam.passes(x - r, y - r, z - r, x + r, y + r, z + r));
     // Its bounds, so that what hides it leaves it out (occlusion.ts) and its step draws it at its own depth.
     f.put.boxRows(from, p.drawCount, x - r, y - r, z - r, x + r, y + r, z + r);
+    return p.drawCount > from;
   }
 }

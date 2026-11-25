@@ -1,0 +1,19 @@
+{
+  "title": "Lightning storm over Colorado",
+  "year": 2023,
+  "from": {
+    "url": "https://upload.wikimedia.org/wikipedia/commons/6/66/Lightning_storm_over_Colorado%2C_USA.ogg",
+    "page": "https://commons.wikimedia.org/wiki/File:Lightning_storm_over_Colorado,_USA.ogg",
+    "sha256": "6b67ad1c08df58964f196b8423dc7081d5e6a15c32035f26d02b93e78fc155b5"
+  },
+  "rights": "NathanScientific, 2023, Wikimedia Commons: CC0 1.0, dedicated to the public domain.",
+  "licence": "\"I, the copyright holder of this work, hereby publish it under the following license: This file is made available under the Creative Commons CC0 1.0 Universal Public Domain Dedication. The person who associated a work with this deed has dedicated the work to the public domain by waiving all of their rights to the work worldwide under copyright law, including all related and neighboring rights, to the extent allowed by law. You can copy, modify, distribute and perform the work, even for commercial purposes, all without asking permission.\"",
+  "changes": "Whole. Scaled from 1920×1080 to 640×360. Its Vorbis track is digital silence (a time-lapse of a frame each 5 s has no sound of its own), so it was removed. It flashes, so it is not in the strip.",
+  "start": 0,
+  "length": 24.8,
+  "denoise": false,
+  "audio": false,
+  "kbps": 600,
+  "poster": "brightest",
+  "flashes": true
+}

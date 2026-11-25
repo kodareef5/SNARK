@@ -31,7 +31,7 @@ export const SETTING_GROUPS: readonly SettingsTab[] = [
   { name: "Display", rows: [11, 21, 18, 19, 12, 2, 0, 24] },
   { name: "Audio", rows: [17, 5, 6, 7, 8, 9, 3, 4] },
   { name: INPUT_SETTINGS.label, rows: INPUT_ROWS, part: INPUT_SETTINGS },
-  { name: "Interface", rows: [14, 15, 16, 23, 13, 20] },
+  { name: "Interface", rows: [14, 15, 16, 23, 13, 20, 26] },
   // Its one row, Download all, is the page's own buttons (ui/storage.ts).
   { name: "Storage", rows: [10] },
 ];

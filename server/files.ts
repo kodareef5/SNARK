@@ -5,7 +5,7 @@
 import { existsSync } from "node:fs";
 import { join, normalize, sep } from "node:path";
 
-const TYPES: Record<string, string> = { webp: "image/webp", webm: "video/webm", html: "text/html; charset=utf-8", css: "text/css; charset=utf-8", js: "text/javascript", snpk: "application/octet-stream", json: "application/json", png: "image/png", ttf: "font/ttf", txt: "text/plain; charset=utf-8", opus: "audio/ogg" };
+const TYPES: Record<string, string> = { webp: "image/webp", webm: "video/webm", mp4: "video/mp4", jpg: "image/jpeg", html: "text/html; charset=utf-8", css: "text/css; charset=utf-8", js: "text/javascript", snpk: "application/octet-stream", json: "application/json", png: "image/png", ttf: "font/ttf", txt: "text/plain; charset=utf-8", opus: "audio/ogg" };
 /** Sixteen hex digits in a name are the start of the SHA-256 of the file, or a map part's hash (shared/world/mapfile.ts). */
 const HASHED = /\.[0-9a-f]{16}\./;
 

@@ -46,6 +46,7 @@ import {
   CMD_CREATE,
   OWN_BUFFS,
   OWN_RULES,
+  OWN_SCREEN,
   RULE_CORPSE_LOCATOR,
   RULE_CREATIVE,
   RULE_SURVIVORS_PASS,
@@ -161,6 +162,7 @@ import type { CollisionWorld } from "../../shared/world/collide.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 import type { TideEyeSite } from "../../shared/world/tide-eye.ts";
 import { ORB_GAIN_UNITS, type OrbSite } from "../../shared/world/orb.ts";
+import { readScreens, type ScreenState } from "../../shared/video/screen.ts";
 import { staticKinds, type MapLandmark, type MapStatics } from "../../shared/world/mapfile.ts";
 import type { Buildings } from "../../shared/world/buildings.ts";
 import { NodeField, type NodeSource } from "../../shared/world/nodes.ts";
@@ -822,6 +824,8 @@ export class ClientSession {
   /** What the server holds an orb's screen to: a scene's number or -1 for its programme, and its brightness. */
   orbOnly = -1;
   orbGain = 1;
+  /** What each screen plays (shared/video/screen.ts), in SCREENS order: the orb's first. */
+  screens: ScreenState[] = [];
   private blockReach = -1;
   /** Per tick stepped, the snapshot its input acknowledges, which its step meets the bodies in. */
   private readonly blockAck = new Uint32Array(HISTORY);
@@ -2035,6 +2039,14 @@ export class ClientSession {
         s.survivorsPass = (flags & RULE_SURVIVORS_PASS) !== 0;
         s.orbOnly = only;
         s.orbGain = gain;
+      },
+    });
+    ownKinds.add({
+      kind: OWN_SCREEN,
+      read(s, r) {
+        const screens = s.screens.map((x) => ({ ...x }));
+        readScreens(r, screens);
+        if (!r.overflow) s.screens = screens;
       },
     });
     ownKinds.add({
