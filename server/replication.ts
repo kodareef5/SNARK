@@ -37,6 +37,10 @@ export const CONE_KEEP = 150;
 /** The most entities a session's sight's cone adds to its view (D1079). */
 export const CONE_ENTITIES = 192;
 
+// When a crowd fills the view, keep up to eight bodies within eight metres of the viewer.
+const NEAR_BODIES = 8;
+const NEAR_METRES = 8;
+
 /** What replication needs of the game. It needs nothing of the sessions or the player step. */
 export interface ReplicationContext {
   readonly world: ServerWorld;
@@ -77,6 +81,12 @@ export class Replication {
   /** For each of those lists, each entry's place in the order it was chosen in. A client is sent the entries below its cap. */
   private readonly ranks: Uint16Array[] = [];
   private gathered = 0;
+  private readonly candidates: number[] = [];
+  private readonly playersAndMounts: number[] = [];
+  private readonly nearIds = new Uint32Array(NEAR_BODIES);
+  private readonly nearDistance = new Float64Array(NEAR_BODIES);
+  private readonly nearRanks = new Uint16Array(NEAR_BODIES);
+  private readonly nearView = new SentView();
   /**
    * Ticks the loop (server/main.ts) was behind its clock as the tick about to run began. The loop sets it before each
    * tick, so that a wrapper of `tick` cannot lose it. A margin is told against the tick due, so a page's clock keeps to
@@ -258,11 +268,13 @@ export class Replication {
     let n = 0;
     let nm = 0;
     let ni = 0;
+    let total = 0;
     for (let o = 0; o < offsets.length; o += 2) {
       const cx = ccx + offsets[o]!;
       const cz = ccz + offsets[o + 1]!;
       if (cx < 0 || cz < 0 || cx >= dims.chunksX || cz >= dims.chunksZ) continue;
       for (let i = ents.chunkHead[cz * dims.chunksX + cx]!; i >= 0; i = ents.next[i]!) {
+        total++;
         const f = ents.flags[i]!;
         if ((f & F_PLAYER) !== 0 || ents.driven[i] !== 0) {
           if (n < cap) ids[n++] = i;
@@ -271,12 +283,14 @@ export class Replication {
         } else if (ni < cap) idle[ni++] = i;
       }
     }
+    const at = this.gathered++;
+    this.candidates[at] = total;
+    this.playersAndMounts[at] = n;
     for (let k = 0; k < nm && n < cap; k++) ids[n++] = movers[k]!;
     for (let k = 0; k < ni && n < cap; k++) ids[n++] = idle[k]!;
     // Each is sorted with the rank it was chosen at. An index is under 2^20 (shared/ids.ts), so the two fit one number.
     for (let k = 0; k < n; k++) ids[k] = ids[k]! * MAX_VIEW + k;
     sortU32(ids, n);
-    const at = this.gathered++;
     const cur = (this.around[at] ??= new SentView());
     const rank = (this.ranks[at] ??= new Uint16Array(MAX_VIEW));
     cur.count = 0;
@@ -288,6 +302,73 @@ export class Replication {
     this.aroundTick[chunk] = T;
     this.aroundAt[chunk] = at;
     return at;
+  }
+
+  /** The closest bodies in reach across chunk borders. Equal distances keep the lower entity id. */
+  private nearest(c: Client, seats: number): number {
+    const { ents, dims } = this.world;
+    const { x, y, z } = c.body;
+    const cx = chunkCx(dims, c.chunk), cz = chunkCz(dims, c.chunk), radius = this.opts.entityRadius;
+    const west = Math.max(0, cx - radius, Math.floor((x - NEAR_METRES) / CHUNK_SIZE));
+    const east = Math.min(dims.chunksX - 1, cx + radius, Math.floor((x + NEAR_METRES) / CHUNK_SIZE));
+    const north = Math.max(0, cz - radius, Math.floor((z - NEAR_METRES) / CHUNK_SIZE));
+    const south = Math.min(dims.chunksZ - 1, cz + radius, Math.floor((z + NEAR_METRES) / CHUNK_SIZE));
+    let count = 0;
+    for (let row = north; row <= south; row++) {
+      for (let col = west; col <= east; col++) {
+        for (let id = ents.chunkHead[row * dims.chunksX + col]!; id >= 0; id = ents.next[id]!) {
+          if ((ents.flags[id]! & F_PLAYER) !== 0 || ents.driven[id] !== 0) continue;
+          const dx = ents.x[id]! - x, dy = ents.y[id]! - y, dz = ents.z[id]! - z;
+          const d = dx * dx + dy * dy + dz * dz;
+          if (d > NEAR_METRES * NEAR_METRES) continue;
+          let i = count;
+          while (i > 0 && (d < this.nearDistance[i - 1]! || (d === this.nearDistance[i - 1]! && id < this.nearIds[i - 1]!))) {
+            if (i < seats) {
+              this.nearIds[i] = this.nearIds[i - 1]!;
+              this.nearDistance[i] = this.nearDistance[i - 1]!;
+            }
+            i--;
+          }
+          if (i >= seats) continue;
+          this.nearIds[i] = id;
+          this.nearDistance[i] = d;
+          if (count < seats) count++;
+        }
+      }
+    }
+    return count;
+  }
+
+  /** Use the shared view unchanged whenever its ordinary ranking already includes everyone in reach we would keep. */
+  private keepNear(c: Client, cur: SentView, ranks: Uint16Array, limit: number, seats: number): SentView {
+    const n = this.nearest(c, seats);
+    let missing = false;
+    this.nearRanks.fill(MAX_VIEW);
+    for (let k = 0; k < n; k++) {
+      const i = viewIndex(cur, this.nearIds[k]!);
+      const rank = i < 0 ? MAX_VIEW : ranks[i]!;
+      this.nearRanks[k] = rank;
+      if (rank >= limit) missing = true;
+    }
+    if (!missing) return cur;
+    // Keep the first ordinary ranks, counting a protected body just once if it already falls among them.
+    let cutoff = limit - n;
+    this.nearRanks.sort();
+    for (let k = 0; k < n && this.nearRanks[k]! < cutoff; k++) cutoff++;
+    sortU32(this.nearIds, n);
+    const out = this.nearView;
+    out.count = 0;
+    let j = 0;
+    for (let i = 0; i < cur.count; i++) {
+      const id = cur.id[i]!;
+      while (j < n && this.nearIds[j]! < id) this.pushEntity(out, this.nearIds[j++]!);
+      if (j < n && this.nearIds[j] === id) j++;
+      else if (ranks[i]! >= cutoff) continue;
+      out.copyFrom(cur, i);
+      out.urgent[out.count - 1] = cur.urgent[i]!;
+    }
+    while (j < n) this.pushEntity(out, this.nearIds[j++]!);
+    return out;
   }
 
   /** Adds entity `i` as it stands to `view`, and whether its changes go first. */
@@ -374,16 +455,8 @@ export class Replication {
     const r = this.opts.entityRadius;
     if (chunk < 0 || Math.abs(chunkCx(dims, chunk) - chunkCx(dims, this.spareAt)) > r || Math.abs(chunkCz(dims, chunk) - chunkCz(dims, this.spareAt)) > r) return false;
     const held = this.spareHeld!;
-    let lo = 0;
-    let hi = held.count - 1;
-    while (lo <= hi) {
-      const mid = (lo + hi) >> 1;
-      const id = held.id[mid]!;
-      if (id === e) return held.gen[mid] === gen;
-      if (id < e) lo = mid + 1;
-      else hi = mid - 1;
-    }
-    return false;
+    const slot = viewIndex(held, e);
+    return slot >= 0 && held.gen[slot] === gen;
   };
   private spareHeld: SentView | null = null;
   private spareAt = 0;
@@ -392,17 +465,6 @@ export class Replication {
     const ents = this.world.ents;
     // The client predicts its own body, so the view leaves it out. While it drives a mount, both bodies are in the view.
     const self = c.drive >= 0 ? -1 : c.ent;
-    const centre = this.cameraChunk?.(c) ?? c.chunk;
-    const at = this.viewAround(centre, T);
-    let cur = this.around[at]!;
-    let ranks = this.ranks[at]!;
-    const cone = this.cone ? this.cone(c) : null;
-    if (cone && (cone.count > 0 || (cone.players?.length ?? 0) > 0)) {
-      cur = this.widen(c, cur, ranks, cone);
-      ranks = c.wideRanks!;
-    }
-    // Masked once the view is whole, so a body the cone adds is masked too. The masked copy keeps each entry's place.
-    if (this.viewFor) cur = this.viewFor(c, cur);
     // What it asked for takes effect once a second at most, so that it cannot have its view sent over and over.
     if ((c.wantView !== c.viewCap || c.wantBytes !== c.snapshotBytes) && T >= c.viewReadyAt) {
       c.viewCap = c.wantView;
@@ -412,10 +474,27 @@ export class Replication {
     // Held to the server's cap as it is now: one lowered since the client was granted its view counts at once.
     const limit = Math.min(this.cap, c.viewCap !== 0 ? c.viewCap : VIEW_DEFAULT);
 
+    const camera = this.cameraChunk?.(c);
+    const centre = camera ?? c.chunk;
+    const at = this.viewAround(centre, T);
+    let cur = this.around[at]!;
+    let ranks = this.ranks[at]!;
+    const crowded = this.candidates[at]! > limit;
+    if (crowded && camera === undefined && c.ent >= 0 && limit > this.playersAndMounts[at]!) {
+      cur = this.keepNear(c, cur, ranks, limit, Math.min(NEAR_BODIES, limit - this.playersAndMounts[at]!));
+    }
+    // The sight adds bodies after the local ones in rank order.
+    const cone = cur.count < limit ? this.cone?.(c) : null;
+    if (cone && (cone.count > 0 || (cone.players?.length ?? 0) > 0)) {
+      cur = this.widen(c, cur, ranks, cone);
+      ranks = c.wideRanks!;
+    }
+    if (this.viewFor) cur = this.viewFor(c, cur);
+
     const age = T - c.ackTick;
     const base = c.ackTick > 0 && age < VIEW_RING ? c.views.find(c.ackTick) : null;
     // With a cap leaving bodies out, those the newest snapshot sent left the client may be kept (writeViewDelta).
-    const held = base && (limit < cur.count || cur.count >= this.cap) && c.lastSnapshot > 0 && T - c.lastSnapshot < VIEW_RING ? c.views.find(c.lastSnapshot) : null;
+    const held = base && (crowded || limit < cur.count || cur.count >= this.cap) && c.lastSnapshot > 0 && T - c.lastSnapshot < VIEW_RING ? c.views.find(c.lastSnapshot) : null;
     this.spareHeld = held;
     this.spareAt = centre;
     const next = c.views.alloc(T);
@@ -790,6 +869,17 @@ export class Replication {
     c.syncByRemoval = byRemoval;
     return 0;
   }
+}
+
+function viewIndex(view: SentView, id: number): number {
+  let lo = 0, hi = view.count - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (view.id[mid] === id) return mid;
+    if (view.id[mid]! < id) lo = mid + 1;
+    else hi = mid - 1;
+  }
+  return -1;
 }
 
 /** Chunk offsets within a square radius, as (dx, dz) pairs sorted by distance. */

@@ -67,13 +67,67 @@ test("after the step the client is shown the new chunk's bodies, as one standing
   h.say(ada, `tp ${(x + 3).toFixed(3)} ${z.toFixed(3)}`, 0);
   h.run(6000);
   const after = ids();
-  // Its own chunk comes first: 99 of the east chunk's 120, and none of the west one it held.
+  // Only bodies within reach across the border can keep a seat ahead of this chunk.
   const ents = h.world.ents;
   const own = h.ent(ada);
   let eastward = 0;
-  for (const id of after) if (id !== own && ents.x[id]! > x) eastward++;
-  expect(eastward).toBe(99);
+  for (const id of after) {
+    if (ents.x[id]! > x) eastward++;
+    else expect(Math.hypot(ents.x[id]! - ents.x[own]!, ents.y[id]! - ents.y[own]!, ents.z[id]! - ents.z[own]!)).toBeLessThanOrEqual(8);
+  }
+  expect(after.size).toBe(99);
+  expect(eastward).toBeGreaterThanOrEqual(91);
   expect([...after].filter((id) => before.has(id)).length).toBeLessThan(10);
+});
+
+test("each crowded viewer keeps nearby bodies across a border ahead of distant motion", () => {
+  const { h, ada, x, z } = crowd(64);
+  const bob = h.join("bob");
+  h.run(700);
+  h.say(bob, "enablecheats");
+  h.say(bob, `tp ${x - 54} ${z}`);
+  bob.view(64, 600);
+  h.run(1500);
+  const ents = h.world.ents, dummy = h.reg.index.get("core:dummy")!;
+  const crowdIds: number[] = [], movers: number[] = [];
+  for (let e = 0; e < ents.cap; e++) {
+    if (ents.kind[e] !== dummy) continue;
+    crowdIds.push(e);
+    if (ents.x[e]! > x + 12) movers.push(e);
+  }
+  expect(movers.length).toBeGreaterThan(64);
+  const rep = h.server.replication, before = rep.onReplicate;
+  rep.onReplicate = (c) => {
+    before?.(c);
+    for (const e of movers) ents.vx[e] = 1;
+  };
+  const verify = (s: ClientSession, other: ClientSession): number[] => {
+    const own = h.ent(s);
+    const distance = (id: number): number => Math.hypot(ents.x[id]! - ents.x[own]!, ents.y[id]! - ents.y[own]!, ents.z[id]! - ents.z[own]!);
+    const near = crowdIds.filter((e) => distance(e) <= 8).sort((a, b) => distance(a) - distance(b) || a - b).slice(0, 8);
+    expect(near.length).toBeGreaterThan(0);
+    const r = new RemoteSample();
+    s.sampleRemote(r);
+    const shown = new Set(r.id.subarray(0, r.count));
+    expect(shown.size).toBe(63);
+    expect(shown.has(h.ent(other))).toBe(true);
+    for (const e of near) expect(shown.has(e)).toBe(true);
+    expect(movers.some((e) => shown.has(e))).toBe(true);
+    expect(s.stats.undecodable).toBe(0);
+    return near;
+  };
+  for (const serverCap of [1024, 64]) {
+    expect(h.host.setSetting("ViewCap", String(serverCap))).toBe("");
+    h.run(4000);
+    const nearAda = verify(ada, bob), nearBob = verify(bob, ada);
+    expect(nearAda.some((e) => ents.x[e]! > x)).toBe(true);
+    expect(nearBob.some((e) => nearAda.includes(e))).toBe(false);
+  }
+  expect(h.host.setSetting("ViewCap", "2")).toBe("");
+  h.run(2000);
+  const r = new RemoteSample();
+  ada.sampleRemote(r);
+  expect(Array.from(r.id.subarray(0, r.count))).toEqual([h.ent(bob)]);
 });
 
 test("a view granted 1,024 is held to a cap lowered to 64 at every tick, over a step into the next chunk", () => {
