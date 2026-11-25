@@ -77,6 +77,13 @@ const isDefault = (name: string): boolean => name.toLowerCase() === DEFAULT_GROU
 const isCheat = (p: string): boolean => p === "*" || p.toLowerCase().startsWith("cheat.");
 const steamShaped = (word: string): boolean => /^[0-9]{17}$/.test(word);
 
+/**
+ * ARK's cheats, in lower case, whose command of the same name here does more or other than ARK's: an import does not
+ * grant them. ARK's TP goes to a named place, and tp here to any point; ARK's Kill takes the creature or structure
+ * aimed at, and kill here a survivor too; GMSummon here also parks a vehicle.
+ */
+const ARK_OTHER_HERE: ReadonlySet<string> = new Set(["tp", "kill", "gmsummon"]);
+
 /** The store as the plan so far leaves it, and the plan's ops and notes. */
 class Draft {
   readonly ops: PermissionOp[] = [];
@@ -86,6 +93,7 @@ class Draft {
   private readonly touched = new Set<string>();
   private readonly left = new Map<string, LeftBehind>();
   private readonly missing = new Set<string>();
+  private readonly withheld = new Set<string>();
   private readonly seen = new Map<string, GroupSeen>();
   private readonly commands: ReadonlySet<string>;
   private readonly opts: ImportOptions;
@@ -137,7 +145,12 @@ class Draft {
       return;
     }
     const lower = permission.toLowerCase();
-    if (lower.startsWith("cheat.") && !lower.endsWith(".*") && !this.commands.has(arkCommand(lower.slice("cheat.".length)))) this.missing.add(permission);
+    const cheat = lower.startsWith("cheat.") && !lower.endsWith(".*") ? lower.slice("cheat.".length) : "";
+    if (ARK_OTHER_HERE.has(cheat)) {
+      this.withheld.add(permission);
+      return;
+    }
+    if (cheat !== "" && !this.commands.has(arkCommand(cheat))) this.missing.add(permission);
     if (g.permissions.some((p) => p.toLowerCase() === lower)) return;
     this.push({ op: "grant", group: g.name, permission });
   }
@@ -218,7 +231,12 @@ class Draft {
         sum.push(`${g.name} is open and holds cheats: its members need no password. Permissions.Rank ${g.name} staff asks them for one.`);
       }
     }
-    if (this.missing.size > 0) sum.push(`These permissions name commands this game does not have, and allow nothing here: ${[...this.missing].join(", ")}.`);
+    if (this.missing.size > 0) {
+      sum.push(`These permissions have no command here that does the same, so they allow nothing here: ${[...this.missing].join(", ")}. Grant one of this game's commands by hand if you mean it.`);
+    }
+    if (this.withheld.size > 0) {
+      sum.push(`These name a command that does more here than in ARK, so they were not imported: ${[...this.withheld].join(", ")}. Grant it by hand if you mean it.`);
+    }
     const notes = this.unsaid > 0 ? [...this.notes, `And ${this.unsaid} more notes like these.`] : this.notes;
     return { ops: this.ops, notes: [...notes, ...sum.slice(0, IMPORT_NOTES_MOST)], seen: [...this.seen.values()] };
   }

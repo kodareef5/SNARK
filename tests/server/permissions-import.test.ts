@@ -235,7 +235,7 @@ test("an open group that holds a cheat is named", () => {
 
 test("a Cheat permission with no command here is named", () => {
   const plan = planOf(planArkApi(arkApiFile(), opts(fresh())));
-  const note = noteWith(plan, "commands this game does not have");
+  const note = noteWith(plan, "no command here that does the same");
   expect(note).toContain("Cheat.DestroyWildDinos");
   expect(note).not.toContain("Cheat.KickPlayer");
 });
@@ -537,6 +537,22 @@ test("a pasted rank change over another admin's change is refused as changed mea
   expect(five.apply(cluster, { op: "setRank", group: "Mods", rank: RANK_MAP })).toBe("");
   expect(two.makeAll(cluster, plan.ops).map((m) => m.why)).toEqual([CHANGED_MEANWHILE]);
   expect(new PermissionStore(file).read().groups.find((g) => g.name === "Mods")?.rank).toBe(RANK_MAP);
+});
+
+test("an ARK teleport to a player imports as allowing nothing here", () => {
+  const COMMANDS_HERE = [...COMMANDS, "kill", "spawn", "gmsummon"];
+  const pasted = ["TeleportToPlayer", "TeleportPlayerIDToMe", "Teleport", "TeleportToPos", "KillPlayer", "SpawnDino", "KickPlayer"].map((c) => `Permissions.Grant Vip Cheat.${c}`);
+  const plan = planOf(planCommands(pasted.join("\n"), { look: fresh(), commands: COMMANDS_HERE }));
+  const note = noteWith(plan, "no command here that does the same") ?? "";
+  const named = note.slice(note.indexOf(": ") + 2, note.indexOf(". ", note.indexOf(": "))).split(", ");
+  expect(named).toEqual(["Cheat.TeleportToPlayer", "Cheat.TeleportPlayerIDToMe", "Cheat.Teleport", "Cheat.KillPlayer", "Cheat.SpawnDino"]);
+});
+
+test("an ARK cheat that does more here under its own name is not imported", () => {
+  const plan = planOf(planCommands("Permissions.Grant Vip Cheat.TP\nPermissions.Grant Vip Cheat.GMSummon\nPermissions.Grant Vip Cheat.Fly", { look: fresh(), commands: [...COMMANDS, "gmsummon"] }));
+  const granted = plan.ops.flatMap((op) => (op.op === "grant" ? [op.permission] : []));
+  expect(granted).toEqual(["Cheat.Fly"]);
+  expect(noteWith(plan, "were not imported: Cheat.TP, Cheat.GMSummon")).toBeDefined();
 });
 
 test("a -wal that SQLite takes is read whole, and its plan's refusal is said", () => {

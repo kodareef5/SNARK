@@ -55,10 +55,20 @@ test("ARK's cheat names stand for this game's commands", () => {
   expect(commandPermission("kick")).toBe("Cheat.kick");
   expect(mayRunCommand(["Cheat.KickPlayer"], "kick")).toBe(true);
   expect(mayRunCommand(["Cheat.SaveWorld", "Cheat.TeleportToPos"], "tp")).toBe(true);
-  expect(mayRunCommand(["Cheat.SpawnDino"], "spawn")).toBe(true);
+  expect(mayRunCommand(["Cheat.SpawnExactDino", "Cheat.DoTame"], "forcetame")).toBe(true);
   expect(mayRunCommand(["Cheat.kick"], "KickPlayer")).toBe(true);
   expect(mayRunCommand(["Cheat.kick"], "give")).toBe(false);
   expect(mayRunCommand(["Cheat.*"], "addxp")).toBe(true);
+});
+
+test("an ARK cheat that does less than this game's command does not run it", () => {
+  const { perms, ok } = world();
+  ok({ op: "addGroup", group: "Mods" });
+  ok({ op: "addMember", kind: "survivor", key: A, group: "Mods" });
+  for (const p of ["Cheat.TeleportToPlayer", "Cheat.TeleportPlayerIDToMe", "Cheat.Teleport", "Cheat.KillPlayer", "Cheat.Summon", "Cheat.SpawnDino"]) ok({ op: "grant", group: "Mods", permission: p });
+  expect(["tp", "kill", "spawn"].map((c) => perms.mayRun(who(A), c))).toEqual([false, false, false]);
+  ok({ op: "grant", group: "Mods", permission: "Cheat.SetPlayerPos" });
+  expect(perms.mayRun(who(A), "tp")).toBe(true);
 });
 
 test("a survivor's groups are its own, its tribe's and Default", () => {
