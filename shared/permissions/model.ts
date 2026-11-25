@@ -3,7 +3,7 @@
 // one world or on every world of the cluster. Every change is one `PermissionOp`, and `editRule` decides whether its
 // actor may make it.
 import { idParts } from "../ids.ts";
-import { RANK_ADMIN, RANK_CLUSTER, RANK_MAP, RANK_NAMES, RANK_OPEN, RANK_STAFF } from "../ranks.ts";
+import { RANK_ADMIN, RANK_CLUSTER, RANK_NAMES, RANK_OPEN, RANK_STAFF } from "../ranks.ts";
 
 /** Everyone is in it without a row. It is open and holds nothing at the start. */
 export const DEFAULT_GROUP = "Default";
@@ -317,7 +317,7 @@ export function editRule(actor: PermissionActor, op: PermissionOp, look: RuleLoo
     case "setDocument":
       if (!isGroupName(op.name)) return "A document's name is up to 32 letters, digits and _ . : -";
       if (typeof op.text !== "string" || op.text.length > MAX_DOCUMENT_LENGTH) return "A document is text of at most 65536 letters.";
-      return above(RANK_MAP);
+      return above(RANK_ADMIN);
     default:
       return "That is not a permission change.";
   }

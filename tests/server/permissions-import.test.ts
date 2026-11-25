@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readChatFormat, readChatSettings, readLooseJson } from "../../shared/permissions/chat.ts";
 import type { PermissionActor } from "../../shared/permissions/model.ts";
-import { RANK_ADMIN, RANK_CLUSTER, RANK_OPEN } from "../../shared/ranks.ts";
+import { RANK_ADMIN, RANK_CLUSTER, RANK_MAP, RANK_OPEN } from "../../shared/ranks.ts";
 import { applyPlan, CHAT_DOCUMENT, planArkApi, planCommands, planCrossChat, type ImportPlan, type Planned } from "../../server/permissions/import.ts";
 import { Permissions } from "../../server/permissions/permissions.ts";
 import { PermissionStore } from "../../server/permissions/store.ts";
@@ -255,11 +255,12 @@ test("applying a plan twice changes nothing the second time", () => {
 
 test("a refusal by the edit rule is reported and the rest still applies", () => {
   const perms = fresh();
+  expect(perms.apply(cluster, { op: "setRank", group: "Admins", rank: RANK_MAP })).toBe("");
   const plan = planOf(planCrossChat(SAMPLE, opts(perms)));
   const applied = applyPlan(perms, admin, plan);
-  expect(applied.refused.map((r) => r.op.op)).toEqual(["setDocument"]);
-  expect(applied.refused[0]!.reason).toContain("map rank");
+  expect(applied.refused.map((r) => [r.op.op, "group" in r.op ? r.op.group : ""])).toEqual([["setChat", "Admins"]]);
   expect(applied.done).toBe(plan.ops.length - 1);
   expect(perms.group("Default")!.chat).not.toBe("");
-  expect(perms.document(CHAT_DOCUMENT)).toBe("");
+  expect(perms.group("Admins")!.chat).toBe("");
+  expect(perms.document(CHAT_DOCUMENT)).not.toBe("");
 });
