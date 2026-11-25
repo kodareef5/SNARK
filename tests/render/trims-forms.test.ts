@@ -192,32 +192,38 @@ test("stone and metal run on through a straight run of the new walls alike, and 
   }
 });
 
-test("a roof gives way on no side, whatever stands under it, beside it or over it", () => {
-  const roofs: number[] = [];
-  let ceiling = -1;
-  const all = laid(standInTrims("wood"), ({ structs, reg, base }) => {
-    for (const form of ["roof", "roof_hip", "roof_valley"]) {
+test("a roof gives way on no side in any tier, whatever stands under, beside or over it", () => {
+  const roofs: [string, number][] = [];
+  const ceilings: number[] = [];
+  const tiers = ["thatch", "wood", "stone", "metal"];
+  const all = laid(tiers.flatMap(standInTrims), ({ structs, reg, base }) => {
+    for (const tier of tiers) {
+      const own = (name: string): string => `core:${name}_${tier}`;
+      for (const form of ["roof", "roof_hip", "roof_valley"]) {
+        const { f } = base();
+        // Walls under every side, a gable on two, a wall going on up from one, and a roof beyond another.
+        for (const [a, d] of [[O, 0], [O, 3], [at(1, 1), 6], [at(1, 1), 9]] as const) putAt(structs, reg, f, own("wall"), CLS_EDGE, a, d, 0);
+        putAt(structs, reg, f, own("sloped_wall_left"), CLS_EDGE, O, 3, 4);
+        putAt(structs, reg, f, own("sloped_wall_right"), CLS_EDGE, at(1, 0), 3, 4);
+        putAt(structs, reg, f, own("wall"), CLS_EDGE, at(0, 1), 0, 4);
+        roofs.push([`${tier} ${form}`, putOwn(structs, reg, f, own(form), CLS_SQUARE, O, 0, 4, 0)], [`${tier} roof beside`, putOwn(structs, reg, f, own("roof"), CLS_SQUARE, at(1, 0), 0, 4, 0)]);
+      }
+      // Thatch has no triangles.
+      for (const form of tier === "thatch" ? [] : ["triangle_roof", "triangle_roof_low"]) {
+        const { f } = base();
+        for (const d of [0, 2]) putAt(structs, reg, f, own("wall"), CLS_EDGE, O, d, 0);
+        putAt(structs, reg, f, own("wall"), CLS_EDGE, at(1, 0), 4, 0);
+        roofs.push([`${tier} ${form}`, putOwn(structs, reg, f, own(form), CLS_TRIANGLE, O, 0, 4, 0)]);
+      }
+      // A ceiling over the same walls does give way, so the roofs' zero is the rule's and not the laying's.
       const { f } = base();
-      // Walls under every side, a gable on two, a wall going on up from one, and a roof beyond another.
-      for (const [a, d] of [[O, 0], [O, 3], [at(1, 1), 6], [at(1, 1), 9]] as const) putAt(structs, reg, f, "core:wall_wood", CLS_EDGE, a, d, 0);
-      putAt(structs, reg, f, "core:sloped_wall_left_wood", CLS_EDGE, O, 3, 4);
-      putAt(structs, reg, f, "core:sloped_wall_right_wood", CLS_EDGE, at(1, 0), 3, 4);
-      putAt(structs, reg, f, "core:wall_wood", CLS_EDGE, at(0, 1), 0, 4);
-      roofs.push(putOwn(structs, reg, f, `core:${form}_wood`, CLS_SQUARE, O, 0, 4, 0), putOwn(structs, reg, f, "core:roof_wood", CLS_SQUARE, at(1, 0), 0, 4, 0));
+      for (const [a, d] of [[O, 0], [O, 3]] as const) putAt(structs, reg, f, own("wall"), CLS_EDGE, a, d, 0);
+      ceilings.push(putAt(structs, reg, f, own("ceiling"), CLS_SQUARE, O, 0, 4));
     }
-    for (const form of ["triangle_roof", "triangle_roof_low"]) {
-      const { f } = base();
-      for (const d of [0, 2]) putAt(structs, reg, f, "core:wall_wood", CLS_EDGE, O, d, 0);
-      putAt(structs, reg, f, "core:wall_wood", CLS_EDGE, at(1, 0), 4, 0);
-      roofs.push(putOwn(structs, reg, f, `core:${form}_wood`, CLS_TRIANGLE, O, 0, 4, 0));
-    }
-    // A ceiling over the same walls does give way, so the roofs' zero is the rule's and not the laying's.
-    const { f } = base();
-    for (const [a, d] of [[O, 0], [O, 3]] as const) putAt(structs, reg, f, "core:wall_wood", CLS_EDGE, a, d, 0);
-    ceiling = putAt(structs, reg, f, "core:ceiling_wood", CLS_SQUARE, O, 0, 4);
   });
-  expect(roofs.map((ref) => yieldOf(all, ref))).toEqual(roofs.map(() => 0));
-  expect(yieldOf(all, ceiling)).toBe(12);
+  expect(roofs.length).toBe(4 * 6 + 3 * 2);
+  expect(roofs.map(([name, ref]) => [name, yieldOf(all, ref)])).toEqual(roofs.map(([name]) => [name, 0]));
+  expect(ceilings.map((ref) => yieldOf(all, ref))).toEqual([12, 12, 12, 12]);
 });
 
 test("skirts meet on the plane that halves each corner: outside, inside, and round a triangle", () => {

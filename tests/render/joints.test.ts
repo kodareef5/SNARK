@@ -138,7 +138,7 @@ for (const [recipe, what] of [[WOOD_JOINTED, "with no strips"], [WOOD, "with its
 
 // Thatch with its own joints, as the client lays and fits them: the corner pole in place of each wall's own post.
 
-import { THATCH_JOINTED } from "../../tools/pack/pieces/thatch.ts";
+import { THATCH_JOINTED, THATCH_PLANNED } from "../../tools/pack/pieces/thatch.ts";
 
 /** Corners the client lays a thatch joint at, by the ways of their walls: the corner pole, and the stouter one where walls meet at 60 degrees. */
 const THATCH_JOINTS: readonly (readonly [name: string, joint: string, ways: readonly (readonly [way: number, left: boolean, storey?: number])[]])[] = [
@@ -397,6 +397,27 @@ const SHAPED: readonly Shaped[] = [
     joints: () => [[0, 3.01], [3, 6.01], [6, 9.01], [9, 12.01]],
   },
   {
+    // A footing has no skirt, and the walls on it meet as walls on a foundation do.
+    name: "walls on fence foundations at a corner",
+    foot: 1,
+    lay(put) {
+      put("fence_foundation", CLS_EDGE, O, 0, 0, true);
+      put("fence_foundation", CLS_EDGE, O, 3, 0);
+      put("wall", CLS_EDGE, O, 0, 0, true);
+      put("wall", CLS_EDGE, O, 3, 0);
+    },
+    ends: (tier) => [end(tier, "wall", 0, false), end(tier, "wall", 90, true)],
+    joints: () => [[0, 3.01]],
+  },
+  {
+    name: "beam corner",
+    lay(put) {
+      put("beam", CLS_EDGE, O, 0, 0, true);
+      put("beam", CLS_EDGE, O, 3, 0);
+    },
+    joints: () => [],
+  },
+  {
     name: "skirts at an outside corner",
     foot: 2,
     lay: (put) => put("foundation", CLS_SQUARE, O, 0, 0),
@@ -435,23 +456,33 @@ const SHAPED: readonly Shaped[] = [
 /**
  * What each of SHAPED counted on 2026-11-24 with the tier's own trims laid, after leak and notch pixels, near and from
  * across a yard, which are all 0: faces in one plane and their square centimetres, where there are any. A change may
- * lower one and not raise it. A ridge's ends lie in the plane of its roofs' sides, rails cross at their corner as they
- * do with no trims, and three foundations' sides lie in one plane under a floor held up in the air.
+ * lower one and not raise it. A ridge's ends lie in the plane of its roofs' sides (thatch's cap is the widest), rails
+ * and beams cross at their corner as they do with no trims, two footings overlap at theirs, and three foundations'
+ * sides lie in one plane under a floor held up in the air.
  */
 const SHAPED_FIGHTS: Record<string, Record<string, readonly [number, number]>> = {
-  wood: { "gable at ridge": [4, 36], "railing corner": [3, 92], "skirts at an inside corner": [10, 261] },
-  stone: { "gable at ridge": [4, 35], "railing corner": [2, 50], "skirts at an inside corner": [2, 264] },
-  metal: { "gable at eave": [1, 16], "gable at ridge": [4, 33], "railing corner": [4, 333] },
+  wood: { "gable at ridge": [4, 36], "railing corner": [3, 92], "beam corner": [2, 234], "walls on fence foundations at a corner": [2, 117], "skirts at an inside corner": [10, 261] },
+  stone: { "gable at ridge": [4, 35], "railing corner": [2, 50], "beam corner": [2, 242], "walls on fence foundations at a corner": [1, 42], "skirts at an inside corner": [2, 264] },
+  metal: { "gable at eave": [1, 16], "gable at ridge": [4, 33], "railing corner": [4, 333], "beam corner": [2, 500], "walls on fence foundations at a corner": [3, 398] },
+  thatch: { "gable at ridge": [6, 1335], "gable at a lean-to's head": [3, 24], "railing corner": [2, 26], "skirts at an inside corner": [8, 100] },
 };
 
 /** The forms SHAPED sets down, as a tier's recipe makes them. */
-const SHAPED_FORMS = { ...FORMS, ...Object.fromEntries(["half_wall", "railing", "double_doorway", "large_wall", "roof", "sloped_wall_left", "sloped_wall_right", "triangle_foundation"].map((name) => [name, PLANNED_FORMS[name as keyof typeof PLANNED_FORMS]])) };
+const SHAPED_FORMS = { ...FORMS, ...Object.fromEntries(["half_wall", "railing", "beam", "fence_foundation", "double_doorway", "large_wall", "roof", "sloped_wall_left", "sloped_wall_right", "triangle_foundation"].map((name) => [name, PLANNED_FORMS[name as keyof typeof PLANNED_FORMS]])) };
 
-function shaped(tier: TierName, art: readonly SourceMesh[]): void {
+function shaped(tier: TierName, art: readonly SourceMesh[]): number {
   const pack = piecesPack(art);
+  // A shape is judged where the tier makes every form it sets down.
+  const made = new Set(art.map((m) => m.id));
+  const shapes = SHAPED.filter((shape) => {
+    let all = true;
+    const note = (form: string): void => void (all &&= made.has(`core:${form}_${tier}`));
+    shape.lay(note, note);
+    return all;
+  });
   const laid: { j: Junction; at: Shaped }[] = [];
   const bench = new JointBench(pack, [], SIDE, (structs: StructureStore, reg: Registry) => {
-    SHAPED.forEach((shape, k) => {
+    shapes.forEach((shape, k) => {
       const [bx, bz, foot] = [64 + (k % 4) * 32, 64 + Math.floor(k / 4) * 32, shape.foot ?? 0];
       const f: Frame = baseAt(structs, bx, foot, bz, 0);
       shape.lay((form, cls, a, d, lvl, flipped = false) => void putAt(structs, reg, f, `core:${form}_${tier}`, cls, a, d, lvl, 1, flipped), (form, cls, a, d, lvl, way) => void putOwn(structs, reg, f, `core:${form}_${tier}`, cls, a, d, lvl, way));
@@ -480,22 +511,30 @@ function shaped(tier: TierName, art: readonly SourceMesh[]): void {
     checks.push(() => {
       expect([j.name, ...stands]).toEqual([j.name, ...shape.joints(runsOn)]);
       expect([j.name, near.leak, near.notch, far.leak, far.notch, through]).toEqual([j.name, 0, 0, 0, 0, 0]);
+      if (!shape.skirts && !shape.name.startsWith("skirts")) expect([j.name, here.filter((d) => d.trim && d.id.includes("skirt")).length]).toEqual([j.name, 0]);
       const most = SHAPED_FIGHTS[tier]![j.name] ?? [0, 0];
       expect([j.name, fought.faces <= most[0] + 2, fought.area <= most[1] * 1.1 + 10]).toEqual([j.name, true, true]);
     });
   }
   if (process.env.SNARK_MEETS) console.log(said.join("\n"));
   for (const check of checks) check();
+  return shapes.length;
 }
 
 test("wood's new shapes and its own trims close every junction, and no joint stands out of a roof", () => {
-  shaped("wood", [...tierMeshes(["thatch", "stone"]), ...tierShapes(WOOD, SHAPED_FORMS), ...trimShapes(WOOD)]);
+  expect(shaped("wood", [...tierMeshes(["thatch", "stone"]), ...tierShapes(WOOD, SHAPED_FORMS), ...trimShapes(WOOD)])).toBe(SHAPED.length);
 });
 
 test("stone's new shapes and its own trims close every junction, and no joint stands out of a roof", () => {
-  shaped("stone", [...tierMeshes(["thatch", "wood"]), ...tierShapes(STONE, SHAPED_FORMS), ...trimShapes(STONE)]);
+  expect(shaped("stone", [...tierMeshes(["thatch", "wood"]), ...tierShapes(STONE, SHAPED_FORMS), ...trimShapes(STONE)])).toBe(SHAPED.length);
 });
 
 test("metal's new shapes and its own trims close every junction, and no joint stands out of a roof", () => {
-  shaped("metal", [...tierMeshes(), ...bakeMetal(SHAPED_FORMS, true)]);
+  expect(shaped("metal", [...tierMeshes(), ...bakeMetal(SHAPED_FORMS, true)])).toBe(SHAPED.length);
+});
+
+test("thatch's new shapes and its own trims close every junction it makes", () => {
+  const forms = Object.fromEntries(Object.entries(SHAPED_FORMS).filter(([name]) => (THATCH_FORMS as readonly string[]).includes(name) || (THATCH_PLANNED as readonly string[]).includes(name)));
+  // No large wall, double doorway, beam, footing or triangle in thatch: the gables, low walls, rails and skirts.
+  expect(shaped("thatch", [...tierMeshes(["wood", "stone"]), ...tierShapes(THATCH_JOINTED, forms), ...trimShapes(THATCH_JOINTED)])).toBeGreaterThanOrEqual(6);
 });
