@@ -7,6 +7,7 @@
 //   bun tools/pieces/forms.ts --tier thatch         thatch's share of them, and its hamlet for a village
 //   bun tools/pieces/forms.ts --village --look 1.5,3,1.5,4,200,10   one view of it: the point looked at, the radius, round and above
 //   bun tools/pieces/forms.ts --tier stone          another tier's: its village is a keep
+//   bun tools/pieces/forms.ts --village --roofs     roofs that meet at hips, and a ridge's open end: roofs-<tier>-<n>.png
 //
 // A village's trims are the client's own laying (client/core/render/trims.ts) of the trims the tier's recipe makes, and
 // each piece that gives way to one is drawn as the client's rule leaves it. --no-trims draws it with none.
@@ -30,7 +31,7 @@ import type { SourceMesh } from "../pack/write.ts";
 import { piecesPack, tierMeshes } from "./joints.ts";
 import type { Placed } from "./layout.ts";
 import { Canvas, Studio } from "./sheet.ts";
-import { CORNERS, FORT_SHOTS, HAMLET_SHOTS, KEEP_SHOTS, VILLAGE_SHOTS, corner, fitted, fort, hamlet, keep, village, type VillageShot } from "./village.ts";
+import { CORNERS, FORT_SHOTS, HAMLET_SHOTS, KEEP_SHOTS, ROOF_SHOTS, VILLAGE_SHOTS, corner, fitted, fort, hamlet, keep, roofs, village, type VillageShot } from "./village.ts";
 
 const SMOOTH = 2;
 /** The tier drawn: wood unless `--tier` names another. */
@@ -109,7 +110,8 @@ export async function main(args: readonly string[], say: (line: string) => void 
   const has = (id: string): boolean => !args.includes("--no-trims") && own.has(id);
   // What is set down, before the pack is made: a piece the client's rule moves the points of is a mesh of its own.
   const corners = !only && !args.includes("--village") && own.has(`core:joint_sq_${TIER}`) ? CORNERS.map(([, ways, storeys]) => corner(TIER, ways, storeys, has)) : [];
-  const built: Placed[] = only ? [] : TIER === "wood" ? village(TIER, has) : TIER === "stone" ? keep(TIER, has) : TIER === "metal" ? fort(TIER, turn, has) : hamlet(TIER, has);
+  const roofed = args.includes("--roofs");
+  const built: Placed[] = only ? [] : roofed ? roofs(TIER, has) : TIER === "wood" ? village(TIER, has) : TIER === "stone" ? keep(TIER, has) : TIER === "metal" ? fort(TIER, turn, has) : hamlet(TIER, has);
   const meshes = [...made0, ...fitted([...others, ...made0], [...corners.flat(), ...built])];
   const pack = piecesPack([...others, ...meshes]);
   const studio = await Studio.of(pack);
@@ -197,7 +199,7 @@ export async function main(args: readonly string[], say: (line: string) => void 
     const [c, s] = [Math.cos((turn * Math.PI) / 180), Math.sin((turn * Math.PI) / 180)];
     return [name, [c * centre[0] - s * centre[2], centre[1], s * centre[0] + c * centre[2]], radius, around - turn, above, only];
   };
-  const shots = TIER === "wood" ? VILLAGE_SHOTS : TIER === "stone" ? KEEP_SHOTS : TIER === "metal" ? FORT_SHOTS.map(turned) : HAMLET_SHOTS;
+  const shots = roofed ? ROOF_SHOTS.filter(([name]) => TIER !== "thatch" || !/triangle|apex/.test(name)) : TIER === "wood" ? VILLAGE_SHOTS : TIER === "stone" ? KEEP_SHOTS : TIER === "metal" ? FORT_SHOTS.map(turned) : HAMLET_SHOTS;
   const [vw, vh] = [1000, 720];
   const wanted = value("shots")?.split(",").map(Number);
   // One view of one's own: --look x,y,z,radius,around,above.
@@ -212,8 +214,8 @@ export async function main(args: readonly string[], say: (line: string) => void 
     const canvas = new Canvas(vw, vh);
     const drawn = only ? built.filter((q) => only.test(q.id)) : built;
     canvas.shrink(studio.shoot(drawn, vw * SMOOTH, vh * SMOOTH, centre, radius, around, above, 0, 0), vw * SMOOTH, vh * SMOOTH, SMOOTH, 0, 0);
-    canvas.text(`${TIER} village: ${name}`, 8, 6);
-    write(`village-${TIER}-${k + 1}.png`, canvas);
+    canvas.text(`${TIER} ${roofed ? "roofs" : "village"}: ${name}`, 8, 6);
+    write(`${roofed ? "roofs" : "village"}-${TIER}-${k + 1}.png`, canvas);
   });
 }
 
