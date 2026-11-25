@@ -50,7 +50,10 @@ test.skipIf(!chrome)("A wheel tap opens the bag and two card swipes assign its p
     await touch(page, '[data-key="slot-3"]');
     expect(await page.value<boolean>("document.querySelector('#sheet').hidden")).toBe(true);
     expect(await page.value<string>("document.querySelector('#bar .chosen').getAttribute('aria-label')")).toBe("4 · Stone pick");
-    expect(await page.value<string>("document.querySelector('#rightWheel [data-sgr-slot=\"3\"]').getAttribute('aria-label')")).toBe("Slot 4, Stone pick");
+    await page.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: 526, y: 175 }] });
+    expect(await page.value<boolean>(`document.querySelector('.sn-touch-action-gem image')?.getAttribute('href')
+      === document.querySelector('#bar .chosen img')?.src`)).toBe(true);
+    await page.send("Input.dispatchTouchEvent", { type: "touchCancel", touchPoints: [] });
   } finally {
     tab?.close();
     browser.kill();
