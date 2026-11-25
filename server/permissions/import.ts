@@ -445,7 +445,7 @@ export function planCommands(source: string, opts: ImportOptions): Planned {
       else if (op.op === "revoke") {
         if (g.permissions.some((p) => p.toLowerCase() === op.permission.toLowerCase())) draft.push({ ...op, group: g.name });
       } else if (op.op === "setRank") {
-        if (g.rank !== op.rank) draft.push({ ...op, group: g.name });
+        if (g.rank !== op.rank) draft.push({ ...op, group: g.name, was: g.rank });
       } else draft.push({ ...op, group: g.name });
     }
   }

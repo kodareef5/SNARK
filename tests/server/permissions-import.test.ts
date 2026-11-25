@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readChatFormat, readChatSettings, readLooseJson } from "../../shared/permissions/chat.ts";
 import { CHANGED_MEANWHILE, type PermissionActor } from "../../shared/permissions/model.ts";
-import { RANK_ADMIN, RANK_CLUSTER, RANK_MAP, RANK_OPEN } from "../../shared/ranks.ts";
+import { RANK_ADMIN, RANK_CLUSTER, RANK_MAP, RANK_OPEN, RANK_STAFF } from "../../shared/ranks.ts";
 import { applyPlan, CHAT_DOCUMENT, IMPORT_CHANGES_MOST, IMPORT_NOTES_MOST, planArkApi, planCommands, planCrossChat, type ArkApiFiles, type ImportPlan, type Planned } from "../../server/permissions/import.ts";
 import { Permissions } from "../../server/permissions/permissions.ts";
 import { PermissionStore } from "../../server/permissions/store.ts";
@@ -503,6 +503,18 @@ test("a look at the file now reads another world's change without waiting for th
   expect(five.apply(cluster, { op: "addGroup", group: "Vip" })).toBe("");
   expect([two.poll(), two.group("Vip")]).toEqual([false, undefined]);
   expect([two.lookNow(), two.group("Vip")?.name, two.lookNow()]).toEqual([true, "Vip", false]);
+});
+
+test("a pasted rank change over another admin's change is refused as changed meanwhile", () => {
+  const file = join(root, "rank.sqlite");
+  const two = new Permissions({ store: new PermissionStore(file), world: 2 });
+  const five = new Permissions({ store: new PermissionStore(file), world: 5 });
+  expect(two.apply(cluster, { op: "addGroup", group: "Mods", rank: RANK_STAFF })).toBe("");
+  const plan = planOf(planCommands("Permissions.Rank Mods admin", opts(two)));
+  expect(plan.ops).toEqual([{ op: "setRank", group: "Mods", rank: RANK_ADMIN, was: RANK_STAFF }]);
+  expect(five.apply(cluster, { op: "setRank", group: "Mods", rank: RANK_MAP })).toBe("");
+  expect(two.makeAll(cluster, plan.ops).map((m) => m.why)).toEqual([CHANGED_MEANWHILE]);
+  expect(new PermissionStore(file).read().groups.find((g) => g.name === "Mods")?.rank).toBe(RANK_MAP);
 });
 
 test("a -wal that SQLite takes is read whole, and its plan's refusal is said", () => {
