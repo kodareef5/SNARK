@@ -144,6 +144,8 @@ export interface SurvivorDeath {
 
 export interface SurvivorRow {
   pid: number;
+  /** Its ID (shared/ids.ts), or "" for none. */
+  id: string;
   name: string;
   tribe: string;
   team: number;

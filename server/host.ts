@@ -1,4 +1,5 @@
 import { SurvivorActivity } from "./survivor-activity.ts";
+import { SurvivorIds } from "./survivor-ids.ts";
 import { CREATE_REQUEST,ownsSurvivor } from "./survivor-access.ts";
 import { ZONE_NONE, ZONE_TORSO } from "../shared/anim/human.ts";
 import { IMPALE_SLOT } from "../shared/sim/seats.ts";
@@ -203,6 +204,8 @@ const TEXT_INTERVAL = 6;
 export interface Host {
   survivorIds(): IterableIterator<number>;
   survivorRecord(name: string): EntityRecord | undefined;
+  /** The survivor here with this ID (shared/ids.ts), or null. */
+  survivorById(id: string): EntityRecord | null;
   readonly world: ServerWorld;
   /**
    * The map file the world stands on, for clients to fetch: HostOptions.map's bytes, or the proving ground's. Null for a world
@@ -648,6 +651,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   if (persistence && !loaded!.fresh) tribes.restore(persistence.store.meta("tribes"));
   const survivorLog = new SurvivorLog({ world, records, tribes, rules, persistence, opAdmin: OP_ADMIN, opDeath: OP_DEATH, causes: CAUSE_WORDS, say }, opts.survivorLog);
   opened.push({ close: () => survivorLog.stop() });
+  const ids = new SurvivorIds(records);
   // What the cluster's folder says came and went that the save does not know is done again now, before anything resumes.
   cluster?.start(
     {
@@ -665,11 +669,13 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       mayLeave: (c, rec) => (rec.out ? "you are unconscious" : riding.riding(c) ? "get off your mount first: it stays here" : urban.riding(c) ? "get out of the vehicle first: it stays here" : carry.holding(c) >= 0 ? "put down what is in your arms first" : ""),
       suspend: (rec, off) => { if (off) activity.checkpoint(rec.pid); survival.suspend(rec, off); },
       adopt: (rec) => {
+        ids.take(rec);
         survival.restore(rec, false);
         progression.resume(rec);
         buffs.restore(rec, false);
       },
       forget: (rec) => {
+        ids.drop(rec);
         buffs.died(rec);
         survival.forget(rec.pid);
         inHand.delete(rec.pid);
@@ -678,6 +684,11 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     },
     loaded!.fresh,
   );
+  // Survivors of a save made before IDs get theirs here, in pid order, so the same save numbers them alike every time.
+  for (const pid of [...(persistence?.survivors.values() ?? [])].sort((a, b) => a - b)) {
+    const rec = records.byPid.get(pid);
+    if (rec) ids.take(rec);
+  }
   const taming = new Taming({ world, game, records, items, survival, buffs, rules, lists, tribes, deadlines, creatures, progression, onNotice: (pid, text) => notice(pid, text), openOf: (c) => containers.openOf(c), refresh: (rec) => refreshBody(rec), onTamed: (rec) => {
     const e = records.entOf.get(rec.pid);
     spawner?.left(rec);
@@ -1469,6 +1480,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       rec.team = records.newTeam();
       records.dirty.add(rec.pid);
     }
+    ids.take(rec);
     // A survivor's stat points live in a genome, like any body's.
     rec.genome ??= new Genome();
     c.pid = rec.pid;
@@ -2069,6 +2081,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     settled,
     survivorIds: () => (persistence?.survivors ?? names).values(),
     survivorRecord: recordOf,
+    survivorById: (id) => ids.find(id),
     online: (pid) => sessionOf(pid) !== null,
     setSetting(name, words) {
       const row = rowOf(name);

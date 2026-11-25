@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { RemoteSample } from "../../client/core/session.ts";
 import { OP_ADMIN } from "../../server/console.ts";
 import { WorldStore } from "../../server/persist/store.ts";
+import { idText } from "../../server/survivor-ids.ts";
 import { handleIndex } from "../../shared/ids.ts";
 import { BitWriter } from "../../shared/net/codec.ts";
 import {
@@ -151,9 +152,10 @@ test("the console obeys admins, refuses everyone else, and never moves the world
   expect(Math.abs(hourOfDay(h.world.tick, h.world.dayOffset) - 6.5)).toBeLessThan(0.01);
   expect(bo.dayOffset).toBe(h.world.dayOffset);
   expect(h.say(bo, "time")).toEqual(["06:30"]);
-  expect(h.say(ada, "who").sort()).toEqual(["ada  alive  admin", "bo  alive"]);
-  // Who is an admin is for admins and the operator to know.
-  expect([h.say(bo, "who").sort(), h.host.exec("who").split("\n").sort()]).toEqual([["ada  alive", "bo  alive"], ["ada  alive  admin", "bo  alive"]]);
+  const [adaId, boId] = ["ada", "bo"].map((name) => idText(h.host.survivorRecord(name)!));
+  expect(h.say(ada, "who").sort()).toEqual([`ada  ${adaId}  alive  admin`, `bo  ${boId}  alive`]);
+  // Who is an admin, and each survivor's ID, is for admins and the operator to know.
+  expect([h.say(bo, "who").sort(), h.host.exec("who").split("\n").sort()]).toEqual([["ada  alive", "bo  alive"], [`ada  ${adaId}  alive  admin`, `bo  ${boId}  alive`]]);
   // Where it stands in metres, and then as the map screen says it, which the proving ground reads 5 to 10 each way.
   expect(h.say(bo, "pos")[0]).toMatch(/^x 2\d\d\.\d\d  y -?\d+\.\d\d  z 2\d\d\.\d\d  [5-9]\.\d lat  [5-9]\.\d lon  alive$/);
 

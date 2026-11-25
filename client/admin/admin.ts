@@ -196,7 +196,7 @@ const headers: [SortKey, string, string][] = [
   ["seen", "Presence", ""], ["played", "Played", "wide"], ["deaths", "Deaths", "wide"],
 ];
 const LIVE_HEADS = headers.map(([key, label, cls]) => `<th class="${cls}" scope="col"><button type="button" data-sort="${key}">${label}</button></th>`).join("")
-  + '<th class="wide" scope="col">Where</th>';
+  + '<th class="wide" scope="col">Where</th><th class="wide" scope="col">ID</th>';
 
 function showPeople(): void {
   if (showPastPeople()) return showInspector();
@@ -215,7 +215,7 @@ function showPeople(): void {
     const dot = r.online ? (r.dead ? "dead" : "on") : "";
     const selected = r.pid === S.chosen;
     const where = Number.isFinite(r.x) && Number.isFinite(r.z) ? `X ${Math.round(r.x)} · Z ${Math.round(r.z)}` : "—";
-    return `<tr data-pid="${r.pid}"${selected ? ' class="chosen"' : ""}><td><button type="button" class="row-button" data-focus="survivor-${r.pid}" aria-pressed="${selected}"><span class="dot ${dot}"></span>${esc(r.name)}</button></td><td class="wide">${esc(r.tribe || "—")}</td><td class="num wide">${r.level}</td><td>${seenText(r, now)}</td><td class="wide">${playedText(r)}</td><td class="wide">${deathsText(r, now)}</td><td class="wide">${where}</td></tr>`;
+    return `<tr data-pid="${r.pid}"${selected ? ' class="chosen"' : ""}><td><button type="button" class="row-button" data-focus="survivor-${r.pid}" aria-pressed="${selected}"><span class="dot ${dot}"></span>${esc(r.name)}</button></td><td class="wide">${esc(r.tribe || "—")}</td><td class="num wide">${r.level}</td><td>${seenText(r, now)}</td><td class="wide">${playedText(r)}</td><td class="wide">${deathsText(r, now)}</td><td class="wide">${where}</td><td class="wide">${esc(r.id || "—")}</td></tr>`;
   }).join(""));
   $("none").hidden = rows.length > 0;
   $("none").textContent = !S.people ? "Loading survivors…" : all.length === 0 ? "No survivors on this world yet." : "No survivors match these filters.";
@@ -240,7 +240,7 @@ function showInspector(): void {
   const name = (historic ? past?.name : now?.name) ?? now?.name ?? past?.name ?? `Survivor ${pid}`;
   $("inspector-name").textContent = name;
   const liveInfo = !historic && now
-    ? `<dt>Tribe</dt><dd>${esc(now.tribe || "Unaffiliated")}</dd><dt>Level</dt><dd>${now.level}</dd><dt>Presence</dt><dd>${esc(seenText(now, S.people!.at))}</dd><dt>Played</dt><dd>${esc(playedText(now)) || "—"}</dd>` : "";
+    ? `<dt>ID</dt><dd>${esc(now.id || "—")}</dd><dt>Tribe</dt><dd>${esc(now.tribe || "Unaffiliated")}</dd><dt>Level</dt><dd>${now.level}</dd><dt>Presence</dt><dd>${esc(seenText(now, S.people!.at))}</dd><dt>Played</dt><dd>${esc(playedText(now)) || "—"}</dd>` : "";
   const session = historic && past ? sessionAt(past, S.timeline.at, S.timeline.to) : null;
   const words: Record<number, string> = { [DOT_AWAY]: "Away", [DOT_DEAD]: "Dead", [DOT_OUT]: "Unconscious", [DOT_SPECTATING]: "Spectating" };
   const pastInfo = !historic ? "" : `<dt>Presence</dt><dd>${d ? words[d.state] ?? "Online" : session ? "Online" : "Offline"}</dd>`

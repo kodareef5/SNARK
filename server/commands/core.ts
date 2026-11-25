@@ -7,6 +7,7 @@ import { formatHour, hourOfDay, offsetForHour } from "../../shared/sim/clock.ts"
 import { latLonText, latOf, lonOf } from "../../shared/world/coords.ts";
 import type { Console, ConsoleCommand } from "../console.ts";
 import { admit } from "../creative.ts";
+import { idText } from "../survivor-ids.ts";
 
 const STATE_NAMES: Record<number, string> = { [SESSION_ALIVE]: "alive", [SESSION_DEAD]: "dead", [SESSION_SPECTATING]: "spectating" };
 
@@ -61,13 +62,31 @@ export function addCoreCommands(con: Console): void {
       admin: false,
       run(ctx) {
         const out: string[] = [];
-        // Who has cheats is told to those who have them, and to the operator.
+        // Who has cheats, and each survivor's ID, is told to those who have cheats, and to the operator.
         const admin = con.isAdmin(ctx);
         for (const c of ctx.host.game.clients) {
           if (!c?.active) continue;
-          out.push(`${c.name}  ${c.closed ? "disconnected" : STATE_NAMES[c.state]}${admin && c.admin ? "  admin" : ""}`);
+          const rec = admin ? ctx.host.records.byPid.get(c.pid) : undefined;
+          const id = rec ? idText(rec) : "";
+          out.push(`${c.name}${id ? `  ${id}` : ""}  ${c.closed ? "disconnected" : STATE_NAMES[c.state]}${admin && c.admin ? "  admin" : ""}`);
         }
         return out.length > 0 ? out.join("\n") : "nobody";
+      },
+    },
+    {
+      name: "id",
+      usage: "[survivor]",
+      examples: ["id", 'id "Marta Reyes"'],
+      help: "Print your survivor's ID. With cheats, print another survivor's.",
+      admin: false,
+      run(ctx, args) {
+        const name = args.join(" ");
+        if (name === "" && !ctx.client) return "the operator has no survivor: name one";
+        if (name !== "" && !con.isAdmin(ctx)) return "denied: only admins see another survivor's ID";
+        const rec = name === "" ? ctx.host.records.byPid.get(ctx.client!.pid) : ctx.host.survivorRecord(name);
+        if (!rec) return name === "" ? "you have no survivor yet" : `no survivor "${name}"`;
+        const id = idText(rec);
+        return id ? `${rec.name}  ${id}` : `${rec.name} has no ID yet`;
       },
     },
     {

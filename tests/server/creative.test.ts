@@ -18,12 +18,16 @@ import { OP_ADMIN } from "../../server/console.ts";
 import { WorldStore } from "../../server/persist/store.ts";
 import { loadConfig } from "../../server/settings/config.ts";
 import { Rules } from "../../server/settings/rules.ts";
+import { idText } from "../../server/survivor-ids.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { CMD_CLOCK, REJECT_DENIED, RESULT_DENIED, RESULT_INVALID, RESULT_OK } from "../../shared/net/protocol.ts";
 import { CLOCK_SHARES, UNIT_CLOCK, hourOfDay, shareOfHour } from "../../shared/sim/clock.ts";
 import { listener } from "../fixtures/module.ts";
 import { Harness, asShipped } from "../fixtures/net.ts";
 import type { MenuScreen } from "../../client/core/ui/menu-screen.ts";
+
+/** A survivor as `who` lists it to an admin: its name and its ID. */
+const named = (h: Harness, name: string): string => `${name}  ${idText(h.host.survivorRecord(name)!)}`;
 
 const root = resolve(import.meta.dir, "../..");
 
@@ -99,7 +103,7 @@ test("one without the role is asked the admin password, judged and counted as en
   build();
   f = build();
   expect([bo.admin, f.find(KEY_SUNDIAL)?.interactive, f.find(KEY_CREATIVE_PASSWORD), ui.menuFocus]).toEqual([true, true, null, KEY_SUNDIAL]);
-  expect(h.host.exec("who").split("\n").sort()).toEqual(["bo  alive  admin", "cy  alive"]);
+  expect(h.host.exec("who").split("\n").sort()).toEqual([`${named(h, "bo")}  alive  admin`, `${named(h, "cy")}  alive`]);
 
   // The screen and the console count the same guesses: two here, one typed, and the third ends the connection.
   const other = screen(cy);
@@ -122,7 +126,7 @@ test("CreativeForAll gives the role as each survivor enters while creative mode 
   const ada = h.join("ada");
   h.run(500);
   expect([ada.admin, ears.heard.lines]).toEqual([true, [`session.admin: {"pid":${h.client(ada)!.pid}}`]]);
-  expect(h.host.exec("who")).toBe("ada  alive  admin");
+  expect(h.host.exec("who")).toBe(`${named(h, "ada")}  alive  admin`);
   expect(h.say(ada, "settime 6")).toEqual(["time is 06:00"]);
   // Without creative mode shown it gives nothing; shown again while the server runs, it reaches those already in.
   expect(h.host.setSetting("bShowCreativeMode", "False")).toBe("");
@@ -132,7 +136,7 @@ test("CreativeForAll gives the role as each survivor enters while creative mode 
   expect(h.host.setSetting("bShowCreativeMode", "True")).toBe("");
   h.run(200);
   expect(bo.admin).toBe(true);
-  expect(h.host.exec("who").split("\n").sort()).toEqual(["ada  alive  admin", "bo  alive  admin"]);
+  expect(h.host.exec("who").split("\n").sort()).toEqual([`${named(h, "ada")}  alive  admin`, `${named(h, "bo")}  alive  admin`]);
   // Switched off, nobody loses the role before leaving, and a survivor who joins after has none.
   expect(h.host.setSetting("CreativeForAll", "False")).toBe("");
   const cy = h.join("cy");
@@ -305,7 +309,7 @@ test("a server as it comes gives a stranger cheats and the Creative entry as it 
   expect(h.say(s, "give stone 5")[0]).toContain("gave 5");
   expect(h.say(s, "settime 6")).toEqual(["time is 06:00"]);
   expect(h.say(s, "enablecheats")).toEqual(["cheats are already enabled"]);
-  expect(h.host.exec("who")).toBe("stranger  alive  admin");
+  expect(h.host.exec("who")).toBe(`${named(h, "stranger")}  alive  admin`);
   // The admin pages are not the role's: with no password they open only on a development server, as before.
   const gate: AdminGate = { dev: h.host.dev, password: h.host.adminPassword, guesses: h.host.game.sessions.cheatGuesses, tick: () => h.world.tick };
   expect(refused(new Request("http://play.example/admin/"), "203.0.113.9", gate)?.status).toBe(404);
