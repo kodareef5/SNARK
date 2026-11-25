@@ -152,7 +152,7 @@ if (import.meta.main) {
       const w = server.host.world;
       w.dayOffset = offsetForHour(w.tick, url.pathname === dusk ? 18.75 : 15.5, w.clock);
       server.host.game.replication.markAllOwn();
-      return Response.redirect(new URL("/play.html?quick&name=Builder", url).href);
+      return Response.redirect(new URL(phase ? "/play.html?quick" : "/play.html?quick&name=Builder", url).href);
     },
   });
   if (!crew) stageWalls(server.host.world);
