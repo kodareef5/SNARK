@@ -4,6 +4,7 @@
 // dot grid, the light by the world's hour and the wipe between items.
 
 import { trackColour, type ScreenType } from "../../../shared/video/clip.ts";
+import { pictureCrop } from "../render/picture-crop.ts";
 import type { StateClip } from "./screens.ts";
 import { stageSky, trackOf } from "./screens-stage.ts";
 
@@ -175,10 +176,8 @@ export function faceScene(type: FlatType, aspect: number, hour: number): FaceSce
 
 /** Where on the picture a point of the face is, as `uv * scale + offset`: filled, the picture is cropped to cover it; else it fits whole with dark bars. */
 export function fitPicture(picture: number, face: number, fill: boolean): { sx: number; sy: number; ox: number; oy: number } {
-  const wider = picture > face;
-  // Filled, the picture's longer way is cut; fitted, its shorter way is padded.
-  const sx = wider === fill ? face / picture : 1, sy = wider === fill ? 1 : picture / face;
-  return { sx, sy, ox: (1 - sx) / 2, oy: (1 - sy) / 2 };
+  const c = pictureCrop(picture, face, fill, new Float64Array(4));
+  return { sx: c[0]!, sy: c[1]!, ox: c[2]!, oy: c[3]! };
 }
 
 /** The smallest LED a monitor draws, in pixels, and the most across a face. */

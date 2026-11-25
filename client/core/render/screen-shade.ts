@@ -1,8 +1,9 @@
 // How a screen on a prop is drawn (packet.ts DRAW_SCREENS, screens.ts): one quad on its face, its picture a layer of the
 // faces' array on UNIT.faces. An LED face is a grid of dots, each showing the picture at its own middle, as the orb's
 // pucks do, and changes picture by a line that sweeps down it; a TV or a laptop glows plain and fades between pictures;
-// a tube has scanlines. Far off, where its picture's texels are much finer than a pixel, a face fades to the picture's
-// mean colour. Its white follows exposure as the orb's does (screen-level.ts). `faceLight` is the program's twin.
+// a tube has scanlines. A picture fitted whole has dark bars past its edges. Far off, where its picture's texels are
+// much finer than a pixel, a face fades to the picture's mean colour. Its white follows exposure as the orb's does
+// (screen-level.ts). `faceLight` is the program's twin.
 
 import { srgbToLinear } from "./color-space.ts";
 import { FACE, FACE_CRT, FACE_HIGH, FACE_LED, FACE_TOP, FACE_TOP_BEFORE, FACE_WIDE, FRAME_BLOCK } from "./packet.ts";
@@ -77,8 +78,10 @@ ${FRAME_BLOCK}${TONE}${GRADED}
 vec3 facePicture(float layer, vec4 crop, vec3 mean, vec2 uv, float metres, float top) {
   float lod = log2(max(metres * max(${g(FACE_WIDE)} * crop.x / vSize.x, ${g(FACE_HIGH)} * crop.y / vSize.y), 1.e-6));
   float far = smoothstep(${g(FAR_FROM)}, ${g(FAR_TO)}, lod);
+  vec2 at = crop.zw + vec2(uv.x, 1. - uv.y) * crop.xy;
+  if (any(lessThan(at, vec2(0.))) || any(greaterThan(at, vec2(1.)))) return vec3(0.);
   if (layer < 0. || far >= 1.) return mean;
-  vec3 pic = textureLod(uFaces, vec3(crop.zw + vec2(uv.x, 1. - uv.y) * crop.xy, layer), clamp(lod, 0., top)).rgb;
+  vec3 pic = textureLod(uFaces, vec3(at, layer), clamp(lod, 0., top)).rgb;
   return mix(pic, mean, far);
 }
 void main() {
@@ -152,11 +155,14 @@ export function wordColour(w: number, out: number[]): void {
 function picture(f: ArrayLike<number>, layer: number, crop: number, meanOf: number[], u: number, v: number, metres: number, wide: number, high: number, top: number, read: FaceRead | null, out: number[]): void {
   const lod = Math.log2(Math.max(metres * Math.max((FACE_WIDE * f[crop]!) / wide, (FACE_HIGH * f[crop + 1]!) / high), 1e-6));
   const far = sstep(FAR_FROM, FAR_TO, lod);
-  if (layer < 0 || far >= 1 || !read) {
-    for (let c = 0; c < 3; c++) out[c] = meanOf[c]!;
+  const s = f[crop + 2]! + u * f[crop]!, t = f[crop + 3]! + (1 - v) * f[crop + 1]!;
+  // Past a fitted picture's edges are its bars.
+  const bars = s < 0 || s > 1 || t < 0 || t > 1;
+  if (bars || layer < 0 || far >= 1 || !read) {
+    for (let c = 0; c < 3; c++) out[c] = bars ? 0 : meanOf[c]!;
     return;
   }
-  read(layer, f[crop + 2]! + u * f[crop]!, f[crop + 3]! + (1 - v) * f[crop + 1]!, Math.max(0, Math.min(top, lod)), picked);
+  read(layer, s, t, Math.max(0, Math.min(top, lod)), picked);
   for (let c = 0; c < 3; c++) out[c] = picked[c]! + (meanOf[c]! - picked[c]!) * far;
 }
 

@@ -2,24 +2,29 @@
 // screen at its own place in its channel, and the pictures it needs. Pictures are layers of one array on the card, the
 // least lately used given up first. Images and clips' posters are fetched and decoded in the page (FaceHost); at most
 // two clips play at once, for the nearest screens that show one, and the rest show their posters. Nothing is fetched
-// until a screen is in reach. Every rule is here; the page's elements are behind FaceHost (client/shell/screen-faces.ts).
+// until a screen is in reach, and no clip until the map's art has come. A miss is asked for again later, and a picture
+// that stalls or is no longer wanted frees its place. Every rule is here; the page's elements are behind FaceHost
+// (client/shell/screen-faces.ts).
 
 import { TICK_RATE } from "../../../shared/coords.ts";
 import { COLOUR_PARTS, SCREENS, trackColour, type Channel, type Clip } from "../../../shared/video/clip.ts";
 import { faceAspect, type ScreenFace } from "../../../shared/video/face.ts";
 import { channelAtOffset, heldFor, roundMs, type Timed } from "../../../shared/video/programme.ts";
-import { NO_CHANNEL, NO_CLIP, SCREEN_ONCE, manifestPath, type ScreenState } from "../../../shared/video/screen.ts";
+import { NO_CHANNEL, NO_CLIP, SCREEN_FILL, SCREEN_ONCE, manifestPath, type ScreenState } from "../../../shared/video/screen.ts";
 import { SCREENS_DECODING, SCREENS_DRAWN, SCREENS_MANY, SCREENS_NEAREST, SCREENS_UPLOADING } from "../governor.ts";
 import { FACE_HIGH, FACE_LEVELS, FACE_WIDE, MAX_FACES, MAX_FACE_UPLOADS, type FramePacket } from "../render/packet.ts";
-import { faceLevel, fillCrop, type FaceList, type FaceShow } from "../render/screens.ts";
+import { pictureCrop } from "../render/picture-crop.ts";
+import { faceLevel, type FaceList, type FaceShow } from "../render/screens.ts";
 import type { VideoLike } from "./player.ts";
-import { DRIFT_SEEK, base64Bytes, mustSeek, syncRate } from "./sync.ts";
+import { DRIFT_SEEK, WAIT_FOR_ART, base64Bytes, mustSeek, syncRate } from "./sync.ts";
 
 /** The page, as the screens on props need it. */
 export interface FaceHost {
   json(path: string): Promise<unknown>;
   /** An image from our own server, decoded away from the page's thread at `width` by `height`, whatever its own size. */
   image(path: string, width: number, height: number): Promise<unknown>;
+  /** Stops fetching the picture at `path`, which is no longer wanted. */
+  drop?(path: string): void;
   /** A new element: muted, inline, fetching nothing, hidden in the page. */
   video(): VideoLike;
   /** Whether the page is shown. */
@@ -30,9 +35,14 @@ export interface FaceHost {
 export const WIPE_MS = 1200;
 /** Pictures put on the card a frame: one, since a picture and its levels took 0.2 to 0.35 ms of an RTX 4070. */
 export const PICTURES_A_FRAME = 1;
-/** Pictures fetched at once, and seconds after which one that has not come is given up. */
+/** Pictures fetched at once, and seconds after which one that has not come is given up and its place freed. */
 export const MAX_LOADS = 3;
 export const LOAD_GIVES_UP = 15;
+/** Seconds after which a picture or clip that failed is asked for again. */
+export const FAILED_WAIT = 30;
+/** Seconds after a missed manifest before it is asked for again, doubled after each miss up to the most. */
+export const MANIFEST_RETRY = 2;
+export const MANIFEST_RETRY_MOST = 60;
 /** The most clips played at once for these screens. */
 export const MAX_VIDEOS = 2;
 /**
@@ -41,8 +51,8 @@ export const MAX_VIDEOS = 2;
  */
 export const VIDEO_LOD = 2;
 export const VIDEO_LEVELS = 3;
-/** Seconds a clip's element stays paused before it lets its stream go. */
-export const UNLOAD_AFTER = 10;
+/** How much nearer a screen counts while it has an element, so two screens about as near do not take it in turns. */
+export const HOLD_MARGIN = 1.25;
 /** Seconds with no screen drawn after which the pictures' array is let go. */
 export const IDLE_AFTER = 30;
 /** HAVE_CURRENT_DATA: the element has a frame to show. */
@@ -267,21 +277,30 @@ export class FaceLayers {
   }
 }
 
-/** A clip's element: which screen and clip it plays, and what of it the card holds. */
+/** A clip's element: which screen and file it plays, and what of it the card holds. */
 interface Slot {
   readonly el: VideoLike;
   ref: number;
-  item: number;
-  /** The clip whose frame its layer holds, -1 for none. */
-  shown: number;
+  /** The file it holds, "" for none. */
+  file: string;
+  /** The file whose frame its layer holds, "" for none. */
+  shown: string;
   fresh: boolean;
   uploadedAt: number;
   uploadedTime: number;
   starting: boolean;
-  pausedAt: number;
   loads: number;
   /** Whether it was given a screen this frame. */
   wanted: boolean;
+}
+
+/** A picture asked of the page: its layer's key, its path and layer, since when it has been waited for, and a count of uses. */
+interface Request {
+  key: string;
+  path: string;
+  layer: number;
+  since: number;
+  token: number;
 }
 
 /** What the screens on props are told each frame. */
@@ -299,6 +318,8 @@ export interface FaceView {
   readonly layers: number;
   readonly video: number;
   readonly fps: number;
+  /** No map art is coming or waiting this frame (assets/residency.ts). */
+  readonly artIdle: boolean;
 }
 
 /** The video key of slot `k`: its layer holds that element's frames. */
@@ -314,15 +335,26 @@ export class FaceScreens {
   /** Per face of the list this frame, what it shows. */
   readonly shows: FaceShow[] = [];
   private host: FaceHost | null = null;
+  /** The manifest wanted, the one asked for and when, and when it may be asked again after a miss. */
   private manifestId = "";
+  private manifestSince = 0;
+  private asking = "";
+  private askedAt = -Infinity;
+  private retryAt = -Infinity;
+  private retryMs = MANIFEST_RETRY * 1000;
   private library: FaceLibrary | null = null;
   private readonly slots: Slot[] = [];
-  private loads = 0;
-  private readonly failed = new Set<string>();
+  private readonly requests: Request[] = [];
+  /** Files that failed, and the page's clock (ms) until which they are not asked for again. */
+  private readonly failed = new Map<string, number>();
   /** Pictures come and waiting for the card: their layer, key and source. */
   private readonly came: { layer: number; key: string; source: unknown }[] = [];
   private frame = 0;
+  private now = 0;
   private lastDrawn = -Infinity;
+  /** Whether the map's art has let a clip start (WAIT_FOR_ART), and when a clip was first wanted, in ms, or -1. */
+  private settled = false;
+  private wantedAt = -1;
   private readonly shown: Shown = { item: -1, seconds: 0, before: -1, wipe: 1 };
   /** What each face of the list shows this frame (Shown), by its place. */
   private readonly item = new Int32Array(MAX_FACES);
@@ -331,11 +363,16 @@ export class FaceScreens {
   private readonly wipe = new Float64Array(MAX_FACES);
   /** The level each face's picture is read at, for those showing a clip. */
   private readonly lod = new Float64Array(MAX_FACES);
+  /** The faces chosen to play their clips this frame, by their place in the list, how near each counts, and its slot. */
+  private readonly pick = new Int32Array(MAX_VIDEOS);
+  private readonly pickNear = new Float64Array(MAX_VIDEOS);
+  private readonly pickSlot = new Int32Array(MAX_VIDEOS);
   private readonly crop = new Float64Array(4);
   private readonly colour = [0, 0, 0];
 
   constructor() {
     for (let i = 0; i < MAX_FACES; i++) this.shows.push({ layer: -1, before: -1, wipe: 1, crop: new Float64Array(4), cropBefore: new Float64Array(4), mean: 0, meanBefore: 0, top: 0, topBefore: 0 });
+    for (let k = 0; k < MAX_LOADS; k++) this.requests.push({ key: "", path: "", layer: -1, since: 0, token: 0 });
   }
 
   /** The page's side, once it has come. */
@@ -354,6 +391,7 @@ export class FaceScreens {
    */
   step(list: FaceList, faces: readonly (ScreenFace | null)[], v: FaceView, p: FramePacket): void {
     this.frame++;
+    this.now = v.now;
     this.wanted = list.count > 0;
     const host = this.host, drawn = Math.min(list.count, v.count);
     const visible = host ? host.visible() : false;
@@ -364,22 +402,30 @@ export class FaceScreens {
     if (layers !== this.layers.size) {
       this.layers.resize(layers);
       this.came.length = 0;
-      for (const slot of this.slots) slot.shown = -1;
+      for (const slot of this.slots) slot.shown = "";
     }
     p.faceLayers = layers;
+    this.sweep(v.now);
     let id = this.manifestId;
     if (list.count > 0) {
       id = "";
       for (let i = 1; i < v.states.length && !id; i++) id = v.states[i]?.manifest ?? "";
     }
-    if (host && id && id !== this.manifestId) this.fetchManifest(host, id);
-    if (!id) this.library = null;
+    if (id !== this.manifestId) {
+      this.manifestId = id;
+      this.manifestSince = v.now;
+      this.library = null;
+      this.retryAt = -Infinity;
+      this.retryMs = MANIFEST_RETRY * 1000;
+      this.failed.clear();
+    }
+    if (host && id && list.count > 0 && !this.library && v.now >= this.retryAt && (this.asking !== id || v.now - this.askedAt > LOAD_GIVES_UP * 1000)) this.fetchManifest(host, id, v.now);
     const lib = this.library;
     this.programme.begin(v.states, lib);
-    // The nearest screens showing a clip get the elements, as many as the tier plays.
+    // The nearest screens showing a clip are chosen for the elements, as many as the tier plays; one that has an
+    // element counts as nearer than it is, so two screens about as near do not take it in turns.
     const videos = v.option && visible && host ? Math.min(MAX_VIDEOS, v.video) : 0;
-    for (const slot of this.slots) slot.wanted = false;
-    let given = 0;
+    let picked = 0;
     for (let i = 0; i < list.count; i++) {
       const shown = this.programme.at(list.ref[i]!, list.type[i]!, v.states, v.tick, v.now, this.shown);
       this.item[i] = shown.item;
@@ -387,16 +433,31 @@ export class FaceScreens {
       this.before[i] = shown.before;
       this.wipe[i] = shown.wipe;
       const it = shown.item >= 0 && lib ? lib.items[shown.item] : null;
-      if (!it || it.image || this.failed.has(it.file)) continue;
+      if (!it || it.image || this.dead(it.file)) continue;
       if (v.option && visible) this.mask |= SCREENS_DECODING | SCREENS_UPLOADING;
-      fillCrop(it.aspect, faceAspect(faces[list.kind[i]!]!), this.crop);
-      this.lod[i] = faceLevel(faces[list.kind[i]!]!, this.crop, list.distance[i]! * v.pixel);
-      if (i < drawn && given < videos && this.lod[i]! <= VIDEO_LOD) {
-        given++;
-        this.play(list.ref[i]!, shown.item, it, shown.seconds);
+      const face = faces[list.kind[i]!]!;
+      pictureCrop(it.aspect, faceAspect(face), this.fills(v.states, list.type[i]!), this.crop);
+      this.lod[i] = faceLevel(face, this.crop, list.distance[i]! * v.pixel);
+      if (i >= drawn || videos === 0 || this.lod[i]! > VIDEO_LOD) continue;
+      const near = list.distance[i]! / (this.slotOf(list.ref[i]!, it.file) >= 0 ? HOLD_MARGIN : 1);
+      let at = picked;
+      while (at > 0 && this.pickNear[at - 1]! > near) at--;
+      if (at >= videos) continue;
+      for (let n = Math.min(picked, videos - 1); n > at; n--) {
+        this.pick[n] = this.pick[n - 1]!;
+        this.pickNear[n] = this.pickNear[n - 1]!;
       }
+      this.pick[at] = i;
+      this.pickNear[at] = near;
+      picked = Math.min(picked + 1, videos);
     }
-    this.rest(v.now, videos === 0);
+    // A map's art comes before its clips: none starts until the art has stopped coming or a clip has waited long enough.
+    if (picked > 0 && this.wantedAt < 0) this.wantedAt = v.now;
+    if (picked > 0) this.settled ||= v.artIdle || v.now - this.wantedAt >= WAIT_FOR_ART;
+    if (!this.settled) picked = 0;
+    this.give(list, picked, lib!);
+    // While a new manifest comes, the clips are paused, not let go: an item the edit left alone goes on.
+    this.rest(!lib && !!id && v.now - this.manifestSince <= LOAD_GIVES_UP * 1000);
     // Pictures come since the last frame go to the card, as many as a frame takes.
     p.faceUploads = 0;
     while (this.came.length > 0 && p.faceUploads < PICTURES_A_FRAME) {
@@ -407,34 +468,82 @@ export class FaceScreens {
     for (let i = 0; i < drawn; i++) this.show(list, i, faces[list.kind[i]!]!, v, p);
   }
 
+  /** Whether type `type`'s pictures fill their faces (SCREEN_FILL) or fit them whole. */
+  private fills(states: readonly ScreenState[], type: number): boolean {
+    const s = states[type];
+    return !s || (s.flags & SCREEN_FILL) !== 0;
+  }
+
+  /** Whether `file` failed lately and is not asked for again yet. */
+  private dead(file: string): boolean {
+    const until = this.failed.get(file);
+    return until !== undefined && this.now < until;
+  }
+
+  /** `file` failed: it is not asked for again for FAILED_WAIT. */
+  private fail(file: string): void {
+    this.failed.set(file, this.now + FAILED_WAIT * 1000);
+  }
+
+  /** The slot playing `file` for screen `ref`, or -1. */
+  private slotOf(ref: number, file: string): number {
+    for (let k = 0; k < this.slots.length; k++) if (this.slots[k]!.ref === ref && this.slots[k]!.file === file) return k;
+    return -1;
+  }
+
+  /** The chosen screens get their elements: those that have one keep it, then the rest take the free ones, and each plays. */
+  private give(list: FaceList, picked: number, lib: FaceLibrary): void {
+    for (const slot of this.slots) slot.wanted = false;
+    for (let n = 0; n < picked; n++) {
+      const i = this.pick[n]!, k = this.slotOf(list.ref[i]!, lib.items[this.item[i]!]!.file);
+      this.pickSlot[n] = k;
+      if (k >= 0) this.slots[k]!.wanted = true;
+    }
+    for (let n = 0; n < picked; n++) {
+      const i = this.pick[n]!, it = lib.items[this.item[i]!]!;
+      let k = this.pickSlot[n]!;
+      if (k < 0) {
+        k = this.slots.findIndex((s) => !s.wanted && !s.file);
+        if (k < 0) k = this.slots.findIndex((s) => !s.wanted);
+        if (k < 0 && this.slots.length < MAX_VIDEOS && this.host) {
+          this.slots.push({ el: this.host.video(), ref: -1, file: "", shown: "", fresh: false, uploadedAt: -Infinity, uploadedTime: -1, starting: false, loads: 0, wanted: false });
+          k = this.slots.length - 1;
+        }
+        if (k < 0) continue;
+        this.load(this.slots[k]!, list.ref[i]!, it);
+      }
+      this.slots[k]!.wanted = true;
+      this.play(this.slots[k]!, it, this.seconds[i]!);
+    }
+  }
+
   /** What face `i` shows: its picture's layer, asked for where the card has none, and the one before while it wipes. */
   private show(list: FaceList, i: number, face: ScreenFace, v: FaceView, p: FramePacket): void {
     const out = this.shows[i]!, lib = this.library, aspect = faceAspect(face), item = this.item[i]!, before = this.before[i]!;
-    const it = item >= 0 && lib ? lib.items[item] : null;
-    out.layer = it ? this.layerOf(list.ref[i]!, item, it, this.lod[i]!, v, p) : -1;
+    const it = item >= 0 && lib ? lib.items[item] : null, fill = this.fills(v.states, list.type[i]!);
+    out.layer = it ? this.layerOf(list.ref[i]!, it, this.lod[i]!, v, p) : -1;
     out.top = out.layer >= 0 ? this.layers.top[out.layer]! : 0;
     out.mean = it ? this.meanOf(it, this.seconds[i]!) : 0;
-    fillCrop(it ? it.aspect : 1, aspect, out.crop);
+    pictureCrop(it ? it.aspect : 1, aspect, fill, out.crop);
     out.wipe = this.wipe[i]!;
     // The picture before is shown where the card still holds it, and its mean colour where it does not; dark where there was none.
     const was = out.wipe < 1 && before >= 0 && lib ? lib.items[before] : null;
     out.before = was ? this.resident(was.image ? was.file : was.poster) : -1;
     out.topBefore = out.before >= 0 ? this.layers.top[out.before]! : 0;
     out.meanBefore = was ? this.meanOf(was, was.seconds) : 0;
-    fillCrop(was ? was.aspect : 1, aspect, out.cropBefore);
+    pictureCrop(was ? was.aspect : 1, aspect, fill, out.cropBefore);
   }
 
-  /** The layer item `item` of screen `ref` shows: its clip's frames where an element plays it for it, else its picture. */
-  private layerOf(ref: number, item: number, it: FaceItem, lod: number, v: FaceView, p: FramePacket): number {
+  /** The layer item `it` of screen `ref` shows: its clip's frames where an element plays it for it, else its picture. */
+  private layerOf(ref: number, it: FaceItem, lod: number, v: FaceView, p: FramePacket): number {
     if (!it.image) {
-      for (let k = 0; k < this.slots.length; k++) {
-        const slot = this.slots[k]!;
-        if (!slot.wanted || slot.ref !== ref || slot.item !== item) continue;
+      const k = this.slotOf(ref, it.file), slot = k >= 0 ? this.slots[k]! : null;
+      if (slot && slot.wanted) {
         const key = videoKey(k);
         let layer = this.layers.find(key, this.frame);
         if (layer < 0) layer = this.layers.take(key, this.frame, v.now);
         if (layer >= 0) this.videoFrame(slot, layer, lod, v, p);
-        if (layer >= 0 && slot.shown === item && this.layers.holds(layer)) return layer;
+        if (layer >= 0 && slot.shown === it.file && this.layers.holds(layer)) return layer;
       }
     }
     return this.picture(it.image ? it.file : it.poster, v.now);
@@ -447,7 +556,7 @@ export class FaceScreens {
     const moved = slot.fresh || (!el.requestVideoFrameCallback && el.currentTime !== slot.uploadedTime);
     if (!moved || v.now - slot.uploadedAt < 1000 / v.fps - 2) return;
     this.upload(p, layer, el, true, el.videoWidth, el.videoHeight, Math.min(VIDEO_LEVELS, Math.max(1, 1 + Math.ceil(lod))));
-    slot.shown = slot.item;
+    slot.shown = slot.file;
     slot.fresh = false;
     slot.uploadedAt = v.now;
     slot.uploadedTime = el.currentTime;
@@ -464,20 +573,46 @@ export class FaceScreens {
     const key = `i${path}`;
     const k = this.layers.find(key, this.frame);
     if (k >= 0) return this.layers.holds(k) ? k : -1;
-    const host = this.host;
-    if (!host || this.loads >= MAX_LOADS || this.failed.has(path)) return -1;
+    const host = this.host, r = this.freeRequest();
+    if (!host || !r || this.dead(path)) return -1;
     const layer = this.layers.take(key, this.frame, now);
     if (layer < 0) return -1;
-    this.loads++;
+    const token = ++r.token;
+    r.key = key;
+    r.path = path;
+    r.layer = layer;
+    r.since = now;
     host.image(path, FACE_WIDE, FACE_HIGH).then((source) => {
-      this.loads--;
+      if (r.token !== token || r.key !== key) return;
+      r.key = "";
       this.came.push({ layer, key, source });
     }, () => {
-      this.loads--;
-      this.failed.add(path);
+      if (r.token !== token || r.key !== key) return;
+      r.key = "";
+      this.fail(path);
       if (this.layers.keys[layer] === key) this.layers.empty(layer);
     });
     return -1;
+  }
+
+  private freeRequest(): Request | null {
+    for (const r of this.requests) if (!r.key) return r;
+    return null;
+  }
+
+  /**
+   * Lets go of the pictures asked for that no screen wants any more, whose layer has gone to another, or that have not
+   * come in LOAD_GIVES_UP: each frees its place for another, and the page stops fetching it.
+   */
+  private sweep(now: number): void {
+    for (const r of this.requests) {
+      if (!r.key) continue;
+      const mine = r.layer < this.layers.size && this.layers.keys[r.layer] === r.key;
+      if (mine && this.layers.used[r.layer]! >= this.frame - 1 && now - r.since <= LOAD_GIVES_UP * 1000) continue;
+      if (mine) this.layers.empty(r.layer);
+      this.host?.drop?.(r.path);
+      r.key = "";
+    }
   }
 
   private upload(p: FramePacket, layer: number, source: unknown, video: boolean, width: number, height: number, made: number): void {
@@ -499,31 +634,31 @@ export class FaceScreens {
     return (Math.round(c[0]! * 255) | (Math.round(c[1]! * 255) << 8) | (Math.round(c[2]! * 255) << 16) | (255 << 24)) >>> 0;
   }
 
-  private fetchManifest(host: FaceHost, id: string): void {
-    this.manifestId = id;
-    this.library = null;
+  /** Asks for manifest `id`; a miss waits MANIFEST_RETRY, twice as long after each miss to MANIFEST_RETRY_MOST. */
+  private fetchManifest(host: FaceHost, id: string, now: number): void {
+    this.asking = id;
+    this.askedAt = now;
+    const miss = (): void => {
+      if (this.asking === id) this.asking = "";
+      if (this.manifestId !== id || this.library) return;
+      this.retryAt = this.now + this.retryMs;
+      this.retryMs = Math.min(this.retryMs * 2, MANIFEST_RETRY_MOST * 1000);
+    };
     host.json(manifestPath(id)).then((json) => {
-      if (this.manifestId === id) this.library = readLibrary(json);
-    }, () => {});
+      const lib = readLibrary(json);
+      if (!lib) return miss();
+      if (this.asking === id) this.asking = "";
+      if (this.manifestId !== id || this.library) return;
+      this.library = lib;
+      this.retryMs = MANIFEST_RETRY * 1000;
+    }, miss);
   }
 
-  /** Plays clip `item` for screen `ref`, `seconds` into it, in the slot that has it or one free. */
-  private play(ref: number, item: number, it: FaceItem, seconds: number): void {
-    let slot = this.slots.find((s) => s.ref === ref && s.item === item);
-    if (!slot) {
-      slot = this.slots.find((s) => !s.wanted && s.item < 0) ?? this.slots.find((s) => !s.wanted);
-      if (!slot && this.slots.length < MAX_VIDEOS && this.host) {
-        slot = { el: this.host.video(), ref: -1, item: -1, shown: -1, fresh: false, uploadedAt: -Infinity, uploadedTime: -1, starting: false, pausedAt: -1, loads: 0, wanted: false };
-        this.slots.push(slot);
-      }
-      if (!slot) return;
-      this.load(slot, ref, item, it);
-    }
-    slot.wanted = true;
-    slot.pausedAt = -1;
+  /** Plays the clip of `it` in `slot`, `seconds` into it. */
+  private play(slot: Slot, it: FaceItem, seconds: number): void {
     const el = slot.el;
     if (el.error) {
-      this.failed.add(it.file);
+      this.fail(it.file);
       return;
     }
     // Before its start it waits on its first frame; past its end it holds its last.
@@ -533,6 +668,8 @@ export class FaceScreens {
       if (el.readyState >= 1 && !el.seeking && Math.abs(el.currentTime - hold) > DRIFT_SEEK) el.currentTime = hold;
       return;
     }
+    // Chosen to play, it may buffer ahead.
+    if (el.preload !== "auto") el.preload = "auto";
     if (el.readyState >= 1 && !el.seeking) {
       const drift = seconds - el.currentTime;
       if (mustSeek(drift)) {
@@ -542,24 +679,25 @@ export class FaceScreens {
     }
     if (el.paused && !slot.starting) {
       slot.starting = true;
-      const s = slot;
-      el.play().then(() => void (s.starting = false), (e: { name?: string } | null) => {
-        s.starting = false;
-        if (e?.name !== "AbortError") this.failed.add(it.file);
+      const file = it.file;
+      el.play().then(() => void (slot.starting = false), (e: { name?: string } | null) => {
+        slot.starting = false;
+        if (e?.name !== "AbortError") this.fail(file);
       });
     }
   }
 
-  private load(slot: Slot, ref: number, item: number, it: FaceItem): void {
+  /** Loads `it`'s file into `slot` for screen `ref`, fetching no more than its size and first frame until it plays. */
+  private load(slot: Slot, ref: number, it: FaceItem): void {
     const el = slot.el;
     slot.ref = ref;
-    slot.item = item;
-    slot.shown = -1;
+    slot.file = it.file;
+    slot.shown = "";
     slot.fresh = false;
     slot.uploadedAt = -Infinity;
     slot.uploadedTime = -1;
     slot.starting = false;
-    el.preload = "auto";
+    el.preload = "metadata";
     el.src = it.file;
     const loads = ++slot.loads;
     const frame = (): void => {
@@ -570,27 +708,25 @@ export class FaceScreens {
     el.requestVideoFrameCallback?.(frame);
   }
 
-  /** Pauses every slot not given a screen, and lets go of a stream paused long, or at once where no clip may play. */
-  private rest(now: number, none: boolean): void {
+  /** Every slot not given a screen is paused and, unless it is to `keep` its stream, lets it go, so nothing goes on downloading. */
+  private rest(keep: boolean): void {
     for (const slot of this.slots) {
       if (slot.wanted) continue;
       if (!slot.el.paused) slot.el.pause();
-      if (slot.pausedAt < 0) slot.pausedAt = now;
-      if (slot.item >= 0 && (none || now - slot.pausedAt > UNLOAD_AFTER * 1000)) {
-        slot.item = slot.ref = -1;
-        slot.shown = -1;
-        slot.loads++;
-        slot.el.preload = "none";
-        slot.el.removeAttribute("src");
-        slot.el.load();
-      }
+      if (!slot.file || keep) continue;
+      slot.file = slot.shown = "";
+      slot.ref = -1;
+      slot.loads++;
+      slot.el.preload = "none";
+      slot.el.removeAttribute("src");
+      slot.el.load();
     }
   }
 
   /** How many elements hold a stream, for a test and the gates. */
   get decoding(): number {
     let n = 0;
-    for (const slot of this.slots) if (slot.item >= 0) n++;
+    for (const slot of this.slots) if (slot.file) n++;
     return n;
   }
 }

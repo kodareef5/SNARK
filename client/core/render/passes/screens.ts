@@ -22,7 +22,7 @@ export class Screens implements Pass {
   option = true;
   private readonly kinds: readonly (ScreenFace | null)[];
   private readonly world: { structs: FaceWorld["structs"]; statics: FaceWorld["statics"] } = { structs: null!, statics: null };
-  private readonly view: { -readonly [K in keyof FaceView]: FaceView[K] } = { states: [], tick: 0, now: 0, option: true, pixel: 0, count: 0, layers: 0, video: 0, fps: 0 };
+  private readonly view: { -readonly [K in keyof FaceView]: FaceView[K] } = { states: [], tick: 0, now: 0, option: true, pixel: 0, count: 0, layers: 0, video: 0, fps: 0, artIdle: false };
 
   constructor(faces: readonly (ScreenFace | null)[]) {
     this.kinds = faces;
@@ -61,6 +61,7 @@ export class Screens implements Pass {
     v.layers = tier.layers;
     v.video = tier.video;
     v.fps = tier.fps;
+    v.artIdle = f.assets.residency.flying + f.assets.residency.waiting === 0;
     this.faces.step(list, this.kinds, v, p);
     f.assets.residency.reserve("screens", p.faceLayers * LAYER_BYTES);
   }

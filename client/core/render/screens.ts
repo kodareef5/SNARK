@@ -253,21 +253,3 @@ export function faceLevel(face: ScreenFace, crop: Float64Array, metres: number):
   const r = face.face, texels = Math.max((FACE_WIDE * crop[0]!) / (r[1] - r[0]), (FACE_HIGH * crop[1]!) / (r[3] - r[2]));
   return Math.log2(Math.max(metres * texels, 1e-6));
 }
-
-/** The crop of a picture `aspect` wide to its height that fills a face `face` wide to its height, into `out`: s and t scale, then offset. */
-export function fillCrop(aspect: number, face: number, out: Float64Array): void {
-  if (!(aspect > 0) || !(face > 0)) {
-    out[0] = out[1] = 1;
-    out[2] = out[3] = 0;
-  } else if (aspect > face) {
-    out[0] = face / aspect;
-    out[1] = 1;
-    out[2] = (1 - out[0]) / 2;
-    out[3] = 0;
-  } else {
-    out[0] = 1;
-    out[1] = aspect / face;
-    out[2] = 0;
-    out[3] = (1 - out[1]) / 2;
-  }
-}
