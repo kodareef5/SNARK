@@ -1259,13 +1259,18 @@ function roofFrame(hut: Hut, level: number, r: Roof): void {
       return rake < at ? [rake, at] : [at, rake];
     };
     const upward: Vec = [-f.up[0] * f.g, -f.up[1] * f.g, 1];
-    // One up the middle: along a sloped side the verge, as deep as the slab, carries the battens' ends.
-    const rafters: [number, number][] = [[(a0 + a1) / 2, RAFTER_R]];
+    // One up the middle. Along a sloped side the verge, as deep as the slab, carries the battens' ends: the rafter
+    // there stays in the list, undrawn, so the poles after it are cut from the scripts' stream as they were.
+    const rafters: [number, number][] = [];
+    f.kinds.forEach((kind, i) => {
+      if (kind === "rake") rafters.push([spans[i]![0] + Math.sign((a0 + a1) / 2 - spans[i]![0]) * 0.05, 0.036]);
+    });
+    rafters.push([(a0 + a1) / 2, RAFTER_R]);
     for (const [a, radius] of rafters) {
       const drop = -r.thick + radius * k + 0.004;
       const from = hut.shape.faces.length;
       const [s0, s1] = [eave ? -ROOF_LIP + 0.04 : 0.13, sTop - 0.13];
-      const how: Drawn | null = fine ? {} : null;
+      const how: Drawn | null = fine && radius === RAFTER_R ? {} : null;
       const [foot, head] = [onSlope(f, a, s0, drop), onSlope(f, a, s1, drop)];
       drawPole(hut, kitPole(rng, foot, head, radius, radius * 0.9, { band: "bark", bow: 0.006, bowDir: upward, segments: 3, sides: 6, caps: ["axe", "flat"] }), how);
       if (foldPlane && how) clip(hut.shape, planeMoved(foldPlane, -0.09), endGrain(foot, head, planeMoved(foldPlane, -0.09)), from);
@@ -1284,7 +1289,7 @@ function roofFrame(hut: Hut, level: number, r: Roof): void {
       // Lashed where it crosses a rafter: every other crossing of the middle one, and on a plain slope the lowest and highest of the others.
       for (const [a, radius] of rafters) {
         if (a < ends[0] + 0.03 || a > ends[1] - 0.03) continue;
-        const tied = row % 2 === 0;
+        const tied = radius === RAFTER_R && row % 2 === 0;
         const cord = cordOf(rng, py(onSlope(f, a, s - 0.045, -r.thick + radius * k + 0.004)), py([f.up[0], f.up[1], f.g]), radius + 0.008, 0.05);
         drawCord(hut, cord, fine && tied ? radius : null);
       }

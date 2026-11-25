@@ -600,8 +600,8 @@ const thatchNew = Object.entries(THATCH_NEW).map(([name, form]) => ({ name, form
  */
 const THATCH_NEW_MOST: Record<string, readonly number[]> = {
   roof: [614, 116, 72, 12],
-  roof_hip: [1194, 314, 116, 12],
-  roof_valley: [594, 108, 60, 12],
+  roof_hip: [1192, 314, 116, 12],
+  roof_valley: [596, 108, 60, 12],
   sloped_wall_left: [668, 194, 72, 8],
   sloped_wall_right: [668, 194, 72, 8],
   half_wall: [820, 112, 72, 12],
