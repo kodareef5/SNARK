@@ -6,7 +6,8 @@
 import { adminContext } from "./shell.ts";
 import {
   addGroupPost, addMemberPost, blankChatForm, blankTag, chatBlockOf, chatFormOf, chatGroupHtml, chatPost, clearPasswordPost, coloured, editAfter, editOf, everyMapOf, grantPost,
-  groupsHtml, headingOf, hexInk, historyHtml, importHtml, importPost, defineWhy, manageWhy, meText, readFault, memberGroupOptions, memberRows, memberRowsHtml, passwordRows,
+  groupsHtml, headingOf, hexInk, historyHtml, IMPORT_START, importAnswered, importApplyPost, importAsked, importEdited, importHtml, importPost, defineWhy,
+  manageWhy, meText, readFault, memberGroupOptions, memberRows, memberRowsHtml, passwordRows,
   passwordRowsHtml, permissionListHtml, rankOptions, rankPost, rankWhy, removeGroupPost, removeMemberPost, revokePost, sampleRuns, settingsFormOf, settingsHtml, settingsPost,
   settingsTextOf, survivorName, tagRuns, whoOptions, type Built, type ChatForm, type Edit, type Fault, type MemberRow, type SettingsForm,
 } from "../core/admin/permissions.ts";
@@ -37,8 +38,8 @@ const S = {
   settingsTheirs: null as string | null,
   /** Ranks someone else changed while this admin chose one, by group name in lower case. */
   ranks: new Map<string, Edit<number>>(),
-  /** What the last good check was of and its digest, which Apply sends. */
-  checked: null as { kind: ImportKind; text: string; wal: string; digest: string } | null,
+  /** The import's input and requests as counted, and the check Apply sends, of the input it was made for. */
+  imports: IMPORT_START,
   history: [] as HistoryRow[],
   historyMore: false,
   loading: false,
@@ -184,7 +185,7 @@ function draw(): void {
     $("settings-read").textContent = read.faults.length ? `As saved: ${read.faults.join(" ")}` : "";
   }
   drawChat();
-  allow($<HTMLButtonElement>("import-apply"), define || (S.checked ? "" : "Check it first."));
+  allow($<HTMLButtonElement>("import-apply"), define || (S.imports.checked ? "" : "Check it first."));
 }
 
 /** The Every map box: offered unticked for a staff group to a cluster admin, else a word on where the membership holds. */
@@ -327,8 +328,10 @@ async function saveRank(group: string, rank: number, from: number, label: string
   paint($("groups"), groupsHtml(S.state!, S.ranks), true);
 }
 
+/** The import's input changed: an answer to a request sent before approves nothing. */
 function forgetCheck(): void {
-  S.checked = null;
+  S.imports = importEdited(S.imports);
+  $("import-out").innerHTML = "";
   if (S.state) allow($<HTMLButtonElement>("import-apply"), defineWhy(S.state) || "Check it first.");
 }
 
@@ -450,18 +453,20 @@ async function act(at: HTMLElement): Promise<void> {
     case "import-check":
     case "import-apply": {
       const apply = what === "import-apply";
-      const kind = apply && S.checked ? S.checked.kind : ($<HTMLSelectElement>("import-kind").value as ImportKind);
-      const files = apply && S.checked ? S.checked : await importText(kind);
-      const b = importPost(state, kind, files.text, apply, S.checked?.digest ?? "", files.wal);
+      // Counted before the files are read, so an edit while they are read is seen.
+      S.imports = importAsked(S.imports);
+      const sent = S.imports;
+      const kind = $<HTMLSelectElement>("import-kind").value as ImportKind;
+      const input = { kind, ...(await importText(kind)) };
+      const b = apply ? importApplyPost(state, S.imports, input) : importPost(state, kind, input.text, false, "", input.wal);
       if (!b.post) return say(b.why, "warn");
       if (apply && !confirm("Make these changes?")) return;
       const answer = await send(b.post, apply ? "Imported." : "Checked. Nothing is changed until Apply.");
+      const after = importAnswered(S.imports, sent, input, answer, apply);
+      S.imports = after.track;
+      allow($<HTMLButtonElement>("import-apply"), defineWhy(S.state ?? state) || (after.track.checked ? "" : "Check it first."));
+      if (!after.shown) return say("The import was changed while it was checked. Check it again.", "warn");
       $("import-out").innerHTML = importHtml(answer, apply);
-      // A plan that changed since the check is shown as it is now, to be applied in its turn.
-      if (answer.digest && (!apply || !answer.ok)) {
-        S.checked = { kind, text: files.text, wal: files.wal, digest: answer.digest };
-        allow($<HTMLButtonElement>("import-apply"), defineWhy(state));
-      } else forgetCheck();
       return;
     }
     case "history-older":

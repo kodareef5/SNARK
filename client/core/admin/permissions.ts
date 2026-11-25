@@ -322,6 +322,48 @@ export function importPost(state: State, kind: ImportKind, text: string, apply: 
   return digest === "" ? refuse("Check it first.") : { post: { do: "import", ...files, digest }, why: "" };
 }
 
+/** What an import is of: its kind, the pasted text or the file as base64, and an ArkApi database's -wal file as base64 or "". */
+export interface ImportInput {
+  readonly kind: ImportKind;
+  readonly text: string;
+  readonly wal: string;
+}
+
+/** The import tab's approval: counts of edits to its input and of requests sent, and the check Apply may send, with its input. */
+export interface ImportTrack {
+  readonly input: number;
+  readonly asked: number;
+  readonly checked: { readonly of: ImportInput; readonly digest: string } | null;
+}
+
+export const IMPORT_START: ImportTrack = { input: 0, asked: 0, checked: null };
+
+/** The input changed: no check made before is of it. */
+export const importEdited = (t: ImportTrack): ImportTrack => ({ ...t, input: t.input + 1, checked: null });
+
+/** A check or an apply is sent: the track it is sent at is the one its answer is matched against. */
+export const importAsked = (t: ImportTrack): ImportTrack => ({ ...t, asked: t.asked + 1 });
+
+const sameInput = (a: ImportInput, b: ImportInput): boolean => a.kind === b.kind && a.text === b.text && a.wal === b.wal;
+
+/**
+ * The track after an answer to the request sent at `sent`, for input `of`, and whether to show the answer. An answer to
+ * an older request, or of an input since edited, approves nothing: a check's is dropped, an apply's is shown.
+ */
+export function importAnswered(t: ImportTrack, sent: ImportTrack, of: ImportInput, answer: PermissionsAnswer, applied: boolean): { track: ImportTrack; shown: boolean } {
+  if (sent.input !== t.input || sent.asked !== t.asked) return { track: applied ? { ...t, checked: null } : t, shown: applied };
+  // An apply refused because the plan changed since its check carries the plan as it is now, to be applied in its turn.
+  const approves = answer.digest !== undefined && answer.digest !== "" && (!applied || !answer.ok);
+  return { track: { ...t, checked: approves ? { of, digest: answer.digest! } : null }, shown: true };
+}
+
+/** An import's apply of the input as it is now, only where the check Apply would send was of that exact input. */
+export function importApplyPost(state: State, t: ImportTrack, now: ImportInput): Built {
+  if (!t.checked) return importPost(state, now.kind, now.text, true, "", now.wal);
+  if (!sameInput(t.checked.of, now)) return refuse("The import changed since its check. Check it again.");
+  return importPost(state, now.kind, now.text, true, t.checked.digest, now.wal);
+}
+
 // ---- Edits of a whole value ----
 
 /**

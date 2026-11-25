@@ -6,7 +6,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   FREE_CHEATS, addGroupPost, addMemberPost, blankChatForm, blankTag, chatBlockOf, chatFormOf, chatGroupHtml, chatPost, clearPasswordPost, coloured, defineWhy, editAfter, editOf,
-  everyMapOf, firstInk, freeCheats, grantPost, groupsHtml, headingOf, historyHtml, importHtml, importPost, manageWhy, memberRows, rankPost,
+  everyMapOf, firstInk, freeCheats, grantPost, groupsHtml, headingOf, historyHtml, IMPORT_START, importAnswered, importApplyPost, importAsked, importEdited, importHtml, importPost,
+  manageWhy, memberRows, rankPost, type ImportInput,
   memberRowsHtml, readFault, passwordRows, passwordRowsHtml, removeGroupPost, sampleRuns, settingsFormOf, settingsHtml, settingsPost, settingsTextOf, spanWords, type MemberForm,
 } from "../../client/core/admin/permissions.ts";
 import { cluster, resolveAdmin, sections } from "../../client/core/admin/navigation.ts";
@@ -388,4 +389,34 @@ test("the page adds a survivor of another map by name, and no ID never issued", 
   expect(addMemberPost(state, { kind: "tribe", who: "3145729", group: "VIP", hours: "", delay: "", everyMap: true }).why).toBe("");
   const m: Member = { kind: "survivor", key: away, group: "VIP", world: 0, forever: true, from: 0, until: 0 };
   expect(memberRows({ ...state, members: [{ ...m, name: "" }] }, NOW)[0]!.who).toBe("Rook");
+});
+
+test("a check's answer for an input since changed does not enable Apply", () => {
+  const alone = stateAt(RANK_ADMIN, 0);
+  const a: ImportInput = { kind: "commands", text: "Permissions.AddGroup A", wal: "" };
+  const b: ImportInput = { ...a, text: "Permissions.AddGroup B" };
+  const checkedA = { ok: true, why: "", ops: 1, digest: "dA" };
+  // Checked with A, then B pasted before the answer came.
+  const sentA = importAsked(IMPORT_START);
+  const late = importAnswered(importEdited(sentA), sentA, a, checkedA, false);
+  expect([late.shown, late.track.checked, importApplyPost(alone, late.track, b).why]).toEqual([false, null, "Check it first."]);
+  // An older check's answer that comes after a newer one's is dropped too.
+  const first = importAsked(late.track);
+  const second = importAsked(first);
+  const kept = importAnswered(second, second, b, { ...checkedA, digest: "dB" }, false).track;
+  expect(importAnswered(kept, first, b, checkedA, false)).toEqual({ track: kept, shown: false });
+  expect(importApplyPost(alone, kept, b).post).toEqual({ do: "import", kind: "commands", text: b.text, digest: "dB" });
+  // An approval is of the exact input: its text, its kind and an ArkApi database's -wal file.
+  const db: ImportInput = { kind: "arkapi", text: "AAAA", wal: "BBBB" };
+  const sentDb = importAsked(kept);
+  const dbChecked = importAnswered(sentDb, sentDb, db, { ...checkedA, digest: "dD" }, false).track;
+  const changed = "The import changed since its check. Check it again.";
+  expect([{ ...db, wal: "" }, { ...db, wal: "CCCC" }, { ...db, text: "AAAB" }, { ...db, kind: "crosschat" as const }].map((now) => importApplyPost(alone, dbChecked, now).why)).toEqual([changed, changed, changed, changed]);
+  expect(importApplyPost(alone, dbChecked, db).post).toEqual({ do: "import", kind: "arkapi", text: "AAAA", wal: "BBBB", digest: "dD" });
+  // Any edit clears it, and an apply that went through leaves nothing to apply again.
+  expect(importEdited(dbChecked).checked).toBeNull();
+  const applying = importAsked(dbChecked);
+  expect(importAnswered(applying, applying, db, { ok: true, why: "", ops: 1 }, true)).toEqual({ track: { ...applying, checked: null }, shown: true });
+  // A plan that changed since its check comes back with its digest, for the same input.
+  expect(importAnswered(applying, applying, db, { ok: false, why: "changed", ops: 1, digest: "dE" }, true).track.checked).toEqual({ of: db, digest: "dE" });
 });
