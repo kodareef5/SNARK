@@ -22,6 +22,11 @@ def main():
         print('bathymetry: none, the frame has no sea')
         return
     raw = m.raw / 'bathymetry' / c['url'].rsplit('/', 1)[1]
+    dest = m.base / 'bathymetry' / c['file']
+    if not raw.exists() and dest.exists() and (dest.parent / 'source.json').exists():
+        # The fetch found the service down and this request's frozen subset (fetch.py bathymetry): it is kept as it is.
+        print('bathymetry: the frozen subset stands, as fetched before')
+        return
     with netcdf_file(raw, mmap=False) as f:
         lon = f.variables['lon'][:].copy()
         lat = f.variables['lat'][:].copy()
@@ -29,7 +34,6 @@ def main():
     dx = float(np.median(np.diff(lon)))
     dy = float(np.median(np.diff(lat)))
     tx = Affine(dx, 0, float(lon[0] - dx / 2), 0, -dy, float(lat[-1] + dy / 2))
-    dest = m.base / 'bathymetry' / c['file']
     dest.parent.mkdir(parents=True, exist_ok=True)
     with rasterio.open(dest, 'w', driver='GTiff', height=a.shape[0], width=a.shape[1], count=1, dtype='float32',
                        crs='EPSG:4326', transform=tx, nodata=-99999, compress='deflate', predictor=3) as ds:

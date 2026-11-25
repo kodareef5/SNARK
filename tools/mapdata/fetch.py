@@ -142,9 +142,18 @@ def bathymetry(m, man):
         print('bathymetry: none, the frame has no sea', flush=True)
         return
     w, s, e, n = m.lonlat_bounds(c.get('margin_deg', 0.006))
-    keep(m, man, 'bathymetry/' + c['url'].rsplit('/', 1)[1], c['url'], c['source'], c['licence'], params={
-        'var': 'Band1', 'north': round(n, 3), 'south': round(s, 3), 'west': round(w, 3), 'east': round(e, 3),
-        'horizStride': 1, 'accept': 'netcdf'}, accept=lambda b: b[:3] == b'CDF')
+    params = {'var': 'Band1', 'north': round(n, 3), 'south': round(s, 3), 'west': round(w, 3), 'east': round(e, 3),
+              'horizStride': 1, 'accept': 'netcdf'}
+    try:
+        keep(m, man, 'bathymetry/' + c['url'].rsplit('/', 1)[1], c['url'], c['source'], c['licence'], params=params,
+             accept=lambda b: b[:3] == b'CDF')
+    except RuntimeError:
+        # The stage froze this request's subset losslessly (bathy.py): it stands while the service is down.
+        frozen = m.base / 'bathymetry' / 'source.json'
+        if frozen.exists() and json.loads(frozen.read_text()).get('request') == requests.Request('GET', c['url'], params=params).prepare().url:
+            print('bathymetry: the service failed; the frozen subset of this same request stands', flush=True)
+            return
+        raise
     print('bathymetry done', flush=True)
 
 
