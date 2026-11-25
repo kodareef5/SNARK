@@ -136,18 +136,27 @@ test("a starting group missing from the file is still there", () => {
   expect(new PermissionStore(file).read().groups.map((g) => g.name).sort()).toEqual(["Admins", "Default"]);
 });
 
-test("a file made before claims were dated is read, and takes a dated claim", () => {
+test("a password an admin issued before survivors claimed their own is retired on upgrade", () => {
   const file = fresh();
   const db = new Database(file);
-  db.exec("CREATE TABLE secrets (id TEXT PRIMARY KEY, hash TEXT NOT NULL);" + `INSERT INTO secrets VALUES ('${A}', 'abcdefabcdefabcd');`);
+  // The earlier build kept an issued password with no time: an admin saw it, so it is no longer only the survivor's.
+  db.exec("CREATE TABLE secrets (id TEXT PRIMARY KEY, hash TEXT NOT NULL);" + `INSERT INTO secrets VALUES ('${A}', '${"ab".repeat(32)}');`);
   db.close();
+  const said: string[] = [];
   const store = new PermissionStore(file);
-  expect(store.read().secrets).toEqual([{ id: A, hash: "abcdefabcdefabcd", at: 0 }]);
-  const perms = new Permissions({ store, world: 2, now: () => 7_000 });
+  expect(store.read().secrets).toEqual([]);
+  const perms = new Permissions({ store, world: 2, now: () => 7_000, say: (line) => said.push(line) });
+  expect(said).toEqual(["permissions: 1 password an admin issued before survivors claimed their own was cleared; its survivor claims a new one in game"]);
+  // It is refused as retired, not counted as a guess, and the survivor claims a new one.
+  expect([perms.secretOf(A), perms.retired("ab".repeat(32))]).toEqual(["", true]);
   issue(perms, A);
   expect(perms.apply(cluster, { op: "addMember", kind: "survivor", key: A, group: "Admins", world: 0 })).toBe("");
-  expect(perms.claim(A, "0123456789abcdef", "abcdefabcdefabcd")).toEqual({ why: "", wrong: false });
-  expect(new PermissionStore(file).read().secrets).toEqual([{ id: A, hash: "0123456789abcdef", at: 7_000 }]);
+  expect(perms.claim(A, "cd".repeat(32), "")).toEqual({ why: "", wrong: false });
+  expect(new PermissionStore(file).read().secrets).toEqual([{ id: A, hash: "cd".repeat(32), at: 7_000 }]);
+  // Opened again, it clears nothing more.
+  said.length = 0;
+  new Permissions({ store: new PermissionStore(file), world: 2, now: () => 8_000, say: (line) => said.push(line) });
+  expect(said).toEqual([]);
 });
 
 test("a file made before the register opens, gains it and keeps what it held", () => {

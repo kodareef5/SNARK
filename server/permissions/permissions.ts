@@ -221,6 +221,8 @@ export class Permissions {
     this.claimWaitMs = opts.claimWaitMs ?? CLAIM_WAIT_MS;
     this.load(this.store.read(), false);
     this.store.patience(BUSY_MS);
+    const cleared = this.store.cleared;
+    if (cleared > 0) this.say(`permissions: ${cleared} ${cleared === 1 ? "password an admin issued before survivors claimed their own was" : "passwords an admin issued before survivors claimed their own were"} cleared; ${cleared === 1 ? "its survivor claims a new one" : "their survivors claim new ones"} in game`);
   }
 
   /** Takes in the passwords other worlds retired within the day, which this view may never have held: it started since, or they came and went between its polls. */

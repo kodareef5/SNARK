@@ -111,6 +111,8 @@ export class PermissionStore {
   /** Changes made through this object, so a memory store has a stamp. */
   private writes = 0;
   private readonly historyKept: number;
+  /** Passwords an admin issued, in a file from before claims, that opening it cleared. */
+  cleared = 0;
 
   /** `path` is permissions.sqlite, or ":memory:". The file opens at the first use. */
   constructor(path: string, opts: StoreOptions = {}) {
@@ -127,8 +129,16 @@ export class PermissionStore {
       // A file made before the register kept each survivor's team has no `team`. The index is made after the column.
       if (!(db.query("PRAGMA table_info(issued)").all() as { name: string }[]).some((c) => c.name === "team")) db.exec("ALTER TABLE issued ADD COLUMN team INTEGER NOT NULL DEFAULT 0");
       db.exec("CREATE INDEX IF NOT EXISTS issued_team ON issued (team)");
-      // A file made before a password's claim was dated has no `at`.
-      if (!(db.query("PRAGMA table_info(secrets)").all() as { name: string }[]).some((c) => c.name === "at")) db.exec("ALTER TABLE secrets ADD COLUMN at INTEGER NOT NULL DEFAULT 0");
+      // A file made before survivors claimed their own password has no `at`, and every password in it was made by an
+      // admin who saw it. Each is retired, as a replaced one is, and its survivor claims a new one.
+      if (!(db.query("PRAGMA table_info(secrets)").all() as { name: string }[]).some((c) => c.name === "at")) {
+        db.exec("ALTER TABLE secrets ADD COLUMN at INTEGER NOT NULL DEFAULT 0");
+        const issued = db.query("SELECT hash FROM secrets").all() as { hash: unknown }[];
+        for (const r of issued) if (isHash(r.hash)) db.query("INSERT OR REPLACE INTO retired (hash, at) VALUES (?, ?)").run(r.hash.toLowerCase(), Date.now());
+        db.exec("DELETE FROM secrets");
+        if (issued.length > 0) db.exec("UPDATE meta SET revision = revision + 1 WHERE id = 1");
+        this.cleared = issued.length;
+      }
       if (db.query("INSERT OR IGNORE INTO meta (id, revision) VALUES (1, 0)").run().changes === 0) return;
       for (const g of STARTING_GROUPS) db.query("INSERT OR IGNORE INTO groups (name, rank, permissions, chat) VALUES (?, ?, ?, ?)").run(g.name, g.rank, g.permissions.join(","), g.chat);
       this.writes++;
