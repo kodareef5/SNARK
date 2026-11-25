@@ -1,6 +1,7 @@
 // The cluster's permissions, kept in permissions.sqlite beside its worlds and shared by them all. Each write raises one
 // revision in the same transaction, so a world that sees the file's stamp change knows by the revision whether to read it.
-// The register (`issued`, `marks`) is apart: it is read a row at a time, and its writes raise no revision.
+// The register (`issued`, `marks`) is apart: it is read a row at a time, and its writes raise no revision. The history of
+// changes is written inside each change's own transaction and read on demand, never held.
 import { Database } from "bun:sqlite";
 import { statSync } from "node:fs";
 import { RANK_ADMIN, RANK_OPEN } from "../../shared/ranks.ts";
@@ -16,6 +17,7 @@ import {
   isWorld,
   type Document,
   type Group,
+  type HistoryRow,
   type Member,
   type MemberKind,
   type PermissionSnapshot,
@@ -39,7 +41,26 @@ const SCHEMA =
   "CREATE TABLE IF NOT EXISTS tags (id TEXT NOT NULL, tag TEXT NOT NULL COLLATE NOCASE, show INTEGER NOT NULL, PRIMARY KEY (id, tag));" +
   "CREATE TABLE IF NOT EXISTS issued (id TEXT PRIMARY KEY, name TEXT NOT NULL, world INTEGER NOT NULL, at INTEGER NOT NULL);" +
   "CREATE INDEX IF NOT EXISTS issued_name ON issued (name COLLATE NOCASE);" +
-  "CREATE TABLE IF NOT EXISTS marks (world INTEGER NOT NULL, kind TEXT NOT NULL, next INTEGER NOT NULL, PRIMARY KEY (world, kind));";
+  "CREATE TABLE IF NOT EXISTS marks (world INTEGER NOT NULL, kind TEXT NOT NULL, next INTEGER NOT NULL, PRIMARY KEY (world, kind));" +
+  "CREATE TABLE IF NOT EXISTS history (seq INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, world INTEGER NOT NULL, name TEXT NOT NULL," +
+  " id TEXT NOT NULL, rank INTEGER NOT NULL, via TEXT NOT NULL, what TEXT NOT NULL, revision INTEGER NOT NULL);";
+
+/** The newest rows of history a store keeps. */
+export const HISTORY_KEPT = 10_000;
+
+export interface StoreOptions {
+  /** The newest rows of history kept; HISTORY_KEPT by default. */
+  readonly historyKept?: number;
+}
+
+const HISTORY_VIAS: readonly string[] = ["session", "page", "operator", "module", "server"];
+const text = (v: unknown): string => (typeof v === "string" ? v : "");
+const num = (v: unknown, or: number): number => (typeof v === "number" && Number.isFinite(v) ? v : or);
+/** A row as read: a damaged field reads as not known rather than hiding the row. */
+const historyOf = (r: Record<string, unknown>): HistoryRow => ({
+  seq: num(r.seq, 0), at: num(r.at, 0), world: num(r.world, 0), name: text(r.name), id: text(r.id), rank: num(r.rank, -1),
+  via: HISTORY_VIAS.includes(text(r.via)) ? (r.via as HistoryRow["via"]) : "", what: text(r.what), revision: num(r.revision, 0),
+});
 
 /** A survivor ID the register knows: its survivor's name and the world it was on, as last known, and when it was first registered. */
 export interface Issued {
@@ -81,10 +102,12 @@ export class PermissionStore {
   private readonly path: string;
   /** Changes made through this object, so a memory store has a stamp. */
   private writes = 0;
+  private readonly historyKept: number;
 
   /** `path` is permissions.sqlite, or ":memory:". The file opens at the first use. */
-  constructor(path: string) {
+  constructor(path: string, opts: StoreOptions = {}) {
     this.path = path;
+    this.historyKept = Math.max(1, Math.floor(opts.historyKept ?? HISTORY_KEPT));
   }
 
   private open(): Database {
@@ -252,6 +275,19 @@ export class PermissionStore {
     this.open()
       .query("INSERT INTO issued (id, name, world, at) VALUES (?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET name = excluded.name, world = excluded.world WHERE name IS NOT excluded.name OR world IS NOT excluded.world")
       .run(row.id, row.name, row.world, row.at);
+  }
+
+  /** Adds a row of history and drops what falls past the newest kept. Call it inside the change's own `transaction`. */
+  putHistory(row: Omit<HistoryRow, "seq">): void {
+    const db = this.open();
+    db.query("INSERT INTO history (at, world, name, id, rank, via, what, revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(row.at, row.world, row.name, row.id, row.rank, row.via, row.what, row.revision);
+    db.query("DELETE FROM history WHERE seq < (SELECT seq FROM history ORDER BY seq DESC LIMIT 1 OFFSET ?)").run(this.historyKept - 1);
+  }
+
+  /** At most `most` rows of history whose seq is below `before`, newest first. */
+  history(before: number, most: number): HistoryRow[] {
+    const rows = this.open().query("SELECT seq, at, world, name, id, rank, via, what, revision FROM history WHERE seq < ? ORDER BY seq DESC LIMIT ?").all(before, most) as Record<string, unknown>[];
+    return rows.map(historyOf);
   }
 
   /** Removes every membership, password and tag that names survivor `id`, and answers how many rows went. */

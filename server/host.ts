@@ -64,7 +64,7 @@ import { Console, OP_ADMIN } from "./console.ts";
 import { Acts, PAGE_ACTOR, sessionActor, type Actor } from "./acts.ts";
 import { PermissionStore } from "./permissions/store.ts";
 import { Permissions, type Acting, type PermissionSubject } from "./permissions/permissions.ts";
-import { memberWorld, type PermissionOp } from "../shared/permissions/model.ts";
+import type { PermissionOp } from "../shared/permissions/model.ts";
 import { changeWords } from "../shared/permissions/commands.ts";
 import { makePassword, passwordHash } from "./permissions/secrets.ts";
 import { applyPlan, type Applied, type ImportPlan } from "./permissions/import.ts";
@@ -1655,19 +1655,16 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     world: permissions.world,
     baseRank: by.baseRank,
     signedIn: by.signedHash ? { id: by.id, hash: by.signedHash } : undefined,
+    id: by.id,
+    via: by.via,
   });
   const changePermissions = (by: Actor, op: PermissionOp): string => {
     register.write();
     const actor = acting(by);
-    const why = permissions.apply(actor, op);
-    if (why === "") {
-      // The group by its own name, not as it was typed.
-      const typed = "group" in op ? op.group : op.op === "tag" ? op.tag : "";
-      const group = permissions.group(typed)?.name ?? typed;
-      const judged = { rank: permissions.actingRank(actor), name: by.name, world: permissions.world };
-      const everyWorld = op.op === "addMember" && permissions.world !== 0 && memberWorld(judged, permissions.group(group)?.rank ?? 0, op.world) === 0;
-      acts.write(by, changeWords("group" in op ? { ...op, group } : op, everyWorld), "change");
-    } else {
+    const { why, words } = permissions.make(actor, op);
+    // The act says it in the words the store's history row does.
+    if (why === "") acts.write(by, words, "change");
+    else {
       // An op from a page may be any JSON: changeWords copes, and the act holds no value of a secret.
       const everyWorld = op?.op === "addMember" && permissions.world !== 0 && op.world === 0;
       acts.refused(by, permissions.actingRank(actor), changeWords(op, everyWorld), why);
@@ -1684,7 +1681,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     const wait = typed === "" ? 0 : guesses.wait(who, world.tick);
     if (wait > 0) return { why: `too many wrong passwords: wait ${Math.ceil(wait / TICK_RATE)} s`, password: "" };
     const password = makePassword();
-    const claimed = permissions.claim(subject.id, passwordHash(password), typed === "" ? "" : passwordHash(typed));
+    const claimed = permissions.claim(subject.id, passwordHash(password), typed === "" ? "" : passwordHash(typed), { name: c.name, rank: c.rank, via: "session" });
     if (claimed.wrong) {
       guesses.wrong(who, world.tick);
       if (++c.cheatAttempts >= CHEAT_GUESSES) game.sessions.reject(c, REJECT_DENIED);

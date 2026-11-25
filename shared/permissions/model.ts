@@ -65,6 +65,29 @@ export interface PermissionSnapshot {
   readonly tags: readonly TagChoice[];
 }
 
+/** How a change reached the store: as an act's `via`, or the server itself, as the register's own deletions do. */
+export type HistoryVia = "session" | "page" | "operator" | "module" | "server";
+
+/** One change as the cluster's history keeps it. It holds no address, no password and no chat block or document. */
+export interface HistoryRow {
+  readonly seq: number;
+  /** Wall-clock milliseconds. */
+  readonly at: number;
+  /** The world it was made on, 0 outside a cluster. */
+  readonly world: number;
+  readonly name: string;
+  /** The actor's survivor ID, or "". */
+  readonly id: string;
+  /** The rank it was judged at, -1 for the server. */
+  readonly rank: number;
+  /** "" where the actor did not say, as a plain actor in a test does not. */
+  readonly via: HistoryVia | "";
+  /** The change in words, as the world's act says it. */
+  readonly what: string;
+  /** The store's revision the change made. */
+  readonly revision: number;
+}
+
 /** Who makes a change: its rank, the world it is on, and a name for the log. */
 export interface PermissionActor {
   readonly rank: number;

@@ -1,6 +1,8 @@
 // A world's view of the cluster's permissions: the whole store held in maps, so every check is lookups. `poll` reads the
 // file again when another world changed it. `apply` is the one door for every change but a survivor's claim of its own
-// password, which is `claim`'s.
+// password, which is `claim`'s. Each change writes its row of history in its own transaction.
+import { actText, type ActVia } from "../../shared/acts.ts";
+import { changeWords } from "../../shared/permissions/commands.ts";
 import { RANK_CLUSTER, RANK_NAMES, RANK_OPEN, RANK_STAFF } from "../../shared/ranks.ts";
 import {
   DEFAULT_GROUP,
@@ -12,6 +14,8 @@ import {
   permissionKey,
   type Document,
   type Group,
+  type HistoryRow,
+  type HistoryVia,
   type Member,
   type MemberKind,
   type PermissionActor,
@@ -51,7 +55,28 @@ export interface Acting extends PermissionActor {
   readonly signedIn?: { readonly id: string; readonly hash: string };
   /** The least rank the whole act needs, as an import needs the top one. */
   readonly needs?: number;
+  /** The actor's survivor ID, or "", and how the change came in, for the history. A plain actor's row says "" for both. */
+  readonly id?: string;
+  readonly via?: ActVia;
 }
+
+/** Who claims a password, for the history: the survivor's name, the rank its session held, and how it asked. */
+export interface Claimant {
+  readonly name: string;
+  readonly rank: number;
+  readonly via: ActVia;
+}
+
+/** What became of a change: "" or why not, and the words its row of history says it in ("" when refused). */
+export interface Made {
+  readonly why: string;
+  readonly words: string;
+}
+
+/** The most rows of history one read answers. */
+export const HISTORY_PAGE_MOST = 500;
+/** The most letters of an actor's name in the history. */
+const NAME_MOST = 64;
 
 /** An account and a group whose standing changed: a survivor's ID or a tribe's number, "" for a group alone, and "" for none. */
 export interface Changed {
@@ -330,8 +355,14 @@ export class Permissions {
    * or the reason it was not made.
    */
   apply(actor: Acting, op: PermissionOp): string {
+    return this.make(actor, op).why;
+  }
+
+  /** As `apply`, and answers the words the change was written into the history in, for the world's act to use. */
+  make(actor: Acting, op: PermissionOp): Made {
     let reason = "";
     let was = "";
+    let words = "";
     let judged: PermissionActor = actor;
     try {
       this.store.transaction(() => {
@@ -339,14 +370,19 @@ export class Permissions {
         judged = { rank: this.actingRank(actor), world: actor.world, name: actor.name };
         const needs = actor.needs ?? RANK_OPEN;
         was = op?.op === "clearSecret" ? this.secretOf(op.id) : "";
-        reason = (judged.rank < needs ? `That needs the ${RANK_NAMES[needs]} rank.` : "") || editRule(judged, op, this.look) || this.change(judged, op);
-        if (!reason) this.written();
+        reason = (judged.rank < needs ? `That needs the ${RANK_NAMES[needs]} rank.` : "") || editRule(judged, op, this.look);
+        // Worked out before the change, so a group removed is still named as it was kept.
+        if (!reason) words = this.wordsOf(judged, op);
+        reason ||= this.change(judged, op);
+        if (reason) return;
+        this.written();
+        if (op.op !== "tag") this.wrote(actor.name, actor.id ?? "", judged.rank, actor.via ?? "", words);
       });
     } catch {
       this.load(this.store.read());
-      return "The permissions could not be written.";
+      return { why: "The permissions could not be written.", words: "" };
     }
-    if (reason) return reason;
+    if (reason) return { why: reason, words: "" };
     if (was !== "" && "id" in op) this.retire(op.id, was);
     if (op.op !== "tag") {
       const typed = "group" in op ? op.group : "";
@@ -355,7 +391,7 @@ export class Permissions {
     this.stampSeen = this.store.stamp();
     this.version++;
     this.onApplied?.(judged, op);
-    return "";
+    return { why: "", words };
   }
 
   /**
@@ -363,7 +399,7 @@ export class Permissions {
    * needs a staff group on some world. One that has a password already gives it, as the hash `given` ("" for none), to
    * replace it. Judged by the store as it stands inside the write.
    */
-  claim(id: string, hash: string, given: string): Claim {
+  claim(id: string, hash: string, given: string, by: Claimant = { name: "", rank: RANK_OPEN, via: "session" }): Claim {
     let why = "";
     let wrong = false;
     let was = "";
@@ -391,6 +427,7 @@ export class Permissions {
         this.store.putSecret(secret);
         this.secrets.set(id, secret);
         this.written();
+        this.wrote(by.name, id, by.rank, by.via, "claimed their own password");
       });
     } catch {
       this.load(this.store.read());
@@ -438,7 +475,11 @@ export class Permissions {
           if (had !== undefined && r.teams > had) dropped += this.store.dropTribes(r.origin * TEAM_RANGE + had, r.origin * TEAM_RANGE + r.teams);
           this.store.raiseMark(r.origin, "team", r.teams);
         }
-        if (dropped > 0) this.store.raise();
+        if (dropped > 0) {
+          const revision = this.store.raise();
+          const what = `took out ${dropped} ${dropped === 1 ? "row" : "rows"} that named survivor IDs or team numbers before they were made`;
+          this.store.putHistory({ at: now, world: this.world, name: "(server)", id: "", rank: -1, via: "server", what, revision });
+        }
       });
     } catch {
       return null;
@@ -451,6 +492,11 @@ export class Permissions {
       }
     }
     return dropped;
+  }
+
+  /** At most `most` rows of the cluster's history whose seq is below `before`, newest first, read from the store. */
+  history(before = Number.MAX_SAFE_INTEGER, most = 50): HistoryRow[] {
+    return this.store.history(before, Math.max(1, Math.min(HISTORY_PAGE_MOST, Math.floor(most) || 1)));
   }
 
   /** The register's row for survivor ID `id`, or null where no world issued it. */
@@ -488,6 +534,22 @@ export class Permissions {
     this.dropExpired(now);
     this.nextEdge = this.edgeAfter(now);
     this.revision = this.store.raise();
+  }
+
+  /** Inside a write, after `written`: the row of history for the change it made. */
+  private wrote(name: string, id: string, rank: number, via: HistoryVia | "", what: string): void {
+    this.store.putHistory({ at: this.now(), world: this.world, name: actText(name, NAME_MOST), id, rank, via, what, revision: this.revision });
+  }
+
+  /**
+   * A change as the history and the world's act say it: the group by its own name, and "all" for a membership that holds
+   * on every map of a cluster.
+   */
+  private wordsOf(judged: PermissionActor, op: PermissionOp): string {
+    const typed = "group" in op ? op.group : "";
+    const group = this.group(typed)?.name ?? typed;
+    const everyWorld = op.op === "addMember" && this.world !== 0 && memberWorld(judged, this.group(group)?.rank ?? 0, op.world) === 0;
+    return changeWords("group" in op ? { ...op, group } : op, everyWorld);
   }
 
   private readonly look: RuleLook = {
