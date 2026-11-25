@@ -1,6 +1,6 @@
 // The editor's code comes as its own file (client/core/editor-load.ts). This file does not read it first, as a page does
-// not: the plan messages sent before it come are kept and read in order, the file is asked for only once a piece is in
-// hand, and a click made while it came is given to it.
+// not: the plan messages sent before it come are kept and read in order, the file is asked for only once the hotbar
+// holds a piece, and a click made while it came is given to it.
 
 import { expect, test } from "bun:test";
 import { App } from "../../client/core/app.ts";
@@ -11,6 +11,7 @@ import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { PLAN_OK, makePlanReport, writePlanReport } from "../../shared/net/plan.ts";
 import { BOX_SELF, CMD_MOVE, S_PLAN_GONE, S_PLAN_REPORT } from "../../shared/net/protocol.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
+import { HOTBAR_SLOTS } from "../../shared/sim/items.ts";
 import { ACT_EQUIP, ACT_NONE } from "../../shared/sim/weapon.ts";
 import { flatGround } from "../fixtures/arena.ts";
 import { Harness } from "../fixtures/net.ts";
@@ -42,7 +43,7 @@ test("plan messages sent before the plans' code has come are kept, and read in t
   expect([plansWaiting(s), plansOf(s).reports, plansOf(s).report.seq]).toEqual([false, 2, 8]);
 });
 
-test("the editor is asked for once a piece is in hand, and the click made while it came sets the piece down", async () => {
+test("the editor is asked for once the hotbar holds a piece, and a click made before it came sets the piece down", async () => {
   const h = new Harness({}, 1, 60, { dev: true });
   const app = new App(h.join("ada", {}, { manual: true }), h.reg, parsePack(corePackBytes()));
   const run = (ms: number): void => h.run(ms, (now) => void app.frame(now, 1280, 720));
@@ -58,11 +59,13 @@ test("the editor is asked for once a piece is in hand, and the click made while 
   h.host.items.mint(rec, piece, 3);
   run(200);
   const inv = s.inventory!, from = inv.item.indexOf(piece);
-  s.command(CMD_MOVE, (w) => (w.bits(BOX_SELF, 1), w.varint(from), w.bits(BOX_SELF, 1), w.varint(inv.hotbar), w.u16(0), w.u16(piece)));
-  run(150);
-  // Nothing in hand that builds: nothing is fetched.
+  // Pieces in the bag and none in the hotbar: nothing is fetched.
+  expect(from < inv.hotbar || from >= inv.hotbar + HOTBAR_SLOTS).toBe(true);
   await Bun.sleep(20);
   expect([app.builder, app.hammer, editorNow()]).toEqual([null, null, null]);
+  // Into the hotbar, the code is asked for; it comes while the page goes on.
+  s.command(CMD_MOVE, (w) => (w.bits(BOX_SELF, 1), w.varint(from), w.bits(BOX_SELF, 1), w.varint(inv.hotbar), w.u16(0), w.u16(piece)));
+  run(150);
   app.key("Digit1", true);
   app.controls.yaw = 0;
   app.controls.pitch = Math.atan2(-1.62, 5);

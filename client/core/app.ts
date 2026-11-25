@@ -61,6 +61,7 @@ import { Lasers } from "./render/laser.ts";
 import { Viewpoint } from "./viewpoint.ts";
 import { Orbit } from "./orbit.ts";
 import { CLOSED_BAD_CONTENT, CLOSED_BAD_VERSION, RemoteSample, type ClientSession } from "./session.ts";
+import { HOTBAR_SLOTS } from "../../shared/sim/items.ts";
 import type { Builder } from "./build.ts";
 import { FALL_FADE, FALL_NEAR, GHOST_BAD, GHOST_OK, GHOST_SLOT, OTHERS_FADE, buildReason } from "./build-words.ts";
 import { askEditor, editorNow, editsWith, plansWaiting, readHeldPlans, type EditorCode } from "./editor-load.ts";
@@ -331,12 +332,23 @@ export class App {
   private earlyTap = 0;
   private earlySource = 0;
 
-  /** Asks for the editor's code where a piece or the hammer is in hand, or a plan has been sent. */
+  /**
+   * Asks for the editor's code once the hotbar holds a piece or the hammer, so it has mostly come by the time one is
+   * taken in hand, or once a plan has been sent.
+   */
   private wantEditor(session: ClientSession): void {
-    const inv = session.inventory, slot = inv && inv.hotbar >= 0 && session.held >= 0 ? inv.hotbar + session.held : -1;
-    const item = slot >= 0 && inv!.count[slot]! > 0 ? inv!.item[slot]! : 0;
-    if (editsWith(this.reg, item) || plansWaiting(session)) void askEditor().then((code) => this.takeEditor(code), () => {});
+    if (this.editorAsked) return;
+    const inv = session.inventory;
+    let wanted = plansWaiting(session);
+    for (let i = 0; inv && inv.hotbar >= 0 && !wanted && i < HOTBAR_SLOTS; i++) {
+      const slot = inv.hotbar + i;
+      wanted = slot < inv.cap && inv.count[slot]! > 0 && editsWith(this.reg, inv.item[slot]!);
+    }
+    if (!wanted) return;
+    this.editorAsked = true;
+    void askEditor().then((code) => this.takeEditor(code), () => (this.editorAsked = false));
   }
+  private editorAsked = false;
 
   /** The builder and hammer, made from the editor's code and joined to the rest of the app. */
   takeEditor(code: EditorCode): void {

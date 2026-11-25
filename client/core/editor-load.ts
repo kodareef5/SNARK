@@ -1,5 +1,5 @@
 // Build mode, the template hammer and the plans it draws are the editor, which comes as a file of its own (editor.ts),
-// asked for when a piece or the hammer is first in hand or a plan is first sent: a survivor who only drives or looks
+// asked for when a piece or the hammer is first in the hotbar or a plan is first sent: a survivor who only drives or looks
 // round never fetches it. Until it has come the app has no builder and no hammer, and the plan messages the server sends
 // are kept here, to be read in the order they came.
 
