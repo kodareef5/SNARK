@@ -28,7 +28,7 @@ export interface TierRecipe {
   split(name: string, form: FormDef, level: number): Shape | null;
   /**
    * What is drawn where its pieces meet and is no piece, each by its name with every level: `joint_sq`, `joint_r15`,
-   * `joint_r21`, `skirt` and `ridge`, as client/core/render/trims.ts finds them. A trim is cut nowhere.
+   * `joint_r21`, `skirt`, `ridge`, `eave`, `hip` and `saddle`, as client/core/render/trims.ts finds them. A trim is cut nowhere.
    */
   trims?(): Record<string, Shape[]>;
 }

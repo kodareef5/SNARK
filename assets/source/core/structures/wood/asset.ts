@@ -1,5 +1,5 @@
 // The wood tier's building pieces, made by the wood recipe (tools/pack/pieces/wood.ts) from the forms content places
-// and the forms to come, and its trims: the joints at corners, the skirt and the ridge. `bun run art -- core:wood`
+// and the forms to come, and its trims: the joints at corners, the skirt, the ridge, the hip and its saddle. `bun run art -- core:wood`
 // builds them with no Blender. Each replaces the grey box of the structure with its id; a form no kind uses yet and
 // a trim are in the pack for the lanes that draw them.
 // model.py and parts.py are what the recipe was ported from, kept until every tier is made this way.

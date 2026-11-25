@@ -16,6 +16,7 @@
 import { REGION_BASE, defaultPalette, nearestColour } from "../../../shared/pack/palette.ts";
 import { HALF_SIDE_M, outlineBox, type FormDef } from "../../../shared/world/lattice/forms.ts";
 import type { SourceLod, SourceMesh } from "../write.ts";
+import { HIP_FALL, HIP_FROM, SADDLE_FOOT, alongHip, onHip, revolve } from "./hips.ts";
 import { Shape, add, clip, clipTo, cross, flatLod, inset, mirror, place, planeAt, planeMoved, rimStrips, scale, slabOn, sub, unit, uprightPlane, type FaceMap, type Flat, type SlabMap, type Uv, type Vec } from "./kit.ts";
 import { errorOf, levelsOf, planOf, type TierRecipe } from "./lod.ts";
 import { FACE_PLAIN, FACE_WEARS } from "../../../client/core/render/piece-fit.ts";
@@ -1717,14 +1718,17 @@ function skirt(level: number): Shape {
   return p;
 }
 
+/** How far a ridge flashing runs past each end of its side: an open end stands proud of the roofs' ends, closed by a stop end, and the client lays an end square where the next ridge runs on. */
+const RIDGE_PROUD = 0.02;
+
 /**
  * A ridge flashing: two wings of sheet at the roofs' pitch, hemmed down to the sheet at their edges, under a roll along
  * the ridge, bolted through to each roof. It lies along x on the ridge's own line, which is at its origin's height.
- * No client draws it yet.
  */
 function ridgeCap(level: number): Shape {
   const p = new Shape();
   const [wide, top, pitch] = [0.24, 0.09, 0.5];
+  const H = HALF_SIDE_M + RIDGE_PROUD;
   const tip = top - wide * pitch;
   if (level === 3) {
     p.faces.push({ points: [[-H, wide, 0.02], [-H, -wide, 0.02], [H, -wide, 0.02], [H, wide, 0.02]], uvs: [NO_UV, NO_UV, NO_UV, NO_UV], mat: "trim" });
@@ -1749,7 +1753,51 @@ function metalTrims(): Record<string, Shape[]> {
     joint_r21: levels((level) => tubePost(level, 0.21, 0)),
     skirt: levels(skirt),
     ridge: levels(ridgeCap),
+    hip: levels(hipCap),
+    saddle: levels(apexCap),
   };
+}
+
+/** A hip's capping between two roofs: half its width, its top over the line, and how far its hem reaches under a falling face's sheet. */
+const HIP_CAP = { half: 0.075, top: 0.062, hem: 0.004 } as const;
+
+/**
+ * The capping on a hip between two roofs: a flashing over the two half seams along the side the two share, its wings
+ * falling as a triangle's face does and hemmed down to the sheet, a roll along its top and bolts through to each roof.
+ * From the eaves' corner up to the high corner. Where a square's level face lies beside it, its hem is in that face's deck.
+ */
+function hipCap(level: number): Shape {
+  const p = new Shape();
+  const { half: w, top, hem } = HIP_CAP;
+  const fall = (y: number): number => top - HIP_FALL * Math.abs(y);
+  const foot = -HIP_FALL * w + hem;
+  const trim = (): readonly ["trim", Uv] => ["trim", NO_UV];
+  if (level === 3) {
+    p.faces.push({ points: [onHip(HIP_FROM, -w, fall(w)), onHip(H, -w, fall(w)), onHip(H, w, fall(w)), onHip(HIP_FROM, w, fall(w))], uvs: [NO_UV, NO_UV, NO_UV, NO_UV], mat: "trim" });
+    return p;
+  }
+  if (level === 2) return alongHip(p, [[0, top], [-w, foot], [w, foot]], HIP_FROM, H, trim, trim);
+  // Solid to its hem, the seams under it: a hollow under its wings would show where a square's face lies level beside it.
+  alongHip(p, [[0, top], [w, fall(w)], [w, foot], [-w, foot], [-w, fall(w)]], HIP_FROM, H, trim, trim);
+  if (level === 1) return p;
+  alongHip(p, [[0, top + 0.03], [0.035, top - 0.012], [-0.035, top - 0.012]], HIP_FROM, H, trim, trim);
+  for (const x of [-1.2, -0.4, 0.4, 1.2]) for (const s of [-1, 1]) stud(p, onHip(x, s * 0.05, fall(0.05)), [0, s * HIP_FALL, 1], 0.016, 0.008);
+  return p;
+}
+
+/**
+ * The saddle on a high corner hips end at: a spun cap over the hips' cappings and a ridge's end, its foot in every face
+ * round the corner, under a bolted boss. It stands about its corner, at the corner's height.
+ */
+function apexCap(level: number): Shape {
+  const p = new Shape();
+  const trim = (): readonly ["trim", Uv] => ["trim", NO_UV];
+  if (level === 3) return revolve(p, [[0.17, SADDLE_FOOT(0.17)], [0.02, 0.15]], 3, trim, trim);
+  if (level === 2) return revolve(p, [[0.17, SADDLE_FOOT(0.17)], [0.07, 0.15]], 4, trim, trim);
+  if (level === 1) return revolve(p, [[0.16, SADDLE_FOOT(0.16)], [0.16, 0.03], [0.04, 0.15]], 8, trim, trim);
+  revolve(p, [[0.16, SADDLE_FOOT(0.16)], [0.16, 0.03], [0.13, 0.09], [0.04, 0.145], [0.04, 0.17]], 12, trim, trim);
+  stud(p, [0, 0, 0.17], [0, 0, 1], 0.02, 0.012);
+  return p;
 }
 
 /** The forms past the first nine, by name: each is built from its row's numbers alone. */

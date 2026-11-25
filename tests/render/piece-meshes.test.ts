@@ -513,9 +513,9 @@ test("with no strips, every wood wall ends flat on its collider's ends at every 
   }
 });
 
-test("wood's trims are the five the client looks for, within their budgets, and closed but where two triangles are a sheet", () => {
+test("wood's trims are the seven the client looks for, within their budgets, and closed but where two triangles are a sheet", () => {
   const trims = trimShapes(WOOD);
-  expect(trims.map((m) => m.id)).toEqual(["core:joint_sq_wood", "core:joint_r15_wood", "core:joint_r21_wood", "core:skirt_wood", "core:ridge_wood"]);
+  expect(trims.map((m) => m.id)).toEqual(["core:joint_sq_wood", "core:joint_r15_wood", "core:joint_r21_wood", "core:skirt_wood", "core:ridge_wood", "core:hip_wood", "core:saddle_wood"]);
   for (const mesh of trims) {
     const most = TRIM_TRIANGLES[mesh.id.slice(5, -5)]!;
     expect(mesh.lods.length, mesh.id).toBe(most.length);
@@ -558,7 +558,7 @@ test("a skirt hangs 2.4 m from the middle of a side, 0.12 m out, and a ridge lie
   expect(box("skirt").map((v) => v || 0)).toEqual([-1.5, 1.5, -2.4, 0, 0, 0.13]);
   expect(box("skirt", 1).map((v) => v || 0)).toEqual([-1.5, 1.5, -2.4, 0, 0, 0.12]);
   const ridge = box("ridge");
-  expect([ridge[0], ridge[1]]).toEqual([-1.5, 1.5]);
+  expect([ridge[0], ridge[1]]).toEqual([-1.52, 1.52]);
   expect(ridge[3]!).toBeLessThanOrEqual(0.13);
   expect(Math.max(-ridge[4]!, ridge[5]!)).toBeLessThanOrEqual(0.22);
 });
@@ -836,7 +836,7 @@ test("a thatch skirt is a bank under the crib, 2.4 m down from the foundation's 
     expect(skirt[4]!, `level ${level}`).toBeGreaterThanOrEqual(level < 3 ? 0 : 0.049);
     expect(skirt[5]!, `level ${level}`).toBeLessThanOrEqual(0.12);
     const ridge = box("ridge", level);
-    expect([ridge[0], ridge[1]]).toEqual([-1.5, 1.5]);
+    expect([ridge[0], ridge[1]].map((v) => Math.round(v * 1e4) / 1e4)).toEqual([-1.52, 1.52]);
     // It stands no higher than 0.11 m over the ridge's line and lies 0.27 m down each roof.
     expect(ridge[3]!, `level ${level}`).toBeLessThanOrEqual(0.111);
     expect(Math.max(-ridge[4]!, ridge[5]!), `level ${level}`).toBeLessThanOrEqual(0.2701);
@@ -883,7 +883,7 @@ const STONE_NEW_MOST: Record<string, readonly number[]> = {
   gate: [864, 276, 96, 12],
 };
 /** Stone's trims at each level on the same day, under what a trim may cost. */
-const STONE_TRIM_MOST: Record<string, readonly number[]> = { joint_sq: [132, 36, 12, 8], joint_r15: [116, 44, 12, 8], joint_r21: [116, 44, 12, 8], skirt: [104, 28, 8, 2], ridge: [50, 20, 8, 2] };
+const STONE_TRIM_MOST: Record<string, readonly number[]> = { joint_sq: [132, 36, 12, 8], joint_r15: [116, 44, 12, 8], joint_r21: [116, 44, 12, 8], skirt: [104, 28, 8, 2], ridge: [50, 20, 8, 2], hip: [112, 12, 8, 2], saddle: [140, 44, 12, 8] };
 
 const stonePlanned = Object.entries(PLANNED).map(([name, form]) => ({ name, form, shapes: levelsOf(STONE, name, form) }));
 
@@ -999,9 +999,9 @@ test("every stone wall, old and new, ends flat on its collider's ends at every l
   }
 });
 
-test("stone's trims are the five the client looks for, within their budgets, and closed but where two triangles are a sheet", () => {
+test("stone's trims are the seven the client looks for, within their budgets, and closed but where two triangles are a sheet", () => {
   const trims = trimShapes(STONE);
-  expect(trims.map((m) => m.id)).toEqual(["core:joint_sq_stone", "core:joint_r15_stone", "core:joint_r21_stone", "core:skirt_stone", "core:ridge_stone"]);
+  expect(trims.map((m) => m.id)).toEqual(["core:joint_sq_stone", "core:joint_r15_stone", "core:joint_r21_stone", "core:skirt_stone", "core:ridge_stone", "core:hip_stone", "core:saddle_stone"]);
   for (const mesh of trims) {
     const most = STONE_TRIM_MOST[mesh.id.slice(5, -6)]!;
     expect(mesh.lods.length, mesh.id).toBe(most.length);
@@ -1071,7 +1071,7 @@ test("a stone skirt hangs 2.4 m from just under a foundation's top, 0.12 m out, 
   expect(box("skirt", 1)).toEqual([-1.62, 1.62, -2.4, -0.02, 0, 0.12]);
   expect(box("skirt", 2)).toEqual([-1.5, 1.5, -2.4, -0.02, 0, 0.12]);
   const ridge = box("ridge");
-  expect([ridge[0], ridge[1]]).toEqual([-1.5, 1.5]);
+  expect([ridge[0], ridge[1]]).toEqual([-1.52, 1.52]);
   expect(ridge[3]!).toBeLessThanOrEqual(0.13);
   expect(Math.max(-ridge[4]!, ridge[5]!)).toBeLessThanOrEqual(0.22);
 });
@@ -1267,7 +1267,7 @@ test("no face of a near level of a new metal form crosses a ring it yields at bu
 test("every new metal level is closed, flat, in the made piece's budget and no dearer than it was or than its like", () => {
   const first = new Map(bakeMetal(FORMS).map((m) => [m.id.slice(5, -6), m.lods.map((lod) => lod.indices.length / 3)] as const));
   const meshes = bakeMetal(PLANNED);
-  expect(bakeMetal({ ...FORMS, ...PLANNED }, true).length).toBe(39);
+  expect(bakeMetal({ ...FORMS, ...PLANNED }, true).length).toBe(41);
   for (const mesh of meshes) {
     const name = mesh.id.slice(5, -6);
     const most = METAL_NEW_MOST[name]!, like = first.get(METAL_LIKE[name] ?? ""), spare = METAL_OVER[name];
@@ -1369,9 +1369,9 @@ test("a metal roof reads its row: where the row stands its slab on its corner he
   }
 });
 
-test("metal's trims are the five the client looks for, within their budgets, slate and bolts, closed but where two triangles are a sheet", () => {
+test("metal's trims are the seven the client looks for, within their budgets, slate and bolts, closed but where two triangles are a sheet", () => {
   const trims = bakeMetal({}, true);
-  expect(trims.map((m) => m.id)).toEqual(["core:joint_sq_metal", "core:joint_r15_metal", "core:joint_r21_metal", "core:skirt_metal", "core:ridge_metal"]);
+  expect(trims.map((m) => m.id)).toEqual(["core:joint_sq_metal", "core:joint_r15_metal", "core:joint_r21_metal", "core:skirt_metal", "core:ridge_metal", "core:hip_metal", "core:saddle_metal"]);
   for (const mesh of trims) {
     const most = TRIM_TRIANGLES[mesh.id.slice(5, -6)]!;
     expect(mesh.lods.length, mesh.id).toBe(most.length);
@@ -1427,7 +1427,7 @@ test("a metal skirt hangs 2.4 m from a side's middle, 0.12 m out, and mitres 0.1
   for (const p of finest) if (Math.abs(p[0]) > 1.5 + 1e-9) expect(Math.abs(p[0]) - 1.5 <= -p[1] + 1e-9 && -p[1] <= 0.113 + 1e-9 && p[2] <= -0.026 + 1e-9).toBe(true);
   for (let level = 0; level < 4; level++) {
     const ridge = box("ridge", level);
-    expect([ridge[0], ridge[1]]).toEqual([-1.5, 1.5]);
+    expect([ridge[0], ridge[1]]).toEqual([-1.52, 1.52]);
     expect(ridge[3]!, `level ${level}`).toBeLessThanOrEqual(0.12);
     expect(Math.max(-ridge[4]!, ridge[5]!), `level ${level}`).toBeLessThanOrEqual(0.24);
   }

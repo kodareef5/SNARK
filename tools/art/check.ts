@@ -74,7 +74,7 @@ export const MADE_PIECE_TRIANGLES = [[0, 1600], [20, 560], [60, 160], [150, 40],
  * What a tier's trims may cost at each of their four levels: a joint, of which a base has one a corner, a skirt, a
  * ridge and an eave. Their two coarsest levels are open where nothing sees them: a joint has no top or foot, a skirt is its face.
  */
-export const TRIM_TRIANGLES: Readonly<Record<string, readonly number[]>> = { joint_sq: [160, 48, 12, 8], joint_r15: [160, 48, 12, 8], joint_r21: [160, 48, 12, 8], skirt: [120, 32, 8, 2], ridge: [96, 24, 8, 2], eave: [120, 32, 8, 2] };
+export const TRIM_TRIANGLES: Readonly<Record<string, readonly number[]>> = { joint_sq: [160, 48, 12, 8], joint_r15: [160, 48, 12, 8], joint_r21: [160, 48, 12, 8], skirt: [120, 32, 8, 2], ridge: [96, 24, 8, 2], eave: [120, 32, 8, 2], hip: [120, 32, 8, 2], saddle: [160, 48, 12, 8] };
 /** Metres on medium a building piece keeps its materials to at least, so a base does not go flat across a yard. */
 export const PIECE_TEXTURED = 80;
 /** What a landmark's 16 m cell of its ship or building may draw from each distance on medium: five building pieces' worth. */
