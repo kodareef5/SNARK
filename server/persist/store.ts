@@ -8,7 +8,6 @@ import type { Registry } from "../../shared/content/registry.ts";
 import { CHUNK_SIZE, STRUCT_UNITS, chunkCx, chunkCz } from "../../shared/coords.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { ROW_BITS_MOST, ROW_FREE, ROW_KEYED, RowCoder } from "../../shared/world/rows.ts";
-import { STOREY_LEVELS } from "../../shared/world/lattice/forms.ts";
 import { PUT_FREE, type StructureStore } from "../../shared/world/structures.ts";
 import type { EntityRecord } from "../records.ts";
 import { mkdirSync } from "node:fs";
@@ -104,59 +103,6 @@ function rowsIn(data: Uint8Array): number {
   }
   const n = r.varint();
   return r.overflow ? 0 : n;
-}
-
-/** A save's chunks as read: each one's changed map slots, its rows in order, and the cells each base's rows will take. */
-class SavedRows {
-  n = 0;
-  /** Per chunk read: its changed map slots as [slot, flags, kind, hp, owner], and the frames its rows name. */
-  readonly changed: [number, number, number, number, number][][] = [];
-  readonly named: number[][] = [];
-  /** Chunk c's rows are [first[c], first[c + 1]). */
-  readonly first: number[] = [0];
-  readonly cells = new Map<number, number>();
-  readonly slot: Uint32Array;
-  readonly form: Uint8Array;
-  readonly kind: Uint16Array;
-  readonly saved: Uint16Array;
-  readonly owner: Uint32Array;
-  /** Its health, for a row of a kind this build has. */
-  readonly hp: Float32Array;
-  /** A free row's x, y and z, or a keyed row's frame and key. */
-  readonly a: Float64Array;
-  readonly b: Float64Array;
-  readonly c: Float64Array;
-  readonly yaw: Uint16Array;
-
-  /** Room for `cap` rows; more grow it. */
-  constructor(cap: number) {
-    this.slot = new Uint32Array(cap);
-    this.form = new Uint8Array(cap);
-    this.kind = new Uint16Array(cap);
-    this.saved = new Uint16Array(cap);
-    this.owner = new Uint32Array(cap);
-    this.hp = new Float32Array(cap);
-    this.a = new Float64Array(cap);
-    this.b = new Float64Array(cap);
-    this.c = new Float64Array(cap);
-    this.yaw = new Uint16Array(cap);
-  }
-
-  /** Keeps the row the coder has just read, its health out of `maxHp`. */
-  push(r: RowCoder, maxHp: Float32Array): void {
-    const i = this.n++;
-    this.slot[i] = r.slot;
-    this.form[i] = r.form;
-    this.kind[i] = r.kind;
-    this.saved[i] = r.saved;
-    this.owner[i] = r.owner;
-    this.hp[i] = r.kind === 0 ? 0 : r.health(maxHp[r.kind]!);
-    const free = r.form === ROW_FREE;
-    this.a[i] = free ? r.x : r.fr;
-    this.b[i] = free ? r.y : r.k0;
-    this.c[i] = free ? r.z : r.k1;
-    this.yaw[i] = free ? r.yaw : 0;
-  }
 }
 
 // chunk_blobs holds per-chunk state other than structures, keyed by tag. transfers holds what left this world for another
@@ -514,97 +460,53 @@ export class WorldStore {
       this.framesSaved.set(f.gid, f.team);
     }
     structs.frames.next = Math.max(structs.frames.next, Number(this.meta("frame_next") ?? 0));
-    const blobs = this.db.query("SELECT chunk, version, data FROM chunk_structs").all() as { chunk: number; version: number; data: Uint8Array }[];
-    // Every chunk is read before any is laid, so each base's cells are counted and its table made once at its size.
-    const saved = this.read(structs, blobs);
-    const forms = structs.forms;
-    for (const [gid, n] of saved.cells) structs.occupied.reserve(gid, n);
-    structs.reserveGrid(saved.n);
-    for (let c = 0; c < blobs.length; c++) {
-      const { chunk, version } = blobs[c]!;
+    const rows = this.db.query("SELECT chunk, version, data FROM chunk_structs").all() as { chunk: number; version: number; data: Uint8Array }[];
+    const coder = this.coder(structs);
+    // The chunks' heads say how many rows each holds, so the tables and the grid are made their size before the rows come.
+    const counts = rows.map((row) => rowsIn(row.data));
+    structs.reserveGrid(counts.reduce((sum, n) => sum + n, 0));
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i]!;
+      const chunk = row.chunk;
+      const named: number[] = [];
       // A kind this build lacks is left out, and counted where the operator chose to go on without it.
       const lost = (kind: number): void => {
         if (!this.allowMissing) return;
         this.codec.drop(kind, 1);
         this.dropped.chunks.add(chunk);
       };
-      for (const [slot, flags, kind, hp, owner] of saved.changed[c]!) {
-        const now = flags & SLOT_EMPTY ? 0 : flags & SLOT_KIND ? this.toRuntime[kind]! : structs.mapKind(chunk, slot);
-        if (now === 0 && flags & SLOT_KIND) lost(kind);
-        structs.putMapped(chunk, slot, now, now === 0 ? 0 : owner, now === 0 ? 0 : flags & SLOT_HP ? hp : this.maxHp[now]!, version);
-      }
-      const first = saved.first[c]!;
-      const end = saved.first[c + 1]!;
-      if (end > first) structs.reserve(chunk, (structs.chunks[chunk]?.mapped ?? 0) + (end - first));
-      for (let i = first; i < end; i++) {
-        const now = saved.kind[i]!;
-        if (now === 0) {
-          lost(saved.saved[i]!);
-          continue;
-        }
-        const hp = saved.hp[i]!;
-        const slot = saved.slot[i]!;
-        if (saved.form[i] === ROW_FREE) {
-          structs.put(chunk, slot, now, saved.a[i]!, saved.b[i]!, saved.c[i]!, saved.yaw[i]!, saved.owner[i]!, hp, version, PUT_FREE);
-          continue;
-        }
-        const fr = saved.a[i]!;
-        const k0 = saved.b[i]!;
-        const k1 = saved.c[i]!;
-        const at = forms ? structs.keyedPose(chunk, now, fr, k0, k1) : null;
-        if (!at) throw new Error(`chunk ${chunk}: the piece in slot ${slot} was saved by a key that is no slot of its form in a frame the save has: old saves are not read, so start a new save`);
-        structs.put(chunk, slot, now, at.x / STRUCT_UNITS, at.y / STRUCT_UNITS, at.z / STRUCT_UNITS, at.yaw, saved.owner[i]!, hp, version, fr, k0, k1);
-      }
-      const named = saved.named[c]!;
-      if (named.length > 0) this.chunkFrames.set(chunk, named);
-      structs.setVersion(chunk, version);
-    }
-    // A frame all of whose rows were left out stands in no chunk. The save lets go of it when its chunk is next written.
-    for (const gid of this.framesSaved.keys()) structs.frames.drop(gid);
-    return structs.count;
-  }
-
-  /** Reads every saved chunk's structures, changing nothing: what loadChunks then lays, chunk by chunk in the same order. */
-  private read(structs: StructureStore, blobs: readonly { chunk: number; data: Uint8Array }[]): SavedRows {
-    const coder = this.coder(structs);
-    const forms = structs.forms;
-    let rows = 0;
-    for (const blob of blobs) rows += rowsIn(blob.data);
-    const out = new SavedRows(rows);
-    let lastFr = 0;
-    let lastCells = 0;
-    for (const blob of blobs) {
-      const chunk = blob.chunk;
-      const changed: [number, number, number, number, number][] = [];
-      const named: number[] = [];
-      readChunk(chunk, blob.data, coder, chunkCx(structs.dims, chunk) * CHUNK_SIZE, chunkCz(structs.dims, chunk) * CHUNK_SIZE, {
+      readChunk(chunk, row.data, coder, chunkCx(structs.dims, chunk) * CHUNK_SIZE, chunkCz(structs.dims, chunk) * CHUNK_SIZE, {
         head: (mapped) => {
           const here = structs.chunks[chunk]?.mapped ?? 0;
           if (mapped !== here) throw new Error(`chunk ${chunk}: saved over ${mapped} pieces of the map's, and this map sets down ${here} there`);
         },
-        changed: (slot, flags, kind, hp, owner) => void changed.push([slot, flags, kind, hp, owner]),
+        changed: (slot, flags, kind, hp, owner) => {
+          const now = flags & SLOT_EMPTY ? 0 : flags & SLOT_KIND ? this.toRuntime[kind]! : structs.mapKind(chunk, slot);
+          if (now === 0 && flags & SLOT_KIND) lost(kind);
+          structs.putMapped(chunk, slot, now, now === 0 ? 0 : owner, now === 0 ? 0 : flags & SLOT_HP ? hp : this.maxHp[now]!, row.version);
+        },
         built: (r) => {
-          if (r.form === ROW_KEYED && named[named.length - 1] !== r.fr && !named.includes(r.fr)) named.push(r.fr);
-          // More rows than the heads said are bytes that are not a save's, which readChunk refuses.
-          if (out.n === out.slot.length) throw new Error(`chunk ${chunk}: unreadable structure data`);
-          out.push(r, this.maxHp);
-          if (r.form !== ROW_KEYED || r.kind === 0 || !forms || !(r.kind < forms.cls.length) || forms.cls[r.kind]! < 0) return;
-          // The cells its entry takes, as formCells lists them.
-          const n = forms.def[r.kind]!.cells?.length ?? Math.ceil(forms.reach[r.kind]! / STOREY_LEVELS);
-          if (r.fr !== lastFr) {
-            if (lastFr !== 0) out.cells.set(lastFr, lastCells);
-            lastFr = r.fr;
-            lastCells = out.cells.get(r.fr) ?? 0;
+          // Room for the chunk's rows, once its changed map slots are laid.
+          if (counts[i]! > 0) {
+            structs.reserve(chunk, (structs.chunks[chunk]?.mapped ?? 0) + counts[i]!);
+            counts[i] = 0;
           }
-          lastCells += n;
+          const now = r.kind;
+          if (r.form === ROW_KEYED && named[named.length - 1] !== r.fr && !named.includes(r.fr)) named.push(r.fr);
+          if (now === 0) return lost(r.saved);
+          const hp = r.health(this.maxHp[now]!);
+          if (r.form === ROW_FREE) return structs.put(chunk, r.slot, now, r.x, r.y, r.z, r.yaw, r.owner, hp, row.version, PUT_FREE);
+          const at = structs.keyedPose(chunk, now, r.fr, r.k0, r.k1);
+          if (!at) throw new Error(`chunk ${chunk}: the piece in slot ${r.slot} was saved by a key that is no slot of its form in a frame the save has: old saves are not read, so start a new save`);
+          structs.put(chunk, r.slot, now, at.x / STRUCT_UNITS, at.y / STRUCT_UNITS, at.z / STRUCT_UNITS, at.yaw, r.owner, hp, row.version, r.fr, r.k0, r.k1);
         },
       });
-      out.changed.push(changed);
-      out.named.push(named);
-      out.first.push(out.n);
+      if (named.length > 0) this.chunkFrames.set(chunk, named);
+      structs.setVersion(chunk, row.version);
     }
-    if (lastFr !== 0) out.cells.set(lastFr, lastCells);
-    return out;
+    // A frame all of whose rows were left out stands in no chunk. The save lets go of it when its chunk is next written.
+    for (const gid of this.framesSaved.keys()) structs.frames.drop(gid);
+    return structs.count;
   }
 
   saveEntity(rec: EntityRecord): void {

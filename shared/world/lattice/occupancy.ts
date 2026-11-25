@@ -107,25 +107,10 @@ export class Occupancy {
     return true;
   }
 
-  /** Makes frame `fr`'s table as large as `more` entries put one by one would make it, so they go in with no growing. */
-  reserve(fr: number, more: number): void {
-    let t = this.of(fr);
-    if (t === null) {
-      if (more <= 0) return;
-      t = new FrameCells();
-      this.frames.set(fr, t);
-      this.last = t;
-      this.held += t.slots.byteLength;
-    }
-    let cap = t.cap;
-    while ((t.size + more) * 10 > cap * 7) cap *= 2;
-    if (cap > t.cap) this.grow(t, fr, cap);
-  }
-
-  private grow(t: FrameCells, fr: number, cap = t.cap * 2): void {
+  private grow(t: FrameCells, fr: number): void {
     const old = t.slots;
     this.held -= old.byteLength;
-    t.cap = cap;
+    t.cap *= 2;
     const slots = (t.slots = new Uint32Array(t.cap * WORDS));
     this.held += slots.byteLength;
     const mask = t.cap - 1;
