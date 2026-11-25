@@ -15,7 +15,7 @@ const FLIGHT = "Flight";
 const CORE = "Its core";
 
 export const UFO_TUNING = {
-  health: number(60000, { min: 1, max: 1e7, group: TOUGH, label: "health", help: "With two survivors in the world or fewer; up to three times this with six or more." }),
+  health: number(30000, { min: 1, max: 1e7, group: TOUGH, label: "health", help: "With two survivors in the world or fewer; up to three times this with six or more. One jet's full load is about 30,000 against it." }),
   shieldSoak: share(0.97, { group: TOUGH, label: "shield stops", help: "The share of a hit its shield stops while it is shut." }),
   breakSeconds: number(4, { min: 0, max: 120, unit: "s", group: TOUGH, label: "a blast opens it for", help: "Seconds a heavy blow (a rocket, C4, a grenade, a missile) opens its shield." }),
   rearmSeconds: number(12, { min: 0, max: 600, unit: "s", group: TOUGH, label: "then it holds for", help: "Seconds after that before another heavy blow can open it." }),

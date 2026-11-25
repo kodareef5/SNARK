@@ -24,11 +24,11 @@ test("a field's text is read as its kind and shown as it was typed", () => {
 
 test("a kind's tuning keeps only what differs from its defaults, and a kind is on unless the book says off", () => {
   const book = starterEventBook([UFO]);
-  expect(tuningValue(book, UFO, "health")).toBe(60000);
+  expect(tuningValue(book, UFO, "health")).toBe(30000);
   setTuning(book, UFO, "health", 40000);
   setTuning(book, UFO, "cruiseHeight", [800, 1200]);
   expect(book.tuning).toEqual({ ufo: { health: 40000, cruiseHeight: [800, 1200] } });
-  setTuning(book, UFO, "health", 60000);
+  setTuning(book, UFO, "health", 30000);
   setTuning(book, UFO, "cruiseHeight", [750, 1100]);
   expect(book.tuning).toEqual({});
   setTuning(book, UFO, "lootRolls", 3);

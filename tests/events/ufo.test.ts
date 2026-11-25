@@ -16,6 +16,7 @@ import ufo, { UFO_TUNING } from "../../modules/ufo.ts";
 import { EDGE_INSET, planCrossing } from "../../modules/ufo/plan.ts";
 import { flatMap } from "../fixtures/map.ts";
 import { Harness } from "../fixtures/net.ts";
+import { JET_ARMS, JET_VEHICLE } from "../../content/vehicles/jet.ts";
 
 const TICK_MS = 1000 / TICK_RATE;
 const STARTER = tunedOf(UFO_TUNING);
@@ -183,4 +184,12 @@ test("its book refuses more low passes than its path has points for, and the sta
   const r = store.save({ ...store.book, tuning: { ufo: { points: [4, 6], scans: [2, 3] } } }, store.book.revision, "test", "");
   expect(r.ok ? [] : "faults" in r ? r.faults.map((f) => f.path) : []).toEqual(["tuning.ufo.scans"]);
   expect(h.host.mapEvents.starterBook().schedules.map((s) => [s.key, s.kind, s.hours])).toEqual([["ufo.night", "ufo", [20, 5]], ["ufo.day", "ufo", null]]);
+});
+
+test("one jet's full load is about a UFO's health where two survivors or fewer are in the world", () => {
+  const w = JET_VEHICLE.weapons!, of = (id: string) => (JET_ARMS.find((d) => d.id === id) as { ammo: { damage: number } }).ammo.damage;
+  const load = w.missiles!.count * of(w.missiles!.ammo) + w.cannon!.rounds * of(w.cannon!.ammo);
+  const health = tunedOf(UFO_TUNING, {}).health;
+  expect(load / health).toBeGreaterThan(0.85);
+  expect(load / health).toBeLessThan(1.25);
 });
