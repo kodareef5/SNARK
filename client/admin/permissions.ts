@@ -473,5 +473,6 @@ addEventListener("beforeunload", (e) => {
   if (S.settingsChanged || S.chat.size > 0) e.preventDefault();
 });
 
+addEventListener("hashchange", () => showTab(location.hash.slice(1)));
 showTab(location.hash.slice(1));
 void load();
