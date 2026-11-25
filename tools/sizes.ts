@@ -22,9 +22,10 @@ const MB = 1024 * KB;
  * The rows that fail a build. The first is 0.44 s at 20 Mbit/s and holds no art past the survivor's: it was 647 KB with
  * 660 meshes and is 658 with ten times as many, a mesh adding 4 bytes of its name and page, so its room is for the
  * script and the content as the game is built. It was 1,024 KB until the script filled it (D933): Miami's client waits
- * for 1,039. The rest are waste the build can always avoid.
+ * for 1,039. It was 1,088 KB until building's pieces and the Vegas orb came (planning/workstreams/first-download.md):
+ * Miami's client waits for 1,098. The rest are waste the build can always avoid.
  */
-export const FIRST_FRAME_BUDGET = 1088 * KB;
+export const FIRST_FRAME_BUDGET = 1104 * KB;
 /** The reaction curves, which a page fetches after its first frame and waits for before it joins a world. */
 export const REACTION_CURVES_BUDGET = 96 * KB;
 const BUDGETS: Record<string, number> = {
