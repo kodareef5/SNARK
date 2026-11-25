@@ -53,22 +53,35 @@ export function mapLedger(roots: MapRoots): MapHeld[] {
   };
   const staged = roots.loader?.staged;
   if (staged) {
-    const hf = staged.hf;
-    add("ground", hf.heights, hf.tint, hf.ground, hf.exact);
+    const hf = staged.hf, blocks = staged.overviews.held();
+    add("ground", hf.heights, hf.tint, hf.ground, hf.exact, hf.bounds, hf.held());
+    add("overviews", ...blocks.map((b) => [b.heights, b.tint]));
     add("water", hf.water);
     add("road", hf.road);
     add("streets", hf.streets);
-    add("nodes", staged.nodes);
+    add("nodes", staged.nodes, ...blocks.map((b) => [b.pictures, b.out, b.other]));
     add("tops", staged.tops);
     add("buildings", staged.buildings);
     add("head", staged.head);
     add("staged, other", staged);
   }
   add("statics", roots.loader?.statics);
+  // The city's tables by content kind are the content's, whatever the map holds; then its squares.
+  add("city kinds", ...kindTables(roots.city));
   add("city", roots.city);
   add("far shadow", roots.farShadow);
   return out;
 }
+
+/** A city's tables by content kind (shared/world/city.ts CityKinds), none for anything else. */
+function kindTables(city: unknown): unknown[] {
+  if (city === null || typeof city !== "object" || !("walked" in city)) return [];
+  const k = city as Record<string, unknown>;
+  return [k.halfX, k.halfY, k.halfZ, k.color, k.under, k.plain, k.near, k.walked, k.look, k.bentKind];
+}
+
+/** Bytes of a city's tables by content kind. */
+export const kindsBytes = (city: unknown): number => kindTables(city).reduce<number>((n, o) => n + bytesHeld(o, new Set()), 0);
 
 /** The ledger's total. */
 export const heldTotal = (rows: readonly MapHeld[]): number => rows.reduce((n, r) => n + r.bytes, 0);

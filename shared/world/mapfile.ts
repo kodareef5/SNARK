@@ -136,12 +136,12 @@ import { hashBytes } from "../hash.ts";
 import { decodeUtf8 } from "../pack/pack.ts";
 import { BitReader, BitWriter } from "../net/codec.ts";
 import { Heightfield, TERRAIN_CELL } from "./heightfield.ts";
-import { formOf, mix, nodeForms, placedNodes, resolveSlots, type KindsAt, type NodeSource, type SlotsTaken } from "./nodes.ts";
+import { denseSlots, formOf, mix, nodeForms, placedNodes, resolveSlots, type KindsAt, type NodeSource, type SlotsOf, type SlotsTaken } from "./nodes.ts";
 import { MAX_SLOTS_PER_CHUNK, StructureStore } from "./structures.ts";
 import { FarCells, Summary, TACTICAL_CELL, bakeChunk, pieceShapes } from "./tactical.ts";
 import { MAX_WATER_BODIES, MapWater, type WaterBody } from "./water.ts";
 import { ROAD_PLANES, RoadSectors, type MapRoad } from "./roadframe.ts";
-import { StreetSectors, decodeStreets } from "./streets.ts";
+import { StreetSectors, decodeStreets, type StreetsPart } from "./streets.ts";
 import { HIT_PREFIX, bentNext, madeHits, walkedFlush } from "./bends.ts";
 import { BUILDINGS_VERSION, Buildings, SectorBuildings, type BuildingNames } from "./buildings.ts";
 
@@ -456,6 +456,16 @@ export interface NodeScatter {
   readonly out?: Uint8Array;
   /** As `out`, set where the node stands as its footing's other kind. With it the layer is resolved, as a file holds every one. */
   readonly other?: Uint8Array;
+  /** Its picture and bits as a page holds them, an overview at a time; with it, `allow`, `out` and `other` are not read. */
+  readonly held?: HeldNodeBits;
+}
+
+/** A scattered or zoned layer's picture and slots' bits held by overview (client/core/ground/overviews.ts). */
+export interface HeldNodeBits {
+  /** Where each chunk's slots' bits are, none where its overview is not held. */
+  readonly slots: SlotsOf;
+  /** The picture at square (sx, sz) of the layer's cell: a zone's number, or 1 where a node may stand; 0 where not held. */
+  picture(sx: number, sz: number): number;
 }
 
 /** Kinds that grow in a zone, each with its weight, and the weight of bare ground among them. */
@@ -478,6 +488,7 @@ export interface NodeZoned {
   /** As NodeScatter's. */
   readonly out?: Uint8Array;
   readonly other?: Uint8Array;
+  readonly held?: HeldNodeBits;
 }
 
 export type NodeLayer = NodeScatter | NodeList | NodeZoned;
@@ -546,6 +557,8 @@ export interface MapStreets {
   readonly col: number;
   readonly row: number;
   readonly bytes: Uint8Array;
+  /** Its lines, where the file's reader decoded them already. */
+  readonly part?: StreetsPart;
 }
 
 /**
@@ -1883,10 +1896,11 @@ export interface RoadPiece {
   readonly road: MapRoad;
 }
 
-/** A sector's streets as its part gives them: its bytes, read when they are held (holdStreets). */
+/** A sector's streets as its part gives them: its lines, decoded once as the part is read, and its bytes, which a map's writer keeps. */
 export interface StreetsPiece {
   readonly kind: "streets";
   readonly sq: Square;
+  readonly part: StreetsPart;
   readonly bytes: Uint8Array;
 }
 
@@ -1918,9 +1932,9 @@ export function* partSteps(head: MapHead, part: MapPart, bytes: Uint8Array, veri
       return { kind: "buildings", sq: sq!, table };
     }
     if (part.kind === "streets") {
-      decodeStreets(bytes, sq!.ox * CHUNK_SIZE, sq!.oz * CHUNK_SIZE);
+      const lines = decodeStreets(bytes, sq!.ox * CHUNK_SIZE, sq!.oz * CHUNK_SIZE);
       s.take(bytes.length);
-      return { kind: "streets", sq: sq!, bytes: bytes.slice() };
+      return { kind: "streets", sq: sq!, part: lines, bytes: bytes.slice() };
     }
     return part.kind === "overview" ? readOverview(head, sq!, s) : readGround(head, sq!, s);
   })();
@@ -2172,7 +2186,7 @@ export function holdRoad(road: RoadSectors, piece: RoadPiece): void {
 /** A sector's streets (StreetsPiece) held where they are asked (Heightfield `streets`), by its square. */
 export function holdStreets(held: StreetSectors, piece: StreetsPiece): void {
   const sq = piece.sq;
-  held.put(sq.col * 4096 + sq.row, decodeStreets(piece.bytes, sq.ox * CHUNK_SIZE, sq.oz * CHUNK_SIZE), sq.cx0, sq.cz0, sq.cx1, sq.cz1);
+  held.put(sq.col * 4096 + sq.row, piece.part, sq.cx0, sq.cz0, sq.cx1, sq.cz1);
 }
 
 /** Where bentNext puts its guess. */
@@ -2372,7 +2386,7 @@ export function joinParts(head: MapHead, pieces: readonly MapPiece[], order = tr
         for (let j = 0; j < plane.length / gw; j++) roadPlanes(road)[k]!.set(plane.subarray(j * gw, j * gw + gw), at + j * gx);
       });
     } else if (p.kind === "tops") tops.push(p);
-    else if (p.kind === "streets") streets.push({ col: p.sq.col, row: p.sq.row, bytes: p.bytes });
+    else if (p.kind === "streets") streets.push({ col: p.sq.col, row: p.sq.row, bytes: p.bytes, part: p.part });
     else if (p.kind === "buildings") buildings!.set(p.table);
     else statics.push(p);
   }
@@ -2489,7 +2503,10 @@ export function mapHeightfield(map: MapData): Heightfield {
   if (map.streets) {
     hf.streets = new StreetSectors();
     const dims = framed(map.dims);
-    for (const p of map.streets) holdStreets(hf.streets, { kind: "streets", sq: squareOf(dims, SECTOR_CHUNKS, p.col, p.row)!, bytes: p.bytes });
+    for (const p of map.streets) {
+      const sq = squareOf(dims, SECTOR_CHUNKS, p.col, p.row)!;
+      holdStreets(hf.streets, { kind: "streets", sq, part: p.part ?? decodeStreets(p.bytes, sq.ox * CHUNK_SIZE, sq.oz * CHUNK_SIZE), bytes: p.bytes });
+    }
   }
   return hf;
 }
@@ -2508,15 +2525,18 @@ function weighed(reg: Registry, kinds: readonly (readonly [id: string, weight: n
 /** What a scattered or zoned layer grows at a place, by content index (KindsAt in shared/world/nodes.ts). */
 function kindsOf(dims: MapDims, reg: Registry, layer: NodeScatter | NodeZoned): KindsAt {
   const wide = (cell: number): number => (dims.chunksX * CHUNK_SIZE) / cell;
+  const held = layer.held;
   if ("zone" in layer) {
     const own: (readonly number[] | null)[] = [null, ...layer.zones.map((z) => weighed(reg, z.kinds, z.bare))];
     const zones = layer.codes ? Array.from(layer.codes, (c) => own[c]!) : own;
     const { zone, zoneCell: cell } = layer;
     const across = wide(cell);
+    if (held) return (x, z) => zones[held.picture(Math.floor(x / cell), Math.floor(z / cell))]!;
     return (x, z) => zones[zone[Math.floor(z / cell) * across + Math.floor(x / cell)]!]!;
   }
   const kinds = weighed(reg, layer.kinds);
   const { allow, allowCell: cell } = layer;
+  if (held && cell > 0) return (x, z) => (held.picture(Math.floor(x / cell), Math.floor(z / cell)) === 1 ? kinds : null);
   if (!allow) return () => kinds;
   const across = wide(cell);
   return (x, z) => {
@@ -2547,8 +2567,9 @@ export function resolveNodes(map: MapData, reg: Registry, tally?: SlotsTaken): M
 function layerSource(dims: MapDims, hf: Heightfield, reg: Registry, layer: NodeLayer): NodeSource {
   const forms = nodeForms(reg);
   if (!("first" in layer)) {
+    if (layer.held) return placedNodes(dims, hf, layer.seed, layer.perChunk, forms, kindsOf(dims, reg, layer), layer.held.slots);
     const { out, other } = standing(dims, hf, reg, layer);
-    return placedNodes(dims, hf, layer.seed, layer.perChunk, forms, kindsOf(dims, reg, layer), out, other);
+    return placedNodes(dims, hf, layer.seed, layer.perChunk, forms, kindsOf(dims, reg, layer), denseSlots(out, other, layer.perChunk));
   }
   const kinds = layer.kinds.map((id) => reg.index.get(id) ?? 0);
   return {
@@ -2590,7 +2611,7 @@ export function mapNodes(map: MapData, hf: Heightfield, reg: Registry): NodeSour
 }
 
 /** Each of the table's kinds as a content index, 0 for one this content lacks. */
-export function staticKinds(statics: MapStatics, reg: Registry): Uint16Array {
+export function staticKinds(statics: { readonly kinds: readonly string[] }, reg: Registry): Uint16Array {
   return Uint16Array.from(statics.kinds, (id) => reg.index.get(id) ?? 0);
 }
 

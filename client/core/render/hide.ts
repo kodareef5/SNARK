@@ -519,10 +519,11 @@ export interface Lattice {
  * `lattice` puts the faces' vertices together or past each other, which its rounding keeps where they meet or overlap.
  */
 export function chunkOccluders(city: CityStatics, chunk: number, mine: Uint8Array, kinds: KindPlates, lattice?: Lattice): Float32Array {
-  const { first, kind, yaw, x, y, z } = city;
-  const from = first[chunk]!;
+  const t = city.rows(chunk);
+  if (!t) return new Float32Array(0);
+  const { kind, yaw, x, y, z } = t, from = t.from(chunk);
   let n = 0;
-  for (let i = from; i < first[chunk + 1]!; i++) {
+  for (let i = from; i < t.to(chunk); i++) {
     if (mine[i - from] !== 1) continue;
     const f = yaw[i]! % QUARTER;
     const a = (f / YAW_UNITS) * TAU;

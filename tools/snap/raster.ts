@@ -280,8 +280,9 @@ function groundPair(hf: Heightfield, pic: GroundPicture, x: number, z: number, f
   const near = streetsDrawn && streetsOf !== null && pic.step === 1 && Math.max(Math.abs(Math.floor(x / 64) - streetEye[0]!), Math.abs(Math.floor(z / 64) - streetEye[1]!)) <= STREET_CHUNKS / 2 - 1 && streetsOf.at(x, z, streetE, streetK);
   if (near) {
     const s = Math.min(Math.max(x / metres - pic.i, 0), pic.lastI), t = Math.min(Math.max(z / metres - pic.j, 0), pic.lastJ);
-    const i = Math.min(Math.floor(s), pic.lastI - 1), j = Math.min(Math.floor(t), pic.lastJ - 1), at = (pic.j + j) * hf.nx + pic.i + i;
-    const a = hf.tint[at]!, b = hf.tint[at + 1]!, c = hf.tint[at + hf.nx]!, d = hf.tint[at + hf.nx + 1]!;
+    const i = Math.min(Math.floor(s), pic.lastI - 1), j = Math.min(Math.floor(t), pic.lastJ - 1);
+    const v = hf.tints(pic.i + i, pic.j + j, pic.i + i + 1, pic.j + j + 1), at = v.off + (pic.j + j) * v.stride + pic.i + i;
+    const a = v.tint[at]!, b = v.tint[at + 1]!, c = v.tint[at + v.stride]!, d = v.tint[at + v.stride + 1]!;
     if (streetCover(a, b, c, d, s - i, t - j, streetE, streetK[0]!, footprint, finish, streetOut, x, z)) {
       out[0] = streetOut[3]!;
       out[1] = -1 - streetOut[4]!;
@@ -297,8 +298,9 @@ function groundPair(hf: Heightfield, pic: GroundPicture, x: number, z: number, f
     const s = Math.min(Math.max((x + wx) / metres - pic.i / pic.step, 0), pic.lastI);
     const t = Math.min(Math.max((z + wz) / metres - pic.j / pic.step, 0), pic.lastJ);
     const i = Math.min(Math.floor(s), pic.lastI - 1), j = Math.min(Math.floor(t), pic.lastJ - 1);
-    const at = (pic.j + j * pic.step) * hf.nx + pic.i + i * pic.step, down = pic.step * hf.nx;
-    const a = hf.tint[at]!, b = hf.tint[at + pic.step]!, c = hf.tint[at + down]!, d = hf.tint[at + down + pic.step]!;
+    const si = pic.i + i * pic.step, sj = pic.j + j * pic.step;
+    const v = hf.tints(si, sj, si + pic.step, sj + pic.step), at = v.off + sj * v.stride + si, down = pic.step * v.stride;
+    const a = v.tint[at]!, b = v.tint[at + pic.step]!, c = v.tint[at + down]!, d = v.tint[at + down + pic.step]!;
     // A walk's edge is straight: where the sidewalk is one of the four, the cover is looked up where the point is.
     if ((wx !== 0 || wz !== 0) && [a, b, c, d].some((tint) => finish(tint) === GROUND_WALK)) return look(0, 0);
     const cover = groundCover(a, b, c, d, s - i, t - j);
@@ -1198,7 +1200,7 @@ export class Rasterizer {
           pos[k * 3] = i * hf.cell - p.camX;
           pos[k * 3 + 1] = hf.sample(i, j) - p.camY;
           pos[k * 3 + 2] = j * hf.cell - p.camZ;
-          tint[k] = hf.tint[j * hf.nx + i]!;
+          tint[k] = hf.tintOf(i, j);
           if (normals) groundNormal(hf, this.picture, i, j, stride, normals, k * 3);
         }
       }

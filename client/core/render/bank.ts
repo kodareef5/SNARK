@@ -160,8 +160,9 @@ vec4 shoreBank(vec3 rel, float fine, out float grade) {
   for (int i = 0; i < 4; i++) {
     ivec2 o = ivec2(i & 1, i >> 1);
     float w = (o.x == 1 ? at.x : 1.0 - at.x) * (o.y == 1 ? at.y : 1.0 - at.y);
-    int kind = BANK_OF[texelFetch(uWindowTint, k + o, 0).r];
-    float h = float(texelFetch(uWindowHeight, k + o, 0).r);
+    ivec2 t = (k + o + ivec2(fWindow.xy)) % textureSize(uWindowHeight, 0);
+    int kind = BANK_OF[texelFetch(uWindowTint, t, 0).r];
+    float h = float(texelFetch(uWindowHeight, t, 0).r);
     low = min(low, h);
     high = max(high, h);
     if (h > level) {

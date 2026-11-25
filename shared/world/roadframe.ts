@@ -40,6 +40,9 @@ export interface MapRoad {
   readonly lanes: Uint8Array;
 }
 
+/** Changes RoadSectors keeps, each its version and the cells it touched; one further back is all of them. */
+const CHANGES_KEPT = 64;
+
 /** A square of the frame held: its first cell, its width in cells, and ROAD_PLANES bytes a cell row by row. */
 interface Held {
   readonly i0: number;
@@ -59,6 +62,26 @@ export class RoadSectors {
   private last: Held | null = null;
   /** Counts each square that comes or goes, so what copied the frame knows to copy it again. */
   version = 0;
+  /** The last CHANGES_KEPT changes, five numbers each: the version it made, and the cells i0, j0 up to i1, j1 of its square. */
+  private readonly changes: number[] = [];
+
+  private changed(h: Held): void {
+    this.version++;
+    if (this.changes.length >= CHANGES_KEPT * 5) this.changes.splice(0, 5);
+    this.changes.push(this.version, h.i0, h.j0, h.i0 + h.w, h.j0 + h.d);
+  }
+
+  /**
+   * The cells that can have changed since `version`, into `out` as i0, j0, i1, j1 a change (up to the cell past its
+   * last); false where the changes kept do not reach back that far, and all are to be copied again.
+   */
+  changedSince(version: number, out: number[]): boolean {
+    out.length = 0;
+    if (version === this.version) return true;
+    if (version > this.version || this.changes.length === 0 || this.changes[0]! > version + 1) return false;
+    for (let k = 0; k < this.changes.length; k += 5) if (this.changes[k]! > version) out.push(this.changes[k + 1]!, this.changes[k + 2]!, this.changes[k + 3]!, this.changes[k + 4]!);
+    return true;
+  }
 
   /** Holds the frame's square `key`, its planes `road` from cell (i0, j0), `w` cells a row. */
   put(key: number, i0: number, j0: number, w: number, road: MapRoad): void {
@@ -69,15 +92,19 @@ export class RoadSectors {
       bytes[k * ROAD_PLANES + 2] = road.half[k]!;
       bytes[k * ROAD_PLANES + 3] = road.lanes[k]!;
     }
-    this.held.set(key, { i0, j0, w, d: n / w, bytes });
+    const had = this.held.get(key), h = { i0, j0, w, d: n / w, bytes };
+    this.held.set(key, h);
     this.last = null;
-    this.version++;
+    if (had) this.changed(had);
+    this.changed(h);
   }
 
   drop(key: number): void {
-    if (!this.held.delete(key)) return;
+    const had = this.held.get(key);
+    if (!had) return;
+    this.held.delete(key);
     this.last = null;
-    this.version++;
+    this.changed(had);
   }
 
   has(key: number): boolean {

@@ -587,6 +587,11 @@ export class Buildings {
     this.sectors[(t.row - this.row0) * this.across + t.col - this.col0] = t;
   }
 
+  /** Lets go of the buildings of the sector at column `col`, row `row` of the lattice. */
+  drop(col: number, row: number): void {
+    this.sectors[(row - this.row0) * this.across + col - this.col0] = null;
+  }
+
   /** Buildings held, one in two sectors counted in each; and their bytes in memory. */
   get count(): number {
     return this.sectors.reduce((n, t) => n + (t?.n ?? 0), 0);

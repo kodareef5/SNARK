@@ -5,7 +5,7 @@ import { MATERIAL_RECIPES } from "../../content/texgen/materials.ts";
 import { TIERS, forTouch } from "../../client/core/assets/tiers.ts";
 import { FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_TERRAIN_VERTEX } from "../../client/core/render/glsl.ts";
 import { HAND_FAR, HAND_NEAR } from "../../client/core/render/hand.ts";
-import { ORB_AT, ORB_LANES, DROPS_AT, DROP_LANES, CAST_AT, GLASS_AT, LAMP_AT, DRAW_BLEND, DRAW_CUTOUT, DRAW_PULLED, DRAW_TEXTURED, DRAW_WATER, FRAME, FRAME_BLOCK, FRAME_FLOATS, FramePacket, MAX_CASCADES, MAX_TIRE_CONTACTS, MAX_CONTACTS, MAX_WATER_MARKS, ROOF_AT, WATER_MARK_COUNT, WATER_PATHS, WATER_BOUNDS, WATER_MARKS, SHORE_AT, OPTIC_AT, MADE_AT } from "../../client/core/render/packet.ts";
+import { ORB_AT, ORB_LANES, DROPS_AT, DROP_LANES, CAST_AT, GLASS_AT, LAMP_AT, DRAW_BLEND, DRAW_CUTOUT, DRAW_PULLED, DRAW_TEXTURED, DRAW_WATER, FRAME, FRAME_BLOCK, FRAME_FLOATS, FramePacket, MAX_CASCADES, MAX_TIRE_CONTACTS, MAX_CONTACTS, MAX_WATER_MARKS, ROOF_AT, WATER_MARK_COUNT, WATER_PATHS, WATER_BOUNDS, WATER_MARKS, SHORE_AT, OPTIC_AT, MADE_AT, WINDOW_AT } from "../../client/core/render/packet.ts";
 import { PROGRAMS, UNIT, drawProgram, tierPrograms, type ProgramText } from "../../client/core/render/programs.ts";
 // The orb's program is a tier's once its late text has come, as it has here.
 import "../../client/core/render/orb-late.ts";
@@ -65,10 +65,10 @@ test("the frame block: each value inside its slot, a GLSL slot for every four fl
   expect(FRAME.exhaustPhase + 4).toBe(WATER_BOUNDS);
   expect(WATER_MARKS + 8 * MAX_WATER_MARKS).toBe(WATER_PATHS);
   // The supply drops' casts, a visor's optic, the made materials and the orb's screen are the block's last lanes
-  // (supply-sky.ts, post.ts opticFrame, texgen/slots.ts, orb.ts writeOrb): the orb's were added after the made materials'.
-  expect([WATER_PATHS + 4 * MAX_WATER_MARKS, ROOF_AT + 4, CAST_AT + 4, LAMP_AT + 8 + 16 + 4, GLASS_AT + 4, SHORE_AT + 4, DROPS_AT + 4 * DROP_LANES, OPTIC_AT + 8, MADE_AT + 8 * MATERIAL_RECIPES.length, ORB_AT + 4 * ORB_LANES]).toEqual([ROOF_AT, CAST_AT, LAMP_AT, GLASS_AT, SHORE_AT, DROPS_AT, OPTIC_AT, MADE_AT, ORB_AT, FRAME_FLOATS]);
+  // (supply-sky.ts, post.ts opticFrame, texgen/slots.ts, orb.ts writeOrb), then the terrain window's corner (terrain.ts).
+  expect([WATER_PATHS + 4 * MAX_WATER_MARKS, ROOF_AT + 4, CAST_AT + 4, LAMP_AT + 8 + 16 + 4, GLASS_AT + 4, SHORE_AT + 4, DROPS_AT + 4 * DROP_LANES, OPTIC_AT + 8, MADE_AT + 8 * MATERIAL_RECIPES.length, ORB_AT + 4 * ORB_LANES, WINDOW_AT + 4]).toEqual([ROOF_AT, CAST_AT, LAMP_AT, GLASS_AT, SHORE_AT, DROPS_AT, OPTIC_AT, MADE_AT, ORB_AT, WINDOW_AT, FRAME_FLOATS]);
   expect(FRAME_BLOCK).toContain(`highp vec4 fDrops[${DROP_LANES}]`);
-  expect(FRAME_BLOCK).toContain("highp vec4 fRoof, fCast, fLamp, fLampColor;\n  highp mat4 fLampShadow;\n  highp vec4 fLampWay, fGlass;\n  highp vec4 fShore;\n  highp vec4 fDrops[11];\n  highp vec4 fOptic, fPhosphor;\n  highp vec4 fMade[" + MATERIAL_RECIPES.length * 2 + "];\n  highp vec4 fOrb[" + ORB_LANES + "];\n};");
+  expect(FRAME_BLOCK).toContain("highp vec4 fRoof, fCast, fLamp, fLampColor;\n  highp mat4 fLampShadow;\n  highp vec4 fLampWay, fGlass;\n  highp vec4 fShore;\n  highp vec4 fDrops[11];\n  highp vec4 fOptic, fPhosphor;\n  highp vec4 fMade[" + MATERIAL_RECIPES.length * 2 + "];\n  highp vec4 fOrb[" + ORB_LANES + "];\n  highp vec4 fWindow;\n};");
   expect(FRAME_BLOCK).toContain(`fWaterMarks[${2 * MAX_WATER_MARKS}]`);
   const p = new FramePacket();
   p.split = 384;

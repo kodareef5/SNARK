@@ -897,7 +897,8 @@ export class Controller {
     let top = this.tops.get(c);
     if (top === undefined) {
       top = -Infinity;
-      for (let i = city.first[c]!; i < city.first[c + 1]!; i++) top = Math.max(top, city.y[i]! + city.halfY[city.kind[i]!]!);
+      const t = city.rows(c);
+      for (let i = t?.from(c) ?? 0; t && i < t.to(c); i++) top = Math.max(top, t.y[i]! + city.halfY[t.kind[i]!]!);
       this.tops.set(c, top);
     }
     return top;

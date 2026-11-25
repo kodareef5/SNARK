@@ -19,7 +19,7 @@ export function paintRelief(hf: Heightfield, palette: Uint8Array, zoom: number, 
         continue;
       }
       const i = Math.max(0, Math.min(hf.nx - 1 - reach, Math.floor(x / hf.cell)));
-      const tint = hf.tint[j * hf.nx + i]! * 4;
+      const tint = hf.tintOf(i, j) * 4;
       const h = hf.sample(i, j);
       const relief = (hf.sample(Math.min(hf.nx - 1, i + reach), j) - h + hf.sample(i, Math.min(hf.nz - 1, j + reach)) - h) / (reach * hf.cell);
       const shade = Math.max(0.55, Math.min(1.3, 0.9 + relief * 0.35));

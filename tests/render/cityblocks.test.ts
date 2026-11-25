@@ -16,6 +16,8 @@ import { CHUNK_SIZE } from "../../shared/coords.ts";
 import { VERTEX_BYTES } from "../../shared/pack/pack.ts";
 import { farTopByte } from "../../shared/world/tactical.ts";
 import { building, cityWorld } from "../fixtures/cityworld.ts";
+import { CitySquare, CityStatics, type ChunkSquare } from "../../shared/world/city.ts";
+import { MapStatics } from "../../shared/world/mapfile.ts";
 
 /** The draws of a frame's city blocks, and of its far city. */
 const blockDraws = (p: FramePacket): number[] => [...p.drawBuffer.subarray(0, p.drawCount).keys()].filter((d) => p.drawBuffer[d] === CITY_BUFFER && p.drawSlot[d]! >= BLOCK_SLOTS && p.drawSlot[d]! < CITY_SLOTS);
@@ -292,4 +294,56 @@ test("before the map's statics, a chunk the far feed has told of as emptied is d
   w.send(chunk);
   for (let f = 0; f < 3; f++) p = w.frame();
   expect(indices(p, blockDraws(p))).toBeLessThan(had);
+});
+
+/** Square `sq` of the whole `city`'s rows, as a page sets a sector's in (map-statics.ts). */
+function squareOf(whole: CityStatics, held: CityStatics, sq: ChunkSquare): CitySquare {
+  const map = whole.squareOf(0)!.map, chunksX = whole.dims.chunksX, w = sq.cx1 - sq.cx0, n = w * (sq.cz1 - sq.cz0);
+  const first = new Uint32Array(n + 1), rows: number[] = [];
+  for (let k = 0; k < n; k++) {
+    const c = (sq.cz0 + Math.floor(k / w)) * chunksX + sq.cx0 + (k % w);
+    for (let r = map.first[c]!; r < map.first[c + 1]!; r++) rows.push(r);
+    first[k + 1] = rows.length;
+  }
+  const rowsOf = { first, kind: Uint16Array.from(rows, (r) => map.kind[r]!), yaw: Uint16Array.from(rows, (r) => map.yaw[r]!), x: Float32Array.from(rows, (r) => map.x[r]!), y: Float32Array.from(rows, (r) => map.y[r]!), z: Float32Array.from(rows, (r) => map.z[r]!), bends: new Map() };
+  const steps = CitySquare.steps(whole.dims, sq, rowsOf, held.bentKind);
+  for (let s = steps.next(); ; s = steps.next()) if (s.done) return s.value;
+}
+
+test("a city held a sector at a time: one set in or let go remakes no other's tiles, and blocks draw a sector not held", () => {
+  const w = cityWorld({ chunks: 32, statics: grid(32, 4), tops: true, late: true, width: 320, height: 180 });
+  w.scene.viewDistance = 2400;
+  [w.cam.x, w.cam.y, w.cam.z, w.cam.yaw, w.cam.pitch] = [20, 260, 20, Math.PI / 4, -0.22];
+  const held = CityStatics.held(w.dims, 4, (w.statics.squareOf(0)!.map as MapStatics).kinds, w.reg);
+  const sectors: ChunkSquare[] = [0, 1, 2, 3].map((n) => ({ cx0: (n % 2) * 16, cz0: Math.floor(n / 2) * 16, cx1: (n % 2) * 16 + 16, cz1: Math.floor(n / 2) * 16 + 16 }));
+  held.set(0, squareOf(w.statics, held, sectors[0]!));
+  w.arrive(held);
+  const uploads = new Set<number>(), drops: number[] = [];
+  const run = (frames: number): FramePacket => {
+    let p!: FramePacket;
+    for (let f = 0; f < frames; f++) {
+      p = w.frame(false, 60);
+      for (const u of p.assetUploads) if (u.slot >= CITY_SLOTS) uploads.add(u.slot);
+      for (const d of p.assetDrops) if (d >= CITY_SLOTS) drops.push(d);
+    }
+    return p;
+  };
+  let p = run(8);
+  const city = w.scene.city!;
+  city.makeMs = Infinity;
+  // A chunk of the sector east, not held: the far city has no tile of it, and the blocks draw it.
+  const east = 3 * 32 + 21;
+  expect([cityDraws(p).length > 0, blockDraws(p).length > 0, city.isFar(east), city.shows(east), w.statics.in(east) > 0]).toEqual([true, true, false, 0, true]);
+  const first = new Set(uploads);
+  uploads.clear();
+  drops.length = 0;
+  held.set(1, squareOf(w.statics, held, sectors[1]!));
+  p = run(8);
+  // The new sector's tiles are made; none of those before is let go.
+  expect([w.scene.city, uploads.size > 0, drops.filter((d) => first.has(d)), city.isFar(east)]).toEqual([city, true, [], true]);
+  const second = new Set(uploads);
+  drops.length = 0;
+  held.drop(1);
+  p = run(2);
+  expect([drops.length > 0, drops.every((d) => second.has(d)), city.isFar(east), blockDraws(p).length > 0]).toEqual([true, true, false, true]);
 });

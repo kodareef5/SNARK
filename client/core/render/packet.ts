@@ -307,6 +307,8 @@ export const TILE_CASTS = 4;
 /** The pair of textures a tile reads its heights and tints from (`tileSource`): the whole map's, or the window's round the camera. */
 export const SOURCE_MAP = 0;
 export const SOURCE_WINDOW = 1;
+/** Rectangles of the window's pictures, and of its roads' frame's, put on the card in a frame at most (terrain.ts). */
+export const GROUND_PARTS = 8;
 
 /** Bodies the frame block holds for contact (contact.ts). */
 export const MAX_CONTACTS = 12;
@@ -352,6 +354,7 @@ export const FRAME_SECTIONS = [
   { name: "optic", first: "fOptic", floats: 8 },
   { name: "made", first: "fMade", floats: MADE_READS.length * MADE_FLOATS },
   { name: "orb", first: "fOrb", floats: ORB_LANES * 4 },
+  { name: "window", first: "fWindow", floats: 4 },
 ] as const satisfies readonly FrameSection[];
 
 /** Where each section of `rows` begins, in floats, by its name, and where the last ends, `end`. */
@@ -557,6 +560,11 @@ export const MADE_AT = SECTION.made;
  * colours (orb.ts SCREEN_AT). Directions but the centre are in the orb's own frame.
  */
 export const ORB_AT = SECTION.orb;
+/**
+ * fWindow: the terrain window's corner in the texels of its pictures, which hold map sample (i, j) at (i, j) modulo
+ * their size (terrain.ts), x and z; 0 while there is none.
+ */
+export const WINDOW_AT = SECTION.window;
 export const OPTIC_NONE = 0;
 export const OPTIC_NIGHT = 1;
 export const OPTIC_HEAT = 2;
@@ -582,6 +590,7 @@ export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fOptic, fPhosphor;
   highp vec4 fMade[${(MADE_READS.length * MADE_FLOATS) / 4}];
   highp vec4 fOrb[${ORB_LANES}];
+  highp vec4 fWindow;
 };
 #define fSkyScale fSkyAbove.w
 #define fTrueSun (-fMoon.xyz)
@@ -830,11 +839,23 @@ export class FramePacket {
   /** Per tile: the sample (i, j) of its corner and its stride, in the samples of the pair it reads, and that pair, SOURCE_MAP or SOURCE_WINDOW. */
   readonly tileSource = new Int32Array(MAX_TILES * 4);
   /**
-   * The terrain window (terrain.ts): the copy of it SOURCE_WINDOW tiles read, 0 or 1 or -1 for none, and the map sample
-   * of its corner; then the copy rows go into this frame, or -1, the corner it is filled round, and the first of those
-   * rows and how many. A renderer copies them from the heightfield before it draws.
+   * The terrain window (terrain.ts): 0 while its pictures hold it whole and SOURCE_WINDOW tiles read it, else -1; the
+   * map sample of its corner; and 0 in a frame that puts samples on its pictures, else -1. The pictures hold map sample
+   * (i, j) at texel (i, j) modulo their size, so a move writes only the columns or rows it gains.
    */
-  readonly groundWindow = Int32Array.of(-1, 0, 0, -1, 0, 0, 0, 0);
+  readonly groundWindow = Int32Array.of(-1, 0, 0, -1);
+  /**
+   * The rectangles of the window's pictures to put on the card before this frame's draws: `groundPartCount` of them, each
+   * its texel x and y, its width and height, and where its samples begin, row by row, in `groundHeights` and `groundTint`.
+   */
+  groundPartCount = 0;
+  readonly groundParts = new Int32Array(GROUND_PARTS * 5);
+  groundHeights = new Uint16Array(0);
+  groundTint = new Uint8Array(0);
+  /** The same for the picture of the window's roads' frame (shared/world/roadframe.ts), ROAD_PLANES bytes a sample in `roadBytes`. */
+  roadPartCount = 0;
+  readonly roadParts = new Int32Array(GROUND_PARTS * 5);
+  roadBytes = new Uint8Array(0);
   /**
    * Chunk tiles of the streets' pictures round the camera to put on the card before this frame's draws (streets.ts
    * StreetRegion): `streetTiles` of them, each its corner in the pictures' texels (x, y) in `streetAt`, and its bytes of
@@ -957,6 +978,7 @@ export class FramePacket {
     this.pieceUploads = 0;
     this.tileCount = 0;
     this.groundWindow[3] = -1;
+    this.groundPartCount = this.roadPartCount = 0;
     this.streetTiles = 0;
     this.transientCount = 0;
     this.boneCount = 0;
