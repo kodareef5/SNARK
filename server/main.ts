@@ -26,7 +26,10 @@ import { parsePack } from "../shared/pack/pack.ts";
 import { allClips } from "../shared/pack/clips.ts";
 import { parseManifest } from "../shared/pack/manifest.ts";
 import { serveFile } from "./files.ts";
-import { clientAddress } from "./front.ts";
+import { BODY_BYTES_MAX, clientAddress } from "./front.ts";
+import { VideoLibrary } from "./video/library.ts";
+import { screensAdmin } from "./video/routes.ts";
+import { ScreenFeed, worldNight } from "./video/screens.ts";
 import { boardOwners, soundBoard } from "./sound-board.ts";
 import { TitleScenes } from "./admin/title-scenes.ts";
 import { adminAsked, type AdminGate } from "./admin/gate.ts";
@@ -346,6 +349,17 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
     host.cluster ? join(host.cluster.folder.root, "title-scenes.sqlite") : opts.dbPath ? opts.dbPath + ".title-scenes.sqlite" : ":memory:",
     clientDir,
   );
+  // The cluster's clips and what its screens play, which every world reads and the admin pages change.
+  const cluster = host.cluster?.folder.root;
+  const video = new VideoLibrary({
+    db: cluster ? join(cluster, "video.sqlite") : opts.dbPath ? opts.dbPath + ".video.sqlite" : ":memory:",
+    ...(cluster ? { media: join(cluster, "media"), tmp: join(cluster, "tmp") } : opts.dbPath ? { media: opts.dbPath + ".media" } : {}),
+    starters: join(clientDir, "media", "starter.json"),
+  });
+  const screens = new ScreenFeed(video, host.world);
+  screens.attach(host.game);
+  screens.poll();
+  const screenTimer = setInterval(() => screens.poll(), 1000);
   const listings = opts.directory ? new ServerDirectory(host.cluster ? join(host.cluster.folder.root,"directory.sqlite") : opts.dbPath ? opts.dbPath+".directory.sqlite" : ":memory:") : null;
   const directories = opts.directories ?? [];
   const directory = [...directories, ...(listings ? ["directory"] : [])].join(" ");
@@ -455,6 +469,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   const parts = host.game.parts;
   const server = Bun.serve<Socket>({
     port: opts.port ?? 8787,
+    maxRequestBodySize: BODY_BYTES_MAX,
     ...(hostname ? { hostname } : {}),
     ...(opts.cert && opts.key ? { tls: { cert: Bun.file(opts.cert), key: Bun.file(opts.key) }, http2: true } : {}),
     fetch: timed(parts, PART.http, async (req: Request, srv: Server<Socket>) => {
@@ -482,6 +497,8 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
         destinations: () => host.cluster?.destinations() ?? [],
         scenes: (call) => originAllowed(call.headers.get("origin"), call.headers.get("host"), "")
           ? titleScenes.admin(call) : entryReply({ error: "Open the studio on this cluster." }, 403),
+        screens: (call, at) => call.method === "POST" && !originAllowed(call.headers.get("origin"), call.headers.get("host"), "")
+          ? entryReply({ error: "Open the screens page on this cluster." }, 403) : screensAdmin(call, at, video, () => worldNight(host.world)),
       });
       if (siteAdmin) return siteAdmin;
       const { at, path } = placeOf(base, url.pathname);
@@ -489,6 +506,11 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
       if (path === "/directory") return listings ? listings.answer(req, who) : new Response("this world hosts no server directory", { status: 404 });
       const same = alike(path, req.headers.get("host") ?? "");
       if (same) return same;
+      // Uploaded clips and manifests from the library's folder, starters from the built client.
+      if (path.startsWith("/media/")) {
+        const kept = await serveFile(video.media, req, path.slice("/media".length));
+        return kept.status !== 404 ? kept : serveFile(clientDir, req, path);
+      }
       if (at === "site") {
         if (path === "/" || path === "/index.html") return htmlResponse(startPage(worlds(req.headers.get("host") ?? ""), links(), entryBuilt ? {world:false,directory} : undefined));
         // The admin pages are a world's, behind its admin password (server/admin/gate.ts), and not the site's to hand out.
@@ -660,6 +682,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
     if (stopped) return;
     stopped = true;
     clearInterval(heartbeat); listings?.close(); titleScenes.close();
+    clearInterval(screenTimer); video.close();
     stopTicks();
     server.stop(true);
     host.shutdown();
