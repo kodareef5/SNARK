@@ -1,6 +1,7 @@
 // The Permissions page, the Admin log and the dashboard worked in headless Chrome as an admin works them, signed in with
-// HTTP's basic sign-in as a person is, each act judged by what the server then holds. Every console error, uncaught
-// exception and failed request is a fault too, but for those a step expects. No password is printed or written down.
+// HTTP's basic sign-in as a person is, each act judged by what the server then holds. A survivor claims their own password
+// in game over their socket, as a player does. Every console error, uncaught exception and failed request is a fault too,
+// but for those a step expects. No password is printed or written down.
 
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -12,7 +13,7 @@ import { OPERATOR } from "../../server/acts.ts";
 import type { Host } from "../../server/host.ts";
 import { idText } from "../../server/survivor-ids.ts";
 import { compileContent } from "../../shared/content/registry.ts";
-import { KEY_BYTES, TEXT_GLOBAL } from "../../shared/net/protocol.ts";
+import { KEY_BYTES, TEXT_CONSOLE, TEXT_GLOBAL } from "../../shared/net/protocol.ts";
 import { CHAT_DOCUMENT, PERMISSIONS_API, PERMISSIONS_STATE } from "../../shared/permissions/page.ts";
 import { CHROME_FLAGS } from "../chrome.ts";
 
@@ -50,6 +51,28 @@ async function enter(host: Host, socket: string, name: string): Promise<Survivor
 
 /** Whether survivor `pid`'s session has cheats on the host. */
 const cheats = (host: Host, pid: number): boolean => host.game.clients.some((c) => !!c?.active && !c.closed && c.pid === pid && c.admin);
+
+/** Types a console line as `s` and waits for the answer, as the console shows it. */
+async function say(s: Survivor, line: string): Promise<string> {
+  // The server takes a console line from a session only every few ticks, and refuses one sooner.
+  await Bun.sleep(300);
+  const before = s.session.logVersion;
+  s.session.text(line);
+  for (let k = 0; k < 50; k++, await Bun.sleep(100)) {
+    const fresh = s.session.log.slice(s.session.log.length - Math.min(s.session.log.length, s.session.logVersion - before));
+    const answer = fresh.find((l) => l.channel === TEXT_CONSOLE);
+    if (answer) return answer.text;
+  }
+  return "";
+}
+
+/** `s` claims their own password in game: what only their session is sent, taken out of it as the console does. */
+async function claim(s: Survivor, current = ""): Promise<{ password: string; answer: string }> {
+  const answer = await say(s, current === "" ? "claimpassword" : `claimpassword ${current}`);
+  const password = s.session.secret;
+  s.session.secret = "";
+  return { password, answer };
+}
 
 interface Page {
   run(expression: string): Promise<any>;
@@ -328,31 +351,28 @@ export async function drive(o: DriveOptions): Promise<string[]> {
       check("Cy is in Wardens and Bea in Admins", [members("Wardens").map((m) => m.key), members("Admins").map((m) => m.key)], [[cy.id], [bea.id]]);
       errorsOf(page, "adding members");
 
-      // 4. A password issued to Bea: shown once, gone after Done, in no later state answer.
-      const issue = `button[data-act="issue"][data-id="${bea.id}"]`;
-      if (!(await page.wait(q(issue)))) fault("Bea has no row in the staff passwords");
-      await page.press(issue);
-      await page.wait(`!${q("#new-password")}.hidden`);
-      const password = (await page.run(`${q("#password-text")}.value`)) as string;
-      passwordsSeen.push(password);
-      check("a password is shown in its box", /^[A-HJ-NP-Z2-9]{4}(?:-[A-HJ-NP-Z2-9]{4}){3}$/.test(password), true);
-      check("the box says whose it is", await text("#password-for"), `A new password for Bea (${bea.id})`);
-      // The picture shows the box with its letters hidden: no password is left in a file that is kept.
-      await page.run(`${q("#password-text")}.style.webkitTextSecurity = "disc"`);
-      await picture(page, "password");
-      await page.run(`${q("#password-text")}.style.webkitTextSecurity = ""`);
-      await page.press("#done-password");
-      const inPage = (await page.run(`document.documentElement.outerHTML.includes(${JSON.stringify(password)}) || [...document.querySelectorAll("input, textarea")].some((e) => e.value.includes(${JSON.stringify(password)}))`)) as boolean;
-      check("after Done the password is nowhere in the page", [inPage, await page.run(`${q("#new-password")}.hidden`)], [false, true]);
+      // 4. Bea claims her own password in game: only her session is sent it, once. The page shows that she has, and nothing more.
+      const beaRow = async (): Promise<string> => (await rowsOfPasswords(page)).find((r) => r.startsWith(`Bea ${bea.id}`))?.split(" | ")[2] ?? "";
+      check("Bea's row says she has not claimed a password", await beaRow(), "Not claimed yet");
+      check("the staff passwords offer only a clear", await page.run(`[...new Set([...document.querySelectorAll("#passwords button")].map((b) => b.dataset.act))]`), ["clear-password"]);
+      const claimed = await claim(bea);
+      const password = claimed.password;
+      if (password !== "") passwordsSeen.push(password);
+      check("Bea's session is sent a password", /^[A-HJ-NP-Z2-9]{4}(?:-[A-HJ-NP-Z2-9]{4}){3}$/.test(password), true);
+      check("and told it is hers, shown once", claimed.answer, "The password above is yours, shown this once. enablecheats takes it in game, and the admin pages take it with your name or ID.");
+      check("no other session is sent one, and none is in Bea's log", [ada.session.secret, cy.session.secret, bea.session.log.some((l) => l.text.includes(password))], ["", "", false]);
+      await page.go(`${pagePath}?again=1#members`);
+      await page.wait(`${q("#me")}.textContent !== ""`);
+      check("the page, read again, says Bea has claimed one", /^Claimed on \d{4}-\d\d-\d\d \d\d:\d\d$/.test(await beaRow()), true);
+      const inPage = (await page.run(`document.documentElement.outerHTML.toUpperCase().includes(${JSON.stringify(password)})`)) as boolean;
       const stateText = (await page.run(`fetch(${JSON.stringify(PERMISSIONS_STATE)}, { cache: "no-store" }).then((r) => r.text())`)) as string;
       const hash = snap().secrets.find((s) => s.id === bea.id)?.hash ?? "";
-      check("the state answer holds neither the password nor its hash", [stateText.includes(password), hash !== "" && stateText.includes(hash), (JSON.parse(stateText) as { passwords: string[] }).passwords], [false, false, [bea.id]]);
-      check("the password row says Bea has one", (await rowsOfPasswords(page)).find((r) => r.startsWith(`Bea ${bea.id}`))?.split(" | ")[2], "Has a password");
+      check("neither the page nor its state holds the password or its hash", [inPage, stateText.includes(password), hash !== "" && stateText.includes(hash), (JSON.parse(stateText) as { passwords: { id: string }[] }).passwords.map((p) => p.id)], [false, false, false, [bea.id]]);
+      await picture(page, "passwords");
 
-      bea.session.text(`enablecheats ${password}`);
-      for (let k = 0; k < 50 && !cheats(host, bea.pid); k++) await Bun.sleep(100);
+      check("Bea's sign-in in game", await say(bea, `enablecheats ${password}`), "cheats enabled");
       check("with it Bea's session becomes an admin", cheats(host, bea.pid), true);
-      errorsOf(page, "issuing a password");
+      errorsOf(page, "claiming a password");
 
       // 4 and 5. Bea signs in to the page with her name and the password, at admin rank, and cannot touch the map's group.
       await browse(chrome, `${pagePath}#groups`, scratch, { user: "Bea", password }, async (as) => {
@@ -378,11 +398,22 @@ export async function drive(o: DriveOptions): Promise<string[]> {
         // says how to sign in again once its sign-in is refused.
         await page.press(`button[data-act="clear-password"][data-id="${bea.id}"]`);
         await page.wait(`${q("#msg")}.textContent === "Cleared the password."`);
-        check("the page asked first", page.dialogs.splice(0), [`Clear the password of Bea? They lose their staff powers until they are given a new one.`]);
+        check("the page asked first", page.dialogs.splice(0), [`Clear the password of Bea? They lose their staff powers until they claim a new one in game.`]);
         check("Bea's session has lost its cheats", cheats(host, bea.pid), false);
-        check("the page shows no password for her", (await rowsOfPasswords(page)).find((r) => r.startsWith(`Bea ${bea.id}`))?.split(" | ")[2], "No password");
+        check("the page shows she has not claimed one", await beaRow(), "Not claimed yet");
         errorsOf(page, "clearing the password");
         await picture(page, "members");
+
+        // Bea claims again. The old password is refused without being counted, and the new one signs her in.
+        const again = await claim(bea);
+        if (again.password !== "") passwordsSeen.push(again.password);
+        check("Bea claims a new password", [/^[A-HJ-NP-Z2-9]{4}(?:-[A-HJ-NP-Z2-9]{4}){3}$/.test(again.password), again.password !== password], [true, true]);
+        check("the old one no longer works", await say(bea, `enablecheats ${password}`), "that password was replaced or cleared");
+        check("and was not counted as a guess", host.game.clients.find((c) => c?.pid === bea.pid)?.cheatAttempts, 0);
+        check("the new one signs her in", await say(bea, `enablecheats ${again.password}`), "cheats enabled");
+        await page.go(`${pagePath}?again=2#members`);
+        await page.wait(`${q("#me")}.textContent !== ""`);
+        check("the page says she has claimed one again", (await beaRow()).startsWith("Claimed on "), true);
         await as.press('[data-tab="groups"]');
         await as.type("#group-name", "Late");
         await as.press("#add-group");
@@ -477,7 +508,8 @@ export async function drive(o: DriveOptions): Promise<string[]> {
       check("each row has a wall time", all.every((r) => /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/.test(r[0] ?? "")), true);
       check("Kody's changes are named, of the cluster's rank, on a page", all.some((r) => r[1] === "(Kody)" && r[2] === "cluster" && r[3] === "On a page"), true);
       check("Bea's sign-in is there with her ID and the admin rank", all.some((r) => r[1] === `Bea${bea.id}` && r[2] === "admin" && /sign-in/.test(r[4] ?? "")), true);
-      check("no row holds a password", all.some((r) => r.join(" ").includes(password) || r.join(" ").includes(passwords.cluster) || r.join(" ").includes(passwords.map)), false);
+      check("Bea's claims are there, made by her", all.filter((r) => r[1] === `Bea${bea.id}` && /claimed their own password$/.test(r[4] ?? "")).length, 2);
+      check("no row holds a password", all.some((r) => passwordsSeen.some((p) => r.join(" ").includes(p)) || r.join(" ").includes(passwords.cluster) || r.join(" ").includes(passwords.map)), false);
       const narrowed = async (what: string, set: () => Promise<void>, every: (r: string[]) => boolean, reset: () => Promise<void>): Promise<void> => {
         await set();
         const shown = await actRows();

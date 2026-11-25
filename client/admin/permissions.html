@@ -52,12 +52,7 @@
         </div>
         <p class="dim">Hours make a timed membership, as ArkApi's AddTimed does. A tribe joins open groups only. A staff membership holds on the map it was made on, unless a cluster admin makes it for every map.</p>
         <h3>Staff passwords</h3>
-        <p class="dim">A member of a staff group uses its powers after signing in with their own password: <code>enablecheats</code> and the password in game, or their name or ID and the password on these pages.</p>
-        <div class="password-box" id="new-password" hidden>
-          <p><b id="password-for"></b></p>
-          <div class="bar"><input id="password-text" readonly autocomplete="off" aria-label="The new password"><button id="copy-password">Copy</button><button id="done-password">Done</button></div>
-          <p class="warn">This password is not shown again. Copy it now and give it to them.</p>
-        </div>
+        <p class="dim">A member of a staff group claims their own password in game: they type <code>claimpassword</code> in the console, and the password is shown to them once. Nobody else ever sees it, here or anywhere. They use their group's powers after signing in with it: <code>enablecheats</code> and the password in game, or their name or ID and the password on these pages. Clearing a password ends their sign-ins, and they may claim a new one.</p>
         <div class="scroll"><table>
           <thead><tr><th>Survivor</th><th>Staff groups</th><th>Password</th><th></th></tr></thead>
           <tbody id="passwords"></tbody>

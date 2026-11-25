@@ -233,12 +233,10 @@ th { color: var(--dim); font-weight: 650; font-size: .78rem }
 .permissions-page td .sample { display: inline-block; min-width: 6em }
 .permissions-page .fault { font-size: .82rem }
 .permissions-page .fault:empty { display: none }
-.permissions-page .password-box { border: 2px solid var(--warn); border-radius: 6px; padding: 12px; background: #fff8ef; margin-block: 10px }
-.permissions-page .password-box input { font-family: ui-monospace, monospace; font-size: 1.1rem; min-width: min(24ch, 100%) }
 .permissions-page textarea { width: 100%; font-family: ui-monospace, monospace; font-size: .85rem }
 .permissions-page td input:not([type=checkbox],[type=color]) { min-width: 9em }
 .permissions-page td input[type=number] { width: 6em; min-width: 0 }
-.permissions-page :is(.glass,#chat-settings,.password-box) > .bar { margin-block: 8px }
+.permissions-page :is(.glass,#chat-settings) > .bar { margin-block: 8px }
 .permissions-page .glass h3:not(.grow) { margin-top: 20px }
 .permissions-page [data-grant] { min-width: min(24em, 100%) }
 .permissions-page td [data-set="tag.text"] { min-width: 20em; font-family: ui-monospace, monospace; font-size: .85rem }
