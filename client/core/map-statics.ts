@@ -89,8 +89,8 @@ export class HeldStatics {
   keep: ((part: MapPart) => boolean) | null = null;
   /** Where the page tells the player of the map (the loader's line), or null. */
   say: ((line: string) => void) | null = null;
-  /** The city that follows the sectors held, once one is made (`follow`). */
-  private city: CityStatics | null = null;
+  /** The city that follows the sectors held, once one is made (`follow`): its own, not counted with the store's (mapheld.ts). */
+  #city: CityStatics | null = null;
   private readonly found: MapRows = { kind: NO_U16, yaw: NO_U16, x: NO_F32, y: NO_F32, z: NO_F32, from: 0, to: 0 };
 
   constructor(head: MapHead) {
@@ -196,19 +196,22 @@ export class HeldStatics {
     return this.sectors.reduce((n, t) => n + (t?.count ?? 0), 0);
   }
 
-  /** Bytes held: the rows, a kind, a turn and a place a piece, their bends, and the indexes by chunk of the store and its sectors. */
+  /**
+   * Bytes held: the rows, a kind, a turn and a place a piece, their bends, and the indexes by chunk of the store and its
+   * sectors; and where a city follows them, its own of each square and its index by chunk.
+   */
   get bytes(): number {
     return this.parts.reduce((n, p, k) => n + (this.sectors[k] ? this.took.get(p)! : 0), this.index);
   }
 
-  /** Bytes of the store's index by chunk alone. */
+  /** Bytes of the indexes by chunk alone: the store's, and a city's that follows it. */
   get index(): number {
-    return this.sectorAt.byteLength;
+    return this.sectorAt.byteLength * (this.#city ? 2 : 1);
   }
 
-  /** Bytes sector `part`'s statics take: as they did when last held, else by the head's count of its rows and its index. */
+  /** Bytes sector `part`'s statics take: as they did when last held, else by the head's count of its rows and its index, with a city's kind a row. */
   bytesOf(part: MapPart): number {
-    return this.took.get(part) ?? this.rows.get(part)! * 16 + (this.chunks.get(part)! + 1) * 4;
+    return this.took.get(part) ?? this.rows.get(part)! * (this.#city ? 18 : 16) + (this.chunks.get(part)! + 1) * 4;
   }
 
   /** Sectors held. */
@@ -260,11 +263,12 @@ export class HeldStatics {
 
   /** Sets in sector table `t`, and the city's square of it. */
   *put(t: SectorTable): Generator<void, void> {
-    const k = this.parts.indexOf(t.part), city = this.city;
+    const k = this.parts.indexOf(t.part), city = this.#city;
     const square = city ? yield* this.squareOf(t, city) : null;
     this.sectors[k] = t;
-    this.took.set(t.part, t.bytes);
-    if (square && this.city === city) city!.set(k, square);
+    const followed = square !== null && this.#city === city;
+    this.took.set(t.part, t.bytes + (followed ? square.bytes : 0));
+    if (followed) city!.set(k, square);
     this.version++;
     this.needed.delete(t.part);
     this.answer(t.part, t);
@@ -276,7 +280,7 @@ export class HeldStatics {
     const k = this.parts.indexOf(part);
     if (!this.sectors[k]) return;
     this.sectors[k] = null;
-    this.city?.drop(k);
+    this.#city?.drop(k);
     // The last rows found may be its own.
     [this.found.kind, this.found.yaw, this.found.x, this.found.y, this.found.z] = [NO_U16, NO_U16, NO_F32, NO_F32, NO_F32];
     this.version++;
@@ -288,13 +292,14 @@ export class HeldStatics {
    */
   follow(reg: Registry): CityStatics {
     const city = CityStatics.held(this.head.dims, this.parts.length, this.kinds, reg);
-    this.city = city;
+    this.#city = city;
     this.sectors.forEach((t, k) => {
       if (!t) return;
       const steps = this.squareOf(t, city);
       for (let s = steps.next(); ; s = steps.next()) {
         if (!s.done) continue;
         city.set(k, s.value);
+        this.took.set(t.part, t.bytes + s.value.bytes);
         break;
       }
     });

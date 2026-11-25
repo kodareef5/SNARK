@@ -6,24 +6,24 @@
 //
 // The body stands at --at (map metres; the map's first spawn point if not given) or, with --drive, goes there plus
 // (dx, dz) at --speed and comes back, again and again. Every --every seconds it prints the bytes come over the link (as
-// Brotli), the parts held and asked for, and what the page holds by class (client/core/mapheld.ts), the city made of the
-// statics handed over among them as the session makes it. The far shadow is told by its sizes, since it is made in the
-// renderer. The page wants what --tier wants (map-want.ts), on a touch-first device with --touch. Time here is the link's
+// Brotli), the parts held and asked for, and what the page holds by class (client/core/mapheld.ts), the city following
+// the statics held among them as the session makes it (HeldStatics.follow), and the most statics and city held at any
+// step of a hand-over. The far shadow is told by its sizes, since it is made in the renderer. The page wants what --tier wants (map-want.ts), on a touch-first device with --touch. Time here is the link's
 // alone: the loader's own work takes none.
 
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { CORE_CONTENT } from "../../content/core.ts";
 import type { Get } from "../../client/core/fetched.ts";
-import { heldTotal, mapLedger, type MapHeld } from "../../client/core/mapheld.ts";
+import { heldTotal, kindsBytes, mapLedger, type MapHeld } from "../../client/core/mapheld.ts";
 import { MapLoader, type Place } from "../../client/core/mapload.ts";
 import { tierWant } from "../../client/core/map-want.ts";
 import { forTouch, tierOf } from "../../client/core/assets/tiers.ts";
 import { TOP_CELL, farCell } from "../../client/core/render/farshadow.ts";
 import { CHUNK_SIZE, chunkCount } from "../../shared/coords.ts";
 import { compileContent, withContent } from "../../shared/content/registry.ts";
-import { CityStatics } from "../../shared/world/city.ts";
-import { partsFolder, type MapStatics } from "../../shared/world/mapfile.ts";
+import type { CityStatics } from "../../shared/world/city.ts";
+import { partsFolder } from "../../shared/world/mapfile.ts";
 import { headOf } from "../maps/diff.ts";
 
 const args = process.argv.slice(2);
@@ -85,20 +85,19 @@ function place(): Place {
   return { x: ax! + dx! * f, z: az! + dz! * f, vx: dx! * v, vz: dz! * v };
 }
 
-// The city as the session makes it of each hand-over: of the sectors held.
+// The city as the session makes it: following the sectors held, from the first frame on.
 const compiled = compileContent(CORE_CONTENT);
 if (!compiled.registry) throw new Error(compiled.errors.join("\n"));
 let city: CityStatics | null = null;
-let cityFailed = "";
 const handed: string[] = [];
-const arrived = (statics: MapStatics): void => {
+/** The most statics and city held, and at a hand-over's steps. */
+const most = { held: 0, handing: 0 };
+/** Statics and the city as the ledger counts them, its kinds apart. */
+const heldNow = (): number => mapLedger({ loader, city, skip: [compiled.registry] }).filter((r) => r.name === "statics" || r.name === "city").reduce((n, r) => n + r.bytes, 0);
+function* arriving(): Generator<void, void> {
   handed.push(`${(now / 1000).toFixed(1)} s ${loader.statics.size} sectors`);
-  try {
-    city = new CityStatics(head.dims, statics, withContent(compiled.registry!, loader.staged.content?.defs ?? []));
-  } catch (e) {
-    cityFailed = e instanceof Error ? e.message : String(e);
-  }
-};
+  most.handing = Math.max(most.handing, heldNow());
+}
 
 /**
  * The far shadow's bytes by its sizes (client/core/render/farshadow.ts): its two grids of solid heights and ground at the
@@ -120,7 +119,10 @@ let loader!: MapLoader;
 let ready = false;
 void started.then(async (l) => {
   loader = l;
-  await l.follow(place, { arrived, want: () => WANT });
+  city = l.held.follow(withContent(compiled.registry!, l.staged.content?.defs ?? []));
+  // Each sector set in is a moment the most may be held at.
+  l.held.onSet(() => void (most.held = Math.max(most.held, heldNow())));
+  await l.follow(place, { arriving, want: () => WANT });
   ready = true;
   console.log(`${(now / 1000).toFixed(1)} s  first frame: ${mb(stats.wire)} MB come`);
 });
@@ -133,6 +135,7 @@ for (;;) {
   for (let k = 0; k < 4; k++) await turn();
   if (now >= nextSample && loader) {
     const rows = mapLedger({ loader, city, skip: [compiled.registry] });
+    most.held = Math.max(most.held, heldNow());
     const shadow = farShadowBytes();
     const p = loader.progress();
     if (!p.settled || stats.asked > askedThen) settledAt = -1;
@@ -153,5 +156,6 @@ for (;;) {
   now = Math.max(now, t.at);
   t.go();
 }
-console.log(`hand-overs: ${handed.join("; ") || "none"}${cityFailed ? `; the city could not be made: ${cityFailed}` : ""}`);
+console.log(`hand-overs: ${handed.join("; ") || "none"}`);
+console.log(`statics and city held at most: ${mb(most.held)} MB at the samples, ${mb(most.handing)} MB at a hand-over; the city's kinds ${mb(city ? kindsBytes(city) : 0)} MB apart`);
 process.exit(0);
