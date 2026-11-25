@@ -27,6 +27,8 @@ const WORLD_POSTS = new Set([
   "/admin/loadouts/book", "/admin/loadouts/reset", "/admin/loadouts/apply",
   "/admin/supply/book", "/admin/supply/reset", "/admin/supply/restore", "/admin/supply/call",
   "/admin/supply/land", "/admin/supply/cancel", "/admin/supply/ark",
+  "/admin/events/book", "/admin/events/reset", "/admin/events/restore", "/admin/events/call",
+  "/admin/events/hurry", "/admin/events/down", "/admin/events/cancel",
 ]);
 
 /** The front passes reads, registered writes at a world's path, and the site's scene editor. */

@@ -330,6 +330,12 @@ export class MapEvents implements RunHost {
     return Number.isFinite(seconds) ? Math.max(0, Math.min(3600, seconds)) : 0;
   }
 
+  /** The seconds of notice an event of `kind` called now would give, by the book in force; 0 for no such kind. */
+  noticeSeconds(kind: string): number {
+    const k = this.kinds.get(kind);
+    return k ? this.noticeOf(k, tunedOf(k.sheet.fields, this.book.tuning[kind]) as Record<string, FieldValue>) : 0;
+  }
+
   /** A new event record, not yet called. */
   private record(k: Kind, kind: string, o: CallOptions, seed: number, n: number): MapEvent {
     const tick = this.ctx.world.tick;

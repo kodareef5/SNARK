@@ -23,6 +23,7 @@ const shapes: Record<string, string> = {
   settings: "M3 6h7m5 0h6M3 12h12m4 0h2M3 18h3m5 0h10 M10 3v6m5 0v6m-9 0v6",
   loadouts: "M4 8h16v12H4z M8 8V5h8v3 M4 13h16m-10 0v2h4v-2",
   drops: "M2 10a10 8 0 0120 0z M2 10l8 7m12-7-8 7m-6-7 3 7m5-7-3 7 M9 17h6v4H9z",
+  events: "M2 11q10-6 20 0q-10 6-20 0z M8 8q4-5 8 0 M9 15l-2 6m8-6 2 6",
   cast: "M3 4h18v7c0 6-6 9-9 10-3-1-9-4-9-10z M6 9h4m4 0h4m-10 5q4 4 8 0",
   health: "M2 12h5l3-8 4 16 3-8h5",
   saves: "M4 3h13l3 3v15H4z M7 3v6h9V3 M8 21v-8h8v8",
