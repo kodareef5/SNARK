@@ -57,11 +57,13 @@ export function crowdRows(b: Bench, host: Host, run: (ticks: number, times: numb
   // The bodies the asking client shows, read after every tick: what it holds swings as it walks over chunk borders.
   const shown = new RemoteSample();
   const held: number[] = [];
-  const tick = game.tick.bind(game);
-  game.tick = () => {
-    tick();
+  // Read after the client's own update, outside the tick's timer.
+  const update = asker.update.bind(asker);
+  asker.update = (...args: Parameters<ClientSession["update"]>) => {
+    const out = update(...args);
     asker.sampleRemote(shown);
     held.push(shown.count);
+    return out;
   };
   const ticks: number[] = [];
   const TICKS = 600;
@@ -80,7 +82,9 @@ export function crowdRows(b: Bench, host: Host, run: (ticks: number, times: numb
   b.record("downstream per client", down.reduce((a, v) => a + v, 0) / down.length / 1024, "KB/s", 36);
   b.record(`bodies shown to the client that asked for 2,048, of the ${cap.toLocaleString("en-US")} the server allows, at the end`, end, "");
   b.record(`bodies it was short of the ${(cap - 1).toLocaleString("en-US")} others it may be shown, median over the 600 ticks`, b.percentile(short, 0.5), "", 64);
-  b.record("ticks of the 600 it was shown fewer than 900", held.filter((n) => n < 900).length, "", 30);
+  // The floor follows the cap: 88% of what it may be shown, 900 of 1,023.
+  const floor = Math.floor((cap - 1) * 0.88);
+  b.record(`ticks of the 600 it was shown fewer than ${floor.toLocaleString("en-US")}`, held.filter((n) => n < floor).length, "", 30);
   b.record("bodies shown to a client that never asked, of 512", quiet?.views.find(quiet.lastSnapshot)?.count ?? 0, "", VIEW_DEFAULT);
   b.record("snapshots that outgrew the server's writer and were not sent", game.stats.overflows - overflows, "", 0);
   b.record("snapshots the asking client could not decode", asker.stats.undecodable - undecodable, "", 0);
@@ -95,11 +99,13 @@ export function crowdRows(b: Bench, host: Host, run: (ticks: number, times: numb
     ents.setPosition(e, px, hf.heightAt(px, pz), pz);
     run(3 * TICK_RATE, null);
   }
-  game.tick = tick;
+  asker.update = update;
   const least = Math.min(end, ...held);
-  const back = held.findIndex((n, i) => i > held.indexOf(least) && n >= end - 32);
+  // None, where it never held fewer than all but 32.
+  const fell = held.findIndex((n) => n < end - 32);
+  const back = fell < 0 ? -1 : held.findIndex((n, i) => i > fell && n >= end - 32);
   b.record("bodies it lost at worst after a 2 m step into the next chunk", end - least, "", 128);
-  b.record("ticks after the step before it held all but 32 of them again", back < 0 ? held.length : back + 1, "", 45);
+  b.record("ticks after the step before it held all but 32 of them again", fell < 0 ? 0 : back < 0 ? held.length : back + 1, "", 45);
 }
 
 /** A whole view of bodies ahead of the camera, drawn on the top graphics tier and then on medium. The camera is turned to face -X. */
