@@ -4,11 +4,11 @@
 import { expect } from "bun:test";
 import { FORMS } from "../../content/building/forms.ts";
 import { COARSE, COARSE_VIEWS, COUNTS, JointBench, SIDE, countsOf, fightsOf, piecesPack, registry, tierMeshes } from "../../tools/pieces/joints.ts";
-import { JUNCTIONS, TIERS, tierJunction, type Junction, type TierName, type WallEnd } from "../../tools/pieces/layout.ts";
+import { JUNCTIONS, TIERS, mixedWith, tierJunction, type Junction, type TierName, type WallEnd } from "../../tools/pieces/layout.ts";
 import { STONE } from "../../tools/pack/pieces/stone.ts";
 import { THATCH, THATCH_FORMS } from "../../tools/pack/pieces/thatch.ts";
 import { tierShapes, trimShapes } from "../../tools/pack/pieces/tier.ts";
-import { WOOD, WOOD_JOINTED } from "../../tools/pack/pieces/wood.ts";
+import { WOOD, WOOD_STRIPS } from "../../tools/pack/pieces/wood.ts";
 import { bakeMetal } from "../../tools/pack/pieces/metal.ts";
 import { unpackMeshes } from "../../tools/pack/write.ts";
 import { test } from "../fixtures/needs-art.ts";
@@ -54,49 +54,54 @@ for (const tier of TIERS) {
   });
 }
 
-test("wood as its recipe makes it meets no worse than the wood it replaces", () => {
-  // The recipe's own shapes in place of the installed pack's, which may be older than the recipe.
-  const pack = piecesPack([...tierMeshes(["thatch", "stone"]), ...tierShapes(WOOD, FORMS)]);
-  const laid = lay()[TIERS.indexOf("wood")]!;
-  const bench = new JointBench(pack, laid);
-  const meshes = meshesOf(pack);
-  for (const j of laid) {
-    hold(countsOf(bench, j, meshes), AT_MOST.wood[j.name]!, `recipe wood ${j.name}`);
-  }
-});
+/** The walls of one of JUNCTIONS by their ways, as `tierJunction` lays them, and the tier of a house's floors where it has them. */
+function endsOf(name: string, tier: TierName): { ends: WallEnd[]; house: TierName | null } {
+  const wall = (way: number, left: boolean, form = "wall", storey = 0, of: TierName = tier): WallEnd => ({ form, tier: of, way, left, storey });
+  const angle = /^walls (\d+)$/.exec(name);
+  if (angle) return { ends: [wall(0, false), wall(Number(angle[1]), true)], house: null };
+  if (name === "tee") return { ends: [wall(0, false), wall(180, true), wall(90, true)], house: null };
+  if (name === "cross") return { ends: [wall(0, false), wall(90, true), wall(180, true), wall(270, false)], house: null };
+  if (name === "openings 90") return { ends: [wall(0, false, "doorframe"), wall(90, true, "windowframe")], house: null };
+  if (name === "mixed 90") return { ends: [wall(0, false), wall(90, true, "wall", 0, mixedWith(tier))], house: null };
+  return { ends: [wall(0, false), wall(90, true), wall(0, false, "wall", 1), wall(90, true, "wall", 1)], house: tier };
+}
 
-test("metal as its recipe makes it meets no worse than the boxes it replaces", () => {
-  // The recipe's meshes need no pictures and no pack: they stand in for the grey boxes, whose counts AT_MOST holds.
-  const pack = piecesPack([...tierMeshes(), ...bakeMetal(FORMS)]);
-  const laid = lay()[TIERS.indexOf("metal")]!;
-  const bench = new JointBench(pack, laid);
-  const meshes = meshesOf(pack);
-  for (const j of laid) {
-    const counted = countsOf(bench, j, meshes);
-    hold(counted, AT_MOST.metal[j.name]!, `recipe metal ${j.name}`);
-    // A corner's open notch is the boxes' own to the pixel, until joints are drawn there.
-    expect([j.name, counted[0], counted[1]]).toEqual([j.name, 0, AT_MOST.metal[j.name]![1]!]);
-  }
-});
+/** Each of a tier's JUNCTIONS set down by key in a base of its own, as a player builds, with the trims the client lays: its counts, in the order of COUNTS. */
+function keyedCounts(pack: JointBench["pack"], tier: TierName): Map<string, number[]> {
+  const laid: Junction[] = [];
+  const bench = new JointBench(pack, [], SIDE, (structs, reg) => {
+    JUNCTIONS.forEach((name, k) => {
+      const { ends, house } = endsOf(name, tier);
+      const [vx, vz] = [64 + (k % 4) * 32, 64 + Math.floor(k / 4) * 32];
+      laid.push(layJunction(structs, reg, baseAt(structs, vx, house ? FOUNDATION_THICK : 0, vz, 0), name, vx, vz, 0, ends, house));
+    });
+  });
+  bench.draw({ vertex: [64, 64] }, 1.5, 30, 20);
+  const got = drawn(bench.scene, { chunksX: 8, chunksZ: 8 }, pack, meshesOf(pack));
+  return new Map(laid.map((j) => {
+    const [near, far, fought] = [bench.measure(j), bench.measure(j, COARSE, COARSE_VIEWS), fightsOf(round(got, j.vertex[0], j.vertex[1], 4.7))];
+    return [j.name, [near.leak, near.notch, far.leak, far.notch, fought.faces, fought.area]] as const;
+  }));
+}
 
-test("stone as its recipe makes it meets no worse than the stone it replaces", () => {
-  const pack = piecesPack([...tierMeshes(["thatch", "wood"]), ...tierShapes(STONE, FORMS)]);
-  const laid = lay()[TIERS.indexOf("stone")]!;
-  const bench = new JointBench(pack, laid);
-  const meshes = meshesOf(pack);
-  for (const j of laid) {
-    hold(countsOf(bench, j, meshes), AT_MOST.stone[j.name]!, `recipe stone ${j.name}`);
-  }
-});
+/** Every tier as its recipe makes it, with its trims, in place of the installed packs, which may be older than the recipes. */
+let recipes: JointBench["pack"] | null = null;
+const recipePack = (): JointBench["pack"] =>
+  (recipes ??= piecesPack([
+    ...tierShapes(WOOD, FORMS), ...trimShapes(WOOD),
+    ...tierShapes(STONE, FORMS), ...trimShapes(STONE),
+    ...tierShapes(THATCH, Object.fromEntries(THATCH_FORMS.map((name) => [name, FORMS[name]]))), ...trimShapes(THATCH),
+    ...bakeMetal(FORMS, true),
+  ]));
 
-test("thatch as its recipe makes it meets no worse than the thatch it replaces", () => {
-  const forms = Object.fromEntries(THATCH_FORMS.map((name) => [name, FORMS[name]]));
-  const pack = piecesPack([...tierMeshes(["wood", "stone"]), ...tierShapes(THATCH, forms)]);
-  const laid = lay()[TIERS.indexOf("thatch")]!;
-  const bench = new JointBench(pack, laid);
-  const meshes = meshesOf(pack);
-  for (const j of laid) hold(countsOf(bench, j, meshes), AT_MOST.thatch[j.name]!, `recipe thatch ${j.name}`);
-});
+for (const tier of TIERS) {
+  test(`${tier} as its recipe makes it, set down by key, meets no worse than it did`, () => {
+    for (const [name, counted] of keyedCounts(recipePack(), tier)) {
+      if (process.env.SNARK_MEETS) console.log(`recipe ${tier} ${name}: ${counted.join(", ")}`);
+      hold(counted, AT_MOST[tier][name]!, `recipe ${tier} ${name}`);
+    }
+  });
+}
 
 /** Corners the client lays a wood joint at, by the ways of their walls: the square post, and the two round ones off the square. */
 const JOINTED: readonly (readonly [name: string, joint: string, ways: readonly (readonly [way: number, left: boolean, storey?: number])[]])[] = [
@@ -110,9 +115,9 @@ const JOINTED: readonly (readonly [name: string, joint: string, ways: readonly (
   ["walls 150", "joint_r15_wood", [[0, false], [150, true]]],
 ];
 
-for (const [recipe, what] of [[WOOD_JOINTED, "with no strips"], [WOOD, "with its strips, which the joints fold away"]] as const) {
+for (const [recipe, what] of [[WOOD, "with no strips"], [WOOD_STRIPS, "with its strips, which the joints fold away"]] as const) {
   test(`wood ${what} and its own joints closes every corner, square or not`, () => {
-    // The recipe's walls and trims as the client lays and fits them (client/core/render/trims.ts): what turning wood's switch gives.
+    // The recipe's walls and trims as the client lays and fits them (client/core/render/trims.ts).
     const pack = piecesPack([...tierMeshes(["thatch", "stone"]), ...tierShapes(recipe, FORMS), ...trimShapes(recipe)]);
     const laid: Junction[] = [];
     const bench = new JointBench(pack, [], SIDE, (structs, reg) => {
@@ -138,7 +143,7 @@ for (const [recipe, what] of [[WOOD_JOINTED, "with no strips"], [WOOD, "with its
 
 // Thatch with its own joints, as the client lays and fits them: the corner pole in place of each wall's own post.
 
-import { THATCH_JOINTED, THATCH_PLANNED } from "../../tools/pack/pieces/thatch.ts";
+import { THATCH_PLANNED, THATCH_POSTED } from "../../tools/pack/pieces/thatch.ts";
 
 /** Corners the client lays a thatch joint at, by the ways of their walls: the corner pole, and the stouter one where walls meet at 60 degrees. */
 const THATCH_JOINTS: readonly (readonly [name: string, joint: string, ways: readonly (readonly [way: number, left: boolean, storey?: number])[]])[] = [
@@ -152,7 +157,7 @@ const THATCH_JOINTS: readonly (readonly [name: string, joint: string, ways: read
   ["walls 150", "joint_r15_thatch", [[0, false], [150, true]]],
 ];
 
-for (const [recipe, what] of [[THATCH_JOINTED, "with no posts of its own"], [THATCH, "with its posts left on"]] as const) {
+for (const [recipe, what] of [[THATCH, "with no posts of its own"], [THATCH_POSTED, "with its posts left on"]] as const) {
   test(`thatch ${what} and its own joints shows through nowhere and leaves no corner open`, () => {
     const forms = Object.fromEntries(THATCH_FORMS.map((name) => [name, FORMS[name]]));
     const pack = piecesPack([...tierMeshes(["wood", "stone"]), ...tierShapes(recipe, forms), ...trimShapes(recipe)]);
@@ -178,7 +183,7 @@ for (const [recipe, what] of [[THATCH_JOINTED, "with no posts of its own"], [THA
       expect([j.name, near.leak, near.notch, far.leak, far.notch]).toEqual([j.name, 0, 0, 0, 0]);
       // With no posts, faces lie in one plane no more than they did with none of this: nowhere but under a second storey.
       const most = AT_MOST.thatch[j.name] ?? [0, 0, 0, 0, 0, 0];
-      if (recipe === THATCH_JOINTED) expect([j.name, fought.faces <= most[4]!, fought.area <= most[5]!]).toEqual([j.name, true, true]);
+      if (recipe === THATCH) expect([j.name, fought.faces <= most[4]!, fought.area <= most[5]!]).toEqual([j.name, true, true]);
     });
     if (process.env.SNARK_MEETS) console.log(said.join("\n"));
   });
@@ -536,5 +541,5 @@ test("metal's new shapes and its own trims close every junction, and no joint st
 test("thatch's new shapes and its own trims close every junction it makes", () => {
   const forms = Object.fromEntries(Object.entries(SHAPED_FORMS).filter(([name]) => (THATCH_FORMS as readonly string[]).includes(name) || (THATCH_PLANNED as readonly string[]).includes(name)));
   // No large wall, double doorway, beam, footing or triangle in thatch: the gables, low walls, rails and skirts.
-  expect(shaped("thatch", [...tierMeshes(["wood", "stone"]), ...tierShapes(THATCH_JOINTED, forms), ...trimShapes(THATCH_JOINTED)])).toBeGreaterThanOrEqual(6);
+  expect(shaped("thatch", [...tierMeshes(["wood", "stone"]), ...tierShapes(THATCH, forms), ...trimShapes(THATCH)])).toBeGreaterThanOrEqual(6);
 });

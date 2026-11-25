@@ -2068,8 +2068,8 @@ export function woodRecipe(strips: boolean): TierRecipe {
   };
 }
 
-// THE SWITCH. Wood's joints are drawn once its pack holds core:joint_sq_wood (client/core/render/trims.ts), and its
-// walls' strips then stand inside them. Make this `woodRecipe(false)` in the commit that publishes that pack.
-export const WOOD: TierRecipe = woodRecipe(true);
-/** Wood as it is with joints drawn: every wall ends flat on its collider's ends. */
-export const WOOD_JOINTED: TierRecipe = woodRecipe(false);
+// Wood's pack holds core:joint_sq_wood, so the client draws joints at its corners (client/core/render/trims.ts) and no
+// wall carries the strips that filled a corner before: every wall ends flat on its collider's ends.
+export const WOOD: TierRecipe = woodRecipe(false);
+/** Wood as it was before joints were drawn: each wall's ends carry strips that fill an outside corner. */
+export const WOOD_STRIPS: TierRecipe = woodRecipe(true);

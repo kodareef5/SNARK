@@ -10,7 +10,7 @@ import { STONE } from "../../tools/pack/pieces/stone.ts";
 import { THATCH, THATCH_FORMS, THATCH_SOLIDS } from "../../tools/pack/pieces/thatch.ts";
 import type { FormDef } from "../../shared/world/lattice/forms.ts";
 import { tierShapes, trimShapes } from "../../tools/pack/pieces/tier.ts";
-import { WOOD, WOOD_JOINTED } from "../../tools/pack/pieces/wood.ts";
+import { WOOD, WOOD_STRIPS } from "../../tools/pack/pieces/wood.ts";
 import { METAL, bakeMetal, metalColours } from "../../tools/pack/pieces/metal.ts";
 import { REGION_BASE } from "../../shared/pack/palette.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
@@ -20,15 +20,12 @@ import { FACE_PLAIN, FACE_WEARS } from "../../client/core/render/piece-fit.ts";
 const PROUD = 0.04;
 /** A door's pull and hinges stand further off its face. */
 const PROUD_LEAF = 0.05;
-/** Wood's strips past a wall's ends fill the outside corner until joints are drawn there. */
-const PROUD_ENDS = 0.1;
 
 const levels = Object.entries(FORMS).map(([name, form]) => ({ name, form, shapes: levelsOf(WOOD, name, form) }));
 
 test("every level of every wood piece lies within its collider and the margin its kind is given", () => {
   for (const { name, form, shapes } of levels) {
     const box = colliderBox(form);
-    const along = form.plane === "upright" ? 0 : 2;
     shapes.forEach((shape, level) => {
       const over = [0, 0, 0];
       for (const p of shape.corners()) {
@@ -36,7 +33,7 @@ test("every level of every wood piece lies within its collider and the margin it
         for (let a = 0; a < 3; a++) over[a] = Math.max(over[a]!, box[a]! - at[a]!, at[a]! - box[a + 3]!);
       }
       over.forEach((most, a) => {
-        const margin = form.layer === "leaf" ? PROUD_LEAF : form.layer === "wall" && a === along ? PROUD_ENDS : PROUD;
+        const margin = form.layer === "leaf" ? PROUD_LEAF : PROUD;
         expect(most, `${name} level ${level} along ${"xyz"[a]}`).toBeLessThanOrEqual(margin);
       });
     });
@@ -319,10 +316,11 @@ test("every thatch level is closed, looks outward and costs no more than a made 
   }
 });
 
-test("thatch is cut out only in its tips: under 15 triangles in 100 of a finest level, and none from across a yard", () => {
+test("thatch is cut out only in its tips: under 17 triangles in 100 of a finest level, and none from across a yard", () => {
   const cut = (shape: (typeof thatch)[number]["shapes"][number]): number => shape.faces.reduce((n, f) => n + (f.mat in THATCH_SOLIDS || !Object.values(THATCH_SOLIDS).includes(f.mat) ? 0 : f.points.length - 2), 0);
   for (const { name, shapes } of thatch) {
-    expect(cut(shapes[0]!) / shapes[0]!.triangles, name).toBeLessThanOrEqual(0.15);
+    // Without their posts a wall and a doorway keep every tip: 15.3 and 16.5 in 100, where with them they were 12.8 and 13.9.
+    expect(cut(shapes[0]!) / shapes[0]!.triangles, name).toBeLessThanOrEqual(0.17);
     for (const shape of shapes.slice(2)) expect(cut(shape), name).toBe(0);
     // A body wears its picture whole: every piece that is cut out anywhere has its solid twin too.
     if (cut(shapes[0]!) > 0 && name !== "ceiling") expect(shapes[0]!.faces.some((f) => f.mat in THATCH_SOLIDS), name).toBe(true);
@@ -397,7 +395,6 @@ function roofHeight(form: FormDef, x: number, z: number): number {
 test("every level of every new wood form lies in its form's box and the margin its kind is given", () => {
   for (const { name, form, shapes } of planned) {
     const box = colliderBox(form);
-    const along = form.plane === "upright" ? 0 : 2;
     shapes.forEach((shape, level) => {
       const over = [0, 0, 0, 0, 0, 0];
       for (const p of shape.corners()) {
@@ -412,7 +409,7 @@ test("every level of every new wood form lies in its form's box and the margin i
       over.forEach((most, k) => {
         const a = k % 3;
         // An eave's boards run out past a low side, and where that side meets a sloped one, as far along it.
-        const margin = isRoof(form) ? (a === 1 ? (k === 1 ? ROOF_SEAT : ROOF_PROUD) : EAVE + 0.001) : form.layer === "leaf" ? PROUD_LEAF : form.layer === "wall" && a === along ? PROUD_ENDS : PROUD;
+        const margin = isRoof(form) ? (a === 1 ? (k === 1 ? ROOF_SEAT : ROOF_PROUD) : EAVE + 0.001) : form.layer === "leaf" ? PROUD_LEAF : PROUD;
         expect(most, `${name} level ${level} past its ${k < 3 ? "least" : "most"} ${"xyz"[a]}`).toBeLessThanOrEqual(margin);
       });
     });
@@ -499,19 +496,19 @@ test("a sloped wall's two hands are each other in a mirror, point for point", ()
 });
 
 test("with no strips, every wood wall ends flat on its collider's ends at every level", () => {
-  // What WOOD becomes when its one switch is turned (tools/pack/pieces/wood.ts): the joints stand where the strips did.
+  // The joints stand where the strips did (tools/pack/pieces/wood.ts).
   for (const [name, form] of Object.entries({ ...FORMS, ...PLANNED } as Record<string, FormDef>)) {
     if (form.layer !== "wall") continue;
     const box = colliderBox(form);
-    levelsOf(WOOD_JOINTED, name, form).forEach((shape, level) => {
+    levelsOf(WOOD, name, form).forEach((shape, level) => {
       const xs = shape.corners().map((p) => p[0]);
       // To the 2 mm a hewn corner post strays on the finest level, and to the last bit past it.
       const slack = level === 0 ? 0.002 : 1e-9;
       expect(Math.abs(Math.min(...xs) - box[0]), `${name} level ${level}, its -x end`).toBeLessThanOrEqual(slack);
       expect(Math.abs(Math.max(...xs) - box[3]), `${name} level ${level}, its +x end`).toBeLessThanOrEqual(slack);
     });
-    // And with them it stands past its ends, which is all the switch changes.
-    const xs = levelsOf(WOOD, name, form)[0]!.corners().map((p) => Math.abs(p[0]));
+    // And with them it stands past its ends, which is all the strips change.
+    const xs = levelsOf(WOOD_STRIPS, name, form)[0]!.corners().map((p) => Math.abs(p[0]));
     if (form.outline.length === 4 && form.thick === 0.2 && (form.cells?.length ?? 1) < 3) expect(Math.max(...xs), name).toBeGreaterThan(box[3] + 0.05);
   }
 });
@@ -588,7 +585,7 @@ void planOf;
 
 // Thatch's share of the forms past the first nine, its trims, and the switch that takes a wall's own post away.
 
-import { THATCH_EAVELESS, THATCH_JOINTED, THATCH_PLANNED } from "../../tools/pack/pieces/thatch.ts";
+import { THATCH_EAVED, THATCH_PLANNED, THATCH_POSTED } from "../../tools/pack/pieces/thatch.ts";
 
 const THATCH_NEW: Record<string, FormDef> = Object.fromEntries(THATCH_PLANNED.map((name) => [name, PLANNED[name]!]));
 const thatchNew = Object.entries(THATCH_NEW).map(([name, form]) => ({ name, form, shapes: levelsOf(THATCH, name, form) }));
@@ -662,7 +659,8 @@ test("a textured level of a new thatch form that yields has a ring on each plane
 
 test("every new thatch level is closed, looks outward and costs no more than it did, a slope no more than a ceiling and a tenth", () => {
   const meshes = tierShapes(THATCH, THATCH_NEW);
-  const flat = thatch.find((p) => p.name === "ceiling")!.shapes.map((shape) => shape.triangles);
+  // A ceiling with its eaves, as a roof has its own.
+  const flat = levelsOf(THATCH_EAVED, "ceiling", FORMS.ceiling).map((shape) => shape.triangles);
   expect(flat).toEqual([1032, 204, 68, 12]);
   for (const mesh of meshes) {
     const name = mesh.id.slice(5, -7);
@@ -693,7 +691,7 @@ test("a new thatch form is cut out only in its tips: under 15 triangles in 100 a
 });
 
 test("a thatch gable's two hands are each other in a mirror, point for point", () => {
-  for (const recipe of [THATCH, THATCH_JOINTED]) {
+  for (const recipe of [THATCH, THATCH_POSTED]) {
     const [left, right] = ["sloped_wall_left", "sloped_wall_right"].map((name) => levelsOf(recipe, name, THATCH_NEW[name]!));
     left!.forEach((shape, level) => {
       const name = (p: Vec, flip: number): string => [flip * p[0], p[1], p[2]].map((c) => (Math.round(c * 1e6) / 1e6 || 0).toFixed(6)).join();
@@ -713,11 +711,11 @@ test("a thatch roof reads its row: let down by its slab's thickness, as the row 
 });
 
 test("with no post of its own, every thatch wall ends on its collider's ends, and with one it stands past its left", () => {
-  // What THATCH becomes when its one switch is turned (tools/pack/pieces/thatch.ts): the corner's pole stands where the post did.
+  // The corner's pole stands where the post did (tools/pack/pieces/thatch.ts).
   const walls: Record<string, FormDef> = { wall: FORMS.wall, doorframe: FORMS.doorframe, half_wall: THATCH_NEW.half_wall!, sloped_wall_left: THATCH_NEW.sloped_wall_left!, sloped_wall_right: THATCH_NEW.sloped_wall_right! };
   for (const [name, form] of Object.entries(walls)) {
     const box = colliderBox(form);
-    levelsOf(THATCH_JOINTED, name, form).forEach((shape, level) => {
+    levelsOf(THATCH, name, form).forEach((shape, level) => {
       const xs = shape.corners().map((p) => p[0]);
       // To the 2 cm a rod's axe-cut end runs past its length on the finest level, a millimetre on the next, and to the last bit past it.
       const slack = level === 0 ? 0.02 : level === 1 ? 1e-3 : 1e-9;
@@ -725,23 +723,21 @@ test("with no post of its own, every thatch wall ends on its collider's ends, an
       expect(Math.abs(Math.max(...xs) - box[3]), `${name} level ${level}, its +x end`).toBeLessThanOrEqual(slack);
     });
     // With its post a wall stands 0.11 m and more past its left end on every level drawn with materials, and a gable has half a post on its high end.
-    if (!name.startsWith("sloped")) levelsOf(THATCH, name, form).slice(0, TEXTURED).forEach((shape, level) => expect(box[0] - Math.min(...shape.corners().map((p) => p[0])), `${name} level ${level}`).toBeGreaterThan(0.11));
-    else expect(levelsOf(THATCH, name, form)[0]!.triangles, name).toBeGreaterThan(levelsOf(THATCH_JOINTED, name, form)[0]!.triangles);
+    if (!name.startsWith("sloped")) levelsOf(THATCH_POSTED, name, form).slice(0, TEXTURED).forEach((shape, level) => expect(box[0] - Math.min(...shape.corners().map((p) => p[0])), `${name} level ${level}`).toBeGreaterThan(0.11));
+    else expect(levelsOf(THATCH_POSTED, name, form)[0]!.triangles, name).toBeGreaterThan(levelsOf(THATCH, name, form)[0]!.triangles);
   }
-  // Nothing else of the tier changes with the switch.
+  // Nothing else of the tier changes with the posts.
   for (const name of ["foundation", "ceiling", "door", "door_open", "roof", "roof_hip", "roof_valley", "railing"]) {
     const form = (name in FORMS ? (FORMS as Record<string, FormDef>)[name] : THATCH_NEW[name])!;
-    expect(levelsOf(THATCH_JOINTED, name, form).map((shape) => Bun.hash(Float64Array.from(shape.corners().flat()))), name).toEqual(levelsOf(THATCH, name, form).map((shape) => Bun.hash(Float64Array.from(shape.corners().flat()))));
+    expect(levelsOf(THATCH_POSTED, name, form).map((shape) => Bun.hash(Float64Array.from(shape.corners().flat()))), name).toEqual(levelsOf(THATCH, name, form).map((shape) => Bun.hash(Float64Array.from(shape.corners().flat()))));
   }
 });
 
 test("thatch's trims are the ones the client looks for, the eave with eaveless ceilings, closed but where two are a sheet", () => {
   const trims = trimShapes(THATCH);
-  expect(trims.map((m) => m.id)).toEqual(["core:joint_sq_thatch", "core:joint_r15_thatch", "core:joint_r21_thatch", "core:skirt_thatch", "core:ridge_thatch"]);
+  expect(trims.map((m) => m.id)).toEqual(["core:joint_sq_thatch", "core:joint_r15_thatch", "core:joint_r21_thatch", "core:skirt_thatch", "core:ridge_thatch", "core:eave_thatch"]);
   // The client lays an eave wherever the pack has one, so it is in the pack only with ceilings that have none of their own.
-  const eaveless = trimShapes(THATCH_EAVELESS);
-  expect(eaveless.map((m) => m.id)).toEqual([...trims.map((m) => m.id), "core:eave_thatch"]);
-  trims.push(eaveless.at(-1)!);
+  expect(trimShapes(THATCH_EAVED).map((m) => m.id)).toEqual(trims.slice(0, -1).map((m) => m.id));
   for (const mesh of trims) {
     const most = TRIM_TRIANGLES[mesh.id.slice(5, -7)]!;
     expect(mesh.lods.length, mesh.id).toBe(most.length);
@@ -755,11 +751,11 @@ test("thatch's trims are the ones the client looks for, the eave with eaveless c
   // The pole of a square corner is the pole of a wide one: one mesh under two names.
   const [sq, r15] = [trims[0]!, trims[1]!];
   expect(sq.lods.map((l) => Bun.hash(l.positions))).toEqual(r15.lods.map((l) => Bun.hash(l.positions)));
-  expect(trimShapes(THATCH_JOINTED).map((m) => m.lods.map((l) => Bun.hash(l.positions)))).toEqual(trims.slice(0, -1).map((m) => m.lods.map((l) => Bun.hash(l.positions))));
+  expect(trimShapes(THATCH_POSTED).map((m) => m.lods.map((l) => Bun.hash(l.positions)))).toEqual(trims.map((m) => m.lods.map((l) => Bun.hash(l.positions))));
 });
 
 test("a thatch eave runs along its side's line and ends square on its two ends, where the client turns them", () => {
-  const eave = THATCH_EAVELESS.trims!().eave!;
+  const eave = THATCH.trims!().eave!;
   eave.forEach((shape, level) => {
     // In the recipe's frame: +x along the side from its middle, out at -y, up from the ceiling's top.
     const points = shape.corners();
@@ -778,7 +774,7 @@ test("a thatch eave runs along its side's line and ends square on its two ends, 
 
 test("with no eaves of its own, a thatch ceiling ends on its sides but for its joists, and nothing else changes", () => {
   const ceiling = FORMS.ceiling;
-  const [eaved, bare] = [levelsOf(THATCH, "ceiling", ceiling), levelsOf(THATCH_EAVELESS, "ceiling", ceiling)];
+  const [eaved, bare] = [levelsOf(THATCH_EAVED, "ceiling", ceiling), levelsOf(THATCH, "ceiling", ceiling)];
   const box = colliderBox(ceiling);
   bare.forEach((shape, level) => {
     expect(shape.triangles, `level ${level}`).toBeLessThanOrEqual(eaved[level]!.triangles);
@@ -795,7 +791,7 @@ test("with no eaves of its own, a thatch ceiling ends on its sides but for its j
   expect(bare.map((shape) => shape.triangles)).toEqual([616, 108, 60, 12]);
   for (const name of ["foundation", "wall", "doorframe", "door", "door_open"]) {
     const form = (FORMS as Record<string, FormDef>)[name]!;
-    expect(levelsOf(THATCH_EAVELESS, name, form).map((shape) => Bun.hash(Float64Array.from(shape.corners().flat()))), name).toEqual(levelsOf(THATCH, name, form).map((shape) => Bun.hash(Float64Array.from(shape.corners().flat()))));
+    expect(levelsOf(THATCH_EAVED, name, form).map((shape) => Bun.hash(Float64Array.from(shape.corners().flat()))), name).toEqual(levelsOf(THATCH, name, form).map((shape) => Bun.hash(Float64Array.from(shape.corners().flat()))));
   }
 });
 

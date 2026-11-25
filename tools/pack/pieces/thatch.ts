@@ -1850,13 +1850,10 @@ export function thatchRecipe(posts: boolean, eaves = true): TierRecipe {
   };
 }
 
-// THE SWITCH. Thatch's joints are drawn once its pack holds core:joint_sq_thatch (client/core/render/trims.ts), and the
-// corner pole then stands where a wall's own post did. Make this `thatchRecipe(false)` in the commit that publishes that pack.
-export const THATCH: TierRecipe = thatchRecipe(true);
-/** Thatch as it is with joints drawn: no wall has a post of its own. */
-export const THATCH_JOINTED: TierRecipe = thatchRecipe(false);
-// THE EAVE SWITCH. A flat ceiling keeps its own eaves, and the pack has no core:eave_thatch, until thatch's eaves are
-// the client's (client/core/render/trims.ts lays one wherever the pack has it). Make THATCH `thatchRecipe(…, false)`
-// in the commit that publishes such a pack: its ceilings then end square and the pack holds the trim.
-/** Thatch as it is once the client lays its eaves: no ceiling has eaves of its own, and the eave is a trim. */
-export const THATCH_EAVELESS: TierRecipe = thatchRecipe(true, false);
+// Thatch's pack holds core:joint_sq_thatch and core:eave_thatch, so the client draws a pole at each corner where a
+// wall's own post stood, and lays an eave where a ceiling's side wants one (client/core/render/trims.ts).
+export const THATCH: TierRecipe = thatchRecipe(false, false);
+/** Thatch as it was before joints were drawn: each wall keeps its own post. */
+export const THATCH_POSTED: TierRecipe = thatchRecipe(true, false);
+/** Thatch as it was before the client laid eaves: a flat ceiling has its own on every side, and no eave is a trim. */
+export const THATCH_EAVED: TierRecipe = thatchRecipe(false, true);

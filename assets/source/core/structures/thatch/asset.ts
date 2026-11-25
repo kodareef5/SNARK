@@ -9,7 +9,7 @@ import type { FormDef } from "../../../../../shared/world/lattice/forms.ts";
 import { MADE_PIECE_TRIANGLES, TRIM_TRIANGLES } from "../../../../../tools/art/check.ts";
 import type { MaterialSpec, PiecesAsset } from "../../../../../tools/art/spec.ts";
 import { errorOf, statedErrors } from "../../../../../tools/pack/pieces/lod.ts";
-import { THATCH, THATCH_FORMS, THATCH_JOINTED, THATCH_PLANNED, THATCH_SOLIDS } from "../../../../../tools/pack/pieces/thatch.ts";
+import { THATCH, THATCH_FORMS, THATCH_PLANNED, THATCH_POSTED, THATCH_SOLIDS } from "../../../../../tools/pack/pieces/thatch.ts";
 import { bakeTier } from "../../../../../tools/pack/pieces/tier.ts";
 import type { SourceMesh } from "../../../../../tools/pack/write.ts";
 
@@ -39,14 +39,14 @@ const TOP = 2048;
 const THATCHED: Readonly<Record<string, FormDef>> = Object.fromEntries([...THATCH_FORMS.map((name) => [name, FORMS[name]] as const), ...THATCH_PLANNED.map((name) => [name, PLANNED_FORMS[name]] as const)]);
 
 /**
- * The tier's meshes for `forms`, and its trims with them where asked; without `posts`, as its walls are once joints
- * are drawn. The bodies of thatch and of the door are their
+ * The tier's meshes for `forms`, and its trims with them where asked; with `posts`, as its walls were before joints
+ * were drawn. The bodies of thatch and of the door are their
  * cut-out pictures drawn whole: each is a material of its own that names its twin's textures, so a pack holds the
  * pictures once and only the tips are drawn cut out.
  */
-export function bakeThatch(forms: Readonly<Record<string, FormDef>>, trims = false, posts = true): SourceMesh[] {
+export function bakeThatch(forms: Readonly<Record<string, FormDef>>, trims = false, posts = false): SourceMesh[] {
   const solids = Object.fromEntries(Object.entries(THATCH_SOLIDS).map(([solid, twin]) => [solid, { ...MATERIALS[twin as keyof typeof MATERIALS], cutout: false }]));
-  const meshes = bakeTier(posts ? THATCH : THATCH_JOINTED, forms, import.meta.dir, { ...MATERIALS, ...solids }, TOP, trims);
+  const meshes = bakeTier(posts ? THATCH_POSTED : THATCH, forms, import.meta.dir, { ...MATERIALS, ...solids }, TOP, trims);
   for (const mesh of meshes) {
     for (const t of mesh.textures ?? []) for (const [solid, twin] of Object.entries(THATCH_SOLIDS)) t.id = t.id.replace(`core:thatch/${solid}/`, `core:thatch/${twin}/`);
   }
