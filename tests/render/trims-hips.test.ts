@@ -79,7 +79,7 @@ function roof(structs: StructureStore, reg: Registry, f: Frame, id: string, cls:
     keyAnchor(k0, k1, m, 8);
     const n = elementCorners(cls, m, 8, keyDir(k1), m, 8);
     const rises = Array.from({ length: n }, (_, c) => (rise >> (3 * c)) & 7);
-    const corners = Array.from({ length: n }, (_, c) => world(f, m.subarray(8 + 4 * c, 12 + 4 * c)));
+    const corners = Array.from({ length: n }, (_, c) => world(f, Array.from(m.subarray(8 + 4 * c, 12 + 4 * c))));
     const riseOf = (t: readonly number[]): number => {
       const w = world(f, t);
       const c = corners.findIndex((q) => Math.hypot(q[0] - w[0], q[1] - w[1]) < 1e-3);
