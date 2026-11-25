@@ -2,6 +2,8 @@
 // would stand, rows are dragged, and what would fall is shown before a piece is taken away.
 
 import { expect, test } from "bun:test";
+// The editor's code at once, as a page has it once it has come (client/core/editor-load.ts).
+import "../../client/core/editor.ts";
 import { App } from "../../client/core/app.ts";
 import { FALL_FADE, GHOST_BAD, GHOST_OK, GHOST_SLOT, GHOST_WARN, OTHERS_FADE, OTHERS_MOST } from "../../client/core/build.ts";
 import { PROVISIONAL } from "../../client/core/build-view.ts";
@@ -109,7 +111,7 @@ function client(pieces: readonly string[], latencyMs = 0, give = 12) {
     }
     return refs;
   };
-  return { h, app, s, rec, run, look, aim, built, click, tap, text, marks, stand, mine, team: rec.team, ghost: app.scene!.ghost, b: app.builder };
+  return { h, app, s, rec, run, look, aim, built, click, tap, text, marks, stand, mine, team: rec.team, ghost: app.scene!.ghost, b: app.builder! };
 }
 
 test("a piece is set on one the server has not answered for, a third waits, and all stand after the answers", () => {

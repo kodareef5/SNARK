@@ -9,6 +9,7 @@ import { BENT_SECTIONS } from "../content/bends.ts";
 import { ORBS } from "../content/orb.ts";
 import type { Def } from "../shared/content/defs.ts";
 import { partHash } from "./pack/manifest.ts";
+import { fontFaces, hudFaces } from "./ui/assets.ts";
 import { parseManifest } from "../shared/pack/manifest.ts";
 
 /** The title and the downloadable archive use the same releases, newest first. */
@@ -70,7 +71,12 @@ export async function buildEntry(dist: string): Promise<void> {
   for (const output of entry.outputs) {
     if (output.kind === "chunk") writeFileSync(output.path + ".br", brotliCompressSync(readFileSync(output.path)));
   }
-  for (const name of ["entry.css", "flight.html", "studio.html", "scene-studio.css"]) cpSync(join(source, name), join(dist, name));
+  for (const name of ["flight.html", "studio.html", "scene-studio.css"]) cpSync(join(source, name), join(dist, name));
+  // The title asks for the game's own face at the game's own addresses, so a survivor going on to the world has it already.
+  const faces = hudFaces();
+  const css = readFileSync(join(source, "entry.css"), "utf8"), rule = /^@font-face \{[^}]*\}\n/;
+  if (!rule.test(css)) throw new Error("entry.css must start with its @font-face rule");
+  writeFileSync(join(dist, "entry.css"), css.replace(rule, fontFaces("Barlow", faces, "font-weight: 100 900; font-display: swap;") + "\n"));
   // The waiting page carries its script in its HTML: once it is fetched, it asks nothing more of a server that is stopping.
   const waiting = readFileSync(join(dist, "wait.js"), "utf8").replaceAll("</script", "<\\/script");
   writeFileSync(join(dist, "wait.html"), readFileSync(join(source, "wait.html"), "utf8").replace("/* WAIT_SCRIPT */", () => waiting));
@@ -82,11 +88,9 @@ export async function buildEntry(dist: string): Promise<void> {
     mkdirSync(join(dist, "title"), { recursive: true });
     cpSync(media, join(dist, "title"), { recursive: true });
   }
-  const font = files.find((n) => n.endsWith(".ttf"));
   const titles = join(dist, "title");
   mkdirSync(titles, { recursive: true });
   writeFileSync(join(titles, "changelog.txt"), changelog);
-  if (font) cpSync(join(assets, font), join(titles, "barlow.ttf"));
   const maps = resolve(import.meta.dir, "../assets/source/maps");
   for (const name of existsSync(maps) ? readdirSync(maps).sort() : []) {
     const tile = join(maps, name, "tiles/z0/0_0.png");
@@ -102,7 +106,7 @@ export async function buildEntry(dist: string): Promise<void> {
     studioContent: studioFile,
     sky: named("sky."),
     boot: "assets/" + manifest.files[manifest.boot]!.name,
-    font: font ? "assets/" + font : null,
+    font: faces[0]!.url,
   };
   writeFileSync(join(dist, "entry-media.json"), JSON.stringify({ ...data,
     bytes: Object.fromEntries([data.boot, data.content, data.sky].map(path => [path, statSync(join(dist, path)).size])),

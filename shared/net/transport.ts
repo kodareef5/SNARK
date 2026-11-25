@@ -27,6 +27,8 @@ export function backlog(channel: number, buffered: number, snapshotBytes: number
 }
 
 export interface Connection {
+  /** Before preparing a message, a transport can refuse it and count the skip against its local queue. */
+  admit?(channel: number): boolean;
   /** The bytes are consumed before send returns. */
   send(channel: number, data: Uint8Array): void;
   close(): void;

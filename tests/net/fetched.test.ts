@@ -6,6 +6,7 @@ import { BENT_SECTIONS } from "../../content/bends.ts";
 import { BREAK_BLOCKS } from "../../content/breaks/kinds.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { ORBS } from "../../content/orb.ts";
+import { RUIN_BLOCKS } from "../../content/ruins.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { clientContent, withoutNotes } from "../../tools/build-client.ts";
 import { MANIFEST_VERSION, type Manifest } from "../../shared/pack/manifest.ts";
@@ -30,10 +31,10 @@ test("a file the server does not have is named with its status, not left to a JS
   await expect(fetchJson(() => Promise.reject(new TypeError("Load failed")), "map.json")).rejects.toThrow("map.json: no answer (Load failed)");
 });
 
-test("the page rebuilds the server's building forms, bent street sections and orbs' collision", async () => {
+test("the page rebuilds intact ruins, broken pieces, bent streets and orb collision", async () => {
   const file = new TextDecoder().decode(clientContent());
   const ids = new Set((JSON.parse(file) as { id: string }[]).map((d) => d.id));
-  expect([...BREAK_BLOCKS, ...BENT_SECTIONS, ...ORBS].some((d) => ids.has(d.id))).toBe(false);
+  expect([...RUIN_BLOCKS, ...BREAK_BLOCKS, ...BENT_SECTIONS, ...ORBS].some((d) => ids.has(d.id))).toBe(false);
   expect(ORBS.length).toBeGreaterThan(80);
   const page = await fetchContent(server({ "assets/content.json": file }), "assets/content.json");
   const own = compileContent(CORE_CONTENT).registry!;

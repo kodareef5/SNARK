@@ -3,8 +3,8 @@ import { expect } from "bun:test";
 import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { buildUiAssets, uiSheet } from "../../tools/ui/assets.ts";
-import { fontAdvances } from "../../tools/ui/font.ts";
+import { buildUiAssets, hudFaces, uiSheet } from "../../tools/ui/assets.ts";
+import { fontAdvances, fontCharacters } from "../../tools/ui/font.ts";
 import { FONT_ADVANCES, FONT_UNITS } from "../../client/core/ui/font-metrics.ts";
 import { fitText, textWidth, wrapText } from "../../client/core/ui/nodes.ts";
 import { S_MENU_NOTE } from "../../client/core/ui/style.ts";
@@ -16,9 +16,9 @@ test("HUD export is bounded, content-addressed and carries its local font licens
   const dir=mkdtempSync(join(tmpdir(),"snark-ui-"));
   try {
     const out=buildUiAssets(dir), files=readdirSync(join(dir,"assets"));
-    // The sheet, the font twice and its licence, and the touch controls' sheet, which only a touched page fetches and `bytes` leaves out.
+    // The sheet, the font's two parts and its licence, and the touch controls' sheet, which only a touched page fetches and `bytes` leaves out.
     expect(files.length).toBe(5); expect(out.bytes).toBeLessThan(96*1024); expect(out.decodedBytes).toBeLessThanOrEqual(1024*1024);
-    for (const name of [out.atlas,out.font,out.touch]) expect(name).toContain(partHash(readFileSync(join(dir,name))));
+    for (const name of [out.atlas,...out.faces.map(f=>f.url),out.touch]) expect(name).toContain(partHash(readFileSync(join(dir,name))));
     expect(out.touch).toMatch(/^assets\/touch\.[0-9a-f]+\.webp$/);
     expect(statSync(join(dir,out.touch)).size).toBeLessThan(400*1024);
     const path = join(dir, out.atlas);
@@ -37,6 +37,18 @@ test("HUD export is bounded, content-addressed and carries its local font licens
     for (const row of [0,1,2]) expect([sheet.data[((row*64+6)*512+6)*4+3], sheet.data[((row*64+32)*512+32)*4+3]!>180]).toEqual([0,true]);
     expect(readFileSync(join(dir,"assets/hud-font-license.txt"),"utf8")).toContain("SIL OPEN FONT LICENSE");
   } finally { rmSync(dir,{recursive:true,force:true}); }
+});
+
+test("the font's parts were made from the face here, and between them hold each of its characters once", () => {
+  const faces = hudFaces(), cmap = fontCharacters(join(import.meta.dir, "../../assets/raw/fonts/barlow/BarlowSemiCondensed-Medium.ttf"));
+  const codes = faces.map((f) => f.range.split(", ").flatMap((r) => {
+    const [a, b = a] = r.slice(2).split("-").map((h) => parseInt(h, 16));
+    return Array.from({ length: b! - a! + 1 }, (_, i) => a! + i);
+  }));
+  expect(codes.flat().sort((a, b) => a - b)).toEqual(cmap);
+  expect(codes[0]).toContain(0xe9); // é
+  expect(codes[1]).toContain(0x141); // Ł
+  expect(faces.map((f) => f.url)).toEqual(faces.map((f) => expect.stringMatching(/^assets\/hud-font-\w+\.[0-9a-f]{16}\.woff2$/)));
 });
 
 test("headless text uses the bundled font advances and fits narrow boxes without cutting Unicode",()=>{

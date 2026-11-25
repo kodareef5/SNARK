@@ -639,15 +639,22 @@ function everything(ring: ViewRing<SentView>, told: Told, tick: number): void {
   told.turn(told.tick);
 }
 
+/** Rows chosen for one viewer in ascending entity-id order. A negative row is the bitwise complement of an index in extra. */
+export interface ViewSelection {
+  readonly order: Int16Array;
+  readonly extra: SentView;
+  count: number;
+}
+
 /**
- * Encodes `cur` (the true state, sorted by id) against `base` (the view the client has, or null) and fills `next` with the
+ * Encodes the shared view (the true state, sorted by id) against `base` (the view the client has, or null) and fills `next` with the
  * view the client will hold after applying it. `budgetBits` bounds the deferrable ops, which are all but the removes. A
  * deferred op is left out, and `next` records the stale state the client is left with, so later deltas stay correct.
  * Urgent entities are deferred last. `rotate` holds where deferral started last time. Pass back what this returns, and 0
  * the first time. `looks` gives the appearance a create carries.
  *
- * Clients around one place share one `cur`, and each is sent its own part of it. The entry with id `skip` is left out, and
- * so is every entry whose `rank` is `limit` or more. `rank` is each entry's place in the order they were chosen in.
+ * Clients around one place share one view, and each is sent its own part of it. The entry with id `skip` is left out, and
+ * so is every entry whose `rank` is `limit` or more. A selection already has the entries this viewer may see.
  *
  * `ring` is the client's ring, which `next` was allocated from. With it the client is taken to show each body as it was
  * last told of, and is told again of any it may show otherwise until it acknowledges a snapshot that settles it. The
@@ -657,9 +664,9 @@ function everything(ring: ViewRing<SentView>, told: Told, tick: number): void {
  * client has it, as a deferred update is, while the view has room under `limit`, so that a cap's choice moving does not
  * take many away at once while the creates in their place wait on the budget.
  */
-export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentView, next: SentView, budgetBits: number, rotate: number, looks: Looks, skip = -1, rank: Uint16Array | null = null, limit = MAX_VIEW, ring: ViewRing<SentView> | null = null, spare: ((id: number, gen: number) => boolean) | null = null): number {
+export function writeViewDelta(w: BitWriter, base: SentView | null, shared: SentView, next: SentView, budgetBits: number, rotate: number, looks: Looks, skip = -1, rank: Uint16Array | null = null, limit = MAX_VIEW, ring: ViewRing<SentView> | null = null, spare: ((id: number, gen: number) => boolean) | null = null, selection: ViewSelection | null = null): number {
   const nb = base ? base.count : 0;
-  const nc = cur.count;
+  const nc = selection ? selection.count : shared.count;
   const tick = next.tick;
   const acked = base ? base.tick : 0;
   const told = ring ? (ring.told ??= new Told()) : null;
@@ -667,7 +674,7 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
   const nt = told ? told.count : 0;
   const order = told ? told.order : null;
   let i = 0;
-  let j = 0;
+  let cursor = 0;
   let h = 0;
   let n = 0;
   let optional = 0;
@@ -679,13 +686,16 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
   /** One more than the id of the last op, for the size of the next op's id gap. A deferred op between two makes the real gap larger. */
   let last = 0;
   let tid = nt > 0 ? told!.id[order![0]!]! : NONE;
-  while (i < nb || j < nc || h < nt) {
-    if (j < nc && (cur.id[j] === skip || (rank !== null && rank[j]! >= limit))) {
-      j++;
+  while (i < nb || cursor < nc || h < nt) {
+    const row = selection && cursor < nc ? selection.order[cursor]! : cursor;
+    const cur = row < 0 ? selection!.extra : shared;
+    const j = row < 0 ? ~row : row;
+    if (cursor < nc && (cur.id[j] === skip || (rank !== null && rank[j]! >= limit))) {
+      cursor++;
       continue;
     }
     const bid = i < nb ? base!.id[i]! : NONE;
-    const cid = j < nc ? cur.id[j]! : NONE;
+    const cid = cursor < nc ? cur.id[j]! : NONE;
     // The body's slot in what the client was told, or -1.
     let th = -1;
     if (tid <= bid && tid <= cid) {
@@ -729,13 +739,13 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
       }
     } else if (cid < bid) {
       opKind[n] = K_CREATE;
-      opCur[n] = j;
+      opCur[n] = row;
       opId[n] = cid;
       bits = createBits(looks, cid) + 1 + (cur.stride[j] ? 8 : 0) + (cur.cue[j] !== 0 ? CUE_BITS : 0) + 1 + (cur.emote[j] !== 0 ? EMOTE_BITS : 0) + 1 + (cur.react[j] !== 0 ? REACT_BITS : 0) + (cur.vehiclePose[j] !== 0 ? VEHICLE_BITS : 0);
       last = cid + 1;
     } else {
       opBase[n] = i;
-      opCur[n] = j;
+      opCur[n] = row;
       if (base!.gen[i] !== cur.gen[j] || base!.rev[i] !== cur.rev[j]) {
         // Deferred, it leaves the client the entry it has.
         opKind[n] = K_REPLACE;
@@ -757,7 +767,7 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
           if (th < 0) {
             opKind[n] = K_KEEP;
             i++;
-            j++;
+            cursor++;
             n++;
             continue;
           }
@@ -766,7 +776,7 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
             opKind[n] = K_HOLD;
             opTold[n] = th;
             i++;
-            j++;
+            cursor++;
             n++;
             continue;
           }
@@ -803,7 +813,7 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
         }
       }
     }
-    if (cid <= bid) j++;
+    if (cid <= bid) cursor++;
     n++;
   }
 
@@ -870,7 +880,6 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
       if (th >= 0) told!.wait(th, tick);
       continue;
     }
-    const ci = opCur[k]!;
     const id = opId[k]!;
     w.varint(id + 1 - prev);
     prev = id + 1;
@@ -879,6 +888,9 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
       if (told) told.remove(th, id, tick, opDied[k] === 1);
       continue;
     }
+    const row = opCur[k]!;
+    const cur = row < 0 ? selection!.extra : shared;
+    const ci = row < 0 ? ~row : row;
     // Both ops below add it to `next`, at the end. Last told of in the baseline, it is now told something else.
     if (told) told.say(th, id, tick, next.count, th >= 0 && told.gone[th] === 0 && told.at[th] !== acked && same(ring!, told, th, cur, ci));
     if (kind !== K_UPDATE) {
