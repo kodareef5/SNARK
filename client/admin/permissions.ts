@@ -5,7 +5,7 @@
 import "./shell.ts";
 import {
   addGroupPost, addMemberPost, blankChatForm, blankTag, chatBlockOf, chatFormOf, chatGroupHtml, chatPost, clearPasswordPost, coloured, grantPost, groupsHtml, hexInk, importHtml,
-  importPost, manageWhy, meText, readFault, memberGroupOptions, memberRows, memberRowsHtml, passwordPost, passwordRows, passwordRowsHtml, permissionListHtml, rankOptions, rankPost,
+  importPost, defineWhy, manageWhy, meText, readFault, memberGroupOptions, memberRows, memberRowsHtml, passwordPost, passwordRows, passwordRowsHtml, permissionListHtml, rankOptions, rankPost,
   rankWhy, removeGroupPost, removeMemberPost, revokePost, sampleRuns, settingsFormOf, settingsHtml, settingsPost, settingsTextOf, survivorName, tagRuns, whoOptions,
   type Built, type ChatForm, type Fault, type MemberRow, type SettingsForm,
 } from "../core/admin/permissions.ts";
@@ -130,6 +130,7 @@ function draw(): void {
   const state = S.state;
   if (!state) return;
   const manage = manageWhy(state);
+  const define = defineWhy(state);
   $("me").textContent = meText(state);
   $("unsaved").hidden = state.saved;
   paint($("groups"), groupsHtml(state));
@@ -137,8 +138,9 @@ function draw(): void {
   paint($("group-list"), state.groups.map((g) => `<option value="${esc(g.name)}">`).join(""));
   paint($("world-list"), state.worlds.map((w) => `<option value="${esc(w.name)}">`).join(""));
   const rank = $<HTMLSelectElement>("group-rank");
-  paint(rank, rankOptions(Number(rank.value || 0), (r) => rankWhy(state, r)));
-  for (const id of ["group-name", "add-group", "member-kind", "member-who", "member-group", "member-hours", "member-delay", "add-member", "import-kind", "import-file", "import-text", "import-check"]) {
+  paint(rank, rankOptions(Number(rank.value || 0), (r) => define || rankWhy(state, r)));
+  for (const id of ["group-name", "add-group"]) allow($<HTMLInputElement>(id), define);
+  for (const id of ["member-kind", "member-who", "member-group", "member-hours", "member-delay", "add-member", "import-kind", "import-file", "import-text", "import-check"]) {
     allow($<HTMLInputElement>(id), manage);
   }
   const group = $<HTMLSelectElement>("member-group");
@@ -154,7 +156,7 @@ function draw(): void {
     $("settings-read").textContent = read.faults.length ? `As saved: ${read.faults.join(" ")}` : "";
   }
   drawChat();
-  allow($<HTMLButtonElement>("import-apply"), manage || (S.checked ? "" : "Check it first."));
+  allow($<HTMLButtonElement>("import-apply"), define || (S.checked ? "" : "Check it first."));
 }
 
 // ---- Reading and sending ----
@@ -224,7 +226,7 @@ async function importText(kind: ImportKind): Promise<string> {
 
 function forgetCheck(): void {
   S.checked = null;
-  if (S.state) allow($<HTMLButtonElement>("import-apply"), manageWhy(S.state) || "Check it first.");
+  if (S.state) allow($<HTMLButtonElement>("import-apply"), defineWhy(S.state) || "Check it first.");
 }
 
 async function act(at: HTMLElement): Promise<void> {
@@ -368,7 +370,7 @@ async function act(at: HTMLElement): Promise<void> {
       if (apply || !answer.ok) forgetCheck();
       else {
         S.checked = { kind, text };
-        allow($<HTMLButtonElement>("import-apply"), manageWhy(state));
+        allow($<HTMLButtonElement>("import-apply"), defineWhy(state));
       }
       return;
     }

@@ -5,8 +5,9 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  FREE_CHEATS, addGroupPost, addMemberPost, blankChatForm, blankTag, chatBlockOf, chatFormOf, coloured, firstInk, freeCheats, grantPost, groupsHtml, importPost, manageWhy, memberRows,
-  memberRowsHtml, passwordPost, readFault, passwordRows, passwordRowsHtml, removeGroupPost, sampleRuns, settingsFormOf, settingsHtml, settingsTextOf, spanWords, type MemberForm,
+  FREE_CHEATS, addGroupPost, addMemberPost, blankChatForm, blankTag, chatBlockOf, chatFormOf, chatGroupHtml, chatPost, coloured, defineWhy, firstInk, freeCheats, grantPost, groupsHtml, importPost, manageWhy,
+  memberRows,
+  memberRowsHtml, passwordPost, readFault, passwordRows, passwordRowsHtml, removeGroupPost, sampleRuns, settingsFormOf, settingsHtml, settingsPost, settingsTextOf, spanWords, type MemberForm,
 } from "../../client/core/admin/permissions.ts";
 import { cluster, resolveAdmin } from "../../client/core/admin/navigation.ts";
 import { adminSite } from "../../server/admin/site.ts";
@@ -30,10 +31,10 @@ const MARA = idOf(1, 1), KADE = idOf(1, 2), PIP = idOf(1, 3);
 const always = { forever: true, from: 0, until: 0 };
 const GOLD = 0xffd700;
 
-/** Miami, where Mara is a map admin and Kade an admin; Pip has a timed VIP membership, and a tribe builds. */
-function stateAt(rank: number): PermissionsState {
+/** Miami, where Mara is a map admin and Kade an admin; Pip has a timed VIP membership, and a tribe builds. World 0 is in no cluster. */
+function stateAt(rank: number, world = 1): PermissionsState {
   return {
-    me: { name: "Kade", id: KADE, rank, world: 1 },
+    me: { name: "Kade", id: KADE, rank, world },
     saved: true,
     revision: 7,
     groups: [
@@ -81,10 +82,39 @@ test("a regular admin's controls on a map admin's membership are off, with the r
   const mara = passwordRows(admin).find((r) => r.id === MARA)!;
   expect([mara.has, mara.issueWhy, mara.clearWhy]).toEqual([true, "That survivor holds a higher rank than yours.", "That survivor holds a higher rank than yours."]);
   expect(passwordRowsHtml([mara])).toContain('data-act="issue" data-id="' + MARA + '" disabled title="That survivor holds a higher rank than yours."');
-  expect(groupsHtml(admin)).toContain('data-act="remove-group" data-group="MapAdmins" disabled title="That needs the map rank."');
+  expect(groupsHtml(stateAt(RANK_ADMIN, 0))).toContain('data-act="remove-group" data-group="MapAdmins" disabled title="That needs the map rank."');
   // The map's admin reaches both.
   const map = stateAt(RANK_MAP);
   expect([rowOf(map, MARA, "MapAdmins").removeWhy, rowOf(map, MARA, "VIP").removeWhy]).toEqual(["", ""]);
+});
+
+/** The control in some HTML whose tag holds `marker`. */
+const control = (html: string, marker: string): string => [...html.matchAll(/<(?:button|input|select)\b[^>]*>/g)].map((m) => m[0]).find((c) => c.includes(marker)) ?? "";
+const CLUSTER_ONLY = "In a cluster, only the cluster's admins change groups and chat settings.";
+
+test("a map admin in a cluster finds a group's permissions and rank off, with the reason", () => {
+  const map = stateAt(RANK_MAP);
+  const groups = groupsHtml(map);
+  const markers = ['data-act="rank" data-group="VIP"', 'data-grant="VIP"', 'data-act="grant" data-group="VIP"', 'data-perm="Cheat.fly"', 'data-act="remove-group" data-group="VIP"'];
+  expect(markers.map((m) => control(groups, m).includes(` disabled title="${CLUSTER_ONLY}"`))).toEqual(markers.map(() => true));
+  const vip = map.groups.find((g) => g.name === "VIP")!;
+  expect(enabled(chatGroupHtml(map, vip, blankChatForm(), []) + settingsHtml(map, settingsFormOf(map.document).form, []))).toEqual([]);
+  expect([chatPost(map, "VIP", "{}").why, settingsPost(map, "{}").why, defineWhy(map), manageWhy(map)]).toEqual([CLUSTER_ONLY, CLUSTER_ONLY, CLUSTER_ONLY, ""]);
+  // An import may be checked, not applied.
+  expect([importPost(map, "commands", "Permissions.AddGroup VIP", false).why, importPost(map, "commands", "Permissions.AddGroup VIP", true).why]).toEqual(["", CLUSTER_ONLY]);
+  // Who is in which group is still theirs.
+  expect([rowOf(map, PIP, "VIP").removeWhy, addMemberPost(map, { kind: "survivor", who: PIP, group: "Builders", hours: "", delay: "", everyMap: false }).why]).toEqual(["", ""]);
+  // The cluster's admin has the same controls on.
+  const top = stateAt(RANK_CLUSTER);
+  expect(markers.slice(1).map((m) => control(groupsHtml(top), m).includes(" disabled"))).toEqual(markers.slice(1).map(() => false));
+});
+
+test("the page offers a group's rank only while the group is empty", () => {
+  const top = { ...stateAt(RANK_CLUSTER), groups: [...stateAt(RANK_CLUSTER).groups, { name: "Helpers", rank: 0, permissions: [], chat: "" }] };
+  const html = groupsHtml(top);
+  expect(control(html, 'data-act="rank" data-group="VIP"')).toContain(' disabled title="A group\'s rank changes only while it has no members. Take them out first."');
+  expect(control(html, 'data-act="rank" data-group="Admins"')).toContain(" disabled");
+  expect(control(html, 'data-act="rank" data-group="Helpers"')).not.toContain(" disabled");
 });
 
 test("a viewer below admin rank can change nothing", () => {
@@ -115,6 +145,8 @@ test("rows show each survivor's ID beside its name, and escape the name", () => 
 
 test("what is typed becomes the right op, and a bad one is refused before it is sent", () => {
   const admin = stateAt(RANK_ADMIN);
+  // A group and an applied import are a cluster's admins' to make, so those are typed on a world outside one.
+  const alone = stateAt(RANK_ADMIN, 0);
   const add = (form: Partial<MemberForm>, state = admin) => addMemberPost(state, { kind: "survivor", who: "", group: "VIP", hours: "", delay: "", everyMap: false, ...form });
   expect(add({ who: ` ${PIP} ` }).post).toEqual({ do: "op", op: { op: "addMember", kind: "survivor", key: PIP, group: "VIP" } });
   expect(add({ who: `<b>Pip</b> (${PIP})`, hours: "24", delay: "2" }).post).toEqual({ do: "op", op: { op: "addMember", kind: "survivor", key: PIP, group: "VIP", hours: 24, delayHours: 2 } });
@@ -132,12 +164,12 @@ test("what is typed becomes the right op, and a bad one is refused before it is 
     add({ who: PIP, delay: "2" }),
     add({ who: "Mara" }),
     add({ kind: "tribe", who: "42", group: "Admins" }),
-    addGroupPost(admin, "bad name!", 0),
-    addGroupPost(admin, "vip", 0),
-    addGroupPost(admin, "Mods", RANK_MAP),
-    removeGroupPost(admin, "Default"),
-    grantPost(admin, "VIP", " "),
-    grantPost(admin, "VIP", "cheat.FLY"),
+    addGroupPost(alone, "bad name!", 0),
+    addGroupPost(alone, "vip", 0),
+    addGroupPost(alone, "Mods", RANK_MAP),
+    removeGroupPost(alone, "Default"),
+    grantPost(alone, "VIP", " "),
+    grantPost(alone, "VIP", "cheat.FLY"),
   ];
   expect(refused.map((b) => [b.post, b.why])).toEqual([
     [null, "That is not a survivor's ID."],
@@ -155,9 +187,9 @@ test("what is typed becomes the right op, and a bad one is refused before it is 
     [null, "Type a permission, such as Cheat.kick or *."],
     [null, "VIP holds cheat.FLY already."],
   ]);
-  expect(addGroupPost(admin, " Mods ", RANK_STAFF).post).toEqual({ do: "op", op: { op: "addGroup", group: "Mods", rank: RANK_STAFF } });
-  expect(grantPost(admin, "VIP", "Cheat.kick").post).toEqual({ do: "op", op: { op: "grant", group: "VIP", permission: "Cheat.kick" } });
-  expect([passwordPost(admin, PIP).post, importPost(admin, "arkapi", "", true).why, importPost(admin, "crosschat", "{}", true).post]).toEqual([
+  expect(addGroupPost(alone, " Mods ", RANK_STAFF).post).toEqual({ do: "op", op: { op: "addGroup", group: "Mods", rank: RANK_STAFF } });
+  expect(grantPost(alone, "VIP", "Cheat.kick").post).toEqual({ do: "op", op: { op: "grant", group: "VIP", permission: "Cheat.kick" } });
+  expect([passwordPost(admin, PIP).post, importPost(alone, "arkapi", "", true).why, importPost(alone, "crosschat", "{}", true).post]).toEqual([
     { do: "password", id: PIP },
     "Choose the ArkApi Permissions file first.",
     { do: "import", kind: "crosschat", text: "{}" },

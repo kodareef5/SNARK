@@ -221,6 +221,8 @@ export interface RuleLook {
   groupRank(name: string): number | undefined;
   /** The highest rank of a staff group (rank 1 and up) the survivor is in, on any world, or 0. */
   staffRank(id: string): number;
+  /** Whether a group has a member on any world, whose time has not run out. */
+  hasMembers(name: string): boolean;
 }
 
 /**
@@ -248,6 +250,9 @@ export function editRule(actor: PermissionActor, op: PermissionOp, look: RuleLoo
   }
   if (!actor || !isRank(actor.rank) || actor.rank < RANK_ADMIN) return "Permissions are managed from an admin's rank.";
   const above = (rank: number): string => (actor.rank >= rank ? "" : `That needs the ${RANK_NAMES[rank]} rank.`);
+  // What a group is holds on every map, so in a cluster only the cluster's rank changes it.
+  const define = (rank: number): string =>
+    actor.world !== 0 && actor.rank < RANK_CLUSTER ? "In a cluster, only the cluster's admins change groups and chat settings." : above(rank);
   const survivor = (id: unknown): string => {
     if (!isSurvivorId(id)) return "That is not a survivor's ID.";
     return actor.rank >= look.staffRank(id) ? "" : "That survivor holds a higher rank than yours.";
@@ -261,31 +266,33 @@ export function editRule(actor: PermissionActor, op: PermissionOp, look: RuleLoo
       if (!isGroupName(op.group)) return "A group's name is up to 32 letters, digits and _ . : -";
       if (look.groupRank(op.group) !== undefined) return `There is already a group ${op.group}.`;
       const rank = op.rank ?? RANK_OPEN;
-      return isRank(rank) ? above(rank) : "That is not a rank.";
+      return isRank(rank) ? define(rank) : "That is not a rank.";
     }
     case "removeGroup": {
       const rank = existing(op.group);
       if (typeof rank === "string") return rank;
-      return isReserved(op.group) ? `${op.group} is always there.` : above(rank);
+      return isReserved(op.group) ? `${op.group} is always there.` : define(rank);
     }
     case "setRank": {
       const rank = existing(op.group);
       if (typeof rank === "string") return rank;
       if (!isRank(op.rank)) return "That is not a rank.";
       if (op.group.toLowerCase() === DEFAULT_GROUP.toLowerCase() && op.rank !== RANK_OPEN) return `${DEFAULT_GROUP} stays open.`;
-      return above(rank) || above(op.rank);
+      const why = define(rank) || above(op.rank);
+      if (why || op.rank === rank || !look.hasMembers(op.group)) return why;
+      return "A group's rank changes only while it has no members. Take them out first.";
     }
     case "grant":
     case "revoke": {
       const rank = existing(op.group);
       if (typeof rank === "string") return rank;
-      return isPermission(op.permission) ? above(rank) : "A permission is up to 64 letters, digits and _ . : - *";
+      return isPermission(op.permission) ? define(rank) : "A permission is up to 64 letters, digits and _ . : - *";
     }
     case "setChat": {
       const rank = existing(op.group);
       if (typeof rank === "string") return rank;
       if (typeof op.chat !== "string" || op.chat.length > MAX_CHAT_LENGTH) return "A chat block is text of at most 16384 letters.";
-      return above(rank);
+      return define(rank);
     }
     case "addMember":
     case "removeMember": {
@@ -320,7 +327,7 @@ export function editRule(actor: PermissionActor, op: PermissionOp, look: RuleLoo
     case "setDocument":
       if (!isGroupName(op.name)) return "A document's name is up to 32 letters, digits and _ . : -";
       if (typeof op.text !== "string" || op.text.length > MAX_DOCUMENT_LENGTH) return "A document is text of at most 65536 letters.";
-      return above(RANK_ADMIN);
+      return define(RANK_ADMIN);
     default:
       return "That is not a permission change.";
   }

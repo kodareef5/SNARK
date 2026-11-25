@@ -15,7 +15,8 @@ const root = mkdtempSync(join(tmpdir(), "snark-import-"));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
 const cluster: PermissionActor = { rank: RANK_CLUSTER, world: 3, name: "cluster" };
-const admin: PermissionActor = { rank: RANK_ADMIN, world: 3, name: "admin" };
+/** On a world in no cluster, where an admin edits the groups of its rank. */
+const admin: PermissionActor = { rank: RANK_ADMIN, world: 0, name: "admin" };
 const COMMANDS = ["kick", "give", "tp", "save", "settime", "ghost", "fly"];
 const STEAM = ["76561198011111111", "76561198022222222"];
 const TRIBE = "1234567";

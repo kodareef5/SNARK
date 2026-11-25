@@ -30,7 +30,9 @@ export function lookOf(state: State): Lookup {
   if (look) return look;
   const groups = new Map(state.groups.map((g) => [g.name.toLowerCase(), g]));
   const staff = new Map<string, number>();
+  const peopled = new Set<string>();
   for (const m of state.members) {
+    peopled.add(m.group.toLowerCase());
     const rank = groups.get(m.group.toLowerCase())?.rank ?? RANK_OPEN;
     if (m.kind === "survivor" && rank >= RANK_STAFF && rank > (staff.get(m.key) ?? 0)) staff.set(m.key, rank);
   }
@@ -38,6 +40,8 @@ export function lookOf(state: State): Lookup {
     group: (name) => groups.get(name.toLowerCase()),
     groupRank: (name) => groups.get(name.toLowerCase())?.rank,
     staffRank: (id) => staff.get(id) ?? 0,
+    // A row whose time ran out counts here until it is taken out; the server's rule skips it.
+    hasMembers: (name) => peopled.has(name.toLowerCase()),
   };
   looks.set(state, look);
   return look;
@@ -48,8 +52,13 @@ export const actorOf = (state: State): PermissionActor => ({ rank: state.me.rank
 /** "" where the viewer may make `op`, else the reason it may not. */
 export const whyNot = (state: State, op: PermissionOp): string => editRule(actorOf(state), op, lookOf(state));
 
-/** "" where the viewer manages permissions at all, else why not. */
-export const manageWhy = (state: State): string => whyNot(state, { op: "setDocument", name: CHAT_DOCUMENT, text: "" });
+const SETTINGS: PermissionOp = { op: "setDocument", name: CHAT_DOCUMENT, text: "" };
+
+/** "" where the viewer manages permissions at all, else why not. Outside a cluster the rule asks only for the rank. */
+export const manageWhy = (state: State): string => editRule({ ...actorOf(state), world: 0 }, SETTINGS, lookOf(state));
+
+/** "" where the viewer may make groups, change what they hold, set the chat settings and apply an import, else why not. */
+export const defineWhy = (state: State): string => whyNot(state, SETTINGS);
 
 /** Why the viewer may not make a group of `rank`, or "". */
 export function rankWhy(state: State, rank: number): string {
@@ -261,7 +270,7 @@ export function addMemberPost(state: State, form: MemberForm): Built {
 }
 
 export function importPost(state: State, kind: ImportKind, text: string, apply: boolean): Built {
-  const why = manageWhy(state);
+  const why = apply ? defineWhy(state) : manageWhy(state);
   if (why) return refuse(why);
   if (text.trim() === "") return refuse(kind === "arkapi" ? "Choose the ArkApi Permissions file first." : "Paste the text first.");
   return { post: { do: apply ? "import" : "plan", kind, text }, why: "" };
@@ -529,7 +538,7 @@ export function chatGroupHtml(state: State, g: Group, form: ChatForm | null, fau
 }
 
 export function settingsHtml(state: State, form: SettingsForm, faults: readonly Fault[]): string {
-  const why = manageWhy(state);
+  const why = defineWhy(state);
   const tags = form.tags.map((t, i) => `<tr data-tag="${i}">
       <td><input data-set="tag.name" value="${esc(t.name)}" list="group-list" aria-label="The tag's group" autocomplete="off"${off(why)}></td>
       <td><input data-set="tag.text" value="${esc(t.text)}" aria-label="The tag's text" autocomplete="off"${off(why)}>
