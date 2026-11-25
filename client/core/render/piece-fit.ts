@@ -149,6 +149,18 @@ export function pieceTurn(yaw: number, tw: number, out: number[]): void {
 
 const turnAxes = new Float32Array(6);
 
+/** How far along and across its first axis a framed triangle's second axis runs, for its length, as PieceFit lays one: 0.5 and 0.866 on a true lattice. */
+export function pieceSkew(yaw: number, tw: number, out: number[]): void {
+  basisOf(yaw & (QUARTER - 1), basis);
+  const d = pieceWord(0, yaw, tw);
+  for (let i = 0; i < 6; i++) turnAxes[i] = basis[i]! / HALF_SIDE;
+  axis(turnAxes, 0, d, X);
+  axis(turnAxes, 0, d > 9 ? d - 10 : d + 2, Y);
+  const n = X[0]! * X[0]! + X[1]! * X[1]!;
+  out[0] = (Y[0]! * X[0]! + Y[1]! * X[1]!) / n;
+  out[1] = (Y[1]! * X[0]! - Y[0]! * X[1]!) / n;
+}
+
 /** Writes instance `i`'s piece bytes: its word or yaw, the material it wears, its state and its fit. */
 export function writePiece(bytes: Uint8Array, i: number, word: number, made: number, state: number, fit: number): void {
   const at = i * INSTANCE_BYTES;

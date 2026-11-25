@@ -10,6 +10,7 @@ import { MADE_PIECE_TRIANGLES, TRIM_TRIANGLES } from "../../../../../tools/art/c
 import type { MaterialSpec, PiecesAsset } from "../../../../../tools/art/spec.ts";
 import { errorOf, statedErrors } from "../../../../../tools/pack/pieces/lod.ts";
 import { THATCH, THATCH_FORMS, THATCH_PLANNED, THATCH_POSTED, THATCH_SOLIDS } from "../../../../../tools/pack/pieces/thatch.ts";
+import { withBreaks } from "../../../../../tools/pack/pieces/breaks.ts";
 import { bakeTier } from "../../../../../tools/pack/pieces/tier.ts";
 import type { SourceMesh } from "../../../../../tools/pack/write.ts";
 
@@ -55,7 +56,7 @@ export function bakeThatch(forms: Readonly<Record<string, FormDef>>, trims = fal
 
 export default {
   kind: "pieces",
-  source: { bake: () => bakeThatch(THATCHED, true) },
+  source: { bake: () => withBreaks("thatch", bakeThatch(THATCHED, true)) },
   // Each level is built for its distance and states how far it lies from the finest; the check prints what it measures.
   pieces: [
     ...Object.entries(THATCHED).map(([name, form]) => ({ id: `core:${name}_thatch`, object: name, errors: statedErrors(THATCH, name, form) })),

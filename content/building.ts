@@ -81,6 +81,8 @@ const TIERS: readonly Tier[] = [
 ];
 /** The forms a tier is made in: those it has a health for that content places. */
 const formsOf = (tier: Tier): string[] => Object.keys(tier.hp).filter((name) => name in LIVE);
+/** The forms each tier places, by the name of its shape: an open leaf beside the one it opens from. */
+export const PLACED_FORMS: Readonly<Record<string, readonly string[]>> = Object.fromEntries(TIERS.map((t) => [t.name, formsOf(t).flatMap((name) => (name in OPENS ? [name, OPENS[name]!] : [name]))]));
 
 function piece(tier: Tier, name: string): StructureDef {
   const form = SHAPES.find((s) => s.id === `core:shape_${name}`)!;
