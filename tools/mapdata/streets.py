@@ -205,7 +205,7 @@ def roads(m, elements, tiger_roads):
                 mid = g.interpolate(.5, normalized=True)
                 near = [i for i in tiger_tree.query(mid.buffer(12)) if tiger_roads[i][0].distance(mid) < 12]
                 if near:
-                    tiger_name = tiger_roads[min(near, key=lambda i: tiger_roads[i][0].distance(mid))][1].get('name')
+                    tiger_name = tiger_roads[min(near, key=lambda i: (tiger_roads[i][0].distance(mid), tiger_roads[i][0].wkb))][1].get('name')
             out.append((g, {'id': f"osm:{w['id']}:{k}", 'mtfcc': mtfcc, 'name': t.get('name') or tiger_name, 'tiger_name': tiger_name,
                             # oneway_dir: 1 one way along the drawn direction, -1 against it (OpenStreetMap's oneway=-1), 0 both.
                             'highway': t['highway'], 'lanes': lanes, 'oneway': oneway, 'oneway_dir': cut[w['id']][1], 'width_m': width,
@@ -299,7 +299,8 @@ def walks(m, elements, road_list):
             near = [j for j in every_tree.query(end.buffer(CORNER_REACH)) if j != me]
             if not near or any(every[j].distance(end) < 1.0 for j in near):
                 continue
-            j = min(near, key=lambda j: every[j].distance(end))
+            # A tie goes by the shape itself, not by the cut's order of shapes.
+            j = min(near, key=lambda j: (every[j].distance(end), every[j].wkb))
             if every[j].distance(end) > CORNER_REACH:
                 continue
             join = LineString([end, every[j].interpolate(every[j].project(end))])
@@ -318,7 +319,7 @@ def walks(m, elements, road_list):
         near = [i for i in road_tree.query(pt.buffer(8)) if road_geoms[i].distance(pt) < 8]
         if not near:
             continue
-        i = min(near, key=lambda i: road_geoms[i].distance(pt))
+        i = min(near, key=lambda i: (road_geoms[i].distance(pt), str(road_list[i][1].get('id')), road_geoms[i].wkb))
         road, rp = road_geoms[i], road_list[i][1]
         at = road.project(pt)
         a, b = road.interpolate(max(0, at - 1)), road.interpolate(min(road.length, at + 1))
