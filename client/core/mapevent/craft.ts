@@ -24,25 +24,38 @@ const BEAM_FLOOR = 0.0012;
 const SMOKE_FLOOR = 0.002;
 /** Seconds the smoke over a wreck takes to thin to nothing once its event has ended. */
 export const SMOKE_FADE = 12;
+/** Seconds before it comes to rest over which a falling craft eases from its fall onto where it lies. */
+const SETTLE = 1;
 /** Seconds a falling craft takes to tip over. */
 const TIP_SECONDS = 2;
 /** A turn about its up that sets each craft's pieces apart from another's: the golden angle, by its ids. */
 const GOLDEN = 2.399963;
 const scratch = newCraftPose();
 
-/** Where a craft is at `tick` into `out`, and which of CRAFT_ it is doing. */
+/**
+ * Where a craft's middle is at `tick` into `out`, and which of CRAFT_ it is doing. At rest its row gives where its
+ * underside lies, so its middle is its half height over that; the server traces the fall in strides, so the last
+ * second of the fall eases onto it.
+ */
 export function craftAt(c: ShownCraft, tick: number, out: CraftPose): number {
   const row = c.row, enter = c.event.start + row.after;
   if (row.down > 0 && tick >= row.down) {
     if (tick >= row.impact) {
       out.x = row.rx;
-      out.y = row.ry;
+      out.y = row.ry + row.half;
       out.z = row.rz;
       out.vx = out.vy = out.vz = out.low = 0;
       return CRAFT_REST;
     }
     trackPose(c.track, (row.down - enter) / TICK_RATE, out);
     fallPose(out.x, out.y, out.z, out.vx, out.vy, out.vz, (tick - row.down) / TICK_RATE, row.gravity, row.bleed, out);
+    const left = (row.impact - tick) / (SETTLE * TICK_RATE);
+    if (left < 1) {
+      const w = (1 - left) * (1 - left) * (1 + 2 * left);
+      out.x += (row.rx - out.x) * w;
+      out.y += (row.ry + row.half - out.y) * w;
+      out.z += (row.rz - out.z) * w;
+    }
     return CRAFT_FALLING;
   }
   if (tick < enter) {
@@ -126,7 +139,7 @@ export function drawCraft(k: EventKit, c: ShownCraft, tick: number): void {
       const tall = look.smoke.height * (0.55 + 0.45 * left);
       const wide = Math.max(look.smoke.wide * 0.5, far * SMOKE_FLOOR) * (0.6 + 0.4 * left);
       k.turn(0, 1, 0, 0);
-      if (k.put(k.cone, x, y, z, wide, tall, Math.max(wide, tall * 0.5), 0.5, k.tint(look.smoke.rgb), DRAW_BLEND, 0.2 + 0.8 * (1 - left))) k.smokes++;
+      if (k.put(k.cone, x, y - row.half, z, wide, tall, Math.max(wide, tall * 0.5), 0.5, k.tint(look.smoke.rgb), DRAW_BLEND, 0.2 + 0.8 * (1 - left))) k.smokes++;
     }
   }
   const size = Math.max(1, (far * SIZE_FLOOR) / (2 * row.radius));

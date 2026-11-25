@@ -8,11 +8,13 @@ import "../../client/core/mapevent-late.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import type { CraftLook } from "../../shared/mapevent/parts.ts";
 import { MAPEVENT_ENDED, MAPEVENT_NOTICE, type MapEventFeed } from "../../shared/mapevent/wire.ts";
-import { buildTrack, newCraftPose, trackPose, type PathPoint } from "../../shared/sim/craft.ts";
+import { buildTrack, fallPose, newCraftPose, trackPose, type PathPoint } from "../../shared/sim/craft.ts";
+import { CRAFT_FALLING, CRAFT_REST, craftAt } from "../../client/core/mapevent/craft.ts";
+import { readShown, type ShownCraft } from "../../client/core/mapevent/shown.ts";
 import type { Harness } from "../fixtures/net.ts";
 import { artTest } from "../fixtures/needs-art.ts";
 import { corePack } from "../fixtures/pack.ts";
-import { LIGHT_COLUMN, SMOKE_COLUMN, STAND_IN_LOOK, UFO_LOOK, craftRow, eventRow, hover, siteRow, tell } from "../fixtures/mapevent.ts";
+import { LIGHT_COLUMN, SMOKE_COLUMN, STAND_IN_LOOK, UFO_LOOK, craftRow, eventRow, feedBytes, hover, siteRow, tell } from "../fixtures/mapevent.ts";
 import { camp, drawn, look, screen, type Screen } from "../kit/kit.ts";
 import type { ClientSession } from "../../client/core/session.ts";
 
@@ -69,14 +71,35 @@ artTest("a missing first piece draws the look's fallback, else the stand-in; a m
 artTest("at rest a craft is its wreck and its smoke: two draws; a stand-in is its disc and smoke", () => {
   const { h, ada, at } = camp({ screen: true });
   const view = screen(h, ada);
-  const x = at.x + 20, z = at.z + 50, y = ground(h, x, z) + 3.2, tick = h.world.tick;
+  const x = at.x + 20, z = at.z + 50, y = ground(h, x, z), tick = h.world.tick;
   const rest = craftRow(hover(x, 400, z), { down: tick + 1, impact: tick + 2, rx: x, ry: y, rz: z, stage: 3 });
   show(h, ada, craftFeed(UFO_LOOK, [eventRow(tick, [rest])]), x, y, z);
   expect(["core:ufo_wreck", "core:ufo_craft", "core:event_cone"].map((m) => drawn(view, m))).toEqual([1, 0, 1]);
   expect([pass(view).craft, pass(view).smokes, pass(view).draws]).toEqual([1, 1, 2]);
+  // Its row gives where its underside lies: its middle is its half height over that, in the wire's quarters of a metre.
+  expect([pass(view).placed[0], pass(view).placed[1], pass(view).placed[2]]).toEqual([x, y + 3.25, z]);
   show(h, ada, craftFeed(STAND_IN_LOOK, [eventRow(tick, [rest])]), x, y, z);
   expect(["core:event_disc", "core:event_cone"].map((m) => drawn(view, m))).toEqual([1, 1]);
   expect(pass(view).draws).toBe(2);
+});
+
+test("a falling craft eases onto where it comes to rest, and lies there", () => {
+  const points: PathPoint[] = [{ x: 1000, y: 400, z: 1000, speed: 120, low: false }, { x: 4000, y: 400, z: 1000, speed: 120, low: false }];
+  const fell = newCraftPose(), down = 1000 + 300;
+  trackPose(buildTrack(points), 300 / TICK_RATE, fell);
+  // The server's trace stops a metre or two from the analytic fall: here 1.5 m short along the ground.
+  const ticks = 9 * TICK_RATE, end = newCraftPose();
+  fallPose(fell.x, fell.y, fell.z, fell.vx, fell.vy, fell.vz, ticks / TICK_RATE, 7.5, 30 / 255, end);
+  const rx = end.x - 1.5, ry = end.y - 3.2, rz = end.z;
+  const row = craftRow(points, { down, impact: down + ticks, rx, ry, rz });
+  const shown = readShown(feedBytes({ looks: [{ type: "craft", craft: STAND_IN_LOOK }], rows: [eventRow(1000, [row])] }), null)!;
+  const c = shown.parts[0] as ShownCraft, at = newCraftPose(), r = c.row;
+  const gap = (tick: number): number => (craftAt(c, tick, at), Math.hypot(at.x - r.rx, at.y - r.ry - r.half, at.z - r.rz));
+  expect(craftAt(c, down + ticks - 60, at)).toBe(CRAFT_FALLING);
+  expect(gap(down + ticks - 0.25)).toBeLessThan(0.05);
+  expect(Math.abs(gap(down + ticks - 15) - gap(down + ticks - 14))).toBeLessThan(5);
+  expect([craftAt(c, down + ticks, at), at.x, at.y, at.z]).toEqual([CRAFT_REST, r.rx, r.ry + r.half, r.rz]);
+  expect([Math.abs(r.rx - rx), Math.abs(r.ry - ry), Math.abs(r.rz - rz)].every((d) => d <= 1 / 64)).toBe(true);
 });
 
 test("a craft's art is wanted from its notice, before it comes, and nothing of it is drawn yet", () => {
@@ -111,7 +134,7 @@ test("a craft is drawn where its path puts it at the tick the remote bodies are 
 test("an ended event's wreck smoke thins over twelve seconds, then nothing of it is drawn", () => {
   const { h, ada, at } = camp({ screen: true });
   const view = screen(h, ada);
-  const x = at.x, z = at.z + 80, y = ground(h, x, z) + 3.2, tick = h.world.tick;
+  const x = at.x, z = at.z + 80, y = ground(h, x, z), tick = h.world.tick;
   const rest = craftRow(hover(x, 400, z), { down: tick + 1, impact: tick + 2, rx: x, ry: y, rz: z });
   show(h, ada, craftFeed(STAND_IN_LOOK, [eventRow(tick, [rest], { state: MAPEVENT_ENDED, ended: tick + 3 })]), x, y + 40, z);
   const early = fades(view, "core:event_cone");
