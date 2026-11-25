@@ -11,7 +11,7 @@ list is refused. Names and ids are this engine's own. The ARK column says what
 the class corresponds to, so that what is known of ARK carries over.
 
 There are 47 classes: 34 built, 6 partly built, and 7 stubs that
-wait for a feature. The core pack holds 6076 definitions.
+wait for a feature. The core pack holds 6082 definitions.
 
 An asset slot is addressed `owner#slot`, or `owner#slot/key` for a slot with
 several values: `core:raptor#clip/walk`. Levels of detail are inside the asset
@@ -30,9 +30,9 @@ share a `tag`.
 | `item` | PrimalItem | a group |  |  |  |
 | `item/resource` | PrimalItemResource_ | built | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels`, `fuel`, `burnsInto`, `spoilHours`, `spoilsInto`, `youngFor`, `ammo` | 25 |
 | `item/consumable` | PrimalItemConsumable_ | built | `stack`; one of `eat`, `dose`, `use` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels`, `eat`, `dose`, `spoilHours`, `spoilsInto`, `cooks`, `fuel`, `burnsInto`, `youngFor`, `use` | 15 |
-| `item/weapon` | PrimalItem_Weapon | built | `stack`, `weapon` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels`, `tool`, `ammo`, `optic` | 30 |
+| `item/weapon` | PrimalItem_Weapon | built | `stack`, `weapon` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels`, `tool`, `ammo`, `optic` | 32 |
 | `item/ball` | PrimalItem_WeaponEmptyCryopod | built | `stack`, `weapon`, `ball` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels`, `spoilHours`, `spoilsInto`, `charge` | 2 |
-| `item/ammo` | PrimalItemAmmo_ | built | `stack`, `ammo` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels`, `spoilHours`, `spoilsInto` | 17 |
+| `item/ammo` | PrimalItemAmmo_ | built | `stack`, `ammo` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels`, `spoilHours`, `spoilsInto` | 19 |
 | `item/attachment` | item type WeaponAttachment | built | `stack`, `attachment` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels`, `optic` | 4 |
 | `item/equipment` | item type Equipment | a group |  |  |  |
 | `item/armor` | PrimalItemArmor_, hat to boots | built | `stack`, `wear` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels`, `optic` | 44 |
@@ -133,7 +133,7 @@ ARK's names: `xp` is LevelExperienceRampOverrides; `engramPoints` is OverridePla
 | `species/survivor` | the player's character | built | `mesh`, `color`, `radius`, `height`, `eyeHeight`, `walkSpeed`, `sprintMul`, `jumpSpeed`, `skeleton`, `stats`, `equips` | `crouch`, `prone`, `swimSpeed`, `stamina`, `food`, `waterPerHour`, `slots`, `fists`, `fistsTorpor`, `drops`, `takes`, `zones`, `killXp`, `torporDrain` | 1 |
 | `species/creature` | a creature's character, its status component and its entry | built | `mesh`, `color`, `radius`, `height`, `eyeHeight`, `walkSpeed`, `sprintMul`, `jumpSpeed`, `stats` | `skeleton`, `turn`, `strafe`, `swimSpeed`, `swimDepth`, `swimEyeHeight`, `stamina`, `food`, `slots`, `keeps`, `fists`, `bite`, `roar`, `combat`, `camera`, `drops`, `corpse`, `takes`, `zones`, `killXp`, `temper`, `blood`, `sight`, `leash`, `taming`, `eats`, `torporDrain`, `breeds`, `still`, `tag`, `regions`, `mutations`, `alarm`, `tamedWalkSpeed`, `tamedSwimSpeed`, `tamedSprintMul`, `drag`, `mass`, `footprint`, `carriable`, `feces`, `eggChance`, `fistsTorpor`, `fly`, `grab`, `defendsEgg`, `riderWeight`, `missiles`, `structures`, `tameBonus`, `tamedHealth`, `variant`, `attacks`, `loot`, `saddle`, `buffs`, `boss` | 12 |
 | `species/civilian` | a humanoid creature | built | `mesh`, `color`, `radius`, `height`, `eyeHeight`, `walkSpeed`, `sprintMul`, `jumpSpeed`, `skeleton`, `stats` | `equips`, `slots`, `crouch`, `prone`, `strafe`, `turn`, `swimSpeed`, `stamina`, `food`, `fists`, `fistsTorpor`, `takes`, `zones`, `killXp`, `temper`, `sight`, `leash`, `torporDrain`, `still`, `drops`, `mass` | 1 |
-| `species/vehicle` | a mechanical mount | built | `mesh`, `color`, `radius`, `height`, `eyeHeight`, `walkSpeed`, `sprintMul`, `jumpSpeed`, `vehicle`, `stats` | `skeleton`, `slots`, `keeps`, `still`, `takes`, `mass`, `fists`, `stamina`, `swimSpeed`, `strafe`, `drag`, `carriable`, `regions`, `corpse`, `drops` | 36 |
+| `species/vehicle` | a mechanical mount | built | `mesh`, `color`, `radius`, `height`, `eyeHeight`, `walkSpeed`, `sprintMul`, `jumpSpeed`, `vehicle`, `stats` | `skeleton`, `slots`, `keeps`, `still`, `takes`, `mass`, `fists`, `stamina`, `swimSpeed`, `strafe`, `drag`, `carriable`, `regions`, `corpse`, `drops` | 37 |
 | `species/target` | none, ours | built | `mesh`, `color`, `radius`, `height`, `eyeHeight`, `walkSpeed`, `sprintMul`, `jumpSpeed`, `skeleton`, `still` | `stats`, `equips`, `slots`, `zones`, `takes`, `torporDrain`, `crouch`, `prone`, `stamina`, `fists`, `food`, `drops`, `killXp` | 1 |
 
 - **`species`** on shelf `species`. A kind of body that lives.
@@ -236,7 +236,7 @@ Packs may add to: `yields`.
 | --- | --- | --- | --- | --- | --- |
 | `prop` | an actor that is not alive | a group |  |  |  |
 | `prop/container` | a death cache, a dropped bag | built | `mesh`, `color`, `radius`, `height`, `slots` |  | 4 |
-| `prop/projectile` | a projectile actor | partial | `mesh`, `color`, `radius`, `height` | `pitched` | 3 |
+| `prop/projectile` | a projectile actor | partial | `mesh`, `color`, `radius`, `height` | `pitched` | 4 |
 | `prop/egg` | a laid or dropped egg, fertilised or not | built | `mesh`, `color`, `radius`, `height` | `size`, `item`, `fertile` | 10 |
 | `prop/cloud` | the gas and smoke actors of grenades | built | `mesh`, `color`, `radius`, `height` |  | 2 |
 | `prop/crate` | SupplyCrate_ | built | `mesh`, `color`, `radius`, `height`, `slots` |  | 3 |
@@ -373,11 +373,11 @@ built.
 
 **`item/consumable`** (15): narcoberry, meat_prime, meat_prime_cooked, waterskin, spoiled_meat, jerky, jerky_prime, stimberry, stimulant, water_jar, canteen, berry, meat, meat_cooked, narcotic.
 
-**`item/weapon`** (30): club, slingshot, bow, crossbow, rifle, pistol, shotgun, flare_gun, grenade, bola, grenade_smoke, grenade_poison, torch, pike, sword, pick_metal, hatchet_metal, sickle, prod, bow_compound, pistol_fabricated, shotgun_pump, rifle_assault, rifle_sniper, rifle_plasma, pistol_plasma, rocket_launcher, pick, hatchet, spear.
+**`item/weapon`** (32): jet_cannon, jet_missile_rack, club, slingshot, bow, crossbow, rifle, pistol, shotgun, flare_gun, grenade, bola, grenade_smoke, grenade_poison, torch, pike, sword, pick_metal, hatchet_metal, sickle, prod, bow_compound, pistol_fabricated, shotgun_pump, rifle_assault, rifle_sniper, rifle_plasma, pistol_plasma, rocket_launcher, pick, hatchet, spear.
 
 **`item/ball`** (2): soul_ball, soul_ball_full.
 
-**`item/ammo`** (17): arrow_stone, arrow_tranq, arrow_flame, round_rifle, round_pistol, round_shotgun, dart_tranq, dart_shock, round_advanced, round_advanced_rifle, round_advanced_sniper, arrow_metal, grappling_hook, c4, plasma_cell, plasma_charge, rocket.
+**`item/ammo`** (19): cannon_round, jet_missile, arrow_stone, arrow_tranq, arrow_flame, round_rifle, round_pistol, round_shotgun, dart_tranq, dart_shock, round_advanced, round_advanced_rifle, round_advanced_sniper, arrow_metal, grappling_hook, c4, plasma_cell, plasma_charge, rocket.
 
 **`item/attachment`** (4): scope, silencer, flashlight, laser.
 
@@ -407,7 +407,7 @@ built.
 
 **`species/civilian`** (1): civilian.
 
-**`species/vehicle`** (36): compact, fastback, veloce, berlinetta, panel_van, caravan, patrol_sedan, patrol_jeep, tanker, bus, semi, monster_truck, muscle_car, taxi, zephyr, concept003, helicopter, helicopter_rescue, helicopter_police, zzzzzskateboard, boat, boat_rescue, boat_police, needle, thunderbolt, jon_boat, riptide, solstice, meridian, belvedere, sovereign, manta, lagoon, air_trailer, air_carrier, survey_drone.
+**`species/vehicle`** (37): compact, fastback, veloce, berlinetta, panel_van, caravan, patrol_sedan, patrol_jeep, tanker, bus, semi, monster_truck, muscle_car, taxi, zephyr, concept003, helicopter, helicopter_rescue, helicopter_police, jet, zzzzzskateboard, boat, boat_rescue, boat_police, needle, thunderbolt, jon_boat, riptide, solstice, meridian, belvedere, sovereign, manta, lagoon, air_trailer, air_carrier, survey_drone.
 
 **`species/target`** (1): dummy.
 
@@ -429,7 +429,7 @@ built.
 
 **`prop/container`** (4): corpse, feces, cache, bag.
 
-**`prop/projectile`** (3): flare_live, grenade_live, arrow_stuck.
+**`prop/projectile`** (4): jet_missile_live, flare_live, grenade_live, arrow_stuck.
 
 **`prop/egg`** (10): egg_dodo, egg_parasaur, egg_pteranodon, egg_raptor, egg_trike, egg_stego, egg_carbonemys, egg_rex, egg_spino, egg_brachio.
 

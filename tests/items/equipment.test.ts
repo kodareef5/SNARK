@@ -1,4 +1,5 @@
 import { BLOCKED_OUT } from "../../content/items/blockouts.ts";
+import { JET_ARMS } from "../../content/vehicles/jet.ts";
 import { BTN_JUMP } from "../../shared/sim/character.ts";
 import { afterAll, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -106,8 +107,9 @@ artTest("the content hangs together: every engram can be reached, every thing th
   expect(points).toBeGreaterThan(engrams.reduce((a, e) => a + e.cost, 0));
   // A soul ball is held and swung as a thrown weapon is, and harms nothing (content/items/balls.ts): the full one is never
   // made, an empty one becomes it. tests/creatures/balls.test.ts holds them; here, that their meshes follow a hand.
-  // What is blocked out is a plain box in the hand (tests/items/blockouts.test.ts).
-  const blocked = new Set(BLOCKED_OUT);
+  // What is blocked out is a plain box in the hand (tests/items/blockouts.test.ts), and so is what is fitted to the jet,
+  // which no hand holds.
+  const blocked = new Set([...BLOCKED_OUT, ...JET_ARMS.map((d) => d.id)]);
   const weapons = items.filter((d) => d.weapon && !d.ball && !blocked.has(d.id));
   const balls = items.filter((d) => d.ball);
   expect(balls.map((d) => [d.id.slice(5), d.weapon?.kind, d.craft !== undefined, pack.header.meshes[pack.meshIndex.get(d.weapon!.mesh!)!]!.skeleton])).toEqual([["soul_ball", "thrown", true, "human"], ["soul_ball_full", "thrown", false, "human"]]);

@@ -1,7 +1,7 @@
 // A vehicle's hull as upright bodies, which the server's placement and the client's preview both test against what stands
 // near, so the two agree on what is in the way.
 import { detCos, detSin } from "../math/scalar.ts";
-import { boatDrives, isBoatVehicle, isRotorVehicle, isWheelVehicle, type VehicleDefinition } from "./vehicle.ts";
+import { boatDrives, isBoatVehicle, isJetVehicle, isRotorVehicle, isWheelVehicle, type VehicleDefinition } from "./vehicle.ts";
 
 export interface HullPart { x: number; y: number; z: number; radius: number; height: number }
 
@@ -14,6 +14,15 @@ export function hullParts(x: number, y: number, z: number, yaw: number, def: Veh
       const radius = Math.min(b.half[0], b.half[2]), span = b.half[2] - radius;
       const steps = Math.max(1, Math.ceil(span / radius));
       for (let i = -steps; i <= steps; i++) add(b.at[0], b.at[1] - b.half[1], b.at[2] + span * i / steps, radius, b.half[1] * 2);
+    }
+    return parts;
+  }
+  if (isJetVehicle(def)) {
+    // A jet's half width is its wing's: each of its boxes is a row of bodies along its longer side, the wing's across.
+    for (const b of def.spec.bodyBoxes) {
+      const wide = b.half[0] > b.half[2], radius = Math.min(b.half[0], b.half[2]), span = Math.max(b.half[0], b.half[2]) - radius;
+      const steps = Math.max(1, Math.ceil(span / radius));
+      for (let i = -steps; i <= steps; i++) add(b.at[0] + (wide ? span * i / steps : 0), b.at[1] - b.half[1], b.at[2] + (wide ? 0 : span * i / steps), radius, b.half[1] * 2);
     }
     return parts;
   }

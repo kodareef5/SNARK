@@ -3,7 +3,7 @@ import { quatMul, quatRotate } from "../math/quat.ts";
 import { detCos, detSin, len3 } from "../math/scalar.ts";
 import { familyOf } from "../sim/families.ts";
 import { vehicleRotation, type VehicleFrame } from "../sim/vehicle-frame.ts";
-import { boatDrives, type VehicleDefinition, type BoatDrive, type BoatSpec, type BoatVehicleDefinition, type RotorVehicleDefinition, type VehicleSpec } from "../sim/vehicle.ts";
+import { boatDrives, type VehicleDefinition, type BoatDrive, type BoatSpec, type BoatVehicleDefinition, type JetVehicleDefinition, type RotorVehicleDefinition, type VehicleSpec } from "../sim/vehicle.ts";
 import { box, makeSolid, shape, tube, type Shape, type SolidFrame, type SolidJoint } from "./vehicle-solid.ts";
 export interface BoatFrame extends VehicleFrame { steering?: number }
 const q = new Float64Array(4), jointQ = new Float64Array(4), point = new Float64Array(3);
@@ -96,6 +96,18 @@ export function helicopterShapes(def: RotorVehicleDefinition): Shape[] {
   parts.push(shape(tube(p.tail.from, p.tail.to, [1, 0, 0], [0, 1, 0], p.tail.radius, p.tail.tipRadius ?? p.tail.radius, 8)));
   for (const part of p.tail.boxes ?? []) parts.push(box(part.at, part.half));
   helicopters.set(def, parts); return parts;
+}
+
+const jets = new WeakMap<JetVehicleDefinition, Shape[]>();
+/** A jet's fuselage, wings and tails as authored, and its three wheels as small boxes under them. */
+export function jetShapes(def: JetVehicleDefinition): Shape[] {
+  const cached = jets.get(def); if (cached) return cached;
+  const p = def.spec, parts: Shape[] = p.bodyBoxes.map(b => box(b.at, b.half));
+  // The wheels stand a few centimetres clear of the ground the support finds, as a helicopter's skids do.
+  const middle = (p.clearance + .03) / 2, leg = (p.clearance - .03) / 2;
+  parts.push(box([0, middle, p.noseGear], [.12, leg, .2]));
+  for (const side of [-1, 1]) parts.push(box([side * p.gearTrack, middle, p.mainGear], [.15, leg, .25]));
+  jets.set(def, parts); return parts;
 }
 
 const solidRadii = new WeakMap<VehicleDefinition, number>();

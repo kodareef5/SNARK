@@ -7,6 +7,7 @@ assets/raw/grab3d/school-bus.glb
 assets/raw/grab3d/semi-truck.glb
 assets/raw/grab3d/tanker-truck.glb
 assets/raw/grab3d/taxi.glb
+assets/raw/mgg8/f-35b/f-35b_lightning_ii__raf_617_squadron.glb
 assets/raw/patch/anymove-trex.glb
 assets/raw/quaternius/animation-library-2/UAL2_Standard.glb
 assets/raw/quaternius/animation-library/UAL1_Standard.glb
@@ -6219,6 +6220,17 @@ assets/source/core/vehicles/helicopter_wreck/tex/cabin_packed.png
 assets/source/core/vehicles/helicopter_wreck/tex/trim_base.png
 assets/source/core/vehicles/helicopter_wreck/tex/trim_mask.png
 assets/source/core/vehicles/helicopter_wreck/tex/trim_packed.png
+assets/source/core/vehicles/jet/jet.glb
+assets/source/core/vehicles/jet/jet.snpk
+assets/source/core/vehicles/jet/tex/glass_base.png
+assets/source/core/vehicles/jet/tex/glass_packed.png
+assets/source/core/vehicles/jet/tex/glow_base.png
+assets/source/core/vehicles/jet/tex/glow_packed.png
+assets/source/core/vehicles/jet/tex/paint_base.png
+assets/source/core/vehicles/jet/tex/paint_height.png
+assets/source/core/vehicles/jet/tex/paint_mask.png
+assets/source/core/vehicles/jet/tex/paint_normal.png
+assets/source/core/vehicles/jet/tex/paint_packed.png
 assets/source/core/vehicles/jon_boat/jon_boat.snpk
 assets/source/core/vehicles/jon_boat/tex/shell_base.png
 assets/source/core/vehicles/jon_boat/tex/shell_decay.png

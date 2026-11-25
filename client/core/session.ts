@@ -148,6 +148,7 @@ import { quatNlerp } from "../../shared/math/quat.ts";
 import { unpackBoatHullCondition, unpackBoatFlooding, interpolateRotorPhase, unpackVehicleQuaternion, unpackRotorRpm, unpackRotorPhase, unpackVehicleFuel, unpackEngineCondition, unpackRotorCondition, vehicleEngineRunning } from "../../shared/sim/vehicle-presentation.ts";
 import { blendDoors } from "../../shared/sim/vehicle-panels.ts";
 import { isSkateboard } from "../../shared/sim/vehicle.ts";
+import { jetSpoolOfRpm, unpackJetNozzle } from "../../shared/sim/jet.ts";
 import { PredictionTrace } from "./diagnostics.ts";
 import { stepVehicleBody, unpackVehiclePitch, unpackVehicleRoll, unpackVehicleSteering, unpackVehicleWheel, unpackVehicleGroundPitch, unpackVehicleGroundRoll, unpackVehicleRideOffset, vehicleRideGrounded, unpackVehicleGear, unpackVehicleRpm, vehicleShifting, unpackVehicleLightMode, unpackVehicleMissingPanels } from "../../shared/sim/vehicle-body.ts";
 import { stepCreature } from "../../shared/sim/creature-actions.ts";
@@ -172,6 +173,7 @@ import { GONE_BLAST, GONE_TAKEN, PUT_AS_IS, PUT_FREE, StructureStore, withSurfac
 import { CMD_FAR, CMD_HAVE, CMD_SELECT, CMD_STATICS, HAVE_MOST, HAVE_REACH, RESULT_BUSY, RESULT_OK, S_FAR, S_MARKS, S_TACTICAL } from "../../shared/net/protocol.ts";
 import { FarStore } from "./farcells.ts";
 import { GoneStore } from "./gonelists.ts";
+import { ArmsState } from "./arms.ts";
 import type { FarSource } from "./render/far.ts";
 import type { CityMaker } from "./render/citymake.ts";
 import type { CitySource } from "./render/farcity.ts";
@@ -701,6 +703,8 @@ export class ClientSession {
   readonly far = new FarStore();
   /** Which of the map's own pieces no longer stand in the chunks within the reach `askFar` names for them. */
   readonly gone = new GoneStore();
+  /** The weapons of what it drives, and any seeker on what it rides (client/core/arms.ts). */
+  readonly arms = new ArmsState();
   /**
    * Per chunk, 1 once its last row has come since it was last dropped: the near store holds it whole. CAUGHT_UP_NEXT for
    * one put back from those kept, until the rows changed while it was away have come: they are not news.
@@ -1283,7 +1287,7 @@ export class ClientSession {
     out.vehicleFlooding[n] = unpackBoatFlooding(b.vehicleWater[j]!);
     const rotor = b.vehicleRotor[j]!, systems = b.vehicleSystems[j]!;
     out.vehicleRotorRpm[n] = movement === "rotor" ? unpackRotorRpm(rotor) : 0; out.vehicleRotorPhase[n] = movement === "rotor" ? unpackRotorPhase(rotor) : 0;
-    out.vehicleThrust[n] = movement === "rotor" ? 0 : rotor;
+    out.vehicleThrust[n] = movement === "rotor" || movement === "jet" ? 0 : rotor;
     out.vehicleFuel[n] = unpackVehicleFuel(systems); out.vehicleEngineCondition[n] = unpackEngineCondition(systems);
     out.vehicleRotorCondition[n] = unpackRotorCondition(systems); out.vehicleEngineOn[n] = vehicleEngineRunning(systems) ? 1 : 0;
     unpackVehicleQuaternion(b.vehicleAttitudeA[j]!, b.vehicleAttitudeB[j]!, this.rotorQuat);
@@ -1293,6 +1297,12 @@ export class ClientSession {
     out.vehicleShifting[n] = vehicleShifting(drive) ? 1 : 0;
     out.vehicleMissingPanels[n] = unpackVehicleMissingPanels(a && k < .5 ? a.vehicleDrive[i]! : drive);
     out.vehicleLightMode[n] = unpackVehicleLightMode(drive);
+    // A jet's rotor word is its nozzle alone; its spool is read from the engine speed (shared/sim/jet.ts).
+    if (movement === "jet") {
+      out.vehicleRotorPhase[n] = a ? unpackJetNozzle(a.vehicleRotor[i]!) + (unpackJetNozzle(rotor) - unpackJetNozzle(a.vehicleRotor[i]!)) * k : unpackJetNozzle(rotor);
+      const rpm = a ? unpackVehicleRpm(a.vehicleDrive[i]!) + (unpackVehicleRpm(drive) - unpackVehicleRpm(a.vehicleDrive[i]!)) * k : unpackVehicleRpm(drive);
+      out.vehicleRotorRpm[n] = jetSpoolOfRpm(rpm, out.vehicleEngineOn[n] !== 0);
+    }
     if (a) {
       const oldDrive = a.vehicleDrive[i]!;
       const newTrick = movement === "skateboard" && unpackVehicleGear(oldDrive) !== unpackVehicleGear(drive);
@@ -1403,7 +1413,7 @@ export class ClientSession {
       this.contactBefore.copy(this.own);
       this.vehicleTrees?.begin(t, this.treeDriver);
       if (!this.vehicleContacts?.stepTowing(t, this.own, inp.moveX[i]!, inp.moveZ[i]!, buttons, vehicle, pilot, this.vehicleTrees ?? undefined)) {
-        stepVehicleBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, buttons, vehicle, TICK_DT, inp.yaw[i]!, pilot, this.vehicleTrees ?? undefined);
+        stepVehicleBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, buttons, vehicle, TICK_DT, inp.yaw[i]!, pilot, this.vehicleTrees ?? undefined, inp.pitch[i]!);
       }
       this.vehicleContacts?.step(t, this.contactBefore, this.own, vehicle);
     }
@@ -2336,6 +2346,8 @@ export class ClientSession {
   }
 
   private welcome(r: BitReader): void {
+    // A new connection is told its weapons and warnings afresh, and only when it has some.
+    this.arms.now = null; this.arms.warned = 0;
     this.motions.clear(); this.corpseMotions.clear(); this.corpseRetryAt = -TICK_RATE;
     const version = r.u32();
     const tick = r.u32();

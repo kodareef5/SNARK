@@ -30,6 +30,7 @@ import { KEY_ROWS } from "./keys.ts";
 import { HudModel, VehicleTelemetry, fillHud, fillOverhead } from "./hud.ts";
 import { HudFill } from "./hud/widget.ts";
 import { AppFrame, type FramePart, type PartRow } from "./frame.ts";
+import { MissileTrail } from "./missile-trail.ts";
 import type { Probe } from "./probe.ts";
 import { GLIDER_KEY_TICKS, Prompts } from "./prompts.ts";
 import { Sight } from "./sight.ts";
@@ -120,6 +121,7 @@ export class App {
   readonly sky = new SkyClock();
   /** The dash's readings of the vehicle driven, which its part of the frame reads (hud/vehicle.ts). */
   private readonly dash = new Dash();
+  private readonly missileTrails = new MissileTrail();
   /** Tells the voice port where each speaker is (voice/heard.ts). */
   private readonly heard = new Heard();
   get vehicleTelemetry(): VehicleTelemetry { return this.dash.telemetry; }
@@ -635,6 +637,8 @@ export class App {
     if (flyer !== this.flying) c.fly(flyer, flyer && s.own.mode === MODE_FLYER);
     this.flying = flyer;
     c.heli(s.sessionState === SESSION_ALIVE && s.driving >= 0 && this.reg.vehicle[s.own.kind]?.movement === "rotor");
+    // A jet taken at rest or in the hover starts with VTOL on, so it lifts straight out of its hangar.
+    c.jet(s.sessionState === SESSION_ALIVE && s.driving >= 0 && this.reg.vehicle[s.own.kind]?.movement === "jet", s.own.grounded || Math.hypot(s.own.vx, s.own.vy, s.own.vz) < 40);
     c.skate(s.sessionState === SESSION_ALIVE && s.driving >= 0 && isSkateboard(this.reg.vehicle[s.own.kind]));
     c.thrusterCar(s.sessionState === SESSION_ALIVE && s.driving >= 0 && thrustersOf(this.reg.vehicle[s.own.kind]) !== undefined);
     if (c.wing && !this.wingWas) this.wingFrom = s.simTick;
@@ -832,6 +836,8 @@ export class App {
       ["map events", this.mapEvents],
       // What the session brought is handed to what draws it, and the frame is built at the tier chosen.
       ["absorb", { step: (f) => this.absorb(f) }],
+      // A guided missile's smoke, from the missile drawn.
+      ["missile trails", this.missileTrails],
       ...(tools ? [["tool stage", tools.stage] as const] : []),
       ["build", { step: (f) => this.build(f) }],
       ...(tools ? [["tool finish", tools.finish] as const] : []),

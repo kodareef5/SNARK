@@ -68,7 +68,9 @@ test("the core pack's definitions fall into the classes, each passing its row", 
   expect(counts).toEqual({
     "item/resource": 11,
     "item/consumable": 4,
-    "item/weapon": 3,
+    // And the jet's cannon and missile rack, fitted and never carried, and their rounds (content/vehicles/jet.ts).
+    "item/weapon": 5,
+    "item/ammo": 2,
     "item/armor": 25,
     "item/structure": 29,
     "item/vehicle": 3,
@@ -79,8 +81,8 @@ test("the core pack's definitions fall into the classes, each passing its row", 
     "species/survivor": 1,
     "species/target": 1,
     // The car, and the civilian who may drive one (content/vehicles, content/civilians.ts). The 10 past the fleets are the
-    // three helicopters, the three boats, the skateboard, and air support's carrier, trailer and drone.
-    "species/vehicle": ROAD_FLEET.length + MARINE_FLEET.length + 10,
+    // three helicopters, the three boats, the skateboard, air support's carrier, trailer and drone, and the jet.
+    "species/vehicle": ROAD_FLEET.length + MARINE_FLEET.length + 11,
     "species/civilian": 1,
     // And three road surfaces to drive on, on a paving shape of their own.
     "structure/piece": 36,
@@ -97,14 +99,15 @@ test("the core pack's definitions fall into the classes, each passing its row", 
     node: 14,
     "prop/container": 2,
     "prop/crate": 3,
-    "prop/projectile": 2,
+    // And the jet's missile in flight.
+    "prop/projectile": 3,
     buff: 7,
     spawns: 4,
     map: 5, // miami-coast became Miami (D810)
   });
   // 253 with the supply drop's capsule (content/core.ts), the template hammer and its engram, air support's three vehicles,
-  // and the map events' two crates.
-  expect(rest.length).toBe(253 + 2 + 3 + 2 + FREIGHT_ORDER.length + SKATEBOARDS.length + ROAD_FLEET.length + MARINE_FLEET.length + RUIN_BLOCKS.length + TERMINALS.length + ORBS.length + SLOPE_BLOCKS.length + LETTER_BLOCKS.length + WRECKS.length + TANKER_WRECKS.length + HARBOUR_WRECKS.length + STREET.length + DOCKS.length + BREAK_BLOCKS.length + CITY_MATERIALS.length);
+  // the map events' two crates, and the jet's six: its species, two weapons, two rounds and its missile in flight.
+  expect(rest.length).toBe(253 + 2 + 3 + 2 + 6 + FREIGHT_ORDER.length + SKATEBOARDS.length + ROAD_FLEET.length + MARINE_FLEET.length + RUIN_BLOCKS.length + TERMINALS.length + ORBS.length + SLOPE_BLOCKS.length + LETTER_BLOCKS.length + WRECKS.length + TANKER_WRECKS.length + HARBOUR_WRECKS.length + STREET.length + DOCKS.length + BREAK_BLOCKS.length + CITY_MATERIALS.length);
   // Each creature file has one species, and what else it has is the egg it lays, its saddle and how the saddle is made.
   expect(CORE_CONTENT.length).toBe(rest.length + later.length + CREATURES.length + FEATURES_CONTENT.length);
   const brought: Record<string, number> = {};

@@ -21,14 +21,14 @@ import type { HelicopterInput } from '../shared/sim/helicopter.ts';
 import { vehiclePoint, vehicleRotation } from '../shared/sim/vehicle-frame.ts';
 import { skateBail } from "../shared/sim/skateboard.ts";
 import { BOARD_REACH } from "../shared/sim/skate-state.ts";
-import { isSkateboard, isBoatVehicle, isRotorVehicle, isWheelVehicle, type BoatVehicleDefinition, type RotorVehicleDefinition, type VehicleDefinition, type VehicleSeat, type VehicleState } from '../shared/sim/vehicle.ts';
+import { isAircraft, isJetVehicle, isSkateboard, isBoatVehicle, isRotorVehicle, isWheelVehicle, type BoatVehicleDefinition, type RotorVehicleDefinition, type VehicleDefinition, type VehicleSeat, type VehicleState } from '../shared/sim/vehicle.ts';
 import { V_HEALTH } from '../shared/sim/vitals.ts';
 import { Found } from '../shared/world/structures.ts';
 import { capsuleBox, capsuleFree, groundUnder, push, stepOnto } from '../shared/world/collide.ts';
 import { boatMeetsCapsule } from '../shared/world/boat.ts';
 import { BOARD_HIGH, BOARD_OK, boatBoarding, type BoatBoard } from '../shared/sim/boat-boarding.ts';
-import { helicopterMeetsCapsule } from '../shared/world/helicopter.ts';
-import { carMeetsCapsule } from '../shared/world/vehicle.ts';
+import { familyOf } from '../shared/sim/families.ts';
+import { JET_GEAR_SINK, jetSpoolAt } from '../shared/sim/jet.ts';
 import { vehiclePointVelocity } from '../shared/sim/vehicle-rigid.ts';
 import type { Connection } from '../shared/net/transport.ts';
 import type { Items } from './items.ts';
@@ -267,7 +267,7 @@ export class Urban {
       startVehicle(this.body, definition);
       const saved = this.ctx.records.byPid.get(pid)?.extra.get(VEHICLE_COMPONENT);
       if (saved) restoreVehicle(this.body, pid, saved, definition);
-      else if (!isRotorVehicle(definition)) {
+      else if (!isAircraft(definition)) {
         const vitals = this.ctx.records.byPid.get(pid)?.vitals;
         this.body.vehicleHullCondition = Math.fround(vitals ? Math.max(0, Math.min(1, vitals.at(V_HEALTH, world.tick) / Math.max(1, vitals.max[V_HEALTH]!))) : 1);
       }
@@ -525,11 +525,11 @@ export class Urban {
     }
     const at = (x: number, z: number): Point => {
       vehiclePoint(state, [x, 0, z], out);
-      return { x: out[0]!, y: Math.max(isRotorVehicle(host.definition) ? out[1]! : state.y - state.rideOffset, groundUnder(world.hf, out[0]!, out[2]!, p.radius)), z: out[2]! };
+      return { x: out[0]!, y: Math.max(isAircraft(host.definition) ? out[1]! : state.y - state.rideOffset, groundUnder(world.hf, out[0]!, out[2]!, p.radius)), z: out[2]! };
     };
     const spots: Point[] = [];
     for (const seat of host.definition.seats) {
-      const side = seat.entry[0] >= 0 ? 1 : -1, x = side * Math.max(Math.abs(seat.entry[0]), spec.halfWidth + p.radius + 0.08);
+      const side = seat.entry[0] >= 0 ? 1 : -1, x = side * (isJetVehicle(host.definition) ? Math.abs(seat.entry[0]) : Math.max(Math.abs(seat.entry[0]), spec.halfWidth + p.radius + 0.08));
       spots.push(at(x, seat.entry[2]), at(x + side * 1.1, seat.entry[2]));
     }
     // Then round the hull: its sides, its ends and its corners, just clear of it.
@@ -777,7 +777,7 @@ export class Urban {
       const lost = (before - hp) / Math.max(1, maximum);
       ents.vehicleEngineCondition[v] = Math.fround(Math.max(0, ents.vehicleEngineCondition[v]! - lost * .45));
       if (isRotorVehicle(host.definition)) ents.vehicleRotorCondition[v] = Math.fround(Math.max(0, ents.vehicleRotorCondition[v]! - lost * .2));
-      else ents.vehicleHullCondition[v] = Math.fround(Math.max(0, ents.vehicleHullCondition[v]! - lost));
+      else if (!isJetVehicle(host.definition)) ents.vehicleHullCondition[v] = Math.fround(Math.max(0, ents.vehicleHullCondition[v]! - lost));
     }
     if (before !== hp) host.busyAt = world.tick;
     this.health.set(pid, hp);
@@ -812,7 +812,7 @@ export class Urban {
       return true;
     }
     const boat = isBoatVehicle(host.definition), rotor = isRotorVehicle(host.definition);
-    const speed = Math.max(0, report.speed - (boat ? 3 : 5), report.landing - (isWheelVehicle(host.definition) ? 12 : 6));
+    const speed = Math.max(0, report.speed - (boat ? 3 : 5), report.landing - (isWheelVehicle(host.definition) ? 12 : isJetVehicle(host.definition) ? JET_GEAR_SINK : 6));
     const fresh = world.tick - (this.hurtAt.get(pid) ?? -1000) >= 12;
     let damage = fresh ? speed * speed * (isWheelVehicle(host.definition) ? .8 : 7) : 0;
     if (rotor && report.rotor && fresh && ents.vehicleRotorRpm[v]! > 30) {
@@ -823,7 +823,7 @@ export class Urban {
       ents.vehicleEngineCondition[v] = Math.fround(Math.max(0, ents.vehicleEngineCondition[v]! - .12 - speed * .025));
       damage += 20 + speed * 6;
     }
-    if (rotor && report.water) {
+    if (isAircraft(host.definition) && report.water) {
       ents.vehicleEngineOn[v] = 0;
       ents.vehicleEngineCondition[v] = 0;
       if (fresh) damage += 110;
@@ -949,7 +949,9 @@ export class Urban {
     const definition = this.ctx.world.reg.vehicle[this.ctx.world.ents.kind[vehicle]!]!, spec = definition.spec;
     const side = seat.entry[0] >= 0 ? 1 : -1;
     const state = this.state(vehicle);
-    vehiclePoint(state, [side * Math.max(Math.abs(seat.entry[0]), spec.halfWidth + radius + 0.08), seat.entry[1], seat.entry[2]], out);
+    // A jet's half width is its wing's: its pilot climbs in beside the cockpit, ahead of the wing, where its entry is.
+    const across = isJetVehicle(definition) ? Math.abs(seat.entry[0]) : Math.max(Math.abs(seat.entry[0]), spec.halfWidth + radius + 0.08);
+    vehiclePoint(state, [side * across, seat.entry[1], seat.entry[2]], out);
     if (isWheelVehicle(definition)) {
       // An upright survivor must also clear the downhill overhang of a rolled chassis, not just its floor edge.
       const q = [0, 0, 0, 1], right = [0, 0, 0], up = [0, 0, 0], forward = [0, 0, 0];
@@ -1378,7 +1380,7 @@ export class Urban {
     const rolledCar = isWheelVehicle(host.definition) && 1 - 2 * ((state.qx ?? 0) ** 2 + (state.qz ?? 0) ** 2) < .7;
     if (action.kind === 'exit' && (rolledCar || state.y + host.definition.spec.clearance < world.hf.waterAt(state.x, state.z))) return this.vehicleEscape(action, host, ae);
     // Ordinary door actions are grounded. Forced loss of a seat uses standDown/evict and inherits aircraft velocity.
-    if (isRotorVehicle(host.definition) && !state.grounded) return { ok: false, reason: 'airborne' };
+    if (isAircraft(host.definition) && !state.grounded) return { ok: false, reason: 'airborne' };
     const move = world.reg.move[ents.kind[ae]!]!;
     this.door(host.entity, seat, move.radius, out);
     // Resolve the posed floor against nearby walkable support, including city slabs. A blocked upper capsule
@@ -1574,8 +1576,7 @@ export class Urban {
       // Never lift a deeply submerged crew to the surface. The corridor also bounds distance and checks overhead solids.
       const wet = Number.isFinite(water) && state.y + spec.clearance < water;
       const landing = { x: out[0]!, y: Math.max(ground + .05, wet ? Math.min(start.y, water - move.height * .75) : start.y), z: out[2]! };
-      const meets = isRotorVehicle(host.definition) ? helicopterMeetsCapsule(host.definition, state, landing.x, landing.y, landing.z, move.radius, move.height)
-        : carMeetsCapsule(host.definition.spec, state, landing.x, landing.y, landing.z, move.radius, move.height);
+      const meets = familyOf(host.definition)!.meetsCapsule(host.definition, state, landing.x, landing.y, landing.z, move.radius, move.height);
       if (!this.spare(landing, move.radius, move.height) || !this.seating.free(landing, action.actor, ignored, action.host) || meets ||
         !this.seating.corridor(start, landing, action.actor, ignored, action.host)) continue;
       return { ok: true, landing: { ...landing, yaw: state.yaw } };
@@ -1686,6 +1687,7 @@ export class Urban {
         still(ents.vx[e]!) && still(ents.vy[e]!) && still(ents.vz[e]!) && still(ents.vehicleYawRate[v]!) && still(ents.vehiclePitchRate[v]!) && still(ents.vehicleRollRate[v]!);
     }
     if (movement === 'rotor' && (ents.vehicleEngineOn[v] !== 0 || ents.vehicleRotorRpm[v]! > 0)) return false;
+    if (movement === 'jet' && (ents.vehicleEngineOn[v] !== 0 || jetSpoolAt(ents, v) > 0)) return false;
     return (ents.flags[e]! & F_GROUNDED) !== 0 && ents.vx[e] === 0 && ents.vz[e] === 0 && still(ents.vy[e]!) &&
       still(ents.vehicleYawRate[v]!) && still(ents.vehiclePitchRate[v]!) && still(ents.vehicleRollRate[v]!) && still(ents.vehicleRideVelocity[v]!);
   }

@@ -4,7 +4,7 @@
 import { TICK_RATE } from "../coords.ts";
 import { quatUnrotate } from "../math/quat.ts";
 import { approach, clamp, detAtan2 } from "../math/scalar.ts";
-import type { VehicleDefinition, VehicleSpec, VehicleState, VehicleWorld } from "./vehicle.ts";
+import { isWheelVehicle, type VehicleDefinition, type VehicleSpec, type VehicleState, type VehicleWorld } from "./vehicle.ts";
 
 export interface VehicleThrusterSpec {
   /** Forward push along the body, m/s², for `boostTicks` once fired. */
@@ -163,7 +163,7 @@ export function validateThrusterSpec(t: VehicleThrusterSpec): void {
 
 /** A vehicle's thrusters, if it is a road car that has them. */
 export function thrustersOf(def: VehicleDefinition | null | undefined): VehicleThrusterSpec | undefined {
-  return def && def.movement !== "rotor" && def.movement !== "boat" ? def.spec.thrusters : undefined;
+  return def && isWheelVehicle(def) ? def.spec.thrusters : undefined;
 }
 
 /** A nozzle as the art places it (content/vehicles/sports-art.ts ZEPHYR_NOZZLES): its socket's name, chassis point and the way its gas leaves. */
