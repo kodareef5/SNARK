@@ -6,7 +6,7 @@ import { expect, test } from "bun:test";
 import { FIT_ENDS, FIT_YIELD, PIECE_END_IN, PIECE_END_SHIFT, PIECE_FIT_AT, PIECE_STATE_AT } from "../../client/core/render/piece-fit.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import type { Frame } from "../../shared/world/lattice/frames.ts";
-import { CLS_EDGE, CLS_SQUARE, CLS_TRIANGLE } from "../../shared/world/lattice/module.ts";
+import { CLS_EDGE, CLS_SQUARE, CLS_TRIANGLE, CLS_VERTEX } from "../../shared/world/lattice/module.ts";
 import type { StructureStore } from "../../shared/world/structures.ts";
 import { unpackMeshes, type SourceMesh } from "../../tools/pack/write.ts";
 import { JointBench, SIDE, piecesPack } from "../../tools/pieces/joints.ts";
@@ -120,10 +120,16 @@ for (const edge of [false, true]) {
       const unlike = (b.unlike = base(edge));
       refs.metalTall = putAt(structs, reg, unlike.f, "core:large_wall_metal", CLS_EDGE, O, 0, 0);
       refs.metalLow = putAt(structs, reg, unlike.f, "core:wall_metal", CLS_EDGE, O, 6, 0);
+      const posted = (b.post = base(edge));
+      refs.posted = putAt(structs, reg, posted.f, "core:large_wall_wood", CLS_EDGE, O, 0, 0);
+      putAt(structs, reg, posted.f, "core:pillar_wood", CLS_VERTEX, O, 0, 0);
       const alike = (b.alike = base(edge));
       refs.a = putAt(structs, reg, alike.f, "core:large_wall_metal", CLS_EDGE, O, 0, 0);
       refs.b = putAt(structs, reg, alike.f, "core:large_wall_metal", CLS_EDGE, O, 6, 0);
     });
+    // With a joint at every storey its end gives way; with a pillar for the lowest storey's, it does not, and no slit opens by the pillar.
+    expect(trimsAt(all, b.post!.x, b.post!.z).map((t) => t[1])).toEqual([3, 6, 9]);
+    expect([yieldOf(all, refs.posted!) & 1, yieldOf(all, refs.posted!) & 2]).toEqual([0, 2]);
     const stack = [0, 1, 2, 3].map((k): [string, number, number] => ["joint_sq_wood", 3 * k, 3 * k + 3.01]);
     expect(trimsAt(all, b.wood!.x, b.wood!.z)).toEqual(stack);
     expect(trimsAt(all, b.wood!.x + 3, b.wood!.z)).toEqual(stack);

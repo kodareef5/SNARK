@@ -30,12 +30,14 @@ import type { PieceLooks } from "./piece-state.ts";
 
 /** Each tier's rank, the highest at a corner giving its joint, and whether its walls run on through a straight run with no joint. */
 const TIER_RULES: Readonly<Record<string, readonly [rank: number, runsOn: boolean]>> = { thatch: [0, false], wood: [1, false], stone: [2, true], metal: [3, true] };
-/** Metres from a chunk's side within which a piece's trims may turn on what stands in the next chunk: a side and a half, and a wall's thickness. */
-const BORDER = 4.7;
-/** The same for a slab, whose side trims turn on the slabs that share a corner with it: two triangles' first corners may lie 6 m apart. */
-const SLAB_NEAR = 6.2;
-/** Metres from a chunk's side within which a wall at a corner may be the next chunk's: half a side, and the most a base's vectors stretch it. */
-const CORNER_BORDER = 1.6;
+/**
+ * Metres from a chunk's side within which a piece's trims may turn on what stands in the next chunk: two pieces that
+ * share a corner, each a side from it. A wall over two edges has its origin a side from its end, and a triangle its
+ * first corner a side from its others.
+ */
+const BORDER = 6.2;
+/** Metres from a chunk's side within which a wall at a corner may be the next chunk's: a side, which a wall over two edges is from its end, and the most a base's vectors stretch it. */
+const CORNER_BORDER = 3.1;
 /** Metres from a chunk's side past which the walls under a slab's sides are all the chunk's own. */
 const SLAB_BORDER = 3.2;
 /** The bits of a key's second word that are its cell, and where a base's place among the chunk's goes over them in the table's keys. */
@@ -433,10 +435,15 @@ export class Trims {
         if (w.sSlab[s] !== 0) slabs.push(s);
         continue;
       }
+      // An end of a piece gives way only where a joint stands at every storey of it: it is one instance, with one bit an end.
+      let may = 3;
       for (let e = sEnd[s]!, end = e + sEnds[s]!; e < end; e++) {
         const c = ecorner[e]!, joint = cjoint[c]!;
-        if (joint === 0) continue;
         const bits = ebits[e]!;
+        if (joint === 0) {
+          may &= ~(bits >> 4);
+          continue;
+        }
         if ((bits & 15) === ((joint >> 20) & 15)) {
           const f = w.bases[w.cbase[c]!]!, dir = (joint >> 16) & 15;
           const i = this.room();
@@ -452,6 +459,7 @@ export class Trims {
         }
         yields[s]! |= bits >> 4;
       }
+      yields[s]! &= may;
     }
     for (const s of slabs) {
       const v = w.sSlab[s]!;
@@ -578,7 +586,7 @@ export class Trims {
       return !mark;
     }
     // What stands within a side of the chunk's edge may meet a piece of the next chunk.
-    const near = sideOf(t.x[s]! - this.x0, t.z[s]! - this.z0, layer === SLAB ? SLAB_NEAR : BORDER);
+    const near = sideOf(t.x[s]! - this.x0, t.z[s]! - this.z0);
     w.sNear[s] = near;
     w.near[near]!++;
     if (layer === SLAB) {
@@ -1022,8 +1030,9 @@ export class Trims {
           const ref = occ.covering(f.gid, cells.k0[j]!, cells.k1[j]!);
           if (ref < 0) continue;
           const u = store.chunks[Math.floor(ref / 65536)]!, under = u.kind[ref & 0xffff]!, top = forms.def[under]!.edges?.[0];
-          // The wall owns its top where it is level and comes up to the slab.
-          if (keyLvl(u.k1![ref & 0xffff]!) + forms.span[under]! < lvl || (top !== undefined && top.profile !== "flat")) continue;
+          // The wall owns its top where it is level and a storey of it ends at the slab, as `tops` counts them.
+          const foot = keyLvl(u.k1![ref & 0xffff]!), storey = Math.floor((lvl - 1 - foot) / STOREY_LEVELS) * STOREY_LEVELS;
+          if (this.tierOf[under]! < 0 || foot + Math.min(Math.max(1, forms.span[under]!), storey + STOREY_LEVELS) !== lvl || (top !== undefined && top.profile !== "flat")) continue;
         }
         if (cls === CLS_SQUARE) {
           // Which way out of the piece the side lies: its own +X is east, and north is a quarter turn on.
@@ -1115,7 +1124,7 @@ export class Trims {
 
   /**
    * The sides of the roof `me` that take a ridge, a bit each: a side both of whose corners are its highest, where the
-   * roof beyond it at its level has its highest too, drawn by the one of the two whose ref is the lower.
+   * roof beyond it at its level has its highest too, drawn by the one of the two whose key is the lower.
    */
   private ridges(gid: number, me: number, kind: number, k0: number, k1: number): number {
     const store = this.store, forms = this.forms!, occ = store.occupied, cells = this.cells, round = this.round, faces = this.faces;
@@ -1128,9 +1137,9 @@ export class Trims {
       edgeFaces(cells.k0[j]!, cells.k1[j]!, lvl, SLAB, round);
       for (let n = 0; n < round.n; n++) {
         const ref = round.k0[n] === 0 ? -1 : occ.at(gid, round.k0[n]!, round.k1[n]!);
-        if (ref < 0 || ref <= me) continue;
+        if (ref < 0 || ref === me) continue;
         const u = store.chunks[Math.floor(ref / 65536)]!, other = u.kind[ref & 0xffff]!, ok0 = u.k0![ref & 0xffff]!, ok1 = u.k1![ref & 0xffff]!;
-        if (this.sidesOf[other] !== SIDES_RIDGE || keyLvl(ok1) !== lvl) continue;
+        if (this.sidesOf[other] !== SIDES_RIDGE || keyLvl(ok1) !== lvl || ok0 < k0 || (ok0 === k0 && ok1 < k1)) continue;
         // The side of the roof beyond that is this edge, and whether both its corners are that roof's highest.
         const beyond = riseAt(forms, other, ok0, ok1), n2 = CLS_CORNERS[keyCls(ok0)]!, most = highest(beyond, n2);
         faceEdges(ok0, ok1, lvl, SLAB, faces);
@@ -1156,9 +1165,9 @@ function likeOf(span: number, up: number): number {
   return Math.min(31, span) | (((up >> 2) & 7) << 5);
 }
 
-/** By which sides of its chunk a place (x, z) metres from the chunk's corner stands, within `within` metres: (dz + 1) * 3 + dx + 1. */
-function sideOf(x: number, z: number, within = BORDER): number {
-  const dx = x < within ? -1 : x > CHUNK_SIZE - within ? 1 : 0, dz = z < within ? -1 : z > CHUNK_SIZE - within ? 1 : 0;
+/** By which sides of its chunk a place (x, z) metres from the chunk's corner stands, within BORDER: (dz + 1) * 3 + dx + 1. */
+function sideOf(x: number, z: number): number {
+  const dx = x < BORDER ? -1 : x > CHUNK_SIZE - BORDER ? 1 : 0, dz = z < BORDER ? -1 : z > CHUNK_SIZE - BORDER ? 1 : 0;
   return (dz + 1) * 3 + dx + 1;
 }
 
