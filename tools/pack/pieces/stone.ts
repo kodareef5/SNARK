@@ -11,7 +11,7 @@
 // Texture coordinates are metres over the 3 m tile from a face's top left corner, as the pictures are painted.
 
 import { HALF_SIDE_M, outlineBox, type FormDef } from "../../../shared/world/lattice/forms.ts";
-import { Carved, add, beamRings, clip, cross, dot, gateLeaves, inset as insetPlan, length, mirror, planeAt, planeMoved, rimStrips, scale, slabOn, sub, unit, uprightPlane, type Flat, type Plane as KitPlane, type Shape, type SlabMap, type Uv, type Vec } from "./kit.ts";
+import { Carved, add, beamRings, clip, cross, dot, gateLeaves, inset as insetPlan, length, mirror, place, planeAt, planeMoved, rimStrips, scale, slabOn, sub, unit, uprightPlane, type Flat, type Plane as KitPlane, type Shape, type SlabMap, type Uv, type Vec } from "./kit.ts";
 import { planOf, yieldPlanes, type TierRecipe } from "./lod.ts";
 import { PyRandom } from "./mt.ts";
 
@@ -1478,16 +1478,20 @@ function sidesOf(poly: readonly P2[]): (readonly [number, number, number])[] {
 const DW = 0.7;
 const DT = 0.04;
 const DOOR_FOOT = 0.02; // it clears the threshold
-/** An open door stands at a right angle on its hinge at the doorway's left, swung toward the front. */
-const PIVOT: P2 = [-0.68, 0.02];
 
-function door(form: FormDef, level: number): Build | null {
+/**
+ * The door: five oak planks on ledges and braces, hung on three iron strap hinges, with a ring to pull it by. Open, it
+ * is the same door a quarter turn round its hinge at the doorway's left, swung toward the front: the line its row's
+ * box turns on, 2 cm in from its hung edge and in front of its middle. One of a pair has no ledges from 60 m.
+ */
+function door(form: FormDef, level: number, pair = false): Build | null {
   if (level > 3) return null;
   const b = new Build();
   const [u0, v0, u1, v1] = outlineBox(form);
   if (Math.abs(u1 - u0 - 2 * DW) > 1e-9) throw new Error("stone's door is five planks 1.4 m across");
   const dh = (v1 - v0) / 2;
-  if (form.plane === "across") b.turn = ([x, y, z]) => [PIVOT[0] - (z - PIVOT[1]), y, PIVOT[1] + (x - PIVOT[0])];
+  const off = form.off ?? 0;
+  if (form.plane === "across") b.turn = ([x, y, z]) => [off - z, y, x + DW];
   const [y0, y1] = [-dh + DOOR_FOOT, dh];
   const [faceZ, backZ] = [0.034, -0.016];
   if (level === 3) {
@@ -1521,7 +1525,7 @@ function door(form: FormDef, level: number): Build | null {
     b.convex(loft("x", [[-DW + 0.004, section(0.035)], [DW - 0.16, section(0.035)], [DW - 0.06, section(0.004)]]), "iron", (n) => straight(n, "x"));
   }
   // Ledges across the back, and braces between them rising from the hinge side.
-  for (const yc of straps) {
+  for (const yc of pair && level === 2 ? [] : straps) {
     if (level === 0) b.prism([[backZ, yc - 0.07], [backZ, yc + 0.07], [-DT + 0.006, yc + 0.07], [-DT, yc + 0.064], [-DT, yc - 0.064], [-DT + 0.006, yc - 0.07]], "x", -DW + 0.08, DW - 0.08, "timber", "x");
     else b.box([-DW + 0.08, yc - 0.07, -DT], [DW - 0.08, yc + 0.07, backZ], "timber", "x");
   }
@@ -1564,6 +1568,32 @@ function door(form: FormDef, level: number): Build | null {
     b.face(turned, "iron", straight(newell(turned)));
   }
   return b;
+}
+
+/**
+ * A double door: the door's own leaf hung on the doorway's left jamb, and the same leaf in a mirror on its right. Open,
+ * each is that leaf a quarter turn round on its own jamb, as an open door is: the row's `pair` is the mirror. From 386 m
+ * the shut pair is one block, and an open one a sheet to a leaf, seen from both sides.
+ */
+function doubleDoor(form: FormDef, level: number): Build | null {
+  if (level > 4) return null;
+  const [u0, v0, u1, v1] = outlineBox(form);
+  const open = form.plane === "across";
+  const wide = open ? u1 - u0 : (u1 - u0) / 2;
+  const [y0, y1] = [v0 - form.at[1] + DOOR_FOOT, v1 - form.at[1]];
+  if (level === 4) {
+    const b = new Build();
+    if (!open) b.box([-wide, y0, -DT], [wide, y1, DT], "timber", "y");
+    else for (const s of [-1, 1]) for (const out of [-1, 1]) b.flat([[s * (form.off! - form.at[0]), y0, 0], [s * (form.off! - form.at[0]), y0, wide], [s * (form.off! - form.at[0]), y1, wide], [s * (form.off! - form.at[0]), y1, 0]], [out, 0, 0], "timber");
+    return b;
+  }
+  // One leaf as a door's row has it: about its own middle shut, and open by where its thickness stands from the pair's middle.
+  const row: FormDef = { ...form, outline: [[-wide / 2, v0], [wide / 2, v0], [wide / 2, v1], [-wide / 2, v1]], ...(open ? { off: (form.off ?? 0) - form.at[0] } : {}) };
+  const [left, right] = [door(row, level, true), door(row, level, true)];
+  if (!left || !right) return null;
+  if (!open) for (const leaf of [left, right]) place(leaf.shape, (q) => [q[0] - wide / 2, q[1], q[2]]);
+  left.shape.faces.push(...mirror(right.shape, 0).faces);
+  return left;
 }
 
 // The forms past the first nine. Each is built from its row alone, in the mason's own members: walling is the wall's
@@ -2110,15 +2140,32 @@ function gatehouse(name: string, form: FormDef, level: number): Build | null {
 
 /**
  * A gate of two leaves that meet in the middle: oak planks on three ledges and two braces a leaf, hung on long iron
- * strap hinges riveted through, and barred across the back in iron brackets. The front is +z.
+ * strap hinges riveted through, and barred across the back in iron brackets. The front is +z. Open, each leaf is
+ * turned a quarter on its own pier, as an open door is, and the bar is lifted out. From 386 m an open gate is a sheet
+ * to a leaf, seen from both sides.
  */
 function gate(form: FormDef, level: number): Build | null {
-  if (level > 3) return null;
-  const w = wallBox(form);
+  const open = form.plane === "across";
+  if (level > (open ? 4 : 3)) return null;
   const b = new Build();
   b.free = true;
+  // The open row is one leaf across the edge, with its pair: the gate is two of its width, about its pair's middle.
+  const [u0, , u1] = outlineBox(form);
+  const w = open ? { ...wallBox(form), x0: -(u1 - u0), x1: u1 - u0 } : wallBox(form);
+  if (open) {
+    // A quarter turn on the line the shut row's box turns into the open one's on; the right leaf in a mirror.
+    const [off, hx] = [(form.off ?? 0) - form.at[0], u1 - u0];
+    b.turn = ([x, y, z]) => (x < 0 ? [off - z, y, x + hx] : [z - off, y, hx - x]);
+  }
+  if (level === 4) {
+    b.turn = null;
+    const x = (form.off ?? 0) - form.at[0];
+    for (const s of [-1, 1]) for (const out of [-1, 1]) b.flat([[s * x, w.foot, 0], [s * x, w.foot, w.x1], [s * x, w.top, w.x1], [s * x, w.top, 0]], [out, 0, 0], "timber");
+    return b;
+  }
   if (level === 3) {
-    b.box([w.x0, w.foot, -w.half], [w.x1, w.top, w.half], "timber", "y");
+    if (!open) b.box([w.x0, w.foot, -w.half], [w.x1, w.top, w.half], "timber", "y");
+    else for (const [x0, x1] of [[w.x0, -0.006], [0.006, w.x1]] as const) b.box([x0, w.foot, -w.half], [x1, w.top, w.half], "timber", "y");
     return b;
   }
   const [foot, top] = [w.foot + 0.02, w.top - 0.015];
@@ -2173,10 +2220,10 @@ function gate(form: FormDef, level: number): Build | null {
     }
   });
   if (level === 2) return b;
-  // The bar across the back of both leaves, in an iron bracket on each.
+  // The bar across the back of both leaves, in an iron bracket on each. It is lifted out to open the gate.
   const y = foot + 1.3;
   const reach = (w.x1 - w.x0) / 2 - 0.5;
-  b.box([mid - reach, y - 0.08, barZ + 0.006], [mid + reach, y + 0.08, backZ - 0.004], "timber", "x");
+  if (!open) b.box([mid - reach, y - 0.08, barZ + 0.006], [mid + reach, y + 0.08, backZ - 0.004], "timber", "x");
   if (level === 0) for (const x of [-reach * 0.6, reach * 0.6]) b.box([mid + x - 0.05, y - 0.11, barZ], [mid + x + 0.05, y + 0.1, backZ], "iron");
   return b;
 }
@@ -2546,15 +2593,22 @@ function hatchFrame(name: string, form: FormDef, level: number): Build | null {
 
 /**
  * The hatch's leaf: five oak planks on two ledges under them, hung on two iron strap hinges along its -z side, with a
- * ring to lift it by near the other. It lies in its frame's hole, its top a hair under the floor's.
+ * ring to lift it by near the other. It lies in its frame's hole, its top a hair under the floor's. Open, it hangs
+ * from its hinge side: the same leaf a quarter turn down.
  */
 function hatch(form: FormDef, level: number): Build | null {
   if (level > 3) return null;
   const b = new Build();
   b.free = true;
   const [u0, v0, u1, v1] = outlineBox(form);
-  const [x0, x1, z0, z1] = [u0 - form.at[0] + HATCH_CLEAR, u1 - form.at[0] - HATCH_CLEAR, v0 - form.at[2] + HATCH_CLEAR, v1 - form.at[2] - HATCH_CLEAR];
-  const top = form.thick / 2 - 0.004;
+  // The open row is the leaf hanging: its outline is the leaf's thickness along the hinge side, and its `thick` the leaf's length.
+  const open = v1 - v0 < form.thick;
+  const [thick, far] = open ? [v1 - v0, v0 + form.thick] : [form.thick, v1];
+  const [x0, x1, z0, z1] = [u0 - form.at[0] + HATCH_CLEAR, u1 - form.at[0] - HATCH_CLEAR, v0 - form.at[2] + HATCH_CLEAR, far - form.at[2] - HATCH_CLEAR];
+  // It turns down on the line half its thickness in from its hinge side, at the middle of its thickness: the one line the shut row's box turns into the open one's on.
+  const hinge = v0 - form.at[2] + thick / 2;
+  if (open) b.turn = ([x, y, z]) => [x, hinge - z, hinge + y];
+  const top = thick / 2 - 0.004;
   const bottom = top - 0.045;
   if (level === 3) {
     b.box([x0, bottom, z0], [x1, top, z1], "timber", "z");
@@ -2575,8 +2629,8 @@ function hatch(form: FormDef, level: number): Build | null {
       b.convex(loft("z", [[z0, profile], [z1, profile]]), "timber", (n) => straight(n, "z", [((k * 0.31) % 0.5) - 0.25, ((k * 0.17) % 0.4) - 0.2]));
     });
   }
-  // Two ledges under the planks, across them.
-  for (const z of [z0 + 0.3, z1 - 0.3]) b.box([x0 + 0.04, bottom - 0.035, z - 0.07], [x1 - 0.04, bottom, z + 0.07], "timber", "x");
+  // Two ledges under the planks, across them: far enough in that the open leaf's hang clear under its frame.
+  for (const z of [z0 + 0.34, z1 - 0.34]) b.box([x0 + 0.04, bottom - 0.035, z - 0.07], [x1 - 0.04, bottom, z + 0.07], "timber", "x");
   for (const xc of [x0 + 0.3, x1 - 0.3]) {
     // A strap hinge from the hung side, narrowing to a spear point past the middle.
     const section = (half: number): P2[] => [[xc - half, top - 0.002], [xc + half, top - 0.002], [xc + half, top + 0.006], [xc - half, top + 0.006]];
@@ -3373,6 +3427,10 @@ const PLANNED: Readonly<Record<string, Maker>> = {
   large_wall: footed(tallWall),
   gateway: footed(gatehouse),
   gate: (_, form, level) => gate(form, level),
+  gate_open: (_, form, level) => gate(form, level),
+  double_door: (_, form, level) => doubleDoor(form, level),
+  double_door_open: (_, form, level) => doubleDoor(form, level),
+  trapdoor_open: (_, form, level) => hatch(form, level),
   triangle_foundation: plinthed,
   quarter_foundation: plinthed,
   triangle_ceiling: triCeiling,

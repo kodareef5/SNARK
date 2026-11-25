@@ -603,6 +603,21 @@ test("a stone hatch's leaf fills its frame's hole to 5 mm a side, and the frame 
   if (process.env.SNARK_MEETS) console.log(said.join("\n"));
 });
 
+test("an open stone leaf is its shut one turned a quarter on its hinge line, and stands clear of its frame", () => {
+  const said: string[] = [];
+  for (const [shut, open, frame] of LEAVES) {
+    for (let level = 0; level < 4; level++) {
+      const met = leafTurned(STONE, shut, open, frame, level);
+      said.push(`stone ${open} level ${level}: ${(met.off * 1000).toFixed(3)} mm from its shut leaf turned, ${(Math.max(0, met.inFrame) * 1000).toFixed(1)} mm in its frame`);
+      // The same planks and iron, to a millimetre, but a gate's bar, which is lifted out.
+      if (level < TEXTURED) expect(met.off, `${open} level ${level}: from its shut leaf turned on the hinge line`).toBeLessThanOrEqual(0.001);
+      if (level < TEXTURED) expect(met.extra, `${open} level ${level}: nothing the shut leaf has not`).toBeLessThanOrEqual(0);
+      expect(met.inFrame, `${open} level ${level}: in its frame`).toBeLessThanOrEqual(HINGE_IN);
+    }
+  }
+  if (process.env.SNARK_MEETS) console.log(said.join("\n"));
+});
+
 // Metal's new forms: its five roofs along the sides they share and across a hip's and a valley's own fold, a gutter
 // over the roof below, the gable's two hands under a roof, a triangle of floor beside a square, and the hatch's leaf
 // in its frame. Measured on the metal recipe's meshes, as wood's and thatch's are above.
