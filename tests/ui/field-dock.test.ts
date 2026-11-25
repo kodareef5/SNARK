@@ -4,6 +4,7 @@ import { KEY_DOCK_SLOT, KEY_FIELD_HUB, KEY_FIELD_LEAF, type FieldDock } from "..
 import { KEY_CONSOLE_INPUT } from "../../client/core/ui/console.ts";
 import { TAB_MAKE, type CharacterScreen } from "../../client/core/ui/character.ts";
 import * as touch from "../../client/core/ui/touch.ts";
+import { KEY_ZONE_LOOK } from "../../client/core/touch.ts";
 import { V_FOOD } from "../../shared/sim/vitals.ts";
 import { Harness } from "../fixtures/net.ts";
 import { CMD_SELECT } from "../../shared/net/protocol.ts";
@@ -126,4 +127,35 @@ test("Pressing a command and releasing elsewhere leaves the order unissued", () 
   expect(commands).toEqual([]);
   tap(KEY_FIELD_LEAF+1);
   expect(commands).toEqual(["KeyU"]);
+});
+
+test("The field menu lists each screen that names a way in, in rank order", () => {
+  const labels = (phone: boolean) => {
+    const { app, run } = survivor(phone);
+    if (phone) app.pointer(0, KEY_FIELD_HUB, 0, 0, 0, 1), app.pointer(1, KEY_FIELD_HUB, 0, 0, 0, 1);
+    else app.key("F2", true), app.key("F2", false);
+    run();
+    const out: string[] = [];
+    for (let i = 0; i < 20; i++) { const n = app.ui.frame.find(KEY_FIELD_LEAF + i); if (n) out.push(n.label); }
+    return out;
+  };
+  expect(labels(false)).toEqual(["Inventory", "Craft", "Survivor", "Map", "Radio", "Settings"]);
+  expect(labels(true)).toEqual(["Inventory", "Craft", "Survivor", "Map", "Radio", "Settings", "Menu"]);
+});
+
+test("A press on the world shuts the dock, by mouse and by finger", () => {
+  const { app, run, dock } = survivor();
+  app.key("F4", true); app.key("F4", false); run();
+  expect(dock.isOpen()).toBe(true);
+  expect(app.ui.wantsPointerLock).toBe(false);
+  expect(app.ui.playingField).toBe(true);
+  app.ui.clickWorld(); run();
+  expect(dock.isOpen()).toBe(false);
+  expect(app.ui.wantsPointerLock).toBe(true);
+  const phone = survivor(true);
+  phone.tap(KEY_FIELD_HUB + 3);
+  expect(phone.dock.isOpen()).toBe(true);
+  phone.pointer(0, KEY_ZONE_LOOK, { x: 600, y: 200 });
+  phone.run();
+  expect(phone.dock.isOpen()).toBe(false);
 });

@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { App } from "../../client/core/app.ts";
 import { CARD, EquipmentCard } from "../../client/core/ui/equipment-card.ts";
 import { KEY_INV_SLOT } from "../../client/core/ui/inventory.ts";
-import { IMAGE_FIELD_ICONS, installFieldIcons } from "../../client/core/ui/field-icons.ts";
+import { FIELD_EQUIPMENT, FIELD_ICONS, FIELD_TOUCH, installFieldIcons } from "../../client/core/ui/field-icons.ts";
 import { K_IMAGE, UiFrame } from "../../client/core/ui/nodes.ts";
 import { CMD_MOVE, RESULT_DENIED, RESULT_OK } from "../../shared/net/protocol.ts";
 import { Inventory } from "../../shared/sim/items.ts";
@@ -45,14 +45,14 @@ test("Assigning from the item card waits for the server before equipping", () =>
 test("Field items and touch contacts keep the remaining catalogue pictures", () => {
   const frame = new UiFrame();
   frame.icons = { place(n, id) { if (id !== "mod:boot") return false; n.image = 101; return true; } };
-  installFieldIcons(frame, "dock.webp", "contacts.webp", "equipment.webp");
+  installFieldIcons(frame, { icons: "dock.webp", equipment: "equipment.webp", parts: "parts.webp", touch: "contacts.webp" });
   const image = (id: string) => frame.picture(1, 0, 0, 48, 48, 0, id);
-  expect(image("core:pick")?.image).toBe(IMAGE_FIELD_ICONS);
+  expect(image("core:pick")?.image).toBe(FIELD_ICONS.image);
   const detail = frame.picture(2, 0, 0, 150, 150, 0, "ui:inspect/core:pick")!;
   expect(frame.images[detail.image]?.url).toBe("equipment.webp");
-  expect(detail.sw).toBe(192);
+  expect(detail.sw).toBe(FIELD_EQUIPMENT.cell);
   expect(image("ui:glass-touch-look")?.kind).toBe(K_IMAGE);
-  expect(image("ui:glass-touch-look")?.sx).toBe(176);
+  expect(image("ui:glass-touch-look")?.sx).toBe(FIELD_TOUCH.cell);
   expect(image("ui:glass-health")?.sy).toBeGreaterThan(0);
   expect(image("mod:boot")?.image).toBe(101);
   expect(image("ui:inspect/mod:boot")?.image).toBe(101);

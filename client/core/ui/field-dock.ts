@@ -9,7 +9,7 @@ import type { Registry } from "../../../shared/content/registry.ts";
 import { CMD_SELECT, CMD_USE } from "../../../shared/net/protocol.ts";
 import { FLAG_BLUEPRINT, HOTBAR_SLOTS, type Inventory } from "../../../shared/sim/items.ts";
 import { hotbarCell, hotbarLeft, hotbarTop } from "../hud/layout.ts";
-import { line, rim } from "./dock-visual.ts";
+import { line, rim, tile } from "./dock-visual.ts";
 import type { EmoteMenu } from "./emotes.ts";
 import { K_BUTTON, K_HOLD, type UiFrame } from "./nodes.ts";
 import type { DockEntry, Screen, ScreenCtx } from "./screen.ts";
@@ -405,7 +405,7 @@ export class FieldDock implements Screen {
   private tile(f: UiFrame, key: number, l: Leaf | undefined, x: number, y: number, w: number, h: number, active: boolean, leaf: boolean, c: ScreenCtx): void {
     if (!l) return;
     const enabled = this.available(l, c);
-    if (!this.touch) {
+    if (!this.touch && !tile(f, key + 100, x + 1, y + 1, w - 2, h - 2, active)) {
       line(f, key + 100, x + 1, y + 1, w - 2, h - 2, active ? 0x24526d : 0x0b2438, active ? .84 : .61);
       line(f, key + 200, x + 1, y + h - 2, w - 2, active ? 2 : 1, active ? 0xa3e5ff : 0x86acc2, active ? 1 : .65);
     }

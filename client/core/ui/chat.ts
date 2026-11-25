@@ -2,7 +2,7 @@
 
 import { MAX_CHAT_CHARS, TEXT_CONSOLE, TEXT_GLOBAL, TEXT_LOCAL, TEXT_MOTD, TEXT_NOTICE, TEXT_TRIBE } from "../../../shared/net/protocol.ts";
 import type { ClientSession } from "../session.ts";
-import { radioSurface } from "./field-finish.ts";
+import { glass } from "./skin.ts";
 import { lineHeight, wrapText, K_BUTTON, K_INPUT, K_PANEL, type UiFrame } from "./nodes.ts";
 import { S_CHAT, S_CHAT_LOCAL, S_CHAT_NOTICE, S_CHAT_PANEL, S_CHAT_TAG, S_CHAT_TRIBE, S_HUD_HIT, S_HUD_KEY, S_ICE, S_INPUT } from "./style.ts";
 
@@ -223,7 +223,7 @@ export class ChatState {
     }
     if (!this.open && !touch && controls) {
       const headerY = y - 21;
-      radioSurface(f, welcome ? KEY_CHAT_PANEL : KEY_RADIO_EDGE + 1, x0 - 4, headerY - 2, w + 4, shown * lh + 25, welcome ? .72 : shown ? .57 : .27);
+      glass(f, welcome ? KEY_CHAT_PANEL : KEY_RADIO_EDGE + 1, x0 - 4, headerY - 2, w + 4, shown * lh + 25, welcome ? .72 : shown ? .57 : .27);
       f.add(KEY_RADIO_EDGE, K_PANEL, x0 - 4, headerY, 1, shown * lh + 19, S_ICE).alpha = .55;
       const radio = f.add(KEY_CHAT_OPEN, K_BUTTON, x0 - 3, headerY - 2, 100, 23, S_HUD_HIT);
       radio.label = "Open radio chat"; radio.interactive = true;

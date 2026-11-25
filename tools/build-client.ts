@@ -161,7 +161,7 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
   writeFileSync(join(dist, contentName), content);
   // The page says hello with the wire version of the source it is built from (shared/net/wire.ts), and build.json keeps it.
   const wire = sourceWire(root)!;
-  const define = { __HUD_ATLAS_URL__: JSON.stringify(ui.atlas), __FIELD_ICONS_URL__: JSON.stringify(ui.field), __FIELD_EQUIPMENT_URL__: JSON.stringify(ui.equipment), __FIELD_TOUCH_URL__: JSON.stringify(ui.contacts), __TOUCH_ATLAS_URL__: JSON.stringify(ui.touch), __SKY_FILE__: JSON.stringify(skyName), __CONTENT_FILE__: JSON.stringify(contentName), __WIRE__: String(wire) };
+  const define = { __HUD_ATLAS_URL__: JSON.stringify(ui.atlas), __FIELD_ART__: JSON.stringify(ui.field), __TOUCH_ATLAS_URL__: JSON.stringify(ui.touch), __SKY_FILE__: JSON.stringify(skyName), __CONTENT_FILE__: JSON.stringify(contentName), __WIRE__: String(wire) };
   // The page's script is main.js and page.js, and each file it fetches later takes what it shares with them from
   // page.js (tools/page-script.ts). Workers and worklets run in their own threads, so each is bundled as a separate file.
   const workers = await Bun.build({ entrypoints: ["client/voice/voice-worker.ts", "client/voice/voice-capture.ts", "client/voice/voice-playback.ts", "client/assets/assets-worker.ts", "client/sound/decode-worker.ts", "client/city/city-worker.ts", "client/debug/shot-worker.ts"].map((f) => join(root, f)), outdir: dist, naming: "[name].[ext]", target: "browser", minify: true, sourcemap: "linked", define });

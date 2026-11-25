@@ -1,56 +1,61 @@
-// The field sheet holds illustrated HUD controls and the equipment shared by the dock and bag.
+// The field art: four sheets cut by tools/ui/field-art.ts from generated plates (assets/source/ui/field). Each is a file
+// the browser fetches the first time something on it is shown. A build without them draws the plain stand-ins.
 import type { UiFrame, UiImage } from "./nodes.ts";
 
-declare const __FIELD_ICONS_URL__: string;
-declare const __FIELD_EQUIPMENT_URL__: string;
-declare const __FIELD_TOUCH_URL__: string;
-const url = typeof __FIELD_ICONS_URL__ === "string" ? __FIELD_ICONS_URL__ : "";
-export const IMAGE_FIELD_ICONS = 34;
-const IMAGE_EQUIPMENT = 37;
-const equipment = typeof __FIELD_EQUIPMENT_URL__ === "string" ? __FIELD_EQUIPMENT_URL__ : "";
-const contacts = typeof __FIELD_TOUCH_URL__ === "string" ? __FIELD_TOUCH_URL__ : "";
-const contactNames = ["ui:glass-touch-move", "ui:glass-touch-look", "ui:glass-touch-knob", "ui:glass-touch-emblem"];
-const cell = 64, columns = 8;
-const cells = new Map<string, number>();
-const add = (prefix: string, names: string) => {
-  for (const name of names.split(" ")) cells.set(prefix + name, cells.size);
+/** Each sheet's file, "" where the build has none: the build sets it (tools/ui/assets.ts). */
+declare const __FIELD_ART__: { icons: string; equipment: string; parts: string; touch: string };
+const ART = typeof __FIELD_ART__ === "object" ? __FIELD_ART__ : { icons: "", equipment: "", parts: "", touch: "" };
+
+/** A sheet: its picture's slot in the frame, its cell's side in pixels, its columns, and the names of its cells in order. */
+export interface FieldSheet { readonly image: number; readonly cell: number; readonly columns: number; readonly names: readonly string[] }
+
+const words = (prefix: string, names: string) => names.split(" ").map((n) => prefix + n);
+
+/** The items the hotbar starts with, the menus, the vitals, and the commands' glyphs. */
+export const FIELD_ICONS: FieldSheet = {
+  image: 34, cell: 128, columns: 8,
+  names: [
+    ...words("core:", "pick hatchet spear bow waterskin torch spyglass bola berry flint fiber wood stone thatch hide ingot"),
+    ...words("ui:glass-", "emblem bag craft map survivor radio settings whistles kit gestures follow stay attack-target drink eat spyglass wave point salute"),
+    ...words("ui:glass-", "health stamina food water oxygen torpor weight"),
+    ...words("ui:glyph-", "close more back zoom-out zoom-in pin atlas save telemetry unpin inspect assign"),
+  ],
 };
-add("core:", "pick hatchet spear bow waterskin torch spyglass bola berry flint fiber wood stone thatch hide ingot");
-add("ui:glass-", "emblem bag craft map survivor radio settings whistles kit gestures follow stay attack-target drink eat spyglass wave point salute");
-add("ui:glass-", "health stamina food water oxygen torpor weight");
+/** The same items larger, for a card that shows one. */
+export const FIELD_EQUIPMENT: FieldSheet = { image: 37, cell: 384, columns: 4, names: FIELD_ICONS.names.slice(0, 16) };
+/** Glass a desktop draws with: a tile at rest and selected, an item's mount, and a dial's face. */
+export const FIELD_PARTS: FieldSheet = { image: 38, cell: 512, columns: 2, names: words("ui:part-", "tile tile-lit mount dial") };
+/** The thumbs' pads by touch. */
+export const FIELD_TOUCH: FieldSheet = { image: 35, cell: 256, columns: 2, names: words("ui:glass-touch-", "move look look-lit knob") };
 
-export const FIELD_WIDTH = cell * columns, FIELD_HEIGHT = cell * Math.ceil(cells.size / columns);
+export const sheetWidth = (s: FieldSheet): number => s.cell * s.columns;
+export const sheetHeight = (s: FieldSheet): number => s.cell * Math.ceil(s.names.length / s.columns);
 
-export function installFieldIcons(frame: UiFrame, sheetUrl = url, touchUrl = contacts, equipmentUrl = equipment): void {
-  if (!sheetUrl) return;
+/**
+ * Puts the field sheets in the frame and answers for their names before the item catalogue's. "ui:inspect/" before an
+ * item's id asks for its larger picture.
+ */
+export function installFieldIcons(frame: UiFrame, art = ART): void {
+  const sheets: [FieldSheet, string][] = [[FIELD_ICONS, art.icons], [FIELD_EQUIPMENT, art.equipment], [FIELD_PARTS, art.parts], [FIELD_TOUCH, art.touch]];
+  const at = new Map<string, [FieldSheet, number]>();
+  for (const [s, url] of sheets) {
+    if (!url) continue;
+    const image: UiImage = { width: sheetWidth(s), height: sheetHeight(s), data: new Uint8ClampedArray(0), url, version: 1, smooth: true };
+    frame.images[s.image] = image;
+    s.names.forEach((name, i) => at.set(s === FIELD_EQUIPMENT ? "ui:inspect/" + name : name, [s, i]));
+  }
+  if (at.size === 0) return;
   const catalogue = frame.icons;
-  const image: UiImage = { width: FIELD_WIDTH, height: FIELD_HEIGHT,
-    data: new Uint8ClampedArray(0), url: sheetUrl, version: 1, smooth: true };
-  frame.images[IMAGE_FIELD_ICONS] = image;
-  if (touchUrl) frame.images[IMAGE_FIELD_ICONS + 1] = { ...image, width: 352, height: 352, url: touchUrl };
-  if (equipmentUrl) frame.images[IMAGE_EQUIPMENT] = { ...image, width: 768, height: 768, url: equipmentUrl };
   frame.icons = {
     place(node, owner) {
-      if (touchUrl && owner.startsWith("ui:glass-touch-")) {
-        const contact = contactNames.indexOf(owner);
-        if (contact >= 0) {
-          node.image = IMAGE_FIELD_ICONS + 1;
-          node.sx = contact % 2 * 176;
-          node.sy = Math.floor(contact / 2) * 176;
-          node.sw = node.sh = 176;
-          return true;
-        }
-      }
-      const detail = owner.startsWith("ui:inspect/");
-      if (detail) owner = owner.slice("ui:inspect/".length);
-      const index = cells.get(owner);
-      if (index === undefined) return catalogue?.place(node, owner) ?? false;
-      const large = detail && equipmentUrl && index < 16;
-      const side = large ? 192 : cell, across = large ? 4 : columns;
-      node.image = large ? IMAGE_EQUIPMENT : IMAGE_FIELD_ICONS;
-      node.sx = index % across * side;
-      node.sy = Math.floor(index / across) * side;
-      node.sw = node.sh = side;
+      const plain = owner.startsWith("ui:inspect/") ? owner.slice("ui:inspect/".length) : owner;
+      const found = at.get(owner) ?? at.get(plain);
+      if (!found) return catalogue?.place(node, plain) ?? false;
+      const [s, i] = found;
+      node.image = s.image;
+      node.sx = (i % s.columns) * s.cell;
+      node.sy = Math.floor(i / s.columns) * s.cell;
+      node.sw = node.sh = s.cell;
       return true;
     },
   };

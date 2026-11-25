@@ -4,6 +4,7 @@ import { MAX_MARKERS, type HudModel } from "../hud.ts";
 import type { ClientSession } from "../session.ts";
 import { ZOOMS, wholeMap } from "../tactical.ts";
 import { chartEdge } from "./field-finish.ts";
+import { glyph } from "./dock-visual.ts";
 import { IMAGE_ARROW, arrowSheet, placeArrow } from "./arrow.ts";
 import { IMAGE_MAP, KEY_MINIMAP, KEY_MINIMAP_TOGGLE, MARKER_STYLE, MARKER_TINT } from "./hud.ts";
 import { K_BUTTON, K_HOLD, K_IMAGE, K_PANEL, fitText, lineHeight, type UiFrame } from "./nodes.ts";
@@ -244,21 +245,22 @@ export function buildMap(f: UiFrame, session: ClientSession, hud: HudModel, corn
   shield(KEY_MAP_LINE + 10, x, top, size - side);
   const count = corner.mode === "tools" ? 5 : corner.mode === "mark" ? (hud.privateU >= 0 ? 3 : 2) : 1;
   shield(KEY_MAP_LINE + 11, x + count * side, top + size - side, size - count * side);
-  const control = (key: number, n: number, symbol: string, label: string, enabled = true): void => {
+  const control = (key: number, n: number, name: string, symbol: string, label: string, enabled = true): void => {
     const upper = n < 0;
     const b = f.add(key, K_BUTTON, upper ? x + size - side : x + n * side, upper ? top : top + size - side, side, side, S_BUTTON);
-    b.label = label; b.text = symbol; b.interactive = enabled; b.alpha = enabled ? .86 : .4;
+    b.label = label; b.interactive = enabled; b.alpha = enabled ? .86 : .4;
+    glyph(f, key + 60000, b, name, symbol, 0.5);
   };
-  control(KEY_MAP_CLOSE, -1, "×", "Close map");
-  control(KEY_MAP_TOOLS, 0, corner.mode === "peek" ? "⋯" : "‹", corner.mode === "peek" ? "Map tools" : "Back to chart");
+  control(KEY_MAP_CLOSE, -1, "close", "×", "Close map");
+  control(KEY_MAP_TOOLS, 0, corner.mode === "peek" ? "more" : "back", corner.mode === "peek" ? "⋯" : "‹", corner.mode === "peek" ? "Map tools" : "Back to chart");
   if (corner.mode === "tools") {
-    control(KEY_MAP_ZOOM, 1, "−", "Zoom out", !!chart && chart.fullZoom > 0);
-    control(KEY_MAP_ZOOM + 1, 2, "+", "Zoom in", !!chart && chart.fullZoom < ZOOMS - 1);
-    control(KEY_MAP_MARK_TOOL, 3, "⌖", "Place private pin", !!chart);
-    control(KEY_MAP_ATLAS, 4, "⤢", "Open full map");
+    control(KEY_MAP_ZOOM, 1, "zoom-out", "−", "Zoom out", !!chart && chart.fullZoom > 0);
+    control(KEY_MAP_ZOOM + 1, 2, "zoom-in", "+", "Zoom in", !!chart && chart.fullZoom < ZOOMS - 1);
+    control(KEY_MAP_MARK_TOOL, 3, "pin", "⌖", "Place private pin", !!chart);
+    control(KEY_MAP_ATLAS, 4, "atlas", "⤢", "Open full map");
   } else if (corner.mode === "mark") {
-    control(KEY_MAP_SAVE, 1, "✓", "Save private pin", corner.pendingU >= 0);
-    if (hud.privateU >= 0) control(KEY_MAP_REMOVE, 2, "−", "Remove private pin");
+    control(KEY_MAP_SAVE, 1, "save", "✓", "Save private pin", corner.pendingU >= 0);
+    if (hud.privateU >= 0) control(KEY_MAP_REMOVE, 2, "unpin", "−", "Remove private pin");
   } else if (chart) {
     const metres = Math.max(hf.sizeX * view.du, hf.sizeZ * view.dv);
     const label = metres >= 1000 ? `${(metres / 1000).toFixed(1)} km` : `${Math.round(metres)} m`;

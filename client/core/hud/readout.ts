@@ -6,6 +6,7 @@ import type { HudModel } from "../hud.ts";
 import { K_BUTTON, K_PANEL, fitText } from "../ui/nodes.ts";
 import { S_HUD_HIT, S_HUD_KEY, S_ICE, S_TEXT } from "../ui/style.ts";
 import { band, type HudWidget } from "./widget.ts";
+import { glyph } from "../ui/dock-visual.ts";
 
 export const KEY_READOUT = 1;
 export const KEY_FIELD_TELEMETRY = 9180;
@@ -58,7 +59,8 @@ export const READOUT: HudWidget<ReadoutModel> = {
       if (x + w < (at.options.minimap ? at.mapX - 4 : at.right)) {
         const hit = f.add(KEY_FIELD_TELEMETRY, K_BUTTON, x, y, w, at.touch ? 32 : 21, S_HUD_HIT);
         hit.label = at.readout ? "Hide diagnostics" : "Show FPS and coordinates";
-        hit.text = "⌁"; hit.interactive = true; hit.alpha = at.readout ? 1 : .76;
+        hit.interactive = true; hit.alpha = at.readout ? 1 : .76;
+        glyph(f, KEY_FIELD_TELEMETRY + 60000, hit, "telemetry", "⌁", 0.8);
       }
     }
     if (at.readout && !at.inspect) {

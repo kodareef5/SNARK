@@ -1,24 +1,6 @@
-import { K_IMAGE, K_PANEL, type UiFrame, type UiImage } from "./nodes.ts";
-import { S_HUD_HIT, S_ICE } from "./style.ts";
-
-const IMAGE_RADIO_GLASS = 36;
-let radioGlass: UiImage | null = null;
-
-/** The radio scrim loses its ink toward the open field. The same pixels serve every width. */
-export function radioSurface(f: UiFrame, key: number, x: number, y: number, w: number, h: number, alpha: number): void {
-  if (!radioGlass) {
-    const width = 128, height = 4, data = new Uint8ClampedArray(width * height * 4);
-    for (let row = 0; row < height; row++) for (let col = 0; col < width; col++) {
-      const i = (row * width + col) * 4, strength = (1 - col / (width - 1)) ** 1.25;
-      data[i] = 8; data[i + 1] = 29 + row * 2; data[i + 2] = 46 + row * 2;
-      data[i + 3] = Math.round(240 * strength);
-    }
-    radioGlass = { width, height, data, version: 1, smooth: true };
-  }
-  f.images[IMAGE_RADIO_GLASS] = radioGlass;
-  const sheet = f.add(key, K_IMAGE, x, y, w, h, S_HUD_HIT);
-  sheet.image = IMAGE_RADIO_GLASS; sheet.alpha = alpha;
-}
+// The corner chart's edges: a pixel of silver above and to the left, and shadow below and to the right.
+import { K_PANEL, type UiFrame } from "./nodes.ts";
+import { S_ICE } from "./style.ts";
 
 /** Dark backing and silver edges stay a pixel wide when the chart expands. */
 export function chartEdge(f: UiFrame, base: number, x: number, y: number, side: number): void {

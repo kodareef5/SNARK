@@ -33,7 +33,7 @@ export function clashes(app: App, nodes: UiNode[]): string[] {
 export function walkHudStates(look: (app: App, state: string) => void): void {
   const h = new Harness({}, 1, 60, { dev: true });
   const app = new App(h.join("States", { latencyMs: 20 }, { manual: true }), h.reg, corePack());
-  installFieldIcons(app.ui.frame, "field-icons.webp", "field-touch.webp", "field-equipment.webp");
+  installFieldIcons(app.ui.frame, { icons: "field-icons.webp", equipment: "field-equipment.webp", parts: "field-parts.webp", touch: "field-touch.webp" });
   app.ui.layer = touch;
   let w = 1440, ht = 810;
   const run = (ms = 64) => h.run(ms, now => app.frame(now, w, ht));

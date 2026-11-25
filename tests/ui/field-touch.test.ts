@@ -39,7 +39,7 @@ test("Both field contacts appear under the player’s fingers and vanish on lift
   hud.held = 0;
   pointer(0, KEY_ZONE_MOVE, 200, 240, 7, 0);
   pointer(0, KEY_ZONE_LOOK, 750, 320, 8, 0);
-  expect(draw()).toEqual(["ui:glass-touch-move", "ui:glass-touch-knob", "ui:glass-touch-look", "core:stone_pick"]);
+  expect(draw()).toEqual(["ui:glass-touch-move", "ui:glass-touch-knob", "ui:glass-touch-look-lit", "core:stone_pick"]);
   pointer(3, KEY_ZONE_LOOK, 750, 320, 8, 70);
   expect(draw()).toEqual(["ui:glass-touch-move", "ui:glass-touch-knob"]);
   pointer(1, KEY_ZONE_MOVE, 200, 240, 7, 90);

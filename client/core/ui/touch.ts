@@ -152,12 +152,12 @@ function touchContacts(f: UiFrame, t: TouchPlay, item = ""): void {
   }
   if (t.action) {
     const ring = (t.looking ? 66 : 86) * t.contactScale(true) / f.unit, size = ring * .42;
-    const circle = f.picture(k + 2, t.actionX - ring / 2, t.actionY - ring / 2, ring, ring, S_LABEL, "ui:glass-touch-look")
+    const circle = f.picture(k + 2, t.actionX - ring / 2, t.actionY - ring / 2, ring, ring, S_LABEL, t.looking ? "ui:glass-touch-look" : "ui:glass-touch-look-lit")
       ?? part(f, k + 2, P_RING, t.actionX, t.actionY, ring * .89);
     circle.alpha = t.looking ? .52 : .95;
     const x = t.actionX - size / 2, y = t.actionY - size / 2;
     const gem = (item && f.picture(k + 3, x, y, size, size, S_LABEL, item)) ||
-      f.picture(k + 3, x, y, size, size, S_LABEL, "ui:glass-touch-emblem") ||
+      f.picture(k + 3, x, y, size, size, S_LABEL, "ui:glass-emblem") ||
       part(f, k + 3, P_KNOB, t.actionX, t.actionY, size * .82);
     gem.alpha = t.looking ? .35 : 1;
   }

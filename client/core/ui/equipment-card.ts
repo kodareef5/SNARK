@@ -5,6 +5,7 @@ import type { Registry } from "../../../shared/content/registry.ts";
 import type { ClientSession } from "../session.ts";
 import { K_BUTTON, K_HOLD, K_PANEL, fitText, type UiFrame } from "./nodes.ts";
 import { itemMount } from "./item-mount.ts";
+import { glyph } from "./dock-visual.ts";
 import { glass } from "./skin.ts";
 import { S_HUD_COUNT, S_HUD_HIT, S_HUD_KEY, S_ICE, S_LABEL, S_MENU_NOTE, S_SLOT, S_TITLE } from "./style.ts";
 
@@ -108,7 +109,7 @@ export class EquipmentCard {
 
   entry(f: UiFrame, x: number, y: number, w: number, touch: boolean): void {
     const inspect = f.add(CARD, K_BUTTON, x + w - 78, y + 5, 70, 28, S_HUD_HIT);
-    inspect.text = "Inspect ›"; inspect.label = "Inspect item"; inspect.interactive = true;
+    inspect.text = "Inspect"; inspect.label = "Inspect item"; inspect.interactive = true;
     if (touch) this.grip(f, x, y, w);
   }
 
@@ -123,7 +124,8 @@ export class EquipmentCard {
     const x = f.left + (f.width - f.left - f.right - w) / 2, y = f.top + (f.height - f.top - f.bottom - h) / 2;
     glass(f, CARD, x, y, w, h);
     const back = f.add(BACK, K_BUTTON, x + 7, y + 8, 36, 30, S_HUD_HIT);
-    back.text = "‹"; back.label = "Back to " + (this.depth === 2 ? "item" : "inventory"); back.interactive = true;
+    back.label = "Back to " + (this.depth === 2 ? "item" : "inventory"); back.interactive = true;
+    glyph(f, CARD + 60, back, "back", "‹", 0.6);
     const name = label(reg, this.item);
     f.text(CARD + 5, x + 47, y + 13, w - 80, S_TITLE, fitText(this.depth === 1 ? name : "Assign hotkey", w - 80, S_TITLE));
     if (touch) this.grip(f, x, y, w);
