@@ -104,7 +104,10 @@ if (import.meta.main) {
     modules: outpost ? [outpostCrew(() => server.host)] : undefined,
     config: loadConfigFolder(DEV_CONFIG, ["?AllowThirdPersonPlayer=False", ...(outpost ? ["?DinoCountMultiplier=0", "?bDisableLootCrates=True"] : [])]).rules,
     routes: (req, url) => {
-      if (url.pathname === "/tek-wall.mp4") return serveFile(resolve(import.meta.dir, "../../planning/workstreams/art"), req);
+      if (url.pathname === "/tek-wall.mp4" || (outpost && [
+        "/tek-outpost.mp4", "/tek-outpost-in-game.webp", "/tek-outpost-entry.webp", "/tek-outpost-deck.webp",
+        "/tek-outpost-gate.webp", "/tek-outpost-threshold.webp", "/tek-outpost-comparison.webp",
+      ].includes(url.pathname))) return serveFile(resolve(import.meta.dir, "../../planning/workstreams/art"), req);
       const day = outpost ? "/outpost" : "/wall", dusk = outpost ? "/outpost-dusk" : "/dusk";
       if (url.pathname !== day && url.pathname !== dusk) return null;
       const w = server.host.world;
