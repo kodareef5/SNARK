@@ -10,6 +10,7 @@ import { BTN_JUMP, BTN_SPRINT } from "../../shared/sim/character.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { parseMap, readHead, readPart, resolveNodes, setGround, writeMap, type GroundPiece, type MapData, type NodeScatter } from "../../shared/world/mapfile.ts";
 import { PROVING_DIMS, buildProvingHeightfield, populateProving } from "../../shared/world/proving.ts";
+import { StreetSectors } from "../../shared/world/streets.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { simHash } from "../../tools/simhash.ts";
 import { Harness } from "../fixtures/net.ts";
@@ -129,6 +130,23 @@ test("a client whose body's sector has not come predicts nothing there and draws
   expect(late.unheld).toBe(came);
   expect([late.bodies.length, late.bodies.slice(-6 * 240)]).toEqual([whole.bodies.length, whole.bodies.slice(-6 * 240)]);
   expect(late.bodies.slice(-6 * 300)).not.toEqual(whole.bodies.slice(-6 * 300));
+});
+
+test("a car is predicted only once the streets listed round it are held; a body on foot either way", () => {
+  const hf = poisoned(grounds);
+  // The first sector has streets the page has not held yet: a wheel there would grip by the 4 m cells, not their lines.
+  hf.streets = new StreetSectors();
+  hf.streets.list(1, 0, 0, 16, 16);
+  let [walking, before, after, drove] = [0, 0, 0, -1];
+  walk(hf, 3, (s, frame) => {
+    if (s.state !== "active") return;
+    if (s.driving < 0) return void (s.predicting && walking++);
+    // The frame the snapshot that seats it comes, its next update has yet to look at the ground.
+    if (drove < 0) drove = frame;
+    if (frame === drove + 60) hf.streets!.put(1, { x0: 0, z0: 0, stretches: [], corners: [] }, 0, 0, 16, 16);
+    if (s.predicting && frame > drove) frame <= drove + 60 ? before++ : after++;
+  });
+  expect([walking > 100, drove > 0, before, after > 100]).toEqual([true, true, 0, true]);
 });
 
 test("the seeded simulation on the proving ground set in the first of four sectors gives the same hash with the other three poisoned and not held", () => {

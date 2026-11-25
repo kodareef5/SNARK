@@ -13,6 +13,7 @@ import { COARSE, TerrainLod, WINDOW, WINDOW_MOVE, coarseGround, groundNormal, gr
 import { groundCover, groundWander } from "../../client/core/render/world-surfaces.ts";
 import { Rng } from "../../shared/rng.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
+import { RoadSectors } from "../../shared/world/roadframe.ts";
 
 const MB = 1 << 20;
 
@@ -318,6 +319,77 @@ test("a refill goes in bands within the allowance; tiles read the window drawn u
     [1, 256, 128, -1, 0, 0, 0, 0, 256],
     [1, 256, 128, -1, 0, 0, 0, 0, 256],
   ]);
+});
+
+test("a sector held inside the window drawn puts its rows alone again, into the copy drawn, in bands within the allowance", () => {
+  const hf = rough(40);
+  const lod = new TerrainLod(hf);
+  const twin = new Twin(hf);
+  const cam = camera(1200, 1300, hf);
+  const rowBytes = groundSize(hf).width[SOURCE_WINDOW]! * 3, budget = allowance(32 * rowBytes);
+  twin.take(frame(lod, cam, budget));
+  budget.next();
+  twin.take(frame(lod, cam, budget));
+  const drawn = twin.drawn, wj = 128;
+  // Chunks 5 to 9 across and 10 to 12 down take new samples, as a sector's ground sets them.
+  const per = 32;
+  for (let j = 10 * per; j <= 13 * per; j++) for (let i = 5 * per; i <= 10 * per; i++) hf.heights[j * hf.nx + i] = 9000 + ((i + j) % 50);
+  hf.hold(5, 10, 10, 13);
+  const bands: number[][] = [];
+  for (let f = 0; f < 6; f++) {
+    budget.next();
+    const p = frame(lod, cam, budget);
+    twin.take(p);
+    expect(budget.spent).toBeLessThanOrEqual(32 * rowBytes);
+    if (p.groundWindow[3]! >= 0) bands.push([p.groundWindow[3]!, p.groundWindow[6]!, p.groundWindow[7]!]);
+  }
+  // Rows 320 to 416 of the map, 97 of them, from row 192 of the window, 32 a frame; the copy drawn never changes.
+  expect(bands).toEqual([[drawn, 320 - wj, 32], [drawn, 352 - wj, 32], [drawn, 384 - wj, 32], [drawn, 416 - wj, 1]]);
+  expect(twin.drawn).toBe(drawn);
+  const w = groundSize(hf).width[SOURCE_WINDOW]!;
+  let off = 0;
+  for (let j = 0; j < groundSize(hf).height[SOURCE_WINDOW]!; j++) for (let i = 0; i < w; i++) if (twin.heights[drawn]![j * w + i] !== hf.heights[(wj + j) * hf.nx + 128 + i]) off++;
+  expect(off).toBe(0);
+});
+
+test("the roads' picture takes every row the frame a window is drawn, and after that only the rows of a square that comes or goes inside it", () => {
+  const hf = rough(40);
+  const lod = new TerrainLod(hf);
+  hf.road = new RoadSectors();
+  const cam = camera(1200, 1300, hf);
+  const rows = (p: FramePacket): number[] => [...p.roadWindow];
+  const square = (d: number, v = 1) => ({ across: new Uint8Array(10 * d).fill(v), along: new Uint8Array(10 * d), half: new Uint8Array(10 * d), lanes: new Uint8Array(10 * d) });
+  const budget = allowance(MB);
+  const step = (): FramePacket => (budget.next(), frame(lod, cam, budget));
+  // The window's corner is sample 128 a side, cell 64 of the frame's, which is 513 cells a side.
+  expect(rows(step())).toEqual([0, 513]);
+  expect(rows(step())).toEqual([0, 0]);
+  hf.road.put(1, 200, 150, 10, square(5));
+  expect(rows(step())).toEqual([86, 5]);
+  expect(rows(step())).toEqual([0, 0]);
+  // Past the window's last row nothing is copied; the square let go inside it is.
+  hf.road.put(2, 200, 600, 10, square(5));
+  expect(rows(step())).toEqual([0, 0]);
+  hf.road.drop(1);
+  expect(rows(step())).toEqual([86, 5]);
+  // A square 400 cells tall at an allowance of 100 rows a frame goes in bands.
+  const tall = allowance(100 * 513 * 4);
+  hf.road.put(3, 100, 70, 10, square(400));
+  const got: number[][] = [];
+  for (let f = 0; f < 6; f++) (tall.next(), got.push(rows(frame(lod, cam, tall))));
+  expect(got).toEqual([[6, 100], [106, 100], [206, 100], [306, 100], [0, 0], [0, 0]]);
+  // Moved 340 m, the window is drawn round a new corner, and the picture takes every row again that frame.
+  const moved: number[][] = [];
+  for (let f = 0; f < 6; f++) (budget.next(), moved.push(rows(frame(lod, camera(1540, 1300, hf), budget))));
+  expect(moved.filter((r) => r[1] === 513).length).toBe(1);
+  expect(moved.filter((r) => r[1] !== 513 && r[1] !== 0)).toEqual([]);
+});
+
+test("with bounds kept by the heightfield, a chunk's box is its bound, read without a scan of its samples", () => {
+  const hf = rough(8);
+  hf.bounds = new Uint16Array(64 * 2).map((_, k) => (k % 2 ? 200 : 100));
+  const lod = new TerrainLod(hf);
+  expect([lod.lowest(10, 10, 300, 300), lod.farthestFrom(hf.minY)]).toEqual([hf.minY + 100 * hf.stepY, 200 * hf.stepY]);
 });
 
 test("a tile's mesh is its ground, then skirts that hang from the ground's border vertices, so the shell can draw the skirts apart, behind the ground", () => {

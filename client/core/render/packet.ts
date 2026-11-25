@@ -832,7 +832,8 @@ export class FramePacket {
   /**
    * The terrain window (terrain.ts): the copy of it SOURCE_WINDOW tiles read, 0 or 1 or -1 for none, and the map sample
    * of its corner; then the copy rows go into this frame, or -1, the corner it is filled round, and the first of those
-   * rows and how many. A renderer copies them from the heightfield before it draws.
+   * rows and how many. The copy may be the one drawn, whose rows that changed are put again in place. A renderer copies
+   * them from the heightfield before it draws.
    */
   readonly groundWindow = Int32Array.of(-1, 0, 0, -1, 0, 0, 0, 0);
   /**

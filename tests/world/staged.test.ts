@@ -9,7 +9,7 @@ import { NodeChanges } from "../../client/core/render/farnodes.ts";
 import { FramePacket, SOURCE_WINDOW } from "../../client/core/render/packet.ts";
 import { Scene } from "../../client/core/render/scene.ts";
 import "../../client/core/render/city-late.ts";
-import { TerrainLod, coarseArea, coarseGround, groundSize, type GroundBudget } from "../../client/core/render/terrain.ts";
+import { COARSE, TerrainLod, coarseArea, coarseGround, groundSize, type GroundBudget } from "../../client/core/render/terrain.ts";
 import { Lakes } from "../../client/core/render/lakes.ts";
 import { ReliefTiles, paintRelief } from "../../client/core/tactical.ts";
 import { CHUNK_SIZE } from "../../shared/coords.ts";
@@ -378,7 +378,7 @@ test("a sector's ground that comes before its overview waits for it: none of its
   expect([off, staged.hf.exactIn(x0, z0, x1, z1), staged.hf.exact.filter((e) => e === 1).length, staged.hf.changes.length / 4]).toEqual([0, true, (g.sq.cx1 - g.sq.cx0) * (g.sq.cz1 - g.sq.cz0), 3]);
 });
 
-test("the whole map's pair on the card, made once and sent again where the ground changed, is at every step what a picture made then would be, and the map's own once the overviews have come", () => {
+test("the whole map's pair on the card, made once and sent again where a fill changed the ground, is at every step what a picture made then would be, and the map's own once the overviews have come", () => {
   const { head, overviews, grounds } = partsOf(file);
   const staged = new StagedMap(head);
   const hf = staged.hf;
@@ -386,9 +386,12 @@ test("the whole map's pair on the card, made once and sent again where the groun
   const across = groundSize(hf).width[0]!;
   let seen = hf.changes.length;
   let sent = 0;
+  // A sector's hold changes no sample the pair takes: its overview had set every one of them as the map's own.
+  expect(COARSE % OVERVIEW_STEP).toBe(0);
   for (const piece of scrambled([...overviews, ...grounds], 9)) {
     staged.take(piece);
     for (const c = hf.changes; seen < c.length; seen += 4) {
+      if (!hf.filled[seen / 4]) continue;
       const a = coarseArea(hf, c[seen]!, c[seen + 1]!, c[seen + 2]!, c[seen + 3]!);
       for (let r = 0; r < a.h; r++) {
         card.heights.set(a.heights.subarray(r * a.w, (r + 1) * a.w), (a.j + r) * across + a.i);
@@ -398,6 +401,48 @@ test("the whole map's pair on the card, made once and sent again where the groun
     }
     expect(card).toEqual(coarseGround(hf));
   }
-  // The overviews' squares and the sectors' once each, their far edges among them.
-  expect([card, sent]).toEqual([coarseGround(whole), [...overviews, ...grounds].reduce((n, p) => n + ((p.sq.cx1 - p.sq.cx0) * 8 + 1) * ((p.sq.cz1 - p.sq.cz0) * 8 + 1), 0)]);
+  // The overviews' squares once each, their far edges among them, and none of the sectors'.
+  expect([card, sent]).toEqual([coarseGround(whole), overviews.reduce((n, p) => n + ((p.sq.cx1 - p.sq.cx0) * 8 + 1) * ((p.sq.cz1 - p.sq.cz0) * 8 + 1), 0)]);
+});
+
+/** Each chunk's lowest and highest sample, edges among them, in stored steps. */
+function ranges(hf: Heightfield): Uint16Array {
+  const { chunksX, chunksZ } = hf.dims, out = new Uint16Array(chunksX * chunksZ * 2);
+  for (let cz = 0; cz < chunksZ; cz++) {
+    for (let cx = 0; cx < chunksX; cx++) {
+      let [a, b] = [65535, 0];
+      for (let j = cz * PER; j <= cz * PER + PER; j++) for (let i = cx * PER; i <= cx * PER + PER; i++) [a, b] = [Math.min(a, hf.heights[j * hf.nx + i]!), Math.max(b, hf.heights[j * hf.nx + i]!)];
+      [out[(cz * chunksX + cx) * 2], out[(cz * chunksX + cx) * 2 + 1]] = [a, b];
+    }
+  }
+  return out;
+}
+
+test("a staged map's chunk bounds hold every sample at every step, with no scan of the map, and are its own once its overview came", () => {
+  const { head, overviews, grounds } = partsOf(file);
+  const own = ranges(whole);
+  for (const seed of [10, 11, 12]) {
+    const staged = new StagedMap(head);
+    const hf = staged.hf, bounds = hf.bounds!;
+    const lod = new TerrainLod(hf);
+    const came = new Set<OverviewPiece>();
+    const under = (c: number): boolean => [...came].some((o) => c % hf.dims.chunksX >= o.sq.cx0 && c % hf.dims.chunksX < o.sq.cx1 && Math.floor(c / hf.dims.chunksX) >= o.sq.cz0 && Math.floor(c / hf.dims.chunksX) < o.sq.cz1);
+    const steps = scrambled([...overviews, ...grounds], seed);
+    for (let k = 0; k <= steps.length; k++) {
+      if (k > 0) staged.take(steps[k - 1]!);
+      if (k > 0 && steps[k - 1]!.kind === "overview") came.add(steps[k - 1] as OverviewPiece);
+      const now = ranges(hf);
+      let loose = 0, wrong = 0;
+      for (let c = 0; c < now.length / 2; c++) {
+        if (now[c * 2]! < bounds[c * 2]! || now[c * 2 + 1]! > bounds[c * 2 + 1]!) loose++;
+        if (under(c) && (bounds[c * 2] !== own[c * 2] || bounds[c * 2 + 1] !== own[c * 2 + 1])) wrong++;
+      }
+      expect([seed, k, loose, wrong]).toEqual([seed, k, 0, 0]);
+    }
+    // The tiles' boxes, read from the bounds, are those measured from the whole map's samples.
+    const p = new FramePacket(), cam = new Camera();
+    lod.select(cam, p, 100);
+    const fresh = new TerrainLod(whole);
+    for (let k = 0; k < 50; k++) expect(lod.lowest(k * 90, k * 25, k * 90 + 300, k * 25 + 64)).toBe(fresh.lowest(k * 90, k * 25, k * 90 + 300, k * 25 + 64));
+  }
 });

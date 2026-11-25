@@ -54,7 +54,7 @@ export function mapLedger(roots: MapRoots): MapHeld[] {
   const staged = roots.loader?.staged;
   if (staged) {
     const hf = staged.hf;
-    add("ground", hf.heights, hf.tint, hf.ground, hf.exact);
+    add("ground", hf.heights, hf.tint, hf.ground, hf.exact, hf.bounds);
     add("water", hf.water);
     add("road", hf.road);
     add("streets", hf.streets);

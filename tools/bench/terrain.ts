@@ -9,6 +9,7 @@ import { FramePacket, SOURCE_WINDOW } from "../../client/core/render/packet.ts";
 import { TerrainLod, WINDOW, groundSize, type GroundBudget } from "../../client/core/render/terrain.ts";
 import { Rng } from "../../shared/rng.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
+import { ROAD_PLANES, RoadSectors, roadSamples } from "../../shared/world/roadframe.ts";
 
 type Section = (title: string) => void;
 type Row = (name: string, value: number, unit: string, budget?: number | null) => void;
@@ -102,6 +103,36 @@ export function benchTerrain(section: Section, record: Row, hf = benchHills()): 
   }
   record("20 teleports: frames until the new window is in, most", Math.max(...coming), "", 4);
   record("  tiles drawn a level coarser in the frame after, mean", first.reduce((s, v) => s + v, 0) / first.length, "");
+
+  // What a part that lands costs: a sector's ground held in the window's middle, and a road square that comes inside it and outside.
+  lod.reset();
+  [cam.x, cam.z] = [4000, 4000];
+  for (let k = 0; k < 8; k++) frame();
+  const [wi, wj] = [p.groundWindow[1]!, p.groundWindow[2]!], per = 32;
+  const [cx, cz] = [Math.ceil(wi / per), Math.ceil(wj / per) + 8];
+  hf.hold(cx, cz, cx + 16, cz + 16);
+  let [rows, roadBytes] = [0, 0];
+  for (let k = 0; k < 8; k++) (frame(), (rows += p.groundWindow[3]! >= 0 ? p.groundWindow[7]! : 0));
+  record("a sector held inside the window: its bytes put again", (rows * size.width[SOURCE_WINDOW]! * 3) / MB, "MB");
+  const road = (hf.road = new RoadSectors()), plane = (): Uint8Array => new Uint8Array(257 * 257);
+  frame();
+  for (const [key, j] of [[1, cz * 16], [2, 4000]] as const) {
+    road.put(key, cx * 16, j, 257, { across: plane(), along: plane(), half: plane(), lanes: plane() });
+    roadBytes = 0;
+    for (let k = 0; k < 8; k++) (frame(), (roadBytes += p.roadWindow[1]! * roadSamples(size.width[SOURCE_WINDOW]!) * ROAD_PLANES));
+    record(`a road square that comes ${key === 1 ? "inside" : "outside"} the window: bytes copied`, roadBytes / MB, "MB");
+  }
+  hf.road = null;
+
+  // The boxes of a 16 km map's 65,536 chunks: scanned from its 67 million samples, or read from bounds kept as its parts came.
+  const big = new Heightfield({ chunksX: 256, chunksZ: 256 }, TERRAIN_CELL, -32, 1 / 64);
+  let t = performance.now();
+  new TerrainLod(big);
+  record("a 16 km map's chunk boxes, scanned", performance.now() - t, "ms");
+  big.bounds = new Uint16Array(256 * 256 * 2);
+  t = performance.now();
+  new TerrainLod(big);
+  record("a 16 km map's chunk boxes, from bounds kept", performance.now() - t, "ms");
 }
 
 if (import.meta.main) {
