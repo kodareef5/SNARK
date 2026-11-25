@@ -41,12 +41,22 @@ test("the optical insert shows the same moving crest on a floor, jamb or leaf", 
   expect(glow(p, normal, 0, .003, 2)[1]! * 2).toBeCloseTo(glow(p, normal)[1]!, 8);
 });
 
+test("a narrow blue echo follows the pale optical crest", () => {
+  const p: Vec = [0, 0, 0], n: Vec = [0, 0, 1];
+  const lead = glow(p, n, Math.PI * .5);
+  const echo = glow(p, n, Math.PI * .428);
+  const gap = glow(p, n, Math.PI * .45);
+  expect(lead[0]!).toBeGreaterThan(gap[0]! + .20);
+  expect(echo[2]!).toBeGreaterThan(gap[2]! + .10);
+  expect(echo[0]!).toBeLessThan(lead[0]! / 2);
+});
+
 test("the enamel stays dark and the fine etched lines fade with distance", () => {
   const base = new Float64Array(3), orm = new Float64Array([1, 1, 0]);
   tekGlass(base, orm, .6);
   expect(base[2]!).toBeLessThan(.10);
   expect(base[2]!).toBeGreaterThan(2 * base[0]!);
-  const p: Vec = [.125, .06 / 5.5, 0], n: Vec = [0, 0, 1];
+  const p: Vec = [.375, .06 / 5.5, 0], n: Vec = [0, 0, 1];
   expect(glow(p, n)[2]!).toBeGreaterThan(glow(p, n, 0, .1)[2]! + .05);
   const flat = defaultPalette().slice(TEK_INLAY_COLOUR * 4, TEK_INLAY_COLOUR * 4 + 3);
   expect(flat[1]!).toBeGreaterThan(3 * flat[0]!);
