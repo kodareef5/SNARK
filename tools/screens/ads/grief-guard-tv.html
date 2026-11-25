@@ -1,0 +1,79 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Grief Guard spot</title>
+<link rel="stylesheet" href="ads.css">
+<script type="application/json" id="ad">{ "name": "grief-guard-tv", "title": "Grief Guard Insurance: a rex visits a sleeping base", "type": "tv", "kind": "clip", "seconds": 12, "poster": 6.6 }</script>
+<style>
+  .ad { background: var(--ink); }
+  .scene { position: absolute; inset: 0; }
+  .night { background: var(--navy); }
+  .sky { left: 0; top: 0; width: 1280px; height: 720px; }
+  .house { left: 380px; top: 330px; width: 400px; height: 320px; }
+  .rex { top: 60px; width: 900px; height: 600px; }
+  .card { left: 50%; top: 40px; transform: translateX(-50%); background: var(--cream); border: 6px solid var(--ink); border-radius: 16px; padding: 10px 36px; font-size: 56px; color: var(--navy); }
+  .zzz { font-size: 54px; color: var(--cream); }
+  .end { background: var(--navy); }
+  .shield { left: 70px; top: 150px; width: 220px; height: 276px; }
+  .logo { left: 320px; top: 120px; font-size: 168px; color: var(--mustard); line-height: 1.05; }
+  .ins { left: 336px; top: 316px; font-size: 64px; color: var(--cream); letter-spacing: 0.32em; }
+  .tag { left: 80px; top: 460px; font-size: 56px; color: var(--cream); --shadow: var(--tomato); }
+  .fine { left: 0; width: 1280px; top: 640px; text-align: center; font-size: 24px; color: var(--mint); }
+</style></head>
+<body>
+<div class="ad" data-w="1280" data-h="720">
+  <div class="scene night" id="night">
+    <svg class="abs sky" viewBox="0 0 1280 720">
+      <circle cx="1080" cy="150" r="70" fill="#f4e9cc"/><circle cx="1110" cy="130" r="62" fill="#213a5a"/>
+      <g fill="#f4e9cc"><circle cx="120" cy="120" r="4"/><circle cx="300" cy="220" r="3"/><circle cx="520" cy="110" r="4"/><circle cx="760" cy="200" r="3"/><circle cx="900" cy="300" r="4"/><circle cx="200" cy="330" r="3"/></g>
+      <rect y="620" width="1280" height="100" fill="#155a5d"/>
+    </svg>
+    <svg class="abs house" id="house" viewBox="0 0 400 320">
+      <g id="walls"><path d="M40 140 V316 H360 V140 Z" fill="#f4e9cc" stroke="#2b211d" stroke-width="8"/>
+        <rect x="170" y="200" width="64" height="116" fill="#155a5d"/>
+        <rect x="70" y="180" width="64" height="56" fill="#eab13a" stroke="#2b211d" stroke-width="6"/>
+        <rect x="268" y="180" width="64" height="56" fill="#eab13a" stroke="#2b211d" stroke-width="6"/></g>
+      <g id="roof"><path d="M10 150 L200 14 L390 150" fill="#a8301f" stroke="#2b211d" stroke-width="8" stroke-linejoin="round"/></g>
+    </svg>
+    <div class="abs mono zzz" id="z1"><b>Z</b></div><div class="abs mono zzz" id="z2"><b>z</b></div><div class="abs mono zzz" id="z3"><b>z</b></div>
+    <div class="dino rex offset" id="rex" data-src="art/rex-walk.png" data-inks="ink brick tomato mustard cream" data-gain="1.4" data-lift="0.1" style="--off: var(--ink)"></div>
+    <div class="abs cond card" id="card1">You log off for the night&hellip;</div>
+    <div class="abs cond card" id="card2">&hellip;and log back in to this?</div>
+  </div>
+  <div class="scene end" id="end">
+    <svg class="rays" id="rays" data-rays="26 1280 720 deep navy"></svg>
+    <svg class="abs shield offset" viewBox="0 0 120 150" style="--off: var(--ink)"><path d="M60 4 L114 22 V70 Q114 120 60 146 Q6 120 6 70 V22 Z" fill="#eab13a" stroke="#f4e9cc" stroke-width="6"/><path d="M60 22 L98 34 V70 Q98 106 60 126 Z" fill="#e0482e"/><text x="60" y="92" text-anchor="middle" font-family="AdCentury" font-weight="700" font-size="44" fill="#213a5a">G</text></svg>
+    <div class="abs script logo">Grief Guard</div>
+    <div class="abs cond ins">Insurance</div>
+    <div class="abs cent tag misreg">We'll be there in the morning!</div>
+    <div class="abs small fine">Claims paid after the next wipe. Excludes rexes, C4, offline raids and your own tribemates.</div>
+  </div>
+</div>
+<script>
+  const $ = (id) => document.getElementById(id);
+  function frame(t) {
+    // Snores rise from the chimney side while the base sleeps.
+    ["z1", "z2", "z3"].forEach((id, k) => {
+      const age = Ad.wrap(t * 0.6 + k / 3, 1);
+      $(id).style.left = `${620 + age * 90 + k * 10}px`;
+      $(id).style.top = `${330 - age * 180}px`;
+      $(id).style.opacity = t < 5.6 ? Math.sin(age * Math.PI) : 0;
+      $(id).style.fontSize = `${34 + age * 40}px`;
+    });
+    // The rex walks in from the right and stops over the house.
+    const walk = Ad.ease(t, 3.4, 5.8);
+    $("rex").style.left = `${1320 - walk * 1260}px`;
+    $("rex").style.top = `${60 + Math.abs(Math.sin(t * 5)) * 10 * (walk > 0 && walk < 1 ? 1 : 0)}px`;
+    // The house shakes as it nears, then the roof slides off and the walls fold.
+    const shake = t > 4.8 && t < 6.2 ? Math.sin(t * 60) * 6 : 0;
+    const fall = Ad.ease(t, 6.0, 6.8);
+    $("house").style.transform = `translateX(${shake}px)`;
+    $("roof").setAttribute("transform", `translate(${-fall * 90} ${fall * 200}) rotate(${-fall * 16} 200 150)`);
+    $("walls").setAttribute("transform", `translate(0 ${fall * 190}) scale(1 ${1 - fall * 0.6})`);
+    $("card1").style.opacity = Ad.during(t, 0.3, 3.4);
+    $("card2").style.opacity = Ad.during(t, 6.4, 8.0);
+    $("night").style.opacity = 1 - Ad.ease(t, 7.8, 8.1);
+    $("end").style.opacity = Ad.ease(t, 8.1, 8.4);
+    Ad.rays($("rays"), t * 2);
+  }
+</script>
+<script src="ads.js"></script>
+</body></html>

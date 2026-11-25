@@ -1,0 +1,88 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Borderline Fence Co. spot</title>
+<link rel="stylesheet" href="ads.css">
+<script type="application/json" id="ad">{ "name": "borderline-tv", "title": "Borderline Fence Co.: a survivor falls off the world, then doesn't", "type": "tv", "kind": "clip", "seconds": 12, "poster": 10 }</script>
+<style>
+  .ad { background: var(--ink); }
+  .scene { position: absolute; inset: 0; }
+  .card { left: 50%; top: 40px; transform: translateX(-50%); background: var(--cream); border: 6px solid var(--ink); border-radius: 16px; padding: 10px 36px; font-size: 56px; color: var(--navy); }
+  .world { left: 0; top: 0; width: 1280px; height: 720px; }
+  .guy { width: 110px; height: 220px; color: var(--tomato); }
+  .whoops { left: 880px; top: 200px; font-size: 64px; color: var(--mustard); }
+  .end { background: var(--cream); }
+  .pitch { left: 40px; top: 230px; width: 360px; height: 480px; }
+  .logo { left: 420px; top: 120px; font-size: 172px; color: var(--tomato); line-height: 1.05; --stroke: 10px; --stroke-colour: var(--cream); }
+  .co { left: 860px; top: 300px; font-size: 64px; color: var(--navy); }
+  .tag { left: 440px; top: 410px; font-size: 72px; color: var(--navy); --shadow: var(--mustard); }
+  .fine { left: 430px; width: 800px; top: 618px; font-size: 24px; color: var(--deep); white-space: normal; line-height: 1.25; }
+  .star1 { left: 1030px; top: 380px; width: 220px; height: 200px; background: var(--tomato); }
+  .star1 span { font-size: 30px; line-height: 0.92; color: var(--cream); white-space: normal; }
+</style></head>
+<body>
+<div class="ad" data-w="1280" data-h="720">
+  <div class="scene" id="takes">
+    <svg class="abs world" viewBox="0 0 1280 720">
+      <defs><pattern id="void" width="40" height="40" patternUnits="userSpaceOnUse"><rect width="40" height="40" fill="#213a5a"/><path d="M40 0 H0 V40" stroke="#2a8c8a" stroke-width="2" fill="none" opacity="0.7"/></pattern>
+        <pattern id="net" width="30" height="30" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><path d="M0 0 H30 M0 0 V30" stroke="#2b211d" stroke-width="4"/></pattern></defs>
+      <rect width="1280" height="720" fill="#9fd2c4"/>
+      <rect x="820" width="460" height="720" fill="url(#void)"/>
+      <text x="1050" y="300" text-anchor="middle" font-family="AdMono" font-weight="700" font-size="28" fill="#9fd2c4">END OF WORLD</text>
+      <text x="1050" y="336" text-anchor="middle" font-family="AdMono" font-size="22" fill="#9fd2c4">(chunk not found)</text>
+      <path d="M0 470 Q300 440 560 466 L820 456 V720 H0 Z" fill="#eab13a"/>
+      <path d="M0 560 Q300 540 820 560 V720 H0 Z" fill="#a8301f" opacity="0.35"/>
+      <path d="M820 456 V720" stroke="#2b211d" stroke-width="8"/>
+      <path d="M120 470 l20 -70 l20 70 z M190 466 l26 -96 l26 96 z" fill="#155a5d"/>
+      <g id="fence"><g stroke="#2b211d" stroke-width="10" stroke-linecap="round"><path d="M826 440 V660 M1220 440 V660"/></g>
+        <path d="M826 500 Q1023 690 1220 500" fill="url(#net)" stroke="#2b211d" stroke-width="9"/></g>
+    </svg>
+    <svg class="abs guy" id="guy" viewBox="0 0 100 200"><use id="pose" href="#run"/></svg>
+    <div class="abs script whoops" id="whoops">Whoops!</div>
+    <div class="abs cond card" id="card1">Ever fallen off the edge of the world?</div>
+    <div class="abs cond card" id="card2">Not with Borderline!</div>
+  </div>
+  <div class="scene end" id="end">
+    <svg class="rays" id="rays" data-rays="30 220 720 mustard cream"></svg>
+    <svg class="abs pitch offset" viewBox="0 0 300 400" style="--off: var(--navy)"><use href="#pitchman"/></svg>
+    <div class="abs script logo outline">Borderline</div>
+    <div class="abs slab co">Fence Co.</div>
+    <div class="abs cent tag misreg">We'll catch you!</div>
+    <div class="abs small fine">Void not included. Not liable for falls into unloaded chunks, the ocean, or the admin's test map.</div>
+    <div class="abs star star1" id="star" data-star="18 0.8"><span class="cond">Only<br><b style="font-size:60px">99¢</b><br>a metre!</span></div>
+  </div>
+</div>
+<script>
+  const $ = (id) => document.getElementById(id);
+  /** Where the runner is at `t` seconds into a take: running to the edge, then falling, or caught when `net`. */
+  function take(t, net) {
+    const edge = 2.2;
+    if (t < edge) return { x: 100 + (t / edge) * 680, y: 270, turn: 0, pose: Math.floor(t * 6) % 2 ? "#run" : "#man" };
+    const f = t - edge;
+    const x = 780 + f * 240;
+    if (!net) return { x, y: 270 + 600 * f * f, turn: f * 200, pose: "#fall" };
+    // Caught: he drops into the net and bounces to rest.
+    const drop = Math.min(f, 0.45);
+    const rest = 410;
+    const y = f < 0.45 ? 270 + (rest - 270) * (drop / 0.45) ** 2 : rest - 60 * Math.exp(-(f - 0.45) * 3) * Math.abs(Math.sin((f - 0.45) * 9));
+    return { x: Math.min(x, 950), y, turn: Math.min(f * 200, 90), pose: "#fall" };
+  }
+  function frame(t) {
+    const first = t < 4.2;
+    const p = take(first ? t : t - 4.2, !first);
+    $("guy").style.left = `${p.x}px`;
+    $("guy").style.top = `${p.y}px`;
+    $("guy").style.transform = `rotate(${p.turn}deg)`;
+    $("pose").setAttribute("href", p.pose);
+    $("guy").style.opacity = first && t > 3.6 ? 0 : 1;
+    $("fence").style.display = first ? "none" : "";
+    $("whoops").style.opacity = Ad.during(t, 2.5, 4.0);
+    $("card1").style.opacity = Ad.during(t, 0.2, 4.2);
+    $("card2").style.opacity = Ad.during(t, 4.4, 8.0);
+    // A cut to black between the takes, and a dissolve to the end card.
+    $("takes").style.opacity = t < 4.2 ? 1 - Ad.ease(t, 3.9, 4.2) : Ad.ease(t, 4.2, 4.4);
+    $("end").style.opacity = Ad.ease(t, 7.8, 8.2);
+    Ad.rays($("rays"), t * 3);
+    $("star").style.transform = `rotate(${Math.sin(t * 3) * 6}deg) scale(${Ad.ease(t, 8.6, 9.0)})`;
+  }
+</script>
+<script src="ads.js"></script>
+</body></html>
