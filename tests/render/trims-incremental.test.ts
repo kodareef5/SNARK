@@ -1,13 +1,13 @@
 // Trims kept between layings (client/core/render/trims.ts): a chunk brought up to date by the pieces that changed has the
 // trims and the yields a whole laying gives, in the same order, over random edits to bases straight and turned, across
-// chunk borders, with walls of every shape the forms plan.
+// chunk borders, with walls, slabs and roofs of every shape the forms plan.
 
 import { expect, test } from "bun:test";
 import { yields } from "../../client/core/render/piece-fit.ts";
 import type { PieceLooks } from "../../client/core/render/piece-state.ts";
 import { Trims } from "../../client/core/render/trims.ts";
 import { cityMaterial } from "../../content/breaks/materials.ts";
-import { PLANNED_FORMS, formBoxes } from "../../content/building/forms.ts";
+import { PLANNED_FORMS, boxed, formBoxes, formHulls } from "../../content/building/forms.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import type { Def, ShapeBox } from "../../shared/content/defs.ts";
 import { compileContent, type Registry } from "../../shared/content/registry.ts";
@@ -21,18 +21,17 @@ import { StructureStore } from "../../shared/world/structures.ts";
 
 const DIMS = { chunksX: 4, chunksZ: 4 };
 const TEAM = 7;
-const PLANNED = ["half_wall", "quarter_wall", "large_wall", "gateway", "double_doorway", "sloped_wall_left", "triangle_foundation", "triangle_ceiling", "quarter_foundation", "thin_pillar"] as const;
+const EDGES = ["half_wall", "quarter_wall", "large_wall", "gateway", "double_doorway", "sloped_wall_left", "sloped_wall_right", "railing", "beam", "fence_foundation"] as const;
+const ROOFS = ["roof", "roof", "roof", "roof_valley", "roof_hip"] as const;
+const TRIANGLES = ["triangle_foundation", "triangle_ceiling", "triangle_roof", "triangle_roof_low"] as const;
+const PLANNED = [...EDGES, ...new Set(ROOFS), ...TRIANGLES, "trapdoor_frame", "quarter_foundation", "thin_pillar"] as const;
 const TIERS = ["wood", "stone", "metal", "thatch"] as const;
 
 let made: Registry | null = null;
 
-/** A form's collider: boxes for a rectangle, and for any other outline one convex part through its thickness. */
+/** A form's collider, as content makes it: boxes for a rectangle, convex parts for any other. */
 function collider(form: FormDef): { boxes: ShapeBox[]; hulls: HullDef[] } {
-  if (form.outline.length === 4) return { boxes: formBoxes(form), hulls: [] };
-  const t = form.thick / 2;
-  // A triangle's third corner is told along its second axis, 60 degrees round.
-  if (form.cls === "triangle") return { boxes: [], hulls: [{ sixty: true, corners: [[0, -t, 0], [0, t, 0], [3, -t, 0], [3, t, 0], [0, -t, 3], [0, t, 3]] }] };
-  return { boxes: [], hulls: [{ corners: form.outline.flatMap(([u, v]): [number, number, number][] => [[u - form.at[0], v - form.at[1], -t], [u - form.at[0], v - form.at[1], t]]) }] };
+  return boxed(form) ? { boxes: formBoxes(form), hulls: [] } : { boxes: [], hulls: formHulls(form) };
 }
 
 /** The core content with the planned forms as pieces of each tier, `test:<form>_<tier>`, and a wall and a ceiling of a material that is no tier's. */
@@ -49,9 +48,9 @@ function registry(): Registry {
   return (made = registry);
 }
 
-/** Trims of a registry whose wood has every trim mesh, stone no narrow joint, metal no skirt, and thatch none. */
+/** Trims of a registry whose wood has every trim mesh, stone no narrow joint and no eave, metal no skirt and no ridge, and thatch none. */
 function trimsOf(reg: Registry): Trims {
-  const meshes = ["core:joint_sq_wood", "core:joint_r15_wood", "core:joint_r21_wood", "core:skirt_wood", "core:joint_sq_stone", "core:joint_r21_stone", "core:skirt_stone", "core:joint_sq_metal", "core:joint_r15_metal", "core:joint_r21_metal"];
+  const meshes = ["core:joint_sq_wood", "core:joint_r15_wood", "core:joint_r21_wood", "core:skirt_wood", "core:eave_wood", "core:ridge_wood", "core:joint_sq_stone", "core:joint_r21_stone", "core:skirt_stone", "core:ridge_stone", "core:joint_sq_metal", "core:joint_r15_metal", "core:joint_r21_metal", "core:eave_metal"];
   const looks = { flag: new Uint32Array(meshes.length), yields: Uint8Array.from(reg.defs, (_, k) => (reg.forms.def[k] && yields(reg.forms.def[k]!) ? 1 : 0)) };
   return new Trims(reg, (id) => meshes.indexOf(id), looks as unknown as PieceLooks);
 }
@@ -63,7 +62,7 @@ function laid(trims: Trims, structs: StructureStore, chunk: number): unknown {
   const out = trims.lay(structs, chunk, t, chunkCx(DIMS, chunk) * CHUNK_SIZE, chunkCz(DIMS, chunk) * CHUNK_SIZE);
   if (!out) return null;
   const rows: number[][] = [];
-  for (let i = 0; i < out.count; i++) rows.push([out.mesh[i]!, out.owner[i]!, out.x[i]!, out.y[i]!, out.z[i]!, out.yaw[i]!, out.tw[i]!, out.cut[i]!]);
+  for (let i = 0; i < out.count; i++) rows.push([out.mesh[i]!, out.owner[i]!, out.x[i]!, out.y[i]!, out.z[i]!, out.yaw[i]!, out.tw[i]!, out.cut[i]!, out.ends[i]!]);
   return { rows, yields: Array.from(out.yields.subarray(0, t.high)), borders: out.borders };
 }
 
@@ -94,10 +93,11 @@ function edit(z: Fuzz): void {
   const roll = rng.float();
   const [id, cls] =
     roll < 0.3 ? [`core:${["wall", "wall", "doorframe", "windowframe"][rng.int(tier === "thatch" ? 3 : 4)]}_${tier}`, CLS_EDGE]
-    : roll < 0.42 ? [`test:${["half_wall", "quarter_wall", "large_wall", "gateway", "double_doorway", "sloped_wall_left"][rng.int(6)]}_${tier}`, CLS_EDGE]
-    : roll < 0.6 ? [`core:foundation_${tier}`, CLS_SQUARE]
-    : roll < 0.76 ? [`core:ceiling_${tier}`, CLS_SQUARE]
-    : roll < 0.84 ? [`test:${["triangle_foundation", "triangle_ceiling"][rng.int(2)]}_${tier}`, CLS_TRIANGLE]
+    : roll < 0.42 ? [`test:${EDGES[rng.int(EDGES.length)]}_${tier}`, CLS_EDGE]
+    : roll < 0.54 ? [`core:foundation_${tier}`, CLS_SQUARE]
+    : roll < 0.64 ? [rng.float() < 0.9 ? `core:ceiling_${tier}` : `test:trapdoor_frame_${tier}`, CLS_SQUARE]
+    : roll < 0.76 ? [`test:${ROOFS[rng.int(ROOFS.length)]}_${["wood", "wood", "stone", tier][rng.int(4)]}`, CLS_SQUARE]
+    : roll < 0.84 ? [`test:${TRIANGLES[rng.int(TRIANGLES.length)]}_${tier}`, CLS_TRIANGLE]
     : roll < 0.88 ? [`test:quarter_foundation_${tier}`, CLS_SQUARE]
     : roll < 0.94 ? [rng.float() < 0.5 || tier === "thatch" ? `test:thin_pillar_${tier}` : `core:pillar_${tier}`, CLS_VERTEX]
     : roll < 0.98 ? ["test:bare_wall", CLS_EDGE]
@@ -120,6 +120,8 @@ function edit(z: Fuzz): void {
 test("a chunk laid by its changed pieces has a whole laying's trims and yields", () => {
   const reg = registry();
   let layings = 0, trimsSeen = 0, edits = 0, yielding = 0, wholes = 0;
+  const seen = new Map<number, number>();
+  let turned = 0;
   for (let seed = 1; seed <= 6; seed++) {
     const structs = new StructureStore(DIMS, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
     const kept = trimsOf(reg), whole = trimsOf(reg);
@@ -136,7 +138,7 @@ test("a chunk laid by its changed pieces has a whole laying's trims and yields",
     const bases = [[40, 40, 0], [28, 44, 9000], [61, 61, 0], [62.2, 100, 5000], [100, 62.9, 60000]].map(([x, z, yaw]) => ({ x: x!, z: z!, yaw: yaw!, f: structs.frames.make(Math.round(x! * STRUCT_UNITS), 0, Math.round(z! * STRUCT_UNITS), yaw!, TEAM) }));
     const z: Fuzz = { structs, reg, rng, bases, refs: [] };
     for (let i = 0; i < 300; i++) edit(z);
-    for (let round = 0; round < 500; round++) {
+    for (let round = 0; round < 600; round++) {
       // Mostly a piece or a few; now and then enough that the chunk is laid whole, or every piece of one base.
       const roll = rng.float();
       if (roll < 0.03) {
@@ -157,6 +159,10 @@ test("a chunk laid by its changed pieces has a whole laying's trims and yields",
         layings++;
         const rows = (want as { rows: number[][]; yields: number[] } | null);
         trimsSeen += rows?.rows.length ?? 0;
+        for (const row of rows?.rows ?? []) {
+          seen.set(row[0]!, (seen.get(row[0]!) ?? 0) + 1);
+          if (row[8] !== 0 || row[7]! >= 16) turned++;
+        }
         yielding += rows?.yields.filter((v) => v !== 0).length ?? 0;
       }
     }
@@ -167,4 +173,9 @@ test("a chunk laid by its changed pieces has a whole laying's trims and yields",
   expect(wholes).toBeLessThan(layings / 4);
   expect(trimsSeen).toBeGreaterThan(200000);
   expect(yielding).toBeGreaterThan(50000);
+  // Every kind of trim was laid many times over: joints, skirts, eaves and ridges, and skirts and eaves with a turned end.
+  if (process.env.SNARK_TRIMS_TABLE) console.log([...seen].sort((a, b) => a[0] - b[0]).join(" "), turned, layings, wholes, trimsSeen, yielding, edits);
+  for (const mesh of [0, 1, 2, 3, 4, 13]) expect(seen.get(mesh) ?? 0, `mesh ${mesh}`).toBeGreaterThan(100);
+  expect((seen.get(5) ?? 0) + (seen.get(9) ?? 0), "ridges").toBeGreaterThan(100);
+  expect(turned).toBeGreaterThan(20000);
 });

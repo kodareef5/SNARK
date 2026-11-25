@@ -148,7 +148,8 @@ export class Studio {
     const least = Math.min(...parts.map(([m]) => header[m]!.lods.length - 1));
     const at = Math.min(level, least);
     const surfaced = parts.every(([m]) => (header[m]!.lods[at]!.sections?.length ?? 0) > 0);
-    const own = placed.map((p) => OWN_COLOURS.get(p.id) ?? TIER_COLOURS.get(/_([a-z]+)(_cut\d)?$/.exec(p.id)?.[1] ?? "")).find((c) => c !== undefined) ?? [];
+    // A piece drawn as the client's rule leaves it has its fit after its id (village.ts fitId).
+    const own = placed.map((p) => p.id.split("~")[0]!).map((id) => OWN_COLOURS.get(id) ?? TIER_COLOURS.get(/_([a-z]+)$/.exec(id)?.[1] ?? "")).find((c) => c !== undefined) ?? [];
     view.draw({ mesh: parts[0]![0], level: at, placed: parts, around, above, centre, radius, rig: null, colors: Array.from({ length: 6 }, (_, k) => own[k] ?? 3), textured: surfaced, ...(floor === null ? {} : { floor }) });
     return view.raster.color;
   }
