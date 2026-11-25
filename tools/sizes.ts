@@ -63,8 +63,10 @@ export function weigh(dist: string): boolean {
   const seconds = sounds.reduce((s, x) => s + x.takes.reduce((a, t) => a + t.samples, 0) / x.rate, 0);
   const music = join(dist, "assets/music");
   const titleImports = existsSync(join(dist, "entry.js")) ? preloaded(dist, "entry.js").map(name => name + ".br") : [];
+  // The title shows Latin text in the game's own face, its Latin part.
+  const titleFont = readdirSync(join(dist, "assets")).filter((n) => /^hud-font-latin\.\w+\.woff2$/.test(n)).map((n) => `assets/${n}`);
   const rows: [string, number][] = [
-    ["title script, style, font, catalogue and poster", titleBytes(["entry.js.br", ...titleImports, "entry.css.br", "title/barlow.ttf", "title/maps.json", "title/red-tide.webp", "title/snark-emblem.webp"])],
+    ["title script, style, font, catalogue and poster", titleBytes(["entry.js.br", ...titleImports, "entry.css.br", ...titleFont, "title/maps.json", "title/red-tide.webp", "title/snark-emblem.webp"])],
     ["game loading poster", titleBytes(["title/snark-emblem.webp"]) +
       Math.max(titleBytes(["title/loader-wynwood.webp"]), titleBytes(["title/loader-wynwood-portrait.webp"]))],
     ["the page's script, Brotli", script.reduce((s, n) => s + size(n), 0)],
@@ -119,7 +121,9 @@ export function firstFrame(dist: string): { script: string[]; fetched: string[];
   const page = readFileSync(join(dist, "index.html"), "utf8");
   const script = [...page.matchAll(/rel="modulepreload" href="([^"]+)"/g)].map((x) => `${x[1]}.br`);
   const fetched = (JSON.parse(/for \(const href of (\[[^\]]*\])\)/.exec(page)![1]!) as string[]).filter((n) => existsSync(join(dist, n))).map((n) => `${n}.br`);
-  const hud = readdirSync(join(dist, "assets")).filter((n) => /^hud\.\w+\.(?:webp|png)$|^hud-font\.\w+\.ttf\.br$/.test(n)).map((n) => `assets/${n}`);
+  // The HUD's sheet, and the font files the page asks for early: the Latin part. Another part comes only for a character in it.
+  const fonts = [...page.matchAll(/rel="preload" href="([^"]+)" as="font"/g)].map((x) => x[1]!);
+  const hud = [...readdirSync(join(dist, "assets")).filter((n) => /^hud\.\w+\.(?:webp|png)$/.test(n)).map((n) => `assets/${n}`), ...fonts];
   return { script, fetched, first: ["index.html.br", ...script, "assets-worker.js.br", ...fetched, ...hud].reduce((s, n) => s + size(n), 0) };
 }
 
