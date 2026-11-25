@@ -1,15 +1,17 @@
 // The page's map as its parts come (client/core/mapload.ts): its head and its landmarks' definitions before anything; the
 // ground within reach of the body and its overviews alone, which the first frame waits for, by the rule the map's build
-// holds to its budget; then the rest nearest first to where the body is and is heading, the overviews before the rest but
-// for what is within RING, each sector's ground before its statics, four at once while that is within RING and two
-// otherwise, and the statics handed over once all have come. A part that fails is asked for again, the wait between asks
-// counted here with no clock.
+// holds to its budget; then what the page wants (map-want.ts) nearest first to where the body is and is heading, the
+// overviews before the rest but for what is within RING, each sector's ground before its statics, four at once while that
+// is within RING and two otherwise, and the statics held handed over once those within reach have come. A part that fails
+// is asked for again, the wait between asks counted here with no clock.
 
 import { expect, test } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { FarStore } from "../../client/core/farcells.ts";
 import { nextTask, type Get } from "../../client/core/fetched.ts";
-import { AFTER_AT_ONCE, CITY_NEAR, DAMAGED_MOST, FIRST_REACH, MapLoader, RETRY_FIRST, RETRY_MOST, RING, ROADS_AT_ONCE, ROAD_EVERY, ROAD_REACH, StagedMap, URGENT_AT_ONCE, firstFrameParts, handOverParts, type Place } from "../../client/core/mapload.ts";
+import { AFTER_AT_ONCE, BAND_CHUNKS, DAMAGED_MOST, FIRST_REACH, LOOK_EVERY, MapLoader, RETRY_FIRST, RETRY_MOST, RING, ROADS_AT_ONCE, ROAD_EVERY, ROAD_REACH, StagedMap, URGENT_AT_ONCE, firstFrameParts, handOverParts, type Place } from "../../client/core/mapload.ts";
+import { HeldStatics } from "../../client/core/map-statics.ts";
+import { KEEP_PAST, type WantFrom } from "../../client/core/map-want.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { NodeChanges } from "../../client/core/render/farnodes.ts";
 import { BEND_BUFFERS } from "../../client/core/render/packet.ts";
@@ -21,7 +23,7 @@ import { Rng } from "../../shared/rng.ts";
 import { BEND_SHORTS, packBend, placeKerb } from "../../shared/world/bends.ts";
 import { CityStatics } from "../../shared/world/city.ts";
 import { TERRAIN_CELL, type Heightfield } from "../../shared/world/heightfield.ts";
-import { OVERVIEW_CHUNKS, mapHeightfield, mapTops, nodeLayers, parseMap, partsOf, readHead, readPart, squareOf, writeMap, type MapData, type MapPart, type MapStatic, type MapStatics, type NodeLayer, type OverviewPiece } from "../../shared/world/mapfile.ts";
+import { OVERVIEW_CHUNKS, OVERVIEW_STEP, mapHeightfield, mapTops, nodeLayers, parseMap, partsOf, readHead, readPart, squareOf, writeMap, type MapData, type MapPart, type MapStatic, type MapStatics, type NodeLayer, type OverviewPiece, type StaticsPiece } from "../../shared/world/mapfile.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { ROAD_PLANES, roadSamples } from "../../shared/world/roadframe.ts";
 import { Rasterizer } from "../../tools/snap/raster.ts";
@@ -42,6 +44,8 @@ const head = readHead(file);
 
 /** No wait between asks, where nothing fails. */
 const NOW = { wait: () => Promise.resolve() };
+/** A page that wants all of this map: a view and a statics reach past its corners. */
+const ALL = (): WantFrom => ({ view: 1e5, statics: 1e5 });
 
 /** Lets every promise the answers so far started run its course. */
 const settle = (): Promise<void> => new Promise((go) => setTimeout(go, 0));
@@ -87,57 +91,72 @@ const off = (p: MapPart, x: number, z: number): number => {
   const sq = squareOf(head.dims, p.kind === "overview" ? OVERVIEW_CHUNKS : SECTOR_CHUNKS, p.col, p.row)!;
   return Math.hypot(Math.max(sq.cx0 * CHUNK_SIZE - x, x - sq.cx1 * CHUNK_SIZE, 0), Math.max(sq.cz0 * CHUNK_SIZE - z, z - sq.cz1 * CHUNK_SIZE, 0));
 };
-/** Whether a part is an overview or ground within RING of (x, z). */
-const ringed = (p: MapPart, x: number, z: number): boolean => (p.kind === "overview" || p.kind === "ground") && off(p, x, z) <= RING;
+/** Whether a part is an overview, ground or statics within RING of (x, z). */
+const ringed = (p: MapPart, x: number, z: number): boolean => (p.kind === "overview" || p.kind === "ground" || p.kind === "statics") && off(p, x, z) <= RING;
 /**
- * The order the loader asks for the parts left in with the body at (x, z): what is within RING; the overviews within
- * `near` (CITY_NEAR) and then its sectors; the overviews past it; the rest; each nearest first and a sector's ground
+ * The order the loader asks for the parts wanted with the body at (x, z): what is within RING; the overviews within the
+ * statics reach `near` and then its sectors; the overviews past it; the rest; each nearest first and a sector's ground
  * before its statics.
  */
-const rank = (p: MapPart, x: number, z: number, near = CITY_NEAR): number => (ringed(p, x, z) ? 0 : (off(p, x, z) <= near ? 1 : 3) + (p.kind === "overview" ? 0 : 1)) * 1e6 + off(p, x, z) + (p.kind === "statics" ? 0.5 : 0);
+const rank = (p: MapPart, x: number, z: number, near = 1e5): number => (ringed(p, x, z) ? 0 : (off(p, x, z) <= near ? 1 : 3) + (p.kind === "overview" ? 0 : 1)) * 1e6 + off(p, x, z) + (p.kind === "statics" ? 0.5 : 0);
+/** Whether `t` holds the map's rows in the chunks of `sectors` and none elsewhere. */
+const rowsOfSectors = (t: MapStatics | null, sectors: readonly MapPart[]): boolean => {
+  if (!t) return false;
+  const all = whole.statics, mine = new Uint8Array(head.counts.length);
+  for (const p of sectors) {
+    const sq = squareOf(head.dims, SECTOR_CHUNKS, p.col, p.row)!;
+    for (let cz = sq.cz0; cz < sq.cz1; cz++) for (let cx = sq.cx0; cx < sq.cx1; cx++) mine[cz * head.dims.chunksX + cx] = 1;
+  }
+  for (let c = 0; c < head.counts.length; c++) {
+    const [from, to] = [t.first[c]!, t.first[c + 1]!];
+    if (to - from !== (mine[c] ? all.first[c + 1]! - all.first[c]! : 0)) return false;
+    for (let k = 0; k < to - from; k++) for (const col of ["kind", "yaw", "x", "y", "z"] as const) if (t[col][from + k] !== all[col][all.first[c]! + k]) return false;
+  }
+  return true;
+};
 /** Answers the waiting requests until `done` holds. */
 const until = async (s: { answer(k?: number): Promise<void> }, done: () => boolean): Promise<void> => {
   while (!done()) await s.answer();
 };
 
-test("after the first frame the page asks for the rest nearest first: the overviews and ground within the ring four at once, then the other overviews within the city's reach, then the rest two at once, an overview past that reach among them, each sector's ground before its statics; and hands the statics over once every part has come", async () => {
+test("after the first frame the page asks for what it wants nearest first, what is in the ring four at once", async () => {
   const s = heldServer(file);
   let loader: MapLoader | null = null;
   void MapLoader.start(s.get, `map/${head.name}`, NOW).then((l) => (loader = l));
   await s.drain();
-  // Past FIRST_REACH of the west overview, which comes after the first frame, and past the city's reach as this test has it.
+  // Past FIRST_REACH of the west overview, which comes after the first frame, and past the statics reach this test has.
   const body = { x: 3500, z: 448, vx: 0, vz: 0 };
   const reach = 2600;
   let handed: MapStatics | null = null;
   let drawn = false;
-  void loader!.follow(() => body, { arrived: (t, all) => all && (handed = t), near: reach }).then(() => (drawn = true));
+  void loader!.follow(() => body, { arrived: (t) => (handed = t), want: () => ({ view: 1e5, statics: reach }) }).then(() => (drawn = true));
   await settle();
   const near = firstFrameParts(head, body.x, body.z);
-  const rest = head.parts.filter((p) => (p.kind === "overview" || p.kind === "ground" || p.kind === "statics") && !near.includes(p));
+  // Every overview within the view, and the ground and statics within the statics reach.
+  const rest = head.parts.filter((p) => (p.kind === "overview" || ((p.kind === "ground" || p.kind === "statics") && off(p, body.x, body.z) <= reach)) && !near.includes(p));
   const before = s.asked.length;
   await until(s, () => drawn);
-  const urgent = rest.filter((p) => ringed(p, body.x, body.z));
-  // This map has ground within the ring and past it, and an overview past it, so each is tested.
-  expect([rest.some((p) => p.kind === "overview" && !urgent.includes(p)), urgent.length > 1, urgent.length <= URGENT_AT_ONCE, rest.length > urgent.length]).toEqual([true, true, true, true]);
-  // What is within the ring is asked for at once, and nothing else while it is the nearest left.
-  expect(s.waiting.map((w) => w.url).sort()).toEqual(urgent.map(nameOf).sort());
+  const urgent = rest.filter((p) => ringed(p, body.x, body.z)).sort((a, b) => rank(a, body.x, body.z, reach) - rank(b, body.x, body.z, reach));
+  // This map has parts within the ring and past it, an overview past the reach, and statics past it not wanted.
+  expect([rest.some((p) => p.kind === "overview" && !urgent.includes(p)), urgent.length > 1, rest.length > urgent.length, head.parts.some((p) => p.kind === "statics" && off(p, body.x, body.z) > reach)]).toEqual([true, true, true, true]);
+  // What is within the ring is asked for first, four at once.
+  expect(s.waiting.map((w) => w.url).sort()).toEqual(urgent.slice(0, URGENT_AT_ONCE).map(nameOf).sort());
   let most = 0;
   while (s.waiting.length > 0) {
     if (s.waiting.every((w) => !urgent.map(nameOf).includes(w.url))) most = Math.max(most, s.waiting.length);
     await s.answer();
   }
   expect(most).toBe(AFTER_AT_ONCE);
-  // Each the nearest of those left when it was asked for by the loader's order.
+  // Each the nearest of those left when it was asked for by the loader's order, and nothing it does not want.
   const order = s.asked.slice(before).filter((url) => !near.some((p) => nameOf(p) === url)).map((url) => rest.find((p) => nameOf(p) === url)!);
   for (let k = 1; k < order.length; k++) expect(rank(order[k]!, body.x, body.z, reach)).toBeGreaterThanOrEqual(rank(order[k - 1]!, body.x, body.z, reach));
   expect(order.length).toBe(rest.length);
-  // The west overview, past the city's reach, after every sector's ground and statics within it and before any past it.
-  const west = order.findIndex((p) => p.kind === "overview");
-  const within = order.filter((p, k) => p.kind !== "overview" && off(p, body.x, body.z) <= reach && k > west);
-  expect([within.length, order.slice(0, west).some((p) => p.kind !== "overview" && off(p, body.x, body.z) > reach)]).toEqual([0, false]);
-  expect(loader!.staged.hf.exactIn(0, 0, head.dims.chunksX * CHUNK_SIZE, head.dims.chunksZ * CHUNK_SIZE)).toBe(true);
+  // The west overview, past the reach, after every sector's ground and statics within it.
+  const west = order.findIndex((p) => p.kind === "overview" && off(p, body.x, body.z) > reach);
+  expect(order.slice(west).some((p) => p.kind !== "overview")).toBe(false);
   await settle();
-  expect(wholeStatics(handed)).toBe(true);
+  expect(rowsOfSectors(handed, rest.filter((p) => p.kind === "statics"))).toBe(true);
+  expect(loader!.progress()).toEqual({ left: 0, parts: rest.length + near.filter((p) => p.kind !== "land").length, near: true, settled: true, roads: 0 });
 });
 
 test("while the game's socket is held back the map comes one part at a time, and as many as before once it is not", async () => {
@@ -163,38 +182,38 @@ test("while the game's socket is held back the map comes one part at a time, and
   await s.drain();
 });
 
-test("the statics of the sectors within reach of the body are handed over once their ground and statics have come, before the rest have, and then the whole map's", async () => {
+test("the statics are handed over once those within reach have come, and again as the body moves on", async () => {
   const s = heldServer(file);
   let loader: MapLoader | null = null;
   void MapLoader.start(s.get, `map/${head.name}`, NOW).then((l) => (loader = l));
   await s.drain();
   const body = { x: 100, z: 448, vx: 0, vz: 0 };
   const reach = 1200;
-  const handed: [MapStatics, boolean][] = [];
-  void loader!.follow(() => body, { arrived: (t, all) => handed.push([t, all]), near: reach });
-  const near = head.parts.filter((p) => (p.kind === "ground" || p.kind === "statics") && off(p, body.x, body.z) <= reach);
-  const inSector = (p: MapPart): number => {
-    const sq = squareOf(head.dims, SECTOR_CHUNKS, p.col, p.row)!;
-    let n = 0;
-    for (let cz = sq.cz0; cz < sq.cz1; cz++) for (let cx = sq.cx0; cx < sq.cx1; cx++) n += head.counts[cz * head.dims.chunksX + cx]!;
-    return n;
-  };
-  const rows = near.filter((p) => p.kind === "statics").reduce((n, p) => n + inSector(p), 0);
-  // The map has sectors past that reach, and statics within it.
-  expect([near.length < head.parts.filter((p) => p.kind === "ground" || p.kind === "statics").length, rows > 0]).toEqual([true, true]);
-  let at = -1;
-  while (s.waiting.length > 0 || handed.length === 0) {
-    await s.answer();
-    if (handed.length > 0 && at < 0) at = s.answered;
-  }
+  const handed: MapStatics[] = [];
+  void loader!.follow(() => body, { arrived: (t) => handed.push(t), want: () => ({ view: 1e5, statics: reach }) });
+  const statics = head.parts.filter((p) => p.kind === "statics");
+  const within = (x: number, d = reach): MapPart[] => statics.filter((p) => off(p, x, body.z) <= d);
+  // The map has statics within that reach and past it.
+  expect([within(100).length > 0, within(100).length < statics.length]).toEqual([true, true]);
   await s.drain();
   await settle();
-  // Handed round the body as soon as its last part there came, with those sectors' rows alone; then whole.
-  const came = s.asked.slice(0, at).map((url) => url.slice(4));
-  expect(near.every((p) => came.includes(p.name))).toBe(true);
-  expect(head.parts.filter((p) => p.kind === "statics").every((p) => came.includes(p.name))).toBe(false);
-  expect([handed.length, handed[0]![1], handed[0]![0].length, handed[1]![1]]).toEqual([2, false, rows, true]);
-  expect(wholeStatics(handed[1]![0])).toBe(true);
+  // Handed over with those sectors' rows alone, and none past the reach asked for.
+  expect([handed.length, rowsOfSectors(handed[0]!, within(100)), statics.filter((p) => s.asked.includes(nameOf(p))).length]).toEqual([1, true, within(100).length]);
+  // Gone east: what is now within reach comes and is handed over with what is still within a sector of it; the rest is let go.
+  body.x = 3500;
+  loader!.look();
+  await s.drain();
+  await settle();
+  const kept = statics.filter((p) => within(3500).includes(p) || (within(100).includes(p) && off(p, 3500, body.z) <= reach + KEEP_PAST));
+  expect([handed.length, rowsOfSectors(handed[1]!, kept), loader!.held.size]).toEqual([2, true, kept.length]);
+  const gone = within(100).find((p) => !kept.includes(p))!;
+  const sq = squareOf(head.dims, SECTOR_CHUNKS, gone.col, gone.row)!;
+  expect(loader!.held.find(sq.cz0 * head.dims.chunksX + sq.cx0)).toBeNull();
+  // Back again, the sector let go is asked for once more.
+  body.x = 100;
+  loader!.look();
+  await s.drain();
+  expect(s.asked.filter((url) => url === nameOf(gone)).length).toBe(2);
 });
 
 /** A flat map three sectors wide, west to east, with a straight raised kerb in the middle of each. */
@@ -211,11 +230,11 @@ function kerbed(): MapData {
   return flatMap(4, { dims, heights: new Uint16Array(samples).fill(32 * 256), tint: new Uint8Array(samples).fill(1), statics });
 }
 
-test("a sector's kerbs are drawn once its statics come, whatever else is still on its way: the body goes past the statics handed over round it into a sector whose statics then come while a third's are held back", async () => {
+test("a sector's kerbs are drawn once its statics come: the body walks on into a sector held back", async () => {
   const file = writeMap(kerbed()), h = readHead(file), reg = coreRegistry(), dims = h.dims;
   const whole = parseMap(file).statics;
   const statics = h.parts.filter((p) => p.kind === "statics");
-  // West to east: A, where the body starts, B, where it goes, and C, whose statics come last.
+  // West to east: A, where the body starts, B, where it goes, and C, past the reach from both.
   const [a, b, c] = [0, 1, 2].map((k) => statics.find((p) => squareOf(dims, SECTOR_CHUNKS, p.col, p.row)!.cx0 === k * SECTOR_CHUNKS)!);
   const s = heldServer(file);
   let loader: MapLoader | null = null;
@@ -224,18 +243,19 @@ test("a sector's kerbs are drawn once its statics come, whatever else is still o
   const body = { x: 535, z: 512, vx: 0, vz: 0 };
   // The near store, its world's city as the session makes it of each hand-over (session.ts staticsSteps).
   const world: { -readonly [K in keyof RenderWorld]: RenderWorld[K] } = { dims, hf: loader!.staged.hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), far: { cells: new FarStore(), complete: () => true } };
-  const handed: boolean[] = [];
-  void loader!.follow(() => body, { arrived: (t, all) => (handed.push(all), (world.city = { statics: new CityStatics(dims, t, reg), complete: () => true })), near: 300 });
-  // Everything is answered but B's and C's statics, until the statics round the body have been handed over.
-  const held = (url: string): boolean => url === nameOf(b!) || url === nameOf(c!);
+  const handed: number[] = [];
+  void loader!.follow(() => body, { arrived: (t) => (handed.push(loader!.held.size), (world.city = { statics: new CityStatics(dims, t, reg), complete: () => true })), want: () => ({ view: 4000, statics: 300 }) });
+  // Everything is answered but B's statics.
+  const held = (url: string): boolean => url === nameOf(b!);
   for (let k = s.waiting.findIndex((w) => !held(w.url)); k >= 0 || handed.length === 0; k = s.waiting.findIndex((w) => !held(w.url))) {
     if (k < 0) await settle();
     else await s.answer(k);
   }
   // Handed over with A's rows, and none of B's.
-  expect([handed, s.asked.includes(nameOf(a!)), world.city!.statics.in(chunkAt(dims, 535, 512)) > 0, world.city!.statics.in(chunkAt(dims, 1559, 512))]).toEqual([[false], true, true, 0]);
+  expect([handed, s.asked.includes(nameOf(a!)), s.asked.includes(nameOf(b!)), world.city!.statics.in(chunkAt(dims, 535, 512)) > 0, world.city!.statics.in(chunkAt(dims, 1559, 512))]).toEqual([[1], true, false, true, 0]);
   // The body walks into B, whose chunk the server sends with its kerb as the map set it down.
   [body.x, body.z] = [1559, 514];
+  loader!.look();
   const chunk = chunkAt(dims, 1559, 512);
   for (let r = whole.first[chunk]!; r < whole.first[chunk + 1]!; r++) world.structs.put(chunk, r - whole.first[chunk]!, reg.index.get(whole.kinds[whole.kind[r]!]!)!, whole.x[r]!, whole.y[r]!, whole.z[r]!, whole.yaw[r]!, 0, 100, 1);
   world.structs.setVersion(chunk, 1);
@@ -256,21 +276,19 @@ test("a sector's kerbs are drawn once its statics come, whatever else is still o
   expect(want.length).toBeGreaterThan(0);
   // Before B's statics come its chunk is laid out with no bend to draw its kerb by.
   expect(frame()).toEqual([]);
-  // B's statics come, C's are still held back, and nothing more is handed over: the next frame lays the chunk out again
-  // with its bends.
+  // B's statics come and A's and B's are handed over: the next frame lays the chunk out again with its bends.
   await s.answer(s.waiting.findIndex((w) => w.url === nameOf(b!)));
-  await settle();
-  expect(handed).toEqual([false]);
+  for (let k = 0; k < 4; k++) await settle();
+  expect(handed).toEqual([1, 2]);
   expect(frame()).toEqual(want);
-  // Once C's come the whole map's are handed over, and the chunk keeps its bends.
+  // C, past the reach from both, is never asked for, and the chunk keeps its bends.
   await s.drain();
-  await settle();
-  expect(handed).toEqual([false, true]);
+  expect(s.asked.includes(nameOf(c!))).toBe(false);
   const again = frame();
   expect(again === null || Bun.deepEquals(again, want)).toBe(true);
 });
 
-test("the page asks for the head, then the land, then nothing until it knows where the body is; then that sector's ground and its overview alone, then the rest nearest first, and the statics last", async () => {
+test("the page asks for the head, then the land, then nothing until it knows where the body is; then that sector's ground and its overview alone, then the rest nearest first", async () => {
   const s = heldServer(file);
   let loader: MapLoader | null = null;
   void MapLoader.start(s.get, `map/${head.name}`, NOW).then((l) => (loader = l));
@@ -291,7 +309,7 @@ test("the page asks for the head, then the land, then nothing until it knows whe
   const body = { x: 1056, z: 448, vx: 0, vz: 0 };
   let near = false;
   let handed: MapStatics | null = null;
-  void loader!.follow(() => body, { arrived: (t) => (handed = t) }).then(() => (near = true));
+  void loader!.follow(() => body, { arrived: (t) => (handed = t), want: ALL }).then(() => (near = true));
   await settle();
   const mine = head.parts.filter((p) => (p.kind === "ground" && off(p, body.x, body.z) <= PREDICTED_REACH) || (p.kind === "overview" && off(p, body.x, body.z) < FIRST_REACH));
   expect([s.asked.slice(1 + first.length), mine.map((p) => p.kind)]).toEqual([mine.map(nameOf), ["overview", "overview", "ground"]]);
@@ -415,7 +433,7 @@ test("a part that fails gives up its lane while it waits: every part left is ask
   let loader: MapLoader | null = null;
   void MapLoader.start(s.get, `map/${head.name}`, { wait: () => new Promise(() => {}) }).then((l) => (loader = l));
   await s.drain();
-  void loader!.follow(() => body);
+  void loader!.follow(() => body, { want: ALL });
   await s.drain();
   const asked = s.asked.filter((url) => rest.some((p) => nameOf(p) === url));
   // Each asked for once, and all of them waiting still.
@@ -465,7 +483,7 @@ test("after a failure a sector goes back among those left by its distance: asked
   void MapLoader.start(s.get, `map/${head.name}`, { wait }).then((l) => (loader = l));
   await s.drain();
   let drawn = false;
-  void loader!.follow(() => body).then(() => (drawn = true));
+  void loader!.follow(() => body, { want: ALL }).then(() => (drawn = true));
   await settle();
   await until(s, () => drawn);
   // The nearest behind the body is among those asked for first. It fails, and its lane waits while the others go on.
@@ -548,7 +566,7 @@ async function trial(fault: (name: string, ask: number) => Fault | null, body = 
   void MapLoader.start(s.get, `map/${head.name}`, { say: (line) => said.push(line), wait }).then(
     (loader) => {
       out.loader = loader;
-      return loader.follow(() => body, { say: (line) => late.push(line), arrived: (t) => (out.statics = t) }).then(() => (out.first = "drawn"));
+      return loader.follow(() => body, { say: (line) => late.push(line), arrived: (t) => (out.statics = t), want: ALL }).then(() => (out.first = "drawn"));
     },
   ).catch((e: unknown) => (out.first = e instanceof Error ? e.message : String(e)));
   await quiet(s);
@@ -556,7 +574,7 @@ async function trial(fault: (name: string, ask: number) => Fault | null, body = 
 }
 
 /** Whether the statics handed over are the whole map's. */
-test("the city's tops come after everything within the far city's reach, with the overviews past it, each square's after its overview, and nothing waits for them: the whole map's statics are handed over while they are still on their way", async () => {
+test("the city's tops come after what is within the statics reach, each square's after its overview, and wait for nothing", async () => {
   const map = landed();
   const tops = mapTops(map, coreRegistry());
   const f = writeMap({ ...map, tops });
@@ -571,12 +589,12 @@ test("the city's tops come after everything within the far city's reach, with th
   expect(s.asked.some((url) => url.includes("/tops."))).toBe(false);
   const body = { x: 100, z: 448, vx: 0, vz: 0 };
   const reach = 1200;
-  const handed: boolean[] = [];
+  const handed: number[] = [];
   // Every part is answered as soon as it is asked but the tops, each answered only while nothing else waits.
   const isTops = (url: string): boolean => parts.some((p) => nameOf(p) === url);
   let topsCame = 0;
   let topsLeft = -1;
-  void loader!.follow(() => body, { arrived: (_, all) => (handed.push(all), all && (topsLeft = parts.length - topsCame)), near: reach });
+  void loader!.follow(() => body, { arrived: () => (handed.push(loader!.held.size), handed.length === 1 && (topsLeft = parts.length - topsCame)), want: () => ({ view: 1e5, statics: reach }) });
   await settle();
   // The order parts were answered in, and how many had been answered when each was asked.
   const answered: string[] = [];
@@ -591,8 +609,8 @@ test("the city's tops come after everything within the far city's reach, with th
     note();
   }
   await settle();
-  // The whole map's statics did not wait for the tops still to come.
-  expect([handed, topsLeft > 0]).toEqual([[false, true], true]);
+  // The statics were handed over while tops were still to come.
+  expect([handed.length > 0, topsLeft > 0]).toEqual([true, true]);
   // Each was asked for once everything within the reach had come, the nearest square's first.
   const squareOff = (p: MapPart): number => {
     const sq = squareOf(h.dims, OVERVIEW_CHUNKS, p.col, p.row)!;
@@ -644,7 +662,7 @@ test("a part that fails once, three times or for good, before the first frame or
   }
 });
 
-test("a sector's statics are set in the whole map's as they come, a pause after each slice read and each slice set; the hand-over's own steps are taken with a pause between, by a message the page sends itself, to their end", async () => {
+test("a sector's statics are set in as they come, a pause after each slice read and set; the hand-over's steps pause too", async () => {
   // Three slices of pieces and some in one sector: each slice is a step as it is read and as it is set in its chunks.
   const statics = Array.from({ length: 100000 }, (_, i) => ({ kind: i % 3 === 0 ? "core:wall" : "core:floor", x: (i % 250) + 0.5, y: 33, z: Math.floor(i / 400) + 0.5, yaw: (i * 64) & 0xffff }));
   const big = writeMap(flatMap(4, { statics }));
@@ -656,17 +674,17 @@ test("a sector's statics are set in the whole map's as they come, a pause after 
   let loader: MapLoader | null = null;
   void MapLoader.start(s.get, `map/${readHead(big).name}`, { ...NOW, pause: () => (pauses++, pause()) }).then((l) => (loader = l));
   await s.drain();
-  const handed: [MapStatics, boolean, number][] = [];
-  function* arriving(t: MapStatics, whole: boolean): Generator<void, void> {
+  const handed: [MapStatics, number][] = [];
+  function* arriving(t: MapStatics): Generator<void, void> {
     for (let k = 0; k < 5; k++) yield;
-    handed.push([t, whole, pauses]);
+    handed.push([t, pauses]);
   }
   void loader!.follow(() => ({ x: 100, z: 100, vx: 0, vz: 0 }), { arriving });
   await s.drain();
   for (let k = 0; k < 200 && handed.length === 0; k++) await settle();
   channel.port1.close();
-  // Read and set, three steps each; then the hand-over's five: the whole map's, the sector being all of it.
-  expect([handed.length, handed[0]![1], handed[0]![2]]).toEqual([1, true, 3 + 3 + 5]);
+  // Read and set, three steps each; the table of the one sector held, two; then the hand-over's five.
+  expect([handed.length, handed[0]![1]]).toEqual([1, 3 + 3 + 2 + 5]);
   const t = handed[0]![0];
   expect([t.first, t.kind, t.x, t.y, t.z, t.yaw]).toEqual([all.statics.first, all.statics.kind, all.statics.x, all.statics.y, all.statics.z, all.statics.yaw]);
 });
@@ -772,4 +790,129 @@ test("parts come late and in a scrambled order: every frame's ground is the map'
     for (let f = 0; f < 40; f++) scene.frame(false);
     expect([wrong, frames > 60, pictures > 0, hf.heights, scene.frame()]).toEqual([0, true, true, map.heights, picture]);
   }
+});
+
+test("standing still, nothing is asked for once the page has settled, however often it looks", async () => {
+  const s = heldServer(file);
+  const ticks: (() => void)[] = [];
+  const every = (ms: number): Promise<void> => (expect(ms).toBe(LOOK_EVERY), new Promise<void>((go) => ticks.push(go)));
+  let loader: MapLoader | null = null;
+  void MapLoader.start(s.get, `map/${head.name}`, { ...NOW, every }).then((l) => (loader = l));
+  await s.drain();
+  const body = { x: 1056, z: 448, vx: 0, vz: 0 };
+  void loader!.follow(() => body, { want: () => ({ view: 2000, statics: 1200 }) });
+  await s.drain();
+  await settle();
+  expect(loader!.progress().settled).toBe(true);
+  const asked = s.asked.length;
+  // A minute of looks.
+  for (let k = 0; k < 60; k++) {
+    ticks.splice(0).forEach((go) => go());
+    await settle();
+  }
+  expect([s.asked.length - asked, s.waiting.length, loader!.progress().settled]).toEqual([0, 0, true]);
+  // The body moves on and the next look asks for what is wanted there.
+  body.x = 3800;
+  ticks.splice(0).forEach((go) => go());
+  await settle();
+  expect([s.waiting.length > 0, loader!.progress().settled]).toEqual([true, false]);
+  await s.drain();
+});
+
+test("past the budget, the statics kept beyond their reach go farthest first", async () => {
+  const s = heldServer(file);
+  let loader: MapLoader | null = null;
+  void MapLoader.start(s.get, `map/${head.name}`, NOW).then((l) => (loader = l));
+  await s.drain();
+  const statics = head.parts.filter((p) => p.kind === "statics");
+  const rows = (p: MapPart): number => {
+    const sq = squareOf(head.dims, SECTOR_CHUNKS, p.col, p.row)!;
+    let n = 0;
+    for (let cz = sq.cz0; cz < sq.cz1; cz++) for (let cx = sq.cx0; cx < sq.cx1; cx++) n += head.counts[cz * head.dims.chunksX + cx]!;
+    return n;
+  };
+  const body = { x: 100, z: 448, vx: 0, vz: 0 }, reach = 1100;
+  // Room for what is wanted where the body goes and one more of those kept past their reach.
+  const there = statics.filter((p) => off(p, 2600, 448) <= reach), spare = statics.filter((p) => off(p, 100, 448) <= reach && !there.includes(p) && off(p, 2600, 448) <= reach + KEEP_PAST);
+  expect(spare.length).toBeGreaterThan(1);
+  const budget = (there.reduce((n, p) => n + rows(p), 0) + Math.max(...spare.map(rows))) * 16;
+  void loader!.follow(() => body, { want: () => ({ view: 1e5, statics: reach, budget }) });
+  await s.drain();
+  body.x = 2600;
+  loader!.look();
+  await s.drain();
+  // The loader reads its own head, so its parts are found by name.
+  const names = new Set(loader!.held.parts.filter((p) => loader!.held.has(p)).map((p) => p.name));
+  const held = statics.filter((p) => names.has(p.name));
+  const kept = held.filter((p) => !there.includes(p)), gone = spare.filter((p) => !held.includes(p));
+  expect([there.every((p) => held.includes(p)), loader!.held.bytes <= budget, kept.length > 0, gone.length > 0]).toEqual([true, true, true, true]);
+  expect(Math.max(...kept.map((p) => off(p, 2600, 448)))).toBeLessThanOrEqual(Math.min(...gone.map((p) => off(p, 2600, 448))));
+});
+
+test("an overview is filled a band of chunk rows a step, to the samples one fill gives", () => {
+  const staged = new StagedMap(head), once = new StagedMap(head);
+  const overviews = head.parts.filter((p) => p.kind === "overview");
+  for (const p of overviews) {
+    const piece = readPart(head, p, file.subarray(p.at, p.at + p.length)) as OverviewPiece;
+    let steps = 0;
+    for (const g = staged.steps(piece); !g.next().done; ) steps++;
+    const sq = piece.sq;
+    once.hf.fill(sq.cx0, sq.cz0, sq.cx1, sq.cz1, OVERVIEW_STEP, piece.heights, piece.tint);
+    expect(steps).toBe(Math.ceil((sq.cz1 - sq.cz0) / BAND_CHUNKS) - 1);
+  }
+  expect(Math.max(...overviews.map((p) => squareOf(head.dims, OVERVIEW_CHUNKS, p.col, p.row)!).map((sq) => sq.cz1 - sq.cz0))).toBeGreaterThan(BAND_CHUNKS);
+  expect([staged.hf.heights, staged.hf.tint]).toEqual([once.hf.heights, once.hf.tint]);
+});
+
+test("the store of statics finds a chunk's rows in its sector, and in the table made of those held", () => {
+  const held = new HeldStatics(head);
+  const statics = head.parts.filter((p) => p.kind === "statics");
+  const all = whole.statics;
+  const set = (p: MapPart): void => {
+    const steps = held.set(p, readPart(head, p, file.subarray(p.at, p.at + p.length)) as StaticsPiece);
+    while (!steps.next().done);
+  };
+  const told: MapPart[] = [];
+  held.onSet((p) => told.push(p));
+  const [a, b] = [statics[0]!, statics[1]!];
+  set(a);
+  set(b);
+  /** Whether each chunk's rows are the map's where its sector is held, and none are found where it is not. */
+  const same = (): boolean =>
+    head.counts.every((n, c) => {
+      const r = held.find(c), part = held.partOf(c);
+      if (!part || !held.has(part)) return r === null;
+      if (!r || r.to - r.from !== n) return false;
+      for (let k = 0; k < n; k++) for (const col of ["kind", "yaw", "x", "y", "z"] as const) if (r[col][r.from + k] !== all[col][all.first[c]! + k]) return false;
+      return true;
+    });
+  expect([same(), told, held.size, held.bytes, held.pieces > 0]).toEqual([true, [a, b], 2, held.pieces * 16, true]);
+  // The table holds both; the sectors read their rows from it from then on, and one let go is found no more.
+  const g = held.table();
+  let t = g.next();
+  while (!t.done) t = g.next();
+  expect(rowsOfSectors(t.value, [a, b])).toBe(true);
+  expect(same()).toBe(true);
+  held.drop(a);
+  expect([same(), held.size]).toEqual([true, 1]);
+  set(a);
+  expect(same()).toBe(true);
+});
+
+test("a budget short of the statics wanted holds the nearest of them, as far as it reaches", async () => {
+  const s = heldServer(file);
+  let loader: MapLoader | null = null;
+  void MapLoader.start(s.get, `map/${head.name}`, NOW).then((l) => (loader = l));
+  await s.drain();
+  const body = { x: 2600, z: 448, vx: 0, vz: 0 };
+  const held = new HeldStatics(head);
+  const wanted = head.parts.filter((p) => p.kind === "statics" && off(p, body.x, body.z) <= 1500).sort((a, b) => off(a, body.x, body.z) - off(b, body.x, body.z));
+  expect(wanted.length).toBeGreaterThan(3);
+  const budget = (held.rows.get(wanted[0]!)! + held.rows.get(wanted[1]!)! + held.rows.get(wanted[2]!)!) * 16;
+  void loader!.follow(() => body, { want: () => ({ view: 1e5, statics: 1500, budget }) });
+  await s.drain();
+  const names = new Set(loader!.held.parts.filter((p) => loader!.held.has(p)).map((p) => p.name));
+  expect([...names].sort()).toEqual(wanted.slice(0, 3).map((p) => p.name).sort());
+  expect(wanted.slice(3).some((p) => s.asked.includes(nameOf(p)))).toBe(false);
+  expect(loader!.progress().settled).toBe(true);
 });

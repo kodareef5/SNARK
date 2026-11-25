@@ -2572,7 +2572,7 @@ export function mapNodes(map: MapData, hf: Heightfield, reg: Registry): NodeSour
 }
 
 /** Each of the table's kinds as a content index, 0 for one this content lacks. */
-export function staticKinds(statics: MapStatics, reg: Registry): Uint16Array {
+export function staticKinds(statics: { readonly kinds: readonly string[] }, reg: Registry): Uint16Array {
   return Uint16Array.from(statics.kinds, (id) => reg.index.get(id) ?? 0);
 }
 

@@ -19,7 +19,7 @@ import { ground, groundUnder } from "../../shared/world/collide.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { OVERVIEW_STEP, joinParts, mapHeightfield, nodeLayers, parseMap, readHead, readPart, setGround, writeMap, type GroundPiece, type MapHead, type NodeLayer, type OverviewPiece } from "../../shared/world/mapfile.ts";
 import type { NodeSource, NodeSpot } from "../../shared/world/nodes.ts";
-import { StagedMap } from "../../client/core/mapload.ts";
+import { BAND_CHUNKS, StagedMap } from "../../client/core/mapload.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { Rasterizer } from "../../tools/snap/raster.ts";
 import { cornerMap, wideMap } from "../fixtures/map.ts";
@@ -375,7 +375,9 @@ test("a sector's ground that comes before its overview waits for it: none of its
   let off = 0;
   for (let j = g.sq.cz0 * PER; j <= g.sq.cz1 * PER; j++) for (let i = g.sq.cx0 * PER; i <= g.sq.cx1 * PER; i++) if (staged.hf.heights[j * whole.nx + i] !== whole.heights[j * whole.nx + i]) off++;
   const [x0, z0, x1, z1] = [g.sq.cx0 * CHUNK_SIZE, g.sq.cz0 * CHUNK_SIZE, g.sq.cx1 * CHUNK_SIZE - 0.01, g.sq.cz1 * CHUNK_SIZE - 0.01];
-  expect([off, staged.hf.exactIn(x0, z0, x1, z1), staged.hf.exact.filter((e) => e === 1).length, staged.hf.changes.length / 4]).toEqual([0, true, (g.sq.cx1 - g.sq.cx0) * (g.sq.cz1 - g.sq.cz0), 3]);
+  // The coarse picture, the overview a band at a time, and the sector held.
+  const bands = Math.ceil((o.sq.cz1 - o.sq.cz0) / BAND_CHUNKS);
+  expect([off, staged.hf.exactIn(x0, z0, x1, z1), staged.hf.exact.filter((e) => e === 1).length, staged.hf.changes.length / 4]).toEqual([0, true, (g.sq.cx1 - g.sq.cx0) * (g.sq.cz1 - g.sq.cz0), 2 + bands]);
 });
 
 test("the whole map's pair on the card, made once and sent again where a fill changed the ground, is at every step what a picture made then would be, and the map's own once the overviews have come", () => {
@@ -401,8 +403,9 @@ test("the whole map's pair on the card, made once and sent again where a fill ch
     }
     expect(card).toEqual(coarseGround(hf));
   }
-  // The overviews' squares once each, their far edges among them, and none of the sectors'.
-  expect([card, sent]).toEqual([coarseGround(whole), overviews.reduce((n, p) => n + ((p.sq.cx1 - p.sq.cx0) * 8 + 1) * ((p.sq.cz1 - p.sq.cz0) * 8 + 1), 0)]);
+  // The overviews' squares a band at a time, a row two bands share sent with each, and none of the sectors'.
+  const bands = (p: { sq: { cz0: number; cz1: number } }): number[] => Array.from({ length: Math.ceil((p.sq.cz1 - p.sq.cz0) / BAND_CHUNKS) }, (_, k) => Math.min(BAND_CHUNKS, p.sq.cz1 - p.sq.cz0 - k * BAND_CHUNKS));
+  expect([card, sent]).toEqual([coarseGround(whole), overviews.reduce((n, p) => n + bands(p).reduce((m, rows) => m + ((p.sq.cx1 - p.sq.cx0) * 8 + 1) * (rows * 8 + 1), 0), 0)]);
 });
 
 /** Each chunk's lowest and highest sample, edges among them, in stored steps. */

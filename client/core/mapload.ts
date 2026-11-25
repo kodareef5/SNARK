@@ -3,33 +3,36 @@
 // for each sector's (shared/world/heightfield.ts). Before anything is drawn: the head and its landmarks' definitions,
 // which the welcome's registry holds. Then the ground of the sectors within reach of the body and the overviews they lie
 // in, which the first frame waits for and which come alone (firstFrameParts says which, for the loader and for the map's
-// build). Then, while the game is played, the rest nearest first by where the body is and where it is heading, ordered
-// again at each ask so a jump goes first to where it lands: the overviews and ground within RING, then the other overviews
-// within CITY_NEAR, then its sectors, then the overviews past it, then the rest, each sector's ground before its statics;
-// URGENT_AT_ONCE at once while what is within RING is wanted, AFTER_AT_ONCE otherwise. Once the overviews, the ground and the statics of every sector within CITY_NEAR of the
-// body have come, those sectors' statics are handed over, for the far city round the body; and once every part but the
-// tops has come, all of them. The city's tops come with the overviews past CITY_NEAR once the statics round the body have
-// been handed over, each square's after its overview, for the blocks drawn of them (render/cityblocks.ts), and nothing
-// waits for them. A sector's buildings come after its statics, in the same turn, and nothing waits for them either. The map's statics are laid out whole from its head's counts, and each sector's set in as it comes, a step
-// at a time, and its bytes let go: what is handed over is only ever whole sectors' rows, those round the body copied out
-// and then the whole map's, and nothing of them is read again at the hand-over. A part that fails is asked for again
-// after a wait that grows to a cap, for as long as the page lives, and what has come is kept. One that comes damaged or
-// as another's is refused by name and asked for again, until the DAMAGED_MOST-th time breaks the map.
+// build). Then, while the game is played, the parts the page wants (map-want.ts) from where the body is and is heading,
+// the camera, a sight's focus and the map screen, looked at again each LOOK_EVERY ms and as parts come, nearest first:
+// the overviews, ground and statics within RING and the statics a chunk the server sent waits for, then the overviews
+// within the statics reach, then its sectors, then the rest, each sector's ground before its statics; URGENT_AT_ONCE at
+// once while what is urgent is wanted, AFTER_AT_ONCE otherwise. Statics and buildings no longer wanted are let go a sector
+// past their reach; overviews, ground and tops are kept, as the ground is one array. Each sector's statics are a table of
+// their own (map-statics.ts). Whenever those held change and every overview, ground and statics part within the statics
+// reach of the body has come, a table of all held is handed over, a step at a time. The city's tops come with the
+// overviews past that reach once the statics have first been handed over, each square's after its overview, and nothing
+// waits for them; nor for a sector's buildings, which come after its statics. A part that fails is asked for again after
+// a wait that grows to a cap, for as long as the page lives, and what has come is kept. One that comes damaged or as
+// another's is refused by name and asked for again, until the DAMAGED_MOST-th time breaks the map.
 
 import { CHUNK_SIZE, SECTOR_CHUNKS, chunkCount } from "../../shared/coords.ts";
 import type { Def } from "../../shared/content/defs.ts";
 import { Buildings } from "../../shared/world/buildings.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
-import { COARSE_STEP, MapStatics, OVERVIEW_STEP, blankLayers, blankStatics, listedRows, partHash, partSteps, readHead, readPart, setGround, setNodes, setStatics, squareOf, type GroundPiece, type MapContent, type MapHead, type MapPart, type MapPiece, type NodeLayer, type StaticsPiece } from "../../shared/world/mapfile.ts";
+import { COARSE_STEP, OVERVIEW_STEP, blankLayers, listedRows, partHash, partSteps, readHead, readPart, setGround, setNodes, squareOf, type GroundPiece, type MapContent, type MapHead, type MapPart, type MapPiece, type MapStatics, type NodeLayer, type StaticsPiece } from "../../shared/world/mapfile.ts";
 import { MapWater } from "../../shared/world/water.ts";
+import { DEFAULT_TIER, tierOf } from "./assets/tiers.ts";
 import { fetchBytes, within, type Get } from "./fetched.ts";
 import { HeldTops } from "./render/blocks.ts";
 import { everywhere, firstFrameParts, overviewOf, partDistance, squareKey } from "./map-first.ts";
 export { FIRST_REACH, firstFrameParts } from "./map-first.ts";
+import { HeldStatics } from "./map-statics.ts";
+import { KEEP_PAST, PartBoxes, ROAD_REACH, Wanted, centresOf, tierWant, type WantFrom } from "./map-want.ts";
+export { ROAD_REACH } from "./map-want.ts";
 import { holdRoad, holdStreets } from "../../shared/world/mapfile.ts";
 import { RoadSectors } from "../../shared/world/roadframe.ts";
 import { StreetSectors } from "../../shared/world/streets.ts";
-import { WINDOW, WINDOW_MOVE } from "./render/terrain.ts";
 
 /**
  * Parts asked for at once before the first frame: as many as a browser opens to a host over HTTP/1.1, so that on a link of
@@ -37,22 +40,17 @@ import { WINDOW, WINDOW_MOVE } from "./render/terrain.ts";
  */
 export const PARTS_AT_ONCE = 6;
 /**
- * Parts asked for at once while the game is played: while the nearest part left is ground within RING of the body or of
- * where it is heading, and otherwise. Fewer than a browser's six connections to a host, so the art always has some.
+ * Parts asked for at once while the game is played: while the nearest part left is urgent (MapLoader.urgent), and
+ * otherwise. Fewer than a browser's six connections to a host, so the art always has some.
  */
 export const URGENT_AT_ONCE = 4;
 export const AFTER_AT_ONCE = 2;
-/** Metres round the body, and round where it will be LEAD seconds on, whose ground is urgent once the game is played. */
+/** Metres round the body, and round where it will be LEAD seconds on, whose ground and statics are urgent once the game is played. */
 export const RING = 600;
 /** Seconds of the body's way ahead of it whose ground is asked for as if the body were there. */
 export const LEAD = 2;
-/** Metres round the body whose sectors' statics are handed over before the rest: as far as any tier draws the far city. */
-export const CITY_NEAR = 4096;
-/**
- * Metres round the body whose sectors' road parts are held: as far as the terrain window, which alone draws them, reaches
- * from where it is filled round the body. One a sector further is let go, and they are looked at every ROAD_EVERY ms.
- */
-export const ROAD_REACH = ((WINDOW - 1) * TERRAIN_CELL) / 2 + WINDOW_MOVE;
+/** Milliseconds between two looks at which parts are wanted, and at which road parts are. */
+export const LOOK_EVERY = 1000;
 export const ROAD_EVERY = 1000;
 /** Road and streets parts asked for at once, besides the rest of the map's. */
 export const ROADS_AT_ONCE = 2;
@@ -63,6 +61,8 @@ export const RETRY_MOST = 8000;
 export const DAMAGED_MOST = 3;
 /** Failures in a row of one part, after the first frame, at which the player is told; and again each time they double. */
 export const TELL_AFTER = 3;
+/** Chunk rows of an overview filled between two pauses: a sixteenth of its 4.2 M samples. */
+export const BAND_CHUNKS = 4;
 
 /** The wait after a part's `fails`-th failure in a row, in milliseconds. */
 export const retryWait = (fails: number): number => Math.min(RETRY_MOST, RETRY_FIRST * 2 ** Math.min(16, fails - 1));
@@ -75,14 +75,9 @@ export interface Place {
   readonly vz: number;
 }
 
-/** Whether part `p` comes after the first frame and nothing waits for it: a square's tops, a sector's buildings. */
-const unwaited = (p: MapPart): boolean => p.kind === "tops" || p.kind === "buildings";
-
 /**
- * The parts the map's statics are handed over after, besides the head: every part but the tops, the roads' frame, the
- * streets' lines and the buildings, so
- * that the far city, the near city and the far shadow are made on exact ground. The map's build says what that is at its
- * heaviest first frame.
+ * Every part but the tops, the roads' frame, the streets' lines and the buildings: what a page that held the whole map's
+ * statics on exact ground fetched first (tools/map/trip.ts).
  */
 export function handOverParts(head: MapHead): MapPart[] {
   return head.parts.filter((p) => p.kind !== "tops" && p.kind !== "road" && p.kind !== "streets" && p.kind !== "buildings");
@@ -145,12 +140,24 @@ export class StagedMap {
 
   /** Takes in a part read: the land's definitions, an overview's ground, node pictures and water, a sector's ground and its listed nodes, a square's tops, or a sector's buildings. */
   take(piece: MapPiece): void {
+    const steps = this.steps(piece);
+    while (!steps.next().done);
+  }
+
+  /** `take` a step at a time: an overview's ground is filled BAND_CHUNKS chunk rows a step, and the rest of it set in at the last. */
+  *steps(piece: MapPiece): Generator<void, void> {
     const { dims } = this.head;
     if (piece.kind === "land") {
       if (this.content) this.content = { landmarks: this.content.landmarks, defs: piece.defs as Def[] };
     } else if (piece.kind === "overview") {
       const sq = piece.sq;
-      this.hf.fill(sq.cx0, sq.cz0, sq.cx1, sq.cz1, OVERVIEW_STEP, piece.heights, piece.tint);
+      // Each band reads the overview's rows it lies between, its last shared with the next band's first.
+      const across = ((sq.cx1 - sq.cx0) * CHUNK_SIZE) / TERRAIN_CELL / OVERVIEW_STEP + 1, rows = CHUNK_SIZE / TERRAIN_CELL / OVERVIEW_STEP;
+      for (let z = sq.cz0; z < sq.cz1; z += BAND_CHUNKS) {
+        const z1 = Math.min(sq.cz1, z + BAND_CHUNKS), [from, to] = [(z - sq.cz0) * rows * across, ((z1 - sq.cz0) * rows + 1) * across];
+        this.hf.fill(sq.cx0, z, sq.cx1, z1, OVERVIEW_STEP, piece.heights.subarray(from, to), piece.tint.subarray(from, to));
+        if (z1 < sq.cz1) yield;
+      }
       const w = sq.cx1 - sq.cx0;
       for (let k = 0; k < piece.low.length; k++) this.bound(sq.cx0 + (k % w), sq.cz0 + Math.floor(k / w), piece.low[k]!, piece.high[k]!);
       setNodes(dims, this.nodes, piece);
@@ -289,6 +296,11 @@ export interface LoaderOptions {
   readonly wait: (ms: number) => Promise<void>;
   /** A pause between the steps the statics are read in, so frames go on (fetched.ts nextTask). */
   readonly pause?: () => Promise<void>;
+  /**
+   * Resolves after `ms` milliseconds, as `wait`: the clock the wanted parts are looked at by, each LOOK_EVERY. Without it
+   * they are looked at as parts come and when MapLoader.look is called.
+   */
+  readonly every?: (ms: number) => Promise<void>;
 }
 
 /** An error's message. */
@@ -349,14 +361,15 @@ class Asker {
   }
 }
 
-/** How much of a map a page has (MapLoader.progress), for a bench that waits for all of it (bench-run.ts). */
+/** How much of a map a page has (MapLoader.progress), for a bench that waits for what it wants (bench-run.ts). */
 export interface MapProgress {
-  /** Parts not yet come of those asked for after the first frame, the tops among them, and of how many. */
+  /** Parts wanted not yet held, those under way or waiting to be asked again among them, and how many are wanted. */
   readonly left: number;
   readonly parts: number;
-  /** Whether the statics round the body and the whole map's have been handed over, each to its last step. */
+  /** Whether the statics round the body have been handed over, to the hand-over's last step. */
   readonly near: boolean;
-  readonly whole: boolean;
+  /** Whether every part wanted is held, nothing is under way, and the statics held have been handed over as they stand. */
+  readonly settled: boolean;
   /** Road and streets parts within ROAD_REACH of the body not yet held. */
   readonly roads: number;
 }
@@ -364,41 +377,42 @@ export interface MapProgress {
 /** The page's map as its parts come, each checked against the hash its head names. */
 export class MapLoader {
   readonly staged: StagedMap;
+  /** The statics held, a table a sector. */
+  readonly held: HeldStatics;
   private readonly asker: Asker;
   private readonly wait: (ms: number) => Promise<void>;
+  private readonly every: ((ms: number) => Promise<void>) | undefined;
   private readonly pause: () => Promise<void>;
   private readonly at: (p: MapPart) => string;
-  /** The parts, overviews, ground, statics, buildings and tops, not yet asked for, or failed and to be asked for again; and how many are under way. */
-  private readonly left: MapPart[];
-  private under = 0;
-  /** Parts that failed, waiting out their wait before they go back among those left. */
-  private waiting = 0;
-  /** The parts the whole map's statics are handed over after, besides those the loader waits for before it starts. */
-  private readonly waited: MapPart[];
-  /** The overviews and ground come so far, and the statics set in `table`, the map's laid out from its head once the first comes. */
+  private readonly boxes: PartBoxes;
+  /** The parts wanted, and those held of them and of the first frame's; those under way, waiting out a failure, or broken. */
+  private readonly want = new Wanted();
   private readonly came = new Set<MapPart>();
-  private table: MapStatics | null = null;
-  /** To whom the statics are handed over, and whether those round the body and all of them have been; and the hand-overs in turn. */
-  private arrived: ((statics: MapStatics, whole: boolean) => void) | undefined;
-  private arriving: ((statics: MapStatics, whole: boolean) => Generator<void, void>) | undefined;
-  private handing = Promise.resolve();
-  private handedNear = false;
-  private near = CITY_NEAR;
-  private held: () => boolean = () => false;
-  private handed = false;
-  /** Hand-overs taken to their last step: round the body, and whole. */
-  private readonly done = { near: false, whole: false };
+  private readonly going = new Set<MapPart>();
+  private readonly waiting = new Set<MapPart>();
+  private readonly broken = new Set<MapPart>();
+  /** Past the first frame: parts are wanted and the statics handed over. */
+  private followed = false;
+  private from: () => WantFrom = () => tierWant(tierOf(DEFAULT_TIER));
+  /** To whom the statics are handed over, the store's version last handed over, and whether one is under way or done. */
+  private arrived: ((statics: MapStatics) => void) | undefined;
+  private arriving: ((statics: MapStatics) => Generator<void, void>) | undefined;
+  private handedAt = -1;
+  private handing = false;
+  private handedOnce = false;
+  private stopped = false;
+  private heldBack: () => boolean = () => false;
   private where: () => Place | null = () => null;
 
   private constructor(asker: Asker, opts: LoaderOptions, at: (p: MapPart) => string, staged: StagedMap) {
     this.asker = asker;
     this.wait = opts.wait;
+    this.every = opts.every;
     this.pause = opts.pause ?? (() => Promise.resolve());
     this.at = at;
     this.staged = staged;
-    const head = staged.head;
-    this.waited = handOverParts(head).filter((p) => p.kind !== "land" && !everywhere(head, p));
-    this.left = [...this.waited, ...head.parts.filter(unwaited)];
+    this.held = new HeldStatics(staged.head);
+    this.boxes = new PartBoxes(staged.head);
   }
 
   /**
@@ -427,93 +441,152 @@ export class MapLoader {
   }
 
   /**
-   * From now on the rest of the map comes, nearest first to where `where` has the body, else to the map's first spawn
-   * point, the overviews within CITY_NEAR and then its sectors before the rest but for what is within RING, and the
-   * overviews past it before their sectors, each sector's ground before its statics. Resolves once the ground and the overviews the first frame waits for where it has the body now have come,
-   * alone. From then on `then.say` is told what the player is; `then.arrived` is handed the statics of the sectors within
-   * CITY_NEAR of the body once their overviews, ground and statics have come and not every part has, and then the map's
-   * statics once every part has come, `whole`; and `then.arriving` the same, whose steps are taken with a pause between
-   * each, as the copy of those round the body is, before the next is handed over. `then.near` stands for CITY_NEAR. While
+   * From now on the parts the page wants come (map-want.ts), from where `where` has the body, else the map's first spawn
+   * point, and whatever `then.want` names besides: nearest first, what is within RING and the statics a chunk the server
+   * sent waits for before the rest, then the overviews and then the sectors within the statics reach, then the rest, each
+   * sector's ground before its statics. Resolves once the ground and the overviews the first frame waits for where it has
+   * the body now have come, alone. From then on `then.say` is told what the player is; each time the statics held change
+   * and every overview, ground and statics part within the statics reach of the body has come, `then.arrived` is handed a
+   * table of the statics held, and `then.arriving` the same, whose steps are taken with a pause between each. While
    * `then.held` says the game's socket is held back, one part at a time is under way.
    */
-  async follow(where: () => Place | null, then: { readonly say?: (line: string) => void; readonly arrived?: (statics: MapStatics, whole: boolean) => void; readonly arriving?: (statics: MapStatics, whole: boolean) => Generator<void, void>; readonly near?: number; readonly held?: () => boolean } = {}): Promise<void> {
+  async follow(where: () => Place | null, then: { readonly say?: (line: string) => void; readonly arrived?: (statics: MapStatics) => void; readonly arriving?: (statics: MapStatics) => Generator<void, void>; readonly want?: () => WantFrom; readonly held?: () => boolean } = {}): Promise<void> {
     this.where = where;
-    this.near = then.near ?? CITY_NEAR;
-    this.held = then.held ?? (() => false);
+    this.heldBack = then.held ?? (() => false);
+    if (then.want) this.from = then.want;
     const head = this.staged.head;
     const { x, z } = this.place();
-    const near = firstFrameParts(head, x, z).filter((p) => this.left.includes(p));
-    for (const p of near) this.left.splice(this.left.indexOf(p), 1);
+    const near = firstFrameParts(head, x, z).filter((p) => !this.came.has(p));
     await Promise.all(near.map((p) => this.must(p)));
     this.asker.say("");
     this.asker.late = true;
     if (then.say) this.asker.say = then.say;
     this.arrived = then.arrived;
     this.arriving = then.arriving;
-    this.pump();
+    this.followed = true;
+    this.look();
     void this.followRoads();
+    if (this.every) void this.followWant(this.every);
   }
 
   /**
-   * Hands the statics round the body over once their sectors have come, and all of them once every part but the tops has;
-   * then asks for the nearest parts left until as many are under way as the nearest allows (URGENT_AT_ONCE or
-   * AFTER_AT_ONCE, or one while the game's socket is held back).
+   * Looks again at which parts are wanted, from where the body and the rest are now, lets go of the statics and buildings
+   * no centre keeps, and asks for what is wanted. The clock given as `every` calls it each LOOK_EVERY ms; so does each
+   * part that comes where none was given.
+   */
+  look(): void {
+    if (!this.followed) return;
+    const { x, z, vx, vz } = this.place(), from = this.from();
+    this.want.look(this.boxes, centresOf({ x, z }, { x: x + vx * LEAD, z: z + vz * LEAD }, from), this.held.needed);
+    this.cap(from.budget ?? Infinity);
+    for (const p of this.came) {
+      if ((p.kind !== "statics" && p.kind !== "buildings") || this.want.kept.has(p)) continue;
+      this.came.delete(p);
+      if (p.kind === "statics") this.held.drop(p);
+      else this.staged.buildings?.drop(p.col, p.row);
+    }
+    this.trim(0);
+    this.pump();
+  }
+
+  /**
+   * The statics wanted, nearest first, as far as `budget` bytes of them reach, and none past: those a reader waits for
+   * first, then by their metres, a sector held a sector nearer than it is so the edge does not let it go and ask again.
+   */
+  private cap(budget: number): void {
+    if (budget === Infinity) return;
+    const held = this.held, statics: [MapPart, number][] = [];
+    let room = budget;
+    for (const [p, off] of this.want.parts) {
+      if (p.kind !== "statics") continue;
+      if (held.needed.has(p)) room -= held.bytesOf(p);
+      else statics.push([p, off - (held.has(p) ? KEEP_PAST : 0)]);
+    }
+    statics.sort((a, b) => a[1] - b[1]);
+    for (const [p] of statics) {
+      room -= held.bytesOf(p);
+      if (room >= 0) continue;
+      this.want.parts.delete(p);
+      this.want.kept.delete(p);
+      room = -Infinity;
+    }
+  }
+
+  /** Statics kept beyond their reach let go, farthest first, until `more` bytes of them fit with those held in the budget. */
+  private trim(more: number): void {
+    const budget = this.from().budget ?? Infinity;
+    if (this.held.bytes + more <= budget) return;
+    const spare = [...this.came].filter((p) => p.kind === "statics" && !this.want.parts.has(p)).sort((a, b) => this.off(b) - this.off(a));
+    for (const p of spare) {
+      if (this.held.bytes + more <= budget) break;
+      this.came.delete(p);
+      this.held.drop(p);
+    }
+  }
+
+  private async followWant(every: (ms: number) => Promise<void>): Promise<void> {
+    for (;;) {
+      await every(LOOK_EVERY);
+      this.look();
+    }
+  }
+
+  /**
+   * Hands the statics held over when they changed and all within the statics reach of the body have come; then asks for
+   * the nearest parts wanted until as many are under way as the nearest allows (URGENT_AT_ONCE or AFTER_AT_ONCE, or one
+   * while the game's socket is held back).
    */
   private pump(): void {
-    const head = this.staged.head;
-    if (this.waited.some((p) => !this.came.has(p))) this.handNear();
-    else if (!this.handed) {
-      this.handed = true;
-      const table = this.table ?? blankStatics(head, false);
-      this.handOver(function* () {
-        return table;
-      }, true);
-    }
-    for (let k = this.nearest(); k >= 0 && this.under < (this.held() ? 1 : this.urgent(this.left[k]!) ? URGENT_AT_ONCE : AFTER_AT_ONCE); k = this.nearest()) {
-      const p = this.left.splice(k, 1)[0]!;
-      this.under++;
-      void this.ask(p).then(
+    this.handOut();
+    for (let p = this.next(); p && this.going.size < (this.heldBack() ? 1 : this.urgent(p) ? URGENT_AT_ONCE : AFTER_AT_ONCE); p = this.next()) {
+      const part = p;
+      this.going.add(part);
+      void this.ask(part).then(
         (got) => {
           // A part that failed waits out of its lane, which the next part takes at once.
-          this.under--;
+          this.going.delete(part);
           if (got !== 0) {
-            this.waiting++;
-            void this.wait(got).then(() => (this.waiting--, this.left.push(p), this.pump()));
+            this.waiting.add(part);
+            void this.wait(got).then(() => (this.waiting.delete(part), this.pump()));
           }
-          this.pump();
+          if (this.every) this.pump();
+          else this.look();
         },
-        // Broken: nothing more is handed over.
-        (e: unknown) => ((this.handed = true), this.asker.say(why(e))),
+        // Broken: it is never asked for again, and nothing more is handed over.
+        (e: unknown) => {
+          this.going.delete(part);
+          this.broken.add(part);
+          this.stopped = true;
+          this.asker.say(why(e));
+        },
       );
     }
   }
 
-  /** The statics of the sectors within `near` of the body handed over, once those sectors' overviews, ground and statics have all come. */
-  private handNear(): void {
-    if (this.handedNear || this.handed) return;
-    const head = this.staged.head;
-    const near = head.parts.filter((p) => (p.kind === "overview" || p.kind === "ground" || p.kind === "statics") && this.off(p) <= this.near);
-    if (near.some((p) => !this.came.has(p) && !everywhere(head, p))) return;
-    this.handedNear = true;
-    const sectors = near.filter((p) => p.kind === "statics");
-    if (sectors.length > 0) this.handOver(() => rowsOf(head, this.table!, sectors), false);
+  /** Whether every overview, ground and statics part wanted within the statics reach of the body has come. */
+  private statsIn(): boolean {
+    const reach = this.from().statics;
+    for (const p of this.want.parts.keys()) if ((p.kind === "statics" || p.kind === "ground" || p.kind === "overview") && !this.came.has(p) && this.off(p) <= reach) return false;
+    return true;
   }
 
-  /**
-   * Hands over the statics `make` makes, a step at a time, once those before them have been: to `arrived`, and then to
-   * `arriving` a step at a time. Those round the body are let go once the whole map's are on their way.
-   */
-  private handOver(make: () => Generator<void, MapStatics>, whole: boolean): void {
-    this.handing = this.handing
-      .then(async () => {
-        if (!whole && this.handed) return;
-        const statics = await stepped(make(), this.pause);
-        if (!whole && this.handed) return;
-        this.arrived?.(statics, whole);
-        if (this.arriving) await stepped(this.arriving(statics, whole), this.pause);
-        this.done[whole ? "whole" : "near"] = true;
-      })
-      .catch((e: unknown) => this.asker.say(why(e)));
+  /** The statics held handed over, a step at a time, where they changed since they last were and those round the body are in. */
+  private handOut(): void {
+    if (this.handing || this.stopped || !this.followed || this.held.version === this.handedAt || !this.statsIn()) return;
+    this.handing = true;
+    const version = this.held.version;
+    void (async () => {
+      const statics = await stepped(this.held.table(), this.pause);
+      this.arrived?.(statics);
+      if (this.arriving) await stepped(this.arriving(statics), this.pause);
+      this.handedAt = version;
+      this.handedOnce = true;
+    })()
+      .catch((e: unknown) => this.asker.say(why(e)))
+      .finally(() => {
+        this.handing = false;
+        this.pump();
+      });
   }
 
   /** Where the body is, or the map's first spawn point standing still. */
@@ -530,28 +603,33 @@ export class MapLoader {
     return Math.min(partDistance(head, p, x, z), partDistance(head, p, x + vx * LEAD, z + vz * LEAD));
   }
 
-  /** Whether part `p` is an overview or ground within RING of the body or of where it is heading. */
+  /**
+   * Whether part `p` is an overview, ground or statics within RING of the body or of where it is heading, or statics a
+   * chunk the server sent waits for.
+   */
   private urgent(p: MapPart): boolean {
-    return (p.kind === "ground" || p.kind === "overview") && this.off(p) <= RING;
+    return ((p.kind === "ground" || p.kind === "overview" || p.kind === "statics") && this.off(p) <= RING) || this.held.needed.has(p);
   }
 
   /**
-   * Which of the parts left goes next, nearest first within each of these in turn: the overviews and ground within RING;
-   * the overviews within CITY_NEAR and then its sectors, which the far city waits for; the overviews past it and every
-   * square's tops, those once the statics round the body have been handed over; the rest. A sector's ground goes before
-   * its statics, its statics before its buildings, and a square's overview before its tops; -1 for none.
+   * Which part wanted goes next, nearest first within each of these in turn: what is urgent; the overviews within the
+   * statics reach and then its sectors; the overviews past it and every square's tops, those once the statics round the
+   * body have been handed over; the rest. A sector's ground goes before its statics, its statics before its buildings,
+   * and a square's overview before its tops; null for none. A part wanted from elsewhere than the body is as near as that.
    */
-  private nearest(): number {
-    let best = -1;
+  private next(): MapPart | null {
+    const reach = this.from().statics;
+    let best: MapPart | null = null;
     let least = Infinity;
-    this.left.forEach((p, k) => {
-      // Nothing the far city round the body waits for shares the link with the tops.
-      if (p.kind === "tops" && !this.handedNear && !this.handed) return;
-      const off = this.off(p);
-      const turn = p.kind === "tops" ? 3 : this.urgent(p) ? 0 : (off <= this.near ? 1 : 3) + (p.kind === "overview" ? 0 : 1);
+    for (const [p, far] of this.want.parts) {
+      if (this.came.has(p) || this.going.has(p) || this.waiting.has(p) || this.broken.has(p)) continue;
+      // Nothing the statics round the body wait for shares the link with the tops.
+      if (p.kind === "tops" && !this.handedOnce) continue;
+      const off = Math.min(far, this.off(p));
+      const turn = p.kind === "tops" ? 3 : this.urgent(p) ? 0 : (off <= reach ? 1 : 3) + (p.kind === "overview" ? 0 : 1);
       const rank = turn * 1e6 + off + (p.kind === "statics" ? 0.5 : p.kind === "buildings" ? 0.75 : p.kind === "tops" ? 0.25 : 0);
-      if (rank < least) [best, least] = [k, rank];
-    });
+      if (rank < least) [best, least] = [p, rank];
+    }
     return best;
   }
 
@@ -561,8 +639,9 @@ export class MapLoader {
   }
 
   /**
-   * Part `p` asked for once and checked against its hash: a sector's statics read and set in the map's, any other read
-   * and taken in. Gives 0, or the milliseconds to wait before it is asked for again.
+   * Part `p` asked for once and checked against its hash: a sector's statics read and set in the store, any other read
+   * and taken in. Statics or buildings let go while they came are not. Gives 0, or the milliseconds to wait before it is
+   * asked for again.
    */
   private async ask(p: MapPart): Promise<number> {
     const head = this.staged.head;
@@ -572,10 +651,14 @@ export class MapLoader {
       return bytes;
     });
     if ("wait" in got) return got.wait;
+    const gone = (): boolean => this.followed && !this.want.kept.has(p);
     if (got.value instanceof Uint8Array) {
-      const piece = await stepped(partSteps(head, p, got.value, false), this.pause);
-      await stepped(setStatics(head, (this.table ??= blankStatics(head, false)), piece as StaticsPiece), this.pause);
-    } else this.staged.take(got.value);
+      const piece = (await stepped(partSteps(head, p, got.value, false), this.pause)) as StaticsPiece;
+      if (gone()) return 0;
+      this.trim(this.held.bytesOf(p));
+      await stepped(this.held.set(p, piece), this.pause);
+    } else if (p.kind === "buildings" && gone()) return 0;
+    else await stepped(this.staged.steps(got.value), this.pause);
     this.came.add(p);
     return 0;
   }
@@ -590,17 +673,19 @@ export class MapLoader {
   private roadsUnder = 0;
   private readonly roadsBroken = new Set<MapPart>();
 
-  /** The map's statics as far as they have come, laid out whole once the first sector's came; null before. */
-  get statics(): MapStatics | null {
-    return this.table;
+  /** The map's statics held, a table a sector. */
+  get statics(): HeldStatics {
+    return this.held;
   }
 
-  /** How much of the map has come, and been handed over: what a bench waits for before it measures (bench-run.ts). */
+  /** How much of what the page wants has come, and been handed over: what a bench waits for before it measures (bench-run.ts). */
   progress(): MapProgress {
     const head = this.staged.head;
-    let roads = 0;
+    let roads = 0, left = 0;
     for (const p of head.parts) if ((p.kind === "road" || p.kind === "streets") && !this.roadsHeld.has(p) && this.off(p) <= ROAD_REACH) roads++;
-    return { left: this.left.length + this.under + this.waiting, parts: this.waited.length + head.parts.filter(unwaited).length, near: this.done.near, whole: this.done.whole, roads };
+    for (const p of this.want.parts.keys()) if (!this.came.has(p)) left++;
+    const settled = this.followed && left === 0 && this.going.size === 0 && this.waiting.size === 0 && !this.handing && this.handedAt === this.held.version;
+    return { left, parts: this.want.parts.size, near: this.handedOnce, settled, roads };
   }
 
   /**
@@ -640,7 +725,7 @@ export class MapLoader {
     // Nearest first, ROADS_AT_ONCE at a time, and while the game's socket is held back only when nothing else is under way.
     wanted.sort((a, b) => this.off(a) - this.off(b));
     for (const p of wanted) {
-      if (this.roadsUnder >= (this.held() ? (this.under === 0 ? 1 : 0) : ROADS_AT_ONCE)) break;
+      if (this.roadsUnder >= (this.heldBack() ? (this.going.size === 0 ? 1 : 0) : ROADS_AT_ONCE)) break;
       this.roads.add(p);
       this.roadsUnder++;
       void this.asker.ask(p.name, this.at(p), (bytes) => readPart(this.staged.head, p, bytes)).then(
@@ -681,34 +766,3 @@ async function stepped<T>(steps: Generator<void, T>, pause: () => Promise<void>)
     await pause();
   }
 }
-
-/**
- * Of `table`, the map's statics as its head lays them out, the rows of `sectors` alone, a table of their own, a slice of
- * rows a step, for the far city round the body. It names `table` as where they came from (MapStatics.coming): the near
- * store draws a bent piece by that table's row and bend, so that a sector's kerbs are drawn once its statics come, those
- * round the body or any other, and not when an unrelated sector's let the whole map's be handed over.
- */
-export function* rowsOf(head: MapHead, table: MapStatics, sectors: readonly MapPart[]): Generator<void, MapStatics> {
-  const { dims, counts } = head;
-  const kept = new Uint8Array(counts.length);
-  for (const p of sectors) {
-    const sq = squareOf(dims, SECTOR_CHUNKS, p.col, p.row)!;
-    for (let cz = sq.cz0; cz < sq.cz1; cz++) for (let cx = sq.cx0; cx < sq.cx1; cx++) kept[cz * dims.chunksX + cx] = 1;
-  }
-  const out = MapStatics.blank(head.kinds, counts.length, counts.reduce((n, k, c) => n + kept[c]! * k, 0), false);
-  out.coming = table;
-  for (let c = 0; c < counts.length; c++) out.first[c + 1] = out.first[c]! + kept[c]! * counts[c]!;
-  for (let c = 0, since = 0; c < counts.length; c++) {
-    const from = table.first[c]!, to = table.first[c + 1]!, at = out.first[c]!;
-    if (kept[c] === 0 || to === from) continue;
-    for (const k of ["kind", "yaw", "x", "y", "z"] as const) out[k].set(table[k].subarray(from, to), at);
-    if ((since += to - from) >= COPY_SLICE) {
-      since = 0;
-      yield;
-    }
-  }
-  return out;
-}
-
-/** Rows rowsOf copies between two pauses. */
-const COPY_SLICE = 1 << 16;

@@ -176,6 +176,7 @@ import type { FarSource } from "./render/far.ts";
 import type { CityMaker } from "./render/citymake.ts";
 import type { CitySource } from "./render/farcity.ts";
 import type { HeldTops } from "./render/blocks.ts";
+import type { HeldStatics, MapRows } from "./map-statics.ts";
 import type { BlocksSource } from "./render/cityblocks.ts";
 import { CityStatics } from "../../shared/world/city.ts";
 import { NodeChanges, type FarNodeSource } from "./render/farnodes.ts";
@@ -210,6 +211,11 @@ export interface SessionOptions {
   cityMaker?: CityMaker;
   /** The statics of the map file resolveMap accepts. With them the server sends a chunk's only where they differ (HELLO_STATICS). */
   statics?: MapStatics;
+  /**
+   * That map's statics a sector at a time, as the page holds them (map-statics.ts). With them the server is told at once
+   * (CMD_STATICS), and a chunk message that takes from a sector not yet held waits for it, with every one after it.
+   */
+  held?: HeldStatics;
   /** The landmarks that map file sets down (MapContent). Past the near rows the scene draws each from its far mesh. */
   landmarks?: readonly MapLandmark[];
   tideEyes?: readonly TideEyeSite[];
@@ -722,6 +728,13 @@ export class ClientSession {
   private staticsSeq = 0;
   /** The map's statics' kinds as content indices, from the welcome or CMD_STATICS's answer, when the client takes chunks from them. */
   private staticKinds: Uint16Array | null = null;
+  /**
+   * Chunk messages waiting, in the order they came, from the first that takes slots from a sector of `opts.held` not yet held:
+   * the bytes after its kind, or a chunk number for a drop. And a reader for them, and the rows of a whole map's table.
+   */
+  private readonly waitingRows: (Uint8Array | number)[] = [];
+  private readonly waitingReader = new BitReader();
+  private readonly wholeRows: MapRows = { kind: new Uint16Array(0), yaw: new Uint16Array(0), x: new Float32Array(0), y: new Float32Array(0), z: new Float32Array(0), from: 0, to: 0 };
   /** Reads a chunk message's rows (shared/world/rows.ts), made with the world. */
   private rows: RowCoder | null = null;
   /** The frames the server has defined to this session, for one this store let go with its last row and a row names again. */
@@ -899,6 +912,7 @@ export class ClientSession {
     this.welcomed = new Promise((go) => (this.welcomedNow = go));
     for (let i = 0; i < HISTORY; i++) this.bodies.push(new Body());
     conn.onMessage = (channel, data) => this.receive(channel, data);
+    opts.held?.onSet(() => this.readWaiting());
     conn.onClose = () => {
       if (this.state !== "closed") {
         const was = this.state;
@@ -1022,7 +1036,7 @@ export class ClientSession {
     let dt = this.lastNow < 0 ? 0 : nowMs - this.lastNow;
     const frameMs = dt;
     this.lastNow = nowMs;
-    if (this.arrived && !this.staticKinds && this.staticsSeq === 0) this.staticsSeq = this.command(CMD_STATICS);
+    if ((this.arrived || this.opts.held) && !this.staticKinds && this.staticsSeq === 0) this.staticsSeq = this.command(CMD_STATICS);
     if (dt > 250) dt = 250;
     const ticks = (dt / 1000) * TICK_RATE;
     // The input clock keeps real time through a long frame, so the first input after it is on time. Margins told of
@@ -1601,11 +1615,13 @@ export class ClientSession {
         if (s.state === "active") s.snapshot(r);
       },
     });
-    messages.add({ kind: S_CHUNK, read: (s, r) => s.chunk(r) });
+    messages.add({ kind: S_CHUNK, read: (s, r) => s.chunkOrKeep(r) });
     messages.add({
       kind: S_CHUNK_DROP,
       read(s, r) {
-        s.park(r.u16());
+        const chunk = r.u16();
+        if (s.waitingRows.length > 0) s.waitingRows.push(chunk);
+        else s.park(chunk);
       },
     });
     messages.add({ kind: S_NODES, read: (s, r) => s.nodes(r) });
@@ -1636,7 +1652,7 @@ export class ClientSession {
         const code = r.u8();
         if (r.overflow) return;
         if (seq !== 0 && seq === s.staticsSeq) {
-          if (code === RESULT_OK) s.staticKinds = staticKinds(s.arrived!, s.registry);
+          if (code === RESULT_OK) s.staticKinds = staticKinds(s.opts.held ?? s.arrived!, s.registry);
           else if (code === RESULT_BUSY) s.staticsSeq = 0;
         }
         if (seq !== 0 && seq === s.haveSeq) s.unpark(code === RESULT_OK);
@@ -2391,6 +2407,8 @@ export class ClientSession {
     [this.parkedBytes, this.haveSeq, this.haveAt] = [0, 0, -1];
     this.staticKinds = fills && this.opts.statics ? staticKinds(this.opts.statics, reg) : null;
     this.staticsSeq = 0;
+    this.waitingRows.length = 0;
+    this.opts.held?.needed.clear();
     const far: FarSource = { cells: this.far, lists: this.gone, complete: (chunk) => this.whole[chunk] !== 0 };
     const field = this.nodeField;
     this.nodeChanges = field ? new NodeChanges(dims) : null;
@@ -2431,7 +2449,7 @@ export class ClientSession {
     const world = this.world, reg = this.registry;
     const city = world && !this.opts.city ? yield* CityStatics.steps(world.dims, statics, reg) : null;
     this.prediction.handed++;
-    if (whole) this.arrived = statics;
+    if (whole && this.arrived !== statics) [this.arrived, this.heldCity] = [statics, null];
     this.startCity(statics, true, world === this.world && reg === this.registry ? city : null);
   }
 
@@ -2440,8 +2458,9 @@ export class ClientSession {
    * hello): the server sends no far cells of a chunk still as the map placed it to a session that holds them.
    */
   private nodeCity(): CityStatics | null {
-    if (!this.staticKinds || !this.world) return null;
-    return (this.heldCity ??= new CityStatics(this.world.dims, (this.arrived ?? this.opts.statics)!, this.registry));
+    const statics = this.arrived ?? this.opts.statics;
+    if (!this.staticKinds || !this.world || !statics) return null;
+    return (this.heldCity ??= new CityStatics(this.world.dims, statics, this.registry));
   }
 
   /** The far city of `statics`, `made` where it is made already, where the world has none or, `again`, in place of the one it has. */
@@ -2745,10 +2764,80 @@ export class ClientSession {
    * has that kind's finish, material and full health in any form. 0 for a slot past the map's, or without the map's statics.
    */
   mapKind(chunk: number, slot: number): number {
-    const statics = this.staticKinds ? (this.arrived ?? this.opts.statics) : null;
-    if (!statics || chunk + 1 >= statics.first.length) return 0;
-    const at = statics.first[chunk]! + slot;
-    return at < statics.first[chunk + 1]! ? this.staticKinds![statics.kind[at]!]! : 0;
+    const rows = this.mapRows(chunk);
+    if (!rows) return 0;
+    const at = rows.from + slot;
+    return at < rows.to ? this.staticKinds![rows.kind[at]!]! : 0;
+  }
+
+  /** How many rows the map holds in `chunk`, where this client takes chunks from the map's statics; else 0. */
+  private mapCount(chunk: number): number {
+    if (!this.staticKinds) return 0;
+    const held = this.opts.held, whole = this.arrived ?? this.opts.statics;
+    if (held) return held.count(chunk);
+    return whole && chunk + 1 < whole.first.length ? whole.first[chunk + 1]! - whole.first[chunk]! : 0;
+  }
+
+  /**
+   * Where the map's rows of `chunk` are read, where this client takes chunks from the map's statics: from the sector held,
+   * or from the whole map's table. Null where they are not held.
+   */
+  private mapRows(chunk: number): MapRows | null {
+    if (!this.staticKinds) return null;
+    const held = this.opts.held;
+    if (held) return held.find(chunk);
+    const t = this.arrived ?? this.opts.statics;
+    if (!t || chunk + 1 >= t.first.length) return null;
+    const r = this.wholeRows;
+    [r.kind, r.yaw, r.x, r.y, r.z, r.from, r.to] = [t.kind, t.yaw, t.x, t.y, t.z, t.first[chunk]!, t.first[chunk + 1]!];
+    return r;
+  }
+
+  /**
+   * S_CHUNK. Held back, with every chunk message after it, where it takes slots from a sector of the map not yet held: they are
+   * read in order once it is (readWaiting). Rows sent for a chunk kept aside mean it comes whole, so that is let go at once.
+   */
+  private chunkOrKeep(r: BitReader): void {
+    if (!this.world) return;
+    const start = r.pos;
+    const chunk = r.u16();
+    if (this.waitingRows.length === 0) {
+      r.u32();
+      r.bool();
+      r.bits(16);
+      const filling = !r.overflow && chunk < this.world.structs.chunks.length && this.mapCount(chunk) > 0 && r.bool();
+      r.pos = start;
+      if (!filling || this.mapRows(chunk)) return this.chunk(r);
+    }
+    r.pos = start;
+    this.forget(chunk);
+    this.opts.held?.need(chunk);
+    this.waitingRows.push(r.rest());
+  }
+
+  /** Reads the chunk messages waiting, in order, up to the first that still takes slots from a sector not held. */
+  private readWaiting(): void {
+    const r = this.waitingReader;
+    while (this.waitingRows.length > 0 && this.world) {
+      const m = this.waitingRows[0]!;
+      if (typeof m === "number") {
+        this.waitingRows.shift();
+        this.park(m);
+        continue;
+      }
+      r.reset(m);
+      const chunk = r.u16();
+      r.u32();
+      r.bool();
+      r.bits(16);
+      if (!r.overflow && chunk < this.world.structs.chunks.length && this.mapCount(chunk) > 0 && r.bool() && !this.mapRows(chunk)) {
+        this.opts.held?.need(chunk);
+        return;
+      }
+      this.waitingRows.shift();
+      r.reset(m);
+      this.chunk(r);
+    }
   }
 
   /**
@@ -2840,14 +2929,15 @@ export class ClientSession {
     // Rows for a chunk kept aside were sent before the server heard it was kept: it comes whole.
     this.forget(chunk);
     const structs = world.structs;
-    const statics = this.staticKinds ? (this.arrived ?? this.opts.statics)! : null;
     const maxHp = this.registry.maxHp;
-    if (statics && statics.first[chunk + 1]! > statics.first[chunk]! && r.bool()) {
+    if (this.mapCount(chunk) > 0 && r.bool()) {
       // Slots the server has as the map has them, set down from this client's own copy of the map.
       const first = r.u16();
       const n = r.u16();
-      const at = statics.first[chunk]! + first;
-      if (r.overflow || at + n > statics.first[chunk + 1]!) return;
+      const statics = this.mapRows(chunk);
+      if (!statics) return;
+      const at = statics.from + first;
+      if (r.overflow || at + n > statics.to) return;
       for (let m = at; m < at + n; m++) {
         const kind = this.staticKinds![statics.kind[m]!]!;
         structs.put(chunk, m - at + first, kind, statics.x[m]!, statics.y[m]!, statics.z[m]!, statics.yaw[m]!, 0, maxHp[kind]!, version, PUT_FREE);

@@ -4,7 +4,8 @@ import { expect, test } from "bun:test";
 import type { ClientSession } from "../../client/core/session.ts";
 import { CHUNK_SIZE, chunkCx, chunkCz } from "../../shared/coords.ts";
 import { S_CHUNK } from "../../shared/net/protocol.ts";
-import { writeMap, type MapStatic } from "../../shared/world/mapfile.ts";
+import { HeldStatics } from "../../client/core/map-statics.ts";
+import { readHead, readPart, writeMap, type MapStatic, type StaticsPiece } from "../../shared/world/mapfile.ts";
 import { GONE_FELL, toldHealth, type StructureStore } from "../../shared/world/structures.ts";
 import { flatMap } from "../fixtures/map.ts";
 import { Harness } from "../fixtures/net.ts";
@@ -231,4 +232,33 @@ test("a client holding the map is sent no full row for a damaged map slot", () =
     }
   });
   expect([off, mixed! > header!]).toEqual([0, true]);
+});
+
+test("a page holding the map a sector at a time says so at once and keeps chunk messages until it comes", () => {
+  // The 7 by 7 chunks round the middle of a map 9 chunks wide each hold 64 crates; one is gone and one hurt.
+  const crates: MapStatic[] = [];
+  for (let cz = 1; cz <= 7; cz++) for (let cx = 1; cx <= 7; cx++) for (let k = 0; k < 64; k++) crates.push({ kind: "core:crate", x: cx * CHUNK_SIZE + 4 + (k % 8) * 8, y: 40, z: cz * CHUNK_SIZE + 4 + Math.floor(k / 8) * 8, yaw: 0 });
+  const file = writeMap(flatMap(9, { statics: crates }));
+  const h = new Harness({}, 1, 30, { map: file });
+  const structs = h.world.structs;
+  const middle = 4 * 9 + 4;
+  structs.remove(middle * 65536 + 10);
+  expect(structs.damage(middle * 65536 + 11, 5)).toBeGreaterThan(0);
+  const head = readHead(file);
+  const held = new HeldStatics(head);
+  const dana = h.join("dana", {}, { statics: false, held });
+  h.run(1000);
+  const c = h.client(dana)!;
+  const window = c.subscribed.filter((k) => structs.chunks[k] && c.known[k] === structs.chunks[k]!.version);
+  // The server is told at the first frame. Chunks sent before its answer come as rows; from it on they wait for the sector.
+  const waiting = window.filter((k) => (dana.world!.structs.chunks[k]?.live ?? 0) === 0 && structs.chunks[k]!.live > 0);
+  expect([c.statics, waiting.length > 0, waiting.length < window.length, [...held.needed].map((p) => p.name)]).toEqual([true, true, true, head.parts.filter((p) => p.kind === "statics").map((p) => p.name)]);
+  const part = held.parts[0]!;
+  const steps = held.set(part, readPart(head, part, file.subarray(part.at, part.at + part.length)) as StaticsPiece);
+  while (!steps.next().done);
+  expect([held.needed.size, differ(structs, dana.world!.structs, window)]).toEqual([0, 0]);
+  // From then on what changes comes as before.
+  structs.remove(middle * 65536 + 12);
+  h.run(500);
+  expect(differ(structs, dana.world!.structs, window)).toBe(0);
 });

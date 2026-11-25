@@ -15,6 +15,7 @@ import { nodeLayers } from "../../shared/world/mapfile.ts";
 import { App } from "../core/app.ts";
 import { fetchBytes, fetchContent, fetchJson, fetchSounds, fetchText, nextTask, withLandmarks } from "../core/fetched.ts";
 import { MapLoader } from "../core/mapload.ts";
+import { pageWant } from "../core/map-want.ts";
 import { loadIdentity } from "../core/identity.ts";
 import { PassClock } from "../core/passes.ts";
 import { giveSky, SKY_FILE } from "../core/render/sky.ts";
@@ -86,6 +87,7 @@ async function boot(): Promise<void> {
   const loading = fetchJson(fetch, "map.json").then((named) => MapLoader.start(fetch, (named as { head: string }).head, {
     say: (line) => showStage(loadingBar.value, line),
     wait: (ms) => new Promise((go) => setTimeout(go, ms)),
+    every: (ms) => new Promise((go) => setTimeout(go, ms)),
     pause: nextTask(new MessageChannel()),
   }));
   const manifestText = fetchText(fetch, "assets/manifest.json"), skyBytes = fetchBytes(fetch, SKY_FILE), content = fetchContent(fetch, __CONTENT_FILE__);
@@ -131,6 +133,7 @@ async function boot(): Promise<void> {
     cityMaker: new WorkerCityMaker(),
     tops: loader.staged.tops,
     buildings: loader.staged.buildings,
+    held: loader.held,
     tideEyes: head.tideEyes,
     orbs: head.orbs,
     ...(land ? { landmarks: land.landmarks } : {}),
@@ -393,12 +396,12 @@ async function boot(): Promise<void> {
       void fetch("__selfcheck", { method: "POST", body: JSON.stringify(report) });
     }
   };
-  // The first frame waits for the ground round the body; the rest comes while the game is played, nearest first. From then
-  // on the console says when the map comes slowly, and the statics are handed over round the body and then whole.
+  // The first frame waits for the ground round the body; what the page wants comes while the game is played, nearest
+  // first. From then on the console says when the map comes slowly, and the statics held are handed over as they change.
   await session.welcomed;
   if(launch && session.state==="closed"){showEntryProblem();return;}
   showStage(3);
-  await loader.follow(() => session.mapFocus, { say: (line) => app.ui.console.print(line), arriving: (statics, whole) => session.staticsSteps(statics, whole), held: () => session.behind });
+  await loader.follow(() => session.mapFocus, { say: (line) => app.ui.console.print(line), arriving: (statics) => session.staticsSteps(statics), want: () => pageWant(app), held: () => session.behind });
   showStage(4);
   // The interface takes the page's line from here.
   const view = new UiView(root, { text: (key, value) => app.textInput(key, value), pointer: (kind, key, x, y, button, finger) => app.pointer(kind, key, x, y, button, finger), typing: () => app.ui.typing });

@@ -1,5 +1,6 @@
 // A server and any number of clients in one process, on virtual time.
 
+import type { HeldStatics } from "../../client/core/map-statics.ts";
 import type { CityMaker } from "../../client/core/render/citymake.ts";
 import { ClientSession } from "../../client/core/session.ts";
 import type { GameOptions, GameServer } from "../../server/game.ts";
@@ -109,6 +110,8 @@ export interface JoinOptions {
   cityMaker?: CityMaker;
   /** The map's ground as this client holds it, the map's own by default: a page's comes a part at a time. */
   ground?: Heightfield;
+  /** The map's statics a sector at a time, as a page holds them (client/core/map-statics.ts). */
+  held?: HeldStatics;
 }
 
 export class Harness {
@@ -176,6 +179,7 @@ export class Harness {
       nodes: (hf, reg) => mapNodes(this.map, hf, reg),
       ...(this.map.orbs ? { orbs: this.map.orbs } : {}),
       ...(opts.statics === false ? {} : { statics: this.map.statics, ...(this.map.buildings ? { buildings: this.map.buildings } : {}) }),
+      ...(opts.held ? { held: opts.held } : {}),
       ...(this.map.content ? { landmarks: this.map.content.landmarks } : {}),
       ...(opts.cityMaker ? { cityMaker: opts.cityMaker } : {}),
     });

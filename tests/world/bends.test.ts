@@ -9,7 +9,7 @@ import { BEND_SHORTS, HIT_PREFIX, MODEL_HALF, arcLength, bendVertex, curveAt, pa
 import { CityStatics } from "../../shared/world/city.ts";
 import { MapStatics, bendOf, blankStatics, parseMap, readHead, readPart, setStatics, squareOf, writeMap, type MapData, type MapStatic, type StaticsPiece } from "../../shared/world/mapfile.ts";
 import { StaticVehicleWorld } from "../../shared/world/vehicle.ts";
-import { rowsOf as nearRows } from "../../client/core/mapload.ts";
+import { HeldStatics } from "../../client/core/map-statics.ts";
 import { flatMap } from "../fixtures/map.ts";
 import { coreRegistry, flatWorld } from "../fixtures/world.ts";
 
@@ -177,24 +177,26 @@ test("a map holds its bent pieces' bends, by chunk and slot, read whole and read
   for (const [c, b] of back.bends) for (let k = 0; k < b.slot.length; k++) expect(bendOf(t.bends.get(c), b.slot[k]!)).toEqual(b.bend.subarray(k * 8, k * 8 + 8));
   // Every bent piece's chunk is where its chord's middle is.
   for (const [c] of back.bends) expect(c).toBeLessThan((map.dims.chunksX * map.dims.chunksZ * CHUNK_SIZE) / CHUNK_SIZE);
-  // The statics round the body a page hands over before the whole map's name the table they were copied from, which the
-  // near store draws a bent piece by, so that a city made of them draws its kerbs: without that a whole city drew no kerb
-  // until every part had come, and then none in a sector come after those round the body (mapload.test.ts).
+  // A page holds a sector at a time (map-statics.ts): the table of those it holds keeps their bends, which the near store
+  // draws a bent piece by, so that a city made of it draws its kerbs and none of a sector not held.
   const head = readHead(file), sectors = head.parts.filter((p) => p.kind === "statics");
   // The sector of the first chunk with bends, alone.
   const first = [...t.bends.keys()][0]!, [cx, cz] = [first % map.dims.chunksX, Math.floor(first / map.dims.chunksX)];
-  const one = sectors.filter((p) => {
+  const one = sectors.find((p) => {
     const sq = squareOf(head.dims, SECTOR_CHUNKS, p.col, p.row)!;
     return sq.cx0 <= cx && cx < sq.cx1 && sq.cz0 <= cz && cz < sq.cz1;
-  });
-  const steps = nearRows(head, t, one);
+  })!;
+  const held = new HeldStatics(head);
+  const set = held.set(one, readPart(head, one, file.subarray(one.at, one.at + one.length)) as StaticsPiece);
+  while (!set.next().done);
+  const steps = held.table();
   let s = steps.next();
   while (!s.done) s = steps.next();
   const near = s.value, city = new CityStatics(map.dims, near, coreRegistry());
-  expect([near.coming === t, city.bent === t, new CityStatics(map.dims, t, coreRegistry()).bent === t]).toEqual([true, true, true]);
-  const kept = [...t.bends.keys()].filter((c) => near.first[c + 1]! > near.first[c]!);
-  expect(kept.length).toBeGreaterThan(0);
-  expect(kept.length).toBeLessThan(t.bends.size);
+  expect(city.bent).toBe(near);
+  const kept = [...near.bends.keys()];
+  expect([kept.length > 0, kept.length < t.bends.size, kept.every((c) => near.first[c + 1]! > near.first[c]!)]).toEqual([true, true, true]);
+  for (const c of kept) expect(near.bends.get(c)).toEqual(t.bends.get(c)!);
 });
 
 test("a map stores no collision piece of a bent one but makes them where it is read: the same boxes, read whole or a sector at a time", () => {
