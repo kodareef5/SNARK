@@ -293,6 +293,40 @@ test("a file that is no database is a plain reason", () => {
   expect(planCrossChat("{ nope", opts(perms)).ok).toBe(false);
 });
 
+test("a database SQLite finds damaged is refused, not half read", () => {
+  const bytes = new Uint8Array(arkApiFile());
+  const whole = Database.deserialize(bytes, true);
+  // An index no read of ours walks: only a check of the whole file finds it broken.
+  const page = (whole.query("SELECT rootpage FROM sqlite_master WHERE name = 'sqlite_autoindex_Tribes_1'").get() as { rootpage: number }).rootpage;
+  const size = (whole.query("PRAGMA page_size").get() as { page_size: number }).page_size;
+  whole.close();
+  bytes.fill(0xff, (page - 1) * size, page * size);
+  const planned = planArkApi(bytes, opts(fresh()));
+  expect(planned.ok).toBe(false);
+  if (!planned.ok) expect(planned.reason).toContain("damaged");
+});
+
+test("a view called Groups is not read as the plugin's table", () => {
+  const db = new Database(":memory:");
+  db.exec("CREATE TABLE Hidden (GroupName TEXT, Permissions TEXT); INSERT INTO Hidden VALUES ('Sneak', '*,'); CREATE VIEW Groups AS SELECT GroupName, Permissions FROM Hidden;");
+  const planned = planArkApi(db.serialize(), opts(fresh()));
+  db.close();
+  expect(planned.ok).toBe(false);
+  if (!planned.ok) expect(planned.reason).toContain("no Groups table");
+});
+
+test("a value that is not text is no group and no permission", () => {
+  const db = new Database(":memory:");
+  db.exec("CREATE TABLE Groups (Id INTEGER PRIMARY KEY, GroupName, Permissions); CREATE TABLE Players (Id INTEGER PRIMARY KEY, SteamId, Groups, TimedGroups);");
+  db.query("INSERT INTO Groups (GroupName, Permissions) VALUES (?, ?)").run(new Uint8Array([1, 2, 3]), "Build.Fast,");
+  db.query("INSERT INTO Groups (GroupName, Permissions) VALUES (?, ?)").run("Vip", new Uint8Array([4, 5]));
+  db.query("INSERT INTO Groups (GroupName, Permissions) VALUES (?, ?)").run(null, null);
+  db.query("INSERT INTO Players (SteamId, Groups, TimedGroups) VALUES (?, ?, ?)").run(1, new Uint8Array([6]), null);
+  const plan = planOf(planArkApi(db.serialize(), opts(fresh())));
+  db.close();
+  expect(plan.ops).toEqual([{ op: "addGroup", group: "Vip" }]);
+});
+
 test("the MySQL table names are read too", () => {
   const db = new Database(":memory:");
   db.exec("CREATE TABLE PermissionGroups (Id INTEGER PRIMARY KEY, GroupName TEXT, Permissions TEXT); CREATE TABLE TribePermissions (Id INTEGER PRIMARY KEY, TribeId INTEGER, Groups TEXT, TimedGroups TEXT);");
