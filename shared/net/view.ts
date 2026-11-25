@@ -563,6 +563,8 @@ const K_STALE = 5;
 const K_SKIP = 6;
 /** Unchanged from the baseline, and listed in what the client was told. */
 const K_HOLD = 7;
+/** In the baseline, left out of the view by a cap and marked `spare`: kept as the client has it while there is room. */
+const K_SPARE = 8;
 const NONE = 0xffffffff;
 
 function varintBits(v: number): number {
@@ -644,8 +646,12 @@ function everything(ring: ViewRing<SentView>, told: Told, tick: number): void {
  * `ring` is the client's ring, which `next` was allocated from. With it the client is taken to show each body as it was
  * last told of, and is told again of any it may show otherwise until it acknowledges a snapshot that settles it. The
  * snapshot counts as sent unless `w` has overflowed by the time this returns. One that is not sent is as one lost on the way.
+ *
+ * `spare` says of a body in the baseline and not in what is sent whether a cap left it out. Such a body is left as the
+ * client has it, as a deferred update is, while the view has room under `limit`, so that a cap's choice moving does not
+ * take many away at once while the creates in their place wait on the budget.
  */
-export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentView, next: SentView, budgetBits: number, rotate: number, looks: Looks, skip = -1, rank: Uint16Array | null = null, limit = MAX_VIEW, ring: ViewRing<SentView> | null = null): number {
+export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentView, next: SentView, budgetBits: number, rotate: number, looks: Looks, skip = -1, rank: Uint16Array | null = null, limit = MAX_VIEW, ring: ViewRing<SentView> | null = null, spare: ((id: number, gen: number) => boolean) | null = null): number {
   const nb = base ? base.count : 0;
   const nc = cur.count;
   const tick = next.tick;
@@ -663,6 +669,7 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
   let urgent = 0;
   let urgentBits = 0;
   let written = 0;
+  let spares = 0;
   /** One more than the id of the last op, for the size of the next op's id gap. A deferred op between two makes the real gap larger. */
   let last = 0;
   let tid = nt > 0 ? told!.id[order![0]!]! : NONE;
@@ -707,8 +714,13 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
       opDied[n] = looks.died !== undefined && looks.died[bid] === base!.gen[i] ? 1 : 0;
       opBase[n] = i++;
       opId[n] = bid;
-      written++;
-      last = bid + 1;
+      if (spare !== null && opDied[n] === 0 && (th < 0 || told!.gone[th] === 0) && spare(bid, base!.gen[i - 1]!)) {
+        opKind[n] = K_SPARE;
+        spares++;
+      } else {
+        written++;
+        last = bid + 1;
+      }
     } else if (cid < bid) {
       opKind[n] = K_CREATE;
       opCur[n] = j;
@@ -808,6 +820,26 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
       written += admitted;
     }
     rotate = urgentFrom * 4096 + othersFrom;
+  }
+  if (spares > 0) {
+    // Spares fill what the rest leave of the limit, the own body one of it, lowest id first. The others are taken away. A
+    // body told of and deferred now may still show, so it counts.
+    let room = limit - (skip >= 0 ? 1 : 0);
+    for (let k = 0; k < n; k++) {
+      const kind = opKind[k]!;
+      if (kind === K_KEEP || kind === K_HOLD || kind === K_UPDATE || kind === K_CREATE || kind === K_REPLACE || kind === K_STALE) room--;
+      else if (kind === K_SKIP && opTold[k]! >= 0 && told!.gone[opTold[k]!] === 0) room--;
+    }
+    for (let k = 0; k < n; k++) {
+      if (opKind[k] !== K_SPARE) continue;
+      if (room > 0) {
+        opKind[k] = K_STALE;
+        room--;
+      } else {
+        opKind[k] = K_REMOVE;
+        written++;
+      }
+    }
   }
 
   w.varint(written);
