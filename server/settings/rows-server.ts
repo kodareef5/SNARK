@@ -6,6 +6,7 @@ import { GONE_RADIUS } from "../../shared/world/gone.ts";
 import { FAR_RADIUS } from "../../shared/world/tactical.ts";
 import { ASPHALT, GRAVEL, MUD, OFFROAD, PAVING, SAND } from "../../shared/world/vehicle-surface.ts";
 import { Sheet, live, none, plan, type Row } from "./row.ts";
+import { JET_ARMS, JET_SPECIES, JET_VEHICLE } from "../../content/vehicles/jet.ts";
 
 export const SERVER_ROWS: Row[] = [];
 
@@ -348,6 +349,30 @@ new Sheet(SERVER_ROWS, "snark", "Vehicles")
   .f("SurfaceGripSand", SAND.grip, "Grip a wheel finds on sand: beaches and dunes.", grip)
   .f("SurfaceGripMud", MUD.grip, "Grip a wheel finds on mud: marsh, pools, fords, and road pieces of mud.", grip)
   .f("FoundBoatReturnDays", 3, "Days of the game's clock after a berth where the map moors a vessel has lost it, sunk or sailed off, before another of its kind is moored there, owned by nobody, its condition and fuel rolled again. One comes as a car does, and only while the berth still has water enough under its keel. 0 brings none back.", live({ live: true, max: 365, note: "Ours. ARK's rafts and boats are only built. Its own setting, so the yachts can be made rarer than the cars." }));
+
+// The jet's numbers, each the content's where left alone (content/vehicles/jet.ts). A change is made at once, to the jet
+// in the air and to every client's prediction of it (shared/content/tuning.ts, vehicles).
+const jetSpec = JET_VEHICLE.spec, cannon = JET_VEHICLE.weapons!.cannon!, missiles = JET_VEHICLE.weapons!.missiles!;
+const jetItem = (id: string) => JET_ARMS.find((d) => d.id === id)!;
+const roundDamage = (jetItem(cannon.ammo) as { ammo: { damage: number } }).ammo.damage;
+const missileAmmo = (jetItem(missiles.ammo) as { ammo: { damage: number; blast: number } }).ammo;
+const jetRow = (min: number, max: number, note = "") => live({ live: true, public: true, min, max, note: `Ours. ARK has no jets.${note}` });
+new Sheet(SERVER_ROWS, "snark", "Jet")
+  .f("JetHealth", JET_SPECIES.stats!.health![0], "The jet's health.", jetRow(1, 1e7))
+  .f("JetCruiseSpeed", jetSpec.cruiseSpeed, "Metres a second the jet flies at on full military thrust. Kept below its top speed and above its stall.", jetRow(1, 180, " Clamped between the stall and the top speed."))
+  .f("JetTopSpeed", jetSpec.topSpeed, "Metres a second the jet flies at on its burner (Shift), 180 at the most.", jetRow(60, 180, " The faster it flies, the further back a shot at it is judged."))
+  .f("JetStallSpeed", jetSpec.stallSpeed, "Metres a second under which the jet's wings stop holding it up; VTOL holds it below 40.", jetRow(1, 180))
+  .f("JetGLimit", jetSpec.gLimit, "The most g the jet pulls in a turn: higher turns tighter.", jetRow(1, 12))
+  .i("JetCannonRounds", cannon.rounds, "Rounds in the jet's cannon drum, filled again at a vehicle bench.", jetRow(1, 65535))
+  .f("JetCannonDamage", roundDamage, "Damage of one cannon round.", jetRow(0, 100000))
+  .f("JetCannonInterval", cannon.interval, "Seconds between the cannon's rounds: 0.1 is ten a second.", jetRow(0.02, 10))
+  .i("JetMissiles", missiles.count, "Missiles on the jet's rails, filled again at a vehicle bench.", jetRow(1, 255))
+  .f("JetMissileDamage", missileAmmo.damage, "Damage of a missile's blast at its middle.", jetRow(0, 100000))
+  .f("JetMissileBlast", missileAmmo.blast, "Metres a missile's blast reaches.", jetRow(0.5, 60))
+  .f("JetMissileLockSeconds", missiles.lock, "Seconds a target must stay in the jet's sights, right mouse held, before a missile locks it.", jetRow(0.1, 30))
+  .f("JetMissileRange", missiles.range, "Metres out a missile may lock a target.", jetRow(50, 3000))
+  .f("JetMissileSpeed", missiles.speed, "Metres a second a missile flies.", jetRow(20, 400))
+  .f("JetMissileReloadSeconds", missiles.reload, "Seconds between one missile's launch and the next one's being ready.", jetRow(0.1, 3600));
 
 new Sheet(SERVER_ROWS, "snark", "City")
   .b("AllowCityDamage", true, "The map's buildings break: a piece is worn, breached in the half that was hit, opened, and falls to a heap or to nothing; tools, bullets, fire and ramming harm what its material takes. Off, only explosives harm a piece of the map, heaps included, and one out of health is gone at once: none takes a broken form, none leaves a heap, and nothing is rammed through or mined. What already stands broken stays as it is.", live({ live: true, public: true, note: "Ours. ARK's maps do not break." }))

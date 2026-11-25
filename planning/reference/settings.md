@@ -5,7 +5,7 @@ edit it by hand: change the catalogue and run the tool.
 
 A server is configured as ARK's is ([how](round5-settings.md), and [what the
 values mean](round5-game-ini.md)). Every setting an ARK dedicated server reads
-is listed here, 604 of them: 239 take effect,
+is listed here, 619 of them: 254 take effect,
 175 wait for a feature that is not built yet, and 190 have no meaning in this
 engine. A setting that does not take effect is still read, checked and
 reported when the server starts.
@@ -185,6 +185,21 @@ the admin's settings page may change a setting without a restart.
 | `SurfaceGripSand` | 2.6 | Grip a wheel finds on sand: beaches and dunes. *Ours. ARK has no cars.* | yes |
 | `SurfaceGripMud` | 1.8 | Grip a wheel finds on mud: marsh, pools, fords, and road pieces of mud. *Ours. ARK has no cars.* | yes |
 | `FoundBoatReturnDays` | 3 | Days of the game's clock after a berth where the map moors a vessel has lost it, sunk or sailed off, before another of its kind is moored there, owned by nobody, its condition and fuel rolled again. One comes as a car does, and only while the berth still has water enough under its keel. 0 brings none back. *Ours. ARK's rafts and boats are only built. Its own setting, so the yachts can be made rarer than the cars.* | yes |
+| `JetHealth` | 2400 | The jet's health. *Ours. ARK has no jets.* | yes |
+| `JetCruiseSpeed` | 120 | Metres a second the jet flies at on full military thrust. Kept below its top speed and above its stall. *Ours. ARK has no jets. Clamped between the stall and the top speed.* | yes |
+| `JetTopSpeed` | 160 | Metres a second the jet flies at on its burner (Shift), 180 at the most. *Ours. ARK has no jets. The faster it flies, the further back a shot at it is judged.* | yes |
+| `JetStallSpeed` | 46 | Metres a second under which the jet's wings stop holding it up; VTOL holds it below 40. *Ours. ARK has no jets.* | yes |
+| `JetGLimit` | 9 | The most g the jet pulls in a turn: higher turns tighter. *Ours. ARK has no jets.* | yes |
+| `JetCannonRounds` | 220 | Rounds in the jet's cannon drum, filled again at a vehicle bench. *Ours. ARK has no jets.* | yes |
+| `JetCannonDamage` | 60 | Damage of one cannon round. *Ours. ARK has no jets.* | yes |
+| `JetCannonInterval` | 0.1 | Seconds between the cannon's rounds: 0.1 is ten a second. *Ours. ARK has no jets.* | yes |
+| `JetMissiles` | 6 | Missiles on the jet's rails, filled again at a vehicle bench. *Ours. ARK has no jets.* | yes |
+| `JetMissileDamage` | 2400 | Damage of a missile's blast at its middle. *Ours. ARK has no jets.* | yes |
+| `JetMissileBlast` | 10 | Metres a missile's blast reaches. *Ours. ARK has no jets.* | yes |
+| `JetMissileLockSeconds` | 1.5 | Seconds a target must stay in the jet's sights, right mouse held, before a missile locks it. *Ours. ARK has no jets.* | yes |
+| `JetMissileRange` | 1800 | Metres out a missile may lock a target. *Ours. ARK has no jets.* | yes |
+| `JetMissileSpeed` | 240 | Metres a second a missile flies. *Ours. ARK has no jets.* | yes |
+| `JetMissileReloadSeconds` | 1.5 | Seconds between one missile's launch and the next one's being ready. *Ours. ARK has no jets.* | yes |
 | `AllowCityDamage` | True | The map's buildings break: a piece is worn, breached in the half that was hit, opened, and falls to a heap or to nothing; tools, bullets, fire and ramming harm what its material takes. Off, only explosives harm a piece of the map, heaps included, and one out of health is gone at once: none takes a broken form, none leaves a heap, and nothing is rammed through or mined. What already stands broken stays as it is. *Ours. ARK's maps do not break.* | yes |
 | `CityResistanceMultiplier` | 1 | How much the map's pieces stand. Higher takes more: at 2 every hit on one does half, and ramming through one takes twice the energy. *Ours. It divides, where StructureResistanceMultiplier multiplies; both apply to a piece of the map.* | yes |
 | `CityRamming` | True | A car that hits a piece of the map with its material's energy for one half breaks through that half, panes first, and loses that energy. Concrete that holds a building up is never rammed through. *Ours. Creatures do not ram.* | yes |
