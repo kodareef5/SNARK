@@ -1595,6 +1595,10 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     const subject = subjectOf(c);
     return subject ? { rank: permissions.rankOf(subject), every: permissions.has(subject, "*") } : NO_GROUPS;
   };
+  creative.granted = (c, command) => {
+    const subject = subjectOf(c);
+    return subject !== null && permissions.mayRun(subject, command);
+  };
   /** Every live session's standing, worked out again after groups changed. A sign-in by a password since replaced or cleared ends. */
   const restand = (): void => {
     const gone = permissions.takeGone();

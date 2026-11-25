@@ -70,6 +70,8 @@ export class Creative {
   private readonly buffs: Buffs;
   /** What a session's groups give it, as the host reads them from its permissions. */
   groups: (c: Client) => GroupStanding = () => NO_GROUPS;
+  /** Whether a session's groups let it run console command `command` without every cheat. */
+  granted: (c: Client, command: string) => boolean = () => false;
 
   constructor(world: ServerWorld, game: GameServer, rules: Rules, bus: Bus, acts: Acts, records: Records, buffs: Buffs) {
     this.world = world;
@@ -98,33 +100,39 @@ export class Creative {
   /**
    * Works out what a connection stands at from the three things that give it anything: CreativeForAll (every cheat at staff
    * rank), the host password it gave, and its survivor's groups. Its rank is the highest, and it has every cheat if any
-   * gives them. Losing them takes what they gave that would outlast them.
+   * gives them. Without every cheat, what a cheat left running ends unless its groups still let it run that cheat.
    */
   stand(c: Client): void {
     const all = this.forAll;
     const groups = this.groups(c);
     const rank = Math.max(all ? RANK_STAFF : RANK_OPEN, c.passwordRank, groups.rank);
     const full = all || c.passwordCheats || groups.every;
-    if (rank === c.rank && full === c.admin) return;
-    const gained = full && !c.admin;
-    const lost = c.admin && !full;
-    c.rank = rank;
-    c.admin = full;
-    c.ownDirty = true;
-    if (gained) this.bus.after(SESSION_ADMIN, { pid: c.pid });
-    if (lost) this.uncheat(c);
+    if (rank !== c.rank || full !== c.admin) {
+      const gained = full && !c.admin;
+      c.rank = rank;
+      c.admin = full;
+      c.ownDirty = true;
+      if (gained) this.bus.after(SESSION_ADMIN, { pid: c.pid });
+    }
+    if (!full) this.uncheat(c);
   }
 
-  /** God mode, flight or ghost, a creature it possesses, and spectating where only admins may. */
+  /**
+   * Ends what a cheat left running that the session may no longer run, as the command that undoes it would: a creature it
+   * possesses, ghost or flight, god mode, and spectating where only admins may. Each is looked at before the permission.
+   */
   private uncheat(c: Client): void {
     const ents = this.world.ents;
-    if (c.ent >= 0 && c.drive >= 0 && ents.seat[c.ent] === 0) this.game.release(c);
-    if (c.ent >= 0 && (ents.mode[c.ent] === MODE_GHOST || ents.mode[c.ent] === MODE_FLY)) {
-      ents.mode[c.ent] = MODE_WALK;
-      ents.vx[c.ent] = ents.vy[c.ent] = ents.vz[c.ent] = 0;
+    const e = c.ent;
+    if (e >= 0 && c.drive >= 0 && ents.seat[e] === 0 && !this.granted(c, "possess")) this.game.release(c);
+    if (e >= 0 && ((ents.mode[e] === MODE_GHOST && !this.granted(c, "ghost")) || (ents.mode[e] === MODE_FLY && !this.granted(c, "fly")))) {
+      ents.mode[e] = MODE_WALK;
+      ents.vx[e] = ents.vy[e] = ents.vz[e] = 0;
     }
     const rec = this.records.byPid.get(c.pid);
-    if (rec) this.buffs.take(rec, this.world.reg.index.get("core:god")!);
+    const god = this.world.reg.index.get("core:god")!;
+    // God mode is a buff, so `buff god` gives it too.
+    if (rec && this.buffs.has(rec, god) && !this.granted(c, "god") && !this.granted(c, "buff")) this.buffs.take(rec, god);
     if (c.state === SESSION_SPECTATING && this.game.opts.spectators === "admin") this.game.sessions.setSpectating(c, false);
   }
 
