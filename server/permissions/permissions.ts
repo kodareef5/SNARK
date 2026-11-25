@@ -19,6 +19,7 @@ import {
   type RuleLook,
   type TagChoice,
 } from "../../shared/permissions/model.ts";
+import { Retired } from "./secrets.ts";
 import type { PermissionStore } from "./store.ts";
 
 /** How often `poll` looks at the file. */
@@ -92,6 +93,9 @@ export class Permissions {
   private readonly groupsByName = new Map<string, Held>();
   private readonly members = new Map<string, Member[]>();
   private readonly secrets = new Map<string, string>();
+  private readonly retiredHashes = new Retired();
+  /** Survivors whose password was replaced or cleared since `takeGone` was last called. */
+  private readonly gone = new Set<string>();
   private readonly documents = new Map<string, Document>();
   private readonly tags = new Map<string, Map<string, TagChoice>>();
   private readonly wanted = new Map<string, Wanted>();
@@ -175,6 +179,23 @@ export class Permissions {
     return this.secrets.get(id) ?? "";
   }
 
+  /** Whether any survivor has a password. */
+  anySecret(): boolean {
+    return this.secrets.size > 0;
+  }
+
+  /** Whether a hash is of a password replaced or cleared within the last day, here or on another world. */
+  retired(hash: string): boolean {
+    return this.retiredHashes.has(hash, this.now());
+  }
+
+  /** The survivors whose password was replaced or cleared since the last call, whose sign-ins no longer hold. */
+  takeGone(): string[] {
+    const ids = [...this.gone];
+    this.gone.clear();
+    return ids;
+  }
+
   group(name: string): Group | undefined {
     return this.groupsByName.get(name.toLowerCase())?.group;
   }
@@ -223,9 +244,11 @@ export class Permissions {
   /** Makes one change if the edit rule lets `actor` make it. Answers "" or the reason it was not made. */
   apply(actor: PermissionActor, op: PermissionOp): string {
     let reason = "";
+    let was = "";
     try {
       this.store.transaction(() => {
         if (this.store.revision() !== this.revision) this.load(this.store.read());
+        was = op?.op === "setSecret" || op?.op === "clearSecret" ? this.secretOf(op.id) : "";
         reason = editRule(actor, op, this.look) || this.change(actor, op);
         if (reason) return;
         const now = this.now();
@@ -238,6 +261,7 @@ export class Permissions {
       return "The permissions could not be written.";
     }
     if (reason) return reason;
+    if (was !== "" && "id" in op) this.retire(op.id, was);
     this.stampSeen = this.store.stamp();
     this.nextEdge = this.edgeAfter(this.now());
     this.version++;
@@ -377,8 +401,14 @@ export class Permissions {
     return true;
   }
 
+  private retire(id: string, hash: string): void {
+    this.retiredHashes.add(hash, this.now());
+    this.gone.add(id);
+  }
+
   private load(snap: PermissionSnapshot): void {
     const now = this.now();
+    const before = new Map(this.secrets);
     this.revision = snap.revision;
     this.groupsByName.clear();
     for (const g of snap.groups) this.groupsByName.set(g.name.toLowerCase(), heldOf(g));
@@ -394,6 +424,7 @@ export class Permissions {
     }
     this.secrets.clear();
     for (const s of snap.secrets) this.secrets.set(s.id, s.hash);
+    for (const [id, hash] of before) if (this.secrets.get(id) !== hash) this.retire(id, hash);
     this.documents.clear();
     for (const d of snap.documents) this.documents.set(d.name.toLowerCase(), d);
     this.tags.clear();

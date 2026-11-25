@@ -34,6 +34,7 @@ import { ScreenFeed, screenWorld } from "./video/screens.ts";
 import { boardOwners, soundBoard } from "./sound-board.ts";
 import { TitleScenes } from "./admin/title-scenes.ts";
 import { actorOf, adminAsked, type AdminGate } from "./admin/gate.ts";
+import { staffPasswords } from "./permissions/secrets.ts";
 import { PAGE_ACTOR, type Actor } from "./acts.ts";
 import { adminSite, oldAdminPage } from "./admin/site.ts";
 import { TickMeter } from "./admin/meter.ts";
@@ -397,7 +398,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
     // A copy, so the request's own actor counts as having logged nothing yet (pageChange).
     host.acts.write({ ...by }, "opened the admin pages", "sign-in");
   };
-  const board: AdminGate = { dev: opts.dev ?? false, password: host.adminPassword, cluster: host.clusterPassword, guesses: host.game.sessions.cheatGuesses, tick: () => host.world.tick, world: host.cluster?.world, passed: signedIn };
+  const board: AdminGate = { dev: opts.dev ?? false, password: host.adminPassword, cluster: host.clusterPassword, guesses: host.game.sessions.cheatGuesses, tick: () => host.world.tick, world: host.cluster?.world, passed: signedIn, staff: staffPasswords(host) };
   /** An admin page's change whose handler logged nothing, as the cast's, the screens' and the scene studio's, is logged by its method and path. */
   const pageChange = <T extends Response | Promise<Response> | null>(req: Request, path: string, answer: T): T => {
     if (answer === null || req.method === "GET" || req.method === "HEAD") return answer;

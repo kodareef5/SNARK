@@ -64,6 +64,7 @@ import { PermissionStore } from "./permissions/store.ts";
 import { Permissions, type PermissionSubject } from "./permissions/permissions.ts";
 import { memberWorld, type PermissionOp } from "../shared/permissions/model.ts";
 import { changeWords } from "../shared/permissions/commands.ts";
+import { makePassword, passwordHash } from "./permissions/secrets.ts";
 import { DeadlineHeap } from "../shared/sim/schedule.ts";
 import { Buffs } from "./buffs.ts";
 import { CityCollapse } from "./city-collapse.ts";
@@ -333,6 +334,10 @@ export interface Host {
   readonly permissions: Permissions;
   /** Makes one permission change as `by`: the one way commands, pages and modules change them. Answers "" or why not. */
   changePermissions(by: Actor, op: PermissionOp): string;
+  /** Makes survivor `id` a new password as `by`, replacing any it had. The password is in the answer and nowhere else. */
+  issuePassword(by: Actor, id: string): { readonly why: string; readonly password: string };
+  /** Takes survivor `id`'s password away as `by`. Answers "" or why not. */
+  clearPassword(by: Actor, id: string): string;
   /** A session as its groups know it, or null before it has a survivor with an ID. */
   subjectOf(c: Client): PermissionSubject | null;
   readonly loaded: LoadReport | null;
@@ -1561,9 +1566,14 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     const subject = subjectOf(c);
     return subject ? { rank: permissions.rankOf(subject), every: permissions.has(subject, "*") } : NO_GROUPS;
   };
-  /** Every live session's standing, worked out again after groups changed. */
+  /** Every live session's standing, worked out again after groups changed. A sign-in by a password since replaced or cleared ends. */
   const restand = (): void => {
-    for (const c of game.clients) if (c?.active) creative.stand(c);
+    const gone = permissions.takeGone();
+    for (const c of game.clients) {
+      if (!c?.active) continue;
+      if (c.signed && gone.length > 0 && gone.includes(subjectOf(c)?.id ?? "")) c.signed = false;
+      creative.stand(c);
+    }
   };
   const changePermissions = (by: Actor, op: PermissionOp): string => {
     const actor = { rank: by.rank, name: by.name, world: permissions.world };
@@ -1577,6 +1587,11 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     bus.after(PERM_CHANGED, { account: "key" in op ? op.key : "id" in op ? op.id : "", group });
     restand();
     return "";
+  };
+  const issuePassword = (by: Actor, id: string): { why: string; password: string } => {
+    const password = makePassword();
+    const why = changePermissions(by, { op: "setSecret", id, hash: passwordHash(password) });
+    return { why, password: why === "" ? password : "" };
   };
   // A tribe's groups are its members'.
   tribes.onTeam = (rec) => {
@@ -2208,6 +2223,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     acts,
     permissions,
     changePermissions,
+    issuePassword,
+    clearPassword: (by, id) => changePermissions(by, { op: "clearSecret", id }),
     subjectOf,
     loaded,
     console: con,

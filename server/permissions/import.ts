@@ -292,6 +292,7 @@ export function planCommands(source: string, opts: ImportOptions): Planned {
     }
     const req = read.request;
     if (req.type === "list") listings++;
+    else if (req.type === "password") draft.note(`Line ${i + 1}: a password is not imported, so it was skipped.`);
     else if (req.type === "member") {
       if (req.change.op === "addMember") draft.leaveBehind(req.change.group, req.who.kind, req.change.hours !== undefined);
       else removals++;

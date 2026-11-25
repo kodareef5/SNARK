@@ -72,6 +72,7 @@ function permissionsCommand(ctx: CommandContext, name: string, args: string[]): 
   const req = read.request;
   if (req.type === "list") return listing(host, req.listing, host.permissions.now());
   const actor = actorOf(ctx);
+  if (req.type === "password") return passwordCommand(ctx, req.who, req.clear);
   if (req.type === "change") {
     const why = host.changePermissions(actor, req.op);
     if (why !== "") return why;
@@ -101,6 +102,18 @@ function permissionsCommand(ctx: CommandContext, name: string, args: string[]): 
   const done = `${found.label} is in ${group.name}${time}${world !== 0 && memberWorld({ ...actor, world }, group.rank, req.everyWorld ? 0 : world) === 0 ? " on every map" : ""}`;
   if (group.rank < RANK_STAFF) return done;
   return `${done}. It counts once they sign in with their own password, which is issued on the admin pages or at the server's terminal.`;
+}
+
+/** Issues or clears a survivor's own password. The password is written past the server's log, which sessions with cheats read. */
+function passwordCommand(ctx: CommandContext, who: Who, clear: boolean): string {
+  const found = find(ctx.host, who);
+  if (typeof found === "string") return found;
+  if (clear) return ctx.host.clearPassword(actorOf(ctx), found.key) || `${found.label} has no password now`;
+  if (ctx.client !== null || ctx.actor !== undefined) return "A password is issued on the admin pages or at the server's terminal.";
+  const issued = ctx.host.issuePassword(actorOf(ctx), found.key);
+  if (issued.why !== "") return issued.why;
+  process.stdout.write(`The password of ${found.label}, shown this once: ${issued.password}\n`);
+  return `issued a password to ${found.label}; the terminal shows it this once`;
 }
 
 /** A line's words as one would type them again: a word with a space in it is quoted. */
