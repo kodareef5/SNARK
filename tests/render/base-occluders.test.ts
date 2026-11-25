@@ -361,3 +361,32 @@ for (const [seed, tier, trims] of [[1, "lowpoly", false], [2, "medium", false], 
     expect([frames, withPlates > 50, saved > 20, hidden > 300, near > 2], `${withPlates} with plates, ${saved} drew less, ${hidden} hidden, ${near} near`).toEqual([80, true, true, true, true]);
   });
 }
+
+// Metal's new forms (large_wall, half_wall, quarter_wall): the walls among them that close an edge are as opaque as
+// its wall, so a plate could stand in each. BasePlates gives none yet: it names a full wall a storey high on one edge.
+
+import { PLANNED_FORMS } from "../../content/building/forms.ts";
+
+test("metal's large wall and low walls are closed about their middle at every level, beside a wall and under and over one", () => {
+  const meshes = new Map(bakeMetal({ ...FORMS, ...PLANNED_FORMS }).map((m) => [m.id.slice(5, -6), m] as const));
+  const rng = new Rng(17);
+  const wall = meshes.get("wall")!;
+  // Each by half its height about its origin, and the walls that stand in the cells round it.
+  for (const [name, half] of [["large_wall", 6], ["half_wall", 0.75], ["quarter_wall", 0.375]] as const) {
+    const mesh = meshes.get(name)!;
+    const [across, up]: [number, number][] = [[-END, END], [-half + 0.0005, half - 0.0005]];
+    mesh.lods.forEach((lod, level) => {
+      expect(seenThrough([[lod, [0, 0, 0]]], true, rng, 4000, [-1.5 + SHRINK, 1.5 - SHRINK], [-half + SHRINK, half - SHRINK], SHRINK), `${name} level ${level} alone`).toBe(0);
+      wall.lods.forEach((other, beside) => {
+        // Walls a storey high beside it for its whole height, and one under it and one over it: its top is the foot of the wall above.
+        const storeys = Array.from({ length: Math.ceil((2 * half) / 3) + 2 }, (_, i) => -half - 1.5 + 3 * i);
+        const set: Set[] = [[lod, [0, 0, 0]], ...storeys.flatMap((y): Set[] => [[other, [-3, y, 0]], [other, [3, y, 0]]]), [other, [0, -half - 1.5, 0]], [other, [0, half + 1.5, 0]]];
+        expect(seenThrough(set, true, rng, 1500, across!, up!, 2 * SHRINK), `${name} level ${level} among walls of level ${beside}`).toBe(0);
+        mesh.lods.forEach((same, next) => {
+          const row: Set[] = [[lod, [0, 0, 0]], [same, [-3, 0, 0]], [same, [3, 0, 0]], [other, [0, -half - 1.5, 0]], [other, [0, half + 1.5, 0]]];
+          if (beside === 0) expect(seenThrough(row, true, rng, 1500, across!, up!, 2 * SHRINK), `${name} level ${level} in a row of level ${next}`).toBe(0);
+        });
+      });
+    });
+  }
+});

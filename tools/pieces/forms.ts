@@ -20,13 +20,14 @@ import { colliderBox } from "../pack/pieces/lod.ts";
 import type { TierRecipe } from "../pack/pieces/lod.ts";
 import { STONE } from "../pack/pieces/stone.ts";
 import { THATCH_FORMS, THATCH_PLANNED } from "../pack/pieces/thatch.ts";
+import { bakeMetal } from "../pack/pieces/metal.ts";
 import { bakeTier } from "../pack/pieces/tier.ts";
 import { WOOD } from "../pack/pieces/wood.ts";
 import type { SourceMesh } from "../pack/write.ts";
 import { piecesPack, tierMeshes } from "./joints.ts";
 import type { Placed } from "./layout.ts";
 import { Canvas, Studio } from "./sheet.ts";
-import { CORNERS, HAMLET_SHOTS, KEEP_SHOTS, VILLAGE_SHOTS, corner, cutJoints, hamlet, keep, village } from "./village.ts";
+import { CORNERS, FORT_SHOTS, HAMLET_SHOTS, KEEP_SHOTS, VILLAGE_SHOTS, corner, cutJoints, fort, hamlet, keep, village, type VillageShot } from "./village.ts";
 
 const SMOOTH = 2;
 /** The tier drawn: wood unless `--tier` names another. */
@@ -53,6 +54,8 @@ export async function baked(names?: readonly string[]): Promise<SourceMesh[]> {
   // Thatch bakes its own: two of its materials are a picture drawn whole, which the tier's bake has no word for. It
   // bakes every piece each time, since a picture that says nothing of tiling takes its span from all that wear it.
   if (TIER === "thatch") return source.bakeThatch(Object.fromEntries(made.map((name) => [name, ALL[name]!])), true);
+  // Metal has no pictures: its bake is flat, and needs nothing of its asset.
+  if (TIER === "metal") return bakeMetal(forms, trims);
   if (!(TIER in RECIPES)) throw new Error(`no recipe makes the new forms in ${TIER}`);
   return bakeTier(RECIPES[TIER]!, forms, dir, asset.materials!, 2048, trims);
 }
@@ -96,7 +99,8 @@ export async function main(args: readonly string[], say: (line: string) => void 
   const meshes = [...made0, ...cutJoints(made0)];
   // The other tiers as installed, and this one's installed pieces under those the recipe makes now.
   const mine = new Set(meshes.map((m) => m.id));
-  const pack = piecesPack([...tierMeshes().filter((m) => !mine.has(m.id)), ...meshes]);
+  // Metal is drawn alone: it has no pictures, and the other tiers' are 2 GB a view.
+  const pack = piecesPack(TIER === "metal" ? meshes : [...tierMeshes().filter((m) => !mine.has(m.id)), ...meshes]);
   const studio = await Studio.of(pack);
   const made = new Map(meshes.map((m) => [m.id, m] as const));
   const id = (name: string): string => `core:${name}_${TIER}`;
@@ -177,8 +181,14 @@ export async function main(args: readonly string[], say: (line: string) => void 
     });
     write(`corners-${TIER}.png`, sheet);
   }
-  const built: Placed[] = TIER === "wood" ? village(TIER) : TIER === "stone" ? keep(TIER) : hamlet(TIER, value("joints") !== undefined);
-  const shots = TIER === "wood" ? VILLAGE_SHOTS : TIER === "stone" ? KEEP_SHOTS : HAMLET_SHOTS;
+  const turn = Number(value("turn") ?? 17);
+  const built: Placed[] = TIER === "wood" ? village(TIER) : TIER === "stone" ? keep(TIER) : TIER === "metal" ? fort(TIER, turn) : hamlet(TIER, value("joints") !== undefined);
+  // The fort's views are of its base, which is turned.
+  const turned = ([name, centre, radius, around, above, only]: VillageShot): VillageShot => {
+    const [c, s] = [Math.cos((turn * Math.PI) / 180), Math.sin((turn * Math.PI) / 180)];
+    return [name, [c * centre[0] - s * centre[2], centre[1], s * centre[0] + c * centre[2]], radius, around - turn, above, only];
+  };
+  const shots = TIER === "wood" ? VILLAGE_SHOTS : TIER === "stone" ? KEEP_SHOTS : TIER === "metal" ? FORT_SHOTS.map(turned) : HAMLET_SHOTS;
   const [vw, vh] = [1000, 720];
   const wanted = value("shots")?.split(",").map(Number);
   // One view of one's own: --look x,y,z,radius,around,above.

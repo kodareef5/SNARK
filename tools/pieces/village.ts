@@ -61,6 +61,8 @@ function builder(tier: string) {
   NAMES.forEach((name, k) => setForm(forms, k + 1, ALL[name]!));
   const frame = new Frame(1, 0, Math.round(FLOOR * STRUCT_UNITS), 0, 0, 0);
   const out: Placed[] = [];
+  /** Each piece again by its form's name and its key, for a store to place it by. */
+  const keys: { name: string; k0: number; k1: number }[] = [];
   const ends: End[] = [];
   const posts = new Set<string>();
   const floors: { x: number; z: number }[][] = [];
@@ -75,7 +77,9 @@ function builder(tier: string) {
     const rots = rotsOf(forms, kind);
     const rot = (((canon.dir - own) % 12) + 12) % 12 / (12 / rots);
     if (!Number.isInteger(rot)) throw new Error(`${name} cannot lie along ${own} in a slot along ${d}`);
-    poseOf(frame, key0(cls, m[4]!, m[5]!, m[6]!), key1(m[7]!, lvl, canon.dir, FORM_LAYERS.indexOf(ALL[name]!.layer), rot, 0), forms, kind, pose);
+    const [k0, k1] = [key0(cls, m[4]!, m[5]!, m[6]!), key1(m[7]!, lvl, canon.dir, FORM_LAYERS.indexOf(ALL[name]!.layer), rot, 0)];
+    keys.push({ name, k0, k1 });
+    poseOf(frame, k0, k1, forms, kind, pose);
     const placed: Placed = { id: `core:${name}_${tier}`, x: pose.x / STRUCT_UNITS, y: pose.y / STRUCT_UNITS, z: pose.z / STRUCT_UNITS, yaw: plainYaw(pose.yaw, pose.tw) };
     out.push(placed);
     const form = ALL[name]!;
@@ -141,7 +145,7 @@ function builder(tier: string) {
       out.push({ id: `core:skirt_${tier}`, x: side.x, y: FLOOR, z: side.z, yaw });
     }
   };
-  return { out, put, square, edge, tri, post, trims };
+  return { out, keys, put, square, edge, tri, post, trims };
 }
 
 /** The pieces of the village in the frame of a base at the origin, of `tier`. A trim is set down by hand, as the client would lay it. */
@@ -428,3 +432,164 @@ export function corner(tier: string, ways: readonly number[], storeys = 1): Plac
   return out;
 }
 
+
+/** Where a lattice point is in the base's own metres: x, and z. */
+function where(a: Tuple): [number, number] {
+  let [x, z] = [0, 0];
+  a.forEach((n, k) => {
+    x += 1.5 * n * Math.cos((k * Math.PI) / 6);
+    z += 1.5 * n * Math.sin((k * Math.PI) / 6);
+  });
+  return [x, z];
+}
+
+/**
+ * A fort of the end-game tier: a keep three cells by two under a pitched roof, a gable at its west end and two hips
+ * at its east; a flat-roofed annex with a parapet, a railing on it, a hatch and its ladder, and a ramp up to it; a
+ * porch on thin pillars and beams; a twelve-sided tower of two storeys on six squares round a hexagon of triangles,
+ * with a parapet and a lantern under six triangles of roof; and a gatehouse of four large walls with the gateway and
+ * its gate set back between them under two storeys of wall.
+ * A corner post stands at every corner, as the client would lay it, cut to a low wall's height, and a skirt hangs
+ * under the keep's south and west sides. The base is turned `turn` degrees.
+ */
+export const FORT_SHOTS: readonly VillageShot[] = [
+  ["the fort", [0, 4, -1], 15.5, 60, 26],
+  ["the keep: its gable, its roof and the porch", [3.5, 2.6, 1], 8, 118, 18],
+  ["the tower", [-9, 5, 3], 8.6, 200, 14],
+  ["the gatehouse, the gateway and its gate", [3, 5.6, -7.5], 9.4, 92, 6],
+  ["the roofs from above", [0, 4, 3], 15, 100, 60],
+  ["the annex: its parapet, the railing, the hatch and the ramp", [10.8, 3.2, 1], 6, 52, 30],
+  ["the gate, close", [3, 2.6, -6], 4.4, 96, 3],
+  ["a corner post between two walls, and the skirts under them", [0, 1.1, 0], 2.8, 135, 12],
+  ["the tower's parapet and lantern", [-9, 8.2, 3], 5.6, 160, 34],
+  ["the hips, the gutter and a parapet's cut post", [9.4, 4, 0.4], 3.8, 60, 24],
+];
+
+export function fort(tier: string, turn = 17): Placed[] {
+  return fortBuilt(tier, turn).placed;
+}
+
+/** The fort's pieces by form and key in a base of their own, with no trims: a store that places them lays its own. */
+export function fortKeys(tier: string): { name: string; k0: number; k1: number }[] {
+  return fortBuilt(tier, 0).keys;
+}
+
+function fortBuilt(tier: string, turn: number): { placed: Placed[]; keys: { name: string; k0: number; k1: number }[] } {
+  const { out, keys, put, square, edge, tri, post } = builder(tier);
+  const yawOf = (d: number): number => (65536 - Math.round((d * 65536) / 12)) & 65535;
+  /** A joint on a lattice point at a level: the square post, or a tube `r15` or `r21`, cut to `cut` quarter storeys. */
+  const joint = (a: Tuple, lvl: number, kind = "sq", cut = 0): void => {
+    const [x, z] = where(a);
+    out.push({ id: `core:joint_${kind}_${tier}${cut ? `_cut${cut}` : ""}`, x, y: FLOOR + lvl * 0.75, z, yaw: 0 });
+  };
+  /** A skirt under the side from `a` along `d`, the way out to its right. */
+  const skirt = (a: Tuple, d: number): void => {
+    const [x, z] = where(step(a, d, 0.5));
+    out.push({ id: `core:skirt_${tier}`, x, y: FLOOR, z, yaw: yawOf((d + 6) % 12) });
+  };
+  const wall = (name: string, i: number, j: number, d: 0 | 3, lvl: number, outside: "left" | "right"): void => edge(name, at(i, j), d, lvl, outside === "right");
+
+  // The keep: three cells by two, a doorway two leaves wide to the south, a pitched roof, a gable west and hips east.
+  for (let i = 0; i < 3; i++) for (const j of [0, 1]) square("foundation", i, j, 0);
+  wall("double_doorway", 0, 0, 0, 0, "right");
+  wall("windowframe", 2, 0, 0, 0, "right");
+  for (const [i, name] of [[0, "wall"], [1, "windowframe"], [2, "wall"]] as const) wall(name, i, 2, 0, 0, "left");
+  for (const j of [0, 1]) wall("wall", 0, j, 3, 0, "left");
+  wall("doorframe", 3, 0, 3, 0, "right");
+  wall("wall", 3, 1, 3, 0, "right");
+  for (const i of [0, 1]) {
+    square("roof", i, 0, 4, 0);
+    square("roof", i, 1, 4, 6);
+    out.push({ id: `core:ridge_${tier}`, x: i * 3 + 1.5, y: FLOOR + 3 + (ALL.roof!.corner![0]! - 0), z: 3, yaw: 0 });
+  }
+  edge("sloped_wall_right", at(0, 0), 3, 4);
+  edge("sloped_wall_left", at(0, 1), 3, 4);
+  square("roof_hip", 2, 0, 4, 0);
+  square("roof_hip", 2, 1, 4, 3);
+  for (const [i, j] of [[0, 0], [0, 2], [3, 0], [3, 2]] as const) joint(at(i, j), 0);
+  for (let i = 0; i < 3; i++) skirt(at(i + 1, 0), 6);
+  for (const j of [0, 1]) skirt(at(0, j), 3);
+
+  // The porch before the doorway: a canopy on two beams and three thin pillars.
+  for (const i of [0, 1]) {
+    square("foundation", i, -1, 0);
+    square("ceiling", i, -1, 4);
+    edge("beam", at(i, -1), 0, 3, true);
+  }
+  for (const i of [0, 1, 2]) post("thin_pillar", at(i, -1), 0);
+
+  // The annex: a flat roof behind a parapet, a railing on the parapet's east side, a hatch with its ladder, and a ramp up from the south.
+  for (const j of [-1, 0, 1]) square("foundation", 3, j, 0);
+  wall("wall", 3, 2, 0, 0, "left");
+  wall("wall", 3, 0, 0, 0, "right");
+  wall("windowframe", 4, 0, 3, 0, "right");
+  wall("wall", 4, 1, 3, 0, "right");
+  square("trapdoor_frame", 3, 1, 4);
+  square("trapdoor", 3, 1, 4);
+  square("ceiling", 3, 0, 4);
+  edge("ladder", at(4, 1), 3, 0, false);
+  square("ramp", 3, -1, 0, 0);
+  wall("half_wall", 3, 2, 0, 4, "left");
+  for (const j of [0, 1]) {
+    wall("half_wall", 4, j, 3, 4, "right");
+    wall("railing", 4, j, 3, 6, "right");
+  }
+  for (const [i, j] of [[4, 0], [4, 2]] as const) {
+    joint(at(i, j), 0);
+    joint(at(i, j), 4, "sq", 2);
+  }
+  joint(at(3, 2), 4, "sq", 2);
+  skirt(at(4, 0), 3);
+  skirt(at(4, 1), 3);
+
+  // The tower: a hexagon of triangles, a square on each of its sides and a triangle between each two squares.
+  const centre = at(-3, 1);
+  for (let k = 0; k < 6; k++) {
+    const [hub, next] = [step(centre, 2 * k), step(centre, (2 * k + 2) % 12)];
+    const [out0, out1, across] = [(2 * k + 1) % 12, (2 * k + 11) % 12, (2 * k + 4) % 12];
+    const squared = (name: string, lvl: number): void => put(name, CLS_SQUARE, next, (2 * k + 10) % 12, lvl, (2 * k + 10) % 12);
+    for (const [slab, lvl] of [["foundation", 0], ["ceiling", 4], ["ceiling", 8]] as const) {
+      tri(`triangle_${slab}`, centre, 2 * k, lvl);
+      tri(`triangle_${slab}`, hub, out1, lvl);
+      squared(slab, lvl);
+    }
+    // The outer wall: a square's far side, and a triangle's.
+    const [far, wing] = [step(hub, out0), step(hub, out1)];
+    for (const lvl of [0, 4]) {
+      edge(lvl === 0 && k === 5 ? "doorframe" : lvl === 4 && k % 2 === 0 ? "windowframe" : "wall", far, across, lvl, true);
+      edge("wall", wing, (2 * k + 3) % 12, lvl, true);
+      joint(far, lvl, "r15");
+      joint(wing, lvl, "r15");
+    }
+    edge("half_wall", far, across, 8, true);
+    edge("half_wall", wing, (2 * k + 3) % 12, 8, true);
+    joint(far, 8, "r15", 2);
+    joint(wing, 8, "r15", 2);
+    // The lantern: a low wall round the hexagon, and a triangle of roof on each of its sides, high at the middle.
+    edge("half_wall", hub, across, 8, true);
+    joint(hub, 8, "r15", 2);
+    tri("triangle_roof", centre, 2 * k, 10, 1);
+  }
+
+  // The gatehouse south of it: a large wall each side on a kerb, two more turned back from them, and between those
+  // the gateway and its gate under two storeys of wall. A corner post stands on every storey of each of its four corners.
+  for (const i of [-1, 2]) {
+    edge("fence_foundation", at(i, -3), 0, 0, true);
+    edge("large_wall", at(i, -3), 0, 0, true);
+  }
+  for (const [i, flip] of [[0, true], [2, false]] as const) {
+    edge("fence_foundation", at(i, -3), 3, 0, flip);
+    edge("large_wall", at(i, -3), 3, 0, flip);
+  }
+  for (const i of [0, 1]) {
+    edge("fence_foundation", at(i, -2), 0, 0, true);
+    for (const lvl of [8, 12]) edge(lvl === 8 ? "windowframe" : "wall", at(i, -2), 0, lvl, true);
+  }
+  edge("gateway", at(0, -2), 0, 0, true);
+  edge("gate", at(0, -2), 0, 0, true);
+  for (const [i, j] of [[-1, -3], [0, -3], [0, -2], [2, -2], [2, -3], [3, -3]] as const) for (const lvl of [0, 4, 8, 12]) joint(at(i, j), lvl);
+
+  // The whole base turned, as a base stands at any yaw.
+  const [c, s] = [Math.cos((turn * Math.PI) / 180), Math.sin((turn * Math.PI) / 180)];
+  return { placed: out.map((q) => ({ ...q, x: c * q.x - s * q.z, z: s * q.x + c * q.z, yaw: (q.yaw - Math.round((turn * 65536) / 360)) & 65535 })), keys };
+}
