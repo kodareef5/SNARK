@@ -360,7 +360,7 @@ function churn(seed: number): { kept: number; identity: number; checked: number 
   return { kept, identity, checked };
 }
 
-test("random identity and gear changes, drops and late acks leave every observer right", () => {
+test("random identity and gear changes, drops and late acks leave observers right", () => {
   let kept = 0, identity = 0, checked = 0;
   for (const seed of [1, 2, 3, 4, 5, 6]) {
     const run = churn(seed);
