@@ -1,6 +1,8 @@
 // What the survivor log answers (server/survivor-log): the shapes its reads give, which the admin page reads as well. Times
 // are wall milliseconds since 1970, places the world's metres, and `pid` a survivor's record id.
 
+import type { ActKind } from "./acts.ts";
+
 /** What a sample's `state` says a survivor was doing, by its number (server/survivor-log/format.ts STATE_). */
 export const LOG_ALIVE = 0;
 export const LOG_OUT = 1;
@@ -140,6 +142,8 @@ export interface LogMark {
   name: string;
   text: string;
   cache: number;
+  /** An admin mark's kind of act (shared/acts.ts). */
+  act?: ActKind;
 }
 
 export interface LogMarks {

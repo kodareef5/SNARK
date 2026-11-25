@@ -8,11 +8,11 @@ import { RESULT_DENIED, RESULT_INVALID, RESULT_OK, TEXT_NOTICE } from "../shared
 import { MODE_FLY, MODE_GHOST, MODE_WALK } from "../shared/sim/character.ts";
 import { CLOCK_SHARES, formatHour, hourOfShare, offsetForHour } from "../shared/sim/clock.ts";
 import { RANK_OPEN, RANK_STAFF } from "../shared/ranks.ts";
-import { OP_ADMIN } from "./console.ts";
+import { sessionActor, type Acts } from "./acts.ts";
 import { event, type Bus } from "./events/bus.ts";
 import type { Client, GameServer } from "./game.ts";
 import type { Host } from "./host.ts";
-import type { Persistence } from "./persist/persistence.ts";
+import type { Records } from "./records.ts";
 import type { Rules } from "./settings/rules.ts";
 import type { ServerWorld } from "./world.ts";
 
@@ -69,14 +69,16 @@ export class Creative {
   private readonly game: GameServer;
   private readonly rules: Rules;
   private readonly bus: Bus;
-  private readonly persistence: Persistence | null;
+  private readonly acts: Acts;
+  private readonly records: Records;
 
-  constructor(world: ServerWorld, game: GameServer, rules: Rules, bus: Bus, persistence: Persistence | null) {
+  constructor(world: ServerWorld, game: GameServer, rules: Rules, bus: Bus, acts: Acts, records: Records) {
     this.world = world;
     this.game = game;
     this.rules = rules;
     this.bus = bus;
-    this.persistence = persistence;
+    this.acts = acts;
+    this.records = records;
   }
 
   get shown(): boolean {
@@ -145,7 +147,7 @@ export class Creative {
   private end(c: Client, t: Turn): void {
     this.turns.delete(c);
     const line = `settime ${formatHour(t.hour)}`;
-    this.persistence?.journal(OP_ADMIN, new TextEncoder().encode(`${c.name}\t${line}`));
+    this.acts.write(sessionActor(c, this.records), line);
     this.bus.after(COMMAND_RAN, { byPid: c.pid, name: "settime", line, source: "session" });
   }
 }

@@ -9,10 +9,12 @@
 // It is made by Host.pageSetting, which writes it in the admin journal. No password's value ever leaves.
 
 import type { SettingRow, SettingsPage } from "../../shared/admin.ts";
+import type { Actor } from "../acts.ts";
 import type { Host } from "../host.ts";
 import { AT_START, CATALOG, fixedWhy } from "../settings/catalog.ts";
 import type { Row } from "../settings/row.ts";
 import { slotOf, wordsOf } from "../settings/rules.ts";
+import { actorOf } from "./gate.ts";
 import { body, refusedWrite } from "./supply-routes.ts";
 
 const JSON_HEADERS = { "content-type": "application/json", "cache-control": "no-store" };
@@ -37,11 +39,11 @@ export function settingsPage(host: Host, ok = true, why = "", note = ""): Settin
   return { ok, why, note, keeps: host.persistence !== null, stopLeft: host.stopLeft, rows };
 }
 
-function act(host: Host, b: Record<string, unknown>): SettingsPage {
+function act(host: Host, b: Record<string, unknown>, by: Actor): SettingsPage {
   const name = b.name;
   if (typeof name !== "string" || (b.op !== "set" && b.op !== "reset")) return settingsPage(host, false, 'A change is {"op":"set","name","value"} or {"op":"reset","name"}.');
   if (b.op === "set" && typeof b.value !== "string") return settingsPage(host, false, "A value is words.");
-  const did = host.pageSetting(name, b.op === "set" ? (b.value as string) : null);
+  const did = host.pageSetting(name, b.op === "set" ? (b.value as string) : null, by);
   return settingsPage(host, did.why === "", did.why, did.unkept === undefined ? "" : `It is set until the server starts again: it could not be written beside the save (${did.unkept}).`);
 }
 
@@ -52,9 +54,10 @@ export function settingsAnswer(host: Host, req: Request, at: string): Response |
   if (at !== "/admin/settings") return null;
   const no = refusedWrite(req);
   if (no) return no;
+  const by = actorOf(req);
   return body(req, SETTING_BODY_MOST).then((b) => {
     if (b === null) return json(settingsPage(host, false, "Expected a JSON object no larger than a list."), 400);
-    const page = act(host, b);
+    const page = act(host, b, by);
     return json(page, page.ok ? 200 : 400);
   });
 }

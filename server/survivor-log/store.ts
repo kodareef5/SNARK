@@ -7,6 +7,7 @@
 import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, readdirSync, statSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
+import { decodeAct } from "../../shared/acts.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { BitReader } from "../../shared/net/codec.ts";
 import type { LogChange, LogChanges, LogHeld, LogHolder, LogHolding, LogItem, LogMark, LogMarks, LogPositions, LogSession, LogSpan, LogSurvivor, LogTrack } from "../../shared/survivor-log.ts";
@@ -841,16 +842,16 @@ export class LogStore {
               break;
             }
             if (r.op !== this.info.opAdmin && r.op !== this.info.opDeath) continue;
-            const wall = this.wallAt(r.tick);
+            const act = r.op === this.info.opAdmin ? decodeAct(r.data, r.seq, r.tick) : null;
+            // An act keeps its own time; an older save's entry has only the tick, which the log gives a time.
+            const wall = act && act.at > 0 ? act.at : this.wallAt(r.tick);
             if (wall === null || wall < from || wall > to) continue;
             if (marks.length >= MAX_ENTRIES) {
               more = true;
               break;
             }
-            if (r.op === this.info.opAdmin) {
-              const text = new TextDecoder().decode(r.data);
-              const tab = text.indexOf("\t");
-              marks.push({ wall, tick: r.tick, kind: "admin", pid: 0, name: tab < 0 ? "" : text.slice(0, tab), text: tab < 0 ? text : text.slice(tab + 1), cache: 0 });
+            if (act) {
+              marks.push({ wall, tick: r.tick, kind: "admin", pid: act.pid, name: act.name, text: act.what, cache: 0, act: act.kind });
             } else {
               const br = new BitReader(r.data);
               const pid = br.uint53();

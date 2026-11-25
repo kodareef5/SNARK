@@ -9,7 +9,6 @@ import { ClientSession, CLOSED_BY_PEER } from "../../client/core/session.ts";
 import { verdict, type Comeback } from "../../client/core/waiting.ts";
 import { connect } from "../../agent/socket.ts";
 import { stopAnswer } from "../../server/admin/stop.ts";
-import { OP_ADMIN } from "../../server/console.ts";
 import { startServer } from "../../server/main.ts";
 import { stopOnSignals } from "../../server/signals.ts";
 import { WorldStore } from "../../server/persist/store.ts";
@@ -21,6 +20,7 @@ import { splitPack } from "../../tools/pack/split.ts";
 import { Harness, testKey } from "../fixtures/net.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
 import { coreRegistry } from "../fixtures/world.ts";
+import { adminLines } from "../fixtures/acts.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "snark-restart-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -115,7 +115,7 @@ test("the admin page sets a stop and takes it back, from this server's own page 
   h.run(300);
   h.host.shutdown();
   const store = new WorldStore(dbPath, h.reg);
-  const typed = store.journal().filter((j) => j.op === OP_ADMIN).map((j) => new TextDecoder().decode(j.data));
+  const typed = adminLines(store);
   store.close();
   expect(typed).toEqual(["(admin page)\tdoexit 90", "(admin page)\tdoexit cancel"]);
 });
