@@ -13,7 +13,8 @@ import { CellIndex, PLAN_FILL_REACH, filledAt, pieceBook, placePlan, planFrame, 
 import type { StructureStore } from "../../shared/world/structures.ts";
 import { Support } from "../../shared/world/support.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
-import { messages } from "./readers.ts";
+import type { BitReader } from "../../shared/net/codec.ts";
+import { offerPlanReader } from "./editor-load.ts";
 import type { ClientSession } from "./session.ts";
 
 const U = STRUCT_UNITS;
@@ -105,13 +106,20 @@ export function reportWords(r: PlanReport): string {
   return PLAN_REASONS[r.code] ?? "The plan was refused";
 }
 
-messages.add({
-  kind: S_PLAN,
-  read(s, r) {
+/** A plan message, S_PLAN, S_PLAN_GONE or S_PLAN_REPORT, read past its kind. editor-load.ts keeps them until this file has come. */
+export function readPlanMessage(kind: number, s: ClientSession, r: BitReader): void {
+  const all = plansOf(s);
+  if (kind === S_PLAN_GONE) {
+    const id = r.varint();
+    if (!r.overflow && all.plans.delete(id)) all.revision++;
+  } else if (kind === S_PLAN_REPORT) {
+    if (!readPlanReport(r, all.report)) return;
+    all.reports++;
+    all.onReport?.(all.report);
+  } else if (kind === S_PLAN) {
     const start = r.remainingBits;
     const id = r.varint();
     const whole = r.bool();
-    const all = plansOf(s);
     const world = s.world;
     if (!world) return;
     if (!whole) {
@@ -128,27 +136,9 @@ messages.add({
     }
     all.bytes += (start - r.remainingBits + 15) >> 3;
     all.revision++;
-  },
-});
-
-messages.add({
-  kind: S_PLAN_GONE,
-  read(s, r) {
-    const id = r.varint();
-    const all = plansOf(s);
-    if (!r.overflow && all.plans.delete(id)) all.revision++;
-  },
-});
-
-messages.add({
-  kind: S_PLAN_REPORT,
-  read(s, r) {
-    const all = plansOf(s);
-    if (!readPlanReport(r, all.report)) return;
-    all.reports++;
-    all.onReport?.(all.report);
-  },
-});
+  }
+}
+offerPlanReader(readPlanMessage);
 
 /** A plan's piece a held piece could fill, as the builder shows it. */
 export interface PlanSlot {

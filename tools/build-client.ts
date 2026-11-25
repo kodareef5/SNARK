@@ -46,7 +46,7 @@ import { bootManifest, splitLandmark, splitPack, writePages, type SplitFile } fr
 import { storeParts, type StoreReport } from "./pack/store.ts";
 import { STRESS_CARDS, cardPicture, spoilStress, stressMeshes } from "./pack/stress.ts";
 import { mapLandmarks, weigh, weighLandmarks } from "./sizes.ts";
-import { buildUiAssets } from "./ui/assets.ts";
+import { buildUiAssets, fontFaces } from "./ui/assets.ts";
 import { buildPageScript, preloaded } from "./page-script.ts";
 import { finishScript, pageWithoutNotes, withoutNotes } from "./script-notes.ts";
 import { checkoutBuild } from "../server/reports.ts";
@@ -260,8 +260,9 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
   const boot = `assets/${manifest.files[manifest.boot]!.name}`;
   const modules = ["main.js", ...pieces].map((f) => `<link rel="modulepreload" href="${f}">`).join("\n");
   const html = readFileSync(join(root, "client/index.html"), "utf8")
-    .replace("<!-- HUD_FONT_PRELOAD -->", ui.font ? `<link rel="preload" href="${ui.font}" as="font" type="font/ttf" crossorigin>` : "")
-    .replace("HUD_FONT_SOURCE", ui.font ? `url("${ui.font}") format("truetype")` : 'local("Arial")')
+    // Only the Latin part is asked for early; the rest comes if a name on screen needs it.
+    .replace("<!-- HUD_FONT_PRELOAD -->", `<link rel="preload" href="${ui.faces[0]!.url}" as="font" type="font/woff2" crossorigin>`)
+    .replace("/* HUD_FONT_FACES */", fontFaces("Hud", ui.faces, "font-style: normal; font-weight: 500; font-display: swap;"))
     .replaceAll("HUD_ATLAS_URL", ui.atlas)
     .replace("<!-- MODULES -->", modules)
     .replace("FETCHED", JSON.stringify(["map.json", "assets/manifest.json", boot, skyName, contentName]));

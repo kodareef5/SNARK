@@ -109,11 +109,12 @@ export class Prompts implements FramePart {
   private readonly bagKind: number;
   /** The look's direction as it was last cast. */
   readonly aim = [0, 0, 0];
-  private readonly builder: Builder;
+  /** Build mode, once the editor's code has come (editor-load.ts). */
+  builder: Builder | null;
   private readonly placement: VehiclePlacement;
 
   /** `builder` and `placement` have the prompt while a piece or a vehicle is in hand. */
-  constructor(reg: Registry, builder: Builder, placement: VehiclePlacement) {
+  constructor(reg: Registry, builder: Builder | null, placement: VehiclePlacement) {
     this.bagKind = reg.index.get(BAG) ?? -1;
     this.builder = builder;
     this.placement = placement;
@@ -158,7 +159,7 @@ export class Prompts implements FramePart {
       emotes.targetName = r.name[i]!;
     }
     if (emotes.open) characters.wantEmotes();
-    f.prompt = !alive ? "" : v.active ? v.notice : b.active ? menu.notice || (b.notice !== "" && built !== "" ? `${b.notice}\n${built}` : b.notice || built) : menu.notice || this.seatNotice.notice || emotes.notice || this.handPrompt(f, world, eyeNow) || whom || built || this.gliderPrompt(f);
+    f.prompt = !alive ? "" : v.active ? v.notice : b?.active ? menu.notice || (b.notice !== "" && built !== "" ? `${b.notice}\n${built}` : b.notice || built) : menu.notice || this.seatNotice.notice || emotes.notice || this.handPrompt(f, world, eyeNow) || whom || built || this.gliderPrompt(f);
   }
 
   /** What a press of the use key now would get into or out of: the seat the session is in, or what the prompt is on. */
@@ -245,7 +246,7 @@ export class Prompts implements FramePart {
     const mine = s.tribe.team !== 0 && t.owner[ref & 0xffff] === s.tribe.team;
     const usable = (reg.opens[kind] !== 0 || reg.structSlots[kind] !== 0) && rayHit.t <= REACH;
     // With a piece in hand, how well a piece of the tribe's own stands is said too.
-    const stands = mine ? this.builder.stabilityOf(world, ref) : -2;
+    const stands = mine && this.builder ? this.builder.stabilityOf(world, ref) : -2;
     return `${usable ? "E use  " : mine ? "hold E  " : ""}${structName(reg, kind)}  ${Math.ceil(t.hp[ref & 0xffff]!)}/${reg.maxHp[kind]}${stands >= 0 ? `  stability ${stands} of ${reg.stabilityCap[kind] || STABILITY}` : ""}`;
   }
 

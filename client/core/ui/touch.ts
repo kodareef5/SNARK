@@ -212,7 +212,7 @@ export function touchControls(f: UiFrame, t: TouchPlay, m: HudModel, situation: 
     at(T_SNAP, 1, BUTTON, I_LEFT, "Turn left");
     at(T_CANCEL, 2, BUTTON, I_CANCEL, "Cancel");
   } else if (situation === "building") {
-    // Each button presses the key its row names (build.ts BUILD_KEYS): R, T, Q, the arrows, and Escape as a finger's cancel.
+    // Each button presses the key its row names (editor-keys.ts BUILD_KEYS): R, T, Q, the arrows, and Escape as a finger's cancel.
     corner(T_ATTACK, I_PLACE, "Place");
     at(T_RELOAD, 0, BUTTON, I_ROTATE, "Rotate");
     at(T_FOLLOW_ONE, 1, BUTTON, I_VARIANT, "Next form; hold and drag for the wheel of forms");
