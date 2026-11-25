@@ -836,6 +836,11 @@ export class FramePacket {
    */
   readonly groundWindow = Int32Array.of(-1, 0, 0, -1, 0, 0, 0, 0);
   /**
+   * Rows of the roads' frame (shared/world/roadframe.ts) of the window drawn to put in its picture this frame: the first
+   * and how many, none for 0. A renderer copies them from the heightfield's road, by the window's corner, before it draws.
+   */
+  readonly roadWindow = new Int32Array(2);
+  /**
    * Chunk tiles of the streets' pictures round the camera to put on the card before this frame's draws (streets.ts
    * StreetRegion): `streetTiles` of them, each its corner in the pictures' texels (x, y) in `streetAt`, and its bytes of
    * the distances' picture and of the kinds' one after another in `streetDist` and `streetKinds`. The card keeps them.
@@ -957,6 +962,7 @@ export class FramePacket {
     this.pieceUploads = 0;
     this.tileCount = 0;
     this.groundWindow[3] = -1;
+    this.roadWindow[1] = 0;
     this.streetTiles = 0;
     this.transientCount = 0;
     this.boneCount = 0;

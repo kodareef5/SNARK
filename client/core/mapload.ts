@@ -26,7 +26,7 @@ import { fetchBytes, within, type Get } from "./fetched.ts";
 import { HeldTops } from "./render/blocks.ts";
 import { everywhere, firstFrameParts, overviewOf, partDistance, squareKey } from "./map-first.ts";
 export { FIRST_REACH, firstFrameParts } from "./map-first.ts";
-import { holdRoad, holdStreets, type RoadPiece, type StreetsPiece } from "../../shared/world/mapfile.ts";
+import { holdRoad, holdStreets } from "../../shared/world/mapfile.ts";
 import { RoadSectors } from "../../shared/world/roadframe.ts";
 import { StreetSectors } from "../../shared/world/streets.ts";
 import { WINDOW, WINDOW_MOVE } from "./render/terrain.ts";
@@ -54,6 +54,8 @@ export const CITY_NEAR = 4096;
  */
 export const ROAD_REACH = ((WINDOW - 1) * TERRAIN_CELL) / 2 + WINDOW_MOVE;
 export const ROAD_EVERY = 1000;
+/** Road and streets parts asked for at once, besides the rest of the map's. */
+export const ROADS_AT_ONCE = 2;
 /** Milliseconds before a part that failed is asked for again: RETRY_FIRST, doubled at each failure in a row, to RETRY_MOST. */
 export const RETRY_FIRST = 500;
 export const RETRY_MOST = 8000;
@@ -107,6 +109,11 @@ export class StagedMap {
   /** The overviews' squares come so far, and the sectors' grounds come before their overview, by its square. */
   private readonly overviews = new Set<number>();
   private readonly early = new Map<number, GroundPiece[]>();
+  /**
+   * Per chunk, 1 once its bound (Heightfield `bounds`) is its own samples' range, its overview's or its sector's: every
+   * sample it will hold is the map's own or between two of its own, so that bound stands.
+   */
+  private readonly sure: Uint8Array;
 
   constructor(head: MapHead) {
     this.head = head;
@@ -118,7 +125,15 @@ export class StagedMap {
     this.hf = new Heightfield(dims, TERRAIN_CELL, head.minY, head.stepY, undefined, undefined, new Uint8Array(cells(dims.chunksX) * cells(dims.chunksZ)));
     this.hf.seaLevel = head.seaLevel;
     this.hf.holdNone();
+    // Every sector with streets is listed from the start, so a car is predicted only where its own are held (session.ts).
+    for (const p of head.parts) {
+      if (p.kind !== "streets") continue;
+      const sq = squareOf(dims, SECTOR_CHUNKS, p.col, p.row)!;
+      (this.hf.streets ??= new StreetSectors()).list(squareKey(p.col, p.row), sq.cx0, sq.cz0, sq.cx1, sq.cz1);
+    }
     this.hf.fill(0, 0, dims.chunksX, dims.chunksZ, COARSE_STEP, coarse.heights, coarse.tint);
+    this.hf.bounds = coarseBounds(head);
+    this.sure = new Uint8Array(chunkCount(dims));
     this.nodes = blankLayers(head);
     this.tops = new HeldTops(dims);
     this.buildings = head.buildings ? new Buildings(dims, head.buildings) : null;
@@ -136,6 +151,8 @@ export class StagedMap {
     } else if (piece.kind === "overview") {
       const sq = piece.sq;
       this.hf.fill(sq.cx0, sq.cz0, sq.cx1, sq.cz1, OVERVIEW_STEP, piece.heights, piece.tint);
+      const w = sq.cx1 - sq.cx0;
+      for (let k = 0; k < piece.low.length; k++) this.bound(sq.cx0 + (k % w), sq.cz0 + Math.floor(k / w), piece.low[k]!, piece.high[k]!);
       setNodes(dims, this.nodes, piece);
       if (piece.water) this.hf.water = takeWater(this.head, this.hf.water!, piece.sq, piece.water);
       const key = squareKey(sq.col, sq.row);
@@ -149,6 +166,7 @@ export class StagedMap {
         return;
       }
       setGround(dims, this.hf.heights, this.hf.tint, piece, this.hf.ground);
+      this.measureSector(piece.sq);
       this.hf.hold(piece.sq.cx0, piece.sq.cz0, piece.sq.cx1, piece.sq.cz1);
       if (piece.listed.every((rows) => rows === null)) return;
       this.listed.push({ kind: "ground", sq: piece.sq, heights: NO_HEIGHTS, tint: NO_TINT, ground: NO_TINT, listed: piece.listed });
@@ -157,6 +175,59 @@ export class StagedMap {
     } else if (piece.kind === "tops") this.tops.take(piece);
     else if (piece.kind === "buildings") this.buildings?.set(piece.table);
   }
+
+  /**
+   * Chunk (cx, cz)'s bound its own samples' range, `lo` to `hi`; and each chunk round it whose bound is still the coarse
+   * picture's takes that range in, as the samples on the edge they share may now be any of this chunk's.
+   */
+  private bound(cx: number, cz: number, lo: number, hi: number): void {
+    const { chunksX, chunksZ } = this.head.dims, b = this.hf.bounds!;
+    const c = cz * chunksX + cx;
+    [b[c * 2], b[c * 2 + 1], this.sure[c]] = [lo, hi, 1];
+    for (let z = Math.max(0, cz - 1); z <= Math.min(chunksZ - 1, cz + 1); z++) {
+      for (let x = Math.max(0, cx - 1); x <= Math.min(chunksX - 1, cx + 1); x++) {
+        const n = z * chunksX + x;
+        if (this.sure[n] === 1) continue;
+        b[n * 2] = Math.min(b[n * 2]!, lo);
+        b[n * 2 + 1] = Math.max(b[n * 2 + 1]!, hi);
+      }
+    }
+  }
+
+  /** The bounds of sector `sq`'s chunks from its samples, just set: that sector's alone are read. */
+  private measureSector(sq: { readonly cx0: number; readonly cz0: number; readonly cx1: number; readonly cz1: number }): void {
+    const { heights, nx } = this.hf, per = CHUNK_SIZE / TERRAIN_CELL;
+    for (let cz = sq.cz0; cz < sq.cz1; cz++) {
+      for (let cx = sq.cx0; cx < sq.cx1; cx++) {
+        let [a, b] = [65535, 0];
+        for (let j = cz * per; j <= cz * per + per; j++) {
+          for (let k = j * nx + cx * per, end = k + per; k <= end; k++) {
+            const q = heights[k]!;
+            if (q < a) a = q;
+            if (q > b) b = q;
+          }
+        }
+        this.bound(cx, cz, a, b);
+      }
+    }
+  }
+}
+
+/**
+ * Each chunk's bound while only the head has come: the least and most of its four corners in the coarse picture, which
+ * its samples are laid between (Heightfield.fill).
+ */
+function coarseBounds(head: MapHead): Uint16Array {
+  const { dims, coarse } = head, across = dims.chunksX + 1;
+  const out = new Uint16Array(chunkCount(dims) * 2);
+  for (let cz = 0; cz < dims.chunksZ; cz++) {
+    for (let cx = 0; cx < dims.chunksX; cx++) {
+      const k = cz * across + cx, h = coarse.heights;
+      const corners = [h[k]!, h[k + 1]!, h[k + across]!, h[k + across + 1]!];
+      [out[(cz * dims.chunksX + cx) * 2], out[(cz * dims.chunksX + cx) * 2 + 1]] = [Math.min(...corners), Math.max(...corners)];
+    }
+  }
+  return out;
 }
 
 /**
@@ -297,6 +368,8 @@ export class MapLoader {
   /** The parts, overviews, ground, statics, buildings and tops, not yet asked for, or failed and to be asked for again; and how many are under way. */
   private readonly left: MapPart[];
   private under = 0;
+  /** Parts that failed, waiting out their wait before they go back among those left. */
+  private waiting = 0;
   /** The parts the whole map's statics are handed over after, besides those the loader waits for before it starts. */
   private readonly waited: MapPart[];
   /** The overviews and ground come so far, and the statics set in `table`, the map's laid out from its head once the first comes. */
@@ -397,12 +470,13 @@ export class MapLoader {
       const p = this.left.splice(k, 1)[0]!;
       this.under++;
       void this.ask(p).then(
-        async (got) => {
-          if (got !== 0) {
-            await this.wait(got);
-            this.left.push(p);
-          }
+        (got) => {
+          // A part that failed waits out of its lane, which the next part takes at once.
           this.under--;
+          if (got !== 0) {
+            this.waiting++;
+            void this.wait(got).then(() => (this.waiting--, this.left.push(p), this.pump()));
+          }
           this.pump();
         },
         // Broken: nothing more is handed over.
@@ -503,9 +577,15 @@ export class MapLoader {
     return 0;
   }
 
-  /** The road and streets parts held or asked for, and of them those held. */
+  /**
+   * The road and streets parts held, asked for or waiting to be asked for again, and of them those held and those
+   * waiting; how many are under way; and those that came damaged DAMAGED_MOST times, never asked for again.
+   */
   private readonly roads = new Set<MapPart>();
   private readonly roadsHeld = new Set<MapPart>();
+  private readonly roadsWaiting = new Set<MapPart>();
+  private roadsUnder = 0;
+  private readonly roadsBroken = new Set<MapPart>();
 
   /** The map's statics as far as they have come, laid out whole once the first sector's came; null before. */
   get statics(): MapStatics | null {
@@ -517,7 +597,7 @@ export class MapLoader {
     const head = this.staged.head;
     let roads = 0;
     for (const p of head.parts) if ((p.kind === "road" || p.kind === "streets") && !this.roadsHeld.has(p) && this.off(p) <= ROAD_REACH) roads++;
-    return { left: this.left.length + this.under, parts: this.waited.length + head.parts.filter(unwaited).length, near: this.done.near, whole: this.done.whole, roads };
+    return { left: this.left.length + this.under + this.waiting, parts: this.waited.length + head.parts.filter(unwaited).length, near: this.done.near, whole: this.done.whole, roads };
   }
 
   /**
@@ -543,25 +623,51 @@ export class MapLoader {
    */
   lookRoads(): void {
     const hf = this.staged.hf;
+    const wanted: MapPart[] = [];
     for (const p of this.staged.head.parts) {
       if (p.kind !== "road" && p.kind !== "streets") continue;
       const off = this.off(p);
-      const hold = (piece: MapPiece): void => {
-        if (piece.kind === "road") holdRoad(hf.road!, piece as RoadPiece);
-        else holdStreets(hf.streets!, piece as StreetsPiece);
-        this.roadsHeld.add(p);
-      };
-      if (off <= ROAD_REACH && !this.roads.has(p)) {
-        this.roads.add(p);
-        void this.asker.ask(p.name, this.at(p), (bytes) => readPart(this.staged.head, p, bytes)).then(
-          (got) => ("wait" in got ? this.roads.delete(p) : this.roads.has(p) && hold(got.value as MapPiece)),
-          () => this.roads.delete(p),
-        );
-      } else if (off > ROAD_REACH + SECTOR_CHUNKS * CHUNK_SIZE && this.roads.delete(p)) {
+      if (off <= ROAD_REACH && !this.roads.has(p) && !this.roadsBroken.has(p)) wanted.push(p);
+      else if (off > ROAD_REACH + SECTOR_CHUNKS * CHUNK_SIZE && this.roads.delete(p)) {
         this.roadsHeld.delete(p);
-        (p.kind === "road" ? hf.road : hf.streets)?.drop(p.col * 4096 + p.row);
+        this.roadsWaiting.delete(p);
+        (p.kind === "road" ? hf.road : hf.streets)?.drop(squareKey(p.col, p.row));
       }
     }
+    // Nearest first, ROADS_AT_ONCE at a time, and while the game's socket is held back only when nothing else is under way.
+    wanted.sort((a, b) => this.off(a) - this.off(b));
+    for (const p of wanted) {
+      if (this.roadsUnder >= (this.held() ? (this.under === 0 ? 1 : 0) : ROADS_AT_ONCE)) break;
+      this.roads.add(p);
+      this.roadsUnder++;
+      void this.asker.ask(p.name, this.at(p), (bytes) => readPart(this.staged.head, p, bytes)).then(
+        (got) => {
+          this.roadsUnder--;
+          if (!("wait" in got)) {
+            if (this.roads.has(p)) this.holdRoad(p, got.value);
+          } else {
+            this.roadsWaiting.add(p);
+            void this.wait(got.wait).then(() => this.roadsWaiting.delete(p) && (this.roads.delete(p), this.lookRoads()));
+          }
+          this.lookRoads();
+        },
+        // Broken: it is never asked for again.
+        (e: unknown) => {
+          this.roadsUnder--;
+          this.roadsBroken.add(p);
+          this.asker.say(why(e));
+          this.lookRoads();
+        },
+      );
+    }
+  }
+
+  /** Road or streets part `p`, read as `piece`, held where it is drawn and asked from. */
+  private holdRoad(p: MapPart, piece: MapPiece): void {
+    const hf = this.staged.hf;
+    if (piece.kind === "road") holdRoad(hf.road!, piece);
+    else if (piece.kind === "streets") holdStreets(hf.streets!, piece);
+    this.roadsHeld.add(p);
   }
 }
 

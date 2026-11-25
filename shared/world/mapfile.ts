@@ -138,7 +138,7 @@ import { MAX_SLOTS_PER_CHUNK, StructureStore } from "./structures.ts";
 import { FarCells, Summary, TACTICAL_CELL, bakeChunk, pieceShapes } from "./tactical.ts";
 import { MAX_WATER_BODIES, MapWater, type WaterBody } from "./water.ts";
 import { ROAD_PLANES, RoadSectors, type MapRoad } from "./roadframe.ts";
-import { StreetSectors, decodeStreets } from "./streets.ts";
+import { StreetSectors, decodeStreets, type StreetsPart } from "./streets.ts";
 import { HIT_PREFIX, bentNext, madeHits, walkedFlush } from "./bends.ts";
 import { BUILDINGS_VERSION, Buildings, SectorBuildings, type BuildingNames } from "./buildings.ts";
 
@@ -543,6 +543,8 @@ export interface MapStreets {
   readonly col: number;
   readonly row: number;
   readonly bytes: Uint8Array;
+  /** Its lines, where the file's reader decoded them already. */
+  readonly part?: StreetsPart;
 }
 
 /**
@@ -1870,10 +1872,11 @@ export interface RoadPiece {
   readonly road: MapRoad;
 }
 
-/** A sector's streets as its part gives them: its bytes, read when they are held (holdStreets). */
+/** A sector's streets as its part gives them: its lines, decoded once as the part is read, and its bytes, which a map's writer keeps. */
 export interface StreetsPiece {
   readonly kind: "streets";
   readonly sq: Square;
+  readonly part: StreetsPart;
   readonly bytes: Uint8Array;
 }
 
@@ -1905,9 +1908,9 @@ export function* partSteps(head: MapHead, part: MapPart, bytes: Uint8Array, veri
       return { kind: "buildings", sq: sq!, table };
     }
     if (part.kind === "streets") {
-      decodeStreets(bytes, sq!.ox * CHUNK_SIZE, sq!.oz * CHUNK_SIZE);
+      const lines = decodeStreets(bytes, sq!.ox * CHUNK_SIZE, sq!.oz * CHUNK_SIZE);
       s.take(bytes.length);
-      return { kind: "streets", sq: sq!, bytes: bytes.slice() };
+      return { kind: "streets", sq: sq!, part: lines, bytes: bytes.slice() };
     }
     return part.kind === "overview" ? readOverview(head, sq!, s) : readGround(head, sq!, s);
   })();
@@ -2148,7 +2151,7 @@ export function holdRoad(road: RoadSectors, piece: RoadPiece): void {
 /** A sector's streets (StreetsPiece) held where they are asked (Heightfield `streets`), by its square. */
 export function holdStreets(held: StreetSectors, piece: StreetsPiece): void {
   const sq = piece.sq;
-  held.put(sq.col * 4096 + sq.row, decodeStreets(piece.bytes, sq.ox * CHUNK_SIZE, sq.oz * CHUNK_SIZE), sq.cx0, sq.cz0, sq.cx1, sq.cz1);
+  held.put(sq.col * 4096 + sq.row, piece.part, sq.cx0, sq.cz0, sq.cx1, sq.cz1);
 }
 
 /** Where bentNext puts its guess. */
@@ -2348,7 +2351,7 @@ export function joinParts(head: MapHead, pieces: readonly MapPiece[], order = tr
         for (let j = 0; j < plane.length / gw; j++) roadPlanes(road)[k]!.set(plane.subarray(j * gw, j * gw + gw), at + j * gx);
       });
     } else if (p.kind === "tops") tops.push(p);
-    else if (p.kind === "streets") streets.push({ col: p.sq.col, row: p.sq.row, bytes: p.bytes });
+    else if (p.kind === "streets") streets.push({ col: p.sq.col, row: p.sq.row, bytes: p.bytes, part: p.part });
     else if (p.kind === "buildings") buildings!.set(p.table);
     else statics.push(p);
   }
@@ -2465,7 +2468,10 @@ export function mapHeightfield(map: MapData): Heightfield {
   if (map.streets) {
     hf.streets = new StreetSectors();
     const dims = framed(map.dims);
-    for (const p of map.streets) holdStreets(hf.streets, { kind: "streets", sq: squareOf(dims, SECTOR_CHUNKS, p.col, p.row)!, bytes: p.bytes });
+    for (const p of map.streets) {
+      const sq = squareOf(dims, SECTOR_CHUNKS, p.col, p.row)!;
+      holdStreets(hf.streets, { kind: "streets", sq, part: p.part ?? decodeStreets(p.bytes, sq.ox * CHUNK_SIZE, sq.oz * CHUNK_SIZE), bytes: p.bytes });
+    }
   }
   return hf;
 }

@@ -1170,8 +1170,11 @@ export class ClientSession {
   }
 
   private groundHeld(): boolean {
-    const b = this.own, r = PREDICTED_REACH;
-    return this.world?.hf.exactIn(b.x - r, b.z - r, b.x + r, b.z + r) ?? false;
+    const b = this.own, r = PREDICTED_REACH, hf = this.world?.hf;
+    if (!hf?.exactIn(b.x - r, b.z - r, b.x + r, b.z + r)) return false;
+    // A wheel grips by the streets' lines where they are held and the 4 m cells where not; the server holds them all.
+    const wheeled = this.driving >= 0 && !!this.registry.vehicle[this.own.kind];
+    return !wheeled || (hf.streets?.heldIn(b.x - r, b.z - r, b.x + r, b.z + r) ?? true);
   }
 
   /** Fill `out` with remote entities interpolated to the current render time. */

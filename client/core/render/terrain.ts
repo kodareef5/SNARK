@@ -6,6 +6,7 @@
 
 import { CHUNK_SIZE } from "../../../shared/coords.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
+import { ROAD_PLANES, ROAD_STEP, roadSamples, type RoadSectors } from "../../../shared/world/roadframe.ts";
 import type { Camera } from "./camera.ts";
 import { MAX_TILES, SOURCE_MAP, SOURCE_WINDOW, TILE_CASTS, TILE_QUADS, type FramePacket } from "./packet.ts";
 import { groundCover, groundWander } from "./world-surfaces.ts";
@@ -202,8 +203,19 @@ export class TerrainLod {
   private fillI = 0;
   private fillJ = 0;
   private row = 0;
-  /** The drawn window holds samples that have changed since, and is filled again round its corner. */
-  private stale = false;
+  /** Rows of the window drawn whose samples changed since they went on the card, from `patch` up to `patchEnd`: put again in place. */
+  private patch = 0;
+  private patchEnd = 0;
+  /**
+   * The roads' frame as its picture holds it: the window drawn it was copied for, its corner, the frame held and its
+   * version; then its rows still to copy again, from `roadRow` up to `roadEnd`.
+   */
+  private readonly roadFor = Int32Array.of(-1, 0, 0);
+  private roadOf: RoadSectors | null = null;
+  private roadVersion = 0;
+  private roadRow = 0;
+  private roadEnd = 0;
+  private readonly roadChanges: number[] = [];
   /** The heightfield's changes taken in. */
   private seen: number;
 
@@ -226,18 +238,22 @@ export class TerrainLod {
     this.seen = hf.changes.length;
   }
 
-  /** Height range per node over chunks cx0, cz0 up to cx1, cz1, finest level first, and of every node above them, from the samples as they are. */
+  /**
+   * Height range per node over chunks cx0, cz0 up to cx1, cz1, finest level first, and of every node above them: from the
+   * heightfield's bounds where it keeps them, else from the samples as they are.
+   */
   private measure(cx0: number, cz0: number, cx1: number, cz1: number): void {
     const hf = this.hf;
     const per = Math.round(CHUNK_SIZE / hf.cell);
     const w0 = this.width[0]!, lo0 = this.minY[0]!, hi0 = this.maxY[0]!;
     // The stored steps' least and most, a sample's height rising with its step: a whole map's are 66 million samples.
-    const { heights, nx } = hf;
+    const { heights, nx, bounds } = hf;
     for (let tz = cz0; tz < cz1; tz++) {
       for (let tx = cx0; tx < cx1; tx++) {
         let a = 65535;
         let b = 0;
-        for (let j = tz * per; j <= (tz + 1) * per; j++) {
+        if (bounds) [a, b] = [bounds[(tz * w0 + tx) * 2]!, bounds[(tz * w0 + tx) * 2 + 1]!];
+        else for (let j = tz * per; j <= (tz + 1) * per; j++) {
           for (let k = j * nx + tx * per, end = k + per; k <= end; k++) {
             const q = heights[k]!;
             if (q < a) a = q;
@@ -275,28 +291,35 @@ export class TerrainLod {
   }
 
   /**
-   * Takes in the samples that changed since the last frame: their chunks' height ranges are measured again, and a window
-   * that holds them is filled again, from the first of its rows they change where it is being filled.
+   * Takes in the samples that changed since the last frame: their chunks' height ranges are measured again, with the
+   * chunks round them whose edges they share, and the rows of the window drawn that hold them are put again in place; a
+   * window being filled is filled again from the first of its rows they change.
    */
   private take(): void {
     const hf = this.hf, c = hf.changes;
     const per = Math.round(CHUNK_SIZE / hf.cell);
     const w = this.size.width[SOURCE_WINDOW]!, h = this.size.height[SOURCE_WINDOW]!;
+    const { chunksX, chunksZ } = hf.dims;
     for (; this.seen < c.length; this.seen += 4) {
       const cx0 = c[this.seen]!, cz0 = c[this.seen + 1]!, cx1 = c[this.seen + 2]!, cz1 = c[this.seen + 3]!;
-      this.measure(cx0, cz0, cx1, cz1);
+      this.measure(Math.max(0, cx0 - 1), Math.max(0, cz0 - 1), Math.min(chunksX, cx1 + 1), Math.min(chunksZ, cz1 + 1));
       const i0 = cx0 * per, j0 = cz0 * per, i1 = cx1 * per, j1 = cz1 * per;
       const meets = (i: number, j: number, rows: number): boolean => i0 < i + w && i1 >= i && j0 < j + rows && j1 >= j;
-      if (this.drawn >= 0 && meets(this.drawnI, this.drawnJ, h)) this.stale = true;
+      if (this.drawn >= 0 && meets(this.drawnI, this.drawnJ, h)) {
+        const from = Math.max(0, j0 - this.drawnJ), to = Math.min(h, j1 - this.drawnJ + 1);
+        [this.patch, this.patchEnd] = this.patch < this.patchEnd ? [Math.min(this.patch, from), Math.max(this.patchEnd, to)] : [from, to];
+      }
       if (this.fill >= 0 && meets(this.fillI, this.fillJ, this.row)) this.row = Math.max(0, j0 - this.fillJ);
     }
   }
 
-  /** After a lost context the card holds no window, and the next frame fills one whole. */
   /** The streets' pictures round the camera (streets.ts), for the desktop's lit tiers' straight street edges. */
   readonly streets = new StreetRegion();
+  /** After a lost context the card holds no window and no roads' frame, and the next frame fills them whole. */
   reset(): void {
     this.drawn = this.fill = -1;
+    this.patch = this.patchEnd = 0;
+    this.roadFor[0] = -1;
     this.streets.reset();
   }
 
@@ -307,6 +330,7 @@ export class TerrainLod {
   select(cam: Camera, packet: FramePacket, viewDistance: number, budget?: GroundBudget, casts?: CastTest): void {
     this.take();
     this.follow(cam, packet, budget);
+    this.followRoad(packet, budget);
     // Only the tiers that read the finishes in full draw the streets' edges (programs.ts GROUND_STREETS).
     this.streets.follow(packet.tier.lit && packet.tier.finish === "full" ? this.hf.streets : null, cam.x, cam.z, packet);
     this.coarser = 0;
@@ -453,25 +477,22 @@ export class TerrainLod {
     let i = corner(cx, hf.nx, w), j = corner(cz, hf.nz, h);
     const off = Math.max(Math.abs(cx / hf.cell - this.drawnI - (w - 1) / 2), Math.abs(cz / hf.cell - this.drawnJ - (h - 1) / 2)) * hf.cell;
     const moved = this.drawn < 0 || (off >= WINDOW_MOVE && (i !== this.drawnI || j !== this.drawnJ));
-    // A window filling holds the samples as they are, and a stale one with the camera still is filled again where it is.
-    if (this.fill >= 0) this.stale = false;
-    if (!moved && this.stale) {
-      i = this.drawnI;
-      j = this.drawnJ;
-    }
-    if ((moved || this.stale) && (this.fill < 0 || i !== this.fillI || j !== this.fillJ)) {
+    // A window filling holds the samples as they are, and takes the place of the one drawn.
+    if (this.fill >= 0) this.patch = this.patchEnd = 0;
+    if (moved && (this.fill < 0 || i !== this.fillI || j !== this.fillJ)) {
       if (this.drawn < 0) budget?.reserve("terrain", this.size.bytes);
       this.fill = this.drawn < 0 ? 0 : 1 - this.drawn;
       this.fillI = i;
       this.fillJ = j;
       this.row = 0;
-      this.stale = false;
+      this.patch = this.patchEnd = 0;
     }
     const g = p.groundWindow;
     g[3] = -1;
+    const bytes = w * SAMPLE_BYTES;
+    const band = (left: number): number => (this.drawn < 0 || !budget ? left : Math.min(left, Math.max(1, Math.floor(budget.left / bytes))));
     if (this.fill >= 0) {
-      const bytes = w * SAMPLE_BYTES;
-      const rows = this.drawn < 0 || !budget ? h - this.row : Math.min(h - this.row, Math.max(1, Math.floor(budget.left / bytes)));
+      const rows = band(h - this.row);
       budget?.spend(rows * bytes);
       g[3] = this.fill;
       g[4] = this.fillI;
@@ -480,9 +501,45 @@ export class TerrainLod {
       g[7] = rows;
       this.row += rows;
       if (this.row === h) { this.drawn = this.fill; this.drawnI = this.fillI; this.drawnJ = this.fillJ; this.fill = -1; }
+    } else if (this.patch < this.patchEnd) {
+      // Rows of the window drawn are put again into its own copy, a band a frame.
+      const rows = band(this.patchEnd - this.patch);
+      budget?.spend(rows * bytes);
+      [g[3], g[4], g[5], g[6], g[7]] = [this.drawn, this.drawnI, this.drawnJ, this.patch, rows];
+      this.patch += rows;
     }
     g[0] = this.drawn;
     g[1] = this.drawnI;
     g[2] = this.drawnJ;
+  }
+
+  /**
+   * The rows of the roads' frame (Heightfield `road`) the window drawn's picture takes this frame, into `p.roadWindow`:
+   * all of them the frame a window is first drawn, as the picture is read by the window's corner, and otherwise those
+   * the squares that came or went since cover, a band a frame within the upload allowance.
+   */
+  private followRoad(p: FramePacket, budget?: GroundBudget): void {
+    const road = this.hf.road, out = p.roadWindow, f = this.roadFor;
+    out[0] = out[1] = 0;
+    if (!road || this.drawn < 0) return;
+    const rw = roadSamples(this.size.width[SOURCE_WINDOW]!), rh = roadSamples(this.size.height[SOURCE_WINDOW]!);
+    const ci = this.drawnI / ROAD_STEP, cj = this.drawnJ / ROAD_STEP;
+    const whole = road !== this.roadOf || f[0] !== this.drawn || f[1] !== this.drawnI || f[2] !== this.drawnJ || !road.changedSince(this.roadVersion, this.roadChanges);
+    [this.roadOf, this.roadVersion, f[0], f[1], f[2]] = [road, road.version, this.drawn, this.drawnI, this.drawnJ];
+    if (whole) [this.roadRow, this.roadEnd] = [0, rh];
+    else {
+      const c = this.roadChanges;
+      for (let k = 0; k < c.length; k += 4) {
+        if (c[k]! >= ci + rw || c[k + 2]! <= ci || c[k + 1]! >= cj + rh || c[k + 3]! <= cj) continue;
+        const from = Math.max(0, c[k + 1]! - cj), to = Math.min(rh, c[k + 3]! - cj);
+        [this.roadRow, this.roadEnd] = this.roadRow < this.roadEnd ? [Math.min(this.roadRow, from), Math.max(this.roadEnd, to)] : [from, to];
+      }
+    }
+    if (this.roadRow >= this.roadEnd) return;
+    const bytes = rw * ROAD_PLANES;
+    const rows = whole || !budget ? this.roadEnd - this.roadRow : Math.min(this.roadEnd - this.roadRow, Math.max(1, Math.floor(budget.left / bytes)));
+    budget?.spend(rows * bytes);
+    [out[0], out[1]] = [this.roadRow, rows];
+    this.roadRow += rows;
   }
 }

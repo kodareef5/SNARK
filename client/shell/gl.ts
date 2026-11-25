@@ -280,7 +280,6 @@ export class GlRenderer {
    * The roads' frame of the window drawn (Heightfield `road`), every second sample; what it holds (the window, its
    * corner and the frame's version); and the rows it is copied through.
    */
-  private readonly roadFor = Int32Array.of(-1, 0, 0, -1);
   private roadRows = new Uint8Array(0);
   /** The heightfield's changes the whole map's pair on the card holds. */
   private mapSeen = 0;
@@ -1030,8 +1029,9 @@ export class GlRenderer {
     for (const u of p.assetUploads) this.unaskedSlots.push(u.slot);
     for (const u of p.texUploads) if (!this.unaskedTextures.includes(u.slot)) this.unaskedTextures.push(u.slot);
     if (this.unaskedSince < 0 && this.unaskedSlots.length + this.unaskedTextures.length > 0) this.unaskedSince = now;
-    // The whole map's pair again where the ground changed since it went on the card.
+    // The whole map's pair again where a fill changed the ground since it went on the card; a hold changes none of it.
     for (const c = this.hf.changes; this.mapSeen < c.length; this.mapSeen += 4) {
+      if (!this.hf.filled[this.mapSeen / 4]) continue;
       const a = coarseArea(this.hf, c[this.mapSeen]!, c[this.mapSeen + 1]!, c[this.mapSeen + 2]!, c[this.mapSeen + 3]!);
       gl.activeTexture(gl.TEXTURE0 + UNIT.heights);
       gl.texSubImage2D(gl.TEXTURE_2D, 0, a.i, a.j, a.w, a.h, gl.RED_INTEGER, gl.UNSIGNED_SHORT, a.heights);
@@ -1052,17 +1052,13 @@ export class GlRenderer {
       gl.bindTexture(gl.TEXTURE_2D, this.windows[drawn * 2 + k] ?? null);
     }
     gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 0);
-    // The roads' frame of the window drawn, copied again whenever the window drawn or the frame held changes.
-    const road = this.hf.road, f = this.roadFor;
-    if (road && drawn >= 0 && (f[0] !== drawn || f[1] !== w[1] || f[2] !== w[2] || f[3] !== road.version)) {
-      const rw = roadSamples(this.ground.width[SOURCE_WINDOW]!), rh = roadSamples(this.ground.height[SOURCE_WINDOW]!);
-      road.copy(w[1]! / ROAD_STEP, w[2]! / ROAD_STEP, rw, rh, this.roadRows);
+    // The rows of the roads' frame of the window drawn that the terrain says changed (terrain.ts followRoad).
+    const road = this.hf.road, rr = p.roadWindow;
+    if (road && drawn >= 0 && rr[1]! > 0) {
+      const rw = roadSamples(this.ground.width[SOURCE_WINDOW]!);
+      road.copy(w[1]! / ROAD_STEP, w[2]! / ROAD_STEP + rr[0]!, rw, rr[1]!, this.roadRows);
       gl.activeTexture(gl.TEXTURE0 + UNIT.road);
-      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, rw, rh, gl.RGBA_INTEGER, gl.UNSIGNED_BYTE, this.roadRows);
-      f[0] = drawn;
-      f[1] = w[1]!;
-      f[2] = w[2]!;
-      f[3] = road.version;
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, rr[0]!, rw, rr[1]!, gl.RGBA_INTEGER, gl.UNSIGNED_BYTE, this.roadRows);
     }
     // The streets' tiles of this frame, each into its place in the pictures round the camera.
     for (let t = 0; t < p.streetTiles * 2; t++) {

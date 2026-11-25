@@ -56,6 +56,16 @@ export class Heightfield {
    * cx0, cz0 up to but not including cx1, cz1. A reader that made something of the samples makes it again where they changed.
    */
   readonly changes: number[] = [];
+  /**
+   * Per change, true for a fill, which sets stand-ins, and false for a hold, whose samples its caller set. A page holds a
+   * sector only after its overview's fill, which set every OVERVIEW_STEP-th sample as the map's own (mapload.ts).
+   */
+  readonly filled: boolean[] = [];
+  /**
+   * Per chunk, row by row, a bound on its samples, edges among them, in stored steps: its lowest, then its highest. Kept
+   * by whoever sets the samples where it can say it without a scan (mapload.ts StagedMap); null where a reader scans.
+   */
+  bounds: Uint16Array | null = null;
 
   /** Use a power-of-two fraction such as 1/256 for `stepY`, so round heights (sea level, floors) are exact. */
   constructor(dims: MapDims, cell: number, minY: number, stepY: number, heights?: Uint16Array, tint?: Uint8Array, ground?: Uint8Array) {
@@ -143,12 +153,14 @@ export class Heightfield {
       }
     }
     this.changes.push(cx0, cz0, cx1, cz1);
+    this.filled.push(true);
   }
 
   /** Chunks cx0, cz0 up to cx1, cz1 hold their own samples from now on, which the caller has just set. */
   hold(cx0: number, cz0: number, cx1: number, cz1: number): void {
     for (let z = cz0; z < cz1; z++) this.exact.fill(1, z * this.dims.chunksX + cx0, z * this.dims.chunksX + cx1);
     this.changes.push(cx0, cz0, cx1, cz1);
+    this.filled.push(false);
   }
 
   /** Whether every chunk the box from (x0, z0) to (x1, z1) metres touches holds its own samples, the box held to the map. */

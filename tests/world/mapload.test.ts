@@ -9,7 +9,7 @@ import { expect, test } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { FarStore } from "../../client/core/farcells.ts";
 import { nextTask, type Get } from "../../client/core/fetched.ts";
-import { AFTER_AT_ONCE, CITY_NEAR, DAMAGED_MOST, FIRST_REACH, MapLoader, RETRY_FIRST, RETRY_MOST, RING, ROAD_REACH, StagedMap, URGENT_AT_ONCE, firstFrameParts, handOverParts, type Place } from "../../client/core/mapload.ts";
+import { AFTER_AT_ONCE, CITY_NEAR, DAMAGED_MOST, FIRST_REACH, MapLoader, RETRY_FIRST, RETRY_MOST, RING, ROADS_AT_ONCE, ROAD_EVERY, ROAD_REACH, StagedMap, URGENT_AT_ONCE, firstFrameParts, handOverParts, type Place } from "../../client/core/mapload.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { NodeChanges } from "../../client/core/render/farnodes.ts";
 import { BEND_BUFFERS } from "../../client/core/render/packet.ts";
@@ -340,10 +340,13 @@ test("a map's roads' frame is asked for only once the first frame's parts have c
   while (!near) await s.answer();
   expect(s.asked.slice(0, s.answered).some((url) => url.includes("/road."))).toBe(false);
   await settle();
-  const within = roads.filter((p) => off(p, 300, 600) <= ROAD_REACH);
-  expect(new Set(s.asked.filter((url) => url.includes("/road.")))).toEqual(new Set(within.map(nameOf)));
+  const within = roads.filter((p) => off(p, 300, 600) <= ROAD_REACH).sort((a, b) => off(a, 300, 600) - off(b, 300, 600));
+  // The nearest first, ROADS_AT_ONCE at a time.
+  expect(s.waiting.map((w) => w.url).filter((url) => url.includes("/road."))).toEqual(within.slice(0, ROADS_AT_ONCE).map(nameOf));
+  expect(within.length).toBeGreaterThan(ROADS_AT_ONCE);
   expect(within.length).toBeLessThan(roads.length);
   await s.drain();
+  expect(new Set(s.asked.filter((url) => url.includes("/road.")))).toEqual(new Set(within.map(nameOf)));
   const held = loader!.staged.hf.road!, cellsOf = (p: MapPart): number => (readPart(h, p, framed.subarray(p.at, p.at + p.length)) as { road: { across: Uint8Array } }).road.across.length;
   expect(held.bytes).toBe(within.reduce((k, p) => k + cellsOf(p) * ROAD_PLANES, 0));
   // Gone east, the sectors a sector past ROAD_REACH are let go and those now within it asked for; one let go while it
@@ -353,11 +356,72 @@ test("a map's roads' frame is asked for only once the first frame's parts have c
   const kept = roads.filter((p) => held.has(p.col * 4096 + p.row));
   expect(kept.every((p) => off(p, 4000, 600) <= ROAD_REACH + SECTOR_CHUNKS * CHUNK_SIZE)).toBe(true);
   const east = roads.filter((p) => off(p, 4000, 600) <= ROAD_REACH);
-  expect(east.every((p) => s.waiting.some((w) => w.url === nameOf(p)) || held.has(p.col * 4096 + p.row))).toBe(true);
+  const going = s.waiting.filter((w) => w.url.includes("/road."));
+  expect([going.length, going.every((w) => east.some((p) => nameOf(p) === w.url))]).toEqual([ROADS_AT_ONCE, true]);
   [body.x, body.z] = [300, 600];
   loader!.lookRoads();
   await s.drain();
   expect(east.filter((p) => off(p, 300, 600) > ROAD_REACH + SECTOR_CHUNKS * CHUNK_SIZE).some((p) => held.has(p.col * 4096 + p.row))).toBe(false);
+});
+
+test("a road part that fails waits out its backoff before it is asked again; one damaged three times is never asked again", async () => {
+  const m = landed();
+  const n = roadSamples(m.dims.chunksX * 32 + 1) * roadSamples(m.dims.chunksZ * 32 + 1);
+  const plane = (v: number): Uint8Array => new Uint8Array(n).fill(v);
+  const framed = writeMap({ ...m, road: { across: plane(128), along: plane(4), half: plane(40), lanes: plane(2) } });
+  const h = readHead(framed);
+  const sector = (p: MapPart): number => {
+    const sq = squareOf(h.dims, SECTOR_CHUNKS, p.col, p.row)!;
+    return Math.hypot(Math.max(sq.cx0 * CHUNK_SIZE - 300, 300 - sq.cx1 * CHUNK_SIZE, 0), Math.max(sq.cz0 * CHUNK_SIZE - 600, 600 - sq.cz1 * CHUNK_SIZE, 0));
+  };
+  const within = h.parts.filter((p) => p.kind === "road" && sector(p) <= ROAD_REACH).sort((a, b) => sector(a) - sector(b));
+  const [late, bad] = [within[0]!, within[1]!];
+  const s = heldServer(framed, (url, b) => (url === nameOf(bad) ? b.map((v, i) => (i === 7 ? v ^ 1 : v)) : b), (url, ask) => (url === nameOf(late) && ask === 1 ? 503 : 200));
+  // Every wait, a look's at the roads among them, ends when the test says.
+  const waits: number[] = [], ends: (() => void)[] = [], said: string[] = [];
+  const wait = (ms: number): Promise<void> => (waits.push(ms), new Promise<void>((go) => ends.push(go)));
+  let loader: MapLoader | null = null;
+  void MapLoader.start(s.get, `map/${h.name}`, { wait }).then((l) => (loader = l));
+  await s.drain();
+  let near = false;
+  void loader!.follow(() => ({ x: 300, z: 600, vx: 0, vz: 0 }), { say: (line) => said.push(line) }).then(() => (near = true));
+  await settle();
+  while (!near) await s.answer();
+  await s.drain();
+  const asks = (p: MapPart): number => s.asked.filter((u) => u === nameOf(p)).length;
+  // Both failed, and every other road part within reach came meanwhile; looking again asks for neither while they wait.
+  loader!.lookRoads();
+  await settle();
+  const held = loader!.staged.hf.road!, key = (p: MapPart): number => p.col * 4096 + p.row;
+  expect([asks(late), asks(bad), waits.filter((ms) => ms !== ROAD_EVERY), within.slice(2).every((p) => held.has(key(p)))]).toEqual([1, 1, [RETRY_FIRST, RETRY_FIRST], true]);
+  // Their waits end: the one that failed comes; the damaged one is asked for again until its third, and the map's roads there are broken.
+  for (let k = 0; k < 6; k++) {
+    for (let j = 0; j < 4; j++) await settle();
+    ends.splice(0).forEach((go) => go());
+    await s.drain();
+  }
+  for (let k = 0; k < 3; k++) loader!.lookRoads();
+  await s.drain();
+  expect([asks(late), held.has(key(late)), asks(bad), held.has(key(bad))]).toEqual([2, true, DAMAGED_MOST, false]);
+  expect(said.at(-1)).toContain(`at each of ${DAMAGED_MOST} asks: the map is broken`);
+});
+
+test("a part that fails gives up its lane while it waits: every part left is asked for though each one asked fails and waits", async () => {
+  const body = { x: 1056, z: 448, vx: 0, vz: 0 };
+  const near = firstFrameParts(head, body.x, body.z).filter((p) => p.kind !== "land");
+  const rest = head.parts.filter((p) => (p.kind === "overview" || p.kind === "ground" || p.kind === "statics") && !near.includes(p));
+  // Every part after the first frame's fails at its first ask, and its wait never ends.
+  const s = heldServer(file, undefined, (url, ask) => (ask === 1 && rest.some((p) => nameOf(p) === url) ? 503 : 200));
+  let loader: MapLoader | null = null;
+  void MapLoader.start(s.get, `map/${head.name}`, { wait: () => new Promise(() => {}) }).then((l) => (loader = l));
+  await s.drain();
+  void loader!.follow(() => body);
+  await s.drain();
+  const asked = s.asked.filter((url) => rest.some((p) => nameOf(p) === url));
+  // Each asked for once, and all of them waiting still.
+  expect([rest.length > URGENT_AT_ONCE + AFTER_AT_ONCE, asked.length, new Set(asked).size]).toEqual([true, rest.length, rest.length]);
+  const progress = loader!.progress();
+  expect(progress.left).toBe(progress.parts - near.length);
 });
 
 test("the first frame on this map waits for its head, its land, the overviews within reach and at most four sectors' ground, as firstFrameParts says: counted, not timed", async () => {
