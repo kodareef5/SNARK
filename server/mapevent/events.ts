@@ -28,6 +28,7 @@ import { catalogOf, type Catalog } from "../../shared/supply/catalog.ts";
 import { rollTable } from "../../shared/supply/compile.ts";
 import { HIT_NONE, castWorld, rayHit } from "../../shared/world/ray.ts";
 import type { Combat, Source } from "../combat.ts";
+import type { Containers } from "../containers.ts";
 import type { Death } from "../death.ts";
 import { event, type Bus } from "../events/bus.ts";
 import type { Client, GameServer } from "../game.ts";
@@ -178,6 +179,7 @@ export interface MapEventContext {
   combat: Combat;
   projectiles: Projectiles;
   supply: Supply;
+  containers: Containers;
   deadlines: DeadlineHeap;
   bus: Bus;
   seed: number;
@@ -222,9 +224,12 @@ export class MapEvents implements RunHost {
   private stamps = 0;
   private planned: EventBook | null = null;
   private dirtyAt = -Infinity;
+  /** While the engine itself takes crates away: their kind is not told. */
+  private clearing = false;
 
   constructor(ctx: MapEventContext) {
     this.ctx = ctx;
+    ctx.containers.onRemoved.on((box) => this.removing(box));
     this.deadline = ctx.deadlines.kind("mapevent", (a, b, tick) => this.due(a, b, tick));
     this.catalog = catalogOf(ctx.world.reg);
     const hf = ctx.world.hf;
@@ -512,11 +517,14 @@ export class MapEvents implements RunHost {
     if (ev.state === MAPEVENT_ENDED) return;
     const { world, records, death, bus, deadlines } = this.ctx;
     for (const c of ev.crafts) this.unsky(c);
-    for (const crate of ev.crates) {
+    const crates = ev.crates;
+    ev.crates = [];
+    this.clearing = true;
+    for (const crate of crates) {
       const box = records.byPid.get(crate.pid);
       if (box) death.remove(box);
     }
-    ev.crates = [];
+    this.clearing = false;
     ev.waiting = [];
     ev.phases = [];
     if (ev.state === MAPEVENT_NOTICE) ev.start = Math.min(ev.start, world.tick);
@@ -594,7 +602,9 @@ export class MapEvents implements RunHost {
     if (crate) {
       ev.crates = ev.crates.filter((x) => x !== crate);
       const box = this.ctx.records.byPid.get(crate.pid);
+      this.clearing = true;
       if (box) this.ctx.death.remove(box);
+      this.clearing = false;
       this.dirty();
       return;
     }
@@ -842,23 +852,39 @@ export class MapEvents implements RunHost {
       if (ev.state !== MAPEVENT_LIVE) continue;
       for (const crate of ev.crates) {
         const box = records.byPid.get(crate.pid);
-        if (box && box.inv && box.inv.used() > 0) continue;
-        ev.crates = ev.crates.filter((x) => x !== crate);
-        this.dirty();
-        if (box) {
-          death.remove(box);
-          this.later(ev, "crateEmptied", (run) => this.kinds.get(ev.kind)?.def.on.crateEmptied?.(run, crate.id));
-          this.ctx.bus.after(CRATE_EMPTIED, { id: ev.id, kind: ev.kind, part: crate.id, pid: crate.pid });
-        } else {
-          const gone = world.tick >= crate.until ? "expired" : "removed";
-          this.later(ev, "crateGone", (run) => this.kinds.get(ev.kind)?.def.on.crateGone?.(run, crate.id, gone));
-        }
+        // Emptied by a hand that shut it, or by anything not a session: it goes now, and is heard going (removing).
+        if (box && (!box.inv || box.inv.used() === 0)) death.remove(box);
+        // Gone with nobody told, as a record deleted outright is.
+        else if (!box) this.lost(ev, crate, world.tick >= crate.until ? "expired" : "removed", false);
       }
       // An event no kind runs now ends once nothing of it is in the sky or waiting to be taken.
       const k = this.kinds.get(ev.kind);
       if ((!k || k.off) && ev.crates.length === 0 && ev.crafts.every((c) => c.gone || c.rested)) this.end(ev, k ? "its kind is off" : "its kind is not loaded");
     }
     this.drain();
+  }
+
+  /** A crate of an event is about to be removed, its record still whole: emptied, out of its time, or taken away. */
+  private removing(box: EntityRecord): void {
+    if (this.clearing) return;
+    const tag = box.extra.get(MAPEVENT_TAG);
+    if (!tag || tag.length !== 3) return;
+    const ev = this.get(tag[0]! | (tag[1]! << 8));
+    const crate = ev?.crates.find((c) => c.pid === box.pid);
+    if (!ev || !crate) return;
+    const empty = !box.inv || box.inv.used() === 0;
+    this.lost(ev, crate, empty ? "emptied" : this.ctx.world.tick >= crate.until ? "expired" : "removed", empty);
+  }
+
+  /** A crate is gone, and its kind is told why. */
+  private lost(ev: MapEvent, crate: EventCrate, why: "emptied" | "expired" | "removed", emptied: boolean): void {
+    ev.crates = ev.crates.filter((x) => x !== crate);
+    this.dirty();
+    if (emptied) {
+      this.ctx.bus.after(CRATE_EMPTIED, { id: ev.id, kind: ev.kind, part: crate.id, pid: crate.pid });
+      this.later(ev, "crateEmptied", (run) => this.kinds.get(ev.kind)?.def.on.crateEmptied?.(run, crate.id));
+    } else this.later(ev, "crateGone", (run) => this.kinds.get(ev.kind)?.def.on.crateGone?.(run, crate.id, why as "expired" | "removed"));
+    this.note(`event ${ev.id}: crate ${crate.id} ${why}`);
   }
 
   /** Runs the handlers queued, in order: those they queue in turn too, up to DRAIN_MOST. */

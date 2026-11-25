@@ -116,3 +116,62 @@ export function meteor(): ModuleDef {
     },
   };
 }
+
+export interface TargetOptions {
+  /** Where it hangs: the middle of its slow pass, and how high. */
+  x: number;
+  z: number;
+  y: number;
+  /** Metres a second it drifts east, and seconds its pass takes. */
+  speed?: number;
+  seconds?: number;
+  health?: number;
+  shield?: boolean;
+  /** Its crash's damage; 0 for no blast. */
+  crash?: number;
+  /** Seconds its crate stays. */
+  crateSeconds?: number;
+}
+
+/**
+ * A shielded craft that drifts slowly over a place, low enough to shoot from the ground, for the tests of rounds,
+ * blasts and missiles. Brought down, it leaves a crate; flown out, it ends.
+ */
+export function target(o: TargetOptions): ModuleDef {
+  const speed = o.speed ?? 1;
+  const half = (speed * (o.seconds ?? 120)) / 2;
+  return {
+    name: "target",
+    api: 1,
+    setup(m) {
+      m.mapEvent({
+        id: "target",
+        label: "Target",
+        about: "A craft that hangs over a place.",
+        notice: 1,
+        tuning: {},
+        on: {
+          start(run) {
+            run.craft({
+              name: "Target",
+              points: [{ x: o.x - half, y: o.y, z: o.z, speed, low: false }, { x: o.x, y: o.y, z: o.z, speed, low: false }, { x: o.x + half, y: o.y, z: o.z, speed, low: false }],
+              hull: { radius: 5, half: 2 },
+              health: o.health ?? 3000,
+              lockable: true,
+              takes: { melee: 0 },
+              ...(o.shield === false ? {} : { shield: { soak: 0.97, openWhenLow: false, breakSeconds: 4, rearmSeconds: 12 } }),
+              ...((o.crash ?? 300) > 0 ? { crash: { radius: 10, damage: o.crash ?? 300 } } : {}),
+              look: ROCK,
+            });
+          },
+          craftOut: (run) => run.end("left"),
+          craftRest(run, _craft, at) {
+            run.crate({ name: "Wreckage", x: at.x - at.hx * 8, z: at.z - at.hz * 8, seconds: o.crateSeconds ?? 600, loot: { tier: "white", classes: ["arms"], rolls: 1, ringed: false } });
+          },
+          crateEmptied: (run) => run.end("looted"),
+          crateGone: (run, _crate, why) => run.end(why),
+        },
+      });
+    },
+  };
+}

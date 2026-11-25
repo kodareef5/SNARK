@@ -1388,7 +1388,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   supply.begin(persistence && !loaded!.fresh ? (persistence.store.meta("supply") as string | null) : null);
   persistence?.sidecar("supply", supply.saved);
   // Map events (server/mapevent/events.ts). Made before the modules, which define its kinds; begun after them.
-  const mapEvents = new MapEvents({ world, game, records, items, death, combat, projectiles, supply, deadlines, bus, seed: opts.seed ?? 1, say, now: opts.now });
+  const mapEvents = new MapEvents({ world, game, records, items, death, combat, projectiles, supply, containers, deadlines, bus, seed: opts.seed ?? 1, say, now: opts.now });
   hitches.begin(persistence && !loaded!.fresh ? persistence.store.meta("hitches") as string | null : null);
   persistence?.sidecar("hitches", hitches.saved);
   const airSupport = new AirSupport({ world, game, records, rules, combat, projectiles, urban, hitches, items, wake: wakeView,
