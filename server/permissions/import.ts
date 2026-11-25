@@ -20,12 +20,14 @@ import {
 } from "../../shared/permissions/model.ts";
 import { CHAT_DOCUMENT, WAL_MISSING } from "../../shared/permissions/page.ts";
 import { RANK_OPEN } from "../../shared/ranks.ts";
-import type { Permissions } from "./permissions.ts";
+import type { GroupSeen, Permissions } from "./permissions.ts";
 
-/** The ops to run, in order, and what the admin should know. */
+/** The ops to run, in order, what the admin should know, and each group the plan was judged against as it saw it. */
 export interface ImportPlan {
   readonly ops: readonly PermissionOp[];
   readonly notes: readonly string[];
+  /** Applied only while each still has that rank, or is still missing, inside the write. */
+  readonly seen: readonly GroupSeen[];
 }
 
 export type Planned = { readonly ok: true; readonly plan: ImportPlan } | { readonly ok: false; readonly reason: string };
@@ -45,6 +47,8 @@ export interface ImportOptions {
 }
 
 export interface Applied {
+  /** A group the plan saw changed before its write, so nothing was made. */
+  readonly changed: boolean;
   readonly done: number;
   readonly refused: readonly { readonly op: PermissionOp; readonly reason: string }[];
   /** The lowest rank any of its changes was judged at inside its write, or null for a plan of none. */
@@ -82,6 +86,7 @@ class Draft {
   private readonly touched = new Set<string>();
   private readonly left = new Map<string, LeftBehind>();
   private readonly missing = new Set<string>();
+  private readonly seen = new Map<string, GroupSeen>();
   private readonly commands: ReadonlySet<string>;
   private readonly opts: ImportOptions;
   /** Notes left unsaid past the most a plan carries. */
@@ -91,6 +96,7 @@ class Draft {
     this.opts = opts;
     this.commands = new Set([...opts.commands].map((c) => c.toLowerCase()));
     if (opts.onto) {
+      for (const g of opts.onto.seen) this.seen.set(g.group.toLowerCase(), g);
       this.notes.push(...opts.onto.notes);
       for (const op of opts.onto.ops) this.push(op);
     }
@@ -100,6 +106,7 @@ class Draft {
     const lower = name.toLowerCase();
     if (this.groups.has(lower)) return this.groups.get(lower) ?? undefined;
     const g = this.opts.look.group(name);
+    if (!this.seen.has(lower)) this.seen.set(lower, { group: g?.name ?? name, rank: g?.rank ?? null });
     if (!g) return undefined;
     const draft = { name: g.name, rank: g.rank, permissions: [...g.permissions], chat: g.chat };
     this.groups.set(lower, draft);
@@ -213,7 +220,7 @@ class Draft {
     }
     if (this.missing.size > 0) sum.push(`These permissions name commands this game does not have, and allow nothing here: ${[...this.missing].join(", ")}.`);
     const notes = this.unsaid > 0 ? [...this.notes, `And ${this.unsaid} more notes like these.`] : this.notes;
-    return { ops: this.ops, notes: [...notes, ...sum.slice(0, IMPORT_NOTES_MOST)] };
+    return { ops: this.ops, notes: [...notes, ...sum.slice(0, IMPORT_NOTES_MOST)], seen: [...this.seen.values()] };
   }
 }
 
@@ -552,18 +559,19 @@ export function planCrossChat(source: string, opts: ImportOptions): Planned {
 
 /**
  * Makes a plan's changes as `actor` in one write, since each write of its own would hold the server's tick for its commit.
- * A refusal stops nothing. The caller checks the actor's rank.
+ * A refusal stops nothing, and a group the plan saw changed since stops it all. The caller checks the actor's rank.
  */
-export function applyPlan(perms: Pick<Permissions, "makeAll">, actor: PermissionActor, plan: ImportPlan): Applied {
+export function applyPlan(perms: Pick<Permissions, "makeIf">, actor: PermissionActor, plan: ImportPlan): Applied {
   let done = 0;
   let rank: number | null = null;
   const refused: { op: PermissionOp; reason: string }[] = [];
-  const made = perms.makeAll(actor, plan.ops);
+  const made = perms.makeIf(actor, plan.ops, plan.seen);
+  if (made === null) return { changed: true, done, refused, rank };
   for (let i = 0; i < made.length; i++) {
     const m = made[i]!;
     rank = Math.min(rank ?? m.rank, m.rank);
     if (m.why === "") done++;
     else refused.push({ op: plan.ops[i]!, reason: m.why });
   }
-  return { done, refused, rank };
+  return { changed: false, done, refused, rank };
 }

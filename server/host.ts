@@ -359,7 +359,10 @@ export interface Host {
   clearPassword(by: Actor, id: string): string;
   /** Shows or hides one of the session's survivor's own chat tags. Answers "" or why not. */
   chooseTag(c: Client, tag: string, show: boolean): string;
-  /** Makes an import's changes as `by`, who needs the top rank there is: each under the rule, all as one act that names `what`. */
+  /**
+   * Makes an import's changes as `by`, who needs the top rank there is: each under the rule, all as one act that names
+   * `what`. Where a group its plan saw changed before the write, nothing is made or logged, and `changed` says so.
+   */
   importPermissions(by: Actor, what: string, plan: ImportPlan): Applied & { readonly why: string };
   /** A session as its groups know it, or null before it has a survivor with an ID. */
   subjectOf(c: Client): PermissionSubject | null;
@@ -1721,10 +1724,12 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     if (by.rank < top) {
       const why = `An import needs the ${RANK_NAMES[top]} rank.`;
       acts.refused(by, permissions.actingRank(acting(by)), `import ${what}`, why);
-      return { why, done: 0, refused: [], rank: null };
+      return { why, changed: false, done: 0, refused: [], rank: null };
     }
     const actor: Acting = { ...acting(by), needs: top };
     const applied = applyPlan(permissions, actor, plan);
+    // A plan overtaken before its write made nothing: the page is answered, and nothing is logged.
+    if (applied.changed) return { why: "", ...applied };
     const rank = applied.rank ?? permissions.actingRank(actor);
     acts.write(by, `imported ${what}: ${applied.done} ${applied.done === 1 ? "change" : "changes"}`, "change", rank);
     const first = applied.refused[0];

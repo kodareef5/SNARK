@@ -505,6 +505,28 @@ test("a look at the file now reads another world's change without waiting for th
   expect([two.lookNow(), two.group("Vip")?.name, two.lookNow()]).toEqual([true, "Vip", false]);
 });
 
+test("an import whose group changed rank before its write makes nothing", () => {
+  const file = join(root, "basis.sqlite");
+  const two = new Permissions({ store: new PermissionStore(file), world: 2 });
+  const five = new Permissions({ store: new PermissionStore(file), world: 5 });
+  expect(two.apply(cluster, { op: "addGroup", group: "Mods", rank: RANK_STAFF })).toBe("");
+  const plan = planOf(planCommands("Permissions.Grant Mods Cheat.fly\nPermissions.AddGroup Vip", opts(two)));
+  expect(noteWith(plan, "Mods is open")).toBeUndefined();
+  // Another map opens the empty group after the plan was made, and this map has not looked at the file since.
+  expect(five.apply(cluster, { op: "setRank", group: "Mods", rank: RANK_OPEN, was: RANK_STAFF })).toBe("");
+  const applied = applyPlan(two, cluster, plan);
+  expect([applied.changed, applied.done, applied.refused]).toEqual([true, 0, []]);
+  const held = new PermissionStore(file).read();
+  expect([held.groups.find((g) => g.name === "Mods")?.permissions, held.groups.some((g) => g.name === "Vip"), two.history().length]).toEqual([[], false, 2]);
+});
+
+test("a group made since the plan, where it planned to make one, stops the import", () => {
+  const perms = fresh();
+  const plan = planOf(planCommands("Permissions.Grant Vip Kit.vip", opts(perms)));
+  expect(perms.apply(cluster, { op: "addGroup", group: "Vip", rank: RANK_STAFF })).toBe("");
+  expect([applyPlan(perms, cluster, plan).changed, perms.group("Vip")?.permissions]).toEqual([true, []]);
+});
+
 test("a pasted rank change over another admin's change is refused as changed meanwhile", () => {
   const file = join(root, "rank.sqlite");
   const two = new Permissions({ store: new PermissionStore(file), world: 2 });
