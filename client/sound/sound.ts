@@ -123,6 +123,28 @@ export class SoundIo implements SoundSink {
     return this.ctx?.state === "running";
   }
 
+  /** A screen's video, each through its own gain and panner into the ambience: made the first time it is heard. */
+  private readonly media = new Map<HTMLMediaElement, { gain: GainNode; pan: PannerNode }>();
+
+  /** Plays `el`'s sound from (x, y, z) metres off the ear at `gain`, or silences it. */
+  screen(el: HTMLMediaElement, on: boolean, x: number, y: number, z: number, gain: number): void {
+    let m = this.media.get(el);
+    if (!m && !on) return;
+    const ctx = this.context(), now = ctx.currentTime;
+    if (!m) {
+      const g = new GainNode(ctx, { gain: 0 }), pan = new PannerNode(ctx, { panningModel: this.model, distanceModel: "linear", rolloffFactor: 0, positionX: x, positionY: y, positionZ: z });
+      ctx.createMediaElementSource(el).connect(g).connect(pan).connect(this.buses[1]!);
+      this.media.set(el, (m = { gain: g, pan }));
+      // Its sound goes through the graph alone from now on.
+      el.muted = false;
+    }
+    m.gain.gain.setTargetAtTime(on ? gain : 0, now, GLIDE);
+    if (!on) return;
+    m.pan.positionX.setTargetAtTime(x, now, GLIDE);
+    m.pan.positionY.setTargetAtTime(y, now, GLIDE);
+    m.pan.positionZ.setTargetAtTime(z, now, GLIDE);
+  }
+
   apply(p: SoundPacket): void {
     if (p.loads.length + p.unloads.length + p.starts.length + p.moves.length + p.stops.length === 0 && !this.ctx) return;
     const ctx = this.context();
