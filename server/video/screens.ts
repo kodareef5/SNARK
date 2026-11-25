@@ -3,12 +3,15 @@
 import { TICK_RATE } from "../../shared/coords.ts";
 import { OWN_SCREEN } from "../../shared/net/protocol.ts";
 import { isDay } from "../../shared/sim/clock.ts";
-import { SCREENS, defaultScreen } from "../../shared/video/clip.ts";
+import { SCREENS, defaultScreen, heldSceneOf } from "../../shared/video/clip.ts";
 import { screenAt, type Playing } from "../../shared/video/programme.ts";
 import { NO_CLIP, SCREEN_FILL, SCREEN_SOUND, SCREEN_FACING, SHOW_SCENES, SHOW_VIDEO, writeScreens, type ScreenState } from "../../shared/video/screen.ts";
+import { orbOnly } from "../../shared/world/orb.ts";
 import type { GameServer } from "../game.ts";
+import type { Rules } from "../settings/rules.ts";
 import { worldHour, type ServerWorld } from "../world.ts";
 import type { LibraryView } from "./library.ts";
+import type { ScreenWorld } from "./routes.ts";
 
 /** How often the library's file is looked at for a change, in milliseconds. */
 export const LIBRARY_CHECK_MS = 2000;
@@ -23,6 +26,17 @@ export interface LibrarySource {
 
 /** It is night where the sun is down: outside the hours of day on the world's clock. */
 export const worldNight = (world: ServerWorld): boolean => !isDay(worldHour(world));
+
+/** This world as its players see the ball, for the Screens page: its clock and the orb's own settings. */
+export function screenWorld(host: { readonly world: ServerWorld; readonly rules: Rules }): ScreenWorld {
+  return {
+    night: worldNight(host.world),
+    seconds: host.world.tick / TICK_RATE,
+    hour: worldHour(host.world),
+    only: orbOnly(host.rules.text("OrbScene")),
+    gain: Math.min(4, Math.max(0, host.rules.num("OrbBrightness"))),
+  };
+}
 
 /** The world tick at which a clip whose first second played at `start` (wall ms) began, seen at `tick` and `wall`. */
 export const startTick = (tick: number, wall: number, start: number): number => tick - ((wall - start) / 1000) * TICK_RATE;
@@ -70,13 +84,13 @@ export class ScreenFeed {
     SCREENS.forEach((id, i) => {
       const screen = view.screens.get(id) ?? defaultScreen(id);
       const now = screenAt(screen, view.channels, view.timed, wall, night), was = this.playing[i] ?? null;
-      const s = this.states[i] ?? (this.states[i] = { manifest: "", show: SHOW_SCENES, flags: 0, clip: NO_CLIP, start: 0, next: NO_CLIP });
+      const s = this.states[i] ?? (this.states[i] = { manifest: "", show: SHOW_SCENES, flags: 0, clip: NO_CLIP, start: 0, next: NO_CLIP, scene: -1 });
       const flags = (screen.mode === "facing" ? SCREEN_FACING : 0) | (screen.fill ? SCREEN_FILL : 0) | (screen.sound ? SCREEN_SOUND : 0);
       const same = !!now && !!was && now.clip === was.clip && now.start === was.start;
       const next: ScreenState = now
-        ? { manifest: view.manifestId, show: SHOW_VIDEO, flags, clip: index.get(now.clip) ?? NO_CLIP, start: same ? s.start : startTick(this.world.tick, wall, now.start), next: now.next === null ? NO_CLIP : (index.get(now.next) ?? NO_CLIP) }
-        : { manifest: view.manifestId, show: SHOW_SCENES, flags, clip: NO_CLIP, start: 0, next: NO_CLIP };
-      if (next.manifest !== s.manifest || next.show !== s.show || next.flags !== s.flags || next.clip !== s.clip || next.start !== s.start || next.next !== s.next) {
+        ? { manifest: view.manifestId, show: SHOW_VIDEO, flags, clip: index.get(now.clip) ?? NO_CLIP, start: same ? s.start : startTick(this.world.tick, wall, now.start), next: now.next === null ? NO_CLIP : (index.get(now.next) ?? NO_CLIP), scene: heldSceneOf(screen.show) }
+        : { manifest: view.manifestId, show: SHOW_SCENES, flags, clip: NO_CLIP, start: 0, next: NO_CLIP, scene: heldSceneOf(screen.show) };
+      if (next.manifest !== s.manifest || next.show !== s.show || next.flags !== s.flags || next.clip !== s.clip || next.start !== s.start || next.next !== s.next || next.scene !== s.scene) {
         Object.assign(s, next);
         changed = true;
       }

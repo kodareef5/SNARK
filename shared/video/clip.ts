@@ -1,6 +1,7 @@
 // What a screen can play: clips in a cluster's library, channels that order them, and what each screen shows. The
 // server keeps them (server/video/library.ts); a client fetches the manifest of clips once and is told what plays by
 // OWN_SCREEN (screen.ts). Nothing here is decoded: a clip's poster and colour track were made when it was added.
+import { ORB_SCENES } from "../world/orb.ts";
 
 /** The longest side, the shorter side, the bit rate, the length and the size a clip may have. 480p is finer than the orb's pucks. */
 export const CLIP_MAX_WIDE = 854;
@@ -50,7 +51,10 @@ export interface Channel {
 /** How a screen draws a picture: facing each viewer, or wrapped round the ball in copies. */
 export type ScreenMode = "facing" | "fixed";
 
-/** What one screen shows. `show` is "scenes" or a channel's name; `once` plays one clip from `from` (wall ms), then returns. */
+/**
+ * What one screen shows. `show` is "scenes" (the scenes' own programme), "scene:<name>" (one scene held), or a
+ * channel's name; `once` plays one clip from `from` (wall ms), then returns to `show`.
+ */
 export interface Screen {
   readonly screen: string;
   readonly show: string;
@@ -65,6 +69,11 @@ export interface Screen {
 
 /** The screens there are. The orb is the first; billboards and TVs come later. */
 export const SCREENS = ["orb"] as const;
+
+/** What `show` holds a scene by: "scene:" and the scene's name (shared/world/orb.ts ORB_SCENES). */
+export const SCENE_SHOW = "scene:";
+/** The scene a screen's `show` holds, its number in ORB_SCENES, or -1 where it holds none. */
+export const heldSceneOf = (show: string): number => (show.startsWith(SCENE_SHOW) ? ORB_SCENES.indexOf(show.slice(SCENE_SHOW.length) as (typeof ORB_SCENES)[number]) : -1);
 
 export const defaultScreen = (screen: string): Screen => ({ screen, show: "scenes", once: null, mode: "facing", fill: true, sound: false, night: false });
 

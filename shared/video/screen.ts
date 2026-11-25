@@ -22,11 +22,16 @@ export interface ScreenState {
   /** The world tick at which the clip's first second plays; it may be before the world began. */
   start: number;
   next: number;
+  /** The scene an admin holds the screen to while no clip plays, its number in ORB_SCENES, or -1 for the scenes' programme. */
+  scene: number;
 }
 
-export const newScreenState = (): ScreenState => ({ manifest: "", show: SHOW_SCENES, flags: SCREEN_FACING, clip: NO_CLIP, start: 0, next: NO_CLIP });
+export const newScreenState = (): ScreenState => ({ manifest: "", show: SHOW_SCENES, flags: SCREEN_FACING, clip: NO_CLIP, start: 0, next: NO_CLIP, scene: -1 });
 
-/** Every screen's state, in SCREENS order (clip.ts). The manifest is 8 bytes; each screen is 14. */
+/** The scene a screen holds the orb to, or `fallback` (the world's own setting) where it holds none. */
+export const heldScene = (s: ScreenState | undefined, fallback: number): number => (s && s.show === SHOW_SCENES && s.scene >= 0 ? s.scene : fallback);
+
+/** Every screen's state, in SCREENS order (clip.ts). The manifest is 8 bytes; each screen is 15. */
 export function writeScreens(w: BitWriter, screens: readonly ScreenState[]): void {
   const manifest = screens[0]?.manifest ?? "";
   w.u32(manifest ? parseInt(manifest.slice(0, 8), 16) >>> 0 : 0);
@@ -38,6 +43,7 @@ export function writeScreens(w: BitWriter, screens: readonly ScreenState[]): voi
     w.u16(s.clip);
     w.f64(s.start);
     w.u16(s.next);
+    w.u8(s.scene + 1);
   }
 }
 
@@ -53,6 +59,7 @@ export function readScreens(r: BitReader, out: ScreenState[]): void {
     s.clip = r.u16();
     s.start = r.f64();
     s.next = r.u16();
+    s.scene = r.u8() - 1;
   }
   out.length = count;
 }

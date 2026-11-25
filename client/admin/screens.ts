@@ -1,24 +1,34 @@
-// The cluster's Screens page: the clip library, uploads with their poster and colour track, the channels and what each
-// screen shows, over /admin/screens/ (server/video/routes.ts). Its parts that need no browser are in
-// client/core/admin/screens.ts; this is the page's wiring.
+// The cluster's Screens page: the Vegas ball live as its players see it and a preview of what is picked, with tiles
+// for its scenes and channels and a table of clips to pick from; then uploads and channel edits, over /admin/screens/
+// (server/video/routes.ts). The ball is drawn by its own bundle (screens-stage.ts) with the game's shader. The parts
+// that need no browser are in client/core/admin/screens.ts and screens-stage.ts; this is the page's wiring.
 
 import "./shell.ts";
 import { esc } from "../core/admin/format.ts";
 import {
-  ColourTrack, POSTER_BYTES, POSTER_LONG, POSTER_QUALITIES, SAMPLE_LONG, bandMeans, base64, draftChannels, draftDiffers, draftFault, ffmpegLine,
-  fitLong, freeChannelName, kbpsOf, lengthText, moveIn, overCaps, progressOf, timedOf, titleOf, type ChannelDraft, type Probe, type ScreensState, type StateClip,
+  ColourTrack, POSTER_BYTES, POSTER_LONG, POSTER_QUALITIES, SAMPLE_LONG, bandMeans, base64, draftChannels, draftDiffers, draftFault, ffmpegLine, findClips,
+  fitLong, freeChannelName, kbpsOf, lengthText, moveIn, overCaps, progressOf, sortClips, timedOf, titleOf, type ChannelDraft, type ClipSort, type Probe, type ScreensState, type StateClip,
 } from "../core/admin/screens.ts";
+import type { StageFrame, StageLook, Target, Tile } from "../core/admin/screens-stage.ts";
 import { COLOUR_PARTS } from "../../shared/video/clip.ts";
-import { channelAt, screenAt, type Playing } from "../../shared/video/programme.ts";
+import { channelAt, screenAt } from "../../shared/video/programme.ts";
+import type { PictureSlot, ScreensStage, Stage } from "./screens-stage.ts";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
 const API = "/admin/screens/";
 const SCREEN_NAMES: Readonly<Record<string, string>> = { orb: "The Vegas ball" };
 
-/** The page's state: the library as last read and when, the channels being edited, and the file picked to add. */
+/** The page's state: the library as last read and when, what is picked for the preview, the table's order, the channels being edited, and the file picked to add. */
 const S = {
   state: null as ScreensState | null,
   at: 0,
+  picked: null as Target | null,
+  pickedAt: 0,
+  view: 0,
+  bearing: Math.PI,
+  sort: "added" as ClipSort,
+  down: false,
+  query: "",
   draft: [] as ChannelDraft[],
   /** The saved channels the draft was taken from, as JSON. */
   base: "[]",
@@ -32,6 +42,8 @@ const S = {
 
 /** The wall clock as the server keeps it, run on from its last answer. */
 const wall = (): number => (S.state ? S.state.now + (performance.now() - S.at) : Date.now());
+/** The world's clock in seconds, as its players' orb runs on it. */
+const worldSeconds = (): number => (S.state ? S.state.world.seconds + (performance.now() - S.at) / 1000 : 0);
 const clipsById = (): Map<string, StateClip> => new Map((S.state?.clips ?? []).map((c) => [c.id, c]));
 const titleText = (id: string | null): string => (id ? (clipsById().get(id)?.title ?? id) : "the scenes");
 
@@ -44,15 +56,15 @@ const failed = (err: unknown): void => say(err instanceof Error ? err.message : 
 const deferred = new Map<HTMLElement, string>();
 const painted = new WeakMap<HTMLElement, string>();
 /** Writes `html` into `el` when it changed, keeping what its named fields hold, but not under a field in hand: that waits until it is let go. */
-function paint(el: HTMLElement, html: string): void {
+function paint(el: HTMLElement, html: string): boolean {
   if (painted.get(el) === html) {
     deferred.delete(el);
-    return;
+    return false;
   }
   const held = document.activeElement;
   if (held && el.contains(held) && /^(INPUT|SELECT|TEXTAREA)$/.test(held.tagName)) {
     deferred.set(el, html);
-    return;
+    return false;
   }
   deferred.delete(el);
   const kept = [...el.querySelectorAll<HTMLInputElement | HTMLSelectElement>("select[id], input[id]")].map((f) => [f.id, f.value] as const);
@@ -62,10 +74,11 @@ function paint(el: HTMLElement, html: string): void {
     const f = document.getElementById(id) as HTMLInputElement | HTMLSelectElement | null;
     if (f && el.contains(f) && (f instanceof HTMLInputElement || [...f.options].some((o) => o.value === value))) f.value = value;
   }
+  return true;
 }
 document.addEventListener("focusout", () => setTimeout(() => {
   for (const [el, html] of [...deferred]) paint(el, html);
-  drawNow();
+  wantThumbs();
 }));
 
 /** Takes the state a read or an edit answered. A channel draft with changes is kept. */
@@ -123,77 +136,291 @@ async function edit(body: Record<string, unknown>, done = ""): Promise<boolean> 
   return true;
 }
 
-// ---- Screens
+// ---- The stage: the live monitor, the preview and every thumbnail, drawn by the game's own shader.
 
-function screenHtml(): string {
-  const st = S.state!;
-  const visible = st.clips.filter((c) => !c.hidden);
-  return st.screens.map((s) => {
-    const name = esc(s.screen), pick = (field: string, value: string, label: string, on: boolean) =>
-      `<button data-do="screen" data-screen="${name}" data-field="${field}" data-value="${value}" class="${on ? "on" : ""}" aria-pressed="${on}">${label}</button>`;
-    const once = s.once ? st.clips.find((c) => c.id === s.once!.clip) : undefined;
-    const showing = !!(s.once && once && wall() < s.once.from + once.seconds * 1000);
-    return `<h3>${esc(SCREEN_NAMES[s.screen] ?? s.screen)}</h3><div class="knobs">
-      <span>Show</span><div class="row"><select data-do="show" data-screen="${name}">
-        <option value="scenes"${s.show === "scenes" ? " selected" : ""}>Scenes</option>
-        ${st.channels.map((c) => `<option value="${esc(c.name)}"${s.show === c.name ? " selected" : ""}>Channel: ${esc(c.name)}</option>`).join("")}
-      </select></div>
-      <span>Play once</span><div class="row"><select id="once-${name}" aria-label="Clip to play once">${visible.map((c) => `<option value="${c.id}">${esc(c.title)}</option>`).join("")}</select>
-        <button data-do="once" data-screen="${name}"${visible.length ? "" : " disabled"}>Play once</button>
-        <button data-do="stop" data-screen="${name}"${showing ? "" : " disabled"}>Stop the showing</button></div>
-      <span>Picture</span><div class="row">${pick("mode", "facing", "Wrapped, facing each viewer", s.mode === "facing")}${pick("mode", "fixed", "Wrapped, fixed to the ball", s.mode === "fixed")}</div>
-      <span>Frame</span><div class="row">${pick("fill", "false", "Fit the whole picture", !s.fill)}${pick("fill", "true", "Fill the ball", s.fill)}</div>
-      <span>Sound</span><label><input type="checkbox" data-do="flag" data-screen="${name}" data-field="sound"${s.sound ? " checked" : ""}> Play the clip's sound near the screen</label>
-      <span>When</span><label><input type="checkbox" data-do="flag" data-screen="${name}" data-field="night"${s.night ? " checked" : ""}> Night only (the scenes run by day; it is ${st.night ? "night" : "day"} now)</label>
-    </div><div id="now-${name}" class="now"></div>`;
-  }).join("");
+let mod: ScreensStage | null = null;
+let stage: Stage | null = null;
+let live: { frame: StageFrame; slot: PictureSlot; video: HTMLVideoElement } | null = null;
+let preview: { frame: StageFrame; slot: PictureSlot; video: HTMLVideoElement } | null = null;
+let thumb: { frame: StageFrame; slot: PictureSlot } | null = null;
+
+/** The stage's own bundle, loaded once as a module script that leaves its exports on the page. */
+function loadStage(): Promise<ScreensStage> {
+  return new Promise((ok, no) => {
+    const script = document.createElement("script");
+    script.type = "module";
+    script.src = "/admin/ui/screens-stage.js";
+    script.onload = () => {
+      const loaded = (globalThis as { screensStage?: ScreensStage }).screensStage;
+      if (loaded) ok(loaded);
+      else no(new Error("The ball's drawing did not load."));
+    };
+    script.onerror = () => no(new Error("The ball's drawing did not load."));
+    document.head.append(script);
+  });
 }
 
-/** A line of what plays, with its time bar. */
-function nowHtml(playing: Playing | null, timed: ReturnType<typeof timedOf>, wallNow: number): string {
-  if (!playing) return `<p class="dim">Now: the scenes.</p>`;
-  const p = progressOf(playing, timed, wallNow);
-  return `<p>Now: <b>${esc(titleText(playing.clip))}</b> <span class="dim">${lengthText(p.at)} of ${lengthText(p.of)}</span></p>
-    <div class="time" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(p.share * 100)}"><i style="width:${(p.share * 100).toFixed(1)}%"></i></div>
-    <p class="dim">Next: ${esc(titleText(playing.next))}</p>`;
+/** A video for a monitor: muted, inline, kept in the page unseen, as a browser hands frames only of a video in it. */
+function hiddenVideo(): HTMLVideoElement {
+  const v = document.createElement("video");
+  v.muted = true;
+  v.playsInline = true;
+  v.preload = "auto";
+  v.loop = false;
+  v.style.cssText = "position:fixed;left:0;bottom:0;width:2px;height:2px;opacity:0;pointer-events:none";
+  document.body.append(v);
+  return v;
 }
 
-/** What every screen and saved channel plays now; run each second between reads. */
-function drawNow(): void {
+async function startStage(): Promise<void> {
+  try {
+    mod = await loadStage();
+    stage = new mod.Stage();
+  } catch (e) {
+    $("no-stage").hidden = false;
+    $("no-stage").textContent = `${e instanceof Error ? e.message : String(e)} The tiles show posters instead.`;
+    return;
+  }
+  live = { frame: new mod.StageFrame(), slot: new mod.PictureSlot(), video: hiddenVideo() };
+  preview = { frame: new mod.StageFrame(), slot: new mod.PictureSlot(), video: hiddenVideo() };
+  thumb = { frame: new mod.StageFrame(), slot: new mod.PictureSlot() };
+  drawViews();
+  drawTiles();
+  wantThumbs();
+  requestAnimationFrame(frame);
+}
+
+const posters = new Map<string, HTMLImageElement>();
+/** A clip's poster, decoded, or null while it loads. */
+function posterImage(clip: StateClip): HTMLImageElement | null {
+  let img = posters.get(clip.poster);
+  if (!img) {
+    img = new Image();
+    img.decoding = "async";
+    img.src = clip.poster;
+    posters.set(clip.poster, img);
+    img.decode().then(() => wantThumbs(), () => undefined);
+  }
+  return img.complete && img.naturalWidth > 0 ? img : null;
+}
+
+/** Plays `look`'s clip on `m`'s video where it is in step with `look`, and puts its frame, or its poster until one comes, in the slot. */
+function feed(m: { slot: PictureSlot; video: HTMLVideoElement }, look: StageLook): void {
+  const v = m.video, clip = look.clip;
+  if (!clip) {
+    if (!v.paused) v.pause();
+    return;
+  }
+  if (!v.src.endsWith(clip.file)) {
+    v.src = clip.file;
+    v.load();
+  }
+  mod!.keepInStep(v, look.clipSeconds);
+  if (v.readyState >= 2 && !v.seeking) stage!.upload(m.slot, v);
+  else if (m.slot.source !== v || m.slot.width === 0) {
+    const p = posterImage(clip);
+    if (p) stage!.upload(m.slot, p);
+  }
+}
+
+/** Sizes a canvas to its box at the screen's pixels, up to twice the box. */
+function fit(c: HTMLCanvasElement): void {
+  const k = Math.min(2, devicePixelRatio || 1), w = Math.round(c.clientWidth * k), h = Math.round(c.clientHeight * k);
+  if (c.width !== w || c.height !== h) [c.width, c.height] = [w, h];
+}
+
+let hovered = "";
+function frame(): void {
+  requestAnimationFrame(frame);
+  const st = S.state;
+  if (!st || !stage || !mod || !live || !preview || document.hidden) return;
+  const now = wall(), seconds = worldSeconds(), view = mod.STAGE_VIEWS[S.view]!, w = st.world;
+  const shown = mod.liveLook(st, now);
+  feed(live, shown);
+  const lc = $<HTMLCanvasElement>("live");
+  fit(lc);
+  stage.draw(lc, live.frame, shown, view, S.bearing, seconds, w.hour, w.gain, live.slot);
+  const pc = $<HTMLCanvasElement>("preview");
+  fit(pc);
+  if (S.picked) {
+    const look = mod.targetLook(st, S.picked, performance.now() - S.pickedAt, now);
+    feed(preview, look);
+    stage.draw(pc, preview.frame, look, view, S.bearing, seconds, w.hour, w.gain, preview.slot);
+  } else {
+    feed(preview, { ...shown, clip: null });
+    pc.getContext("2d")!.clearRect(0, 0, pc.width, pc.height);
+  }
+  // A scene's tile under the pointer moves.
+  const tile = hovered ? document.querySelector<HTMLCanvasElement>(`canvas[data-thumb="${CSS.escape(hovered)}"]`) : null;
+  if (tile && hovered.startsWith("scene")) drawThumb(tile, seconds);
+  // Thumbnails wanting a picture, a few a frame.
+  for (let n = 0; n < 4 && thumbQueue.length; n++) {
+    const c = thumbQueue.shift()!;
+    if (c.isConnected) drawThumb(c, seconds);
+  }
+}
+
+/** The tiles and the table's rows, by key. */
+let tiles = new Map<string, Tile>();
+
+/** A thumbnail: the ball showing its tile's target from the street, still, its clip at its poster. */
+function drawThumb(c: HTMLCanvasElement, seconds: number): void {
+  const st = S.state, t = tiles.get(c.dataset.thumb ?? "");
+  if (!st || !t || !stage || !mod || !thumb) return;
+  fit(c);
+  let look = mod.targetLook(st, t.target, 0, wall());
+  if (t.clip) {
+    const p = posterImage(t.clip);
+    if (!p) return;
+    stage.upload(thumb.slot, p);
+    look = { ...look, clip: t.clip, clipSeconds: t.clip.seconds * 0.1 };
+  }
+  stage.draw(c, thumb.frame, look, mod.STAGE_VIEWS[0]!, Math.PI, seconds, st.world.hour, st.world.gain, thumb.slot, true);
+  c.dataset.drawn = thumbStamp();
+}
+
+/** What a drawn thumbnail depends on beyond its tile: the clips' mode and fill, and night or day. */
+function thumbStamp(): string {
+  const orb = S.state?.screens.find((s) => s.screen === "orb");
+  return `${orb?.mode} ${orb?.fill} ${S.state?.night}`;
+}
+
+const thumbQueue: HTMLCanvasElement[] = [];
+/** Thumbnails come into view, or the way they look changed: each is drawn again once. */
+const seen = typeof IntersectionObserver === "function"
+  ? new IntersectionObserver((entries) => {
+    for (const e of entries) if (e.isIntersecting && (e.target as HTMLCanvasElement).dataset.drawn !== thumbStamp()) thumbQueue.push(e.target as HTMLCanvasElement);
+  })
+  : null;
+function wantThumbs(): void {
+  if (!stage) return;
+  for (const c of document.querySelectorAll<HTMLCanvasElement>("canvas[data-thumb]")) {
+    if (c.dataset.drawn === thumbStamp()) continue;
+    seen?.unobserve(c);
+    if (seen) seen.observe(c);
+    else thumbQueue.push(c);
+  }
+}
+
+// ---- What is live, what is picked, and the tiles.
+
+function pickTarget(target: Target): void {
+  S.picked = target;
+  S.pickedAt = performance.now();
+  if (preview) preview.frame = new mod!.StageFrame();
+  drawPicked();
+  for (const el of document.querySelectorAll<HTMLElement>("[data-pick]")) el.classList.toggle("picked", el.dataset.pick === mod?.targetKey(target));
+}
+
+function drawPicked(): void {
+  const st = S.state, t = S.picked;
+  if (!st || !mod) return;
+  const button = $<HTMLButtonElement>("take");
+  if (!t) {
+    button.disabled = true;
+    $("pv-note").textContent = "";
+    return;
+  }
+  const key = mod.targetKey(t), tile = tiles.get(key), isLive = mod.liveKey(st, wall()) === key;
+  $("pv-title").textContent = tile?.title ?? "";
+  button.disabled = isLive;
+  button.textContent = isLive ? "It is live" : "Go live";
+  const orb = st.screens.find((s) => s.screen === "orb");
+  const back = orb ? (orb.show === "scenes" ? "the scenes in turn" : orb.show.startsWith("scene:") ? (tiles.get(orb.show)?.title ?? "its scene") : `the channel ${orb.show}`) : "";
+  $("pv-note").textContent = isLive ? "This is on the ball now." : t.kind === "clip" ? `Plays once, then the ball goes back to ${back}.` : (tile?.note ?? "");
+}
+
+/** The line under the live monitor: what plays, how far in, and what comes next. */
+function drawLiveLine(): void {
+  const st = S.state;
+  if (!st || !mod) return;
+  const now = wall(), look = mod.liveLook(st, now), orb = st.screens.find((s) => s.screen === "orb");
+  const playing = orb ? screenAt(orb, new Map(st.channels.map((c) => [c.name, c])), timedOf(st.clips), now, st.night) : null;
+  const next = mod.nextWords(st, now);
+  let html = `<b>${esc(mod.lookWords(st, look))}</b>`;
+  if (playing) {
+    const p = progressOf(playing, timedOf(st.clips), now);
+    html += ` <span class="dim">${lengthText(p.at)} of ${lengthText(p.of)}</span><div class="time"><i style="width:${(p.share * 100).toFixed(1)}%"></i></div>`;
+  } else if (orb?.night && !st.night) html += ` <span class="dim">Clips wait for night here; the scenes run by day.</span>`;
+  if (next) html += `<span class="dim">Next: ${esc(next)}</span>`;
+  paint($("live-line"), html);
+  const hour = st.world.hour, h = Math.floor(hour), m = Math.floor((hour - h) * 60);
+  $("clock").textContent = `It is ${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")} in the world, ${st.night ? "night" : "day"}.`;
+}
+
+function tileHtml(t: Tile, liveNow: string): string {
+  const on = t.key === liveNow, picked = S.picked && mod?.targetKey(S.picked) === t.key;
+  const art = stage ? `<canvas data-thumb="${esc(t.key)}"></canvas>` : t.clip ? `<img src="${esc(t.clip.poster)}" alt="" loading="lazy">` : `<span class="art"></span>`;
+  return `<button class="tile${on ? " live" : ""}${picked ? " picked" : ""}" data-pick="${esc(t.key)}" title="Click to preview; double-click to go live">
+    ${art}${on ? `<span class="tag on-air">Live</span>` : ""}<span class="t-title">${esc(t.title)}</span><span class="t-note">${esc(t.note)}</span></button>`;
+}
+
+function drawTiles(): void {
+  const st = S.state;
+  if (!st || !mod) return;
+  tiles = new Map(mod.stageTiles(st).map((t) => [t.key, t]));
+  const now = mod.liveKey(st, wall()), all = [...tiles.values()];
+  const scenes = all.filter((t) => t.group === "scenes"), channels = all.filter((t) => t.group === "channels");
+  paint($("tiles-scenes"), scenes.map((t) => tileHtml(t, now)).join(""));
+  paint($("tiles-channels"), channels.length ? channels.map((t) => tileHtml(t, now)).join("") : `<p class="dim">No channel has clips yet.</p>`);
+  drawClips(now);
+}
+
+function drawViews(): void {
+  if (!mod) return;
+  paint($("views"), mod.STAGE_VIEWS.map((v, i) => `<button data-do="view" data-at="${i}" class="${i === S.view ? "on" : ""}" aria-pressed="${i === S.view}">${esc(v.label)}</button>`).join(""));
+}
+
+// ---- The clips' table.
+
+function clipRow(c: StateClip, liveNow: string): string {
+  const key = `clip:${c.id}`, on = key === liveNow, picked = S.picked && mod?.targetKey(S.picked) === key;
+  const inChannels = S.state!.channels.filter((ch) => ch.items.includes(c.id)).map((ch) => ch.name);
+  const badges = [on ? `<span class="tag on-air">Live</span>` : "", c.starter ? `<span class="chip">Starter</span>` : "", c.hidden ? `<span class="chip">Hidden</span>` : "", c.audio ? `<span class="chip">Sound</span>` : ""].join("");
+  const art = stage ? `<canvas data-thumb="${key}"></canvas>` : `<img src="${esc(c.poster)}" alt="" loading="lazy">`;
+  const actions = S.renaming === c.id
+    ? `<label class="dim">Title <input id="rename-title" maxlength="80" value="${esc(c.title)}"></label>
+       <label class="dim">Source <input id="rename-rights" maxlength="240" value="${esc(c.rights)}"></label>
+       <div class="row"><button class="primary" data-do="rename-save" data-clip="${c.id}">Save</button><button data-do="rename-cancel">Cancel</button></div>`
+    : `<div class="row"><button data-do="go" data-clip="${c.id}"${c.hidden || on ? " disabled" : ""}>Go live</button>
+       ${c.starter ? `<button data-do="${c.hidden ? "unhide" : "hide"}" data-clip="${c.id}">${c.hidden ? "Unhide" : "Hide"}</button>`
+         : `<button data-do="rename" data-clip="${c.id}">Rename</button><button class="risk" data-do="delete" data-clip="${c.id}">Delete</button>`}</div>`;
+  return `<tr class="${on ? "live" : ""}${picked ? " picked" : ""}${c.hidden ? " hidden-clip" : ""}" data-pick="${key}">
+    <td class="art">${art}</td>
+    <td><b>${esc(c.title)}</b> ${badges}<div class="rights">${esc(c.rights)}</div>${inChannels.length ? `<div class="faint">In ${esc(inChannels.join(", "))}</div>` : ""}</td>
+    <td>${lengthText(c.seconds)}</td><td>${(c.bytes / 1048576).toFixed(1)} MB<div class="faint">${c.width}×${c.height}</div></td>
+    <td>${c.kbps} kbit/s<div class="faint">${c.kBps} KB/s a player</div></td><td>${c.starter ? "Starter" : "Uploaded"}</td><td class="acts">${actions}</td></tr>`;
+}
+
+function drawClips(liveNow = mod && S.state ? mod.liveKey(S.state, wall()) : ""): void {
   const st = S.state;
   if (!st) return;
-  const timed = timedOf(st.clips), channels = new Map(st.channels.map((c) => [c.name, c])), now = wall();
-  for (const s of st.screens) {
-    const el = document.getElementById(`now-${s.screen}`);
-    if (el) paint(el, nowHtml(screenAt(s, channels, timed, now, st.night), timed, now));
+  const hidden = $<HTMLInputElement>("show-hidden").checked, all = hidden ? st.clips : st.clips.filter((c) => !c.hidden);
+  const rows = sortClips(findClips(all, S.query), S.sort, S.down, st.clips);
+  const html = rows.length ? rows.map((c) => clipRow(c, liveNow)).join("") : `<tr><td colspan="7" class="dim">${st.clips.length ? "No clip has those words." : "The library is empty."}</td></tr>`;
+  paint($("clips"), html);
+  const shownHidden = st.clips.filter((c) => c.hidden).length;
+  $("clips-count").textContent = `${rows.length} of ${st.clips.length} clips${shownHidden && !hidden ? `, ${shownHidden} hidden` : ""}. Click a row to preview it; Go live plays it once, then the ball goes back.`;
+  for (const b of document.querySelectorAll<HTMLButtonElement>("th button[data-sort]")) {
+    const on = b.dataset.sort === S.sort;
+    b.classList.toggle("on", on);
+    b.closest("th")!.setAttribute("aria-sort", on ? (S.down ? "descending" : "ascending") : "none");
+    b.textContent = b.textContent!.replace(/ [↑↓]$/, "") + (on ? (S.down ? " ↓" : " ↑") : "");
   }
-  for (const el of document.querySelectorAll<HTMLElement>("[data-now-channel]")) {
-    const c = channels.get(el.dataset.nowChannel!);
-    const playing = c ? channelAt(c, timed, now) : null;
-    paint(el, !c ? "Not saved yet." : !playing ? "Nothing it lists can play." : `Now ${esc(titleText(playing.clip))} (${lengthText(progressOf(playing, timed, now).at)} in), next ${esc(titleText(playing.next))}.`);
-  }
+  wantThumbs();
 }
 
-// ---- Library
+// ---- How clips sit on the ball.
 
-function clipHtml(c: StateClip): string {
-  const on = S.state!.screens.filter((s) => s.playing?.clip === c.id).map((s) => SCREEN_NAMES[s.screen] ?? s.screen);
-  const badges = [c.starter ? "Starter" : "Uploaded", c.hidden ? "Hidden" : "", c.audio ? "Sound" : "Silent", on.length ? `On ${on.join(", ")}` : ""].filter(Boolean);
-  const edit = S.renaming === c.id
-    ? `<label class="dim">Title <input id="rename-title" maxlength="80" value="${esc(c.title)}"></label>
-       <label class="dim">Who made it and why we may show it <input id="rename-rights" maxlength="240" value="${esc(c.rights)}"></label>
-       <div class="bar"><button class="primary" data-do="rename-save" data-clip="${c.id}">Save</button><button data-do="rename-cancel">Cancel</button></div>`
-    : `<div class="bar"><button data-do="play" data-clip="${c.id}"${c.hidden ? " disabled" : ""}>Play once on the ball</button>
-       ${c.starter
-         ? `<button data-do="${c.hidden ? "unhide" : "hide"}" data-clip="${c.id}">${c.hidden ? "Unhide" : "Hide"}</button>`
-         : `<button data-do="rename" data-clip="${c.id}">Rename</button><button class="risk" data-do="delete" data-clip="${c.id}">Delete</button>`}</div>`;
-  return `<article class="clip${c.hidden ? " hidden-clip" : ""}">
-    <img src="${esc(c.poster)}" alt="" loading="lazy" width="320" height="180">
-    <div class="body"><h3>${esc(c.title)}</h3>
-      <div class="row">${badges.map((b) => `<span class="chip">${esc(b)}</span>`).join("")}</div>
-      <span>${lengthText(c.seconds)} · ${(c.bytes / 1048576).toFixed(1)} MB · ${c.width}×${c.height} · ${c.kbps} kbit/s</span>
-      <span class="dim">About ${c.kBps} KB/s for each player watching</span>
-      <span class="rights">${esc(c.rights)}</span>${edit}</div></article>`;
+function knobsHtml(): string {
+  const st = S.state!, s = st.screens.find((x) => x.screen === "orb");
+  if (!s) return "";
+  const pick = (field: string, value: string, label: string, on: boolean) =>
+    `<button data-do="screen" data-screen="orb" data-field="${field}" data-value="${value}" class="${on ? "on" : ""}" aria-pressed="${on}">${label}</button>`;
+  return `<span>Turned</span><div class="row">${pick("mode", "facing", "To face each player", s.mode === "facing")}${pick("mode", "fixed", "Fixed to the ball", s.mode === "fixed")}</div>
+    <span>Size</span><div class="row">${pick("fill", "true", "Fill the ball", s.fill)}${pick("fill", "false", "Whole picture, with a glow round it", !s.fill)}</div>
+    <span>Sound</span><label><input type="checkbox" data-do="flag" data-screen="orb" data-field="sound"${s.sound ? " checked" : ""}> Play the clip's sound near the ball</label>
+    <span>When</span><label><input type="checkbox" data-do="flag" data-screen="orb" data-field="night"${s.night ? " checked" : ""}> Clips only by night; the scenes run by day</label>`;
 }
 
 function waitingHtml(): string {
@@ -204,7 +431,6 @@ function waitingHtml(): string {
 }
 
 // ---- Channels
-
 function channelsHtml(): string {
   const st = S.state!, all = st.clips;
   const shownOn = (name: string): string[] => st.screens.filter((s) => s.show === name).map((s) => SCREEN_NAMES[s.screen] ?? s.screen);
@@ -233,6 +459,7 @@ function channelsHtml(): string {
   }).join("");
 }
 
+
 function drawChannelBar(): void {
   const st = S.state!, dirty = draftDiffers(S.draft, st.channels), moved = S.base !== JSON.stringify(st.channels), fault = draftFault(S.draft);
   $<HTMLButtonElement>("save-channels").disabled = !dirty || !!fault;
@@ -241,73 +468,42 @@ function drawChannelBar(): void {
   $("channels-say").className = fault || moved ? "warn" : "dim";
 }
 
+/** What plays now on the ball and on each saved channel; run each second between reads. */
+function drawNow(): void {
+  const st = S.state;
+  if (!st) return;
+  drawLiveLine();
+  drawPicked();
+  // What is live moves on as clips end, so the tiles and the rows marked live follow it.
+  const now = mod ? mod.liveKey(st, wall()) : "";
+  if (now !== liveShown) {
+    liveShown = now;
+    drawTiles();
+  }
+  const timed = timedOf(st.clips), channels = new Map(st.channels.map((c) => [c.name, c])), at = wall();
+  for (const el of document.querySelectorAll<HTMLElement>("[data-now-channel]")) {
+    const c = channels.get(el.dataset.nowChannel!);
+    const playing = c ? channelAt(c, timed, at) : null;
+    paint(el, !c ? "Not saved yet." : !playing ? "Nothing it lists can play." : `Now ${esc(titleText(playing.clip))} (${lengthText(progressOf(playing, timed, at).at)} in), next ${esc(titleText(playing.next))}.`);
+  }
+}
+let liveShown = "";
+
 function draw(): void {
   const st = S.state;
   if (!st) return;
   $("cap-wide").textContent = String(st.caps.wide);
   $("cap-high").textContent = String(st.caps.high);
-  paint($("screens"), screenHtml());
-  paint($("clips"), st.clips.length ? st.clips.map(clipHtml).join("") : `<p class="dim">The library is empty.</p>`);
+  // A picked clip or channel that is gone is let go.
+  if (S.picked && mod && !mod.stageTiles(st).some((t) => t.key === mod!.targetKey(S.picked!))) S.picked = null;
+  liveShown = mod ? mod.liveKey(st, wall()) : "";
+  drawTiles();
+  if (!mod) drawClips();
+  paint($("knobs"), knobsHtml());
   paint($("waiting"), waitingHtml());
   paint($("channels"), channelsHtml());
   drawChannelBar();
   drawNow();
-  void drawBall();
-}
-
-// ---- Preview
-
-const PREVIEW_SIZE = 160;
-type PreviewModule = typeof import("../core/admin/screens-preview.ts");
-let previewModule: Promise<PreviewModule> | null = null;
-/** The preview's own bundle (screens-preview.ts), loaded once as a module script that leaves its exports on the page. */
-function loadPreview(): Promise<PreviewModule> {
-  return (previewModule ??= new Promise((ok, no) => {
-    const script = document.createElement("script");
-    script.type = "module";
-    script.src = "/admin/ui/screens-preview.js";
-    script.onload = () => {
-      const loaded = (globalThis as { screensPreview?: PreviewModule }).screensPreview;
-      if (loaded) ok(loaded);
-      else no(new Error("The preview did not load."));
-    };
-    script.onerror = () => no(new Error("The preview did not load."));
-    document.head.append(script);
-  }));
-}
-let previewKey = "";
-/** The ball showing the clip it plays, else the one picked to play once, drawn by the game's own twin when either changes. */
-async function drawBall(): Promise<void> {
-  const st = S.state, orb = st?.screens.find((s) => s.screen === "orb");
-  if (!st || !orb) return;
-  const id = orb.playing?.clip ?? document.querySelector<HTMLSelectElement>("#once-orb")?.value ?? "";
-  const clip = st.clips.find((c) => c.id === id), key = `${id} ${orb.mode} ${orb.fill}`;
-  if (!clip || key === previewKey) return;
-  previewKey = key;
-  const poster = new Image();
-  poster.src = clip.poster;
-  let twin: PreviewModule;
-  try {
-    [twin] = await Promise.all([loadPreview(), poster.decode()]);
-  } catch {
-    previewModule = null;
-    previewKey = "";
-    return;
-  }
-  if (previewKey !== key) return;
-  const flat = document.createElement("canvas");
-  flat.width = poster.naturalWidth;
-  flat.height = poster.naturalHeight;
-  const fc = flat.getContext("2d")!;
-  fc.drawImage(poster, 0, 0);
-  const picture = fc.getImageData(0, 0, flat.width, flat.height).data;
-  const canvas = document.querySelector<HTMLCanvasElement>("#preview canvas")!;
-  canvas.width = PREVIEW_SIZE * twin.PREVIEW_VIEWS.length;
-  canvas.height = PREVIEW_SIZE;
-  const out = new ImageData(canvas.width, canvas.height);
-  twin.drawPreview(out.data, PREVIEW_SIZE, picture, flat.width, flat.height, Uint8Array.from(atob(clip.colours), (ch) => ch.charCodeAt(0)), orb.mode === "facing", orb.fill);
-  canvas.getContext("2d")!.putImageData(out, 0, 0);
-  $("preview").querySelector("p")!.textContent = `${clip.title} at night, ${twin.PREVIEW_VIEWS.map((v) => v.label).join(", ")}.`;
 }
 
 /** The draft changed: draw the channels again. */
@@ -327,6 +523,13 @@ async function saveChannels(): Promise<void> {
   S.draft = draftChannels(S.state!.channels);
   S.base = JSON.stringify(S.state!.channels);
   draw();
+}
+
+/** Takes `target` live on the ball. */
+async function goLive(target: Target): Promise<void> {
+  if (!mod) return;
+  const tile = tiles.get(mod.targetKey(target));
+  await edit(mod.takeBody(target), `${tile?.title ?? "It"} is live. Players see it within two seconds.`);
 }
 
 // ---- Upload
@@ -548,21 +751,40 @@ async function send(): Promise<void> {
 // ---- Wiring
 
 const num = (el: HTMLElement, key: string): number => Number(el.dataset[key]);
+/** The target a tile or a row picks, by its key. */
+const targetOf = (key: string): Target | null => tiles.get(key)?.target ?? (key.startsWith("clip:") ? { kind: "clip", clip: key.slice(5) } : null);
 
 document.addEventListener("click", (e) => {
-  const b = (e.target as HTMLElement).closest<HTMLElement>("button[data-do]");
-  if (!b || !S.state) return;
+  const el = e.target as HTMLElement;
+  const sort = el.closest<HTMLElement>("th button[data-sort]");
+  if (sort) {
+    const key = sort.dataset.sort as ClipSort;
+    S.down = S.sort === key ? !S.down : key !== "title" && key !== "added";
+    S.sort = key;
+    return drawClips();
+  }
+  const b = el.closest<HTMLElement>("button[data-do]");
+  if (!b) {
+    // A tile or a row: picked for the preview, unless a field in it was clicked.
+    const p = el.closest<HTMLElement>("[data-pick]");
+    if (p && !el.closest("input,label")) {
+      const t = targetOf(p.dataset.pick!);
+      if (t) pickTarget(t);
+    }
+    return;
+  }
+  if (!S.state) return;
   const clip = b.dataset.clip ?? "", screen = b.dataset.screen ?? "", d = S.draft[num(b, "ch")];
   const act = (p: Promise<unknown>): void => void p.catch(failed);
   switch (b.dataset.do) {
+    case "view":
+      S.view = num(b, "at");
+      return drawViews();
     case "screen":
       return act(edit({ op: "screen", screen, [b.dataset.field!]: b.dataset.field === "fill" ? b.dataset.value === "true" : b.dataset.value }));
-    case "once":
-      return act(edit({ op: "once", screen, clip: $<HTMLSelectElement>(`once-${screen}`).value }, "Playing it once."));
-    case "stop":
-      return act(edit({ op: "stop", screen }, "Stopped; the screen is back on what it shows."));
-    case "play":
-      return act(edit({ op: "once", screen: "orb", clip }, "Playing it once on the ball."));
+    case "go":
+      pickTarget({ kind: "clip", clip });
+      return act(goLive({ kind: "clip", clip }));
     case "hide":
     case "unhide":
       return act(edit({ op: b.dataset.do, clip }, b.dataset.do === "hide" ? "Hidden: no screen plays it." : "Shown again."));
@@ -571,13 +793,13 @@ document.addEventListener("click", (e) => {
       return;
     case "rename":
       S.renaming = clip;
-      return draw();
+      return drawClips();
     case "rename-cancel":
       S.renaming = "";
-      return draw();
+      return drawClips();
     case "rename-save": {
       const title = $<HTMLInputElement>("rename-title").value, rights = $<HTMLInputElement>("rename-rights").value;
-      return act(edit({ op: "rename", clip, title, rights }, "Renamed.").then((ok) => ok && ((S.renaming = ""), draw())));
+      return act(edit({ op: "rename", clip, title, rights }, "Renamed.").then((ok) => ok && ((S.renaming = ""), drawClips())));
     }
     case "ch-order":
       if (d) d.shuffle = b.dataset.value === "true";
@@ -600,16 +822,49 @@ document.addEventListener("click", (e) => {
   }
 });
 
+document.addEventListener("dblclick", (e) => {
+  const p = (e.target as HTMLElement).closest<HTMLElement>("[data-pick]");
+  if (!p || (e.target as HTMLElement).closest("button[data-do],input,label")) return;
+  const t = targetOf(p.dataset.pick!);
+  if (t) {
+    pickTarget(t);
+    void goLive(t).catch(failed);
+  }
+});
+
+document.addEventListener("pointerover", (e) => {
+  const c = (e.target as HTMLElement).closest<HTMLElement>("[data-pick]")?.querySelector<HTMLCanvasElement>("canvas[data-thumb]");
+  hovered = c?.dataset.thumb ?? "";
+});
+
 document.addEventListener("change", (e) => {
   const el = e.target as HTMLInputElement & HTMLSelectElement;
-  if (el.id === "once-orb") void drawBall();
+  if (el.id === "show-hidden") return drawClips();
   if (!S.state || !el.dataset.do) return;
   const d = S.draft[num(el, "ch")];
-  if (el.dataset.do === "show") void edit({ op: "screen", screen: el.dataset.screen, show: el.value }).catch(failed);
-  else if (el.dataset.do === "flag") void edit({ op: "screen", screen: el.dataset.screen, [el.dataset.field!]: el.checked }).catch(failed);
+  if (el.dataset.do === "flag") void edit({ op: "screen", screen: el.dataset.screen, [el.dataset.field!]: el.checked }).catch(failed);
   else if (el.dataset.do === "ch-name" && d) (d.name = el.value.replace(/\s+/g, " ").trim()), redrawDraft();
   else if (el.dataset.do === "ch-reset" && d) (d.reset = el.checked), redrawDraft();
 });
+
+$<HTMLInputElement>("find").oninput = () => {
+  S.query = $<HTMLInputElement>("find").value;
+  drawClips();
+};
+$("take").onclick = () => S.picked && void goLive(S.picked).catch(failed);
+
+// Dragging a monitor walks round the ball.
+for (const id of ["live", "preview"]) {
+  const c = $<HTMLCanvasElement>(id);
+  let from: number | null = null;
+  c.onpointerdown = (e) => ((from = e.clientX), c.setPointerCapture(e.pointerId));
+  c.onpointermove = (e) => {
+    if (from === null) return;
+    S.bearing -= ((e.clientX - from) / Math.max(1, c.clientWidth)) * Math.PI;
+    from = e.clientX;
+  };
+  c.onpointerup = c.onpointercancel = () => (from = null);
+}
 
 $("add-channel").onclick = () => {
   S.draft.push({ name: freeChannelName(S.draft), items: [], shuffle: false, reset: false });
@@ -639,7 +894,7 @@ drop.ondrop = (e) => {
   if (f) void pick(f).catch(failed);
 };
 
-void load();
+void load().then(() => startStage());
 // The library is read again every five seconds while the page is in view, and what plays is run on each second.
 setInterval(() => !document.hidden && void load(), 5000);
 setInterval(() => !document.hidden && drawNow(), 1000);

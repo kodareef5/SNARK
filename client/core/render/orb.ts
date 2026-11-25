@@ -1041,8 +1041,25 @@ export function screenWrap(aspect: number, low: number, fill: boolean): typeof w
 /** Where the ground cuts the ball, as the sine of the latitude there. */
 export const groundLine = (site: OrbSite): number => Math.max(-1, Math.min(0.5, -site.centre / Math.max(site.radius, 1)));
 
-/** What the screen showed and since when, so a change between scenes and a clip, or two clips, is a wipe. */
-const shown = { key: -1, at: -Infinity, before: 0, dark: false };
+/**
+ * What an orb showed and since when, so a change is a wipe: between the scenes and a clip, or two clips (`key`, `at`,
+ * `before`, `dark`), and from one scene to another that is held or let go (`scene`, `sceneFrom`, `sceneAt`, with the
+ * `only` and the clock `seconds` it last saw).
+ */
+export interface OrbMemory {
+  key: number;
+  at: number;
+  before: number;
+  dark: boolean;
+  scene: number;
+  sceneFrom: number;
+  sceneAt: number;
+  only: number;
+  seconds: number;
+}
+export const newOrbMemory = (): OrbMemory => ({ key: -1, at: -Infinity, before: 0, dark: false, scene: -1, sceneFrom: 0, sceneAt: -Infinity, only: -1, seconds: -Infinity });
+/** The game's own: one view of one orb a frame. */
+const shown = newOrbMemory();
 const edge3 = [0, 0, 0];
 
 /**
@@ -1134,7 +1151,7 @@ function lean(x: number, y: number, z: number, w: number): void {
  * The Watcher looks at a supply drop in flight, else at the blue eye's figure by its power, else at the sun or the moon,
  * and glides from one to the next.
  */
-export function writeOrb(frame: Float32Array, sites: readonly OrbSite[] | undefined, eyes: readonly TideEyeSite[], seconds: number, hour: number, x: number, y: number, z: number, supply: SupplyList | null, tick: number, rate: number, only = -1, gain = 1, screen: OrbScreen | null = null): void {
+export function writeOrb(frame: Float32Array, sites: readonly OrbSite[] | undefined, eyes: readonly TideEyeSite[], seconds: number, hour: number, x: number, y: number, z: number, supply: SupplyList | null, tick: number, rate: number, only = -1, gain = 1, screen: OrbScreen | null = null, memory: OrbMemory = shown): void {
   frame.fill(0, ORB_AT, ORB_AT + ORB_LANES * 4);
   const nearest = sites ? nearestOrb(sites, x, y, z) : -1;
   if (nearest < 0) return;
@@ -1148,6 +1165,21 @@ export function writeOrb(frame: Float32Array, sites: readonly OrbSite[] | undefi
   frame[ORB_AT + 5] = sn;
   // A scene's clock starts with its showing, moved on by the showing's own share; one held for good wraps.
   orbShow(seconds, show, only);
+  // A scene changed by hand, held or let go, wipes from the one shown, as the programme's own changes do; a clock that
+  // jumped is no change seen.
+  const running = seconds > memory.seconds && seconds - memory.seconds < 2;
+  if (running && only !== memory.only && show.wipe >= 1 && memory.scene >= 0 && show.scene !== memory.scene) {
+    memory.sceneFrom = memory.scene;
+    memory.sceneAt = seconds;
+  }
+  memory.scene = show.scene;
+  memory.only = only;
+  memory.seconds = seconds;
+  const turned = (seconds - memory.sceneAt) / ORB_WIPE;
+  if (show.wipe >= 1 && turned >= 0 && turned < 1) {
+    show.before = memory.sceneFrom;
+    show.wipe = turned;
+  }
   const since = seconds - CAST_PHASE, slot = Math.floor(since / ORB_HOLD), into = since - slot * ORB_HOLD;
   frame[ORB_AT + 6] = only >= 0 ? ((seconds % HELD_WRAP) + HELD_WRAP) % HELD_WRAP : into + CLOCK_SPREAD * orbHash(slot, 7, 0, 3);
   frame[ORB_AT + 7] = only >= 0 ? frame[ORB_AT + 6]! : into + ORB_HOLD + CLOCK_SPREAD * orbHash(slot - 1, 7, 0, 3);
@@ -1157,16 +1189,16 @@ export function writeOrb(frame: Float32Array, sites: readonly OrbSite[] | undefi
   frame[ORB_AT + 11] = orbLevel(frame[FRAME.exposure]!) * gain;
   // A clip, its poster or the scenes: a change of what shows is a wipe, from what showed.
   // With no screen at all, nothing is wiped from.
-  if (!screen) shown.key = -1;
+  if (!screen) memory.key = -1;
   const key = screen && screen.shows >= 0 && screen.width > 0 ? screen.shows : -1;
-  if (key !== shown.key) {
-    shown.dark = shown.key >= 0 && key >= 0;
-    shown.before = shown.key >= 0 ? ORB_SCREEN : show.scene;
-    shown.key = key;
-    shown.at = seconds;
+  if (key !== memory.key) {
+    memory.dark = memory.key >= 0 && key >= 0;
+    memory.before = memory.key >= 0 ? ORB_SCREEN : show.scene;
+    memory.key = key;
+    memory.at = seconds;
   }
-  const wiped = (seconds - shown.at) / ORB_WIPE;
-  if (!(wiped >= 0) || wiped >= 1) shown.at = -Infinity;
+  const wiped = (seconds - memory.at) / ORB_WIPE;
+  if (!(wiped >= 0) || wiped >= 1) memory.at = -Infinity;
   const wiping = wiped >= 0 && wiped < 1;
   if (key >= 0 || wiping) {
     if (key >= 0) {
@@ -1174,9 +1206,9 @@ export function writeOrb(frame: Float32Array, sites: readonly OrbSite[] | undefi
       frame[ORB_AT + 6] = screen!.seconds;
       frame[ORB_AT + 8] = ORB_SCREEN;
     }
-    frame[ORB_AT + 9] = wiping ? shown.before : ORB_SCREEN;
+    frame[ORB_AT + 9] = wiping ? memory.before : ORB_SCREEN;
     frame[ORB_AT + 10] = wiping ? wiped : 1;
-    frame[SCREEN_AT + 31] = wiping && shown.dark ? 1 : 0;
+    frame[SCREEN_AT + 31] = wiping && memory.dark ? 1 : 0;
   }
   if (screen && screen.width > 0) {
     const ex = -frame[ORB_AT]!, ey = -frame[ORB_AT + 1]!, ez = -frame[ORB_AT + 2]!;

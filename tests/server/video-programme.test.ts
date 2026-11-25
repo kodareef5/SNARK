@@ -69,7 +69,7 @@ test("what plays changes when its clip ends", () => {
   expect(changesAt(null, clips)).toBe(Infinity);
 });
 
-test("the screen message reads back what was written, in 8 bytes and 14 a screen", () => {
+test("the screen message reads back what was written, in 8 bytes and 15 a screen", () => {
   const s = newScreenState();
   s.manifest = "0123456789abcdef";
   s.show = SHOW_VIDEO;
@@ -77,10 +77,11 @@ test("the screen message reads back what was written, in 8 bytes and 14 a screen
   s.clip = 3;
   s.start = -1234.5;
   s.next = NO_CLIP;
+  s.scene = 4;
   const w = new BitWriter(64);
   writeScreens(w, [s]);
   const bytes = w.bytes();
-  expect(bytes.length).toBe(8 + 1 + 14);
+  expect(bytes.length).toBe(8 + 1 + 15);
   const out = [newScreenState()];
   readScreens(new BitReader(bytes), out);
   expect(out).toEqual([s]);

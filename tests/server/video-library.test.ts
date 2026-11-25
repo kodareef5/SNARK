@@ -36,7 +36,7 @@ function library(now: () => number = Date.now): { lib: VideoLibrary; dir: string
 }
 
 const call = (lib: VideoLibrary, path: string, init: RequestInit = {}, query = ""): Promise<Response> =>
-  Promise.resolve(screensAdmin(new Request(`http://snark.test${path}${query}`, init), path, lib, () => false)!);
+  Promise.resolve(screensAdmin(new Request(`http://snark.test${path}${query}`, init), path, lib, () => ({ night: false, seconds: 0, hour: 12, only: -1, gain: 1 }))!);
 const json = (body: unknown): RequestInit => ({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 const edit = (lib: VideoLibrary, body: Record<string, unknown>): Promise<Response> => call(lib, "/admin/screens/edit", json({ revision: lib.view().revision, ...body }));
 const upload = (lib: VideoLibrary, bytes: Uint8Array, name = "Test Card"): Promise<Response> =>
@@ -87,7 +87,7 @@ test("an edit from a page that saw an older revision is refused with 409", async
   expect(late.status).toBe(409);
   expect(lib.view().screens.get("orb")).toMatchObject({ show: "strip", fill: true });
   const bad = await edit(lib, { op: "screen", screen: "orb", show: "nowhere" });
-  expect([bad.status, ((await bad.json()) as { error: string }).error]).toEqual([400, "Show the scenes or a channel there is."]);
+  expect([bad.status, ((await bad.json()) as { error: string }).error]).toEqual([400, "Show the scenes, a scene, or a channel there is."]);
   lib.close();
 });
 

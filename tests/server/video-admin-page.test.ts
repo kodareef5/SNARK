@@ -9,14 +9,15 @@ import {
   ColourTrack, bandMeans, base64, draftChannels, draftDiffers, draftFault, ffmpegLine, fitLong, freeChannelName, moveIn, overCaps, progressOf, timedOf, toLinear,
   toSrgb, type Caps, type ScreensState,
 } from "../../client/core/admin/screens.ts";
-import { PREVIEW_VIEWS, drawPreview } from "../../client/core/admin/screens-preview.ts";
-import { flatTrack, screenFrame } from "../../tools/orb/frame.ts";
 import { adminSite } from "../../server/admin/site.ts";
 import { VideoLibrary } from "../../server/video/library.ts";
 import { screensAdmin } from "../../server/video/routes.ts";
 import { CLIP_MAX_BYTES, CLIP_MAX_HIGH, CLIP_MAX_KBPS, CLIP_MAX_SECONDS, CLIP_MAX_WIDE, COLOUR_PARTS, COLOUR_RATE, type Clip } from "../../shared/video/clip.ts";
 import { screenAt } from "../../shared/video/programme.ts";
 import { buildAdmin } from "../../tools/build-admin.ts";
+
+/** A world at night with no scene held, as the routes ask of it. */
+const NIGHT = { night: true, seconds: 1000, hour: 23, only: -1, gain: 1 };
 
 const root = mkdtempSync(join(tmpdir(), "snark-video-page-"));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
@@ -144,7 +145,7 @@ test("the cluster nav lists Screens, which opens at /admin/screens/", () => {
 test("the admin build makes the page and its script, which the site serves", async () => {
   const dist = join(root, "dist");
   await buildAdmin(dist);
-  for (const f of ["screens.html", "screens.js"]) expect(existsSync(join(dist, "admin", f))).toBe(true);
+  for (const f of ["screens.html", "screens.js", "screens-stage.js"]) expect(existsSync(join(dist, "admin", f))).toBe(true);
   expect(readFileSync(join(dist, "admin/screens.html"), "utf8")).toContain('src="/admin/ui/screens.js"');
   const site = {
     dir: dist, base: "", port: 0, id: "local" as const, who: "test", destinations: () => [], scenes: () => new Response(null),
@@ -167,7 +168,7 @@ test("an upload the page publishes passes, and the page's programme is the serve
   mkdirSync(dist, { recursive: true });
   writeFileSync(join(dist, "starter.json"), JSON.stringify({ clips: [starter("a1a1a1a1a1a1a1a1", 6), starter("b2b2b2b2b2b2b2b2", 120)], strip: ["a1a1a1a1a1a1a1a1", "b2b2b2b2b2b2b2b2"] }));
   const lib = new VideoLibrary({ db: join(dir, "video.sqlite"), media: join(dir, "media"), tmp: join(dir, "tmp"), starters: join(dist, "starter.json") });
-  const call = async (path: string, init: RequestInit = {}, query = ""): Promise<Response> => (await screensAdmin(new Request(`http://snark.test${path}${query}`, init), path, lib, () => true))!;
+  const call = async (path: string, init: RequestInit = {}, query = ""): Promise<Response> => (await screensAdmin(new Request(`http://snark.test${path}${query}`, init), path, lib, () => NIGHT))!;
   const post = (path: string, body: unknown): Promise<Response> => call(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   const bytes = new Uint8Array(readFileSync(join(import.meta.dir, "../fixtures/video/small.mp4")));
   const up = (await (await call("/admin/screens/upload", { method: "POST", headers: { "content-length": String(bytes.length) }, body: bytes }, "?name=Card")).json()) as { id: string; seconds: number };
@@ -189,22 +190,3 @@ test("an upload the page publishes passes, and the page's programme is the serve
   lib.close();
 });
 
-test("the preview shows the picture wrapped on the ball, upright from each side", () => {
-  const size = 96, out = new Uint8ClampedArray(size * PREVIEW_VIEWS.length * size * 4);
-  const started = performance.now();
-  drawPreview(out, size, screenFrame(320, 180), 320, 180, flatTrack(8, 128, 125, 125), true, true);
-  const took = performance.now() - started, stride = size * PREVIEW_VIEWS.length;
-  const at = (x: number, y: number): number[] => Array.from(out.subarray((y * stride + x) * 4, (y * stride + x) * 4 + 3));
-  // The frame's top row is green and its bottom row blue (tools/orb/frame.ts); beside the ball the sky is dark.
-  for (let k = 0; k < PREVIEW_VIEWS.length; k++) {
-    const x = k * size + Math.round(size * 0.35), top = at(x, Math.round(size * (k < 2 ? 0.15 : 0.35)));
-    expect(top[1]! - top[2]!).toBeGreaterThan(40);
-    expect(Math.max(...at(k * size + 1, 1))).toBeLessThan(40);
-    // From the street the bottom row runs down to the ground; from above only the top rows are seen.
-    if (k < 2) {
-      const bottom = at(x, Math.round(size * 0.55));
-      expect(bottom[2]! - bottom[1]!).toBeGreaterThan(40);
-    }
-  }
-  expect(took).toBeLessThan(2000);
-});

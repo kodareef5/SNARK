@@ -8,17 +8,59 @@
   </head>
   <body>
     <main class="tool-page screens-page">
-      <header class="tool-intro"><h1>Screens</h1><p>Clips the cluster's screens may play, the channels that order them, and what the Vegas ball shows. Every world of the cluster shares them.</p></header>
-      <section class="glass">
-        <p id="msg" class="dim" aria-live="polite">Loading…</p>
-        <button id="reload" hidden>Reload</button>
+      <header class="tool-intro"><h1>The Vegas ball</h1><p>What players see on the ball, and what it shows next. Pick something below to see it in the preview, then press <b>Go live</b>. Every world of the cluster shares this.</p></header>
+      <p id="msg" class="dim" aria-live="polite">Loading…</p>
+      <button id="reload" hidden>Reload</button>
+      <section class="glass stage">
+        <div class="monitors">
+          <figure class="monitor">
+            <figcaption><span class="tag on-air">Live</span> What players see now</figcaption>
+            <canvas id="live" aria-label="The ball as players see it now"></canvas>
+            <div class="mon-line" id="live-line"></div>
+          </figure>
+          <figure class="monitor">
+            <figcaption><span class="tag">Preview</span> <span id="pv-title">Pick a scene, a clip or a channel below</span></figcaption>
+            <canvas id="preview" aria-label="The ball showing what is picked"></canvas>
+            <div class="mon-line"><button id="take" class="primary go" disabled>Go live</button><span id="pv-note" class="dim"></span></div>
+          </figure>
+        </div>
+        <div class="row views"><span class="dim">See it</span><span id="views" class="row"></span><span class="faint">Drag a picture to walk round the ball.</span><span class="grow"></span><span id="clock" class="dim"></span></div>
+        <p id="no-stage" class="warn" hidden></p>
       </section>
       <section class="glass">
-        <h2>Screens</h2>
-        <div class="screen-grid">
-          <div id="screens"></div>
-          <div id="preview"><canvas width="160" height="160"></canvas><p class="faint">Preview of the ball</p></div>
-        </div>
+        <h2>The ball's own scenes</h2>
+        <div class="tiles" id="tiles-scenes"></div>
+      </section>
+      <section class="glass">
+        <div class="bar"><h2 class="grow">Clips</h2><input id="find" type="search" placeholder="Find a clip by its title or source" aria-label="Find a clip" autocomplete="off"><label class="dim"><input id="show-hidden" type="checkbox"> Show hidden</label></div>
+        <p class="dim" id="clips-count"></p>
+        <div class="clip-table"><table>
+          <thead><tr>
+            <th><span class="sr">Picture</span></th>
+            <th><button data-sort="title">Title</button></th>
+            <th><button data-sort="length">Length</button></th>
+            <th><button data-sort="size">Size</button></th>
+            <th><button data-sort="rate">Rate</button></th>
+            <th><button data-sort="added">Added</button></th>
+            <th><span class="sr">Actions</span></th>
+          </tr></thead>
+          <tbody id="clips"></tbody>
+        </table></div>
+      </section>
+      <section class="glass">
+        <h2>Channels</h2>
+        <p class="dim">A channel plays its clips round and round. Pick one to show it on the ball.</p>
+        <div class="tiles" id="tiles-channels"></div>
+        <details>
+          <summary>Make and change channels</summary>
+          <div class="bar"><span class="grow"></span><button id="add-channel">New channel</button><button id="save-channels" class="primary" disabled>Save channels</button><button id="undo-channels" disabled>Undo changes</button></div>
+          <p id="channels-say" class="dim"></p>
+          <div id="channels"></div>
+        </details>
+      </section>
+      <section class="glass">
+        <h2>How clips sit on the ball</h2>
+        <div id="knobs" class="knobs"></div>
       </section>
       <section class="glass">
         <h2>Add a clip</h2>
@@ -41,15 +83,6 @@
           </div>
         </div>
         <div id="waiting"></div>
-      </section>
-      <section class="glass">
-        <h2>Library</h2>
-        <div class="clips" id="clips"></div>
-      </section>
-      <section class="glass">
-        <div class="bar"><h2 class="grow">Channels</h2><button id="add-channel">New channel</button><button id="save-channels" class="primary" disabled>Save channels</button><button id="undo-channels" disabled>Undo changes</button></div>
-        <p id="channels-say" class="dim"></p>
-        <div id="channels"></div>
       </section>
     </main>
     <script type="module" src="/admin/ui/screens.js"></script>

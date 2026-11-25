@@ -1,6 +1,7 @@
 // One whole client without a browser. The shell owns the renderer, socket and DOM, forwards events
 // here, and draws what frame() returns. Tests drive this class directly.
 
+import { heldScene } from "../../shared/video/screen.ts";
 import { Icons } from "./assets/icons.ts";
 import { Visor } from "./visor.ts";
 import { Glass } from "./glass.ts";
@@ -1027,7 +1028,8 @@ export class App {
     scene.characters.corpseMotions = session.corpseMotions;
     // Damage numbers are drawn with the world, where the server's rule and the reader's setting let them.
     scene.damage.enabled = session.damageNumbers && this.ui.settings.damageNumbers;
-    scene.orbOnly = session.orbOnly;
+    // A scene the Screens page holds the ball to comes before the world's own setting.
+    scene.orbOnly = heldScene(session.screens[0], session.orbOnly);
     scene.orbGain = session.orbGain;
     const player = this.screenHost && Scene.orb ? (this.screenPlayer ??= new Scene.orb.ScreenPlayer(this.screenHost)) : null;
     scene.orbScreen = player?.step({ state: session.screens[0], tick: session.renderClock, option: this.ui.settings.videoScreens, tierVideo: scene.assets.tier.orb.video, sites: session.world?.orbs, cam: this.cam, height, now: nowMs, artIdle: scene.assets.residency.flying + scene.assets.residency.waiting === 0 }) ?? null;

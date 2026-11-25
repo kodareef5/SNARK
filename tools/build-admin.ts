@@ -11,7 +11,7 @@ export async function buildAdmin(dist: string): Promise<void> {
     mkdirSync(join(dist, "title"), { recursive: true });
     copyFileSync(emblem, join(dist, "title/snark-emblem.webp"));
   }
-  const entries = ["shell", "cluster", "admin", "settings", "cast", "loadouts", "first-frame", "board", "screens", "screens-preview"];
+  const entries = ["shell", "cluster", "admin", "settings", "cast", "loadouts", "first-frame", "board", "screens", "screens-stage"];
   const result = await Bun.build({
     entrypoints: [...entries.map(name => join(client, "admin", name + ".ts")), join(client, "drops/drops.ts")],
     outdir: out, naming: "[name].[ext]", target: "browser", minify: true, sourcemap: "linked",

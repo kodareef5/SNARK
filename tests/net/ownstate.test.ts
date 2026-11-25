@@ -100,5 +100,5 @@ test("a session keeps what the server says its screens play", () => {
   writeScreens(w, [{ ...newScreenState(), manifest: "0123456789abcdef", show: SHOW_VIDEO, flags: 3, clip: 2, start: -450, next: 0 }]);
   h.client(ada)!.conn.send(CH_RELIABLE, new Uint8Array([S_OWN, OWN_SCREEN, ...w.bytes()]));
   h.run(60);
-  expect(ada.screens).toEqual([{ manifest: "0123456789abcdef", show: SHOW_VIDEO, flags: 3, clip: 2, start: -450, next: 0 }]);
+  expect(ada.screens).toEqual([{ manifest: "0123456789abcdef", show: SHOW_VIDEO, flags: 3, clip: 2, start: -450, next: 0, scene: -1 }]);
 });

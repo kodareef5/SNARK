@@ -29,7 +29,7 @@ import { serveFile } from "./files.ts";
 import { BODY_BYTES_MAX, clientAddress } from "./front.ts";
 import { VideoLibrary } from "./video/library.ts";
 import { screensAdmin } from "./video/routes.ts";
-import { ScreenFeed, worldNight } from "./video/screens.ts";
+import { ScreenFeed, screenWorld } from "./video/screens.ts";
 import { boardOwners, soundBoard } from "./sound-board.ts";
 import { TitleScenes } from "./admin/title-scenes.ts";
 import { adminAsked, type AdminGate } from "./admin/gate.ts";
@@ -498,7 +498,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
         scenes: (call) => originAllowed(call.headers.get("origin"), call.headers.get("host"), "")
           ? titleScenes.admin(call) : entryReply({ error: "Open the studio on this cluster." }, 403),
         screens: (call, at) => call.method === "POST" && !originAllowed(call.headers.get("origin"), call.headers.get("host"), "")
-          ? entryReply({ error: "Open the screens page on this cluster." }, 403) : screensAdmin(call, at, video, () => worldNight(host.world)),
+          ? entryReply({ error: "Open the screens page on this cluster." }, 403) : screensAdmin(call, at, video, () => screenWorld(host)),
       });
       if (siteAdmin) return siteAdmin;
       const { at, path } = placeOf(base, url.pathname);

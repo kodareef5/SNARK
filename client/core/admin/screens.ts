@@ -34,6 +34,8 @@ export interface ScreensState {
   readonly revision: number;
   readonly now: number;
   readonly night: boolean;
+  /** The world that answered, as its players see the ball (server/video/routes.ts ScreenWorld). */
+  readonly world: { readonly night: boolean; readonly seconds: number; readonly hour: number; readonly only: number; readonly gain: number };
   readonly manifest: { readonly id: string; readonly path: string };
   readonly caps: Caps;
   readonly clips: readonly StateClip[];
@@ -269,4 +271,33 @@ export function draftFault(draft: readonly ChannelDraft[]): string {
     seen.add(d.name);
   }
   return "";
+}
+
+// ---- The clip table: found by words of its title or rights line, and sorted by a column either way.
+
+export const CLIP_SORTS = ["added", "title", "length", "size", "rate"] as const;
+export type ClipSort = (typeof CLIP_SORTS)[number];
+
+/** The clips whose title or rights line holds every word of `query`, those whose title holds them first; all for a blank one. */
+export function findClips<T extends StateClip>(clips: readonly T[], query: string): T[] {
+  const words = query.toLowerCase().split(/\s+/).filter((w) => w !== "");
+  if (!words.length) return [...clips];
+  const inTitle = (c: T): boolean => words.every((w) => c.title.toLowerCase().includes(w));
+  const found = clips.filter((c) => words.every((w) => c.title.toLowerCase().includes(w) || c.rights.toLowerCase().includes(w)));
+  return [...found.filter(inTitle), ...found.filter((c) => !inTitle(c))];
+}
+
+/** The clips in an order: as the library added them, by title, length, size or bit rate; `down` turns it round. */
+export function sortClips<T extends StateClip>(clips: readonly T[], key: ClipSort, down = false, added: readonly T[] = clips): T[] {
+  const at = new Map(added.map((c, i) => [c.id, i] as const));
+  const byTitle = (a: T, b: T): number => a.title.localeCompare(b.title, "en", { sensitivity: "base", numeric: true });
+  const order: Record<ClipSort, (a: T, b: T) => number> = {
+    added: (a, b) => at.get(a.id)! - at.get(b.id)!,
+    title: byTitle,
+    length: (a, b) => a.seconds - b.seconds || byTitle(a, b),
+    size: (a, b) => a.bytes - b.bytes || byTitle(a, b),
+    rate: (a, b) => a.kbps - b.kbps || byTitle(a, b),
+  };
+  const sorted = [...clips].sort(order[key]);
+  return down ? sorted.reverse() : sorted;
 }
