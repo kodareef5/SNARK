@@ -178,8 +178,10 @@ try {
       }
       const gl = await send("Runtime.evaluate", { expression: "(() => { const c = document.querySelector('canvas'); const g = c && c.getContext('webgl2'); const i = g && g.getExtension('WEBGL_debug_renderer_info'); return JSON.stringify({ renderer: i ? g.getParameter(i.UNMASKED_RENDERER_WEBGL) : null }); })()", returnByValue: true });
       const videos = values.screen ? (await send("Runtime.evaluate", { expression: "JSON.stringify([...document.querySelectorAll('video')].map((v) => ({ src: v.currentSrc.split('/').pop(), at: +v.currentTime.toFixed(2), paused: v.paused, ready: v.readyState })))", returnByValue: true })).result.value : "[]";
-      report.push({ name, ...(v.hour !== undefined ? { hour: v.hour } : {}), ...JSON.parse(gl.result.value), ...(values.screen ? { mediaBytes, videos: JSON.parse(videos) } : {}), console: lines.slice(0, 8) });
-      if (values.screen) console.log(`${name}: ${mediaBytes} bytes from /media/, videos ${videos}`);
+      // Where the server says the playing clip is at this moment, to hold the page's clip to (seconds behind when positive).
+      const drift = values.screen ? await screenDrift(`http://127.0.0.1:${server.port}`, JSON.parse(videos)) : null;
+      report.push({ name, ...(v.hour !== undefined ? { hour: v.hour } : {}), ...JSON.parse(gl.result.value), ...(values.screen ? { mediaBytes, videos: JSON.parse(videos), drift } : {}), console: lines.slice(0, 8) });
+      if (values.screen) console.log(`${name}: ${mediaBytes} bytes from /media/, videos ${videos}, drift ${drift === null ? "none playing" : `${drift.toFixed(3)} s`}`);
       console.log(`${name}${lines.length ? `\n  ${lines.slice(0, 8).join("\n  ")}` : ""}`);
     }
   }
@@ -207,4 +209,12 @@ async function showOnOrb(base: string, what: string, band: boolean, fill: boolea
     if (!clip) throw new Error(`--screen: no clip's title holds "${name}"`);
     await edit({ op: "once", screen: "orb", clip: clip.id });
   } else if (kind !== "channel") throw new Error("--screen once:<clip> or channel:<name>");
+}
+
+/** The playing element's lag behind the server's programme, in seconds, or null with none playing. */
+async function screenDrift(base: string, videos: { src: string; at: number; paused: boolean }[]): Promise<number | null> {
+  const st = (await (await fetch(`${base}/admin/screens/state`)).json()) as { now: number; clips: { id: string; file: string }[]; screens: { screen: string; playing: { clip: string; start: number } | null }[] };
+  const playing = st.screens.find((s) => s.screen === "orb")?.playing, clip = playing && st.clips.find((c) => c.id === playing.clip);
+  const el = clip && videos.find((v) => !v.paused && clip.file.endsWith(v.src));
+  return playing && el ? (st.now - playing.start) / 1000 - el.at : null;
 }
