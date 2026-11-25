@@ -14,6 +14,7 @@ no DOM, no Bun, no packages, no clock. Environmental inputs are passed in.
 | `net/` | Bit codec, protocol messages, entity views and deltas, transport interface, loopback |
 | `content/` | Definition types, pack stacking, the compiled registry |
 | `pack/` | Asset pack format and palette |
+| `video/` | Clips, channels and what a screen plays: the programme and its message |
 
 `sim/`, `world/`, and `math/` must produce identical bits on JavaScriptCore and
 V8. `tools/check.ts` rejects `Math.sin` and similar there; use `math/scalar.ts`.
