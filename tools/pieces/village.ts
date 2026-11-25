@@ -426,6 +426,39 @@ export function fort(tier: string, turn = 17, has: (id: string) => boolean = () 
   return fortBuilt(tier, turn, has).placed;
 }
 
+/**
+ * A cottage of two cells by two by form and key, for pictures of one coming apart (tools/pieces/breaks.ts): a door in
+ * its south front, a window in its north where the tier has one, slopes to a ridge with gables west and hips east.
+ */
+export function cottageKeys(tier: string): { name: string; k0: number; k1: number }[] {
+  const { keys, square, edge } = builder(tier, () => false);
+  for (const i of [0, 1]) for (const j of [0, 1]) square("foundation", i, j, 0);
+  edge("doorframe", at(0, 0), 0, 0, true);
+  edge("door", at(0, 0), 0, 0, true);
+  edge("wall", at(1, 0), 0, 0, true);
+  edge(tier === "thatch" ? "wall" : "windowframe", at(0, 2), 0, 0);
+  edge("wall", at(1, 2), 0, 0);
+  for (const j of [0, 1]) {
+    edge("wall", at(0, j), 3, 0);
+    edge("wall", at(2, j), 3, 0, true);
+  }
+  square("roof", 0, 0, 4, 0);
+  square("roof", 0, 1, 4, 6);
+  square("roof_hip", 1, 0, 4, 0);
+  square("roof_hip", 1, 1, 4, 3);
+  edge("sloped_wall_right", at(0, 0), 3, 4);
+  edge("sloped_wall_left", at(0, 1), 3, 4);
+  return keys;
+}
+
+/** `n` foundations in a row along the base's +X with a wall on each one's south side, by form and key. */
+export function wallRowKeys(tier: string, n: number): { name: string; k0: number; k1: number }[] {
+  const { keys, square, edge } = builder(tier, () => false);
+  for (let i = 0; i < n; i++) square("foundation", i, 0, 0);
+  for (let i = 0; i < n; i++) edge("wall", at(i, 0), 0, 0, true);
+  return keys;
+}
+
 /** The fort's pieces by form and key in a base of their own, with no trims: a store that places them lays its own. */
 export function fortKeys(tier: string): { name: string; k0: number; k1: number }[] {
   return fortBuilt(tier, 0, () => false).keys;

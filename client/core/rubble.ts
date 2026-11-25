@@ -1,12 +1,13 @@
 // A client-only picture of structures collapsing. It decides nothing and collides with nothing. A city piece is thrown
-// as its break set, each group where fragments.ts puts it by the time since the server's tick. Any other piece drops
-// whole from when it is heard of, in a front moving outward from where the collapse began. Only the nearest the eye are kept.
+// as its break set, each group where fragments.ts puts it by the time since the server's tick, and so is a built piece
+// destroyed or blasted, the nearest the eye first. Any other piece drops whole from when it is heard of, in a front
+// moving outward from where the collapse began. Only the nearest the eye are kept.
 
 import type { Registry } from "../../shared/content/registry.ts";
 import { TICK_DT, TICK_RATE, YAW_UNITS } from "../../shared/coords.ts";
 import { sortF64 } from "../../shared/sort.ts";
 import { Found, GONE_BLAST, GONE_DESTROYED, GONE_FELL, type StructureStore } from "../../shared/world/structures.ts";
-import { BreakSets, GRAVITY, MOST_GROUPS, POSE, fragmentPose, type BreakSet, type Broken } from "./fragments.ts";
+import { BreakSets, GRAVITY, MOST_GROUPS, POSE, SET_PIECE, fragmentPose, type BreakSet, type Broken } from "./fragments.ts";
 import { MAX_FALLING } from "./render/packet.ts";
 import type { Rubble } from "./session.ts";
 
@@ -34,6 +35,10 @@ export const FLOOR_RAYS = 64;
 const RAY_LIFT = 0.3;
 /** Floors a piece keeps: one a group, then the whole set's. */
 const FLOORS = MOST_GROUPS + 1;
+/** Built pieces kept in fragments at once. Past them a destroyed piece drops whole, the nearest the eye broken first. */
+export const MOST_PIECE_BREAKS = 64;
+/** Rubble of one absorb sorted by how near it is; past it a built piece drops whole. The session queues 2,048. */
+const LISTED = 4096;
 
 /** What it takes to throw city pieces as their break sets. Without it every piece falls whole. */
 export interface FallingCity {
@@ -62,6 +67,8 @@ export class Falling {
   /** Each one's turn class as it stood, or -1 for one turned by its yaw alone; and 1 while a whole piece has not let go and stands as it stood. */
   readonly tw = new Int8Array(MAX_FALLING);
   readonly held = new Uint8Array(MAX_FALLING);
+  /** 1 for a built triangle, which stood on its base's own second axis. */
+  private readonly tri = new Uint8Array(MAX_FALLING);
   /** Where each stood. */
   readonly x0 = new Float64Array(MAX_FALLING);
   readonly y0 = new Float64Array(MAX_FALLING);
@@ -72,6 +79,8 @@ export class Falling {
   /** The most kept, and the seconds after a break by which its fragments shrink out once they lie still: the tier's. */
   most = MAX_FALLING;
   rest = 5;
+  /** The most built pieces kept in fragments: the tier's, under MOST_PIECE_BREAKS. */
+  pieceMost = MOST_PIECE_BREAKS;
   /** The clock of the last step, in ticks. */
   clock = 0;
   /** The pieces nearest the eye first, as `order` left them. */
@@ -114,7 +123,10 @@ export class Falling {
   private readonly nearest = new Map<number, number>();
   private readonly found = new Found(64);
   /** Scratch for `broken`. Its set is a piece's own before anything reads it. */
-  private readonly entry: Broken = { cause: 0, x: 0, y: 0, z: 0, yaw: 0, tw: -1, ox: 0, oy: 0, oz: 0, radius: 0, wait: 0, under: 0, set: null as unknown as BreakSet };
+  private readonly entry: Broken = { cause: 0, x: 0, y: 0, z: 0, yaw: 0, tw: -1, tri: false, ox: 0, oy: 0, oz: 0, radius: 0, wait: 0, under: 0, set: null as unknown as BreakSet };
+  /** Scratch for `absorb`: each rubble's built piece set, and the keys that sort the broken ones by how near they are. */
+  private readonly pieceSets: (BreakSet | null)[] = [];
+  private readonly near = new Float64Array(LISTED);
 
   /** `halfY` is the half height of each kind of structure, by content index. */
   constructor(halfY: Float32Array, heightAt: (x: number, z: number) => number, city: FallingCity | null = null) {
@@ -149,8 +161,10 @@ export class Falling {
     }
     this.measured = false;
     this.far = this.farAt = -1;
-    for (const r of list) {
-      const set = this.breakSets?.rubble(r.kind, r.map, r.x, r.y, r.z) ?? null;
+    const pieces = this.piecesOf(list, ex, ey, ez);
+    for (let k = 0; k < list.length; k++) {
+      const r = list[k]!;
+      const set = this.breakSets?.rubble(r.kind, r.map, r.x, r.y, r.z) ?? pieces[k] ?? null;
       const fell = r.cause === GONE_FELL;
       const front = fell ? (Math.hypot(r.x - r.ox, r.y - r.oy, r.z - r.oz) - nearest.get(r.tick)!) * FRONT_MS_PER_METRE : 0;
       // Fragments count from the server's tick. A whole piece counts from now, later by its tick's place among those that came with it.
@@ -179,6 +193,39 @@ export class Falling {
     }
     swaps.length = 0;
     list.length = 0;
+  }
+
+  /**
+   * The set each of `list` throws if it is a built piece destroyed or blasted: one that fell drops whole. Past the room
+   * `pieceMost` leaves, the nearest the eye (ex, ey, ez) are broken and the rest drop whole.
+   */
+  private piecesOf(list: readonly Rubble[], ex: number, ey: number, ez: number): (BreakSet | null)[] {
+    const out = this.pieceSets, sets = this.breakSets;
+    out.length = 0;
+    if (!sets) return out;
+    let kept = 0, asked = 0;
+    for (let i = 0; i < this.count; i++) if (this.sets[i] && this.sets[i]!.key % 4 === SET_PIECE) kept++;
+    for (const r of list) {
+      const set = r.cause === GONE_FELL || r.map !== 0 ? null : sets.piece(r.kind);
+      out.push(set);
+      if (set) asked++;
+    }
+    const room = Math.max(0, Math.min(this.pieceMost, MOST_PIECE_BREAKS) - kept);
+    if (asked <= room) return out;
+    // How near each is, as a whole number of centimetres squared, and its place in the list beside it.
+    let n = 0;
+    for (let k = 0; k < list.length; k++) {
+      if (!out[k]) continue;
+      if (k >= LISTED) {
+        out[k] = null;
+        continue;
+      }
+      const r = list[k]!, d2 = (r.x - ex) ** 2 + (r.y - ey) ** 2 + (r.z - ez) ** 2;
+      this.near[n++] = Math.floor(Math.min(d2, 1e9) * 64) * LISTED + k;
+    }
+    sortF64(this.near, 0, n);
+    for (let j = room; j < n; j++) out[this.near[j]! % LISTED] = null;
+    return out;
   }
 
   /** The ref of the city piece of `kind` at exactly (x, y, z), or -1. */
@@ -229,6 +276,7 @@ export class Falling {
     this.z0[i] = z;
     this.yaw0[i] = yaw;
     this.tw[i] = tw;
+    this.tri[i] = this.city?.reg.forms?.def[kind]?.cls === "triangle" && this.city.reg.forms.def[kind]!.plane === "flat" ? 1 : 0;
     this.held[i] = 1;
     this.cause[i] = cause;
     this.ox[i] = ox;
@@ -288,6 +336,7 @@ export class Falling {
     e.z = this.z0[i]!;
     e.yaw = this.yaw0[i]!;
     e.tw = this.tw[i]!;
+    e.tri = this.tri[i] === 1;
     e.ox = this.ox[i]!;
     e.oy = this.oy[i]!;
     e.oz = this.oz[i]!;
@@ -367,6 +416,7 @@ export class Falling {
     this.z0[to] = this.z0[from]!;
     this.yaw0[to] = this.yaw0[from]!;
     this.tw[to] = this.tw[from]!;
+    this.tri[to] = this.tri[from]!;
     this.cause[to] = this.cause[from]!;
     this.ox[to] = this.ox[from]!;
     this.oy[to] = this.oy[from]!;

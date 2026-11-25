@@ -11,6 +11,7 @@ import type { MaterialSpec, PiecesAsset } from "../../../../../tools/art/spec.ts
 import { MADE_PIECE_TRIANGLES, TRIM_TRIANGLES } from "../../../../../tools/art/check.ts";
 import { errorOf, statedErrors } from "../../../../../tools/pack/pieces/lod.ts";
 import { STONE } from "../../../../../tools/pack/pieces/stone.ts";
+import { withBreaks } from "../../../../../tools/pack/pieces/breaks.ts";
 import { bakeTier } from "../../../../../tools/pack/pieces/tier.ts";
 
 /** Each of the tier's materials is a whole layer set under tex/, and spans one building span, 3 m, on the grid. */
@@ -31,7 +32,7 @@ const ALL: Readonly<Record<string, FormDef>> = ALL_FORMS;
 
 export default {
   kind: "pieces",
-  source: { bake: () => bakeTier(STONE, ALL, import.meta.dir, MATERIALS, TOP, true) },
+  source: { bake: () => withBreaks("stone", bakeTier(STONE, ALL, import.meta.dir, MATERIALS, TOP, true)) },
   // Each level is built for its distance and states how far it lies from the finest; the check prints what it measures.
   pieces: [
     ...Object.entries(ALL).map(([name, form]) => ({ id: `core:${name}_stone`, object: name, errors: statedErrors(STONE, name, form) })),

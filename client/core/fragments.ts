@@ -4,6 +4,7 @@
 // These are pictures: nothing here collides or is read by the simulation.
 
 import { coreFaces, leavesOf, paintOf, skinOf } from "../../content/breaks/leaves.ts";
+import { pieceBreak } from "../../content/building/breaks.ts";
 import { FORM_BREACH_A, FORM_BREACH_B, FORM_HEAP, FORM_HUNG, FORM_OPEN, FORM_WHOLE, formKind } from "../../shared/content/breaks.ts";
 import type { ShapeBox } from "../../shared/content/defs.ts";
 import type { Registry } from "../../shared/content/registry.ts";
@@ -11,7 +12,7 @@ import { STRUCT_UNITS, YAW_UNITS } from "../../shared/coords.ts";
 import { WRECK, formOf, variantAt } from "../../shared/world/breaking.ts";
 import { hullPoint } from "../../shared/world/convex.ts";
 import { GONE_BLAST, GONE_FELL } from "../../shared/world/structures.ts";
-import { pieceTurn } from "./render/piece-fit.ts";
+import { pieceSkew, pieceTurn } from "./render/piece-fit.ts";
 
 type Corner = readonly [number, number, number];
 
@@ -38,8 +39,8 @@ export interface BreakSet {
   readonly lump: BreakSet;
 }
 
-/** What leaves a piece on its way into a form; what stood of a form; both. */
-export const SET_LEAVES = 0, SET_STOOD = 1, SET_ALL = 2;
+/** What leaves a piece on its way into a form; what stood of a form; both; a built piece's chunks (content/building/breaks.ts). */
+export const SET_LEAVES = 0, SET_STOOD = 1, SET_ALL = 2, SET_PIECE = 3;
 /** The most groups a set has, each a bone of a piece drawn in fragments. */
 export const MOST_GROUPS = 12;
 /** The most groups what stood is thrown as: alone, and beside what leaves. */
@@ -144,6 +145,30 @@ export class BreakSets {
     return heap !== 0 ? this.of(heap, SET_LEAVES) : null;
   }
 
+  /**
+   * What a built piece of `kind` throws as it is destroyed: its form cut along its tier's grain, the tier read from its
+   * material. Null for a kind with no form, and for a city piece, which has its own.
+   */
+  piece(kind: number): BreakSet | null {
+    const key = kind * 4 + SET_PIECE;
+    let set = this.known.get(key);
+    if (set !== undefined) return set;
+    const reg = this.reg, def = reg.defs[kind], form = reg.forms?.def[kind];
+    if (this.known.size >= MOST_SETS) this.known.clear();
+    if (!form || def?.type !== "structure" || def.class !== "piece" || reg.breakSet[kind] !== 0) {
+      this.known.set(key, null);
+      return null;
+    }
+    const groups = pieceBreak(form, (def.material ?? "").replace(/^core:mat_/, "")).map((g) => g.map((corners): SetChunk => ({ corners, color: 0, core: 0 })));
+    const boxes = new Float32Array((groups.length + 1) * 6);
+    groups.forEach((g, i) => boxInto(g, boxes, i * 6));
+    boxInto(groups.flat(), boxes, groups.length * 6);
+    const made: { key: number; groups: SetChunk[][]; boxes: Float32Array; lump: BreakSet | null } = { key, groups, boxes, lump: null };
+    made.lump = made as BreakSet;
+    this.known.set(key, made as BreakSet);
+    return made as BreakSet;
+  }
+
   /** What a city piece throws as its row turns from `was` into form `kind` in place, or null where nothing leaves: a wreck's rung throws nothing. */
   swap(was: number, kind: number): BreakSet | null {
     const reg = this.reg;
@@ -185,6 +210,8 @@ export interface Broken {
   yaw: number;
   /** Its turn class where it stood on its base's vectors, as a built piece is drawn (piece-fit.ts), or -1 for one turned by its yaw alone. */
   tw: number;
+  /** A triangle laid on its base's own second axis, as a framed triangle is drawn: its set's second axis is skewed onto that. */
+  tri?: boolean;
   /** Where the break began: a blast's centre, where support was lost, or the piece's own place. */
   ox: number;
   oy: number;
@@ -221,6 +248,7 @@ const LINGER = 0.08, LINGER_MORE = 0.07;
 export const POSE = { centre: 12, settled: 15, low: 16, length: 17 } as const;
 
 const turned = [0, 0];
+const skew = [0.5, 0.8660254037844386];
 
 /** A group's seed: the piece's place on the structures' lattice and the group's number. */
 export function fragmentSeed(x: number, y: number, z: number, group: number): number {
@@ -251,7 +279,6 @@ function rand(seed: number, k: number): number {
  */
 export function fragmentPose(e: Broken, g: number, floor: number, t: number, out: Float64Array): void {
   const boxes = e.set.boxes, n = e.set.groups.length, b = g * 6, w = n * 6;
-  const cx = boxes[b]!, cy = boxes[b + 1]!, cz = boxes[b + 2]!, hx = boxes[b + 3]!, hy = boxes[b + 4]!, hz = boxes[b + 5]!;
   const turn = (e.yaw / YAW_UNITS) * 2 * Math.PI;
   let cosYaw = Math.cos(turn), sinYaw = Math.sin(turn);
   // A built piece stood on its base's vectors, which are not a metre long: its fragments leave from there.
@@ -260,6 +287,14 @@ export function fragmentPose(e: Broken, g: number, floor: number, t: number, out
     cosYaw = turned[0]!;
     sinYaw = turned[1]!;
   }
+  // A framed triangle's second axis is its base's own, a hair off 60 degrees: a point z along it moves by `kx` and `kz` of z.
+  let kx = 0, kz = 1;
+  if (e.tri === true && e.tw >= 0) {
+    pieceSkew(e.yaw, e.tw, skew);
+    kx = (skew[0]! - 0.5) / 0.8660254037844386;
+    kz = skew[1]! / 0.8660254037844386;
+  }
+  const cx = boxes[b]! + kx * boxes[b + 2]!, cy = boxes[b + 1]!, cz = kz * boxes[b + 2]!, hx = boxes[b + 3]!, hy = boxes[b + 4]!, hz = boxes[b + 5]!;
   const x0 = e.x + cosYaw * cx + sinYaw * cz, y0 = e.y + cy, z0 = e.z - sinYaw * cx + cosYaw * cz;
   const under = Math.min(floor, y0 - hy);
   const seed = fragmentSeed(e.x, e.y, e.z, g), shared = fragmentSeed(e.x, e.y, e.z, -1);
@@ -404,9 +439,9 @@ export function fragmentPose(e: Broken, g: number, floor: number, t: number, out
   out[POSE.centre + 2] = z;
   out[POSE.settled] = settled;
   if (since <= 0) {
-    out[0] = cosYaw; out[1] = 0; out[2] = sinYaw; out[3] = e.x;
+    out[0] = cosYaw; out[1] = 0; out[2] = sinYaw * kz + cosYaw * kx; out[3] = e.x;
     out[4] = 0; out[5] = 1; out[6] = 0; out[7] = e.y;
-    out[8] = -sinYaw; out[9] = 0; out[10] = cosYaw; out[11] = e.z;
+    out[8] = -sinYaw; out[9] = 0; out[10] = cosYaw * kz - sinYaw * kx; out[11] = e.z;
     out[POSE.low] = y0 - hy;
     return;
   }
@@ -426,6 +461,8 @@ export function fragmentPose(e: Broken, g: number, floor: number, t: number, out
   out[7] = y - (out[4]! * cx + out[5]! * cy + out[6]! * cz);
   out[11] = z - (out[8]! * cx + out[9]! * cy + out[10]! * cz);
   out[POSE.low] = y - (Math.abs(out[4]!) * hx + Math.abs(out[5]!) * hy + Math.abs(out[6]!) * hz);
+  // The skew goes first: the turn above took the group's middle as skewed.
+  if (kx !== 0 || kz !== 1) for (let r = 0; r < 12; r += 4) out[r + 2] = out[r]! * kx + out[r + 2]! * kz;
 }
 
 /** Shrinks a pose to `share` of its size about the point of the floor under its middle. */
