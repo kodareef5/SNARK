@@ -419,7 +419,7 @@ test("an import some of whose changes are refused says so in the log", () => {
   op(h, "Permissions.AddGroup Council", "Permissions.Rank Council cluster");
   // Outside a cluster the map's rank imports, and it does not reach a group of the cluster's rank.
   const by = { ...OPERATOR, name: "(kody)", rank: RANK_MAP, baseRank: RANK_MAP, via: "page" as const };
-  const plan = { ops: [{ op: "addGroup", group: "Vip" }, { op: "grant", group: "Council", permission: "Kit.gold" }, { op: "grant", group: "Council", permission: "Kit.red" }] as const, notes: [] };
+  const plan = { ops: [{ op: "addGroup", group: "Vip" }, { op: "grant", group: "Council", permission: "Kit.gold" }, { op: "grant", group: "Council", permission: "Kit.red" }] as const, notes: [], seen: [] };
   const done = h.host.importPermissions(by, "a list of Permissions commands", plan);
   expect([done.why, done.done, done.refused.length]).toEqual(["", 1, 2]);
   const acts = h.host.acts.recent(0, Number.MAX_SAFE_INTEGER).slice(-2);

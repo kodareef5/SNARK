@@ -81,6 +81,12 @@ export interface Made {
   readonly rank: number;
 }
 
+/** A group as a plan saw it: its rank, or null where there was none of that name. */
+export interface GroupSeen {
+  readonly group: string;
+  readonly rank: number | null;
+}
+
 /** The most rows of history one read answers. */
 export const HISTORY_PAGE_MOST = 500;
 /** The most letters of an actor's name in the history. */
@@ -433,15 +439,26 @@ export class Permissions {
    * as the changes before it left it, and a refusal stops nothing. A write that fails makes none of them.
    */
   makeAll(actor: Acting, ops: readonly PermissionOp[]): Made[] {
+    return this.makeIf(actor, ops, [])!;
+  }
+
+  /**
+   * As `makeAll`, while each group of `seen` still has the rank it was seen with, judged inside the write. Where one does
+   * not, nothing is made and the answer is null.
+   */
+  makeIf(actor: Acting, ops: readonly PermissionOp[], seen: readonly GroupSeen[]): Made[] | null {
     const out: Made[] = [];
     /** What follows each change made, once the write is in the file. */
     const after: (() => void)[] = [];
     let began = false;
+    let moved = false;
     let held: PermissionSnapshot | null = null;
     try {
       this.store.transaction(() => {
         began = true;
         if (this.store.revision() !== this.revision) this.load(this.store.read());
+        moved = seen.some((s) => (this.group(s.group)?.rank ?? null) !== s.rank);
+        if (moved) return;
         held = this.snapshot();
         for (const op of ops) out.push(this.one(actor, op, after));
         if (after.length > 0) this.tidy();
@@ -452,6 +469,7 @@ export class Permissions {
       const rank = out[0]?.rank ?? this.actingRank(actor);
       return ops.map(() => ({ why: "The permissions could not be written.", words: "", rank }));
     }
+    if (moved) return null;
     if (after.length === 0) return out;
     for (const run of after) run();
     this.version++;

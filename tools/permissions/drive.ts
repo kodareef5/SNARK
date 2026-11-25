@@ -530,6 +530,14 @@ export async function drive(o: DriveOptions): Promise<string[]> {
       check("applied again, it makes the plan it showed", group("Masons")?.permissions, ["Build.fast"]);
       check("the page asked before each apply", page.dialogs.splice(0), ["Make these changes?", "Make these changes?"]);
       errorsOf(page, "the import's digest", [/request: 409 .*\/admin\/permissions-change/, /log: .*409/]);
+      // A check is of the text it was made for: an edit after it turns Apply off and takes the plan away.
+      await page.type("#import-text", "Permissions.AddGroup Carvers\n");
+      await page.press("#import-check");
+      await page.wait(`${q("#import-out")}.textContent.includes("It would make 1 change")`);
+      const applyOff = (): Promise<boolean> => page.run(`${q("#import-apply")}.disabled`);
+      const offWhenChecked = await applyOff();
+      await page.type("#import-text", "Permissions.AddGroup Carvers\nPermissions.AddGroup Smiths\n");
+      check("an edit after a check turns Apply off until it is checked again", [offWhenChecked, await applyOff(), (await text("#import-out")).trim()], [false, true, ""]);
       const CROSSCHAT = `{
   // CrossChat's config, with comments as its sample has
   "PermissionsFormatting": {

@@ -177,7 +177,11 @@ export function memberHolds(m: Member, now: number): boolean {
   return m.forever || (m.from <= now && now < m.until);
 }
 
-/** ARK's cheat names, in lower case, that are another name here. */
+/**
+ * ARK's cheat names, in lower case, that are another name here, each for a command that does what ARK's does or less.
+ * None stands for one that does more: ARK's teleports to a player or to where one looks are not tp, which goes to any
+ * point; KillPlayer is not kill, which takes creatures too; Summon and SpawnDino are not spawn, which also parks vehicles.
+ */
 const ARK_COMMANDS: ReadonlyMap<string, string> = new Map([
   ["kickplayer", "kick"],
   ["settimeofday", "settime"],
@@ -189,19 +193,9 @@ const ARK_COMMANDS: ReadonlyMap<string, string> = new Map([
   ["giveitemnum", "give"],
   ["giveitemtoplayer", "give"],
   ["giveitemnumtoplayer", "give"],
-  ["summon", "spawn"],
-  ["summontamed", "spawn"],
-  ["spawndino", "spawn"],
-  ["spawnexactdino", "spawn"],
-  ["teleport", "tp"],
   ["teleporttopos", "tp"],
   ["tpcoords", "tp"],
   ["setplayerpos", "tp"],
-  ["teleporttoplayer", "tp"],
-  ["teleporttoplayername", "tp"],
-  ["teleportplayeridtome", "tp"],
-  ["teleportplayernametome", "tp"],
-  ["killplayer", "kill"],
   ["listplayers", "who"],
   ["dotame", "forcetame"],
 ]);

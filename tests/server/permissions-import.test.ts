@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readChatFormat, readChatSettings, readLooseJson } from "../../shared/permissions/chat.ts";
 import { CHANGED_MEANWHILE, type PermissionActor } from "../../shared/permissions/model.ts";
-import { RANK_ADMIN, RANK_CLUSTER, RANK_MAP, RANK_OPEN } from "../../shared/ranks.ts";
+import { RANK_ADMIN, RANK_CLUSTER, RANK_MAP, RANK_OPEN, RANK_STAFF } from "../../shared/ranks.ts";
 import { applyPlan, CHAT_DOCUMENT, IMPORT_CHANGES_MOST, IMPORT_NOTES_MOST, planArkApi, planCommands, planCrossChat, type ArkApiFiles, type ImportPlan, type Planned } from "../../server/permissions/import.ts";
 import { Permissions } from "../../server/permissions/permissions.ts";
 import { PermissionStore } from "../../server/permissions/store.ts";
@@ -235,7 +235,7 @@ test("an open group that holds a cheat is named", () => {
 
 test("a Cheat permission with no command here is named", () => {
   const plan = planOf(planArkApi(arkApiFile(), opts(fresh())));
-  const note = noteWith(plan, "commands this game does not have");
+  const note = noteWith(plan, "no command here that does the same");
   expect(note).toContain("Cheat.DestroyWildDinos");
   expect(note).not.toContain("Cheat.KickPlayer");
 });
@@ -503,4 +503,70 @@ test("a look at the file now reads another world's change without waiting for th
   expect(five.apply(cluster, { op: "addGroup", group: "Vip" })).toBe("");
   expect([two.poll(), two.group("Vip")]).toEqual([false, undefined]);
   expect([two.lookNow(), two.group("Vip")?.name, two.lookNow()]).toEqual([true, "Vip", false]);
+});
+
+test("an import whose group changed rank before its write makes nothing", () => {
+  const file = join(root, "basis.sqlite");
+  const two = new Permissions({ store: new PermissionStore(file), world: 2 });
+  const five = new Permissions({ store: new PermissionStore(file), world: 5 });
+  expect(two.apply(cluster, { op: "addGroup", group: "Mods", rank: RANK_STAFF })).toBe("");
+  const plan = planOf(planCommands("Permissions.Grant Mods Cheat.fly\nPermissions.AddGroup Vip", opts(two)));
+  expect(noteWith(plan, "Mods is open")).toBeUndefined();
+  // Another map opens the empty group after the plan was made, and this map has not looked at the file since.
+  expect(five.apply(cluster, { op: "setRank", group: "Mods", rank: RANK_OPEN, was: RANK_STAFF })).toBe("");
+  const applied = applyPlan(two, cluster, plan);
+  expect([applied.changed, applied.done, applied.refused]).toEqual([true, 0, []]);
+  const held = new PermissionStore(file).read();
+  expect([held.groups.find((g) => g.name === "Mods")?.permissions, held.groups.some((g) => g.name === "Vip"), two.history().length]).toEqual([[], false, 2]);
+});
+
+test("a group made since the plan, where it planned to make one, stops the import", () => {
+  const perms = fresh();
+  const plan = planOf(planCommands("Permissions.Grant Vip Kit.vip", opts(perms)));
+  expect(perms.apply(cluster, { op: "addGroup", group: "Vip", rank: RANK_STAFF })).toBe("");
+  expect([applyPlan(perms, cluster, plan).changed, perms.group("Vip")?.permissions]).toEqual([true, []]);
+});
+
+test("a pasted rank change over another admin's change is refused as changed meanwhile", () => {
+  const file = join(root, "rank.sqlite");
+  const two = new Permissions({ store: new PermissionStore(file), world: 2 });
+  const five = new Permissions({ store: new PermissionStore(file), world: 5 });
+  expect(two.apply(cluster, { op: "addGroup", group: "Mods", rank: RANK_STAFF })).toBe("");
+  const plan = planOf(planCommands("Permissions.Rank Mods admin", opts(two)));
+  expect(plan.ops).toEqual([{ op: "setRank", group: "Mods", rank: RANK_ADMIN, was: RANK_STAFF }]);
+  expect(five.apply(cluster, { op: "setRank", group: "Mods", rank: RANK_MAP })).toBe("");
+  expect(two.makeAll(cluster, plan.ops).map((m) => m.why)).toEqual([CHANGED_MEANWHILE]);
+  expect(new PermissionStore(file).read().groups.find((g) => g.name === "Mods")?.rank).toBe(RANK_MAP);
+});
+
+test("an ARK teleport to a player imports as allowing nothing here", () => {
+  const COMMANDS_HERE = [...COMMANDS, "kill", "spawn", "gmsummon"];
+  const pasted = ["TeleportToPlayer", "TeleportPlayerIDToMe", "Teleport", "TeleportToPos", "KillPlayer", "SpawnDino", "KickPlayer"].map((c) => `Permissions.Grant Vip Cheat.${c}`);
+  const plan = planOf(planCommands(pasted.join("\n"), { look: fresh(), commands: COMMANDS_HERE }));
+  const note = noteWith(plan, "no command here that does the same") ?? "";
+  const named = note.slice(note.indexOf(": ") + 2, note.indexOf(". ", note.indexOf(": "))).split(", ");
+  expect(named).toEqual(["Cheat.TeleportToPlayer", "Cheat.TeleportPlayerIDToMe", "Cheat.Teleport", "Cheat.KillPlayer", "Cheat.SpawnDino"]);
+});
+
+test("an ARK cheat that does more here under its own name is not imported", () => {
+  const plan = planOf(planCommands("Permissions.Grant Vip Cheat.TP\nPermissions.Grant Vip Cheat.GMSummon\nPermissions.Grant Vip Cheat.Fly", { look: fresh(), commands: [...COMMANDS, "gmsummon"] }));
+  const granted = plan.ops.flatMap((op) => (op.op === "grant" ? [op.permission] : []));
+  expect(granted).toEqual(["Cheat.Fly"]);
+  expect(noteWith(plan, "were not imported: Cheat.TP, Cheat.GMSummon")).toBeDefined();
+});
+
+test("a -wal that SQLite takes is read whole, and its plan's refusal is said", () => {
+  const path = join(root, `crowded-${++files}.db`);
+  const db = pluginDatabase(path);
+  db.exec("PRAGMA wal_autocheckpoint=0;");
+  db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+  const group = db.query("INSERT INTO Groups (GroupName, Permissions) VALUES (?, ?)");
+  for (let i = 0; i <= IMPORT_CHANGES_MOST / 2; i++) group.run(`Late${i}`, `Kit.k${i},`);
+  const main = readFileSync(path);
+  const wal = readFileSync(`${path}-wal`);
+  db.close();
+  removeDatabase(path);
+  expect(planArkApi(main, opts(fresh())).ok).toBe(true);
+  const both = planArkApi(main, opts(fresh()), { wal });
+  expect(both).toEqual({ ok: false, reason: expect.stringContaining(`one import makes ${IMPORT_CHANGES_MOST} at most`) });
 });

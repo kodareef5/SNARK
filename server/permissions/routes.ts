@@ -118,8 +118,11 @@ function plan(host: Host, kind: ImportKind, text: string, wal: string | undefine
   return planArkApi(new Uint8Array(Buffer.from(text, "base64")), opts, files);
 }
 
-/** A digest of a plan's changes, in order: the same changes give the same digest. */
-export const planDigest = (p: ImportPlan): string => createHash("sha256").update(JSON.stringify(p.ops)).digest("hex");
+/**
+ * A digest of a plan's changes in order, its notes, and each group it saw with the rank it saw: what the admin was shown
+ * and what it was judged against. The same changes over other ranks give another digest.
+ */
+export const planDigest = (p: ImportPlan): string => createHash("sha256").update(JSON.stringify([p.ops, p.notes, p.seen])).digest("hex");
 
 const words = (op: PermissionOp): string => changeWords(op, false);
 
@@ -181,6 +184,11 @@ async function post(host: Host, req: Request): Promise<Response> {
       }
       const done = host.importPermissions(by, KINDS[kind], planned.plan);
       if (done.why !== "") return no(done.why, 403);
+      if (done.changed) {
+        // A group the plan saw changed between this plan and its write: the plan as it is now is shown.
+        const now = plan(host, kind, sent.text, sent.wal as string | undefined);
+        return now.ok ? answer({ ...checked(host, req, now.plan), ok: false, why: PLAN_CHANGED }, 409) : no(now.reason, 409);
+      }
       return answer({ ok: true, why: "", notes: [...planned.plan.notes], ops: done.done, refused: done.refused.map((r) => ({ what: words(r.op), why: r.reason })) });
     }
     default:

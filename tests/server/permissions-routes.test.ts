@@ -22,7 +22,7 @@ import {
   CHAT_DOCUMENT, OLD_PERMISSIONS_PATHS, PERMISSIONS_API, PERMISSIONS_HISTORY, PERMISSIONS_STATE, type ImportKind, type PermissionsAnswer, type PermissionsHistory, type PermissionsPost,
   type PermissionsSame, type PermissionsState,
 } from "../../shared/permissions/page.ts";
-import { RANK_ADMIN, RANK_CLUSTER, RANK_MAP, RANK_STAFF } from "../../shared/ranks.ts";
+import { RANK_ADMIN, RANK_CLUSTER, RANK_MAP, RANK_OPEN, RANK_STAFF } from "../../shared/ranks.ts";
 import { splitPack } from "../../tools/pack/split.ts";
 import { runningArkApi } from "../fixtures/arkapi.ts";
 import { TestCluster, rec } from "../fixtures/cluster.ts";
@@ -523,4 +523,39 @@ test("the history says there is more when its largest page is full", async () =>
   const page = (await (await ask(`${PERMISSIONS_HISTORY}?most=500`, { headers: kody })).json()) as PermissionsHistory;
   expect([page.rows.length <= 500, page.more]).toEqual([true, true]);
   h.host.shutdown();
+});
+
+test("an import is refused when a group it grants to changed rank since its check", async () => {
+  const { s, at, kody } = serve();
+  operator(s.host, { op: "addGroup", group: "Mods", rank: RANK_STAFF });
+  const text = "Permissions.Grant Mods Cheat.fly\n";
+  const ask = (path: string, init?: RequestInit): Promise<Response> => fetch(`${at}${path}`, init);
+  const digest = await checkedDigest(ask, "commands", text, kody);
+  // The same grant to an open group gives its members the cheat with no password.
+  operator(s.host, { op: "setRank", group: "Mods", rank: RANK_OPEN });
+  const before = s.host.permissions.snapshot();
+  const [status, changed] = await ask(PERMISSIONS_API, posted({ do: "import", kind: "commands", text, digest }, kody)).then(answered);
+  expect([status, changed.ok, changed.digest !== digest, changed.why]).toEqual([409, false, true, expect.stringContaining("What the import would do changed")]);
+  expect(changed.notes).toEqual(expect.arrayContaining([expect.stringContaining("Mods is open and holds cheats")]));
+  expect(s.host.permissions.snapshot()).toEqual(before);
+});
+
+test("a group's rank changed just before the import's write refuses it whole", async () => {
+  const { s, at, kody } = serve();
+  operator(s.host, { op: "addGroup", group: "Mods", rank: RANK_STAFF });
+  const text = "Permissions.Grant Mods Cheat.fly\nPermissions.AddGroup Vip\n";
+  const ask = (path: string, init?: RequestInit): Promise<Response> => fetch(`${at}${path}`, init);
+  const digest = await checkedDigest(ask, "commands", text, kody);
+  // Another admin opens the group after the route planned again, before the import's write.
+  const importing = s.host.importPermissions;
+  s.host.importPermissions = (...args) => {
+    operator(s.host, { op: "setRank", group: "Mods", rank: RANK_OPEN });
+    return importing(...args);
+  };
+  const [status, changed] = await ask(PERMISSIONS_API, posted({ do: "import", kind: "commands", text, digest }, kody)).then(answered);
+  s.host.importPermissions = importing;
+  expect([status, changed.ok, changed.digest !== undefined && changed.digest !== digest]).toEqual([409, false, true]);
+  expect(changed.notes).toEqual(expect.arrayContaining([expect.stringContaining("Mods is open and holds cheats")]));
+  expect([s.host.permissions.group("Mods")?.permissions, s.host.permissions.group("Vip")]).toEqual([[], undefined]);
+  expect(s.host.acts.recent().filter((a) => a.name === "(kody)" && a.kind !== "sign-in")).toEqual([]);
 });
