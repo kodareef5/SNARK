@@ -1976,6 +1976,18 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const con = new Console();
   con.bus = bus;
   for (const [, add] of COMMAND_FAMILIES) add(con);
+  const idOfPid = (pid: number): string => {
+    const rec = pid !== 0 ? records.byPid.get(pid) : undefined;
+    return rec?.kind === survivor ? idText(rec) : "";
+  };
+  // One with no live session has not signed in.
+  const subjectOfPid = (pid: number): PermissionSubject | null => {
+    const c = sessionOf(pid);
+    if (c) return subjectOf(c);
+    const id = idOfPid(pid);
+    const team = records.byPid.get(pid)?.team ?? 0;
+    return id ? { id, team: tribes.byId.has(team) ? team : 0, signed: false, world: permissions.world } : null;
+  };
   // After the server's own commands, so a module can take no name of theirs.
   const modules = new Modules(
     {
@@ -1984,8 +1996,25 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
         get tick() {
           return world.tick;
         },
-        online: () => game.clients.flatMap((c) => (c?.active && !c.closed ? [{ pid: c.pid, name: c.name }] : [])),
+        online: () => game.clients.flatMap((c) => (c?.active && !c.closed ? [{ pid: c.pid, id: idOfPid(c.pid), name: c.name }] : [])),
       },
+      perms: {
+        has: (pid, permission) => {
+          const s = subjectOfPid(pid);
+          return s !== null && permissions.has(s, permission);
+        },
+        inGroup: (pid, group) => {
+          const s = subjectOfPid(pid);
+          return s !== null && permissions.inGroup(s, group);
+        },
+        groups: (pid) => {
+          const s = subjectOfPid(pid);
+          return s ? permissions.groupsOf(s).map((g) => g.name) : [];
+        },
+        id: idOfPid,
+      },
+      permissionWorld: permissions.world,
+      changePermissions,
       act: {
         tell: (pid, text) => notice(pid, text),
         broadcast: (text) => {
@@ -1994,7 +2023,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       },
       addCommand: (module, c) => {
         if (con.commands.has(c.name.toLowerCase())) throw new Error(`module ${module}: there is already a command "${c.name}"`);
-        con.add({ name: c.name.toLowerCase(), usage: c.usage, help: c.help, admin: c.admin, run: (ctx, args) => c.run({ pid: ctx.client?.pid ?? 0, name: ctx.client?.name ?? "(operator)", operator: ctx.client === null }, args) });
+        con.add({ name: c.name.toLowerCase(), usage: c.usage, help: c.help, admin: c.admin, run: (ctx, args) => c.run({ pid: ctx.client?.pid ?? 0, id: idOfPid(ctx.client?.pid ?? 0), name: ctx.client?.name ?? "(operator)", operator: ctx.client === null }, args) });
       },
       log: say,
     },

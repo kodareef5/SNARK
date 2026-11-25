@@ -2,7 +2,7 @@
 // the line: it reads as an act whose time, survivor, rank and address are not known.
 
 /** How the act reached the server. */
-export type ActVia = "session" | "page" | "operator";
+export type ActVia = "session" | "page" | "operator" | "module";
 /** A command or a page's action, a sign-in, or a change to permissions. */
 export type ActKind = "command" | "sign-in" | "change";
 
@@ -31,7 +31,7 @@ const codecs = globalThis as unknown as { TextEncoder: new () => { encode(s: str
 const UTF8_OUT = new codecs.TextEncoder();
 const UTF8_IN = new codecs.TextDecoder();
 
-const VIAS: readonly string[] = ["session", "page", "operator"];
+const VIAS: readonly string[] = ["session", "page", "operator", "module"];
 const KINDS: readonly string[] = ["command", "sign-in", "change"];
 
 /** An act's bytes for the journal, which keeps the sequence number and the tick itself. */

@@ -27,7 +27,7 @@ export const moreAfter = (count: number): boolean => count >= ACTS_PAGE;
 export const KINDS: readonly ActKind[] = ["command", "sign-in", "change"];
 export const KIND_WORDS: Record<ActKind, string> = { command: "Commands", "sign-in": "Sign-ins", change: "Permission changes" };
 const KIND_CHIPS: Record<ActKind, string> = { command: "", "sign-in": "sign-in", change: "permissions" };
-const VIA_WORDS: Record<ActVia, string> = { session: "In game", page: "On a page", operator: "At the terminal" };
+const VIA_WORDS: Record<ActVia, string> = { session: "In game", page: "On a page", operator: "At the terminal", module: "By a module" };
 
 export interface ActFilter {
   /** Letters of the name or digits of the ID. */
