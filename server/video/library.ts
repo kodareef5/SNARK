@@ -14,6 +14,8 @@ export interface LibraryDoc {
   channels: Channel[];
   screens: Screen[];
   hidden: string[];
+  /** The curated release has already checked this library. */
+  curatedStrip?: true;
 }
 
 /** An upload checked and in place but not yet published, with what its boxes said. */
@@ -88,6 +90,15 @@ export interface Refusal {
 }
 
 const sha16 = (text: string): string => new Bun.CryptoHasher("sha256").update(text).digest("hex").slice(0, 16);
+const STRIP = "strip";
+const FORMER_STRIP_CLIP = "fb06d4910de294c6";
+
+interface LibraryRow {
+  revision: number;
+  doc: string;
+}
+
+const SELECT_LIBRARY = "SELECT revision, doc FROM library WHERE id=1";
 
 export class VideoLibrary {
   readonly media: string;
@@ -125,12 +136,17 @@ export class VideoLibrary {
     );
     this.db = db;
     this.readStarters();
+    const strip = this.starters.channels.find((c) => c.name === STRIP);
     const fresh: LibraryDoc = {
       clips: [],
       channels: this.starters.channels.map((c) => ({ name: c.name, items: [...c.items], shuffle: c.shuffle === true, epoch: this.now() })),
-      screens: SCREENS.map((s) => defaultScreen(s)),
+      screens: SCREENS.map((id) => {
+        const screen = defaultScreen(id);
+        return id === "orb" && strip ? { ...screen, show: STRIP } : screen;
+      }),
       hidden: [],
     };
+    if (strip?.items.some((id) => id !== FORMER_STRIP_CLIP)) fresh.curatedStrip = true;
     if (db.query("INSERT OR IGNORE INTO library (id,revision,doc) VALUES (1,0,?)").run(JSON.stringify(fresh)).changes > 0) this.writes++;
     return db;
   }
@@ -156,24 +172,45 @@ export class VideoLibrary {
     }
   }
 
-  /** Changes whenever the library may have: the file's time on disk, or for a memory library its count of writes. */
+  /** Changes when the starters or the database may have changed. */
   stamp(): string {
-    if (this.path === ":memory:") return `m${this.writes}`;
+    this.readStarters();
+    if (this.path === ":memory:") return `m${this.writes}:${this.startersAt}`;
     try {
       const s = statSync(this.path);
-      return `${s.mtimeMs}:${s.size}`;
+      return `${s.mtimeMs}:${s.size}:${this.startersAt}`;
     } catch {
-      return "none";
+      return `none:${this.startersAt}`;
     }
+  }
+
+  /** Checks the old starter programme once, taking the same write lock as an admin edit. */
+  private curateStrip(db: Database, strip: StarterChannel): { revision: number; doc: LibraryDoc } {
+    return db.transaction(() => {
+      const row = db.query(SELECT_LIBRARY).get() as LibraryRow;
+      const doc = JSON.parse(row.doc) as LibraryDoc;
+      if (doc.curatedStrip) return { revision: row.revision, doc };
+      const i = doc.channels.findIndex((c) => c.name === STRIP && !c.shuffle && c.items.length === 1 && c.items[0] === FORMER_STRIP_CLIP);
+      if (i >= 0 && !doc.hidden.includes(FORMER_STRIP_CLIP)) {
+        doc.channels[i] = { ...doc.channels[i]!, items: [...strip.items], shuffle: strip.shuffle === true };
+      }
+      doc.curatedStrip = true;
+      const revision = row.revision + 1;
+      db.query("UPDATE library SET revision=?, doc=? WHERE id=1").run(revision, JSON.stringify(doc));
+      this.writes++;
+      return { revision, doc };
+    }).immediate();
   }
 
   /** The library now, read again only when its revision or the starters changed. */
   view(): LibraryView {
     const db = this.open();
     this.readStarters();
-    const row = db.query("SELECT revision, doc FROM library WHERE id=1").get() as { revision: number; doc: string };
+    const row = db.query(SELECT_LIBRARY).get() as LibraryRow;
     if (this.cached && this.cached.revision === row.revision && this.cached.starters === this.starters.clips) return this.cached;
-    const doc = JSON.parse(row.doc) as LibraryDoc;
+    let revision = row.revision, doc = JSON.parse(row.doc) as LibraryDoc;
+    const strip = this.starters.channels.find((c) => c.name === STRIP);
+    if (!doc.curatedStrip && strip?.items.some((id) => id !== FORMER_STRIP_CLIP)) ({ revision, doc } = this.curateStrip(db, strip));
     const screens = new Map(doc.screens.map((s) => [s.screen, s]));
     for (const s of SCREENS) if (!screens.has(s)) screens.set(s, defaultScreen(s));
     doc.screens = [...screens.values()];
@@ -183,7 +220,7 @@ export class VideoLibrary {
     const manifest = [...all.values()].filter((c) => !(c.starter && hidden.has(c.id)));
     const manifestId = this.writeManifest(manifest);
     this.cached = {
-      revision: row.revision, doc, starters: this.starters.clips, all, manifest, manifestId,
+      revision, doc, starters: this.starters.clips, all, manifest, manifestId,
       channels: new Map(doc.channels.map((c) => [c.name, c])),
       screens,
       timed: new Map(manifest.map((c) => [c.id, { id: c.id, seconds: c.seconds }])),

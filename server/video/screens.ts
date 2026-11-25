@@ -65,19 +65,21 @@ export class ScreenFeed {
   }
 
   /** Reads the library if its file changed, and works out what each screen plays at `wall` ms. */
-  poll(wall = Date.now(), night = worldNight(this.world)): void {
-    if (wall - this.checked >= LIBRARY_CHECK_MS) {
-      this.checked = wall;
+  poll(at?: number, night = worldNight(this.world)): void {
+    const checked = at ?? Date.now();
+    if (checked - this.checked >= LIBRARY_CHECK_MS) {
+      this.checked = checked;
       const stamp = this.lib.stamp();
       if (stamp !== this.stamp || !this.view) {
         this.stamp = stamp;
         this.view = this.lib.view();
       }
     }
-    if (wall - this.swept >= SWEEP_MS) {
-      this.swept = wall;
+    if (checked - this.swept >= SWEEP_MS) {
+      this.swept = checked;
       this.lib.sweep();
     }
+    const wall = at ?? Date.now();
     const view = this.view!;
     const index = new Map(view.manifest.map((c, i) => [c.id, i]));
     let changed = this.states.length !== SCREENS.length;
