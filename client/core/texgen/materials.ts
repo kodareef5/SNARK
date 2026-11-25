@@ -31,7 +31,10 @@ export function materialRows(r: MaterialRecipe, which: number): Float32Array {
   if (c) f.set([c.size[0], c.size[1], c.bond, c.joint, c.depth, c.tone, c.dark, c.pillow ?? 0], 40);
   if (b) f.set([b.pitch, b.width, b.height, 0], 48);
   if (v) f.set([v.pitch, v.inset, v.radius, v.height, v.streak, v.run, v.rust, v.wear, v.foot ?? 0, v.bare ?? 0, 0, 0], 52);
-  if (r.trace) f.set([r.trace.width, r.trace.depth], 10);
+  if (r.trace) {
+    f.set([r.trace.width, r.trace.depth], 10);
+    f.set([r.trace.rise, r.trace.sweep], 62);
+  }
   return f;
 }
 
@@ -44,11 +47,12 @@ const wrap = (i: number, n: number): number => ((i % n) + n) % n;
  */
 export function materialHeight(f: Float32Array, x: number, y: number, out: Float64Array): number {
   const T = f[0]!, seed = f[1]!;
+  const brushY = f[63]! > 0 ? y + f[63]! * Math.cos(2 * Math.PI * x / T) : y;
   let h = f[2]!, light = 1, dye = f[6]!, warm = 0, before = 0.5, first = 0.5, grit = 0.5;
   for (let i = 0; i < 4; i++) {
     const a = 12 + i * 4, cx = f[a]!;
     if (cx <= 0) break;
-    const cy = f[a + 1]!, n = fbm((x + f[28 + i]! * (before - 0.5)) / cx, y / cy, Math.round(T / cx), Math.round(T / cy), seed + 100 * (i + 1), 2);
+    const cy = f[a + 1]!, n = fbm((x + f[28 + i]! * (before - 0.5)) / cx, brushY / cy, Math.round(T / cx), Math.round(T / cy), seed + 100 * (i + 1), 2);
     h += f[a + 2]! * (n - 0.5);
     light *= 1 + f[a + 3]! * (n - 0.5);
     if (i === 0) first = n;
@@ -99,6 +103,15 @@ export function materialHeight(f: Float32Array, x: number, y: number, out: Float
   }
   if (f[10]! > 0) {
     const u = x / T - Math.floor(x / T), v = y / T - Math.floor(y / T);
+    // Two die-formed shoulders flank the pan; a narrow burnished lip follows each angled return.
+    const px = T * (u < 0.5 ? u : u - 1), py = T * (v < 0.5 ? v : v - 1);
+    const offset = Math.abs(px + Math.sign(py) * 0.21);
+    const distance = Math.abs(py) + Math.min(0.33, Math.max(0, offset - 0.50)) - 0.92;
+    const shoulder = smoothstep(-0.035, 0.025, distance);
+    const recess = 1 - smoothstep(0.004, 0.018, Math.abs(distance + 0.044));
+    const wear = (1 - smoothstep(0.003, 0.015, Math.abs(distance - 0.020))) * smoothstep(0.36, 0.72, grit);
+    h += f[62]! * (shoulder - 0.75 * recess - 0.25 * smoothstep(0.04, 0.22, distance));
+    light *= 1 + 0.07 * shoulder - 0.15 * recess + 0.23 * wear;
     const bend = Math.min(0.16, Math.max(0, u - 0.26)) - Math.min(0.16, Math.max(0, u - 0.61));
     const a = Math.max(0.12 - u, u - 0.88, Math.abs(v - 0.31 - bend));
     const b = Math.max(0.20 - u, u - 0.76, Math.abs(v - 0.34 - bend));
@@ -137,10 +150,12 @@ export function materialTexel(f: Float32Array, x: number, y: number, out: Float6
 const MATERIAL_GLSL = `float heightOf(float x, float y, out vec3 look) {
   float T = uJob[2].x, h = uJob[2].z, light = 1.0, dye = uJob[3].z, warm = 0.0, before = 0.5, first = 0.5, grit = 0.5;
   int seed = int(uJob[2].y);
+  float brushY = y;
+  if (uJob[17].w > 0.0) brushY += uJob[17].w * cos(6.283185307179586 * x / T);
   for (int i = 0; i < 4; i++) {
     vec4 n = uJob[5 + i];
     if (n.x <= 0.0) break;
-    float v = fbm((x + uJob[9][i] * (before - 0.5)) / n.x, y / n.y, int(floor(T / n.x + 0.5)), int(floor(T / n.y + 0.5)), seed + 100 * (i + 1), 2);
+    float v = fbm((x + uJob[9][i] * (before - 0.5)) / n.x, brushY / n.y, int(floor(T / n.x + 0.5)), int(floor(T / n.y + 0.5)), seed + 100 * (i + 1), 2);
     h += n.z * (v - 0.5);
     light *= 1.0 + n.w * (v - 0.5);
     if (i == 0) first = v;
@@ -192,7 +207,14 @@ const MATERIAL_GLSL = `float heightOf(float x, float y, out vec3 look) {
     h = h * (1.0 - b.z) + b.z * rib;
   }
   if (uJob[4].z > 0.0) {
-    vec2 uv = fract(vec2(x, y) / T);
+    vec2 uv = fract(vec2(x, y) / T), p = T * (fract(uv + 0.5) - 0.5);
+    float offset = abs(p.x + sign(p.y) * 0.21);
+    float seam = abs(p.y) + clamp(offset - 0.50, 0.0, 0.33) - 0.92;
+    float shoulder = smoothstep(-0.035, 0.025, seam);
+    float recess = 1.0 - smoothstep(0.004, 0.018, abs(seam + 0.044));
+    float wear = (1.0 - smoothstep(0.003, 0.015, abs(seam - 0.020))) * smoothstep(0.36, 0.72, grit);
+    h += uJob[17].z * (shoulder - 0.75 * recess - 0.25 * smoothstep(0.04, 0.22, seam));
+    light *= 1.0 + 0.07 * shoulder - 0.15 * recess + 0.23 * wear;
     float bend = clamp(uv.x - 0.26, 0.0, 0.16) - clamp(uv.x - 0.61, 0.0, 0.16);
     float a = max(max(0.12 - uv.x, uv.x - 0.88), abs(uv.y - 0.31 - bend));
     float b = max(max(0.20 - uv.x, uv.x - 0.76), abs(uv.y - 0.34 - bend));

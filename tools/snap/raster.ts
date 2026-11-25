@@ -18,7 +18,8 @@ import { FACADE_COLOURS, FACADE_TIERS, KIND, ROOM_OPEN_LEAST, ROOM_OUT, facadeFa
 import { TEK_WALL } from "../../content/building/tek-wall.ts";
 import { rippleStrength, RIPPLE_TINT } from "../../client/core/render/tek-ripple.ts";
 import { TEK_RAIL_COLOUR } from "../../content/building/tek-wall.ts";
-import { FIELD_PHASE, RAIL_LIGHT, TEK_FIELD, pieceFinish, tekFieldLight } from "../../client/core/render/tek-field.ts";
+import { tekFrameSurface, tekRailLight } from "../../client/core/render/tek-frame.ts";
+import { FIELD_PHASE, TEK_FIELD, pieceFinish, tekFieldLight } from "../../client/core/render/tek-field.ts";
 import { texgenSide } from "../../client/core/texgen/layers.ts";
 import { weatherTwin } from "../../client/core/texgen/weather.ts";
 import { TWIN_SLOTS, madeTwin } from "../../client/core/texgen/materials.ts";
@@ -486,11 +487,16 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
     const twice = 2 * (normal[0]! * eye[0]! + normal[1]! * eye[1]! + normal[2]! * eye[2]!);
     for (let c = 0; c < 3; c++) reflected[c] = twice * normal[c]! - eye[c]!;
     const field = !touch && made === TEK_FIELD && piece !== null && (piece[5]! & (PIECE_OWN | PIECE_FIXED)) === PIECE_OWN;
+    const hardware = !touch && made === TEK_FIELD && piece !== null && (piece[5]! & PIECE_FIXED) !== 0;
+    const emitter = hardware && (piece[5]! & PIECE_PLAIN) === 0;
     if (field) {
-      worldOrm[1] = Math.max(0.30, Math.min(0.45, worldOrm[1]!));
-      worldOrm[2] = 0.38;
+      worldOrm[1] = Math.max(0.21, Math.min(0.56, worldOrm[1]!));
+      worldOrm[2] = 0.50;
+    } else if (hardware && !emitter) {
+      for (let c = 0; c < 3; c++) tekPalette[c] = srgbToLinear((pal[colorIndex * 4 + c]! / 255) * dim);
+      tekFrameSurface(albedo, worldOrm, tekPalette, fieldRelief);
     }
-    const sharp = glass || worldSharp(worldOrm[1]!);
+    const sharp = field || glass || worldSharp(worldOrm[1]!);
     if (worldOrm[1]! >= 1) mirrored.fill(0);
     else if (!sharp) skyLight(mirrored, p.frame, reflected);
     else if (look) skyFrom(mirrored, p.frame, reflected, look);
@@ -512,8 +518,8 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
     if (field) {
       const facing = nx * eye[0]! + ny * eye[1]! + nz * eye[2]!;
       tekFieldLight(light, piece[0]!, piece[1]!, (piece[5]! & 65535) >> PIECE_SEED, facing, footprint, p.frame[MADE_AT + FIELD_PHASE]!, p.frame[FRAME.exposure]!, fieldRelief);
-    } else if (!touch && made === TEK_FIELD && piece && (piece[5]! & PIECE_FIXED) !== 0) {
-      for (let c = 0; c < 3; c++) light[c]! += RAIL_LIGHT[c]! / Math.max(p.frame[FRAME.exposure]!, 0.001);
+    } else if (hardware) {
+      tekRailLight(light, piece[0]!, piece[1]!, emitter, p.frame[FRAME.exposure]!);
     }
     if (facadeIO.room[0]! + facadeIO.room[1]! + facadeIO.room[2]! > 0) {
       facadeSky[0] = nx; facadeSky[1] = ny; facadeSky[2] = nz;
@@ -532,6 +538,7 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
   shown(rgb, light, dist, p);
 }
 
+const tekPalette = new Float64Array(3);
 const facadeIO = facadeOut();
 /** The sky's share at a point over the ground, as skyopen.ts `skyOpen` reads it with no contact, for a room behind glass. */
 type RoomOpen = (rx: number, rz: number, nx: number, ny: number, nz: number, over: number) => number;
@@ -1344,10 +1351,11 @@ export class Rasterizer {
         this.made = piece ? (data[at + PIECE_STATE_AT]! & PIECE_STAGE) << WEAR_OVER_MADE : word !== 0 ? (color === SPALL_PALETTE ? 0 : pieceMade(p.pieces, p.pieceRows, rows, word)) | (pieceWear(p.pieces, p.pieceRows, rows, word) << WEAR_OVER_MADE) : !skinned && color >= REGION_BASE && data[at + 18] === MADE_MARK ? data[at + 19]! : 0;
         // As ownVertex's piece bits: a face that wears the piece's material is read in the piece's frame, by its seed.
         const material = piece ? pieceFinish(data[at + PIECE_MADE_AT]! & PIECE_MADE_BITS, data[at + PIECE_FIT_AT]!) : 0;
-        const finish = material === TEK_FIELD ? color === TEK_RAIL_COLOUR : (lod.bones[last]! & FACE_WEARS) !== 0;
+        const finish = material === TEK_FIELD || (lod.bones[last]! & FACE_WEARS) !== 0;
+        const plain = material === TEK_FIELD ? color < REGION_BASE && color !== TEK_RAIL_COLOUR : (lod.bones[last]! & FACE_PLAIN) !== 0;
         const worn = color >= REGION_BASE || finish ? material : 0;
         this.made |= worn;
-        this.pieceBits = worn === 0 ? 0 : PIECE_OWN | ((lod.bones[last]! & FACE_PLAIN) !== 0 ? PIECE_PLAIN : 0) | (color >= REGION_BASE ? 0 : PIECE_FIXED) | (pieceSeed(view.getUint32(at, true), view.getUint32(at + 4, true), view.getUint32(at + 8, true)) << PIECE_SEED);
+        this.pieceBits = worn === 0 ? 0 : PIECE_OWN | (plain ? PIECE_PLAIN : 0) | (color >= REGION_BASE ? 0 : PIECE_FIXED) | (pieceSeed(view.getUint32(at, true), view.getUint32(at + 4, true), view.getUint32(at + 8, true)) << PIECE_SEED);
         if (piece && color < REGION_BASE && (lod.bones[last]! & FACE_WEARS) !== 0) this.pieceBits += (data[at + 14]! + 1) * 65536;
         if (color >= REGION_BASE) color = data[at + 14 + color - REGION_BASE]!;
         // As FLAT_MESH_VERTEX's uOneColor: a piece about to be built is one colour.

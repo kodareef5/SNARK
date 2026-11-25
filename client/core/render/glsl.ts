@@ -2,7 +2,8 @@
 // low poly has always been drawn with, and a test pins its hash so that it stays so. A WebGL2 shell compiles it as is.
 // The lit tiers draw the same vertices with LIT, which lights them as surface.ts does.
 
-import { RAIL_LIGHT, TEK_FIELD, TEK_FIELD_GLSL } from "./tek-field.ts";
+import { TEK_FRAME_GLSL } from "./tek-frame.ts";
+import { TEK_FIELD, TEK_FIELD_GLSL } from "./tek-field.ts";
 import { DRY_ASPHALT } from "../../../content/surfaces.ts";
 import { GLASS, RUST, STEEL, STREET_GLSL } from "./street-finish.ts";
 import { REGION_BASE } from "../../../shared/pack/palette.ts";
@@ -19,7 +20,7 @@ import { OVER_GROUND_GLSL, SKY_OPEN_GLSL } from "./skyopen.ts";
 import { ROOF_GLSL } from "./roof.ts";
 import { LIGHT, THROUGH } from "./surface.ts";
 import { FACADE_GLSL, ROOM_OPEN_LEAST } from "./facade.ts";
-import { GROUND_BAND, GROUND_GLSL, GROUND_SCALE, PIECE_FIXED, PIECE_OVER_WEAR, PIECE_OWN, PIECE_SEED, ROAD_GLSL, SPALL_RIM, SPALL_SURFACE, STREETS_GLSL, WORLD_GLSL, WORLD_SHARP } from "./world-surfaces.ts";
+import { GROUND_BAND, GROUND_GLSL, GROUND_SCALE, PIECE_FIXED, PIECE_OVER_WEAR, PIECE_OWN, PIECE_PLAIN, PIECE_SEED, ROAD_GLSL, SPALL_RIM, SPALL_SURFACE, STREETS_GLSL, WORLD_GLSL, WORLD_SHARP } from "./world-surfaces.ts";
 import { WET_DARK, WET_GLSL, WET_ROUGH } from "./bank.ts";
 
 const f = (n: number): string => n.toFixed(4);
@@ -86,6 +87,7 @@ out vec4 o;
 ${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${AIR}${WORLD_GLSL.replace("WORLD_NORMAL", "rg")}${FACADE_GLSL}${STREET_GLSL}
 #ifdef WORLD_WEATHER
 ${TEK_FIELD_GLSL}
+${TEK_FRAME_GLSL}
 #endif
 void main() {
   vec3 dx = dFdx(vRel), dy = dFdy(vRel);
@@ -175,11 +177,16 @@ void main() {
   vec3 localLight = room * skyLight(geometric) * roomOpen;
 #ifdef WORLD_WEATHER
   if (worldMade == ${TEK_FIELD} && (worldPiece & ${PIECE_OWN | PIECE_FIXED}) == ${PIECE_OWN}) {
-    orm.yz = vec2(clamp(orm.y, 0.30, 0.45), 0.38);
+    orm.yz = vec2(clamp(orm.y, 0.21, 0.56), 0.50);
     worldSharp = true;
     localLight += tekFieldLight(vOwn.xy, worldPiece >> ${PIECE_SEED}, dot(geometric, v), max(length(dx), length(dy)), fieldRelief);
   } else if (worldMade == ${TEK_FIELD} && (worldPiece & ${PIECE_FIXED}) != 0) {
-    localLight += vec3(${RAIL_LIGHT.map(f).join(", ")}) / max(fSunColor.w, 0.001);
+    bool emitter = (worldPiece & ${PIECE_PLAIN}) == 0;
+    if (!emitter) {
+      tekFrameSurface(albedo, orm, vColor, fieldRelief);
+      worldSharp = orm.y < ${f(WORLD_SHARP)};
+    }
+    localLight += tekRailLight(vOwn.xy, emitter);
   }
 #endif
   vec3 r = reflect(-v,n);

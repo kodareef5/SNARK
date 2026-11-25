@@ -393,6 +393,12 @@ function made(k: number, id: number, axis: number, x: number, y: number, z: numb
     u = (axis === 0 ? piece.z : piece.x) / m;
     v = (axis === 1 ? piece.z : -piece.y) / m;
   }
+  const uprightStock = k === TEK_FIELD && piece !== null && (piece.bits & PIECE_PLAIN) !== 0 && Math.abs(piece.x) > Math.abs(piece.y);
+  if (uprightStock) {
+    const cross = u;
+    u = v;
+    v = cross;
+  }
   const spread = Math.log2(Math.max(footprint / m, 1e-9));
   const t = slots[(k - 1) * MADE_FLOATS + 1]! * (1 - clamp((Math.log2(Math.max(footprint / r.far, 1e-9)) - WORLD_FAR) / WORLD_FAR_BAND));
   for (let c = 0; c < 4; c++) maps.base[c] = f.base[c]!;
@@ -453,8 +459,8 @@ function made(k: number, id: number, axis: number, x: number, y: number, z: numb
   maps.mro[1] = maps.mro[1]! + (madeRelief[2]! - maps.mro[1]!) * t;
   maps.mro[3] = maps.mro[3]! + (madeRelief[3]! - maps.mro[3]!) * t;
   const lx = (madeRelief[0]! - 0.5) * 2 * t, ly = (madeRelief[1]! - 0.5) * 2 * t;
-  maps.lean[0] = turn ? -ly : lx;
-  maps.lean[1] = turn ? -lx : ly;
+  maps.lean[0] = turn ? -ly : uprightStock ? ly : lx;
+  maps.lean[1] = turn ? -lx : uprightStock ? lx : ly;
   scales.rough += (1 - scales.rough) * t;
   scales.bump += (1 - scales.bump) * t;
   if (piece && k === TEK_FIELD) {
@@ -1195,11 +1201,12 @@ const PIECE_MADE_TEXT = `  if (uPiece > 0.5) {
     bool region = aColor >= ${REGION_BASE}u;
     uint material = iRegA.w & ${PIECE_MADE_BITS}u;
     if (material == ${TEK_FIELD}u && (iRegB.y >> ${FIT_CLASS_SHIFT}u) != ${FIT_WALL}u) material = ${TEK_TRIM}u;
-    bool finish = material == ${TEK_FIELD}u ? aColor == ${TEK_RAIL_COLOUR}u : (aBone & ${FACE_WEARS}u) != 0u;
-    uint wears = region || finish ? material : 0u;
+    bool field = material == ${TEK_FIELD}u;
+    bool plain = field ? (!region && aColor != ${TEK_RAIL_COLOUR}u) : (aBone & ${FACE_PLAIN}u) != 0u;
+    uint wears = region || field || (aBone & ${FACE_WEARS}u) != 0u ? material : 0u;
     uint h = floatBitsToUint(iPos.x) * 2654435761u ^ floatBitsToUint(iPos.y) * 2246822519u ^ floatBitsToUint(iPos.z) * 3266489917u;
     h = (h ^ (h >> 15u)) * 2246822519u;
-    vMade = int(wears | ((iRegB.x & ${PIECE_STAGE}u) << ${WEAR_OVER_MADE}u) | (wears == 0u ? 0u : ${PIECE_OWN << PIECE_OVER_WEAR}u | ((aBone & ${FACE_PLAIN}u) << ${PIECE_OVER_WEAR + 1 - 7}u) | (region ? 0u : ${PIECE_FIXED << PIECE_OVER_WEAR}u) | ((h >> 20u) << ${PIECE_OVER_WEAR + PIECE_SEED}u)));
+    vMade = int(wears | ((iRegB.x & ${PIECE_STAGE}u) << ${WEAR_OVER_MADE}u) | (wears == 0u ? 0u : ${PIECE_OWN << PIECE_OVER_WEAR}u | (plain ? ${PIECE_PLAIN << PIECE_OVER_WEAR}u : 0u) | (region ? 0u : ${PIECE_FIXED << PIECE_OVER_WEAR}u) | ((h >> 20u) << ${PIECE_OVER_WEAR + PIECE_SEED}u)));
   }
 `;
 const PIECE_TURN_TEXT = `  if (uPiece > 0.5) {
@@ -1409,6 +1416,8 @@ bool made(int k, int id, inout int axis, vec3 face, vec3 rel, vec3 dpx, vec3 dpy
     dx = dx.yx;
     dy = dy.yx;
   }
+  bool uprightStock = k == ${TEK_FIELD} && (worldPiece & ${PIECE_PLAIN}) != 0 && abs(worldOwn.x) > abs(worldOwn.y);
+  if (uprightStock) { q = q.yx; dx = dx.yx; dy = dy.yx; }
   tone = clamp((surfaceNoise(qf * ${fl(WORLD_PATCH)} + vec2(5.3, 1.7)) - 0.35) / 0.3, 0.0, 1.0);
   tone = tone * tone * (3.0 - 2.0 * tone);
   float t = s.y * (1.0 - clamp((log2(max(length(dx), length(dy)) * m / MD[k].z) - ${fl(WORLD_FAR)}) / ${fl(WORLD_FAR_BAND)}, 0.0, 1.0));
@@ -1459,6 +1468,7 @@ bool made(int k, int id, inout int axis, vec3 face, vec3 rel, vec3 dpx, vec3 dpy
   mro = mix(mro, vec4(mro.r * min(1.0, 0.8 + 0.4 * r.a), r.b, mro.b, r.a), t);
   bump = (r.rg - 0.5) * 2.0 * t;
   if (turn) bump = -bump.yx;
+  if (uprightStock) bump = bump.yx;
   if (own && k == ${TEK_FIELD}) {
     fieldRelief = mro.a;
     base.a = 1.0 / WT[id].w;
