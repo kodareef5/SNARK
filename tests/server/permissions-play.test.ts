@@ -120,8 +120,14 @@ test("a change made on one world reaches a session on another within the poll", 
     clock.ms += 5000;
     b.h.run(200);
     expect([b.h.client(bob)!.admin, b.h.say(bob, "groups"), b.h.say(bob, "god")]).toEqual([true, ["your groups: Builders, Default"], ["god on"]]);
-    // A membership made without all holds on its own map only.
+    // An open group's membership holds on every map without all, as ArkApi's did.
     op(a.h, `Permissions.Remove ${id} Builders`, `Permissions.Add ${id} Builders`);
+    clock.ms += 5000;
+    b.h.run(200);
+    expect(b.h.client(bob)!.admin).toBe(true);
+    // A staff group's, made without all, holds on its own map only.
+    op(a.h, `Permissions.Remove ${id} Builders`, "Permissions.Rank Builders staff", `Permissions.Add ${id} Builders`);
+    b.h.client(bob)!.signed = true;
     clock.ms += 5000;
     b.h.run(200);
     expect(b.h.client(bob)!.admin).toBe(false);

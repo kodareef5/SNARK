@@ -89,14 +89,14 @@ test("a staff group counts only after sign-in and only on its world", () => {
   expect(perms.staffRank(B)).toBe(RANK_OPEN);
 });
 
-test("a membership for every world counts on each", () => {
+test("an open group's membership counts on every world, whatever was said", () => {
   const { perms, ok } = world();
   ok({ op: "addGroup", group: "Vip" });
   ok({ op: "addMember", kind: "survivor", key: A, group: "Vip" });
   ok({ op: "addMember", kind: "survivor", key: B, group: "Vip", world: 5 });
   expect(perms.inGroup(who(A, { world: 9 }), "Vip")).toBe(true);
   expect(perms.inGroup(who(B, { world: 5 }), "Vip")).toBe(true);
-  expect(perms.inGroup(who(B, { world: 3 }), "Vip")).toBe(false);
+  expect(perms.inGroup(who(B, { world: 3 }), "Vip")).toBe(true);
 });
 
 test("a timed membership waits out its delay, runs, then ends", () => {

@@ -1,7 +1,10 @@
 // Loads modules and gives each what the contract promises (server/api/module.ts). A module that fails its setup stops
 // the server from starting: half a module is worse than none.
 
-import type { Actions, Caller, ModuleCommand, ModuleContext, ModuleDef, WorldView } from "../api/module.ts";
+import type { PermissionOp } from "../../shared/permissions/model.ts";
+import { RANK_ADMIN } from "../../shared/ranks.ts";
+import type { Actor } from "../acts.ts";
+import type { Actions, Caller, ModuleCommand, ModuleContext, ModuleDef, PermissionsView, WorldView } from "../api/module.ts";
 import type { Bus } from "./bus.ts";
 import { eventIndex } from "./catalog.ts";
 
@@ -20,7 +23,12 @@ interface Timer {
 export interface ModuleHost {
   readonly bus: Bus;
   readonly world: WorldView;
-  readonly act: Actions;
+  readonly perms: PermissionsView;
+  readonly act: Pick<Actions, "tell" | "broadcast">;
+  /** The world a module's memberships are for. */
+  readonly permissionWorld: number;
+  /** Makes one permission change as `by`, as the host does for commands and pages. Answers "" or why not. */
+  changePermissions(by: Actor, op: PermissionOp): string;
   /** Adds a console command. Throws if the name is taken. */
   addCommand(module: string, c: ModuleCommand): void;
   log(line: string): void;
@@ -78,6 +86,18 @@ export class Modules {
       this.timers.push({ id, module, at: host.world.tick + Math.ceil(ticks), every: every > 0 ? Math.ceil(every) : 0, fn });
       return id;
     };
+    // The round brackets keep it from being any survivor's name.
+    const by: Actor = Object.freeze({ name: `(${module})`, id: "", pid: 0, rank: RANK_ADMIN, via: "module", from: "" });
+    const member = (pid: number, op: (key: string) => PermissionOp): string => {
+      const key = host.perms.id(pid);
+      if (key === "") return "No survivor with an ID has that pid.";
+      try {
+        return host.changePermissions(by, op(key));
+      } catch (err) {
+        host.log(`module ${module} made a permission change that threw: ${err instanceof Error ? err.message : String(err)}`);
+        return "That change could not be made.";
+      }
+    };
     return {
       on: (event, fn, o) => host.bus.on(module, event, fn, o),
       command: (c) => {
@@ -91,7 +111,13 @@ export class Modules {
         if (at >= 0) this.timers.splice(at, 1);
       },
       world: host.world,
-      act: host.act,
+      perms: host.perms,
+      act: {
+        ...host.act,
+        addToGroup: (pid, group, hours) =>
+          member(pid, (key) => ({ op: "addMember", kind: "survivor", key, group, world: host.permissionWorld, ...(hours === undefined ? {} : { hours }) })),
+        removeFromGroup: (pid, group) => member(pid, (key) => ({ op: "removeMember", kind: "survivor", key, group })),
+      },
       log: (line) => host.log(`[${module}] ${line}`),
     };
   }
