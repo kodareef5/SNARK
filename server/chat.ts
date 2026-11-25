@@ -1,8 +1,9 @@
-// Text chat. A line goes out as "name: words" to everyone its channel reaches who has not muted the speaker.
+// Text chat. A line goes out as runs, the speaker's name then ": words", to everyone its channel reaches who has not muted the speaker.
 // The server decides who that is. A client names a channel and nothing else.
 
 import type { AdminChatLine } from "../shared/admin.ts";
 import { TICK_RATE } from "../shared/coords.ts";
+import type { TextRun } from "../shared/net/chat.ts";
 import { MAX_CHAT_CHARS, RESULT_BUSY, RESULT_DENIED, RESULT_INVALID, RESULT_OK, SESSION_SPECTATING, TEXT_GLOBAL, TEXT_LOCAL, TEXT_NOTICE, TEXT_TRIBE } from "../shared/net/protocol.ts";
 import { event, type Bus } from "./events/bus.ts";
 import type { Client, GameServer } from "./game.ts";
@@ -37,6 +38,11 @@ export function cleanChat(text: string): string {
   return clean.length > MAX_CHAT_CHARS ? clean.slice(0, MAX_CHAT_CHARS) : clean;
 }
 
+/** The runs a line is sent as: the speaker's name, then the words, both in the channel's colour. */
+export function plainRuns(speaker: Client | string, _channel: number, text: string): TextRun[] {
+  return [{ text: typeof speaker === "string" ? speaker : speaker.name }, { text: `: ${text}` }];
+}
+
 export class Chat {
   /** Counts one per listener a line reaches. */
   delivered = 0;
@@ -49,6 +55,8 @@ export class Chat {
   private readonly ctx: ChatContext;
   /** Told of every line a survivor says, once it is said: Cast's people hear it (server/cast/host.ts). */
   readonly listeners: ((speaker: string, channel: number, x: number, z: number, text: string) => void)[] = [];
+  /** Makes a line's runs from its speaker (a survivor's client, or one of the world's people by name), its channel and its cleaned text. */
+  format: (speaker: Client | string, channel: number, text: string) => TextRun[] = plainRuns;
 
   constructor(ctx: ChatContext) {
     this.ctx = ctx;
@@ -117,7 +125,7 @@ export class Chat {
     if (refused !== "" || line === "") return refuse(RESULT_DENIED, refused === "" ? "Nothing was said." : refused);
     const heard = this.delivered;
 
-    const out = `${c.name}: ${line}`;
+    const out = this.format(c, channel, line);
     const x = c.body.x;
     const y = c.body.y;
     const z = c.body.z;
@@ -132,7 +140,7 @@ export class Chat {
           if (dx * dx + dy * dy + dz * dz > LOCAL_RANGE * LOCAL_RANGE) continue;
         } else if (channel === TEXT_TRIBE && records.byPid.get(to.pid)?.team !== tribe!.id) continue;
       }
-      game.sendText(to, channel, out);
+      game.sendChat(to, channel, out);
       this.delivered++;
     }
     if (this.recent.length === RECENT_LINES) this.recent.shift();
@@ -149,13 +157,13 @@ export class Chat {
   npcSay(name: string, x: number, y: number, z: number, text: string, range = LOCAL_RANGE): number {
     const line = cleanChat(text);
     if (line === "") return 0;
-    const out = `${name}: ${line}`;
+    const out = this.format(name, TEXT_LOCAL, line);
     let n = 0;
     for (const to of this.ctx.game.clients) {
       if (!to?.active || to.closed || this.muted(to.name, name)) continue;
       const dx = to.body.x - x, dy = to.body.y - y, dz = to.body.z - z;
       if (dx * dx + dy * dy + dz * dz > range * range) continue;
-      this.ctx.game.sendText(to, TEXT_LOCAL, out);
+      this.ctx.game.sendChat(to, TEXT_LOCAL, out);
       this.delivered++;
       n++;
     }

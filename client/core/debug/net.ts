@@ -34,7 +34,7 @@ export const CATEGORY_ROWS: Readonly<Record<Category, readonly string[]>> = {
   world: ["S_CHUNK", "S_CHUNK_DROP", "S_NODES", "S_TACTICAL", "S_MARKS", "S_FAR", "S_MOTION", "S_SUPPLY", "EVENT_TAMED", "EVENT_BALL"],
   combat: ["EVENT_HIT", "EVENT_HURT", "EVENT_DEATH", "EVENT_KILL", "EVENT_SHOT", "EVENT_BOLTS", "EVENT_ROCKET", "EVENT_BLAST"],
   cosmetic: ["EVENT_IMPACT", "EVENT_STRIKE", "S_CORPSE"],
-  text: ["S_TEXT"],
+  text: ["S_TEXT", "S_CHAT"],
   session: ["S_WELCOME", "S_RESULT", "S_REJECT", "S_TRAVEL", "S_TUNING", "C_HELLO"],
   input: ["C_INPUT"],
   commands: ["C_COMMAND"],
@@ -42,7 +42,7 @@ export const CATEGORY_ROWS: Readonly<Record<Category, readonly string[]>> = {
 };
 const CATEGORY_OF = new Map(CATEGORIES.flatMap((c, i) => CATEGORY_ROWS[c].map((name) => [name, i] as const)));
 /** The family a kind's sub-kind is named from, by the kind's name. */
-const SUB_FAMILY = new Map<string, keyof CodeNames>([["S_OWN", "OWN"], ["S_EVENT", "EVENT"], ["S_TEXT", "TEXT"], ["C_COMMAND", "CMD"]]);
+const SUB_FAMILY = new Map<string, keyof CodeNames>([["S_OWN", "OWN"], ["S_EVENT", "EVENT"], ["S_TEXT", "TEXT"], ["S_CHAT", "TEXT"], ["C_COMMAND", "CMD"]]);
 
 /** A snapshot's sections by SNAP_ (net-tap.ts), and the category of each. */
 export const SECTIONS = ["head", "own body", "contacts", "bodies", "rest"] as const;

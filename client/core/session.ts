@@ -18,6 +18,7 @@ import { bolt, readBolt } from "../../shared/net/bolts.ts";
 import { blast, readBlast, readRocket, rocket } from "../../shared/net/rockets.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { makePlaced, readPlaced, type Placed } from "../../shared/net/placed.ts";
+import { readChat, type TextRun } from "../../shared/net/chat.ts";
 import { ContactSnapshot, readContacts } from "../../shared/net/contact.ts";
 import { AirCamera } from "./air-camera.ts";
 import { airFeedView, type AirFeedView } from "./air-feed.ts";
@@ -111,6 +112,7 @@ import {
   S_PLACED,
   S_SNAPSHOT,
   S_TEXT,
+  S_CHAT,
   RESTART_GO,
   RESTART_OFF,
   S_RESTART,
@@ -491,7 +493,10 @@ export interface LocalShot {
 
 export interface TextLine {
   channel: number;
+  /** A chat line's runs joined, or the whole of a plain line. */
   text: string;
+  /** A chat line's runs (S_CHAT); absent for a plain line. */
+  runs?: readonly TextRun[];
 }
 
 /** Chunks a side round what a sight is on whose near nodes are held, past the centre (D1090). */
@@ -1574,7 +1579,7 @@ export class ClientSession {
     const tap = this.tap;
     if (tap) {
       // Owner state, an event and a line of text come one to a message, named by the byte after the kind.
-      tap.received(kind, kind === S_OWN || kind === S_EVENT || kind === S_TEXT ? (data[1] ?? -1) : -1, data.length);
+      tap.received(kind, kind === S_OWN || kind === S_EVENT || kind === S_TEXT || kind === S_CHAT ? (data[1] ?? -1) : -1, data.length);
       this.marked = 0;
     }
     // A kind with no reader is ignored.
@@ -1664,6 +1669,16 @@ export class ClientSession {
         const text = r.string(MAX_SERVER_TEXT_BYTES);
         if (r.overflow) return;
         s.log.push({ channel, text });
+        if (s.log.length > LOG_LINES) s.log.shift();
+        s.logVersion++;
+      },
+    });
+    messages.add({
+      kind: S_CHAT,
+      read(s, r) {
+        const line = readChat(r);
+        if (!line) return;
+        s.log.push(line);
         if (s.log.length > LOG_LINES) s.log.shift();
         s.logVersion++;
       },
