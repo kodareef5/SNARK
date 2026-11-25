@@ -294,3 +294,16 @@ test("the page and its script are built, and served only past the gate", async (
 test("the front passes the page's POST to the site", () => {
   expect([sitePost(PERMISSIONS_API), sitePost(PERMISSIONS_STATE), sitePost("/admin/permissions/")]).toEqual([true, false, false]);
 });
+
+test("the page adds a survivor of another map by name, and no ID never issued", () => {
+  const base = stateAt(RANK_CLUSTER);
+  const away = idOf(2, 4);
+  const state: PermissionsState = { ...base, register: [...base.register, { id: away, name: "Rook", world: 2 }] };
+  const add = (who: string) => addMemberPost(state, { kind: "survivor", who, group: "VIP", hours: "", delay: "", everyMap: true });
+  expect(add("rook").post).toEqual({ do: "op", op: { op: "addMember", kind: "survivor", key: away, group: "VIP", world: 0 } });
+  expect(add(idOf(2, 5))).toEqual({ post: null, why: `No survivor has the ID ${idOf(2, 5)}.` });
+  // A tribe of another map is the server's to judge.
+  expect(addMemberPost(state, { kind: "tribe", who: "3145729", group: "VIP", hours: "", delay: "", everyMap: true }).why).toBe("");
+  const m: Member = { kind: "survivor", key: away, group: "VIP", world: 0, forever: true, from: 0, until: 0 };
+  expect(memberRows({ ...state, members: [{ ...m, name: "" }] }, NOW)[0]!.who).toBe("Rook");
+});

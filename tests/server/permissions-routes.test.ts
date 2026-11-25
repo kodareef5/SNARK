@@ -10,7 +10,7 @@ import { adminSite } from "../../server/admin/site.ts";
 import { sitePost, startFront } from "../../server/front.ts";
 import type { Host } from "../../server/host.ts";
 import { startServer, type RunningServer } from "../../server/main.ts";
-import { permissionsAdmin } from "../../server/permissions/routes.ts";
+import { permissionsAdmin, permissionsState } from "../../server/permissions/routes.ts";
 import { passwordHash, staffPasswords } from "../../server/permissions/secrets.ts";
 import { loadConfig } from "../../server/settings/config.ts";
 import { TEAM_RANGE } from "../../server/records.ts";
@@ -20,6 +20,7 @@ import type { PermissionOp } from "../../shared/permissions/model.ts";
 import { PERMISSIONS_API, PERMISSIONS_STATE, type PermissionsAnswer, type PermissionsPost, type PermissionsState } from "../../shared/permissions/page.ts";
 import { RANK_ADMIN, RANK_CLUSTER, RANK_MAP, RANK_STAFF } from "../../shared/ranks.ts";
 import { splitPack } from "../../tools/pack/split.ts";
+import { TestCluster, rec } from "../fixtures/cluster.ts";
 import { Harness } from "../fixtures/net.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
 
@@ -283,4 +284,22 @@ test("the page's grant to an ID or a team never made is refused", async () => {
   expect(await ask(PERMISSIONS_API, posted({ do: "op", op: { op: "addMember", kind: "tribe", key: team, group: "Vip" } }, kody)).then(answered)).toEqual([200, { ok: true, why: "" }]);
   expect(h.host.permissions.membersIn("Admins")).toEqual([]);
   h.host.shutdown();
+});
+
+test("the state names a member of another map from the register", () => {
+  const cluster = new TestCluster();
+  try {
+    const clock = { ms: 1_000_000 };
+    const a = cluster.server("a", "f", clock);
+    const b = cluster.server("b", "f", clock);
+    cluster.survivor(a, "bob");
+    const id = idText(rec(a, "bob")!);
+    operator(b.h.host, { op: "addMember", kind: "survivor", key: id, group: "Admins", world: 0 });
+    const state = permissionsState(b.h.host, new Request("http://localhost/"));
+    expect(state.members).toEqual([expect.objectContaining({ key: id, name: "bob" })]);
+    expect(state.register).toEqual([{ id, name: "bob", world: a.world }]);
+    expect(state.survivors).toEqual([]);
+  } finally {
+    cluster.cleanup();
+  }
 });

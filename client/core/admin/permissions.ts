@@ -94,9 +94,11 @@ export function whoName(kind: MemberKind, name: string): string {
   return name || "A survivor this world does not know";
 }
 
-/** A survivor's name as the state knows it, from the survivors or else from a membership. */
+/** A survivor's name as the state knows it, from the survivors, a membership or the register. */
 export function survivorName(state: State, id: string): string {
-  return state.survivors.find((s) => s.id === id)?.name || state.members.find((m) => m.kind === "survivor" && m.key === id)?.name || "";
+  return (
+    state.survivors.find((s) => s.id === id)?.name || state.members.find((m) => m.kind === "survivor" && m.key === id)?.name || state.register.find((r) => r.id === id)?.name || ""
+  );
 }
 
 /** What the page says when the state was not read: a refused sign-in is only answered by the browser's own, on a reload. */
@@ -226,9 +228,10 @@ export function findMember(state: State, kind: MemberKind, typed: string): { key
   if (t === "") return { key: "", why: survivor ? "Choose a survivor by name, or type their 17-digit ID." : "Choose a tribe by name, or type its number." };
   const key = /\((\d+)\)\s*$/.exec(t)?.[1] ?? (/^\d+$/.test(t) ? t : null);
   if (key !== null) return { key, why: "" };
-  const found = survivor
-    ? state.survivors.filter((s) => s.name.toLowerCase() === t.toLowerCase()).map((s) => s.id)
-    : state.tribes.filter((s) => s.name.toLowerCase() === t.toLowerCase()).map((s) => String(s.team));
+  const named = (rows: readonly { id: string; name: string }[]): string[] => rows.filter((s) => s.name.toLowerCase() === t.toLowerCase()).map((s) => s.id);
+  const here = survivor ? named(state.survivors) : state.tribes.filter((s) => s.name.toLowerCase() === t.toLowerCase()).map((s) => String(s.team));
+  // A survivor of another map is found by name in the register.
+  const found = survivor && here.length === 0 ? named(state.register) : here;
   const one = survivor ? "survivor" : "tribe";
   if (found.length === 1) return { key: found[0]!, why: "" };
   if (found.length === 0) return { key: "", why: `No ${one} of this world is named ${t}. Type ${survivor ? "their ID" : "its number"} instead.` };

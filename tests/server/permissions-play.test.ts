@@ -117,7 +117,7 @@ test("a change made on one world reaches a session on another within the poll", 
     const { session: bob } = cluster.survivor(b, "bob");
     const id = idText(rec(b, "bob")!);
     op(a.h, "Permissions.AddGroup Builders", "Permissions.Grant Builders *");
-    expect(a.h.host.exec(`Permissions.Add ${id} Builders all`)).toBe(`${id} is in Builders on every map`);
+    expect(a.h.host.exec(`Permissions.Add ${id} Builders all`)).toBe(`bob (${id}) is in Builders on every map. bob is on another map, ${b.h.host.cluster!.serverName(b.world)}.`);
     b.h.run(500);
     expect([b.h.client(bob)!.admin, b.h.say(bob, "groups")]).toEqual([false, ["your groups: Default"]]);
     clock.ms += 5000;
@@ -135,7 +135,7 @@ test("a change made on one world reaches a session on another within the poll", 
     b.h.run(200);
     expect(b.h.client(bob)!.admin).toBe(false);
     expect(lines(b.h.say(bob, "help")).includes("Permissions.ListGroups")).toBe(false);
-    expect(a.h.host.exec(`Permissions.PlayerGroups ${id}`)).toBe(`${id}:\nBuilders: for good, on this map (${a.world})`);
+    expect(a.h.host.exec(`Permissions.PlayerGroups ${id}`)).toBe(`bob (${id}):\nBuilders: for good, on this map (${a.world})`);
   } finally {
     cluster.cleanup();
   }

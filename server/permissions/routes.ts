@@ -43,8 +43,9 @@ export function permissionsState(host: Host, req: Request): PermissionsState {
     if (rec && id) survivors.push({ id, name: rec.name, online: online.has(pid) });
   }
   const register = perms.allIssued().map((r) => ({ id: r.id, name: r.name, world: r.world }));
+  const registered = new Map(register.map((r) => [r.id, r.name]));
   const nameOf = (kind: string, key: string): string =>
-    kind === "tribe" ? (host.tribes.byId.get(Number(key))?.name ?? "") : (host.survivorById(key)?.name ?? "");
+    kind === "tribe" ? (host.tribes.byId.get(Number(key))?.name ?? "") : (host.survivorById(key)?.name ?? registered.get(key) ?? "");
   return {
     me: { name: by.name, id: by.id, rank: by.rank, world: perms.world },
     saved: host.cluster !== null || host.persistence !== null,

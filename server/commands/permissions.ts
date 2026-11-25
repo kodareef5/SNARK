@@ -6,35 +6,55 @@ import { isSurvivorId, isTeamKey, memberWorld, type Member } from "../../shared/
 import { PERMISSIONS_COMMANDS, memberOp, readPermissions, type PermissionsListing, type Who } from "../../shared/permissions/commands.ts";
 import { actorOf, type CommandContext, type Console, type ConsoleCommand } from "../console.ts";
 import type { Host } from "../host.ts";
+import type { Issued } from "../permissions/store.ts";
 import { idText } from "../survivor-ids.ts";
 
 const MINUTE = 60_000;
 const ACTS_SHOWN = 20;
 const ACTS_MOST = 200;
 
-/** A survivor's ID or a tribe's team number, and how to name it in a reply; or the reason it is not found. */
-type Found = { readonly key: string; readonly label: string } | string;
+/**
+ * A survivor's ID or a tribe's team number, how to name it in a reply, and a sentence saying where a survivor not on this
+ * map was last; or the reason it is not found.
+ */
+type Found = { readonly key: string; readonly label: string; readonly away: string } | string;
 
-function find(host: Host, who: Who): Found {
+/** A survivor the register knows that is not on this map. */
+function elsewhere(host: Host, row: Issued): Found {
+  const where = row.world === host.permissions.world ? `${row.name} is not on this map now.` : `${row.name} is on another map, ${host.cluster?.serverName(row.world) ?? `world ${row.world}`}.`;
+  return { key: row.id, label: `${row.name} (${row.id})`, away: where };
+}
+
+/** Finds who a command names. Only an ID or a number to be added must have been made: one never made is still taken out. */
+function find(host: Host, who: Who, adding = false): Found {
   const word = who.word;
   if (who.kind === "survivor") {
     if (/^[0-9]+$/.test(word)) {
       if (!isSurvivorId(word)) return "That is not a survivor's ID.";
       const here = host.survivorById(word);
-      return { key: word, label: here ? `${here.name} (${word})` : word };
+      if (here) return { key: word, label: `${here.name} (${word})`, away: "" };
+      const row = host.permissions.issued(word);
+      if (row) return elsewhere(host, row);
+      return adding ? `No survivor has the ID ${word}.` : { key: word, label: word, away: "" };
     }
     const rec = host.survivorRecord(word);
     const id = rec ? idText(rec) : "";
-    if (!rec || id === "") return `There is no survivor called "${word}" on this map: give their ID.`;
-    return { key: id, label: `${rec.name} (${id})` };
+    if (rec && id !== "") return { key: id, label: `${rec.name} (${id})`, away: "" };
+    const named = host.permissions.issuedNamed(word);
+    const one = named.length === 1 ? host.survivorById(named[0]!.id) : null;
+    if (one) return { key: named[0]!.id, label: `${one.name} (${named[0]!.id})`, away: "" };
+    if (named.length === 1) return elsewhere(host, named[0]!);
+    if (named.length > 1) return `${named.length} survivors are called "${word}": give the ID of the one you mean.`;
+    return `There is no survivor called "${word}" on this map: give their ID.`;
   }
   if (/^[0-9]+$/.test(word)) {
     if (!isTeamKey(word)) return "That is not a tribe's number.";
     const here = host.tribes.byId.get(Number(word));
-    return { key: word, label: here ? `${here.name} (${word})` : `tribe ${word}` };
+    if (!here && adding && !host.permissions.teamMade(word)) return `No tribe has the number ${word}.`;
+    return { key: word, label: here ? `${here.name} (${word})` : `tribe ${word}`, away: "" };
   }
   const lower = word.toLowerCase();
-  for (const t of host.tribes.byId.values()) if (t.name.toLowerCase() === lower) return { key: String(t.id), label: `${t.name} (${t.id})` };
+  for (const t of host.tribes.byId.values()) if (t.name.toLowerCase() === lower) return { key: String(t.id), label: `${t.name} (${t.id})`, away: "" };
   return `There is no tribe called "${word}" on this map: give its number.`;
 }
 
@@ -90,18 +110,19 @@ function permissionsCommand(ctx: CommandContext, name: string, args: string[]): 
         return `${op.group} no longer holds ${op.permission}`;
     }
   }
-  const found = find(host, req.who);
+  const c = req.change;
+  const found = find(host, req.who, c.op === "addMember");
   if (typeof found === "string") return found;
   const world = host.permissions.world;
   const why = host.changePermissions(actor, memberOp(req, found.key, world));
   if (why !== "") return why;
-  const c = req.change;
   const group = host.permissions.group(c.group)!;
-  if (c.op === "removeMember") return c.timedOnly ? `${found.label} has no more time in ${group.name}` : `${found.label} is out of ${group.name}`;
+  const away = (line: string): string => (found.away === "" ? line : `${line}${line.endsWith(".") ? "" : "."} ${found.away}`);
+  if (c.op === "removeMember") return away(c.timedOnly ? `${found.label} has no more time in ${group.name}` : `${found.label} is out of ${group.name}`);
   const time = c.hours !== undefined ? ` for ${c.hours} h${c.delayHours ? `, from ${c.delayHours} h from now` : ""}` : "";
   const done = `${found.label} is in ${group.name}${time}${world !== 0 && memberWorld({ ...actor, world }, group.rank, req.everyWorld ? 0 : world) === 0 ? " on every map" : ""}`;
-  if (group.rank < RANK_STAFF) return done;
-  return `${done}. It counts once they sign in with their own password, which they claim in game with claimpassword.`;
+  if (group.rank < RANK_STAFF) return away(done);
+  return away(`${done}. It counts once they sign in with their own password, which they claim in game with claimpassword.`);
 }
 
 /** Says whether a survivor has claimed their own password, and when, or clears it. Nobody but its survivor ever sees one. */
