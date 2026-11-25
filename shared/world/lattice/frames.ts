@@ -12,7 +12,7 @@
 import { YAW_UNITS } from "../../coords.ts";
 import { basisOf, dirVector, levelY, twOf, yawOf } from "./basis.ts";
 import type { FormTable } from "./forms.ts";
-import { CLS_EDGE, CLS_SQUARE, CLS_TRIANGLE, DIRECTIONS, LVL_MOST, M_MOST, SIDE, DIRS, canon, canonical, dirTurn, key0, key1, keyCls, keyDir, keyFlip, keyLayer, keyLvl, keyM0, keyM1, keyM2, keyM3, keyRot, keyValid, tupleStep, tupleWithin } from "./module.ts";
+import { CLS_EDGE, CLS_SQUARE, CLS_TRIANGLE, DIRECTIONS, DIRS, LVL_MOST, M_MOST, SIDE, canon, canonical, dirTurn, key0, key1, keyCls, keyDir, keyFlip, keyLayer, keyLvl, keyM0, keyM1, keyM2, keyM3, keyRot, keyValid, tupleStep, tupleWithin } from "./module.ts";
 
 /** A piece's address: its frame's gid and the two words of its key. */
 export interface LatticeKey {
