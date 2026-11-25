@@ -19,7 +19,7 @@ import { hashBytes } from "../../shared/hash.ts";
 import { LoopbackNet } from "../../shared/net/loopback.ts";
 import { Rng } from "../../shared/rng.ts";
 import { BTN_PRIMARY, BTN_SECONDARY, MODE_FLYER } from "../../shared/sim/character.ts";
-import { EntityStore } from "../../shared/sim/entities.ts";
+import { EntityStore, F_GROUNDED } from "../../shared/sim/entities.ts";
 import { createHelicopter, stepHelicopter, type HelicopterInput, type HelicopterState } from "../../shared/sim/helicopter.ts";
 import { createJet, stepJet, type JetInput, type JetState } from "../../shared/sim/jet.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
@@ -108,9 +108,12 @@ function scan(section: Section, record: Row): void {
   record("world casts it makes, median", median(casts), "");
 }
 
-/** A craft in the sky that runs from the nose at 200 m/s: a missile chases it its whole life. */
+/** A craft in the sky 1.7 km ahead of the nose, weaving across it at up to 150 m/s: missiles chase it most of their life. */
 function runner(start: number, x: number, z: number): SkyTarget {
-  const where = (t: number, o: SkyPoint): void => { o.x = x; o.y = 300; o.z = z + 900 + (t - start) * 200 / TICK_RATE; o.vx = o.vy = 0; o.vz = 200; };
+  const where = (t: number, o: SkyPoint): void => {
+    const s = (t - start) / TICK_RATE;
+    o.x = x + 300 * Math.sin(s * .5); o.y = 300; o.z = z + 1700; o.vx = 150 * Math.cos(s * .5); o.vy = o.vz = 0;
+  };
   const NONE: SkyTaken = { taken: 0, blocked: false, killed: false };
   return {
     name: "bench craft", lockable: true, radius: 10,
@@ -122,16 +125,19 @@ function runner(start: number, x: number, z: number): SkyTarget {
 }
 
 /** A small world of 50 survivors about a middle, as the firefight's, built in a second. */
-function fightWorld(): { host: Host; run: (ticks: number, times: number[] | null) => void; centre: readonly [number, number]; clients: () => Client[] } {
-  const dims = { chunksX: 16, chunksZ: 16 }, rules = new Rules();
+function fightWorld(chunks = 16, latencyMs = 0): { host: Host; run: (ticks: number, times: number[] | null) => void; centre: readonly [number, number]; clients: () => Client[]; still: Set<string> } {
+  const dims = { chunksX: chunks, chunksZ: chunks }, rules = new Rules(), middle = chunks * 32;
   const reg = contentFor(compileContent(CORE_CONTENT).registry!, rules);
   const hf = new Heightfield(dims, TERRAIN_CELL, -32, 1 / 64);
   for (let j = 0; j < hf.nz; j++) for (let i = 0; i < hf.nx; i++) hf.heights[j * hf.nx + i] = Math.round((40 + 6 * Math.sin((i * hf.cell) / 90) * Math.cos((j * hf.cell) / 70) + 32) * 64);
   hf.tint.fill(12);
-  const world = createWorld(reg, dims, hf, "bench:jet", hashBytes(new Uint8Array(hf.heights.buffer, 0, 4096)), { x: 512, z: 512, yaw: 0 }, 16384);
+  const world = createWorld(reg, dims, hf, "bench:jet", hashBytes(new Uint8Array(hf.heights.buffer, 0, 4096)), { x: middle, z: middle, yaw: 0 }, 16384);
   const host = createHost(reg, { world, config: rules, game: { maxClients: 64 }, hangar: null });
-  const centre = [480, 512] as const, net = new LoopbackNet(7), stood = new Rng(12);
+  const centre = [middle - 32, middle] as const, net = new LoopbackNet(7), stood = new Rng(12);
   host.game.sessions.listen(net);
+  // Each bot's line takes as long as asked each way, so its shots are judged that far in the past.
+  const connect = net.connect.bind(net);
+  net.connect = (o = {}, share) => connect({ latencyMs, ...o }, share);
   const places = new Map<string, { x: number; y: number; z: number; yaw: number }>();
   for (let i = 0; i < 50; i++) {
     const x = centre[0] + 26 + stood.range(0, 40), z = centre[1] + stood.range(-20, 20);
@@ -141,6 +147,8 @@ function fightWorld(): { host: Host; run: (ticks: number, times: number[] | null
   const bots: Bot[] = [];
   for (let i = 0; i < 50; i++) bots.push(new Bot(net, `bot${i}`, reg.baseHash, 100 + i));
   let now = 0;
+  // A bot named here sends no inputs: the bench works its buttons itself.
+  const still = new Set<string>();
   const run = (ticks: number, times: number[] | null): void => {
     for (let i = 0; i < ticks; i++) {
       now += 1000 / TICK_RATE;
@@ -148,20 +156,30 @@ function fightWorld(): { host: Host; run: (ticks: number, times: number[] | null
       const t = performance.now();
       host.game.tick();
       times?.push(performance.now() - t);
-      for (const b of bots) b.update(world.tick);
+      for (let b = 0; b < bots.length; b++) if (!still.has(`bot${b}`)) bots[b]!.update(world.tick);
     }
   };
   run(300, null);
   world.anim = new HumanAnim(parsePack(buildCorePack()).clips);
-  return { host, run, centre, clients: () => host.game.clients.filter((c): c is Client => !!c?.active && c.ent >= 0) };
+  return { host, run, centre, still, clients: () => host.game.clients.filter((c): c is Client => !!c?.active && c.ent >= 0) };
+}
+
+/** A vehicle of `kind` parked on the rolling ground as near (x, z) as it will stand, or -1. */
+function park(host: Host, kind: string, x: number, z: number): number {
+  for (let r = 0; r < 200; r += 8) for (let k = 0; k < 16; k++) {
+    const e = host.spawnVehicle(kind, x + Math.sin(k / 16 * Math.PI * 2) * r, z + Math.cos(k / 16 * Math.PI * 2) * r, 0, 0);
+    if (e >= 0) return e;
+    if (r === 0) break;
+  }
+  return -1;
 }
 
 /** One of the 50 at a jet's controls, its buttons held as `buttons()` says; the weapons' step timed into `times`. */
 function pilotJet(host: Host, c: Client, x: number, z: number, buttons: () => number, times: number[]): number {
-  const e = host.spawnVehicle("core:jet", x, z, 0, 0);
+  const e = park(host, "core:jet", x, z);
   if (e < 0) throw new Error("no room for the bench's jet");
-  const entry = JET_VEHICLE.seats[0]!.entry, ents = host.world.ents;
-  ents.setPosition(c.ent, x + entry[0], host.world.hf.heightAt(x, z), z + entry[2]);
+  const entry = JET_VEHICLE.seats[0]!.entry, ents = host.world.ents, ex = ents.x[e]! + entry[0], ez = ents.z[e]! + entry[2];
+  ents.setPosition(c.ent, ex, host.world.hf.heightAt(ex, ez), ez);
   if (host.urban.mount(c, e) !== 0) throw new Error("the bench's pilot did not get in");
   const weapons = host.vehicleWeapons, step = weapons.step.bind(weapons);
   weapons.step = () => {
@@ -177,30 +195,57 @@ function pilotJet(host: Host, c: Client, x: number, z: number, buttons: () => nu
 function weapons(section: Section, record: Row, f: ReturnType<typeof fightWorld>): void {
   section("Jet weapons: a pilot among the fight, idle, then the cannon, the seeker and six missiles at once");
   const { host, run, centre } = f, pilot = f.clients()[0]!;
+  f.still.add(pilot.name);
   let held = 0;
   const times: number[] = [];
-  pilotJet(host, pilot, centre[0] - 60, centre[1] - 200, () => held, times);
+  pilotJet(host, pilot, centre[0] - 60, centre[1] - 1800, () => held, times);
   run(60, null);
-  times.length = 0;
-  run(300, null);
-  record("idle: the weapons' step, median", median(times), "ms", .002);
-  record("idle: the weapons' step, p99", high(times), "ms");
-  const sky = host.combat.sky, craft = runner(host.world.tick, centre[0] - 60, centre[1] - 200);
+  if (pilot.drive < 0) throw new Error("the bench's pilot is not at the jet's controls");
+  // Idle, the step is timed over and over on one tick's state: a machine busy elsewhere cannot hide a cost so small.
+  const idle: number[] = [];
+  for (let round = 0; round < 20; round++) {
+    const t = performance.now();
+    for (let k = 0; k < 2000; k++) host.vehicleWeapons.step();
+    idle.push((performance.now() - t) / 2000);
+    run(3, null);
+  }
+  record("idle: the weapons' step, median of 20 rounds", median(idle), "ms", .002);
+  record("idle: the weapons' step, slowest round", Math.max(...idle), "ms");
+  const sky = host.combat.sky, craft = runner(host.world.tick, centre[0] - 60, centre[1] - 1800);
   sky.add(craft);
   let most = 0, tick = 0;
   const busy: number[] = [];
-  // Every 46 ticks: 45 held to lock, then let go to fire.
-  const busyButtons = (): number => (tick++ % 46 === 45 ? BTN_PRIMARY : BTN_PRIMARY | BTN_SECONDARY);
+  // Every 51 ticks: 50 held to lock, then let go to fire.
+  const busyButtons = (): number => (tick++ % 51 === 50 ? BTN_PRIMARY : BTN_PRIMARY | BTN_SECONDARY);
   held = 0;
-  const step = host.vehicleWeapons.step;
-  host.vehicleWeapons.step = () => { held = busyButtons(); step(); most = Math.max(most, host.vehicleWeapons.flying.length); };
+  const step = host.vehicleWeapons.step, cpu: number[] = [];
+  // Its processor time too, which a machine busy elsewhere does not swell as it does the clock's.
+  host.vehicleWeapons.step = () => {
+    held = busyButtons();
+    const before = process.cpuUsage();
+    step();
+    const used = process.cpuUsage(before);
+    cpu.push((used.user + used.system) / 1000);
+    most = Math.max(most, host.vehicleWeapons.flying.length);
+  };
   times.length = 0;
-  run(46 * 6 + 120, null);
-  busy.push(...times.slice(46 * 5));
+  const spent: Record<string, number> = {}, calls: Record<string, number> = {};
+  // JET_PARTS=1 times the step's own parts too.
+  if (process.env.JET_PARTS) for (const name of ["gun", "seek", "fly", "fire", "warn"]) {
+    const o = host.vehicleWeapons as unknown as Record<string, (...a: unknown[]) => unknown>, real = o[name]!;
+    spent[name] = 0; calls[name] = 0;
+    o[name] = function (this: unknown, ...a: unknown[]) { const t = performance.now(); const r = real.apply(this, a); spent[name]! += performance.now() - t; calls[name]!++; return r; };
+  }
+  run(51 * 6 + 120, null);
+  if (process.env.JET_PARTS) for (const name in spent) console.log(`    ${name}: ${calls[name]} calls, ${(spent[name]! / Math.max(1, calls[name]!) * 1000).toFixed(1)} us each`);
+  busy.push(...times.slice(51 * 2));
+  const busyCpu = cpu.slice(51 * 2);
   sky.remove(craft);
   record("missiles in the air at once, most", most, "");
   record("cannon, seeker and missiles: the weapons' step, median", median(busy), "ms", .1);
-  record("cannon, seeker and missiles: the weapons' step, p99", high(busy), "ms", .3);
+  record("cannon, seeker and missiles: the weapons' step, p99", high(busy), "ms");
+  record("cannon, seeker and missiles: processor a step, median", median(busyCpu), "ms", .1);
+  record("cannon, seeker and missiles: processor a step, p99", high(busyCpu), "ms", .3);
   record("cannon rounds fired", host.vehicleWeapons.rounds, "");
 }
 
@@ -211,7 +256,7 @@ function rewind(section: Section, record: Row, f: ReturnType<typeof fightWorld>,
   const ents = host.world.ents;
   let e = -1, angle = 0;
   if (jet) {
-    e = host.spawnVehicle("core:jet", centre[0], centre[1] + 300, 0, 0);
+    e = park(host, "core:jet", centre[0], centre[1] + 300);
     if (e < 0) throw new Error("no room for the bench's fast jet");
   }
   const tick = host.game.tick.bind(host.game);
@@ -221,6 +266,9 @@ function rewind(section: Section, record: Row, f: ReturnType<typeof fightWorld>,
       angle += 160 / 400 / TICK_RATE;
       ents.setPosition(e, centre[0] + Math.sin(angle) * 400, 290, centre[1] + Math.cos(angle) * 400);
       ents.vx[e] = Math.cos(angle) * 160; ents.vz[e] = -Math.sin(angle) * 160; ents.vy[e] = 0;
+      // Its wheels up and its nozzle back, as a jet in flight has them.
+      const v = ents.vrow[e]!;
+      ents.vehicleGear[v] = 0; ents.vehicleRotorPhase[v] = 0; ents.flags[e] = ents.flags[e]! & ~F_GROUNDED;
     }
     tick();
   };
@@ -230,28 +278,35 @@ function rewind(section: Section, record: Row, f: ReturnType<typeof fightWorld>,
   return rows;
 }
 
-/** What 16 far entities in every view add to the snapshots of the 50. */
+/** What far entities in every view add to the snapshots of the 50: four, the jets at most, then sixteen with their missiles. */
 function far(section: Section, record: Row, f: ReturnType<typeof fightWorld>): void {
-  section("Far view: 16 far entities put in the views of the 50");
+  section("Far view: far entities put in the views of the 50");
   const { host, run, centre } = f, ents: number[] = [];
   for (let k = 0; k < 16; k++) {
-    const e = host.spawnVehicle("core:helicopter", centre[0] - 400 + (k % 4) * 60, centre[1] - 380 + Math.floor(k / 4) * 60, 0, 0);
+    const e = park(host, "core:helicopter", centre[0] - 400 + (k % 4) * 60, centre[1] - 380 + Math.floor(k / 4) * 60);
     if (e >= 0) ents.push(e);
   }
   const step = host.vehicleWeapons.step;
-  let on = false;
-  host.vehicleWeapons.step = () => { step(); if (on) for (const e of ents) host.game.replication.far(e, 2000); };
-  const without: number[] = [], withFar: number[] = [];
-  for (let turn = 0; turn < 6; turn++) {
-    on = turn % 2 === 1;
-    run(30, null);
-    run(150, on ? withFar : without);
-  }
+  let count = 0;
+  host.vehicleWeapons.step = () => { step(); for (let k = 0; k < count; k++) host.game.replication.far(ents[k]!, 2000); };
   const clients = f.clients().length;
+  /** Processor microseconds a client a tick, with `n` far entities, over 150 ticks: preemption by other work is not counted. */
+  const measure = (n: number): number => {
+    count = n;
+    run(30, null);
+    const before = process.cpuUsage();
+    run(150, null);
+    const used = process.cpuUsage(before);
+    return (used.user + used.system) / 150 / clients;
+  };
+  const none: number[] = [], four: number[] = [], sixteen: number[] = [];
+  for (let turn = 0; turn < 7; turn++) { none.push(measure(0)); four.push(measure(4)); sixteen.push(measure(16)); }
   record("far entities put in", ents.length, "");
-  record("tick, without them, median", median(without), "ms");
-  record("tick, with them, median", median(withFar), "ms");
-  record("what they add to each snapshot", (median(withFar) - median(without)) * 1000 / clients, "us", 3);
+  record("processor a client a tick, with none", median(none), "us");
+  record("processor a client a tick, with 4", median(four), "us");
+  record("processor a client a tick, with 16", median(sixteen), "us");
+  record("4 far entities add to a client's tick", median(four) - median(none), "us", 3);
+  record("16 far entities add to a client's tick", median(sixteen) - median(none), "us");
   host.vehicleWeapons.step = step;
 }
 
@@ -261,15 +316,15 @@ export function benchJets(section: Section, record: Row, part?: string): void {
   if (!part || part === "scan") scan(section, record);
   if (part === "flight" || part === "scan") return;
   if (!part || part === "weapons") {
-    const fight = fightWorld();
+    const fight = fightWorld(96);
     weapons(section, record, fight);
     far(section, record, fight);
     fight.host.shutdown();
   }
   if (part === "weapons") return;
-  const plain = fightWorld(), without = rewind(section, () => {}, plain, false);
+  const plain = fightWorld(16, 90), without = rewind(section, () => {}, plain, false);
   plain.host.shutdown();
-  const fast = fightWorld(), withJet = rewind(section, () => {}, fast, true);
+  const fast = fightWorld(16, 90), withJet = rewind(section, () => {}, fast, true);
   fast.host.shutdown();
   section("Rewind: what a jet at 160 m/s adds to a fight of 50 with the assault rifle");
   const key = (row: string): string => `${ASSAULT_RIFLE.label}: ${row}`;

@@ -68,9 +68,9 @@ saved({
   },
 });
 
-interface Lock { entity: number; gen: number; sky: SkyTarget | null; since: number; scanAt: number; locked: boolean; x: number; y: number; z: number }
+interface Lock { entity: number; gen: number; sky: SkyTarget | null; since: number; scanAt: number; clearAt: number; locked: boolean; x: number; y: number; z: number }
 /** A vehicle's weapons as they are this run: when the gun and the rail are next ready, the lock, and SECONDARY last tick. */
-interface Arms { pid: number; gunAt: number; railAt: number; held: boolean; lock: Lock | null; rev: number }
+interface Arms { pid: number; gunAt: number; railAt: number; held: boolean; lock: Lock | null; rev: number; seen: number }
 interface Missile {
   x: number; y: number; z: number; vx: number; vy: number; vz: number;
   ox: number; oz: number; until: number; by: number; self: number; carrier: number;
@@ -228,6 +228,7 @@ export class VehicleWeapons {
     const { world, game, records } = this.ctx, ents = world.ents, now = world.tick;
     this.airborne.length = 0;
     const clients = game.clients;
+    let locks = this.locks;
     for (let k = 0; k < clients.length; k++) {
       const c = clients[k];
       if (!c?.active || c.drive < 0) continue;
@@ -240,23 +241,23 @@ export class VehicleWeapons {
       const vehicle = records.byPid.get(ents.pid[e]!), pilot = records.byPid.get(c.pid);
       if (!vehicle || !pilot || pilot.dead) continue;
       let a = this.arms.get(vehicle.pid);
-      if (!a) { a = { pid: vehicle.pid, gunAt: 0, railAt: 0, held: false, lock: null, rev: ++this.revs }; this.arms.set(vehicle.pid, a); }
+      if (!a) { a = { pid: vehicle.pid, gunAt: 0, railAt: 0, held: false, lock: null, rev: ++this.revs, seen: now }; this.arms.set(vehicle.pid, a); }
+      a.seen = now;
       // The vehicle step's rule: a driver whose inputs stopped coming, or who works a remote, holds no trigger.
       const quiet = c.closed || now - c.inputAt > VEHICLE_HOLD_TICKS || (c.heldButtons & BTN_AIR_REMOTE) !== 0 || (this.ctx.remote?.(c, now) ?? false);
       const buttons = quiet ? 0 : c.heldButtons;
-      if ((buttons & BTN_PRIMARY) !== 0) this.gun(c, pilot, vehicle, e, def);
+      const fired = (buttons & BTN_PRIMARY) !== 0 && this.gun(c, pilot, vehicle, e, def);
       const seeking = (buttons & BTN_SECONDARY) !== 0;
-      if (seeking) this.seek(c, e, def, a);
+      // A look of the seeker waits a tick for a round that went this one: each casts far, and one tick takes one.
+      if (seeking) { if (!(fired && a.lock)) this.seek(c, e, def, a); }
       else if (a.held) this.fire(c, pilot, vehicle, e, def, a);
       else if (a.lock) { a.lock = null; this.touch(a.pid); }
       a.held = seeking;
+      if (a.lock) locks++;
     }
-    // A lock nobody holds goes; a vehicle that is gone forgets its state.
-    for (const [pid, a] of this.arms) {
-      const e = records.entOf.get(pid);
-      if (e === undefined) { this.arms.delete(pid); continue; }
-      if (a.lock && !this.driven(e)) { a.lock = null; a.held = false; this.touch(pid); }
-    }
+    // A lock nobody holds goes, and now and then a vehicle that is gone forgets its state.
+    this.locks = locks;
+    if (locks > 0 || now % TICK_RATE === 0) this.arms.forEach(this.tidy);
     let kept = 0;
     for (let i = 0; i < this.missiles.length; i++) {
       const m = this.missiles[i]!;
@@ -264,7 +265,7 @@ export class VehicleWeapons {
       else this.out(m);
     }
     this.missiles.length = kept;
-    this.warn();
+    if (this.locks > 0 || this.missiles.length > 0 || this.danger.size > 0) this.warn();
     const far = this.ctx.far;
     if (far) {
       for (let i = 0; i < this.airborne.length; i++) far(this.airborne[i]!, JET_REACH);
@@ -272,20 +273,21 @@ export class VehicleWeapons {
     }
   }
 
-  /** Whether some active client drives entity `e`. */
-  private driven(e: number): boolean {
-    const clients = this.ctx.game.clients;
-    for (let k = 0; k < clients.length; k++) if (clients[k]?.active && clients[k]!.drive === e) return true;
-    return false;
-  }
+  /** Locks held when the last step ended. */
+  private locks = 0;
+  /** A vehicle's state after the drivers' turn: its lock goes when nobody drove it this tick, all of it when it is gone. */
+  private readonly tidy = (a: Arms, pid: number): void => {
+    if (!this.ctx.records.entOf.has(pid)) { this.arms.delete(pid); return; }
+    if (a.lock && a.seen !== this.ctx.world.tick) { a.lock = null; a.held = false; this.touch(pid); }
+  };
 
-  /** One round from the nose, if the gun has one and its interval has passed. */
-  private gun(c: Client, pilot: EntityRecord, vehicle: EntityRecord, e: number, def: VehicleDefinition): void {
+  /** One round from the nose, if the gun has one and its interval has passed. Whether it went. */
+  private gun(c: Client, pilot: EntityRecord, vehicle: EntityRecord, e: number, def: VehicleDefinition): boolean {
     const g = def.weapons!.cannon, { world, projectiles } = this.ctx, reg = world.reg, now = world.tick;
     const a = this.arms.get(vehicle.pid)!, left = vehicle.own(ARMS), rounds = this.roundsOf(left, def);
-    if (!g || now < a.gunAt || rounds <= 0) return;
+    if (!g || now < a.gunAt || rounds <= 0) return false;
     const weapon = reg.index.get(g.weapon) ?? 0, ammo = reg.index.get(g.ammo) ?? 0;
-    if (weapon === 0 || ammo === 0) return;
+    if (weapon === 0 || ammo === 0) return false;
     left.rounds = rounds - 1;
     a.gunAt = now + Math.max(1, Math.round(g.interval * TICK_RATE));
     const f = this.pose(e), d = this.nose, at = this.at, dir = this.dir;
@@ -303,6 +305,7 @@ export class VehicleWeapons {
     projectiles.vehicleRound(c, pilot, weapon, ammo, at[0]!, at[1]!, at[2]!, dir);
     this.ctx.records.dirty.add(vehicle.pid);
     this.touch(vehicle.pid);
+    return true;
   }
 
   /** A look of the seeker: a lock is kept, begun again on a new target, or formed once it has been held long enough. */
@@ -312,16 +315,22 @@ export class VehicleWeapons {
     const f = this.pose(e), d = this.nose, at = this.at;
     vehiclePoint(f, [0, def.spec.height * .5, def.spec.halfLength + .5], at);
     const lock = a.lock, pick = this.pick;
-    // A formed lock holds in a wider cone, so a target that jinks at the edge is not lost at once.
-    if (lock?.locked && this.still(lock, at, d, m.cone * LOCK_KEEP, m.range * 1.1)) { lock.scanAt = now; this.touch(a.pid); return; }
+    // The seeker stays on what it has while it is there, and a formed lock holds in a wider cone, so a target that jinks at
+    // the edge is not lost at once. Only a seeker with nothing looks round the whole cone.
+    if (lock && this.still(lock, at, d, lock.locked ? m.cone * LOCK_KEEP : m.cone, lock.locked ? m.range * 1.1 : m.range)) {
+      lock.scanAt = now;
+      lock.locked = now - lock.since >= Math.round(m.lock * TICK_RATE);
+      this.touch(a.pid);
+      return;
+    }
     if (!scanLock(world, combat.sky, now, at[0]!, at[1]!, at[2]!, d[0]!, d[1]!, d[2]!, m.cone, m.range, e, c.ent, pick)) {
       if (a.lock) { a.lock = null; this.touch(a.pid); }
       return;
     }
     const same = lock !== null && (pick.sky ? lock.sky === pick.sky : lock.entity === pick.entity && lock.gen === pick.gen);
-    if (!same) a.lock = { entity: pick.entity, gen: pick.gen, sky: pick.sky, since: now, scanAt: now, locked: false, x: pick.x, y: pick.y, z: pick.z };
+    if (!same) a.lock = { entity: pick.entity, gen: pick.gen, sky: pick.sky, since: now, scanAt: now, clearAt: now, locked: false, x: pick.x, y: pick.y, z: pick.z };
     const held = a.lock!;
-    held.scanAt = now; held.x = pick.x; held.y = pick.y; held.z = pick.z;
+    held.scanAt = held.clearAt = now; held.x = pick.x; held.y = pick.y; held.z = pick.z;
     held.locked = now - held.since >= Math.round(m.lock * TICK_RATE);
     if (held.entity >= 0 && (ents.flags[held.entity]! & F_ALIVE) === 0) a.lock = null;
     this.touch(a.pid);
@@ -339,7 +348,11 @@ export class VehicleWeapons {
     }
     const rx = p.x - at[0]!, ry = p.y - at[1]!, rz = p.z - at[2]!, far = Math.hypot(rx, ry, rz);
     if (far > range || far < 1 || (rx * d[0]! + ry * d[1]! + rz * d[2]!) / far < Math.cos(cone)) return false;
-    if (castWorld(world, at[0]!, at[1]!, at[2]!, rx / far, ry / far, rz / far, far) !== HIT_NONE && rayHit.t < far - .5) return false;
+    // The clear line is cast at a third of the seeker's pace: a cast of the whole range is its dearest part.
+    if (world.tick - lock.clearAt >= LOCK_SCAN * 3) {
+      if (castWorld(world, at[0]!, at[1]!, at[2]!, rx / far, ry / far, rz / far, far) !== HIT_NONE && rayHit.t < far - .5) return false;
+      lock.clearAt = world.tick;
+    }
     lock.x = p.x; lock.y = p.y; lock.z = p.z;
     return true;
   }
@@ -474,11 +487,15 @@ export class VehicleWeapons {
   private warn(): void {
     const danger = this.danger;
     if (danger.size > 0) danger.clear();
+    let locks = 0;
     for (const a of this.arms.values()) {
       const lock = a.lock;
-      if (!lock || lock.entity < 0) continue;
+      if (!lock) continue;
+      locks++;
+      if (lock.entity < 0) continue;
       danger.set(lock.entity, Math.max(danger.get(lock.entity) ?? 0, lock.locked ? WARN_LOCKED : WARN_SEEKING));
     }
+    this.locks = locks;
     for (let i = 0; i < this.missiles.length; i++) { const m = this.missiles[i]!; if (m.entity >= 0) danger.set(m.entity, WARN_MISSILE); }
   }
 }
