@@ -64,7 +64,7 @@ test("the core pack's definitions fall into the classes, each passing its row", 
   // The stations wave moved cementing paste and its engram to content/items/resources.ts, and took the ingot's engram out
   // (planning/reference/stations-plan.md, S0): a resource and two engrams fewer here. The city's broken forms
   // (content/breaks) added a static and a shape each, and the city its eight materials. Air support added a freight
-  // order, the resource a call spends, and its engram.
+  // order, the resource a call spends, and its engram. Map events added two crates: any kind's, and the UFO's core.
   expect(counts).toEqual({
     "item/resource": 11,
     "item/consumable": 4,
@@ -96,7 +96,7 @@ test("the core pack's definitions fall into the classes, each passing its row", 
     material: 4 + CITY_MATERIALS.length,
     node: 14,
     "prop/container": 2,
-    "prop/crate": 1,
+    "prop/crate": 3,
     "prop/projectile": 2,
     buff: 7,
     spawns: 4,

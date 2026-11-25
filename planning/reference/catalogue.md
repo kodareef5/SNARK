@@ -11,7 +11,7 @@ list is refused. Names and ids are this engine's own. The ARK column says what
 the class corresponds to, so that what is known of ARK carries over.
 
 There are 47 classes: 34 built, 6 partly built, and 7 stubs that
-wait for a feature. The core pack holds 6074 definitions.
+wait for a feature. The core pack holds 6076 definitions.
 
 An asset slot is addressed `owner#slot`, or `owner#slot/key` for a slot with
 several values: `core:raptor#clip/walk`. Levels of detail are inside the asset
@@ -239,7 +239,7 @@ Packs may add to: `yields`.
 | `prop/projectile` | a projectile actor | partial | `mesh`, `color`, `radius`, `height` | `pitched` | 3 |
 | `prop/egg` | a laid or dropped egg, fertilised or not | built | `mesh`, `color`, `radius`, `height` | `size`, `item`, `fertile` | 10 |
 | `prop/cloud` | the gas and smoke actors of grenades | built | `mesh`, `color`, `radius`, `height` |  | 2 |
-| `prop/crate` | SupplyCrate_ | built | `mesh`, `color`, `radius`, `height`, `slots` |  | 1 |
+| `prop/crate` | SupplyCrate_ | built | `mesh`, `color`, `radius`, `height`, `slots` |  | 3 |
 
 - **`prop`** on shelf `props`. Stands in the world and neither moves nor lives.
 - **`prop/container`** on shelf `props/containers`. Holds what was dropped or left by the dead.
@@ -435,7 +435,7 @@ built.
 
 **`prop/cloud`** (2): cloud_smoke, cloud_poison.
 
-**`prop/crate`** (1): supply_capsule.
+**`prop/crate`** (3): supply_capsule, event_crate, ufo_core.
 
 **`buff`** (13): mending, entangled, entangle_spent, poisoned, ball_chill, ball_sick, burning, tranquilized, drugged, stunned, injured, fed, god.
 

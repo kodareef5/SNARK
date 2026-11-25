@@ -1,6 +1,11 @@
-// The contract between the server and a module. A module imports this file and `shared`, and nothing else of the server.
+// The contract between the server and a module. A module imports this file, event.ts and `shared`, and nothing else of
+// the server.
 // A module is trusted code that runs in the server's process, on the tick thread. It hears events, may refuse or change
-// what a "before" event is about to do, and acts on the world only through `act`.
+// what a "before" event is about to do, and acts on the world only through `act`. It may define kinds of map event,
+// which the server runs, saves and sends (event.ts).
+
+import type { Fields } from "../../shared/mapevent/fields.ts";
+import type { EventKindDef, EventsApi } from "./event.ts";
 
 export type EventData = Record<string, number | string | boolean>;
 
@@ -67,6 +72,10 @@ export interface ModuleContext {
   readonly world: WorldView;
   readonly act: Actions;
   log(line: string): void;
+  /** Defines a kind of map event (event.ts). Throws, saying every fault, if it cannot be. In setup only. */
+  mapEvent<F extends Fields>(def: EventKindDef<F>): void;
+  /** Every kind of map event and every event: calls and ends any. Not in setup. */
+  readonly mapEvents: EventsApi;
 }
 
 export interface ModuleDef {

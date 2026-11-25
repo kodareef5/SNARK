@@ -114,7 +114,9 @@ import { AirSupport } from "./air-support.ts";
 import { helicopterAirspace } from "../shared/world/helicopter.ts";
 import { Hitches } from "./hitches.ts";
 import { Supply } from "./supply.ts";
-import { BookStore } from "./supply/store.ts";
+import { BookStore, Store } from "./supply/store.ts";
+import { MapEvents } from "./mapevent/events.ts";
+import type { EventBook } from "../shared/mapevent/book.ts";
 import { builtinLoadouts } from "../content/loadouts.ts";
 import { Loadouts } from "./loadout/loadouts.ts";
 import { LoadoutStore } from "./loadout/store.ts";
@@ -277,6 +279,9 @@ export interface Host {
   /** Trailers on fifth wheels (server/hitches.ts). */
   readonly hitches: Hitches;
   readonly supplyBook: BookStore;
+  /** Map events, the kinds modules define, and the event book that switches, schedules and tunes them (server/mapevent/events.ts). */
+  readonly mapEvents: MapEvents;
+  readonly eventBook: Store<EventBook>;
   /** The loadouts new survivors are given, kept beside the save (server/loadout/store.ts). */
   readonly loadoutBook: LoadoutStore;
   /** Hands loadouts out: to a new survivor, after a death, and when an admin asks (server/loadout/loadouts.ts). */
@@ -1382,6 +1387,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   recrate();
   supply.begin(persistence && !loaded!.fresh ? (persistence.store.meta("supply") as string | null) : null);
   persistence?.sidecar("supply", supply.saved);
+  // Map events (server/mapevent/events.ts). Made before the modules, which define its kinds; begun after them.
+  const mapEvents = new MapEvents({ world, game, records, items, death, combat, projectiles, supply, deadlines, bus, seed: opts.seed ?? 1, say, now: opts.now });
   hitches.begin(persistence && !loaded!.fresh ? persistence.store.meta("hitches") as string | null : null);
   persistence?.sidecar("hitches", hitches.saved);
   const airSupport = new AirSupport({ world, game, records, rules, combat, projectiles, urban, hitches, items, wake: wakeView,
@@ -1918,6 +1925,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
           for (const c of game.clients) if (c?.active && !c.closed) game.sendText(c, TEXT_NOTICE, text);
         },
       },
+      defineEvent: (module, def) => mapEvents.define(module, def),
+      events: (module) => mapEvents.api(module),
       addCommand: (module, c) => {
         if (con.commands.has(c.name.toLowerCase())) throw new Error(`module ${module}: there is already a command "${c.name}"`);
         con.add({ name: c.name.toLowerCase(), usage: c.usage, help: c.help, admin: c.admin, run: (ctx, args) => c.run({ pid: ctx.client?.pid ?? 0, name: ctx.client?.name ?? "(operator)", operator: ctx.client === null }, args) });
@@ -1926,6 +1935,11 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     },
     opts.modules ?? [],
   );
+  // The event book is a file beside the save, as the drop book is, checked against the kinds the modules defined. The
+  // events that are live are the save's, written in the commit that writes their crates.
+  const eventBook = new Store<EventBook>(mapEvents.bookKind(), opts.dbPath ? `${opts.dbPath}.events.json` : null, world.mapId, () => mapEvents.starterBook(), say);
+  mapEvents.begin(persistence && !loaded!.fresh ? (persistence.store.meta("mapevent") as string | null) : null, eventBook);
+  persistence?.sidecar("mapevent", mapEvents.saved);
   const mark = (part: number): System => ({ step: () => parts.mark(part) });
   /** Physics: its time is the lane's, kept in row `row` (server/lane.ts). */
   const physics = (s: System, row: number): System => ({ step: (tick) => { lane.enter(row); s.step!(tick); lane.leave(); } });
@@ -1961,6 +1975,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     // Combat resolves this tick's swings and shots now that every body has moved.
     combat,
     projectiles,
+    // After this tick's shots, so the kinds hear of what they did in the same tick.
+    mapEvents,
     physics(loose, LANE_ROW.loose),
     clouds,
     mark(PART.combat),
@@ -2003,6 +2019,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     { replicate: (c) => tactical.sync(c) },
     { replicate: (c) => supply.sync(c) },
     { replicate: (c) => airSupport.sync(c) },
+    { replicate: (c) => mapEvents.sync(c) },
     { snapshot: (c, view) => corpseReplication.sync(c, view) },
   ];
   const tick = walk(systems);
@@ -2062,6 +2079,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     airSupport,
     hitches,
     supplyBook,
+    mapEvents,
+    eventBook,
     loadoutBook,
     loadouts,
     beds,

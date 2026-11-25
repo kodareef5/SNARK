@@ -464,6 +464,10 @@ const ALL: readonly Def[] = [
   // client draws the capsule, its shaft and its landing from the list of drops it is sent, and passes this over. Its 60
   // slots are CAPSULE_SLOTS of shared/supply/book.ts, which the starter book's fullest roll fits with room.
   { type: "prop", class: "crate", id: "core:supply_capsule", mesh: "box", color: 10, radius: 0.7, height: 2.2, slots: 60 },
+  // A map event's crate (planning/workstreams/map-events.md): filled from the drop book's tables, only ever taken from,
+  // gone when emptied or after its time. Any kind a module defines may set one down; the UFO's core is its own.
+  { type: "prop", class: "crate", id: "core:event_crate", mesh: "box", color: 52, radius: 0.7, height: 1.2, slots: 60 },
+  { type: "prop", class: "crate", id: "core:ufo_core", mesh: "box", color: 52, radius: 0.9, height: 1.6, slots: 60 },
   // A flame arrow's burn: "approximately 22 damage per second to players" for 8 seconds (ark.wiki.gg, Flame Arrow,
   // 2026-11-15), as fire, so a body takes its own share of it. ARK's grows with the creature's size (DEV28).
   { type: "buff", id: "core:burning", label: "Burning", color: 3, seconds: 8, health: -22, damage: "fire" },

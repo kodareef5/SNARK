@@ -1,7 +1,9 @@
 // Loads modules and gives each what the contract promises (server/api/module.ts). A module that fails its setup stops
 // the server from starting: half a module is worse than none.
 
+import type { EventKindDef, EventsApi } from "../api/event.ts";
 import type { Actions, Caller, ModuleCommand, ModuleContext, ModuleDef, WorldView } from "../api/module.ts";
+import type { Fields } from "../../shared/mapevent/fields.ts";
 import type { Bus } from "./bus.ts";
 import { eventIndex } from "./catalog.ts";
 
@@ -24,6 +26,9 @@ export interface ModuleHost {
   /** Adds a console command. Throws if the name is taken. */
   addCommand(module: string, c: ModuleCommand): void;
   log(line: string): void;
+  /** Defines a kind of map event for a module, and what a module may do with map events. */
+  defineEvent(module: string, def: EventKindDef<Fields>): void;
+  events(module: string): EventsApi;
 }
 
 export class Modules {
@@ -93,6 +98,11 @@ export class Modules {
       world: host.world,
       act: host.act,
       log: (line) => host.log(`[${module}] ${line}`),
+      mapEvent: (def) => {
+        late("map events");
+        host.defineEvent(module, def as unknown as EventKindDef<Fields>);
+      },
+      mapEvents: host.events(module),
     };
   }
 }
