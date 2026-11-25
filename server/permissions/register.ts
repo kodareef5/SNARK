@@ -61,8 +61,8 @@ export class IdRegister {
   private readonly permissions: Pick<Permissions, "register" | "now">;
   private readonly records: Records;
   private readonly say: (line: string) => void;
-  private readonly minted = new Map<string, string>();
-  private readonly known = new Map<string, string>();
+  private readonly minted = new Map<string, Issue>();
+  private readonly known = new Map<string, Issue>();
   /** The counters as last written; -1 before the first write. */
   private survivors = -1;
   private teams = -1;
@@ -81,15 +81,14 @@ export class IdRegister {
     const id = idText(rec);
     if (id === "") return;
     this.known.delete(id);
-    this.minted.set(id, rec.name);
+    this.minted.set(id, { id, name: rec.name, team: rec.team });
   }
 
-  /** A survivor whose ID was made before or elsewhere, or whose name changed. */
+  /** A survivor whose ID was made before or elsewhere, or whose team changed: the rule asks who is in a tribe. */
   knows(rec: EntityRecord): void {
     const id = idText(rec);
     if (id === "") return;
-    if (this.minted.has(id)) this.minted.set(id, rec.name);
-    else this.known.set(id, rec.name);
+    (this.minted.has(id) ? this.minted : this.known).set(id, { id, name: rec.name, team: rec.team });
   }
 
   /** Whether there is anything to write. Two compares when there is not. */
@@ -105,8 +104,8 @@ export class IdRegister {
     if (wait > 0 && wait <= POLL_MS) return;
     const survivors = this.records.nextSurvivor;
     const teams = this.records.nextTeam;
-    const minted: Issue[] = [...this.minted].map(([id, name]) => ({ id, name }));
-    const known: Issue[] = [...this.known].map(([id, name]) => ({ id, name }));
+    const minted: Issue[] = [...this.minted.values()];
+    const known: Issue[] = [...this.known.values()];
     const dropped = this.permissions.register({ origin: this.records.worldId, survivors, teams, minted, known });
     if (dropped === null) {
       this.retryAt = this.permissions.now() + POLL_MS;

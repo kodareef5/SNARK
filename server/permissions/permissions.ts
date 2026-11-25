@@ -97,10 +97,11 @@ export interface Claim {
   readonly wrong: boolean;
 }
 
-/** A survivor ID and its survivor's name, for the register. */
+/** A survivor ID with its survivor's name and team, for the register. A team left out is not known. */
 export interface Issue {
   readonly id: string;
   readonly name: string;
+  readonly team?: number;
 }
 
 /** One write to the register (`Permissions.register`). */
@@ -552,12 +553,12 @@ export class Permissions {
         for (const m of r.minted) {
           if (!isSurvivorId(m.id)) continue;
           dropped += this.store.dropRowsOf(m.id);
-          this.store.putMinted({ id: m.id, name: m.name, world: this.world, at: now });
+          this.store.putMinted({ id: m.id, name: m.name, world: this.world, at: now, team: m.team ?? 0 });
           counted(m.id);
         }
         for (const k of r.known) {
           if (!isSurvivorId(k.id)) continue;
-          this.store.putKnown({ id: k.id, name: k.name, world: this.world, at: now });
+          this.store.putKnown({ id: k.id, name: k.name, world: this.world, at: now, team: k.team ?? 0 });
           counted(k.id);
         }
         if (r.survivors !== undefined) marks.set(r.origin, Math.max(marks.get(r.origin) ?? 0, r.survivors));
@@ -671,7 +672,8 @@ export class Permissions {
     hasMembers: (name) => this.membersIn(name).some((m) => m.forever || m.until > this.now()),
     issued: (id) => this.store.issued(id) !== null,
     teamMade: (key) => this.teamMade(key),
-    tribeRank: (key) => this.tribeMembers(Number(key)).reduce((rank, id) => Math.max(rank, this.staffRank(id)), RANK_OPEN),
+    // Its members as the register last knew them, on any map, and as this world holds them now.
+    tribeRank: (key) => [...this.store.issuedInTeam(Number(key)), ...this.tribeMembers(Number(key))].reduce((rank, id) => Math.max(rank, this.staffRank(id)), RANK_OPEN),
   };
 
   /** Writes `op` to the store and to memory, or answers why there is nothing to do. */

@@ -374,7 +374,7 @@ test("a regular admin cannot reach a map admin through the map admin's tribe", (
 
 test("a tag choice that changes nothing writes nothing, and a run of changes is cut short", () => {
   const { h } = camp({ host: quiet });
-  const bob = survivor(h, "bob", { cheats: false });
+  let bob = survivor(h, "bob", { cheats: false });
   op(h, "Permissions.AddGroup Vip", `Permissions.Add ${idOf(h, bob)} Vip`);
   expect(h.host.changePermissions(OPERATOR, { op: "setDocument", name: "chat", text: JSON.stringify({ ChatTags: { Vip: { Text: "[VIP]" } } }) })).toBe("");
   const p = h.host.permissions;
@@ -388,6 +388,14 @@ test("a tag choice that changes nothing writes nothing, and a run of changes is 
   expect(h.say(bob, "disabletag Vip")).toEqual(["Your lines no longer show the tag Vip."]);
   expect(h.say(bob, "enabletag Vip")).toEqual(["You changed your tags a moment ago. Try again shortly."]);
   expect(p.snapshot().revision).toBe(before + 3);
+  // The wait is the survivor's, not the connection's: leaving and coming back does not shorten it.
+  bob.close();
+  h.run(200);
+  const back = h.join("bob");
+  h.run(500);
+  expect(h.say(back, "enabletag Vip")).toEqual(["You changed your tags a moment ago. Try again shortly."]);
+  expect(p.snapshot().revision).toBe(before + 3);
+  bob = back;
   h.run(11_000);
   expect(h.say(bob, "enabletag Vip")).toEqual(["Your lines show the tag Vip."]);
   expect(p.snapshot().revision).toBe(before + 4);

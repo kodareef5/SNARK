@@ -999,3 +999,39 @@ test("A's admins clear the password of A's staff, and never of B's alone", async
     expect(b.h.client(dan)!.signed).toBe(false);
   });
 });
+
+test("a regular admin on B cannot reach A's map admin through her tribe's number", async () => {
+  await maps((m) => {
+    const { cluster, clock, a, b } = m;
+    const { session: cara } = cluster.survivor(a, "cara");
+    const { session: ada } = cluster.survivor(b, "ada");
+    const [caraId, adaId] = [idIn(a, "cara"), idIn(b, "ada")];
+    // Cara holds the map's rank on A, and her tribe was made there. Ada is a regular admin on B.
+    must(a, "Permissions.AddGroup Top");
+    must(a, "Permissions.Rank Top map");
+    must(a, `Permissions.Add ${caraId} Top`);
+    must(a, "Permissions.AddGroup Muted");
+    must(a, "Permissions.AddGroup Vip");
+    expect(a.h.host.tribes.create(rec(a, "cara")!, "Cara Co")).toBe("");
+    const team = String(rec(a, "cara")!.team);
+    a.h.run(100);
+    must(b, `Permissions.Add ${adaId} Admins`);
+    signIn(b, ada, claim(b, ada));
+    poll(b, clock);
+    const HIGHER = "A member of that tribe holds a higher rank than yours.";
+    expect(b.h.say(ada, `Permissions.Add ${caraId} Muted`)).toEqual(["That survivor holds a higher rank than yours."]);
+    // B holds no tribe of that number, and still knows who is in it.
+    expect(b.h.say(ada, `Permissions.AddTribe ${team} Muted`)).toEqual([HIGHER]);
+    poll(a, clock);
+    expect(a.h.host.permissions.inGroup(a.h.host.subjectOf(a.h.client(cara)!)!, "Muted")).toBe(false);
+    // The cluster's admin may, and then B's regular admin cannot take the tribe out either.
+    must(a, `Permissions.AddTribe ${team} Vip`);
+    poll(b, clock);
+    expect(b.h.say(ada, `Permissions.RemoveTribe ${team} Vip`)).toEqual([HIGHER]);
+    // Once she leaves the tribe it is no longer a way to her, and what is left of it is an admin's to manage.
+    expect(a.h.host.tribes.leave(rec(a, "cara")!)).toBe("");
+    a.h.run(100);
+    poll(b, clock);
+    expect(b.h.say(ada, `Permissions.RemoveTribe ${team} Vip`).at(-1)).toContain("is out of Vip");
+  });
+});

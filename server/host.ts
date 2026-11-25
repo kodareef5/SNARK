@@ -1732,21 +1732,24 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     settleStanding();
     return { why: "", ...applied };
   };
-  /** The ticks of each connection's latest tag changes. */
-  const tagged = new WeakMap<Client, number[]>();
+  /** The ticks of each survivor's latest tag changes, by ID: a new connection does not start the count again. */
+  const tagged = new Map<string, number[]>();
   const chooseTag = (c: Client, tag: string, show: boolean): string => {
     const subject = subjectOf(c);
     if (!subject) return "That needs a survivor with an ID.";
     if (permissions.tagChoice(subject.id, tag) !== false === show) return "";
-    const recent = (tagged.get(c) ?? []).filter((at) => world.tick - at < TAG_CHANGES_TICKS);
+    // What ran out is dropped as it is met, so the map holds only those who changed a tag in the last seconds.
+    for (const [id, ticks] of tagged) if (world.tick - ticks.at(-1)! >= TAG_CHANGES_TICKS) tagged.delete(id);
+    const recent = (tagged.get(subject.id) ?? []).filter((at) => world.tick - at < TAG_CHANGES_TICKS);
     if (recent.length >= TAG_CHANGES) return "You changed your tags a moment ago. Try again shortly.";
-    tagged.set(c, [...recent, world.tick]);
+    tagged.set(subject.id, [...recent, world.tick]);
     const why = permissions.apply(acting(sessionActor(c, records)), { op: "tag", id: subject.id, tag, show });
     settleStanding();
     return why;
   };
   // A tribe's groups are its members'.
   tribes.onTeam = (rec) => {
+    register.knows(rec);
     refreshBody(rec);
     const c = sessionOf(rec.pid);
     if (c) creative.stand(c);

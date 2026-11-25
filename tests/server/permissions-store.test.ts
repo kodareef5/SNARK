@@ -164,7 +164,7 @@ test("a file made before the register opens, gains it and keeps what it held", (
   const perms = new Permissions({ store: new PermissionStore(file), world: 2, now: () => 9_000 });
   expect([perms.snapshot().revision, perms.membersOf("survivor", A).length, perms.marks(2), perms.issued(A)]).toEqual([4, 1, { survivor: 0, team: 0 }, null]);
   expect(perms.register({ origin: 2, survivors: 3, teams: 2, minted: [], known: [{ id: A, name: "ada" }] })).toBe(0);
-  expect([perms.issued(A), perms.marks(2), perms.snapshot().revision]).toEqual([{ id: A, name: "ada", world: 2, at: 9_000 }, { survivor: 3, team: 2 }, 4]);
+  expect([perms.issued(A), perms.marks(2), perms.snapshot().revision]).toEqual([{ id: A, name: "ada", world: 2, at: 9_000, team: 0 }, { survivor: 3, team: 2 }, 4]);
   const tables = (new Database(file).query("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[]).map((t) => t.name);
   expect(tables).toEqual(expect.arrayContaining(["issued", "marks", "secrets", "tags", "documents"]));
 });
@@ -175,9 +175,9 @@ test("the register keeps the first time an ID was seen, follows its name, and it
   const v = perms.version;
   expect(perms.register({ origin: 2, survivors: 5, teams: 4, minted: [{ id: A, name: "ada" }], known: [] })).toBe(0);
   clock.t = 2_000;
-  expect(perms.register({ origin: 2, survivors: 3, teams: 2, minted: [], known: [{ id: A, name: "Ada" }, { id: idOf(7, 9), name: "kit" }] })).toBe(0);
+  expect(perms.register({ origin: 2, survivors: 3, teams: 2, minted: [], known: [{ id: A, name: "Ada", team: 2 * 1048576 + 3 }, { id: idOf(7, 9), name: "kit" }] })).toBe(0);
   expect([perms.issued(A), perms.issuedNamed("ADA").map((r) => r.id), perms.marks(2), perms.marks(7)]).toEqual([
-    { id: A, name: "Ada", world: 2, at: 1_000 },
+    { id: A, name: "Ada", world: 2, at: 1_000, team: 2 * 1048576 + 3 },
     [A],
     { survivor: 5, team: 4 },
     { survivor: 10, team: 0 },
@@ -354,4 +354,27 @@ test("a view takes in the newest retired passwords only, however many the file h
   const view = new Permissions({ store: new PermissionStore(file), world: 2, now: () => at + 10_000 });
   const hash = (i: number): string => i.toString(16).padStart(64, "0");
   expect([view.retired(hash(RETIRED_MOST + 499)), view.retired(hash(500)), view.retired(hash(0))]).toEqual([true, true, false]);
+});
+
+test("a file whose register kept no teams opens, gains them, and the rule asks them of any map", () => {
+  const file = fresh();
+  const old = new PermissionStore(file);
+  old.read();
+  old.close();
+  const db = new Database(file);
+  db.exec("DROP INDEX IF EXISTS issued_team; ALTER TABLE issued DROP COLUMN team;" + `INSERT INTO issued (id, name, world, at) VALUES ('${A}', 'ada', 2, 5);`);
+  db.close();
+  const perms = new Permissions({ store: new PermissionStore(file), world: 5 });
+  expect(perms.issued(A)).toEqual({ id: A, name: "ada", world: 2, at: 5, team: 0 });
+  // Ada holds the map's rank on world 2, where her tribe is. World 5 holds no tribe of that number.
+  const team = 2 * 1048576 + 7;
+  expect(perms.register({ origin: 2, teams: 8, minted: [], known: [{ id: A, name: "ada", team }] })).toBe(0);
+  expect(perms.apply(cluster, { op: "addGroup", group: "Top", rank: 3 })).toBe("");
+  expect(perms.apply(cluster, { op: "addMember", kind: "survivor", key: A, group: "Top", world: 2 })).toBe("");
+  expect(perms.apply(cluster, { op: "addGroup", group: "Muted" })).toBe("");
+  const far: PermissionActor = { rank: RANK_ADMIN, world: 5, name: "admin of 5" };
+  expect(perms.apply(far, { op: "addMember", kind: "tribe", key: String(team), group: "Muted" })).toBe("A member of that tribe holds a higher rank than yours.");
+  // Once the register knows her out of it, the tribe is an admin's to manage.
+  expect(perms.register({ origin: 2, minted: [], known: [{ id: A, name: "ada", team: 2 * 1048576 + 8 }] })).toBe(0);
+  expect(perms.apply(far, { op: "addMember", kind: "tribe", key: String(team), group: "Muted" })).toBe("");
 });

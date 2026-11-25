@@ -40,7 +40,7 @@ const SCHEMA =
   "CREATE TABLE IF NOT EXISTS secrets (id TEXT PRIMARY KEY, hash TEXT NOT NULL, at INTEGER NOT NULL DEFAULT 0);" +
   "CREATE TABLE IF NOT EXISTS documents (name TEXT PRIMARY KEY COLLATE NOCASE, body TEXT NOT NULL);" +
   "CREATE TABLE IF NOT EXISTS tags (id TEXT NOT NULL, tag TEXT NOT NULL COLLATE NOCASE, show INTEGER NOT NULL, PRIMARY KEY (id, tag));" +
-  "CREATE TABLE IF NOT EXISTS issued (id TEXT PRIMARY KEY, name TEXT NOT NULL, world INTEGER NOT NULL, at INTEGER NOT NULL);" +
+  "CREATE TABLE IF NOT EXISTS issued (id TEXT PRIMARY KEY, name TEXT NOT NULL, world INTEGER NOT NULL, at INTEGER NOT NULL, team INTEGER NOT NULL DEFAULT 0);" +
   "CREATE INDEX IF NOT EXISTS issued_name ON issued (name COLLATE NOCASE);" +
   "CREATE TABLE IF NOT EXISTS marks (world INTEGER NOT NULL, kind TEXT NOT NULL, next INTEGER NOT NULL, PRIMARY KEY (world, kind));" +
   "CREATE TABLE IF NOT EXISTS history (seq INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, world INTEGER NOT NULL, name TEXT NOT NULL," +
@@ -64,19 +64,25 @@ const historyOf = (r: Record<string, unknown>): HistoryRow => ({
   via: HISTORY_VIAS.includes(text(r.via)) ? (r.via as HistoryRow["via"]) : "", what: text(r.what), revision: num(r.revision, 0),
 });
 
-/** A survivor ID the register knows: its survivor's name and the world it was on, as last known, and when it was first registered. */
+/**
+ * A survivor ID the register knows: its survivor's name, the world it was on and the team it was in, as last known, and
+ * when it was first registered. A team is a tribe's number or a survivor's own; 0 where not known.
+ */
 export interface Issued {
   readonly id: string;
   readonly name: string;
   readonly world: number;
   readonly at: number;
+  readonly team: number;
 }
 
 /** What a world's mark counts. */
 export type MarkKind = "survivor" | "team";
 
-const issuedOf = (r: { id: unknown; name: unknown; world: unknown; at: unknown } | null): Issued | null =>
-  r && typeof r.id === "string" && typeof r.name === "string" && typeof r.world === "number" && typeof r.at === "number" ? { id: r.id, name: r.name, world: r.world, at: r.at } : null;
+const issuedOf = (r: { id: unknown; name: unknown; world: unknown; at: unknown; team?: unknown } | null): Issued | null =>
+  r && typeof r.id === "string" && typeof r.name === "string" && typeof r.world === "number" && typeof r.at === "number"
+    ? { id: r.id, name: r.name, world: r.world, at: r.at, team: typeof r.team === "number" ? r.team : 0 }
+    : null;
 
 interface GroupRow {
   name: unknown;
@@ -118,6 +124,9 @@ export class PermissionStore {
     // The default journal, not WAL: each commit changes permissions.sqlite itself, whose time the worlds watch.
     db.exec("PRAGMA busy_timeout=2500;" + SCHEMA);
     db.transaction(() => {
+      // A file made before the register kept each survivor's team has no `team`. The index is made after the column.
+      if (!(db.query("PRAGMA table_info(issued)").all() as { name: string }[]).some((c) => c.name === "team")) db.exec("ALTER TABLE issued ADD COLUMN team INTEGER NOT NULL DEFAULT 0");
+      db.exec("CREATE INDEX IF NOT EXISTS issued_team ON issued (team)");
       // A file made before a password's claim was dated has no `at`.
       if (!(db.query("PRAGMA table_info(secrets)").all() as { name: string }[]).some((c) => c.name === "at")) db.exec("ALTER TABLE secrets ADD COLUMN at INTEGER NOT NULL DEFAULT 0");
       if (db.query("INSERT OR IGNORE INTO meta (id, revision) VALUES (1, 0)").run().changes === 0) return;
@@ -272,18 +281,18 @@ export class PermissionStore {
 
   /** The register's row for survivor ID `id`, or null where it was never issued. */
   issued(id: string): Issued | null {
-    return issuedOf(this.open().query("SELECT id, name, world, at FROM issued WHERE id = ?").get(id) as Issued | null);
+    return issuedOf(this.open().query("SELECT id, name, world, at, team FROM issued WHERE id = ?").get(id) as Issued | null);
   }
 
   /** The register's rows for survivors of a name, in any case. */
   issuedNamed(name: string): Issued[] {
-    const rows = this.open().query("SELECT id, name, world, at FROM issued WHERE name = ? COLLATE NOCASE ORDER BY id").all(name) as Issued[];
+    const rows = this.open().query("SELECT id, name, world, at, team FROM issued WHERE name = ? COLLATE NOCASE ORDER BY id").all(name) as Issued[];
     return rows.map(issuedOf).filter((r): r is Issued => r !== null);
   }
 
   /** Every row of the register. */
   allIssued(): Issued[] {
-    return (this.open().query("SELECT id, name, world, at FROM issued ORDER BY id").all() as Issued[]).map(issuedOf).filter((r): r is Issued => r !== null);
+    return (this.open().query("SELECT id, name, world, at, team FROM issued ORDER BY id").all() as Issued[]).map(issuedOf).filter((r): r is Issued => r !== null);
   }
 
   /** The next number world `world` may hand out of a kind, or undefined where it has no mark yet. */
@@ -299,14 +308,23 @@ export class PermissionStore {
 
   /** Registers an ID just made, over any row it had. */
   putMinted(row: Issued): void {
-    this.open().query("INSERT OR REPLACE INTO issued (id, name, world, at) VALUES (?, ?, ?, ?)").run(row.id, row.name, row.world, row.at);
+    this.open().query("INSERT OR REPLACE INTO issued (id, name, world, at, team) VALUES (?, ?, ?, ?, ?)").run(row.id, row.name, row.world, row.at, row.team);
   }
 
-  /** Registers an ID made before or elsewhere: it is added where absent, and its name and world follow. */
+  /** The survivor IDs last known in team `team`, on any world. */
+  issuedInTeam(team: number): string[] {
+    if (!Number.isSafeInteger(team) || team <= 0) return [];
+    return (this.open().query("SELECT id FROM issued WHERE team = ?").all(team) as { id: unknown }[]).map((r) => r.id).filter((id): id is string => typeof id === "string");
+  }
+
+  /** Registers an ID made before or elsewhere: it is added where absent, and its name, world and team follow. */
   putKnown(row: Issued): void {
     this.open()
-      .query("INSERT INTO issued (id, name, world, at) VALUES (?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET name = excluded.name, world = excluded.world WHERE name IS NOT excluded.name OR world IS NOT excluded.world")
-      .run(row.id, row.name, row.world, row.at);
+      .query(
+        "INSERT INTO issued (id, name, world, at, team) VALUES (?, ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET name = excluded.name, world = excluded.world, team = excluded.team" +
+          " WHERE name IS NOT excluded.name OR world IS NOT excluded.world OR team IS NOT excluded.team",
+      )
+      .run(row.id, row.name, row.world, row.at, row.team);
   }
 
   /** Adds a row of history and drops what falls past the newest kept. Call it inside the change's own `transaction`. */
