@@ -10,9 +10,10 @@ saved({
   name: "survivor-id",
   has: (rec) => rec.sid !== 0,
   write: (rec, w) => w.varint(rec.sid),
-  read(rec, r, from) {
-    rec.sid = r.varint();
-    if (rec.sid === 0) from.refused = true;
+  read(rec, r) {
+    const sid = r.varint();
+    // A number no world could have made is dropped, not the survivor: it is given a new one as it loads.
+    rec.sid = sid >= ID_COUNT_RANGE && sid < 2 ** 32 && sid % ID_COUNT_RANGE !== 0 ? sid : 0;
   },
 });
 
