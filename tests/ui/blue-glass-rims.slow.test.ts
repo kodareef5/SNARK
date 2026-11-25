@@ -40,6 +40,18 @@ test.skipIf(!chrome)("Two wheel levels browse safely and the bottom wheel equips
       const track = () => page.value<string>("document.querySelector('#bar .chosen').ariaLabel");
       const depth = () => page.value<string>("document.querySelector('#rightWheel').dataset.depth");
       const order = () => page.value<string>("document.querySelector('#stage').dataset.tameOrder || ''");
+      const centers = await page.value<{ x: number; y: number }[]>(`
+        Array.from(document.querySelectorAll('#bar button:not([hidden]):not([inert])'), button => {
+          const rect = button.getBoundingClientRect();
+          return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+        }).sort((a, b) => a.x - b.x)`);
+      // Equal turns of a circular wheel put neighboring slot centers the same distance apart.
+      const gaps = centers.slice(1).map((point, i) => Math.hypot(point.x - centers[i]!.x, point.y - centers[i]!.y));
+      expect(gaps.length).toBeGreaterThan(1);
+      expect(Math.max(...gaps) - Math.min(...gaps)).toBeLessThan(1);
+      await stroke(page, "#bar [data-slot='1']");
+      expect(await track()).toBe("2 · Stone hatchet");
+      await stroke(page, "#bar [data-slot='0']");
       await stroke(page, "[data-action-open]");
       await stroke(page, "[data-family='0']", -55);
       expect(await depth()).toBe("children");
