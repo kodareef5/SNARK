@@ -133,6 +133,12 @@ def fema(m, man):
         if len(json.loads(p.read_text()).get('features', [])) != len(chunk):
             p.unlink()
             raise RuntimeError(f'incomplete footprint page {i // 100}')
+    # Pages past this list's last are another list's: a smaller list must not leave them to be read.
+    for stale in (m.raw / 'fema').glob('page_*.json'):
+        if int(stale.stem[5:]) * 100 >= len(ids):
+            stale.unlink()
+            man.records.pop(f'fema/{stale.name}', None)
+    man.save()
     print('footprints done', flush=True)
 
 
