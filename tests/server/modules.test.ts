@@ -23,6 +23,9 @@ import { EVENTS_PAGE, eventsPage } from "../../tools/events.ts";
 import { listener } from "../fixtures/module.ts";
 import { artTest } from "../fixtures/needs-art.ts";
 import { Harness } from "../fixtures/net.ts";
+import { idText } from "../../server/survivor-ids.ts";
+import { RANK_ADMIN } from "../../shared/ranks.ts";
+import { camp, record, survivor } from "../kit/kit.ts";
 
 const SAY = eventIndex("chat.say");
 const SAID = eventIndex("chat.said");
@@ -136,7 +139,7 @@ test("a module adds commands and timers, acts through what it is given, and cann
   expect(h.say(ada, "shout fire")[0]).toContain("denied");
   h.say(ada, "enablecheats");
   expect(h.say(ada, "shout fire in the hold")).toEqual(["fire in the hold", "shouted"]);
-  expect(m.heard.context!.world.online()).toEqual([{ pid: h.client(ada)!.pid, name: "ada" }]);
+  expect(m.heard.context!.world.online()).toEqual([{ pid: h.client(ada)!.pid, id: idText(h.host.records.byPid.get(h.client(ada)!.pid)!), name: "ada" }]);
   m.heard.context!.act.tell(h.client(ada)!.pid, "only you");
   h.run(100);
   expect(ada.log[ada.log.length - 1]!.text).toBe("only you");
@@ -754,4 +757,98 @@ test("a module hears a creature spawned, tamed, ordered, ridden and bred, and ma
   h.run(500);
   expect(said("breed.grown")).toEqual([{ pid: young.pid }]);
   expect(names(all.heard.lines).filter((n) => n !== "name.set")).toEqual([...wired].sort());
+});
+
+/** A camp with a module called shop, and bob, a survivor without cheats. */
+function shop(wall?: () => number) {
+  const m = listener("shop", ["perm.changed"]);
+  const { h } = camp({ host: { modules: [m.def], ...(wall ? { survivorLog: { wall } } : {}), ...quiet } });
+  const bob = survivor(h, "bob", { cheats: false });
+  return { h, bob, pid: h.client(bob)!.pid, id: idText(record(h, bob)), m, c: m.heard.context! };
+}
+
+test("a module asks what a survivor may do and which groups it is in", () => {
+  const { h, bob, pid, id, c } = shop();
+  for (const line of ["Permissions.AddGroup Vip", "Permissions.Grant Vip shop.vip", "Permissions.Add bob Vip", "Permissions.AddGroup Mods", "Permissions.Rank Mods staff", "Permissions.Grant Mods shop.*", "Permissions.Add bob Mods"]) h.host.exec(line);
+  const p = c.perms;
+  expect([p.id(pid), p.has(pid, "shop.vip"), p.has(pid, "shop.gold"), p.inGroup(pid, "vip"), p.groups(pid)]).toEqual([id, true, false, true, ["Vip", "Default"]]);
+  // A staff group counts once its member signs in.
+  h.client(bob)!.signed = true;
+  expect([p.has(pid, "shop.gold"), p.inGroup(pid, "Mods"), p.groups(pid)]).toEqual([true, true, ["Vip", "Mods", "Default"]]);
+  // Gone from the server, bob has not signed in.
+  bob.close();
+  h.run(7000);
+  expect(h.client(bob)).toBeFalsy();
+  expect([p.id(pid), p.has(pid, "shop.gold"), p.inGroup(pid, "Mods"), p.groups(pid)]).toEqual([id, false, false, ["Vip", "Default"]]);
+  // A pid that is no survivor has nothing, not even Default.
+  expect([p.id(424242), p.has(424242, "shop.vip"), p.inGroup(424242, "Default"), p.groups(424242)]).toEqual(["", false, false, []]);
+});
+
+test("a module puts a survivor in a group for a time and takes it out", () => {
+  const clock = { ms: 1_000_000_000 };
+  const { h, pid, id, c } = shop(() => clock.ms);
+  h.host.exec("Permissions.AddGroup Vip");
+  expect(c.act.addToGroup(pid, "vip", 2)).toBe("");
+  expect([c.perms.inGroup(pid, "Vip"), h.host.exec("Permissions.PlayerGroups bob")]).toEqual([true, `bob (${id}):\nVip: 2 h 0 min left`]);
+  clock.ms += 121 * 60_000;
+  expect(c.perms.inGroup(pid, "Vip")).toBe(false);
+  expect(c.act.addToGroup(pid, "Vip")).toBe("");
+  clock.ms += 1000 * 3_600_000;
+  expect(c.perms.inGroup(pid, "Vip")).toBe(true);
+  expect(c.act.removeFromGroup(pid, "Vip")).toBe("");
+  expect([c.perms.groups(pid), c.act.removeFromGroup(pid, "Vip")]).toEqual([["Default"], `${id} is not in Vip.`]);
+  // What cannot be done is said, never thrown.
+  expect([c.act.addToGroup(pid, "Nobody"), c.act.addToGroup(pid, "Vip", -1), c.act.addToGroup(424242, "Vip")]).toEqual([
+    "There is no group Nobody.",
+    "Hours are more than none and at most a hundred years.",
+    "No survivor with an ID has that pid.",
+  ]);
+  expect(typeof c.act.addToGroup(pid, null as unknown as string)).toBe("string");
+});
+
+test("a module cannot put a survivor in a group of the map's rank", () => {
+  const { h, bob, pid, c } = shop();
+  h.client(bob)!.signed = true;
+  for (const line of ["Permissions.AddGroup Owners", "Permissions.Rank Owners map", "Permissions.AddGroup Mods", "Permissions.Rank Mods staff"]) h.host.exec(line);
+  expect(c.act.addToGroup(pid, "Owners")).toBe("That needs the map rank.");
+  expect([c.act.addToGroup(pid, "Mods"), c.act.addToGroup(pid, "Admins"), c.perms.inGroup(pid, "Owners")]).toEqual(["", "", false]);
+  h.host.exec("Permissions.Add bob Owners");
+  expect(c.act.removeFromGroup(pid, "Owners")).toBe("That needs the map rank.");
+  expect(c.perms.inGroup(pid, "Owners")).toBe(true);
+});
+
+test("a module hears that a survivor's groups changed", () => {
+  const { h, pid, id, c, m } = shop();
+  h.host.exec("Permissions.AddGroup Vip");
+  c.act.addToGroup(pid, "Vip", 1);
+  c.act.removeFromGroup(pid, "vip");
+  h.run(100);
+  expect(m.heard.lines).toEqual(['perm.changed: {"account":"","group":"Vip"}', `perm.changed: {"account":"${id}","group":"Vip"}`, `perm.changed: {"account":"${id}","group":"Vip"}`]);
+});
+
+test("a module's change is an act under the module's name", () => {
+  const { h, pid, id, c } = shop();
+  h.host.exec("Permissions.AddGroup Vip");
+  c.act.addToGroup(pid, "Vip", 2);
+  c.act.removeFromGroup(pid, "Vip");
+  // A refused change is no act.
+  c.act.addToGroup(pid, "Nobody");
+  const changes = h.host.acts.recent().filter((a) => a.kind === "change" && a.name !== "(operator)").map((a) => [a.name, a.via, a.rank, a.what]);
+  expect(changes).toEqual([
+    ["(shop)", "module", RANK_ADMIN, `Permissions.AddTimed ${id} Vip 2 0`],
+    ["(shop)", "module", RANK_ADMIN, `Permissions.Remove ${id} Vip`],
+  ]);
+});
+
+test("a command's caller and the survivors online carry their IDs", () => {
+  const m = listener("who", [], (c) => c.command({ name: "whoami", usage: "", help: "Say who ran it.", admin: false, run: (by) => `${by.name} ${by.pid} ${by.id || "-"}` }));
+  const { h, ada } = camp({ host: { modules: [m.def], ...quiet } });
+  const bob = survivor(h, "bob", { cheats: false });
+  const [a, b] = [record(h, ada), record(h, bob)];
+  expect(idText(b)).toMatch(/^\d{17}$/);
+  expect([h.say(bob, "whoami"), h.host.exec("whoami")]).toEqual([[`bob ${b.pid} ${idText(b)}`], "(operator) 0 -"]);
+  expect(m.heard.context!.world.online()).toEqual([
+    { pid: a.pid, id: idText(a), name: "ada" },
+    { pid: b.pid, id: idText(b), name: "bob" },
+  ]);
 });

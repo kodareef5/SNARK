@@ -27,7 +27,9 @@ export type PermissionsRequest =
   | { readonly type: "change"; readonly op: GroupChange }
   /** An addMember with `all` holds on every world; without it, the caller puts its own world in. */
   | { readonly type: "member"; readonly who: Who; readonly change: MemberChange; readonly everyWorld: boolean }
-  | { readonly type: "list"; readonly listing: PermissionsListing };
+  | { readonly type: "list"; readonly listing: PermissionsListing }
+  /** Issues a survivor's own password, or with `clear` takes it away. */
+  | { readonly type: "password"; readonly who: Who; readonly clear: boolean };
 
 export type PermissionsRead =
   | { readonly ok: true; readonly command: PermissionsCommand; readonly request: PermissionsRequest }
@@ -66,6 +68,7 @@ export const PERMISSIONS_COMMANDS: readonly PermissionsCommand[] = [
   command("GroupPermissions", "<Group>", "Lists a group's permissions."),
   command("ListGroups", "", "Lists every group."),
   command("Rank", `<Group> <${RANK_WORDS}>`, "Sets a group's rank: who its members are and who may change it."),
+  command("Password", "<ID or name> [clear]", "Issues a survivor's own password, shown once at the server's terminal; clear takes it away."),
 ];
 
 const BY_NAME: ReadonlyMap<string, PermissionsCommand> = new Map(PERMISSIONS_COMMANDS.map((c) => [c.name.toLowerCase(), c]));
@@ -91,6 +94,11 @@ export function readPermissions(name: string, words: readonly string[]): Permiss
   let everyWorld = false;
   if (cmd.usage.endsWith("[all]") && args.length === base + 1 && args[base]!.toLowerCase() === "all") {
     everyWorld = true;
+    args = args.slice(0, base);
+  }
+  let clear = false;
+  if (cmd.usage.endsWith("[clear]") && args.length === base + 1 && args[base]!.toLowerCase() === "clear") {
+    clear = true;
     args = args.slice(0, base);
   }
   if (args.length < base) return no("Too few words");
@@ -140,6 +148,8 @@ export function readPermissions(name: string, words: readonly string[]): Permiss
       return yes({ type: "list", listing: { of: "permissions", group: a } });
     case "listgroups":
       return yes({ type: "list", listing: { of: "groups" } });
+    case "password":
+      return yes({ type: "password", who: survivor, clear });
     default: {
       const rank = rankNamed(b);
       if (rank < 0) return no(`A rank is ${RANK_NAMES.join(", ")}`);

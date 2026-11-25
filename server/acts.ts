@@ -61,13 +61,14 @@ export class Acts {
   private readonly ring: Act[] = [];
   /** Where the next kept act goes once the ring is full. */
   private head = 0;
-  /** The count of a world with no save, which has no journal to number its acts. */
-  private seq = 0;
+  /** The count of a world with no save, which has no journal to number its acts. It starts at the clock, so it never goes back over a restart. */
+  private seq: number;
   /** Each actor object an act was written for, so a page's request can tell whether its handler logged anything. */
   private readonly wrote = new WeakSet<Actor>();
 
   constructor(ctx: ActsContext) {
     this.ctx = ctx;
+    this.seq = Math.floor(ctx.wall());
     this.refill();
   }
 

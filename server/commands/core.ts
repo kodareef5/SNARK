@@ -7,7 +7,8 @@ import { formatHour, hourOfDay, offsetForHour } from "../../shared/sim/clock.ts"
 import { latLonText, latOf, lonOf } from "../../shared/world/coords.ts";
 import type { Console, ConsoleCommand } from "../console.ts";
 import { raise } from "../creative.ts";
-import { RANK_CLUSTER, RANK_MAP, RANK_NAMES, RANK_STAFF } from "../../shared/ranks.ts";
+import { RANK_CLUSTER, RANK_MAP, RANK_NAMES, RANK_OPEN, RANK_STAFF } from "../../shared/ranks.ts";
+import { DUMMY_HASH, passwordHash, sameHash } from "../permissions/secrets.ts";
 import { sessionActor } from "../acts.ts";
 import { idText } from "../survivor-ids.ts";
 
@@ -110,29 +111,46 @@ export function addCoreCommands(con: Console): void {
       run(ctx, args) {
         const c = ctx.client;
         if (!c) return "the operator already has cheats";
-        const { adminPassword: map, clusterPassword: cluster } = ctx.host;
+        const { adminPassword: map, clusterPassword: cluster, permissions } = ctx.host;
         // The highest rank this world has a password for. Cheats a development server gives without one stand at staff rank.
         const top = cluster !== null ? RANK_CLUSTER : map !== null ? RANK_MAP : RANK_STAFF;
-        if (c.admin && (top === RANK_STAFF || c.rank >= top)) return "cheats are already enabled";
-        if (top === RANK_STAFF && !ctx.host.dev) return "cheats are disabled on this server";
+        const subject = ctx.host.subjectOf(c);
+        const own = subject ? permissions.secretOf(subject.id) : "";
+        if (c.admin && (top === RANK_STAFF || c.rank >= top) && (own === "" || c.signed)) return "cheats are already enabled";
+        if (top === RANK_STAFF && !ctx.host.dev && own === "") return "cheats are disabled on this server";
         const guesses = ctx.host.game.sessions.cheatGuesses;
         const who = c.conn.address ?? c.name;
         const tick = ctx.host.world.tick;
         const wait = guesses.wait(who, tick);
         if (wait > 0) return `too many wrong passwords: wait ${Math.ceil(wait / TICK_RATE)} s`;
-        // Both are compared whatever the first gave, so the time taken does not say which matched.
+        // All three are compared whatever the others gave, so the time taken does not say which matched, nor whether the survivor has a password.
         const asCluster = cluster !== null && sameSecret(args[0] ?? "", cluster);
         const asMap = map !== null && sameSecret(args[0] ?? "", map);
-        const rank = asCluster ? RANK_CLUSTER : asMap ? RANK_MAP : top === RANK_STAFF ? RANK_STAFF : -1;
-        if (rank < 0) {
+        const given = passwordHash(args.join(" "));
+        const asOwn = sameHash(given, own || DUMMY_HASH) && own !== "";
+        const rank = asCluster ? RANK_CLUSTER : asMap ? RANK_MAP : top === RANK_STAFF && ctx.host.dev ? RANK_STAFF : -1;
+        if (rank < 0 && !asOwn) {
+          // A password replaced or cleared is not a guess: an open page may still be sending it.
+          if (permissions.retired(given)) return "that password was replaced or cleared";
           guesses.wrong(who, tick);
           if (++c.cheatAttempts >= CHEAT_GUESSES) ctx.host.game.sessions.reject(c, REJECT_DENIED);
           return WRONG_PASSWORD;
         }
-        // Only the highest password there is forgives the count: else a map admin could clear it between guesses at the cluster's.
-        if (rank === top) guesses.right(who);
-        raise(ctx.host.bus, c, rank, true);
-        if (rank > RANK_STAFF) ctx.host.acts.write(sessionActor(c, ctx.host.records), `enablecheats with the ${asCluster ? "cluster's" : "map's"} password`, "sign-in");
+        const was = { admin: c.admin, rank: c.rank };
+        if (rank >= 0) raise(ctx.host.bus, c, rank, true);
+        let groups = RANK_OPEN;
+        if (asOwn) {
+          c.signed = true;
+          ctx.host.creative.stand(c);
+          groups = permissions.rankOf(ctx.host.subjectOf(c)!);
+        }
+        // Only a sign-in that reached the highest host password there is forgives the count: else a map admin could clear it between guesses at the cluster's.
+        if (Math.max(rank, groups) >= (cluster !== null ? RANK_CLUSTER : map !== null ? RANK_MAP : RANK_OPEN)) guesses.right(who);
+        const actor = sessionActor(c, ctx.host.records);
+        if (rank > RANK_STAFF) ctx.host.acts.write(actor, `enablecheats with the ${asCluster ? "cluster's" : "map's"} password`, "sign-in");
+        if (asOwn) ctx.host.acts.write(actor, "enablecheats with their own password", "sign-in");
+        const gained = c.admin !== was.admin || c.rank > was.rank;
+        if (asOwn && !gained && groups < RANK_STAFF) return "signed in, but no group of yours counts on this map";
         return "cheats enabled";
       },
     },

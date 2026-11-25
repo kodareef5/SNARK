@@ -1,13 +1,14 @@
 // The admin pages' one gate: the sound board and /admin/. A development server opens them to anyone it lets in, which is
 // this machine only unless asked otherwise; any other server only to a browser that gives the map's or the cluster's
-// password, the ones `enablecheats` takes, as the password of HTTP's basic sign-in, with wrong guesses counted as that
-// command counts them.
+// password, the ones `enablecheats` takes, as the password of HTTP's basic sign-in, or a survivor's name or ID with their
+// own password where their groups make them an admin, with wrong guesses counted as that command counts them.
 
 import { posix } from "node:path";
-import { RANK_CLUSTER, RANK_MAP, RANK_STAFF } from "../../shared/ranks.ts";
+import { RANK_ADMIN, RANK_CLUSTER, RANK_MAP, RANK_OPEN, RANK_STAFF } from "../../shared/ranks.ts";
 import { PAGE_ACTOR, type Actor } from "../acts.ts";
 import { sameSecret } from "../commands/core.ts";
 import type { Guesses } from "../guesses.ts";
+import { DUMMY_HASH, passwordHash, sameHash } from "../permissions/secrets.ts";
 import { NAME as SURVIVOR_NAME } from "../sessions.ts";
 
 /** Not fatal: bytes that are not UTF-8 read as replacement letters, which no password is, so they are a wrong guess. */
@@ -23,6 +24,26 @@ export interface AdminGate {
   cluster?: string | null;
   /** Told of the actor of each request that passed. */
   passed?: (by: Actor) => void;
+  /** Survivors' own passwords (server/permissions/secrets.ts), taken with a survivor's name or ID. */
+  staff?: StaffPasswords;
+}
+
+/** A survivor as the gate weighs their own password: the hash of it ("" for none), and the rank their groups give signed in. */
+export interface StaffSurvivor {
+  readonly name: string;
+  readonly id: string;
+  readonly pid: number;
+  readonly hash: string;
+  readonly rank: number;
+}
+
+export interface StaffPasswords {
+  /** Whether any survivor has a password. */
+  any(): boolean;
+  /** The survivor a name on this world or an ID names, or null. */
+  find(user: string): StaffSurvivor | null;
+  /** Whether a hash is of a password replaced or cleared within the last day. */
+  retired(hash: string): boolean;
 }
 
 /** Who a development server's open pages act as. */
@@ -41,7 +62,8 @@ export function refused(req: Request, who: string, gate: AdminGate): Response | 
   // A development server's open pages manage nothing: they act at staff rank, with cheats only.
   if (gate.dev) return pass(req, gate, { name: DEVELOPMENT, id: "", pid: 0, rank: RANK_STAFF, via: "page", from: who });
   const cluster = gate.cluster ?? null;
-  if (gate.password === null && cluster === null) return new Response("the admin pages open on a development server, or where ServerAdminPassword or ClusterAdminPassword is set", { status: 404 });
+  const staff = gate.staff ?? null;
+  if (gate.password === null && cluster === null && !staff?.any()) return new Response("the admin pages open on a development server, where ServerAdminPassword or ClusterAdminPassword is set, or once a survivor is issued a password", { status: 404 });
   const wait = gate.guesses.wait(who, gate.tick());
   if (wait > 0) return new Response("too many wrong passwords: wait a while", { status: 429 });
   const auth = /^Basic (.+)$/.exec(req.headers.get("authorization") ?? "");
@@ -53,20 +75,29 @@ export function refused(req: Request, who: string, gate: AdminGate): Response | 
     given = null;
   }
   const realm = gate.world === undefined ? "SNARK admin" : `SNARK admin world ${gate.world}`;
-  const ask = new Response("the admin pages ask for the server's admin password (any name will do)", { status: 401, headers: { "www-authenticate": `Basic realm="${realm}", charset="UTF-8"` } });
+  const ask = new Response("the admin pages ask for the server's admin password with any name, or a survivor's name or ID with their own password", { status: 401, headers: { "www-authenticate": `Basic realm="${realm}", charset="UTF-8"` } });
   if (given === null) return ask;
   const colon = given.indexOf(":");
   const [typed, secret] = [colon < 0 ? "" : given.slice(0, colon), given.slice(colon + 1)];
-  // Both are compared whatever the first gave, so the time taken does not say which matched.
+  // All are compared whatever the others gave, so the time taken says neither which matched nor whether the name has a password.
   const asCluster = cluster !== null && sameSecret(secret, cluster);
   const asMap = gate.password !== null && sameSecret(secret, gate.password);
+  const hash = staff ? passwordHash(secret) : "";
+  const found = staff?.find(typed) ?? null;
+  const asOwn = staff !== null && sameHash(hash, found?.hash || DUMMY_HASH) && found !== null && found.hash !== "" && found.rank >= RANK_ADMIN;
+  // Only the highest password there is forgives the count: else a map admin could clear it between guesses at the cluster's.
+  const top = cluster !== null ? RANK_CLUSTER : gate.password !== null ? RANK_MAP : RANK_OPEN;
+  if (!asCluster && !asMap && asOwn && found !== null) {
+    if (found.rank >= top) gate.guesses.right(who);
+    return pass(req, gate, { name: found.name, id: found.id, pid: found.pid, rank: found.rank, via: "page", from: who });
+  }
   if (!asCluster && !asMap) {
-    gate.guesses.wrong(who, gate.tick());
+    // A password replaced or cleared is not a guess: an open page goes on sending it every few seconds.
+    if (!staff?.retired(hash)) gate.guesses.wrong(who, gate.tick());
     return ask;
   }
   const rank = asCluster ? RANK_CLUSTER : RANK_MAP;
-  // Only the highest password there is forgives the count: else a map admin could clear it between guesses at the cluster's.
-  if (rank === (cluster !== null ? RANK_CLUSTER : RANK_MAP)) gate.guesses.right(who);
+  if (rank >= top) gate.guesses.right(who);
   // Round brackets are in no survivor's name, so a typed name can never pass as a survivor's.
   const name = SURVIVOR_NAME.test(typed) ? `(${typed})` : asCluster ? "(cluster password)" : "(map password)";
   return pass(req, gate, { name, id: "", pid: 0, rank, via: "page", from: who });

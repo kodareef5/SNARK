@@ -223,10 +223,13 @@ export interface RuleLook {
   staffRank(id: string): number;
 }
 
-/** The world a membership is kept for: a cluster group's is every world, and a staff group's made below cluster rank is the actor's. */
+/**
+ * The world a membership is kept for. An open group's is every world, as ArkApi's one database gave, and so is a cluster
+ * group's. A staff group's made below cluster rank is the actor's own, and a cluster-rank actor says which.
+ */
 export function memberWorld(actor: PermissionActor, groupRank: number, world: number | undefined): number {
-  if (groupRank >= RANK_CLUSTER) return 0;
-  if (groupRank >= RANK_STAFF && actor.rank < RANK_CLUSTER) return actor.world;
+  if (groupRank < RANK_STAFF || groupRank >= RANK_CLUSTER) return 0;
+  if (actor.rank < RANK_CLUSTER) return actor.world;
   return world ?? 0;
 }
 
