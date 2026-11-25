@@ -24,6 +24,7 @@ import type { ServerWorld } from "./world.ts";
 import { PART, type TickParts } from "./admin/parts.ts";
 
 /** The least snapshot budget a client may ask for, in bytes. The quarter of it that a crowd of players leaves the rest holds any one create. */
+// A survivor's create is at most 90 bytes (24-letter name, 28-byte look); a 72-byte look and wardrobe make it about 165: then 4 x 165 = 660.
 const SNAPSHOT_BYTES_MIN = 600;
 /**
  * Chunk bytes a client may have on the way. On one stream everything sent before a snapshot it has read has reached it,
@@ -400,7 +401,7 @@ export class Replication {
       vehicle ? packVehicleSystems(ents.fuel[v]!, vehicle.spec.fuelCapacity, ents.vehicleEngineCondition[v]!, ents.vehicleRotorCondition[v]!, ents.vehicleEngineOn[v] !== 0) : 0,
       vehicle ? packVehicleQuaternionPair(ents.vehicleQx[v]!, ents.vehicleQy[v]!) : 0,
       vehicle ? packVehicleQuaternionPair(ents.vehicleQz[v]!, ents.vehicleQw[v]!) : 0,
-      vehicle ? packBoatWater(ents.vehicleHullCondition[v]!, ents.vehicleFlooding[v]!) : 0, ents.emote[i]!, ents.react[i]!, this.world.history.strideOf(i, this.world.tick, this.world));
+      vehicle ? packBoatWater(ents.vehicleHullCondition[v]!, ents.vehicleFlooding[v]!) : 0, ents.emote[i]!, ents.react[i]!, this.world.history.strideOf(i, this.world.tick, this.world), ents.identityRev[i]!);
     view.urgent[view.count - 1] = (ents.flags[i]! & F_PLAYER) !== 0 || ents.driven[i] !== 0 ? 1 : 0;
   }
 

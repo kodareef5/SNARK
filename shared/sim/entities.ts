@@ -207,10 +207,10 @@ export class EntityStore {
   seat: Uint32Array;
   span: Uint32Array;
   grown: Uint32Array;
-  /** Also sent when it enters a view. `rev` changes whenever any of it does. */
+  /** Also sent when it enters a view. `rev` changes whenever either does. */
   level: Uint16Array;
   colors: Uint8Array;
-  /** Only for the slots that have one, as few do: a name, a survivor's look (shared/anim/look.ts), and gear. */
+  /** Only for the slots that have one, as few do: a name and a survivor's look (shared/anim/look.ts), which bump `identityRev`, and gear. */
   readonly names = new Map<number, string>();
   readonly looks = new Map<number, Uint8Array>();
   /** Content indices: GEAR_HELD, then one per armor slot. Replaced, never changed in place. */
@@ -220,7 +220,12 @@ export class EntityStore {
    * A flashlight's is kept on its owner's books and not sent, as nothing draws it until there are local lights (D436).
    */
   on: Uint8Array;
-  rev: Uint8Array;
+  /**
+   * Appearance revisions, each bumped by a real change only. `identityRev` is the name and the look, which seldom change and
+   * a snapshot does not resend while it holds; `rev` is the rest: gear, its on bit, level, colours, team, seat and growth.
+   */
+  identityRev: Uint16Array;
+  rev: Uint16Array;
 
   /** Chunk the entity is linked into, or -1. */
   chunk: Int32Array;
@@ -348,7 +353,8 @@ export class EntityStore {
     this.level = new Uint16Array(cap);
     this.colors = new Uint8Array(cap * 6);
     this.on = new Uint8Array(cap);
-    this.rev = new Uint8Array(cap);
+    this.identityRev = new Uint16Array(cap);
+    this.rev = new Uint16Array(cap);
     this.chunk = new Int32Array(cap).fill(-1);
     this.chunkHead = new Int32Array(chunkCount(dims)).fill(-1);
     this.next = new Int32Array(cap).fill(-1);
@@ -446,7 +452,8 @@ export class EntityStore {
     this.looks.delete(i);
     this.gears.delete(i);
     this.on[i] = 0;
-    this.rev[i] = (this.rev[i]! + 1) & 15;
+    this.identityRev[i]++;
+    this.rev[i]++;
     this.link(i, chunkAt(this.dims, x, z));
     return i;
   }
@@ -521,6 +528,7 @@ export class EntityStore {
     this.level = wider(this.level, cap);
     this.colors = wider(this.colors, cap * 6);
     this.on = wider(this.on, cap);
+    this.identityRev = wider(this.identityRev, cap);
     this.rev = wider(this.rev, cap);
     this.chunk = wider(this.chunk, cap, -1);
     this.next = wider(this.next, cap, -1);
@@ -622,25 +630,28 @@ export class EntityStore {
     this.fuel[v] = 0;
   }
 
-  /** The setters bump `rev` only on a change, and clients that already see the entity are then sent it again. */
+  /** The setters bump a revision only on a change, and clients that already see the entity are then sent it again. */
   setLook(i: number, level: number, colors: ArrayLike<number> | null, name: string): void {
     if (level > 65535) level = 65535;
     // 24 characters is at most 72 bytes, which is what a snapshot will carry.
     if (name.length > 24) name = name.slice(0, 24);
-    let same = this.level[i] === level && (this.names.get(i) ?? "") === name;
+    let same = this.level[i] === level;
     for (let k = 0; k < 6 && same; k++) same = this.colors[i * 6 + k] === (colors ? colors[k]! : 0);
-    if (same) return;
-    this.level[i] = level;
-    for (let k = 0; k < 6; k++) this.colors[i * 6 + k] = colors ? colors[k]! : 0;
+    if (!same) {
+      this.level[i] = level;
+      for (let k = 0; k < 6; k++) this.colors[i * 6 + k] = colors ? colors[k]! : 0;
+      this.rev[i]++;
+    }
+    if ((this.names.get(i) ?? "") === name) return;
     if (name === "") this.names.delete(i);
     else this.names.set(i, name);
-    this.rev[i] = (this.rev[i]! + 1) & 15;
+    this.identityRev[i]++;
   }
 
   setTeam(i: number, team: number): void {
     if (this.team[i] === team) return;
     this.team[i] = team;
-    this.rev[i] = (this.rev[i]! + 1) & 15;
+    this.rev[i]++;
   }
 
   /** `mount` is an entity index, or -1. */
@@ -651,7 +662,7 @@ export class EntityStore {
     this.seat[i] = mount + 1;
     this.seatSlot[i] = slot;
     this.seatGen[i] = gen;
-    this.rev[i] = (this.rev[i]! + 1) & 15;
+    this.rev[i]++;
   }
 
   /** Both 0 for one that is grown. */
@@ -662,13 +673,22 @@ export class EntityStore {
     if (this.span[i] === span && this.grown[i] === grown) return;
     this.span[i] = span;
     this.grown[i] = grown;
-    this.rev[i] = (this.rev[i]! + 1) & 15;
+    this.rev[i]++;
   }
 
+  /** Keeps a copy, so a caller's array changed later is not taken for this one. */
   setBodyLook(i: number, look: Uint8Array | null): void {
-    if (look) this.looks.set(i, look);
-    else this.looks.delete(i);
-    this.rev[i] = (this.rev[i]! + 1) & 15;
+    const old = this.looks.get(i);
+    if (!look) {
+      if (!old) return;
+      this.looks.delete(i);
+    } else {
+      let same = old !== undefined && old.length === look.length;
+      for (let k = 0; k < look.length && same; k++) same = old![k] === look[k];
+      if (same) return;
+      this.looks.set(i, look.slice());
+    }
+    this.identityRev[i]++;
   }
 
   setGear(i: number, gear: ArrayLike<number>): void {
@@ -677,14 +697,14 @@ export class EntityStore {
     for (let k = 0; k < GEAR_COUNT && same; k++) same = old![k] === gear[k];
     if (same) return;
     this.gears.set(i, Uint16Array.from({ length: GEAR_COUNT }, (_, k) => gear[k] ?? 0));
-    this.rev[i] = (this.rev[i]! + 1) & 15;
+    this.rev[i]++;
   }
 
   /** Whether the laser in hand is on. A change is sent as a new create, as the gear is. */
   setOn(i: number, on: boolean): void {
     if ((this.on[i] !== 0) === on) return;
     this.on[i] = on ? 1 : 0;
-    this.rev[i] = (this.rev[i]! + 1) & 15;
+    this.rev[i]++;
   }
 
   /** Brings `anim[i]` up to date. Call it after changing velocity, facing, pitch, mode, stance or act. */

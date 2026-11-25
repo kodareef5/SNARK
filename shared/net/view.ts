@@ -7,8 +7,9 @@
 //     op 2 bits: 0 update, 1 create, 2 remove, 3 remove because it died
 //     create: kind varint, generation 12 bits, x 22, y 20, z 22, yaw 10, flags 4, pose state 32, [cues? 1][31], [emote? 1][29], [stride? 1][8], [reaction? 1][32],
 //             then its appearance:
-//             revision 4, level varint, [colours? 1][6 x 8], [name? 1][string], [look? 1][28 x 8], [gear? 1][6 x 16, on 1],
+//             kept 1, level varint, [colours? 1][6 x 8], unless kept: [name? 1][string], [look? 1][28 x 8]; then [gear? 1][6 x 16, on 1],
 //             [team? 1][varint], [seat? 1][varint], [young? 1][span 32, grown 32]
+//             `kept` says the name and look are the baseline's: legal only for an id the baseline has at the same generation.
 //             then [vehicle? 1][its parts], the parts a vehicle's: pose 32, wheel 16, ride 32, doors 32, drive 32, rotor 32, systems 32, attitude 64, water 16
 //             (shared/sim/vehicle-body.ts packs each). A seat is the entity, its slot u8 and the entity's generation 12, so
 //             nothing is drawn on a recycled one.
@@ -22,7 +23,8 @@
 // draw its dot. A flashlight's on is not sent: nothing draws it until there are local lights (D436), and drawing it will
 // need the attachment's kind on the wire, which one bit cannot say beside the laser's.
 //
-// Appearance is sent only on create. A change bumps the entity's revision, and the next delta then sends a create for it again.
+// Appearance is sent only on create. A change bumps one of the entity's two revisions, and the next delta then sends a create
+// for it again: with its name and look only if its identity revision moved. Neither revision is sent.
 // Only a remove is sent whatever it costs. Every other op waits its turn when a snapshot is full.
 //
 // The baseline is a round trip old, and the client has had newer snapshots since. A body whose op had to wait is in the new
@@ -109,7 +111,7 @@ function readVehicleParts(r: BitReader, base: SentView | null, i: number, out: n
   for (let p = 0; p < VEHICLE_PART_BITS.length; p++) if (r.bool()) out[p] = r.bits(VEHICLE_PART_BITS[p]!) >>> 0;
 }
 const LOOK_MASK = (1 << ANIM_LOOK_BITS) - 1;
-const CREATE_BITS = 1 + 24 + 2 + 24 + 12 + 64 + 10 + 4 + ANIM_BITS + 1 + 4 + 16 + 4 + 48 + 3;
+const CREATE_BITS = 1 + 24 + 2 + 24 + 12 + 64 + 10 + 4 + ANIM_BITS + 1 + 1 + 16 + 4 + 48 + 3;
 /** In bytes. */
 export const MAX_NAME_LENGTH = 72;
 
@@ -134,11 +136,11 @@ export interface Looks {
   readonly died?: Uint16Array;
 }
 
-/** An upper bound on the bits a create for entity `id` takes. */
-function createBits(v: Looks, id: number): number {
-  const name = v.names.get(id) ?? "";
+/** An upper bound on the bits a create for entity `id` takes, its name and look left out where `kept`. */
+function createBits(v: Looks, id: number, kept: boolean): number {
+  const name = kept ? "" : (v.names.get(id) ?? "");
   // The optional fields: a look, gear, a team, a seat, an age.
-  const look = (v.looks.has(id) ? LOOK_BYTES * 8 : 0) + (v.gears.has(id) ? GEAR_COUNT * 16 + 1 : 0) + (v.team[id] !== 0 ? 40 : 0) + (v.seat[id] !== 0 ? 60 : 0) + (v.span[id] !== 0 || v.grown[id] !== 0 ? 64 : 0);
+  const look = (v.looks.has(id) && !kept ? LOOK_BYTES * 8 : 0) + (v.gears.has(id) ? GEAR_COUNT * 16 + 1 : 0) + (v.team[id] !== 0 ? 40 : 0) + (v.seat[id] !== 0 ? 60 : 0) + (v.span[id] !== 0 || v.grown[id] !== 0 ? 64 : 0);
   if (name === "") return CREATE_BITS + look;
   let bytes = 1;
   for (let i = 0; i < name.length; i++) {
@@ -208,12 +210,13 @@ export class SentView {
   vehicleAttitudeA = new Uint32Array(VIEW_START);
   vehicleAttitudeB = new Uint32Array(VIEW_START);
   vehicleWater = new Uint16Array(VIEW_START);
-  /** Appearance revision, 4 bits. A change makes the next delta send a create. */
-  rev = new Uint8Array(VIEW_START);
+  /** Server side, the appearance revisions (EntityStore.rev and identityRev). A change makes the next delta send a create. Not sent. */
+  rev = new Uint16Array(VIEW_START);
+  identityRev = new Uint16Array(VIEW_START);
   /** Not sent. 1 for an entity whose changes go before the others when a snapshot cannot carry them all: a player, or a mount one drives. */
   urgent = new Uint8Array(VIEW_START);
 
-  push(id: number, gen: number, kind: number, qx: number, qy: number, qz: number, yaw: number, flags: number, anim: number, rev = 0, cue = 0, vehiclePose = 0, vehicleWheel = 0, vehicleRide = 0, vehicleDoors = 0, vehicleDrive = 0, vehicleRotor = 0, vehicleSystems = 0, vehicleAttitudeA = 0, vehicleAttitudeB = 0, vehicleWater = 0, emote = 0, react = 0, stride = 0): boolean {
+  push(id: number, gen: number, kind: number, qx: number, qy: number, qz: number, yaw: number, flags: number, anim: number, rev = 0, cue = 0, vehiclePose = 0, vehicleWheel = 0, vehicleRide = 0, vehicleDoors = 0, vehicleDrive = 0, vehicleRotor = 0, vehicleSystems = 0, vehicleAttitudeA = 0, vehicleAttitudeB = 0, vehicleWater = 0, emote = 0, react = 0, stride = 0, identityRev = 0): boolean {
     const n = this.count;
     if (n === this.cap && !this.grow()) return false;
     this.id[n] = id;
@@ -240,12 +243,13 @@ export class SentView {
     this.vehicleAttitudeB[n] = vehicleAttitudeB;
     this.vehicleWater[n] = vehicleWater;
     this.rev[n] = rev;
+    this.identityRev[n] = identityRev;
     this.count = n + 1;
     return true;
   }
 
   copyFrom(o: SentView, i: number): boolean {
-    return this.push(o.id[i]!, o.gen[i]!, o.kind[i]!, o.qx[i]!, o.qy[i]!, o.qz[i]!, o.yaw[i]!, o.flags[i]!, o.anim[i]!, o.rev[i]!, o.cue[i]!, o.vehiclePose[i]!, o.vehicleWheel[i]!, o.vehicleRide[i]!, o.vehicleDoors[i]!, o.vehicleDrive[i]!, o.vehicleRotor[i]!, o.vehicleSystems[i]!, o.vehicleAttitudeA[i]!, o.vehicleAttitudeB[i]!, o.vehicleWater[i]!, o.emote[i]!, o.react[i]!, o.stride[i]!);
+    return this.push(o.id[i]!, o.gen[i]!, o.kind[i]!, o.qx[i]!, o.qy[i]!, o.qz[i]!, o.yaw[i]!, o.flags[i]!, o.anim[i]!, o.rev[i]!, o.cue[i]!, o.vehiclePose[i]!, o.vehicleWheel[i]!, o.vehicleRide[i]!, o.vehicleDoors[i]!, o.vehicleDrive[i]!, o.vehicleRotor[i]!, o.vehicleSystems[i]!, o.vehicleAttitudeA[i]!, o.vehicleAttitudeB[i]!, o.vehicleWater[i]!, o.emote[i]!, o.react[i]!, o.stride[i]!, o.identityRev[i]!);
   }
 
   /** Doubles the columns. False when they are at MAX_VIEW. */
@@ -276,6 +280,7 @@ export class SentView {
     this.vehicleAttitudeB = wider(this.vehicleAttitudeB, cap);
     this.vehicleWater = wider(this.vehicleWater, cap);
     this.rev = wider(this.rev, cap);
+    this.identityRev = wider(this.identityRev, cap);
     this.urgent = wider(this.urgent, cap);
     return true;
   }
@@ -552,6 +557,8 @@ const opTold = new Int16Array(MAX_OPS);
 const opId = new Uint32Array(MAX_OPS);
 /** 1 for a remove of a body that died. */
 const opDied = new Uint8Array(MAX_OPS);
+/** 1 for a replace that keeps the baseline's name and look. */
+const opKept = new Uint8Array(MAX_OPS);
 /** Positions in the op list of the ops that may be deferred: those of urgent entities, and the rest. */
 const urgIndex = new Int16Array(MAX_VIEW * 2);
 const optIndex = new Int16Array(MAX_VIEW * 2);
@@ -604,7 +611,7 @@ function same(ring: ViewRing<SentView>, told: Told, s: number, v: SentView, j: n
   const was = ring.find(told.at[s]!);
   if (!was) return false;
   const i = told.ix[s]!;
-  return was.qx[i] === v.qx[j] && was.qz[i] === v.qz[j] && was.qy[i] === v.qy[j] && was.yaw[i] === v.yaw[j] && was.anim[i] === v.anim[j] && was.cue[i] === v.cue[j] && was.emote[i] === v.emote[j] && was.react[i] === v.react[j] && was.stride[i] === v.stride[j] && was.vehiclePose[i] === v.vehiclePose[j] && was.vehicleWheel[i] === v.vehicleWheel[j] && was.vehicleRide[i] === v.vehicleRide[j] && was.vehicleDrive[i] === v.vehicleDrive[j] && was.vehicleRotor[i] === v.vehicleRotor[j] && was.vehicleSystems[i] === v.vehicleSystems[j] && was.vehicleAttitudeA[i] === v.vehicleAttitudeA[j] && was.vehicleAttitudeB[i] === v.vehicleAttitudeB[j] && was.vehicleWater[i] === v.vehicleWater[j] && was.vehicleDoors[i] === v.vehicleDoors[j] && was.flags[i] === v.flags[j] && was.gen[i] === v.gen[j] && was.rev[i] === v.rev[j];
+  return was.qx[i] === v.qx[j] && was.qz[i] === v.qz[j] && was.qy[i] === v.qy[j] && was.yaw[i] === v.yaw[j] && was.anim[i] === v.anim[j] && was.cue[i] === v.cue[j] && was.emote[i] === v.emote[j] && was.react[i] === v.react[j] && was.stride[i] === v.stride[j] && was.vehiclePose[i] === v.vehiclePose[j] && was.vehicleWheel[i] === v.vehicleWheel[j] && was.vehicleRide[i] === v.vehicleRide[j] && was.vehicleDrive[i] === v.vehicleDrive[j] && was.vehicleRotor[i] === v.vehicleRotor[j] && was.vehicleSystems[i] === v.vehicleSystems[j] && was.vehicleAttitudeA[i] === v.vehicleAttitudeA[j] && was.vehicleAttitudeB[i] === v.vehicleAttitudeB[j] && was.vehicleWater[i] === v.vehicleWater[j] && was.vehicleDoors[i] === v.vehicleDoors[j] && was.flags[i] === v.flags[j] && was.gen[i] === v.gen[j] && was.rev[i] === v.rev[j] && was.identityRev[i] === v.identityRev[j];
 }
 
 /**
@@ -739,17 +746,20 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, shared: Sent
       }
     } else if (cid < bid) {
       opKind[n] = K_CREATE;
+      opKept[n] = 0;
       opCur[n] = row;
       opId[n] = cid;
-      bits = createBits(looks, cid) + 1 + (cur.stride[j] ? 8 : 0) + (cur.cue[j] !== 0 ? CUE_BITS : 0) + 1 + (cur.emote[j] !== 0 ? EMOTE_BITS : 0) + 1 + (cur.react[j] !== 0 ? REACT_BITS : 0) + (cur.vehiclePose[j] !== 0 ? VEHICLE_BITS : 0);
+      bits = createBits(looks, cid, false) + 1 + (cur.stride[j] ? 8 : 0) + (cur.cue[j] !== 0 ? CUE_BITS : 0) + 1 + (cur.emote[j] !== 0 ? EMOTE_BITS : 0) + 1 + (cur.react[j] !== 0 ? REACT_BITS : 0) + (cur.vehiclePose[j] !== 0 ? VEHICLE_BITS : 0);
       last = cid + 1;
     } else {
       opBase[n] = i;
       opCur[n] = row;
-      if (base!.gen[i] !== cur.gen[j] || base!.rev[i] !== cur.rev[j]) {
+      if (base!.gen[i] !== cur.gen[j] || base!.rev[i] !== cur.rev[j] || base!.identityRev[i] !== cur.identityRev[j]) {
         // Deferred, it leaves the client the entry it has.
         opKind[n] = K_REPLACE;
-        bits = createBits(looks, cid) + 1 + (cur.stride[j] ? 8 : 0) + (cur.cue[j] !== 0 ? CUE_BITS : 0) + 1 + (cur.emote[j] !== 0 ? EMOTE_BITS : 0) + 1 + (cur.react[j] !== 0 ? REACT_BITS : 0) + (cur.vehiclePose[j] !== 0 ? VEHICLE_BITS : 0);
+        const kept = base!.gen[i] === cur.gen[j] && base!.identityRev[i] === cur.identityRev[j];
+        opKept[n] = kept ? 1 : 0;
+        bits = createBits(looks, cid, kept) + 1 + (cur.stride[j] ? 8 : 0) + (cur.cue[j] !== 0 ? CUE_BITS : 0) + 1 + (cur.emote[j] !== 0 ? EMOTE_BITS : 0) + 1 + (cur.react[j] !== 0 ? REACT_BITS : 0) + (cur.vehiclePose[j] !== 0 ? VEHICLE_BITS : 0);
         last = cid + 1;
       } else {
         const dx = cur.qx[j]! - base!.qx[i]!;
@@ -913,19 +923,22 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, shared: Sent
       if (cur.react[ci] !== 0) w.bits(cur.react[ci]!, REACT_BITS);
       w.bool(cur.vehiclePose[ci] !== 0);
       if (cur.vehiclePose[ci] !== 0) writeVehicleParts(w, VEHICLE_ALL, cur, ci);
-      w.bits(cur.rev[ci]!, 4);
+      const kept = kind === K_REPLACE && opKept[k] === 1;
+      w.bool(kept);
       w.varint(looks.level[id]!);
       const c0 = id * 6;
       const colors = looks.colors;
       const coloured = (colors[c0]! | colors[c0 + 1]! | colors[c0 + 2]! | colors[c0 + 3]! | colors[c0 + 4]! | colors[c0 + 5]!) !== 0;
       w.bool(coloured);
       if (coloured) for (let q = 0; q < 6; q++) w.u8(colors[c0 + q]!);
-      const name = looks.names.get(id) ?? "";
-      w.bool(name !== "");
-      if (name !== "") w.string(name);
-      const look = looks.looks.get(id);
-      w.bool(look !== undefined);
-      if (look) for (let q = 0; q < LOOK_BYTES; q++) w.u8(look[q]!);
+      if (!kept) {
+        const name = looks.names.get(id) ?? "";
+        w.bool(name !== "");
+        if (name !== "") w.string(name);
+        const look = looks.looks.get(id);
+        w.bool(look !== undefined);
+        if (look) for (let q = 0; q < LOOK_BYTES; q++) w.u8(look[q]!);
+      }
       const gear = looks.gears.get(id);
       w.bool(gear !== undefined);
       if (gear) {
@@ -1087,15 +1100,23 @@ export function readViewDelta(r: BitReader, base: EntityView | null, next: Entit
       if (r.bool()) readVehicleParts(r, null, 0, parts);
       else parts.fill(0);
       const [vehiclePose, vehicleWheel, vehicleRide, vehicleDoors, vehicleDrive, vehicleRotor, vehicleSystems, vehicleAttitudeA, vehicleAttitudeB, vehicleWater] = parts;
-      const rev = r.bits(4);
+      const kept = r.bool();
       const level = r.varint();
       if (r.bool()) for (let q = 0; q < 6; q++) scratchColors[q] = r.u8();
       else scratchColors.fill(0);
-      const name = r.bool() ? r.string(MAX_NAME_LENGTH) : "";
+      let name = "";
       let look: Uint8Array | null = null;
-      if (r.bool()) {
-        look = new Uint8Array(LOOK_BYTES);
-        for (let q = 0; q < LOOK_BYTES; q++) look[q] = r.u8();
+      if (kept) {
+        // Only a body the baseline holds, the same one, has a name and look to keep.
+        if (!present || base!.gen[i] !== gen) return false;
+        name = base!.name[i]!;
+        look = base!.look[i]!;
+      } else {
+        if (r.bool()) name = r.string(MAX_NAME_LENGTH);
+        if (r.bool()) {
+          look = new Uint8Array(LOOK_BYTES);
+          for (let q = 0; q < LOOK_BYTES; q++) look[q] = r.u8();
+        }
       }
       let gear: Uint16Array | null = null;
       let on = 0;
@@ -1113,7 +1134,7 @@ export function readViewDelta(r: BitReader, base: EntityView | null, next: Entit
       const grown = young ? r.u32() : 0;
       if (present) i++;
       if (kind > 0xffff || level > 0xffff || !next.push(id, gen, kind, qx, qy, qz, yaw, flags, anim, 0, cue, vehiclePose, vehicleWheel, vehicleRide, vehicleDoors, vehicleDrive, vehicleRotor, vehicleSystems, vehicleAttitudeA, vehicleAttitudeB, vehicleWater, emote, react, stride)) return false;
-      next.appear(rev, level, scratchColors, 0, name, look, gear, on);
+      next.appear(0, level, scratchColors, 0, name, look, gear, on);
       next.belong(team, seat, span, grown, seatSlot, seatGen);
       if (drawn) drawn.copyFrom(next, next.count - 1);
     } else if (op === OP_UPDATE) {

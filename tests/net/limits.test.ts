@@ -107,7 +107,8 @@ test("2,048 bodies that all change their looks in one tick are sent again within
     const v = new SentView();
     for (let id = 0; id < N; id++) {
       // Half of them are new bodies in old slots, and the rest have changed how they look.
-      v.push(id, rev === 0 || id % 2 === 0 ? 1 : 2, 7, 1000 + id, 200, 300, 5, 1, 0, rev === 0 || id % 2 !== 0 ? 0 : 1);
+      const changed = rev === 0 || id % 2 !== 0 ? 0 : 1;
+      v.push(id, rev === 0 || id % 2 === 0 ? 1 : 2, 7, 1000 + id, 200, 300, 5, 1, 0, changed, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, changed);
       v.urgent[id] = player(id) ? 1 : 0;
     }
     return v;
@@ -119,6 +120,8 @@ test("2,048 bodies that all change their looks in one tick are sent again within
     held.appear(0, 0, looks.colors, 0, looks.names.get(id) ?? "", looks.looks.get(id) ?? null, looks.gears.get(id) ?? null);
   }
   const cur = scene(1);
+  // Level 1 marks a body the client was sent again; revisions are not on the wire.
+  looks.level.fill(1);
   // Sent all at once they are 47 KB, more than the server's 16 KB writer holds.
   const whole = new BitWriter(1 << 17);
   writeViewDelta(whole, sent, cur, new SentView(), 1 << 24, 0, looks);
@@ -143,8 +146,10 @@ test("2,048 bodies that all change their looks in one tick are sent again within
     let players = 0;
     let unknown = 0;
     for (let id = 0; id < N; id++) {
-      if (next.gen[id] !== got.gen[id] || next.rev[id] !== got.rev[id]) unknown++;
-      if (got.gen[id] === cur.gen[id] && got.rev[id] === cur.rev[id]) continue;
+      const told = next.gen[id] === cur.gen[id] && next.rev[id] === cur.rev[id] && next.identityRev[id] === cur.identityRev[id];
+      const has = got.gen[id] === cur.gen[id] && got.level[id] === 1;
+      if (next.gen[id] !== got.gen[id] || told !== has) unknown++;
+      if (has) continue;
       left++;
       if (player(id)) players++;
     }
@@ -172,7 +177,7 @@ test("a budget smaller than one create still carries one of each kind a snapshot
   const scene = (rev: number): SentView => {
     const v = new SentView();
     for (let id = 0; id < N; id++) {
-      v.push(id, 1, 7, 1000 + id, 200, 300, 5, 1, 0, rev);
+      v.push(id, 1, 7, 1000 + id, 200, 300, 5, 1, 0, rev, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, rev);
       v.urgent[id] = id < 2 ? 1 : 0;
     }
     return v;
@@ -184,6 +189,8 @@ test("a budget smaller than one create still carries one of each kind a snapshot
     held.appear(0, 0, looks.colors, 0, looks.names.get(id)!, null, null);
   }
   const cur = scene(1);
+  // Level 1 marks a body the client was sent again.
+  looks.level.fill(1);
   let rotate = 0;
   const fresh: number[] = [];
   for (let step = 0; step < 4; step++) {
@@ -195,7 +202,7 @@ test("a budget smaller than one create still carries one of each kind a snapshot
     r.reset(w.bytes());
     const got = new EntityView();
     expect(readViewDelta(r, held, got)).toBe(true);
-    fresh.push(Array.from(got.rev.subarray(0, N)).filter((v) => v === 1).length);
+    fresh.push(Array.from(got.level.subarray(0, N)).filter((v) => v === 1).length);
     sent = next;
     held = got;
   }
