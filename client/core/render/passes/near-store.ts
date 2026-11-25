@@ -73,6 +73,11 @@ const TURN = 16383;
 const TURNS_MOST = 64;
 /** In `blockAt`, a slot with no instance: no block is this. */
 const UNDRAWN = 255;
+/** Metres past its pieces' middles a chunk never laid out is taken to reach, for what its trims stand out beyond them. */
+const UNLAID_PAD = 8;
+/** A chunk never laid out that nothing of could be seen or cast waits, and is laid out ahead within this many metres, nearest first, up to this many pieces a frame. */
+const AHEAD_M = 384;
+const AHEAD_PIECES = 2048;
 /** Numbers a run of cells takes in `runs` (ranges), and in `castRuns` (castChunk). */
 const RUN = 13;
 const CAST_RUN = 5;
@@ -237,8 +242,12 @@ export class NearStore implements Pass {
   readonly finder: RoomFinder;
   /** Per slot of a chunk being laid out, the block it goes in. */
   private blockAt = new Uint8Array(0);
-  /** Per mesh, the mesh its kinds turn into in place (a door's open form, a fire lit), or -1. */
+  /** Per mesh, the mesh its kinds turn into in place (a door's open form, a fire lit), or -1; and turned round, the meshes whose twin a mesh is. */
   private readonly twinOf: Int32Array;
+  private readonly twinsOf = new Map<number, number[]>();
+  /** The meshes a chunk being laid out has instances of, each marked; `cellCounts` is zero for every other. */
+  private readonly used: number[] = [];
+  private readonly usedMark: Uint8Array;
   /** For the chunk being drawn, per cell: 2 where all of it is in view, 1 where some is, and the cascades it casts into; and whether all the chunk is in view. */
   private cellSeen = new Uint8Array(0);
   private cellCasts = new Uint8Array(0);
@@ -307,6 +316,13 @@ export class NearStore implements Pass {
   /** How built pieces are drawn, and what is drawn where they meet. */
   readonly pieces: PieceLooks;
   readonly trims: Trims;
+  /**
+   * Whether a chunk of built pieces never laid out waits until something of it could be seen or cast. Per such chunk, its
+   * table's `shape` and the box round its pieces then, and the chunks waiting this frame.
+   */
+  lazy = true;
+  private readonly unlaid = new Map<number, { table: ChunkTable; shape: number; box: Float64Array }>();
+  private readonly waiting: number[] = [];
   /** Scratch for a chunk being laid out: the yaws its pieces stand at, less their quarter turns, and how many at each. */
   private readonly turns: number[] = [];
   private readonly turnCounts: number[] = [];
@@ -349,6 +365,8 @@ export class NearStore implements Pass {
       const other = reg.opens[k] || reg.lights[k]!;
       if (other !== 0 && this.meshOfKind[k] !== this.meshOfKind[other]) this.twinOf[this.meshOfKind[k]!] = this.meshOfKind[other]!;
     }
+    for (let m = 0; m < table.count; m++) if (this.twinOf[m]! >= 0) (this.twinsOf.get(this.twinOf[m]!) ?? this.twinsOf.set(this.twinOf[m]!, []).get(this.twinOf[m]!)!).push(m);
+    this.usedMark = new Uint8Array(table.count);
     this.pieces = new PieceLooks(reg, this.meshOfKind, this.regionsOfKind, table.count, looks.missing);
     this.plates = new BasePlates(reg);
     this.platable = (kind) => this.meshOfKind[kind] !== looks.missing && this.meshOfKind[kind] !== HIDDEN && this.assets.known(this.meshOfKind[kind]!);
@@ -429,9 +447,12 @@ export class NearStore implements Pass {
     near?.begin(this.now);
     // Instances laid out this frame, which take of what the near city may make in it.
     let laid = 0;
+    const waiting = this.waiting;
+    waiting.length = 0;
 
     // Chunks that no longer exist on this client free their buffers.
     for (const id of this.batches.keys()) if (id >= base && id < base + NODE_BUFFERS && !chunks[id - base]) this.drop(id);
+    if (base === 0) for (const chunk of this.unlaid.keys()) if (!chunks[chunk] || this.batches.has(chunk)) this.unlaid.delete(chunk);
 
     const held = store.held;
     // Each chunk's pieces are found before any chunk is drawn, so that one that left shows what it hid in the chunks
@@ -462,6 +483,10 @@ export class NearStore implements Pass {
       const own = near?.chunk(chunk) ?? null;
       const mesh = own?.mesh ?? null;
       let batch = this.batches.get(id);
+      if (!batch && base === 0 && !mesh && this.lazy && !this.mayShow(cam, t, chunk, x0, z0, meshOf)) {
+        waiting.push(chunk);
+        continue;
+      }
       // A piece that took another kind in place is moved in place; a chunk whose doors have stood a while other than its
       // rooms were found with has them found again. A mesh not yet known has its page asked for while it is near. A chunk
       // whose mesh came, or whose instances are no longer what its table and its mesh ask for, is laid out again the same
@@ -543,7 +568,77 @@ export class NearStore implements Pass {
       const sx = -this.casting.sunAt[0]! * this.zoneStretch, sy = -this.casting.sunAt[1]! * this.zoneStretch, sz = -this.casting.sunAt[2]! * this.zoneStretch;
       this.chunkCasts.push(castFrom, p.casterCount, Math.min(ax, ax + sx), Math.min(ay, ay + sy), Math.min(az, az + sz), Math.max(bx, bx + sx), Math.max(by, by + sy), Math.max(bz, bz + sz));
     }
+    if (waiting.length > 0) laid = this.ahead(cam, store, waiting, laid, meshOf, colorOf);
     near?.end(this.assets.residency, statics!, this.city!, world.hf, this.chunkCells, laid);
+  }
+
+  /**
+   * Whether anything of chunk `chunk`, never laid out, could be seen or cast this frame: the box round its pieces' middles,
+   * each as far round as its mesh reaches and UNLAID_PAD more, tested as a laid chunk's box is. A chunk with a bent piece
+   * is always laid out.
+   */
+  private mayShow(cam: Camera, t: ChunkTable, chunk: number, x0: number, z0: number, meshOf: Uint16Array): boolean {
+    let u = this.unlaid.get(chunk);
+    if (!u) this.unlaid.set(chunk, (u = { table: t, shape: t.shape - 1, box: new Float64Array(7) }));
+    const box = u.box;
+    if (u.table !== t || u.shape !== t.shape) {
+      u.table = t;
+      u.shape = t.shape;
+      let minX = Infinity, minY = Infinity, minZ = Infinity, maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+      for (let s = 0; s < t.high; s++) {
+        const kind = t.kind[s]!, mesh = meshOf[kind]!;
+        if (kind === 0 || mesh === HIDDEN) continue;
+        if (this.bentKind[kind] === 1) {
+          minX = -Infinity;
+          break;
+        }
+        const r = this.radiusOfMesh[mesh]!, x = t.x[s]!, y = t.y[s]!, z = t.z[s]!;
+        if (x - r < minX) minX = x - r;
+        if (y - r < minY) minY = y - r;
+        if (z - r < minZ) minZ = z - r;
+        if (x + r > maxX) maxX = x + r;
+        if (y + r > maxY) maxY = y + r;
+        if (z + r > maxZ) maxZ = z + r;
+      }
+      box[1] = minX - UNLAID_PAD;
+      box[2] = minY - UNLAID_PAD;
+      box[3] = minZ - UNLAID_PAD;
+      box[4] = maxX + UNLAID_PAD;
+      box[5] = maxY + UNLAID_PAD;
+      box[6] = maxZ + UNLAID_PAD;
+    }
+    if (box[1] === -Infinity) return true;
+    const ax = box[1]! - cam.x, ay = box[2]! - cam.y, az = box[3]! - cam.z, bx = box[4]! - cam.x, by = box[5]! - cam.y, bz = box[6]! - cam.z;
+    const dx = ax > 0 ? ax : bx < 0 ? -bx : 0, dy = ay > 0 ? ay : by < 0 ? -by : 0, dz = az > 0 ? az : bz < 0 ? -bz : 0;
+    const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    if (cam.boxVisible(ax, ay, az, bx, by, bz) && dist <= this.view && dist <= this.structureDistance) return true;
+    return this.casting.on && this.casting.castBox(ax, ay, az, bx, by, bz) !== 0;
+  }
+
+  /**
+   * Lays out ahead the chunks `waiting` within AHEAD_M of the camera, nearest first, while fewer than AHEAD_PIECES slots
+   * have been laid out this frame, so that turning round finds them ready. Returns the slots laid out, `laid` first.
+   */
+  private ahead(cam: Camera, store: StructureStore, waiting: number[], laid: number, meshOf: Uint16Array, colorOf: Uint8Array): number {
+    const dims = this.world.dims;
+    while (laid < AHEAD_PIECES) {
+      let best = -1, near = AHEAD_M;
+      for (let k = 0; k < waiting.length; k++) {
+        const chunk = waiting[k]!;
+        if (chunk < 0) continue;
+        const d = Math.hypot((chunkCx(dims, chunk) + 0.5) * CHUNK_SIZE - cam.x, (chunkCz(dims, chunk) + 0.5) * CHUNK_SIZE - cam.z);
+        if (d < near) {
+          near = d;
+          best = k;
+        }
+      }
+      if (best < 0) break;
+      const chunk = waiting[best]!;
+      waiting[best] = -1;
+      this.rebuild(store, chunk, chunk, undefined, meshOf, colorOf, null, null, null);
+      laid += store.chunks[chunk]!.high;
+    }
+    return laid;
   }
 
   /**
@@ -561,6 +656,7 @@ export class NearStore implements Pass {
   /** Lets go of a chunk's instances, and the card of its buffer. */
   private drop(id: number): void {
     const b = this.batches.get(id);
+    if (id < NODE_BUFFERS) this.unlaid.delete(id);
     if (!b) return;
     if (b.uploaded || b.onCard > 0) this.packet.drops.push(id);
     if (this.bendsOnCard.delete(id)) this.packet.drops.push(id + BEND_BUFFERS);
@@ -1222,7 +1318,7 @@ export class NearStore implements Pass {
     const inside = rooms !== null && this.finder.find(t, x0, z0, rooms, store.frames);
     const blocks = inside ? cells * 2 : cells;
     const shell = rooms?.shell, blockAt = this.blockAt;
-    const counts = this.cellCounts.fill(0, 0, this.meshCount * blocks);
+    const counts = this.cellCounts, used = this.used, usedMark = this.usedMark;
     const skip = mesh ? drawn! : null;
     let bent = 0;
     // The yaws its built pieces stand at, less their quarter turns, and how many at each: the most used get the table's slots.
@@ -1240,6 +1336,7 @@ export class NearStore implements Pass {
       const j = Math.min(side - 1, Math.max(0, Math.floor(((t.z[s]! - z0) * side) / CHUNK_SIZE)));
       const block = (inside && shell![s] === 0 ? cells : 0) + j * side + (j & 1 ? side - 1 - i : i);
       blockAt[s] = block;
+      this.use(meshOf[kind]!);
       counts[meshOf[kind]! * blocks + block]!++;
       if (sizeOf || flag[meshOf[kind]!] === 0) continue;
       const turn = t.yaw[s]! & TURN;
@@ -1268,14 +1365,18 @@ export class NearStore implements Pass {
     for (let k = 0; trims && k < trims.count; k++) {
       const owner = trims.owner[k]!;
       if (blockAt[owner] === UNDRAWN) continue;
+      this.use(trims.mesh[k]!);
       counts[trims.mesh[k]! * blocks + blockAt[owner]!]!++;
       trimFirst![owner + 1]!++;
       trimCount++;
     }
     for (let k = 0; trimFirst && k < t.high; k++) trimFirst[k + 1]! += trimFirst[k]!;
+    // Only the meshes it has instances of, and those whose twin it has, can have a range: the rest are passed over in mesh order.
+    for (let k = 0, n = used.length; !sizeOf && k < n; k++) for (const m of this.twinsOf.get(used[k]!) ?? []) this.use(m);
+    used.sort((x, y) => x - y);
     const ranges: number[] = [];
     let total = 0;
-    for (let m = 0; m < this.meshCount; m++) {
+    for (const m of used) {
       const from = total;
       for (let c = 0; c < blocks; c++) {
         this.cellCursor[m * blocks + c] = total;
@@ -1286,6 +1387,11 @@ export class NearStore implements Pass {
       for (let c = 0; twin >= 0 && !paired && c < blocks; c++) paired = counts[twin * blocks + c]! > 0;
       if (total > from || paired) ranges.push(m, from, total - from);
     }
+    for (const m of used) {
+      counts.fill(0, m * blocks, (m + 1) * blocks);
+      usedMark[m] = 0;
+    }
+    used.length = 0;
     const n = ranges.length / 3;
     const count = total + (mesh ? 1 : 0);
     const data = old && old.data.length === count * INSTANCE_BYTES ? old.data : new Uint8Array(count * INSTANCE_BYTES);
@@ -1449,6 +1555,13 @@ export class NearStore implements Pass {
     }
     this.batches.set(id, b);
     return b;
+  }
+
+  /** Notes that the chunk being laid out may have a range of `mesh`. */
+  private use(mesh: number): void {
+    if (this.usedMark[mesh] === 1) return;
+    this.usedMark[mesh] = 1;
+    this.used.push(mesh);
   }
 
   /** Writes a chunk's trims after its pieces: each an instance of its mesh in its piece's block, coloured and staged as its piece, held in its cell's boxes. */
