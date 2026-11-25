@@ -177,10 +177,12 @@ function settle(w: World, shot: Shot): void {
 }
 
 /** Where a ray from `o` along `d` enters a box grown by `grow`, and through which face: its distance, or Infinity. */
-function enter(o: number[], d: number[], b: Box, grow: number, face?: number[]): number {
+export function enter(o: number[], d: number[], b: Box, grow: number, face?: number[]): number {
   let [near, far, axis] = [-Infinity, Infinity, -1];
   for (let a = 0; a < 3; a++) {
     const [lo, hi] = [b.min[a]! - grow, b.max[a]! + grow];
+    // Shrunk past its middle, a box is nothing, not one turned inside out and as thick as it was shrunk.
+    if (lo > hi) return Infinity;
     if (Math.abs(d[a]!) < 1e-12) {
       if (o[a]! < lo || o[a]! > hi) return Infinity;
       continue;
