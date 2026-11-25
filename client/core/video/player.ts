@@ -83,10 +83,15 @@ export interface Watch {
   readonly pixels: number;
   /** The page is shown. */
   readonly visible: boolean;
+  /** The map's art has stopped coming once since the page began, or the ball has waited WAIT_FOR_ART for it. */
+  readonly settled: boolean;
 }
 
 /** Whether a clip plays: everything must allow it. Otherwise it is paused and fetches nothing. */
-export const mayPlay = (w: Watch): boolean => w.option && w.tier && w.orb && w.inView && w.pixels >= MIN_PIXELS && w.visible;
+export const mayPlay = (w: Watch): boolean => w.option && w.tier && w.orb && w.inView && w.pixels >= MIN_PIXELS && w.visible && w.settled;
+
+/** Milliseconds a clip waits for the map's art to stop coming before it plays anyway. A clip is fetched in seconds, and on arrival the map comes first. */
+export const WAIT_FOR_ART = 20_000;
 
 /** The playback rate for a clip `drift` seconds behind where it should be (ahead when negative). */
 export function syncRate(drift: number): number {
@@ -147,6 +152,8 @@ export interface ScreenView {
   readonly height: number;
   /** Milliseconds, for how long an element has been paused. */
   readonly now: number;
+  /** No art is coming or waiting this frame (assets/residency.ts). */
+  readonly artIdle: boolean;
 }
 
 interface Slot {
@@ -182,6 +189,9 @@ export class ScreenPlayer {
   /** Whether the levels under the texture's picture were made from it. */
   private mips = false;
   private sounding = false;
+  /** Whether the map's art has let a clip start (WAIT_FOR_ART), and when a clip was first wanted, in ms, or -1. */
+  private settled = false;
+  private wanted = -1;
   private readonly out: OrbScreen = { shows: -1, width: 0, height: 0, texWidth: 0, texHeight: 0, levels: 0, theatre: true, fill: false, track: null, seconds: 0, upX: 0, upY: 1, upZ: 0 };
 
   private readonly host: VideoHost;
@@ -213,7 +223,10 @@ export class ScreenPlayer {
       this.rest(v.now, -1);
       return this.shown(-1, null, target, s, cam);
     }
-    const may = mayPlay({ option: v.option, tier: v.tierVideo, orb: site !== null, inView, pixels, visible: this.host.visible() });
+    // The art of a map just come is fetched before a clip: once it has stopped coming, or the ball has waited long enough.
+    if (this.wanted < 0) this.wanted = v.now;
+    this.settled ||= v.artIdle || v.now - this.wanted >= WAIT_FOR_ART;
+    const may = mayPlay({ option: v.option, tier: v.tierVideo, orb: site !== null, inView, pixels, visible: this.host.visible(), settled: this.settled });
     this.poster(playable.clip);
     let playing: Slot | null = null, buffering = -1;
     if (may) {

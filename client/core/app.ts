@@ -1030,7 +1030,7 @@ export class App {
     scene.orbOnly = session.orbOnly;
     scene.orbGain = session.orbGain;
     const player = this.screenHost && Scene.orb ? (this.screenPlayer ??= new Scene.orb.ScreenPlayer(this.screenHost)) : null;
-    scene.orbScreen = player?.step({ state: session.screens[0], tick: session.renderClock, option: this.ui.settings.videoScreens, tierVideo: scene.assets.tier.orb.video, sites: session.world?.orbs, cam: this.cam, height, now: nowMs }) ?? null;
+    scene.orbScreen = player?.step({ state: session.screens[0], tick: session.renderClock, option: this.ui.settings.videoScreens, tierVideo: scene.assets.tier.orb.video, sites: session.world?.orbs, cam: this.cam, height, now: nowMs, artIdle: scene.assets.residency.flying + scene.assets.residency.waiting === 0 }) ?? null;
     scene.wants = this.texgen?.wants ?? null;
     f.packet = scene.build(this.cam, this.remote);
     player?.upload(f.packet, scene.orbDrawn, this.cam.fovY / Math.max(1, scene.canvasHeight));

@@ -1,4 +1,4 @@
-// The starter clips the Vegas ball ships with (planning/workstreams/video-clips.md). Each source is fetched once into
+// The starter clips the Vegas ball ships with (planning/workstreams/screen-video.md). Each source is fetched once into
 // the machine's cache and held to its SHA-256, cut, encoded to H.264 at 640×360 or less, and given a poster and a colour
 // track. ffmpeg runs here alone: the game never encodes or decodes a clip itself.
 //

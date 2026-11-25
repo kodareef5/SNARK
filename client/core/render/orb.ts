@@ -664,8 +664,8 @@ export const ORB_SCREEN = 5;
 /** Copies of the picture round the ball in band. */
 export const ORB_BAND = 3;
 /** The glow round the picture: its brightness at the edge, and how fast it falls off, a picture's half height at a time. */
-const GLOW = 0.5;
-const GLOW_FADE = 2;
+const GLOW = 0.25;
+const GLOW_FADE = 3.5;
 /** The share of the edges' colour the glow gives the ball's mean where the picture does not cover it. */
 const GLOW_SHARE = 0.2;
 /** What the before side of a change from one clip to the next shows: the screen dark. */

@@ -10,7 +10,7 @@ import { ORB_COLOUR } from "../../client/core/render/orb-light.ts";
 import { FRAME, FRAME_FLOATS, ORB_AT } from "../../client/core/render/packet.ts";
 import { PROGRAMS, withDefines } from "../../client/core/render/programs.ts";
 import { exposureFor, theSky } from "../../client/core/render/sky.ts";
-import { MIN_PIXELS, ScreenPlayer, base64Bytes, mayPlay, mustSeek, orbPixels, readManifest, syncRate, type Picture, type VideoHost, type VideoLike, type Watch } from "../../client/core/video/player.ts";
+import { MIN_PIXELS, ScreenPlayer, WAIT_FOR_ART, base64Bytes, mayPlay, mustSeek, orbPixels, readManifest, syncRate, type Picture, type VideoHost, type VideoLike, type Watch } from "../../client/core/video/player.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { NO_CLIP, SCREEN_THEATRE, SHOW_SCENES, SHOW_VIDEO, newScreenState, type ScreenState } from "../../shared/video/screen.ts";
 import { ORB_WIPE, type OrbSite } from "../../shared/world/orb.ts";
@@ -270,9 +270,9 @@ test("the clip's colour track lights the streets, as much as the picture covers"
 });
 
 test("a clip plays only when the ball is seen large enough, on a tier that plays it", () => {
-  const all: Watch = { option: true, tier: true, orb: true, inView: true, pixels: 200, visible: true };
+  const all: Watch = { option: true, tier: true, orb: true, inView: true, pixels: 200, visible: true, settled: true };
   expect(mayPlay(all)).toBe(true);
-  for (const key of ["option", "tier", "orb", "inView", "visible"] as const) expect(mayPlay({ ...all, [key]: false })).toBe(false);
+  for (const key of ["option", "tier", "orb", "inView", "visible", "settled"] as const) expect(mayPlay({ ...all, [key]: false })).toBe(false);
   expect([mayPlay({ ...all, pixels: MIN_PIXELS - 1 }), mayPlay({ ...all, pixels: MIN_PIXELS })]).toEqual([false, true]);
   // The ball is 48 pixels across some 2.3 km off on a 70 degree view 1080 pixels high.
   expect(orbPixels(78, 2300, 1.2217, 1080)).toBeGreaterThan(MIN_PIXELS);
@@ -355,7 +355,7 @@ const flush = () => new Promise((r) => setTimeout(r, 0));
 test("the player plays the clip in view, shows its poster while it loads, and fetches nothing out of view", async () => {
   const host = fakeHost(), player = new ScreenPlayer(host);
   const state: ScreenState = { ...newScreenState(), manifest: "0123456789abcdef", show: SHOW_VIDEO, flags: SCREEN_THEATRE, clip: 0, start: 0, next: 1 };
-  const step = (tick: number, facing = true, option = true, tier = true) => player.step({ state, tick, option, tierVideo: tier, sites: [SITE], cam: cam(facing), height: 1080, now: tick * 33 });
+  const step = (tick: number, facing = true, option = true, tier = true) => player.step({ state, tick, option, tierVideo: tier, sites: [SITE], cam: cam(facing), height: 1080, now: tick * 33, artIdle: true });
   expect(step(0)).toBeNull();
   await flush();
   expect(host.fetched).toEqual(["/media/video.0123456789abcdef.json"]);
@@ -415,7 +415,7 @@ test("a tier that plays no video shows the poster; a clip that fails falls back 
   const host = fakeHost(), player = new ScreenPlayer(host);
   const state: ScreenState = { ...newScreenState(), manifest: "00000000000000aa", show: SHOW_VIDEO, flags: SCREEN_THEATRE, clip: 2, start: 0, next: NO_CLIP };
   const p = { frame: new Float32Array(FRAME_FLOATS), tier: TIERS[0]!, screenSource: null as unknown, screenWidth: 0, screenHeight: 0, screenFresh: false, screenMips: false };
-  const step = (tick: number, tier: boolean) => player.step({ state, tick, option: true, tierVideo: tier, sites: [SITE], cam: cam(true), height: 1080, now: tick * 33 });
+  const step = (tick: number, tier: boolean) => player.step({ state, tick, option: true, tierVideo: tier, sites: [SITE], cam: cam(true), height: 1080, now: tick * 33, artIdle: true });
   step(0, false);
   await flush();
   step(1, false);
@@ -432,4 +432,26 @@ test("a tier that plays no video shows the poster; a clip that fails falls back 
   // Told to show the scenes, it shows them.
   state.show = SHOW_SCENES;
   expect(step(7, true)?.shows ?? -1).toBe(-1);
+});
+
+test("a clip waits for the map's art, then plays, or plays after WAIT_FOR_ART", async () => {
+  for (const idleAt of [5_000, Infinity]) {
+    const host = fakeHost(), player = new ScreenPlayer(host);
+    const state: ScreenState = { ...newScreenState(), manifest: "0123456789abcdef", show: SHOW_VIDEO, flags: SCREEN_THEATRE, clip: 0, start: 0, next: NO_CLIP };
+    const step = (ms: number) => player.step({ state, tick: (ms / 1000) * 30, option: true, tierVideo: true, sites: [SITE], cam: cam(true), height: 1080, now: ms, artIdle: ms >= idleAt });
+    step(0);
+    await flush();
+    step(1000);
+    await flush();
+    expect(host.made.length).toBe(0);
+    // A clip is first wanted at 1 s, once the manifest has come.
+    const starts = Math.min(idleAt, 1000 + WAIT_FOR_ART);
+    step(starts - 100);
+    expect(host.made.length).toBe(0);
+    step(starts);
+    expect(host.made.length).toBe(1);
+    // Once begun, art coming again does not stop it.
+    step(starts + 100);
+    expect(host.made.length).toBe(1);
+  }
 });
