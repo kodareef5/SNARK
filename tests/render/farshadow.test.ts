@@ -522,7 +522,7 @@ test("a maker on other threads sweeps there, moving the solid heights and the ma
   expect(CHUNK_SIZE / TOP_CELL).toBe(16);
 });
 
-test("the solid heights are made SOLID_CHUNKS a frame and swept once all are, a piece gone meanwhile left out", () => {
+test("solid heights are made SOLID_CHUNKS a frame and swept once all are made", () => {
   // 96 chunks a side on a layer of 128: 128 cells of 48 m a side, 9,216 chunks made in 72 frames.
   const reg = farRegistry();
   const dims: MapDims = { chunksX: 96, chunksZ: 96 };
@@ -693,7 +693,7 @@ test("a piece that stands in the air with nothing under it, a tide eye's collide
   expect(kept(...behind(spar))).toBe(1);
 });
 
-test("a piece that floats casts nothing from the map's tops, nor once its statics come", () => {
+test("a floating piece casts nothing from the map's tops, nor once its statics come", () => {
   const reg = farRegistry();
   const dims: MapDims = { chunksX: 8, chunksZ: 8 };
   const hf = new Heightfield(dims, TERRAIN_CELL, -64, 1 / 64);
