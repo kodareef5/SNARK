@@ -33,6 +33,8 @@ export class Ui {
   pressKey: (code: string) => void = () => {};
   /** The view rests on something that can be attacked: the app sets it each frame. */
   aimed = false;
+  /** Shift is held: the app's key rows set it. */
+  shift = false;
   /** The screens of SCREENS, made for this interface, in its order. */
   readonly screens: readonly Screen[] = SCREENS.map((make) => make());
   /** The session is in the creator, which is then the whole interface. */
@@ -77,6 +79,7 @@ export class Ui {
     pressKey: (code) => this.pressKey(code),
     screens: this.screens,
     aimed: false,
+    shift: false,
   };
   /** The session has no body and chooses where to rise, so the mouse is free. */
   private dead = false;
@@ -181,6 +184,7 @@ export class Ui {
     c.covered = this.console.open || this.chat.open;
     c.focusPending = this.focusNext !== 0;
     c.aimed = this.aimed;
+    c.shift = this.shift;
     return c;
   }
 
@@ -490,7 +494,7 @@ export class Ui {
       if (session) {
         // A finger's keyboard covers the foot of the screen, so the box it types in stands at the top.
         const band = plan && this.chat.open ? layer!.chatTop(f, plan) : chatBand(f, hud);
-        this.chat.build(f, band.top, band.bottom, session.serverTick, plan !== null, controls && !this.openedField());
+        this.chat.build(f, band.top, band.bottom, session.serverTick, plan !== null, controls);
       }
       if (plan && this.touchPlay && controls) {
         this.touchPlay.tools = this.settings.playControls;

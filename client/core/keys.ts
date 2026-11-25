@@ -57,7 +57,7 @@ const TYPING: KeyRow = { name: "typing", keys: ANY_KEY, when: (c) => c.ui.captur
 
 // Returning true keeps the browser from opening its menu.
 const ALT: KeyRow = { name: "alt", keys: ["AltLeft", "AltRight"], press: (c, _code, down) => ((c.alt = down), true) };
-const SHIFT: KeyRow = { name: "shift", keys: ["ShiftLeft", "ShiftRight"], press: (c, _code, down) => ((c.shift = down), undefined) };
+const SHIFT: KeyRow = { name: "shift", keys: ["ShiftLeft", "ShiftRight"], press: (c, _code, down) => ((c.shift = c.ui.shift = down), undefined) };
 
 // The use key on an egg takes it up with a command of its own, and the body does not get the press.
 const TAKE: KeyRow = {

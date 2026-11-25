@@ -6,9 +6,11 @@ export const CONTROL_GROUPS=["Move","Combat","World","Build","Flight","Menus","S
 export interface Binding { title: string; detail: string; group: number }
 const b=(group:number,title:string,detail=""):Binding=>({group,title,detail});
 const FIELD_KEYS: Readonly<Record<string,Binding>>={
-  F2:b(5,"Field menus","Browse destinations with the arrow keys and open one with Enter."),
+  F2:b(5,"Field menus","Browse destinations with the arrow keys and open one with Enter. Comma does the same."),
+  Comma:b(5,"Field menus","As F2, where the F keys need Fn."),
   F3:b(5,"Diagnostics","Show frame rate and coordinates. Shift+F3 opens the debug drawer."),
-  F4:b(5,"Action menus","Choose a family and command with the arrows and Enter. Escape returns."),
+  F4:b(5,"Action menus","Choose a family and command with the arrows and Enter. Escape returns. Semicolon does the same."),
+  Semicolon:b(5,"Action menus","As F4, where the F keys need Fn."),
 };
 const KEYS: Readonly<Record<string,Binding>>={
   ...FIELD_KEYS,

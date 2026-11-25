@@ -13,7 +13,7 @@ import { line, rim, tile } from "./dock-visual.ts";
 import type { EmoteMenu } from "./emotes.ts";
 import { K_BUTTON, K_HOLD, type UiFrame } from "./nodes.ts";
 import type { DockEntry, Screen, ScreenCtx } from "./screen.ts";
-import { S_HUD_HIT, S_HUD_KEY, S_LABEL } from "./style.ts";
+import { S_HUD_CAPTION, S_HUD_HIT, S_HUD_KEY, S_LABEL } from "./style.ts";
 
 /** The dock's keys: hubs, then a page's leaves, then the slots, then the rims, each with parts at +100 to +400. */
 export const KEY_DOCK = 48000;
@@ -208,9 +208,11 @@ export class FieldDock implements Screen {
     else this.reset();
   }
 
+  /** F2 or Comma opens the field menu, F4 or Semicolon the actions: a laptop's F keys may need Fn. */
   playKey(code: string, down: boolean, repeat: boolean, c: ScreenCtx): boolean {
-    if (this.touch || (code !== "F2" && code !== "F4")) return false;
-    if (down && !repeat) this.openPage(code === "F2" ? "emblem" : "actions", c);
+    const menu = code === "F2" || code === "Comma", actions = code === "F4" || code === "Semicolon";
+    if (this.touch || (!menu && !actions)) return false;
+    if (down && !repeat) this.openPage(menu ? "emblem" : "actions", c);
     return true;
   }
 
@@ -387,7 +389,7 @@ export class FieldDock implements Screen {
       }
     } else {
       // The tray stands over the hotbar's top edge, never on a slot: from its hub outward, kept on the canvas.
-      const w = Math.min(76, (f.width - f.left - f.right - 12) / count), h = 56;
+      const w = Math.min(76, (f.width - f.left - f.right - 12) / count), h = 70;
       const x0 = Math.max(f.left + 4, Math.min(f.width - f.right - count * w - 4, onLeft ? left : right + size * 3 - count * w));
       const y = Math.min(cy - size / 2, bottom - cell) - h - 8;
       for (let i = 0; i < count; i++) this.tile(f, KEY_FIELD_LEAF + i, entries[i], x0 + i * w, y, w, h, i === this.focus, true, c);
@@ -405,16 +407,17 @@ export class FieldDock implements Screen {
   private tile(f: UiFrame, key: number, l: Leaf | undefined, x: number, y: number, w: number, h: number, active: boolean, leaf: boolean, c: ScreenCtx): void {
     if (!l) return;
     const enabled = this.available(l, c);
-    if (!this.touch && !tile(f, key + 100, x + 1, y + 1, w - 2, h - 2, active)) {
-      line(f, key + 100, x + 1, y + 1, w - 2, h - 2, active ? 0x24526d : 0x0b2438, active ? .84 : .61);
-      line(f, key + 200, x + 1, y + h - 2, w - 2, active ? 2 : 1, active ? 0xa3e5ff : 0x86acc2, active ? 1 : .65);
+    // On a desktop a leaf's caption stands under its tile; by touch the chosen one's under its picture.
+    const caption = leaf && (!this.touch || active), under = caption && !this.touch ? 15 : 0, th = h - under;
+    if (!this.touch && !tile(f, key + 100, x + 2, y + 2, w - 4, th - 4, active)) {
+      line(f, key + 100, x + 1, y + 1, w - 2, th - 2, active ? 0x24526d : 0x0b2438, active ? .84 : .61);
+      line(f, key + 200, x + 1, y + th - 2, w - 2, active ? 2 : 1, active ? 0xa3e5ff : 0x86acc2, active ? 1 : .65);
     }
-    const caption = leaf && (!this.touch || active);
-    const icon = Math.min(w - 4, h - (caption ? 14 : 4));
-    const pic = f.picture(key + 300, x + (w - icon) / 2, y + (h - icon) / 2 - (caption ? 4 : 0), icon, icon, S_LABEL, "ui:glass-" + l.art);
+    const icon = Math.min(w - 8, th - (caption && this.touch ? 14 : 8));
+    const pic = f.picture(key + 300, x + (w - icon) / 2, y + (th - icon) / 2 - (caption && this.touch ? 4 : 0), icon, icon, S_LABEL, "ui:glass-" + l.art);
     if (pic) pic.alpha = enabled ? 1 : .39;
     if (caption || !pic) {
-      const n = f.text(key + 400, x - (this.touch ? 8 : 0), y + h - 15, w + (this.touch ? 16 : 0), S_HUD_KEY, l.label);
+      const n = f.text(key + 400, x - 8, y + h - 14, w + 16, under ? S_HUD_CAPTION : S_HUD_KEY, l.label);
       n.alpha = enabled ? .95 : .6;
     }
     const hit = f.add(key, this.touch ? K_HOLD : K_BUTTON, x, y, w, h, S_HUD_HIT);

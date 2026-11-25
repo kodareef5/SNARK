@@ -34,7 +34,7 @@ test("Both field contacts appear under the player’s fingers and vanish on lift
   expect(draw()).toEqual([]);
   expect(frame.find(KEY_ZONE_MOVE)!.w).toBe(frame.width / 2);
   expect(frame.find(KEY_ZONE_LOOK)!.x).toBe(frame.width / 2);
-  expect(frame.find(KEY_TOUCH_BUTTON + T_ATTACK)).toBeNull();
+  expect(frame.find(KEY_TOUCH_BUTTON + T_ATTACK)).not.toBeNull();
   hud.hotbar = [{ id: "core:stone_pick", label: "Pick", number: "", tint: 0 }];
   hud.held = 0;
   pointer(0, KEY_ZONE_MOVE, 200, 240, 7, 0);

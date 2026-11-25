@@ -1,6 +1,6 @@
 // The inspected slot stays tied to its server item through detail, assignment and confirmation.
 import { BOX_SELF, CMD_MOVE, CMD_SELECT, RESULT_OK } from "../../../shared/net/protocol.ts";
-import { HOTBAR_SLOTS, type Inventory } from "../../../shared/sim/items.ts";
+import { HOTBAR_SLOTS, QUALITY_MUL, type Inventory } from "../../../shared/sim/items.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
 import type { ClientSession } from "../session.ts";
 import { K_BUTTON, K_HOLD, K_PANEL, fitText, type UiFrame } from "./nodes.ts";
@@ -13,7 +13,8 @@ export const CARD = 17900;
 const GRIP = CARD + 1, BACK = CARD + 2, ASSIGN = CARD + 3, TARGET = CARD + 20;
 function label(reg: Registry, id: number): string {
   const def = reg.defs[id];
-  return (def && "label" in def ? def.label : undefined) ?? reg.ids[id]?.split(":").pop()?.replaceAll("_", " ") ?? "";
+  const name = (def && "label" in def ? def.label : undefined) ?? reg.ids[id]?.split(":").pop()?.replaceAll("_", " ") ?? "";
+  return name.charAt(0).toUpperCase() + name.slice(1);
 }
 
 function portrait(f: UiFrame, key: number, x: number, y: number, size: number, id: string) {
@@ -137,7 +138,8 @@ export class EquipmentCard {
       const col = left + size + 24, width = x + w - col - 15;
       const uses = reg.uses[this.item]!, qty = inv.count[this.source]!;
       f.text(CARD + 8, col, y + h * .37, width, S_MENU_NOTE, uses ? "Condition" : "Stack");
-      f.text(CARD + 9, col, y + h * .37 + 21, width, S_TITLE, uses ? String(inv.dur[this.source]) : "×" + qty);
+      const most = Math.round(uses * (QUALITY_MUL[inv.quality[this.source]!] ?? 1));
+      f.text(CARD + 9, col, y + h * .37 + 21, width, S_TITLE, uses ? `${inv.dur[this.source]} / ${most}` : "×" + qty);
       f.text(CARD + 10, col, y + h * .37 + 53, width, S_HUD_KEY, (reg.weight[this.item]! * qty).toFixed(1) + " kg");
       if (def && inv.hotbar >= 0) {
         const assign = f.add(ASSIGN, K_BUTTON, col, y + h - 56, width, 36, S_SLOT);

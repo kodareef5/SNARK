@@ -33,7 +33,8 @@ const FADE_TICKS = 2 * 30;
 const HELP: readonly string[] = [
   "Enter opens chat; Tab in the box changes channel (Global, Local, Tribe).",
   "A line that begins with / is a command: /who, /pos, /time, /help give. The ` key opens the console.",
-  "V changes the view, O opens Settings, I the inventory, M the map, F3 diagnostics.",
+  "V changes the view, O opens Settings, I the inventory, M the corner map (Shift+M the whole map), F3 diagnostics.",
+  "F2 or , opens the field menus and F4 or ; the actions: arrows browse, Enter chooses, Escape goes back.",
   "Hold N (or the middle button) to raise the helmet's visor: the wheel zooms it, a tap of N changes its view (plain, night, heat).",
 ];
 const HELP_TICKS = 20 * 30;

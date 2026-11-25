@@ -5,6 +5,7 @@ import { V_FOOD, V_HEALTH, V_OXYGEN, V_TORPOR, V_WATER } from "../../../shared/s
 import { K_BUTTON, K_PANEL } from "../ui/nodes.ts";
 import { S_HUD_HIT, S_HUD_COUNT, S_HUD_KEY, S_ICE, S_KEY_SMALL, S_WARNING } from "../ui/style.ts";
 import { filledVital } from "../ui/vitals.ts";
+import { glass } from "../ui/skin.ts";
 
 import { band, type HudWidget } from "./widget.ts";
 
@@ -81,10 +82,15 @@ export const VITALS: HudWidget<VitalsModel> = {
     const compact = !!touch || room < 270;
     const small = Math.min(touch ? VITAL_PITCH : 30, Math.max(21, Math.floor(room / 6)));
     const primary = compact ? small : Math.min(106, Math.floor((room - 4 * small) / 2));
+    const hidden = (v: Vital): boolean => (v.id === "oxygen" && v.fraction >= 1) || (v.id === "torpor" && v.fraction <= 0);
+    // Glass behind the row, as far as the last vital shown, so it reads against a bright sky.
+    let width = 0;
+    for (let i = 0; i < m.vitals.length; i++) if (!hidden(m.vitals[i]!)) width += i < 2 ? primary : small;
+    glass(f, KEY_VITAL_ART + 7, x0 - 6, y - 6, width + 10, Math.min(22, small - 5) + 15 + (show ? 12 : 0), .62);
     let x = x0;
     for (let i = 0; i < m.vitals.length; i++) {
       const v = m.vitals[i]!;
-      if ((v.id === "oxygen" && v.fraction >= 1) || (v.id === "torpor" && v.fraction <= 0)) continue;
+      if (hidden(v)) continue;
       const slot = i < 2 ? primary : small;
       const size = Math.min(22, slot - 5);
       const fraction = Math.max(0, Math.min(1, v.fraction));

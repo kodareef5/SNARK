@@ -7,7 +7,7 @@ import { chartEdge } from "./field-finish.ts";
 import { glyph } from "./dock-visual.ts";
 import { IMAGE_ARROW, arrowSheet, placeArrow } from "./arrow.ts";
 import { IMAGE_MAP, KEY_MINIMAP, KEY_MINIMAP_TOGGLE, MARKER_STYLE, MARKER_TINT } from "./hud.ts";
-import { K_BUTTON, K_HOLD, K_IMAGE, K_PANEL, fitText, lineHeight, type UiFrame } from "./nodes.ts";
+import { K_BUTTON, K_HOLD, K_IMAGE, K_PANEL, fitText, lineHeight, textWidth, type UiFrame } from "./nodes.ts";
 import type { Screen, ScreenCtx } from "./screen.ts";
 import { S_BUTTON, S_FRAME, S_HUD_HIT, S_HUD_KEY, S_ICE, S_KEY_SMALL, S_LABEL, S_MARK_DEATH, S_PANEL, S_TITLE } from "./style.ts";
 
@@ -66,6 +66,13 @@ export class MapScreen implements Screen {
   show(): void {
     this.mode = "peek";
     this.open = true;
+  }
+
+  /** Shift and the map's key open the whole map at once, past the corner chart. */
+  playKey(code: string, down: boolean, repeat: boolean, c: ScreenCtx): boolean {
+    if (code !== this.hotkey || !c.shift) return false;
+    if (down && !repeat) { this.show(); this.mode = "atlas"; }
+    return true;
   }
 
   close(): void {
@@ -174,6 +181,7 @@ export function buildMap(f: UiFrame, session: ClientSession, hud: HudModel, corn
       hud.pointedU = -1;
     }
     hud.mapSeen = hud.frames;
+    chart.full.coordinates = !corner;
     chart.drawFull(session.tactical, session.tribe.team, Math.min(MAP_PIXELS, Math.round(size * hud.scale)));
     hud.mapBox.x = x;
     hud.mapBox.y = top;
@@ -208,9 +216,11 @@ export function buildMap(f: UiFrame, session: ClientSession, hud: HudModel, corn
   if (line !== "") f.text(KEY_MAP_LINE + 16, x, top + size + 6 + Math.min(deaths.length, 16) * lh, size, S_LABEL, line);
   // A server rule can hide the reader's own position.
   // An arrow the way the reader faces.
+  let arrowX = -1e9, arrowY = -1e9;
   if (session.mapLocation !== false) {
     const px = (mapU(hf, session.own.x) - view.u0) / view.du, py = (mapV(hf, session.own.z) - view.v0) / view.dv;
     f.images[IMAGE_ARROW] ??= arrowSheet();
+    arrowX = x + px * size; arrowY = top + py * size;
     if (px >= 0 && px <= 1 && py >= 0 && py <= 1) placeArrow(f.add(KEY_MAP_PIN + 16, K_IMAGE, x + px * size - MAP_ARROW / 2, top + py * size - MAP_ARROW / 2, MAP_ARROW, MAP_ARROW, S_FRAME), hud.dial.heading);
   }
   if (corner) {
@@ -220,10 +230,14 @@ export function buildMap(f: UiFrame, session: ClientSession, hud: HudModel, corn
       if (dx <= .03 || dx >= .97 || dy <= .22 || dy >= .76) continue;
       const py = top + dy * size;
       if (Math.abs(py - previousY) < 20) continue;
-      const px = x + dx * size;
-      const left = Math.min(x + size - 98, Math.max(x + 2, px - 46));
+      const px = x + dx * size, name = fitText(place.name, 96, S_KEY_SMALL), wide = textWidth(name, S_KEY_SMALL) + 4;
+      // A name stands under its place, or over it, or to its left: wherever it keeps clear of the reader's arrow.
+      const clear = (lx: number, ly: number): boolean => lx > arrowX + MAP_ARROW / 2 || lx + wide < arrowX - MAP_ARROW / 2 || ly > arrowY + MAP_ARROW / 2 || ly + 12 < arrowY - MAP_ARROW / 2;
+      const under = Math.min(x + size - wide - 2, Math.max(x + 2, px - wide / 2));
+      const spot = [[under, py + 3], [under, py - 15], [Math.max(x + 2, px - wide - 4), py - 6]].find(([lx, ly]) => clear(lx!, ly!));
+      if (!spot) continue;
       f.add(KEY_MAP_LINE + labels * 2, K_PANEL, px - 2, py - 2, 4, 4, S_ICE).tint = 0xbbdceb;
-      f.text(KEY_MAP_LINE + labels * 2 + 1, left, py + 2, 96, S_KEY_SMALL, fitText(place.name, 96, S_KEY_SMALL));
+      f.text(KEY_MAP_LINE + labels * 2 + 1, spot[0]!, spot[1]!, wide, S_KEY_SMALL, name);
       previousY = py;
       if (++labels === 2) break;
     }

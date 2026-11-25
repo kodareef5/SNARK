@@ -260,8 +260,10 @@ function cellColour(palette: Uint8Array, tint: number, band: number, whose: numb
 
 /** A picture of the map as a screen shows it: terrain, then structure cells, then the grid and its numbers. */
 export class MapPicture {
-  private readonly coordinates: boolean;
-  constructor(coordinates = true) { this.coordinates = coordinates; }
+  /** The grid's numbers are drawn, and a faint line each unit where there is room. The corner chart shows sectors alone. */
+  coordinates: boolean;
+  private drawnWith = true;
+  constructor(coordinates = true) { this.coordinates = this.drawnWith = coordinates; }
   /** Made anew at the size asked for, so its pixels are the screen's and a line is never lost to scaling. */
   readonly image: UiImage = { width: 0, height: 0, data: new Uint8ClampedArray(0), version: 0 };
   readonly view = new MapView();
@@ -279,7 +281,8 @@ export class MapPicture {
     const [wasZoom, wasU, wasV] = [view.zoom, view.u0, view.v0];
     view.place(hf, zoom, u, v, px);
     const cells = store ? store.version : 0;
-    if (image.width === px && view.zoom === wasZoom && view.u0 === wasU && view.v0 === wasV && this.cellsAt === cells && this.tilesAt === tiles.version && this.team === team) return;
+    if (image.width === px && view.zoom === wasZoom && view.u0 === wasU && view.v0 === wasV && this.cellsAt === cells && this.tilesAt === tiles.version && this.team === team && this.drawnWith === this.coordinates) return;
+    this.drawnWith = this.coordinates;
     if (image.width !== px) {
       image.width = image.height = px;
       image.data = new Uint8ClampedArray(px * px * 4);

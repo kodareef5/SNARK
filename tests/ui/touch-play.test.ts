@@ -70,10 +70,11 @@ function layerFits(ui: Ui, [, w, h, insets]: Phone, muted: boolean, where: strin
   expect(f.width * (h / f.height), where).toBeLessThanOrEqual(w + 1);
   const unit = h / f.height, [l, t, r, b] = insets.map((v) => v / unit) as [number, number, number, number];
   expect(f.find(KEY_TOUCH_BUTTON + T_USE), where).not.toBeNull();
-  for (const which of [T_ATTACK, T_JUMP, T_STANCE, T_MENU, T_BAG, T_CHARACTER, T_CHAT, T_MAP]) {
+  // On foot the right thumb has a held Attack and Jump; the rest wait in the field kit.
+  for (const which of [T_ATTACK, T_JUMP]) expect(f.find(KEY_TOUCH_BUTTON + which), where).not.toBeNull();
+  for (const which of [T_STANCE, T_MENU, T_BAG, T_CHARACTER, T_CHAT, T_MAP]) {
     expect(f.find(KEY_TOUCH_BUTTON + which), where).toBeNull();
   }
-  expect(ui.touchShown & (1 << T_ATTACK), where).toBe(0);
   expect(f.find(KEY_UNMUTE) !== null, where).toBe(muted);
   // The zones lie under everything, and cover the canvas between them.
   const move = f.find(KEY_ZONE_MOVE)!, look = f.find(KEY_ZONE_LOOK)!;
@@ -95,8 +96,6 @@ function layerFits(ui: Ui, [, w, h, insets]: Phone, muted: boolean, where: strin
   // The prompt is offered without its key, the vitals stand clear of the thumbs, and the minimap and hotbar are there.
   expect(f.find(KEY_PROMPT)!.text.startsWith("ride a raptor"), where).toBe(true);
   expect(f.find(KEY_VITAL + 1)!.y, where).toBeLessThan(f.height / 3);
-  const use = f.find(KEY_TOUCH_BUTTON + T_USE)!;
-  expect(use.x + use.w / 2, where).toBeCloseTo((l + f.width - r) / 2, 1);
   if (muted) expect(f.find(KEY_UNMUTE)!.x, where).toBeCloseTo(l + 12, 5);
   expect(f.find(KEY_MINIMAP) !== null && f.find(KEY_HOTBAR) !== null, where).toBe(true);
 }

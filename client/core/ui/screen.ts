@@ -46,6 +46,8 @@ export interface ScreenCtx {
   readonly screens: readonly Screen[];
   /** The view rests on something that can be attacked. */
   aimed: boolean;
+  /** Shift is held. */
+  shift: boolean;
 }
 
 /** A way to a screen that the field menu offers (ui/field-dock.ts). */

@@ -171,7 +171,8 @@ function touchContacts(f: UiFrame, t: TouchPlay, item = ""): void {
 export function touchControls(f: UiFrame, t: TouchPlay, m: HudModel, situation: Situation, hotbarRight: number, hotbarTop: number, mapFoot: number, creature = false, controlsVisible = true): number {
   const driving = m.vehicle?.active === true, v = driving ? m.vehicle! : null;
   const auxiliary = t.tools || driving || situation !== "foot";
-  const left = f.left + MARGIN, right = f.width - f.right - MARGIN - (auxiliary ? 35 : 0);
+  // The right wheel's hub keeps its column at the edge.
+  const left = f.left + MARGIN, right = f.width - f.right - MARGIN - 35;
   let bottom = f.height - f.bottom - MARGIN;
   // Above the hotbar and the line over it that says what is loaded, where the cluster would reach them.
   if (hotbarRight + GAP > right - CLUSTER_W) bottom = hotbarTop - GAP - 22;
@@ -264,6 +265,10 @@ export function touchControls(f: UiFrame, t: TouchPlay, m: HudModel, situation: 
         if (m.ammo !== "") at(T_RELOAD, 6, SMALL, I_RELOAD, "Reload");
       }
     }
+  } else {
+    // On foot the right thumb keeps a held Attack, for a drawn bow or a long swing, and Jump. Field kit adds the rest.
+    corner(T_ATTACK, I_ATTACK, "Attack");
+    at(T_JUMP, 0, BUTTON, I_JUMP, "Jump");
   }
 
   // What the world offers, as a pill by the thumb: the prompt without its key.
@@ -274,7 +279,7 @@ export function touchControls(f: UiFrame, t: TouchPlay, m: HudModel, situation: 
     const above = bottom - CLUSTER_H - GAP - PILL, beside = right - CLUSTER_W - ALONG * 2 - GAP, high = above >= mapFoot + GAP;
     const pack = m.prompt.includes("   F  pick up"), packWidth = pack ? SMALL + GAP : 0;
     const w = Math.max(96, Math.min((high ? right : beside) - left, Math.ceil(textWidth(offer, S_PROMPT)) + 44)), x = (high ? right : beside) - w - packWidth, y = high ? above : bottom - PILL;
-    const promptX = auxiliary ? x : (left + right - w - packWidth) / 2, promptY = auxiliary ? y : Math.min(bottom, hotbarTop) - GAP - PILL - 16;
+    const promptX = x, promptY = y;
     pill(f, KEY_TOUCH_ART + T_USE * 4, promptX, promptY, w, PILL, t.held(T_USE));
     const n = f.add(KEY_TOUCH_BUTTON + T_USE, K_HOLD, promptX, promptY, w, PILL, S_PROMPT);
     n.text = fitText(offer, w - 16, S_PROMPT); n.label = offer; n.interactive = true;
