@@ -21,7 +21,7 @@ import { writeGrey } from "../map/png.ts";
 import { Base } from "./base.ts";
 import type { BridgeRecord } from "./bridges.ts";
 import { groundClasses, makeGround, S, type World } from "./ground.ts";
-import { makeNodes, ZONE_CELL } from "./nodes.ts";
+import { clearingMask, makeNodes, ZONE_CELL } from "./nodes.ts";
 import { gradeTransferDecks, placeObelisks, placeRegions, placeSpawns, staticCover } from "./places.ts";
 import { STATIC_LAYERS, siteOf, type StaticPiece } from "./statics.ts";
 import { SPAWN_CLEAR, isFurniture } from "./street-furniture.ts";
@@ -198,7 +198,8 @@ export async function buildMap(named: string, release = false, output = join(ROO
   // so none stands in it or before its terminal, nor within 6 m of a parked car.
   const clearings = [...spawns.map((s) => [(x1 - s.x) / 2, (z1 - s.z) / 2, 16] as const), ...obelisks.map((o) => [(x1 - o.x) / 2, (z1 - o.z) / 2, o.color ? (o.radius! / 2 + 2) ** 2 : 49] as const), ...vehicles.map((c) => [(x1 - c.x) / 2, (z1 - c.z) / 2, 9] as const)];
   const growth = world.heaps === false ? vocabulary(source).growth : undefined;
-  const nodes = makeNodes(ground, world, (col, row) => (!growth && site.clearPlants[Math.floor(row / 2) * ((nx - 1) / 2) + Math.floor(col / 2)] === 1) || berths[row * nx + col] === 1 || clearings.some(([c, r, d2]) => (c - col) ** 2 + (r - row) ** 2 < d2), (col, row) => site.lowPlants[Math.floor(row / 2) * ((nx - 1) / 2) + Math.floor(col / 2)] === 1, growth);
+  const cleared = clearingMask((nx - 1) / 2, (nz - 1) / 2, clearings);
+  const nodes = makeNodes(ground, world, (col, row) => (!growth && site.clearPlants[Math.floor(row / 2) * ((nx - 1) / 2) + Math.floor(col / 2)] === 1) || berths[row * nx + col] === 1 || cleared[Math.floor(row / 2) * ((nx - 1) / 2) + Math.floor(col / 2)] === 1, (col, row) => site.lowPlants[Math.floor(row / 2) * ((nx - 1) / 2) + Math.floor(col / 2)] === 1, growth);
   lap("nodes");
 
   const layers = join(output, name, "layers");
