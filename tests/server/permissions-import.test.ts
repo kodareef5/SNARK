@@ -1,0 +1,265 @@
+// ArkApi's Permissions database, a pasted command list and a CrossChat config, planned and applied.
+import { afterAll, expect, test } from "bun:test";
+import { Database } from "bun:sqlite";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { readChatFormat, readChatSettings, readLooseJson } from "../../shared/permissions/chat.ts";
+import type { PermissionActor } from "../../shared/permissions/model.ts";
+import { RANK_ADMIN, RANK_CLUSTER, RANK_OPEN } from "../../shared/ranks.ts";
+import { applyPlan, CHAT_DOCUMENT, planArkApi, planCommands, planCrossChat, type ImportPlan, type Planned } from "../../server/permissions/import.ts";
+import { Permissions } from "../../server/permissions/permissions.ts";
+import { PermissionStore } from "../../server/permissions/store.ts";
+
+const root = mkdtempSync(join(tmpdir(), "snark-import-"));
+afterAll(() => rmSync(root, { recursive: true, force: true }));
+
+const cluster: PermissionActor = { rank: RANK_CLUSTER, world: 3, name: "cluster" };
+const admin: PermissionActor = { rank: RANK_ADMIN, world: 3, name: "admin" };
+const COMMANDS = ["kick", "give", "tp", "save", "settime", "ghost", "fly"];
+const STEAM = ["76561198011111111", "76561198022222222"];
+const TRIBE = "1234567";
+
+const fresh = () => new Permissions({ store: new PermissionStore(":memory:"), world: 3 });
+
+let files = 0;
+/** An ArkApi Permissions file, made as the plugin's source makes its tables. */
+function arkApiFile(): Uint8Array {
+  const path = join(root, `perms-${++files}.db`);
+  const db = new Database(path, { create: true });
+  db.exec(
+    "CREATE TABLE Groups (Id INTEGER PRIMARY KEY AUTOINCREMENT, GroupName TEXT NOT NULL UNIQUE, Permissions TEXT DEFAULT '');" +
+      "CREATE TABLE Players (Id INTEGER PRIMARY KEY AUTOINCREMENT, SteamId INTEGER NOT NULL UNIQUE, Groups TEXT DEFAULT 'Default,', TimedGroups TEXT DEFAULT '');" +
+      "CREATE TABLE Tribes (Id INTEGER PRIMARY KEY AUTOINCREMENT, TribeId INTEGER NOT NULL UNIQUE, Groups TEXT DEFAULT '', TimedGroups TEXT DEFAULT '');",
+  );
+  const group = db.query("INSERT INTO Groups (GroupName, Permissions) VALUES (?, ?)");
+  group.run("Admins", "*,");
+  group.run("Default", "ArkShop.Kits.starter,");
+  group.run("Vip", "ArkShop.Kits.vip,Cheat.KickPlayer,Cheat.DestroyWildDinos,");
+  group.run("Builders", "Build.Fast,Bad Perm,");
+  group.run("Mod Team", "Cheat.*,");
+  const player = db.query("INSERT INTO Players (SteamId, Groups, TimedGroups) VALUES (?, ?, ?)");
+  player.run(STEAM[0]!, "Default,Vip,", "0;1800000000;Vip,");
+  player.run(STEAM[1]!, "Vip,Admins,", "");
+  db.query("INSERT INTO Tribes (TribeId, Groups, TimedGroups) VALUES (?, ?, ?)").run(TRIBE, "Vip,", "0;1800000000;Builders,");
+  db.close();
+  const bytes = readFileSync(path);
+  rmSync(path);
+  return bytes;
+}
+
+const COMMAND_LIST = `
+# The same groups, typed
+admincheat Permissions.Grant Admins *
+cheat Permissions.Grant Default ArkShop.Kits.starter
+Permissions.AddGroup Vip
+permissions.grant Vip ArkShop.Kits.vip
+Permissions.Grant Vip Cheat.KickPlayer
+Permissions.Grant Vip Cheat.DestroyWildDinos
+// builders
+Permissions.AddGroup Builders
+Permissions.Grant Builders Build.Fast
+Permissions.Add ${STEAM[0]} Vip
+Permissions.AddTimed ${STEAM[0]} Vip 24 0
+Permissions.AddTribeTimed ${TRIBE} Builders 1 0
+Permissions.ListGroups
+Permissions.Remove ${STEAM[1]} Vip
+Permissions.Grant Vip
+${STEAM[1]} hello
+`;
+
+const SAMPLE = `{
+  // CrossChat, as its sample ships
+  "Mysql": { "UseMysql": false },
+  "PermissionsFormatting": {
+    "Default": {
+      "ChatFormat": "{map}: {tags} {sender} {tribe}: {message}",
+      "Priority": 0, // the higher the more priority it is given
+      "Icon": "", // the icon to show before the name in chat
+      "FormattingParts": {
+        "map": "[{name}]",
+        "tags": "{name}",
+        "sender": "<RichColor Color=\\"1, 0.9, 0, 1\\">{name}</>",
+        "tribe": "<RichColor Color=\\"1, 0.9, 0, 1\\">[{name}]</>",
+        "message": "{message}"
+      }
+    },
+    "Admin": {
+      "ChatFormat": "{tags} {sender}: {message}",
+      "Priority": 9999,
+      "Icon": "",
+      "FormattingParts": {
+        "map": "[{name}]",
+        "tags": "{name}",
+        "sender": "<RichColor Color=\\"1, 0, 0, 1\\">{name}</>",
+        "tribe": "[{name}]",
+        "message": "{message}",
+      },
+    },
+    "Helpers": { "ChatFormat": "{sender}: {message}", "Priority": 5 }
+  },
+  "ChatTags": {
+    "StackChatTags": true, // all tags show when true
+    "Admin": { "Priority": 9999, "Icon": "Game/Icons/Admin", "Text": "<RichColor Color=\\"1, 0, 0, 1\\">[{icon}Admin]</>", "CanBeDisabled": true },
+    "VIP": { "Priority": 10, "Icon": "", "Text": "<RichColor Color=\\"0, 1, 0, 1\\">[VIP]</>", "CanBeDisabled": true },
+  },
+  "MutedPermissionGroup": "Muted",
+  "MapColors": { "TheIsland_WP": [0, 125, 125] }
+}`;
+
+function planOf(planned: Planned): ImportPlan {
+  if (!planned.ok) throw new Error(planned.reason);
+  return planned.plan;
+}
+
+const opts = (perms: Permissions) => ({ look: perms, commands: COMMANDS });
+const groupsOf = (perms: Permissions) =>
+  perms
+    .groups()
+    .map((g) => ({ name: g.name, rank: g.rank, permissions: [...g.permissions].sort(), chat: g.chat }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+const noteWith = (plan: ImportPlan, text: string): string | undefined => plan.notes.find((n) => n.includes(text));
+
+test("groups and permissions come over and the starting groups are merged into", () => {
+  const perms = fresh();
+  const plan = planOf(planArkApi(arkApiFile(), opts(perms)));
+  expect(plan.ops.filter((op) => op.op === "addMember")).toEqual([]);
+  expect(applyPlan(perms, cluster, plan).refused).toEqual([]);
+  expect(perms.group("Vip")).toMatchObject({ rank: RANK_OPEN, permissions: ["ArkShop.Kits.vip", "Cheat.KickPlayer", "Cheat.DestroyWildDinos"] });
+  expect(perms.group("Builders")?.permissions).toEqual(["Build.Fast"]);
+  expect(perms.group("Admins")).toMatchObject({ rank: RANK_ADMIN, permissions: ["*"] });
+  expect(perms.group("Default")).toMatchObject({ rank: RANK_OPEN, permissions: ["ArkShop.Kits.starter"] });
+  expect(perms.group("Mod Team")).toBeUndefined();
+  expect(noteWith(plan, '"Mod Team" was skipped')).toBeDefined();
+  expect(noteWith(plan, '"Bad Perm" was skipped')).toBeDefined();
+});
+
+test("players' and tribes' memberships are counted and left behind", () => {
+  const plan = planOf(planArkApi(arkApiFile(), opts(fresh())));
+  expect(plan.ops.some((op) => op.op === "addMember")).toBe(false);
+  expect(noteWith(plan, "Vip: 4 memberships left behind (3 players, 1 tribe; 1 timed)")).toBeDefined();
+  expect(noteWith(plan, "Builders: 1 membership left behind (1 tribe; 1 timed)")).toBeDefined();
+  expect(noteWith(plan, "Admins: 1 membership left behind (1 player)")).toBeDefined();
+  expect(noteWith(plan, "Default:")).toBeUndefined();
+  for (const note of plan.notes) for (const id of [...STEAM, TRIBE]) expect(note).not.toContain(id);
+});
+
+test("a pasted command list gives the same groups", () => {
+  const fromFile = fresh();
+  applyPlan(fromFile, cluster, planOf(planArkApi(arkApiFile(), opts(fromFile))));
+  const typed = fresh();
+  const plan = planOf(planCommands(COMMAND_LIST, opts(typed)));
+  expect(applyPlan(typed, cluster, plan).refused).toEqual([]);
+  expect(groupsOf(typed)).toEqual(groupsOf(fromFile));
+  expect(noteWith(plan, "Vip: 2 memberships left behind (2 players; 1 timed)")).toBeDefined();
+  expect(noteWith(plan, "Builders: 1 membership left behind (1 tribe; 1 timed)")).toBeDefined();
+  expect(noteWith(plan, "1 line that only lists was skipped")).toBeDefined();
+  expect(noteWith(plan, "1 line that takes a member out was skipped")).toBeDefined();
+  expect(noteWith(plan, "Too few words")).toBeDefined();
+  expect(noteWith(plan, "is not a Permissions command")).toBeDefined();
+  for (const note of plan.notes) for (const id of [...STEAM, TRIBE]) expect(note).not.toContain(id);
+});
+
+test("CrossChat's sample gives each group's format and the tags", () => {
+  const perms = fresh();
+  const plan = planOf(planCrossChat(SAMPLE, opts(perms)));
+  expect(applyPlan(perms, cluster, plan).refused).toEqual([]);
+  const format = (group: string) => readChatFormat(JSON.parse(perms.group(group)!.chat)).value!;
+  expect(format("Default").chatFormat).toBe("{map}: {tags} {sender} {tribe}: {message}");
+  expect(format("Default").parts.sender).toBe('<RichColor Color="1, 0.9, 0, 1">{name}</>');
+  expect(format("Helpers").priority).toBe(5);
+  expect(perms.group("Helpers")?.rank).toBe(RANK_OPEN);
+  const json = readLooseJson(perms.document(CHAT_DOCUMENT));
+  if (!json.ok) throw new Error(json.reason);
+  const settings = readChatSettings(json.value);
+  expect(settings.faults).toEqual([]);
+  expect(settings.value.tags.map((t) => t.name)).toEqual(["Admins", "VIP"]);
+  expect(settings.value.stackTags).toBe(true);
+  expect(settings.value.mutedGroup).toBe("Muted");
+  expect(settings.value.mapColors.get("TheIsland_WP")).toBe(0x007d7d);
+  expect(noteWith(plan, "do not carry over: Mysql")).toBeDefined();
+  expect(noteWith(plan, "Icons do not carry over")).toBeDefined();
+  expect(noteWith(plan, "The tag VIP has no group")).toBeDefined();
+});
+
+test("CrossChat's Admin lands on Admins with a note", () => {
+  const perms = fresh();
+  const plan = planOf(planCrossChat(SAMPLE, opts(perms)));
+  applyPlan(perms, cluster, plan);
+  expect(perms.group("Admin")).toBeUndefined();
+  expect(readChatFormat(JSON.parse(perms.group("Admins")!.chat)).value!.priority).toBe(9999);
+  expect(noteWith(plan, "Admin block and tag went to Admins")).toBeDefined();
+
+  const kept = fresh();
+  kept.apply(cluster, { op: "addGroup", group: "Admin" });
+  const own = planOf(planCrossChat(SAMPLE, opts(kept)));
+  applyPlan(kept, cluster, own);
+  expect(kept.group("Admin")!.chat).not.toBe("");
+  expect(kept.group("Admins")!.chat).toBe("");
+  expect(noteWith(own, "went to Admins")).toBeUndefined();
+});
+
+test("an open group that holds a cheat is named", () => {
+  const plan = planOf(planArkApi(arkApiFile(), opts(fresh())));
+  expect(noteWith(plan, "Vip is open and holds cheats: its members need no password")).toBeDefined();
+  expect(noteWith(plan, "Admins is open")).toBeUndefined();
+  expect(noteWith(plan, "Builders is open")).toBeUndefined();
+});
+
+test("a Cheat permission with no command here is named", () => {
+  const plan = planOf(planArkApi(arkApiFile(), opts(fresh())));
+  const note = noteWith(plan, "commands this game does not have");
+  expect(note).toContain("Cheat.DestroyWildDinos");
+  expect(note).not.toContain("Cheat.KickPlayer");
+});
+
+test("a file that is no database is a plain reason", () => {
+  const perms = fresh();
+  for (const bytes of [new TextEncoder().encode("not a database at all ".repeat(50)), new Uint8Array(0)]) {
+    const planned = planArkApi(bytes, opts(perms));
+    expect(planned.ok).toBe(false);
+    if (!planned.ok) expect(planned.reason).toContain("not an SQLite database");
+  }
+  const other = new Database(":memory:");
+  other.exec("CREATE TABLE Things (Id INTEGER)");
+  const planned = planArkApi(other.serialize(), opts(perms));
+  other.close();
+  expect(planned.ok).toBe(false);
+  if (!planned.ok) expect(planned.reason).toContain("no Groups table");
+  expect(planCrossChat("{ nope", opts(perms)).ok).toBe(false);
+});
+
+test("the MySQL table names are read too", () => {
+  const db = new Database(":memory:");
+  db.exec("CREATE TABLE PermissionGroups (Id INTEGER PRIMARY KEY, GroupName TEXT, Permissions TEXT); CREATE TABLE TribePermissions (Id INTEGER PRIMARY KEY, TribeId INTEGER, Groups TEXT, TimedGroups TEXT);");
+  db.exec("INSERT INTO PermissionGroups (GroupName, Permissions) VALUES ('Vip', 'ArkShop.Kits.vip,'); INSERT INTO TribePermissions (TribeId, Groups, TimedGroups) VALUES (55, 'Vip,', '');");
+  const plan = planOf(planArkApi(db.serialize(), opts(fresh())));
+  db.close();
+  expect(plan.ops).toEqual([
+    { op: "addGroup", group: "Vip" },
+    { op: "grant", group: "Vip", permission: "ArkShop.Kits.vip" },
+  ]);
+  expect(noteWith(plan, "Vip: 1 membership left behind (1 tribe)")).toBeDefined();
+});
+
+test("applying a plan twice changes nothing the second time", () => {
+  const perms = fresh();
+  const plan = planOf(planCrossChat(SAMPLE, { ...opts(perms), onto: planOf(planArkApi(arkApiFile(), opts(perms))) }));
+  applyPlan(perms, cluster, plan);
+  const once = { groups: groupsOf(perms), documents: perms.snapshot().documents };
+  applyPlan(perms, cluster, plan);
+  expect({ groups: groupsOf(perms), documents: perms.snapshot().documents }).toEqual(once);
+  expect(planOf(planArkApi(arkApiFile(), opts(perms))).ops).toEqual([]);
+  expect(planOf(planCrossChat(SAMPLE, opts(perms))).ops).toEqual([]);
+});
+
+test("a refusal by the edit rule is reported and the rest still applies", () => {
+  const perms = fresh();
+  const plan = planOf(planCrossChat(SAMPLE, opts(perms)));
+  const applied = applyPlan(perms, admin, plan);
+  expect(applied.refused.map((r) => r.op.op)).toEqual(["setDocument"]);
+  expect(applied.refused[0]!.reason).toContain("map rank");
+  expect(applied.done).toBe(plan.ops.length - 1);
+  expect(perms.group("Default")!.chat).not.toBe("");
+  expect(perms.document(CHAT_DOCUMENT)).toBe("");
+});
