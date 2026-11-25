@@ -3,7 +3,7 @@
 // HTML. Every refusal is the shared edit rule's own words (shared/permissions/model.ts).
 
 import type { TextRun } from "../../../shared/net/chat.ts";
-import { DEFAULT_CHAT_FORMAT, PART_KEYS, chooseTags, formatLine, mapInk, readChatFormat, readChatSettings, readLooseJson, type ChatFormat, type PartKey } from "../../../shared/permissions/chat.ts";
+import { DEFAULT_CHAT_FORMAT, PART_KEYS, START_CHAT_SETTINGS, chooseTags, formatLine, mapInk, readChatFormat, readChatSettings, readLooseJson, type ChatFormat, type PartKey } from "../../../shared/permissions/chat.ts";
 import {
   DEFAULT_GROUP, MAX_CHAT_LENGTH, MAX_DOCUMENT_LENGTH, editRule, isGroupName, memberHolds, permissionKey, type Group, type Member, type MemberKind, type PermissionActor,
   type PermissionOp, type RuleLook,
@@ -347,10 +347,10 @@ export interface SettingsForm {
   maps: MapForm[];
 }
 
-/** The chat settings document as its form. What was wrong in it is said. */
+/** The chat settings document as its form, or the server's own where the store holds none. What was wrong in it is said. */
 export function settingsFormOf(document: string): { form: SettingsForm; faults: string[] } {
   const faults: string[] = [];
-  let raw: unknown = {};
+  let raw: unknown = START_CHAT_SETTINGS;
   if (document !== "") {
     const json = readLooseJson(document);
     if (json.ok) raw = json.value;

@@ -1,18 +1,14 @@
 // What a speaker's permission groups make of their chat line: the format of the highest, their tags, and the muted group.
 // The groups' chat blocks and the settings document are read once for each change of the store, not for each line.
 import type { TextRun } from "../../shared/net/chat.ts";
-import { chooseFormat, chooseTags, formatLine, mapInk, readChatFormat, readChatSettings, readLooseJson, type ChatFormat, type ChatSettings, type ChatTag } from "../../shared/permissions/chat.ts";
+import { START_CHAT_SETTINGS, chooseFormat, chooseTags, formatLine, mapInk, readChatFormat, readChatSettings, readLooseJson, type ChatFormat, type ChatSettings, type ChatTag } from "../../shared/permissions/chat.ts";
 import { ADMINS_GROUP, type Group } from "../../shared/permissions/model.ts";
 import { CHAT_DOCUMENT } from "../../shared/permissions/page.ts";
 import { RANK_ADMIN } from "../../shared/ranks.ts";
 import type { Permissions, PermissionSubject } from "./permissions.ts";
 
-/** What stands where the store holds no chat settings: a red [Admin] for Admins, which its holder may switch off. */
-export const START_BOOK: ChatSettings = readChatSettings({
-  StackChatTags: true,
-  MutedPermissionGroup: "Muted",
-  ChatTags: { [ADMINS_GROUP]: { Text: '<RichColor Color="1, 0, 0, 1">[Admin]</>', Priority: 9999, CanBeDisabled: true } },
-}).value;
+/** What stands where the store holds no chat settings; the Permissions page shows the same. */
+export const START_BOOK: ChatSettings = readChatSettings(START_CHAT_SETTINGS).value;
 
 /** The format of a speaker whose groups give none: the name and the words, after the map's name in brackets on other maps. */
 const PLAIN = readChatFormat({ ChatFormat: "{map} {tags} {sender}: {message}", FormattingParts: { map: "[{name}]" } }).value!;

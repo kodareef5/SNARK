@@ -5,16 +5,19 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  FREE_CHEATS, addGroupPost, addMemberPost, blankChatForm, chatBlockOf, chatFormOf, coloured, firstInk, freeCheats, grantPost, groupsHtml, importPost, manageWhy, memberRows,
+  FREE_CHEATS, addGroupPost, addMemberPost, blankChatForm, blankTag, chatBlockOf, chatFormOf, coloured, firstInk, freeCheats, grantPost, groupsHtml, importPost, manageWhy, memberRows,
   memberRowsHtml, passwordPost, passwordRows, passwordRowsHtml, removeGroupPost, sampleRuns, settingsFormOf, settingsHtml, settingsTextOf, spanWords, type MemberForm,
 } from "../../client/core/admin/permissions.ts";
 import { cluster, resolveAdmin } from "../../client/core/admin/navigation.ts";
 import { adminSite } from "../../server/admin/site.ts";
+import { START_BOOK } from "../../server/permissions/chat-tags.ts";
 import { sitePost } from "../../server/front.ts";
 import { Guesses } from "../../server/guesses.ts";
 import { idOf } from "../../shared/ids.ts";
+import { readChatSettings } from "../../shared/permissions/chat.ts";
 import type { Member } from "../../shared/permissions/model.ts";
 import { PERMISSIONS_API, PERMISSIONS_STATE, type PermissionsState } from "../../shared/permissions/page.ts";
+import { readRichColor } from "../../shared/permissions/richcolor.ts";
 import { RANK_ADMIN, RANK_CLUSTER, RANK_MAP, RANK_STAFF } from "../../shared/ranks.ts";
 import { buildAdmin } from "../../tools/build-admin.ts";
 
@@ -192,6 +195,17 @@ test("the sample line shows the tag, the map and the sender in their colours", (
   expect(runs).toContainEqual({ text: "Rowan", ink: 0x33cc66 });
   // A group with no tag and no block of its own shows the built-in line.
   expect(sampleRuns(state, "Builders", null, settingsFormOf(state.document).form).map((r) => r.text).join("")).toBe("Rowan: Meet at the river at dusk.");
+});
+
+test("with no chat settings stored, the page shows the server's red Admin tag", () => {
+  const state = { ...stateAt(RANK_CLUSTER), document: "" };
+  const form = settingsFormOf(state.document).form;
+  expect(form.tags.map((t) => [t.name, readRichColor(t.text)])).toEqual(START_BOOK.tags.map((t) => [t.name, readRichColor(t.text)]));
+  expect(form.muted).toBe(START_BOOK.mutedGroup);
+  expect(sampleRuns(state, "Admins", null, form)).toContainEqual({ text: "[Admin]", ink: 0xff0000 });
+  // A tag added on the page is saved beside it, not in its place.
+  const saved = readChatSettings(JSON.parse(settingsTextOf({ ...form, tags: [...form.tags, { ...blankTag(), name: "VIP", text: "[VIP]" }] }).text)).value;
+  expect(saved.tags.map((t) => t.name)).toEqual(["Admins", "VIP"]);
 });
 
 test("an open group holding a cheat is flagged as needing no password", () => {

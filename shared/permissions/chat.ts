@@ -3,6 +3,7 @@
 // Only the admin's strings are read for markup. A player's words, name and tribe are always shown as they are written.
 
 import { CHAT_RUNS_MOST, type TextRun } from "../net/chat.ts";
+import { ADMINS_GROUP } from "./model.ts";
 import { readRichColor } from "./richcolor.ts";
 
 // ---- Loose JSON ----
@@ -300,6 +301,13 @@ function readTag(name: string, raw: unknown, where: string, faults: string[]): C
     runs,
   };
 }
+
+/** The chat settings where the store holds none, in CrossChat's keys: a red [Admin] for Admins, which its holder may switch off. */
+export const START_CHAT_SETTINGS = {
+  StackChatTags: true,
+  MutedPermissionGroup: "Muted",
+  ChatTags: { [ADMINS_GROUP]: { Text: '<RichColor Color="1, 0, 0, 1">[Admin]</>', Priority: 9999, CanBeDisabled: true } },
+} as const;
 
 /** Reads the chat settings. StackChatTags is read from inside ChatTags, as CrossChat writes it, or else from beside it. */
 export function readChatSettings(raw: unknown, where = ""): Read<ChatSettings> {
