@@ -1178,6 +1178,9 @@ export class Support {
     return count;
   }
 
+  /** How far past the lost piece's own reach each row of a search's outer box lies. */
+  private ring = new Float64Array(256);
+
   /**
    * Every building piece that a piece at (x, z) lattice units could have been helping to hold up: all within reach
    * horizontally, at any height. Writes their refs to `out` and returns how many.
@@ -1200,23 +1203,30 @@ export class Support {
       break;
     }
     const out = found.refs;
+    if (this.ring.length < n) this.ring = new Float64Array(n * 2);
+    const ring = this.ring;
     // The box is as wide as the widest piece there is. The kinds found here say how wide it had to be.
     let near = 0;
-    for (let i = 0; i < n; i++) near = Math.max(near, this.end[structs.chunks[Math.floor(out[i]! / 65536)]!.kind[out[i]! & 0xffff]!]!);
-    near += far;
     let count = 0;
     let inside = 0;
+    let rings = 0;
     for (let i = 0; i < n; i++) {
       const ref = out[i]!;
       const t = structs.chunks[Math.floor(ref / 65536)]!;
       const slot = ref & 0xffff;
+      const kind = t.kind[slot]!;
+      const end = this.end[kind]!;
       const dx = t.x[slot]! - mx;
       const dz = t.z[slot]! - mz;
-      if (Math.abs(dx) <= near && Math.abs(dz) <= near) inside++;
-      if (ref === self || tables.role[t.kind[slot]!]! < 0) continue;
-      const reach = far + this.end[t.kind[slot]!]!;
+      const past = Math.max(Math.abs(dx), Math.abs(dz)) - far;
+      if (end > near) near = end;
+      if (past <= 0) inside++;
+      else ring[rings++] = past;
+      if (ref === self || tables.role[kind]! < 0) continue;
+      const reach = far + end;
       if (dx * dx + dz * dz <= reach * reach) out[count++] = ref;
     }
+    for (let i = 0; i < rings; i++) if (ring[i]! <= near) inside++;
     // A piece in the box it needed costs half a search step, and one in the rest of it a quarter of that.
     this.work += COST_NODE + (inside >> 1) + ((n - inside) >> 3);
     return count;
