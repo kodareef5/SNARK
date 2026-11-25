@@ -121,6 +121,8 @@ export class CityBlocks {
   private seenTops = 0;
   /** The heightfield's changes taken in. */
   private seenGround: number;
+  /** The ground a tile's hash is taken over, kept between tiles. */
+  private hashed = new Uint16Array(0);
   /** The map's statics and what stands of them, once they have come; per chunk, 1 where a landmark's piece stands in it. */
   private statics: CityStatics | null = null;
   private standing: Standing | null = null;
@@ -354,9 +356,10 @@ export class CityBlocks {
   /** A hash of the ground tile `t`'s blocks stand on, never 0. */
   private groundHash(t: number): number {
     const hf = this.hf, { i0, j0, w, rows } = this.groundOf(t);
-    const v = hf.view(i0 * COARSE, j0 * COARSE, (i0 + w - 1) * COARSE, (j0 + rows - 1) * COARSE);
+    const heights = (this.hashed.length >= w * rows ? this.hashed : (this.hashed = new Uint16Array(w * rows))).subarray(0, w * rows);
+    hf.every(i0 * COARSE, j0 * COARSE, COARSE, w, rows, heights, null);
     let h = 2166136261;
-    for (let j = 0; j < rows; j++) for (let i = 0; i < w; i++) h = Math.imul(h ^ v.heights[v.off + (j0 + j) * COARSE * v.stride + (i0 + i) * COARSE]!, 16777619);
+    for (let k = 0; k < heights.length; k++) h = Math.imul(h ^ heights[k]!, 16777619);
     return h >>> 0 || 1;
   }
 
@@ -398,8 +401,7 @@ export class CityBlocks {
     tile.ground = this.groundHash(t);
     const hf = this.hf, { i0, j0, w, rows } = this.groundOf(t);
     const heights = new Uint16Array(w * rows);
-    const v = hf.view(i0 * COARSE, j0 * COARSE, (i0 + w - 1) * COARSE, (j0 + rows - 1) * COARSE);
-    for (let j = 0; j < rows; j++) for (let i = 0; i < w; i++) heights[j * w + i] = v.heights[v.off + (j0 + j) * COARSE * v.stride + (i0 + i) * COARSE]!;
+    hf.every(i0 * COARSE, j0 * COARSE, COARSE, w, rows, heights, null);
     return { id, chunksX, ox: cx0 * CHUNK_SIZE, oz: cz0 * CHUNK_SIZE, chunks: Int32Array.from(chunks), size, top, tint, i0, j0, w, heights, minY: hf.minY, stepY: hf.stepY };
   }
 

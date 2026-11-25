@@ -255,8 +255,7 @@ export function overGround(hf: Heightfield, coarse: number, frame: Float32Array,
   const v = Math.min(lastZ, Math.max(0, (rz * s + frame[FRAME.farAt + 1]!) / (s * spacing)));
   const i = Math.min(Math.floor(u), lastX - 1), j = Math.min(Math.floor(v), lastZ - 1);
   const fu = u - i, fv = v - j;
-  const g = hf.view(Math.min(i * coarse, hf.nx - 1), Math.min(j * coarse, hf.nz - 1), Math.min((i + 1) * coarse, hf.nx - 1), Math.min((j + 1) * coarse, hf.nz - 1));
-  const at = (a: number, b: number): number => g.heights[g.off + Math.min(b * coarse, hf.nz - 1) * g.stride + Math.min(a * coarse, hf.nx - 1)]!;
+  const at = (a: number, b: number): number => hf.stepsAt(Math.min(a * coarse, hf.nx - 1), Math.min(b * coarse, hf.nz - 1));
   const h00 = at(i, j), h11 = at(i + 1, j + 1);
   const q = fu >= fv ? h00 + (at(i + 1, j) - h00) * fu + (h11 - at(i + 1, j)) * fv : h00 + (h11 - at(i, j + 1)) * fu + (at(i, j + 1) - h00) * fv;
   return ry + camY - (hf.minY + q * hf.stepY);

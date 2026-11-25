@@ -70,11 +70,7 @@ export function coarseArea(hf: Heightfield, cx0: number, cz0: number, cx1: numbe
   const w = cx1 * per - i0 + 1, h = cz1 * per - j0 + 1;
   const heights = new Uint16Array(w * h);
   const tint = new Uint8Array(w * h);
-  const a0 = i0 * COARSE, b0 = j0 * COARSE, a1 = (i0 + w - 1) * COARSE, b1 = (j0 + h - 1) * COARSE;
-  const v = hf.view(a0, b0, a1, b1);
-  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) heights[j * w + i] = v.heights[v.off + (j0 + j) * COARSE * v.stride + (i0 + i) * COARSE]!;
-  const t = hf.tints(a0, b0, a1, b1);
-  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) tint[j * w + i] = t.tint[t.off + (j0 + j) * COARSE * t.stride + (i0 + i) * COARSE]!;
+  hf.every(i0 * COARSE, j0 * COARSE, COARSE, w, h, heights, tint);
   return { i: i0, j: j0, w, h, heights, tint };
 }
 

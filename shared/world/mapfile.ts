@@ -133,7 +133,7 @@ import { hashBytes } from "../hash.ts";
 import { decodeUtf8 } from "../pack/pack.ts";
 import { BitReader, BitWriter } from "../net/codec.ts";
 import { Heightfield, TERRAIN_CELL } from "./heightfield.ts";
-import { formOf, mix, nodeForms, placedNodes, resolveSlots, type KindsAt, type NodeSource, type SlotsTaken } from "./nodes.ts";
+import { denseSlots, formOf, mix, nodeForms, placedNodes, resolveSlots, type KindsAt, type NodeSource, type SlotsOf, type SlotsTaken } from "./nodes.ts";
 import { MAX_SLOTS_PER_CHUNK, StructureStore } from "./structures.ts";
 import { FarCells, Summary, TACTICAL_CELL, bakeChunk, pieceShapes } from "./tactical.ts";
 import { MAX_WATER_BODIES, MapWater, type WaterBody } from "./water.ts";
@@ -453,6 +453,16 @@ export interface NodeScatter {
   readonly out?: Uint8Array;
   /** As `out`, set where the node stands as its footing's other kind. With it the layer is resolved, as a file holds every one. */
   readonly other?: Uint8Array;
+  /** Its picture and bits as a page holds them, an overview at a time; with it, `allow`, `out` and `other` are not read. */
+  readonly held?: HeldNodeBits;
+}
+
+/** A scattered or zoned layer's picture and slots' bits held by overview (client/core/ground/overviews.ts). */
+export interface HeldNodeBits {
+  /** Where each chunk's slots' bits are, none where its overview is not held. */
+  readonly slots: SlotsOf;
+  /** The picture at square (sx, sz) of the layer's cell: a zone's number, or 1 where a node may stand; 0 where not held. */
+  picture(sx: number, sz: number): number;
 }
 
 /** Kinds that grow in a zone, each with its weight, and the weight of bare ground among them. */
@@ -475,6 +485,7 @@ export interface NodeZoned {
   /** As NodeScatter's. */
   readonly out?: Uint8Array;
   readonly other?: Uint8Array;
+  readonly held?: HeldNodeBits;
 }
 
 export type NodeLayer = NodeScatter | NodeList | NodeZoned;
@@ -2490,15 +2501,18 @@ function weighed(reg: Registry, kinds: readonly (readonly [id: string, weight: n
 /** What a scattered or zoned layer grows at a place, by content index (KindsAt in shared/world/nodes.ts). */
 function kindsOf(dims: MapDims, reg: Registry, layer: NodeScatter | NodeZoned): KindsAt {
   const wide = (cell: number): number => (dims.chunksX * CHUNK_SIZE) / cell;
+  const held = layer.held;
   if ("zone" in layer) {
     const own: (readonly number[] | null)[] = [null, ...layer.zones.map((z) => weighed(reg, z.kinds, z.bare))];
     const zones = layer.codes ? Array.from(layer.codes, (c) => own[c]!) : own;
     const { zone, zoneCell: cell } = layer;
     const across = wide(cell);
+    if (held) return (x, z) => zones[held.picture(Math.floor(x / cell), Math.floor(z / cell))]!;
     return (x, z) => zones[zone[Math.floor(z / cell) * across + Math.floor(x / cell)]!]!;
   }
   const kinds = weighed(reg, layer.kinds);
   const { allow, allowCell: cell } = layer;
+  if (held && cell > 0) return (x, z) => (held.picture(Math.floor(x / cell), Math.floor(z / cell)) === 1 ? kinds : null);
   if (!allow) return () => kinds;
   const across = wide(cell);
   return (x, z) => {
@@ -2529,8 +2543,9 @@ export function resolveNodes(map: MapData, reg: Registry, tally?: SlotsTaken): M
 function layerSource(dims: MapDims, hf: Heightfield, reg: Registry, layer: NodeLayer): NodeSource {
   const forms = nodeForms(reg);
   if (!("first" in layer)) {
+    if (layer.held) return placedNodes(dims, hf, layer.seed, layer.perChunk, forms, kindsOf(dims, reg, layer), layer.held.slots);
     const { out, other } = standing(dims, hf, reg, layer);
-    return placedNodes(dims, hf, layer.seed, layer.perChunk, forms, kindsOf(dims, reg, layer), out, other);
+    return placedNodes(dims, hf, layer.seed, layer.perChunk, forms, kindsOf(dims, reg, layer), denseSlots(out, other, layer.perChunk));
   }
   const kinds = layer.kinds.map((id) => reg.index.get(id) ?? 0);
   return {

@@ -172,7 +172,7 @@ export class FinishNear {
     const cell = hf.cell, rows = Math.ceil(reach / (cell * step));
     const k = this.row++;
     // A server's ground has no tints, and draws nothing.
-    if (k > 2 * rows || hf.tint.length === 0) return this.next();
+    if (k > 2 * rows || !hf.tinted) return this.next();
     const jc = Math.round(z / (cell * step)) * step, j = jc + (k % 2 === 0 ? k / 2 : -(k + 1) / 2) * step;
     if (j < 0 || j >= hf.nz) return 1;
     const ic = Math.round(x / (cell * step)) * step, i0 = Math.max(0, ic - rows * step), i1 = Math.min(hf.nx - 1, ic + rows * step);

@@ -48,6 +48,8 @@ export class Heightfield {
    * Empty where a map gives none: every place is then plain ground.
    */
   readonly ground: Uint8Array;
+  /** Whether its samples have tints. A server's ground draws nothing and has none. */
+  readonly tinted: boolean;
   /** Its roads' frame, used only for drawing (shared/world/roadframe.ts), as far as it is held; null for a server's ground and wherever nothing draws it. */
   road: RoadSectors | null = null;
   /**
@@ -88,8 +90,11 @@ export class Heightfield {
   private readonly whole: GroundView;
   private readonly wholeTint: TintView;
 
-  /** Use a power-of-two fraction such as 1/256 for `stepY`, so round heights (sea level, floors) are exact. */
-  constructor(dims: MapDims, cell: number, minY: number, stepY: number, heights?: Uint16Array, tint?: Uint8Array, ground?: Uint8Array) {
+  /**
+   * Use a power-of-two fraction such as 1/256 for `stepY`, so round heights (sea level, floors) are exact. A `paged`
+   * heightfield keeps no arrays of its own: a subclass backs every reader (client/core/ground/pages.ts).
+   */
+  constructor(dims: MapDims, cell: number, minY: number, stepY: number, heights?: Uint16Array, tint?: Uint8Array, ground?: Uint8Array, paged = false) {
     this.dims = framed(dims);
     this.cell = cell;
     this.sizeX = dims.chunksX * CHUNK_SIZE;
@@ -98,11 +103,12 @@ export class Heightfield {
     this.nz = Math.round(this.sizeZ / cell) + 1;
     this.minY = minY;
     this.stepY = stepY;
-    this.heights = heights ?? new Uint16Array(this.nx * this.nz);
-    this.tint = tint ?? new Uint8Array(this.nx * this.nz);
+    this.heights = heights ?? new Uint16Array(paged ? 0 : this.nx * this.nz);
+    this.tint = tint ?? new Uint8Array(paged ? 0 : this.nx * this.nz);
     this.groundX = (this.nx + 1) >> 1;
     this.ground = ground ?? new Uint8Array(0);
-    if (this.heights.length !== this.nx * this.nz || (this.tint.length !== 0 && this.tint.length !== this.nx * this.nz) ||
+    this.tinted = paged || this.tint.length > 0;
+    if (!paged && this.heights.length !== this.nx * this.nz || (this.tint.length !== 0 && this.tint.length !== this.nx * this.nz) ||
       (this.ground.length !== 0 && this.ground.length !== this.groundX * ((this.nz + 1) >> 1))) {
       throw new Error("heightfield data does not match map dimensions");
     }
@@ -128,6 +134,27 @@ export class Heightfield {
   /** The tint of sample (i, j). */
   tintOf(i: number, j: number): number {
     return this.tint[j * this.nx + i]!;
+  }
+
+  /** The stored height of sample (i, j), in steps of `stepY` over `minY`. */
+  stepsAt(i: number, j: number): number {
+    return this.heights[j * this.nx + i]!;
+  }
+
+  /**
+   * Every `step`-th sample from (i0, j0), `w` across and `h` down, held to the map's last sample: their stored heights
+   * into `heights` and tints into `tint`, either may be null, row by row. A reader of a coarse picture asks this, not `view`.
+   */
+  every(i0: number, j0: number, step: number, w: number, h: number, heights: Uint16Array | null, tint: Uint8Array | null): void {
+    const [nx, lastI, lastJ] = [this.nx, this.nx - 1, this.nz - 1];
+    for (let b = 0; b < h; b++) {
+      const row = Math.min(lastJ, j0 + b * step) * nx;
+      for (let a = 0; a < w; a++) {
+        const k = row + Math.min(lastI, i0 + a * step);
+        if (heights) heights[b * w + a] = this.heights[k]!;
+        if (tint) tint[b * w + a] = this.tint[k]!;
+      }
+    }
   }
 
   /**
