@@ -671,6 +671,12 @@ function pillar(form: FormDef, level: number): Shape | null {
   return p;
 }
 
+/** A flat sheet seen from both sides, in the plane x = `x` from y0 to y1 and z0 to z1: a leaf stood open, from 386 m. */
+function leafSheet(p: Shape, x: number, y0: number, y1: number, z0: number, z1: number, mat: string): void {
+  const points: Vec[] = [[x, y0, z0], [x, y1, z0], [x, y1, z1], [x, y0, z1]];
+  for (const tris of [[0, 1, 2, 0, 2, 3], [0, 2, 1, 0, 3, 2]]) p.faces.push({ points, uvs: points.map(() => [0, 0] as const), mat, tris });
+}
+
 /** Rows of the boards picture with no butt joint. */
 const DOOR_ROWS = [10, 3, 7, 0, 4] as const;
 
@@ -781,6 +787,14 @@ function doubleDoor(form: FormDef, level: number): Shape | null {
   const wide = open ? u1 - u0 : (u1 - u0) / 2;
   // One leaf as a door's row has it: about its own middle shut, and open by where its thickness stands from the pair's middle.
   const row: FormDef = { ...form, outline: [[-wide / 2, v0], [wide / 2, v0], [wide / 2, v1], [-wide / 2, v1]], ...(open ? { off: (form.off ?? 0) - form.at[0] } : {}) };
+  if (level === 4) {
+    // From 386 m: shut, one box; open, each leaf a sheet seen from both sides, since two boxes are more than a piece may be.
+    const p = new Shape();
+    const hh = (v1 - v0) / 2;
+    if (!open) return p.box([-wide, -form.thick / 2, -hh], [wide, form.thick / 2, hh], tone("boards"));
+    for (const s of [-1, 1]) leafSheet(p, s * row.off!, -wide, 0, -hh, hh, "boards");
+    return p;
+  }
   const leaf = (): Shape | null => {
     const p = door(row, level, true);
     return p && !open ? place(p, (q) => [q[0] - wide / 2, q[1], q[2]]) : p;
@@ -1393,7 +1407,7 @@ function triCeiling(form: FormDef, level: number): Shape | null {
  * trimmer joists with two headers between them, flush with the hole's sides.
  */
 function hatchFrame(form: FormDef, level: number): Shape | null {
-  if (level > 3) return null;
+  if (level > 4) return null;
   const p = new Shape();
   const o = form.openings![0]!;
   // The hole about the collider's origin, in the recipe's frame.
@@ -1403,6 +1417,8 @@ function hatchFrame(form: FormDef, level: number): Shape | null {
   const thick = 0.05;
   const hole: Cell[] = [[hx0, hy0], [hx1, hy0], [hx1, hy1], [hx0, hy1]];
   const square: Cell[] = [[-H, -H], [H, -H], [H, H], [-H, H]];
+  // From 386 m the hole is not drawn: twelve triangles hold none.
+  if (level === 4) return p.box([-H, -H, bottom], [H, H, top], tone("deck"));
   if (level === 3) return p.extrude(square, "z", bottom, top, (label) => tone(label[1] === "z" ? "deck" : "timber")(label, X, X), [hole]);
   if (level === 2) return p.extrude(square, "z", bottom, top, (label, lo, hi) => (label[1] === "z" ? grid("deck")(label, lo, hi) : beam(label[1] === "y" ? "x" : "y", label[1] === "y" ? 2 : 5)(label, lo, hi)), [hole]);
   // Boards run along x: whole lengths past the hole's two sides, and short ones either side of it.
@@ -1550,9 +1566,11 @@ function stick(p: Shape, level: number, s: Stick, bands: Bands, seed: number, o:
  * braces in each bay, pegged where they meet. Far off it is its two rails.
  */
 function railing(form: FormDef, level: number): Shape | null {
-  if (level > 3) return null;
+  if (level > 4) return null;
   const f = frameOf(form);
   const p = new Shape();
+  // From 386 m its rails are one board: twelve triangles are all a piece may be from there.
+  if (level === 4) return p.box([-f.hx, -form.thick / 2, f.foot], [f.hx, form.thick / 2, f.top], tone("timber"));
   const deep = form.thick - 0.012;
   const sticks = railingSticks(f.hx, f.foot, f.top - 0.012, [0.075, deep], [0.09, deep - 0.01], [0.05, 0.03]);
   sticks.forEach((s, k) => {
@@ -1576,13 +1594,15 @@ function railing(form: FormDef, level: number): Shape | null {
  * on their outer sides. It stands off the wall's face by the little its row leaves it.
  */
 function ladder(form: FormDef, level: number): Shape | null {
-  if (level > 3) return null;
+  if (level > 4) return null;
   const p = new Shape();
   const [u0, v0, u1, v1] = outlineBox(form);
   const [half, foot, top] = [(u1 - u0) / 2, v0 - form.at[1], v1 - form.at[1]];
   // The front is -y: the row's `off` is toward the engine's +Z.
   const near = -(form.off ?? 0) + form.thick / 2 - 0.006;
   const far = -(form.off ?? 0) - form.thick / 2 + 0.004;
+  // From 386 m it is one plank.
+  if (level === 4) return p.box([-half, far, foot], [half, near, top], tone("timber"));
   const sticks = ladderSticks(2 * half, foot, top, (near + far) / 2, [0.06, near - far], 0.036, 0.3, 0.012);
   sticks.forEach((s, k) => {
     if (s.what === "rail") return stick(p, level, s, [2 + 5 * k, 3 + 5 * k, 2 + 5 * k, 3 + 5 * k], 1800 + k, { segs: 2, end: [k, 0] });
@@ -1745,7 +1765,6 @@ function gateway(form: FormDef, level: number): Shape | null {
       const points = outline.map(([z, x]): Vec => [x, 0, z]);
       p.faces.push({ points, uvs: points.map(() => [0, 0] as const), mat: "timber", tris: y < 0 ? tris : tris.flatMap((_, i) => (i % 3 === 0 ? [tris[i]!, tris[i + 2]!, tris[i + 1]!] : [])) });
     }
-    p.error = half;
     return p;
   }
   const beamTop = f.top - 0.27;
@@ -1783,13 +1802,18 @@ function gateway(form: FormDef, level: number): Shape | null {
  * straight, a board to a row of the picture, and its iron is what marks it from afar.
  */
 function gate(form: FormDef, level: number): Shape | null {
-  if (level > 3) return null;
-  const p = new Shape();
   const [u0, v0, u1, v1] = outlineBox(form);
   // The open row is one leaf across the edge, with its pair: the gate is two of its width.
   const open = form.plane === "across";
+  if (level > (open ? 4 : 3)) return null;
+  const p = new Shape();
   const f = { hx: open ? u1 - u0 : (u1 - u0) / 2, foot: v0 - form.at[1], top: v1 - form.at[1] };
   const half = form.thick / 2;
+  if (level === 4) {
+    // From 386 m each open leaf is a sheet seen from both sides: two boxes are more than a piece may be from there.
+    for (const s of [-1, 1]) leafSheet(p, s * ((form.off ?? 0) - form.at[0]), -f.hx, 0, f.foot, f.top, "boards");
+    return p;
+  }
   /** Which leaf the faces from `from` on are of: each turns on its own jamb when the gate stands open. */
   const hung: [from: number, to: number, hinge: number][] = [];
   const done = (): Shape => {

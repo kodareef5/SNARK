@@ -352,7 +352,7 @@ const ROOF_SEAT = 0.03;
 const WOOD_NEW_MOST: Record<string, readonly number[]> = {
   half_wall: [948, 252, 120, 28, 12],
   quarter_wall: [596, 156, 96, 28, 12],
-  railing: [508, 172, 92, 24],
+  railing: [508, 172, 92, 24, 12],
   corner_pillar: [320, 124, 60, 12],
   thin_pillar: [320, 124, 60, 12],
   beam: [212, 28, 28, 12],
@@ -368,9 +368,9 @@ const WOOD_NEW_MOST: Record<string, readonly number[]> = {
   sloped_wall_left: [728, 224, 122, 8],
   sloped_wall_right: [728, 224, 122, 8],
   fence_foundation: [256, 56, 28, 12],
-  trapdoor_frame: [1208, 384, 112, 32],
+  trapdoor_frame: [1208, 384, 112, 32, 12],
   trapdoor: [420, 204, 36, 12],
-  ladder: [208, 144, 84, 24],
+  ladder: [208, 144, 84, 24, 12],
   double_doorway: [1564, 468, 148, 28, 12],
   large_wall: [1576, 280, 144, 28, 12],
   gateway: [720, 104, 68, 28, 12],
@@ -458,9 +458,9 @@ test("every new wood level is closed, looks outward and costs no more than a mad
 /** The rows past the 25: the leaves stood open, and the double door. What each costs in wood, as the planned forms' table has theirs. */
 const WOOD_LEAVES_MOST: Record<string, readonly number[]> = {
   trapdoor_open: [420, 204, 36, 12],
-  double_door: [1512, 440, 96, 24],
-  double_door_open: [1512, 440, 96, 24],
-  gate_open: [1184, 288, 96, 24],
+  double_door: [1512, 440, 96, 24, 12],
+  double_door_open: [1512, 440, 96, 24, 8],
+  gate_open: [1184, 288, 96, 24, 8],
 };
 
 test("wood's open leaves and its double door are closed, within their rows' boxes and a leaf's margin, and under budget", () => {
