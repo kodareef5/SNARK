@@ -126,6 +126,8 @@ export class Replication {
   private readonly farReach = new Float64Array(FAR_MOST);
   private farCount = 0;
   private farTick = -1;
+  /** The tick each entity was last made far at, by index, so a view asks it of one entity at once. */
+  private farAt = new Int32Array(0);
   /** The far entities put in the view being gathered, past its ring. */
   private readonly injected = new Int32Array(FAR_MOST);
   private injectedCount = 0;
@@ -153,16 +155,20 @@ export class Replication {
   far(e: number, reach: number): void {
     const T = this.world.tick;
     if (this.farTick !== T) { this.farTick = T; this.farCount = 0; }
-    if (this.farCount >= FAR_MOST) return;
+    if (this.farCount >= FAR_MOST || (e < this.farAt.length && this.farAt[e] === T)) return;
+    if (e >= this.farAt.length) {
+      const grown = new Int32Array(Math.max(e + 1, this.world.ents.flags.length)).fill(-1);
+      grown.set(this.farAt);
+      this.farAt = grown;
+    }
+    this.farAt[e] = T;
     this.farIds[this.farCount] = e;
     this.farReach[this.farCount++] = reach * reach;
   }
 
   /** Whether entity `i` is one of this tick's far entities. */
   private isFar(i: number): boolean {
-    if (this.farTick !== this.world.tick) return false;
-    for (let k = 0; k < this.farCount; k++) if (this.farIds[k] === i) return true;
-    return false;
+    return this.farTick === this.world.tick && i < this.farAt.length && this.farAt[i] === this.farTick;
   }
 
   /** Ticks the loop gave up: every page is told, and moves its clock back as many. */
