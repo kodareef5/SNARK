@@ -75,12 +75,11 @@ export class FaceFinder {
   constructor(faces: readonly (ScreenFace | null)[]) {
     this.faces = faces;
     this.typeOf = Uint8Array.from(faces, (f) => (f ? SCREENS.indexOf(f.type) : 0));
+    this.any = this.typeOf.some((t) => t > 0);
   }
 
   /** Whether any kind has a face at all. */
-  get any(): boolean {
-    return this.typeOf.some((t) => t > 0);
-  }
+  readonly any: boolean;
 
   /** The face of `kind`, or null. */
   face(kind: number): ScreenFace | null {
