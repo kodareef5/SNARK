@@ -16,6 +16,7 @@ const shapes: Record<string, string> = {
   overview: "M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z",
   chat: "M3 4h18v12H9l-6 5z",
   scenes: "M3 8h18v12H3z M3 8l-1-4 17-3 1 4z M7 3l3 3m3-4 3 3",
+  screens: "M12 3a8 8 0 100 16 8 8 0 000-16z M10 8v6l5-3z M7 21h10",
   map: "M3 5l6-2 6 2 6-2v16l-6 2-6-2-6 2z M9 3v16m6-14v16",
   survivors: "M5 20v-2a5 5 0 0110 0v2 M14 13a5 5 0 015 5v2 M13 7a3 3 0 11-6 0 3 3 0 016 0z M16 4a3 3 0 010 6",
   items: "M3 7l9-5 9 5v10l-9 5-9-5z M3 7l9 5 9-5m-9 5v10",
