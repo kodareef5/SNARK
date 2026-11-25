@@ -108,6 +108,7 @@ import { Spawner, wildStep } from "./spawner.ts";
 import { PART } from "./admin/parts.ts";
 import { LANE_ROW } from "./lane.ts";
 import { CarReturn } from "./car-return.ts";
+import { HANGARS, type HangarSite } from "../content/vehicles/hangars.ts";
 import { withSites } from "../content/supply/sites.ts";
 import { starterBook } from "../content/supply/starter.ts";
 import { catalogOf } from "../shared/supply/catalog.ts";
@@ -121,7 +122,7 @@ import { builtinLoadouts } from "../content/loadouts.ts";
 import { Loadouts } from "./loadout/loadouts.ts";
 import { LoadoutStore } from "./loadout/store.ts";
 import { spawnTables } from "./settings/spawns.ts";
-import { parseMap, type MapFile } from "../shared/world/mapfile.ts";
+import { parseMap, type MapFile, type MapVehicle } from "../shared/world/mapfile.ts";
 import { Tactical } from "./tactical.ts";
 import type { ClipSet } from "../shared/anim/clip.ts";
 import { defaultLook } from "../shared/anim/look.ts";
@@ -163,6 +164,8 @@ export interface HostOptions {
   startingCreatures?: number;
   startingSpecies?: string;
   startingHunters?: number;
+  /** Where the jet is parked, for a map content/vehicles/hangars.ts has no site for, or null for none. */
+  hangar?: HangarSite | null;
   /** Chunks around a player in which creatures are simulated. */
   wakeRadius?: number;
   /**
@@ -446,6 +449,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   if (parsed) opts.onMapLoaded?.(parsed);
   // Every world starts from the map's statics. A save's chunks are laid over them (Persistence.load).
   const world = opts.world ?? createMapWorld(reg, parsed!, { entityMax: opts.entityMax ?? rules.num("MaxEntities"), entityStart: opts.entityStart });
+  // The map's hangar: its one jet, a place of its own that keeps one to a world (server/car-return.ts). Its id makes its origin <map>/hangar.
+  const site = opts.hangar !== undefined ? opts.hangar : HANGARS[world.mapId] ?? null;
+  const hangar: MapVehicle[] = site && reg.index.has("core:jet") ? [{ kind: "core:jet", id: "hangar", x: site.x, z: site.z, yaw: Math.round(site.yaw / (2 * Math.PI) * 65536) & 65535 }] : [];
   world.clock.cycle = rules.num("DayCycleSpeedScale");
   world.clock.day = rules.num("DayTimeSpeedScale");
   world.clock.night = rules.num("NightTimeSpeedScale");
@@ -1355,7 +1361,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     scatter(world.zones[world.zones.length - 1], "core:raptor", opts.startingHunters ?? 0);
     // The map's parked vehicles, owned by nobody. From here on the save keeps them, as it keeps any record.
     const missed = new Map<string, number>();
-    for (const v of parsed?.vehicles ?? []) {
+    for (const v of [...parsed?.vehicles ?? [], ...hangar]) {
       if (parkVehicle(v.kind, v.x, v.z, 0, (v.yaw / 65536) * 2 * Math.PI, "wild", foundVehicle(world.mapId, v, opts.seed ?? 1)) < 0) missed.set(v.kind, (missed.get(v.kind) ?? 0) + 1);
     }
     if (missed.size > 0) say(`not parked, for want of the content or of room: ${[...missed].map(([id, n]) => `${n} of the map's ${id}`).join(", ")}`);
@@ -1372,7 +1378,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   }
   // A place where the map parks a car gets another some days after its car went (server/car-return.ts).
   const returning = new CarReturn({ world, game, records, rules, deadlines, seed: opts.seed ?? 1,
-    park: (v, start) => parkVehicle(v.kind, v.x, v.z, 0, (v.yaw / 65536) * 2 * Math.PI, "wild", start) }, parsed?.vehicles ?? []);
+    park: (v, start) => parkVehicle(v.kind, v.x, v.z, 0, (v.yaw / 65536) * 2 * Math.PI, "wild", start) }, parsed?.vehicles ?? [], hangar);
   const carReturn = returning.places.length > 0 ? returning : null;
   if (carReturn) {
     carReturn.begin(persistence && !loaded!.fresh ? (persistence.store.meta("carReturn") as string | null) : null);
