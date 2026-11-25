@@ -300,6 +300,11 @@ export const S_PLAN_REPORT = serverKind();
  * MAX_SERVER_TEXT_BYTES. A run with no ink is in its channel's colour. Notices and other plain lines stay on S_TEXT.
  */
 export const S_CHAT = serverKind();
+/**
+ * A secret for this session's eyes alone, such as the staff password its survivor just claimed (claimpassword). Reliable.
+ * The text string, at most MAX_SECRET_BYTES. The client shows it once and keeps it out of its log of text.
+ */
+export const S_SECRET = serverKind();
 
 export const REJECT_VERSION = 1;
 export const REJECT_CONTENT = 2;
@@ -862,6 +867,8 @@ export const MAX_TEXT_BYTES = 200;
 export const MAX_CHAT_BYTES = 360;
 /** A text message from the server. */
 export const MAX_SERVER_TEXT_BYTES = 1000;
+/** A secret from the server (S_SECRET). */
+export const MAX_SECRET_BYTES = 64;
 /** Bits of an input's buttons on the wire: one a button. InputBuffer.set clears any outside the mask. */
 export const BUTTON_BITS = buttonCount();
 export const BUTTON_MASK = (1 << BUTTON_BITS) - 1;

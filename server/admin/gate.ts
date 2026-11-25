@@ -75,7 +75,7 @@ export function refused(req: Request, who: string, gate: AdminGate): Response | 
   if (gate.dev) return pass(req, gate, { name: DEVELOPMENT, id: "", pid: 0, rank: RANK_STAFF, via: "page", from: who, baseRank: RANK_STAFF });
   const cluster = gate.cluster ?? null;
   const staff = gate.staff ?? null;
-  if (gate.password === null && cluster === null && !staff?.any()) return new Response("the admin pages open on a development server, where ServerAdminPassword or ClusterAdminPassword is set, or once a survivor is issued a password", { status: 404 });
+  if (gate.password === null && cluster === null && !staff?.any()) return new Response("the admin pages open on a development server, where ServerAdminPassword or ClusterAdminPassword is set, or once a survivor has claimed a password", { status: 404 });
   const wait = gate.guesses.wait(who, gate.tick());
   if (wait > 0) return new Response("too many wrong passwords: wait a while", { status: 429 });
   const auth = /^Basic (.+)$/.exec(req.headers.get("authorization") ?? "");

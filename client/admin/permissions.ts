@@ -1,11 +1,11 @@
 // The cluster's Permissions page: groups, members and staff passwords, chat formats and settings, and imports from
 // ArkApi, over /admin/permissions/. What it shows and sends is made in client/core/admin/permissions.ts; this is the
-// page's wiring. A new staff password lives only in its box, and is never stored, put in an address or logged.
+// page's wiring. No staff password ever reaches it: each survivor claims their own in game.
 
 import "./shell.ts";
 import {
   addGroupPost, addMemberPost, blankChatForm, blankTag, chatBlockOf, chatFormOf, chatGroupHtml, chatPost, clearPasswordPost, coloured, grantPost, groupsHtml, hexInk, importHtml,
-  importPost, defineWhy, manageWhy, meText, readFault, memberGroupOptions, memberRows, memberRowsHtml, passwordPost, passwordRows, passwordRowsHtml, permissionListHtml, rankOptions, rankPost,
+  importPost, defineWhy, manageWhy, meText, readFault, memberGroupOptions, memberRows, memberRowsHtml, passwordRows, passwordRowsHtml, permissionListHtml, rankOptions, rankPost,
   rankWhy, removeGroupPost, removeMemberPost, revokePost, sampleRuns, settingsFormOf, settingsHtml, settingsPost, settingsTextOf, survivorName, tagRuns, whoOptions,
   type Built, type ChatForm, type Fault, type MemberRow, type SettingsForm,
 } from "../core/admin/permissions.ts";
@@ -201,22 +201,6 @@ async function sendBuilt(b: Built, done: string): Promise<PermissionsAnswer | nu
 
 // ---- Acts ----
 
-function showPassword(id: string, password: string): void {
-  const state = S.state!;
-  $("password-for").textContent = `A new password for ${survivorName(state, id) || "the survivor"} (${id})`;
-  const box = $<HTMLInputElement>("password-text");
-  box.value = password;
-  $("new-password").hidden = false;
-  box.focus();
-  box.select();
-}
-
-function hidePassword(): void {
-  $<HTMLInputElement>("password-text").value = "";
-  $("password-for").textContent = "";
-  $("new-password").hidden = true;
-}
-
 /** The text an import sends: the file as base64, or what was pasted. */
 async function importText(kind: ImportKind): Promise<string> {
   if (kind !== "arkapi") return $<HTMLTextAreaElement>("import-text").value;
@@ -275,27 +259,12 @@ async function act(at: HTMLElement): Promise<void> {
       if (row) await sendBuilt(removeMemberPost(state, row.member), `Took ${row.who} (${row.member.key}) out of ${row.group}.`);
       return;
     }
-    case "issue": {
-      const id = at.dataset.id!;
-      if (state.passwords.includes(id) && !confirm(`Give ${survivorName(state, id) || id} a new password? Their old one stops working.`)) return;
-      const b = passwordPost(state, id);
-      if (!b.post) return say(b.why, "warn");
-      hidePassword();
-      const answer = await send(b.post, "Issued a password. Copy it from the box below.");
-      if (answer.ok && answer.password) showPassword(id, answer.password);
-      return;
-    }
     case "clear-password": {
       const id = at.dataset.id!;
-      if (!confirm(`Clear the password of ${survivorName(state, id) || id}? They lose their staff powers until they are given a new one.`)) return;
+      if (!confirm(`Clear the password of ${survivorName(state, id) || id}? They lose their staff powers until they claim a new one in game.`)) return;
       await sendBuilt(clearPasswordPost(state, id), "Cleared the password.");
       return;
     }
-    case "copy-password":
-      await navigator.clipboard.writeText($<HTMLInputElement>("password-text").value).then(() => say("Copied the password.", "well"), () => say("The browser did not copy it. Select it and copy it by hand.", "warn"));
-      return;
-    case "done-password":
-      return hidePassword();
     case "chat-add":
       S.chat.set(key, blankChatForm());
       return drawChat();

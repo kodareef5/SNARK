@@ -1,5 +1,6 @@
 // A world's view of the cluster's permissions: the whole store held in maps, so every check is lookups. `poll` reads the
-// file again when another world changed it, and `apply` is the one door for every change.
+// file again when another world changed it. `apply` is the one door for every change but a survivor's claim of its own
+// password, which is `claim`'s.
 import { RANK_CLUSTER, RANK_NAMES, RANK_OPEN, RANK_STAFF } from "../../shared/ranks.ts";
 import {
   DEFAULT_GROUP,
@@ -17,9 +18,13 @@ import {
   type PermissionOp,
   type PermissionSnapshot,
   type RuleLook,
+  type Secret,
   type TagChoice,
+  isHash,
+  isSurvivorId,
 } from "../../shared/permissions/model.ts";
-import { Retired } from "./secrets.ts";
+import { WRONG_PASSWORD } from "../../shared/console.ts";
+import { DUMMY_HASH, Retired, sameHash } from "./secrets.ts";
 import type { PermissionStore } from "./store.ts";
 
 /** How often `poll` looks at the file. */
@@ -34,11 +39,11 @@ export interface PermissionSubject {
 }
 
 /**
- * Who makes a change, as `apply` judges them by the store as it stands inside the write. An actor with neither `baseRank`
- * nor `signedIn`, such as the terminal or a module, acts at its `rank`.
+ * Who makes a change, as `apply` judges them by the store as it stands inside the write. The host gives every actor a
+ * `baseRank`; only a plain actor with neither it nor `signedIn`, as the store's own tests give, acts at its `rank`.
  */
 export interface Acting extends PermissionActor {
-  /** The rank held apart from any group: a host password the connection gave, the terminal, a module, a development page. */
+  /** The rank held apart from any group: a host password the connection gave, the terminal, a module, a development page, or none. */
   readonly baseRank?: number;
   /** A survivor signed in with their own password: their ID and the password's hash. Their groups count while it is still theirs. */
   readonly signedIn?: { readonly id: string; readonly hash: string };
@@ -51,6 +56,15 @@ export interface Changed {
   readonly account: string;
   readonly group: string;
 }
+
+/** What became of a claim: "" or why not, and whether the password given was a wrong guess, to be counted as one. */
+export interface Claim {
+  readonly why: string;
+  readonly wrong: boolean;
+}
+
+/** What a claim is refused with when the survivor gave a password replaced or cleared within the last day, as enablecheats is. */
+const RETIRED_PASSWORD = "that password was replaced or cleared";
 
 export interface PermissionsOptions {
   readonly store: PermissionStore;
@@ -121,7 +135,7 @@ export class Permissions {
   private readonly changed = new Map<string, Changed>();
   private readonly groupsByName = new Map<string, Held>();
   private members = new Map<string, Member[]>();
-  private readonly secrets = new Map<string, string>();
+  private readonly secrets = new Map<string, Secret>();
   private readonly retiredHashes = new Retired();
   /** Survivors whose password was replaced or cleared since `takeGone` was last called. */
   private readonly gone = new Set<string>();
@@ -165,7 +179,7 @@ export class Permissions {
   actingRank(actor: Acting): number {
     if (actor.baseRank === undefined && actor.signedIn === undefined) return actor.rank;
     const own = actor.signedIn;
-    const groups = own !== undefined && own.hash !== "" && this.secrets.get(own.id) === own.hash ? this.rankOf({ id: own.id, team: 0, signed: true, world: this.world }) : RANK_OPEN;
+    const groups = own !== undefined && own.hash !== "" && this.secretOf(own.id) === own.hash ? this.rankOf({ id: own.id, team: 0, signed: true, world: this.world }) : RANK_OPEN;
     return Math.max(actor.baseRank ?? RANK_OPEN, groups);
   }
 
@@ -220,7 +234,12 @@ export class Permissions {
 
   /** The hash of survivor `id`'s own password, or "". */
   secretOf(id: string): string {
-    return this.secrets.get(id) ?? "";
+    return this.secrets.get(id)?.hash ?? "";
+  }
+
+  /** When survivor `id` claimed its password, by the wall clock; 0 where it has none or the time is not known. */
+  claimedAt(id: string): number {
+    return this.secrets.get(id)?.at ?? 0;
   }
 
   /** Whether any survivor has a password. */
@@ -279,7 +298,7 @@ export class Permissions {
       revision: this.revision,
       groups: this.groups(),
       members,
-      secrets: [...this.secrets].map(([id, hash]) => ({ id, hash })),
+      secrets: [...this.secrets.values()],
       documents: [...this.documents.values()],
       tags,
     };
@@ -298,15 +317,9 @@ export class Permissions {
         if (this.store.revision() !== this.revision) this.load(this.store.read());
         judged = { rank: this.actingRank(actor), world: actor.world, name: actor.name };
         const needs = actor.needs ?? RANK_OPEN;
-        was = op?.op === "setSecret" || op?.op === "clearSecret" ? this.secretOf(op.id) : "";
+        was = op?.op === "clearSecret" ? this.secretOf(op.id) : "";
         reason = (judged.rank < needs ? `That needs the ${RANK_NAMES[needs]} rank.` : "") || editRule(judged, op, this.look) || this.change(judged, op);
-        if (reason) return;
-        const now = this.now();
-        this.passEdges(now);
-        this.store.dropExpired(now);
-        this.dropExpired(now);
-        this.nextEdge = this.edgeAfter(now);
-        this.revision = this.store.raise();
+        if (!reason) this.written();
       });
     } catch {
       this.load(this.store.read());
@@ -322,6 +335,58 @@ export class Permissions {
     this.version++;
     this.onApplied?.(judged, op);
     return "";
+  }
+
+  /**
+   * Survivor `id` claims its own password, kept as `hash`: the session that asks is the survivor, which is the proof. It
+   * needs a staff group on some world. One that has a password already gives it, as the hash `given` ("" for none), to
+   * replace it. Judged by the store as it stands inside the write.
+   */
+  claim(id: string, hash: string, given: string): Claim {
+    let why = "";
+    let wrong = false;
+    let was = "";
+    if (!isSurvivorId(id) || !isHash(hash)) return { why: "That is no password to claim.", wrong };
+    try {
+      this.store.transaction(() => {
+        if (this.store.revision() !== this.revision) this.load(this.store.read());
+        if (this.staffRank(id) < RANK_STAFF) {
+          why = "You are in no staff group, so there is no password to claim. An admin puts you in one first.";
+          return;
+        }
+        was = this.secretOf(id);
+        // Compared in full even where nothing was given or kept, as enablecheats compares.
+        const right = sameHash(given || DUMMY_HASH, was || DUMMY_HASH) && given !== "";
+        if (was !== "" && !right) {
+          wrong = given !== "" && !this.retired(given);
+          why = given === "" ? "You have a password already. To replace it, give it: claimpassword <your password>" : wrong ? WRONG_PASSWORD : RETIRED_PASSWORD;
+          return;
+        }
+        const secret: Secret = { id, hash, at: this.now() };
+        this.store.putSecret(secret);
+        this.secrets.set(id, secret);
+        this.written();
+      });
+    } catch {
+      this.load(this.store.read());
+      return { why: "The permissions could not be written.", wrong: false };
+    }
+    if (why) return { why, wrong };
+    if (was !== "") this.retire(id, was);
+    this.note(id, "");
+    this.stampSeen = this.store.stamp();
+    this.version++;
+    return { why: "", wrong: false };
+  }
+
+  /** Inside a write that changed the store: drops what ran out and raises the revision. */
+  private written(): void {
+    const now = this.now();
+    this.passEdges(now);
+    this.store.dropExpired(now);
+    this.dropExpired(now);
+    this.nextEdge = this.edgeAfter(now);
+    this.revision = this.store.raise();
   }
 
   private readonly look: RuleLook = {
@@ -410,10 +475,6 @@ export class Permissions {
         this.setMembers(op.kind, op.key, kept);
         return "";
       }
-      case "setSecret":
-        this.store.putSecret(op.id, op.hash);
-        this.secrets.set(op.id, op.hash);
-        return "";
       case "clearSecret":
         if (!this.secrets.has(op.id)) return `${op.id} has no password.`;
         this.store.dropSecret(op.id);
@@ -487,8 +548,8 @@ export class Permissions {
       else this.members.set(k, [m]);
     }
     this.secrets.clear();
-    for (const s of snap.secrets) this.secrets.set(s.id, s.hash);
-    for (const [id, hash] of before) if (this.secrets.get(id) !== hash) this.retire(id, hash);
+    for (const s of snap.secrets) this.secrets.set(s.id, s);
+    for (const [id, s] of before) if (this.secretOf(id) !== s.hash) this.retire(id, s.hash);
     this.documents.clear();
     for (const d of snap.documents) this.documents.set(d.name.toLowerCase(), d);
     this.tags.clear();
@@ -503,7 +564,7 @@ export class Permissions {
   }
 
   /** Notes what a read of the store changed from what this view held: groups, memberships as they count at `now`, passwords, documents. */
-  private noteRead(groups: ReadonlyMap<string, Held>, members: ReadonlyMap<string, readonly Member[]>, secrets: ReadonlyMap<string, string>, documents: ReadonlyMap<string, Document>, now: number): void {
+  private noteRead(groups: ReadonlyMap<string, Held>, members: ReadonlyMap<string, readonly Member[]>, secrets: ReadonlyMap<string, Secret>, documents: ReadonlyMap<string, Document>, now: number): void {
     for (const [k, held] of this.groupsByName) if (!sameGroup(held.group, groups.get(k)?.group)) this.note("", held.group.name);
     for (const [k, held] of groups) if (!this.groupsByName.has(k)) this.note("", held.group.name);
     for (const [k, rows] of this.members) {
@@ -513,7 +574,7 @@ export class Permissions {
       if (old !== undefined) this.noteRows(old, rows, now);
     }
     for (const [k, rows] of members) if (!this.members.has(k)) this.noteRows(rows, undefined, now);
-    for (const [id, hash] of this.secrets) if (secrets.get(id) !== hash) this.note(id, "");
+    for (const [id, s] of this.secrets) if (secrets.get(id)?.hash !== s.hash) this.note(id, "");
     for (const id of secrets.keys()) if (!this.secrets.has(id)) this.note(id, "");
     for (const [k, d] of this.documents) if (documents.get(k)?.text !== d.text) this.note("", "");
     for (const k of documents.keys()) if (!this.documents.has(k)) this.note("", "");

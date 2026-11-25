@@ -11,6 +11,7 @@ import {
 import { CHAT_DOCUMENT, type ImportKind, type PermissionsAnswer, type PermissionsPost, type PermissionsState } from "../../../shared/permissions/page.ts";
 import { readRichColor, stripRichColor, writeRichColor } from "../../../shared/permissions/richcolor.ts";
 import { RANK_CLUSTER, RANK_NAMES, RANK_OPEN, RANK_STAFF } from "../../../shared/ranks.ts";
+import { whenText } from "./acts.ts";
 import { counted, esc, spanText } from "./format.ts";
 
 type State = PermissionsState;
@@ -151,12 +152,10 @@ export interface PasswordRow {
   /** Their groups of staff rank and up. */
   readonly groups: readonly string[];
   readonly has: boolean;
-  readonly issueWhy: string;
+  /** When they claimed it, by the wall clock; 0 for none or not known. */
+  readonly at: number;
   readonly clearWhy: string;
 }
-
-/** A hash that passes the rule's shape, to ask the rule about issuing; the server makes the real one. */
-const PROBE_HASH = "0".repeat(64);
 
 /** Each survivor in a group of staff rank and up, and each other survivor that still has a password. */
 export function passwordRows(state: State): PasswordRow[] {
@@ -166,15 +165,16 @@ export function passwordRows(state: State): PasswordRow[] {
     const g = look.group(m.group);
     if (m.kind === "survivor" && g && g.rank >= RANK_STAFF) (groups.get(m.key) ?? groups.set(m.key, new Set()).get(m.key)!).add(g.name);
   }
-  for (const id of state.passwords) if (!groups.has(id)) groups.set(id, new Set());
+  const claimed = new Map(state.passwords.map((p) => [p.id, p.at]));
+  for (const id of claimed.keys()) if (!groups.has(id)) groups.set(id, new Set());
   return [...groups].map(([id, held]) => {
-    const has = state.passwords.includes(id);
+    const has = claimed.has(id);
     return {
       id,
       name: survivorName(state, id),
       groups: [...held].sort(),
       has,
-      issueWhy: whyNot(state, { op: "setSecret", id, hash: PROBE_HASH }),
+      at: claimed.get(id) ?? 0,
       clearWhy: whyNot(state, { op: "clearSecret", id }) || (has ? "" : "They have no password to clear."),
     };
   }).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
@@ -208,10 +208,6 @@ export function grantPost(state: State, group: string, typed: string): Built {
   return built(state, { op: "grant", group, permission });
 }
 
-export function passwordPost(state: State, id: string): Built {
-  const why = whyNot(state, { op: "setSecret", id, hash: PROBE_HASH });
-  return why ? refuse(why) : { post: { do: "password", id }, why: "" };
-}
 
 const removeOp = (m: Member): PermissionOp => ({ op: "removeMember", kind: m.kind, key: m.key, group: m.group, world: m.world });
 export const removeMemberPost = (state: State, m: Member): Built => built(state, removeOp(m));
@@ -507,9 +503,8 @@ export function passwordRowsHtml(rows: readonly PasswordRow[]): string {
   return rows.map((r) => `<tr>
     <td>${esc(r.name || "A survivor this world does not know")} <code>${esc(r.id)}</code></td>
     <td>${esc(r.groups.join(", ") || "No staff group now")}</td>
-    <td>${r.has ? "Has a password" : '<span class="warn">No password</span>'}</td>
-    <td><button data-act="issue" data-id="${esc(r.id)}"${off(r.issueWhy)}>${r.has ? "Issue a new password" : "Issue a password"}</button>
-      <button class="risk" data-act="clear-password" data-id="${esc(r.id)}"${off(r.clearWhy)}>Clear password</button></td></tr>`).join("");
+    <td>${r.has ? `Claimed${r.at > 0 ? ` on ${esc(whenText(r.at, 0).slice(0, 16))}` : ""}` : '<span class="warn">Not claimed yet</span>'}</td>
+    <td><button class="risk" data-act="clear-password" data-id="${esc(r.id)}"${off(r.clearWhy)}>Clear password</button></td></tr>`).join("");
 }
 
 /** One group's chat block: its form, the faults beside their fields, and a place for its sample line. */

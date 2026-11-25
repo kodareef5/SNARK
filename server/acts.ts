@@ -21,16 +21,16 @@ export interface Actor {
   readonly rank: number;
   readonly via: ActVia;
   readonly from: string;
-  /** The rank held apart from any group, which a permission change is judged from. Without it, `rank` is. */
-  readonly baseRank?: number;
+  /** The rank held apart from any group. A permission change is judged from it and a sign-in's groups, never from `rank`. */
+  readonly baseRank: number;
   /** The hash of the survivor's own password it signed in with. Only the permissions' own check reads it. */
   readonly signedHash?: string;
 }
 
 /** The operator at the server's terminal, who may do anything. */
-export const OPERATOR: Actor = Object.freeze({ name: "(operator)", id: "", pid: 0, rank: RANK_CLUSTER, via: "operator", from: "" });
+export const OPERATOR: Actor = Object.freeze({ name: "(operator)", id: "", pid: 0, rank: RANK_CLUSTER, via: "operator", from: "", baseRank: RANK_CLUSTER });
 /** An admin page whose viewer is not known. */
-export const PAGE_ACTOR: Actor = Object.freeze({ name: "(admin page)", id: "", pid: 0, rank: RANK_OPEN, via: "page", from: "" });
+export const PAGE_ACTOR: Actor = Object.freeze({ name: "(admin page)", id: "", pid: 0, rank: RANK_OPEN, via: "page", from: "", baseRank: RANK_OPEN });
 
 /** A session as the actor of what it does. */
 export function sessionActor(c: Client, records: Records): Actor {

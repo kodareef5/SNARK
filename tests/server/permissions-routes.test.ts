@@ -1,5 +1,5 @@
-// The Permissions page's API (server/permissions/routes.ts): the state it reads, the changes, passwords and imports it
-// sends, who each is made as, what the admin log keeps of them, and what is refused.
+// The Permissions page's API (server/permissions/routes.ts): the state it reads, the changes, clears and imports it sends,
+// who each is made as, what the admin log keeps of them, and what is refused: it never makes, sets or shows a password.
 import { afterAll, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -72,24 +72,29 @@ function operator(host: Host, op: PermissionOp): void {
   if (why !== "") throw new Error(why);
 }
 
-/** Ada in Admins with her own password: a regular admin's sign-in. */
-function regular(h: Harness, adaId: string): Record<string, string> {
+/** Ada in Admins with the password she claims in game. */
+function claimed(h: Harness, ada: ClientSession, adaId: string): string {
   operator(h.host, { op: "addMember", kind: "survivor", key: adaId, group: "Admins" });
-  return signIn("ada", h.host.issuePassword(OPERATOR, adaId).password);
+  h.say(ada, "claimpassword");
+  if (!PASSWORD.test(ada.secret)) throw new Error("ada claimed no password");
+  return ada.secret;
 }
+
+/** Ada's sign-in with her own password: a regular admin's. */
+const regular = (h: Harness, ada: ClientSession, adaId: string): Record<string, string> => signIn("ada", claimed(h, ada, adaId));
 
 const answered = async (res: Response): Promise<[number, PermissionsAnswer]> => [res.status, (await res.json()) as PermissionsAnswer];
 
-test("the state names who has a password and carries no hash", async () => {
-  const { h, adaId, ask } = world();
-  operator(h.host, { op: "addMember", kind: "survivor", key: adaId, group: "Admins" });
-  const { password } = h.host.issuePassword(OPERATOR, adaId);
+test("the state names who has claimed a password, and when, and carries no hash", async () => {
+  const { h, ada, adaId, ask } = world();
+  const password = claimed(h, ada, adaId);
   const res = await ask(PERMISSIONS_STATE, { headers: signIn("kody", MAP) });
   expect([res.status, res.headers.get("cache-control")]).toEqual([200, "no-store"]);
   const text = await res.text();
   const state = JSON.parse(text) as PermissionsState;
   expect(state.me).toEqual({ name: "(kody)", id: "", rank: RANK_MAP, world: 0 });
-  expect([state.saved, state.passwords, state.survivors]).toEqual([false, [adaId], [{ id: adaId, name: "ada", online: true }]]);
+  expect([state.saved, state.passwords, state.survivors]).toEqual([false, [{ id: adaId, at: h.host.permissions.claimedAt(adaId) }], [{ id: adaId, name: "ada", online: true }]]);
+  expect(state.passwords[0]!.at).toBeGreaterThan(0);
   expect(state.members.find((m) => m.group === "Admins")).toMatchObject({ kind: "survivor", key: adaId, name: "ada" });
   expect(state.groups.map((g) => g.name)).toContain("Admins");
   expect([state.commands.includes("god"), state.commands.includes("help"), state.worlds.length]).toEqual([true, false, 1]);
@@ -104,7 +109,7 @@ test("a viewer below admin rank reads the state and can change nothing", async (
   const before = h.host.permissions.snapshot();
   const refusals = await Promise.all([
     ask(PERMISSIONS_API, posted({ do: "op", op: { op: "addGroup", group: "VIP" } }, {})).then(answered),
-    ask(PERMISSIONS_API, posted({ do: "password", id: adaId }, {})).then(answered),
+    ask(PERMISSIONS_API, posted({ do: "op", op: { op: "clearSecret", id: adaId } }, {})).then(answered),
     ask(PERMISSIONS_API, posted({ do: "import", kind: "commands", text: "Permissions.AddGroup VIP" }, {})).then(answered),
   ]);
   expect(refusals).toEqual([
@@ -126,9 +131,9 @@ test("a change is made as who signed in and shows in the admin log", async () =>
 });
 
 test("a regular admin's change to a map-rank group is refused with the reason", async () => {
-  const { h, adaId, ask } = world();
+  const { h, ada: session, adaId, ask } = world();
   operator(h.host, { op: "addGroup", group: "Owners", rank: RANK_MAP });
-  const ada = regular(h, adaId);
+  const ada = regular(h, session, adaId);
   const grant = { do: "op", op: { op: "grant", group: "Owners", permission: "Cheat.fly" } } as const;
   expect(await ask(PERMISSIONS_API, posted(grant, ada)).then(answered)).toEqual([403, { ok: false, why: "That needs the map rank." }]);
   expect(h.host.permissions.group("Owners")!.permissions).toEqual([]);
@@ -141,31 +146,41 @@ test("a regular admin's change to a map-rank group is refused with the reason", 
 test("a hash or a tag choice sent as a change is refused", async () => {
   const { h, adaId, ask } = world();
   const kody = signIn("kody", MAP);
-  const hash = await ask(PERMISSIONS_API, posted({ do: "op", op: { op: "setSecret", id: adaId, hash: "0".repeat(64) } }, kody)).then(answered);
+  operator(h.host, { op: "addMember", kind: "survivor", key: adaId, group: "Admins" });
+  const SET = "A survivor claims their own password in game. Nobody sets one here.";
+  const hashes = await Promise.all([
+    ask(PERMISSIONS_API, posted(JSON.stringify({ do: "op", op: { op: "setSecret", id: adaId, hash: "0".repeat(64) } }), kody)).then(answered),
+    ask(PERMISSIONS_API, posted(JSON.stringify({ do: "op", op: { op: "clearSecret", id: adaId, hash: "0".repeat(64) } }), kody)).then(answered),
+  ]);
   const tag = await ask(PERMISSIONS_API, posted({ do: "op", op: { op: "tag", id: adaId, tag: "Admins", show: false } }, kody)).then(answered);
-  expect([hash[0], tag[0], hash[1].ok, tag[1].ok]).toEqual([403, 403, false, false]);
-  expect([hash[1].why, tag[1].why]).toEqual(["A password is made by the server: ask for a new one instead.", "A tag is shown or hidden by its survivor, in game."]);
+  expect(hashes).toEqual([[403, { ok: false, why: SET }], [403, { ok: false, why: SET }]]);
+  expect(tag).toEqual([403, { ok: false, why: "A tag is shown or hidden by its survivor, in game." }]);
   expect([h.host.permissions.secretOf(adaId), h.host.permissions.tagChoice(adaId, "Admins")]).toEqual(["", undefined]);
   h.host.shutdown();
 });
 
-test("a new password is answered once and is in no act, log line or state", async () => {
+test("the page neither makes nor shows a password, and clears one", async () => {
   const said: string[] = [];
   const { h, ada, adaId, ask } = world({ log: (line) => said.push(line) });
   const kody = signIn("kody", MAP);
-
-  const [status, first] = await ask(PERMISSIONS_API, posted({ do: "password", id: adaId }, kody)).then(answered);
-  expect([status, first.ok, first.password]).toEqual([200, true, expect.stringMatching(PASSWORD)]);
-  expect(h.host.permissions.secretOf(adaId)).toBe(passwordHash(first.password!));
-  const second = (await ask(PERMISSIONS_API, posted({ do: "password", id: adaId }, kody)).then(answered))[1];
-  expect(second.password).not.toBe(first.password);
-  expect(h.host.acts.recent().filter((a) => a.kind === "change").map((a) => a.what)).toEqual([`set the password of ${adaId}`, `set the password of ${adaId}`]);
-  h.run(300);
+  const asked = await ask(PERMISSIONS_API, posted(JSON.stringify({ do: "password", id: adaId }), kody)).then(answered);
+  expect(asked).toEqual([400, { ok: false, why: "That is not a request the permissions page sends." }]);
+  expect(h.host.permissions.secretOf(adaId)).toBe("");
+  const password = claimed(h, ada, adaId);
+  expect(h.host.permissions.secretOf(adaId)).toBe(passwordHash(password));
   const state = await (await ask(PERMISSIONS_STATE, { headers: kody })).text();
-  const texts = [state, ...said, ...h.host.acts.recent().map((a) => JSON.stringify(a)), ...ada.log.map((l) => l.text)];
-  for (const password of [first.password!, second.password!]) {
-    for (const text of texts) expect(text).not.toContain(password);
-  }
+  expect((JSON.parse(state) as PermissionsState).passwords.map((p) => p.id)).toEqual([adaId]);
+  expect(await ask(PERMISSIONS_API, posted({ do: "op", op: { op: "clearSecret", id: adaId } }, kody)).then(answered)).toEqual([200, { ok: true, why: "" }]);
+  expect(h.host.acts.recent().filter((a) => a.kind === "change").map((a) => [a.name, a.what])).toEqual([
+    ["(operator)", `Permissions.Add ${adaId} Admins`],
+    ["ada", "claimed their own password"],
+    ["(kody)", `cleared the password of ${adaId}`],
+  ]);
+  h.run(300);
+  const after = await (await ask(PERMISSIONS_STATE, { headers: kody })).text();
+  expect((JSON.parse(after) as PermissionsState).passwords).toEqual([]);
+  const texts = [state, after, ...said, ...h.host.acts.recent().map((a) => JSON.stringify(a)), ...ada.log.map((l) => l.text)];
+  for (const text of texts) for (const secret of [password, passwordHash(password)]) expect(text).not.toContain(secret);
   h.host.shutdown();
 });
 
@@ -222,8 +237,8 @@ test("an import makes its changes as one act and reports what was refused", asyn
 });
 
 test("an import below the top rank is refused", async () => {
-  const { h, adaId, ask } = world();
-  const ada = regular(h, adaId);
+  const { h, ada: session, adaId, ask } = world();
+  const ada = regular(h, session, adaId);
   const check = (await ask(PERMISSIONS_API, posted({ do: "plan", kind: "commands", text: LIST }, ada)).then(answered))[1];
   expect([check.ok, check.notes?.at(-1)]).toEqual([true, "Applying it needs the map rank."]);
   expect(await ask(PERMISSIONS_API, posted({ do: "import", kind: "commands", text: LIST }, ada)).then(answered)).toEqual([403, { ok: false, why: "An import needs the map rank." }]);

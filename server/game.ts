@@ -5,7 +5,7 @@
 // input does each tick (server/players.ts), and what each session is sent (server/replication.ts). Here are the tick
 // that calls them, what a session remembers (Client), and the messages any system may send a session.
 
-import { BitReader, BitWriter } from "../shared/net/codec.ts";
+import { BitReader, BitWriter, fitBytes } from "../shared/net/codec.ts";
 import {
   INPUT_WINDOW,
   InputBuffer,
@@ -21,6 +21,8 @@ import {
   S_TEXT,
   S_TUNING,
   S_CHAT,
+  S_SECRET,
+  MAX_SECRET_BYTES,
 } from "../shared/net/protocol.ts";
 import { writeChat, type TextRun } from "../shared/net/chat.ts";
 import { CH_RELIABLE, type Connection } from "../shared/net/transport.ts";
@@ -112,6 +114,9 @@ export class Client {
   signed = false;
   /** The hash of that password, or "". Only the permissions' own check reads it. */
   signedHash = "";
+  /** This connection was told to claim the survivor's own password, and to sign in with it (server/host.ts tellPassword). */
+  toldClaim = false;
+  toldSignIn = false;
   /** What a host password gave this connection: a rank, and whether every cheat (server/creative.ts stand). */
   passwordRank = 0;
   passwordCheats = false;
@@ -286,6 +291,8 @@ export class Client {
     this.rank = 0;
     this.signed = false;
     this.signedHash = "";
+    this.toldClaim = false;
+    this.toldSignIn = false;
     this.passwordRank = 0;
     this.passwordCheats = false;
     this.cheatAttempts = 0;
@@ -421,6 +428,18 @@ export class GameServer {
     w.u8(S_CHAT);
     writeChat(w, channel, runs);
     c.conn.send(CH_RELIABLE, w.bytes());
+  }
+
+  /** A secret for this session alone, such as a password it claimed (S_SECRET). Nothing else on the server keeps it. */
+  sendSecret(c: Client, secret: string): void {
+    if (c.closed) return;
+    const w = this.w;
+    w.reset();
+    w.u8(S_SECRET);
+    w.string(fitBytes(secret, MAX_SECRET_BYTES));
+    c.conn.send(CH_RELIABLE, w.bytes());
+    // The writer is shared: the secret is not left in it.
+    w.reset();
   }
 
   /**

@@ -29,7 +29,7 @@ export type PermissionsRequest =
   /** An addMember with `all` holds on every world; without it, the caller puts its own world in. */
   | { readonly type: "member"; readonly who: Who; readonly change: MemberChange; readonly everyWorld: boolean }
   | { readonly type: "list"; readonly listing: PermissionsListing }
-  /** Issues a survivor's own password, or with `clear` takes it away. */
+  /** Says whether a survivor has claimed their own password, or with `clear` takes it away. */
   | { readonly type: "password"; readonly who: Who; readonly clear: boolean };
 
 export type PermissionsRead =
@@ -69,7 +69,7 @@ export const PERMISSIONS_COMMANDS: readonly PermissionsCommand[] = [
   command("GroupPermissions", "<Group>", "Lists a group's permissions."),
   command("ListGroups", "", "Lists every group."),
   command("Rank", `<Group> <${RANK_WORDS}>`, "Sets a group's rank: who its members are and who may change it."),
-  command("Password", "<ID or name> [clear]", "Issues a survivor's own password, shown once at the server's terminal; clear takes it away."),
+  command("Password", "<ID or name> [clear]", "Says whether a survivor has claimed their own password, and when; clear takes it away."),
 ];
 
 const BY_NAME: ReadonlyMap<string, PermissionsCommand> = new Map(PERMISSIONS_COMMANDS.map((c) => [c.name.toLowerCase(), c]));
@@ -171,7 +171,7 @@ export function memberOp(request: Extract<PermissionsRequest, { type: "member" }
 
 /**
  * The `Permissions.*` command a change amounts to, as an ARK admin would type it, for the log; `everyWorld` says a
- * membership holds on every map. A password, a chat block or a document is said only to be set, never what it is.
+ * membership holds on every map. A chat block or a document is said only to be set, never what it is.
  */
 export function changeWords(op: PermissionOp, everyWorld: boolean): string {
   const all = everyWorld ? " all" : "";
@@ -196,8 +196,6 @@ export function changeWords(op: PermissionOp, everyWorld: boolean): string {
     }
     case "removeMember":
       return `Permissions.Remove${op.kind === "tribe" ? "Tribe" : ""}${op.timedOnly ? "Timed" : ""} ${op.key} ${op.group}`;
-    case "setSecret":
-      return `set the password of ${op.id}`;
     case "clearSecret":
       return `cleared the password of ${op.id}`;
     case "setDocument":

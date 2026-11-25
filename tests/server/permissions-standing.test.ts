@@ -2,14 +2,15 @@
 // of its own change is worked out at once, whoever acts is judged by the store as it is then, and modules hear it all.
 import { expect, test } from "bun:test";
 import type { ClientSession } from "../../client/core/session.ts";
-import { OPERATOR } from "../../server/acts.ts";
+import { OPERATOR, PAGE_ACTOR, sessionActor, type Actor } from "../../server/acts.ts";
 import { idText } from "../../server/survivor-ids.ts";
-import { RANK_ADMIN, RANK_OPEN } from "../../shared/ranks.ts";
+import { RANK_ADMIN, RANK_CLUSTER, RANK_OPEN } from "../../shared/ranks.ts";
 import { TestCluster, rec, type Clock, type Server } from "../fixtures/cluster.ts";
 import { listener } from "../fixtures/module.ts";
 
 const quiet = { log: () => {} };
 const REFUSED = "Permissions are managed from an admin's rank.";
+const CLUSTER_ONLY = "In a cluster, only the cluster's admins change groups and chat settings.";
 
 /** Two maps of one cluster on one wall clock, a module on map b that hears permission changes. */
 function maps(run: (a: Server, b: Server, clock: Clock, cluster: TestCluster, heard: string[]) => void): void {
@@ -31,13 +32,12 @@ function must(s: Server, line: string): void {
   if (/^(There|That|denied)/.test(out)) throw new Error(`${line}: ${out}`);
 }
 
-/** Puts a survivor of map `s` in Admins there and signs them in with their own password. */
+/** Puts a survivor of map `s` in Admins there and signs them in with the password they claim. */
 function admin(s: Server, session: ClientSession): string {
   const id = idText(rec(s, session.name)!);
   must(s, `Permissions.Add ${id} Admins`);
-  const { why, password } = s.h.host.issuePassword(OPERATOR, id);
-  if (why !== "") throw new Error(why);
-  expect(s.h.say(session, `enablecheats ${password}`)).toEqual(["cheats enabled"]);
+  s.h.say(session, "claimpassword");
+  expect(s.h.say(session, `enablecheats ${session.secret}`)).toEqual(["cheats enabled"]);
   expect(s.h.client(session)!.rank).toBe(RANK_ADMIN);
   return id;
 }
@@ -132,5 +132,24 @@ test("a refused change raises no event and writes no act", () => {
     b.h.run(100);
     expect(b.h.host.acts.recent(0, Number.MAX_SAFE_INTEGER).length).toBe(acts);
     expect(heard).toEqual([`perm.changed: {"account":"${id}","group":"Admins"}`]);
+  });
+});
+
+test("an actor the server builds never acts at a rank it only claims", () => {
+  maps((a, b, _clock, cluster) => {
+    const { session: ada } = cluster.survivor(b, "ada");
+    const id = admin(b, ada);
+    const add = (by: Actor, group: string): string => b.h.host.changePermissions(by, { op: "addGroup", group });
+    // Each is judged from the rank it holds apart from any group, and from a sign-in that still holds: never from `rank`.
+    const session = sessionActor(b.h.client(ada)!, b.h.host.records);
+    expect(session.baseRank).toBe(RANK_OPEN);
+    expect([add({ ...PAGE_ACTOR, rank: RANK_CLUSTER }, "Pages"), add({ ...session, rank: RANK_CLUSTER }, "Sessions")]).toEqual([REFUSED, CLUSTER_ONLY]);
+    must(a, `Permissions.Remove ${id} Admins`);
+    expect(add({ ...session, rank: RANK_CLUSTER }, "Stale")).toBe(REFUSED);
+    expect(add({ ...OPERATOR }, "Operators")).toBe("");
+    expect(b.h.host.permissions.groups().map((g) => g.name)).toEqual(["Default", "Admins", "Operators"]);
+    // @ts-expect-error An actor without the rank it holds apart from any group is not an actor.
+    const bare: Actor = { name: "x", id: "", pid: 0, rank: RANK_CLUSTER, via: "page", from: "" };
+    expect(bare.rank).toBe(RANK_CLUSTER);
   });
 });

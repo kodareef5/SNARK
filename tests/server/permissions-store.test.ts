@@ -15,6 +15,7 @@ let files = 0;
 const fresh = (): string => join(root, `p${++files}.sqlite`);
 
 const A = idOf(2, 1);
+const B = idOf(2, 2);
 const cluster: PermissionActor = { rank: RANK_CLUSTER, world: 2, name: "cluster" };
 
 test("a fresh file has the two starting groups", () => {
@@ -67,11 +68,13 @@ test("everything survives a close and reopen", () => {
     { op: "grant", group: "Vip", permission: "ArkShop.*" },
     { op: "addMember", kind: "survivor", key: A, group: "Vip", hours: 2, delayHours: 1 },
     { op: "addMember", kind: "tribe", key: "9", group: "Vip", world: 4 },
-    { op: "setSecret", id: A, hash: "0123456789abcdef" },
+    { op: "addMember", kind: "survivor", key: B, group: "Admins", world: 0 },
     { op: "setDocument", name: "CrossChat", text: "{}" },
     { op: "tag", id: A, tag: "VIP", show: false },
   ] as const;
   for (const op of ops) expect(perms.apply(cluster, op)).toBe("");
+  expect(perms.claim(B, "0123456789abcdef", "")).toEqual({ why: "", wrong: false });
+  expect(perms.snapshot().secrets).toEqual([{ id: B, hash: "0123456789abcdef", at: 5_000 }]);
   const before = perms.snapshot();
   store.close();
   const again = new PermissionStore(file).read();
@@ -105,7 +108,7 @@ test("a bad row in the file is skipped, not fatal", () => {
       `INSERT INTO members VALUES ('pet', '${A}', 'Vip', 0, 1, 0, 0);` +
       `INSERT INTO members VALUES ('survivor', '${A}', 'Huge', 0, 1, 0, 0);` +
       `INSERT INTO members VALUES ('survivor', '${A}', 'Vip', 3, 'x', 0, 0);` +
-      "INSERT INTO secrets VALUES ('nobody', 'abcdefabcdefabcd');" +
+      "INSERT INTO secrets VALUES ('nobody', 'abcdefabcdefabcd', 0);" +
       "INSERT INTO tags VALUES ('nobody', 'VIP', 1);" +
       "UPDATE meta SET revision = revision + 1;",
   );
@@ -127,4 +130,17 @@ test("a starting group missing from the file is still there", () => {
   db.exec("DELETE FROM groups WHERE name = 'default'");
   db.close();
   expect(new PermissionStore(file).read().groups.map((g) => g.name).sort()).toEqual(["Admins", "Default"]);
+});
+
+test("a file made before claims were dated is read, and takes a dated claim", () => {
+  const file = fresh();
+  const db = new Database(file);
+  db.exec("CREATE TABLE secrets (id TEXT PRIMARY KEY, hash TEXT NOT NULL);" + `INSERT INTO secrets VALUES ('${A}', 'abcdefabcdefabcd');`);
+  db.close();
+  const store = new PermissionStore(file);
+  expect(store.read().secrets).toEqual([{ id: A, hash: "abcdefabcdefabcd", at: 0 }]);
+  const perms = new Permissions({ store, world: 2, now: () => 7_000 });
+  expect(perms.apply(cluster, { op: "addMember", kind: "survivor", key: A, group: "Admins", world: 0 })).toBe("");
+  expect(perms.claim(A, "0123456789abcdef", "abcdefabcdefabcd")).toEqual({ why: "", wrong: false });
+  expect(new PermissionStore(file).read().secrets).toEqual([{ id: A, hash: "0123456789abcdef", at: 7_000 }]);
 });

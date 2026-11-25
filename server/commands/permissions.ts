@@ -1,5 +1,5 @@
-// ArkApi's permission commands: the `Permissions.*` family, `groups`, `acts`, and `cheat` and `admincheat` before a line.
-// Each change goes through the host's one door, which logs it as the command it amounts to.
+// ArkApi's permission commands: the `Permissions.*` family, `groups`, `acts`, `claimpassword`, and `cheat` and `admincheat`
+// before a line. Each change goes through the host's one door, which logs it as the command it amounts to.
 
 import { RANK_ADMIN, RANK_NAMES, RANK_STAFF } from "../../shared/ranks.ts";
 import { isSurvivorId, isTeamKey, memberWorld, type Member } from "../../shared/permissions/model.ts";
@@ -101,20 +101,37 @@ function permissionsCommand(ctx: CommandContext, name: string, args: string[]): 
   const time = c.hours !== undefined ? ` for ${c.hours} h${c.delayHours ? `, from ${c.delayHours} h from now` : ""}` : "";
   const done = `${found.label} is in ${group.name}${time}${world !== 0 && memberWorld({ ...actor, world }, group.rank, req.everyWorld ? 0 : world) === 0 ? " on every map" : ""}`;
   if (group.rank < RANK_STAFF) return done;
-  return `${done}. It counts once they sign in with their own password, which is issued on the admin pages or at the server's terminal.`;
+  return `${done}. It counts once they sign in with their own password, which they claim in game with claimpassword.`;
 }
 
-/** Issues or clears a survivor's own password. The password is written past the server's log, which sessions with cheats read. */
+/** Says whether a survivor has claimed their own password, and when, or clears it. Nobody but its survivor ever sees one. */
 function passwordCommand(ctx: CommandContext, who: Who, clear: boolean): string {
   const found = find(ctx.host, who);
   if (typeof found === "string") return found;
   if (clear) return ctx.host.clearPassword(actorOf(ctx), found.key) || `${found.label} has no password now`;
-  if (ctx.client !== null || ctx.actor !== undefined) return "A password is issued on the admin pages or at the server's terminal.";
-  const issued = ctx.host.issuePassword(actorOf(ctx), found.key);
-  if (issued.why !== "") return issued.why;
-  process.stdout.write(`The password of ${found.label}, shown this once: ${issued.password}\n`);
-  return `issued a password to ${found.label}; the terminal shows it this once`;
+  const p = ctx.host.permissions;
+  if (p.secretOf(found.key) === "") return `${found.label} has not claimed a password`;
+  const at = p.claimedAt(found.key);
+  return `${found.label} claimed a password${at > 0 ? ` on ${new Date(at).toISOString().slice(0, 16).replace("T", " ")} UTC` : ""}`;
 }
+
+/** `claimpassword`: the session's survivor claims its own password, which only this session is sent, once. */
+const claimCommand: ConsoleCommand = {
+  name: "claimpassword",
+  usage: "[current password]",
+  examples: ["claimpassword", 'claimpassword "<current password>"'],
+  help: "Claim your own staff password, shown once to you alone. To replace the one you have, give it.",
+  admin: false,
+  secret: true,
+  run(ctx, args) {
+    const c = ctx.client;
+    if (!c) return "a survivor claims their own password in game";
+    const claimed = ctx.host.claimPassword(c, args.join(" "));
+    if (claimed.why !== "") return claimed.why;
+    ctx.host.game.sendSecret(c, claimed.password);
+    return "The password above is yours, shown this once. enablecheats takes it in game, and the admin pages take it with your name or ID.";
+  },
+};
 
 /** A line's words as one would type them again: a word with a space in it is quoted. */
 const retyped = (words: readonly string[]): string => words.map((w) => (w === "" || /[ \t]/.test(w) ? `"${w}"` : w)).join(" ");
@@ -187,6 +204,7 @@ export function addPermissionsCommands(con: Console): void {
           .join("\n");
       },
     },
+    claimCommand,
     prefix(con, "cheat"),
     prefix(con, "admincheat"),
   ];

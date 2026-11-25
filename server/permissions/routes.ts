@@ -50,7 +50,7 @@ export function permissionsState(host: Host, req: Request): PermissionsState {
     revision: snap.revision,
     groups: [...snap.groups],
     members: snap.members.map((m) => ({ ...m, name: nameOf(m.kind, m.key) })),
-    passwords: snap.secrets.map((s) => s.id),
+    passwords: snap.secrets.map((s) => ({ id: s.id, at: s.at })),
     document: perms.document(CHAT_DOCUMENT),
     survivors,
     tribes: [...host.tribes.byId.values()].map((t) => ({ team: t.id, name: t.name })),
@@ -81,15 +81,10 @@ async function post(host: Host, req: Request): Promise<Response> {
     case "op": {
       const op = sent.op as PermissionOp;
       if (typeof op !== "object" || op === null) return no("That is not a permission change.");
-      if (op.op === "setSecret") return no("A password is made by the server: ask for a new one instead.", 403);
+      if ((op.op as string) === "setSecret" || "hash" in op) return no("A survivor claims their own password in game. Nobody sets one here.", 403);
       if (op.op === "tag") return no("A tag is shown or hidden by its survivor, in game.", 403);
       const why = host.changePermissions(by, op);
       return why === "" ? answer({ ok: true, why: "" }) : no(why, 403);
-    }
-    case "password": {
-      if (typeof sent.id !== "string") return no("That is not a survivor's ID.");
-      const made = host.issuePassword(by, sent.id);
-      return made.why === "" ? answer({ ok: true, why: "", password: made.password }) : no(made.why, 403);
     }
     case "plan":
     case "import": {

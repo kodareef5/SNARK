@@ -18,8 +18,8 @@ export interface PermissionsState {
   groups: Group[];
   /** Every membership; `name` is the survivor's or tribe's name where this world knows it, else "". */
   members: (Member & { name: string })[];
-  /** IDs of the survivors that have a staff password. Never a hash. */
-  passwords: string[];
+  /** The survivors who have claimed a staff password, and when by the wall clock (0 where not known). Never a hash. */
+  passwords: { id: string; at: number }[];
   /** The chat settings document: JSON text in CrossChat's keys, "" for none. */
   document: string;
   /** This world's survivors and tribes, for choosing one by name. */
@@ -35,16 +35,12 @@ export type ImportKind = "arkapi" | "commands" | "crosschat";
 /** POST /admin/permissions/api. An ArkApi file's `text` is the file as base64; the other kinds' is the pasted text. */
 export type PermissionsPost =
   | { do: "op"; op: PermissionOp }
-  /** Issues or reissues a survivor's staff password: the only way one is ever shown. */
-  | { do: "password"; id: string }
   /** `plan` is the dry run and `import` applies it. */
   | { do: "plan" | "import"; kind: ImportKind; text: string };
 
 export interface PermissionsAnswer {
   ok: boolean;
   why: string;
-  /** A new staff password, shown once. */
-  password?: string;
   /** An import's notes, the changes it would make or made, and what was refused. */
   notes?: string[];
   ops?: number;

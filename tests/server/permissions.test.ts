@@ -202,21 +202,37 @@ test("a cluster group is for every world and only the cluster edits it", () => {
   expect(perms.membersOf("survivor", A)[0]?.world).toBe(0);
 });
 
-test("a regular admin can neither add to nor remove from a map admin's groups, nor change its secret", () => {
+test("a regular admin can neither add to nor remove from a map admin's groups, nor clear its password", () => {
   const { perms, ok } = world();
   ok({ op: "addGroup", group: "Mods", rank: RANK_MAP });
   ok({ op: "addGroup", group: "Vip" });
   ok({ op: "addMember", kind: "survivor", key: A, group: "Mods" });
   ok({ op: "addMember", kind: "survivor", key: A, group: "Vip" });
-  ok({ op: "setSecret", id: A, hash: "ab".repeat(16) });
+  ok({ op: "addMember", kind: "survivor", key: B, group: "Admins" });
+  expect([perms.claim(A, "ab".repeat(16), ""), perms.claim(B, "ef".repeat(16), "")]).toEqual([{ why: "", wrong: false }, { why: "", wrong: false }]);
   expect(perms.apply(admin, { op: "addMember", kind: "survivor", key: A, group: "Admins" })).not.toBe("");
   expect(perms.apply(admin, { op: "removeMember", kind: "survivor", key: A, group: "Vip" })).not.toBe("");
-  expect(perms.apply(admin, { op: "setSecret", id: A, hash: "cd".repeat(16) })).not.toBe("");
   expect(perms.apply(admin, { op: "clearSecret", id: A })).not.toBe("");
   expect(perms.secretOf(A)).toBe("ab".repeat(16));
-  expect(perms.apply(mapAdmin, { op: "setSecret", id: A, hash: "cd".repeat(16) })).toBe("");
-  expect(perms.apply(admin, { op: "setSecret", id: B, hash: "ef".repeat(16) })).toBe("");
-  expect(perms.secretOf(B)).toBe("ef".repeat(16));
+  expect(perms.apply(mapAdmin, { op: "clearSecret", id: A })).toBe("");
+  expect(perms.apply(admin, { op: "clearSecret", id: B })).toBe("");
+  expect([perms.secretOf(A), perms.secretOf(B)]).toEqual(["", ""]);
+});
+
+test("a claim needs a staff group, and the password it replaces", () => {
+  const { perms, ok } = world();
+  ok({ op: "addGroup", group: "Vip" });
+  ok({ op: "addMember", kind: "survivor", key: A, group: "Vip" });
+  expect(perms.claim(A, "ab".repeat(16), "")).toEqual({ why: "You are in no staff group, so there is no password to claim. An admin puts you in one first.", wrong: false });
+  ok({ op: "addMember", kind: "survivor", key: A, group: "Admins", world: 5 });
+  expect(perms.claim(A, "ab".repeat(16), "")).toEqual({ why: "", wrong: false });
+  expect(perms.claim(A, "cd".repeat(16), "")).toEqual({ why: "You have a password already. To replace it, give it: claimpassword <your password>", wrong: false });
+  expect(perms.claim(A, "cd".repeat(16), "ef".repeat(16))).toEqual({ why: "wrong password", wrong: true });
+  expect(perms.claim(A, "cd".repeat(16), "AB".repeat(16))).toEqual({ why: "", wrong: false });
+  expect(perms.claim(A, "ef".repeat(16), "ab".repeat(16))).toEqual({ why: "that password was replaced or cleared", wrong: false });
+  expect([perms.secretOf(A), perms.retired("ab".repeat(16)), perms.takeGone()]).toEqual(["cd".repeat(16), true, [A]]);
+  expect(perms.claim("123", "ab".repeat(16), "").why).toBe("That is no password to claim.");
+  expect(perms.claim(A, "not hex", "").why).toBe("That is no password to claim.");
 });
 
 test("a map admin's staff membership holds on its own world only", () => {
@@ -365,7 +381,7 @@ test("in a cluster a regular admin manages members and passwords, not the groups
   ok({ op: "addMember", kind: "tribe", key: "7", group: "Vip", hours: 2 }, admin);
   ok({ op: "addMember", kind: "survivor", key: B, group: "Admins" }, admin);
   expect(perms.membersOf("survivor", B)[0]?.world).toBe(3);
-  ok({ op: "setSecret", id: B, hash: "ab".repeat(16) }, admin);
+  expect(perms.claim(B, "ab".repeat(16), "")).toEqual({ why: "", wrong: false });
   ok({ op: "clearSecret", id: B }, admin);
   ok({ op: "removeMember", kind: "survivor", key: A, group: "Vip" }, admin);
   ok({ op: "removeMember", kind: "survivor", key: B, group: "Admins" }, admin);

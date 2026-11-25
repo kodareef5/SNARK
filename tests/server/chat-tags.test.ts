@@ -37,6 +37,8 @@ function signIn(h: Harness, s: ClientSession): void {
   const c = h.client(s)!;
   c.signed = true;
   h.host.creative.stand(c);
+  // The notice to claim a password arrives now, not among the next answer's lines.
+  h.run(100);
 }
 
 /** The runs of the last line `to` was shown on `channel` after `s` said `words` there. */

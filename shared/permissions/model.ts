@@ -38,6 +38,8 @@ export interface Secret {
   readonly id: string;
   /** The hash of the survivor's own staff password, as hex text. */
   readonly hash: string;
+  /** When the survivor claimed it, by the wall clock in milliseconds; 0 where not known. */
+  readonly at: number;
 }
 
 /** A named JSON text, such as the cluster's chat settings. */
@@ -97,7 +99,6 @@ export type PermissionOp =
       /** Only the timed membership goes. */
       readonly timedOnly?: boolean;
     }
-  | { readonly op: "setSecret"; readonly id: string; readonly hash: string }
   | { readonly op: "clearSecret"; readonly id: string }
   | { readonly op: "setDocument"; readonly name: string; readonly text: string }
   | { readonly op: "tag"; readonly id: string; readonly tag: string; readonly show: boolean };
@@ -320,8 +321,6 @@ export function editRule(actor: PermissionActor, op: PermissionOp, look: RuleLoo
       if (typeof delay !== "number" || !(delay >= 0) || delay > MAX_HOURS) return "A delay is no hours or more, and at most a hundred years.";
       return "";
     }
-    case "setSecret":
-      return survivor(op.id) || (isHash(op.hash) ? "" : "A password's hash is hex text.");
     case "clearSecret":
       return survivor(op.id);
     case "setDocument":

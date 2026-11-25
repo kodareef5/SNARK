@@ -3,7 +3,6 @@
 import { expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import type { ClientSession } from "../../client/core/session.ts";
-import { OPERATOR } from "../../server/acts.ts";
 import { idText } from "../../server/survivor-ids.ts";
 import { SESSION_SPECTATING } from "../../shared/net/protocol.ts";
 import { RANK_ADMIN, RANK_CLUSTER, RANK_OPEN, RANK_STAFF } from "../../shared/ranks.ts";
@@ -26,11 +25,11 @@ function op(h: Harness, ...said: string[]): void {
   }
 }
 
-/** Makes `s` a member of Admins signed in with their own password, so it stands at the admin rank with every cheat. */
+/** Makes `s` a member of Admins signed in with the password it claims, so it stands at the admin rank with every cheat. */
 function admin(h: Harness, s: ClientSession): void {
   op(h, `Permissions.Add ${idOf(h, s)} Admins`);
-  const { why, password } = h.host.issuePassword(OPERATOR, idOf(h, s));
-  if (why !== "" || h.say(s, `enablecheats ${password}`)[0] !== "cheats enabled") throw new Error(`${s.name} did not sign in`);
+  h.say(s, "claimpassword");
+  if (h.say(s, `enablecheats ${s.secret}`)[0] !== "cheats enabled") throw new Error(`${s.name} did not sign in`);
 }
 
 test("an admin adds a survivor to a group by its ID and by its name, and groups shows it", () => {
@@ -74,10 +73,12 @@ test("a staff group's cheats wait for the survivor's sign-in", () => {
   const bob = survivor(h, "bob", { cheats: false });
   op(h, "Permissions.AddGroup Mods", "Permissions.Rank Mods staff", "Permissions.Grant Mods *");
   expect(h.host.exec("Permissions.Add bob Mods")).toBe(
-    `bob (${idOf(h, bob)}) is in Mods. It counts once they sign in with their own password, which is issued on the admin pages or at the server's terminal.`,
+    `bob (${idOf(h, bob)}) is in Mods. It counts once they sign in with their own password, which they claim in game with claimpassword.`,
   );
   const c = h.client(bob)!;
-  expect([c.admin, c.rank, h.say(bob, "god"), h.say(bob, "groups")]).toEqual([false, RANK_OPEN, ["denied: cheats are not enabled for you"], ["your groups: Default"]]);
+  // Told how to come by the password, as the first line its session reads after.
+  const told = "You are in a staff group. Claim your own password: open the console and type claimpassword.";
+  expect([c.admin, c.rank, h.say(bob, "god"), h.say(bob, "groups")]).toEqual([false, RANK_OPEN, [told, "denied: cheats are not enabled for you"], ["your groups: Default"]]);
   // The next step's sign-in sets this and works the standing out.
   c.signed = true;
   h.host.creative.stand(c);
@@ -180,7 +181,7 @@ test("every change is an act that names who made it and reads as the command", (
   const changes = h.host.acts.recent().filter((a) => a.kind === "change").map((a) => [a.name, a.id, a.rank, a.what]);
   expect(changes).toEqual([
     ["(operator)", "", RANK_CLUSTER, `Permissions.Add ${me} Admins`],
-    ["(operator)", "", RANK_CLUSTER, `set the password of ${me}`],
+    ["ada", me, RANK_STAFF, "claimed their own password"],
     ["ada", me, RANK_ADMIN, "Permissions.AddGroup Vip"],
     ["ada", me, RANK_ADMIN, "Permissions.Grant Vip Cheat.kick"],
     ["ada", me, RANK_ADMIN, `Permissions.Add ${him} Vip`],

@@ -5,9 +5,9 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  FREE_CHEATS, addGroupPost, addMemberPost, blankChatForm, blankTag, chatBlockOf, chatFormOf, chatGroupHtml, chatPost, coloured, defineWhy, firstInk, freeCheats, grantPost, groupsHtml, importPost, manageWhy,
+  FREE_CHEATS, addGroupPost, addMemberPost, blankChatForm, blankTag, chatBlockOf, chatFormOf, chatGroupHtml, chatPost, clearPasswordPost, coloured, defineWhy, firstInk, freeCheats, grantPost, groupsHtml, importPost, manageWhy,
   memberRows,
-  memberRowsHtml, passwordPost, readFault, passwordRows, passwordRowsHtml, removeGroupPost, sampleRuns, settingsFormOf, settingsHtml, settingsPost, settingsTextOf, spanWords, type MemberForm,
+  memberRowsHtml, readFault, passwordRows, passwordRowsHtml, removeGroupPost, sampleRuns, settingsFormOf, settingsHtml, settingsPost, settingsTextOf, spanWords, type MemberForm,
 } from "../../client/core/admin/permissions.ts";
 import { cluster, resolveAdmin } from "../../client/core/admin/navigation.ts";
 import { adminSite } from "../../server/admin/site.ts";
@@ -51,7 +51,7 @@ function stateAt(rank: number, world = 1): PermissionsState {
       { kind: "survivor", key: PIP, group: "VIP", world: 0, forever: false, from: NOW - HOUR, until: NOW + 3 * HOUR + 12 * 60_000, name: "<b>Pip</b>" },
       { kind: "tribe", key: "42", group: "Builders", world: 0, ...always, name: "River Folk" },
     ],
-    passwords: [MARA],
+    passwords: [{ id: MARA, at: NOW - 2 * HOUR }],
     document: JSON.stringify({
       ChatTags: { StackChatTags: true, VIP: { Priority: 1, Icon: "", Text: '<RichColor Color="1, 0.843, 0, 1">[VIP]</>', CanBeDisabled: true } },
       MutedPermissionGroup: "Muted",
@@ -80,8 +80,8 @@ test("a regular admin's controls on a map admin's membership are off, with the r
   expect(rowOf(admin, MARA, "VIP").removeWhy).toBe("That survivor holds a higher rank than yours.");
   expect(rowOf(admin, PIP, "VIP").removeWhy).toBe("");
   const mara = passwordRows(admin).find((r) => r.id === MARA)!;
-  expect([mara.has, mara.issueWhy, mara.clearWhy]).toEqual([true, "That survivor holds a higher rank than yours.", "That survivor holds a higher rank than yours."]);
-  expect(passwordRowsHtml([mara])).toContain('data-act="issue" data-id="' + MARA + '" disabled title="That survivor holds a higher rank than yours."');
+  expect([mara.has, mara.at, mara.clearWhy]).toEqual([true, NOW - 2 * HOUR, "That survivor holds a higher rank than yours."]);
+  expect(passwordRowsHtml([mara])).toContain('data-act="clear-password" data-id="' + MARA + '" disabled title="That survivor holds a higher rank than yours."');
   expect(groupsHtml(stateAt(RANK_ADMIN, 0))).toContain('data-act="remove-group" data-group="MapAdmins" disabled title="That needs the map rank."');
   // The map's admin reaches both.
   const map = stateAt(RANK_MAP);
@@ -125,7 +125,7 @@ test("a viewer below admin rank can change nothing", () => {
   const html = groupsHtml(staff) + memberRowsHtml(memberRows(staff, NOW)) + passwordRowsHtml(passwordRows(staff)) + settingsHtml(staff, settingsFormOf(staff.document).form, []);
   expect(enabled(html)).toEqual([]);
   expect(addMemberPost(staff, { kind: "survivor", who: PIP, group: "VIP", hours: "", delay: "", everyMap: false }).why).toBe(why);
-  expect([importPost(staff, "commands", "Permissions.AddGroup VIP", false).why, passwordPost(staff, PIP).why]).toEqual([why, why]);
+  expect([importPost(staff, "commands", "Permissions.AddGroup VIP", false).why, clearPasswordPost(staff, MARA).why]).toEqual([why, why]);
 });
 
 test("a row says how long a timed membership has left", () => {
@@ -141,6 +141,17 @@ test("rows show each survivor's ID beside its name, and escape the name", () => 
   expect(html).toContain(`&#60;b&#62;Pip&#60;/b&#62; <code>${PIP}</code>`);
   expect(html).not.toContain("<b>Pip");
   expect(passwordRowsHtml(passwordRows(stateAt(RANK_ADMIN)))).toContain(`Mara <code>${MARA}</code>`);
+});
+
+test("the staff passwords say who has claimed one and offer only a clear", () => {
+  const rows = passwordRows(stateAt(RANK_MAP));
+  expect(rows.map((r) => [r.name, r.groups, r.has])).toEqual([["Kade", ["Admins"], false], ["Mara", ["MapAdmins"], true]]);
+  const html = passwordRowsHtml(rows);
+  const states = [...html.matchAll(/<tr>[\s\S]*?<\/tr>/g)].map((m) => m[0].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim());
+  expect(states[0]).toContain("Not claimed yet");
+  expect(states[1]).toMatch(/Claimed on \d{4}-\d\d-\d\d \d\d:\d\d/);
+  expect([...html.matchAll(/data-act="([^"]+)"/g)].map((m) => m[1])).toEqual(["clear-password", "clear-password"]);
+  expect([control(html, KADE).includes(" disabled"), control(html, MARA).includes(" disabled")]).toEqual([true, false]);
 });
 
 test("what is typed becomes the right op, and a bad one is refused before it is sent", () => {
@@ -189,8 +200,8 @@ test("what is typed becomes the right op, and a bad one is refused before it is 
   ]);
   expect(addGroupPost(alone, " Mods ", RANK_STAFF).post).toEqual({ do: "op", op: { op: "addGroup", group: "Mods", rank: RANK_STAFF } });
   expect(grantPost(alone, "VIP", "Cheat.kick").post).toEqual({ do: "op", op: { op: "grant", group: "VIP", permission: "Cheat.kick" } });
-  expect([passwordPost(admin, PIP).post, importPost(alone, "arkapi", "", true).why, importPost(alone, "crosschat", "{}", true).post]).toEqual([
-    { do: "password", id: PIP },
+  expect([clearPasswordPost(admin, KADE).post, importPost(alone, "arkapi", "", true).why, importPost(alone, "crosschat", "{}", true).post]).toEqual([
+    { do: "op", op: { op: "clearSecret", id: KADE } },
     "Choose the ArkApi Permissions file first.",
     { do: "import", kind: "crosschat", text: "{}" },
   ]);

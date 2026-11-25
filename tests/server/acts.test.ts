@@ -94,7 +94,7 @@ test("the latest acts are read back from the save after a restart", () => {
 
 test("a page's command is named for who asked and runs with the operator's rights", () => {
   const { h, said } = world();
-  const by: Actor = { name: "ada", id: "", pid: 0, rank: RANK_ADMIN, via: "page", from: "203.0.113.9" };
+  const by: Actor = { name: "ada", id: "", pid: 0, rank: RANK_ADMIN, via: "page", from: "203.0.113.9", baseRank: RANK_ADMIN };
   expect(h.host.console.exec({ host: h.host, client: null, actor: by }, "settime 6:30")).toBe("time is 06:30");
   const act = h.host.acts.recent().at(-1)!;
   expect([act.name, act.rank, act.via, act.from, act.what]).toEqual(["ada", RANK_ADMIN, "page", "203.0.113.9", "settime 6:30"]);

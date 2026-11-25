@@ -9,7 +9,7 @@ import { CreatureContacts } from "./creature-combat.ts";
 // Assembles a running world: map, records, persistence and the game loop. server/main.ts and the tests both use it.
 
 import { withContent, type Registry } from "../shared/content/registry.ts";
-import { CHOOSE_ARRIVED, CHOOSE_DIED, SESSION_DEAD, CMD_CARRY, CMD_CHAT, CMD_EMOTE, CMD_CLOSE, CMD_FAR, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_PLAN_CANCEL, CMD_PLAN_COMMIT, CMD_PLAN_PART, CMD_STRUCT, CMD_TAKE, CMD_TEXT, CMD_THROW, CMD_TRAVEL, CMD_VEHICLE, MAX_CHAT_BYTES, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_KICKED, RESTART_MOST, RESTART_OFF } from "../shared/net/protocol.ts";
+import { CHOOSE_ARRIVED, CHOOSE_DIED, SESSION_DEAD, CMD_CARRY, CMD_CHAT, CMD_EMOTE, CMD_CLOSE, CMD_FAR, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_PLAN_CANCEL, CMD_PLAN_COMMIT, CMD_PLAN_PART, CMD_STRUCT, CMD_TAKE, CMD_TEXT, CMD_THROW, CMD_TRAVEL, CMD_VEHICLE, MAX_CHAT_BYTES, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_DENIED, REJECT_KICKED, RESTART_MOST, RESTART_OFF } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
 import { Genome } from "../shared/sim/genome.ts";
 import { Build } from "./build.ts";
@@ -68,7 +68,8 @@ import { memberWorld, type PermissionOp } from "../shared/permissions/model.ts";
 import { changeWords } from "../shared/permissions/commands.ts";
 import { makePassword, passwordHash } from "./permissions/secrets.ts";
 import { applyPlan, type Applied, type ImportPlan } from "./permissions/import.ts";
-import { RANK_CLUSTER, RANK_MAP, RANK_NAMES } from "../shared/ranks.ts";
+import { RANK_CLUSTER, RANK_MAP, RANK_NAMES, RANK_STAFF } from "../shared/ranks.ts";
+import { CHEAT_GUESSES } from "../shared/console.ts";
 import { DeadlineHeap } from "../shared/sim/schedule.ts";
 import { Buffs } from "./buffs.ts";
 import { CityCollapse } from "./city-collapse.ts";
@@ -338,8 +339,11 @@ export interface Host {
   readonly permissions: Permissions;
   /** Makes one permission change as `by`: the one way commands, pages and modules change them. Answers "" or why not. */
   changePermissions(by: Actor, op: PermissionOp): string;
-  /** Makes survivor `id` a new password as `by`, replacing any it had. The password is in the answer and nowhere else. */
-  issuePassword(by: Actor, id: string): { readonly why: string; readonly password: string };
+  /**
+   * The session's survivor claims its own staff password, giving `typed` as the one it has ("" for none). The new password
+   * is in the answer and nowhere else. A wrong one given is counted as `enablecheats` counts a wrong password.
+   */
+  claimPassword(c: Client, typed: string): { readonly why: string; readonly password: string };
   /** Takes survivor `id`'s password away as `by`. Answers "" or why not. */
   clearPassword(by: Actor, id: string): string;
   /** Shows or hides one of the session's survivor's own chat tags. Answers "" or why not. */
@@ -1599,6 +1603,20 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     const subject = subjectOf(c);
     return subject !== null && permissions.mayRun(subject, command);
   };
+  /** Tells a staff member once a connection to claim their own password, or once to sign in with it. */
+  const tellPassword = (c: Client): void => {
+    if (c.toldClaim && c.toldSignIn) return;
+    const subject = subjectOf(c);
+    if (!subject) return;
+    if (permissions.secretOf(subject.id) === "") {
+      if (c.toldClaim || permissions.staffRank(subject.id) < RANK_STAFF) return;
+      c.toldClaim = true;
+      game.sendText(c, TEXT_NOTICE, "You are in a staff group. Claim your own password: open the console and type claimpassword.");
+    } else if (!c.toldSignIn && !c.signed && permissions.rankOf({ ...subject, signed: true }) >= RANK_STAFF) {
+      c.toldSignIn = true;
+      game.sendText(c, TEXT_NOTICE, "Your staff group counts once you sign in: type enablecheats and your password in the console.");
+    }
+  };
   /** Every live session's standing, worked out again after groups changed. A sign-in by a password since replaced or cleared ends. */
   const restand = (): void => {
     const gone = permissions.takeGone();
@@ -1609,6 +1627,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
         c.signedHash = "";
       }
       creative.stand(c);
+      if (!c.closed) tellPassword(c);
     }
   };
   /** The permissions' version every live session was last worked out at. */
@@ -1642,10 +1661,26 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     settleStanding();
     return why;
   };
-  const issuePassword = (by: Actor, id: string): { why: string; password: string } => {
+  const claimPassword = (c: Client, typed: string): { why: string; password: string } => {
+    const subject = subjectOf(c);
+    if (!subject) return { why: "You need a survivor to claim a password.", password: "" };
+    const guesses = game.sessions.cheatGuesses;
+    const who = c.conn.address ?? c.name;
+    const wait = typed === "" ? 0 : guesses.wait(who, world.tick);
+    if (wait > 0) return { why: `too many wrong passwords: wait ${Math.ceil(wait / TICK_RATE)} s`, password: "" };
     const password = makePassword();
-    const why = changePermissions(by, { op: "setSecret", id, hash: passwordHash(password) });
-    return { why, password: why === "" ? password : "" };
+    const claimed = permissions.claim(subject.id, passwordHash(password), typed === "" ? "" : passwordHash(typed));
+    if (claimed.wrong) {
+      guesses.wrong(who, world.tick);
+      if (++c.cheatAttempts >= CHEAT_GUESSES) game.sessions.reject(c, REJECT_DENIED);
+    }
+    if (claimed.why === "") {
+      acts.write(sessionActor(c, records), "claimed their own password", "change");
+      // The answer says how to sign in with it.
+      c.toldSignIn = true;
+    }
+    settleStanding();
+    return { why: claimed.why, password: claimed.why === "" ? password : "" };
   };
   const importPermissions = (by: Actor, what: string, plan: ImportPlan): Applied & { why: string } => {
     const top = cluster ? RANK_CLUSTER : RANK_MAP;
@@ -1687,10 +1722,14 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     const name = rules.text("SessionName");
     if (name !== "") game.sendText(c, TEXT_MOTD, name);
     for (const line of rules.text("Message").split("\\n")) if (line.trim() !== "") game.sendText(c, TEXT_MOTD, line.trim());
+    tellPassword(c);
     // One who joins during the countdown to a stop is told of it too.
     if (stopAt >= 0) game.sendRestart(Math.max(1, Math.ceil((stopAt - world.tick) / TICK_RATE)), c);
   });
-  game.sessions.onRelink.on((c) => creative.stand(c));
+  game.sessions.onRelink.on((c) => {
+    creative.stand(c);
+    tellPassword(c);
+  });
   game.sessions.onPresence.on((c) => {
     if (c.closed) activity.leave(c.pid);
     else activity.login(c.pid);
@@ -2324,7 +2363,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     acts,
     permissions,
     changePermissions,
-    issuePassword,
+    claimPassword,
     clearPassword: (by, id) => changePermissions(by, { op: "clearSecret", id }),
     chooseTag,
     importPermissions,

@@ -33,7 +33,7 @@ const SCHEMA =
   "CREATE TABLE IF NOT EXISTS groups (name TEXT PRIMARY KEY COLLATE NOCASE, rank INTEGER NOT NULL, permissions TEXT NOT NULL, chat TEXT NOT NULL);" +
   "CREATE TABLE IF NOT EXISTS members (kind TEXT NOT NULL, key TEXT NOT NULL, grp TEXT NOT NULL COLLATE NOCASE, world INTEGER NOT NULL," +
   " forever INTEGER NOT NULL, start INTEGER NOT NULL, until INTEGER NOT NULL, PRIMARY KEY (kind, key, grp, world));" +
-  "CREATE TABLE IF NOT EXISTS secrets (id TEXT PRIMARY KEY, hash TEXT NOT NULL);" +
+  "CREATE TABLE IF NOT EXISTS secrets (id TEXT PRIMARY KEY, hash TEXT NOT NULL, at INTEGER NOT NULL DEFAULT 0);" +
   "CREATE TABLE IF NOT EXISTS documents (name TEXT PRIMARY KEY COLLATE NOCASE, body TEXT NOT NULL);" +
   "CREATE TABLE IF NOT EXISTS tags (id TEXT NOT NULL, tag TEXT NOT NULL COLLATE NOCASE, show INTEGER NOT NULL, PRIMARY KEY (id, tag));";
 
@@ -75,6 +75,8 @@ export class PermissionStore {
     // The default journal, not WAL: each commit changes permissions.sqlite itself, whose time the worlds watch.
     db.exec("PRAGMA busy_timeout=2500;" + SCHEMA);
     db.transaction(() => {
+      // A file made before a password's claim was dated has no `at`.
+      if (!(db.query("PRAGMA table_info(secrets)").all() as { name: string }[]).some((c) => c.name === "at")) db.exec("ALTER TABLE secrets ADD COLUMN at INTEGER NOT NULL DEFAULT 0");
       if (db.query("INSERT OR IGNORE INTO meta (id, revision) VALUES (1, 0)").run().changes === 0) return;
       for (const g of STARTING_GROUPS) db.query("INSERT OR IGNORE INTO groups (name, rank, permissions, chat) VALUES (?, ?, ?, ?)").run(g.name, g.rank, g.permissions.join(","), g.chat);
       this.writes++;
@@ -120,8 +122,8 @@ export class PermissionStore {
         members.push({ kind: r.kind as MemberKind, key: r.key as string, group, world: r.world, forever: r.forever === 1, from: r.start, until: r.until });
       }
       const secrets: Secret[] = [];
-      for (const r of db.query("SELECT id, hash FROM secrets").all() as { id: unknown; hash: unknown }[]) {
-        if (isSurvivorId(r.id) && isHash(r.hash)) secrets.push({ id: r.id, hash: r.hash });
+      for (const r of db.query("SELECT id, hash, at FROM secrets").all() as { id: unknown; hash: unknown; at: unknown }[]) {
+        if (isSurvivorId(r.id) && isHash(r.hash)) secrets.push({ id: r.id, hash: r.hash, at: isTime(r.at) ? r.at : 0 });
       }
       const documents: Document[] = [];
       for (const r of db.query("SELECT name, body FROM documents").all() as { name: unknown; body: unknown }[]) {
@@ -179,8 +181,8 @@ export class PermissionStore {
     db.query("UPDATE members SET start = 0, until = 0 WHERE forever = 1 AND until > 0 AND until <= ?").run(now);
   }
 
-  putSecret(id: string, hash: string): void {
-    this.open().query("INSERT OR REPLACE INTO secrets (id, hash) VALUES (?, ?)").run(id, hash);
+  putSecret(s: Secret): void {
+    this.open().query("INSERT OR REPLACE INTO secrets (id, hash, at) VALUES (?, ?, ?)").run(s.id, s.hash, s.at);
   }
 
   dropSecret(id: string): void {

@@ -1,6 +1,7 @@
-// A survivor's own password: 16 letters the server makes, shown once and kept only as a hash in the permissions store. It
-// is compared as typed loosely, in any case and with or without its spaces and dashes. A password replaced or cleared is
-// remembered for a day, so a page still sending it is refused without its address being counted as guessing.
+// A survivor's own password: 16 letters the server makes as the survivor claims it, shown once to that survivor alone and
+// kept only as a hash in the permissions store. It is compared as typed loosely, in any case and with or without its spaces
+// and dashes. A password replaced or cleared is remembered for a day, so a page still sending it is refused without its
+// address being counted as guessing.
 
 import { randomBytes, randomInt } from "node:crypto";
 import { isSurvivorId } from "../../shared/permissions/model.ts";

@@ -113,6 +113,8 @@ import {
   S_SNAPSHOT,
   S_TEXT,
   S_CHAT,
+  S_SECRET,
+  MAX_SECRET_BYTES,
   RESTART_GO,
   RESTART_OFF,
   S_RESTART,
@@ -618,6 +620,8 @@ export class ClientSession {
   /** Text from the server, oldest first. `logVersion` counts every line ever added. */
   readonly log: TextLine[] = [];
   logVersion = 0;
+  /** The last secret the server sent this session alone (S_SECRET), until the console has shown it and closed; "" for none. Never in `log`. */
+  secret = "";
   /** Values at a tick and their rates, as the server last sent them. Evaluate with `vitals.at(i, serverTick)`. */
   readonly vitals = new Vitals();
   /** It came from another server of the cluster and chooses where to rise, as the server says (CHOOSE_ARRIVED). */
@@ -1681,6 +1685,13 @@ export class ClientSession {
         s.log.push(line);
         if (s.log.length > LOG_LINES) s.log.shift();
         s.logVersion++;
+      },
+    });
+    messages.add({
+      kind: S_SECRET,
+      read(s, r) {
+        const secret = r.string(MAX_SECRET_BYTES);
+        if (!r.overflow) s.secret = secret;
       },
     });
     messages.add({ kind: S_OWN, read: (s, r) => s.ownState(r) });

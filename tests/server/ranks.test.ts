@@ -125,6 +125,8 @@ test("a password's rank and a group's rank both count, and losing one keeps the 
   c.signed = true;
   h.host.exec(`Permissions.Add ${id} Admins`);
   expect([c.admin, c.rank]).toEqual([true, RANK_ADMIN]);
+  // The notice to claim a password arrives now, not among the next answer's lines.
+  h.run(100);
   expect(h.say(ada, "enablecheats hunter2")).toEqual(["cheats enabled"]);
   expect(c.rank).toBe(RANK_MAP);
   // The password taken back, the group's rank and cheats stay.
