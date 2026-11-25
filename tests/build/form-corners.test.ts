@@ -3,7 +3,7 @@
 // the slot's lattice corners for its own, and a roof's corners are as high as its turn says.
 
 import { expect, test } from "bun:test";
-import { LIVE_FORMS } from "../../content/building/forms.ts";
+import { FORMS } from "../../content/building/forms.ts";
 import { STRUCT_UNITS } from "../../shared/coords.ts";
 import { formBounds } from "../../shared/world/lattice/forms.ts";
 import { keyAt, riseAt, type LatticeKey } from "../../shared/world/lattice/frames.ts";
@@ -14,7 +14,7 @@ import { coreRegistry, flatWorld } from "../fixtures/world.ts";
 
 const reg = coreRegistry();
 const U = STRUCT_UNITS;
-const names = Object.keys(LIVE_FORMS) as (keyof typeof LIVE_FORMS)[];
+const names = Object.keys(FORMS) as (keyof typeof FORMS)[];
 
 test("every form in every turn of every slot, at five yaws: its collider is where its row says, on the lattice's own corners", () => {
   const key: LatticeKey = { fr: 0, k0: 0, k1: 0 };
@@ -78,6 +78,6 @@ test("every form in every turn of every slot, at five yaws: its collider is wher
     }
   }
   // Every form was set down in each turn class its slots have: a post in one, an edge's or a face's piece in all three.
-  for (const name of names) expect([name, [0, 1, 2].filter((tw) => turned.has(`${name} ${tw}`)).length]).toEqual([name, LIVE_FORMS[name].cls === "vertex" ? 1 : 3]);
+  for (const name of names) expect([name, [0, 1, 2].filter((tw) => turned.has(`${name} ${tw}`)).length]).toEqual([name, FORMS[name].cls === "vertex" ? 1 : 3]);
   expect(placed).toBeGreaterThan(names.length * 5 * 6);
 });

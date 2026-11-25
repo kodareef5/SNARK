@@ -6,7 +6,7 @@
 import { PIECE_FIT_AT, PIECE_STATE_AT, PieceFit, fitOfForm, plainYaw, yields } from "../../client/core/render/piece-fit.ts";
 import type { PieceLooks } from "../../client/core/render/piece-state.ts";
 import { Trims } from "../../client/core/render/trims.ts";
-import { FORMS, PLANNED_FORMS } from "../../content/building/forms.ts";
+import { ALL_FORMS } from "../../content/building/forms.ts";
 import { CHUNK_SIZE, STRUCT_UNITS, chunkCx, chunkCz } from "../../shared/coords.ts";
 import { INSTANCE_BYTES } from "../../shared/pack/pack.ts";
 import { FORM_LAYERS, makeFormTable, setForm, type FormDef } from "../../shared/world/lattice/forms.ts";
@@ -35,7 +35,7 @@ export const VILLAGE_SHOTS: readonly VillageShot[] = [
   ["a hip beside a slope, and its eave over the wall, close", [5.2, 3.6, 0.6], 3.2, 62, 20],
 ];
 
-const ALL: Readonly<Record<string, FormDef>> = { ...FORMS, ...PLANNED_FORMS };
+const ALL: Readonly<Record<string, FormDef>> = ALL_FORMS;
 const NAMES = Object.keys(ALL);
 /** Metres the plane of level 0 stands over the ground: a foundation's thickness. */
 const FLOOR = 0.375;

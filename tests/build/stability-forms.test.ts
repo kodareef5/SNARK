@@ -3,7 +3,7 @@
 // link is read alike from both its ends, and one pass over a base gives each piece the number it has asked alone.
 
 import { expect, test } from "bun:test";
-import { LIVE_FORMS } from "../../content/building/forms.ts";
+import { FORMS } from "../../content/building/forms.ts";
 import { RESULT_OK } from "../../shared/net/protocol.ts";
 import { Rng } from "../../shared/rng.ts";
 import { rotsOf, type LatticeKey } from "../../shared/world/lattice/frames.ts";
@@ -29,7 +29,7 @@ function refsOf(w: TestWorld): number[] {
  */
 function ramble(w: TestWorld, rng: Rng, tries: number): void {
   const site = siteOf(w);
-  const names = Object.keys(LIVE_FORMS).filter((name) => !name.endsWith("_open"));
+  const names = Object.keys(FORMS).filter((name) => !name.endsWith("_open"));
   const kinds = names.map((name) => w.kind(`core:${name}_wood`));
   const offered = makeCandidates();
   const verdict = makeVerdict();
@@ -129,7 +129,7 @@ test("with every form: the numbers are the same in any order of building, with p
   expect(pieces).toBeGreaterThan(600);
   expect(failing).toBeGreaterThan(30);
   // The rambles between them built every kind of piece but the leaves stood open.
-  const missing = Object.keys(LIVE_FORMS).filter((name) => !name.endsWith("_open") && !seen.has(name));
+  const missing = Object.keys(FORMS).filter((name) => !name.endsWith("_open") && !seen.has(name));
   expect(missing).toEqual([]);
 });
 

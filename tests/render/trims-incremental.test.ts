@@ -7,7 +7,7 @@ import { yields } from "../../client/core/render/piece-fit.ts";
 import type { PieceLooks } from "../../client/core/render/piece-state.ts";
 import { Trims } from "../../client/core/render/trims.ts";
 import { cityMaterial } from "../../content/breaks/materials.ts";
-import { PLANNED_FORMS, boxed, formBoxes, formHulls } from "../../content/building/forms.ts";
+import { ALL_FORMS, boxed, formBoxes, formHulls } from "../../content/building/forms.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import type { Def, ShapeBox } from "../../shared/content/defs.ts";
 import { compileContent, type Registry } from "../../shared/content/registry.ts";
@@ -41,8 +41,8 @@ function registry(): Registry {
     { type: "shape", id: `test:shape_${id}`, role: "thing", ...collider(form), form },
     { type: "structure", class: "piece", id: `test:${id}`, mesh: "shape", shape: `test:shape_${id}`, half: formHalf(form), color: 5, hp: 100, material },
   ];
-  const defs = PLANNED.flatMap((name) => TIERS.flatMap((tier) => piece(`${name}_${tier}`, PLANNED_FORMS[name], `core:mat_${tier}`)));
-  defs.push(...piece("bare_wall", PLANNED_FORMS.half_wall, cityMaterial("concrete")), ...piece("bare_ceiling", PLANNED_FORMS.triangle_ceiling, cityMaterial("concrete")));
+  const defs = PLANNED.flatMap((name) => TIERS.flatMap((tier) => piece(`${name}_${tier}`, ALL_FORMS[name], `core:mat_${tier}`)));
+  defs.push(...piece("bare_wall", ALL_FORMS.half_wall, cityMaterial("concrete")), ...piece("bare_ceiling", ALL_FORMS.triangle_ceiling, cityMaterial("concrete")));
   const { registry, errors } = compileContent([...CORE_CONTENT, ...defs]);
   if (!registry) throw new Error(errors.join("\n"));
   return (made = registry);

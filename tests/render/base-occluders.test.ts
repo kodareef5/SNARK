@@ -10,7 +10,7 @@ import { OCCLUDER } from "../../client/core/render/hide.ts";
 import { Scene } from "../../client/core/render/scene.ts";
 import "../../client/core/render/city-late.ts";
 import { RemoteSample } from "../../client/core/session.ts";
-import { FORMS } from "../../content/building/forms.ts";
+import { FIRST_FORMS, FORMS } from "../../content/building/forms.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { MATERIAL_BLEND, MATERIAL_CUTOUT, parsePack, type Pack } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
@@ -124,7 +124,7 @@ function closed(meshes: readonly SourceMesh[], where: string): void {
 }
 
 test("the recipes' meshes are closed about their middle, alone and side by side", () => {
-  closed([...tierShapes(STONE, FORMS), ...bakeMetal(FORMS)], "the recipes");
+  closed([...tierShapes(STONE, FIRST_FORMS), ...bakeMetal(FIRST_FORMS)], "the recipes");
 });
 
 artTest("the installed meshes are closed about their middle, alone and side by side", () => {
@@ -134,7 +134,7 @@ artTest("the installed meshes are closed about their middle, alone and side by s
 let made: Pack | null = null;
 /** The turned fixtures' kinds as grey boxes, with stone, metal and wood as their recipes make them, and stone's stand-in trims with `trims`. */
 function pack(trims = false): Pack {
-  const build = (extra: readonly SourceMesh[]): Pack => parsePack(buildPack(withArt(grayboxMeshes(turnedRegistry().defs.flatMap((d) => (d ? [d] : []))), [...tierShapes(STONE, FORMS), ...tierShapes(WOOD, FORMS), ...bakeMetal(FORMS), ...extra]), defaultPalette()));
+  const build = (extra: readonly SourceMesh[]): Pack => parsePack(buildPack(withArt(grayboxMeshes(turnedRegistry().defs.flatMap((d) => (d ? [d] : []))), [...tierShapes(STONE, FIRST_FORMS), ...tierShapes(WOOD, FIRST_FORMS), ...bakeMetal(FIRST_FORMS), ...extra]), defaultPalette()));
   return trims ? build(standInTrims("stone")) : (made ??= build([]));
 }
 
@@ -365,10 +365,8 @@ for (const [seed, tier, trims] of [[1, "lowpoly", false], [2, "medium", false], 
 // Metal's new forms (large_wall, half_wall, quarter_wall): the walls among them that close an edge are as opaque as
 // its wall, so a plate could stand in each. BasePlates gives none yet: it names a full wall a storey high on one edge.
 
-import { PLANNED_FORMS } from "../../content/building/forms.ts";
-
 test("metal's large wall and low walls are closed about their middle at every level, beside a wall and under and over one", () => {
-  const meshes = new Map(bakeMetal({ ...FORMS, ...PLANNED_FORMS }).map((m) => [m.id.slice(5, -6), m] as const));
+  const meshes = new Map(bakeMetal(FORMS).map((m) => [m.id.slice(5, -6), m] as const));
   const rng = new Rng(17);
   const wall = meshes.get("wall")!;
   // Each by half its height about its origin, and the walls that stand in the cells round it.

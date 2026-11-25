@@ -4,7 +4,7 @@
 // form no kind uses yet and a trim are in the pack for the lanes that draw them.
 // model.py, pieces.py and kit.py are what the recipe was ported from, kept until every tier is made this way.
 
-import { FORMS, PLANNED_FORMS } from "../../../../../content/building/forms.ts";
+import { FORMS } from "../../../../../content/building/forms.ts";
 import type { FormDef } from "../../../../../shared/world/lattice/forms.ts";
 import { MADE_PIECE_TRIANGLES, TRIM_TRIANGLES } from "../../../../../tools/art/check.ts";
 import type { MaterialSpec, PiecesAsset } from "../../../../../tools/art/spec.ts";
@@ -37,7 +37,7 @@ const MATERIALS = {
   earth: picture("earth", { tiles: 1.5 }),
 };
 const TOP = 2048;
-const THATCHED: Readonly<Record<string, FormDef>> = Object.fromEntries([...THATCH_FORMS.map((name) => [name, FORMS[name]] as const), ...THATCH_PLANNED.map((name) => [name, PLANNED_FORMS[name]] as const)]);
+const THATCHED: Readonly<Record<string, FormDef>> = Object.fromEntries([...THATCH_FORMS, ...THATCH_PLANNED].map((name) => [name, FORMS[name]] as const));
 
 /**
  * The tier's meshes for `forms`, and its trims with them where asked; with `posts`, as its walls were before joints

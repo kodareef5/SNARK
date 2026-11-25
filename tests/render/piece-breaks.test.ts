@@ -14,9 +14,9 @@ import { FrameTable, PIECE_FRAMED, PIECE_FIT_AT, PIECE_STATE_AT, PieceFit, fitOf
 import { Scene } from "../../client/core/render/scene.ts";
 import { Falling, MOST_PIECE_BREAKS } from "../../client/core/rubble.ts";
 import type { Rubble } from "../../client/core/session.ts";
-import { PLACED_FORMS } from "../../content/building.ts";
+import { TIER_FORMS } from "../../content/building.ts";
 import { LEAST_GROUPS, MOST_PIECE_GROUPS, pieceBreak } from "../../content/building/breaks.ts";
-import { LIVE_FORMS, boxed, formBoxes, formHulls } from "../../content/building/forms.ts";
+import { FORMS, boxed, formBoxes, formHulls } from "../../content/building/forms.ts";
 import { INSTANCE_BYTES, parsePack } from "../../shared/pack/pack.ts";
 import { REGION_BASE, defaultPalette } from "../../shared/pack/palette.ts";
 import { hullOf, hullPoint } from "../../shared/world/convex.ts";
@@ -31,8 +31,8 @@ import { turnedBy } from "../fixtures/trims.ts";
 import { Base, dodecagon, mixedHouse, turnedRegistry, turnedWorld } from "../fixtures/turned.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
-const FORMS: Readonly<Record<string, FormDef>> = LIVE_FORMS;
-const TIERS = Object.keys(PLACED_FORMS);
+const ROWS: Readonly<Record<string, FormDef>> = FORMS;
+const TIERS = Object.keys(TIER_FORMS);
 /** The tiers whose packs draw their pieces with materials, and so carry their breaks. Metal is flat: its sets are made on the client. */
 const PACKED = ["wood", "stone", "thatch"];
 
@@ -57,8 +57,8 @@ function solidOf(f: FormDef): number {
 test("every placed form of every tier breaks into 6 to 10 groups that fill it", () => {
   let forms = 0;
   for (const tier of TIERS) {
-    for (const name of PLACED_FORMS[tier]!) {
-      const f = FORMS[name]!, groups = pieceBreak(f, tier), box = colliderBox(f);
+    for (const name of TIER_FORMS[tier]!) {
+      const f = ROWS[name]!, groups = pieceBreak(f, tier), box = colliderBox(f);
       expect(groups.length, `${name} ${tier}`).toBeGreaterThanOrEqual(LEAST_GROUPS);
       expect(groups.length, `${name} ${tier}`).toBeLessThanOrEqual(MOST_PIECE_GROUPS);
       let filled = 0;
@@ -79,12 +79,12 @@ test("every placed form of every tier breaks into 6 to 10 groups that fill it", 
 
 test("the client finds a break set for every placed piece and none for a city piece", () => {
   const reg = coreRegistry(), sets = new BreakSets(reg);
-  for (const tier of TIERS) for (const name of PLACED_FORMS[tier]!) {
+  for (const tier of TIERS) for (const name of TIER_FORMS[tier]!) {
     const kind = reg.index.get(`core:${name}_${tier}`);
     expect(kind, `core:${name}_${tier}`).toBeDefined();
     const set = sets.piece(kind!)!;
     expect(set.key % 4).toBe(SET_PIECE);
-    expect(set.groups.length).toBe(pieceBreak(FORMS[name]!, tier).length);
+    expect(set.groups.length).toBe(pieceBreak(ROWS[name]!, tier).length);
     expect(set.lump).toBe(set);
   }
   expect(sets.piece(reg.index.get("core:storage_box")!)).toBeNull();
@@ -95,10 +95,10 @@ for (const tier of PACKED) {
   test.skipIf(!existsSync(file))(`${tier}'s pack draws every placed form's break in the piece's own material`, () => {
     const pack = parsePack(new Uint8Array(readFileSync(file)));
     const meshes = new Map(unpackMeshes(pack).map((m) => [m.id, m] as const));
-    for (const name of PLACED_FORMS[tier]!) {
+    for (const name of TIER_FORMS[tier]!) {
       const piece = meshes.get(`core:${name}_${tier}`), made = meshes.get(`core:${name}_${tier}/break`);
       expect(made, `core:${name}_${tier}/break`).toBeDefined();
-      const lod = made!.lods[0]!, groups = pieceBreak(FORMS[name]!, tier);
+      const lod = made!.lods[0]!, groups = pieceBreak(ROWS[name]!, tier);
       expect(made!.lods.length).toBe(1);
       expect(lod.uvs, "it is drawn with materials").toBeDefined();
       expect(made!.materials!.length).toBe(1);
@@ -115,7 +115,7 @@ for (const tier of PACKED) {
         }
       }
     }
-    expect([...meshes.keys()].filter((id) => id.endsWith("/break")).length).toBe(PLACED_FORMS[tier]!.length);
+    expect([...meshes.keys()].filter((id) => id.endsWith("/break")).length).toBe(TIER_FORMS[tier]!.length);
   });
 }
 
@@ -216,7 +216,7 @@ function brokenHouse(packed: boolean) {
   const w = turnedWorld(4), reg = turnedRegistry();
   const built = mixedHouse(new Base(w, 128, 128, YAWS[0]!));
   const meshes = grayboxMeshes(reg.defs.flatMap((d) => (d ? [d] : [])));
-  if (packed) meshes.push(flatBreak("core:wall_stone/break", FORMS.wall!, "stone"));
+  if (packed) meshes.push(flatBreak("core:wall_stone/break", ROWS.wall!, "stone"));
   const pack = parsePack(buildPack(meshes, defaultPalette()));
   const scene = new Scene({ dims: w.dims, hf: w.hf, structs: w.structs }, reg, pack);
   scene.assets.tier = { ...tierOf("high"), split: 0 };

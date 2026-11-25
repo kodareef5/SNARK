@@ -2,7 +2,7 @@
 // refused and why, and the turns, mirror and moves against the lattice's own corners.
 
 import { expect, test } from "bun:test";
-import { FORMS, PLANNED_FORMS } from "../../content/building/forms.ts";
+import { ALL_FORMS } from "../../content/building/forms.ts";
 import { hashBytes } from "../../shared/hash.ts";
 import { BitWriter } from "../../shared/net/codec.ts";
 import { Rng } from "../../shared/rng.ts";
@@ -31,7 +31,7 @@ import {
 import { FORM_LAYERS, SLOT_CLASSES } from "../../shared/world/lattice/forms.ts";
 import { CLS_DIRS, DIRS, canon, canonical, dirTurn, elementCorners, key0, key1, keyAnchor, keyDir, keyFlip, keyLvl, keyM0, keyM3, keyRot, tupleMirror, tupleTurn } from "../../shared/world/lattice/module.ts";
 
-const ALL: BlueprintForms = { ...FORMS, ...PLANNED_FORMS };
+const ALL: BlueprintForms = ALL_FORMS;
 const NAMES = Object.keys(ALL);
 const THATCH = 0;
 const WOOD = 1;
