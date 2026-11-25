@@ -345,7 +345,7 @@ export class StreetSectors {
 
   /** Whether every listed sector whose square meets the box from (x0, z0) to (x1, z1) metres is held. */
   heldIn(x0: number, z0: number, x1: number, z1: number): boolean {
-    const [a0, b0, a1, b1] = [Math.floor(x0 / CHUNK_SIZE), Math.floor(z0 / CHUNK_SIZE), Math.floor(x1 / CHUNK_SIZE), Math.floor(z1 / CHUNK_SIZE)];
+    const a0 = Math.floor(x0 / CHUNK_SIZE), b0 = Math.floor(z0 / CHUNK_SIZE), a1 = Math.floor(x1 / CHUNK_SIZE), b1 = Math.floor(z1 / CHUNK_SIZE);
     for (const [key, sq] of this.listed) if (a0 < sq[2]! && a1 >= sq[0]! && b0 < sq[3]! && b1 >= sq[1]! && !this.held.has(key)) return false;
     return true;
   }

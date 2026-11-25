@@ -183,7 +183,9 @@ export class StagedMap {
   private bound(cx: number, cz: number, lo: number, hi: number): void {
     const { chunksX, chunksZ } = this.head.dims, b = this.hf.bounds!;
     const c = cz * chunksX + cx;
-    [b[c * 2], b[c * 2 + 1], this.sure[c]] = [lo, hi, 1];
+    b[c * 2] = lo;
+    b[c * 2 + 1] = hi;
+    this.sure[c] = 1;
     for (let z = Math.max(0, cz - 1); z <= Math.min(chunksZ - 1, cz + 1); z++) {
       for (let x = Math.max(0, cx - 1); x <= Math.min(chunksX - 1, cx + 1); x++) {
         const n = z * chunksX + x;
@@ -199,7 +201,7 @@ export class StagedMap {
     const { heights, nx } = this.hf, per = CHUNK_SIZE / TERRAIN_CELL;
     for (let cz = sq.cz0; cz < sq.cz1; cz++) {
       for (let cx = sq.cx0; cx < sq.cx1; cx++) {
-        let [a, b] = [65535, 0];
+        let a = 65535, b = 0;
         for (let j = cz * per; j <= cz * per + per; j++) {
           for (let k = j * nx + cx * per, end = k + per; k <= end; k++) {
             const q = heights[k]!;
@@ -223,8 +225,9 @@ function coarseBounds(head: MapHead): Uint16Array {
   for (let cz = 0; cz < dims.chunksZ; cz++) {
     for (let cx = 0; cx < dims.chunksX; cx++) {
       const k = cz * across + cx, h = coarse.heights;
-      const corners = [h[k]!, h[k + 1]!, h[k + across]!, h[k + across + 1]!];
-      [out[(cz * dims.chunksX + cx) * 2], out[(cz * dims.chunksX + cx) * 2 + 1]] = [Math.min(...corners), Math.max(...corners)];
+      const c = cz * dims.chunksX + cx;
+      out[c * 2] = Math.min(h[k]!, h[k + 1]!, h[k + across]!, h[k + across + 1]!);
+      out[c * 2 + 1] = Math.max(h[k]!, h[k + 1]!, h[k + across]!, h[k + across + 1]!);
     }
   }
   return out;

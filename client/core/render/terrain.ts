@@ -252,8 +252,10 @@ export class TerrainLod {
       for (let tx = cx0; tx < cx1; tx++) {
         let a = 65535;
         let b = 0;
-        if (bounds) [a, b] = [bounds[(tz * w0 + tx) * 2]!, bounds[(tz * w0 + tx) * 2 + 1]!];
-        else for (let j = tz * per; j <= (tz + 1) * per; j++) {
+        if (bounds) {
+          a = bounds[(tz * w0 + tx) * 2]!;
+          b = bounds[(tz * w0 + tx) * 2 + 1]!;
+        } else for (let j = tz * per; j <= (tz + 1) * per; j++) {
           for (let k = j * nx + tx * per, end = k + per; k <= end; k++) {
             const q = heights[k]!;
             if (q < a) a = q;
@@ -307,7 +309,9 @@ export class TerrainLod {
       const meets = (i: number, j: number, rows: number): boolean => i0 < i + w && i1 >= i && j0 < j + rows && j1 >= j;
       if (this.drawn >= 0 && meets(this.drawnI, this.drawnJ, h)) {
         const from = Math.max(0, j0 - this.drawnJ), to = Math.min(h, j1 - this.drawnJ + 1);
-        [this.patch, this.patchEnd] = this.patch < this.patchEnd ? [Math.min(this.patch, from), Math.max(this.patchEnd, to)] : [from, to];
+        const open = this.patch < this.patchEnd;
+        this.patch = open ? Math.min(this.patch, from) : from;
+        this.patchEnd = open ? Math.max(this.patchEnd, to) : to;
       }
       if (this.fill >= 0 && meets(this.fillI, this.fillJ, this.row)) this.row = Math.max(0, j0 - this.fillJ);
     }
@@ -505,7 +509,11 @@ export class TerrainLod {
       // Rows of the window drawn are put again into its own copy, a band a frame.
       const rows = band(this.patchEnd - this.patch);
       budget?.spend(rows * bytes);
-      [g[3], g[4], g[5], g[6], g[7]] = [this.drawn, this.drawnI, this.drawnJ, this.patch, rows];
+      g[3] = this.drawn;
+      g[4] = this.drawnI;
+      g[5] = this.drawnJ;
+      g[6] = this.patch;
+      g[7] = rows;
       this.patch += rows;
     }
     g[0] = this.drawn;
@@ -525,21 +533,30 @@ export class TerrainLod {
     const rw = roadSamples(this.size.width[SOURCE_WINDOW]!), rh = roadSamples(this.size.height[SOURCE_WINDOW]!);
     const ci = this.drawnI / ROAD_STEP, cj = this.drawnJ / ROAD_STEP;
     const whole = road !== this.roadOf || f[0] !== this.drawn || f[1] !== this.drawnI || f[2] !== this.drawnJ || !road.changedSince(this.roadVersion, this.roadChanges);
-    [this.roadOf, this.roadVersion, f[0], f[1], f[2]] = [road, road.version, this.drawn, this.drawnI, this.drawnJ];
-    if (whole) [this.roadRow, this.roadEnd] = [0, rh];
-    else {
+    this.roadOf = road;
+    this.roadVersion = road.version;
+    f[0] = this.drawn;
+    f[1] = this.drawnI;
+    f[2] = this.drawnJ;
+    if (whole) {
+      this.roadRow = 0;
+      this.roadEnd = rh;
+    } else {
       const c = this.roadChanges;
       for (let k = 0; k < c.length; k += 4) {
         if (c[k]! >= ci + rw || c[k + 2]! <= ci || c[k + 1]! >= cj + rh || c[k + 3]! <= cj) continue;
         const from = Math.max(0, c[k + 1]! - cj), to = Math.min(rh, c[k + 3]! - cj);
-        [this.roadRow, this.roadEnd] = this.roadRow < this.roadEnd ? [Math.min(this.roadRow, from), Math.max(this.roadEnd, to)] : [from, to];
+        const open = this.roadRow < this.roadEnd;
+        this.roadRow = open ? Math.min(this.roadRow, from) : from;
+        this.roadEnd = open ? Math.max(this.roadEnd, to) : to;
       }
     }
     if (this.roadRow >= this.roadEnd) return;
     const bytes = rw * ROAD_PLANES;
     const rows = whole || !budget ? this.roadEnd - this.roadRow : Math.min(this.roadEnd - this.roadRow, Math.max(1, Math.floor(budget.left / bytes)));
     budget?.spend(rows * bytes);
-    [out[0], out[1]] = [this.roadRow, rows];
+    out[0] = this.roadRow;
+    out[1] = rows;
     this.roadRow += rows;
   }
 }
