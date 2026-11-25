@@ -507,6 +507,11 @@ export class MapLoader {
   private readonly roads = new Set<MapPart>();
   private readonly roadsHeld = new Set<MapPart>();
 
+  /** The map's statics as far as they have come, laid out whole once the first sector's came; null before. */
+  get statics(): MapStatics | null {
+    return this.table;
+  }
+
   /** How much of the map has come, and been handed over: what a bench waits for before it measures (bench-run.ts). */
   progress(): MapProgress {
     const head = this.staged.head;

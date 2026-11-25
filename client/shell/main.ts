@@ -182,6 +182,7 @@ async function boot(): Promise<void> {
   }
   const surfaces = checks ? new checks.SelfcheckSurfaces(manifest, port) : null;
   const app = new App(session, reg, pack, { manifest, port: surfaces ?? port });
+  app.mapLoader = loader;
   // The data utility's record of each frame comes as its own file, which the first frame does not wait for (D899).
   void import("../core/assets/frames.ts").then((m) => (app.frames = new m.FrameRing()));
   // The debug bar's part that needs the browser, fetched once the bar is first on; it takes the page's log from then.

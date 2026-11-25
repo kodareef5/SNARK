@@ -5,6 +5,7 @@ import { emptyPick, pickLook, plainName } from "../assets/look.ts";
 import { inspectMesh, inspectTexture } from "../assets/inspect.ts";
 import { RequestLog, requestFrom, requestName, requestTime } from "../assets/requests.ts";
 import type { Residency } from "../assets/residency.ts";
+import { heldTotal, mapLedger } from "../mapheld.ts";
 import type { DebugBar } from "./debug.ts";
 import type { Draw } from "./draw.ts";
 import { Paint } from "./paint.ts";
@@ -16,6 +17,8 @@ import { bytes, count, rate } from "./words.ts";
 const CHART = 3;
 /** Seconds the chart shows. */
 const SECONDS = 60;
+/** Milliseconds between counts of the map held. */
+const MAP_EVERY = 1000;
 /** Requests listed. */
 const LISTED = 9;
 /** The chart's series: network, disk, to the card. */
@@ -29,6 +32,9 @@ export class AssetsTab implements Tab {
   private logOf: Residency | null = null;
   private readonly pick = emptyPick();
   private readonly sums = new Float64Array(4);
+  /** What the page holds of its map, counted again each MAP_EVERY ms while the tab is open. */
+  private heldLine = "";
+  private heldAt = -Infinity;
 
   /** Hands the residency a log of its requests while the tab is wanted, and takes it back when not. */
   watch(r: Residency | null): void {
@@ -81,8 +87,15 @@ export class AssetsTab implements Tab {
     const cache = r.cache;
     draw.pair(mx, at, col, "saved on this device", !cache || cache.mode === "none" ? "nothing" : `${bytes(cache.used)} of ${bytes(cache.limit)}${cache.mode === "memory" ? " in memory" : ""}`);
 
+    if (nowMs - this.heldAt >= MAP_EVERY) {
+      this.heldAt = nowMs;
+      const held = mapLedger({ loader: app.mapLoader, city: app.session.world?.city?.statics, farShadow: app.scene?.farShadow, skip: [app.session, app.scene] });
+      this.heldLine = `MAP HELD ${bytes(heldTotal(held))}: ${held.map((m) => `${m.name} ${bytes(m.bytes)}`).join(" · ") || "nothing yet"}`;
+    }
+    draw.text(x, y + 5 * line, w, D_MONO_DIM, this.heldLine);
+
     // The last minute's bytes a second, stacked: network, disk, to the card.
-    const top = y + 5 * line + 10, chartH = 56;
+    const top = y + 6 * line + 10, chartH = 56;
     this.paintChart(d, frames, Math.round(w * d.unit), Math.round(chartH * d.unit));
     draw.box(x, top, w, chartH, D_WELL);
     draw.picture(x, top, w, chartH, d.imageOf(CHART, this.chart.image), 0, 0, true);
