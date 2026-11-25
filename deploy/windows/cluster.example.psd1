@@ -33,6 +33,10 @@
   # The file whose one line is the password for enablecheats on every world. None: cheats are off.
   AdminPasswordFile = 'var/admin-password.txt'
 
+  # The file whose one line is the cluster's password: every world takes it, and it stands above the admin password.
+  # None: only the admin password is asked.
+  ClusterPasswordFile = 'var/cluster-password.txt'
+
   # The front, which the tunnel or proxy points at. 127.0.0.1 keeps it to this machine; 0.0.0.0 opens it to the network.
   FrontHost = '127.0.0.1'
   FrontPort = 8787

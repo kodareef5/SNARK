@@ -99,7 +99,7 @@ is none. `-Config` names another, and `install` keeps the name it is given.
   running, `stop` stops those programs. Only programs of the same cluster id
   count: another cluster's are left alone.
 - **Secrets.** The admin password reaches only the worlds, as
-  `SNARK_ADMIN_PASSWORD`. The tunnel's token reaches only the tunnel, as
+  `SNARK_ADMIN_PASSWORD`, and the cluster's as `SNARK_CLUSTER_PASSWORD`. The tunnel's token reaches only the tunnel, as
   `TUNNEL_TOKEN`. Neither appears on a command line.
 - **Logs.** All are in `var\logs\<cluster id>`. `cluster.log` records what
   started, what exited and when, and what was started again. Each program

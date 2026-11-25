@@ -222,7 +222,9 @@ function Invoke-Run {
     $bun = Find-Program (Get-Value $c.Bun 'bun')
     $secrets = @{ world = @{}; tunnel = @{} }
     $password = Read-Secret $c.AdminPasswordFile
-    if ($password) { $secrets.world.SNARK_ADMIN_PASSWORD = $password } else { Write-Log 'no admin password file: enablecheats is refused on every world' }
+    $clusterPassword = Read-Secret $c.ClusterPasswordFile
+    if ($clusterPassword) { $secrets.world.SNARK_CLUSTER_PASSWORD = $clusterPassword }
+    if ($password) { $secrets.world.SNARK_ADMIN_PASSWORD = $password } elseif (-not $clusterPassword) { Write-Log 'no admin or cluster password file: enablecheats is refused on every world' }
     if ($c.Tunnel) {
       $c.Tunnel.Command = Find-Program $c.Tunnel.Command
       if ($c.Tunnel.TokenFile) {
