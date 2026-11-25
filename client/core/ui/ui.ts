@@ -2,7 +2,7 @@
 
 import type { HudModel } from "../hud.ts";
 import type { ClientSession } from "../session.ts";
-import { ConsoleState, KEY_CONSOLE_INPUT } from "./console.ts";
+import { ConsoleState, KEY_CONSOLE_DONE, KEY_CONSOLE_INPUT } from "./console.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
 import { buildFeed } from "../hud/air-feed.ts";
 import { ChatState, KEY_CHAT_INPUT, KEY_CHAT_SEND, KEY_CHAT_TAG } from "./chat.ts";
@@ -350,6 +350,7 @@ export class Ui {
   /** `kind` is 0 for down, 1 for up, 2 for move, over an interactive node. `finger` is 0 for a mouse, else the touch's number. */
   pointer(kind: number, key: number, x: number, y: number, button: number, session: ClientSession | null, finger = 0): void {
     if (this.debug?.pointer(kind, key, x, y, button)) return;
+    if (key === KEY_CONSOLE_DONE) { if (kind === 0) this.console.open = false; return; }
     if (key === KEY_UNMUTE) { if (kind === 0 && button === 0) { this.settings.muted = false; this.settings.changed(); } return; }
     if(this.frame.find(key)?.kind===K_SLIDER) { if(kind===0 && button===0)this.focusTo(key); return; }
     const top = this.takingAll();
