@@ -20,7 +20,7 @@ async function open(): Promise<{ send: (method: string, params?: object) => Prom
   if (!chrome) throw new Error("no Chrome found; set CHROME");
   const port = 9300 + Math.floor(Math.random() * 400);
   const profile = join(ROOT, `var/tmp/ads-profile-${port}`);
-  const browser = Bun.spawn([chrome, "--headless=new", ...CHROME_FLAGS, "--no-first-run", "--hide-scrollbars", "--force-color-profile=srgb", "--allow-file-access-from-files", "--font-render-hinting=none", `--user-data-dir=${profile}`, `--remote-debugging-port=${port}`, "about:blank"], { stdout: "ignore", stderr: "ignore" });
+  const browser = Bun.spawn([chrome, "--headless=new", ...CHROME_FLAGS, "--mute-audio", "--no-first-run", "--hide-scrollbars", "--force-color-profile=srgb", "--allow-file-access-from-files", "--font-render-hinting=none", `--user-data-dir=${profile}`, `--remote-debugging-port=${port}`, "about:blank"], { stdout: "ignore", stderr: "ignore" });
   let target: { webSocketDebuggerUrl: string } | undefined;
   for (let i = 0; i < 100 && !target; i++) {
     await Bun.sleep(100);

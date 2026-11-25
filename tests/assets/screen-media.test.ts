@@ -110,12 +110,18 @@ test("colours are averaged in linear light, each edge from its own band", () => 
   expect(frameColours(rgb, w, h).length).toBe(COLOUR_PARTS * 3);
 });
 
-artTest("each clip and poster is installed with the stated bytes, and passes the server's MP4 check", () => {
+artTest("each item and poster is installed with the stated bytes, and passes the server's check", () => {
   for (const name of names) {
     const c = readItem(name)!, bytes = readFileSync(join(SCREENS_DIR, name, c.file));
     expect(bytes.length).toBe(c.bytes);
     expect(sha256(bytes).slice(0, 16)).toBe(c.id);
     expect(readFileSync(join(SCREENS_DIR, name, c.poster)).length).toBeLessThanOrEqual(40 * 1024);
+    if (c.kind === "image") {
+      const image = probeImage(new Uint8Array(bytes));
+      if (typeof image === "string") throw new Error(`${name}: ${image}`);
+      expect([image.width, image.height]).toEqual([c.width, c.height]);
+      continue;
+    }
     const probe = probeMp4(new Uint8Array(bytes));
     if (typeof probe === "string") throw new Error(`${name}: ${probe}`);
     expect([probe.width, probe.height, probe.audio, probe.faststart]).toEqual([c.width, c.height, c.audio, true]);

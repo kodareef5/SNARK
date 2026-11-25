@@ -2,6 +2,7 @@
 // first and as many as a frame keeps, from the tables the client holds and else from the map's statics; and their quads.
 import { expect, test } from "bun:test";
 import { heapStats } from "bun:jsc";
+import { BILLBOARD_FACE } from "../../content/street.ts";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { FACE, FACE_FLOATS, FACE_LED, FACE_TOP, FACE_TOP_BEFORE, FramePacket, MAX_FACES } from "../../client/core/render/packet.ts";
@@ -132,6 +133,6 @@ test("a picture is cropped to fill its face, keeping its own shape", () => {
 test("the billboard's static carries an LED face on its road side, and its bare form none", () => {
   const reg = coreRegistry();
   const face = reg.screenFace[reg.index.get("core:zzstreet_billboard")!];
-  expect(face).toEqual({ type: "billboard", face: [-7.4, 7.4, 9.55, 14.4, 1.55], led: true });
+  expect(face).toEqual(BILLBOARD_FACE);
   expect(reg.screenFace[reg.index.get("core:zzstreet_billboard_bare")!]).toBeNull();
 });
