@@ -9,7 +9,7 @@
 //   swept from the buildings' tops along OPEN_WAYS ways round and OPEN_HEIGHTS heights up the sky, each an equal share
 //   of the sky's solid angle, as the far shadow sweeps along the sun; a cell takes each line that passes over its top.
 //   The ground hides nothing, so open ground beside no building is as it was, and nor does a landmark's piece, whose
-//   outline would be a ship's masts as a tower (farshadow.ts makeSolid's `bare`). Over open ground the hidden share falls
+//   outline would be a ship's masts as a tower (farshadow.ts SweepJob's `bareAt`). Over open ground the hidden share falls
 //   with the square of the height over the ground, as it does in a street, which keeps its walls hidden until near
 //   their tops, to none at a height fitted to its area over height. A cell a building stands in takes its ground's
 //   shares from the cells round it, and falls from that to its roof's own, so a lookup beside a wall or under a roof's
@@ -24,8 +24,8 @@
 //   and toward +z, from 128. A cell with its second byte 0 hides nothing and holds no contact, so a texture not yet
 //   made, or not yet all sent, takes no light away.
 //
-// It is made where the far shadow's map is swept, on the far city's workers in the browser, when the statics come, and
-// again when pieces that stood are gone, at most once every OPEN_EVERY.
+// It is made where the far shadow's map is swept, on the far city's workers in the browser, once the solid heights are
+// made, again when they change, at most once every OPEN_EVERY, and again where the card has lost what it let go.
 
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import { FRAME, type FramePacket } from "./packet.ts";
@@ -304,12 +304,15 @@ float overGround(vec3 rel) {
 
 /**
  * The measure of one map on the page: the latest made, for which cell, put on the card a frame's allowance of rows at a
- * time, and whether pieces have gone since it was asked for.
+ * time and let go once all of it is there, and whether pieces have gone since it was asked for.
  */
 export class SkyOpen {
   /** Measures made, and the last one's milliseconds where it was made here. */
   readonly stats = { made: 0, ms: 0 };
-  private map: OpenMap | null = null;
+  /** The latest's bytes until all of them are on the card, its cells across and down, and its cell. */
+  private bytes: Uint8Array | null = null;
+  private w = 0;
+  private h = 0;
   private mapCell = 0;
   private askedCell = 0;
   private askedAt = -Infinity;
@@ -321,10 +324,10 @@ export class SkyOpen {
 
   /** Whether the latest is all on the card, and none is being made. */
   get whole(): boolean {
-    return this.map !== null && this.shown && this.row >= this.map.h && this.mapCell === this.askedCell;
+    return this.w > 0 && this.shown && this.row >= this.h && this.mapCell === this.askedCell;
   }
 
-  /** After a lost context: the latest goes on the card again. */
+  /** After a lost context: the latest goes on the card again, made again where it was let go. */
   reset(): void {
     this.shown = false;
   }
@@ -336,7 +339,8 @@ export class SkyOpen {
 
   /** Whether a measure should be asked for at `now` (milliseconds) for a grid of `cell` metres. */
   due(cell: number, now: number): boolean {
-    return this.askedCell !== cell || (this.stale && now - this.askedAt >= OPEN_EVERY);
+    const lost = this.w > 0 && !this.bytes && !this.shown;
+    return this.askedCell !== cell || lost || (this.stale && now - this.askedAt >= OPEN_EVERY);
   }
 
   asked(cell: number, now: number): void {
@@ -346,7 +350,9 @@ export class SkyOpen {
   }
 
   got(map: OpenMap, ms = 0): void {
-    this.map = map;
+    this.bytes = map.bytes;
+    this.w = map.w;
+    this.h = map.h;
     this.mapCell = this.askedCell;
     this.row = 0;
     this.stats.made++;
@@ -359,23 +365,23 @@ export class SkyOpen {
    * allowance, from the first again where the last frame did not have it.
    */
   upload(p: FramePacket, budget: { readonly left: number; spend(bytes: number): void }, cell: number): void {
-    const map = this.map;
-    if (!map || this.mapCell !== cell) {
+    if (this.w === 0 || this.mapCell !== cell || (!this.shown && !this.bytes)) {
       this.shown = false;
       return;
     }
     if (!this.shown) this.row = 0;
     this.shown = true;
-    p.openWidth = map.w;
-    p.openHeight = map.h;
-    if (this.row >= map.h) return;
-    const row = map.w * OPEN_BYTES;
-    const rows = Math.min(map.h - this.row, Math.floor(budget.left / row));
+    p.openWidth = this.w;
+    p.openHeight = this.h;
+    if (this.row >= this.h) return;
+    const row = this.w * OPEN_BYTES;
+    const rows = Math.min(this.h - this.row, Math.floor(budget.left / row));
     if (rows <= 0) return;
-    p.openMap = map.bytes.subarray(this.row * row, (this.row + rows) * row);
+    p.openMap = this.bytes!.subarray(this.row * row, (this.row + rows) * row);
     p.openRow = this.row;
     p.openRows = rows;
     budget.spend(rows * row);
     this.row += rows;
+    if (this.row >= this.h) this.bytes = null;
   }
 }

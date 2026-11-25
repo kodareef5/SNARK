@@ -62,7 +62,7 @@ export class FarLayers {
   private readonly floatingKinds: Uint8Array;
   readonly farMesh: number;
   private readonly farBounds: { center: readonly number[]; half: readonly number[] } | undefined;
-  /** Past the cascades, the far map of the city's outline, with the far city, which makes the sky's openness too. */
+  /** Past the cascades, the far map of the city's outline, which makes the sky's openness too, from the map's tops and ground. */
   farShadow: FarShadow | null = null;
   /** Called when a far city is made, of the map's statics as they first come or as they are handed over again. */
   onCity: () => void = () => {};
@@ -122,6 +122,7 @@ export class FarLayers {
         {
           update: (f) => {
             const cam = f.cam, p = this.packet, sun = p.cascadeCount > 0 ? this.casting.sunAt : null;
+            this.farShadow ??= this.makeShadow();
             this.farShadow?.update(p, this.assets.residency, cam.x, cam.y, cam.z, sun, f.now, this.casting.sunCasts ? sun : null);
           },
         },
@@ -178,14 +179,27 @@ export class FarLayers {
     this.citySource = source;
     this.city = new FarLayers.late.FarCity(source, this.world.dims, this.world.hf, this.farMesh, this.farBounds, this.landmarkKinds, before);
     this.city.wreckSets = this.wreckSets;
-    this.farShadow = new FarShadow(source.statics, this.world.hf, this.city, source.maker ?? null, source.complete, this.landmarkKinds, this.floatingKinds);
-    this.farShadow.roof = new FarLayers.late.RoofMap();
-    this.farShadow.roof.palette = this.palette;
+    this.farShadow ??= this.makeShadow();
+    this.farShadow?.hand(source.statics, this.city);
     this.far?.leaveTo(this.city);
     const placed = this.world.landmarks ?? [];
     if (placed.length > 0) this.landmarks = new FarLandmarks(source, this.world.dims, placed, landmarkFars(this.assets.manifest));
     this.onCity();
     return this.city;
+  }
+
+  /**
+   * The far shadow, once the late code has come and the world has the map's tops or its statics: made from what comes,
+   * and kept as statics are handed over.
+   */
+  private makeShadow(): FarShadow | null {
+    const w = this.world;
+    if (!FarLayers.late || !(w.tops || w.city)) return null;
+    const complete = (c: number): boolean => w.city?.complete(c) ?? w.far?.complete(c) ?? false;
+    const shadow = new FarShadow(w.dims, w.hf, w.tops?.tops ?? null, w.tops?.maker ?? w.city?.maker ?? null, complete, this.landmarkKinds, this.floatingKinds);
+    shadow.roof = new FarLayers.late.RoofMap();
+    shadow.roof.palette = this.palette;
+    return shadow;
   }
 
   /**
