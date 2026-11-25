@@ -59,9 +59,9 @@ export interface VideoHost {
 export const MIN_PIXELS = 48;
 /** Seconds before a clip's end at which the next one is buffered. */
 export const BUFFER_AHEAD = 5;
-/** Seconds of drift left alone, and past which the element seeks; between, the rate is nudged by NUDGE. */
-export const DRIFT_LEAVE = 0.1;
-export const DRIFT_SEEK = 1.5;
+/** Seconds of drift left alone, and past which the element seeks; between, the rate is nudged by NUDGE. Sync is best effort: a seek costs a fetch. */
+export const DRIFT_LEAVE = 0.5;
+export const DRIFT_SEEK = 3;
 export const NUDGE = 0.05;
 /** Seconds an element stays paused before it lets its stream go. */
 export const UNLOAD_AFTER = 10;

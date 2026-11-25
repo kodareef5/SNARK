@@ -263,11 +263,11 @@ test("a clip plays only when the ball is seen large enough, on a tier that plays
   expect(orbPixels(78, 3000, 1.2217, 1080)).toBeLessThan(MIN_PIXELS);
 });
 
-test("drift under a tenth is left, nudged to a second and a half, then seeks", () => {
-  expect([syncRate(0), syncRate(0.09), syncRate(-0.09)]).toEqual([1, 1, 1]);
-  expect([syncRate(0.5), syncRate(-0.5), syncRate(1.4)]).toEqual([1.05, 0.95, 1.05]);
-  expect([mustSeek(1.4), mustSeek(1.6), mustSeek(-2)]).toEqual([false, true, true]);
-  expect(syncRate(3)).toBe(1);
+test("drift under half a second is left, nudged to three seconds, then seeks", () => {
+  expect([syncRate(0), syncRate(0.4), syncRate(-0.4)]).toEqual([1, 1, 1]);
+  expect([syncRate(0.6), syncRate(-0.6), syncRate(2.9)]).toEqual([1.05, 0.95, 1.05]);
+  expect([mustSeek(2.9), mustSeek(3.1), mustSeek(-4)]).toEqual([false, true, true]);
+  expect(syncRate(4)).toBe(1);
 });
 
 test("a manifest's colour track is read from base64", () => {

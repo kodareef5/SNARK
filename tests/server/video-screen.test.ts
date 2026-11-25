@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { VideoLibrary } from "../../server/video/library.ts";
-import { ScreenFeed, startTick, worldNight } from "../../server/video/screens.ts";
+import { ScreenFeed, startTick, worldNight, LIBRARY_CHECK_MS } from "../../server/video/screens.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { BitReader } from "../../shared/net/codec.ts";
 import { OWN_SCREEN, S_OWN } from "../../shared/net/protocol.ts";
@@ -68,16 +68,16 @@ test("the world sends the screens on a welcome and again only when the item chan
   expect(sent[0]).toEqual([{ manifest, show: SHOW_SCENES, flags: SCREEN_FACING | SCREEN_FILL, clip: NO_CLIP, start: 0, next: NO_CLIP, scene: -1 }]);
 
   lib.edit(null, (doc) => ((doc.screens[0] = { ...doc.screens[0]!, show: "strip", fill: true, sound: true }), null));
-  wall += 3_000;
+  wall += LIBRARY_CHECK_MS;
   feed.poll(wall, false);
   const at = h.world.tick;
   h.run(200);
   expect(sent.length).toBe(2);
-  // The strip's epoch is the library's birth, three seconds ago, so A has played three seconds.
-  expect(sent[1]![0]).toEqual({ manifest, show: SHOW_VIDEO, flags: SCREEN_FACING | SCREEN_FILL | SCREEN_SOUND, clip: 0, start: at - 3 * TICK_RATE, next: 1, scene: -1 });
+  // The strip's epoch is the library's birth, a look at its file ago, so A has played that long.
+  expect(sent[1]![0]).toEqual({ manifest, show: SHOW_VIDEO, flags: SCREEN_FACING | SCREEN_FILL | SCREEN_SOUND, clip: 0, start: at - (LIBRARY_CHECK_MS / 1000) * TICK_RATE, next: 1, scene: -1 });
 
   // The same item a few seconds on is no news, whatever the ticks did meanwhile.
-  for (let s = 0; s < 5; s++) {
+  for (let s = 0; s < 4; s++) {
     wall += 1_000;
     feed.poll(wall, false);
     h.run(100);
@@ -132,12 +132,12 @@ test("a night-only screen shows the scenes by day, and night is the sun below th
   lib.close();
 });
 
-test("the feed looks at the library's file only every two seconds", () => {
+test("the feed looks at the library's file only every five seconds", () => {
   let wall = 4_000_000, stamps = 0;
   const lib = library(() => wall);
   const counted = { stamp: () => (stamps++, lib.stamp()), view: () => lib.view(), sweep: () => lib.sweep() };
   const feed = new ScreenFeed(counted, new Harness({}, 1, 30).world);
-  for (let s = 0; s < 6; s++, wall += 1_000) feed.poll(wall, false);
+  for (let s = 0; s < 15; s++, wall += 1_000) feed.poll(wall, false);
   expect(stamps).toBe(3);
   lib.close();
 });
@@ -153,7 +153,7 @@ test("a scene the Screens page holds reaches the client, a clip over it plays fi
   expect([heldScene(feed.states[0], 4), heldScene(newScreenState(), 4)]).toEqual([2, 4]);
   const version = feed.version;
   lib.edit(null, (doc) => ((doc.screens[0] = { ...doc.screens[0]!, once: { clip: doc.screens[0]!.once?.clip ?? lib.view().manifest[0]!.id, from: wall } }), null));
-  feed.poll(wall + 2_000);
+  feed.poll(wall + LIBRARY_CHECK_MS);
   expect(feed.states[0]).toMatchObject({ show: SHOW_VIDEO, scene: 2, clip: 0 });
   expect(heldScene(feed.states[0], 4)).toBe(4);
   expect(feed.version).toBe(version + 1);

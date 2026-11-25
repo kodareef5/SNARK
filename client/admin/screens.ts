@@ -531,7 +531,7 @@ async function saveChannels(): Promise<void> {
 async function goLive(target: Target): Promise<void> {
   if (!mod) return;
   const tile = tiles.get(mod.targetKey(target));
-  await edit(mod.takeBody(target), `${tile?.title ?? "It"} is live. Players see it within two seconds.`);
+  await edit(mod.takeBody(target), `${tile?.title ?? "It"} is live. Players see it within a few seconds.`);
 }
 
 // ---- Upload

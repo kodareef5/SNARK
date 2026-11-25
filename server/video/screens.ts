@@ -14,7 +14,7 @@ import type { LibraryView } from "./library.ts";
 import type { ScreenWorld } from "./routes.ts";
 
 /** How often the library's file is looked at for a change, in milliseconds. */
-export const LIBRARY_CHECK_MS = 2000;
+export const LIBRARY_CHECK_MS = 5000;
 const SWEEP_MS = 60_000;
 
 /** What the feed reads the library by: a stamp that changes when it may have, and the library itself. */
