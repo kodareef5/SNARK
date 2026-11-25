@@ -26,8 +26,8 @@ import { Rng } from "../shared/rng.ts";
 import { GROWN, growthStep, leftAtPeriod, youngScale } from "../shared/sim/breeding.ts";
 import { Body as Mover, MF_OUT, MF_ROOTED, MODE_FLYER, MODE_WALK, STANCE_PRONE, STANCE_STAND, stepBody, type MoveParams } from "../shared/sim/character.ts";
 import { copyMoveSize } from "../shared/sim/move-size.ts";
-import { F_GROUNDED, F_PROP } from "../shared/sim/entities.ts";
-import { Inventory } from "../shared/sim/items.ts";
+import { F_GROUNDED, F_PROP, GEAR_COUNT, GEAR_WORN } from "../shared/sim/entities.ts";
+import { ARMOR_SLOTS, Inventory } from "../shared/sim/items.ts";
 import { createBoat, type BoatState } from "../shared/sim/boat.ts";
 import { stepBoatWreck } from "../shared/sim/boat-wreck.ts";
 import { boatWorld } from "../shared/world/boat.ts";
@@ -44,7 +44,7 @@ import { event } from "./events/bus.ts";
 import type { GameServer } from "./game.ts";
 import type { Items } from "./items.ts";
 import { XP_HARVEST, type Progression } from "./progression.ts";
-import type { EntityRecord, Records } from "./records.ts";
+import { part, type EntityRecord, type Records } from "./records.ts";
 import { saved } from "./saved.ts";
 import type { Lists } from "./settings/lists.ts";
 import type { Rules } from "./settings/rules.ts";
@@ -167,6 +167,9 @@ export interface Take {
 
 const HUMAN_SHAPE = { skel: HUMAN, ragdoll: HUMAN_RAGDOLL };
 
+/** The gear a survivor's body is drawn in: what it wore as it died, with nothing in hand, as the entity's gear lays it out. */
+const WORN = part(() => new Uint16Array(GEAR_COUNT));
+
 const NO_MOVERS: readonly RagdollMover[] = [];
 export class Corpses {
   readonly ctx: CorpsesContext;
@@ -255,6 +258,13 @@ export class Corpses {
     body.z = wireX(ents.z[e]!);
     body.yaw = ents.yaw[e]! & 0xffc0;
     body.genome = rec.genome;
+    // A survivor's body keeps its face and what it wore, though its things go to the cache. What it held falls with them.
+    if (def.class === "survivor") {
+      const look = rec.look ?? ents.looks.get(e);
+      if (look) body.look = look.slice();
+      const worn = rec.inv && rec.inv.armor >= 0 ? rec.inv.item.subarray(rec.inv.armor, rec.inv.armor + ARMOR_SLOTS) : null;
+      if (worn?.some((id) => id !== 0)) body.own(WORN).set(worn, GEAR_WORN);
+    }
     // A slot for each of the creature's and one for its saddle. Items.move sets each stack's spoil clock for where it now lies.
     // A survivor's things go to the cache Death leaves (server/death.ts), so its body carries none.
     const inv = rec.inv && def.class !== "survivor" ? items.inv(rec) : null;
@@ -435,6 +445,9 @@ export class Corpses {
     ents.yaw[e] = rec.yaw;
     ents.pid[e] = rec.pid;
     ents.setLook(e, rec.genome ? rec.genome.level : 1, rec.genome ? rec.genome.colors : null, rec.name);
+    if (rec.look) ents.setBodyLook(e, rec.look);
+    const worn = rec.part(WORN);
+    if (worn) ents.setGear(e, worn);
     ents.setYoung(e, sizeSpan(b.size), 0);
     records.entOf.set(rec.pid, e);
     this.byEnt.set(e, b);
@@ -939,6 +952,24 @@ export class Corpses {
 function rests(w: CollisionWorld, x: number, y: number, z: number, p: MoveParams): boolean {
   return y - groundUnder(w.hf, x, z, p.radius) <= PROBE || !Number.isNaN(restingAt(w, x, y, z, p.radius, p.height, PROBE, p.slopeCos));
 }
+
+/** What a survivor's body wore (WORN): one content id per armor slot. Its look is saved as every record's is. */
+saved({
+  name: "corpse-worn",
+  has: (rec) => rec.part(WORN) !== undefined,
+  write(rec, w, to) {
+    const worn = rec.part(WORN)!;
+    for (let k = GEAR_WORN; k < GEAR_COUNT; k++) w.varint(worn[k] === 0 ? 0 : to.toSaved[worn[k]!]!);
+  },
+  read(rec, r, from) {
+    const worn = rec.own(WORN);
+    // A piece this build lacks is not drawn.
+    for (let k = GEAR_WORN; k < GEAR_COUNT; k++) {
+      const v = r.varint();
+      worn[k] = v === 0 ? 0 : (from.toRuntime[v] ?? 0);
+    }
+  },
+});
 
 /** A creature's body (EntityRecord.corpse). A build without bodies has no core:corpse either, so it never passes over one. */
 saved({
