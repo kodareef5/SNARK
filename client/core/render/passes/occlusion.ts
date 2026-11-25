@@ -8,6 +8,7 @@ import { PLATE_CLEAR } from "../base-occluders.ts";
 import type { Camera } from "../camera.ts";
 import type { Casting } from "../casting.ts";
 import type { Draws } from "../draws.ts";
+import { NO_ROWS, type CityTable } from "../../../../shared/world/city.ts";
 import type { FarCity } from "../farcity.ts";
 import { HIDE_PIXELS, OCCLUDER, type Hiding } from "../hide.ts";
 import { DRAW_RANGED, DRAW_TEXTURED, MAX_DRAWS, PASS_FAR, PASS_NEAR, TILE_CASTS, TILE_QUADS, type FramePacket } from "../packet.ts";
@@ -266,11 +267,12 @@ export class Occlusion implements Pass {
   private unseen(cam: Camera, chunk: number): boolean {
     let b = this.boxes.get(chunk);
     if (!b) {
-      const { first, kind, yaw, x, y, z, halfX, halfY, halfZ } = this.world.city!.statics;
+      const city = this.world.city!.statics, { halfX, halfY, halfZ } = city;
+      const t = city.rows(chunk) ?? NO_ROWS, { kind, yaw, x, y, z } = t;
       b = new Float64Array(CHUNK_CELLS * CHUNK_CELLS * 6);
       for (let k = 0; k < b.length; k += 6) b.fill(Infinity, k, k + 3).fill(-Infinity, k + 3, k + 6);
       const x0 = chunkCx(this.world.dims, chunk) * CHUNK_SIZE, z0 = chunkCz(this.world.dims, chunk) * CHUNK_SIZE;
-      for (let i = first[chunk]!; i < first[chunk + 1]!; i++) {
+      for (let i = t.from(chunk); i < t.to(chunk); i++) {
         const k = kind[i]!, a = (yaw[i]! / YAW_UNITS) * Math.PI * 2;
         const c = Math.abs(Math.cos(a)), s = Math.abs(Math.sin(a));
         const rx = c * halfX[k]! + s * halfZ[k]! + 0.01, rz = s * halfX[k]! + c * halfZ[k]! + 0.01;
@@ -303,12 +305,15 @@ export class Occlusion implements Pass {
     const at = this.clearAt;
     if (Math.hypot(cam.x - at[0]!, cam.y - at[1]!, cam.z - at[2]!) < at[3]! - reach * 1.1) return false;
     let clear = CLEAR;
-    const { first, kind, yaw, x, y, z, halfX, halfY, halfZ } = city.statics;
+    const { halfX, halfY, halfZ } = city.statics;
     const cx = Math.floor(cam.x / CHUNK_SIZE), cz = Math.floor(cam.z / CHUNK_SIZE);
     for (let j = Math.max(0, cz - 1); j <= Math.min(dims.chunksZ - 1, cz + 1); j++) {
       for (let i = Math.max(0, cx - 1); i <= Math.min(dims.chunksX - 1, cx + 1); i++) {
         const c = j * dims.chunksX + i;
-        for (let s = first[c]!; s < first[c + 1]!; s++) {
+        const t: CityTable | null = city.statics.rows(c);
+        if (!t) continue;
+        const kind: Uint16Array = t.kind, yaw: Uint16Array = t.yaw, x: Float32Array = t.x, y: Float32Array = t.y, z: Float32Array = t.z;
+        for (let s: number = t.from(c); s < t.to(c); s++) {
           const k = kind[s]!;
           const dx = cam.x - x[s]!, dy = cam.y - y[s]!, dz = cam.z - z[s]!, r = halfX[k]! + halfY[k]! + halfZ[k]! + CLEAR;
           if (this.store.near!.kinds[k] !== 1 || Math.abs(dx) > r || Math.abs(dy) > r || Math.abs(dz) > r) continue;

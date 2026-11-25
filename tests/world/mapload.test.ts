@@ -46,8 +46,13 @@ const head = readHead(file);
 const NOW = { wait: () => Promise.resolve() };
 /** A page that wants all of this map: a view and a statics reach past its corners. */
 const ALL = (): WantFrom => ({ view: 1e5, statics: 1e5 });
-/** Bytes the store of statics holds with no sector: its sector of each chunk, and its table's first row of each. */
-const INDEX = head.counts.length * 2 + (head.counts.length + 1) * 4;
+/** Bytes the store of statics holds with no sector: its sector of each chunk. */
+const INDEX = head.counts.length * 2;
+/** Bytes of a sector's index of its chunks' first rows. */
+const sectorIndex = (p: MapPart): number => {
+  const sq = squareOf(head.dims, SECTOR_CHUNKS, p.col, p.row)!;
+  return ((sq.cx1 - sq.cx0) * (sq.cz1 - sq.cz0) + 1) * 4;
+};
 
 /** Lets every promise the answers so far started run its course. */
 const settle = (): Promise<void> => new Promise((go) => setTimeout(go, 0));
@@ -677,21 +682,22 @@ test("a sector's statics are set in as they come, a pause after each slice read 
   void MapLoader.start(s.get, `map/${readHead(big).name}`, { ...NOW, pause: () => (pauses++, pause()) }).then((l) => (loader = l));
   await s.drain();
   const handed: [MapStatics, number][] = [];
-  function* arriving(t: MapStatics): Generator<void, void> {
+  let copy: MapStatics | null = null;
+  function* arriving(): Generator<void, void> {
     for (let k = 0; k < 5; k++) yield;
-    handed.push([t, pauses]);
+    handed.push([copy!, pauses]);
   }
-  void loader!.follow(() => ({ x: 100, z: 100, vx: 0, vz: 0 }), { arriving });
+  void loader!.follow(() => ({ x: 100, z: 100, vx: 0, vz: 0 }), { arrived: (t) => (copy = t), arriving });
   await s.drain();
   for (let k = 0; k < 200 && handed.length === 0; k++) await settle();
   channel.port1.close();
-  // Read and set, three steps each; the table of the one sector held, two; then the hand-over's five.
+  // Read and set, three steps each; the tool's copy of the one sector held, two; then the hand-over's five.
   expect([handed.length, handed[0]![1]]).toEqual([1, 3 + 3 + 2 + 5]);
   const t = handed[0]![0];
   expect([t.first, t.kind, t.x, t.y, t.z, t.yaw]).toEqual([all.statics.first, all.statics.kind, all.statics.x, all.statics.y, all.statics.z, all.statics.yaw]);
 });
 
-test("a part that comes damaged or as another's is refused by name and asked for again; the third time the map is broken: before the first frame the page fails saying which, after it the player is told and the statics never come", async () => {
+test("a damaged part is asked for again; the third time the map is broken, or after the first frame that sector's statics", async () => {
   // The overview the body stands in, which the first frame waits for.
   const overview = firstFrameParts(head, 1056, 448).find((p) => p.kind === "overview")!;
   const statics = head.parts.filter((p) => p.kind === "statics")[1]!;
@@ -703,7 +709,16 @@ test("a part that comes damaged or as another's is refused by name and asked for
   const early = await trial((name) => (name === overview.name ? "damage" : null));
   expect([early.first, early.s.asked.filter((u) => u === `map/${overview.name}`).length]).toEqual([`${damaged(overview.name)}, at each of ${DAMAGED_MOST} asks: the map is broken`, DAMAGED_MOST]);
   const late = await trial((name) => (name === statics.name ? "other" : null));
-  expect([late.first, late.statics, late.late.at(-1)]).toEqual(["drawn", null, `${damaged(statics.name)}, at each of ${DAMAGED_MOST} asks: the map is broken`]);
+  // The rest are handed over without it, and its pieces are left out.
+  const sq = squareOf(head.dims, SECTOR_CHUNKS, statics.col, statics.row)!;
+  let left = 0, there = 0;
+  for (let cz = sq.cz0; cz < sq.cz1; cz++) {
+    const row = cz * head.dims.chunksX;
+    left += late.statics ? late.statics.first[row + sq.cx1]! - late.statics.first[row + sq.cx0]! : 1;
+    there += whole.statics.first[row + sq.cx1]! - whole.statics.first[row + sq.cx0]!;
+  }
+  expect(there).toBeGreaterThan(0);
+  expect([late.first, late.statics !== null && !wholeStatics(late.statics), left, late.late.at(-1)]).toEqual(["drawn", true, 0, `${damaged(statics.name)}, at each of ${DAMAGED_MOST} asks: the map is broken; the pieces of sector ${statics.col}, ${statics.row} are left out`]);
 });
 
 test("the player is told: before the first frame what the page waits for, and nothing once it waits for nothing that failed; after it, of a part that keeps failing at its third, sixth and twelfth failure in a row, and when it came", async () => {
@@ -837,7 +852,8 @@ test("past the budget, the statics kept beyond their reach go farthest first", a
   // Room for what is wanted where the body goes and one more of those kept past their reach.
   const there = statics.filter((p) => off(p, 2600, 448) <= reach), spare = statics.filter((p) => off(p, 100, 448) <= reach && !there.includes(p) && off(p, 2600, 448) <= reach + KEEP_PAST);
   expect(spare.length).toBeGreaterThan(1);
-  const budget = (there.reduce((n, p) => n + rows(p), 0) + Math.max(...spare.map(rows))) * 16 + INDEX;
+  const bytes = (p: MapPart): number => rows(p) * 16 + sectorIndex(p);
+  const budget = there.reduce((n, p) => n + bytes(p), 0) + Math.max(...spare.map(bytes)) + INDEX;
   void loader!.follow(() => body, { want: () => ({ view: 1e5, statics: reach, budget }) });
   await s.drain();
   body.x = 2600;
@@ -888,7 +904,7 @@ test("the store of statics finds a chunk's rows in its sector, and in the table 
       for (let k = 0; k < n; k++) for (const col of ["kind", "yaw", "x", "y", "z"] as const) if (r[col][r.from + k] !== all[col][all.first[c]! + k]) return false;
       return true;
     });
-  expect([same(), told, held.size, held.bytes, held.pieces > 0]).toEqual([true, [a, b], 2, held.pieces * 16 + INDEX, true]);
+  expect([same(), told, held.size, held.bytes, held.pieces > 0]).toEqual([true, [a, b], 2, held.pieces * 16 + sectorIndex(a) + sectorIndex(b) + INDEX, true]);
   // The table holds both; the sectors read their rows from it from then on, and one let go is found no more.
   const g = held.table();
   let t = g.next();
@@ -910,7 +926,7 @@ test("a budget short of the statics wanted holds the nearest of them, as far as 
   const held = new HeldStatics(head);
   const wanted = head.parts.filter((p) => p.kind === "statics" && off(p, body.x, body.z) <= 1500).sort((a, b) => off(a, body.x, body.z) - off(b, body.x, body.z));
   expect(wanted.length).toBeGreaterThan(3);
-  const budget = (held.rows.get(wanted[0]!)! + held.rows.get(wanted[1]!)! + held.rows.get(wanted[2]!)!) * 16 + INDEX;
+  const budget = held.bytesOf(wanted[0]!) + held.bytesOf(wanted[1]!) + held.bytesOf(wanted[2]!) + INDEX;
   void loader!.follow(() => body, { want: () => ({ view: 1e5, statics: 1500, budget }) });
   await s.drain();
   const names = new Set(loader!.held.parts.filter((p) => loader!.held.has(p)).map((p) => p.name));

@@ -7,20 +7,23 @@
 // the camera, a sight's focus and the map screen, looked at again each LOOK_EVERY ms and as parts come, nearest first:
 // the overviews, ground and statics within RING and the statics a chunk the server sent waits for, then the overviews
 // within the statics reach, then its sectors, then the rest, each sector's ground before its statics; URGENT_AT_ONCE at
-// once while what is urgent is wanted, AFTER_AT_ONCE otherwise. Statics and buildings no longer wanted are let go a sector
-// past their reach; overviews, ground and tops are kept, as the ground is one array. Each sector's statics are a table of
-// their own (map-statics.ts). Whenever those held change and every overview, ground and statics part within the statics
-// reach of the body has come, a table of all held is handed over, a step at a time. The city's tops come with the
+// once while what is urgent is wanted, AFTER_AT_ONCE otherwise. Statics, buildings and tops no longer wanted are let go a
+// sector past their reach, but a sector the session still holds chunks of; overviews and ground are kept, as the ground is
+// one array. Each sector's statics are a table of their own (map-statics.ts), which the city follows. Whenever those held
+// change and every overview, ground and statics part within the statics reach of the body has come, the statics are
+// handed over: to a tool, a copy of them all, a step at a time. A sector asked for once (HeldStatics.once) comes after
+// what is urgent and is handed to who asked, not kept unless it is wanted. The city's tops come with the
 // overviews past that reach once the statics have first been handed over, each square's after its overview, and nothing
 // waits for them; nor for a sector's buildings, which come after its statics. A part that fails is asked for again after
 // a wait that grows to a cap, for as long as the page lives, and what has come is kept. One that comes damaged or as
-// another's is refused by name and asked for again, until the DAMAGED_MOST-th time breaks the map.
+// another's is refused by name and asked for again, until the DAMAGED_MOST-th time breaks the map; a sector's statics
+// broken so are never asked for again, and their pieces are left out (session.ts).
 
 import { CHUNK_SIZE, SECTOR_CHUNKS, chunkCount } from "../../shared/coords.ts";
 import type { Def } from "../../shared/content/defs.ts";
 import { Buildings } from "../../shared/world/buildings.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
-import { COARSE_STEP, OVERVIEW_STEP, blankLayers, listedRows, partHash, partSteps, readHead, readPart, setGround, setNodes, squareOf, type GroundPiece, type MapContent, type MapHead, type MapPart, type MapPiece, type MapStatics, type NodeLayer, type StaticsPiece } from "../../shared/world/mapfile.ts";
+import { COARSE_STEP, OVERVIEW_CHUNKS, OVERVIEW_STEP, blankLayers, listedRows, partHash, partSteps, readHead, readPart, setGround, setNodes, squareOf, type GroundPiece, type MapContent, type MapHead, type MapPart, type MapPiece, type MapStatics, type NodeLayer, type StaticsPiece } from "../../shared/world/mapfile.ts";
 import { MapWater } from "../../shared/world/water.ts";
 import { DEFAULT_TIER, tierOf } from "./assets/tiers.ts";
 import { fetchBytes, within, type Get } from "./fetched.ts";
@@ -396,7 +399,7 @@ export class MapLoader {
   private from: () => WantFrom = () => tierWant(tierOf(DEFAULT_TIER));
   /** To whom the statics are handed over, the store's version last handed over, and whether one is under way or done. */
   private arrived: ((statics: MapStatics) => void) | undefined;
-  private arriving: ((statics: MapStatics) => Generator<void, void>) | undefined;
+  private arriving: (() => Generator<void, void>) | undefined;
   private handedAt = -1;
   private handing = false;
   private handedOnce = false;
@@ -413,6 +416,7 @@ export class MapLoader {
     this.staged = staged;
     this.held = new HeldStatics(staged.head);
     this.held.wake = () => this.look();
+    this.held.say = (line) => this.asker.say(line);
     this.boxes = new PartBoxes(staged.head);
   }
 
@@ -448,10 +452,10 @@ export class MapLoader {
    * sector's ground before its statics. Resolves once the ground and the overviews the first frame waits for where it has
    * the body now have come, alone. From then on `then.say` is told what the player is; each time the statics held change
    * and every overview, ground and statics part within the statics reach of the body has come, `then.arrived` is handed a
-   * table of the statics held, and `then.arriving` the same, whose steps are taken with a pause between each. While
+   * copy of the statics held as one table, and `then.arriving`'s steps are taken with a pause between each. While
    * `then.held` says the game's socket is held back, one part at a time is under way.
    */
-  async follow(where: () => Place | null, then: { readonly say?: (line: string) => void; readonly arrived?: (statics: MapStatics) => void; readonly arriving?: (statics: MapStatics) => Generator<void, void>; readonly want?: () => WantFrom; readonly held?: () => boolean } = {}): Promise<void> {
+  async follow(where: () => Place | null, then: { readonly say?: (line: string) => void; readonly arrived?: (statics: MapStatics) => void; readonly arriving?: () => Generator<void, void>; readonly want?: () => WantFrom; readonly held?: () => boolean } = {}): Promise<void> {
     this.where = where;
     this.heldBack = then.held ?? (() => false);
     if (then.want) this.from = then.want;
@@ -481,10 +485,12 @@ export class MapLoader {
     this.want.look(this.boxes, centresOf({ x, z }, { x: x + vx * LEAD, z: z + vz * LEAD }, from), this.held.needed);
     this.cap(from.budget ?? Infinity);
     for (const p of this.came) {
-      if ((p.kind !== "statics" && p.kind !== "buildings") || this.want.kept.has(p)) continue;
+      if ((p.kind !== "statics" && p.kind !== "buildings" && p.kind !== "tops") || this.want.kept.has(p)) continue;
+      if (p.kind === "statics" && this.held.keep?.(p)) continue;
       this.came.delete(p);
       if (p.kind === "statics") this.held.drop(p);
-      else this.staged.buildings?.drop(p.col, p.row);
+      else if (p.kind === "buildings") this.staged.buildings?.drop(p.col, p.row);
+      else this.dropTops(p);
     }
     this.trim(0);
     this.pump();
@@ -517,12 +523,18 @@ export class MapLoader {
   private trim(more: number): void {
     const budget = this.from().budget ?? Infinity;
     if (this.held.bytes + more <= budget) return;
-    const spare = [...this.came].filter((p) => p.kind === "statics" && !this.want.parts.has(p)).sort((a, b) => this.off(b) - this.off(a));
+    const spare = [...this.came].filter((p) => p.kind === "statics" && !this.want.parts.has(p) && !this.held.keep?.(p)).sort((a, b) => this.off(b) - this.off(a));
     for (const p of spare) {
       if (this.held.bytes + more <= budget) break;
       this.came.delete(p);
       this.held.drop(p);
     }
+  }
+
+  /** Lets go of tops part `p`'s cells. */
+  private dropTops(p: MapPart): void {
+    const sq = squareOf(this.staged.head.dims, OVERVIEW_CHUNKS, p.col, p.row);
+    if (sq) this.staged.tops.drop(sq.cx0, sq.cz0, sq.cx1, sq.cz1);
   }
 
   /** For as long as the page lives, a look at what is wanted each LOOK_EVERY ms of `every`. */
@@ -554,12 +566,18 @@ export class MapLoader {
           if (this.every) this.pump();
           else this.look();
         },
-        // Broken: it is never asked for again, and nothing more is handed over.
+        // Broken: it is never asked for again. A sector's statics so: their pieces are left out; any other: nothing more is handed over.
         (e: unknown) => {
           this.going.delete(part);
           this.broken.add(part);
-          this.stopped = true;
-          this.asker.say(why(e));
+          if (part.kind === "statics") {
+            this.held.broke(part);
+            this.asker.say(`${why(e)}; the pieces of sector ${part.col}, ${part.row} are left out`);
+          } else {
+            this.stopped = true;
+            this.asker.say(why(e));
+          }
+          this.pump();
         },
       );
     }
@@ -568,7 +586,7 @@ export class MapLoader {
   /** Whether every overview, ground and statics part wanted within the statics reach of the body has come. */
   private statsIn(): boolean {
     const reach = this.from().statics;
-    for (const p of this.want.parts.keys()) if ((p.kind === "statics" || p.kind === "ground" || p.kind === "overview") && !this.came.has(p) && this.off(p) <= reach) return false;
+    for (const p of this.want.parts.keys()) if ((p.kind === "statics" || p.kind === "ground" || p.kind === "overview") && !this.came.has(p) && !this.broken.has(p) && this.off(p) <= reach) return false;
     return true;
   }
 
@@ -578,9 +596,8 @@ export class MapLoader {
     this.handing = true;
     const version = this.held.version;
     void (async () => {
-      const statics = await stepped(this.held.table(), this.pause);
-      this.arrived?.(statics);
-      if (this.arriving) await stepped(this.arriving(statics), this.pause);
+      if (this.arrived) this.arrived(await stepped(this.held.table(), this.pause));
+      if (this.arriving) await stepped(this.arriving(), this.pause);
       this.handedAt = version;
       this.handedOnce = true;
     })()
@@ -632,6 +649,12 @@ export class MapLoader {
       const rank = turn * 1e6 + off + (p.kind === "statics" ? 0.5 : p.kind === "buildings" ? 0.75 : p.kind === "tops" ? 0.25 : 0);
       if (rank < least) [best, least] = [p, rank];
     }
+    // A sector asked for once goes after what is urgent and before the rest.
+    for (const p of this.held.asked.keys()) {
+      if (this.came.has(p) || this.going.has(p) || this.waiting.has(p) || this.broken.has(p) || this.want.parts.has(p)) continue;
+      const rank = 0.5e6 + this.off(p);
+      if (rank < least) [best, least] = [p, rank];
+    }
     return best;
   }
 
@@ -656,10 +679,14 @@ export class MapLoader {
     const gone = (): boolean => this.followed && !this.want.kept.has(p);
     if (got.value instanceof Uint8Array) {
       const piece = (await stepped(partSteps(head, p, got.value, false), this.pause)) as StaticsPiece;
-      if (gone()) return 0;
+      if (gone()) {
+        // Asked for once: handed to who asked, and let go.
+        if (this.held.asked.has(p)) this.held.answer(p, await stepped(this.held.read(p, piece), this.pause));
+        return 0;
+      }
       this.trim(this.held.bytesOf(p));
       await stepped(this.held.set(p, piece), this.pause);
-    } else if (p.kind === "buildings" && gone()) return 0;
+    } else if ((p.kind === "buildings" || p.kind === "tops") && gone()) return 0;
     else await stepped(this.staged.steps(got.value), this.pause);
     this.came.add(p);
     return 0;

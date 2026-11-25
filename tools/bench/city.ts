@@ -53,7 +53,8 @@ function cityWorld(path: string) {
   const indexMs = performance.now() - t1;
   const structs = new StructureStore(map.dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
   // The pieces of kinds the core's content has: a landmark's are left out here as they are of the far city.
-  for (let i = 0; i < statics.count; i++) structs.add(statics.kind[i]!, statics.x[i]!, statics.y[i]!, statics.z[i]!, statics.yaw[i]!, 0, reg.maxHp[statics.kind[i]!]!);
+  const all = statics.squareOf(0)!;
+  for (let i = 0; i < statics.count; i++) structs.add(all.kind[i]!, all.x[i]!, all.y[i]!, all.z[i]!, all.yaw[i]!, 0, reg.maxHp[all.kind[i]!]!);
   const pack = parsePack(corePackBytes());
   const since = new Float64Array(chunkCount(map.dims)).fill(-1);
   let now = 0;
@@ -125,11 +126,12 @@ function drawn(scene: Scene): { draws: number; triangles: number } {
 export function benchCity(section: (title: string) => void, record: Record, path: string, viewsPath = DEFAULT_VIEWS): void {
   const w = cityWorld(path);
   const { statics, hf, map } = w;
-  section(`The far city on ${map.id}: ${statics.count} statics in ${statics.first.filter((_, c) => c < chunkCount(map.dims) && statics.in(c) > 0).length} chunks`);
+  section(`The far city on ${map.id}: ${statics.count} statics in ${[...Array(chunkCount(map.dims)).keys()].filter((c) => statics.in(c) > 0).length} chunks`);
   record("map file read, its statics by chunk", w.parseMs, "ms");
   record("statics indexed by chunk", w.indexMs, "ms");
   // The map's columns and the far city's, each buffer once: the city shares the map's where it draws every piece.
-  const held = new Set([map.statics.first, map.statics.kind, map.statics.yaw, map.statics.x, map.statics.y, map.statics.z, map.statics.row, statics.first, statics.kind, statics.yaw, statics.x, statics.y, statics.z].map((a) => a.buffer));
+  const all = statics.squareOf(0)!;
+  const held = new Set([map.statics.first, map.statics.kind, map.statics.yaw, map.statics.x, map.statics.y, map.statics.z, map.statics.row, all.first, all.kind, all.yaw, all.x, all.y, all.z].map((a) => a.buffer));
   record("statics held, the map's and the far city's", [...held].reduce((sum, b) => sum + b.byteLength, 0) / 1048576, "MB");
 
   // A chunk's cost at each form, over the 200 busiest chunks.
@@ -137,7 +139,7 @@ export function benchCity(section: (title: string) => void, record: Record, path
   const none = (): null => null;
   // The bare lattice's pieces under 1.3 m across left out as gone ones are (tiers.ts, citymake.ts).
   const across = (k: number): number => [statics.halfX[k]!, statics.halfY[k]!, statics.halfZ[k]!].sort((a, b) => a - b)[1]! * 2;
-  const thin = (n: number): Uint8Array => Uint8Array.from({ length: statics.in(n) }, (_, i) => (across(statics.kind[statics.first[n]! + i]!) < 1.3 ? 1 : 0));
+  const thin = (n: number): Uint8Array => Uint8Array.from({ length: statics.in(n) }, (_, i) => (across(all.kind[all.from(n) + i]!) < 1.3 ? 1 : 0));
   const forms: [string, (c: number) => unknown][] = [
     ["every box", (c) => mergedPart(statics, c, hf, none, 0.01, 0)],
     ["the lattice", (c) => mergedPart(statics, c, hf, none, 0.5, 2.1)],

@@ -95,7 +95,7 @@ export class TripProbe {
   whole(): { ground: boolean; pieces: number } {
     const world = this.app.session.world;
     if (!world) return { ground: false, pieces: 0 };
-    return { ground: world.hf.exactIn(0, 0, world.hf.sizeX, world.hf.sizeZ), pieces: world.city?.statics.first.at(-1) ?? 0 };
+    return { ground: world.hf.exactIn(0, 0, world.hf.sizeX, world.hf.sizeZ), pieces: world.city?.statics.count ?? 0 };
   }
 
   /**

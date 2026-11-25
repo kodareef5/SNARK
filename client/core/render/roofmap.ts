@@ -10,7 +10,7 @@
 
 import { CHUNK_SIZE, YAW_UNITS, chunkCount, type MapDims } from "../../../shared/coords.ts";
 import { TAU, detCos, detSin } from "../../../shared/math/scalar.ts";
-import type { CityStatics, Gone } from "../../../shared/world/city.ts";
+import type { CityStatics, CityTable, Gone } from "../../../shared/world/city.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import { linearToSrgb } from "./color-space.ts";
 import { ROOF_AT, type FramePacket } from "./packet.ts";
@@ -88,8 +88,8 @@ export function* roofSteps(city: CityStatics, hf: Heightfield, gone: (chunk: num
     for (let i = i0; i <= i1; i++) {
       const c = j * d.chunksX + i;
       if (c >= chunkCount(d)) continue;
-      const lost = gone(c), from = city.first[c]!;
-      for (let p = from; p < city.first[c + 1]!; p++) if (!lost || lost[p - from] !== 1) roofPiece(city, p, hf, x0, z0, side, under, lying, ground, palette, tops);
+      const t = city.rows(c), lost = gone(c), from = t?.from(c) ?? 0;
+      for (let p = from; t && p < t.to(c); p++) if (!lost || lost[p - from] !== 1) roofPiece(city, t, p, hf, x0, z0, side, under, lying, ground, palette, tops);
       yield;
     }
   }
@@ -195,18 +195,18 @@ export function* sunSteps(tops: Float32Array, side: number, sun: ArrayLike<numbe
  * the ground, where it roofs; and where it lies flat on the ground and is the highest such, gives the cell its colour
  * in `ground`, its top's height in `lying`.
  */
-function roofPiece(city: CityStatics, p: number, hf: Heightfield, x0: number, z0: number, side: number, under: Float32Array, lying: Float32Array, ground: Uint8Array, palette: Uint8Array | null, tops: Float32Array): void {
-  const k = city.kind[p]!;
+function roofPiece(city: CityStatics, t: CityTable, p: number, hf: Heightfield, x0: number, z0: number, side: number, under: Float32Array, lying: Float32Array, ground: Uint8Array, palette: Uint8Array | null, tops: Float32Array): void {
+  const k = t.kind[p]!;
   const hx = city.halfX[k]!, hz = city.halfZ[k]!;
-  const px = city.x[p]!, pz = city.z[p]!;
+  const px = t.x[p]!, pz = t.z[p]!;
   const floor = hf.heightAt(px, pz);
-  const rise = city.y[p]! - city.halfY[k]! - floor, top = city.y[p]! + city.halfY[k]! - floor;
+  const rise = t.y[p]! - city.halfY[k]! - floor, top = t.y[p]! + city.halfY[k]! - floor;
   const lies = palette !== null && top < LYING && rise < LYING;
   const roofs = hx * hz >= 0.25 && rise >= ROOF_CLEAR && rise <= ROOF_TOP;
   // What stands over the ground keeps the sun off it, a piece grown by half a cell so a thin wall is whole.
   const blocks = top >= LYING && hx * hz >= 0.01;
   if (!lies && !roofs && !blocks) return;
-  const a = city.yaw[p]! * (TAU / YAW_UNITS), sn = detSin(a), cs = detCos(a);
+  const a = t.yaw[p]! * (TAU / YAW_UNITS), sn = detSin(a), cs = detCos(a);
   const ex = Math.abs(cs) * hx + Math.abs(sn) * hz + 0.5, ez = Math.abs(sn) * hx + Math.abs(cs) * hz + 0.5;
   const cx0 = Math.max(0, Math.floor(px - ex - x0)), cx1 = Math.min(side - 1, Math.floor(px + ex - x0));
   const cz0 = Math.max(0, Math.floor(pz - ez - z0)), cz1 = Math.min(side - 1, Math.floor(pz + ez - z0));

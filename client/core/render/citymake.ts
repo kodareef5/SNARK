@@ -3,9 +3,9 @@
 // (ThreadedCityMaker, client/city), so no busy tile stops a frame; tests and tools make them here, a frame's budget at a
 // time. Either way the bytes are the same.
 
-import { CHUNK_SIZE, chunkCount, chunkCx, chunkCz, type MapDims } from "../../../shared/coords.ts";
+import { CHUNK_SIZE, chunkCx, chunkCz, type MapDims } from "../../../shared/coords.ts";
 import { VERTEX_BYTES } from "../../../shared/pack/pack.ts";
-import { UNBENT, cellPart, cornerByte, mergedPart, type CityForm, type CityPart, type CityStatics, type Gone } from "../../../shared/world/city.ts";
+import { CityPieces, CityStatics, cellPart, cornerByte, mergedPart, type CityForm, type CityPart, type Gone } from "../../../shared/world/city.ts";
 import { HeightWindow, type Heightfield } from "../../../shared/world/heightfield.ts";
 import { blocksBuffers, type BlocksJob, type BlocksMade } from "./blocks.ts";
 import { sweepBuffers, type SweepJob, type SweepMade } from "./farshadow.ts";
@@ -139,12 +139,12 @@ export function cityJob(id: number, city: CityStatics, hf: Heightfield, gone: (c
   const lost = area.some((c) => gone(c) !== null) ? new Uint8Array(n) : null;
   let at = 0;
   for (const c of area) {
-    const from = city.first[c]!, to = city.first[c + 1]!;
-    kind.set(city.kind.subarray(from, to), at);
-    yaw.set(city.yaw.subarray(from, to), at);
-    x.set(city.x.subarray(from, to), at);
-    y.set(city.y.subarray(from, to), at);
-    z.set(city.z.subarray(from, to), at);
+    const t = city.rows(c)!, from = t.from(c), to = t.to(c);
+    kind.set(t.kind.subarray(from, to), at);
+    yaw.set(t.yaw.subarray(from, to), at);
+    x.set(t.x.subarray(from, to), at);
+    y.set(t.y.subarray(from, to), at);
+    z.set(t.z.subarray(from, to), at);
     const g = gone(c);
     if (g) lost!.set(g, at);
     at += to - from;
@@ -183,26 +183,19 @@ export class LevelMaking {
   constructor(k: CityKinds, job: CityJob) {
     this.k = k;
     this.job = job;
-    // The pieces sent, as the map's columns hold them: chunk c's from first[c], and none in a chunk not sent.
-    const first = new Uint32Array(chunkCount(k.dims) + 1);
-    let at = 0;
-    let c = 0;
-    for (let a = 0; a < job.area.length; a++) {
-      for (const end = job.area[a]!; c <= end; c++) first[c] = at;
-      at += job.counts[a]!;
-    }
-    first.fill(at, c);
-    const { kind, yaw, x, y, z } = job;
-    this.city = { dims: k.dims, first, kind, yaw, x, y, z, halfX: k.halfX, halfY: k.halfY, halfZ: k.halfZ, color: k.color, under: k.under, plain: k.plain, near: k.near ?? new Uint8Array(k.plain.length), walked: k.walked, look: k.look, ...UNBENT, count: kind.length, in: (chunk: number) => first[chunk + 1]! - first[chunk]! };
+    // The pieces sent, chunk by chunk of the area, and none in a chunk not sent.
+    const { kind } = job;
+    const t = new CityPieces(job.area, job.counts, job);
+    this.city = CityStatics.of({ ...k, near: k.near ?? new Uint8Array(k.plain.length) }, t);
     this.ground = new HeightWindow({ ...k.ground, i0: job.i0, j0: job.j0, w: job.w, heights: job.heights });
-    const gone = (chunk: number): Gone => (job.gone ? job.gone.subarray(first[chunk]!, first[chunk + 1]!) : null);
+    const gone = (chunk: number): Gone => (job.gone ? job.gone.subarray(t.from(chunk), t.to(chunk)) : null);
     // Pieces thinner across than the level's `thin` are left out as gone ones are: neither drawn nor hiding a face.
     const thin = new Map<number, Uint8Array>();
     this.gone = job.thin <= 0 ? gone : (chunk) => {
       let g = thin.get(chunk);
       if (!g) {
         const was = gone(chunk);
-        g = new Uint8Array(first[chunk + 1]! - first[chunk]!).map((_, i) => (was?.[i] === 1 || k.middle[kind[first[chunk]! + i]!]! < job.thin ? 1 : 0));
+        g = new Uint8Array(t.to(chunk) - t.from(chunk)).map((_, i) => (was?.[i] === 1 || k.middle[kind[t.from(chunk) + i]!]! < job.thin ? 1 : 0));
         thin.set(chunk, g);
       }
       return g;

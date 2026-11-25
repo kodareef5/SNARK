@@ -25,9 +25,9 @@
 // is no one piece's: a worn member breaks its box, so its own faces show its wear, and is made apart at the next making.
 
 import type { Registry } from "../../../shared/content/registry.ts";
-import { CHUNK_SIZE, YAW_UNITS, chunkCount, chunkCx, chunkCz, type MapDims } from "../../../shared/coords.ts";
+import { CHUNK_SIZE, YAW_UNITS, chunkCx, chunkCz, type MapDims } from "../../../shared/coords.ts";
 import { VERTEX_BYTES } from "../../../shared/pack/pack.ts";
-import { NEIGHBOUR_HOLDER, PIECE_KEY_BITS, PIECE_SLOTS, cornerByte, mergedPart, type CityPart, type CityStatics, type Gone, type Ground, type PartPaint } from "../../../shared/world/city.ts";
+import { CityPieces, CityStatics, NEIGHBOUR_HOLDER, NO_ROWS, PIECE_KEY_BITS, PIECE_SLOTS, cornerByte, mergedPart, type CityPart, type CityTable, type Gone, type Ground, type PartPaint } from "../../../shared/world/city.ts";
 import type { ChunkTable } from "../../../shared/world/structures.ts";
 import { KindPlates, OCCLUDER, chunkOccluders } from "./hide.ts";
 import { LAKE_SLOTS, LAKE_SLOT_SPAN } from "./lakes.ts";
@@ -104,7 +104,7 @@ export class NearMaking {
   private readonly ground: Ground;
   private readonly labels?: Uint8Array;
   private readonly side: number;
-  /** Rows of the city: the chunk's pieces in the mesh by band, and by chunk round it the pieces that hold faces. */
+  /** Pieces of the city as REF refs: the chunk's in the mesh by band, and by chunk round it those that hold faces. */
   private readonly own: number[][];
   /** Per band, its pieces as counted against BAND_PIECES. */
   private readonly weights: Uint32Array;
@@ -133,10 +133,10 @@ export class NearMaking {
     const dims = city.dims;
     const cx = chunkCx(dims, chunk), cz = chunkCz(dims, chunk);
     const z0 = cz * CHUNK_SIZE;
-    const from = city.first[chunk]!;
-    const strip = (i: number): number => Math.min(STRIPS - 1, Math.max(0, Math.floor(((city.z[from + i]! - z0) * STRIPS) / CHUNK_SIZE)));
+    const t = rowsOf(city, chunk), from = t.from(chunk);
+    const strip = (i: number): number => Math.min(STRIPS - 1, Math.max(0, Math.floor(((t.z[from + i]! - z0) * STRIPS) / CHUNK_SIZE)));
     const counts = new Uint32Array(STRIPS);
-    const weight = (i: number): number => pieceWeight(city, forms?.[i] || city.kind[from + i]!);
+    const weight = (i: number): number => pieceWeight(city, forms?.[i] || t.kind[from + i]!);
     for (let i = 0; i < mine.length; i++) if (mine[i] === 1) counts[strip(i)]! += weight(i);
     this.beside = cx + 1 < dims.chunksX ? chunk + 1 : cx > 0 ? chunk - 1 : cz + 1 < dims.chunksZ ? chunk + dims.chunksX : cz > 0 ? chunk - dims.chunksX : -1;
     // The fewest bands of which none holds more than BAND_PIECES.
@@ -152,7 +152,7 @@ export class NearMaking {
     for (let i = 0; i < mine.length; i++) {
       if (mine[i] !== 1) continue;
       const b = Math.floor((strip(i) * bands) / STRIPS);
-      this.own[b]!.push(from + i);
+      this.own[b]!.push(chunk * REF + i);
       this.weights[b]! += weight(i);
     }
     for (let dz = -1; dz <= 1; dz++) {
@@ -161,7 +161,7 @@ export class NearMaking {
         const c = (cz + dz) * dims.chunksX + cx + dx;
         const h = holds(c);
         const rows: number[] = [];
-        if (h) for (let i = 0; i < h.length; i++) if (h[i] === 1) rows.push(city.first[c]! + i);
+        if (h) for (let i = 0; i < h.length; i++) if (h[i] === 1) rows.push(c * REF + i);
         if (rows.length > 0) this.around.set(c, rows);
       }
     }
@@ -347,13 +347,18 @@ function store(pos: Float32Array, colour: Uint8Array, edges: Uint8Array, word: U
 /** A neighbour's number among the eight round a chunk, by its place (dx, dz) from it, each -1 to 1: a row, then the next. */
 export const neighbourOf = (dx: number, dz: number): number => ((dz + 1) * 3 + dx + 1 > 4 ? (dz + 1) * 3 + dx : (dz + 1) * 3 + dx + 1);
 
+/** A piece of the city as a reference: its chunk times this and its slot there. */
+const REF = 65536;
+
+/** `chunk`'s rows, none where they are not held. */
+const rowsOf = (city: CityStatics, chunk: number): CityTable => city.rows(chunk) ?? NO_ROWS;
+
 /**
- * Row `i` of the city as a holder of `chunk`'s faces (city.ts KeyedFaces): a piece of `chunk` itself, or else of `from`, a
- * chunk round it. 0 for one past the slots a key may name.
+ * Slot `slot` of chunk `from` of the city as a holder of `chunk`'s faces (city.ts KeyedFaces): a piece of `chunk` itself,
+ * or else of a chunk round it. 0 for one past the slots a key may name.
  */
-function holderKey(city: CityStatics, chunk: number, from: number, i: number): number {
-  const own = i >= city.first[chunk]! && i < city.first[chunk + 1]!;
-  const slot = i - city.first[own ? chunk : from]!;
+function holderKey(city: CityStatics, chunk: number, from: number, slot: number): number {
+  const own = from === chunk;
   if (slot >= PIECE_SLOTS) return 0;
   if (own) return slot + 1;
   const dims = city.dims;
@@ -365,38 +370,35 @@ function holderKey(city: CityStatics, chunk: number, from: number, i: number): n
  * share of `around`, and every other chunk round it its share of `around`. With `keyed`, each of its rows' key as a holder.
  */
 function view(city: CityStatics, chunk: number, own: readonly number[], beside: number, others: readonly number[], around: ReadonlyMap<number, readonly number[]>, keyed = false, forms: Uint16Array | null = null, paint?: (kind: number) => PartPaint | null, apart: Uint8Array | null = null): { city: CityStatics; keys?: Uint32Array } {
-  const dims: MapDims = city.dims;
   const lists = new Map<number, readonly number[]>(around);
   lists.set(chunk, own);
   if (others.length > 0) lists.set(beside, [...(around.get(beside) ?? []), ...others]);
   const order = [...lists.keys()].sort((a, b) => a - b);
-  const n = order.reduce((s, c) => s + lists.get(c)!.length, 0);
-  const first = new Uint32Array(chunkCount(dims) + 1);
+  const counts = order.map((c) => lists.get(c)!.length);
+  const n = counts.reduce((s, k) => s + k, 0);
   const kind = new Uint16Array(n), yaw = new Uint16Array(n), x = new Float32Array(n), y = new Float32Array(n), z = new Float32Array(n);
   const keys = keyed ? new Uint32Array(n) : undefined;
-  const from = city.first[chunk]!, to = city.first[chunk + 1]!;
   const dye = forms?.some((f) => f !== 0) ? new Uint16Array(n) : undefined;
   const alone = apart?.some((v) => v !== 0) ? new Uint8Array(n) : undefined;
-  let at = 0, c = 0;
+  let at = 0;
   for (const k of order) {
-    for (; c <= k; c++) first[c] = at;
-    for (const i of lists.get(k)!) {
-      if (keys) keys[at] = holderKey(city, chunk, k, i);
+    for (const ref of lists.get(k)!) {
+      const from = Math.floor(ref / REF), slot = ref % REF, t = rowsOf(city, from), i = t.from(from) + slot;
+      if (keys) keys[at] = holderKey(city, chunk, from, slot);
       // A slot of the chunk that holds a broken form is made as the form, in the finish of the kind the map placed.
-      const form = dye && i >= from && i < to ? forms![i - from]! : 0;
-      if (form !== 0) dye![at] = city.kind[i]!;
-      if (alone && i >= from && i < to) alone[at] = apart![i - from]!;
-      kind[at] = form || city.kind[i]!;
-      yaw[at] = city.yaw[i]!;
-      x[at] = city.x[i]!;
-      y[at] = city.y[i]!;
-      z[at] = city.z[i]!;
+      const form = dye && from === chunk ? forms![slot]! : 0;
+      if (form !== 0) dye![at] = t.kind[i]!;
+      if (alone && from === chunk) alone[at] = apart![slot]!;
+      kind[at] = form || t.kind[i]!;
+      yaw[at] = t.yaw[i]!;
+      x[at] = t.x[i]!;
+      y[at] = t.y[i]!;
+      z[at] = t.z[i]!;
       at++;
     }
   }
-  first.fill(at, c);
-  const { halfX, halfY, halfZ, color, under, plain, walked, look } = city;
-  return { city: { dims, first, kind, yaw, x, y, z, halfX, halfY, halfZ, color, under, plain, walked, look, dye, paint, apart: alone, count: n, in: (k: number) => first[k + 1]! - first[k]! } as CityStatics, keys };
+  const pieces = new CityPieces(order, counts, { kind, yaw, x, y, z, ...(dye ? { dye } : {}), ...(alone ? { apart: alone } : {}) });
+  return { city: CityStatics.of(paint ? { ...city, dims: city.dims, paint } : city, pieces), keys };
 }
 
 /** Slots of meshes on the card start here, past the lakes' (lakes.ts). */
@@ -706,7 +708,7 @@ export class NearCity {
    * pieces, and its bytes on the card.
    */
   census(city: CityStatics, chunk: number, ground: Ground, side: number): ReturnType<NearMaking["census"]> & { pieces: number; bytes: number } {
-    const standing = (c: number): Uint8Array => Uint8Array.from({ length: city.in(c) }, (_, i) => (i < PIECE_SLOTS && this.kinds[city.kind[city.first[c]! + i]!] === 1 ? 1 : 0));
+    const standing = (c: number): Uint8Array => Uint8Array.from({ length: city.in(c) }, (_, i) => (i < PIECE_SLOTS && this.kinds[rowsOf(city, c).kind[rowsOf(city, c).from(c) + i]!] === 1 ? 1 : 0));
     const mine = standing(chunk);
     const m = new NearMaking(city, chunk, ground, mine, standing, side, this.labels, true);
     while (!m.done) m.step();
@@ -904,11 +906,11 @@ export class NearCity {
    * Lists the slots it changed in `flipped`; how many.
    */
   private find(chunk: number, t: ChunkTable, city: CityStatics, mine: Uint8Array, form: Uint16Array): number {
-    const first = city.first[chunk]!, flipped = this.flipped, kinds = this.kinds;
+    const r = rowsOf(city, chunk), first = r.from(chunk), flipped = this.flipped, kinds = this.kinds;
     flipped.length = 0;
     for (let s = 0; s < mine.length; s++) {
-      const i = first + s, k = city.kind[i]!, now = s < t.high ? t.kind[s]! : 0;
-      const placed = s < PIECE_SLOTS && now !== 0 && kinds[k] === 1 && t.x[s] === city.x[i] && t.y[s] === city.y[i] && t.z[s] === city.z[i] && t.yaw[s] === city.yaw[i];
+      const i = first + s, k = r.kind[i]!, now = s < t.high ? t.kind[s]! : 0;
+      const placed = s < PIECE_SLOTS && now !== 0 && kinds[k] === 1 && t.x[s] === r.x[i] && t.y[s] === r.y[i] && t.z[s] === r.z[i] && t.yaw[s] === r.yaw[i];
       const is = placed && now === k ? 1 : 0;
       const as = placed && now !== k && kinds[now] === 1 && t.owner[s] === 0 && this.breakForm[now] !== 0 && this.breakSet[now] === this.breakSet[k] ? now : 0;
       if (is !== mine[s] || as !== form[s]) flipped.push(s);
@@ -923,7 +925,7 @@ export class NearCity {
    * in the chunks round it, breaks its merged boxes, and takes its occluders with it; one that came back shows as before.
    */
   private changed(chunk: number, c: NearChunk, city: CityStatics): void {
-    const m = c.mesh, first = city.first[chunk]!;
+    const m = c.mesh, t = rowsOf(city, chunk), first = t.from(chunk);
     c.changed = this.now;
     for (let k = 0; k < this.flipped.length; k++) {
       // Its slot's state says whether the whole piece stands; a form its mesh was made with is drawn by its group's.
@@ -933,11 +935,11 @@ export class NearCity {
       if (c.row === 0) continue;
       if (this.states.bit(c.row, s) !== on) {
         this.states.set(c.row, s, on);
-        if (on === 0) this.left(chunk, city, first + s);
+        if (on === 0) this.left(chunk, city, t, first + s);
       }
       if (!m || was === now) continue;
       if (now === 0) {
-        hideNoMore(m, chunk, city, first + s);
+        hideNoMore(m, chunk, city, t, first + s);
         this.broke(chunk, c, m, city, s, true);
       } else this.mended(c, m, s);
     }
@@ -952,15 +954,15 @@ export class NearCity {
    * members of each merged box it was in, which is broken, as its state says where `tell` is set.
    */
   private broke(chunk: number, c: NearChunk, m: NearMesh, city: CityStatics, s: number, tell: boolean): void {
-    const first = city.first[chunk]!;
-    open(m, chunk, city, first + s);
+    const t = rowsOf(city, chunk), first = t.from(chunk);
+    open(m, chunk, city, t, first + s);
     for (let k = m.slotFirst[s]!; k < m.slotFirst[s + 1]!; k++) {
       const g = m.slotGroups[k]!;
       if (tell) {
         if (this.states.bit(c.row, PIECE_SLOTS + g) === 0) continue;
         this.states.set(c.row, PIECE_SLOTS + g, 0);
       }
-      for (let e = m.groupFirst[g]!; e < m.groupFirst[g + 1]!; e++) open(m, chunk, city, first + m.groupSlots[e]!);
+      for (let e = m.groupFirst[g]!; e < m.groupFirst[g + 1]!; e++) open(m, chunk, city, t, first + m.groupSlots[e]!);
     }
   }
 
@@ -978,11 +980,11 @@ export class NearCity {
    * are its group's, which is told its wear too.
    */
   private wear(chunk: number, t: ChunkTable, city: CityStatics, c: NearChunk): void {
-    const first = city.first[chunk]!, reg = this.reg, m = c.mesh, worn = c.worn;
+    const r = rowsOf(city, chunk), first = r.from(chunk), reg = this.reg, m = c.mesh, worn = c.worn;
     for (let s = 0; s < worn.length && s < PIECE_SLOTS; s++) {
       let w = 0;
       if (c.mine[s] === 1 || (c.form[s] !== 0 && this.breakForm[c.form[s]!] !== FORM_HEAP)) {
-        const k = city.kind[first + s]!, hp = t.hp[s]!;
+        const k = r.kind[first + s]!, hp = t.hp[s]!;
         w = stageOf(reg, k, hp) | (reg.glassHp[k]! > 0 && !paned(reg, k, hp) ? WEAR_PANES_OUT : 0);
       }
       const was = worn[s]!;
@@ -996,7 +998,7 @@ export class NearCity {
         else if (w === 0) this.mended(c, m!, s);
         else if (was === 0 && this.states.bit(c.row, PIECE_SLOTS + g) === 1) {
           this.states.set(c.row, PIECE_SLOTS + g, 0);
-          for (let e = m!.groupFirst[g]!; e < m!.groupFirst[g + 1]!; e++) open(m!, chunk, city, first + m!.groupSlots[e]!);
+          for (let e = m!.groupFirst[g]!; e < m!.groupFirst[g + 1]!; e++) open(m!, chunk, city, r, first + m!.groupSlots[e]!);
           if (!c.stale) c.since = this.now;
           c.stale = true;
           c.changed = this.now;
@@ -1006,28 +1008,28 @@ export class NearCity {
   }
 
   /**
-   * Piece `i` of the city no longer holds faces: the meshes of the chunks round its own draw what they kept where it
-   * stood. A chunk's pieces reach no farther than REACH past it, so one farther than that from the piece holds none.
+   * Row `i` of `t`, a piece of `chunk`, no longer holds faces: the meshes of the chunks round its own draw what they kept
+   * where it stood. A chunk's pieces reach no farther than REACH past it, so one farther than that from the piece holds none.
    */
-  private left(chunk: number, city: CityStatics, i: number): void {
+  private left(chunk: number, city: CityStatics, t: CityTable, i: number): void {
     const dims = city.dims, cx = chunkCx(dims, chunk), cz = chunkCz(dims, chunk);
-    reachOf(city, i);
+    reachOf(city, t, i);
     const x0 = Math.floor((reach[0]! - REACH) / CHUNK_SIZE), x1 = Math.floor((reach[2]! + REACH) / CHUNK_SIZE);
     const z0 = Math.floor((reach[1]! - REACH) / CHUNK_SIZE), z1 = Math.floor((reach[3]! + REACH) / CHUNK_SIZE);
     for (let z = Math.max(0, cz - 1, z0); z <= Math.min(dims.chunksZ - 1, cz + 1, z1); z++) {
       for (let x = Math.max(0, cx - 1, x0); x <= Math.min(dims.chunksX - 1, cx + 1, x1); x++) {
         const n = z * dims.chunksX + x, m = n === chunk ? null : this.chunks.get(n)?.mesh;
-        if (m) open(m, n, city, i);
+        if (m) open(m, n, city, t, i);
       }
     }
   }
 
   /** How many kinds the pieces of `c` standing as set down that its mesh `m` was made without are of. */
   private standIns(chunk: number, c: NearChunk, m: NearMesh, city: CityStatics): number {
-    const kinds = this.standing, first = city.first[chunk]!;
+    const kinds = this.standing, t = rowsOf(city, chunk), first = t.from(chunk);
     kinds.length = 0;
     for (let s = 0; s < c.mine.length; s++) {
-      const kind = c.mine[s] === 1 && m.has[s] === 0 ? city.kind[first + s]! : c.form[s] !== m.forms[s] ? c.form[s]! : 0;
+      const kind = c.mine[s] === 1 && m.has[s] === 0 ? t.kind[first + s]! : c.form[s] !== m.forms[s] ? c.form[s]! : 0;
       if (kind !== 0 && !kinds.includes(kind)) kinds.push(kind);
     }
     return kinds.length;
@@ -1039,16 +1041,16 @@ export class NearCity {
    */
   private write(chunk: number, c: NearChunk, city: CityStatics): void {
     if (c.row === 0) return;
-    const states = this.states, m = c.mesh, first = city.first[chunk]!, labels = this.labels;
+    const states = this.states, m = c.mesh, t = rowsOf(city, chunk), first = t.from(chunk), labels = this.labels;
     // A slot keeps what else its texel says. A group is another mesh's number: its texel starts again.
     states.clear(c.row, 1);
     for (let s = 0; s < c.mine.length && s < PIECE_SLOTS; s++) {
-      states.put(c.row, s, m ? c.mine[s]! & m.has[s]! : c.mine[s]!, labels[city.kind[first + s]!]! >> 2);
+      states.put(c.row, s, m ? c.mine[s]! & m.has[s]! : c.mine[s]!, labels[t.kind[first + s]!]! >> 2);
       if (c.worn[s] !== 0) states.wear(c.row, s, c.worn[s]!);
     }
     for (let g = 0; m && g + 1 < m.groupFirst.length; g++) {
       const head = m.groupSlots[m.groupFirst[g]!]!;
-      states.put(c.row, PIECE_SLOTS + g, intact(c, m, g), labels[city.kind[first + head]!]! >> 2);
+      states.put(c.row, PIECE_SLOTS + g, intact(c, m, g), labels[t.kind[first + head]!]! >> 2);
       // A form's faces are its group's: its wear is theirs.
       if (m.forms[head] !== 0) states.wear(c.row, PIECE_SLOTS + g, c.worn[head]!);
     }
@@ -1082,15 +1084,15 @@ export class NearCity {
       const fresh = r.row === 0 && (r.row = this.states.take(n)) !== 0;
       if (fresh) this.states.clear(r.row);
       if (!fresh && r.stamp === standing.goneVersion[n]) continue;
-      const first = city.first[n]!, gone = standing.goneOf(n), began = r.stamp === NEVER;
+      const t = rowsOf(city, n), first = t.from(n), gone = standing.goneOf(n), began = r.stamp === NEVER;
       r.stamp = standing.goneVersion[n]!;
       for (let s = 0; s < r.bits.length && s < PIECE_SLOTS; s++) {
-        const on = this.kinds[city.kind[first + s]!] === 1 && gone?.[s] !== 1 ? 1 : 0;
+        const on = this.kinds[t.kind[first + s]!] === 1 && gone?.[s] !== 1 ? 1 : 0;
         if (fresh) this.states.put(r.row, s, on, 0);
         if (on === r.bits[s]) continue;
         r.bits[s] = on;
         if (!fresh && r.row !== 0) this.states.set(r.row, s, on);
-        if (on === 0 && !began) this.left(n, city, first + s);
+        if (on === 0 && !began) this.left(n, city, t, first + s);
       }
     }
   }
@@ -1179,14 +1181,15 @@ export class NearCity {
     // And a merged box one of whose members came to wear since is broken, and its members' own faces are drawn.
     for (let g = 0; g + 1 < m.groupFirst.length; g++) {
       if (intact(c, m, g) === 1) continue;
-      for (let e = m.groupFirst[g]!; e < m.groupFirst[g + 1]!; e++) open(m, chunk, city, city.first[chunk]! + m.groupSlots[e]!);
+      const t = rowsOf(city, chunk);
+      for (let e = m.groupFirst[g]!; e < m.groupFirst[g + 1]!; e++) open(m, chunk, city, t, t.from(chunk) + m.groupSlots[e]!);
       stale = true;
     }
     for (const n of held.keys()) {
       const then = held.get(n)!, now = this.bits(n);
       for (let s = 0; s < then.length; s++) {
         if (then[s] !== 1 || now?.[s] === 1) continue;
-        open(m, chunk, city, city.first[n]! + s);
+        open(m, chunk, city, rowsOf(city, n), rowsOf(city, n).from(n) + s);
         stale = true;
       }
     }
@@ -1232,24 +1235,24 @@ function whole(c: NearChunk): Uint8Array {
   return bits;
 }
 
-/** The box round piece `i` of the city across the ground, grown by what a face may stand outside its holder: least x and z, then most. */
+/** The box round row `i` of `t` across the ground, grown by what a face may stand outside its holder: least x and z, then most. */
 const reach = new Float64Array(4);
-function reachOf(city: CityStatics, i: number): void {
-  const k = city.kind[i]!, a = (city.yaw[i]! / YAW_UNITS) * Math.PI * 2;
+function reachOf(city: CityStatics, t: CityTable, i: number): void {
+  const k = t.kind[i]!, a = (t.yaw[i]! / YAW_UNITS) * Math.PI * 2;
   const c = Math.abs(Math.cos(a)), s = Math.abs(Math.sin(a));
   const ex = c * city.halfX[k]! + s * city.halfZ[k]! + 0.02, ez = s * city.halfX[k]! + c * city.halfZ[k]! + 0.02;
-  reach[0] = city.x[i]! - ex;
-  reach[1] = city.z[i]! - ez;
-  reach[2] = city.x[i]! + ex;
-  reach[3] = city.z[i]! + ez;
+  reach[0] = t.x[i]! - ex;
+  reach[1] = t.z[i]! - ez;
+  reach[2] = t.x[i]! + ex;
+  reach[3] = t.z[i]! + ez;
 }
 
 /**
- * Has mesh `m` of chunk `chunk` draw the faces it kept in each cell piece `i` of the city reaches: a face it holds, or
- * one of its own, has its middle within it.
+ * Has mesh `m` of chunk `chunk` draw the faces it kept in each cell row `i` of `t` reaches: a face it holds, or one of
+ * its own, has its middle within it.
  */
-function open(m: NearMesh, chunk: number, city: CityStatics, i: number): void {
-  reachOf(city, i);
+function open(m: NearMesh, chunk: number, city: CityStatics, t: CityTable, i: number): void {
+  reachOf(city, t, i);
   const side = m.side, x0 = chunkCx(city.dims, chunk) * CHUNK_SIZE, z0 = chunkCz(city.dims, chunk) * CHUNK_SIZE;
   const cell = (v: number): number => Math.min(side - 1, Math.max(0, Math.floor((v * side) / CHUNK_SIZE)));
   for (let j = cell(reach[1]! - z0); j <= cell(reach[3]! - z0); j++) {
@@ -1296,11 +1299,11 @@ function byCell(m: NearMesh, chunk: number, dims: MapDims): void {
  * Zeroes each occluder of mesh `m` of chunk `chunk` (hide.ts OCCLUDER floats each) that reaches into the box of piece `i`
  * of the city, which may be made of its plates: the piece is no longer drawn, and hides nothing.
  */
-function hideNoMore(m: NearMesh, chunk: number, city: CityStatics, i: number): void {
+function hideNoMore(m: NearMesh, chunk: number, city: CityStatics, t: CityTable, i: number): void {
   const occluders = m.occluders, side = m.side;
-  const k = city.kind[i]!, a = (city.yaw[i]! / YAW_UNITS) * Math.PI * 2, c = Math.cos(a), s = Math.sin(a);
+  const k = t.kind[i]!, a = (t.yaw[i]! / YAW_UNITS) * Math.PI * 2, c = Math.cos(a), s = Math.sin(a);
   const hx = city.halfX[k]! + 0.01, hy = city.halfY[k]! + 0.01, hz = city.halfZ[k]! + 0.01;
-  reachOf(city, i);
+  reachOf(city, t, i);
   const x0 = chunkCx(city.dims, chunk) * CHUNK_SIZE, z0 = chunkCz(city.dims, chunk) * CHUNK_SIZE;
   const cell = (v: number): number => Math.min(side - 1, Math.max(0, Math.floor((v * side) / CHUNK_SIZE)));
   for (let j = cell(reach[1]! - z0); j <= cell(reach[3]! - z0); j++) {
@@ -1309,7 +1312,7 @@ function hideNoMore(m: NearMesh, chunk: number, city: CityStatics, i: number): v
       for (let n = m.occluderFirst[at]!; n < m.occluderFirst[at + 1]!; n++) {
         const o = m.occluderList[n]!;
         if (occluders[o + 8] === 0) continue;
-        const dx = occluders[o]! - city.x[i]!, dy = occluders[o + 1]! - city.y[i]!, dz = occluders[o + 2]! - city.z[i]!;
+        const dx = occluders[o]! - t.x[i]!, dy = occluders[o + 1]! - t.y[i]!, dz = occluders[o + 2]! - t.z[i]!;
         if (Math.abs(dy) > hy + occluders[o + 4]!) continue;
         // The occluder's box as the piece's frame holds it: its middle there, and its half extents turned into it.
         const oc = occluders[o + 6]!, os = occluders[o + 7]!, tc = Math.abs(c * oc + s * os), ts = Math.abs(s * oc - c * os);

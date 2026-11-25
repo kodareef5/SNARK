@@ -401,7 +401,7 @@ async function boot(): Promise<void> {
   await session.welcomed;
   if(launch && session.state==="closed"){showEntryProblem();return;}
   showStage(3);
-  await loader.follow(() => session.mapFocus, { say: (line) => app.ui.console.print(line), arriving: (statics) => session.staticsSteps(statics), want: () => pageWant(app), held: () => session.behind });
+  await loader.follow(() => session.mapFocus, { say: (line) => app.ui.console.print(line), arriving: () => session.staticsSteps(), want: () => pageWant(app), held: () => session.behind });
   showStage(4);
   // The interface takes the page's line from here.
   const view = new UiView(root, { text: (key, value) => app.textInput(key, value), pointer: (kind, key, x, y, button, finger) => app.pointer(kind, key, x, y, button, finger), typing: () => app.ui.typing });

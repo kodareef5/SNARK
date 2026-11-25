@@ -1,9 +1,12 @@
 // The map's statics as a page holds them: a table a sector, set in as its part comes and let go when the page no longer
 // wants it (client/core/map-want.ts). A chunk's rows are looked up by its sector, slot s the s-th static of that chunk in
-// the map's order, as the server's are. Readers that take one MapStatics get one made of the sectors held (`table`), a
-// slice of rows a step; the sectors it holds then read their rows from it, so a sector's rows are kept once.
+// the map's order, as the server's are. The city the page draws follows the store a sector at a time (`follow`), sharing
+// each sector's columns, so a sector's rows are kept once and one coming or going remakes nothing else. A tool that takes
+// one MapStatics gets a copy of the sectors held (`table`).
 
 import { SECTOR_CHUNKS, chunkCx, chunkCz } from "../../shared/coords.ts";
+import type { Registry } from "../../shared/content/registry.ts";
+import { CitySquare, CityStatics } from "../../shared/world/city.ts";
 import { MapStatics, squareOf, type ChunkBends, type MapHead, type MapPart, type StaticsPiece } from "../../shared/world/mapfile.ts";
 
 /** The columns a chunk's map rows are read from, and its rows' place in them, `from` up to `to`. */
@@ -22,21 +25,20 @@ const SLICE = 1 << 15;
 const NO_U16 = new Uint16Array(0);
 const NO_F32 = new Float32Array(0);
 
-/** One sector's statics: its chunks' rows, row by row of its square, or those rows in a table made of several sectors. */
-class SectorTable {
+/** One sector's statics: its chunks' rows, row by row of its square, in the map's kinds. */
+export class SectorTable {
   readonly part: MapPart;
   readonly cx0: number;
   readonly cz0: number;
   readonly cx1: number;
   readonly cz1: number;
-  /** Rows of each of its chunks, by its place in the square (local) or, once `merged`, by its place in the map. */
-  first: Uint32Array;
-  kind: Uint16Array;
-  yaw: Uint16Array;
-  x: Float32Array;
-  y: Float32Array;
-  z: Float32Array;
-  merged = false;
+  /** Rows of each of its chunks, by its place in the square. */
+  readonly first: Uint32Array;
+  readonly kind: Uint16Array;
+  readonly yaw: Uint16Array;
+  readonly x: Float32Array;
+  readonly y: Float32Array;
+  readonly z: Float32Array;
   readonly bends = new Map<number, ChunkBends>();
   readonly count: number;
 
@@ -51,8 +53,12 @@ class SectorTable {
 
   /** The place of `chunk`, one of its own, in `first`. */
   at(chunk: number, chunksX: number): number {
-    if (this.merged) return chunk;
     return (Math.floor(chunk / chunksX) - this.cz0) * (this.cx1 - this.cx0) + (chunk % chunksX) - this.cx0;
+  }
+
+  /** Bytes it holds: its rows, a kind, a turn and a place a piece, its bends and its index. */
+  get bytes(): number {
+    return this.count * 16 + this.first.byteLength + [...this.bends.values()].reduce((n, b) => n + b.slot.byteLength + b.bend.byteLength, 0);
   }
 }
 
@@ -64,16 +70,27 @@ export class HeldStatics {
   readonly parts: readonly MapPart[];
   private readonly sectorAt: Uint16Array;
   private readonly sectors: (SectorTable | null)[];
-  /** Rows each sector holds, as the head counts them, and the bytes its statics took once held. */
+  /** Rows each sector holds, as the head counts them, its chunks, and the bytes its statics took once held. */
   readonly rows = new Map<MapPart, number>();
+  private readonly chunks = new Map<MapPart, number>();
   private readonly took = new Map<MapPart, number>();
   /** Counts the sectors set in and let go. */
   version = 0;
   /** Sectors a reader waits for: chunks the server sent as the map has them (session.ts). */
   readonly needed = new Set<MapPart>();
+  /** Sectors that came damaged too often, never asked for again (mapload.ts). */
+  readonly broken = new Set<MapPart>();
+  /** Sectors asked for once, past what is wanted, and who waits for each (`once`). */
+  readonly asked = new Map<MapPart, ((rows: SectorTable) => void)[]>();
   private readonly told: ((part: MapPart) => void)[] = [];
-  /** Called as a sector is first needed, so that it is asked for at once. */
+  /** Called as a sector is first needed or asked for once, so that it is asked for at once. */
   wake: (() => void) | null = null;
+  /** Whether a reader still holds chunks of a sector, which is then kept past the wanted set (session.ts). */
+  keep: ((part: MapPart) => boolean) | null = null;
+  /** Where the page tells the player of the map (the loader's line), or null. */
+  say: ((line: string) => void) | null = null;
+  /** The city that follows the sectors held, once one is made (`follow`). */
+  private city: CityStatics | null = null;
   private readonly found: MapRows = { kind: NO_U16, yaw: NO_U16, x: NO_F32, y: NO_F32, z: NO_F32, from: 0, to: 0 };
 
   constructor(head: MapHead) {
@@ -92,10 +109,11 @@ export class HeldStatics {
         }
       }
       this.rows.set(p, n);
+      this.chunks.set(p, (sq.cx1 - sq.cx0) * (sq.cz1 - sq.cz0));
     });
   }
 
-  /** Calls `fn` with each sector's part as its statics are set in. */
+  /** Calls `fn` with each sector's part as its statics are set in, and as one is found broken. */
   onSet(fn: (part: MapPart) => void): void {
     this.told.push(fn);
   }
@@ -123,12 +141,54 @@ export class HeldStatics {
     return r;
   }
 
+  /** Whether `chunk`'s sector came damaged too often to be asked for again. */
+  brokenAt(chunk: number): boolean {
+    const p = this.partOf(chunk);
+    return p !== null && this.broken.has(p);
+  }
+
   /** Says a reader waits for `chunk`'s sector. */
   need(chunk: number): void {
     const p = this.partOf(chunk);
-    if (!p || this.has(p) || this.needed.has(p)) return;
+    if (!p || this.has(p) || this.needed.has(p) || this.broken.has(p)) return;
     this.needed.add(p);
     this.wake?.();
+  }
+
+  /**
+   * Asks for `chunk`'s sector once, wherever it is, and hands `got` its rows as they come, without keeping them unless they
+   * are wanted: at once where it is held. False where the map lists no statics there or the sector is broken.
+   */
+  once(chunk: number, got: (rows: SectorTable) => void): boolean {
+    const p = this.partOf(chunk);
+    if (!p || this.broken.has(p)) return false;
+    const t = this.sectors[this.parts.indexOf(p)];
+    if (t) {
+      got(t);
+      return true;
+    }
+    const waiting = this.asked.get(p);
+    if (waiting) waiting.push(got);
+    else {
+      this.asked.set(p, [got]);
+      this.wake?.();
+    }
+    return true;
+  }
+
+  /** Hands sector `part`'s rows, read as `t`, to whoever asked for them once. */
+  answer(part: MapPart, t: SectorTable): void {
+    const waiting = this.asked.get(part);
+    this.asked.delete(part);
+    for (const fn of waiting ?? []) fn(t);
+  }
+
+  /** Sector `part` came damaged too often: nothing waits for it any more, and readers are told. */
+  broke(part: MapPart): void {
+    this.broken.add(part);
+    this.needed.delete(part);
+    this.asked.delete(part);
+    for (const fn of this.told) fn(part);
   }
 
   /** Pieces held. */
@@ -136,19 +196,19 @@ export class HeldStatics {
     return this.sectors.reduce((n, t) => n + (t?.count ?? 0), 0);
   }
 
-  /** Bytes held: the rows, a kind, a turn and a place a piece, their bends, and the indexes by chunk of the store and its table. */
+  /** Bytes held: the rows, a kind, a turn and a place a piece, their bends, and the indexes by chunk of the store and its sectors. */
   get bytes(): number {
     return this.parts.reduce((n, p, k) => n + (this.sectors[k] ? this.took.get(p)! : 0), this.index);
   }
 
-  /** Bytes of the indexes by chunk alone. */
+  /** Bytes of the store's index by chunk alone. */
   get index(): number {
-    return this.sectorAt.byteLength + (this.head.counts.length + 1) * 4;
+    return this.sectorAt.byteLength;
   }
 
-  /** Bytes sector `part`'s statics take: as they did when last held, else by the head's count of its rows. */
+  /** Bytes sector `part`'s statics take: as they did when last held, else by the head's count of its rows and its index. */
   bytesOf(part: MapPart): number {
-    return this.took.get(part) ?? this.rows.get(part)! * 16;
+    return this.took.get(part) ?? this.rows.get(part)! * 16 + (this.chunks.get(part)! + 1) * 4;
   }
 
   /** Sectors held. */
@@ -157,10 +217,10 @@ export class HeldStatics {
   }
 
   /**
-   * Sets in sector `part`'s statics, read as `piece`, a slice of rows a step: each chunk's rows where the head's counts lay
-   * them out, in the map's order. Throws unless they fill those rows.
+   * Sector `part`'s statics read as `piece` into a table, a slice of rows a step: each chunk's rows where the head's counts
+   * lay them out, in the map's order. Throws unless they fill those rows.
    */
-  *set(part: MapPart, piece: StaticsPiece): Generator<void, void> {
+  *read(part: MapPart, piece: StaticsPiece): Generator<void, SectorTable> {
     const { dims, counts } = this.head;
     const sq = piece.sq, w = sq.cx1 - sq.cx0, n = w * (sq.cz1 - sq.cz0);
     const first = new Uint32Array(n + 1);
@@ -189,27 +249,64 @@ export class HeldStatics {
       l.at.forEach((q, k) => bend.set(piece.bend.subarray(q * 8, q * 8 + 8), k * 8));
       t.bends.set(c, { slot: Uint16Array.from(l.slot), bend });
     }
-    this.sectors[this.parts.indexOf(part)] = t;
-    this.took.set(part, t.count * 16 + [...t.bends.values()].reduce((n, b) => n + b.slot.byteLength + b.bend.byteLength, 0));
-    this.version++;
-    this.needed.delete(part);
-    for (const fn of this.told) fn(part);
+    return t;
   }
 
-  /** Lets sector `part`'s statics go. */
+  /** Sets in sector `part`'s statics, read as `piece` a slice of rows a step (`read`), and the city's square of them. */
+  *set(part: MapPart, piece: StaticsPiece): Generator<void, void> {
+    const t = yield* this.read(part, piece);
+    yield* this.put(t);
+  }
+
+  /** Sets in sector table `t`, and the city's square of it. */
+  *put(t: SectorTable): Generator<void, void> {
+    const k = this.parts.indexOf(t.part), city = this.city;
+    const square = city ? yield* this.squareOf(t, city) : null;
+    this.sectors[k] = t;
+    this.took.set(t.part, t.bytes);
+    if (square && this.city === city) city!.set(k, square);
+    this.version++;
+    this.needed.delete(t.part);
+    this.answer(t.part, t);
+    for (const fn of this.told) fn(t.part);
+  }
+
+  /** Lets sector `part`'s statics go, and the city's square of them. */
   drop(part: MapPart): void {
     const k = this.parts.indexOf(part);
     if (!this.sectors[k]) return;
     this.sectors[k] = null;
+    this.city?.drop(k);
     // The last rows found may be its own.
     [this.found.kind, this.found.yaw, this.found.x, this.found.y, this.found.z] = [NO_U16, NO_U16, NO_F32, NO_F32, NO_F32];
     this.version++;
   }
 
   /**
-   * The rows of the sectors held as one table over the map's chunks, a slice of rows a step, in no map order (a page never
-   * reads it). Each sector held throughout then reads its rows from it, and its own let go.
+   * The city of the sectors held, with `reg`'s content, which from now on follows them: a square a sector set in as it
+   * is, and let go as it is. One made before is followed no longer.
    */
+  follow(reg: Registry): CityStatics {
+    const city = CityStatics.held(this.head.dims, this.parts.length, this.kinds, reg);
+    this.city = city;
+    this.sectors.forEach((t, k) => {
+      if (!t) return;
+      const steps = this.squareOf(t, city);
+      for (let s = steps.next(); ; s = steps.next()) {
+        if (!s.done) continue;
+        city.set(k, s.value);
+        break;
+      }
+    });
+    return city;
+  }
+
+  /** The city's square of sector table `t`, sharing its columns where every row is a structure. */
+  private squareOf(t: SectorTable, city: CityStatics): Generator<void, CitySquare> {
+    return CitySquare.steps(this.head.dims, t, t, city.bentKind);
+  }
+
+  /** A copy of the rows of the sectors held as one table over the map's chunks, a slice of rows a step, in no map order (a page never reads it). */
   *table(): Generator<void, MapStatics> {
     const { counts, dims } = this.head;
     const now = [...this.sectors];
@@ -235,10 +332,6 @@ export class HeldStatics {
       }
       for (const [c, b] of t.bends) out.bends.set(c, b);
     }
-    now.forEach((t, k) => {
-      if (!t || this.sectors[k] !== t) return;
-      [t.first, t.kind, t.yaw, t.x, t.y, t.z, t.merged] = [out.first, out.kind, out.yaw, out.x, out.y, out.z, true];
-    });
     return out;
   }
 }

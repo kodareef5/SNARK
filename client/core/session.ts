@@ -163,7 +163,7 @@ import type { Heightfield } from "../../shared/world/heightfield.ts";
 import type { TideEyeSite } from "../../shared/world/tide-eye.ts";
 import { ORB_GAIN_UNITS, type OrbSite } from "../../shared/world/orb.ts";
 import { readScreens, type ScreenState } from "../../shared/video/screen.ts";
-import { staticKinds, type MapLandmark, type MapStatics } from "../../shared/world/mapfile.ts";
+import { staticKinds, type MapLandmark, type MapPart, type MapStatics } from "../../shared/world/mapfile.ts";
 import type { Buildings } from "../../shared/world/buildings.ts";
 import { NodeField, type NodeSource } from "../../shared/world/nodes.ts";
 import { heapAt, heapHealth } from "../../shared/world/breaking.ts";
@@ -390,6 +390,8 @@ export const PARK_CHUNKS = 8;
 export const PARK_CHUNKS_TOUCH = 2;
 const PARK_BYTES = 4 * 1024 * 1024;
 const SLOT_BYTES = 32;
+/** Chunk messages kept waiting for a sector at most: past that the first is read, its slots from the map left out. */
+export const WAITING_MOST = 2048;
 /** In `whole`: the chunk was put back from those kept, and the server's next rows for it bring it up to date. */
 const CAUGHT_UP_NEXT = 2;
 /** Milliseconds after a hand change is answered that its slot is still awaited. */
@@ -569,7 +571,7 @@ export class ClientSession {
   /** Sparse exact launch/resume state, keyed by generation-qualified entity handle. Kept across packet/snapshot ordering. */
   readonly corpseMotions = new FallCheckpoints();
   private corpseRetryAt = -TICK_RATE;
-  private readonly motionSource: MotionSource = { states: () => this.motions, tick: () => this.tickClock, statics: () => this.arrived ?? this.opts.statics ?? null };
+  private readonly motionSource: MotionSource = { states: () => this.motions, tick: () => this.tickClock, statics: () => this.world?.city?.statics ?? this.wholeCity() };
   world: (CollisionWorld & { mapId: string; dims: MapDims; far: FarSource; farNodes?: FarNodeSource; city?: CitySource; motion?: MotionSource; tideEyes?: readonly TideEyeSite[]; orbs?: readonly OrbSite[]; landmarks?: readonly MapLandmark[]; tops?: BlocksSource }) | null = null;
   /** Handle of the local entity, or 0 while there is none (spectating, dead). */
   ownHandle = 0;
@@ -913,6 +915,7 @@ export class ClientSession {
     for (let i = 0; i < HISTORY; i++) this.bodies.push(new Body());
     conn.onMessage = (channel, data) => this.receive(channel, data);
     opts.held?.onSet(() => this.readWaiting());
+    if (opts.held) opts.held.keep = (part) => this.holdsSector(part);
     conn.onClose = () => {
       if (this.state !== "closed") {
         const was = this.state;
@@ -2432,9 +2435,10 @@ export class ClientSession {
   }
 
   /**
-   * Call when map statics arrive after the session began: those of the sectors round the body first, `whole` false, which
-   * the far city starts with, and then the whole map's, which it is made again of and the server is told of, so that from
-   * its answer on it sends a chunk's statics only where they differ from them (CMD_STATICS).
+   * Call when map statics arrive after the session began, on a page that holds no store of them a sector at a time: those
+   * of the sectors round the body first, `whole` false, which the far city starts with, and then the whole map's, which it
+   * is made again of and the server is told of, so that from its answer on it sends a chunk's statics only where they
+   * differ from them (CMD_STATICS).
    */
   staticsArrived(statics: MapStatics, whole = true): void {
     const steps = this.staticsSteps(statics, whole);
@@ -2443,14 +2447,23 @@ export class ClientSession {
 
   /**
    * staticsArrived a step at a time (CityStatics.steps), for a page that lets frames go between them: what it changes of
-   * this session and its world is changed at the last step.
+   * this session and its world is changed at the last step. Without `statics`, the statics a page holds a sector at a time
+   * were handed over: the city follows them already.
    */
-  *staticsSteps(statics: MapStatics, whole = true): Generator<void, void> {
+  *staticsSteps(statics?: MapStatics, whole = true): Generator<void, void> {
+    this.prediction.handed++;
+    if (!statics) return;
     const world = this.world, reg = this.registry;
     const city = world && !this.opts.city ? yield* CityStatics.steps(world.dims, statics, reg) : null;
-    this.prediction.handed++;
     if (whole && this.arrived !== statics) [this.arrived, this.heldCity] = [statics, null];
     this.startCity(statics, true, world === this.world && reg === this.registry ? city : null);
+  }
+
+  /** The city of the whole map's statics this session was given or handed, made once, or null. */
+  private wholeCity(): CityStatics | null {
+    const statics = this.arrived ?? this.opts.statics;
+    if (!this.world || !statics) return null;
+    return (this.heldCity ??= new CityStatics(this.world.dims, statics, this.registry));
   }
 
   /**
@@ -2458,17 +2471,27 @@ export class ClientSession {
    * hello): the server sends no far cells of a chunk still as the map placed it to a session that holds them.
    */
   private nodeCity(): CityStatics | null {
-    const statics = this.arrived ?? this.opts.statics;
-    if (!this.staticKinds || !this.world || !statics) return null;
-    return (this.heldCity ??= new CityStatics(this.world.dims, statics, this.registry));
+    return this.staticKinds ? this.wholeCity() : null;
   }
 
-  /** The far city of `statics`, `made` where it is made already, where the world has none or, `again`, in place of the one it has. */
+  /**
+   * The far city of `statics`, `made` where it is made already, where the world has none or, `again`, in place of the one it
+   * has; on a page that holds its statics a sector at a time, of those, followed as they come and go.
+   */
   private startCity(statics: MapStatics | null, again = false, made: CityStatics | null = null): void {
-    const world = this.world;
+    const world = this.world, held = this.opts.held;
     if (!world || (world.city && !again)) return;
-    const city = this.opts.city?.(this.registry) ?? made ?? (statics ? new CityStatics(world.dims, statics, this.registry) : null);
-    if (city && city.count > 0) world.city = { statics: city, complete: world.far.complete, maker: this.opts.cityMaker };
+    const city = this.opts.city?.(this.registry) ?? made ?? (held ? held.follow(this.registry) : statics ? new CityStatics(world.dims, statics, this.registry) : null);
+    if (city && (city.count > 0 || city.byParts)) world.city = { statics: city, complete: world.far.complete, maker: this.opts.cityMaker };
+  }
+
+  /** Whether the near store holds or keeps aside a chunk of sector `part`, whose rows it then reads (mapKind, the near city). */
+  private holdsSector(part: MapPart): boolean {
+    const structs = this.world?.structs, held = this.opts.held;
+    if (!structs || !held) return false;
+    for (const c of structs.held) if (held.partOf(c) === part) return true;
+    for (const c of this.parked.keys()) if (held.partOf(c) === part) return true;
+    return false;
   }
 
   private snapshot(r: BitReader): void {
@@ -2807,6 +2830,7 @@ export class ClientSession {
     r.pos = start;
     if (chunk >= 0) this.opts.held?.need(chunk);
     this.waitingRows.push(r.rest());
+    if (this.waitingRows.length > WAITING_MOST) this.readWaiting(true);
   }
 
   /** The chunk whose sector a chunk message read from `r` takes slots from where that is not held; else -1. */
@@ -2815,11 +2839,14 @@ export class ClientSession {
     r.u32();
     r.bool();
     r.bits(16);
-    return !r.overflow && chunk < this.world!.structs.chunks.length && this.mapCount(chunk) > 0 && r.bool() && !this.mapRows(chunk) ? chunk : -1;
+    return !r.overflow && chunk < this.world!.structs.chunks.length && this.mapCount(chunk) > 0 && r.bool() && !this.mapRows(chunk) && !this.opts.held?.brokenAt(chunk) ? chunk : -1;
   }
 
-  /** Reads the chunk messages waiting, in order, up to the first that still takes slots from a sector not held. */
-  private readWaiting(): void {
+  /**
+   * Reads the chunk messages waiting, in order, up to the first that still takes slots from a sector not held; with
+   * `over`, the first whatever it waits for, its slots from the map left out (WAITING_MOST).
+   */
+  private readWaiting(over = false): void {
     const r = this.waitingReader;
     while (this.waitingRows.length > 0 && this.world) {
       const m = this.waitingRows[0]!;
@@ -2830,7 +2857,9 @@ export class ClientSession {
       }
       r.reset(m);
       const chunk = this.waitsFor(r);
-      if (chunk >= 0) return this.opts.held?.need(chunk);
+      if (chunk >= 0 && !over) return this.opts.held?.need(chunk);
+      if (chunk >= 0) this.opts.held?.say?.(`the map's statics of chunk ${chunk} were waited for too long: its pieces the map set are left out until it comes whole`);
+      over = false;
       this.waitingRows.shift();
       r.reset(m);
       this.chunk(r);
@@ -2931,11 +2960,11 @@ export class ClientSession {
       // Slots the server has as the map has them, set down from this client's own copy of the map.
       const first = r.u16();
       const n = r.u16();
+      // Where its sector is broken, or was waited for too long, the slots the map sets are left out.
       const statics = this.mapRows(chunk);
-      if (!statics) return;
-      const at = statics.from + first;
-      if (r.overflow || at + n > statics.to) return;
-      for (let m = at; m < at + n; m++) {
+      const at = statics ? statics.from + first : 0;
+      if (r.overflow || (statics && at + n > statics.to)) return;
+      for (let m = at; statics && m < at + n; m++) {
         const kind = this.staticKinds![statics.kind[m]!]!;
         structs.put(chunk, m - at + first, kind, statics.x[m]!, statics.y[m]!, statics.z[m]!, statics.yaw[m]!, 0, maxHp[kind]!, version, PUT_FREE);
       }

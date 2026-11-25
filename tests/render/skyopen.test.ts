@@ -265,7 +265,7 @@ test("a landmark's pieces cast the sun's shadow but hide no sky, so a ship's own
   const { dims, hf, city } = twoTowers();
   const standing = { goneOf: (): Gone => null, goneVersion: new Uint32Array(chunkCount(dims)), topsOf: (c: number) => (city.in(c) > 0 ? cityTops(city, c, hf, null) : null) };
   /** Every kind of the towers a landmark's, as a map's own are. */
-  const own = new Uint8Array(Math.max(...city.kind) + 1).fill(1);
+  const own = new Uint8Array(Math.max(...city.squareOf(0)!.kind) + 1).fill(1);
   const jobs: SweepJob[] = [], back: SweepMade[] = [];
   const thread: CityMaker = { onMade: null, start() {}, make() {}, take: () => 0, sweep: (job) => void (jobs.push(structuredClone(job)), back.push(doSweep(job))), swept: () => back.shift() ?? null };
   const made = (kinds: Uint8Array | null, maker: CityMaker | null = null) => {

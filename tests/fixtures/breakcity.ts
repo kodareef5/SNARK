@@ -42,38 +42,39 @@ export function breakCity(pieces: readonly Standing[]) {
   });
   const w = nearClient(flatMap(9, { id: "test:break-city", statics }));
   let version = 100;
-  const at = (slot: number): number => w.city.first[BREAK_CHUNK]! + slot;
+  const rows = w.city.rows(BREAK_CHUNK)!;
+  const at = (slot: number): number => rows.from(BREAK_CHUNK) + slot;
   return {
     ...w, reg, chunk: BREAK_CHUNK,
     /** The kind the map placed in `slot`. */
-    placed: (slot: number): number => w.city.kind[at(slot)]!,
+    placed: (slot: number): number => rows.kind[at(slot)]!,
     /** The kind `slot`'s piece is in `form`, by its place's variant. */
     formOf(slot: number, form: number): number {
       const i = at(slot);
-      return formKind(reg, w.city.kind[i]!, form, variantAt(w.city.x[i]!, w.city.y[i]!, w.city.z[i]!));
+      return formKind(reg, rows.kind[i]!, form, variantAt(rows.x[i]!, rows.y[i]!, rows.z[i]!));
     },
     /** Sets `slot` to `form` of its piece in place, at `hp`, as a row from the server does. */
     setForm(slot: number, form: number, hp = 1): number {
       const i = at(slot), kind = this.formOf(slot, form);
       if (kind === 0) throw new Error(`slot ${slot}'s piece has no form ${form}`);
-      w.structs.put(BREAK_CHUNK, slot, kind, w.city.x[i]!, w.city.y[i]!, w.city.z[i]!, w.city.yaw[i]!, 0, hp, ++version);
+      w.structs.put(BREAK_CHUNK, slot, kind, rows.x[i]!, rows.y[i]!, rows.z[i]!, rows.yaw[i]!, 0, hp, ++version);
       w.structs.setVersion(BREAK_CHUNK, version);
       return kind;
     },
     /** Sets the health of the whole piece in `slot`. */
     setHp(slot: number, hp: number): void {
       const i = at(slot);
-      w.structs.put(BREAK_CHUNK, slot, w.structs.chunks[BREAK_CHUNK]!.kind[slot]!, w.city.x[i]!, w.city.y[i]!, w.city.z[i]!, w.city.yaw[i]!, 0, hp, ++version);
+      w.structs.put(BREAK_CHUNK, slot, w.structs.chunks[BREAK_CHUNK]!.kind[slot]!, rows.x[i]!, rows.y[i]!, rows.z[i]!, rows.yaw[i]!, 0, hp, ++version);
       w.structs.setVersion(BREAK_CHUNK, version);
     },
     /** Sets the whole piece in `slot` to `share` of its body's health, its panes gone with any of it. */
     wear(slot: number, share: number): void {
-      const kind = w.city.kind[at(slot)]!;
+      const kind = rows.kind[at(slot)]!;
       this.setHp(slot, Math.fround(bodyHealth(reg, kind) * share + (share < 1 ? 0 : reg.glassHp[kind]!)));
     },
     /** Takes the panes of the whole piece in `slot`, its body unharmed. */
     unglaze(slot: number): void {
-      this.setHp(slot, bodyHealth(reg, w.city.kind[at(slot)]!));
+      this.setHp(slot, bodyHealth(reg, rows.kind[at(slot)]!));
     },
     /** The camera `back` metres south of (x, z) of the chunk and `up` over the ground, looking north and down at it. */
     look(x: number, z: number, back = 14, up = 6): void {

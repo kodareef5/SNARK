@@ -524,7 +524,7 @@ export class NearStore implements Pass {
       const flood = batch !== undefined && ((batch.differ > 0 && this.now - batch.since >= SETTLE) || (batch.holed >= 0 && (this.now - batch.holedLast >= SETTLE || this.now - batch.holed >= FLOOD_MOST)));
       // A chunk whose trims turn on the pieces of the chunks round it is laid out again when one of those gains or loses a piece.
       const met = batch !== undefined && batch.borders !== 0 && this.bordering(store, batch.bordered) !== batch.borderSum;
-      if (!batch || learnt || met || batch.mesh !== mesh || (batch.unbent && statics?.bent.bends.has(chunk)) || (batch.shape !== t.shape && !(turned && this.reform(batch, t, chunk, meshOf, colorOf) && (!own || !batch.mesh || this.keeps(batch, t, meshOf, own.drawn, x0, z0)))) || flood) {
+      if (!batch || learnt || met || batch.mesh !== mesh || (batch.unbent && statics?.squareOf(chunk)?.map.bends.has(chunk)) || (batch.shape !== t.shape && !(turned && this.reform(batch, t, chunk, meshOf, colorOf) && (!own || !batch.mesh || this.keeps(batch, t, meshOf, own.drawn, x0, z0)))) || flood) {
         batch = this.rebuild(store, chunk, id, batch, meshOf, colorOf, sizeOf, mesh, own?.drawn ?? null);
         laid += t.high;
       }
@@ -673,7 +673,7 @@ export class NearStore implements Pass {
     if (this.breakForm[kind] === 0 || owner !== 0) return kind;
     const city = this.world.city?.statics;
     if (!city || s >= city.in(chunk)) return kind;
-    const placed = city.kind[city.first[chunk]! + s]!;
+    const t = city.rows(chunk)!, placed = t.kind[t.from(chunk) + s]!;
     return this.breakSet[placed] === this.breakSet[kind] ? placed : kind;
   }
 
@@ -1449,8 +1449,8 @@ export class NearStore implements Pass {
     const kinds = old && old.kinds.length === count ? old.kinds : new Uint16Array(count);
     const w = new InstanceWriter(data);
     // A bent piece's bend is the map's for its slot while the slot holds the piece the map set there, of the map's statics
-    // as they come, so a sector's are drawn once it has (city.ts CityStatics.bent).
-    const city = bent > 0 ? this.world.city?.statics : undefined, map = city?.bent, from = map ? map.first[chunk]! : 0, rows = map ? map.first[chunk + 1]! - from : 0;
+    // as they come, so a sector's are drawn once it has (city.ts CitySquare.map).
+    const city = bent > 0 ? this.world.city?.statics : undefined, square = city?.squareOf(chunk), map = square?.map, from = square ? square.mapFrom(chunk) : 0, rows = square ? square.mapTo(chunk) - from : 0;
     const bends = bent > 0 ? new Int16Array(count * 8) : null, chunkBends = map?.bends.get(chunk);
     const bordered = trims && trims.borders !== 0 ? this.bordersOf(chunk, trims.borders) : NO_CHUNKS;
     const b: ChunkBatch = {

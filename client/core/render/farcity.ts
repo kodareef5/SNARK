@@ -25,7 +25,7 @@
 
 import { CHUNK_SIZE, chunkCount, type MapDims } from "../../../shared/coords.ts";
 import { INSTANCE_BYTES } from "../../../shared/pack/pack.ts";
-import { cityReach, cityTops, goneByCells, goneByRows, type CityStatics, type Gone } from "../../../shared/world/city.ts";
+import { cityTops, goneByCells, goneByRows, type ChunkSquare, type CityStatics, type Gone } from "../../../shared/world/city.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import type { StructureStore } from "../../../shared/world/structures.ts";
 import type { FarStore } from "../farcells.ts";
@@ -129,8 +129,9 @@ interface Held {
 
 interface Tile {
   readonly t: number;
-  /** Its chunks that have pieces, in the order its mesh holds them. */
+  /** Its chunks that have pieces, in the order its mesh holds them, and the box each one's pieces but a landmark's reach (CityStatics.reachOf). */
   readonly chunks: readonly number[];
+  readonly boxes: Float64Array;
   /** The box its pieces stand in, in the world, and where its stored heights begin. */
   readonly box: Float64Array;
   readonly base: number;
@@ -195,10 +196,16 @@ export class FarCity {
   private readonly hf: Heightfield;
   private readonly maker: CityMaker;
   private readonly tilesX: number;
-  private readonly tiles: Tile[] = [];
+  /** Tiles by their place on the map, null for one none of whose chunks has pieces held; and per chunk, its tile's place where it has pieces, else -1. */
+  private readonly tiles: (Tile | null)[];
   private readonly tileOfChunk: Int32Array;
-  /** Per chunk with any, a byte a piece: 1 for a landmark's, which no level holds. */
-  private readonly left: ReadonlyMap<number, Uint8Array>;
+  /** The landmark kinds, and per chunk with any, a byte a piece: 1 for a landmark's, which no level holds. */
+  private readonly landmark: Uint8Array;
+  private readonly left = new Map<number, Uint8Array>();
+  /** The statics' squares as last taken in (CityStatics.news). */
+  private readonly seenSquares: Uint32Array;
+  /** Tiles to make again from the squares set in or let go, taken in at the next update. */
+  private readonly regrow = new Set<number>();
   /** Per chunk: which of its pieces are gone, as last seen near and as the far feed shows; and a count of changes to that. */
   private readonly gone = new Map<number, Uint8Array>();
   private readonly seenNear = new Map<number, Uint8Array>();
@@ -248,11 +255,9 @@ export class FarCity {
   private readonly listed: Uint8Array;
   private readonly aroundAt = Float64Array.of(Infinity, Infinity, -1);
   /**
-   * Per chunk, the box its pieces but a landmark's reach, which its boxes' faces do not leave (shared/world/city.ts
-   * chunkReach); and per chunk of the tile being drawn, 1 where it is drawn far, its box from the camera, and at the
-   * level being drawn, the depth ranges its faces are in or 0 for none, and 1 where it is in that level's fade.
+   * Per chunk of the tile being drawn, 1 where it is drawn far, its box from the camera, and at the level being drawn, the
+   * depth ranges its faces are in or 0 for none, and 1 where it is in that level's fade.
    */
-  private readonly chunkBox: Float64Array;
   private readonly far = new Uint8Array(CITY_TILE * CITY_TILE);
   private readonly from = new Float64Array(CITY_TILE * CITY_TILE * 6);
   private readonly kept = new Uint8Array(CITY_TILE * CITY_TILE);
@@ -265,7 +270,8 @@ export class FarCity {
 
   /**
    * `bounds` is FAR_MESH's centre and half extent, as the pack has them. `landmark` is 1 by content index for a kind a
-   * landmark brings. `before` is the far city of statics handed over before these, whose levels it takes over (`adopt`).
+   * landmark brings. Its tiles follow the squares of the statics as they are set in and let go. `before` is the far city
+   * of other statics, whose forms and slots it takes over, letting go of its levels at its first update.
    */
   constructor(source: CitySource, dims: MapDims, hf: Heightfield, mesh: number, bounds: { center: readonly number[]; half: readonly number[] }, landmark: Uint8Array = new Uint8Array(0), before: FarCity | null = null) {
     this.source = source;
@@ -285,31 +291,16 @@ export class FarCity {
     this.seenLists = new Uint32Array(chunks);
     this.rowsAt = new Uint32Array(chunks);
     this.goneVersion = new Uint32Array(chunks);
-    ({ reach: this.chunkBox, landmarks: this.left } = cityReach(source.statics, landmark));
-    const cb = this.chunkBox;
-    const byTile = new Map<number, number[]>();
-    for (let c = 0; c < chunks; c++) {
-      if (!(cb[c * 6]! <= cb[c * 6 + 3]!)) continue;
-      const t = this.tileOf(c);
-      byTile.set(t, [...(byTile.get(t) ?? []), c]);
-    }
-    for (const t of byTile.keys()) {
-      const list = byTile.get(t)!;
-      const box = Float64Array.from([Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity]);
-      for (const c of list) {
-        for (let a = 0; a < 3; a++) {
-          box[a] = Math.min(box[a]!, cb[c * 6 + a]! - BELOW);
-          box[a + 3] = Math.max(box[a + 3]!, cb[c * 6 + a + 3]! + BELOW);
-        }
-      }
-      const base = Math.floor(box[1]!);
-      if (box[4]! - base > FAR_HEIGHT) throw new Error(`far city: the pieces of tile ${t} stand ${Math.round(box[4]! - base)} m tall, and a tile holds ${FAR_HEIGHT}`);
-      for (const c of list) this.tileOfChunk[c] = this.tiles.length;
-      this.tiles.push({ t, chunks: list, box, base, primary: -1, held: [], unseen: 0, wants: 0, making: 0, epoch: 0, version: 0, changedAt: 0, changedFrom: -1, letGoAt: -1, entered: -1, rank: 0, zoomed: 0, zoomedUntil: 0, farReach: 0, farUntil: 0, shownReach: 0 });
-    }
-    this.listed = new Uint8Array(this.tiles.length);
-    this.shownAt = new Uint32Array(this.tiles.length);
-    this.shownAs = new Uint8Array(this.tiles.length);
+    this.landmark = landmark;
+    const tiles = this.tilesX * Math.ceil(dims.chunksZ / CITY_TILE);
+    this.tiles = Array.from({ length: tiles }, () => null);
+    this.listed = new Uint8Array(tiles);
+    this.shownAt = new Uint32Array(tiles);
+    this.shownAs = new Uint8Array(tiles);
+    this.seenSquares = new Uint32Array(source.statics.size);
+    this.follow();
+    for (const t of this.regrow) this.grow(t);
+    this.regrow.clear();
     if (before) this.adopt(before);
   }
 
@@ -321,18 +312,81 @@ export class FarCity {
   private adopt(before: FarCity): void {
     this.forms.push(...before.forms);
     this.next = before.next;
-    const old = new Map(before.tiles.map((tile) => [tile.t, tile]));
-    for (const tile of this.tiles) {
-      const was = old.get(tile.t);
-      if (!was || was.chunks.length !== tile.chunks.length || was.chunks.some((c, k) => c !== tile.chunks[k])) continue;
-      tile.held.push(...was.held);
-      // Made of what stood for the city before: any change this one finds makes them again.
-      for (const h of tile.held) if (h) h.version = -1;
-      tile.primary = was.primary;
-      old.delete(tile.t);
-    }
-    for (const was of old.values()) for (const h of was.held) if (h && h.slot >= 0) this.dropping.push(h.slot);
+    before.tiles.forEach((was, t) => {
+      const tile = this.tiles[t];
+      if (was && tile && was.chunks.length === tile.chunks.length && was.chunks.every((c, k) => c === tile.chunks[k])) {
+        tile.held.push(...was.held);
+        // Made of what stood for the city before: any change this one finds makes them again.
+        for (const h of tile.held) if (h) h.version = -1;
+        tile.primary = was.primary;
+        return;
+      }
+      for (const h of was?.held ?? []) if (h && h.slot >= 0) this.dropping.push(h.slot);
+    });
   }
+
+  /** Notes the tiles of each square of the statics set in or let go since last, and lets go of what stood in one let go. */
+  private follow(): void {
+    this.source.statics.news(this.seenSquares, (sq: ChunkSquare, held: boolean) => {
+      const x0 = Math.floor(sq.cx0 / CITY_TILE), x1 = Math.floor((sq.cx1 - 1) / CITY_TILE);
+      const z0 = Math.floor(sq.cz0 / CITY_TILE), z1 = Math.floor((sq.cz1 - 1) / CITY_TILE);
+      for (let tz = z0; tz <= z1; tz++) for (let tx = x0; tx <= x1; tx++) this.regrow.add(tz * this.tilesX + tx);
+      for (let cz = sq.cz0; cz < sq.cz1; cz++) {
+        for (let cx = sq.cx0; cx < sq.cx1; cx++) {
+          const c = cz * this.dims.chunksX + cx;
+          this.tops.delete(c);
+          if (!held) this.seenShape[c] = -1;
+          // Held again: what is known of its pieces gone is taken in again (`standing`).
+          else this.seenLists[c] = this.seenCells[c] = 0xffffffff;
+        }
+      }
+    });
+  }
+
+  /**
+   * Makes tile `t` again of the chunks of it whose pieces are held, its levels on the card let go into `drops` where given:
+   * a tile of no such chunk is none. A level asked for before is not taken.
+   */
+  private grow(t: number, drops: number[] | null = null): void {
+    const was = this.tiles[t];
+    if (was) {
+      for (const h of was.held) if (h && h.slot >= 0) drops?.push(h.slot);
+      for (const c of was.chunks) this.tileOfChunk[c] = -1;
+      this.pending.delete(t);
+    }
+    const d = this.dims, city = this.source.statics;
+    const cx0 = (t % this.tilesX) * CITY_TILE, cz0 = Math.floor(t / this.tilesX) * CITY_TILE;
+    const list: number[] = [], boxes: number[] = [], one = this.reachBox;
+    for (let cz = cz0; cz < Math.min(cz0 + CITY_TILE, d.chunksZ); cz++) {
+      for (let cx = cx0; cx < Math.min(cx0 + CITY_TILE, d.chunksX); cx++) {
+        const c = cz * d.chunksX + cx;
+        const left = city.reachOf(c, this.landmark, one);
+        if (left) this.left.set(c, left);
+        else this.left.delete(c);
+        if (!(one[0]! <= one[3]!)) continue;
+        list.push(c);
+        boxes.push(...one);
+      }
+    }
+    if (list.length === 0) {
+      this.tiles[t] = null;
+      return;
+    }
+    const box = Float64Array.from([Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity]);
+    for (let r = 0; r < list.length; r++) {
+      for (let a = 0; a < 3; a++) {
+        box[a] = Math.min(box[a]!, boxes[r * 6 + a]! - BELOW);
+        box[a + 3] = Math.max(box[a + 3]!, boxes[r * 6 + a + 3]! + BELOW);
+      }
+    }
+    const base = Math.floor(box[1]!);
+    if (box[4]! - base > FAR_HEIGHT) throw new Error(`far city: the pieces of tile ${t} stand ${Math.round(box[4]! - base)} m tall, and a tile holds ${FAR_HEIGHT}`);
+    for (const c of list) this.tileOfChunk[c] = t;
+    this.tiles[t] = { t, chunks: list, boxes: Float64Array.from(boxes), box, base, primary: -1, held: [], unseen: 0, wants: 0, making: 0, epoch: (was?.epoch ?? 0) + 1, version: 0, changedAt: 0, changedFrom: -1, letGoAt: -1, entered: -1, rank: 0, zoomed: 0, zoomedUntil: 0, farReach: 0, farUntil: 0, shownReach: 0 };
+  }
+
+  /** Scratch: one chunk's reach. */
+  private readonly reachBox = new Float64Array(6);
 
   /** Whether `chunk`'s statics are drawn here this frame, so the near store draws none of that chunk. */
   isFar(chunk: number): boolean {
@@ -341,7 +395,7 @@ export class FarCity {
 
   /** After a lost context: every tile is made again, and the instance buffer goes on the card again. */
   reset(): void {
-    for (const tile of this.tiles) tile.held.length = 0;
+    for (const tile of this.tiles) if (tile) tile.held.length = 0;
     this.sent = false;
   }
 
@@ -375,6 +429,9 @@ export class FarCity {
     for (const slot of this.dropping) p.assetDrops.push(slot);
     this.dropping.length = 0;
     this.now = now;
+    this.follow();
+    for (const t of this.regrow) this.grow(t, p.assetDrops);
+    this.regrow.clear();
     this.standing(near, cells, lists);
     this.settle(cam, now);
     const stats = this.stats;
@@ -388,7 +445,8 @@ export class FarCity {
     work.length = 0;
     let lacking = 0;
     for (const n of this.nearby(p, cam, reach)) {
-      const tile = this.tiles[n]!;
+      const tile = this.tiles[n];
+      if (!tile) continue;
       const off = this.off(tile, cam);
       const tileReach = this.reachOf(tile, cam, reach);
       if (!this.on || off > tileReach + TILE_METRES) {
@@ -459,7 +517,7 @@ export class FarCity {
     stats.makeMs = makeMs;
     stats.behind = lacking;
     let bytes = 0;
-    for (const n of this.around) for (const h of this.tiles[n]!.held) if (h) bytes += h.bytes;
+    for (const n of this.around) for (const h of this.tiles[n]?.held ?? []) if (h) bytes += h.bytes;
     if (bytes > 0 && !this.sent) {
       p.uploads.push({ buffer: CITY_BUFFER, data: new Uint8Array(INSTANCE_BYTES), slots: new Uint16Array(1) });
       this.sent = true;
@@ -483,10 +541,12 @@ export class FarCity {
     stats.unseenAt = Infinity;
     stats.unseenFrames = 0;
     stats.coarse = 0;
-    const { chunkBox: cb, far, from, kept, band, nearest: nears } = this;
+    const { far, from, kept, band, nearest: nears } = this;
     this.drawCount++;
     for (const n of this.around) {
-      const tile = this.tiles[n]!;
+      const tile = this.tiles[n];
+      if (!tile) continue;
+      const cb = tile.boxes;
       // Each tile to its own reach: a sight's window's farther (reachOf).
       const tileReach = (tile.shownReach = this.reachNow(tile, reach));
       const whole = tileReach * (1 - this.share);
@@ -526,7 +586,7 @@ export class FarCity {
       for (let r = 0; r < tile.chunks.length; r++) {
         const c = tile.chunks[r]!;
         far[r] = this.source.complete(c) ? 0 : 1;
-        for (let a = 0; a < 6; a++) from[r * 6 + a] = cb[c * 6 + a]! - (a % 3 === 0 ? cam.x : a % 3 === 1 ? cam.y : cam.z);
+        for (let a = 0; a < 6; a++) from[r * 6 + a] = cb[r * 6 + a]! - (a % 3 === 0 ? cam.x : a % 3 === 1 ? cam.y : cam.z);
       }
       const tx = this.cornerX(tile.t), tz = this.cornerZ(tile.t);
       const ox = tx - LOCAL - cam.x, oy = tile.base - cam.y, oz = tz - LOCAL - cam.z;
@@ -594,7 +654,7 @@ export class FarCity {
   shows(chunk: number): number {
     const n = this.tileOfChunk[chunk]!;
     if (!this.on || n < 0 || this.shownAt[n] !== this.drawCount) return 0;
-    return this.shownAs[n] === 1 ? -1 : this.shownAs[n] === 2 ? this.tiles[n]!.shownReach : 0;
+    return this.shownAs[n] === 1 ? -1 : this.shownAs[n] === 2 ? this.tiles[n]?.shownReach ?? 0 : 0;
   }
 
   /** The form drawn in place of this tier's levels by the last `chosen`, or -1; and whether it chose coarser than wanted. */
@@ -720,7 +780,9 @@ export class FarCity {
     const most = sighted ? Math.min(this.view, reach * cam.zoom) : reach;
     const list: number[] = [];
     for (let n = 0; n < this.tiles.length; n++) {
-      const tile = this.tiles[n]!, b = tile.box;
+      const tile = this.tiles[n];
+      if (!tile) continue;
+      const b = tile.box;
       const off = Math.hypot(Math.max(b[0]! - cam.x, cam.x - b[3]!, 0), Math.max(b[2]! - cam.z, cam.z - b[5]!, 0));
       const windowed = sighted && off <= most + TILE_METRES && cam.boxVisible(b[0]! - cam.x, b[1]! - cam.y, b[2]! - cam.z, b[3]! - cam.x, b[4]! - cam.y, b[5]! - cam.z);
       if (off > reach + 2 * TILE_METRES && !windowed && !(this.updates < tile.farUntil && off <= tile.farReach + 2 * TILE_METRES)) continue;
@@ -729,17 +791,12 @@ export class FarCity {
     }
     for (const n of this.around) {
       if (this.listed[n] === 2) continue;
-      this.letGo(p, this.tiles[n]!);
+      const tile = this.tiles[n];
+      if (tile) this.letGo(p, tile);
       this.listed[n] = 0;
     }
     for (const n of list) this.listed[n] = 1;
     return (this.around = list);
-  }
-
-  private tileOf(chunk: number): number {
-    const cx = chunk % this.dims.chunksX;
-    const cz = Math.floor(chunk / this.dims.chunksX);
-    return Math.floor(cz / CITY_TILE) * this.tilesX + Math.floor(cx / CITY_TILE);
   }
 
   /** Tile `t`'s corner nearest the map's origin, in metres. */
@@ -775,7 +832,11 @@ export class FarCity {
    */
   private settle(cam: Camera, now: number): void {
     for (const n of this.pending) {
-      const tile = this.tiles[n]!;
+      const tile = this.tiles[n];
+      if (!tile) {
+        this.pending.delete(n);
+        continue;
+      }
       if (this.makeMs !== Infinity && tile.letGoAt !== this.updates) {
         const near = this.off(tile, cam) < QUIET_WITHIN;
         if (now - tile.changedAt < (near ? QUIET_NEAR : QUIET_FAR) && now - tile.changedFrom < (near ? WAIT_NEAR : WAIT_FAR)) continue;
@@ -846,8 +907,8 @@ export class FarCity {
     for (const made of this.arrived) {
       const a = this.asked.get(made.id)!;
       this.asked.delete(made.id);
-      const tile = this.tiles[a.tile]!;
-      if (a.epoch !== tile.epoch) continue;
+      const tile = this.tiles[a.tile];
+      if (!tile || a.epoch !== tile.epoch) continue;
       const bit = 1 << a.form;
       tile.making &= ~bit;
       if ((tile.wants & bit) === 0) continue;
@@ -883,7 +944,8 @@ export class FarCity {
       if (lists && (lists.changed[c] ?? 0) !== this.rowsAt[c]) changed.add(c);
       // It is drawn from its tile's levels from this frame on, so they do not wait to leave out what went while it was near.
       const n = this.tileOfChunk[c]!;
-      if (n >= 0) this.tiles[n]!.letGoAt = this.updates;
+      const tile = n >= 0 ? this.tiles[n] : null;
+      if (tile) tile.letGoAt = this.updates;
     }
     // The chunks the near store has a table for, not every chunk of the map.
     for (const c of near?.held ?? []) {
@@ -923,10 +985,10 @@ export class FarCity {
    * where the map set it, so a rung makes no far layer again; cut up, its slot is empty and it is gone.
    */
   private salvaged(chunk: number, table: { readonly high: number; readonly kind: Uint16Array; readonly x: Float32Array; readonly z: Float32Array }, gone: Uint8Array): void {
-    const sets = this.wreckSets, city = this.source.statics, first = city.first[chunk]!;
-    for (let s = 0; sets && s < gone.length && s < table.high; s++) {
-      const set = gone[s] === 1 ? sets[city.kind[first + s]!]! : 0;
-      if (set !== 0 && sets[table.kind[s]!] === set && table.x[s] === city.x[first + s] && table.z[s] === city.z[first + s]) gone[s] = 0;
+    const sets = this.wreckSets, t = this.source.statics.rows(chunk), first = t?.from(chunk) ?? 0;
+    for (let s = 0; t && sets && s < gone.length && s < table.high; s++) {
+      const set = gone[s] === 1 ? sets[t.kind[first + s]!]! : 0;
+      if (set !== 0 && sets[table.kind[s]!] === set && table.x[s] === t.x[first + s] && table.z[s] === t.z[first + s]) gone[s] = 0;
     }
   }
 
@@ -969,8 +1031,8 @@ export class FarCity {
       for (let dx = -1; dx <= 1; dx++) {
         if (cx + dx < 0 || cz + dz < 0 || cx + dx >= this.dims.chunksX || cz + dz >= this.dims.chunksZ) continue;
         const n = this.tileOfChunk[(cz + dz) * this.dims.chunksX + cx + dx]!;
-        if (n < 0) continue;
-        const tile = this.tiles[n]!;
+        const tile = n >= 0 ? this.tiles[n] : null;
+        if (!tile) continue;
         tile.version++;
         tile.changedAt = this.now;
         if (tile.changedFrom < 0) tile.changedFrom = this.now;

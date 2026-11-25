@@ -25,7 +25,7 @@
 // only where its texels a metre are positive.
 
 import { CHUNK_SIZE, chunkCount, chunkCx, chunkCz, type MapDims } from "../../../shared/coords.ts";
-import { cityReach, cityTops, type CityStatics, type Gone } from "../../../shared/world/city.ts";
+import { cityTops, type CityStatics, type Gone } from "../../../shared/world/city.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import { TACTICAL_CELL, farTopMetres } from "../../../shared/world/tactical.ts";
 import type { HeldTops } from "./blocks.ts";
@@ -328,8 +328,10 @@ export class FarShadow {
   /** The statics and what stands of them, once handed over; the chunks of them with a piece that floats, and with a landmark's. */
   private statics: CityStatics | null = null;
   private standing: Standing | null = null;
-  private floats: ReadonlySet<number> = new Set();
-  private marks: ReadonlySet<number> = new Set();
+  private readonly floats = new Set<number>();
+  private readonly marks = new Set<number>();
+  /** The statics' squares as last taken in (CityStatics.news). */
+  private seenSquares = new Uint32Array(0);
   /** Chunks last made from what the far city says stands, made again when another far city takes over. */
   private readonly fromStanding = new Set<number>();
   /**
@@ -405,29 +407,46 @@ export class FarShadow {
   }
 
   /**
-   * The map's statics, and the far city that follows what stands of them, handed over: the chunks they change are made
-   * again, those with a piece that floats or a landmark's, those made from the far city before, and on a map without
-   * tops every chunk with pieces.
+   * The map's statics, and the far city that follows what stands of them, handed over: those made from the far city before
+   * are made again, and the squares of the statics as they are set in and let go (`follow`).
    */
   hand(statics: CityStatics, standing: Standing): void {
-    const was = this.statics;
-    for (const c of [...this.floats, ...this.marks, ...this.fromStanding]) this.mark(c);
+    for (const c of this.fromStanding) this.mark(c);
     this.fromStanding.clear();
+    if (statics !== this.statics) {
+      for (const c of this.floats) this.mark(c);
+      for (const c of this.marks) this.mark(c);
+      this.floats.clear();
+      this.marks.clear();
+      this.seenSquares = new Uint32Array(statics.size);
+    }
     this.statics = statics;
     this.standing = standing;
-    const floats = new Set<number>();
-    for (let c = 0; this.floating && c < chunkCount(this.dims); c++) {
-      for (let i = statics.first[c]!; i < statics.first[c + 1]!; i++) {
-        if (this.floating[statics.kind[i]!] !== 1) continue;
-        floats.add(c);
-        break;
-      }
-    }
-    this.floats = floats;
-    this.marks = this.own ? new Set(cityReach(statics, this.own).landmarks.keys()) : new Set();
-    for (const c of [...this.floats, ...this.marks]) this.mark(c);
-    if (!this.tops) for (let c = 0; c < this.dirty.length; c++) if (statics.in(c) > 0 || (was && was.in(c) > 0)) this.mark(c);
     this.seen = new Uint32Array(this.dirty.length);
+    this.follow();
+  }
+
+  /**
+   * Takes in each square of the statics set in or let go since last: its chunks with a piece that floats or a landmark's
+   * are made again, as are those that had one, and on a map without tops every chunk of it.
+   */
+  private follow(): void {
+    const s = this.statics;
+    s?.news(this.seenSquares, (sq, held) => {
+      for (let cz = sq.cz0; cz < sq.cz1; cz++) {
+        for (let cx = sq.cx0; cx < sq.cx1; cx++) {
+          const c = cz * this.dims.chunksX + cx;
+          const had = this.floats.delete(c), marked = this.marks.delete(c);
+          if (had || marked || !this.tops) this.mark(c);
+          const t = held ? s.rows(c) : null;
+          for (let i = t?.from(c) ?? 0; t && i < t.to(c); i++) {
+            if (this.floating?.[t.kind[i]!] === 1) this.floats.add(c);
+            if (this.own?.[t.kind[i]!] === 1) this.marks.add(c);
+          }
+          if (this.floats.has(c) || this.marks.has(c)) this.mark(c);
+        }
+      }
+    });
   }
 
   /**
@@ -457,8 +476,8 @@ export class FarShadow {
 
   /** The pieces of `chunk` gone, or of a kind `kinds` names, a byte each. */
   private leftOut(chunk: number, gone: Gone, kinds: Uint8Array): Uint8Array {
-    const s = this.statics!, from = s.first[chunk]!;
-    return Uint8Array.from(s.kind.subarray(from, s.first[chunk + 1]!), (k, i) => (kinds[k] === 1 || gone?.[i] === 1 ? 1 : 0));
+    const t = this.statics!.rows(chunk)!;
+    return Uint8Array.from(t.kind.subarray(t.from(chunk), t.to(chunk)), (k, i) => (kinds[k] === 1 || gone?.[i] === 1 ? 1 : 0));
   }
 
   /**
@@ -491,6 +510,7 @@ export class FarShadow {
     }
     const casts = cascades > 0 && sun !== null;
     this.take();
+    this.follow();
     this.notice();
     if (!this.away) this.makeSome(cell / TOP_CELL, now);
     const quiet = this.stale && (now - this.staleAt >= SWEEP_QUIET || now - this.staleFrom >= SWEEP_WAIT);

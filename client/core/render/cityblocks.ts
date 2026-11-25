@@ -121,6 +121,8 @@ export class CityBlocks {
   private statics: CityStatics | null = null;
   private standing: Standing | null = null;
   private readonly landmarks: Uint8Array;
+  /** The statics' squares as last taken in (CityStatics.news). */
+  private seenSquares = new Uint32Array(0);
   private readonly asked = new Map<number, number>();
   private next = 0;
   private sent = false;
@@ -277,19 +279,27 @@ export class CityBlocks {
   private changed(statics: CityStatics | null, standing: Standing | null, now: number): void {
     const tops = this.source.tops;
     if (statics !== this.statics) {
+      for (let c = 0; c < this.landmarks.length; c++) if (this.landmarks[c] === 1) this.tiles[this.tileOf(c)]!.dirty = true;
       this.statics = statics;
       this.landmarks.fill(0);
-      if (statics) {
-        for (let c = 0; c < this.landmarks.length; c++) {
-          for (let i = statics.first[c]!; i < statics.first[c + 1]!; i++) {
-            if (this.landmark[statics.kind[i]!] !== 1) continue;
+      this.seenSquares = new Uint32Array(statics?.size ?? 0);
+    }
+    // A square set in or let go: its chunks with a landmark's piece, then and now, are made again.
+    statics?.news(this.seenSquares, (sq, held) => {
+      for (let cz = sq.cz0; cz < sq.cz1; cz++) {
+        for (let cx = sq.cx0; cx < sq.cx1; cx++) {
+          const c = cz * this.dims.chunksX + cx, t = held ? statics.rows(c) : null;
+          if (this.landmarks[c] === 1) this.tiles[this.tileOf(c)]!.dirty = true;
+          this.landmarks[c] = 0;
+          for (let i = t?.from(c) ?? 0; t && i < t.to(c); i++) {
+            if (this.landmark[t.kind[i]!] !== 1) continue;
             this.landmarks[c] = 1;
             this.tiles[this.tileOf(c)]!.dirty = true;
             break;
           }
         }
       }
-    }
+    });
     this.standing = statics ? standing : null;
     const gone = this.standing?.goneVersion;
     const came = tops.version !== this.seenTops;
@@ -382,9 +392,9 @@ export class CityBlocks {
   private standingTops(chunk: number): Uint8Array | null {
     const statics = this.statics, gone = this.standing?.goneOf(chunk) ?? null;
     if (!statics || statics.in(chunk) === 0 || (gone === null && this.landmarks[chunk] === 0)) return null;
-    const from = statics.first[chunk]!;
+    const t = statics.rows(chunk)!, from = t.from(chunk);
     const left = new Uint8Array(statics.in(chunk));
-    for (let i = 0; i < left.length; i++) left[i] = gone?.[i] === 1 || this.landmark[statics.kind[from + i]!] === 1 ? 1 : 0;
+    for (let i = 0; i < left.length; i++) left[i] = gone?.[i] === 1 || this.landmark[t.kind[from + i]!] === 1 ? 1 : 0;
     return cityTops(statics, chunk, this.hf, left);
   }
 

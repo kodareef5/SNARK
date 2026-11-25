@@ -193,7 +193,7 @@ test("a map holds its bent pieces' bends, by chunk and slot, read whole and read
   let s = steps.next();
   while (!s.done) s = steps.next();
   const near = s.value, city = new CityStatics(map.dims, near, coreRegistry());
-  expect(city.bent).toBe(near);
+  expect(city.squareOf(0)!.map).toBe(near);
   const kept = [...near.bends.keys()];
   expect([kept.length > 0, kept.length < t.bends.size, kept.every((c) => near.first[c + 1]! > near.first[c]!)]).toEqual([true, true, true]);
   for (const c of kept) expect(near.bends.get(c)).toEqual(t.bends.get(c)!);
