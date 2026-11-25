@@ -57,6 +57,18 @@ export function actorOf(req: Request): Actor {
   return actors.get(req) ?? PAGE_ACTOR;
 }
 
+/** POSTs whose handler only read, such as a dry run, which the log of a page's changes leaves out. */
+const reads = new WeakSet<Request>();
+
+/** Marks a POST as one that changed nothing. */
+export function onlyRead(req: Request): void {
+  reads.add(req);
+}
+
+export function changedNothing(req: Request): boolean {
+  return reads.has(req);
+}
+
 /** Null where the admin pages may be shown, else the answer that says why not. */
 export function refused(req: Request, who: string, gate: AdminGate): Response | null {
   // A development server's open pages manage nothing: they act at staff rank, with cheats only.

@@ -33,8 +33,9 @@ import { screensAdmin } from "./video/routes.ts";
 import { ScreenFeed, screenWorld } from "./video/screens.ts";
 import { boardOwners, soundBoard } from "./sound-board.ts";
 import { TitleScenes } from "./admin/title-scenes.ts";
-import { actorOf, adminAsked, type AdminGate } from "./admin/gate.ts";
+import { actorOf, adminAsked, changedNothing, type AdminGate } from "./admin/gate.ts";
 import { staffPasswords } from "./permissions/secrets.ts";
+import { permissionsAdmin } from "./permissions/routes.ts";
 import { PAGE_ACTOR, type Actor } from "./acts.ts";
 import { adminSite, oldAdminPage } from "./admin/site.ts";
 import { TickMeter } from "./admin/meter.ts";
@@ -404,7 +405,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
     if (answer === null || req.method === "GET" || req.method === "HEAD") return answer;
     const log = (res: Response): Response => {
       const by = actorOf(req);
-      if (res.ok && by !== PAGE_ACTOR && !host.acts.wroteFor(by)) host.acts.write(by, `${req.method} ${path}`);
+      if (res.ok && by !== PAGE_ACTOR && !host.acts.wroteFor(by) && !changedNothing(req)) host.acts.write(by, `${req.method} ${path}`);
       return res;
     };
     return (answer instanceof Promise ? answer.then(log) : log(answer as Response)) as T;
@@ -532,6 +533,8 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
           ? titleScenes.admin(call) : entryReply({ error: "Open the studio on this cluster." }, 403),
         screens: (call, at) => call.method === "POST" && !originAllowed(call.headers.get("origin"), call.headers.get("host"), "")
           ? entryReply({ error: "Open the screens page on this cluster." }, 403) : screensAdmin(call, at, video, () => screenWorld(host)),
+        permissions: (call, at) => call.method === "POST" && !originAllowed(call.headers.get("origin"), call.headers.get("host"), "")
+          ? entryReply({ ok: false, why: "Open the permissions page on this cluster." }, 403) : permissionsAdmin(call, at, host),
       }));
       if (siteAdmin) return siteAdmin;
       const { at, path } = placeOf(base, url.pathname);

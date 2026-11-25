@@ -62,9 +62,11 @@ import { Console, OP_ADMIN } from "./console.ts";
 import { Acts, PAGE_ACTOR, type Actor } from "./acts.ts";
 import { PermissionStore } from "./permissions/store.ts";
 import { Permissions, type PermissionSubject } from "./permissions/permissions.ts";
-import { memberWorld, type PermissionOp } from "../shared/permissions/model.ts";
+import { memberWorld, type PermissionActor, type PermissionOp } from "../shared/permissions/model.ts";
 import { changeWords } from "../shared/permissions/commands.ts";
 import { makePassword, passwordHash } from "./permissions/secrets.ts";
+import { applyPlan, type Applied, type ImportPlan } from "./permissions/import.ts";
+import { RANK_CLUSTER, RANK_MAP, RANK_NAMES } from "../shared/ranks.ts";
 import { DeadlineHeap } from "../shared/sim/schedule.ts";
 import { Buffs } from "./buffs.ts";
 import { CityCollapse } from "./city-collapse.ts";
@@ -338,6 +340,8 @@ export interface Host {
   issuePassword(by: Actor, id: string): { readonly why: string; readonly password: string };
   /** Takes survivor `id`'s password away as `by`. Answers "" or why not. */
   clearPassword(by: Actor, id: string): string;
+  /** Makes an import's changes as `by`, who needs the top rank there is: each under the rule, all as one act that names `what`. */
+  importPermissions(by: Actor, what: string, plan: ImportPlan): Applied & { readonly why: string };
   /** A session as its groups know it, or null before it has a survivor with an ID. */
   subjectOf(c: Client): PermissionSubject | null;
   readonly loaded: LoadReport | null;
@@ -1593,6 +1597,19 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     const why = changePermissions(by, { op: "setSecret", id, hash: passwordHash(password) });
     return { why, password: why === "" ? password : "" };
   };
+  const importPermissions = (by: Actor, what: string, plan: ImportPlan): Applied & { why: string } => {
+    const top = cluster ? RANK_CLUSTER : RANK_MAP;
+    if (by.rank < top) return { why: `An import needs the ${RANK_NAMES[top]} rank.`, done: 0, refused: [] };
+    const apply = (actor: PermissionActor, op: PermissionOp): string => {
+      const why = permissions.apply(actor, op);
+      if (why === "") bus.after(PERM_CHANGED, { account: "key" in op ? op.key : "id" in op ? op.id : "", group: "group" in op ? (permissions.group(op.group)?.name ?? op.group) : "" });
+      return why;
+    };
+    const applied = applyPlan({ apply }, { rank: by.rank, name: by.name, world: permissions.world }, plan);
+    acts.write(by, `imported ${what}: ${applied.done} ${applied.done === 1 ? "change" : "changes"}`, "change");
+    restand();
+    return { why: "", ...applied };
+  };
   // A tribe's groups are its members'.
   tribes.onTeam = (rec) => {
     refreshBody(rec);
@@ -2254,6 +2271,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     changePermissions,
     issuePassword,
     clearPassword: (by, id) => changePermissions(by, { op: "clearSecret", id }),
+    importPermissions,
     subjectOf,
     loaded,
     console: con,
