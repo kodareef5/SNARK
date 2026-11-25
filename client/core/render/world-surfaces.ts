@@ -1,3 +1,5 @@
+import { TEK_RAIL_COLOUR } from "../../../content/building/tek-wall.ts";
+import { TEK_FIELD, TEK_TRIM } from "./tek-field.ts";
 import { fixtureShader } from "./street-finish.ts";
 // Metre-space materials for terrain and meshes without authored surfaces. CPU and GLSL deliberately use the same
 // projection, integer hash, noises, blends and weather fields. There is no animation clock here.
@@ -12,7 +14,7 @@ import { STEP0_SIZE, topIn, type TextureFormat } from "../../../shared/pack/text
 import type { Tier } from "../assets/tiers.ts";
 import { WEIGHT } from "../assets/residency.ts";
 import { REGION_BASE, defaultPalette } from "../../../shared/pack/palette.ts";
-import { FACE_PLAIN, FACE_WEARS, PIECE_MADE_BITS, PIECE_STAGE } from "./piece-fit.ts";
+import { FACE_PLAIN, FACE_WEARS, FIT_CLASS_SHIFT, FIT_WALL, PIECE_MADE_BITS, PIECE_STAGE } from "./piece-fit.ts";
 import { PIECE_MADE, PIECE_WEAR, PIECE_WEAR_SHIFT, WEAR_OVER_MADE } from "./pieces.ts";
 import { FRAME, WORLD_LAYERS, type FramePacket } from "./packet.ts";
 import { srgbToLinear } from "./surface.ts";
@@ -365,6 +367,8 @@ export function madeShift(r: MaterialRecipe): [number, number] {
  */
 export const madeFar = (r: MaterialRecipe): number => Math.min(r.metres, 4 * Math.min(r.course ? r.course.size[1] : Infinity, r.rib ? r.rib.pitch : Infinity));
 
+export let fieldRelief = 0.5;
+
 /**
  * Material `k` made from a recipe (content/texgen/materials.ts, from 1) on finish `id` at world point (x, y, z) of a
  * face projected along `axis`, a pixel `footprint` metres wide, into `maps` and `scales`: its two layers of the made
@@ -397,11 +401,12 @@ function made(k: number, id: number, axis: number, x: number, y: number, z: numb
   maps.lean[0] = maps.lean[1] = 0;
   maps.patch = patch;
   if (piece) maps.base[3] = 1 / f.palette;
+  fieldRelief = 0.5;
   if (t <= 0) return;
   const layer = slots[(k - 1) * MADE_FLOATS]!, shift = r.shift;
   const second = piece ? 0 : clamp((surfaceNoise((wu * WORLD_PATCH) / m + 5.3, (wv * WORLD_PATCH) / m + 1.7) - 0.35) / 0.3);
   let share = second * second * (3 - 2 * second), flipU = 1, flipV = 1, tiltU = 0, tiltV = 0, sheet = 1, rusts = 0, primed = 0;
-  if (piece) {
+  if (piece && k !== TEK_FIELD) {
     const own = ((seed >> 9) & 7) / 7;
     if ((piece.bits & PIECE_PLAIN) !== 0) {
       // Folded to and fro across the middle of the tile, so no joint or rivet falls on it.
@@ -452,6 +457,12 @@ function made(k: number, id: number, axis: number, x: number, y: number, z: numb
   maps.lean[1] = turn ? -lx : ly;
   scales.rough += (1 - scales.rough) * t;
   scales.bump += (1 - scales.bump) * t;
+  if (piece && k === TEK_FIELD) {
+    fieldRelief = maps.mro[3]!;
+    maps.base[3] = 1 / f.palette;
+    scales.height = r.relief;
+    return;
+  }
   if (piece) {
     // Rust where the paint's hold is under the sheet's measure, a sheet in primer, and no dye on either.
     const edge = PIECE_RUST[0] - rusts, rust = smooth(edge - PIECE_RUST_BAND, edge + PIECE_RUST_BAND, 1 - madeBase[3]!) * t, light = 2 * madeBase[1]! * mottle;
@@ -1182,7 +1193,10 @@ export function spalled(x: number, y: number, z: number, nx: number, ny: number,
  */
 const PIECE_MADE_TEXT = `  if (uPiece > 0.5) {
     bool region = aColor >= ${REGION_BASE}u;
-    uint wears = region || (aBone & ${FACE_WEARS}u) != 0u ? iRegA.w & ${PIECE_MADE_BITS}u : 0u;
+    uint material = iRegA.w & ${PIECE_MADE_BITS}u;
+    if (material == ${TEK_FIELD}u && (iRegB.y >> ${FIT_CLASS_SHIFT}u) != ${FIT_WALL}u) material = ${TEK_TRIM}u;
+    bool finish = material == ${TEK_FIELD}u ? aColor == ${TEK_RAIL_COLOUR}u : (aBone & ${FACE_WEARS}u) != 0u;
+    uint wears = region || finish ? material : 0u;
     uint h = floatBitsToUint(iPos.x) * 2654435761u ^ floatBitsToUint(iPos.y) * 2246822519u ^ floatBitsToUint(iPos.z) * 3266489917u;
     h = (h ^ (h >> 15u)) * 2246822519u;
     vMade = int(wears | ((iRegB.x & ${PIECE_STAGE}u) << ${WEAR_OVER_MADE}u) | (wears == 0u ? 0u : ${PIECE_OWN << PIECE_OVER_WEAR}u | ((aBone & ${FACE_PLAIN}u) << ${PIECE_OVER_WEAR + 1 - 7}u) | (region ? 0u : ${PIECE_FIXED << PIECE_OVER_WEAR}u) | ((h >> 20u) << ${PIECE_OVER_WEAR + PIECE_SEED}u)));
@@ -1355,6 +1369,7 @@ int worldMade = 0;
 vec3 worldOwn = vec3(0.0);
 vec2 worldTurn = vec2(1.0, 0.0);
 int worldPiece = 0;
+float fieldRelief = 0.5;
 vec3 ownOf(vec3 v) { return vec3(worldTurn.x * v.x - worldTurn.y * v.z, v.y, worldTurn.y * v.x + worldTurn.x * v.z); }
 // A piece's face as its weathering takes it: the piece's own axis nearest its normal, in the world, the same at every pixel of it.
 vec3 ownFace(vec3 n) {
@@ -1406,7 +1421,7 @@ bool made(int k, int id, inout int axis, vec3 face, vec3 rel, vec3 dpx, vec3 dpy
   share = share * share * (3.0 - 2.0 * share);
   vec2 flip = vec2(1.0), tilt = vec2(0.0);
   float sheet = 1.0, rusts = 0.0, primed = 0.0;
-  if (own) {
+  if (own && k != ${TEK_FIELD}) {
     if ((worldPiece & 2) != 0) {
       vec2 f = fract((q + float(seed & 31) * 0.37) / (2.0 * MQ[k]));
       flip = vec2(f.x < 0.5 ? -1.0 : 1.0, f.y < 0.5 ? -1.0 : 1.0);
@@ -1444,6 +1459,12 @@ bool made(int k, int id, inout int axis, vec3 face, vec3 rel, vec3 dpx, vec3 dpy
   mro = mix(mro, vec4(mro.r * min(1.0, 0.8 + 0.4 * r.a), r.b, mro.b, r.a), t);
   bump = (r.rg - 0.5) * 2.0 * t;
   if (turn) bump = -bump.yx;
+  if (own && k == ${TEK_FIELD}) {
+    fieldRelief = mro.a;
+    base.a = 1.0 / WT[id].w;
+    scales = vec3(mix(scales.xy, vec2(1.0), t), MD[k].y);
+    return true;
+  }
   if (own) {
     float edge = ${fl(PIECE_RUST[0])} - rusts, rust = smoothstep(edge - ${fl(PIECE_RUST_BAND)}, edge + ${fl(PIECE_RUST_BAND)}, 1.0 - b.a) * t;
     base.rgb = mix(base.rgb * mix(1.0, sheet, t), vec3(${PIECE_PRIMER.map(fl).join(", ")}) * 2.0 * b.g * mottle, primed * t);

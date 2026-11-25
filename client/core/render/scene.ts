@@ -64,6 +64,7 @@ import { NearCity } from "./nearcity.ts";
 import { MADE_AT, OPTIC_AT, OPTIC_HEAT } from "./packet.ts";
 import { BONE_FLOATS, GLASS_AT, DRAW_BENT, DRAW_BLEND, DRAW_CUTOUT, DRAW_GROUND, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SKINNED, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_DRAWS, MAX_TILES, PASS_FAR, PASS_NEAR, TRANSIENT_BUFFER, markJoins, texturedFlags, quadIndexCount, SHORE_AT } from "./packet.ts";
 import { MADE_MARK, WorldFinishes, citySurface, finishTaps, surfaceCity } from "./world-surfaces.ts";
+import { FIELD_PHASE, fieldPhase } from "./tek-field.ts";
 import { madePhase, materialIndex, noMade, texgenBytes } from "../texgen/layers.ts";
 import type { Wants } from "../texgen/engine.ts";
 import { FinishNear, NEAR_FRONT, NEAR_GLASS, NEAR_MADE, NEAR_WALL } from "./finish-near.ts";
@@ -838,6 +839,7 @@ export class Scene {
     if (this.wants) this.wants.frame(this.nearMade, p.texgenSide > 0 ? p.texgenHolds : null, p.frame, MADE_AT);
     else noMade(p.frame, MADE_AT);
     madePhase(p.frame, MADE_AT, cam.x, cam.y, cam.z);
+    p.frame[MADE_AT + FIELD_PHASE] = fieldPhase(this.now);
     this.facades.frame(p, this.assets.residency, p.tier, near[NEAR_WALL]!, near[NEAR_FRONT]!, near[NEAR_GLASS]!, scale);
     this.characters.heatView = false;
     if (p.tier.lit) {
@@ -990,6 +992,8 @@ export class Scene {
     const p = this.packet;
     const { rotorBlur, patrolLights, thrusterPlumes, windscreens, tireContacts } = this.characters;
     const { streetLamps, streetWires } = this;
+    const fields = this.shots?.tekImpacts;
+    fields?.build(this.world.structs, cam, this.now);
     const orbCards = this.world.orbs ? (this.orbs?.cards ?? null) : null;
     streetWires.build(p, cam, this.world.structs, this.world.dims.chunksX, this.world.dims.chunksZ);
     tireContacts.build(p, this.world);
@@ -997,7 +1001,7 @@ export class Scene {
     this.dust.build(cam, this.now);
     this.blasts.viewHeight = this.viewHeight;
     this.blasts.cards(cam, this.now, this.own?.firstPerson);
-    const cut = this.details.frame(p, cam, remote, this.characters.fallen, this.shots?.ends ?? NO_SHOTS, this.own, this.world.hf, this.assets.tier, this.now, this.world, tireContacts.count + windscreens.count + rotorBlur.count + patrolLights.count + thrusterPlumes.count + streetLamps.count + streetWires.count + this.damage.count + this.dust.count + this.blasts.count + (orbCards?.count ?? 0));
+    const cut = this.details.frame(p, cam, remote, this.characters.fallen, this.shots?.ends ?? NO_SHOTS, this.own, this.world.hf, this.assets.tier, this.now, this.world, tireContacts.count + windscreens.count + rotorBlur.count + patrolLights.count + thrusterPlumes.count + streetLamps.count + streetWires.count + this.damage.count + this.dust.count + this.blasts.count + (orbCards?.count ?? 0) + (fields?.count ?? 0));
     const particles = p.detailCount;
     // An orb's halo first of the cards, so what is nearer is drawn over it.
     orbCards?.write(p);
@@ -1020,6 +1024,7 @@ export class Scene {
     p.burstCount = wheelsAndGlass - smoke;
     tireContacts.write(p);
     windscreens.write(p);
+    fields?.write(p);
     // The damage numbers' cards, drawn last of all below, over the clouds too.
     const numbers = p.detailCount;
     this.damage.write(p);
@@ -1038,7 +1043,7 @@ export class Scene {
     this.put.drawDetails(street, dust - street, DRAW_BLEND, streetLamps.passes(cam));
     this.put.drawDetails(dust, smoke - dust, DRAW_BLEND, this.dust.passes(cam));
     this.put.drawDetails(smoke, wheelsAndGlass - smoke, DRAW_BLEND, this.blasts.passes(cam));
-    this.put.drawDetails(wheelsAndGlass, numbers - wheelsAndGlass, DRAW_BLEND, tireContacts.passes(cam) | windscreens.passes(cam));
+    this.put.drawDetails(wheelsAndGlass, numbers - wheelsAndGlass, DRAW_BLEND, tireContacts.passes(cam) | windscreens.passes(cam) | (fields?.count ? fields.passes(cam) : 0));
     this.put.drawDetails(seen, solid, DRAW_CUTOUT, far);
     this.put.drawDetails(seen + solid, p.detailCount - seen - solid, DRAW_BLEND, far);
     this.put.drawDetails(numbers, glassAndNumbers - numbers, DRAW_BLEND, this.damage.passes(cam));

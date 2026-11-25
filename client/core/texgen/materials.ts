@@ -31,6 +31,7 @@ export function materialRows(r: MaterialRecipe, which: number): Float32Array {
   if (c) f.set([c.size[0], c.size[1], c.bond, c.joint, c.depth, c.tone, c.dark, c.pillow ?? 0], 40);
   if (b) f.set([b.pitch, b.width, b.height, 0], 48);
   if (v) f.set([v.pitch, v.inset, v.radius, v.height, v.streak, v.run, v.rust, v.wear, v.foot ?? 0, v.bare ?? 0, 0, 0], 52);
+  if (r.trace) f.set([r.trace.width, r.trace.depth], 10);
   return f;
 }
 
@@ -95,6 +96,15 @@ export function materialHeight(f: Float32Array, x: number, y: number, out: Float
     const pitch = f[48]!, fx = x - Math.floor(x / pitch) * pitch, d = Math.min(fx, pitch - fx);
     const rib = f[49]! > 0 ? 1 - smoothstep(0.5 * f[49]!, f[49]!, d) : 0.5 + 0.5 * Math.cos((6.283185307179586 * fx) / pitch);
     h = h * (1 - f[50]!) + f[50]! * rib;
+  }
+  if (f[10]! > 0) {
+    const u = x / T - Math.floor(x / T), v = y / T - Math.floor(y / T);
+    const bend = Math.min(0.16, Math.max(0, u - 0.26)) - Math.min(0.16, Math.max(0, u - 0.61));
+    const a = Math.max(0.12 - u, u - 0.88, Math.abs(v - 0.31 - bend));
+    const b = Math.max(0.20 - u, u - 0.76, Math.abs(v - 0.34 - bend));
+    const cut = 1 - smoothstep(f[10]! * 0.3, f[10]!, T * Math.min(a, b));
+    h -= f[11]! * cut;
+    light *= 1 - 0.32 * cut;
   }
   h = Math.min(Math.max(h, 0), 1);
   out[0] = light * (1 + f[5]! * (h - 0.5));
@@ -180,6 +190,15 @@ const MATERIAL_GLSL = `float heightOf(float x, float y, out vec3 look) {
     float fx = x - floor(x / b.x) * b.x, d = min(fx, b.x - fx);
     float rib = b.y > 0.0 ? 1.0 - smoothstep(0.5 * b.y, b.y, d) : 0.5 + 0.5 * cos(6.283185307179586 * fx / b.x);
     h = h * (1.0 - b.z) + b.z * rib;
+  }
+  if (uJob[4].z > 0.0) {
+    vec2 uv = fract(vec2(x, y) / T);
+    float bend = clamp(uv.x - 0.26, 0.0, 0.16) - clamp(uv.x - 0.61, 0.0, 0.16);
+    float a = max(max(0.12 - uv.x, uv.x - 0.88), abs(uv.y - 0.31 - bend));
+    float b = max(max(0.20 - uv.x, uv.x - 0.76), abs(uv.y - 0.34 - bend));
+    float cut = 1.0 - smoothstep(uJob[4].z * 0.3, uJob[4].z, T * min(a, b));
+    h -= uJob[4].w * cut;
+    light *= 1.0 - 0.32 * cut;
   }
   h = clamp(h, 0.0, 1.0);
   look = vec3(light * (1.0 + uJob[3].y * (h - 0.5)), dye, warm);

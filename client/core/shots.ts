@@ -13,10 +13,11 @@ import { STANCE_STAND, stanceHeight } from "../../shared/sim/character.ts";
 import { FLIGHT_TICKS, HITSCAN_RANGE, WATER_SPEED, flyEnd, flyStep, launchSpeed, piece, type Flight } from "../../shared/sim/projectiles.ts";
 import { TICK_DT, TICK_RATE } from "../../shared/coords.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
-import { HIT_NONE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
+import { HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
 import { bodyAlong, seaHere } from "../../shared/world/water.ts";
 import { shotDir } from "../../shared/sim/aim.ts";
 import { shotRays } from "../../shared/content/registry.ts";
+import { TekImpacts, TEK_IMPACT_REACH } from "./render/tek-impacts.ts";
 import type { Blasts } from "./render/blasts.ts";
 import type { Camera } from "./render/camera.ts";
 import type { Characters } from "./render/characters.ts";
@@ -104,6 +105,9 @@ interface Flying extends Flight {
   splash: boolean;
   /** It has just left, and its first piece has not been tested against the bodies drawn. */
   fresh: boolean;
+  fieldRef: number;
+  fieldNx: number;
+  fieldNz: number;
   /**
    * A round that goes off where it ends (EVENT_ROCKET): the server ends it, by its blast, and it meets no body here.
    * Its number, 0 until it is told, and the name the fire knows it by.
@@ -194,8 +198,11 @@ export class Shots {
   /** The whole tick the flights have been flown through. */
   private tick = -1;
 
+  readonly tekImpacts: TekImpacts;
+
   constructor(reg: Registry, pack?: Pack) {
     this.reg = reg;
+    this.tekImpacts = new TekImpacts(reg.index.get("core:wall_tek") ?? -1);
     if (pack) this.name(new Assets(reg, pack));
   }
 
@@ -221,7 +228,8 @@ export class Shots {
     this.kept = [...new Set([...this.meshOfAmmo, ...this.flashOfAmmo, ...this.burstOfAmmo, this.tracerMesh, this.blastMesh, this.ballMesh])].filter((m) => m >= 0);
   }
 
-  absorb(session: ClientSession, world: CollisionWorld, nowMs: number): void {
+  absorb(session: ClientSession, world: CollisionWorld, nowMs: number, remote: RemoteSample | null = null): void {
+    this.bodiesSorted = false;
     const reg = this.reg;
     const d = this.dir;
     // Its own gun's silencer is on its own books.
@@ -248,12 +256,12 @@ export class Shots {
           lookDirection(s.yaw, s.pitch, d);
           this.flash(s.x + d[0]! * AHEAD, s.y - BELOW + d[1]! * AHEAD, s.z + d[2]! * AHEAD, nowMs);
         }
-        this.pellets(world, s.x, s.y, s.z, Math.fround(s.yaw), Math.fround(s.pitch), Math.fround(s.cone), s.seed, rays, true, nowMs);
+        this.pellets(world, s.x, s.y, s.z, Math.fround(s.yaw), Math.fround(s.pitch), Math.fround(s.cone), s.seed, rays, true, nowMs, remote);
         continue;
       }
       shotDir(s.seed, 0, s.yaw, s.pitch, s.cone, d);
       if (full <= 0) {
-        const reach = castWorld(world, s.x, s.y, s.z, d[0]!, d[1]!, d[2]!, HITSCAN_RANGE) === HIT_NONE ? HITSCAN_RANGE : rayHit.t;
+        const reach = this.castTracer(world, s.x, s.y, s.z, d, true, remote, nowMs);
         if (!silenced) this.flash(s.x + d[0]! * AHEAD, s.y - BELOW + d[1]! * AHEAD, s.z + d[2]! * AHEAD, nowMs);
         this.line(s.x + d[0]! * AHEAD, s.y - BELOW + d[1]! * AHEAD, s.z + d[2]! * AHEAD, s.x + d[0]! * reach, s.y + d[1]! * reach, s.z + d[2]! * reach, nowMs);
       } else {
@@ -300,7 +308,7 @@ export class Shots {
           lookDirection(ev.vx, ev.vy, d);
           this.flash(ev.x + d[0]! * AHEAD, ev.y - BELOW + d[1]! * AHEAD, ev.z + d[2]! * AHEAD, nowMs);
         }
-        this.pellets(world, ev.x, ev.y, ev.z, ev.vx, ev.vy, ev.vz, ev.seed, ev.rays, false, nowMs);
+        this.pellets(world, ev.x, ev.y, ev.z, ev.vx, ev.vy, ev.vz, ev.seed, ev.rays, false, nowMs, remote);
       } else {
         if (!ev.silenced) {
           const dx = ev.vx - ev.x;
@@ -310,10 +318,40 @@ export class Shots {
           const k = l > AHEAD ? AHEAD / l : 0;
           this.flash(ev.x + dx * k, ev.y - BELOW + dy * k, ev.z + dz * k, nowMs);
         }
+        this.terminalContact(world, ev.x, ev.y, ev.z, ev.vx, ev.vy, ev.vz, nowMs);
         this.line(ev.x, ev.y, ev.z, ev.vx, ev.vy, ev.vz, nowMs);
       }
     }
     events.length = kept;
+  }
+
+  private nearImpact(x: number, y: number, z: number): boolean {
+    const me = this.me;
+    return (x - me.x) ** 2 + (y - me.y) ** 2 + (z - me.z) ** 2 <= (TEK_IMPACT_REACH + 3) ** 2;
+  }
+
+  private castTracer(world: CollisionWorld, x: number, y: number, z: number, d: readonly number[], own: boolean, remote: RemoteSample | null, now: number): number {
+    const dx = d[0]!, dy = d[1]!, dz = d[2]!;
+    if (castWorld(world, x, y, z, dx, dy, dz, HITSCAN_RANGE) === HIT_NONE) return HITSCAN_RANGE;
+    const { kind, ref, t, nx, nz } = rayHit;
+    const ex = x + dx * t, ey = y + dy * t, ez = z + dz * t;
+    if (kind !== HIT_STRUCTURE || world.structs.chunks[ref >>> 16]?.kind[ref & 65535] !== this.tekImpacts.kind || !this.nearImpact(ex, ey, ez)) return t;
+    const sea = world.hf.seaLevel;
+    if (y > sea && ey < sea && seaHere(world.hf.water, x + dx * (sea - y) / dy, z + dz * (sea - y) / dy)) return t;
+    if (bodyAlong(world.hf.water, x, y, z, dx, dy, dz, t) < t || this.bodyReach(own, !own, x, z, x, y, z, dx, dy, dz, t, remote) < t) return t;
+    this.tekImpacts.hit(world.structs, ref, ex, ey, ez, nx, nz, dx, dy, dz, now);
+    return t;
+  }
+
+  /** The server supplies another shooter's endpoint. A short probe recovers the struck face. */
+  private terminalContact(world: CollisionWorld, x: number, y: number, z: number, ex: number, ey: number, ez: number, now: number): void {
+    if (this.tekImpacts.kind < 1 || !this.nearImpact(ex, ey, ez)) return;
+    const length = Math.hypot(ex - x, ey - y, ez - z);
+    if (length < 0.03) return;
+    const dx = (ex - x) / length, dy = (ey - y) / length, dz = (ez - z) / length;
+    const ox = ex - dx * 0.03, oy = ey - dy * 0.03, oz = ez - dz * 0.03;
+    if (castWorld(world, ox, oy, oz, dx, dy, dz, 0.033) !== HIT_STRUCTURE || Math.abs(rayHit.t - 0.03) > 0.003) return;
+    this.tekImpacts.hit(world.structs, rayHit.ref, ox + dx * rayHit.t, oy + dy * rayHit.t, oz + dz * rayHit.t, rayHit.nx, rayHit.nz, dx, dy, dz, now);
   }
 
   /** A flash at (x, y, z). The blast's cube looks the same every way; a bolt's own points along (dx, dy, dz), the way its shot left. */
@@ -326,11 +364,11 @@ export class Shots {
    * A tracer for each of a shot's `rays` from (x, y, z), each shotDir(seed, k, ...) about the aim `yaw`, `pitch` within
    * `cone`, as the server cast them, to the world it meets. `own`: drawn from ahead of the eye, as its own shot is.
    */
-  private pellets(world: CollisionWorld, x: number, y: number, z: number, yaw: number, pitch: number, cone: number, seed: number, rays: number, own: boolean, nowMs: number): void {
+  private pellets(world: CollisionWorld, x: number, y: number, z: number, yaw: number, pitch: number, cone: number, seed: number, rays: number, own: boolean, nowMs: number, remote: RemoteSample | null): void {
     const d = this.dir;
     for (let k = 0; k < rays; k++) {
       shotDir(seed, k, yaw, pitch, cone, d);
-      const reach = castWorld(world, x, y, z, d[0]!, d[1]!, d[2]!, HITSCAN_RANGE) === HIT_NONE ? HITSCAN_RANGE : rayHit.t;
+      const reach = this.castTracer(world, x, y, z, d, own, remote, nowMs);
       const ahead = own ? AHEAD : 0;
       this.line(x + d[0]! * ahead, y - (own ? BELOW : 0) + d[1]! * ahead, z + d[2]! * ahead, x + d[0]! * reach, y + d[1]! * reach, z + d[2]! * reach, nowMs);
     }
@@ -405,7 +443,7 @@ export class Shots {
     const f: Flying = {
       x, y, z, vx, vy, vz, gravity: reg.ammoGravity[ammo]!, mesh, ammo, left: FLIGHT_TICKS, age: 0, flown: 0, reach: reg.ammoReach[ammo]!, sx: x, sz: z,
       own: mine, wet, under: y < world.hf.waterAt(x, z), clear: 0, lead: 0, met: false, gone: false, splash: false, fresh: !rocket,
-      rocket, id, key: id, lit: false, ox: 0, oy: 0, oz: 0, waits: 0,
+      fieldRef: -1, fieldNx: 0, fieldNz: 0, rocket, id, key: id, lit: false, ox: 0, oy: 0, oz: 0, waits: 0,
     };
     const flame = reg.ammoFlame[ammo]!;
     if (rocket && speed > 0) {
@@ -439,7 +477,9 @@ export class Shots {
       if (ended > 0) {
         flyStep(f, f.gravity);
         if (f.flown + piece.length >= ended) {
-          this.end(f, piece.x, piece.y, piece.z, piece.dx, piece.dy, piece.dz, ended - f.flown, nowMs);
+          const length = ended - f.flown;
+          this.terminalContact(world, piece.x, piece.y, piece.z, piece.x + piece.dx * length, piece.y + piece.dy * length, piece.z + piece.dz * length, nowMs);
+          this.end(f, piece.x, piece.y, piece.z, piece.dx, piece.dy, piece.dz, length, nowMs);
           return;
         }
       }
@@ -512,6 +552,7 @@ export class Shots {
     flyStep(f, f.gravity);
     let length = piece.length;
     const { x, y, z, dx, dy, dz } = piece;
+    f.fieldRef = -1;
     f.met = f.splash = false;
     // The piece that reaches its reach is cut there, as the server cuts it.
     f.gone = !(length > 0) || (f.reach > 0 && f.flown + length >= f.reach);
@@ -536,6 +577,11 @@ export class Shots {
     }
     if (whole && length > 0 && castWorld(world, x, y, z, dx, dy, dz, length) !== HIT_NONE) {
       length = rayHit.t;
+      if (rayHit.kind === HIT_STRUCTURE && world.structs.chunks[rayHit.ref >>> 16]?.kind[rayHit.ref & 65535] === this.tekImpacts.kind) {
+        f.fieldRef = rayHit.ref;
+        f.fieldNx = rayHit.nx;
+        f.fieldNz = rayHit.nz;
+      }
       f.met = true;
       f.splash = false;
     }
@@ -551,18 +597,23 @@ export class Shots {
    */
   private bodies(f: Flying, remote: RemoteSample | null): void {
     f.fresh = false;
-    let length = f.clear;
     // A round that goes off meets no body here: the server's blast ends it.
-    if (f.rocket || !(length > 0)) return;
+    if (f.rocket || !(f.clear > 0)) return;
     const { x, y, z, dx, dy, dz } = piece;
-    let met = false;
+    const length = this.bodyReach(f.own, f.age < 2, f.sx, f.sz, x, y, z, dx, dy, dz, f.clear, remote);
+    if (length >= f.clear) return;
+    f.fieldRef = -1;
+    f.clear = length;
+    if (length < f.lead) f.lead = length;
+    f.met = true;
+    f.splash = false;
+  }
+
+  private bodyReach(own: boolean, near: boolean, sx: number, sz: number, x: number, y: number, z: number, dx: number, dy: number, dz: number, length: number, remote: RemoteSample | null): number {
     const me = this.me;
-    if (!f.own && me.r > 0) {
+    if (!own && me.r > 0) {
       const t = rayBox(x, y, z, dx, dy, dz, me.x - me.r, me.y, me.z - me.r, me.x + me.r, me.y + me.h, me.z + me.r);
-      if (t < length) {
-        length = t;
-        met = true;
-      }
+      if (t < length) length = t;
     }
     if (remote && remote.count > 0) {
       if (!this.bodiesSorted) {
@@ -571,7 +622,6 @@ export class Shots {
       }
       const reg = this.reg;
       // A shot starts inside its shooter's box, so over its first two pieces whoever stands where it left is passed over.
-      const near = f.age < 2;
       const pad = this.nearWide;
       const ex = x + dx * length;
       const ez = z + dz * length;
@@ -589,7 +639,7 @@ export class Shots {
             const r = reg.bodyRadius[kind]!;
             const bx = remote.x[i]!, bz = remote.z[i]!;
             if (bx + r < minX || bx - r > maxX || bz + r < minZ || bz - r > maxZ) continue;
-            if (near && (bx - f.sx) * (bx - f.sx) + (bz - f.sz) * (bz - f.sz) < (r + SHOOTER) * (r + SHOOTER)) continue;
+            if (near && (bx - sx) * (bx - sx) + (bz - sz) * (bz - sz) < (r + SHOOTER) * (r + SHOOTER)) continue;
             // As tall as its kind stands first: few are in the way at all, and only one that is has its stance read.
             const full = reg.bodyHeight[kind]!;
             let t = rayBox(x, y, z, dx, dy, dz, bx - r, remote.y[i]!, bz - r, bx + r, remote.y[i]! + full, bz + r);
@@ -597,19 +647,12 @@ export class Shots {
             const tall = this.tall(remote, i, kind);
             if (!(tall > 0)) continue;
             if (tall < full) t = rayBox(x, y, z, dx, dy, dz, bx - r, remote.y[i]!, bz - r, bx + r, remote.y[i]! + tall, bz + r);
-            if (t < length) {
-              length = t;
-              met = true;
-            }
+            if (t < length) length = t;
           }
         }
       }
     }
-    if (!met) return;
-    f.clear = length;
-    if (length < f.lead) f.lead = length;
-    f.met = true;
-    f.splash = false;
+    return length;
   }
 
   /**
@@ -623,6 +666,11 @@ export class Shots {
     if (--f.left < 0) return f.rocket && this.wait(f, nowMs);
     flyStep(f, f.gravity);
     const whole = piece.length;
+    if (f.fieldRef >= 0) {
+      const { x, y, z, dx, dy, dz } = piece;
+      const ex = x + dx * f.clear, ey = y + dy * f.clear, ez = z + dz * f.clear;
+      if (this.nearImpact(ex, ey, ez)) this.tekImpacts.hit(world.structs, f.fieldRef, ex, ey, ez, f.fieldNx, f.fieldNz, dx, dy, dz, nowMs);
+    }
     if (f.rocket && (f.met || f.gone)) {
       if (f.met) this.ended(piece.x, piece.y, piece.z, piece.dx, piece.dy, piece.dz, nowMs);
       f.x = piece.x + piece.dx * f.clear;

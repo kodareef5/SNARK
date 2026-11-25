@@ -51,6 +51,8 @@ export interface MaterialRecipe {
    * `foot` metres above a unit's lower edge. A built piece's read turns that to rust, each sheet by its own measure.
    */
   readonly rivet?: { readonly pitch: number; readonly inset: number; readonly radius: number; readonly height: number; readonly streak: number; readonly run: number; readonly rust: number; readonly wear: number; readonly foot?: number; readonly bare?: number };
+  /** Width in metres and depth as a share of the relief of a pair of etched conductors. */
+  readonly trace?: { readonly width: number; readonly depth: number };
   /** It lies on faces that look up alone, a roof's: its piece's other faces are their painted finish. */
   readonly lies?: true;
   /** It is a coat over its wall: where the weathering finds the plaster lost, its relief lies down with it. A block's joints stay. */
@@ -105,5 +107,10 @@ export const MATERIAL_RECIPES: readonly MaterialRecipe[] = [
     noise: [{ cell: [0.375, 0.375], height: 0.14, light: 0.04 }, { cell: [0.03, 0.75], height: 0, light: 0.13, warp: 0.02 }, { cell: [0.006, 0.006], height: 0.05, light: 0.03 }, { cell: [0.125, 0.125], height: 0.04, light: 0.09 }],
     course: { size: [0.75, 0.75], bond: 0, joint: 0.004, depth: 0.85, tone: 0, dark: 0.4, pillow: 0.3 },
     rivet: { pitch: 0.108, inset: 0.052, radius: 0.012, height: 0.5, streak: 0.35, run: 0.35, rust: 0.3, wear: 0.3, foot: 0.12, bare: 1 },
+  },
+  {
+    name: "tek_field", metres: 1.5, seed: 97, level: 0.5, relief: 2, rough: 0.37, hollow: 0.22, dye: 1, shade: 0.22, mottle: 0.025, means: [1, 1, 0.37],
+    noise: [{ cell: [0.375, 0.015], height: 0.24, light: 0.16 }, { cell: [0.125, 0.006], height: 0.14, light: 0.12 }],
+    trace: { width: 0.01, depth: 0.43 },
   },
 ];

@@ -179,7 +179,7 @@ test("the fabricator makes the shock dart, the flashlight and laser, the poison 
   // freight order is what an air support call spends (content/vehicles/air-freight.ts).
   // The plasma guns and what they fire are ours, in place of ARK's Tek Replicator (tests/combat/plasma.test.ts).
   // The rocket launcher and its rocket are ARK's, with numbers held by tests/combat/rockets.test.ts.
-  const expected = [...Object.keys(FABRICATOR), "electronics", "polymer", "helicopter_assembly", "boat_assembly", "soul_ball", "piece_soul_vault", "freight_order",
+  const expected = [...Object.keys(FABRICATOR), "electronics", "polymer", "helicopter_assembly", "boat_assembly", "soul_ball", "piece_soul_vault", "freight_order", "piece_wall_tek",
     "rifle_plasma", "pistol_plasma", "plasma_cell", "plasma_charge", "rocket_launcher", "rocket",
     ...["hat", "shirt", "gloves", "pants", "boots"].map(piece => `meridian_${piece}`)].sort();
   expect([makes("fabricator"), makes("fabricator_lit")]).toEqual([expected, expected]);
@@ -188,7 +188,7 @@ test("the fabricator makes the shock dart, the flashlight and laser, the poison 
 });
 
 test("each of the fabricator's moved recipes is refused in the hand and made at a lit fabricator, from its slots into them", () => {
-  makesEach("fabricator", Object.keys(FABRICATOR), ["gasoline", 1]);
+  makesEach("fabricator", [...Object.keys(FABRICATOR), "piece_wall_tek"], ["gasoline", 1]);
 });
 
 // The preserving bin's: jerky, which the lit bin makes by itself (fired, D534).

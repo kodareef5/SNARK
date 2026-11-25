@@ -48,6 +48,7 @@ const SHAPES: readonly ShapeDef[] = Object.keys(ROWS).map((name) => {
 interface Tier {
   readonly name: string;
   readonly color: number;
+  readonly material?: string;
   readonly hp: { readonly [piece: string]: number };
   /** The material made from a recipe (content/texgen/materials.ts) its pieces' faces in their own colour wear, where the tier has no pictures. */
   readonly made?: string;
@@ -78,6 +79,7 @@ const TIERS: readonly Tier[] = [
   { name: "stone", color: 5, hp: STONE },
   // A light steel grey, whose painted finish is steel (content/surfaces.ts); its pieces are made by tools/pack/pieces/metal.ts.
   { name: "metal", color: 90, hp: FULL, made: "plate" },
+  { name: "tek", color: 83, hp: { wall: 12500 }, material: "metal", made: "tek_field" },
 ];
 /** The forms a tier is made in: those it has a health for that content places. */
 const formsOf = (tier: Tier): string[] => Object.keys(tier.hp).filter((name) => name in ROWS);
@@ -86,7 +88,7 @@ export const TIER_FORMS: Readonly<Record<string, readonly string[]>> = Object.fr
 
 function piece(tier: Tier, name: string): StructureDef {
   const form = SHAPES.find((s) => s.id === `core:shape_${name}`)!;
-  const base: StructureDef = { type: "structure", class: "piece", id: `core:${name}_${tier.name}`, mesh: "shape", shape: form.id, half: shapeHalf(form.boxes, form.hulls), color: tier.color, hp: tier.hp[SHUTS[name] ?? name]!, material: `core:mat_${tier.name}`, ...(tier.made ? { made: tier.made } : {}) };
+  const base: StructureDef = { type: "structure", class: "piece", id: `core:${name}_${tier.name}`, mesh: "shape", shape: form.id, half: shapeHalf(form.boxes, form.hulls), color: tier.color, hp: tier.hp[SHUTS[name] ?? name]!, material: `core:mat_${tier.material ?? tier.name}`, ...(tier.made ? { made: tier.made } : {}) };
   const other = OPENS[name] ?? SHUTS[name];
   return other === undefined ? base : { ...base, opens: `core:${other}_${tier.name}`, locked: true };
 }
@@ -158,10 +160,19 @@ interface Making {
   readonly weight: number;
   readonly cost?: number;
   readonly at?: string;
-  readonly pieces: { readonly [piece: string]: { readonly level: number; readonly cost?: number; readonly xp?: number; readonly needs: Needs } };
+  readonly pieces: { readonly [piece: string]: { readonly level: number; readonly cost?: number; readonly xp?: number; readonly needs: Needs; readonly requires?: readonly string[] } };
 }
 
 const MAKING: { readonly [tier: string]: Making } = {
+  tek: {
+    label: "Tek",
+    weight: 6,
+    cost: 12,
+    at: "core:fabricator",
+    pieces: {
+      wall: { level: 90, needs: [["ingot", 35], ["polymer", 20], ["crystal", 15], ["electronics", 2]], requires: ["core:engram-piece_fabricator", "core:engram-piece_wall_metal"] },
+    },
+  },
   thatch: {
     label: "Thatch",
     weight: 2,
@@ -299,11 +310,11 @@ function kit(tier: Tier, name: string): Def[] {
   if (forms.length === 0) return [];
   const item = `core:piece_${name}_${tier.name}`;
   const label = `${m.label} ${name.replaceAll("_", " ")}`;
-  const { level, needs, cost, xp } = m.pieces[name]!;
+  const { level, needs, cost, xp, requires } = m.pieces[name]!;
   return [
     { type: "item", class: "structure", id: item, stack: 100, weight: m.weight, label: label.toLowerCase(), color: tier.color, places: forms.map((f) => `core:${f}_${tier.name}`) },
     ...crafting(item, { needs: needs.map(([n, count]) => ({ item: `core:${n}`, count })), seconds: 5, xp: xp ?? Math.max(1, Math.round(level / 3)), ...(m.at ? { at: m.at } : {}) }),
-    { type: "engram", id: `core:engram-piece_${name}_${tier.name}`, label, level, cost: cost ?? m.cost!, item: `core:piece_${name}_${tier.name}` },
+    { type: "engram", id: `core:engram-piece_${name}_${tier.name}`, label, level, cost: cost ?? m.cost!, item, ...(requires ? { requires } : {}) },
   ];
 }
 

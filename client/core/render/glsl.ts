@@ -2,6 +2,7 @@
 // low poly has always been drawn with, and a test pins its hash so that it stays so. A WebGL2 shell compiles it as is.
 // The lit tiers draw the same vertices with LIT, which lights them as surface.ts does.
 
+import { RAIL_LIGHT, TEK_FIELD, TEK_FIELD_GLSL } from "./tek-field.ts";
 import { DRY_ASPHALT } from "../../../content/surfaces.ts";
 import { GLASS, RUST, STEEL, STREET_GLSL } from "./street-finish.ts";
 import { REGION_BASE } from "../../../shared/pack/palette.ts";
@@ -18,7 +19,7 @@ import { OVER_GROUND_GLSL, SKY_OPEN_GLSL } from "./skyopen.ts";
 import { ROOF_GLSL } from "./roof.ts";
 import { LIGHT, THROUGH } from "./surface.ts";
 import { FACADE_GLSL, ROOM_OPEN_LEAST } from "./facade.ts";
-import { GROUND_BAND, GROUND_GLSL, GROUND_SCALE, PIECE_OVER_WEAR, ROAD_GLSL, SPALL_RIM, SPALL_SURFACE, STREETS_GLSL, WORLD_GLSL, WORLD_SHARP } from "./world-surfaces.ts";
+import { GROUND_BAND, GROUND_GLSL, GROUND_SCALE, PIECE_FIXED, PIECE_OVER_WEAR, PIECE_OWN, PIECE_SEED, ROAD_GLSL, SPALL_RIM, SPALL_SURFACE, STREETS_GLSL, WORLD_GLSL, WORLD_SHARP } from "./world-surfaces.ts";
 import { WET_DARK, WET_GLSL, WET_ROUGH } from "./bank.ts";
 
 const f = (n: number): string => n.toFixed(4);
@@ -82,7 +83,11 @@ flat in int vFacade;
 #endif
 uniform float uSolid, uAlpha, uSkin;
 out vec4 o;
-${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${AIR}${WORLD_GLSL.replace("WORLD_NORMAL", "rg")}${FACADE_GLSL}${STREET_GLSL}void main() {
+${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${AIR}${WORLD_GLSL.replace("WORLD_NORMAL", "rg")}${FACADE_GLSL}${STREET_GLSL}
+#ifdef WORLD_WEATHER
+${TEK_FIELD_GLSL}
+#endif
+void main() {
   vec3 dx = dFdx(vRel), dy = dFdy(vRel);
   vec3 geometric = normalize(cross(dx, dy));
   vec3 n = geometric;
@@ -167,6 +172,16 @@ ${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${AIR}${WOR
     }
   }
 #endif
+  vec3 localLight = room * skyLight(geometric) * roomOpen;
+#ifdef WORLD_WEATHER
+  if (worldMade == ${TEK_FIELD} && (worldPiece & ${PIECE_OWN | PIECE_FIXED}) == ${PIECE_OWN}) {
+    orm.yz = vec2(clamp(orm.y, 0.30, 0.45), 0.38);
+    worldSharp = true;
+    localLight += tekFieldLight(vOwn.xy, worldPiece >> ${PIECE_SEED}, dot(geometric, v), max(length(dx), length(dy)), fieldRelief);
+  } else if (worldMade == ${TEK_FIELD} && (worldPiece & ${PIECE_FIXED}) != 0) {
+    localLight += vec3(${RAIL_LIGHT.map(f).join(", ")}) / max(fSunColor.w, 0.001);
+  }
+#endif
   vec3 r = reflect(-v,n);
   vec3 mirrored = orm.y >= 1.0 ? vec3(0.0) : worldSharp ? skyFrom(r) : skyLight(r);
   mirrored = mix(mirrored, far.rgb * skyLight(-geometric), far.a);
@@ -179,7 +194,7 @@ ${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${AIR}${WOR
   orm.y = receives > 0.0 ? glossRoughness(orm.y,receives) : orm.y;
   mirrored = streetMirror(mirrored,r,vRel,orm.y,receives);
 #endif
-  o = vec4(shown(lit(albedo, orm * vec3(open, 1.0, 1.0), n, v, mirrored, sunShadow(vRel, geometric)) + room * skyLight(geometric) * roomOpen, vRel), uAlpha);
+  o = vec4(shown(lit(albedo, orm * vec3(open, 1.0, 1.0), n, v, mirrored, sunShadow(vRel, geometric)) + localLight, vRel), uAlpha);
 }`;
 
 /** `text` with `from` put as `to`, which it must hold. */
@@ -201,7 +216,7 @@ export const LIT_MESH_FRAGMENT = [
   ["  vec3 v = -normalize(vRel);\n", "  vec3 v = -normalize(vRel);\n  if (vShare < 1.0) n = v;\n"],
   ["  orm.y = receives > 0.0", "  if (uSolid >= 2.0 && vShare >= 1.0) receives = max(receives,clamp((0.85-orm.y)*3.0,0.0,1.0)*orm.z);\n  orm.y = receives > 0.0"],
   ["worldSharp ? skyFrom(r)", "worldSharp || vFinish.y < 1.0 ? skyFrom(r)"],
-  ["  o = vec4(shown(lit(albedo, orm * vec3(open, 1.0, 1.0), n, v, mirrored, sunShadow(vRel, geometric)) + room * skyLight(geometric) * roomOpen, vRel), uAlpha);", "  float shade = sunShadow(vRel, sunward(geometric, vFinish.w));\n  o = vec4(shown(lit(albedo, orm * vec3(open, 1.0, 1.0), n, v, mirrored, shade) + through(albedo, orm, n, vFinish.w, shade) + room * skyLight(geometric) * roomOpen, vRel), uAlpha * vShare);"],
+  ["  o = vec4(shown(lit(albedo, orm * vec3(open, 1.0, 1.0), n, v, mirrored, sunShadow(vRel, geometric)) + localLight, vRel), uAlpha);", "  float shade = sunShadow(vRel, sunward(geometric, vFinish.w));\n  o = vec4(shown(lit(albedo, orm * vec3(open, 1.0, 1.0), n, v, mirrored, shade) + through(albedo, orm, n, vFinish.w, shade) + localLight, vRel), uAlpha * vShare);"],
 ].reduce((text, [from, to]) => swap(text, from!, to!), LIT_FRAGMENT);
 
 /**
