@@ -38,9 +38,10 @@ export function cleanChat(text: string): string {
   return clean.length > MAX_CHAT_CHARS ? clean.slice(0, MAX_CHAT_CHARS) : clean;
 }
 
-/** The runs a line is sent as: the speaker's name, then the words, both in the channel's colour. */
-export function plainRuns(speaker: Client | string, _channel: number, text: string): TextRun[] {
-  return [{ text: typeof speaker === "string" ? speaker : speaker.name }, { text: `: ${text}` }];
+/** The runs a line is sent as: the speaker's name, then the words, both in the channel's colour. For other maps, `map` goes first in brackets. */
+export function plainRuns(speaker: Client | string, _channel: number, text: string, map?: string): TextRun[] {
+  const runs = [{ text: typeof speaker === "string" ? speaker : speaker.name }, { text: `: ${text}` }];
+  return map ? [{ text: `[${map}] ` }, ...runs] : runs;
 }
 
 export class Chat {
@@ -55,8 +56,15 @@ export class Chat {
   private readonly ctx: ChatContext;
   /** Told of every line a survivor says, once it is said: Cast's people hear it (server/cast/host.ts). */
   readonly listeners: ((speaker: string, channel: number, x: number, z: number, text: string) => void)[] = [];
-  /** Makes a line's runs from its speaker (a survivor's client, or one of the world's people by name), its channel and its cleaned text. */
-  format: (speaker: Client | string, channel: number, text: string) => TextRun[] = plainRuns;
+  /**
+   * Makes a line's runs from its speaker (a survivor's client, or one of the world's people by name), its channel and its cleaned
+   * text. `map` is given, as this map's name, only when the runs are for the cluster's other maps.
+   */
+  format: (speaker: Client | string, channel: number, text: string, map?: string) => TextRun[] = plainRuns;
+  /** This map's name as the cluster's other maps show it before a line from here; "" for none. */
+  mapName = "";
+  /** Where it is set, told of every global line said here, with the runs the cluster's other maps show (server/cluster/chat-relay.ts). */
+  relay: ((speaker: string, runs: TextRun[]) => void) | null = null;
 
   constructor(ctx: ChatContext) {
     this.ctx = ctx;
@@ -145,9 +153,27 @@ export class Chat {
     }
     if (this.recent.length === RECENT_LINES) this.recent.shift();
     this.recent.push({ at: Date.now(), channel, speaker: c.name, text: line });
+    if (channel === TEXT_GLOBAL && this.relay) this.relay(c.name, this.format(c, channel, line, this.mapName));
     bus.after(CHAT_SAID, { pid: c.pid, channel, text: line, heard: this.delivered - heard });
     for (const l of this.listeners) l(c.name, channel, x, z, line);
     return RESULT_OK;
+  }
+
+  /**
+   * A global line said on another map of the cluster, shown here as it was made there, to everyone who has not muted its
+   * speaker. It is not this map's: it is not in recentLines, no module hears of it, and it counts against nobody. Returns how
+   * many saw it.
+   */
+  fromOtherMap(speaker: string, runs: readonly TextRun[]): number {
+    if (this.ctx.rules.on("ProximityChat")) return 0;
+    let n = 0;
+    for (const to of this.ctx.game.clients) {
+      if (!to?.active || to.closed || this.muted(to.name, speaker)) continue;
+      this.ctx.game.sendChat(to, TEXT_GLOBAL, runs);
+      this.delivered++;
+      n++;
+    }
+    return n;
   }
 
   /**
