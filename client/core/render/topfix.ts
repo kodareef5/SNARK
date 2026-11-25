@@ -27,6 +27,7 @@ const KEEP = 2 * 16 * CHUNK_SIZE;
 
 /** A chunk's tops as what stands makes them. */
 export interface Fix {
+  readonly chunk: number;
   /** Its standing pieces' tops, a landmark's left out; null where the map's tops are right. */
   readonly blocks: Uint8Array | null;
   /** With a landmark's pieces in, where it has any; else null. */
@@ -37,6 +38,7 @@ export interface Fix {
 
 /** A chunk whose tops are to be made: since when its list has changed, and the list's count of changes it waits for. */
 interface Due {
+  readonly chunk: number;
   since: number;
   last: number;
   told: number;
@@ -79,7 +81,7 @@ export class TopFix {
     for (const c of chunks) {
       if (this.marks.has(c)) continue;
       this.marks.add(c);
-      this.due.set(c, { since: -Infinity, last: -Infinity, told: 0 });
+      this.due.set(c, { chunk: c, since: -Infinity, last: -Infinity, told: 0 });
     }
   }
 
@@ -98,18 +100,20 @@ export class TopFix {
     this.stats.asked = this.stats.made = 0;
     if (lists && lists.version !== this.listsSeen) {
       this.listsSeen = lists.version;
-      for (const [c, list] of lists.lists) {
+      for (const c of lists.lists.keys()) {
         const told = lists.changed[c]!;
         if (this.seenLists.get(c) === told) continue;
         this.seenLists.set(c, told);
-        if (list.length === 0 && !this.fixes.has(c) && !this.marks.has(c)) continue;
+        if (lists.lists.get(c)!.length === 0 && !this.fixes.has(c) && !this.marks.has(c)) continue;
         const d = this.due.get(c);
-        if (d) [d.last, d.told] = [now, told];
-        else this.due.set(c, { since: now, last: now, told });
+        if (d) {
+          d.last = now;
+          d.told = told;
+        } else this.due.set(c, { chunk: c, since: now, last: now, told });
       }
     }
-    for (const [c, d] of this.due) {
-      const off = this.off(c, x, z);
+    for (const d of this.due.values()) {
+      const c = d.chunk, off = this.off(c, x, z);
       if (off > view) continue;
       if (cells && cells.full[c] === 1) {
         // Sent empty, its cells are none: every piece is gone.
@@ -131,7 +135,7 @@ export class TopFix {
       if (this.off(c, x, z) <= view + KEEP) continue;
       this.fixes.delete(c);
       // Past the view its tops are made again when it comes back.
-      if (this.marks.has(c) || (lists?.lists.get(c)?.length ?? 0) > 0) this.due.set(c, { since: -Infinity, last: -Infinity, told: lists?.changed[c] ?? 0 });
+      if (this.marks.has(c) || (lists?.lists.get(c)?.length ?? 0) > 0) this.due.set(c, { chunk: c, since: -Infinity, last: -Infinity, told: lists?.changed[c] ?? 0 });
     }
   }
 
@@ -188,7 +192,7 @@ export class TopFix {
   }
 
   private put(chunk: number, blocks: Uint8Array | null, solid: Uint8Array | null): void {
-    this.fixes.set(chunk, { blocks, solid, stamp: ++this.version });
+    this.fixes.set(chunk, { chunk, blocks, solid, stamp: ++this.version });
     this.stats.made++;
   }
 

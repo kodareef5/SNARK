@@ -574,7 +574,7 @@ export class FarShadow {
     }
     const fix = this.fix;
     if (fix && fix.version !== this.seenFix) {
-      for (const [c, f] of fix.fixes) if (f.stamp > this.seenFix) this.mark(c);
+      for (const f of fix.fixes.values()) if (f.stamp > this.seenFix && !this.statics?.holds(f.chunk)) this.mark(f.chunk);
       this.seenFix = fix.version;
     }
     if (gone && this.made) this.roof?.changed();

@@ -323,10 +323,10 @@ export class CityBlocks {
         this.seenGone[c] = g;
       }
     }
-    // Tops made of what stands: a tile they change is made at once, the wait for its sector having been the wait for its pieces.
+    // Tops made of what stands past the statics held: a tile they change is made at once, the fetch having been the wait.
     const fix = this.fix;
     if (fix && fix.version !== this.seenFix) {
-      for (const [c, f] of fix.fixes) if (f.stamp > this.seenFix) this.tiles[this.tileOf(c)]!.dirty = true;
+      for (const f of fix.fixes.values()) if (f.stamp > this.seenFix && !statics?.holds(f.chunk)) this.tiles[this.tileOf(f.chunk)]!.dirty = true;
       this.seenFix = fix.version;
     }
     // Ground that came: a tile whose blocks stand on samples that changed, or whose feet reach into them, is made again.
