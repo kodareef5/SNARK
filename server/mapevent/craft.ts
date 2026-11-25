@@ -259,10 +259,12 @@ export class CraftSky implements SkyTarget {
     return true;
   }
 
+  far(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number): boolean {
+    return !rayNearBox(this.craft.track.box, this.radius, ox, oy, oz, dx, dy, dz, maxT);
+  }
+
   ray(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number, t: number): number {
     const c = this.craft;
-    // A ray nowhere near the whole of its path is passed without working out where it is.
-    if (!rayNearBox(c.track.box, this.radius, ox, oy, oz, dx, dy, dz, maxT)) return Infinity;
     const p = this.pose;
     if (!this.at(t, p)) return Infinity;
     return rayHull(p.x, p.y, p.z, c.radius, c.half, ox, oy, oz, dx, dy, dz, maxT);

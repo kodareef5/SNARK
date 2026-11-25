@@ -55,24 +55,28 @@ export const newCraftPose = (): CraftPose => ({ x: 0, y: 0, z: 0, vx: 0, vy: 0, 
 /** A point's place in the list with the ends repeated, which is how a centripetal spline is carried to its first and last points. */
 const at = (points: readonly PathPoint[], i: number): PathPoint => points[i < 0 ? 0 : i >= points.length ? points.length - 1 : i]!;
 
+/** Between `a` at knot `ta` and `b` at knot `tb`, at knot `t`. */
+function lerp(a: number, b: number, ta: number, tb: number, t: number): number {
+  return tb - ta < 1e-9 ? a : (a * (tb - t) + b * (t - ta)) / (tb - ta);
+}
+
+/** One axis of the centripetal Catmull-Rom spline through a, b, c, d (the Barry and Goldman form), at knot `t`. */
+function axis(a: number, b: number, c: number, d: number, t0: number, t1: number, t2: number, t3: number, t: number): number {
+  const a1 = lerp(a, b, t0, t1, t);
+  const a2 = lerp(b, c, t1, t2, t);
+  const a3 = lerp(c, d, t2, t3, t);
+  return lerp(lerp(a1, a2, t0, t2, t), lerp(a2, a3, t1, t3, t), t1, t2, t);
+}
+
 /**
- * The centripetal Catmull-Rom spline through four points at parameter `u` of the middle segment, 0 to 1 (the Barry and
- * Goldman form). The knots are spaced by the square root of each step's length, which keeps a tight turn from looping.
+ * The spline through four points at parameter `u` of the middle segment, 0 to 1. The knots are spaced by the square
+ * root of each step's length, which keeps a tight turn from looping. Nothing is made: it runs for every shot near a craft.
  */
 function spline(p0: PathPoint, p1: PathPoint, p2: PathPoint, p3: PathPoint, t0: number, t1: number, t2: number, t3: number, u: number, out: { x: number; y: number; z: number }): void {
   const t = t1 + (t2 - t1) * u;
-  const lerp = (a: number, b: number, ta: number, tb: number): number => (tb - ta < 1e-9 ? a : (a * (tb - t) + b * (t - ta)) / (tb - ta));
-  const axis = (a: number, b: number, c: number, d: number): number => {
-    const a1 = lerp(a, b, t0, t1);
-    const a2 = lerp(b, c, t1, t2);
-    const a3 = lerp(c, d, t2, t3);
-    const b1 = lerp(a1, a2, t0, t2);
-    const b2 = lerp(a2, a3, t1, t3);
-    return lerp(b1, b2, t1, t2);
-  };
-  out.x = axis(p0.x, p1.x, p2.x, p3.x);
-  out.y = axis(p0.y, p1.y, p2.y, p3.y);
-  out.z = axis(p0.z, p1.z, p2.z, p3.z);
+  out.x = axis(p0.x, p1.x, p2.x, p3.x, t0, t1, t2, t3, t);
+  out.y = axis(p0.y, p1.y, p2.y, p3.y, t0, t1, t2, t3, t);
+  out.z = axis(p0.z, p1.z, p2.z, p3.z, t0, t1, t2, t3, t);
 }
 
 const scratch = { x: 0, y: 0, z: 0 };

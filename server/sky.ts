@@ -37,6 +37,11 @@ export interface SkyTarget {
   readonly lockable: boolean;
   /** A sphere round its middle that holds the whole of it, in metres: the broad test. */
   readonly radius: number;
+  /**
+   * Whether the ray from (ox, oy, oz) within `maxT` cannot come near it at any tick: asked first, so a target whose whole
+   * path is far from a shot is passed without working out where it is.
+   */
+  far?(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number): boolean;
   /** Its middle and velocity at tick `t` (fractional ticks allowed) into `out`. False if it is not in the sky then. */
   at(t: number, out: SkyPoint): boolean;
   /** The distance along the unit ray from (ox, oy, oz) at which it meets the hull at tick `t`, within `maxT`, or Infinity. */
@@ -80,7 +85,7 @@ export class Sky {
     let bestT = maxT;
     const p = this.point;
     for (const s of this.targets) {
-      if (!s.at(t, p)) continue;
+      if (s.far?.(ox, oy, oz, dx, dy, dz, bestT) || !s.at(t, p)) continue;
       // The broad test: the ray's nearest approach to the sphere's middle, within its reach.
       const mx = p.x - ox;
       const my = p.y - oy;
