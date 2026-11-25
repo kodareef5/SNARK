@@ -1,4 +1,5 @@
 import { RUIN_SHAPES, type RuinShape } from "../../content/ruins.ts";
+import { SLACK } from "./cell-lists.ts";
 import { binKey } from "./raster.ts";
 import type { RuinRecord } from "./ruins.ts";
 import type { StaticPiece } from "./statics.ts";
@@ -51,7 +52,10 @@ export function clearCirculation(pieces: StaticPiece[], records: RuinRecord[], i
   const blocked = (p: StaticPiece): boolean => {
     const shape = p.kind.split("_")[1] as RuinShape; const [w, h, d] = RUIN_SHAPES[shape];
     const a = p.yaw * Math.PI / 180; const c = Math.cos(a); const s = Math.sin(a); const radius = Math.hypot(w, d) / 2;
+    // The box widened .46 m a side lies within half its two sides and .92 m of its middle: a line past that misses it.
+    const far = (w + d) / 2 + .92 + SLACK;
     for (let z = Math.floor((p.z - radius) / 32); z <= Math.floor((p.z + radius) / 32); z++) for (let x = Math.floor((p.x - radius) / 32); x <= Math.floor((p.x + radius) / 32); x++) for (const route of grid.get(binKey(x, z)) ?? []) {
+      if ((route.a.x < p.x - far && route.b.x < p.x - far) || (route.a.x > p.x + far && route.b.x > p.x + far) || (route.a.z < p.z - far && route.b.z < p.z - far) || (route.a.z > p.z + far && route.b.z > p.z + far)) continue;
       if (!route.street && route.a.y === route.b.y && shape.startsWith("floor") && Math.abs(p.y + h / 2 - route.a.y) < .12) continue;
       const point = (q: Point): number[] => { const dx = q.x - p.x; const dz = q.z - p.z; return [dx * c - dz * s, q.y - p.y, dx * s + dz * c]; };
       const from = point(route.a); const to = point(route.b); const low = [-w / 2 - .46, -h / 2 - 2.05, -d / 2 - .46]; const high = [w / 2 + .46, h / 2 - (route.street ? .38 : .12), d / 2 + .46];

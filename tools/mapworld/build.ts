@@ -152,8 +152,12 @@ export async function buildMap(named: string, release = false, output = join(ROO
     waterAt: site.waterAt, groundAt: site.groundAt, inside, chunk: chunkOf,
     room: (x, z) => pieceCounts[chunkOf(x, z)]! < budget - 2, took: (x, z) => { pieceCounts[chunkOf(x, z)]!++; },
   }, districtAt, (mesh) => meshes.has(mesh), lanes);
-  // The street's furniture where a dock comes ashore is taken up, the last first so the others keep their places.
-  for (const i of [...new Set(marinas.cleared)].sort((a, b) => b - a)) { pieceCounts[chunkOf(statics[i]!.x, statics[i]!.z)]!--; statics.splice(i, 1); }
+  // The street's furniture where a dock comes ashore is taken up in one pass, the rest keeping their order.
+  const ashore = new Set(marinas.cleared);
+  for (const i of ashore) pieceCounts[chunkOf(statics[i]!.x, statics[i]!.z)]!--;
+  let stays = 0;
+  for (let i = 0; i < statics.length; i++) if (!ashore.has(i)) statics[stays++] = statics[i]!;
+  statics.length = stays;
   for (const p of marinas.pieces) statics.push(p);
   lap(`${marinas.runs.length} runs of dock and ${marinas.slips.length} boats moored at ${docks.size} marinas' mapped piers and ${marinas.slipped.size} marinas in all; ${marinas.pieces.length} pieces`);
   const wrecks = harbourWrecks(latticeSites, harbours, reg, statics, {
@@ -198,8 +202,8 @@ export async function buildMap(named: string, release = false, output = join(ROO
   // so none stands in it or before its terminal, nor within 6 m of a parked car.
   const clearings = [...spawns.map((s) => [(x1 - s.x) / 2, (z1 - s.z) / 2, 16] as const), ...obelisks.map((o) => [(x1 - o.x) / 2, (z1 - o.z) / 2, o.color ? (o.radius! / 2 + 2) ** 2 : 49] as const), ...vehicles.map((c) => [(x1 - c.x) / 2, (z1 - c.z) / 2, 9] as const)];
   const growth = world.heaps === false ? vocabulary(source).growth : undefined;
-  const cleared = clearingMask((nx - 1) / 2, (nz - 1) / 2, clearings);
-  const nodes = makeNodes(ground, world, (col, row) => (!growth && site.clearPlants[Math.floor(row / 2) * ((nx - 1) / 2) + Math.floor(col / 2)] === 1) || berths[row * nx + col] === 1 || cleared[Math.floor(row / 2) * ((nx - 1) / 2) + Math.floor(col / 2)] === 1, (col, row) => site.lowPlants[Math.floor(row / 2) * ((nx - 1) / 2) + Math.floor(col / 2)] === 1, growth);
+  const clear = clearingMask((nx - 1) / 2, (nz - 1) / 2, clearings);
+  const nodes = makeNodes(ground, world, (col, row) => (!growth && site.clearPlants[Math.floor(row / 2) * ((nx - 1) / 2) + Math.floor(col / 2)] === 1) || berths[row * nx + col] === 1 || clear[Math.floor(row / 2) * ((nx - 1) / 2) + Math.floor(col / 2)] === 1, (col, row) => site.lowPlants[Math.floor(row / 2) * ((nx - 1) / 2) + Math.floor(col / 2)] === 1, growth);
   lap("nodes");
 
   const layers = join(output, name, "layers");
@@ -376,11 +380,9 @@ export async function buildMap(named: string, release = false, output = join(ROO
     }
   }
   const surfaces: Record<string, number> = {};
-  for (const [key, value] of Object.entries(S)) {
-    let m = 0;
-    for (let i = 0; i < nx * nz; i++) if (ground.surface[i] === value) m++;
-    surfaces[key.toLowerCase()] = Math.round(m * 4);
-  }
+  const bySurface = new Float64Array(256);
+  for (let i = 0; i < nx * nz; i++) bySurface[ground.surface[i]!]!++;
+  for (const [key, value] of Object.entries(S)) surfaces[key.toLowerCase()] = Math.round(bySurface[value]! * 4);
   // The tallest ruins as they stand, and for each a place on a street 60 to 140 m off to see it from.
   const top = new Float32Array(ground.heaps.ruins.length);
   for (let i = 0; i < nx * nz; i++) {

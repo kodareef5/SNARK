@@ -2,6 +2,7 @@ import { frame as packedFrame, frameOf as packedFrameOf } from "../../shared/wor
 import { RUIN_SHAPES, type RuinShape } from "../../content/ruins.ts";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { binKey } from "./raster.ts";
 import type { Grid } from "./base.ts";
 import { Mason, type Frame, type Point } from "./ruin-geometry.ts";
 import type { Site, StaticPiece } from "./statics.ts";
@@ -370,16 +371,16 @@ export function bridgeHoles(frame: Frame, corridors: readonly Corridor[], base: 
 }
 
 export function corridorIndex(corridors: readonly Corridor[]): ((frame: Frame) => Corridor[]) & { add: (c: Corridor) => void } {
-  const bins = new Map<string, Corridor[]>();
+  const bins = new Map<number, Corridor[]>();
   const add = (c: Corridor): void => {
     for (let x = Math.floor((Math.min(c.a[0], c.b[0]) - c.width) / 128); x <= Math.floor((Math.max(c.a[0], c.b[0]) + c.width) / 128); x++) for (let z = Math.floor((Math.min(c.a[1], c.b[1]) - c.width) / 128); z <= Math.floor((Math.max(c.a[1], c.b[1]) + c.width) / 128); z++) {
-      const k = `${x},${z}`; if (!bins.has(k)) bins.set(k, []); bins.get(k)!.push(c);
+      const k = binKey(x, z); const bin = bins.get(k); if (bin) bin.push(c); else bins.set(k, [c]);
     }
   };
   for (const c of corridors) add(c);
   const lookup = (frame: Frame): Corridor[] => {
     const found = new Set<Corridor>(); const radius = Math.hypot(frame.width, frame.depth) / 2;
-    for (let x = Math.floor((frame.x - radius) / 128); x <= Math.floor((frame.x + radius) / 128); x++) for (let z = Math.floor((frame.z - radius) / 128); z <= Math.floor((frame.z + radius) / 128); z++) for (const c of bins.get(`${x},${z}`) ?? []) found.add(c);
+    for (let x = Math.floor((frame.x - radius) / 128); x <= Math.floor((frame.x + radius) / 128); x++) for (let z = Math.floor((frame.z - radius) / 128); z <= Math.floor((frame.z + radius) / 128); z++) for (const c of bins.get(binKey(x, z)) ?? []) found.add(c);
     return [...found];
   };
   return Object.assign(lookup, { add });
