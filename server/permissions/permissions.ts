@@ -32,6 +32,8 @@ import type { Issued, PermissionStore } from "./store.ts";
 
 /** How often `poll` looks at the file. */
 export const POLL_MS = 5000;
+/** The longest a running world waits for another process's lock on the file: every wait is inside its tick. */
+export const BUSY_MS = 250;
 
 /** Who is asking: a survivor's ID, its tribe's team number (0 for none), whether it signed in, and the world it is on. */
 export interface PermissionSubject {
@@ -93,6 +95,8 @@ export interface PermissionsOptions {
   /** The world this view is for. */
   readonly world: number;
   readonly now?: () => number;
+  /** The server's own output, told when the file cannot be read and when it can again. */
+  readonly say?: (line: string) => void;
 }
 
 interface Held {
@@ -147,8 +151,10 @@ export class Permissions {
   /** The wall clock it reads, in milliseconds. */
   readonly now: () => number;
   private revision = -1;
-  private stampSeen = "";
   private lookedAt = -Infinity;
+  private readonly say: (line: string) => void;
+  /** The file could not be read at the last look. */
+  private unread = false;
   /** When a timed membership next starts or ends. */
   private nextEdge = Infinity;
   /** The time the starts and ends of timed memberships were last looked at. */
@@ -170,8 +176,9 @@ export class Permissions {
     this.store = opts.store;
     this.world = opts.world;
     this.now = opts.now ?? Date.now;
-    this.stampSeen = this.store.stamp();
+    this.say = opts.say ?? (() => {});
     this.load(this.store.read(), false);
+    this.store.patience(BUSY_MS);
   }
 
   /** Takes in the passwords other worlds retired within the day, which this view may never have held: it started since, or they came and went between its polls. */
@@ -187,7 +194,8 @@ export class Permissions {
   poll(): boolean {
     const was = this.version;
     const now = this.now();
-    if (now - this.lookedAt >= POLL_MS) {
+    // A clock put back would otherwise stop the looks until it had caught up.
+    if (now - this.lookedAt >= POLL_MS || now < this.lookedAt) {
       this.lookedAt = now;
       this.reloadIfChanged();
     }
@@ -358,8 +366,10 @@ export class Permissions {
     let reason = "";
     let was = "";
     let judged: PermissionActor = actor;
+    let began = false;
     try {
       this.store.transaction(() => {
+        began = true;
         if (this.store.revision() !== this.revision) this.load(this.store.read());
         judged = { rank: this.actingRank(actor), world: actor.world, name: actor.name };
         const needs = actor.needs ?? RANK_OPEN;
@@ -370,7 +380,8 @@ export class Permissions {
         this.written();
       });
     } catch {
-      this.load(this.store.read());
+      // A write that never began, as one a lock kept out, changed nothing here.
+      if (began) this.reread();
       return "The permissions could not be written.";
     }
     if (reason) return reason;
@@ -379,7 +390,6 @@ export class Permissions {
       const typed = "group" in op ? op.group : "";
       this.note("key" in op ? op.key : "id" in op ? op.id : "", this.group(typed)?.name ?? typed);
     }
-    this.stampSeen = this.store.stamp();
     this.version++;
     this.onApplied?.(judged, op);
     return "";
@@ -395,8 +405,10 @@ export class Permissions {
     let wrong = false;
     let was = "";
     if (!isSurvivorId(id) || !isHash(hash)) return { why: "That is no password to claim.", wrong };
+    let began = false;
     try {
       this.store.transaction(() => {
+        began = true;
         if (this.store.revision() !== this.revision) this.load(this.store.read());
         if (this.store.issued(id) === null) {
           why = `No survivor has the ID ${id}.`;
@@ -421,13 +433,12 @@ export class Permissions {
         this.written();
       });
     } catch {
-      this.load(this.store.read());
+      if (began) this.reread();
       return { why: "The permissions could not be written.", wrong: false };
     }
     if (why) return { why, wrong };
     if (was !== "") this.retire(id, was);
     this.note(id, "");
-    this.stampSeen = this.store.stamp();
     this.version++;
     return { why: "", wrong: false };
   }
@@ -642,13 +653,32 @@ export class Permissions {
     else this.members.set(subjectKey(kind, key), rows);
   }
 
+  /**
+   * Reads the file again if its revision is not the one this view holds. The revision is asked each time: the file's time
+   * and size can stay the same over a change, and one taken after this world's own write can hide another's. A file that
+   * cannot be read, as one another process holds locked, leaves the view as it is until the next look.
+   */
   private reloadIfChanged(): boolean {
-    const stamp = this.store.stamp();
-    if (stamp === this.stampSeen) return false;
-    this.stampSeen = stamp;
-    if (this.store.revision() === this.revision) return false;
-    this.load(this.store.read());
-    return true;
+    try {
+      const changed = this.store.revision() !== this.revision;
+      if (changed) this.load(this.store.read());
+      if (this.unread) this.say("permissions: the file is read again");
+      this.unread = false;
+      return changed;
+    } catch {
+      if (!this.unread) this.say(`permissions: the file could not be read, so this map keeps what it has and looks again every ${POLL_MS / 1000} s`);
+      this.unread = true;
+      return false;
+    }
+  }
+
+  /** After a write that failed part way: the view is read again, or marked to be at the next look. */
+  private reread(): void {
+    try {
+      this.load(this.store.read());
+    } catch {
+      this.revision = -1;
+    }
   }
 
   private note(account: string, group: string): void {

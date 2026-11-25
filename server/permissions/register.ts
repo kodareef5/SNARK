@@ -62,7 +62,10 @@ export class IdRegister {
 
   /** Writes what is due in one transaction, unless a write failed less than the poll interval ago. */
   write(): void {
-    if (!this.due() || this.permissions.now() < this.retryAt) return;
+    if (!this.due()) return;
+    // A clock put back does not make the wait longer than it was.
+    const wait = this.retryAt - this.permissions.now();
+    if (wait > 0 && wait <= POLL_MS) return;
     const survivors = this.records.nextSurvivor;
     const teams = this.records.nextTeam;
     const minted: Issue[] = [...this.minted].map(([id, name]) => ({ id, name }));

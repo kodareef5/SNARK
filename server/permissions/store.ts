@@ -104,6 +104,14 @@ export class PermissionStore {
     return db;
   }
 
+  /**
+   * How long a read or write waits for another process's lock, in milliseconds. A world sets a short wait once it has
+   * started, since every later use is inside its tick.
+   */
+  patience(ms: number): void {
+    this.open().exec(`PRAGMA busy_timeout=${Math.max(0, Math.floor(ms))};`);
+  }
+
   /** Changes when the file may have changed. */
   stamp(): string {
     if (this.path === ":memory:") return `m${this.writes}`;

@@ -692,7 +692,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   // The cluster's permission groups, kept in its folder for every world, else beside the save, else in memory.
   const permissionStore = new PermissionStore(cluster ? join(cluster.folder.root, "permissions.sqlite") : opts.dbPath ? `${opts.dbPath}.permissions.sqlite` : ":memory:");
   opened.push(permissionStore);
-  const permissions = new Permissions({ store: permissionStore, world: cluster?.world ?? 0, now: opts.survivorLog?.wall ?? Date.now });
+  const permissions = new Permissions({ store: permissionStore, world: cluster?.world ?? 0, now: opts.survivorLog?.wall ?? Date.now, say });
   // Before anything can make an ID or a team, so a save put back from a backup or started afresh makes none twice.
   catchUp(permissions, records, say);
   const register = new IdRegister(permissions, records, say);
