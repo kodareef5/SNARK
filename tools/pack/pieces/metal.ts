@@ -16,7 +16,7 @@
 import { REGION_BASE, defaultPalette, nearestColour } from "../../../shared/pack/palette.ts";
 import { HALF_SIDE_M, outlineBox, type FormDef } from "../../../shared/world/lattice/forms.ts";
 import type { SourceLod, SourceMesh } from "../write.ts";
-import { Shape, add, clip, clipTo, cross, flatLod, inset, mirror, place, planeAt, planeMoved, scale, slabOn, sub, unit, uprightPlane, type FaceMap, type Flat, type SlabMap, type Uv, type Vec } from "./kit.ts";
+import { Shape, add, clip, clipTo, cross, flatLod, inset, mirror, place, planeAt, planeMoved, rimStrips, scale, slabOn, sub, unit, uprightPlane, type FaceMap, type Flat, type SlabMap, type Uv, type Vec } from "./kit.ts";
 import { errorOf, levelsOf, planOf, type TierRecipe } from "./lod.ts";
 import { FACE_PLAIN, FACE_WEARS } from "../../../client/core/render/piece-fit.ts";
 
@@ -1375,6 +1375,8 @@ const VALLEY_HALF = 0.14;
 /** How far a gutter stands out past a low side, measured level, and how far the fascia under it does. */
 const EAVE = 0.3;
 const FASCIA = 0.112;
+/** A low side's wall plate runs this far out over the wall under it, short of its face, and its underside is the wall's top. */
+const PLATE_OUT = 0.096;
 
 type SideKind = "eave" | "ridge" | "rake" | "fold";
 /** One flat face of a roof: its corners in plan, what each side is, the way up its slope, the way along its contours, and its height over a point. */
@@ -1443,18 +1445,35 @@ function roof(form: FormDef, level: number): Shape | null {
   const moved = inset(plan, eave.map((e) => (e ? -EAVE : 0)));
   /** The facet a corner's eave lies on, or the first it is a corner of. */
   const cornerFacet = (k: number): Facet => (eave[k] ? side[k]! : eave[(k + n - 1) % n] ? side[(k + n - 1) % n]! : side[k]!).facet;
-  if (level === 2) return slabOn(p, moved, moved.map((q, k) => cornerFacet(k).h(q) + SHEET), form.thick + SHEET, decked, fold);
   const band = form.yieldBand || 0.1;
   const folded = facets.length > 1;
-  if (level === 1) slabOn(p, plan, tops.map((h) => h + SHEET), form.thick + SHEET, decked, fold);
-  else {
+  // A wall plate along each low side, level underneath on the wall's top, out over its outer half to the fascia's line:
+  // the slab's underside rises from the side, and would leave a wedge of air over the wall.
+  const lowest = Math.min(...tops) - form.thick;
+  const raked = side.map((s) => s.kind === "rake");
+  const plates = (under: number, wide = band): void => rimStrips(plan, eave.map((e) => (e ? PLATE_OUT : 0)), wide, raked).forEach((quad, k) => {
+    if (eave[k]) slabOn(p, quad, quad.map((q) => side[k]!.facet.h(q) - under), quad.map(() => lowest), () => of("trim"), 0, axisOf(plan[k]!, plan[(k + 1) % n]!));
+  });
+  if (level === 2) {
+    slabOn(p, moved, moved.map((q, k) => cornerFacet(k).h(q) + SHEET), form.thick + SHEET, decked, fold);
+    plates(0.002);
+    return p;
+  }
+  if (level === 1) {
+    slabOn(p, plan, tops.map((h) => h + SHEET), form.thick + SHEET, decked, fold);
+    plates(0.002);
+  } else {
     slabOn(p, plan, tops.map((h) => h + SHEET), DECK + SHEET, decked, fold);
-    // The rim: a beam inside each side, the slab's whole depth under the deck, mitred at the corners.
-    const rim = inset(plan, band + RIM - 0.1);
-    plan.forEach((a, k) => {
-      const j = (k + 1) % n, kind = side[k]!.kind;
-      onFacet(p, side[k]!.facet, [a, plan[j]!, rim[j]!, rim[k]!], -DECK, form.thick - DECK, "trim", kind === "rake" ? undefined : axisOf(a, plan[j]!));
+    // The rim: a beam inside each side, the slab's whole depth under the deck. A sloped side's runs square through a
+    // corner, past a low side to the plate's face, and ends level on the wall there; a low side's is the plate.
+    const wide = band + RIM - 0.1;
+    rimStrips(plan, eave.map((e) => (e ? PLATE_OUT : 0)), wide, raked).forEach((quad, k) => {
+      if (eave[k]) return;
+      const from = p.faces.length;
+      onFacet(p, side[k]!.facet, quad, -DECK, form.thick - DECK, "trim", raked[k] ? undefined : axisOf(plan[k]!, plan[(k + 1) % n]!));
+      if (raked[k]) clip(p, planeAt([0, 0, lowest], [0, 0, -1]), null, from);
     });
+    plates(DECK, wide);
     if (folded) {
       // A rafter under the fold, clear of the rings, as far under the deck as a hip's faces fall away over its width.
       const [a, b] = [inset(plan, band + 0.08)[(fold + 2) % n]!, inset(plan, band + 0.08)[fold]!];

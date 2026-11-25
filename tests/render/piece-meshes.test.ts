@@ -1170,7 +1170,11 @@ test("no line of sight passes between a stone wall and the foundation it stands 
 // its trims: joint_sq, joint_r15, joint_r21, skirt, ridge. Flat levels in two steel greys, as its first nine are.
 
 const metalNew = Object.entries(PLANNED).map(([name, form]) => ({ name, form, shapes: levelsOf(METAL, name, form) }));
-/** What each new metal form's levels cost on 2026-11-24. A change may lower a number and may not raise one. */
+/**
+ * What each new metal form's levels cost on 2026-11-24. A change may lower a number and may not raise one. The roofs
+ * were 344 / 96 / 60, 428 / 156 / 60, 404 / 132 / 60, 332 / 98 / 44 and 304 / 70 / 44 before a low side had a wall
+ * plate on the wall under it and a sloped side's rim ran through its low corner.
+ */
 const METAL_NEW_MOST: Record<string, readonly number[]> = {
   half_wall: [420, 180, 60, 12],
   quarter_wall: [440, 176, 60, 12],
@@ -1182,11 +1186,11 @@ const METAL_NEW_MOST: Record<string, readonly number[]> = {
   triangle_foundation: [424, 244, 16, 8],
   triangle_ceiling: [332, 200, 44, 8],
   quarter_foundation: [472, 280, 24, 12],
-  roof: [344, 96, 60, 12],
-  roof_hip: [428, 156, 60, 12],
-  roof_valley: [404, 132, 60, 12],
-  triangle_roof: [332, 98, 44, 8],
-  triangle_roof_low: [304, 70, 44, 8],
+  roof: [392, 108, 72, 12],
+  roof_hip: [460, 180, 84, 12],
+  roof_valley: [420, 132, 60, 12],
+  triangle_roof: [356, 110, 56, 8],
+  triangle_roof_low: [312, 70, 44, 8],
   sloped_wall_left: [372, 180, 56, 8],
   sloped_wall_right: [372, 180, 56, 8],
   fence_foundation: [204, 108, 12],
@@ -1206,7 +1210,8 @@ const METAL_LIKE: Record<string, string> = {
   trapdoor: "door", gate: "door", double_doorway: "doorframe", gateway: "doorframe",
 };
 /** Triangles a level is over its like's: a slab with a hole through it has two trimmers, is four slabs from 60 m and keeps its hole a level longer than a ceiling has levels. */
-const METAL_OVER: Record<string, readonly number[]> = { trapdoor_frame: [0, 4, 4, 20, 0] };
+/** Over its like by: a hatch frame's trimmers and hole; a hip's two rakes run through its low corners, and from 60 m a roof has a wall plate on each low side. */
+const METAL_OVER: Record<string, readonly number[]> = { trapdoor_frame: [0, 4, 4, 20, 0], roof: [0, 0, 12, 0], roof_hip: [8, 0, 24, 0] };
 /**
  * A metal roof's seams stand 45 mm over its plane and its gutter 55 mm, 0.30 m out past a low side, with a fascia 56 mm
  * under the slab's foot there, 65 mm on a triangle's steeper face. From 60 m it is one slab out to its eaves, as deep

@@ -687,7 +687,7 @@ test("a metal roof that runs on down from another lies under its gutter, which l
   if (process.env.SNARK_MEETS) console.log(said.join("\n"));
 });
 
-test("a metal gable's top lies in the plane of the roof's corner heights to 2 mm, with no gap under the roof and nothing through it", () => {
+test("a metal gable's top lies in the roof's corner plane, and a gable, eave wall and high wall meet solid roof", () => {
   const roof = ALL.roof!;
   const said: string[] = [];
   for (let level = 0; level < TEXTURED; level++) {
@@ -721,6 +721,13 @@ test("a metal gable's top lies in the plane of the roof's corner heights to 2 mm
       expect(gap, `${hand} level ${level}: no gap under the roof`).toBeLessThanOrEqual(1e-6);
       expect(through, `${hand} level ${level}: nothing through the roof`).toBeLessThanOrEqual(1e-6);
     }
+    // A wall plate along the low side, level on the eave wall's top: the slab's underside rises from the side.
+    const met = roofOnWalls(metalStanding, level, { inward: [0.02, 0.05, 0.08] });
+    said.push(`metal level ${level}: air over a gable ${(met.gable * 1000).toFixed(1)} mm, over the eave wall ${(met.eave * 1000).toFixed(1)} mm, at a wall past the high side ${(met.high * 1000).toFixed(1)} mm, through the roof ${(met.through * 1000).toFixed(1)} mm`);
+    expect(met.gable, `level ${level}: over a gable`).toBeLessThanOrEqual(UNDER_ROOF[level]!);
+    expect(met.eave, `level ${level}: over the eave wall`).toBeLessThanOrEqual(UNDER_ROOF[level]!);
+    expect(met.high, `level ${level}: at a wall past the high side`).toBeLessThanOrEqual(UNDER_ROOF[level]!);
+    expect(met.through, `level ${level}: nothing through the roof`).toBeLessThanOrEqual(1e-6);
   }
   if (process.env.SNARK_MEETS) console.log(said.join("\n"));
 });
