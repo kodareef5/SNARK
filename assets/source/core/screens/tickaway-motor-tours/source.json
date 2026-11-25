@@ -1,0 +1,15 @@
+{
+  "title": "Tickaway Motor Tours",
+  "year": 2026,
+  "from": {
+    "by": "SNARK",
+    "sha256": "cfe34d99412fa3b86fcff8645bedd0d2710bb2341fe82cc245477c21c24a98cc"
+  },
+  "rights": "Made for SNARK, 2026",
+  "licence": "Made for the game and given to it under CC0 1.0.",
+  "poster": 9,
+  "audio": false,
+  "types": [
+    "tv"
+  ]
+}

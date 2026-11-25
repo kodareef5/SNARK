@@ -1,0 +1,15 @@
+{
+  "title": "Lid & Louver",
+  "year": 2026,
+  "from": {
+    "by": "SNARK",
+    "sha256": "f12c7cfd07c51ea31be8e585d4391c6b4c2fb4a58bacd378b8983692cfd3a201"
+  },
+  "rights": "Made for SNARK, 2026",
+  "licence": "Made for the game and given to it under CC0 1.0.",
+  "poster": 1,
+  "audio": false,
+  "types": [
+    "billboard"
+  ]
+}

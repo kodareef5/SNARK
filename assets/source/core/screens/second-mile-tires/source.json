@@ -1,0 +1,15 @@
+{
+  "kind": "image",
+  "title": "Second Mile Tires — Pass that palm again.",
+  "year": 2026,
+  "from": {
+    "by": "SNARK",
+    "sha256": "302f3adb22be71365ebfe0adb30de47c76631594c7aa03cfbe261b1485a372f0"
+  },
+  "rights": "Made for SNARK, 2026",
+  "licence": "Made for the game and given to it under CC0 1.0.",
+  "audio": false,
+  "types": [
+    "billboard"
+  ]
+}

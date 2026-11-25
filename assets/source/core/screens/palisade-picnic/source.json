@@ -1,0 +1,15 @@
+{
+  "kind": "image",
+  "title": "Palisade Picnic — Set an extra place.",
+  "year": 2026,
+  "from": {
+    "by": "SNARK",
+    "sha256": "7e3d9f5c963c0e089b2e1313feb5e76892d6c60c201cdade07706929b0510510"
+  },
+  "rights": "Made for SNARK, 2026",
+  "licence": "Made for the game and given to it under CC0 1.0.",
+  "audio": false,
+  "types": [
+    "billboard"
+  ]
+}

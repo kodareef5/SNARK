@@ -10,21 +10,32 @@
     "name": "Billboard ads",
     "shuffle": false,
     "items": [
-      "admin-ade-loop",
-      "admin-ade",
-      "borderline-fence",
-      "ddos-brella",
-      "dodo-downs",
-      "fresh-start",
-      "grief-guard",
-      "lag-away",
-      "lag-spike-loop",
-      "ping-os",
-      "raptor-rid-loop",
-      "raptor-rid",
-      "tame-rite",
-      "tide-eye-tours",
-      "unstuck"
+      "apronwing-freight",
+      "backstep-parcel",
+      "cinder-cradle",
+      "curb-canary",
+      "dozehaven-motor-court",
+      "fen-and-frill",
+      "forkhorn-recovery",
+      "gravelark-saddlery",
+      "lid-and-louver",
+      "molt-and-marrow",
+      "morrowmoth-storage",
+      "ohm-orchard",
+      "orbside-rooms",
+      "palisade-picnic",
+      "parallax-pearl",
+      "peck-and-portion",
+      "penthouse-plumb",
+      "plumbfall-parcel",
+      "plumbfin-bait",
+      "proofpocket-color",
+      "rim-fare-coaches",
+      "seamsure-mutual",
+      "second-mile-tires",
+      "slipfax-portraits",
+      "stake-and-satin",
+      "underlot-lift"
     ],
     "type": "billboard"
   },
@@ -32,9 +43,14 @@
     "name": "Laptop screens",
     "shuffle": false,
     "items": [
-      "admin-console",
-      "kicked",
-      "not-responding"
+      "brinewire-exchange",
+      "collar-ferry",
+      "dodo-standby",
+      "keepsake-queue",
+      "lastplank-ledger",
+      "mammoth-appeal",
+      "parcel-weather",
+      "rex-key-finder"
     ],
     "type": "laptop"
   },
@@ -42,9 +58,12 @@
     "name": "TV spots",
     "shuffle": false,
     "items": [
-      "borderline-tv",
-      "grief-guard-tv",
-      "ping-os-tv"
+      "fussbudget-feed",
+      "plume-ledger",
+      "second-bell",
+      "strata-supper-club",
+      "tickaway-motor-tours",
+      "velvet-rope-appeals"
     ],
     "type": "tv"
   }

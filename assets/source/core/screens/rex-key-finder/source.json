@@ -1,0 +1,15 @@
+{
+  "kind": "image",
+  "title": "The Rex Key Finder",
+  "year": 2026,
+  "from": {
+    "by": "SNARK",
+    "sha256": "55602da7f667a87d9c88cbdb68f415c4b3b4a57acb5a1df828c5db8b8709c503"
+  },
+  "rights": "Made for SNARK, 2026",
+  "licence": "Made for the game and given to it under CC0 1.0.",
+  "audio": false,
+  "types": [
+    "laptop"
+  ]
+}

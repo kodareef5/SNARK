@@ -1,0 +1,15 @@
+{
+  "kind": "image",
+  "title": "Plumbfall Parcel — Right to your door.",
+  "year": 2026,
+  "from": {
+    "by": "SNARK",
+    "sha256": "04b55e35edc20c8481ec35e53e269bc89f24401bce664bcff8e6d52ebed62e7c"
+  },
+  "rights": "Made for SNARK, 2026",
+  "licence": "Made for the game and given to it under CC0 1.0.",
+  "audio": false,
+  "types": [
+    "billboard"
+  ]
+}

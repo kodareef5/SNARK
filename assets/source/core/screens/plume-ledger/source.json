@@ -1,0 +1,15 @@
+{
+  "title": "Plume Ledger Estate Portraits",
+  "year": 2026,
+  "from": {
+    "by": "SNARK",
+    "sha256": "9e8fb7b401333922b8e3c29e0ed76e61f65124664fa75d9cb75ac9e348a9e107"
+  },
+  "rights": "Made for SNARK, 2026",
+  "licence": "Made for the game and given to it under CC0 1.0.",
+  "poster": 12,
+  "audio": false,
+  "types": [
+    "tv"
+  ]
+}

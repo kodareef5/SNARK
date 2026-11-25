@@ -1,0 +1,15 @@
+{
+  "title": "Fussbudget Imprint Assortment",
+  "year": 2026,
+  "from": {
+    "by": "SNARK",
+    "sha256": "0774f23d0b2ff4788aa7e16f47f4af7ec3e87ba84b5602eea4b7caf16127204a"
+  },
+  "rights": "Made for SNARK, 2026",
+  "licence": "Made for the game and given to it under CC0 1.0.",
+  "poster": 8,
+  "audio": false,
+  "types": [
+    "tv"
+  ]
+}

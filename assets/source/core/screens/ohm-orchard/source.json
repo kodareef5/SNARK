@@ -1,0 +1,15 @@
+{
+  "kind": "image",
+  "title": "Ohm Orchard — Full switchboard. Empty server.",
+  "year": 2026,
+  "from": {
+    "by": "SNARK",
+    "sha256": "cbd9b789356ab38131f8712442b71107c8ba74a455c3cd358565ff383a4e266c"
+  },
+  "rights": "Made for SNARK, 2026",
+  "licence": "Made for the game and given to it under CC0 1.0.",
+  "audio": false,
+  "types": [
+    "billboard"
+  ]
+}
