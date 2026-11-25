@@ -376,6 +376,7 @@ test("the edit rule reads the survivor's highest staff group", () => {
     groupRank: (n) => (n.toLowerCase() === "vip" ? RANK_OPEN : undefined),
     staffRank: () => staff,
     staffReach: () => "here",
+    allCheats: () => false,
     hasMembers: () => false,
     issued: () => true,
     teamMade: () => true,
@@ -447,7 +448,9 @@ test("outside a cluster an admin still edits the groups of its rank", () => {
   there.ok({ op: "addGroup", group: "Vip" });
   for (const op of [...definitions, ...chats]) {
     expect(there.perms.apply(admin, op)).toBe(CLUSTER_ONLY);
-    here.ok(op, outside(admin));
+    // Every cheat for everyone in Default is the map's admins' to give, not a regular admin's.
+    if (op.op === "grant" && op.permission === "*") expect(here.perms.apply(outside(admin), op)).toBe("An open group that holds every cheat counts with no password, so only the map's admins hand it out.");
+    else here.ok(op, outside(admin));
   }
   expect(here.perms.apply(outside(admin), { op: "addGroup", group: "Owners", rank: RANK_MAP })).toBe("That needs the map rank.");
 });
@@ -478,7 +481,7 @@ test("Admins cannot be made open while anyone is in it", () => {
 });
 
 test("the edit rule adds only an ID that was issued and a team number that was made", () => {
-  const look = (issued: boolean, made: boolean): RuleLook => ({ groupRank: () => RANK_OPEN, staffRank: () => 0, staffReach: () => "none", hasMembers: () => false, issued: () => issued, teamMade: () => made, tribeRank: () => 0 });
+  const look = (issued: boolean, made: boolean): RuleLook => ({ groupRank: () => RANK_OPEN, staffRank: () => 0, staffReach: () => "none", allCheats: () => false, hasMembers: () => false, issued: () => issued, teamMade: () => made, tribeRank: () => 0 });
   const add: PermissionOp = { op: "addMember", kind: "survivor", key: C, group: "Vip" };
   const tribe: PermissionOp = { op: "addMember", kind: "tribe", key: "9", group: "Vip" };
   expect([editRule(cluster, add, look(false, true)), editRule(cluster, tribe, look(true, false))]).toEqual([`No survivor has the ID ${C}.`, "No tribe has the number 9."]);
@@ -520,7 +523,7 @@ test("a tag choice that is already so raises no revision", () => {
 });
 
 test("the edit rule keeps a tribe from an actor one of its members outranks", () => {
-  const look = (tribe: number): RuleLook => ({ groupRank: () => RANK_OPEN, staffRank: () => 0, staffReach: () => "none", hasMembers: () => false, issued: () => true, teamMade: () => true, tribeRank: () => tribe });
+  const look = (tribe: number): RuleLook => ({ groupRank: () => RANK_OPEN, staffRank: () => 0, staffReach: () => "none", allCheats: () => false, hasMembers: () => false, issued: () => true, teamMade: () => true, tribeRank: () => tribe });
   const add: PermissionOp = { op: "addMember", kind: "tribe", key: "9", group: "Vip" };
   const remove: PermissionOp = { op: "removeMember", kind: "tribe", key: "9", group: "Vip" };
   const HIGHER = "A member of that tribe holds a higher rank than yours.";
@@ -559,4 +562,32 @@ test("a password is replaced once an hour at most, and a wrong guess is still a 
   // An admin's clear is an act of its own, so a claim after one does not wait.
   ok({ op: "clearSecret", id: A });
   expect(perms.claim(A, hash("c3"), "").why).toBe("");
+});
+
+test("only the top rank hands out an open group that holds every cheat", () => {
+  const { perms, ok } = world();
+  const TOP = "An open group that holds every cheat counts with no password, so only the cluster's admins hand it out.";
+  ok({ op: "addGroup", group: "Gods" });
+  ok({ op: "grant", group: "Gods", permission: "*" });
+  ok({ op: "addGroup", group: "Cheaters" });
+  ok({ op: "grant", group: "Cheaters", permission: "cheat.*" });
+  ok({ op: "addGroup", group: "Fliers" });
+  ok({ op: "grant", group: "Fliers", permission: "Cheat.fly" });
+  ok({ op: "addGroup", group: "Vip" });
+  ok({ op: "grant", group: "Vip", permission: "Kit.vip" });
+  // In a cluster a map's admin or a regular admin still hands out a perk or a single cheat, never every cheat.
+  for (const actor of [admin, mapAdmin]) {
+    expect(perms.apply(actor, { op: "addMember", kind: "survivor", key: A, group: "Gods" })).toBe(TOP);
+    expect(perms.apply(actor, { op: "addMember", kind: "survivor", key: A, group: "Cheaters", hours: 1 })).toBe(TOP);
+    expect(perms.apply(actor, { op: "addMember", kind: "tribe", key: "7", group: "Gods" })).toBe(TOP);
+  }
+  ok({ op: "addMember", kind: "survivor", key: A, group: "Fliers" }, admin);
+  ok({ op: "addMember", kind: "survivor", key: A, group: "Vip" }, admin);
+  ok({ op: "addMember", kind: "survivor", key: A, group: "Gods" });
+  // Taking someone out is still theirs, and outside a cluster the map's rank is the top.
+  ok({ op: "removeMember", kind: "survivor", key: A, group: "Gods" }, admin);
+  expect(perms.apply(outside(admin), { op: "addMember", kind: "survivor", key: B, group: "Gods" })).toBe("An open group that holds every cheat counts with no password, so only the map's admins hand it out.");
+  ok({ op: "addMember", kind: "survivor", key: B, group: "Gods" }, outside(mapAdmin));
+  // Nor can a regular admin outside a cluster make one of an open group that has members.
+  expect(perms.apply(outside(admin), { op: "grant", group: "Vip", permission: "*" })).toBe("An open group that holds every cheat counts with no password, so only the map's admins hand it out.");
 });

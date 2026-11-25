@@ -3,7 +3,7 @@
 // one world or on every world of the cluster. Every change is one `PermissionOp`, and `editRule` decides whether its
 // actor may make it.
 import { idParts } from "../ids.ts";
-import { RANK_ADMIN, RANK_CLUSTER, RANK_NAMES, RANK_OPEN, RANK_STAFF } from "../ranks.ts";
+import { RANK_ADMIN, RANK_CLUSTER, RANK_MAP, RANK_NAMES, RANK_OPEN, RANK_STAFF } from "../ranks.ts";
 
 /** Everyone is in it without a row. It is open and holds nothing at the start. */
 export const DEFAULT_GROUP = "Default";
@@ -257,6 +257,8 @@ export interface RuleLook {
   staffRank(id: string): number;
   /** Where survivor `id`'s staff groups count, as seen from `world`. */
   staffReach(id: string, world: number): StaffReach;
+  /** Whether a group holds every cheat: `*`, or a prefix such as `Cheat.*`. */
+  allCheats(name: string): boolean;
   /** Whether a group has a member on any world, whose time has not run out. */
   hasMembers(name: string): boolean;
   /** Whether a world ever issued survivor ID `id`. */
@@ -281,6 +283,12 @@ const isReserved = (name: string): boolean => {
   const lower = name.toLowerCase();
   return lower === DEFAULT_GROUP.toLowerCase() || lower === ADMINS_GROUP.toLowerCase();
 };
+
+/** The highest rank there is where `actor` is: the cluster's in a cluster, else the map's. */
+const topOf = (actor: PermissionActor): number => (actor.world !== 0 ? RANK_CLUSTER : RANK_MAP);
+/** Why an open group that holds every cheat is not the actor's to hand out. */
+const everyCheat = (top: number): string =>
+  `An open group that holds every cheat counts with no password, so only the ${top === RANK_CLUSTER ? "cluster's" : "map's"} admins hand it out.`;
 
 /** Whether `actor` may make `op`: "" when it may, or the reason it may not. */
 export function editRule(actor: PermissionActor, op: PermissionOp, look: RuleLook): string {
@@ -329,7 +337,11 @@ export function editRule(actor: PermissionActor, op: PermissionOp, look: RuleLoo
     case "revoke": {
       const rank = existing(op.group);
       if (typeof rank === "string") return rank;
-      return isPermission(op.permission) ? define(rank) : "A permission is up to 64 letters, digits and _ . : - *";
+      if (!isPermission(op.permission)) return "A permission is up to 64 letters, digits and _ . : - *";
+      const why = define(rank);
+      // Granting every cheat to an open group hands it to everyone already in it, as a membership would.
+      if (why || op.op !== "grant" || rank !== RANK_OPEN || !holds([op.permission], "Cheat.*") || actor.rank >= topOf(actor)) return why;
+      return everyCheat(topOf(actor));
     }
     case "setChat": {
       const rank = existing(op.group);
@@ -351,6 +363,10 @@ export function editRule(actor: PermissionActor, op: PermissionOp, look: RuleLoo
       const ranked = above(rank);
       if (ranked) return ranked;
       if (op.kind === "tribe" && rank > RANK_OPEN) return "A tribe is put only in an open group.";
+      if (op.op === "addMember" && rank === RANK_OPEN && look.allCheats(op.group)) {
+        const top = topOf(actor);
+        if (actor.rank < top) return everyCheat(top);
+      }
       // A tribe's groups are its members', so one who outranks the actor is no more reached through it than directly.
       if (op.kind === "tribe" && actor.rank < look.tribeRank(op.key)) return "A member of that tribe holds a higher rank than yours.";
       if (op.kind === "survivor") {

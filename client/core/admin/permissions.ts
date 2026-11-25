@@ -5,7 +5,7 @@
 import type { TextRun } from "../../../shared/net/chat.ts";
 import { DEFAULT_CHAT_FORMAT, PART_KEYS, START_CHAT_SETTINGS, chooseTags, formatLine, mapInk, readChatFormat, readChatSettings, readLooseJson, type ChatFormat, type PartKey } from "../../../shared/permissions/chat.ts";
 import {
-  CHANGED_MEANWHILE, DEFAULT_GROUP, MAX_CHAT_LENGTH, MAX_DOCUMENT_LENGTH, editRule, isGroupName, memberHolds, permissionKey, type Group, type HistoryRow, type Member, type MemberKind,
+  CHANGED_MEANWHILE, DEFAULT_GROUP, MAX_CHAT_LENGTH, MAX_DOCUMENT_LENGTH, editRule, holds, isGroupName, memberHolds, permissionKey, type Group, type HistoryRow, type Member, type MemberKind,
   type PermissionActor, type PermissionOp, type RuleLook,
 } from "../../../shared/permissions/model.ts";
 import { CHAT_DOCUMENT, type ImportKind, type PermissionsAnswer, type PermissionsPost, type PermissionsState } from "../../../shared/permissions/page.ts";
@@ -46,6 +46,7 @@ export function lookOf(state: State): Lookup {
     group: (name) => groups.get(name.toLowerCase()),
     groupRank: (name) => groups.get(name.toLowerCase())?.rank,
     staffRank: (id) => staff.get(id) ?? 0,
+    allCheats: (name) => holds(groups.get(name.toLowerCase())?.permissions ?? [], "Cheat.*"),
     staffReach: (id, world) => {
       const worlds = reach.get(id);
       if (!worlds) return "none";
