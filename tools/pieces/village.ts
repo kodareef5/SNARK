@@ -325,7 +325,7 @@ export const ROOF_SHOTS: readonly VillageShot[] = [
   ["its apex, close", [3, 5, 3], 1.3, 150, 38],
   ["a ridge hipped at its east end by three triangles", [14.4, 4, 3], 5.2, 120, 30],
   ["the hipped end, close", [15, 4.9, 3], 1.4, 100, 34],
-  ["the ridge's open end over its gable, close", [12, 4.8, 3], 1.3, 205, 16],
+  ["the ridge's open end over its gable, close", [12, 5.1, 3], 1, 165, 25],
   ["a roof turning a corner: an L over a valley and a hip", [25.5, 4, 1.5], 8.4, 135, 28],
 ];
 
