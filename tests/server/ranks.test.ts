@@ -2,6 +2,7 @@
 import { expect, test } from "bun:test";
 import { demote } from "../../server/creative.ts";
 import { Rules } from "../../server/settings/rules.ts";
+import { idText } from "../../server/survivor-ids.ts";
 import { WRONG_PASSWORD } from "../../shared/console.ts";
 import { RANK_ADMIN, RANK_CLUSTER, RANK_MAP, RANK_OPEN, RANK_STAFF, mayEdit } from "../../shared/ranks.ts";
 import { MODE_WALK } from "../../shared/sim/character.ts";
@@ -113,6 +114,28 @@ test("a demoted session loses god mode, flight and what it possessed", () => {
   expect([c.admin, c.rank, c.drive, ents.driven[e], ents.mode[me], h.host.buffs.has(rec, god)]).toEqual([false, RANK_OPEN, -1, 0, MODE_WALK, false]);
   h.run(300);
   expect([ada.admin, h.say(ada, "god")]).toEqual([false, ["denied: cheats are not enabled for you"]]);
+});
+
+test("a password's rank and a group's rank both count, and losing one keeps the other", () => {
+  const h = new Harness({}, 1, 60, { adminPassword: "hunter2", log: () => {} });
+  const ada = h.join("ada");
+  h.run(500);
+  const c = h.client(ada)!;
+  const id = idText(h.host.records.byPid.get(c.pid)!);
+  c.signed = true;
+  h.host.exec(`Permissions.Add ${id} Admins`);
+  expect([c.admin, c.rank]).toEqual([true, RANK_ADMIN]);
+  expect(h.say(ada, "enablecheats hunter2")).toEqual(["cheats enabled"]);
+  expect(c.rank).toBe(RANK_MAP);
+  // The password taken back, the group's rank and cheats stay.
+  demote(h.host, c);
+  expect([c.admin, c.rank]).toEqual([true, RANK_ADMIN]);
+  // The group left, the password's stay.
+  h.say(ada, "enablecheats hunter2");
+  h.host.exec(`Permissions.Remove ${id} Admins`);
+  expect([c.admin, c.rank]).toEqual([true, RANK_MAP]);
+  demote(h.host, c);
+  expect([c.admin, c.rank]).toEqual([false, RANK_OPEN]);
 });
 
 test("the operator runs a command of any rank", () => {

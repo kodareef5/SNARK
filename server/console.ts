@@ -51,15 +51,21 @@ export { OP_ADMIN } from "./acts.ts";
 const COMMAND = event("command");
 const COMMAND_RAN = event("command.ran");
 
+/** Who a line's act is by: the page's viewer, the session, or the operator. */
+export function actorOf(ctx: CommandContext): Actor {
+  return ctx.actor ?? (ctx.client ? sessionActor(ctx.client, ctx.host.records) : OPERATOR);
+}
+
 export class Console {
   readonly commands = new Map<string, ConsoleCommand>();
   bus: Bus = NO_BUS;
 
-  /** Throws if a name is taken: one command silently replacing another is a mistake. */
+  /** Throws if a name is taken: one command silently replacing another is a mistake. A line's first word finds it in any case. */
   add(...commands: ConsoleCommand[]): void {
     for (const c of commands) {
-      if (this.commands.has(c.name)) throw new Error(`there is already a command "${c.name}"`);
-      this.commands.set(c.name, c);
+      const key = c.name.toLowerCase();
+      if (this.commands.has(key)) throw new Error(`there is already a command "${c.name}"`);
+      this.commands.set(key, c);
     }
   }
 
@@ -71,9 +77,15 @@ export class Console {
     return ctx.client === null ? RANK_CLUSTER : ctx.client.rank;
   }
 
+  /** Whether a session without every cheat has this one from its groups (Cheat.<name>, ArkApi's AdminsPermissions). */
+  granted(ctx: CommandContext, cmd: ConsoleCommand): boolean {
+    const subject = ctx.client && ctx.host.subjectOf(ctx.client);
+    return !!subject && ctx.host.permissions.mayRun(subject, cmd.name);
+  }
+
   /** Whether this session or the operator may run `cmd`. */
   allows(ctx: CommandContext, cmd: ConsoleCommand): boolean {
-    return (!cmd.admin || this.isAdmin(ctx)) && (cmd.rank === undefined || this.rankOf(ctx) >= cmd.rank);
+    return (!cmd.admin || this.isAdmin(ctx) || this.granted(ctx, cmd)) && (cmd.rank === undefined || this.rankOf(ctx) >= cmd.rank);
   }
 
   /** Returns what to print. Never throws. */
@@ -83,7 +95,7 @@ export class Console {
     if (!name) return "";
     const cmd = this.commands.get(name);
     if (!cmd) return `unknown command "${name}"; try help`;
-    if (cmd.admin && !this.isAdmin(ctx)) return "denied: cheats are not enabled for you";
+    if (cmd.admin && !this.isAdmin(ctx) && !this.granted(ctx, cmd)) return "denied: cheats are not enabled for you";
     if (cmd.rank !== undefined && this.rankOf(ctx) < cmd.rank) return `denied: this needs the ${RANK_NAMES[cmd.rank]} rank or above`;
     // A module hears the line as the journal would have it: without a password, and for a secret command without anything.
     const told = { byPid: ctx.client?.pid ?? 0, name, line: cmd.secret ? name : cmd.redact ? cmd.redact(words.slice(1)) : line, source: ctx.client ? "session" : "operator" };
@@ -96,7 +108,7 @@ export class Console {
       return `${name} failed: ${err instanceof Error ? err.message : String(err)}`;
     }
     if (cmd.admin && !cmd.secret) {
-      ctx.host.acts.write(ctx.actor ?? (ctx.client ? sessionActor(ctx.client, ctx.host.records) : OPERATOR), cmd.redact ? cmd.redact(words.slice(1)) : line);
+      ctx.host.acts.write(actorOf(ctx), cmd.redact ? cmd.redact(words.slice(1)) : line);
     }
     this.bus.after(COMMAND_RAN, told);
     return out;

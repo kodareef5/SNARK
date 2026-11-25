@@ -1,5 +1,5 @@
 import { SurvivorActivity } from "./survivor-activity.ts";
-import { SurvivorIds } from "./survivor-ids.ts";
+import { SurvivorIds, idText } from "./survivor-ids.ts";
 import { CREATE_REQUEST,ownsSurvivor } from "./survivor-access.ts";
 import { ZONE_NONE, ZONE_TORSO } from "../shared/anim/human.ts";
 import { IMPALE_SLOT } from "../shared/sim/seats.ts";
@@ -38,7 +38,7 @@ import { Carry } from "./carry.ts";
 import { Corpses } from "./corpses.ts";
 import { CorpseReplication } from "./corpse-motion.ts";
 import { CMD_AIR_SUPPORT, CMD_CLOCK, CMD_CORPSE, IMPACT_BLAST, IMPACT_SHOT } from "../shared/net/protocol.ts";
-import { Creative } from "./creative.ts";
+import { Creative, NO_GROUPS } from "./creative.ts";
 import { Balls } from "./balls.ts";
 import { Eggs } from "./eggs.ts";
 import { MountedRoars } from "./creature-roar.ts";
@@ -60,6 +60,10 @@ import { Tribes } from "./tribes.ts";
 import { Voice } from "./voice.ts";
 import { Console, OP_ADMIN } from "./console.ts";
 import { Acts, PAGE_ACTOR, type Actor } from "./acts.ts";
+import { PermissionStore } from "./permissions/store.ts";
+import { Permissions, type PermissionSubject } from "./permissions/permissions.ts";
+import { memberWorld, type PermissionOp } from "../shared/permissions/model.ts";
+import { changeWords } from "../shared/permissions/commands.ts";
 import { DeadlineHeap } from "../shared/sim/schedule.ts";
 import { Buffs } from "./buffs.ts";
 import { CityCollapse } from "./city-collapse.ts";
@@ -325,6 +329,12 @@ export interface Host {
   readonly persistence: Persistence | null;
   /** Who did what as an admin, and when (server/acts.ts). */
   readonly acts: Acts;
+  /** The cluster's permission groups as this world holds them (server/permissions/permissions.ts). */
+  readonly permissions: Permissions;
+  /** Makes one permission change as `by`: the one way commands, pages and modules change them. Answers "" or why not. */
+  changePermissions(by: Actor, op: PermissionOp): string;
+  /** A session as its groups know it, or null before it has a survivor with an ID. */
+  subjectOf(c: Client): PermissionSubject | null;
   readonly loaded: LoadReport | null;
   readonly console: Console;
   /** Carries events to modules. */
@@ -411,6 +421,7 @@ const SESSION_LEAVE = event("session.leave");
 const SESSION_SPAWN = event("session.spawn");
 const DEATH = event("death");
 const BODY_OUT = event("body.out");
+const PERM_CHANGED = event("perm.changed");
 
 /**
  * The folder a server of cluster `id` shares with the others: ARK's -ClusterDirOverride, or where it is not given, `clusters`
@@ -986,7 +997,6 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   tribes.onSave = () => {
     tribesSaved.dirty = true;
   };
-  tribes.onTeam = (rec) => refreshBody(rec);
   tribes.onNotice = (pid, text) => notice(pid, text);
   // Templates set down and not yet built: they follow their team, and go with it.
   const plans = new Plans({ world, game, records, items, tribes, rules });
@@ -1491,6 +1501,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     ids.take(rec);
     // A survivor's stat points live in a genome, like any body's.
     rec.genome ??= new Genome();
+    const had = c.pid;
     c.pid = rec.pid;
     if (persistence) persistence.attach(rec, c.ent);
     else {
@@ -1503,8 +1514,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     // A save from a server that stopped without standing its drivers down has them inside their cars.
     urban.settle(c.ent);
     bus.after(SESSION_SPAWN, { pid: rec.pid, first, why: first ? "made" : c.entered ? "respawned" : "returned" });
-    // A session that was in the creator has its survivor only now.
+    // A session that was in the creator has its survivor only now, and with it its groups.
     if (c.entered) joined(c);
+    if (c.entered && had !== rec.pid) creative.stand(c);
   });
   game.sessions.onBodyGone.on((c) => {
     impale.release(c.pid);
@@ -1535,7 +1547,43 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const adminPassword = opts.adminPassword || rules.text("ServerAdminPassword") || null;
   const clusterPassword = opts.clusterPassword || rules.text("ClusterAdminPassword") || null;
   if (adminPassword !== null && adminPassword === clusterPassword) say("settings: ServerAdminPassword is the same as ClusterAdminPassword: they should differ, or every map admin is the cluster's");
-  const creative = new Creative(world, game, rules, bus, acts, records);
+  // The cluster's permission groups, kept in its folder for every world, else beside the save, else in memory.
+  const permissionStore = new PermissionStore(cluster ? join(cluster.folder.root, "permissions.sqlite") : opts.dbPath ? `${opts.dbPath}.permissions.sqlite` : ":memory:");
+  opened.push(permissionStore);
+  const permissions = new Permissions({ store: permissionStore, world: cluster?.world ?? 0, now: opts.survivorLog?.wall ?? Date.now });
+  const subjectOf = (c: Client): PermissionSubject | null => {
+    const rec = c.pid !== 0 ? records.byPid.get(c.pid) : undefined;
+    const id = rec ? idText(rec) : "";
+    return rec && id ? { id, team: tribes.byId.has(rec.team) ? rec.team : 0, signed: c.signed, world: permissions.world } : null;
+  };
+  const creative = new Creative(world, game, rules, bus, acts, records, buffs);
+  creative.groups = (c) => {
+    const subject = subjectOf(c);
+    return subject ? { rank: permissions.rankOf(subject), every: permissions.has(subject, "*") } : NO_GROUPS;
+  };
+  /** Every live session's standing, worked out again after groups changed. */
+  const restand = (): void => {
+    for (const c of game.clients) if (c?.active) creative.stand(c);
+  };
+  const changePermissions = (by: Actor, op: PermissionOp): string => {
+    const actor = { rank: by.rank, name: by.name, world: permissions.world };
+    const why = permissions.apply(actor, op);
+    if (why !== "") return why;
+    // The group by its own name, not as it was typed.
+    const typed = "group" in op ? op.group : op.op === "tag" ? op.tag : "";
+    const group = permissions.group(typed)?.name ?? typed;
+    const everyWorld = op.op === "addMember" && permissions.world !== 0 && memberWorld(actor, permissions.group(group)?.rank ?? 0, op.world) === 0;
+    acts.write(by, changeWords("group" in op ? { ...op, group } : op, everyWorld), "change");
+    bus.after(PERM_CHANGED, { account: "key" in op ? op.key : "id" in op ? op.id : "", group });
+    restand();
+    return "";
+  };
+  // A tribe's groups are its members'.
+  tribes.onTeam = (rec) => {
+    refreshBody(rec);
+    const c = sessionOf(rec.pid);
+    if (c) creative.stand(c);
+  };
   const loadouts = new Loadouts({ world, records, items, creative, store: loadoutBook, refresh: (rec) => refreshBody(rec) }, (opts.seed ?? 1) + 113);
   game.sessions.onEnter.on((c) => {
     // A survivor that joins dead gets no onBody call, so its pid is set here.
@@ -1557,7 +1605,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     // One who joins during the countdown to a stop is told of it too.
     if (stopAt >= 0) game.sendRestart(Math.max(1, Math.ceil((stopAt - world.tick) / TICK_RATE)), c);
   });
-  game.sessions.onRelink.on((c) => creative.floor(c));
+  game.sessions.onRelink.on((c) => creative.stand(c));
   game.sessions.onPresence.on((c) => {
     if (c.closed) activity.leave(c.pid);
     else activity.login(c.pid);
@@ -1960,6 +2008,11 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const systems: System[] = [
     { beforeStep: refreshInventories },
     creative,
+    {
+      step: () => {
+        if (permissions.poll()) restand();
+      },
+    },
     gaze,
     { step: followFocus },
     mark(PART.focus),
@@ -2153,6 +2206,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     deadlines,
     persistence,
     acts,
+    permissions,
+    changePermissions,
+    subjectOf,
     loaded,
     console: con,
     bus,
@@ -2176,6 +2232,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       bus.after(SERVER_STOP, { why: "stopped" });
       bus.flush();
       impale.stop();
+      permissionStore.close();
       if (!persistence) return;
       // A creature in someone's arms is saved standing where it is set down, not where the arms had it, and so is whoever
       // sits in a car or on a creature.

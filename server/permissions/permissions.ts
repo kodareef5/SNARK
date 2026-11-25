@@ -82,7 +82,8 @@ export class Permissions {
   private readonly store: PermissionStore;
   /** The world this view is for. */
   readonly world: number;
-  private readonly now: () => number;
+  /** The wall clock it reads, in milliseconds. */
+  readonly now: () => number;
   private revision = -1;
   private stampSeen = "";
   private lookedAt = -Infinity;

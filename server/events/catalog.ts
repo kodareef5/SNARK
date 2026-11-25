@@ -133,7 +133,7 @@ ev("transfer.out", "before", "op pid what", "the upload of a character, a creatu
 ev("transfer.in", "before", "op what", "the download of a creature, the arrival of a player", "server/cluster/cluster.ts", "wired", "Something is about to arrive from another server. Refused, it stays sealed for the server it left.");
 ev("transfer.done", "after", "op what", "", "server/cluster/cluster.ts", "wired", "Something arrived from another server and is here.");
 ev("cluster.message", "after", "from topic body", "cross-server chat", "server/host.ts", "transfers", "Another server of the cluster said something.");
-ev("perm.changed", "after", "account group", "the permissions plugin's callbacks", "server/host.ts", "ops", "What an account may do changed.");
+ev("perm.changed", "after", "account group", "the permissions plugin's callbacks", "server/host.ts", "wired", "What an account may do changed: `account` is a survivor's ID or a tribe's team number, empty for a change to a group alone.");
 ev("ban.changed", "after", "account banned", "ban and unban", "server/host.ts", "ops", "An account was banned or let back.");
 ev("points.changed", "after", "account delta reason balance", "the shop's add-points call", "server/host.ts", "points", "An account's points changed.");
 ev("limit.hit", "after", "pid team what", "structure and tame limit plugins", "server/host.ts", "limits", "Something was refused because a limit was reached.");

@@ -110,6 +110,9 @@ export class Client {
   rank = 0;
   /** The survivor gave their own password on this connection. */
   signed = false;
+  /** What a host password gave this connection: a rank, and whether every cheat (server/creative.ts stand). */
+  passwordRank = 0;
+  passwordCheats = false;
   /** Tick of its last input change or command, for the idle kick. */
   activeAt = 0;
   cheatAttempts = 0;
@@ -280,6 +283,8 @@ export class Client {
     this.admin = false;
     this.rank = 0;
     this.signed = false;
+    this.passwordRank = 0;
+    this.passwordCheats = false;
     this.cheatAttempts = 0;
     this.entered = false;
     this.joined = false;

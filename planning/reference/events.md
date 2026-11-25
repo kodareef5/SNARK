@@ -10,8 +10,8 @@ marked "may change". An **after** event says what has happened, in values, and
 is delivered once a tick, before the commit. The module contract is in
 `server/api/module.ts`.
 
-There are 86 events: 70 raised today, 0 with a place in the code and not
-raised yet, and 16 that wait for a feature.
+There are 86 events: 71 raised today, 0 with a place in the code and not
+raised yet, and 15 that wait for a feature.
 
 The ARK column says what a plugin for ARK's unofficial server API hooks for the
 same purpose. ARK has no event API, so plugins hook the game's own functions.
@@ -262,13 +262,13 @@ same purpose. ARK has no event API, so plugins hook the game's own functions.
 
 | Event | Phase | Tells | May change | ARK | Raised in | Standing |
 | --- | --- | --- | --- | --- | --- | --- |
-| `perm.changed` | after | `account`, `group` |  | the permissions plugin's callbacks | `server/host.ts` | planned: ops |
+| `perm.changed` | after | `account`, `group` |  | the permissions plugin's callbacks | `server/host.ts` | wired |
 | `ban.changed` | after | `account`, `banned` |  | ban and unban | `server/host.ts` | planned: ops |
 | `points.changed` | after | `account`, `delta`, `reason`, `balance` |  | the shop's add-points call | `server/host.ts` | planned: points |
 | `limit.hit` | after | `pid`, `team`, `what` |  | structure and tame limit plugins | `server/host.ts` | planned: limits |
 | `protect.changed` | after | `team`, `on` |  | offline raid protection | `server/host.ts` | planned: offline |
 
-- **`perm.changed`.** What an account may do changed.
+- **`perm.changed`.** What an account may do changed: `account` is a survivor's ID or a tribe's team number, empty for a change to a group alone.
 - **`ban.changed`.** An account was banned or let back.
 - **`points.changed`.** An account's points changed.
 - **`limit.hit`.** Something was refused because a limit was reached.
@@ -293,5 +293,5 @@ same purpose. ARK has no event API, so plugins hook the game's own functions.
 - **Tribes in depth: alliances, the log, wars, merges, cooldowns.** `tribe.log`, `tribe.rank`, `tribe.war`, `tribe.alliance`.
 - **Flyers.** `carry.allow`.
 - **Transfers between servers.** `cluster.message`.
-- **Operations: RCON, ban and admin lists, exclusive join, logs, filters, the live file by URL.** `server.broadcast`, `perm.changed`, `ban.changed`.
+- **Operations: RCON, ban and admin lists, exclusive join, logs, filters, the live file by URL.** `server.broadcast`, `ban.changed`.
 - **A points ledger: a shop, kits and rewards.** `points.changed`.

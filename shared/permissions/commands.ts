@@ -157,3 +157,41 @@ export function memberOp(request: Extract<PermissionsRequest, { type: "member" }
   if (c.op === "removeMember") return { ...c, key };
   return { ...c, key, world: request.everyWorld ? 0 : world };
 }
+
+/**
+ * The `Permissions.*` command a change amounts to, as an ARK admin would type it, for the log; `everyWorld` says a
+ * membership holds on every map. A password, a chat block or a document is said only to be set, never what it is.
+ */
+export function changeWords(op: PermissionOp, everyWorld: boolean): string {
+  const all = everyWorld ? " all" : "";
+  switch (op.op) {
+    case "addGroup":
+      return `Permissions.AddGroup ${op.group}${op.rank ? `; Permissions.Rank ${op.group} ${RANK_NAMES[op.rank]}` : ""}`;
+    case "removeGroup":
+      return `Permissions.RemoveGroup ${op.group}`;
+    case "setRank":
+      return `Permissions.Rank ${op.group} ${RANK_NAMES[op.rank]}`;
+    case "grant":
+      return `Permissions.Grant ${op.group} ${op.permission}`;
+    case "revoke":
+      return `Permissions.Revoke ${op.group} ${op.permission}`;
+    case "setChat":
+      return `set the chat block of ${op.group}`;
+    case "addMember": {
+      const tribe = op.kind === "tribe";
+      const name = `Permissions.Add${tribe ? "Tribe" : ""}${op.hours !== undefined ? "Timed" : ""}`;
+      const hours = op.hours !== undefined ? ` ${op.hours} ${op.delayHours ?? 0}` : "";
+      return `${name} ${op.key} ${op.group}${hours}${tribe ? "" : all}`;
+    }
+    case "removeMember":
+      return `Permissions.Remove${op.kind === "tribe" ? "Tribe" : ""}${op.timedOnly ? "Timed" : ""} ${op.key} ${op.group}`;
+    case "setSecret":
+      return `set the password of ${op.id}`;
+    case "clearSecret":
+      return `cleared the password of ${op.id}`;
+    case "setDocument":
+      return `set the document ${op.name}`;
+    case "tag":
+      return `${op.show ? "showed" : "hid"} the tag ${op.tag} of ${op.id}`;
+  }
+}
