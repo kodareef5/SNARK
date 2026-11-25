@@ -461,9 +461,12 @@ export class LoopbackEnd implements Connection {
     return { bytes: s?.wireBytes ?? 0, resent: s?.resent ?? 0, timeouts: s?.timeouts ?? 0 };
   }
 
+  admit(channel: number): boolean {
+    return this.open && (!this.gate || this.gate(channel, this.buffered));
+  }
+
   send(channel: number, data: Uint8Array): void {
-    if (!this.open) return;
-    if (this.gate && !this.gate(channel, this.buffered)) return;
+    if (!this.admit(channel)) return;
     this.bytesSent += data.length;
     this.packetsSent++;
     // A WebSocket frame: the channel byte, a header of 2 or 4 bytes, and a browser's mask.
