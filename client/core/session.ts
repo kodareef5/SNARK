@@ -133,7 +133,7 @@ import {
   PASSENGER_VIEW_DELAY,
   writeInputs,
 } from "../../shared/net/protocol.ts";
-import { LOOK_BYTES } from "../../shared/anim/look.ts";
+import { LOOK_BYTES, upgradeLook } from "../../shared/anim/look.ts";
 import { readMotions, type MotionState } from "../../shared/sim/motion.ts";
 import { AIR_ACTION, emptyAirSupport, readAirSupport, type AirSupportView } from "../../shared/sim/air-support.ts";
 import { readSupply, type SupplyList } from "../../shared/sim/supply.ts";
@@ -983,8 +983,9 @@ export class ClientSession {
   }
 
   create(look: Uint8Array, spawn?: number): number {
+    const full = upgradeLook(look);
     return this.command(CMD_CREATE, (w) => {
-      for (let i = 0; i < LOOK_BYTES; i++) w.u8(look[i] ?? 0);
+      for (let i = 0; i < LOOK_BYTES; i++) w.u8(full[i] ?? 0);
       if (spawn !== undefined) w.u8(spawn);
     });
   }

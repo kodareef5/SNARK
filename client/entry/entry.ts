@@ -1,7 +1,7 @@
 import { mountChangelog } from "./changelog.ts";
 import { imageTile, loadGallery, mapArt, mapChoices, regionTiles, serverCard, survivorStats, type WorldCard as World } from "./gallery.ts";
 import { worldUrl } from "./address.ts";
-import { defaultLook, LOOK_SEX, LOOK_BEARD, randomLook, setRegion } from "../../shared/anim/look.ts";
+import { defaultLook, randomLook, setRegion } from "../../shared/anim/look.ts";
 import { Rng } from "../../shared/rng.ts";
 import { loadIdentity } from "../core/identity.ts";
 import { readLaunch, launchKey, savedName, validName, type EntrySurvivor, type Launch, type Remembered } from "../core/entry-state.ts";
@@ -720,7 +720,6 @@ async function action(a: string, b: HTMLElement) {
   }
   if (a === "swatch" || a === "style") {
     look[Number(b.dataset.field)] = Number(b.dataset.value);
-    if (Number(b.dataset.field) === LOOK_SEX && look[LOOK_SEX]) look[LOOK_BEARD] = 0;
     render();
     return;
   }

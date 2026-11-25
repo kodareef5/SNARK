@@ -75,14 +75,12 @@ export function appearanceFields(look: Uint8Array) {
       HAIR_STYLES.map((s) => s.label),
     ) +
     colors(look, LOOK_HAIR_COLOR, "Hair color", HAIR_BASE, HAIR_COLORS) +
-    (look[LOOK_SEX] === 0
-      ? styles(
-          look,
-          LOOK_BEARD,
-          "Beard",
-          BEARD_STYLES.map((s) => s.label),
-        )
-      : "") +
+    styles(
+      look,
+      LOOK_BEARD,
+      "Beard",
+      BEARD_STYLES.map((s) => s.label),
+    ) +
     colors(look, LOOK_EYE_COLOR, "Eye color", EYE_BASE, EYE_COLORS)
   );
 }

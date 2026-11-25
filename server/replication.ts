@@ -24,7 +24,7 @@ import type { ServerWorld } from "./world.ts";
 import { PART, type TickParts } from "./admin/parts.ts";
 
 /** The least snapshot budget a client may ask for, in bytes. The quarter of it that a crowd of players leaves the rest holds any one create. */
-// A survivor's create is at most 90 bytes (24-letter name, 28-byte look); a 72-byte look and wardrobe make it about 165: then 4 x 165 = 660.
+// A survivor's create is at most 134 bytes (24-letter name, 72-byte look); a wardrobe would make it about 165: then 4 x 165 = 660.
 const SNAPSHOT_BYTES_MIN = 600;
 /**
  * Chunk bytes a client may have on the way. On one stream everything sent before a snapshot it has read has reached it,

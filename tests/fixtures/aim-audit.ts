@@ -138,9 +138,15 @@ export function aimAudit(view: ProvingView, look: Uint8Array | null, states: rea
   return out;
 }
 
-/** What one look may cost against its sex's default, at worst: the region extremes and random looks measured on 2026-11-25. */
-export const AIM_MALE_LOOK: AimHeld = { head: 0.94, body: 0.865, missed: 0.03, spill: 0.31, zone: 0.74 };
-export const AIM_FEMALE_LOOK: AimHeld = { head: 0.9, body: 0.825, missed: 0.045, spill: 0.46, zone: 0.55 };
+/**
+ * What one look may cost against its sex's default, at worst: the region extremes and random looks measured on
+ * 2026-11-25 with each limb held to LIMB_SLACK (shared/anim/look.ts). Missed stays at 3% for him and 4.5% for her.
+ */
+export const AIM_MALE_LOOK: AimHeld = { head: 0.95, body: 0.875, missed: 0.03, spill: 0.31, zone: 0.74 };
+export const AIM_FEMALE_LOOK: AimHeld = { head: 0.9, body: 0.835, missed: 0.045, spill: 0.46, zone: 0.58 };
+/** Every region at one end: as one look, but a body thin all over leaves a wider rim of capsule around it. */
+export const AIM_MALE_EXTREME: AimHeld = { ...AIM_MALE_LOOK, spill: 0.32 };
+export const AIM_FEMALE_EXTREME: AimHeld = { ...AIM_FEMALE_LOOK, spill: 0.48 };
 
 /** The ways a count falls short of `held`, as words; none where it holds. */
 export function shortOf(c: AimCount, held: AimHeld): string[] {
@@ -178,6 +184,16 @@ export function regionLooks(sex: number, from: number, to: number): [string, Uin
     out.push([`${REGIONS[r]!.label} ${v}`, look]);
   }
   return out;
+}
+
+/** Every region at -1, and every region at +1, on the default look of `sex`. */
+export function extremeLooks(sex: number): [string, Uint8Array][] {
+  return [-1, 1].map((v) => {
+    const look = defaultLook();
+    look[LOOK_SEX] = sex;
+    for (let r = 0; r < REGION_COUNT; r++) setRegion(look, r, v);
+    return [`every region ${v}`, look] as [string, Uint8Array];
+  });
 }
 
 /** Seeded random looks of `sex`, in the default hair and no beard: hair is never hit, and its styles are audited apart. */

@@ -7,7 +7,7 @@
 //     op 2 bits: 0 update, 1 create, 2 remove, 3 remove because it died
 //     create: kind varint, generation 12 bits, x 22, y 20, z 22, yaw 10, flags 4, pose state 32, [cues? 1][31], [emote? 1][29], [stride? 1][8], [reaction? 1][32],
 //             then its appearance:
-//             kept 1, level varint, [colours? 1][6 x 8], unless kept: [name? 1][string], [look? 1][28 x 8]; then [gear? 1][6 x 16, on 1],
+//             kept 1, level varint, [colours? 1][6 x 8], unless kept: [name? 1][string], [look? 1][72 x 8]; then [gear? 1][6 x 16, on 1],
 //             [team? 1][varint], [seat? 1][varint], [young? 1][span 32, grown 32]
 //             `kept` says the name and look are the baseline's: legal only for an id the baseline has at the same generation.
 //             then [vehicle? 1][its parts], the parts a vehicle's: pose 32, wheel 16, ride 32, doors 32, drive 32, rotor 32, systems 32, attitude 64, water 16

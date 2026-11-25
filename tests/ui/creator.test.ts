@@ -122,12 +122,13 @@ artTest("a new name arrives in the creator with no body; it makes a look, and th
   click(KEY_CREATOR_HAIR + 3);
   click(KEY_CREATOR_HAIR_COLOR + 9);
   expect([look[LOOK_SEX], look[LOOK_SKIN], look[LOOK_HAIR], look[LOOK_HAIR_COLOR]]).toEqual([1, 7, 3, 9]);
-  // Switching to the female body clears a beard.
-  click(KEY_CREATOR_SEX);
+  // Any body may wear a beard, and changing the body keeps it.
   click(KEY_CREATOR_BEARD + 1);
   expect(look[LOOK_BEARD]).toBe(1);
+  click(KEY_CREATOR_SEX);
   click(KEY_CREATOR_SEX + 1);
-  expect(look[LOOK_BEARD]).toBe(0);
+  expect([look[LOOK_SEX], look[LOOK_BEARD]]).toEqual([1, 1]);
+  click(KEY_CREATOR_BEARD);
   // On the body tab each region has four keys: its label, minus, its bar and plus. A step is 0.1, native range input sets the value, and further input follows the drag.
   click(KEY_CREATOR_TAB + 1);
   expect(f.find(KEY_CREATOR_REGION)!.text).toBe("Head size");
@@ -342,16 +343,13 @@ test("a look picks colours and stretches bones along their own axes: longer legs
   expect(long.pos[B_FOOT_L * 3 + 1]).toBeCloseTo(rest.pos[B_FOOT_L * 3 + 1]!, 4);
   expect(long.pos[B_HEAD * 3 + 1]! - rest.pos[B_HEAD * 3 + 1]!).toBeCloseTo(lift, 4);
   const rng = new Rng(21);
-  let beards = 0;
+  const beards = [0, 0];
   for (let i = 0; i < 1000; i++) {
     const made = randomLook(rng);
     expect(validLook(made)).toBe(true);
-    if (made[LOOK_BEARD] !== 0) {
-      beards++;
-      expect(made[LOOK_SEX]).toBe(0);
-    }
+    if (made[LOOK_BEARD] !== 0) beards[made[LOOK_SEX]!]!++;
   }
-  expect(beards).toBeGreaterThan(100);
+  expect(Math.min(...beards)).toBeGreaterThan(100);
   expect(f(KEY_CREATOR_NOTE)).toBe(KEY_CREATOR_NOTE);
 });
 

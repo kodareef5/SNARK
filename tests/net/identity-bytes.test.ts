@@ -63,7 +63,7 @@ test("a survivor's create carries its identity; a gear swap keeps it in one bit"
   const first = write(null, cur);
   const seen = read(first.bytes, null)!;
   expect([seen.name[0], seen.look[0]?.length, [...seen.gear[0]!], seen.team[0]]).toEqual(["Alexandria Montgomery", LOOK_BYTES, [12, 300, 301, 302, 303, 0], 123456]);
-  expect(first.bytes.length).toBeLessThanOrEqual(110);
+  expect(first.bytes.length).toBeLessThanOrEqual(140);
 
   // A hotbar swap.
   store.setGear(e, [13, 300, 301, 302, 303, 0]);
