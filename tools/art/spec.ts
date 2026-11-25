@@ -484,6 +484,8 @@ export interface HumanBodiesAsset {
   readonly triangles: { readonly body: readonly number[]; readonly hair: readonly number[]; readonly armor: readonly number[] };
   /** In the order of SEX_IDS. `outfits` is how its outfit files and textures are named. */
   readonly bodies: readonly { readonly file: string; readonly material: string; readonly texture: string; readonly outfits: string }[];
+  /** Each body's joint rests, in the order of SEX_IDS. The cook writes these and refuses a body whose joints sit more than 3 mm off. */
+  readonly rigs: readonly (readonly number[])[];
   readonly eyes: string;
   readonly hair: string;
   readonly outfits: {

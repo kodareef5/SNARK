@@ -2,6 +2,7 @@
 // shared/anim/look.ts, since the character creator offers them.
 
 import { meridian } from "./meridian/model.ts";
+import { RIGS } from "./rigs.ts";
 import type { HumanBodiesAsset } from "../../../../../tools/art/spec.ts";
 
 export default {
@@ -17,6 +18,7 @@ export default {
     { file: "base-characters/Superhero_Male_FullBody.gltf", material: "MI_Superhero_Male", texture: "base-characters/T_Superhero_Male_Ligh.png", outfits: "Male" },
     { file: "base-characters/Superhero_Female_FullBody.gltf", material: "MI_Superhero_Female", texture: "base-characters/T_Superhero_Female_Light_BaseColor.png", outfits: "Female" },
   ],
+  rigs: RIGS,
   eyes: "base-characters/T_Eye_Brown.png",
   hair: "base-characters/hair",
   outfits: {
