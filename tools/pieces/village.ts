@@ -330,7 +330,16 @@ export const ROOF_SHOTS: readonly VillageShot[] = [
 ];
 
 export function roofs(tier: string, has: (id: string) => boolean): Placed[] {
-  const { out, square, edge, tri, trims } = builder(tier, has);
+  return roofsBuilt(tier, has).placed;
+}
+
+/** The roofs' pieces by their form's name and key, for a store to place them by. */
+export function roofKeys(tier: string): { name: string; k0: number; k1: number }[] {
+  return roofsBuilt(tier, () => false).keys;
+}
+
+function roofsBuilt(tier: string, has: (id: string) => boolean): { placed: Placed[]; keys: { name: string; k0: number; k1: number }[] } {
+  const { out, keys, square, edge, tri, trims } = builder(tier, has);
   const triangles = tier !== "thatch";
   const wall = (name: string, i: number, j: number, d: 0 | 3, lvl: number, flip: boolean): void => edge(name, at(i, j), d, lvl, flip);
 
@@ -390,7 +399,7 @@ export function roofs(tier: string, has: (id: string) => boolean): Placed[] {
   edge("sloped_wall_left", at(o, -1), 0, 4, true);
   edge("sloped_wall_right", at(o + 1, -1), 0, 4, true);
   trims();
-  return out;
+  return { placed: out, keys };
 }
 
 export const KEEP_SHOTS: readonly VillageShot[] = [

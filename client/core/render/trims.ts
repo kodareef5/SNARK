@@ -263,9 +263,13 @@ export class Trims {
   private readonly hipThem = new Cells();
   private readonly hipAt = new Cells();
   private readonly hipRound = new Cells();
-  /** The corners' keys of the roof `hipsOf` last read, and of the roof whose saddles are being found. */
+  /** The corners' keys of the roof `hipsOf` reads, and of the roof whose saddles are being found. */
   private readonly hipKeys = new Uint32Array(8);
   private readonly ownKeys = new Uint32Array(8);
+  /** Per slot of the chunk being laid, what `hipsOf` found of it in this laying, and the laying it was found in: a saddle asks it of every roof round a corner. */
+  private hipMemo = new Int32Array(0);
+  private hipSeen = new Uint32Array(0);
+  private laying = 0;
   private readonly m = new Int32Array(24);
   private readonly at = new Int32Array(2);
   /** What is kept of each chunk laid, and the chunk being laid: its store, table and corner. */
@@ -356,6 +360,11 @@ export class Trims {
     this.x0 = x0;
     this.z0 = z0;
     this.lastGid = 0;
+    this.laying = (this.laying + 1) >>> 0 || 1;
+    if (this.hipMemo.length < t.high) {
+      this.hipMemo = new Int32Array(Math.max(t.high, this.hipMemo.length * 2));
+      this.hipSeen = new Uint32Array(this.hipMemo.length);
+    }
     const round = this.around();
     if (!(this.incremental && w.store === store && w.t === t && !w.partial && this.update(round))) this.whole();
     return this.list();
@@ -1237,9 +1246,11 @@ export class Trims {
    * The hips on the sides of the roof `ref`: sloped sides it shares with a roof at its level whose corners there rise as
    * its own, where neither face rises from the side and the two are not in one plane, and a tier of the two has a hip.
    * In the low four bits those sides, a bit each; over them those it draws, being the lower key of the two or the one
-   * whose tier has a hip; over those the corners that are such a side's high end. Its corners' keys are left in `hipKeys`.
+   * whose tier has a hip; over those the corners that are such a side's high end.
    */
   private hipsOf(gid: number, ref: number, kind: number, k0: number, k1: number): number {
+    const own = Math.floor(ref / 65536) === this.chunk, slot = ref & 0xffff;
+    if (own && this.hipSeen[slot] === this.laying) return this.hipMemo[slot]!;
     const forms = this.forms!, occ = this.store.occupied, sides = this.hipSides, by = this.hipBy, them = this.hipThem, at = this.hipAt, keys = this.hipKeys;
     const lvl = keyLvl(k1), n = CLS_CORNERS[keyCls(k0)]!, rise = riseAt(forms, kind, k0, k1), tier = this.tierOf[kind]!;
     const mine = tier >= 0 && this.tiers[tier]!.hip >= 0;
@@ -1278,7 +1289,12 @@ export class Trims {
         break;
       }
     }
-    return laid | (drawn << 4) | (ends << 8);
+    const found = laid | (drawn << 4) | (ends << 8);
+    if (own) {
+      this.hipSeen[slot] = this.laying;
+      this.hipMemo[slot] = found;
+    }
+    return found;
   }
 
   /**
@@ -1286,8 +1302,12 @@ export class Trims {
    * level with a lower key has a hip ending there and a tier with a saddle. Its tier has one.
    */
   private saddles(gid: number, me: number, k0: number, k1: number, ends: number): number {
-    const occ = this.store.occupied, round = this.hipRound, own = this.ownKeys, keys = this.hipKeys, lvl = keyLvl(k1);
-    own.set(keys);
+    const occ = this.store.occupied, round = this.hipRound, own = this.ownKeys, at = this.hipAt, lvl = keyLvl(k1);
+    elementVertices(k0, k1, lvl, SLAB, at);
+    for (let c = 0; c < CLS_CORNERS[keyCls(k0)]!; c++) {
+      own[2 * c] = at.k0[c]!;
+      own[2 * c + 1] = at.k1[c]!;
+    }
     let out = 0;
     for (let c = 0; c < CLS_CORNERS[keyCls(k0)]!; c++) {
       if ((ends & (1 << c)) === 0) continue;
@@ -1301,7 +1321,9 @@ export class Trims {
         const u = this.store.chunks[Math.floor(q / 65536)]!, qs = q & 0xffff, qk = u.kind[qs]!, qk0 = u.k0![qs]!, qk1 = u.k1![qs]!, qt = this.tierOf[qk]!;
         if (this.sidesOf[qk] !== SIDES_RIDGE || keyLvl(qk1) !== lvl || !(qk0 < k0 || (qk0 === k0 && qk1 < k1)) || qt < 0 || this.tiers[qt]!.saddle < 0) continue;
         const theirs = this.hipsOf(gid, q, qk, qk0, qk1) >> 8;
-        for (let i = 0; i < CLS_CORNERS[keyCls(qk0)]!; i++) if ((theirs & (1 << i)) !== 0 && keys[2 * i] === vk0 && keys[2 * i + 1] === vk1) mine = false;
+        if (theirs === 0) continue;
+        elementVertices(qk0, qk1, lvl, SLAB, at);
+        for (let i = 0; i < CLS_CORNERS[keyCls(qk0)]!; i++) if ((theirs & (1 << i)) !== 0 && at.k0[i] === vk0 && at.k1[i] === vk1) mine = false;
       }
       if (mine) out |= 1 << c;
     }
