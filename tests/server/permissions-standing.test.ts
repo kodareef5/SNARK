@@ -10,6 +10,8 @@ import { listener } from "../fixtures/module.ts";
 
 const quiet = { log: () => {} };
 const REFUSED = "Permissions are managed from an admin's rank.";
+/** What the console answers a command from a session it has just worked out again from the file: it is no admin now. */
+const LOWERED = "denied: this needs the admin rank or above";
 const CLUSTER_ONLY = "In a cluster, only the cluster's admins change groups and chat settings.";
 
 /** Two maps of one cluster on one wall clock, a module on map b that hears permission changes. */
@@ -54,7 +56,7 @@ test("an admin taken out on another map is refused here before the next poll", (
     const id = admin(b, ada);
     must(a, `Permissions.Remove ${id} Admins`);
     const c = b.h.client(ada)!;
-    expect(b.h.say(ada, "Permissions.AddGroup Vip")).toEqual([REFUSED]);
+    expect(b.h.say(ada, "Permissions.AddGroup Vip")).toEqual([LOWERED]);
     expect([c.rank, c.admin, b.h.host.permissions.group("Vip")]).toEqual([RANK_OPEN, false, undefined]);
   });
 });
@@ -65,7 +67,7 @@ test("an admin whose password was cleared on another map makes no more changes",
     const id = admin(b, ada);
     expect(a.h.host.clearPassword(OPERATOR, id)).toBe("");
     const c = b.h.client(ada)!;
-    expect(b.h.say(ada, "Permissions.AddGroup Vip")).toEqual([REFUSED]);
+    expect(b.h.say(ada, "Permissions.AddGroup Vip")).toEqual([LOWERED]);
     expect([c.signed, c.rank, c.admin, b.h.host.permissions.group("Vip")]).toEqual([false, RANK_OPEN, false, undefined]);
   });
 });
@@ -128,7 +130,7 @@ test("a refused change raises no event and writes no act", () => {
     heard.length = 0;
     const acts = b.h.host.acts.recent(0, Number.MAX_SAFE_INTEGER).length;
     must(a, `Permissions.Remove ${id} Admins`);
-    expect(b.h.say(ada, "Permissions.AddGroup Vip")).toEqual([REFUSED]);
+    expect(b.h.say(ada, "Permissions.AddGroup Vip")).toEqual([LOWERED]);
     b.h.run(100);
     expect(b.h.host.acts.recent(0, Number.MAX_SAFE_INTEGER).length).toBe(acts);
     expect(heard).toEqual([`perm.changed: {"account":"${id}","group":"Admins"}`]);
