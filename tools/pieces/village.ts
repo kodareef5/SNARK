@@ -338,7 +338,7 @@ export function roofs(tier: string, has: (id: string) => boolean): Placed[] {
   const v = at(1, 1);
   for (let k = 0; triangles && k < 6; k++) {
     tri("triangle_foundation", v, 2 * k, 0);
-    edge(k === 4 ? "doorframe" : "wall", step(v, 2 * k), 2 * k + 4, 0, true);
+    edge(k === 4 ? "doorframe" : "wall", step(v, 2 * k), (2 * k + 4) % 12, 0, true);
     tri("triangle_roof", v, 2 * k, 4, 1);
   }
 
