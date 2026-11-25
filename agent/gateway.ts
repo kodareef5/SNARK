@@ -26,6 +26,17 @@ export const SNARK_CAPABILITIES: Capabilities = {
   assists: { kinds: ["attack", "harvest", "follow", "repair"], reaction_ms: 100, spread_deg: 2 },
 };
 
+/** What a new player is told of SNARK before they set foot in it (grunt/protocol.md, welcome's game.about): facts about
+ * the world, for whoever plays through the gateway. `place` is the world's city. */
+export function snarkAbout(place: string): string {
+  return [
+    `SNARK: Miami Devolved, an online survival game in the manner of ARK: Survival Evolved, set in ${place} at real scale: its streets and buildings where they really are, gone wild.`,
+    "Survivors wake with nothing, gather wood, thatch, fiber and stone by hand, craft tools and weapons, build and defend bases, and tame, ride and fight dinosaurs and other creatures (raptors, rexes, spinos, trikes, stegos, pteranodons, brachios and more), many of which hunt people.",
+    "The other survivors are real people playing at the same time: most are new and glad of help, some are not friendly. Everyone talks in global chat (the whole world reads it), local chat (those near) and their tribe's chat.",
+    "Three huge obelisks, red, green and blue, tower over the city and are seen from anywhere; players find their way by them.",
+  ].join(" ");
+}
+
 interface Args {
   url: string;
   port: number;
@@ -53,6 +64,13 @@ interface Link {
   /** What came while joining: given to the endpoint once the survivor is in. */
   waiting: string[];
   joining: boolean;
+}
+
+/** The world's name and what a player is told of it, from the map the survivor joined (core:miami is Miami). */
+function snarkWorld(world: SnarkWorld): { world?: string; about: string } {
+  const id = world.agent.session.world?.mapId ?? "";
+  const place = id.replace(/^.*:/, "").split(/[-_]/).filter(Boolean).map((w) => w[0]!.toUpperCase() + w.slice(1)).join(" ");
+  return place ? { world: place, about: snarkAbout(place) } : { about: snarkAbout("a real city") };
 }
 
 const VALID_NAME = /^[A-Za-z0-9 _-]{1,24}$/;
@@ -119,7 +137,7 @@ async function main(): Promise<void> {
           (world) => {
             if (!links.has(l)) return world.agent.session.close();
             l.world = world;
-            l.endpoint = new Endpoint(world, { capabilities: () => world.capabilities(SNARK_CAPABILITIES), limits: SNARK_LIMITS, game: { name: "SNARK", version: "0" }, tickMs: 1000 / 60 });
+            l.endpoint = new Endpoint(world, { capabilities: () => world.capabilities(SNARK_CAPABILITIES), limits: SNARK_LIMITS, game: { name: "SNARK", version: "0", ...snarkWorld(world) }, tickMs: 1000 / 60 });
             l.conn = l.endpoint.connect((m) => l.send(m));
             for (const m of l.waiting.splice(0)) l.conn.receive(m);
           },

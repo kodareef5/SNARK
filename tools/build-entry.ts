@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 import { brotliCompressSync } from "node:zlib";
 import { CORE_CONTENT } from "../content/core.ts";
 import { BENT_SECTIONS } from "../content/bends.ts";
+import { ORBS } from "../content/orb.ts";
 import type { Def } from "../shared/content/defs.ts";
 import { partHash } from "./pack/manifest.ts";
 import { parseManifest } from "../shared/pack/manifest.ts";
@@ -30,7 +31,8 @@ export function titleReleases(text: string, version: string) {
 
 /** The studio's small scene has neither city buildings nor their collision shapes. */
 export function studioContent(defs: readonly Def[]): Def[] {
-  const omitted = new Set(BENT_SECTIONS.map((d) => d.id));
+  // An orb's collision is left out too: the page generates it, as it does the street's sections (client/core/fetched.ts).
+  const omitted = new Set([...BENT_SECTIONS, ...ORBS].map((d) => d.id));
   for (const def of defs) {
     if (def.type !== "structure" || !def.breaks) continue;
     omitted.add(def.id);

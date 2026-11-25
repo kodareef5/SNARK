@@ -672,6 +672,14 @@ export class GlRenderer {
     return progs.every((prog) => !prog.text || this.gl.getProgramParameter(prog.program, COMPLETION_STATUS));
   }
 
+  /** Begins the programs of the tier being drawn that a late file has just brought (programs.ts LATE), so their first draw waits for less. */
+  late(): void {
+    this.asked.clear();
+    if (!this.warmed) return;
+    for (const n of tierPrograms(this.warmed)) if (!this.made[n]) this.program(n);
+    if (drawsLight(this.warmed, this.light)) for (const n of tierPrograms(this.warmed)) this.program(n, false);
+  }
+
   /** Job `k`'s program of the textures the card makes, once linked; none while it links, and none for good where it failed. */
   private readonly job = (k: number, o: Orders = this.texgen!.orders): WebGLProgram | null => {
     const gl = this.gl, text = o.programs[k]!;

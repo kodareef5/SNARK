@@ -133,6 +133,7 @@ async function boot(): Promise<void> {
     tops: loader.staged.tops,
     buildings: loader.staged.buildings,
     tideEyes: head.tideEyes,
+    orbs: head.orbs,
     ...(land ? { landmarks: land.landmarks } : {}),
   });
   // Riding out a restart (client/core/waiting.ts). The page learns which start of the server it is on, and when the
@@ -221,6 +222,8 @@ async function boot(): Promise<void> {
   if (app.ui.settings.touchFirst) app.ui.inputDevice = 2;
   // The textures the card makes come as a file of their own, which the first frame does not wait for; a touch-first device makes none.
   if (!app.ui.settings.touchFirst) void import("../core/texgen/late.ts").then((m) => renderer.makeWith((app.texgen = m.texgen(renderer.gl))), () => {});
+  // A map with an orb fetches its screens as a file of their own: their program is begun when it lands.
+  if (head.orbs?.length) void import("../core/render/orb-late.ts").then(() => renderer.late(), () => {});
   // What the screen's own edges take (a notch, a home bar), which the page's padding measures: the interface keeps clear of them.
   const edges = (): void => { const s = getComputedStyle(document.body); [s.paddingLeft, s.paddingTop, s.paddingRight, s.paddingBottom].forEach((side, i) => (app.insets[i] = parseFloat(side) || 0)); };
   edges();

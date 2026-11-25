@@ -2,13 +2,11 @@
 import { quatNlerp } from '../math/quat.ts';
 import { detCos, len3 } from '../math/scalar.ts';
 import { dynamicState, type DynamicBody, type DynamicContact, type DynamicQueries, type DynamicState } from '../sim/vehicle-dynamic.ts';
-import { isBoatVehicle, isSkateboard, isWheelVehicle, type WheelVehicleDefinition, type VehicleDefinition } from '../sim/vehicle.ts';
-import { carMeetsCapsule, carMeetsVehicle } from './vehicle.ts';
-import { boatMeetsCapsule, boatMeetsVehicle } from './boat.ts';
-import { helicopterMeetsCapsule, helicopterMeetsVehicle } from './helicopter.ts';
+import { familyOf } from '../sim/families.ts';
+import { isBoatVehicle, isSkateboard, type WheelVehicleDefinition, type VehicleDefinition } from '../sim/vehicle.ts';
 import { capsuleFree, ground, groundUnder, push, SKIN, type CollisionWorld } from './collide.ts';
 import { rayBox } from './ray.ts';
-import { boatJoints, boatShapes, carShapes, helicopterShapes, vehicleSolidRadius } from './vehicle-shapes.ts';
+import { vehicleSolidRadius } from './vehicle-shapes.ts';
 import { StaticVehicleSolids } from './vehicle-solid.ts';
 
 /** Interaction meshes circumscribe an actor's capsule with a twelve-sided tube. */
@@ -132,11 +130,8 @@ export class VehiclePairQueries implements DynamicQueries {
 
   geometry(a: DynamicState, b: DynamicState) {
     const def = this.defA, other = this.defB, skin = this.skin, y = b.y - skin, r = this.radiusB + skin, h = Math.max(this.heightB, this.radiusB * 2) + 2 * skin;
-    return isWheelVehicle(def)
-      ? other ? carMeetsVehicle(def.spec, a, other, b) : carMeetsCapsule(def.spec, a, b.x, y, b.z, r, h)
-      : isBoatVehicle(def)
-        ? other ? boatMeetsVehicle(def, a, other, b) : boatMeetsCapsule(def, a, b.x, y, b.z, r, h)
-        : other ? helicopterMeetsVehicle(def, a, other, b) : helicopterMeetsCapsule(def, a, b.x, y, b.z, r, h);
+    const family = familyOf(def)!;
+    return other ? family.meetsVehicle(def, a, other, b) : family.meetsCapsule(def, a, b.x, y, b.z, r, h);
   }
 
   overlap(a: DynamicBody, b: DynamicBody): DynamicContact | null {
@@ -151,8 +146,8 @@ export class VehiclePairQueries implements DynamicQueries {
     const to = body.state, def = body === this.a ? this.defA : this.defB;
     if (def) {
       this.checking = body;
-      const shapes = isWheelVehicle(def) ? carShapes(def.spec) : isBoatVehicle(def) ? boatShapes(def) : helicopterShapes(def);
-      const hit = this.solids.blocked(from, to, shapes, isBoatVehicle(def) ? boatJoints(from, to, def.spec) : undefined, true);
+      const family = familyOf(def)!;
+      const hit = this.solids.blocked(from, to, family.parts(def), family.joints(def, from, to), true);
       if (!hit) return true;
       blocker[0] = hit.nx; blocker[1] = hit.ny; blocker[2] = hit.nz; blocker[3] = hit.x; blocker[4] = hit.y; blocker[5] = hit.z;
       return false;

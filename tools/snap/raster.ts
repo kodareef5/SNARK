@@ -27,6 +27,7 @@ import { CITY_BUFFER } from "../../client/core/render/farcity.ts";
 import { LANDMARK_BUFFER } from "../../client/core/render/farlandmarks.ts";
 import { nearKeeps, swapKeeps } from "../../client/core/render/hand.ts";
 import { COARSE, groundNormal, groundSize, tilePicture, type GroundPicture } from "../../client/core/render/terrain.ts";
+import { orbLight, orbShown } from "../../client/core/render/orb.ts";
 import { CHANNEL_DIM, CHANNEL_STRIP, EYE_FLOATS, EYE_SLOTS, STORM_DEPTH, eyeEnergy, eyeGlint, eyeRadiance, type StormLit } from "../../client/core/render/tide-eye.ts";
 import { cloudLights, cloudLit } from "../../client/core/render/atmosphere.ts";
 
@@ -34,17 +35,18 @@ const eyeBehind = [0, 0, 0], energy = [0, 0, 0];
 import { OPEN_BYTES, overGround, skyOpen } from "../../client/core/render/skyopen.ts";
 import { roofBounce, roofOpen } from "../../client/core/render/roof.ts";
 import { lampSees, lensOfWord, poolShade } from "../../client/core/render/lamp.ts";
+import { orbMirror, orbSees, orbShade } from "../../client/core/render/orb-light.ts";
 import { MOST_LOD, detailKeeps, lampOf, poolOf, rotorOf, scorchOf, shapeOf, smokeOf, wakeFoam, wireOf } from "../../client/core/render/detailtext.ts";
 import { drawFire, type FireLook, type FireTarget } from "./fire.ts";
 import { FACE_PLAIN, FACE_WEARS, PIECE_MADE_AT, PIECE_MADE_BITS, PIECE_STAGE, PIECE_STATE_AT, PieceFit } from "../../client/core/render/piece-fit.ts";
 import { WEAR_OVER_MADE, WEAR_STAGE, pieceMade, pieceShown, pieceWear, wearShade } from "../../client/core/render/pieces.ts";
-import { DROPS_AT, DROP_STREAKS, ATLAS_REGION, ATLAS_WIDTH, BEND_BUFFERS, BONE_FLOATS, DRAW_BENT, DRAW_HEAT_SHIFT, GLASS_AT, DETAIL, DETAIL_FLOATS, DETAIL_DIGITS, DETAIL_GLOW, DETAIL_SCORCH, DETAIL_SMOKE, GLOW_STEPS, SMOKE_STEPS, DRAW_FIRE, DETAIL_GLASS, DETAIL_TIRE, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_WAKE, DETAIL_WIRE, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_SKYLINE, SKYLINE_MAX_FOG, DRAW_ONE_BONE, DRAW_PIECE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, WORLD_LAYERS, quadIndices, stepOf, type TextureUpload, SHORE_AT, DETAIL_SHADED_POOL, MAX_CONTACTS } from "../../client/core/render/packet.ts";
+import { DROPS_AT, DROP_STREAKS, ATLAS_REGION, ATLAS_WIDTH, BEND_BUFFERS, BONE_FLOATS, DRAW_BENT, DRAW_HEAT_SHIFT, GLASS_AT, DETAIL, DETAIL_FLOATS, DETAIL_DIGITS, DETAIL_GLOW, DETAIL_SCORCH, DETAIL_SMOKE, GLOW_STEPS, SMOKE_STEPS, DRAW_FIRE, DETAIL_GLASS, DETAIL_TIRE, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_WAKE, DETAIL_WIRE, DRAW_ORB, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_SKYLINE, SKYLINE_MAX_FOG, DRAW_ONE_BONE, DRAW_PIECE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, WORLD_LAYERS, quadIndices, stepOf, type TextureUpload, SHORE_AT, DETAIL_SHADED_POOL, MAX_CONTACTS } from "../../client/core/render/packet.ts";
 import { HALF_HEIGHT, OUTLINE_RGB, digitsOf, halfWidth } from "../../client/core/render/digits.ts";
 import { WET_DARK, WET_ROUGH, shoreWet } from "../../client/core/render/bank.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
 import { domeLight, theSky, trueSun } from "../../client/core/render/sky.ts";
 import { wearLate } from "../../client/core/render/wear.ts";
-import { heatOfShown, LAYER_LEVELS, NEUTRAL, bounce, bumped, direct, dyed, glowAt, lampsOn, materialEmission, lit, regionDyes, shown, skinMode, skyFrom, skyLight, skyOn, srgbToLinear, through, wounded } from "../../client/core/render/surface.ts";
+import { heatOfShown, LAYER_LEVELS, NEUTRAL, bounce, bumped, direct, dyed, glowAt, lampsOn, materialEmission, lit, moonCasts, regionDyes, shown, skinMode, skyFrom, skyLight, skyOn, srgbToLinear, through, wounded } from "../../client/core/render/surface.ts";
 import type { AssetUpload } from "../../client/core/assets/residency.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
 import { finishTable, type FinishTable } from "../../shared/pack/finish.ts";
@@ -322,6 +324,12 @@ const pieceNow = new Float64Array(6);
 const faceNow = [0, 0, 0];
 
 /**
+ * The share of the casting light an orb's own shadow leaves a camera-relative point, as the lit programs' sunShadow
+ * takes it (orb-light.ts): the one shadow this renderer has, since it is worked out and not looked up in a map.
+ */
+const ballShade = (p: FramePacket, x: number, y: number, z: number): number => (p.lit && p.tier.shadows.size > 0 && p.tier.shadows.orb !== false ? orbShade(p.frame, x, y, z) : 1);
+
+/**
  * A palette draw on a lit frame into `rgb`, with world-projected finishes and SURFACE lighting. (rx, ry, rz) is where it
  * is from the camera, and (nx, ny, nz) its face's normal. The ground is lit by its own normal, `smooth`, and where its
  * finish meets another, `other` is that one's tint and `share` how much of it is wanted (LIT_TERRAIN_FRAGMENT).
@@ -329,7 +337,7 @@ const faceNow = [0, 0, 0];
  * `open` is the share of the sky's light the sky's openness leaves it (skyopen.ts), which its sheet's light from behind keeps.
  */
 function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: number, rx: number, ry: number, rz: number, nx: number, ny: number, nz: number, sample: WorldSample | null = null, ground = false, footprint = 0, look?: (view: ArrayLike<number>, out: Float64Array | Float32Array | number[]) => void, smooth: Float64Array | null = null, finish?: FinishTable, row = 0, open = 1, other = -1, share = 0, weather: ArrayLike<number> | null = null, over = 0, edge: ArrayLike<number> | null = null, facade: ArrayLike<number> | null = null, facadeSample: FacadeSample | null = null, roomOpen: RoomOpen | null = null, fixture = 0, made = 0, piece: ArrayLike<number> | null = null): void {
-  const dist = Math.sqrt(rx * rx + ry * ry + rz * rz);
+  const dist = Math.sqrt(rx * rx + ry * ry + rz * rz), cast = ballShade(p, rx, ry, rz);
   // A near chunk's piece's wear rides over its material (pieces.ts): it is darker by its stage, as PIECE_SHADE has it.
   const wear = made >> WEAR_OVER_MADE, dim = wearShade(wear);
   made &= (1 << WEAR_OVER_MADE) - 1;
@@ -360,8 +368,8 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
       streetMirror(mirrored,p,reflected,rx,ry,rz,worldOrm[1]!,share);
     }
     opened.set([worldOrm[0]! * open, worldOrm[1]!, worldOrm[2]!]);
-    lit(light, albedo, opened, normal, eye, p.frame, worldOrm[1]! < 1 && look ? mirrored : NOTHING);
-    through(light, albedo, worldOrm, normal, p.frame, finish.pixels[own + 1027]! / 255);
+    lit(light, albedo, opened, normal, eye, p.frame, worldOrm[1]! < 1 && look ? mirrored : NOTHING, cast);
+    through(light, albedo, worldOrm, normal, p.frame, finish.pixels[own + 1027]! / 255, cast);
   } else if (fixture) {
     const twice = 2*(nx*eye[0]!+ny*eye[1]!+nz*eye[2]!);
     for (let c=0; c<3; c++) reflected[c] = twice*normal[c]!-eye[c]!;
@@ -382,7 +390,7 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
     else skyLight(mirrored,p.frame,reflected);
     streetMirror(mirrored,p,reflected,rx,ry,rz,rough,share);
     opened[1] = rough;
-    lit(light,albedo,opened,normal,eye,p.frame,mirrored);
+    lit(light,albedo,opened,normal,eye,p.frame,mirrored,cast);
   } else if (sample) {
     const city = p.surfaceCity[7] ? "las-vegas" : "default", touch = p.tier.finish === "light";
     // A piece's face that wears its material in a colour of the mesh's own takes the piece's finish (worldVertex).
@@ -487,9 +495,11 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
     const coated = facadeIO.coated;
     const finishShare = glass ? 1 : coated ? Math.max(0,Math.min(1,(0.85-worldOrm[1]!)*3)) : surfaceShare;
     if (finishShare) worldOrm[1] = glossRoughness(worldOrm[1]!,finishShare,p.frame[FRAME.streetLook]!);
+    // The ground mirrors the ball too, as LIT_TERRAIN_FRAGMENT has it.
+    if (ground && worldOrm[1]! < 1) orbMirror(mirrored, p.frame, reflected, rx, ry, rz, worldOrm[1]!, 1);
     streetMirror(mirrored,p,reflected,rx,ry,rz,worldOrm[1]!,finishShare);
     worldOrm[0]! *= open;
-    lit(light, albedo, worldOrm, normal, eye, p.frame, (sharp && !look) || worldOrm[1]! >= 1 ? NOTHING : mirrored);
+    lit(light, albedo, worldOrm, normal, eye, p.frame, (sharp && !look) || worldOrm[1]! >= 1 ? NOTHING : mirrored, cast);
     if (facadeIO.room[0]! + facadeIO.room[1]! + facadeIO.room[2]! > 0) {
       facadeSky[0] = nx; facadeSky[1] = ny; facadeSky[2] = nz;
       skyLight(facadeLight, p.frame, facadeSky);
@@ -502,7 +512,7 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
       for (let c = 0; c < 3; c++) albedo[c]! *= DRY_ASPHALT.albedo;
     }
     opened.set([open, 1, 0]);
-    lit(light, albedo, opened, normal, eye, p.frame, NOTHING);
+    lit(light, albedo, opened, normal, eye, p.frame, NOTHING, cast);
   }
   shown(rgb, light, dist, p);
 }
@@ -1002,6 +1012,8 @@ export class Rasterizer {
     const p = this.packet;
     // The street lamp's light on the pixel, which `lit` adds, as a lit program's sunShadow finds it (lamp.ts).
     lampSees(p.frame, rx, ry, rz, nx, ny, nz);
+    // An orb's light on it, where the tier's lit programs take it (orb-light.ts).
+    orbSees(p.frame, p.lit && (ground ? p.tier.orb.ground : p.tier.orb.light), rx, ry, rz, nx, ny, nz);
     const contact = (ground || stands) && p.tier.contact ? contactAt(p.frame, rx, ry, rz, nx, ny, nz) : 1;
     const roofs = p.lit && p.tier.roofs && this.roofSide > 0;
     if (ground) return contact * skyOpen(this.open, this.openWidth, this.openHeight, p.frame, rx, rz, 0, 1, 0, 0, 0) * (roofs ? roofOpen(this.roof, this.roofSide, p.frame, rx, rz, 0, 1, 0, 0) : 1);
@@ -1543,7 +1555,8 @@ export class Rasterizer {
               [eye[0], eye[1], eye[2]] = [vx, vy, vz];
               if ((flags & DETAIL_LIT) !== 0) {
                 lampSees(p.frame, rx, ry, rz, normal[0]!, normal[1]!, normal[2]!);
-                lit(light, albedo, ROUGH, normal, eye, p.frame, NOTHING);
+                orbSees(p.frame, p.tier.orb.light, rx, ry, rz, normal[0]!, normal[1]!, normal[2]!);
+                lit(light, albedo, ROUGH, normal, eye, p.frame, NOTHING, ballShade(p, rx, ry, rz));
               } else for (let c = 0; c < 3; c++) light[c] = albedo[c]! / exposure;
               shown(rgb, light, dist, p);
               for (let c = 0; c < 3; c++) rgb[c]! *= 255;
@@ -1984,6 +1997,22 @@ export class Rasterizer {
               reach = Math.max(Math.hypot(xx, zx), Math.hypot(xy, zy));
             }
           }
+          if (this.drawing >= 0 && (p.drawFlags[this.drawing]! & DRAW_ORB)) {
+            this.deferred[at] = 0;
+            // An orb's screen, as its program shows it with no light target. The metres a pixel spans there are the
+            // place's change a pixel across and a pixel down, as the card's fwidth has them.
+            const r0 = (e0 + e0x) * poly[v0 + 5]!, r1 = (e1 + e1x) * poly[v1 + 5]!, r2 = (e2 - e0x - e1x) * poly[v2 + 5]!, rs = 1 / (r0 + r1 + r2);
+            const d0 = (e0 + e0y) * poly[v0 + 5]!, d1 = (e1 + e1y) * poly[v1 + 5]!, d2 = (e2 - e0y - e1y) * poly[v2 + 5]!, ds = 1 / (d0 + d1 + d2);
+            let wide = 0;
+            for (let k = 0; k < 3; k++) {
+              const here = k === 0 ? rx : k === 1 ? ry : rz;
+              const w = Math.abs((r0 * poly[v0 + k]! + r1 * poly[v1 + k]! + r2 * poly[v2 + k]!) * rs - here) + Math.abs((d0 * poly[v0 + k]! + d1 * poly[v1 + k]! + d2 * poly[v2 + k]!) * ds - here);
+              wide += w * w;
+            }
+            orbLight(p.frame, rx, ry, rz, Math.sqrt(wide), energy, p.tier.orb.octaves, p.tier.orb.pucks);
+            orbShown(this.color, energy, p.frame, at * 4);
+            continue;
+          }
           if (this.drawing >= 0 && (p.drawFlags[this.drawing]! & DRAW_SKYLINE)) {
             this.deferred[at] = 0;
             const fog = Math.max(0, Math.min(1, (dist - p.fogStart) / fogSpan));
@@ -2419,7 +2448,8 @@ export class Rasterizer {
           }
           const open = this.opened(carried[0]!, carried[1]!, carried[2]!, carriedNormal[0]! * nl, carriedNormal[1]! * nl, carriedNormal[2]! * nl, false, bone === 0);
           opened.set([mro[0]! * open, mro[1]!, mro[2]!]);
-          lit(light, albedo, opened, normal, eye, p.frame, mirrored);
+          const cast = ballShade(p, carried[0]!, carried[1]!, carried[2]!);
+          lit(light, albedo, opened, normal, eye, p.frame, mirrored, cast);
           for (let c=0; c<3; c++) light[c] = light[c]!*(1-coat)+mirrored[c]!*open*own*coat;
           if (specularLayer > 0) {
             let variance = 0;
@@ -2429,10 +2459,10 @@ export class Rasterizer {
               variance += dx*dx + dy*dy;
             }
             direct(light, p.frame, FRAME.sun, FRAME.sunColor, coatingF0, 1, 0.00104976 + Math.min(0.024, 0.16*variance),
-              opticalNormal, eye, Math.max(0.001, 1-edge), specularLayer);
+              opticalNormal, eye, Math.max(0.001, 1-edge), specularLayer * (moonCasts(p.frame) ? 1 : cast));
           }
           if (glass) for (let c = 0; c < 3; c++) light[c] = light[c]! + (mirrored[c]!*open - light[c]!)*Math.min(1, 2*glassBack);
-          through(light, albedo, mro, normal, p.frame, s.sheet);
+          through(light, albedo, mro, normal, p.frame, s.sheet, cast);
           bounce.fill(1);
           const glow = glowAt(s.emissive, dist);
           if (glow) for (let c = 0; c < 3; c++) light[c]! += albedo[c]! * glow;

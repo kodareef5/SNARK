@@ -160,6 +160,7 @@ import { V_COUNT, Vitals } from "../../shared/sim/vitals.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 import type { TideEyeSite } from "../../shared/world/tide-eye.ts";
+import { ORB_GAIN_UNITS, type OrbSite } from "../../shared/world/orb.ts";
 import { staticKinds, type MapLandmark, type MapStatics } from "../../shared/world/mapfile.ts";
 import type { Buildings } from "../../shared/world/buildings.ts";
 import { NodeField, type NodeSource } from "../../shared/world/nodes.ts";
@@ -210,6 +211,8 @@ export interface SessionOptions {
   /** The landmarks that map file sets down (MapContent). Past the near rows the scene draws each from its far mesh. */
   landmarks?: readonly MapLandmark[];
   tideEyes?: readonly TideEyeSite[];
+  /** The orbs in that map's head, which the scene draws at any distance. */
+  orbs?: readonly OrbSite[];
   /** That map's tops as they come (mapload.ts StagedMap), of which the scene draws the city past the far city as blocks, where its levels are made. */
   tops?: HeldTops;
   /** That map's buildings, each sector's set in as it comes (mapload.ts StagedMap), or as a file read whole has them. */
@@ -559,7 +562,7 @@ export class ClientSession {
   readonly corpseMotions = new FallCheckpoints();
   private corpseRetryAt = -TICK_RATE;
   private readonly motionSource: MotionSource = { states: () => this.motions, tick: () => this.tickClock, statics: () => this.arrived ?? this.opts.statics ?? null };
-  world: (CollisionWorld & { mapId: string; dims: MapDims; far: FarSource; farNodes?: FarNodeSource; city?: CitySource; motion?: MotionSource; tideEyes?: readonly TideEyeSite[]; landmarks?: readonly MapLandmark[]; tops?: BlocksSource }) | null = null;
+  world: (CollisionWorld & { mapId: string; dims: MapDims; far: FarSource; farNodes?: FarNodeSource; city?: CitySource; motion?: MotionSource; tideEyes?: readonly TideEyeSite[]; orbs?: readonly OrbSite[]; landmarks?: readonly MapLandmark[]; tops?: BlocksSource }) | null = null;
   /** Handle of the local entity, or 0 while there is none (spectating, dead). */
   ownHandle = 0;
   ownStride = 0;
@@ -816,6 +819,9 @@ export class ClientSession {
   private readonly blockers = new Blockers();
   /** SurvivorsBlock is off on this server: survivors pass through one another (server/blocking.ts). */
   survivorsPass = false;
+  /** What the server holds an orb's screen to: a scene's number or -1 for its programme, and its brightness. */
+  orbOnly = -1;
+  orbGain = 1;
   private blockReach = -1;
   /** Per tick stepped, the snapshot its input acknowledges, which its step meets the bodies in. */
   private readonly blockAck = new Uint32Array(HISTORY);
@@ -2016,7 +2022,7 @@ export class ClientSession {
     ownKinds.add({
       kind: OWN_RULES,
       read(s, r) {
-        const flags = r.u16();
+        const flags = r.u16(), only = r.u8() - 1, gain = r.u8() / ORB_GAIN_UNITS;
         if (r.overflow) return;
         s.damageNumbers = (flags & RULE_DAMAGE_NUMBERS) !== 0;
         s.globalChat = (flags & RULE_GLOBAL_CHAT) !== 0;
@@ -2027,6 +2033,8 @@ export class ClientSession {
         s.corpseLocator = (flags & RULE_CORPSE_LOCATOR) !== 0;
         s.creative = (flags & RULE_CREATIVE) !== 0;
         s.survivorsPass = (flags & RULE_SURVIVORS_PASS) !== 0;
+        s.orbOnly = only;
+        s.orbGain = gain;
       },
     });
     ownKinds.add({
@@ -2373,7 +2381,7 @@ export class ClientSession {
     this.nodeChanges = field ? new NodeChanges(dims) : null;
     const nodes = field ? { nodes: field.store, farNodes: { nodes: field.source, held: (c: number) => field.isLoaded(c), gone: (c: number) => this.nodeGone.get(c), changes: this.nodeChanges!, city: () => this.world?.city?.statics ?? this.nodeCity(), ground: hf } } : {};
     // The file's dims, which say where the map sits on the lattice as the welcome's do not.
-    this.world = { mapId, tideEyes: this.opts.tideEyes, dims: hf.dims, hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), far, ...nodes, ...(reg.motion.some((t) => t !== null) ? { motion: this.motionSource } : {}), ...(this.opts.landmarks?.length ? { landmarks: this.opts.landmarks } : {}), ...(this.opts.tops ? { tops: { tops: this.opts.tops, ...(this.opts.cityMaker ? { maker: this.opts.cityMaker } : {}) } } : {}) };
+    this.world = { mapId, tideEyes: this.opts.tideEyes, ...(this.opts.orbs?.length ? { orbs: this.opts.orbs } : {}), dims: hf.dims, hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), far, ...nodes, ...(reg.motion.some((t) => t !== null) ? { motion: this.motionSource } : {}), ...(this.opts.landmarks?.length ? { landmarks: this.opts.landmarks } : {}), ...(this.opts.tops ? { tops: { tops: this.opts.tops, ...(this.opts.cityMaker ? { maker: this.opts.cityMaker } : {}) } } : {}) };
     this.vehicleTrees = field ? new PredictedTrees(this.world, reg, field) : null;
     this.startCity(this.arrived);
     this.vehicleContacts = new VehiclePrediction(this.world, reg, field ? () => new PredictedTrees(this.world!, reg, field) : undefined, this.vehicleTrees ?? undefined);

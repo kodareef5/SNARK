@@ -166,6 +166,8 @@ export function grayboxMeshes(defs: readonly Def[]): SourceMesh[] {
   for (const d of defs) {
     // Under its own id: what a structure that names a mesh of the pack is drawn as until the pack has it.
     if (d.type === "structure" && d.shape !== undefined) {
+      // One drawn as nothing is walked and never drawn: the pack has no mesh of it.
+      if (d.mesh === "none") continue;
       const shape = defs.find((s) => s.type === "shape" && s.id === d.shape);
       if (shape?.type !== "shape") continue;
       const walked = partsMesh(shape.boxes, shape.hulls ?? []);

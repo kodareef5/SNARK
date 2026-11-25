@@ -114,6 +114,8 @@ async function start() {
   const content = loader?.staged.content;
   const { reg, manifest, pack } = await withLandmarks(fetch, content, base, core, parsePack(new Uint8Array(boot)));
   giveSky(new Uint8Array(sky));
+  // A map with an orb draws its screen from the first plate, so its file comes before the renderer warms its programs.
+  if (!shore && loader?.staged.head.orbs?.length) await import("../core/render/orb-late.ts");
   const renderer = new GlRenderer(canvas, pack, hf, manifest, null);
   // The portrait floor needs no city material sets. Art retakes still draw the live world.
   const touchFirst = matchMedia("(pointer: coarse)").matches;
@@ -135,6 +137,7 @@ async function start() {
   const world: RenderWorld & { city?: NonNullable<RenderWorld["city"]> } = {
     mapId: shore ? "core:miami" : head.id,
     tideEyes: shore ? [shore.eye] : loader?.staged.head.tideEyes,
+    ...(!shore && loader?.staged.head.orbs ? { orbs: loader.staged.head.orbs } : {}),
     ...(shore ? { nodes: shorePalms(shore, reg), tops: { tops: shore.tops, maker: new WorkerCityMaker("city-worker.js", 1) } } : {}),
     dims: head.dims,
     hf,

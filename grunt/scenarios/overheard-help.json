@@ -1,0 +1,23 @@
+{
+  "name": "overheard-help",
+  "about": "Chopping wood, the character overhears a stranger in global chat ask anyone for help at the red obelisk (\"red ob\"), without its name. It finds the obelisk on the map, says it is coming, and goes.",
+  "world": {
+    "seed": 5,
+    "me": { "name": "Scout", "x": 0, "z": 0, "yaw": 0, "items": { "stone_hatchet": 1 }, "hold": "stone_hatchet" },
+    "terrain": { "bounds": [-400, -400, 400, 400], "features": [] },
+    "about": "A survival game in the manner of ARK on a real-scale coast: survivors gather, craft, build bases and tame or fight dinosaurs, many of which hunt people. The other survivors are real players; everyone talks in global, local and tribe chat. Three huge obelisks, red, green and blue, are seen from anywhere.",
+    "places": [
+      { "name": "red obelisk", "kind": "obelisk", "x": -160, "z": -230, "about": "the red obelisk: a spire towering over the land, seen from anywhere" },
+      { "name": "green obelisk", "kind": "obelisk", "x": 300, "z": 340, "about": "the green obelisk: a spire towering over the land, seen from anywhere" }
+    ],
+    "things": [
+      { "type": "tree", "x": 3, "z": -6 }, { "type": "tree", "x": -4, "z": -9 }, { "type": "tree", "x": 6, "z": -12 },
+      { "type": "tree", "x": 8, "z": -4 }, { "type": "tree", "x": -7, "z": -3 },
+      { "type": "player", "x": -165, "z": -222, "name": "Mia" }
+    ]
+  },
+  "prompt": "You are Scout, a survivor. Chop wood nearby for a while.",
+  "script": [{ "at_s": 10, "say": { "from": "Mia", "text": "anyone near the red ob? raptors keep getting me, could use a hand", "channel": "global" } }],
+  "success": { "all": [{ "near": "Mia", "within": 12 }, { "said": "obelisk" }] },
+  "budget": { "seconds": 240 }
+}

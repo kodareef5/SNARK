@@ -109,13 +109,31 @@ test("a raptor seen by the grove from the start blocks the harvest for the Direc
   expect([...h.world.things.values()].some((t) => t.type === "tree")).toBe(false);
 });
 
-test("a line with the character's name, or from its owner, reaches the Director; other talk does not", async () => {
+test("a line with the character's name, or from its owner, reaches the Director at once; other talk comes overheard", async () => {
   const h = await harness({}, ["Ana"]);
   h.world.say("Bob", "nice weather");
   h.world.say("Bob", "Scout, come here");
   h.world.say("Ana", "follow me");
+  h.world.say("Cy", "the scouting party left");
   h.run(500);
   expect(h.rt.reports.filter((r) => r.kind === "addressed").map((r) => r.text)).toEqual(['Bob (not in sight): "Scout, come here"', 'Ana (an owner, not in sight): "follow me"']);
+  // The rest waits a moment, so a burst comes as one.
+  expect(h.rt.reports.some((r) => r.kind === "overheard")).toBe(false);
+  h.run(2500);
+  expect(h.rt.reports.filter((r) => r.kind === "overheard").map((r) => r.text)).toEqual(['chat, not said to you by name:\n- Bob (not in sight) in local chat: "nice weather"\n- Cy (not in sight) in local chat: "the scouting party left"']);
+});
+
+test("overheard chat is told at most every 20 s, its own lines never, and a call for help in global is among it", async () => {
+  const h = await harness({});
+  h.world.say("Mia", "anyone near the red ob? need help", "global");
+  h.world.say("Scout", "Scout here, happy to help anyone", "global");
+  h.run(3000);
+  h.world.say("Mia", "hello??", "global");
+  h.run(10_000);
+  const told = () => h.rt.reports.filter((r) => r.kind === "overheard" || r.kind === "addressed").map((r) => r.text);
+  expect(told()).toEqual(['chat, not said to you by name:\n- Mia (not in sight) in global chat: "anyone near the red ob? need help"']);
+  h.run(10_000);
+  expect(told()).toEqual(['chat, not said to you by name:\n- Mia (not in sight) in global chat: "anyone near the red ob? need help"', 'chat, not said to you by name:\n- Mia (not in sight) in global chat: "hello??"']);
 });
 
 test("craft makes what the inventory screen offers, and says what is missing otherwise", async () => {

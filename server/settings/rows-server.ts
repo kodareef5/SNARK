@@ -24,6 +24,8 @@ s.f("XPMultiplier", 1, "Experience gained by survivors and tames. Higher is more
   .f("DinoCountMultiplier", 1, "How many wild creatures each spawn region keeps. Higher is more.", live({ live: true, public: true, note: "Each region holds its number times this, rounded. A region already over it is not thinned." }))
   .f("ServerAutoForceRespawnWildDinosInterval", 0, "At a start, every wild creature is replaced if this many seconds have passed since a start last did so. 0 is never.", live({ note: "Seconds of the wall clock, as official servers use it for weekly respawns. The reference does not say what it counts from; here, from the last start that replaced them, or the first start that kept the count." }))
   .b("RandomSupplyCratePoints", false, "Supply drops land on open ground drawn at random, and not at the drop book's sites.", live({ live: true }))
+  .t("OrbScene", "auto", "What an orb's screen shows. auto runs its programme, a scene every four minutes; watcher, moon, core, storm or tide holds that scene.", live({ live: true, client: true }))
+  .f("OrbBrightness", 1, "How bright an orb's screen and the light it casts are. 0 turns it off.", live({ live: true, client: true, min: 0, max: 4 }))
   .b("DisableWeatherFog", false, "No fog.", plan("weather"))
   .t("ExtinctionEventTimeInterval", "", "Seconds between wipes of the whole world.", none("expansion"))
   .t("WorldBossKingKaijuSpawnTime", "19:00:00", "When a world boss appears, by the wall clock.", none("expansion", { game: "A" }));

@@ -30,7 +30,8 @@ import { SeatNotice, type Ridden } from "./seat-notice.ts";
 import type { ClientSession, RemoteSample } from "./session.ts";
 import { itemLabel, waitWords } from "./ui/inventory.ts";
 import { STABILITY } from "../../shared/world/support.ts";
-import { structName } from "./ui/structure.ts";
+import { structName, type StructMenu } from "./ui/structure.ts";
+import type { EmoteMenu } from "./ui/emotes.ts";
 import type { VehiclePlacement } from "./vehicle-placement.ts";
 import { lookAt, nearbyBoard, riddenOf, vehiclePrompt } from "./vehicle-prompt.ts";
 
@@ -133,7 +134,7 @@ export class Prompts implements FramePart {
   step(f: AppFrame): void {
     const session = f.session, r = f.remote, world = f.world, nowMs = f.nowMs, alive = f.alive, eyeNow = f.eyeNow;
     const b = this.builder, v = this.placement;
-    const menu = f.ui.structure;
+    const menu = f.ui.screen<StructMenu>("structure");
     menu.tick(nowMs);
     this.seatNotice.tick(nowMs);
     // With a piece in hand what is built is still aimed at, so it is used, mended and taken down as with an empty hand.
@@ -147,7 +148,7 @@ export class Prompts implements FramePart {
     const whom = alive ? this.who(f, world, eyeNow) : ((this.aimedBoat = this.lookedAt = this.target = -1), "");
     this.eggAimed = -1;
     // A move for two goes to the survivor the crosshair is on.
-    const emotes = f.ui.emotes, characters = f.scene.characters;
+    const emotes = f.ui.screen<EmoteMenu>("emotes"), characters = f.scene.characters;
     emotes.tick(nowMs);
     emotes.target = -1;
     emotes.targetName = "";

@@ -138,7 +138,7 @@ for (const [recipe, what] of [[WOOD_JOINTED, "with no strips"], [WOOD, "with its
 
 // Thatch with its own joints, as the client lays and fits them: the corner pole in place of each wall's own post.
 
-import { THATCH_JOINTED } from "../../tools/pack/pieces/thatch.ts";
+import { THATCH_JOINTED, THATCH_PLANNED } from "../../tools/pack/pieces/thatch.ts";
 
 /** Corners the client lays a thatch joint at, by the ways of their walls: the corner pole, and the stouter one where walls meet at 60 degrees. */
 const THATCH_JOINTS: readonly (readonly [name: string, joint: string, ways: readonly (readonly [way: number, left: boolean, storey?: number])[]])[] = [
@@ -281,4 +281,260 @@ test("metal and its own joints closes every corner, square or not, and a straigh
     expect([j.name, near.leak, near.notch, far.leak, far.notch, fought.faces, fought.area]).toEqual([j.name, 0, 0, 0, 0, 0, 0]);
   });
   if (process.env.SNARK_MEETS) console.log(said.join("\n"));
+});
+
+// The shapes past the first nine, with each tier's own trims as the client lays and fits them.
+
+import { PLANNED_FORMS } from "../../content/building/forms.ts";
+import type { Registry } from "../../shared/content/registry.ts";
+import type { Frame } from "../../shared/world/lattice/frames.ts";
+import { CLS_EDGE, CLS_SQUARE, CLS_TRIANGLE } from "../../shared/world/lattice/module.ts";
+import type { StructureStore } from "../../shared/world/structures.ts";
+import type { SourceMesh } from "../../tools/pack/write.ts";
+import { showsOver } from "../../tools/pieces/joints.ts";
+import { junction, skirtCorner, type Prism } from "../../tools/pieces/layout.ts";
+import { putAt, putOwn, type Drawn } from "../fixtures/trims.ts";
+
+const O = [0, 0, 0, 0];
+const at = (i: number, j: number): number[] => [2 * i, 0, 0, 2 * j];
+/** Metres a sloped wall is judged to near its high end: under its top 0.45 m along, less the gap stone's leaves under a roof. */
+const GABLE = 1.1;
+
+interface Shaped {
+  name: string;
+  /** Metres the base's level 0 stands over the ground: a foundation with skirts is raised to show them. */
+  foot?: number;
+  /** The corner judged, from the base's own, in sides. */
+  corner?: readonly [number, number];
+  lay(put: (form: string, cls: number, a: readonly number[], d: number, lvl: number, flipped?: boolean) => void, own: (form: string, cls: number, a: readonly number[], d: number, lvl: number, way: number) => void): void;
+  /** The wall ends a line of sight may not pass, and the corners two skirts close, about the corner judged. */
+  ends?: (tier: TierName) => WallEnd[];
+  skirts?: readonly (readonly [number, number])[];
+  looks?: readonly number[];
+  /** The joints within 0.4 m of the corner, each the heights it stands between: for a tier whose walls run on, and for one whose do not. */
+  joints(runsOn: boolean): [number, number][];
+}
+
+const end = (tier: TierName, form: string, way: number, left: boolean, storey = 0, high?: number): WallEnd => ({ form, tier, way, left, storey, ...(high === undefined ? {} : { high }) });
+
+const SHAPED: readonly Shaped[] = [
+  {
+    // A corner under a roof's eave, the gable over one wall coming down to nothing at it.
+    name: "gable at eave",
+    lay(put, own) {
+      put("wall", CLS_EDGE, O, 0, 0, true);
+      put("wall", CLS_EDGE, O, 3, 0);
+      put("sloped_wall_right", CLS_EDGE, O, 3, 4);
+      own("roof", CLS_SQUARE, O, 0, 4, 0);
+    },
+    ends: (tier) => [end(tier, "wall", 0, false), end(tier, "wall", 90, true)],
+    joints: () => [[0, 3.01]],
+  },
+  {
+    // A gable end: two walls in line, the two gables' high ends over them, and the ridge of two roofs above.
+    name: "gable at ridge",
+    lay(put, own) {
+      put("wall", CLS_EDGE, O, 3, 0);
+      put("wall", CLS_EDGE, at(0, -1), 3, 0);
+      put("sloped_wall_left", CLS_EDGE, O, 3, 4);
+      put("sloped_wall_right", CLS_EDGE, at(0, -1), 3, 4);
+      own("roof", CLS_SQUARE, O, 0, 4, 6);
+      own("roof", CLS_SQUARE, at(0, -1), 0, 4, 0);
+    },
+    ends: (tier) => [end(tier, "wall", 90, true), end(tier, "wall", 270, false), end(tier, "sloped_wall_left", 90, true, 1, GABLE), end(tier, "sloped_wall_right", 270, false, 1, GABLE)],
+    looks: [1.5, 3.7],
+    joints: (runsOn) => (runsOn ? [] : [[0, 3.01], [3, 4.51]]),
+  },
+  {
+    // The head of a lean-to: a gable's high end and the half wall under the roof's high side, over a corner of walls.
+    name: "gable at a lean-to's head",
+    corner: [0, 1],
+    lay(put, own) {
+      put("wall", CLS_EDGE, O, 3, 0);
+      put("wall", CLS_EDGE, at(0, 1), 0, 0);
+      put("sloped_wall_right", CLS_EDGE, O, 3, 4);
+      put("half_wall", CLS_EDGE, at(0, 1), 0, 4);
+      own("roof", CLS_SQUARE, O, 0, 4, 0);
+    },
+    ends: (tier) => [end(tier, "wall", 270, false), end(tier, "wall", 0, true), end(tier, "sloped_wall_right", 270, false, 1, GABLE), end(tier, "half_wall", 0, true, 1, 1.5)],
+    looks: [1.5, 3.7],
+    joints: () => [[0, 3.01], [3, 4.51]],
+  },
+  {
+    name: "half wall beside a wall",
+    lay(put) {
+      put("half_wall", CLS_EDGE, O, 0, 0, true);
+      put("wall", CLS_EDGE, O, 3, 0);
+    },
+    ends: (tier) => [end(tier, "half_wall", 0, false, 0, 1.5), end(tier, "wall", 90, true)],
+    joints: () => [[0, 3.01]],
+  },
+  {
+    name: "railing corner",
+    lay(put) {
+      put("railing", CLS_EDGE, O, 0, 0, true);
+      put("railing", CLS_EDGE, O, 3, 0);
+    },
+    joints: () => [],
+  },
+  {
+    name: "wall at a double doorway's middle",
+    lay(put) {
+      put("double_doorway", CLS_EDGE, at(-1, 0), 0, 0, true);
+      put("wall", CLS_EDGE, O, 3, 0);
+    },
+    ends: (tier) => [end(tier, "wall", 90, true)],
+    joints: () => [[0, 3.01]],
+  },
+  {
+    name: "large wall beside a wall",
+    lay(put) {
+      put("large_wall", CLS_EDGE, O, 0, 0, true);
+      put("wall", CLS_EDGE, O, 3, 0);
+    },
+    ends: (tier) => [end(tier, "large_wall", 0, false, 0, 12), end(tier, "wall", 90, true)],
+    looks: [1.5, 7.5],
+    joints: () => [[0, 3.01], [3, 6.01], [6, 9.01], [9, 12.01]],
+  },
+  {
+    // A footing has no skirt, and the walls on it meet as walls on a foundation do.
+    name: "walls on fence foundations at a corner",
+    foot: 1,
+    lay(put) {
+      put("fence_foundation", CLS_EDGE, O, 0, 0, true);
+      put("fence_foundation", CLS_EDGE, O, 3, 0);
+      put("wall", CLS_EDGE, O, 0, 0, true);
+      put("wall", CLS_EDGE, O, 3, 0);
+    },
+    ends: (tier) => [end(tier, "wall", 0, false), end(tier, "wall", 90, true)],
+    joints: () => [[0, 3.01]],
+  },
+  {
+    name: "beam corner",
+    lay(put) {
+      put("beam", CLS_EDGE, O, 0, 0, true);
+      put("beam", CLS_EDGE, O, 3, 0);
+    },
+    joints: () => [],
+  },
+  {
+    name: "skirts at an outside corner",
+    foot: 2,
+    lay: (put) => put("foundation", CLS_SQUARE, O, 0, 0),
+    skirts: [[90, 360]],
+    looks: [1],
+    joints: () => [],
+  },
+  {
+    name: "skirts at an inside corner",
+    foot: 2,
+    lay(put) {
+      for (const a of [O, at(-1, 0), at(0, -1)]) put("foundation", CLS_SQUARE, a, 0, 0);
+    },
+    looks: [1],
+    joints: () => [],
+  },
+  {
+    name: "skirts at a triangle's first corner",
+    foot: 2,
+    lay: (put) => put("triangle_foundation", CLS_TRIANGLE, O, 0, 0),
+    skirts: [[60, 360]],
+    looks: [1],
+    joints: () => [],
+  },
+  {
+    name: "skirts at a triangle's second corner",
+    foot: 2,
+    corner: [1, 0],
+    lay: (put) => put("triangle_foundation", CLS_TRIANGLE, O, 0, 0),
+    skirts: [[180, 480]],
+    looks: [1],
+    joints: () => [],
+  },
+];
+
+/**
+ * What each of SHAPED counted on 2026-11-24 with the tier's own trims laid, after leak and notch pixels, near and from
+ * across a yard, which are all 0: faces in one plane and their square centimetres, where there are any. A change may
+ * lower one and not raise it. A ridge's ends lie in the plane of its roofs' sides (thatch's cap is the widest), rails
+ * and beams cross at their corner as they do with no trims, two footings overlap at theirs, and three foundations'
+ * sides lie in one plane under a floor held up in the air.
+ */
+const SHAPED_FIGHTS: Record<string, Record<string, readonly [number, number]>> = {
+  wood: { "gable at ridge": [4, 36], "railing corner": [3, 92], "beam corner": [2, 234], "walls on fence foundations at a corner": [2, 117], "skirts at an inside corner": [10, 261] },
+  stone: { "gable at ridge": [4, 35], "railing corner": [2, 50], "beam corner": [2, 242], "walls on fence foundations at a corner": [1, 42], "skirts at an inside corner": [2, 264] },
+  metal: { "gable at eave": [1, 16], "gable at ridge": [4, 33], "railing corner": [4, 333], "beam corner": [2, 500], "walls on fence foundations at a corner": [3, 398] },
+  thatch: { "gable at ridge": [6, 1335], "gable at a lean-to's head": [3, 24], "railing corner": [2, 26], "skirts at an inside corner": [8, 100] },
+};
+
+/** The forms SHAPED sets down, as a tier's recipe makes them. */
+const SHAPED_FORMS = { ...FORMS, ...Object.fromEntries(["half_wall", "railing", "beam", "fence_foundation", "double_doorway", "large_wall", "roof", "sloped_wall_left", "sloped_wall_right", "triangle_foundation"].map((name) => [name, PLANNED_FORMS[name as keyof typeof PLANNED_FORMS]])) };
+
+function shaped(tier: TierName, art: readonly SourceMesh[]): number {
+  const pack = piecesPack(art);
+  // A shape is judged where the tier makes every form it sets down.
+  const made = new Set(art.map((m) => m.id));
+  const shapes = SHAPED.filter((shape) => {
+    let all = true;
+    const note = (form: string): void => void (all &&= made.has(`core:${form}_${tier}`));
+    shape.lay(note, note);
+    return all;
+  });
+  const laid: { j: Junction; at: Shaped }[] = [];
+  const bench = new JointBench(pack, [], SIDE, (structs: StructureStore, reg: Registry) => {
+    shapes.forEach((shape, k) => {
+      const [bx, bz, foot] = [64 + (k % 4) * 32, 64 + Math.floor(k / 4) * 32, shape.foot ?? 0];
+      const f: Frame = baseAt(structs, bx, foot, bz, 0);
+      shape.lay((form, cls, a, d, lvl, flipped = false) => void putAt(structs, reg, f, `core:${form}_${tier}`, cls, a, d, lvl, 1, flipped), (form, cls, a, d, lvl, way) => void putOwn(structs, reg, f, `core:${form}_${tier}`, cls, a, d, lvl, way));
+      const [vx, vz] = [bx + 3 * (shape.corner?.[0] ?? 0), bz + 3 * (shape.corner?.[1] ?? 0)];
+      const j = junction(shape.name, vx, vz, shape.ends?.(tier) ?? [], (id) => reg.index.has(id), foot);
+      // A skirt's corner is judged from over the ground to under the foundation's own courses, 0.08 m out: the thinnest skirt's depth.
+      const corners: Prism[] = (shape.skirts ?? []).map(([a, b]) => skirtCorner(vx, vz, a, b, 0.08, 0.1, foot - 0.4));
+      laid.push({ j: { ...j, mitres: [...j.mitres, ...corners], looks: [...(shape.looks ?? [1.5])] }, at: shape });
+    });
+  });
+  bench.draw({ vertex: [64, 64] }, 1.5, 30, 20);
+  const got = drawn(bench.scene, { chunksX: 8, chunksZ: 8 }, pack, meshesOf(pack));
+  const said: string[] = [];
+  const checks: (() => void)[] = [];
+  const runsOn = tier === "stone" || tier === "metal";
+  for (const { j, at: shape } of laid) {
+    const foot = shape.foot ?? 0;
+    const [near, far, fought] = [bench.measure(j), bench.measure(j, COARSE, COARSE_VIEWS), fightsOf(round(got, j.vertex[0], j.vertex[1], 4.7), -10)];
+    const here: Drawn[] = round(got, j.vertex[0], j.vertex[1], 4.7);
+    const joints = round(got, j.vertex[0], j.vertex[1], 0.4).filter((d) => d.trim && d.id.includes("joint"));
+    // A joint's foot to the nearest 5 cm: metal's post is sunk a centimetre under its level.
+    const stands = joints.map((d): [number, number] => [Math.round((d.lo[1]! - foot) * 20) / 20 || 0, Math.round((d.hi[1]! - foot) * 100) / 100]).sort((p, q) => p[0] - q[0]);
+    // Every joint and ridge seen from above with a roof behind it: one that stands out of the roof's top.
+    const through = showsOver(here.filter((d) => d.trim && d.id.includes("joint")), here.filter((d) => !d.trim && d.id.includes("roof")), j.vertex[0], j.vertex[1]);
+    said.push(`${tier} ${j.name}: leak ${near.leak}, notch ${near.notch}, from across a yard ${far.leak} and ${far.notch}, faces in one plane ${fought.faces}, ${fought.area} cm2, joints ${JSON.stringify(stands)}, through a roof ${through}`);
+    checks.push(() => {
+      expect([j.name, ...stands]).toEqual([j.name, ...shape.joints(runsOn)]);
+      expect([j.name, near.leak, near.notch, far.leak, far.notch, through]).toEqual([j.name, 0, 0, 0, 0, 0]);
+      if (!shape.skirts && !shape.name.startsWith("skirts")) expect([j.name, here.filter((d) => d.trim && d.id.includes("skirt")).length]).toEqual([j.name, 0]);
+      const most = SHAPED_FIGHTS[tier]![j.name] ?? [0, 0];
+      expect([j.name, fought.faces <= most[0] + 2, fought.area <= most[1] * 1.1 + 10]).toEqual([j.name, true, true]);
+    });
+  }
+  if (process.env.SNARK_MEETS) console.log(said.join("\n"));
+  for (const check of checks) check();
+  return shapes.length;
+}
+
+test("wood's new shapes and its own trims close every junction, and no joint stands out of a roof", () => {
+  expect(shaped("wood", [...tierMeshes(["thatch", "stone"]), ...tierShapes(WOOD, SHAPED_FORMS), ...trimShapes(WOOD)])).toBe(SHAPED.length);
+});
+
+test("stone's new shapes and its own trims close every junction, and no joint stands out of a roof", () => {
+  expect(shaped("stone", [...tierMeshes(["thatch", "wood"]), ...tierShapes(STONE, SHAPED_FORMS), ...trimShapes(STONE)])).toBe(SHAPED.length);
+});
+
+test("metal's new shapes and its own trims close every junction, and no joint stands out of a roof", () => {
+  expect(shaped("metal", [...tierMeshes(), ...bakeMetal(SHAPED_FORMS, true)])).toBe(SHAPED.length);
+});
+
+test("thatch's new shapes and its own trims close every junction it makes", () => {
+  const forms = Object.fromEntries(Object.entries(SHAPED_FORMS).filter(([name]) => (THATCH_FORMS as readonly string[]).includes(name) || (THATCH_PLANNED as readonly string[]).includes(name)));
+  // No large wall, double doorway, beam, footing or triangle in thatch: the gables, low walls, rails and skirts.
+  expect(shaped("thatch", [...tierMeshes(["wood", "stone"]), ...tierShapes(THATCH_JOINTED, forms), ...trimShapes(THATCH_JOINTED)])).toBeGreaterThanOrEqual(6);
 });

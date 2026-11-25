@@ -21,6 +21,7 @@ import { PROVING_POOL } from "../../shared/world/proving.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
 import { Harness } from "../fixtures/net.ts";
 import { camp, id, proving } from "../kit/kit.ts";
+import type { InventoryScreen } from "../../client/core/ui/inventory.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "snark-death-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -342,7 +343,7 @@ test("the prompt under the crosshair names what the use key would open, and only
   app.key("KeyE", false);
   run(300);
   expect(app.session.open?.name).toBe("old cache");
-  expect(app.ui.inventory.open).toBe(true); // the screen came up with it
+  expect(app.ui.screen<InventoryScreen>("inventory").open).toBe(true); // the screen came up with it
   expect(app.ui.frame.find(KEY_PROMPT)!.text).toBe("E  close old cache");
   // Closing the screen closes the container on the server too.
   app.key("Escape", true);

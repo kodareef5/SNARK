@@ -42,6 +42,8 @@ export interface WallEnd {
   left: boolean;
   /** The storey it stands on, 0 for the ground. */
   storey?: number;
+  /** Metres it stands near the vertex where that is not a storey: a low wall's height, a sloped wall's at its high end. */
+  high?: number;
 }
 
 /** A core sheet reaches this far from the vertex and is this thick each side of the wall's middle. */
@@ -89,16 +91,18 @@ export function junction(name: string, vx: number, vz: number, ends: readonly Wa
   for (const storey of storeys) {
     const here = ends.filter((e) => (e.storey ?? 0) === storey);
     const y0 = foot + storey * WALL_HEIGHT;
-    const [lo, hi] = [y0 + TRIM, y0 + WALL_HEIGHT - TRIM];
+    const lo = y0 + TRIM, top = (e: WallEnd): number => y0 + (e.high ?? WALL_HEIGHT) - TRIM;
     const tips: [number, number][] = [];
     for (const e of here) {
       pieces.push(wallAt(pieceId(e.form, e.tier, has), vx, vz, e.way, e.left, y0));
       const [dx, dz] = [Math.cos(rad(e.way)), Math.sin(rad(e.way))];
       const [nx, nz] = [-dz * CORE, dx * CORE];
-      cores.push({ poly: [[vx + nx, vz + nz], [vx + dx * REACH + nx, vz + dz * REACH + nz], [vx + dx * REACH - nx, vz + dz * REACH - nz], [vx - nx, vz - nz]], y0: lo, y1: hi });
+      cores.push({ poly: [[vx + nx, vz + nz], [vx + dx * REACH + nx, vz + dz * REACH + nz], [vx + dx * REACH - nx, vz + dz * REACH - nz], [vx - nx, vz - nz]], y0: lo, y1: top(e) });
       tips.push([vx + nx, vz + nz], [vx - nx, vz - nz]);
     }
-    if (here.length > 1) cores.push({ poly: hull(tips), y0: lo, y1: hi });
+    // The walls' meeting is closed as high as the lowest of them, and so is the corner outside two of them.
+    if (here.length > 1) cores.push({ poly: hull(tips), y0: lo, y1: Math.min(...here.map(top)) });
+    const topAt = (way: number): number => Math.min(...here.filter((e) => ((e.way % 360) + 360) % 360 === way).map(top));
     // Between two neighbours more than a half turn apart, their outer faces carried on meet behind the vertex.
     const ways = here.map((e) => ((e.way % 360) + 360) % 360).sort((a, b) => a - b);
     const half = WALL_THICK / 2;
@@ -110,10 +114,21 @@ export function junction(name: string, vx: number, vz: number, ends: readonly Wa
       const [bx, bz] = [vx + Math.sin(rad(to)) * half, vz - Math.cos(rad(to)) * half];
       const [ux, uz, wx, wz] = [Math.cos(rad(from)), Math.sin(rad(from)), Math.cos(rad(to)), Math.sin(rad(to))];
       const s = ((bx - ax) * wz - (bz - az) * wx) / (ux * wz - uz * wx);
-      mitres.push({ poly: [[vx, vz], [ax, az], [ax + ux * s, az + uz * s], [bx, bz]], y0: lo, y1: hi });
+      mitres.push({ poly: [[vx, vz], [ax, az], [ax + ux * s, az + uz * s], [bx, bz]], y0: lo, y1: Math.min(topAt(from), topAt(to)) });
     });
   }
   return { name, pieces, vertex: [vx, vz], cores, mitres, looks: storeys.map((s) => foot + (s + 0.5) * WALL_HEIGHT) };
+}
+
+/**
+ * The corner two skirts fill between them outside a foundation's corner at (vx, vz): its sides leave the corner by
+ * the ways `a` and `b`, in degrees, and the open ground lies from `a` round toward +Z to `b`, more than half a turn.
+ * `thick` out from each side, from `y0` up to `y1`. Its first corner is the foundation's own, as a wall's mitre's is.
+ */
+export function skirtCorner(vx: number, vz: number, a: number, b: number, thick: number, y0: number, y1: number): Prism {
+  const [ax, az, bx, bz] = [Math.cos(rad(a + 90)), Math.sin(rad(a + 90)), Math.cos(rad(b - 90)), Math.sin(rad(b - 90))];
+  const out = thick / (1 + ax * bx + az * bz);
+  return { poly: [[vx, vz], [vx + ax * thick, vz + az * thick], [vx + (ax + bx) * out, vz + (az + bz) * out], [vx + bx * thick, vz + bz * thick]], y0, y1 };
 }
 
 /** The angles two walls are tried at: a straight run and a house's corner. Triangles will add 60, 120 and 150. */

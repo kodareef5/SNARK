@@ -12,7 +12,7 @@ import { FIRE_FRAGMENT, FIRE_VERTEX } from "./fire-light.ts";
 import { FAR_MESH_VERTEX, FLAT_FAR_FRAGMENT, FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_SPLIT_FRAGMENT, FLAT_TERRAIN_VERTEX, LIT_FAR_FRAGMENT, LIT_MESH_FRAGMENT, LIT_SPLIT_FRAGMENT, LIT_TERRAIN_FRAGMENT, LIT_TERRAIN_VERTEX, PULLED_VERTEX, finishVertex } from "./glsl.ts";
 import { EYE_DOME_FRAGMENT, EYE_DOME_VERTEX, EYE_ENERGY_GLSL, EYE_STRIKE_GLSL } from "./tide-eye.ts";
 import { DROP_GLSL } from "./supply-light.ts";
-import { DRAW_BLEND, DRAW_EMISSIVE, DRAW_FIRE, DRAW_SKYLINE, FRAME_BLOCK, SKYLINE_MAX_FOG, DRAW_CUTOUT, DRAW_PULLED, DRAW_TEXTURED, DRAW_WATER, SOURCE_MAP, SOURCE_WINDOW, WATER_MARK_COUNT, type FramePacket } from "./packet.ts";
+import { DRAW_BLEND, DRAW_EMISSIVE, DRAW_FIRE, DRAW_ORB, DRAW_SKYLINE, FRAME_BLOCK, SKYLINE_MAX_FOG, DRAW_CUTOUT, DRAW_PULLED, DRAW_TEXTURED, DRAW_WATER, SOURCE_MAP, SOURCE_WINDOW, WATER_MARK_COUNT, type FramePacket } from "./packet.ts";
 import { BLOOM_DOWN, BLOOM_UP, FINISH, POST_VERTEX, drawsLight } from "./post.ts";
 import { DEPTH_CUTOUT_FRAGMENT, DEPTH_FRAGMENT, DEPTH_VERTEX, clampDepth, shadowDefines } from "./shadowtext.ts";
 import { PIECE_SPALL_RIM, PIECE_SPALL_TEXT, SURFACE_ANY, surfaceFragment, surfaceVertex, type SurfaceVariant } from "./surface.ts";
@@ -60,6 +60,8 @@ const WINDOW = { uHeight: UNIT.windowHeights, uTint: UNIT.windowTint };
  * finish tones and grades.
  */
 const out = (tier: Tier, light: boolean): string => (tier.contact ? "#define CONTACT\n" : "") + (tier.roofs ? "#define ROOF\n" : "") + (drawsLight(tier, light) ? "#define LIGHT_TARGET\n" : "");
+/** And where the tier lights by an orb (orb-light.ts), for a program that lights by `lit`: the ground's by its own say. */
+const lights = (tier: Tier, light: boolean, ground = false): string => ((ground ? tier.orb.ground : tier.orb.light) ? "#define ORB_LIGHT\n" : "") + out(tier, light);
 
 /**
  * A program of FLAT's vertex text: FLAT's fragment on low poly, and on a lit tier `lit`, which reads the sky table for
@@ -74,7 +76,7 @@ function flatOr(tier: Tier, format: TextureFormat, hard: boolean, light: boolean
   const facades = weathers ? FACADE_TIERS[tier.name] : null;
   const own = weathers ? ownVertex(worldVertex(vertex)) : worldVertex(vertex);
   const facadeUnits: Record<string, number> = facades ? { uFacadeBase: UNIT.facade, uFacadeNormal: UNIT.facade + 1, uFacadeOrm: UNIT.facade + 2, uFacadeRooms: UNIT.facade + 3, uFacadeMarks: UNIT.facade + 4 } : {};
-  return { vertex: litVertex ?? (facades ? facadeVertex(own) : FACADE_TIERS[tier.name] && vertex === FAR_MESH_VERTEX ? facadeFarVertex(own) : own), fragment: texgenText(streetText((facades ? lit.replaceAll("FACADE_NORMAL", format === "astc" ? "ra" : "rg") : lit.replace(FACADE_GLSL, "")).replace("nn.rg", format === "astc" ? "nn.ra" : "nn.rg"), weather && tier.lit), weathers), defines: (weather ? "#define STREET_FINISH\n" : "") + (weather && tier.lit ? "#define STREET\n" : "") + (tier.finish === "light" ? "#define WORLD_LIGHT\n" : tier.relief ? "#define WORLD_RELIEF\n" : "") + `#define WORLD_TAPS ${Math.max(1, tier.anisotropy).toFixed(1)}\n` + (weathers ? `#define WORLD_WEATHER\n${tier.finishes >= 1024 ? "#define WORLD_EDGES\n" : "#define WORLD_EDGE_LINE\n"}` : "") + (facades ? `#define FACADE\n${facades.reflect ? "#define FACADE_ROOMS\n" : ""}` : "") + shadowDefines(tier.shadows, hard) + out(tier, light), samplers: { ...samplers, uWorldBase: UNIT.maps, uWorldNormal: UNIT.maps + 1, uWorldOrm: UNIT.maps + 2, uSkyTable: UNIT.sky, uShadow: UNIT.shadow, uSkyOpen: UNIT.open, uRoof: UNIT.roof, ...(litVertex ? {} : { uGroundHeight: UNIT.heights }), ...facadeUnits, ...(weather && tier.lit ? { uStreetEnv: UNIT.street } : {}), ...(weathers ? { uTexgen: UNIT.texgen } : {}) } };
+  return { vertex: litVertex ?? (facades ? facadeVertex(own) : FACADE_TIERS[tier.name] && vertex === FAR_MESH_VERTEX ? facadeFarVertex(own) : own), fragment: texgenText(streetText((facades ? lit.replaceAll("FACADE_NORMAL", format === "astc" ? "ra" : "rg") : lit.replace(FACADE_GLSL, "")).replace("nn.rg", format === "astc" ? "nn.ra" : "nn.rg"), weather && tier.lit), weathers), defines: (weather ? "#define STREET_FINISH\n" : "") + (weather && tier.lit ? "#define STREET\n" : "") + (tier.finish === "light" ? "#define WORLD_LIGHT\n" : tier.relief ? "#define WORLD_RELIEF\n" : "") + `#define WORLD_TAPS ${Math.max(1, tier.anisotropy).toFixed(1)}\n` + (weathers ? `#define WORLD_WEATHER\n${tier.finishes >= 1024 ? "#define WORLD_EDGES\n" : "#define WORLD_EDGE_LINE\n"}` : "") + (facades ? `#define FACADE\n${facades.reflect ? "#define FACADE_ROOMS\n" : ""}` : "") + shadowDefines(tier.shadows, hard) + lights(tier, light, litVertex !== undefined), samplers: { ...samplers, uWorldBase: UNIT.maps, uWorldNormal: UNIT.maps + 1, uWorldOrm: UNIT.maps + 2, uSkyTable: UNIT.sky, uShadow: UNIT.shadow, uSkyOpen: UNIT.open, uRoof: UNIT.roof, ...(litVertex ? {} : { uGroundHeight: UNIT.heights }), ...facadeUnits, ...(weather && tier.lit ? { uStreetEnv: UNIT.street } : {}), ...(weathers ? { uTexgen: UNIT.texgen } : {}) } };
 }
 
 /** A SURFACE program of a variant: a material's maps on their units, and the masks and palette only where it is dyed. */
@@ -86,7 +88,7 @@ function surface(tier: Tier, format: TextureFormat, hard: boolean, light: boolea
   // A bent piece's wear (bend.ts), and a built piece's loss to its core past worn (surface.ts PIECE_SPALL), where the tier reads the finishes in full.
   const full = tier.lit && tier.finish === "full";
   const fragment = surfaceFragment(format, AIR, variant).replace(`${PIECE_SPALL_TEXT}\n`, full ? SPALL_GLSL : "").replace(PIECE_SPALL_RIM, String(SPALL_RIM));
-  return { vertex: surfaceVertex(variant), fragment: streetText(fragment, tier.lit), defines: (tier.lit ? "#define STREET\n" : "") + (full ? "#define BENT_WEAR\n#define PIECE_SPALL\n" : "") + shadowDefines(tier.shadows, hard) + out(tier, light), samplers };
+  return { vertex: surfaceVertex(variant), fragment: streetText(fragment, tier.lit), defines: (tier.lit ? "#define STREET\n" : "") + (full ? "#define BENT_WEAR\n#define PIECE_SPALL\n" : "") + shadowDefines(tier.shadows, hard) + lights(tier, light), samplers };
 }
 
 /** `tier`, the texture variant, whether compared lookups come back hard, and whether the device has a light target (post.ts). */
@@ -107,6 +109,12 @@ function water(tier: Tier, hard: boolean, light: boolean, wakes: boolean): Progr
     samplers: { ...MESH, uSkyTable: UNIT.sky, uShadow: UNIT.shadow, uMapHeight: UNIT.heights, uWindowHeight: UNIT.windowHeights, uWindowTint: UNIT.windowTint, uWaveLong: UNIT.maps + 3, uWaveShort: UNIT.maps + 4 },
   };
 }
+
+/**
+ * Fragment texts that come after the first frame, each set by the late file that holds it: the orb's (orb-late.ts).
+ * Until one has come its program is not among a tier's, and nothing is drawn with it.
+ */
+export const LATE: { orb: string | null } = { orb: null };
 
 const MAKE = {
   flat: (tier, format, hard = false, light = false) => mesh(tier, flatOr(tier, format, hard, light, FLAT_MESH_VERTEX, FLAT_FRAGMENT, LIT_MESH_FRAGMENT, MESH, undefined, true)),
@@ -147,7 +155,7 @@ const MAKE = {
   // Small details (packet.ts DRAW_DETAILS): on a lit tier their pictures, lit and in the sun's shadow; on low poly their flat shapes.
   details: (tier, _, hard = false, light = false): ProgramText =>
     tier.lit
-      ? { vertex: DETAIL_LIT_VERTEX, fragment: DETAIL_LIT_FRAGMENT, defines: "#define STREET\n" + shadowDefines(tier.shadows, hard) + out(tier, light), samplers: { uDetails: UNIT.details, uStreetEnv: UNIT.street, uSkyTable: UNIT.sky, uShadow: UNIT.shadow } }
+      ? { vertex: DETAIL_LIT_VERTEX, fragment: DETAIL_LIT_FRAGMENT, defines: "#define STREET\n" + shadowDefines(tier.shadows, hard) + lights(tier, light), samplers: { uDetails: UNIT.details, uStreetEnv: UNIT.street, uSkyTable: UNIT.sky, uShadow: UNIT.shadow } }
       : { vertex: DETAIL_VERTEX, fragment: DETAIL_FLAT_FRAGMENT, defines: "", samplers: {} },
   // A caster, a cut-out caster, and the ground, each drawn from the sun into a cascade's layer.
   depth: () => ({ vertex: DEPTH_VERTEX, fragment: DEPTH_FRAGMENT, defines: "", samplers: { uBones: UNIT.bones, uPieces: UNIT.pieces } }),
@@ -180,6 +188,8 @@ void main() {
   // Fire (packet.ts DRAW_FIRE): a rocket's flame and a fireball's lobes, worked out with no texture read (fire-light.ts).
   // A lit tier lights the soot from the frame block, and a tier reads the octaves of value noise it pays for.
   fire: (tier, _, __, light = false) => ({ vertex: FIRE_VERTEX, fragment: FIRE_FRAGMENT, defines: (tier.lit ? "#define FIRE_LIT\n" : "") + (tier.bursts.noise > 0 ? "#define FIRE_NOISE\n" : "") + (tier.bursts.noise > 1 ? "#define FIRE_FINE\n" : "") + (drawsLight(tier, light) ? "#define LIGHT_TARGET\n" : ""), samplers: {} }),
+  // An orb's screen (packet.ts DRAW_ORB, orb.ts): the tier's octaves of noise, and its pucks or none. Signal's text stands in until the late one has come.
+  orb: (tier, format, hard, light = false): ProgramText => LATE.orb === null ? MAKE.signal(tier, format, hard, light) : { vertex: FLAT_MESH_VERTEX, fragment: LATE.orb, defines: `#define ORB_OCTAVES ${tier.orb.octaves}\n` + (tier.orb.pucks ? "#define ORB_PUCKS\n" : "") + (drawsLight(tier, light) ? "#define LIGHT_TARGET\n" : ""), samplers: MESH },
   // The finish (post.ts): bloom's chain down and up, and the pass into the canvas.
   bloomDown: () => post(BLOOM_DOWN, { uSource: UNIT.details }),
   bloomUp: () => post(BLOOM_UP, { uSource: UNIT.details }),
@@ -227,6 +237,7 @@ const ROWS: Readonly<Record<keyof typeof MAKE, readonly UniformRow[]>> = {
   signal: FLAT_DRAW,
   depthTerrainWindow: WINDOW_TILES,
   fire: [...FRAME_ROWS, ...MESH_ROWS],
+  orb: FLAT_DRAW,
   bloomDown: [],
   bloomUp: [],
   finish: [],
@@ -235,12 +246,12 @@ const ROWS: Readonly<Record<keyof typeof MAKE, readonly UniformRow[]>> = {
 export const UNIFORMS: readonly (readonly UniformRow[])[] = Object.keys(MAKE).map((name) => ROWS[name as keyof typeof MAKE]);
 
 /** The programs low poly draws with: no materials, dome, sea or shadows. */
-const UNLIT = ["skyline", "signal", "sky", "flat", "terrain", "terrainWindow", "seeThrough", "far", "pulled", "details", "fire"];
+const UNLIT = ["skyline", "signal", "sky", "flat", "terrain", "terrainWindow", "seeThrough", "far", "pulled", "details", "fire", "orb"];
 const POST = ["bloomDown", "bloomUp", "finish"];
 
 /** The programs a frame of `tier` may ask for, by number, which a shell may begin making before one does. */
 export function tierPrograms(tier: Tier): number[] {
-  return Object.keys(MAKE).flatMap((name, n) => ((tier.lit || UNLIT.includes(name)) && (name !== "seeThrough" || tier.split > 0) && (!name.startsWith("depth") || tier.shadows.size > 0) && (!POST.includes(name) || tier.post !== null) ? [n] : []));
+  return Object.keys(MAKE).flatMap((name, n) => ((tier.lit || UNLIT.includes(name)) && (name !== "seeThrough" || tier.split > 0) && (!name.startsWith("depth") || tier.shadows.size > 0) && (!POST.includes(name) || tier.post !== null) && (name !== "orb" || LATE.orb !== null) ? [n] : []));
 }
 
 /**
@@ -269,6 +280,7 @@ const DROPS = DRAW_CUTOUT | IS_HANDED | IS_SWAPPING;
  */
 export const CHOICE: readonly Choice[] = [
   pick(PROGRAM.fire, DRAW_FIRE),
+  pick(PROGRAM.orb, DRAW_ORB),
   // An instrument's light with its strip is a SURFACE draw, which its street material draws as a channel of energy.
   pick(PROGRAM.signal, DRAW_EMISSIVE, 0, DRAW_TEXTURED),
   pick(PROGRAM.skyline, DRAW_SKYLINE),

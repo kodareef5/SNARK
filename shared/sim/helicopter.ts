@@ -2,7 +2,8 @@
 // cyclic commands change attitude, never world velocity. Stunts are trajectories, not animation clips.
 import { TICK_DT, WORLD_MAX_Y } from "../coords.ts";
 import { quatAxis, quatMul, quatNormalize, quatRotate, quatUnrotate } from "../math/quat.ts";
-import { clamp, detAtan2, detCos, detSin, len3, TAU } from "../math/scalar.ts";
+import { writeAttitude } from "./rigid-attitude.ts";
+import { approach, clamp, detAtan2, detCos, detSin, len3, square, TAU, unitCommand, wrapAngle } from "../math/scalar.ts";
 import { validateHelicopterSpec, type HelicopterSpec, type RotorVehicleDefinition, type VehicleState } from "./vehicle.ts";
 import { helicopterEngineImmersion, helicopterImmersion } from "./helicopter-immersion.ts";
 import { stepHelicopterWater } from "./helicopter-water.ts";
@@ -48,10 +49,6 @@ export interface HelicopterStep {
 const result: HelicopterStep = { blocked: null, impactSpeed: 0, rotorHit: false, water: false, landSpeed: 0, fuelUsed: 0, surface: "air" };
 const q = new Float64Array(4), turn = new Float64Array(4), wanted = new Float64Array(4), error = new Float64Array(4);
 const upright = new Float64Array(3), ahead = new Float64Array(3), velocity = new Float64Array(3), drag = new Float64Array(3);
-const approach = (value: number, target: number, amount: number): number => value < target ? Math.min(target, value + amount) : Math.max(target, value - amount);
-const unit = (value: number): number => Number.isFinite(value) ? clamp(value, -1, 1) : 0;
-const square = (value: number): number => value * value;
-const wrap = (value: number): number => value - Math.floor((value + TAU / 2) / TAU) * TAU;
 
 export function createHelicopter(p: HelicopterSpec, x: number, y: number, z: number, yaw = 0, fuel = p.fuelCapacity): HelicopterState {
   validateHelicopterSpec(p);
@@ -66,16 +63,7 @@ function readRotation(s: Readonly<HelicopterState>): void {
   q[0] = s.qx; q[1] = s.qy; q[2] = s.qz; q[3] = s.qw;
   quatNormalize(q, 0);
 }
-function writeRotation(s: HelicopterState): void {
-  s.qx = q[0]!; s.qy = q[1]!; s.qz = q[2]!; s.qw = q[3]!;
-  quatRotate(q, 0, 0, 0, 1, ahead, 0);
-  quatRotate(q, 0, 0, 1, 0, upright, 0);
-  // These are display values only. Physics, seats and hit geometry retain the quaternion through inversion.
-  const horizontal = Math.sqrt(square(ahead[0]!) + square(ahead[2]!));
-  if (horizontal > 1e-5) s.yaw = detAtan2(ahead[0]!, ahead[2]!);
-  s.pitch = detAtan2(ahead[1]!, horizontal);
-  s.roll = detAtan2(-(upright[0]! * detCos(s.yaw) - upright[2]! * detSin(s.yaw)), upright[1]!);
-}
+const writeRotation = (s: HelicopterState): void => writeAttitude(s, q, upright, ahead);
 function targetRotation(yaw: number, pitch: number, roll: number): void {
   quatAxis(wanted, 0, 0, 1, 0, yaw);
   quatAxis(turn, 0, 0, 0, 1, roll); quatMul(wanted, 0, wanted, 0, turn, 0);
@@ -111,8 +99,8 @@ export function stepHelicopter(s: HelicopterState, input: Readonly<HelicopterInp
   s.engineCondition = clamp(s.engineCondition, 0, 1); s.rotorCondition = clamp(s.rotorCondition, 0, 1);
   s.payloadMass = Math.max(0, Math.min(100000, s.payloadMass)); s.collective = clamp(s.collective, 0, 1);
   const mass = p.mass + s.payloadMass, efficiency = s.rotorCondition <= 0.05 ? 0 : 0.3 + 0.7 * s.rotorCondition;
-  const climb = input.pilot ? unit(input.climb) : -0.35;
-  const forward = input.pilot ? unit(input.forward) : 0, right = input.pilot ? unit(input.right) : 0;
+  const climb = input.pilot ? unitCommand(input.climb) : -0.35;
+  const forward = input.pilot ? unitCommand(input.forward) : 0, right = input.pilot ? unitCommand(input.right) : 0;
   const recovery = input.brake || !input.pilot, direct = input.direct && !recovery;
   const usable = s.fuel > 0 && s.engineCondition > 0.08 && s.rotorCondition > 0.05;
   // An orientation-independent lower bound skips pose work for aircraft clear of the water.
@@ -129,7 +117,7 @@ export function stepHelicopter(s: HelicopterState, input: Readonly<HelicopterInp
   const autorotation = !s.engineOn && !s.grounded && !wet ? clamp(-s.vy / 10, 0, 0.6) * s.rotorCondition : 0;
   const targetRpm = p.rotorRpm * (s.engineOn ? 0.76 + 0.24 * s.engineCondition : autorotation);
   s.rotorRpm = approach(s.rotorRpm, targetRpm, (targetRpm > s.rotorRpm ? p.spoolUp : p.spoolDown) * TICK_DT);
-  s.rotorPhase = wrap(s.rotorPhase + s.rotorRpm * TAU / 60 * TICK_DT);
+  s.rotorPhase = wrapAngle(s.rotorPhase + s.rotorRpm * TAU / 60 * TICK_DT);
   s.engineRpm = s.engineOn ? s.rotorRpm * 12 : 0;
   s.gear = 0; s.shiftTime = 0; s.wheelAngle = 0; s.steering = 0; s.rideOffset = s.rideVelocity = 0;
   readRotation(s); writeRotation(s);
@@ -156,7 +144,7 @@ export function stepHelicopter(s: HelicopterState, input: Readonly<HelicopterInp
     s.collective = approach(s.collective, upright[1]! < 0.15 ? 0.12 : target, 0.7 * TICK_DT);
   }
   let wantedPitchRate = -forward * p.pitchRate, wantedRollRate = right * p.rollRate;
-  let wantedYawRate = input.pilot ? unit(input.yaw) * p.turnRate : 0;
+  let wantedYawRate = input.pilot ? unitCommand(input.yaw) * p.turnRate : 0;
   if (!direct) {
     let pitch = -forward * (input.cruise ? detAtan2(detSin(p.pitchAngle) * square(p.cruiseMultiplier), detCos(p.pitchAngle)) : p.pitchAngle), roll = right * p.bankAngle;
     if (recovery) {

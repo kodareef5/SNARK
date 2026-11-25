@@ -24,6 +24,7 @@ import { boatContactTrace } from "../tests/fixtures/boat-contact-trace.ts";
 import { corpseMotionTrace } from "../tests/fixtures/corpse-motion-trace.ts";
 import { humanFallTrace } from "../tests/fixtures/human-fall-trace.ts";
 import { reactionTrace } from "../tests/fixtures/reaction-trace.ts";
+import { vehicleTracesHash } from "../tests/fixtures/vehicle-traces.ts";
 
 export { FIXED_TUNING } from "../shared/sim/scenarios.ts";
 
@@ -90,7 +91,7 @@ export function waterHash(ticks = 3000): string {
 }
 
 export function collisionHashes(): string {
-  return [carChassisTrace().hash, cityDriveTrace().hash, boatContactTrace().hash, corpseMotionTrace(), humanFallTrace(false), humanFallTrace(true), reactionTrace()].join(" ");
+  return [carChassisTrace().hash, cityDriveTrace().hash, boatContactTrace().hash, corpseMotionTrace(), humanFallTrace(false), humanFallTrace(true), reactionTrace(), vehicleTracesHash()].join(" ");
 }
 
 if (import.meta.main) console.log(simHash() + " " + poseHash() + " " + snapHash() + " " + creatureHash() + " " + tunedHash() + " " + hullHash() + " " + nodeHash() + " " + waterHash() + " " + collisionHashes() + " " + latticeHash());

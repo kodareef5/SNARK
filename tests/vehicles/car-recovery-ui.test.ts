@@ -20,7 +20,7 @@ for (const key of [KEY_VEHICLE_RECOVER, KEY_VEHICLE_PULL, KEY_VEHICLE_FLIP]) tes
     expect(h.host.vehicles.inspect(c, makeHandle(e, a.gen[e]!))).toBe(RESULT_OK); h.run(250);
     const inventory = new InventoryScreen(), frame = new UiFrame();
     for (const aspect of [16 / 9, 9 / 16]) {
-      frame.begin(aspect); inventory.build(frame, session, h.reg, null);
+      frame.begin(aspect); inventory.draw(frame, session, h.reg, null);
       expect(frame.find(key)?.interactive).toBe(true);
       expect(new Set(frame.nodes.slice(0, frame.count).map(n => n.key)).size).toBe(frame.count);
       for (const n of frame.nodes.slice(0, frame.count)) {
@@ -35,7 +35,7 @@ for (const key of [KEY_VEHICLE_RECOVER, KEY_VEHICLE_PULL, KEY_VEHICLE_FLIP]) tes
     }
     const results: number[] = [];
     session.onResult = (_sequence, result) => results.push(result);
-    inventory.pointer(0, key, 0, session); h.run(1000);
+    inventory.press(0, key, 0, session); h.run(1000);
     expect(results).toEqual([RESULT_OK]);
     if (key === KEY_VEHICLE_FLIP) expect(Math.abs(a.vehicleRoll[v]!)).toBeLessThan(.1);
     else expect((a.z[e]! - 64) * (key === KEY_VEHICLE_PULL ? 1 : -1)).toBeGreaterThan(.25);

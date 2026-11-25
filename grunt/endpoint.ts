@@ -7,7 +7,7 @@
 
 import {
   type Ack, type Action, type Capabilities, type ChannelName, type ChannelOptions, type ChannelRequest, type Channels, type ChatLine,
-  type ClientMessage, type EntitiesChannel, type FocusChannel, GRUNT_VERSION, type GameMessage, type Interruption,
+  type ClientMessage, type EntitiesChannel, type FocusChannel, type GameInfo, GRUNT_VERSION, type GameMessage, type Interruption,
   type InventoryChannel, type Limits, type MapChannel, type RejectCode, type SelfChannel, type TerrainChannel,
 } from "./protocol.ts";
 
@@ -45,7 +45,7 @@ export interface GameWorld {
 export interface EndpointOptions {
   capabilities: () => Capabilities;
   limits: Limits;
-  game: { name: string; version: string; world?: string };
+  game: GameInfo;
   /** The shortest time between two observations of a channel, ms: the world's step. */
   tickMs: number;
 }

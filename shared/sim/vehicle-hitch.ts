@@ -1,7 +1,7 @@
 // A tractor and its trailer share one tick: their substeps alternate, and a ball joint at the fifth wheel joins them.
 import { TICK_DT } from "../coords.ts";
 import { quatRotate } from "../math/quat.ts";
-import { len3, TAU } from "../math/scalar.ts";
+import { len3, wrapAngle } from "../math/scalar.ts";
 import { beginVehicleTick, endVehicleTick, vehicleSubstep } from "./vehicle-chassis.ts";
 import { vehicleRotation } from "./vehicle-frame.ts";
 import { applyVehicleImpulse, vehicleMassProperties, vehiclePointInverseMass, vehiclePointVelocity } from "./vehicle-rigid.ts";
@@ -32,7 +32,6 @@ export function hitchGap(tractor: VehicleState, tSpec: VehicleSpec, trailer: Veh
   return len3(a[0]! - b[0]!, a[1]! - b[1]!, a[2]! - b[2]!);
 }
 
-const wrap = (n: number): number => n - Math.floor((n + TAU / 2) / TAU) * TAU;
 
 /** Holds one relative rotation rate under its limit: `rate` reads a body's local rate, `inertia` picks its axis. */
 function limit(t: HitchState, tSpec: VehicleSpec, r: HitchState, rSpec: VehicleSpec, angle: number, most: number, axis: "yaw" | "pitch", dt: number): void {
@@ -65,8 +64,8 @@ export function solveHitch(t: HitchState, tSpec: VehicleSpec, r: HitchState, rSp
       applyVehicleImpulse(r, rSpec, b[0]!, b[1]!, b[2]!, -j * n[0], -j * n[1], -j * n[2]);
     }
   }
-  limit(t, tSpec, r, rSpec, wrap(r.yaw - t.yaw), HITCH_YAW, "yaw", dt);
-  limit(t, tSpec, r, rSpec, wrap(r.pitch - t.pitch), HITCH_PITCH, "pitch", dt);
+  limit(t, tSpec, r, rSpec, wrapAngle(r.yaw - t.yaw), HITCH_YAW, "yaw", dt);
+  limit(t, tSpec, r, rSpec, wrapAngle(r.pitch - t.pitch), HITCH_PITCH, "pitch", dt);
 }
 
 /** One tick of a coupled pair. The trailer coasts with its legs up; the tractor takes its driver's input. */

@@ -32,10 +32,12 @@ import { WorldSounds } from "./world.ts";
 import type { AirSupportView } from "../../../shared/sim/air-support.ts";
 import { AirSounds } from "./air-support.ts";
 import { SupplySounds } from "./supply.ts";
+import { OrbSounds } from "./orb.ts";
 import { TICK_RATE } from "../../../shared/coords.ts";
 import { ZONE_NONE } from "../../../shared/anim/human.ts";
 import { EVENT_HIT } from "../../../shared/net/protocol.ts";
 import type { SupplyList } from "../../../shared/sim/supply.ts";
+import type { OrbSite } from "../../../shared/world/orb.ts";
 
 interface Pending {
   sound: number;
@@ -91,6 +93,8 @@ export interface SoundView {
   /** The supply drops the session is told of, and the tick they are heard at (supply.ts). */
   airSupport?: AirSupportView;
   supply?: { list: SupplyList; tick: number };
+  /** The map's orbs, for their hum (orb.ts). */
+  orbs?: readonly OrbSite[];
 }
 
 /** What became of an occasion asked for: the sound board and the in-game log read these. */
@@ -169,6 +173,8 @@ export class Sounds {
   private readonly helicopter: number;
   private readonly supply = new SupplySounds();
   private readonly capsule: number;
+  private readonly orbs = new OrbSounds();
+  private readonly orb: number;
   private readonly asked: { sound: number; x: number; y: number; z: number; untilMs: number }[] = [];
   private lastMs = -1;
   private firstMs = -1;
@@ -229,6 +235,7 @@ export class Sounds {
     this.ui = this.resolver.owner("core:ui");
     this.helicopter = this.resolver.owner("core:helicopter");
     this.capsule = this.resolver.owner("core:supply_capsule");
+    this.orb = this.resolver.owner("core:orb");
     const survivor = reg.defs.find((d) => d?.type === "species" && (d as { class?: string }).class === "survivor");
     this.survivor = this.resolver.owner(survivor?.id ?? "core:survivor");
     this.isSurvivor = (kind) => (reg.defs[kind] as { class?: string } | null)?.class === "survivor" && reg.defs[kind]?.type === "species";
@@ -297,6 +304,7 @@ export class Sounds {
     }
     if (view?.airSupport) this.airSounds.update(view.airSupport, this.helicopter, this.capsule, this.hear, this.airLoop, ear);
     if (view?.supply) this.supply.update(view.supply.list, view.supply.tick, TICK_RATE, ear.x, ear.y, ear.z, this.capsule, this.hear, (id, key, x, y, z, level, on) => this.loop(id, this.capsule, key, x, y, z, level, on, false));
+    this.orbs.update(view?.orbs, ear.x, ear.y, ear.z, (id, key, x, y, z, level, on) => this.loop(id, this.orb, key, x, y, z, level, on, false));
     this.actions.nowMs = nowMs;
     this.build.update(ear.x, ear.y, ear.z, this.hear, (id, owner, key, x, y, z, on) => this.loop(1000 + id, owner < 0 ? this.ui : owner, key, x, y, z, 1, on, false), view?.lit ?? null);
     for (const a of this.asked) {

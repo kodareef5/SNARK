@@ -33,7 +33,7 @@ function fill(template: string, d: Def, vars: Vars): string {
     let v: unknown = vars[name];
     if (v === undefined && name === "id") v = d.id;
     // A generated mesh is named after its definition.
-    else if (v === undefined && name === "mesh") v = "mesh" in d ? (d.mesh === "box" || d.mesh === "shape" || d.mesh === "none" ? d.id : d.mesh) : undefined;
+    else if (v === undefined && name === "mesh") v = "mesh" in d ? (d.mesh === "box" || d.mesh === "shape" ? d.id : d.mesh) : undefined;
     else if (v === undefined) v = name.split(".").reduce<unknown>((at, part) => (at as Record<string, unknown> | undefined)?.[part], d);
     if (typeof v !== "string" || v === "") whole = false;
     return String(v);
@@ -52,6 +52,8 @@ export function slotsOf(defs: readonly Def[]): SlotUse[] {
     const row = classRow(classOf(d));
     if (!row) continue;
     for (const [slot, s] of Object.entries(row.slots)) {
+      // One drawn as nothing has no mesh to be found, its own or a stand-in.
+      if (s.asset === "mesh" && "mesh" in d && d.mesh === "none") continue;
       if (s.when !== undefined && (d as unknown as Record<string, unknown>)[s.when] === undefined) continue;
       const keys = s.keys === undefined ? [""] : s.keys === "hair" ? styles(HAIR_STYLES) : s.keys === "beard" ? styles(BEARD_STYLES) : s.keys === "any" ? [] : s.keys;
       const sexes = s.from.includes("{sex}") ? SEX_IDS : [""];

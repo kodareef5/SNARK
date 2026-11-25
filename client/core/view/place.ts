@@ -15,6 +15,7 @@ import { bodySeed } from "../render/scene.ts";
 import { remoteVehiclePose } from "../vehicle-view.ts";
 import { CHASE_BOOM, CHASE_TILT, ORBIT_BACK, type VehicleCameraMotion } from "../viewpoint.ts";
 import type { Director } from "./director.ts";
+import type { CreatorScreen } from "../ui/creator.ts";
 
 /** Metres the orbit's camera is behind the eye before the body is drawn whole; nearer than the near plane its head is not seen. */
 const HEAD_CLEAR = .1;
@@ -190,7 +191,7 @@ function onFoot(d: Director, f: AppFrame): void {
 
 /** The creator's view. The camera faces the new survivor from the front, off to one side so the panel does not cover it. */
 function preview(d: Director, f: AppFrame): void {
-  const session = f.session, cam = f.cam, body = d.own, creator = f.ui.creator, aspect = f.aspect;
+  const session = f.session, cam = f.cam, body = d.own, creator = f.ui.screen<CreatorScreen>("creator"), aspect = f.aspect;
   cam.nearLimit = Infinity;
   body.kind = session.ownKind;
   body.x = session.own.x;

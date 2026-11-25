@@ -11,15 +11,15 @@ import { bindTextInput } from "../../client/core/ui/events.ts";
 import { KEY_BANNER, KEY_CROSS, KEY_MARKER, KEY_SELF_ARROW, KEY_MINIMAP, KEY_READOUT, KEY_VITAL, KEY_VOICE } from "../../client/core/ui/hud.ts";
 import { K_BAR, K_INPUT, K_TEXT, textWidth, wrap, type UiFrame } from "../../client/core/ui/nodes.ts";
 import type { ClientSession } from "../../client/core/session.ts";
-import { KEY_INV_INFO, KEY_INV_PANEL, KEY_INV_SLOT } from "../../client/core/ui/inventory.ts";
+import { KEY_INV_INFO, KEY_INV_PANEL, KEY_INV_SLOT, type InventoryScreen } from "../../client/core/ui/inventory.ts";
 import { KEY_MAP_IMAGE, KEY_MAP_LINE, KEY_MAP_PIN } from "../../client/core/ui/screens.ts";
-import { KEY_CHOOSE_FILTER, KEY_CHOOSE_MAP, KEY_CHOOSE_PAGE, KEY_CHOOSE_PANEL, KEY_CHOOSE_PIN, KEY_CHOOSE_RISE, KEY_CHOOSE_ROW, KEY_CHOOSE_TITLE } from "../../client/core/ui/choosing.ts";
-import { KEY_CHAR_ENGRAM, KEY_CHAR_JOBS, KEY_CHAR_PAGE, KEY_CHAR_PANEL, KEY_CHAR_POINTS, KEY_CHAR_RECIPE, KEY_CHAR_STAT, KEY_CHAR_TAB, KEY_CHAR_TITLE, engramOrder } from "../../client/core/ui/character.ts";
-import { KEY_PIN_BUTTON, KEY_PIN_CLEAR, KEY_PIN_DIGITS, KEY_PIN_PANEL, KEY_STRUCT_BUTTON, KEY_STRUCT_NAME_INPUT, KEY_STRUCT_PANEL } from "../../client/core/ui/structure.ts";
+import { KEY_CHOOSE_FILTER, KEY_CHOOSE_MAP, KEY_CHOOSE_PAGE, KEY_CHOOSE_PANEL, KEY_CHOOSE_PIN, KEY_CHOOSE_RISE, KEY_CHOOSE_ROW, KEY_CHOOSE_TITLE, type ChoosingScreen } from "../../client/core/ui/choosing.ts";
+import { KEY_CHAR_ENGRAM, KEY_CHAR_JOBS, KEY_CHAR_PAGE, KEY_CHAR_PANEL, KEY_CHAR_POINTS, KEY_CHAR_RECIPE, KEY_CHAR_STAT, KEY_CHAR_TAB, KEY_CHAR_TITLE, engramOrder, type CharacterScreen } from "../../client/core/ui/character.ts";
+import { KEY_PIN_BUTTON, KEY_PIN_CLEAR, KEY_PIN_DIGITS, KEY_PIN_PANEL, KEY_STRUCT_BUTTON, KEY_STRUCT_NAME_INPUT, KEY_STRUCT_PANEL, type StructMenu } from "../../client/core/ui/structure.ts";
 import { Ui } from "../../client/core/ui/ui.ts";
 import { NO_PIN, STRUCT_DEMOLISH, STRUCT_LOCK, STRUCT_NAME, STRUCT_PICKUP, STRUCT_PIN, STRUCT_TRAVEL, STRUCT_USE } from "../../shared/world/upkeep.ts";
 import { KEY_OPEN_LEVEL, KEY_OPEN_MATE, KEY_OPEN_ORDER, KEY_OPEN_PAGE, KEY_OPEN_SLOT, KEY_OPEN_SUBJECT, KEY_OPEN_UNSADDLE, waitWords } from "../../client/core/ui/inventory.ts";
-import { KEY_NAME_INPUT, KEY_NAME_PANEL, KEY_NAME_TITLE } from "../../client/core/ui/tame.ts";
+import { KEY_NAME_INPUT, KEY_NAME_PANEL, KEY_NAME_TITLE, type NamePrompt } from "../../client/core/ui/tame.ts";
 import { CMD_FEED, CMD_NAME, CMD_ORDER, ORDER_FOLLOW, ORDER_LEVEL, ORDER_MATE, ORDER_STANCE, ORDER_STAY, ORDER_UNMATE, RESULT_DENIED, RESULT_OK, RESULT_PIN } from "../../shared/net/protocol.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { CHOOSE_DIED, CHOOSE_TRAVEL, CMD_CRAFT, CMD_LEARN, CMD_MOVE, CMD_RESPAWN, CMD_SPEND, CMD_STRUCT, CMD_USE, MARKER_DEATH, MAX_CHAT_CHARS, MAX_NAME_BYTES, SESSION_ALIVE, SESSION_DEAD, TEXT_CONSOLE, TEXT_GLOBAL, TEXT_LOCAL, TEXT_NOTICE, TEXT_TRIBE } from "../../shared/net/protocol.ts";
@@ -125,8 +125,8 @@ test("every screen fits every window shape: nothing off the canvas, no clipped t
       const ui = newUi();
       ui.registry = reg;
       ui.console.open = consoleOpen;
-      ui.inventory.open = true;
-      ui.inventory.hover = 3;
+      ui.screen<InventoryScreen>("inventory").open = true;
+      ui.screen<InventoryScreen>("inventory").hover = 3;
       for (let i = 0; i < 60; i++) ui.console.print(`line ${i} ` + "word ".repeat(i));
       ui.console.edit("x".repeat(200));
       for (let i = 0; i < 30; i++) ui.chat.print(TEXT_NOTICE + (i % 4), `ada: ${"W".repeat(i * 5)} and so on`, 1000);
@@ -493,19 +493,19 @@ test("the inventory screen turns clicks into commands and never changes anything
   // While it is closed clicks do nothing. I opens it, which frees the mouse, and the keyboard still walks.
   ui.pointer(0, key(0), 0, 0, 0, session);
   expect(ui.key("KeyI", true, false, session)).toBe(true);
-  expect(ui.inventory.open).toBe(true);
+  expect(ui.screen<InventoryScreen>("inventory").open).toBe(true);
   expect(ui.wantsPointerLock).toBe(false);
   expect(ui.captureKeyboard).toBe(false);
   expect(ui.key("KeyW", true, false, session)).toBe(false);
 
   // A click on a stack then on an empty slot sends one move of the whole stack, naming the item the client thinks it is moving.
   ui.pointer(0, key(0), 0, 0, 0, session);
-  expect(ui.inventory.held).toBe(0);
+  expect(ui.screen<InventoryScreen>("inventory").held).toBe(0);
   expect(sent.length).toBe(0);
   ui.pointer(0, key(7), 0, 0, 0, session);
   expect(sent.map((c) => c.op)).toEqual([CMD_MOVE]);
   expect(decode(sent[0]!.bytes)).toEqual([0, 0, 0, 7, 0, stone]);
-  expect(ui.inventory.held).toBe(-1);
+  expect(ui.screen<InventoryScreen>("inventory").held).toBe(-1);
   expect(inv.count[0]).toBe(80); // the mirror waits for the server
 
   // Middle click picks up half. Putting a stack back on its own slot cancels. An empty slot cannot be picked up.
@@ -516,7 +516,7 @@ test("the inventory screen turns clicks into commands and never changes anything
   ui.pointer(0, key(0), 0, 0, 0, session);
   ui.pointer(0, key(20), 0, 0, 0, session);
   expect(sent.length).toBe(2);
-  expect(ui.inventory.held).toBe(-1);
+  expect(ui.screen<InventoryScreen>("inventory").held).toBe(-1);
 
   // Right click uses the item, and does nothing on an empty slot.
   ui.pointer(0, key(5), 0, 0, 2, session);
@@ -529,13 +529,13 @@ test("the inventory screen turns clicks into commands and never changes anything
   ui.pointer(0, key(5), 0, 0, 0, session);
   inv.set(5, 0, 0, 0, 0, 0);
   ui.build(16 / 9, new HudModel(), session);
-  expect(ui.inventory.held).toBe(-1);
+  expect(ui.screen<InventoryScreen>("inventory").held).toBe(-1);
   ui.pointer(2, key(0), 0, 0, 0, session);
   ui.build(16 / 9, new HudModel(), session);
   expect(ui.frame.find(KEY_INV_INFO)!.text).toBe("stone x80  40.0 kg");
   expect(ui.frame.find(key(0) + 1)!.text).toBe("ston");
   expect(ui.key("Escape", true, false, session)).toBe(true);
-  expect(ui.inventory.open).toBe(false);
+  expect(ui.screen<InventoryScreen>("inventory").open).toBe(false);
   expect(ui.wantsPointerLock).toBe(true);
 });
 
@@ -599,9 +599,9 @@ test("the choosing and map screens fit every window shape, and a place picked in
         ui.input(KEY_CHOOSE_FILTER, "POOL");
         ui.build(aspect, fullHud(), session);
         expect([f.find(KEY_CHOOSE_ROW)!.text, f.find(KEY_CHOOSE_ROW + 1)]).toEqual(["> Poolside", null]);
-        expect([ui.key("Enter", true, false, session), ui.captureKeyboard, ui.choosing.filter]).toEqual([true, false, "POOL"]);
+        expect([ui.key("Enter", true, false, session), ui.captureKeyboard, ui.screen<ChoosingScreen>("choosing").filter]).toEqual([true, false, "POOL"]);
         ui.pointer(0, KEY_CHOOSE_ROW, 0, 0, 0, session);
-        expect(ui.choosing.picked).toBe(2);
+        expect(ui.screen<ChoosingScreen>("choosing").picked).toBe(2);
       } else {
         // The map has the picture, a pin for each death and one for the survivor, and a line for each death.
         expect(f.find(KEY_CHOOSE_PANEL)).toBeNull();
@@ -612,7 +612,7 @@ test("the choosing and map screens fit every window shape, and a place picked in
         ui.pointer(0, KEY_CHOOSE_ROW, 0, 0, 0, session);
         expect(sent.length).toBe(0);
         expect(ui.key("Escape", true, false, session)).toBe(true);
-        expect(ui.map).toBe(false);
+        expect(ui.opened("map")).toBe(false);
       }
     }
   }
@@ -701,31 +701,31 @@ test("the character screen fits every window shape on every tab and page, and it
     };
     /** Pages through the tab shown until the row appears. Returns whether it was found, and leaves its page up. */
     const seek = (key: number): boolean => {
-      for (ui.sheet.page = 0; ; ui.sheet.page++) {
+      for (ui.screen<CharacterScreen>("character").page = 0; ; ui.screen<CharacterScreen>("character").page++) {
         ui.build(aspect, fullHud(), session);
         if (f.find(key)) return true;
-        if (ui.sheet.page >= ui.sheet.pages - 1) return false;
+        if (ui.screen<CharacterScreen>("character").page >= ui.screen<CharacterScreen>("character").pages - 1) return false;
       }
     };
     const seen = new Set<number>();
     for (let tab = 0; tab < 3; tab++) {
       ui.pointer(0, KEY_CHAR_TAB + tab, 0, 0, 0, session);
-      expect(ui.sheet.page).toBe(0);
+      expect(ui.screen<CharacterScreen>("character").page).toBe(0);
       ui.build(aspect, fullHud(), session);
-      for (let page = 0; page < ui.sheet.pages; page++) {
+      for (let page = 0; page < ui.screen<CharacterScreen>("character").pages; page++) {
         ui.build(aspect, fullHud(), session);
         fits(`${name} tab ${tab} page ${page}`);
         for (let i = 0; i < f.count; i++) if (f.nodes[i]!.key >= KEY_CHAR_STAT) seen.add(f.nodes[i]!.key);
-        if (page + 1 < ui.sheet.pages) ui.pointer(0, KEY_CHAR_PAGE + 1, 0, 0, 0, session);
+        if (page + 1 < ui.screen<CharacterScreen>("character").pages) ui.pointer(0, KEY_CHAR_PAGE + 1, 0, 0, 0, session);
       }
       // The pager stops at the last page and at the first.
       ui.pointer(0, KEY_CHAR_PAGE + 1, 0, 0, 0, session);
-      expect(ui.sheet.page).toBe(ui.sheet.pages - 1);
+      expect(ui.screen<CharacterScreen>("character").page).toBe(ui.screen<CharacterScreen>("character").pages - 1);
       for (let i = 0; i < 40; i++) ui.pointer(0, KEY_CHAR_PAGE, 0, 0, 0, session);
-      expect(ui.sheet.page).toBe(0);
+      expect(ui.screen<CharacterScreen>("character").page).toBe(0);
     }
     for (let n = 0; n < engrams.length; n++) expect(seen.has(KEY_CHAR_ENGRAM + n * 2)).toBe(true);
-    expect(ui.sheet.pages).toBeGreaterThanOrEqual(1);
+    expect(ui.screen<CharacterScreen>("character").pages).toBeGreaterThanOrEqual(1);
 
     ui.pointer(0, KEY_CHAR_TAB, 0, 0, 0, session);
     ui.build(aspect, fullHud(), session);
@@ -775,7 +775,7 @@ test("the character screen fits every window shape on every tab and page, and it
     expect([r.u16(), r.u8()]).toEqual([reg.index.get("core:pick")!, 1]);
     // Only one screen shows at a time, so the map key puts this one away.
     ui.key("KeyM", true, false, session);
-    expect([ui.character, ui.map]).toEqual([false, true]);
+    expect([ui.screen<CharacterScreen>("character").open, ui.opened("map")]).toEqual([false, true]);
   }
 });
 
@@ -797,11 +797,13 @@ test("with hundreds of engrams and things to make, each button of the character 
   const ui = newUi();
   ui.registry = big;
   ui.key("KeyP", true, false, session);
+  // A press reaches a screen through what it drew.
+  ui.build(16 / 9, fullHud(), session);
   const f = ui.frame;
   /** Presses the button of the row whose line starts with `words`, paging to it. */
   const press = (tab: number, words: string): void => {
     ui.pointer(0, KEY_CHAR_TAB + tab, 0, 0, 0, session);
-    for (ui.sheet.page = 0; ; ui.sheet.page++) {
+    for (ui.screen<CharacterScreen>("character").page = 0; ; ui.screen<CharacterScreen>("character").page++) {
       ui.build(16 / 9, fullHud(), session);
       const keys = new Set<number>();
       for (let i = 0; i < f.count; i++) {
@@ -813,7 +815,7 @@ test("with hundreds of engrams and things to make, each button of the character 
         // A row is its line, then its button.
         return ui.pointer(0, f.nodes[i]!.key + 1, 0, 0, 0, session);
       }
-      if (ui.sheet.page >= ui.sheet.pages - 1) throw new Error(`no row says ${words}`);
+      if (ui.screen<CharacterScreen>("character").page >= ui.screen<CharacterScreen>("character").pages - 1) throw new Error(`no row says ${words}`);
     }
   };
   for (const i of [3, 150, 229]) press(1, `Thing ${i}:`);
@@ -850,7 +852,7 @@ test("the chat box: a key for each channel, Tab to change it, Enter to say the l
   // Every other key is typing, the console's key included, and none of it reaches the body.
   for (const code of ["KeyW", "Backquote", "Slash", "Insert", "KeyI", "Digit1", "Space"]) expect(ui.key(code, true, false, session)).toBe(false);
   expect(ui.console.open).toBe(false);
-  expect(ui.inventory.open).toBe(false);
+  expect(ui.screen<InventoryScreen>("inventory").open).toBe(false);
   ui.input(KEY_CHAT_INPUT, "  hello there  ");
   ui.build(16 / 9, hud, session);
   expect(ui.frame.find(KEY_CHAT_INPUT)!.text).toBe("  hello there  ");
@@ -977,7 +979,7 @@ test("the list of what can be done to a piece fits every window shape, whatever 
       Object.assign(session, { sessionState: SESSION_ALIVE, world });
       const ui = newUi();
       ui.registry = reg;
-      ui.structure.begin(ref);
+      ui.screen<StructMenu>("structure").begin(ref);
       ui.build(aspect, fullHud(), session);
       const f = ui.frame;
       expect(ui.wantsPointerLock).toBe(false);
@@ -996,25 +998,25 @@ test("the list of what can be done to a piece fits every window shape, whatever 
       // The third digit demolishes the piece and closes the list. With the list closed a digit is not the list's.
       expect(ui.key("Digit3", true, false, session)).toBe(true);
       expect(sent.map((c) => [c.op, new BitReader(c.bytes).u32(), c.bytes[4]])).toEqual([[CMD_STRUCT, ref, STRUCT_DEMOLISH]]);
-      expect([ui.structure.open, ui.key("Digit3", true, false, session)]).toEqual([false, false]);
+      expect([ui.screen<StructMenu>("structure").open, ui.key("Digit3", true, false, session)]).toEqual([false, false]);
       // A press on the first line asks to pick the piece up.
-      ui.structure.begin(ref);
+      ui.screen<StructMenu>("structure").begin(ref);
       ui.pointer(0, KEY_STRUCT_BUTTON, 0, 0, 0, session);
       expect(sent[1]!.bytes[4]).toBe(STRUCT_PICKUP);
       // Another screen closes it. If the piece has gone, there is nothing to list.
-      ui.structure.begin(ref);
+      ui.screen<StructMenu>("structure").begin(ref);
       ui.key("KeyM", true, false, session);
-      expect(ui.structure.open).toBe(false);
+      expect(ui.screen<StructMenu>("structure").open).toBe(false);
     }
   }
   const { session } = fakeSession(new Inventory(40));
   Object.assign(session, { sessionState: SESSION_ALIVE, world });
   const ui = newUi();
   ui.registry = reg;
-  ui.structure.begin(refs[0]!);
+  ui.screen<StructMenu>("structure").begin(refs[0]!);
   world.structs.remove(refs[0]!);
   ui.build(16 / 9, fullHud(), session);
-  expect([ui.structure.open, ui.frame.find(KEY_STRUCT_PANEL)]).toEqual([false, null]);
+  expect([ui.screen<StructMenu>("structure").open, ui.frame.find(KEY_STRUCT_PANEL)]).toEqual([false, null]);
 });
 
 test("what can be used can be locked and given a PIN from the list; the PIN panel takes four digits, fits every window, and remembers a PIN that worked", () => {
@@ -1030,7 +1032,7 @@ test("what can be used can be locked and given a PIN from the list; the PIN pane
     Object.assign(session, { sessionState: SESSION_ALIVE, world });
     const ui = newUi();
     ui.registry = reg;
-    const menu = ui.structure;
+    const menu = ui.screen<StructMenu>("structure");
     const fits = (): void => {
       ui.build(aspect, fullHud(), session);
       const f = ui.frame;
@@ -1076,21 +1078,21 @@ test("what can be used can be locked and given a PIN from the list; the PIN pane
     expect(sentOf(sent[2]!)).toEqual([CMD_STRUCT, door, STRUCT_PIN, NO_PIN]);
 
     // When someone outside its tribe uses it, the server answers that it wants its PIN, and the panel asks.
-    menu.result(0, RESULT_PIN, 1000, session, door);
+    menu.answer(0, RESULT_PIN, 1000, session, door);
     expect([menu.open, menu.pad]).toEqual([true, STRUCT_USE]);
     fits();
     expect([ui.frame.find(KEY_PIN_PANEL) !== null, ui.frame.find(KEY_PIN_CLEAR)]).toEqual([true, null]);
     for (const code of ["Digit1", "Digit2", "Digit3", "Digit4"]) ui.key(code, true, false, session);
     expect(sentOf(sent[3]!)).toEqual([CMD_STRUCT, door, STRUCT_USE, 1234]);
     // A wrong PIN is reported and not remembered. The next press asks again.
-    menu.result(sent.length, RESULT_DENIED, 2000);
+    menu.answer(sent.length, RESULT_DENIED, 2000);
     expect(menu.notice).toBe("That is not its PIN");
-    menu.result(0, RESULT_PIN, 3000, session, door);
+    menu.answer(0, RESULT_PIN, 3000, session, door);
     expect(menu.pad).toBe(STRUCT_USE);
     for (const code of ["Digit4", "Digit0", "Digit7", "Digit1"]) ui.key(code, true, false, session);
-    menu.result(sent.length, RESULT_OK, 4000);
+    menu.answer(sent.length, RESULT_OK, 4000);
     // After a right PIN, that door is sent its PIN without asking.
-    menu.result(0, RESULT_PIN, 5000, session, door);
+    menu.answer(0, RESULT_PIN, 5000, session, door);
     expect([menu.open, sentOf(sent[sent.length - 1]!)]).toEqual([false, [CMD_STRUCT, door, STRUCT_USE, 4071]]);
     menu.ask(wall);
     const n = sent.length;
@@ -1110,7 +1112,7 @@ test("a container with more slots than there is room for is turned through a pag
     ui.registry = reg;
     ui.build(aspect, fullHud(), session);
     const f = ui.frame;
-    expect(ui.inventory.open, name).toBe(true);
+    expect(ui.screen<InventoryScreen>("inventory").open, name).toBe(true);
     const check = (): void => {
       for (let i = 0; i < f.count; i++) {
         const n = f.nodes[i]!;
@@ -1127,13 +1129,13 @@ test("a container with more slots than there is room for is turned through a pag
     expect([here, of > 1, f.find(KEY_OPEN_SLOT + 1) !== null]).toEqual([1, true, true]);
     // Back from the first page stays there, and forward stops at the last.
     ui.pointer(0, KEY_OPEN_PAGE, 0, 0, 0, session);
-    expect(ui.inventory.page).toBe(0);
+    expect(ui.screen<InventoryScreen>("inventory").page).toBe(0);
     for (let k = 0; k < of + 2; k++) ui.pointer(0, KEY_OPEN_PAGE + 2, 0, 0, 0, session);
-    expect(ui.inventory.page).toBe(of - 1);
+    expect(ui.screen<InventoryScreen>("inventory").page).toBe(of - 1);
     ui.build(aspect, fullHud(), session);
     check();
     expect(f.find(KEY_OPEN_PAGE + 1)!.text).toBe(`${of} / ${of}`);
-    const size = (ui.inventory as unknown as { pageSize: number }).pageSize;
+    const size = (ui.screen<InventoryScreen>("inventory") as unknown as { pageSize: number }).pageSize;
     expect(per).toBeLessThanOrEqual(size);
     const place = 349 - (of - 1) * size;
     // Slot 349's seven berries show at its place on this page. Moved from there to the survivor's first slot, the command names slot 349.
@@ -1144,9 +1146,9 @@ test("a container with more slots than there is room for is turned through a pag
     expect([sent[0]!.op, r.bits(1), r.varint(), r.bits(1), r.varint()]).toEqual([CMD_MOVE, 1, 349, 0, 0]);
     // A box that fits has no pages.
     Object.assign(session, { open: { name: "storage box", inventory: new Inventory(15) } });
-    ui.inventory.page = 3;
+    ui.screen<InventoryScreen>("inventory").page = 3;
     ui.build(aspect, fullHud(), session);
-    expect([f.find(KEY_OPEN_PAGE), ui.inventory.page]).toEqual([null, 0]);
+    expect([f.find(KEY_OPEN_PAGE), ui.screen<InventoryScreen>("inventory").page]).toEqual([null, 0]);
   }
 });
 
@@ -1187,7 +1189,7 @@ test("a creature looked into says how its taming goes; one just tamed is asked a
     Object.assign(session, { open: null, subject: null });
     session.tamed.push({ handle: 0x1234, kind: reg.index.get("core:raptor")!, level: 42, te: 81 }, { handle: 0x99, kind: reg.index.get("core:parasaur")!, level: 3, te: 100 });
     ui.build(aspect, fullHud(), session);
-    expect([ui.naming.open, ui.captureKeyboard, ui.wantsPointerLock]).toEqual([true, true, false]);
+    expect([ui.screen<NamePrompt>("naming").open, ui.captureKeyboard, ui.wantsPointerLock]).toEqual([true, true, false]);
     expect([f.find(KEY_NAME_TITLE)!.text, f.find(KEY_NAME_INPUT)!.focus]).toEqual(["Tamed: a raptor, level 42", true]);
     for (const key of [KEY_NAME_PANEL, KEY_NAME_TITLE, KEY_NAME_INPUT]) {
       const n = f.find(key)!;
@@ -1197,7 +1199,7 @@ test("a creature looked into says how its taming goes; one just tamed is asked a
     }
     // A letter key is typing. It does not reach the body or another screen.
     expect(ui.key("KeyI", true, false, session)).toBe(false);
-    expect(ui.inventory.open).toBe(false);
+    expect(ui.screen<InventoryScreen>("inventory").open).toBe(false);
     ui.input(KEY_NAME_INPUT, "Blue");
     expect(ui.key("Enter", true, false, session)).toBe(true);
     // Closing the inventory told the server the creature was shut, which was the third command sent.
@@ -1205,10 +1207,10 @@ test("a creature looked into says how its taming goes; one just tamed is asked a
     expect([sent[3]!.op, named.u32(), named.string(24)]).toEqual([CMD_NAME, 0x1234, "Blue"]);
     // The next tame is asked about in turn. Escape leaves it unnamed, and then there is nothing left to ask.
     ui.build(aspect, fullHud(), session);
-    expect([ui.naming.open, f.find(KEY_NAME_TITLE)!.text]).toEqual([true, "Tamed: a parasaur, level 3"]);
+    expect([ui.screen<NamePrompt>("naming").open, f.find(KEY_NAME_TITLE)!.text]).toEqual([true, "Tamed: a parasaur, level 3"]);
     ui.key("Escape", true, false, session);
     ui.build(aspect, fullHud(), session);
-    expect([ui.naming.open, sent.length, session.tamed.length, f.find(KEY_NAME_PANEL)]).toEqual([false, 4, 0, null]);
+    expect([ui.screen<NamePrompt>("naming").open, sent.length, session.tamed.length, f.find(KEY_NAME_PANEL)]).toEqual([false, 4, 0, null]);
   }
 });
 
@@ -1228,7 +1230,7 @@ test("a tame's name is cut to the 24 bytes the server takes, whatever the script
     session.tamed.push({ handle: 7, kind: reg.index.get("core:raptor")!, level: 1, te: 50 });
     ui.build(16 / 9, fullHud(), session);
     ui.input(KEY_NAME_INPUT, typed);
-    expect(ui.naming.text).toBe(kept);
+    expect(ui.screen<NamePrompt>("naming").typed).toBe(kept);
     ui.key("Enter", true, false, session);
     // The server reads the name with this limit, and refuses the command if it is longer.
     const r = new BitReader(sent[sent.length - 1]!.bytes);
@@ -1313,7 +1315,7 @@ test("one that breeds says its sex and how its mating goes, and has a button for
     session.tamed.push({ handle: 0x77, kind: reg.index.get("core:parasaur")!, level: 9, te: 255 });
     ui.build(aspect, fullHud(), session);
     const title = f.find(KEY_NAME_TITLE)!;
-    expect([ui.naming.open, title.text], name).toEqual([true, "Yours: a young parasaur, level 9"]);
+    expect([ui.screen<NamePrompt>("naming").open, title.text], name).toEqual([true, "Yours: a young parasaur, level 9"]);
     expect(textWidth(title.text, title.style), name).toBeLessThanOrEqual(title.w + 0.01);
   }
 });
@@ -1326,11 +1328,11 @@ test("a bed's list names it and travels from it: the name is typed in a field th
     Object.assign(session, { sessionState: SESSION_ALIVE, world });
     const ui = newUi();
     ui.registry = reg;
-    ui.structure.begin(bed);
+    ui.screen<StructMenu>("structure").begin(bed);
     ui.build(aspect, fullHud(), session);
     expect([3, 4].map((n) => ui.frame.find(KEY_STRUCT_BUTTON + n)!.text), name).toEqual(["4  Name it", "5  Travel from it"]);
     ui.key("Digit4", true, false, session);
-    expect([ui.structure.naming, ui.captureKeyboard, ui.key("KeyW", true, false, session)]).toEqual([true, true, false]);
+    expect([ui.screen<StructMenu>("structure").naming, ui.captureKeyboard, ui.key("KeyW", true, false, session)]).toEqual([true, true, false]);
     ui.build(aspect, fullHud(), session);
     const field = ui.frame.find(KEY_STRUCT_NAME_INPUT)!;
     expect([field.focus, field.x + field.w <= ui.frame.width + 0.01]).toEqual([true, true]);
@@ -1338,8 +1340,8 @@ test("a bed's list names it and travels from it: the name is typed in a field th
     expect(ui.key("Enter", true, false, session)).toBe(true);
     const r = new BitReader(sent[0]!.bytes);
     expect([sent[0]!.op, r.u32(), r.u8(), r.string(MAX_NAME_BYTES)]).toEqual([CMD_STRUCT, bed, STRUCT_NAME, "Home by the sea, with a"]);
-    expect([ui.structure.open, ui.captureKeyboard]).toEqual([false, false]);
-    ui.structure.begin(bed);
+    expect([ui.screen<StructMenu>("structure").open, ui.captureKeyboard]).toEqual([false, false]);
+    ui.screen<StructMenu>("structure").begin(bed);
     ui.key("Digit5", true, false, session);
     expect([sent[1]!.op, new BitReader(sent[1]!.bytes).u32(), sent[1]!.bytes[4]]).toEqual([CMD_STRUCT, bed, STRUCT_TRAVEL]);
   }

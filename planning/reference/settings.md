@@ -5,7 +5,7 @@ edit it by hand: change the catalogue and run the tool.
 
 A server is configured as ARK's is ([how](round5-settings.md), and [what the
 values mean](round5-game-ini.md)). Every setting an ARK dedicated server reads
-is listed here, 600 of them: 235 take effect,
+is listed here, 602 of them: 237 take effect,
 175 wait for a feature that is not built yet, and 190 have no meaning in this
 engine. A setting that does not take effect is still read, checked and
 reported when the server starts.
@@ -34,6 +34,8 @@ the admin's settings page may change a setting without a restart.
 | `DinoCountMultiplier` | 1 | How many wild creatures each spawn region keeps. Higher is more. *Each region holds its number times this, rounded. A region already over it is not thinned.* | yes |
 | `ServerAutoForceRespawnWildDinosInterval` | 0 | At a start, every wild creature is replaced if this many seconds have passed since a start last did so. 0 is never. *Seconds of the wall clock, as official servers use it for weekly respawns. The reference does not say what it counts from; here, from the last start that replaced them, or the first start that kept the count.* | no |
 | `RandomSupplyCratePoints` | False | Supply drops land on open ground drawn at random, and not at the drop book's sites. | yes |
+| `OrbScene` | `auto` | What an orb's screen shows. auto runs its programme, a scene every four minutes; watcher, moon, core, storm or tide holds that scene. | yes; clients are told |
+| `OrbBrightness` | 1 | How bright an orb's screen and the light it casts are. 0 turns it off. | yes; clients are told |
 | `PlayerDamageMultiplier` | 1 | Damage survivors deal. Higher is more. | yes |
 | `PlayerResistanceMultiplier` | 1 | Damage survivors take. Higher takes more: 0.5 halves it. | yes |
 | `DinoDamageMultiplier` | 1 | Damage wild creatures deal. Higher is more. | yes |

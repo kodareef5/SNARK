@@ -7,7 +7,7 @@
 
 import { CHUNK_SIZE, chunkAt, chunkCx, chunkCz } from "../shared/coords.ts";
 import type { ClientSession } from "../client/core/session.ts";
-import type { MapChannel } from "../grunt/protocol.ts";
+import type { MapChannel, MapPlace } from "../grunt/protocol.ts";
 import { swimDepth } from "../shared/sim/character.ts";
 import { cityTops } from "../shared/world/city.ts";
 import { TACTICAL_CELL } from "../shared/world/tactical.ts";
@@ -78,6 +78,21 @@ export class MapRaster {
       }
       rows.push(line);
     }
-    return { cell: c, origin: [gx, gz], size: [n, n], rows, legend: MAP_LEGEND, known: "full" };
+    const places = mapPlaces(s);
+    return { cell: c, origin: [gx, gz], size: [n, n], rows, legend: MAP_LEGEND, known: "full", ...(places.length ? { places } : {}) };
   }
+}
+
+const FORM = { sextant: "a sextant of arcs", lantern: "a lantern on masts" } as const;
+
+/** The named places a player's map shows, in the protocol's frame: the obelisks (seen from anywhere, so all of them) and
+ * the map's landmarks. */
+export function mapPlaces(s: ClientSession): MapPlace[] {
+  const out: MapPlace[] = [];
+  for (const e of s.world?.tideEyes ?? []) {
+    const form = e.form ? FORM[e.form] : "an eye on a spire";
+    out.push({ name: `${e.color} obelisk`, kind: "obelisk", x: -Math.round(e.x), z: -Math.round(e.z), about: `the ${e.color} obelisk at ${e.name}: ${form} towering over the city, seen from anywhere; a travel terminal stands at its foot` });
+  }
+  for (const l of s.world?.landmarks ?? []) out.push({ name: l.name, kind: "landmark", x: -Math.round(l.x), z: -Math.round(l.z) });
+  return out;
 }

@@ -6,6 +6,7 @@ import { airYard } from "../../tools/urban/air-yard.ts";
 import { NO_CLIPS } from "../../shared/anim/clip.ts";
 import type { Screen } from "../kit/screen.ts";
 import { ScreenHarness, screen, tap } from "../kit/screen.ts";
+import type { AirRadio } from "../../client/core/ui/air-support.ts";
 
 function click(view: Screen, label: string): void {
   const f = view.app.ui.frame;
@@ -27,7 +28,7 @@ test("the cab calls a trailer and launches its fourth bay through the radio", ()
     h.run(1600);
     expect(s.driving).toBe(e);
     tap(h, view, "KeyJ");
-    expect(view.app.ui.air.open).toBe(true);
+    expect(view.app.ui.screen<AirRadio>("air").open).toBe(true);
     click(view, "Request trailer");
     h.run(400);
     expect(s.airSupport.order).toBeGreaterThan(0);
@@ -87,10 +88,10 @@ test("the cab radio rotates and places a ground pod from the yard spawn", () => 
     expect(view.app.ui.frame.find(view.app.ui.menuFocus)?.text).toBe("Close");
     click(view, "Mark ground drop");
     h.run(100);
-    const start = { ...view.app.ui.air.spot };
+    const start = { ...view.app.ui.screen<AirRadio>("air").spot };
     tap(h, view, "KeyQ");
-    expect(view.app.ui.air.marking).toBe(true);
-    expect(view.app.ui.air.spot.yaw).not.toBe(start.yaw);
+    expect(view.app.ui.screen<AirRadio>("air").marking).toBe(true);
+    expect(view.app.ui.screen<AirRadio>("air").spot.yaw).not.toBe(start.yaw);
     tap(h, view, "KeyE");
     expect(s.airSupport.order).toBeGreaterThan(0);
     for (let i = 0; i < 120 && !s.airSupport.pods.length; i++) h.run(400);

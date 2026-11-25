@@ -42,6 +42,12 @@ const list: Place[] = [];
 const scratch: LatticeKey = { fr: 0, k0: 0, k1: 0 };
 const at: LatticePose = { x: 0, y: 0, z: 0, yaw: 0, tw: 0 };
 
+/** Whether the piece of kind `on` takes a leaf of `kind`. */
+export function takes(reg: Registry, on: number, kind: number): boolean {
+  const by = reg.forms.def[on]?.takes;
+  return by !== undefined && (reg.forms.def[kind]?.hangs ?? []).includes(by);
+}
+
 /** The places the piece of kind `on` has for a piece of `kind`, to `list`. */
 function placesOf(reg: Registry, on: number, kind: number): Place[] {
   const forms = reg.forms;
@@ -58,7 +64,8 @@ function placesOf(reg: Registry, on: number, kind: number): Place[] {
   else if (floor && to === ROLE_STAIRS) list.push([0, 0, 0, 0]);
   else if (from === ROLE_WALL && to === ROLE_WALL) list.push([0, 0, up, 0]);
   else if (from === ROLE_WALL && to === ROLE_CEILING) list.push([0, 1, up, 0], [0, -1, up, 0]);
-  else if (from === ROLE_WALL && to === ROLE_DOOR && reg.doorway[on] === 1) list.push([0, 0, 0, 0]);
+  // A doorway, or a wall that takes the leaf, as the server has it (lattice/place.ts).
+  else if (from === ROLE_WALL && to === ROLE_DOOR && (reg.doorway[on] === 1 || takes(reg, on, kind))) list.push([0, 0, 0, 0]);
   else if (from === ROLE_PILLAR && to === ROLE_CEILING) list.push([0, 0, up, 0]);
   return list;
 }

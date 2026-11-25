@@ -7,6 +7,7 @@ import { CHUNK_SIZE, YAW_UNITS } from "../../../shared/coords.ts";
 import { isWheelVehicle } from "../../../shared/sim/vehicle.ts";
 import { type NodeForms, SIZE_UNITS } from "../../../shared/world/nodes.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
+import { orbCollider } from "../../../shared/world/orb.ts";
 import { ReceiverIndex } from "./receiver-index.ts";
 import type { ChunkTable, StructureStore } from "../../../shared/world/structures.ts";
 import type { RemoteSample } from "../session.ts";
@@ -254,7 +255,8 @@ export class StreetReflections {
           if (!form || (nodes && (this.forms.depleted[form] || hidden.has(ref)))) continue;
           const k = nodes ? this.forms.kind[form]! : form;
           const d = this.reg.defs[k];
-          if (!d || !("color" in d) || d.color === undefined) continue;
+          // A piece of an orb's collision is drawn as nothing, so it is not in the picture: a mirror shows the ball itself there (orb-light.ts orbMirror).
+          if (!d || !("color" in d) || d.color === undefined || orbCollider(d.id)) continue;
           const size = nodes ? this.forms.size[form]! / SIZE_UNITS : 1;
           const bounds = this.bounds;
           const mesh = bounds?.meshes[(nodes ? bounds.forms : bounds.kinds)[form]!];

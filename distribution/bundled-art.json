@@ -19,5 +19,6 @@
   "core/vehicles/taxi_salvaged",
   "core/vehicles/veloce_salvaged",
   "core/items/weapons/plasma",
-  "core/items/weapons/launcher"
+  "core/items/weapons/launcher",
+  "core/structures/orb"
 ]

@@ -1,10 +1,11 @@
-import { RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_OK, RESULT_WAIT, SESSION_ALIVE } from "../../../shared/net/protocol.ts";
+import { RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_OK, RESULT_WAIT, SESSION_ALIVE, SESSION_CREATING, SESSION_DEAD } from "../../../shared/net/protocol.ts";
 import { AIR_ACTION, AIR_BAYS, type AirPose } from "../../../shared/sim/air-support.ts";
 import type { CollisionWorld } from "../../../shared/world/collide.ts";
 import { HIT_NONE, castWorld, rayHit } from "../../../shared/world/ray.ts";
 import type { Camera } from "../render/camera.ts";
 import type { ClientSession, RemoteSample } from "../session.ts";
 import { fitText, K_BUTTON, K_PANEL, type UiFrame } from "./nodes.ts";
+import type { Screen, ScreenCtx } from "./screen.ts";
 import { feedButtons } from "../hud/air-feed.ts";
 import { S_BUTTON, S_HUD_COUNT, S_LABEL, S_MENU_FOCUS, S_PANEL, S_TITLE, S_WARNING } from "./style.ts";
 
@@ -31,7 +32,12 @@ function button(f: UiFrame, key: number, x: number, y: number, w: number, label:
   node.alpha = active ? 1 : 0.5;
 }
 
-export class AirRadio {
+export class AirRadio implements Screen {
+  readonly name = "air";
+  readonly layer = "modal";
+  readonly holdsKeys = true;
+  readonly focusNav = true;
+  readonly bands = [{ from: BASE, count: 41 }];
   open = false;
   marking = false;
   cab = false;
@@ -67,11 +73,49 @@ export class AirRadio {
     this.spot.yaw = this.turn * Math.PI / 8;
   }
 
+  isOpen(): boolean {
+    return this.open;
+  }
+
+  close(): void {
+    this.open = this.marking = false;
+  }
+
+  /** Death, the creator and a closed connection end any order being made. */
+  absorb(c: ScreenCtx): void {
+    const s = c.session;
+    if (s && (s.sessionState === SESSION_DEAD || s.sessionState === SESSION_CREATING || s.state === "closed")) this.close();
+  }
+
+  build(f: UiFrame, c: ScreenCtx): void {
+    if (c.session) this.draw(f, c.session, c.focus);
+  }
+
+  play(f: UiFrame, c: ScreenCtx): void {
+    if (c.session) this.hud(f, c.session, c.inputDevice);
+  }
+
+  key(code: string, down: boolean, repeat: boolean, c: ScreenCtx): boolean {
+    return c.session !== null && this.radioKey(code, down, repeat, c.session);
+  }
+
+  playKey(code: string, down: boolean, repeat: boolean, c: ScreenCtx): boolean {
+    return c.session !== null && this.radioKey(code, down, repeat, c.session);
+  }
+
+  pointer(kind: number, key: number, _x: number, _y: number, button: number, c: ScreenCtx): boolean {
+    return kind === 0 && button === 0 && c.session !== null && this.click(key, c.session);
+  }
+
+  result(seq: number, code: number, c: ScreenCtx): void {
+    this.answer(seq, code, c.session?.tickClock ?? 0);
+  }
+
   available(s: ClientSession): boolean {
     return s.state === "active" && s.sessionState === SESSION_ALIVE && !!(this.cab || s.airSupport.pod || s.airSupport.order || s.airSupport.flight);
   }
 
-  key(code: string, down: boolean, repeat: boolean, s: ClientSession): boolean {
+  radioKey(code: string, down: boolean, repeat: boolean, s: ClientSession): boolean {
     if (!this.available(s)) return false;
     const flight = s.airSupport.flight;
     let key = 0;
@@ -124,7 +168,7 @@ export class AirRadio {
     return true;
   }
 
-  result(seq: number, code: number, tick: number): void {
+  answer(seq: number, code: number, tick: number): void {
     if (!seq || seq !== this.pending) return;
     this.pending = 0;
     if (code !== RESULT_OK) {
@@ -168,7 +212,7 @@ export class AirRadio {
 
   ownsButton(key: number): boolean { return key > BASE && key <= LEAVE; }
 
-  build(f: UiFrame, s: ClientSession, focus: number): void {
+  draw(f: UiFrame, s: ClientSession, focus: number): void {
     const v = s.airSupport, pod = v.pods.find(row => row.id === v.pod);
     const w = Math.min(430, f.width - f.left - f.right - 24);
     const h = pod ? 295 : 195;

@@ -8,6 +8,8 @@ import { levelFraction, levelTable, xpText } from "../hud/level.ts";
 import type { ClientSession } from "../session.ts";
 import { itemLabel } from "./inventory.ts";
 import { K_BAR, K_BUTTON, K_PANEL, fitText, lineHeight, type UiFrame } from "./nodes.ts";
+import { CHARACTER_PARTS } from "./character-parts.ts";
+import { PART_KEYS, PartKeys, partOf, type Screen, type ScreenCtx, type ScreenPart } from "./screen.ts";
 import { S_BUTTON, S_LABEL, S_OXYGEN, S_PANEL, S_TITLE } from "./style.ts";
 
 export const KEY_CHAR_PANEL = 1100;
@@ -32,6 +34,9 @@ export const KEY_CHAR_RECIPE = KEY_CHAR_ENGRAM + LIST_KEYS;
 export const KEY_CHAR_RECIPE_PICTURE = KEY_CHAR_RECIPE + LIST_KEYS;
 /** Per engram, in engramOrder: its picture, its item's where it has none of its own. Past the pictures of the recipes. */
 export const KEY_CHAR_ENGRAM_PICTURE = KEY_CHAR_RECIPE_PICTURE + LIST_KEYS;
+/** The keys its parts are given: PART_KEYS for each, from here (screen.ts PartKeys). */
+export const KEY_CHAR_PARTS = 900000;
+const MAX_PARTS = 64;
 export const TAB_STATS = 0;
 export const TAB_ENGRAMS = 1;
 export const TAB_MAKE = 2;
@@ -62,13 +67,69 @@ export function engramOrder(reg: Registry, known: readonly number[] = []): numbe
     .sort((a, b) => (reg.defs[a] as EngramDef).level - (reg.defs[b] as EngramDef).level || a - b);
 }
 
-export class CharacterScreen {
+export class CharacterScreen implements Screen {
+  readonly name = "character";
+  readonly layer = "modal";
+  readonly group = "bag";
+  readonly hotkey = "KeyP";
+  readonly bands = [{ from: KEY_CHAR_PANEL, count: KEY_CHAR_XP + 1 - KEY_CHAR_PANEL }, { from: KEY_CHAR_ENGRAM, count: 4 * LIST_KEYS }, { from: KEY_CHAR_PARTS, count: MAX_PARTS * PART_KEYS }];
+  /** Its tabs after its own, from other files (character-parts.ts). */
+  readonly parts: ScreenPart[] = [...CHARACTER_PARTS];
+  private readonly partKeys = new PartKeys();
+  open = false;
   tab = TAB_STATS;
   page = 0;
   /** As of the last build. */
   pages = 1;
 
-  build(f: UiFrame, session: ClientSession, reg: Registry): void {
+  isOpen(): boolean {
+    return this.open;
+  }
+
+  show(): void {
+    this.open = true;
+  }
+
+  close(): void {
+    this.open = false;
+  }
+
+  build(f: UiFrame, c: ScreenCtx): void {
+    if (c.session && c.registry) this.draw(f, c.session, c.registry, c);
+  }
+
+  pointer(kind: number, key: number, x: number, y: number, button: number, c: ScreenCtx): boolean {
+    const part = partOf(key, KEY_CHAR_PARTS, this.parts.length);
+    if (part && part.local < 0) {
+      if (kind === 0) this.choose(TABS.length + part.index);
+      return true;
+    }
+    if (part) return this.shown(part.index)?.pointer?.(kind, part.local, x, y, button, c) ?? true;
+    return kind === 0 && c.session !== null && c.registry !== null && this.click(key, c.session, c.registry);
+  }
+
+  text(key: number, value: string, c: ScreenCtx): boolean {
+    const part = partOf(key, KEY_CHAR_PARTS, this.parts.length);
+    return part !== null && part.local >= 0 && (this.shown(part.index)?.text?.(part.local, value, c) ?? true);
+  }
+
+  value(key: number, value: number, c: ScreenCtx): boolean {
+    const part = partOf(key, KEY_CHAR_PARTS, this.parts.length);
+    return part !== null && part.local >= 0 && (this.shown(part.index)?.value?.(part.local, value, c) ?? false);
+  }
+
+  /** Part `index`, if its tab is the one shown: a key of a part whose tab has been left, before the frame is drawn again, reaches nothing. */
+  private shown(index: number): ScreenPart | null {
+    return this.tab === TABS.length + index ? this.parts[index] ?? null : null;
+  }
+
+  private choose(tab: number): void {
+    this.tab = tab;
+    this.page = 0;
+  }
+
+  /** `c` is wanted only for a tab of a part. */
+  draw(f: UiFrame, session: ClientSession, reg: Registry, c: ScreenCtx | null = null): void {
     const p = session.progress;
     const species = reg.defs[session.ownKind] as SpeciesDef | null;
     const w = Math.min(f.width - 16, 500);
@@ -92,14 +153,24 @@ export class CharacterScreen {
     const making = job ? `making ${itemLabel(reg, job.item)} (${p.jobs.reduce((n, j) => n + j.left, 0)} to go)` : "nothing being made";
     f.text(KEY_CHAR_JOBS, x + PAD, y, inner, S_LABEL, fitText(making, inner, S_LABEL));
     y += lh + 6;
-    const tabW = (inner - 8) / TABS.length;
-    TABS.forEach((label, i) => {
-      const b = f.add(KEY_CHAR_TAB + i, K_BUTTON, x + PAD + i * (tabW + 4), y, tabW, ROW + 2, S_BUTTON);
-      b.text = label;
+    const parts = Math.min(this.parts.length, MAX_PARTS), tabs = TABS.length + parts;
+    const tabW = (inner - (tabs - 1) * 4) / tabs;
+    for (let i = 0; i < tabs; i++) {
+      const b = f.add(i < TABS.length ? KEY_CHAR_TAB + i : KEY_CHAR_PARTS + (i - TABS.length) * PART_KEYS, K_BUTTON, x + PAD + i * (tabW + 4), y, tabW, ROW + 2, S_BUTTON);
+      b.text = fitText(i < TABS.length ? TABS[i]! : this.parts[i - TABS.length]!.label, tabW - 8, S_BUTTON);
       b.interactive = true;
       if (i === this.tab) b.tint = CHOSEN;
-    });
+    }
     y += ROW + 10;
+    if (this.tab >= TABS.length) {
+      // A part has the room under the tabs, with no pages of the screen's own.
+      const index = this.tab - TABS.length, part = this.parts[index];
+      this.pages = 1;
+      if (!part || !c || index >= MAX_PARTS) return;
+      this.partKeys.base = KEY_CHAR_PARTS + index * PART_KEYS;
+      part.build(f, { x: x + PAD, y, w: inner, h: y0 + h - PAD - y }, this.partKeys, c);
+      return;
+    }
 
     // `button` is "" for a row without one. A row of the Engrams and Make tabs has the picture of what it makes at its left,
     // where there is one.
@@ -156,8 +227,7 @@ export class CharacterScreen {
   /** Returns true if the key was one of this screen's buttons. */
   click(key: number, session: ClientSession, reg: Registry): boolean {
     if (key >= KEY_CHAR_TAB && key < KEY_CHAR_TAB + TABS.length) {
-      this.tab = key - KEY_CHAR_TAB;
-      this.page = 0;
+      this.choose(key - KEY_CHAR_TAB);
       return true;
     }
     if (key === KEY_CHAR_PAGE || key === KEY_CHAR_PAGE + 1) {

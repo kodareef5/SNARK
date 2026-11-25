@@ -9,10 +9,6 @@ import { stanceEye, stanceHeight } from "../shared/sim/character.ts";
 import { HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayHit } from "../shared/world/ray.ts";
 import { F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
 import { SKIN, capsuleFree, capsuleKind, groundUnder } from "../shared/world/collide.ts";
-import { carMeetsKind } from "../shared/world/vehicle.ts";
-import { isBoatVehicle, isRotorVehicle } from "../shared/sim/vehicle.ts";
-import { helicopterMeetsKind } from "../shared/world/helicopter.ts";
-import { boatMeetsKind } from "../shared/world/boat.ts";
 import { PLACE_JOIN, PLACE_NEW, PLACE_PLAN, PLACE_REST, makePlaceRequest, readPlace, type PlaceRequest } from "../shared/net/place.ts";
 import { PLACED_MOST, makePlaced, writePlaced } from "../shared/net/placed.ts";
 import { makeVerdict, runKey, startBase, validate, validateFree, validatePlan, type Site, type Verdict } from "../shared/world/lattice/place.ts";
@@ -34,6 +30,7 @@ import type { EntityRecord, Records } from "./records.ts";
 import type { Tribes } from "./tribes.ts";
 import type { ServerWorld } from "./world.ts";
 import { event, type Bus } from "./events/bus.ts";
+import { familyOf } from "../shared/sim/families.ts";
 
 /** In a `build.place` event, the target of a piece that rests on nothing built. */
 export const NO_TARGET = 0xffffffff;
@@ -902,9 +899,7 @@ export class Build {
               x: ents.x[i]!, y: ents.y[i]!, z: ents.z[i]!, yaw: ents.vehicleYaw[v]!, pitch: ents.vehiclePitch[v]!, roll: ents.vehicleRoll[v]!,
               qx: ents.vehicleQx[v]!, qy: ents.vehicleQy[v]!, qz: ents.vehicleQz[v]!, qw: ents.vehicleQw[v]!, steering: ents.steering[v]!,
             };
-            if (isBoatVehicle(car) ? boatMeetsKind(reg.parts, kind, x, y, z, yaw, tw, car, frame, BODY_SLACK)
-              : isRotorVehicle(car) ? helicopterMeetsKind(reg.parts, kind, x, y, z, yaw, tw, car, frame, BODY_SLACK)
-              : carMeetsKind(reg.parts, kind, x, y, z, yaw, tw, car.spec, frame, BODY_SLACK)) return i;
+            if (familyOf(car)!.meetsKind(car, reg.parts, kind, x, y, z, yaw, tw, frame, BODY_SLACK)) return i;
             continue;
           }
           if (capsuleKind(reg.parts, kind, x, y, z, yaw, tw, ents.x[i]!, ents.y[i]!, ents.z[i]!, reg.bodyRadius[k]!, reg.bodyHeight[k]!, BODY_SLACK)) return i;

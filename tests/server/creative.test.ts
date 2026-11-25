@@ -23,6 +23,7 @@ import { CMD_CLOCK, REJECT_DENIED, RESULT_DENIED, RESULT_INVALID, RESULT_OK } fr
 import { CLOCK_SHARES, UNIT_CLOCK, hourOfDay, shareOfHour } from "../../shared/sim/clock.ts";
 import { listener } from "../fixtures/module.ts";
 import { Harness, asShipped } from "../fixtures/net.ts";
+import type { MenuScreen } from "../../client/core/ui/menu-screen.ts";
 
 const root = resolve(import.meta.dir, "../..");
 
@@ -49,7 +50,7 @@ test("bShowCreativeMode reaches clients as it changes, and the menu's Creative e
   const ada = h.join("ada");
   h.run(500);
   const { ui, build } = screen(ada);
-  ui.openMenu();
+  ui.escaped();
   expect([ada.creative, build().find(KEY_MENU_CREATIVE)]).toEqual([false, null]);
   expect(h.host.setSetting("bShowCreativeMode", "True")).toBe("");
   h.run(200);
@@ -57,16 +58,16 @@ test("bShowCreativeMode reaches clients as it changes, and the menu's Creative e
   expect([ada.creative, entry.text, entry.interactive]).toEqual([true, "Creative", true]);
   ui.pointer(0, KEY_MENU_CREATIVE, 0, 0, 0, ada);
   let f = build();
-  expect([ui.creative, f.find(KEY_CREATIVE_PANEL) !== null, f.find(KEY_CREATIVE_PASSWORD)?.kind, f.find(KEY_MENU_CREATIVE)]).toEqual([true, true, K_SECRET, null]);
+  expect([ui.screen<MenuScreen>("menu").creative, f.find(KEY_CREATIVE_PANEL) !== null, f.find(KEY_CREATIVE_PASSWORD)?.kind, f.find(KEY_MENU_CREATIVE)]).toEqual([true, true, K_SECRET, null]);
   // Escape goes back to the menu, to the entry it came from, and again leaves the menu.
   ui.key("Escape", true, false, ada);
-  expect([ui.menu, ui.creative, ui.menuFocus]).toEqual([true, false, KEY_MENU_CREATIVE]);
+  expect([ui.screen<MenuScreen>("menu").menu, ui.screen<MenuScreen>("menu").creative, ui.menuFocus]).toEqual([true, false, KEY_MENU_CREATIVE]);
   ui.pointer(0, KEY_MENU_CREATIVE, 0, 0, 0, ada);
   // Switched off while the screen is open, the screen and the entry go.
   expect(h.host.setSetting("bShowCreativeMode", "False")).toBe("");
   h.run(200);
   f = build();
-  expect([ada.creative, ui.creative, f.find(KEY_CREATIVE_PANEL), f.find(KEY_MENU_CREATIVE), ui.menu]).toEqual([false, false, null, null, true]);
+  expect([ada.creative, ui.screen<MenuScreen>("menu").creative, f.find(KEY_CREATIVE_PANEL), f.find(KEY_MENU_CREATIVE), ui.screen<MenuScreen>("menu").menu]).toEqual([false, false, null, null, true]);
 });
 
 test("one without the role is asked the admin password, judged and counted as enablecheats is, and told before the guess that ends the connection", () => {
@@ -74,7 +75,7 @@ test("one without the role is asked the admin password, judged and counted as en
   const bo = h.join("bo"), cy = h.join("cy");
   h.run(500);
   const { ui, build } = screen(bo);
-  ui.openMenu();
+  ui.escaped();
   ui.pointer(0, KEY_MENU_CREATIVE, 0, 0, 0, bo);
   let f = build();
   expect([ui.menuFocus, f.find(KEY_SUNDIAL), f.find(KEY_CREATIVE_UNLOCK)!.interactive, f.find(KEY_CREATIVE_WARNING)!.text]).toEqual([KEY_CREATIVE_PASSWORD, null, false, "Three wrong passwords end the connection."]);
@@ -102,7 +103,7 @@ test("one without the role is asked the admin password, judged and counted as en
 
   // The screen and the console count the same guesses: two here, one typed, and the third ends the connection.
   const other = screen(cy);
-  other.ui.openMenu();
+  other.ui.escaped();
   other.ui.pointer(0, KEY_MENU_CREATIVE, 0, 0, 0, cy);
   for (const guess of ["a", "b"]) {
     other.ui.input(KEY_CREATIVE_PASSWORD, guess);
@@ -151,10 +152,10 @@ test("the server judges every turn: one without the role is refused whatever its
   // Its client claims the role, so its screen shows the dial and its hand turns it; the server refuses each message.
   bo.admin = true;
   const { ui, hud, build } = screen(bo);
-  ui.openMenu();
+  ui.escaped();
   ui.pointer(0, KEY_MENU_CREATIVE, 0, 0, 0, bo);
   build();
-  const box = ui.creativeScreen.sundial.box, a = angleOfHour(20, bo.clock) * Math.PI * 2;
+  const box = ui.screen<MenuScreen>("menu").creativeScreen.sundial.box, a = angleOfHour(20, bo.clock) * Math.PI * 2;
   ui.pointer(0, KEY_SUNDIAL, box.cx + box.radius * 0.8 * Math.sin(a), box.cy - box.radius * 0.8 * Math.cos(a), 0, bo);
   build();
   ui.pointer(1, KEY_SUNDIAL, box.cx + box.radius * 0.8 * Math.sin(a), box.cy - box.radius * 0.8 * Math.cos(a), 0, bo);
@@ -164,7 +165,7 @@ test("the server judges every turn: one without the role is refused whatever its
   // Its own sky goes back to the server's hour once the turn is not taken.
   hud.hour = hourOfDay(bo.serverTick, bo.dayOffset, bo.clock);
   h.run(2500, () => build());
-  expect(Number.isNaN(ui.creativeScreen.sundial.held)).toBe(true);
+  expect(Number.isNaN(ui.screen<MenuScreen>("menu").creativeScreen.sundial.held)).toBe(true);
   // An admin's turn is taken; an hour past the day's last step is not; and with creative mode off nobody's is.
   h.say(ada, "enablecheats");
   const taken = turn(ada, 20);
@@ -201,15 +202,15 @@ test("a drag of the dial is one entry in the journal, reaches everyone while it 
       if (op === CMD_CLOCK) sent.push(h.world.tick);
       return command(op, args);
     };
-    ui.openMenu();
+    ui.escaped();
     ui.pointer(0, KEY_MENU_CREATIVE, 0, 0, 0, ada);
     build();
     // Enter and Space on the dial press its middle, where the hour is read, and turn nothing.
     ui.key("Enter", true, false, ada);
     ui.key("Space", true, false, ada);
     build();
-    expect([ui.menuFocus, sent.length, Number.isNaN(ui.creativeScreen.sundial.held)]).toEqual([KEY_SUNDIAL, 0, true]);
-    const box = ui.creativeScreen.sundial.box;
+    expect([ui.menuFocus, sent.length, Number.isNaN(ui.screen<MenuScreen>("menu").creativeScreen.sundial.held)]).toEqual([KEY_SUNDIAL, 0, true]);
+    const box = ui.screen<MenuScreen>("menu").creativeScreen.sundial.box;
     const at = (hour: number): [number, number] => {
       const a = angleOfHour(hour, UNIT_CLOCK) * Math.PI * 2;
       return [box.cx + box.radius * 0.8 * Math.sin(a), box.cy - box.radius * 0.8 * Math.cos(a)];
@@ -223,7 +224,7 @@ test("a drag of the dial is one entry in the journal, reaches everyone while it 
     ui.pointer(0, KEY_SUNDIAL, ...at(9), 0, ada);
     h.run(2000, () => {
       ui.pointer(2, KEY_SUNDIAL, ...at(9 + 8.5 * Math.min(1, frame++ / 110)), 0, ada);
-      hud.hour = ui.creativeScreen.sundial.held;
+      hud.hour = ui.screen<MenuScreen>("menu").creativeScreen.sundial.held;
       build();
       seen.add(bo.dayOffset);
       hours.push(hourOfDay(h.world.tick, h.world.dayOffset, h.world.clock));

@@ -6,6 +6,7 @@ import { EMOTES, EMOTE_NUMBER, type EmoteDef } from "../../../shared/anim/emotes
 import { RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_OK } from "../../../shared/net/protocol.ts";
 import type { ClientSession } from "../session.ts";
 import { K_BUTTON, K_PANEL, lineHeight, type UiFrame } from "./nodes.ts";
+import type { Screen, ScreenCtx } from "./screen.ts";
 import { S_BUTTON, S_LABEL, S_PANEL, S_TITLE } from "./style.ts";
 
 export const KEY_EMOTE_PANEL = 3700;
@@ -35,7 +36,11 @@ const REASONS: Readonly<Record<number, string>> = {
   [RESULT_INVALID]: "That needs someone to do it with",
 };
 
-export class EmoteMenu {
+export class EmoteMenu implements Screen {
+  readonly name = "emotes";
+  readonly layer = "modal";
+  readonly hotkey = "KeyZ";
+  readonly bands = [{ from: KEY_EMOTE_PANEL, count: KEY_EMOTE_BUTTON + 9 - KEY_EMOTE_PANEL }];
   open = false;
   page = 0;
   /** Which nine of the page's emotes show. */
@@ -80,12 +85,21 @@ export class EmoteMenu {
     this.sub = by > 0 ? 0 : Math.max(0, Math.ceil(this.all().length / 9) - 1);
   }
 
-  toggle(): void {
-    this.open = !this.open;
+  isOpen(): boolean {
+    return this.open;
+  }
+
+  show(): void {
+    this.open = true;
+  }
+
+  close(): void {
+    this.open = false;
   }
 
   /** Returns true if the menu used the key. */
-  key(code: string, down: boolean, repeat: boolean, session: ClientSession | null): boolean {
+  key(code: string, down: boolean, repeat: boolean, c: ScreenCtx): boolean {
+    const session = c.session;
     if (!this.open) return false;
     const digit = /^Digit([1-9])$/.exec(code);
     if (digit) {
@@ -101,6 +115,10 @@ export class EmoteMenu {
       return true;
     }
     return false;
+  }
+
+  pointer(kind: number, key: number, _x: number, _y: number, _button: number, c: ScreenCtx): boolean {
+    return kind === 0 && c.session !== null && this.click(key, c.session);
   }
 
   click(key: number, session: ClientSession): boolean {
@@ -135,10 +153,10 @@ export class EmoteMenu {
   }
 
   /** The server's answer to what this menu sent. */
-  result(seq: number, code: number, nowMs: number): void {
+  result(seq: number, code: number): void {
     if (seq !== this.asked || seq === 0) return;
     this.asked = 0;
-    if (code !== RESULT_OK && code !== RESULT_BUSY) this.say(REASONS[code] ?? "Not now", nowMs);
+    if (code !== RESULT_OK && code !== RESULT_BUSY) this.say(REASONS[code] ?? "Not now", this.now);
   }
 
   private say(text: string, nowMs: number): void {

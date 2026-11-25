@@ -7,7 +7,7 @@ import { sortF64 } from "../../../shared/sort.ts";
 import type { Assets } from "../assets/assets.ts";
 import type { FrameBudget } from "./budget.ts";
 import { FAR_FROM } from "./camera.ts";
-import { DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_NEAR, DRAW_SKYLINE, DRAW_TEXTURED, MAX_DRAWS, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR, STEP_NEAR_SEE, type FramePacket } from "./packet.ts";
+import { DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_NEAR, DRAW_ORB, DRAW_SKYLINE, DRAW_TEXTURED, MAX_DRAWS, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR, STEP_NEAR_SEE, type FramePacket } from "./packet.ts";
 import { PROGRAM, drawProgram } from "./programs.ts";
 import { WEAR_KEY } from "./wear.ts";
 
@@ -317,12 +317,12 @@ export class Draws {
   /**
    * The level of a mesh to draw for `wanted`, or -1: the nearest held, and while that cannot be drawn with its materials
    * a finer one that can, so that a thing does not turn flat on its way from one level to the next. What is see-through
-   * is drawn flat. An instrument's light is drawn with its strip where it has one, which says where on the light a
+   * is drawn flat, and so is an orb's screen. An instrument's light is drawn with its strip where it has one, which says where on the light a
    * point is (programs.ts drawProgram). Sets `ready`.
    */
   drawable(mesh: number, wanted: number, flags: number): number {
     const held = this.assets.level(mesh, wanted);
-    const textured = (flags & (DRAW_BLEND | DRAW_SKYLINE)) === 0 ? this.assets.texturedLevel(mesh, wanted, held) : -1;
+    const textured = (flags & (DRAW_BLEND | DRAW_SKYLINE | DRAW_ORB)) === 0 ? this.assets.texturedLevel(mesh, wanted, held) : -1;
     this.ready = textured >= 0;
     return this.ready ? textured : held;
   }

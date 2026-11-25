@@ -20,6 +20,7 @@ import { CITY_BUFFER, type CityLevel } from "../../client/core/render/farcity.ts
 import { NodeChanges } from "../../client/core/render/farnodes.ts";
 import { Scene } from "../../client/core/render/scene.ts";
 import "../../client/core/render/city-late.ts";
+import "../../client/core/render/orb-late.ts";
 import { chunkAt, chunkCx, chunkCz } from "../../shared/coords.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { CityStatics } from "../../shared/world/city.ts";
@@ -122,6 +123,7 @@ for (const v of views) {
       farNodes: { nodes: view.nodes.source, held: (c) => view.nodes.isLoaded(c), gone: () => undefined, changes: new NodeChanges(map.dims) },
       ...(view.motion ? { motion: view.motion } : {}),
       tideEyes: map.tideEyes,
+      ...(map.orbs ? { orbs: map.orbs } : {}),
       ...(map.content?.landmarks.length ? { landmarks: map.content.landmarks } : {}),
     },
     view.reg, view.pack, view.port ? { manifest: files.manifest, port: view.port } : undefined,

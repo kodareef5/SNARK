@@ -4,6 +4,9 @@ import { PAD_BUILD, PAD_HOLDS, PAD_KEYS, PAD_TAPS } from "../../client/core/game
 import { ANY_KEY, pressKey, type KeyRow } from "../../client/core/key-row.ts";
 import { KEY_ROWS } from "../../client/core/keys.ts";
 import { touchKey } from "../../client/core/touch.ts";
+import type { TravelScreen } from "../../client/core/ui/travel.ts";
+import type { MapScreen } from "../../client/core/ui/screens.ts";
+import type { MenuScreen } from "../../client/core/ui/menu-screen.ts";
 import { keyBinding } from "../../client/core/ui/controls-guide.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { BTN_MOD, BTN_PRONE } from "../../shared/sim/character.ts";
@@ -113,10 +116,10 @@ test("a finger's cancel puts the piece away, and the keyboard's Escape still ope
   const { app } = playing();
   app.builder.active = true;
   expect(app.key("Escape", true, false, 2)).toBe(true);
-  expect(app.ui.menu).toBe(false);
+  expect(app.ui.screen<MenuScreen>("menu").menu).toBe(false);
   app.key("Escape", false, false, 2);
   app.key("Escape", true);
-  expect(app.ui.menu).toBe(true);
+  expect(app.ui.screen<MenuScreen>("menu").menu).toBe(true);
 });
 
 test("E takes what lies there, then opens a terminal, then uses, then is the body's", () => {
@@ -124,11 +127,11 @@ test("E takes what lies there, then opens a terminal, then uses, then is the bod
   app.eggAimed = 7;
   app.terminalAimed = 3;
   expect(press("KeyE")).toBe("take");
-  expect(app.ui.travel.open).toBe(false);
+  expect(app.ui.screen<TravelScreen>("travel").open).toBe(false);
   app.eggAimed = -1;
   expect(press("KeyE")).toBe("terminal");
-  expect(app.ui.travel.open).toBe(true);
-  app.ui.travel.open = false;
+  expect(app.ui.screen<TravelScreen>("travel").open).toBe(true);
+  app.ui.screen<TravelScreen>("travel").open = false;
   app.terminalAimed = -1;
   // Aimed at a built piece the use key is kept back; aimed at nothing the body has it.
   app.aimed = 5;
@@ -165,7 +168,7 @@ test("the arrows zoom a sight, then lift a piece being placed, then move the map
   expect(press("ArrowUp")).toBe("build");
   expect(app.builder.lift).toBe(1);
   app.builder.active = false;
-  app.ui.map = true;
+  app.ui.screen<MapScreen>("map").open = true;
   expect(press("ArrowUp")).toBe("chart");
 });
 

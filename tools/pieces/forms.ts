@@ -6,7 +6,10 @@
 //   bun tools/pieces/forms.ts --village             the village alone; --shots 1,7 those of its views
 //   bun tools/pieces/forms.ts --tier thatch         thatch's share of them, and its hamlet for a village
 //   bun tools/pieces/forms.ts --village --look 1.5,3,1.5,4,200,10   one view of it: the point looked at, the radius, round and above
-//   bun tools/pieces/forms.ts --tier stone          another tier's: its village is a keep, with its joints laid
+//   bun tools/pieces/forms.ts --tier stone          another tier's: its village is a keep
+//
+// A village's trims are the client's own laying (client/core/render/trims.ts) of the trims the tier's recipe makes, and
+// each piece that gives way to one is drawn as the client's rule leaves it. --no-trims draws it with none.
 //
 // The pieces are baked from the recipe as it stands, not read from a pack, so a change is seen at once.
 
@@ -27,11 +30,13 @@ import type { SourceMesh } from "../pack/write.ts";
 import { piecesPack, tierMeshes } from "./joints.ts";
 import type { Placed } from "./layout.ts";
 import { Canvas, Studio } from "./sheet.ts";
-import { CORNERS, FORT_SHOTS, HAMLET_SHOTS, KEEP_SHOTS, VILLAGE_SHOTS, corner, cutJoints, fort, hamlet, keep, village, type VillageShot } from "./village.ts";
+import { CORNERS, FORT_SHOTS, HAMLET_SHOTS, KEEP_SHOTS, VILLAGE_SHOTS, corner, fitted, fort, hamlet, keep, village, type VillageShot } from "./village.ts";
 
 const SMOOTH = 2;
 /** The tier drawn: wood unless `--tier` names another. */
 let TIER = "wood";
+/** Whether thatch's walls keep their own posts, as before its joints are drawn: `--posts`. */
+let POSTS = false;
 /** The tiers whose recipes the tier's own bake makes the forms from. Thatch bakes its own. */
 const RECIPES: Readonly<Record<string, TierRecipe>> = { wood: WOOD, stone: STONE };
 const ALL: Readonly<Record<string, FormDef>> = { ...FORMS, ...PLANNED_FORMS };
@@ -53,7 +58,7 @@ export async function baked(names?: readonly string[]): Promise<SourceMesh[]> {
   const trims = !names || names.some((n) => !(n in ALL));
   // Thatch bakes its own: two of its materials are a picture drawn whole, which the tier's bake has no word for. It
   // bakes every piece each time, since a picture that says nothing of tiling takes its span from all that wear it.
-  if (TIER === "thatch") return source.bakeThatch(Object.fromEntries(made.map((name) => [name, ALL[name]!])), true);
+  if (TIER === "thatch") return source.bakeThatch(Object.fromEntries(made.map((name) => [name, ALL[name]!])), true, POSTS);
   // Metal has no pictures: its bake is flat, and needs nothing of its asset.
   if (TIER === "metal") return bakeMetal(forms, trims);
   if (!(TIER in RECIPES)) throw new Error(`no recipe makes the new forms in ${TIER}`);
@@ -93,14 +98,20 @@ export async function main(args: readonly string[], say: (line: string) => void 
   const out = resolve(value("out") ?? "var/pieces");
   mkdirSync(out, { recursive: true });
   TIER = value("tier") ?? "wood";
+  POSTS = args.includes("--posts") || args.includes("--no-trims");
   const only = value("only")?.split(",");
   const made0 = await baked(only);
-  // A joint cut to a lower wall is the client's clamp on the one mesh: for a picture, a mesh of its own.
-  const meshes = [...made0, ...cutJoints(made0)];
   // The other tiers as installed, and this one's installed pieces under those the recipe makes now.
-  const mine = new Set(meshes.map((m) => m.id));
+  const own = new Set(made0.map((m) => m.id));
   // Metal is drawn alone: it has no pictures, and the other tiers' are 2 GB a view.
-  const pack = piecesPack(TIER === "metal" ? meshes : [...tierMeshes().filter((m) => !mine.has(m.id)), ...meshes]);
+  const others = TIER === "metal" ? [] : tierMeshes().filter((m) => !own.has(m.id));
+  const turn = Number(value("turn") ?? 17);
+  const has = (id: string): boolean => !args.includes("--no-trims") && own.has(id);
+  // What is set down, before the pack is made: a piece the client's rule moves the points of is a mesh of its own.
+  const corners = !only && !args.includes("--village") && own.has(`core:joint_sq_${TIER}`) ? CORNERS.map(([, ways, storeys]) => corner(TIER, ways, storeys, has)) : [];
+  const built: Placed[] = only ? [] : TIER === "wood" ? village(TIER, has) : TIER === "stone" ? keep(TIER, has) : TIER === "metal" ? fort(TIER, turn, has) : hamlet(TIER, has);
+  const meshes = [...made0, ...fitted([...others, ...made0], [...corners.flat(), ...built])];
+  const pack = piecesPack([...others, ...meshes]);
   const studio = await Studio.of(pack);
   const made = new Map(meshes.map((m) => [m.id, m] as const));
   const id = (name: string): string => `core:${name}_${TIER}`;
@@ -173,16 +184,14 @@ export async function main(args: readonly string[], say: (line: string) => void 
     const [jw, jh] = [216, 250];
     const sheet = new Canvas(8 + CORNERS.length * (jw + 4), 30 + 2 * (jh + 4));
     sheet.text(`${TIER}: corners with their joints, from outside and from above`, 8, 6, undefined, 2);
-    CORNERS.forEach(([name, ways, storeys], k) => {
-      const laid = corner(TIER, ways, storeys);
+    CORNERS.forEach(([name, , storeys], k) => {
+      const laid = corners[k]!;
       const tall = Math.max(1, storeys ?? 1) * 3;
       [[225, 12], [225, 58]].forEach(([around, above], row) => sheet.shrink(studio.shoot(laid, jw * SMOOTH, jh * SMOOTH, [0, 0.375 + tall / 2, 0], tall * 0.62 + 0.4, around!, above!, 0, null), jw * SMOOTH, jh * SMOOTH, SMOOTH, 8 + k * (jw + 4), 30 + row * (jh + 4)));
       sheet.text(name, 12 + k * (jw + 4), 34);
     });
     write(`corners-${TIER}.png`, sheet);
   }
-  const turn = Number(value("turn") ?? 17);
-  const built: Placed[] = TIER === "wood" ? village(TIER) : TIER === "stone" ? keep(TIER) : TIER === "metal" ? fort(TIER, turn) : hamlet(TIER, value("joints") !== undefined);
   // The fort's views are of its base, which is turned.
   const turned = ([name, centre, radius, around, above, only]: VillageShot): VillageShot => {
     const [c, s] = [Math.cos((turn * Math.PI) / 180), Math.sin((turn * Math.PI) / 180)];

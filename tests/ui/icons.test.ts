@@ -9,9 +9,9 @@ import { Binding } from "../../client/core/assets/bind.ts";
 import { AssetTable } from "../../client/core/assets/table.ts";
 import { HudModel, fillHotbar } from "../../client/core/hud.ts";
 import type { ClientSession } from "../../client/core/session.ts";
-import { KEY_CHAR_ENGRAM_PICTURE, KEY_CHAR_RECIPE_PICTURE, KEY_CHAR_TAB, TAB_ENGRAMS, TAB_MAKE, engramOrder } from "../../client/core/ui/character.ts";
+import { KEY_CHAR_ENGRAM_PICTURE, KEY_CHAR_RECIPE_PICTURE, KEY_CHAR_TAB, TAB_ENGRAMS, TAB_MAKE, engramOrder, type CharacterScreen } from "../../client/core/ui/character.ts";
 import { KEY_HOTBAR } from "../../client/core/ui/hud.ts";
-import { KEY_INV_SLOT } from "../../client/core/ui/inventory.ts";
+import { KEY_INV_SLOT, type InventoryScreen } from "../../client/core/ui/inventory.ts";
 import { K_IMAGE, K_PANEL } from "../../client/core/ui/nodes.ts";
 import { Ui } from "../../client/core/ui/ui.ts";
 import type { EngramDef, ItemDef } from "../../shared/content/defs.ts";
@@ -148,9 +148,9 @@ test("the bag, the hotbar and the crafting list show an item's picture where it 
   const session = { airSupport: emptyAirSupport(), inventory: inv, held: 0, tamed: [], serverTick: 1000, logVersion: 0, log: [], globalChat: true, tribe: { name: "" }, progress: { level: 99, xp: 0, statPoints: 0, engramPoints: 0, jobs: [], engrams }, ownKind: id("core:survivor") } as unknown as ClientSession;
   const frame = (pictures: boolean, character: boolean, page = 0, tab = TAB_MAKE): Ui => {
     const ui = new Ui();
-    ui.sheet.page = page;
+    ui.screen<CharacterScreen>("character").page = page;
     if (pictures) new Icons(manifest, reg.defs, "assets", () => new Uint8ClampedArray(ICON_SIZE * ICON_SIZE * 4)).install(ui.frame);
-    [ui.registry, ui.palette, ui.inventory.open, ui.character, ui.sheet.tab] = [reg, pack.palette, true, character, tab];
+    [ui.registry, ui.palette, ui.screen<InventoryScreen>("inventory").open, ui.screen<CharacterScreen>("character").open, ui.screen<CharacterScreen>("character").tab] = [reg, pack.palette, true, character, tab];
     const hud = new HudModel();
     fillHotbar(hud, inv, 0, reg, pack.palette);
     ui.build(16 / 9, hud, session);
@@ -169,7 +169,7 @@ test("the bag, the hotbar and the crafting list show an item's picture where it 
   // Its row is its place among what is made in the hands; what a station makes is listed at the station.
   const made = reg.defs.flatMap((d, k) => (d?.type === "item" && (d as ItemDef).craft && reg.craftAt[k] === 0 ? [k] : []));
   const key = KEY_CHAR_RECIPE_PICTURE + made.indexOf(id("core:pick"));
-  const pages = Array.from({ length: frame(true, true).sheet.pages }, (_, page) => frame(true, true, page).frame);
+  const pages = Array.from({ length: frame(true, true).screen<CharacterScreen>("character").pages }, (_, page) => frame(true, true, page).frame);
   const page = pages.find((f) => f.find(key) !== null)!;
   expect(page.find(key)!.kind).toBe(K_IMAGE);
   expect(pages.flatMap((f) => f.nodes.slice(0, f.count)).filter((n) => n.kind === K_IMAGE && n.key >= KEY_CHAR_RECIPE_PICTURE && n.key < KEY_CHAR_RECIPE_PICTURE + made.length).length).toBe(1);
@@ -177,7 +177,7 @@ test("the bag, the hotbar and the crafting list show an item's picture where it 
   // shows one.
   const order = engramOrder(reg, engrams);
   const pickEngram = order.findIndex((e) => (reg.defs[e] as EngramDef).item === "core:pick");
-  const learned = Array.from({ length: frame(true, true, 0, TAB_ENGRAMS).sheet.pages }, (_, page) => frame(true, true, page, TAB_ENGRAMS).frame);
+  const learned = Array.from({ length: frame(true, true, 0, TAB_ENGRAMS).screen<CharacterScreen>("character").pages }, (_, page) => frame(true, true, page, TAB_ENGRAMS).frame);
   const shows = learned.find((f) => f.find(KEY_CHAR_ENGRAM_PICTURE + pickEngram) !== null)!.find(KEY_CHAR_ENGRAM_PICTURE + pickEngram)!;
   expect([shows.kind, shows.image, shows.sx, shows.sy]).toEqual([K_IMAGE, IMAGE_ICONS, 0, 0]);
   expect(learned.flatMap((f) => f.nodes.slice(0, f.count)).filter((n) => n.kind === K_IMAGE && n.key >= KEY_CHAR_ENGRAM_PICTURE && n.key < KEY_CHAR_ENGRAM_PICTURE + order.length).length).toBe(1);
@@ -190,7 +190,7 @@ test("the session bun run snap -- --ui draws the interface from builds the bag, 
   session.inventory.set(0, reg.index.get("core:berry")!, 24, 0, 0, 9000);
   const built = (bag: boolean, tab: number): Ui => {
     const ui = new Ui();
-    [ui.registry, ui.palette, ui.inventory.open, ui.character, ui.sheet.tab] = [reg, pack.palette, bag, !bag, tab];
+    [ui.registry, ui.palette, ui.screen<InventoryScreen>("inventory").open, ui.screen<CharacterScreen>("character").open, ui.screen<CharacterScreen>("character").tab] = [reg, pack.palette, bag, !bag, tab];
     ui.build(16 / 9, new HudModel(), session);
     return ui;
   };

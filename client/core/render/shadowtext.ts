@@ -15,6 +15,7 @@ import { SIZE_UNITS } from "../../../shared/world/nodes.ts";
 import type { Tier } from "../assets/tiers.ts";
 import { FAR_LEAD, FAR_OUT, FAR_RISE, FAR_SPAN, FLAT_LEAST } from "./farshadow.ts";
 import { LAMP_CORNER, LAMP_GROUND, LAMP_LONG, LAMP_NEAREST, LAMP_OUT, LAMP_TAN, LAMP_WIDE } from "./lamp.ts";
+import { ORB_SEES_GLSL, ORB_SHADE_GLSL } from "./orb-light.ts";
 import { BONES_PER_ROW, MAX_CASCADES } from "./packet.ts";
 import { BEND_GLSL, BEND_PLACE } from "./bend.ts";
 import { PIECE_FIT_GLSL, PIECE_FIT_PLACE } from "./piece-fit.ts";
@@ -124,10 +125,11 @@ export function shadowBytes(shadows: Tier["shadows"]): number {
  * do not filter. A lookup runs over the frame's cascades (`uCascades`), up to MAX_CASCADES, so the texts are the same
  * with fewer cascades or none, as the governor's steps and the effects turned off have them, and nothing is compiled
  * again for them. Where the tier's street lamp casts, LAMP: a program that lights by `lit` takes its light (`lights`).
+ * ORB_SHADE, an orb's own shadow, unless the tier's shadows say not (`orb`).
  */
 export function shadowDefines(shadows: Tier["shadows"], hard: boolean, lights = true): string {
   if (shadows.size <= 0) return "";
-  return `#define SHADOW_CASCADES ${MAX_CASCADES}\n#define SHADOW_TAPS ${Math.round(Math.sqrt(shadows.taps))}\n#define SHADOW_SIZE ${shadows.size.toFixed(1)}\n${hard ? "#define SHADOW_HARD\n" : ""}${lights && shadows.lamp ? "#define LAMP\n" : ""}`;
+  return `#define SHADOW_CASCADES ${MAX_CASCADES}\n#define SHADOW_TAPS ${Math.round(Math.sqrt(shadows.taps))}\n#define SHADOW_SIZE ${shadows.size.toFixed(1)}\n${hard ? "#define SHADOW_HARD\n" : ""}${lights && shadows.lamp ? "#define LAMP\n" : ""}${shadows.orb === false ? "" : "#define ORB_SHADE\n"}`;
 }
 
 /** A number as GLSL writes it. */
@@ -159,8 +161,11 @@ function filterText(m: number): string {
  * cast twice. With LAMP, `sunShadow` first finds how much of the street lamp's light reaches the point (`lampSees`, the
  * twin of lamp.ts `lampReach` but for the shadow): by its pool, distance and facing, and by four compared taps of the
  * lamp's map in its corner of its layer, moved off the surface as the cascades' are; LIGHT's `lit` adds it from gLamp.
+ * With ORB_LIGHT it finds an orb's light too, shadows or none (orb-light.ts), which `lit` adds from gOrb. The maps'
+ * share is `mapShadow`; with ORB_SHADE the share an orb's own shadow leaves is taken of it (orb-light.ts `orbShade`),
+ * whether or not the frame has cascades.
  */
-export const SHADOW_GLSL = `#define fFarAt fSwell.zw
+export const SHADOW_GLSL = `${ORB_SEES_GLSL}${ORB_SHADE_GLSL}#define fFarAt fSwell.zw
 #define fFarScale fLook.w
 #define fFarDepth fSkyAlong.w
 #ifdef SHADOW_CASCADES
@@ -243,10 +248,7 @@ void lampSees(vec3 rel, vec3 normal) {
   gLamp = vec4(l, reach);
 }
 #endif
-float sunShadow(vec3 rel, vec3 normal) {
-#ifdef LAMP
-  lampSees(rel, normal);
-#endif
+float mapShadow(vec3 rel, vec3 normal) {
   if (uCascades == 0 || fCast.w <= 0.0) return 1.0;
   int k = 0;
   float t = shadowShare(rel, 0);
@@ -273,8 +275,24 @@ float sunShadow(vec3 rel, vec3 normal) {
   float sun = mix(shadowFilter(at, slope, float(k)) * farBeyond(rel, normal), fade > 0.0 ? farShadow(rel, normal) : 1.0, fade) * clamp(facing * 20.0, 0.0, 1.0);
   return mix(1.0, sun, fCast.w);
 }
+float sunShadow(vec3 rel, vec3 normal) {
+#ifdef LAMP
+  lampSees(rel, normal);
+#endif
+#ifdef ORB_LIGHT
+  orbSees(rel, normal);
+#endif
+#ifdef ORB_SHADE
+  return mapShadow(rel, normal) * orbShade(rel);
+#else
+  return mapShadow(rel, normal);
+#endif
+}
 #else
 float sunShadow(vec3 rel, vec3 normal) {
+#ifdef ORB_LIGHT
+  orbSees(rel, normal);
+#endif
   return 1.0;
 }
 #endif

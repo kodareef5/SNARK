@@ -6,6 +6,7 @@ import { ZOOMS, wholeMap } from "../tactical.ts";
 import { IMAGE_ARROW, arrowSheet, placeArrow } from "./arrow.ts";
 import { IMAGE_MAP, MARKER_STYLE, MARKER_TINT } from "./hud.ts";
 import { K_BUTTON, K_IMAGE, K_PANEL, lineHeight, type UiFrame } from "./nodes.ts";
+import type { Screen, ScreenCtx } from "./screen.ts";
 import { S_BUTTON, S_FRAME, S_LABEL, S_MARK_DEATH, S_PANEL, S_TITLE } from "./style.ts";
 
 export const KEY_MAP_PANEL = 950;
@@ -20,6 +21,38 @@ export const KEY_MAP_LINE = 980;
 export const KEY_MAP_MARK = 4300;
 /** The most pixels a side the map screen's picture is made at. */
 const MAP_PIXELS = 1024;
+
+/** The map screen as a row of SCREENS. M opens it; its picture and zoom live on the HUD's chart. */
+export class MapScreen implements Screen {
+  readonly name = "map";
+  readonly layer = "modal";
+  readonly group = "bag";
+  readonly hotkey = "KeyM";
+  readonly quiet = true;
+  readonly bareHud = true;
+  readonly bands = [{ from: KEY_MAP_PANEL, count: KEY_MAP_LINE + 17 - KEY_MAP_PANEL }, { from: KEY_MAP_MARK, count: MAX_MARKERS }];
+  open = false;
+
+  isOpen(): boolean {
+    return this.open;
+  }
+
+  show(): void {
+    this.open = true;
+  }
+
+  close(): void {
+    this.open = false;
+  }
+
+  build(f: UiFrame, c: ScreenCtx): void {
+    if (c.session && c.hud) buildMap(f, c.session, c.hud);
+  }
+
+  pointer(kind: number, key: number, x: number, y: number, _button: number, c: ScreenCtx): boolean {
+    return c.hud !== null && mapPointer(c.hud, kind, key, x, y, c.finger);
+  }
+}
 
 /** The map screen: a window on the map at one of its zooms, moved by the arrows or a click and zoomed by Minus and Equal or its buttons. */
 export function buildMap(f: UiFrame, session: ClientSession, hud: HudModel): void {

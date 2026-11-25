@@ -16,6 +16,8 @@ import { SKILLS, type Skill, type SkillContext, type SkillResult } from "./skill
 import { Trace } from "./trace.ts";
 
 export const TICK_MS = 100;
+/** Overheard chat is told at most this often, a moment after its first line, and only its latest lines. */
+export const OVERHEARD_MS = 20_000, OVERHEARD_GATHER_MS = 2_000, OVERHEARD_LINES = 8;
 
 export const SUBSCRIPTION: ChannelRequest = {
   self: { hz: 10 }, entities: { hz: 5, radius: 120, max: 60 }, focus: { hz: 10 }, inventory: { hz: 2 }, chat: {}, terrain: { hz: 1, radius: 12 },
@@ -40,7 +42,7 @@ export interface Task {
 }
 
 export interface Report {
-  kind: "task" | "danger" | "clear" | "addressed" | "need" | "critical" | "note" | "connection";
+  kind: "task" | "danger" | "clear" | "addressed" | "overheard" | "need" | "critical" | "note" | "connection";
   text: string;
   data?: Record<string, unknown>;
   t: number;
@@ -392,6 +394,7 @@ export class Runtime {
     }
     const signals = this.monitors.flatMap((m) => m(this.belief, { name: this.name, owners: this.owners }));
     this.arbitrate(signals);
+    this.tellOverheard();
     if (this.restingSince !== null && !this.active && this.suspended.length) {
       const calm = !signals.some((x) => x.kind === "danger" && x.urgency >= 0.4);
       if (calm && (this.belief.vital("stamina") >= 0.6 || this.belief.now - this.restingSince > 15000)) {
@@ -464,6 +467,12 @@ export class Runtime {
         const tribe = s.detail.channel === "group" ? ` (answer in the tribe's chat, channel "group"; take a job by starting it with game_do's claim${taken.length ? `; taken already: ${taken.map((c) => `${c.by} has "${c.job}"`).join(", ")}` : ""})` : "";
         this.report({ kind: "addressed", text: `${s.detail.from} (${where})${how}: "${s.detail.text}"${tribe}`, data: { ...s.detail, ...(who ? { id: who.id } : id ? { id } : {}) } });
       }
+      else if (s.kind === "overheard") {
+        const id = typeof s.detail.from_id === "string" ? s.detail.from_id : undefined;
+        const who = (id ? this.belief.things.get(id) : undefined) ?? this.belief.find((t) => t.kind === "player" && t.name === s.detail.from)[0];
+        const where = who ? `${who.id}, ${Math.round(this.belief.distance(who.pos))} m ${compass(this.belief.yawTo(who.pos))}` : "not in sight";
+        this.overheard.push({ from: String(s.detail.from), text: String(s.detail.text), channel: String(s.detail.channel), where, t: this.belief.now });
+      }
       else if (s.kind === "critical") this.once(`critical`, 30000, { kind: "critical", text: `badly hurt (${Math.round(Number(s.detail.health) * 100)}% health)`, data: s.detail });
       else if (s.kind === "need") this.once(`need:${s.detail.need}`, 600000, { kind: "need", text: `I need to ${s.detail.need}`, data: s.detail });
     }
@@ -507,6 +516,20 @@ export class Runtime {
     this.suspend();
     const t = this.start("flee", { ...(danger.about ? { from: danger.about } : {}), ...(danger.yaw !== undefined ? { yaw: danger.yaw } : {}) }, "arbiter");
     this.report({ kind: "danger", text: `${what} ${state.distance ?? "?"} m off${where} — handled: running (flee ${t.id})${aside()}. Nothing for you to do unless you want something else.`, data: { ...danger.detail, ...state, handled: true } });
+  }
+
+  /** Chat lines overheard since the Director was last told of them: told together, at most every OVERHEARD_MS, a
+   * moment after the first so a burst comes as one. */
+  private overheard: { from: string; text: string; channel: string; where: string; t: number }[] = [];
+  private overheardTold = -Infinity;
+
+  private tellOverheard(): void {
+    const now = this.belief.now, o = this.overheard;
+    if (!o.length || now - o[0]!.t < OVERHEARD_GATHER_MS || now - this.overheardTold < OVERHEARD_MS) return;
+    this.overheardTold = now;
+    const shown = o.splice(0).slice(-OVERHEARD_LINES);
+    const lines = shown.map((l) => `- ${l.from} (${l.where}) in ${l.channel === "group" ? "the tribe's chat" : l.channel === "voice" ? "speech, said aloud" : `${l.channel} chat`}: "${l.text}"`);
+    this.report({ kind: "overheard", text: `chat, not said to you by name:\n${lines.join("\n")}`, data: { lines: shown } });
   }
 
   private once(key: string, every: number, r: Omit<Report, "t">): void {
@@ -589,6 +612,9 @@ export class Runtime {
       inventory: (b.inventory?.slots ?? []).map((x) => `${x.item}×${x.count}`),
       can_craft: (b.inventory?.craftable ?? []).filter((r) => r.can > 0).map((r) => `${r.item} (${r.can})`),
       near,
+      ...(b.places.length ? { places: [...b.places].map((p) => ({ p, d: b.distance([p.x, 0, p.z]) })).sort((x, y) => x.d - y.d).slice(0, 10).map(({ p, d }) => ({
+        name: p.name, kind: p.kind, x: p.x, z: p.z, distance: d >= 1000 ? `${Math.round(d / 100) / 10} km` : `${Math.round(d)} m`, dir: compass(b.yawTo([p.x, 0, p.z])), ...(p.about ? { about: p.about } : {}),
+      })) } : {}),
       doing: this.current ? { task: this.current.id, skill: this.current.skill, by: this.current.by === "arbiter" ? "reflex" : "you", args: this.current.args, progress: this.current.progress } : null,
       put_aside: this.suspended.map((t) => ({ task: t.id, skill: t.skill })),
       blocked: this.tasks.filter((t) => t.status === "blocked").slice(-3).map((t) => ({ task: t.id, skill: t.skill, why: t.result?.summary })),
