@@ -20,6 +20,24 @@ from prepare import buildings  # noqa: E402
 
 # Ids of split pieces start here: above any USA Structures object id, and four times it still fits an int32.
 SPLIT_BASE = 500_000_000
+# Ids a piece's key may hash to past SPLIT_BASE: 2^30 of them, so a city's pieces rarely meet.
+SPLIT_SPAN = 1 << 30
+
+
+class Ids:
+    """A piece's id from what it is a piece of, not from its place in the order: an earlier split moves no other id.
+    The few keys that hash alike take the next free id in the order they come."""
+
+    def __init__(self):
+        self.taken = set()
+
+    def take(self, key):
+        import hashlib
+        i = SPLIT_BASE + int.from_bytes(hashlib.sha256(key.encode()).digest()[:8], 'little') % SPLIT_SPAN
+        while i in self.taken:
+            i = SPLIT_BASE + (i - SPLIT_BASE + 1) % SPLIT_SPAN
+        self.taken.add(i)
+        return i
 SLIVER_M2 = 8
 
 
@@ -62,7 +80,7 @@ def main():
             tags[key] = el.get('tags', {})
     tree = STRtree([p for _, p in osm])
     out, split, pieces_total, rows, remainders = [], 0, 0, [], 0
-    next_id = SPLIT_BASE
+    ids = Ids()
     used = set()
     taller_first = rule.get('split_taller_first', False)
 
@@ -108,9 +126,10 @@ def main():
                 if best[0] > .25 * p.area:
                     hosts[way] = best[1]
         for way, piece in sorted(pieces, key=lambda wp: wp[0]) + [(None, h) for h in sorted(rest, key=lambda h: (h.centroid.x, h.centroid.y))]:
-            out.append((piece, {'id': next_id, 'parent': props['id'], 'osm_way': way, **({'host': hosts[way]} if way in hosts else {})}))
-            rows.append((next_id, props['id'], round(piece.area, 1)))
-            next_id += 1
+            key = f"piece {props['id']} {way}" if way is not None else f"rest {props['id']} {round(piece.centroid.x)} {round(piece.centroid.y)}"
+            pid = ids.take(key)
+            out.append((piece, {'id': pid, 'parent': props['id'], 'osm_way': way, **({'host': hosts[way]} if way in hosts else {})}))
+            rows.append((pid, props['id'], round(piece.area, 1)))
             pieces_total += 1
         remainders += len(rest)
     # Buildings USA Structures lacks, most of them newer than its imagery (San Francisco's tallest among them): an
@@ -128,15 +147,15 @@ def main():
             continue
         if sum(usa[i][0].intersection(p).area for i in usa_tree.query(p)) >= .2 * p.area:
             continue
-        out.append((p, {'id': next_id, 'parent': None, 'osm_way': way}))
-        rows.append((next_id, None, round(p.area, 1)))
-        next_id += 1
+        pid = ids.take(f'osm {way}')
+        out.append((p, {'id': pid, 'parent': None, 'osm_way': way}))
+        rows.append((pid, None, round(p.area, 1)))
         added += 1
     path = m.base / 'buildings_attributes.json'
     attrs = json.loads(path.read_text())
     by_parts = 0
     if rule.get('split_by_parts'):
-        out, rows, next_id, by_parts = split_parts(m, out, rows, next_id, tags, attrs, rule)
+        out, rows, by_parts = split_parts(m, out, rows, ids, tags, attrs, rule)
     m.write_features('buildings', out)
 
     fields = attrs['fields'] if 'PARENT' in attrs['fields'] else attrs['fields'] + ['PARENT']
@@ -164,14 +183,14 @@ def main():
     print(f'split: {split} of {len(usa)} USA Structures footprints into {pieces_total - remainders} OpenStreetMap buildings and {remainders} remainders; {added} OpenStreetMap buildings added; {by_parts} cut into their parts; {len(out)} footprints')
 
 
-def split_parts(m, out, rows, next_id, tags, attrs, rule):
+def split_parts(m, out, rows, ids, tags, attrs, rule):
     """A resort or a casino OpenStreetMap draws as one building holds towers it maps only as building parts. Where the
     parts standing on the ground (no min_height) reach more than a quarter over what the footprint is known to stand
     (its building's height, else the survey's), it is cut into those parts and the podium left round them, which keeps
     the footprint's own height."""
     path = m.raw / 'osm/features.json'
     if not path.exists():
-        return out, rows, next_id, 0
+        return out, rows, 0
     tm = Transformer.from_crs(4326, m.crs, always_xy=True)
     level_m = rule.get('split_parts_level_m', 3.5)
 
@@ -190,7 +209,7 @@ def split_parts(m, out, rows, next_id, tags, attrs, rule):
         if p.geom_type == 'Polygon' and p.area >= SLIVER_M2:
             parts.append((el['id'], p, t))
     if not parts:
-        return out, rows, next_id, 0
+        return out, rows, 0
     tree = STRtree([p for _, p, _ in parts])
     oid = attrs['fields'].index('OBJECTID')
     hgt = attrs['fields'].index('HEIGHT') if 'HEIGHT' in attrs['fields'] else None
@@ -219,15 +238,15 @@ def split_parts(m, out, rows, next_id, tags, attrs, rule):
         rest = [h for h in getattr(left, 'geoms', [left]) if h.geom_type == 'Polygon' and h.area >= 60]
         rows = [r for r in rows if r[0] != props['id']]
         for way, piece in sorted(pieces, key=lambda wp: wp[0]):
-            kept.append((piece, {'id': next_id, 'parent': parent, 'osm_way': props.get('osm_way'), 'osm_part': way}))
-            rows.append((next_id, parent, round(piece.area, 1)))
-            next_id += 1
+            pid = ids.take(f"part {parent} {props.get('osm_way')} {way}")
+            kept.append((piece, {'id': pid, 'parent': parent, 'osm_way': props.get('osm_way'), 'osm_part': way}))
+            rows.append((pid, parent, round(piece.area, 1)))
         for h in sorted(rest, key=lambda h: (h.centroid.x, h.centroid.y)):
-            kept.append((h, {'id': next_id, 'parent': parent, 'osm_way': props.get('osm_way'), 'parts_remainder': True}))
-            rows.append((next_id, parent, round(h.area, 1)))
-            next_id += 1
+            pid = ids.take(f"part rest {parent} {props.get('osm_way')} {round(h.centroid.x)} {round(h.centroid.y)}")
+            kept.append((h, {'id': pid, 'parent': parent, 'osm_way': props.get('osm_way'), 'parts_remainder': True}))
+            rows.append((pid, parent, round(h.area, 1)))
         cut += 1
-    return kept, rows, next_id, cut
+    return kept, rows, cut
 
 
 if __name__ == '__main__':

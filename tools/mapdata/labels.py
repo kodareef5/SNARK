@@ -159,7 +159,15 @@ for fid, L in labels.items():
         if is_bare: pairs.append((fid, h / float(s)))
 ratios = sorted(r for _, r in pairs)
 median_ratio = ratios[len(ratios) // 2] if ratios else None
-feet_city = median_ratio is not None and 2.6 <= median_ratio <= 4.2
+evidence = median_ratio is not None and 2.6 <= median_ratio <= 4.2
+# A city records what its bare heights are (city.json "height_units"), so a wider cut cannot turn them: the evidence here
+# only proposes it, and stops a build whose evidence has come to disagree.
+recorded = json.load(open(os.path.join(MAIN, "city.json"))).get("height_units")
+if recorded not in (None, "metres", "feet"): raise SystemExit(f'city.json height_units is {recorded!r}: "metres" or "feet"')
+if recorded is not None and len(pairs) >= 200 and evidence != (recorded == "feet"):
+    raise SystemExit(f"labels: city.json says bare OpenStreetMap heights are in {recorded}, but {len(pairs)} of them run {median_ratio:.2f} times USA Structures' at the median; look, then set height_units")
+if recorded is None: print(f'labels: bare heights read as {"feet" if evidence else "metres"} by the evidence; set "height_units" in city.json to keep it')
+feet_city = evidence if recorded is None else recorded == "feet"
 in_feet = {fid for fid, r in pairs if feet_city and 2.6 <= r <= 4.2}
 json.dump({"bare_heights_beside_usa_structures": len(pairs), "median_ratio": median_ratio and round(median_ratio, 3),
            "quartiles": [round(ratios[len(ratios) * q // 4], 3) for q in (1, 3)] if ratios else None,

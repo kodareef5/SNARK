@@ -67,9 +67,17 @@ def main():
     tallest = max((v['height_m'] or 0 for v in labels.values()), default=0)
     budgets = dict(rules['budgets'])
     budgets['maxCity'] = max(1_500_000, settings.get('blocks_per_footprint', 130) * footprints)
-    budgets['maxHeight'] = max(budgets['maxHeight'], int(math.ceil(tallest / 16) * 16))
+    proposed = max(budgets['maxHeight'], int(math.ceil(tallest / 16) * 16))
     # A city's own budgets, in city.json's "ruins": Las Vegas's towers stand closer than a chunk holds at eight playable floors.
     budgets.update(settings.get('budgets', {}))
+    # The tallest a building may stand is the city's to record, so a wider cut cannot lower it: the cut's tallest only
+    # proposes it, and stops a build that holds a taller one.
+    if 'maxHeight' in settings.get('budgets', {}):
+        if tallest > budgets['maxHeight']:
+            raise SystemExit(f"vocabulary: a building stands {tallest} m, over city.json's ruins.budgets.maxHeight {budgets['maxHeight']}: raise it to {proposed}")
+    else:
+        budgets['maxHeight'] = proposed
+        print(f'vocabulary: the tallest building proposes maxHeight {proposed}; set it in city.json ruins.budgets to keep it')
     out = {'version': before.get('version', rules.get('version'))}
     out.update({k: before[k] if k in before else rules[k] for k in TABLES})
     out.update({k: v for k, v in before.items() if k not in MADE and k not in out})

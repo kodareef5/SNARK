@@ -124,7 +124,10 @@
     ]
   },
   "ruins": {
-    "blocks_per_footprint": 130
+    "blocks_per_footprint": 130,
+    "budgets": {
+      "maxHeight": 336
+    }
   },
   "future": {
     "spans_why": "None: the bridges over water in the frame are the Golden Gate, kept whole as the map's landmark, and the Bay Bridge's west approach, whose spans lie past the east edge",
@@ -163,5 +166,6 @@
         "why": "A tug off Crissy Field, under the bridge's eye"
       }
     ]
-  }
+  },
+  "height_units": "metres"
 }

@@ -342,11 +342,13 @@ function keepTimes(file: string, junit: string): void {
 
 const testFiles = walk(join(ROOT, "tests")).filter((f) => f.endsWith(".test.ts"));
 /** Tests passed, and those skipped in the files that mark tests as needing the art (tests/fixtures/needs-art.ts). */
-const tally = { passed: 0, unart: 0 };
+const tally = { passed: 0, unart: 0, unpy: 0 };
 /** The output each tier's tests left, and every failing test, for whoever reads the run afterwards. */
 const logs: string[] = [];
 const failures: string[] = [];
 const needsArt = new Set(ART ? [] : testFiles.filter((f) => readFileSync(f, "utf8").includes("fixtures/needs-art.ts")).map(repoPath));
+/** The files whose tests need the map data stages' venv, where it is not here (tests/fixtures/needs-python.ts). */
+const needsPython = new Set(existsSync(join(ROOT, "tools/mapdata/.venv/bin/python")) ? [] : testFiles.filter((f) => readFileSync(f, "utf8").includes("fixtures/needs-python.ts")).map(repoPath));
 
 /** `path`, and where it is now if it is a test's path from before the tests were sorted into areas (tools/test-area.ts). */
 function movedTo(path: string): string {
@@ -468,6 +470,7 @@ async function checkTests(tier: Tier, dir: string, env: Record<string, string>):
   logs.push(log);
   failures.push(...failuresOf(junit, r.out), ...stopped.map((s) => s.replace(": ", "\t(stopped)\t")));
   for (const m of junit.matchAll(/<testsuite name="([^"]+)" file="\1"[^>]*? skipped="(\d+)"/g)) if (needsArt.has(m[1]!)) tally.unart += Number(m[2]);
+  else if (needsPython.has(m[1]!)) tally.unpy += Number(m[2]);
   const gb = (bytes: number): string => `${(bytes / 1e9).toFixed(1)} GB`;
   const heaviest = held.files.filter(([file]) => file).slice(0, 3);
   const weighed = `${gb(held.most)} at most in the workers together${heaviest.length > 0 ? `\n  the heaviest workers then ran ${heaviest.map(([file, bytes]) => `${file} (${gb(bytes)})`).join(", ")}` : ""}`;
@@ -580,6 +583,7 @@ try {
 
 const seconds = (performance.now() - t0) / 1000;
 writeWhole(join(ROOT, ".cache/check/last-failures.txt"), failures.map((line) => line + "\n").join(""));
+if (tally.unpy > 0) console.log(`${tally.unpy} tests of the map data stages skipped: no tools/mapdata/.venv (tools/maps/README.md)`);
 const end = verdict({ problems, art: ART, noArt, ...tally, ok: `OK in ${seconds.toFixed(2)}s, at load ${loadavg()[0]!.toFixed(0)} on ${cpus().length} cores` });
 const kept = `${logs.map((log) => `\ntests' output: ${log}`).join("")}\nfailing tests: .cache/check/last-failures.txt (${failures.length})`;
 // Art built here and put in no release: this checkout's tests of it pass and nobody else's can.

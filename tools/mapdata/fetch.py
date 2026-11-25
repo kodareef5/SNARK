@@ -17,18 +17,19 @@ from common import Manifest, folder_arg, get  # noqa: E402
 
 
 def keep(m, man, name, url, source, licence, params=None, data=None, accept=None, method=None):
+    """The file `name` as this request answers it: fetched where it is not kept, or was kept for another request."""
     path = m.raw / name
     full = requests.Request('GET', url, params=params).prepare().url if data is None else url
-    fresh = not path.exists()
-    if fresh:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        r = get(url, params=params, data=data, accept=accept)
-        # Whole or not there: a download is kept by its being there, so a write cut short was kept as it was for good.
-        part = path.with_name(path.name + '.part')
-        part.write_bytes(r.content)
-        part.replace(path)
-    if fresh or name not in man.records:
-        man.record(name, full, source, licence, path.read_bytes(), method or ('POST' if data is not None else 'GET'), data)
+    method = method or ('POST' if data is not None else 'GET')
+    if path.exists() and man.asked(name, full, method, data) and man.records[name]['bytes'] == path.stat().st_size:
+        return path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    r = get(url, params=params, data=data, accept=accept)
+    # Whole or not there: a write cut short is never taken for the download.
+    part = path.with_name(path.name + '.part')
+    part.write_bytes(r.content)
+    part.replace(path)
+    man.record(name, full, source, licence, r.content, method, data)
     return path
 
 
@@ -108,6 +109,10 @@ def nlcd(m, man):
     print('NLCD done', flush=True)
 
 
+# What the attributes stage keeps of each footprint (tools/mapworld/fetch-attributes.ts), asked for with its outline.
+FEMA_FIELDS = ['OBJECTID', 'HEIGHT', 'OCC_CLS', 'PRIM_OCC', 'SEC_OCC', 'OUTBLDG', 'SQMETERS', 'SOURCE', 'VAL_METHOD', 'IMAGE_DATE']
+
+
 def fema(m, man):
     f = m.city['footprints']
     base = f['service']
@@ -124,7 +129,7 @@ def fema(m, man):
     for i in range(0, len(ids), 100):
         chunk = ids[i:i + 100]
         p = keep(m, man, f'fema/page_{i // 100:03}.json', base + '/query', f['source'], f['licence'], params={
-            'f': 'json', 'objectIds': ','.join(map(str, chunk)), 'outFields': oid, 'returnGeometry': 'true', 'outSR': 4326})
+            'f': 'json', 'objectIds': ','.join(map(str, chunk)), 'outFields': ','.join(dict.fromkeys([oid, *FEMA_FIELDS])), 'returnGeometry': 'true', 'outSR': 4326})
         if len(json.loads(p.read_text()).get('features', [])) != len(chunk):
             p.unlink()
             raise RuntimeError(f'incomplete footprint page {i // 100}')
@@ -146,7 +151,7 @@ def bathymetry(m, man):
 def overpass(m, man, target, query):
     """One Overpass query kept as `target`, asked of each server in turn until one answers whole."""
     o = m.city['osm']
-    if (m.raw / target).exists():
+    if (m.raw / target).exists() and man.asked(target, None, 'POST', {'data': query}):
         return
     for server in o['servers']:
         try:
@@ -200,7 +205,7 @@ def osm_extract(m, man, names):
                                   'bytes': pbf.stat().st_size, 'md5': md5,
                                   'retrieved_utc': dt.datetime.fromtimestamp(pbf.stat().st_mtime, dt.timezone.utc).isoformat(),
                                   'note': 'cut to the frame with osmium extract --strategy smart; raw/osm/*.json answered locally (osm_local.py)'}
-    man.path.write_text(json.dumps(man.records, indent=2, sort_keys=True) + '\n')
+    man.save()
 
 
 def osm(m, man):
@@ -220,8 +225,6 @@ def osm(m, man):
     # streets: every highway with its tags and shape, crossings, signals, entrances, lots, land use, parks, plazas and
     # beaches, by tiles, then joined: a way that crosses a tile's edge comes whole in each tile's answer and is kept once.
     merged = m.raw / 'osm/streets.json'
-    if merged.exists():
-        return
     template = (HERE / 'streets.overpassql').read_text()
     (m.root / 'blocks/streets.overpassql').write_text(template)
     rows = max(1, math.ceil((n - s) / STREET_TILE_DEG))
