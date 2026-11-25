@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   FREE_CHEATS, addGroupPost, addMemberPost, blankChatForm, blankTag, chatBlockOf, chatFormOf, coloured, firstInk, freeCheats, grantPost, groupsHtml, importPost, manageWhy, memberRows,
-  memberRowsHtml, passwordPost, passwordRows, passwordRowsHtml, removeGroupPost, sampleRuns, settingsFormOf, settingsHtml, settingsTextOf, spanWords, type MemberForm,
+  memberRowsHtml, passwordPost, readFault, passwordRows, passwordRowsHtml, removeGroupPost, sampleRuns, settingsFormOf, settingsHtml, settingsTextOf, spanWords, type MemberForm,
 } from "../../client/core/admin/permissions.ts";
 import { cluster, resolveAdmin } from "../../client/core/admin/navigation.ts";
 import { adminSite } from "../../server/admin/site.ts";
@@ -206,6 +206,13 @@ test("with no chat settings stored, the page shows the server's red Admin tag", 
   // A tag added on the page is saved beside it, not in its place.
   const saved = readChatSettings(JSON.parse(settingsTextOf({ ...form, tags: [...form.tags, { ...blankTag(), name: "VIP", text: "[VIP]" }] }).text)).value;
   expect(saved.tags.map((t) => t.name)).toEqual(["Admins", "VIP"]);
+});
+
+test("a refused sign-in asks for a reload, which brings the browser's own", () => {
+  // The page's address is behind the gate, so a sign-in on the overview never reaches it.
+  expect(readFault(401, "")).not.toContain("overview");
+  expect(readFault(401, "")).toContain("Reload the page");
+  expect(readFault(500, "broken")).toBe("The permissions answered 500: broken");
 });
 
 test("an open group holding a cheat is flagged as needing no password", () => {

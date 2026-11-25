@@ -5,7 +5,7 @@
 import "./shell.ts";
 import {
   addGroupPost, addMemberPost, blankChatForm, blankTag, chatBlockOf, chatFormOf, chatGroupHtml, chatPost, clearPasswordPost, coloured, grantPost, groupsHtml, hexInk, importHtml,
-  importPost, manageWhy, meText, memberGroupOptions, memberRows, memberRowsHtml, passwordPost, passwordRows, passwordRowsHtml, permissionListHtml, rankOptions, rankPost,
+  importPost, manageWhy, meText, readFault, memberGroupOptions, memberRows, memberRowsHtml, passwordPost, passwordRows, passwordRowsHtml, permissionListHtml, rankOptions, rankPost,
   rankWhy, removeGroupPost, removeMemberPost, revokePost, sampleRuns, settingsFormOf, settingsHtml, settingsPost, settingsTextOf, survivorName, tagRuns, whoOptions,
   type Built, type ChatForm, type Fault, type MemberRow, type SettingsForm,
 } from "../core/admin/permissions.ts";
@@ -164,7 +164,7 @@ async function load(): Promise<void> {
   S.loading = true;
   try {
     const r = await fetch(PERMISSIONS_STATE, { cache: "no-store" });
-    if (!r.ok) throw new Error(r.status === 401 ? "Sign in on the overview first." : `The permissions answered ${r.status}: ${await r.text()}`);
+    if (!r.ok) throw new Error(readFault(r.status, await r.text()));
     S.state = (await r.json()) as PermissionsState;
     if ($("msg").textContent === "Loading…") say("");
     $("reload").hidden = true;

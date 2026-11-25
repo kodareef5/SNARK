@@ -85,6 +85,11 @@ export function survivorName(state: State, id: string): string {
   return state.survivors.find((s) => s.id === id)?.name || state.members.find((m) => m.kind === "survivor" && m.key === id)?.name || "";
 }
 
+/** What the page says when the state was not read: a refused sign-in is only answered by the browser's own, on a reload. */
+export function readFault(status: number, body: string): string {
+  return status === 401 ? "You are signed out, or your password changed. Reload the page to sign in again." : `The permissions answered ${status}: ${body}`;
+}
+
 export function meText(state: State): string {
   const { me } = state;
   const who = me.id ? `${me.name} (${me.id})` : `${me.name || "the host password"}, by the host password`;
