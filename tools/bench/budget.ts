@@ -9,7 +9,7 @@ import { STAND, terrainWood } from "../../client/core/devicescene.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { NodeChanges } from "../../client/core/render/farnodes.ts";
 import { FAR_BUFFER } from "../../client/core/render/far.ts";
-import { DRAW_DETAILS, DRAW_PULLED, DRAW_SKINNED, DRAW_TEXTURED, TRANSIENT_BUFFER, type FramePacket } from "../../client/core/render/packet.ts";
+import { DRAW_DETAILS, DRAW_SCREENS, DRAW_PULLED, DRAW_SKINNED, DRAW_TEXTURED, TRANSIENT_BUFFER, type FramePacket } from "../../client/core/render/packet.ts";
 import { NODE_BUFFERS, Scene } from "../../client/core/render/scene.ts";
 import "../../client/core/render/city-late.ts";
 import { RemoteSample } from "../../client/core/session.ts";
@@ -62,6 +62,7 @@ export function count(scene: Scene, p: FramePacket): Counted {
   for (let d = 0; d < p.drawCount; d++) {
     const [flags, buffer, mesh] = [p.drawFlags[d]!, p.drawBuffer[d]!, p.drawMesh[d]!];
     if ((flags & DRAW_PULLED) !== 0 || buffer === FAR_BUFFER) continue;
+    if ((flags & DRAW_SCREENS) !== 0) continue;
     if ((flags & DRAW_DETAILS) !== 0) {
       parts.fight += p.drawInstances[d]! * 2;
       continue;

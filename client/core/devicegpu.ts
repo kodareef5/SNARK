@@ -13,7 +13,7 @@ import { forTouch, tierOf, type Tier } from "./assets/tiers.ts";
 import { airFrame } from "./render/atmosphere.ts";
 import { FAR_FROM } from "./render/camera.ts";
 import { fadeKeeps } from "./render/far.ts";
-import { DRAW_BLEND, DRAW_DETAILS, DRAW_NEAR, DRAW_PULLED, DRAW_RANGED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_WATER, FRAME, FRAME_FLOATS, FramePacket, MAX_DRAWS } from "./render/packet.ts";
+import { DRAW_BLEND, DRAW_DETAILS, DRAW_SCREENS, DRAW_NEAR, DRAW_PULLED, DRAW_RANGED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_WATER, FRAME, FRAME_FLOATS, FramePacket, MAX_DRAWS } from "./render/packet.ts";
 import { PROGRAMS, withDefines } from "./render/programs.ts";
 import { SKY_SIZE, SKY_SLICES, skyFrame, theSky, trueSun } from "./render/sky.ts";
 import { groundSize } from "./render/terrain.ts";
@@ -320,7 +320,7 @@ const DRAW_KINDS: readonly DrawKind[] = [
   { name: "flat", of: (p, d) => (p.drawFlags[d]! & (DRAW_TEXTURED | DRAW_SKINNED | DRAW_RANGED | DRAW_PULLED)) === 0 && p.drawFade[d] === 0 && p.drawHand[d] === 0 },
   { name: "caster", of: null },
 ];
-const NONE_OF_THEM = DRAW_DETAILS | DRAW_WATER | DRAW_BLEND | DRAW_NEAR;
+const NONE_OF_THEM = DRAW_DETAILS | DRAW_SCREENS | DRAW_WATER | DRAW_BLEND | DRAW_NEAR;
 /** A draw's and a caster's rows in a packet, but for their offsets and instances. */
 const DRAW_ROWS = ["drawMesh", "drawLod", "drawSlot", "drawBuffer", "drawFirst", "drawFlags", "drawMaterial", "drawFirstIndex", "drawIndexCount", "drawPass", "drawFade", "drawHand", "drawLayer", "drawWear", "drawStreetMaterial", "drawWheelBones", "drawOptics", "drawFixture"] as const;
 const CASTER_ROWS = ["casterMesh", "casterLod", "casterSlot", "casterBuffer", "casterFirst", "casterFlags", "casterMaterial", "casterFirstIndex", "casterIndexCount"] as const;

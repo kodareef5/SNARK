@@ -97,10 +97,23 @@ interface Knobs {
   bodies?: number;
   own?: boolean;
   noLightTarget?: boolean;
+  /** Screens on props: their clips' frames a second, no clip decoded, the most drawn. */
+  screenFps?: number;
+  stills?: boolean;
+  screenCount?: number;
 }
 
 /**
- * The steps, what a player notices least for what it buys on a phone first (tools/bench/governor.ts counts each in the
+ * What a screen step can take, as a bit each (Governor.frame `screens`): clips' frames uploaded, clips decoded, more than
+ * the nearest 8 screens drawn, and any screen drawn. A step whose bit no frame of a window showed is passed by.
+ */
+export const SCREENS_UPLOADING = 1, SCREENS_DECODING = 2, SCREENS_MANY = 4, SCREENS_DRAWN = 8;
+/** The screens a step keeps. */
+export const SCREENS_NEAREST = 8;
+
+/**
+ * The steps. Screens on props go first, whatever they buy: their clips' frames fewer, their clips stilled, the nearest
+ * eight, none; each is passed by where no frame drew what it takes. Then what a player notices least for what it buys on a phone first (tools/bench/governor.ts counts each in the
  * soaks' scenes and the woods, and with a built map in its downtown). Levels give first: the tier's error loosened,
  * where at the phone's view most triangles of bodies, vehicles, pieces and rocks are under a pixel; half again takes 10
  * to 17% of a frame's triangles, twice 19 to 27%. Downtown, where the far city is most of a frame and levels find little
@@ -122,7 +135,12 @@ interface Knobs {
  * dearer at 1080p, and draws the canvas's own pixels. A touch-first device draws no light target, so none of these is
  * a step of a phone's.
  */
-export const STEPS: readonly { readonly name: string; readonly knobs: Knobs }[] = [
+export const STEPS: readonly { readonly name: string; readonly knobs: Knobs; readonly screens?: number }[] = [
+  // Screens on props are given up before anything else, whatever they buy: a picture on a billboard matters least.
+  { name: "screens: clips at 10 frames a second", knobs: { screenFps: 10 }, screens: SCREENS_UPLOADING },
+  { name: "screens: stills only", knobs: { stills: true }, screens: SCREENS_DECODING },
+  { name: "screens: the nearest 8", knobs: { screenCount: SCREENS_NEAREST }, screens: SCREENS_MANY },
+  { name: "screens: off", knobs: { screenCount: 0 }, screens: SCREENS_DRAWN },
   { name: "no more pixels than the screen's own", knobs: { own: true } },
   { name: "the scene at 90% a side", knobs: { scale: 0.9 } },
   { name: "the scene at 80% a side", knobs: { scale: 0.8 } },
@@ -168,6 +186,9 @@ function governed(base: Tier, knobs: Knobs, dpr: number): Tier {
     reflectionHz: Math.min(base.reflectionHz, knobs.details ? 0 : knobs.bodies ? 1 : knobs.levels ? 2 : base.reflectionHz),
     bodyError: base.bodyError * (knobs.bodies ?? 1),
     post,
+    // Stills only decodes no clip for the ball either: it shows its poster.
+    orb: knobs.stills ? { ...base.orb, video: false } : base.orb,
+    screens: knobs.screenFps || knobs.stills || knobs.screenCount !== undefined ? { ...base.screens, fps: Math.min(base.screens.fps, knobs.screenFps ?? Infinity), video: knobs.stills ? 0 : base.screens.video, count: Math.min(base.screens.count, knobs.screenCount ?? Infinity) } : base.screens,
   };
 }
 
@@ -177,18 +198,18 @@ const same = (a: Tier, b: Tier): boolean => JSON.stringify(a) === JSON.stringify
  * A tier's levels: the tier, then each step that changes something on it, with its name and whether it is a leaves
  * step or the far city's (its levels nearer, or the view). One list a tier and screen.
  */
-type Level = { name: string; tier: Tier; leaves: boolean; city: boolean };
+type Level = { name: string; tier: Tier; leaves: boolean; city: boolean; screens: number };
 const ladders = new Map<Tier, Map<number, Level[]>>();
 export function ladder(base: Tier, dpr: number): readonly Level[] {
   const mine = ladders.get(base) ?? ladders.set(base, new Map()).get(base)!;
   let out = mine.get(dpr);
   if (out) return out;
-  out = [{ name: "the tier", tier: base, leaves: false, city: false }];
+  out = [{ name: "the tier", tier: base, leaves: false, city: false, screens: 0 }];
   let knobs: Knobs = {};
   for (const step of STEPS) {
     knobs = { ...knobs, ...step.knobs };
     const tier = governed(base, knobs, dpr);
-    if (!same(tier, out.at(-1)!.tier)) out.push({ name: step.name, tier, leaves: step.knobs.leaves !== undefined, city: step.knobs.city !== undefined || step.knobs.view !== undefined });
+    if (!same(tier, out.at(-1)!.tier)) out.push({ name: step.name, tier, leaves: step.knobs.leaves !== undefined, city: step.knobs.city !== undefined || step.knobs.view !== undefined, screens: step.screens ?? 0 });
   }
   mine.set(dpr, out);
   return out;
@@ -241,6 +262,9 @@ export class Governor {
   private crownShare = 0;
   private city = 0;
   private cityShare = 0;
+  /** What the screens drew in the window, as SCREENS_ bits, and in the last window. */
+  private screens = 0;
+  private screensSeen = 0;
   private counted = 0;
   private misses = 0;
   private steadySince = 0;
@@ -288,9 +312,10 @@ export class Governor {
   /**
    * A frame drawn at `now`, `interval` ms after the one before, our code's `ours` ms of it, `busy` if it took asset
    * uploads, `work` what it asked of the card (workMs), `crowns` the part of that crowns near took that they could still
-   * give (render/budget.ts), and `city` the part the far city's triangles and its blocks' took.
+   * give (render/budget.ts), `city` the part the far city's triangles and its blocks' took, and `screens` what the
+   * screens on props drew, as SCREENS_ bits.
    */
-  frame(now: number, interval: number, ours: number, busy: boolean, work: number, crowns = 0, city = 0): void {
+  frame(now: number, interval: number, ours: number, busy: boolean, work: number, crowns = 0, city = 0, screens = 0): void {
     if (this.held !== null || this.base === null) return;
     if (interval > STALL_MS) return this.pause(now, SETTLE_MS);
     if (now < this.quietUntil) return;
@@ -303,6 +328,7 @@ export class Governor {
       this.crowns = Math.max(this.crowns, crowns);
       this.city = Math.max(this.city, city);
     }
+    this.screens |= screens;
     if (now - this.windowAt >= WINDOW_MS) this.window(now);
   }
 
@@ -315,6 +341,7 @@ export class Governor {
     const ours = middleMean(this.ours.sort((a, b) => a - b));
     const work = this.work;
     if (this.work > 0) [this.crownShare, this.cityShare] = [this.crowns / this.work, this.city / this.work];
+    this.screensSeen = this.screens;
     this.clear();
     if (!usable) return;
     if (steady) this.display = Math.min(this.display, frame);
@@ -330,9 +357,10 @@ export class Governor {
       if (slow && frame > before * (1 - GAIN)) {
         // A step this card does not need may stand before one it does; and frames at whole intervals move only once
         // the GPU fits in fewer of them, so from those every level is tried.
+        // A screen step that bought nothing does not count as one: screens go first whatever they buy.
         const to = this.below(now);
         if (to >= 0 && (was || tried < USELESS)) {
-          this.down = { before, from, tried: tried + 1, paced: was };
+          this.down = { before, from, tried: tried + (this.screenStep(to) ? 0 : 1), paced: was };
           return this.move(now, to, was ? `frames stayed at ${Math.round(frame)} ms` : `the step before took ${Math.round(frame)} ms to ${Math.round(before)}`);
         }
         if (was) {
@@ -367,9 +395,9 @@ export class Governor {
       this.lightSince = -1;
       const to = this.below(now);
       if (++this.misses < MISSES || to < 0 || now < this.restUntil) return;
-      if (this.probation && this.probation.level === this.level + 1 && now < this.probation.until) this.fails[this.level + 1] = (this.fails[this.level + 1] ?? 0) + 1;
+      if (this.probation && this.probation.level === to && now < this.probation.until) this.fails[to] = (this.fails[to] ?? 0) + 1;
       this.probation = null;
-      this.down = { before: frame, from: this.level, tried: 1, paced };
+      this.down = { before: frame, from: this.level, tried: this.screenStep(to) ? 0 : 1, paced };
       return this.move(now, to, `${Math.round(frame)} ms a frame${paced ? `, ${whole} display intervals` : ""}`);
     }
     this.misses = 0;
@@ -382,15 +410,33 @@ export class Governor {
     const lighter = this.lightSince >= 0 && now - this.lightSince >= LIGHT_WAIT_MS * backoff;
     if (waited >= wait || lighter) {
       this.trying = { from: this.level, windows: 0 };
-      this.move(now, this.level - 1, lighter && waited < wait ? "a lighter scene" : `${Math.round(waited / 1000)} s with no missed frame`);
+      this.move(now, this.above(), lighter && waited < wait ? "a lighter scene" : `${Math.round(waited / 1000)} s with no missed frame`);
     }
   }
 
-  /** The next level down that is not passed over, nor a leaves step where crowns near could give little, nor the far city's where it drew little, or -1. */
+  /** The level a try up goes to: the one above, past any screen step where the screens would draw nothing it takes. */
+  private above(): number {
+    const levels = ladder(this.base!, this.dpr);
+    let to = this.level - 1;
+    while (to > 0 && levels[to]!.screens !== 0 && (this.screensSeen & levels[to]!.screens) === 0) to--;
+    return to;
+  }
+
+  /**
+   * The next level down that is not passed over, nor a leaves step where crowns near could give little, nor the far
+   * city's where it drew little, nor a screen step where the screens drew nothing it takes, or -1.
+   */
   private below(now: number): number {
     const levels = ladder(this.base!, this.dpr);
-    for (let to = this.level + 1; to <= this.top; to++) if ((this.passed[to] ?? 0) <= now && (!levels[to]!.leaves || this.crownShare >= CROWNS) && (!levels[to]!.city || this.cityShare >= CITY)) return to;
+    for (let to = this.level + 1; to <= this.top; to++) {
+      const l = levels[to]!;
+      if ((this.passed[to] ?? 0) <= now && (!l.leaves || this.crownShare >= CROWNS) && (!l.city || this.cityShare >= CITY) && (l.screens === 0 || (this.screensSeen & l.screens) !== 0)) return to;
+    }
     return -1;
+  }
+
+  private screenStep(level: number): boolean {
+    return ladder(this.base!, this.dpr)[level]!.screens !== 0;
   }
 
   private move(now: number, level: number, why: string): void {
@@ -416,6 +462,6 @@ export class Governor {
     this.windowAt = -1;
     this.intervals.length = this.ours.length = 0;
     this.counted = 0;
-    this.work = this.crowns = this.city = 0;
+    this.work = this.crowns = this.city = this.screens = 0;
   }
 }
