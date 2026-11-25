@@ -7,6 +7,8 @@ a player count or a device. How a frame is drawn is in
 The sizing target is one world with 100 players, an 8 km map, 500,000 structures
 and 30,000 creatures, 3,000 awake (D15). `bun run bench` builds it, prints every
 row with its budget, writes `artifacts/bench.json` and exits non-zero on a miss.
+Its combat and house collapse follow the 300,000-creature stress test.
+`bun run bench --fight-target` runs the [firefight at 30,000 creatures](../workstreams/fight-target.md).
 
 ## Where the numbers come from
 

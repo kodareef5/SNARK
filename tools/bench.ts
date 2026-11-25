@@ -90,7 +90,7 @@ import { benchTransport } from "./bench/transport.ts";
 import { benchGpu } from "./bench/gpu.ts";
 import { benchUi } from "./bench/ui.ts";
 import { Bot } from "./bench/bot.ts";
-import { FIREFIGHT_GUNS, SHOT_ROUNDS, benchFirefight, benchShots } from "./bench/firefight.ts";
+import { ASSAULT_RIFLE, FIREFIGHT_GUNS, SHOT_ROUNDS, benchFirefight, benchShots } from "./bench/firefight.ts";
 import { CreatureLoad } from "./bench/load.ts";
 
 const PLAYERS = 100;
@@ -117,13 +117,19 @@ const section = (title: string): void => console.log(`\n${title}`);
 const percentile = (sorted: number[], q: number): number => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * q))]!;
 const mb = (bytes: number): number => bytes / 1048576;
 
-benchUi(section, record);
-// Focused HUD rows avoid rebuilding the unrelated world sizing target.
-if (process.argv.includes("--ui")) {
+function report(file: string): number {
+  const misses = rows.filter((r) => r.budget !== null && r.value > r.budget);
   mkdirSync(resolve("artifacts"), { recursive: true });
-  writeFileSync(resolve("artifacts/bench-ui.json"), JSON.stringify({ machine: `${cpus()[0]!.model}, ${cpus().length} cores`, bun: Bun.version, rows }, null, 2));
-  process.exit(rows.some(r => r.budget !== null && r.value > r.budget) ? 1 : 0);
+  const out = resolve("artifacts", file);
+  writeFileSync(out, JSON.stringify({ machine: `${cpus()[0]!.model}, ${cpus().length} cores`, bun: Bun.version, rows }, null, 2));
+  console.log(`\n${rows.filter((r) => r.budget !== null).length - misses.length} budgets met, ${misses.length} missed.  ${out}`);
+  return misses.length > 0 ? 1 : 0;
 }
+
+const fightTarget = process.argv.includes("--fight-target");
+if (!fightTarget) benchUi(section, record);
+// Focused HUD rows avoid rebuilding the unrelated world sizing target.
+if (!fightTarget && process.argv.includes("--ui")) process.exit(report("bench-ui.json"));
 
 function buildTerrain(): Heightfield {
   const hf = new Heightfield(DIMS, TERRAIN_CELL, -32, 1 / 64);
@@ -259,6 +265,17 @@ section("Server tick: 100 players, 500k structures, 30k creatures");
 run(300, null); // join, initial chunk sync, clock sync
 record("players connected", host.game.playerCount, "", null);
 record("creatures awake", host.creatures.awakeCount, "");
+if (fightTarget) {
+  try {
+    if (host.game.playerCount !== PLAYERS) throw new Error(`Only ${host.game.playerCount} of ${PLAYERS} players joined`);
+    world.anim = new HumanAnim(parsePack(buildCorePack()).clips);
+    benchFirefight(section, record, host, centers[0]!, run, [ASSAULT_RIFLE]);
+  } finally {
+    host.shutdown();
+    rmSync(dir, { recursive: true, force: true });
+  }
+  process.exit(report("bench-fight-target.json"));
+}
 const sentBefore = host.game.clients.map((c) => (c ? (c.conn as LoopbackEnd).bytesSent : 0));
 const recvBefore = bots.map((b) => b.end.bytesSent);
 commitTimes.length = 0;
@@ -421,7 +438,7 @@ section("Stored stacks: 600,000 stacks in 10,000 containers nobody is near");
 }
 
 // ---------------------------------------------------------------- dormancy
-section("Dormancy: the same awake load with ten times the creatures");
+section("Dormancy: add 270k grazers outside the awake chunks, then let players wander");
 const baseline = percentile(times, 0.5);
 t0 = performance.now();
 const awakeBefore = host.creatures.awakeCount;
@@ -437,7 +454,7 @@ run(60, null);
 const after: number[] = [];
 run(300, after);
 after.sort((a, b) => a - b);
-record("creatures in the world", host.world.ents.count, "");
+record("live bodies in the world, players included", host.world.ents.count, "");
 record("entity store slots after them", host.world.ents.cap, "");
 record("bodies the entity store has refused", host.world.ents.refused, "", 0);
 record("creatures awake before", awakeBefore, "");
@@ -446,7 +463,7 @@ record("tick time, median, 30k creatures", baseline, "ms");
 record("tick time, median, 300k creatures (same players)", percentile(after, 0.5), "ms", Math.round((baseline * 1.5 + 0.5) * 100) / 100);
 
 // ---------------------------------------------------------------- combat
-section("Combat: 100 players shooting twice a second, things in the air, and a blast in a base");
+section("Combat: 100 players shooting twice a second, things in the air, and a blast in a base (300k stress world)");
 const pack = parsePack(buildCorePack());
 {
   // Zone hits need bodies posed with the clips a real server has.
@@ -583,7 +600,7 @@ const pack = parsePack(buildCorePack());
 benchFirefight(section, record, host, centers[0]!, run, FIREFIGHT_GUNS);
 
 // ---------------------------------------------------------------- collapse
-section("Collapse: a 1,500-piece house loses every foundation at once, with the 40 of the fight watching");
+section("Collapse: a 1,500-piece house loses every foundation at once, with the 40 of the fight watching (300k stress world)");
 /** The house's pieces as the Rubble a client receives, and how many fell in each tick, for the client frame section below. */
 const wreck: Rubble[] = [];
 const fellBy: number[] = [];
@@ -1376,9 +1393,5 @@ benchTransport(section, record);
 await benchGpu(section, record);
 
 rmSync(dir, { recursive: true, force: true });
-const misses = rows.filter((r) => r.budget !== null && r.value > r.budget);
-const out = resolve(configFolder !== "" ? `artifacts/bench-${configFolder.replace(/\/+$/, "").split("/").pop()}.json` : "artifacts/bench.json");
-mkdirSync(resolve("artifacts"), { recursive: true });
-writeFileSync(out, JSON.stringify({ machine: `${cpus()[0]!.model}, ${cpus().length} cores`, bun: Bun.version, rows }, null, 2));
-console.log(`\n${rows.filter((r) => r.budget !== null).length - misses.length} budgets met, ${misses.length} missed.  ${out}`);
-if (misses.length > 0) process.exit(1);
+const suffix = configFolder !== "" ? `-${configFolder.replace(/\/+$/, "").split("/").pop()}` : "";
+process.exitCode = report(`bench${suffix}.json`);

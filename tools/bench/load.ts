@@ -28,9 +28,9 @@ export class CreatureLoad {
   }
 
   /** Records the two medians since the last reset, and resets. */
-  rows(record: Row): void {
-    record("creatures awake on a timed tick, median", median(this.awake), "");
-    record("creatures stepped on a timed tick, median", median(this.stepped), "");
+  rows(record: Row, prefix = ""): void {
+    record(`${prefix}creatures awake on a timed tick, median`, median(this.awake), "");
+    record(`${prefix}creatures stepped on a timed tick, median`, median(this.stepped), "");
     this.reset();
   }
 }
