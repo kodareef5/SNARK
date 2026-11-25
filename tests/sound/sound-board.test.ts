@@ -6,7 +6,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { listSounds, takesOf } from "../../client/core/sound/listing.ts";
-import type { AdminGate } from "../../server/admin/gate.ts";
+import { changedNothing, type AdminGate } from "../../server/admin/gate.ts";
 import { Guesses } from "../../server/guesses.ts";
 import { SOURCE_DIR, boardOwners, soundBoard, soundFolders } from "../../server/sound-board.ts";
 import { artTest } from "../fixtures/needs-art.ts";
@@ -15,6 +15,21 @@ import { coreRegistry } from "../fixtures/world.ts";
 
 const reg = coreRegistry();
 const FAMILIES = ["core:surface", "core:body", "core:weapon", "core:ui", "core:world"];
+
+test("a POST to the board only reads, so the log of a page's changes leaves it out", () => {
+  const root = mkdtempSync(join(tmpdir(), "snark-board-"));
+  try {
+    const page = join(root, "sounds.html");
+    writeFileSync(page, "<!doctype html><title>board</title>");
+    const gate: AdminGate = { dev: false, password: "kiwi", guesses: new Guesses(), tick: () => 0 };
+    for (const path of ["/sounds.html", "/admin/sounds.json"]) {
+      const req = new Request(`http://localhost${path}`, { method: "POST", headers: { authorization: `Basic ${btoa("admin:kiwi")}` } });
+      expect([path, soundBoard(req, "1.2.3.4", gate, page, () => [], root)!.status, changedNothing(req)]).toEqual([path, 200, true]);
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test("the board opens on a development server, and elsewhere only to the admin password, with wrong guesses counted", async () => {
   const root = mkdtempSync(join(tmpdir(), "snark-board-"));

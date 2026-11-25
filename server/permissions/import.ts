@@ -2,6 +2,9 @@
 // commands, or a CrossChat config. A plan is ops and plain notes, and nothing is written until `applyPlan` runs it
 // through `Permissions.apply`. Memberships by Steam id are counted and left behind, and no Steam id reaches a note.
 import { Database } from "bun:sqlite";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { readChatSettings, readCrossChat, readLooseJson, type ChatFormat, type ChatSettings, type ChatTag } from "../../shared/permissions/chat.ts";
 import { permissionsCommand, readPermissions } from "../../shared/permissions/commands.ts";
 import {
@@ -219,20 +222,106 @@ const list = (v: unknown): string[] =>
 /** The group a timed entry, `delayUntil;expireAt;name`, names. */
 const timedGroup = (entry: string): string => entry.slice(entry.lastIndexOf(";") + 1).trim();
 
-/** Reads the tables of ArkApi's Permissions plugin from its SQLite file, read in memory by `Database.deserialize`. */
-export function planArkApi(bytes: Uint8Array, opts: ImportOptions): Planned {
+/** What came with ArkApi's database. */
+export interface ArkApiFiles {
+  /** The file beside the database whose name ends in `-wal`, where the admin gave it. */
+  readonly wal?: Uint8Array;
+  /** The folder that a database in write-ahead-log mode is read in, inside a folder of its own; the system's temporary folder by default. */
+  readonly folder?: string;
+}
+
+const NOT_SQLITE: Planned = { ok: false, reason: "That file is not an SQLite database." };
+const NO_FOLDER: Planned = { ok: false, reason: "The server could not open that database in a folder of its own." };
+const WAL_MISSING =
+  "This database keeps its newest changes in the file beside it whose name ends in -wal until the ARK server is stopped. Stop the server first, or give that file too, or those changes are left out.";
+const WAL_WRONG = "The -wal file does not belong to this database or is damaged, so it was left out. The plan reads what the database file holds.";
+
+const isSqlite = (b: Uint8Array): boolean => b.length >= 100 && new TextDecoder().decode(b.subarray(0, 16)) === "SQLite format 3\0";
+// The header's bytes 18 and 19 are 2 in write-ahead-log mode.
+const inWalMode = (b: Uint8Array): boolean => isSqlite(b) && (b[18] === 2 || b[19] === 2);
+// A database's page size is at byte 16, where 1 stands for 65536; a log's is at byte 8.
+const pageSize = (b: Uint8Array): number => {
+  const n = (b[16]! << 8) | b[17]!;
+  return n === 1 ? 65536 : n;
+};
+const logPageSize = (w: Uint8Array): number => (w.length >= 32 ? new DataView(w.buffer, w.byteOffset, 32).getUint32(8) : 0);
+
+/**
+ * Reads the tables of ArkApi's Permissions plugin from its SQLite file. A file in the default journal mode is read in
+ * memory. One in write-ahead-log mode, as the plugin writes it, is written to a folder of its own beside its `-wal`
+ * file, where given, so that SQLite applies the log; the folder is removed after.
+ */
+export function planArkApi(bytes: Uint8Array, opts: ImportOptions, files: ArkApiFiles = {}): Planned {
+  const wal = files.wal && files.wal.length > 0 ? files.wal : undefined;
+  if (!inWalMode(bytes)) return planImage(bytes, opts, wal ? WAL_WRONG : undefined);
+  let dir: string;
+  try {
+    dir = mkdtempSync(join(files.folder ?? tmpdir(), "snark-arkapi-"));
+  } catch {
+    return NO_FOLDER;
+  }
+  try {
+    if (!wal) return planFile(join(dir, "alone.db"), bytes, opts, WAL_MISSING);
+    const logged = logPageSize(wal) === pageSize(bytes) ? planLogged(join(dir, "logged.db"), bytes, wal, opts) : undefined;
+    return logged ?? planFile(join(dir, "alone.db"), bytes, opts, WAL_WRONG);
+  } catch {
+    return NO_FOLDER;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+function planImage(bytes: Uint8Array, opts: ImportOptions, note?: string): Planned {
   let db: Database;
   try {
     db = Database.deserialize(bytes, true);
   } catch {
-    return { ok: false, reason: "That file is not an SQLite database." };
+    return NOT_SQLITE;
   }
+  try {
+    return readArkApi(db, opts, note);
+  } finally {
+    db.close();
+  }
+}
+
+function planFile(path: string, bytes: Uint8Array, opts: ImportOptions, note?: string): Planned {
+  writeFileSync(path, bytes);
+  const db = new Database(path);
+  try {
+    return readArkApi(db, opts, note);
+  } finally {
+    db.close();
+  }
+}
+
+/** The plan with the log applied, or undefined where SQLite takes nothing from it or what it makes cannot be read. */
+function planLogged(path: string, bytes: Uint8Array, wal: Uint8Array, opts: ImportOptions): Planned | undefined {
+  let db: Database | undefined;
+  try {
+    writeFileSync(path, bytes);
+    writeFileSync(`${path}-wal`, wal);
+    db = new Database(path);
+    const frames = (db.query("PRAGMA wal_checkpoint(PASSIVE)").get() as { log?: unknown } | null)?.log;
+    const check = (db.query("PRAGMA quick_check").get() as { quick_check?: unknown } | null)?.quick_check;
+    if (typeof frames !== "number" || frames <= 0 || check !== "ok") return undefined;
+    const planned = readArkApi(db, opts);
+    return planned.ok ? planned : undefined;
+  } catch {
+    return undefined;
+  } finally {
+    db?.close();
+  }
+}
+
+/** Reads the plugin's tables from an open database. */
+function readArkApi(db: Database, opts: ImportOptions, note?: string): Planned {
   try {
     let tables: string[];
     try {
       tables = (db.query("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: unknown }[]).map((r) => text(r.name));
     } catch {
-      return { ok: false, reason: "That file is not an SQLite database." };
+      return NOT_SQLITE;
     }
     const find = (names: string[]): string | undefined => tables.find((t) => names.includes(t.toLowerCase()));
     const columns = (table: string): Set<string> =>
@@ -244,6 +333,7 @@ export function planArkApi(bytes: Uint8Array, opts: ImportOptions): Planned {
       return { ok: false, reason: `${groupTable} has no GroupName and Permissions, so it is not ArkApi's Permissions database.` };
     }
     const draft = new Draft(opts);
+    if (note) draft.note(note);
     const order = groupColumns.has("id") ? " ORDER BY Id" : "";
     for (const row of db.query(`SELECT GroupName AS name, Permissions AS permissions FROM "${groupTable}"${order}`).all() as Record<string, unknown>[]) {
       const g = draft.ensure(text(row.name).trim());
@@ -264,8 +354,6 @@ export function planArkApi(bytes: Uint8Array, opts: ImportOptions): Planned {
     return { ok: true, plan: draft.plan() };
   } catch {
     return { ok: false, reason: "That database could not be read as ArkApi's Permissions database." };
-  } finally {
-    db.close();
   }
 }
 

@@ -1,13 +1,13 @@
 // ArkApi's Permissions database, a pasted command list and a CrossChat config, planned and applied.
 import { afterAll, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readChatFormat, readChatSettings, readLooseJson } from "../../shared/permissions/chat.ts";
 import type { PermissionActor } from "../../shared/permissions/model.ts";
 import { RANK_ADMIN, RANK_CLUSTER, RANK_MAP, RANK_OPEN } from "../../shared/ranks.ts";
-import { applyPlan, CHAT_DOCUMENT, planArkApi, planCommands, planCrossChat, type ImportPlan, type Planned } from "../../server/permissions/import.ts";
+import { applyPlan, CHAT_DOCUMENT, planArkApi, planCommands, planCrossChat, type ArkApiFiles, type ImportPlan, type Planned } from "../../server/permissions/import.ts";
 import { Permissions } from "../../server/permissions/permissions.ts";
 import { PermissionStore } from "../../server/permissions/store.ts";
 
@@ -48,6 +48,69 @@ function arkApiFile(): Uint8Array {
   rmSync(path);
   return bytes;
 }
+
+// The plugin's tables, as its source creates them.
+const PLUGIN_TABLES = `create table if not exists Players (Id integer primary key autoincrement not null, SteamId integer default 0 UNIQUE, Groups text default 'Default,' COLLATE NOCASE, TimedGroups text default '' COLLATE NOCASE);
+create table if not exists Tribes (Id integer primary key autoincrement not null, TribeId integer default 0, Groups text default '' COLLATE NOCASE, TimedGroups text default '' COLLATE NOCASE);
+create table if not exists Groups (Id integer primary key autoincrement not null, GroupName text not null COLLATE NOCASE, Permissions text default '' COLLATE NOCASE);`;
+
+/** ArkApi's database opened as the plugin opens it: write-ahead-log mode first, then its tables and starting groups. */
+function pluginDatabase(path: string, pageSize?: number): Database {
+  const db = new Database(path, { create: true });
+  if (pageSize) db.exec(`PRAGMA page_size=${pageSize};`);
+  db.exec("PRAGMA journal_mode=WAL;");
+  db.exec(PLUGIN_TABLES);
+  const group = db.query("INSERT INTO Groups (GroupName, Permissions) VALUES (?, ?)");
+  group.run("Admins", "*,");
+  group.run("Default", "");
+  group.run("Vip", "ArkShop.Kits.vip,Cheat.KickPlayer,");
+  group.run("Builders", "Build.Fast,");
+  db.query("INSERT INTO Players (SteamId, Groups, TimedGroups) VALUES (?, ?, ?)").run(STEAM[0]!, "Default,Vip,", "0;1800000000;Vip,");
+  db.query("INSERT INTO Tribes (TribeId, Groups) VALUES (?, ?)").run(TRIBE, "Builders,");
+  return db;
+}
+
+const removeDatabase = (path: string) => {
+  for (const end of ["", "-wal", "-shm"]) rmSync(path + end, { force: true });
+};
+
+/** ArkApi's database from a server stopped cleanly: its log was folded into it and removed. */
+function stoppedFile(): Uint8Array {
+  const path = join(root, `stopped-${++files}.db`);
+  pluginDatabase(path).close();
+  if (existsSync(`${path}-wal`)) throw new Error("the log outlived the server");
+  const bytes = readFileSync(path);
+  removeDatabase(path);
+  return bytes;
+}
+
+/** ArkApi's database and its log, copied while the server runs: the group Late is only in the log. */
+function runningFiles(pageSize?: number, late = "Late"): { main: Uint8Array; wal: Uint8Array } {
+  const path = join(root, `running-${++files}.db`);
+  const db = pluginDatabase(path, pageSize);
+  db.exec("PRAGMA wal_autocheckpoint=0;");
+  db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+  db.query("INSERT INTO Groups (GroupName, Permissions) VALUES (?, ?)").run(late, "ArkShop.Kits.late,");
+  db.query("INSERT INTO Players (SteamId, Groups) VALUES (?, ?)").run(STEAM[1]!, `${late},`);
+  const copy = { main: readFileSync(path), wal: readFileSync(`${path}-wal`) };
+  db.close();
+  removeDatabase(path);
+  return copy;
+}
+
+/** The log of a database in write-ahead-log mode that is not ArkApi's. */
+function otherLog(): Uint8Array {
+  const path = join(root, `other-${++files}.db`);
+  const db = new Database(path, { create: true });
+  db.exec("PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0; CREATE TABLE Things (Id INTEGER PRIMARY KEY, Name TEXT);");
+  for (let i = 0; i < 40; i++) db.query("INSERT INTO Things (Name) VALUES (?)").run("thing ".repeat(40));
+  const wal = readFileSync(`${path}-wal`);
+  db.close();
+  removeDatabase(path);
+  return wal;
+}
+
+const added = (plan: ImportPlan): string[] => plan.ops.flatMap((op) => (op.op === "addGroup" ? [op.group] : []));
 
 const COMMAND_LIST = `
 # The same groups, typed
@@ -264,4 +327,81 @@ test("a refusal by the edit rule is reported and the rest still applies", () => 
   expect(perms.group("Default")!.chat).not.toBe("");
   expect(perms.group("Admins")!.chat).toBe("");
   expect(perms.document(CHAT_DOCUMENT)).not.toBe("");
+});
+
+test("a database from a server stopped cleanly gives its groups", () => {
+  const bytes = stoppedFile();
+  expect([bytes[18], bytes[19]]).toEqual([2, 2]);
+  const plan = planOf(planArkApi(bytes, opts(fresh())));
+  expect(added(plan)).toEqual(["Vip", "Builders"]);
+  expect(noteWith(plan, "Vip: 2 memberships left behind (2 players; 1 timed)")).toBeDefined();
+  expect(noteWith(plan, "Builders: 1 membership left behind (1 tribe)")).toBeDefined();
+});
+
+test("a database copied from a running server reads its newest groups from its -wal", () => {
+  const { main, wal } = runningFiles();
+  const plan = planOf(planArkApi(main, opts(fresh()), { wal }));
+  expect(added(plan)).toEqual(["Vip", "Builders", "Late"]);
+  expect(noteWith(plan, "Late: 1 membership left behind (1 player)")).toBeDefined();
+  expect(noteWith(plan, "-wal")).toBeUndefined();
+});
+
+test("the same database without its -wal says where the newest changes are", () => {
+  const plan = planOf(planArkApi(runningFiles().main, opts(fresh())));
+  expect(added(plan)).toEqual(["Vip", "Builders"]);
+  expect(noteWith(plan, "keeps its newest changes in the file beside it whose name ends in -wal until the ARK server is stopped")).toBeDefined();
+  expect(noteWith(plan, "Stop the server first, or give that file too")).toBeDefined();
+});
+
+test("a -wal file that is not the database's own is said to be so", () => {
+  const { main, wal } = runningFiles();
+  const damaged = new Uint8Array(wal);
+  damaged[40]! ^= 0xff;
+  const logs: [string, Uint8Array][] = [
+    ["another database's", otherLog()],
+    ["one of another page size", runningFiles(1024, "Elsewhere").wal],
+    ["a damaged one", damaged],
+    ["not a log at all", new TextEncoder().encode("not a log ".repeat(100))],
+  ];
+  for (const [what, log] of logs) {
+    const plan = planOf(planArkApi(main, opts(fresh()), { wal: log }));
+    const said = noteWith(plan, "The -wal file does not belong to this database or is damaged") !== undefined;
+    expect({ what, groups: added(plan), said }).toEqual({ what, groups: ["Vip", "Builders"], said: true });
+  }
+  const plan = planOf(planArkApi(arkApiFile(), opts(fresh()), { wal }));
+  expect(noteWith(plan, "does not belong to this database")).toBeDefined();
+});
+
+test("a database in the default journal mode still reads, and writes no file", () => {
+  const nowhere: ArkApiFiles = { folder: join(root, "no-such-folder") };
+  expect(planOf(planArkApi(arkApiFile(), opts(fresh()), nowhere)).ops.length).toBeGreaterThan(0);
+  expect(planArkApi(stoppedFile(), opts(fresh()), nowhere)).toMatchObject({ ok: false, reason: expect.stringContaining("could not open that database") });
+  expect(existsSync(nowhere.folder!)).toBe(false);
+});
+
+test("no file or folder is left behind, also when a read fails", () => {
+  const folder = join(root, "scratch");
+  mkdirSync(folder);
+  const { main, wal } = runningFiles();
+  const plain = new Database(":memory:");
+  plain.exec("CREATE TABLE Things (Id INTEGER)");
+  const noGroups = new Uint8Array(plain.serialize());
+  plain.close();
+  noGroups[18] = 2;
+  noGroups[19] = 2;
+  const cut = main.subarray(0, 600);
+  const cases: [Uint8Array, Uint8Array | undefined, boolean][] = [
+    [stoppedFile(), undefined, true],
+    [main, wal, true],
+    [main, undefined, true],
+    [main, otherLog(), true],
+    [arkApiFile(), wal, true],
+    [noGroups, wal, false],
+    [noGroups, undefined, false],
+    [cut, wal, false],
+  ];
+  for (const [bytes, log, ok] of cases) {
+    expect(planArkApi(bytes, opts(fresh()), { wal: log, folder }).ok).toBe(ok);
+    expect(readdirSync(folder)).toEqual([]);
+  }
 });

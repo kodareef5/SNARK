@@ -4,6 +4,8 @@ import { rmSync } from "node:fs";
 import { CLIP_MAX_BYTES, CLIP_MAX_HIGH, CLIP_MAX_KBPS, CLIP_MAX_SECONDS, CLIP_MAX_WIDE, COLOUR_PARTS, COLOUR_RATE, SCENE_SHOW, SCREENS, heldSceneOf, type Channel, type Screen } from "../../shared/video/clip.ts";
 import { screenAt } from "../../shared/video/programme.ts";
 import { manifestPath } from "../../shared/video/screen.ts";
+import type { Acts } from "../acts.ts";
+import { actorOf, onlyRead } from "../admin/gate.ts";
 import { entryReply, readEntryJson } from "../survivor-access.ts";
 import { type LibraryDoc, type LibraryView, type Refusal, type VideoLibrary } from "./library.ts";
 import { publishClip, takeUpload } from "./upload.ts";
@@ -11,6 +13,8 @@ import { publishClip, takeUpload } from "./upload.ts";
 const CHANNELS_MAX = 32;
 const ITEMS_MAX = 200;
 const NAME_MAX = 40;
+/** Channels an act names one by one at the most. */
+const CHANNELS_SHOWN = 6;
 
 export const SCREEN_PATHS = ["/admin/screens/state", "/admin/screens/upload", "/admin/screens/clip", "/admin/screens/edit"] as const;
 /** The paths that take a POST, which the front passes on (server/front.ts). */
@@ -154,8 +158,50 @@ function change(doc: LibraryDoc, view: LibraryView, body: Record<string, unknown
   }
 }
 
+/** What a screen shows, in words. */
+const showWords = (show: string): string => (show === "scenes" ? "the scenes" : heldSceneOf(show) >= 0 ? `the scene ${show.slice(SCENE_SHOW.length)}` : `the channel ${show}`);
+
+/** What an edit did, in words for the admin log: a clip by its title, a screen and a channel by name. */
+function editWords(before: LibraryView, after: LibraryView, body: Record<string, unknown>): string {
+  const title = `"${before.all.get(String(body.clip))?.title ?? String(body.clip)}"`, clip = `the clip ${title}`;
+  const screen = `screen ${String(body.screen)}`;
+  switch (body.op) {
+    case "channels": {
+      const all = [...after.channels.values()].map((c) => `${c.name} (${c.items.length} ${c.items.length === 1 ? "clip" : "clips"}${c.shuffle ? ", shuffled" : ""})`);
+      const shown = all.length > CHANNELS_SHOWN ? [...all.slice(0, CHANNELS_SHOWN), `${all.length - CHANNELS_SHOWN} more`] : all;
+      const back = [...after.screens.values()].filter((s) => s.show === "scenes" && before.screens.get(s.screen)?.show !== "scenes").map((s) => `screen ${s.screen}`);
+      return `set the channels: ${shown.join(", ") || "none"}${back.length > 0 ? `; ${back.join(", ")} back to the scenes` : ""}`;
+    }
+    case "screen": {
+      const now = after.screens.get(String(body.screen))!;
+      const said = [
+        body.show !== undefined ? `shows ${showWords(now.show)}` : "",
+        body.mode !== undefined ? `mode ${now.mode}` : "",
+        body.fill !== undefined ? (now.fill ? "fills the face" : "fits whole") : "",
+        body.sound !== undefined ? (now.sound ? "with sound" : "without sound") : "",
+        body.night !== undefined ? (now.night ? "by night only" : "by day and night") : "",
+      ].filter((w) => w !== "");
+      return `set ${screen}${said.length > 0 ? `: ${said.join(", ")}` : ""}`;
+    }
+    case "once":
+      return `played ${clip} once on ${screen}`;
+    case "take":
+      return body.clip !== undefined ? `played ${clip} once on ${screen}` : `set ${screen} to show ${showWords(String(body.show))}`;
+    case "stop":
+      return `stopped the clip playing once on ${screen}`;
+    case "rename": {
+      const was = before.all.get(String(body.clip))!, now = after.all.get(String(body.clip))!;
+      return [was.title !== now.title ? `renamed ${clip} to "${now.title}"` : "", was.rights !== now.rights ? `changed the rights line of "${now.title}"` : ""].filter((w) => w !== "").join(" and ");
+    }
+    case "delete":
+      return `deleted ${clip}`;
+    default:
+      return body.op === "hide" ? `hid the starter clip ${title}` : `showed the starter clip ${title} again`;
+  }
+}
+
 /** POST /admin/screens/edit {revision, op, ...}: one change, refused with 409 if the library moved on. Answers the state. */
-async function edit(req: Request, lib: VideoLibrary, world: ScreenWorld): Promise<Response> {
+async function edit(req: Request, lib: VideoLibrary, world: ScreenWorld, did: (what: string) => void): Promise<Response> {
   let body: Record<string, unknown>;
   try {
     body = await readEntryJson(req, 128 * 1024);
@@ -163,21 +209,28 @@ async function edit(req: Request, lib: VideoLibrary, world: ScreenWorld): Promis
     return entryReply({ error: "Expected a small JSON edit." }, 400);
   }
   if (!Number.isSafeInteger(body.revision)) return entryReply({ error: "Send the revision the page was showing." }, 400);
-  const now = Date.now(), was = typeof body.clip === "string" ? lib.view().all.get(body.clip) : undefined;
+  const now = Date.now(), before = lib.view(), was = typeof body.clip === "string" ? before.all.get(body.clip) : undefined;
   const done = lib.edit(body.revision as number, (doc, view) => change(doc, view, body, now));
   if ("error" in done) return entryReply({ error: done.error }, done.status);
+  // An edit that left the library as it was, such as a stop with nothing playing once, is not a change.
+  if (JSON.stringify(done.doc) === JSON.stringify(before.doc)) onlyRead(req);
+  else did(editWords(before, done, body));
   // A deleted clip's files go with it.
   if (body.op === "delete" && was && !was.starter) for (const f of [lib.fileOf(was.file), lib.fileOf(was.poster)]) if (f) rmSync(f, { force: true });
   return entryReply(screensState(lib, world, now));
 }
 
-/** Answers a request under /admin/screens/, or null for any other path. `world` is this world as its players see the ball. */
-export function screensAdmin(req: Request, path: string, lib: VideoLibrary, world: () => ScreenWorld): Promise<Response> | Response | null {
+/**
+ * Answers a request under /admin/screens/, or null for any other path. `world` is this world as its players see the ball,
+ * and each change is written in `acts` as the request's actor's.
+ */
+export function screensAdmin(req: Request, path: string, lib: VideoLibrary, world: () => ScreenWorld, acts: Pick<Acts, "write"> | null = null): Promise<Response> | Response | null {
   if (!(SCREEN_PATHS as readonly string[]).includes(path)) return null;
+  const did = (what: string): void => void acts?.write(actorOf(req), what);
   const read = req.method === "GET" || req.method === "HEAD";
   if (path === "/admin/screens/state") return read ? (lib.sweep(), entryReply(screensState(lib, world()))) : new Response(null, { status: 405, headers: { allow: "GET" } });
   if (req.method !== "POST") return new Response(null, { status: 405, headers: { allow: "POST" } });
-  if (path === "/admin/screens/upload") return (lib.sweep(), takeUpload(req, lib));
-  if (path === "/admin/screens/clip") return publishClip(req, lib);
-  return edit(req, lib, world());
+  if (path === "/admin/screens/upload") return (lib.sweep(), takeUpload(req, lib, did));
+  if (path === "/admin/screens/clip") return publishClip(req, lib, did);
+  return edit(req, lib, world(), did);
 }
