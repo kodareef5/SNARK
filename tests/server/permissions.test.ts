@@ -286,11 +286,11 @@ test("bad input is a plain reason and never a throw", () => {
   expect(perms.apply(cluster, { op: "addGroup", group: "VIP" })).not.toBe("");
 });
 
-test("a document needs the map rank and comes back untouched", () => {
+test("a document is an admin's to set and comes back untouched", () => {
   const { perms, ok } = world();
   const text = '{ "MapColors": { "Island": [1, 0, 0, 1] } }';
-  expect(perms.apply(admin, { op: "setDocument", name: "CrossChat", text })).not.toBe("");
-  ok({ op: "setDocument", name: "CrossChat", text }, mapAdmin);
+  expect(perms.apply({ ...admin, rank: RANK_STAFF }, { op: "setDocument", name: "CrossChat", text })).not.toBe("");
+  ok({ op: "setDocument", name: "CrossChat", text }, admin);
   expect(perms.document("crosschat")).toBe(text);
   ok({ op: "setChat", group: "Admins", chat: '{"Tag":"[Admin]"}' });
   expect(perms.group("Admins")?.chat).toBe('{"Tag":"[Admin]"}');
