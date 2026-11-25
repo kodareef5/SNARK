@@ -99,7 +99,8 @@ test("a second secret takes the first one's place in the console", () => {
 });
 
 test("a claimed password never enters the session's log or the chat box", () => {
-  const h = new Harness({}, 1, 60, { log: () => {} });
+  // This world lets a password be replaced as soon as it is claimed, which a real one makes a survivor wait an hour for.
+  const h = new Harness({}, 1, 60, { claimWaitMs: 0, log: () => {} });
   try {
     const ada = h.join("ada");
     h.run(500);
