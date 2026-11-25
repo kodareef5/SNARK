@@ -5,7 +5,7 @@ edit it by hand: change the catalogue and run the tool.
 
 A server is configured as ARK's is ([how](round5-settings.md), and [what the
 values mean](round5-game-ini.md)). Every setting an ARK dedicated server reads
-is listed here, 602 of them: 238 take effect,
+is listed here, 603 of them: 239 take effect,
 174 wait for a feature that is not built yet, and 190 have no meaning in this
 engine. A setting that does not take effect is still read, checked and
 reported when the server starts.
@@ -92,6 +92,7 @@ the admin's settings page may change a setting without a restart.
 | `ProximityChat` | False | What is written reaches only those near. | yes; clients are told |
 | `ServerPassword` | none | Asked of everyone who joins. *A browser gives it in the address it opens: `?password=...`.* | yes |
 | `ServerAdminPassword` | none | Asked of whoever would use cheats, and of a browser that opens the admin pages. | no |
+| `ClusterAdminPassword` | none | Gives the cluster's admin rank, above the map's, on every world started with it: in game with enablecheats, and on the admin pages. It should differ from ServerAdminPassword. *Ours. ARK has no key. SNARK_CLUSTER_PASSWORD gives it too.* | no |
 | `KickIdlePlayersPeriod` | 3600 | Seconds without doing anything before a survivor is put off the server. Needs -EnableIdlePlayerKick. | yes |
 | `AutoSavePeriodMinutes` | 15 | Minutes between saves. Here the world is saved continuously; this is how often the live file is read again. | yes |
 | `AdminLogging` | False | Every admin command is shown to everyone. *As a notice: who ran it, then the line, with any password left out.* | yes |

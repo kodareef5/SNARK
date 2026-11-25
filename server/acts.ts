@@ -63,6 +63,8 @@ export class Acts {
   private head = 0;
   /** The count of a world with no save, which has no journal to number its acts. */
   private seq = 0;
+  /** Each actor object an act was written for, so a page's request can tell whether its handler logged anything. */
+  private readonly wrote = new WeakSet<Actor>();
 
   constructor(ctx: ActsContext) {
     this.ctx = ctx;
@@ -77,12 +79,18 @@ export class Acts {
     const bytes = encodeAct({ at, name, id, pid, rank, via, from, kind, what });
     const seq = persistence ? persistence.journal(OP_ADMIN, bytes) : ++this.seq;
     const act: Act = { seq, at, tick: this.ctx.tick(), name, id, pid, rank, via, from, kind, what };
+    this.wrote.add(actor);
     if (worthReading(act)) {
       this.keep(act);
       this.ctx.say(actLine(act));
     }
     if (kind === "command" && this.ctx.shown()) this.ctx.tellAll(`${name}: ${what}`);
     return act;
+  }
+
+  /** Whether an act was written for this very actor object. */
+  wroteFor(actor: Actor): boolean {
+    return this.wrote.has(actor);
   }
 
   /** At most `most` of the kept acts whose seq is above `after`, oldest first. */

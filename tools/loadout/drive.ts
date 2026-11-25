@@ -6,7 +6,8 @@ import { join } from "node:path";
 import { joinServer } from "../../agent/join.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { builtinLoadouts } from "../../content/loadouts.ts";
-import { PAGE } from "../../server/admin/supply-routes.ts";
+// The page is driven on a development server, whose open pages act under this name.
+import { DEVELOPMENT as PAGE } from "../../server/admin/gate.ts";
 import { OP_ADMIN } from "../../server/console.ts";
 import type { Host } from "../../server/host.ts";
 import { WorldStore } from "../../server/persist/store.ts";
@@ -560,6 +561,7 @@ export function journalFaults(dbPath: string, reg: Registry, want: readonly stri
     .journal()
     .filter((j) => j.op === OP_ADMIN)
     .map((j) => decodeAct(j.data))
+    .filter((a) => a.kind === "command")
     .map((a) => `${a.name}\t${a.what}`);
   kept.close();
   const [g, w] = [JSON.stringify(lines), JSON.stringify(want)];

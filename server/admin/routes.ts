@@ -23,11 +23,14 @@
 //                           changes (loadout-routes.ts)
 //   /admin/first-frame.html what the client's first frame downloads (client/admin/first-frame.ts), and
 //                           /admin/first-frame.json the build's weighing of it, beside the client (tools/first-frame.ts)
+//   /admin/me.json          who the viewer is: the gate's name, ID and rank, and the cluster's world id or 0
+//   /admin/acts.json        the latest acts, after=<seq> those after it, with addresses for the map's rank and up
 
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { ADMIN_TERRAIN_SIDE, type AdminOverview, type Stats, type Survivors } from "../../shared/admin.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
+import { RANK_MAP } from "../../shared/ranks.ts";
 import { BUILDING_SPANS, blankFrame, type Buildings } from "../../shared/world/buildings.ts";
 import { mapHeightfield, type MapData } from "../../shared/world/mapfile.ts";
 import { paintRelief } from "../../shared/world/relief.ts";
@@ -38,7 +41,7 @@ import { castAct, castState } from "./cast.ts";
 import { settingsAnswer } from "./settings.ts";
 import { stopAnswer } from "./stop.ts";
 import { originAllowed } from "../origin.ts";
-import { adminAsked, adminPath, refused, type AdminGate } from "./gate.ts";
+import { actorOf, adminAsked, adminPath, refused, type AdminGate } from "./gate.ts";
 import { SupplyRoutes } from "./supply-routes.ts";
 import { LoadoutRoutes } from "./loadout-routes.ts";
 import { LogRoutes } from "./log-routes.ts";
@@ -217,6 +220,13 @@ export class AdminPages {
       return new Response(this.mapContext, { headers: JSON_HEADERS });
     }
     if (at === "/admin/terrain.rgba") return this.terrainImage(req);
+    if (at === "/admin/me.json" || at === "/admin/acts.json") {
+      if (req.method !== "GET" && req.method !== "HEAD") return new Response(null, { status: 405, headers: { allow: "GET, HEAD" } });
+      const by = actorOf(req);
+      if (at === "/admin/me.json") return new Response(JSON.stringify({ name: by.name, id: by.id, rank: by.rank, world: this.o.host.cluster?.world ?? 0 }), { headers: JSON_HEADERS });
+      const acts = this.o.host.acts.recent(Number(url.searchParams.get("after")) || 0, 200);
+      return new Response(JSON.stringify({ acts: by.rank >= RANK_MAP ? acts : acts.map((a) => ({ ...a, from: "" })) }), { headers: JSON_HEADERS });
+    }
     if (at === "/admin/survivors.json") return this.survivors.get(now).then((text) => new Response(text, { headers: JSON_HEADERS }));
     if (at === "/admin/minutes.json") return new Response(this.minutes(Number(url.searchParams.get("from") ?? 0)), { headers: JSON_HEADERS });
     if (at === "/admin/ticks.json") return new Response(this.ticks.get(now), { headers: JSON_HEADERS });

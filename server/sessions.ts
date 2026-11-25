@@ -61,7 +61,8 @@ const MAX_PENDING = 64;
 const HELLO_TICKS = 150;
 /** With no room, one that has waited this long is put out for a newcomer. A client says hello at once, so this is a slow link's round trip. */
 const HELLO_GRACE_TICKS = 15;
-const NAME = /^[A-Za-z0-9 _-]{1,24}$/;
+/** What a survivor's name may be. */
+export const NAME = /^[A-Za-z0-9 _-]{1,24}$/;
 /** Metres. */
 const SPECTATOR_LIFT = 1.6;
 /** New names one machine may make in NEW_NAME_TICKS, an hour (Allowance). */

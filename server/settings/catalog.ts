@@ -31,6 +31,7 @@ export const AT_START: Readonly<Record<string, string>> = {
   "-WinLiveMaxPlayers": "It gives the seats at a start. MaxPlayers changes them while the server runs.",
   bUseSingleplayerSettings: "It multiplies other settings once, as the files are read.",
   ServerAdminPassword: "It is the lock this page stands behind.",
+  ClusterAdminPassword: "It is the lock this page stands behind.",
 };
 
 /** Why a setting may not change while the server runs, or "" if it may. */

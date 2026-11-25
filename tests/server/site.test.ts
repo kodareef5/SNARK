@@ -300,7 +300,7 @@ test("the front sends each path to its world and the site to the lowest world, s
   // Saved again from the page that still holds revision 0: 409, with the revision it lost to, and nothing changed.
   const stale = await post("book", { revision: 0, book: read.book });
   expect([stale.status, ((await stale.json()) as { revision: number }).revision, tampa.host.supplyBook.book.revision]).toEqual([409, 1, 1]);
-  expect((await (await get(`${drops}/revisions.json`, good)).json() as { revision: number; by: string; note: string }[]).map((r) => [r.revision, r.by, r.note])).toEqual([[1, "(admin page)", "ringed twice as often"]]);
+  expect((await (await get(`${drops}/revisions.json`, good)).json() as { revision: number; by: string; note: string }[]).map((r) => [r.revision, r.by, r.note])).toEqual([[1, "(x)", "ringed twice as often"]]);
   // The starter again is a revision too, and an old revision comes back as a new one.
   expect([(await post("reset", { revision: 0 })).status, await (await post("reset", { revision: 1 })).json()]).toEqual([409, { revision: 2 }]);
   expect([await (await post("restore", { revision: 2, to: 1 })).json(), tampa.host.supplyBook.book.rules.ringedChance, (await post("restore", { revision: 3, to: 77 })).status]).toEqual([{ revision: 3 }, 0.1, 404]);

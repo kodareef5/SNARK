@@ -12,7 +12,9 @@ export function savedActs(store: WorldStore): Act[] {
     .map((j) => decodeAct(j.data, j.seq, j.tick));
 }
 
-/** Every act in the save's journal as `name\twhat`, oldest first. */
-export function adminLines(store: WorldStore): string[] {
-  return savedActs(store).map((a) => `${a.name}\t${a.what}`);
+/** The commands in the save's journal as `name\twhat`, oldest first; with `every`, sign-ins and changes too. */
+export function adminLines(store: WorldStore, every = false): string[] {
+  return savedActs(store)
+    .filter((a) => every || a.kind === "command")
+    .map((a) => `${a.name}\t${a.what}`);
 }

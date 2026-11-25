@@ -4,7 +4,8 @@ import { ABOUT_MAX, discordOf, plain, tagsOf } from "../shared/listing.ts";
 import type { Server, ServerWebSocket } from "bun";
 import { SurvivorAccess, entryReply } from "./survivor-access.ts";
 // bun server/main.ts [--dev] [--reports folder] [--client-dir folder] [--config dir] [--port 8787] [--host address] [--public-url https://name.example | /path] [--map file.snmap] [--db var/world.db] [--allow-missing-content] [--restore backup-folder] [--no-backups] [--module file.ts] [--cert cert.pem --key key.pem] [?Key=Value?Key2=Value2] [-Flag[=value]]
-// SNARK_ADMIN_PASSWORD sets the `enablecheats` password. In a terminal, typed lines run as console commands with full rights.
+// SNARK_ADMIN_PASSWORD sets the `enablecheats` password, and SNARK_CLUSTER_PASSWORD the cluster's, which gives the higher
+// rank on every world started with it. In a terminal, typed lines run as console commands with full rights.
 
 import { CORE_CONTENT } from "../content/core.ts";
 import { compileContent } from "../shared/content/registry.ts";
@@ -32,7 +33,8 @@ import { screensAdmin } from "./video/routes.ts";
 import { ScreenFeed, screenWorld } from "./video/screens.ts";
 import { boardOwners, soundBoard } from "./sound-board.ts";
 import { TitleScenes } from "./admin/title-scenes.ts";
-import { adminAsked, type AdminGate } from "./admin/gate.ts";
+import { actorOf, adminAsked, type AdminGate } from "./admin/gate.ts";
+import { PAGE_ACTOR, type Actor } from "./acts.ts";
 import { adminSite, oldAdminPage } from "./admin/site.ts";
 import { TickMeter } from "./admin/meter.ts";
 import { PART, type TickParts } from "./admin/parts.ts";
@@ -58,6 +60,8 @@ export interface ServerOptions {
   dev?: boolean;
   /** Password for `enablecheats`. Without it (and without `dev`) cheats are off. */
   adminPassword?: string;
+  /** The cluster's password, which `enablecheats` and the admin pages take at the cluster's rank. */
+  clusterPassword?: string;
   /** Read console commands from standard input, as the operator. */
   terminal?: boolean;
   /** Path of the map file to run (shared/world/mapfile.ts). Without one, the proving ground. */
@@ -259,6 +263,11 @@ export function worldSettings(host: Host): { name: string; map: string; settings
   return { name: host.rules.text("SessionName") || mapLabel(host.world.reg, host.world.mapId), map: host.world.mapId, settings: publicValues(host.rules) };
 }
 
+/** A page's sign-in is logged again after half an hour. */
+const SIGN_IN_TICKS = 30 * 60 * TICK_RATE;
+/** Sign-ins remembered; past this the oldest is forgotten. */
+const SIGN_INS_KEPT = 1024;
+
 /** The default settings folder of a development server. It speeds up taming, hatching and growth so raising a creature takes minutes. */
 export const DEV_CONFIG = resolve(import.meta.dir, "../config/dev");
 
@@ -333,7 +342,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   const clips = allClips(manifest, pack, served, (stored) => new Uint8Array(inflateRawSync(stored)));
   let terrain: Uint8Array<ArrayBuffer> | undefined;
   const onMapLoaded = (map: MapFile): void => void (terrain = adminTerrain(map));
-  const roles = { onMapLoaded, dev: opts.dev ?? false, clips, rigs: pack.header.rigs, ...(opts.map ? { map: opts.map } : {}), ...(opts.adminPassword ? { adminPassword: opts.adminPassword } : {}), ...(opts.config ? { config: opts.config } : {}), ...(opts.modules ? { modules: opts.modules } : {}), now: () => performance.now(), ...(opts.live ? { live: opts.live } : {}) };
+  const roles = { onMapLoaded, dev: opts.dev ?? false, clips, rigs: pack.header.rigs, ...(opts.map ? { map: opts.map } : {}), ...(opts.adminPassword ? { adminPassword: opts.adminPassword } : {}), ...(opts.clusterPassword ? { clusterPassword: opts.clusterPassword } : {}), ...(opts.config ? { config: opts.config } : {}), ...(opts.modules ? { modules: opts.modules } : {}), now: () => performance.now(), ...(opts.live ? { live: opts.live } : {}) };
   const host = createHost(registry, opts.probeScene ? { ...roles, startingCreatures: 0, wakeRadius: -1 } : { ...roles, ...(opts.dbPath ? { dbPath: opts.dbPath, keeper: "worker" as const, survivorLog: { mode: "worker" as const }, backups: !opts.noBackups, store: { allowMissingContent: opts.allowMissingContent ?? false } } : {}), wild: true });
   log.tick = () => host.world.tick;
   // Settings problems are logged at startup and do not stop the server.
@@ -375,7 +384,30 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   const mapRoute = mapRoutes(opts.map ?? host.mapFile!, host.world.mapId, host.world.mapHash);
   // The shared families of sounds are the owners the catalogue's fallbacks name.
   const families = [...new Set(CUES.flatMap((c) => c.falls.map((f) => f.slice(0, f.indexOf("/")))).filter((o) => o !== "{owner}"))];
-  const board: AdminGate = { dev: opts.dev ?? false, password: host.adminPassword, guesses: host.game.sessions.cheatGuesses, tick: () => host.world.tick, world: host.cluster?.world };
+  // A page brings its password with every request, so its sign-in is logged once in half an hour for each name, rank and address.
+  const signIns = new Map<string, number>();
+  const signedIn = (by: Actor): void => {
+    const key = `${by.name}\n${by.rank}\n${by.from}`;
+    const tick = host.world.tick;
+    const last = signIns.get(key);
+    if (last !== undefined && tick - last < SIGN_IN_TICKS) return;
+    signIns.delete(key);
+    if (signIns.size >= SIGN_INS_KEPT) signIns.delete(signIns.keys().next().value!);
+    signIns.set(key, tick);
+    // A copy, so the request's own actor counts as having logged nothing yet (pageChange).
+    host.acts.write({ ...by }, "opened the admin pages", "sign-in");
+  };
+  const board: AdminGate = { dev: opts.dev ?? false, password: host.adminPassword, cluster: host.clusterPassword, guesses: host.game.sessions.cheatGuesses, tick: () => host.world.tick, world: host.cluster?.world, passed: signedIn };
+  /** An admin page's change whose handler logged nothing, as the cast's, the screens' and the scene studio's, is logged by its method and path. */
+  const pageChange = <T extends Response | Promise<Response> | null>(req: Request, path: string, answer: T): T => {
+    if (answer === null || req.method === "GET" || req.method === "HEAD") return answer;
+    const log = (res: Response): Response => {
+      const by = actorOf(req);
+      if (res.ok && by !== PAGE_ACTOR && !host.acts.wroteFor(by)) host.acts.write(by, `${req.method} ${path}`);
+      return res;
+    };
+    return (answer instanceof Promise ? answer.then(log) : log(answer as Response)) as T;
+  };
   const meter = new TickMeter(() => gaugesOf(host));
   const playFile = opts.dev && opts.play ? join(opts.play, `${new Date().toISOString().slice(0, 19).replaceAll(":", "-")}.jsonl`) : "";
   const play = playFile ? new PlayLog(host.game, (line) => (mkdirSync(opts.play!, { recursive: true }), appendFileSync(playFile, line + "\n"))) : null;
@@ -492,14 +524,14 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
       const local = !opts.dev || namesThisMachine(req.headers.get("host"), named);
       const gate = local ? board : { ...board, dev: false };
       const id = host.cluster?.world ?? "local";
-      const siteAdmin = adminSite(req, url, {
+      const siteAdmin = pageChange(req, url.pathname, adminSite(req, url, {
         dir: clientDir, base, port: srv.port ?? 0, id, who, gate,
         destinations: () => host.cluster?.destinations() ?? [],
         scenes: (call) => originAllowed(call.headers.get("origin"), call.headers.get("host"), "")
           ? titleScenes.admin(call) : entryReply({ error: "Open the studio on this cluster." }, 403),
         screens: (call, at) => call.method === "POST" && !originAllowed(call.headers.get("origin"), call.headers.get("host"), "")
           ? entryReply({ error: "Open the screens page on this cluster." }, 403) : screensAdmin(call, at, video, () => screenWorld(host)),
-      });
+      }));
       if (siteAdmin) return siteAdmin;
       const { at, path } = placeOf(base, url.pathname);
       if (at === "slash") return new Response(null, { status: 308, headers: { location: `${base}/${url.search}` } });
@@ -572,9 +604,9 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
       }
       const old = oldAdminPage(req, path, id, who, gate);
       if (old) return old;
-      const sounds = soundBoard(req, who, gate, join(clientDir, "sounds.html"), () => boardOwners(registry, families), undefined, path);
+      const sounds = pageChange(req, path, soundBoard(req, who, gate, join(clientDir, "sounds.html"), () => boardOwners(registry, families), undefined, path));
       if (sounds) return sounds;
-      const page = admin.answer(req, who, gate, path);
+      const page = pageChange(req, path, admin.answer(req, who, gate, path));
       if (page) return page;
       const map = mapRoute(path, req);
       if (map) return map;
@@ -781,6 +813,7 @@ if (import.meta.main) {
     cert: value("--cert"),
     key: value("--key"),
     adminPassword: process.env.SNARK_ADMIN_PASSWORD,
+    clusterPassword: process.env.SNARK_CLUSTER_PASSWORD,
     terminal: process.stdin.isTTY,
     log,
   });

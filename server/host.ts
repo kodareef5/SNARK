@@ -180,6 +180,8 @@ export interface HostOptions {
   seed?: number;
   /** Password for `enablecheats`. Without one, cheats are off unless `dev` is set. */
   adminPassword?: string;
+  /** The cluster's password, which `enablecheats` and the admin pages take at the cluster's rank. */
+  clusterPassword?: string;
   /** Development server. Cheats need no password. Never set it in a public deployment. */
   dev?: boolean;
   /** Load a save whose item ledger does not match its contents, instead of refusing. */
@@ -329,6 +331,7 @@ export interface Host {
   readonly bus: Bus;
   readonly modules: Modules;
   readonly adminPassword: string | null;
+  readonly clusterPassword: string | null;
   readonly dev: boolean;
   /** `id` is a content id. Returns the entity index, or -1. */
   spawnCreature(id: string, x: number, z: number, level: number, why?: string): number;
@@ -1529,6 +1532,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   });
   // Timed by the survivor log's clock, so a command's mark there stands at its own time.
   const acts = new Acts({ persistence, tick: () => world.tick, wall: opts.survivorLog?.wall ?? Date.now, say, shown: () => rules.on("AdminLogging"), tellAll });
+  const adminPassword = opts.adminPassword || rules.text("ServerAdminPassword") || null;
+  const clusterPassword = opts.clusterPassword || rules.text("ClusterAdminPassword") || null;
+  if (adminPassword !== null && adminPassword === clusterPassword) say("settings: ServerAdminPassword is the same as ClusterAdminPassword: they should differ, or every map admin is the cluster's");
   const creative = new Creative(world, game, rules, bus, acts, records);
   const loadouts = new Loadouts({ world, records, items, creative, store: loadoutBook, refresh: (rec) => refreshBody(rec) }, (opts.seed ?? 1) + 113);
   game.sessions.onEnter.on((c) => {
@@ -2151,7 +2157,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     console: con,
     bus,
     modules,
-    adminPassword: opts.adminPassword || rules.text("ServerAdminPassword") || null,
+    adminPassword,
+    clusterPassword,
     lists,
     get passed() {
       return [...contentPassed, ...spawnsPassed];

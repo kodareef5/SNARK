@@ -112,7 +112,7 @@ test("a password never reaches an act", () => {
   h.say(ada, "enablecheats hunter2");
   h.say(ada, "setting ServerAdminPassword swordfish");
   h.run(200);
-  expect(h.host.acts.recent().map((a) => a.what)).toEqual(["setting ServerAdminPassword ****"]);
+  expect(h.host.acts.recent().map((a) => a.what)).toEqual(["enablecheats with the map's password", "setting ServerAdminPassword ****"]);
   h.host.shutdown();
   const store = new WorldStore(db, h.reg);
   const bytes = store.journal().filter((j) => j.op === OP_ADMIN).map((j) => new TextDecoder().decode(j.data)).join("\n");
