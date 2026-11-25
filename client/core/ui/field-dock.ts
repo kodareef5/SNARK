@@ -417,7 +417,9 @@ export class FieldDock implements Screen {
     const pic = f.picture(key + 300, x + (w - icon) / 2, y + (th - icon) / 2 - (caption && this.touch ? 4 : 0), icon, icon, S_LABEL, "ui:glass-" + l.art);
     if (pic) pic.alpha = enabled ? 1 : .39;
     if (caption || !pic) {
-      const n = f.text(key + 400, x - 8, y + h - 14, w + 16, under ? S_HUD_CAPTION : S_HUD_KEY, l.label);
+      // A caption stays on the canvas, as a leaf near a wheel's edge would carry it off.
+      const cx = Math.max(f.left + 2, Math.min(f.width - f.right - w - 18, x - 8));
+      const n = f.text(key + 400, cx, y + h - 14, w + 16, under ? S_HUD_CAPTION : S_HUD_KEY, l.label);
       n.alpha = enabled ? .95 : .6;
     }
     const hit = f.add(key, this.touch ? K_HOLD : K_BUTTON, x, y, w, h, S_HUD_HIT);
