@@ -7,6 +7,7 @@ import type { Assets } from "../../assets/assets.ts";
 import { nearestColour } from "../../../../shared/pack/palette.ts";
 import { newCraftPose } from "../../../../shared/sim/craft.ts";
 import type { Frame, Pass } from "../pass.ts";
+import { packEffect } from "../supply-light.ts";
 import { BONE_FLOATS, DRAW_PLAIN, DRAW_SKINNED, MAX_BONES, MAX_DRAWS, TRANSIENT_BUFFER } from "../packet.ts";
 import type { MapEventsShown, ShownPart } from "../../mapevent/shown.ts";
 import { PART_VIEWS, type PartView } from "../../mapevent/views.ts";
@@ -59,6 +60,22 @@ export class EventKit {
   /** Says the coarsest level of a mesh is wanted, for something `distance` metres off. */
   wantCoarsest(mesh: number, distance: number): void {
     if (mesh >= 0) this.assets.want(mesh, this.assets.table.error[mesh]!.length - 1, distance);
+  }
+
+  /**
+   * Sets the light the next emissive draws show (packet.ts drawEffect), as a supply drop's shaft is lit: its colour,
+   * how strongly it stands, 0 to 1, lit evenly across. A colour of 0 puts it back to none.
+   */
+  glow(seconds: number, rgb: number, power: number): void {
+    const e = this.f.put.effect;
+    if (rgb === 0) {
+      e.fill(0);
+      return;
+    }
+    e[0] = seconds;
+    e[1] = rgb;
+    e[2] = power;
+    e[3] = packEffect(1, false, 0, 1);
   }
 
   /** Keeps the place of a craft drawn. */

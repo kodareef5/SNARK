@@ -6,7 +6,7 @@
 
 import { TICK_RATE } from "../../../shared/coords.ts";
 import { fallPose, newCraftPose, trackPose, type CraftPose } from "../../../shared/sim/craft.ts";
-import { DRAW_BLEND } from "../render/packet.ts";
+import { DRAW_BLEND, DRAW_EMISSIVE } from "../render/packet.ts";
 import type { EventKit } from "../render/passes/map-events.ts";
 import { MESH_FALLBACK, MESH_WRECK, type ShownCraft } from "./shown.ts";
 
@@ -137,9 +137,9 @@ export function drawCraft(k: EventKit, c: ShownCraft, tick: number): void {
     if (look.smoke) {
       // Its smoke stands over the map from where it lies, and thins once its event has ended.
       const tall = look.smoke.height * (0.55 + 0.45 * left);
-      const wide = Math.max(look.smoke.wide * 0.5, far * SMOKE_FLOOR) * (0.6 + 0.4 * left);
+      const wide = Math.max(look.smoke.wide, far * SMOKE_FLOOR) * (0.6 + 0.4 * left);
       k.turn(0, 1, 0, 0);
-      if (k.put(k.cone, x, y - row.half, z, wide, tall, Math.max(wide, tall * 0.5), 0.5, k.tint(look.smoke.rgb), DRAW_BLEND, 0.2 + 0.8 * (1 - left))) k.smokes++;
+      if (k.put(k.cone, x, y - row.half, z, wide, tall, Math.max(wide, tall * 0.5), 0.5, k.tint(look.smoke.rgb), DRAW_BLEND, 0.4 + 0.6 * (1 - left))) k.smokes++;
     }
   }
   const size = Math.max(1, (far * SIZE_FLOOR) / (2 * row.radius));
@@ -193,11 +193,14 @@ export function drawCraft(k: EventKit, c: ShownCraft, tick: number): void {
   }
   const beam = look.beam;
   if (state !== CRAFT_FLYING || !beam || pose.low <= 0.02) return;
-  // Its beam, from under its middle down to the ground under it, as wide as its low pass has it on.
+  // Its beam, from under its middle down to the ground under it, its look's width the radius of its foot as its low pass has it on.
   const top = y - beam.drop * size;
   const length = top - (k.f.world.hf.heightAt(pose.x, pose.z) - cam.y);
   if (length <= 1) return;
-  const wide = Math.max(beam.wide * 0.5 * pose.low, far * BEAM_FLOOR);
+  const wide = Math.max(beam.wide * pose.low, far * BEAM_FLOOR);
   k.turn(0, -1, 0, 0);
-  if (k.put(k.cone, x, top, z, wide, length, Math.max(wide, length * 0.5), 0.5, k.tint(beam.rgb), DRAW_BLEND, 0.15 + 0.6 * (1 - pose.low))) k.beams++;
+  // Light with no surface, in its own colour by day and night: lit as a supply drop's shaft is, evenly across.
+  k.glow(tick / TICK_RATE, beam.rgb, pose.low);
+  if (k.put(k.cone, x, top, z, wide, length, Math.max(wide, length * 0.5), 0.5, k.tint(beam.rgb), DRAW_BLEND | DRAW_EMISSIVE, 0.25 + 0.6 * (1 - pose.low))) k.beams++;
+  k.glow(0, 0, 0);
 }

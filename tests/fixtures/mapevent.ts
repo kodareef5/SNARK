@@ -13,7 +13,7 @@ import type { Harness } from "./net.ts";
 export const UFO_LOOK: CraftLook = {
   pieces: [{ mesh: "core:ufo_craft", spin: 0 }, { mesh: "core:ufo_rim", spin: 0.3 }, { mesh: "core:ufo_ring", spin: -5 }],
   fallback: "core:event_disc", wreck: "core:ufo_wreck", glow: 0x40e8ff, broken: 0xf4f8ff, ember: 0x1a5a66,
-  beam: { rgb: 0x40e8ff, wide: 28, drop: 2.4 }, smoke: { rgb: 0x6a6660, height: 320, wide: 24 }, lean: 1 / 900, sound: "core:ufo",
+  beam: { rgb: 0x40e8ff, wide: 14, drop: 2.4 }, smoke: { rgb: 0x6a6660, height: 320, wide: 12 }, lean: 1 / 900, sound: "core:ufo",
 };
 /** A look whose meshes no pack has: it is drawn as the stand-in disc. */
 export const STAND_IN_LOOK: CraftLook = { ...UFO_LOOK, pieces: [{ mesh: "test:no_such_craft", spin: 1 }], fallback: "", wreck: "", sound: "" };
