@@ -64,6 +64,7 @@ function stateAt(rank: number, world = 1): PermissionsState {
       { id: idOf(1, 6), name: "twin", online: false },
     ],
     tribes: [{ team: 42, name: "River Folk" }],
+    register: [MARA, KADE, PIP, idOf(1, 5), idOf(1, 6)].map((id, i) => ({ id, name: ["Mara", "Kade", "<b>Pip</b>", "Twin", "twin"][i]!, world: 1 })),
     commands: ["kick", "fly", "give"],
     worlds: [{ id: 1, name: "Miami" }, { id: 2, name: "Tampa" }],
   };

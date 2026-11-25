@@ -224,6 +224,10 @@ export interface RuleLook {
   staffRank(id: string): number;
   /** Whether a group has a member on any world, whose time has not run out. */
   hasMembers(name: string): boolean;
+  /** Whether a world ever issued survivor ID `id`. */
+  issued(id: string): boolean;
+  /** Whether a world ever made team number `key`. */
+  teamMade(key: string): boolean;
 }
 
 /**
@@ -299,6 +303,9 @@ export function editRule(actor: PermissionActor, op: PermissionOp, look: RuleLoo
     case "removeMember": {
       if (op.kind !== "survivor" && op.kind !== "tribe") return "A member is a survivor or a tribe.";
       if (!isMemberKey(op.kind, op.key)) return op.kind === "survivor" ? "That is not a survivor's ID." : "That is not a tribe's number.";
+      // A number not made yet would be handed with its groups to whoever is given it. One taken out need not exist.
+      if (op.op === "addMember" && op.kind === "survivor" && !look.issued(op.key)) return `No survivor has the ID ${op.key}.`;
+      if (op.op === "addMember" && op.kind === "tribe" && !look.teamMade(op.key)) return `No tribe has the number ${op.key}.`;
       const rank = existing(op.group);
       if (typeof rank === "string") return rank;
       if (op.group.toLowerCase() === DEFAULT_GROUP.toLowerCase()) return `Everyone is in ${DEFAULT_GROUP}.`;

@@ -371,6 +371,10 @@ export class Permissions {
     try {
       this.store.transaction(() => {
         if (this.store.revision() !== this.revision) this.load(this.store.read());
+        if (this.store.issued(id) === null) {
+          why = `No survivor has the ID ${id}.`;
+          return;
+        }
         if (this.staffRank(id) < RANK_STAFF) {
           why = "You are in no staff group, so there is no password to claim. An admin puts you in one first.";
           return;
@@ -490,6 +494,8 @@ export class Permissions {
     groupRank: (name) => this.groupsByName.get(name.toLowerCase())?.group.rank,
     staffRank: (id) => this.staffRank(id),
     hasMembers: (name) => this.membersIn(name).some((m) => m.forever || m.until > this.now()),
+    issued: (id) => this.store.issued(id) !== null,
+    teamMade: (key) => this.teamMade(key),
   };
 
   /** Writes `op` to the store and to memory, or answers why there is nothing to do. */

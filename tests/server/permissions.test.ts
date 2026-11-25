@@ -13,10 +13,13 @@ import {
 import { RANK_ADMIN, RANK_CLUSTER, RANK_MAP, RANK_OPEN, RANK_STAFF } from "../../shared/ranks.ts";
 import { Permissions, POLL_MS, type PermissionSubject } from "../../server/permissions/permissions.ts";
 import { PermissionStore } from "../../server/permissions/store.ts";
+import { issue } from "../fixtures/permissions.ts";
 
 const HOUR = 3600 * 1000;
 const A = idOf(3, 1);
 const B = idOf(3, 2);
+/** Never issued. */
+const C = idOf(3, 3);
 const cluster: PermissionActor = { rank: RANK_CLUSTER, world: 3, name: "cluster" };
 const mapAdmin: PermissionActor = { rank: RANK_MAP, world: 3, name: "map" };
 const admin: PermissionActor = { rank: RANK_ADMIN, world: 3, name: "admin" };
@@ -26,6 +29,7 @@ const outside = (actor: PermissionActor): PermissionActor => ({ ...actor, world:
 function world(world = 3, start = 1_000_000) {
   const clock = { t: start };
   const perms = new Permissions({ store: new PermissionStore(":memory:"), world, now: () => clock.t });
+  issue(perms, A, B, "7", "42");
   const ok = (op: PermissionOp, actor: PermissionActor = cluster): void => expect(perms.apply(actor, op)).toBe("");
   return { perms, clock, ok };
 }
@@ -329,7 +333,13 @@ test("each change is passed to the callback and raises the version", () => {
 });
 
 test("the edit rule reads the survivor's highest staff group", () => {
-  const look = (staff: number): RuleLook => ({ groupRank: (n) => (n.toLowerCase() === "vip" ? RANK_OPEN : undefined), staffRank: () => staff, hasMembers: () => false });
+  const look = (staff: number): RuleLook => ({
+    groupRank: (n) => (n.toLowerCase() === "vip" ? RANK_OPEN : undefined),
+    staffRank: () => staff,
+    hasMembers: () => false,
+    issued: () => true,
+    teamMade: () => true,
+  });
   const op: PermissionOp = { op: "addMember", kind: "survivor", key: A, group: "Vip" };
   expect(editRule(admin, op, look(RANK_ADMIN))).toBe("");
   expect(editRule(admin, op, look(RANK_MAP))).not.toBe("");
@@ -424,4 +434,31 @@ test("Admins cannot be made open while anyone is in it", () => {
   expect([perms.group("Admins")?.rank, perms.has(who(A), "Cheat.give")]).toEqual([RANK_ADMIN, false]);
   ok({ op: "removeMember", kind: "survivor", key: A, group: "Admins" });
   ok(open);
+});
+
+test("the edit rule adds only an ID that was issued and a team number that was made", () => {
+  const look = (issued: boolean, made: boolean): RuleLook => ({ groupRank: () => RANK_OPEN, staffRank: () => 0, hasMembers: () => false, issued: () => issued, teamMade: () => made });
+  const add: PermissionOp = { op: "addMember", kind: "survivor", key: C, group: "Vip" };
+  const tribe: PermissionOp = { op: "addMember", kind: "tribe", key: "9", group: "Vip" };
+  expect([editRule(cluster, add, look(false, true)), editRule(cluster, tribe, look(true, false))]).toEqual([`No survivor has the ID ${C}.`, "No tribe has the number 9."]);
+  expect([editRule(cluster, add, look(true, false)), editRule(cluster, tribe, look(false, true))]).toEqual(["", ""]);
+  const out: PermissionOp[] = [{ op: "removeMember", kind: "survivor", key: C, group: "Vip" }, { op: "removeMember", kind: "tribe", key: "9", group: "Vip" }, { op: "clearSecret", id: C }];
+  expect(out.map((op) => editRule(cluster, op, look(false, false)))).toEqual(["", "", ""]);
+});
+
+test("rows naming an ID never issued are taken out, and it claims nothing", () => {
+  const store = new PermissionStore(":memory:");
+  store.putGroup({ name: "Vip", rank: RANK_OPEN, permissions: [], chat: "" });
+  store.putMember({ kind: "survivor", key: C, group: "Vip", world: 0, forever: true, from: 0, until: 0 });
+  store.putMember({ kind: "survivor", key: C, group: "Admins", world: 0, forever: true, from: 0, until: 0 });
+  store.putMember({ kind: "tribe", key: "99", group: "Vip", world: 0, forever: true, from: 0, until: 0 });
+  store.putSecret({ id: C, hash: "ab".repeat(16), at: 0 });
+  const perms = new Permissions({ store, world: 3 });
+  expect(perms.apply(cluster, { op: "addMember", kind: "survivor", key: C, group: "Vip", hours: 1 })).toBe(`No survivor has the ID ${C}.`);
+  expect(perms.apply(cluster, { op: "addMember", kind: "tribe", key: "99", group: "Vip", hours: 1 })).toBe("No tribe has the number 99.");
+  expect(perms.claim(C, "cd".repeat(16), "ab".repeat(16))).toEqual({ why: `No survivor has the ID ${C}.`, wrong: false });
+  expect(perms.apply(cluster, { op: "removeMember", kind: "survivor", key: C, group: "Vip" })).toBe("");
+  expect(perms.apply(cluster, { op: "removeMember", kind: "tribe", key: "99", group: "Vip" })).toBe("");
+  expect(perms.apply(cluster, { op: "clearSecret", id: C })).toBe("");
+  expect([perms.membersOf("survivor", C).map((m) => m.group), perms.secretOf(C)]).toEqual([["Admins"], ""]);
 });

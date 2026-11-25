@@ -30,6 +30,7 @@ export function lookOf(state: State): Lookup {
   let look = looks.get(state);
   if (look) return look;
   const groups = new Map(state.groups.map((g) => [g.name.toLowerCase(), g]));
+  const issued = new Set([...state.register.map((r) => r.id), ...state.survivors.map((s) => s.id)]);
   const staff = new Map<string, number>();
   const peopled = new Set<string>();
   for (const m of state.members) {
@@ -43,6 +44,9 @@ export function lookOf(state: State): Lookup {
     staffRank: (id) => staff.get(id) ?? 0,
     // A row whose time ran out counts here until it is taken out; the server's rule skips it.
     hasMembers: (name) => peopled.has(name.toLowerCase()),
+    issued: (id) => issued.has(id),
+    // The page knows no other world's tribes: the server decides.
+    teamMade: () => true,
   };
   looks.set(state, look);
   return look;

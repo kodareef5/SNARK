@@ -16,7 +16,7 @@ export interface PermissionsState {
   saved: boolean;
   revision: number;
   groups: Group[];
-  /** Every membership; `name` is the survivor's or tribe's name where this world knows it, else "". */
+  /** Every membership; `name` is the survivor's or tribe's name where this world or the register knows it, else "". */
   members: (Member & { name: string })[];
   /** The survivors who have claimed a staff password, and when by the wall clock (0 where not known). Never a hash. */
   passwords: { id: string; at: number }[];
@@ -25,6 +25,8 @@ export interface PermissionsState {
   /** This world's survivors and tribes, for choosing one by name. */
   survivors: { id: string; name: string; online: boolean }[];
   tribes: { team: number; name: string }[];
+  /** Every survivor ID a world of the cluster issued: its survivor's name and the world it was on, as last known. */
+  register: { id: string; name: string; world: number }[];
   /** The console commands that ask for cheats, for offering Cheat.<command>. */
   commands: string[];
   worlds: { id: number; name: string }[];

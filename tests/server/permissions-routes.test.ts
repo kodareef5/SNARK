@@ -13,7 +13,9 @@ import { startServer, type RunningServer } from "../../server/main.ts";
 import { permissionsAdmin } from "../../server/permissions/routes.ts";
 import { passwordHash, staffPasswords } from "../../server/permissions/secrets.ts";
 import { loadConfig } from "../../server/settings/config.ts";
+import { TEAM_RANGE } from "../../server/records.ts";
 import { idText } from "../../server/survivor-ids.ts";
+import { idOf } from "../../shared/ids.ts";
 import type { PermissionOp } from "../../shared/permissions/model.ts";
 import { PERMISSIONS_API, PERMISSIONS_STATE, type PermissionsAnswer, type PermissionsPost, type PermissionsState } from "../../shared/permissions/page.ts";
 import { RANK_ADMIN, RANK_CLUSTER, RANK_MAP, RANK_STAFF } from "../../shared/ranks.ts";
@@ -261,5 +263,24 @@ test("a body too large, bad JSON or an unknown request is refused plainly", asyn
   expect(await ask(PERMISSIONS_API, posted(huge, kody)).then(answered)).toEqual([413, { ok: false, why: "That is too large: a request is at most 8 MB." }]);
   expect(await ask(PERMISSIONS_API, posted("{ not json", kody)).then(answered)).toEqual([400, { ok: false, why: "That is not a request the permissions page sends." }]);
   expect(await ask(PERMISSIONS_API, posted(JSON.stringify({ do: "everything" }), kody)).then(answered)).toEqual([400, { ok: false, why: "That is not a request the permissions page sends." }]);
+  h.host.shutdown();
+});
+
+test("the page's grant to an ID or a team never made is refused", async () => {
+  const { h, ada, ask } = world();
+  const kody = signIn("kody", MAP);
+  const ghost = idOf(1, 999);
+  operator(h.host, { op: "addGroup", group: "Vip" });
+  const refusals = await Promise.all([
+    ask(PERMISSIONS_API, posted({ do: "op", op: { op: "addMember", kind: "survivor", key: ghost, group: "Admins" } }, kody)).then(answered),
+    ask(PERMISSIONS_API, posted({ do: "op", op: { op: "addMember", kind: "tribe", key: String(TEAM_RANGE + 999), group: "Vip" } }, kody)).then(answered),
+  ]);
+  expect(refusals).toEqual([
+    [403, { ok: false, why: `No survivor has the ID ${ghost}.` }],
+    [403, { ok: false, why: `No tribe has the number ${TEAM_RANGE + 999}.` }],
+  ]);
+  const team = String(h.host.records.byPid.get(h.client(ada)!.pid)!.team);
+  expect(await ask(PERMISSIONS_API, posted({ do: "op", op: { op: "addMember", kind: "tribe", key: team, group: "Vip" } }, kody)).then(answered)).toEqual([200, { ok: true, why: "" }]);
+  expect(h.host.permissions.membersIn("Admins")).toEqual([]);
   h.host.shutdown();
 });

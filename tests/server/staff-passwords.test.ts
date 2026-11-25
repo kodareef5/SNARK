@@ -27,6 +27,7 @@ import { RANK_ADMIN, RANK_CLUSTER, RANK_MAP, RANK_OPEN, RANK_STAFF } from "../..
 import { splitPack } from "../../tools/pack/split.ts";
 import { TestCluster, beat, keyAt, rec, rise, travel } from "../fixtures/cluster.ts";
 import { listener } from "../fixtures/module.ts";
+import { issue } from "../fixtures/permissions.ts";
 import { Harness, asShipped } from "../fixtures/net.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
 
@@ -550,6 +551,7 @@ test("two maps over one store keep a claim whole when both write at once", () =>
     const one = new Permissions({ store: new PermissionStore(file), world: 1 });
     const two = new Permissions({ store: new PermissionStore(file), world: 2 });
     const id = idOf(1, 1);
+    issue(one, id);
     const actor = { rank: RANK_CLUSTER, world: 1, name: "cluster" };
     expect(one.apply(actor, { op: "addMember", kind: "survivor", key: id, group: "Admins", world: 0 })).toBe("");
     // The second has not polled: its claim reads the file inside its write and finds the membership.

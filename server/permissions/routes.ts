@@ -42,6 +42,7 @@ export function permissionsState(host: Host, req: Request): PermissionsState {
     const id = rec ? idText(rec) : "";
     if (rec && id) survivors.push({ id, name: rec.name, online: online.has(pid) });
   }
+  const register = perms.allIssued().map((r) => ({ id: r.id, name: r.name, world: r.world }));
   const nameOf = (kind: string, key: string): string =>
     kind === "tribe" ? (host.tribes.byId.get(Number(key))?.name ?? "") : (host.survivorById(key)?.name ?? "");
   return {
@@ -54,6 +55,7 @@ export function permissionsState(host: Host, req: Request): PermissionsState {
     document: perms.document(CHAT_DOCUMENT),
     survivors,
     tribes: [...host.tribes.byId.values()].map((t) => ({ team: t.id, name: t.name })),
+    register,
     commands: cheatCommands(host),
     worlds: worldsOf(host),
   };
