@@ -1,6 +1,6 @@
 // What a world tells its clients the screens play (server/video/screens.ts): sent on a welcome and when the item changes,
 // with the clip's start turned from the wall clock into the world's ticks.
-import { afterAll, expect, test } from "bun:test";
+import { afterAll, expect, spyOn, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -52,29 +52,42 @@ test("a clip's start tick is the world's tick less the time it has played", () =
   expect(startTick(10, 60_000, 0)).toBe(10 - 60 * TICK_RATE);
 });
 
+test("the first poll starts the programme after the library creates its epoch", () => {
+  let wall = 1_000_000;
+  const lib = library(() => ++wall);
+  const h = new Harness({}, 1, 30);
+  const feed = new ScreenFeed(lib, h.world);
+  const clock = spyOn(Date, "now").mockImplementation(() => wall);
+  try {
+    feed.poll(undefined, false);
+    expect(feed.states[0]).toMatchObject({ show: SHOW_VIDEO, clip: 0, next: 1 });
+  } finally {
+    clock.mockRestore();
+    lib.close();
+  }
+});
+
 test("the world sends the screens on a welcome and again only when the item changes", () => {
   let wall = 1_000_000;
   const lib = library(() => wall);
   const h = new Harness({}, 1, 30);
   const feed = new ScreenFeed(lib, h.world);
   feed.attach(h.server);
+  const birth = h.world.tick;
   feed.poll(wall, false);
   h.join("ada");
   const sent = screensSent(h, 0);
   h.run(400);
-  // The orb is on the scenes until an admin picks something, set to fill the ball facing each viewer.
   expect(sent.length).toBe(1);
   const manifest = lib.view().manifestId;
-  expect(sent[0]).toEqual([{ manifest, show: SHOW_SCENES, flags: SCREEN_FACING | SCREEN_FILL, clip: NO_CLIP, start: 0, next: NO_CLIP, scene: -1 }]);
+  expect(sent[0]).toEqual([{ manifest, show: SHOW_VIDEO, flags: SCREEN_FACING | SCREEN_FILL, clip: 0, start: birth, next: 1, scene: -1 }]);
 
-  lib.edit(null, (doc) => ((doc.screens[0] = { ...doc.screens[0]!, show: "strip", fill: true, sound: true }), null));
+  lib.edit(null, (doc) => ((doc.screens[0] = { ...doc.screens[0]!, sound: true }), null));
   wall += LIBRARY_CHECK_MS;
   feed.poll(wall, false);
-  const at = h.world.tick;
   h.run(200);
   expect(sent.length).toBe(2);
-  // The strip's epoch is the library's birth, a look at its file ago, so A has played that long.
-  expect(sent[1]![0]).toEqual({ manifest, show: SHOW_VIDEO, flags: SCREEN_FACING | SCREEN_FILL | SCREEN_SOUND, clip: 0, start: at - (LIBRARY_CHECK_MS / 1000) * TICK_RATE, next: 1, scene: -1 });
+  expect(sent[1]![0]).toEqual({ manifest, show: SHOW_VIDEO, flags: SCREEN_FACING | SCREEN_FILL | SCREEN_SOUND, clip: 0, start: birth, next: 1, scene: -1 });
 
   // The same item a few seconds on is no news, whatever the ticks did meanwhile.
   for (let s = 0; s < 4; s++) {

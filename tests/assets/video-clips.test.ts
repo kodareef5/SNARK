@@ -22,11 +22,25 @@ test("every default clip, recipe and channel passes the clip tool's check", () =
   expect(problems()).toEqual([]);
 });
 
+test("each starter clip has a content-addressed release pack", () => {
+  const release = JSON.parse(readFileSync(new URL("../../distribution/release.json", import.meta.url), "utf8"));
+  const packs = new Map<string, { file: string; sha256: string }>(
+    release.art.files.map((pack: { name: string; file: string; sha256: string }) => [pack.name, pack]),
+  );
+  for (const name of names) {
+    const pack = packs.get(`core-video-${name}`);
+    expect(pack, name).toBeDefined();
+    expect(pack!.file).toBe(`core-video-${name}.${pack!.sha256.slice(0, 12)}.tar.zst`);
+  }
+});
+
 test("every default clip has a row in SOURCES.md with its licence", () => {
   const page = readFileSync(SOURCES_FILE, "utf8");
   for (const name of names) {
-    const row = page.split("\n").find((line) => line.startsWith(`| ${readRecipe(name).title} |`));
+    const recipe = readRecipe(name);
+    const row = page.split("\n").find((line) => line.startsWith(`| ${recipe.title} |`));
     expect(row, name).toContain(`\`${name}\` \`${readClip(name)!.id}\``);
+    if (recipe.from.page) expect(row, name).toContain(`[page](${recipe.from.page})`);
   }
 });
 
@@ -101,7 +115,7 @@ test("a build leaves out a clip whose art is missing, and writes nothing with no
   for (const f of ["clip.mp4", "poster.jpg"]) writeFileSync(join(from, "lightning", f), "stand-in");
   expect(copyStarterClips(from, dist)).toBe(1);
   const starter = JSON.parse(readFileSync(join(dist, "media/starter.json"), "utf8")) as StarterList;
-  // The strip held only clouds, whose art is missing, so it is left out with it.
+  // The only installed clip flashes and belongs to no default channel.
   expect([starter.clips.map((c) => c.title), starter.channels]).toEqual([["Lightning storm over Colorado"], []]);
   rmSync(join(from, "lightning"), { recursive: true });
   mkdirSync(join(dist, "media"), { recursive: true });
