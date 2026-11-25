@@ -37,7 +37,7 @@ function city(): Feature[] {
 
 /** Each footprint's id by its outer ring's corners, sorted: what tells a footprint whatever row it is. */
 function byShape(features: Feature[]): Map<string, number[]> {
-  const buildings = readBuildings({ features });
+  const buildings = readBuildings({ features }, toLattice);
   const ids = buildingIds(buildings, toLattice);
   const out = new Map<string, number[]>();
   buildings.forEach((b, k) => {
@@ -60,17 +60,18 @@ test("a building's id does not change when the data's rows are shuffled and renu
   expect(was.size).toBe(606);
   expect([...now].sort()).toEqual([...was].sort());
   // The same city moved a frame: built as a cut or widened, a footprint stands at the same lattice place and keeps its id.
-  expect(buildingIds(readBuildings({ features: first }).slice(40, 90), toLattice)).toEqual(buildingIds(readBuildings({ features: first }), toLattice).slice(40, 90));
+  expect(buildingIds(readBuildings({ features: first }, toLattice).slice(40, 90), toLattice)).toEqual(buildingIds(readBuildings({ features: first }, toLattice), toLattice).slice(40, 90));
 });
 
 test("two buildings never share an id, a footprint listed twice among them", () => {
-  const buildings = readBuildings({ features: city() });
+  const buildings = readBuildings({ features: city() }, toLattice);
   const ids = buildingIds(buildings, toLattice);
   expect(new Set(ids).size).toBe(ids.length);
+  expect(buildings.map((b) => b.id)).toEqual(ids);
   expect(ids.every((id) => Number.isInteger(id) && id >= 0 && id < 2 ** 48)).toBe(true);
   // The twins differ, and so do the two of one middle and area; a footprint moved a metre is another building.
-  const of = (row: number): number[] => buildings.flatMap((b, k) => (Math.floor(b.id / 4) === row ? [ids[k]!] : []));
+  const of = (row: number): number[] => buildings.flatMap((b, k) => (b.row === row ? [ids[k]!] : []));
   expect([of(601)[0] !== of(602)[0], of(603)[0] !== of(604)[0], of(606).length]).toEqual([true, true, 2]);
-  const moved = buildingIds(readBuildings({ features: [{ properties: { id: 1 }, geometry: { type: "Polygon", coordinates: [rect(501.25, 700.5, 20, 10)] } }] }), toLattice);
+  const moved = buildingIds(readBuildings({ features: [{ properties: { id: 1 }, geometry: { type: "Polygon", coordinates: [rect(501.25, 700.5, 20, 10)] } }] }, toLattice), toLattice);
   expect(ids.includes(moved[0]!)).toBe(false);
 });

@@ -10,6 +10,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { STREET_PIECES, streetKind } from "../../content/street.ts";
 import { binKey, hash3 } from "./raster.ts";
+import { seedOf } from "./building-id.ts";
 import { boxOf, meets, obstacleIndex, type Box } from "./ruin-obstacles.ts";
 import { vocabulary } from "./ruin-vocabulary.ts";
 import type { Site, StaticLayer, StaticPiece } from "./statics.ts";
@@ -24,8 +25,8 @@ export interface Roofs {
   plant: Record<string, { per: number; least: number; most: number; chance: number; tall?: number; south?: boolean; forms: [string, number][] }>;
 }
 export interface RoofSummary { roofs: number; placed: Record<string, number>; refused: Record<string, number>; }
-/** A building as the ruins record it (ruins.ts): its pieces, from its first, its height and its turn. */
-export interface RoofRecord { firstPiece: number; blocks: number; height: number; yaw: number; }
+/** A building as the ruins record it (ruins.ts): its id, its pieces from its first, its height and its turn. */
+export interface RoofRecord { id: number; firstPiece: number; blocks: number; height: number; yaw: number; }
 
 const DEG = 180 / Math.PI;
 /** A roof slab's box and the cosine and sine of its turn. */
@@ -70,7 +71,8 @@ export function placeRoofPlant(site: Site, placed: readonly StaticPiece[], recor
       return top;
     };
     const area = roofs.reduce((n, b) => n + b.size[0] * b.size[2], 0);
-    const h = hash3(r.firstPiece, r.blocks, seed);
+    // By its building's id, not where its pieces fall in the city's list, which every building before it moves.
+    const h = hash3(seedOf(r.id), 0, seed);
     for (const [kind, k] of Object.entries(rules.plant)) {
       const hk = hash3(h, kind.length * 131 + kind.charCodeAt(0), seed);
       if (area < k.least || (k.tall !== undefined && r.height < k.tall) || hash3(hk, 1, seed) / 4294967296 >= k.chance) continue;

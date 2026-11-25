@@ -292,7 +292,7 @@ export async function buildMap(named: string, release = false, output = join(ROO
   const uses = new Map(facts.rows.map(row => [Number(row[idAt]), `${row[classAt] ?? ""} ${row[primaryAt] ?? ""}`.toLowerCase()]));
   const aircraftSites: HelicopterSite[] = [];
   for (const { building } of site.footprints) {
-    const use = uses.get(Math.floor(building.id / 4)) ?? "";
+    const use = uses.get(building.row) ?? "";
     const kind = /hospital/.test(use) ? "hospital" : /police|emergency response/.test(use) ? "police" : /industrial/.test(use) && building.area > 1200 ? "civilian" : null;
     if (!kind) continue;
     const [lx, lz] = site.toLattice(building.e, building.n); const [x, z] = [lx - x0, lz - z0];
