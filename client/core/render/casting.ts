@@ -8,7 +8,7 @@ import type { BodyShadows, CastFn, Characters } from "./characters.ts";
 import type { Hiding } from "./hide.ts";
 import { LAMP_ACROSS, LAMP_BIT, LAMP_RANGE, LampView, lampFrame } from "./lamp.ts";
 import type { Pass } from "./pass.ts";
-import { CAST_AT, DRAW_CUTOUT, DRAW_ONE_BONE, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, LAMP_AT, MAX_CASCADES, MAX_CASTERS, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, type FramePacket } from "./packet.ts";
+import { CAST_AT, DRAW_CUTOUT, DRAW_ONE_BONE, DRAW_PIECE, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, LAMP_AT, MAX_CASCADES, MAX_CASTERS, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, type FramePacket } from "./packet.ts";
 import { Cascades, MAX_REACH, reach } from "./shadow.ts";
 import { shadowLayer } from "./shadowtext.ts";
 import type { StreetLamps } from "./street-lamps.ts";
@@ -18,7 +18,7 @@ import type { CastTest, TerrainLod } from "./terrain.ts";
 /** The one run of a level cast flat: no material, and all its indices. */
 const FLAT: readonly number[] = [-1, 0, 0];
 /** What of a draw's flags a caster keeps: how its vertices are placed. */
-const CAST_FLAGS = DRAW_SKINNED | DRAW_ONE_BONE | DRAW_SIZED;
+const CAST_FLAGS = DRAW_SKINNED | DRAW_ONE_BONE | DRAW_SIZED | DRAW_PIECE;
 
 /** What casting reads of the pack's meshes and materials, each made once by the scene. */
 export interface CastLooks {
