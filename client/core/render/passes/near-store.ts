@@ -1134,7 +1134,15 @@ export class NearStore implements Pass {
       y1 = Math.max(y1, box[k + 4]!);
       z1 = Math.max(z1, box[k + 5]! + spread);
     }
-    if (whole) whole.set([x0, y0, z0, x1, y1, z1], q * 6);
+    if (whole) {
+      const k = q * 6;
+      whole[k] = x0;
+      whole[k + 1] = y0;
+      whole[k + 2] = z0;
+      whole[k + 3] = x1;
+      whole[k + 4] = y1;
+      whole[k + 5] = z1;
+    }
     if (x0 <= x1) this.put.boxRows(from, this.packet.drawCount, x0 - cam.x, y0 - cam.y, z0 - cam.z, x1 - cam.x, y1 - cam.y, z1 - cam.z);
   }
 
