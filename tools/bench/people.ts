@@ -5,12 +5,13 @@
 // is the scene the people are added to. Every cell is run on each tier asked, warmed first, then `runs` times by turns,
 // each round starting one cell further on. The world is held at noon.
 //
-//   bun tools/bench/people.ts [--runs 4] [--tiers medium,high] [--only far] [--label intel] [--client dir]
+//   bun tools/bench/people.ts [--runs 4] [--tiers medium,high] [--only far] [--label intel] [--client dir] [--shots]
 //   bun tools/bench/people.ts --table var/people-bench/intel.json var/people-bench/rtx.json
 //
 // The card is the one tools/chrome.ts picks: SNARK_GPU=mesa or nvidia. The page is a client built for the bench into
 // var/people-bench/client, or the one --client or CLIENT_DIR names, which must be built from this source. What it writes
-// goes under var/people-bench: <label>.json, every run's numbers and each cell's ranges, and <label>.txt, the table.
+// goes under var/people-bench: <label>.json, every run's numbers and each cell's ranges, <label>.txt, the table, and
+// with --shots each cell's last frame in <label>-shots.
 
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { loadavg, tmpdir } from "node:os";
@@ -41,7 +42,7 @@ interface Saved {
 }
 
 /** Runs every cell of `list` `runs` times by turns after one warming run a tier, and returns each run's numbers by cell. */
-async function measure(list: readonly Cell[], runs: number, dist: string, say: (line: string) => void): Promise<{ results: Map<string, RunNumbers[]>; renderer: string }> {
+async function measure(list: readonly Cell[], runs: number, dist: string, say: (line: string) => void, shots: string | null): Promise<{ results: Map<string, RunNumbers[]>; renderer: string }> {
   const chrome = findChrome();
   if (!chrome) throw new Error("no Chrome: set CHROME");
   let got: (report: Record<string, any>) => void = () => {};
@@ -69,6 +70,8 @@ async function measure(list: readonly Cell[], runs: number, dist: string, say: (
       const page = await devtools(profile);
       await page.send("Page.navigate", { url: address(server.port, c) });
       const result = await report;
+      // With --shots, the frame the run ended on is kept, to see what was measured.
+      if (result && shots) writeFileSync(join(shots, `${cellName(c).replaceAll(/[^a-z0-9]+/gi, "-")}.png`), Buffer.from((await page.send("Page.captureScreenshot", { format: "png" })).data, "base64"));
       page.close();
       return result;
     } finally {
@@ -128,7 +131,9 @@ if (import.meta.main) {
   if (!existsSync(join(dist, "index.html"))) throw new Error(`no built client at ${dist}`);
   const load = [loadavg()[0]!];
   console.log(`${list.length} cells, ${runs} runs each, card ${process.env.SNARK_GPU ?? "as Chrome finds it"}, load ${load[0]!.toFixed(1)}`);
-  const { results, renderer } = await measure(list, runs, dist, (line) => console.log(`  ${line}`));
+  const shots = argv.includes("--shots") ? join(OUT, `${label}-shots`) : null;
+  if (shots) mkdirSync(shots, { recursive: true });
+  const { results, renderer } = await measure(list, runs, dist, (line) => console.log(`  ${line}`), shots);
   load.push(loadavg()[0]!);
   const summaries = summarise(list, results);
   const commit = Bun.spawnSync(["git", "rev-parse", "--short", "HEAD"], { cwd: ROOT }).stdout.toString().trim();

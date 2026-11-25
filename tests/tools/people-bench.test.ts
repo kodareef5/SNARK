@@ -50,15 +50,22 @@ describe("the crowd", () => {
     }
   });
 
-  test("only mixed gear dresses bodies, each outfit in turn, and its items exist", () => {
+  test("only mixed gear dresses bodies, from Meridian on, and its items exist", () => {
     expect(crowdGear(40, "unique", reg).every((g) => g === 0)).toBe(true);
     const gear = crowdGear(60, "gear", reg);
     const worn = (k: number): string[] => Array.from({ length: 5 }, (_, s) => reg.defs[gear[k * GEAR_COUNT + GEAR_WORN + s]!]?.id ?? "");
-    expect(worn(0).every((id) => id === "")).toBe(true);
-    for (const [k, set] of OUTFITS.entries()) if (set !== "bare" && set !== "mixed") for (const id of worn(k)) expect(id.startsWith(`core:${set}_`)).toBe(true);
-    expect(reg.defs[gear[1 * GEAR_COUNT + GEAR_HELD]!]?.id).toBe("core:rifle");
-    expect(reg.defs[gear[2 * GEAR_COUNT + GEAR_HELD]!]?.id).toBe("core:hatchet");
-    const mixed = new Set(Array.from({ length: 10 }, (_, m) => worn(5 + m * OUTFITS.length).join()));
+    const first = OUTFITS.indexOf("meridian");
+    const outfit = (k: number): string => OUTFITS[(k + first) % OUTFITS.length]!;
+    for (let k = 0; k < OUTFITS.length; k++) {
+      const set = outfit(k);
+      if (set === "bare") expect(worn(k).every((id) => id === "")).toBe(true);
+      else if (set !== "mixed") for (const id of worn(k)) expect(id.startsWith(`core:${set}_`)).toBe(true);
+    }
+    expect(reg.defs[gear[0 * GEAR_COUNT + GEAR_HELD]!]?.id).toBe("core:rifle");
+    expect(reg.defs[gear[1 * GEAR_COUNT + GEAR_HELD]!]?.id).toBe("core:hatchet");
+    expect(gear[2 * GEAR_COUNT + GEAR_HELD]).toBe(0);
+    const mixedAt = OUTFITS.length - first + OUTFITS.indexOf("mixed");
+    const mixed = new Set(Array.from({ length: 10 }, (_, m) => worn((mixedAt % OUTFITS.length) + m * OUTFITS.length).join()));
     expect(mixed.size).toBeGreaterThan(5);
   });
 

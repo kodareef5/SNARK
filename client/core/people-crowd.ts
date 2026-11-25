@@ -96,8 +96,8 @@ export function distinctLooks(looks: readonly Uint8Array[]): number {
 
 /**
  * What each of `n` bodies wears and holds, GEAR_COUNT content indices each: nothing, but in mixed gear each body takes
- * the next of OUTFITS (a mixed one draws each slot from the sets or bare), and every third body holds a rifle and every
- * third after it a hatchet. An item the content lacks is left off.
+ * the next of OUTFITS from Meridian on (a mixed one draws each slot from the sets or bare), and every third body from
+ * the first holds a rifle and every third from the second a hatchet. An item the content lacks is left off.
  */
 export function crowdGear(n: number, looks: CrowdLooks, reg: Registry, seed = 1): Uint16Array {
   const out = new Uint16Array(n * GEAR_COUNT);
@@ -106,12 +106,12 @@ export function crowdGear(n: number, looks: CrowdLooks, reg: Registry, seed = 1)
   const rng = new Rng(seed + 17);
   for (let k = 0; k < n; k++) {
     const at = k * GEAR_COUNT;
-    const outfit = OUTFITS[k % OUTFITS.length]!;
+    const outfit = OUTFITS[(k + OUTFITS.indexOf("meridian")) % OUTFITS.length]!;
     SLOT_NAMES.forEach((slot, s) => {
       const set = outfit === "mixed" ? (rng.int(SETS.length + 1) === 0 ? "bare" : SETS[rng.int(SETS.length)]!) : outfit;
       if (set !== "bare") out[at + GEAR_WORN + s] = id(`${set}_${PIECES[slot]}`);
     });
-    out[at + GEAR_HELD] = k % 3 === 1 ? id("rifle") : k % 3 === 2 ? id("hatchet") : 0;
+    out[at + GEAR_HELD] = k % 3 === 0 ? id("rifle") : k % 3 === 1 ? id("hatchet") : 0;
   }
   return out;
 }
