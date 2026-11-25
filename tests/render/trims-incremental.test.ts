@@ -48,9 +48,9 @@ function registry(): Registry {
   return (made = registry);
 }
 
-/** Trims of a registry whose wood has every trim mesh, stone no narrow joint and no eave, metal no skirt and no ridge, and thatch none. */
+/** Trims of a registry whose wood has every trim mesh, stone no narrow joint, no eave and no saddle, metal no skirt, no ridge and no hip, and thatch none. */
 function trimsOf(reg: Registry): Trims {
-  const meshes = ["core:joint_sq_wood", "core:joint_r15_wood", "core:joint_r21_wood", "core:skirt_wood", "core:eave_wood", "core:ridge_wood", "core:joint_sq_stone", "core:joint_r21_stone", "core:skirt_stone", "core:ridge_stone", "core:joint_sq_metal", "core:joint_r15_metal", "core:joint_r21_metal", "core:eave_metal"];
+  const meshes = ["core:joint_sq_wood", "core:joint_r15_wood", "core:joint_r21_wood", "core:skirt_wood", "core:eave_wood", "core:ridge_wood", "core:joint_sq_stone", "core:joint_r21_stone", "core:skirt_stone", "core:ridge_stone", "core:joint_sq_metal", "core:joint_r15_metal", "core:joint_r21_metal", "core:eave_metal", "core:hip_wood", "core:saddle_wood", "core:hip_stone", "core:saddle_metal"];
   const looks = { flag: new Uint32Array(meshes.length), yields: Uint8Array.from(reg.defs, (_, k) => (reg.forms.def[k] && yields(reg.forms.def[k]!) ? 1 : 0)) };
   return new Trims(reg, (id) => meshes.indexOf(id), looks as unknown as PieceLooks);
 }
@@ -117,6 +117,26 @@ function edit(z: Fuzz): void {
   if (ref >= 0) z.refs.push(ref);
 }
 
+/** Sets triangle roofs down round one corner of a random base, each turned at random, among squares' slopes: their sides may be hips. */
+function fan(z: Fuzz): void {
+  const { structs, reg, rng } = z;
+  const b = z.bases[rng.int(z.bases.length)]!;
+  if (!structs.frames.get(b.f.gid)) return;
+  m.fill(0);
+  tupleStep(m, 0, 0, 2 * (rng.int(5) - 2), m, 0);
+  tupleStep(m, 0, 3, 2 * (rng.int(5) - 2), m, 0);
+  const lvl = 4 * (1 + rng.int(2)), from = rng.int(12);
+  for (let k = 0; k < 6; k++) {
+    const square = rng.float() < 0.15;
+    const id = square ? `test:roof_${["wood", "stone", "metal", "thatch"][rng.int(4)]}` : `test:triangle_roof_${["wood", "wood", "stone", "metal"][rng.int(4)]}`;
+    const kind = reg.index.get(id)!, cls = square ? CLS_SQUARE : CLS_TRIANGLE;
+    canonical(cls, m, 0, dirTurn(from + 2 * k, 0), m, 4);
+    if (!tupleWithin(m, 4, M_MOST)) return;
+    const ref = structs.place(kind, b.f.gid, key0(cls, m[4]!, m[5]!, m[6]!), key1(m[7]!, lvl, canon.dir, reg.forms.layer[kind]!, rng.int(reg.forms.turns[kind]!), 0), TEAM, 100);
+    if (ref >= 0) z.refs.push(ref);
+  }
+}
+
 test("a chunk laid by its changed pieces has a whole laying's trims and yields", () => {
   const reg = registry();
   let layings = 0, trimsSeen = 0, edits = 0, yielding = 0, wholes = 0;
@@ -150,7 +170,10 @@ test("a chunk laid by its changed pieces has a whole laying's trims and yields",
           z.refs.pop();
           edits++;
         }
-      } else for (let n = roll < 0.06 ? 150 : 1 + rng.int(4); n > 0; n--, edits++) edit(z);
+      } else if (roll < 0.1) {
+        fan(z);
+        edits++;
+      } else for (let n = roll < 0.13 ? 150 : 1 + rng.int(4); n > 0; n--, edits++) edit(z);
       // A chunk is not laid every time, so its changes and those round it gather.
       for (const chunk of structs.held) {
         if (rng.float() < 0.3) continue;
@@ -177,5 +200,7 @@ test("a chunk laid by its changed pieces has a whole laying's trims and yields",
   if (process.env.SNARK_TRIMS_TABLE) console.log([...seen].sort((a, b) => a[0] - b[0]).join(" "), turned, layings, wholes, trimsSeen, yielding, edits);
   for (const mesh of [0, 1, 2, 3, 4, 13]) expect(seen.get(mesh) ?? 0, `mesh ${mesh}`).toBeGreaterThan(100);
   expect((seen.get(5) ?? 0) + (seen.get(9) ?? 0), "ridges").toBeGreaterThan(100);
+  // Hips of wood and stone, and saddles of wood and metal, metal drawing a hip's saddle that stone's hip leads to.
+  for (const mesh of [14, 15, 16, 17]) expect(seen.get(mesh) ?? 0, `mesh ${mesh}`).toBeGreaterThan(100);
   expect(turned).toBeGreaterThan(20000);
 });
