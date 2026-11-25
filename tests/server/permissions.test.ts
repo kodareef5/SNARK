@@ -378,6 +378,7 @@ test("the edit rule reads the survivor's highest staff group", () => {
     hasMembers: () => false,
     issued: () => true,
     teamMade: () => true,
+    tribeRank: () => 0,
   });
   const op: PermissionOp = { op: "addMember", kind: "survivor", key: A, group: "Vip" };
   expect(editRule(admin, op, look(RANK_ADMIN))).toBe("");
@@ -476,7 +477,7 @@ test("Admins cannot be made open while anyone is in it", () => {
 });
 
 test("the edit rule adds only an ID that was issued and a team number that was made", () => {
-  const look = (issued: boolean, made: boolean): RuleLook => ({ groupRank: () => RANK_OPEN, staffRank: () => 0, staffReach: () => "none", hasMembers: () => false, issued: () => issued, teamMade: () => made });
+  const look = (issued: boolean, made: boolean): RuleLook => ({ groupRank: () => RANK_OPEN, staffRank: () => 0, staffReach: () => "none", hasMembers: () => false, issued: () => issued, teamMade: () => made, tribeRank: () => 0 });
   const add: PermissionOp = { op: "addMember", kind: "survivor", key: C, group: "Vip" };
   const tribe: PermissionOp = { op: "addMember", kind: "tribe", key: "9", group: "Vip" };
   expect([editRule(cluster, add, look(false, true)), editRule(cluster, tribe, look(true, false))]).toEqual([`No survivor has the ID ${C}.`, "No tribe has the number 9."]);
@@ -500,4 +501,28 @@ test("rows naming an ID never issued are taken out, and it claims nothing", () =
   expect(perms.apply(cluster, { op: "removeMember", kind: "tribe", key: "99", group: "Vip" })).toBe("");
   expect(perms.apply(cluster, { op: "clearSecret", id: C })).toBe("");
   expect([perms.membersOf("survivor", C).map((m) => m.group), perms.secretOf(C)]).toEqual([["Admins"], ""]);
+});
+
+test("a tag choice that is already so raises no revision", () => {
+  const { perms } = world();
+  const player: PermissionActor = { rank: RANK_OPEN, world: 3, name: "bob" };
+  const at = (): number => perms.snapshot().revision;
+  const start = at();
+  // A tag is shown unless it was hidden, so showing one never hidden is nothing new.
+  expect(perms.apply(player, { op: "tag", id: A, tag: "Vip", show: true })).toBe("");
+  expect([at(), perms.version, perms.tagChoice(A, "Vip")]).toEqual([start, perms.version, undefined]);
+  expect(perms.apply(player, { op: "tag", id: A, tag: "Vip", show: false })).toBe("");
+  expect(perms.apply(player, { op: "tag", id: A, tag: "vip", show: false })).toBe("");
+  expect([at(), perms.tagChoice(A, "Vip")]).toEqual([start + 1, false]);
+  expect(perms.apply(player, { op: "tag", id: A, tag: "Vip", show: true })).toBe("");
+  expect([at(), perms.tagChoice(A, "Vip")]).toEqual([start + 2, true]);
+});
+
+test("the edit rule keeps a tribe from an actor one of its members outranks", () => {
+  const look = (tribe: number): RuleLook => ({ groupRank: () => RANK_OPEN, staffRank: () => 0, staffReach: () => "none", hasMembers: () => false, issued: () => true, teamMade: () => true, tribeRank: () => tribe });
+  const add: PermissionOp = { op: "addMember", kind: "tribe", key: "9", group: "Vip" };
+  const remove: PermissionOp = { op: "removeMember", kind: "tribe", key: "9", group: "Vip" };
+  const HIGHER = "A member of that tribe holds a higher rank than yours.";
+  expect([editRule(admin, add, look(RANK_MAP)), editRule(admin, remove, look(RANK_MAP))]).toEqual([HIGHER, HIGHER]);
+  expect([editRule(admin, add, look(RANK_ADMIN)), editRule(mapAdmin, remove, look(RANK_MAP)), editRule(cluster, add, look(RANK_CLUSTER))]).toEqual(["", "", ""]);
 });

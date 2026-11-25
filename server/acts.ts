@@ -15,6 +15,9 @@ export const OP_ADMIN = 2;
 export const ACTS_KEPT = 2000;
 /** The latest open commands kept in memory, apart from those. */
 export const ACTS_OPEN_KEPT = 500;
+/** The most letters of an act's words and of its actor's name: an act is one line, whatever was typed. */
+const WHAT_MOST = 500;
+const NAME_MOST = 64;
 /** The most letters of what was tried, and of why it was refused, in a refused act. */
 const TRIED_MOST = 300;
 const WHY_MOST = 200;
@@ -121,7 +124,10 @@ export class Acts {
   write(actor: Actor, what: string, kind: ActKind = "command"): Act {
     const { persistence } = this.ctx;
     const at = this.ctx.wall();
-    const { name, id, pid, rank, via, from } = actor;
+    const { id, pid, rank, via, from } = actor;
+    // A line typed with a break in it, or with marks that turn text around, would read as another actor's act.
+    const name = actText(actor.name, NAME_MOST);
+    what = actText(what, WHAT_MOST);
     const open = actor.open === true;
     const bytes = encodeAct({ at, name, id, pid, rank, via, from, kind, what, open });
     const seq = persistence ? persistence.journal(OP_ADMIN, bytes) : ++this.seq;

@@ -3,11 +3,11 @@
 import { expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import type { ClientSession } from "../../client/core/session.ts";
-import { sessionActor } from "../../server/acts.ts";
+import { OPERATOR, sessionActor } from "../../server/acts.ts";
 import { idText } from "../../server/survivor-ids.ts";
-import { SESSION_SPECTATING } from "../../shared/net/protocol.ts";
-import { RANK_ADMIN, RANK_CLUSTER, RANK_OPEN, RANK_STAFF } from "../../shared/ranks.ts";
-import { MODE_WALK } from "../../shared/sim/character.ts";
+import { RESULT_OK, SESSION_SPECTATING, TEXT_GLOBAL } from "../../shared/net/protocol.ts";
+import { RANK_ADMIN, RANK_CLUSTER, RANK_MAP, RANK_OPEN, RANK_STAFF } from "../../shared/ranks.ts";
+import { MODE_FLY, MODE_WALK } from "../../shared/sim/character.ts";
 import { TestCluster, rec } from "../fixtures/cluster.ts";
 import { listener } from "../fixtures/module.ts";
 import type { Harness } from "../fixtures/net.ts";
@@ -331,4 +331,77 @@ test("an admin refused above their rank is logged, one below admin is not", () =
   expect(h.say(bob, "Permissions.AddGroup Vip")).toEqual(["denied: this needs the admin rank or above"]);
   expect(h.host.changePermissions(sessionActor(h.client(bob)!, h.host.records), { op: "addGroup", group: "Vip" })).toBe("Permissions are managed from an admin's rank.");
   expect(h.host.acts.recentWithOpen(0, Number.MAX_SAFE_INTEGER).length).toBe(before);
+});
+
+test("a command typed with a line break cannot write a line that reads as another's act", () => {
+  const out: string[] = [];
+  const { h } = camp({ host: { log: (l: string) => out.push(l) } });
+  const mod = survivor(h, "mod", { cheats: false });
+  survivor(h, "carl", { cheats: false });
+  op(h, "Permissions.AddGroup Mods", "Permissions.Rank Mods staff", "Permissions.Grant Mods Cheat.kick", `Permissions.Add ${idOf(h, mod)} Mods`);
+  h.say(mod, "claimpassword");
+  expect(h.say(mod, `enablecheats ${mod.secret}`)[0]).toBe("cheats enabled");
+  const forged = "2026-11-25 09:00:00 UTC  (operator)  cluster  kick ada";
+  h.say(mod, `kick x\n${forged}\u202e\u0007`);
+  const act = h.host.acts.recent(0, Number.MAX_SAFE_INTEGER).at(-1)!;
+  // Spaces run together too, so nothing lines up as the listing's columns do.
+  expect([act.name, act.what]).toEqual(["mod", `kick x ${forged.replace(/ +/g, " ")}`]);
+  // One act is one line, in the listing and in the server's own output.
+  expect(lines([h.host.exec("acts 3")]).filter((l) => l.includes("kick ada")).length).toBe(1);
+  expect(lines(out).filter((l) => l.includes("kick ada"))).toEqual([`admin: mod (staff rank) kick x ${forged.replace(/ +/g, " ")}`]);
+});
+
+test("a regular admin cannot reach a map admin through the map admin's tribe", () => {
+  const { h, ada } = camp({ host: quiet });
+  const cara = survivor(h, "cara", { cheats: false });
+  const dan = survivor(h, "dan", { cheats: false });
+  op(h, "Permissions.AddGroup Top", "Permissions.Rank Top map", "Permissions.Grant Top *", `Permissions.Add ${idOf(h, cara)} Top`, "Permissions.AddGroup Muted", "Permissions.AddGroup Vip");
+  admin(h, ada);
+  h.say(cara, "claimpassword");
+  expect(h.say(cara, `enablecheats ${cara.secret}`)[0]).toBe("cheats enabled");
+  expect([h.client(ada)!.rank, h.client(cara)!.rank]).toEqual([RANK_ADMIN, RANK_MAP]);
+  expect(h.say(cara, 'tribe create "Cara Co"')[0]).toStartWith("You founded");
+  expect(h.say(dan, 'tribe create "Dan Co"')[0]).toStartWith("You founded");
+  const [hers, his] = [String(record(h, cara).team), String(record(h, dan).team)];
+  const HIGHER = "A member of that tribe holds a higher rank than yours.";
+  expect(h.say(ada, `Permissions.AddTribe ${hers} Muted`)).toEqual([HIGHER]);
+  expect(h.host.chat.say(h.client(cara)!, TEXT_GLOBAL, "hello")).toBe(RESULT_OK);
+  // The operator may, and then the regular admin cannot take the tribe out either. A tribe of none above her is hers.
+  op(h, `Permissions.AddTribe ${hers} Vip`);
+  expect(h.say(ada, `Permissions.RemoveTribe ${hers} Vip`).at(-1)).toBe(HIGHER);
+  expect(h.say(ada, `Permissions.AddTribe ${his} Vip`)).toEqual([`Dan Co (${his}) is in Vip`]);
+});
+
+test("a tag choice that changes nothing writes nothing, and a run of changes is cut short", () => {
+  const { h } = camp({ host: quiet });
+  const bob = survivor(h, "bob", { cheats: false });
+  op(h, "Permissions.AddGroup Vip", `Permissions.Add ${idOf(h, bob)} Vip`);
+  expect(h.host.changePermissions(OPERATOR, { op: "setDocument", name: "chat", text: JSON.stringify({ ChatTags: { Vip: { Text: "[VIP]" } } }) })).toBe("");
+  const p = h.host.permissions;
+  const before = p.snapshot().revision;
+  // Shown already: nothing is written, however often it is said.
+  for (let i = 0; i < 8; i++) expect(h.say(bob, "enabletag Vip")).toEqual(["Your lines show the tag Vip."]);
+  expect(p.snapshot().revision).toBe(before);
+  // Off, on and off again are taken, and the fourth change in a row is turned away until a little time has passed.
+  expect(h.say(bob, "disabletag Vip")).toEqual(["Your lines no longer show the tag Vip."]);
+  expect(h.say(bob, "enabletag Vip")).toEqual(["Your lines show the tag Vip."]);
+  expect(h.say(bob, "disabletag Vip")).toEqual(["Your lines no longer show the tag Vip."]);
+  expect(h.say(bob, "enabletag Vip")).toEqual(["You changed your tags a moment ago. Try again shortly."]);
+  expect(p.snapshot().revision).toBe(before + 3);
+  h.run(11_000);
+  expect(h.say(bob, "enabletag Vip")).toEqual(["Your lines show the tag Vip."]);
+  expect(p.snapshot().revision).toBe(before + 4);
+});
+
+test("creative mode for all switched off takes its cheats at once, with what they left running", () => {
+  const { h } = camp({ host: quiet });
+  h.host.exec("setting bShowCreativeMode True");
+  h.host.exec("setting CreativeForAll True");
+  h.run(100);
+  const bob = survivor(h, "bob", { cheats: false });
+  const c = h.client(bob)!;
+  expect([c.admin, h.say(bob, "fly")]).toEqual([true, ["flying"]]);
+  h.host.exec("setting CreativeForAll False");
+  h.run(100);
+  expect([c.admin, h.world.ents.mode[c.ent] === MODE_FLY]).toEqual([false, false]);
 });

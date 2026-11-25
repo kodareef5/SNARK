@@ -148,6 +148,10 @@ import { SurvivorLog, type SurvivorLogOptions } from "./survivor-log/log.ts";
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
+/** A connection changes its chat tags at most this often: each change is a write that every map reads. */
+const TAG_CHANGES = 3;
+const TAG_CHANGES_TICKS = 10 * TICK_RATE;
+
 export interface HostOptions {
   /** SQLite file. Omit for a world that lives only in memory. */
   dbPath?: string;
@@ -692,7 +696,13 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   // The cluster's permission groups, kept in its folder for every world, else beside the save, else in memory.
   const permissionStore = new PermissionStore(cluster ? join(cluster.folder.root, "permissions.sqlite") : opts.dbPath ? `${opts.dbPath}.permissions.sqlite` : ":memory:");
   opened.push(permissionStore);
-  const permissions = new Permissions({ store: permissionStore, world: cluster?.world ?? 0, now: opts.survivorLog?.wall ?? Date.now, say });
+  const permissions: Permissions = new Permissions({
+    store: permissionStore,
+    world: cluster?.world ?? 0,
+    now: opts.survivorLog?.wall ?? Date.now,
+    say,
+    tribeMembers: (team) => (tribes.byId.get(team)?.members ?? []).map((pid) => records.byPid.get(pid)).map((rec) => (rec ? idText(rec) : "")).filter((id) => id !== ""),
+  });
   // Before anything can make an ID or a team, so a save put back from a backup or started afresh makes none twice.
   catchUp(permissions, records, say);
   const register = new IdRegister(permissions, records, say);
@@ -1710,9 +1720,15 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     settleStanding();
     return { why: "", ...applied };
   };
+  /** The ticks of each connection's latest tag changes. */
+  const tagged = new WeakMap<Client, number[]>();
   const chooseTag = (c: Client, tag: string, show: boolean): string => {
     const subject = subjectOf(c);
     if (!subject) return "That needs a survivor with an ID.";
+    if (permissions.tagChoice(subject.id, tag) !== false === show) return "";
+    const recent = (tagged.get(c) ?? []).filter((at) => world.tick - at < TAG_CHANGES_TICKS);
+    if (recent.length >= TAG_CHANGES) return "You changed your tags a moment ago. Try again shortly.";
+    tagged.set(c, [...recent, world.tick]);
     const why = permissions.apply(acting(sessionActor(c, records)), { op: "tag", id: subject.id, tag, show });
     settleStanding();
     return why;

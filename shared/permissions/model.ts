@@ -236,6 +236,8 @@ export interface RuleLook {
   issued(id: string): boolean;
   /** Whether a world ever made team number `key`. */
   teamMade(key: string): boolean;
+  /** The highest staff rank among the members of tribe `key` that this world knows, or 0. */
+  tribeRank(key: string): number;
 }
 
 /**
@@ -320,6 +322,8 @@ export function editRule(actor: PermissionActor, op: PermissionOp, look: RuleLoo
       const ranked = above(rank);
       if (ranked) return ranked;
       if (op.kind === "tribe" && rank > RANK_OPEN) return "A tribe is put only in an open group.";
+      // A tribe's groups are its members', so one who outranks the actor is no more reached through it than directly.
+      if (op.kind === "tribe" && actor.rank < look.tribeRank(op.key)) return "A member of that tribe holds a higher rank than yours.";
       if (op.kind === "survivor") {
         const why = survivor(op.key);
         if (why) return why;

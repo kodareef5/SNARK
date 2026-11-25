@@ -58,6 +58,7 @@ export function lookOf(state: State): Lookup {
     issued: (id) => issued.has(id),
     // The page knows no other world's tribes: the server decides.
     teamMade: () => true,
+    tribeRank: () => RANK_OPEN,
   };
   looks.set(state, look);
   return look;

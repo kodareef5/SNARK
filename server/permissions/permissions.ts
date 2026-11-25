@@ -97,7 +97,12 @@ export interface PermissionsOptions {
   readonly now?: () => number;
   /** The server's own output, told when the file cannot be read and when it can again. */
   readonly say?: (line: string) => void;
+  /** The survivor IDs of a tribe's members, as far as this world knows them: the edit rule asks their ranks. */
+  readonly tribeMembers?: (team: number) => readonly string[];
 }
+
+/** What `change` answers when the store already is as asked: nothing is written and no revision is raised. */
+const AS_IT_IS = "\u0000as it is";
 
 interface Held {
   readonly group: Group;
@@ -153,6 +158,7 @@ export class Permissions {
   private revision = -1;
   private lookedAt = -Infinity;
   private readonly say: (line: string) => void;
+  private readonly tribeMembers: (team: number) => readonly string[];
   /** The file could not be read at the last look. */
   private unread = false;
   /** When a timed membership next starts or ends. */
@@ -177,6 +183,7 @@ export class Permissions {
     this.world = opts.world;
     this.now = opts.now ?? Date.now;
     this.say = opts.say ?? (() => {});
+    this.tribeMembers = opts.tribeMembers ?? (() => []);
     this.load(this.store.read(), false);
     this.store.patience(BUSY_MS);
   }
@@ -379,6 +386,7 @@ export class Permissions {
         if (was !== "") this.store.putRetired(was, this.now());
         this.written();
       });
+      if (reason === AS_IT_IS) return "";
     } catch {
       // A write that never began, as one a lock kept out, changed nothing here.
       if (began) this.reread();
@@ -537,6 +545,7 @@ export class Permissions {
     hasMembers: (name) => this.membersIn(name).some((m) => m.forever || m.until > this.now()),
     issued: (id) => this.store.issued(id) !== null,
     teamMade: (key) => this.teamMade(key),
+    tribeRank: (key) => this.tribeMembers(Number(key)).reduce((rank, id) => Math.max(rank, this.staffRank(id)), RANK_OPEN),
   };
 
   /** Writes `op` to the store and to memory, or answers why there is nothing to do. */
@@ -629,6 +638,8 @@ export class Permissions {
         this.documents.set(op.name.toLowerCase(), { name: op.name, text: op.text });
         return "";
       case "tag": {
+        // A tag is shown unless it was hidden, so one never chosen is as one shown.
+        if ((this.tags.get(op.id)?.get(op.tag.toLowerCase())?.show ?? true) === op.show) return AS_IT_IS;
         this.store.putTag(op.id, op.tag, op.show);
         let mine = this.tags.get(op.id);
         if (!mine) this.tags.set(op.id, (mine = new Map()));
