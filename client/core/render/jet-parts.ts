@@ -1,51 +1,14 @@
 // What moves on a jet as it is drawn: its gear folding up and down, its wheels rolling, its nozzle and lift fan's doors
 // swinging to VTOL, its control surfaces following how it turns, and its afterburner's glow. Each is eased per jet from
 // its pose, the pilot's from the predicted body and an observer's from the snapshot's drive and nozzle words, so all
-// draw it alike. It decides nothing.
+// draw it alike. It decides nothing. It comes with the jet's late file (client/core/jet-late.ts); a rig's bones are
+// read in the first frame (jet-bones.ts).
 
 import { TICK_RATE } from "../../../shared/coords.ts";
 import { quatAxis } from "../../../shared/math/quat.ts";
 
-/** A jet rig's moving bones by index, -1 where the model lacks one. */
-export interface JetRig {
-  gearNose: number; gearLeft: number; gearRight: number;
-  wheelNose: number; wheelLeft: number; wheelRight: number;
-  nozzle: number; doorTop: number; doorBottom: number;
-  aileronLeft: number; aileronRight: number;
-  stabilatorLeft: number; stabilatorRight: number;
-  rudderLeft: number; rudderRight: number;
-  burner: number;
-}
-
-export function jetRig(names: readonly string[]): JetRig {
-  const bone = (name: string): number => names.indexOf(name);
-  return {
-    gearNose: bone("gear_nose"), gearLeft: bone("gear_main_left"), gearRight: bone("gear_main_right"),
-    wheelNose: bone("wheel_nose"), wheelLeft: bone("wheel_main_left"), wheelRight: bone("wheel_main_right"),
-    nozzle: bone("nozzle"), doorTop: bone("liftfan_door_top"), doorBottom: bone("liftfan_door_bottom"),
-    aileronLeft: bone("aileron_left"), aileronRight: bone("aileron_right"),
-    stabilatorLeft: bone("stabilator_left"), stabilatorRight: bone("stabilator_right"),
-    rudderLeft: bone("rudder_left"), rudderRight: bone("rudder_right"),
-    burner: bone("burner"),
-  };
-}
-
-/** What a jet's parts are drawn from: its wheels down (1) or up (0), its nozzle's swing, its wheels' roll, its attitude and its burner. */
-export interface JetPose {
-  gear: number;
-  nozzle: number;
-  wheelAngle: number;
-  qx: number; qy: number; qz: number; qw: number;
-  burner: boolean;
-}
-
-/** A jet's pose from how it is drawn: its gear and burner from its drive word, its nozzle from its rotor word, into `out`. */
-export function jetPoseOf(v: { gear?: number; shifting?: boolean; rotorPhase?: number; wheelAngle: number; qx?: number; qy?: number; qz?: number; qw?: number }, yaw: number, out: JetPose): JetPose {
-  out.gear = v.gear ?? 1; out.nozzle = v.rotorPhase ?? 0; out.wheelAngle = v.wheelAngle; out.burner = v.shifting === true;
-  if (v.qw !== undefined) { out.qx = v.qx!; out.qy = v.qy!; out.qz = v.qz!; out.qw = v.qw; }
-  else { out.qx = out.qz = 0; out.qy = Math.sin(yaw / 2); out.qw = Math.cos(yaw / 2); }
-  return out;
-}
+export { jetPoseOf, jetRig, type JetPose, type JetRig } from "./jet-bones.ts";
+import type { JetPose, JetRig } from "./jet-bones.ts";
 
 /** Radians: the gear folded, the nozzle at VTOL, the doors open, and the most a surface deflects. */
 export const GEAR_FOLD = 1.55;

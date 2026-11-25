@@ -148,7 +148,7 @@ import { quatNlerp } from "../../shared/math/quat.ts";
 import { unpackBoatHullCondition, unpackBoatFlooding, interpolateRotorPhase, unpackVehicleQuaternion, unpackRotorRpm, unpackRotorPhase, unpackVehicleFuel, unpackEngineCondition, unpackRotorCondition, vehicleEngineRunning } from "../../shared/sim/vehicle-presentation.ts";
 import { blendDoors } from "../../shared/sim/vehicle-panels.ts";
 import { isSkateboard } from "../../shared/sim/vehicle.ts";
-import { jetSpoolOfRpm, unpackJetNozzle } from "../../shared/sim/jet.ts";
+import { jetSpoolOfRpm, unpackJetNozzle } from "../../shared/sim/jet-gauge.ts";
 import { PredictionTrace } from "./diagnostics.ts";
 import { stepVehicleBody, unpackVehiclePitch, unpackVehicleRoll, unpackVehicleSteering, unpackVehicleWheel, unpackVehicleGroundPitch, unpackVehicleGroundRoll, unpackVehicleRideOffset, vehicleRideGrounded, unpackVehicleGear, unpackVehicleRpm, vehicleShifting, unpackVehicleLightMode, unpackVehicleMissingPanels } from "../../shared/sim/vehicle-body.ts";
 import { stepCreature } from "../../shared/sim/creature-actions.ts";

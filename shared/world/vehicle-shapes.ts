@@ -1,7 +1,7 @@
 // Authored compound shapes shared by static collision and every vehicle/actor interaction query.
 import { quatMul, quatRotate } from "../math/quat.ts";
 import { detCos, detSin, len3 } from "../math/scalar.ts";
-import { familyOf } from "../sim/families.ts";
+import { familyOf, familyReady } from "../sim/families.ts";
 import { vehicleRotation, type VehicleFrame } from "../sim/vehicle-frame.ts";
 import { boatDrives, type VehicleDefinition, type BoatDrive, type BoatSpec, type BoatVehicleDefinition, type JetVehicleDefinition, type RotorVehicleDefinition, type VehicleSpec } from "../sim/vehicle.ts";
 import { box, makeSolid, shape, tube, type Shape, type SolidFrame, type SolidJoint } from "./vehicle-solid.ts";
@@ -123,6 +123,6 @@ export function vehicleSolidRadius(def: VehicleDefinition): number {
     const pivot = part.joint === undefined ? undefined : family.jointPivot(def, part.joint);
     radius = Math.max(radius, part.radius + (pivot ? len3(...pivot) : 0));
   }
-  solidRadii.set(def, radius);
+  if (familyReady(family)) solidRadii.set(def, radius);
   return radius;
 }

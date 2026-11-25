@@ -1,13 +1,14 @@
 // Jets: a fixed wing with a lift fan and a swivel nozzle (shared/sim/jet.ts). Its flight controls chase the pilot's look,
-// so its step takes the look the input holds as well as the keys.
+// so its step takes the look the input holds as well as the keys. Loading this file gives the jet's row of the families
+// its code (families.ts JET_FAMILY): the server loads it as it starts, a browser when it first meets a jet.
 
 import { TAU } from "../../math/scalar.ts";
 import { jetMeetsCapsule, jetMeetsKind, jetMeetsVehicle, jetPlacement, jetWorld } from "../../world/jet.ts";
 import { jetShapes } from "../../world/vehicle-shapes.ts";
 import { BTN_CROUCH, BTN_JUMP, BTN_MOD, BTN_PRONE, BTN_SPRINT, stepOut } from "../character.ts";
-import type { VehicleFamily } from "../families.ts";
-import { stepJet } from "../jet.ts";
-import { validateJetSpec, type JetVehicleDefinition, type VehicleDefinition } from "../vehicle.ts";
+import { JET_FAMILY, type VehicleFamily } from "../families.ts";
+import { stepJet, validateJetSpec } from "../jet.ts";
+import type { JetVehicleDefinition, VehicleDefinition } from "../vehicle.ts";
 import { loadState, state, storeState, vehicleStep } from "../vehicle-state.ts";
 
 /** Radians of a look's yaw or pitch in the input's 1/65536 turns. Pitch is signed: 16384 is straight up. */
@@ -50,3 +51,5 @@ export const JET: VehicleFamily<JetVehicleDefinition> = {
   meetsVehicle: (def, frame, other, otherFrame) => jetMeetsVehicle(def, frame, other, otherFrame),
   meetsKind: (def, parts, kind, sx, sy, sz, syaw, stw, frame, slack) => jetMeetsKind(parts, kind, sx, sy, sz, syaw, stw, def, frame, slack),
 };
+
+JET_FAMILY.give(JET as unknown as VehicleFamily);

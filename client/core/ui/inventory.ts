@@ -2,7 +2,7 @@
 // A click picks a stack up or puts it down, a middle click picks up half, and a right click eats, uses or puts on.
 
 import { isSkateboard } from "../../../shared/sim/vehicle.ts";
-import { jetSpoolAt } from "../../../shared/sim/jet.ts";
+import { jetSpoolAt } from "../../../shared/sim/jet-gauge.ts";
 import { ballInfo } from "../balls.ts";
 import { CUE_HURT_SHIFT } from "../../../shared/anim/pose.ts";
 import { makeHandle } from "../../../shared/ids.ts";

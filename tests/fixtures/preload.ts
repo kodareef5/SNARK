@@ -6,6 +6,8 @@ import { plugin } from "bun";
 import { appendFileSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { TEST_WATCH, hungAfter } from "./load.ts";
+// The jet's code, which a browser fetches when it meets one, is every test's from the start, as it is the server's.
+import "../../client/core/jet-late.ts";
 
 // A worker of `bun test --parallel` runs file after file in one process. JavaScriptCore collects by what has been made
 // since its last collection, so what the last file left could stand through the next files: a worker held a gigabyte

@@ -2,7 +2,8 @@ import { skateDeckRotation } from "../../../shared/anim/skate.ts";
 import { caughtStrikeTick } from "./strike-contact.ts";
 import { ownArms, PunchGuard } from "./own-arms.ts";
 import { ImpactSprings } from "./impact-springs.ts";
-import { JetParts, jetPoseOf, jetRig, type JetPose, type JetRig } from "./jet-parts.ts";
+import { jetPoseOf, jetRig, type JetPose, type JetRig } from "./jet-bones.ts";
+import { askJet, JET_CODE, type JetPartsCode } from "../jet-load.ts";
 import { TICK_RATE } from "../../../shared/coords.ts";
 import { survivorKind } from "../../../shared/sim/blockers.ts";
 import { bodyMass } from "../../../shared/sim/body-mass.ts";
@@ -495,7 +496,11 @@ export class Characters {
   /** Blows landed on bodies, drawn as springs (impact-springs.ts), the body being posed now, and the clock they last moved at. */
   readonly springs = new ImpactSprings();
   /** Each jet's gear, nozzle, surfaces and burner as drawn (jet-parts.ts). */
-  readonly jetParts = new JetParts();
+  private jetMoves: JetPartsCode | null = null;
+  /** What moves on each jet drawn, once the jet's code has come (jet-load.ts). */
+  get jetParts(): JetPartsCode | null {
+    return (this.jetMoves ??= JET_CODE.code?.parts() ?? null);
+  }
   private readonly jetPose: JetPose = { gear: 1, nozzle: 0, wheelAngle: 0, qx: 0, qy: 0, qz: 0, qw: 1, burner: false };
   private posingId = -1;
   private springsAt = -1;
@@ -1218,7 +1223,11 @@ export class Characters {
             if (b >= 0) quatAxis(rig.a.rot, b * 4, rotor.axis[0], rotor.axis[1], rotor.axis[2], (vehicle?.rotorPhase ?? 0) * rotor.ratio);
           }
         }
-        if (v.jet && vehicle) this.jetParts.pose(rig.a.rot, v.jet, id, jetPoseOf(vehicle, yaw, this.jetPose), this.clock);
+        if (v.jet && vehicle) {
+          const parts = this.jetParts;
+          if (parts) parts.pose(rig.a.rot, v.jet, id, jetPoseOf(vehicle, yaw, this.jetPose), this.clock);
+          else void askJet().catch(() => {});
+        }
         for (const part of v.drives) {
           const angle = part.spin ? vehicle?.wheelAngle ?? 0 : steering;
           quatAxis(rig.a.rot, part.bone * 4, part.axis[0], part.axis[1], part.axis[2], angle * part.ratio);
@@ -1503,7 +1512,7 @@ export class Characters {
     // The springs move on by the frame's time, on the session's tick clock (`clock`), as the scene sets it.
     if (this.springsAt >= 0 && this.clock > this.springsAt) this.springs.step(Math.min(0.1, (this.clock - this.springsAt) / TICK_RATE));
     this.springsAt = this.clock;
-    this.jetParts.sweep(this.clock);
+    this.jetMoves?.sweep(this.clock);
     this.cameraBody.clear();
     this.groundWorld = world;
     this.packet = p ?? this.packet;

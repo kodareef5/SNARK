@@ -1,4 +1,6 @@
 import { SurvivorActivity } from "./survivor-activity.ts";
+// The jet's family code, which a browser fetches late (shared/sim/families.ts JET_FAMILY): the server has it from the start.
+import "../shared/sim/families/jet.ts";
 import { CREATE_REQUEST,ownsSurvivor } from "./survivor-access.ts";
 import { ZONE_NONE, ZONE_TORSO } from "../shared/anim/human.ts";
 import { IMPALE_SLOT } from "../shared/sim/seats.ts";

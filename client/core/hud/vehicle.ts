@@ -5,7 +5,7 @@ import { SKATE_MOVES } from "../../../shared/sim/skate-state.ts";
 import { boostCooling, flipCooling, thrustAxis, thrustBoostLeft } from "../../../shared/sim/vehicle-thrusters.ts";
 import { BTN_JUMP, BTN_PRONE, BTN_SPRINT, type Body } from "../../../shared/sim/character.ts";
 import { PATROL_LIGHT_MODES, isSkateboard, isWheelVehicle, type BoatSpec, type HelicopterSpec, type JetSpec, type VehicleSpec } from "../../../shared/sim/vehicle.ts";
-import { jetAngleOfAttack, jetNozzle, jetSpool, jetThrottle } from "../../../shared/sim/jet.ts";
+import { jetAngleOfAttack, jetNozzle, jetSpool, jetThrottle } from "../../../shared/sim/jet-gauge.ts";
 import { TICK_DT } from "../../../shared/coords.ts";
 import type { VehicleArms } from "../arms.ts";
 import { HIT_NONE, castWorld, rayHit } from "../../../shared/world/ray.ts";

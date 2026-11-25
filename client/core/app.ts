@@ -30,7 +30,7 @@ import { KEY_ROWS } from "./keys.ts";
 import { HudModel, VehicleTelemetry, fillHud, fillOverhead } from "./hud.ts";
 import { HudFill } from "./hud/widget.ts";
 import { AppFrame, type FramePart, type PartRow } from "./frame.ts";
-import { MissileTrail } from "./missile-trail.ts";
+import { JET_CODE } from "./jet-load.ts";
 import type { Probe } from "./probe.ts";
 import { GLIDER_KEY_TICKS, Prompts } from "./prompts.ts";
 import { Sight } from "./sight.ts";
@@ -121,7 +121,9 @@ export class App {
   readonly sky = new SkyClock();
   /** The dash's readings of the vehicle driven, which its part of the frame reads (hud/vehicle.ts). */
   private readonly dash = new Dash();
-  private readonly missileTrails = new MissileTrail();
+  private missileTrail: FramePart | null = null;
+  /** A guided missile's smoke, once the jet's code has come (jet-load.ts). */
+  private readonly missileTrails: FramePart = { step: (f) => (this.missileTrail ??= JET_CODE.code?.trail() ?? null)?.step(f) };
   /** Tells the voice port where each speaker is (voice/heard.ts). */
   private readonly heard = new Heard();
   get vehicleTelemetry(): VehicleTelemetry { return this.dash.telemetry; }

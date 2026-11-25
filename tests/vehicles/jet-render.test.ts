@@ -80,7 +80,7 @@ artTest("a parked jet is drawn with its own model, and its parts are posed for i
   look(h, ada, jet.e);
   h.run(500);
   expect(drawn(view, "core:jet")).toBeGreaterThan(0);
-  const parts = view.app.scene!.characters.jetParts;
+  const parts = view.app.scene!.characters.jetParts as JetParts;
   // Parked with its wheels down and its nozzle swung for VTOL.
   expect(parts.last.gear).toBe(1);
 });

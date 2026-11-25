@@ -6,7 +6,28 @@
 import { TICK_DT, WORLD_MAX_Y } from "../coords.ts";
 import { quatAxis, quatMul, quatNormalize, quatRotate, quatUnrotate } from "../math/quat.ts";
 import { clamp, detAtan2, detCos, detSin, len3, TAU } from "../math/scalar.ts";
-import { JET_SPEED_CAP, validateJetSpec, type JetSpec, type JetVehicleDefinition, type VehicleState } from "./vehicle.ts";
+import { JET_IDLE_RPM, JET_RPM_SPAN } from "./jet-gauge.ts";
+import { JET_SPEED_CAP, type JetSpec, type JetVehicleDefinition, type VehicleState } from "./vehicle.ts";
+
+export * from "./jet-gauge.ts";
+
+
+/** A jet's spec as content gives it, checked once its family's code is here (families/jet.ts). Throws on the first fault. */
+export function validateJetSpec(s: JetSpec): void {
+  if (!s || typeof s !== "object" || Array.isArray(s)) throw new Error("invalid jet specification");
+  for (const key of ["halfWidth", "halfLength", "height", "clearance", "mass", "maxForward", "maxReverse", "fuelCapacity", "fuelPerSecond", "cruiseSpeed", "topSpeed", "thrust", "stallSpeed", "criticalAngle", "inducedDrag", "gLimit", "pitchRate", "rollRate", "yawRate", "turnAcceleration", "aimResponse", "vtolSpeed", "vtolFade", "vtolLift", "climbSpeed", "descendSpeed", "spoolUp", "spoolDown", "gravity", "noseGear", "gearTrack", "rotateSpeed", "brake", "minGroundNormal"] as const) {
+    if (!Number.isFinite(s[key]) || s[key] <= 0) throw new Error(`missing or invalid jet ${key}`);
+  }
+  const vec = (v: unknown): boolean => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite);
+  if (!Number.isFinite(s.incidence) || Math.abs(s.incidence) > .2 || !Number.isFinite(s.mainGear) || s.mainGear >= 0 || -s.mainGear > s.halfLength ||
+    s.noseGear > s.halfLength || s.gearTrack > s.halfWidth || s.clearance >= s.height || s.mass < 50 || s.mass > 1000000 ||
+    s.topSpeed > JET_SPEED_CAP || s.maxForward > JET_SPEED_CAP || s.cruiseSpeed >= s.topSpeed || s.stallSpeed >= s.cruiseSpeed ||
+    s.vtolSpeed > s.stallSpeed || s.rotateSpeed > s.cruiseSpeed || s.criticalAngle > .6 || s.gLimit > 12 || s.inducedDrag > 1 ||
+    s.pitchRate > 5 || s.rollRate > 8 || s.yawRate > 2 || s.aimResponse > 12 || s.minGroundNormal > 1 || s.vtolLift > s.gravity * 3 ||
+    s.climbSpeed > 30 || s.descendSpeed > 30 ||
+    !Array.isArray(s.bodyBoxes) || s.bodyBoxes.length < 1 || s.bodyBoxes.length > 12 ||
+    !s.bodyBoxes.every(b => !!b && vec(b.at) && vec(b.half) && b.half.every((n: number) => n > 0 && n <= 12) && b.at[1] - b.half[1] >= s.clearance - .0001)) throw new Error("inconsistent jet specification");
+}
 
 export interface JetState extends VehicleState {
   qx: number; qy: number; qz: number; qw: number;
@@ -56,31 +77,6 @@ export interface JetStep {
   fuelUsed: number;
   surface: string;
 }
-
-/**
- * A jet's throttle, spool and nozzle ride in the rotor fields a body, the store and the wire carry for any aircraft: the
- * collective, the rotor speed and the rotor phase. The jet's family (families/jet.ts) alone writes them; everything else
- * reads them here.
- */
-interface JetFields { readonly vehicleCollective: number; readonly vehicleRotorRpm: number; readonly vehicleRotorPhase: number }
-/** The pilot's throttle, 0 to 1 of military thrust. */
-export const jetThrottle = (b: JetFields): number => b.vehicleCollective;
-/** The thrust the engine makes, as a share of military: past 1 with the afterburner lit. */
-export const jetSpool = (b: JetFields): number => b.vehicleRotorRpm;
-/** How far the nozzle and lift fan are swung to VTOL, 0 to 1. */
-export const jetNozzle = (b: JetFields): number => b.vehicleRotorPhase;
-/** The same, from vehicle row `v` of the entity columns. */
-export const jetThrottleAt = (c: { readonly vehicleCollective: ArrayLike<number> }, v: number): number => c.vehicleCollective[v]!;
-export const jetSpoolAt = (c: { readonly vehicleRotorRpm: ArrayLike<number> }, v: number): number => c.vehicleRotorRpm[v]!;
-export const jetNozzleAt = (c: { readonly vehicleRotorPhase: ArrayLike<number> }, v: number): number => c.vehicleRotorPhase[v]!;
-/** An observer's rotor word for a jet is its nozzle alone, in 255ths, so it costs nothing on the wire while it holds. */
-export const packJetNozzle = (nozzle: number): number => Math.round(clamp(nozzle, 0, 1) * 255);
-export const unpackJetNozzle = (word: number): number => (word & 255) / 255;
-/** The engine speed the drive word carries: idle at 3000, 7000 more at full military thrust. */
-export const JET_IDLE_RPM = 3000;
-export const JET_RPM_SPAN = 7000;
-/** A jet's spool from the engine speed an observer is sent. */
-export const jetSpoolOfRpm = (rpm: number, running: boolean): number => Math.max(0, (rpm - (running ? JET_IDLE_RPM : 0)) / JET_RPM_SPAN);
 
 /** Wheels go up above this speed in the air and down below the lower one. */
 export const GEAR_UP_SPEED = 70;
@@ -163,13 +159,6 @@ export function jetLift(p: JetSpec, alpha: number): number {
   return sign * Math.max(.3, 1 - (size - critical) / critical * 1.6);
 }
 
-/** The angle of attack of a jet at attitude (qx, qy, qz, qw) moving at (vx, vy, vz): 0 flying backwards or at rest. */
-export function jetAngleOfAttack(qx: number, qy: number, qz: number, qw: number, vx: number, vy: number, vz: number): number {
-  q[0] = qx; q[1] = qy; q[2] = qz; q[3] = qw;
-  quatNormalize(q, 0);
-  quatUnrotate(q, 0, vx, vy, vz, local, 0);
-  return local[2]! > 1e-3 ? detAtan2(-local[1]!, local[2]!) : 0;
-}
 
 function readRotation(s: Readonly<JetState>): void {
   q[0] = s.qx; q[1] = s.qy; q[2] = s.qz; q[3] = s.qw;

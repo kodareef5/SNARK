@@ -435,22 +435,6 @@ export function validateHelicopterSpec(s: HelicopterSpec): void {
     !Number.isFinite(s.tail.radius) || s.tail.radius <= 0 || s.tail.radius > 2) throw new Error("inconsistent helicopter specification");
 }
 
-export function validateJetSpec(s: JetSpec): void {
-  if (!s || typeof s !== "object" || Array.isArray(s)) throw new Error("invalid jet specification");
-  for (const key of ["halfWidth", "halfLength", "height", "clearance", "mass", "maxForward", "maxReverse", "fuelCapacity", "fuelPerSecond", "cruiseSpeed", "topSpeed", "thrust", "stallSpeed", "criticalAngle", "inducedDrag", "gLimit", "pitchRate", "rollRate", "yawRate", "turnAcceleration", "aimResponse", "vtolSpeed", "vtolFade", "vtolLift", "climbSpeed", "descendSpeed", "spoolUp", "spoolDown", "gravity", "noseGear", "gearTrack", "rotateSpeed", "brake", "minGroundNormal"] as const) {
-    if (!Number.isFinite(s[key]) || s[key] <= 0) throw new Error(`missing or invalid jet ${key}`);
-  }
-  const vec = (v: unknown): boolean => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite);
-  if (!Number.isFinite(s.incidence) || Math.abs(s.incidence) > .2 || !Number.isFinite(s.mainGear) || s.mainGear >= 0 || -s.mainGear > s.halfLength ||
-    s.noseGear > s.halfLength || s.gearTrack > s.halfWidth || s.clearance >= s.height || s.mass < 50 || s.mass > 1000000 ||
-    s.topSpeed > JET_SPEED_CAP || s.maxForward > JET_SPEED_CAP || s.cruiseSpeed >= s.topSpeed || s.stallSpeed >= s.cruiseSpeed ||
-    s.vtolSpeed > s.stallSpeed || s.rotateSpeed > s.cruiseSpeed || s.criticalAngle > .6 || s.gLimit > 12 || s.inducedDrag > 1 ||
-    s.pitchRate > 5 || s.rollRate > 8 || s.yawRate > 2 || s.aimResponse > 12 || s.minGroundNormal > 1 || s.vtolLift > s.gravity * 3 ||
-    s.climbSpeed > 30 || s.descendSpeed > 30 ||
-    !Array.isArray(s.bodyBoxes) || s.bodyBoxes.length < 1 || s.bodyBoxes.length > 12 ||
-    !s.bodyBoxes.every(b => !!b && vec(b.at) && vec(b.half) && b.half.every((n: number) => n > 0 && n <= 12) && b.at[1] - b.half[1] >= s.clearance - .0001)) throw new Error("inconsistent jet specification");
-}
-
 function validateWeapons(w: VehicleWeapons): void {
   const id = (v: unknown): boolean => typeof v === "string" && v.includes(":");
   const vec = (v: unknown): boolean => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite);
