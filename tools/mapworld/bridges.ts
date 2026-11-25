@@ -375,7 +375,7 @@ export function bridgeHoles(frame: Frame, corridors: readonly Corridor[], base: 
   return { ...frame, rings };
 }
 
-export function corridorIndex(corridors: readonly Corridor[]): ((frame: Frame) => Corridor[]) & { add: (c: Corridor) => void } {
+export function corridorIndex(corridors: readonly Corridor[]): ((frame: Frame) => Corridor[]) & { add: (c: Corridor) => void; some: (frame: Frame, test: (c: Corridor) => boolean) => boolean } {
   const bins = new Map<number, Corridor[]>();
   const add = (c: Corridor): void => {
     for (let x = Math.floor((Math.min(c.a[0], c.b[0]) - c.width) / 128); x <= Math.floor((Math.max(c.a[0], c.b[0]) + c.width) / 128); x++) for (let z = Math.floor((Math.min(c.a[1], c.b[1]) - c.width) / 128); z <= Math.floor((Math.max(c.a[1], c.b[1]) + c.width) / 128); z++) {
@@ -388,5 +388,11 @@ export function corridorIndex(corridors: readonly Corridor[]): ((frame: Frame) =
     for (let x = Math.floor((frame.x - radius) / 128); x <= Math.floor((frame.x + radius) / 128); x++) for (let z = Math.floor((frame.z - radius) / 128); z <= Math.floor((frame.z + radius) / 128); z++) for (const c of bins.get(binKey(x, z)) ?? []) found.add(c);
     return [...found];
   };
-  return Object.assign(lookup, { add });
+  /** Whether `test` holds for a corridor lookup would give, without making the list: one in more than one bin is tried more than once. */
+  const some = (frame: Frame, test: (c: Corridor) => boolean): boolean => {
+    const radius = Math.hypot(frame.width, frame.depth) / 2;
+    for (let x = Math.floor((frame.x - radius) / 128); x <= Math.floor((frame.x + radius) / 128); x++) for (let z = Math.floor((frame.z - radius) / 128); z <= Math.floor((frame.z + radius) / 128); z++) for (const c of bins.get(binKey(x, z)) ?? []) if (test(c)) return true;
+    return false;
+  };
+  return Object.assign(lookup, { add, some });
 }

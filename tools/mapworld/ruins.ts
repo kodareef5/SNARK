@@ -284,8 +284,7 @@ export function makeRuins(site: Site): StaticPiece[] {
       const from = room.points[segment - 1]!; const to = room.points[segment]!; const length = Math.hypot(to.x - from.x, to.z - from.z);
       for (let d = 0; d <= Math.ceil(length); d++) {
         const t = d / Math.max(1, Math.ceil(length)); const p = { x: from.x + (to.x - from.x) * t, z: from.z + (to.z - from.z) * t, y: from.y + (to.y - from.y) * t };
-        const near = propCorridors({ ...m.frame, x: p.x, z: p.z, width: 16, depth: 16 });
-        if (near.some((r) => {
+        if (propCorridors.some({ ...m.frame, x: p.x, z: p.z, width: 16, depth: 16 }, (r) => {
           if (p.y < r.low - 2 || p.y > r.high + 2 || Math.abs(p.y - r.low - .5) < .12) return false;
           const dx = r.b[0] - r.a[0]; const dz = r.b[1] - r.a[1];
           const t = Math.max(0, Math.min(1, ((p.x - r.a[0]) * dx + (p.z - r.a[1]) * dz) / (dx * dx + dz * dz || 1)));
@@ -296,8 +295,7 @@ export function makeRuins(site: Site): StaticPiece[] {
     if (m.rooms.some((r) => obstacles.blocked(r.points) || m.pieces.some((p) => obstructs(p, r.points)))) return false;
     for (const p of m.pieces) {
       const [w, h, d] = extentOf(p.kind).size; const mid = middleOf(p);
-      const nearby = propCorridors({ ...m.frame, x: mid.x, z: mid.z, width: w, depth: d });
-      if (nearby.some((c) => {
+      if (propCorridors.some({ ...m.frame, x: mid.x, z: mid.z, width: w, depth: d }, (c) => {
         if (mid.y + h / 2 < c.low || mid.y - h / 2 > c.high) return false;
         const angle = p.yaw * Math.PI / 180; const co = Math.cos(angle); const si = Math.sin(angle);
         const local = (q: readonly number[]): number[] => [(q[0]! - mid.x) * co - (q[1]! - mid.z) * si, (q[0]! - mid.x) * si + (q[1]! - mid.z) * co];
@@ -523,7 +521,7 @@ function makePublicPlaces(site: Site, places: PublicPlace[], accept: (m: Mason) 
 function crosses(box: Box, index: ReturnType<typeof corridorIndex>): boolean {
   const [w, , d] = box.size; const mid = box;
   const a = box.yaw * Math.PI / 180; const co = Math.cos(a); const si = Math.sin(a);
-  return index({ x: mid.x, z: mid.z, yaw: box.yaw, c: co, s: si, width: w, depth: d, rings: [] }).some((c) => {
+  return index.some({ x: mid.x, z: mid.z, yaw: box.yaw, c: co, s: si, width: w, depth: d, rings: [] }, (c) => {
     const local = (q: readonly number[]): number[] => [(q[0]! - mid.x) * co - (q[1]! - mid.z) * si, (q[0]! - mid.x) * si + (q[1]! - mid.z) * co];
     const [qa, qb] = [local(c.a), local(c.b)]; const half = [w / 2 + c.width / 2, d / 2 + c.width / 2];
     let enter = 0; let leave = 1;

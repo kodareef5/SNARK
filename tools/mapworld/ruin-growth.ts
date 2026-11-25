@@ -85,8 +85,7 @@ export function growRuins(map: MapData, reg: Registry, site: Site, growth: Vocab
         return Math.abs(dx * c - dz * s) < reg.halfX[k]! + radius + .2 && Math.abs(dx * s + dz * c) < reg.halfZ[k]! + radius + .2 && listed(i);
       });
       if (blocked) { rejected.structure++; takeOut(chunk, slot); continue; }
-      const near = routes({ x: px, z: pz, width: radius * 2 + 2, depth: radius * 2 + 2, c: 1, s: 0, yaw: 0, rings: [] });
-      if (near.some((r) => {
+      if (routes.some({ x: px, z: pz, width: radius * 2 + 2, depth: radius * 2 + 2, c: 1, s: 0, yaw: 0, rings: [] }, (r) => {
         if (top < r.low || py > r.high) return false;
         const dx = r.b[0] - r.a[0]; const dz = r.b[1] - r.a[1]; const t = Math.max(0, Math.min(1, ((px - r.a[0]) * dx + (pz - r.a[1]) * dz) / (dx * dx + dz * dz || 1)));
         return Math.hypot(px - r.a[0] - dx * t, pz - r.a[1] - dz * t) < radius + r.width / 2;
@@ -107,7 +106,7 @@ export function growRuins(map: MapData, reg: Registry, site: Site, growth: Vocab
           return u * u + v * v < (reach + .5) ** 2 && listed(i);
         });
         if (blocked) { rejected.canopyStructure++; takeOut(chunk, slot); continue; }
-        if (routes({ x: px, z: pz, width: reach * 2, depth: reach * 2, c: 1, s: 0, yaw: 0, rings: [] }).some((r) => {
+        if (routes.some({ x: px, z: pz, width: reach * 2, depth: reach * 2, c: 1, s: 0, yaw: 0, rings: [] }, (r) => {
           if (py + height < r.low || py > r.high) return false;
           const dx = r.b[0] - r.a[0]; const dz = r.b[1] - r.a[1]; const t = Math.max(0, Math.min(1, ((px - r.a[0]) * dx + (pz - r.a[1]) * dz) / (dx * dx + dz * dz || 1)));
           return Math.hypot(px - r.a[0] - dx * t, pz - r.a[1] - dz * t) < reach + r.width / 2;
