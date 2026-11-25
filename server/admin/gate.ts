@@ -72,7 +72,7 @@ export function changedNothing(req: Request): boolean {
 /** Null where the admin pages may be shown, else the answer that says why not. */
 export function refused(req: Request, who: string, gate: AdminGate): Response | null {
   // A development server's open pages manage nothing: they act at staff rank, with cheats only.
-  if (gate.dev) return pass(req, gate, { name: DEVELOPMENT, id: "", pid: 0, rank: RANK_STAFF, via: "page", from: who });
+  if (gate.dev) return pass(req, gate, { name: DEVELOPMENT, id: "", pid: 0, rank: RANK_STAFF, via: "page", from: who, baseRank: RANK_STAFF });
   const cluster = gate.cluster ?? null;
   const staff = gate.staff ?? null;
   if (gate.password === null && cluster === null && !staff?.any()) return new Response("the admin pages open on a development server, where ServerAdminPassword or ClusterAdminPassword is set, or once a survivor is issued a password", { status: 404 });
@@ -101,7 +101,7 @@ export function refused(req: Request, who: string, gate: AdminGate): Response | 
   const top = cluster !== null ? RANK_CLUSTER : gate.password !== null ? RANK_MAP : RANK_OPEN;
   if (!asCluster && !asMap && asOwn && found !== null) {
     if (found.rank >= top) gate.guesses.right(who);
-    return pass(req, gate, { name: found.name, id: found.id, pid: found.pid, rank: found.rank, via: "page", from: who });
+    return pass(req, gate, { name: found.name, id: found.id, pid: found.pid, rank: found.rank, via: "page", from: who, baseRank: RANK_OPEN, signedHash: found.hash });
   }
   if (!asCluster && !asMap) {
     // A password replaced or cleared is not a guess: an open page goes on sending it every few seconds.
@@ -112,7 +112,7 @@ export function refused(req: Request, who: string, gate: AdminGate): Response | 
   if (rank >= top) gate.guesses.right(who);
   // Round brackets are in no survivor's name, so a typed name can never pass as a survivor's.
   const name = SURVIVOR_NAME.test(typed) ? `(${typed})` : asCluster ? "(cluster password)" : "(map password)";
-  return pass(req, gate, { name, id: "", pid: 0, rank, via: "page", from: who });
+  return pass(req, gate, { name, id: "", pid: 0, rank, via: "page", from: who, baseRank: rank });
 }
 
 /** Stamps a request that passed with its own actor, and tells the gate's listener. */

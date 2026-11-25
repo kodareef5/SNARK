@@ -61,10 +61,10 @@ import { globalRefused, shownTagNames, speakerLine } from "./permissions/chat-ta
 import { Tribes } from "./tribes.ts";
 import { Voice } from "./voice.ts";
 import { Console, OP_ADMIN } from "./console.ts";
-import { Acts, PAGE_ACTOR, type Actor } from "./acts.ts";
+import { Acts, PAGE_ACTOR, sessionActor, type Actor } from "./acts.ts";
 import { PermissionStore } from "./permissions/store.ts";
-import { Permissions, type PermissionSubject } from "./permissions/permissions.ts";
-import { memberWorld, type PermissionActor, type PermissionOp } from "../shared/permissions/model.ts";
+import { Permissions, type Acting, type PermissionSubject } from "./permissions/permissions.ts";
+import { memberWorld, type PermissionOp } from "../shared/permissions/model.ts";
 import { changeWords } from "../shared/permissions/commands.ts";
 import { makePassword, passwordHash } from "./permissions/secrets.ts";
 import { applyPlan, type Applied, type ImportPlan } from "./permissions/import.ts";
@@ -342,6 +342,8 @@ export interface Host {
   issuePassword(by: Actor, id: string): { readonly why: string; readonly password: string };
   /** Takes survivor `id`'s password away as `by`. Answers "" or why not. */
   clearPassword(by: Actor, id: string): string;
+  /** Shows or hides one of the session's survivor's own chat tags. Answers "" or why not. */
+  chooseTag(c: Client, tag: string, show: boolean): string;
   /** Makes an import's changes as `by`, who needs the top rank there is: each under the rule, all as one act that names `what`. */
   importPermissions(by: Actor, what: string, plan: ImportPlan): Applied & { readonly why: string };
   /** A session as its groups know it, or null before it has a survivor with an ID. */
@@ -1598,22 +1600,43 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     const gone = permissions.takeGone();
     for (const c of game.clients) {
       if (!c?.active) continue;
-      if (c.signed && gone.length > 0 && gone.includes(subjectOf(c)?.id ?? "")) c.signed = false;
+      if (c.signed && gone.length > 0 && gone.includes(subjectOf(c)?.id ?? "")) {
+        c.signed = false;
+        c.signedHash = "";
+      }
       creative.stand(c);
     }
   };
-  const changePermissions = (by: Actor, op: PermissionOp): string => {
-    const actor = { rank: by.rank, name: by.name, world: permissions.world };
-    const why = permissions.apply(actor, op);
-    if (why !== "") return why;
-    // The group by its own name, not as it was typed.
-    const typed = "group" in op ? op.group : op.op === "tag" ? op.tag : "";
-    const group = permissions.group(typed)?.name ?? typed;
-    const everyWorld = op.op === "addMember" && permissions.world !== 0 && memberWorld(actor, permissions.group(group)?.rank ?? 0, op.world) === 0;
-    acts.write(by, changeWords("group" in op ? { ...op, group } : op, everyWorld), "change");
-    bus.after(PERM_CHANGED, { account: "key" in op ? op.key : "id" in op ? op.id : "", group });
+  /** The permissions' version every live session was last worked out at. */
+  let settledAt = permissions.version;
+  /** Once the permissions moved, for whatever reason: modules hear what changed, and every live session is worked out again. */
+  const settleStanding = (): void => {
+    if (permissions.version === settledAt) return;
+    settledAt = permissions.version;
+    for (const changed of permissions.takeChanged()) bus.after(PERM_CHANGED, { account: changed.account, group: changed.group });
     restand();
-    return "";
+  };
+  /** Who `by` is to a permission change: the rank it holds apart from any group, and a survivor's own sign-in. */
+  const acting = (by: Actor): Acting => ({
+    rank: by.rank,
+    name: by.name,
+    world: permissions.world,
+    baseRank: by.baseRank,
+    signedIn: by.signedHash ? { id: by.id, hash: by.signedHash } : undefined,
+  });
+  const changePermissions = (by: Actor, op: PermissionOp): string => {
+    const actor = acting(by);
+    const why = permissions.apply(actor, op);
+    if (why === "") {
+      // The group by its own name, not as it was typed.
+      const typed = "group" in op ? op.group : op.op === "tag" ? op.tag : "";
+      const group = permissions.group(typed)?.name ?? typed;
+      const judged = { rank: permissions.actingRank(actor), name: by.name, world: permissions.world };
+      const everyWorld = op.op === "addMember" && permissions.world !== 0 && memberWorld(judged, permissions.group(group)?.rank ?? 0, op.world) === 0;
+      acts.write(by, changeWords("group" in op ? { ...op, group } : op, everyWorld), "change");
+    }
+    settleStanding();
+    return why;
   };
   const issuePassword = (by: Actor, id: string): { why: string; password: string } => {
     const password = makePassword();
@@ -1623,15 +1646,18 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const importPermissions = (by: Actor, what: string, plan: ImportPlan): Applied & { why: string } => {
     const top = cluster ? RANK_CLUSTER : RANK_MAP;
     if (by.rank < top) return { why: `An import needs the ${RANK_NAMES[top]} rank.`, done: 0, refused: [] };
-    const apply = (actor: PermissionActor, op: PermissionOp): string => {
-      const why = permissions.apply(actor, op);
-      if (why === "") bus.after(PERM_CHANGED, { account: "key" in op ? op.key : "id" in op ? op.id : "", group: "group" in op ? (permissions.group(op.group)?.name ?? op.group) : "" });
-      return why;
-    };
-    const applied = applyPlan({ apply }, { rank: by.rank, name: by.name, world: permissions.world }, plan);
+    const actor: Acting = { ...acting(by), needs: top };
+    const applied = applyPlan(permissions, actor, plan);
     acts.write(by, `imported ${what}: ${applied.done} ${applied.done === 1 ? "change" : "changes"}`, "change");
-    restand();
+    settleStanding();
     return { why: "", ...applied };
+  };
+  const chooseTag = (c: Client, tag: string, show: boolean): string => {
+    const subject = subjectOf(c);
+    if (!subject) return "That needs a survivor with an ID.";
+    const why = permissions.apply(acting(sessionActor(c, records)), { op: "tag", id: subject.id, tag, show });
+    settleStanding();
+    return why;
   };
   // A tribe's groups are its members'.
   tribes.onTeam = (rec) => {
@@ -2094,7 +2120,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     creative,
     {
       step: () => {
-        if (permissions.poll()) restand();
+        permissions.poll();
+        settleStanding();
       },
     },
     gaze,
@@ -2295,6 +2322,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     changePermissions,
     issuePassword,
     clearPassword: (by, id) => changePermissions(by, { op: "clearSecret", id }),
+    chooseTag,
     importPermissions,
     subjectOf,
     loaded,

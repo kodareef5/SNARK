@@ -21,6 +21,10 @@ export interface Actor {
   readonly rank: number;
   readonly via: ActVia;
   readonly from: string;
+  /** The rank held apart from any group, which a permission change is judged from. Without it, `rank` is. */
+  readonly baseRank?: number;
+  /** The hash of the survivor's own password it signed in with. Only the permissions' own check reads it. */
+  readonly signedHash?: string;
 }
 
 /** The operator at the server's terminal, who may do anything. */
@@ -31,7 +35,7 @@ export const PAGE_ACTOR: Actor = Object.freeze({ name: "(admin page)", id: "", p
 /** A session as the actor of what it does. */
 export function sessionActor(c: Client, records: Records): Actor {
   const rec = records.byPid.get(c.pid);
-  return { name: c.name, id: rec ? idText(rec) : "", pid: c.pid, rank: c.rank, via: "session", from: c.conn.address ?? "" };
+  return { name: c.name, id: rec ? idText(rec) : "", pid: c.pid, rank: c.rank, via: "session", from: c.conn.address ?? "", baseRank: c.passwordRank, signedHash: c.signedHash };
 }
 
 /** Cheats alone are not worth it: where every session has them, they would push out the rest. */

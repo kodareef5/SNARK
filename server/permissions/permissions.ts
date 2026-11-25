@@ -1,6 +1,6 @@
 // A world's view of the cluster's permissions: the whole store held in maps, so every check is lookups. `poll` reads the
 // file again when another world changed it, and `apply` is the one door for every change.
-import { RANK_CLUSTER, RANK_OPEN, RANK_STAFF } from "../../shared/ranks.ts";
+import { RANK_CLUSTER, RANK_NAMES, RANK_OPEN, RANK_STAFF } from "../../shared/ranks.ts";
 import {
   DEFAULT_GROUP,
   HOUR_MS,
@@ -31,6 +31,25 @@ export interface PermissionSubject {
   readonly team: number;
   readonly signed: boolean;
   readonly world: number;
+}
+
+/**
+ * Who makes a change, as `apply` judges them by the store as it stands inside the write. An actor with neither `baseRank`
+ * nor `signedIn`, such as the terminal or a module, acts at its `rank`.
+ */
+export interface Acting extends PermissionActor {
+  /** The rank held apart from any group: a host password the connection gave, the terminal, a module, a development page. */
+  readonly baseRank?: number;
+  /** A survivor signed in with their own password: their ID and the password's hash. Their groups count while it is still theirs. */
+  readonly signedIn?: { readonly id: string; readonly hash: string };
+  /** The least rank the whole act needs, as an import needs the top one. */
+  readonly needs?: number;
+}
+
+/** An account and a group whose standing changed: a survivor's ID or a tribe's number, "" for a group alone, and "" for none. */
+export interface Changed {
+  readonly account: string;
+  readonly group: string;
 }
 
 export interface PermissionsOptions {
@@ -74,10 +93,16 @@ function current(m: Member, now: number): Member | null {
   return m.forever ? { ...m, from: 0, until: 0 } : null;
 }
 
+const sameMember = (a: Member, b: Member | null): boolean =>
+  b !== null && a.kind === b.kind && a.key === b.key && a.group === b.group && a.world === b.world && a.forever === b.forever && a.from === b.from && a.until === b.until;
+
+const sameGroup = (a: Group, b: Group | undefined): boolean =>
+  b !== undefined && a.name === b.name && a.rank === b.rank && a.chat === b.chat && a.permissions.length === b.permissions.length && a.permissions.every((p, i) => p === b.permissions[i]);
+
 export class Permissions {
-  /** Rises with every change of what the store holds or of which timed memberships run. */
+  /** Rises with every change of what this view holds or of which timed memberships run. */
   version = 0;
-  /** Called after each change `apply` made. */
+  /** Called after each change `apply` made, with the actor as it was judged. */
   onApplied: ((actor: PermissionActor, op: PermissionOp) => void) | null = null;
 
   private readonly store: PermissionStore;
@@ -90,8 +115,12 @@ export class Permissions {
   private lookedAt = -Infinity;
   /** When a timed membership next starts or ends. */
   private nextEdge = Infinity;
+  /** The time the starts and ends of timed memberships were last looked at. */
+  private edgeSeen = -Infinity;
+  /** The accounts and groups whose standing changed since `takeChanged` was last called, by account and group. */
+  private readonly changed = new Map<string, Changed>();
   private readonly groupsByName = new Map<string, Held>();
-  private readonly members = new Map<string, Member[]>();
+  private members = new Map<string, Member[]>();
   private readonly secrets = new Map<string, string>();
   private readonly retiredHashes = new Retired();
   /** Survivors whose password was replaced or cleared since `takeGone` was last called. */
@@ -106,23 +135,38 @@ export class Permissions {
     this.world = opts.world;
     this.now = opts.now ?? Date.now;
     this.stampSeen = this.store.stamp();
-    this.load(this.store.read());
+    this.load(this.store.read(), false);
   }
 
   /** Reads the file again when its stamp changed, looking at most once every 5 seconds. Says whether anything changed. */
   poll(): boolean {
+    const was = this.version;
     const now = this.now();
-    let changed = false;
     if (now - this.lookedAt >= POLL_MS) {
       this.lookedAt = now;
-      changed = this.reloadIfChanged();
+      this.reloadIfChanged();
     }
-    if (!changed && now >= this.nextEdge) {
+    if (now >= this.nextEdge) {
+      this.passEdges(now);
       this.nextEdge = this.edgeAfter(now);
       this.version++;
-      changed = true;
     }
-    return changed;
+    return this.version !== was;
+  }
+
+  /** The accounts and groups whose standing changed since the last call: here, on another world, or by the clock. */
+  takeChanged(): Changed[] {
+    const out = [...this.changed.values()];
+    this.changed.clear();
+    return out;
+  }
+
+  /** The rank `actor` acts at by what this view holds: what it holds apart from any group, and its groups while its sign-in holds. */
+  actingRank(actor: Acting): number {
+    if (actor.baseRank === undefined && actor.signedIn === undefined) return actor.rank;
+    const own = actor.signedIn;
+    const groups = own !== undefined && own.hash !== "" && this.secrets.get(own.id) === own.hash ? this.rankOf({ id: own.id, team: 0, signed: true, world: this.world }) : RANK_OPEN;
+    return Math.max(actor.baseRank ?? RANK_OPEN, groups);
   }
 
   /** The groups that count for `subject` now: its own, its tribe's open ones, and Default. */
@@ -241,19 +285,27 @@ export class Permissions {
     };
   }
 
-  /** Makes one change if the edit rule lets `actor` make it. Answers "" or the reason it was not made. */
-  apply(actor: PermissionActor, op: PermissionOp): string {
+  /**
+   * Makes one change if the edit rule lets `actor` make it, judged by the store as it stands inside the write. Answers ""
+   * or the reason it was not made.
+   */
+  apply(actor: Acting, op: PermissionOp): string {
     let reason = "";
     let was = "";
+    let judged: PermissionActor = actor;
     try {
       this.store.transaction(() => {
         if (this.store.revision() !== this.revision) this.load(this.store.read());
+        judged = { rank: this.actingRank(actor), world: actor.world, name: actor.name };
+        const needs = actor.needs ?? RANK_OPEN;
         was = op?.op === "setSecret" || op?.op === "clearSecret" ? this.secretOf(op.id) : "";
-        reason = editRule(actor, op, this.look) || this.change(actor, op);
+        reason = (judged.rank < needs ? `That needs the ${RANK_NAMES[needs]} rank.` : "") || editRule(judged, op, this.look) || this.change(judged, op);
         if (reason) return;
         const now = this.now();
+        this.passEdges(now);
         this.store.dropExpired(now);
         this.dropExpired(now);
+        this.nextEdge = this.edgeAfter(now);
         this.revision = this.store.raise();
       });
     } catch {
@@ -262,10 +314,13 @@ export class Permissions {
     }
     if (reason) return reason;
     if (was !== "" && "id" in op) this.retire(op.id, was);
+    if (op.op !== "tag") {
+      const typed = "group" in op ? op.group : "";
+      this.note("key" in op ? op.key : "id" in op ? op.id : "", this.group(typed)?.name ?? typed);
+    }
     this.stampSeen = this.store.stamp();
-    this.nextEdge = this.edgeAfter(this.now());
     this.version++;
-    this.onApplied?.(actor, op);
+    this.onApplied?.(judged, op);
     return "";
   }
 
@@ -401,19 +456,27 @@ export class Permissions {
     return true;
   }
 
+  private note(account: string, group: string): void {
+    const k = `${account} ${group}`;
+    if (!this.changed.has(k)) this.changed.set(k, { account, group });
+  }
+
   private retire(id: string, hash: string): void {
     this.retiredHashes.add(hash, this.now());
     this.gone.add(id);
   }
 
-  private load(snap: PermissionSnapshot): void {
+  /** Takes in everything the store holds. With `note`, each group, membership and password it changed is noted. */
+  private load(snap: PermissionSnapshot, note = true): void {
     const now = this.now();
+    this.passEdges(now);
     const before = new Map(this.secrets);
+    const was = note ? { groups: new Map(this.groupsByName), members: this.members, documents: new Map(this.documents) } : null;
     this.revision = snap.revision;
     this.groupsByName.clear();
     for (const g of snap.groups) this.groupsByName.set(g.name.toLowerCase(), heldOf(g));
     this.defaultGroup = this.groupsByName.get(DEFAULT_GROUP.toLowerCase())!;
-    this.members.clear();
+    this.members = new Map();
     for (const raw of snap.members) {
       const m = current(raw, now);
       if (!m) continue;
@@ -433,8 +496,46 @@ export class Permissions {
       if (!mine) this.tags.set(t.id, (mine = new Map()));
       mine.set(t.tag.toLowerCase(), t);
     }
+    if (was) this.noteRead(was.groups, was.members, before, was.documents, now);
     this.nextEdge = this.edgeAfter(now);
     this.version++;
+  }
+
+  /** Notes what a read of the store changed from what this view held: groups, memberships as they count at `now`, passwords, documents. */
+  private noteRead(groups: ReadonlyMap<string, Held>, members: ReadonlyMap<string, readonly Member[]>, secrets: ReadonlyMap<string, string>, documents: ReadonlyMap<string, Document>, now: number): void {
+    for (const [k, held] of this.groupsByName) if (!sameGroup(held.group, groups.get(k)?.group)) this.note("", held.group.name);
+    for (const [k, held] of groups) if (!this.groupsByName.has(k)) this.note("", held.group.name);
+    for (const [k, rows] of this.members) {
+      const old = members.get(k);
+      if (old !== undefined && old.length === rows.length && rows.every((m, i) => sameMember(m, current(old[i]!, now)))) continue;
+      this.noteRows(rows, old, now);
+      if (old !== undefined) this.noteRows(old, rows, now);
+    }
+    for (const [k, rows] of members) if (!this.members.has(k)) this.noteRows(rows, undefined, now);
+    for (const [id, hash] of this.secrets) if (secrets.get(id) !== hash) this.note(id, "");
+    for (const id of secrets.keys()) if (!this.secrets.has(id)) this.note(id, "");
+    for (const [k, d] of this.documents) if (documents.get(k)?.text !== d.text) this.note("", "");
+    for (const k of documents.keys()) if (!this.documents.has(k)) this.note("", "");
+  }
+
+  /** Notes the account and group of each row of `rows`, as it counts at `now`, that `others` does not hold. */
+  private noteRows(rows: readonly Member[], others: readonly Member[] | undefined, now: number): void {
+    for (const raw of rows) {
+      const m = current(raw, now);
+      if (m && !others?.some((o) => sameMember(m, current(o, now)))) this.note(m.key, m.group);
+    }
+  }
+
+  /** Notes each timed membership that started or ended after the last look and by `now`. */
+  private passEdges(now: number): void {
+    if (now >= this.nextEdge) {
+      for (const rows of this.members.values()) {
+        for (const m of rows) {
+          if (m.until !== 0 && ((m.from > this.edgeSeen && m.from <= now) || (m.until > this.edgeSeen && m.until <= now))) this.note(m.key, m.group);
+        }
+      }
+    }
+    this.edgeSeen = now;
   }
 
   private dropExpired(now: number): void {

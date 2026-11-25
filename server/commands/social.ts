@@ -48,7 +48,7 @@ function tagCommand(show: boolean): ConsoleCommand {
       const mine = held.find((h) => h.tag.name.toLowerCase() === name.toLowerCase());
       if (!mine) return `You have no tag called ${name}.`;
       if (!show && !mine.tag.canBeDisabled) return `Your tag ${mine.tag.name} cannot be switched off.`;
-      const why = host.permissions.apply({ rank: c.rank, world: host.permissions.world, name: c.name }, { op: "tag", id: subject.id, tag: mine.tag.name, show });
+      const why = host.chooseTag(c, mine.tag.name, show);
       return why || `Your lines ${show ? "show" : "no longer show"} the tag ${mine.tag.name}.`;
     },
   };

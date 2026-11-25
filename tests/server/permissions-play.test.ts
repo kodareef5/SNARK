@@ -3,6 +3,7 @@
 import { expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import type { ClientSession } from "../../client/core/session.ts";
+import { OPERATOR } from "../../server/acts.ts";
 import { idText } from "../../server/survivor-ids.ts";
 import { SESSION_SPECTATING } from "../../shared/net/protocol.ts";
 import { RANK_ADMIN, RANK_CLUSTER, RANK_OPEN, RANK_STAFF } from "../../shared/ranks.ts";
@@ -25,10 +26,11 @@ function op(h: Harness, ...said: string[]): void {
   }
 }
 
-/** Makes `s` a signed-in member of Admins, so it stands at the admin rank with every cheat. */
+/** Makes `s` a member of Admins signed in with their own password, so it stands at the admin rank with every cheat. */
 function admin(h: Harness, s: ClientSession): void {
-  h.client(s)!.signed = true;
   op(h, `Permissions.Add ${idOf(h, s)} Admins`);
+  const { why, password } = h.host.issuePassword(OPERATOR, idOf(h, s));
+  if (why !== "" || h.say(s, `enablecheats ${password}`)[0] !== "cheats enabled") throw new Error(`${s.name} did not sign in`);
 }
 
 test("an admin adds a survivor to a group by its ID and by its name, and groups shows it", () => {
@@ -150,6 +152,7 @@ test("every change is an act that names who made it and reads as the command", (
   const changes = h.host.acts.recent().filter((a) => a.kind === "change").map((a) => [a.name, a.id, a.rank, a.what]);
   expect(changes).toEqual([
     ["(operator)", "", RANK_CLUSTER, `Permissions.Add ${me} Admins`],
+    ["(operator)", "", RANK_CLUSTER, `set the password of ${me}`],
     ["ada", me, RANK_ADMIN, "Permissions.AddGroup Vip"],
     ["ada", me, RANK_ADMIN, "Permissions.Grant Vip Cheat.kick"],
     ["ada", me, RANK_ADMIN, `Permissions.Add ${him} Vip`],
@@ -161,8 +164,9 @@ test("every change is an act that names who made it and reads as the command", (
   expect(told.map((l) => l.replace(/^\S+ \S+ UTC {2}/, ""))).toEqual([`ada ${me}  admin  change: Permissions.RemoveTimed ${him} Vip`, `ada ${me}  admin  change: Permissions.Revoke Vip Cheat.kick`]);
   expect(h.say(bob, "acts")).toEqual(["denied: this needs the admin rank or above"]);
   h.run(100);
-  expect(ears.heard.lines.slice(0, 4)).toEqual([
+  expect(ears.heard.lines.slice(0, 5)).toEqual([
     `perm.changed: {"account":"${me}","group":"Admins"}`,
+    `perm.changed: {"account":"${me}","group":""}`,
     'perm.changed: {"account":"","group":"Vip"}',
     'perm.changed: {"account":"","group":"Vip"}',
     `perm.changed: {"account":"${him}","group":"Vip"}`,

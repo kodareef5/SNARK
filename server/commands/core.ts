@@ -141,6 +141,7 @@ export function addCoreCommands(con: Console): void {
         let groups = RANK_OPEN;
         if (asOwn) {
           c.signed = true;
+          c.signedHash = own;
           ctx.host.creative.stand(c);
           groups = permissions.rankOf(ctx.host.subjectOf(c)!);
         }
