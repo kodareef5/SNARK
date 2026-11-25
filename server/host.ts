@@ -68,6 +68,7 @@ import { memberWorld, type PermissionOp } from "../shared/permissions/model.ts";
 import { changeWords } from "../shared/permissions/commands.ts";
 import { makePassword, passwordHash } from "./permissions/secrets.ts";
 import { applyPlan, type Applied, type ImportPlan } from "./permissions/import.ts";
+import { IdRegister, catchUp } from "./permissions/register.ts";
 import { RANK_CLUSTER, RANK_MAP, RANK_NAMES, RANK_STAFF } from "../shared/ranks.ts";
 import { CHEAT_GUESSES } from "../shared/console.ts";
 import { DeadlineHeap } from "../shared/sim/schedule.ts";
@@ -688,6 +689,13 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const survivorLog = new SurvivorLog({ world, records, tribes, rules, persistence, opAdmin: OP_ADMIN, opDeath: OP_DEATH, causes: CAUSE_WORDS, say }, opts.survivorLog);
   opened.push({ close: () => survivorLog.stop() });
   const ids = new SurvivorIds(records);
+  // The cluster's permission groups, kept in its folder for every world, else beside the save, else in memory.
+  const permissionStore = new PermissionStore(cluster ? join(cluster.folder.root, "permissions.sqlite") : opts.dbPath ? `${opts.dbPath}.permissions.sqlite` : ":memory:");
+  opened.push(permissionStore);
+  const permissions = new Permissions({ store: permissionStore, world: cluster?.world ?? 0, now: opts.survivorLog?.wall ?? Date.now });
+  // Before anything can make an ID or a team, so a save put back from a backup or started afresh makes none twice.
+  catchUp(permissions, records, say);
+  const register = new IdRegister(permissions, records, say);
   // What the cluster's folder says came and went that the save does not know is done again now, before anything resumes.
   cluster?.start(
     {
@@ -705,7 +713,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       mayLeave: (c, rec) => (rec.out ? "you are unconscious" : riding.riding(c) ? "get off your mount first: it stays here" : urban.riding(c) ? "get out of the vehicle first: it stays here" : carry.holding(c) >= 0 ? "put down what is in your arms first" : ""),
       suspend: (rec, off) => { if (off) activity.checkpoint(rec.pid); survival.suspend(rec, off); },
       adopt: (rec) => {
-        ids.take(rec);
+        if (ids.take(rec)) register.made(rec);
+        else register.knows(rec);
         survival.restore(rec, false);
         progression.resume(rec);
         buffs.restore(rec, false);
@@ -723,8 +732,11 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   // Survivors of a save made before IDs get theirs here, in pid order, so the same save numbers them alike every time.
   for (const pid of [...(persistence?.survivors.values() ?? [])].sort((a, b) => a - b)) {
     const rec = records.byPid.get(pid);
-    if (rec) ids.take(rec);
+    if (!rec) continue;
+    if (ids.take(rec)) register.made(rec);
+    else register.knows(rec);
   }
+  register.write();
   const taming = new Taming({ world, game, records, items, survival, buffs, rules, lists, tribes, deadlines, creatures, progression, onNotice: (pid, text) => notice(pid, text), openOf: (c) => containers.openOf(c), refresh: (rec) => refreshBody(rec), onTamed: (rec) => {
     const e = records.entOf.get(rec.pid);
     spawner?.left(rec);
@@ -1536,7 +1548,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       rec.team = records.newTeam();
       records.dirty.add(rec.pid);
     }
-    ids.take(rec);
+    // A survivor is named as it is made and never renamed, so the register takes its name here.
+    if (ids.take(rec)) register.made(rec);
     // A survivor's stat points live in a genome, like any body's.
     rec.genome ??= new Genome();
     const had = c.pid;
@@ -1585,10 +1598,6 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const adminPassword = opts.adminPassword || rules.text("ServerAdminPassword") || null;
   const clusterPassword = opts.clusterPassword || rules.text("ClusterAdminPassword") || null;
   if (adminPassword !== null && adminPassword === clusterPassword) say("settings: ServerAdminPassword is the same as ClusterAdminPassword: they should differ, or every map admin is the cluster's");
-  // The cluster's permission groups, kept in its folder for every world, else beside the save, else in memory.
-  const permissionStore = new PermissionStore(cluster ? join(cluster.folder.root, "permissions.sqlite") : opts.dbPath ? `${opts.dbPath}.permissions.sqlite` : ":memory:");
-  opened.push(permissionStore);
-  const permissions = new Permissions({ store: permissionStore, world: cluster?.world ?? 0, now: opts.survivorLog?.wall ?? Date.now });
   const subjectOf = (c: Client): PermissionSubject | null => {
     const rec = c.pid !== 0 ? records.byPid.get(c.pid) : undefined;
     const id = rec ? idText(rec) : "";
@@ -1648,6 +1657,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     signedIn: by.signedHash ? { id: by.id, hash: by.signedHash } : undefined,
   });
   const changePermissions = (by: Actor, op: PermissionOp): string => {
+    register.write();
     const actor = acting(by);
     const why = permissions.apply(actor, op);
     if (why === "") {
@@ -1662,6 +1672,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     return why;
   };
   const claimPassword = (c: Client, typed: string): { why: string; password: string } => {
+    register.write();
     const subject = subjectOf(c);
     if (!subject) return { why: "You need a survivor to claim a password.", password: "" };
     const guesses = game.sessions.cheatGuesses;
@@ -2163,6 +2174,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     creative,
     {
       step: () => {
+        register.write();
         permissions.poll();
         settleStanding();
       },
@@ -2391,6 +2403,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       bus.after(SERVER_STOP, { why: "stopped" });
       bus.flush();
       impale.stop();
+      register.write();
       permissionStore.close();
       if (!persistence) return;
       // A creature in someone's arms is saved standing where it is set down, not where the arms had it, and so is whoever

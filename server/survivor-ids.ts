@@ -32,13 +32,15 @@ export class SurvivorIds {
     this.records = records;
   }
 
-  /** Gives a survivor an ID if it has none, and knows it by its ID. */
-  take(rec: EntityRecord): void {
-    if (rec.sid === 0) {
+  /** Gives a survivor an ID if it has none, and knows it by its ID. Says whether it made one. */
+  take(rec: EntityRecord): boolean {
+    const made = rec.sid === 0;
+    if (made) {
       rec.sid = this.records.newSurvivor();
       this.records.dirty.add(rec.pid);
     }
     this.pids.set(rec.sid, rec.pid);
+    return made;
   }
 
   /** Forgets a survivor that left. */
