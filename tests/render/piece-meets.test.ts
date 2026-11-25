@@ -732,6 +732,21 @@ test("a metal gable's top lies in the roof's corner plane, and a gable, eave wal
   if (process.env.SNARK_MEETS) console.log(said.join("\n"));
 });
 
+test("an open metal leaf is its shut one turned a quarter on its hinge line, and stands clear of its frame", () => {
+  const said: string[] = [];
+  for (const [shut, open, frame] of LEAVES) {
+    for (let level = 0; level < 4; level++) {
+      const met = leafTurned(METAL, shut, open, frame, level);
+      said.push(`metal ${open} level ${level}: ${(met.off * 1000).toFixed(3)} mm from its shut leaf turned, ${(Math.max(0, met.inFrame) * 1000).toFixed(1)} mm in its frame`);
+      // The same plate and bar, to a millimetre, but a gate's drop bar, which is lifted out.
+      if (level < TEXTURED) expect(met.off, `${open} level ${level}: from its shut leaf turned on the hinge line`).toBeLessThanOrEqual(0.001);
+      if (level < TEXTURED) expect(met.extra, `${open} level ${level}: nothing the shut leaf has not`).toBeLessThanOrEqual(0);
+      expect(met.inFrame, `${open} level ${level}: in its frame`).toBeLessThanOrEqual(HINGE_IN);
+    }
+  }
+  if (process.env.SNARK_MEETS) console.log(said.join("\n"));
+});
+
 test("a metal triangle of floor and a square share their side's two corners at every level, and neither crosses it", () => {
   for (const [tri, square] of [["triangle_foundation", "foundation"], ["triangle_ceiling", "ceiling"]] as const) {
     for (let level = 0; level < 4; level++) {

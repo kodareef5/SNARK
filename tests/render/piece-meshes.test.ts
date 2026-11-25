@@ -1317,6 +1317,40 @@ test("a new metal wall ends flat on its collider's ends, and a wall that others 
   }
 });
 
+/** Metal's leaves stood open and its double door: what each costs, as the planned forms' table has theirs. A pair's far level is one box shut and a sheet to a leaf open. */
+const METAL_LEAVES_MOST: Record<string, readonly number[]> = {
+  trapdoor_open: [296, 120, 48, 12],
+  double_door: [1336, 424, 120, 24, 12],
+  double_door_open: [1336, 424, 120, 24, 8],
+  gate_open: [624, 192, 56, 24, 8],
+};
+
+test("metal's open leaves and its double door are closed, flat, within their rows' boxes and a leaf's margin, and under budget", () => {
+  const rows: Record<string, FormDef> = Object.fromEntries(Object.keys(METAL_LEAVES_MOST).map((name) => [name, (ALL_FORMS as Record<string, FormDef>)[name]!]));
+  for (const mesh of bakeMetal(rows)) {
+    const name = mesh.id.slice(5, -6);
+    const most = METAL_LEAVES_MOST[name]!;
+    expect(mesh.lods.length, mesh.id).toBe(most.length);
+    mesh.lods.forEach((lod, level) => {
+      const s = measureSurface(lod);
+      expect([mesh.id, level, s.holes, s.flipped, s.insideOut]).toEqual([mesh.id, level, 0, 0, 0]);
+      expect(lod.indices.length / 3, `${mesh.id} level ${level}`).toBeLessThanOrEqual(Math.min(most[level]!, MADE_PIECE_TRIANGLES[level]![1]));
+      expect(lod.uvs, `${mesh.id} level ${level} is flat`).toBeUndefined();
+    });
+    // A leaf's bolts and its hinges' knuckles stand off it as a door's do.
+    const box = colliderBox(rows[name]!);
+    for (const shape of levelsOf(METAL, name, rows[name]!)) for (const p of shape.corners()) {
+      const at = [p[0], p[2], -p[1]];
+      for (let a = 0; a < 3; a++) expect(Math.max(box[a]! - at[a]!, at[a]! - box[a + 3]!), `${name} along ${"xyz"[a]}`).toBeLessThanOrEqual(METAL_PROUD_LEAF);
+      if (rows[name]!.pair !== undefined) expect(Math.abs(at[0]!), `${name}: between its leaves`).toBeGreaterThanOrEqual(box[3]! - rows[name]!.thick - METAL_PROUD_LEAF);
+    }
+  }
+  // An open hatch is the shut one, and a gate's open leaves are its shut ones less the drop bar that is lifted out.
+  const count = (name: string): number => levelsOf(METAL, name, (ALL_FORMS as Record<string, FormDef>)[name]!)[0]!.triangles;
+  expect([count("trapdoor_open"), count("double_door_open")]).toEqual([count("trapdoor"), count("double_door")]);
+  expect(count("gate") - count("gate_open")).toBe(12);
+});
+
 test("a metal sloped wall's two hands are each other in a mirror, point for point", () => {
   const [left, right] = ["sloped_wall_left", "sloped_wall_right"].map((name) => metalNew.find((p) => p.name === name)!.shapes);
   left!.forEach((shape, level) => {
