@@ -10,9 +10,9 @@
 // is the same solid, and so a ceiling set off a side wall keeps the yaw it has today.
 
 import { YAW_UNITS } from "../../coords.ts";
-import { basisOf, dirVector, levelY, twOf, worldOf, yawOf } from "./basis.ts";
+import { basisOf, dirVector, levelY, twOf, yawOf } from "./basis.ts";
 import type { FormTable } from "./forms.ts";
-import { CLS_EDGE, CLS_SQUARE, CLS_TRIANGLE, DIRECTIONS, LVL_MOST, M_MOST, SIDE, canon, canonical, dirTurn, key0, key1, keyAnchor, keyCls, keyDir, keyFlip, keyLayer, keyLvl, keyRot, keyValid, tupleStep, tupleWithin } from "./module.ts";
+import { CLS_EDGE, CLS_SQUARE, CLS_TRIANGLE, DIRECTIONS, LVL_MOST, M_MOST, SIDE, DIRS, canon, canonical, dirTurn, key0, key1, keyCls, keyDir, keyFlip, keyLayer, keyLvl, keyM0, keyM1, keyM2, keyM3, keyRot, keyValid, tupleStep, tupleWithin } from "./module.ts";
 
 /** A piece's address: its frame's gid and the two words of its key. */
 export interface LatticeKey {
@@ -174,7 +174,10 @@ export function rotsOf(forms: FormTable, kind: number): number {
 
 /** The direction of a keyed piece's own +X: dir − rot·(12 / turns). */
 export function ownDir(forms: FormTable, kind: number, k1: number): number {
-  return dirTurn(keyDir(k1), (-keyRot(k1) * DIRECTIONS) / rotsOf(forms, kind));
+  const d = keyDir(k1);
+  // Unturned, the direction is the key's own: no division.
+  if (keyRot(k1) === 0) return d < DIRECTIONS ? d : d - DIRECTIONS;
+  return dirTurn(d, (-keyRot(k1) * DIRECTIONS) / rotsOf(forms, kind));
 }
 
 /** The direction mod 3 of a keyed piece's own +X: what its row's `tw` holds. */
@@ -227,16 +230,38 @@ export function poseOf(f: Frame, k0: number, k1: number, forms: FormTable, kind:
   const own = ownDir(forms, kind, k1);
   const small = cls === CLS_SQUARE && side !== SIDE;
   let slot = dir;
-  keyAnchor(k0, k1, m, 0);
+  // The key's anchor, then the slot's reference point, as tuples in locals.
+  let m0 = keyM0(k0);
+  let m1 = keyM1(k0);
+  let m2 = keyM2(k0);
+  let m3 = keyM3(k1);
+  let e = -1;
+  let n = 0;
   if (cls === CLS_TRIANGLE) {
     // Its sides run along dir, dir + 4 and dir + 8 from its first, second and third corners.
     const corner = dirTurn(own, -dir) / 4;
-    if (corner !== 0) tupleStep(m, 0, dirTurn(dir, corner === 1 ? 0 : 2), side, m, 0);
+    if (corner !== 0) {
+      e = dirTurn(dir, corner === 1 ? 0 : 2) * 4;
+      n = side;
+    }
     slot = own;
-  } else if (cls === CLS_EDGE) tupleStep(m, 0, dir, SIDE / 2, m, 0);
-  else if (cls === CLS_SQUARE && !small) {
-    tupleStep(m, 0, dir, SIDE / 2, m, 0);
-    tupleStep(m, 0, dirTurn(dir, 3), SIDE / 2, m, 0);
+  } else if (cls === CLS_EDGE || (cls === CLS_SQUARE && !small)) {
+    e = dir * 4;
+    n = SIDE / 2;
+  }
+  // `| 0` as the Int32Array scratch stored them: a direction past the twelve steps by nothing.
+  if (e >= 0) {
+    m0 = (m0 + n * DIRS[e]!) | 0;
+    m1 = (m1 + n * DIRS[e + 1]!) | 0;
+    m2 = (m2 + n * DIRS[e + 2]!) | 0;
+    m3 = (m3 + n * DIRS[e + 3]!) | 0;
+  }
+  if (cls === CLS_SQUARE && !small) {
+    const q = dirTurn(dir, 3) * 4;
+    m0 = (m0 + (SIDE / 2) * DIRS[q]!) | 0;
+    m1 = (m1 + (SIDE / 2) * DIRS[q + 1]!) | 0;
+    m2 = (m2 + (SIDE / 2) * DIRS[q + 2]!) | 0;
+    m3 = (m3 + (SIDE / 2) * DIRS[q + 3]!) | 0;
   }
   let i = forms.atI[kind]!;
   let j = forms.atJ[kind]!;
@@ -247,11 +272,16 @@ export function poseOf(f: Frame, k0: number, k1: number, forms: FormTable, kind:
     if (((dirTurn(slot, -own) / 3) & 1) === 1) j = (small ? 1 : 0) - j;
     else i = (cls === CLS_EDGE ? (wide - 1) * SIDE : cls === CLS_TRIANGLE ? side : small ? 1 : 0) - i;
   }
-  worldOf(f.basis, f.ox, f.oz, m, 0, v, 0);
-  dirVector(f.basis, slot, v, 2);
+  const b = f.basis;
+  // worldOf and dirVector, whose Int32Array scratch held 32-bit results.
+  const wx = (f.ox + m0 * b[0]! + m1 * b[2]! + m2 * b[4]! + m3 * b[6]!) | 0;
+  const wz = (f.oz + m0 * b[1]! + m1 * b[3]! + m2 * b[5]! + m3 * b[7]!) | 0;
+  dirVector(b, slot, v, 2);
+  const vx = v[2]!;
+  const vz = v[3]!;
   // The slot's +Z is its +X a quarter turn on.
-  out.x = v[0]! + i * v[2]! - j * v[3]!;
-  out.z = v[1]! + i * v[3]! + j * v[2]!;
+  out.x = wx + i * vx - j * vz;
+  out.z = wz + i * vz + j * vx;
   // A level is a plane, so a pillar under a foundation ends at the foundation's top, not its underside.
   out.y = levelY(f.oy, keyLvl(k1)) + forms.atY[kind]!;
   out.yaw = yawOf(f.yaw, own);

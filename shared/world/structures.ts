@@ -98,7 +98,7 @@ export const PUT_AS_IS = -2;
 
 /** Removals a chunk remembers, so a client can be sent each as one batch. */
 export const GONE_KEPT = 8;
-/** Changed slots a chunk remembers, so a client a few changes behind is sent those without a scan of every slot. */
+/** Changed slots a chunk remembers, so a client a few changes behind is sent those without a scan of every slot. A power of two. */
 export const RECENT = 256;
 
 /**
@@ -209,7 +209,7 @@ export class ChunkTable {
   touch(slot: number, shaped: number): void {
     const slots = (this.recentSlot ??= new Uint16Array(RECENT));
     const vers = (this.recentVer ??= new Uint32Array(RECENT));
-    const at = this.recentCount % RECENT;
+    const at = this.recentCount & (RECENT - 1);
     if (this.recentCount >= RECENT) this.recentFloor = vers[at]!;
     slots[at] = slot;
     vers[at] = this.version;
@@ -257,6 +257,20 @@ export class ChunkTable {
 
 // Scratch for keying a row.
 const cells = new Cells();
+/** The form table, kind and key the scratch cells were listed for, and formCells' answer: a row's cells are listed once. */
+const listed: { forms: FormTable | null; kind: number; k0: number; k1: number; ok: boolean } = { forms: null, kind: 0, k0: 0, k1: 0, ok: false };
+
+/** formCells to the scratch cells, unless they already hold this key's. */
+function cellsOf(forms: FormTable, kind: number, k0: number, k1: number): boolean {
+  const l = listed;
+  if (kind === l.kind && k0 === l.k0 && k1 === l.k1 && forms === l.forms) return l.ok;
+  l.ok = formCells(forms, kind, k0, k1, cells);
+  l.forms = forms;
+  l.kind = kind;
+  l.k0 = k0;
+  l.k1 = k1;
+  return l.ok;
+}
 const pose: LatticePose = { x: 0, y: 0, z: 0, yaw: 0, tw: 0 };
 
 /** A query's results. `refs` is replaced when it grows, so read it after the query returns. */
@@ -337,6 +351,8 @@ export class StructureStore {
 
   /** The built kinds' forms, or null: then no row has a key. */
   readonly forms: FormTable | null;
+  /** Per kind, 1 where its form may hold a base up (`root`): read for every row keyed. */
+  private readonly rooted: Uint8Array;
   /** The bases: each lattice row is in one, by the gid in its `fr`. */
   readonly frames: Frames;
   /** Which lattice row fills each cell of each frame. */
@@ -351,6 +367,8 @@ export class StructureStore {
     this.soft = soft;
     this.parts = parts ?? oneBoxEach(halfX, halfY, halfZ);
     this.forms = parts?.forms ?? null;
+    this.rooted = new Uint8Array(halfX.length);
+    for (let k = 0; this.forms !== null && k < this.rooted.length && k < this.forms.def.length; k++) this.rooted[k] = this.forms.def[k]?.root !== undefined ? 1 : 0;
     this.frames = new Frames(chunkCount(dims));
     this.halfX = halfX;
     this.halfY = halfY;
@@ -440,7 +458,7 @@ export class StructureStore {
   fits(kind: number, fr: number, k0: number, k1: number): boolean {
     const forms = this.forms;
     if (!forms || !(kind > 0 && kind < forms.cls.length) || forms.cls[kind]! < 0 || !this.frames.get(fr)) return false;
-    if (!keyFits(forms, kind, k0, k1) || !formCells(forms, kind, k0, k1, cells)) return false;
+    if (!keyFits(forms, kind, k0, k1) || !cellsOf(forms, kind, k0, k1)) return false;
     for (let i = 0; i < cells.n; i++) if (!this.occupied.free(fr, cells.k0[i]!, cells.k1[i]!, cells.reach[i]!)) return false;
     return true;
   }
@@ -550,7 +568,7 @@ export class StructureStore {
     t.k1![slot] = k1;
     this.turn(chunk, t, slot, twOfKey(forms, kind, k1));
     // Counted in before its cells are taken, so the frame stands while a row it puts out leaves.
-    this.frames.enter(f, chunk, Math.round(t.x[slot]! * STRUCT_UNITS), Math.round(t.z[slot]! * STRUCT_UNITS), forms.def[kind]!.root !== undefined);
+    this.frames.enter(f, chunk, Math.round(t.x[slot]! * STRUCT_UNITS), Math.round(t.z[slot]! * STRUCT_UNITS), this.rooted[kind] === 1);
     this.cover(chunk, t, slot);
   }
 
@@ -561,14 +579,14 @@ export class StructureStore {
   private cover(chunk: number, t: ChunkTable, slot: number): void {
     const fr = t.fr![slot]!;
     const ref = chunk * 65536 + slot;
-    formCells(this.forms!, t.kind[slot]!, t.k0![slot]!, t.k1![slot]!, cells);
+    cellsOf(this.forms!, t.kind[slot]!, t.k0![slot]!, t.k1![slot]!);
     for (let i = 0; i < cells.n; i++) {
       if (this.occupied.put(fr, cells.k0[i]!, cells.k1[i]!, ref, cells.reach[i]!)) continue;
       const other = this.occupied.at(fr, cells.k0[i]!, cells.k1[i]!);
       if (other === ref) continue;
       // `unkey` uses the scratch cells, so this row's are listed again after it.
       this.unkey(Math.floor(other / 65536), this.chunks[Math.floor(other / 65536)]!, other & 0xffff, false);
-      formCells(this.forms!, t.kind[slot]!, t.k0![slot]!, t.k1![slot]!, cells);
+      cellsOf(this.forms!, t.kind[slot]!, t.k0![slot]!, t.k1![slot]!);
       this.occupied.put(fr, cells.k0[i]!, cells.k1[i]!, ref, cells.reach[i]!);
     }
   }
@@ -581,8 +599,8 @@ export class StructureStore {
   private unkey(chunk: number, t: ChunkTable, slot: number, stays: boolean, keep = false): void {
     const f = this.frames.get(t.fr![slot]!)!;
     const kind = t.kind[slot]!;
-    const root = this.forms!.def[kind]!.root !== undefined;
-    formCells(this.forms!, kind, t.k0![slot]!, t.k1![slot]!, cells);
+    const root = this.rooted[kind] === 1;
+    cellsOf(this.forms!, kind, t.k0![slot]!, t.k1![slot]!);
     for (let i = 0; i < cells.n; i++) this.occupied.take(f.gid, cells.k0[i]!, cells.k1[i]!);
     if (stays) {
       if (root) f.roots--;
@@ -606,7 +624,7 @@ export class StructureStore {
       poseOf(f, t.k0![slot]!, t.k1![slot]!, forms, kind, pose);
       if (pose.x === x && pose.z === z && pose.y === Math.round(t.y[slot]! * STRUCT_UNITS) && pose.yaw === t.yaw[slot]) {
         this.cover(chunk, t, slot);
-        if (forms.def[kind]!.root !== undefined) f.roots++;
+        if (this.rooted[kind] === 1) f.roots++;
         return;
       }
     }
@@ -635,7 +653,7 @@ export class StructureStore {
       const fr = t.fr[slot]!;
       if (fr === 0) continue;
       const f = this.frames.get(fr);
-      let free = f !== undefined && formCells(this.forms!, t.kind[slot]!, t.k0![slot]!, t.k1![slot]!, cells);
+      let free = f !== undefined && cellsOf(this.forms!, t.kind[slot]!, t.k0![slot]!, t.k1![slot]!);
       for (let i = 0; free && i < cells.n; i++) free = this.occupied.at(fr, cells.k0[i]!, cells.k1[i]!) < 0;
       if (free) this.key(chunk, t, slot, f!, t.k0![slot]!, t.k1![slot]!);
       else {
@@ -654,7 +672,7 @@ export class StructureStore {
   keyedPose(chunk: number, kind: number, fr: number, k0: number, k1: number): LatticePose | null {
     const forms = this.forms;
     const f = this.frames.get(fr);
-    if (!forms || !f || !(kind > 0 && kind < forms.cls.length) || forms.cls[kind]! < 0 || !keyFits(forms, kind, k0, k1) || !formCells(forms, kind, k0, k1, cells)) return null;
+    if (!forms || !f || !(kind > 0 && kind < forms.cls.length) || forms.cls[kind]! < 0 || !keyFits(forms, kind, k0, k1) || !cellsOf(forms, kind, k0, k1)) return null;
     poseOf(f, k0, k1, forms, kind, pose);
     const x = pose.x / STRUCT_UNITS;
     const z = pose.z / STRUCT_UNITS;
@@ -1116,6 +1134,19 @@ export class StructureStore {
     const t = this.chunks[chunk];
     if (!t || slot >= t.mapped) throw new Error(`chunk ${chunk}: slot ${slot} is not the map's`);
     this.put(chunk, slot, kind, t.x[slot]!, t.y[slot]!, t.z[slot]!, t.yaw[slot]!, owner, hp, mod);
+  }
+
+  /**
+   * Makes room in `chunk`'s table for slots [0, slots) before rows are put there, as putting them one by one would: the
+   * table grows by the same doublings, at once.
+   */
+  reserve(chunk: number, slots: number): void {
+    if (slots > 0) this.tableOf(chunk).ensure(slots - 1);
+  }
+
+  /** Makes room in the 4 m grid for `rows` more rows of one cell each, the least they take: a load knows its count. */
+  reserveGrid(rows: number): void {
+    this.growNodes(this.nodeHigh + rows);
   }
 
   /** Call after loading or applying a delta. */

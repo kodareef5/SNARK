@@ -258,7 +258,15 @@ export class BitReader {
   }
 
   bool(): boolean {
-    return this.bits(1) === 1;
+    // bits(1) without its loop.
+    const p = this.pos;
+    if (p >= this.limitBits) {
+      this.overflow = true;
+      this.pos = this.limitBits;
+      return false;
+    }
+    this.pos = p + 1;
+    return ((this.buf[p >>> 3]! >>> (p & 7)) & 1) === 1;
   }
 
   u8(): number {
