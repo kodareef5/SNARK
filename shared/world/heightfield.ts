@@ -12,6 +12,13 @@ import type { MapWater } from "./water.ts";
 
 export const TERRAIN_CELL = 2;
 
+/** What Heightfield.view gives: sample (i, j) of the box asked for is `heights[off + j * stride + i]`. */
+export interface GroundView {
+  heights: Uint16Array;
+  stride: number;
+  off: number;
+}
+
 export class Heightfield {
   /** With its frame and display origin, the defaults where the dims it was made with give none. */
   readonly dims: FramedDims;
@@ -66,6 +73,12 @@ export class Heightfield {
    * by whoever sets the samples where it can say it without a scan (mapload.ts StagedMap); null where a reader scans.
    */
   bounds: Uint16Array | null = null;
+  /**
+   * Cells a piece of the samples spans along an axis, its pieces starting at multiples of it: a view within one piece is
+   * no copy. The dense array is one piece.
+   */
+  span: number;
+  private readonly whole: GroundView;
 
   /** Use a power-of-two fraction such as 1/256 for `stepY`, so round heights (sea level, floors) are exact. */
   constructor(dims: MapDims, cell: number, minY: number, stepY: number, heights?: Uint16Array, tint?: Uint8Array, ground?: Uint8Array) {
@@ -86,6 +99,16 @@ export class Heightfield {
       throw new Error("heightfield data does not match map dimensions");
     }
     this.exact = new Uint8Array(chunkCount(dims)).fill(1);
+    this.span = Math.max(this.nx, this.nz) - 1;
+    this.whole = { heights: this.heights, stride: this.nx, off: 0 };
+  }
+
+  /**
+   * The samples of the box from (i0, j0) to (i1, j1), both included, as `GroundView` reads them. Good until the next call.
+   * Shared code asks once a query and keeps its loops on the arrays it is given.
+   */
+  view(_i0: number, _j0: number, _i1: number, _j1: number): GroundView {
+    return this.whole;
   }
 
   /**
