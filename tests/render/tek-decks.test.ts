@@ -2,26 +2,24 @@ import { expect, test } from "bun:test";
 import { ALL_FORMS, formHulls } from "../../content/building/forms.ts";
 import { hullPoint } from "../../shared/world/convex.ts";
 import type { FormDef } from "../../shared/world/lattice/forms.ts";
-import { defaultPalette } from "../../shared/pack/palette.ts";
+import { TEK_INLAY_COLOUR, TEK_RAIL_COLOUR } from "../../content/building/tek-wall.ts";
+import { defaultPalette, REGION_BASE } from "../../shared/pack/palette.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { MADE_PIECE_TRIANGLES, measureSurface } from "../../tools/art/check.ts";
-import { flatLod } from "../../tools/pack/pieces/kit.ts";
-import { colliderBox, levelsOf } from "../../tools/pack/pieces/lod.ts";
-import { tekDeck } from "../../tools/pack/pieces/tek-decks.ts";
-import { TEK } from "../../tools/pack/pieces/tek.ts";
+import { colliderBox } from "../../tools/pack/pieces/lod.ts";
+import { bakeTek } from "../../tools/pack/pieces/tek.ts";
 import { buildPack, unpackMeshes, type SourceLod } from "../../tools/pack/write.ts";
 
 const forms: Readonly<Record<string, FormDef>> = ALL_FORMS;
-const recipe = { ...TEK, split: tekDeck };
 const parts = Object.entries(forms).filter(([, form]) => form.plane === "flat");
-const meshes = new Map(unpackMeshes(parsePack(buildPack(parts.map(([id, form]) => ({
-  id, lods: levelsOf(recipe, id, form).map((shape, i) => ({ ...flatLod(shape, () => 83), error: i * .01 })),
-})), defaultPalette()))).map(m => [m.id, m.lods]));
+const packed = parsePack(buildPack(bakeTek(Object.fromEntries(parts)), defaultPalette()));
+const meshes = new Map(unpackMeshes(packed).map(mesh => [mesh.id.slice("core:".length, -"_tek".length), mesh.lods]));
 
 /** Heights where a vertical line crosses this level of the packed mesh. */
-function floors(lod: SourceLod, x: number, z: number): number[] {
+function floors(lod: SourceLod, x: number, z: number, colour?: number): number[] {
   const p = lod.positions, hits = [];
   for (let k = 0; k < lod.indices.length; k += 3) {
+    if (colour !== undefined && lod.colors[lod.indices[k]!] !== colour) continue;
     const a = lod.indices[k]! * 3, b = lod.indices[k+1]! * 3, c = lod.indices[k+2]! * 3;
     const dx = p[b]! - p[a]!, dz = p[b+2]! - p[a+2]!, ex = p[c]! - p[a]!, ez = p[c+2]! - p[a+2]!;
     const determinant = dx*ez - dz*ex;
@@ -84,5 +82,46 @@ test("each close stair tread and the ramp meet the walkable surface", () => {
     const z = -1.5 + (i + .5) * .3;
     expect(Math.max(...floors(stairs, .024, z))).toBeCloseTo(-1.5 + (i+1) * .3, 1);
     expect(Math.max(...floors(ramp, .024, z))).toBeCloseTo(-1.5 + (z+1.5) * 2.94/3, 1);
+  }
+});
+
+test("the foundation treads and powered keel stand above the graphite channel", () => {
+  const deck = meshes.get("foundation")![0]!;
+  const top = (x: number, z: number, colour?: number) => Math.max(...floors(deck, x, z, colour));
+  const optical = top(.06, .12);
+  expect(top(.06, .12, TEK_INLAY_COLOUR)).toBe(optical);
+  for (const hand of [-1, 1]) {
+    const tread = top(hand * 1.05, .085);
+    expect(top(hand * 1.05, .085, REGION_BASE)).toBe(tread);
+    expect(tread - optical).toBeGreaterThan(.009);
+    expect(tread - top(hand * .603, .085)).toBeGreaterThan(.047);
+    expect(top(hand * .378, .11, TEK_RAIL_COLOUR)).toBe(top(hand * .378, .11));
+  }
+});
+
+test("the ceiling's optical coffer faces the room beneath its walking armor", () => {
+  for (const level of meshes.get("ceiling")!.slice(0, 3)) {
+    const under = Math.min(...floors(level, .054, -.082));
+    expect(Math.min(...floors(level, .054, -.082, TEK_INLAY_COLOUR))).toBe(under);
+    expect(Math.max(...floors(level, .28, .22, REGION_BASE))).toBe(Math.max(...floors(level, .28, .22)));
+  }
+});
+
+test("armored stair noses cantilever over open bays beside the stringers", () => {
+  const near = meshes.get("stairs")![0]!;
+  for (const z of [-.75, -.15, .45, 1.05]) {
+    const rim = floors(near, 1.22, z);
+    expect(Math.max(...rim) - Math.min(...rim)).toBeGreaterThan(.085);
+    expect(Math.max(...rim) - Math.min(...rim)).toBeLessThan(.13);
+    expect(Math.min(...floors(near, 0, z))).toBeLessThan(-1.48);
+  }
+});
+
+test("each close Tek deck has a powered lens and a bounded optical surface", () => {
+  for (const [name] of parts) {
+    const close = meshes.get(name)![0]!;
+    for (const material of [TEK_INLAY_COLOUR, TEK_RAIL_COLOUR, REGION_BASE]) {
+      expect(close.colors.includes(material), name).toBe(true);
+    }
   }
 });

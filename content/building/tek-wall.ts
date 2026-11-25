@@ -8,6 +8,9 @@ export const TEK_WALL = {
 /** Fixed palette entry of the white-cyan emitter lens. */
 export const TEK_RAIL_COLOUR = 64;
 
+/** Dark cyan in the flat palette and an optical insert on a lit Tek casting. */
+export const TEK_INLAY_COLOUR = 28;
+
 /** The projector outline uses metres along and across the diagonal from its corner. */
 export const TEK_JAW = {
   origin: 1.415, low: .073,

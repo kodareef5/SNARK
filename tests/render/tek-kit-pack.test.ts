@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { FACE_PLAIN } from "../../client/core/render/piece-fit.ts";
 import { ALL_FORMS } from "../../content/building/forms.ts";
-import { TEK_RAIL_COLOUR } from "../../content/building/tek-wall.ts";
+import { TEK_INLAY_COLOUR, TEK_RAIL_COLOUR } from "../../content/building/tek-wall.ts";
 import { defaultPalette, REGION_BASE } from "../../shared/pack/palette.ts";
 import { MADE_PIECE_TRIANGLES, TRIM_TRIANGLES } from "../../tools/art/check.ts";
 import { buildPack } from "../../tools/pack/write.ts";
@@ -27,6 +27,7 @@ test("every Tek form and fitted trim bakes its intended opaque finish", () => {
     if (["wall", "door", "ceiling", "foundation", "gate"].includes(name)) {
       expect(mesh.lods[0]!.colors).toContain(REGION_BASE);
       expect(mesh.lods[0]!.colors).toContain(TEK_RAIL_COLOUR);
+      expect(mesh.lods[0]!.colors.includes(TEK_INLAY_COLOUR)).toBe(!wall);
     }
   }
 });

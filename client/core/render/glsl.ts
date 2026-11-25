@@ -2,6 +2,7 @@
 // low poly has always been drawn with, and a test pins its hash so that it stays so. A WebGL2 shell compiles it as is.
 // The lit tiers draw the same vertices with LIT, which lights them as surface.ts does.
 
+import { TEK_INLAY_GLSL } from "./tek-inlay.ts";
 import { TEK_FRAME_GLSL } from "./tek-frame.ts";
 import { TEK_FIELD, TEK_FIELD_GLSL } from "./tek-field.ts";
 import { DRY_ASPHALT } from "../../../content/surfaces.ts";
@@ -88,6 +89,7 @@ ${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${AIR}${WOR
 #ifdef WORLD_WEATHER
 ${TEK_FIELD_GLSL}
 ${TEK_FRAME_GLSL}
+${TEK_INLAY_GLSL}
 #endif
 void main() {
   vec3 dx = dFdx(vRel), dy = dFdy(vRel);
@@ -178,18 +180,29 @@ void main() {
 #ifdef WORLD_WEATHER
   if (worldMade == ${TEK_FIELD} && (worldPiece & ${PIECE_OWN | PIECE_FIXED}) == ${PIECE_OWN}) {
     vec3 sight = ownOf(v);
-    bool field = (worldPiece & ${PIECE_ALLOY}) == 0;
-    if (field) n = tekFinishNormal(n, vOwn.xy, worldTurn, true, 1.0);
-    tekPlateSurface(albedo, orm, fieldRelief, dot(n, v), sight.x);
-    worldSharp = true;
-    if (field) localLight += tekFieldLight(vOwn.xy, worldPiece >> ${PIECE_SEED}, dot(geometric, v), max(length(dx), length(dy)), fieldRelief, sight.x, sight.y, fieldConductor);
+    if ((worldPiece & ${PIECE_ALLOY}) == 0) {
+      n = tekFinishNormal(n, vOwn.xy, worldTurn, true, 1.0);
+      tekPlateSurface(albedo, orm, fieldRelief, dot(n, v), sight.x);
+      worldSharp = true;
+      localLight += tekFieldLight(vOwn.xy, worldPiece >> ${PIECE_SEED}, dot(geometric, v), max(length(dx), length(dy)), fieldRelief, sight.x, sight.y, fieldConductor);
+    } else if ((worldPiece & ${PIECE_PLAIN}) != 0) {
+      tekGlass(albedo, orm, fieldRelief);
+      worldSharp = false;
+      localLight += tekInlayLight(vOwn, ownOf(geometric), sight, worldPiece >> ${PIECE_SEED}, max(length(dx), length(dy)));
+    } else {
+      worldSharp = tekCasting(albedo, orm, vColor, fieldRelief, false);
+    }
   } else if (worldMade == ${TEK_FIELD} && (worldPiece & ${PIECE_FIXED}) != 0) {
     bool solid = (worldPiece & ${PIECE_ALLOY}) != 0;
     bool emitter = (worldPiece & ${PIECE_PLAIN}) == 0;
     if (!emitter) {
-      tekFrameSurface(albedo, orm, vColor, fieldRelief);
-      if (!solid) n = tekFinishNormal(n, vOwn.xy, worldTurn, false, orm.z);
-      worldSharp = orm.y < ${f(WORLD_SHARP)};
+      if (solid) {
+        worldSharp = tekCasting(albedo, orm, vColor, fieldRelief, true);
+      } else {
+        tekFrameSurface(albedo, orm, vColor, fieldRelief);
+        n = tekFinishNormal(n, vOwn.xy, worldTurn, false, orm.z);
+        worldSharp = orm.y < ${f(WORLD_SHARP)};
+      }
     }
     if (emitter || !solid) {
       float indicator = solid ? tekIndicator(vOwn.x + vOwn.y + vOwn.z, worldPiece >> ${PIECE_SEED}) : 0.0;

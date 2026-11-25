@@ -1,4 +1,4 @@
-import { TEK_RAIL_COLOUR } from "../../../content/building/tek-wall.ts";
+import { TEK_INLAY_COLOUR, TEK_RAIL_COLOUR } from "../../../content/building/tek-wall.ts";
 import { TEK_FIELD } from "./tek-field.ts";
 import { fixtureShader } from "./street-finish.ts";
 // Metre-space materials for terrain and meshes without authored surfaces. CPU and GLSL deliberately use the same
@@ -315,7 +315,8 @@ const MOTTLE = [2.3, 0.9] as const;
  * A built piece's pixel, for a material read in the piece's own frame: where it is from the piece's origin along the
  * piece's own axes, metres; the cosine and sine its +X is turned by (piece-fit.ts); and its bits, as ownVertex packs
  * them over a face's material and wear: PIECE_OWN, PIECE_PLAIN where the face keeps clear of joints and rivets,
- * PIECE_FIXED where its colour is the mesh's and not the piece's, and from PIECE_SEED its instance's seed.
+ * PIECE_FIXED for fixed hardware and PIECE_ALLOY for solid Tek. A plain, unfixed Tek alloy face is an optical insert.
+ * The instance seed starts at PIECE_SEED.
  */
 export interface PiecePixel { x: number; y: number; z: number; c: number; s: number; bits: number }
 export const PIECE_OWN = 1, PIECE_PLAIN = 2, PIECE_FIXED = 4, PIECE_ALLOY = 8, PIECE_SEED = 4, PIECE_SEEDS = 4096;
@@ -465,6 +466,10 @@ function made(k: number, id: number, axis: number, x: number, y: number, z: numb
   scales.rough += (1 - scales.rough) * t;
   scales.bump += (1 - scales.bump) * t;
   if (piece && k === TEK_FIELD) {
+    if (piece.bits & PIECE_ALLOY) {
+      maps.lean[0]! *= 0.21;
+      maps.lean[1]! *= 0.21;
+    }
     fieldRelief = maps.mro[3]!;
     fieldConductor = madeBase[3]! * t;
     maps.base[3] = 1 / f.palette;
@@ -1204,11 +1209,12 @@ const PIECE_MADE_TEXT = `  if (uPiece > 0.5) {
     uint material = iRegA.w & ${PIECE_MADE_BITS}u;
     bool field = material == ${TEK_FIELD}u;
     bool alloy = field && (aBone & ${FACE_PLAIN}u) != 0u;
+    bool inlay = alloy && aColor == ${TEK_INLAY_COLOUR}u;
     bool plain = field ? (!region && aColor != ${TEK_RAIL_COLOUR}u) : (aBone & ${FACE_PLAIN}u) != 0u;
     uint wears = region || field || (aBone & ${FACE_WEARS}u) != 0u ? material : 0u;
     uint h = floatBitsToUint(iPos.x) * 2654435761u ^ floatBitsToUint(iPos.y) * 2246822519u ^ floatBitsToUint(iPos.z) * 3266489917u;
     h = (h ^ (h >> 15u)) * 2246822519u;
-    vMade = int(wears | ((iRegB.x & ${PIECE_STAGE}u) << ${WEAR_OVER_MADE}u) | (wears == 0u ? 0u : ${PIECE_OWN << PIECE_OVER_WEAR}u | (plain ? ${PIECE_PLAIN << PIECE_OVER_WEAR}u : 0u) | (alloy ? ${PIECE_ALLOY << PIECE_OVER_WEAR}u : 0u) | (region ? 0u : ${PIECE_FIXED << PIECE_OVER_WEAR}u) | ((h >> 20u) << ${PIECE_OVER_WEAR + PIECE_SEED}u)));
+    vMade = int(wears | ((iRegB.x & ${PIECE_STAGE}u) << ${WEAR_OVER_MADE}u) | (wears == 0u ? 0u : ${PIECE_OWN << PIECE_OVER_WEAR}u | (plain ? ${PIECE_PLAIN << PIECE_OVER_WEAR}u : 0u) | (alloy ? ${PIECE_ALLOY << PIECE_OVER_WEAR}u : 0u) | (region || inlay ? 0u : ${PIECE_FIXED << PIECE_OVER_WEAR}u) | ((h >> 20u) << ${PIECE_OVER_WEAR + PIECE_SEED}u)));
   }
 `;
 const PIECE_TURN_TEXT = `  if (uPiece > 0.5) {
@@ -1472,6 +1478,7 @@ bool made(int k, int id, inout int axis, vec3 face, vec3 rel, vec3 dpx, vec3 dpy
   if (turn) bump = -bump.yx;
   if (uprightStock) bump = bump.yx;
   if (own && k == ${TEK_FIELD}) {
+    if ((worldPiece & ${PIECE_ALLOY}) != 0) bump *= 0.21;
     fieldRelief = mro.a;
     fieldConductor = b.a * t;
     base.a = 1.0 / WT[id].w;

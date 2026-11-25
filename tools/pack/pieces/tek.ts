@@ -1,4 +1,4 @@
-import { TEK_JAW, TEK_LATCH, TEK_RAIL_COLOUR, TEK_WALL, jawContact, jawDepth, latchDepth } from "../../../content/building/tek-wall.ts";
+import { TEK_INLAY_COLOUR, TEK_JAW, TEK_LATCH, TEK_RAIL_COLOUR, TEK_WALL, jawContact, jawDepth, latchDepth } from "../../../content/building/tek-wall.ts";
 import { defaultPalette, nearestColour, REGION_BASE } from "../../../shared/pack/palette.ts";
 import type { FormDef } from "../../../shared/world/lattice/forms.ts";
 import { FACE_PLAIN } from "../../../client/core/render/piece-fit.ts";
@@ -12,7 +12,7 @@ import { errorOf, levelsOf, type TierRecipe } from "./lod.ts";
 const TONES = {
   alloy: [40, 51, 65], field: [40, 51, 65], gasket: [24, 27, 33], socket: [47, 53, 61], bevel: [94, 103, 111],
   titanium: [140, 147, 153], chamfer: [158, 166, 174], cover: [106, 112, 121],
-  emitter: [109, 229, 233], lens: [48, 153, 174], copper: [197, 116, 79],
+  membrane: [17, 95, 95], emitter: [109, 229, 233], lens: [48, 153, 174], copper: [197, 116, 79],
 } as const;
 type Tone = keyof typeof TONES;
 
@@ -148,6 +148,7 @@ const palette = defaultPalette();
 const colours = new Map(Object.entries(TONES).map(([name, rgb]) => [name, nearestColour(palette, rgb[0], rgb[1], rgb[2])]));
 function colour(mat: string): number {
   if (mat === "field" || mat === "alloy") return REGION_BASE;
+  if (mat === "membrane") return TEK_INLAY_COLOUR;
   if (mat === "emitter") return TEK_RAIL_COLOUR;
   const index = colours.get(mat);
   if (index === undefined) throw new Error(`Unknown Tek finish ${mat}`);

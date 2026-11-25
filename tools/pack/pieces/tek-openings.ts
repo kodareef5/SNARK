@@ -2,7 +2,7 @@
 import { outlineBox, type FormDef } from "../../../shared/world/lattice/forms.ts";
 import { earcut, mirror, place, Shape, type FaceMap, type Flat, type Vec } from "./kit.ts";
 
-type Tone = "alloy" | "gasket" | "socket" | "bevel" | "titanium" | "chamfer" | "cover" | "emitter" | "lens" | "copper";
+type Tone = "membrane" | "alloy" | "gasket" | "socket" | "bevel" | "titanium" | "chamfer" | "cover" | "emitter" | "lens" | "copper";
 type Rect = readonly [left: number, bottom: number, right: number, top: number];
 const uv: Flat = [0, 0];
 const finish = (face: Tone, edge: Tone = face): FaceMap => (side) => [side.endsWith("y") ? face : edge, () => uv];
@@ -22,33 +22,12 @@ function bar(p: Shape, [l, b, r, t]: Rect, depth: number, face: Tone, edge: Tone
   p.box([l, -depth, b], [r, depth, t], finish(face, edge));
 }
 
-function octagon([l, b, r, t]: Rect, cut: number): Flat[] {
-  const c = Math.min(cut, (r - l) * .30, (t - b) * .30);
-  return [[l, b + c], [l + c, b], [r - c, b], [r, b + c], [r, t - c], [r - c, t], [l + c, t], [l, t - c]];
-}
-
-/** A bevelled casting passes through the assembly so its face and shoulder work from either side. */
-function casting(p: Shape, box: Rect, depth: number, shoulder: number, face: Tone, cut: number): void {
-  const [l, b, r, t] = box;
-  const inset = Math.min((r - l) * .13, (t - b) * .13, .033);
-  const sole = octagon(box, cut), top = octagon([l + inset, b + inset, r - inset, t - inset], Math.max(inset, cut - inset * .5));
-  const ring = (outline: Flat[], y: number): Vec[] => outline.map(([x, z]) => [x, y, z]);
-  p.loft([ring(top, -depth), ring(sole, -shoulder), ring(sole, shoulder), ring(top, depth)],
-    (_side, band) => [band === 1 ? "socket" : "chamfer", uv], () => [face, uv]);
-}
-
 /** Both windings of a distant sheet keep a gap readable from either side at twelve triangles per piece. */
 function sheet(p: Shape, outline: Flat[], tone: Tone, y = 0): void {
   const points: Vec[] = outline.map(([x, z]) => [x, y, z]);
   const tris = earcut(outline), uvs = points.map(() => uv);
   p.faces.push({ points, uvs, mat: tone, tris }, { points: [...points], uvs: [...uvs], mat: tone,
     tris: tris.flatMap((_, i) => i % 3 === 0 ? [tris[i]!, tris[i + 2]!, tris[i + 1]!] : []) });
-}
-
-function cartridge(p: Shape, x: number, z: number, w: number, h: number, depth: number): void {
-  casting(p, [x - w, z - h, x + w, z + h], depth * .93, depth * .73, "socket", w * .52);
-  profile(p, octagon([x - w * .53, z - h * .67, x + w * .53, z + h * .08], w * .70), depth, "copper", "cover");
-  bar(p, [x - w * .34, z + h * .29, x + w * .34, z + h * .50], depth * .99, "emitter", "lens");
 }
 
 function mouth(p: Shape, outer: Rect, opening: Rect, depth: number, distant: boolean): void {
@@ -68,70 +47,137 @@ function mouth(p: Shape, outer: Rect, opening: Rect, depth: number, distant: boo
   }
 }
 
+const bevelQuad: Flat[] = [[0, .14], [.10, 0], [.78, 0], [1, .17], [1, .85], [.88, 1], [.20, 1], [0, .76]];
+const glass: Flat[] = [[0, .18], [.16, 0], [.69, 0], [1, .19], [1, .79], [.81, 1], [.28, 1], [0, .75]];
+const tip: Flat[] = [[0, .21], [.17, 0], [.83, 0], [1, .23], [1, .72], [.76, 1], [.22, 1], [0, .81]];
+
+function mapped([l, b, r, t]: Rect, path: readonly Flat[]): Flat[] {
+  return path.map(([x, y]) => [l + (r - l) * x, b + (t - b) * y]);
+}
+
+function between(a: readonly Flat[], b: readonly Flat[], amount: number): Flat[] {
+  return a.map(([x, y], i) => [x + amount * (b[i]![0] - x), y + amount * (b[i]![1] - y)]);
+}
+
+function forged(p: Shape, loop: Flat[], h: number, seat: number, face: Tone, edge: Tone): void {
+  const n = loop.length, x = loop.reduce((a, q) => a + q[0], 0) / n, z = loop.reduce((a, q) => a + q[1], 0) / n;
+  const cap = loop.map(([u, v]): Flat => [x + (u - x) * .87, z + (v - z) * .92]);
+  const ring = (points: Flat[], y: number): Vec[] => points.map(([u, v]) => [u, y, v]);
+  p.loft([ring(cap, -h), ring(loop, -seat), ring(loop, seat), ring(cap, h)], (_, band) => [band === 1 ? "socket" : edge, uv], () => [face, uv]);
+  for (const cap of p.faces.slice(-2)) cap.tris = earcut(cap.points.map(([x, , z]) => [x, z]));
+}
+
+/** One closed casting has two recessed optical faces with opposing leads down its inner walls. */
+function optical(p: Shape, outside: Flat[], inside: Flat[], h: number, floor: number, level: number): void {
+  const steps: [Flat[], number, Tone | "lead"][] = [[inside, floor, "socket"]];
+  if (level < 2) steps.push([between(inside, outside, .10), floor + .16 * (h - floor), "lead"]);
+  steps.push([between(inside, outside, .24), h * .88, "alloy"]);
+  if (level === 0) steps.push([between(inside, outside, .36), h, "bevel"]);
+  steps.push([outside, h * .62, "socket"]);
+  const rings = [...steps, ...[...steps].reverse()];
+  p.loft(rings.map(([loop, y], i) => loop.map(([x, z]): Vec => [x, i < steps.length ? -y : y, z])),
+    (side, i) => {
+      const material = steps[Math.max(0, Math.min(i, rings.length - i - 2))]![2];
+      return [material === "lead" ? (side === 3 || side === inside.length - 1 ? "emitter" : "gasket") : material, uv];
+    }, () => ["membrane", uv]);
+}
+
+/** The copper journal sits between separate clevis ears and shares the leaf's axis. */
+function pivot(p: Shape, x: number, z: number, width: number, height: number, h: number, level: number): void {
+  const journalDepth = h + Math.min(.020, h * .30);
+  const lobes: Flat[] = [[-.67, -1], [.67, -1], [1, -.42], [1, .42], [.67, 1], [-.67, 1], [-1, .42], [-1, -.42]];
+  const drum = (a: number, b: number, w: number, depth: number, body: Tone, cap: Tone): void => {
+    p.extrude(lobes.map(([u, v]) => [x + u * w, v * depth]), "z", z + a * height, z + b * height,
+      side => [side.endsWith("z") ? cap : body, () => uv]);
+  };
+  if (level === 0) {
+    drum(-.50, -.24, width, journalDepth, "bevel", "socket");
+    drum(-.24, .24, width * .80, journalDepth * .95, "copper", "gasket");
+    drum(.24, .50, width, journalDepth, "bevel", "socket");
+  } else drum(-.5, .5, width, journalDepth, "bevel", "socket");
+}
+
 function frame(form: FormDef, level: number): Shape {
-  const p = new Shape(), box = bounds(form), [l, b, r, t] = box;
+  const p = new Shape(), box = bounds(form), [l, b, , t] = box;
   const o = form.openings![0]!, hole: Rect = [o.x0 - form.at[0], o.y0 - form.at[1], o.x1 - form.at[0], o.y1 - form.at[1]];
-  const [il, ib, ir, it] = hole, h = form.thick / 2;
-  mouth(p, box, hole, level >= 3 ? h : h * .67, level === 4);
+  const [il, ib, ir, it] = hole, h = form.thick / 2, gate = t - b > 4, window = ib > b;
+  mouth(p, box, hole, level >= 3 ? h : h * .37, level === 4);
   if (level >= 3) return p;
-  const jamb = Math.min(.24, (il - l) * .46), low = Math.max(b, ib - jamb), high = it + jamb;
+  const cheek = Math.min(.21, (il - l) * .31), top = it + Math.min((t - it) * .55, .25);
   for (const hand of [-1, 1]) {
-    const inside = hand < 0 ? il : ir, outside = hand < 0 ? l : r;
-    const jambBox: Rect = hand < 0 ? [inside - jamb, low, inside, high] : [inside, low, inside + jamb, high];
-    if (level === 2) { bar(p, jambBox, h, "titanium"); continue; }
-    casting(p, jambBox, h * .97, h * .78, "titanium", .038);
-    const x = inside + hand * (jamb * .47);
-    bar(p, [x - .014, low + .17, x + .014, high - .19], h * .985, "lens");
-    if (level === 0) {
-      const span = high - low;
-      for (const s of [.28, .69]) bar(p, [x - .008, low + s * span, x + .008, low + s * span + .13], h * .998, "emitter", "lens");
-      cartridge(p, (inside + outside) / 2, ib + (it - ib) * .57, Math.min(.102, (il - l) * .14), .171, h);
+    const j = hand < 0 ? il : ir, available = il - l, z0 = window ? ib - .26 : b;
+    const fromJamb = (points: Flat[]) => points.map(([u, z]): Flat => [j + hand * u, z]);
+    const cheekShape = fromJamb([[0, z0], [cheek, z0], [cheek * .76, z0 + .22], [cheek * .76, it - .20],
+      [cheek * 1.36, it + .025], [cheek * 1.36, top], [0, top]]);
+    if (level === 2) {
+      profile(p, cheekShape, h * .93, "bevel", "socket");
+      continue;
     }
-    const margin = Math.min(.115, (il - l) * .15);
-    const [a, c] = hand < 0 ? [outside + margin, inside - jamb - .045] : [inside + jamb + .045, outside - margin];
-    if (c - a > .09) {
-      const panels = t - b > 4 ? (level === 0 ? 3 : 2) : 1;
-      for (let j = 0; j < panels; j++) {
-        const z = b + .11 + j * (t - b - .22) / panels;
-        profile(p, octagon([a, z, c, z + (t - b - .22) / panels - .035], .11), h * .81, "cover", "gasket");
+    if (level === 0) forged(p, cheekShape, h, h * .57, "bevel", "chamfer");
+    else profile(p, cheekShape, h * .94, "bevel", "socket");
+    const shoulder = Math.min(available - .06, gate ? .44 : .74);
+    const left = j + hand * shoulder, right = j + hand * cheek * .9;
+    const box: Rect = [Math.min(left, right), b + .08, Math.max(left, right), top - .07];
+    const [x0, z1, x1, z2] = box, span = x1 - x0;
+    optical(p, mapped(box, bevelQuad), mapped([x0 + span * .21, z1 + .26, x1 - span * .20, z2 - .23], glass), h * .77, h * .42, level);
+    if (level === 0) {
+      const mid = ib + (it - ib) * .50, u = cheek * .57;
+      if (!window && (hand < 0 || gate || form.takes === "double")) {
+        for (const at of [.22, .77]) pivot(p, j + hand * u, ib + (it - ib) * at, cheek * .39, gate ? .39 : .25, h * 1.02, 0);
+      } else {
+        const plate = fromJamb([[.015, mid - .17], [cheek * .86, mid - .21], [cheek * 1.2, mid - .10], [cheek, mid + .16], [.015, mid + .17]]);
+        forged(p, plate, h * 1.04, h * .78, "socket", "bevel");
+        for (const dz of [-.07, .065]) profile(p, fromJamb([[.018, mid + dz], [u * 1.40, mid + dz], [u, mid + dz + .036], [.018, mid + dz + .036]]), h * 1.06, "copper", "gasket");
       }
     }
   }
-  bar(p, [il - jamb * .92, it, ir + jamb * .92, it + jamb * .65], h * .945, "titanium");
-  if (ib > b && level < 2) casting(p, [il - .055, ib - .105, ir + .055, ib], h, h * .80, "chamfer", .025);
-  if (level < 2) {
-    const hz = (it + jamb + t) / 2;
-    casting(p, [il + .085, hz - .075, ir - .085, hz + .075], h * .90, h * .69, "cover", .07);
-    profile(p, octagon([-.126, hz - .023, .126, hz + .023], .018), h * .93, "copper");
+  const head: Flat[] = [[il - cheek, it], [ir + cheek, it], [ir + cheek, top], [ir - cheek, top],
+    [ir - cheek - .10, top - .055], [il + cheek + .10, top - .055], [il + cheek, top], [il - cheek, top]];
+  if (level >= 1) profile(p, head, h * .91, "alloy", "bevel");
+  else {
+    forged(p, head, h * .98, h * .53, "alloy", "bevel");
+    const s = Math.min((ir - il) * .31, .75), z = top + (t - top) * .40;
+    const crest = mapped([-s, z - .065, s, z + .075], bevelQuad);
+    forged(p, crest, h * .68, h * .42, "socket", "chamfer");
+    profile(p, mapped([-s * .66, z - .009, s * .66, z + .020], tip), h * .70, "emitter", "lens");
+    if (window) forged(p, mapped([il - .14, ib - .20, ir + .14, ib - .006], bevelQuad), h * .96, h * .50, "alloy", "bevel");
   }
   return p;
 }
 
 function leaf(p: Shape, half: number, low: number, high: number, h: number, gate: boolean, level: number): void {
-  bar(p, [-half, low, half, high], level >= 3 ? h : h * .68, "alloy", "bevel");
-  if (level >= 3) return;
-  const rail = gate ? .17 : .076;
-  bar(p, [-half, low + .006, -half + rail, high - .009], h, "titanium");
-  bar(p, [half - rail, low + .012, half, high - .016], h * .93, "gasket");
-  const bays = gate ? 3 : 2, height = high - low, step = (height - 2 * rail) / bays;
-  for (let i = 0; i < bays; i++) {
-    const z = low + rail + i * step, bottom = z + .019, top = z + step - .018;
-    const panel: Rect = [-half + rail + .035, bottom, half - rail - .033, top];
-    if (level === 2) {
-      if (!gate || i === 1) bar(p, [panel[0], top - .048, panel[2], top], h * .86, "bevel");
-      continue;
-    }
-    const [a, b, c, t] = panel, cut = Math.min((c - a) * .25, .24);
-    profile(p, [[a, b + cut], [a + cut, b], [c, b], [c, t - cut * .8], [c - cut * .8, t], [a, t]], h * .81, "alloy", "chamfer");
-    const brace = (t - b) * .59;
-    profile(p, [[a, b + brace + .08], [a + cut, b + brace - .07], [c, b + brace - .07],
-      [c, b + brace - .025], [a + cut + .02, b + brace - .025], [a, b + brace + .14]], h * .90, "cover", "bevel");
-    if (level === 0) {
-      casting(p, [-half + rail * .12, b + .03, -half + rail + .12, b + Math.min(.38, step * .57)], h * .985, h * .81, "titanium", .08);
-      bar(p, [-half + rail + .025, b + .12, -half + rail + .073, b + .19], h, "copper");
-    }
+  if (level >= 3) { bar(p, [-half, low, half, high], h, "alloy", "bevel"); return; }
+  const width = 2 * half, height = high - low;
+  const box: Rect = [-half, low, half, high];
+  const cell = (a: number, b: number, c: number, d: number): Rect => [-half + a * width, low + b * height, -half + c * width, low + d * height];
+  const perimeter: Flat[] = [[0, .16], [0, 0], [.77, 0], [1, 0], [1, .84], [1, 1], [.21, 1], [0, 1]];
+  if (level === 2) {
+    const rim = rectangle(box), inside = mapped(cell(.16, .14, .88, .86), [[0, 0], [1, .10], [1, 1], [0, .89]]);
+    optical(p, rim, inside, h, h * .41, 2);
+    return;
   }
-  if (level === 0) cartridge(p, half - rail - .12, low + height * .55, .07, gate ? .23 : .14, h);
+  optical(p, mapped(box, perimeter), mapped(cell(.135, gate ? .13 : .18, .91, .90), glass), h * .96, h * .35, level);
+  const rail: Flat[] = [[0, 0], [.11, 0], [.18, .12], [.13, .37], [.13, .69], [.16, .89], [.10, 1], [0, 1]];
+  const spine = mapped(box, rail);
+  if (level === 0) forged(p, spine, h * .99, h * .63, "alloy", "bevel");
+  else profile(p, spine, h * .96, "alloy", "bevel");
+  for (const at of [.205, .79]) pivot(p, -half + width * .046, low + at * height, Math.min(width * .041, .082), height * .095, h, level);
+  if (gate) {
+    const bridge = mapped(box, [[.072, .43], [.24, .44], [.66, .55], [1, .55], [1, .62], [.66, .62], [.22, .51], [.072, .51]]);
+    if (level === 0) forged(p, bridge, h * .98, h * .59, "alloy", "chamfer");
+    else profile(p, bridge, h * .94, "alloy", "bevel");
+  }
+  if (level === 0) {
+    const toe = mapped(box, [[.05, .0], [.83, .0], [.96, .045], [.93, .10], [.61, .11], [.36, .16], [.15, .15], [.05, .09]]);
+    forged(p, toe, h, h * .64, "alloy", "chamfer");
+    const lock = mapped(cell(.79, .38, .985, .58), [[0, .26], [.22, 0], [1, .16], [1, .87], [.58, 1], [0, .80]]);
+    forged(p, lock, h * 1.02, h * .64, "socket", "bevel");
+    for (const at of [.44, .48]) {
+      const bolt = mapped(cell(.85, at, .987, at + .020), [[0, 0], [1, .12], [1, 1], [.18, 1]]);
+      profile(p, bolt, h * 1.02 + .006, "copper", "gasket");
+    }
+    profile(p, mapped(cell(.819, .410, .831, .53), bevelQuad), h * 1.04, "emitter", "lens");
+  }
 }
 
 function doors(form: FormDef, level: number, paired: boolean, gate: boolean): Shape {
@@ -164,38 +210,43 @@ function doors(form: FormDef, level: number, paired: boolean, gate: boolean): Sh
 
 function armour(form: FormDef, level: number, tall: boolean): Shape {
   const p = new Shape(), [l, b, r, t] = bounds(form), h = form.thick / 2;
-  bar(p, [l, b, r, t], level >= 3 ? h : h * .68, "alloy", "bevel");
+  bar(p, [l, b, r, t], level >= 3 ? h : h * .27, "alloy", "socket");
   if (level >= 3) return p;
   const count = tall ? form.span / 4 : 1, step = (t - b) / count;
-  bar(p, [l, t - .115, r, t], h, "titanium");
-  if (level === 2) {
-    for (let i = 1; i < count; i++) bar(p, [l + .1, b + step * i - .041, r - .1, b + step * i + .041], h * .92, "bevel");
-    return p;
-  }
   for (let i = 0; i < count; i++) {
-    const z = b + step * i;
-    profile(p, octagon([l + .11, z + .055, r - .11, z + step - .105], Math.min(.24, step * .19)), h * .80, "alloy", "gasket");
-    for (const hand of [-1, 1]) {
-      const x = hand * (r - .27), run = Math.min(step * .42, .68);
-      const shoe: Flat[] = [[x - .11, z + .062], [x + .10, z + .062], [x + .10 + hand * .09, z + run], [x - .01 + hand * .09, z + run - .03]];
-      profile(p, shoe, h * .95, "titanium", "chamfer");
-      if (level === 0) cartridge(p, x, z + step * .66, .062, Math.min(.13, step * .12), h);
+    const base = b + i * step, box: Rect = [l + .035, base + .028, r - .035, base + step - .029];
+    const inside: Rect = [l + .28, base + Math.min(.18, step * .16), r - .22, base + step - Math.min(.21, step * .18)];
+    if (level === 2 && tall) {
+      bar(p, [l + .22, base + .13, r - .22, base + step - .13], h * .48, "membrane", "bevel");
+      continue;
+    }
+    const compact = level === 2 || (tall && level === 1);
+    optical(p, compact ? rectangle(box) : mapped(box, bevelQuad),
+      compact ? rectangle(inside) : mapped(inside, glass), h * .93, h * .36, level);
+    if (level !== 0) continue;
+    for (const side of [-1, 1]) {
+      const axis = side * (r - .10), length = Math.min(.49, step * .56);
+      const plate = [[0, 0], [.21, 0], [.54, .41], [.45, .65], [.26, .60], [.03, .27]] as const;
+      const hand = (loop: readonly Flat[]): Flat[] => loop.map(([x, z]) => [axis - side * x, base + .05 + z * length]);
+      forged(p, hand(plate), h, h * .57, "alloy", "bevel");
+      profile(p, hand([[.20, .12], [.27, .19], [.42, .42], [.36, .43]]), h * 1.015, "copper", "gasket");
     }
   }
   return p;
 }
 
 function gable(form: FormDef, level: number): Shape {
-  const p = new Shape(), [l, b, r, t] = bounds(form), h = form.thick / 2;
-  profile(p, [[l, b], [r, b], [l, t]], level >= 3 ? h : h * .66, "alloy", "socket");
+  const p = new Shape(), box = bounds(form), [l, b, r, t] = box, h = form.thick / 2;
+  const triangle: Flat[] = [[l, b], [r, b], [l, t]];
+  profile(p, triangle, level >= 3 ? h : h * .26, "alloy", "socket");
   if (level < 3) {
-    const slope = (x: number): number => b + (t - b) * (r - x) / (r - l);
-    const a = l + .10, c = r - .22;
-    profile(p, [[a, slope(a)], [c, slope(c)], [c, slope(c) - .065], [a, slope(a) - .105]], h, "titanium", "bevel");
-    if (level < 2) {
-      profile(p, [[a, b + .04], [c, b + .04], [c - .38, b + .16], [a, b + .16]], h * .90, "cover", "chamfer");
-      profile(p, [[a + .08, b + .23], [a + .30, b + .23], [a + .94, slope(a + .94) - .13], [a + .79, slope(a + .79) - .13]], h * .83, "cover", "bevel");
-      if (level === 0) cartridge(p, a + .135, b + (t - b) * .60, .075, .134, h);
+    const outside = mapped(box, [[.02, .11], [.06, .025], [.83, .025], [.88, .08], [.05, .91], [.02, .87]]);
+    const inside = mapped(box, [[.10, .16], [.15, .095], [.64, .095], [.67, .143], [.15, .68], [.10, .62]]);
+    optical(p, outside, inside, h * .93, h * .38, level);
+    if (level === 0) {
+      const anchor = mapped(box, [[.035, .04], [.14, .04], [.25, .18], [.20, .26], [.115, .255], [.035, .14]]);
+      forged(p, anchor, h * .99, h * .62, "alloy", "chamfer");
+      profile(p, mapped(box, [[.088, .091], [.113, .091], [.188, .194], [.161, .190]]), h * 1.01, "copper", "gasket");
     }
   }
   return form.outline.some(([x, z]) => x > form.at[0] && z > form.at[1]) ? mirror(p, 0) : p;
@@ -203,19 +254,24 @@ function gable(form: FormDef, level: number): Shape {
 
 function support(form: FormDef, level: number, fence: boolean): Shape {
   const p = new Shape(), [l, b, r, t] = bounds(form), h = form.thick / 2, height = t - b;
-  bar(p, [l, b, r, t], level >= 3 ? h : h * (fence ? .70 : .45), "alloy");
+  bar(p, [l, b, r, t], level >= 3 ? h : h * .32, "alloy", "socket");
   if (level >= 3) return p;
-  for (const top of [false, true]) {
-    const low = top ? t - height * .18 : b, high = top ? t : b + height * (fence ? .28 : .18);
-    bar(p, [l, low, r, high], top ? h * .98 : h, "titanium", "bevel");
-  }
-  if (level < 2) {
-    for (const x of [-.98, 0, .98]) {
-      const edge = fence ? .135 : .10;
-      profile(p, [[x - edge, b + .055], [x + edge, b + .055], [x + edge + .09, t - .047], [x + .01, t - .047]], h * .91, "cover", "chamfer");
+  const flange = height * (fence ? .24 : .16);
+  bar(p, [l, t - flange * .8, r, t], h * .98, "bevel", "socket");
+  bar(p, [l, b, r, b + flange], h, "alloy", "bevel");
+  if (level === 2) return p;
+  for (const hand of [-1, 1]) {
+    const foot: Flat[] = [[.01, .06], [.39, .06], [.55, .18], [1.11, .76], [1.40, .83], [1.40, .93], [.98, .92], [.21, .28], [.01, .24]];
+    const at = (loop: Flat[]): Flat[] => loop.map(([x, z]) => [hand * x, b + z * height]);
+    if (level === 0) forged(p, at(foot), h * .90, h * .46, "alloy", "bevel");
+    else profile(p, at(foot), h * .85, "alloy", "bevel");
+    if (level === 0) {
+      const clamp = mapped([.9, .59, 1.18, .91], bevelQuad);
+      forged(p, at(clamp), h * .99, h * .69, "socket", "bevel");
+      profile(p, at([[1, .63], [1.05, .64], [1.13, .82], [1.08, .82]]), h, "copper", "gasket");
     }
-    if (level === 0) cartridge(p, -.52, b + height * .5, .072, height * .145, h * .92);
   }
+  profile(p, mapped([-.22, t - flange * .95, .22, t - flange * .43], bevelQuad), h, "emitter", "lens");
   return p;
 }
 
@@ -223,20 +279,28 @@ function railing(form: FormDef, level: number): Shape {
   const p = new Shape(), [l, b, r, t] = bounds(form), h = form.thick / 2;
   if (level === 4) {
     sheet(p, rectangle([l, t - .065, r, t]), "titanium");
-    for (const x of [-1.02, 1.02]) sheet(p, rectangle([x - .045, b, x + .045, t - .066]), "cover");
+    for (const x of [-1.02, 1.02]) sheet(p, rectangle([x - .045, b, x + .045, t - .066]), "alloy");
     return p;
   }
-  bar(p, [l, t - .069, r, t], h, "titanium", "bevel");
-  const xs = level >= 2 ? [-1.02, 1.02] : [-1.05, 0, 1.05];
-  for (const x of xs) {
-    const z = t - .044;
-    profile(p, [[x - .10, b], [x + .045, b], [x + .09, z], [x + .01, z]], h * .73, "cover", "chamfer");
+  bar(p, [l, t - .069, r, t], h, "bevel", "socket");
+  for (const hand of [-1, 1]) {
+    const x = hand * 1.03, hp = t - b;
+    const leg = (loop: Flat[]): Flat[] => loop.map(([u, z]) => [x + hand * u, b + hp * z]);
+    const stem = leg([[-.10, 0], [.10, 0], [.14, .14], [.012, .59], [-.14, .95], [-.23, .96], [-.075, .50], [-.05, .16]]);
     if (level < 2) {
-      bar(p, [x - .13, b, x + .11, b + .062], h * .96, "alloy");
-      if (level === 0) cartridge(p, x + .017, t - .16, .044, .076, h);
-    }
+      forged(p, stem, h * .96, h * .57, "alloy", "bevel");
+      const fork = leg([[-.08, .20], [0, .15], [.17, .69], [.27, .90], [.23, .94], [.13, .91]]);
+      profile(p, fork, h * .54, "bevel", "socket");
+      if (level === 0) {
+        forged(p, leg([[-.17, 0], [.19, 0], [.19, .07], [.10, .14], [-.11, .12], [-.17, .08]]), h * 1.01, h * .73, "alloy", "bevel");
+        profile(p, leg([[-.023, .29], [.028, .31], [.062, .40], [.01, .38]]), h, "copper", "socket");
+      }
+    } else bar(p, [x - .050, b, x + .050, t - .062], h * .74, "alloy", "socket");
   }
-  if (level < 3) bar(p, [l + .035, b + .30, r - .035, b + .336], h * .37, "alloy", "bevel");
+  if (level < 3) bar(p, [l + .045, b + .34, r - .045, b + .364], h * .32, "lens", "socket");
+  if (level === 0) {
+    for (const x of [-1.2, 1.2]) profile(p, mapped([x - .17, t - .052, x + .17, t - .029], tip), h * 1.01, "emitter", "lens");
+  }
   return p;
 }
 
@@ -244,24 +308,31 @@ function ladder(form: FormDef, level: number): Shape {
   const p = new Shape(), [l, b, r, t] = bounds(form), depth = -(form.off ?? 0), h = form.thick / 2;
   const y = depth - h * .25;
   if (level === 4) {
-    for (const x of [l, r - .04]) sheet(p, rectangle([x, b, x + .04, t]), "titanium", y);
-    sheet(p, rectangle([l + .041, -.027, r - .041, .027]), "cover", y);
+    for (const x of [l, r - .04]) sheet(p, rectangle([x, b, x + .04, t]), "bevel", y);
+    sheet(p, rectangle([l + .041, -.027, r - .041, .027]), "alloy", y);
     return p;
   }
-  for (const x of [l, r - .045]) p.box([x, y - h * .75, b], [x + .045, y + h * .78, t], finish("titanium", "bevel"));
-  const n = 10, step = (t - b) / n;
-  for (let i = 0; i < n; i++) {
+  const post = .052, step = (t - b) / 10;
+  for (const x of [l, r - post]) p.box([x, y - h * .75, b], [x + post, y + h * .78, t], finish("alloy", "bevel"));
+  for (let i = 0; i < 10; i++) {
     if ((level === 2 && i % 2 !== 0) || (level === 3 && i !== 4)) continue;
-    const z = b + (i + .5) * step, wide = .024;
-    p.box([l + .017, y - wide, z - wide], [r - .017, y + wide, z + wide], finish(level < 3 ? "alloy" : "cover", "titanium"));
-    if (level === 0) {
-      for (const hand of [-1, 1]) p.box([hand * .20 - .023, y - wide - .004, z - .011], [hand * .20 + .023, y + wide + .004, z + .011], finish("copper"));
+    const z = b + (i + .5) * step;
+    if (level > 1) p.box([l + .018, y - .028, z - .023], [r - .018, y + .028, z + .023], finish("bevel", "alloy"));
+    else {
+      const tread: Flat[] = [[y - .041, z - .012], [y - .031, z - .024], [y + .025, z - .024], [y + .043, z + .012], [y + .032, z + .021], [y - .040, z + .021]];
+      p.extrude(tread, "x", l + .012, r - .012, side => [side === "+z" ? "bevel" : "alloy", () => uv]);
     }
   }
-  if (level < 2) for (const x of [l + .023, r - .023]) {
-    for (const z of [b + .26, t - .26]) {
-      p.box([x - .021, y + h * .57, z - .052], [x + .021, depth + h + .030, z + .052], finish("cover"));
-      if (level === 0) p.box([x - .012, y - h * .78, z - .035], [x + .012, y - h * .72, z + .035], finish("emitter", "lens"));
+  if (level < 2) for (const hand of [-1, 1]) {
+    const x = hand * (r - post * .5);
+    for (const z of [b + .20, t - .20]) {
+      const claw: Flat[] = [[y - .035, z - .072], [y - .035, z + .062], [depth + h - .013, z + .09],
+        [depth + h + .028, z + .15], [depth + h + .028, z + .055], [y + .037, z - .050]];
+      p.extrude(claw, "x", x - .035, x + .035, side => [side.endsWith("x") ? "bevel" : "socket", () => uv]);
+      if (level === 0) {
+        p.box([x - .031, y - .045, z - .032], [x + .031, y - .030, z - .009], finish("copper"));
+        p.box([x - .014, y - .045, z + .009], [x + .014, y - .030, z + .041], finish("emitter", "lens"));
+      }
     }
   }
   return p;

@@ -152,7 +152,7 @@ test("the lit program gives a piece's pixel its own frame, turn, seed and face b
     const p = PROGRAMS.flat!(tierOf(name), "bc");
     expect(p.vertex).toContain(`bool alloy = field && (aBone & ${FACE_PLAIN}u) != 0u`);
     expect(p.vertex).toContain(`(plain ? ${PIECE_PLAIN << PIECE_OVER_WEAR}u : 0u) | (alloy ? ${PIECE_ALLOY << PIECE_OVER_WEAR}u : 0u)`);
-    expect(p.vertex).toContain(`(region ? 0u : ${PIECE_FIXED << PIECE_OVER_WEAR}u) | ((h >> 20u) << ${PIECE_OVER_WEAR + PIECE_SEED}u)`);
+    expect(p.vertex).toContain(`(region || inlay ? 0u : ${PIECE_FIXED << PIECE_OVER_WEAR}u) | ((h >> 20u) << ${PIECE_OVER_WEAR + PIECE_SEED}u)`);
     expect(p.vertex).toContain("pieceFit(tl, ts, tc);\n    vPlace = vec2(tc, ts);");
     expect(p.fragment).toContain(`worldPiece = vMade >> ${PIECE_OVER_WEAR};`);
     expect(p.fragment).toContain("if (worldPiece > 0) worldTurn = vPlace;");

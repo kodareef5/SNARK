@@ -27,18 +27,27 @@ test("the Tek uprights bake as closed outward faces inside every distance budget
   }
 });
 
-/** A ray normal to the face crosses an outward triangle as seen from this side. */
-function covers(lod: SourceLod, x: number, y: number, side: number): boolean {
+const tones = ["alloy", "gasket", "socket", "bevel", "titanium", "chamfer", "cover", "emitter", "lens", "copper", "membrane"];
+
+/** A normal ray returns the first outward surface visible from either side. */
+function visible(lod: SourceLod, x: number, y: number, side: number) {
+  let depth = -Infinity, tone = "";
   const p = lod.positions;
   for (let i = 0; i < lod.indices.length; i += 3) {
-    const a = 3 * lod.indices[i]!, b = 3 * lod.indices[i + 1]!, c = 3 * lod.indices[i + 2]!;
-    const area = (p[b]! - p[a]!) * (p[c + 1]! - p[a + 1]!) - (p[b + 1]! - p[a + 1]!) * (p[c]! - p[a]!);
+    const ia = lod.indices[i]!, a = 3 * ia, b = 3 * lod.indices[i + 1]!, c = 3 * lod.indices[i + 2]!;
+    const dx = x - p[a]!, dy = y - p[a + 1]!, bx = p[b]! - p[a]!, by = p[b + 1]! - p[a + 1]!;
+    const cx = p[c]! - p[a]!, cy = p[c + 1]! - p[a + 1]!, area = bx * cy - by * cx;
     if (area * side < 1e-8) continue;
-    const u = ((x - p[a]!) * (p[c + 1]! - p[a + 1]!) - (y - p[a + 1]!) * (p[c]! - p[a]!)) / area;
-    const v = ((p[b]! - p[a]!) * (y - p[a + 1]!) - (p[b + 1]! - p[a + 1]!) * (x - p[a]!)) / area;
-    if (u >= 0 && v >= 0 && u + v <= 1) return true;
+    const u = (dx * cy - dy * cx) / area, v = (dy * bx - dx * by) / area;
+    if (u < 0 || v < 0 || u + v > 1) continue;
+    const z = side * ((1 - u - v) * p[a + 2]! + u * p[b + 2]! + v * p[c + 2]!);
+    if (z > depth) { depth = z; tone = tones[lod.colors[ia]!]!; }
   }
-  return false;
+  return { tone, depth };
+}
+
+function covers(lod: SourceLod, x: number, y: number, side: number): boolean {
+  return Number.isFinite(visible(lod, x, y, side).depth);
 }
 
 test("portals retain their clear width, lintel and jambs from both sides", () => {
@@ -85,6 +94,61 @@ test("the gables mirror the roof rake and the climbing gaps stay open", () => {
   for (const [name, x, z] of [["ladder", 0.03, 0.06], ["railing", .45, .13]] as const) {
     for (const shape of levelsOf(recipe, name, FORMS[name])) for (const side of [-1, 1]) {
       expect(covers(flatLod(shape, () => 1), x, z, side)).toBe(false);
+    }
+  }
+});
+
+test("both sides of the personnel door expose a recessed pane and working hardware", () => {
+  const form = FORMS.door;
+  const [left, low] = form.outline[0]!, height = form.outline[2]![1] - low, width = -left * 2;
+  const lod = flatLod(tekOpening("door", form, 0)!, name => tones.indexOf(name));
+  const y = (at: number) => low - form.at[1] + height * at;
+  for (const side of [-1, 1]) {
+    const field = visible(lod, 0, y(.63), side);
+    expect(field.tone).toBe("membrane");
+    expect(visible(lod, left + .046 * width, y(.205), side).tone).toBe("copper");
+    expect(visible(lod, left + .046 * width, y(.79), side).tone).toBe("copper");
+    const lock = visible(lod, left + .936 * width, y(.45), side);
+    expect(lock.tone).toBe("copper");
+    expect(lock.depth - field.depth).toBeGreaterThan(.025);
+    expect(visible(lod, left + .825 * width, y(.47), side).tone).toBe("emitter");
+  }
+});
+
+test("the gate bridge crosses both optical leaves above the glass", () => {
+  const f = FORMS.gate, shape = tekOpening("gate", f, 0)!;
+  const [left, low] = f.outline[0]!, [right, high] = f.outline[2]!;
+  const x = (right - left) / 4, y = (h: number) => low - f.at[1] + (high - low) * h;
+  const lod = flatLod(shape, mat => tones.indexOf(mat));
+  for (const side of [-1, 1]) for (const leaf of [-1, 1]) {
+    const lower = visible(lod, leaf * x, y(.31), side), upper = visible(lod, leaf * x, y(.72), side);
+    expect([lower.tone, upper.tone]).toEqual(["membrane", "membrane"]);
+    const brace = visible(lod, leaf * x, y(.55), side);
+    expect(brace.tone).toBe("alloy");
+    expect(brace.depth - lower.depth).toBeGreaterThan(.04);
+  }
+});
+
+test("optical jambs and armor panels keep their cells bounded by a raised rim", () => {
+  for (const name of [...frames, "quarter_wall", "half_wall", "large_wall", "sloped_wall_left", "sloped_wall_right"] as const) {
+    const shape = tekOpening(name, FORMS[name], 0)!;
+    const optical = shape.faces.filter(face => face.mat === "membrane");
+    expect(optical.length, name).toBeGreaterThanOrEqual(2);
+    const floor = Math.abs(optical[0]!.points[0]![1]);
+    expect(optical.every(face => face.points.every(p => Math.abs(Math.abs(p[1]) - floor) < 1e-6)), name).toBe(true);
+    const guide = shape.faces.filter(f => f.mat === "emitter").flatMap(f => f.points.map(p => Math.abs(p[1])));
+    expect(Math.max(...guide) - floor, name).toBeGreaterThan(.02);
+  }
+});
+
+test("each paired frame exposes the two journals on each opening edge", () => {
+  for (const name of ["double_doorway", "gateway"] as const) {
+    const f = FORMS[name], hole = f.openings[0]!, left = hole.x0 - f.at[0];
+    const cheek = Math.min(.21, (hole.x0 - f.outline[0]![0]) * .31);
+    const lod = flatLod(tekOpening(name, f, 0)!, mat => tones.indexOf(mat));
+    for (const d of [-1, 1]) for (const side of [-1, 1]) for (const at of [.22, .77]) {
+      const y = hole.y0 + (hole.y1 - hole.y0) * at - f.at[1];
+      expect(visible(lod, d * (Math.abs(left) + cheek * .57), y, side).tone, name).toBe("copper");
     }
   }
 });

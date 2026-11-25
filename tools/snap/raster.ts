@@ -17,7 +17,8 @@ import { DRY_ASPHALT, MASK_LAYER, MASK_MATERIALS, SURFACE_NAMES, surfaceIndex, s
 import { FACADE_COLOURS, FACADE_TIERS, KIND, ROOM_OPEN_LEAST, ROOM_OUT, facadeFarColour, facadeKind, facadeMarks, facadeOut, facadeSurface, type FacadeSample, type FacadeTier } from "../../client/core/render/facade.ts";
 import { TEK_WALL } from "../../content/building/tek-wall.ts";
 import { rippleOf } from "../../client/core/render/tek-ripple.ts";
-import { TEK_RAIL_COLOUR } from "../../content/building/tek-wall.ts";
+import { TEK_INLAY_COLOUR, TEK_RAIL_COLOUR } from "../../content/building/tek-wall.ts";
+import { tekCasting, tekGlass, tekInlayLight } from "../../client/core/render/tek-inlay.ts";
 import { tekFinishNormal, tekFrameSurface, tekIndicator, tekPlateSurface, tekRailLight } from "../../client/core/render/tek-frame.ts";
 import { FIELD_PHASE, TEK_FIELD, tekFieldLight } from "../../client/core/render/tek-field.ts";
 import { texgenSide } from "../../client/core/texgen/layers.ts";
@@ -490,18 +491,25 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
     const hardware = !touch && made === TEK_FIELD && piece !== null && (piece[5]! & PIECE_FIXED) !== 0;
     const emitter = hardware && (piece[5]! & PIECE_PLAIN) === 0;
     const surfaceHeight = side > 0 ? fieldRelief : 0.5;
-    if (plate) {
-      if (field) tekFinishNormal(normal, piece[0]!, piece[1]!, piece[3]!, piece[4]!, true, 1);
+    const inlay = plate && solid && (piece[5]! & PIECE_PLAIN) !== 0;
+    let castingSharp = false;
+    if (field) {
+      tekFinishNormal(normal, piece[0]!, piece[1]!, piece[3]!, piece[4]!, true, 1);
       const facing = normal[0]! * eye[0]! + normal[1]! * eye[1]! + normal[2]! * eye[2]!;
       tekPlateSurface(albedo, worldOrm, surfaceHeight, facing, piece[3]! * eye[0]! - piece[4]! * eye[2]!);
-    } else if (hardware && !emitter) {
+    } else if (inlay) {
+      tekGlass(albedo, worldOrm, surfaceHeight);
+    } else if (plate || (hardware && !emitter)) {
       for (let c = 0; c < 3; c++) tekPalette[c] = srgbToLinear((pal[colorIndex * 4 + c]! / 255) * dim);
-      tekFrameSurface(albedo, worldOrm, tekPalette, surfaceHeight);
-      if (!solid) tekFinishNormal(normal, piece[0]!, piece[1]!, piece[3]!, piece[4]!, false, worldOrm[2]!);
+      if (solid) castingSharp = tekCasting(albedo, worldOrm, tekPalette, surfaceHeight, hardware);
+      else {
+        tekFrameSurface(albedo, worldOrm, tekPalette, surfaceHeight);
+        tekFinishNormal(normal, piece[0]!, piece[1]!, piece[3]!, piece[4]!, false, worldOrm[2]!);
+      }
     }
     const twice = 2 * (normal[0]! * eye[0]! + normal[1]! * eye[1]! + normal[2]! * eye[2]!);
     for (let c = 0; c < 3; c++) reflected[c] = twice * normal[c]! - eye[c]!;
-    const sharp = plate || glass || worldSharp(worldOrm[1]!);
+    const sharp = solid && (plate || (hardware && !emitter)) ? castingSharp : field || glass || worldSharp(worldOrm[1]!);
     if (worldOrm[1]! >= 1) mirrored.fill(0);
     else if (!sharp) skyLight(mirrored, p.frame, reflected);
     else if (look) skyFrom(mirrored, p.frame, reflected, look);
@@ -523,6 +531,11 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
     if (field) {
       const facing = nx * eye[0]! + ny * eye[1]! + nz * eye[2]!;
       tekFieldLight(light, piece[0]!, piece[1]!, (piece[5]! & 65535) >> PIECE_SEED, facing, footprint, p.frame[MADE_AT + FIELD_PHASE]!, p.frame[FRAME.exposure]!, surfaceHeight, piece[3]! * eye[0]! - piece[4]! * eye[2]!, eye[1]!, side > 0 ? fieldConductor : 0);
+    } else if (inlay) {
+      const c = piece[3]!, s = piece[4]!;
+      tekInlayLight(light, piece[0]!, piece[1]!, piece[2]!, c * nx - s * nz, ny, s * nx + c * nz,
+        c * eye[0]! - s * eye[2]!, eye[1]!, s * eye[0]! + c * eye[2]!, p.frame[MADE_AT + FIELD_PHASE]!,
+        (piece[5]! & 65535) >> PIECE_SEED, footprint, p.frame[FRAME.exposure]!);
     } else if (hardware && (!solid || emitter)) {
       const indicator = solid ? tekIndicator(p.frame[MADE_AT + FIELD_PHASE]!, piece[0]! + piece[1]! + piece[2]!, (piece[5]! & 65535) >> PIECE_SEED) : 0;
       tekRailLight(light, piece[0]!, piece[1]!, emitter, p.frame[FRAME.exposure]!, indicator);
@@ -1360,9 +1373,10 @@ export class Rasterizer {
         const finish = material === TEK_FIELD || (lod.bones[last]! & FACE_WEARS) !== 0;
         const plain = material === TEK_FIELD ? color < REGION_BASE && color !== TEK_RAIL_COLOUR : (lod.bones[last]! & FACE_PLAIN) !== 0;
         const solid = material === TEK_FIELD && (lod.bones[last]! & FACE_PLAIN) !== 0;
+        const inlay = solid && color === TEK_INLAY_COLOUR;
         const worn = color >= REGION_BASE || finish ? material : 0;
         this.made |= worn;
-        this.pieceBits = worn === 0 ? 0 : PIECE_OWN | (plain ? PIECE_PLAIN : 0) | (solid ? PIECE_ALLOY : 0) | (color >= REGION_BASE ? 0 : PIECE_FIXED) | (pieceSeed(view.getUint32(at, true), view.getUint32(at + 4, true), view.getUint32(at + 8, true)) << PIECE_SEED);
+        this.pieceBits = worn === 0 ? 0 : PIECE_OWN | (plain ? PIECE_PLAIN : 0) | (solid ? PIECE_ALLOY : 0) | (color >= REGION_BASE || inlay ? 0 : PIECE_FIXED) | (pieceSeed(view.getUint32(at, true), view.getUint32(at + 4, true), view.getUint32(at + 8, true)) << PIECE_SEED);
         if (piece && color < REGION_BASE && (lod.bones[last]! & FACE_WEARS) !== 0) this.pieceBits += (data[at + 14]! + 1) * 65536;
         if (color >= REGION_BASE) color = data[at + 14 + color - REGION_BASE]!;
         // As FLAT_MESH_VERTEX's uOneColor: a piece about to be built is one colour.
