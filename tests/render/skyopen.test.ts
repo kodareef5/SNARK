@@ -8,8 +8,8 @@
 
 import { expect, test } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
-import { cityKinds } from "../../client/core/render/citymake.ts";
-import { FAR_SPAN, FarShadow, TOP_CELL, doSweep, makeSolid } from "../../client/core/render/farshadow.ts";
+import type { CityMaker } from "../../client/core/render/citymake.ts";
+import { FAR_SPAN, FarShadow, TOP_CELL, doSweep, makeSolid, type SweepJob, type SweepMade } from "../../client/core/render/farshadow.ts";
 import { FRAME, FramePacket } from "../../client/core/render/packet.ts";
 import { BEND_MOST, CONTACT, CONTACT_BAND, OPEN_BYTES, OPEN_EVERY, OPEN_HEIGHTS, OPEN_STRENGTH, OPEN_WAYS, openMeasure, overGround, skyOpen } from "../../client/core/render/skyopen.ts";
 import { COARSE } from "../../client/core/render/terrain.ts";
@@ -213,7 +213,8 @@ test("the scene's part makes the measure when the statics come, by night and wit
   const version = new Uint32Array(chunkCount(dims));
   const gone = new Map<number, Uint8Array>();
   const standing = { goneOf: (c: number): Gone => gone.get(c) ?? null, goneVersion: version, topsOf: (c: number) => (city.in(c) > 0 ? cityTops(city, c, hf, gone.get(c) ?? null) : null) };
-  const shadow = new FarShadow(city, hf, standing, null, () => false);
+  const shadow = new FarShadow(dims, hf, null, null, () => false);
+  shadow.hand(city, standing);
   const p = new FramePacket();
   // High with the governor's shadows taken off, and the sun down.
   p.tier = { ...tierOf("high"), shadows: { ...tierOf("high").shadows, cascades: 0 } };
@@ -244,19 +245,20 @@ test("the scene's part makes the measure when the statics come, by night and wit
   expect(p.openRows).toBe(50);
   expect(p.openMap).not.toEqual(first.subarray(0, p.openMap.length));
   while (frame().rows > 0);
-  // A lost context, and a frame of low poly, which lets the texture go: all of it is sent again.
+  // A lost context, and a frame of low poly, which lets the texture go: the measure was let go once on the card, so it
+  // is made again and all of it sent again.
   shadow.reset();
-  expect(frame(1e9).rows).toBe(128);
+  expect([frame(1e9).rows, shadow.open.stats.made]).toEqual([128, 3]);
   p.tier = tierOf("lowpoly");
   p.lit = false;
-  expect(frame(1e9)).toEqual({ width: 0, from: 0, rows: 0, spent: 0, scale: 0, made: 2 });
+  expect(frame(1e9)).toEqual({ width: 0, from: 0, rows: 0, spent: 0, scale: 0, made: 3 });
   p.tier = tierOf("high");
   p.lit = true;
-  expect(frame(1e9).rows).toBe(128);
+  expect([frame(1e9).rows, shadow.open.stats.made]).toEqual([128, 4]);
   // A layer whose cells are twice as wide: made again for them, and none on the card for the new grid until it is.
   p.tier = { ...tierOf("high"), shadows: { ...tierOf("high").shadows, size: 64 } };
   const wide = frame(1e9);
-  expect([wide.made, wide.width, wide.rows, wide.scale]).toEqual([3, 64, 64, -1 / (2 * TOP_CELL)]);
+  expect([wide.made, wide.width, wide.rows, wide.scale]).toEqual([5, 64, 64, -1 / (2 * TOP_CELL)]);
 });
 
 test("a landmark's pieces cast the sun's shadow but hide no sky, so a ship's own masts keep their light, here and on another thread", () => {
@@ -264,12 +266,19 @@ test("a landmark's pieces cast the sun's shadow but hide no sky, so a ship's own
   const standing = { goneOf: (): Gone => null, goneVersion: new Uint32Array(chunkCount(dims)), topsOf: (c: number) => (city.in(c) > 0 ? cityTops(city, c, hf, null) : null) };
   /** Every kind of the towers a landmark's, as a map's own are. */
   const own = new Uint8Array(Math.max(...city.kind) + 1).fill(1);
-  const made = (kinds: Uint8Array | null) => {
-    const shadow = new FarShadow(city, hf, standing, null, () => false, kinds);
+  const jobs: SweepJob[] = [], back: SweepMade[] = [];
+  const thread: CityMaker = { onMade: null, start() {}, make() {}, take: () => 0, sweep: (job) => void (jobs.push(structuredClone(job)), back.push(doSweep(job))), swept: () => back.shift() ?? null };
+  const made = (kinds: Uint8Array | null, maker: CityMaker | null = null) => {
+    const shadow = new FarShadow(dims, hf, null, maker, () => false, kinds);
+    shadow.hand(city, standing);
     const p = new FramePacket();
     p.tier = { ...tierOf("high"), shadows: { ...tierOf("high").shadows, size: 128 } };
     p.lit = true;
-    shadow.update(p, allowance(1e9), 0, 0, 0, [0.5, 0.5, Math.SQRT1_2], 20);
+    // A frame to ask, and on another thread one more to take what it made.
+    for (let f = 0; f < 3 && p.farRows === 0; f++) {
+      p.beginFrame();
+      shadow.update(p, allowance(1e9), 0, 0, 0, [0.5, 0.5, Math.SQRT1_2], 20);
+    }
     return { far: Uint16Array.from(p.farMap), open: Uint8Array.from(p.openMap) };
   };
   const [city0, ship] = [made(null), made(own)];
@@ -277,12 +286,12 @@ test("a landmark's pieces cast the sun's shadow but hide no sky, so a ship's own
   expect(Math.max(...city0.open.filter((_, i) => i % OPEN_BYTES === 0))).toBeGreaterThan(80);
   expect(Math.max(...ship.open.filter((_, i) => i % OPEN_BYTES === 0))).toBe(0);
   expect(ship.far).toEqual(city0.far);
-  // A worker sent which pieces hide no sky makes the same.
-  const kinds = cityKinds(city, hf, { center: [0, 0, 0], half: [1, 1, 1] });
-  const skip = Uint8Array.from(city.kind, (k) => own[k]!);
-  const there = doSweep(kinds, { id: 1, solid: null, ground: null, bare: null, make: { first: city.first.slice(), kind: city.kind.slice(), yaw: city.yaw.slice(), x: city.x.slice(), y: city.y.slice(), z: city.z.slice(), gone: null, skip, heights: hf.heights.slice() }, k: 1, size: 128, sun: null, open: true });
-  expect(Math.max(...there.open!.bytes.filter((_, i) => i % OPEN_BYTES === 0))).toBe(0);
-  expect(Math.max(...there.solid)).toBeGreaterThan(Math.max(...there.bare!));
+  // A worker is sent the cells whose heights hide no sky, lower than the ones they cast from, and makes the same.
+  const there = made(own, thread);
+  expect(there).toEqual(ship);
+  const job = jobs[0]!;
+  expect(job.bareAt!.length).toBeGreaterThan(16);
+  for (let n = 0; n < job.bareAt!.length; n++) expect(job.bareTo![n]!).toBeLessThan(job.solid[job.bareAt![n]!]!);
 });
 
 test("the rasterizer, the reference for light, takes sky light from a street between towers and leaves open ground as it was", () => {

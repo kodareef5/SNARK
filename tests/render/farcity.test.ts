@@ -588,7 +588,7 @@ test("levels made on threads are each asked of the one with the fewest in hand, 
       if ("kinds" in m) this.kinds = m.kinds;
       else if ("sweep" in m) {
         // The far shadow's map (farshadow.ts) is swept where levels are made.
-        const made = doSweep(this.kinds!, m.sweep);
+        const made = doSweep(m.sweep);
         setTimeout(() => this.onmessage!({ data: made }));
       } else {
         asked.push(this.n);

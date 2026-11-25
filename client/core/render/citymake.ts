@@ -85,8 +85,9 @@ export interface CityMaker {
   /** Where levels are made on this thread: makes what was asked a chunk at a time until `ms` are spent, the first chunk whatever it takes. */
   run?(ms: number): void;
   /**
-   * Where levels are made on other threads: sweeps the far shadow's map there (farshadow.ts), and gives back the one
-   * swept since the last call, or null. A maker without them leaves the sweep to the page.
+   * Where levels are made on other threads: sweeps the far shadow's map there (farshadow.ts), which needs nothing of the
+   * city's kinds and may be asked for before `start`, and gives back the one swept since the last call, or null. A maker
+   * without them leaves the sweep to the page.
    */
   sweep?(job: SweepJob): void;
   swept?(): SweepMade | null;

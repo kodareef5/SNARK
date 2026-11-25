@@ -18,7 +18,8 @@ import type { Get } from "../../client/core/fetched.ts";
 import { heldTotal, mapLedger, type MapHeld } from "../../client/core/mapheld.ts";
 import { MapLoader, type Place } from "../../client/core/mapload.ts";
 import { tierWant } from "../../client/core/map-want.ts";
-import { tierOf } from "../../client/core/assets/tiers.ts";
+import { forTouch, tierOf } from "../../client/core/assets/tiers.ts";
+import { TOP_CELL, farCell } from "../../client/core/render/farshadow.ts";
 import { CHUNK_SIZE, chunkCount } from "../../shared/coords.ts";
 import { compileContent, withContent } from "../../shared/content/registry.ts";
 import { CityStatics } from "../../shared/world/city.ts";
@@ -37,7 +38,8 @@ const BYTES_PER_MS = (Number(value("--mbit", "20")) * 1e6) / 8 / 1000;
 const EVERY = Number(value("--every", "10")) * 1000;
 const RTT = 100;
 const SPEED = Number(value("--speed", "80"));
-const WANT = tierWant(tierOf(value("--tier", "medium")), args.includes("--touch"));
+const TIER = tierOf(value("--tier", "medium")), TOUCH = args.includes("--touch");
+const WANT = tierWant(TIER, TOUCH);
 
 const head = headOf(file);
 const folder = partsFolder(file);
@@ -98,10 +100,16 @@ const arrived = (statics: MapStatics): void => {
   }
 };
 
-/** The far shadow's bytes by its sizes (client/core/render/farshadow.ts): three grids of 4 m cells, and its first job's copy of the city and the ground for its worker. */
-function farShadowBytes(pieces: number, hf: { heights: Uint16Array }): number {
-  const grids = 3 * chunkCount(head.dims) * (CHUNK_SIZE / 4) ** 2 * 2;
-  return grids + pieces * 16 + (chunkCount(head.dims) + 1) * 4 + hf.heights.byteLength;
+/**
+ * The far shadow's bytes by its sizes (client/core/render/farshadow.ts): its two grids of solid heights and ground at the
+ * far map's cell for the tier's shadow side, and its few bytes a chunk. It copies nothing of the city or the ground.
+ */
+function farShadowBytes(): number {
+  const size = forTouch(TIER, TOUCH).shadows.size;
+  if (size <= 0) return 0;
+  const side = CHUNK_SIZE / TOP_CELL, k = farCell(head.dims, size) / TOP_CELL;
+  const w = Math.ceil((head.dims.chunksX * side) / k), h = Math.ceil((head.dims.chunksZ * side) / k);
+  return 2 * w * h * 2 + chunkCount(head.dims) * 10;
 }
 
 const mb = (n: number): string => (n / 1e6).toFixed(1);
@@ -125,12 +133,12 @@ for (;;) {
   for (let k = 0; k < 4; k++) await turn();
   if (now >= nextSample && loader) {
     const rows = mapLedger({ loader, city, skip: [compiled.registry] });
-    const shadow = city ? farShadowBytes(loader.statics.pieces, loader.staged.hf) : 0;
+    const shadow = farShadowBytes();
     const p = loader.progress();
     if (!p.settled || stats.asked > askedThen) settledAt = -1;
     if (p.settled && settledAt < 0) settledAt = now;
     const still = settledAt >= 0 ? `, settled ${((now - settledAt) / 1000).toFixed(0)} s` : "";
-    console.log(`${(now / 1000).toFixed(0).padStart(4)} s  came ${mb(stats.wire).padStart(6)} MB in ${stats.came} parts, ${stats.asked - askedThen} asked since, ${p.left} of ${p.parts} wanted left${ready ? still : " (before the first frame)"}; ${loader.statics.size} sectors of statics, ${mb(loader.statics.bytes)} MB; holds ${mb(heldTotal(rows) + shadow)} MB: ${line(rows)}${shadow ? `, far shadow ${mb(shadow)} (by its sizes)` : ""}`);
+    console.log(`${(now / 1000).toFixed(0).padStart(4)} s  came ${mb(stats.wire).padStart(6)} MB in ${stats.came} parts, ${stats.asked - askedThen} asked since, ${p.left} of ${p.parts} wanted left${ready ? still : " (before the first frame)"}; ${loader.statics.size} sectors of statics, ${mb(loader.statics.bytes)} MB; holds ${mb(heldTotal(rows) + shadow)} MB: ${line(rows)}${shadow ? `, far shadow ${mb(shadow)} by its sizes` : ""}`);
     askedThen = stats.asked;
     nextSample += EVERY;
   }
