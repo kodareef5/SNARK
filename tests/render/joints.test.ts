@@ -3,8 +3,8 @@
 
 import { expect } from "bun:test";
 import { FORMS } from "../../content/building/forms.ts";
-import { COARSE, COARSE_VIEWS, COUNTS, JointBench, SIDE, countsOf, fightsOf, piecesPack, registry, tierMeshes } from "../../tools/pieces/joints.ts";
-import { JUNCTIONS, TIERS, mixedWith, tierJunction, type Junction, type TierName, type WallEnd } from "../../tools/pieces/layout.ts";
+import { COARSE, COARSE_VIEWS, COUNTS, JointBench, SIDE, fightsOf, piecesPack, tierMeshes } from "../../tools/pieces/joints.ts";
+import { JUNCTIONS, TIERS, mixedWith, type Junction, type TierName, type WallEnd } from "../../tools/pieces/layout.ts";
 import { STONE } from "../../tools/pack/pieces/stone.ts";
 import { THATCH, THATCH_FORMS } from "../../tools/pack/pieces/thatch.ts";
 import { tierShapes, trimShapes } from "../../tools/pack/pieces/tier.ts";
@@ -15,14 +15,16 @@ import { test } from "../fixtures/needs-art.ts";
 import { FOUNDATION_THICK, baseAt, drawn, layJunction, round } from "../fixtures/trims.ts";
 
 /**
- * What each junction counted on 2026-11-24, wood as its Blender scripts made it, in the order of COUNTS. A change may lower a number and may not raise one:
- * `bun tools/pieces/sheet.ts --table` prints them again, and `bun tools/pieces/sheet.ts` draws what they count.
+ * What each junction counts with the published packs and the joints the client lays, set down by key, in the order of
+ * COUNTS. A change may lower a number and may not raise one. With the Blender art and no joints, stone's and metal's
+ * outside corners left up to 9,368 and 8,921 notch pixels, thatch's 3,494 with 99 leaking, and wood's faces lay in one
+ * plane over 387 cm2. Thatch's two storeys still lay 5 faces in one plane, 34 cm2, under the upper storey's walls.
  */
 const AT_MOST: Record<TierName, Record<string, readonly number[]>> = {
-  thatch: { "walls 180": [3, 0, 1, 0, 0, 0], "walls 90": [61, 1615, 3, 304, 1, 5], "tee": [3, 0, 0, 0, 2, 9], "cross": [6, 0, 0, 0, 4, 16], "openings 90": [3, 0, 0, 0, 0, 0], "two storeys": [99, 3494, 6, 604, 9, 36], "mixed 90": [3, 0, 0, 0, 0, 0] },
-  wood: { "walls 180": [0, 0, 0, 0, 0, 0], "walls 90": [0, 0, 0, 0, 1, 65], "tee": [0, 0, 0, 0, 2, 136], "cross": [0, 0, 0, 0, 4, 272], "openings 90": [0, 0, 0, 0, 2, 387], "two storeys": [0, 0, 0, 0, 3, 323], "mixed 90": [0, 0, 0, 0, 0, 0] },
-  stone: { "walls 180": [0, 0, 0, 0, 0, 0], "walls 90": [0, 3759, 0, 992, 1, 36], "tee": [0, 0, 0, 0, 2, 72], "cross": [0, 0, 0, 0, 4, 144], "openings 90": [0, 3757, 0, 987, 1, 36], "two storeys": [0, 9368, 0, 2206, 4, 502], "mixed 90": [0, 3694, 0, 984, 0, 0] },
-  metal: { "walls 180": [0, 0, 0, 0, 0, 0], "walls 90": [0, 3575, 0, 961, 1, 100], "tee": [0, 0, 0, 0, 2, 200], "cross": [0, 0, 0, 0, 4, 400], "openings 90": [0, 3575, 0, 961, 1, 100], "two storeys": [0, 8921, 0, 2141, 3, 600], "mixed 90": [0, 0, 0, 0, 0, 0] },
+  thatch: { "walls 180": [0, 0, 0, 0, 0, 0], "walls 90": [0, 0, 0, 0, 0, 0], "tee": [0, 0, 0, 0, 0, 0], "cross": [0, 0, 0, 0, 0, 0], "openings 90": [0, 0, 0, 0, 0, 0], "two storeys": [0, 0, 0, 0, 5, 34], "mixed 90": [0, 0, 0, 0, 0, 0] },
+  wood: { "walls 180": [0, 0, 0, 0, 0, 0], "walls 90": [0, 0, 0, 0, 0, 0], "tee": [0, 0, 0, 0, 0, 0], "cross": [0, 0, 0, 0, 0, 0], "openings 90": [0, 0, 0, 0, 0, 0], "two storeys": [0, 0, 0, 0, 0, 0], "mixed 90": [0, 0, 0, 0, 0, 0] },
+  stone: { "walls 180": [0, 0, 0, 0, 0, 0], "walls 90": [0, 0, 0, 0, 0, 0], "tee": [0, 0, 0, 0, 0, 0], "cross": [0, 0, 0, 0, 0, 0], "openings 90": [0, 0, 0, 0, 0, 0], "two storeys": [0, 0, 0, 0, 0, 0], "mixed 90": [0, 0, 0, 0, 0, 0] },
+  metal: { "walls 180": [0, 0, 0, 0, 0, 0], "walls 90": [0, 0, 0, 0, 0, 0], "tee": [0, 0, 0, 0, 0, 0], "cross": [0, 0, 0, 0, 0, 0], "openings 90": [0, 0, 0, 0, 0, 0], "two storeys": [0, 0, 0, 0, 0, 0], "mixed 90": [0, 0, 0, 0, 0, 0] },
 };
 
 /**
@@ -33,26 +35,20 @@ function hold(counted: readonly number[], most: readonly number[], where: string
   COUNTS.forEach((what, k) => expect(counted[k], `${where}: ${what}`).toBeLessThanOrEqual(k < 4 ? most[k]! : k === 4 ? most[k]! + 2 : most[k]! * 1.1 + 10));
 }
 
-let made: { bench: JointBench; meshes: ReturnType<typeof meshesOf>; laid: ReturnType<typeof lay> } | null = null;
 const meshesOf = (pack: JointBench["pack"]) => new Map(unpackMeshes(pack).map((m) => [m.id, m] as const));
-const lay = () => TIERS.map((tier, t) => JUNCTIONS.map((name, k) => tierJunction(name, tier, 64 + k * 32, 64 + t * 32, (id) => registry().index.has(id))));
-
-/** Every tier's junctions in one flat world, built once. */
-function world() {
-  if (made) return made;
-  const pack = piecesPack(tierMeshes());
-  const laid = lay();
-  return (made = { bench: new JointBench(pack, laid.flat()), meshes: meshesOf(pack), laid });
-}
 
 for (const tier of TIERS) {
   test(`${tier} junctions leak, gape and fight no more than they did`, () => {
-    const { bench, meshes, laid } = world();
-    for (const j of laid[TIERS.indexOf(tier)]!) {
-      hold(countsOf(bench, j, meshes), AT_MOST[tier][j.name]!, `${tier} ${j.name}`);
+    // Every tier's installed pack, its trims among it, set down by key as a player builds.
+    for (const [name, counted] of keyedCounts(installedPack(), tier)) {
+      if (process.env.SNARK_MEETS) console.log(`${tier} ${name}: ${counted.join(", ")}`);
+      hold(counted, AT_MOST[tier][name]!, `${tier} ${name}`);
     }
   });
 }
+
+let installed: JointBench["pack"] | null = null;
+const installedPack = (): JointBench["pack"] => (installed ??= piecesPack(tierMeshes([...TIERS])));
 
 /** The walls of one of JUNCTIONS by their ways, as `tierJunction` lays them, and the tier of a house's floors where it has them. */
 function endsOf(name: string, tier: TierName): { ends: WallEnd[]; house: TierName | null } {
@@ -469,7 +465,7 @@ const SHAPED_FIGHTS: Record<string, Record<string, readonly [number, number]>> =
   wood: { "gable at ridge": [4, 36], "railing corner": [3, 92], "beam corner": [2, 234], "walls on fence foundations at a corner": [2, 117], "skirts at an inside corner": [10, 261] },
   stone: { "gable at ridge": [4, 35], "railing corner": [2, 50], "beam corner": [2, 242], "walls on fence foundations at a corner": [1, 42], "skirts at an inside corner": [2, 264] },
   metal: { "gable at eave": [1, 16], "gable at ridge": [4, 33], "railing corner": [4, 333], "beam corner": [2, 500], "walls on fence foundations at a corner": [3, 398] },
-  thatch: { "gable at ridge": [6, 1335], "gable at a lean-to's head": [3, 24], "railing corner": [2, 26], "skirts at an inside corner": [8, 100] },
+  thatch: { "gable at eave": [1, 8], "gable at ridge": [6, 1335], "gable at a lean-to's head": [3, 24], "railing corner": [2, 26], "skirts at an inside corner": [8, 100] },
 };
 
 /** The forms SHAPED sets down, as a tier's recipe makes them. */
