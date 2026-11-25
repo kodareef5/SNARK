@@ -24,7 +24,7 @@ test("the ledger counts the page's ground and statics as the loader lays them ou
   for (let k = 0; k < 500 && !loader.progress().whole; k++) await settle();
   const rows = mapLedger({ loader, city: loader.staged, skip: [] });
   const hf = loader.staged.hf;
-  expect(rows.find((r) => r.name === "ground")!.bytes).toBe(hf.heights.byteLength + hf.tint.byteLength + hf.ground.byteLength + hf.exact.byteLength);
+  expect(rows.find((r) => r.name === "ground")!.bytes).toBe(hf.heights.byteLength + hf.tint.byteLength + hf.ground.byteLength + hf.exact.byteLength + hf.bounds!.byteLength);
   const pieces = head.counts.reduce((n, c) => n + c, 0);
   expect(rows.find((r) => r.name === "statics")!.bytes).toBeGreaterThanOrEqual(pieces * 16);
   // The city named here is the staged map again, all of it counted already.
