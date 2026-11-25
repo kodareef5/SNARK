@@ -1,5 +1,6 @@
-// OWN_SCREEN: what a world tells each client its screens play. Written when it changes, never per tick. Times are the
-// world's own ticks, which the client's render clock follows, so a client needs no wall clock.
+// OWN_SCREEN: what a world tells each client each type of screen plays. Written when it changes, never per tick. Times
+// are the world's own ticks, which the client's render clock follows, so a client needs no wall clock. A type's many
+// screens each find their own item in its channel (programme.ts channelAtOffset), from the channel's epoch as a tick.
 import type { BitReader, BitWriter } from "../net/codec.ts";
 
 export const SHOW_SCENES = 0;
@@ -8,9 +9,12 @@ export const SHOW_VIDEO = 1;
 export const SCREEN_FACING = 1;
 export const SCREEN_FILL = 2;
 export const SCREEN_SOUND = 4;
+/** What plays is the one showing, on every screen of the type alike. */
+export const SCREEN_ONCE = 8;
 
-/** No clip, in a clip's place. */
+/** No clip, in a clip's place, and no channel in a channel's. */
 export const NO_CLIP = 0xffff;
+export const NO_CHANNEL = 0xffff;
 
 /** What a screen shows, as the client keeps it. `clip` and `next` number the manifest's clips. */
 export interface ScreenState {
@@ -24,14 +28,18 @@ export interface ScreenState {
   next: number;
   /** The scene an admin holds the screen to while no clip plays, its number in ORB_SCENES, or -1 for the scenes' programme. */
   scene: number;
+  /** The channel the type shows, its number in the manifest's channels, or NO_CHANNEL. */
+  channel: number;
+  /** The world tick at which the channel's epoch fell; it may be before the world began. */
+  epoch: number;
 }
 
-export const newScreenState = (): ScreenState => ({ manifest: "", show: SHOW_SCENES, flags: SCREEN_FACING, clip: NO_CLIP, start: 0, next: NO_CLIP, scene: -1 });
+export const newScreenState = (): ScreenState => ({ manifest: "", show: SHOW_SCENES, flags: SCREEN_FACING, clip: NO_CLIP, start: 0, next: NO_CLIP, scene: -1, channel: NO_CHANNEL, epoch: 0 });
 
 /** The scene a screen holds the orb to, or `fallback` (the world's own setting) where it holds none. */
 export const heldScene = (s: ScreenState | undefined, fallback: number): number => (s && s.show === SHOW_SCENES && s.scene >= 0 ? s.scene : fallback);
 
-/** Every screen's state, in SCREENS order (clip.ts). The manifest is 8 bytes; each screen is 15. */
+/** Every type's state, in SCREENS order (clip.ts). The manifest is 8 bytes; each type is 25. */
 export function writeScreens(w: BitWriter, screens: readonly ScreenState[]): void {
   const manifest = screens[0]?.manifest ?? "";
   w.u32(manifest ? parseInt(manifest.slice(0, 8), 16) >>> 0 : 0);
@@ -44,6 +52,8 @@ export function writeScreens(w: BitWriter, screens: readonly ScreenState[]): voi
     w.f64(s.start);
     w.u16(s.next);
     w.u8(s.scene + 1);
+    w.u16(s.channel);
+    w.f64(s.epoch);
   }
 }
 
@@ -60,6 +70,8 @@ export function readScreens(r: BitReader, out: ScreenState[]): void {
     s.start = r.f64();
     s.next = r.u16();
     s.scene = r.u8() - 1;
+    s.channel = r.u16();
+    s.epoch = r.f64();
   }
   out.length = count;
 }

@@ -4,8 +4,8 @@ import { TICK_RATE } from "../../shared/coords.ts";
 import { OWN_SCREEN } from "../../shared/net/protocol.ts";
 import { isDay } from "../../shared/sim/clock.ts";
 import { SCREENS, defaultScreen, heldSceneOf } from "../../shared/video/clip.ts";
-import { screenAt, type Playing } from "../../shared/video/programme.ts";
-import { NO_CLIP, SCREEN_FILL, SCREEN_SOUND, SCREEN_FACING, SHOW_SCENES, SHOW_VIDEO, writeScreens, type ScreenState } from "../../shared/video/screen.ts";
+import { onceShowing, screenAt, type Playing } from "../../shared/video/programme.ts";
+import { NO_CHANNEL, NO_CLIP, SCREEN_FACING, SCREEN_FILL, SCREEN_ONCE, SCREEN_SOUND, SHOW_SCENES, SHOW_VIDEO, writeScreens, type ScreenState } from "../../shared/video/screen.ts";
 import { orbOnly } from "../../shared/world/orb.ts";
 import type { GameServer } from "../game.ts";
 import type { Rules } from "../settings/rules.ts";
@@ -51,8 +51,9 @@ export class ScreenFeed {
   private stamp = "";
   private checked = -Infinity;
   private swept = -Infinity;
-  /** What each screen played at the last poll, so its start tick holds while the same item plays. */
+  /** What each type played at the last poll, so its start tick holds while the same item plays, and the channel epoch whose tick it holds. */
   private readonly playing: (Playing | null)[] = [];
+  private readonly epochs: number[] = [];
 
   constructor(lib: LibrarySource, world: ServerWorld) {
     this.lib = lib;
@@ -84,13 +85,18 @@ export class ScreenFeed {
     SCREENS.forEach((id, i) => {
       const screen = view.screens.get(id) ?? defaultScreen(id);
       const now = screenAt(screen, view.channels, view.timed, wall, night), was = this.playing[i] ?? null;
-      const s = this.states[i] ?? (this.states[i] = { manifest: "", show: SHOW_SCENES, flags: 0, clip: NO_CLIP, start: 0, next: NO_CLIP, scene: -1 });
-      const flags = (screen.mode === "facing" ? SCREEN_FACING : 0) | (screen.fill ? SCREEN_FILL : 0) | (screen.sound ? SCREEN_SOUND : 0);
+      const s = this.states[i] ?? (this.states[i] = { manifest: "", show: SHOW_SCENES, flags: 0, clip: NO_CLIP, start: 0, next: NO_CLIP, scene: -1, channel: NO_CHANNEL, epoch: 0 });
+      const once = onceShowing(screen, view.timed, wall) && !(screen.night && !night);
+      const flags = (screen.mode === "facing" ? SCREEN_FACING : 0) | (screen.fill ? SCREEN_FILL : 0) | (screen.sound ? SCREEN_SOUND : 0) | (once ? SCREEN_ONCE : 0);
       const same = !!now && !!was && now.clip === was.clip && now.start === was.start;
+      // The channel each screen of the type finds its own item in, and its epoch as a tick, held while the epoch is the same.
+      const at = now && !once ? view.doc.channels.findIndex((c) => c.name === screen.show) : -1, channel = at >= 0 ? view.doc.channels[at]! : null;
+      const epoch = channel ? (this.epochs[i] === channel.epoch && s.channel === at ? s.epoch : startTick(this.world.tick, wall, channel.epoch)) : 0;
+      this.epochs[i] = channel ? channel.epoch : NaN;
       const next: ScreenState = now
-        ? { manifest: view.manifestId, show: SHOW_VIDEO, flags, clip: index.get(now.clip) ?? NO_CLIP, start: same ? s.start : startTick(this.world.tick, wall, now.start), next: now.next === null ? NO_CLIP : (index.get(now.next) ?? NO_CLIP), scene: heldSceneOf(screen.show) }
-        : { manifest: view.manifestId, show: SHOW_SCENES, flags, clip: NO_CLIP, start: 0, next: NO_CLIP, scene: heldSceneOf(screen.show) };
-      if (next.manifest !== s.manifest || next.show !== s.show || next.flags !== s.flags || next.clip !== s.clip || next.start !== s.start || next.next !== s.next || next.scene !== s.scene) {
+        ? { manifest: view.manifestId, show: SHOW_VIDEO, flags, clip: index.get(now.clip) ?? NO_CLIP, start: same ? s.start : startTick(this.world.tick, wall, now.start), next: now.next === null ? NO_CLIP : (index.get(now.next) ?? NO_CLIP), scene: heldSceneOf(screen.show), channel: at >= 0 ? at : NO_CHANNEL, epoch }
+        : { manifest: view.manifestId, show: SHOW_SCENES, flags, clip: NO_CLIP, start: 0, next: NO_CLIP, scene: heldSceneOf(screen.show), channel: NO_CHANNEL, epoch: 0 };
+      if (next.manifest !== s.manifest || next.show !== s.show || next.flags !== s.flags || next.clip !== s.clip || next.start !== s.start || next.next !== s.next || next.scene !== s.scene || next.channel !== s.channel || next.epoch !== s.epoch) {
         Object.assign(s, next);
         changed = true;
       }

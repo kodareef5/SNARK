@@ -5,7 +5,7 @@ import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SCREENS, defaultScreen, type Channel, type Clip, type Screen } from "../../shared/video/clip.ts";
+import { SCREENS, channelType, defaultScreen, isImage, type Channel, type Clip, type Screen, type ScreenType } from "../../shared/video/clip.ts";
 import type { Timed } from "../../shared/video/programme.ts";
 
 /** What the database keeps: uploaded clips in the order they were added, the channels, the screens, the hidden starters. */
@@ -34,6 +34,10 @@ export interface StarterChannel {
   readonly name: string;
   readonly items: readonly string[];
   readonly shuffle?: boolean;
+  /** The type of screen it plays on; the ball where it says none. */
+  readonly type?: ScreenType;
+  /** Seconds an image holds in it. */
+  readonly still?: number;
 }
 
 /** What a starter file lists: the built clips, and the channels a fresh library starts with. */
@@ -54,7 +58,7 @@ export interface LibraryView {
   /** The manifest's id: the first 16 hex digits of the SHA-256 of its JSON. */
   readonly manifestId: string;
   readonly channels: ReadonlyMap<string, Channel>;
-  readonly screens: ReadonlyMap<string, Screen>;
+  readonly screens: ReadonlyMap<ScreenType, Screen>;
   /** The visible clips by id, which is what a screen may play. */
   readonly timed: ReadonlyMap<string, Timed>;
 }
@@ -127,8 +131,8 @@ export class VideoLibrary {
     this.readStarters();
     const fresh: LibraryDoc = {
       clips: [],
-      channels: this.starters.channels.map((c) => ({ name: c.name, items: [...c.items], shuffle: c.shuffle === true, epoch: this.now() })),
-      screens: SCREENS.map((s) => defaultScreen(s)),
+      channels: this.starters.channels.map((c) => ({ name: c.name, items: [...c.items], shuffle: c.shuffle === true, epoch: this.now(), ...(c.type && c.type !== "orb" ? { type: c.type } : {}), ...(c.still ? { still: c.still } : {}) })),
+      screens: SCREENS.map((s) => defaultScreen(s, this.starters.channels.find((c) => (c.type ?? "orb") === s)?.name)),
       hidden: [],
     };
     if (db.query("INSERT OR IGNORE INTO library (id,revision,doc) VALUES (1,0,?)").run(JSON.stringify(fresh)).changes > 0) this.writes++;
@@ -175,25 +179,26 @@ export class VideoLibrary {
     if (this.cached && this.cached.revision === row.revision && this.cached.starters === this.starters.clips) return this.cached;
     const doc = JSON.parse(row.doc) as LibraryDoc;
     const screens = new Map(doc.screens.map((s) => [s.screen, s]));
-    for (const s of SCREENS) if (!screens.has(s)) screens.set(s, defaultScreen(s));
+    // A type the doc was written before has its screen as a new library's: on its first channel, if it has one.
+    for (const s of SCREENS) if (!screens.has(s)) screens.set(s, defaultScreen(s, doc.channels.find((c) => channelType(c) === s)?.name));
     doc.screens = [...screens.values()];
     const all = new Map<string, Clip>();
     for (const c of [...this.starters.clips, ...doc.clips]) if (!all.has(c.id)) all.set(c.id, c);
     const hidden = new Set(doc.hidden);
     const manifest = [...all.values()].filter((c) => !(c.starter && hidden.has(c.id)));
-    const manifestId = this.writeManifest(manifest);
+    const manifestId = this.writeManifest(manifest, doc.channels);
     this.cached = {
       revision: row.revision, doc, starters: this.starters.clips, all, manifest, manifestId,
       channels: new Map(doc.channels.map((c) => [c.name, c])),
       screens,
-      timed: new Map(manifest.map((c) => [c.id, { id: c.id, seconds: c.seconds }])),
+      timed: new Map(manifest.map((c) => [c.id, isImage(c) ? { id: c.id, seconds: 0, image: true } : { id: c.id, seconds: c.seconds }])),
     };
     return this.cached;
   }
 
-  /** Writes the manifest as media/video.<id>.json unless it is there, and returns its id. */
-  private writeManifest(clips: readonly Clip[]): string {
-    const json = JSON.stringify({ clips });
+  /** Writes the manifest, its items and channels, as media/video.<id>.json unless it is there, and returns its id. */
+  private writeManifest(clips: readonly Clip[], channels: readonly Channel[]): string {
+    const json = JSON.stringify({ clips, channels });
     const id = sha16(json), file = join(this.media, `video.${id}.json`);
     if (!existsSync(file)) {
       const part = join(this.tmp, `video.${id}.${process.pid}.json`);
