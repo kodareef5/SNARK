@@ -10,7 +10,7 @@ import { CLS_EDGE, CLS_SQUARE, CLS_TRIANGLE, CLS_VERTEX } from "../../shared/wor
 import type { StructureStore } from "../../shared/world/structures.ts";
 import { unpackMeshes, type SourceMesh } from "../../tools/pack/write.ts";
 import { JointBench, SIDE, piecesPack } from "../../tools/pieces/joints.ts";
-import { baseAt, drawn, putAt, putOwn, round, standInSides, standInTrims, type Drawn } from "../fixtures/trims.ts";
+import { baseAt, drawn, prism, putAt, putOwn, round, standInSides, standInTrims, type Drawn } from "../fixtures/trims.ts";
 
 const DIMS = { chunksX: 8, chunksZ: 8 };
 const O = [0, 0, 0, 0];
@@ -326,4 +326,27 @@ test("a ridge lies where two roofs' high sides meet, once, at the height of thei
   expect(ridges("house")).toEqual([[1.5, 3 + 1.5 + 0.25 + 0.1, 3, 3]]);
   expect(ridges("lean")).toEqual([]);
   expect(ridges("ell").map((r) => [r[0], r[2]])).toEqual([[0, 1.5], [1.5, 3]]);
+});
+
+test("a ridge's end is square where the next runs on in line, and left proud where open", () => {
+  const b: Record<string, Base> = {};
+  // A ridge cap made 2 cm proud of each end, as a mesh must be to stand clear of its roofs' sides.
+  const proud = { id: "core:ridge_wood", lods: [prism([[-1.52, -0.2], [1.52, -0.2], [1.52, 0.2], [-1.52, 0.2]], -0.05, 0.1)] };
+  const all = laid([...standInTrims("wood"), ...standInSides("wood").filter((m) => m.id !== proud.id), proud], ({ structs, reg, base }) => {
+    // Three pairs of slopes in a line: three ridges in a run along +X.
+    const long = (b.long = base());
+    for (const i of [0, 1, 2]) {
+      putOwn(structs, reg, long.f, "core:roof_wood", CLS_SQUARE, at(i, 0), 0, 4, 0);
+      putOwn(structs, reg, long.f, "core:roof_wood", CLS_SQUARE, at(i, 1), 0, 4, 6);
+    }
+    // A pair alone.
+    const one = (b.one = base());
+    putOwn(structs, reg, one.f, "core:roof_wood", CLS_SQUARE, O, 0, 4, 0);
+    putOwn(structs, reg, one.f, "core:roof_wood", CLS_SQUARE, at(0, 1), 0, 4, 6);
+  });
+  const spans = (name: string): number[][] => round(all, b[name]!.x + 3, b[name]!.z + 3, 9).filter((d) => d.trim && d.id.includes("ridge")).map((d) => [r2(d.lo[0]! - b[name]!.x), r2(d.hi[0]! - b[name]!.x), r2(d.lo[2]! - b[name]!.z), r2(d.hi[2]! - b[name]!.z)]).sort((p, q) => p[0]! - q[0]! || p[2]! - q[2]!);
+  // Each meets the next on their shared corner, and the run's two ends stand proud of the roofs.
+  expect(spans("long").map((r) => [r[0], r[1]])).toEqual([[-0.02, 3], [3, 6], [6, 9.02]]);
+  // A ridge alone is proud at both ends.
+  expect(spans("one").map((r) => [r[0], r[1]])).toEqual([[-0.02, 3.02]]);
 });

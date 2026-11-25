@@ -12,6 +12,7 @@
 //
 // A skirt or an eave meets the next one round a corner on the plane that halves the corner: each end's turn is in its
 // instance (piece-fit.ts), so a mesh that ends flat closes an outside corner and clears an inside one at any angle.
+// A ridge's end is laid square where the next ridge runs on in line, so its mesh may stand proud of the roofs' ends.
 //
 // A chunk's corners are kept between layings (Laid). The next laying takes out and puts in only the pieces that changed,
 // decides again the corners and slabs those turn on, and lists the trims from what is kept.
@@ -239,6 +240,8 @@ export class Trims {
   private readonly ridgeUp: Float32Array;
   /** Whether any tier has an eave: then a wall set down or taken up asks the ceilings beside it again. */
   private readonly eaves: boolean;
+  /** Whether any tier has a ridge: then a roof set down or taken up asks the roofs at its corners again, whose ridges may run on. */
+  private readonly ridged: boolean;
   private readonly out: TrimLayout = { count: 0, mesh: new Uint16Array(64), owner: new Uint16Array(64), x: new Float32Array(64), y: new Float32Array(64), z: new Float32Array(64), yaw: new Uint16Array(64), tw: new Uint8Array(64), cut: new Uint8Array(64), ends: new Uint8Array(64), yields: new Uint8Array(0), borders: 0 };
   private readonly cells = new Cells();
   private readonly round = new Cells();
@@ -301,6 +304,7 @@ export class Trims {
     // A trim is laid out as a piece is, so its mesh is drawn as one.
     for (const t of this.tiers) for (const mesh of [t.sq, t.r15, t.r21, t.skirt, t.eave, t.ridge]) if (mesh >= 0) looks.flag[mesh] = DRAW_PIECE;
     this.eaves = this.tiers.some((t) => t.eave >= 0);
+    this.ridged = this.tiers.some((t) => t.ridge >= 0);
   }
 
   /** Lets go of what is kept of `chunk`. */
@@ -715,7 +719,7 @@ export class Trims {
     }
     // A corner's slabs at each level its cell reaches: an eave stops at a roof that comes up through its level.
     const what = this.sidesOf[kind]!;
-    if (what !== SIDES_SKIRT && !this.eaves) return;
+    if (what !== SIDES_SKIRT && !this.eaves && !(what === SIDES_RIDGE && this.ridged)) return;
     elementVertices(k0, k1, lvl, SLAB, cells);
     for (let j = 0, n = CLS_CORNERS[cls]!; j < n; j++) {
       if (cells.k0[j] === 0) continue;
@@ -1013,7 +1017,23 @@ export class Trims {
     if ((cls !== CLS_SQUARE && cls !== CLS_TRIANGLE) || forms.size[kind] !== SIDE || (def.corner !== undefined && what !== SIDES_RIDGE)) return 0;
     const tier = this.tiers[this.tierOf[kind]!]!, lvl = keyLvl(k1), dir = keyDir(k1), me = this.chunk * 65536 + s;
     const step = CLS_STEP[cls]!, sides = cls === CLS_SQUARE ? 4 : 3;
-    if (what === SIDES_RIDGE) return tier.ridge < 0 ? 0 : this.ridges(f.gid, me, kind, k0, k1) << 4;
+    if (what === SIDES_RIDGE) {
+      const ridged = tier.ridge < 0 ? 0 : this.ridges(f.gid, me, kind, k0, k1);
+      if (ridged === 0) return 0;
+      // A ridge's end is laid square where the next ridge runs on in line, and an open end is left as its mesh has it.
+      const m = this.m;
+      keyAnchor(k0, k1, m, 0);
+      elementCorners(cls, m, 0, dir, m, 0);
+      let turns = 0;
+      for (let j = 0; j < sides; j++) {
+        if ((ridged & (1 << j)) === 0) continue;
+        const along = dirTurn(dir, step * j);
+        if (this.runsOn(f.gid, 4 * j, dirTurn(along, 6), lvl)) turns |= PIECE_END_RUN << (8 * j);
+        if (this.runsOn(f.gid, 4 * ((j + 1) % sides), along, lvl)) turns |= PIECE_END_RUN << (8 * j + 4);
+      }
+      w.sTurn[s] = turns >>> 0;
+      return ridged << 4;
+    }
     const lx = t.x[s]! - this.x0, lz = t.z[s]! - this.z0;
     const inside = lx > SLAB_BORDER && lz > SLAB_BORDER && lx < CHUNK_SIZE - SLAB_BORDER && lz < CHUNK_SIZE - SLAB_BORDER;
     const base = inside ? w.bases.indexOf(f) : -1;
@@ -1127,29 +1147,48 @@ export class Trims {
    * roof beyond it at its level has its highest too, drawn by the one of the two whose key is the lower.
    */
   private ridges(gid: number, me: number, kind: number, k0: number, k1: number): number {
-    const store = this.store, forms = this.forms!, occ = store.occupied, cells = this.cells, round = this.round, faces = this.faces;
-    const lvl = keyLvl(k1), sides = CLS_CORNERS[keyCls(k0)]!, rise = riseAt(forms, kind, k0, k1);
-    const top = highest(rise, sides);
+    const occ = this.store.occupied, cells = this.cells, round = this.round;
+    const lvl = keyLvl(k1), sides = CLS_CORNERS[keyCls(k0)]!;
     let bits = 0;
     faceEdges(k0, k1, lvl, SLAB, cells);
     for (let j = 0; j < sides; j++) {
-      if (cells.k0[j] === 0 || ((rise >> (3 * j)) & 7) !== top || ((rise >> (3 * ((j + 1) % sides))) & 7) !== top) continue;
+      if (cells.k0[j] === 0 || !this.topSide(me, cells.k0[j]!, cells.k1[j]!, lvl)) continue;
       edgeFaces(cells.k0[j]!, cells.k1[j]!, lvl, SLAB, round);
       for (let n = 0; n < round.n; n++) {
         const ref = round.k0[n] === 0 ? -1 : occ.at(gid, round.k0[n]!, round.k1[n]!);
         if (ref < 0 || ref === me) continue;
-        const u = store.chunks[Math.floor(ref / 65536)]!, other = u.kind[ref & 0xffff]!, ok0 = u.k0![ref & 0xffff]!, ok1 = u.k1![ref & 0xffff]!;
-        if (this.sidesOf[other] !== SIDES_RIDGE || keyLvl(ok1) !== lvl || ok0 < k0 || (ok0 === k0 && ok1 < k1)) continue;
-        // The side of the roof beyond that is this edge, and whether both its corners are that roof's highest.
-        const beyond = riseAt(forms, other, ok0, ok1), n2 = CLS_CORNERS[keyCls(ok0)]!, most = highest(beyond, n2);
-        faceEdges(ok0, ok1, lvl, SLAB, faces);
-        for (let i = 0; i < n2; i++) {
-          if (faces.k0[i] !== cells.k0[j] || faces.k1[i] !== cells.k1[j]) continue;
-          if (((beyond >> (3 * i)) & 7) === most && ((beyond >> (3 * ((i + 1) % n2))) & 7) === most) bits |= 1 << j;
-        }
+        const u = this.store.chunks[Math.floor(ref / 65536)]!, ok0 = u.k0![ref & 0xffff]!, ok1 = u.k1![ref & 0xffff]!;
+        if (ok0 < k0 || (ok0 === k0 && ok1 < k1)) continue;
+        if (this.topSide(ref, cells.k0[j]!, cells.k1[j]!, lvl)) bits |= 1 << j;
       }
     }
     return bits;
+  }
+
+  /** Whether the piece `ref` is a roof at `lvl` with the edge (ek0, ek1) for a side both of whose corners are its highest. */
+  private topSide(ref: number, ek0: number, ek1: number, lvl: number): boolean {
+    const u = this.store.chunks[Math.floor(ref / 65536)]!, s = ref & 0xffff, kind = u.kind[s]!, k0 = u.k0![s]!, k1 = u.k1![s]!, faces = this.faces;
+    if (this.sidesOf[kind] !== SIDES_RIDGE || keyLvl(k1) !== lvl) return false;
+    const rise = riseAt(this.forms!, kind, k0, k1), n = CLS_CORNERS[keyCls(k0)]!, most = highest(rise, n);
+    faceEdges(k0, k1, lvl, SLAB, faces);
+    for (let i = 0; i < n; i++) if (faces.k0[i] === ek0 && faces.k1[i] === ek1) return ((rise >> (3 * i)) & 7) === most && ((rise >> (3 * ((i + 1) % n))) & 7) === most;
+    return false;
+  }
+
+  /** Whether a ridge lies on the edge that leaves the corner at `m[at]` by the way `way`: two roofs' highest sides meet on it. */
+  private runsOn(gid: number, at: number, way: number, lvl: number): boolean {
+    const m = this.m, spokes = this.spokes, round = this.round, occ = this.store.occupied;
+    if (!tupleWithin(m, at, M_MOST)) return false;
+    vertexEdges(key0(0, m[at]!, m[at + 1]!, m[at + 2]!), key1(m[at + 3]!, lvl, 0, SLAB, 0, 0), lvl, SLAB, spokes);
+    const ek0 = spokes.k0[way]!, ek1 = spokes.k1[way]!;
+    if (ek0 === 0) return false;
+    edgeFaces(ek0, ek1, lvl, SLAB, round);
+    let roofs = 0;
+    for (let n = 0; n < round.n; n++) {
+      const ref = round.k0[n] === 0 ? -1 : occ.at(gid, round.k0[n]!, round.k1[n]!);
+      if (ref >= 0 && this.topSide(ref, ek0, ek1, lvl) && ++roofs === 2) return true;
+    }
+    return false;
   }
 }
 
