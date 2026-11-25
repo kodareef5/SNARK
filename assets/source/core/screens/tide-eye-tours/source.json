@@ -1,0 +1,14 @@
+{
+  "kind": "image",
+  "title": "Tide Eye Tours: all three colours every two minutes",
+  "year": 2026,
+  "from": {
+    "by": "SNARK",
+    "sha256": "de0d100b78f2c26f0d1292275e4742b902856ebdb38c45a4c4f607b15bcebe12"
+  },
+  "rights": "Made for SNARK, 2026",
+  "licence": "Made for the game and given to it under CC0 1.0.",
+  "types": [
+    "billboard"
+  ]
+}

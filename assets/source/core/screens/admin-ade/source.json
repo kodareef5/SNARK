@@ -1,0 +1,14 @@
+{
+  "kind": "image",
+  "title": "Admin-Ade: trust your admin",
+  "year": 2026,
+  "from": {
+    "by": "SNARK",
+    "sha256": "abbe5f0c87d66458b80415e6d142b5bcf9e5b52482df16fd8c1c23dd21349bba"
+  },
+  "rights": "Made for SNARK, 2026",
+  "licence": "Made for the game and given to it under CC0 1.0.",
+  "types": [
+    "billboard"
+  ]
+}

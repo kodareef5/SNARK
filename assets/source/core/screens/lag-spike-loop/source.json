@@ -1,0 +1,15 @@
+{
+  "title": "Lag-Away Tonic: a lag spike glitches the board",
+  "year": 2026,
+  "from": {
+    "by": "SNARK",
+    "sha256": "1fa540c3c946ab59e34848878171993b556cc117331bd5e26152c11e8afdf748"
+  },
+  "rights": "Made for SNARK, 2026",
+  "licence": "Made for the game and given to it under CC0 1.0.",
+  "poster": 5.5,
+  "audio": false,
+  "types": [
+    "billboard"
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "kind": "image",
+  "title": "Lag-Away Tonic: feeling rubber-banded?",
+  "year": 2026,
+  "from": {
+    "by": "SNARK",
+    "sha256": "8b294847813ec52b7c725cfa2cdb630a77e153294034141df91fdbde6f0bdae7"
+  },
+  "rights": "Made for SNARK, 2026",
+  "licence": "Made for the game and given to it under CC0 1.0.",
+  "types": [
+    "billboard"
+  ]
+}

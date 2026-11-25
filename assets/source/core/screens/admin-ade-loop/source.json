@@ -1,0 +1,15 @@
+{
+  "title": "Admin-Ade: a winking admin in bulbs",
+  "year": 2026,
+  "from": {
+    "by": "SNARK",
+    "sha256": "f912ce75f694071f8d078e8956fd83f204f1b40db631e174356f488edc277639"
+  },
+  "rights": "Made for SNARK, 2026",
+  "licence": "Made for the game and given to it under CC0 1.0.",
+  "poster": 2,
+  "audio": false,
+  "types": [
+    "billboard"
+  ]
+}

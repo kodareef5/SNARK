@@ -5,5 +5,47 @@
     "items": [
       "clouds"
     ]
+  },
+  {
+    "name": "Billboard ads",
+    "shuffle": false,
+    "items": [
+      "admin-ade-loop",
+      "admin-ade",
+      "borderline-fence",
+      "ddos-brella",
+      "dodo-downs",
+      "fresh-start",
+      "grief-guard",
+      "lag-away",
+      "lag-spike-loop",
+      "ping-os",
+      "raptor-rid-loop",
+      "raptor-rid",
+      "tame-rite",
+      "tide-eye-tours",
+      "unstuck"
+    ],
+    "type": "billboard"
+  },
+  {
+    "name": "Laptop screens",
+    "shuffle": false,
+    "items": [
+      "admin-console",
+      "kicked",
+      "not-responding"
+    ],
+    "type": "laptop"
+  },
+  {
+    "name": "TV spots",
+    "shuffle": false,
+    "items": [
+      "borderline-tv",
+      "grief-guard-tv",
+      "ping-os-tv"
+    ],
+    "type": "tv"
   }
 ]

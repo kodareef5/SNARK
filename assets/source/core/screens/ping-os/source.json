@@ -1,0 +1,14 @@
+{
+  "kind": "image",
+  "title": "Ping-O's: the zero-delay breakfast",
+  "year": 2026,
+  "from": {
+    "by": "SNARK",
+    "sha256": "29614e04d63443d2011b8fc14c45a5eebc1214356e94bf0f18c7af26695aa510"
+  },
+  "rights": "Made for SNARK, 2026",
+  "licence": "Made for the game and given to it under CC0 1.0.",
+  "types": [
+    "billboard"
+  ]
+}

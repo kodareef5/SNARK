@@ -1,0 +1,14 @@
+{
+  "kind": "image",
+  "title": "Tame-Rite Kibble: knocks 'em out, wins 'em over",
+  "year": 2026,
+  "from": {
+    "by": "SNARK",
+    "sha256": "8e87345eb265a4d7589a3ae1836f5408e21897b6e658268e7346cbca3087d0d5"
+  },
+  "rights": "Made for SNARK, 2026",
+  "licence": "Made for the game and given to it under CC0 1.0.",
+  "types": [
+    "billboard"
+  ]
+}
