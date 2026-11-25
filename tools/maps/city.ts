@@ -147,6 +147,8 @@ export interface CityRun {
   from?: string;
   to?: string;
   only?: string;
+  /** Another cut of the city than its city.json's, to compare: its stages run in its own work folder up to the build's, and `current` stays. */
+  bounds?: readonly number[];
 }
 
 /** `from` copied to `to` with nothing more: a file gone from `from` goes from `to`, and so does `to` when `from` is gone. */
@@ -188,11 +190,14 @@ export function runCity(name: string, o: CityRun = {}): { cut: string; work: str
   const names = stages.map((s) => s.name);
   const only = o.only;
   const from = names.indexOf(only ?? o.from ?? names[0]!);
-  const to = names.indexOf(only ?? o.to ?? names[names.length - 1]!);
+  // Another cut stops before the build: its map would be written over the city's own.
+  const to = names.indexOf(only ?? o.to ?? (o.bounds ? names[names.length - 2]! : names[names.length - 1]!));
+  if (o.bounds && names[to] === names[names.length - 1]) throw new Error(`${name}: another cut's stages stop before the build`);
   if (from < 0 || to < 0) throw new Error(`the stages are ${names.join(", ")}`);
 
   const source = o.source ?? join(ROOT, "assets/source/maps", name);
   const city = readJson(join(source, "city.json"));
+  if (o.bounds) city.bounds = [...o.bounds];
   const settings = compose(city);
   preflight(name, settings, source);
   const cut = sha(JSON.stringify([settings.centre, settings.bounds])).slice(0, 10);
@@ -215,7 +220,7 @@ export function runCity(name: string, o: CityRun = {}): { cut: string; work: str
   const release = (): void => { try { if (readFileSync(lock, "utf8") === String(process.pid)) unlinkSync(lock); } catch { /* gone already */ } };
   process.on("exit", release);
   try {
-    return stagesOf(name, { stages, names, cwd, maps, source, settings, cut, top, work, from, to, only });
+    return stagesOf(name, { stages, names, cwd, maps, source, settings, cut, top, work, from, to, only, other: o.bounds !== undefined });
   } finally {
     release();
     process.off("exit", release);
@@ -225,6 +230,8 @@ export function runCity(name: string, o: CityRun = {}): { cut: string; work: str
 interface Prepared {
   stages: Stage[]; names: string[]; cwd: string; maps: string; source: string; settings: Json;
   cut: string; top: string; work: string; from: number; to: number; only: string | undefined;
+  /** Another cut than the city's own: `current` stays. */
+  other: boolean;
 }
 
 function stagesOf(name: string, p: Prepared): { cut: string; work: string; ran: string[]; current: boolean } {
@@ -325,7 +332,7 @@ function stagesOf(name: string, p: Prepared): { cut: string; work: string; ran: 
   // current: the cut built last, once every stage of it stands done with today's inputs and code (a run --to fetch, or
   // a stage whose key no longer matches, leaves it where it was), so a tool
   // reading it never meets a cut half built. A new link under another name, renamed over the old: no moment without one.
-  if (!stages.every(done)) return { cut, work, ran, current: false };
+  if (p.other || !stages.every(done)) return { cut, work, ran, current: false };
   const current = join(top, "current");
   const next = `${current}.${process.pid}`;
   symlinkSync(join(cut, name), next);
@@ -337,11 +344,12 @@ function main(): void {
   const args = process.argv.slice(2);
   const name = args[0];
   if (!name || name.startsWith("-")) {
-    console.error("bun tools/maps/city.ts <city> [--from <stage>] [--to <stage>] [--only <stage>]");
+    console.error("bun tools/maps/city.ts <city> [--from <stage>] [--to <stage>] [--only <stage>] [--bounds west,south,east,north]");
     process.exit(2);
   }
   const opt = (flag: string): string | undefined => (args.includes(flag) ? args[args.indexOf(flag) + 1] : undefined);
-  runCity(name, { from: opt("--from"), to: opt("--to"), only: opt("--only") });
+  const bounds = opt("--bounds")?.split(",").map(Number);
+  runCity(name, { from: opt("--from"), to: opt("--to"), only: opt("--only"), ...(bounds ? { bounds } : {}) });
 }
 
 if (import.meta.main) main();

@@ -138,3 +138,10 @@ test("a kit's work folder builds the map alone, and fetches first for a stage on
   expect([existsSync(join(work, "raw/KIT")), existsSync(join(work, "raw/fetched"))]).toEqual([false, true]);
   expect(readFileSync(join(work, "runs.log"), "utf8").split("\n").filter(Boolean)).toEqual(["build", "fetch", "ways", "build"]);
 });
+
+test("another cut by --bounds runs up to the build in its own folder and moves nothing", () => {
+  const a = run();
+  const other = run({ bounds: B });
+  expect([other.cut === a.cut, other.ran, other.current, map(), current()]).toEqual([false, NAMES.slice(0, -1), false, a.cut, join(a.cut, CITY)]);
+  expect(() => run({ bounds: B, to: "build" })).toThrow("stop before the build");
+});
