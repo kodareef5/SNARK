@@ -4,7 +4,7 @@
 //   bun tools/mapworld/gpu-views.ts <file.snmap> <cameras.json> <out folder> --dist <built client> [--tiers high,medium]
 //                                   [--seconds 40] [--only name,name] [--off effect,effect] [--hide-hud] [--film]
 //                                   [--canvas 1920x1080@1] [--page key=value] [--suffix name]
-//                                   [--screen once:<clip>|channel:<name>] [--fixed] [--fit]
+//                                   [--screen once:<clip>|channel:<name>|scene:<name>] [--fixed] [--fit]
 //
 // --canvas is the page in points and the device pixels a point (1800x962@2 is a laptop's 3,600 by 1,924 canvas), --page
 // adds to each page's address (`scale=1`, client/core/app.ts address), and --suffix ends each picture's name. --screen
@@ -203,12 +203,12 @@ async function showOnOrb(base: string, what: string, fixed: boolean, fill: boole
     if (!res.ok) throw new Error(`--screen: ${res.status} ${await res.text()}`);
   };
   const [kind, name = ""] = what.split(":");
-  await edit({ op: "screen", screen: "orb", mode: fixed ? "fixed" : "facing", fill, ...(kind === "channel" ? { show: name } : {}) });
+  await edit({ op: "screen", screen: "orb", mode: fixed ? "fixed" : "facing", fill, ...(kind === "channel" ? { show: name } : kind === "scene" ? { show: `scene:${name}` } : {}) });
   if (kind === "once") {
     const clip = (await state()).clips.find((c) => c.title.toLowerCase().includes(name.toLowerCase()));
     if (!clip) throw new Error(`--screen: no clip's title holds "${name}"`);
     await edit({ op: "once", screen: "orb", clip: clip.id });
-  } else if (kind !== "channel") throw new Error("--screen once:<clip> or channel:<name>");
+  } else if (kind !== "channel" && kind !== "scene") throw new Error("--screen once:<clip>, channel:<name> or scene:<name>");
 }
 
 /** The playing element's lag behind the server's programme, in seconds, or null with none playing. */

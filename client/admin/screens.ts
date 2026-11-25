@@ -214,6 +214,8 @@ function feed(m: { slot: PictureSlot; video: HTMLVideoElement }, look: StageLook
   if (!v.src.endsWith(clip.file)) {
     v.src = clip.file;
     v.load();
+    // The last clip's frame is not this one's: its poster stands in until a frame comes.
+    m.slot.source = null;
   }
   mod!.keepInStep(v, look.clipSeconds);
   if (v.readyState >= 2 && !v.seeking) stage!.upload(m.slot, v);
