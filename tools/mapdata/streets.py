@@ -196,17 +196,20 @@ def roads(m, elements, tiger_roads):
         cut[w['id']] = (ends, -1 if t.get('oneway') == '-1' else 1 if oneway else 0)
         pieces, kept = straighten(pts, ends)
         straightened += kept
-        for k, g in enumerate(pieces):
-            g = g.intersection(frame)
+        for k, whole in enumerate(pieces):
+            g = whole.intersection(frame)
             if g.is_empty or g.length < .5:
                 continue
+            # Where a piece the frame cuts starts along the whole piece, so stations along it stand where another cut's do.
+            first = g.geoms[0] if hasattr(g, 'geoms') else g
+            from_m = round(whole.project(Point(first.coords[0])), 3) if g.length < whole.length - 1e-6 else 0.0
             tiger_name = None
             if tiger_tree is not None:
                 mid = g.interpolate(.5, normalized=True)
                 near = [i for i in tiger_tree.query(mid.buffer(12)) if tiger_roads[i][0].distance(mid) < 12]
                 if near:
                     tiger_name = tiger_roads[min(near, key=lambda i: (tiger_roads[i][0].distance(mid), tiger_roads[i][0].wkb))][1].get('name')
-            out.append((g, {'id': f"osm:{w['id']}:{k}", 'mtfcc': mtfcc, 'name': t.get('name') or tiger_name, 'tiger_name': tiger_name,
+            out.append((g, {'id': f"osm:{w['id']}:{k}", 'from_m': from_m, 'mtfcc': mtfcc, 'name': t.get('name') or tiger_name, 'tiger_name': tiger_name,
                             # oneway_dir: 1 one way along the drawn direction, -1 against it (OpenStreetMap's oneway=-1), 0 both.
                             'highway': t['highway'], 'lanes': lanes, 'oneway': oneway, 'oneway_dir': cut[w['id']][1], 'width_m': width,
                             'bridge': t.get('bridge') not in (None, 'no'), 'tunnel': t.get('tunnel') == 'yes',  # a building passage runs at the street's own level
