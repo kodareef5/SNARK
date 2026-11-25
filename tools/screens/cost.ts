@@ -3,7 +3,7 @@
 // array of pictures; and the frame's own code, finding the faces and deciding what each shows, timed here. The gates:
 // 0.15 ms of GPU and 0.05 ms of code a frame with 30 billboards in view on the RTX 4070.
 //
-//   SNARK_GPU=nvidia bun tools/screens/cost.ts
+//   SNARK_GPU=nvidia bun tools/screens/cost.ts [--picture out.png]   the view drawn, to look at
 
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -23,6 +23,7 @@ import type { ScreenFace } from "../../shared/video/face.ts";
 import { SHOW_VIDEO, newScreenState } from "../../shared/video/screen.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { CHROME_FLAGS, findChrome } from "../chrome.ts";
+import { encodePng } from "../snap/png.ts";
 
 const W = 1920, H = 1080, COUNT = 30;
 const FACES: (ScreenFace | null)[] = [null, { type: "billboard", face: [-7.4, 7.4, 9.55, 14.4, 1.55], led: true }];
@@ -213,6 +214,9 @@ try {
     upload: await median(upload, 10),
     covered: covered / (r.W * r.H),
   };
+  if (r.picture) {
+    await post("/picture", pixels);
+  }
   await post("/done", JSON.stringify(out));
 } catch (e) {
   await post("/done", JSON.stringify({ error: String((e && e.stack) || e) }));
@@ -226,7 +230,8 @@ const frame = new Float32Array(FRAME_FLOATS);
 skyFrame(23, theSky(), frame);
 postFrame(frame, high, 23, H);
 const q = quads();
-const run = { W, H, vertex: withDefines(text.vertex, text.defines), fragment: withDefines(text.fragment, text.defines), frame: Array.from(frame), unit: UNIT.faces, levels: FACE_LEVELS, wide: FACE_WIDE, high: FACE_HIGH, layers: high.screens.layers, floats: FACE_FLOATS, ...q };
+const at = process.argv.indexOf("--picture"), picture = at > 0 ? process.argv[at + 1] : undefined;
+const run = { picture: !!picture, W, H, vertex: withDefines(text.vertex, text.defines), fragment: withDefines(text.fragment, text.defines), frame: Array.from(frame), unit: UNIT.faces, levels: FACE_LEVELS, wide: FACE_WIDE, high: FACE_HIGH, layers: high.screens.layers, floats: FACE_FLOATS, ...q };
 let finish: (r: Record<string, number | string>) => void = () => {};
 const finished = new Promise<Record<string, number | string>>((r) => (finish = r));
 const server = Bun.serve({
@@ -236,6 +241,11 @@ const server = Bun.serve({
     if (path === "/") return new Response(PAGE, { headers: { "content-type": "text/html" } });
     if (path === "/run") return Response.json(run);
     if (path === "/done") finish(JSON.parse(await req.text()));
+    if (path === "/picture" && picture) {
+      const px = new Uint8Array(await req.arrayBuffer()), row = W * 4, top = new Uint8Array(px.length);
+      for (let y = 0; y < H; y++) top.set(px.subarray((H - 1 - y) * row, (H - y) * row), y * row);
+      await Bun.write(picture, encodePng(W, H, top));
+    }
     return new Response("ok");
   },
 });
