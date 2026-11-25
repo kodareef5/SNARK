@@ -294,6 +294,11 @@ export const S_PLAN = serverKind();
 export const S_PLAN_GONE = serverKind();
 /** What became of a CMD_PLAN_COMMIT (shared/net/plan.ts PlanReport). Reliable. */
 export const S_PLAN_REPORT = serverKind();
+/**
+ * The map events, whole, to every session (shared/mapevent/wire.ts): sent when one is called, changes or ends, and to a
+ * session that joins; never per tick. Reliable.
+ */
+export const S_MAPEVENT = serverKind();
 
 export const REJECT_VERSION = 1;
 export const REJECT_CONTENT = 2;
