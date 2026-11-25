@@ -27,6 +27,7 @@ import { parsePack } from "../../shared/pack/pack.ts";
 import { RGBA_TOP } from "../../shared/pack/texture.ts";
 import { castle, farWorld, type FarWorld } from "../../tests/fixtures/farworld.ts";
 import { buildCorePack } from "../pack/build.ts";
+import { screenFrame } from "../orb/frame.ts";
 import { baseMips, packedMips, readPicture } from "../pack/image.ts";
 import { PICK_FAR, PICK_SKY, PICK_TERRAIN } from "../snap/raster.ts";
 import { encodePng } from "../snap/png.ts";
@@ -90,12 +91,14 @@ export function playerViews(name: string, hour: number, width = 1280, height = 7
 }
 
 /** The sky material's pictures as RGBA8, every mip smallest first, the layers' up to `top` pixels across: 1,024 as medium has them, 2,048 as high. */
-export function skyPictures(top = 1024): { moon: Uint8Array[]; low: Uint8Array[]; high: Uint8Array[] } {
+export function skyPictures(top = 1024): { moon: Uint8Array[]; low: Uint8Array[]; high: Uint8Array[]; screen: Uint8Array[] } {
   const steps = Math.log2(top) + 1;
   return {
     moon: baseMips(readPicture(join(SKY, "moon/moon.png"))),
     low: process.env.SKY_LAYER === "high" ? [new Uint8Array(4)] : packedMips(readPicture(join(SKY, "clouds/low.png"))).slice(0, steps),
     high: process.env.SKY_LAYER === "low" ? [new Uint8Array(4)] : packedMips(readPicture(join(SKY, "clouds/high.png"))).slice(0, steps),
+    // An orb's screen picture (client/core/video/player.ts): the test frame, 512 square, about a 640 by 360 clip's texels.
+    screen: baseMips({ width: 512, height: 512, channels: 4, depth: 8, data: Uint8Array.from(screenFrame(512, 512)) }),
   };
 }
 
@@ -130,7 +133,7 @@ try {
   for (const p of [gl.TEXTURE_WRAP_S, gl.TEXTURE_WRAP_T, gl.TEXTURE_WRAP_R]) gl.texParameteri(gl.TEXTURE_3D, p, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
   // The moon on the base colour's unit as sRGB, the layers on the masks' as they are, every mip.
-  for (const [name, unit, internal] of [["moon", UNIT.maps, gl.SRGB8_ALPHA8], ["low", UNIT.maps + 3, gl.RGBA8], ["high", UNIT.maps + 4, gl.RGBA8]]) {
+  for (const [name, unit, internal] of [["moon", UNIT.maps, gl.SRGB8_ALPHA8], ["low", UNIT.maps + 3, gl.RGBA8], ["high", UNIT.maps + 4, gl.RGBA8], ["screen", UNIT.screen, gl.SRGB8_ALPHA8]]) {
     const mips = await get("/mips/" + name);
     const blob = await bytes("/mips/" + name + ".bin");
     gl.activeTexture(gl.TEXTURE0 + unit);
