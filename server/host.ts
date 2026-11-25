@@ -1030,7 +1030,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   // A thrown thing with an ammo facet of its own flies and hits (the bola); any other is lobbed and goes off on its fuse.
   combat.onThrow.on((c, rec, item, quality, draw) => (reg.ammoSpeed[item]! > 0 ? projectiles.fling(c, rec, item, quality, draw) : projectiles.lob(c, rec, item, quality)));
   // A vehicle's own guns and missiles, through the same rounds and blasts (planning/workstreams/jet.md).
-  const vehicleWeapons = new VehicleWeapons({ world, game, records, combat, projectiles, remote: (c, tick) => game.players.remoteInput?.(c, tick) ?? false }, (opts.seed ?? 1) + 101);
+  const vehicleWeapons = new VehicleWeapons({ world, game, records, combat, projectiles, remote: (c, tick) => game.players.remoteInput?.(c, tick) ?? false,
+    far: (e, reach) => game.replication.far(e, reach) }, (opts.seed ?? 1) + 101);
   vehicles.ctx.arms = (rec) => vehicleWeapons.words(rec);
   vehicles.ctx.armed = (rec) => vehicleWeapons.full(rec);
   vehicles.ctx.rearm = (rec) => vehicleWeapons.rearm(rec);

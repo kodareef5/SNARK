@@ -38,6 +38,8 @@ const PARK_KEPT = 16;
 export const CONE_KEEP = 150;
 /** The most entities a session's sight's cone adds to its view (D1079). */
 export const CONE_ENTITIES = 192;
+/** The most far entities a tick (Replication.far): four jets and their missiles. */
+export const FAR_MOST = 16;
 
 // When a crowd fills the view, keep up to eight bodies within eight metres of the viewer.
 const NEAR_BODIES = 8;
@@ -113,6 +115,14 @@ export class Replication {
   /** Bytes of its chunk window left to the session whose chunks are being sent. A message's rows stop once they pass it. */
   private room = 0;
   private readonly ids = new Uint32Array(MAX_VIEW);
+  /**
+   * Entities sent to every view whose centre is within their reach, though past its ring: an airborne jet and its live
+   * missiles (server/vehicle-weapons.ts). Set afresh each tick through `far`.
+   */
+  private readonly farIds = new Int32Array(FAR_MOST);
+  private readonly farReach = new Float64Array(FAR_MOST);
+  private farCount = 0;
+  private farTick = -1;
   private readonly movers = new Uint32Array(MAX_VIEW);
   private readonly idle = new Uint32Array(MAX_VIEW);
   private readonly entityOffsets: Int16Array;
@@ -131,6 +141,22 @@ export class Replication {
     this.aroundAt = new Uint16Array(chunkCount(world.dims));
     this.entityOffsets = nearestFirst(this.opts.entityRadius);
     this.structOffsets = nearestFirst(this.opts.structRadius);
+  }
+
+  /** Sends entity `e` this tick to every view centred within `reach` metres of it: a craft fast enough to cross a ring between two snapshots. */
+  far(e: number, reach: number): void {
+    const T = this.world.tick;
+    if (this.farTick !== T) { this.farTick = T; this.farCount = 0; }
+    if (this.farCount >= FAR_MOST) return;
+    this.farIds[this.farCount] = e;
+    this.farReach[this.farCount++] = reach * reach;
+  }
+
+  /** Whether entity `i` is one of this tick's far entities. */
+  private isFar(i: number): boolean {
+    if (this.farTick !== this.world.tick) return false;
+    for (let k = 0; k < this.farCount; k++) if (this.farIds[k] === i) return true;
+    return false;
   }
 
   /** Ticks the loop gave up: every page is told, and moves its clock back as many. */
@@ -285,6 +311,19 @@ export class Replication {
         } else if (ni < cap) idle[ni++] = i;
       }
     }
+    // The far ones, ranked with the players: any outside the ring whose reach takes in the ring's middle.
+    if (this.farTick === T) {
+      const mx = (ccx + .5) * CHUNK_SIZE, mz = (ccz + .5) * CHUNK_SIZE, radius = this.opts.entityRadius;
+      for (let k = 0; k < this.farCount && n < cap; k++) {
+        const i = this.farIds[k]!;
+        if ((ents.flags[i]! & F_ALIVE) === 0) continue;
+        const fx = ents.x[i]!, fz = ents.z[i]!;
+        const ex = Math.floor(fx / CHUNK_SIZE) - ccx, ez = Math.floor(fz / CHUNK_SIZE) - ccz;
+        if (ex >= -radius && ex <= radius && ez >= -radius && ez <= radius) continue;
+        if ((fx - mx) * (fx - mx) + (fz - mz) * (fz - mz) > this.farReach[k]!) continue;
+        ids[n++] = i;
+      }
+    }
     const at = this.gathered++;
     this.candidates[at] = total;
     this.playersAndMounts[at] = n;
@@ -404,7 +443,7 @@ export class Replication {
       vehicle ? packVehicleQuaternionPair(ents.vehicleQx[v]!, ents.vehicleQy[v]!) : 0,
       vehicle ? packVehicleQuaternionPair(ents.vehicleQz[v]!, ents.vehicleQw[v]!) : 0,
       vehicle ? packBoatWater(ents.vehicleHullCondition[v]!, ents.vehicleFlooding[v]!) : 0, ents.emote[i]!, ents.react[i]!, this.world.history.strideOf(i, this.world.tick, this.world));
-    view.urgent[view.count - 1] = (ents.flags[i]! & F_PLAYER) !== 0 || ents.driven[i] !== 0 ? 1 : 0;
+    view.urgent[view.count - 1] = (ents.flags[i]! & F_PLAYER) !== 0 || ents.driven[i] !== 0 || (this.farCount > 0 && this.isFar(i)) ? 1 : 0;
   }
 
   /**
