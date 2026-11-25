@@ -42,7 +42,9 @@ lattice metres (`shared/coords.ts`) are the same for every cut of the city since
 `bun tools/maps/city.ts <city>` lays the city's settings over the defaults and the shared sources, finds the counties
 the cut touches (`counties.py`), and works in `var/mapdata/<city>/<cut>/<city>/`, one folder for each centre and bounds,
 so a new cut never reads another's downloads. `var/mapdata/<city>/current` is the cut built last. Each stage runs
-again only when its inputs, its own code or a stage before it changed (`stages.json`):
+again only when its inputs, its own code or a stage before it changed (`stages.json`). Every cut builds the same
+`var/maps/<city>.snmap`, so the build also runs again unless `var/maps/<city>/stamp.json` names this cut and build key.
+An authored file or a file of `look/` taken out of the city's folder is taken out of the work folder too:
 
 | Stage | Tool | Makes |
 | --- | --- | --- |

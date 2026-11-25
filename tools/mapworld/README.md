@@ -34,7 +34,8 @@ bun server/main.ts --map var/maps/road-deck-3/<map-name>.snmap --db var/worlds/<
 ```
 
 `build-set.ts` builds each map serially and refuses an existing output directory.
-It verifies every raw, Brotli and gzip part against the packed map, then writes
+It verifies every Brotli and gzip copy against the packed map's parts and that
+they were made at the build's levels, then writes
 `release.json` with producer revision, map IDs, hashes and SHA-256 digests. Copy
 both `<name>.snmap` and `<name>.parts/` together when distributing a release;
 the normal server `/map.json` and `/map/` routes serve this package.
