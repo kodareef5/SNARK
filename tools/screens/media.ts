@@ -1,11 +1,11 @@
-// The default clips the Vegas ball ships with (assets/source/core/video/README.md). Each is a folder of
-// assets/source/core/video: source.json, its recipe and rights, and clip.json, what the encode made, are tracked; clip.mp4
-// and poster.jpg are art, one release archive to a clip (core-video-<name>). channels.json lists the default channels.
-// ffmpeg runs here alone: the game never encodes or decodes a clip itself.
+// The default media every cluster's screens start with (assets/source/core/screens/README.md): clips and still images,
+// one folder each. source.json, its recipe and rights, and clip.json, what the encode made, are tracked; the clip.mp4 or
+// image.png / image.jpg and its poster.jpg are art, one release archive to an item (core-screens-<name>). channels.json
+// lists the default channels, each for one type of screen. ffmpeg runs here alone: the game never encodes or decodes.
 //
-//   bun run clips add <file or folder>... --list sheet.csv [--jobs N]   encode new clips, their words from the sheet
-//   bun run clips make [name...] [--jobs N]                             encode clips again from their recipes
-//   bun run clips check                                                 check every recipe, clip and channel
+//   bun run screens add <file or folder>... --list sheet.csv [--jobs N]   encode new items, their words from the sheet
+//   bun run screens make [name...] [--jobs N]                             encode items again from their recipes
+//   bun run screens check                                                 check every recipe, item and channel
 //
 // The same original and the same ffmpeg give the same bytes: one thread, fixed flags, no dates in the files. An original
 // is kept in the machine's cache by its SHA-256, never in the repository.
@@ -14,12 +14,17 @@ import { copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSyn
 import { availableParallelism, homedir, tmpdir } from "node:os";
 import { basename, extname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { CLIP_MAX_BYTES, CLIP_MAX_HIGH, CLIP_MAX_KBPS, CLIP_MAX_SECONDS, CLIP_MAX_WIDE, COLOUR_PARTS, COLOUR_RATE, clipId, isClipId, type Clip } from "../../shared/video/clip.ts";
+import {
+  CLIP_MAX_BYTES, CLIP_MAX_HIGH, CLIP_MAX_KBPS, CLIP_MAX_SECONDS, CLIP_MAX_WIDE, COLOUR_PARTS, COLOUR_RATE, IMAGE_MAX_LONG, SCREENS, STILL_MAX, STILL_MIN,
+  clipId, isClipId, isScreenType, offeredOn, type Clip, type ScreenType,
+} from "../../shared/video/clip.ts";
+import { probeImage } from "../../shared/video/image.ts";
 
 export const ROOT = resolve(import.meta.dir, "../..");
-export const VIDEO_DIR = join(ROOT, "assets/source/core/video");
-export const SOURCES_FILE = join(VIDEO_DIR, "SOURCES.md");
-export const CHANNELS_FILE = join(VIDEO_DIR, "channels.json");
+export const SCREENS_DIR = join(ROOT, "assets/source/core/screens");
+export const SOURCES_FILE = join(SCREENS_DIR, "SOURCES.md");
+export const CHANNELS_FILE = join(SCREENS_DIR, "channels.json");
+const PREFIX = "assets/source/core/screens/";
 export const INVENTORY = join(ROOT, "distribution/source-files.txt");
 
 /** The encode's long and short sides: 360p already outresolves the ball's pucks (screen-video.md, video-1). */
@@ -27,6 +32,10 @@ const LONG = 640, SHORT = 360;
 /** The bit rate a clip gets unless its recipe says, and the largest a poster may be. */
 const KBPS = 600;
 const POSTER_BYTES = 40 * 1024;
+/** The largest a default image may be, well under the upload cap, since every client may fetch it. */
+export const IMAGE_PACK_BYTES = 400 * 1024;
+/** The types a default image is offered on where its sheet says none: every type but the ball, as an upload's are. */
+export const IMAGE_TYPES_DEFAULT: readonly ScreenType[] = SCREENS.filter((s) => s !== "orb");
 
 /** Where a clip's original came from: a file fetched from `url` (its rights on `page`), or one supplied `by` someone. */
 export interface From {
@@ -37,8 +46,12 @@ export interface From {
   readonly sha256: string;
 }
 
-/** A clip's recipe, source.json: where it is from and why we may ship it, and how it is cut and encoded. Times are seconds into the original. */
+/**
+ * An item's recipe, source.json: where it is from and why we may ship it, and how it is cut and encoded. Times are
+ * seconds into the original. An image is fitted to IMAGE_MAX_LONG, never upscaled, as a JPEG unless it says PNG.
+ */
 export interface Recipe {
+  readonly kind?: "clip" | "image";
   readonly title: string;
   readonly year?: number;
   readonly from: From;
@@ -61,17 +74,27 @@ export interface Recipe {
   readonly poster?: number | "brightest";
   /** It flashes, so no default channel may hold it. */
   readonly flashes?: boolean;
+  /** The types of screen it is offered on; every type where it says none. */
+  readonly types?: readonly ScreenType[];
+  /** An image's file: PNG for flat art, JPEG otherwise. */
+  readonly format?: "png" | "jpeg";
 }
 
-/** A default channel: a name, the clips' folder names in order, and whether it shuffles. */
+/** A default channel: a name, the items' folder names in order, whether it shuffles, its type, and an image's seconds. */
 export interface DefaultChannel {
   readonly name: string;
   readonly shuffle: boolean;
   readonly items: readonly string[];
+  readonly type?: ScreenType;
+  readonly still?: number;
 }
 
-/** A clip folder's name: lower case words joined by hyphens, which names its release archive core-video-<name>. */
-export const isClipName = (name: string): boolean => /^[a-z0-9]+(-[a-z0-9]+)*$/.test(name) && name.length <= 48;
+export const isImageRecipe = (r: Recipe): boolean => r.kind === "image";
+/** The files an item's folder holds as art. */
+export const artFiles = (r: Recipe): [string, string] => [isImageRecipe(r) ? (r.format === "png" ? "image.png" : "image.jpg") : "clip.mp4", "poster.jpg"];
+
+/** An item folder's name: lower case words joined by hyphens, which names its release archive core-screens-<name>. */
+export const isItemName = (name: string): boolean => /^[a-z0-9]+(-[a-z0-9]+)*$/.test(name) && name.length <= 48;
 /** A folder name made from a title. */
 export const nameOf = (title: string): string =>
   title.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48).replace(/-+$/, "") || "clip";
@@ -79,60 +102,78 @@ export const nameOf = (title: string): string =>
 const readJson = <T>(file: string): T => JSON.parse(readFileSync(file, "utf8")) as T;
 const writeJson = (file: string, value: unknown): void => writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
 
-/** Every clip folder's name, in order. */
-export const clipNames = (dir = VIDEO_DIR): string[] =>
+/** Every item folder's name, in order. */
+export const itemNames = (dir = SCREENS_DIR): string[] =>
   readdirSync(dir, { withFileTypes: true }).filter((d) => d.isDirectory() && existsSync(join(dir, d.name, "source.json"))).map((d) => d.name).sort();
-export const readRecipe = (name: string, dir = VIDEO_DIR): Recipe => readJson<Recipe>(join(dir, name, "source.json"));
-/** What a clip's encode made, or null where it has not been encoded. */
-export const readClip = (name: string, dir = VIDEO_DIR): Clip | null => (existsSync(join(dir, name, "clip.json")) ? readJson<Clip>(join(dir, name, "clip.json")) : null);
-export const readChannels = (dir = VIDEO_DIR): DefaultChannel[] => (existsSync(join(dir, "channels.json")) ? readJson<DefaultChannel[]>(join(dir, "channels.json")) : []);
+export const readRecipe = (name: string, dir = SCREENS_DIR): Recipe => readJson<Recipe>(join(dir, name, "source.json"));
+/** What an item's encode made, or null where it has not been encoded. */
+export const readItem = (name: string, dir = SCREENS_DIR): Clip | null => (existsSync(join(dir, name, "clip.json")) ? readJson<Clip>(join(dir, name, "clip.json")) : null);
+export const readChannels = (dir = SCREENS_DIR): DefaultChannel[] => (existsSync(join(dir, "channels.json")) ? readJson<DefaultChannel[]>(join(dir, "channels.json")) : []);
 
-// ---- Checks: what the tests and `clips check` hold every default clip to.
+const sameTypes = (a: readonly ScreenType[] | undefined, b: readonly ScreenType[] | undefined): boolean => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
-/** Everything wrong with the default clips in `dir`, one sentence each; none where all is well. */
-export function problems(dir = VIDEO_DIR, inventory: readonly string[] = existsSync(INVENTORY) ? readFileSync(INVENTORY, "utf8").split("\n") : []): string[] {
+// ---- Checks: what the tests and `screens check` hold every default item to.
+
+/** Everything wrong with the default items in `dir`, one sentence each; none where all is well. */
+export function problems(dir = SCREENS_DIR, inventory: readonly string[] = existsSync(INVENTORY) ? readFileSync(INVENTORY, "utf8").split("\n") : []): string[] {
   const out: string[] = [];
   const listed = new Set(inventory);
-  const names = clipNames(dir), ids = new Map<string, string>();
+  const names = itemNames(dir), ids = new Map<string, string>();
   for (const name of names) {
     const say = (s: string): number => out.push(`${name}: ${s}`);
-    if (!isClipName(name)) say("a folder's name is lower case words joined by hyphens, 48 letters at most.");
-    const r = readRecipe(name, dir);
+    if (!isItemName(name)) say("a folder's name is lower case words joined by hyphens, 48 letters at most.");
+    const r = readRecipe(name, dir), image = isImageRecipe(r);
+    if (r.kind !== undefined && r.kind !== "clip" && r.kind !== "image") say('source.json\'s kind is "clip" or "image".');
+    if (r.types !== undefined && (!Array.isArray(r.types) || r.types.length === 0 || !r.types.every(isScreenType) || new Set(r.types).size !== r.types.length)) {
+      say(`source.json's types are one or more of ${SCREENS.join(", ")}, each once.`);
+    }
+    if (r.format !== undefined && (!image || (r.format !== "png" && r.format !== "jpeg"))) say('only an image has a format, "png" or "jpeg".');
     if (!r.title?.trim()) say("source.json has no title.");
     if (!r.rights || r.rights.trim().length < 12) say("source.json needs a rights line: who made it and why we may show it.");
     if (!r.licence || r.licence.trim().length < 12) say("source.json needs the licence as its source words it.");
     if (!/^[0-9a-f]{64}$/.test(r.from?.sha256 ?? "")) say("source.json needs the original's SHA-256.");
     if (!r.from?.url && !r.from?.by) say("source.json says neither the url it came from nor who supplied it.");
     if (r.from?.url && !r.from.page) say("source.json names a url but no page stating its rights.");
-    const c = readClip(name, dir);
+    const c = readItem(name, dir);
     if (!c) {
-      say("it has not been encoded: bun run clips make " + name);
+      say("it has not been encoded: bun run screens make " + name);
       continue;
     }
-    if (!isClipId(c.id)) say("clip.json has no clip id.");
+    if (!isClipId(c.id)) say("clip.json has no id.");
     if (ids.has(c.id)) say(`it is the same file as ${ids.get(c.id)}.`);
     ids.set(c.id, name);
-    if (c.file !== "clip.mp4" || c.poster !== "poster.jpg") say("clip.json names files other than clip.mp4 and poster.jpg.");
-    if (c.title !== r.title || c.rights !== r.rights) say("clip.json's title or rights are not the recipe's: bun run clips make " + name);
-    if (Math.max(c.width, c.height) > CLIP_MAX_WIDE || Math.min(c.width, c.height) > CLIP_MAX_HIGH) say(`it is ${c.width}×${c.height}, over the caps.`);
-    if (!(c.seconds > 0) || c.seconds > CLIP_MAX_SECONDS || c.bytes > CLIP_MAX_BYTES || (c.bytes * 8) / c.seconds / 1000 > CLIP_MAX_KBPS) say("its length, size or bit rate is over the caps.");
+    const [file, poster] = artFiles(r);
+    if (c.file !== file || c.poster !== poster) say(`clip.json names files other than ${file} and ${poster}.`);
+    if (c.title !== r.title || c.rights !== r.rights || !sameTypes(c.types, r.types) || (c.kind === "image") !== image) say("clip.json's title, rights, kind or types are not the recipe's: bun run screens make " + name);
     const samples = Buffer.from(c.colours, "base64").length / (3 * COLOUR_PARTS);
-    if (!Number.isInteger(samples) || Math.abs(samples - c.seconds * COLOUR_RATE) > 1) say("its colour track is not COLOUR_RATE samples a second.");
-    for (const f of ["clip.mp4", "poster.jpg"]) if (inventory.length && !listed.has(`assets/source/core/video/${name}/${f}`)) say(`distribution/source-files.txt does not list ${f}.`);
+    if (image) {
+      if (Math.max(c.width, c.height) > IMAGE_MAX_LONG) say(`it is ${c.width}×${c.height}, over ${IMAGE_MAX_LONG} on its long side.`);
+      if (c.seconds !== 0 || c.audio || c.bytes > IMAGE_PACK_BYTES) say(`an image has no length or sound and is ${IMAGE_PACK_BYTES / 1024} KB at most.`);
+      if (samples !== 1) say("an image's colour track is one sample.");
+    } else {
+      if (Math.max(c.width, c.height) > CLIP_MAX_WIDE || Math.min(c.width, c.height) > CLIP_MAX_HIGH) say(`it is ${c.width}×${c.height}, over the caps.`);
+      if (!(c.seconds > 0) || c.seconds > CLIP_MAX_SECONDS || c.bytes > CLIP_MAX_BYTES || (c.bytes * 8) / c.seconds / 1000 > CLIP_MAX_KBPS) say("its length, size or bit rate is over the caps.");
+      if (!Number.isInteger(samples) || Math.abs(samples - c.seconds * COLOUR_RATE) > 1) say("its colour track is not COLOUR_RATE samples a second.");
+    }
+    for (const f of [file, poster]) if (inventory.length && !listed.has(`${PREFIX}${name}/${f}`)) say(`distribution/source-files.txt does not list ${f}.`);
   }
   const seen = new Set<string>();
   for (const ch of readChannels(dir)) {
     if (!ch.name || ch.name === "scenes" || ch.name.startsWith("scene:") || ch.name.length > 40 || seen.has(ch.name)) out.push(`channels.json: "${ch.name}" is not a name a channel may have, or is there twice.`);
     seen.add(ch.name);
+    if (ch.type !== undefined && !isScreenType(ch.type)) out.push(`channels.json: ${ch.name} is for ${SCREENS.join(", ")} screens.`);
+    if (ch.still !== undefined && !(typeof ch.still === "number" && ch.still >= STILL_MIN && ch.still <= STILL_MAX)) out.push(`channels.json: ${ch.name} holds an image ${STILL_MIN} to ${STILL_MAX} seconds.`);
+    const type = ch.type ?? "orb";
     for (const item of ch.items) {
-      if (!names.includes(item)) out.push(`channels.json: ${ch.name} lists ${item}, which is no clip.`);
+      if (!names.includes(item)) out.push(`channels.json: ${ch.name} lists ${item}, which is no item.`);
       else if (readRecipe(item, dir).flashes) out.push(`channels.json: ${ch.name} lists ${item}, which flashes.`);
+      else if (!offeredOn(readRecipe(item, dir), type)) out.push(`channels.json: ${ch.name} lists ${item}, which is not offered on ${type} screens.`);
     }
   }
   return out;
 }
 
-// ---- The sheet `clips add` reads: one row to a file.
+// ---- The sheet `screens add` reads: one row to a file.
 
 /** Rows of a CSV sheet as objects by its first row's headings, lower-cased. Quoted fields may hold commas, quotes ("") and line breaks. */
 export function parseCsv(text: string): Record<string, string>[] {
@@ -161,17 +202,29 @@ export function parseCsv(text: string): Record<string, string>[] {
 const yes = (v: string | undefined): boolean => /^(y|yes|true|1)$/i.test(v ?? "");
 const num = (v: string | undefined): number | undefined => (v && Number.isFinite(Number(v)) ? Number(v) : undefined);
 
+const VIDEO_FILES = /\.(mp4|m4v|mov|mkv|webm|ogv|ogg|avi)$/i;
+const IMAGE_FILES = /\.(png|jpe?g|webp|gif|bmp|tiff?)$/i;
+const list = (v: string | undefined): string[] => (v ?? "").split(/[;|]/).map((c) => c.trim()).filter(Boolean);
+
 /**
  * A sheet's row as a recipe for an original whose SHA-256 is `sha256`, and the default channels it joins. The row's
- * headings: file, title, rights, licence (needed); name, year, url, page, by, changes, start, length, crop, poster,
- * kbps, audio, denoise, flashes, channels (a list split by ; or |).
+ * headings: file, title, rights, licence (needed); name, kind (clip or image, else from the file's ending), types,
+ * format (png or jpeg, for an image), year, url, page, by, changes, start, length, crop, poster, kbps, audio, denoise,
+ * flashes, channels. Lists are split by ; or |. An image with no types is offered on every type but the ball.
  */
 export function recipeOf(row: Record<string, string>, sha256: string): { name: string; recipe: Recipe; channels: string[] } {
   const missing = ["title", "rights", "licence"].filter((k) => !row[k]);
   if (!row.url && !row.by) missing.push("url or by");
   if (missing.length) throw new Error(`${row.file || "a row"}: the sheet needs ${missing.join(", ")}.`);
+  const kind = row.kind ? row.kind.toLowerCase() : IMAGE_FILES.test(row.file ?? "") ? "image" : "clip";
+  if (kind !== "clip" && kind !== "image") throw new Error(`${row.file}: its kind is clip or image.`);
+  const types = list(row.types);
+  if (!types.every(isScreenType) || new Set(types).size !== types.length) throw new Error(`${row.file}: its types are some of ${SCREENS.join(", ")}.`);
+  const format = row.format ? row.format.toLowerCase().replace(/^jpg$/, "jpeg") : "";
+  if (format && (kind !== "image" || (format !== "png" && format !== "jpeg"))) throw new Error(`${row.file}: only an image has a format, png or jpeg.`);
   const poster = row.poster === "brightest" ? "brightest" : num(row.poster);
   const recipe: Recipe = {
+    ...(kind === "image" ? { kind: "image" as const } : {}),
     title: row.title!,
     ...(num(row.year) ? { year: num(row.year) } : {}),
     from: { ...(row.url ? { url: row.url } : {}), ...(row.page ? { page: row.page } : {}), ...(row.by ? { by: row.by } : {}), sha256 },
@@ -186,8 +239,10 @@ export function recipeOf(row: Record<string, string>, sha256: string): { name: s
     ...(row.audio ? { audio: yes(row.audio) } : {}),
     ...(yes(row.denoise) ? { denoise: true } : {}),
     ...(yes(row.flashes) ? { flashes: true } : {}),
+    ...(types.length ? { types: SCREENS.filter((s) => types.includes(s)) } : kind === "image" ? { types: IMAGE_TYPES_DEFAULT } : {}),
+    ...(format === "png" ? { format: "png" as const } : {}),
   };
-  const channels = (row.channels ?? "").split(/[;|]/).map((c) => c.trim()).filter(Boolean);
+  const channels = list(row.channels);
   if (recipe.flashes && channels.length) throw new Error(`${row.file}: it flashes, so it may not be in a default channel.`);
   return { name: row.name || nameOf(recipe.title), recipe, channels };
 }
@@ -231,7 +286,7 @@ async function original(name: string, r: Recipe): Promise<string> {
   const known = readdirSync(dir).find((f) => f.startsWith(r.from.sha256)) ?? (ext && existsSync(join(dir, name + ext)) ? name + ext : undefined);
   let file = known ? join(dir, known) : "";
   if (!file) {
-    if (!r.from.url) throw new Error(`${name}: its original (SHA-256 ${r.from.sha256}) is not in ${dir}. Add it again with bun run clips add.`);
+    if (!r.from.url) throw new Error(`${name}: its original (SHA-256 ${r.from.sha256}) is not in ${dir}. Add it again with bun run screens add.`);
     console.log(`fetch        ${r.from.url}`);
     const res = await fetch(r.from.url, { headers: { "user-agent": "snark-clip-tool/1" } });
     if (!res.ok) throw new Error(`${r.from.url}: ${res.status}`);
@@ -305,7 +360,7 @@ async function colourTrack(file: string, width: number, height: number): Promise
 }
 
 /** Encodes clip `name` from its recipe into its folder: clip.mp4, poster.jpg and clip.json. */
-async function makeClip(name: string, dir = VIDEO_DIR): Promise<Clip> {
+async function makeClip(name: string, dir = SCREENS_DIR): Promise<Clip> {
   const r = readRecipe(name, dir), src = await original(name, r), info = await probe(src);
   const [cw, ch] = r.crop ? (r.crop.split(":").map(Number) as [number, number]) : [info.width, info.height];
   const [w, h] = fit(cw, ch, LONG, SHORT);
@@ -341,6 +396,7 @@ async function makeClip(name: string, dir = VIDEO_DIR): Promise<Clip> {
     const clip: Clip = {
       id: clipId(sha256Of(part)), title: r.title, file: "clip.mp4", poster: "poster.jpg", width: out.width, height: out.height,
       seconds, bytes, audio: out.audio, rights: r.rights, starter: true, colours: Buffer.from(colours).toString("base64"),
+      ...(r.types ? { types: r.types } : {}),
     };
     const rate = (bytes * 8) / seconds / 1000;
     if (Math.max(clip.width, clip.height) > CLIP_MAX_WIDE || Math.min(clip.width, clip.height) > CLIP_MAX_HIGH || rate > CLIP_MAX_KBPS || bytes > CLIP_MAX_BYTES) {
@@ -357,6 +413,60 @@ async function makeClip(name: string, dir = VIDEO_DIR): Promise<Clip> {
   }
 }
 
+/** The size an image is fitted to: IMAGE_MAX_LONG on its long side at most, never upscaled. */
+export function fitImage(w: number, h: number): [number, number] {
+  const k = Math.min(1, IMAGE_MAX_LONG / Math.max(w, h));
+  return [Math.max(1, Math.round(w * k)), Math.max(1, Math.round(h * k))];
+}
+
+/** Encodes image `name` from its recipe into its folder: image.jpg or image.png, poster.jpg and clip.json. */
+async function makeImage(name: string, dir = SCREENS_DIR): Promise<Clip> {
+  const r = readRecipe(name, dir), src = await original(name, r), info = await probe(src);
+  const [w, h] = fitImage(info.width, info.height), [file, posterFile] = artFiles(r), png = r.format === "png";
+  const work = mkdtempSync(join(tmpdir(), "snark-image-"));
+  try {
+    // Laid on black, so a transparent part is a dark part of the screen.
+    const flat = (fw: number, fh: number, fmt: string): string[] => ["-filter_complex", `color=black:s=${fw}x${fh}[bg];[0:v]scale=${fw}:${fh}:flags=lanczos[fg];[bg][fg]overlay=shortest=1,format=${fmt}`];
+    const still = ["-threads", "1", "-i", src, "-frames:v", "1", "-map_metadata", "-1", "-fflags", "+bitexact", "-flags", "+bitexact", "-f", "image2"];
+    const part = join(work, file);
+    if (png) await run([...FFMPEG, ...still, ...flat(w, h, "rgb24"), "-c:v", "png", "-pred", "mixed", "-compression_level", "9", part]);
+    else {
+      for (let q = 2; ; q++) {
+        await run([...FFMPEG, ...still, ...flat(w, h, "yuvj420p"), "-c:v", "mjpeg", "-q:v", String(q), part]);
+        if (statSync(part).size <= IMAGE_PACK_BYTES || q >= 31) break;
+      }
+    }
+    const bytes = new Uint8Array(readFileSync(part)), checked = probeImage(bytes);
+    if (typeof checked === "string") throw new Error(`${name}: ${checked}`);
+    if (bytes.length > IMAGE_PACK_BYTES) throw new Error(`${name} is ${Math.round(bytes.length / 1024)} KB as ${png ? "a PNG; make it a JPEG" : "a JPEG"}, over ${IMAGE_PACK_BYTES / 1024} KB.`);
+    // One colour sample from a tiny copy, as a clip's track is made.
+    const [cw, ch] = fit(w, h, 32, 18);
+    const raw = await run([...FFMPEG, "-threads", "1", "-i", part, "-vf", `scale=${cw}:${ch}:flags=area,format=rgb24`, "-frames:v", "1", "-f", "rawvideo", "-"]);
+    const colours = frameColours(raw.subarray(0, cw * ch * 3), cw, ch);
+    const [pw, ph] = fit(w, h, 320, 320), jpg = join(work, posterFile);
+    for (let q = 3; ; q++) {
+      await run([...FFMPEG, "-threads", "1", "-i", part, "-frames:v", "1", "-vf", `scale=${pw}:${ph}:flags=lanczos,format=yuvj420p`, "-c:v", "mjpeg", "-q:v", String(q), "-map_metadata", "-1", "-fflags", "+bitexact", "-flags", "+bitexact", "-f", "image2", jpg]);
+      if (statSync(jpg).size <= POSTER_BYTES || q >= 31) break;
+    }
+    const clip: Clip = {
+      id: clipId(sha256Of(part)), title: r.title, file, poster: posterFile, width: checked.width, height: checked.height,
+      seconds: 0, bytes: bytes.length, audio: false, rights: r.rights, starter: true, colours: Buffer.from(colours).toString("base64"),
+      kind: "image", ...(r.types ? { types: r.types } : {}),
+    };
+    for (const old of ["image.png", "image.jpg"]) if (old !== file) rmSync(join(dir, name, old), { force: true });
+    renameSync(part, join(dir, name, file));
+    renameSync(jpg, join(dir, name, posterFile));
+    writeJson(join(dir, name, "clip.json"), clip);
+    console.log(`${name.padEnd(28)} ${clip.width}×${clip.height} image ${(bytes.length / 1024).toFixed(0)} KB`);
+    return clip;
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+}
+
+/** Encodes item `name` from its recipe, a clip or an image, into its folder `dir`. */
+export const makeItem = (name: string, dir = SCREENS_DIR): Promise<Clip> => (isImageRecipe(readRecipe(name, dir)) ? makeImage(name, dir) : makeClip(name, dir));
+
 /** Runs `each` over `items`, `jobs` at once. */
 async function pool<T>(items: readonly T[], jobs: number, each: (item: T) => Promise<unknown>): Promise<void> {
   let next = 0;
@@ -365,33 +475,33 @@ async function pool<T>(items: readonly T[], jobs: number, each: (item: T) => Pro
   }));
 }
 
-/** The inventory with every clip folder's two files listed once, in place of what it listed of them before. */
-function listInInventory(names: readonly string[]): void {
-  const lines = readFileSync(INVENTORY, "utf8").split("\n").filter(Boolean), prefix = "assets/source/core/video/";
+/** The inventory with every item folder's two art files listed once, in place of what it listed of them before. */
+function listInInventory(): void {
+  const lines = readFileSync(INVENTORY, "utf8").split("\n").filter(Boolean), prefix = PREFIX;
   const at = Math.max(0, lines.findIndex((l) => l.startsWith(prefix)));
   const others = lines.filter((l) => !l.startsWith(prefix));
-  const ours = [...new Set([...lines.filter((l) => l.startsWith(prefix)), ...names.flatMap((n) => [`${prefix}${n}/clip.mp4`, `${prefix}${n}/poster.jpg`])])]
-    .filter((l) => existsSync(join(ROOT, l.replace(/\/[^/]+$/, ""), "source.json"))).sort();
+  const ours = itemNames().flatMap((n) => artFiles(readRecipe(n)).map((f) => `${prefix}${n}/${f}`)).sort();
   others.splice(at === 0 && !lines[0]?.startsWith(prefix) ? others.findIndex((l) => l > prefix) : at, 0, ...ours);
   writeFileSync(INVENTORY, `${others.join("\n")}\n`);
 }
 
-/** SOURCES.md: every default clip, where it is from, its licence as its source words it, and what we changed. */
-function sourcesPage(dir = VIDEO_DIR): string {
+/** SOURCES.md: every default item, where it is from, its licence as its source words it, and what we changed. */
+function sourcesPage(dir = SCREENS_DIR): string {
   const cell = (s: string): string => s.replaceAll("|", "\\|").replaceAll("\n", " ");
-  const rows = clipNames(dir).map((name) => {
-    const r = readRecipe(name, dir), c = readClip(name, dir);
+  const rows = itemNames(dir).map((name) => {
+    const r = readRecipe(name, dir), c = readItem(name, dir);
     const from = r.from.url ? `[page](${r.from.page}), [file](${r.from.url})` : `supplied by ${cell(r.from.by ?? "")}`;
     return `| ${cell(r.title)} | ${r.year ?? ""} | ${from} | ${cell(r.licence)} | ${cell(r.changes ?? "")} | \`${name}\` \`${c?.id ?? "not encoded"}\` |`;
   });
   return [
-    "# Where the default clips come from",
+    "# Where the default screen media come from",
     "",
-    "`bun run clips` writes this page from each clip's `source.json` (README.md says how to add one). Every clip is",
+    "`bun run screens` writes this page from each item's `source.json` (README.md says how to add one). Every item is",
     "public domain, CC0, or made for the game by whoever supplied it, and held to its original's SHA-256.",
     "",
     "Every clip is H.264 (main profile, yuv420p, faststart, a keyframe each 2 s) at its original's frame rate, at most",
-    "640×360. The poster is one frame of the clip, 320 pixels on its long side.",
+    `640×360. Every image is a JPEG, or a PNG for flat art, at most ${IMAGE_MAX_LONG} pixels on its long side and`,
+    `${IMAGE_PACK_BYTES / 1024} KB. The poster is one frame, 320 pixels on its long side.`,
     "",
     "| Title | Year | Source | Licence, as the source states it | What we changed | Folder, clip id |",
     "| --- | --- | --- | --- | --- | --- |",
@@ -400,44 +510,44 @@ function sourcesPage(dir = VIDEO_DIR): string {
   ].join("\n");
 }
 
-const VIDEO_FILES = /\.(mp4|m4v|mov|mkv|webm|ogv|ogg|avi)$/i;
-
-/** `bun run clips add`: each file's row from the sheet, its original kept, its folder written and encoded, and its channels joined. */
+/** `bun run screens add`: each file's row from the sheet, its original kept, its folder written and encoded, and its channels joined. */
 async function add(paths: readonly string[], sheet: string, jobs: number): Promise<void> {
   const rows = parseCsv(readFileSync(sheet, "utf8"));
-  const files = paths.flatMap((p) => (statSync(p).isDirectory() ? readdirSync(p).filter((f) => VIDEO_FILES.test(f)).sort().map((f) => join(p, f)) : [p]));
-  if (!files.length) throw new Error("No video files were given.");
-  const taken = new Set(clipNames());
+  const files = paths.flatMap((p) => (statSync(p).isDirectory() ? readdirSync(p).filter((f) => VIDEO_FILES.test(f) || IMAGE_FILES.test(f)).sort().map((f) => join(p, f)) : [p]));
+  if (!files.length) throw new Error("No video or image files were given.");
+  const taken = new Set(itemNames());
   const plans = files.map((file) => {
     const row = rows.find((r) => r.file === basename(file));
     if (!row) throw new Error(`${basename(file)} has no row in ${sheet}.`);
     const plan = recipeOf(row, "");
-    if (!isClipName(plan.name)) throw new Error(`${basename(file)}: "${plan.name}" is not a folder name (lower case words joined by hyphens).`);
-    if (taken.has(plan.name)) throw new Error(`${basename(file)}: a clip named ${plan.name} is there already. Give the row another name.`);
+    if (!isItemName(plan.name)) throw new Error(`${basename(file)}: "${plan.name}" is not a folder name (lower case words joined by hyphens).`);
+    if (taken.has(plan.name)) throw new Error(`${basename(file)}: an item named ${plan.name} is there already. Give the row another name.`);
     taken.add(plan.name);
     return { file, ...plan };
   });
   // Every row is checked before any work, so a sheet with a fault changes nothing.
   for (const p of plans) {
     const sha = keep(p.file);
-    mkdirSync(join(VIDEO_DIR, p.name), { recursive: true });
-    writeJson(join(VIDEO_DIR, p.name, "source.json"), { ...p.recipe, from: { ...p.recipe.from, sha256: sha } });
+    mkdirSync(join(SCREENS_DIR, p.name), { recursive: true });
+    writeJson(join(SCREENS_DIR, p.name, "source.json"), { ...p.recipe, from: { ...p.recipe.from, sha256: sha } });
   }
   const done: string[] = [];
   await pool(plans, jobs, async (p) => {
-    await makeClip(p.name);
+    await makeItem(p.name);
     done.push(p.name);
   });
   const channels = readChannels();
   for (const p of plans) for (const name of p.channels) {
     const at = channels.findIndex((c) => c.name === name);
-    if (at < 0) channels.push({ name, shuffle: false, items: [p.name] });
+    // A channel the sheet makes is for the first type its first item is offered on.
+    const type = p.recipe.types?.[0] ?? "orb";
+    if (at < 0) channels.push({ name, shuffle: false, items: [p.name], ...(type !== "orb" ? { type } : {}) });
     else channels[at] = { ...channels[at]!, items: [...channels[at]!.items, p.name] };
   }
   writeJson(CHANNELS_FILE, channels);
-  listInInventory(done);
+  listInInventory();
   writeFileSync(SOURCES_FILE, sourcesPage());
-  console.log(`added ${done.length} clips. Then: python3 tools/release/pack.py art var/release --only core-video- and upload what it names.`);
+  console.log(`added ${done.length} items. Then: python3 tools/release/pack.py art var/release --only core-screens- and upload what it names.`);
 }
 
 if (import.meta.main) {
@@ -446,16 +556,16 @@ if (import.meta.main) {
   const jobs = Number(values.jobs) || Math.max(1, Math.floor(availableParallelism() / 2));
   if (command !== "check") for (const tool of ["ffmpeg", "ffprobe"]) if (!Bun.which(tool)) throw new Error(`${tool} is needed`);
   if (command === "add") {
-    if (!values.list || !rest.length) throw new Error("bun run clips add <file or folder>... --list sheet.csv");
+    if (!values.list || !rest.length) throw new Error("bun run screens add <file or folder>... --list sheet.csv");
     await add(rest, values.list, jobs);
   } else if (command === "make") {
-    const names = rest.length ? rest : clipNames();
-    await pool(names, jobs, (n) => makeClip(n));
-    listInInventory(names);
+    const names = rest.length ? rest : itemNames();
+    await pool(names, jobs, (n) => makeItem(n));
+    listInInventory();
     writeFileSync(SOURCES_FILE, sourcesPage());
-  } else if (command !== "check") throw new Error("bun run clips add | make | check");
+  } else if (command !== "check") throw new Error("bun run screens add | make | check");
   const found = problems();
   for (const p of found) console.log(p);
-  console.log(found.length ? `${found.length} problems` : `${clipNames().length} default clips, ${readChannels().length} channels: all well`);
+  console.log(found.length ? `${found.length} problems` : `${itemNames().length} default items, ${readChannels().length} channels: all well`);
   if (found.length) process.exit(1);
 }

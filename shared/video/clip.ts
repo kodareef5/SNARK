@@ -17,6 +17,9 @@ export const IMAGE_TYPES = ["png", "jpeg", "webp"] as const;
 /** Seconds an image holds in a channel unless the channel says, and one played once. */
 export const STILL_SECONDS = 8;
 export const ONCE_STILL_SECONDS = 15;
+/** The seconds a channel may hold each image for. */
+export const STILL_MIN = 2;
+export const STILL_MAX = 120;
 
 /** Samples of a clip's colour track a second. */
 export const COLOUR_RATE = 4;

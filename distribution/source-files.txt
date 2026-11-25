@@ -2770,6 +2770,10 @@ assets/source/core/props/street/tex/street_base.png
 assets/source/core/props/street/tex/street_height.png
 assets/source/core/props/street/tex/street_normal.png
 assets/source/core/props/street/tex/street_packed.png
+assets/source/core/screens/clouds/clip.mp4
+assets/source/core/screens/clouds/poster.jpg
+assets/source/core/screens/lightning/clip.mp4
+assets/source/core/screens/lightning/poster.jpg
 assets/source/core/sfx/ballistic/sound/takes/arrow/hit/moss-pt-20740-00985.wav
 assets/source/core/sfx/ballistic/sound/takes/arrow/hit/moss-pt-20740-02330.wav
 assets/source/core/sfx/ballistic/sound/takes/arrow/hit/moss-pt-20741-03845.wav
@@ -6539,10 +6543,6 @@ assets/source/core/vehicles/veloce_abandoned/tex/coachwork_mask.png
 assets/source/core/vehicles/veloce_abandoned/tex/coachwork_packed.png
 assets/source/core/vehicles/veloce_abandoned/veloce_abandoned.snpk
 assets/source/core/vehicles/zephyr/zephyr.snpk
-assets/source/core/video/clouds/clip.mp4
-assets/source/core/video/clouds/poster.jpg
-assets/source/core/video/lightning/clip.mp4
-assets/source/core/video/lightning/poster.jpg
 assets/source/core/water/long.png
 assets/source/core/water/pictures/beach-dawn-to-afternoon.jpg
 assets/source/core/water/pictures/beach-golden-to-night.jpg

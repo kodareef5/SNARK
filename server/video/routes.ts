@@ -2,7 +2,7 @@
 // edits. The caller has checked the admin password and, for a POST, the page's origin (server/admin/site.ts).
 import { rmSync } from "node:fs";
 import {
-  CLIP_MAX_BYTES, CLIP_MAX_HIGH, CLIP_MAX_KBPS, CLIP_MAX_SECONDS, CLIP_MAX_WIDE, COLOUR_PARTS, COLOUR_RATE, IMAGE_MAX_BYTES, IMAGE_MAX_LONG, IMAGE_TYPES, SCENE_SHOW, SCREENS, STILL_SECONDS,
+  CLIP_MAX_BYTES, CLIP_MAX_HIGH, CLIP_MAX_KBPS, CLIP_MAX_SECONDS, CLIP_MAX_WIDE, COLOUR_PARTS, COLOUR_RATE, IMAGE_MAX_BYTES, IMAGE_MAX_LONG, IMAGE_TYPES, SCENE_SHOW, SCREENS, STILL_MAX, STILL_MIN, STILL_SECONDS,
   channelType, heldSceneOf, isImage, isScreenType, offeredOn, type Channel, type Clip, type Screen, type ScreenType,
 } from "../../shared/video/clip.ts";
 import { screenAt } from "../../shared/video/programme.ts";
@@ -14,9 +14,6 @@ import { publishClip, takeImage, takeUpload, typesOf } from "./upload.ts";
 const CHANNELS_MAX = 32;
 const ITEMS_MAX = 200;
 const NAME_MAX = 40;
-/** The seconds a channel may hold each image for. */
-const STILL_MIN = 2;
-const STILL_MAX = 120;
 
 export const SCREEN_PATHS = ["/admin/screens/state", "/admin/screens/upload", "/admin/screens/clip", "/admin/screens/edit", "/admin/screens/image"] as const;
 /** The paths that take a POST, which the front passes on (server/front.ts). */
