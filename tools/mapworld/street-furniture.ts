@@ -28,6 +28,7 @@ import { join } from "node:path";
 import { STREET_PIECES, streetKind } from "../../content/street.ts";
 import { hullPoint } from "../../shared/world/convex.ts";
 import { S } from "./ground.ts";
+import { SLACK } from "./cell-lists.ts";
 import { binKey, hash3 } from "./raster.ts";
 import { boxOf, meets, obstacleIndex, type Box } from "./ruin-obstacles.ts";
 import { vocabulary } from "./ruin-vocabulary.ts";
@@ -969,6 +970,14 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
    */
   function crossingSigns(flow: ReadonlyMap<number, number>): void {
     const X = rules.regulations.crossing;
+    // The held junctions by 32 m bins, each in every bin its reach and 6 m touch: a point's bin holds all that reach it.
+    const heldBins = new Map<number, typeof held>();
+    for (const q of held) {
+      const r = q.reach + 6 + SLACK;
+      for (let bz = Math.floor((q.z - r) / 32); bz <= Math.floor((q.z + r) / 32); bz++) for (let bx = Math.floor((q.x - r) / 32); bx <= Math.floor((q.x + r) / 32); bx++) {
+        const bin = heldBins.get(binKey(bx, bz)); if (bin) bin.push(q); else heldBins.set(binKey(bx, bz), [q]);
+      }
+    }
     graph.crossings.forEach((c) => {
       if (c.signal === true) return;
       const mx = (c.ax + c.bx) / 2; const mz = (c.az + c.bz) / 2;
@@ -977,7 +986,7 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
       if (c.type !== null ? !X.marked.includes(c.type) : !c.drawn) return;
       const road = roadAt(mx, mz, 2); if (!road) return;
       const cls = classOf(road.s)!; if (!J.major.includes(cls) && !J.minor.includes(cls)) return;
-      if (held.some((q) => Math.hypot(q.x - road.fx, q.z - road.fz) < q.reach + 6 && (q.lines === null || q.lines.has(road.s.line)))) return;
+      if ((heldBins.get(binKey(Math.floor(road.fx / 32), Math.floor(road.fz / 32))) ?? []).some((q) => Math.hypot(q.x - road.fx, q.z - road.fz) < q.reach + 6 && (q.lines === null || q.lines.has(road.s.line)))) return;
       const h = hash3(Math.round(mx * 4), Math.round(mz * 4), seed + 14); if (!chance(h, X.chance)) return;
       for (const t of [1, -1]) {
         if (flow.has(road.s.line) && flow.get(road.s.line)! !== t) continue;

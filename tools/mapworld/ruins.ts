@@ -45,7 +45,13 @@ export interface RuinRecord {
 }
 const digest = (pieces: readonly StaticPiece[]): string => {
   const h = new Bun.CryptoHasher("sha256");
-  for (const p of pieces) h.update(`${p.kind},${p.x.toFixed(4)},${p.y.toFixed(4)},${p.z.toFixed(4)},${p.yaw.toFixed(4)}\n`);
+  // The same lines handed over a megabyte at a time: the hash is of their bytes, however they are cut.
+  let lines = "";
+  for (const p of pieces) {
+    lines += `${p.kind},${p.x.toFixed(4)},${p.y.toFixed(4)},${p.z.toFixed(4)},${p.yaw.toFixed(4)}\n`;
+    if (lines.length > 1 << 20) { h.update(lines); lines = ""; }
+  }
+  h.update(lines);
   return h.digest("hex");
 };
 

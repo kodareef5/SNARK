@@ -11,7 +11,7 @@ import { basename, join, resolve } from "node:path";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { SECTOR_CHUNKS, chunkCount, framed } from "../../shared/coords.ts";
-import { MapStatics, mapHeightfield, mapNodes, mapTops, parseMap, resolveNodes, writeMap } from "../../shared/world/mapfile.ts";
+import { MapStatics, mapHeightfield, mapNodes, mapTops, parseMap, resolveNodes, writeMap, type MapStatic } from "../../shared/world/mapfile.ts";
 import { obeliskStatics } from "../../shared/world/obelisks.ts";
 import { describe } from "../map.ts";
 import { readLayers, toYaw, waterLayer, writeAttached, writeNodeLayers } from "../map/layers.ts";
@@ -264,9 +264,12 @@ export async function buildMap(named: string, release = false, output = join(ROO
   }
   lap(`layers in ${layers}`);
 
-  // The statics from memory as statics.json says them (readLayers), not read back from it.
-  let map = readLayers(layers, statics.map((p) => ({ kind: p.kind, x: p.x - x0, y: p.y, z: p.z - z0, yaw: toYaw(p.yaw), ...(p.bend ? { bend: p.bend } : {}) })));
-  map = { ...map, statics: MapStatics.of(map.dims, map.statics), ...(buildings ? { buildings } : {}), ...(sited.length > 0 ? { content: { ...brought.content, landmarks: brought.content.landmarks.map(engine) } } : {}) };
+  // The statics from memory as statics.json says them (readLayers), not read back from it, each made as the columns take
+  // it: a copy of every piece at once, beside the pieces and the garbage of writing them, was the build's most memory.
+  Bun.gc(true);
+  const asFile = { *[Symbol.iterator]() { for (const p of statics) yield { kind: p.kind, x: p.x - x0, y: p.y, z: p.z - z0, yaw: toYaw(p.yaw), ...(p.bend ? { bend: p.bend } : {}) }; } };
+  let map = readLayers(layers, []);
+  map = { ...map, statics: MapStatics.of(map.dims, asFile as unknown as MapStatic[]), ...(buildings ? { buildings } : {}), ...(sited.length > 0 ? { content: { ...brought.content, landmarks: brought.content.landmarks.map(engine) } } : {}) };
   // The map holds the statics in columns now; the pieces as objects, 7 to 13 M of them, are let go for the rest of the
   // build, and only their count is kept for the numbers.
   const staticTotal = statics.length;
@@ -342,10 +345,11 @@ export async function buildMap(named: string, release = false, output = join(ROO
   // The tile and storey each piece was placed at, which the map does not hold, for the check of its buildings (building-places.ts).
   if (known) writeFileSync(join(output, name, "known.bin"), encodeKnown(known));
   lap(`map file ${file} and its parts' files with their copies for the wire`);
-  for (const line of [...describe(bytes), ...partsTable(packed)]) console.log(`        ${line}`);
+  // Read back once, for what it holds and for the numbers.
+  const parsed = parseMap(bytes);
+  for (const line of [...describe(bytes, parsed), ...partsTable(packed)]) console.log(`        ${line}`);
 
   // The numbers: nodes by kind, how much land is walkable, the deepest water and the tallest heap.
-  const parsed = parseMap(bytes);
   if (world.heaps === false) {
     const bridges = JSON.parse(readFileSync(join(source, "reports", world.ruins?.report ?? "ruins", "bridges.json"), "utf8")) as BridgeRecord[];
     const entrances = bridges.flatMap(r => r.entrances.map(e => ({ ...engine(e), id: r.id, name: r.name, slabs: e.slabs.map(engine), runout: e.runout?.map(engine) })));

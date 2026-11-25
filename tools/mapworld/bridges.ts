@@ -122,14 +122,19 @@ export function makeBridges(site: Site, accept: (m: Mason) => boolean): { record
     const k = `${Math.floor(d.x / 16)},${Math.floor(d.z / 16)}`;
     if (!deckBins.has(k)) deckBins.set(k, []); deckBins.get(k)!.push({ d, width: p.width, path: p });
   }
-  for (let pass = 0; pass < 16; pass++) {
-    for (const { p, deck } of planned) for (const d of deck) {
-      const bx = Math.floor(d.x / 16); const bz = Math.floor(d.z / 16);
-      for (let x = bx - 2; x <= bx + 2; x++) for (let z = bz - 2; z <= bz + 2; z++) for (const other of deckBins.get(`${x},${z}`) ?? []) {
-        if (other.path === p) continue;
-        if (Math.abs(other.d.y - d.y) < 3.2 && Math.hypot(other.d.x - d.x, other.d.z - d.z) < (p.width + other.width) / 2 + 2) d.y = other.d.y = Math.max(d.y, other.d.y);
-      }
+  // Which other ways' deck points stand near enough beside each, in the order the bins list them: only heights change.
+  const beside = planned.map(({ p, deck }) => deck.map((d) => {
+    const near: DeckPoint[] = [];
+    const bx = Math.floor(d.x / 16); const bz = Math.floor(d.z / 16);
+    for (let x = bx - 2; x <= bx + 2; x++) for (let z = bz - 2; z <= bz + 2; z++) for (const other of deckBins.get(`${x},${z}`) ?? []) {
+      if (other.path !== p && Math.hypot(other.d.x - d.x, other.d.z - d.z) < (p.width + other.width) / 2 + 2) near.push(other.d);
     }
+    return near;
+  }));
+  for (let pass = 0; pass < 16; pass++) {
+    planned.forEach(({ deck }, k) => deck.forEach((d, n) => {
+      for (const o of beside[k]![n]!) if (Math.abs(o.y - d.y) < 3.2) d.y = o.y = Math.max(d.y, o.y);
+    }));
     for (const { deck } of planned) for (const direction of [1, -1]) {
       for (let i = direction > 0 ? 1 : deck.length - 2; i >= 0 && i < deck.length; i += direction) {
         const a = deck[i - direction]!; const b = deck[i]!;
