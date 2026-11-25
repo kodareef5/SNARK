@@ -1,11 +1,12 @@
 // A clip's or a still's way into the library: the file streamed to disk under a running cap and hashed as it comes,
 // checked (an MP4 moved to play while it downloads), and held until the admin page sends its title, rights line,
 // poster and colour track.
-import { closeSync, openSync, readFileSync, renameSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
+import { closeSync, openSync, renameSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
+import { rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { CLIP_MAX_BYTES, COLOUR_PARTS, COLOUR_RATE, IMAGE_MAX_BYTES, SCREENS, clipId, isClipId, isScreenType, type Clip, type ScreenType } from "../../shared/video/clip.ts";
 import { IMAGE_EXT, probeImage } from "../../shared/video/image.ts";
-import { faststartParts, probeMp4 } from "../../shared/video/mp4.ts";
+import type { Mp4Info } from "../../shared/video/mp4.ts";
 import { entryReply, readEntryJson } from "../survivor-access.ts";
 import { slugOf, type VideoLibrary } from "./library.ts";
 
@@ -14,28 +15,39 @@ const TITLE_MAX = 80;
 const RIGHTS_MAX = 240;
 
 let uploads = 0;
+/** The most ms an upload's receiving runs before it lets the event loop turn. */
+const YIELD_MS = 2;
 
-/** Writes `parts` to `file` whole, through a file beside it in `tmp`. */
-function writeParts(tmp: string, file: string, parts: readonly Uint8Array[]): void {
-  const part = join(tmp, `clip-${process.pid}-${++uploads}`);
-  const fd = openSync(part, "w");
-  try {
-    for (const p of parts) for (let at = 0; at < p.length; ) at += writeSync(fd, p, at);
-  } finally {
-    closeSync(fd);
-  }
-  renameSync(part, file);
+/** What the MP4 thread is asked: the received file, and where to write it moved to faststart if it is not. */
+export interface ToMp4 {
+  readonly src: string;
+  readonly part: string;
+}
+/** What it answers: the boxes' info, a sentence saying why the clip may not be shown, or a fault of its own. */
+export type FromMp4 = { readonly info: Mp4Info } | { readonly error: string } | { readonly fault: string };
+
+/**
+ * Checks a received MP4 on a thread of its own, and writes it to `part` moved to faststart where it is not already so.
+ * One thread to an upload, so the file's bytes go when it ends.
+ */
+export function inspectMp4(src: string, part: string): Promise<FromMp4> {
+  const worker = new Worker(new URL("./mp4-worker.ts", import.meta.url).href);
+  return new Promise<FromMp4>((resolve) => {
+    worker.onmessage = (e: MessageEvent<FromMp4>) => resolve(e.data);
+    worker.onerror = (e) => resolve({ fault: e.message || "the clip's thread failed" });
+    worker.postMessage({ src, part } satisfies ToMp4);
+  }).finally(() => worker.terminate());
 }
 
 /** A body streamed to a file in `tmp` under a running cap and hashed as it came: its file, its size and its id. */
-interface Received {
+export interface Received {
   readonly tmp: string;
   readonly size: number;
   readonly id: string;
 }
 
 /** Reads an upload's raw body to disk, or answers why not. `what` names it in the answers ("A clip"). */
-async function receive(req: Request, lib: VideoLibrary, cap: number, what: string): Promise<Received | Response> {
+export async function receive(req: Request, lib: VideoLibrary, cap: number, what: string): Promise<Received | Response> {
   if (req.method !== "POST") return new Response(null, { status: 405, headers: { allow: "POST" } });
   // The length comes first, so a body over the cap is not read: a browser sending a File always says it.
   const length = Number(req.headers.get("content-length") ?? Number.NaN);
@@ -46,9 +58,11 @@ async function receive(req: Request, lib: VideoLibrary, cap: number, what: strin
   if (!reader) return entryReply({ error: "The upload was empty." }, 400);
   const tmp = join(lib.tmp, `upload-${process.pid}-${++uploads}`), hash = new Bun.CryptoHasher("sha256");
   const fd = openSync(tmp, "w");
-  let size = 0, over = false;
+  let size = 0, over = false, ran = performance.now();
   try {
     for (;;) {
+      // A body already buffered resolves read after read without a turn of the loop, so the tick's timer is let in.
+      if (performance.now() - ran > YIELD_MS) (await new Promise<void>((r) => setTimeout(r, 0)), (ran = performance.now()));
       const { value, done } = await reader.read();
       if (done) break;
       size += value.length;
@@ -80,18 +94,21 @@ export async function takeUpload(req: Request, lib: VideoLibrary): Promise<Respo
   const { tmp, id } = got;
   try {
     if (lib.view().all.has(id)) return entryReply({ error: "That clip is in the library already.", id }, 409);
-    const bytes = new Uint8Array(readFileSync(tmp));
-    const info = probeMp4(bytes);
-    if (typeof info === "string") return entryReply({ error: info }, 422);
-    const parts = faststartParts(bytes);
-    if (typeof parts === "string") return entryReply({ error: parts }, 422);
+    const part = join(lib.tmp, `clip-${process.pid}-${++uploads}`);
+    const checked = await inspectMp4(tmp, part);
+    if ("fault" in checked) {
+      await rm(part, { force: true });
+      return entryReply({ error: "The clip could not be checked. Try again." }, 500);
+    }
+    if ("error" in checked) return entryReply({ error: checked.error }, 422);
+    const { info } = checked;
     const name = `${slugOf(new URL(req.url).searchParams.get("name") ?? "")}.${id}.mp4`, file = join(lib.media, name);
-    if (info.faststart) renameSync(tmp, file);
-    else writeParts(lib.tmp, file, parts);
+    // A large file's unlink, here or where it replaces one, waits on the disk, so it is done off the loop.
+    await rename(info.faststart ? tmp : part, file);
     lib.addPending({ id, file: `/media/${name}`, width: info.width, height: info.height, seconds: info.seconds, kbps: info.kbps, bytes: statSync(file).size, audio: info.audio, at: Date.now() });
     return entryReply({ id, width: info.width, height: info.height, seconds: info.seconds, kbps: info.kbps, audio: info.audio });
   } finally {
-    rmSync(tmp, { force: true });
+    await rm(tmp, { force: true });
   }
 }
 
@@ -102,7 +119,7 @@ export async function takeImage(req: Request, lib: VideoLibrary): Promise<Respon
   const { tmp, id, size } = got;
   try {
     if (lib.view().all.has(id)) return entryReply({ error: "That image is in the library already.", id }, 409);
-    const info = probeImage(new Uint8Array(readFileSync(tmp)));
+    const info = probeImage(await Bun.file(tmp).bytes());
     if (typeof info === "string") return entryReply({ error: info }, 422);
     const name = `${slugOf(new URL(req.url).searchParams.get("name") ?? "", "image")}.${id}.${IMAGE_EXT[info.type]}`;
     renameSync(tmp, join(lib.media, name));
