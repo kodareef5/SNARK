@@ -17,7 +17,9 @@
 //   have moved half a cell.
 // - The map is a 16-bit layer of the shadow array after the cascades', stored as depth from a ceiling FAR_SPAN over the
 //   ground's floor, so a compared lookup with LEQUAL says lit where a pixel stands at or over it, filtered by the card.
-//   It is let go once it is all on the card, and swept again where the card loses it.
+//   It has two layers: a new map goes up a few rows a frame into the one not looked up, which is looked up from the
+//   frame its last row goes up, so no frame shows rows of two maps. Their place is kept through a governor's step
+//   (shadow-map.ts `farLayer`). It is let go once it is all on the card, and swept again where the card loses it.
 //
 // It is swept where the far city's levels are made (citymake.ts), on a worker in the browser, and here in tests and tools,
 // and the sky's openness (skyopen.ts) is made there from the same solid heights and the ground under them. The camera's
@@ -30,9 +32,10 @@ import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import { TACTICAL_CELL, farTopMetres } from "../../../shared/world/tactical.ts";
 import type { HeldTops } from "./blocks.ts";
 import type { CityMaker } from "./citymake.ts";
-import { CAST_AT, FRAME, ROOF_AT, type FramePacket } from "./packet.ts";
+import { CAST_AT, FAR_LAYER_AT, FRAME, ROOF_AT, type FramePacket } from "./packet.ts";
+import { MAX_REACH } from "./shadow.ts";
 import { SkyOpen, openMeasure, type OpenMap } from "./skyopen.ts";
-import { FAR_SPAN, FAR_OUT, FAR_LEAD, FAR_RISE, FLAT_LEAST, type SweepJob, type SweepMade } from "./shadow-map.ts";
+import { FAR_SPAN, FAR_OUT, FAR_LEAD, FAR_RISE, FLAT_LEAST, farLayer, type SweepJob, type SweepMade } from "./shadow-map.ts";
 export { FAR_SPAN, FAR_OUT, FAR_LEAD, FAR_RISE, FLAT_LEAST, sweepBuffers, type SweepJob, type SweepMade } from "./shadow-map.ts";
 import type { RoofMap } from "./roofmap.ts";
 import type { TopFix } from "./topfix.ts";
@@ -169,9 +172,10 @@ export function farLookup(map: Uint16Array, size: number, frame: Float32Array, r
 }
 
 /**
- * How far along the ground from a camera-relative point toward the sun its ray leaves the box of the chunks the near
- * store holds whole (FRAME nearFromX and the rest), where it meets that box, else 0: within the cascades the far map is
- * looked up that far on along the ray, past what casts into them. The twin of SHADOW_GLSL's `farBeyond`.
+ * How far along the ground from a camera-relative point toward the sun the far map is looked up on its ray within the
+ * cascades, past what casts into them: to where the ray leaves the box of chunks the near store holds whole (FRAME
+ * nearFromX and the rest), but no farther than MAX_REACH along the light, past which no cascade takes a caster; 0 from a
+ * point outside the box. The twin of SHADOW_GLSL's `farBeyond`.
  */
 export function nearLead(frame: Float32Array, rx: number, rz: number): number {
   const sx = frame[CAST_AT]!, sz = frame[CAST_AT + 2]!;
@@ -182,13 +186,13 @@ export function nearLead(frame: Float32Array, rx: number, rz: number): number {
   const x0 = frame[FRAME.nearFromX]!, z0 = frame[FRAME.nearFromZ]!, x1 = frame[FRAME.nearToX]!, z1 = frame[FRAME.nearToZ]!;
   if (x0 > x1) return 0;
   const ax = (x0 - rx) / dx, bx = (x1 - rx) / dx, az = (z0 - rz) / dz, bz = (z1 - rz) / dz;
-  const leave = Math.min(Math.max(ax, bx), Math.max(az, bz));
-  return leave >= Math.max(Math.min(ax, bx), Math.min(az, bz), 0) ? leave : 0;
+  const enter = Math.max(Math.min(ax, bx), Math.min(az, bz)), leave = Math.min(Math.max(ax, bx), Math.max(az, bz));
+  return enter <= 0 && leave >= 0 ? Math.min(leave, MAX_REACH * flat) : 0;
 }
 
 /**
- * The twin of `farBeyond`: the far map looked up for a camera-relative point within the cascades, past the near store's
- * chunks along its ray to the sun.
+ * The twin of `farBeyond`: the far map looked up for a camera-relative point within the cascades, `nearLead` on along
+ * its ray to the sun.
  */
 export function farBeyondLookup(map: Uint16Array, size: number, frame: Float32Array, rx: number, ry: number, rz: number, nx: number, nz: number): number {
   const sx = frame[CAST_AT]!, sy = frame[CAST_AT + 1]!, sz = frame[CAST_AT + 2]!;
@@ -224,8 +228,8 @@ export interface Standing {
 }
 
 /**
- * Chunks either side of the camera's looked at for those the near store holds whole: the server's window of three and
- * the one more it lets go at (server/game.ts structRadius), and room for a camera away from its body.
+ * Chunks either side of the camera's the near box grows to at most: the server's window of three and the one more it
+ * lets go at (server/game.ts structRadius), and room for a camera away from its body.
  */
 const NEAR_SCAN = 6;
 
@@ -303,8 +307,9 @@ export class FarShadow {
   private solid: Uint16Array | null = null;
   private ground: Uint16Array | null = null;
   private readonly bare = new Map<number, number>();
-  /** Per chunk 1 where its bare heights differed when last made. */
+  /** Per chunk 1 where its bare heights differed when last made, and 1 where it stood nothing over the ground. */
   private readonly oddChunk: Uint8Array;
+  private readonly empty: Uint8Array;
   private k = 0;
   private w = 0;
   private h = 0;
@@ -335,9 +340,13 @@ export class FarShadow {
   private readonly askedSun = new Float64Array(3);
   private askedCell = 0;
   private askedSize = 0;
-  /** The layer: its side and the cascades before it, the next row of the latest map to put on it, and the last map wholly on it. */
+  /**
+   * The two layers: their side, the first one's place, which of them is looked up, the next row of the latest map to put
+   * on the other, and the last map wholly on the card.
+   */
   private layerSize = 0;
   private layerAt = -1;
+  private shown = 0;
   private row = 0;
   private onCard = false;
   private readonly cardSun = new Float64Array(3);
@@ -364,6 +373,7 @@ export class FarShadow {
     const chunks = chunkCount(dims);
     this.dirty = new Uint8Array(chunks);
     this.oddChunk = new Uint8Array(chunks);
+    this.empty = new Uint8Array(chunks);
     this.seen = new Uint32Array(chunks);
     this.seenCame = new Uint32Array(chunks);
   }
@@ -419,7 +429,7 @@ export class FarShadow {
     return this.open.whole && (!this.roofs || (this.roof?.whole ?? false));
   }
 
-  /** After a lost context: the layer and the openness's texture are empty, and each is made and put on the card again. */
+  /** After a lost context: the layers and the openness's texture are empty, and each is made and put on the card again. */
   reset(): void {
     this.layerSize = 0;
     this.open.reset();
@@ -462,11 +472,11 @@ export class FarShadow {
       this.open.upload(p, budget, 0);
       return;
     }
-    const cell = farCell(this.dims, size);
+    const cell = farCell(this.dims, size), first = farLayer(p.tier.shadows);
     if (cascades <= 0) this.layerSize = 0;
-    else if (size !== this.layerSize || cascades !== this.layerAt) {
+    else if (size !== this.layerSize || first !== this.layerAt) {
       this.layerSize = size;
-      this.layerAt = cascades;
+      this.layerAt = first;
       this.row = 0;
       this.onCard = false;
     }
@@ -490,28 +500,60 @@ export class FarShadow {
     f[FRAME.farAt + 1] = cz / at;
     f[FRAME.farScale] = (looked ? 1 : -1) / at;
     f[FRAME.farDepth] = (this.hf.minY + FAR_SPAN - cy) / FAR_SPAN;
+    f[FAR_LAYER_AT] = looked ? this.layerAt + this.shown : -1;
     if (looked) this.near(f, cx, cz);
   }
 
-  /** Writes the box of the chunks the near store holds whole about the camera, camera-relative, or one with none in it. */
+  /**
+   * Writes the near box, camera-relative: from the camera's chunk, each side in turn by a column or row while every
+   * chunk of it is held whole or stands nothing over the ground, within NEAR_SCAN and the map; one with none in it where
+   * the camera's own chunk is neither.
+   */
   private near(f: Float32Array, cx: number, cz: number): void {
     const d = this.dims;
     const ci = Math.floor(cx / CHUNK_SIZE), cj = Math.floor(cz / CHUNK_SIZE);
-    let i0 = Infinity, j0 = Infinity, i1 = -Infinity, j1 = -Infinity;
-    for (let j = Math.max(0, cj - NEAR_SCAN); j <= Math.min(d.chunksZ - 1, cj + NEAR_SCAN); j++) {
-      for (let i = Math.max(0, ci - NEAR_SCAN); i <= Math.min(d.chunksX - 1, ci + NEAR_SCAN); i++) {
-        if (!this.held(j * d.chunksX + i)) continue;
-        i0 = Math.min(i0, i);
-        j0 = Math.min(j0, j);
-        i1 = Math.max(i1, i);
-        j1 = Math.max(j1, j);
+    const lowI = Math.max(0, ci - NEAR_SCAN), highI = Math.min(d.chunksX - 1, ci + NEAR_SCAN);
+    const lowJ = Math.max(0, cj - NEAR_SCAN), highJ = Math.min(d.chunksZ - 1, cj + NEAR_SCAN);
+    let i0 = ci, i1 = ci, j0 = cj, j1 = cj;
+    const none = ci < 0 || cj < 0 || ci >= d.chunksX || cj >= d.chunksZ || !this.covers(ci, ci, cj, cj);
+    // A side once stopped stays so: its next row only grows longer.
+    let open = none ? 0 : 15;
+    while (open !== 0) {
+      if ((open & 1) !== 0) {
+        if (i0 > lowI && this.covers(i0 - 1, i0 - 1, j0, j1)) i0--;
+        else open &= ~1;
+      }
+      if ((open & 2) !== 0) {
+        if (i1 < highI && this.covers(i1 + 1, i1 + 1, j0, j1)) i1++;
+        else open &= ~2;
+      }
+      if ((open & 4) !== 0) {
+        if (j0 > lowJ && this.covers(i0, i1, j0 - 1, j0 - 1)) j0--;
+        else open &= ~4;
+      }
+      if ((open & 8) !== 0) {
+        if (j1 < highJ && this.covers(i0, i1, j1 + 1, j1 + 1)) j1++;
+        else open &= ~8;
       }
     }
-    const none = i0 > i1;
     f[FRAME.nearFromX] = none ? 1 : i0 * CHUNK_SIZE - cx;
     f[FRAME.nearFromZ] = none ? 1 : j0 * CHUNK_SIZE - cz;
     f[FRAME.nearToX] = none ? -1 : (i1 + 1) * CHUNK_SIZE - cx;
     f[FRAME.nearToZ] = none ? -1 : (j1 + 1) * CHUNK_SIZE - cz;
+  }
+
+  /**
+   * Whether each chunk of columns i0 to i1 and rows j0 to j1 is held whole, so the cascades take its pieces, or stands
+   * nothing over the ground in the far map, so a lookup past it misses nothing: the server sends no chunk without pieces.
+   */
+  private covers(i0: number, i1: number, j0: number, j1: number): boolean {
+    for (let j = j0; j <= j1; j++) {
+      for (let i = i0; i <= i1; i++) {
+        const c = j * this.dims.chunksX + i;
+        if (this.empty[c] !== 1 && !this.held(c)) return false;
+      }
+    }
+    return true;
   }
 
   private mark(c: number): void {
@@ -676,10 +718,12 @@ export class FarShadow {
     const x0 = chunkCx(this.dims, chunk) * CHUNK_SIZE + TOP_CELL / 2, z0 = chunkCz(this.dims, chunk) * CHUNK_SIZE + TOP_CELL / 2;
     const odd = (out.odd = solid !== bare);
     const os = out.solid, ob = out.bare, og = out.ground;
+    let stands = false;
     for (let j = 0, at = 0; j < SIDE; j++) {
       for (let i = 0; i < SIDE; i++, at++) {
         const g = hf.heightAt(x0 + i * TOP_CELL, z0 + j * TOP_CELL);
         const s = solid ? solid[at]! : 0;
+        if (s > 0) stands = true;
         const gu = units(g - floor);
         const su = s > 0 ? units(g + farTopMetres(s) - floor) : gu;
         og[at] = gu;
@@ -692,6 +736,7 @@ export class FarShadow {
         ob[at] = b === s ? su : b > 0 ? units(g + farTopMetres(b) - floor) : gu;
       }
     }
+    this.empty[chunk] = stands ? 0 : 1;
     return out;
   }
 
@@ -768,7 +813,10 @@ export class FarShadow {
     this.stats.sweeps++;
   }
 
-  /** Rows of the latest map onto the layer, as many as the frame's allowance has room for; the map let go once all are. */
+  /**
+   * Rows of the latest map onto the layer not looked up, as many as the frame's allowance has room for, from its first
+   * row again where a newer one has come; looked up and let go once all are.
+   */
   private upload(p: FramePacket, budget: { readonly left: number; spend(bytes: number): void }): void {
     const map = this.map, size = this.mapSize;
     if (!map || size !== this.layerSize || this.row >= size) return;
@@ -777,10 +825,12 @@ export class FarShadow {
     p.farMap = map.subarray(this.row * size, (this.row + rows) * size);
     p.farRow = this.row;
     p.farRows = rows;
+    p.farLayer = this.layerAt + 1 - this.shown;
     budget.spend(rows * size * 2);
     this.row += rows;
     if (this.row < size) return;
     this.onCard = true;
+    this.shown = 1 - this.shown;
     this.map = null;
     this.cardSun.set(this.mapSun);
     this.cardCell = this.mapCell;

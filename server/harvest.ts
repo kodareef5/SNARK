@@ -291,7 +291,7 @@ export class Harvest {
   }
 
   /** Whether a survivor, or a foundation or pillar built there, keeps a node at (x, z) whose boxes reach `reach` from it from growing back. */
-  private held(x: number, z: number, reach: number): boolean {
+  held(x: number, z: number, reach: number): boolean {
     const rules = this.rules;
     const ents = this.world.ents;
     const near = CROWDED * (rules ? rules.num("ResourceNoReplenishRadiusPlayers") : 1) + reach;

@@ -3,11 +3,12 @@
 
 import type { ItemDef } from "../shared/content/defs.ts";
 import { fitBytes, type BitReader } from "../shared/net/codec.ts";
-import { TEXT_NOTICE, MAX_OPEN_NAME_BYTES, OPEN_TAKE_ONLY, OWN_KEPT, BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_CRAFT, CMD_CRAFT_AT, CMD_CRAFT_BLUEPRINT, CMD_CREATE, CMD_DETACH, CMD_DROP, CMD_LEARN, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_RESPAWN, CMD_SELECT, CMD_SPEND, CMD_UNLOAD, CMD_USE, OWN_BUFFS, OWN_HELD, OWN_RULES, RULE_CORPSE_LOCATOR, RULE_CREATIVE, RULE_SURVIVORS_PASS, RULE_CROSSHAIR, RULE_DAMAGE_NUMBERS, RULE_GLOBAL_CHAT, RULE_HIT_MARKERS, RULE_MAP_LOCATION, RULE_THIRD_PERSON, OWN_LOOK, OWN_MARKERS, OWN_OPEN, OWN_PROGRESSION, OWN_RESPAWN, OWN_SLOTS, OWN_SUBJECT, OWN_VITALS, OWN_VOICE, OWN_XP, MAX_PLACE_NAME_BYTES, RESULT_DENIED, RESULT_FULL, RESULT_INVALID, RESULT_OK, RESULT_SHORT, RESULT_STALE, SESSION_CREATING, SESSION_DEAD } from "../shared/net/protocol.ts";
+import { TEXT_NOTICE, MAX_OPEN_NAME_BYTES, OPEN_TAKE_ONLY, OWN_KEPT, BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_CRAFT, CMD_CRAFT_AT, CMD_CRAFT_BLUEPRINT, CMD_CREATE, CMD_DETACH, CMD_DROP, CMD_LEARN, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_RESPAWN, CMD_SELECT, CMD_SPEND, CMD_UNLOAD, CMD_USE, OWN_BUFFS, OWN_HELD, OWN_RULES, RULE_CORPSE_LOCATOR, RULE_CREATIVE, RULE_SEARCH_STREET, RULE_SEARCH_WRECKS, RULE_SURVIVORS_PASS, RULE_CROSSHAIR, RULE_DAMAGE_NUMBERS, RULE_GLOBAL_CHAT, RULE_HIT_MARKERS, RULE_MAP_LOCATION, RULE_THIRD_PERSON, OWN_LOOK, OWN_MARKERS, OWN_OPEN, OWN_PROGRESSION, OWN_RESPAWN, OWN_SLOTS, OWN_SUBJECT, OWN_VITALS, OWN_VOICE, OWN_XP, MAX_PLACE_NAME_BYTES, RESULT_DENIED, RESULT_FULL, RESULT_INVALID, RESULT_OK, RESULT_SHORT, RESULT_STALE, SESSION_CREATING, SESSION_DEAD } from "../shared/net/protocol.ts";
 import { LOOK_BYTES, validLook } from "../shared/anim/look.ts";
 import { TOKEN_BYTES } from "../shared/voice/packet.ts";
 import { ORB_GAIN_UNITS, orbOnly } from "../shared/world/orb.ts";
 import { FLAG_BLUEPRINT, HOTBAR_SLOTS, type Inventory } from "../shared/sim/items.ts";
+import { holdWord } from "../shared/sim/loot.ts";
 import { V_COUNT, V_FOOD, V_WATER } from "../shared/sim/vitals.ts";
 import { sendKept } from "./balls.ts";
 import type { Client, GameServer } from "./game.ts";
@@ -171,7 +172,9 @@ export function addOwnState(ctx: OwnContext): void {
           (rules.on("ShowMapPlayerLocation") ? RULE_MAP_LOCATION : 0) |
           (rules.on("bUseCorpseLocator") ? RULE_CORPSE_LOCATOR : 0) |
           (rules.on("bShowCreativeMode") ? RULE_CREATIVE : 0) |
-          (rules.on("SurvivorsBlock") ? 0 : RULE_SURVIVORS_PASS),
+          (rules.on("SurvivorsBlock") ? 0 : RULE_SURVIVORS_PASS) |
+          (rules.on("WorldLootEnabled") && rules.on("StreetLootEnabled") ? RULE_SEARCH_STREET : 0) |
+          (rules.on("WorldLootEnabled") && rules.on("VehicleLootEnabled") ? RULE_SEARCH_WRECKS : 0),
       );
       w.u8(orbOnly(rules.text("OrbScene")) + 1);
       w.u8(Math.round(Math.min(4, Math.max(0, rules.num("OrbBrightness"))) * ORB_GAIN_UNITS));
@@ -216,7 +219,9 @@ export function addOwnState(ctx: OwnContext): void {
       w.bool(open !== null);
       if (open) {
         w.varint(ctx.items.inv(open).cap);
-        w.string(fitBytes(open.name, MAX_OPEN_NAME_BYTES));
+        const tag = ctx.world.reg.holds[open.kind];
+        const name = open.name || (tag ? holdWord(tag) : "");
+        w.string(fitBytes(name, MAX_OPEN_NAME_BYTES));
         // Protocol 41: what kind of box it is (OPEN_ bits).
         w.u8(ctx.world.reg.takeOnly[open.kind] === 1 ? OPEN_TAKE_ONLY : 0);
       }

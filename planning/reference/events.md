@@ -10,7 +10,7 @@ marked "may change". An **after** event says what has happened, in values, and
 is delivered once a tick, before the commit. The module contract is in
 `server/api/module.ts`.
 
-There are 95 events: 80 raised today, 0 with a place in the code and not
+There are 97 events: 82 raised today, 0 with a place in the code and not
 raised yet, and 15 that wait for a feature.
 
 The ARK column says what a plugin for ARK's unofficial server API hooks for the
@@ -210,11 +210,15 @@ same purpose. ARK has no event API, so plugins hook the game's own functions.
 | `supply.landed` | after | `id`, `pid`, `x`, `y`, `z`, `tier`, `class`, `ringed`, `stacks`, `source` |  |  | `server/supply.ts` | wired |
 | `supply.opened` | after | `id`, `pid`, `byPid`, `tier`, `class`, `first` |  | the supply crate's inventory access | `server/supply.ts` | wired |
 | `supply.gone` | after | `id`, `tier`, `class`, `why`, `landed`, `opened` |  | the supply crate's destruction | `server/supply.ts` | wired |
+| `loot.roll` | before | `source`, `kind`, `pid`, `byPid`, `level`, `tier`, `chance` | `tier`, `chance` | the death inventory's and a loot crate's roll | `server/loot.ts` | wired |
+| `loot.found` | after | `source`, `kind`, `pid`, `byPid`, `tier`, `stacks` |  |  | `server/loot.ts` | wired |
 
 - **`supply.call`.** A supply drop is about to be called at a place, by a circuit of the drop book, the console, the admin page or a module. `tier` and `class` are the book's keys. `ringed` is 1, 0, or -1 for the book's chance to decide.
 - **`supply.landed`.** A supply drop's capsule has landed, holding `stacks` stacks. `pid` is the capsule's record. Each stack was asked of `item.gain` with the reason "supply".
 - **`supply.opened`.** A survivor opened a supply drop's capsule. `first` is 1 for the first to open it.
 - **`supply.gone`.** A supply drop is over. `why` is "emptied", "expired", "cancelled", "removed", or "empty" for one that had nothing to hold and never landed.
+- **`loot.roll`.** A source of the drop book is about to be rolled for a thing that may hold its loot: `kind` is "body", `pid` the thing's record, `byPid` who opened it or 0, `level` a body's. `tier` is the book's key of the tier it rolls at and `chance` what the source's own chance is multiplied by. Refused, the source gives this thing nothing.
+- **`loot.found`.** A source put `stacks` stacks in a thing. Each stack was asked of `item.gain` with the reason "loot".
 
 ## Map events
 

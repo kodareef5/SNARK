@@ -29,6 +29,16 @@ export interface LootDrop {
 /** The most a range may ask for, so that a mistaken definition cannot mint without end. */
 export const MOST_LOOT = 10000;
 
+/** What a thing that holds loot is called, by its tag (StructureDef.holds), where the tag is not the word. */
+const HOLD_WORDS: Readonly<Record<string, string>> = { newsbox: "newspaper box", paystation: "pay station", hull: "dead boat", hulk: "harbour hulk", hull_burnt: "burnt boat", hull_weed: "weed-grown boat", hulk_sunk: "sunk hulk" };
+export const holdWord = (tag: string): string => HOLD_WORDS[tag] ?? tag;
+/** Whether a thing that holds loot is a dead vehicle's, which the vehicles' setting rules; the rest are the street's. */
+export const holdIsVehicle = (tag: string): boolean => /^(wreck|hull|hulk)/.test(tag);
+
+/** How big a creature's body is, for the loot it holds (SpeciesDef.size); medium where a species does not say. */
+export const BODY_SIZES = ["small", "medium", "large", "apex"] as const;
+export type BodySize = (typeof BODY_SIZES)[number];
+
 /** A whole number from `min` to `max`, both included. */
 function between(rng: Rng, min: number, max: number): number {
   return max <= min ? min : min + rng.int(max - min + 1);

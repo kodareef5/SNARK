@@ -148,7 +148,9 @@ export class Supply {
   /** Raised whenever what a session is told changes. */
   private version = 1;
   private readonly told = new WeakMap<Connection, number>();
-  private compiledOf: { book: SupplyBook; quality: number; compiled: Compiled } | null = null;
+  private compiledOf: { book: SupplyBook; quality: number; rules: number; compiled: Compiled } | null = null;
+  /** What makes the book that is compiled of the book in force: world loot's sources, with the settings' lines (server/loot.ts). */
+  sourced: ((book: SupplyBook) => SupplyBook) | null = null;
   /** What ConfigOverrideSupplyCrateItems gives, by tier key: it wins over the book's tables (server/supply/ark.ts). */
   overrides: ReadonlyMap<string, ArkTables> = new Map();
   /** The circuits of the book that are on, by key. */
@@ -187,7 +189,9 @@ export class Supply {
   compiled(): Compiled {
     const book = this.ctx.book.book;
     const quality = this.ctx.rules.num("SupplyCrateLootQualityMultiplier");
-    if (this.compiledOf?.book !== book || this.compiledOf.quality !== quality) this.compiledOf = { book, quality, compiled: compileBook(book, this.catalog, { quality }) };
+    // With sources laid over it the book depends on the settings, so any change to those compiles it again.
+    const rules = this.sourced ? this.ctx.rules.version : 0;
+    if (this.compiledOf?.book !== book || this.compiledOf.quality !== quality || this.compiledOf.rules !== rules) this.compiledOf = { book, quality, rules, compiled: compileBook(this.sourced ? this.sourced(book) : book, this.catalog, { quality }) };
     return this.compiledOf.compiled;
   }
 

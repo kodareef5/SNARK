@@ -42,6 +42,7 @@ export const TRIKE: readonly Def[] = [
     breeds: { egg: "core:egg_trike", incubate: 8999, mature: 166666 },
     feces: "core:feces_medium",
     corpse: { health: 230, roll: 10 },
+    size: "large",
     drops: [{ item: "core:hide", min: 1, max: 1, weight: 12, favoured: "wood" }, { item: "core:meat", min: 1, max: 1, weight: 10, favoured: "stone" }],
     takes: { fire: .375, explosive: .6, bullet: .7 },
     // A chosen conservative implementation of the protective frill/head;

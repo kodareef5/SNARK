@@ -212,6 +212,7 @@ export class Projectiles {
   private readonly met = { nx: 0, ny: 1, nz: 0, surface: SURFACE_AIR, made: MADE_UNKNOWN };
   private readonly stuckKind: number;
   private readonly liveKind: number;
+  private readonly liveByItem = new Map<number, number>();
   private readonly flareKind: number;
   private readonly rng: Rng;
   private readonly eyeAt = new Float64Array(3);
@@ -232,7 +233,12 @@ export class Projectiles {
   constructor(ctx: ProjectilesContext, seed: number) {
     this.ctx = ctx;
     this.stuckKind = ctx.world.reg.index.get("core:arrow_stuck") ?? 0;
-    this.liveKind = ctx.world.reg.index.get("core:grenade_live") ?? 0;
+    const kinds = ctx.world.reg.index;
+    this.liveKind = kinds.get("core:grenade_live") ?? 0;
+    for (const name of ["grenade_smoke", "grenade_poison"]) {
+      const item = kinds.get(`core:${name}`), live = kinds.get(`core:${name}_live`);
+      if (item !== undefined && live !== undefined) this.liveByItem.set(item, live);
+    }
     this.flareKind = ctx.world.reg.index.get("core:flare_live") ?? 0;
     this.rng = new Rng(seed);
     this.madeOf = Uint8Array.from(ctx.world.reg.defs, (d) => (d?.type === "structure" || d?.type === "node" ? madeBy(d.material) : MADE_UNKNOWN));
@@ -1064,7 +1070,8 @@ export class Projectiles {
     const ents = world.ents;
     const reg = world.reg;
     const e = c.ent;
-    if (e < 0 || this.liveKind === 0) return;
+    const live = this.liveByItem.get(item) ?? this.liveKind;
+    if (e < 0 || live === 0) return;
     const d = this.dir;
     lookDirection(ents.yaw[e]!, ents.pitch[e]!, d);
     const speed = reg.throwSpeed[item]!;
@@ -1073,7 +1080,7 @@ export class Projectiles {
     const obstruction = castWorld(world, this.eyeAt[0]!, this.eyeAt[1]!, this.eyeAt[2]!, d[0]!, d[1]!, d[2]!, .5);
     const ahead = obstruction === HIT_NONE ? .5 : Math.max(0, rayHit.t - .01);
     const x = this.eyeAt[0]! + d[0]! * ahead, y = this.eyeAt[1]! + d[1]! * ahead, z = this.eyeAt[2]! + d[2]! * ahead;
-    const ent = ents.create(this.liveKind, x, y, z, F_PROP);
+    const ent = ents.create(live, x, y, z, F_PROP);
     if (ent < 0) return;
     if (this.thrown.length >= MAX_THROWN) this.burst(this.thrown.shift()!);
     this.thrown.push({ x, y, z, vx: d[0]! * speed, vy: d[1]! * speed + LOFT, vz: d[2]! * speed, item, quality, by: rec.pid, until: world.tick + reg.fuseTicks[item]!, ent, gen: ents.gen[ent]!, resting: false });

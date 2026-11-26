@@ -109,6 +109,9 @@ const LAUNCH_SHAPE: ShapeDef = { type: "shape", id: "core:zzzzhullshape_boat", r
 const MOORED: readonly StructureDef[] = [{ id: BOAT_SPECIES.id, shape: LAUNCH_SHAPE.id, boxes: LAUNCH_SHAPE.boxes }, ...MARINE_MODELS.map((m) => ({ id: m.id, shape: hulkOf(m.id).replace("core:", "core:shape_"), boxes: hulkBoxes(m.boxes) }))]
   .flatMap(({ id, shape, boxes }) => MOORED_PAINTS[id]!.map(([paint]): StructureDef => ({
     type: "structure", class: "static", id: mooredKind(id, paint), mesh: id, shape, half: shapeHalf(boxes), color: paint, hp: 8000, material: "core:mat_metal",
+    // A dead boat's hold is searched (planning/workstreams/loot.md); a charred one holds what a fire leaves, and a
+    // weed-grown one has its own tag for what grows on it.
+    holds: { tag: paint === DEAD_DYES[0]!.paint ? "hull_burnt" : paint === DEAD_DYES[3]!.paint ? "hull_weed" : "hull", seconds: 4, slots: 10 },
     // Its stripe and seats dulled with it; a region it has not, in its paint.
     colors: TRIMS.get(id)!.map((has) => (has ? DEAD_DYES.find((d) => d.paint === paint)!.trim : paint)),
     // A marina holds many: its hulls take their coarser levels at a third of the distance a found vessel does, so only

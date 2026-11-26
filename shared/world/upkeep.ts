@@ -22,6 +22,8 @@ export const STRUCT_NAME = 8;
 export const STRUCT_TRAVEL = 9;
 export const STRUCT_TEK_DOOR = 10;
 export const STRUCT_TEK_SOLID = 11;
+/** Begins the search of a thing that holds loot; STRUCT_USE after its seconds opens it (server/holders.ts). */
+export const STRUCT_SEARCH = 12;
 /** The PIN value that means none. */
 export const NO_PIN = 0xffff;
 /** Wrong PINs in a row before a survivor must wait, and the first wait in ticks. Each further wrong one doubles the wait, up to an hour. */
