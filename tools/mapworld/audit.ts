@@ -8,6 +8,7 @@ import { compileContent, withContent, type Registry } from "../../shared/content
 import { CHUNK_SIZE } from "../../shared/coords.ts";
 import { blankFrame } from "../../shared/world/buildings.ts";
 import { frame, frameOf } from "../../shared/world/frame.ts";
+import { HIT_PREFIX } from "../../shared/world/bends.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 import { bendOf, mapHeightfield, parseMap, placeStatics, staticKinds, type MapFile } from "../../shared/world/mapfile.ts";
 import { Found, StructureStore } from "../../shared/world/structures.ts";
@@ -101,11 +102,17 @@ export function offMap(w: Audited): Check {
   return { check: "pieces off the map", gate: true, count: pieces + buildings, pieces, buildings, piecesOfThoseBuildings: theirs, first };
 }
 
-/** Later copies of a piece: the same kind, place, turn and bend, as the build takes out (twins.ts). */
+/**
+ * Later copies of a piece: the same kind, place, turn and bend, as the build takes out (twins.ts). The collision boxes
+ * the map's reader makes under a bent piece (bends.ts madeHits) are no layer's to place, and one piece makes the same box
+ * twice where a chord is a hair longer than its boxes: the two fall within a step of the map's lattice. Those are counted
+ * apart and fail nothing.
+ */
 export function twins(w: Audited): Check {
   const s = w.map.statics;
+  const made = s.kinds.map((id) => id.startsWith(HIT_PREFIX));
   const seen = new Set<string>();
-  let count = 0;
+  let count = 0, madeBoxesTwice = 0;
   const first: string[] = [];
   for (let c = 0; c + 1 < s.first.length; c++) {
     const [a, e] = [s.first[c]!, s.first[c + 1]!];
@@ -116,11 +123,12 @@ export function twins(w: Audited): Check {
       const bend = bends ? bendOf(bends, r - a) : null;
       const key = `${s.kind[r]},${s.x[r]},${s.y[r]},${s.z[r]},${s.yaw[r]}${bend ? `,${bend.join(" ")}` : ""}`;
       if (!seen.has(key)) { seen.add(key); continue; }
+      if (made[s.kind[r]!]) { madeBoxesTwice++; continue; }
       count++;
       if (first.length < 3) first.push(`${s.kinds[s.kind[r]!]} at ${at(s.x[r]!, s.y[r]!, s.z[r]!)}`);
     }
   }
-  return { check: "pieces placed twice", gate: true, count, of: s.length, first };
+  return { check: "pieces placed twice", gate: true, count, of: s.length, madeBoxesTwice, first };
 }
 
 /** The bodies' numbers a square, row by row from z = 0, and the squares along x and z. */

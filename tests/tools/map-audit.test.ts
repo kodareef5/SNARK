@@ -38,6 +38,14 @@ test("a piece placed twice is counted once; another turn or kind is not", () => 
   expect([c.gate, c.count, c.of]).toEqual([true, 1, 5]);
 });
 
+test("a bent kerb's own collision box made twice is counted apart and fails nothing", () => {
+  // A kerb a metre long on a curve: each of its two chords is a hair over its 0.5 m box, so takes two a step apart.
+  const kerb = { kind: "core:zzzzzbend_median_c", x: 100.2, y: 1.06, z: 101.92, yaw: 40539, bend: [483, 0, 4133, 1545, 0, 0, 300, 8246] };
+  const c = twins(opened({ statics: [kerb, wall(10, 20), wall(10, 20)] }));
+  expect([c.count, c.madeBoxesTwice]).toEqual([1, 1]);
+  expect(c.of).toBeGreaterThan(3);
+});
+
 test("a piece moved off the map is counted", () => {
   const w = opened({ statics: [wall(10, 20), wall(40, 20)] });
   expect(offMap(w).count).toBe(0);
