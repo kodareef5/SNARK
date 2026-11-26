@@ -1,9 +1,9 @@
 import type { MaterialSpec, PiecesAsset } from "../../../../../tools/art/spec.ts";
 
 const views = {
-  saddle_stego: { around: 2.33, above: 0.53, roll: 0.17 },
-  saddle_rex: { around: -0.71, above: 0.69, roll: -0.16 },
-  saddle_spino: { around: 2.20, above: 0.72, roll: -0.29 },
+  saddle_stego: { around: 0.59, above: 0.50, roll: 0.17 },
+  saddle_rex: { around: -2.32, above: 0.69, roll: -0.16 },
+  saddle_spino: { around: -0.94, above: 0.72, roll: -0.29 },
   saddle_brachio: { around: 0.95, above: 0.40, roll: 0.05 },
 };
 
