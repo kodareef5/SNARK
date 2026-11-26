@@ -12,7 +12,7 @@ import { MOST_GROUPS, POSE, SET_PIECE, fragmentPose, shrinkPose } from "../../fr
 import type { Falling } from "../../rubble.ts";
 import type { RemoteSample } from "../../session.ts";
 import type { Camera } from "../camera.ts";
-import { showMaterials, type Characters } from "../characters.ts";
+import type { Characters } from "../characters.ts";
 import type { Clouds } from "../clouds.ts";
 import type { Draws } from "../draws.ts";
 import type { Dropped } from "../dropped.ts";
@@ -83,6 +83,8 @@ export class LooseEntities implements Pass {
   private readonly cursor: Uint32Array;
   /** Per mesh, the level its falling pieces were last drawn at, or -1. */
   private readonly fallLevel: Int8Array;
+  /** Per mesh, the level its entities were last drawn at, or -1: those drawn lit, then those drawn plain. */
+  private readonly entityLevel: readonly [Int8Array, Int8Array];
   /** Per mesh counted in `counts`, the square of how far off the nearest instance is, and how far along the view they all lie. */
   private readonly nearest: Float32Array;
   private readonly from: Float32Array;
@@ -127,6 +129,7 @@ export class LooseEntities implements Pass {
     this.counts = new Uint32Array(n);
     this.cursor = new Uint32Array(n);
     this.fallLevel = new Int8Array(n).fill(-1);
+    this.entityLevel = [new Int8Array(n).fill(-1), new Int8Array(n).fill(-1)];
     this.nearest = new Float32Array(n);
     this.from = new Float32Array(n);
     this.to = new Float32Array(n);
@@ -413,7 +416,7 @@ export class LooseEntities implements Pass {
       visible++;
     }
     if (visible === 0) return;
-    const total = this.drawTallied(cam, p.transientCount, plain ? DRAW_PLAIN : 0);
+    const total = this.drawTallied(cam, p.transientCount, plain ? DRAW_PLAIN : 0, this.entityLevel[Number(plain)]!, null, true);
     for (let i = 0; i < remote.count; i++) {
       const kind = remote.kind[i]!;
       if (p.lit && this.speciesKind[kind] !== Number(plain)) continue;
@@ -453,19 +456,19 @@ export class LooseEntities implements Pass {
 
   /**
    * Draws what was tallied, the instances of each mesh together, from transient instance `total` on. Returns where
-   * they end. With `levels`, each mesh's are drawn at the level the nearest point of the nearest asks for, which it
-   * keeps there; otherwise at their finest however far off, so only their materials are told how near they are.
-   * `pieces` gives a mesh's draw its DRAW_PIECE flag.
+   * they end. Each mesh's are drawn at the level the nearest point of the nearest asks for, which `levels` keeps.
+   * `pieces` gives a mesh's draw its DRAW_PIECE flag. With `centred`, its materials are as wide as the middle of the
+   * nearest shows them, as a body's are, and not as its nearest point does.
    */
-  private drawTallied(cam: Camera, total: number, flags = 0, levels: Int8Array | null = null, pieces: Uint32Array | null = null): number {
+  private drawTallied(cam: Camera, total: number, flags: number, levels: Int8Array, pieces: Uint32Array | null = null, centred = false): number {
     const counts = this.counts;
     for (let m = 0; m < counts.length; m++) {
       this.cursor[m] = total;
       if (counts[m]! > 0) {
-        const near = levels ? Math.max(0, Math.sqrt(this.nearest[m]!) - this.radiusOfMesh[m]!) : Math.sqrt(this.nearest[m]!);
-        const level = levels ? (levels[m] = this.assets.choose(this.assets.table.error[m]!, near, levels[m]!)) : 0;
-        if (levels) this.assets.wantTextured(m, level, near);
-        else showMaterials(this.assets, m, near);
+        const middle = Math.sqrt(this.nearest[m]!), edge = Math.max(0, middle - this.radiusOfMesh[m]!);
+        const near = centred ? middle : edge;
+        const level = (levels[m] = this.assets.choose(this.assets.table.error[m]!, edge, levels[m]!));
+        this.assets.wantTextured(m, level, near);
         this.put.nearAt = near;
         this.put.draw(m, level, TRANSIENT_BUFFER, total, counts[m]!, 0, 0, 0, pieces ? flags | pieces[m]! : flags, cam.passesOf(this.from[m]!, this.to[m]!));
       }

@@ -134,3 +134,26 @@ test("a client draws a bag of one stack as the item lying, where the pack has it
   w.remote.kind[bag] = w.kind("core:cache");
   expect(drawn()[0]).toBe(false);
 });
+
+test("a lying item is drawn at a coarser level far off, and a pile at the level its nearest asks for", () => {
+  const box = boxMesh([0.08, 0.05, 0.06], 15);
+  const stone = lying({ id: "core:stone", lods: [box, { ...box, error: 0.02 }, { ...box, error: 0.08 }] }, "core:stone/dropped");
+  const meshes = [...grayboxMeshes(CORE_CONTENT), ...mannequinMeshes(), ...weaponMeshes(), stone];
+  const { files, manifest } = splitPack(buildPack(meshes, defaultPalette(), authoredClips(), []), "dropped-levels");
+  const w = sceneWorld({}, {}, { files, manifest });
+  /** The level of each draw of the lying stone, and how many lie in them, once what it wants has come. */
+  const drawn = (): [number[], number] => {
+    let p = w.frame();
+    for (let k = 0; k < 20; k++) p = w.frame();
+    const draws = w.draws(p, "core:stone/dropped");
+    return [[...new Set(draws.map((d) => p.drawLod[d]!))], Math.max(0, ...draws.map((d) => p.drawInstances[d]!))];
+  };
+  // The camera stands at z = 20 and looks along +z.
+  const bag = w.place("core:bag", 32, 23, { held: "core:stone" });
+  expect(drawn()).toEqual([[0], 1]);
+  w.remote.z[bag] = 110;
+  expect(drawn()).toEqual([[2], 1]);
+  // One draw holds every stone, so one lying near keeps the far ones fine too.
+  w.place("core:bag", 32, 23, { held: "core:stone" });
+  expect(drawn()).toEqual([[0], 2]);
+});
