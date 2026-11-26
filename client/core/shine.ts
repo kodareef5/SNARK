@@ -1,6 +1,7 @@
-// A thing that holds loot shines for a moment, as a vehicle worth walking to does (shimmer.ts): as a survivor comes
-// near it, and again when the aim comes to rest on it. Which hold loot is content's (StructureDef.holds) and whether
-// they are searched the server's (OWN_RULES); one the server said was searched does not shine. How it is drawn is
+// A street thing that holds loot shines for a moment, as a vehicle worth walking to does (shimmer.ts): as a survivor
+// comes near it, and again when the aim comes to rest on it. A dead car or boat never does, so a shimmer on a vehicle
+// still means it can be driven. Which hold loot is content's (StructureDef.holds) and whether they are searched the
+// server's (OWN_RULES); one the server said was searched does not shine. How it is drawn is
 // render/passes/near-store.ts (`shine`).
 
 import type { Registry } from "../../shared/content/registry.ts";
@@ -33,7 +34,7 @@ export class Shine implements FramePart {
     const s = f.session;
     // Seated, nothing is being looked for.
     if (!f.alive || f.car || f.passenger) this.count = 0;
-    else this.update(f.nowMs, f.world.structs, s.registry, f.bx, f.by, f.bz, (tag) => (holdIsVehicle(tag) ? s.searchWrecks : s.searchStreet), this.aimed());
+    else this.update(f.nowMs, f.world.structs, s.registry, f.bx, f.by, f.bz, (tag) => !holdIsVehicle(tag) && s.searchStreet, this.aimed());
     f.scene.shine = this;
   }
 
@@ -74,7 +75,10 @@ export class Shine implements FramePart {
       for (const [ref] of asks) if (this.begin(ref, now)) this.near.add(ref);
       if (this.last.size > 512) for (const [ref, at] of this.last) if (now - at > SHIMMER_GAP_MS) this.last.delete(ref);
     }
-    if (aimed >= 0) this.begin(aimed, now);
+    if (aimed >= 0) {
+      const t = structs.chunks[aimed >>> 16], tag = t ? reg.holds[t.kind[aimed & 0xffff]!] : null;
+      if (tag != null && on(tag)) this.begin(aimed, now);
+    }
   }
 
   /** Begins the shine of `ref` if it may. False only where four are going already. */

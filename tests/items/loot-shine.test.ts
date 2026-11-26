@@ -58,3 +58,15 @@ test("four shine at once at the most, the nearest first, and none where the serv
   const off = street(3);
   expect(off.at(0, 99, -1, false)).toEqual([]);
 });
+
+test("a dead car holds loot and never shines, come upon or aimed at, so a shimmer still means a vehicle drives", () => {
+  const structs = new StructureStore({ chunksX: 4, chunksZ: 4 }, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
+  const wreck = structs.add(kind("core:compact_abandoned_beige"), 100, 0, 100, 0, 0, 500);
+  const bin = structs.add(kind("core:zzstreet_bin"), 103, 0, 100, 0, 0, 500);
+  expect(reg.holds[kind("core:compact_abandoned_beige")]).toBe("wreck");
+  const shine = new Shine();
+  const frame = { alive: true, car: false, passenger: false, nowMs: 0, bx: 99, by: 0, bz: 100, world: { structs }, session: { registry: reg, searchStreet: true, searchWrecks: true }, scene: {} };
+  shine.aimed = () => wreck;
+  shine.step(frame as never);
+  expect(Array.from(shine.refs.subarray(0, shine.count))).toEqual([bin]);
+});
