@@ -1,0 +1,62 @@
+/* The wardrobe page (wardrobe.html): editions, the draft with its print sheet, and the person stage. */
+.wardrobe-page .wardrobe-grid { display: grid; grid-template-columns: minmax(250px, 0.8fr) minmax(380px, 1.25fr) minmax(320px, 1fr); gap: 18px; align-items: start }
+.wardrobe-page .wardrobe-status { display: flex; gap: 6px 18px; flex-wrap: wrap; align-items: baseline; padding-block: 12px }
+.wardrobe-page .wardrobe-status p { margin: 0 }
+.wardrobe-page h3 { margin: 18px 0 8px }
+.wardrobe-page .fields { margin-block: 6px }
+.wardrobe-page .fields label { display: flex; gap: 6px; align-items: center; font-size: .9rem; color: var(--dim) }
+.wardrobe-page .fields label.grow input { flex: 1; min-width: 0 }
+
+.wardrobe-page .edition { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; padding: 8px; border: 1px solid var(--edge); border-radius: 6px; margin-bottom: 8px }
+.wardrobe-page .edition.picked { border-color: #24588d; box-shadow: 0 0 0 1px #24588d }
+.wardrobe-page .edition.retired { background: #f3f4f6 }
+.wardrobe-page .edition.retired .what b { color: var(--dim) }
+.wardrobe-page .edition .thumb { padding: 2px; display: grid; place-items: center; min-width: 48px; min-height: 48px; background: repeating-conic-gradient(#e4e8ed 0 25%, #fff 0 50%) 50% / 12px 12px }
+.wardrobe-page .edition .thumb img { display: block; object-fit: contain; image-rendering: auto }
+.wardrobe-page .edition .no-print { font-size: .7rem; color: var(--dim) }
+.wardrobe-page .edition .what { font-size: .9rem; line-height: 1.35; min-width: 0; overflow-wrap: anywhere }
+.wardrobe-page .edition .acts { grid-column: 1 / -1; display: flex; gap: 6px; flex-wrap: wrap }
+.wardrobe-page .edition .acts button { font-size: .82rem; padding: .25em .6em }
+.wardrobe-page .starts { display: grid; gap: 6px }
+.wardrobe-page .starts button { text-align: left }
+
+.wardrobe-page .sw { display: inline-block; width: 16px; height: 16px; border-radius: 3px; border: 1px solid #0003; vertical-align: middle; margin-right: 3px; padding: 0 }
+.wardrobe-page .sw.own { background: repeating-linear-gradient(45deg, #fff 0 3px, #c9d2dc 3px 6px) }
+.wardrobe-page .palette { display: flex; flex-wrap: wrap; gap: 2px; max-height: 128px; overflow-y: auto; padding: 4px; border: 1px solid var(--edge); border-radius: 6px }
+.wardrobe-page .palette .sw { width: 18px; height: 18px; margin: 0; cursor: pointer }
+.wardrobe-page .palette .sw.on { outline: 2px solid #15263b; outline-offset: 1px }
+.wardrobe-page .wells { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap }
+.wardrobe-page .wells button { display: flex; gap: 6px; align-items: center }
+.wardrobe-page .wells button .sw { width: 22px; height: 22px }
+.wardrobe-page .wells button.on { border-color: #24588d; box-shadow: 0 0 0 1px #24588d }
+
+.wardrobe-page .sheet-box { display: grid; place-items: center; padding: 10px; border: 1px solid var(--edge); border-radius: 6px; background: repeating-conic-gradient(#e4e8ed 0 25%, #fff 0 50%) 50% / 16px 16px }
+.wardrobe-page #sheet { width: 100%; max-width: 384px; height: auto; touch-action: none; cursor: grab; box-shadow: 0 1px 4px #0003 }
+.wardrobe-page .layers { display: grid; gap: 4px; margin-block: 8px }
+.wardrobe-page .layer { display: flex; gap: 4px; align-items: center; padding: 3px; border: 1px solid var(--edge); border-radius: 5px }
+.wardrobe-page .layer.picked { border-color: #24588d; background: #eef4fb }
+.wardrobe-page .layer.wrong { border-color: var(--bad) }
+.wardrobe-page .layer button { padding: .2em .55em; font-size: .85rem }
+.wardrobe-page .layer button:first-child { border: 0; background: none; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 70% }
+.wardrobe-page .layer-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px 12px }
+.wardrobe-page .layer-fields label, .wardrobe-page .place-fields label { display: grid; gap: 2px; font-size: .82rem; color: var(--dim) }
+.wardrobe-page .layer-fields label.wide { grid-column: 1 / -1 }
+.wardrobe-page .place { display: grid; grid-template-columns: minmax(0, 220px) 1fr; gap: 12px; align-items: start }
+.wardrobe-page #place { width: 100%; height: auto; border: 1px solid var(--edge); border-radius: 4px }
+.wardrobe-page .place-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px }
+.wardrobe-page .publish-bar { margin-top: 18px }
+.wardrobe-page .faults { margin: 8px 0 0; padding-left: 1.2em; color: var(--bad); font-size: .9rem }
+.wardrobe-page .faults:empty { display: none }
+
+.wardrobe-page .wardrobe-stage iframe { width: 100%; aspect-ratio: 4 / 5; border: 1px solid var(--edge); border-radius: 6px; background: #20262d; display: block }
+.wardrobe-page .wardrobe-stage { position: sticky; top: 12px }
+
+@media (max-width: 1350px) {
+  .wardrobe-page .wardrobe-grid { grid-template-columns: minmax(240px, 0.8fr) minmax(360px, 1.3fr) }
+  .wardrobe-page .wardrobe-stage { grid-column: 1 / -1; position: static }
+  .wardrobe-page .wardrobe-stage iframe { max-width: 520px }
+}
+@media (max-width: 860px) {
+  .wardrobe-page .wardrobe-grid { grid-template-columns: 1fr }
+  .wardrobe-page .place { grid-template-columns: 1fr }
+}

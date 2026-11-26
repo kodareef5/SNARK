@@ -31,6 +31,7 @@ const UI_FILES = new Set([
   "admin.css", "investigate.css", "overview.css", "scene-studio.css",
   "admin.js", "cluster.js", "overview.js", "chat.js", "shell.js", "investigate.js", "map.js",
   "settings.js", "loadouts.js", "drops.js", "events.js", "cast.js", "first-frame.js", "sounds.js", "board.js", "scene-studio.js", "screens.js", "screens-stage.js", "permissions.js", "acts.js",
+  "wardrobe.js", "wardrobe.css",
 ]);
 const OLD_UI_FILES = /^(?:(?:scene-studio|board)\.js(?:\.map)?|scene-studio\.css)$/;
 
@@ -119,6 +120,9 @@ export function adminSite(req: Request, url: URL, o: AdminSite): Promise<Respons
   if (PEOPLE_PATHS.includes(path)) return refused(req, o.who, o.gate) ?? o.people?.(req, path) ?? notFound();
   if (path === "/admin/screens" || path === "/admin/screens/") {
     return refused(req, o.who, o.gate) ?? (!mayRead(req) ? refuseMethod() : path === "/admin/screens/" ? privatePage(o.dir, req, "screens.html") : redirect(`/admin/screens/${url.search}`));
+  }
+  if (path === "/admin/wardrobe" || path === "/admin/wardrobe/") {
+    return refused(req, o.who, o.gate) ?? (!mayRead(req) ? refuseMethod() : path === "/admin/wardrobe/" ? privatePage(o.dir, req, "wardrobe.html") : redirect(`/admin/wardrobe/${url.search}`));
   }
   // Permissions was the cluster's page. It is a world's now: its old address goes to this world's, and its old API is gone.
   if (OLD_PERMISSIONS_PATHS.includes(path)) return notFound();
