@@ -80,10 +80,10 @@ const legHem = (name: string, into: number[], from: number, to: number, side: 1 
 });
 
 /** Along an arm hem's frame, a little short of the wrist. */
-const wrist = (from: number, to: number, hand: number) => (rest: Rest): number => {
+const wrist = (from: number, to: number, hand: number, short = 0.01) => (rest: Rest): number => {
   const a = between(joint(rest, from), joint(rest, to));
   const d = [0, 1, 2].map((k) => joint(rest, hand)[k]! - joint(rest, from)[k]!);
-  return d[0]! * a[0] + d[1]! * a[1] + d[2]! * a[2] - 0.01;
+  return d[0]! * a[0] + d[1]! * a[1] + d[2]! * a[2] - short;
 };
 
 // ---- Offsets ----
@@ -234,8 +234,8 @@ export const HOODIE: CutDef = {
   hems: [
     collar(0.01, 0.03, [SKIN_NECK]),
     waistDown(0.03, 0.05, -0.004),
-    armHem("left cuff", [SKIN_WRIST_L], B_UPPER_ARM_L, B_LOWER_ARM_L, 1, { atLeast: wrist(B_UPPER_ARM_L, B_LOWER_ARM_L, B_HAND_L), rib: 0.05, flare: -0.008, flareOver: 0.05 }),
-    armHem("right cuff", [SKIN_WRIST_R], B_UPPER_ARM_R, B_LOWER_ARM_R, -1, { atLeast: wrist(B_UPPER_ARM_R, B_LOWER_ARM_R, B_HAND_R), rib: 0.05, flare: -0.008, flareOver: 0.05 }),
+    armHem("left cuff", [SKIN_WRIST_L], B_UPPER_ARM_L, B_LOWER_ARM_L, 1, { atLeast: wrist(B_UPPER_ARM_L, B_LOWER_ARM_L, B_HAND_L, 0.025), rib: 0.05, flare: -0.004, flareOver: 0.05 }),
+    armHem("right cuff", [SKIN_WRIST_R], B_UPPER_ARM_R, B_LOWER_ARM_R, -1, { atLeast: wrist(B_UPPER_ARM_R, B_LOWER_ARM_R, B_HAND_R, 0.025), rib: 0.05, flare: -0.004, flareOver: 0.05 }),
   ],
   offset: (zone, p, rest) => topOffset(0.016, 0.026, 0.02)(zone, p, rest) + (zone === SKIN_NECK ? 0 : hood(p, rest)), least: 0.008, smooth: 16, drape: DRAPE,
   region: (p, inside, hem, rest) => {
@@ -259,8 +259,8 @@ export const JEANS: CutDef = {
   name: "jeans", sheet: "bottom", covers: HIDE_LEGS,
   hems: [
     waistUp(0.005),
-    legHem("left hem", [SKIN_ANKLE_L, SKIN_FOOT_L], B_LOWER_LEG_L, B_FOOT_L, 1, { flare: 0.004, atLeast: wrist(B_LOWER_LEG_L, B_FOOT_L, B_FOOT_L) }),
-    legHem("right hem", [SKIN_ANKLE_R, SKIN_FOOT_R], B_LOWER_LEG_R, B_FOOT_R, -1, { flare: 0.004, atLeast: wrist(B_LOWER_LEG_R, B_FOOT_R, B_FOOT_R) }),
+    legHem("left hem", [SKIN_ANKLE_L, SKIN_FOOT_L], B_LOWER_LEG_L, B_FOOT_L, 1, { flare: 0.004, atLeast: wrist(B_LOWER_LEG_L, B_FOOT_L, B_FOOT_L, 0.03) }),
+    legHem("right hem", [SKIN_ANKLE_R, SKIN_FOOT_R], B_LOWER_LEG_R, B_FOOT_R, -1, { flare: 0.004, atLeast: wrist(B_LOWER_LEG_R, B_FOOT_R, B_FOOT_R, 0.03) }),
   ],
   offset: legOffset(0.005, 0.01, 0.016), least: 0.0035, smooth: 14,
   region: (p, inside, hem, rest) => {
