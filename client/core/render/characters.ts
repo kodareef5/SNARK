@@ -1746,15 +1746,19 @@ export class Characters {
     const worn = gear ? this.worn[gear[gearAt + GEAR_WORN + SLOT_HEAD]!] : null;
     const cut = worn && worn.slot === SLOT_HEAD ? (set.armor[worn.set]?.[SLOT_HEAD] ?? -1) : -1;
     const capped = cut >= 0 && this.assets.known(cut), stages = HAIR_STAGES.length;
-    const paged = (m: number): number => (m >= 0 && this.assets.known(m) ? m : -1);
     if (capped && worn!.sealed) {
       this.hairMesh = this.beardMesh = -1;
       return;
     }
     const style = view[LOOK_HAIR]! * stages, beard = view[LOOK_BEARD]! * stages;
     const grown = stageOf(view[LOOK_HAIR_LENGTH]!), bearded = stageOf(view[LOOK_BEARD_LENGTH]!);
-    this.hairMesh = capped ? paged(set.hat[view[LOOK_HAIR]!] ?? -1) : grown > 0 && paged(set.hair[style + grown] ?? -1) >= 0 ? set.hair[style + grown]! : (set.hair[style] ?? -1);
-    this.beardMesh = bearded > 0 && paged(set.beard[beard + bearded] ?? -1) >= 0 ? set.beard[beard + bearded]! : (set.beard[beard] ?? -1);
+    this.hairMesh = capped ? this.paged(set.hat[view[LOOK_HAIR]!] ?? -1) : grown > 0 && this.paged(set.hair[style + grown] ?? -1) >= 0 ? set.hair[style + grown]! : (set.hair[style] ?? -1);
+    this.beardMesh = bearded > 0 && this.paged(set.beard[beard + bearded] ?? -1) >= 0 ? set.beard[beard + bearded]! : (set.beard[beard] ?? -1);
+  }
+
+  /** `m` where its page has come, else -1, asking for it. */
+  private paged(m: number): number {
+    return m >= 0 && this.assets.known(m) ? m : -1;
   }
 
   /**
