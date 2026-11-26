@@ -9,7 +9,7 @@
 // reports, with raw/osm/all.json kept so the world stage can propose again, and the stages' keys. A stage's key is its
 // inputs and its code, never a path, so on a machine at the same commit tools/maps/city.ts finds every stage done, and an
 // edit to the build's code builds the map again from the kit alone. An edit that reaches a stage reading the downloads
-// (prepare to ways) makes city.ts fetch them first: raw/KIT marks a kit's work folder.
+// makes city.ts fetch them first (raw/KIT marks a kit's work folder) and hold them to downloads.json's digests.
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, readlinkSync, renameSync, symlinkSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";

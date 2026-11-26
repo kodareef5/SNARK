@@ -60,19 +60,22 @@ export interface Stage {
   own?: { files: string[]; sections: string[]; folders?: string[] };
   /** It writes `<maps>/<city>.snmap`, which every cut shares, and stands done only while the stamp beside it is its own. */
   stamped?: boolean;
+  /** The fetch jobs whose downloads in raw/ it reads, which a kit leaves out (`jobOf` names a download's job). */
+  reads?: string[];
 }
 
 export const STAGES: Stage[] = [
   { name: "frame", run: py("frame.py", "--force"), code: [join(LEGACY, "frame.py")] },
   { name: "fetch", run: py("fetch.py", "tiger", "dem", "nlcd", "fema", "bathymetry", "osm"), code: [join(LEGACY, "fetch.py"), join(LEGACY, "osm_local.py"), ...["buildings", "features", "osm", "streets", "ways"].map((q) => join(LEGACY, `${q}.overpassql`))] },
-  { name: "prepare", run: py("prepare.py"), code: [join(LEGACY, "prepare.py"), join(LEGACY, "streets.py")] },
-  { name: "attributes", run: (work) => ["bun", join(ROOT, "tools/mapworld/fetch-attributes.ts"), work], code: [join(ROOT, "tools/mapworld/fetch-attributes.ts")] },
-  { name: "split", run: py("split.py"), code: [join(LEGACY, "split.py")] },
+  { name: "prepare", run: py("prepare.py"), code: [join(LEGACY, "prepare.py"), join(LEGACY, "streets.py")], reads: ["tiger", "dem", "nlcd", "fema", "osm"] },
+  { name: "attributes", run: (work) => ["bun", join(ROOT, "tools/mapworld/fetch-attributes.ts"), work], code: [join(ROOT, "tools/mapworld/fetch-attributes.ts")], reads: ["fema"] },
+  { name: "split", run: py("split.py"), code: [join(LEGACY, "split.py")], reads: ["osm"] },
   { name: "future", run: py("future.py"), code: [join(LEGACY, "future.py"), join(LEGACY, "tunnels.py")] },
   { name: "fine", run: py("fine.py"), code: [join(LEGACY, "fine.py"), join(LEGACY, "tunnels.py")] },
-  { name: "bathymetry", run: py("bathy.py"), code: [join(LEGACY, "bathy.py")] },
-  { name: "labels", run: py("labels.py"), code: [join(LEGACY, "labels.py")], own: { files: ["heights.json"], sections: [] } },
-  { name: "ways", run: py("ways.py"), code: [join(LEGACY, "ways.py")] },
+  { name: "bathymetry", run: py("bathy.py"), code: [join(LEGACY, "bathy.py")], reads: ["bathymetry"] },
+  { name: "labels", run: py("labels.py"), code: [join(LEGACY, "labels.py")], own: { files: ["heights.json"], sections: [] }, reads: ["osm"] },
+  { name: "ways", run: py("ways.py"), code: [join(LEGACY, "ways.py")], reads: ["osm"] },
+  // The world stage reads raw/osm/all.json too, which a kit keeps.
   { name: "world", run: py("world.py", "--accept"), code: [join(LEGACY, "world.py")], own: { files: ["world.json"], sections: ["world"] } },
   { name: "vocabulary", run: py("vocabulary.py"), code: [join(LEGACY, "vocabulary.py"), join(HERE, "rules/tables.json"), join(ROOT, "tools/mapworld/rules/default.json")],
     own: { files: ["rules.json", "places.json", "compositions.json", "districts.json"], sections: ["ruins"] } },
@@ -180,6 +183,29 @@ function stampHolds(maps: string, city: string, cut: string, key: string): boole
   } catch {
     return false;
   }
+}
+
+/** The fetch job a download in downloads.json is of, by the name fetch.py keeps it under. */
+export function jobOf(name: string, settings: Json): string {
+  if (name.startsWith("tl_")) return "tiger";
+  if (name === ((settings.nlcd ?? {}) as Json).file) return "nlcd";
+  return name.includes("/") ? name.split("/")[0]! : name;
+}
+
+interface Download { bytes?: number; sha256?: string; md5?: string }
+
+/**
+ * The jobs whose downloads differ between two downloads.json records: one fetched, gone or of other bytes. A record
+ * without a SHA-256 (an extract recorded before they had one) is held to its MD5.
+ */
+export function changedJobs(before: Record<string, Download>, after: Record<string, Download>, settings: Json): string[] {
+  const same = (a: Download | undefined, b: Download | undefined): boolean => {
+    if (!a || !b || a.bytes !== b.bytes) return false;
+    if (a.sha256 && b.sha256) return a.sha256 === b.sha256;
+    return Boolean(a.md5 && b.md5 && a.md5 === b.md5);
+  };
+  const names = new Set([...Object.keys(before), ...Object.keys(after)]);
+  return [...new Set([...names].filter((n) => !same(before[n], after[n])).map((n) => jobOf(n, settings)))].sort();
 }
 
 /** One run of a city's stages: the CLI's whole work, its folders and stage table open to a test. */
@@ -292,15 +318,18 @@ function stagesOf(name: string, p: Prepared): { cut: string; work: string; ran: 
   const now: Record<string, string> = {};
   // A stage stands done when its key is today's; the map's stage also needs the stamp beside the map to be its own.
   const done = (s: Stage): boolean => keys[s.name] === now[s.name] && (!s.stamped || stampHolds(maps, name, cut, now[s.name]!));
-  for (const [i, stage] of stages.entries()) {
+  for (const stage of stages) {
     const own = stage.own ? [JSON.stringify(stage.own.sections.map((s) => settings[s] ?? null)),
       ...stage.own.files.map((f) => (existsSync(join(source, f)) ? readFileSync(join(source, f)) : `no ${f}`)),
       ...(stage.own.folders ?? []).flatMap((d) => overlay(join(source, d)).flatMap((f) => [`${d}/${f}`, readFileSync(join(source, d, f))]))] : [];
     const code = stage.code.some((f) => f.endsWith(".py")) ? [...stage.code, COMMON] : stage.code;
-    const key = sha(chain, stage.name, ...code.map((f) => readFileSync(f)), ...own);
-    chain = key;
-    now[stage.name] = key;
-    if (i < from || i > to) continue;
+    chain = sha(chain, stage.name, ...code.map((f) => readFileSync(f)), ...own);
+    now[stage.name] = chain;
+  }
+  const records = (): Record<string, Download> => (existsSync(join(work, "downloads.json")) ? readJson(join(work, "downloads.json")) : {}) as Record<string, Download>;
+  for (let i = from; i <= to; i++) {
+    const stage = stages[i]!;
+    const key = now[stage.name]!;
     if (done(stage) && !only) {
       console.log(`== ${stage.name}: unchanged`);
       continue;
@@ -308,11 +337,24 @@ function stagesOf(name: string, p: Prepared): { cut: string; work: string; ran: 
     if (keys[stage.name] === key && stage.stamped) console.log(`== ${stage.name}: ${name}.snmap is another cut's or build's`);
     // A kit's work folder (tools/maps/kit.ts) has no downloads: a stage that reads them runs after fetch makes them.
     const kitted = join(work, "raw/KIT");
-    if (existsSync(kitted) && names.includes("prepare") && i >= names.indexOf("prepare") && i <= names.indexOf("ways")) {
+    if (existsSync(kitted) && stage.reads?.length && names.includes("fetch")) {
       console.log(`== ${stage.name} reads the downloads a kit leaves out: fetching them first`);
-      const fetched = Bun.spawnSync(stages[names.indexOf("fetch")]!.run(work, name), { cwd, stdout: "inherit", stderr: "inherit" });
+      const kept = records();
+      const fetched = Bun.spawnSync(stages[names.indexOf("fetch")]!.run(work, name), { cwd, env: process.env, stdout: "inherit", stderr: "inherit" });
       if (fetched.exitCode !== 0) throw new Error(`${name}: fetch failed with ${fetched.exitCode}`);
       unlinkSync(kitted);
+      // A source served anew under the same request (a newer extract) must not meet layers made from the old one.
+      const changed = changedJobs(kept, records(), settings);
+      const first = stages.findIndex((s) => s.reads?.some((j) => changed.includes(j)));
+      if (first >= 0 && first < i) {
+        for (const later of stages.slice(first)) delete keys[later.name];
+        writeFileSync(keysPath, `${JSON.stringify(keys, null, 2)}\n`);
+        const why = `${changed.join(", ")} fetched again differs from what the kit's layers were made from (downloads.json)`;
+        if (first < from || only) throw new Error(`${name}: ${why}; run bun tools/maps/city.ts ${name} --from ${names[first]}`);
+        console.log(`== ${why}: from ${names[first]} again`);
+        i = first - 1;
+        continue;
+      }
     }
     const t0 = performance.now();
     console.log(`== ${stage.name}`);
