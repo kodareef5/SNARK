@@ -13,7 +13,7 @@ import { VehicleCards } from "./vehicle-cards.ts";
 
 /** Wrecks burning at once, nearest first, and the cards of each: its flames and its puffs. */
 export const MAX_WRECK_FIRES = 8;
-const FLAMES = 2, PUFFS = 5;
+const FLAMES = 2, PUFFS = 7;
 /** Metres out to which a fire is drawn, and from which it fades to nothing there. */
 const REACH = 220, FADE_FROM = 170;
 /** Metres a puff rises in its life and leans downwind by then, the seconds that takes, and the way the wind goes. */
@@ -66,12 +66,12 @@ export class WreckFires extends VehicleCards {
       const l = Math.hypot(x, z) || 1, rx = z / l, rz = -x / l;
       for (let f = 0; f < FLAMES; f++) {
         const flick = 0.72 + 0.28 * Math.sin(t * (11 + 5 * f) + seed * 40 + f * 2.1) * Math.sin(t * 3.7 + seed * 9 + f);
-        const size = (1.5 - 0.5 * f) * (0.9 + 0.2 * flick);
-        this.glow(x + rx * (f - 0.5) * 0.9, y + high * (0.55 + 0.25 * f) + size * 0.6, z + rz * (f - 0.5) * 0.9, rx * size, 0, rz * size, 0, size * 1.25, 0, FLAME, fade * flick, 1.6);
+        const size = (2.3 - 0.7 * f) * (0.9 + 0.2 * flick);
+        this.glow(x + rx * (f - 0.5) * 0.9, y + high * (0.55 + 0.25 * f) + size * 0.6, z + rz * (f - 0.5) * 0.9, rx * size, 0, rz * size, 0, size * 1.25, 0, FLAME, fade * flick, 2.4);
       }
       for (let q = 0; q < PUFFS; q++) {
         const life = (t / LIFE + q / PUFFS + seed) % 1;
-        const size = 0.9 + 3.4 * life, shows = 0.82 * fade * Math.sin(Math.PI * Math.min(1, life * 1.15)) ** 0.7;
+        const size = 1.3 + 3.6 * life, shows = 0.82 * fade * Math.sin(Math.PI * Math.min(1, life * 1.15)) ** 0.7;
         this.puff(x + WIND[0] * LEAN * life * life, y + high + 1 + RISE * life, z + WIND[1] * LEAN * life * life, rx * size, 0, rz * size, 0, size, 0, y, shows, Math.floor((seed + q / PUFFS) * 255), Math.round(200 * life));
       }
     }

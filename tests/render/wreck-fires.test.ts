@@ -28,8 +28,8 @@ test("a burning wreck near has its flames and its smoke, and one far off or not 
   const kinds = kindsOf(p);
   // Two flames always; a puff newly risen or all but gone may show too little to send.
   expect(kinds.filter((k) => k === DETAIL_GLOW).length).toBe(2);
-  expect(kinds.filter((k) => k === DETAIL_SMOKE).length).toBeGreaterThanOrEqual(3);
-  expect(kinds.length).toBeLessThanOrEqual(7);
+  expect(kinds.filter((k) => k === DETAIL_SMOKE).length).toBeGreaterThanOrEqual(4);
+  expect(kinds.length).toBeLessThanOrEqual(9);
   // Every card stands over the wreck, between its deck and where its smoke ends.
   for (let n = 0; n < p.detailCount; n++) {
     const o = n * DETAIL_FLOATS, d = p.details;
@@ -51,8 +51,8 @@ test("only the nearest eight burn at once", () => {
   const burning = reg.index.get(burningKind("core:jon_boat"))!;
   for (let k = 0; k < 14; k++) s.add(burning, 205 + k * 6, 0, 200, 0, 0, 1);
   fires.build(p, cam, s, 8, 8, 0);
-  expect(fires.count).toBeLessThanOrEqual(MAX_WRECK_FIRES * 7);
-  expect(fires.count).toBeGreaterThan(MAX_WRECK_FIRES * 4);
+  expect(fires.count).toBeLessThanOrEqual(MAX_WRECK_FIRES * 9);
+  expect(fires.count).toBeGreaterThan(MAX_WRECK_FIRES * 5);
   fires.write(p);
   let far = 0;
   for (let n = 0; n < p.detailCount; n++) far = Math.max(far, p.details[n * DETAIL_FLOATS]!);
