@@ -10,6 +10,7 @@ import {
 import type { Registry } from "../content/registry.ts";
 import { REGION_KEYS, type PopulationDef, type Span } from "../content/kinds/populations.ts";
 import { Rng } from "../rng.ts";
+import { WORN_FIELDS, WORN_LENGTH } from "../sim/entities.ts";
 import type { Dye, OutfitDoc, PartName, PartSeeds, WornDoc } from "./doc.ts";
 
 export type { PopulationDef as Population } from "../content/kinds/populations.ts";
@@ -21,6 +22,8 @@ export interface Person {
   readonly sex: number;
   /** Which of the population's outfits it wears, or -1 where it has none. */
   readonly outfit: number;
+  /** The main colour each piece of that outfit is dyed, 0 for its own. */
+  readonly dyes: readonly number[];
 }
 
 /** Each part's tag. A new part takes a new tag; a tag is never reused or changed. */
@@ -150,7 +153,11 @@ export function personFrom(seed: number, population: PopulationDef, out: Uint8Ar
 
   rng = stream(seed, "outfit", locks);
   const outfit = weighted(rng, p.outfits?.map((o) => o.weight));
-  return { look: out, sex, outfit };
+  const dyes = outfit < 0 ? [] : p.outfits![outfit]!.wear.map((_, i) => {
+    const from = p.outfits![outfit]!.dyes?.[i];
+    return from?.length ? from[rng.int(from.length)]! : 0;
+  });
+  return { look: out, sex, outfit, dyes };
 }
 
 /**
@@ -217,6 +224,28 @@ export function storeIdOf(reg: Registry, number: number): number {
 export function populationOf(reg: Registry, number: number, revision: number, store: StorePopulations | null = null): PopulationDef | undefined {
   const list = populationsOf(reg).list;
   return number < list.length ? list[number] : store?.population(number - list.length + 1, revision);
+}
+
+/**
+ * What `person` of `p` wears as its seed draws it: each garment of its outfit in its wardrobe slot and dye, the first to a
+ * slot kept. Armour is the gear's. WORN_LENGTH numbers, as EntityStore.wardrobes holds them.
+ */
+export function wornOf(reg: Registry, p: PopulationDef, person: Person, out: Uint32Array = new Uint32Array(WORN_LENGTH)): Uint32Array {
+  out.fill(0);
+  if (person.outfit < 0) return out;
+  p.outfits![person.outfit]!.wear.forEach((id, i) => {
+    const item = reg.index.get(id) ?? 0, slot = item ? reg.garmentSlot[item]! : -1;
+    if (slot >= 0 && out[slot * WORN_FIELDS] === 0) out.set([item, 0, person.dyes[i] ?? 0], slot * WORN_FIELDS);
+  });
+  return out;
+}
+
+/** The body a seed form names: its look and what its seed dresses it in; null for a population or edit the registry and `store` lack. */
+export function bodyOfSeed(reg: Registry, seed: number, population: number, revision: number, store: StorePopulations | null = null): { look: Uint8Array; worn: Uint32Array } | null {
+  const p = populationOf(reg, population, revision, store);
+  if (!p) return null;
+  const person = personFrom(seed, p);
+  return { look: person.look, worn: wornOf(reg, p, person) };
 }
 
 /** The look a seed form names, or null for a population or edit the registry and `store` lack. */

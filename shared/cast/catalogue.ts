@@ -35,8 +35,8 @@ export interface Traits {
 }
 export const TRAIT_NAMES: readonly (keyof Traits)[] = ["calm", "social", "bold", "playful"];
 
-/** What one wears and looks like. `mesh` is the body (the human's until other models come); `wear` are items put on
- * from the game's own (cloth, hide, flak pieces), or none for an outfit of the population's. */
+/** What one wears and looks like. `mesh` is the body (the human's until other models come); `wear` is the armour its role
+ * needs, over the clothes its population's outfits give. */
 export interface Look {
   id: string;
   mesh: string;

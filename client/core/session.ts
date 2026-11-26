@@ -151,7 +151,7 @@ import { readSupply, type SupplyList } from "../../shared/sim/supply.ts";
 import type { MotionSource } from "./render/motion.ts";
 import { TOKEN_BYTES } from "../../shared/voice/packet.ts";
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection } from "../../shared/net/transport.ts";
-import { EntityView, MAX_VIEW, POS_UNITS, VIEW_RING, ViewRing, dequantX, dequantY, readViewDelta } from "../../shared/net/view.ts";
+import { EntityView, MAX_VIEW, POS_UNITS, VIEW_RING, ViewRing, dequantX, dequantY, readViewDelta, type MakePerson } from "../../shared/net/view.ts";
 import { BTN_AIR_REMOTE, BTN_SECONDARY, BTN_SPRINT, Body, MF_DOWN, stanceEye, stepBody, stepOut, type MoveParams } from "../../shared/sim/character.ts";
 import { REACT_RULES } from "../../shared/sim/react.ts";
 import { B_CHEST, ZONE_NONE } from "../../shared/anim/human.ts";
@@ -853,7 +853,7 @@ export class ClientSession {
   /** Where the tap was last told a snapshot's section ended, in bits from the message's start. */
   private marked = 0;
   /** A person sent as a seed, made from the content the server tuned or the cluster's admin populations (shared/people/person.ts). */
-  private readonly makePerson = (seed: number, population: number, revision: number): Uint8Array | null => this.peopleBook.look(this.registry, seed, population, revision);
+  private readonly makePerson: MakePerson = (seed, population, revision) => this.peopleBook.body(this.registry, seed, population, revision);
   private readonly tally = (op: number, kind: number, bits: number): void => {
     this.marked += bits;
     this.tap?.snapshot(SNAP_BODIES, op, kind, bits);

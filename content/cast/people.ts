@@ -1,24 +1,24 @@
 // Cast's people: looks, archetypes, name pools and the lines they say. A few of each, enough to run every scene; more
-// come from the teams filling the catalogue (planning/workstreams/cast.md). Looks are the human body in the game's own
-// clothes until people have models and skins of their own: each look that waits for art is a placeholder with a note.
-// The body under the clothes is drawn from the look's population (content/people/defaults.ts).
+// come from the teams filling the catalogue (planning/workstreams/cast.md). A look's people are drawn from its population,
+// clothes and all (content/people/defaults.ts), and it puts on only the armour its role needs. Each look still waits for
+// art of its own (a hat, a badge, sandals) and is a placeholder with a note.
 
 import type { Archetype, Look } from "../../shared/cast/catalogue.ts";
 
 const HUMAN = "core:human";
-const wear = (tier: string, ...pieces: string[]) => pieces.map((p) => `core:${tier}_${p}`);
+const FLAK = ["core:flak_hat", "core:flak_shirt", "core:flak_pants", "core:flak_boots"];
 
 export const LOOKS: Look[] = [
-  { id: "cast:street_plain", mesh: HUMAN, wear: wear("cloth", "shirt", "pants", "boots"), population: "core:people_city", placeholder: true, note: "t-shirt, jeans, trainers" },
-  { id: "cast:street_bright", mesh: HUMAN, wear: wear("cloth", "shirt", "pants", "boots"), population: "core:people_city", placeholder: true, note: "loud shirt, shorts, sandals" },
-  { id: "cast:office", mesh: HUMAN, wear: wear("cloth", "shirt", "pants", "boots"), population: "core:people_workers", placeholder: true, note: "shirt and slacks, a lanyard" },
-  { id: "cast:tourist", mesh: HUMAN, wear: wear("cloth", "hat", "shirt", "pants", "boots"), population: "core:people_tourists", placeholder: true, note: "sun hat, camera, sunburn" },
-  { id: "cast:runner", mesh: HUMAN, wear: wear("cloth", "shirt", "pants"), population: "core:people_beach", placeholder: true, note: "running vest and shorts, earbuds" },
+  { id: "cast:street_plain", mesh: HUMAN, wear: [], population: "core:people_city", placeholder: true, note: "t-shirt, jeans, trainers" },
+  { id: "cast:street_bright", mesh: HUMAN, wear: [], population: "core:people_city", placeholder: true, note: "loud shirt, shorts, sandals" },
+  { id: "cast:office", mesh: HUMAN, wear: [], population: "core:people_workers", placeholder: true, note: "shirt and slacks, a lanyard" },
+  { id: "cast:tourist", mesh: HUMAN, wear: [], population: "core:people_tourists", placeholder: true, note: "sun hat, camera, sunburn" },
+  { id: "cast:runner", mesh: HUMAN, wear: [], population: "core:people_beach", placeholder: true, note: "running vest and shorts, earbuds" },
   { id: "cast:swimwear", mesh: HUMAN, wear: [], population: "core:people_beach", placeholder: true, note: "swimwear, towel over a shoulder" },
-  { id: "cast:vendor_apron", mesh: HUMAN, wear: wear("cloth", "hat", "shirt", "pants", "boots"), population: "core:people_workers", placeholder: true, note: "apron and cap" },
-  { id: "cast:police", mesh: HUMAN, wear: wear("flak", "hat", "shirt", "pants", "boots"), population: "core:people_city", placeholder: true, note: "Miami police uniform, badge, duty belt" },
-  { id: "cast:gang_red", mesh: HUMAN, wear: wear("hide", "shirt", "pants", "boots"), population: "core:people_city", placeholder: true, note: "red bandana and colours, Southside" },
-  { id: "cast:gang_teal", mesh: HUMAN, wear: wear("hide", "shirt", "pants", "boots"), population: "core:people_city", placeholder: true, note: "teal colours, Bayfront" },
+  { id: "cast:vendor_apron", mesh: HUMAN, wear: [], population: "core:people_vendors", placeholder: true, note: "apron and cap" },
+  { id: "cast:police", mesh: HUMAN, wear: FLAK, population: "core:people_police", placeholder: true, note: "Miami police uniform, badge, duty belt" },
+  { id: "cast:gang_red", mesh: HUMAN, wear: [], population: "core:people_southside", placeholder: true, note: "red bandana and colours, Southside" },
+  { id: "cast:gang_teal", mesh: HUMAN, wear: [], population: "core:people_bayfront", placeholder: true, note: "teal colours, Bayfront" },
 ];
 
 /** Lines every everyday person can say, merged into each such archetype's own. */

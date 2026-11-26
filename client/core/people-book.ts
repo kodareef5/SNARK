@@ -4,10 +4,11 @@
 // view keeps the look by reference, so the next frame draws the right person. A stand-in is held weakly: one no view
 // holds any more is let go.
 import { defaultLook } from "../../shared/anim/look.ts";
+import { WORN_LENGTH } from "../../shared/sim/entities.ts";
 import type { PopulationDef } from "../../shared/content/kinds/populations.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { HASH, peopleManifestPath, readPeopleManifest, storePopulation, type Edition } from "../../shared/people/doc.ts";
-import { lookOfSeed, personFrom, populationsOf, storeIdOf, type StorePopulations } from "../../shared/people/person.ts";
+import { bodyOfSeed, personFrom, populationsOf, storeIdOf, wornOf, type StorePopulations } from "../../shared/people/person.ts";
 
 /**
  * The most stand-ins waited on at once. One no view holds any more is let go first; past that, the oldest stays a
@@ -21,6 +22,8 @@ export const FETCH_TIMEOUT_MS = 15_000;
 
 interface Pending {
   readonly look: WeakRef<Uint8Array>;
+  readonly worn: Uint32Array;
+  readonly reg: Registry;
   readonly seed: number;
   readonly id: number;
   readonly rev: number;
@@ -138,27 +141,32 @@ export class PeopleBook implements StorePopulations {
       const look = w.look.deref();
       if (!look) return false;
       const def = this.population(w.id, w.rev);
-      if (def) personFrom(w.seed, def, look);
+      if (def) wornOf(w.reg, def, personFrom(w.seed, def, look), w.worn);
       return !def;
     });
   }
 
   /**
-   * The look a seed form names (shared/net/view.ts MakePerson). An admin population's revision not held yet gives a
-   * stand-in, the seed in the content's first population; a population the registry lacks, null.
+   * The body a seed form names (shared/net/view.ts MakePerson). An admin population's revision not held yet gives a
+   * stand-in, the seed in the content's first population, made again in place once it is held; a population the registry
+   * lacks, null.
    */
-  look(reg: Registry, seed: number, number: number, revision: number): Uint8Array | null {
+  body(reg: Registry, seed: number, number: number, revision: number): { look: Uint8Array; worn: Uint32Array } | null {
     const id = storeIdOf(reg, number);
-    if (id === 0) return lookOfSeed(reg, seed, number, revision);
+    if (id === 0) return bodyOfSeed(reg, seed, number, revision);
     if (!(revision >= 1)) return null;
     const def = this.population(id, revision);
-    if (def) return personFrom(seed, def).look;
+    if (def) {
+      const person = personFrom(seed, def);
+      return { look: person.look, worn: wornOf(reg, def, person) };
+    }
     this.poll();
     const first = populationsOf(reg).list[0];
-    const look = first ? personFrom(seed, first).look : defaultLook();
+    const person = first ? personFrom(seed, first) : null;
+    const look = person?.look ?? defaultLook(), worn = person ? wornOf(reg, first!, person) : new Uint32Array(WORN_LENGTH);
     if (this.pending.length >= PENDING_MAX) this.pending = this.pending.filter((w) => w.look.deref() !== undefined);
     if (this.pending.length >= PENDING_MAX) this.pending.shift();
-    this.pending.push({ look: new WeakRef(look), seed, id, rev: revision });
-    return look;
+    this.pending.push({ look: new WeakRef(look), worn, reg, seed, id, rev: revision });
+    return { look, worn };
   }
 }
