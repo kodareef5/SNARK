@@ -224,6 +224,8 @@ export class FarCity {
   private readonly seenLists: Uint32Array;
   private readonly rowsAt: Uint32Array;
   private listsSeen = 0;
+  /** Chunks whose statics came since what stands was last brought up to date, to be matched against what is known of them. */
+  private readonly heldAgain = new Set<number>();
   /** The tiles whose levels wait to be made again for a change to what stands, and this update's time in milliseconds. */
   private readonly pending = new Set<number>();
   private now = 0;
@@ -339,7 +341,7 @@ export class FarCity {
           this.tops.delete(c);
           if (!held) this.seenShape[c] = -1;
           // Held again: what is known of its pieces gone is taken in again (`standing`).
-          else this.seenLists[c] = this.seenCells[c] = 0xffffffff;
+          else this.heldAgain.add(c);
         }
       }
     });
@@ -964,6 +966,14 @@ export class FarCity {
       this.rowsAt[c] = lists?.changed[c] ?? 0;
       changed.add(c);
     }
+    // A chunk whose statics came takes in the lists and cells told before them, though neither has changed since.
+    for (const c of this.heldAgain) {
+      if (city.in(c) === 0) continue;
+      if (cells) this.seenCells[c] = cells.changed[c] ?? 0;
+      if (lists) this.seenLists[c] = lists.changed[c] ?? 0;
+      changed.add(c);
+    }
+    this.heldAgain.clear();
     if (cells && cells.version !== this.cellsSeen) {
       this.cellsSeen = cells.version;
       for (let c = 0; c < cells.changed.length; c++) {
