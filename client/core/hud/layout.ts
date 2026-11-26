@@ -103,8 +103,8 @@ export function layoutHud(f: UiFrame, m: HudModel, options: Pick<Settings, "mini
   at.readW = Math.min(right - left - (W < NARROW && options.minimap ? MAP + 8 : 0), 400);
   const columnFoot = (at.columnFoot = readout ? top + (inspect ? m.readout.length * lh : 19) + 4 : top);
   at.voiceY = columnFoot;
-  at.mapX = right - MAP;
-  const mapY = (at.mapY = f.top + MARGIN);
+  at.mapX = touch?.mapX ?? right - MAP;
+  const mapY = (at.mapY = touch?.mapY ?? f.top + MARGIN);
   at.mapTools = controls && (inspect || (touch !== null && !options.minimap));
   // The car's instruments sit under the minimap and its clock, or in the minimap's place while it is hidden. A
   // helicopter's and a boat's are taller, with their state and their keys. The jet fuel stands there too, without a

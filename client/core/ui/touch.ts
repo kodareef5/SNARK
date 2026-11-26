@@ -9,7 +9,6 @@ export { installMobileArt } from "./mobile-art.ts";
 import type { HudModel } from "../hud.ts";
 import { KEY_TOUCH_BUTTON, KEY_ZONE_LOOK, KEY_ZONE_MOVE, T_AIM, T_ATTACK, T_CANCEL, T_CLOSE, T_DOWN, T_FOLLOW, T_FOLLOW_ONE, T_HOLD, T_JUMP, T_LOWER, T_MELEE, T_MIC, T_MORE, T_ORBIT, T_PACK, T_RAISE, T_RELOAD, T_ROLL, T_ROTATE, T_SHIFT, T_SIC, T_SNAP, T_STANCE, T_STAY, T_STAY_ONE, T_USE, T_VIEW, type TouchPlay } from "../touch.ts";
 import { usePrompt } from "./use-prompt.ts";
-import { VITAL_PITCH } from "./hud.ts";
 import { K_HOLD, K_IMAGE, fitText, textWidth, type UiFrame, type UiNode } from "./nodes.ts";
 import { S_KEY, S_LABEL, S_PROMPT } from "./style.ts";
 import { BODY, ICON, ICON_COLUMNS, ICON_Y, IMAGE_TOUCH, I_AIM, I_ANCHOR, I_ATTACK, I_BAG, I_BRAKE, I_CANCEL, I_CREATURE, I_CROUCH, I_DOWN, I_JUMP, I_LEFT, I_LIGHTS, I_MELEE, I_MIC, I_MORE, I_ORBIT, I_PLACE, I_PROPELLER, I_RELOAD, I_RIGHT, I_ROTATE, I_ROTOR, I_SNAP, I_SPRINT, I_UP, I_VARIANT, I_VIEW, I_WHISTLE, I_WINGS, PART, PILL_BODY, PILL_CAP, PILL_H, PILL_W, PILL_Y, P_KNOB, P_RING, P_ROUND, P_SQUARE, TOUCH_HEIGHT, TOUCH_URL, TOUCH_WIDTH, touchPixels } from "./touch-art.ts";
@@ -38,20 +37,36 @@ export type Situation = "foot" | "flyer" | "building" | "placing";
 const CLUSTER_W = ATTACK / 2 + OUTER + SMALL / 2, CLUSTER_H = ATTACK / 2 + OUTER + SMALL / 2;
 const RADIANS = Math.PI / 180;
 
-/** The vitals and microphone reserve the upper-left corner. */
-export interface TouchPlan { vitalsX: number; vitalsY: number; stackY: number; under: number; map: number; mic: boolean; topEnd: number }
-const plan: TouchPlan = { vitalsX: 0, vitalsY: 0, stackY: 0, under: 0, map: 160, mic: false, topEnd: 0 };
+/** The phone's upper instruments share safe insets and 44 CSS pixel targets. */
+export interface TouchPlan {
+  vitalsX: number; vitalsY: number; vitalPitch: number; topEnd: number;
+  toolsX: number; toolsY: number; toolSize: number; under: number; stackY: number;
+  map: number; mapX: number; mapY: number; mic: boolean;
+}
+const plan: TouchPlan = {
+  vitalsX: 0, vitalsY: 0, vitalPitch: 0, topEnd: 0, toolsX: 0, toolsY: 0,
+  toolSize: 0, under: 0, stackY: 0, map: 64, mapX: 0, mapY: 0, mic: false,
+};
 
 /** The plan for this canvas. The same object each time. */
-export function touchPlan(f: UiFrame, muted: boolean, mic = false): TouchPlan {
-  const left = f.left + MARGIN, top = f.top + MARGIN;
+export function touchPlan(f: UiFrame, _muted: boolean, mic = false): TouchPlan {
+  const px = 1 / f.unit, width = f.width / px, height = f.height / px;
+  const portrait = height > width, short = !portrait && height <= 510;
+  const gutter = (width <= 600 ? 9 : 20) * px;
+  const left = Math.max(f.left, gutter), top = Math.max(f.top, (short ? 7 : 16) * px);
   plan.mic = mic;
-  plan.map = f.height < 560 || f.width < 520 ? 64 : 80;
-  plan.vitalsX = left + 6;
-  plan.vitalsY = top;
-  plan.under = top + BAR + 10 + (mic ? BAR + GAP : 0);
-  plan.stackY = plan.under + (muted ? 52 : 0);
-  plan.topEnd = plan.vitalsX + 6 * VITAL_PITCH;
+  plan.vitalPitch = (width <= 600 ? 25 : 27) * px;
+  plan.vitalsX = left + 3 * px;
+  plan.vitalsY = top + 10.5 * px;
+  plan.topEnd = left + 4 * plan.vitalPitch + 8 * px;
+  plan.toolSize = 44 * px;
+  plan.toolsX = left;
+  plan.toolsY = top + (short ? 39 : 44) * px;
+  plan.under = plan.toolsY + plan.toolSize;
+  plan.stackY = plan.under;
+  plan.map = (portrait ? 45 : short ? 48 : Math.min(83, Math.max(55, width * .072))) * px;
+  plan.mapX = f.width - Math.max(f.right, gutter) - plan.map;
+  plan.mapY = top;
   return plan;
 }
 
@@ -100,7 +115,7 @@ export function pill(f: UiFrame, key: number, x: number, y: number, w: number, h
 export function chatTop(f: UiFrame, touch: TouchPlan): { top: number; bottom: number } {
   // On its side a phone's keyboard leaves less than half the screen, and the box may cover the vitals to keep in it;
   // upright there is room under them.
-  const top = f.width > f.height ? f.top + MARGIN + BAR + 10 : touch.under;
+  const top = Math.max(f.top, Math.min(touch.under, f.height - f.bottom - 130));
   return { top, bottom: top + 3 * 19 + 56 };
 }
 
@@ -116,14 +131,14 @@ export function touchZones(f: UiFrame): void {
 /** Voice keeps its own hold target below the vital signs. */
 export function touchBar(f: UiFrame, t: TouchPlay, mic: boolean): number {
   if (!mic) return 0;
-  const x = f.left + MARGIN, y = f.top + MARGIN + BAR + GAP;
-  const size = 27;
+  const { toolsX, toolsY: y, toolSize: side } = touchPlan(f, false, mic);
+  const x = toolsX + 2 * side, size = 23 / f.unit;
   if (TOUCH_URL) {
-    const icon = art(f, KEY_TOUCH_ART + T_MIC * 4, x, y + (BAR - size) / 2, size, size,
+    const icon = art(f, KEY_TOUCH_ART + T_MIC * 4, x + (side - size) / 2, y + (side - size) / 2, size, size,
       I_MIC % ICON_COLUMNS * ICON, ICON_Y + Math.floor(I_MIC / ICON_COLUMNS) * ICON, ICON, ICON);
     icon.alpha = t.held(T_MIC) ? 1 : .76;
   }
-  const hit = f.add(KEY_TOUCH_BUTTON + T_MIC, K_HOLD, x, y, BAR, BAR, S_KEY);
+  const hit = f.add(KEY_TOUCH_BUTTON + T_MIC, K_HOLD, x, y, side, side, S_KEY);
   hit.interactive = true; hit.label = "Talk";
   if (!TOUCH_URL) hit.text = "Mic";
   return 1 << T_MIC;

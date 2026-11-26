@@ -159,8 +159,9 @@ export function buildMap(f: UiFrame, session: ClientSession, hud: HudModel, corn
   const deaths = corner ? session.markers : session.markers.filter(m => m.kind === MARKER_DEATH);
   const listH = (deaths.length + 1) * lh + 8;
   const size = corner ? Math.floor(Math.min(296, (f.width - f.left - f.right) * .49, (f.height - f.top - f.bottom) * .57)) : Math.floor(Math.min(f.width - 48, f.height - 100 - listH));
-  const x = corner ? f.width - f.right - 12 - size : Math.round((f.width - size) / 2);
-  const y = corner ? f.top + 12 : Math.round((f.height - size - listH - 44) / 2);
+  const compact = corner && f.find(KEY_MINIMAP);
+  const x = corner ? (compact ? compact.x + compact.w : f.width - f.right - 12) - size : Math.round((f.width - size) / 2);
+  const y = corner ? (compact ? compact.y : f.top + 12) : Math.round((f.height - size - listH - 44) / 2);
   const top = corner ? y : y + 28;
   if (corner) {
     f.add(KEY_MAP_PANEL, K_PANEL, x, top, size, size, S_FRAME);

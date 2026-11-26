@@ -261,9 +261,9 @@ export const MINIMAP: HudWidget<MinimapModel> = {
           f.add(KEY_MINIMAP_OUT + 2, K_PANEL, mapX + Math.min(MAP - 3, Math.max(3, u * MAP)) - 3, mapY + Math.min(MAP - 3, Math.max(3, v * MAP)) - 3, 6, 6, S_MARK_SELF).tint = 0xeebd72;
         }
       }
-      if (at.controls && !at.touch) {
-        f.text(KEY_CHART_EDGE + 4, mapX + MAP - 19, mapY + 3, 13, S_HUD_KEY, "N");
-        if (view && !mapTools) {
+      if (at.controls) {
+        f.text(KEY_CHART_EDGE + 4, mapX + MAP - (at.touch ? 12 : 19), mapY + 2, 12, S_HUD_KEY, "N");
+        if (view && !at.touch && !mapTools) {
           const metres = m.mapSizeX * view.du;
           const power = 10 ** Math.floor(Math.log10(Math.max(1, metres * .25)));
           const length = (metres * .25 >= power * 2 ? 2 : 1) * power;

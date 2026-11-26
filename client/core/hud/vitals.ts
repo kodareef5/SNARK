@@ -80,19 +80,21 @@ export const VITALS: HudWidget<VitalsModel> = {
     const x0 = touch?.vitalsX ?? left, y = touch?.vitalsY ?? f.top + 12;
     const room = (options.minimap ? mapX : at.right) - x0 - 7;
     const compact = !!touch || room < 270;
-    const small = Math.min(touch ? VITAL_PITCH : 30, Math.max(21, Math.floor(room / 6)));
+    const small = touch?.vitalPitch ?? Math.min(30, Math.max(21, Math.floor(room / 6)));
     const primary = compact ? small : Math.min(106, Math.floor((room - 4 * small) / 2));
     const hidden = (v: Vital): boolean => (v.id === "oxygen" && v.fraction >= 1) || (v.id === "torpor" && v.fraction <= 0);
     // Glass behind the row, as far as the last vital shown, so it reads against a bright sky.
     let width = 0;
     for (let i = 0; i < m.vitals.length; i++) if (!hidden(m.vitals[i]!)) width += i < 2 ? primary : small;
-    glass(f, KEY_VITAL_ART + 7, x0 - 6, y - 6, width + 10, Math.min(22, small - 5) + 15 + (show ? 12 : 0), .62);
+    const size = touch ? 19 / f.unit : Math.min(22, small - 5);
+    if (touch) {
+      glass(f, KEY_VITAL_ART + 7, touch.toolsX, at.mapY, width + 6 / f.unit, (47 + (show ? 6 : 0)) / f.unit, .34);
+    } else glass(f, KEY_VITAL_ART + 7, x0 - 6, y - 6, width + 10, size + 15 + (show ? 12 : 0), .62);
     let x = x0;
     for (let i = 0; i < m.vitals.length; i++) {
       const v = m.vitals[i]!;
       if (hidden(v)) continue;
       const slot = i < 2 ? primary : small;
-      const size = Math.min(22, slot - 5);
       const fraction = Math.max(0, Math.min(1, v.fraction));
       const percent = Math.round(fraction * 100);
       const key = KEY_VITAL_ART + i * 8;
@@ -105,13 +107,15 @@ export const VITALS: HudWidget<VitalsModel> = {
       const pos = wide ? x + 1 : x + (slot - size) / 2;
       const label = `${v.label} ${percent}%`;
       const flag = depleted ? "×" : recovering ? "↗" : low ? "!" : "";
-      if (f.picture(key, pos, y, size, size, S_HUD_KEY, "ui:glass-" + v.id)) {
+      const icon = f.picture(key, pos, y, size, size, S_HUD_KEY, "ui:glass-" + v.id);
+      if (icon) {
+        if (touch) icon.alpha = .85;
         const hit = f.add(hitKey, K_BUTTON, x, y - 4, slot, size + 11, S_HUD_HIT);
         hit.label = label; hit.value = fraction; hit.interactive = controls;
       } else filledVital(f, hitKey, i, pos, y, size, fraction, v.label, controls, false);
-      const barX = wide ? pos + size + 5 : x + 4;
-      const barW = wide ? slot - size - 13 : slot - 8;
-      const barY = y + size + (wide ? -2 : 3);
+      const barX = touch ? pos : wide ? pos + size + 5 : x + 4;
+      const barW = touch ? size : wide ? slot - size - 13 : slot - 8;
+      const barY = y + size + (touch ? 5 / f.unit : wide ? -2 : 3);
       f.add(key + 1, K_PANEL, barX, barY, barW, 2, S_ICE).alpha = .25;
       if (fraction > 0) f.add(key + 2, K_PANEL, barX, barY, barW * fraction, 2, S_ICE).tint = ink;
       if (wide) f.text(key + 3, barX, y + 1, barW, S_HUD_COUNT, String(percent));

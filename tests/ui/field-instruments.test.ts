@@ -3,7 +3,10 @@ import { App } from "../../client/core/app.ts";
 import { HudModel } from "../../client/core/hud.ts";
 import { tintChartRelief } from "../../client/core/chart-streets.ts";
 import { ReliefTiles } from "../../client/core/tactical.ts";
-import { UiFrame } from "../../client/core/ui/nodes.ts";
+import { UiFrame, canvasHeight } from "../../client/core/ui/nodes.ts";
+import { KEY_COMPASS } from "../../client/core/ui/compass.ts";
+import { KEY_FIELD_TELEMETRY } from "../../client/core/hud/readout.ts";
+import { touchPlan } from "../../client/core/ui/touch.ts";
 import { buildHud, KEY_VITAL } from "../../client/core/ui/hud.ts";
 import { buildProvingHeightfield } from "../../shared/world/proving.ts";
 import { StreetSectors, heldSide } from "../../shared/world/streets.ts";
@@ -139,4 +142,44 @@ test("Reserves distinguish low, depleted and recovering values at a glance", () 
   hud.vitalTick = 17;
   draw();
   expect(states()).not.toContain("↗");
+});
+
+test("Touch keeps the compass centered and the radio tools below the vitals", () => {
+  const hud = new HudModel();
+  for (const [width, height, mapSize] of [[390, 844, 45], [844, 390, 48]] as const) {
+    const f = new UiFrame(), units = canvasHeight(width, height);
+    f.begin(width / height, units);
+    f.unit = height / units;
+    const plan = touchPlan(f, true);
+    buildHud(f, hud, undefined, true, false, plan);
+    const map = f.find(KEY_MINIMAP)!, compass = f.find(KEY_COMPASS + 98)!;
+    const vital = f.find(KEY_VITAL + 1)!, diagnostics = f.find(KEY_FIELD_TELEMETRY)!;
+    expect(map.w * f.unit).toBeCloseTo(mapSize);
+    expect((compass.x + compass.w / 2) * f.unit).toBeCloseTo(width / 2, 0);
+    expect((compass.y + compass.h - f.top) * f.unit).toBeLessThanOrEqual(18);
+    expect(vital.y + vital.h).toBeLessThanOrEqual(diagnostics.y);
+    expect(diagnostics.x).toBe(plan.toolsX + plan.toolSize);
+    expect(diagnostics.w * f.unit).toBeCloseTo(44);
+    expect(diagnostics.h * f.unit).toBeCloseTo(44);
+    expect(Math.abs((plan.toolsY + plan.toolSize) - plan.under)).toBeLessThan(.01);
+  }
+});
+
+test("A phone's instruments leave the notch and the corner chart clear", () => {
+  const hud = new HudModel(), f = new UiFrame();
+  f.begin(844 / 390, canvasHeight(844, 390));
+  f.unit = 390 / f.height;
+  f.left = 54 / f.unit;
+  f.right = f.left;
+  f.top = 18 / f.unit;
+  hud.vitals[4]!.fraction = .5;
+  hud.vitals[5]!.fraction = .5;
+  const plan = touchPlan(f, false, true);
+  buildHud(f, hud, undefined, true, false, plan);
+  expect(f.find(KEY_VITAL + 1)!.x).toBeGreaterThanOrEqual(f.left);
+  expect(f.find(KEY_MINIMAP)!.y).toBeGreaterThanOrEqual(f.top);
+  expect(plan.mapX + plan.map).toBeLessThanOrEqual(f.width - f.right);
+  const caret = f.find(KEY_COMPASS + 98)!;
+  expect(caret.x).toBeGreaterThan(f.find(KEY_VITAL + 11)!.x);
+  expect(caret.x + caret.w).toBeLessThan(plan.mapX);
 });

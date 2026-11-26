@@ -6,7 +6,7 @@
 
 import type { HudModel, MarkerKind } from "../hud.ts";
 import { K_PANEL, type UiFrame } from "./nodes.ts";
-import { S_COMPASS, S_COMPASS_NORTH, S_CROSS, S_DARK, S_MARK_DEATH, S_MARK_SELF, S_MARK_SPAWN } from "./style.ts";
+import { S_COMPASS, S_COMPASS_NORTH, S_CROSS, S_DARK, S_KEY_SMALL, S_MARK_DEATH, S_MARK_SELF, S_MARK_SPAWN } from "./style.ts";
 
 /** The tape's nodes: its ticks and their shadows, letters, pips, the mark, the degrees. */
 export const KEY_COMPASS = 6600;
@@ -109,20 +109,21 @@ export const TAPE_HEIGHT = 18;
  * The tape for this canvas, in the middle of the room between `from` and `to` (what holds the top's corners: a finger's
  * bar, the minimap), or null where there is not room for it.
  */
-export function tapeLayout(f: UiFrame, from: number, to: number): TapeLayout | null {
+export function tapeLayout(f: UiFrame, from: number, to: number, wanted?: number): TapeLayout | null {
   const narrow = f.width < 640;
-  const width = narrow ? 150 : 220;
   const left = from + 8, right = to - 8;
-  if (right - left < width) return null;
+  const width = wanted === undefined ? (narrow ? 150 : 220) : Math.min(wanted, right - left);
+  if (right - left < width || width < 64) return null;
   const x = Math.max(left + width / 2, Math.min(right - width / 2, f.width / 2));
   return { x, y: f.top + 6, width, span: narrow ? 45 : 60 };
 }
 
 /** Builds the tape into `f`. `degrees` shows the number under the mark. */
-export function buildCompass(f: UiFrame, m: HudModel, at: TapeLayout, degrees: boolean): void {
+export function buildCompass(f: UiFrame, m: HudModel, at: TapeLayout, degrees: boolean, touch = false): void {
   const c = m.dial;
   const h = c.heading;
   const scale = at.width / 2 / at.span;
+  const height = touch ? 12 / f.unit : TAPE_HEIGHT;
   const fade = (d: number): number => Math.max(0, 1 - (d / at.span) * (d / at.span));
   let k = KEY_TICK;
   // Every 15 degrees in sight: a short tick, a tall one at each quarter, and a letter at each eighth.
@@ -136,17 +137,17 @@ export function buildCompass(f: UiFrame, m: HudModel, at: TapeLayout, degrees: b
     const at360 = ((deg % 360) + 360) % 360;
     const major = at360 % 90 === 0;
     const eighth = at360 % 45 === 0;
-    const th = major ? 7 : 4, tw = major ? 2 : 1;
-    const shade = f.add(k++, K_PANEL, x - tw / 2 + 1, at.y + TAPE_HEIGHT - th + 1, tw, th, S_DARK);
+    const th = touch ? (major ? 3 : 2) / f.unit : major ? 7 : 4, tw = major && !touch ? 2 : 1;
+    const shade = f.add(k++, K_PANEL, x - tw / 2 + 1, at.y + height - th + 1, tw, th, S_DARK);
     shade.alpha = a * 0.5;
-    const tick = f.add(k++, K_PANEL, x - tw / 2, at.y + TAPE_HEIGHT - th, tw, th, S_CROSS);
+    const tick = f.add(k++, K_PANEL, x - tw / 2, at.y + height - th, tw, th, S_CROSS);
     tick.tint = at360 === 0 ? WARM : ICE;
     tick.alpha = a * (major ? 0.95 : 0.6);
     if (eighth && letters < 12) {
       const north = at360 === 0;
       const glow = north ? Math.max(0, 1 - (c.now - c.northAt) / GLOW_MS) : 0;
-      const n = f.text(KEY_LETTER + letters++, x - 15, at.y - 2, 30, north ? S_COMPASS_NORTH : S_COMPASS, LETTERS[at360 / 45]!);
-      n.alpha = Math.min(1, a * (major ? 1 : 0.7) + glow * 0.6);
+      const n = f.text(KEY_LETTER + letters++, x - 15, at.y - 2, 30, touch ? S_KEY_SMALL : north ? S_COMPASS_NORTH : S_COMPASS, LETTERS[at360 / 45]!);
+      n.alpha = Math.min(1, a * (major ? 1 : 0.7) + glow * 0.6) * (touch ? .8 : 1);
     }
   }
   // Pips at the bearings of what matters, from where the reader stands; none where a rule hides that.
@@ -160,13 +161,13 @@ export function buildCompass(f: UiFrame, m: HudModel, at: TapeLayout, degrees: b
       const d = turnTo(h, bearingOf(self.u, self.v, mk.u, mk.v, m.mapSizeX, m.mapSizeZ));
       const behind = Math.abs(d) > at.span;
       const x = at.x + Math.max(-at.span, Math.min(at.span, d)) * scale;
-      const p = f.add(KEY_PIP + pips++, K_PANEL, x - 2, at.y + TAPE_HEIGHT + 2, 4, 4, look.style);
+      const p = f.add(KEY_PIP + pips++, K_PANEL, x - 2, at.y + height + 2, 4, 4, look.style);
       p.tint = (mk.tint ?? -1) >= 0 ? mk.tint! : look.tint;
       p.alpha = behind ? 0.45 : 0.95;
     }
   }
   // The mark at the middle, under the tape, and the heading under it while asked for.
-  const caret = f.add(KEY_CARET, K_PANEL, at.x - 1, at.y + TAPE_HEIGHT + 1, 2, 5, S_CROSS);
+  const caret = f.add(KEY_CARET, K_PANEL, at.x - 1, at.y + height + 1, 2, touch ? 2 : 5, S_CROSS);
   caret.tint = ICE;
-  if (degrees) f.text(KEY_DEGREES, at.x - 20, at.y + TAPE_HEIGHT + 6, 40, S_COMPASS, String(Math.round(h) % 360).padStart(3, "0"));
+  if (degrees) f.text(KEY_DEGREES, at.x - 20, at.y + height + 6, 40, S_COMPASS, String(Math.round(h) % 360).padStart(3, "0"));
 }
