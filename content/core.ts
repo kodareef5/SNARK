@@ -38,6 +38,7 @@ import { HELICOPTERS } from "./vehicles/helicopter.ts";
 import { HELICOPTER_ITEMS } from "./vehicles/helicopter-items.ts";
 import { JET_ARMS, JETS } from "./vehicles/jet.ts";
 import { CIVILIAN } from "./civilians.ts";
+import { armorCovers } from "./items/armor-covers.ts";
 import type { ContentPack } from "../shared/content/packs.ts";
 
 const id = (name: string): string => `core:${name}`;
@@ -63,7 +64,7 @@ const ARMOR_PIECES: readonly { slot: "head" | "torso" | "hands" | "legs" | "feet
   { slot: "feet", name: "boots", label: "boots" },
 ];
 const ARMOR: Def[] = ARMOR_TIERS.flatMap((t) =>
-  ARMOR_PIECES.map((p): Def => ({ type: "item", class: "armor", id: id(`${t.tier}_${p.name}`), stack: 1, weight: typeof t.weight === "number" ? t.weight : t.weight[p.name]!, label: `${t.tier} ${p.label}`, color: t.colors[0], wear: { slot: p.slot, armor: t.armor, uses: t.uses, set: t.set, colors: t.colors } })),
+  ARMOR_PIECES.map((p): Def => ({ type: "item", class: "armor", id: id(`${t.tier}_${p.name}`), stack: 1, weight: typeof t.weight === "number" ? t.weight : t.weight[p.name]!, label: `${t.tier} ${p.label}`, color: t.colors[0], wear: { slot: p.slot, armor: t.armor, uses: t.uses, set: t.set, colors: t.colors, covers: armorCovers(t.set, p.slot) } })),
 );
 
 const GEAR: Def[] = [
@@ -89,7 +90,7 @@ const GEAR: Def[] = [
     // was first a refit of flak at flak's own 100 and 120.
     return [
       { type: "item", class: "armor", id: item, label, stack: 1, color: 93, weight: [4, 6, 3, 6, 3][i]!,
-        wear: { slot: piece.slot, set: "meridian", armor: 180, uses: 300, colors: [93, 82, 41], jet: true, ...(piece.slot === "head" ? { sealed: true } : {}), ...(piece.slot === "torso" ? { vents: "vents" } : piece.slot === "feet" ? { vents: "boot_jets" } : {}) },
+        wear: { slot: piece.slot, set: "meridian", armor: 180, uses: 300, colors: [93, 82, 41], jet: true, covers: armorCovers("meridian", piece.slot), ...(piece.slot === "head" ? { sealed: true } : {}), ...(piece.slot === "torso" ? { vents: "vents" } : piece.slot === "feet" ? { vents: "boot_jets" } : {}) },
         // The helmet's visor (D1080): its glass to 25 times, and past it a picture made larger as far as 1,000, its window
         // a slit at the most. ARK's Tek helmet zooms and has night vision; the heat view is ours (DEV211).
         ...(piece.slot === "head" ? { optic: { min: 2, max: 1000, window: [0.86, 0.22], shape: "visor" } as const } : {}),

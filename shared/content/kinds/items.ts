@@ -204,6 +204,11 @@ export interface WearFacet {
   readonly colors: readonly [number, number, number];
   /** A piece of a flight suit: worn and not worn out, it lends its slot's part of flight (shared/sim/character.ts). */
   readonly jet?: boolean;
+  /**
+   * The skin zones (SKIN_ of shared/anim/skin-zones.ts) it covers in every pose, of the body parts it leaves drawn: the
+   * other slots', and the head's under an open head piece. A body wearing it does not draw them.
+   */
+  readonly covers?: readonly number[];
 }
 
 /**
@@ -293,8 +298,9 @@ const columns = (n: number) => ({
   ballEmpty: u16(n),
   /** The armor slot an item is worn in (0 head, 1 torso, 2 hands, 3 legs, 4 feet), or -1. */
   wearSlot: i8(n, -1),
-  /** Per item: 1 for a worn piece that flies (WearFacet.jet). */
+  /** Per item: 1 for a worn piece that flies (WearFacet.jet), and the skin zones it covers, one bit each (WearFacet.covers). */
   wearJet: u8(n),
+  wearZones: u32(n),
   /** The wardrobe slot a garment is worn in (WARDROBE_NAMES), or -1. */
   garmentSlot: i8(n, -1),
   /** Per garment: the skin zones it covers, one bit each (shared/anim/skin-zones.ts), and 1 if it takes dye. */
@@ -424,6 +430,8 @@ export const items: Kind<ItemDef, ReturnType<typeof columns>> = {
       if (!WEAR_SLOTS.includes(d.wear.slot)) errors.push(`${d.id}: wear.slot must be one of ${WEAR_SLOTS.join(", ")}`);
       if (!(d.wear.armor >= 0)) errors.push(`${d.id}: wear.armor must not be negative`);
       positive(d, "wear.uses", d.wear.uses, 60000);
+      const c = d.wear.covers;
+      if (c !== undefined && (!Array.isArray(c) || c.some((z) => !Number.isInteger(z) || z < 0 || z >= SKIN_ZONE_COUNT))) errors.push(`${d.id}: wear.covers lists skin zones, 0 to ${SKIN_ZONE_COUNT - 1}`);
     }
     if (d.garment) {
       const g = d.garment;
@@ -475,6 +483,7 @@ export const items: Kind<ItemDef, ReturnType<typeof columns>> = {
     if (d.charge) reg.charge[i] = 1;
     if (d.wear) reg.wearSlot[i] = WEAR_SLOTS.indexOf(d.wear.slot);
     if (d.wear?.jet) reg.wearJet[i] = 1;
+    if (d.wear?.covers) reg.wearZones[i] = d.wear.covers.reduce((m, z) => (m | (1 << z)) >>> 0, 0);
     if (d.garment) {
       reg.garmentSlot[i] = WARDROBE_NAMES.indexOf(d.garment.slot);
       reg.garmentZones[i] = d.garment.covers.reduce((m, z) => (m | (1 << z)) >>> 0, 0);
