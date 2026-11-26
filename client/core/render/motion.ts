@@ -5,7 +5,7 @@ import type { MotionFacet, PartPlacement } from "../../../shared/content/defs.ts
 import type { Registry } from "../../../shared/content/registry.ts";
 import { motionProgress, motionTicks, type MotionState } from "../../../shared/sim/motion.ts";
 import { CityStatics, type CitySquare } from "../../../shared/world/city.ts";
-import type { MapStatics } from "../../../shared/world/mapfile.ts";
+import { staticKinds, type MapStatics } from "../../../shared/world/mapfile.ts";
 
 /** What the scene draws moving parts from: every static's state as the server told it, the clock, and the city of the map's statics or the map's own table. */
 export interface MotionSource {
@@ -63,7 +63,7 @@ export function movingOf(reg: Registry, city: CityStatics | MapStatics): Moving[
 /** The moving statics of the map's table `statics`. */
 function mapMoving(reg: Registry, statics: MapStatics): Moving[] {
   const out: Moving[] = [];
-  const kinds = statics.kinds.map((id) => reg.index.get(id) ?? 0);
+  const kinds = staticKinds(statics, reg);
   // A whole map's millions of rows are looked through by the map's kind, 1 for one that moves.
   const moves = Uint8Array.from(kinds, (k) => (reg.motion[k] ? 1 : 0));
   if (!moves.includes(1)) return out;

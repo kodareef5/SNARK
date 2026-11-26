@@ -8,7 +8,7 @@ import type { Assets } from "../assets/assets.ts";
 import type { FrameBudget } from "./budget.ts";
 import { FAR_FROM } from "./camera.ts";
 import { DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_NEAR, DRAW_ORB, DRAW_RANGED, DRAW_SCREENS, DRAW_SKYLINE, DRAW_TEXTURED, MAX_DRAWS, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR, STEP_NEAR_SEE, type FramePacket } from "./packet.ts";
-import { PROGRAM, drawProgram } from "./programs.ts";
+import { PROGRAM, drawProgram, orderedAs } from "./programs.ts";
 import { WEAR_KEY } from "./wear.ts";
 
 /** The one run of a level drawn flat: no material, and all its indices. */
@@ -188,6 +188,8 @@ export class Draws {
   nearAt = 0;
   /** The effect `draw` gives its draws (packet.ts drawEffect): all 0 but while a supply drop's lights are drawn. */
   readonly effect = new Float32Array(4);
+  /** The shimmer `draw` gives its draws (packet.ts drawGlow): all 0 but while a body that shimmers is drawn. */
+  readonly glow = new Float32Array(4);
   /** The tint and the fade `draw` gives its draws (packet.ts drawTint): 0 but while a piece about to be built is drawn. */
   tint = 0;
   fade = 0;
@@ -295,6 +297,10 @@ export class Draws {
       p.drawEffect[d * 4 + 1] = this.effect[1]!;
       p.drawEffect[d * 4 + 2] = this.effect[2]!;
       p.drawEffect[d * 4 + 3] = this.effect[3]!;
+      p.drawGlow[d * 4] = this.glow[0]!;
+      p.drawGlow[d * 4 + 1] = this.glow[1]!;
+      p.drawGlow[d * 4 + 2] = this.glow[2]!;
+      p.drawGlow[d * 4 + 3] = this.glow[3]!;
       p.drawTint[d * 2] = this.tint;
       p.drawTint[d * 2 + 1] = this.fade;
       p.drawLayer[d] = layer > 0 && material >= 0 && this.assets.layered(material) ? layer % WEAR_KEY : 0;
@@ -564,7 +570,7 @@ export class Draws {
     for (let k = from; k < to; k++) {
       const d = source[k]!;
       const flags = p.drawFlags[d]!;
-      const program = (flags & DRAW_DETAILS) !== 0 ? PROGRAM.details : drawProgram(p, d, materials[p.drawMaterial[d]!]);
+      const program = (flags & DRAW_DETAILS) !== 0 ? PROGRAM.details : orderedAs(drawProgram(p, d, materials[p.drawMaterial[d]!]));
       keys[k] = stateKey(this.nearFirst ? bucketOf(Math.max(least, this.nearOf[d]!)) : 0, program, (flags & DRAW_TEXTURED) !== 0 ? p.drawMaterial[d]! : 0, p.drawSlot[d]!, d);
     }
     return sortRuns(keys, from, to, turns, source);
