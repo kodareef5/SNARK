@@ -268,6 +268,14 @@ const ROWS: Readonly<Record<keyof typeof MAKE, readonly UniformRow[]>> = {
 /** The same by a program's number. */
 export const UNIFORMS: readonly (readonly UniformRow[])[] = Object.keys(MAKE).map((name) => ROWS[name as keyof typeof MAKE]);
 
+/**
+ * The program a draw is ordered by among a step's (draws.ts byState): a printed one's plain twin, so prints move no draw.
+ * By their own numbers, which come last, a printed body went after what it covers, and the GPU shaded that in full.
+ */
+export function orderedAs(program: number): number {
+  return program === PROGRAM.surfacePrinted ? PROGRAM.surfaceWhole : program === PROGRAM.surfacePrintedCut ? PROGRAM.surface : program === PROGRAM.surfacePrintedLayer ? PROGRAM.surfaceLayer : program;
+}
+
 /** The programs low poly draws with: no materials, dome, sea or shadows. */
 const UNLIT = ["skyline", "signal", "sky", "flat", "terrain", "terrainWindow", "seeThrough", "far", "pulled", "details", "fire", "orb", "screens"];
 const POST = ["bloomDown", "bloomUp", "finish"];
@@ -309,9 +317,10 @@ export const CHOICE: readonly Choice[] = [
   // An instrument's light with its strip is a SURFACE draw, which its street material draws as a channel of energy.
   pick(PROGRAM.signal, DRAW_EMISSIVE, 0, DRAW_TEXTURED),
   pick(PROGRAM.skyline, DRAW_SKYLINE),
-  pick(PROGRAM.surfacePrintedLayer, DRAW_TEXTURED | DRAW_PRINTED | IS_LAYERED),
-  pick(PROGRAM.surfacePrintedCut, DRAW_TEXTURED | DRAW_PRINTED, DROPS),
-  pick(PROGRAM.surfacePrinted, DRAW_TEXTURED | DRAW_PRINTED),
+  // A print lies on dyed cloth only: an undyed material of a printed draw keeps its own, cheaper program.
+  pick(PROGRAM.surfacePrintedLayer, DRAW_TEXTURED | DRAW_PRINTED | IS_DYED | IS_LAYERED),
+  pick(PROGRAM.surfacePrintedCut, DRAW_TEXTURED | DRAW_PRINTED | IS_DYED, DROPS),
+  pick(PROGRAM.surfacePrinted, DRAW_TEXTURED | DRAW_PRINTED | IS_DYED),
   pick(PROGRAM.surfaceLayer, DRAW_TEXTURED | IS_LAYERED),
   pick(PROGRAM.surface, DRAW_TEXTURED | IS_DYED, DROPS),
   pick(PROGRAM.surfaceWhole, DRAW_TEXTURED | IS_DYED),
