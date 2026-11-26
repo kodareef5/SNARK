@@ -12,7 +12,7 @@
 //             [team? 1][varint], [seat? 1][varint], [young? 1][span 32, grown 32]
 //             `kept` says the identity is the baseline's: legal only for an id the baseline has at the same generation.
 //             A look is [born? 1] then a seed 32, a population varint and its revision varint, from which the reader makes
-//             the look (shared/people/person.ts), or else its 72 x 8: a population or revision the reader lacks is malformed.
+//             the look (shared/people/person.ts), or else its 72 x 8: what the reader cannot make is malformed.
 //             A hair clock is how many HAIR_TICK steps before the snapshot's tick it started, signed, and may start before
 //             tick 0 (shared/people/hair.ts).
 //             A wardrobe is, per wardrobe slot, [worn? 1] then the item varint and [styled? 1][[edition? 1][varint]

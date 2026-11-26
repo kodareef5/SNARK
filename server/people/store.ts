@@ -1,17 +1,24 @@
 // The cluster's people store: people.sqlite beside its worlds, shared by them all. It holds records, each one revision of
 // one thing of a kind (shared/people/doc.ts), appended and never changed or deleted: the file refuses an update or a
 // delete of one. An id is the highest its kind has given plus one, so none is given twice. Beside the records is one row:
-// the store's revision, which every change moves on under compare-and-swap, and a small document of what may change,
-// today which editions are retired. Today the records are garment editions; named people, outfits and populations are
-// kinds whose revisions append under the ids they were given.
+// the store's revision, which every change moves on, and a small document of what may change: which things of each kind
+// are retired. A garment edition is one record. A named person, an outfit and an admin population take a new revision at
+// each save, under the id they were first given; a save names the revision it was made from and is refused if another
+// came since, so of two pages saving one thing, one is told to reload and neither's revision is lost.
 //
 // Every world keeps the records it has read and reads only those appended since, in one snapshot. The manifest clients
-// fetch is written to the media folder under its hash; a retired edition stays in it, since someone may wear it.
+// fetch is written to the media folder under its hash. It holds every edition and every revision of every admin
+// population, retired ones too, since a body may wear or be drawn from one; named people and outfits are not in it.
 import { Database } from "bun:sqlite";
 import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, readSync, renameSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ID_MOST, HASH, printName, type Edition, type EditionDraft, type Made, type StoreKind } from "../../shared/people/doc.ts";
+import {
+  ID_MOST, HASH, REVISED_KINDS, STORE_KINDS, printName, readOutfit, readPerson, readPopulation, storePopulation, type Bodies, type Edition, type EditionDraft, type Made, type PopulationDoc, type Revision, type RevisedKind,
+  type StoreKind,
+} from "../../shared/people/doc.ts";
+import type { PopulationDef } from "../../shared/content/kinds/populations.ts";
+import type { StorePopulations } from "../../shared/people/person.ts";
 import { PrintThread, pngSize, type PrintInfo } from "./png.ts";
 
 export interface PeopleOptions {
@@ -31,9 +38,22 @@ export interface PeopleView {
   readonly editions: readonly Edition[];
   readonly byId: ReadonlyMap<number, Edition>;
   readonly made: ReadonlyMap<number, Made>;
+  /** The retired editions. */
   readonly retired: ReadonlySet<number>;
-  /** The manifest's id, the first 16 hex digits of the SHA-256 of its JSON, or "" while there are no editions. */
+  /** The retired things of each kind. */
+  readonly retiredOf: { readonly [K in StoreKind]: ReadonlySet<number> };
+  /** Every revision of every named person, outfit and admin population, by id, the first revision first. */
+  readonly records: { readonly [K in RevisedKind]: ReadonlyMap<number, readonly Revision<Bodies[K]>[]> };
+  /** The manifest's id, the first 16 hex digits of the SHA-256 of its JSON, or "" while it would be empty. */
   readonly manifestId: string;
+}
+
+/** A save answered: the thing's id and revision, and false for `changed` where it was already so. */
+export interface Saved {
+  readonly id: number;
+  readonly rev: number;
+  readonly changed: boolean;
+  readonly view: PeopleView;
 }
 
 /** A change refused: the status to answer and why, and for a stale revision the store as it is now. */
@@ -69,6 +89,8 @@ const WRITE_WAIT_MS = 20;
 const OPEN_WAIT_MS = 2500;
 
 const STALE = "The editions changed in another page. Reload to see them.";
+const STALE_STORE = "The people store changed in another page. Reload to see it.";
+const STALE_THING = (kind: string, id: number): string => `The ${kind} ${id} was saved in another page. Reload to see it.`;
 const sha16 = (text: string): string => new Bun.CryptoHasher("sha256").update(text).digest("hex").slice(0, 16);
 
 interface RecordRow {
@@ -88,9 +110,13 @@ const partName = (): string => `${process.pid}-${++partsMade}-${crypto.randomUUI
 const TMP_PARTS = [/^print-[0-9a-f-]+\.part$/, /^people\.[0-9a-f]{16}\.[0-9a-f-]+\.json$/];
 const PRINT_FILE = /^print\.([0-9a-f]{16})\.png$/;
 
-const EMPTY: PeopleView = { revision: -1, editions: [], byId: new Map(), made: new Map(), retired: new Set(), manifestId: "" };
+const noneRetired = (): PeopleView["retiredOf"] => Object.fromEntries(STORE_KINDS.map((k) => [k, new Set<number>()])) as unknown as PeopleView["retiredOf"];
+const EMPTY: PeopleView = {
+  revision: -1, editions: [], byId: new Map(), made: new Map(), retired: new Set(), retiredOf: noneRetired(),
+  records: { person: new Map(), outfit: new Map(), population: new Map() }, manifestId: "",
+};
 
-export class PeopleStore {
+export class PeopleStore implements StorePopulations {
   private readonly path: string;
   private readonly now: () => number;
   private readonly opts: PeopleOptions;
@@ -100,6 +126,9 @@ export class PeopleStore {
   private cached: PeopleView = EMPTY;
   /** Each edition's line of the manifest, in id order: one for each edition in `cached`, added with it. */
   private readonly lines: string[] = [];
+  /** Each admin population revision's line, in the order the store took them, and each as the generator takes it. */
+  private readonly populationLines: string[] = [];
+  private readonly populationDefs = new Map<number, PopulationDef[]>();
   /** The editions' manifest has not been written since its last change: the next look tries again. */
   private manifestOwed = false;
   /** The part files this store's checks wrote, which alone it puts in place. */
@@ -186,23 +215,44 @@ export class PeopleStore {
       return { revision: row.revision, doc: JSON.parse(row.doc) as StoreDoc, rows };
     }).deferred();
     const was = this.cached, added: Edition[] = [], made = new Map(was.made);
+    const records = { person: new Map(was.records.person), outfit: new Map(was.records.outfit), population: new Map(was.records.population) };
+    const addedPopulations: Revision<PopulationDoc>[] = [];
     for (const r of rows) {
-      if (r.kind !== "edition" || was.byId.has(r.id)) continue;
-      const body = JSON.parse(r.body) as EditionDraft;
-      const edition: Edition = { id: r.id, garment: body.garment, colours: body.colours, print: body.print, name: body.name };
-      added.push(edition);
-      made.set(r.id, { by: r.by, byId: r.by_id, at: r.at });
+      if (r.kind === "edition") {
+        if (was.byId.has(r.id)) continue;
+        const body = JSON.parse(r.body) as EditionDraft;
+        const edition: Edition = { id: r.id, garment: body.garment, colours: body.colours, print: body.print, name: body.name };
+        added.push(edition);
+        made.set(r.id, { by: r.by, byId: r.by_id, at: r.at });
+        continue;
+      }
+      // A kind a later build added is left to that build.
+      if (!(REVISED_KINDS as readonly string[]).includes(r.kind)) continue;
+      const kind = r.kind as RevisedKind, held = records[kind].get(r.id) ?? [];
+      if (held.length >= r.rev) continue;
+      const one: Revision<Bodies[RevisedKind]> = { id: r.id, rev: r.rev, body: JSON.parse(r.body) as Bodies[RevisedKind], made: { by: r.by, byId: r.by_id, at: r.at } };
+      (records[kind] as Map<number, Revision<Bodies[RevisedKind]>[]>).set(r.id, [...held, one]);
+      if (kind === "population") addedPopulations.push(one as Revision<PopulationDoc>);
     }
     const editions = added.length > 0 ? [...was.editions, ...added] : was.editions;
     // The records are held first, each with its manifest line, so a manifest that fails to be written loses none of them.
     for (const e of added) this.lines.push(JSON.stringify(e));
+    for (const p of addedPopulations) {
+      this.populationLines.push(JSON.stringify({ id: p.id, rev: p.rev, population: p.body }));
+      const defs = this.populationDefs.get(p.id) ?? [];
+      defs[p.rev - 1] = storePopulation(p.id, p.rev, p.body);
+      this.populationDefs.set(p.id, defs);
+    }
+    const retiredOf = Object.fromEntries(STORE_KINDS.map((k) => [k, new Set(doc.retired[k] ?? [])])) as unknown as PeopleView["retiredOf"];
     this.cached = {
       revision, editions, made,
       byId: added.length > 0 ? new Map(editions.map((e) => [e.id, e])) : was.byId,
-      retired: new Set(doc.retired.edition ?? []),
+      retired: retiredOf.edition,
+      retiredOf,
+      records,
       manifestId: was.manifestId,
     };
-    if (added.length > 0) this.manifestOwed = true;
+    if (added.length > 0 || addedPopulations.length > 0) this.manifestOwed = true;
     return this.manifestOwed ? this.writeOwed() : this.cached;
   }
 
@@ -217,10 +267,11 @@ export class PeopleStore {
     return this.cached;
   }
 
-  /** Writes the manifest as media/people.<id>.json unless it is there, and returns its id; "" for no editions. */
+  /** Writes the manifest as media/people.<id>.json unless it is there, and returns its id; "" while it would be empty. */
   private writeManifest(): string {
-    if (this.lines.length === 0) return "";
-    const json = `{"editions":[${this.lines.join(",")}]}`;
+    if (this.lines.length === 0 && this.populationLines.length === 0) return "";
+    // A manifest of editions alone is written as it was before admin populations, so its id is the same.
+    const json = this.populationLines.length === 0 ? `{"editions":[${this.lines.join(",")}]}` : `{"editions":[${this.lines.join(",")}],"populations":[${this.populationLines.join(",")}]}`;
     const id = sha16(json), file = join(this.media, `people.${id}.json`);
     if (!existsSync(file)) {
       this.folders();
@@ -247,28 +298,71 @@ export class PeopleStore {
   }
 
   /**
-   * Appends a revision of a thing of `kind` if `expected` is still the store's revision: a new thing under the next id
-   * where `id` is null, else the next revision of thing `id`. Answers the id, or null where the store moved on.
+   * Appends a thing of `kind` under the next id if `expected` is still the store's revision. Answers the id, or null
+   * where the store moved on.
    */
-  private append(kind: StoreKind, id: number | null, expected: number, body: unknown, by: By): number | null {
+  private append(kind: StoreKind, expected: number, body: unknown, by: By): number | null {
     const db = this.open();
     return db.transaction(() => {
       const row = db.query("SELECT revision FROM store WHERE id=1").get() as { revision: number };
       if (row.revision !== expected) return null;
-      let at = id, rev = 1;
-      if (at === null) {
-        const top = db.query("SELECT MAX(id) AS id FROM records WHERE kind=?").get(kind) as { id: number | null };
-        at = (top.id ?? 0) + 1;
-        if (at > ID_MOST) throw new Error(`the people store has given every ${kind} id there is`);
-      } else {
-        const top = db.query("SELECT MAX(rev) AS rev FROM records WHERE kind=? AND id=?").get(kind, at) as { rev: number | null };
-        if (top.rev === null) throw new Error(`the people store holds no ${kind} ${at}`);
-        rev = top.rev + 1;
-      }
-      db.query("INSERT INTO records (kind, id, rev, body, by, by_id, at, store) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(kind, at, rev, JSON.stringify(body), by.name, by.id, this.now(), row.revision + 1);
-      db.query("UPDATE store SET revision=? WHERE id=1").run(row.revision + 1);
-      return at;
+      return this.insert(db, kind, null, 0, JSON.stringify(body), by, row.revision);
     }).immediate();
+  }
+
+  /** Inserts revision `rev + 1` of thing `id` (a new thing under the next id where null) and moves the store on. */
+  private insert(db: Database, kind: StoreKind, id: number | null, rev: number, body: string, by: By, revision: number): number {
+    let at = id;
+    if (at === null) {
+      const top = db.query("SELECT MAX(id) AS id FROM records WHERE kind=?").get(kind) as { id: number | null };
+      at = (top.id ?? 0) + 1;
+      if (at > ID_MOST) throw new Error(`the people store has given every ${kind} id there is`);
+    }
+    db.query("INSERT INTO records (kind, id, rev, body, by, by_id, at, store) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(kind, at, rev + 1, body, by.name, by.id, this.now(), revision + 1);
+    db.query("UPDATE store SET revision=? WHERE id=1").run(revision + 1);
+    return at;
+  }
+
+  /**
+   * Saves a named person, an outfit or an admin population: a new one under the next id where `id` is null, else the
+   * revision after `expected`, which must be the thing's latest. The body is kept as its kind's check reads it, so every
+   * reader of the manifest takes what the world does; a body the same as the latest is no change. A stale revision is
+   * refused with 409 and the store as it is; nothing is changed or lost.
+   */
+  save<K extends RevisedKind>(kind: K, id: number | null, expected: number, body: Bodies[K], by: By): Saved | Refusal {
+    const sent = body as unknown as Record<string, unknown>;
+    const read = kind === "person" ? readPerson(sent) : kind === "outfit" ? readOutfit(sent) : readPopulation(sent);
+    if (typeof read === "string") return { status: 400, error: read };
+    const db = this.open(), text = JSON.stringify(read);
+    const done = this.written(() =>
+      db.transaction((): { id: number; rev: number; changed: boolean } | Refusal => {
+        const row = db.query("SELECT revision FROM store WHERE id=1").get() as { revision: number };
+        if (id === null) {
+          if (expected !== 0) return { status: 400, error: `A new ${kind} is saved from revision 0.` };
+          return { id: this.insert(db, kind, null, 0, text, by, row.revision), rev: 1, changed: true };
+        }
+        const top = db.query("SELECT rev, body FROM records WHERE kind=? AND id=? ORDER BY rev DESC LIMIT 1").get(kind, id) as { rev: number; body: string } | null;
+        if (!top) return { status: 404, error: `There is no ${kind} ${id}.` };
+        if (top.rev !== expected) return { status: 409, error: STALE_THING(kind, id) };
+        if (top.body === text) return { id, rev: top.rev, changed: false };
+        this.insert(db, kind, id, top.rev, text, by, row.revision);
+        return { id, rev: top.rev + 1, changed: true };
+      }).immediate(),
+    );
+    if ("status" in done) return done.status === 409 ? { ...done, view: this.view() } : done;
+    return { ...done, view: this.view() };
+  }
+
+  /** Revision `rev` of admin population `id` as the person generator takes it, retired or not; a held one costs a lookup. */
+  population(id: number, rev: number): PopulationDef | undefined {
+    const held = this.populationDefs.get(id)?.[rev - 1];
+    if (held) return held;
+    try {
+      this.view();
+    } catch {
+      return undefined;
+    }
+    return this.populationDefs.get(id)?.[rev - 1];
   }
 
   /** Runs a write, answering a file another world holds too long as a refusal to try again. */
@@ -299,26 +393,27 @@ export class PeopleStore {
       print = { ...print, ...size };
     }
     const body: EditionDraft = { garment: draft.garment, colours: [...draft.colours] as [number, number, number], print, name: draft.name };
-    const id = this.written(() => this.append("edition", null, expected, body, by));
+    const id = this.written(() => this.append("edition", expected, body, by));
     if (id !== null && typeof id === "object") return id;
     if (id === null) return { status: 409, error: STALE, view: this.view() };
     return { id, view: this.view() };
   }
 
   /**
-   * Retires an edition, or brings it back, if `expected` is still the store's revision. It stays in the manifest and on
-   * whoever wears it; only the admin's pick list leaves it out. `changed` is false where it already was so.
+   * Retires a thing of `kind`, or brings it back, if `expected` is still the store's revision. It stays in the manifest
+   * and on whoever wears or is drawn from it; only the admin's pick lists leave it out. `changed` is false where it
+   * already was so.
    */
-  retire(expected: number, id: number, retired: boolean): { changed: boolean; view: PeopleView } | Refusal {
+  retire(expected: number, id: number, retired: boolean, kind: StoreKind = "edition"): { changed: boolean; view: PeopleView } | Refusal {
     const db = this.open();
     const done = this.written(() =>
       db.transaction((): boolean | Refusal => {
         const row = db.query("SELECT revision, doc FROM store WHERE id=1").get() as { revision: number; doc: string };
-        if (row.revision !== expected) return { status: 409, error: STALE };
-        if (!db.query("SELECT 1 FROM records WHERE kind='edition' AND id=?").get(id)) return { status: 404, error: `There is no edition ${id}.` };
-        const doc = JSON.parse(row.doc) as StoreDoc, was = doc.retired.edition ?? [];
+        if (row.revision !== expected) return { status: 409, error: kind === "edition" ? STALE : STALE_STORE };
+        if (!db.query("SELECT 1 FROM records WHERE kind=? AND id=?").get(kind, id)) return { status: 404, error: `There is no ${kind} ${id}.` };
+        const doc = JSON.parse(row.doc) as StoreDoc, was = doc.retired[kind] ?? [];
         if (was.includes(id) === retired) return false;
-        doc.retired.edition = retired ? [...was, id].sort((a, b) => a - b) : was.filter((e) => e !== id);
+        doc.retired[kind] = retired ? [...was, id].sort((a, b) => a - b) : was.filter((e) => e !== id);
         db.query("UPDATE store SET revision=?, doc=? WHERE id=1").run(row.revision + 1, JSON.stringify(doc));
         return true;
       }).immediate(),

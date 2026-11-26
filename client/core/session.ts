@@ -192,7 +192,7 @@ import type { BlocksSource } from "./render/cityblocks.ts";
 import { CityStatics } from "../../shared/world/city.ts";
 import { NodeChanges, type FarNodeSource } from "./render/farnodes.ts";
 import { MapStore } from "./tactical.ts";
-import { lookOfSeed } from "../../shared/people/person.ts";
+import { PeopleBook } from "./people-book.ts";
 
 export interface SessionOptions {
   intent?: "create" | "resume";
@@ -625,6 +625,8 @@ export class ClientSession {
   remaking = false;
   /** The id of the cluster's people manifest, its editions (OWN_PEOPLE, shared/people/doc.ts), or "" for none yet. */
   peopleManifest = "";
+  /** The cluster's admin populations this client has loaded from the people manifests it was named. */
+  readonly peopleBook = new PeopleBook();
   /** With a piece in hand: the structures of every tribe counted round the survivor, and the most that may stand there, 0 for no cap (OWN_STRUCTURES). */
   structuresNear = 0;
   structuresCap = 0;
@@ -831,8 +833,8 @@ export class ClientSession {
   tap: NetTap | null = null;
   /** Where the tap was last told a snapshot's section ended, in bits from the message's start. */
   private marked = 0;
-  /** A person sent as a seed, made from the content the server tuned (shared/people/person.ts). */
-  private readonly makePerson = (seed: number, population: number, revision: number): Uint8Array | null => lookOfSeed(this.registry, seed, population, revision);
+  /** A person sent as a seed, made from the content the server tuned or the cluster's admin populations (shared/people/person.ts). */
+  private readonly makePerson = (seed: number, population: number, revision: number): Uint8Array | null => this.peopleBook.look(this.registry, seed, population, revision);
   private readonly tally = (op: number, kind: number, bits: number): void => {
     this.marked += bits;
     this.tap?.snapshot(SNAP_BODIES, op, kind, bits);
@@ -2215,7 +2217,9 @@ export class ClientSession {
       kind: OWN_PEOPLE,
       read(s, r) {
         const id = r.string(16);
-        if (!r.overflow && (id === "" || /^[0-9a-f]{16}$/.test(id))) s.peopleManifest = id;
+        if (r.overflow || !(id === "" || /^[0-9a-f]{16}$/.test(id))) return;
+        s.peopleManifest = id;
+        s.peopleBook.want(id);
       },
     });
     ownKinds.add({
