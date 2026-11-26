@@ -130,6 +130,43 @@ test("the map is made round the camera over frames, goes on the card whole once,
   expect(p.roofMap.length).toBe(map.length);
 });
 
+test("the map on the card stays in use at its own place until the one made after it is sent", () => {
+  const roof = new RoofMap();
+  const p = new FramePacket();
+  p.tier = tierOf("high");
+  let now = 0, sent = 0;
+  const budget = { left: 1 << 20, spend: (bytes: number) => void (sent += bytes) };
+  const low = [1 / Math.hypot(1, 0.4), 0.4 / Math.hypot(1, 0.4), 0];
+  const frame = (x: number, sun: readonly number[] = low): number[] => {
+    p.beginFrame();
+    roof.update(p, budget, city, hf, none, x, 128, (now += 1000 / 60), () => 0, sun);
+    return [p.roofSide, p.frame[ROOF_AT]!, p.frame[ROOF_AT + 3]!, p.roofMap.length];
+  };
+  for (let k = 0; k < 500 && !roof.whole; k++) frame(128);
+  const size = map.length, was = sent;
+  expect([roof.whole, was]).toEqual([true, size]);
+  // Moved 49 m with an allowance a byte short: the old map, at its place, on every frame, and nothing sent.
+  budget.left = size - 1;
+  for (let k = 0, after = 0; k < 500 && after < 10; k++, after += roof.stats.made === 2 ? 1 : 0) expect(frame(128 + 49)).toEqual([ROOF_SIDE, -(128 + 49), 2, 0]);
+  expect([roof.stats.made, sent]).toEqual([2, was]);
+  // The first frame with room sends the new map and moves to its place.
+  budget.left = 1 << 20;
+  expect(frame(128 + 49)).toEqual([ROOF_SIDE, Math.round(177 / 8) * 8 - ROOF_SIDE / 2 - 177, 2, size]);
+  // Lit again for a sun moved, with a short allowance: never off.
+  budget.left = size - 1;
+  const turned = [low[0]! * Math.cos(SUN_MOVE * 2), low[1]!, low[0]! * Math.sin(SUN_MOVE * 2)];
+  for (let k = 0; k < 500 && roof.stats.lit === 0; k++) expect(frame(177, turned)[2]).toBe(2);
+  expect([roof.stats.lit, frame(177, turned)[2], p.roofMap.length]).toEqual([1, 2, 0]);
+  budget.left = 1 << 20;
+  expect(frame(177, turned)[3]).toBe(size);
+  // A lost context takes it off until it is sent again.
+  roof.reset();
+  budget.left = size - 1;
+  expect(frame(177, turned)).toEqual([0, Math.round(177 / 8) * 8 - ROOF_SIDE / 2 - 177, 0, 0]);
+  budget.left = 1 << 20;
+  expect(frame(177, turned)[2]).toBe(2);
+});
+
 test("the desktop tiers' lit programs read what stands overhead, a phone's and low poly's do not", () => {
   const roofs = (tier: (typeof TIERS)[number]): boolean[] => ["flat", "terrain", "surface"].map((name) => PROGRAMS[name]!(tier, "bc").defines.includes("#define ROOF\n"));
   expect(TIERS.map((t) => [t.name, roofs(t)])).toEqual([["lowpoly", [false, false, false]], ["medium", [true, true, true]], ["high", [true, true, true]], ["ultra", [true, true, true]]]);

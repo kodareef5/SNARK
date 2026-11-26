@@ -5,7 +5,9 @@ import { expect, test } from "bun:test";
 import { TIERS, forTouch, tierOf } from "../../client/core/assets/tiers.ts";
 import { ladder } from "../../client/core/governor.ts";
 import { tierWithout } from "../../client/core/passes.ts";
-import { CONTACT_MOST, contactFrame, contactShare } from "../../client/core/render/contact.ts";
+import { CONTACT_MOST, ParkedContacts, contactAt, contactFrame, contactShare } from "../../client/core/render/contact.ts";
+import { YAW_UNITS } from "../../shared/coords.ts";
+import { StructureStore } from "../../shared/world/structures.ts";
 import { FRAME, FRAME_FLOATS, FramePacket } from "../../client/core/render/packet.ts";
 import { RemoteSample } from "../../client/core/session.ts";
 import { CUE_DEAD } from "../../shared/anim/pose.ts";
@@ -200,4 +202,84 @@ test("contact: the bodies nearest the camera, a vehicle as its driving box, the 
   // Medium holds none.
   contactFrame(frame, false, reg, remote, null, cam);
   expect(contactShare(frame, [10, -1.7, 0], up)).toBe(1);
+});
+
+/** Survivors standing at (distance, bearing) round the camera's foot, the camera 1.7 m up at (ox, oz). */
+function crowd(places: readonly (readonly [number, number])[], ox = 0, oz = 0): RemoteSample {
+  const reg = coreRegistry(), remote = new RemoteSample();
+  for (const [d, a] of places) {
+    const n = remote.count++;
+    [remote.kind[n], remote.x[n], remote.y[n], remote.z[n], remote.yaw[n], remote.cue[n]] = [reg.index.get("core:survivor")!, ox + d * Math.cos(a), 0, oz + d * Math.sin(a), 0, 0];
+  }
+  return remote;
+}
+/** The sky's light left on the ground at each of `places`, camera-relative. */
+const feet = (frame: Float32Array, places: readonly (readonly [number, number])[]): number[] => places.map(([d, a]) => contactAt(frame, d * Math.cos(a), -1.7, d * Math.sin(a), 0, 1, 0));
+/** Eleven survivors from 8 m to 33 m and a twelfth at 35 m, all on the camera's left, apart from each other. */
+const ELEVEN = Array.from({ length: 11 }, (_, k) => [8 + 2.5 * k, Math.PI / 2 + (k * Math.PI) / 12] as const);
+const TWELFTH = [35, Math.PI / 2 + (11 * Math.PI) / 12] as const;
+
+test("contact fades out toward its 60 m reach, with no step where a body leaves", () => {
+  // The camera at the survivor's middle height, so that its distance is its distance along x.
+  const reg = coreRegistry(), frame = new Float32Array(FRAME_FLOATS);
+  const cam = { x: 0, y: reg.bodyHeight[reg.index.get("core:survivor")!]! / 2, z: 0 };
+  const under = (d: number): number => {
+    contactFrame(frame, true, reg, crowd([[d, 0]]), null, cam);
+    return contactAt(frame, d, -cam.y, 0, 0, 1, 0);
+  };
+  expect(Math.abs(under(59.99) - under(60.01))).toBeLessThan(0.01);
+  let most = 0;
+  for (let k = 0; k < 84; k++) most = Math.max(most, Math.abs(under(40 + 0.25 * (k + 1)) - under(40 + 0.25 * k)));
+  expect(most).toBeLessThan(0.02);
+  expect([under(40), under(61)]).toEqual([under(30), 1]);
+});
+
+test("contact: a 12th and 13th body trade places with no step in either's shade", () => {
+  const reg = coreRegistry(), cam = { x: 0, y: 1.7, z: 0 }, frame = new Float32Array(FRAME_FLOATS);
+  let last: number[] | null = null, most = 0;
+  for (let k = 0; k <= 120; k++) {
+    const places = [...ELEVEN, TWELFTH, [38 - 0.05 * k, 0] as const];
+    contactFrame(frame, true, reg, crowd(places), null, cam);
+    const now = feet(frame, places);
+    if (last) most = Math.max(most, ...now.map((v, i) => Math.abs(v - last![i]!)));
+    last = now;
+  }
+  expect(most).toBeLessThan(0.01);
+});
+
+test("contact: a parked vehicle that pushes a body out of the list does so with no step", () => {
+  const reg = coreRegistry(), cam = { x: 64, y: 1.7, z: 64 }, frame = new Float32Array(FRAME_FLOATS);
+  const store = new StructureStore({ chunksX: 2, chunksZ: 2 }, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
+  const parked = new ParkedContacts(reg), meshOf = new Uint16Array(reg.defs.length);
+  const bounds = [{ center: [0, 2, 0], half: [1.31, 2, 6.14] }];
+  const live = [...ELEVEN, TWELFTH], remote = crowd(live, 64, 64);
+  let last: number[] | null = null, most = 0, ref = -1;
+  for (let k = 0; k <= 120; k++) {
+    // A trailer on the camera's right, end on to it, coming in from 38 m to 32 m.
+    const d = 38 - 0.05 * k;
+    if (ref >= 0) store.remove(ref);
+    ref = store.add(reg.index.get("core:box_trailer")!, 64 + d, 0, 64, YAW_UNITS / 4, 0, 100);
+    contactFrame(frame, true, reg, remote, null, cam);
+    parked.add(frame, store, bounds, meshOf, cam);
+    const now = [...feet(frame, live), contactAt(frame, d, -1.7, 0, 0, 1, 0)];
+    if (last) most = Math.max(most, ...now.map((v, i) => Math.abs(v - last![i]!)));
+    last = now;
+  }
+  // The trailer is in the list at the end, and the twelfth survivor is out.
+  expect(last![12]!).toBeLessThan(0.9);
+  expect(most).toBeLessThan(0.01);
+});
+
+test("contact: a body well inside the reach, with room in the list, is shaded as before", () => {
+  const reg = coreRegistry(), remote = new RemoteSample(), frame = new Float32Array(FRAME_FLOATS);
+  const put = (kind: number, x: number, z: number, yaw: number): void => {
+    const n = remote.count++;
+    [remote.kind[n], remote.x[n], remote.y[n], remote.z[n], remote.yaw[n], remote.cue[n]] = [kind, x, 0, z, yaw, 0];
+  };
+  put(reg.index.get("core:compact")!, 10, 0, Math.PI / 2);
+  put(reg.index.get("core:survivor")!, 30, 0, 0);
+  put(reg.index.get("core:survivor")!, 0, 40, 0);
+  contactFrame(frame, true, reg, remote, null, { x: 0, y: 1.7, z: 0 });
+  const points = [[10, -1.7, 0, 0, 1, 0], [10, -1.7, 1.2, 0, 1, 0], [13, -1.7, 0.5, 0, 1, 0], [30, -1.7, 0, 0, 1, 0], [30.4, -1.2, 0, -1, 0, 0], [0, -1.7, 40, 0, 1, 0], [0.6, -1.7, 40.3, 0, 1, 0]];
+  expect(points.map((q) => contactAt(frame, q[0]!, q[1]!, q[2]!, q[3]!, q[4]!, q[5]!))).toEqual([0.0320000040690103, 0.5239490130665903, 0.8808309394096754, 0.20000002119276272, 0.3895361878790716, 0.20000002119276272, 0.8925329756187552]);
 });

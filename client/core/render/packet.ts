@@ -551,10 +551,12 @@ export const LAMP_AT = SECTION.lamp;
  * fGlass: 1 where the frame's opaque pass has samples for a vehicle's glass to cover a share of (vehicle-glass.ts), 0
  * where it is drawn without, as a supersampled light target is.
  * fShore: 1 where the frame has a sea and the camera is out of the water, so the lit ground knows its height over the
- * sea from its own and is wet just over it (bank.ts shoreWet), else 0. Its other lanes are free.
+ * sea from its own and is wet just over it (bank.ts shoreWet), else 0. Its second lane is CONTACT_REACH_AT, the others are free.
  */
 export const GLASS_AT = SECTION.glass;
 export const SHORE_AT = SECTION.shore;
+/** fShore.y: how far the contact list reaches (contact.ts), short of its most where a body was left out for want of a slot; 0 for its most. */
+export const CONTACT_REACH_AT = SECTION.shore + 1;
 /**
  * fDrops: the supply drops' casts in the sky (supply-sky.ts). Two lanes a streak, four streaks: the unit way to its
  * head from the eye and its strength, then the unit way to where its tail ends and its tier's colour as 0xRRGGBB. Then

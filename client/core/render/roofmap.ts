@@ -269,6 +269,9 @@ export class RoofMap {
   private shownMap: Uint8Array | null = null;
   private readonly shownAt = [0, 0];
   private sent = false;
+  /** Whether the card holds a map, and where the one it holds is: shown until the newer one is sent. */
+  private held = false;
+  private readonly heldAt = [0, 0];
   private making: Generator<void, void> | null = null;
   private makingMap: Uint8Array | null = null;
   private readonly makingAt = [0, 0];
@@ -289,9 +292,10 @@ export class RoofMap {
     return this.shownMap !== null && this.making === null && this.lighting === null && this.sent;
   }
 
-  /** After a lost context: the one shown goes on the card again. */
+  /** After a lost context: the card holds none, and the one shown goes on it again. */
   reset(): void {
     this.sent = false;
+    this.held = false;
   }
 
   /** Notes that pieces that stood are gone: the window is made again where it is. */
@@ -303,9 +307,10 @@ export class RoofMap {
    * Each frame on a tier with roofs, with the camera at (cx, cz): begins a map round it where none is shown or the
    * camera has gone ROOF_MOVE from the middle of the one shown, or lights the shown one's ground again where `sun`, the
    * unit vector toward the sun while it casts, else null, has moved SUN_MOVE; makes ROOF_STEPS slices of either, puts
-   * the map on the card once made, and says in the frame block where it is: fRoof.w 2 while it is on the card, for the
-   * roof and the light from the ground both, 1 for the roof alone (`?off=bounce`), 0 for neither. `now` is the scene's
-   * clock and `clock` the page's, which only times the slices, both in milliseconds.
+   * the map on the card once made, and says in the frame block where the one on the card is, which stays in use until
+   * the next is sent: fRoof.w 2 while one is on the card, for the roof and the light from the ground both, 1 for the
+   * roof alone (`?off=bounce`), 0 for neither. `now` is the scene's clock and `clock` the page's, which only times the
+   * slices, both in milliseconds.
    */
   update(p: FramePacket, budget: { readonly left: number; spend(bytes: number): void }, city: CityStatics, hf: Heightfield, gone: (chunk: number) => Gone, cx: number, cz: number, now: number, clock: () => number, sun: ArrayLike<number> | null = null): void {
     const f = p.frame, at = ROOF_AT;
@@ -354,12 +359,14 @@ export class RoofMap {
     if (map && !this.sent && budget.left >= map.length) {
       p.roofMap = map;
       budget.spend(map.length);
-      this.sent = true;
+      this.sent = this.held = true;
+      this.heldAt[0] = this.shownAt[0]!;
+      this.heldAt[1] = this.shownAt[1]!;
     }
-    p.roofSide = map && this.sent ? ROOF_SIDE : 0;
-    f[at] = this.shownAt[0]! - cx;
-    f[at + 1] = this.shownAt[1]! - cz;
+    p.roofSide = this.held ? ROOF_SIDE : 0;
+    f[at] = this.heldAt[0]! - cx;
+    f[at + 1] = this.heldAt[1]! - cz;
     f[at + 2] = ROOF_SIDE;
-    f[at + 3] = p.roofSide > 0 ? 2 : 0;
+    f[at + 3] = this.held ? 2 : 0;
   }
 }
