@@ -17,7 +17,9 @@
 //   have moved half a cell.
 // - The map is a 16-bit layer of the shadow array after the cascades', stored as depth from a ceiling FAR_SPAN over the
 //   ground's floor, so a compared lookup with LEQUAL says lit where a pixel stands at or over it, filtered by the card.
-//   It is let go once it is all on the card, and swept again where the card loses it.
+//   It has two layers: a new map goes up a few rows a frame into the one not looked up, which is looked up from the
+//   frame its last row goes up, so no frame shows rows of two maps. Their place is kept through a governor's step
+//   (shadow-map.ts `farLayer`). It is let go once it is all on the card, and swept again where the card loses it.
 //
 // It is swept where the far city's levels are made (citymake.ts), on a worker in the browser, and here in tests and tools,
 // and the sky's openness (skyopen.ts) is made there from the same solid heights and the ground under them. The camera's
@@ -30,10 +32,10 @@ import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import { TACTICAL_CELL, farTopMetres } from "../../../shared/world/tactical.ts";
 import type { HeldTops } from "./blocks.ts";
 import type { CityMaker } from "./citymake.ts";
-import { CAST_AT, FRAME, ROOF_AT, type FramePacket } from "./packet.ts";
+import { CAST_AT, FAR_LAYER_AT, FRAME, ROOF_AT, type FramePacket } from "./packet.ts";
 import { MAX_REACH } from "./shadow.ts";
 import { SkyOpen, openMeasure, type OpenMap } from "./skyopen.ts";
-import { FAR_SPAN, FAR_OUT, FAR_LEAD, FAR_RISE, FLAT_LEAST, type SweepJob, type SweepMade } from "./shadow-map.ts";
+import { FAR_SPAN, FAR_OUT, FAR_LEAD, FAR_RISE, FLAT_LEAST, farLayer, type SweepJob, type SweepMade } from "./shadow-map.ts";
 export { FAR_SPAN, FAR_OUT, FAR_LEAD, FAR_RISE, FLAT_LEAST, sweepBuffers, type SweepJob, type SweepMade } from "./shadow-map.ts";
 import type { RoofMap } from "./roofmap.ts";
 import type { TopFix } from "./topfix.ts";
@@ -338,9 +340,13 @@ export class FarShadow {
   private readonly askedSun = new Float64Array(3);
   private askedCell = 0;
   private askedSize = 0;
-  /** The layer: its side and the cascades before it, the next row of the latest map to put on it, and the last map wholly on it. */
+  /**
+   * The two layers: their side, the first one's place, which of them is looked up, the next row of the latest map to put
+   * on the other, and the last map wholly on the card.
+   */
   private layerSize = 0;
   private layerAt = -1;
+  private shown = 0;
   private row = 0;
   private onCard = false;
   private readonly cardSun = new Float64Array(3);
@@ -423,7 +429,7 @@ export class FarShadow {
     return this.open.whole && (!this.roofs || (this.roof?.whole ?? false));
   }
 
-  /** After a lost context: the layer and the openness's texture are empty, and each is made and put on the card again. */
+  /** After a lost context: the layers and the openness's texture are empty, and each is made and put on the card again. */
   reset(): void {
     this.layerSize = 0;
     this.open.reset();
@@ -466,11 +472,11 @@ export class FarShadow {
       this.open.upload(p, budget, 0);
       return;
     }
-    const cell = farCell(this.dims, size);
+    const cell = farCell(this.dims, size), first = farLayer(p.tier.shadows);
     if (cascades <= 0) this.layerSize = 0;
-    else if (size !== this.layerSize || cascades !== this.layerAt) {
+    else if (size !== this.layerSize || first !== this.layerAt) {
       this.layerSize = size;
-      this.layerAt = cascades;
+      this.layerAt = first;
       this.row = 0;
       this.onCard = false;
     }
@@ -494,6 +500,7 @@ export class FarShadow {
     f[FRAME.farAt + 1] = cz / at;
     f[FRAME.farScale] = (looked ? 1 : -1) / at;
     f[FRAME.farDepth] = (this.hf.minY + FAR_SPAN - cy) / FAR_SPAN;
+    f[FAR_LAYER_AT] = looked ? this.layerAt + this.shown : -1;
     if (looked) this.near(f, cx, cz);
   }
 
@@ -806,7 +813,10 @@ export class FarShadow {
     this.stats.sweeps++;
   }
 
-  /** Rows of the latest map onto the layer, as many as the frame's allowance has room for; the map let go once all are. */
+  /**
+   * Rows of the latest map onto the layer not looked up, as many as the frame's allowance has room for, from its first
+   * row again where a newer one has come; looked up and let go once all are.
+   */
   private upload(p: FramePacket, budget: { readonly left: number; spend(bytes: number): void }): void {
     const map = this.map, size = this.mapSize;
     if (!map || size !== this.layerSize || this.row >= size) return;
@@ -815,10 +825,12 @@ export class FarShadow {
     p.farMap = map.subarray(this.row * size, (this.row + rows) * size);
     p.farRow = this.row;
     p.farRows = rows;
+    p.farLayer = this.layerAt + 1 - this.shown;
     budget.spend(rows * size * 2);
     this.row += rows;
     if (this.row < size) return;
     this.onCard = true;
+    this.shown = 1 - this.shown;
     this.map = null;
     this.cardSun.set(this.mapSun);
     this.cardCell = this.mapCell;

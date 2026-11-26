@@ -4,15 +4,18 @@
 // openness pooled them, the map is the same bytes made twice or on another thread, the lookup leaves a building's own
 // sunlit faces lit and shades the ground in its shadow, within the cascades it is looked up past the chunks the near
 // store holds, whose pieces cast there, and the scene's part makes it again when the sun has moved enough, puts it on the
-// card within the frame's allowance and looks it up only once it is all there.
+// card within the frame's allowance and looks it up only once it is all there, a new one beside the one looked up, and
+// keeps it through a governor's step.
 
 import { expect, test } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { HeldTops } from "../../client/core/render/blocks.ts";
 import { ThreadedCityMaker, type CityMaker, type CityThread } from "../../client/core/render/citymake.ts";
 import { FAR_SPAN, FarShadow, SOLID_CHUNKS, SWEEP_QUIET, SWEEP_WAIT, TOP_CELL, chunkSolid, doSweep, farBeyondLookup, farCell, farLookup, makeSolid, nearLead, sweep, sweepBuffers, tipMoves, type Standing, type SweepJob, type SweepMade } from "../../client/core/render/farshadow.ts";
-import { CAST_AT, FRAME, FramePacket } from "../../client/core/render/packet.ts";
+import { ladder } from "../../client/core/governor.ts";
+import { CAST_AT, FAR_LAYER_AT, FRAME, FramePacket, MAX_CASCADES } from "../../client/core/render/packet.ts";
 import { MAX_REACH } from "../../client/core/render/shadow.ts";
+import { shadowLayer, shadowLayers } from "../../client/core/render/shadowtext.ts";
 import { OPEN_BYTES, openMeasure } from "../../client/core/render/skyopen.ts";
 import { CHUNK_SIZE, chunkAt, chunkCount, chunkCx, chunkCz, type MapDims } from "../../shared/coords.ts";
 import type { Registry } from "../../shared/content/registry.ts";
@@ -422,9 +425,10 @@ test("the scene's part sweeps when the statics come and again when the tallest t
   expect(steps).toBeGreaterThan(3);
   expect(tipMoves(made, sun, rise)).toBeGreaterThanOrEqual(TOP_CELL / 2);
   expect(tipMoves(made, sunAt(30 + (steps - 1) * 0.05, 120 + (steps - 1) * 0.05), rise)).toBeLessThan(TOP_CELL / 2);
-  // While the new map goes up, the old one is still looked up.
+  // While the new map goes up in the other layer, the old one is still looked up.
   expect(p.farRows).toBe(100);
   expect(p.frame[FRAME.farScale]).toBe(1 / TOP_CELL);
+  expect(p.farLayer).not.toBe(p.frame[FAR_LAYER_AT]);
   frame();
   frame();
   // Pieces gone, and more a second later: the map is swept again once, when none has gone for two seconds.
@@ -476,6 +480,129 @@ test("the scene's part sweeps when the statics come and again when the tallest t
   p.tier = tierOf("lowpoly");
   expect(frame()).toEqual({ rows: 0, from: 0, spent: 0, scale: 0 });
   expect(p.openWidth).toBe(0);
+});
+
+/** The far map's layers as the card holds them, from the rows each frame sends, and the one a frame looks up. */
+class Card {
+  readonly layers = new Map<number, Uint16Array>();
+  shown = -1;
+  readonly size: number;
+  constructor(size: number) {
+    this.size = size;
+  }
+
+  layer(at: number): Uint16Array {
+    return this.layers.get(at) ?? this.layers.set(at, new Uint16Array(this.size * this.size)).get(at)!;
+  }
+
+  /** Takes a frame's rows into their layer; true where the last row of a map went up. */
+  take(p: FramePacket): boolean {
+    let done = false;
+    if (p.farRows > 0) {
+      this.layer(p.farLayer).set(p.farMap, p.farRow * this.size);
+      done = p.farRow + p.farRows === this.size;
+    }
+    this.shown = p.frame[FAR_LAYER_AT]!;
+    return done;
+  }
+}
+
+/** Two towers' far shadow on high at 256 a side, the camera at (300, 20, 300), 100 rows a frame onto `card`. */
+function replacing() {
+  const { dims, hf, city } = twoTowers();
+  const shadow = new FarShadow(dims, hf, null, null, () => false);
+  shadow.hand(city, standingOf(city, hf));
+  const p = litPacket(256), card = new Card(256);
+  const look = { sun: sunAt(30, 120) };
+  // A frame once a map is shown: its rows go to the other layer, the shown one is untouched and still looked up, and
+  // the frame its last row goes up looks the new one up.
+  const frame = (): boolean => {
+    const before = card.shown, held = card.layer(before).slice();
+    p.beginFrame();
+    shadow.update(p, allowance(100 * 256 * 2), 300, 20, 300, look.sun, 0);
+    const done = card.take(p);
+    if (p.farRows > 0) expect(p.farLayer).not.toBe(before);
+    expect(card.layer(before)).toEqual(held);
+    expect([p.frame[FRAME.farScale], card.shown]).toEqual([1 / TOP_CELL, done ? p.farLayer : before]);
+    return done;
+  };
+  for (let f = 0; f < 3; f++) {
+    p.beginFrame();
+    shadow.update(p, allowance(100 * 256 * 2), 300, 20, 300, look.sun, 0);
+    card.take(p);
+  }
+  expect(p.frame[FRAME.farScale]).toBe(1 / TOP_CELL);
+  /** The map for `sun` as the card should hold it. */
+  const want = (sun: number[]): Uint16Array => {
+    const out = new Uint16Array(256 * 256);
+    sweep(makeSolid(city, hf, () => null), 128, 128, 1, 256, sun[0]!, sun[1]!, sun[2]!, out);
+    return out;
+  };
+  return { shadow, p, card, look, frame, want };
+}
+
+test("a new map goes up in the layer not shown, and is looked up once it is all there", () => {
+  const { shadow, p, card, look, frame, want } = replacing();
+  const first = card.shown;
+  expect(card.layer(first)).toEqual(want(look.sun));
+  // The sun moves on until the map is swept again; its rows go up beside the shown one over three frames.
+  let frames = 1, step = 0, done = false;
+  while (shadow.stats.sweeps === 1) {
+    step++;
+    look.sun = sunAt(30 + step * 0.05, 120 + step * 0.05);
+    done = frame();
+  }
+  for (; !done; frames++) done = frame();
+  expect([frames, p.farRow + p.farRows]).toEqual([3, 256]);
+  expect(card.shown).not.toBe(first);
+  expect(card.layer(card.shown)).toEqual(want(look.sun));
+  // A sweep after that goes back into the first layer.
+  look.sun = sunAt(30 + 2 * step * 0.05, 120 + 2 * step * 0.05);
+  frame();
+  expect([shadow.stats.sweeps, p.farLayer]).toEqual([3, first]);
+});
+
+test("a map swept while another is half up starts again in the layer not shown", () => {
+  const { shadow, p, card, look, frame, want } = replacing();
+  const first = card.shown;
+  let step = 1;
+  for (; shadow.stats.sweeps === 1; step++) {
+    look.sun = sunAt(30 + step * 0.05, 120 + step * 0.05);
+    frame();
+  }
+  const into = p.farLayer;
+  expect([p.farRow, p.farRows]).toEqual([0, 100]);
+  // Twice as far on: swept again from its first row, into the same layer, the first map still shown.
+  look.sun = sunAt(30 + 2 * step * 0.05, 120 + 2 * step * 0.05);
+  expect(frame()).toBe(false);
+  expect([shadow.stats.sweeps, p.farRow, p.farLayer, card.shown]).toEqual([3, 0, into, first]);
+  while (!frame());
+  expect(card.shown).toBe(into);
+  expect(card.layer(into)).toEqual(want(look.sun));
+});
+
+test("a governor step to one cascade fewer and back keeps the far map looked up, unswept", () => {
+  const { dims, hf, city } = twoTowers();
+  const shadow = new FarShadow(dims, hf, null, null, () => false);
+  shadow.hand(city, standingOf(city, hf));
+  const levels = ladder(tierOf("high"), 2);
+  const at = levels.findIndex((l) => l.name === "one cascade fewer");
+  const [three, two] = [levels[at - 1]!.tier, levels[at]!.tier];
+  expect([three.shadows.cascades, two.shadows.cascades]).toEqual([3, 2]);
+  const p = new FramePacket();
+  p.lit = true;
+  const sun = sunAt(40, 30);
+  const frame = (tier: typeof three) => {
+    p.tier = tier;
+    p.beginFrame();
+    shadow.update(p, allowance(1e9), 300, 20, 300, sun, 0);
+    return { scale: p.frame[FRAME.farScale]!, rows: p.farRows, sweeps: shadow.stats.sweeps, layer: p.frame[FAR_LAYER_AT]! };
+  };
+  for (let f = 0; f < 10 && (frame(three).scale <= 0 || p.farRows > 0); f++);
+  const shown = frame(three);
+  expect([shown.scale, shown.rows, shown.sweeps]).toEqual([1 / TOP_CELL, 0, 1]);
+  for (const t of [two, two, three, three, two, three]) expect(frame(t)).toEqual(shown);
+  expect([two, three].map((t) => [shadowLayers(t.shadows), shadowLayer(MAX_CASCADES, t.shadows)])).toEqual([[6, 5], [6, 5]]);
 });
 
 test("a maker on other threads sweeps there, moving the solid heights and the map rather than copying them", async () => {

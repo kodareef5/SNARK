@@ -9,12 +9,12 @@
 // casting strength of the light that owns the cascades: the sun's at dusk, and at night the moon's, which then owns
 // them (sky.ts `castLight`). The lookup is moved off the surface along its normal by up to half a texel, the more
 // the more the surface turns from the sun, and is filtered by compared taps after Castaño (The Witness, 2013). A device
-// whose compared lookups come back hard compares four texels in the shader for each. The far map is the layer after the
-// cascades', looked up with one tap.
+// whose compared lookups come back hard compares four texels in the shader for each. The far map has two layers after
+// the cascades', one looked up with one tap while the next goes up in the other.
 
 import { SIZE_UNITS } from "../../../shared/world/nodes.ts";
 import type { Tier } from "../assets/tiers.ts";
-import { FAR_LEAD, FAR_OUT, FAR_RISE, FAR_SPAN, FLAT_LEAST } from "./shadow-map.ts";
+import { FAR_LEAD, FAR_OUT, FAR_RISE, FAR_SPAN, FLAT_LEAST, farLayer } from "./shadow-map.ts";
 import { LAMP_CORNER, LAMP_GROUND, LAMP_LONG, LAMP_NEAREST, LAMP_OUT, LAMP_TAN, LAMP_WIDE } from "./lamp.ts";
 import { ORB_SEES_GLSL, ORB_SHADE_GLSL } from "./orb-light.ts";
 import { BONES_PER_ROW, MAX_CASCADES } from "./packet.ts";
@@ -115,17 +115,17 @@ export function shadowCascade(px: number, py: number, pz: number, spheres: Array
 }
 
 /**
- * The layers of a tier's shadow array: a cascade's each, the far map's, and on a tier whose street lamp casts
- * (lamp.ts) the lamp's after it; none without cascades.
+ * The layers of a tier's shadow array: a cascade's each, the far map's two (shadow-map.ts `farLayer`), and on a tier
+ * whose street lamp casts (lamp.ts) the lamp's after them; none without cascades.
  */
 export function shadowLayers(shadows: Tier["shadows"]): number {
-  return shadows.cascades > 0 ? shadows.cascades + 1 + (shadows.lamp ? 1 : 0) : 0;
+  return shadows.cascades > 0 ? farLayer(shadows) + 2 + (shadows.lamp ? 1 : 0) : 0;
 }
 
 /** The layer the map of bit `k` of a frame's maps (packet.ts `cascadesDrawn`) is drawn into: a cascade's own, or the lamp's after the far map's. */
-export const shadowLayer = (k: number, cascades: number): number => (k < MAX_CASCADES ? k : cascades + 1);
+export const shadowLayer = (k: number, shadows: Tier["shadows"]): number => (k < MAX_CASCADES ? k : farLayer(shadows) + 2);
 
-/** Bytes a tier's shadow maps hold on the card: a 16-bit layer a cascade, the far map's and the lamp's. */
+/** Bytes a tier's shadow maps hold on the card: a 16-bit layer a cascade, the far map's two and the lamp's. */
 export function shadowBytes(shadows: Tier["shadows"]): number {
   return shadowLayers(shadows) * shadows.size * shadows.size * 2;
 }
@@ -160,10 +160,10 @@ function filterText(m: number): string {
  * The lookup, which LIT and SURFACE include after the frame block: `sunShadow(rel, normal)` is how much of the light the
  * cascades are cast from (fCast: the sun by day, the moon by night, which the far map is swept toward too) a
  * camera-relative point with that normal gets, 0 to 1, which `lit` takes as `shade`. Without SHADOW_CASCADES defined it
- * is 1 everywhere and reads no texture. `uCascades` is the frame's cascades, 0 while nothing casts, and the far map's
- * layer. The sun turned away from a surface is kept off it by its own back, whatever its normal map says. Places on the
- * map are in texels, the receiver's `at` with its depth, and `slope` is how its plane's depth rises a texel along each
- * axis. `farShadow` is the twin of farshadow.ts `farLookup`; with fFarScale not over 0 there is no far map and the
+ * is 1 everywhere and reads no texture. `uCascades` is the frame's cascades, 0 while nothing casts, and fFarLayer the
+ * far map's layer looked up. The sun turned away from a surface is kept off it by its own back, whatever its normal map
+ * says. Places on the map are in texels, the receiver's `at` with its depth, and `slope` is how its plane's depth
+ * rises a texel along each axis. `farShadow` is the twin of farshadow.ts `farLookup`; with fFarScale not over 0 there is no far map and the
  * farthest cascade fades to the sun. The far map's lanes are named whether or not there are cascades, since the sky's
  * openness (skyopen.ts) reads them too. Within the cascades, which the near store's pieces cast into and the far city
  * does not, a pixel is shaded by the far map too, looked up on along its ray to the sun to where that leaves the box of
@@ -180,6 +180,7 @@ function filterText(m: number): string {
 export const SHADOW_GLSL = `${ORB_SEES_GLSL}${ORB_SHADE_GLSL}#define fFarAt fSwell.zw
 #define fFarScale fLook.w
 #define fFarDepth fSkyAlong.w
+#define fFarLayer fShore.z
 #ifdef SHADOW_CASCADES
 uniform highp sampler2DArrayShadow uShadow;
 uniform int uCascades;
@@ -211,7 +212,7 @@ float farShadow(vec3 rel, vec3 normal) {
   vec3 sun = fCast.xyz;
   vec3 p = rel + vec3(normal.x, 0.0, normal.z) * (${g(FAR_OUT)} / fFarScale) + sun * (${g(FAR_LEAD)} / (fFarScale * max(length(sun.xz), ${g(FLAT_LEAST)})));
   vec2 t = p.xz * fFarScale + fFarAt;
-  return shadowTap(t, float(uCascades), vec3(t, fFarDepth - (p.y + ${g(FAR_RISE)}) / ${g(FAR_SPAN)}), vec2(0.0));
+  return shadowTap(t, fFarLayer, vec3(t, fFarDepth - (p.y + ${g(FAR_RISE)}) / ${g(FAR_SPAN)}), vec2(0.0));
 }
 #define fNearFrom vec2(fMoon.w, fMoonColor.w)
 #define fNearTo vec2(fSkyBelow.w, fCloudSun.w)

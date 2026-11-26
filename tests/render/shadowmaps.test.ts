@@ -1,10 +1,12 @@
 // The sun's shadow maps as numbers and text (shadowtext.ts, shadowfilter.ts): the taps share a lookup out over the
 // texels as the filter's kernel says, a pixel hands over to the next cascade in even steps and the farthest fades out,
-// the lit programs carry the tier's shadows, the maps' bytes, the far map's layer among them, come off the card's
-// budget, the rasterizer lights as if in the sun, and the game asks the device what its compared lookups give and
+// the lit programs carry the tier's shadows, the maps' bytes, the far map's two layers among them, come off the card's
+// budget and keep their places through a governor's step, the rasterizer lights as if in the sun, and the game asks the device what its compared lookups give and
 // leaves the context as it was.
 import { texgenBytes } from "../../client/core/texgen/layers.ts";
 import { expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { FACADE_TIERS } from "../../client/core/render/facade.ts";
 import { TIERS, forTouch, tierOf } from "../../client/core/assets/tiers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
@@ -21,7 +23,7 @@ import { zoomed } from "../../client/core/optics.ts";
 import { FOV_MAX } from "../../client/core/settings.ts";
 import { Rng } from "../../shared/rng.ts";
 import { comparedLookup } from "../../client/core/render/shadowfilter.ts";
-import { DEPTH_VERTEX, EDGE, axisWeights, clampDepth, handOver, shadowBytes, shadowCascade, shadowKernel } from "../../client/core/render/shadowtext.ts";
+import { DEPTH_VERTEX, EDGE, axisWeights, clampDepth, handOver, shadowBytes, shadowCascade, shadowKernel, shadowLayer, shadowLayers } from "../../client/core/render/shadowtext.ts";
 import { skyFrame, theSky } from "../../client/core/render/sky.ts";
 import { lit } from "../../client/core/render/surface.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
@@ -150,8 +152,10 @@ test("the lit tiers look the sun's shadow up as their tier says, with the same t
   expect(PROGRAMS.depthTerrainWindow!(tierOf("medium"), "rgba").samplers.uHeight).toBe(UNIT.windowHeights);
 });
 
-test("a tier's maps are a 16-bit layer a cascade, the far map's and on high and ultra the street lamp's, 24, 40 and 48 MB, and come off the card's budget on the lit tiers", () => {
-  expect(TIERS.map((t) => shadowBytes(t.shadows) / 2 ** 20)).toEqual([0, 24, 40, 48]);
+test("a tier's maps are a 16-bit layer a cascade, two far, and a lamp's on high and ultra: 32, 48 and 56 MB", () => {
+  expect(TIERS.map((t) => shadowBytes(t.shadows) / 2 ** 20)).toEqual([0, 32, 48, 56]);
+  // A phone's maps are 1,024 a side, with no lamp's.
+  expect(["medium", "high"].map((t) => shadowBytes(forTouch(tierOf(t), true).shadows) / 2 ** 20)).toEqual([8, 10]);
   const reg = compileContent(CORE_CONTENT).registry!;
   const dims = { chunksX: 1, chunksZ: 1 };
   const hf = new Heightfield(dims, TERRAIN_CELL, -32, 1 / 256);
@@ -165,6 +169,25 @@ test("a tier's maps are a 16-bit layer a cascade, the far map's and on high and 
   };
   // And on medium the walls' weathering masks, made on the card at 512 a side (world-surfaces.ts weatherSide).
   expect(reserved("medium") - reserved("lowpoly")).toBe(shadowBytes(tierOf("medium").shadows) + texgenBytes(512));
+});
+
+test("a governor step keeps the shadow array: the shell makes it again only for another side or layer count", () => {
+  for (const name of ["medium", "high", "ultra"]) {
+    const levels = ladder(tierOf(name), 2);
+    const at = levels.findIndex((l) => l.name === "one cascade fewer");
+    const [more, fewer] = [levels[at - 1]!.tier.shadows, levels[at]!.tier.shadows];
+    expect(fewer.cascades).toBe(more.cascades - 1);
+    expect([shadowLayers(fewer), shadowLayer(MAX_CASCADES, fewer), shadowBytes(fewer)]).toEqual([shadowLayers(more), shadowLayer(MAX_CASCADES, more), shadowBytes(more)]);
+  }
+  // The shell cannot be run here (tests may not import client/shell), so its text is held to that.
+  const text = readFileSync(join(import.meta.dir, "../../client/shell/gl.ts"), "utf8");
+  const from = text.indexOf("  private shadows(");
+  const body = text.slice(from, text.indexOf("\n  }\n", from));
+  expect(body).toContain("layers = p.lit ? shadowLayers(p.tier.shadows) : 0;");
+  expect(body).toContain("if (map.size !== size || map.targets.length !== layers) {");
+  expect(body.match(/deleteTexture/g)?.length).toBe(1);
+  expect(body).toContain("gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, p.farRow, p.farLayer, size, p.farRows,");
+  expect(body).toContain("map.targets[shadowLayer(k, p.tier.shadows)]");
 });
 
 test("the rasterizer lights as if in the sun, and a pixel out of it loses the sun's own light and nothing else", () => {

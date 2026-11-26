@@ -82,9 +82,10 @@ export interface Tier {
    * With `lamp` the nearest working street lamp lights as a light by night and casts into a layer of its own
    * (render/lamp.ts); without, every lamp's light is its cards. With `pools` the bodies and cars near a lamp's pool card
    * take its light there (render/lamp.ts `poolShade`), which costs nothing by day. An orb casts its own shadow in the
-   * same light, worked out in the lit programs (render/orb-light.ts `orbShade`), unless `orb` is false.
+   * same light, worked out in the lit programs (render/orb-light.ts `orbShade`), unless `orb` is false. `base` is the
+   * cascades before the governor took one (core/governor.ts), which the shadow array keeps its layers for.
    */
-  readonly shadows: { readonly cascades: number; readonly size: number; readonly distance: number; readonly taps: number; readonly blend: number; readonly everyOther: boolean; readonly moon?: boolean; readonly lamp?: boolean; readonly orb?: boolean; readonly pools?: boolean };
+  readonly shadows: { readonly cascades: number; readonly size: number; readonly distance: number; readonly taps: number; readonly blend: number; readonly everyOther: boolean; readonly moon?: boolean; readonly lamp?: boolean; readonly orb?: boolean; readonly pools?: boolean; readonly base?: number };
   /**
    * What a touch-first device draws on this tier in place of the tier's own values, or null for the same (forTouch), and
    * whether its settings offer the tier at all. Each value is a phone's report's (planning/decisions.md, M2's rows), but

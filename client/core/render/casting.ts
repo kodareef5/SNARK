@@ -197,7 +197,7 @@ export class Casting {
       return;
     }
     lamp.set(x, y, z, setup.size);
-    lampFrame(p.frame, lamps.lens, lamps.way, lamps.shows, shadowLayer(MAX_CASCADES, setup.cascades));
+    lampFrame(p.frame, lamps.lens, lamps.way, lamps.shows, shadowLayer(MAX_CASCADES, setup));
     p.frame.set(lamp.matrix, LAMP_AT + 8);
     p.maps.set(lamp.matrix, MAX_CASCADES * 16);
     c.lampTexel = lamp.texel;
