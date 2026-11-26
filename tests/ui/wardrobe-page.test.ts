@@ -192,7 +192,7 @@ test("a refused upload publishes nothing", async () => {
 });
 
 test("a retire goes over the page's revision and a stale one answers the newer store", async () => {
-  const io = routes({ retire: [{ status: 409, answer: { error: "stale", ...state(3, ["a", "b"]) } }, ok(state(4, ["a", "b"]))] });
+  const io = routes({ retire: [{ status: 409, answer: { error: "stale", ...state(3, ["a", "b"]) } }, ok({ ...state(4, ["a", "b"]) })] });
   expect(await retireEdition(io, 1, true, 2)).toMatchObject({ kind: "stale", state: { revision: 3 } });
   expect(await retireEdition(io, 1, true, 3)).toMatchObject({ kind: "retired", state: { revision: 4 } });
   expect(io.bodies).toEqual([{ revision: 2, id: 1, retired: true }, { revision: 3, id: 1, retired: true }]);

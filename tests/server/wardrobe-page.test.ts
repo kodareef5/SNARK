@@ -35,9 +35,9 @@ test("the admin build makes the wardrobe page, which the site serves with its sc
 
 /** The page's calls, answered by the people routes over `store`, as a development world's open page makes them. */
 function routes(store: PeopleStore): PublishIo {
-  const answer = async (path: string, body: BodyInit, type: string): Promise<Answer> => {
+  const answer = async (path: string, body: string | Uint8Array, type: string): Promise<Answer> => {
     const length = typeof body === "string" ? new TextEncoder().encode(body).length : (body as Uint8Array).length;
-    const req = new Request(`http://snark.test/admin/people/${path}`, { method: "POST", body, headers: { "content-type": type, "content-length": String(length) } });
+    const req = new Request(`http://snark.test/admin/people/${path}`, { method: "POST", body: body as unknown as string, headers: { "content-type": type, "content-length": String(length) } });
     const r = await peopleAdmin(req, `/admin/people/${path}`, store, () => reg)!;
     return { status: r.status, answer: (await r.json()) as Record<string, unknown> };
   };

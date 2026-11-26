@@ -6,7 +6,7 @@ import "./shell.ts";
 import { STAGE_FRAMINGS, STAGE_POSES, isStageReply, stageMessage, type StageCommand, type StageFraming, type StagePose } from "../../shared/people/stage.ts";
 import { $, esc, palette } from "./dom.ts";
 import {
-  DRAFT_PRINT, FONTS, FRAMING_WORDS, LOOKS, POSE_WORDS, SHEET_SIZES, addPicture, addShape, addText, draftFaults, draftFrom, editionPrintKey, editionsHtml, fitNote, fitStep,
+  DRAFT_PRINT, FONTS, FRAMING_WORDS, LOOKS, POSE_WORDS, SHEET_SIZES, TEXT_MAX, addPicture, addShape, addText, draftFaults, draftFrom, editionPrintKey, editionsHtml, fitNote, fitStep,
   fontOf, garmentsHtml, heldSize, hexOf, kb, layerAt, layerBox, layersHtml, lookOf, moveLayer, newDraft, newSheet, outcomeText, paletteHtml, placeOf, previewChanges,
   publishDraft, removeLayer, retireEdition, starPoints, stateOf, stepText, wardrobeCommand, type Answer, type Draft, type Fault, type Layer, type PeopleState, type Preview,
   type PublishIo, type Shape, type Sheet,
@@ -217,7 +217,7 @@ function layerFieldsHtml(l: Layer | undefined): string {
   const at = field("x", "Across", num(l.x), `type="range" min="0" max="1" step="0.005"`) + field("y", "Down", num(l.y), `type="range" min="0" max="1" step="0.005"`) + turn;
   if (l.kind === "text") {
     const fonts = FONTS.map((f) => `<option${f === l.font ? " selected" : ""}>${esc(f)}</option>`).join("");
-    return field("text", "Text", l.text, `maxlength="48" autocomplete="off"`, "wide") + `<label>Font<select data-lf="font">${fonts}</select></label>` + field("size", "Size", num(l.size), `type="range" min="0.03" max="0.6" step="0.005"`) + field("colour", "Colour", l.colour, `type="color"`) + `<label><span><input type="checkbox" data-lf="bold"${l.bold ? " checked" : ""}> Bold</span></label>` + at;
+    return field("text", "Text", l.text, `maxlength="${TEXT_MAX}" autocomplete="off"`, "wide") + `<label>Font<select data-lf="font">${fonts}</select></label>` + field("size", "Size", num(l.size), `type="range" min="0.03" max="0.6" step="0.005"`) + field("colour", "Colour", l.colour, `type="color"`) + `<label><span><input type="checkbox" data-lf="bold"${l.bold ? " checked" : ""}> Bold</span></label>` + at;
   }
   if (l.kind === "shape") return field("colour", "Colour", l.colour, `type="color"`) + field("w", "Width", num(l.w), `type="range" min="0.02" max="1.5" step="0.005"`) + field("h", "Height", num(l.h), `type="range" min="0.02" max="1.5" step="0.005"`) + at;
   return field("w", "Width", num(l.w), `type="range" min="0.02" max="2" step="0.005"`) + at + `<p class="faint wide">${esc(l.name)}, held at ${l.width} × ${l.height}.</p>`;
