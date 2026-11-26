@@ -3139,6 +3139,7 @@ assets/source/core/props/street/tex/street_base.png
 assets/source/core/props/street/tex/street_height.png
 assets/source/core/props/street/tex/street_normal.png
 assets/source/core/props/street/tex/street_packed.png
+assets/source/core/props/world-loot/world-loot.snpk
 assets/source/core/screens/apronwing-freight/image.jpg
 assets/source/core/screens/apronwing-freight/poster.jpg
 assets/source/core/screens/backstep-parcel/clip.mp4

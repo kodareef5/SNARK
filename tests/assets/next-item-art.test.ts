@@ -7,6 +7,7 @@ import { findAssets } from "../../tools/art/assets.ts";
 import { iconSubjects } from "../../tools/pack/icons.ts";
 import { boundsOf } from "../../tools/pack/lying.ts";
 import { spanOf } from "../../tools/pack/surface.ts";
+import { weaponMeshes } from "../../tools/pack/weapons.ts";
 import { unpackMeshes, type SourceMesh } from "../../tools/pack/write.ts";
 import { artTest } from "../fixtures/needs-art.ts";
 
@@ -117,4 +118,44 @@ artTest("later equipment ships drop art, weapon grips and inventory icons", asyn
 
 artTest("industrial stations ship centred models and their working state", async () => {
   await expectStationArt("core:industrial-stations", industrial, ["soul_vault"]);
+});
+
+
+artTest("world loot replaces the grey boxes within their existing bounds", async () => {
+  const meshes = await meshesIn("core:world-loot");
+  const slots = slotsOf(CORE_CONTENT);
+  for (const name of ["bag", "cache", "event_crate", "feces"]) {
+    const id = `core:${name}`;
+    const def = CORE_CONTENT.find(entry => entry.id === id);
+    const mesh = meshes.get(id);
+    expect(mesh, id).toBeDefined();
+    if (def?.type !== "prop" || !mesh) throw new Error(id);
+    expect(slots.find(slot => slot.owner === id && slot.slot === "mesh")?.id, id).toBe(id);
+    expect(slots.some(slot => slot.owner === id && slot.slot === "icon"), id).toBe(false);
+    for (const lod of mesh.lods) {
+      const [from, to] = boundsOf(lod);
+      expect(from[1], id).toBeCloseTo(0, 3);
+      expect(to[1], id).toBeLessThanOrEqual(def.height + 0.001);
+      for (const axis of [0, 2] as const) {
+        expect(Math.max(-from[axis], to[axis]), id).toBeLessThanOrEqual(def.radius + 0.001);
+      }
+    }
+    if (name === "bag" || name === "feces") expect(mesh.lods[0]!.indices.length / 3, id).toBeLessThan(300);
+    expectLevels(mesh, 500);
+  }
+
+  const shot = meshes.get("core:stone_shot");
+  const block = weaponMeshes().find(mesh => mesh.id === "core:stone_shot");
+  expect(shot).toBeDefined();
+  expect(block).toBeDefined();
+  expect(slots.find(slot => slot.owner === "core:stone" && slot.slot === "shot")?.id).toBe("core:stone_shot");
+  const [minimum, maximum] = boundsOf(block!.lods[0]!);
+  for (const lod of shot!.lods) {
+    const [from, to] = boundsOf(lod);
+    for (const axis of [0, 1, 2] as const) {
+      expect(from[axis]).toBeGreaterThanOrEqual(minimum[axis] - 0.001);
+      expect(to[axis]).toBeLessThanOrEqual(maximum[axis] + 0.001);
+    }
+  }
+  expectLevels(shot!, 500);
 });
