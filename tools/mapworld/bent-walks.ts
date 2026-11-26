@@ -75,14 +75,17 @@ const OFF = 0, UNLEVEL = 1, ALONE = 2, WALKED = 3;
 export function makeBentWalks(site: Site, v: Vocabulary, accept: (m: Mason) => boolean, way: (box: Box) => boolean, obstacles: { hits: (box: Box, gap?: number, skip?: (p: StaticPiece) => boolean) => boolean; meeting: (box: Box, gap?: number, skip?: (p: StaticPiece) => boolean) => { p: StaticPiece; box: Box }[] }, _roads: ReturnType<typeof roadIndex>, graded: ReadonlySet<number>, entrances: readonly { x: number; z: number; dx: number; dz: number; width: number }[]): Record<string, number> {
   const rules = v.street.walks!, bent = rules.bent || {};
   const out: Record<string, number> = { pieces: 0, curved: 0, joins: 0, collision: 0, lines: 0, runs: 0, alone: 0, unlevel: 0, unlaid: 0, filled: 0, snapped: 0, ends: 0, sunk: 0, ledges: 0, dropped: 0, droppedMetres: 0, narrowed: 0, standing: 0, refused: 0, blocked: 0, drains: 0, boxes: 0 };
-  const held = site.ground.streets;
-  if (!held) return out;
+  const planned = site.ground.streets;
+  if (!planned) return out;
   let placing = 0;
   const began = performance.now();
   const laidIn: number[] = [];
   /** What stands on the walks, by the start of its kind: cut round, or standing on the walk. */
   const standing = new Map<string, number>();
   const { nx, x0, z0, x1, z1 } = site.ground.grid;
+  // The kerb lines in lattice metres (onLattice), so a line's points and stations are the same numbers in every cut.
+  const held = planned instanceof PlannedStreets ? planned.onLattice(x0, z0) : planned;
+  const [ox, oz] = held === planned ? [x0, z0] : [0, 0];
   const inside = (x: number, z: number): boolean => x >= x0 + 2 && x <= x1 - 2 && z >= z0 + 2 && z <= z1 - 2;
   const at = (x: number, z: number): number => Math.round((z1 - z) / 2) * nx + Math.round((x1 - x) / 2);
   // Rubble is not what stands on a kerb or a walk, nor another kerb's collision what stands on a walk.
@@ -114,7 +117,7 @@ export function makeBentWalks(site: Site, v: Vocabulary, accept: (m: Mason) => b
     // Each point's state, then judged over the line.
     const state = new Uint8Array(n), ys = new Float64Array(n);
     for (let q = 0; q < n; q++) {
-      const x = k.xz[q * 2]! + x0, z = k.xz[q * 2 + 1]! + z0;
+      const x = k.xz[q * 2]! + ox, z = k.xz[q * 2 + 1]! + oz;
       if (!open(x, z)) continue;
       // A kerb stands where the ground behind its face is level with the road and the street is no steeper than one in
       // eight; a walk stands level across, so where the ground across it rises or falls more than the walk kit's rule
@@ -122,7 +125,7 @@ export function makeBentWalks(site: Site, v: Vocabulary, accept: (m: Mason) => b
       const y = (ys[q] = site.groundAt(x, z));
       const a = Math.max(0, q - 1), b = Math.min(n - 1, q + 1), ex = k.xz[b * 2]! - k.xz[a * 2]!, ez = k.xz[b * 2 + 1]! - k.xz[a * 2 + 1]!, l = Math.hypot(ex, ez) || 1;
       const nx = (-ez / l) * side, nz = (ex / l) * side;
-      const steep = Math.abs(site.groundAt(k.xz[b * 2]! + x0, k.xz[b * 2 + 1]! + z0) - site.groundAt(k.xz[a * 2]! + x0, k.xz[a * 2 + 1]! + z0)) > l * STEEPEST;
+      const steep = Math.abs(site.groundAt(k.xz[b * 2]! + ox, k.xz[b * 2 + 1]! + oz) - site.groundAt(k.xz[a * 2]! + ox, k.xz[a * 2 + 1]! + oz)) > l * STEEPEST;
       if (steep || Math.abs(site.groundAt(x + nx * 0.5, z + nz * 0.5) - y) > rules.flat) {
         state[q] = UNLEVEL;
         continue;
@@ -139,7 +142,7 @@ export function makeBentWalks(site: Site, v: Vocabulary, accept: (m: Mason) => b
         continue;
       }
       const here = state[q] === ALONE || section.walk === 0 ? kerbAlone : section;
-      const x = k.xz[q * 2]! + x0, z = k.xz[q * 2 + 1]! + z0;
+      const x = k.xz[q * 2]! + ox, z = k.xz[q * 2 + 1]! + oz;
       if (run && run.section !== here) {
         // The two kerbs meet at this point: it ends the one and begins the other.
         const was: Run = run, last = was.x.length - 1;

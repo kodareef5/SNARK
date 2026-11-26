@@ -38,6 +38,32 @@ export const ASKED_KERB = 1, ASKED_VERGE = 2;
  */
 export class PlannedStreets extends StreetSectors {
   private readonly sides = new Map<StreetsPart, { wear: Float64Array; asked: Uint8Array }>();
+  /** Each sector as it was put: its part and its square's chunks. */
+  private readonly squares = new Map<number, readonly [StreetsPart, number, number, number, number]>();
+
+  override put(key: number, part: StreetsPart, cx0: number, cz0: number, cx1: number, cz1: number): void {
+    super.put(key, part, cx0, cz0, cx1, cz1);
+    this.squares.set(key, [part, cx0, cz0, cx1, cz1]);
+  }
+
+  override drop(key: number): void {
+    super.drop(key);
+    this.squares.delete(key);
+  }
+
+  /** The same streets held in lattice metres, the map's corner at (x0, z0): there every cut rounds a kerb line alike. */
+  onLattice(x0: number, z0: number): PlannedStreets {
+    // A part's places are sixteenths of a metre and the corner whole chunks, so the move is exact.
+    const out = new PlannedStreets(), cx = x0 / CHUNK_SIZE, cz = z0 / CHUNK_SIZE;
+    for (const [key, [part, cx0, cz0, cx1, cz1]] of this.squares) {
+      const stretches = part.stretches.map((s) => ({ ...s, xz: s.xz.map((v, k) => v + (k % 2 === 0 ? x0 : z0)) }));
+      const moved = { x0: part.x0 + x0, z0: part.z0 + z0, stretches, corners: part.corners.map((c) => ({ ...c, cx: c.cx + x0, cz: c.cz + z0 })) };
+      out.put(key, moved, cx0 + cx, cz0 + cz, cx1 + cx, cz1 + cz);
+      const sides = this.sides.get(part);
+      if (sides) out.keep(moved, sides.wear, sides.asked);
+    }
+    return out;
+  }
 
   /** Keeps a held part's sides: their wear and what of them an entry set (ASKED_KERB, ASKED_VERGE), two to a stretch in its order. */
   keep(part: StreetsPart, wear: Float64Array, asked: Uint8Array): void {
