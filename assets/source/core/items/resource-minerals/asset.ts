@@ -3,7 +3,7 @@ import { shared, type PiecesAsset } from "../../../../../tools/art/spec.ts";
 import tools from "../stone-tools/asset.ts";
 
 const TOOL_DIR = resolve(import.meta.dir, "../stone-tools");
-const tiles = { stone: 0.21, crystal: 0.19, obsidian: 0.18, ore: 0.23, ingot: 0.24, silica_pearls: 0.18, charcoal: 0.19 };
+const tiles = { stone: 0.21, crystal: 0.19, obsidian: 0.18, ore: 0.23, ingot: 0.48, silica_pearls: 0.18, charcoal: 0.19 };
 
 const mineral = Object.fromEntries(Object.entries(tiles).map(([name, span]) => [name, {
   base: `tex/${name}_base.png`,

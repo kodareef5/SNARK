@@ -14,9 +14,11 @@ from resource_uv import atlas_uv, loft_uv, planar_uv
 
 TILES = {
     "stone": 0.21, "flint": 0.20, "crystal": 0.19, "obsidian": 0.18,
-    "ore": 0.23, "ingot": 0.24, "silica_pearls": 0.18, "charcoal": 0.19,
+    "ore": 0.23, "ingot": 0.48, "silica_pearls": 0.18, "charcoal": 0.19,
 }
 ROCK_TEXTURE_ORIGIN = (0, 0, 0.075)
+INGOT_TOP_UV = (0.5, 0.72)
+INGOT_SIDE_UV = (0.5, 0.22)
 
 
 def planar_chart(name, corners, origin, normal):
@@ -28,7 +30,8 @@ def planar_chart(name, corners, origin, normal):
         lowest, highest = 0.025 - low, 0.725 - high
         center = min(max(0.375, lowest), highest) if lowest <= highest else 0.375
         return atlas_uv(uv, span=span, center=(0.5, center))
-    return atlas_uv(uv, span=span)
+    center = INGOT_TOP_UV if name == "ingot" else (0.5, 0.5)
+    return atlas_uv(uv, span=span, center=center)
 
 
 class Drop:
@@ -57,7 +60,8 @@ class Drop:
         posed = [turn @ point + Vector(origin) for point in points]
         self.points.extend(posed)
         textured = self.level < 2
-        strips = loft_uv(rings) if loft and textured else None
+        wall_rings = rings if top_bands is None else rings[:top_bands + 1]
+        strips = loft_uv(wall_rings) if loft and textured else None
         chart_points = points if loft else posed
         texture_origin = (0, 0, 0) if loft else ROCK_TEXTURE_ORIGIN
         bottom_cap = sum(dist(bottom, point) for point in rings[0]) / columns if smooth else 0
@@ -71,7 +75,8 @@ class Drop:
             if uv is None:
                 uv = planar_chart(self.name, [chart_points[i] for i in indices], texture_origin, normal)
             else:
-                uv = atlas_uv(uv, span=TILES[self.name])
+                center = INGOT_SIDE_UV if self.name == "ingot" else (0.5, 0.5)
+                uv = atlas_uv(uv, span=TILES[self.name], center=center)
             self.charts.append(uv)
 
         def pole(uv_a, uv_b, distance):
@@ -299,8 +304,12 @@ def shrink_ring(rim, radius, depth):
 def ingot(drop):
     bands = INGOT_BANDS[drop.level]
     rings = []
-    for z, width, length in bands:
-        outline = [(x * width, y * length) for x, y in INGOT_OUTLINE]
+    for row, (z, length, width) in enumerate(bands):
+        outline = [(x * length, y * width) for x, y in INGOT_OUTLINE]
+        if drop.level < 2 and row >= len(bands) - 2:
+            # A clipped toe interrupts the casting lip while the top stays in its plane.
+            x, y = outline[5]
+            outline[5] = (x - 0.005, y - 0.002)
         rings.append([(x, y, cast_level(x, y, z)) for x, y in outline])
     rim = rings[-1]
     depths = (((1, 0), (0.51, 0.0065)), ((1, 0),), ())[drop.level]

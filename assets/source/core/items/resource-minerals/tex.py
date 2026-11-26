@@ -13,7 +13,7 @@ Y, X = np.mgrid[0:SIDE, 0:SIDE] / SIDE
 # Source atlas cells, brightness lift, roughness and surface occlusion strength.
 SWATCHES = {
     "crystal": (2, 0, 0.00, 0.25, 0.04),
-    "obsidian": (3, 0, 0.035, 0.17, 0.08),
+    "obsidian": (3, 0, 0.035, 0.24, 0.045),
     "ore": (0, 1, 0.02, 0.70, 0.26),
     "ingot": (1, 1, 0.075, 0.37, 0.10),
     "silica_pearls": (2, 1, 0.00, 0.28, 0.04),
@@ -34,39 +34,40 @@ def save(picture, path):
     temporary.replace(path)
 
 
-def swatch(atlas, column, row):
+def swatch(atlas, column, row, side=SIDE):
     width, height = atlas.size
     cell_width, cell_height = width / 4, height / 2
     x, y = (column + 0.5) * cell_width, (row + 0.5) * cell_height
     radius = (cell_width - 16) / 2
     square = atlas.crop(tuple(round(n) for n in (x - radius, y - radius, x + radius, y + radius)))
-    base = np.asarray(square.resize((SIDE, SIDE), Image.Resampling.LANCZOS), dtype=float) / 255
+    base = np.asarray(square.resize((side, side), Image.Resampling.LANCZOS), dtype=float) / 255
     # Blend opposite edges through an interior strip with no change of texel scale.
-    p = np.arange(SIDE)
-    edge = np.minimum(p + 0.5, SIDE - p - 0.5)
-    fade = (np.sin(0.5 * pi * np.minimum(edge / 16, 1)) ** 2)
-    for axis, shape in ((0, (SIDE, 1, 1)), (1, (1, SIDE, 1))):
+    p = np.arange(side)
+    edge = np.minimum(p + 0.5, side - p - 0.5)
+    fade = (np.sin(0.5 * pi * np.minimum(edge / (side / 8), 1)) ** 2)
+    for axis, shape in ((0, (side, 1, 1)), (1, (1, side, 1))):
         weight = fade.reshape(shape)
-        base = base * weight + np.roll(base, SIDE // 2, axis=axis) * (1 - weight)
+        base = base * weight + np.roll(base, side // 2, axis=axis) * (1 - weight)
     return base
 
 
-def noise(rng, across, along):
-    spectrum = np.fft.rfft2(rng.standard_normal((SIDE, SIDE)))
-    ky = np.fft.fftfreq(SIDE)[:, None]
-    kx = np.fft.rfftfreq(SIDE)[None, :]
+def noise(rng, across, along, side=SIDE):
+    spectrum = np.fft.rfft2(rng.standard_normal((side, side)))
+    ky = np.fft.fftfreq(side)[:, None]
+    kx = np.fft.rfftfreq(side)[None, :]
     fields = spectrum * np.exp(-2 * pi ** 2 * ((kx * across) ** 2 + (ky * along) ** 2))
-    values = np.fft.irfft2(fields, s=(SIDE, SIDE), axes=(0, 1))
+    values = np.fft.irfft2(fields, s=(side, side), axes=(0, 1))
     return values / values.std()
 
 
-def grains(rng, count, radii, aspect):
+def grains(rng, count, radii, aspect, side=SIDE):
     """Drop sparse oval features into the surface, wrapping them at the tile edge."""
-    features = np.zeros((SIDE, SIDE))
+    features = np.zeros((side, side))
+    y_grid, x_grid = np.mgrid[0:side, 0:side] / side
     for _ in range(count):
         x, y = rng.random(2)
-        dx, dy = (X - x + 0.5) % 1 - 0.5, (Y - y + 0.5) % 1 - 0.5
-        radius = rng.uniform(*radii) / SIDE
+        dx, dy = (x_grid - x + 0.5) % 1 - 0.5, (y_grid - y + 0.5) % 1 - 0.5
+        radius = rng.uniform(*radii) / side
         angle = rng.uniform(0, tau)
         a = (dx * np.cos(angle) + dy * np.sin(angle)) / radius
         b = (dy * np.cos(angle) - dx * np.sin(angle)) / (radius * aspect)
@@ -74,8 +75,28 @@ def grains(rng, count, radii, aspect):
     return features
 
 
+def cast_steel(rng, base, roughness):
+    side = base.shape[0]
+    y = (np.arange(side) + 0.5) / side
+    # The UV cap stays in the upper patch, and the sides wrap below it.
+    top = np.minimum(np.clip((y - 0.025) / 0.07, 0, 1), np.clip((0.53 - y) / 0.06, 0, 1))
+    top = (top * top * (3 - 2 * top))[:, None]
+    pores = grains(rng, 390, (0.65, 1.90), 0.69, side)
+    mould = np.clip(noise(rng, 29, 12, side), -2.2, 2.2)
+    scuffs = np.clip(noise(rng, 8.5, 1.5, side), -2.2, 2.2)
+    side_color = 0.32 * base + 0.68 * base.mean(axis=(0, 1))
+    side_color += (0.015 * mould + 0.009 * scuffs - 0.027 * pores)[..., None]
+    colour = top[..., None] * base + (1 - top[..., None]) * side_color
+    relief = (0.035 * mould + 0.055 * scuffs - (0.50 + 0.20 * top) * pores)
+    rough = roughness + 0.035 * (1 - top) + 0.020 * mould + 0.22 * pores
+    metal = 0.87 + 0.025 * top - 0.30 * pores
+    return colour, relief, np.clip(rough, 0.1, 0.98), metal
+
+
 def surface(name, base, roughness):
     rng = np.random.default_rng(20261126 + list(SWATCHES).index(name))
+    if name == "ingot":
+        return cast_steel(rng, base, roughness)
     rough = np.full((SIDE, SIDE), roughness)
     metal = np.zeros_like(rough)
     if name == "crystal":
@@ -84,10 +105,10 @@ def surface(name, base, roughness):
         relief = 0.16 * striae + 0.08 * growth + 0.03 * noise(rng, 3, 5)
         rough += 0.026 * striae
     elif name == "obsidian":
-        arc = np.sin(tau * (8 * X + 3 * Y + 0.6 * np.sin(tau * Y)))
-        fractures = np.maximum(arc, 0) ** 8
-        relief = 0.11 * arc + 0.13 * fractures + 0.025 * noise(rng, 7, 2)
-        rough += 0.025 * arc + 0.065 * fractures
+        flow = np.clip(noise(rng, 11, 24), -2, 2)
+        ripple = np.clip(noise(rng, 5, 10), -2, 2)
+        relief = 0.063 * flow + 0.023 * ripple
+        rough += 0.018 * flow + 0.009 * ripple
     elif name == "ore":
         bands = np.sin(tau * (3 * Y + X + 0.12 * np.sin(tau * X)))
         oxide = np.maximum(bands, 0) ** 8
@@ -98,13 +119,6 @@ def surface(name, base, roughness):
         base = base * (1 - 0.62 * exposed[..., None]) + np.array([0.62, 0.64, 0.67]) * 0.62 * exposed[..., None]
         metal = 0.88 * exposed
         rough += 0.08 * oxide - 0.39 * exposed
-    elif name == "ingot":
-        pits = grains(rng, 140, (0.6, 1.75), 0.76)
-        ripples = np.sin(tau * (5 * Y + 0.25 * np.sin(tau * X)))
-        scuff = np.clip(noise(rng, 4.5, 1.2), -2, 2)
-        relief = 0.13 * ripples + 0.04 * scuff - 0.8 * pits
-        rough += 0.035 * scuff + 0.29 * pits
-        metal = 0.89 - 0.32 * pits
     elif name == "silica_pearls":
         bands = np.sin(tau * (11 * Y + 0.65 * np.sin(tau * X)))
         relief = 0.075 * bands + 0.024 * noise(rng, 2.0, 4.5)
@@ -139,10 +153,12 @@ def finish(name, base, lift, roughness, occlusion):
     save(image(base + lift), dest / f"{name}_base.png")
     save(image(height), dest / f"{name}_height.png")
     save(image(normal * 0.5 + 0.5), dest / f"{name}_normal.png")
-    save(orm.resize((SIDE // 2, SIDE // 2), Image.Resampling.BOX), dest / f"{name}_orm.png")
+    half = base.shape[0] // 2
+    save(orm.resize((half, half), Image.Resampling.BOX), dest / f"{name}_orm.png")
 
 
 with Image.open(HERE / "ref" / "mineral-atlas.png") as source:
     atlas = source.convert("RGB")
     for name, (column, row, *surface_parameters) in SWATCHES.items():
-        finish(name, swatch(atlas, column, row), *surface_parameters)
+        side = 256 if name == "ingot" else SIDE
+        finish(name, swatch(atlas, column, row, side), *surface_parameters)

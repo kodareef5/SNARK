@@ -26,9 +26,13 @@ artTest("resource packs supply grounded drop meshes and inventory icons", async 
     const organic = asset.id === "core:resource-organics";
     const minerals = asset.id === "core:resource-minerals";
     for (const mesh of family) {
-      for (const [index, material] of mesh.materials!.entries()) {
-        const density = mesh.textures![material.base]!.top / spanOf(mesh.lods[0]!, index);
-        expect(density, mesh.id).toBeGreaterThanOrEqual(500);
+      expect(mesh.lods[0]!.sections, mesh.id).toBeDefined();
+      for (const [level, lod] of mesh.lods.entries()) {
+        for (const index of new Set(lod.sections)) {
+          const material = mesh.materials![index]!;
+          const density = mesh.textures![material.base]!.top / spanOf(lod, index);
+          expect(density, `${mesh.id}, level ${level}, ${material.id}`).toBeGreaterThanOrEqual(500);
+        }
       }
     }
     if (minerals) {

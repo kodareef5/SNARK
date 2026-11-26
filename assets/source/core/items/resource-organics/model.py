@@ -15,11 +15,12 @@ BARE = (
     (132, 82, 58), (202, 155, 99), (199, 164, 103),
     (119, 128, 73), (153, 85, 61), (130, 124, 114),
     (76, 54, 38), (211, 193, 152), (187, 199, 179),
+    (117, 78, 61), (164, 170, 144),
 )
-BARK, GRAIN, STRAW, BAST, HIDE, FUR, SHELL, HORN, WAX = range(len(BARE))
+BARK, GRAIN, STRAW, BAST, HIDE, FUR, SHELL, HORN, WAX, FUR_BACK, WAX_EDGE = range(len(BARE))
 # Metres per texture repeat. The same spans are declared in asset.ts.
-TILE_METRES = (0.36, 0.20, 0.20, 0.20, 0.20, 0.40, 0.20, 0.20, 0.20)
-MATERIAL_NAMES = ("bark", "end_grain", "straw", "bast", "hide", "fur", "chitin", "horn", "wax")
+TILE_METRES = (0.36, 0.20, 0.20, 0.20, 0.20, 0.40, 0.20, 0.20, 0.20, 0.20, 0.20)
+MATERIAL_NAMES = ("bark", "end_grain", "straw", "bast", "hide", "fur", "chitin", "horn", "wax", "fur_back", "wax_edge")
 
 
 def linear(value):
@@ -118,7 +119,7 @@ def loft(part, path, tile, sides, cap=None, closed=False, phase=pi, rugged=0):
             part.face(tile if cap is None else cap, corners, chart, smooth=False)
 
 
-def cover(part, perimeter, center, top_height, bottom_height, rim, tile, rings, trim=0):
+def cover(part, perimeter, center, top_height, bottom_height, rim, tile, rings, trim=0, backing=None):
     """Close a thin shell between two bowed surfaces and a continuous rim."""
     count = len(perimeter)
     edges = []
@@ -126,12 +127,13 @@ def cover(part, perimeter, center, top_height, bottom_height, rim, tile, rings, 
         crown = part.point((*center, summit))
         levels = []
         offset = 1 if side > 0 else 1 - trim
+        surface = backing if side < 0 and backing is not None else tile
 
         def face(indices):
             if side < 0:
                 indices.reverse()
             chart = planar_uv([part.points[index] for index in indices], origin=(*center, 0), normal=(0, 0, side))
-            part.face(tile, indices, chart)
+            part.face(surface, indices, chart)
 
         for step in range(1, rings + 1):
             radius = step / rings
@@ -272,7 +274,7 @@ def pelt(part, level):
     )
     perimeter = []
     for j, a in enumerate(edge):
-        if level == 3 and j in (1, 4, 8, 10, 12, 14):
+        if level == 3 and j in (1, 4, 6, 8, 10, 12, 14):
             continue
         b = edge[(j + 1) % len(edge)]
         outward = Vector((b[1] - a[1], a[0] - b[0])).normalized()
@@ -288,7 +290,17 @@ def pelt(part, level):
             perimeter.append((0.75 * a[0] + 0.25 * b[0] - outward.x * 0.003,
                               0.75 * a[1] + 0.25 * b[1] - outward.y * 0.003, 0.75 * a[2] + 0.25 * b[2], 0.59))
         perimeter.append((x + outward.x * spread, y + outward.y * spread, z + 0.008, 0.19))
-    cover(part, perimeter, (0, 0), 0.093, 0.022, 0.026, FUR, (3, 2, 2, 1)[level], trim=0.065)
+    start = len(part.points)
+    cover(part, perimeter, (0, 0), 0.063, 0.018, 0.024, FUR, (3, 2, 2, 2)[level], trim=0.053, backing=FUR_BACK)
+    # Roll the shoulder through the fur and backing together, with a crooked crease.
+    for j in range(start, len(part.points)):
+        x, y, z = part.points[j]
+        hinge = -0.047 + 0.23 * y + 0.017 * sin(14 * y)
+        if x < hinge:
+            radius = 0.063 + 0.011 * cos(17 * y)
+            bend = (hinge - x) / radius
+            layer = radius - z + 0.041
+            part.points[j] = Vector((hinge - layer * sin(bend), y, 0.041 + radius - layer * cos(bend)))
 
 
 def chitin(part, level):
@@ -316,37 +328,60 @@ def keratin(part, level):
         loft(part, path, HORN, sides, rugged=0.12)
 
 
+def polymer_lamina(part, station_count, across, center, length, width, heading, phase):
+    """Fold a torn wax lamina around its neutral surface and close the cut rim."""
+    front, back, layout = [], [], []
+    cols = len(across)
+    for j in range(station_count):
+        t = j / (station_count - 1)
+        face, underside, chart = [], [], []
+        for v in across:
+            sign = 1 if v >= 0 else -1
+            edge = abs(v)
+            taper = 0.65 + 0.30 * sin(pi * t) + 0.09 * sin(tau * t + phase)
+            half = width * taper / 2
+            jag = edge ** 4 * (0.006 * sin(tau * (3.5 * t + 0.30 * v) + phase) + 0.004 * cos(tau * 6 * t))
+            x = length * (t - 0.5) + 0.016 * v * (2 * t - 1) ** 4 + jag
+            lateral = v * half + 0.010 * sin(tau * t + phase)
+            shoulder = half * (0.54 + 0.13 * sin(tau * t + phase + v))
+            radius = 0.022 + 0.014 * (0.5 + 0.5 * cos(tau * t + phase + 1.8 * sign))
+            bend = max(0.0, abs(v) * half - shoulder) / radius
+            y = lateral + sign * radius * (sin(bend) - bend)
+            ribs = 0.011 * cos(tau * (2.3 * t + 0.19 * v) + phase) * (1 - 0.32 * edge)
+            z = 0.016 * sin(pi * t) + 0.013 * (1 - edge) + ribs + radius * (1 - cos(bend))
+            half_depth = 0.005 + 0.005 * (1 - edge) + 0.001 * sin(tau * (2 * t + v))
+            for side, row in ((1, face), (-1, underside)):
+                yy = y - side * sign * half_depth * sin(bend)
+                row.append(part.point((center[0] + x * cos(heading) - yy * sin(heading),
+                                       center[1] + x * sin(heading) + yy * cos(heading),
+                                       center[2] + z + side * half_depth * cos(bend))))
+            chart.append((x, lateral, 0))
+        front.append(face)
+        back.append(underside)
+        layout.append(chart)
+
+    for side, surface, tile in ((1, front, WAX), (-1, back, WAX_EDGE)):
+        for j in range(station_count - 1):
+            for k in range(cols - 1):
+                grid = [(j, k), (j + 1, k), (j + 1, k + 1), (j, k + 1)][::side]
+                chart = planar_uv([layout[a][b] for a, b in grid], normal=(0, 0, side))
+                part.face(tile, [surface[a][b] for a, b in grid], chart)
+
+    border = ([(i, 0) for i in range(station_count)] + [(station_count - 1, j) for j in range(1, cols)] +
+              [(i, cols - 1) for i in range(station_count - 2, -1, -1)] + [(0, j) for j in range(cols - 2, 0, -1)])
+    bottom, top = ([surface[i][j] for i, j in border] for surface in (back, front))
+    charts = loft_uv([[part.points[index] for index in edge] for edge in (bottom, top)])[0]
+    for j, chart in enumerate(charts):
+        following = (j + 1) % len(border)
+        part.face(WAX_EDGE, [bottom[j], bottom[following], top[following], top[j]], chart, smooth=False)
+
+
 def polymer(part, level):
-    upper = (
-        (0.178, 0.004, 0.040), (0.172, 0.026, 0.055), (0.139, 0.044, 0.065), (0.151, 0.072, 0.078),
-        (0.082, 0.089, 0.065), (0.032, 0.066, 0.056), (-0.014, 0.093, 0.049), (-0.108, 0.073, 0.031),
-        (-0.140, 0.047, 0.028), (-0.108, 0.030, 0.033), (-0.152, -0.009, 0.041), (-0.120, -0.070, 0.041),
-        (-0.072, -0.062, 0.049), (-0.035, -0.086, 0.068), (0.014, -0.059, 0.064), (0.072, -0.056, 0.058),
-        (0.098, -0.031, 0.050), (0.148, -0.043, 0.046),
-    )
-    under = (
-        (0.179, 0.058, 0.016), (0.154, 0.091, 0.030), (0.120, 0.082, 0.031), (0.101, 0.116, 0.045),
-        (0.028, 0.101, 0.043), (-0.040, 0.118, 0.029), (-0.092, 0.100, 0.021), (-0.080, 0.061, 0.011),
-        (-0.105, 0.027, 0.013), (-0.065, 0.006, 0.016), (0.036, -0.004, 0.021), (0.139, 0.023, 0.025),
-    )
-    chip = (
-        (-0.074, -0.087, 0.019), (-0.077, -0.071, 0.028), (-0.104, -0.058, 0.039), (-0.123, -0.069, 0.036),
-        (-0.148, -0.056, 0.031), (-0.184, -0.062, 0.018), (-0.204, -0.083, 0.015), (-0.182, -0.105, 0.010),
-        (-0.170, -0.128, 0.015), (-0.143, -0.116, 0.019), (-0.117, -0.135, 0.029), (-0.095, -0.105, 0.021),
-    )
-    for i, (edge, center, top, bottom) in enumerate((
-        (upper, (0, 0), 0.075, 0.058), (under, (0.036, 0.057), 0.047, 0.024), (chip, (-0.139, -0.090), 0.032, 0.014),
-    )):
-        if level == 3 and i == 2:
-            continue
-        if i == 0:
-            indices = (range(18), (0, 2, 3, 4, 6, 8, 9, 10, 11, 13, 15, 17),
-                       (0, 2, 3, 4, 6, 8, 10, 11, 13, 15, 17), (0, 3, 4, 6, 8, 10, 11, 13, 17))[level]
-        else:
-            indices = (range(12), (0, 1, 3, 4, 6, 8, 10, 11), (0, 1, 3, 4, 6, 8, 10, 11),
-                       (0, 1, 3, 4, 6, 8, 10, 11))[level]
-        perimeter = [(*edge[j], 0.53 + 0.36 * cos(j * 2.7)) for j in indices]
-        cover(part, perimeter, center, top, bottom, 0.017, WAX, ((3, 2, 1, 1) if i == 0 else (2, 2, 1, 1))[level])
+    across = ((-1, -0.84, -0.60, 0, 0.60, 0.84, 1), (-1, -0.44, 0.43, 1), (-1, 0, 1), (-1, 0, 1))[level]
+    polymer_lamina(part, (10, 8, 5, 4)[level], across, (-0.019, -0.035, 0.045), 0.302, 0.196, -0.19, 0.22)
+    polymer_lamina(part, (10, 8, 5, 3)[level], across, (0.024, 0.037, 0.018), 0.276, 0.195, 0.31, 1.67)
+    if level < 3:
+        polymer_lamina(part, (5, 4, 3)[level], (-1, 0, 1), (-0.128, -0.034, 0.017), 0.149, 0.080, 1.18, 2.55)
 
 
 for name, shape in (

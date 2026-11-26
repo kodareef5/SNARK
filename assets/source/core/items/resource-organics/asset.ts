@@ -5,10 +5,10 @@ const views = {
   thatch: { around: 0.38, above: 1.18 },
   fiber: { around: 0.51, above: 1.16 },
   hide: { around: 0.6, above: 1.20 },
-  pelt: { around: -0.35, above: 1.04 },
+  pelt: { around: -0.66, above: 0.88 },
   chitin: { around: 0.59, above: 0.89 },
   keratin: { around: 0.39, above: 1.02 },
-  organic_polymer: { around: 0.7, above: 0.94 },
+  organic_polymer: { around: 0.52, above: 0.80 },
 };
 
 // Metres per repeat, as used by the metric charts in model.py.
@@ -24,15 +24,18 @@ const repeats = {
   wax: 0.20,
 };
 
+function surface(name: string, tiles: number) {
+  return { base: `tex/${name}_base.png`, normal: `tex/${name}_normal.png`, packed: `tex/${name}_orm.png`, tiles };
+}
+
 export default {
   kind: "pieces",
   source: { scripts: ["model.py"] },
   pieces: Object.entries(views).map(([object, icon]) => ({ id: `core:${object}/dropped`, object, icon })),
-  materials: Object.fromEntries(Object.entries(repeats).map(([name, tiles]) => [name, {
-    base: `tex/${name}_base.png`,
-    normal: `tex/${name}_normal.png`,
-    packed: `tex/${name}_orm.png`,
-    tiles,
-  }])),
+  materials: {
+    ...Object.fromEntries(Object.entries(repeats).map(([name, tiles]) => [name, surface(name, tiles)])),
+    fur_back: { ...surface("hide", 0.20), tint: [0.53, 0.84, 1] },
+    wax_edge: { ...surface("wax", 0.20), tint: [0.76, 0.70, 0.62] },
+  },
   budgets: { triangles: [640, 300, 148, 80], texture: { top: 256, megabytes: 4 } },
 } satisfies PiecesAsset;
