@@ -414,16 +414,21 @@ else in first person, a held piece is worth its finest level.
   rim and knife explain its contents. Fit a label or patch to its surface and
   check its corners at grazing angles for clipping. Check every level for
   contact with the ground, outward faces and a recognisable outline. Keep
-  triangle counts decreasing and errors increasing. Match the far palette to
-  the material and inspect both sides of the transition at its drawn size.
+  triangle counts decreasing and errors increasing. Remove details that are
+  smaller than a pixel when a level takes over. Paint fine stitches and other
+  repeating relief into the maps. Set Blender's Principled Base Color for
+  flat materials, then verify their palette in the exported levels. Inspect
+  both sides of the flat-colour transition at its drawn size.
 - **Lay UVs in metres.** Use the shared resource loft unwrap. Accumulate ring
   height along the surface and use the same scale around it and on caps. Look
   for stripes between rings, stretched side faces, tiny pieces with finer grain
   than their neighbours, mirrored letters and visible seams. The packed test
   floors each textured level at 500 texels per metre. Use the checker to find
   local stretch that can hide in that average. Repeat a small swatch where the
-  surface can carry it and use a continuous side chart where repetition would
-  reveal itself. Give bark, end grain, straw, canvas and fur enough pixels to
+  surface can carry it. Look along the longest piece at once for obvious
+  repetitions. Use a longer repeat or a continuous side chart where needed.
+  Reserve a small atlas for unique marks such as dials, screens and grilles.
+  Give bark, end grain, straw, canvas and fur enough pixels to
   retain their defining detail. Check a full mip step and any atlas borders for
   bleeding before trading separate material sections for an atlas.
 - **Give relief and reflections their own review.** Paint or derive height

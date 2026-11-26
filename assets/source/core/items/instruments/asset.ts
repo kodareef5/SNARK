@@ -9,12 +9,13 @@ const views = {
   gps: { around: 2.85, above: 1.11 },
 };
 
-function maps(name: string): MaterialSpec {
+function maps(name: string, tiles?: number): MaterialSpec {
   return {
     base: `tex/${name}_base.png`,
     normal: `tex/${name}_normal.png`,
     packed: `tex/${name}_orm.png`,
     height: `tex/${name}_height.png`,
+    tiles,
   };
 }
 
@@ -29,9 +30,13 @@ export default {
     icon,
   })),
   materials: {
-    workshop: maps("workshop"),
-    hardware: maps("hardware"),
-    optics: { ...maps("optics"), tops: { normal: 512 } },
+    wood: maps("wood", 0.12),
+    hide: maps("hide", 0.12),
+    bronze: maps("bronze", 0.14),
+    iron: maps("iron", 0.10),
+    rubber: maps("rubber", 0.085),
+    amber: maps("amber", 0.10),
+    details: maps("details"),
   },
-  budgets: { triangles: [3000, 1240, 460, 196], texture: { top: 1024, megabytes: 40 } },
+  budgets: { triangles: [3000, 1240, 460, 196], texture: { top: 512, megabytes: 6 } },
 } satisfies PiecesAsset;

@@ -36,6 +36,7 @@ import { StreetDraws } from "./street-draws.ts";
 import { streetTextureBytes } from "./street-finish.ts";
 import { StreetReflections } from "./street-reflections.ts";
 import { StreetLamps } from "./street-lamps.ts";
+import { WreckFires } from "./wreck-fires.ts";
 import { DamageNumbers } from "./damage-numbers.ts";
 import { DustColumns } from "./dust-columns.ts";
 import { StreetWires } from "./street-wires.ts";
@@ -288,6 +289,8 @@ export class Scene {
   }
   /** The light of the street lamps that still work (street-lamps.ts). */
   readonly streetLamps: StreetLamps;
+  /** The fires on wrecks that burn where they stand (wreck-fires.ts). */
+  readonly wreckFires: WreckFires;
   /** The wires between the utility poles still standing (street-wires.ts). */
   readonly streetWires: StreetWires;
   /** What hides what this frame. */
@@ -441,7 +444,13 @@ export class Scene {
   private readonly mountState = new AnimState();
   private readonly state = new AnimState();
   /** The characters' draws, given their depth ranges once their instances are written (bodyPasses). A one-bone draw's offset holds its stand-in's first bone. */
-  private readonly drawBody = (mesh: number, lod: number, first: number, count: number, flags: number, layer: number, standIn: number): void => this.put.draw(mesh, lod, TRANSIENT_BUFFER, first, count, standIn, 0, 0, flags, NEAR, 0, layer);
+  private readonly drawBody = (mesh: number, lod: number, first: number, count: number, flags: number, layer: number, standIn: number): void => {
+    // A body that shimmers carries it on its own draw, and no other does.
+    const glow = this.characters.glowNow;
+    if (glow > 0) this.characters.glowOf(glow, this.put.glow);
+    this.put.draw(mesh, lod, TRANSIENT_BUFFER, first, count, standIn, 0, 0, flags, NEAR, 0, layer);
+    if (glow > 0) this.put.glow.fill(0);
+  };
   /** Per content index, 1 for a kind a landmark brings, which the far city leaves to the landmark's far mesh. */
   private readonly landmarkKinds: Uint8Array;
   /** The city renderers arrive together after the first frame. */
@@ -650,6 +659,7 @@ export class Scene {
     this.transientU16 = new Uint16Array(t.buffer, t.byteOffset, t.byteLength >> 1);
     this.characters = new Characters(reg, pack, this.assets);
     this.streetLamps = new StreetLamps(reg);
+    this.wreckFires = new WreckFires(reg);
     this.casting.join(this.characters, this.streetLamps);
     this.streetWires = new StreetWires(reg);
     this.details = new Details(reg, pack.header.details, pack.palette, (kind) => this.characters.creature(kind), (id, kind, tick) => this.characters.drawnGait(id, kind, tick), (id, kind, tick) => this.characters.drawnPose(id, kind, tick));
@@ -1019,7 +1029,8 @@ export class Scene {
   private showDetails(cam: Camera, remote: RemoteSample | null): void {
     const p = this.packet;
     const { rotorBlur, patrolLights, thrusterPlumes, windscreens, tireContacts } = this.characters;
-    const { streetLamps, streetWires } = this;
+    const { streetLamps, streetWires, wreckFires } = this;
+    wreckFires.build(p, cam, this.world.structs, this.world.dims.chunksX, this.world.dims.chunksZ, this.now);
     const fields = this.shots?.tekImpacts;
     fields?.build(this.world.structs, cam, this.now);
     const orbCards = this.world.orbs ? (this.orbs?.cards ?? null) : null;
@@ -1029,7 +1040,7 @@ export class Scene {
     this.dust.build(cam, this.now);
     this.blasts.viewHeight = this.viewHeight;
     this.blasts.cards(cam, this.now, this.own?.firstPerson);
-    const cut = this.details.frame(p, cam, remote, this.characters.fallen, this.shots?.ends ?? NO_SHOTS, this.own, this.world.hf, this.assets.tier, this.now, this.world, tireContacts.count + windscreens.count + rotorBlur.count + patrolLights.count + thrusterPlumes.count + streetLamps.count + streetWires.count + this.damage.count + this.dust.count + this.blasts.count + (orbCards?.count ?? 0) + (fields?.count ?? 0));
+    const cut = this.details.frame(p, cam, remote, this.characters.fallen, this.shots?.ends ?? NO_SHOTS, this.own, this.world.hf, this.assets.tier, this.now, this.world, tireContacts.count + windscreens.count + rotorBlur.count + patrolLights.count + thrusterPlumes.count + streetLamps.count + streetWires.count + this.damage.count + wreckFires.count + this.dust.count + this.blasts.count + (orbCards?.count ?? 0) + (fields?.count ?? 0));
     const particles = p.detailCount;
     // An orb's halo first of the cards, so what is nearer is drawn over it.
     orbCards?.write(p);
@@ -1043,6 +1054,8 @@ export class Scene {
     streetWires.write(p);
     const street = p.detailCount;
     streetLamps.write(p);
+    const fires = p.detailCount;
+    wreckFires.write(p);
     const dust = p.detailCount;
     this.dust.write(p);
     const smoke = p.detailCount;
@@ -1068,7 +1081,8 @@ export class Scene {
     this.put.drawDetails(lamps, plumes - lamps, DRAW_BLEND, patrolLights.passes(cam));
     this.put.drawDetails(plumes, wires - plumes, DRAW_BLEND, thrusterPlumes.passes(cam));
     this.put.drawDetails(wires, street - wires, DRAW_BLEND, streetWires.passes(cam));
-    this.put.drawDetails(street, dust - street, DRAW_BLEND, streetLamps.passes(cam));
+    this.put.drawDetails(street, fires - street, DRAW_BLEND, streetLamps.passes(cam));
+    if (wreckFires.count > 0) this.put.drawDetails(fires, dust - fires, DRAW_BLEND, wreckFires.passes(cam));
     this.put.drawDetails(dust, smoke - dust, DRAW_BLEND, this.dust.passes(cam));
     this.put.drawDetails(smoke, wheelsAndGlass - smoke, DRAW_BLEND, this.blasts.passes(cam));
     this.put.drawDetails(wheelsAndGlass, numbers - wheelsAndGlass, DRAW_BLEND, tireContacts.passes(cam) | windscreens.passes(cam) | (fields?.count ? fields.passes(cam) : 0));

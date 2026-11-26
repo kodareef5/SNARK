@@ -12,6 +12,7 @@ from resource_uv import atlas_uv, loft_uv, planar_uv
 
 
 REPEAT = 0.16
+LEATHER_REPEAT = 0.48
 COLORS = {
     "leather": (105, 61, 38),
     "canvas": (90, 115, 103),
@@ -197,7 +198,8 @@ class Saddle:
             polygon.material_index = slots[finish]
             polygon.use_smooth = smooth
             if uv is not None:
-                for index, value in zip(polygon.loop_indices, atlas_uv(chart, span=REPEAT)):
+                span = LEATHER_REPEAT if finish == "leather" else REPEAT
+                for index, value in zip(polygon.loop_indices, atlas_uv(chart, span=span)):
                     uv.data[index].uv = value
         mesh.update()
         bpy.context.scene.collection.objects.link(bpy.data.objects.new(name, mesh))

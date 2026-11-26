@@ -7,9 +7,9 @@ def reflected(side, path):
     return [(side * x, y, z) for x, y, z in path]
 
 
-def strap(tack, path, surface, width, *, guide=Z, closed=False):
+def strap(tack, path, surface, width, *, guide=Z, closed=False, close_sides=8):
     tack.sweep(path, surface, width * 0.5, 0.0048, guide=guide,
-               sides=(8, 6, 4, 4)[tack.level], closed=closed)
+               sides=(close_sides, 6, 4, 4)[tack.level], closed=closed)
 
 
 def buckle(tack, x, y, z, width, length, surface, *, pin=True):
@@ -55,25 +55,25 @@ def parasaur(tack):
         (0.040, 0.391, 0.190, 0.037), (0.230, 0.355, 0.174, 0.039),
         (0.389, 0.439, 0.154, 0.039), (0.472, 0.382, 0.121, 0.045),
         (0.505, 0.252, 0.102, 0.050),
-    ], "trail_weave", 0.034, rim=0.010, thread="flax", bow=0.009, side_surface="chestnut")
+    ], "trail_weave", 0.034, rim=0.010, sewn=True, bow=0.009, side_surface="chestnut", rim_sides=4)
     tack.pad([
         (-0.417, 0.148, 0.258, 0.209), (-0.390, 0.270, 0.292, 0.186),
         (-0.315, 0.326, 0.252, 0.176), (-0.215, 0.304, 0.222, 0.172),
         (-0.037, 0.246, 0.206, 0.162), (0.133, 0.206, 0.213, 0.160),
         (0.265, 0.228, 0.235, 0.179), (0.353, 0.284, 0.259, 0.178),
         (0.398, 0.147, 0.232, 0.184),
-    ], "trail", 0.036, rim=0.008, thread="flax", lip=0.009, side_surface="chestnut")
+    ], "trail", 0.036, rim=0.008, sewn=True, lip=0.009, side_surface="chestnut", rim_sides=4)
     if tack.level < 3:
         for z, crown in ((-0.372, 0.277), (0.340, 0.251)):
             tack.sweep([(-0.288, 0.180, z + 0.024), (-0.195, crown - 0.015, z),
                         (0, crown, z - 0.021), (0.194, crown - 0.015, z),
                         (0.283, 0.178, z + 0.025)], "chestnut", 0.022, 0.026,
-                       guide=Z, sides=(10, 8, 6)[tack.level])
+                       guide=Z, sides=(8, 8, 6)[tack.level])
     for side in (-1, 1):
         tack.sweep(reflected(side, [(0.144, 0.234, 0.289), (0.152, 0.303, 0.305),
                                     (0.154, 0.365, 0.342), (0.179, 0.359, 0.403),
                                     (0.211, 0.299, 0.407), (0.199, 0.174, 0.372)]),
-                   "trail", 0.019, sides=(10, 8, 6, 4)[tack.level], guide=X)
+                   "trail", 0.019, sides=(8, 8, 6, 4)[tack.level], guide=X)
         for z in (-0.282, 0.246):
             if tack.level == 3 and z > 0:
                 continue
@@ -81,7 +81,7 @@ def parasaur(tack):
             path = [(0.221, 0.191, z), (0.356, 0.106, z + slide),
                     (0.449, 0.034, z + 0.019 + slide), (0.490, 0.017, z + 0.065 + slide),
                     (0.479, 0.009, z + 0.146 + slide), (0.411, 0.010, z + 0.174 + slide)]
-            strap(tack, reflected(side, path[:4] if tack.level >= 2 else path), "chestnut", 0.070)
+            strap(tack, reflected(side, path[:4] if tack.level >= 2 else path), "chestnut", 0.070, close_sides=6)
             buckle(tack, side * 0.471, 0.028, z + 0.090 + slide, 0.081, 0.062, "iron")
         stir_z = 0.021 + side * 0.048
         strap(tack, reflected(side, [(0.202, 0.214, 0.120), (0.295, 0.159, 0.101),
@@ -96,7 +96,7 @@ def pteranodon(tack):
         (-0.213, 0.197, 0.122, 0.075), (-0.128, 0.181, 0.093, 0.047),
         (-0.025, 0.161, 0.077, 0.032), (0.091, 0.124, 0.063, 0.031),
         (0.178, 0.068, 0.052, 0.030), (0.206, 0.030, 0.039, 0.027),
-    ], "russet", 0.022, rim=0.0075, thread="flax", lip=0.009, side_surface="trail")
+    ], "russet", 0.022, rim=0.0075, sewn=True, lip=0.009, side_surface="trail")
     bow = [(-0.161, 0.085, -0.251), (-0.149, 0.151, -0.285), (-0.104, 0.209, -0.309),
            (0.0, 0.235, -0.319), (0.103, 0.209, -0.310), (0.149, 0.152, -0.287),
            (0.163, 0.085, -0.252)]
@@ -159,7 +159,7 @@ def raptor(tack):
         (-0.237, 0.149, 0.172, 0.150), (-0.141, 0.133, 0.139, 0.127),
         (-0.025, 0.110, 0.127, 0.118), (0.099, 0.086, 0.130, 0.121),
         (0.221, 0.064, 0.157, 0.140), (0.278, 0.043, 0.154, 0.143),
-    ], "oxblood", 0.023, rim=0.005, thread="flax", lip=0.006)
+    ], "oxblood", 0.023, rim=0.005, sewn=True, lip=0.006)
     for side in (-1, 1):
         rail = [(0.096, 0.081, -0.374), (0.161, 0.084, -0.288), (0.180, 0.081, -0.170),
                 (0.150, 0.071, 0.032), (0.100, 0.062, 0.223), (0.068, 0.033, 0.327)]
@@ -189,7 +189,7 @@ def trike(tack):
         (-0.442, 0.723, 0.198, 0.052), (-0.230, 0.722, 0.229, 0.046),
         (0.027, 0.732, 0.230, 0.038), (0.294, 0.735, 0.206, 0.044),
         (0.493, 0.676, 0.164, 0.042), (0.561, 0.472, 0.133, 0.050),
-    ], "rawhide", 0.030, rim=0.009, thread="flax", bow=0.013, nudge=0.024, side_surface="chestnut")
+    ], "rawhide", 0.030, rim=0.009, sewn=True, bow=0.013, nudge=0.024, side_surface="chestnut", rim_sides=4)
     for side in (-1, 1):
         rail = [(0.638, 0.061, -0.613), (0.545, 0.111, -0.530), (0.401, 0.221, -0.439),
                 (0.192, 0.303, -0.310), (0.180, 0.307, -0.099), (0.216, 0.290, 0.137),
@@ -197,14 +197,14 @@ def trike(tack):
         if tack.level > 1:
             rail = [rail[i] for i in (0, 2, 3, 5, 7, 8)]
         tack.sweep(reflected(side, rail), "wood", 0.056, 0.045, guide=X,
-                   sides=(12, 10, 8, 6)[tack.level])
+                   sides=(10, 10, 8, 6)[tack.level])
         if tack.level < 2:
             for x, y, z in (rail[0], rail[-1]):
                 tack.deck(side * x, y - 0.023, z, 0.125, 0.115, 0.049, "wood")
         grip = [(0.188, 0.286, 0.120), (0.199, 0.380, 0.184), (0.209, 0.475, 0.226),
                 (0.239, 0.515, 0.256), (0.265, 0.505, 0.263)]
         tack.sweep(reflected(side, grip), "cord", 0.026, guide=X,
-                   sides=(12, 8, 6, 4)[tack.level])
+                   sides=(8, 8, 6, 4)[tack.level])
         tread_z = -0.073 + side * 0.088
         strap(tack, reflected(side, [(0.225, 0.297, -0.232), (0.349, 0.230, -0.149),
                                      (0.535, 0.120, -0.119), (0.756, 0.071, tread_z)]),
@@ -228,11 +228,11 @@ def trike(tack):
         (-0.292, 0.273, 0.353, 0.329), (-0.164, 0.257, 0.324, 0.317),
         (-0.010, 0.201, 0.311, 0.321), (0.136, 0.124, 0.307, 0.316),
         (0.235, 0.079, 0.293, 0.295),
-    ], "chestnut", 0.043, rim=0.012, thread="flax")
+    ], "chestnut", 0.043, rim=0.012, sewn=True, rim_sides=4)
     if tack.level < 3:
         tack.sweep([(-0.245, 0.337, -0.362), (-0.206, 0.417, -0.400),
                     (0, 0.463, -0.425), (0.207, 0.417, -0.401), (0.242, 0.338, -0.361)],
-                   "chestnut", 0.037, 0.037, guide=Z, sides=(12, 8, 6)[tack.level])
+                   "chestnut", 0.037, 0.037, guide=Z, sides=(10, 8, 6)[tack.level])
 
 
 def carbonemys(tack):
@@ -242,13 +242,13 @@ def carbonemys(tack):
         (0.016, 0.488, 0.226, 0.040), (0.218, 0.434, 0.205, 0.039),
         (0.378, 0.339, 0.166, 0.053), (0.450, 0.215, 0.115, 0.067),
         (0.476, 0.087, 0.101, 0.081),
-    ], "olive", 0.038, rim=0.012, thread="flax", bow=0.009)
+    ], "olive", 0.038, rim=0.012, sewn=True, bow=0.009)
     tack.pad([
         (-0.350, 0.112, 0.283, 0.238), (-0.324, 0.209, 0.306, 0.250),
         (-0.235, 0.223, 0.272, 0.242), (-0.105, 0.194, 0.246, 0.241),
         (0.036, 0.160, 0.241, 0.238), (0.160, 0.143, 0.252, 0.234),
         (0.264, 0.123, 0.258, 0.231), (0.314, 0.056, 0.237, 0.221),
-    ], "chestnut", 0.042, rim=0.011, thread="flax", lip=0.006)
+    ], "chestnut", 0.042, rim=0.011, sewn=True, lip=0.006)
     arch = [(-0.222, 0.177, -0.266), (-0.234, 0.303, -0.340), (-0.159, 0.392, -0.369),
             (0, 0.408, -0.382), (0.157, 0.394, -0.371), (0.231, 0.304, -0.343),
             (0.226, 0.176, -0.265)]
@@ -280,26 +280,17 @@ def carbonemys(tack):
                    "brass", 0.018, 0.023, sides=(12, 10, 6, 4)[tack.level])
 
 
-PALETTES = {
-    "parasaur": ((114, 94, 67), (132, 82, 51), (92, 96, 92)),
-    "pteranodon": ((205, 183, 139), (123, 69, 41), (164, 128, 78)),
-    "raptor": ((85, 58, 42), (100, 56, 54), (88, 92, 89)),
-    "trike": ((133, 99, 60), (99, 61, 37), (150, 113, 68)),
-    "carbonemys": ((76, 88, 67), (95, 60, 40), (151, 115, 62)),
-}
-
-FLAT_SURFACES = {
-    "parasaur": (("trail_weave", "flax"), ("trail", "chestnut"), ("iron",)),
-    "pteranodon": (("chitin", "flax"), ("russet", "trail"), ("wood", "cord")),
-    "raptor": (("dark_wood",), ("oxblood", "flax"), ("iron",)),
-    "trike": (("rawhide", "flax"), ("chestnut",), ("wood", "cord", "brass")),
-    "carbonemys": (("olive", "flax"), ("chestnut", "dark_wood"), ("brass",)),
+ALIASES = {
+    "parasaur": {"chestnut": "trail"},
+    "pteranodon": {"trail": "russet", "cord": "chitin"},
+    "raptor": {},
+    "trike": {"cord": "wood", "brass": "wood"},
+    "carbonemys": {"dark_wood": "chestnut"},
 }
 
 for build in (parasaur, pteranodon, raptor, trike, carbonemys):
     species = build.__name__
-    groups = {surface: i for i, surfaces in enumerate(FLAT_SURFACES[species]) for surface in surfaces}
     for level in range(4):
-        saddle = Tack(level, PALETTES[species], groups)
+        saddle = Tack(level, ALIASES[species])
         build(saddle)
         saddle.finish(f"saddle_{species}")

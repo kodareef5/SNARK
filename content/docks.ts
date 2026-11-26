@@ -8,7 +8,7 @@
 // and galvanised strips, and walked as the boxes here.
 //
 // The moored boats are statics of the vessels' own meshes, as a harbour's intact hulks are (content/vehicles/harbour-
-// wrecks.ts), each in one of its vessel's paints: kinds that share a mesh are drawn together, so a paint costs no draw.
+// wrecks.ts), each in one of the dyes of a boat left to rot: kinds that share a mesh are drawn together, so a dye costs no draw.
 //
 // Every id here sorts after every other core id (the last before them was core:zzzcurbshape_r8), so no index moves.
 
@@ -17,6 +17,9 @@ import type { HullDef } from "../shared/world/convex.ts";
 import { BOAT, BOAT_SPECIES } from "./vehicles/boat.ts";
 import { MARINE_FLEET, MARINE_MODELS } from "./vehicles/marine-fleet.ts";
 import { hulkBoxes, hulkOf } from "./vehicles/harbour-wrecks.ts";
+import { burningKind, mooredKind } from "./vehicles/mooring.ts";
+
+export { burningKind, isMoored, mooredKind, mooredVessel } from "./vehicles/mooring.ts";
 
 /** The kit's measures, in metres. A module's origin is on its deck's top at its middle, +Z along it. */
 export const DOCK = {
@@ -82,25 +85,23 @@ const STATICS: readonly StructureDef[] = (Object.keys(DOCK_KINDS) as DockPart[])
 });
 
 /**
- * The paints a moored vessel is found in, a palette index each, by its share: mostly white, as a marina's hulls are, then
- * its own liveries. Each is a kind of the vessel's mesh dyed that colour (the static's colour dyes its paint region).
+ * The dyes a moored vessel is found in, by their share: its paint's palette index, and the one its stripe and seats take.
+ * None is a paint a vessel that still runs is found in (a test holds that), so a boat in clean paint is one to try and a
+ * charred, rusted, bleached or weed-grown one is not. A dye is a kind of the vessel's mesh, and kinds of one mesh are
+ * drawn together, so it costs no draw.
  */
-export const MOORED_PAINTS: Readonly<Record<string, readonly (readonly [number, number])[]>> = Object.fromEntries([BOAT_SPECIES, ...MARINE_FLEET].map((s) => {
-  const own = s.regions![0]!.colors.map(([c]) => c);
-  const rows = new Map<number, number>([[232, 5]]);
-  for (const c of own) rows.set(c, (rows.get(c) ?? 0) + (c === own[0] ? 2 : 1));
-  return [s.id, [...rows.entries()]];
-}));
-/** A vessel's colours past its paint, its stripe, seats and so on: each region's likeliest, or 0 for a region it has not. */
-const TRIMS = new Map([BOAT_SPECIES, ...MARINE_FLEET].map((s) => [s.id, s.regions!.slice(1, 6).map((r) => (r ? [...r.colors].sort((a, b) => b[1] - a[1])[0]![0] : 0))]));
+export const DEAD_DYES: readonly { readonly name: string; readonly paint: number; readonly trim: number; readonly share: number }[] = [
+  { name: "charred", paint: 229, trim: 94, share: 3 },
+  { name: "rusted", paint: 178, trim: 95, share: 3 },
+  { name: "bleached", paint: 231, trim: 99, share: 4 },
+  { name: "weed-grown", paint: 147, trim: 94, share: 2 },
+];
+/** The dyes by vessel, a palette index and its share each: the same for every vessel. */
+export const MOORED_PAINTS: Readonly<Record<string, readonly (readonly [number, number])[]>> = Object.fromEntries([BOAT_SPECIES, ...MARINE_FLEET].map((s) => [s.id, DEAD_DYES.map((d) => [d.paint, d.share] as const)]));
+/** The regions a vessel has past its paint, its stripe, seats and so on: true for each it has. */
+const TRIMS = new Map([BOAT_SPECIES, ...MARINE_FLEET].map((s) => [s.id, s.regions!.slice(1, 6).map((r) => r !== null && r !== undefined)]));
 /** How many times farther off a moored hull's levels are chosen than a found vessel's (StructureDef.coarse). */
 export const MOORED_COARSE = 3;
-/** The static of a vessel moored in a paint. */
-export const mooredKind = (vessel: string, paint: number): string => `${vessel.replace("core:", "core:zzzzhull_")}_${paint}`;
-/** Whether a static is a moored vessel. */
-export const isMoored = (kind: string): boolean => kind.startsWith("core:zzzzhull_");
-/** The vessel a moored static is of. */
-export const mooredVessel = (kind: string): string => kind.slice(0, kind.lastIndexOf("_")).replace("core:zzzzhull_", "core:");
 
 // The launch has no hulk (its wreck is its corpse's), so its moored shape is its own; the others' are their intact
 // hulks', as the far city and bodies meet them.
@@ -108,11 +109,26 @@ const LAUNCH_SHAPE: ShapeDef = { type: "shape", id: "core:zzzzhullshape_boat", r
 const MOORED: readonly StructureDef[] = [{ id: BOAT_SPECIES.id, shape: LAUNCH_SHAPE.id, boxes: LAUNCH_SHAPE.boxes }, ...MARINE_MODELS.map((m) => ({ id: m.id, shape: hulkOf(m.id).replace("core:", "core:shape_"), boxes: hulkBoxes(m.boxes) }))]
   .flatMap(({ id, shape, boxes }) => MOORED_PAINTS[id]!.map(([paint]): StructureDef => ({
     type: "structure", class: "static", id: mooredKind(id, paint), mesh: id, shape, half: shapeHalf(boxes), color: paint, hp: 8000, material: "core:mat_metal",
-    // Its stripe and seats as its vessel has them; a region it has not, in its paint.
-    colors: TRIMS.get(id)!.map((c) => c || paint),
+    // Its stripe and seats dulled with it; a region it has not, in its paint.
+    colors: TRIMS.get(id)!.map((has) => (has ? DEAD_DYES.find((d) => d.paint === paint)!.trim : paint)),
     // A marina holds many: its hulls take their coarser levels at a third of the distance a found vessel does, so only
     // those near are textured, still within half a pixel of the finest (client/core/render/scene.ts).
     coarse: MOORED_COARSE,
   })));
 
-export const DOCKS: readonly Def[] = [...SHAPES, ...STATICS, LAUNCH_SHAPE, ...MOORED];
+const CHARRED = DEAD_DYES[0]!;
+const BURNING: readonly StructureDef[] = MOORED.filter((m) => m.color === CHARRED.paint).map((m): StructureDef => ({ ...m, id: burningKind(m.mesh as string), ablaze: true }));
+
+// Maps and saves made before the derelict dyes name these hulls by their original paint.
+const oldPaints = {
+  boat: [103, 124], needle: [20, 46, 230, 48, 53], thunderbolt: [29, 230, 34, 84, 41],
+  jon_boat: [136, 128, 120, 87, 98], riptide: [52, 49, 46, 230, 53, 48], solstice: [131, 29, 84, 104],
+  meridian: [98, 84, 30], belvedere: [93, 29, 87], sovereign: [87, 230, 29], manta: [40, 46, 230], lagoon: [91, 104, 236],
+};
+const earlier: Def[] = Object.entries(oldPaints).flatMap(([name, paints]) =>
+  [232, ...paints].map((paint) => ({
+    type: "rename" as const, id: mooredKind(`core:${name}`, paint),
+    to: [mooredKind(`core:${name}`, DEAD_DYES[paint === 232 ? 2 : paint % DEAD_DYES.length]!.paint)],
+  })));
+
+export const DOCKS: readonly Def[] = [...SHAPES, ...STATICS, LAUNCH_SHAPE, ...MOORED, ...BURNING, ...earlier];

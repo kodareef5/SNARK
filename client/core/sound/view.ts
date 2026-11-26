@@ -49,6 +49,7 @@ export function soundView(session: ClientSession, sky: SkyClock | null = null): 
     lit: (x, z, r, out) => {
       const structs = session.world?.structs;
       if (!structs) return;
+      const campfire = session.registry.index.get("core:campfire_lit") ?? -1;
       const n = structs.query(x - r, z - r, x + r, z + r, rows);
       for (let i = 0; i < n; i++) {
         const ref = rows.refs[i]!;
@@ -56,6 +57,8 @@ export function soundView(session: ClientSession, sky: SkyClock | null = null): 
         const slot = ref & 0xffff;
         const kind = t?.kind[slot] ?? 0;
         if (t && session.registry.burning[kind] === 1) out.push(t.x[slot]!, t.y[slot]!, t.z[slot]!, kind);
+        // A wreck ablaze crackles as a campfire does, in its voice.
+        else if (t && session.registry.ablaze[kind] === 1 && campfire >= 0) out.push(t.x[slot]!, t.y[slot]! + 1, t.z[slot]!, campfire);
       }
     },
   };

@@ -11,7 +11,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { DOCK, DOCK_KINDS, MOORED_PAINTS, mooredKind, type DockPart } from "../../content/docks.ts";
+import { DOCK, DOCK_KINDS, MOORED_PAINTS, burningKind, mooredKind, type DockPart } from "../../content/docks.ts";
 import { formMesh, hulkOf, waterlineOf, type HarbourWreckForm, type Waterline } from "../../content/vehicles/harbour-wrecks.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { hashString } from "../../shared/hash.ts";
@@ -53,8 +53,14 @@ export interface DockRules {
  * `most` boats at anchor `out` metres off, in water `depth` deep, heading into the wind, `heading` degrees, give or
  * take `swing`.
  */
+/** Degrees off its berth's line a hull left to rot may lie, and the share of its topsides (keel to rail, less its draught) it has sunk by. */
+const AWRY = 8;
+const AWASH: readonly [number, number] = [0.2, 0.45];
+
 export interface MooredRules {
   fill: number; found: number; sternTo: number; wrecked: number;
+  /** `share` of the hulls left to rot burn where they lie, `most` of them a marina. */
+  burning?: { share: number; most: number };
   perChunk: { boats: number; meshes: number };
   piers: { share: number; most: number; longest: number };
   anchored: { share: number; least: number; most: number; out: [number, number]; depth: [number, number]; heading: number; swing: number };
@@ -233,7 +239,7 @@ export function layMarinas(sites: readonly BoatSite[], docks: ReadonlyMap<string
 
   const water = (x: number, z: number): number => ground.waterAt(x, z);
   const depth = (x: number, z: number): number => ground.waterAt(x, z) - ground.groundAt(x, z);
-  const boatsIn = new Map<number, number>(), meshesIn = new Map<number, Set<string>>();
+  const boatsIn = new Map<number, number>(), meshesIn = new Map<number, Set<string>>(), burningIn = new Map<string, number>();
   let waterlines: ReadonlyMap<string, Waterline> | undefined;
   /** Whether a moored static of this mesh may be set down in the chunk at a point: its room, and the caps on boats and meshes. */
   const chunkTakes = (x: number, z: number, mesh: string): boolean => {
@@ -276,11 +282,13 @@ export function layMarinas(sites: readonly BoatSite[], docks: ReadonlyMap<string
     x += Math.sin(across) * shift; z += Math.cos(across) * shift;
     if (!floats(vessel, x, z, yaw, 0)) { refuse("shallow"); return false; }
     if (boxes.hits(hull(vessel, x, z, yaw, .3), 0, tag === null ? undefined : (t) => t === tag)) { refuse("blocked"); return false; }
-    const wreck = how !== "anchored" && reg.index.has(hulkOf(vessel)) && hashString(id, 1301) / 4294967296 < M.wrecked;
-    if (wreck) {
-      const form: HarbourWreckForm = depth(x, z) <= def.spec.height * .7 && depth(x, z) >= def.spec.draft + .3 && hashString(id, 1303) & 1 ? "sunk" : "damaged";
-      const kind = made(formMesh(vessel, form)) ? hulkOf(vessel, form) : hulkOf(vessel), mesh = made(formMesh(vessel, form)) ? formMesh(vessel, form) : vessel;
-      if (!chunkTakes(x, z, mesh)) { refuse("chunk"); return false; }
+    // A slip the found vessels' hash would take is left a hull, so more wrecks leave as many boats to find.
+    const wreck = how !== "anchored" && reg.index.has(hulkOf(vessel)) && hashString(id, 1301) / 4294967296 < M.wrecked && hashString(id, 1341) / 4294967296 >= M.found;
+    const form: HarbourWreckForm = depth(x, z) <= def.spec.height * .7 && depth(x, z) >= def.spec.draft + .3 && hashString(id, 1303) & 1 ? "sunk" : "damaged";
+    const wreckMesh = made(formMesh(vessel, form)) ? formMesh(vessel, form) : vessel;
+    // Where its chunk has its meshes already, the wreck is a hull left to rot, not an empty slip.
+    if (wreck && chunkTakes(x, z, wreckMesh)) {
+      const kind = made(formMesh(vessel, form)) ? hulkOf(vessel, form) : hulkOf(vessel), mesh = wreckMesh;
       // Afloat it rides low with water in it, at its form's own waterline, as the harbours' other wrecks do.
       const y = form === "sunk" ? ground.groundAt(x, z) : water(x, z) - waterlineOf(def.spec.draft, def.beltline, kind === hulkOf(vessel, form) ? (waterlines ??= formWaterlines()).get(vessel) : undefined);
       put({ kind, x, y, z, yaw }, mesh);
@@ -290,8 +298,22 @@ export function layMarinas(sites: readonly BoatSite[], docks: ReadonlyMap<string
     }
     if (!chunkTakes(x, z, vessel)) { refuse("chunk"); return false; }
     const paint = pick(MOORED_PAINTS[vessel]!, hashString(id, 1307));
-    put({ kind: mooredKind(vessel, paint), x, y: boatRestY(def.spec, water(x, z)), z, yaw }, vessel);
-    boxes.add(hull(vessel, x, z, yaw, .2), `boat:${id}`);
+    // A third lie as nobody would leave a boat: off their berth's line by up to `AWRY` degrees, where the hull still
+    // floats clear, and low in the water with their deck near it. The slip keeps its own line, for a found vessel.
+    let lies = yaw, sunk = 0;
+    const state = hashString(id, 1361);
+    if (state % 3 === 0) {
+      const turned = ((yaw + ((state >>> 4) % 2 ? 1 : -1) * (AWRY / 2 + ((state >>> 8) % 100) / 100 * AWRY / 2)) % 360 + 360) % 360;
+      if (how !== "anchored" && floats(vessel, x, z, turned, 0) && !boxes.hits(hull(vessel, x, z, turned, .3), 0, tag === null ? undefined : (t) => t === tag)) lies = turned;
+      sunk = Math.max(0, Math.min((def.spec.height - def.spec.draft) * (AWASH[0] + ((state >>> 16) % 100) / 100 * (AWASH[1] - AWASH[0])), depth(x, z) - def.spec.draft - .05));
+    }
+    // A few burn, afloat at their own height so the fire stands on a deck.
+    const burns = M.burning !== undefined && hashString(id, 1363) / 4294967296 < M.burning.share && (burningIn.get(site.id) ?? 0) < M.burning.most && reg.index.has(burningKind(vessel));
+    if (burns) burningIn.set(site.id, (burningIn.get(site.id) ?? 0) + 1);
+    put({ kind: burns ? burningKind(vessel) : mooredKind(vessel, paint), x, y: boatRestY(def.spec, water(x, z)) - (burns ? 0 : sunk), z, yaw: lies }, vessel);
+    boxes.add(hull(vessel, x, z, lies, .2), `boat:${id}`);
+    // The live boat, if this slip is selected after placement, floats at the berth's original heading.
+    if (dock && lies !== yaw) boxes.add(hull(vessel, x, z, yaw, .2), `boat:${id}`);
     out.slips.push({ id, site: site.id, district, vessel, x, z, yaw, found: false, how, dock, run });
     return true;
   };

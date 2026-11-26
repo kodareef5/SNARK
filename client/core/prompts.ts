@@ -2,7 +2,8 @@
 // server casts it: at what was built, at the bodies near, at a node. What it is on is kept here for the keys' rows
 // (keys.ts) to act on; the server's answer is the one that counts.
 
-import { CUE_HELD, CUE_OUT } from "../../shared/anim/pose.ts";
+import { CUE_DEAD, CUE_HELD, CUE_OUT } from "../../shared/anim/pose.ts";
+import { isMoored } from "../../content/vehicles/mooring.ts";
 import { FORM_BREACH_A, FORM_OPEN } from "../../shared/content/breaks.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
@@ -50,6 +51,18 @@ export const GLIDER_KEY_TICKS = 6;
 /** Whether seat `k` of the creature at `host` of `r` has someone in it. */
 /** What a street's wreck says of itself by the look its row holds: as the map set it down, stripped, then a shell. */
 const wreckWord = (form: number): string => (form === FORM_BREACH_A ? "stripped" : form === FORM_OPEN ? "shell" : "wreck");
+
+/** What a moored hull or a harbour's wreck says of itself, looked at within reach: a word and no key. "" for any other kind. */
+const deadBoats = new WeakMap<Registry, Uint8Array>();
+const DEAD_BOAT_WORDS = ["", "derelict", "wreck", "burning wreck"] as const;
+export function deadBoatWord(reg: Registry, kind: number): string {
+  let words = deadBoats.get(reg);
+  if (!words) {
+    words = Uint8Array.from(reg.ids, (id, k) => (reg.ablaze[k] === 1 ? 3 : isMoored(id) ? 1 : id.startsWith("core:hulk_") ? 2 : 0));
+    deadBoats.set(reg, words);
+  }
+  return DEAD_BOAT_WORDS[words[kind] ?? 0]!;
+}
 
 /**
  * What a city piece looked at says of itself: "rubble" for a heap, its stage where it is worn, and nothing for one that
@@ -247,6 +260,9 @@ export class Prompts implements FramePart {
     }
     // A piece nobody built says its building, and under it, if it breaks, how it stands: its health is not told within a stage.
     if (t.owner[ref & 0xffff] === 0) {
+      // A boat nobody will sail again says so, so that nobody has to try it from every side.
+      const dead = deadBoatWord(reg, kind);
+      if (dead !== "") return dead;
       const of = buildingWord(s.buildings, Math.floor(ref / 65536), ref & 0xffff);
       const stands = reg.breakSet[kind] !== 0 ? cityWord(reg, s.mapKind(Math.floor(ref / 65536), ref & 0xffff) || kind, kind, t.hp[ref & 0xffff]!) : "";
       return of !== "" && stands !== "" ? `${of}\n${stands}` : of || stands;
@@ -342,6 +358,8 @@ export class Prompts implements FramePart {
       if (r.seatSlot[hit] !== 0) for (let j = 0; j < r.count; j++) {
         if (r.id[j] === r.seat[hit]! - 1 && r.gen[j] === r.seatGen[hit]) { hit = j; break; }
       }
+      // A vehicle destroyed is its wreck, which nobody boards.
+      if (reg.vehicle[r.kind[hit]!] && ((r.flags[hit]! & VIEW_FLAG_PROP) !== 0 || (r.cue[hit]! & CUE_DEAD) !== 0)) return "wreck";
       if (reg.vehicle[r.kind[hit]!]) {
         this.ridden = riddenOf(reg, r.kind[hit]!, false);
         return vehiclePrompt(reg, r, hit, ox, s.own.y, oz, world.hf.waterAt(ox, oz), s.own.mode === MODE_SWIM);

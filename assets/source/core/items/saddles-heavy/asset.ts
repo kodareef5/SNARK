@@ -12,7 +12,8 @@ const materials = Object.fromEntries(["leather", "canvas", "ash", "metal"].map((
   normal: `tex/${name}_normal.png`,
   packed: `tex/${name}_orm.png`,
   height: `tex/${name}_height.png`,
-  tiles: 0.16,
+  tiles: name === "leather" ? 0.48 : 0.16,
+  ...(name === "leather" ? { tops: { mro: 128 } } : {}),
 } satisfies MaterialSpec]));
 
 export default {
@@ -20,5 +21,5 @@ export default {
   source: { scripts: ["model.py"] },
   pieces: Object.entries(views).map(([object, icon]) => ({ id: `core:${object}/dropped`, object, icon })),
   materials,
-  budgets: { triangles: [4800, 2150, 800], texture: { top: 128, megabytes: 1 } },
+  budgets: { triangles: [4800, 2150, 800], texture: { top: 256, megabytes: 1.25 } },
 } satisfies PiecesAsset;

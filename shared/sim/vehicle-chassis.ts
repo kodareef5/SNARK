@@ -5,6 +5,7 @@ import { approach, clamp, detAtan2, detCos, detSin, len3, square, wrapAngle } fr
 import { resolveVehicleContacts, separateVehicleOverlap, type VehicleContactQueries } from "./vehicle-contact.ts";
 import { DEFAULT_DRIVETRAIN, stepDrivetrain } from "./vehicle-drivetrain.ts";
 import { vehicleRotation } from "./vehicle-frame.ts";
+import { vehicleWouldRun } from "./vehicle-presentation.ts";
 import { applyVehicleImpulse, integrateVehiclePose, vehicleMassProperties, vehiclePointInverseMass, vehiclePointVelocity } from "./vehicle-rigid.ts";
 import { holdParkedTyres } from "./vehicle-tyre-static.ts";
 import { applyCarWater, dragCarInWater } from "./vehicle-water.ts";
@@ -86,7 +87,7 @@ export function beginVehicleTick(s: ChassisState, input: VehicleInput, p: Vehicl
   const { mass, ix, iy, iz } = vehicleMassProperties(p, s), massRatio = (p.mass ?? 1100) / mass;
   const drivetrain = p.drivetrain ?? DEFAULT_DRIVETRAIN;
   s.engineCondition ??= 1; s.hullCondition ??= 1; s.flooding ??= 0; s.engineOn ??= s.fuel > 0;
-  if (s.fuel <= 0 || s.engineCondition <= .08 || s.hullCondition <= 0 || input.pilot === false) s.engineOn = false;
+  if (!vehicleWouldRun(s.fuel, s.engineCondition, s.hullCondition, 0) || input.pilot === false) s.engineOn = false;
   else if (Math.abs(throttle) > .01) s.engineOn = true;
   const thrusters = p.thrusters;
   if (thrusters) beginThrusterTick(s, input.pilot === false ? { throttle: 0, steer: 0 } : { boost: input.boost, burst: input.burst, throttle, steer }, thrusters);

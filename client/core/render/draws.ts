@@ -188,6 +188,8 @@ export class Draws {
   nearAt = 0;
   /** The effect `draw` gives its draws (packet.ts drawEffect): all 0 but while a supply drop's lights are drawn. */
   readonly effect = new Float32Array(4);
+  /** The shimmer `draw` gives its draws (packet.ts drawGlow): all 0 but while a body that shimmers is drawn. */
+  readonly glow = new Float32Array(4);
   /** The tint and the fade `draw` gives its draws (packet.ts drawTint): 0 but while a piece about to be built is drawn. */
   tint = 0;
   fade = 0;
@@ -289,6 +291,10 @@ export class Draws {
       p.drawEffect[d * 4 + 1] = this.effect[1]!;
       p.drawEffect[d * 4 + 2] = this.effect[2]!;
       p.drawEffect[d * 4 + 3] = this.effect[3]!;
+      p.drawGlow[d * 4] = this.glow[0]!;
+      p.drawGlow[d * 4 + 1] = this.glow[1]!;
+      p.drawGlow[d * 4 + 2] = this.glow[2]!;
+      p.drawGlow[d * 4 + 3] = this.glow[3]!;
       p.drawTint[d * 2] = this.tint;
       p.drawTint[d * 2 + 1] = this.fade;
       p.drawLayer[d] = layer > 0 && material >= 0 && this.assets.layered(material) ? layer % WEAR_KEY : 0;

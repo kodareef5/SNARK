@@ -14,6 +14,13 @@ Resources
 Saddles
 - All nine saddles now have distinct models when dropped and matching inventory icons. Look for the raptor’s compact pad and the Brachio’s canopy and boarding ladder.
 
+Marinas
+- Boats and cars with a free seat briefly glint when you approach one you can start. Looking at a derelict or wreck identifies it before you try to board.
+- On rebuilt maps, weathered hulls sit low or crooked in their berths. Some marina wrecks burn and give off smoke.
+
+Item art
+- Radio and GPS screens stay legible up close. Saddle leather, straps and stitching have clearer finishes, and dropped gear keeps its colours as it switches to simpler models at a distance.
+
 City maps
 - The map screen requests terrain around the point you select. Roadside lights keep their spacing where a road leaves the map and comes back.
 

@@ -2,7 +2,7 @@
 // beside SURFACE.
 import { expect, test } from "bun:test";
 import { TIERS, tierOf } from "../../client/core/assets/tiers.ts";
-import { FLAT_FRAGMENT, LIT_FRAGMENT, LIT_MESH_FRAGMENT, LIT_TERRAIN_FRAGMENT } from "../../client/core/render/glsl.ts";
+import { FLAT_BODY_FRAGMENT, FLAT_FRAGMENT, LIT_FRAGMENT, LIT_MESH_FRAGMENT, LIT_TERRAIN_FRAGMENT } from "../../client/core/render/glsl.ts";
 import { DRAW_BLEND, FRAME, FramePacket } from "../../client/core/render/packet.ts";
 import { PROGRAMS, UNIT } from "../../client/core/render/programs.ts";
 import { SKY_GLSL, skyFrame, theSky } from "../../client/core/render/sky.ts";
@@ -53,7 +53,8 @@ test("the tone curve keeps what is under its knee, meets the line there with slo
 
 test("meshes keep phase cuts while terrain and the dome keep their lighting", () => {
   for (const tier of TIERS) {
-    const wall = tier.lit ? LIT_MESH_FRAGMENT.replaceAll("FACADE_NORMAL", "rg") : FLAT_FRAGMENT;
+    // Low poly's meshes may shimmer (shimmer-glsl.ts); its ground does not.
+    const wall = tier.lit ? LIT_MESH_FRAGMENT.replaceAll("FACADE_NORMAL", "rg") : FLAT_BODY_FRAGMENT;
     const ground = tier.lit ? LIT_TERRAIN_FRAGMENT.replace("uniform highp sampler2DArray uTexgen;", "") : FLAT_FRAGMENT;
     expect(PROGRAMS.flat!(tier, "rgba").fragment).toBe(tekPhaseFragment(wall));
     expect(PROGRAMS.terrain!(tier, "rgba").fragment).toBe(ground);

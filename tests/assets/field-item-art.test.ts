@@ -5,7 +5,7 @@ import { parsePack } from "../../shared/pack/pack.ts";
 import { findAssets } from "../../tools/art/assets.ts";
 import { iconSubjects } from "../../tools/pack/icons.ts";
 import { spanOf } from "../../tools/pack/surface.ts";
-import { unpackMeshes } from "../../tools/pack/write.ts";
+import { unpackMeshes, type SourceMesh } from "../../tools/pack/write.ts";
 import { artTest } from "../fixtures/needs-art.ts";
 
 const families = {
@@ -15,6 +15,12 @@ const families = {
   "core:saddles-early": ["saddle_parasaur", "saddle_pteranodon", "saddle_raptor", "saddle_trike", "saddle_carbonemys"],
   "core:saddles-heavy": ["saddle_stego", "saddle_rex", "saddle_spino", "saddle_brachio"],
 };
+
+function expectFlatColours(mesh: SourceMesh): void {
+  for (const [level, lod] of mesh.lods.entries()) {
+    if (!lod.sections) expect(new Set(lod.colors).size, `${mesh.id} at flat level ${level}`).toBeGreaterThan(1);
+  }
+}
 
 artTest("field item packs ship grounded drops and inventory icons", async () => {
   const assets = await findAssets();
@@ -34,6 +40,7 @@ artTest("field item packs ship grounded drops and inventory icons", async () => 
       expect(mesh!.skeleton, drop).toBeUndefined();
       expect(source!.lods[0]!.sections, drop).toBeDefined();
       expect(source!.lods.length, drop).toBeGreaterThan(1);
+      if (id === "core:instruments" || id === "core:saddles-early") expectFlatColours(source!);
       for (const [level, lod] of source!.lods.entries()) {
         if (level > 0) {
           const previous = source!.lods[level - 1]!;
@@ -70,6 +77,7 @@ artTest("instruments and water carriers attach to the right hand", async () => {
       const mesh = meshes.find((m) => m.id === id);
       expect(mesh, id).toBeDefined();
       expect(mesh!.skeleton, id).toBe("human");
+      if (family === "core:instruments") expectFlatColours(mesh!);
       for (const lod of mesh!.lods) {
         expect(lod.bones?.every((bone) => bone === B_PROP_R), id).toBe(true);
       }

@@ -16,6 +16,11 @@ export function packVehicleSystems(fuel: number, capacity: number, engine: numbe
     (Math.round(clamp(engine, 0, 1) * 127) << 16) | (Math.round(clamp(rotor, 0, 1) * 127) << 23) |
     (on ? 1 << 30 : 0)) >>> 0;
 }
+/**
+ * Whether an engine would run at these: fuel in the tank, an engine and a hull not past use, and, a boat, not flooded.
+ * The sims turn their engines off by it, and a client marks by it the vehicles worth walking to.
+ */
+export const vehicleWouldRun = (fuel: number, engine: number, hull: number, flooding: number): boolean => fuel > 0 && engine > .08 && hull > 0 && flooding < .75;
 export const unpackVehicleFuel = (n: number): number => (n & 65535) / 65535;
 export const unpackEngineCondition = (n: number): number => ((n >>> 16) & 127) / 127;
 export const unpackRotorCondition = (n: number): number => ((n >>> 23) & 127) / 127;

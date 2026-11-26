@@ -4,13 +4,15 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 
 
 HERE = Path(__file__).resolve().parent
 SIDE = 128
 OVERLAP = 24
 REPEAT_METRES = 0.115
+SACHET_SPAN = 0.172
+SACHET_FACE = 0.041
 
 # Base RGB, colour contrast, roughness, metalness, height in mm, and relief cells (vertical, horizontal).
 SWATCHES = (
@@ -20,8 +22,8 @@ SWATCHES = (
     ("leaf", (81, 103, 50), 0.48, 0.53, 0, 0.185, (13, 41)),
     ("purple_stem", (79, 55, 72), 0.70, 0.71, 0, 0.325, (40, 7)),
     ("green_glass", (63, 100, 72), 0.55, 0.22, 0, 0.068, (10, 11)),
-    ("wax_paper", (209, 184, 139), 0.81, 0.67, 0, 0.170, (24, 41)),
-    ("seal", (163, 105, 46), 0.65, 0.51, 0, 0.110, (21, 22)),
+    ("wax_paper", (214, 206, 181), 0.37, 0.76, 0, 0.105, (24, 41)),
+    None,  # The wax seal swatch keeps its original position in the board.
     ("hide", (124, 72, 41), 0.79, 0.62, 0, 0.280, (26, 35)),
     ("twine", (169, 138, 86), 0.66, 0.84, 0, 0.260, (47, 20)),
     ("crystal", (117, 166, 167), 0.82, 0.34, 0, 0.075, (10, 14)),
@@ -85,6 +87,30 @@ def relief(rng, name, cells):
     return 0.74 * graining + 0.26 * grain
 
 
+def packet_ink():
+    paper = Image.new("L", (4 * SIDE, 4 * SIDE))
+    draw = ImageDraw.Draw(paper)
+    scale = paper.width / SACHET_SPAN
+
+    def point(x, y):
+        return ((x + SACHET_SPAN / 2) * scale, (SACHET_SPAN / 2 - y) * scale)
+
+    for end in (-1, 1):
+        x = end * .053
+        draw.rectangle((point(x - .0018, .086), point(x + .0018, -.086)), fill=174)
+        x = end * .059
+        draw.rectangle((point(x - .0009, .086), point(x + .0009, -.086)), fill=148)
+
+    y = SACHET_FACE + .001
+    draw.ellipse((point(-.017, y + .014), point(.012, y - .014)), outline=213, width=round(.0018 * scale))
+    bolt = [(-.004, .009), (.004, .009), (.000, .001), (.006, .001),
+            (-.007, -.010), (-.004, -.002), (-.011, -.002)]
+    draw.polygon([point(x, y + h) for x, h in bolt], fill=231)
+    for h, length in ((.004, .015), (-.001, .011), (-.006, .007)):
+        draw.line((point(.020, y + h), point(.020 + length, y + h)), fill=196, width=round(.0017 * scale))
+    return np.asarray(paper.resize((SIDE, SIDE), Image.Resampling.LANCZOS), dtype=np.float32) / 255
+
+
 def save(image, path):
     with NamedTemporaryFile(dir=path.parent, prefix=f".{path.stem}-", suffix=".png", delete=False) as scratch:
         temporary = Path(scratch.name)
@@ -99,17 +125,21 @@ def maps():
     with Image.open(HERE.parent / "ref/material-study.png") as original:
         source = original.convert("RGB")
     width, height = source.size
-    for n, (name, rgb, contrast, roughness, metalness, amplitude, cells) in enumerate(SWATCHES):
+    for n, swatch in enumerate(SWATCHES):
+        if swatch is None:
+            continue
+        name, rgb, contrast, roughness, metalness, amplitude, cells = swatch
         row, col = divmod(n, 4)
         bounds = ((col + 0.07) * width / 4, (row + 0.07) * height / 4,
                   (col + 0.93) * width / 4, (row + 0.93) * height / 4)
         color = periodic_swatch(source.crop(bounds))
         mean = np.mean(color, axis=(0, 1))
-        base = encode(np.array(rgb) / 255 + contrast * (color - mean))
+        base = np.array(rgb) / 255 + contrast * (color - mean)
 
         rng = np.random.default_rng(73521 + n)
         height_mm = amplitude * np.clip(relief(rng, name, cells), -1.9, 1.9)
-        step_mm = 1000 * REPEAT_METRES / SIDE
+        span = SACHET_SPAN if name == "wax_paper" else REPEAT_METRES
+        step_mm = 1000 * span / SIDE
         dx = (np.roll(height_mm, -1, axis=1) - np.roll(height_mm, 1, axis=1)) / (2 * step_mm)
         dy = (np.roll(height_mm, -1, axis=0) - np.roll(height_mm, 1, axis=0)) / (2 * step_mm)
         vector = np.stack((-dx, dy, np.ones_like(dx)), axis=-1)
@@ -118,10 +148,14 @@ def maps():
         height_map = encode(0.5 + 0.24 * height_mm / amplitude)
 
         rough = roughness + 0.030 * noise(rng, (11, 14)) + 0.012 * noise(rng, (33, 33))
+        if name == "wax_paper":
+            ink = packet_ink() * np.clip(0.91 + 0.11 * noise(rng, (41, 37)), 0.56, 1)
+            base += ink[..., None] * (np.array((47, 78, 79)) / 255 - base)
+            rough -= 0.04 * ink
         occlusion = 0.991 + np.minimum(height_mm, 0) * 0.16
         packed = encode(np.stack((occlusion, rough, np.full_like(rough, metalness)), axis=-1))
         packed = packed.resize((SIDE // 2, SIDE // 2), Image.Resampling.BOX)
-        for role, image in (("base", base), ("normal", normal), ("height", height_map), ("orm", packed)):
+        for role, image in (("base", encode(base)), ("normal", normal), ("height", height_map), ("orm", packed)):
             save(image, HERE / f"{name}_{role}.png")
 
 

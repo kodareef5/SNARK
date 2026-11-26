@@ -4,7 +4,7 @@ from math import cos, radians, sin, tau
 
 from mathutils import Matrix, Vector
 
-from geometry import Instrument, X, Y, Z, rounded_outline
+from geometry import Instrument, X, Y, Z, panel_rings, rounded_outline
 
 
 def barrel(prop, rows, sides, surface, **options):
@@ -57,19 +57,19 @@ def spyglass(prop):
         eyecup = [eyecup[i] for i in (1, 3, 5, 0)]
     if level == 3:
         eyecup = [eyecup[i] for i in (2, 3, 5)]
-    barrel(prop, eyecup, sides, "rubber", closed=True)
+    barrel(prop, eyecup, sides, "eyecup", closed=True)
     if level < 2:
         barrel(prop, [(-0.101, 0.0175), (-0.095, 0.020)], sides, "spy_lens",
                cap_basis=(X, Y))
     front = [(0.248, 0.051), (0.255, 0.056), (0.278, 0.058), (0.285, 0.053),
              (0.284, 0.046), (0.274, 0.045), (0.261, 0.048)]
     if level == 3:
-        barrel(prop, [(0.247, 0.050), (0.275, 0.057), (0.284, 0.046)], sides, "bronze",
+        barrel(prop, [(0.247, 0.050), (0.275, 0.057), (0.284, 0.046)], sides, "objective_rim",
                cap_surface="spy_lens")
         return
     if level == 2:
         front = [front[i] for i in (0, 2, 3, 5)]
-    barrel(prop, front, sides, "bronze", closed=True)
+    barrel(prop, front, sides, "objective_rim", closed=True)
     lens = [(0.263, 0.047), (0.273, 0.047), (0.277, 0.040), (0.279, 0.025)]
     if level == 1:
         lens = [lens[i] for i in (0, 1, 3)]
@@ -201,14 +201,20 @@ def magnifying_glass(prop):
               project_from=2 if level == 0 else 1 if level == 1 else None)
     if level == 0:
         for x in (-0.061, 0.061):
-            prop.tube((x, 0, 0.149), Y, [(0.010, 0.007), (0.014, 0.006), (0.015, 0.005)], 10, "iron")
+            prop.tube((x, 0, 0.149), Y, [(0.010, 0.007), (0.014, 0.006), (0.015, 0.005)], 10, "dark_screw")
 
 
 def receiver_panel(prop, center, width, length, outline_clip, surface):
     outline = rounded_outline(width, length, outline_clip)
-    prop.panel(center, outline, [(-0.003, 0.96), (0.003, 1), (0.006, 0.92)], "rubber")
     inset = rounded_outline(width - 0.008, length - 0.008, outline_clip * 0.9)
-    prop.panel(center, inset, [(0.004, 0.99), (0.007, 1)], surface)
+    if prop.level == 1:
+        rings = panel_rings(center, outline, [(-0.003, 0.96), (0.003, 1)])
+        rings += panel_rings(center, inset, [(0.007, 1)])
+        prop.shell(rings, "rubber", cap_surface=surface, cap_origin=Vector(center), cap_basis=(-X, Z),
+                   planar_sides=True)
+    else:
+        prop.panel(center, outline, [(-0.003, 0.96), (0.003, 1), (0.006, 0.92)], "rubber")
+        prop.panel(center, inset, [(0.004, 0.99), (0.007, 1)], surface)
 
 
 def radio(prop):
@@ -216,28 +222,32 @@ def radio(prop):
     outline = rounded_outline(0.083, 0.166, 0.009)
     center = (0, 0, 0.024)
     body = [(-0.023, 0.89), (-0.018, 1), (0.018, 1), (0.023, 0.93)]
-    if level > 1:
+    if level > 0:
         body = [body[index] for index in (0, 2, 3)]
     prop.panel(center, outline, body, "iron")
     antenna = [(0.100, 0.013), (0.116, 0.011), (0.125, 0.0075), (0.180, 0.0050), (0.251, 0.0035), (0.258, 0.0033)]
     if level == 1:
-        antenna = [antenna[i] for i in (0, 1, 2, 4, 5)]
+        antenna = [antenna[i] for i in (0, 2, 3, 5)]
     elif level == 2:
         antenna = [antenna[i] for i in (0, 2, 4, 5)]
     elif level == 3:
-        antenna = [(0.100, 0.011), (0.220, 0.004)]
+        antenna = [(0.100, 0.011), (0.203, 0.004)]
     prop.tube((-0.025, -0.003, 0), Z, antenna, (16, 10, 8, 6)[level], "rubber")
-    prop.tube((0.022, 0, 0), Z, [(0.099, 0.012), (0.113, 0.011), (0.119, 0.009)],
-              (16, 10, 8, 6)[level], "rubber")
+    knob = [(0.099, 0.012), (0.113, 0.011), (0.119, 0.009)]
+    if level == 1:
+        knob = [knob[0], knob[-1]]
+    prop.tube((0.022, 0, 0), Z, knob, (16, 8, 8, 6)[level], "rubber")
     if level < 2:
         receiver_panel(prop, (0, 0.021, 0.036), 0.064, 0.118, 0.007, "receiver")
+        rails = [(-0.032, 0.65), (-0.015, 1), (0.014, 0.84)] if level == 0 else [(-0.032, 0.79), (0.014, 0.93)]
         for x in (-0.035, 0.035):
-            prop.panel((x, -0.004, 0.018), rounded_outline(0.016, 0.127, 0.005),
-                       [(-0.032, 0.65), (-0.015, 1), (0.014, 0.84)], "rubber")
-        prop.panel((0.041, 0.001, 0.050), rounded_outline(0.013, 0.046, 0.005),
-                   [(-0.014, 0.86), (0.007, 1), (0.011, 0.8)], "amber")
+            prop.panel((x, -0.004, 0.018), rounded_outline(0.016, 0.127, 0.005), rails, "rubber")
+        rocker = [(-0.014, 0.86), (0.007, 1), (0.011, 0.8)] if level == 0 else [(-0.014, 0.86), (0.011, 0.96)]
+        prop.panel((0.041, 0.001, 0.050), rounded_outline(0.013, 0.046, 0.005), rocker, "talk_button")
         clip = [(0.018, -0.032), (0.025, -0.033), (0.025, -0.028),
                 (0.019, -0.027), (-0.014, -0.028), (-0.017, -0.022), (-0.022, -0.022), (-0.019, -0.032)]
+        if level == 1:
+            clip = [clip[i] for i in (0, 1, 2, 4, 6, 7)]
         prop.shell([[Vector((x, y, z + 0.029)) for y, z in clip] for x in (-0.010, 0.010)],
                    "iron", planar_sides=True)
     else:
@@ -251,22 +261,31 @@ def gps(prop):
     level = prop.level
     outline = rounded_outline(0.113, 0.154, 0.019)
     steps = [(-0.021, 0.9), (-0.014, 1), (0.017, 1), (0.023, 0.92)]
-    if level > 1:
+    if level > 0:
         steps = [steps[0], steps[2], steps[3]]
     prop.panel((0, 0, 0.024), outline, steps, "amber")
     if level < 3:
+        bumpers = [(-0.025, 0.88), (-0.016, 1), (0.018, 1), (0.023, 0.90)]
+        if level == 1:
+            bumpers = [bumpers[i] for i in (0, 2, 3)]
+        elif level == 2:
+            bumpers = [(-0.025, 0.93), (0.023, 0.94)]
         for z in (-0.039, 0.085):
-            prop.panel((0, 0, z), rounded_outline(0.118, 0.031, 0.009),
-                       [(-0.025, 0.88), (-0.016, 1), (0.018, 1), (0.023, 0.90)], "rubber")
+            prop.panel((0, 0, z), rounded_outline(0.118, 0.031, 0.009), bumpers, "rubber")
     if level < 2:
         receiver_panel(prop, (0, 0.018, 0.039), 0.094, 0.096, 0.009, "navigator")
         for i, x in enumerate((-0.029, 0, 0.029)):
             width = 0.022 if i == 1 else 0.019
-            prop.panel((x, 0.026, -0.030), rounded_outline(width, 0.019, 0.004),
-                       [(-0.007, 0.96), (-0.002, 1), (0.001 + i % 2 * 0.001, 0.83)], "rubber")
+            outline = rounded_outline(width, 0.019, 0.004)
+            profile = [(-0.007, 0.96), (-0.002, 1), (0.001 + i % 2 * 0.001, 0.83)]
+            if level == 1:
+                w, h = width * 0.43, 0.008
+                outline = [(-w, h), (w, h), (w, -h), (-w, -h)]
+                profile = [profile[0], (profile[-1][0], 1)]
+            prop.panel((x, 0.026, -0.030), outline, profile, "rubber")
         if level == 0:
             for x in (-0.040, 0.040):
-                prop.tube((x, 0, -0.034), Y, [(0.020, 0.0038), (0.023, 0.0034)], 8, "iron")
+                prop.tube((x, 0, -0.034), Y, [(0.020, 0.0038), (0.023, 0.0034)], 8, "dark_screw")
     else:
         prop.panel((0, 0.023, 0.039), rounded_outline(0.087, 0.083, 0.009),
                    [(-0.001, 0.95), (0.002, 1)], "navigator")

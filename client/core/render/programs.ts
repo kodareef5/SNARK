@@ -10,7 +10,7 @@ import { tekPhaseFragment, tekPhaseVertex } from "./tek-phase.ts";
 import { DETAIL_FLAT_FRAGMENT, DETAIL_LIT_FRAGMENT, DETAIL_LIT_VERTEX, DETAIL_VERTEX } from "./detailtext.ts";
 import { FACADE_GLSL, FACADE_TIERS, facadeFarVertex, facadeVertex } from "./facade.ts";
 import { FIRE_FRAGMENT, FIRE_VERTEX } from "./fire-light.ts";
-import { FAR_MESH_VERTEX, FLAT_FAR_FRAGMENT, FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_SPLIT_FRAGMENT, FLAT_TERRAIN_VERTEX, LIT_FAR_FRAGMENT, LIT_MESH_FRAGMENT, LIT_SPLIT_FRAGMENT, LIT_TERRAIN_FRAGMENT, LIT_TERRAIN_VERTEX, PULLED_VERTEX, finishVertex } from "./glsl.ts";
+import { FAR_MESH_VERTEX, FLAT_BODY_FRAGMENT, FLAT_FAR_FRAGMENT, FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_SPLIT_FRAGMENT, FLAT_TERRAIN_VERTEX, LIT_FAR_FRAGMENT, LIT_MESH_FRAGMENT, LIT_SPLIT_FRAGMENT, LIT_TERRAIN_FRAGMENT, LIT_TERRAIN_VERTEX, PULLED_VERTEX, finishVertex } from "./glsl.ts";
 import { EYE_DOME_FRAGMENT, EYE_DOME_VERTEX, EYE_ENERGY_GLSL, EYE_STRIKE_GLSL } from "./tide-eye.ts";
 import { DROP_GLSL } from "./supply-light.ts";
 import { FACE_FRAGMENT, FACE_VERTEX } from "./screen-shade.ts";
@@ -125,7 +125,7 @@ function water(tier: Tier, hard: boolean, light: boolean, wakes: boolean): Progr
 export const LATE: { orb: string | null } = { orb: null };
 
 const MAKE = {
-  flat: (tier, format, hard = false, light = false) => phaseMesh(tier, flatOr(tier, format, hard, light, FLAT_MESH_VERTEX, FLAT_FRAGMENT, LIT_MESH_FRAGMENT, MESH, undefined, true)),
+  flat: (tier, format, hard = false, light = false) => phaseMesh(tier, flatOr(tier, format, hard, light, FLAT_MESH_VERTEX, FLAT_BODY_FRAGMENT, LIT_MESH_FRAGMENT, MESH, undefined, true)),
   // Where the tier reads the finishes in full, asphalt, sand and walks wear (world-surfaces.ts `roadWorn`, `walkWorn`).
   terrain: (tier, format, hard = false, light = false) => {
     const t = flatOr(tier, format, hard, light, FLAT_TERRAIN_VERTEX, FLAT_FRAGMENT, LIT_TERRAIN_FRAGMENT, tier.lit ? { ...GROUND, uRoad: UNIT.road, uStreets: UNIT.streets, uStreetKinds: UNIT.streetKinds } : GROUND, LIT_TERRAIN_VERTEX);

@@ -72,6 +72,8 @@ test("code a page needs only after its first frame is not in the script the firs
     "client/core/ui/station.ts",
     "shared/anim/authored.ts",
     "shared/anim/emote-clips.ts",
+    "content/docks.ts",
+    "content/vehicles/marine-fleet.ts",
     "client/core/selfcheck-tools.ts",
     "client/core/bench-run.ts",
     "client/core/selfcheck-report.ts",
