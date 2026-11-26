@@ -157,6 +157,7 @@ export async function buildMap(named: string, release = false, output = join(ROO
   const marinas = layMarinas(latticeSites, docks, piers, harbours, reg, statics, {
     waterAt: site.waterAt, groundAt: site.groundAt, inside, chunk: chunkOf,
     room: (x, z) => pieceCounts[chunkOf(x, z)]! < budget - 2, took: (x, z) => { pieceCounts[chunkOf(x, z)]!++; },
+    gave: (x, z) => { pieceCounts[chunkOf(x, z)]!--; },
   }, districtAt, (mesh) => meshes.has(mesh), lanes);
   // The street's furniture where a dock comes ashore is taken up in one pass, the rest keeping their order.
   const ashore = new Set(marinas.cleared);
