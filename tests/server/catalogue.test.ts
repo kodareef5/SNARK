@@ -81,6 +81,7 @@ test("the core pack's definitions fall into the classes, each passing its row", 
     "item/instrument": 1,
     engram: 63,
     levels: 1,
+    rename: DOCKS.filter((d) => d.type === "rename").length,
     "species/survivor": 1,
     "species/target": 1,
     // The car, and the civilian who may drive one (content/vehicles, content/civilians.ts). The 10 past the fleets are the
