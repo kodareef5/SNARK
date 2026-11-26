@@ -174,6 +174,18 @@ function orderSprays(indices: Uint32Array, first: number, count: number, vertice
   order.forEach((t, k) => indices.set(was.subarray(t * 3, t * 3 + 3), first + k * 3));
 }
 
+/** A material or landmark run may cross skin zones. Clothing still needs each zone's exact triangles. */
+function orderRun(indices: Uint32Array, first: number, count: number, vertexCount: number, zones?: number[], sprays?: Uint8Array): void {
+  const end = first + count;
+  for (let z = 0; first < end; z += 3) {
+    const stop = zones ? Math.min(end, zones[z + 1]! + zones[z + 2]!) : end;
+    if (stop <= first) continue;
+    if (sprays) orderSprays(indices, first, stop - first, sprays);
+    else cacheOrder(indices, first, stop - first, vertexCount);
+    first = stop;
+  }
+}
+
 /**
  * A level drawn with materials: vertices whose vertex, surface and skin bytes are all the same made one, then triangles
  * for the cache inside each run, then vertices, surfaces and skins in the order those first use them. A vertex made one
@@ -204,8 +216,7 @@ function orderRuns(pack: Pack, lod: PackLod, cutout: (material: number) => boole
   const vertices = permuted(allVertices, kept, VERTEX_BYTES);
   const runs = lod.sections!;
   for (let k = 0; k < runs.length; k += 3) {
-    if (cutout(runs[k]!)) orderSprays(indices, runs[k + 1]!, runs[k + 2]!, vertices);
-    else cacheOrder(indices, runs[k + 1]!, runs[k + 2]!, kept.length);
+    orderRun(indices, runs[k + 1]!, runs[k + 2]!, kept.length, lod.zones, cutout(runs[k]!) ? vertices : undefined);
   }
   const from = Array.from(fetchOrder(indices, kept.length), (k) => kept[k]!);
   return { indices, vertices: permuted(allVertices, from, VERTEX_BYTES), surface: permuted(allSurface, from, SURFACE_BYTES), skin: allSkin && permuted(allSkin, from, SKIN_BYTES) };
@@ -225,7 +236,7 @@ function weldFlat(pack: Pack, lod: PackLod, runs: readonly number[] = [lod.index
     return k;
   });
   const indices = readIndices(pack, lod).map((v) => to[v]!);
-  for (let k = 0, first = 0; k < runs.length; first += runs[k++]!) cacheOrder(indices, first, runs[k]!, kept.length);
+  for (let k = 0, first = 0; k < runs.length; first += runs[k++]!) orderRun(indices, first, runs[k]!, kept.length, lod.zones);
   const from = fetchOrder(indices, kept.length);
   return { indices, vertices: permuted(vertices, Array.from(from, (k) => kept[k]!), VERTEX_BYTES), surface: null, skin: null };
 }
