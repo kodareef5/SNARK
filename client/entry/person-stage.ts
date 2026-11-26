@@ -20,6 +20,7 @@ import { printHost } from "../shell/picture-array.ts";
 import { Playback } from "../core/studio/clock.ts";
 import { Orbit, pinchZoom } from "../core/studio/orbit.ts";
 import { framingOf, PersonStage } from "../core/studio/person.ts";
+import { printPath } from "../../shared/people/doc.ts";
 import { parseStageCommand, STAGE_FROM, type StageAnswer, type StageCommand } from "../../shared/people/stage.ts";
 import type { Clip } from "../../shared/anim/clip.ts";
 
@@ -103,14 +104,15 @@ async function start(): Promise<void> {
   };
 
   // Each print's picture as a copy of the stage's own, by the path the renderer asks for; let go once no longer held.
-  const loadPrint = async (c: Extract<StageCommand, { kind: "print" }>): Promise<void> => {
+  const loadPrint = async (c: Extract<StageCommand, { kind: "print" }>, hash: string): Promise<void> => {
     const blob = c.png ? new Blob([c.png.slice().buffer], { type: "image/png" }) : await (await fetch(c.url!)).blob();
     const bitmap = await createImageBitmap(blob);
-    const path = stage.pathOf(c.key);
-    if (!path) return bitmap.close();
-    held.set(path, URL.createObjectURL(blob));
-    stage.sized(c.key, bitmap.width, bitmap.height);
+    const { width, height } = bitmap;
     bitmap.close();
+    // A picture sent since under the key wins, whichever is read first.
+    const path = printPath(hash);
+    held.set(path, URL.createObjectURL(blob));
+    if (!stage.sized(c.key, hash, width, height)) forget();
   };
   const forget = (): void => {
     const kept = new Set(stage.prints.map((p) => stage.pathOf(p.key)));
@@ -138,11 +140,12 @@ async function start(): Promise<void> {
     const id = c.id === undefined ? {} : { id: c.id };
     if (c.kind === "picture") asked.push({ ...id, width: c.width, height: c.height });
     else if (c.kind === "print") {
-      loadPrint(c).then(
+      const hash = stage.hashOf(c.key) ?? "";
+      loadPrint(c, hash).then(
         () => (forget(), tell({ kind: "applied", ...id, of: "print", held: stage.heldOf("print"), notes })),
         (problem) => {
           console.info(`person stage: the print ${c.key} could not be read (${String(problem)})`);
-          stage.unheld(c.key);
+          if (stage.hashOf(c.key) === hash) stage.unheld(c.key);
           forget();
           tell({ kind: "applied", ...id, of: "print", held: stage.heldOf("print"), notes: [...notes, `the print ${c.key} could not be read`] });
         },

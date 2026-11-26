@@ -306,6 +306,7 @@ export interface PublishIo {
   upload(png: Uint8Array): Promise<Answer>;
   publish(body: ReturnType<typeof publishBody>): Promise<Answer>;
   retire(body: { revision: number; id: number; retired: boolean }): Promise<Answer>;
+  give(body: { edition: number; survivor: string; dye: number[] }): Promise<Answer>;
   wait(ms: number): Promise<void>;
 }
 
@@ -353,6 +354,62 @@ export async function publishDraft(io: PublishIo, d: Draft, png: Uint8Array | nu
   if (a.status === 409) return { kind: "stale", state: stateOf(a.answer), error: errorOf(a) };
   if (a.status === 503) return { kind: "busy", error: errorOf(a) };
   return { kind: "refused", status: a.status, error: errorOf(a) };
+}
+
+/** A copy of `d` that nothing done to `d` later reaches: the design as it stands. */
+export function freezeDraft(d: Draft): Draft {
+  return structuredClone(d);
+}
+
+/**
+ * Publishes `live` as it is when this is called: garment, colours, name, place and the print's picture, which
+ * `picture` makes from the frozen copy (null where it has no print). An edit made while the picture is made, uploaded or
+ * published changes nothing that is sent. Answers the outcome and the design it published.
+ */
+export async function publishAsPressed(
+  io: PublishIo, live: Draft, picture: (frozen: Draft) => Promise<Uint8Array | { error: string } | null>, revision: number, step: (s: Step) => void = () => {},
+): Promise<{ outcome: Outcome; sent: Draft }> {
+  const sent = freezeDraft(live);
+  const png = sent.sheet ? await picture(sent) : null;
+  if (png && "error" in png) return { outcome: { kind: "refused", status: 0, error: png.error }, sent };
+  return { outcome: await publishDraft(io, sent, png, revision, step), sent };
+}
+
+/** Whether `d` still is the design `sent` was when it was published. */
+export const sameDesign = (d: Draft, sent: Draft): boolean => JSON.stringify(d) === JSON.stringify(sent);
+
+/** What the page says once `sent` is published as edition `id`. */
+export function publishedText(id: number, sent: Draft, garment: string, kept: boolean): string {
+  return `Published edition ${id}, ${garment} "${editionName(sent.name) ?? sent.name}", as it was when Publish was pressed.${kept ? " Your changes since stay in the draft." : ""}`;
+}
+
+/** Hands out numbers in turn, so of several answers coming back in any order only the last asked for is taken. */
+export class Latest {
+  private n = 0;
+  next(): number {
+    return ++this.n;
+  }
+  is(k: number): boolean {
+    return k === this.n;
+  }
+}
+
+/** `work`'s result, or null where another was asked of `latest` before it came. */
+export async function latestOnly<T>(latest: Latest, work: () => Promise<T>): Promise<T | null> {
+  const k = latest.next();
+  const v = await work();
+  return latest.is(k) ? v : null;
+}
+
+/** Gives edition `id` to the survivor named or numbered (#12) `survivor`, as the console's `dress` (server/people/give.ts). */
+export async function giveEdition(io: PublishIo, id: number, survivor: string, dye: readonly number[] = [0, 0, 0]): Promise<{ ok: boolean; text: string }> {
+  const a = await io.give({ edition: id, survivor: survivor.trim(), dye: [...dye] });
+  if (a.status === 200 && typeof a.answer.said === "string") {
+    const said = a.answer.said;
+    // The console says what it did, or why it could not: only a dress or a gift is done.
+    return { ok: /^(dressed|gave) /.test(said), text: `${said[0]!.toUpperCase()}${said.slice(1)}.` };
+  }
+  return { ok: false, text: `Not given: ${errorOf(a)}` };
 }
 
 /** Retires edition `id`, or brings it back, over `revision`. */

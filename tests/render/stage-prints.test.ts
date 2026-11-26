@@ -57,7 +57,7 @@ function onStage(metres: number, edition: number, key: string): { view: ProvingV
   const view = oneBody(metres, 0), stage = new PersonStage(view.reg);
   view.remote.hasWardrobe[0] = 0;
   stage.apply(command({ kind: "print", key, url: "/x.png" }));
-  stage.sized(key, 256, 256);
+  stage.sized(key, stage.hashOf(key)!, 256, 256);
   stage.apply(command({ kind: "wardrobe", slots: [{ item: "core:tee", edition, dye: [0, 0, 0], print: { key, place: PLACE } }, null, null, null, null], hide: 0 }));
   view.scene.characters.wardrobe = (id, out) => id === BODY && stage.wornInto(out);
   view.scene.editionPrint = (e) => stage.printOf(e);

@@ -60,3 +60,5 @@
   .wardrobe-page .wardrobe-grid { grid-template-columns: 1fr }
   .wardrobe-page .place { grid-template-columns: 1fr }
 }
+.wardrobe-page .give { display: grid; gap: 6px }
+.wardrobe-page .give label { display: grid; gap: 2px; font-size: .82rem; color: var(--dim) }

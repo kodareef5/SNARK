@@ -6,9 +6,9 @@ import "./shell.ts";
 import { STAGE_FRAMINGS, STAGE_POSES, isStageReply, stageMessage, type StageCommand, type StageFraming, type StagePose } from "../../shared/people/stage.ts";
 import { $, esc, palette } from "./dom.ts";
 import {
-  DRAFT_PRINT, FONTS, changeGarment, sheetOfCut, FRAMING_WORDS, LOOKS, POSE_WORDS, SHEET_SIZES, TEXT_MAX, addPicture, addShape, addText, draftFaults, draftFrom, editionPrintKey, editionsHtml, fitNote, fitStep,
+  DRAFT_PRINT, FONTS, Latest, changeGarment, giveEdition, latestOnly, publishAsPressed, publishedText, sameDesign, sheetOfCut, FRAMING_WORDS, LOOKS, POSE_WORDS, SHEET_SIZES, TEXT_MAX, addPicture, addShape, addText, draftFaults, draftFrom, editionPrintKey, editionsHtml, fitNote, fitStep,
   fontOf, garmentsHtml, heldSize, hexOf, kb, layerAt, layerBox, layersHtml, lookOf, moveLayer, newDraft, newSheet, outcomeText, paletteHtml, placeOf, previewChanges,
-  publishDraft, removeLayer, retireEdition, starPoints, stateOf, stepText, wardrobeCommand, type Answer, type Draft, type Fault, type Layer, type PeopleState, type Preview,
+  removeLayer, retireEdition, starPoints, stateOf, stepText, wardrobeCommand, type Answer, type Draft, type Fault, type Layer, type PeopleState, type Preview,
   type PublishIo, type Shape, type Sheet,
 } from "../core/admin/wardrobe.ts";
 
@@ -16,6 +16,8 @@ const API = "/admin/people/";
 /** The largest picture file the page reads. */
 const PICTURE_FILE_MAX = 16 << 20;
 const PREVIEW_WAIT_MS = 250;
+/** Pictures read into the draft: of several read at once, only the last asked for is taken. */
+const reads = new Latest();
 
 type Picture = HTMLCanvasElement | ImageBitmap;
 
@@ -56,6 +58,7 @@ const io: PublishIo = {
   upload: (png) => call("print", { method: "POST", headers: { "content-type": "image/png" }, body: png.slice().buffer }),
   publish: (sent) => json("publish", sent),
   retire: (sent) => json("retire", sent),
+  give: (sent) => json("give", sent),
   wait: (ms) => new Promise((r) => setTimeout(r, ms)),
 };
 
@@ -113,19 +116,31 @@ function paintOn(g: CanvasRenderingContext2D, sheet: Sheet, width: number, heigh
   }
 }
 
-/** The sheet as a PNG of `width` x `height`. */
-function encode(sheet: Sheet, width: number, height: number): Promise<Blob> {
+/** The sheet drawn now at its own size: what a preview or a publish sends, whatever is done to the draft after. */
+function snapshot(sheet: Sheet): HTMLCanvasElement {
   const c = document.createElement("canvas");
-  c.width = width;
-  c.height = height;
-  paintOn(c.getContext("2d")!, sheet, width, height);
+  c.width = sheet.width;
+  c.height = sheet.height;
+  paintOn(c.getContext("2d")!, sheet, sheet.width, sheet.height);
+  return c;
+}
+
+/** A snapshot as a PNG of `width` x `height`. */
+function encode(shot: HTMLCanvasElement, width: number, height: number): Promise<Blob> {
+  let c = shot;
+  if (width !== shot.width || height !== shot.height) {
+    c = document.createElement("canvas");
+    c.width = width;
+    c.height = height;
+    c.getContext("2d")!.drawImage(shot, 0, 0, width, height);
+  }
   return new Promise((ok, fail) => c.toBlob((b) => (b ? ok(b) : fail(new Error("The sheet could not be made into a PNG."))), "image/png"));
 }
 
-/** The sheet's PNG under the store's cap, shrunk as it must be, and what to tell the admin of it. */
-async function exportSheet(sheet: Sheet): Promise<{ png: Uint8Array; note: string } | { error: string }> {
+/** A snapshot's PNG under the store's cap, shrunk as it must be, and what to tell the admin of it. */
+async function exportSheet(shot: HTMLCanvasElement): Promise<{ png: Uint8Array; note: string } | { error: string }> {
   const cap = S.state!.caps.bytes;
-  let width = sheet.width, height = sheet.height, blob = await encode(sheet, width, height);
+  let width = shot.width, height = shot.height, blob = await encode(shot, width, height);
   const first = blob.size;
   for (let tries = 1; ; tries++) {
     const fit = fitStep(width, height, blob.size, tries, cap);
@@ -133,9 +148,9 @@ async function exportSheet(sheet: Sheet): Promise<{ png: Uint8Array; note: strin
     if (fit.kind === "fail") return { error: fit.reason };
     width = fit.width;
     height = fit.height;
-    blob = await encode(sheet, width, height);
+    blob = await encode(shot, width, height);
   }
-  return { png: new Uint8Array(await blob.arrayBuffer()), note: fitNote({ width: sheet.width, height: sheet.height, bytes: first }, { width, height, bytes: blob.size }, cap) };
+  return { png: new Uint8Array(await blob.arrayBuffer()), note: fitNote({ width: shot.width, height: shot.height, bytes: first }, { width, height, bytes: blob.size }, cap) };
 }
 
 function paintSheet(): void {
@@ -216,6 +231,10 @@ function drawLists(): void {
   const st = S.state;
   if (!st) return;
   $("editions").innerHTML = editionsHtml(st, palette, S.showing);
+  const giving = $<HTMLSelectElement>("give-edition"), was = giving.value;
+  giving.innerHTML = [...st.editions].reverse().map((e) => `<option value="${e.id}">#${e.id} ${esc(e.name)}</option>`).join("");
+  if (was && st.editions.some((e) => String(e.id) === was)) giving.value = was;
+  $<HTMLButtonElement>("give").disabled = st.editions.length === 0;
   $("garments").innerHTML = garmentsHtml(st);
   const live = st.editions.filter((e) => !e.retired).length;
   $("store").textContent = `Revision ${st.revision} · ${st.editions.length === 1 ? "1 edition" : `${st.editions.length} editions`}, ${live} on the pick list`;
@@ -354,7 +373,10 @@ function wanted(): { preview: Preview; wardrobe: Extract<StageCommand, { kind: "
     const sheet = S.draft.sheet;
     key = sheet ? DRAFT_PRINT : "";
     wardrobe = wardrobeCommand(garmentOf(S.draft.garment), 0, S.draft.colours, sheet ? { key, place: placeOf(S.draft.place, S.state!.caps) } : null);
-    if (sheet) print = async () => URL.createObjectURL(await encode(sheet, sheet.width, sheet.height));
+    if (sheet) {
+      const shot = snapshot(sheet);
+      print = async () => URL.createObjectURL(await encode(shot, shot.width, shot.height));
+    }
     version = sheet ? `${DRAFT_PRINT}#${S.printVersion}` : "";
   }
   return { preview: { look, wardrobe: JSON.stringify(wardrobe.slots), print: version, pose, framing, hour }, wardrobe, print, printKey: key };
@@ -438,30 +460,52 @@ async function publish(): Promise<void> {
   S.busy = true;
   drawFaults();
   try {
-    let png: Uint8Array | null = null;
-    if (d.sheet) {
-      const made = await exportSheet(d.sheet);
-      if ("error" in made) return say(`Not published: ${made.error}`, "bad");
-      png = made.png;
+    // The design is frozen here, its picture drawn now: what is done to the draft from here on is not published.
+    const shot = d.sheet ? snapshot(d.sheet) : null;
+    const { outcome: o, sent } = await publishAsPressed(io, d, async () => {
+      const made = await exportSheet(shot!);
+      if ("error" in made) return made;
       $("fit-note").textContent = made.note;
-    }
-    const o = await publishDraft(io, d, png, st.revision, (s) => say(stepText(s), s.kind === "busy" ? "warn" : "dim"));
+      return made.png;
+    }, st.revision, (s) => say(stepText(s), s.kind === "busy" ? "warn" : "dim"));
     if (o.kind === "published" || o.kind === "stale") {
       if (o.state) S.state = o.state;
       else await load();
     }
-    say(outcomeText(o, st), o.kind === "published" ? "well" : o.kind === "stale" ? "warn" : "bad");
-    if (o.kind === "published") {
-      const note = $("fit-note").textContent;
-      begin(null);
-      $("fit-note").textContent = note;
-      S.showing = o.id;
-      drawLists();
-      soon();
-    } else drawLists();
+    if (o.kind !== "published") {
+      say(outcomeText(o, st), o.kind === "stale" ? "warn" : "bad");
+      return drawLists();
+    }
+    const kept = !!S.draft && !sameDesign(S.draft, sent);
+    const note = $("fit-note").textContent;
+    if (!kept) begin(null);
+    $("fit-note").textContent = note;
+    S.showing = o.id;
+    drawLists();
+    soon();
+    say(publishedText(o.id, sent, garmentOf(sent.garment)?.label ?? sent.garment, kept), "well");
+    body.published = String(o.id);
   } finally {
     S.busy = false;
     drawFaults();
+  }
+}
+
+/** Gives the edition chosen to the survivor named, as the console's dress. */
+async function give(): Promise<void> {
+  const id = Number($<HTMLSelectElement>("give-edition").value), who = $<HTMLInputElement>("give-who").value, typed = $<HTMLInputElement>("give-dye").value.trim();
+  const dye = typed === "" ? [0, 0, 0] : typed.split(",").map((x) => Number(x.trim()));
+  if (!(id > 0)) return void ($("give-note").textContent = "Publish an edition first.");
+  if (who.trim() === "") return void ($("give-note").textContent = "Name a survivor in this world, or give their number as #12.");
+  if (dye.length !== 3 || !dye.every((c) => Number.isInteger(c) && c >= 0 && c <= 255)) return void ($("give-note").textContent = "A dye is three palette numbers, 0 to 255, such as 12,40,200.");
+  $<HTMLButtonElement>("give").disabled = true;
+  try {
+    const r = await giveEdition(io, id, who, dye);
+    $("give-note").textContent = r.text;
+    $("give-note").className = r.ok ? "well" : "bad";
+    if (r.ok) body.given = String(Number(body.given ?? 0) + 1);
+  } finally {
+    $<HTMLButtonElement>("give").disabled = false;
   }
 }
 
@@ -488,12 +532,14 @@ async function takePicture(file: File): Promise<void> {
   const d = S.draft;
   if (!d?.sheet) return;
   if (file.size > PICTURE_FILE_MAX) return say(`That file is ${kb(file.size)}; the page reads pictures of ${kb(PICTURE_FILE_MAX)} at most.`, "warn");
-  let bitmap: ImageBitmap;
+  let bitmap: ImageBitmap | null;
   try {
-    bitmap = await createImageBitmap(file);
+    bitmap = await latestOnly(reads, () => createImageBitmap(file));
   } catch {
     return say(`${file.name} could not be read as a picture.`, "warn");
   }
+  // A picture chosen since, or another draft begun, wins over this one.
+  if (!bitmap || S.draft !== d || !d.sheet) return bitmap?.close();
   const natural = { width: bitmap.width, height: bitmap.height }, held = heldSize(natural.width, natural.height);
   let picture: Picture = bitmap;
   if (held.width !== natural.width) {
@@ -518,8 +564,10 @@ async function startFrom(id: number): Promise<void> {
   if (!e || (hasWork() && !confirm("Put a copy of this edition in place of the draft?"))) return;
   const d = draftFrom(e);
   begin(d);
-  if (e.printPath && d.sheet) {
-    const bitmap = await createImageBitmap(await (await fetch(e.printPath)).blob());
+  const path = e.printPath;
+  if (path && d.sheet) {
+    const bitmap = await latestOnly(reads, async () => createImageBitmap(await (await fetch(path)).blob()));
+    if (!bitmap || S.draft !== d) return bitmap?.close();
     const l = addPicture(d.sheet, `edition ${e.id}'s print`, bitmap.width, bitmap.height) as Extract<Layer, { kind: "picture" }>;
     l.w = 1;
     S.pictures.set(l.id, bitmap);
@@ -571,6 +619,7 @@ document.addEventListener("click", (ev) => {
     if (S.layer === id) S.layer = 0;
     edited(true, true);
   } else if (t.id === "publish") void publish().catch(failed);
+  else if (t.id === "give") void give().catch(failed);
   else if (t.id === "discard") {
     if (!hasWork() || confirm("Discard the draft?")) begin(null);
   } else if (t.id === "reroll") {

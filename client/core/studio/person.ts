@@ -135,13 +135,22 @@ export class PersonStage {
     return { held: this.heldOf(c.kind), notes };
   }
 
-  /** The shell read print `key`'s picture: `width` x `height`. */
-  sized(key: string, width: number, height: number): void {
+  /** The hash print `key` is drawn under now, or null where it is not held. */
+  hashOf(key: string): string | null {
+    return this.prints.find((x) => x.key === key)?.hash ?? null;
+  }
+
+  /**
+   * The shell read print `key`'s picture sent as `hash`: `width` x `height`. False, taking nothing, where a later picture
+   * was sent under the key since: pictures read out of order never put an older one back.
+   */
+  sized(key: string, hash: string, width: number, height: number): boolean {
     const p = this.prints.find((x) => x.key === key);
-    if (!p) return;
+    if (!p || p.hash !== hash) return false;
     p.width = width;
     p.height = height;
     this.redraw();
+    return true;
   }
 
   /** Print `key` could not be read: it is no longer held. */
