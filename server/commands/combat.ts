@@ -165,7 +165,17 @@ export function addCombatCommands(con: Console): void {
         const x = c.body.x + Math.sin(a) * 3;
         const z = c.body.z + Math.cos(a) * 3;
         const team = ctx.host.records.byPid.get(c.pid)?.team ?? 0;
-        const y = world.hf.heightAt(x, z) + def.half[1];
+        let bottom = -def.half[1];
+        if (def.class === "static" && def.shape && !def.paint && !def.bent) {
+          const shape = reg.defs[reg.index.get(def.shape)!];
+          if (shape?.type === "shape") {
+            // A roadside prop's origin may be at its feet or partway up its pillars.
+            bottom = 0;
+            for (const box of shape.boxes) bottom = Math.min(bottom, box.at[1] - box.half[1]);
+            for (const hull of shape.hulls ?? []) for (const corner of hull.corners) bottom = Math.min(bottom, corner[1]);
+          }
+        }
+        const y = world.hf.heightAt(x, z) - bottom;
         // A screen faces the one who set it down, so its picture is what they see.
         const yaw = reg.screenFace[kind] ? (c.heldYaw + 32768) & 0xffff : c.heldYaw & 0xffff;
         // A piece that may begin a base begins one, as one set down by hand does. Any other stands by its pose, in no base.

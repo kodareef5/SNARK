@@ -184,7 +184,7 @@ test("the billboard's static carries an LED face on its road side, and its bare 
   expect(reg.screenFace[reg.index.get("core:zzstreet_billboard_bare")!]).toBeNull();
   // Every size's face has the first's proportions, so one picture fits them all, and each bare form has none.
   const wide = (f: readonly number[]): number => (f[1]! - f[0]!) / (f[3]! - f[2]!);
-  for (const board of ["_low", "_mid", "_small"]) {
+  for (const board of ["_low", "_mid", "_small", "_tall", "_grand"]) {
     const scaled = reg.screenFace[reg.index.get(`core:zzstreet_billboard${board}`)!]!;
     expect([board, scaled.type, scaled.led, Math.abs(wide(scaled.face) - wide(face!.face)) < 1e-9]).toEqual([board, "billboard", true, true]);
     expect(reg.screenFace[reg.index.get(`core:zzstreet_billboard${board}_bare`)!]).toBeNull();
