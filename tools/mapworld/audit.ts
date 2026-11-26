@@ -588,7 +588,7 @@ export function swimming(w: Audited): Check {
 
 /** Every check, the gates first. */
 export function audit(w: Audited): Check[] {
-  return [offMap(w), twins(w), lakeWraps(w), hullsInPieces(w), swimming(w), waterWalls(w), poolsInPits(w), streetsThroughBuildings(w), doorsOffGround(w), piecesUnderGround(w)];
+  return [offMap(w), twins(w), lakeWraps(w), hullsInPieces(w), swimming(w), buildingsUnsupported(w), waterWalls(w), poolsInPits(w), streetsThroughBuildings(w), doorsOffGround(w), piecesUnderGround(w), piecesHanging(w)];
 }
 
 if (import.meta.main) {
@@ -598,7 +598,7 @@ if (import.meta.main) {
   const w = openMap(new Uint8Array(file.buffer, file.byteOffset, file.byteLength));
   console.log(JSON.stringify({ map: w.map.id, hash: w.map.hash, statics: w.map.statics.length, buildings: w.map.buildings?.count ?? 0 }));
   let failed = false;
-  for (const run of [offMap, twins, lakeWraps, hullsInPieces, swimming, waterWalls, poolsInPits, streetsThroughBuildings, doorsOffGround, piecesUnderGround]) {
+  for (const run of [offMap, twins, lakeWraps, hullsInPieces, swimming, buildingsUnsupported, waterWalls, poolsInPits, streetsThroughBuildings, doorsOffGround, piecesUnderGround, piecesHanging]) {
     const start = performance.now();
     const c = run(w);
     const ok = !c.gate || c.count === 0;
@@ -606,4 +606,78 @@ if (import.meta.main) {
     console.log(JSON.stringify({ ...c, ...(c.gate ? { ok } : {}), seconds: Number(((performance.now() - start) / 1000).toFixed(1)) }));
   }
   if (failed) process.exitCode = 1;
+}
+
+/** A building as the support checks see it: its pieces that stand from the ground, those overhead and those of them that hang. */
+export interface Stood { id: number; kind: string; x: number; z: number; width: number; depth: number; pieces: number; supports: number; overhead: number; hanging: number }
+
+/**
+ * Every building's standing. The ground under a piece is the land or the water's surface, whichever is higher. A
+ * support is a building's piece that stands from within 1.2 m of that ground to 2.4 m over it or higher: a wall, a
+ * pier, a stair. A piece is overhead where its foot is 2 m or more over the ground and no higher than 4.6 m over its
+ * building's base: the beams, slabs and roofs straight over the ground storey. An overhead piece hangs where no
+ * support, any building's, is within 6 m of its box on the plan.
+ */
+export function standing(w: Audited): Stood[] {
+  const HELD_WITHIN = 6;
+  const { map, reg, hf, kindOf, sizeX, sizeZ } = w, s = map.statics, b = map.buildings, parts = reg.parts!;
+  const stood = new Map<number, Stood>();
+  if (!b) return [];
+  const low = new Float32Array(s.kinds.length), high = new Float32Array(s.kinds.length);
+  s.kinds.forEach((_, i) => {
+    const k = kindOf[i]!;
+    let [lo, hi] = [Infinity, -Infinity];
+    for (let p = parts.start[k]!; p < parts.start[k + 1]!; p++) { lo = Math.min(lo, parts.box[p * 6 + 1]! - parts.box[p * 6 + 4]!); hi = Math.max(hi, parts.box[p * 6 + 1]! + parts.box[p * 6 + 4]!); }
+    [low[i], high[i]] = [lo === Infinity ? -reg.halfY[k]! : lo, hi === -Infinity ? reg.halfY[k]! : hi];
+  });
+  const fr = blankFrame();
+  const supports = new Map<number, number[]>(), over: { row: number; of: Stood }[] = [];
+  for (const h of b.handles()) {
+    b.frame(h, fr);
+    const id = b.id(h);
+    const rec = stood.get(id) ?? stood.set(id, { id, kind: b.kind(h), x: fr.x, z: fr.z, width: fr.width, depth: fr.depth, pieces: 0, supports: 0, overhead: 0, hanging: 0 }).get(id)!;
+    b.eachRun(h, (chunk, slot, count) => {
+      const a = s.first[chunk]! + slot;
+      for (let r = a; r < a + count; r++) {
+        rec.pieces++;
+        const ki = s.kind[r]!, [px, pz] = [Math.min(sizeX - 0.01, Math.max(0, s.x[r]!)), Math.min(sizeZ - 0.01, Math.max(0, s.z[r]!))];
+        // A wharf's building stands from the water's surface, not from the bed under it.
+        const g = Math.max(hf.heightAt(px, pz), hf.waterAt(px, pz));
+        const [foot, top] = [s.y[r]! + low[ki]!, s.y[r]! + high[ki]!];
+        if (foot <= g + 1.2 && top >= g + 2.4) {
+          const c = Math.floor(s.z[r]! / 8) * 65536 + Math.floor(s.x[r]! / 8);
+          (supports.get(c) ?? supports.set(c, []).get(c)!).push(s.x[r]!, s.z[r]!);
+          rec.supports++;
+        } else if (foot >= g + 2 && foot <= fr.base + 4.6) { over.push({ row: r, of: rec }); rec.overhead++; }
+      }
+    });
+  }
+  for (const o of over) {
+    const r = o.row, k = kindOf[s.kind[r]!]!, [x, z] = [s.x[r]!, s.z[r]!], [hx, hz] = [reg.halfX[k]!, reg.halfZ[k]!];
+    frameOf(s.yaw[r]!, 0);
+    const [c0, s0] = [frame.cos, frame.sin], far = Math.hypot(hx, hz) + HELD_WITHIN;
+    let held = false;
+    for (let cz = Math.floor((z - far) / 8); cz <= Math.floor((z + far) / 8) && !held; cz++) for (let cx = Math.floor((x - far) / 8); cx <= Math.floor((x + far) / 8) && !held; cx++) {
+      const at = supports.get(cz * 65536 + cx);
+      for (let q = 0; at && q < at.length && !held; q += 2) {
+        const dx = at[q]! - x, dz = at[q + 1]! - z;
+        held = Math.hypot(Math.max(Math.abs(dx * c0 - dz * s0) - hx, 0), Math.max(Math.abs(dx * s0 + dz * c0) - hz, 0)) <= HELD_WITHIN;
+      }
+    }
+    if (!held) o.of.hanging++;
+  }
+  return [...stood.values()];
+}
+
+/** Buildings with four or more pieces overhead and no piece of their own that stands from the ground. */
+export function buildingsUnsupported(w: Audited): Check {
+  const stood = standing(w), bare = stood.filter((v) => v.supports === 0 && v.overhead >= 4);
+  return { check: "buildings with no support of their own", gate: true, count: bare.length, buildings: stood.length, first: bare.slice(0, 3).map((v) => `${v.kind} ${v.id} at ${v.x.toFixed(0)}, ${v.z.toFixed(0)}, ${v.width.toFixed(0)} by ${v.depth.toFixed(0)} m, ${v.overhead} pieces overhead`) };
+}
+
+/** Overhead pieces with no support within 6 m: a ruined city has some, by its fallen bays and hanging slabs. */
+export function piecesHanging(w: Audited): Check {
+  const stood = standing(w), count = stood.reduce((n, v) => n + v.hanging, 0), overhead = stood.reduce((n, v) => n + v.overhead, 0);
+  const four = stood.filter((v) => v.hanging >= 4);
+  return { check: "overhead pieces with no support within 6 m", gate: false, count, overhead, perThousand: overhead ? Number(((count / overhead) * 1000).toFixed(2)) : 0, buildingsWith4: four.length, buildingsAllHanging: four.filter((v) => v.hanging === v.overhead).length };
 }

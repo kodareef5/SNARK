@@ -5,9 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { writeMap, type MapData, type MapStatic } from "../../shared/world/mapfile.ts";
 import { MapWater } from "../../shared/world/water.ts";
-import { audit, bodiesSwum, poolsInPits, doorsOffGround, hullsInPieces, lakeWraps, offMap, openMap, piecesUnderGround, streetsThroughBuildings, swimming, twins, waterWalls, type Audited } from "../../tools/mapworld/audit.ts";
+import { audit, bodiesSwum, buildingsUnsupported, piecesHanging, poolsInPits, doorsOffGround, hullsInPieces, lakeWraps, offMap, openMap, piecesUnderGround, streetsThroughBuildings, swimming, twins, waterWalls, type Audited } from "../../tools/mapworld/audit.ts";
 import { flatMap } from "../fixtures/map.ts";
-import { builtSketch, SIDE_FRONT, Sketch } from "../fixtures/sketch.ts";
+import { builtSketch, SIDE_BACK, SIDE_FRONT, Sketch } from "../fixtures/sketch.ts";
 
 const CHUNKS = 4, SIDE = (CHUNKS * 64) / 2 + 1, [MIN_Y, STEP_Y] = [-32, 1 / 256];
 const dims = { chunksX: CHUNKS, chunksZ: CHUNKS };
@@ -30,7 +30,7 @@ test("a map of one sound building passes every gate", () => {
   for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) s.slab(i, j, 1);
   s.edge("wall4", "concrete", 0, 0, SIDE_FRONT, 0);
   const checks = audit(sketched([s]));
-  expect(checks.filter((c) => c.gate).map((c) => c.count)).toEqual([0, 0, 0, 0, 0]);
+  expect(checks.filter((c) => c.gate).map((c) => c.count)).toEqual([0, 0, 0, 0, 0, 0]);
   expect(checks.map((c) => c.check)).toContain("water ending in a wall");
 });
 
@@ -162,6 +162,42 @@ test("a street along a building's wall is a run; one that only crosses it is not
   expect(streetsThroughBuildings(w, [along, far])).toMatchObject({ gate: false, count: 1, metres: 12, samplesBlocked: 6, byStreetType: [0, 0, 0, 0, 0, 0, 1] });
   expect(streetsThroughBuildings(w, [across])).toMatchObject({ count: 0, runsOfAnyLength: 1 });
   expect(streetsThroughBuildings(w).samples).toBe(0);
+});
+
+test("a building with slabs overhead and nothing standing under them has no support of its own", () => {
+  const bare = new Sketch(2, 2, 4), walled = new Sketch(2, 2, 4, 160, 160);
+  for (const s of [bare, walled]) for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) s.slab(i, j, 1);
+  walled.edge("wall4", "concrete", 0, 0, SIDE_FRONT, 0);
+  expect(buildingsUnsupported(sketched([bare, walled]))).toMatchObject({ gate: true, count: 1, buildings: 2 });
+  expect(buildingsUnsupported(sketched([walled])).count).toBe(0);
+  // Three slabs are too few to tell a building from a canopy.
+  const small = new Sketch(3, 1, 4);
+  for (let i = 0; i < 3; i++) small.slab(i, 0, 1);
+  expect(buildingsUnsupported(sketched([small])).count).toBe(0);
+});
+
+test("a slab more than 6 m on the plan from anything standing hangs; a neighbour's wall holds it", () => {
+  // Five bays in a row with a wall at the first: the slabs' boxes are 0, 2, 6, 10 and 14 m from it.
+  const s = new Sketch(5, 1, 4);
+  for (let i = 0; i < 5; i++) s.slab(i, 0, 1);
+  s.edge("wall4", "concrete", 0, 0, SIDE_FRONT, 0);
+  expect(piecesHanging(sketched([s]))).toMatchObject({ gate: false, count: 2, overhead: 5, buildingsWith4: 0 });
+  // Another building's wall by the far end holds those.
+  const next = new Sketch(1, 1, 4, 96 + 12, 96 - 4);
+  next.edge("wall4", "concrete", 0, 0, SIDE_BACK, 0);
+  expect(piecesHanging(sketched([s, next])).count).toBe(0);
+});
+
+test("a wharf's building stands from the water's surface, not from the bed under it", () => {
+  // The bed 5 m down under the building and round it, a lake over it with its surface at the ground's level.
+  const s = new Sketch(2, 2, 4);
+  for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) s.slab(i, j, 1);
+  s.edge("wall4", "concrete", 0, 0, SIDE_FRONT, 0);
+  const low = (x: number, z: number): boolean => x >= 80 && x <= 112 && z >= 80 && z <= 112;
+  const dry = sketched([s], { heights: ground(low, -5) });
+  expect(buildingsUnsupported(dry).count).toBe(1);
+  const water = lakes([0], (i, j) => (low(i * 2, j * 2) ? 1 : 0));
+  expect(buildingsUnsupported(sketched([s], { heights: ground(low, -5), water })).count).toBe(0);
 });
 
 test("a ground-storey canopy over a drop is a door off the ground", () => {

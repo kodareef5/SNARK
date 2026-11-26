@@ -38,7 +38,7 @@ function inTheWay(pieces: readonly StaticPiece[], p: Passage): StaticPiece[] {
     return false;
   });
 }
-const whole = (pieces: readonly StaticPiece[]): RuinRecord[] => [{ firstPiece: 0, blocks: pieces.length, approaches: [], escapes: [], routes: [], rooms: [] }] as unknown as RuinRecord[];
+const whole = (pieces: readonly StaticPiece[]): RuinRecord[] => [{ firstPiece: 0, blocks: pieces.length, x: 128, y: 0, z: 128, yaw: 0, width: 24, depth: 24, approaches: [], escapes: [], routes: [], rooms: [] }] as unknown as RuinRecord[];
 
 test("a street through a building opens its ground storey along it; the storeys above stay", () => {
   // West to east through the middle of the block, 6 m wide.
