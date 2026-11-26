@@ -2216,6 +2216,7 @@ assets/source/core/items/resource-supplies/tex/strap_orm.png
 assets/source/core/items/resource-supplies/tex/tar_base.png
 assets/source/core/items/resource-supplies/tex/tar_normal.png
 assets/source/core/items/resource-supplies/tex/tar_orm.png
+assets/source/core/items/rounds/rounds.snpk
 assets/source/core/items/saddles-early/ref/grounded-tack-study.png
 assets/source/core/items/saddles-early/saddles-early.snpk
 assets/source/core/items/saddles-early/tex/brass_base.png

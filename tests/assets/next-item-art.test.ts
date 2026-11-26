@@ -13,6 +13,7 @@ const handTools = ["torch", "slingshot", "club", "hatchet_metal", "pick_metal", 
 const camp = ["campfire", "storage_box", "sleeping_bag", "bed", "standing_torch", "cooking_pot", "storage_large", "fireplace"];
 const campFires = ["campfire", "standing_torch", "cooking_pot", "fireplace"];
 const projectiles = ["arrow_stone", "arrow_tranq", "grenade_smoke", "arrow_flame", "grenade_poison", "grappling_hook", "dart_tranq", "c4", "arrow_metal"];
+const rounds = ["round_pistol", "round_rifle", "round_shotgun", "round_advanced", "round_advanced_rifle", "round_advanced_sniper", "rocket"];
 
 function expectLevels(mesh: SourceMesh, densityFloor: number): void {
   expect(mesh.lods[0]!.sections, mesh.id).toBeDefined();
@@ -98,4 +99,8 @@ artTest("camp stations ship centred models, lit variants and inventory icons", a
 
 artTest("projectiles ship grounded models and inventory icons", async () => {
   await expectItemArt("core:projectile-drops", projectiles, []);
+});
+
+artTest("rounds ship grounded models and inventory icons", async () => {
+  await expectItemArt("core:rounds", rounds, []);
 });
