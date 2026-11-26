@@ -315,7 +315,7 @@ function measureTargets(values: ArrayLike<number>): { file: string; weight: numb
  * heavier than MakeHuman's average, which fills the capsules (sized on stockier bodies) without leaving them.
  */
 const MACRO_BASE: Readonly<Record<Sex, Macro>> = {
-  male: { gender: 1, age: 0.5, muscle: 0.8, weight: 0.85, height: 0.5, proportions: 0.5 },
+  male: { gender: 1, age: 0.5, muscle: 0.8, weight: 0.78, height: 0.5, proportions: 0.5 },
   female: { gender: 0, age: 0.5, muscle: 1, weight: 0.7, height: 0.5, proportions: 0.5 },
 };
 
