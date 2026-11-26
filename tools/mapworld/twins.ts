@@ -10,7 +10,8 @@ import type { StaticPiece } from "./statics.ts";
 export function dropTwins(pieces: StaticPiece[]): number {
   const n = pieces.length, unit = (v: number): number => Math.round(v * STRUCT_UNITS);
   // A bucket a 64 m square, so one set of keys is small and let go before the next.
-  const bucketOf = (p: StaticPiece): number => ((Math.floor(p.x / 64) & 255) << 8) | (Math.floor(p.z / 64) & 255);
+  const cell = (v: number): number => Math.floor(unit(v) / (64 * STRUCT_UNITS)) & 255;
+  const bucketOf = (p: StaticPiece): number => (cell(p.x) << 8) | cell(p.z);
   const first = new Uint32Array(65537);
   for (const p of pieces) first[bucketOf(p) + 1]!++;
   for (let b = 0; b < 65536; b++) first[b + 1]! += first[b]!;

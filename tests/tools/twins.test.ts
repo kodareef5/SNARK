@@ -24,3 +24,12 @@ test("pieces 16 km apart in one bucket are not taken for twins", () => {
   expect(dropTwins(pieces)).toBe(1);
   expect(pieces.map((p) => p.x)).toEqual([10, 10 + 256 * 64]);
 });
+
+test("pieces that round onto the same chunk boundary share one slot", () => {
+  for (const edge of [-64, 0, 64]) {
+    const a = { ...slab(edge), z: edge };
+    const pieces = [a, { ...a, x: edge - 0.0001 }, { ...a, z: edge - 0.0001 }];
+    expect(dropTwins(pieces)).toBe(2);
+    expect(pieces).toEqual([a]);
+  }
+});
