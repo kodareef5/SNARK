@@ -334,7 +334,10 @@ buildings, doors off the ground, building pieces under the ground).
 
 The swim gate walks each part of each body with the game's stepper and every piece standing
 (`way-out.ts`): straight walks, then a search of the stepper's moves, never a jump. Out is
-standing on dry ground in no body's square, 12 m past the body's own.
+standing on dry ground in no body's square, 12 m past the body's own. The build asks the same
+walk of its pools once its pieces stand (`pool-pieces.ts`), and where pieces close every way
+out it cuts a ladder clear of them, else takes the street's small pieces from the way
+(furniture, fences, wrecks: never a building's piece), else takes the pool out.
 
 "Water standing in a pit" counts any body of up to 10,000 m2, waded or swum, whose water lies
 over 1 m under the ground two corners out from it. "Sunk pools" counts only bodies a survivor

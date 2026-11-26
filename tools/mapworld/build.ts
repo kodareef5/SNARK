@@ -17,6 +17,7 @@ import { describe } from "../map.ts";
 import { readLayers, toYaw, waterLayer, writeAttached, writeNodeLayers } from "../map/layers.ts";
 import { partsTable, wireBytes, writeMapFile } from "../map/pack.ts";
 import { lakeSquares, settledLine, settleRims } from "./lakes.ts";
+import { openedLine, openPools } from "./pool-pieces.ts";
 import { writeGrey } from "../map/png.ts";
 import { Base } from "./base.ts";
 import type { BridgeRecord } from "./bridges.ts";
@@ -137,6 +138,18 @@ export async function buildMap(named: string, release = false, output = join(ROO
   }
   const brought = placeLandmarks(sited, reg, 0);
   const statics = [...layered, ...obelisks.flatMap((o) => obeliskStatics(reg, o, site.groundAt).map((p) => ({ ...p, yaw: (p.yaw * 360) / 65536 }))), ...brought.statics.map((p) => ({ ...p, yaw: (p.yaw * 360) / 65536 }))];
+  // A pool's way out on the ground is none where a wall or a fence stands on it: each is walked with every piece standing.
+  if (ground.lakes && ground.pools) {
+    const opened = openPools(ground.lakes, world.lakes, ground.height, grid, world.minY, world.stepY, world.sea === false ? -Infinity : 0, ground.pools, reg, statics);
+    dryRestored(ground);
+    if (opened.taken.size > 0) {
+      let kept = 0;
+      for (let i = 0; i < statics.length; i++) if (!opened.taken.has(i)) statics[kept++] = statics[i]!;
+      statics.length = kept;
+    }
+    lap(`the pools walked with the pieces standing: ${openedLine(opened)}`);
+    for (const line of opened.did) console.log(`        ${line}`);
+  }
   pieceCounts.fill(0);
   for (const p of statics) pieceCounts[Math.floor((p.z - z0) / 64) * chunksX + Math.floor((p.x - x0) / 64)]!++;
   // The harbours' wrecks, in the water by their marinas and piers, before the found vessels, which keep clear of them.

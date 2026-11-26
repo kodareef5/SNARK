@@ -1,5 +1,5 @@
-// Water a survivor swims in and its way out, walked by the game's stepper with the pieces standing: the walk the map's
-// audit gates on (audit.ts).
+// Water a survivor swims in and its way out, walked by the game's stepper with the pieces standing. The map's audit
+// (audit.ts) and the build's last look at its pools (pool-pieces.ts) ask this one walk, so they agree.
 
 import type { Registry } from "../../shared/content/registry.ts";
 import { TICK_DT, type MapDims } from "../../shared/coords.ts";
