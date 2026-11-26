@@ -326,10 +326,13 @@ export class Prompts implements FramePart {
         this.searchAimed = ref;
         // A dead boat keeps its word, so that it is still told from one that sails.
         const name = deadBoatWord(reg, kind) || holdWord(tag);
-        if (this.spent.has(ref)) return `${name}  searched`;
-        if (this.searching !== ref) return `hold E  search the ${name}`;
+        // Under it, how a piece that breaks stands, where that says more than its name: a wreck's look, as it is salvaged.
+        const stands = reg.breakSet[kind] !== 0 ? cityWord(reg, s.mapKind(Math.floor(ref / 65536), ref & 0xffff) || kind, kind, t.hp[ref & 0xffff]!) : "";
+        const under = stands !== "" && stands !== name ? `\n${stands}` : "";
+        if (this.spent.has(ref)) return `${name}  searched${under}`;
+        if (this.searching !== ref) return `hold E  search the ${name}${under}`;
         const done = Math.min(1, (f.nowMs - this.searchFrom) / Math.max(1, reg.holdSeconds[kind]! * 1000));
-        return `searching the ${name}  ${Math.round(done * 100)}%`;
+        return `searching the ${name}  ${Math.round(done * 100)}%${under}`;
       }
       // A boat nobody will sail again says so, so that nobody has to try it from every side.
       const dead = deadBoatWord(reg, kind);
