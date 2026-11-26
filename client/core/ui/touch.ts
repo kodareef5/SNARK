@@ -4,6 +4,8 @@
 // shell fetches when a finger is first used, so a page played with a mouse or a pad never downloads the layout or the
 // sheet's stand-in (D871). Import its types freely; import a value from here and every page pays for it.
 
+export { installMobileArt } from "./mobile-art.ts";
+
 import type { HudModel } from "../hud.ts";
 import { KEY_TOUCH_BUTTON, KEY_ZONE_LOOK, KEY_ZONE_MOVE, T_AIM, T_ATTACK, T_CANCEL, T_CLOSE, T_DOWN, T_FOLLOW, T_FOLLOW_ONE, T_HOLD, T_JUMP, T_LOWER, T_MELEE, T_MIC, T_MORE, T_ORBIT, T_PACK, T_RAISE, T_RELOAD, T_ROLL, T_ROTATE, T_SHIFT, T_SIC, T_SNAP, T_STANCE, T_STAY, T_STAY_ONE, T_USE, T_VIEW, type TouchPlay } from "../touch.ts";
 import { VITAL_PITCH } from "./hud.ts";

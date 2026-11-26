@@ -323,7 +323,13 @@ async function boot(): Promise<void> {
     const cssHeight = canvas.clientHeight;
     const t0 = (marks[0] = performance.now());
     app.gamepads(document.hasFocus() ? navigator.getGamepads?.() ?? [] : [], now);
-    if (app.ui.touch && !app.ui.layer && !layering) { layering = true; void import("../core/ui/touch.ts").then((m) => (app.ui.layer = m), () => (layering = false)); }
+    if (app.ui.touch && !app.ui.layer && !layering) {
+      layering = true;
+      void import("../core/ui/touch.ts").then((m) => {
+        m.installMobileArt(app.ui.frame);
+        app.ui.layer = m;
+      }, () => { layering = false; });
+    }
     if (!app.ui.wantsPointerLock && document.pointerLockElement) document.exitPointerLock();
     if (bench) app.autopilot(params.has("still") ? -1 : bench.since(now), bench.clock(now));
     drivingCheck?.step(app, now);

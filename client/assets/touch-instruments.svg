@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="768" height="512" viewBox="0 0 768 512">
+  <defs>
+    <linearGradient id="steel" x2=".83" y2="1">
+      <stop stop-color="#f9fdff"/><stop offset=".20" stop-color="#627b97"/>
+      <stop offset=".38" stop-color="#ebf8ff"/><stop offset=".51" stop-color="#658ba9"/>
+      <stop offset=".76" stop-color="#233f54"/><stop offset=".88" stop-color="#a1c6d7"/>
+      <stop offset="1" stop-color="#e3faff"/>
+    </linearGradient>
+    <radialGradient id="glass" cx=".29" cy=".19" r=".91">
+      <stop stop-color="#7cceec" stop-opacity=".22"/><stop offset=".45" stop-color="#07375a" stop-opacity=".30"/>
+      <stop offset=".8" stop-color="#021427" stop-opacity=".43"/><stop offset="1" stop-color="#257aa2" stop-opacity=".4"/>
+    </radialGradient>
+    <linearGradient id="track" x2="1" y2="1">
+      <stop stop-color="#76bed7" stop-opacity=".43"/><stop offset=".28" stop-color="#113d66" stop-opacity=".66"/>
+      <stop offset=".54" stop-color="#255577" stop-opacity=".63"/><stop offset=".74" stop-color="#153e5f" stop-opacity=".62"/>
+      <stop offset="1" stop-color="#6babc3" stop-opacity=".48"/>
+    </linearGradient>
+    <linearGradient id="gem" x2=".85" y2="1">
+      <stop stop-color="#edffff"/><stop offset=".31" stop-color="#8ee8fa"/><stop offset=".49" stop-color="#309ab9"/><stop offset="1" stop-color="#06344c"/>
+    </linearGradient>
+    <g id="ring">
+      <circle r="47.6" fill="url(#glass)"/><circle r="46.9" fill="none" stroke="url(#steel)" stroke-width="1.1"/>
+      <circle r="44.3" fill="none" stroke="#7cc6e3" stroke-opacity=".45" stroke-width=".65"/>
+      <path d="M-42.4 -6A42.9 42.9 0 0 1 -9.6 -41.8 M42.4 6A42.9 42.9 0 0 1 11.4 41.4" fill="none" stroke="#d5f6ff" stroke-opacity=".74"/>
+      <path d="M-41 -21A46 46 0 0 1 -27 -37 M34 31A46 46 0 0 1 21 41" fill="none" stroke="#f4fdff" stroke-width="1.5"/>
+    </g>
+    <g id="chevron"><path d="M-8 -25 0 -35.5 8 -25 0 -29.7Z" fill="url(#steel)"/><path d="M0 -35.5 8 -25 0 -29.7Z" fill="#8bdcf5" opacity=".63"/></g>
+    <g id="look"><use href="#ring"/><circle r="35" fill="none" stroke="#c0e4f4" stroke-opacity=".51" stroke-width=".65" stroke-dasharray="23 5 1 6 10 9"/>
+      <path d="m0 -44 2.6 4 -2.6 1.4 -2.6 -1.4Z M0 44l2.6 -4 -2.6 -1.4 -2.6 1.4Z" fill="url(#gem)"/>
+    </g>
+  </defs>
+  <!-- The menu wheel's open inner ring leaves the world visible behind its hub. -->
+  <g transform="translate(128 128)">
+    <circle r="123.8" fill="none" stroke="url(#steel)" stroke-width="2.4"/>
+    <circle r="120.4" fill="none" stroke="#071e30" stroke-opacity=".64" stroke-width="2.8"/>
+    <circle r="95.6" fill="none" stroke="url(#track)" stroke-width="46"/>
+    <circle r="117.8" fill="none" stroke="#b4d5e2" stroke-opacity=".67"/>
+    <circle r="116.1" fill="none" stroke="#c6ecfb" stroke-opacity=".82" stroke-width="3.4" stroke-dasharray="1 10.4"/>
+    <circle r="72.3" fill="url(#glass)" stroke="url(#steel)" stroke-width="1.3"/>
+    <circle r="67.5" fill="none" stroke="#a3dae9" stroke-opacity=".5" stroke-dasharray="17 107"/>
+    <circle r="28.5" fill="url(#track)" stroke="url(#steel)" stroke-width="1.8"/>
+    <path d="M-22 -10A25 25 0 0 1 16 -19" fill="none" stroke="#d7f4ff" opacity=".65"/>
+  </g>
+  <!-- The tapered action track sweeps 82 degrees either side of its left bearing. -->
+  <g transform="translate(256 0)">
+    <path id="crescent" d="M114 31 C100 14 56 15 31 48 A125 125 0 0 0 31 208 C56 241 100 242 114 225 C107 223 94 214 82 201 A70 70 0 0 1 82 55 C94 42 107 33 114 31Z" fill="url(#track)" stroke="url(#steel)" stroke-width="2"/>
+    <path d="M110 31 C95 19 59 19 34 50 A121 121 0 0 0 34 206 C59 237 95 237 110 225 M80 201 A72 72 0 0 1 80 55" fill="none" stroke="#b5dfef" stroke-opacity=".68" stroke-width=".9"/>
+    <path d="M57 36 A118 118 0 0 0 57 220" fill="none" stroke="#b3d4e2" stroke-width="3.3" stroke-dasharray="1 9"/>
+    <circle cx="114" cy="31" r="1.6" fill="#d5ebf8"/><circle cx="114" cy="225" r="1.6" fill="#d5ebf8"/>
+  </g>
+  <g transform="translate(640 128) scale(2.37037)">
+    <use href="#ring"/><g opacity=".7"><use href="#chevron"/><use href="#chevron" transform="rotate(90)"/><use href="#chevron" transform="rotate(180)"/><use href="#chevron" transform="rotate(270)"/></g>
+  </g>
+  <g transform="translate(128 384) scale(2.37037)" opacity=".64"><use href="#look"/></g>
+  <g transform="translate(384 384) scale(2.37037)"><use href="#look"/></g>
+  <g transform="translate(640 384) scale(6.35)">
+    <circle r="17.2" fill="#0b263c" fill-opacity=".53" stroke="url(#steel)" stroke-width="1.15"/>
+    <circle r="14.6" fill="url(#glass)"/><path d="M0 -9 8.6 0 0 9 -8.6 0Z" fill="url(#gem)" stroke="#bde8f7" stroke-width=".7"/>
+    <path d="M0 -9 1.5 -1.7 -8.6 0Z" fill="#e7fdff" opacity=".87"/>
+  </g>
+</svg>
