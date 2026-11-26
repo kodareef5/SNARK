@@ -380,7 +380,7 @@ export function settle(view: ProvingView, most = 5000): number {
 }
 
 /** Writes `text` into a picture `width` pixels wide at (x, y), each pixel of the font `scale` pixels square, on a dark band. */
-function label(pixels: Uint8ClampedArray, width: number, text: string, x: number, y: number, scale = 2): void {
+export function label(pixels: Uint8ClampedArray, width: number, text: string, x: number, y: number, scale = 2): void {
   const put = (px: number, py: number, rgb: readonly number[]): void => {
     for (let dy = 0; dy < scale; dy++) for (let dx = 0; dx < scale; dx++) pixels.set(rgb, ((py + dy) * width + px + dx) * 4);
   };

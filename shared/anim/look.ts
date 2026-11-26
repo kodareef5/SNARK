@@ -72,21 +72,29 @@ const CLOTH_COLOR = 4;
 export interface Style {
   readonly id: string;
   readonly label: string;
-  /** Source model in assets/raw, or null for none. `female`, when given, is used on the female head. */
-  readonly source: string | null;
-  readonly female?: string;
+  /** False for none: nothing is made or drawn. */
+  readonly drawn: boolean;
 }
 
+/**
+ * In the order of their look byte, which a saved look keeps: a new style goes on the end. Each is made on the body's own
+ * head by assets/source/core/humans/hair/styles.ts.
+ */
 export const HAIR_STYLES: readonly Style[] = [
-  { id: "none", label: "Bald", source: null },
-  { id: "buzzed", label: "Buzzed", source: "Hair_Buzzed", female: "Hair_BuzzedFemale" },
-  { id: "parted", label: "Parted", source: "Hair_SimpleParted" },
-  { id: "long", label: "Long", source: "Hair_Long" },
-  { id: "buns", label: "Buns", source: "Hair_Buns" },
+  { id: "none", label: "Bald", drawn: false },
+  { id: "buzzed", label: "Buzzed", drawn: true },
+  { id: "parted", label: "Parted", drawn: true },
+  { id: "long", label: "Long", drawn: true },
+  { id: "buns", label: "Buns", drawn: true },
+  { id: "fade", label: "Fade", drawn: true },
+  { id: "coils", label: "Coils", drawn: true },
+  { id: "tied", label: "Tied", drawn: true },
 ];
 export const BEARD_STYLES: readonly Style[] = [
-  { id: "none", label: "None", source: null },
-  { id: "full", label: "Full", source: "Hair_Beard" },
+  { id: "none", label: "None", drawn: false },
+  { id: "full", label: "Full", drawn: true },
+  { id: "stubble", label: "Stubble", drawn: true },
+  { id: "short", label: "Short", drawn: true },
 ];
 
 const X = 1;

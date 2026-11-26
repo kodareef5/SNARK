@@ -97,6 +97,8 @@ export const MATERIAL_INDICATOR = 16;
 export const MATERIAL_EXHAUST = 32;
 /** Light with no surface of its own: drawn after everything opaque, blended over it, showing both faces and writing no depth. */
 export const MATERIAL_BLEND = 64;
+/** Never drawn into a shadow map: a hair's cut-out cards, whose solid core casts for them. */
+export const MATERIAL_SHADOWLESS = 128;
 
 export interface PackMaterial {
   id: string;

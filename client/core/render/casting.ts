@@ -9,6 +9,7 @@ import type { Hiding } from "./hide.ts";
 import { LAMP_ACROSS, LAMP_BIT, LAMP_RANGE, LampView, lampFrame } from "./lamp.ts";
 import type { Pass } from "./pass.ts";
 import { CAST_AT, DRAW_CUTOUT, DRAW_ONE_BONE, DRAW_PIECE, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, LAMP_AT, MAX_CASCADES, MAX_CASTERS, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, type FramePacket } from "./packet.ts";
+import { MATERIAL_SHADOWLESS } from "../../../shared/pack/pack.ts";
 import { Cascades, MAX_REACH, reach } from "./shadow.ts";
 import { shadowLayer } from "./shadowtext.ts";
 import type { StreetLamps } from "./street-lamps.ts";
@@ -108,6 +109,8 @@ export class Casting {
   private characters!: Characters;
   private lamps!: StreetLamps;
   private readonly materialFlags: Uint8Array;
+  /** 1 for a material never drawn into a shadow (MATERIAL_SHADOWLESS), by material. */
+  private readonly shadowless: Uint8Array;
   private readonly bentFlags: Uint32Array;
   private readonly trisOfMesh: readonly (readonly number[])[];
   private readonly radiusOfMesh: Float32Array;
@@ -119,6 +122,7 @@ export class Casting {
     this.terrain = terrain;
     this.hiding = hiding;
     this.materialFlags = looks.materialFlags;
+    this.shadowless = Uint8Array.from(assets.table.materials, (m) => ((m.flags & MATERIAL_SHADOWLESS) !== 0 ? 1 : 0));
     this.bentFlags = looks.bentFlags;
     this.trisOfMesh = looks.trisOfMesh;
     this.radiusOfMesh = looks.radiusOfMesh;
@@ -266,20 +270,22 @@ export class Casting {
   }
 
   /**
-   * Puts `count` instances of a held level into the caster list for `cascades`. A level with cut-out or two-sided
-   * sections is a caster for each section, cut out where the card holds what that reads; any other is its whole level.
+   * Puts `count` instances of a held level into the caster list for `cascades`. A level with cut-out, two-sided or
+   * shadowless sections is a caster for each section but the shadowless, cut out where the card holds what that reads;
+   * any other is its whole level.
    */
   cast(mesh: number, level: number, buffer: number, first: number, count: number, ox: number, oy: number, oz: number, flags: number, cascades: number): void {
     if (level < 0) return;
     const runs = this.assets.table.sections[mesh]![level] ?? FLAT;
     let split = false;
-    for (let k = 0; k < runs.length; k += 3) split ||= runs[k]! >= 0 && (this.materialFlags[runs[k]!]! & (DRAW_CUTOUT | DRAW_TWO_SIDED)) !== 0;
+    for (let k = 0; k < runs.length; k += 3) split ||= runs[k]! >= 0 && ((this.materialFlags[runs[k]!]! & (DRAW_CUTOUT | DRAW_TWO_SIDED)) !== 0 || this.shadowless[runs[k]!] === 1);
     const cutouts = split && this.assets.heldCutouts(mesh, level);
     this.assets.keep(mesh, level, cutouts);
     const slot = this.assets.residency.slot(mesh, level);
     flags = (flags & CAST_FLAGS) | this.bentFlags[mesh]!;
     if (!split) return this.caster(mesh, level, slot, buffer, first, count, ox, oy, oz, flags, 0, 0, 0, cascades);
     for (let k = 0; k < runs.length; k += 3) {
+      if (runs[k]! >= 0 && this.shadowless[runs[k]!] === 1) continue;
       const m = this.materialFlags[runs[k]!]! & (cutouts ? DRAW_TEXTURED | DRAW_TWO_SIDED | DRAW_CUTOUT : DRAW_TEXTURED | DRAW_TWO_SIDED);
       this.caster(mesh, level, slot, buffer, first, count, ox, oy, oz, flags | m, runs[k]!, runs[k + 1]!, runs[k + 2]!, cascades);
     }

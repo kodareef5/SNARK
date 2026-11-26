@@ -1,8 +1,9 @@
-// The two modelled bodies, with hair, beards and armor sets fitted to each. The hair and beard styles are in
-// shared/anim/look.ts, since the character creator offers them.
+// The two modelled bodies, with hair, beards and armor sets fitted to each. The hair and beard styles are listed in
+// shared/anim/look.ts, since the character creator offers them, and made in ../hair/.
 
 import { meridian } from "./meridian/model.ts";
 import { RIGS } from "./rigs.ts";
+import { SHEET_CELLS } from "../hair/sheet.ts";
 import type { HumanBodiesAsset, MaterialSpec } from "../../../../../tools/art/spec.ts";
 
 /** A material skin/paint.ts painted, by its name there: base colour and normal at 2,048, the packed map at 1,024, masks at 512. */
@@ -29,13 +30,23 @@ export default {
       borrows: { from: "skin_mh_m", roles: ["base", "normal", "mro"] },
     },
     eyes_mh: { base: "skin/mh-eyes-base.png", normal: "skin/mh-eyes-normal.png", packed: "skin/mh-eyes-orm.png", regions: { mask: "skin/mh-eyes-mask.png", mask2: "skin/mh-eyes-mask2.png" } },
+    // Painted by ../hair/paint.ts: one strand sheet, its core half solid and its card half cut out. The cards keep their
+    // coverage as they shrink and cast no shadow; the core casts for them.
+    hair_cards: {
+      base: "skin/strands-base.png", normal: "skin/strands-normal.png", packed: "skin/strands-orm.png", regions: { mask: "skin/strands-mask.png", mask2: "skin/strands-mask2.png" },
+      cutout: 0.5, coverage: SHEET_CELLS, twoSided: true, shadowless: true,
+    },
+    hair_core: {
+      base: "skin/strands-base.png", normal: "skin/strands-normal.png", packed: "skin/strands-orm.png", regions: { mask: "skin/strands-mask.png", mask2: "skin/strands-mask2.png" },
+      twoSided: true, borrows: { from: "hair_cards", roles: ["base", "normal", "mro", "mask", "mask2"] },
+    },
     brows_mh: { base: "skin/mh-brows-base.png", normal: "skin/mh-brows-normal.png", packed: "skin/mh-brows-orm.png", regions: { mask: "skin/mh-brows-mask.png", mask2: "skin/mh-brows-mask2.png" }, cutout: true, twoSided: true },
   },
   dressed: {
     MI_Superhero_Male: "skin_m", MI_Superhero_Female: "skin_f", MI_Eyes: "eyes", MI_Hair_1: "hair_1", MI_Hair_2: "hair_2",
     MI_Peasant: "cloth", MI_Ranger: "hide", MI_Regular_Male: "regular_m", MI_Regular_Female: "regular_f",
   },
-  triangles: { body: [16000, 4000, 1480, 420], hair: [1400, 420, 136, 44], armor: [9000, 2400, 1500, 480], tailored: [4400, 1500, 420] },
+  triangles: { body: [16000, 4000, 1480, 420], hair: [1400, 300, 64, 20], armor: [9000, 2400, 1500, 480], tailored: [4400, 1500, 420] },
   flat: 2,
   body: "makehuman",
   makehuman: { triangles: [26000, 3400, 1480, 420], skin: ["skin_mh_m", "skin_mh_f"], eyes: "eyes_mh", brows: "brows_mh" },
@@ -45,7 +56,6 @@ export default {
   ],
   rigs: RIGS,
   eyes: "base-characters/T_Eye_Brown.png",
-  hair: "base-characters/hair",
   outfits: {
     folder: "outfits-fantasy",
     files: [

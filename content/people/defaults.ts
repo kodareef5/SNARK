@@ -1,7 +1,7 @@
 // The built-in populations: who the city's crowds and the bots are made of, until admins edit their own. Weights follow
-// the look's lists: skin tones lightest first; hair styles bald, buzzed, parted, long, buns; hair colours blond, dark
-// blond, ginger, brown, dark brown, near black, black, grey, white, dyed red; eyes brown, dark brown, blue, green, grey,
-// amber. An edit raises the revision.
+// the look's lists: skin tones lightest first; hair styles bald, buzzed, parted, long, buns, fade, coils, tied; hair
+// colours blond, dark blond, ginger, brown, dark brown, near black, black, grey, white, dyed red; eyes brown, dark
+// brown, blue, green, grey, amber. An edit raises the revision.
 
 import type { PopulationDef } from "../../shared/content/kinds/populations.ts";
 
@@ -9,11 +9,11 @@ const cloth = (...pieces: string[]) => pieces.map((p) => `core:cloth_${p}`);
 
 /** Everyone about the city: all ages and builds, both sexes alike. */
 export const CITY: PopulationDef = {
-  type: "population", id: "core:people_city", label: "City crowd", revision: 1,
+  type: "population", id: "core:people_city", label: "City crowd", revision: 2,
   women: 0.5,
   skin: [1, 2, 3, 3, 3, 3, 3, 2, 2, 1],
   eyes: [5, 3, 1, 1, 1, 0.5],
-  hair: { men: [1, 5, 4, 1, 0], women: [0, 1, 2, 5, 3] },
+  hair: { men: [1, 4, 3, 1, 0, 4, 2, 0.5], women: [0, 1, 2, 4, 2, 1, 2, 3] },
   hairColors: [1, 1, 0.5, 3, 3, 3, 2, 0, 0, 0.3],
   streak: 0.05, grey: [0.3, 0.9],
   beard: { men: 0.3, women: 0 },
@@ -25,11 +25,11 @@ export const CITY: PopulationDef = {
 
 /** Young people on the sand: slim and fit, long and fair hair, in little but swimwear. */
 export const BEACH: PopulationDef = {
-  type: "population", id: "core:people_beach", label: "Young beachgoers", revision: 1,
+  type: "population", id: "core:people_beach", label: "Young beachgoers", revision: 2,
   women: 0.55,
   skin: [1, 2, 3, 4, 4, 3, 2, 2, 1, 1],
   eyes: [3, 2, 2, 1, 1, 1],
-  hair: { men: [0, 4, 3, 3, 0], women: [0, 0, 1, 6, 3] },
+  hair: { men: [0, 3, 3, 3, 0, 3, 1, 1], women: [0, 0, 1, 5, 2, 0, 1, 3] },
   hairColors: [4, 3, 1, 2, 1, 1, 0.5, 0, 0, 0.5],
   streak: 0.15,
   beard: { men: 0.15, women: 0 },
@@ -43,11 +43,11 @@ export const BEACH: PopulationDef = {
 
 /** Older people at work: greying, heavier about the middle, short hair and beards. */
 export const WORKERS: PopulationDef = {
-  type: "population", id: "core:people_workers", label: "Older workers", revision: 1,
+  type: "population", id: "core:people_workers", label: "Older workers", revision: 2,
   women: 0.35,
   skin: [1, 2, 3, 3, 3, 3, 3, 2, 2, 1],
   eyes: [5, 3, 1, 1, 2, 0.5],
-  hair: { men: [3, 5, 3, 0, 0], women: [0, 1, 4, 2, 3] },
+  hair: { men: [3, 4, 3, 0, 0, 3, 1, 0], women: [0, 1, 4, 2, 2, 0, 1, 2] },
   hairColors: [0.5, 1, 0.5, 3, 4, 3, 2, 0, 0, 0],
   grey: [-0.1, 0.6],
   beard: { men: 0.6, women: 0 },
@@ -60,11 +60,11 @@ export const WORKERS: PopulationDef = {
 
 /** Visitors: fairer skin and eyes, every age, the older ones grey. */
 export const TOURISTS: PopulationDef = {
-  type: "population", id: "core:people_tourists", label: "Tourists", revision: 1,
+  type: "population", id: "core:people_tourists", label: "Tourists", revision: 2,
   women: 0.5,
   skin: [4, 4, 3, 2, 1, 1, 0.5, 0.5, 0.3, 0.2],
   eyes: [2, 1, 3, 2, 2, 0.5],
-  hair: { men: [2, 4, 4, 1, 0], women: [0, 1, 3, 4, 3] },
+  hair: { men: [2, 3, 4, 1, 0, 3, 1, 0], women: [0, 1, 3, 4, 2, 0, 1, 3] },
   hairColors: [3, 3, 1, 3, 2, 1, 0.5, 0, 0, 0.2],
   grey: [0.2, 0.85],
   beard: { men: 0.25, women: 0 },
@@ -76,12 +76,12 @@ export const TOURISTS: PopulationDef = {
 
 /** The bots: anyone at all, as a creator's random look is. */
 export const SURVIVORS: PopulationDef = {
-  type: "population", id: "core:people_survivors", label: "Survivors", revision: 1,
+  type: "population", id: "core:people_survivors", label: "Survivors", revision: 2,
   women: 0.5,
   skin: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
   eyes: [1, 1, 1, 1, 1, 1],
   complexions: [1, 1, 1, 1, 1, 1, 1, 1],
-  hair: { men: [1, 1, 1, 1, 1], women: [1, 1, 1, 1, 1] },
+  hair: { men: [1, 1, 1, 1, 1, 1, 1, 1], women: [1, 1, 1, 1, 1, 1, 1, 1] },
   hairColors: [1, 1, 1, 1, 1, 1, 1, 0.5, 0.3, 1],
   streak: 0.25, grey: [0.5, 1],
   beard: { men: 0.5, women: 0.05 },

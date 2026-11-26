@@ -220,14 +220,108 @@ export function halvings(top: Float32Array, size: number, channels: number): Flo
   return out;
 }
 
-/** The mips of a base colour map. Colours are averaged as light, which is what a far surface sends the eye, and alpha as it is. */
-export function baseMips(p: Picture): Uint8Array[] {
+/**
+ * The mips of a base colour map. Colours are averaged as light, which is what a far surface sends the eye, and alpha as
+ * it is. With `cutoff`, a cut-out's: each mip's alpha is scaled so that as much of it is at the cutoff or over as of the
+ * top mip, so the cut-out does not thin away as it shrinks with distance. A picture of `cells` side by side, an atlas,
+ * keeps each cell's own while a cell is two texels across or more.
+ */
+export function baseMips(p: Picture, cutoff?: number, cells = 1): Uint8Array[] {
   const { data, size } = square(unpack(p, toLinear), p, 4);
-  return halvings(data, size, 4).map((level) => {
+  const levels = halvings(data, size, 4);
+  if (cutoff !== undefined) keepCoverage(levels, cutoff, cells);
+  return levels.map((level) => {
     const out = new Uint8Array(level.length);
     for (let i = 0; i < level.length; i++) out[i] = ((i & 3) === 3 ? level[i]! : toSrgb(level[i]!)) * 255 + 0.5;
     return out;
   });
+}
+
+/**
+ * Alpha of an RGBA mip `size` across, read between its texels as a texture is, at `k` by `k` points a texel, over the
+ * columns from `x0` up to `x1`; wrapped.
+ */
+function alphaSamples(level: ArrayLike<number>, size: number, k: number, unit: number, x0 = 0, x1 = size, scale = 1): Float32Array {
+  const out = new Float32Array(size * (x1 - x0) * k * k);
+  const a = (x: number, y: number): number => Math.min(1, (level[((((y % size) + size) % size) * size + (((x % size) + size) % size)) * 4 + 3]! / unit) * scale);
+  let n = 0;
+  for (let y = 0; y < size * k; y++) {
+    const fy = (y + 0.5) / k - 0.5, ya = Math.floor(fy), ty = fy - ya;
+    for (let x = x0 * k; x < x1 * k; x++) {
+      const fx = (x + 0.5) / k - 0.5, xa = Math.floor(fx), tx = fx - xa;
+      out[n++] = (a(xa, ya) * (1 - tx) + a(xa + 1, ya) * tx) * (1 - ty) + (a(xa, ya + 1) * (1 - tx) + a(xa + 1, ya + 1) * tx) * ty;
+    }
+  }
+  return out;
+}
+
+/** Points a texel side coverage is read at: enough that a small mip's share moves in steps under a percent. */
+const coverSamples = (size: number): number => (size >= 512 ? 1 : size >= 256 ? 2 : size >= 32 ? 4 : 8);
+
+function shareOver(samples: Float32Array, cutoff: number): number {
+  let n = 0;
+  for (const s of samples) if (s >= cutoff) n++;
+  return n / samples.length;
+}
+
+/**
+ * The share of an RGBA8 mip whose alpha, read between texels as a texture is, is at `cutoff` or over; with `cell`, of
+ * the columns between those shares of its width.
+ */
+export function alphaCoverage(mip: Uint8Array, cutoff: number, cell: readonly [number, number] = [0, 1]): number {
+  const size = Math.sqrt(mip.length / 4);
+  return shareOver(alphaSamples(mip, size, coverSamples(size), 255, Math.round(cell[0] * size), Math.round(cell[1] * size)), cutoff);
+}
+
+/** The factor that scales `samples`' alpha so that a share `want` of them is at `cutoff` or over; 0 where none does. */
+function scaleFor(samples: Float32Array, want: number, cutoff: number): number {
+  samples.sort();
+  const n = samples.length;
+  // The alpha as many samples are over as `want`, or the next above it where samples of one alpha would cover too much:
+  // whichever covers nearer.
+  let k = Math.min(n - 1, Math.floor((1 - want) * n));
+  while (k > 0 && samples[k - 1] === samples[k]) k--;
+  let next = k;
+  while (next < n && samples[next] === samples[k]) next++;
+  const at = next < n && Math.abs((n - next) / n - want) < Math.abs((n - k) / n - want) ? samples[next]! : samples[k]!;
+  return at > 0 ? cutoff / at : 0;
+}
+
+/**
+ * Scales each mip's alpha but the top's so it covers as much at `cutoff` as the top does (Castaño's alpha test mips):
+ * each of `cells` columns of the picture on its own while it is two texels across, the whole mip after.
+ */
+function keepCoverage(levels: Float32Array[], cutoff: number, cells: number): void {
+  const top = levels.at(-1)!;
+  const topSize = Math.sqrt(top.length / 4);
+  const wants = Array.from({ length: cells }, (_, c) => shareOver(alphaSamples(top, topSize, coverSamples(topSize), 1, (c * topSize) / cells, ((c + 1) * topSize) / cells), cutoff));
+  const whole = wants.reduce((t, w) => t + w, 0) / cells;
+  for (const level of levels.slice(0, -1)) {
+    const size = Math.sqrt(level.length / 4);
+    const split = size / cells >= 2;
+    for (let c = 0; c < (split ? cells : 1); c++) {
+      const want = split ? wants[c]! : whole;
+      if (want <= 0 || want >= 1) continue;
+      const [x0, x1] = split ? [(c * size) / cells, ((c + 1) * size) / cells] : [0, size];
+      const k = coverSamples(size);
+      let scale = scaleFor(alphaSamples(level, size, k, 1, x0, x1), want, cutoff);
+      if (scale <= 0) continue;
+      // Alpha scaled past 1 is held at 1, which covers less between texels than the guess: found again by halves.
+      let [lo, hi] = [scale / 2, scale * 2];
+      let best = scale, miss = Math.abs(shareOver(alphaSamples(level, size, k, 1, x0, x1, scale), cutoff) - want);
+      for (let step = 0; step < 14 && miss > 0.002; step++) {
+        const mid = (lo + hi) / 2, got = shareOver(alphaSamples(level, size, k, 1, x0, x1, mid), cutoff);
+        if (Math.abs(got - want) < miss) [best, miss] = [mid, Math.abs(got - want)];
+        if (got < want) lo = mid;
+        else hi = mid;
+      }
+      scale = best;
+      for (let y = 0; y < size; y++) for (let x = x0; x < x1; x++) {
+        const i = (y * size + x) * 4 + 3;
+        level[i] = Math.min(1, level[i]! * scale);
+      }
+    }
+  }
 }
 
 /**

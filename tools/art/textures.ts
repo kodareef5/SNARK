@@ -14,7 +14,7 @@ import { asPicture, baseMips, normalAgainstHeight, normalMips, readPicture, seam
 import { checkMasks, readRegions, regionMasks } from "../pack/mask.ts";
 import { isNeutral, materialMips, neededSide } from "../pack/texture.ts";
 import type { Asset } from "./assets.ts";
-import { materialsOf, pictureFiles, readMaps, sideOf, type Material } from "./materials.ts";
+import { coverageOf, materialsOf, pictureFiles, readMaps, sideOf, type Material } from "./materials.ts";
 
 /**
  * A picture that tiles jumps across its edge about as hard as inside it: 1. Pictures that do tile measure up to
@@ -173,7 +173,7 @@ const MAKES: Readonly<Record<string, TextureRole>> = { base: "base", normal: "no
  */
 function contentNotes(m: Material, tops: Partial<Record<TextureRole, number>>, others: readonly Material[]): string[] {
   const notes: string[] = [];
-  const mips = materialMips(readMaps(m));
+  const mips = materialMips(readMaps(m), coverageOf(m.spec));
   const neutral = new Set<TextureRole>();
   for (const [role, top] of Object.entries(tops) as [TextureRole, number][]) {
     const all = mips[role];

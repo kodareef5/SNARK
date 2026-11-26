@@ -128,6 +128,13 @@ export interface MaterialSpec {
   readonly borrows?: { readonly from: string; readonly roles: readonly TextureRole[] };
   /** Nothing is drawn where the base colour's alpha is under this. `true` is 0.5. */
   readonly cutout?: boolean | number;
+  /**
+   * A cut-out whose mips keep as much over the cutoff as its top mip (tools/pack/image.ts baseMips), so it stays as full
+   * far off. A number is an atlas's cells side by side, each kept on its own.
+   */
+  readonly coverage?: boolean | number;
+  /** Never drawn into a shadow (shared/pack/pack.ts `MATERIAL_SHADOWLESS`): a hair's cards. */
+  readonly shadowless?: boolean;
   /** Metres one whole picture spans, for a material that tiles. Measured on the meshes where not given. */
   readonly tiles?: number;
   /** A thin sheet's: how much of the light on one face its other face shows, 0 to 1 (shared/pack/finish.ts). */
@@ -485,7 +492,7 @@ export interface HumanBodiesAsset {
   /** A folder under assets/raw that the paths below are in. */
   readonly raw: string;
   /**
-   * Triangles at each level, the finest first, for a whole body, a hair or beard, and a whole armor set. A source with
+   * Triangles at each level, the finest first, for a whole body, a hair or beard (made by assets/source/core/humans/hair/), and a whole armor set. A source with
    * more than the finest's is brought down to it. The levels before `flat` keep their surface. `tailored` is the body
    * the tailored outfit is cut from: one bone a vertex, flat, made by Blender (tools/blender/reduce.py), so that the
    * outfit, which copies every one of its triangles, keeps its counts.
@@ -494,7 +501,7 @@ export interface HumanBodiesAsset {
   readonly flat: number;
   /**
    * Where the bare bodies come from: MakeHuman's base, fitted to `rigs` (tools/makehuman/fit.ts), or the Quaternius
-   * bodies of `bodies`. Hair, beards, armor and the tailored outfit come from the Quaternius packs either way.
+   * bodies of `bodies`. Armor and the tailored outfit come from the Quaternius packs either way; hair and beards are made on MakeHuman's head.
    */
   readonly body?: "makehuman" | "quaternius";
   /** The MakeHuman bodies: triangles a level, and the materials, by their names in `materials`, of each sex's skin, the eyes and the brows. */
@@ -506,7 +513,6 @@ export interface HumanBodiesAsset {
   /** Each body's joint rests, in the order of SEX_IDS. The cook writes these and refuses a body whose joints sit more than 3 mm off. */
   readonly rigs: readonly (readonly number[])[];
   readonly eyes: string;
-  readonly hair: string;
   readonly outfits: {
     readonly folder: string;
     readonly files: readonly string[];

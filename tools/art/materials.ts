@@ -7,7 +7,7 @@ import { HAS_FACADES, facadeMaterials, facadeMeshes } from "../facade/build.ts";
 import { resolve } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { MATERIAL_BLEND, MATERIAL_CUTOUT, MATERIAL_INDICATOR, MATERIAL_NIGHT, MATERIAL_TWO_SIDED, parsePack, type PackMaterial, type PackTexture } from "../../shared/pack/pack.ts";
+import { MATERIAL_BLEND, MATERIAL_CUTOUT, MATERIAL_INDICATOR, MATERIAL_NIGHT, MATERIAL_SHADOWLESS, MATERIAL_TWO_SIDED, parsePack, type PackMaterial, type PackTexture } from "../../shared/pack/pack.ts";
 import { REGION_BASE, nearestColour } from "../../shared/pack/palette.ts";
 import { LAST_STEP, STEP0_SIZE, stepOf, stepSize, type TextureRole } from "../../shared/pack/texture.ts";
 import type { TextureSource } from "../pack/encode.ts";
@@ -63,6 +63,13 @@ export function readMaps(m: Material, roles?: readonly TextureRole[]): MaterialM
   if (want("layer")) Object.assign(out, { hurt: read("hurt"), decay: read("decay") });
   for (const key of Object.keys(out) as (keyof MaterialMaps)[]) if (!out[key]) delete out[key];
   return out;
+}
+
+/** The cutoff a material's base colour mips keep their coverage at, and its cells across, where its spec asks for it. */
+export function coverageOf(spec: MaterialSpec): { cutoff: number; cells: number } | undefined {
+  if (!spec.coverage) return undefined;
+  if (spec.cutout === undefined || spec.cutout === false) throw new Error("a material keeps the coverage of its mips only if it is cut out");
+  return { cutoff: spec.cutout === true ? 0.5 : spec.cutout, cells: spec.coverage === true ? 1 : spec.coverage };
 }
 
 /** The side a picture has as a texture: the power of two nearest its own. */
@@ -150,7 +157,7 @@ export function describe(m: Material, top: number, palette: Uint8Array, layer = 
   }
   const material: PackMaterial = {
     id: m.id, base: place("base"), normal: place("normal"), mro: place("mro"), mask: place("mask"), mask2: place("mask2"), tint, grey, emissive: m.spec.emissive ?? 0,
-    flags: (m.spec.twoSided ? MATERIAL_TWO_SIDED : 0) | (cutout ? MATERIAL_CUTOUT : 0) | (m.spec.night ? MATERIAL_NIGHT : 0) | (m.spec.indicator ? MATERIAL_INDICATOR : 0) | (m.spec.blend ? MATERIAL_BLEND : 0), cutoff: cutout ? (m.spec.cutout === true ? 0.5 : (m.spec.cutout as number)) : 0, span: m.spec.tiles ?? 0,
+    flags: (m.spec.twoSided ? MATERIAL_TWO_SIDED : 0) | (cutout ? MATERIAL_CUTOUT : 0) | (m.spec.night ? MATERIAL_NIGHT : 0) | (m.spec.indicator ? MATERIAL_INDICATOR : 0) | (m.spec.blend ? MATERIAL_BLEND : 0) | (m.spec.shadowless ? MATERIAL_SHADOWLESS : 0), cutoff: cutout ? (m.spec.cutout === true ? 0.5 : (m.spec.cutout as number)) : 0, span: m.spec.tiles ?? 0,
   };
   if (layered) material.layer = place("layer");
   if (m.spec.sheet) material.sheet = m.spec.sheet;
@@ -187,7 +194,7 @@ export function mipsOf(m: Material, role: TextureRole, top: number): Uint8Array[
     const picture = readPicture(pictureFiles(m)[role]!);
     return (role === "base" ? baseMips(picture) : packedMips(picture)).slice(0, Math.log2(top) + 1);
   }
-  const mips = materialMips(readMaps(m, [role]))[role];
+  const mips = materialMips(readMaps(m, [role]), coverageOf(m.spec))[role];
   if (!mips || mips.length < Math.log2(top) + 1) throw new Error(`${m.id}: its pictures do not make a ${role} texture ${top} pixels across`);
   return mips.slice(0, Math.log2(top) + 1);
 }
