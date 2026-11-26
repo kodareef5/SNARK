@@ -7,7 +7,7 @@ import { Cast } from "./engine.ts";
 import type { PlayerView } from "./intent.ts";
 import { ModelGate, openRouter, type Ask } from "./model.ts";
 import { Planner } from "./planner.ts";
-import { castBody, keepOf, type CastStore, type Worn } from "./people.ts";
+import { castBody, type CastStore } from "./people.ts";
 import { CastStage, type CastBodies, type IncidentKind, type StagePlayer } from "./stage.ts";
 import type { CastPlace, CastWorld } from "./world.ts";
 import type { Chat } from "../chat.ts";
@@ -27,14 +27,13 @@ import { worldHour, type ServerWorld } from "../world.ts";
 import { GOAL_NONE, TEMPER_DEFENDS } from "../behavior.ts";
 import { CAST_CATALOGUE } from "../../content/cast/index.ts";
 import type { Archetype, Capability } from "../../shared/cast/catalogue.ts";
-import type { CastSettings, Character, KeptPerson } from "../../shared/cast/state.ts";
+import type { CastSettings, Character } from "../../shared/cast/state.ts";
 import { DEFAULT_SETTINGS } from "../../shared/cast/state.ts";
 import { EMOTES, EMOTE_NUMBER } from "../../shared/anim/emotes.ts";
 import { CHUNK_SIZE, TICK_RATE } from "../../shared/coords.ts";
 import { RESULT_OK, TEXT_LOCAL } from "../../shared/net/protocol.ts";
 import { BTN_JUMP } from "../../shared/sim/character.ts";
 import { F_ALIVE, F_AWAKE, GEAR_HELD } from "../../shared/sim/entities.ts";
-import { WARDROBE_SLOTS } from "../../shared/sim/items.ts";
 import type { Bodies, Revision, RevisedKind } from "../../shared/people/doc.ts";
 import { W_GUN } from "../../shared/sim/weapon.ts";
 import { groundUnder } from "../../shared/world/collide.ts";
@@ -90,8 +89,6 @@ export class CastHost {
   private readonly pool: StagePlayer[] = [];
   /** The store as Cast reads it, or null. */
   readonly store: CastStore | null;
-  /** The body each person in the world was drawn as, by character id, kept on it should it be made featured. */
-  private readonly shown = new Map<string, KeptPerson>();
 
   constructor(ctx: CastHostContext) {
     this.ctx = ctx;
@@ -107,8 +104,6 @@ export class CastHost {
     this.stage = new CastStage(this.cast, this.bodyView(), ctx.seed ^ 0x2545f491);
     this.cast.stage = this.stage;
     this.cast.personName = (id) => this.store?.latest("person", id)?.body.name ?? null;
-    // Met or featured, a person keeps the body players saw.
-    this.cast.people.onPromote = (c) => void (c.kept ??= this.shown.get(c.id));
     // People hear what is said near them, as anyone standing there would: local chat only, never a tribe's or global, and
     // nothing while Cast is off. A line is kept two minutes at most for the planner's read of the speaker.
     ctx.chat.listeners.push((speaker, channel, x, z, text) => {
@@ -229,8 +224,6 @@ export class CastHost {
       this.retune();
       this.saved.dirty = true;
       this.forgetSaid();
-      // A body that died is never removed through the stage: what it was drawn as goes once it is off the stage.
-      for (const id of this.shown.keys()) if (!this.stage.has(id)) this.shown.delete(id);
     }
     if (!this.cast.settings.enabled) {
       // Turned off: the people still about walk off where no one sees, then nothing more happens.
@@ -357,7 +350,7 @@ export class CastHost {
         rec.extra.set(COMP_CAST, new TextEncoder().encode(c.id));
         const look = CAST_CATALOGUE.looks.find((l) => l.id === c.look);
         if (look?.colors && rec.genome) look.colors.forEach((col, i) => void (i < rec.genome!.colors.length && (rec.genome!.colors[i] = col)));
-        // Its body is a person of its look's population, sent as the seed it was drawn from, or the one it keeps.
+        // Its body is a named person's record, or a person of its look's population sent as the seed it was drawn from.
         const body = castBody(c, look, CAST_CATALOGUE, reg, this.store, this.cast.casting.looks[c.look]);
         if (body) ents.setBodyLook(e, body.look, body.born);
         // What it wears, in its gear slots and its wardrobe; and what it carries.
@@ -384,16 +377,6 @@ export class CastHost {
           const item = reg.index.get(w), slot = item === undefined ? -1 : slotOf(item);
           if (item !== undefined && slot >= 0 && inv.item[slot] === 0) put(item, 1, slot);
         }
-        if (body && !body.kept) {
-          const worn: (Worn | null)[] = [];
-          for (let k = 0; k < WARDROBE_SLOTS; k++) {
-            const s = inv.wardrobe + k, item = inv.wardrobe >= 0 ? inv.item[s]! : 0;
-            worn.push(item !== 0 ? [reg.defs[item]!.id, inv.editionOf(s), inv.dyeOf(s)] : null);
-          }
-          const kept = keepOf(body, worn);
-          if (c.tier === "featured" || c.person !== undefined) c.kept = kept;
-          else this.shown.set(c.id, kept);
-        }
         // A weapon goes on its hotbar, ready to be drawn; the rest in its bag.
         let bar = 0;
         for (const [id, n] of Object.entries(a.items ?? {})) {
@@ -408,8 +391,7 @@ export class CastHost {
         return rec.pid;
       },
       remove: (pid) => {
-        const rec = records.byPid.get(pid), id = rec?.extra.get(COMP_CAST);
-        if (id) this.shown.delete(new TextDecoder().decode(id));
+        const rec = records.byPid.get(pid);
         if (rec?.inv) items.burnAll(rec);
         const e = ent(pid);
         if (e >= 0) {

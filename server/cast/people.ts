@@ -1,11 +1,11 @@
 // Cast's people: everyone it keeps, featured and extra. An extra is a seed and an archetype, its name, look and leanings
 // drawn from the seed whenever wanted, so thousands cost little; promoted (a player engaged it, or it plays a featured
 // part), its life is drawn once and kept, with facts and what it thinks of each player, and a featured person comes back
-// in later scenes (Shadow of Mordor's nemesis: the gang member who drew on you last week).
+// in later scenes (Shadow of Mordor's nemesis: the gang member who drew on you last week). A body is drawn from the seed,
+// the population and the outfit as they are now; only a named person's is saved, in its own record.
 
-import { LOOK_BYTES, validLook } from "../../shared/anim/look.ts";
 import type { Archetype, Catalogue, Look, Traits } from "../../shared/cast/catalogue.ts";
-import type { Character, Fact, KeptPerson } from "../../shared/cast/state.ts";
+import type { Character, Fact } from "../../shared/cast/state.ts";
 import type { PopulationDef } from "../../shared/content/kinds/populations.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import type { Bodies, PersonDoc, Revision, RevisedKind, WornDoc } from "../../shared/people/doc.ts";
@@ -40,28 +40,22 @@ export type LookChoice = { readonly population?: number; readonly outfit?: numbe
 /** One wardrobe slot worn: the garment by item id, its edition and its dye as one number. */
 export type Worn = readonly [string, number, number];
 
-/** A body as drawn: its look, the seed form it goes as (null to send the bytes), what it wears and what it came from. */
+/** A body as drawn: its look, the seed form it goes as (null to send the bytes) and what it wears. */
 export interface CastBody {
   readonly look: Uint8Array;
   readonly born: Born | null;
-  /** The seed form with its population by content id or store id, where the look is one without locks. */
-  readonly from: { seed: number; population: string | number; revision: number } | null;
   readonly wear: readonly string[];
   readonly wardrobe: readonly (Worn | null)[];
-  /** The named person's revision it was drawn from. */
-  readonly rev?: number;
-  /** Drawn from what the character keeps. */
-  readonly kept: boolean;
 }
 
-/** A population by content id, as the content has it now, or by store id at revision `rev` (its latest where null). */
-function populationBy(ref: string | number, rev: number | null, reg: Registry, store: CastStore | null): PopulationDef | undefined {
+/** A population by content id (revision 0: it has none), or by store id at its latest revision. */
+function populationBy(ref: string | number, reg: Registry, store: CastStore | null): { p: PopulationDef; rev: number } | undefined {
   if (typeof ref === "string") {
     const people = populationsOf(reg), n = people.number.get(ref);
-    return n === undefined ? undefined : people.list[n];
+    return n === undefined ? undefined : { p: people.list[n]!, rev: 0 };
   }
-  const at = rev ?? store?.latest("population", ref)?.rev;
-  return at === undefined ? undefined : store?.population(ref, at);
+  const rev = store?.latest("population", ref)?.rev, p = rev === undefined ? undefined : store?.population(ref, rev);
+  return p && { p, rev: rev! };
 }
 
 const wornOf = (w: WornDoc | null): Worn | null => (w ? [w.garment, w.edition, dyeNumber(w.dye)] : null);
@@ -83,10 +77,11 @@ function roleWear(wear: readonly string[], dressed: boolean, reg: Registry): rea
  * cloth where a garment is worn. Null where no population it names is held.
  */
 export function castPerson(c: Character, look: Look | undefined, cat: Catalogue, reg: Registry, store: CastStore | null = null, choice?: LookChoice) {
-  let ref: string | number = CAST_POPULATION, p: PopulationDef | undefined;
-  for (const r of [choice?.population, look?.population, CAST_POPULATION]) if (!p && r !== undefined && (p = populationBy(r, null, reg, store))) ref = r;
-  const number = p ? wireNumber(reg, ref) : undefined;
-  if (!p || number === undefined) return null;
+  let ref: string | number = CAST_POPULATION, by: { p: PopulationDef; rev: number } | undefined;
+  for (const r of [choice?.population, look?.population, CAST_POPULATION]) if (!by && r !== undefined && (by = populationBy(r, reg, store))) ref = r;
+  const number = by ? wireNumber(reg, ref) : undefined;
+  if (!by || number === undefined) return null;
+  const p = by.p;
   const wanted = cat.sexes?.[c.name.split(" ")[0]!];
   let seed = c.seed >>> 0;
   for (let k = 1; wanted !== undefined && k < SEX_TRIES && sexOf(seed, p) !== wanted; k++) seed = partSeed(c.seed, 0x100 + k);
@@ -99,54 +94,25 @@ export function castPerson(c: Character, look: Look | undefined, cat: Catalogue,
   const chosen = typeof ref === "number" ? own ?? [] : [];
   const role = look?.wear.length ? look.wear : typeof ref === "number" ? [] : own ?? [];
   const wear = [...chosen, ...roleWear(role, wardrobe.some((w) => w) || chosen.some((id) => isGarment(id, reg)), reg)];
-  return { person, born: { seed, population: number, revision: p.revision } as Born, from: { seed, population: ref, revision: p.revision }, wear, wardrobe };
+  return { person, born: { seed, population: number, revision: by.rev } as Born, wear, wardrobe };
 }
 
 /** A named person's body: its look's bytes and its wardrobe as saved, never a seed form, and its role's armour. */
 function namedBody(rec: Revision<PersonDoc>, look: Look | undefined, reg: Registry): CastBody {
   const wardrobe = (rec.body.wardrobe ?? []).map(wornOf);
-  return { look: Uint8Array.from(rec.body.look), born: null, from: null, wear: roleWear(look?.wear ?? [], wardrobe.some((w) => w), reg), wardrobe, rev: rec.rev, kept: false };
+  return { look: Uint8Array.from(rec.body.look), born: null, wear: roleWear(look?.wear ?? [], wardrobe.some((w) => w), reg), wardrobe };
 }
 
-/** A kept body: its bytes, sent as its seed form while that still gives them byte for byte. Null for a kept look not of its shape. */
-function keptBody(k: KeptPerson, reg: Registry, store: CastStore | null): CastBody | null {
-  const look = Uint8Array.from(Buffer.from(k.look, "base64"));
-  if (look.length !== LOOK_BYTES || !validLook(look)) return null;
-  let born: Born | null = null;
-  if (k.born) {
-    const { seed, population, revision } = k.born;
-    const p = typeof population === "string" ? populationBy(population, null, reg, store) : store?.population(population, revision);
-    const number = wireNumber(reg, population);
-    if (p && p.revision === revision && number !== undefined && personFrom(seed, p).look.every((b, i) => b === look[i])) born = { seed, population: number, revision };
-  }
-  return { look, born, from: k.born ?? null, wear: k.wear, wardrobe: k.wardrobe, rev: k.rev, kept: true };
-}
-
-/**
- * The body a character is drawn as. A named person is its own record's latest revision. Anyone else keeps the body kept
- * for it, and a person with none is drawn from its look.
- */
+/** The body a character is drawn as: a named person's record as it is now, anyone else drawn from its look. */
 export function castBody(c: Character, look: Look | undefined, cat: Catalogue, reg: Registry, store: CastStore | null, choice?: LookChoice): CastBody | null {
   const rec = c.person !== undefined ? store?.latest("person", c.person) : undefined;
   if (rec) return namedBody(rec, look, reg);
-  const kept = c.kept ? keptBody(c.kept, reg, store) : null;
-  if (kept) return kept;
   const made = castPerson(c, look, cat, reg, store, choice);
-  return made && { look: made.person.look, born: made.born, from: made.from, wear: made.wear, wardrobe: made.wardrobe, kept: false };
-}
-
-/** What a body keeps of itself: its look, its seed form, its clothes and the wardrobe it was seen in. */
-export function keepOf(b: CastBody, worn: readonly (Worn | null)[]): KeptPerson {
-  return {
-    look: Buffer.from(b.look).toString("base64"), ...(b.from ? { born: { ...b.from } } : {}), wear: [...b.wear],
-    wardrobe: worn.map((w) => (w ? [w[0], w[1], w[2]] : null)), ...(b.rev !== undefined ? { rev: b.rev } : {}),
-  };
+  return made && { look: made.person.look, born: made.born, wear: made.wear, wardrobe: made.wardrobe };
 }
 
 export class People {
   readonly byId = new Map<string, Character>();
-  /** Told when a person is made featured, so the host keeps the body it has now (server/cast/host.ts). */
-  onPromote: ((c: Character) => void) | null = null;
   private next = 1;
   private readonly cat: Catalogue;
   private readonly archetypes: Map<string, Archetype>;
@@ -188,7 +154,7 @@ export class People {
     return c;
   }
 
-  /** Made featured: its life is drawn from its seed and its archetype's seeds of one, and kept from now on, and its body too. */
+  /** Made featured: its life is drawn from its seed and its archetype's seeds of one, and kept from now on. */
   promote(c: Character, tick: number): void {
     if (c.tier === "featured") return;
     const a = this.archetypes.get(c.archetype)!;
@@ -198,7 +164,6 @@ export class People {
     c.struggle = pick(rng, a.struggles);
     c.hope = pick(rng, a.hopes);
     c.touched = tick;
-    this.onPromote?.(c);
   }
 
   /** A featured person of one of the archetypes, free (in no story, alive, not in `not`), from the region or near it: one

@@ -1,11 +1,7 @@
 // Cast's people from the people store: a look drawn from an admin population, a role played by a named person in its
-// saved look and wardrobe, a person met or featured kept byte for byte through a restart and edits of what it was drawn
-// from, and a role's armour kept under an outfit.
+// saved look and wardrobe, and a role's armour kept under an outfit.
 
 import { expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { castAct, castState } from "../../server/admin/cast.ts";
 import type { By } from "../../server/people/store.ts";
 import { CITY } from "../../content/people/defaults.ts";
@@ -18,13 +14,13 @@ import { Harness } from "../fixtures/net.ts";
 
 const BY: By = { name: "kody", id: "" };
 const TOP = WARDROBE_NAMES.indexOf("top"), BOTTOM = WARDROBE_NAMES.indexOf("bottom");
-const { type: _t, id: _i, revision: _r, ...cityDoc } = CITY;
+const { type: _t, id: _i, ...cityDoc } = CITY;
 const CITY_DOC: PopulationDoc = cityDoc;
 /** The city crowd edited: other skins, faces and builds altogether. */
 const EDITED: PopulationDoc = { ...CITY_DOC, skin: [0, 0, 0, 0, 0, 0, 0, 0, 1, 5], face: 0.9, build: [0.3, 0.9] };
 
-function world(db?: string): Harness {
-  return new Harness({ entityRadius: 1 }, 2, 30, { cast: { size: 0, activity: 0, hostility: 0 }, wakeRadius: 1, ...(db ? { dbPath: db } : {}) });
+function world(): Harness {
+  return new Harness({ entityRadius: 1 }, 2, 30, { cast: { size: 0, activity: 0, hostility: 0 }, wakeRadius: 1 });
 }
 
 function saved(r: ReturnType<Harness["host"]["people"]["save"]>): { id: number; rev: number } {
@@ -76,7 +72,7 @@ test("a look may draw from an admin population, at its latest revision, as a see
     const first = body(h, mint());
     expect(first.born).toEqual({ seed: first.born!.seed, population: wireNumber(h.world.reg, pop)!, revision: 1 });
     expect([...lookOfSeed(h.world.reg, first.born!.seed, first.born!.population, 1, h.host.people)!]).toEqual(first.look);
-    // An unmet person of the same seed, drawn after an edit, follows it.
+    // A person of the same seed, drawn after an edit, follows it.
     saved(h.host.people.save("population", pop, 1, EDITED, BY));
     const again = body(h, mint());
     expect(again.born!.revision).toBe(2);
@@ -114,75 +110,6 @@ test("a role's named person wears its admin outfit with its edition and dye", ()
     // Dressed by its outfit, it wears none of the look's placeholder cloth.
     const inv = h.host.records.byPid.get(pid!)!.inv!;
     for (let k = 0; k < 5; k++) expect(inv.item[inv.armor + k]).toBe(0);
-    expect(c.kept!.rev).toBe(1);
-  } finally {
-    h.host.shutdown();
-  }
-});
-
-test("a featured person is byte-identical after a restart and edits of its sources", () => {
-  const dir = mkdtempSync(join(tmpdir(), "cast-people-"));
-  try {
-    const db = join(dir, "world.db");
-    const a = world(db);
-    a.join("Ana");
-    a.run(1000);
-    const { pop, fit, outfit } = stock(a);
-    expect(castAct(a.host, { op: "look", look: "cast:vendor_apron", population: pop, outfit: fit })).toBe("");
-    // A vendor is featured from the start: what it is drawn as now it keeps.
-    const vendor = a.host.cast.cast.people.mint("cast:vendor", 0, 99, a.world.tick);
-    const first = body(a, vendor);
-    expect(vendor.kept).toBeDefined();
-    expect(first.wardrobe[TOP * 3 + 1]).toBeGreaterThan(0);
-    first.gone();
-    // Its population and outfit edited, it is the same person in the same clothes, still sent as its seed.
-    saved(a.host.people.save("population", pop, 1, EDITED, BY));
-    saved(a.host.people.save("outfit", fit, 1, { ...outfit, slots: outfit.slots.map((s) => s && { ...s, dye: [9, 9, 9] }) }, BY));
-    const edited = body(a, vendor);
-    expect([edited.look, edited.wardrobe, edited.born]).toEqual([first.look, first.wardrobe, first.born]);
-    edited.gone();
-    a.host.cast.saved.dirty = true;
-    a.host.shutdown();
-
-    const b = world(db);
-    b.join("Ana");
-    b.run(1000);
-    const back = b.host.cast.cast.people.byId.get(vendor.id)!;
-    expect(back.kept).toEqual(vendor.kept);
-    const after = body(b, back);
-    expect([after.look, after.wardrobe, after.born]).toEqual([first.look, first.wardrobe, first.born]);
-    // What the admin chose is kept with Cast too.
-    expect(b.host.cast.cast.casting.looks["cast:vendor_apron"]).toEqual({ population: pop, outfit: fit });
-    b.host.shutdown();
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("a person a player met keeps the body it had; one nobody met keeps none", () => {
-  const h = world();
-  try {
-    h.join("Ana");
-    h.run(1000);
-    const { pop } = stock(h);
-    expect(castAct(h.host, { op: "look", look: "cast:street_plain", population: pop })).toBe("");
-    const people = h.host.cast.cast.people;
-    const met = people.mint("cast:pedestrian", 0, 5150, h.world.tick), passer = people.mint("cast:pedestrian", 0, 5151, h.world.tick);
-    met.look = passer.look = "cast:street_plain";
-    const seen = body(h, met), other = body(h, passer);
-    people.met(met, "Ana", 0.05, "Ana waved", h.world.tick);
-    expect([met.tier, !!met.kept, !!passer.kept]).toEqual(["featured", true, false]);
-    expect([...Buffer.from(met.kept!.look, "base64")]).toEqual(seen.look);
-    seen.gone();
-    other.gone();
-    saved(h.host.people.save("population", pop, 1, EDITED, BY));
-    const again = body(h, met);
-    expect([again.look, again.born]).toEqual([seen.look, seen.born]);
-    // An admin may feature a person too.
-    const third = people.mint("cast:pedestrian", 0, 5152, h.world.tick);
-    const shown = body(h, third);
-    expect(castAct(h.host, { op: "feature", character: third.id })).toBe("");
-    expect([third.tier, [...Buffer.from(third.kept!.look, "base64")]]).toEqual(["featured", shown.look]);
   } finally {
     h.host.shutdown();
   }

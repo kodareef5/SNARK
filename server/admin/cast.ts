@@ -30,7 +30,7 @@ export function castState(host: Host, now: number): string {
     choices: s.choices, slots: s.slots, engaged: s.engaged, importance: s.importance, age: Math.round((tick - s.made) / w.rate), history: s.history.slice(-3),
   }));
   const people = [...cast.people.byId.values()].filter((c) => c.tier === "featured").sort((a, b) => b.touched - a.touched).slice(0, MOST_PEOPLE).map((c) => ({
-    id: c.id, name: c.name, person: c.person ?? null, kept: !!c.kept, kind: cast.people.archetype(c.archetype)?.name ?? c.archetype, want: c.want, struggle: c.struggle, hope: c.hope, dead: !!c.dead,
+    id: c.id, name: c.name, person: c.person ?? null, kind: cast.people.archetype(c.archetype)?.name ?? c.archetype, want: c.want, struggle: c.struggle, hope: c.hope, dead: !!c.dead,
     story: c.story ?? null, traits: c.traits, facts: c.facts.slice(-4).map((f) => f.text), knows: Object.fromEntries(Object.entries(c.relations).map(([n, r]) => [n, { stance: r.stance, met: r.met, notes: r.notes.slice(-2) }])),
   }));
   // Everyone playing a named person, so the people page can feature one.
