@@ -75,21 +75,17 @@ test("a map written in parts and read back is the map it was made of: every heig
   expect(writeMap(back)).toEqual(file);
 });
 
-test("a map of version 11 is read as one with no streets, and any other old or new one is refused", () => {
+test("a map of any version but this build's is refused", () => {
   const plain = writeMap({ ...wideMap(), statics: [] });
   const as = (version: number): Uint8Array<ArrayBuffer> => {
     const f = plain.slice();
     new DataView(f.buffer).setUint16(4, version, true);
     return f;
   };
-  // The version is outside what the head's hash covers, so a file of this version with no bends or streets part is one of 11.
-  const old = parseMap(as(11), true, true);
-  expect(old.streets).toBeUndefined();
-  expect(old.heights).toEqual(parseMap(plain).heights);
-  for (const v of [10, 12, 13, 14, 16]) expect(() => readHead(as(v))).toThrow(`map: version ${v} is not one this build reads`);
+  for (const v of [10, 11, 13, 14, 16]) expect(() => readHead(as(v))).toThrow(`map: version ${v} is not one this build reads`);
 });
 
-test("a sector's statics name their own kinds, and one of version 11 the head's", () => {
+test("a sector's statics name their own kinds", () => {
   const wide = wideMap();
   // A kind only the far corner's sector holds.
   const corner = { kind: "core:torch", x: wide.dims.chunksX * CHUNK_SIZE - 10, y: 1, z: wide.dims.chunksZ * CHUNK_SIZE - 10, yaw: 0 };
@@ -106,12 +102,6 @@ test("a sector's statics name their own kinds, and one of version 11 the head's"
   const own = Array.from({ length: view.getUint16(0, true) }, () => new TextDecoder().decode(bytes.subarray(at + 1, (at += 1 + bytes[at]!))));
   expect(own).toEqual(used);
   expect(used.length).toBeLessThan(head.kinds.length);
-  // The same part without its table, its kinds the head's numbers, read under a head of version 11.
-  const n = view.getUint32(at, true);
-  const old = bytes.slice(at);
-  for (let i = 0; i < n; i++) [old[4 + i], old[4 + n + i]] = [piece.id[i]! & 255, piece.id[i]! >> 8];
-  const back = readPart({ ...head, version: 11 }, { ...part, length: old.length }, old, false) as StaticsPiece;
-  expect([back.id, back.x, back.yaw]).toEqual([piece.id, piece.x, piece.yaw]);
   // A kind the head does not name is refused.
   expect(() => readPart({ ...head, kinds: head.kinds.filter((k) => k !== own[0]) }, part, bytes)).toThrow("which its head does not");
 });

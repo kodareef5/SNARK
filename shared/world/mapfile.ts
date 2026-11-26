@@ -147,7 +147,6 @@ import { BUILDINGS_VERSION, Buildings, SectorBuildings, type BuildingNames } fro
 
 export const MAP_VERSION = 15;
 /** Read too, until the city maps in var/maps are built again: 11 is 15 with no streets part, no bent piece, and parts that name the head's kinds. */
-const KEPT_VERSION = 11;
 const MAGIC = 0x504d4e53;
 const HEADER_BYTES = 56;
 /** Chunks a side of an overview's square, 4,096 m. */
@@ -1617,7 +1616,7 @@ export interface MapHead {
   readonly water: { readonly cell: number; readonly bodies: readonly WaterBody[] } | null;
   /** The whole map at every chunk's corner, which a client draws until each overview comes. */
   readonly coarse: CoarsePicture;
-  /** Its version: MAP_VERSION or KEPT_VERSION. */
+  /** Its version: MAP_VERSION. */
   readonly version: number;
   /** The content ids its statics name by number. */
   readonly kinds: readonly string[];
@@ -1664,7 +1663,7 @@ export function readHead(file: Uint8Array, verify = true): MapHead {
   const v = new DataView(file.buffer, file.byteOffset, file.byteLength);
   if (file.length < 16 || v.getUint32(0, true) !== MAGIC) throw new Error("map: this is not a map file");
   const version = v.getUint16(4, true);
-  if (version !== MAP_VERSION && version !== KEPT_VERSION) throw new Error(`map: version ${version} is not one this build reads: build the map again`);
+  if (version !== MAP_VERSION) throw new Error(`map: version ${version} is not one this build reads: build the map again`);
   const bytes = v.getUint32(12, true);
   if (bytes < HEADER_BYTES || bytes > file.length) throw new Error("map: it is cut short");
   const hash = v.getUint32(8, true);
@@ -2042,15 +2041,12 @@ function readTops(head: MapHead, sq: Square, s: In): TopsPiece {
 
 function* readStatics(head: MapHead, sq: Square, s: In): Generator<void, StaticsPiece> {
   const kindOf = kindIndex(head.kinds);
-  // The part's own kinds as the head's; a map of version 11 names the head's.
-  let own: Uint16Array | null = null;
-  if (head.version !== KEPT_VERSION) {
-    own = new Uint16Array(s.u16());
-    for (let k = 0; k < own.length; k++) {
-      const name = s.text(), at = kindOf.get(name);
-      if (at === undefined) throw new Error(`map: a sector's statics name a ${name}, which its head does not`);
-      own[k] = at;
-    }
+  // The part's own kinds as the head's.
+  const own = new Uint16Array(s.u16());
+  for (let k = 0; k < own.length; k++) {
+    const name = s.text(), at = kindOf.get(name);
+    if (at === undefined) throw new Error(`map: a sector's statics name a ${name}, which its head does not`);
+    own[k] = at;
   }
   const n = s.u32();
   const b = s.take(n * STAT_ROW);
@@ -2089,8 +2085,8 @@ function* readStatics(head: MapHead, sq: Square, s: In): Generator<void, Statics
   let [x, y, z, turn] = [0, 0, 0, 0];
   for (let i = 0, q = 0; i < n; i++) {
     const k = b[i]! | (b[n + i]! << 8);
-    if (k >= (own ? own.length : head.kinds.length)) throw new Error("map: a static piece is of a kind its table does not name");
-    id[i] = own ? own[k]! : k;
+    if (k >= own.length) throw new Error("map: a static piece is of a kind its table does not name");
+    id[i] = own[k]!;
     // A bent piece after a bent piece: from where it would stand as the next of that one's line.
     const bent = q < bendAt.length && bendAt[q] === i;
     if (bent && q > 0 && bendAt[q - 1] === i - 1) {

@@ -27,9 +27,8 @@ export const STOREY = 4;
 export const STOREY_SLACK = 1 / 16;
 /** The version of the head's names (a map's BLDG). */
 export const BUILDINGS_VERSION = 1;
-/** The version of a sector's buildings as a part holds them: 2 names its own tables, 1 the head's (maps of version 11). */
+/** The version of a sector's buildings as a part holds them: it names its own tables. */
 const PART_VERSION = 2;
-const HEAD_NAMED = 1;
 /** A building's flags: a stair climbs in it, one reaches its roof, it is a place its city names by hand, it has a row in another sector. */
 export const BUILDING_STAIRS = 1;
 export const BUILDING_ROOF = 2;
@@ -462,10 +461,10 @@ export class SectorBuildings {
     const sq = heldOf(dims, col, row) ?? fail(`its buildings of sector ${col}, ${row} lie off the map`);
     const s = new Read(bytes);
     const version = s.take(1)[0];
-    if (version !== PART_VERSION && version !== HEAD_NAMED) fail("its buildings are of a version this build does not read: build the map again");
+    if (version !== PART_VERSION) fail("its buildings are of a version this build does not read: build the map again");
     const n = s.planes(new Uint16Array(1), 2)[0]!;
-    // Each table's names as their places in the head's, or null where the part names the head's.
-    const own = version === HEAD_NAMED ? null : tablesOf(names).map((table) => {
+    // Each table's names as their places in the head's.
+    const own = tablesOf(names).map((table) => {
       const place = placeIn(table), count = s.take(1)[0]!, out = new Uint8Array(count);
       for (let k = 0; k < count; k++) {
         const name = decodeUtf8(s.take(s.varint()));
@@ -497,15 +496,13 @@ export class SectorBuildings {
     const columns = new Read(head);
     columns.planes(t.id, 6);
     for (const column of [t.kind, t.recipe, t.form, t.district, t.collapse, t.flags, t.storeys, t.playable, t.bay]) column.set(columns.take(n));
-    if (own) {
-      [t.kind, t.recipe, t.form, t.district, t.collapse].forEach((column, c) => {
-        const table = own[c]!;
-        for (let k = 0; k < n; k++) {
-          if (column[k]! >= table.length) fail("a building is of a kind, a form or a district its head does not name");
-          column[k] = table[column[k]!]!;
-        }
-      });
-    }
+    [t.kind, t.recipe, t.form, t.district, t.collapse].forEach((column, c) => {
+      const table = own[c]!;
+      for (let k = 0; k < n; k++) {
+        if (column[k]! >= table.length) fail("a building is of a kind, a form or a district its head does not name");
+        column[k] = table[column[k]!]!;
+      }
+    });
     for (const column of [t.name, t.number, t.street]) columns.planes(column, 2);
     for (const column of [t.ux, t.uz]) columns.planes(column, 4);
     columns.planes(t.yaw, 2);
