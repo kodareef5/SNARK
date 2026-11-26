@@ -158,3 +158,34 @@ function partLod(f: FittedBody, part: number, keep: Uint8Array): SourceLod | nul
     joints: pick(f.joints, 4, (n) => new Uint8Array(n)), weights: pick(f.weights, 4, (n) => new Float32Array(n)),
   };
 }
+
+/** How far apart a cooked vertex and its fitted one may be: the pack's grid moves a point by a hundredth of a millimetre or so. */
+const SAME_POINT = 5e-5;
+
+/**
+ * For each vertex of a cooked level (its positions at rest, three a vertex, as built or as read back from the pack), the
+ * fitted body's vertex at the same point, or -1 where none is: a vertex the cook made by collapsing others. Faces are
+ * cooked on the fitted body's vertices (shared/people/faces.ts remapFaces takes this). Of several fitted vertices at one
+ * point, split by texture seams, the first.
+ */
+export function fittedSourceOf(positions: ArrayLike<number>, f: FittedBody): Int32Array {
+  const cell = (x: number): number => Math.floor(x / (SAME_POINT * 2));
+  const grid = new Map<string, number[]>();
+  for (let v = 0; v < f.positions.length / 3; v++) {
+    const k = `${cell(f.positions[v * 3]!)},${cell(f.positions[v * 3 + 1]!)},${cell(f.positions[v * 3 + 2]!)}`;
+    const list = grid.get(k);
+    if (list) list.push(v);
+    else grid.set(k, [v]);
+  }
+  return Int32Array.from({ length: positions.length / 3 }, (_, v) => {
+    const [x, y, z] = [positions[v * 3]!, positions[v * 3 + 1]!, positions[v * 3 + 2]!];
+    let best = -1, near = SAME_POINT;
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
+      for (const u of grid.get(`${cell(x) + dx},${cell(y) + dy},${cell(z) + dz}`) ?? []) {
+        const d = Math.hypot(f.positions[u * 3]! - x, f.positions[u * 3 + 1]! - y, f.positions[u * 3 + 2]! - z);
+        if (d < near || (d === near && u < best)) [best, near] = [u, d];
+      }
+    }
+    return best;
+  });
+}

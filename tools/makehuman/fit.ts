@@ -87,13 +87,14 @@ export interface FitOptions {
 }
 
 /**
- * Face targets each sex is fitted with: the chin and jaw drawn in a little, so more of them stays inside the head's hit
- * capsule as faces later vary about it.
+ * Face targets each sex is fitted with: the chin and jaw drawn in a little, so his stays inside the head's hit capsule
+ * grown by HEAD_SLACK even at HEAD_GROW, and faces have room to vary about it.
  */
 const CHIN_IN = [
   { file: "chin/chin-jaw-drop-decr.target", weight: 0.5 },
   { file: "chin/chin-prognathism-decr.target", weight: 0.5 },
   { file: "chin/chin-height-decr.target", weight: 0.4 },
+  { file: "chin/chin-prominent-decr.target", weight: 0.3 },
 ];
 export const FACE_BASE: Readonly<Record<Sex, readonly { readonly file: string; readonly weight: number }[]>> = { male: CHIN_IN, female: CHIN_IN };
 
@@ -314,7 +315,7 @@ function measureTargets(values: ArrayLike<number>): { file: string; weight: numb
  * heavier than MakeHuman's average, which fills the capsules (sized on stockier bodies) without leaving them.
  */
 const MACRO_BASE: Readonly<Record<Sex, Macro>> = {
-  male: { gender: 1, age: 0.5, muscle: 0.8, weight: 0.7, height: 0.5, proportions: 0.5 },
+  male: { gender: 1, age: 0.5, muscle: 0.8, weight: 0.85, height: 0.5, proportions: 0.5 },
   female: { gender: 0, age: 0.5, muscle: 1, weight: 0.7, height: 0.5, proportions: 0.5 },
 };
 

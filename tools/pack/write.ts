@@ -150,6 +150,13 @@ function pool(meshes: readonly SourceMesh[]): { materials: PackMaterial[]; textu
  * the level has zones: the runs as PackLod lists them. `place` is where the pack has each of the mesh's materials; a
  * flat level has none, and is one run.
  */
+/**
+ * The order skin zones go in within a section (shared/anim/skin-zones.ts): from the trunk outward, left and right side by
+ * side, so a sleeve or a leg of any length hides one run at the end.
+ */
+const ZONE_ORDER: readonly number[] = [0, 1, 2, 3, 4, 7, 5, 8, 6, 9, 10, 11, 12, 13, 16, 14, 17, 15, 18, 19, 20];
+const ZONE_RANK: readonly number[] = Array.from({ length: MOST_ZONES }, (_, z) => (z < ZONE_ORDER.length ? ZONE_ORDER.indexOf(z) : z));
+
 function inSections(lod: SourceLod, place: readonly number[] | null): { indices: Uint32Array; sections: number[]; zones: number[] | null; runs: number[] } {
   const n = lod.indices.length / 3;
   const zones = lod.zones ?? null;
@@ -157,7 +164,7 @@ function inSections(lod: SourceLod, place: readonly number[] | null): { indices:
   // Counted out by key, each key's triangles in the order they came: a stable sort, at the cost of one pass.
   const of = new Int32Array(n);
   let most = 0;
-  for (let t = 0; t < n; t++) most = Math.max(most, (of[t] = (place ? place[lod.sections?.[t] ?? 0]! : 0) * MOST_ZONES + (zones ? zones[t]! : 0) + 1));
+  for (let t = 0; t < n; t++) most = Math.max(most, (of[t] = (place ? place[lod.sections?.[t] ?? 0]! : 0) * MOST_ZONES + (zones ? ZONE_RANK[zones[t]!]! : 0) + 1));
   const start = new Uint32Array(most + 2);
   for (let t = 0; t < n; t++) start[of[t]! + 1]!++;
   const sections: number[] = [];
@@ -167,7 +174,7 @@ function inSections(lod: SourceLod, place: readonly number[] | null): { indices:
   for (let key = 0; key <= most; key++) {
     const count = start[key + 1]!;
     if (count > 0) {
-      const [material, zone, first] = [Math.floor((key - 1) / MOST_ZONES), (key - 1) % MOST_ZONES, start[key]! * 3];
+      const [material, zone, first] = [Math.floor((key - 1) / MOST_ZONES), ZONE_RANK.indexOf((key - 1) % MOST_ZONES), start[key]! * 3];
       runs.push(material, first, count * 3);
       if (zones) zoned.push(zone, first, count * 3);
       const last = sections.length - 3;

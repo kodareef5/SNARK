@@ -71,7 +71,7 @@ test("the core pack has a mesh for every graybox definition and rejects damaged 
 artTest("the pack carries bodies cut into slots, each vertex naming its bone, and the clips that move them", () => {
   const pack = parsePack(corePackBytes());
   // The mannequin is the skeleton's own capsules. Each modelled body is on its own rig, at four levels of detail:
-  // MakeHuman's body at 26,000 and 7,000 with materials, 1,500 and 420 flat (tools/pack/body.ts).
+  // MakeHuman's body at 26,000 and 3,400 with materials, 1,480 and 420 flat (tools/pack/body.ts).
   for (const [base, rig, levels] of [["core:mannequin", undefined, 1], ["core:human_m", "human_m", 4], ["core:human_f", "human_f", 4]] as const) {
     let triangles = 0;
     for (const slot of SLOT_NAMES) {
@@ -251,8 +251,8 @@ artTest("the manifest lists every level with the bytes that hold it, and reads b
   // What the client knows of the meshes comes out the same from the file as from the pack it describes.
   const [a, b] = [new AssetTable(parseManifest(text), pack), new AssetTable(describePack(pack, { name: "", bytes: file.length }), pack)];
   expect([a.count, a.tris, a.error, [...a.radius], a.skeleton, [...a.rig], [...a.bone]]).toEqual([b.count, b.tris, b.error, [...b.radius], b.skeleton, [...b.rig], [...b.bone]]);
-  // MakeHuman's torso: its share of the 26,000- and 7,000-triangle bodies, then the flat 1,500 and 420 (tools/pack/body.ts).
-  expect(a.tris[a.find("core:human_m/torso")]).toEqual([4822, 1336, 350, 103]);
+  // MakeHuman's torso: its share of the 26,000- and 3,400-triangle bodies, then the flat 1,480 and 420 (tools/pack/body.ts).
+  expect(a.tris[a.find("core:human_m/torso")]).toEqual([4826, 652, 324, 101]);
   expect(a.has("clip", "human/walk") && a.has("rig", "human_f") && !a.has("mesh", "core:nothing")).toBe(true);
   const binding = new Binding(CORE_CONTENT, a);
   const wall = a.find("core:wall_tek");

@@ -28,11 +28,12 @@ artTest("a bare body is four levels, two with materials and two flat, to its bud
         expect((l.sections?.length ?? 0) / 3).toBeLessThanOrEqual(3);
       });
     }
-    // MakeHuman's body at 26,000 and 7,000 with materials; the coarsest is about what the boot file held before.
+    // MakeHuman's body at 26,000 and 3,400 with materials; the first flat level is under the old flat body's 1,492, and the
+    // coarsest is about what the boot file held before.
     expect(totals[0]).toBeGreaterThan(20_000);
     expect(totals[0]).toBeLessThanOrEqual(26_000);
-    expect(totals[1]).toBeLessThanOrEqual(7_000);
-    expect(totals[2]).toBeLessThanOrEqual(1_500);
+    expect(totals[1]).toBeLessThanOrEqual(3_400);
+    expect(totals[2]).toBeLessThanOrEqual(1_480);
     expect(totals[3]).toBeLessThanOrEqual(420);
     expect(totals[3]).toBeGreaterThan(380);
   }
@@ -89,5 +90,16 @@ artTest("a body's five slot meshes share one box, so their seams land on the sam
   for (const sex of SEX_IDS) {
     const boxes = SLOT_NAMES.map((slot) => JSON.stringify([mesh(`core:human_${sex}/${slot}`).center, mesh(`core:human_${sex}/${slot}`).half]));
     expect(new Set(boxes).size).toBe(1);
+  }
+});
+
+artTest("a section's zones go from the trunk outward, left and right side by side", () => {
+  const order = [0, 1, 2, 3, 4, 7, 5, 8, 6, 9, 10, 11, 12, 13, 16, 14, 17, 15, 18, 19, 20];
+  for (const sex of SEX_IDS) for (const slot of SLOT_NAMES) for (const lod of mesh(`core:human_${sex}/${slot}`).lods) {
+    const runs = lod.zones!;
+    for (let k = 3; k < runs.length; k += 3) {
+      const sameSection = !lod.sections || lod.sections.some((_, s) => s % 3 === 0 && runs[k - 2]! >= lod.sections![s + 1]! && runs[k + 1]! < lod.sections![s + 1]! + lod.sections![s + 2]!);
+      if (sameSection) expect(order.indexOf(runs[k]!)).toBeGreaterThan(order.indexOf(runs[k - 3]!));
+    }
   }
 });
