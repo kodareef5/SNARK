@@ -200,7 +200,8 @@ export function armorSets(spec: HumanBodiesAsset, sex: number, rest: readonly nu
       const slot = mesh.id.split("/").at(-1)!;
       const bare = body.find((m) => m.id === `${id}/${slot}`);
       if (!bare || !linedSlot(slot)) continue;
-      lines.push(`${mesh.id}: lined with ${line(mesh, bare).join(" / ")} triangles of the body's skin`);
+      const lined = line(mesh, bare);
+      lines.push(`${mesh.id}: lined with ${lined.added.join(" / ")} triangles of the body's skin, ${lined.underwearShows} of underwear where it shows`);
     }
     // A slot whose part of the outfit was all skin is the body's own: an item worn there still has its piece.
     for (const slot of SLOT_NAMES.slice(0, SLOT_COUNT)) {
@@ -215,11 +216,12 @@ export function armorSets(spec: HumanBodiesAsset, sex: number, rest: readonly nu
 }
 
 /**
- * The body's slot meshes a suit is lined with, three levels each. The head is lined at its second level from the first,
- * as a sealed helmet hides all but the face behind its visor, and the cook holds the neck's seam at every level.
+ * The body's slot meshes a suit is lined with, three levels each: each of its levels takes the body's next, as the old
+ * suit's lining was cut from a coarser body than the one beside it, and its seams with a bare slot near by are a level
+ * apart (the neck's is held at every level).
  */
 export function suitLining(meshes: readonly SourceMesh[]): SourceMesh[] {
-  return meshes.map((m) => ({ ...m, lods: (m.id.endsWith("/head") ? [1, 1, 2] : [0, 1, 2]).map((k) => (m.id.endsWith("/feet") ? toeless(m.lods[k]!) : m.lods[k]!)) }));
+  return meshes.map((m) => ({ ...m, lods: [1, 2, 3].map((k) => (m.id.endsWith("/feet") ? toeless(m.lods[k]!) : m.lods[k]!)) }));
 }
 
 /** A foot's skin without its toes, which the boot's toe cap stands in for, so the sole is found on the boot. */

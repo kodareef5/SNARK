@@ -38,7 +38,7 @@ describe("liner", () => {
   test("a piece is lined with the skin it leaves showing and a margin under its edge", () => {
     const piece = sleeve(), body = arm();
     const cloth = piece.lods[0]!.indices.length / 3;
-    const [added] = line(piece, body);
+    const { added: [added] } = line(piece, body);
     const lod = piece.lods[0]!;
     expect(added).toBeGreaterThan(0);
     expect(lod.indices.length / 3).toBe(cloth + added!);

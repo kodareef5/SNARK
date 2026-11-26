@@ -4,6 +4,7 @@
 // so the piece's seams with the bare slots beside it are the bare body's own, and its edges lie over skin that moves as
 // the skin beside it does.
 
+import { REGION_CLOTH } from "../../shared/anim/look.ts";
 import { TEXTURE_ROLES } from "../../shared/pack/texture.ts";
 import { setTexture, textureOf } from "../../shared/pack/pack.ts";
 import { smoothNormals, TriangleGrid, welded } from "./refit.ts";
@@ -18,8 +19,15 @@ const FOLD_APART = 0.015;
  * the new foot's toes come through, hides them rather than drawing them.
  */
 const SKIN_SLACK = 0.03;
-/** How far under the piece's edges the lining reaches, in metres. */
-export const LINER_MARGIN = 0.02;
+/**
+ * How far under the piece's edges the lining reaches at each level, in metres: far off a sliver between the piece's
+ * edge and its lining cannot be seen, and the coarser lining's triangles are large.
+ */
+export const LINER_MARGINS: readonly number[] = [0.02, 0.01, 0.005];
+/** Nearer than this to skin the piece leaves showing, the lining shows. */
+const SHOWS = 0.005;
+/** The palette colour a bare body's underwear is drawn in on its flat levels (look.ts CLOTH_COLOR). */
+const BARE_CLOTH = 4;
 /** How far the lining under the piece sinks into the body, at the far side of its margin: a hem's facing. */
 const LINER_INSET = 0.006;
 
@@ -100,15 +108,10 @@ class PointCells {
 }
 
 /**
- * Puts into `piece`, at each of its levels, the triangles of `body`'s same level that lie within `margin` of skin the
- * piece leaves showing (`showing`), drawn with the body's skin material where both levels are drawn with materials.
- * Returns how many triangles each level gained.
- */
-/**
  * For a point of `body`'s skin at rest, how far under it the lining of the piece, not yet lined, will lie there: -1 where
  * there is none, more than `margin` from skin the piece leaves showing.
  */
-export function liningOf(piece: SourceMesh, body: SourceMesh, margin = LINER_MARGIN): (x: number, y: number, z: number) => number {
+export function liningOf(piece: SourceMesh, body: SourceMesh, margin = LINER_MARGINS[0]!): (x: number, y: number, z: number) => number {
   const shown = new PointCells(showing(piece, body), margin);
   return (x, y, z) => {
     const d = shown.distance(x, y, z);
@@ -122,8 +125,18 @@ function sinkAt(d: number, margin: number): number {
   return LINER_INSET * t * t * (3 - 2 * t);
 }
 
-export function line(piece: SourceMesh, body: SourceMesh, margin = LINER_MARGIN): number[] {
-  const shown = new PointCells(showing(piece, body), margin);
+/**
+ * Puts into `piece`, at each of its levels, the triangles of `body`'s same level that lie within that level's margin of
+ * skin the piece leaves showing (`showing`), drawn with the body's skin material where both levels are drawn with
+ * materials, the body's underwear in the bare body's colour on the flat levels. Returns how many triangles each level
+ * gained, and how many of the finest level's are underwear where it shows: drawn with materials, the instance's main
+ * colour, which is the piece's, dyes it.
+ */
+export function line(piece: SourceMesh, body: SourceMesh, margins: readonly number[] = LINER_MARGINS): { added: number[]; underwearShows: number } {
+  let underwearShows = 0;
+  const points = showing(piece, body);
+  const near = new Map<number, PointCells>();
+  const cellsOf = (m: number): PointCells => near.get(m) ?? near.set(m, new PointCells(points, m)).get(m)!;
   // The body's skin material in the piece's list, its textures after the piece's own.
   const skinAt = (body.materials ?? []).findIndex((m) => /skin/.test(m.id));
   let section = -1;
@@ -143,13 +156,16 @@ export function line(piece: SourceMesh, body: SourceMesh, margin = LINER_MARGIN)
       section = piece.materials.push(m) - 1;
     }
   }
-  return piece.lods.map((lod, level) => {
+  const added = piece.lods.map((lod, level) => {
     const from = body.lods[Math.min(level, body.lods.length - 1)]!;
+    const margin = margins[Math.min(level, margins.length - 1)]!, shown = cellsOf(margin), bare = cellsOf(SHOWS);
     const keep: number[] = [];
     for (let t = 0; t < from.indices.length / 3; t++) {
       if (!skinSection(body, from.sections?.[t] ?? 0)) continue;
       const c = [0, 1, 2].map((a) => (from.positions[from.indices[t * 3]! * 3 + a]! + from.positions[from.indices[t * 3 + 1]! * 3 + a]! + from.positions[from.indices[t * 3 + 2]! * 3 + a]!) / 3);
-      if (shown.near(c[0]!, c[1]!, c[2]!)) keep.push(t);
+      if (!shown.near(c[0]!, c[1]!, c[2]!)) continue;
+      keep.push(t);
+      if (level === 0 && [0, 1, 2].some((k) => from.colors[from.indices[t * 3 + k]!] === REGION_CLOTH) && bare.near(c[0]!, c[1]!, c[2]!)) underwearShows++;
     }
     if (keep.length === 0) return 0;
     const joined = joinLods(lod, from, keep, section);
@@ -160,6 +176,7 @@ export function line(piece: SourceMesh, body: SourceMesh, margin = LINER_MARGIN)
       return n;
     })();
     const p = joined.positions;
+    for (let v = lod.positions.length / 3; v < p.length / 3; v++) if (joined.colors[v] === REGION_CLOTH) joined.colors[v] = BARE_CLOTH;
     for (let v = lod.positions.length / 3, k = 0; v < p.length / 3; v++, k++) {
       const d = shown.distance(p[v * 3]!, p[v * 3 + 1]!, p[v * 3 + 2]!);
       const sink = sinkAt(d === Infinity ? margin : d, margin);
@@ -170,6 +187,7 @@ export function line(piece: SourceMesh, body: SourceMesh, margin = LINER_MARGIN)
     piece.lods[level] = joined;
     return keep.length;
   });
+  return { added, underwearShows };
 }
 
 /** `a` with triangles `keep` of `b` after its own, their vertices taken with them; fields `a` has and `b` lacks are made up. */
