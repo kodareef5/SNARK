@@ -127,6 +127,20 @@ print(past, across.bounds, within.area)
 `).trim()).toBe("None (90.0, 10.0, 100.0, 40.0) 900.0");
 });
 
+test("an OpenStreetMap outline across the cut's edge is no new building where a footprint covers its part on the cut", () => {
+  expect(python(`
+from shapely.geometry import box
+from shapely.strtree import STRtree
+from split import lacking
+clip = box(0, 0, 1000, 1000)
+# A mall mostly south of the edge; the survey's footprint of it, cut to the edge, covers its part on the cut.
+usa = [(box(100, 0, 220, 44), {'id': 1})]
+tree = STRtree([g for g, _ in usa])
+mall, shed, far = box(104, -400, 216, 37), box(300, -50, 340, 30), box(500, -90, 540, -10)
+print([None if q is None else round(q.area) for q in (lacking(p, clip, usa, tree) for p in (mall, shed, far, box(600, 600, 620, 620)))])
+`).trim()).toBe("[None, 1200, None, 400]");
+});
+
 test("a road the frame cuts twice says where each of its runs starts along it", () => {
   expect(python(`
 from shapely.geometry import LineString, box

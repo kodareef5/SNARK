@@ -61,6 +61,17 @@ def on_cut(p, clip):
     return q if q.geom_type == 'Polygon' and q.area >= SLIVER_M2 else None
 
 
+
+def lacking(p, clip, usa, usa_tree):
+    """An OpenStreetMap outline USA Structures lacks, as the cut holds it, or None: its part on the cut, which the
+    footprints overlap by less than a fifth. The footprints are cut to the edge, so the whole of an outline that crosses
+    it is never a fifth covered: against the whole, 47 buildings round Las Vegas's edge were built twice, one in the other."""
+    q = on_cut(p, clip)
+    if q is None or sum(usa[i][0].intersection(q).area for i in usa_tree.query(q)) >= .2 * q.area:
+        return None
+    return q
+
+
 def main():
     m = folder_arg()
     rule = m.city['footprints']
@@ -155,9 +166,7 @@ def main():
         q = p.representative_point()
         if any(water[i][0].contains(q) for i in wet.query(q)):
             continue
-        if sum(usa[i][0].intersection(p).area for i in usa_tree.query(p)) >= .2 * p.area:
-            continue
-        p = on_cut(p, clip)
+        p = lacking(p, clip, usa, usa_tree)
         if p is None:
             continue
         pid = ids.take(f'osm {way}')
