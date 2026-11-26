@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test";
 import { App } from "../../client/core/app.ts";
 import { KEY_DOCK_SLOT, KEY_FIELD_HUB, KEY_FIELD_LEAF, type FieldDock } from "../../client/core/ui/field-dock.ts";
+import { KEY_TOUCH_HELP, type MenuScreen } from "../../client/core/ui/menu-screen.ts";
+import { KEY_MENU_BACK } from "../../client/core/ui/menu.ts";
 import { KEY_CONSOLE_INPUT } from "../../client/core/ui/console.ts";
 import { TAB_MAKE, type CharacterScreen } from "../../client/core/ui/character.ts";
 import * as touch from "../../client/core/ui/touch.ts";
@@ -202,4 +204,22 @@ test("The touch menu unfolds a whole wheel and the two rims use distinct faces",
   expect(open.x).toBeGreaterThan(shut.x + 70);
   expect(stations.some(p => p.x < open.x)).toBe(true);
   expect(stations.some(p => p.x > open.x)).toBe(true);
+});
+
+test("The corner help opens touch controls and Back returns to the field", () => {
+  const { app, run, tap } = survivor(true);
+  const menu = app.ui.screen<MenuScreen>("menu"), frame = app.ui.frame;
+  const icon = frame.find(KEY_TOUCH_HELP)!;
+  expect(icon.label).toBe("Touch controls");
+  expect(icon.w * frame.unit).toBeCloseTo(44);
+  tap(KEY_TOUCH_HELP);
+  expect(menu.help && menu.helpDevice === 2).toBe(true);
+  expect(frame.find(KEY_TOUCH_HELP)).toBeNull();
+  tap(KEY_MENU_BACK);
+  expect(menu.isOpen()).toBe(false);
+  expect(frame.find(KEY_DOCK_SLOT)).not.toBeNull();
+  app.ui.settings.playControls = true;
+  run();
+  expect(frame.find(KEY_TOUCH_HELP)).toBeNull();
+  expect(survivor().app.ui.frame.find(KEY_TOUCH_HELP)).toBeNull();
 });

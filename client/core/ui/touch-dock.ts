@@ -3,7 +3,7 @@ import { KEY_TOUCH_BUTTON, T_COUNT } from "../touch.ts";
 import { HOTBAR_SLOTS } from "../../../shared/sim/items.ts";
 import { KEY_HOTBAR, KEY_HOTBAR_LIT, KEY_HOTBAR_RAIL, type HotbarModel } from "../hud/hotbar.ts";
 import { line } from "./dock-visual.ts";
-import { K_PANEL, fitText, textWidth, type UiFrame } from "./nodes.ts";
+import { K_BUTTON, K_PANEL, fitText, textWidth, type UiFrame } from "./nodes.ts";
 import { S_HUD_HIT, S_HUD_KEY, S_LABEL } from "./style.ts";
 
 const wrapSlot = (i: number): number => (i % HOTBAR_SLOTS + HOTBAR_SLOTS) % HOTBAR_SLOTS;
@@ -177,4 +177,19 @@ export function drawWheels(f: UiFrame, view: Wheels): void {
       f.text(base + 6, capX, capY, capW, S_HUD_KEY, fitText(text, capW, S_HUD_KEY));
     }
   }
+}
+
+/** The study's small question mark has a full thumb target beside the shelf. */
+export function helpButton(f: UiFrame, key: number): void {
+  const { cx, half, u } = belt(f);
+  const size = 44 * u, d = 19 * u;
+  const right = f.width - f.right;
+  const x = Math.min(right - size, Math.max(cx + half + 2 * u, f.width - 20 * u - size));
+  const y = f.height - Math.max(f.bottom, 12 * u) - size;
+  const hit = f.add(key, K_BUTTON, x, y, size, size, S_HUD_HIT);
+  hit.interactive = true;
+  hit.label = "Touch controls";
+  const pic = f.picture(key + 1, x + (size - d) / 2, y + (size - d) / 2, d, d, S_LABEL, "ui:mobile-help");
+  if (pic) pic.alpha = .78;
+  else f.text(key + 1, x, y + (size - 16 * u) / 2, size, S_HUD_KEY, "?");
 }

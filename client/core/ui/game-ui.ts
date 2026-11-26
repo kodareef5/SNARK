@@ -495,6 +495,9 @@ export class GameUi {
       const controls = (this.playingField || this.inspect) && !session?.open;
       // A finger's zones lie under the whole HUD while the body is being played.
       const play = plan !== null && this.touchPlay !== null && session !== null && controls && this.playingField;
+      this.ctx.touchHelp = play && !this.openedField() && !this.settings.playControls && !hud.prompt &&
+        !this.placing && !this.building && !this.flyer && !hud.vehicle?.active && !session?.airSupport.flight &&
+        !this.touchPlay!.stick && !this.touchPlay!.action;
       if (play) layer!.touchZones(f);
       if (session?.airSupport.flight && controls && !this.dead) {
         // The drone's feed and its tracking boxes stand in for the HUD (hud/air-feed.ts).

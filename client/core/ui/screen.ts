@@ -17,6 +17,7 @@ export interface ScreenCtx {
   hud: HudModel | null;
   readonly settings: Settings;
   touchDock?: typeof import("./touch-dock.ts");
+  touchHelp?: boolean;
   /** The node with the menu's focus. */
   focus: number;
   /** 0 the keyboard and mouse, 1 a pad, 2 a finger. */
