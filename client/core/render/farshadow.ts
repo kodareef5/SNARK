@@ -265,6 +265,8 @@ function openOf(job: SweepJob): OpenMap {
 export interface Standing {
   goneOf(chunk: number): Gone;
   readonly goneVersion: Uint32Array;
+  /** The sum of `goneVersion`, so a frame with no change looks at no chunk. */
+  readonly goneChanges: number;
   topsOf(chunk: number): Uint8Array | null;
 }
 
@@ -329,6 +331,9 @@ export class FarShadow {
   /** The statics and what stands of them, once handed over; the chunks of them with a piece that floats, and with a landmark's. */
   private statics: CityStatics | null = null;
   private standing: Standing | null = null;
+  /** The standing set and its total of changes last looked through. */
+  private seenStanding: Standing | null = null;
+  private seenChanges = 0;
   private readonly floats = new Set<number>();
   private readonly marks = new Set<number>();
   /** The statics' squares as last taken in (CityStatics.news). */
@@ -564,7 +569,10 @@ export class FarShadow {
 
   /** Marks the chunks to make again: those a piece of which has gone, whose tops have come, or whose ground has changed. */
   private notice(): void {
-    const version = this.standing?.goneVersion;
+    const stands = this.standing, fell = stands !== null && (stands !== this.seenStanding || stands.goneChanges !== this.seenChanges);
+    this.seenStanding = stands;
+    this.seenChanges = stands?.goneChanges ?? 0;
+    const version = fell ? stands.goneVersion : undefined;
     let gone = false;
     for (let c = 0; version && c < version.length; c++) {
       if (version[c] === this.seen[c]) continue;

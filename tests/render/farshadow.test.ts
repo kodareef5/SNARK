@@ -131,7 +131,7 @@ function twoTowers() {
 
 /** What stands of `city`: nothing gone, or as `gone` says, with a count of changes a chunk. */
 function standingOf(city: CityStatics, hf: Heightfield, gone = new Map<number, Uint8Array>()): Standing {
-  return { goneOf: (c) => gone.get(c) ?? null, goneVersion: new Uint32Array(chunkCount(city.dims)), topsOf: (c) => (city.in(c) > 0 ? cityTops(city, c, hf, gone.get(c) ?? null) : null) };
+  return { goneOf: (c) => gone.get(c) ?? null, goneVersion: new Uint32Array(chunkCount(city.dims)), get goneChanges() { return this.goneVersion.reduce((n: number, v: number) => n + v, 0); }, topsOf: (c) => (city.in(c) > 0 ? cityTops(city, c, hf, gone.get(c) ?? null) : null) };
 }
 
 /** The map's tops as its maker bakes them from the server's store (shared/world/mapfile.ts mapTops), as one part. */
@@ -379,7 +379,7 @@ test("the scene's part sweeps when the statics come and again when the tallest t
   const { dims, hf, city, chunkA } = twoTowers();
   const version = new Uint32Array(chunkCount(dims));
   const gone = new Map<number, Uint8Array>();
-  const standing = { goneOf: (c: number): Gone => gone.get(c) ?? null, goneVersion: version, topsOf: (c: number) => (city.in(c) > 0 ? cityTops(city, c, hf, gone.get(c) ?? null) : null) };
+  const standing = { goneOf: (c: number): Gone => gone.get(c) ?? null, goneVersion: version, get goneChanges() { return this.goneVersion.reduce((n: number, v: number) => n + v, 0); }, topsOf: (c: number) => (city.in(c) > 0 ? cityTops(city, c, hf, gone.get(c) ?? null) : null) };
   const shadow = new FarShadow(dims, hf, null, null, () => false);
   shadow.hand(city, standing);
   const p = new FramePacket();
@@ -575,7 +575,7 @@ test("the lookup leaves a building's own sunlit walls and roof lit wherever they
   const city = new CityStatics(dims, asWritten(places.flatMap(([x, z, yaw]) => building(x!, z!, 0, 12, 2, yaw))), reg);
   const solid = makeSolid(city, hf, () => null);
   const top = Math.max(...solid) * UNIT + hf.minY;
-  const standing = { goneOf: (): Gone => null, goneVersion: new Uint32Array(chunkCount(dims)), topsOf: () => null };
+  const standing = { goneOf: (): Gone => null, goneVersion: new Uint32Array(chunkCount(dims)), get goneChanges() { return this.goneVersion.reduce((n: number, v: number) => n + v, 0); }, topsOf: () => null };
   const p = new FramePacket();
   p.tier = { ...tierOf("high"), shadows: { ...tierOf("high").shadows, size: 128 } };
   p.lit = true;
@@ -618,7 +618,7 @@ test("the lookup leaves a building's own sunlit walls and roof lit wherever they
 
 test("within the cascades the far map is looked up past the chunks the near store holds, so their pieces are not cast twice and the far city's are", () => {
   const { dims, hf, city, a, b, chunkA, chunkB } = twoTowers();
-  const standing = { goneOf: (): Gone => null, goneVersion: new Uint32Array(chunkCount(dims)), topsOf: () => null };
+  const standing = { goneOf: (): Gone => null, goneVersion: new Uint32Array(chunkCount(dims)), get goneChanges() { return this.goneVersion.reduce((n: number, v: number) => n + v, 0); }, topsOf: () => null };
   // The near store holds B's chunk and those about it, three a side, as about a camera there.
   const [bi, bj] = [chunkB % dims.chunksX, Math.floor(chunkB / dims.chunksX)];
   const held = (c: number): boolean => Math.abs((c % dims.chunksX) - bi) <= 1 && Math.abs(Math.floor(c / dims.chunksX) - bj) <= 1;
@@ -669,7 +669,7 @@ test("a piece that stands in the air with nothing under it, a tide eye's collide
   const tower = [160, 160], spar = [352, 352];
   const statics: MapStatic[] = asWritten([...building(tower[0]!, tower[1]!, 0, 12), { kind: "core:zztide_eye_spar", x: spar[0]!, y: 300, z: spar[1]!, yaw: 0 }]);
   const city = new CityStatics(dims, statics, reg);
-  const standing = { goneOf: (): Gone => null, goneVersion: new Uint32Array(chunkCount(dims)), topsOf: (c: number) => (city.in(c) > 0 ? cityTops(city, c, hf, null) : null) };
+  const standing = { goneOf: (): Gone => null, goneVersion: new Uint32Array(chunkCount(dims)), get goneChanges() { return this.goneVersion.reduce((n: number, v: number) => n + v, 0); }, topsOf: (c: number) => (city.in(c) > 0 ? cityTops(city, c, hf, null) : null) };
   const sun = sunAt(35, 200);
   const shadeOf = (floating: Uint8Array | null): ((x: number, z: number) => number) => {
     const shadow = new FarShadow(dims, hf, null, null, () => false, landmarkKinds(reg), floating);
