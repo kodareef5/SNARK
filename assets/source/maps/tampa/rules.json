@@ -226,7 +226,8 @@
     "travel": [
       -0.8,
       0.6
-    ]
+    ],
+    "inland": 0.22
   },
   "sightlines": [
     {

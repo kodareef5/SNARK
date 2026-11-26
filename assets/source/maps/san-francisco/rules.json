@@ -220,5 +220,8 @@
       "feature": "rooms",
       "play": "Unknown use: modest open shell and one climbable refuge, never a speculative landmark."
     }
+  },
+  "event": {
+    "inland": 0.2
   }
 }

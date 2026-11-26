@@ -26,6 +26,9 @@
       "form": "hotel"
     }
   ],
+  "event": {
+    "inland": 0.34
+  },
   "sightlines": [
     {
       "place": "freedom-tower",
