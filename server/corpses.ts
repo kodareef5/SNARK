@@ -8,6 +8,8 @@
 // that rests on the ground, on something built or on the bottom. In water it weighs and slows as a ragdoll does there, so
 // it sinks. It lies, and its ragdoll is laid, only where it came to rest.
 
+import { wildLevels } from "./survival.ts";
+import type { Loot } from "./loot.ts";
 import type { Mover as RagdollMover } from "../shared/anim/ragdoll.ts";
 import { CUE_DEAD, CUE_DECAY_SHIFT, CUE_OUT, hurtStage } from "../shared/anim/pose.ts";
 import { FALLING, FELL, Fall, corpseSize, layCorpse, sizeSpan, wireX, wireY, yawOf16, type CorpseImpact, type FallenState } from "../shared/anim/corpse.ts";
@@ -207,6 +209,7 @@ export class Corpses {
     this.deadline = ctx.deadlines.kind("corpse", (a, stamp) => this.due(a, stamp));
     this.seed = seed;
     this.rng = new Rng(seed);
+    ctx.containers?.onOpened.on((c, box) => this.unseal(box, c.pid));
     this.corpse = ctx.world.reg.index.get("core:corpse") ?? 0;
     this.survivor = ctx.world.reg.index.get("core:survivor") ?? -1;
   }
@@ -222,6 +225,15 @@ export class Corpses {
 
   /** A survivor's fall that entity `e` dies in, taken from server/falls.ts. The host sets it. */
   handOff: (e: number) => FallenState | null = () => null;
+
+  /** World loot, which seals a wild creature's body and rolls what it holds when it is first opened. The host sets it. */
+  loot: Loot | null = null;
+
+  /** Rolls a body's loot if it is still sealed: at its first opening, or when it is used up unopened. */
+  private unseal(rec: EntityRecord, by: number): void {
+    const b = this.bodies.get(rec.pid);
+    if (b && this.loot?.sealed(rec)) this.loot.body(rec, b.kind, by);
+  }
 
   /** Whether the body that is entity `e` is opened by the use key: every one but a survivor's, which carries nothing. */
   opens(e: number): boolean {
@@ -267,6 +279,8 @@ export class Corpses {
       // A saddle was taken out of the ledger when it was put on, and comes back as it does when it is taken off.
       if (rec.saddle !== 0 && items.mint(body, rec.saddle, 1) === 1) rec.saddle = 0;
     }
+    // A wild creature's body may hold loot. A tame's holds what it carried.
+    if (def.class === "creature" && rec.team === 0) this.loot?.seal(body, wildLevels(rec.genome) + 1);
     const life = this.lifetime();
     body.expiresAt = tick + life;
     const of = def as SpeciesDef;
@@ -917,6 +931,7 @@ export class Corpses {
       if (containers) containers.close(c);
       else c.open = 0;
     }
+    if (usedUp) this.unseal(rec, 0);
     // Its entity goes first, so the cache has its place in a full store.
     if (b.e >= 0) {
       this.byEnt.delete(b.e);

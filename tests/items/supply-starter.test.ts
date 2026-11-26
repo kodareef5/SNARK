@@ -20,7 +20,8 @@ const cell = (key: string) => cells.find((c) => c.key === key)!;
 test("the starter book is sound, and what it waits for is a list that only shrinks", () => {
   expect(bookFaults(book)).toEqual([]);
   expect([today.report.lints, today.report.emptySets, today.report.emptySlots, today.report.dormant]).toEqual([[], [], [], []]);
-  expect([book.tiers.length, book.classes.length, Object.keys(book.tables).length]).toEqual([7, 7, 49]);
+  // A table for each tier and class; the tables of neither are world loot's (content/loot/starter.ts).
+  expect([book.tiers.length, book.classes.length, Object.values(book.tables).filter((t) => t.tier !== undefined).length]).toEqual([7, 7, 49]);
   expect(book.tiers.map((t) => [t.key, t.level, t.target])).toEqual([["white", 3, 200], ["green", 15, 400], ["blue", 25, 800], ["purple", 35, 1600], ["yellow", 45, 3200], ["red", 60, 6400], ["meridian", 80, 12800]]);
   // Everything it names is in the game or said in its future list, with ARK's name and a worth; nothing waits unknown.
   expect(today.report.waiting.filter((w) => w.why !== "future")).toEqual([]);

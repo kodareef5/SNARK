@@ -1,5 +1,6 @@
 // Species: a kind of body that lives. The survivor, a creature, a civilian, a vehicle, a practice target.
 
+import { BODY_SIZES, type BodySize } from "../../sim/loot.ts";
 import { ZONE_COUNT, ZONE_TAIL } from "../../anim/human.ts";
 import { TICK_RATE } from "../../coords.ts";
 import { BIRTH_SCALE } from "../../sim/breeding.ts";
@@ -193,13 +194,13 @@ export interface SpeciesDef extends Named {
   readonly tameBonus?: { readonly [S in StatName]?: readonly [add: number, mult: number] };
   /** A tame's base health as a share of a wild one's (ARK's TamedBaseHealthMultiplier). 1 where not given (tameBonus). */
   readonly tamedHealth?: number;
+  /** How big its body is, for the loot it holds (BODY_SIZES, shared/sim/loot.ts); medium where not given. */
+  readonly size?: BodySize;
   // The rest are stubs: declared, checked and read by nothing yet. The catalogue says what each waits for.
   /** What kind of variant of its base it is: "alpha", "event". */
   readonly variant?: string;
   /** Its attacks, to replace `bite` and `fists`. */
   readonly attacks?: readonly { readonly name: string; readonly damage: number; readonly type: DamageType; readonly reach: number; readonly ticks: number; readonly lands: number }[];
-  /** The loot definition its body leaves, beside `drops`. */
-  readonly loot?: string;
   /**
    * The saddle item it wears. Today the saddle names the species. How a worn saddle is drawn is its asset's business, not
    * content's: see the `saddled` slot of species/creature (shared/content/classes.ts).
@@ -379,6 +380,7 @@ const FIELDS = {
   mass: f("number", "mass"),
   footprint: f("facet", "its body as others on foot meet it: back, front and radius along its facing"),
   carriable: f("switch", "picked up and thrown by a player"),
+  size: f("text", "the size of its body, which the loot it holds goes by; ARK's DeathInventoryTemplates"),
   feces: f("text", "the creature's feces item", { refs: { "": "item/feces" } }),
   eggChance: f("number", "the chance of an egg in place of feces"),
   // The flyers' contracts (planning/reference/flyers-plan.md, FL0), each read once its package builds it: `fly` by the step,
@@ -393,7 +395,6 @@ const FIELDS = {
   tamedHealth: stub("tameBonus", "number", "TamedBaseHealthMultiplier"),
   variant: stub("bosses", "text", "a child blueprint's kind"),
   attacks: stub("polish", "list", "AttackInfos"),
-  loot: stub("loot", "text", "DeathInventoryTemplates", { refs: { "": "loot" } }),
   saddle: stub("polish", "text", "SaddleItemClass", { refs: { "": "item/saddle" } }),
   buffs: stub("polish", "list", "DefaultBuffs", { refs: { "[]": "buff" }, open: true }),
   boss: stub("bosses", "switch", "bIsBossDino"),
@@ -584,6 +585,8 @@ const columns = (n: number) => ({
   drag: f32(n),
   mass: f32(n),
   carriable: u8(n),
+  /** Per species: its body's size as an index into BODY_SIZES, medium where it does not say. */
+  bodySize: u8(n),
   feces: u16(n),
   eggChance: f32(n),
   // The flyers' columns (planning/reference/flyers-plan.md, FL0), compiled and read by nothing until the package named
@@ -619,7 +622,7 @@ export const species: Kind<SpeciesDef, ReturnType<typeof columns>> = {
       ark: "a creature's character, its status component and its entry",
       shelf: "creatures",
       must: [...BODY, "stats"],
-      may: ["skeleton", "turn", "strafe", "swimSpeed", "swimDepth", "swimEyeHeight", "stamina", "food", "slots", "keeps", "fists", "bite", "roar", "combat", "camera", "drops", "corpse", "takes", "zones", "killXp", "temper", "blood", "sight", "leash", "taming", "eats", "torporDrain", "breeds", "still", "tag", "regions", "mutations", "alarm", "tamedWalkSpeed", "tamedSwimSpeed", "tamedSprintMul", "drag", "mass", "footprint", "carriable", "feces", "eggChance", "fistsTorpor", "fly", "grab", "defendsEgg", "riderWeight", "missiles", "structures", "tameBonus", "tamedHealth", "variant", "attacks", "loot", "saddle", "buffs", "boss"],
+      may: ["skeleton", "turn", "strafe", "swimSpeed", "swimDepth", "swimEyeHeight", "stamina", "food", "slots", "keeps", "fists", "bite", "roar", "combat", "camera", "drops", "corpse", "takes", "zones", "killXp", "temper", "blood", "sight", "leash", "taming", "eats", "torporDrain", "breeds", "still", "tag", "regions", "mutations", "alarm", "tamedWalkSpeed", "tamedSwimSpeed", "tamedSprintMul", "drag", "mass", "footprint", "carriable", "feces", "eggChance", "fistsTorpor", "fly", "grab", "defendsEgg", "riderWeight", "missiles", "structures", "tameBonus", "tamedHealth", "variant", "attacks", "size", "saddle", "buffs", "boss"],
       slots: {
         body: mesh("must", "{mesh}", "box"),
         rig: { asset: "rig", need: "must", when: "skeleton", from: "{mesh}", fallback: ["rigid"] },
@@ -708,6 +711,7 @@ export const species: Kind<SpeciesDef, ReturnType<typeof columns>> = {
     if (d.tamedSprintMul !== undefined) positive(d, "tamedSprintMul", d.tamedSprintMul, 8);
     if (d.drag !== undefined) positive(d, "drag", d.drag, 1e6);
     if (d.mass !== undefined) positive(d, "mass", d.mass, 1e6);
+    if (d.size !== undefined && !BODY_SIZES.includes(d.size)) errors.push(`${d.id}: size is one of ${BODY_SIZES.join(", ")}`);
     if (d.eggChance !== undefined && !(d.eggChance >= 0 && d.eggChance <= 1)) errors.push(`${d.id}: eggChance must be from 0 to 1`);
     if (d.fistsTorpor !== undefined && !(d.fistsTorpor >= 0)) errors.push(`${d.id}: fistsTorpor must not be negative`);
     errors.push(...flyerFaults(d), ...creatureCombatFaults(d, input));
@@ -745,6 +749,7 @@ export const species: Kind<SpeciesDef, ReturnType<typeof columns>> = {
     reg.footFront[i] = d.footprint?.front ?? d.radius;
     reg.footRadius[i] = d.footprint?.radius ?? d.radius;
     if (d.carriable) reg.carriable[i] = 1;
+    reg.bodySize[i] = BODY_SIZES.indexOf(d.size ?? "medium");
     reg.eggChance[i] = d.eggChance ?? 0;
     reg.takes[i] = Float32Array.from(DAMAGE_TYPES, (t) => d.takes?.[t] ?? 1);
     const zones = new Float32Array(ZONE_COUNT).fill(1);

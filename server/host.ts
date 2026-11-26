@@ -126,6 +126,8 @@ import { CarReturn } from "./car-return.ts";
 import { HANGARS, type HangarSite } from "../content/vehicles/hangars.ts";
 import { withSites } from "../content/supply/sites.ts";
 import { starterBook } from "../content/supply/starter.ts";
+import { withLoot } from "../content/loot/starter.ts";
+import { Loot } from "./loot.ts";
 import { catalogOf } from "../shared/supply/catalog.ts";
 import { SETTING as ARK_CRATES, arkCrates } from "./supply/ark.ts";
 import { AirSupport } from "./air-support.ts";
@@ -276,6 +278,7 @@ export interface Host {
   readonly tactical: Tactical;
   /** The creature packages' modules, each still doing nothing. */
   readonly corpses: Corpses;
+  readonly loot: Loot;
   readonly carry: Carry;
   readonly emotes: Emotes;
   readonly feces: Feces;
@@ -1512,6 +1515,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     for (const line of ark.passed) say(line);
   };
   recrate();
+  const loot = new Loot({ world, records, items, rules, bus, compiled: () => supply.compiled(), seed: opts.seed ?? 1 });
+  supply.sourced = (book) => loot.sourced(withLoot(book));
+  corpses.loot = loot;
   supply.begin(persistence && !loaded!.fresh ? (persistence.store.meta("supply") as string | null) : null);
   persistence?.sidecar("supply", supply.saved);
   // Map events (server/mapevent/events.ts). Made before the modules, which define its kinds; begun after them.
@@ -2374,6 +2380,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     breeding,
     tactical,
     corpses,
+    loot,
     carry,
     emotes,
     feces,

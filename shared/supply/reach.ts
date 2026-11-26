@@ -2,10 +2,10 @@
 // world, and which items a survivor can come by at all. Pure, so the tool, the tests and the wiki read it alike.
 
 import type { Def, ItemDef } from "../content/defs.ts";
-import type { SupplyBook } from "./book.ts";
+import { TIER_MARK, type SupplyBook } from "./book.ts";
 
-/** How an item is come by. The first seven need nothing first; the rest need the item or station they name. */
-export type How = "harvested" | "gathered" | "mined" | "salvaged" | "laid" | "left" | "dropped" | "made" | "cooked" | "spoiled" | "burnt" | "young" | "caught";
+/** How an item is come by. The first eight need nothing first; the rest need the item or station they name. */
+export type How = "harvested" | "gathered" | "mined" | "salvaged" | "laid" | "left" | "dropped" | "found" | "made" | "cooked" | "spoiled" | "burnt" | "young" | "caught";
 
 export interface Way {
   how: How;
@@ -83,6 +83,19 @@ export function reachOf(defs: readonly Def[], book?: SupplyBook, gives: (item: s
       const from = tables.get(key);
       if (!from) continue;
       for (const entry of set.entries) for (const item of entry.items) if (gives(item)) for (const table of from) way(item, "dropped", table);
+    }
+    // What a source that is switched on gives: the slots it names of each table it rolls, at every tier it may roll at.
+    for (const source of book.sources ?? []) {
+      if (!source.on) continue;
+      const tiers = source.tier !== undefined ? [source.tier, ...(source.ladder ?? []).map((s) => s.tier)] : [""];
+      for (const ref of source.tables) {
+        for (const tier of tiers) {
+          for (const slot of book.tables[ref.table.replace(TIER_MARK, tier)]?.slots ?? []) {
+            if (ref.slots && !ref.slots.includes(slot.name ?? "")) continue;
+            for (const from of slot.from) for (const entry of book.sets[from.set]?.entries ?? []) for (const item of entry.items) if (gives(item)) way(item, "found", source.key);
+          }
+        }
+      }
     }
   }
 

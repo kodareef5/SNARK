@@ -34,6 +34,7 @@ export const REX: readonly Def[] = [
     ],
     food: { max: 3000, perHour: .002314 * 140 }, breeds: { egg: "core:egg_rex", incubate: 17998.5601, mature: 333333.333, scale: .2 },
     feces: "core:feces_large", corpse: { health: 750, roll: 10 },
+    size: "apex",
     drops: [{ item: "core:meat", min: 1, max: 3, weight: 6, favoured: "stone" }, { item: "core:hide", min: 1, max: 2, weight: 4, favoured: "wood" }, { item: "core:meat_prime", min: 1, max: 1, weight: 1, favoured: "stone" }],
     stats: { health: [1100, .2, .054], stamina: [420, .1, .1], oxygen: [150, .1, .1], food: [3000, .1, .1], weight: [500, .02, .04], melee: [1, .05, .017], speed: [1, 0, .01], torpidity: [1550, .06, 0] },
   },

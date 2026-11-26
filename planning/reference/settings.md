@@ -5,7 +5,7 @@ edit it by hand: change the catalogue and run the tool.
 
 A server is configured as ARK's is ([how](round5-settings.md), and [what the
 values mean](round5-game-ini.md)). Every setting an ARK dedicated server reads
-is listed here, 622 of them: 258 take effect,
+is listed here, 627 of them: 263 take effect,
 174 wait for a feature that is not built yet, and 190 have no meaning in this
 engine. A setting that does not take effect is still read, checked and
 reported when the server starts.
@@ -153,6 +153,11 @@ the admin's settings page may change a setting without a restart.
 | `CastModelKey` | none | The OpenRouter key Cast's planner uses; empty takes OPENROUTER_API_KEY from the environment. *Ours.* | yes |
 | `CastCallsPerHour` | 90 | Calls Cast's planner may make an hour at most. *Ours. About $0.0006 a call with Claude Haiku 5.5.* | yes |
 | `CastHourlyBatch` | 50 | Featured people the planner's hourly pass looks in on. *Ours.* | yes |
+| `WorldLootEnabled` | True | Loot lies in the world besides supply drops: in creatures' bodies, by the drop book's sources. Off, nothing of it is rolled. *Ours (planning/workstreams/loot.md).* | yes |
+| `BodyLootEnabled` | True | A wild creature's body holds loot, more for a bigger creature of a higher level. Off, a body holds only what the creature carried. *Ours.* | yes |
+| `WorldLootChanceMultiplier` | 1 | How often a thing that may hold loot does: every source's chance is multiplied by it. *Ours.* | yes |
+| `WorldLootAmountMultiplier` | 1 | How many of each thing is found in world loot. A blueprint stays one. *Ours.* | yes |
+| `ConfigOverrideLootSource` | none | One of the drop book's sources changed, a source to an entry: `(Source="body/apex",Enabled=False)` switches it off, `(Source="body/large",Chance=0.5)` sets the share of such things that hold its loot. *Ours. The drops page lists the sources and their keys.* | yes |
 | `TacticalRadius` | 512 | Metres. Another tribe's structures are put on a survivor's map once it has been this near them, and stay there. Its own tribe's show wherever they are. 0 shows only its own tribe's. *Ours. ARK's map shows no structures.* | yes |
 | `MapPlayers` | `off` | Which survivors of other tribes are marked on the map: off for none, view for those in view, all for every one. Tribe mates and tames are always marked. *Ours. ARK marks nobody. Any other word is off.* | yes |
 | `FarRadius` | 2048 | Metres. Every tribe's structures within this distance of a survivor are sent to it as 4 m blocks of colour and height, with no owner, so its client can draw bases on the horizon; a client on a lower graphics setting asks for less. Containers, crafting stations and beds are left out. A base behind a hill is sent too, so a changed client could show it. Nothing of this reaches the map. 0 sends none. *Ours. ARK sends structures by distance alone, with no test of sight, at ranges it never published.* | yes |

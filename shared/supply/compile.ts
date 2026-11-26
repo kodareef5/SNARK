@@ -7,7 +7,7 @@
 import type { LootDef, LootEntry, LootSet } from "../content/defs.ts";
 import type { Rng } from "../rng.ts";
 import { MOST_LOOT, rollLoot, type LootDrop } from "../sim/loot.ts";
-import { tableKey, type BookFault, type CircuitDoc, type EntryDoc, type SetDoc, type SupplyBook, type TableDoc } from "./book.ts";
+import { TIER_MARK, tableKey, type BookFault, type CircuitDoc, type EntryDoc, type SetDoc, type SourceDoc, type SourceKind, type SourceTable, type SupplyBook, type TableDoc } from "./book.ts";
 import type { Catalog, CatalogItem } from "./catalog.ts";
 import { Worth, tierMix } from "./worth.ts";
 
@@ -16,6 +16,8 @@ export interface CompiledSlot {
   readonly name: string;
   readonly chance: number;
   readonly def: LootDef;
+  /** What it is expected to give, its chance counted and jackpots apart. */
+  readonly worth: number;
 }
 
 export interface CompiledTable {
@@ -239,11 +241,10 @@ export function compileBook(book: SupplyBook, catalog: Catalog, opts: CompileOpt
         }
         const pick = slot.pick ?? { min: 1, max: 1 };
         const drawn = Math.min((pick.min + pick.max) / 2, pick.replace ? Infinity : from.length);
-        if (weights > 0) {
-          total += chance * drawn * (sum / weights);
-          jack += chance * drawn * (jsum / weights);
-        }
-        slots.push({ name: slot.name ?? `slot ${i + 1}`, chance, def: { type: "loot", id: `${key}#${i}`, sets: pick, from } });
+        const own = weights > 0 ? chance * drawn * (sum / weights) : 0;
+        total += own;
+        if (weights > 0) jack += chance * drawn * (jsum / weights);
+        slots.push({ name: slot.name ?? `slot ${i + 1}`, chance, def: { type: "loot", id: `${key}#${i}`, sets: pick, from }, worth: own });
       });
       return [slots, total, jack];
     };
@@ -295,6 +296,83 @@ export function rollTable(t: CompiledTable, ringed: boolean, rng: Rng, catalog: 
   if (fill && t.fill) take(t.fill);
   if (out.length === 0 && t.floor) take(t.floor);
   return out;
+}
+
+/** A thing loot may lie in, as a source's filter reads it. */
+export interface Thing {
+  readonly kind: SourceKind;
+  readonly species?: string;
+  readonly size?: string;
+  readonly level?: number;
+}
+
+/** Whether `source` is the loot of `thing`, switched on or not. */
+export function matches(source: SourceDoc, thing: Thing): boolean {
+  if (source.kind !== thing.kind) return false;
+  const w = source.when;
+  if (!w) return true;
+  if (w.species && !(thing.species !== undefined && w.species.includes(thing.species))) return false;
+  if (w.size && !(thing.size !== undefined && w.size.includes(thing.size))) return false;
+  if (w.level && !(thing.level !== undefined && thing.level >= w.level[0] && thing.level <= w.level[1])) return false;
+  return true;
+}
+
+/** The key of the tier `source` rolls at for a thing of `level`: the last step of its ladder reached, or its own. "" for none. */
+export function tierOf(source: SourceDoc, level = 0): string {
+  let tier = source.tier ?? "";
+  for (const step of source.ladder ?? []) if (level >= step.level) tier = step.tier;
+  return tier;
+}
+
+/** The slots of `ref` at `tier` that the game can roll. None for a table the book has not, or a slot it does not name. */
+function slotsOf(compiled: Compiled, ref: SourceTable, tier: string): readonly CompiledSlot[] {
+  const table = compiled.tables.get(ref.table.replace(TIER_MARK, tier));
+  if (!table) return [];
+  return ref.slots ? table.plain.filter((s) => ref.slots!.includes(s.name)) : table.plain;
+}
+
+/**
+ * Rolls `source` at `tier` for one thing: by its chance, its count of rolls, each a table drawn by weight and that
+ * table's slots in order. Nothing is a fair answer. `chance` multiplies the source's own (a server's setting).
+ */
+export function rollSource(compiled: Compiled, source: SourceDoc, tier: string, rng: Rng, chance = 1): LootDrop[] {
+  const { catalog } = compiled;
+  const out: LootDrop[] = [];
+  const p = (source.chance ?? 1) * chance;
+  if (p < 1 && !(rng.float() < p)) return out;
+  const refs = source.tables.map((ref) => ({ slots: slotsOf(compiled, ref, tier), weight: ref.weight ?? 1 })).filter((r) => r.slots.length > 0 && r.weight > 0);
+  const total = refs.reduce((sum, r) => sum + r.weight, 0);
+  if (!(total > 0)) return out;
+  const [least, most] = source.rolls ?? [1, 1];
+  const index = (id: string): number => catalog.byId.get(id)?.index ?? 0;
+  for (let n = least + (most > least ? rng.int(most - least + 1) : 0); n > 0; n--) {
+    let at = rng.float() * total;
+    const ref = refs.find((r) => (at -= r.weight) < 0) ?? refs[refs.length - 1]!;
+    for (const slot of ref.slots) {
+      if (slot.chance < 1 && !(rng.float() < slot.chance)) continue;
+      for (const d of rollLoot(slot.def, rng, index, catalog.blueprints)) out.push(catalog.byIndex[d.item]?.quality ? d : { ...d, quality: 0, rating: 0 });
+    }
+  }
+  return out;
+}
+
+/** What `source` is expected to give one thing at `tier`, those that get nothing counted and jackpots apart. */
+export function sourceWorth(compiled: Compiled, source: SourceDoc, tier: string): number {
+  const refs = source.tables.map((ref) => ({ slots: slotsOf(compiled, ref, tier), weight: ref.weight ?? 1 })).filter((r) => r.slots.length > 0 && r.weight > 0);
+  const total = refs.reduce((sum, r) => sum + r.weight, 0);
+  if (!(total > 0)) return 0;
+  const [least, most] = source.rolls ?? [1, 1];
+  const each = refs.reduce((sum, r) => sum + r.weight * r.slots.reduce((w, s) => w + s.worth, 0), 0) / total;
+  return (source.chance ?? 1) * ((least + most) / 2) * each;
+}
+
+/** What `source` is balanced to give at `tier`: its share of the tier's target, or its own target. Null where it says neither. */
+export function sourceTarget(book: SupplyBook, source: SourceDoc, tier: string): number | null {
+  if (source.share !== undefined) {
+    const t = book.tiers.find((v) => v.key === tier);
+    return t ? t.target * source.share : null;
+  }
+  return source.target ?? null;
 }
 
 /**

@@ -309,6 +309,13 @@ new Sheet(SERVER_ROWS, "snark", "Cast")
   .i("CastCallsPerHour", 90, "Calls Cast's planner may make an hour at most.", live({ live: true, min: 0, max: 3600, note: "Ours. About $0.0006 a call with Claude Haiku 5.5." }))
   .i("CastHourlyBatch", 50, "Featured people the planner's hourly pass looks in on.", live({ live: true, min: 0, max: 500, note: "Ours." }));
 
+new Sheet(SERVER_ROWS, "snark", "Loot")
+  .b("WorldLootEnabled", true, "Loot lies in the world besides supply drops: in creatures' bodies, by the drop book's sources. Off, nothing of it is rolled.", live({ live: true, public: true, note: "Ours (planning/workstreams/loot.md)." }))
+  .b("BodyLootEnabled", true, "A wild creature's body holds loot, more for a bigger creature of a higher level. Off, a body holds only what the creature carried.", live({ live: true, public: true, note: "Ours." }))
+  .f("WorldLootChanceMultiplier", 1, "How often a thing that may hold loot does: every source's chance is multiplied by it.", live({ live: true, public: true, max: 100, note: "Ours." }))
+  .f("WorldLootAmountMultiplier", 1, "How many of each thing is found in world loot. A blueprint stays one.", live({ live: true, public: true, max: 1000, note: "Ours." }))
+  .s("ConfigOverrideLootSource", "One of the drop book's sources changed, a source to an entry: `(Source=\"body/apex\",Enabled=False)` switches it off, `(Source=\"body/large\",Chance=0.5)` sets the share of such things that hold its loot.", live({ live: true, note: "Ours. The drops page lists the sources and their keys." }));
+
 new Sheet(SERVER_ROWS, "snark", "PvP and PvE")
   .i("TacticalRadius", 512, "Metres. Another tribe's structures are put on a survivor's map once it has been this near them, and stay there. Its own tribe's show wherever they are. 0 shows only its own tribe's.", live({ live: true, max: 16384, note: "Ours. ARK's map shows no structures." }))
   .t("MapPlayers", "off", "Which survivors of other tribes are marked on the map: off for none, view for those in view, all for every one. Tribe mates and tames are always marked.", live({ live: true, note: "Ours. ARK marks nobody. Any other word is off." }))

@@ -29,6 +29,10 @@ export interface LootDrop {
 /** The most a range may ask for, so that a mistaken definition cannot mint without end. */
 export const MOST_LOOT = 10000;
 
+/** How big a creature's body is, for the loot it holds (SpeciesDef.size); medium where a species does not say. */
+export const BODY_SIZES = ["small", "medium", "large", "apex"] as const;
+export type BodySize = (typeof BODY_SIZES)[number];
+
 /** A whole number from `min` to `max`, both included. */
 function between(rng: Rng, min: number, max: number): number {
   return max <= min ? min : min + rng.int(max - min + 1);
