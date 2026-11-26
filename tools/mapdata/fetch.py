@@ -66,17 +66,32 @@ def dem(m, man):
     print('DEM done', flush=True)
 
 
+def selected_before(m, d, err):
+    """This cut's tiles of project `d` as the index last listed them, where the index does not answer; the cut's folder is its own."""
+    path = m.root / 'dem_selection.json'
+    before = [t for t in json.loads(path.read_text()) if t.get('project') == d.get('project')] if path.exists() else []
+    if not before:
+        raise SystemExit(f"the elevation index failed ({err}) and this cut has no selection of {d.get('project')} from before")
+    print(f"DEM: the index failed ({err}); the {len(before)} tiles of {d.get('project')} it listed before stand", flush=True)
+    return [{k: t[k] for k in ('name', 'url', 'metadata', 'bounds', 'published') if k in t} for t in before]
+
+
 def dem_tiles(m, man, d):
     if d['kind'] == 'tnm':
         w, s, e, n = m.lonlat_bounds(0.002)
         items, offset = [], 0
-        while True:
-            page = get('https://tnmaccess.nationalmap.gov/api/v1/products', params={
-                'datasets': d['dataset'], 'bbox': f'{w},{s},{e},{n}', 'max': 500, 'offset': offset, 'outputFormat': 'JSON'}).json()
-            items += page['items']
-            offset += len(page['items'])
-            if not page['items'] or offset >= page['total']:
-                break
+        try:
+            while True:
+                page = get('https://tnmaccess.nationalmap.gov/api/v1/products', params={
+                    'datasets': d['dataset'], 'bbox': f'{w},{s},{e},{n}', 'max': 500, 'offset': offset, 'outputFormat': 'JSON'}).json()
+                if 'items' not in page:
+                    raise ValueError(str(page.get('error', page))[:200])
+                items += page['items']
+                offset += len(page['items'])
+                if not page['items'] or offset >= page['total']:
+                    break
+        except (requests.RequestException, ValueError) as err:
+            return selected_before(m, d, err)
         items = sorted((i for i in items if d['project'] in i['downloadURL']), key=lambda i: i['downloadURL'])
         tiles = [{'name': i['downloadURL'].rsplit('/', 1)[1], 'url': i['downloadURL'], 'metadata': i.get('vendorMetaUrl'),
                   'bounds': i['boundingBox'], 'published': i.get('publicationDate')} for i in items]
@@ -217,9 +232,14 @@ def osm_extract(m, man, names):
         print('osm', name, len(answers['all' if name == 'osm' else name]['elements']), 'elements', flush=True)
     stamp_file.write_text(stamp)
     md5 = Path(str(pbf) + '.md5').read_text().split()[0] if Path(str(pbf) + '.md5').exists() else None
+    # The same URL serves a newer extract each day: its digest tells a kit's layers from ones made of another.
+    digest = hashlib.sha256()
+    with open(pbf, 'rb') as f:
+        for block in iter(lambda: f.read(1 << 22), b''):
+            digest.update(block)
     man.records['osm/extract'] = {'url': f"https://download.geofabrik.de/{o['extract']}-latest.osm.pbf", 'method': 'GET',
                                   'source': o['source'] + ', through Geofabrik\'s regional extract', 'licence': o['licence'],
-                                  'bytes': pbf.stat().st_size, 'md5': md5,
+                                  'bytes': pbf.stat().st_size, 'md5': md5, 'sha256': digest.hexdigest(),
                                   'retrieved_utc': dt.datetime.fromtimestamp(pbf.stat().st_mtime, dt.timezone.utc).isoformat(),
                                   'note': 'cut to the frame with osmium extract --strategy smart; raw/osm/*.json answered locally (osm_local.py)'}
     man.save()

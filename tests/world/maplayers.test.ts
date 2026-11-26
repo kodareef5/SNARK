@@ -10,7 +10,7 @@ import type { NodeSpot } from "../../shared/world/nodes.ts";
 import { roadSamples } from "../../shared/world/roadframe.ts";
 import { encodeStreets, heldSide, kindsByte } from "../../shared/world/streets.ts";
 import { describe, made } from "../../tools/map.ts";
-import { readLayers, writeLayers } from "../../tools/map/layers.ts";
+import { eachRow, readLayers, writeLayers } from "../../tools/map/layers.ts";
 import { readGrey, writeGrey } from "../../tools/map/png.ts";
 import { lakesMap } from "../fixtures/lakes.ts";
 import { busyMap, flatMap } from "../fixtures/map.ts";
@@ -172,4 +172,35 @@ test("a layer picture from another program is read whichever way its rows were f
   // Sixteen bits, high byte first, filtered by the pixel to the left and then by the one above.
   expect([...readGrey(png(2, 2, 16, [1, 0x01, 0x00, 0x00, 0x05, 2, 0x00, 0x10, 0x01, 0x00]), "b.png").data]).toEqual([0x0100, 0x0105, 0x0110, 0x0205]);
   expect(() => readGrey(Uint8Array.from(writeGrey(2, 2, new Uint8Array(4)), (b, i) => (i === 25 ? 6 : b)), "c.png")).toThrow("c.png: a layer is one channel");
+});
+
+test("a statics file read a few bytes at a time gives every row in order", () => {
+  const rows = Array.from({ length: 300 }, (_, i) => ({ kind: i % 7 === 0 ? `core:"brace{}\\[${i}]é"` : "core:wall", x: i * 1.5, y: -i / 3, z: 1e-7 * i, yaw: i, ...(i % 5 === 0 ? { bend: [i, -1, 2.25] } : {}) }));
+  const path = join(dir, "rows.json");
+  const lines = `[\n${rows.map((r) => `  ${JSON.stringify(r)}`).join(",\n")}\n]\n`;
+  for (const text of [lines, JSON.stringify(rows), " [ ] "]) {
+    writeFileSync(path, text);
+    const want = JSON.parse(text) as unknown[];
+    for (const chunk of [1, 7, 64, 1 << 20]) {
+      const got: unknown[] = [];
+      eachRow(path, (r) => got.push(r), chunk);
+      expect(got).toEqual(want);
+    }
+  }
+  expect(lines.length).toBeGreaterThan(64 * 100);
+  for (const [text, why] of [["", "it is empty"], ["[{}", "ends inside its array"], ["[1]", "not all objects"], ["{}", "not a JSON array"], ["[]x", "goes on after"]] as const) {
+    writeFileSync(path, text);
+    expect(() => eachRow(path, () => {}, 2)).toThrow(why);
+  }
+});
+
+test("statics written by unpack keep the build's layout and read back in order", () => {
+  const map = parseMap(writeMap(busyMap()));
+  const folder = join(dir, "statics");
+  writeLayers(map, folder);
+  const text = readFileSync(join(folder, "statics.json"), "utf8");
+  const rows = JSON.parse(text) as unknown[];
+  expect(rows.length).toBeGreaterThan(1);
+  expect(text).toBe(`[\n${rows.map((r) => `  ${JSON.stringify(r)}`).join(",\n")}\n]\n`);
+  expect(readLayers(folder).statics).toEqual([...map.statics]);
 });

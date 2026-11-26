@@ -288,7 +288,7 @@ export function deviceTable(r: DeviceReport): string[] {
   out.push(`display   ${r.idleFrameMs ?? "?"} ms between frames with nothing drawn; wake lock ${r.wakeLock}`);
   out.push(...linkLines(r));
   const load = r.load;
-  if (load) out.push(`load      first frame ${secs(load.firstFrameMs)} s, full detail ${secs(load.fullDetailMs)} s${load.settled ? "" : " (not reached)"}; page ${mb(load.pageBytes)} MB, assets ${mb(load.assetBytes)} MB, ${mb(load.diskBytes)} MB from disk, ${load.failed} fetches failed${load.failedHow ? ` (${load.failedHow})` : ""}, ${load.refused} uploads the card refused; asset cache in ${load.cache}`);
+  if (load) out.push(`load      first frame ${secs(load.firstFrameMs)} s, full detail ${secs(load.fullDetailMs)} s${load.settled ? "" : " (not reached)"}; page ${mb(load.pageBytes)} MB${load.pageCached ? ` and ${mb(load.pageCached)} MB from cache` : ""}, assets ${mb(load.assetBytes)} MB, ${mb(load.diskBytes)} MB from disk, ${load.failed} fetches failed${load.failedHow ? ` (${load.failedHow})` : ""}, ${load.refused} uploads the card refused; asset cache in ${load.cache}`);
   if (r.served) out.push(`files     the server's files ${r.served}: the run fetched from something else than it started with`);
   if (r.probes) {
     const wrong = r.probes.filter((p) => !p.ok);

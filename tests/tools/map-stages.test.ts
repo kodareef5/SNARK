@@ -17,7 +17,13 @@ import { basename, dirname, join } from "node:path";
 const [work, name, maps, city] = process.argv.slice(2);
 appendFileSync(join(work, "runs.log"), name + "\\n");
 if (process.env.FAIL === name) process.exit(3);
-if (name === "fetch") { mkdirSync(join(work, "raw"), { recursive: true }); writeFileSync(join(work, "raw/fetched"), "x"); }
+if (name === "fetch") {
+  mkdirSync(join(work, "raw"), { recursive: true });
+  writeFileSync(join(work, "raw/fetched"), "x");
+  const osm = { bytes: 9, md5: "m", sha256: process.env.EXTRACT ?? "one" };
+  writeFileSync(join(work, "downloads.json"), JSON.stringify({ "osm/extract": osm, "tl_2025_12086_roads.zip": { bytes: 3, sha256: "t" } }));
+}
+if (process.env.FAIL_AFTER === name) process.exit(4);
 writeFileSync(join(work, name + ".out"), name);
 if (name === "build") {
   mkdirSync(join(maps, city), { recursive: true });
@@ -35,7 +41,8 @@ function stages(): Stage[] {
   return NAMES.map((name) => {
     const code = join(dir, "code", `${name}.ts`);
     if (!existsSync(code)) writeFileSync(code, `// ${name}\n${STEP}`);
-    return { name, code: [code], run: (work: string, city: string) => ["bun", code, work, name, maps(), city], stamped: name === "build" };
+    const reads = { prepare: ["tiger", "osm"], ways: ["osm"] }[name as "prepare" | "ways"];
+    return { name, code: [code], run: (work: string, city: string) => ["bun", code, work, name, maps(), city], stamped: name === "build", ...(reads ? { reads } : {}) };
   });
 }
 
@@ -59,6 +66,8 @@ beforeEach(() => {
 });
 afterEach(() => {
   delete process.env.FAIL;
+  delete process.env.EXTRACT;
+  delete process.env.FAIL_AFTER;
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -121,9 +130,8 @@ test("current moves only when every stage of the cut stands done", () => {
   expect([run({ to: "ways" }).current, current()]).toEqual([false, join(b.cut, CITY)]);
 });
 
-test("a kit's work folder builds the map alone, and fetches first for a stage on the downloads", () => {
-  const { work } = run();
-  // As tools/maps/kit.ts unpack leaves it: no downloads, no map, every key but the build's.
+// As tools/maps/kit.ts unpack leaves a built cut: no downloads, no map, every key but the build's.
+function kitted(work: string): void {
   rmSync(join(work, "raw"), { recursive: true });
   mkdirSync(join(work, "raw"));
   writeFileSync(join(work, "raw/KIT"), "commit\n");
@@ -131,12 +139,70 @@ test("a kit's work folder builds the map alone, and fetches first for a stage on
   writeFileSync(join(work, "stages.json"), JSON.stringify(made));
   rmSync(maps(), { recursive: true });
   writeFileSync(join(work, "runs.log"), "");
+}
+const log = (work: string): string[] => readFileSync(join(work, "runs.log"), "utf8").split("\n").filter(Boolean);
+
+test("a build over a stage out of date leaves the city's map and stamp alone", () => {
+  const { work } = run();
+  const made = (): string[] => [map(), readFileSync(join(maps(), CITY, "stamp.json"), "utf8")];
+  const before = made();
+  appendFileSync(join(dir, "code/prepare.ts"), "// changed\n");
+  writeFileSync(join(work, "runs.log"), "");
+  for (const o of [{ only: "build" }, { from: "build" }, { from: "ways" }]) expect(() => run(o)).toThrow(/prepare(, ways)? out of date for this build.*--from prepare/);
+  expect(made()).toEqual(before);
+  expect(log(work)).toEqual(["ways"]);
+  expect(run().ran).toEqual(["prepare", "ways", "build"]);
+});
+
+test("a kit's work folder builds the map alone, and fetches first for a stage on the downloads", () => {
+  const { work } = run();
+  kitted(work);
   expect(run().ran).toEqual(["build"]);
   expect(existsSync(join(work, "raw/KIT"))).toBe(true);
   appendFileSync(join(dir, "code/ways.ts"), "// changed\n");
   expect(run().ran).toEqual(["ways", "build"]);
   expect([existsSync(join(work, "raw/KIT")), existsSync(join(work, "raw/fetched"))]).toEqual([false, true]);
-  expect(readFileSync(join(work, "runs.log"), "utf8").split("\n").filter(Boolean)).toEqual(["build", "fetch", "ways", "build"]);
+  expect(log(work)).toEqual(["build", "fetch", "ways", "build"]);
+});
+
+test("a kit's source fetched anew with other bytes runs again from its first reader", () => {
+  const { work } = run();
+  kitted(work);
+  appendFileSync(join(dir, "code/ways.ts"), "// changed\n");
+  process.env.EXTRACT = "newer";
+  expect(run().ran).toEqual(["prepare", "ways", "build"]);
+  expect(log(work)).toEqual(["fetch", "prepare", "ways", "build"]);
+  expect(run().ran).toEqual([]);
+});
+
+test("a kit's fetch cut short still holds the next to the kit's own records", () => {
+  const { work } = run();
+  kitted(work);
+  appendFileSync(join(dir, "code/ways.ts"), "// changed\n");
+  process.env.EXTRACT = "newer";
+  process.env.FAIL_AFTER = "fetch";
+  expect(() => run()).toThrow("fetch failed with 4");
+  delete process.env.FAIL_AFTER;
+  expect(run().ran).toEqual(["prepare", "ways", "build"]);
+  expect(existsSync(join(work, "raw/downloads.kit.json"))).toBe(false);
+});
+
+test("a changed kit source stops a run that cannot reach its first reader", () => {
+  const { work } = run();
+  kitted(work);
+  process.env.EXTRACT = "newer";
+  expect(() => run({ only: "ways" })).toThrow("osm fetched again differs from what the kit's layers were made from (downloads.json); run bun tools/maps/city.ts testcity --from prepare");
+  expect(Object.keys(keys(work))).toEqual(["frame", "fetch"]);
+  expect(run().ran).toEqual(["prepare", "ways", "build"]);
+});
+
+test("a download's job comes from its name, and an extract without SHA-256 holds to its MD5", async () => {
+  const { changedJobs } = await import("../../tools/maps/city.ts");
+  const settings = { nlcd: { file: "nlcd2021.tif" } };
+  const kept = { "osm/extract": { bytes: 5, md5: "a" }, "nlcd2021.tif": { bytes: 1, sha256: "n" }, "dem/x.tif": { bytes: 2, sha256: "d" } };
+  expect(changedJobs(kept, { ...kept, "osm/extract": { bytes: 5, md5: "a", sha256: "s" } }, settings)).toEqual([]);
+  expect(changedJobs(kept, { ...kept, "osm/extract": { bytes: 5, md5: "b", sha256: "s" }, "nlcd2021.tif": { bytes: 1, sha256: "m" } }, settings)).toEqual(["nlcd", "osm"]);
+  expect(changedJobs(kept, { ...kept, "dem/y.tif": { bytes: 2, sha256: "e" }, "tl_2025_1_roads.zip": { bytes: 1, sha256: "t" } }, settings)).toEqual(["dem", "tiger"]);
 });
 
 test("a kit reuses prepared layers after a retry change until a source changes", () => {

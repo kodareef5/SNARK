@@ -56,6 +56,52 @@ print(len(asked), json.loads((root / 'raw/a.tif').read_text())['coverage'], sort
   }
 });
 
+test("a regional extract is recorded with its size and SHA-256", () => {
+  const root = mkdtempSync(join(tmpdir(), "snark-extract-"));
+  try {
+    expect(python(`
+import hashlib, json, pathlib, fetch, osm_local
+root = pathlib.Path(${JSON.stringify(root)})
+(root / 'raw').mkdir()
+pbf = root / 'region-latest.osm.pbf'
+pbf.write_bytes(b'x' * 5_000_001)
+osm_local.region_file = lambda cache, region: pbf
+osm_local.cut = lambda src, bounds, out: None
+osm_local.answer = lambda area, names: {n: {'elements': []} for n in names}
+class M:
+    raw = root / 'raw'; root = root
+    city = {'osm': {'extract': 'north-america/us/region', 'source': 's', 'licence': 'l'}}
+    def lonlat_bounds(self, margin=0): return (0, 0, 1, 1)
+man = fetch.Manifest(M)
+fetch.osm_extract(M(), man, ['osm', 'ways'])
+r = json.loads((root / 'downloads.json').read_text())['osm/extract']
+print(r['bytes'], r['sha256'] == hashlib.sha256(pbf.read_bytes()).hexdigest())
+`).trim().split("\n").at(-1)).toBe("5000001 True");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("an OpenStreetMap outline wholly past the cut's edge is not a building of it", () => {
+  expect(python(`
+from shapely.geometry import box
+from split import on_cut
+cut = box(0, 0, 100, 100)
+past, across, within = on_cut(box(120, 10, 150, 40), cut), on_cut(box(90, 10, 130, 40), cut), on_cut(box(10, 10, 40, 40), cut)
+print(past, across.bounds, within.area)
+`).trim()).toBe("None (90.0, 10.0, 100.0, 40.0) 900.0");
+});
+
+test("a road the frame cuts twice says where each of its runs starts along it", () => {
+  expect(python(`
+from shapely.geometry import LineString, box
+from streets import run_starts
+whole = LineString([(0, 0), (100, 0), (100, 50), (0, 50)])
+frame = box(-10, -10, 60, 60)
+print(run_starts(whole, whole.intersection(frame)), run_starts(whole, whole.intersection(box(-10, -10, 200, 200))), run_starts(whole, whole.intersection(box(20, -10, 200, 20))))
+`).trim()).toBe("[0.0, 190.0] [0.0] [20.0]");
+});
+
 test("a water relation whose ring is drawn in several ways keeps its lake and its island", () => {
   expect(python(`
 from common import relation_polygon
@@ -65,4 +111,47 @@ inner = [way([(4, 4), (6, 4), (6, 6)]), way([(6, 6), (4, 6), (4, 4)])]
 g = relation_polygon([{**w, 'role': 'outer'} for w in outer] + [{**w, 'role': 'inner'} for w in inner], lambda x, y: (x, y))
 print(round(g.area, 3), len(g.interiors))
 `).trim()).toBe("96.0 1");
+});
+
+test("a footprint split adds stands in the 2 m layer as in the 1 m, not only at its edge", () => {
+  expect(python(`
+import numpy as np
+from affine import Affine
+from shapely.geometry import box
+from common import Map
+from fine import coarse_buildings
+class M: pass
+m = M(); m.shape = (50, 50); m.grid = Affine(2, 0, 0, 0, -2, 100)
+m.burn = lambda items, shape, tx=None: Map.burn(m, items, shape, tx)
+fine = m.burn([(box(40, 40, 60, 60), 1)], (100, 100), Affine(1, 0, 0, 0, -1, 100))
+a = coarse_buildings(m, [(box(40, 40, 60, 60), {})], fine)
+print(int(a[25, 25]), int(fine[50, 50]), int(a.sum()) > 90, int(a[0].sum()))
+`).trim()).toBe("1 1 True 0");
+});
+
+test("an elevation index that does not answer leaves the cut its tiles of before", () => {
+  const root = mkdtempSync(join(tmpdir(), "snark-dem-"));
+  try {
+    expect(python(`
+import json, pathlib, fetch
+root = pathlib.Path(${JSON.stringify(root)})
+(root / 'dem_selection.json').write_text(json.dumps([
+  {'name': 'a.tif', 'url': 'u/a.tif', 'project': 'P1', 'z_to_m': 1, 'fill': False},
+  {'name': 'b.tif', 'url': 'u/b.tif', 'project': 'P2', 'z_to_m': 1, 'fill': True}]))
+class M:
+    pass
+m = M(); m.root = root; m.lonlat_bounds = lambda margin: (0, 0, 1, 1)
+class Down:
+    def json(self): return {'error': 'Expecting value', 'showToast': True}
+fetch.get = lambda *a, **k: Down()
+d = {'kind': 'tnm', 'dataset': 'D', 'project': 'P1'}
+print([t['name'] for t in fetch.dem_tiles(m, None, d)])
+try:
+    fetch.dem_tiles(m, None, {**d, 'project': 'P3'})
+except SystemExit as e:
+    print('stopped', 'P3' in str(e))
+`).trim().split("\n").slice(-2)).toEqual(["['a.tif']", "stopped True"]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

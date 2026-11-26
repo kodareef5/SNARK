@@ -539,6 +539,8 @@ export const CMD_PLAN_PART = command();
 export const CMD_PLAN_COMMIT = command();
 /** Takes a plan of the survivor's tribe away: its id varint. */
 export const CMD_PLAN_CANCEL = command();
+/** Chunks the client read without the map's slots and now holds them for: a count u8, HAVE_MOST at most, then chunk u16 of each. Each is sent again whole. */
+export const CMD_CHUNK_AGAIN = command();
 /** Chunks from its own within which a client says what it kept: the server's structRadius and the one more it lets go at. */
 export const HAVE_REACH = 4;
 export const SPOT_TICKS = 1800;

@@ -4,7 +4,7 @@ import { roadFrame } from "../../tools/mapworld/road-frame.ts";
 import type { Piece, Segment } from "../../tools/mapworld/street-graph.ts";
 
 const piece = (more: Partial<Piece>): Piece => ({ id: "p", seed: 0, from: 0, mtfcc: "S1400", highway: "residential", name: null, lanes: 2, half: 5, oneway: 0, sidewalk: null, bridge: false, tunnel: false, maxspeed: null, lit: null, parking: [null, null], ...more });
-const along = (line: number, ax: number, az: number, bx: number, bz: number, half: number): Segment => ({ ax, az, bx, bz, half, mtfcc: line === 3 ? "S1710" : "S1400", line });
+const along = (line: number, ax: number, az: number, bx: number, bz: number, half: number): Segment => ({ ax, az, bx, bz, half, mtfcc: line === 3 ? "S1710" : "S1400", line, along: 0 });
 
 test("the frame holds a carriageway's offset, distance along, half width and lanes at every 4 m cell near it, the widest where two cross, and none on a bridge or a path", () => {
   const pieces = [

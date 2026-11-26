@@ -29,7 +29,7 @@ export interface Harbour { map: MapData; layout: MarinaLayout; found: Berthed[];
  * The harbour laid out by `rules`, its docks and moored boats among its statics and its found vessels among its vehicles;
  * `pieces` stand there first, and nothing stands in `keep`.
  */
-export function marinaHarbour(reg: Registry, rules: Harbours = HARBOURS, docks: Path[] = [pierPath(1, [[EDGE - 6, 256], [EDGE + 96, 256]])], sites: BoatSite[] = [MARINA], pieces: StaticPiece[] = [], keep: Box[] = []): Harbour {
+export function marinaHarbour(reg: Registry, rules: Harbours = HARBOURS, docks: Path[] = [pierPath(1, [[EDGE - 6, 256], [EDGE + 96, 256]])], sites: BoatSite[] = [MARINA], pieces: StaticPiece[] = [], keep: Box[] = [], held?: Map<number, number>): Harbour {
   const hf = new Heightfield({ chunksX: 8, chunksZ: 8 }, 2, -32, 1 / 256);
   for (let j = 0; j < hf.nz; j++) for (let i = 0; i < hf.nx; i++) {
     hf.setSample(i, j, harbourGround(i * hf.cell));
@@ -38,7 +38,8 @@ export function marinaHarbour(reg: Registry, rules: Harbours = HARBOURS, docks: 
   const size = 8 * 64, chunk = (x: number, z: number): number => Math.floor(z / 64) * 8 + Math.floor(x / 64);
   const layout = layMarinas(sites, new Map([[MARINA.id, docks]]), [], rules, reg, pieces, {
     waterAt: () => 0, groundAt: (x) => harbourGround(x), inside: (x, z, r) => Math.min(x, z, size - x, size - z) > r,
-    room: () => true, took: () => {}, chunk,
+    // `held`, where given, counts the pieces each chunk's room holds, as a city's build does.
+    room: () => true, took: (x, z) => void held?.set(chunk(x, z), (held.get(chunk(x, z)) ?? 0) + 1), gave: (x, z) => void held?.set(chunk(x, z), held.get(chunk(x, z))! - 1), chunk,
   }, () => null, () => false, keep);
   const cleared = new Set(layout.cleared);
   const map: MapData = {
