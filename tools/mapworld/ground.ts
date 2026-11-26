@@ -116,8 +116,6 @@ export interface Ground {
   /** Samples of bed at the foot of a graded soft bank, and samples the grading took out of the water (shared/world/banks.ts). */
   readonly bankBed?: ReadonlySet<number>;
   readonly bankEdge?: ReadonlySet<number>;
-  /** Samples round pools and fountains that hold their water in (lakes.ts raiseRims): no later step digs them. */
-  readonly rim?: ReadonlySet<number>;
   /** Per sample of a container stack, which container it is, for its colour. */
   readonly container: Uint8Array;
   /** Per sample in a street's verge, the verge's kind (shared/world/streets.ts VERGES), or 0: for its colour. */
@@ -518,7 +516,7 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
   // After the banks, which would grade a rim down again. A floor is a footprint's as the ruins have it.
   const rims = lakes ? raiseRims(lakes, height, grid, (i) => roads[i] !== 0 || built[i]! > 0 || surface[i] === S.FLOOR) : null;
   if (rims) log(`ground: ${rims.raised} of ${rims.rim.size} samples round pools and fountains raised to their rims`);
-  return { grid, height, surface, district, heaps, shore, beachBed, bankBed: banks.bed, bankEdge: banks.edge, ...(rims ? { rim: rims.rim } : {}), container, ...(streets ? { verge, streets } : {}), sand, water, gaps, bridges: { standing: decks, fords, gaps: gapCount, cutSamples }, lakes };
+  return { grid, height, surface, district, heaps, shore, beachBed, bankBed: banks.bed, bankEdge: banks.edge, container, ...(streets ? { verge, streets } : {}), sand, water, gaps, bridges: { standing: decks, fords, gaps: gapCount, cutSamples }, lakes };
 }
 
 /** Ground a bank may be graded on: what grows, open ground and the desert's. */

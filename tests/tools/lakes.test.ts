@@ -75,9 +75,16 @@ test("a pool over a lower floor is let down to it and keeps its depth; a filled 
   const low = set("pool", 0.5, 0.4);
   // A sixteenth's lattice: 0.1 m under the floor at 0.4 is 0.25.
   expect([low.made, low.lakes.bodies[0]!.surface, low.height[4 * 9 + 4], low.height[4 * 9 + 5]]).toEqual([{ lowered: 1, farthest: 0.75, dried: 0, crossed: 0 }, 0.25, -0.25, 0.4000000059604645]);
-  // One an approach was graded across stays where it is: let down, the approach would lie in a pit.
+  // A pool of one sample that a way was graded across has none left: it dries, and the way's ground stays.
   const way = set("pool", 0.5, 0.4, true);
-  expect([way.made, way.lakes.bodies[0]!.surface, way.height[4 * 9 + 4]]).toEqual([{ lowered: 0, farthest: 0, dried: 0, crossed: 1 }, 1, 0.5]);
+  expect([way.made, way.lakes.body[4 * 9 + 4], way.height[4 * 9 + 4]]).toEqual([{ lowered: 0, farthest: 0, dried: 1, crossed: 1 }, 0, 0.5]);
+  // One of two samples gives up the sample the way took, at 0.6, and is let down under it; the way is where it was.
+  const two = oneBody("pool");
+  two.lakes.body[4 * 9 + 3] = 1;
+  const ground = new Float32Array(81).fill(1);
+  [ground[4 * 9 + 3], ground[4 * 9 + 4]] = [0.5, 0.6];
+  const made = settleRims(two.lakes, ground, two.grid, -32, 1 / 16, (i) => i === 4 * 9 + 4);
+  expect([made, two.lakes.bodies[0]!.surface, ground[4 * 9 + 3], ground[4 * 9 + 4], two.lakes.body[4 * 9 + 4]]).toEqual([{ lowered: 1, farthest: 0.5, dried: 0, crossed: 1 }, 0.5, 0, 0.6000000238418579, 0]);
   const held = set("pool", 0.5, 1.2);
   expect([held.made.lowered, held.lakes.bodies[0]!.surface, held.height[4 * 9 + 4]]).toEqual([0, 1, 0.5]);
   const pond = set("pond", 0.5, 0.4);

@@ -186,7 +186,8 @@ export function carveLakes(lakes: Lakes, rules: LakeRules | false | undefined, h
 /**
  * Raises the rim of each rimmed body: a dry sample beside one of its samples, by a side or a corner, comes up to its
  * surface, so its water ends at ground and not in the air over a yard that falls away. `kept` is ground never moved,
- * footprints and roads. Returns the rims' samples, for later grading to leave alone, and how many of them rose.
+ * footprints and roads. Returns the rims' samples and how many of them rose. A later grading may cut a rim again, a way
+ * to a door through it: settleRims then lets the body down to the cut.
  */
 export function raiseRims(lakes: Lakes, height: Float32Array, grid: Grid, kept: (i: number) => boolean): { rim: Set<number>; raised: number } {
   const { body, bodies } = lakes;
@@ -221,27 +222,32 @@ const RIM_OVER = 0.1;
 const LEAST_DEPTH = 0.3;
 
 /**
- * Lets each rimmed body down to the fixed ground beside it. A floor levelled lower than its surface, or a road, cannot
- * rise to be its rim, so the water yields: its surface goes RIM_OVER under the lowest dry sample beside it, on the
- * lattice `minY + k * stepY`, and its bed down by as much, so it is as deep as it was carved. A body left with under
- * LEAST_DEPTH of water, as one a later grading filled, is no water any more: its samples go dry. A body with a sample
- * `moved` since its bed was carved has a floor or a way to a door graded across it, which letting it down would leave
- * in a pit: it stays as it is. Run once the floors stand where they will. Returns how many were let down, the farthest,
- * how many dried and how many stayed for a grading across them.
+ * Lets each rimmed body down to the fixed ground beside it. A floor levelled lower than its surface, a road, or a way
+ * to a door graded through its rim cannot rise to hold it, so the water yields: its surface goes RIM_OVER under the
+ * lowest dry sample beside it, on the lattice `minY + k * stepY`, and its bed down by as much, so it is as deep as it
+ * was carved. A sample of its own `moved` since its bed was carved has a floor or a way graded across it: that is fixed
+ * ground too, and the body gives it up before it is let down, so the way does not end in a pit. A body left with no
+ * sample, or with under LEAST_DEPTH of water, is no water any more: its samples go dry. Run once the floors and the
+ * ways stand where they will. Returns how many were let down, the farthest, how many dried and how many gave up samples.
  */
 export function settleRims(lakes: Lakes, height: Float32Array, grid: Grid, minY: number, stepY: number, moved: (i: number) => boolean = () => false): { lowered: number; farthest: number; dried: number; crossed: number } {
   const { body, bodies } = lakes;
   const { nx, nz } = grid;
   const n = bodies.length;
+  const across = new Uint8Array(n + 1);
+  for (let i = 0; i < nx * nz; i++) {
+    const b = body[i]!;
+    if (b === 0 || !rimmed(bodies[b - 1]!.kind) || !moved(i)) continue;
+    body[i] = 0;
+    across[b] = 1;
+  }
   const lowest = new Float32Array(n + 1).fill(Infinity);
   const bed = new Float32Array(n + 1).fill(Infinity);
-  const across = new Uint8Array(n + 1);
   for (let row = 0; row < nz; row++) {
     for (let col = 0; col < nx; col++) {
       const b = body[row * nx + col]!;
       if (b === 0 || !rimmed(bodies[b - 1]!.kind)) continue;
       bed[b] = Math.min(bed[b]!, height[row * nx + col]!);
-      if (moved(row * nx + col)) across[b] = 1;
       for (let dr = -1; dr <= 1; dr++) {
         for (let dc = -1; dc <= 1; dc++) {
           const [c, r] = [col + dc, row + dr];
@@ -255,18 +261,21 @@ export function settleRims(lakes: Lakes, height: Float32Array, grid: Grid, minY:
   let lowered = 0, farthest = 0, dried = 0, crossed = 0;
   for (let b = 1; b <= n; b++) {
     const was = bodies[b - 1]!;
-    if (bed[b] === Infinity) continue;
-    if (was.surface - bed[b]! >= LEAST_DEPTH && lowest[b]! < was.surface && across[b]) crossed++;
-    else if (lowest[b]! < was.surface) {
+    if (across[b]) crossed++;
+    if (bed[b] === Infinity) {
+      // Every sample it had was graded over.
+      if (across[b]) dried++;
+      continue;
+    }
+    if (was.surface - bed[b]! < LEAST_DEPTH) {
+      dry[b] = 1;
+      dried++;
+    } else if (lowest[b]! < was.surface) {
       const surface = minY + Math.floor((lowest[b]! - RIM_OVER - minY) / stepY + 1e-6) * stepY;
       drop[b] = was.surface - surface;
       bodies[b - 1] = { ...was, surface };
       lowered++;
       farthest = Math.max(farthest, drop[b]!);
-    }
-    if (was.surface - bed[b]! < LEAST_DEPTH) {
-      dry[b] = 1;
-      dried++;
     }
   }
   for (let i = 0; i < nx * nz; i++) {
