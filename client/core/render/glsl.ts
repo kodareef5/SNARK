@@ -21,6 +21,7 @@ import { SHADOW_GLSL } from "./shadowtext.ts";
 import { OVER_GROUND_GLSL, SKY_OPEN_GLSL } from "./skyopen.ts";
 import { ROOF_GLSL } from "./roof.ts";
 import { LIGHT, THROUGH } from "./surface.ts";
+import { SHIMMER_GLSL } from "./shimmer-glsl.ts";
 import { FACADE_GLSL, ROOM_OPEN_LEAST } from "./facade.ts";
 import { GROUND_BAND, GROUND_GLSL, GROUND_SCALE, PIECE_ALLOY, PIECE_FIXED, PIECE_OVER_WEAR, PIECE_OWN, PIECE_PLAIN, PIECE_SEED, ROAD_GLSL, SPALL_RIM, SPALL_SURFACE, STREETS_GLSL, WORLD_GLSL, WORLD_SHARP } from "./world-surfaces.ts";
 import { WET_DARK, WET_GLSL, WET_ROUGH } from "./bank.ts";
@@ -58,6 +59,9 @@ void main() {
   float fog = clamp((d - uFog.x) / (uFog.y - uFog.x), 0.0, 1.0);
   o = vec4(mix(vColor * light * shade, uSky, fog * fog), uAlpha);
 }`;
+
+/** The flat program's fragment for meshes, where a body may shimmer (shimmer-glsl.ts); the ground's and the skyline's are the plain one. */
+export const FLAT_BODY_FRAGMENT = FLAT_FRAGMENT.replace("out vec4 o;\nvoid main() {\n", `${SHIMMER_GLSL}out vec4 o;\nvoid main() {\n`).replace("vColor * light * shade,", "vColor * light * shade + shimmer(n, -normalize(vRel), vRel),");
 
 /**
  * Palette geometry on textured tiers: world-projected finishes share SURFACE's lighting. Its vertex text gives the colour
