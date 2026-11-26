@@ -2,6 +2,9 @@
 // only gives, refilled a time after, spilled when broken.
 
 import { expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { ClientSession } from "../../client/core/session.ts";
 import { Loot } from "../../server/loot.ts";
 import { loadConfig } from "../../server/settings/config.ts";
@@ -18,8 +21,8 @@ const snark = (lines: string) => loadConfig({ gus: `[SnarkSettings]\n${lines}`, 
 const SURE = "WorldLootChanceMultiplier=4";
 
 /** A bin, a mailbox and a hydrant on a flat map, and Ada beside the bin with cheats on. */
-function street(lines = SURE) {
-  const c = city([{ kind: "core:zzstreet_bin", x: 120, z: 120 }, { kind: "core:zzstreet_mailbox", x: 140, z: 120 }, { kind: "core:zzstreet_hydrant", x: 160, z: 120 }], 4, { config: snark(lines) });
+function street(lines = SURE, dbPath?: string) {
+  const c = city([{ kind: "core:zzstreet_bin", x: 120, z: 120 }, { kind: "core:zzstreet_mailbox", x: 140, z: 120 }, { kind: "core:zzstreet_hydrant", x: 160, z: 120 }], 4, { config: snark(lines), dbPath });
   const h = c.h;
   const ada = h.join("ada");
   h.run(500);
@@ -148,4 +151,28 @@ test("the band of the map a thing stands in is that of the drop book's nearest s
   const loot = new Loot({ compiled: () => ({ book: { sites } }) } as unknown as ConstructorParameters<typeof Loot>[0]);
   expect([loot.band(120, 90), loot.band(800, 200), loot.band(500, 800)]).toEqual(["shore", "deep", ""]);
   expect(new Loot({ compiled: () => ({ book: { sites: [] } }) } as unknown as ConstructorParameters<typeof Loot>[0]).band(1, 1)).toBe("");
+});
+
+test("a restart with street loot switched off keeps a searched bin and its contents", () => {
+  const dir = mkdtempSync(join(tmpdir(), "snark-saved-holder-"));
+  try {
+    const db = join(dir, "world.db");
+    const first = street(SURE, db);
+    expect(search(first.h, first.ada, first.bin, 1.5)).toBe(RESULT_OK);
+    const marker = first.h.host.holders.saved.serialize();
+    const stored = first.h.host.fixtures.find(first.bin)!.inv!.count.slice();
+    first.h.host.shutdown();
+
+    const back = street(SURE + "\nStreetLootEnabled=False", db);
+    expect(back.h.host.holders.tag(back.bin)).toBeNull();
+    expect(back.h.host.holders.saved.serialize()).toBe(marker);
+    expect(back.h.host.rules.assign("StreetLootEnabled", "True", "console")).toBe("");
+    expect(search(back.h, back.ada, back.bin, 1.5)).toBe(RESULT_OK);
+    expect(back.h.host.holders.searched).toBe(0);
+    expect(back.h.host.fixtures.find(back.bin)!.inv!.count).toEqual(stored);
+    expect(back.h.host.items.audit()).toEqual([]);
+    back.h.host.shutdown();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

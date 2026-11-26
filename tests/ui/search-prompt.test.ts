@@ -51,6 +51,16 @@ test("the use key held on a bin searches it and opens it; a tap does nothing, an
   look(h, ada, { x: 130, y: 0.4, z: 120 });
   h.run(300);
   expect(shown(view, KEY_PROMPT)).toBeNull();
+  put(h, ada, { x: 65, z: 120 });
+  h.host.holders.begin(JSON.stringify([[bin, h.world.tick + 1]]));
+  expect(until(h, () => h.host.holders.refilled > 0, 1)).toBe(true);
+  put(h, ada, { x: 120, z: 118.6 });
+  look(h, ada, { x: 120, y: 0.6, z: 120 });
+  expect(until(h, () => shown(view, KEY_PROMPT) === "hold E  search the bin", 1)).toBe(true);
+  view.app.key("KeyE", true);
+  expect(until(h, () => ada.open !== null, 3)).toBe(true);
+  view.app.key("KeyE", false);
+  expect(h.host.holders.searched).toBe(2);
 });
 
 test("a street wreck and a dead boat are searched by the same hold, each by its own word", () => {
