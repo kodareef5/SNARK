@@ -6,9 +6,9 @@
 import { clamp, detAtan2 } from "../math/scalar.ts";
 import { quatMulConj, quatNlerp, quatRotate } from "../math/quat.ts";
 import { HOLD_HANDS, HOLD_TOOL, SWING_TICKS } from "../sim/weapon.ts";
-import { clip, type PoseBuilder } from "./authored.ts";
+import { clip, type PoseBuilder } from "./pose-builder.ts";
 import type { Clip } from "./clip.ts";
-import { reach, type Side } from "./emote-clips.ts";
+import { reach, type Side } from "./limb-pose.ts";
 import {
   B_CHEST, B_FINGERS_L, B_FINGERS_R, B_FINGERTIPS_L, B_FINGERTIPS_R, B_THUMB_L, B_THUMB_R, B_HAND_L, B_HAND_R, B_HEAD, B_LOWER_ARM_L, B_LOWER_ARM_R, B_NECK, B_PROP_L, B_PROP_R, B_SPINE, B_UPPER_ARM_L, B_UPPER_ARM_R,
   B_SHOULDER_L, B_SHOULDER_R, B_UPPER_CHEST,

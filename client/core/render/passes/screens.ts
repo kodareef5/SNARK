@@ -4,7 +4,8 @@
 
 import type { ScreenFace } from "../../../../shared/video/face.ts";
 import type { ScreenState } from "../../../../shared/video/screen.ts";
-import { FaceScreens, type FaceHost, type FaceView } from "../../video/faces.ts";
+import { SCREENS_DRAWN, SCREENS_MANY, SCREENS_NEAREST } from "../../governor.ts";
+import type { FaceScreens, FaceView } from "../../video/faces.ts";
 import { FACE, FACE_FLOATS, FACE_HIGH, FACE_LEVELS, FACE_WIDE, FRAME } from "../packet.ts";
 import type { Frame, Pass } from "../pass.ts";
 import { orbLevel } from "../screen-level.ts";
@@ -15,7 +16,9 @@ export const LAYER_BYTES = Math.round(FACE_WIDE * FACE_HIGH * 4 * (1 - 4 ** -FAC
 
 export class Screens implements Pass {
   readonly finder: FaceFinder;
-  readonly faces = new FaceScreens();
+  private faces: FaceScreens | null = null;
+  private loading = false;
+  private retryAt = 0;
   /** What the app tells it each frame: every type's state (session.screens), the render clock and the option. */
   states: readonly ScreenState[] = [];
   tick = 0;
@@ -29,17 +32,21 @@ export class Screens implements Pass {
     this.finder = new FaceFinder(faces);
   }
 
-  /** The page's side, once it has come. */
-  attach(host: FaceHost | null): void {
-    this.faces.attach(host);
+  /** Start the player after a drawn frame found a face in reach. */
+  request(load: () => Promise<FaceScreens>, now: number): void {
+    if (this.finder.list.count === 0 || this.faces || this.loading || now < this.retryAt) return;
+    this.loading = true;
+    this.retryAt = now + 5000;
+    void load().then((faces) => {
+      this.faces = faces;
+      this.loading = false;
+    }, () => { this.loading = false; });
   }
 
-  /** What the screens drew this frame, for the governor (governor.ts SCREENS_), and whether the page's side is wanted. */
+  /** What the screens drew this frame, for the governor (governor.ts SCREENS_). */
   get mask(): number {
-    return this.faces.mask;
-  }
-  get wanted(): boolean {
-    return this.faces.wanted;
+    const { count, seen } = this.finder.list;
+    return this.faces?.mask ?? ((count > 0 ? SCREENS_DRAWN : 0) | (seen > SCREENS_NEAREST ? SCREENS_MANY : 0));
   }
 
   update(f: Frame): void {
@@ -51,6 +58,10 @@ export class Screens implements Pass {
     this.world.structs = f.world.structs;
     this.world.statics = f.world.city?.statics ?? null;
     const list = this.finder.find(this.world, f.cam, tier);
+    if (!this.faces) {
+      p.faceLayers = 0;
+      return;
+    }
     const v = this.view;
     v.states = this.states;
     v.tick = this.tick;
@@ -68,11 +79,12 @@ export class Screens implements Pass {
 
   draw(f: Frame): void {
     const p = f.packet, list = this.finder.list, cam = f.cam, drawn = Math.min(list.count, f.tier.screens.count);
-    if (drawn === 0 || p.faceLayers === 0) return;
+    const faces = this.faces;
+    if (!faces || drawn === 0 || p.faceLayers === 0) return;
     const level = orbLevel(p.frame[FRAME.exposure]!);
     let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
     for (let i = 0; i < drawn; i++) {
-      const show = this.faces.shows[i]!;
+      const show = faces.shows[i]!;
       // A face showing nothing is its mesh's dark panel.
       if (show.layer < 0 && show.mean === 0 && (show.wipe >= 1 || (show.before < 0 && show.meanBefore === 0))) continue;
       const at = p.faceCount * FACE_FLOATS;

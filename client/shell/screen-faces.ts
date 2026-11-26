@@ -2,10 +2,16 @@
 // layer's size away from the page's thread, and clips' elements hidden in the page so a phone plays them inline. The
 // page fetches this file the first frame a screen is in reach.
 
-import type { FaceHost } from "../core/video/faces.ts";
+import { FaceScreens, type FaceHost } from "../core/video/faces.ts";
 import type { VideoLike } from "../core/video/player.ts";
 
-export function faceHost(): FaceHost {
+export function createFaceScreens(): FaceScreens {
+  const screens = new FaceScreens();
+  screens.attach(faceHost());
+  return screens;
+}
+
+function faceHost(): FaceHost {
   const fetching = new Map<string, AbortController>();
   return {
     json: (path) => fetch(path).then((r) => (r.ok ? r.json() : Promise.reject(new Error(`${path}: ${r.status}`)))),

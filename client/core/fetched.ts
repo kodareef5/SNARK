@@ -1,10 +1,7 @@
 // What the page fetches whole as it starts. A request that fails says which it was and what the server answered, not
 // a parser's complaint about the answer.
 
-import { BENT_SECTIONS } from "../../content/bends.ts";
-import { BREAK_BLOCKS } from "../../content/breaks/kinds.ts";
-import { ORBS } from "../../content/orb.ts";
-import { RUIN_BLOCKS } from "../../content/ruins.ts";
+import { STUDIO_GENERATED_CONTENT, WORLD_GENERATED_CONTENT } from "../../content/client-generated.ts";
 import type { Def } from "../../shared/content/defs.ts";
 import { compileContent, withContent, type Registry } from "../../shared/content/registry.ts";
 import { joinLandmark } from "../../shared/pack/join.ts";
@@ -114,11 +111,11 @@ export function nextTask(channel: TaskChannel, scheduler = (globalThis as { sche
     });
 }
 
-/** The studio has its own smaller selection of intact buildings. Worlds rebuild the full city kit. */
+/** Worlds rebuild the full city kit. The studio adds its own statics. */
 export async function fetchContent(get: Get, url: string, scene: "world" | "studio" = "world"): Promise<Registry> {
   const downloaded = (await fetchJson(get, url)) as Def[];
-  const intactBuildings = scene === "world" ? RUIN_BLOCKS : [];
-  const { registry, errors } = compileContent([...downloaded, ...BENT_SECTIONS, ...BREAK_BLOCKS, ...ORBS, ...intactBuildings]);
+  const generated = scene === "world" ? WORLD_GENERATED_CONTENT : STUDIO_GENERATED_CONTENT;
+  const { registry, errors } = compileContent([...downloaded, ...generated]);
   if (!registry) throw new Error(`${url}: ${errors.join("; ")}`);
   return registry;
 }

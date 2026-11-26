@@ -13,7 +13,7 @@ Building
 Joining a world
 - Use the title as soon as it appears. Play brings a returning survivor back to their world, and new survivors can choose starting areas from maps and photographs.
 - The loading screen shows progress into the world. On slow connections or with Data Saver enabled, live previews start only when you ask for them.
-- The first download is smaller. The browser builds city ruins from the same shapes it uses for destruction and fetches the building editor when you need it.
+- The first download is smaller. The browser builds city ruins from their shared shapes. It loads the building editor, inventory and crafting panels when you need them, and the media player when a prop screen comes into view.
 
 Blue Glass HUD
 - Desktop players can open their map, inventory, and action menus from the dock beside the hotbar. On touchscreens, the same controls open from wheels at the edges.

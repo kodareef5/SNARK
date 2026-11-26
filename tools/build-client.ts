@@ -18,10 +18,7 @@ import { FAR_MESH, farColours } from "../client/core/render/far.ts";
 import { SLOT_EDGE_MESH, SLOT_SQUARE_MESH, SLOT_TRIANGLE_MESH, SLOT_VERTEX_MESH } from "../client/core/render/passes/ghost.ts";
 import { skyFile, theSky } from "../client/core/render/sky.ts";
 import { WATER_MATERIAL } from "../client/core/render/water.ts";
-import { BENT_SECTIONS } from "../content/bends.ts";
-import { BREAK_BLOCKS } from "../content/breaks/kinds.ts";
-import { ORBS } from "../content/orb.ts";
-import { RUIN_BLOCKS } from "../content/ruins.ts";
+import { WORLD_GENERATED_CONTENT } from "../content/client-generated.ts";
 import { CORE_CONTENT } from "../content/core.ts";
 import { MASK_MATERIALS, SURFACE_NAMES, surfaceMaterial } from "../content/surfaces.ts";
 import { HUMAN } from "../shared/anim/human.ts";
@@ -135,9 +132,9 @@ function wholeFarColours(reg: Registry, pack: Pack): number[] {
   return [...farColours(reg, pack, meshOf)];
 }
 
-/** The content file carries the definitions the page cannot generate from its street and building kits and its orbs' sizes. */
+/** The content file carries definitions the page cannot generate from its city kit or the orbs' sizes. */
 export function clientContent(): Uint8Array {
-  const generated = new Set([...BENT_SECTIONS, ...BREAK_BLOCKS, ...ORBS, ...RUIN_BLOCKS].map((d) => d.id));
+  const generated = new Set(WORLD_GENERATED_CONTENT.map((d) => d.id));
   return new TextEncoder().encode(JSON.stringify(CORE_CONTENT.filter((d) => !generated.has(d.id))));
 }
 

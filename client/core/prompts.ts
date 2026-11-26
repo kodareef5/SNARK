@@ -29,7 +29,7 @@ import type { AppFrame, FramePart } from "./frame.ts";
 import { BAG } from "./render/dropped.ts";
 import { SeatNotice, type Ridden } from "./seat-notice.ts";
 import type { ClientSession, RemoteSample } from "./session.ts";
-import { itemLabel, waitWords } from "./ui/inventory.ts";
+import { itemLabel, waitWords } from "./ui/item-words.ts";
 import { STABILITY } from "../../shared/world/support.ts";
 import { structName, type StructMenu } from "./ui/structure.ts";
 import type { EmoteMenu } from "./ui/emotes.ts";

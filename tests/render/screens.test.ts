@@ -5,6 +5,7 @@ import { heapStats } from "bun:jsc";
 import { BILLBOARD_FACE } from "../../content/street.ts";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
+import { Screens } from "../../client/core/render/passes/screens.ts";
 import { FACE, FACE_FLOATS, FACE_LED, FACE_TOP, FACE_TOP_BEFORE, FramePacket, MAX_FACES } from "../../client/core/render/packet.ts";
 import { fitPicture } from "../../client/core/admin/screens-faces.ts";
 import { pictureCrop } from "../../client/core/render/picture-crop.ts";
@@ -33,6 +34,29 @@ function eye(x = 1280, z = 1000): Camera {
 }
 /** Its face toward a camera on the −z side: its +z turned to −z. */
 const FACING = 32768;
+
+test("the face player is requested once in reach and can retry after a failure", async () => {
+  const s = store(), screens = new Screens(FACES), cam = eye();
+  let tries = 0;
+  const load = async (): Promise<FaceScreens> => {
+    if (++tries === 1) throw new Error("offline");
+    return new FaceScreens();
+  };
+  screens.finder.find({ structs: s }, cam, REACH);
+  screens.request(load, 10);
+  expect(tries).toBe(0);
+  s.add(2, 1280, 0, 1040, FACING, 0, 1);
+  screens.finder.find({ structs: s }, cam, REACH);
+  screens.request(load, 20);
+  screens.request(load, 20);
+  await Promise.resolve();
+  screens.request(load, 25);
+  expect(tries).toBe(1);
+  screens.request(load, 6000);
+  await Promise.resolve();
+  screens.request(load, 12000);
+  expect(tries).toBe(2);
+});
 
 test("faces are found in their type's reach, in view and turned to the eye, nearest first", () => {
   const s = store(), finder = new FaceFinder(FACES), cam = eye();
