@@ -178,6 +178,12 @@ def run_starts(whole, g):
     return [round(whole.project(Point(r.coords[0])), 3) for r in (g.geoms if hasattr(g, 'geoms') else [g])]
 
 
+def passage(tags):
+    """Whether a way runs through a building at the street's own level: a building passage, or a covered or an indoor
+    way. It stays a street of the ground, and the build opens the ground storey along it (tools/mapworld/passages.ts)."""
+    return tags.get('tunnel') == 'building_passage' or tags.get('covered') == 'yes' or tags.get('indoor') == 'yes'
+
+
 def levels(text):
     """The floors a level or a layer tag names ('1', '0;1', '-1', '0-2' for 0 to 2), none where it names none."""
     out = []
@@ -273,6 +279,7 @@ def roads(m, elements, tiger_roads):
                             # oneway_dir: 1 one way along the drawn direction, -1 against it (OpenStreetMap's oneway=-1), 0 both.
                             'highway': t['highway'], 'lanes': lanes, 'oneway': oneway, 'oneway_dir': cut[w['id']][1], 'width_m': width,
                             'bridge': t.get('bridge') not in (None, 'no'), 'tunnel': t.get('tunnel') == 'yes',  # a building passage runs at the street's own level
+                            'passage': passage(t),
                             'tunnel_name': t.get('tunnel:name'),
                             'sidewalk': t.get('sidewalk'), 'layer': number(t.get('layer')) or 0,
                             # Left and right of the way's drawn direction, which its line keeps.

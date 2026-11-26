@@ -5,6 +5,7 @@ import { readLabels, resolveLabels, type Facts, type PublicPlace } from "./label
 import { bridgeHoles, corridorIndex, makeBridges } from "./bridges.ts";
 import { gradeRoadEntrances, roadGroundSamples } from "./bridge-earthwork.ts";
 import { settleRims } from "./lakes.ts";
+import { onGround, readPassages } from "./passages.ts";
 import { accessPlanner, deckCeiling, gradeApproaches, type Approach } from "./ruin-access.ts";
 import { clearCirculation, reconcileRubble } from "./ruin-clearance.ts";
 import { contextualize } from "./ruin-context.ts";
@@ -205,9 +206,11 @@ export function makeRuins(site: Site): StaticPiece[] {
   }
   // Each pass leaves garbage the next would lay its own peak on: the buildings' tries here, the walks' and the cars' below.
   Bun.gc(true);
-  const clearance = clearCirculation(pieces, records, infrastructureCount, assemblies, bridges.records);
+  // The streets through buildings, at the floors the buildings have levelled by now.
+  const passages = onGround(readPassages(site), site.groundAt);
+  const clearance = clearCirculation(pieces, records, infrastructureCount, assemblies, bridges.records, passages);
   if (reconcileRubble(pieces, records)) {
-    const more = clearCirculation(pieces, records, records[0]?.firstPiece ?? pieces.length, assemblies, bridges.records);
+    const more = clearCirculation(pieces, records, records[0]?.firstPiece ?? pieces.length, assemblies, bridges.records, passages);
     for (const [kind, n] of Object.entries(more)) clearance[kind] = (clearance[kind] ?? 0) + n;
   }
   // Ground at a sample lowered to `y`, or -1 for a sample past the map's edge, which is none: not its row's neighbour.

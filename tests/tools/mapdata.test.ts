@@ -169,3 +169,20 @@ ways = [(aisle, [(5, 5), (35, 5)]), (aisle, [(-50, 5), (10, 5)]), (aisle, [(105,
 print([off_ground(t, pts, garages) for t, pts in ways], levels('0-2'), levels('-1;1'), levels('-2-1'), levels('roof'))
 `).trim()).toBe("['parking', None, None, 'level', None, 'layer', None, None, None, None] [0.0, 2.0] [-1.0, 1.0] [-2.0, 1.0, 0.0] []");
 });
+
+test("a road piece says whether its way runs through a building; it stays a street, no tunnel", () => {
+  const root = mkdtempSync(join(tmpdir(), "snark-passage-"));
+  try {
+    expect(python(`
+import pathlib, streets
+class M:
+    pass
+m = M(); m.crs = 'EPSG:3857'; m.b = (-1000, -1000, 1000, 1000); m.raw = pathlib.Path(${JSON.stringify(root)}); m.base = m.raw
+way = lambda k, tags: {'type': 'way', 'id': k, 'tags': {'highway': 'service', **tags}, 'geometry': [{'lon': 0.001, 'lat': k * 0.001}, {'lon': 0.003, 'lat': k * 0.001}]}
+out, stats = streets.roads(m, [way(1, {'tunnel': 'building_passage'}), way(2, {'covered': 'yes'}), way(3, {'indoor': 'yes'}), way(4, {}), way(5, {'tunnel': 'yes'}), way(6, {'covered': 'no'})], [])
+print([(p['id'], p['passage'], p['tunnel']) for g, p in out])
+`).trim().split("\n").at(-1)).toBe("[('osm:1:0', True, False), ('osm:2:0', True, False), ('osm:3:0', True, False), ('osm:4:0', False, False), ('osm:5:0', False, True), ('osm:6:0', False, False)]");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

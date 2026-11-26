@@ -5,12 +5,13 @@ import type { RuinRecord } from "./ruins.ts";
 import type { StaticPiece } from "./statics.ts";
 import type { RoadEntrance } from "./bridge-earthwork.ts";
 import { carry } from "./known.ts";
+import type { Passage } from "./passages.ts";
 
 interface Point { x: number; y: number; z: number; }
 interface Segment { a: Point; b: Point; street: boolean; }
 
 // Clearance is applied after all buildings, since a neighbouring facade can overhang an earlier route.
-export function clearCirculation(pieces: StaticPiece[], records: RuinRecord[], infrastructure: number, assemblies: readonly StaticPiece[][] = [], decks: readonly { deck: readonly (Point & { gap: boolean })[]; entrances?: readonly RoadEntrance[] }[] = []): Record<string, number> {
+export function clearCirculation(pieces: StaticPiece[], records: RuinRecord[], infrastructure: number, assemblies: readonly StaticPiece[][] = [], decks: readonly { deck: readonly (Point & { gap: boolean })[]; entrances?: readonly RoadEntrance[] }[] = [], passages: readonly Passage[] = []): Record<string, number> {
   const segments: Segment[] = [];
   const add = (a: Point, b: Point, street: boolean): void => { segments.push({ a, b, street }); };
   for (const r of decks) for (let i = 1; i < r.deck.length; i++) if (!r.deck[i - 1]!.gap && !r.deck[i]!.gap) add(r.deck[i - 1]!, r.deck[i]!, false);
@@ -19,6 +20,16 @@ export function clearCirculation(pieces: StaticPiece[], records: RuinRecord[], i
   for (const r of decks) for (const e of r.entrances ?? []) for (let i = 1; i < (e.runout?.length ?? 0); i++) {
     const a = e.runout![i - 1]!, b = e.runout![i]!, length = Math.hypot(b.x - a.x, b.z - a.z);
     for (let side = -e.width / 2; side <= e.width / 2; side++) {
+      const dx = -(b.z - a.z) / length * side, dz = (b.x - a.x) / length * side;
+      add({ x: a.x + dx, y: a.y, z: a.z + dz }, { x: b.x + dx, y: b.y, z: b.z + dz }, true);
+    }
+  }
+  // A street through a building (passages.ts) is cleared as a runout is, across its width: the ground storey opens along
+  // it and what stands over the clearance stays.
+  for (const p of passages) for (let i = 1; i < p.points.length; i++) {
+    const a = p.points[i - 1]!, b = p.points[i]!, length = Math.hypot(b.x - a.x, b.z - a.z);
+    if (length < 0.01) continue;
+    for (let side = -p.width / 2; side <= p.width / 2; side++) {
       const dx = -(b.z - a.z) / length * side, dz = (b.x - a.x) / length * side;
       add({ x: a.x + dx, y: a.y, z: a.z + dz }, { x: b.x + dx, y: b.y, z: b.z + dz }, true);
     }
