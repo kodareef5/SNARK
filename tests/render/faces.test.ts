@@ -101,10 +101,12 @@ test("the shared head is made first, then one head a frame", () => {
   const f = new Faces(fakeAssets());
   f.register(MESH, REST);
   const looks = [lookOf(1), lookOf(2), lookOf(3)];
-  // The first frame asks for the table and the level; the next reads them, a make of its own.
+  // The first frame asks for the table and the level; the next two read them, a make each.
   expect(frame(f, "high", looks).slots).toEqual([-1, -1, -1]);
-  const read = frame(f, "high", looks);
-  expect(read.uploads.length + read.slots.filter((s) => s >= 0).length).toBe(0);
+  for (let k = 0; k < 2; k++) {
+    const read = frame(f, "high", looks);
+    expect(read.uploads.length + read.slots.filter((s) => s >= 0).length).toBe(0);
+  }
   const second = frame(f, "high", looks);
   expect(second.uploads.length).toBe(2);
   const shared = second.slots[0]!;
@@ -123,7 +125,7 @@ test("the shared head is made first, then one head a frame", () => {
 test("a neutral face draws the shared head and is never made", () => {
   const f = new Faces(fakeAssets());
   f.register(MESH, REST);
-  for (let k = 0; k < 3; k++) frame(f, "ultra", [defaultLook()]);
+  for (let k = 0; k < 4; k++) frame(f, "ultra", [defaultLook()]);
   for (let k = 0; k < 4; k++) expect(frame(f, "ultra", [defaultLook()]).uploads.length).toBe(0);
   expect(f.count).toBe(0);
 });
@@ -304,7 +306,7 @@ function pointsOf(u: AssetUpload, n: number): number[][] {
 /** Frames enough for the head, hair and beard to be read, their shared meshes made and `look`'s head; every upload, in order. */
 function wornFrames(f: Faces, look: Uint8Array, hair = HAIR, beard = BEARD): AssetUpload[] {
   const uploads: AssetUpload[] = [];
-  for (let k = 0; k < 10; k++) {
+  for (let k = 0; k < 16; k++) {
     f.begin(tierOf("high"), uploads, []);
     f.groomed(hair);
     if (f.ready(MESH)) f.head(MESH, look, 0, ONES, 0, 0, hair, beard);

@@ -357,7 +357,8 @@ function ring(head: Head, mouth: number, reach: readonly (readonly [number, numb
  * to stage `g` of HAIR_STAGES.
  */
 export function beardStyles(head: Head, mouth: number, g = 0): Record<string, Form> {
-  const profile = (v: number): number => 0.3 + 0.7 * smooth(0, 0.25, v) - 0.6 * smooth(0.6, 1, v);
+  // Thin at the lips, full in the middle and thinned almost to the skin at its edge, so the edge reads as no shelf.
+  const profile = (v: number): number => 0.3 + 0.7 * smooth(0, 0.25, v) - 0.92 * smooth(0.5, 1, v);
   const full = ring(head, mouth, BEARD_REACH.full, (a, v) => (a < -30 ? 12 : a < 15 ? 9 : a < 45 ? 6 : 5) * (1 + 0.3 * g) * MM * profile(v), "core");
   const short = ring(head, mouth, BEARD_REACH.short, (a, v) => (a > 45 ? 4 : 5) * (1 + 0.4 * g) * MM * profile(v), "core");
   const stubble = ring(head, mouth, BEARD_REACH.short, () => (0.6 + 0.8 * g) * MM, "stubble");

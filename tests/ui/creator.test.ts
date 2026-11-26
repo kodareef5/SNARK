@@ -512,3 +512,29 @@ test("the whole-look random throws a face at the creator's spread", () => {
 function f(key: number): number {
   return key;
 }
+
+artTest("the face tab frames the head close enough that a small window draws the face being made", () => {
+  for (const [w, ht] of [[854, 480], [1280, 720]] as const) {
+    const h = new Harness();
+    const app = new App(h.join("ada", { latencyMs: 20 }, { manual: true, look: null }), h.reg, corePack());
+    let packet = app.frame(0, w, ht);
+    const run = (ms: number): void => h.run(ms, (now) => (packet = app.frame(now, w, ht)));
+    run(500);
+    const ui = app.ui, f = ui.frame;
+    const n = f.find(KEY_CREATOR_TAB + 2)!;
+    app.pointer(0, KEY_CREATOR_TAB + 2, n.x + n.w / 2, n.y + n.h / 2, 0);
+    app.pointer(1, KEY_CREATOR_TAB + 2, n.x + n.w / 2, n.y + n.h / 2, 0);
+    setFaces(ui.screen<CreatorScreen>("creator").look, FACE_PRESETS[1]!.values);
+    run(700);
+    const faces = app.scene!.characters.faces, session = app.session;
+    expect(faces.count, `${w}x${ht}`).toBe(1);
+    // The head fills a good part of the view's height, left of the panel.
+    const top = [0, 0, 0], chin = [0, 0, 0];
+    expect(app.cam.project(session.own.x, session.own.y + 1.75, session.own.z, top)).toBe(true);
+    expect(app.cam.project(session.own.x, session.own.y + 1.45, session.own.z, chin)).toBe(true);
+    expect(Math.abs(chin[1]! - top[1]!), `${w}x${ht}`).toBeGreaterThan(0.25);
+    expect(top[0]!).toBeLessThan(0.6);
+    expect(packet!.drawCount).toBeGreaterThan(0);
+    h.host.shutdown();
+  }
+});

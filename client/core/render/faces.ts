@@ -29,6 +29,8 @@ const FOLLOW_FAR = 0.03;
 /** Frames nothing is made after the card refuses a made mesh, times the refusals so far; past the most, none is made again. */
 const REFUSAL_WAIT = 120;
 const MOST_REFUSALS = 4;
+/** Vertices of a hair or beard whose followers are found a frame: its first read is spread over frames this way. */
+const READ_STEP = 128;
 
 /** What faces.ts needs of the asset library (client/core/assets). */
 export interface FaceAssets {
@@ -102,6 +104,29 @@ interface Worn extends Placed {
   shared: boolean;
 }
 
+/** A head's vertices in cubes FOLLOW_FAR across, each cube's listed together, for finding those near a point. */
+interface Grid {
+  readonly lo: readonly number[];
+  readonly cells: readonly number[];
+  readonly start: Int32Array;
+  readonly list: Int32Array;
+}
+
+/** A hair or beard being read, a few hundred vertices a frame: all a Worn is but its skin's rows, and the next vertex. */
+interface Reading {
+  readonly mesh: number;
+  readonly source: Source;
+  readonly kept: { level: Uint8Array; surface: Uint8Array; indexCount: number; indexBytes: 2 | 4 };
+  readonly vertices: number;
+  readonly vertexAt: number;
+  readonly center: readonly number[];
+  readonly half: readonly number[];
+  readonly base: Float32Array;
+  readonly near: Int32Array;
+  readonly share: Float32Array;
+  next: number;
+}
+
 /** A head mesh's finest level as it came, its face table, and what making a head of it needs. */
 interface Source extends Placed {
   readonly mesh: number;
@@ -135,6 +160,7 @@ interface Source extends Placed {
   /** The slots its shared head takes. */
   readonly slot: number;
   shared: Made | null;
+  grid: Grid | null;
 }
 
 const NO_PIVOTS = new Float32Array(FACE_PIVOTS * 3);
@@ -145,6 +171,8 @@ export class Faces {
   /** Head meshes faces are drawn on, with the rest of the rig each was made on. */
   private readonly heads = new Map<number, Float32Array>();
   private readonly sources = new Map<number, Source>();
+  /** Face tables read, by head mesh, before their sources are. */
+  private readonly tables = new Map<number, FaceTable>();
   /** Hair and beard meshes drawn on a head: its mesh and whether it is a beard; and those read. */
   private readonly wearing = new Map<number, { head: number; beard: boolean }>();
   private readonly worn = new Map<number, Worn>();
@@ -156,6 +184,8 @@ export class Faces {
   private refusals = 0;
   private waitUntil = 0;
   private readonly dropLater: number[] = [];
+  /** The hair or beard being read, if any. */
+  private reading: Reading | null = null;
   private readonly made: Made[] = [];
   private readonly byKey = new Map<number, Made>();
   private frame = 0;
@@ -228,7 +258,11 @@ export class Faces {
         made = true;
       }
     }
-    // Then a hair or beard is read, or its shared one made.
+    // Then the hair or beard being read is read on, or another begun, or its shared one made.
+    if (!made && this.reading) {
+      this.readOn(this.reading);
+      made = true;
+    }
     for (const mesh of this.wantedWorn) {
       if (made) break;
       const w = this.worn.get(mesh);
@@ -371,7 +405,12 @@ export class Faces {
   private prepare(mesh: number): boolean {
     const blob = this.assets.faces(mesh), kept = this.assets.keptBytes(mesh, 0);
     if (!blob || !kept) return false;
-    const table = decodeFaces(blob);
+    // The table is read one frame and the level the next, each a make.
+    const table = this.tables.get(mesh);
+    if (!table) {
+      this.tables.set(mesh, decodeFaces(blob));
+      return true;
+    }
     const n = table.vertexCount;
     const vertexAt = (kept.indexCount * kept.indexBytes + 3) & ~3;
     if (kept.level.length !== vertexAt + n * VERTEX_BYTES || kept.skinAt !== n * SURFACE_BYTES) throw new Error(`a face table for ${n} vertices does not fit its head's finest level`);
@@ -398,40 +437,50 @@ export class Faces {
     normalSums(base, indices, sum0);
     this.sources.set(mesh, {
       mesh, table, bound: headBound(this.heads.get(mesh)!), vertices: n, indexCount: kept.indexCount, indexBytes: kept.indexBytes, vertexAt, level: kept.level, surface, skin,
-      center, half, base, held: Uint32Array.from(held), sum0, normal, tangent, indices, at: new Float32Array(n * 3), sum: new Float32Array(n * 3), lo: new Float64Array(3), hi: new Float64Array(3), slot: this.take(), shared: null,
+      center, half, base, held: Uint32Array.from(held), sum0, normal, tangent, indices, at: new Float32Array(n * 3), sum: new Float32Array(n * 3), lo: new Float64Array(3), hi: new Float64Array(3), slot: this.take(), shared: null, grid: null,
     });
     return true;
   }
 
   /**
-   * Reads a hair or beard's finest level once it and its head have come: which head vertices each of its vertices
-   * follows, and its skin with the rows it reads. False while either has not.
+   * Begins reading a hair or beard's finest level once it and its head have come: which head vertices each of its
+   * vertices follows, READ_STEP a frame (readOn), then its skin with the rows it reads. False while either has not come.
    */
   private prepareWorn(mesh: number): boolean {
+    if (this.reading) return false;
     const wearing = this.wearing.get(mesh)!, s = this.sources.get(wearing.head), kept = this.assets.keptBytes(mesh, 0);
     if (!s || !kept) return false;
     const vertexAt = (kept.indexCount * kept.indexBytes + 3) & ~3;
     const n = (kept.level.length - vertexAt) / VERTEX_BYTES;
     const { center, half } = this.assets.bounds(mesh);
-    const base = decoded(kept.level, vertexAt, n, center, half);
+    s.grid ??= gridOf(s);
+    this.reading = { mesh, source: s, kept, vertices: n, vertexAt, center, half, base: decoded(kept.level, vertexAt, n, center, half), near: new Int32Array(n * FOLLOWS).fill(-1), share: new Float32Array(n * FOLLOWS), next: 0 };
+    return true;
+  }
+
+  /** Finds the followers of the next READ_STEP vertices of the hair or beard `r`, and once all are found, keeps it. */
+  private readOn(r: Reading): void {
+    const to = Math.min(r.vertices, r.next + READ_STEP);
+    followers(r.source, r.source.grid!, r.base, r.next, to, r.near, r.share);
+    r.next = to;
+    if (to < r.vertices) return;
+    this.reading = null;
+    const { mesh, kept, vertices: n, base, near, share } = r, wearing = this.wearing.get(mesh)!;
     const surface = new Uint8Array(n * (SURFACE_BYTES + SKIN_BYTES));
     surface.set(kept.surface.subarray(0, n * SURFACE_BYTES));
     const skin = surface.subarray(n * SURFACE_BYTES);
     if (kept.surface.length >= n * (SURFACE_BYTES + SKIN_BYTES)) skin.set(kept.surface.subarray(n * SURFACE_BYTES, n * (SURFACE_BYTES + SKIN_BYTES)));
     else for (let v = 0; v < n; v++) {
-      skin.fill(kept.level[vertexAt + v * VERTEX_BYTES + 7]!, v * SKIN_BYTES, v * SKIN_BYTES + 4);
+      skin.fill(kept.level[r.vertexAt + v * VERTEX_BYTES + 7]!, v * SKIN_BYTES, v * SKIN_BYTES + 4);
       skin[v * SKIN_BYTES + 4] = 255;
     }
-    const near = new Int32Array(n * FOLLOWS).fill(-1), share = new Float32Array(n * FOLLOWS);
-    followers(s, base, n, near, share);
     const rest = this.heads.get(wearing.head)!;
     const groomed = !wearing.beard && guideSkin(base, skin, n, rest[B_HEAD * 3]!, rest[B_HEAD * 3 + 2]!);
-    const jaw = wearing.beard && jawSkin(s, near, share, skin, n);
+    const jaw = wearing.beard && jawSkin(r.source, near, share, skin, n);
     this.worn.set(mesh, {
-      mesh, head: wearing.head, vertices: n, vertexAt, indexCount: kept.indexCount, indexBytes: kept.indexBytes, level: kept.level, center, half, base, surface, groomed, rows: groomed || jaw,
+      mesh, head: wearing.head, vertices: n, vertexAt: r.vertexAt, indexCount: kept.indexCount, indexBytes: kept.indexBytes, level: kept.level, center: r.center, half: r.half, base, surface, groomed, rows: groomed || jaw,
       near, share, at: new Float32Array(n * 3), lo: new Float64Array(3), hi: new Float64Array(3), slot: this.take(), shared: false,
     });
-    return true;
   }
 
   /** The pack's own head with the face rows in its skin. */
@@ -551,32 +600,42 @@ function decoded(level: Uint8Array, vertexAt: number, n: number, center: readonl
   return out;
 }
 
-/**
- * For each of `n` vertices at `at`, up to FOLLOWS of head `s`'s vertices within FOLLOW_FAR, into `near`, and the share of
- * each one's move it takes into `share`: weighted by nearness, all of it within FOLLOW_NEAR of the nearest, none past FOLLOW_FAR.
- */
-function followers(s: Source, at: Float32Array, n: number, near: Int32Array, share: Float32Array): void {
-  // The head's vertices in cubes FOLLOW_FAR across, each cube's listed together.
+/** Head `s`'s vertices in cubes FOLLOW_FAR across. */
+function gridOf(s: Source): Grid {
   const lo = [0, 1, 2].map((a) => s.center[a]! - s.half[a]! - FOLLOW_FAR), cells = [0, 1, 2].map((a) => Math.ceil((2 * s.half[a]! + 2 * FOLLOW_FAR) / FOLLOW_FAR) + 1);
-  const cellOf = (x: number, y: number, z: number): number => {
-    const i = Math.floor((x - lo[0]!) / FOLLOW_FAR), j = Math.floor((y - lo[1]!) / FOLLOW_FAR), k = Math.floor((z - lo[2]!) / FOLLOW_FAR);
-    return i < 0 || j < 0 || k < 0 || i >= cells[0]! || j >= cells[1]! || k >= cells[2]! ? -1 : (k * cells[1]! + j) * cells[0]! + i;
-  };
   const count = cells[0]! * cells[1]! * cells[2]!, start = new Int32Array(count + 1), list = new Int32Array(s.vertices);
-  for (let v = 0; v < s.vertices; v++) start[cellOf(s.base[v * 3]!, s.base[v * 3 + 1]!, s.base[v * 3 + 2]!) + 1]!++;
+  const grid = { lo, cells, start, list };
+  for (let v = 0; v < s.vertices; v++) start[cellOf(grid, s.base[v * 3]!, s.base[v * 3 + 1]!, s.base[v * 3 + 2]!) + 1]!++;
   for (let c = 0; c < count; c++) start[c + 1]! += start[c]!;
   const fill = start.slice(0, count);
-  for (let v = 0; v < s.vertices; v++) list[fill[cellOf(s.base[v * 3]!, s.base[v * 3 + 1]!, s.base[v * 3 + 2]!)]!++] = v;
-  const best = new Float64Array(FOLLOWS);
-  for (let v = 0; v < n; v++) {
+  for (let v = 0; v < s.vertices; v++) list[fill[cellOf(grid, s.base[v * 3]!, s.base[v * 3 + 1]!, s.base[v * 3 + 2]!)]!++] = v;
+  return grid;
+}
+
+/** The cube of `g` that (x, y, z) is in, -1 outside them. */
+function cellOf(g: Grid, x: number, y: number, z: number): number {
+  const i = Math.floor((x - g.lo[0]!) / FOLLOW_FAR), j = Math.floor((y - g.lo[1]!) / FOLLOW_FAR), k = Math.floor((z - g.lo[2]!) / FOLLOW_FAR);
+  return i < 0 || j < 0 || k < 0 || i >= g.cells[0]! || j >= g.cells[1]! || k >= g.cells[2]! ? -1 : (k * g.cells[1]! + j) * g.cells[0]! + i;
+}
+
+const best = new Float64Array(FOLLOWS);
+
+/**
+ * For vertices `from` to `to` at `at`, up to FOLLOWS of head `s`'s vertices within FOLLOW_FAR, into `near`, and the
+ * share of each one's move it takes into `share`: weighted by nearness, all of it within FOLLOW_NEAR of the nearest,
+ * none past FOLLOW_FAR.
+ */
+function followers(s: Source, g: Grid, at: Float32Array, from: number, to: number, near: Int32Array, share: Float32Array): void {
+  for (let v = from; v < to; v++) {
     const x = at[v * 3]!, y = at[v * 3 + 1]!, z = at[v * 3 + 2]!, o = v * FOLLOWS;
     best.fill(FOLLOW_FAR);
     for (let dk = -1; dk <= 1; dk++) for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
-      const c = cellOf(x + di * FOLLOW_FAR, y + dj * FOLLOW_FAR, z + dk * FOLLOW_FAR);
+      const c = cellOf(g, x + di * FOLLOW_FAR, y + dj * FOLLOW_FAR, z + dk * FOLLOW_FAR);
       if (c < 0) continue;
-      for (let e = start[c]!; e < start[c + 1]!; e++) {
-        const i = list[e]!, d = Math.hypot(s.base[i * 3]! - x, s.base[i * 3 + 1]! - y, s.base[i * 3 + 2]! - z);
-        if (d >= best[FOLLOWS - 1]!) continue;
+      for (let e = g.start[c]!; e < g.start[c + 1]!; e++) {
+        const i = g.list[e]!, dx = s.base[i * 3]! - x, dy = s.base[i * 3 + 1]! - y, dz = s.base[i * 3 + 2]! - z, d2 = dx * dx + dy * dy + dz * dz;
+        if (d2 >= best[FOLLOWS - 1]! * best[FOLLOWS - 1]!) continue;
+        const d = Math.sqrt(d2);
         // Kept nearest first.
         let j = FOLLOWS - 1;
         while (j > 0 && best[j - 1]! > d) {

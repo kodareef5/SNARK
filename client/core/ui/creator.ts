@@ -78,6 +78,10 @@ export class CreatorScreen implements Screen {
   readonly bands = [{ from: KEY_CREATOR_PANEL, count: KEY_CREATOR_END - KEY_CREATOR_PANEL }];
   readonly look = defaultLook();
   tab = TAB_LOOK;
+  /** Whether the face tab is open, which frames the head. */
+  get faceTab(): boolean {
+    return this.tab === TAB_FACE;
+  }
   /** The face group the face tab shows. */
   faceGroup = 0;
   /** Radians. The body starts facing the viewer, a little to one side. */
