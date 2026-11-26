@@ -1,9 +1,11 @@
 import { expect } from "bun:test";
+import { nearestTriangle } from "../../client/core/assets/look.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { B_PROP_R } from "../../shared/anim/human.ts";
 import { slotsOf } from "../../shared/content/slots.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { findAssets } from "../../tools/art/assets.ts";
+import { grayboxMeshes } from "../../tools/pack/build.ts";
 import { iconSubjects } from "../../tools/pack/icons.ts";
 import { boundsOf } from "../../tools/pack/lying.ts";
 import { spanOf } from "../../tools/pack/surface.ts";
@@ -189,4 +191,42 @@ artTest("egg pairs share the laid shell and colour only the fertile ring", async
   expect(eggSizes).toEqual(new Set(meshes.keys()));
   expect(eggSizes.size).toBe(5);
   for (const mesh of meshes.values()) expectLevels(mesh, 500);
+});
+
+
+artTest("skate surfaces follow their walked shapes at every level", async () => {
+  const pack = "core:skate-camp-kits";
+  await expectItemArt(pack, ["zzzzzskateboard_assembly", "boat_assembly", "helicopter_assembly"], []);
+  await expectStationArt(pack, ["bunk_bed"], []);
+  const meshes = await meshesIn(pack);
+  const walked = new Map(grayboxMeshes(CORE_CONTENT).map(mesh => [mesh.id, mesh.lods[0]!]));
+  const icons = new Map(iconSubjects(CORE_CONTENT, id => meshes.has(id)).map(icon => [icon.owner, icon]));
+  const artHit = new Float64Array(1), walkedHit = new Float64Array(1);
+  for (const name of ["kicker", "rail", "ledge"]) {
+    const id = `core:zzzzzzskate_${name}`;
+    const item = `${id}_item`;
+    const mesh = meshes.get(id);
+    expect(mesh, id).toBeDefined();
+    expect(icons.get(item), item).toMatchObject({ icon: `${item}/icon`, mesh: id });
+    expectLevels(mesh!, 500);
+    const ref = walked.get(id)!;
+    const [minimum, maximum] = boundsOf(ref);
+    for (const lod of mesh!.lods) {
+      const [from, to] = boundsOf(lod);
+      for (const axis of [0, 1, 2] as const) {
+        expect(from[axis], id).toBeCloseTo(minimum[axis], 3);
+        expect(to[axis], id).toBeCloseTo(maximum[axis], 3);
+      }
+      for (const along of [.02, .11, .24, .44, .63, .84, .98]) {
+        for (const across of [.035, .18, .41, .54, .8, .965]) {
+          const x = minimum[0] + along * (maximum[0] - minimum[0]);
+          const z = minimum[2] + across * (maximum[2] - minimum[2]);
+          const hit = nearestTriangle(lod.positions, lod.indices, x, 2, z, 0, -1, 0, artHit);
+          const walkedAt = nearestTriangle(ref.positions, ref.indices, x, 2, z, 0, -1, 0, walkedHit);
+          expect(hit >= 0, id).toBe(walkedAt >= 0);
+          if (walkedAt >= 0) expect(artHit[0]!, id).toBeCloseTo(walkedHit[0]!, 3);
+        }
+      }
+    }
+  }
 });

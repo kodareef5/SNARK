@@ -2,7 +2,7 @@
   "repository": "kodareef5/SNARK",
   "art": {
     "release": "art",
-    "id": "7e46024471be2b83",
+    "id": "674e933ba0d48701",
     "files": [
       {"name": "core-creatures-allosaur", "file": "core-creatures-allosaur.5eb2682fdf0a.tar.zst", "bytes": 2833562, "sha256": "5eb2682fdf0abb902fa1807673cf9dc46c3111e728eda23299b3a910d74129e2"},
       {"name": "core-creatures-ankylo", "file": "core-creatures-ankylo.d19e9025be7c.tar.zst", "bytes": 1901178, "sha256": "d19e9025be7ccaeb84f4bf80f6554f9e9a6a2971b062a6666ab9f50e8901146b"},
@@ -71,6 +71,7 @@
       {"name": "core-items-rounds", "file": "core-items-rounds.3d8a9d62746e.tar.zst", "bytes": 158066, "sha256": "3d8a9d62746e57abb9c2f4424b97b839980438bb4f4473e8e916a99e529bc942"},
       {"name": "core-items-saddles-early", "file": "core-items-saddles-early.9a9537b3d0e7.tar.zst", "bytes": 4269303, "sha256": "9a9537b3d0e73d6e0375d375ee79dbeac31b117c5f9c95635367e709cd29caea"},
       {"name": "core-items-saddles-heavy", "file": "core-items-saddles-heavy.d02d70c3db76.tar.zst", "bytes": 4091689, "sha256": "d02d70c3db76c275e7b52d5e29d01617570ca57fb8346dbd9013d26d06155817"},
+      {"name": "core-items-skate-camp-kits", "file": "core-items-skate-camp-kits.1421780e814f.tar.zst", "bytes": 155006, "sha256": "1421780e814fa2c6f0ee18c7a0cddabb61dc45dafa233125cd14f14043f4b0a4"},
       {"name": "core-items-soul-ball", "file": "core-items-soul-ball.78fb5fb54f31.tar.zst", "bytes": 36713, "sha256": "78fb5fb54f31dc3cfa0b18a1ec411f80c368674222766cf5002b4bbd52bbec28"},
       {"name": "core-items-stone-tools", "file": "core-items-stone-tools.fb143b2816f1.tar.zst", "bytes": 34000573, "sha256": "fb143b2816f17894fb76cb3022894e093094a73346fe705da1076f75d8ecc414"},
       {"name": "core-items-weapons", "file": "core-items-weapons.2b679b6fdd81.tar.zst", "bytes": 8004901, "sha256": "2b679b6fdd818275bfe1b35d1b1bf9a47649add084eae1118eb8c047f6d6fc40"},

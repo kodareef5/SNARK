@@ -2280,6 +2280,7 @@ assets/source/core/items/saddles-heavy/tex/metal_base.png
 assets/source/core/items/saddles-heavy/tex/metal_height.png
 assets/source/core/items/saddles-heavy/tex/metal_normal.png
 assets/source/core/items/saddles-heavy/tex/metal_orm.png
+assets/source/core/items/skate-camp-kits/skate-camp-kits.snpk
 assets/source/core/items/soul-ball/soul-ball.snpk
 assets/source/core/items/stone-tools/ref/concept/.start
 assets/source/core/items/stone-tools/stone-tools.snpk
