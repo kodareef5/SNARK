@@ -18,16 +18,18 @@ import { graded, shown, skyShown, tone, ungraded, untone } from "../../client/co
 import { GRADE } from "../../content/grade.ts";
 
 /** The programs that show light, which a frame drawn as light draws with its light untoned. */
-const SHOWING = ["flat", "terrain", "terrainWindow", "seeThrough", "far", "pulled", "surface", "surfaceWhole", "surfaceUndyed", "surfaceUndyedWhole", "surfaceLayer", "sky", "water", "details"];
+const SHOWING = ["flat", "terrain", "terrainWindow", "seeThrough", "far", "pulled", "surface", "surfaceWhole", "surfaceUndyed", "surfaceUndyedWhole", "surfaceLayer", "sky", "water", "details", "screens"];
 
-test("high and ultra draw as light where the device has a light target, with the same texts down the governor's steps but its step to none, whose are those the shell links beside them; medium and low poly draw no light", () => {
+test("light-target variants keep the same shaders down the governor's ladder", () => {
   for (const tier of TIERS) {
     expect([drawsLight(tier, 0x881a), drawsLight(tier, 0)]).toEqual([tier.name === "high" || tier.name === "ultra", false]);
     for (const name of SHOWING) {
       const [as, without] = [PROGRAMS[name]!(tier, "bc", false, true), PROGRAMS[name]!(tier, "bc", false, false)];
       // Only the define differs, and only where the frame is drawn as light.
       expect([as.vertex, as.fragment, as.samplers]).toEqual([without.vertex, without.fragment, without.samplers]);
-      expect(as.defines).toBe(without.defines + (drawsLight(tier, true) ? "#define LIGHT_TARGET\n" : ""));
+      const lightDefines = /^#define LIGHT_TARGET\n/gm;
+      expect([...as.defines.matchAll(lightDefines)].length).toBe(Number(drawsLight(tier, true)));
+      expect(as.defines.replace(lightDefines, "")).toBe(without.defines);
       if (!drawsLight(tier, true)) continue;
       for (const touch of [false, true]) {
         const top = forTouch(tier, touch);

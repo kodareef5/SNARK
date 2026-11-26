@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { Binding } from "../../client/core/assets/bind.ts";
 import { AssetTable } from "../../client/core/assets/table.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { describePack, parseManifest, type Manifest } from "../../shared/pack/manifest.ts";
@@ -194,6 +195,13 @@ test("a pack of another version is refused, clips come back within a step, and t
   expect(coloured.size).toBeGreaterThan(0);
   for (const m of now.header.meshes.filter((m) => m.lods.length === 3)) {
     const [fine, mid, far] = m.lods.map((l) => l.error) as [number, number, number];
+    if (m.id === "core:phase_wall_open_tek") {
+      // The fallback draws the closing wall at the first two levels and the clear opening at the last.
+      expect(m.lods[0]!.indexCount).toBeGreaterThan(0);
+      expect(m.lods[1]!.indexCount).toBe(m.lods[0]!.indexCount);
+      expect([m.lods[2]!.indexCount, m.lods[2]!.vertexCount, fine, mid, far]).toEqual([0, 0, 0, 0, 0]);
+      continue;
+    }
     if (m.id.startsWith("core:tide_eye/")) {
       // The floating instrument is 380 m tall. Its authored LODs stay within two metres at skyline distance.
       expect([m.id, fine === 0 && mid > 0 && far > mid && far < 2]).toEqual([m.id, true]);
@@ -227,8 +235,12 @@ artTest("the manifest lists every level with the bytes that hold it, and reads b
       const part = level.parts[0]!;
       expect(part.hash).toMatch(/^[0-9a-f]{16}$/);
       expect(part.hash).toBe(partHash(file.subarray(level.at, level.at + part.bytes)));
-      // The run is the indices and then the vertices.
-      expect(new DataView(file.buffer, file.byteOffset + level.at).getUint16(0, true)).toBeLessThan(level.verts);
+      // The run is the indices and then the vertices. An empty fallback has neither.
+      if (level.tris === 0) expect([level.verts, part.bytes]).toEqual([0, 0]);
+      else {
+        const view = new DataView(file.buffer, file.byteOffset + level.at, part.bytes);
+        expect(level.index === 4 ? view.getUint32(0, true) : view.getUint16(0, true)).toBeLessThan(level.verts);
+      }
       levels++;
     }
   }
@@ -240,6 +252,11 @@ artTest("the manifest lists every level with the bytes that hold it, and reads b
   expect([a.count, a.tris, a.error, [...a.radius], a.skeleton, [...a.rig], [...a.bone]]).toEqual([b.count, b.tris, b.error, [...b.radius], b.skeleton, [...b.rig], [...b.bone]]);
   expect(a.tris[a.find("core:human_m/torso")]).toEqual([1150, 392, 108]);
   expect(a.has("clip", "human/walk") && a.has("rig", "human_f") && !a.has("mesh", "core:nothing")).toBe(true);
+  const binding = new Binding(CORE_CONTENT, a);
+  const wall = a.find("core:wall_tek");
+  expect(wall).toBeGreaterThanOrEqual(0);
+  expect(a.tris[wall]!.length).toBeGreaterThan(3);
+  for (const id of ["core:phase_wall_tek", "core:phase_wall_open_tek"]) expect(binding.mesh(id, "mesh")).toBe(wall);
 
   const bad = (change: (m: Manifest) => void): (() => unknown) => {
     const m = JSON.parse(text) as Manifest;

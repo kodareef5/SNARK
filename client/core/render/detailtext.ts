@@ -268,15 +268,15 @@ ${LIGHT}${SHADOW_GLSL}${AIR}${STREET_GLSL}${poolShadeGlsl(MAX_CONTACTS)}${ROTOR_
   return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
 }
 void main() {
-  // A damage number shows its own colours as the HUD would, whatever the light, and is never fogged: it is 2 m off.
   if (vFlags == ${DETAIL_TEK}u) {
-    vec4 wave = rippleOf() * covers(1.0);
+    vec4 wave = rippleOf();
 #ifdef LIGHT_TARGET
     wave.rgb = ${UNGRADED("wave.rgb * wave.rgb")};
 #endif
-    o = wave;
+    o = wave * covers(1.0);
     return;
   }
+  // A damage number shows its own colours as the HUD would, whatever the light, and is never fogged: it is 2 m off.
   if (vFlags == ${DETAIL_DIGITS}u) {
     vec3 g = digitsOf(vCorner);
     if (g.x * vShows < 0.004) discard;

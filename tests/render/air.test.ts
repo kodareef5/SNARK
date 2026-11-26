@@ -205,7 +205,10 @@ test("LIT, SURFACE and the dome read the air; the dome's text is written from th
   const medium = tierOf("medium");
   for (const name of ["flat", "terrain", "seeThrough", "far", "sky"]) expect(PROGRAMS[name]!(medium, "bc").fragment.includes(AIR)).toBe(true);
   expect(PROGRAMS.surface!(medium, "astc").fragment.includes(AIR)).toBe(true);
-  expect(LIT_FRAGMENT.includes("shown(lit(albedo, orm * vec3(open, 1.0, 1.0), n, v, mirrored, sunShadow(vRel, geometric)) + room * skyLight(geometric) * roomOpen, vRel)")).toBe(true);
+  expect(LIT_FRAGMENT).toContain("vec3 localLight = room * skyLight(geometric) * roomOpen;");
+  expect(LIT_FRAGMENT).toContain("localLight += tekFieldLight(");
+  expect(LIT_FRAGMENT).toContain("shown(lit(albedo, orm * vec3(open, 1.0, 1.0), n, v, mirrored, sunShadow(vRel, geometric)) + localLight, vRel)");
+  expect(PROGRAMS.seeThrough!(medium, "bc").fragment).toContain("through(albedo, orm, n, vFinish.w, shade) + localLight, vRel)");
   expect(SKY_FRAGMENT.includes(`* ${Math.cos(BREAK.turn)}`) || SKY_FRAGMENT.includes(String(Math.cos(BREAK.turn)))).toBe(true);
   for (const part of [SKY_FRAGMENT]) expect([part.split("{").length, part.split("(").length]).toEqual([part.split("}").length, part.split(")").length]);
 });

@@ -12,7 +12,8 @@ import { effectsOff, packetWithout, sceneWithout } from "../../client/core/passe
 import { BURST_REACH, Blasts, LOBES_MID, LOBES_NEAR, MAX_BURSTS, MAX_TRAILS, MAX_TRAIL_CARDS, TRAIL_CARDS, TRAIL_SECONDS } from "../../client/core/render/blasts.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { DETAIL_FLAT_FRAGMENT, DETAIL_LIT_FRAGMENT } from "../../client/core/render/detailtext.ts";
-import { DETAIL, DETAIL_FLOATS, DETAIL_GLOW, DETAIL_SMOKE, DRAW_BLEND, DRAW_DETAILS, DRAW_FIRE, FramePacket } from "../../client/core/render/packet.ts";
+import { UNGRADED } from "../../client/core/render/fire-light.ts";
+import { DETAIL, DETAIL_FLOATS, DETAIL_GLOW, DETAIL_SMOKE, DETAIL_TEK, DRAW_BLEND, DRAW_DETAILS, DRAW_FIRE, FramePacket } from "../../client/core/render/packet.ts";
 import { SETTING_ROWS, Settings } from "../../client/core/settings.ts";
 import { SHAKE_LAUNCH, SHAKE_MOST, SHAKE_MS, Shake, blastShake } from "../../client/core/view/shake.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
@@ -471,13 +472,22 @@ test("a blast shakes a view near it, harder the nearer and the larger; the viewe
   expect([settings.viewShake, row.value(settings), JSON.parse(settings.interfacePreferences()).viewShake]).toEqual([false, "off", false]);
 });
 
-test("an effect may glow, be thick, be a streak, and show less than whole; the details give colour weighed by how much shows, and blend it so", () => {
+test("effects validate their shapes and blend with premultiplied colour", () => {
   const of = (raw: Record<string, unknown>) => effectOf("t/e", { pictures: ["p"], ...raw }, () => 0);
   expect([of({}).glow, of({}).opacity, of({}).thick, of({ glow: 3, face: "streak", opacity: 0.5 }).face]).toEqual([0, 1, false, "streak"]);
   for (const bad of [{ glow: -1 }, { glow: 16 }, { glow: 2, pass: "cutout" }, { opacity: 0 }, { opacity: 1.2 }, { thick: true, face: "flat" }, { thick: 1 }, { face: "sideways" }]) expect(() => of(bad)).toThrow();
-  // Every colour a see-through draw gives goes through `weighed`, or is light alone (alpha 0), or black.
-  for (const text of [DETAIL_FLAT_FRAGMENT, DETAIL_LIT_FRAGMENT]) {
-    const gives = text.split("\n").filter((line) => /^\s*o = /.test(line));
+  const flatWave = "o = rippleOf() * covers(1.0);";
+  const litWave = `vec4 wave = rippleOf();
+#ifdef LIGHT_TARGET
+    wave.rgb = ${UNGRADED("wave.rgb * wave.rgb")};
+#endif
+    o = wave * covers(1.0);`;
+  for (const [text, wave] of [[DETAIL_FLAT_FRAGMENT, flatWave], [DETAIL_LIT_FRAGMENT, litWave]] as const) {
+    // The ripple supplies light and absorption together. Coverage scales both after any conversion.
+    const ripple = `if (vFlags == ${DETAIL_TEK}u) {\n    ${wave}\n    return;\n  }`;
+    expect(text).toContain(ripple);
+    // The other outputs use weighed, additive light, or black.
+    const gives = text.replace(ripple, "").split("\n").filter((line) => /^\s*o = /.test(line));
     expect(gives.length).toBeGreaterThanOrEqual(3);
     for (const line of gives) expect(/o = weighed\(|, 0\.0\);$|o = vec4\(0\.0, ?0\.0, ?0\.0,/.test(line), line).toBe(true);
     expect(text.includes("return vec4(uBlend > 0.5 ? c * a : c, a);")).toBe(true);
