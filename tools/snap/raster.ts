@@ -54,7 +54,7 @@ import { WET_DARK, WET_ROUGH, shoreWet } from "../../client/core/render/bank.ts"
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
 import { domeLight, theSky, trueSun } from "../../client/core/render/sky.ts";
 import { wearLate } from "../../client/core/render/wear.ts";
-import { heatOfShown, LAYER_LEVELS, NEUTRAL, bounce, bumped, direct, dyed, glowAt, lampsOn, materialEmission, lit, moonCasts, regionDyes, shown, skinMode, skyFrom, skyLight, skyOn, srgbToLinear, through, wounded } from "../../client/core/render/surface.ts";
+import { heatOfShown, LAYER_LEVELS, NEUTRAL, bodyMirror, bounce, bumped, direct, dyed, glowAt, lampsOn, materialEmission, lit, moonCasts, regionDyes, shown, skinMode, skyFrom, skyLight, skyOn, srgbToLinear, through, wounded } from "../../client/core/render/surface.ts";
 import type { AssetUpload } from "../../client/core/assets/residency.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
 import { finishTable, type FinishTable } from "../../shared/pack/finish.ts";
@@ -109,6 +109,8 @@ interface Surfaced {
   label: number;
   seed: number;
   wheelBones: number;
+  /** Whether it is a body on four-bone skin, whose mirror `bodyMirror` turns. */
+  body: boolean;
   spokeCrown: boolean;
   /** The material's glass set (vehicle-glass.ts), 0 for none. */
   glass: number;
@@ -1814,7 +1816,7 @@ export class Rasterizer {
     const mesh = (this.manifest ?? this.pack.header).meshes[p.drawMesh[d]!]!;
     const rig = this.pack.header.rigs?.[mesh.rig ?? -1];
     const wheels = p.drawWheelBones[d]!, finish = p.drawStreetMaterial[d]!;
-    const s: Surfaced = { pieceWear: 0, weather: (finish - Math.floor(finish))*4, spokeCrown: (p.drawOptics[d]! & 1) === 1, glass: opticsGlass(p.drawOptics[d]!), firstBone: 0, positions: lod.positions, rest: rig?.rest, wheelBones: skinMode(flags,surface.skin !== undefined) === 1 ? wheels : 0, label: Math.floor(finish), seed: 0, maps, layer, level: level / LAYER_LEVELS, wear, box, tint: material.tint, cutoff: (flags & DRAW_CUTOUT) !== 0 ? material.cutoff : 0, sheet: material.sheet ?? 0, emissive: materialEmission(material, lampsOn(p.frame), p.frame[FRAME.exposure]!), twoSided: (flags & DRAW_TWO_SIDED) !== 0, uvs: surface.uvs, tangents: surface.tangents, normals: surface.normals, center, half, bend: null, bent: null };
+    const s: Surfaced = { pieceWear: 0, weather: (finish - Math.floor(finish))*4, spokeCrown: (p.drawOptics[d]! & 1) === 1, glass: opticsGlass(p.drawOptics[d]!), firstBone: 0, positions: lod.positions, rest: rig?.rest, wheelBones: skinMode(flags,surface.skin !== undefined) === 1 ? wheels : 0, body: skinMode(flags,surface.skin !== undefined) === 3, label: Math.floor(finish), seed: 0, maps, layer, level: level / LAYER_LEVELS, wear, box, tint: material.tint, cutoff: (flags & DRAW_CUTOUT) !== 0 ? material.cutoff : 0, sheet: material.sheet ?? 0, emissive: materialEmission(material, lampsOn(p.frame), p.frame[FRAME.exposure]!), twoSided: (flags & DRAW_TWO_SIDED) !== 0, uvs: surface.uvs, tangents: surface.tangents, normals: surface.normals, center, half, bend: null, bent: null };
     const end = p.drawFirstIndex[d]! + p.drawIndexCount[d]!;
     if (end > lod.indices.length) throw new Error(`draw ${d} runs past the indices of its level`);
     const transient = p.drawBuffer[d] === TRANSIENT_BUFFER;
@@ -2501,7 +2503,10 @@ export class Rasterizer {
           const twice = 2 * (opticalNormal[0]! * eye[0]! + opticalNormal[1]! * eye[1]! + opticalNormal[2]! * eye[2]!);
           const edge = 1 - Math.max(0, Math.min(1, twice*0.5));
           for (let i = 0; i < 3; i++) reflected[i] = twice * opticalNormal[i]! - eye[i]!;
+          // As SURFACE has it, the light from the ground is the pixel's before anything mirrors the sky.
+          const open = this.opened(carried[0]!, carried[1]!, carried[2]!, carriedNormal[0]! * nl, carriedNormal[1]! * nl, carriedNormal[2]! * nl, false, bone === 0);
           skyFrom(mirrored, p.frame, reflected, this.look);
+          if (s.body) bodyMirror(mirrored, p.frame, reflected, mro[1]!);
           if (instrument) {
             albedo2.fill(0);
             eyeGlint(p.frame, albedo2, carried[0]!, carried[2]!, reflected[1]!);
@@ -2544,7 +2549,6 @@ export class Rasterizer {
               mirrored[c] = mirrored[c]!*(1+0.85*chrome*visibility)+(0.55*p.frame[sky+c]!+0.45*grey)*fill*hue;
             }
           }
-          const open = this.opened(carried[0]!, carried[1]!, carried[2]!, carriedNormal[0]! * nl, carriedNormal[1]! * nl, carriedNormal[2]! * nl, false, bone === 0);
           opened.set([mro[0]! * open, mro[1]!, mro[2]!]);
           const cast = ballShade(p, carried[0]!, carried[1]!, carried[2]!);
           lit(light, albedo, opened, normal, eye, p.frame, mirrored, cast);
