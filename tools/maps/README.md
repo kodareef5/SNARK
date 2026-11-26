@@ -132,10 +132,14 @@ art file the city keeps: `assets/source/maps/<city>/art/map.png`.
 holds the same layers and pieces whatever cut is made round it; an edit changes its own sector's parts, its overview's
 tops and the head ([maps v3](../../planning/workstreams/maps-v3.md)).
 
-`bun tools/maps/local-gate.ts <city>` holds the generator to that: it cuts two nested rectangles at the city's middle,
-takes one footprint out of the outer, builds the three (two minutes) and exits 1 if a part differs 600 m or more from
-the inner's edge or from the footprint. Run it after any change under `tools/mapworld`: a list compacted under kept
-places, or a count over the whole map, passes every test and still moves pieces kilometres from an edit.
+`bun tools/maps/local-gate.ts <city>` holds the generator to that. At each of three places (the city's middle, one at
+the shore, one inland; `--places N` for more of its spread of nine, `--only` by name) it cuts two nested rectangles,
+takes one footprint and one pool out of the outer, and builds the three, one at a time, each once 15 GB of memory is
+free: about ten minutes. It exits 1 if anything differs 600 m or more inside the inner's edge, or from both edits: a
+part, and below the parts a static piece, a vehicle, spawn point, region or landmark of the head, or a street stretch as
+the build reported it (`unlike.ts`). A footprint goes from the list, the 2 m mask and the labels, as the stages would
+have left it out. Found aircraft are told and not failed: they are still picked over the whole map. Run it after any change under `tools/mapworld`: a list compacted under kept places, a count over the
+whole map or a distance with no bound passes every test and still moves pieces kilometres from an edit.
 
 ## Adding to it
 
