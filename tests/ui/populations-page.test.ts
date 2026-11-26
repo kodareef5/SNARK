@@ -11,7 +11,7 @@ import {
 
 const S: StoreState = storeStateOf({
   revision: 1, manifest: null, caps: {}, editions: [], people: [], outfits: [], populations: [], builtIns: POPULATIONS,
-  garments: [{ id: "core:plain_tee", label: "plain tee", slot: "top", dyes: true, cut: null }],
+  garments: [{ id: "core:tee", label: "plain tee", slot: "top", dyes: true, cut: null }],
   armour: [{ id: "core:cloth_shirt", label: "Cloth shirt", slot: 1 }, { id: "core:cloth_pants", label: "Cloth pants", slot: 3 }],
 })!;
 const CITY = POPULATIONS[0]!;
@@ -39,7 +39,7 @@ test("adding a shirt to a population's outfits changes no face on the sheet", ()
     // Everyone now wears something, where the city crowd wore its role's clothes.
     expect(after.every((p) => p.wear.join() === "core:cloth_shirt")).toBe(true);
     // A second outfit changes who wears which, and still no face.
-    addOutfit(d.doc, ["core:plain_tee", "core:cloth_pants"], 2);
+    addOutfit(d.doc, ["core:tee", "core:cloth_pants"], 2);
     const again = sheetOf(draftDef(d), seeds);
     expect(sheetChanges(after, again).every((c) => c.parts.length === 0)).toBe(true);
     expect(sheetChanges(after, again).some((c) => c.wear)).toBe(true);
@@ -93,20 +93,20 @@ test("the fields stay within the store's limits and the store reads the draft", 
 test("an outfit's pieces are garments or armour the world has", () => {
   const d = draftOfBuiltIn(CITY);
   addOutfit(d.doc, ["core:cloth_shirt"]);
-  setPiece(d.doc, 0, "core:plain_tee", true);
+  setPiece(d.doc, 0, "core:tee", true);
   setOutfitWeight(d.doc, 0, 3);
-  expect(d.doc.outfits).toEqual([{ wear: ["core:cloth_shirt", "core:plain_tee"], weight: 3 }]);
+  expect(d.doc.outfits).toEqual([{ wear: ["core:cloth_shirt", "core:tee"], weight: 3 }]);
   expect(populationFault(d.doc, S)).toBeNull();
   setPiece(d.doc, 0, "core:no_such", true);
   expect(populationFault(d.doc, S)).toContain("neither a garment nor armour");
   setPiece(d.doc, 0, "core:no_such", false);
   setPiece(d.doc, 0, "core:cloth_shirt", false);
-  setPiece(d.doc, 0, "core:plain_tee", false);
+  setPiece(d.doc, 0, "core:tee", false);
   expect(populationFault(d.doc, S)).toContain("wears nothing");
   removeOutfit(d.doc, 0);
   expect(d.doc.outfits).toBeUndefined();
-  for (let k = 0; k < 32; k++) expect(addOutfit(d.doc, ["core:plain_tee"])).toBe(true);
-  expect(addOutfit(d.doc, ["core:plain_tee"])).toBe(false);
+  for (let k = 0; k < 32; k++) expect(addOutfit(d.doc, ["core:tee"])).toBe(true);
+  expect(addOutfit(d.doc, ["core:tee"])).toBe(false);
 });
 
 test("a person is promoted only from a saved population, at the revision the sheet showed", () => {

@@ -150,12 +150,12 @@ try {
     if (!(await until(`document.body.dataset.stage === "ready" || document.body.dataset.stage === "error"`, "the stage to say it is ready", 1200))) return;
     check("the stage said ready", await run(`document.body.dataset.stage`), "ready");
     check("no edition is published yet", await listed(), []);
-    check("both garments can be started from", await run(`[...document.querySelectorAll("[data-start]")].map((b) => b.dataset.start)`), ["core:plain_tee", "core:plain_trousers"]);
+    check("both garments can be started from", await run(`[...document.querySelectorAll("[data-start]")].map((b) => b.dataset.start)`), ["core:tee", "core:jeans"]);
     await stageTook("the default person");
     await snap("empty");
 
     console.log("a draft with text, a picture and a shape");
-    await press('[data-start="core:plain_tee"]');
+    await press('[data-start="core:tee"]');
     if (!(await until(`!${q("#editor")}.hidden`, "the draft's editor"))) return;
     check("an unnamed draft cannot be published", [await run(`${q("#publish")}.disabled`), await text("#faults")], [true, "Give the edition a name of 1 to 40 letters."]);
     await type("#name", "Drive tee");
@@ -202,7 +202,7 @@ try {
     await said("Published edition 1.");
     let view = people.view();
     const first = view.editions[0];
-    check("the store has the edition as drafted", first && { name: first.name, garment: first.garment, colours: first.colours, side: [first.print?.width, first.print?.height], scale: first.print?.place.scale }, { name: "Drive tee", garment: "core:plain_tee", colours: [34, 58, 11], side: [512, 512], scale: 1.2 });
+    check("the store has the edition as drafted", first && { name: first.name, garment: first.garment, colours: first.colours, side: [first.print?.width, first.print?.height], scale: first.print?.place.scale }, { name: "Drive tee", garment: "core:tee", colours: [34, 58, 11], side: [512, 512], scale: 1.2 });
     if (first?.print) {
       const r = await fetch(`${base}${printPath(first.print.hash)}`);
       check("its print is served", [r.status, r.headers.get("content-type")], [200, "image/png"]);
@@ -221,7 +221,7 @@ try {
     const outside = await fetch(`${base}/admin/people/publish`, {
       method: "POST",
       headers: { "content-type": "application/json", origin: base },
-      body: JSON.stringify({ revision: people.view().revision, garment: "core:plain_trousers", colours: [0, 0, 0], name: "Outside trousers" }),
+      body: JSON.stringify({ revision: people.view().revision, garment: "core:jeans", colours: [0, 0, 0], name: "Outside trousers" }),
     });
     check("the other admin's publish was taken", outside.status, 200);
     await press("#publish");
@@ -239,7 +239,7 @@ try {
     check("the copy kept edition 1's print size and place", [view.byId.get(3)?.print?.width, view.byId.get(3)?.print?.place.scale], [512, 1.2]);
 
     console.log("a store too busy for a while");
-    await press('[data-start="core:plain_trousers"]');
+    await press('[data-start="core:jeans"]');
     await type("#name", "Busy trousers");
     const lock = new Database(`${dbPath}.people.sqlite`);
     lock.exec("BEGIN IMMEDIATE");
@@ -283,7 +283,7 @@ try {
     check("the page shows it so", (await listed()).at(-1), "1 Drive tee");
 
     console.log("a big picture brought under the cap");
-    await press('[data-start="core:plain_tee"]');
+    await press('[data-start="core:tee"]');
     await type("#name", "Noise tee");
     await press("#has-print");
     // A big picture is shrunk as it is read; it is taken off again.

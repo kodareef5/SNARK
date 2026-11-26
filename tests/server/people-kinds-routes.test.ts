@@ -40,7 +40,7 @@ const said = async (res: Response): Promise<[number, Record<string, unknown>]> =
 
 const source = { seed: 7, population: "core:people_city", locks: { face: 3 }, outfit: null };
 const mara = { name: "Mara", look: [...personFrom(7, CITY, undefined, source.locks).look], wardrobe: null, source, notes: "" };
-const tee = { garment: "core:plain_tee", edition: 0, weight: 1 };
+const tee = { garment: "core:tee", edition: 0, weight: 1 };
 const vendor = { name: "Vendor", slots: [{ choices: [tee], dye: [9, 0, 0] }, null, null, null, null] };
 
 test("saves answer and are logged; a stale page gets 409 and the state; a copy starts from a built-in", async () => {
@@ -82,10 +82,10 @@ test("saves answer and are logged; a stale page gets 409 and the state; a copy s
 test("what a thing names is checked against the world's content and the store, and a refusal logs nothing", async () => {
   const { a, b } = worlds();
   try {
-    const edition = ((await (await post(a, "/admin/people/publish", { revision: 0, garment: "core:plain_trousers", colours: [0, 0, 0], name: "Jeans" })).json()) as { id: number }).id;
+    const edition = ((await (await post(a, "/admin/people/publish", { revision: 0, garment: "core:jeans", colours: [0, 0, 0], name: "Jeans" })).json()) as { id: number }).id;
     const bad: [Record<string, unknown>, RegExp][] = [
       [{ kind: "outfit", id: null, rev: 0, doc: { ...vendor, slots: [null, { choices: [tee], dye: [0, 0, 0] }, null, null, null] } }, /worn as a top, not a bottom/],
-      [{ kind: "outfit", id: null, rev: 0, doc: { ...vendor, slots: [{ choices: [{ ...tee, edition }], dye: [0, 0, 0] }, null, null, null, null] } }, /not one of core:plain_tee/],
+      [{ kind: "outfit", id: null, rev: 0, doc: { ...vendor, slots: [{ choices: [{ ...tee, edition }], dye: [0, 0, 0] }, null, null, null, null] } }, /not one of core:tee/],
       [{ kind: "outfit", id: null, rev: 0, doc: { ...vendor, slots: [{ choices: [{ ...tee, garment: "core:stone" }], dye: [0, 0, 0] }, null, null, null, null] } }, /not a garment/],
       [{ kind: "person", id: null, rev: 0, doc: { ...mara, source: { ...source, population: 4 } } }, /no population 4/],
       [{ kind: "person", id: null, rev: 0, doc: { ...mara, source: { ...source, population: "core:nobody" } } }, /no population core:nobody/],
@@ -104,7 +104,7 @@ test("what a thing names is checked against the world's content and the store, a
     }
     expect((await post(a, "/admin/people/save", { kind: "person", id: 5, rev: 1, doc: mara })).status).toBe(404);
     // A population may wear armour and garments, as a content one may.
-    const dressed = await post(b, "/admin/people/save", { kind: "population", id: null, rev: 0, doc: { ...BEACH, label: "Dressed", outfits: [{ wear: ["core:plain_tee", "core:cloth_pants"], weight: 1 }] } });
+    const dressed = await post(b, "/admin/people/save", { kind: "population", id: null, rev: 0, doc: { ...BEACH, label: "Dressed", outfits: [{ wear: ["core:tee", "core:cloth_pants"], weight: 1 }] } });
     expect(dressed.status).toBe(200);
     expect((await post(a, "/admin/people/retire", { revision: 2, kind: "population", id: 2, retired: true })).status).toBe(404);
     const s = await state(b);

@@ -12,19 +12,19 @@ import {
 } from "../../client/core/admin/wardrobe.ts";
 
 const GARMENTS = [
-  { id: "core:plain_tee", label: "plain tee", slot: "top", dyes: true, cut: null },
-  { id: "core:plain_trousers", label: "plain trousers", slot: "bottom", dyes: true, cut: null },
+  { id: "core:tee", label: "plain tee", slot: "top", dyes: true, cut: null },
+  { id: "core:jeans", label: "plain trousers", slot: "bottom", dyes: true, cut: null },
   { id: "core:own_hat", label: "own hat", slot: "hat", dyes: false, cut: null },
 ];
 const state = (revision: number, names: string[] = []): PeopleState => ({
   revision, manifest: null, caps: STORE_CAPS, garments: GARMENTS,
-  editions: names.map((name, i) => ({ id: i + 1, garment: "core:plain_tee", colours: [0, 0, 0], print: null, name, retired: false })),
+  editions: names.map((name, i) => ({ id: i + 1, garment: "core:tee", colours: [0, 0, 0], print: null, name, retired: false })),
 });
 const S0 = state(0);
 
 /** A draft that passes: named, coloured, with a text on a square sheet. */
 function good(): Draft {
-  const d = newDraft("core:plain_tee", null);
+  const d = newDraft("core:tee", null);
   d.name = "Sunrise tee";
   d.colours = [34, 58, 11];
   d.sheet = newSheet();
@@ -37,7 +37,7 @@ test("a good draft has no faults and the store reads what the page would send", 
   const d = good();
   expect(draftFaults(d, S0)).toEqual([]);
   const read = readDraft(publishBody(d, 4, "0123456789abcdef") as unknown as Record<string, unknown>);
-  expect(read).toMatchObject({ garment: "core:plain_tee", colours: [34, 58, 11], name: "Sunrise tee", print: { hash: "0123456789abcdef", place: { u: 0.3, scale: 1 } } });
+  expect(read).toMatchObject({ garment: "core:tee", colours: [34, 58, 11], name: "Sunrise tee", print: { hash: "0123456789abcdef", place: { u: 0.3, scale: 1 } } });
   expect(publishBody({ ...d, sheet: null }, 4, null).print).toBeNull();
 });
 
@@ -84,7 +84,7 @@ test("the place sent always lies inside the sheet, with its scale and turn in ra
   expect([wild.scale, wild.turn]).toEqual([STORE_CAPS.scaleMax, Math.PI]);
   for (let k = 0; k < 200; k++) {
     const u = k / 199, p = placeOf({ u, v: u, w: 1 - u + 1e-9, h: 0.5, scale: 0.01, turn: -4 });
-    const read = readDraft({ revision: 0, garment: "core:plain_tee", colours: [0, 0, 0], name: "t", print: { hash: "0123456789abcdef", place: p } });
+    const read = readDraft({ revision: 0, garment: "core:tee", colours: [0, 0, 0], name: "t", print: { hash: "0123456789abcdef", place: p } });
     expect(typeof read).not.toBe("string");
   }
 });
@@ -200,9 +200,9 @@ test("a retire goes over the page's revision and a stale one answers the newer s
 
 test("the wardrobe sent puts the garment in its slot and parses as a stage command", () => {
   const top = wardrobeCommand(GARMENTS[0], 0, [34, 58, 11], { key: DRAFT_PRINT, place: placeFor("tee") });
-  expect(top.slots.map((s) => s?.item ?? null)).toEqual(["core:plain_tee", null, null, null, null]);
+  expect(top.slots.map((s) => s?.item ?? null)).toEqual(["core:tee", null, null, null, null]);
   const bottom = wardrobeCommand(GARMENTS[1], 3, [1, 2, 3], null);
-  expect(bottom.slots[1]).toEqual({ item: "core:plain_trousers", edition: 3, dye: [1, 2, 3], print: null });
+  expect(bottom.slots[1]).toEqual({ item: "core:jeans", edition: 3, dye: [1, 2, 3], print: null });
   for (const c of [top, bottom, wardrobeCommand(undefined, 0, [0, 0, 0], null)]) expect(parseStageCommand(stageMessage(c)).command).toEqual(c);
 });
 
@@ -245,7 +245,7 @@ test("a layer is found under the pointer by its turned box, and moves in the ord
 });
 
 test("a copy of an edition keeps its garment, colours, print size and place", () => {
-  const d = draftFrom({ id: 3, garment: "core:plain_tee", colours: [4, 5, 6], name: "x".repeat(40), print: { hash: "dddddddddddddddd", width: 512, height: 256, place: { u: 0.1, v: 0.2, w: 0.3, h: 0.4, scale: 2, turn: 1 } } });
+  const d = draftFrom({ id: 3, garment: "core:tee", colours: [4, 5, 6], name: "x".repeat(40), print: { hash: "dddddddddddddddd", width: 512, height: 256, place: { u: 0.1, v: 0.2, w: 0.3, h: 0.4, scale: 2, turn: 1 } } });
   expect([d.name.length, d.colours, d.sheet && [d.sheet.width, d.sheet.height], d.place.scale]).toEqual([40, [4, 5, 6], [512, 256], 2]);
 });
 
@@ -256,7 +256,7 @@ test("the cluster nav lists the wardrobe, which opens at /admin/wardrobe/", () =
 });
 
 test("a new print starts on the cut's own place, a tee's on the chest", () => {
-  const d = newDraft("core:plain_tee", "tee");
+  const d = newDraft("core:tee", "tee");
   expect(d.place).toEqual({ u: 0.06, v: 0.12, w: 0.25, h: 0.2, scale: 1, turn: 0 });
   const front = sheetOfCut("tee")!.panels.find((p) => p.name === "torso")!;
   // The chest is the torso's left half: the front.
@@ -266,8 +266,8 @@ test("a new print starts on the cut's own place, a tee's on the chest", () => {
 });
 
 test("a print not yet moved follows a change of garment to the new cut's place", () => {
-  const tee = { id: "core:plain_tee", label: "tee", slot: "top", dyes: true, cut: "tee" };
-  const jeans = { id: "core:plain_trousers", label: "jeans", slot: "bottom", dyes: true, cut: "jeans" };
+  const tee = { id: "core:tee", label: "tee", slot: "top", dyes: true, cut: "tee" };
+  const jeans = { id: "core:jeans", label: "jeans", slot: "bottom", dyes: true, cut: "jeans" };
   const d = newDraft(tee.id, tee.cut);
   changeGarment(d, tee, jeans);
   expect([d.garment, d.place]).toEqual([jeans.id, placeFor("jeans")]);

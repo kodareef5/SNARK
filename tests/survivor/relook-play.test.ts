@@ -242,8 +242,8 @@ test("another's hair is cut only by its tribe, within reach", () => {
 });
 
 // The first edition a fresh people store gives.
-const TEE = [id("plain_tee"), 1, dye(12, 40, 3)];
-const TROUSERS = [id("plain_trousers"), 0, 0];
+const TEE = [id("tee"), 1, dye(12, 40, 3)];
+const TROUSERS = [id("jeans"), 0, 0];
 const EMPTY = [0, 0, 0];
 
 test("what is worn reaches watchers, lasts a reconnect and a restart, and on a body", () => {
@@ -252,7 +252,7 @@ test("what is worn reaches watchers, lasts a reconnect and a restart, and on a b
   const pid = me.pid;
   const items = h.host.items, inv = items.inv(me);
   expect(items.mintAt(me, inv.wardrobe, TEE[0]!, 1)).toBe(1);
-  expect(editionOf(h.host, "core:plain_tee")).toBe(TEE[1]!);
+  expect(editionOf(h.host, "core:tee")).toBe(TEE[1]!);
   expect(items.restyle(me, inv.wardrobe, TEE[1]!, TEE[2]!)).toBe(true);
   expect(items.mintAt(me, inv.wardrobe + 1, TROUSERS[0]!, 1)).toBe(1);
   h.run(300);

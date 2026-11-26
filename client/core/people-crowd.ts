@@ -122,10 +122,10 @@ export function crowdGear(n: number, looks: CrowdLooks, reg: Registry, seed = 1)
 
 /** Four outfits of garments, by wardrobe slot: what a dressed crowd and `bun tools/snap.ts --dress` wear. */
 export const DRESSES: readonly Readonly<Partial<Record<(typeof WARDROBE_NAMES)[number], string>>>[] = [
-  { top: "plain_tee", bottom: "plain_trousers", shoes: "trainers" },
+  { top: "tee", bottom: "jeans", shoes: "trainers" },
   { top: "loose_tee", bottom: "shorts", shoes: "trainers" },
-  { top: "plain_tee", outer: "hoodie", bottom: "plain_trousers", shoes: "trainers" },
-  { top: "plain_tee", outer: "apron", bottom: "plain_trousers", shoes: "trainers" },
+  { top: "tee", outer: "hoodie", bottom: "jeans", shoes: "trainers" },
+  { top: "tee", outer: "apron", bottom: "jeans", shoes: "trainers" },
 ];
 
 /** Outfit `dress` of DRESSES as a wardrobe, WORN_LENGTH numbers at `at` of `out`, each slot dyed `dye`. A garment the content lacks is left off. */

@@ -23,10 +23,10 @@ test("the wardrobe row shows each slot, a dyed garment's swatches, and refuses w
     const me = h.host.records.byPid.get(h.client(s)!.pid)!;
     const items = h.host.items;
     const inv = items.inv(me);
-    expect(items.mintAt(me, inv.wardrobe, id("plain_tee"), 1)).toBe(1);
-    const edition = editionOf(h.host, "core:plain_tee");
+    expect(items.mintAt(me, inv.wardrobe, id("tee"), 1)).toBe(1);
+    const edition = editionOf(h.host, "core:tee");
     expect(items.restyle(me, inv.wardrobe, edition, 12 | (0 << 8) | (40 << 16))).toBe(true);
-    expect(items.mint(me, id("plain_trousers"), 1)).toBe(1);
+    expect(items.mint(me, id("jeans"), 1)).toBe(1);
     h.run(300);
     const own = s.inventory!;
     const screen = new InventoryScreen();
@@ -55,7 +55,7 @@ test("the wardrobe row shows each slot, a dyed garment's swatches, and refuses w
     const sent: number[] = [];
     const command = s.command.bind(s);
     s.command = (op, args) => (sent.push(op), command(op, args));
-    const trousers = own.item.indexOf(id("plain_trousers"));
+    const trousers = own.item.indexOf(id("jeans"));
     screen.press(0, cell(trousers), 0, s);
     draw();
     expect(f.find(cell(own.wardrobe))!.alpha).toBeLessThan(1);
@@ -68,7 +68,7 @@ test("the wardrobe row shows each slot, a dyed garment's swatches, and refuses w
     screen.press(0, cell(own.wardrobe + 1), 0, s);
     expect(sent).toEqual([CMD_MOVE]);
     h.run(300);
-    expect([own.item[own.wardrobe + 1], screen.held]).toEqual([id("plain_trousers"), -1]);
+    expect([own.item[own.wardrobe + 1], screen.held]).toEqual([id("jeans"), -1]);
   } finally {
     h.host.shutdown();
   }

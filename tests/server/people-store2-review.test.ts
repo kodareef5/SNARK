@@ -58,7 +58,7 @@ test("a wardrobe page's publish is not refused because a person was saved meanwh
     const shown = store.view().revision;
     expect(store.save("person", null, 0, mara, ADA)).toMatchObject({ id: 1 });
     expect(store.view().editions).toEqual([]);
-    expect(store.publish(shown, { garment: "core:plain_tee", colours: [0, 0, 0], print: null, name: "Tee" }, ADA)).toMatchObject({ id: 1 });
+    expect(store.publish(shown, { garment: "core:tee", colours: [0, 0, 0], print: null, name: "Tee" }, ADA)).toMatchObject({ id: 1 });
   } finally {
     store.close();
   }

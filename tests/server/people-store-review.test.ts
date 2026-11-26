@@ -16,7 +16,7 @@ let made = 0;
 const folder = (): string => join(root, `cluster${++made}`);
 const open = (dir: string): PeopleStore => new PeopleStore({ db: join(dir, "people.sqlite"), media: join(dir, "media"), tmp: join(dir, "tmp") });
 const ADA: By = { name: "ada", id: "S-ADA" };
-const tee = (name: string): EditionDraft => ({ garment: "core:plain_tee", colours: [12, 40, 3], print: null, name });
+const tee = (name: string): EditionDraft => ({ garment: "core:tee", colours: [12, 40, 3], print: null, name });
 
 test("a manifest write that fails once leaves no edition twice in the manifest", () => {
   const dir = folder();
@@ -32,7 +32,7 @@ test("a manifest write that fails once leaves no edition twice in the manifest",
     writeFileSync(join(dir, "tmp"), "in the way");
     const last = store.view().manifestId;
     expect(store.publish(store.view().revision, tee("three"), ADA)).toMatchObject({ id: 3 });
-    expect([store.garmentOf(3), store.view().manifestId]).toEqual(["core:plain_tee", last]);
+    expect([store.garmentOf(3), store.view().manifestId]).toEqual(["core:tee", last]);
     rmSync(join(dir, "tmp"), { force: true });
     const view = store.view();
     const manifest = JSON.parse(readFileSync(join(store.media, `people.${view.manifestId}.json`), "utf8")) as PeopleManifest;

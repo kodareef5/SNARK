@@ -32,10 +32,10 @@ function saved(r: ReturnType<Harness["host"]["people"]["save"]>): { id: number; 
 function stock(h: Harness) {
   const store = h.host.people;
   const pop = saved(store.save("population", null, 0, CITY_DOC, BY)).id;
-  const ed = store.publish(store.view().revision, { garment: "core:plain_tee", colours: [5, 6, 7], print: null, name: "Orb tee" }, BY);
+  const ed = store.publish(store.view().revision, { garment: "core:tee", colours: [5, 6, 7], print: null, name: "Orb tee" }, BY);
   if ("status" in ed) throw new Error(ed.error);
   const slots: OutfitDoc["slots"] = [null, null, null, null, null];
-  const outfit: OutfitDoc = { name: "Vendor", slots: slots.map((_, k) => (k === TOP ? { choices: [{ garment: "core:plain_tee", edition: ed.id, weight: 1 }], dye: [3, 4, 5] } : k === BOTTOM ? { choices: [{ garment: "core:plain_trousers", edition: 0, weight: 1 }], dye: [0, 0, 0] } : null)) };
+  const outfit: OutfitDoc = { name: "Vendor", slots: slots.map((_, k) => (k === TOP ? { choices: [{ garment: "core:tee", edition: ed.id, weight: 1 }], dye: [3, 4, 5] } : k === BOTTOM ? { choices: [{ garment: "core:jeans", edition: 0, weight: 1 }], dye: [0, 0, 0] } : null)) };
   const fit = saved(store.save("outfit", null, 0, outfit, BY)).id;
   const look = [...personFrom(777, store.population(pop, 1)!).look];
   const person: PersonDoc = { name: "Marisol Vega", look, wardrobe: wardrobeFrom(777, outfit), source: { seed: 777, population: pop, locks: {}, outfit: fit }, notes: "" };
@@ -105,8 +105,8 @@ test("a role's named person wears its admin outfit with its edition and dye", ()
     const e = h.host.records.entOf.get(pid!)!, ents = h.world.ents;
     expect([ents.born.get(e) ?? null, [...ents.looks.get(e)!]]).toEqual([null, [...person.look]]);
     const worn = ents.wardrobes.get(e)!, reg = h.world.reg;
-    expect([worn[TOP * 3], worn[TOP * 3 + 1], worn[TOP * 3 + 2]]).toEqual([reg.index.get("core:plain_tee")!, edition, dyeNumber([3, 4, 5])]);
-    expect([worn[BOTTOM * 3], worn[BOTTOM * 3 + 1]]).toEqual([reg.index.get("core:plain_trousers")!, 0]);
+    expect([worn[TOP * 3], worn[TOP * 3 + 1], worn[TOP * 3 + 2]]).toEqual([reg.index.get("core:tee")!, edition, dyeNumber([3, 4, 5])]);
+    expect([worn[BOTTOM * 3], worn[BOTTOM * 3 + 1]]).toEqual([reg.index.get("core:jeans")!, 0]);
     // Dressed by its outfit, it wears none of the look's placeholder cloth.
     const inv = h.host.records.byPid.get(pid!)!.inv!;
     for (let k = 0; k < 5; k++) expect(inv.item[inv.armor + k]).toBe(0);
@@ -167,7 +167,7 @@ test("a police role in a tee keeps its flak", () => {
     const c = h.host.cast.cast.people.mintNamed("cast:cop", 0, officer, "Officer Vega", h.world.tick);
     expect(c.look).toBe("cast:police");
     const cop = body(h, c);
-    expect(dressOf(h, cop.pid)).toEqual({ armour: FLAK, top: "core:plain_tee" });
+    expect(dressOf(h, cop.pid)).toEqual({ armour: FLAK, top: "core:tee" });
   } finally {
     h.host.shutdown();
   }
@@ -178,11 +178,11 @@ test("an admin population's outfit takes its slots, and the role's armour the re
   try {
     h.join("Ana");
     h.run(1000);
-    const dressed = saved(h.host.people.save("population", null, 0, { ...CITY_DOC, outfits: [{ wear: ["core:plain_tee", "core:cloth_pants"], weight: 1 }] }, BY)).id;
+    const dressed = saved(h.host.people.save("population", null, 0, { ...CITY_DOC, outfits: [{ wear: ["core:tee", "core:cloth_pants"], weight: 1 }] }, BY)).id;
     expect(castAct(h.host, { op: "look", look: "cast:police", population: dressed })).toBe("");
     const c = h.host.cast.cast.people.mint("cast:cop", 0, 31, h.world.tick);
     const cop = body(h, c);
-    expect(dressOf(h, cop.pid)).toEqual({ armour: ["core:cloth_pants", "core:flak_boots", "core:flak_hat", "core:flak_shirt"], top: "core:plain_tee" });
+    expect(dressOf(h, cop.pid)).toEqual({ armour: ["core:cloth_pants", "core:flak_boots", "core:flak_hat", "core:flak_shirt"], top: "core:tee" });
   } finally {
     h.host.shutdown();
   }

@@ -17,12 +17,12 @@ import type { Answer } from "../../client/core/admin/wardrobe.ts";
 const answer = (extra: Record<string, unknown> = {}): Record<string, unknown> => ({
   revision: 3, manifest: null, caps: {},
   garments: [
-    { id: "core:plain_tee", label: "plain tee", slot: "top", dyes: true, cut: null },
-    { id: "core:plain_trousers", label: "plain trousers", slot: "bottom", dyes: true, cut: null },
+    { id: "core:tee", label: "plain tee", slot: "top", dyes: true, cut: null },
+    { id: "core:jeans", label: "plain trousers", slot: "bottom", dyes: true, cut: null },
   ],
   armour: [{ id: "core:cloth_shirt", label: "Cloth shirt", slot: 1 }, { id: "core:cloth_hat", label: "Cloth hat", slot: 0 }],
-  editions: [{ id: 1, garment: "core:plain_tee", colours: [34, 58, 11], print: { hash: "0123456789abcdef", width: 512, height: 512, place: { u: 0.06, v: 0.12, w: 0.25, h: 0.2, scale: 1, turn: 0 } }, name: "Sunrise", retired: false, printPath: "/media/print.0123456789abcdef.png" }],
-  people: [], outfits: [{ id: 2, rev: 1, retired: false, doc: { name: "Vendor", slots: [{ choices: [{ garment: "core:plain_tee", edition: 1, weight: 1 }, { garment: "core:plain_tee", edition: 0, weight: 1 }], dye: [0, 0, 0] }, null, null, null, null] } }],
+  editions: [{ id: 1, garment: "core:tee", colours: [34, 58, 11], print: { hash: "0123456789abcdef", width: 512, height: 512, place: { u: 0.06, v: 0.12, w: 0.25, h: 0.2, scale: 1, turn: 0 } }, name: "Sunrise", retired: false, printPath: "/media/print.0123456789abcdef.png" }],
+  people: [], outfits: [{ id: 2, rev: 1, retired: false, doc: { name: "Vendor", slots: [{ choices: [{ garment: "core:tee", edition: 1, weight: 1 }, { garment: "core:tee", edition: 0, weight: 1 }], dye: [0, 0, 0] }, null, null, null, null] } }],
   populations: [], builtIns: POPULATIONS, ...extra,
 });
 const S: StoreState = storeStateOf(answer())!;
@@ -133,15 +133,15 @@ test("a wardrobe is judged by slot, dye and edition, and the stage wears it", ()
   const d = newPerson(S, 1);
   d.name = "Dressed";
   const slots = emptyWardrobe();
-  slots[0] = { garment: "core:plain_tee", edition: 1, dye: [0, 0, 9] };
+  slots[0] = { garment: "core:tee", edition: 1, dye: [0, 0, 9] };
   d.dress = { kind: "wardrobe", slots };
   expect(personFaults(d, S, BOOK)).toEqual([]);
   const { wear } = personWear(d, S);
-  expect(wear.wardrobe.slots[0]).toEqual({ item: "core:plain_tee", edition: 1, dye: [34, 58, 9], print: { key: "print.0123456789abcdef", place: { u: 0.06, v: 0.12, w: 0.25, h: 0.2, scale: 1, turn: 0 } } });
+  expect(wear.wardrobe.slots[0]).toEqual({ item: "core:tee", edition: 1, dye: [34, 58, 9], print: { key: "print.0123456789abcdef", place: { u: 0.06, v: 0.12, w: 0.25, h: 0.2, scale: 1, turn: 0 } } });
   expect(wear.prints).toEqual([{ key: "print.0123456789abcdef", url: "/media/print.0123456789abcdef.png" }]);
-  slots[1] = { garment: "core:plain_tee", edition: 0, dye: [0, 0, 0] };
+  slots[1] = { garment: "core:tee", edition: 0, dye: [0, 0, 0] };
   expect(personFaults(d, S, BOOK).map((f) => f.at)).toEqual(["slot:1"]);
-  slots[1] = { garment: "core:plain_trousers", edition: 1, dye: [0, 0, 0] };
+  slots[1] = { garment: "core:jeans", edition: 1, dye: [0, 0, 0] };
   expect(personFaults(d, S, BOOK).map((f) => f.at)).toEqual(["slot:1"]);
   d.dress = { kind: "wardrobe", slots: emptyWardrobe() };
   expect(personFaults(d, S, BOOK).map((f) => f.at)).toEqual(["outfit"]);
@@ -164,7 +164,7 @@ test("a store outfit is drawn from the person's outfit seed, which a reroll chan
 /** The state after an edit of the city crowd (new skins) and of outfit 2 (another tee and a dye). */
 function edited(): { state: StoreState; book: ReturnType<typeof bookOf> } {
   const city = { ...POPULATIONS[0]!, skin: [0, 0, 0, 0, 0, 0, 0, 0, 1, 5], face: 0.9 };
-  const outfit = { name: "Vendor", slots: [{ choices: [{ garment: "core:plain_tee", edition: 0, weight: 1 }], dye: [7, 7, 7] }, null, null, null, null] };
+  const outfit = { name: "Vendor", slots: [{ choices: [{ garment: "core:tee", edition: 0, weight: 1 }], dye: [7, 7, 7] }, null, null, null, null] };
   const state = storeStateOf(answer({ builtIns: [city, ...POPULATIONS.slice(1)], outfits: [{ id: 2, rev: 2, retired: false, doc: outfit }] }))!;
   return { state, book: bookOf(state, null) };
 }
@@ -181,7 +181,7 @@ function savedPerson(): PersonDoc {
 
 test("a listed person opens as its seed and outfit while they draw what was saved", () => {
   const doc = savedPerson();
-  expect([doc.source, doc.wardrobe?.[0]?.garment]).toEqual([{ seed: 9, population: "core:people_city", locks: { hair: 9 }, outfit: 2 }, "core:plain_tee"]);
+  expect([doc.source, doc.wardrobe?.[0]?.garment]).toEqual([{ seed: 9, population: "core:people_city", locks: { hair: 9 }, outfit: 2 }, "core:tee"]);
   const d = draftOf({ id: 5, rev: 3, retired: false, doc }, S, BOOK);
   expect([d.id, d.rev, d.look.kind, d.dress]).toEqual([5, 3, "seed", { kind: "outfit", outfit: 2 }]);
   expect(personDoc(d, S, BOOK)).toEqual(doc);
@@ -207,7 +207,7 @@ test("drawing from its source draws the look and outfit as they are now", () => 
   expect(d.look).toMatchObject({ kind: "seed", seed: 9, revision: 0, locks: { hair: 9 } });
   expect([...lookBytes(d.look, state, book)!]).toEqual([...personFrom(9, state.builtIns[0]!, undefined, { hair: 9 }).look]);
   expect(lookBytes(d.look, state, book)).not.toEqual(Uint8Array.from(doc.look));
-  expect(dressSlots(d, state)?.[0]).toEqual({ garment: "core:plain_tee", edition: 0, dye: [7, 7, 7] });
+  expect(dressSlots(d, state)?.[0]).toEqual({ garment: "core:tee", edition: 0, dye: [7, 7, 7] });
   expect(drawFromSource(d, state)).toBe(false);
 });
 

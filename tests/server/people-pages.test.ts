@@ -54,7 +54,7 @@ test("the state lists armour beside the garments for a population's outfits", ()
   try {
     const state = storeStateOf(peopleState(store, reg))!;
     expect(state.armour.find((a) => a.id === "core:cloth_shirt")).toEqual({ id: "core:cloth_shirt", label: expect.any(String), slot: 1 });
-    expect(state.armour.some((a) => a.id === "core:plain_tee")).toBe(false);
+    expect(state.armour.some((a) => a.id === "core:tee")).toBe(false);
   } finally {
     store.close();
   }

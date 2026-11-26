@@ -22,7 +22,7 @@ const open = (dir: string, now: () => number = Date.now): PeopleStore => new Peo
 const ADA: By = { name: "ada", id: "S-ADA" };
 const BO: By = { name: "bo", id: "S-BO" };
 const mara = (notes = ""): PersonDoc => ({ name: "Mara", look: [...personFrom(7, CITY).look], wardrobe: null, source: { seed: 7, population: "core:people_city", locks: { face: 99 }, outfit: null }, notes });
-const vendor = (name = "Vendor"): OutfitDoc => ({ name, slots: [{ choices: [{ garment: "core:plain_tee", edition: 0, weight: 1 }], dye: [0, 0, 0] }, null, null, null, null] });
+const vendor = (name = "Vendor"): OutfitDoc => ({ name, slots: [{ choices: [{ garment: "core:tee", edition: 0, weight: 1 }], dye: [0, 0, 0] }, null, null, null, null] });
 const { type: _t, id: _i, ...beachBody } = BEACH;
 const beach = (face = 0.3): PopulationDoc => ({ ...beachBody, label: "Beach copy", face });
 
@@ -155,7 +155,7 @@ test("every population revision is in the manifest, retired or not, after a rest
 test("a person or outfit saved leaves the clients' manifest as it was", () => {
   const store = open(folder());
   try {
-    expect(store.publish(store.view().revision, { garment: "core:plain_tee", colours: [1, 2, 3], print: null, name: "Tee" }, ADA)).toMatchObject({ id: 1 });
+    expect(store.publish(store.view().revision, { garment: "core:tee", colours: [1, 2, 3], print: null, name: "Tee" }, ADA)).toMatchObject({ id: 1 });
     const id = store.view().manifestId;
     expect(manifest(store).populations).toEqual([]);
     saved(store.save("person", null, 0, mara(), ADA));
@@ -182,7 +182,7 @@ test("the doc checks keep a body's known fields in one order and refuse what is 
   expect(readPerson({ ...mara(), look: { seed: 7, population: "core:people_city", revision: 1, locks: {} } })).toMatch(/72/);
   expect(readPerson({ ...mara(), name: "" })).toMatch(/name/);
   expect(readOutfit({ name: "Bare", slots: [null, null, null, null, null] })).toMatch(/wears something/);
-  expect(readOutfit({ name: "Odd", slots: [{ choices: [{ garment: "core:plain_tee", edition: 0, weight: 0 }], dye: [0, 0, 0] }, null, null, null, null] })).toMatch(/weight/);
+  expect(readOutfit({ name: "Odd", slots: [{ choices: [{ garment: "core:tee", edition: 0, weight: 0 }], dye: [0, 0, 0] }, null, null, null, null] })).toMatch(/weight/);
   expect(readOutfit(vendor() as unknown as Record<string, unknown>)).toEqual(vendor());
 });
 
@@ -208,12 +208,12 @@ test("a kind's page is told it is stale only by a change of that kind", () => {
     saved(store.save("person", null, 0, mara(), ADA));
     saved(store.save("population", null, 0, beach(), ADA));
     // Editions: a publish and a retirement from the page's revision pass, since no edition changed meanwhile.
-    expect(store.publish(shown, { garment: "core:plain_tee", colours: [0, 0, 0], print: null, name: "Tee" }, ADA)).toMatchObject({ id: 1 });
+    expect(store.publish(shown, { garment: "core:tee", colours: [0, 0, 0], print: null, name: "Tee" }, ADA)).toMatchObject({ id: 1 });
     const seen = store.view().revision;
     saved(store.save("outfit", null, 0, vendor(), BO));
     expect(store.retire(seen, 1, true, "edition")).toMatchObject({ changed: true });
     // A page that missed that retirement is stale for editions, and its words say so.
-    expect(store.publish(seen, { garment: "core:plain_tee", colours: [0, 0, 0], print: null, name: "Late" }, ADA)).toMatchObject({ status: 409, error: "The editions changed in another page. Reload to see them." });
+    expect(store.publish(seen, { garment: "core:tee", colours: [0, 0, 0], print: null, name: "Late" }, ADA)).toMatchObject({ status: 409, error: "The editions changed in another page. Reload to see them." });
     // Retiring a person is not refused for an outfit's save, but is for another person's retirement.
     const before = store.view().revision;
     saved(store.save("person", null, 0, mara("two"), BO));

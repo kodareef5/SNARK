@@ -411,7 +411,7 @@ built.
 
 **`item/glider`** (1): frond_glider.
 
-**`item/garment`** (7): plain_tee, loose_tee, hoodie, plain_trousers, shorts, trainers, apron.
+**`item/garment`** (7): tee, loose_tee, hoodie, jeans, shorts, trainers, apron.
 
 **`item/dye`** (6): hair_dye_blond, hair_dye_ginger, hair_dye_brown, hair_dye_black, hair_dye_white, hair_dye_red.
 

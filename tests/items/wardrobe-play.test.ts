@@ -27,8 +27,8 @@ afterAll(() => {
 
 const reg = coreRegistry();
 const id = (name: string): number => reg.index.get(`core:${name}`)!;
-const tee = id("plain_tee");
-const trousers = id("plain_trousers");
+const tee = id("tee");
+const trousers = id("jeans");
 const dye = (a: number, b: number, c: number): number => a | (b << 8) | (c << 16);
 // The first two editions a fresh people store gives, which dress publishes.
 const TEE = [tee, 1, dye(12, 40, 3)];
@@ -47,7 +47,7 @@ function dress(h: Harness, me: EntityRecord): void {
   expect(items.mint(me, id("fiber"), 300)).toBe(300);
   expect(items.mintAt(me, inv.wardrobe, tee, 1)).toBe(1);
   expect(items.mintAt(me, inv.wardrobe + 1, trousers, 1)).toBe(1);
-  expect([editionOf(h.host, "core:plain_tee"), editionOf(h.host, "core:plain_trousers")]).toEqual([TEE[1]!, TROUSERS[1]!]);
+  expect([editionOf(h.host, "core:tee"), editionOf(h.host, "core:jeans")]).toEqual([TEE[1]!, TROUSERS[1]!]);
   expect(items.restyle(me, inv.wardrobe, TEE[1]!, TEE[2]!)).toBe(true);
   expect(items.restyle(me, inv.wardrobe + 1, TROUSERS[1]!, TROUSERS[2]!)).toBe(true);
   h.run(200);
@@ -364,8 +364,8 @@ test("a loadout taken from a dressed survivor keeps its garments, in the bag and
   const { h, me } = setup();
   try {
     const entries = captureLoadout(h.host, me);
-    const garments = entries.filter((e) => "item" in e && (e.item === "core:plain_tee" || e.item === "core:plain_trousers"));
-    expect(garments).toEqual([{ item: "core:plain_tee", count: 1, place: "bag" }, { item: "core:plain_trousers", count: 1, place: "bag" }]);
+    const garments = entries.filter((e) => "item" in e && (e.item === "core:tee" || e.item === "core:jeans"));
+    expect(garments).toEqual([{ item: "core:tee", count: 1, place: "bag" }, { item: "core:jeans", count: 1, place: "bag" }]);
   } finally {
     h.host.shutdown();
   }

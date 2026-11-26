@@ -16,7 +16,7 @@ import { coreRegistry } from "../fixtures/world.ts";
 const DIMS = { chunksX: 4, chunksZ: 4 };
 const reg = coreRegistry();
 const item = (name: string): number => reg.index.get(`core:${name}`)!;
-const TEE = item("plain_tee"), TROUSERS = item("plain_trousers");
+const TEE = item("tee"), TROUSERS = item("jeans");
 /** 24 letters, the most a name keeps. */
 const NAME = "Alexandria Montgomeryson";
 /** About a month into a world's life, at 30 ticks a second. */

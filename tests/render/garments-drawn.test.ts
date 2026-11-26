@@ -118,29 +118,29 @@ function bare(count: number, hide: number, armor?: (string | null)[]): ReturnTyp
 const covers = (id: string): number => gameOf().reg.garmentZones[gameOf().reg.index.get(id)!]!;
 
 test("a worn tee is drawn on each body and hides only what it covers", () => {
-  const view = crowd({ top: "core:plain_tee" });
+  const view = crowd({ top: "core:tee" });
   const d = drawsOf(view, settled(view));
   expect(d.garments.map((g) => g.mesh).sort()).toEqual(["core:human_f/garment/tee", "core:human_m/garment/tee"]);
   expect(d.garments.every((g) => g.instances === 1)).toBe(true);
-  const hidden = bare(2, covers("core:plain_tee"));
+  const hidden = bare(2, covers("core:tee"));
   expect([d.hash, d.triangles]).toEqual([hidden.hash, hidden.triangles]);
   expect(d.triangles).toBeLessThan(bare(2, 0).triangles);
 });
 
 test("a whole outfit draws a cut a garment, at the level of the body slot it lies on", () => {
-  const view = crowd({ top: "core:plain_tee", bottom: "core:plain_trousers", shoes: "core:trainers" }, 1);
+  const view = crowd({ top: "core:tee", bottom: "core:jeans", shoes: "core:trainers" }, 1);
   const p = settled(view);
   const d = drawsOf(view, p);
   expect(d.garments.map((g) => g.mesh).sort()).toEqual(["core:human_m/garment/jeans", "core:human_m/garment/tee", "core:human_m/garment/trainers"]);
   // The trainers hide both feet, so the feet are drawn at the legs' level, into the shadows alone.
   const levelOf = (part: string): number => d.body.find((b) => b.mesh === `core:human_m/${part}`)!.lod;
   for (const [cut, part] of [["tee", "torso"], ["jeans", "legs"], ["trainers", "legs"]]) expect(d.garments.find((g) => g.mesh.endsWith(cut!))!.lod).toBe(levelOf(part!));
-  const hidden = bare(1, covers("core:plain_tee") | covers("core:plain_trousers") | covers("core:trainers"));
+  const hidden = bare(1, covers("core:tee") | covers("core:jeans") | covers("core:trainers"));
   expect(d.hash).toBe(hidden.hash);
 });
 
 test("a body with no wardrobe draws as it did before garments", () => {
-  const view = crowd({ top: "core:plain_tee" }, 2, false);
+  const view = crowd({ top: "core:tee" }, 2, false);
   const p = settled(view);
   const d = drawsOf(view, p);
   expect(d.garments).toEqual([]);
@@ -159,7 +159,7 @@ test("a garment whose cut is not made on the body hides nothing", () => {
 });
 
 test("a cut with no level here yet hides nothing until one comes", () => {
-  const view = crowd({ top: "core:plain_tee" });
+  const view = crowd({ top: "core:tee" });
   const assets = view.scene.assets, level = assets.level.bind(assets);
   const ids = assets.manifest.meshes.map((m) => m.id);
   let held = false;
@@ -168,28 +168,28 @@ test("a cut with no level here yet hides nothing until one comes", () => {
   expect(waiting.garments).toEqual([]);
   expect(waiting.hash).toBe(bare(2, 0).hash);
   held = true;
-  expect(drawsOf(view, settled(view)).hash).toBe(bare(2, covers("core:plain_tee")).hash);
+  expect(drawsOf(view, settled(view)).hash).toBe(bare(2, covers("core:tee")).hash);
 });
 
 test("armour on a garment's body slot is drawn in its place, and the skin under it as armour leaves it", () => {
   const armor = [null, "core:cloth_shirt", null, null, null];
-  const view = crowd({ top: "core:plain_tee", bottom: "core:plain_trousers", armor });
+  const view = crowd({ top: "core:tee", bottom: "core:jeans", armor });
   const d = drawsOf(view, settled(view));
   // The shirt wins the torso; the jeans are still drawn on the legs.
   expect(d.garments.map((g) => g.mesh).sort()).toEqual(["core:human_f/garment/jeans", "core:human_m/garment/jeans"]);
-  expect(d.hash).toBe(bare(2, covers("core:plain_trousers"), armor).hash);
+  expect(d.hash).toBe(bare(2, covers("core:jeans"), armor).hash);
 });
 
 test("a tee under a hoodie that covers all it does is left out", () => {
-  const view = crowd({ top: "core:plain_tee", outer: "core:hoodie" }, 1);
+  const view = crowd({ top: "core:tee", outer: "core:hoodie" }, 1);
   expect(drawsOf(view, settled(view)).garments.map((g) => g.mesh)).toEqual(["core:human_m/garment/hoodie"]);
-  const apron = crowd({ top: "core:plain_tee", outer: "core:apron" }, 1);
+  const apron = crowd({ top: "core:tee", outer: "core:apron" }, 1);
   expect(drawsOf(apron, settled(apron)).garments.map((g) => g.mesh).sort()).toEqual(["core:human_m/garment/apron", "core:human_m/garment/tee"]);
 });
 
 test("200 wearers of one cut are the draws of one", () => {
-  const one = crowd({ top: "core:plain_tee", bottom: "core:plain_trousers" }, 1);
-  const many = crowd({ top: "core:plain_tee", bottom: "core:plain_trousers" }, 200);
+  const one = crowd({ top: "core:tee", bottom: "core:jeans" }, 1);
+  const many = crowd({ top: "core:tee", bottom: "core:jeans" }, 200);
   // Every body a man, so each cut is one mesh.
   for (let n = 0; n < 200; n++) many.remote.look[n * LOOK_BYTES + LOOK_SEX] = 0;
   const a = drawsOf(one, settled(one)), b = drawsOf(many, settled(many));
@@ -207,20 +207,20 @@ function garmentBytes(view: ProvingView): number[][] {
 }
 
 test("a garment's regions take its slot's dye over its edition's colours over its own", () => {
-  const own = (gameOf().reg.defs[gameOf().reg.index.get("core:plain_tee")!] as { color: number }).color;
-  const plain = garmentBytes(crowd({ top: "core:plain_tee" }, 1))[0]!;
+  const own = (gameOf().reg.defs[gameOf().reg.index.get("core:tee")!] as { color: number }).color;
+  const plain = garmentBytes(crowd({ top: "core:tee" }, 1))[0]!;
   expect([plain[1], plain[2], plain[4], plain[5]]).toEqual([own, 0, own, own]);
-  const edition = crowd({ top: "core:plain_tee", edition: 7 }, 1);
+  const edition = crowd({ top: "core:tee", edition: 7 }, 1);
   edition.scene.characters.edition = (id, out) => id === 7 && (out.set([30, 0, 32]), true);
   const e = garmentBytes(edition)[0]!;
   expect([e[1], e[4], e[5]]).toEqual([30, own, 32]);
-  const dyed = crowd({ top: "core:plain_tee", edition: 7, dye: 50 | (51 << 16) }, 1);
+  const dyed = crowd({ top: "core:tee", edition: 7, dye: 50 | (51 << 16) }, 1);
   dyed.scene.characters.edition = (id, out) => id === 7 && (out.set([30, 31, 32]), true);
   dyed.scene.characters.printByte = (id) => (id === 7 ? 9 : 0);
   const d = garmentBytes(dyed)[0]!;
   expect([d[1], d[2], d[4], d[5]]).toEqual([50, 9, 31, 51]);
   // An edition this client does not know is drawn plain.
-  const unknown = crowd({ top: "core:plain_tee", edition: 8 }, 1);
+  const unknown = crowd({ top: "core:tee", edition: 8 }, 1);
   unknown.scene.characters.edition = (id, out) => id === 7 && (out.set([30, 31, 32]), true);
   expect(garmentBytes(unknown)[0]).toEqual(plain);
 });
@@ -246,9 +246,9 @@ test("only a garment draw with a print in it is drawn printed", () => {
     for (let d = 0; d < p.drawCount; d++) if (p.drawBuffer[d] === TRANSIENT_BUFFER && (p.drawFlags[d]! & DRAW_SKINNED) !== 0) out.set(ids[p.drawMesh[d]!]!, (out.get(ids[p.drawMesh[d]!]!) ?? 0) | p.drawFlags[d]!);
     return out;
   };
-  const plain = crowd({ top: "core:plain_tee", bottom: "core:plain_trousers", edition: 7 }, 2);
+  const plain = crowd({ top: "core:tee", bottom: "core:jeans", edition: 7 }, 2);
   for (const f of flagsOf(plain).values()) expect(f & DRAW_PRINTED).toBe(0);
-  const printed = crowd({ top: "core:plain_tee", bottom: "core:plain_trousers", edition: 7 }, 2);
+  const printed = crowd({ top: "core:tee", bottom: "core:jeans", edition: 7 }, 2);
   printed.remote.wardrobe[WORN_LENGTH + 1] = 8;
   printed.remote.wardrobe[WORN_LENGTH + WORN_FIELDS + 1] = 0;
   printed.remote.wardrobe[WORN_FIELDS + 1] = 0;

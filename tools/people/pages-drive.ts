@@ -171,18 +171,18 @@ try {
       check("and back to the seed, the look is as it was", [...(await previewed())], [...again]);
       console.log("dressed in its own wardrobe");
       await press('input[name="dress"][value="wardrobe"]');
-      await choose('[data-slot-garment="0"]', "core:plain_tee");
+      await choose('[data-slot-garment="0"]', "core:tee");
       await press('[data-well="0:0"]');
       await press('[data-colour="34"]');
       await stageTook("the wardrobe");
-      check("the wardrobe's top is the dyed tee", await run(`${q('[data-slot-garment="0"]')}.value`), "core:plain_tee");
+      check("the wardrobe's top is the dyed tee", await run(`${q('[data-slot-garment="0"]')}.value`), "core:tee");
       await snap("people-draft");
 
       console.log("saved, and refused once over another page's save");
       await press("#save");
       await said("Saved person 1, revision 1.");
       const saved = latest("person", 1)?.body as PersonDoc | undefined;
-      check("the store has the person as drafted", saved && { name: saved.name, look: saved.look, locked: Object.keys(saved.source?.locks ?? {}).sort(), top: saved.wardrobe?.[0] }, { name: "Rosa Diaz", look: [...(await previewed())], locked: ["face", "hair"], top: { garment: "core:plain_tee", edition: 0, dye: [34, 0, 0] } });
+      check("the store has the person as drafted", saved && { name: saved.name, look: saved.look, locked: Object.keys(saved.source?.locks ?? {}).sort(), top: saved.wardrobe?.[0] }, { name: "Rosa Diaz", look: [...(await previewed())], locked: ["face", "hair"], top: { garment: "core:tee", edition: 0, dye: [34, 0, 0] } });
       const theirs = await outside({ kind: "person", id: 1, rev: 1, doc: { ...saved, notes: "from another page" } });
       check("the other page's save was taken", theirs.status, 200);
       await type("#notes", "Sells mangoes by the bay");
@@ -253,7 +253,7 @@ try {
       await press("#add-outfit");
       await until(`${q('[data-add-piece="0"]')}`, "the new outfit");
       await choose('[data-add-piece="0"]', "core:cloth_shirt");
-      await press('[data-piece-off="0"][data-piece="core:plain_tee"]');
+      await press('[data-piece-off="0"][data-piece="core:tee"]');
       check("the outfit wears the shirt alone", await run(`[...document.querySelectorAll('[data-outfit="0"] [data-piece]')].map((b) => b.dataset.piece)`), ["core:cloth_shirt"]);
       if (!(await drawn("the sheet with the shirt", g))) return;
       const after = await cards();

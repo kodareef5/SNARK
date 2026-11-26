@@ -12,8 +12,8 @@ import { coreRegistry } from "../fixtures/world.ts";
 const reg = coreRegistry();
 const id = (name: string): number => reg.index.get(`core:${name}`)!;
 const BAG = 40;
-const tee = id("plain_tee");
-const trousers = id("plain_trousers");
+const tee = id("tee");
+const trousers = id("jeans");
 /** Three palette colours as one number, the first lowest. */
 const dye = (a: number, b: number, c: number): number => a | (b << 8) | (c << 16);
 
