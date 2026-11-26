@@ -24,6 +24,7 @@ import { groundSize } from "../core/render/terrain.ts";
 import { ClientSession, PARK_CHUNKS_TOUCH } from "../core/session.ts";
 import { arrivalOf, socketAddress } from "../core/travel.ts";
 import { GlRenderer } from "./gl.ts";
+import { printHost } from "./picture-array.ts";
 import { bindInput } from "./input.ts";
 import { connect } from "./socket.ts";
 import { VoiceIo } from "../voice/voice.ts";
@@ -239,7 +240,7 @@ async function boot(): Promise<void> {
   // The people bench's crowd (tools/bench/people.ts) comes only to a bench page that asks for one.
   const crowd = bench ? (await import("../core/people-crowd.ts")) : null;
   const asked = crowd?.crowdAsked((name) => params.get(name));
-  if (crowd && asked) new crowd.Crowd(session, hf, reg, asked.scene, asked.looks);
+  const people = crowd && asked ? new crowd.Crowd(session, hf, reg, asked.scene, asked.looks) : null;
   // A trip's page is a tool's too: nobody is at it to unmute, and its pictures are of the world.
   if (params.has("trip")) app.ui.settings.muted = false;
   app.page = {
@@ -275,6 +276,8 @@ async function boot(): Promise<void> {
   if (head.orbs?.length) void import("./screen-video.ts").then((m) => (app.screenHost = m.videoHost(sound)), () => {});
   // A visible prop screen fetches its player and browser adapter together.
   app.loadFaces = () => import("./screen-faces.ts").then((m) => m.createFaceScreens());
+  // Prints on garments are fetched and decoded by the page.
+  app.printHost = printHost();
   if (sound && typeof Worker !== "undefined") app.soundDecoder = new WorkerDecoder();
   // The music the build lists; without it the game has no music and plays on.
   if (sound) void fetch("assets/music/music.json").then((r) => (r.ok ? r.json() : null)).then((m) => (app.musicTracks = m?.tracks ?? null)).catch(() => {});
@@ -349,6 +352,8 @@ async function boot(): Promise<void> {
       if (session.state === "closed") splash.hidden = true;
       return;
     }
+    // A printed crowd wears its prints on the torso once the scene is made.
+    if (people && app.scene && !app.scene.prints.worn) app.scene.prints.worn = people.worn((id) => app.scene!.assets.table.find(id));
     const built = (marks[3] = performance.now());
     // The tier says how many pixels to draw for one CSS pixel: the screen's own at most, or on ultra more (canvasRatio).
     const ratio = app.scene ? canvasRatio(app.scene.assets.tier, devicePixelRatio, cssWidth, cssHeight) : devicePixelRatio;
@@ -389,7 +394,8 @@ async function boot(): Promise<void> {
     }
     if (progress?.frames === 45) loser?.restoreContext();
     const r = app.scene!.assets.residency;
-    const result = bench?.frame(now, ours, gpu, packet, r.flying + r.waiting === 0, { drawCalls: renderer.drawCalls, canvas: [width, height], renderer: renderer.rendererName, userAgent: navigator.userAgent, card: { bytes: r.ledger, textures: r.texLedger }, squeeze: app.scene!.budget.squeeze, map: () => loader.progress(), posed: app.scene!.characters.posed, fresh: app.scene!.characters.fresh }, app.scene!.assets.table.tris);
+    const prints = app.scene!.prints;
+    const result = bench?.frame(now, ours, gpu, packet, r.flying + r.waiting + prints.loads.fetching + prints.loads.waiting === 0, { prints: { uploaded: prints.uploaded, most: prints.most, held: prints.held, puts: renderer.prints.puts }, drawCalls: renderer.drawCalls, canvas: [width, height], renderer: renderer.rendererName, userAgent: navigator.userAgent, card: { bytes: r.ledger, textures: r.texLedger }, squeeze: app.scene!.budget.squeeze, map: () => loader.progress(), posed: app.scene!.characters.posed, fresh: app.scene!.characters.fresh }, app.scene!.assets.table.tris);
     if (result) document.title = `SNARK ${result.frameMs.median} ms`;
     if (result) void fetch("__bench", { method: "POST", body: JSON.stringify(result) });
 

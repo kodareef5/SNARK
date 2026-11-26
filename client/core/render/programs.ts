@@ -14,11 +14,12 @@ import { FAR_MESH_VERTEX, FLAT_FAR_FRAGMENT, FLAT_FRAGMENT, FLAT_MESH_VERTEX, FL
 import { EYE_DOME_FRAGMENT, EYE_DOME_VERTEX, EYE_ENERGY_GLSL, EYE_STRIKE_GLSL } from "./tide-eye.ts";
 import { DROP_GLSL } from "./supply-light.ts";
 import { FACE_FRAGMENT, FACE_VERTEX } from "./screen-shade.ts";
-import { DRAW_BLEND, DRAW_EMISSIVE, DRAW_FIRE, DRAW_ORB, DRAW_SCREENS, DRAW_SKYLINE, FRAME_BLOCK, SKYLINE_MAX_FOG, DRAW_CUTOUT, DRAW_PULLED, DRAW_TEXTURED, DRAW_WATER, SOURCE_MAP, SOURCE_WINDOW, WATER_MARK_COUNT, type FramePacket } from "./packet.ts";
+import { DRAW_BLEND, DRAW_EMISSIVE, DRAW_FIRE, DRAW_ORB, DRAW_PRINTED, DRAW_SCREENS, DRAW_SKYLINE, FRAME_BLOCK, SKYLINE_MAX_FOG, DRAW_CUTOUT, DRAW_PULLED, DRAW_TEXTURED, DRAW_WATER, SOURCE_MAP, SOURCE_WINDOW, WATER_MARK_COUNT, type FramePacket } from "./packet.ts";
 import { BLOOM_DOWN, BLOOM_UP, FINISH, POST_VERTEX, drawsLight } from "./post.ts";
 import { DEPTH_CUTOUT_FRAGMENT, DEPTH_FRAGMENT, DEPTH_VERTEX, clampDepth, shadowDefines } from "./shadowtext.ts";
+import { MAX_PRINT_LAYERS } from "./print-term.ts";
 import { PIECE_SPALL_RIM, PIECE_SPALL_TEXT, SURFACE_ANY, surfaceFragment, surfaceVertex, type SurfaceVariant } from "./surface.ts";
-import { CASTER_ROWS, CUTOUT_CASTER_ROWS, DETAIL_ROWS, FLAT_ROWS, FRAME_ROWS, LAYER_ROWS, MATERIAL_ROWS, MESH_ROWS, tileRows, type UniformRow } from "./uniforms.ts";
+import { CASTER_ROWS, CUTOUT_CASTER_ROWS, DETAIL_ROWS, FLAT_ROWS, FRAME_ROWS, LAYER_ROWS, MATERIAL_ROWS, MESH_ROWS, PRINT_ROWS, tileRows, type UniformRow } from "./uniforms.ts";
 import { SPALL_GLSL, SPALL_RIM, ownVertex, worldVertex } from "./world-surfaces.ts";
 import { WATER_FRAGMENT } from "./water.ts";
 
@@ -32,10 +33,10 @@ import { WATER_FRAGMENT } from "./water.ts";
  * (skyopen.ts); 17 to 21 a facade's atlases, 22 the terrain window's roads' frame, 23 the local reflection, 24 what stands
  * overhead (roof.ts), 25 and 26 the streets' distances and kinds round the camera (streets.ts), 27 the textures the
  * card makes (client/core/texgen), and 28 the states of the near chunks' pieces (pieces.ts), which only vertex texts
- * read; 29 an orb's screen picture (video/player.ts), and 30 the pictures of the screens on props (screens.ts). WebGL2
- * has 32 units at the least, and no program's fragment text reads more than sixteen.
+ * read; 29 an orb's screen picture (video/player.ts), 30 the pictures of the screens on props (screens.ts), and 31 the
+ * prints on garments (prints.ts). WebGL2 has 32 units at the least, and no program's fragment text reads more than sixteen.
  */
-export const UNIT = { palette: 0, heights: 1, tint: 2, bones: 3, maps: 4, shadow: 9, sky: 10, windowHeights: 11, windowTint: 12, atlas: 13, layer: 14, details: 15, open: 16, facade: 17, road: 22, street: 23, roof: 24, streets: 25, streetKinds: 26, texgen: 27, pieces: 28, screen: 29, faces: 30 } as const;
+export const UNIT = { palette: 0, heights: 1, tint: 2, bones: 3, maps: 4, shadow: 9, sky: 10, windowHeights: 11, windowTint: 12, atlas: 13, layer: 14, details: 15, open: 16, facade: 17, road: 22, street: 23, roof: 24, streets: 25, streetKinds: 26, texgen: 27, pieces: 28, screen: 29, faces: 30, prints: 31 } as const;
 
 export interface ProgramText {
   readonly vertex: string;
@@ -88,10 +89,11 @@ function surface(tier: Tier, format: TextureFormat, hard: boolean, light: boolea
   if (tier.lit) samplers.uStreetEnv = UNIT.street;
   if (variant.dyed) Object.assign(samplers, { uPalette: UNIT.palette, uMask: UNIT.maps + 3, uMask2: UNIT.maps + 4 });
   if (variant.layered) samplers.uLayer = UNIT.layer;
+  if (variant.printed) samplers.uPrints = UNIT.prints;
   // A bent piece's wear (bend.ts), and a built piece's loss to its core past worn (surface.ts PIECE_SPALL), where the tier reads the finishes in full.
   const full = tier.lit && tier.finish === "full";
   const fragment = surfaceFragment(format, AIR, variant).replace(`${PIECE_SPALL_TEXT}\n`, full ? SPALL_GLSL : "").replace(PIECE_SPALL_RIM, String(SPALL_RIM));
-  return { vertex: surfaceVertex(variant), fragment: streetText(fragment, tier.lit), defines: (tier.lit ? "#define STREET\n" : "") + (full ? "#define BENT_WEAR\n#define PIECE_SPALL\n" : "") + shadowDefines(tier.shadows, hard) + lights(tier, light), samplers };
+  return { vertex: surfaceVertex(variant), fragment: streetText(fragment, tier.lit), defines: (tier.lit ? "#define STREET\n" : "") + (full ? "#define BENT_WEAR\n#define PIECE_SPALL\n" : "") + (variant.printed ? `#define PRINT_LAYERS ${Math.min(MAX_PRINT_LAYERS, Math.max(1, tier.prints.layers))}\n` : "") + shadowDefines(tier.shadows, hard) + lights(tier, light), samplers };
 }
 
 /** `tier`, the texture variant, whether compared lookups come back hard, and whether the device has a light target (post.ts). */
@@ -120,9 +122,10 @@ function water(tier: Tier, hard: boolean, light: boolean, wakes: boolean): Progr
 
 /**
  * Fragment texts that come after the first frame, each set by the late file that holds it: the orb's (orb-late.ts).
- * Until one has come its program is not among a tier's, and nothing is drawn with it.
+ * Until one has come its program is not among a tier's, and nothing is drawn with it. The programs that draw prints are
+ * a tier's once the first print's array is made (prints.ts), so a world with none links none of them.
  */
-export const LATE: { orb: string | null } = { orb: null };
+export const LATE: { orb: string | null; prints: boolean } = { orb: null, prints: false };
 
 const MAKE = {
   flat: (tier, format, hard = false, light = false) => phaseMesh(tier, flatOr(tier, format, hard, light, FLAT_MESH_VERTEX, FLAT_FRAGMENT, LIT_MESH_FRAGMENT, MESH, undefined, true)),
@@ -206,6 +209,10 @@ void main() {
   bloomDown: () => post(BLOOM_DOWN, { uSource: UNIT.details }),
   bloomUp: () => post(BLOOM_UP, { uSource: UNIT.details }),
   finish: () => post(FINISH, { uScene: UNIT.details, uBloom: UNIT.layer }),
+  // Last, so the programs before keep their numbers: a draw whose instances carry prints (packet.ts DRAW_PRINTED, print-term.ts): never dropping, able to, and with a layer.
+  surfacePrinted: (tier, format, hard = false, light = false) => surface(tier, format, hard, light, { ...SURFACE_ANY, drops: false, printed: true }),
+  surfacePrintedCut: (tier, format, hard = false, light = false) => surface(tier, format, hard, light, { ...SURFACE_ANY, printed: true }),
+  surfacePrintedLayer: (tier, format, hard = false, light = false) => surface(tier, format, hard, light, { ...SURFACE_ANY, layered: true, printed: true }),
 } satisfies Record<string, Make>;
 
 /**
@@ -254,6 +261,9 @@ const ROWS: Readonly<Record<keyof typeof MAKE, readonly UniformRow[]>> = {
   bloomDown: [],
   bloomUp: [],
   finish: [],
+  surfacePrinted: [...SURFACE_DRAW, ...PRINT_ROWS],
+  surfacePrintedCut: [...SURFACE_DRAW, ...PRINT_ROWS],
+  surfacePrintedLayer: [...SURFACE_DRAW, ...LAYER_ROWS, ...PRINT_ROWS],
 };
 /** The same by a program's number. */
 export const UNIFORMS: readonly (readonly UniformRow[])[] = Object.keys(MAKE).map((name) => ROWS[name as keyof typeof MAKE]);
@@ -261,10 +271,11 @@ export const UNIFORMS: readonly (readonly UniformRow[])[] = Object.keys(MAKE).ma
 /** The programs low poly draws with: no materials, dome, sea or shadows. */
 const UNLIT = ["skyline", "signal", "sky", "flat", "terrain", "terrainWindow", "seeThrough", "far", "pulled", "details", "fire", "orb", "screens"];
 const POST = ["bloomDown", "bloomUp", "finish"];
+const PRINTED = ["surfacePrinted", "surfacePrintedCut", "surfacePrintedLayer"];
 
 /** The programs a frame of `tier` may ask for, by number, which a shell may begin making before one does. */
 export function tierPrograms(tier: Tier): number[] {
-  return Object.keys(MAKE).flatMap((name, n) => ((tier.lit || UNLIT.includes(name)) && (name !== "seeThrough" || tier.split > 0) && (!name.startsWith("depth") || tier.shadows.size > 0) && (!POST.includes(name) || tier.post !== null) && (name !== "orb" || LATE.orb !== null) ? [n] : []));
+  return Object.keys(MAKE).flatMap((name, n) => ((tier.lit || UNLIT.includes(name)) && (name !== "seeThrough" || tier.split > 0) && (!name.startsWith("depth") || tier.shadows.size > 0) && (!POST.includes(name) || tier.post !== null) && (name !== "orb" || LATE.orb !== null) && (!PRINTED.includes(name) || (LATE.prints && tier.prints.layers > 0)) ? [n] : []));
 }
 
 /**
@@ -298,6 +309,9 @@ export const CHOICE: readonly Choice[] = [
   // An instrument's light with its strip is a SURFACE draw, which its street material draws as a channel of energy.
   pick(PROGRAM.signal, DRAW_EMISSIVE, 0, DRAW_TEXTURED),
   pick(PROGRAM.skyline, DRAW_SKYLINE),
+  pick(PROGRAM.surfacePrintedLayer, DRAW_TEXTURED | DRAW_PRINTED | IS_LAYERED),
+  pick(PROGRAM.surfacePrintedCut, DRAW_TEXTURED | DRAW_PRINTED, DROPS),
+  pick(PROGRAM.surfacePrinted, DRAW_TEXTURED | DRAW_PRINTED),
   pick(PROGRAM.surfaceLayer, DRAW_TEXTURED | IS_LAYERED),
   pick(PROGRAM.surface, DRAW_TEXTURED | IS_DYED, DROPS),
   pick(PROGRAM.surfaceWhole, DRAW_TEXTURED | IS_DYED),

@@ -168,6 +168,11 @@ export interface Tier {
    * and the most frames a second each is uploaded at. Without video the rest show their clips' posters.
    */
   readonly screens: { readonly reach: number; readonly near: number; readonly count: number; readonly layers: number; readonly video: number; readonly fps: number };
+  /**
+   * Prints on garments (render/prints.ts): the side of a layer of their array in texels and how many layers, a print
+   * each, 0 for none; with `swatches`, the governor's step, each print is drawn as its mean colour and none is uploaded.
+   */
+  readonly prints: { readonly side: number; readonly layers: number; readonly swatches?: boolean };
   /** Whether bodies that move take the sky's light from what is under them (render/contact.ts). */
   readonly contact: boolean;
   /**
@@ -224,6 +229,7 @@ export const TIERS: readonly Tier[] = [
     post: null,
     orb: { octaves: 2, pucks: false, light: false, ground: false, video: false },
     screens: { reach: 800, near: 60, count: 8, layers: 8, video: 0, fps: 0 },
+    prints: { side: 0, layers: 0 },
     contact: false,
     roofs: false,
   },
@@ -234,6 +240,7 @@ export const TIERS: readonly Tier[] = [
     post: null,
     orb: { octaves: 3, pucks: true, light: false, ground: true, video: true },
     screens: { reach: 800, near: 60, count: 16, layers: 12, video: 2, fps: 30 },
+    prints: { side: 256, layers: 32 },
     contact: false,
     roofs: true,
   },
@@ -244,6 +251,7 @@ export const TIERS: readonly Tier[] = [
     post: { bloom: 1, pixels: HIGH_PIXELS },
     orb: { octaves: 4, pucks: true, light: true, ground: true, video: true },
     screens: { reach: 800, near: 60, count: 32, layers: 16, video: 2, fps: 30 },
+    prints: { side: 512, layers: 32 },
     contact: true,
     roofs: true,
   },
@@ -254,6 +262,7 @@ export const TIERS: readonly Tier[] = [
     post: { bloom: 1, pixels: 0 },
     orb: { octaves: 4, pucks: true, light: true, ground: true, video: true },
     screens: { reach: 800, near: 60, count: 32, layers: 16, video: 2, fps: 30 },
+    prints: { side: 512, layers: 64 },
     contact: true,
     roofs: true,
   },

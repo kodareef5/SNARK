@@ -35,12 +35,13 @@ import { terrainCheck } from "./probe-lit/terrain.ts";
 import { waterCheck } from "./probe-lit/water.ts";
 import { streetFinishCheck } from "./probe-lit/street-finishes.ts";
 import { skinCheck } from "./probe-lit/skin.ts";
+import { printsCheck } from "./probe-lit/prints.ts";
 import { CHROME_FLAGS } from "./chrome.ts";
 
 const ROOT = resolve(import.meta.dir, "..");
 
 /** Every check, in the order the page draws them. */
-const CHECKS: readonly LitCheck[] = [depthCheck, litCheck, postCheck, terrainCheck, seamsCheck, farCheck, cityCheck, piecesCheck, skyCheck, shadowCheck, farShadowCheck, skyOpenCheck, nodesCheck, waterCheck, layersCheck, standCheck, detailsCheck, damageCheck, rotorCheck, facadeCheck, streetFinishCheck, orbCheck, skinCheck];
+const CHECKS: readonly LitCheck[] = [depthCheck, litCheck, postCheck, terrainCheck, seamsCheck, farCheck, cityCheck, piecesCheck, skyCheck, shadowCheck, farShadowCheck, skyOpenCheck, nodesCheck, waterCheck, layersCheck, standCheck, detailsCheck, damageCheck, rotorCheck, facadeCheck, streetFinishCheck, orbCheck, skinCheck, printsCheck];
 
 const PAGE = `<!doctype html><meta charset="utf-8"><title>lit probe</title><body><script type="module">
 const load = (name) => import("/m/" + name + ".js");
@@ -99,6 +100,7 @@ function unpack(p, f, blob) {
   p.frameTables.clear();
   for (const [buffer, stamp, axes] of f.frameTables) p.frameTables.set(buffer, { axes: Float32Array.from(axes), stamp });
   for (const u of f.texUploads) p.texUploads.push({ ...u, data: data(u.data) });
+  if (f.print) p.printSource = data([f.print[1], f.print[2]]);
   p.drops.push(...f.drops);
   p.assetDrops.push(...f.assetDrops);
   p.texDrops.push(...f.texDrops);
