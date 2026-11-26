@@ -13,7 +13,7 @@ import { quatRotate } from "../../shared/math/quat.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
 import { STANCE_CROUCH, STANCE_PRONE } from "../../shared/sim/character.ts";
-import { RIGS } from "../../assets/source/core/humans/human-bodies/rigs.ts";
+import { artModule } from "../art/source.ts";
 import { buildPack, unpackMeshes } from "../pack/write.ts";
 import { encodePng } from "../snap/png.ts";
 import { fitBody, MATERIAL_BROWS, MATERIAL_EYES, MATERIAL_MOUTH, type FittedBody } from "./fit.ts";
@@ -49,6 +49,7 @@ export function fittedAudit(f: FittedBody): AuditBody {
 /** Today's body of `sex` (0 male, 1 female) from the human-bodies pack: its five slot meshes at level 0, one bone a vertex. */
 export function todayAudit(sex: number, file = "assets/source/core/humans/human-bodies/human-bodies.snpk"): AuditBody {
   const pack = parsePack(new Uint8Array(readFileSync(file)));
+  const rig = pack.header.rigs.find((r) => r.id === (sex === 0 ? "human_m" : "human_f"))!;
   const id = sex === 0 ? "core:human_m" : "core:human_f";
   const parts = unpackMeshes(pack).filter((m) => ["head", "torso", "hands", "legs", "feet"].some((slot) => m.id === `${id}/${slot}`));
   const pos: number[] = [];
@@ -71,7 +72,7 @@ export function todayAudit(sex: number, file = "assets/source/core/humans/human-
   const indices = Uint32Array.from(idx);
   return {
     name: `today ${sex === 0 ? "male" : "female"}`,
-    rest: RIGS[sex]!,
+    rest: rig.rest,
     positions: Float32Array.from(pos),
     indices,
     joints,
@@ -636,7 +637,13 @@ function printCounts(title: string, rows: [string, AimCount][]): void {
   for (const [name, c] of rows) console.log(`${name.padEnd(16)} ${"".padEnd(32)}  | ${shares(c).spills.map(pc).join("  ")}`);
 }
 
-function main(): void {
+/** The frozen rigs, from the art folder, which nothing may import by name. */
+export async function frozenRigs(): Promise<readonly (readonly number[])[]> {
+  return (await artModule("core/humans/human-bodies/rigs.ts")).RIGS as readonly (readonly number[])[];
+}
+
+async function main(): Promise<void> {
+  const rigs = await frozenRigs();
   const args = process.argv.slice(2);
   const outDir = resolve(args.includes("--out") ? args[args.indexOf("--out") + 1]! : "var/fit");
   mkdirSync(outDir, { recursive: true });
@@ -644,7 +651,7 @@ function main(): void {
   const num = (name: string): number | undefined => (args.includes(name) ? Number(args[args.indexOf(name) + 1]) : undefined);
   const macro = { muscle: num("--muscle"), weight: num("--weight"), age: num("--age") };
   for (const k of Object.keys(macro) as (keyof typeof macro)[]) if (macro[k] === undefined) delete macro[k];
-  for (const sex of ["male", "female"] as const) bodies.push(fittedAudit(fitBody(sex, { macro })));
+  for (const sex of ["male", "female"] as const) bodies.push(fittedAudit(fitBody(sex, rigs[sex === "male" ? 0 : 1]!, { macro })));
   bodies.push(todayAudit(0), todayAudit(1));
   for (const body of bodies) {
     const file = body.name.replace(" ", "-");
@@ -669,4 +676,4 @@ function main(): void {
   }
 }
 
-if (import.meta.main) main();
+if (import.meta.main) await main();

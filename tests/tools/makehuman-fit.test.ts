@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { RIGS } from "../../assets/source/core/humans/human-bodies/rigs.ts";
 import { HUMAN, HUMAN_BONES } from "../../shared/anim/human.ts";
+import { artModule } from "../../tools/art/source.ts";
 import { fitBody, collapsedBone, macroTargets, PART_NAMES, type FittedBody } from "../../tools/makehuman/fit.ts";
 import { BASE_OBJ, MAKEHUMAN } from "../../tools/makehuman/index.ts";
 import { readObj } from "../../tools/makehuman/obj.ts";
@@ -10,10 +10,12 @@ const MIRROR = existsSync(BASE_OBJ);
 if (!MIRROR) console.warn(`makehuman-fit: no MakeHuman mirror at ${MAKEHUMAN}, so the fit tests are skipped. Install it: bun run media art raw-makehuman`);
 const mirrorTest = MIRROR ? test : test.skip;
 
+const RIGS = MIRROR ? ((await artModule("core/humans/human-bodies/rigs.ts")).RIGS as readonly (readonly number[])[]) : [];
+const rigOf = (sex: "male" | "female"): readonly number[] => RIGS[sex === "male" ? 0 : 1]!;
 const fitted = new Map<string, FittedBody>();
 const body = (sex: "male" | "female"): FittedBody => {
   let f = fitted.get(sex);
-  if (!f) fitted.set(sex, (f = fitBody(sex)));
+  if (!f) fitted.set(sex, (f = fitBody(sex, rigOf(sex))));
   return f;
 };
 const named = (b: number): string => HUMAN.names[b]!;
@@ -48,7 +50,7 @@ test("MakeHuman's bones collapse onto the thirty by part and side", () => {
 mirrorTest("both sexes land every joint within a millimetre of their rig", () => {
   for (const sex of ["male", "female"] as const) {
     const f = body(sex);
-    expect([...f.rest]).toEqual(RIGS[sex === "male" ? 0 : 1]!.map((v) => Math.fround(v)));
+    expect([...f.rest]).toEqual(rigOf(sex).map((v) => Math.fround(v)));
     const off = [...f.report.landed].map((mm, b) => [named(b), mm] as const).filter(([, mm]) => !(mm < 1));
     expect(off).toEqual([]);
   }
@@ -104,7 +106,7 @@ mirrorTest("no helper or joint-cube face is kept, and the feet stand on the grou
 
 mirrorTest("the same inputs fit the same body twice", () => {
   const a = body("male");
-  const b = fitBody("male");
+  const b = fitBody("male", rigOf("male"));
   expect(Buffer.from(b.positions.buffer).equals(Buffer.from(a.positions.buffer))).toBe(true);
   expect(Buffer.from(b.indices.buffer).equals(Buffer.from(a.indices.buffer))).toBe(true);
   expect(Buffer.from(b.weights.buffer).equals(Buffer.from(a.weights.buffer))).toBe(true);

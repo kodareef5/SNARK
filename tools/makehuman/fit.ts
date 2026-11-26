@@ -1,9 +1,8 @@
-// Fits MakeHuman's base body to one of the frozen human rigs (assets/source/core/humans/human-bodies/rigs.ts): shaped by
+// Fits MakeHuman's base body to one of the frozen human rigs (rigs.ts beside the human-bodies asset): shaped by
 // its macro and measurement targets, re-posed from its A-pose to the rig's T-pose with its own skeleton and weights,
 // landed on the rig's joints, and its weights collapsed onto the thirty bones of shared/anim/human.ts.
 
 import { dirname, join } from "node:path";
-import { RIGS } from "../../assets/source/core/humans/human-bodies/rigs.ts";
 import { B_PROP_L, B_PROP_R, HUMAN, HUMAN_BONES, SOCKET_EYE } from "../../shared/anim/human.ts";
 import { quatMul, quatNormalize, quatRotate } from "../../shared/math/quat.ts";
 import { fit, readBinding } from "./bind.ts";
@@ -918,9 +917,9 @@ function soles(body: number, p: Float64Array, skin: Skin, rig: readonly number[]
   }) as [number, number];
 }
 
-export function fitStages(sex: Sex, opts: FitOptions = {}): FitStages {
+export function fitStages(sex: Sex, rig: readonly number[], opts: FitOptions = {}): FitStages {
   const m = readMirror();
-  const rig = RIGS[sex === "male" ? 0 : 1]!;
+  if (rig.length !== HUMAN_BONES * 3) throw new Error(`a rig has ${HUMAN_BONES * 3} numbers, not ${rig.length}`);
   const shaped = shape(m, sex, rig, opts.macro);
   // Decimetres to metres, standing on y = 0.
   const morphed = morphAll(m, shaped.targets);
@@ -964,10 +963,13 @@ export function fitStages(sex: Sex, opts: FitOptions = {}): FitStages {
   return { rig, shaped, placed, posed, landed, shiftZ, before, after, skin, body: m.body, squash };
 }
 
-/** MakeHuman's body fitted to `sex`'s frozen rig. Reads only the mirror; the same inputs give the same body. */
-export function fitBody(sex: Sex, opts: FitOptions = {}): FittedBody {
+/**
+ * MakeHuman's body fitted to `rig`, the frozen joints of `sex` (RIGS beside the human-bodies asset, three a bone). Reads
+ * only the mirror; the same inputs give the same body.
+ */
+export function fitBody(sex: Sex, rig: readonly number[], opts: FitOptions = {}): FittedBody {
   const m = readMirror();
-  const { rig, shaped, landed, shiftZ, before, after, skin, squash } = fitStages(sex, opts);
+  const { shaped, landed, shiftZ, before, after, skin, squash } = fitStages(sex, rig, opts);
   const built: Built = { positions: [], uvs: [], source: [], indices: [], part: [] };
   addFaces(built, m.base, m.bodyFaces, landed, 0, 0);
   const bodyVerts = built.positions.length / 3;
