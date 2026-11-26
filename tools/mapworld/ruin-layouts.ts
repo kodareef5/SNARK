@@ -27,6 +27,14 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
   m.floors = Math.max(m.floors, floors); m.walked = Math.max(m.walked, playable);
   const entryCores = cores.length ? cores : [[...tiles].sort((a, b) => Math.abs(a.u) - Math.abs(b.u) || Math.abs(a.v) - Math.abs(b.v))[0]!];
   const entryLane = (t: Tile): boolean => entryCores.some((c) => t.i === c.i);
+  // A lane's doors are at the two ends of its core's run of tiles (the entries below): a tile's side there is a way in.
+  const doorEnds = new Set<string>();
+  for (const c of entryCores) {
+    let lo = c.j; let hi = c.j;
+    while (keys.has(tileKey(c.i, lo - 1))) lo--; while (keys.has(tileKey(c.i, hi + 1))) hi++;
+    doorEnds.add(`${c.i},${lo},-1`); doorEnds.add(`${c.i},${hi},1`);
+  }
+  const doorBay = (t: Tile, dx: number, dz: number): boolean => dx === 0 && doorEnds.has(`${t.i},${t.j},${dz}`);
   const safe = (t: Tile): boolean => cores.some((c) => Math.abs(t.u - c.u) <= bay && Math.abs(t.v - c.v) <= bay) || entryLane(t);
   const form = rule.form ?? { shell: "masonry", inside: "suites", roof: "flat", front: "porch", windowEvery: 3 };
   const mode = rule.collapse ?? "shear";
@@ -197,7 +205,7 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
         // A plant room's walls are louvres between piers under a parapet, as a plant floor's top storey is; a garage's
         // stair tower's are blank.
         if ((crown?.raised.has(t) || t === tower) && level >= floors) { facade(m, t === tower ? (level === top - 1 ? "zpaneltop" : "zpanel8") : level === top - 1 ? "zplanttop" : "zplant", u, h, v, side, rule.finish); level++; continue; }
-        const entry = level === 0 && (entryLane(t) || ["loading", "shopfront", "clock"].includes(form.front) && (t.i + t.j) % 2 === 0);
+        const entry = level === 0 && (doorBay(t, dx, dz) || ["loading", "shopfront", "clock"].includes(form.front) && (t.i + t.j) % 2 === 0);
         const upper = level >= playable; const lookout = top > playable && level === playable;
         const party = rule.party?.includes(side) && adjacent === 0;
         // Onto a fallen bay the playable floors' walls are its broken inside; the storeys above wear the facade's.
