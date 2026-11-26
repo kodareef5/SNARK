@@ -5,7 +5,8 @@
 // is changed or deleted: a stale revision answers 409 with the store as it is now.
 //
 //   GET  /admin/people/state     every edition, person, outfit and admin population at its latest revision, retired ones
-//                                marked, who made each; the garments, the built-in populations, the manifest and the caps
+//                                marked, who made each; the garments, the armour, the built-in populations, the manifest
+//                                and the caps
 //   POST /admin/people/publish   {revision, garment, colours, name, print?: {hash, place}}: a new edition; answers its id
 //   POST /admin/people/save      {kind, id, rev, doc} or, for a new population, {kind, id: null, rev: 0, copyOf, label?}:
 //                                a new person, outfit or population where id is null, else the revision after rev
@@ -48,6 +49,16 @@ function garments(reg: Registry): Record<string, unknown>[] {
   return out;
 }
 
+/** The armour a population's outfit may name beside garments: every worn item, with its armour slot (SLOT_NAMES). */
+function armour(reg: Registry): Record<string, unknown>[] {
+  const out: Record<string, unknown>[] = [];
+  reg.defs.forEach((d, i) => {
+    const slot = reg.wearSlot[i] ?? -1;
+    if (d && d.type === "item" && slot >= 0) out.push({ id: d.id, label: d.label ?? d.id, slot });
+  });
+  return out;
+}
+
 /** What the admin pages are shown: every edition with whether it is retired and who made it, and what an edition may be. */
 export function peopleState(store: PeopleStore, reg: Registry, view: PeopleView = store.view()): Record<string, unknown> {
   return {
@@ -55,6 +66,7 @@ export function peopleState(store: PeopleStore, reg: Registry, view: PeopleView 
     manifest: view.manifestId === "" ? null : { id: view.manifestId, path: peopleManifestPath(view.manifestId) },
     caps: { side: PRINT_SIDE_MAX, bytes: PRINT_BYTES_MAX, scaleMin: PRINT_SCALE_MIN, scaleMax: PRINT_SCALE_MAX, name: EDITION_NAME_MAX },
     garments: garments(reg),
+    armour: armour(reg),
     editions: view.editions.map((e) => ({ ...e, retired: view.retired.has(e.id), ...view.made.get(e.id), ...(e.print ? { printPath: printPath(e.print.hash) } : {}) })),
     people: latest(view, "person"),
     outfits: latest(view, "outfit"),

@@ -11,15 +11,15 @@ export async function buildAdmin(dist: string): Promise<void> {
     mkdirSync(join(dist, "title"), { recursive: true });
     copyFileSync(emblem, join(dist, "title/snark-emblem.webp"));
   }
-  const entries = ["shell", "cluster", "admin", "settings", "cast", "loadouts", "events", "first-frame", "board", "screens", "screens-stage", "permissions", "acts", "wardrobe"];
+  const entries = ["shell", "cluster", "admin", "settings", "cast", "loadouts", "events", "first-frame", "board", "screens", "screens-stage", "permissions", "acts", "wardrobe", "people", "populations"];
   const result = await Bun.build({
     entrypoints: [...entries.map(name => join(client, "admin", name + ".ts")), join(client, "drops/drops.ts")],
     outdir: out, naming: "[name].[ext]", target: "browser", minify: true, sourcemap: "linked",
   });
   if (!result.success) throw Error(result.logs.map(String).join("\n"));
-  for (const page of ["cluster", "cast", "loadouts", "events", "settings", "first-frame", "screens", "permissions", "acts", "wardrobe"])
+  for (const page of ["cluster", "cast", "loadouts", "events", "settings", "first-frame", "screens", "permissions", "acts", "wardrobe", "people", "populations"])
     copyFileSync(join(client, "admin", page + ".html"), join(out, page + ".html"));
-  for (const css of ["admin.css", "investigate.css", "overview.css", "wardrobe.css"])
+  for (const css of ["admin.css", "investigate.css", "overview.css", "wardrobe.css", "people.css"])
     copyFileSync(join(client, "admin", css), join(out, css));
   copyFileSync(join(client, "admin/admin.html"), join(out, "index.html"));
   copyFileSync(join(client, "drops/drops.html"), join(out, "drops.html"));

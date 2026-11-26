@@ -1,6 +1,7 @@
 // The admin page's Cast panel (client/admin/cast.ts): what Cast is doing, as JSON, and what an admin may do to it.
 //
-//   GET  /admin/cast.json   its settings, counts, cost, regions, stories, featured people, the last decisions, the scenes
+//   GET  /admin/cast.json   its settings, counts, cost, regions, stories, featured people, who plays a named person, the
+//                           last decisions, the scenes
 //   POST /admin/cast        {"op":"set","name":"CastActivity","value":"1.5"}   a Cast setting, live, until a restart
 //                           {"op":"spawn","scene":"cast:flash_mob"}           a scene now, near the first survivor online
 //                           {"op":"retire","story":"s12"}                     a story ends; its people walk off unseen
@@ -32,6 +33,10 @@ export function castState(host: Host, now: number): string {
     id: c.id, name: c.name, person: c.person ?? null, kept: !!c.kept, kind: cast.people.archetype(c.archetype)?.name ?? c.archetype, want: c.want, struggle: c.struggle, hope: c.hope, dead: !!c.dead,
     story: c.story ?? null, traits: c.traits, facts: c.facts.slice(-4).map((f) => f.text), knows: Object.fromEntries(Object.entries(c.relations).map(([n, r]) => [n, { stance: r.stance, met: r.met, notes: r.notes.slice(-2) }])),
   }));
+  // Everyone playing a named person, so the people page can feature one.
+  const named = [...cast.people.byId.values()].filter((c) => c.person !== undefined).sort((a, b) => b.touched - a.touched).slice(0, MOST_PEOPLE).map((c) => ({
+    id: c.id, name: c.name, person: c.person!, featured: c.tier === "featured", dead: !!c.dead, story: c.story ?? null,
+  }));
   const regions = [...cast.regions.byIndex.entries()].map(([i, r]) => ({ ...cast.spots.centre(i), heat: Math.round(r.heat * 100) / 100, players: r.players, pace: r.pace }));
   // Who an admin chose: each look's population and outfit, each role a named person plays, and what the store offers.
   const view = host.people.held(), latest = <T,>(m: ReadonlyMap<number, readonly { rev: number; body: T }[]>) => [...m].map(([id, revs]) => ({ id, body: revs.at(-1)!.body }));
@@ -47,7 +52,7 @@ export function castState(host: Host, now: number): string {
     counts: { ...cast.counts, ...ch.stage.counts, bodies: ch.stage.count, people: cast.people.byId.size, stories: cast.stories.size },
     planner: { ...ch.planner.counts, ...ch.gate.counts, hour: ch.gate.thisHour(now), model: ch.gate.ask ? cast.settings.model : "" },
     players: w.players().map((p) => ({ name: p.name, x: Math.round(p.x), z: Math.round(p.z) })),
-    regions, stories, people, looks, roles, store,
+    regions, stories, people, named, looks, roles, store,
     decisions: ch.log.kept.slice(-25).reverse().map((d) => ({ t: d.t, point: d.point, policy: d.policy, why: d.why, choice: d.choice })),
     scenes: cast.cat.scenes.map((s) => ({ id: s.id, name: s.name, weight: s.weight, placeholder: !!s.placeholder, needs: s.needs, ok: s.needs.every((n) => cast.can.has(n)) })),
   });
