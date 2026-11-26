@@ -320,9 +320,10 @@ export const EYE_COAT = 0.06, EYE_RIM = 0.3, EYE_UNDER = 0.3;
  * drawn, so the change of level shows no change of light. A level is drawn where the metres a pixel covers, times the
  * tier's threshold and 1.5 for a textured body (characters.ts TEXTURED_BODY_RELAX), passes its error (assets.ts
  * `choose`): skin is whole while that product is under SKIN_KEEP and gone by SKIN_GONE, about the survivor's last textured
- * level's error and a little under its first flat one's (each the mean of its parts', 0.0036 and 0.0078 to 0.0085 m), over 1.5.
+ * level's error and a little under its first flat one's, over 1.5. On the MakeHuman bodies those are 0.0049 and 0.0094 to
+ * 0.0098 m, each the mean of its parts' over both sexes.
  */
-export const SKIN_KEEP = 0.0025, SKIN_GONE = 0.005;
+export const SKIN_KEEP = 0.0032, SKIN_GONE = 0.006;
 
 /** How much a pixel of skin keeps of skin's own light, `pixel` metres across on a tier of threshold `threshold`. The twin of SURFACE's. */
 export function skinNear(pixel: number, threshold: number): number {

@@ -15,6 +15,7 @@ import { multiply4, readAccessor, restMatrices, type Gltf } from "./gltf.ts";
 import { simplifySurface, withSurfaceLevels, type ByZone } from "./simplify.ts";
 import { boneOfJoints, ownBone, rigOf } from "./skin.ts";
 import { fourHeaviest, spanOf } from "./surface.ts";
+import type { RefitPiece } from "./refit.ts";
 import type { MaterialMaps } from "./texture.ts";
 import type { SourceLod, SourceMesh } from "./write.ts";
 
@@ -63,6 +64,8 @@ export interface CookOptions {
   /** How its zones are kept as levels are made (simplify.ts ByZone). On a piece cut by slot, ZONE_WEIGHTS and the slots where not given. */
   byZone?: ByZone;
   palette: Uint8Array;
+  /** Moves a piece made on another body onto this one once gathered (refit.ts refitPiece). Its triangles keep the zones they had. */
+  refit?: (piece: RefitPiece) => void;
 }
 
 export interface Cooked {
@@ -422,6 +425,10 @@ export function cookBody(sources: Gltf | readonly Gltf[] | ScriptedBody, opts: C
     if (at.indices.length === 0) throw new Error(`${list[0]!.path}: no skinned mesh`);
   }
   zonesOf(at, rig.rest);
+  if (opts.refit) {
+    opts.refit(at);
+    for (let v = 0; v < at.bones.length; v++) at.rigid[v] = RIGID_BONES.has(at.bones[v]!) ? 1 : 0;
+  }
   if (!opts.whole) {
     stiffen(at);
     ease(at, rig.rest);
