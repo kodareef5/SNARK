@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { writeMap, type MapData, type MapStatic } from "../../shared/world/mapfile.ts";
 import { MapWater } from "../../shared/world/water.ts";
-import { audit, doorsOffGround, hullsInPieces, lakeWraps, offMap, openMap, piecesUnderGround, streetsThroughBuildings, twins, waterWalls, type Audited } from "../../tools/mapworld/audit.ts";
+import { audit, bodiesSwum, doorsOffGround, hullsInPieces, lakeWraps, offMap, openMap, piecesUnderGround, streetsThroughBuildings, swimming, twins, waterWalls, type Audited } from "../../tools/mapworld/audit.ts";
 import { flatMap } from "../fixtures/map.ts";
 import { builtSketch, SIDE_FRONT, Sketch } from "../fixtures/sketch.ts";
 
@@ -29,7 +29,7 @@ test("a map of one sound building passes every gate", () => {
   for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) s.slab(i, j, 1);
   s.edge("wall4", "concrete", 0, 0, SIDE_FRONT, 0);
   const checks = audit(sketched([s]));
-  expect(checks.filter((c) => c.gate).map((c) => c.count)).toEqual([0, 0, 0, 0]);
+  expect(checks.filter((c) => c.gate).map((c) => c.count)).toEqual([0, 0, 0, 0, 0]);
   expect(checks.map((c) => c.check)).toContain("water ending in a wall");
 });
 
@@ -73,6 +73,23 @@ test("water standing over the ground past its squares is a wall; a basin's is no
   // The second lake's bed is a metre down inside its squares' outer corners, which stay at its surface.
   const c = waterWalls(opened({ water, heights: ground((x, z) => x >= 122 && x <= 130 && z >= 122 && z <= 130, -1) }));
   expect(c).toMatchObject({ gate: false, count: 1, bodies: 2, byOverAMetre: 0, wallMetres: 48 });
+});
+
+test("a survivor swims in a pool 1.5 m deep and walks out; in a pit it is caught; in 0.5 m it wades", () => {
+  // Three pools 8 m square, their water at the ground's level: beds of 1.5, 1.5 and 0.5 m, the second walled 3 m up.
+  const at = [20, 60, 100], bed = [-1.5, -1.5, -0.5];
+  const pool = (i: number, j: number, reach: number): number => at.findIndex((a) => i >= a - reach && i <= a + 4 + reach && j >= 20 - reach && j <= 24 + reach);
+  const heights = Uint16Array.from({ length: SIDE * SIDE }, (_, k) => {
+    const [i, j] = [k % SIDE, Math.floor(k / SIDE)], inside = pool(i, j, 0);
+    return units(inside >= 0 ? bed[inside]! : pool(i, j, 3) === 1 ? 3 : 0);
+  });
+  // Each pool's squares: those with a corner on one of its samples.
+  const water = lakes([0, 0, 0], (i, j) => 1 + at.findIndex((a) => i >= a - 1 && i <= a + 4 && j >= 19 && j <= 24));
+  const w = opened({ heights, water });
+  expect(bodiesSwum(w).map((s) => [s.body, s.swims, s.out, Math.round(s.depth * 10) / 10])).toEqual([[1, true, true, 1.5], [2, true, false, 1.5], [3, false, true, 0.5]]);
+  const c = swimming(w);
+  expect(c).toMatchObject({ gate: true, count: 1, bodiesWithWater: 3, swimmable: 2, swimmableWalkedOut: 1, wading: 1, wadingNotWalkedOut: 0 });
+  expect((c.first as string[])[0]).toContain("body 2");
 });
 
 test("a street along a building's wall is a run; one that only crosses it is not", () => {
