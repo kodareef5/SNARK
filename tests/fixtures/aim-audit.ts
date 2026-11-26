@@ -141,11 +141,14 @@ export function aimAudit(view: ProvingView, look: Uint8Array | null, states: rea
 /**
  * What one look may cost against its sex's default, at worst: the region extremes and random looks measured on
  * 2026-11-25 with each limb held to LIMB_SLACK (shared/anim/look.ts). Missed stays at 3% for him and 4.5% for her.
+ * On the MakeHuman body his thin looks (Build and Hips at -1) spill up to 32.6% and leave the foot at 73.7%: a thin
+ * body inside a capsule of fixed size is hit where it is not drawn, which costs only its wearer, so spill and zone
+ * were let out by that much while body and missed were not.
  */
-export const AIM_MALE_LOOK: AimHeld = { head: 0.95, body: 0.875, missed: 0.03, spill: 0.31, zone: 0.74 };
+export const AIM_MALE_LOOK: AimHeld = { head: 0.95, body: 0.875, missed: 0.03, spill: 0.33, zone: 0.73 };
 export const AIM_FEMALE_LOOK: AimHeld = { head: 0.9, body: 0.835, missed: 0.045, spill: 0.46, zone: 0.58 };
 /** Every region at one end: as one look, but a body thin all over leaves a wider rim of capsule around it. */
-export const AIM_MALE_EXTREME: AimHeld = { ...AIM_MALE_LOOK, spill: 0.32 };
+export const AIM_MALE_EXTREME: AimHeld = { ...AIM_MALE_LOOK, spill: 0.335 };
 export const AIM_FEMALE_EXTREME: AimHeld = { ...AIM_FEMALE_LOOK, spill: 0.48 };
 
 /** The ways a count falls short of `held`, as words; none where it holds. */

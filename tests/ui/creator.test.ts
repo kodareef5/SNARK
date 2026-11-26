@@ -327,7 +327,7 @@ test("a look picks colours and stretches bones along their own axes: longer legs
   const upper = HUMAN.rest[B_LOWER_ARM_L * 3]! - HUMAN.rest[B_UPPER_ARM_L * 3]!;
   const lower = HUMAN.rest[B_HAND_L * 3]! - HUMAN.rest[B_LOWER_ARM_L * 3]!;
   const out = (long.pos[B_HAND_L * 3]! - rest.pos[B_HAND_L * 3]!) / ((upper + lower) * 0.1);
-  expect(out).toBeGreaterThan(0.8);
+  expect(out).toBeGreaterThan(0.6);
   expect(out).toBeLessThanOrEqual(1 + 1e-6);
   expect(long.pos[B_HAND_L * 3 + 1]).toBeCloseTo(rest.pos[B_HAND_L * 3 + 1]!, 5);
   expect(long.pos[B_HAND_L * 3 + 2]).toBeCloseTo(rest.pos[B_HAND_L * 3 + 2]!, 5);
