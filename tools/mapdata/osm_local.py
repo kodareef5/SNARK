@@ -220,7 +220,7 @@ def region_file(cache, region):
     if not path.exists():
         url = f'https://download.geofabrik.de/{region}-latest.osm.pbf'
         path.parent.mkdir(parents=True, exist_ok=True)
-        subprocess.run(['curl', '-sSL', '--retry', '5', '-o', str(path) + '.part', url], check=True)
+        subprocess.run(['curl', '-sSL', '--retry', '5', '--retry-all-errors', '-o', str(path) + '.part', url], check=True)
         subprocess.run(['curl', '-sSL', '-o', str(path) + '.md5', url + '.md5'], check=True)
         Path(str(path) + '.part').rename(path)
         want = Path(str(path) + '.md5').read_text().split()[0]

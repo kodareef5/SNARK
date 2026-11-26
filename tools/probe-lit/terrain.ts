@@ -177,15 +177,18 @@ export const terrainCheck: LitCheck = {
     for (let k = 0; k < 8 && made.swap.after < 0; k++) {
       const q = scene.packet;
       const was = [q.groundWindow[0]!, q.groundWindow[1]!, q.groundWindow[2]!];
-      const tiles = String(q.tiles.subarray(0, q.tileCount * 4)) + String(q.tileOrigin.subarray(0, q.tileCount * 2));
       const p = build(walk);
-      if (k === 0 || (p.groundWindow[1] === was[1] && p.groundWindow[2] === was[2])) continue;
+      // The window steps in the frame it is wanted, so the first frame after the move may hold the swap.
+      if (p.groundWindow[1] === was[1] && p.groundWindow[2] === was[2]) continue;
+      // The window steps in the frame it is wanted: that frame against the next, the camera still, must not change.
       const s = made.swap;
-      [s.before, s.after] = [walk.frames.length - 2, walk.frames.length - 1];
-      walk.read.push(s.before, s.after);
-      s.same = tiles === String(p.tiles.subarray(0, p.tileCount * 4)) + String(p.tileOrigin.subarray(0, p.tileCount * 2));
       s.moved = [p.groundWindow[1]! - was[1]!, p.groundWindow[2]! - was[2]!];
       s.pic = picture(raster, p, cam);
+      const stepped = String(p.tiles.subarray(0, p.tileCount * 4)) + String(p.tileOrigin.subarray(0, p.tileCount * 2));
+      const next = build(walk);
+      s.same = stepped === String(next.tiles.subarray(0, next.tileCount * 4)) + String(next.tileOrigin.subarray(0, next.tileCount * 2));
+      [s.before, s.after] = [walk.frames.length - 2, walk.frames.length - 1];
+      walk.read.push(s.before, s.after);
     }
     // 2 km on, the window drawn holds none of the ground in view: it is drawn from the whole map's pair until the new one is in.
     place(3700, 3400, Math.PI + 0.6, -0.1);
@@ -242,10 +245,10 @@ export const terrainCheck: LitCheck = {
       [all, changed, worst] = [all + 1, changed + (o > 0 ? 1 : 0), Math.max(worst, o)];
       if (s.pic.distance[at]! < NEAR_SWAP) [near, nearChanged] = [near + 1, nearChanged + (o > 0 ? 1 : 0)];
     }
-    const a = against(after, s.pic, [0]);
+    const a = against(before, s.pic, [0]);
     const pass = s.same && near > 50000 && nearChanged === 0 && a.off[0]! <= a.n[0]! * MOST_OFF;
     ok &&= pass;
-    lines.push(`a window moved ${s.moved.map((m) => m * TERRAIN_CELL).join(" m and ")} m and swapped in, the tiles ${s.same ? "the same" : "NOT THE SAME"}: ${nearChanged} of ${near} ground pixels within ${NEAR_SWAP} m changed, ${changed} of ${all} in the whole frame (the worst by ${worst}); the frame of the swap, ${a.n[0]! - a.off[0]!} of ${a.n[0]} within ${SAME} of the rasterizer  ${pass ? "ok" : "FAIL"}`);
+    lines.push(`a window stepped ${s.moved.map((m) => m * TERRAIN_CELL).join(" m and ")} m, against the frame after it, the tiles ${s.same ? "the same" : "NOT THE SAME"}: ${nearChanged} of ${near} ground pixels within ${NEAR_SWAP} m changed, ${changed} of ${all} in the whole frame (the worst by ${worst}); the frame of the step, ${a.n[0]! - a.off[0]!} of ${a.n[0]} within ${SAME} of the rasterizer  ${pass ? "ok" : "FAIL"}`);
     return { ok, lines };
   },
 };
