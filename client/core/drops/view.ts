@@ -300,9 +300,11 @@ export function sourceRows(l: Loaded): SourceRow[] {
     const of = w.species?.length ? `of a ${w.species.map((id) => nameOf(l, id)).join(" or a ")}` : "";
     const size = w.size?.length ? `${w.size.join(" or ")} ` : "";
     const level = w.level ? `, level ${w.level[0]} to ${w.level[1]}` : "";
-    const a = (word: string): string => `${/^[aeiou]/.test(word) ? "an" : "a"} ${word}`;
     const moves = w.vehicle?.length ? w.vehicle.map((m) => MOVES[m] ?? m).join(" or ") : "vehicle";
-    const what = s.kind === "vehicle" ? `a found ${w.species?.length ? w.species.map((id) => nameOf(l, id)).join(", ") : moves}` : s.kind === "static" ? (w.holds?.length ? w.holds.map((tag) => a(holdWord(tag))).join(" or ") : "anything that holds loot") : w.species?.length ? `the ${size}body ${of}${level}` : `${size === "" ? "any" : a(size.trim())} body${level}`;
+    const a = (word: string): string => `${/^[aeiou]/.test(word) ? "an" : "a"} ${word}`;
+    // Where a static stands: its building, the storeys, the band of the map.
+    const where = `${w.building?.length ? ` in ${w.building.map((b) => a(b.replace(/_/g, " "))).join(" or ")}` : ""}${s.kind === "static" && w.level ? ` from storey ${w.level[0]}` : ""}${w.band?.length ? ` in the ${w.band.join(" or ")} band` : ""}`;
+    const what = s.kind === "vehicle" ? `a found ${w.species?.length ? w.species.map((id) => nameOf(l, id)).join(", ") : moves}` : s.kind === "static" ? `${w.holds?.length ? w.holds.map((tag) => a(holdWord(tag))).join(" or ") : "anything that holds loot"}${where}` : w.species?.length ? `the ${size}body ${of}${level}` : `${size === "" ? "any" : a(size.trim())} body${level}`;
     const tables = s.tables.map((t) => `${t.table.replace(`${TIER_MARK}/`, "")}${t.slots ? ` ${t.slots.join(" and ")}` : ""}`).join(", ");
     const keys = s.tier !== undefined ? [...new Set([s.tier, ...(s.ladder ?? []).map((step) => step.tier)])] : [""];
     const tiers = keys.map((key): SourceTier => {

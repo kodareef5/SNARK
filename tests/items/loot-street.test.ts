@@ -3,6 +3,7 @@
 
 import { expect, test } from "bun:test";
 import type { ClientSession } from "../../client/core/session.ts";
+import { Loot } from "../../server/loot.ts";
 import { loadConfig } from "../../server/settings/config.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
 import { BOX_OPEN, BOX_SELF, CMD_MOVE, CMD_STRUCT, RESULT_DENIED, RESULT_OK, RESULT_SEARCHED, RESULT_WAIT } from "../../shared/net/protocol.ts";
@@ -140,4 +141,11 @@ test("with street loot off nothing on the street is searched, and what was searc
   // A bin's time is 20 to 30 game hours from its first search.
   const left = saved[0]![1] - h.world.tick;
   expect([left > 19 * GAME_HOUR_TICKS, left <= 30 * GAME_HOUR_TICKS]).toEqual([true, true]);
+});
+
+test("the band of the map a thing stands in is that of the drop book's nearest site", () => {
+  const sites = [{ key: "shore/001", x: 100, z: 100 }, { key: "deep/001", x: 900, z: 100 }, { key: "odd", x: 500, z: 900 }];
+  const loot = new Loot({ compiled: () => ({ book: { sites } }) } as unknown as ConstructorParameters<typeof Loot>[0]);
+  expect([loot.band(120, 90), loot.band(800, 200), loot.band(500, 800)]).toEqual(["shore", "deep", ""]);
+  expect(new Loot({ compiled: () => ({ book: { sites: [] } }) } as unknown as ConstructorParameters<typeof Loot>[0]).band(1, 1)).toBe("");
 });

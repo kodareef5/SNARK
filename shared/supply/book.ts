@@ -198,8 +198,12 @@ export interface SourceWhen {
   species?: string[];
   /** A body's size (BODY_SIZES, shared/sim/loot.ts). */
   size?: string[];
-  /** A body's level, least and most. */
+  /** A body's level, or the storey a static stands on, least and most. */
   level?: [number, number];
+  /** The kind of building a static stands in: "hospital", "warehouse". */
+  building?: string[];
+  /** The band of the map a static stands in, by the drops' sites: "shore", "inland", "deep". */
+  band?: string[];
   /** A static's tag (StructureDef.holds): "bin", "mailbox". */
   holds?: string[];
   /** How a found vehicle moves: "wheeled", "boat", "rotor", "jet". Its kind is told by `species`. */
@@ -228,7 +232,7 @@ export interface SourceDoc {
   /** How many of its tables are rolled, least and most; one where not given. */
   rolls?: [number, number];
   tables: SourceTable[];
-  /** The tier it rolls at, and steps that raise it: the last whose level the thing has reached. */
+  /** The tier it rolls at, and steps that raise it: the last whose level the thing has reached (a body's level, a static's storey). */
   tier?: string;
   ladder?: { level: number; tier: string }[];
   /** Game hours before a thing that stands holds loot again, least and most, from when it was first searched. A day where not given. */
@@ -543,11 +547,12 @@ export function bookFaults(book: unknown): BookFault[] {
         if (s.rolls !== undefined && !(Array.isArray(s.rolls) && s.rolls.length === 2 && Number.isInteger(s.rolls[0]) && Number.isInteger(s.rolls[1]) && s.rolls[0] >= 0 && s.rolls[1] >= s.rolls[0] && s.rolls[1] <= MOST.slots)) bad(`${path}.rolls`, `[least, most], whole, from 0 to ${MOST.slots}`);
         const w = s.when;
         if (w !== undefined) {
-          if (!isObject(w)) bad(`${path}.when`, "{ species, size, level, holds, vehicle }");
+          if (!isObject(w)) bad(`${path}.when`, "{ species, size, level, holds, vehicle, building, band }");
           else {
             if (w.species !== undefined && !(Array.isArray(w.species) && w.species.length <= MOST.items && w.species.every((id) => typeof id === "string" && id.length > 0 && id.length <= 96))) bad(`${path}.when.species`, `at most ${MOST.items} species ids`);
             if (w.size !== undefined && !(Array.isArray(w.size) && w.size.every((v) => (BODY_SIZES as readonly string[]).includes(v)))) bad(`${path}.when.size`, `of ${BODY_SIZES.join(", ")}`);
             if (w.holds !== undefined && !(Array.isArray(w.holds) && w.holds.length <= MOST.items && w.holds.every((v) => typeof v === "string" && /^[a-z][a-z0-9_/-]{0,31}$/.test(v)))) bad(`${path}.when.holds`, `at most ${MOST.items} tags of small letters`);
+            for (const part of ["building", "band"] as const) if (w[part] !== undefined && !(Array.isArray(w[part]) && w[part].length <= MOST.items && w[part].every((v) => typeof v === "string" && /^[a-z][a-z0-9_/-]{0,47}$/.test(v)))) bad(`${path}.when.${part}`, `at most ${MOST.items} names of small letters`);
             if (w.vehicle !== undefined && !(Array.isArray(w.vehicle) && w.vehicle.every((v) => ["wheeled", "boat", "rotor", "jet"].includes(v)))) bad(`${path}.when.vehicle`, "of wheeled, boat, rotor, jet");
             if (w.level !== undefined && !(Array.isArray(w.level) && w.level.length === 2 && finite(w.level[0]) && finite(w.level[1]) && w.level[0] >= 0 && w.level[1] >= w.level[0])) bad(`${path}.when.level`, "[least, most]");
           }

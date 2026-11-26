@@ -112,7 +112,7 @@ export class SupplyRoutes {
         kept: store.kept,
         map: world.mapId,
         // With world loot's sources, which a book saved before they existed lacks: the page shows and saves them.
-        book: withLoot(store.book),
+        book: withLoot(store.book, world.mapId),
         overrides: [...supply.overrides].map(([tier, t]) => ({ tier, plain: t.plain !== undefined, ringed: t.ringed !== undefined })),
         settings: { off: rules.on("bDisableLootCrates"), quality: rules.num("SupplyCrateLootQualityMultiplier"), random: rules.on("RandomSupplyCratePoints") },
       });

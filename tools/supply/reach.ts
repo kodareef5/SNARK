@@ -9,6 +9,7 @@
 import { readFileSync } from "node:fs";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { FOUND_NOT_MADE, NEVER_FOUND, WAITING } from "../../content/loot/waiting.ts";
+import { withEverySpecial } from "../../content/loot/maps.ts";
 import { starterBook } from "../../content/supply/starter.ts";
 import type { Def } from "../../shared/content/defs.ts";
 import { compileContent, withContent } from "../../shared/content/registry.ts";
@@ -17,34 +18,32 @@ import { lacks, open, reachOf, type Reach, type Way } from "../../shared/supply/
 import { parseMap, placeStatics } from "../../shared/world/mapfile.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 
-/** The game's own items against its starter drop book: what the lists in content/loot/waiting.ts are held to. */
-export function coreReach(defs: readonly Def[] = CORE_CONTENT): { all: Reach; land: Reach } {
+/** The game's own items against its starter drop book with every map's specials: what the lists in content/loot/waiting.ts are held to. */
+export function coreReach(defs: readonly Def[] = CORE_CONTENT): Reach {
   const reg = compileContent(defs).registry!;
   const catalog = catalogOf(reg);
-  return { all: reachOf(defs, starterBook(), (id) => !catalog.byId.get(id)?.never), land: reachOf(defs) };
+  // Every map's specials count: a thing found in one city is a thing the game gives.
+  return reachOf(defs, withEverySpecial(starterBook()), (id) => !catalog.byId.get(id)?.never);
 }
 
-/** Items in three groups: with no way in, found in drops with a recipe nobody can follow, and given by drops alone. */
-export function gaps({ all, land }: { all: Reach; land: Reach }): { none: string[]; notMade: [string, string[]][]; dropsOnly: string[] } {
+/** Items in three groups: with no way in, come by but with a recipe nobody can follow, and given by loot alone. */
+export function gaps(all: Reach): { none: string[]; notMade: [string, string[]][]; lootOnly: string[] } {
   const none: string[] = [];
   const notMade: [string, string[]][] = [];
-  const dropsOnly: string[] = [];
+  const lootOnly: string[] = [];
   for (const [item, ways] of all.ways) {
+    const recipe = ways.find((w) => w.how === "made");
     if (!all.reached.has(item)) none.push(item);
-    else if (!land.reached.has(item)) {
-      const recipe = ways.find((w) => w.how === "made");
-      if (recipe) notMade.push([item, lacks(land, recipe)]);
-      else dropsOnly.push(item);
-    }
+    else if (recipe && !open(all, recipe)) notMade.push([item, lacks(all, recipe)]);
+    else if (ways.every((w) => w.how === "dropped" || w.how === "found")) lootOnly.push(item);
   }
-  return { none, notMade, dropsOnly };
+  return { none, notMade, lootOnly };
 }
 
 const says = (reach: Reach, w: Way): string => `${w.how} ${w.from}${open(reach, w) ? "" : ` (lacks ${lacks(reach, w).join(", ")})`}`;
 
 export function reachCommand(args: readonly string[]): void {
-  const both = coreReach();
-  const { all } = both;
+  const all = coreReach();
   const one = args.find((a) => !a.startsWith("--"));
   if (one !== undefined) {
     const ways = all.ways.get(one);
@@ -63,15 +62,15 @@ export function reachCommand(args: readonly string[]): void {
     }
     return;
   }
-  const { none, notMade, dropsOnly } = gaps(both);
+  const { none, notMade, lootOnly } = gaps(all);
   const why = (id: string): string => NEVER_FOUND[id] ?? WAITING[id] ?? "NOT LISTED in content/loot/waiting.ts";
   console.log(`${all.ways.size} items, ${all.reached.size} that can be come by`);
   console.log(`\nno way into the world (${none.length}):`);
   for (const id of none) console.log(`  ${id.padEnd(30)} ${id in NEVER_FOUND ? "never" : "waits"}: ${why(id)}`);
-  console.log(`\nfound in drops, with a recipe nobody can follow (${notMade.length}):`);
+  console.log(`\ncome by, with a recipe nobody can follow (${notMade.length}):`);
   for (const [id, lack] of notMade) console.log(`  ${id.padEnd(30)} lacks ${lack.join(", ")}${id in FOUND_NOT_MADE ? "" : "  NOT LISTED"}`);
-  console.log(`\ngiven by drops alone (${dropsOnly.length}):`);
-  for (const id of dropsOnly) console.log(`  ${id}`);
+  console.log(`\ngiven by drops and world loot alone (${lootOnly.length}):`);
+  for (const id of lootOnly) console.log(`  ${id}`);
   const hows = new Map<string, number>();
   for (const ways of all.ways.values()) for (const how of new Set(ways.map((w) => w.how))) hows.set(how, (hows.get(how) ?? 0) + 1);
   console.log(`\nitems by way: ${[...hows].sort((a, b) => b[1] - a[1]).map(([how, n]) => `${how} ${n}`).join(", ")}`);

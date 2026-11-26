@@ -10,7 +10,7 @@ import { Rng } from "../shared/rng.ts";
 import { Inventory } from "../shared/sim/items.ts";
 import { GAME_HOUR_TICKS } from "../shared/sim/lazy.ts";
 import type { DeadlineHeap } from "../shared/sim/schedule.ts";
-import { matches } from "../shared/supply/compile.ts";
+import { matches, type Thing } from "../shared/supply/compile.ts";
 import type { Containers } from "./containers.ts";
 import type { Death } from "./death.ts";
 import type { Fixtures } from "./fixtures.ts";
@@ -145,7 +145,11 @@ export class Holders {
   /** Rolls what the thing at `ref` holds and marks it searched. Its record, or null if it held nothing. */
   private roll(ref: number, tag: string, kind: number, by: number): EntityRecord | null {
     const { world, fixtures, loot, deadlines, rules, records } = this.ctx;
-    const thing = { kind: "static", holds: tag } as const;
+    // Where it stands: its building's kind and its storey, and the band of the map.
+    const chunk = Math.floor(ref / 65536), slot = ref & 0xffff, t = world.structs.chunks[chunk]!;
+    const built = world.buildings, b = built ? built.buildingOf(chunk, slot) : -1;
+    const band = loot.band(t.x[slot]!, t.z[slot]!);
+    const thing: Thing = { kind: "static", holds: tag, ...(b >= 0 ? { building: built!.kind(b), level: built!.storeyOf(chunk, slot) } : {}), ...(band !== "" ? { band } : {}) };
     const seed = hashString(`static/${ref}/${world.tick}`, 0);
     const box = fixtures.ensure(ref);
     box.inv = new Inventory(world.reg.structSlots[kind]!);

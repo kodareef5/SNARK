@@ -58,7 +58,7 @@ for (const m of MARINE_MODELS) {
   const shape = hulkOf(m.id).replace("core:", "core:shape_"), boxes = hulkBoxes(m.boxes);
   SHAPES.push({ type: "shape", id: shape, role: "thing", boxes });
   for (const [id, mesh] of [[hulkOf(m.id), m.id], ...HARBOUR_WRECK_FORMS.map((f) => [hulkOf(m.id, f), formMesh(m.id, f)])] as const) {
-    STATICS.push({ type: "structure", class: "static", id, mesh, shape, half: shapeHalf(boxes), color: m.paint, hp: 8000, material: "core:mat_metal", holds: { tag: "hulk", seconds: 4, slots: 10 } });
+    STATICS.push({ type: "structure", class: "static", id, mesh, shape, half: shapeHalf(boxes), color: m.paint, hp: 8000, material: "core:mat_metal", holds: { tag: id.endsWith("_sunk") ? "hulk_sunk" : "hulk", seconds: 4, slots: 10 } });
   }
 }
 export const HARBOUR_WRECKS: readonly Def[] = [...SHAPES, ...STATICS];

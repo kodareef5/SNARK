@@ -308,6 +308,9 @@ export interface Thing {
   readonly holds?: string;
   /** How a vehicle moves. */
   readonly vehicle?: string;
+  /** The kind of building a static stands in, and the band of the map. Its storey is its `level`. */
+  readonly building?: string;
+  readonly band?: string;
 }
 
 /** Whether `source` is the loot of `thing`, switched on or not. */
@@ -319,6 +322,8 @@ export function matches(source: SourceDoc, thing: Thing): boolean {
   if (w.size && !(thing.size !== undefined && w.size.includes(thing.size))) return false;
   if (w.holds && !(thing.holds !== undefined && w.holds.includes(thing.holds))) return false;
   if (w.vehicle && !(thing.vehicle !== undefined && w.vehicle.includes(thing.vehicle))) return false;
+  if (w.building && !(thing.building !== undefined && w.building.includes(thing.building))) return false;
+  if (w.band && !(thing.band !== undefined && w.band.includes(thing.band))) return false;
   if (w.level && !(thing.level !== undefined && thing.level >= w.level[0] && thing.level <= w.level[1])) return false;
   return true;
 }

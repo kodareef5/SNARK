@@ -127,6 +127,7 @@ import { HANGARS, type HangarSite } from "../content/vehicles/hangars.ts";
 import { withSites } from "../content/supply/sites.ts";
 import { starterBook } from "../content/supply/starter.ts";
 import { withLoot } from "../content/loot/starter.ts";
+import { withSpecials } from "../content/loot/maps.ts";
 import { Loot, seal as sealLoot } from "./loot.ts";
 import { Holders } from "./holders.ts";
 import { catalogOf } from "../shared/supply/catalog.ts";
@@ -1511,7 +1512,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   // Supply drops (server/supply.ts). The drop book is a file beside the save, which a wipe of the world leaves; the
   // drops that are live are the save's, written in the commit that writes their capsules.
   // The starter book comes with the map's own sites and circuits (content/supply/sites.ts).
-  const supplyBook = new BookStore(opts.dbPath ? `${opts.dbPath}.supply.json` : null, world.mapId, () => withSites(starterBook(), world.mapId), say);
+  const supplyBook = new BookStore(opts.dbPath ? `${opts.dbPath}.supply.json` : null, world.mapId, () => withSpecials(withSites(starterBook(), world.mapId), world.mapId), say);
   const loadoutBook = new LoadoutStore(opts.dbPath ? `${opts.dbPath}.loadouts.json` : null, builtinLoadouts, reg, say);
   const supply = new Supply({ world, game, records, items, death, containers, progression, deadlines, bus, book: supplyBook, seed: opts.seed ?? 1, rules, say });
   /** ARK's own override of what a crate holds wins over the book, tier by tier, as an ARK operator expects. */
@@ -1523,7 +1524,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   };
   recrate();
   const loot = new Loot({ world, records, items, rules, bus, compiled: () => supply.compiled(), seed: opts.seed ?? 1 });
-  supply.sourced = (book) => loot.sourced(withLoot(book));
+  supply.sourced = (book) => loot.sourced(withLoot(book, world.mapId));
   corpses.loot = loot;
   const holders = new Holders({ world, game, records, items, fixtures, containers, death, deadlines, rules, loot, held: (x, z) => harvest?.held(x, z, 0) ?? false });
   build.holders = holders;

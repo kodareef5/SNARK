@@ -14,9 +14,15 @@ test("every item can be come by, or is listed as never found or as waiting", () 
   expect(none.sort()).toEqual([...Object.keys(NEVER_FOUND), ...Object.keys(WAITING)].sort());
 });
 
-test("an item found in drops whose recipe cannot be followed is listed with what it lacks", () => {
+test("an item come by whose recipe cannot be followed is listed with what it lacks", () => {
   const { notMade } = gaps(coreReach());
   expect(Object.fromEntries(notMade.map(([id, lack]) => [id, lack.join(" ")]))).toEqual({ ...FOUND_NOT_MADE });
+});
+
+test("pelt, organic polymer and angler gel are found somewhere, so fur, ghillie and the prod can be made", () => {
+  const reach = coreReach();
+  for (const id of ["core:pelt", "core:organic_polymer", "core:angler_gel"]) expect(reach.ways.get(id)!.some((w) => w.how === "found"), id).toBe(true);
+  for (const id of ["core:fur_hat", "core:ghillie_boots", "core:prod"]) expect(reach.ways.get(id)!.some((w) => w.how === "made" && w.needs.every((n) => reach.reached.has(n))), id).toBe(true);
 });
 
 test("a recipe is a way only when each thing it needs has one", () => {

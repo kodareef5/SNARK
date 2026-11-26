@@ -2,6 +2,7 @@
 // street things and rooms. content/supply/starter.ts joins it to the drops' sets and tables.
 
 import type { EntryDoc, SetDoc, SourceDoc, SupplyBook, TableDoc } from "../../shared/supply/book.ts";
+import { withSpecials } from "./maps.ts";
 
 const id = (name: string): string => `core:${name}`;
 const some = (name: string, min: number, max: number, weight = 1): EntryDoc => ({ items: [id(name)], min, max, ...(weight !== 1 ? { weight } : {}) });
@@ -100,8 +101,14 @@ export const LOOT_SETS: Readonly<Record<string, SetDoc>> = {
   "find.stores": { name: "stores", min: 2, max: 3, entries: [some("gasoline", 8, 16), some("electronics", 3, 8), some("polymer", 3, 8), some("ingot", 10, 20), some("flare_gun", 1, 2, 0.5), some("jerky", 2, 4, 0.5)] },
   // What is left in a dead car after the years, and in a dead boat.
   "find.wreck": { name: "a wreck's leavings", min: 1, max: 2, entries: [some("fiber", 3, 8), some("hide", 1, 3), some("ingot", 1, 3), some("flint", 2, 5), some("gasoline", 1, 2, 0.4), some("polymer", 1, 2, 0.3), some("electronics", 1, 1, 0.15), some("waterskin", 1, 1, 0.15)] },
-  "find.bilge": { name: "a dead boat's hold", min: 1, max: 2, entries: [some("fiber", 6, 14), some("wood", 5, 12), some("oil", 1, 3, 0.6), some("gasoline", 1, 3, 0.5), some("silica_pearls", 1, 4, 0.4), some("chitin", 2, 5, 0.4), some("flare_gun", 1, 1, 0.1), some("compass", 1, 1, 0.1)] },
+  "find.bilge": { name: "a dead boat's hold", min: 1, max: 2, entries: [some("fiber", 6, 14), some("wood", 5, 12), some("oil", 1, 3, 0.6), some("gasoline", 1, 3, 0.5), some("silica_pearls", 1, 4, 0.4), some("chitin", 2, 5, 0.4), some("flare_gun", 1, 1, 0.1), some("compass", 1, 1, 0.1), some("organic_polymer", 1, 2, 0.06), some("angler_gel", 1, 1, 0.04)] },
   "find.ash": { name: "what a fire leaves", min: 1, max: 1, entries: [some("charcoal", 4, 10), some("ingot", 1, 3, 0.5)] },
+  // What is left by a bed, and in a counter's drawers. Pelt is rare here and common in one city's homes (maps.ts).
+  "find.bedside": { name: "by a bed", min: 1, max: 1, entries: [some("fiber", 3, 8), some("hide", 1, 3), some("berry", 2, 6, 0.6), some("narcotic", 1, 2, 0.4), some("stimulant", 1, 1, 0.3), some("waterskin", 1, 1, 0.2), some("pelt", 1, 2, 0.08)] },
+  "find.drawer": { name: "in a drawer", min: 1, max: 1, entries: [some("fiber", 3, 8), some("thatch", 3, 8), some("flint", 2, 4), some("sparkpowder", 2, 5, 0.5), some("charcoal", 2, 4, 0.5), some("arrow_stone", 2, 5, 0.3), some("electronics", 1, 1, 0.1)] },
+  "find.medicine": { name: "a ward's stores", min: 1, max: 1, entries: [some("narcotic", 2, 5), some("stimulant", 2, 4), some("fiber", 6, 12, 0.6), some("water_jar", 1, 1, 0.3), some("paste", 1, 2, 0.2)] },
+  "find.shelf": { name: "a shop's shelf", min: 1, max: 2, entries: [some("jerky", 1, 3), some("meat_cooked", 2, 4), some("berry", 8, 16), some("waterskin", 1, 1, 0.6), some("narcotic", 1, 2, 0.3), some("torch", 1, 1, 0.3)] },
+  "find.desk": { name: "a desk", min: 1, max: 1, entries: [some("electronics", 1, 2), some("ingot", 2, 5), some("sparkpowder", 3, 6), some("crystal", 1, 1, 0.3), some("polymer", 1, 2, 0.3)] },
   // Plans for the first things a survivor makes, at the white tier's quality.
   "find.plans": {
     name: "plans",
@@ -129,6 +136,11 @@ export const LOOT_TABLES: Readonly<Record<string, TableDoc>> = {
   "dead/wreck": { slots: [{ name: "leavings", from: [{ set: "find.wreck" }] }], note: "A street wreck." },
   "dead/hull": { slots: [{ name: "hold", from: [{ set: "find.bilge" }] }], note: "A dead boat at its mooring, or a harbour's hulk." },
   "dead/burnt": { slots: [{ name: "ash", from: [{ set: "find.ash" }] }], note: "A dead boat that burnt." },
+  "room/bed": { slots: [{ name: "bedside", from: [{ set: "find.bedside" }] }], note: "A bed in any building." },
+  "room/counter": { slots: [{ name: "drawer", from: [{ set: "find.drawer" }] }, { name: "plan", chance: 0.03, from: [{ set: "find.plans" }] }], note: "A counter in any building." },
+  "room/ward": { slots: [{ name: "stores", from: [{ set: "find.medicine" }] }], note: "A hospital's bed." },
+  "room/shop": { slots: [{ name: "shelf", from: [{ set: "find.shelf" }] }], note: "A shop's counter." },
+  "room/office": { slots: [{ name: "desk", from: [{ set: "find.desk" }] }], note: "An office's counter." },
   "street/paystation": { slots: [{ name: "coins", from: [{ set: "find.coins" }] }], note: "A car park's pay station: its coin box and its works." },
 };
 
@@ -153,16 +165,26 @@ export const LOOT_SOURCES: readonly SourceDoc[] = [
   { key: "vehicle/aircraft", name: "Found helicopter", on: true, kind: "vehicle", when: { vehicle: ["rotor"] }, chance: 0.9, tables: [{ table: "hold/aircraft" }], target: 280 },
   // The dead are many: a street wreck is worth a look in passing, as a bin is.
   { key: "dead/wreck", name: "Street wreck", on: true, kind: "static", when: { holds: ["wreck"] }, chance: 0.3, tables: [{ table: "dead/wreck" }], refillHours: [40, 60], target: 5 },
-  { key: "dead/hull", name: "Dead boat", on: true, kind: "static", when: { holds: ["hull", "hulk"] }, chance: 0.6, tables: [{ table: "dead/hull" }], refillHours: [40, 60], target: 11 },
+  { key: "dead/hull", name: "Dead boat", on: true, kind: "static", when: { holds: ["hull", "hulk", "hull_weed", "hulk_sunk"] }, chance: 0.6, tables: [{ table: "dead/hull" }], refillHours: [40, 60], target: 11 },
   { key: "dead/burnt", name: "Burnt boat", on: true, kind: "static", when: { holds: ["hull_burnt"] }, chance: 0.5, tables: [{ table: "dead/burnt" }], refillHours: [40, 60], target: 6.5 },
+  // Rooms are a hundred thousand on a map, so a bed or a counter holds little and seldom. What a building is for adds
+  // to it, and so does the climb: from the fifteenth storey up there may be a prize, of a tier that rises with the storey.
+  { key: "room/bed", name: "Bed", on: true, kind: "static", when: { holds: ["bed"] }, chance: 0.2, tables: [{ table: "room/bed" }], refillHours: [40, 60], target: 1.6 },
+  { key: "room/counter", name: "Counter", on: true, kind: "static", when: { holds: ["counter"] }, chance: 0.2, tables: [{ table: "room/counter" }], refillHours: [40, 60], target: 1.6 },
+  { key: "room/ward", name: "Hospital bed", on: true, kind: "static", when: { holds: ["bed"], building: ["hospital"] }, chance: 0.4, tables: [{ table: "room/ward" }], refillHours: [40, 60], target: 18 },
+  { key: "room/shop", name: "Shop counter", on: true, kind: "static", when: { holds: ["counter"], building: ["shopping_street", "shop", "mall"] }, chance: 0.5, tables: [{ table: "room/shop" }], refillHours: [40, 60], target: 12 },
+  { key: "room/office", name: "Office desk", on: true, kind: "static", when: { holds: ["counter"], building: ["office", "tower_office", "government", "tower"] }, chance: 0.15, tables: [{ table: "room/office" }], refillHours: [40, 60], target: 3.4 },
+  { key: "room/high", name: "High room", on: true, kind: "static", when: { holds: ["bed", "counter"], level: [15, 1000] }, chance: 0.25, tier: "green", ladder: [{ level: 30, tier: "blue" }, { level: 45, tier: "purple" }], tables: [prize("provisions"), prize("works"), prize("arms", 0.5)], refillHours: [60, 90], share: 0.09 },
+  // The far ground is the richer, as the drops' far band is: anything on the street there may hold a green prize.
+  { key: "street/far", name: "Far ground", on: true, kind: "static", when: { holds: ["bin", "mailbox", "newsbox", "paystation", "wreck"], band: ["deep"] }, chance: 0.06, tier: "green", tables: [prize("provisions"), prize("works")], refillHours: [40, 60], share: 0.018 },
 ];
 
 /**
- * `book` with what world loot needs that it lacks: the starter's sources where it has none of its own, and each of the
- * sets and tables above that it has not. A book saved before a source existed gets it so, and one that has its own
- * keeps them.
+ * `book` with what world loot needs that it lacks: the starter's sources where it has none of its own, with the map's
+ * specials, and each of the sets and tables above that it has not. A book saved before a source existed gets it so,
+ * and one that has its own keeps them.
  */
-export function withLoot(book: SupplyBook): SupplyBook {
+export function withLoot(book: SupplyBook, mapId = ""): SupplyBook {
   if (book.sources !== undefined) return book;
-  return { ...book, sets: { ...LOOT_SETS, ...book.sets }, tables: { ...LOOT_TABLES, ...book.tables }, sources: LOOT_SOURCES.map((s) => ({ ...s })) };
+  return withSpecials({ ...book, sets: { ...LOOT_SETS, ...book.sets }, tables: { ...LOOT_TABLES, ...book.tables }, sources: LOOT_SOURCES.map((s) => ({ ...s })) }, mapId);
 }

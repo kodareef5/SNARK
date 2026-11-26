@@ -89,6 +89,17 @@ export class Loot {
     return this.ctx.compiled().book.sources ?? [];
   }
 
+  /** The band of the map (x, z) is in: that of the drop book's nearest site, by the first part of its key. "" with no sites. */
+  band(x: number, z: number): string {
+    let best = Infinity;
+    let key = "";
+    for (const site of this.ctx.compiled().book.sites) {
+      const d = (site.x - x) * (site.x - x) + (site.z - z) * (site.z - z);
+      if (d < best) [best, key] = [d, site.key];
+    }
+    return key.includes("/") ? key.slice(0, key.indexOf("/")) : "";
+  }
+
   /** Marks `body`, a wild creature's of `level`, as holding loot not yet rolled. */
   seal(body: EntityRecord, level: number): void {
     seal(body, level, this.ctx.seed, this.ctx.world.tick);

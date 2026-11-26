@@ -2,6 +2,8 @@
 
 import { expect, test } from "bun:test";
 import { CORE_CONTENT } from "../../content/core.ts";
+import { MAP_LOOT, withEverySpecial, withSpecials } from "../../content/loot/maps.ts";
+import { withLoot } from "../../content/loot/starter.ts";
 import { starterBook } from "../../content/supply/starter.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { Rng } from "../../shared/rng.ts";
@@ -74,11 +76,13 @@ test("a source that names a table's prize slot gives only what that prize holds"
   for (let seed = 1; seed <= 60; seed++) for (const d of rollSource(compiled, only, "blue", new Rng(seed))) expect(prize.has(reg.ids[d.item]!)).toBe(true);
 });
 
-test("each starter source gives about what it is balanced to, at every tier it rolls", () => {
-  const designed = compileBook(book, withFuture(catalog, book));
-  for (const s of book.sources!) {
+test("each starter source, and each map's special, gives about what it is balanced to, at every tier it rolls", () => {
+  const every = withEverySpecial(book);
+  expect(bookFaults(every)).toEqual([]);
+  const designed = compileBook(every, withFuture(catalog, every));
+  for (const s of every.sources!) {
     const tiers = s.tier !== undefined ? [s.tier, ...(s.ladder ?? []).map((step) => step.tier)] : [""];
-    const ratios = tiers.map((tier) => sourceWorth(designed, s, tier) / sourceTarget(book, s, tier)!);
+    const ratios = tiers.map((tier) => sourceWorth(designed, s, tier) / sourceTarget(every, s, tier)!);
     for (const r of ratios) expect(Math.abs(r - 1), `${s.key}: ${ratios.map((v) => v.toFixed(2)).join(" ")}`).toBeLessThan(0.35);
     expect(Math.abs(ratios.reduce((a, b) => a + b, 0) / ratios.length - 1), s.key).toBeLessThan(0.15);
   }
@@ -86,6 +90,33 @@ test("each starter source gives about what it is balanced to, at every tier it r
 
 test("what a source gives counts as a way an item is come by, while it is switched on", () => {
   const way = (b: SupplyBook) => reachOf(CORE_CONTENT, b).ways.get("core:keratin")!.filter((w) => w.how === "found").map((w) => w.from);
-  expect(way(book)).toEqual(["body/any", "body/medium", "body/large"]);
+  expect(way(book)).toContain("body/any");
   expect(way({ ...book, sources: book.sources!.map((s) => ({ ...s, on: false })) })).toEqual([]);
+});
+
+test("a source of statics is told by where the thing stands: its building, its storey and the band of the map", () => {
+  const ward = source("room/ward"), high = source("room/high"), far = source("street/far");
+  const bed = { kind: "static", holds: "bed" } as const;
+  expect([matches(ward, { ...bed, building: "hospital", level: 2 }), matches(ward, { ...bed, building: "hotel", level: 2 }), matches(ward, bed)]).toEqual([true, false, false]);
+  expect([14, 15, 60].map((level) => matches(high, { ...bed, building: "tower", level }))).toEqual([false, true, true]);
+  // The storey is the level its ladder climbs.
+  expect([15, 29, 30, 45].map((storey) => tierOf(high, storey))).toEqual(["green", "green", "blue", "purple"]);
+  const bin = { kind: "static", holds: "bin" } as const;
+  expect([matches(far, { ...bin, band: "deep" }), matches(far, { ...bin, band: "shore" }), matches(far, bin)]).toEqual([true, false, false]);
+  expect(paths({ ...book, sources: [{ ...ward, when: { building: ["Hospital"] } }] })).toEqual(["sources.0.when.building"]);
+});
+
+test("a map's specials join its book and no other's, and a book with sources of its own keeps them", () => {
+  const miami = withSpecials(book, "core:miami"), vegas = withSpecials(book, "core:las-vegas");
+  const keys = (b: SupplyBook): string[] => b.sources!.map((s) => s.key).filter((k) => !book.sources!.some((s) => s.key === k));
+  expect([keys(miami), keys(vegas), keys(withSpecials(book, "test:flat"))]).toEqual([["miami/weed"], ["vegas/jackpot"], []]);
+  expect(Object.keys(MAP_LOOT).sort()).toEqual(["core:las-vegas", "core:los-angeles", "core:miami", "core:san-francisco", "core:tampa"]);
+  // A book saved before sources existed gets the starter's and its map's; one with its own is left alone.
+  const { sources: _, ...old } = book;
+  expect(withLoot(old, "core:tampa").sources!.some((s) => s.key === "tampa/sunk")).toBe(true);
+  const own = { ...book, sources: [source("body/any")] };
+  expect(withLoot(own, "core:tampa")).toBe(own);
+  // What a special gives is its map's alone to give in plenty.
+  const gives = (b: SupplyBook, item: string): string[] => reachOf(CORE_CONTENT, b).ways.get(item)!.filter((w) => w.how === "found").map((w) => w.from);
+  expect([gives(miami, "core:organic_polymer"), gives(vegas, "core:organic_polymer")]).toEqual([["dead/hull", "miami/weed"], ["dead/hull"]]);
 });

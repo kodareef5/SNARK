@@ -125,8 +125,15 @@ test("world loot's sources are listed with what each is the loot of, what it rol
     ["vehicle/boat", true, "a found boat", "hold/boat"],
     ["vehicle/aircraft", true, "a found helicopter", "hold/aircraft"],
     ["dead/wreck", true, "a wreck", "dead/wreck"],
-    ["dead/hull", true, "a dead boat or a harbour hulk", "dead/hull"],
+    ["dead/hull", true, "a dead boat or a harbour hulk or a weed-grown boat or a sunk hulk", "dead/hull"],
     ["dead/burnt", true, "a burnt boat", "dead/burnt"],
+    ["room/bed", true, "a bed", "room/bed"],
+    ["room/counter", true, "a counter", "room/counter"],
+    ["room/ward", true, "a bed in a hospital", "room/ward"],
+    ["room/shop", true, "a counter in a shopping street or a shop or a mall", "room/shop"],
+    ["room/office", true, "a counter in an office or a tower office or a government or a tower", "room/office"],
+    ["room/high", true, "a bed or a counter from storey 15", "provisions prize, works prize, arms prize"],
+    ["street/far", true, "a bin or a mailbox or a newspaper box or a pay station or a wreck in the deep band", "provisions prize, works prize"],
   ]);
   const apex = rows[3]!;
   expect(apex.tiers.map((t) => t.name)).toEqual(["White", "Green", "Blue", "Purple", "Yellow", "Red"]);
