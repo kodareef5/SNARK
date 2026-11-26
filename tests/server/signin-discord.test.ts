@@ -6,7 +6,8 @@ import { SurvivorAccess, ownerOf } from "../../server/survivor-access.ts";
 import { REJECT_DENIED, REJECT_SIGNIN } from "../../shared/net/protocol.ts";
 import { TestCluster, keyAt, rec, travel } from "../fixtures/cluster.ts";
 import { FakeDiscord, PAGE, discordReturn, discordWorld, hexKey, signInAs, signinPost, startSignIn } from "../fixtures/discord.ts";
-import { testKey, type Harness } from "../fixtures/net.ts";
+import { Harness, testKey } from "../fixtures/net.ts";
+import { loadConfig } from "../../server/settings/config.ts";
 
 const ADA = "4400000000000000001";
 const BEN = "4400000000000000002";
@@ -210,6 +211,31 @@ test("a server whose Discord settings are not whole lets nobody in, and says wha
   expect(await h.host.discord.report()).toEqual(["discord: DiscordGuild names no Discord server the bot can see"]);
   // A bot that cannot ask leaves one already signed in unanswered, so they are not let in.
   expect((await signInAs(h.host, fake, key, ADA)).body).toMatchObject({ signed: true, ok: false, why: NOT_SET_UP });
+});
+
+test("a browser's sign-in runs out after DiscordSignInDays", async () => {
+  const fake = new FakeDiscord();
+  fake.members.set(ADA, []);
+  const clock = { ms: 1_700_000_000_000 };
+  const h = discordWorld(fake, { DiscordSignInDays: "2" }, clock);
+  const key = testKey("ada-laptop");
+  await signInAs(h.host, fake, key, ADA);
+  clock.ms += 47 * 3_600_000;
+  expect(await joined(h, "Ada", key)).toEqual(["active", 0]);
+  clock.ms += 2 * 3_600_000;
+  expect((await signinPost(h.host, { action: "status", key: hexKey(key) })).body).toMatchObject({ signed: false, ok: false });
+  expect(await joined(h, "Ada", key)).toEqual(["closed", REJECT_SIGNIN]);
+});
+
+test("DiscordClientSecret and DiscordBotToken are read from the host's files, and nothing changes them while the server runs", async () => {
+  const fake = new FakeDiscord();
+  fake.members.set(ADA, []);
+  const { rules } = loadConfig({ gus: `[SnarkSettings]\nSignIn=discord\nDiscordClientId=${fake.clientId}\nDiscordGuild=${fake.guildId}\nDiscordClientSecret=${fake.secret}\nDiscordBotToken=${fake.botToken}\n` });
+  const h = new Harness({}, 1, 60, { config: rules, discord: { fetch: fake.fetch } });
+  for (const name of ["DiscordClientSecret", "DiscordBotToken"]) expect(h.host.setSetting(name, "other")).not.toBe("");
+  const key = testKey("ada-laptop");
+  expect((await signInAs(h.host, fake, key, ADA)).body).toMatchObject({ signed: true, ok: true });
+  expect(await joined(h, "Ada", key)).toEqual(["active", 0]);
 });
 
 const cluster = new TestCluster();

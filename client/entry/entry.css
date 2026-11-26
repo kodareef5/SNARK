@@ -276,6 +276,7 @@ legend { margin-bottom: 6px; color: var(--muted); padding: 0; }
 .server-tags { display: flex; flex-wrap: wrap; gap: 6px; }
 .server-tags i { font-style: normal; }
 .server-link { display: inline-block; padding-block: 4px; font-size: .86rem; }
+.support .server-link { font-size: inherit; }
 .map-option { min-height: 66px; display: flex; align-items: end; }
 .map-option small { display: block; }
 .roster-grid { display: grid; gap: 10px; }

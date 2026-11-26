@@ -20,6 +20,8 @@ const STATES_MOST = 2048;
 const FRESH_MS = 10_000;
 const ASKS_A_MINUTE = 30;
 const DAY_MS = 86_400_000;
+/** The most DiscordSignInDays may be. */
+const DAYS_MOST = 365;
 
 export const SIGN_IN = "Sign in with Discord to join this server.";
 export const NOT_MEMBER = "Your Discord account is not in this server's Discord.";
@@ -209,7 +211,8 @@ export class DiscordSignIn implements SignInMethod {
       }
       if (origin.protocol !== "https:" && origin.protocol !== "http:") return entryReply({ error: "Open this world's page in a browser to sign in" }, 400);
       if (this.pending.size >= STATES_MOST) return entryReply({ error: "Try again shortly" }, 429);
-      this.ctx.store.expire(now - this.ctx.config().days * DAY_MS);
+      // The store is the cluster's, and another world may keep a sign-in for longer than this one: only what none keeps goes.
+      this.ctx.store.expire(now - DAYS_MOST * DAY_MS);
       const state = randomBytes(16).toString("hex");
       const redirect = `${origin.origin}${call.base}/signin/discord/callback`;
       this.pending.set(state, { key, redirect, purpose: "signin", until: now + STATE_MS, user: null, why: "" });
