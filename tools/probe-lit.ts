@@ -5,6 +5,7 @@
 // draws every frame of each of a check's shots on a canvas of the shot's size, reads back the marked ones, and says what
 // the device is. A check's shots are made when the page comes to it and judged once all of theirs is back, then let go
 // with what came back, so the probe holds one check's at a time.
+// `--checks words` runs only the checks whose names hold one of the words.
 
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -33,12 +34,13 @@ import { standCheck } from "./probe-lit/stand.ts";
 import { terrainCheck } from "./probe-lit/terrain.ts";
 import { waterCheck } from "./probe-lit/water.ts";
 import { streetFinishCheck } from "./probe-lit/street-finishes.ts";
+import { skinCheck } from "./probe-lit/skin.ts";
 import { CHROME_FLAGS } from "./chrome.ts";
 
 const ROOT = resolve(import.meta.dir, "..");
 
 /** Every check, in the order the page draws them. */
-const CHECKS: readonly LitCheck[] = [depthCheck, litCheck, postCheck, terrainCheck, seamsCheck, farCheck, cityCheck, piecesCheck, skyCheck, shadowCheck, farShadowCheck, skyOpenCheck, nodesCheck, waterCheck, layersCheck, standCheck, detailsCheck, damageCheck, rotorCheck, facadeCheck, streetFinishCheck, orbCheck];
+const CHECKS: readonly LitCheck[] = [depthCheck, litCheck, postCheck, terrainCheck, seamsCheck, farCheck, cityCheck, piecesCheck, skyCheck, shadowCheck, farShadowCheck, skyOpenCheck, nodesCheck, waterCheck, layersCheck, standCheck, detailsCheck, damageCheck, rotorCheck, facadeCheck, streetFinishCheck, orbCheck, skinCheck];
 
 const PAGE = `<!doctype html><meta charset="utf-8"><title>lit probe</title><body><script type="module">
 const load = (name) => import("/m/" + name + ".js");
@@ -244,8 +246,16 @@ function groundBytes(hf: Heightfield): Uint8Array {
   return out;
 }
 
+/** With `--checks words`, only the checks whose names hold one of the comma-separated words. */
+function chosen(): readonly LitCheck[] {
+  const at = process.argv.indexOf("--checks");
+  if (at < 0) return CHECKS;
+  const words = process.argv[at + 1]!.toLowerCase().split(",");
+  return CHECKS.filter((c) => words.some((w) => c.name.toLowerCase().includes(w)));
+}
+
 /** Runs the checks' shots in Chrome, every check's unless `checks` says which, and judges them. True if everything passed. */
-export async function litProbe(chrome: string, checks: readonly LitCheck[] = CHECKS): Promise<boolean> {
+export async function litProbe(chrome: string, checks: readonly LitCheck[] = chosen()): Promise<boolean> {
   /** The shots and raws of the checks not yet judged, and the check each is of, by key. */
   const live = new Map<string, Shot | RawShot>();
   const owner = new Map<string, number>();

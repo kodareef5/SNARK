@@ -9,6 +9,8 @@ export const PAINT = 1, FITTINGS = 2, BURNT_SHEET = 3, LENS = 4, ENAMEL_ARMOR = 
  * effect and reads no texture.
  */
 export const DROP_LIGHT = 9, DROP_GLOW = 10;
+/** A person's skin, lit with skin's own reflectance and a warm light past its shading edge, and the wet coat of an eye (client/core/render/surface.ts). */
+export const SKIN = 11, EYE = 12;
 const materials = new Map<string, number>();
 for (const part of [
   "berlinetta/coachwork", "bus/livery", "compact/body", "compact_abandoned/body", "concept003/coachwork",
@@ -30,6 +32,8 @@ for (const part of [
 ]) materials.set("core:" + part, PAINT);
 materials.set("core:compact_wreck/body", BURNT_SHEET);
 materials.set("core:human-bodies/meridian", ENAMEL_ARMOR);
+for (const skin of ["skin_m", "skin_f", "regular_m", "regular_f"]) materials.set("core:human-bodies/" + skin, SKIN);
+materials.set("core:human-bodies/eyes", EYE);
 // The Miami instruments: glazed ceramic and fired enamel under a clear coat, cast and brushed metal that keeps its own colour, cut glass.
 for (const atlas of ["instrument", "livery"]) materials.set("core:tide-eye/" + atlas, INSTRUMENT);
 // The capsule is the instruments' kin: the same ceramic, bronze and glass, and its own two lights.
