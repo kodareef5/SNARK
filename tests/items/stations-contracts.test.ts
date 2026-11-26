@@ -65,7 +65,7 @@ test("the eight resources are plain items at their pages' weights and stacks, an
   expect(CORE_CONTENT.some((d) => d.type === "engram" && d.item === "core:ingot")).toBe(false);
 });
 
-test("the core pack compiles to the columns: each station is its own base, a fire lit and out is one, only the fabricator and the preserving bin name their own fuel, the fabricator alone is powered, the forge and fabricator are dry, none of the three cooks, and the bin's lit kind alone keeps longer", () => {
+test("station states compile their base, fuel, power and storage columns", () => {
   const structures = reg.defs.flatMap((d, k) => (d?.type === "structure" ? [k] : []));
   const forge = [id(reg, "forge"), id(reg, "forge_lit")];
   const fabricator = [id(reg, "fabricator"), id(reg, "fabricator_lit")];
@@ -75,7 +75,10 @@ test("the core pack compiles to the columns: each station is its own base, a fir
   // The soul vault (content/items/balls.ts): gasoline alone, an hour a piece; it makes and cooks nothing, keeps food no
   // longer, and is not powered, having no jobs. Its burning kind alone holds a charge (Registry.charges).
   const vault = [id(reg, "soul_vault"), id(reg, "soul_vault_lit")];
-  expect(structures.filter((k) => k !== id(reg, "campfire_lit") && k !== forge[1] && k !== fabricator[1] && k !== bin[1] && k !== vault[1] && reg.stationBase[k] !== k)).toEqual([]);
+  const fires = ["campfire", "standing_torch", "cooking_pot", "fireplace"].map(name => [id(reg, name), id(reg, `${name}_lit`)]);
+  for (const [out, lit] of fires) expect(reg.stationBase[lit!]).toBe(out);
+  const litKinds = [...fires.map(pair => pair[1]), forge[1], fabricator[1], bin[1], vault[1]];
+  expect(structures.filter(k => !litKinds.includes(k) && reg.stationBase[k] !== k)).toEqual([]);
   const byIndex = (ks: number[]): number[] => [...ks].sort((a, b) => a - b);
   // S2's fabricator: gasoline alone, powered, not lit under water, and it cooks nothing (stations-plan.md, S2).
   // S3's preserving bin: sparkpowder alone, half an hour a piece (Preserving Bin), and it cooks nothing.
@@ -90,7 +93,8 @@ test("the core pack compiles to the columns: each station is its own base, a fir
   expect(bin.map((k) => [reg.stationBase[k], reg.stationCooks[k], reg.structKeeps[k], reg.keeps[k], reg.powered[k], reg.dry[k]])).toEqual([[bin[0], 0, 1, 1, 0, 0], [bin[0], 0, 10, 10, 0, 0]]);
   // S1's forge: it burns every item's own fuel, is not powered, is dry and does not cook; the ingot and gasoline are fired
   // at it, and wood leaves charcoal. Since S6 the preserving bin makes both jerkies (tests/items/ark-stations.test.ts).
-  expect([structures.filter((k) => reg.stationCooks[k] !== 1), structures.filter((k) => reg.dry[k] !== 0)]).toEqual([byIndex([...both, ...bin, ...vault]), byIndex([...both, ...vault])]);
+  expect(structures.filter(k => reg.stationCooks[k] !== 1)).toEqual(byIndex([...both, ...bin, ...vault, ...fires.slice(1).flat()]));
+  expect(structures.filter(k => reg.dry[k] !== 0)).toEqual(byIndex([...both, ...vault]));
   expect([[...reg.firedAt].flatMap((v, k) => (v === 0 ? [] : [[reg.ids[k], reg.ids[v]]])).sort(), [...reg.burnsInto].flatMap((v, k) => (v === 0 ? [] : [[reg.ids[k], reg.ids[v]]]))]).toEqual([[["core:gasoline", "core:forge"], ["core:ingot", "core:forge"], ["core:jerky", "core:preserving_bin"], ["core:jerky_prime", "core:preserving_bin"]], [["core:wood", "core:charcoal"]]]);
   // Sparkpowder is made at the mortar, as before, and since S6 the narcotic, cementing paste and gunpowder (tests/items/ark-stations.test.ts).
   expect([reg.craftAt[id(reg, "sparkpowder")], stationRecipes(reg, id(reg, "mortar")).map((k) => reg.ids[k]!).filter((n) => !BLOCKED.has(n)).sort()]).toEqual([id(reg, "mortar"), ["core:gunpowder", "core:narcotic", "core:paste", "core:sparkpowder"]]);

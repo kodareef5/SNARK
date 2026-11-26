@@ -2,7 +2,7 @@
   "repository": "kodareef5/SNARK",
   "art": {
     "release": "art",
-    "id": "6fec82c19612cc25",
+    "id": "53605b0d6d3a0db3",
     "files": [
       {"name": "core-creatures-allosaur", "file": "core-creatures-allosaur.5eb2682fdf0a.tar.zst", "bytes": 2833562, "sha256": "5eb2682fdf0abb902fa1807673cf9dc46c3111e728eda23299b3a910d74129e2"},
       {"name": "core-creatures-ankylo", "file": "core-creatures-ankylo.d19e9025be7c.tar.zst", "bytes": 1901178, "sha256": "d19e9025be7ccaeb84f4bf80f6554f9e9a6a2971b062a6666ab9f50e8901146b"},
@@ -186,6 +186,7 @@
       {"name": "core-sky-dome", "file": "core-sky-dome.a1dce8fd704a.tar.zst", "bytes": 3738583, "sha256": "a1dce8fd704adca2b3bac33de424528d6f5b597ebb0c6d0412d472a8ccbf1923"},
       {"name": "core-sky-keys", "file": "core-sky-keys.473438c4c4ac.tar.zst", "bytes": 27082446, "sha256": "473438c4c4ac0685813561c2444292b974babaf163416e9d9bc51fd107054deb"},
       {"name": "core-sky-moon", "file": "core-sky-moon.1e753a0824fe.tar.zst", "bytes": 6678172, "sha256": "1e753a0824feead2ba46ece457cd76929440bc641942effc7d4fe7d64d6d466a"},
+      {"name": "core-structures-camp", "file": "core-structures-camp.ced878a6d93a.tar.zst", "bytes": 762812, "sha256": "ced878a6d93ad0b44823ae985cc184b45f44594aa28b4a8844169c335838dedb"},
       {"name": "core-structures-metal", "file": "core-structures-metal.1e5da85428e6.tar.zst", "bytes": 160383, "sha256": "1e5da85428e6fab09adb246d3f583a499a74132102ca87d235f595d98badbbbe"},
       {"name": "core-structures-stations", "file": "core-structures-stations.410055be0c5a.tar.zst", "bytes": 15740402, "sha256": "410055be0c5a211be6a8fd74e95b6b95a6cc9a5c501e03ba229748105d466ed8"},
       {"name": "core-structures-stone", "file": "core-structures-stone.3ddd9a012f0e.tar.zst", "bytes": 138689751, "sha256": "3ddd9a012f0eb482a68b80b5a348d1b7747a094036c4c2c7820763ac8b344a3b"},

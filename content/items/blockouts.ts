@@ -1,4 +1,4 @@
-import type { Def } from "../../shared/content/defs.ts";
+import type { Def, StructureDef } from "../../shared/content/defs.ts";
 import { making } from "../craft.ts";
 import { ARROWS, ATTACHMENTS, BLOW, BOW_AIM, PISTOL_AIM, RIFLE_AIM, SHOTGUN_AIM } from "./weapons.ts";
 
@@ -249,8 +249,7 @@ const ARMOUR: Def[] = SUITS.flatMap((s) =>
   ]),
 );
 
-// ---- What is set down. Each is a box of a chosen size that stands, is struck and decays as ARK's does, and holds what
-// ARK's holds. None does its work: nothing is made at one, none is lit or fuelled, and nothing is powered.
+// ---- What is set down. Camp hearth variants share a placement box and switch with the fire state.
 
 interface Thing {
   name: string;
@@ -262,6 +261,7 @@ interface Thing {
   material: "wood" | "stone" | "metal";
   decayDays: number;
   slots?: number;
+  fire?: true;
   weight: number;
   stack: number;
   level: number;
@@ -275,13 +275,13 @@ interface Thing {
 const THINGS: readonly Thing[] = [
   // Standing Torch: 500 health, 8 slots for what it burns, decays in 4 days; weight 4, stacks to 3; in the hand; level 7,
   // 6 points. Its light and its warmth are not built.
-  { name: "standing_torch", label: "standing torch", kind: "container", half: [0.15, 0.9, 0.15], hp: 500, material: "wood", decayDays: 4, slots: 8, weight: 4, stack: 3, level: 7, cost: 6, seconds: 5, needs: [["thatch", 8], ["flint", 1], ["stone", 1], ["wood", 3]], color: 3 },
+  { name: "standing_torch", label: "standing torch", kind: "station", half: [0.15, 0.9, 0.15], hp: 500, material: "wood", decayDays: 4, slots: 8, fire: true, weight: 4, stack: 3, level: 7, cost: 6, seconds: 5, needs: [["thatch", 8], ["flint", 1], ["stone", 1], ["wood", 3]], color: 3 },
   // Cooking Pot: 500 health, 12 slots, decays in 16 days; weight 4, stacks to 100; in the hand in 10 s; level 8, 9
   // points, after the campfire. No recipe is cooked in it yet.
-  { name: "cooking_pot", label: "cooking pot", kind: "station", half: [0.4, 0.35, 0.4], hp: 500, material: "stone", decayDays: 16, slots: 12, weight: 4, stack: 100, level: 8, cost: 9, seconds: 10, needs: [["stone", 75], ["thatch", 15], ["wood", 10], ["flint", 5]], after: ["piece_campfire"], color: 4 },
+  { name: "cooking_pot", label: "cooking pot", kind: "station", half: [0.4, 0.35, 0.4], hp: 500, material: "stone", decayDays: 16, slots: 12, fire: true, weight: 4, stack: 100, level: 8, cost: 9, seconds: 10, needs: [["stone", 75], ["thatch", 15], ["wood", 10], ["flint", 5]], after: ["piece_campfire"], color: 4 },
   // Stone Fireplace: 100 health, 3 slots, decays in 48 days; weight 4, stacks to 3; in the hand in 5 s; level 28, 15
   // points, after the campfire and the stone wall. Its warmth is not built.
-  { name: "fireplace", label: "stone fireplace", kind: "container", half: [0.9, 1.2, 0.5], hp: 100, material: "stone", decayDays: 48, slots: 3, weight: 4, stack: 3, level: 28, cost: 15, seconds: 5, needs: [["stone", 450], ["wood", 120], ["thatch", 80], ["flint", 20]], after: ["piece_campfire", "piece_wall_stone"], color: 4 },
+  { name: "fireplace", label: "stone fireplace", kind: "station", half: [0.9, 1.2, 0.5], hp: 100, material: "stone", decayDays: 48, slots: 3, fire: true, weight: 4, stack: 3, level: 28, cost: 15, seconds: 5, needs: [["stone", 450], ["wood", 120], ["thatch", 80], ["flint", 20]], after: ["piece_campfire", "piece_wall_stone"], color: 4 },
   // Electrical Generator: 1,000 health, 8 slots for its gasoline, decays in 16 days; weight 5, stacks to 100; at the
   // fabricator; level 49, 24 points. Nothing is powered yet, so it runs nothing.
   { name: "generator", label: "electrical generator", kind: "container", half: [0.6, 0.5, 0.4], hp: 1000, material: "metal", decayDays: 16, slots: 8, weight: 5, stack: 100, level: 49, cost: 24, seconds: 5, at: "fabricator", needs: [["ingot", 25], ["electronics", 10]], color: 11 },
@@ -306,12 +306,22 @@ const THINGS: readonly Thing[] = [
   // points, after the cooking pot. It cooks nothing yet.
   { name: "cooker_industrial", label: "industrial cooker", kind: "station", half: [1, 1.1, 0.8], hp: 13000, material: "metal", decayDays: 48, slots: 80, weight: 4, stack: 1, level: 89, cost: 60, seconds: 15, at: "fabricator", needs: [["polymer", 300], ["ingot", 1800], ["paste", 450], ["oil", 300]], after: ["piece_cooking_pot"], color: 11 },
 ];
-const SET_DOWN: Def[] = THINGS.flatMap((t): Def[] => [
-  { type: "shape", id: id(`shape_${t.name}`), role: "thing", boxes: [{ at: [0, 0, 0], half: [...t.half] }] },
-  { type: "structure", class: t.kind, id: id(t.name), mesh: "shape", shape: id(`shape_${t.name}`), half: [...t.half], color: t.color, hp: t.hp, material: id(`mat_${t.material}`), decayDays: t.decayDays, ...(t.slots !== undefined ? { slots: t.slots } : {}) },
-  { type: "item", class: "structure", id: id(`piece_${t.name}`), stack: t.stack, weight: t.weight, label: t.label, color: t.color, places: [id(t.name)] },
-  ...made(`piece_${t.name}`, `${t.label[0]!.toUpperCase()}${t.label.slice(1)}`, t.level, t.cost, 1, t.seconds, t.needs, t.at, t.after),
-]);
+const SET_DOWN: Def[] = THINGS.flatMap((t): Def[] => {
+  const shape = id(`shape_${t.name}`);
+  const structure: StructureDef = {
+    type: "structure", class: t.kind, id: id(t.name), mesh: "shape", shape, half: [...t.half],
+    color: t.color, hp: t.hp, material: id(`mat_${t.material}`), decayDays: t.decayDays,
+    ...(t.slots !== undefined ? { slots: t.slots } : {}),
+    ...(t.fire ? { lights: id(`${t.name}_lit`), cooks: false } : {}),
+  };
+  return [
+    { type: "shape", id: shape, role: "thing", boxes: [{ at: [0, 0, 0], half: [...t.half] }] },
+    structure,
+    ...(t.fire ? [{ ...structure, id: id(`${t.name}_lit`), color: 8, lights: structure.id, lit: true }] : []),
+    { type: "item", class: "structure", id: id(`piece_${t.name}`), stack: t.stack, weight: t.weight, label: t.label, color: t.color, places: [structure.id] },
+    ...made(`piece_${t.name}`, `${t.label[0]!.toUpperCase()}${t.label.slice(1)}`, t.level, t.cost, 1, t.seconds, t.needs, t.at, t.after),
+  ];
+});
 
 // ---- What is eaten and drunk. These work whole.
 

@@ -10,6 +10,8 @@ import { unpackMeshes, type SourceMesh } from "../../tools/pack/write.ts";
 import { artTest } from "../fixtures/needs-art.ts";
 
 const handTools = ["torch", "slingshot", "club", "hatchet_metal", "pick_metal", "pike", "sickle", "sword"];
+const camp = ["campfire", "storage_box", "sleeping_bag", "bed", "standing_torch", "cooking_pot", "storage_large", "fireplace"];
+const campFires = ["campfire", "standing_torch", "cooking_pot", "fireplace"];
 
 function expectLevels(mesh: SourceMesh, densityFloor: number): void {
   expect(mesh.lods[0]!.sections, mesh.id).toBeDefined();
@@ -61,4 +63,28 @@ artTest("hand tools ship grounded models, right-hand models and icons", async ()
     expectLevels(drop!, 500);
     expect(icons.get(id), id).toMatchObject({ icon: `${id}/icon`, mesh: drop!.id });
   }
+});
+
+async function expectStationArt(pack: string, stations: readonly string[], fires: readonly string[]): Promise<void> {
+  const meshes = await meshesIn(pack);
+  const icons = new Map(iconSubjects(CORE_CONTENT, (id) => meshes.has(id)).map((icon) => [icon.owner, icon]));
+  for (const station of stations) {
+    const id = `core:${station}`;
+    const piece = `core:piece_${station}`;
+    expect(icons.get(piece), piece).toMatchObject({ icon: `${piece}/icon`, mesh: id });
+    for (const state of fires.includes(station) ? [id, `${id}_lit`] : [id]) {
+      const def = CORE_CONTENT.find((entry) => entry.type === "structure" && entry.id === state);
+      const mesh = meshes.get(state);
+      expect(def?.type, state).toBe("structure");
+      expect(mesh, state).toBeDefined();
+      expect(mesh!.skeleton, state).toBeUndefined();
+      if (def?.type !== "structure") throw new Error(state);
+      for (const lod of mesh!.lods) expect(boundsOf(lod)[0][1], state).toBeCloseTo(-def.half[1], 2);
+      expectLevels(mesh!, 500);
+    }
+  }
+}
+
+artTest("camp stations ship centred models, lit variants and inventory icons", async () => {
+  await expectStationArt("core:camp", camp, campFires);
 });

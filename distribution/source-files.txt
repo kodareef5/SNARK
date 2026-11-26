@@ -6278,6 +6278,15 @@ assets/source/core/sky/sky.snpk
 assets/source/core/sky/table.png
 assets/source/core/sky/twilight.png
 assets/source/core/sky/views-beside-keys.png
+assets/source/core/structures/camp/camp.snpk
+assets/source/core/structures/camp/tex/ember_base.png
+assets/source/core/structures/camp/tex/ember_height.png
+assets/source/core/structures/camp/tex/ember_normal.png
+assets/source/core/structures/camp/tex/ember_orm.png
+assets/source/core/structures/camp/tex/linen_base.png
+assets/source/core/structures/camp/tex/linen_height.png
+assets/source/core/structures/camp/tex/linen_normal.png
+assets/source/core/structures/camp/tex/linen_orm.png
 assets/source/core/structures/metal/metal.snpk
 assets/source/core/structures/stations/stations.snpk
 assets/source/core/structures/stations/tex/kiln/kiln_base_1024.png
