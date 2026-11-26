@@ -979,6 +979,7 @@ export class GameApp {
       this.scene = new Scene(world, this.reg, this.pack, this.split ? { manifest: this.stream!.manifest, port: this.split.assets } : this.stream, { farPalms: this.tools?.farPalms ?? false });
       this.scene.shots = this.shots;
       this.scene.supply = this.supply;
+      this.scene.characters.edition = session.peopleBook.editionColours;
       this.ui.screen<EmoteMenu>("emotes").has = (n) => this.scene!.characters.emoteKnown(n);
       this.tools?.dress(this.scene, world);
       if (this.timer) this.scene.time(this.timer, this.spans.build);

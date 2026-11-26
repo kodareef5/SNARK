@@ -6,7 +6,7 @@
 import { defaultLook } from "../../shared/anim/look.ts";
 import type { PopulationDef } from "../../shared/content/kinds/populations.ts";
 import type { Registry } from "../../shared/content/registry.ts";
-import { HASH, peopleManifestPath, readPeopleManifest, storePopulation } from "../../shared/people/doc.ts";
+import { HASH, peopleManifestPath, readPeopleManifest, storePopulation, type Edition } from "../../shared/people/doc.ts";
 import { lookOfSeed, personFrom, populationsOf, storeIdOf, type StorePopulations } from "../../shared/people/person.ts";
 
 /**
@@ -32,6 +32,8 @@ export class PeopleBook implements StorePopulations {
   /** The wall clock in ms that retries and timeouts are measured on. */
   now: () => number = Date.now;
   private readonly defs = new Map<number, PopulationDef[]>();
+  /** Every garment edition of the manifests loaded, by id. An edition never changes. */
+  private readonly editions = new Map<number, Edition>();
   private pending: Pending[] = [];
   private readonly loaded = new Set<string>();
   /** The manifest last named, how many fetches of it failed, and when the next may start. */
@@ -47,6 +49,21 @@ export class PeopleBook implements StorePopulations {
   population(id: number, rev: number): PopulationDef | undefined {
     return this.defs.get(id)?.[rev - 1];
   }
+
+  /** Garment edition `id` as published, or undefined for one no manifest loaded so far holds. */
+  edition(id: number): Edition | undefined {
+    return this.editions.get(id);
+  }
+
+  /** Fills `out` with edition `id`'s three colours, as the renderer takes them (Characters.edition); false for one not held. */
+  readonly editionColours = (id: number, out: Uint8Array): boolean => {
+    const e = this.editions.get(id);
+    if (!e) return false;
+    out[0] = e.colours[0];
+    out[1] = e.colours[1];
+    out[2] = e.colours[2];
+    return true;
+  };
 
   /** How many bodies are drawn from a stand-in now. */
   get waiting(): number {
@@ -108,9 +125,11 @@ export class PeopleBook implements StorePopulations {
     while (at !== this.loading);
   }
 
-  /** Takes a manifest's populations, and makes again each body drawn from a stand-in that it now holds. */
+  /** Takes a manifest's editions and populations, and makes again each body drawn from a stand-in that it now holds. */
   take(json: unknown): void {
-    for (const p of readPeopleManifest(json).populations) {
+    const read = readPeopleManifest(json);
+    for (const e of read.editions) if (Number.isInteger(e?.id) && Array.isArray(e.colours)) this.editions.set(e.id, e);
+    for (const p of read.populations) {
       const defs = this.defs.get(p.id) ?? [];
       defs[p.rev - 1] ??= storePopulation(p.id, p.rev, p.population);
       this.defs.set(p.id, defs);

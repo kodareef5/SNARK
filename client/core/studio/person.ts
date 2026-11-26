@@ -7,7 +7,7 @@ import { EMOTE_NUMBER } from "../../../shared/anim/emotes.ts";
 import type { Clip } from "../../../shared/anim/clip.ts";
 import type { HumanAnim } from "../../../shared/anim/pose.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
-import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../../../shared/sim/entities.ts";
+import { GEAR_COUNT, GEAR_HELD, GEAR_WORN, WORN_FIELDS } from "../../../shared/sim/entities.ts";
 import { STAGE_SLOTS, type StageCommand, type StageFraming, type StageGarment, type StagePose } from "../../../shared/people/stage.ts";
 
 /** The most print pictures held at once; the oldest goes first. */
@@ -126,6 +126,22 @@ export class PersonStage {
     return { held: this.heldOf(c.kind), notes };
   }
 
+  /**
+   * The wardrobe as the renderer takes it (Characters.wardrobe) into `out`, WORN_LENGTH numbers: per slot the item's
+   * content index, its edition and its dye packed as Inventory.dyeOf does. False while it wears nothing.
+   */
+  wornInto(out: Uint32Array): boolean {
+    let any = false;
+    for (let k = 0; k < STAGE_SLOTS; k++) {
+      const g = this.wardrobe[k], item = g ? (this.reg.index.get(g.item) ?? 0) : 0;
+      out[k * WORN_FIELDS] = item;
+      out[k * WORN_FIELDS + 1] = item === 0 ? 0 : g!.edition;
+      out[k * WORN_FIELDS + 2] = item === 0 ? 0 : (g!.dye[0] | (g!.dye[1] << 8) | (g!.dye[2] << 16)) >>> 0;
+      if (item !== 0) any = true;
+    }
+    return any;
+  }
+
   /** What is held of a kind, as the stage answers it: ids, not content indices. */
   heldOf(kind: StageCommand["kind"]): unknown {
     const id = (i: number): string | null => (i > 0 ? this.reg.ids[i]! : null);
@@ -135,8 +151,8 @@ export class PersonStage {
       case "gear":
         return { held: id(this.gear[GEAR_HELD]!), armor: Array.from({ length: STAGE_SLOTS }, (_, k) => id(this.gear[GEAR_WORN + k]!)) };
       case "wardrobe":
-        // Garments are held, not drawn: their cuts come with the wardrobe's garments.
-        return { slots: this.wardrobe.map((g) => g && { ...g }), hide: this.hide, drawn: false };
+        // A garment whose cut is made is drawn (wornInto).
+        return { slots: this.wardrobe.map((g) => g && { ...g }), hide: this.hide, drawn: true };
       case "print":
         // Prints are held, not drawn: the print array comes with prints at run time.
         return { prints: this.prints.map((p) => ({ ...p })), drawn: false };

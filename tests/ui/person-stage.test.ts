@@ -129,11 +129,11 @@ test("the stage judges gear ids against its content and armor by its slot", () =
   expect(stage.apply(command({ kind: "gear", held: "core:survivor" })).notes).toEqual(["core:survivor is not an item here"]);
 });
 
-test("the stage holds a wardrobe and its hide mask, and says garments are not drawn", () => {
+test("the stage holds a wardrobe and its hide mask, and says garments are drawn", () => {
   const stage = new PersonStage(reg);
   const { held, notes } = stage.apply(command({ kind: "wardrobe", slots: [null, garment, { ...garment, item: "core:nothing_here" }, null, null], hide: 4 }));
   expect(notes).toEqual(["core:nothing_here is not an item here"]);
-  expect(held).toEqual({ slots: [null, garment, null, null, null], hide: 4, drawn: false });
+  expect(held).toEqual({ slots: [null, garment, null, null, null], hide: 4, drawn: true });
   expect(stage.hide).toBe(4);
 });
 

@@ -25,7 +25,7 @@ import type { StructureStore } from "../../../shared/world/structures.ts";
 import { SIZE_UNITS, nodeForms } from "../../../shared/world/nodes.ts";
 import { LOOK_BYTES } from "../../../shared/anim/look.ts";
 import { youngScale } from "../../../shared/sim/breeding.ts";
-import { GEAR_COUNT, GEAR_WORN } from "../../../shared/sim/entities.ts";
+import { GEAR_COUNT, GEAR_WORN, WORN_LENGTH } from "../../../shared/sim/entities.ts";
 import { AnimState, CUE_DEAD, CUE_HELD, PITCH_STEPS, bodySeed } from "../../../shared/anim/pose.ts";
 import { SEAT_FLOATS } from "../../../shared/anim/seat.ts";
 import { MAX_VIEW } from "../../../shared/net/view.ts";
@@ -158,6 +158,11 @@ export interface OwnBody {
   attachment?: { host: number; slot: number; generation: number };
   /** Knocked down, lying as its ragdoll. */
   down?: boolean;
+  /** What it wears in its wardrobe, WORN_LENGTH numbers as EntityStore.wardrobes, while `dressed`. */
+  readonly wardrobe?: Uint32Array;
+  dressed?: boolean;
+  /** Each armour slot's dye, as Inventory.dyeOf packs it; 0 for none. */
+  readonly armorDye?: Uint32Array;
 }
 
 /** Metres the far depth range of a frame with one begins at, through a sight: the lit tiers' split (tiers.ts). */
@@ -667,6 +672,8 @@ export class Scene {
     this.loose = new Things(this.assets);
     this.airSupport = new AirSupport(this.assets, this.characters.rotorBlur, this.details);
     this.characters.hiddenBones = (_kind, id) => this.airSupport.hidden(id);
+    this.characters.wardrobe = (id, out) => this.wardrobeOf(id, out);
+    this.characters.armorDye = (id, slot) => (this.own && this.own.id === id ? (this.own.armorDye?.[slot] ?? 0) : 0);
     this.supplyDrops = new SupplyDrops(reg, this.assets, pack.palette, this.details);
     this.palette = pack.palette;
     this.blasts = new Blasts(reg, this.assets, this.put, this.details);
@@ -1081,11 +1088,32 @@ export class Scene {
     this.put.drawDetails(numbers, glassAndNumbers - numbers, DRAW_BLEND, this.damage.passes(cam));
   }
 
+  /**
+   * The wardrobe of body `id` into `out`, from the viewer's own body or the remote entities being drawn; false for one
+   * that wears none. A survivor's corpse is a remote entity, and wears what it died in.
+   */
+  private wardrobeOf(id: number, out: Uint32Array): boolean {
+    const own = this.own;
+    if (own && own.id === id) {
+      if (!own.dressed || !own.wardrobe) return false;
+      out.set(own.wardrobe);
+      return true;
+    }
+    const r = this.drawing, i = r ? indexOfId(r, id) : -1;
+    if (i < 0 || r!.hasWardrobe[i] === 0) return false;
+    for (let q = 0, at = i * WORN_LENGTH; q < WORN_LENGTH; q++) out[q] = r!.wardrobe[at + q]!;
+    return true;
+  }
+
+  /** The remote entities whose bodies are being drawn (wardrobeOf). */
+  private drawing: RemoteSample | null = null;
+
   private bodies(cam: Camera, remote: RemoteSample | null): void {
     const p = this.packet;
     const ch = this.characters;
     const st = this.state;
     const own = this.own;
+    this.drawing = remote;
     if (!this.charactersPrepared) {
       ch.clock = this.shotTick;
       ch.begin(p, this.world);

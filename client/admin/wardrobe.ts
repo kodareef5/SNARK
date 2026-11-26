@@ -411,7 +411,7 @@ addEventListener("message", (e) => {
     body.stageNotes = String(Number(body.stageNotes ?? 0) + a.notes.length);
     $("stage-note").textContent = `The person could not take all of it: ${a.notes.join("; ")}.`;
   } else if ((a.of === "wardrobe" || a.of === "print") && (a.held as { drawn?: boolean } | null)?.drawn === false) {
-    $("stage-note").textContent = "The person holds the garment and its print, but draws neither until the garment's cut is made.";
+    $("stage-note").textContent = a.of === "print" ? "The person wears the garment, but draws its print only once prints are drawn." : "The person holds the garment, but draws it only once its cut is made.";
   }
 });
 

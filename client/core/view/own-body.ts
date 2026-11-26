@@ -6,9 +6,9 @@ import { creatureHold } from "../../../shared/sim/creature-actions.ts";
 import { handleGen, handleIndex } from "../../../shared/ids.ts";
 import { PI, TAU } from "../../../shared/math/scalar.ts";
 import { MF_DOWN, glidePhase } from "../../../shared/sim/character.ts";
-import { GEAR_COUNT, GEAR_HELD, GEAR_WORN, carriageRate } from "../../../shared/sim/entities.ts";
+import { GEAR_COUNT, GEAR_HELD, GEAR_WORN, WORN_FIELDS, carriageRate } from "../../../shared/sim/entities.ts";
 import { TURN_STEPS, predictedStride, turnSteps } from "../../../shared/anim/pose.ts";
-import { ARMOR_SLOTS } from "../../../shared/sim/items.ts";
+import { ARMOR_SLOTS, WARDROBE_SLOTS } from "../../../shared/sim/items.ts";
 import { FISTS, HOLD_CARRY, poseHold } from "../../../shared/sim/weapon.ts";
 import type { AppFrame } from "../frame.ts";
 import { bodySeed } from "../render/scene.ts";
@@ -35,9 +35,22 @@ export function ownBody(d: Director, f: AppFrame): void {
   body.look = session.ownLook;
   const inv = session.inventory;
   body.gear.fill(0);
+  body.armorDye?.fill(0);
   if (inv && inv.hotbar >= 0) {
     if (session.held >= 0 && session.weaponsAllowed) body.gear[GEAR_HELD] = inv.item[inv.hotbar + session.held]!;
     for (let k = 0; k < ARMOR_SLOTS; k++) body.gear[GEAR_WORN + k] = inv.item[inv.armor + k]!;
+    if (body.armorDye && inv.dye) for (let k = 0; k < ARMOR_SLOTS; k++) body.armorDye[k] = inv.dyeOf(inv.armor + k);
+  }
+  // What it wears in its wardrobe, as its own inventory has it now.
+  body.dressed = false;
+  if (inv && inv.wardrobe >= 0 && body.wardrobe) {
+    for (let k = 0; k < WARDROBE_SLOTS; k++) {
+      const s = inv.wardrobe + k, item = inv.item[s]!;
+      body.wardrobe[k * WORN_FIELDS] = item;
+      body.wardrobe[k * WORN_FIELDS + 1] = item === 0 ? 0 : inv.editionOf(s);
+      body.wardrobe[k * WORN_FIELDS + 2] = item === 0 ? 0 : inv.dyeOf(s);
+      if (item !== 0) body.dressed = true;
+    }
   }
   body.state.mode = session.own.mode;
   body.state.grounded = session.own.grounded;
@@ -69,6 +82,7 @@ export function ownBody(d: Director, f: AppFrame): void {
     body.generation = 0;
     body.look = null;
     body.gear.fill(0);
+    body.dressed = false;
     body.state.stance = 0;
     // Posed from what the server poses it from: the look as the input carries it, and a flyer's climb.
     body.state.setMotion(session.own.vx, session.own.vz, body.yaw, (Math.round((c.pitch / (PI / 2)) * 16384) * (PI / 2)) / 16384, session.own.vy);

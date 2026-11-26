@@ -2,12 +2,13 @@
 // what their runs come to (client/core/people-crowd.ts, tools/bench/people-rows.ts).
 
 import { describe, expect, test } from "bun:test";
-import { CROWD_SHAPES, CROWD_SPACING, CROWD_VIEWER, CROWD_WEDGE, Crowd, OUTFITS, crowdAsked, crowdGear, crowdLooks, crowdSpots, crowdView, distinctLooks } from "../../client/core/people-crowd.ts";
+import { CROWD_LOOKS, CROWD_SCENES, CROWD_SHAPES, CROWD_SPACING, CROWD_VIEWER, CROWD_WEDGE, Crowd, DRESSES, OUTFITS, crowdAsked, crowdGear, crowdLooks, crowdSpots, crowdView, crowdWardrobes, distinctLooks } from "../../client/core/people-crowd.ts";
 import { RemoteSample } from "../../client/core/session.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { LOOK_BYTES, LOOK_SEX, validLook } from "../../shared/anim/look.ts";
 import { compileContent } from "../../shared/content/registry.ts";
-import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../../shared/sim/entities.ts";
+import { GEAR_COUNT, GEAR_HELD, GEAR_WORN, WORN_FIELDS, WORN_LENGTH } from "../../shared/sim/entities.ts";
+import { WARDROBE_NAMES, WARDROBE_SLOTS } from "../../shared/sim/items.ts";
 import { buildProvingHeightfield } from "../../shared/world/proving.ts";
 import { address, cellName, cells, numbersOf, rounds, spread, summarise, table, type RunNumbers } from "../../tools/bench/people-rows.ts";
 
@@ -48,6 +49,18 @@ describe("the crowd", () => {
       expect(looks.filter((l) => l[LOOK_SEX] === 1).length).toBe(n / 2);
       for (const l of looks) expect(validLook(l)).toBe(true);
     }
+  });
+
+  test("a dressed crowd wears the four outfits by turns, a uniform the first, others nothing", () => {
+    expect(crowdWardrobes(8, "gear", reg).every((v) => v === 0)).toBe(true);
+    const worn = (w: Uint32Array, k: number): string[] => Array.from({ length: WARDROBE_SLOTS }, (_, s) => reg.defs[w[k * WORN_LENGTH + s * WORN_FIELDS]!]?.id ?? "");
+    const dressed = crowdWardrobes(8, "dressed", reg), uniform = crowdWardrobes(8, "uniform", reg);
+    for (let k = 0; k < 8; k++) {
+      const names = WARDROBE_NAMES.map((slot) => (DRESSES[k % DRESSES.length]![slot] ? `core:${DRESSES[k % DRESSES.length]![slot]}` : ""));
+      expect(worn(dressed, k)).toEqual(names);
+      expect(worn(uniform, k)).toEqual(worn(dressed, 0));
+    }
+    expect(worn(dressed, 2)).toContain("core:hoodie");
   });
 
   test("only mixed gear dresses bodies, from Meridian on, and its items exist", () => {
@@ -98,7 +111,7 @@ describe("the bench's cells and runs", () => {
 
   test("each tier has two empty views and every scene in every kind of looks", () => {
     const list = cells(["medium", "high"]);
-    expect(list.length).toBe(2 * (2 + 9));
+    expect(list.length).toBe(2 * (2 + CROWD_SCENES.length * CROWD_LOOKS.length));
     expect(new Set(list.map(cellName)).size).toBe(list.length);
     expect(address(80, list[0]!)).toContain("look=portrait");
     expect(address(80, list[0]!)).not.toContain("people=");

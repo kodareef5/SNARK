@@ -7,7 +7,8 @@
 import { AnimState } from "../../../shared/anim/pose.ts";
 import { SESSION_ALIVE } from "../../../shared/net/protocol.ts";
 import { stanceEye } from "../../../shared/sim/character.ts";
-import { GEAR_COUNT } from "../../../shared/sim/entities.ts";
+import { GEAR_COUNT, WORN_LENGTH } from "../../../shared/sim/entities.ts";
+import { ARMOR_SLOTS } from "../../../shared/sim/items.ts";
 import type { VehicleFrame } from "../../../shared/sim/vehicle-frame.ts";
 import { LOOK_SPEED } from "../controls.ts";
 import type { AppFrame, FramePart } from "../frame.ts";
@@ -74,7 +75,7 @@ export class Director implements FramePart {
   private gliderOpen = false;
   private gliderStoodBack = false;
   /** The own body as the scene draws it, and the seat a passenger's is drawn in. */
-  readonly own: OwnBody = { kind: 0, x: 0, y: 0, z: 0, yaw: 0, state: new AnimState(), tick: 0, firstPerson: true, colors: new Uint8Array(6), look: null, gear: new Uint16Array(GEAR_COUNT), id: 0 };
+  readonly own: OwnBody = { kind: 0, x: 0, y: 0, z: 0, yaw: 0, state: new AnimState(), tick: 0, firstPerson: true, colors: new Uint8Array(6), look: null, gear: new Uint16Array(GEAR_COUNT), id: 0, wardrobe: new Uint32Array(WORN_LENGTH), dressed: false, armorDye: new Uint32Array(ARMOR_SLOTS) };
   readonly attachment = { host: 0, slot: 0, generation: 0 };
   /** The turn the own mount shows (AnimState.setTurn), and the predicted tick it was found for, -1 for none. */
   turnSteps = 0;

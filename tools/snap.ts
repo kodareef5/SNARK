@@ -1,5 +1,5 @@
 // Draws the proving ground to a PNG without a browser. Yaw and pitch are in degrees. Yaw 0 faces +Z (north) and positive yaw turns toward +X.
-// Scene flags: --poses N, --glide, --creatures, --states knockout|flinch, --looks, --gear, --creator TAB, --house TIER (--view VIEW), --slopes KIND|scene (--from near|far), --falling MS, --ragdoll SECONDS, --build, --fight WHAT, --launcher all|N (--first, --look STEPS; tools/snap/launcher.ts), --overhead WHAT, --used X,Z, --grow KIND,X,Z[,KIND,X,Z...], --chop X,Z,DEG[,TICKS], --ui (--console TEXT, --inventory, --station ID, --chat, --cone DEGREES, --sight scope|holo|dot (--share SHARE)); --zoom N magnifies the view N times.
+// Scene flags: --poses N, --glide, --creatures, --states knockout|flinch, --looks, --gear, --dress, --creator TAB, --house TIER (--view VIEW), --slopes KIND|scene (--from near|far), --falling MS, --ragdoll SECONDS, --build, --fight WHAT, --launcher all|N (--first, --look STEPS; tools/snap/launcher.ts), --overhead WHAT, --used X,Z, --grow KIND,X,Z[,KIND,X,Z...], --chop X,Z,DEG[,TICKS], --ui (--console TEXT, --inventory, --station ID, --chat, --cone DEGREES, --sight scope|holo|dot (--share SHARE)); --zoom N magnifies the view N times.
 // --graphics TIER draws as a client on that graphics tier does, textures and all, and --source DIR reads another tree's asset folders.
 // --hide 6,9 leaves those skin zones of every survivor undrawn.
 // --hour H draws at that hour of the day. --map FILE draws that map file in place of the proving ground, from its first spawn point unless --pos says otherwise,
@@ -37,7 +37,8 @@ import { youngScale } from "../shared/sim/breeding.ts";
 import type { Rig } from "../shared/anim/rigs.ts";
 import { EYE_COLORS, HAIR_COLORS, SKIN_TONES } from "../shared/pack/palette.ts";
 import { Rng } from "../shared/rng.ts";
-import { GEAR_COUNT, GEAR_HELD } from "../shared/sim/entities.ts";
+import { GEAR_COUNT, GEAR_HELD, WORN_LENGTH } from "../shared/sim/entities.ts";
+import { DRESSES, dressIn } from "../client/core/people-crowd.ts";
 import { BOX_SELF, CMD_MOVE, CMD_SELECT, KEY_BYTES } from "../shared/net/protocol.ts";
 import { dress } from "../server/commands/combat.ts";
 import { Inventory } from "../shared/sim/items.ts";
@@ -790,6 +791,52 @@ export function gearScene(view: ProvingView, facing: number): void {
   cam.fovY = 0.27;
 }
 
+/** The armour the back row wears over each outfit, by body slot: hat, shirt, gloves, pants, boots. */
+const DRESS_ARMOR: readonly string[][] = [
+  ["", "cloth_shirt", "", "", ""],
+  ["cloth_hat", "", "", "hide_pants", ""],
+  ["", "", "chitin_gloves", "", "flak_boots"],
+  ["", "hide_shirt", "", "cloth_pants", ""],
+];
+
+/** The front row is the four outfits (people-crowd.ts DRESSES) on a man and a woman each; the back row the same with armour over them. */
+export function dressScene(view: ProvingView, facing: number): void {
+  const r = view.remote;
+  r.count = 0;
+  r.tick = 0;
+  const kind = view.reg.index.get("core:survivor")!;
+  const item = (name: string): number => view.reg.index.get(`core:${name}`) ?? 0;
+  for (let j = 0; j < 2; j++) {
+    for (let i = 0; i < DRESSES.length * 2; i++) {
+      const n = r.count++;
+      const look = defaultLook();
+      look[LOOK_SEX] = i & 1;
+      look[LOOK_HAIR] = 1 + (i % 4);
+      look[LOOK_SKIN] = (i * 3 + j) % SKIN_TONES;
+      r.id[n] = 1024 * (n + 1);
+      r.kind[n] = kind;
+      r.x[n] = 256 + (DRESSES.length - 0.5 - i) * 1.25;
+      r.z[n] = 228 + j * 2.6;
+      r.y[n] = view.hf.heightAt(r.x[n]!, r.z[n]!);
+      r.yaw[n] = facing;
+      r.flags[n] = 1;
+      r.anim[n] = 0;
+      r.hasLook[n] = 1;
+      r.look.set(look, n * LOOK_BYTES);
+      r.gear.fill(0, n * GEAR_COUNT, (n + 1) * GEAR_COUNT);
+      if (j === 1) DRESS_ARMOR[i >> 1]!.forEach((piece, k) => void (r.gear[n * GEAR_COUNT + 1 + k] = piece ? item(piece) : 0));
+      // The second outfit is dyed: red, white and black.
+      dressIn(r.wardrobe, n * WORN_LENGTH, i >> 1, view.reg, (i >> 1) === 1 ? 233 | (10 << 8) | (11 << 16) : 0);
+      r.hasWardrobe[n] = 1;
+    }
+  }
+  const cam = view.cam;
+  cam.x = 256;
+  cam.z = 211;
+  cam.y = view.hf.heightAt(cam.x, cam.z) + 4.6;
+  cam.fovY = 0.36;
+}
+
 /** The front row is every hair style on each sex, some bearded. The back row is each sex with every slider at each end, then six random looks. */
 export function looksScene(view: ProvingView, facing: number): void {
   const r = view.remote;
@@ -1458,6 +1505,7 @@ if (import.meta.main) {
     if (args.includes("--ragdoll")) ragdollScene(view, Number(arg("ragdoll") ?? 4));
     if (args.includes("--gear")) gearScene(view, (Number(arg("face") ?? 150) * Math.PI) / 180);
     if (args.includes("--looks")) looksScene(view, (Number(arg("face") ?? 150) * Math.PI) / 180);
+    if (args.includes("--dress")) dressScene(view, (Number(arg("face") ?? 150) * Math.PI) / 180);
     // --hide ZONES: every survivor leaves those skin zones undrawn (shared/anim/skin-zones.ts), as a garment over them would.
     const hide = arg("hide")?.split(",").reduce((m, z) => m | (1 << Number(z)), 0);
     if (hide) view.scene.characters.skinHidden = () => hide;
