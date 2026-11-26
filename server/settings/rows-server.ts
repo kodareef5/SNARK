@@ -312,6 +312,8 @@ new Sheet(SERVER_ROWS, "snark", "Cast")
 new Sheet(SERVER_ROWS, "snark", "Loot")
   .b("WorldLootEnabled", true, "Loot lies in the world besides supply drops: in creatures' bodies, by the drop book's sources. Off, nothing of it is rolled.", live({ live: true, public: true, note: "Ours (planning/workstreams/loot.md)." }))
   .b("BodyLootEnabled", true, "A wild creature's body holds loot, more for a bigger creature of a higher level. Off, a body holds only what the creature carried.", live({ live: true, public: true, note: "Ours." }))
+  .b("StreetLootEnabled", true, "Street things hold loot: bins, mailboxes, newspaper boxes and pay stations are searched by holding the use key. Off, they are scenery.", live({ live: true, public: true, note: "Ours." }))
+  .f("WorldLootRefillPeriodMultiplier", 1, "How long a searched thing takes to hold loot again. Higher is longer.", live({ live: true, public: true, min: 0.001, note: "Ours. A thing already searched keeps the time it was given." }))
   .f("WorldLootChanceMultiplier", 1, "How often a thing that may hold loot does: every source's chance is multiplied by it.", live({ live: true, public: true, max: 100, note: "Ours." }))
   .f("WorldLootAmountMultiplier", 1, "How many of each thing is found in world loot. A blueprint stays one.", live({ live: true, public: true, max: 1000, note: "Ours." }))
   .s("ConfigOverrideLootSource", "One of the drop book's sources changed, a source to an entry: `(Source=\"body/apex\",Enabled=False)` switches it off, `(Source=\"body/large\",Chance=0.5)` sets the share of such things that hold its loot.", live({ live: true, note: "Ours. The drops page lists the sources and their keys." }));

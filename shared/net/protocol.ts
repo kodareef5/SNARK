@@ -610,6 +610,8 @@ export const RESULT_BODY = 28;
 export const RESULT_TERRAIN = 29;
 /** A placement refused because its session has set down as many pieces this second as it may. */
 export const RESULT_RATE = 30;
+/** A thing that holds loot was searched already and has nothing left to take. */
+export const RESULT_SEARCHED = 31;
 
 const ownKind = counter();
 export const OWN_SESSION = ownKind();

@@ -128,6 +128,7 @@ import { withSites } from "../content/supply/sites.ts";
 import { starterBook } from "../content/supply/starter.ts";
 import { withLoot } from "../content/loot/starter.ts";
 import { Loot } from "./loot.ts";
+import { Holders } from "./holders.ts";
 import { catalogOf } from "../shared/supply/catalog.ts";
 import { SETTING as ARK_CRATES, arkCrates } from "./supply/ark.ts";
 import { AirSupport } from "./air-support.ts";
@@ -279,6 +280,7 @@ export interface Host {
   /** The creature packages' modules, each still doing nothing. */
   readonly corpses: Corpses;
   readonly loot: Loot;
+  readonly holders: Holders;
   readonly carry: Carry;
   readonly emotes: Emotes;
   readonly feces: Feces;
@@ -1518,6 +1520,11 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const loot = new Loot({ world, records, items, rules, bus, compiled: () => supply.compiled(), seed: opts.seed ?? 1 });
   supply.sourced = (book) => loot.sourced(withLoot(book));
   corpses.loot = loot;
+  const holders = new Holders({ world, game, records, items, fixtures, containers, death, deadlines, rules, loot, held: (x, z) => harvest?.held(x, z, 0) ?? false });
+  build.holders = holders;
+  combat.city.onFell = (ref) => holders.gone(ref);
+  holders.begin(persistence && !loaded!.fresh ? (persistence.store.meta("holders") as string | null) : null);
+  persistence?.sidecar("holders", holders.saved);
   supply.begin(persistence && !loaded!.fresh ? (persistence.store.meta("supply") as string | null) : null);
   persistence?.sidecar("supply", supply.saved);
   // Map events (server/mapevent/events.ts). Made before the modules, which define its kinds; begun after them.
@@ -2381,6 +2388,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     tactical,
     corpses,
     loot,
+    holders,
     carry,
     emotes,
     feces,

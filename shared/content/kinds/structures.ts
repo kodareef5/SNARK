@@ -120,6 +120,11 @@ export interface StructureDef extends Named, StationFields {
    */
   readonly ablaze?: true;
   /**
+   * A static that holds loot (planning/workstreams/loot.md): its tag, which the drop book's sources go by, the seconds
+   * the use key is held to search it, and the stacks it holds. It only gives.
+   */
+  readonly holds?: { readonly tag: string; readonly seconds: number; readonly slots: number };
+  /**
    * Its mesh's levels are chosen as if it stood this many times as far off (1 to 16; client/core/render/scene.ts): for
    * scenery of many alike that a heavy mesh draws, a marina's moored hulls, finest only close by.
    */
@@ -181,6 +186,7 @@ const FIELDS = {
   near: f("switch", "drawn near only, left out of the far city's lattice and mass"),
   paint: f("switch", "paint on the ground: each vertex drawn its own height over the ground under it, casting no shadow"),
   ablaze: f("switch", "burning where it stands, for good: flames, smoke and a crackle, and no harm"),
+  holds: f("facet", "a loot crate's inventory: the tag its loot goes by, the seconds to search it and its slots"),
   bent: f("switch", "drawn bent along the street by its instance's bend, walked as nothing: a bent kerb"),
   coarse: f("number", "its mesh's levels chosen as if it stood this many times as far off, 1 to 16: scenery of many alike"),
   colors: f("list", "the colours of its mesh's regions after the first, as a moored hull its vessel's"),
@@ -250,6 +256,9 @@ const columns = (n: number) => ({
   burning: u8(n),
   /** Per static: 1 where it burns where it stands (StructureDef.ablaze). */
   ablaze: u8(n),
+  /** Per static that holds loot: its tag, and the seconds the use key is held to search it. Null and 0 for the rest. */
+  holds: list<string>(n),
+  holdSeconds: f32(n),
   isBed: u8(n),
   /** Per structure: its screen's face (StructureDef.screen), or null for one with none. */
   screenFace: list<ScreenFace>(n),
@@ -304,7 +313,7 @@ export const structures: Kind<StructureDef, ReturnType<typeof columns>> = {
     row("structure/container", "structure", FIELDS, { parent: "structure", ark: "an item container", shelf: "structures/containers", must: [...BUILT, "slots"], may: ["shape", "material", "decayDays", "locked", "falls", "keeps"], slots: STRUCTURE_SLOTS, doc: "Holds stacks: a box, a vault." }),
     row("structure/station", "structure", FIELDS, { parent: "structure/container", ark: "a crafting inventory with its engrams and speed", status: "partial", waits: "stations", shelf: "structures/stations", must: BUILT, may: ["shape", "material", "decayDays", "locked", "falls", "slots", "lights", "lit", "burns", "cooks", "keeps", "charges", "powered", "dry", "screen"], slots: STRUCTURE_SLOTS, doc: "Things are made or changed at it. An item whose craft names it in `at` is made from what lies in it, for whoever queued it, and lands in it; a lit station and the same station out are one station to that. One that `lights` burns fuel while lit: every item's own `fuel`, or only what it names in `burns`, at its own times. A `powered` one (the fabricator) makes things only while it burns: it takes no job while out, and a unit under way when its fuel runs out waits with its ticks left until it is lit again. A fire makes its `fired` recipes by itself while it burns, and cooks what has `cooks` unless `cooks` is false. How fast it makes things waits: every station makes at the recipe's seconds." }),
     row("structure/bed", "structure", FIELDS, { parent: "structure", ark: "a bed", shelf: "structures/beds", must: [...BUILT, "bed"], may: ["shape", "material", "decayDays", "falls", "wait", "once", "floor", "rise"], slots: STRUCTURE_SLOTS, doc: "Its tribe may come back to life at it, after its wait, and travel to it from another; a sleeping bag once, and only for whoever set it down." }),
-    row("structure/static", "structure", FIELDS, { parent: "structure", ark: "level geometry, ours", shelf: "structures/static", must: BUILT, may: ["material", "shape", "grindLine", "vehicleSurface", "opens", "motion", "under", "made", "near", "paint", "ablaze", "coarse", "colors", "bent", "breaks", "salvage", "screen"], slots: { mesh: mesh("must", "{mesh}", "{id}", "box", "shape") }, doc: "Part of a map: set there with the world and joined to nothing. A city piece that breaks names its break set, which its broken forms, each a kind of its own, name too. A wreck says what salvaging it takes and gives, a rung at a time. A ruin's piece may say the darker colour its faces looking down are drawn in, and a material made from a recipe its faces wear in place of its colour's painted finish, and a street piece or a building's small kit that it is drawn near only, and road paint that it is drawn on the ground, and scenery of many alike that its mesh's levels are chosen coarser and the colours of its mesh's other regions. With a shape it may be sloped, or drawn as a mesh of the pack, a wreck's, at the shape's origin, or as nothing where a landmark's cells draw it, or bent along the street by its instance's bend and walked as nothing (a bent kerb). A pair that opens each other is a public door. One with a motion moves its parts between two placements when used, as sails are set and struck." }),
+    row("structure/static", "structure", FIELDS, { parent: "structure", ark: "level geometry, ours", shelf: "structures/static", must: BUILT, may: ["material", "shape", "grindLine", "vehicleSurface", "opens", "motion", "under", "made", "near", "paint", "ablaze", "holds", "coarse", "colors", "bent", "breaks", "salvage", "screen"], slots: { mesh: mesh("must", "{mesh}", "{id}", "box", "shape") }, doc: "Part of a map: set there with the world and joined to nothing. A city piece that breaks names its break set, which its broken forms, each a kind of its own, name too. A wreck says what salvaging it takes and gives, a rung at a time. A ruin's piece may say the darker colour its faces looking down are drawn in, and a material made from a recipe its faces wear in place of its colour's painted finish, and a street piece or a building's small kit that it is drawn near only, and road paint that it is drawn on the ground, and scenery of many alike that its mesh's levels are chosen coarser and the colours of its mesh's other regions. With a shape it may be sloped, or drawn as a mesh of the pack, a wreck's, at the shape's origin, or as nothing where a landmark's cells draw it, or bent along the street by its instance's bend and walked as nothing (a bent kerb). A pair that opens each other is a public door. One with a motion moves its parts between two placements when used, as sails are set and struck." }),
     row("structure/defence", "structure", FIELDS, { parent: "structure", ark: "turrets and spikes", status: "stub", waits: "defences", shelf: "structures/defences", must: BUILT, may: ["shape", "material", "decayDays", "falls", "slots"], slots: STRUCTURE_SLOTS, doc: "Harms what comes near it." }),
   ],
   check(d, cx) {
@@ -313,6 +322,7 @@ export const structures: Kind<StructureDef, ReturnType<typeof columns>> = {
     if (d.near !== undefined && d.near !== true) errors.push(`${d.id}: near is true or left out`);
     if (d.paint !== undefined && d.paint !== true) errors.push(`${d.id}: paint is true or left out`);
     if (d.ablaze !== undefined && d.ablaze !== true) errors.push(`${d.id}: ablaze is true or left out`);
+    if (d.holds !== undefined && !(typeof d.holds.tag === "string" && /^[a-z][a-z0-9_/-]{0,31}$/.test(d.holds.tag) && d.holds.seconds >= 0 && d.holds.seconds <= 60 && Number.isInteger(d.holds.slots) && d.holds.slots >= 1 && d.holds.slots <= 60)) errors.push(`${d.id}: holds is a tag of small letters, 0 to 60 seconds and 1 to 60 slots`);
     if (d.coarse !== undefined && !(d.coarse >= 1 && d.coarse <= 16)) errors.push(`${d.id}: coarse is from 1 to 16`);
     if (d.colors !== undefined && !(Array.isArray(d.colors) && d.colors.length <= 5 && d.colors.every((c) => Number.isInteger(c) && c > 0 && c < REGION_BASE))) errors.push(`${d.id}: colors are up to five fixed palette colours`);
     if (d.motion !== undefined) errors.push(...motionFaults(d));
@@ -403,6 +413,12 @@ export const structures: Kind<StructureDef, ReturnType<typeof columns>> = {
     if (d.falls) reg.fallsWhole[i] = 1;
     if (d.lit) reg.burning[i] = 1;
     if (d.ablaze) reg.ablaze[i] = 1;
+    if (d.holds) {
+      reg.holds[i] = d.holds.tag;
+      reg.holdSeconds[i] = d.holds.seconds;
+      reg.structSlots[i] = d.holds.slots;
+      reg.takeOnly[i] = 1;
+    }
     if (d.bed) reg.isBed[i] = 1;
     reg.screenFace[i] = d.screen ?? null;
     if (d.motion) reg.motion[i] = d.motion;

@@ -77,6 +77,11 @@ export class Loot {
     return lines.length === 0 || !book.sources ? book : { ...book, sources: overridden(book.sources, lines).sources };
   }
 
+  /** The sources in force. */
+  sources(): readonly SourceDoc[] {
+    return this.ctx.compiled().book.sources ?? [];
+  }
+
   /** Marks `body`, a wild creature's of `level`, as holding loot not yet rolled. */
   seal(body: EntityRecord, level: number): void {
     const seed = hashString(`body/${body.pid}/${this.ctx.world.tick}`, (this.ctx.seed + SEED) >>> 0);

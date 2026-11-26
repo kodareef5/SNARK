@@ -187,7 +187,7 @@ export interface SiteDoc {
 }
 
 /** What a source is the loot of. More kinds come with the things that hold loot (planning/workstreams/loot.md). */
-export const SOURCE_KINDS = ["body"] as const;
+export const SOURCE_KINDS = ["body", "static"] as const;
 export type SourceKind = (typeof SOURCE_KINDS)[number];
 /** Where a source's table key takes the key of the tier it is rolled at: "{tier}/arms". */
 export const TIER_MARK = "{tier}";
@@ -200,6 +200,8 @@ export interface SourceWhen {
   size?: string[];
   /** A body's level, least and most. */
   level?: [number, number];
+  /** A static's tag (StructureDef.holds): "bin", "mailbox". */
+  holds?: string[];
 }
 
 /** A table a source rolls: its key, which may hold TIER_MARK, and the slots of it rolled, by name; all where not given. */
@@ -227,6 +229,8 @@ export interface SourceDoc {
   /** The tier it rolls at, and steps that raise it: the last whose level the thing has reached. */
   tier?: string;
   ladder?: { level: number; tier: string }[];
+  /** Game hours before a thing that stands holds loot again, least and most, from when it was first searched. A day where not given. */
+  refillHours?: [number, number];
   /**
    * What one such thing is balanced to give, those that give nothing counted: `share` of its tier's target, or the
    * worth `target` where it has no tier.
@@ -537,10 +541,11 @@ export function bookFaults(book: unknown): BookFault[] {
         if (s.rolls !== undefined && !(Array.isArray(s.rolls) && s.rolls.length === 2 && Number.isInteger(s.rolls[0]) && Number.isInteger(s.rolls[1]) && s.rolls[0] >= 0 && s.rolls[1] >= s.rolls[0] && s.rolls[1] <= MOST.slots)) bad(`${path}.rolls`, `[least, most], whole, from 0 to ${MOST.slots}`);
         const w = s.when;
         if (w !== undefined) {
-          if (!isObject(w)) bad(`${path}.when`, "{ species, size, level }");
+          if (!isObject(w)) bad(`${path}.when`, "{ species, size, level, holds }");
           else {
             if (w.species !== undefined && !(Array.isArray(w.species) && w.species.length <= MOST.items && w.species.every((id) => typeof id === "string" && id.length > 0 && id.length <= 96))) bad(`${path}.when.species`, `at most ${MOST.items} species ids`);
             if (w.size !== undefined && !(Array.isArray(w.size) && w.size.every((v) => (BODY_SIZES as readonly string[]).includes(v)))) bad(`${path}.when.size`, `of ${BODY_SIZES.join(", ")}`);
+            if (w.holds !== undefined && !(Array.isArray(w.holds) && w.holds.length <= MOST.items && w.holds.every((v) => typeof v === "string" && /^[a-z][a-z0-9_/-]{0,31}$/.test(v)))) bad(`${path}.when.holds`, `at most ${MOST.items} tags of small letters`);
             if (w.level !== undefined && !(Array.isArray(w.level) && w.level.length === 2 && finite(w.level[0]) && finite(w.level[1]) && w.level[0] >= 0 && w.level[1] >= w.level[0])) bad(`${path}.when.level`, "[least, most]");
           }
         }
@@ -567,6 +572,7 @@ export function bookFaults(book: unknown): BookFault[] {
             if (marked && tiers.length === 0) bad(`${at}.table`, `${TIER_MARK} needs the source to have a tier`);
             for (const k of marked ? tiers.map((tier) => t.table.replace(TIER_MARK, tier)) : [t.table]) if (!Object.hasOwn(tables, k)) bad(`${at}.table`, `names a table of the book (${k})`);
           });
+        if (s.refillHours !== undefined && !(Array.isArray(s.refillHours) && s.refillHours.length === 2 && finite(s.refillHours[0]) && finite(s.refillHours[1]) && s.refillHours[0] > 0 && s.refillHours[1] >= s.refillHours[0] && s.refillHours[1] <= 24 * 365)) bad(`${path}.refillHours`, "[least, most] game hours, above 0");
         if (s.share !== undefined) num(`${path}.share`, s.share, 0, 100, "a share of its tier's target");
         if (s.target !== undefined) num(`${path}.target`, s.target, 0, 1e9, "a worth");
         if (s.share !== undefined && tiers.length === 0) bad(`${path}.share`, "a share is of a tier's target: the source has none");
