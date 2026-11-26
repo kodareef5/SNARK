@@ -91,8 +91,9 @@ artTest("a frame on medium at the iPhone's view keeps within medium's draws and 
   // compact's five looks; as six looks a chunk of the fleet's (the jeep's 24,000 and the semi's 20,564 finest among them,
   // content/vehicles/wrecks.ts) it cast 259,860, and with the Concept's two lighter wreck looks in the rotation, this.
   // The first two were 364,236 and 1,590,572 while survivors were three flat levels, and 367,371 and 1,594,042 cooked as
-  // four (tools/pack/body.ts); MakeHuman's bodies, whose finer levels are coarser, cast these.
-  expect(Object.values(scenes).map((frames) => most(frames, (f) => f.cast))).toEqual([365147, 1591582, 207978]);
+  // four (tools/pack/body.ts); MakeHuman's bodies, whose finer levels are coarser, cast these: 365,147 and 1,591,582 until
+  // the neck seam kept its points on the second level.
+  expect(Object.values(scenes).map((frames) => most(frames, (f) => f.cast))).toEqual([365140, 1591572, 207978]);
 });
 
 artTest("a 20,000-piece base 30 and 60 m off on medium at the iPhone's view draws and casts what it did", () => {

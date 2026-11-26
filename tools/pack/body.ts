@@ -6,7 +6,7 @@
 
 import {
   B_FINGERS_L, B_FINGERS_R, B_FINGERTIPS_L, B_LOWER_ARM_L, B_LOWER_ARM_R, B_LOWER_LEG_L, B_LOWER_LEG_R, B_FINGERTIPS_R, B_FOOT_L, B_FOOT_R, B_HAND_L, B_HAND_R, B_PROP_L, B_PROP_R, B_THUMB_L, B_THUMB_R, B_TOE_L, B_TOE_R,
-  HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_FEET, SLOT_HANDS, SLOT_NAMES,
+  HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_FEET, SLOT_HANDS, SLOT_HEAD, SLOT_NAMES, SLOT_TORSO,
 } from "../../shared/anim/human.ts";
 import { SKIN_ZONE_SLOT, skinZoneAt } from "../../shared/anim/skin-zones.ts";
 import { TEXTURE_ROLES } from "../../shared/pack/texture.ts";
@@ -444,8 +444,10 @@ export function cookBody(sources: Gltf | readonly Gltf[] | ScriptedBody, opts: C
   if (fine.indices.length / 3 > opts.triangles[0]!) fine = simplifySurface(fine, [opts.triangles[0]!], [], byZone)[0]!.lod;
   for (const [k, m] of materials.entries()) if (m.span === 0) m.span = spanOf(fine, k);
   const id = opts.whole ?? opts.id;
+  // A near body may draw its head finer than its torso (client/core/render/characters.ts), so their neck seam is held.
+  const levelZones: ByZone = opts.zoned && !opts.whole ? { ...byZone, seams: [[SLOT_HEAD, SLOT_TORSO]] } : byZone;
   const made = withSurfaceLevels({ id, lods: [fine], skeleton: HUMAN.id, rig: opts.rig, materials, textures }, {
-    budgets: opts.triangles.slice(1), flat: opts.flat, maps: opts.materials.map((m) => m.maps), palette: opts.palette, byZone,
+    budgets: opts.triangles.slice(1), flat: opts.flat, maps: opts.materials.map((m) => m.maps), palette: opts.palette, byZone: levelZones,
   });
   // The levels' errors are measured again on each part; a whole piece keeps the ones measured on it.
   const parts: { id: string; keep: (t: number, lod: SourceLod) => boolean }[] = opts.whole

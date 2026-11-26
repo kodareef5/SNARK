@@ -106,6 +106,8 @@ export interface ByZone {
   readonly weights?: readonly number[];
   /** By zone, the group it is counted in. Each group keeps at least ZONE_FLOOR of its share of every level. */
   readonly groups?: readonly number[];
+  /** Pairs of groups whose shared border keeps every point it has, so the two may be drawn at different levels. */
+  readonly seams?: readonly (readonly [number, number])[];
 }
 
 export interface Simplified {
@@ -467,6 +469,11 @@ function collapsed(fine: SourceLod, targets: readonly number[], textured: boolea
   const groupLeft: number[] = [];
   if (group) for (const g of group) groupLeft[g] = (groupLeft[g] ?? 0) + 1;
   const groupFine = [...groupLeft];
+  if (group && byZone.seams?.length) {
+    const groupsAt = new Uint32Array(bone.length);
+    for (let f = 0; f < faces; f++) for (let k = 0; k < 3; k++) groupsAt[corners[f * 3 + k]!]! |= 1 << group[f]!;
+    for (let v = 0; v < bone.length; v++) if (byZone.seams.some(([a, b]) => (groupsAt[v]! >> a & 1) !== 0 && (groupsAt[v]! >> b & 1) !== 0)) locked[v] = 1;
+  }
   const groupFloor: number[] = [];
   const dying: number[] = [];
   /** Whether moving `from` onto `to` would take a group of zones under its floor. */
@@ -707,7 +714,9 @@ export function withSurfaceLevels(mesh: SourceMesh, plan: LevelPlan): SourceMesh
   const generated = budgets.length - authored.length;
   if (generated < 0) throw new Error(`${mesh.id}: more authored flat levels than distance budgets`);
   if (generated > 0) {
-    for (const made of simplify(flatOf(surface[surface.length - 1]!, flat[flat.length - 1]!), budgets.slice(0, generated), plan.preserveBones, plan.holdParts, plan.byZone)) {
+    // Seams are held on the levels with a surface alone: the flat levels are few triangles and never meet a finer one.
+    const { seams: _, ...flatZones } = plan.byZone ?? {};
+    for (const made of simplify(flatOf(surface[surface.length - 1]!, flat[flat.length - 1]!), budgets.slice(0, generated), plan.preserveBones, plan.holdParts, flatZones)) {
       if (!worth(made.lod, lods[lods.length - 1]!)) break;
       lods.push(made.lod);
     }
