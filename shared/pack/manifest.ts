@@ -268,6 +268,11 @@ export function describePack(pack: Pack, file: { name: string; bytes: number }, 
   // A pack names its textures and holds none of their pixels, so no variant is listed here. The build adds them.
   if (pack.header.textures) out.textures = pack.header.textures.map((t) => ({ ...t, in: {} }));
   if (pack.header.landmarks) out.landmarks = pack.header.landmarks;
+  const faces: ManifestFaces[] = [];
+  pack.header.meshes.forEach((m, mesh) => {
+    if (m.faces) faces.push({ mesh, file: 0, at: pack.blobAt + m.faces.offset, part: { bytes: m.faces.length, hash: hash(pack.blob.subarray(m.faces.offset, m.faces.offset + m.faces.length)) } });
+  });
+  if (faces.length > 0) out.faces = faces;
   return out;
 }
 

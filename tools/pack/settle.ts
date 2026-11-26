@@ -21,7 +21,7 @@
 // committed one and whose layout has moved keeps the committed mesh, and the build says so. Only a shape that has
 // really changed is new, and then its pictures are to be painted again whichever machine made it.
 
-import { CLIP_ROOT_BYTES, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, clipRotBytes, detailsAtlas, lodIndices, lodSkin, lodSurface, lodVertices, parsePack, type Pack, type PackHeader, type PackLod, type PackMesh, type PackRig } from "../../shared/pack/pack.ts";
+import { CLIP_ROOT_BYTES, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, clipRotBytes, detailsAtlas, lodIndices, lodSkin, lodSurface, lodVertices, meshFaces, parsePack, type Pack, type PackHeader, type PackLod, type PackMesh, type PackRig } from "../../shared/pack/pack.ts";
 import { PackBlob } from "./write.ts";
 
 /** Steps of a stored position, texture coordinate, normal's or tangent's part and skin weight that two builds of one thing may lie apart. */
@@ -183,6 +183,10 @@ export interface SettleOptions {
   readonly layoutMoved?: boolean;
 }
 
+function sameFaces(a: Uint8Array, b: Uint8Array | null): boolean {
+  return b !== null && a.length === b.length && a.every((x, i) => x === b[i]);
+}
+
 export function settlePack(fresh: Uint8Array, committed: Uint8Array, options: SettleOptions = {}): Settled {
   const f = parsePack(fresh), k = parsePack(committed);
   const header = structuredClone(f.header) as PackHeader;
@@ -191,6 +195,7 @@ export function settlePack(fresh: Uint8Array, committed: Uint8Array, options: Se
   if (header.details) header.details.atlas.offset = out.append(detailsAtlas(f));
   const kept: string[] = [], made: string[] = [], layout: string[] = [], told: string[] = [];
   const keptMesh = new Uint8Array(header.meshes.length);
+  let facesMade = k.header.meshes.some((m) => m.faces !== undefined && !f.header.meshes.some((n) => n.id === m.id && n.faces !== undefined));
   header.meshes.forEach((mesh, i) => {
     const was = k.meshIndex.get(mesh.id);
     let same = was !== undefined && meshAlike(f, f.header.meshes[i]!, k, k.header.meshes[was]!);
@@ -219,6 +224,11 @@ export function settlePack(fresh: Uint8Array, committed: Uint8Array, options: Se
       if (surface) lod.surfaceOffset = out.append(surface);
       if (skin) lod.skinOffset = out.append(skin);
     });
+    // A face table is the new build's: it is cooked from sources no machine rounds apart.
+    const faces = meshFaces(f, f.header.meshes[i]!);
+    if (faces) header.meshes[i]!.faces = { offset: out.append(faces), length: faces.length };
+    else delete header.meshes[i]!.faces;
+    if (faces && !sameFaces(faces, was === undefined ? null : meshFaces(k, k.header.meshes[was]!))) facesMade = true;
   });
   const rigs: string[] = [];
   header.rigs.forEach((rig, r) => {
@@ -247,7 +257,7 @@ export function settlePack(fresh: Uint8Array, committed: Uint8Array, options: Se
   }
   // Nothing new, nothing gone and the rest of what the headers say alike: the committed file, not a file like it.
   const rest = (h: PackHeader): string => JSON.stringify({ materials: h.materials, textures: h.textures, finishes: h.finishes, landmarks: h.landmarks, details: h.details && { ...h.details, atlas: { ...h.details.atlas, offset: 0 } } });
-  const whole = made.length === 0 && rigs.length === 0 && clips.length === 0
+  const whole = made.length === 0 && rigs.length === 0 && clips.length === 0 && !facesMade
     && f.header.meshes.length === k.header.meshes.length && f.header.rigs.length === k.header.rigs.length && f.header.clips.length === k.header.clips.length
     && rest(header) === rest(k.header) && sameBytes(f.palette, k.palette) && sameBytes(detailsAtlas(f), detailsAtlas(k));
   return { file: whole ? committed : out.file(header), kept, made, layout, told, rigs, clips };

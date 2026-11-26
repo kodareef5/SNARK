@@ -346,10 +346,16 @@ export class Residency {
     });
     clips.forEach((e, c) => (this.size[this.clipBase + c] = e.part.bytes));
     faces.forEach((e, f) => (this.size[this.faceBase + f] = e.part.bytes));
+    // A whole pack holds its face tables: they are here from the start.
+    this.state = new Uint8Array(slots);
+    faces.forEach((e, f) => {
+      if (e.file !== manifest.boot) return;
+      this.faceData[f] = boot.blob.subarray(e.at - boot.blobAt, e.at - boot.blobAt + e.part.bytes);
+      this.state[this.faceBase + f] = RESIDENT;
+    });
     this.keepOf = new Uint8Array(this.levels);
     this.keptData = new Array<Uint8Array | null>(this.levels * 2).fill(null);
     (manifest.pages ?? []).forEach((p, k) => (this.size[this.pageBase + k] = p.part.bytes));
-    this.state = new Uint8Array(slots);
     pages.forEach((blob, p) => blob && (this.state[this.pageBase + p] = RESIDENT));
     this.seen = new Uint32Array(slots);
     this.urgency = new Float32Array(slots);

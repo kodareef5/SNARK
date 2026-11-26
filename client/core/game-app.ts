@@ -111,6 +111,11 @@ const NO_EFFECTS: ReadonlySet<Effect> = new Set();
 
 export type ClientAssets = { manifest: Manifest; port: AssetPort };
 
+/** A microphone level this many times over opens the mouth all the way; another's voice opens it at least this far, this fast. */
+const MOUTH_GAIN = 4;
+const MOUTH_LEAST = 0.35;
+const MOUTH_RATE = 0.9;
+
 export class GameApp {
   readonly session: ClientSession;
   readonly ui: GameUi;
@@ -119,6 +124,14 @@ export class GameApp {
   readonly hud = new HudModel();
   /** What the HUD's widgets fill from (hud/widget.ts): made once, set each frame. */
   private readonly hudFill = new HudFill();
+  /** How open a survivor's mouth is as it is heard: the viewer's own by its microphone, another's while its voice plays. */
+  private readonly mouthOf = (id: number, own: boolean, tick: number): number => {
+    const v = this.voice;
+    if (!v) return 0;
+    if (own) return v.sending ? Math.min(1, v.level * MOUTH_GAIN) : 0;
+    for (const s of v.speakers.values()) if (s.speaking && handleIndex(s.handle) === id) return MOUTH_LEAST + (1 - MOUTH_LEAST) * Math.abs(Math.sin(tick * MOUTH_RATE));
+    return 0;
+  };
   /** The frame's values and its parts in their order (frame.ts): made once, the values set each frame. */
   private readonly f: AppFrame;
   private parts: readonly FramePart[];
@@ -983,6 +996,7 @@ export class GameApp {
       this.scene.shots = this.shots;
       this.scene.supply = this.supply;
       this.scene.characters.edition = session.peopleBook.editionColours;
+      this.scene.characters.voice = this.mouthOf;
       this.scene.editionPrint = (edition) => session.peopleBook.edition(edition)?.print ?? null;
       this.scene.prints.host = this.printHost;
       this.ui.screen<EmoteMenu>("emotes").has = (n) => this.scene!.characters.emoteKnown(n);

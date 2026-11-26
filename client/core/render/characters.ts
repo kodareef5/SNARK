@@ -571,6 +571,8 @@ export class Characters {
   /** Heads made from face tables (faces.ts), and the one the survivor being added draws. */
   readonly faces: Faces;
   private madeHead: MadeHead | null = null;
+  /** Survivors that took face rows this frame. */
+  faced = 0;
   /** How open a survivor's mouth is as it is heard speaking, 0 to 1, by its id; null where nothing is heard. */
   voice: ((id: number, own: boolean, tick: number) => number) | null = null;
   /** Each body's gait, by its id, so its legs go by the ground it covers (shared/anim/gait.ts). */
@@ -1751,6 +1753,7 @@ export class Characters {
     if (this.lastHead.size > 4096) this.lastHead.clear();
     if (++this.frame % FORGET_GAIT === 0) for (const id of this.gaits.keys()) if (this.frame - this.gaits.get(id)!.seen > FORGET_GAIT) this.gaits.delete(id);
     if (p) this.faces.begin(p.tier, p.assetUploads, p.assetDrops);
+    this.faced = 0;
     if (this.waiting.length > 0) this.takeClips();
     if (this.emoteSlot >= 0 && this.emotesWanted) this.takeEmotes();
   }
@@ -1944,6 +1947,7 @@ export class Characters {
       }
       this.posed++;
       if (faced) {
+        this.faced++;
         this.madeHead = this.faces.head(headMesh, look!, lookAt, scales ?? ONES, B_HEAD * 3, rank < 0 ? 0 : rank);
         this.faceRows(p, first, this.madeHead.pivots, id, tick, own);
       }
