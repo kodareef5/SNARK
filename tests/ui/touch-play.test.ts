@@ -63,19 +63,17 @@ function touched([, w, h, insets]: Phone, muted: boolean, as?: Stood, like?: App
 const boxes = (f: UiFrame): string[] => f.nodes.slice(0, f.count).map((n) => [n.key, n.kind, n.x, n.y, n.w, n.h, n.interactive].join(" "));
 
 /** The layer with a full hand fits the window: inside the screen's edges, finger-sized, nothing stacked. */
-function layerFits(ui: Ui, [, w, h, insets]: Phone, muted: boolean, where: string): void {
+function layerFits(ui: Ui, [, w, h, insets]: Phone, where: string): void {
   const f = ui.frame;
   // Never drawn smaller than the floor, and never wider than the window: a phone upright is narrower than 9 to 16.
   expect(h / f.height, where).toBeGreaterThanOrEqual(Math.min(SCALE_FLOOR, w / MIN_WIDTH) - 0.01);
   expect(f.width * (h / f.height), where).toBeLessThanOrEqual(w + 1);
   const unit = h / f.height, [l, t, r, b] = insets.map((v) => v / unit) as [number, number, number, number];
   expect(f.find(KEY_TOUCH_BUTTON + T_USE), where).not.toBeNull();
-  // On foot the right thumb has a held Attack and Jump; the rest wait in the field kit.
-  for (const which of [T_ATTACK, T_JUMP]) expect(f.find(KEY_TOUCH_BUTTON + which), where).not.toBeNull();
-  for (const which of [T_STANCE, T_MENU, T_BAG, T_CHARACTER, T_CHAT, T_MAP]) {
+  for (const which of [T_ATTACK, T_JUMP, T_STANCE, T_MENU, T_BAG, T_CHARACTER, T_CHAT, T_MAP]) {
     expect(f.find(KEY_TOUCH_BUTTON + which), where).toBeNull();
   }
-  expect(f.find(KEY_UNMUTE) !== null, where).toBe(muted);
+  expect(f.find(KEY_UNMUTE), where).toBeNull();
   // The zones lie under everything, and cover the canvas between them.
   const move = f.find(KEY_ZONE_MOVE)!, look = f.find(KEY_ZONE_LOOK)!;
   expect([f.nodes[0]!.key, f.nodes[1]!.key, move.x, move.w, look.x + look.w, move.h, look.h], where).toEqual([KEY_ZONE_MOVE, KEY_ZONE_LOOK, 0, look.x, f.width, f.height, f.height]);
@@ -94,9 +92,9 @@ function layerFits(ui: Ui, [, w, h, insets]: Phone, muted: boolean, where: strin
     expect(p.x < q.x + q.w && q.x < p.x + p.w && p.y < q.y + q.h && q.y < p.y + p.h, `${where}: ${p.key} "${p.label}" over ${q.key} "${q.label}"`).toBe(false);
   }
   // The prompt is offered without its key, the vitals stand clear of the thumbs, and the minimap and hotbar are there.
-  expect(f.find(KEY_PROMPT)!.text.startsWith("ride a raptor"), where).toBe(true);
+  expect(f.find(KEY_PROMPT), where).toBeNull();
+  expect(f.find(KEY_TOUCH_BUTTON + T_USE)!.label, where).toBe("Ride a raptor with a long name");
   expect(f.find(KEY_VITAL + 1)!.y, where).toBeLessThan(f.height / 3);
-  if (muted) expect(f.find(KEY_UNMUTE)!.x, where).toBeCloseTo(l + 12, 5);
   expect(f.find(KEY_MINIMAP) !== null && f.find(KEY_HOTBAR) !== null, where).toBe(true);
 }
 
@@ -151,7 +149,7 @@ test("the touch layer fits every phone and tablet, either way up", () => {
     d.hud.ammo = "stone arrow  1 / 1   (24 more)";
     d.hud.cone = 0.05;
     d.build();
-    layerFits(d.ui, window, muted, `${window[0]}${muted ? ", muted" : ""}`);
+    layerFits(d.ui, window, `${window[0]}${muted ? ", muted" : ""}`);
   }
 });
 
@@ -578,7 +576,7 @@ test("a whole client by touch builds what its models build", () => {
   const full = touched(window, true, stood(app), app);
   for (const hud of [app.hud, full.hud]) Object.assign(hud, { prompt: "E  ride a raptor with a long name", ammo: "stone arrow  1 / 1   (24 more)", cone: 0.05 });
   app.ui.build(w / hh, app.hud, app.session);
-  layerFits(app.ui, window, true, name);
+  layerFits(app.ui, window, name);
   expect(nodes(full.build())).toEqual(nodes(f));
   // The auxiliary controls and their second page use the same targets as the model.
   openFieldKit(app, run);

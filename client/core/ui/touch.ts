@@ -8,6 +8,7 @@ export { installMobileArt } from "./mobile-art.ts";
 
 import type { HudModel } from "../hud.ts";
 import { KEY_TOUCH_BUTTON, KEY_ZONE_LOOK, KEY_ZONE_MOVE, T_AIM, T_ATTACK, T_CANCEL, T_CLOSE, T_DOWN, T_FOLLOW, T_FOLLOW_ONE, T_HOLD, T_JUMP, T_LOWER, T_MELEE, T_MIC, T_MORE, T_ORBIT, T_PACK, T_RAISE, T_RELOAD, T_ROLL, T_ROTATE, T_SHIFT, T_SIC, T_SNAP, T_STANCE, T_STAY, T_STAY_ONE, T_USE, T_VIEW, type TouchPlay } from "../touch.ts";
+import { usePrompt } from "./use-prompt.ts";
 import { VITAL_PITCH } from "./hud.ts";
 import { K_HOLD, K_IMAGE, fitText, textWidth, type UiFrame, type UiNode } from "./nodes.ts";
 import { S_KEY, S_LABEL, S_PROMPT } from "./style.ts";
@@ -148,7 +149,7 @@ function touchContacts(f: UiFrame, t: TouchPlay, item = ""): void {
     const ring = 108 * t.contactScale(false) / f.unit, knob = ring * 0.39;
     if (!f.picture(k, t.stickX - ring / 2, t.stickY - ring / 2, ring, ring, S_LABEL, "ui:glass-touch-move"))
       part(f, k, P_RING, t.stickX, t.stickY, ring * .89).alpha = .8;
-    const x = t.stickX + t.knobX * .48, y = t.stickY + t.knobY * .48;
+    const x = t.stickX + t.knobX * .74, y = t.stickY + t.knobY * .74;
     if (!f.picture(k + 1, x - knob / 2, y - knob / 2, knob, knob, S_LABEL, "ui:glass-touch-knob"))
       part(f, k + 1, P_KNOB, x, y, knob * .83);
   }
@@ -156,12 +157,12 @@ function touchContacts(f: UiFrame, t: TouchPlay, item = ""): void {
     const ring = (t.looking ? 66 : 86) * t.contactScale(true) / f.unit, size = ring * .42;
     const circle = f.picture(k + 2, t.actionX - ring / 2, t.actionY - ring / 2, ring, ring, S_LABEL, t.looking ? "ui:glass-touch-look" : "ui:glass-touch-look-lit")
       ?? part(f, k + 2, P_RING, t.actionX, t.actionY, ring * .89);
-    circle.alpha = t.looking ? .52 : .95;
+    circle.alpha = t.looking ? .58 : t.lingering ? .43 : .95;
     const x = t.actionX - size / 2, y = t.actionY - size / 2;
     const gem = (item && f.picture(k + 3, x, y, size, size, S_LABEL, item)) ||
       f.picture(k + 3, x, y, size, size, S_LABEL, "ui:glass-emblem") ||
       part(f, k + 3, P_KNOB, t.actionX, t.actionY, size * .82);
-    gem.alpha = t.looking ? .35 : 1;
+    gem.alpha = t.looking || t.lingering ? .23 : 1;
   }
 }
 
@@ -267,14 +268,11 @@ export function touchControls(f: UiFrame, t: TouchPlay, m: HudModel, situation: 
         if (m.ammo !== "") at(T_RELOAD, 6, SMALL, I_RELOAD, "Reload");
       }
     }
-  } else {
-    // On foot the right thumb keeps a held Attack, for a drawn bow or a long swing, and Jump. Field kit adds the rest.
-    corner(T_ATTACK, I_ATTACK, "Attack");
-    at(T_JUMP, 0, BUTTON, I_JUMP, "Jump");
+
   }
 
   // What the world offers, as a pill by the thumb: the prompt without its key.
-  const offer = m.prompt ? usePrompt(m.prompt) : "";
+  const offer = usePrompt(m.prompt);
   if (offer !== "") {
     // Above the cluster, or on a canvas too short for that, to its left.
     // Clear of the far arc's top, which is a little above the near one's.
@@ -291,13 +289,4 @@ export function touchControls(f: UiFrame, t: TouchPlay, m: HudModel, situation: 
   return shown;
 }
 
-/** What the use key would do, from a prompt that names it ("E  ride raptor" gives "Ride raptor"); "" for any other line. */
-export function usePrompt(prompt: string): string {
-  // A built piece's line may stand under the builder's reason (prompts.ts): "E use  box" or "hold E  wall".
-  for (const line of prompt.split("\n")) {
-    if (line.startsWith("E use  ")) return `Use ${line.slice(7)}`;
-    if (line.startsWith("hold E  ")) return `Hold: ${line.slice(8)}`;
-  }
-  if (!prompt.startsWith("E  ")) return "";
-  return prompt.charAt(3).toUpperCase() + prompt.slice(4).split("   F  ")[0]!;
-}
+export { usePrompt };

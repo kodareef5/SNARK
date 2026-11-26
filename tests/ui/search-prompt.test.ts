@@ -2,6 +2,8 @@
 // hold of the use key, the box it opens and the word a searched one wears.
 
 import { expect, test } from "bun:test";
+import { KEY_TOUCH_BUTTON, T_USE } from "../../client/core/touch.ts";
+import * as touch from "../../client/core/ui/touch.ts";
 import { KEY_PROMPT } from "../../client/core/hud/prompt.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
 import { flatMap } from "../fixtures/map.ts";
@@ -62,6 +64,26 @@ test("the use key held on a bin searches it and opens it; a tap does nothing, an
   expect(until(h, () => ada.open !== null, 3)).toBe(true);
   view.app.key("KeyE", false);
   expect(h.host.holders.searched).toBe(2);
+});
+
+test("a thumb can keep a bin search held while its progress updates", () => {
+  const { h, ada } = camp({ place: { map: file, at: () => ({ x: 120, z: 118.6 }) }, screen: true, god: true, rules: { WorldLootChanceMultiplier: 4 } });
+  const view = screen(h, ada), app = view.app;
+  app.ui.inputDevice = 2;
+  app.ui.layer = touch;
+  view.width = 390; view.height = 844;
+  look(h, ada, { x: 120, y: 0.6, z: 120 });
+  const key = KEY_TOUCH_BUTTON + T_USE, button = () => app.ui.frame.find(key);
+  expect(until(h, () => button()?.label === "Hold: search the bin", 5)).toBe(true);
+  const x = button()!.x + button()!.w / 2, y = button()!.y + button()!.h / 2;
+  app.pointer(0, key, x, y, 0, 1);
+  h.run(600);
+  expect(button()?.label).toMatch(/^Searching the bin  [1-9]\d*%$/);
+  expect(app.touch.held(T_USE)).toBe(true);
+  expect(until(h, () => ada.open !== null, 3)).toBe(true);
+  app.pointer(1, key, x, y, 0, 1);
+  expect(ada.open?.name).toBe("bin");
+  expect(app.touch.held(T_USE)).toBe(false);
 });
 
 test("a street wreck and a dead boat are searched by the same hold, each by its own word", () => {

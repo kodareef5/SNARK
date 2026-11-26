@@ -34,13 +34,16 @@ test("Both field contacts appear under the player’s fingers and vanish on lift
   expect(draw()).toEqual([]);
   expect(frame.find(KEY_ZONE_MOVE)!.w).toBe(frame.width / 2);
   expect(frame.find(KEY_ZONE_LOOK)!.x).toBe(frame.width / 2);
-  expect(frame.find(KEY_TOUCH_BUTTON + T_ATTACK)).not.toBeNull();
+  expect(frame.find(KEY_TOUCH_BUTTON + T_ATTACK)).toBeNull();
   hud.hotbar = [{ id: "core:stone_pick", label: "Pick", number: "", tint: 0 }];
   hud.held = 0;
   pointer(0, KEY_ZONE_MOVE, 200, 240, 7, 0);
   pointer(0, KEY_ZONE_LOOK, 750, 320, 8, 0);
   expect(draw()).toEqual(["ui:glass-touch-move", "ui:glass-touch-knob", "ui:glass-touch-look-lit", "core:stone_pick"]);
-  pointer(3, KEY_ZONE_LOOK, 750, 320, 8, 70);
+  pointer(2, KEY_ZONE_LOOK, 782, 330, 8, 60);
+  expect(draw()).toContain("ui:glass-touch-look");
+  expect([touch.actionX, touch.actionY]).toEqual([782, 330]);
+  pointer(3, KEY_ZONE_LOOK, 782, 330, 8, 70);
   expect(draw()).toEqual(["ui:glass-touch-move", "ui:glass-touch-knob"]);
   pointer(1, KEY_ZONE_MOVE, 200, 240, 7, 90);
   expect(draw()).toEqual([]);
