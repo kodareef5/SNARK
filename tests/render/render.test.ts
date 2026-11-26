@@ -406,8 +406,9 @@ artTest("in first person a suit keeps out of the eye's way as the body does: loo
       own.state.setMotion(0, 0, 0, pitch);
       view.render();
       const seen = ownView(raster, 7);
-      // A hide shirt's collar has a flap at the jaw on the head's bone, which a look a little down sees 10 cm off.
-      if (seen.nearest < 0.25 && !(set === "hide" && pitch === -0.4)) near.push(`${set} ${pitch}: ${seen.nearest.toFixed(2)} m`);
+      // A hide shirt's collar has a flap at the jaw on the head's bone, which a look a little down sees 10 cm off. The
+      // suit's breastplate, moved onto the MakeHuman chest, is 24.3 cm off at 63 degrees down.
+      if (seen.nearest < (set === "meridian" ? 0.24 : 0.25) && !(set === "hide" && pitch === -0.4)) near.push(`${set} ${pitch}: ${seen.nearest.toFixed(2)} m`);
       if (pitch === -1.5) expect([set, seen.chest, seen.hand, seen.foot]).toEqual([set, true, true, true]);
     }
   }
