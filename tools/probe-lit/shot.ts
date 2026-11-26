@@ -24,6 +24,8 @@ export interface Readback {
   pixels(key: string, frame: number): Uint8Array | null;
   /** Wall time in ms for a repeated raw shot, or per replay of a marked frame (key/frame). Null for an untimed draw. */
   time(key: string): number | null;
+  /** A marked frame's time in ms in each round of a shot timed together (key/frame), and whether the card timed it. */
+  rounds(key: string): { card: boolean; ms: number[] } | null;
   device: Device;
 }
 
@@ -77,6 +79,8 @@ export interface Frame {
   frameTables: [number, number, number[]][];
   texUploads: unknown[];
   texDrops: number[];
+  /** The print put in a layer this frame (packet.ts printSource), its layer and its bytes, or null. */
+  print: [number, number, number] | null;
 }
 
 /** How much of a packet's array of this name a frame uses. */
@@ -112,6 +116,8 @@ export class Shot {
   loseAt = -1;
   /** Replays of each marked, upload-free frame for a synchronized wall-clock measurement. */
   repeats = 0;
+  /** With `repeats`, its marked frames are timed together instead: each of `repeats` rounds draws each this many times, by turns. */
+  together = 0;
   /** Frames are drawn with the sun's shadows, which only the GPU draws (D203), else with none, as the rasterizer has them. */
   shadows = false;
   /** What the renderer takes compared lookups to give, in place of what the device answers: "hard" or "" for the device's. */
@@ -138,6 +144,8 @@ export class Shot {
     const scalars: Frame["scalars"] = { tier: p.tier.name };
     const arrays: Frame["arrays"] = [];
     for (const [name, value] of Object.entries(p)) {
+      // A print's picture goes on its own, below.
+      if (name === "printSource") continue;
       if (typeof value === "number" || typeof value === "boolean") scalars[name] = value;
       // The cascades' arrays are views of the frame block, which goes whole: without shadows, its street lamp lights
       // with no shadow map, as the rasterizer has it.
@@ -169,6 +177,7 @@ export class Shot {
       frameTables: [...p.frameTables].map(([buffer, t]) => [buffer, t.stamp, [...t.axes]]),
       texUploads: p.texUploads.map(({ data, ...u }) => ({ ...u, data: ref(data) })),
       texDrops: [...p.texDrops],
+      print: p.printUploads > 0 && p.printSource instanceof Uint8Array ? [p.printLayer, ...ref(p.printSource)] : null,
     });
   }
 

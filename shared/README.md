@@ -14,6 +14,7 @@ no DOM, no Bun, no packages, no clock. Environmental inputs are passed in.
 | `net/` | Bit codec, protocol messages, entity views and deltas, transport interface, loopback |
 | `content/` | Definition types, pack stacking, the compiled registry |
 | `pack/` | Asset pack format and palette |
+| `people/` | The person generator: a seed and a population make a person |
 | `video/` | Clips, channels and what a screen plays: the programme and its message |
 
 `sim/`, `world/`, and `math/` must produce identical bits on JavaScriptCore and

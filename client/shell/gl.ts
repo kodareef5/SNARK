@@ -13,6 +13,7 @@ import { SKY_MATERIAL } from "../core/render/atmosphere.ts";
 import { DetailAtlas, type ReadAtlas } from "./detail-atlas.ts";
 import { PIECE_KEYS, PIECE_ROWS } from "../core/render/pieces.ts";
 import { PROGRAM, PROGRAMS, UNIFORMS, UNIT, drawProgram, tierPrograms, type ProgramText } from "../core/render/programs.ts";
+import { PictureArray } from "./picture-array.ts";
 import {
   AT_DRAW, AT_FRAME, AT_TILES, Drawn, SEND_1F, SEND_1I, SEND_2F, SEND_3F, SEND_3FV, SEND_FLOATS, SHELL_UNIFORMS, type UniformRow,
 } from "../core/render/uniforms.ts";
@@ -168,6 +169,9 @@ export class GlRenderer {
   private faces = { texture: null as WebGLTexture | null, layers: 0, from: null as WebGLFramebuffer | null, to: null as WebGLFramebuffer | null, frames: [] as { texture: WebGLTexture; w: number; h: number }[] };
   private faceVao!: WebGLVertexArrayObject;
   private faceBuffer!: WebGLBuffer;
+  /** The prints on garments on UNIT.prints (core/render/prints.ts), and whether their programs have been begun. */
+  prints!: PictureArray;
+  private printsBegun = false;
   private boneRows = 0;
   /**
    * Each tier's programs by number, as client/core/render/programs.ts numbers them, all begun when a frame of that tier
@@ -347,6 +351,8 @@ export class GlRenderer {
     this.open = { texture: null, size: 0 };
     this.screen = { texture: null, w: 0, h: 0 };
     this.faces = { texture: null, layers: 0, from: null, to: null, frames: [] };
+    this.prints = new PictureArray(gl, UNIT.prints);
+    this.printsBegun = false;
     this.programs.clear();
     this.linked.clear();
     this.neutral = [];
@@ -555,6 +561,25 @@ export class GlRenderer {
         this.errors++;
       }
     }
+  }
+
+  /**
+   * The prints on garments: their array at the size the frame asks, the picture it brings put in its layer, and their
+   * programs begun the first frame the array is made (programs.ts LATE).
+   */
+  private printPictures(p: FramePacket): void {
+    if (p.printLayers > 0 && !this.printsBegun) {
+      this.printsBegun = true;
+      this.late();
+    }
+    this.prints.size(p.printSide, p.printLayers);
+    if (p.printUploads === 0) return;
+    try {
+      this.prints.put(p.printLayer, p.printSource);
+    } catch {
+      this.errors++;
+    }
+    (p.printSource as { close?: () => void } | null)?.close?.();
   }
 
   /** Clip `k`'s frame drawn into `layer`'s first level through a texture of its own at the frame's size. */
@@ -1219,6 +1244,7 @@ export class GlRenderer {
     if (p.openRows > 0) gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, p.openRow, p.openWidth, p.openRows, gl.RGBA, gl.UNSIGNED_BYTE, p.openMap);
     if (p.screenFresh && p.screenSource) this.screenPicture(p.screenSource as TexImageSource, p.screenWidth, p.screenHeight, p.screenMips);
     this.facePictures(p);
+    this.printPictures(p);
     if (p.faceCount > 0) {
       this.array(this.faceBuffer);
       gl.bufferData(gl.ARRAY_BUFFER, p.faces, gl.DYNAMIC_DRAW, 0, p.faceCount * FACE_FLOATS);

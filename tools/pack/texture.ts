@@ -151,12 +151,13 @@ export interface MaterialMaps {
  * The mips of a material's maps from its source pictures: RGBA8, smallest first, to cut at the top each texture is
  * given and hand to an encoder. The packed map is roughened by what the normal map loses. Both masks come from the
  * one region map, and there is no `mask2` where regions 3 to 5 are empty. Masks made by hand are refused if they are
- * not one size or their weights sum past 1. The hurt and decay pictures make the layer.
+ * not one size or their weights sum past 1. The hurt and decay pictures make the layer. `coverage` is a cut-out's
+ * cutoff and its picture's cells across where its base colour's mips keep their coverage (image.ts baseMips).
  */
-export function materialMips(maps: Readonly<MaterialMaps>): Partial<Record<TextureRole, Uint8Array[]>> {
+export function materialMips(maps: Readonly<MaterialMaps>, coverage?: { cutoff: number; cells: number }): Partial<Record<TextureRole, Uint8Array[]>> {
   const out: Partial<Record<TextureRole, Uint8Array[]>> = {};
   const normal = maps.normal && normalMips(maps.normal);
-  if (maps.base) out.base = baseMips(maps.base);
+  if (maps.base) out.base = baseMips(maps.base, coverage?.cutoff, coverage?.cells);
   if (normal) out.normal = normal.pictures;
   if (maps.mro) out.mro = packedMips(maps.mro, normal?.lengths);
   if (maps.regions) Object.assign(out, maskMips(readRegions(maps.regions)));

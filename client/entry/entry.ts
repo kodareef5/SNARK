@@ -1,11 +1,12 @@
 import { mountChangelog } from "./changelog.ts";
 import { imageTile, loadGallery, mapArt, mapChoices, regionTiles, serverCard, survivorStats, type WorldCard as World } from "./gallery.ts";
 import { worldUrl } from "./address.ts";
-import { defaultLook, LOOK_SEX, LOOK_BEARD, randomLook, setRegion } from "../../shared/anim/look.ts";
+import { defaultLook, randomLook, setFace, setRegion } from "../../shared/anim/look.ts";
+import { faceAction, randomFace } from "../../shared/people/face-controls.ts";
 import { Rng } from "../../shared/rng.ts";
 import { loadIdentity } from "../core/identity.ts";
 import { readLaunch, launchKey, savedName, validName, type EntrySurvivor, type Launch, type Remembered } from "../core/entry-state.ts";
-import { appearanceFields, bodyFields, identityFields, button, esc, field } from "./forms.ts";
+import { appearanceFields, bodyFields, faceFields, identityFields, button, esc, field } from "./forms.ts";
 import { defaultEntrySpawn, playSurvivor, playWorld, titlePreloadWorld } from "../core/player-flow.ts";
 import { sceneFor } from "./scenery.ts";
 import { listingsOf, mergeListings, type Listing } from "../core/directories.ts";
@@ -83,8 +84,9 @@ let screen: Screen = "title",
 let draft = "",
   look = defaultLook(),
   customise = false,
-  editor: "appearance" | "build" = "appearance",
+  editor: "appearance" | "build" | "face" = "appearance",
   group = 0,
+  faceGroup = 0,
   chart = false,
   spawn = -1,
   turn = 0.25,
@@ -119,6 +121,7 @@ const directWorld = (): World | null => direct
   : null;
 const selectedRow = () => known.find((r) => r.name === pick);
 const getInput = (id: string) => document.querySelector<HTMLInputElement>("#" + id)?.value ?? "";
+const freshRng = () => new Rng(crypto.getRandomValues(new Uint32Array(1))[0]!);
 async function json(url: string, opts?: RequestInit) {
   const r = await fetch(url, { signal: AbortSignal.timeout(8000), ...opts });
   let result;
@@ -231,6 +234,7 @@ function createDraft(): void {
   customise = false;
   editor = "appearance";
   group = 0;
+  faceGroup = 0;
   chart = false;
   turn = 0.25;
 }
@@ -527,7 +531,8 @@ function render() {
       ? `<div class="appearance-editor"><div class="chips" role="group" aria-label="Appearance options">
         ${button("editor", "Appearance", "chip", `data-editor="appearance" aria-pressed="${editor === "appearance"}"`)}
         ${button("editor", "Proportions", "chip", `data-editor="build" aria-pressed="${editor === "build"}"`)}
-      </div>${editor === "appearance" ? appearanceFields(look) : bodyFields(look, group)}
+        ${button("editor", "Face", "chip", `data-editor="face" aria-pressed="${editor === "face"}"`)}
+      </div>${editor === "appearance" ? appearanceFields(look) : editor === "build" ? bodyFields(look, group) : faceFields(look, faceGroup)}
       <div class="support">${button("rotate", "Rotate preview", "quiet")}${button("random", "Randomize", "quiet")}${button("reset", "Reset appearance", "quiet")}</div></div>`
       : "";
     html = panel("Create a survivor", `<div class="identity-fields">${identityFields(look, draft)}</div>
@@ -758,13 +763,22 @@ async function action(a: string, b: HTMLElement) {
   }
   if (a === "customise" || a === "editor") {
     if (a === "customise") customise = !customise;
-    else editor = b.dataset.editor === "build" ? "build" : "appearance";
+    else editor = b.dataset.editor === "build" || b.dataset.editor === "face" ? b.dataset.editor : "appearance";
     render();
     if (customise && a === "customise") root.querySelector(".appearance-editor")?.scrollIntoView({ block: "nearest" });
     return;
   }
   if (a === "group") {
     group = Number(b.dataset.index);
+    render();
+    return;
+  }
+  if (a === "face-group") {
+    faceGroup = Number(b.dataset.index);
+    render();
+    return;
+  }
+  if (faceAction(look, a, Number(b.dataset.index), freshRng)) {
     render();
     return;
   }
@@ -779,13 +793,12 @@ async function action(a: string, b: HTMLElement) {
     return;
   }
   if (a === "reset" || a === "random") {
-    look = a === "reset" ? defaultLook() : randomLook(new Rng(crypto.getRandomValues(new Uint32Array(1))[0]!));
+    look = a === "reset" ? defaultLook() : randomFace(freshRng(), randomLook(freshRng()));
     render();
     return;
   }
   if (a === "swatch" || a === "style") {
     look[Number(b.dataset.field)] = Number(b.dataset.value);
-    if (Number(b.dataset.field) === LOOK_SEX && look[LOOK_SEX]) look[LOOK_BEARD] = 0;
     render();
     return;
   }
@@ -910,6 +923,10 @@ root.addEventListener("input", (e) => {
   }
   if (input.dataset.region !== undefined) {
     setRegion(look, Number(input.dataset.region), Number(input.value));
+    syncScene();
+  }
+  if (input.dataset.face !== undefined) {
+    setFace(look, Number(input.dataset.face), Number(input.value));
     syncScene();
   }
 });

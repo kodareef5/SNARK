@@ -19,6 +19,8 @@ import type { Rules } from "./settings/rules.ts";
 import type { Survival } from "./survival.ts";
 import type { Subject } from "./taming.ts";
 import type { Use } from "./use.ts";
+import { hairStart, type Relook } from "./people/look.ts";
+import { HAIR_TICK, NO_CLOCK } from "../shared/people/hair.ts";
 import type { Voice } from "./voice.ts";
 import type { Beds } from "./beds.ts";
 import type { ServerWorld } from "./world.ts";
@@ -66,6 +68,8 @@ export interface OwnContext {
   drop(rec: EntityRecord, slot: number, n: number): boolean;
   /** What using an item does beyond eating it (server/use.ts). */
   readonly use: Use;
+  /** Changes to a made survivor's look, and its hair clock (server/people/look.ts). */
+  readonly relook: Relook;
 }
 
 /** Sends the slots of `inv` changed after version `since`, or every occupied slot if `full`. */
@@ -96,6 +100,15 @@ function sendSlots(ctx: OwnContext, c: Client, box: number, inv: Inventory, sinc
         w.u16(inv.ammo[s]!);
         w.u8(inv.loaded[s]!);
         w.u16(inv.attach[s]!);
+      }
+      // An edition and a dye, for the few slots that have one.
+      const edition = inv.editionOf(s), dye = inv.dyeOf(s);
+      w.bool(edition !== 0 || dye !== 0);
+      if (edition !== 0 || dye !== 0) {
+        w.u32(edition);
+        w.u8(dye & 0xff);
+        w.u8((dye >>> 8) & 0xff);
+        w.u8((dye >>> 16) & 0xff);
       }
     }
     n++;
@@ -129,9 +142,13 @@ export function addOwnState(ctx: OwnContext): void {
   const own = game.own;
   own.add({
     kind: OWN_LOOK,
+    // Every change installs a new array (server/people/look.ts), so the array is the version, the clock's start with it.
     version: (_c, rec) => rec.look ?? undefined,
     write(w, _c, rec) {
       for (let i = 0; i < LOOK_BYTES; i++) w.u8(rec.look![i]!);
+      const start = hairStart(rec);
+      w.bool(start !== NO_CLOCK);
+      if (start !== NO_CLOCK) w.svarint(start / HAIR_TICK);
     },
   });
   own.add({
@@ -566,12 +583,14 @@ export function addOwnCommands(ctx: OwnContext): void {
     // A blueprint is crafted from (CMD_CRAFT_BLUEPRINT), never eaten, used or worn.
     if ((inv.flags[slot]! & FLAG_BLUEPRINT) !== 0) return RESULT_INVALID;
     // Using a wearable item puts it on, or takes it off.
-    const worn = ctx.world.reg.wearSlot[item]!;
-    if (worn >= 0 && inv.armor >= 0) {
-      const to = slot >= inv.armor ? inv.free() : inv.armor + worn;
+    const worn = ctx.world.reg.wearSlot[item]!, garment = ctx.world.reg.garmentSlot[item]!;
+    if ((worn >= 0 || garment >= 0) && inv.armor >= 0) {
+      const to = worn >= 0 ? (slot >= inv.armor ? inv.free() : inv.armor + worn) : slot >= inv.wardrobe ? inv.free() : inv.wardrobe + garment;
       if (to < 0) return RESULT_FULL;
       return ctx.items.move(rec, slot, rec, to, 0) > 0 ? RESULT_OK : RESULT_INVALID;
     }
+    // Scissors used from the bag cut one stage shorter; a dye colours the survivor's own hair.
+    if (ctx.world.reg.groomCut[item] === 1 || ctx.world.reg.groomHair[item]! >= 0) return ctx.relook.groom(c, slot, item, 0, -1, -1);
     const def = ctx.world.reg.defs[item] as ItemDef;
     const eat = def.eat;
     const use = def.use;

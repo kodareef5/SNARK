@@ -9,6 +9,7 @@ import type { Hiding } from "./hide.ts";
 import { LAMP_ACROSS, LAMP_BIT, LAMP_RANGE, LampView, lampFrame } from "./lamp.ts";
 import type { Pass } from "./pass.ts";
 import { CAST_AT, DRAW_CUTOUT, DRAW_ONE_BONE, DRAW_PIECE, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, LAMP_AT, MAX_CASCADES, MAX_CASTERS, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, type FramePacket } from "./packet.ts";
+import { MATERIAL_SHADOWLESS } from "../../../shared/pack/pack.ts";
 import { Cascades, MAX_REACH, reach } from "./shadow.ts";
 import { shadowLayer } from "./shadowtext.ts";
 import type { StreetLamps } from "./street-lamps.ts";
@@ -109,6 +110,8 @@ export class Casting {
   private characters!: Characters;
   private lamps!: StreetLamps;
   private readonly materialFlags: Uint8Array;
+  /** 1 for a material never drawn into a shadow (MATERIAL_SHADOWLESS), by material. */
+  private readonly shadowless: Uint8Array;
   private readonly bentFlags: Uint32Array;
   private readonly trisOfMesh: readonly (readonly number[])[];
   private readonly radiusOfMesh: Float32Array;
@@ -120,6 +123,7 @@ export class Casting {
     this.terrain = terrain;
     this.hiding = hiding;
     this.materialFlags = looks.materialFlags;
+    this.shadowless = Uint8Array.from(assets.table.materials, (m) => ((m.flags & MATERIAL_SHADOWLESS) !== 0 ? 1 : 0));
     this.bentFlags = looks.bentFlags;
     this.trisOfMesh = looks.trisOfMesh;
     this.radiusOfMesh = looks.radiusOfMesh;
@@ -268,9 +272,9 @@ export class Casting {
   }
 
   /**
-   * Puts `count` instances of a held level into the caster list for `cascades`. A level with cut-out or two-sided
-   * sections is a caster for each section, each cut-out one cut out where the card holds the level's surface and its
-   * own base colour; any other is its whole level.
+   * Puts `count` instances of a held level into the caster list for `cascades`. A level with cut-out, two-sided or
+   * shadowless sections is a caster for each section but the shadowless, each cut-out one cut out where the card holds
+   * the level's surface and its own base colour; any other is its whole level.
    */
   cast(mesh: number, level: number, buffer: number, first: number, count: number, ox: number, oy: number, oz: number, flags: number, cascades: number): void {
     if (level < 0) return;
@@ -278,7 +282,7 @@ export class Casting {
     let split = false, cut = false;
     for (let k = 0; k < runs.length; k += 3) {
       const m = runs[k]! >= 0 ? this.materialFlags[runs[k]!]! : 0;
-      split ||= (m & (DRAW_CUTOUT | DRAW_TWO_SIDED)) !== 0;
+      split ||= (m & (DRAW_CUTOUT | DRAW_TWO_SIDED)) !== 0 || (runs[k]! >= 0 && this.shadowless[runs[k]!] === 1);
       cut ||= (m & DRAW_CUTOUT) !== 0;
     }
     const residency = this.assets.residency;
@@ -288,6 +292,7 @@ export class Casting {
     flags = (flags & CAST_FLAGS) | this.bentFlags[mesh]!;
     if (!split) return this.caster(mesh, level, slot, buffer, first, count, ox, oy, oz, flags, 0, 0, 0, cascades);
     for (let k = 0; k < runs.length; k += 3) {
+      if (runs[k]! >= 0 && this.shadowless[runs[k]!] === 1) continue;
       let m = this.materialFlags[runs[k]!]! & (DRAW_TEXTURED | DRAW_TWO_SIDED | DRAW_CUTOUT);
       // A cut-out section casts solid until its own picture is held.
       if ((m & DRAW_CUTOUT) !== 0 && !(surface && residency.heldBase(runs[k]!))) m &= ~DRAW_CUTOUT;

@@ -12,6 +12,7 @@ function known(): Known {
     emotes: new Set(EMOTES.map((e) => e.id)),
     items: new Set(defs.filter((d) => d.type === "item").map((d) => d.id)),
     species: new Set(defs.filter((d) => d.type === "species").map((d) => d.id)),
+    populations: new Set(defs.filter((d) => d.type === "population").map((d) => d.id)),
   };
 }
 
@@ -45,7 +46,7 @@ test("the catalogue has a working example of every kind the foundation promises"
 
 test("a broken catalogue is told plainly", () => {
   const bad: Catalogue = {
-    looks: [{ id: "cast:x", mesh: "core:human", wear: ["core:nothing"] }],
+    looks: [{ id: "cast:x", mesh: "core:human", wear: ["core:nothing"], population: "core:nobody" }],
     archetypes: [{ id: "cast:a", name: "A", tier: "extra", species: "core:unicorn", looks: ["cast:gone"], names: "none", lines: {}, reactions: "cast:r", wants: [], struggles: [], hopes: [] }],
     scenes: [{
       id: "cast:s", name: "S", about: "", roles: [{ role: "r", archetypes: ["cast:a"], count: [1, 1] }, { role: "q", archetypes: ["cast:a"], count: [1, 1] }], place: { tags: ["beach"] },
@@ -54,9 +55,10 @@ test("a broken catalogue is told plainly", () => {
     }],
     reactions: [{ id: "cast:r", rows: [{ on: "talk", do: "say" }] }],
     names: {},
+    sexes: { Ana: 2 },
   };
   const out = validateCatalogue(bad, known());
-  for (const want of ["wears core:nothing", "species core:unicorn", "look cast:gone", "name pool none", "ends with leave", "has no lines for hi", "moonwalk is no emote", "role nobody", "mood=glad", "sync x", "tagged hostile", "tagged vehicle", "say needs a line"]) {
+  for (const want of ["wears core:nothing", "species core:unicorn", "look cast:gone", "name pool none", "ends with leave", "has no lines for hi", "core:nobody, which is no population", "sexes Ana", "moonwalk is no emote", "role nobody", "mood=glad", "sync x", "tagged hostile", "tagged vehicle", "say needs a line"]) {
     expect(out.some((l) => l.includes(want))).toBe(true);
   }
 });

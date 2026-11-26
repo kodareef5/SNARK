@@ -1,12 +1,14 @@
 // Fits the skeleton's hit capsules to the modelled bodies and prints rows for shared/anim/human.ts, then tabulates
-// the zone drawn against the zone hit. With --check it only measures the capsules human.ts has now. Given a creature's
+// the zone drawn against the zone hit. With --check it only measures the capsules human.ts has now; with --looks it
+// measures them on both sexes in extreme and random looks, then lists the looks worst first. Given a creature's
 // asset id (`bun tools/fit-zones.ts core:dodo`) it measures that creature's capsules, which its build fits.
 
 import { readFileSync } from "node:fs";
 import { bodySeed } from "../client/core/render/scene.ts";
 import { CreatureAnim, rayCreature } from "../shared/anim/creature.ts";
-import { B_FOOT_L, B_HAND_L, B_HEAD, B_HIPS, B_LOWER_ARM_L, B_LOWER_LEG_L, B_NECK, B_SHOULDER_L, B_TOE_L, B_UPPER_ARM_L, B_UPPER_LEG_L, HUMAN, HUMAN_ZONE_COUNT, ZONE_NAMES } from "../shared/anim/human.ts";
-import { LOOK_BYTES, LOOK_SEX, SEX_LABELS, defaultLook } from "../shared/anim/look.ts";
+import { B_FOOT_L, B_HAND_L, B_HEAD, B_HIPS, B_LOWER_ARM_L, B_LOWER_LEG_L, B_NECK, B_SHOULDER_L, B_TOE_L, B_UPPER_ARM_L, B_UPPER_LEG_L, HUMAN, HUMAN_ZONE_COUNT, ZONE_HEAD, ZONE_NAMES } from "../shared/anim/human.ts";
+import { LOOK_BEARD, LOOK_BYTES, LOOK_SEX, REGIONS, REGION_COUNT, SEX_LABELS, defaultLook, randomLook, setRegion } from "../shared/anim/look.ts";
+import { Rng } from "../shared/rng.ts";
 import { AnimState } from "../shared/anim/pose.ts";
 import { buildRigs } from "../shared/anim/rigs.ts";
 import { rayBody, zoneOfBone } from "../shared/anim/zones.ts";
@@ -100,22 +102,26 @@ function fit(): string[] {
   return rows;
 }
 
-/** Draws a body in nine motions from five sides, casts a ray through every pixel, and tabulates zone drawn against zone hit. */
-function measure(sex: number): void {
+/** What the ray agreed with for one look: zone drawn (rows) against zone hit (columns), and the hits where none is drawn. */
+export interface Agreement {
+  label: string;
+  table: Uint32Array[];
+  phantom: number;
+}
+
+/** Draws a body in `look` in nine motions from five sides, casts a ray through every pixel, and counts zone drawn against zone hit. */
+function agreement(look: Uint8Array, label: string): Agreement {
   const SIZE = 128;
   const view = provingView(SIZE, SIZE);
   const { raster, remote, cam } = view;
   const anim = view.scene.characters.anim;
   remote.count = 1;
   remote.hasLook[0] = 1;
-  const look = defaultLook();
-  look[LOOK_SEX] = sex;
   remote.look.set(look.subarray(0, LOOK_BYTES), 0);
   const id = remote.id[0]!;
   const bx = remote.x[0]!, by = remote.y[0]!, bz = remote.z[0]!;
   const table = Array.from({ length: HUMAN_ZONE_COUNT }, () => new Uint32Array(HUMAN_ZONE_COUNT));
   let phantom = 0;
-  let body = 0;
   const st = new AnimState();
   const dir = [0, 0, 0];
   const states = [[0, 0, 0, 1, 0, true], [7, 0, 0, 1, 0, true], [12, 0, 10, 1, 0, true], [7, 5, -12, 1, 0, true], [7, 8, 0, 1, 0, true], [0, 0, 0, 1, 0, false], [2, 0, 0, 1, STANCE_CROUCH, true], [1, 0, 8, 1, STANCE_PRONE, true], [4, 0, 14, 2, 0, false]] as const;
@@ -154,22 +160,135 @@ function measure(sex: number): void {
             if (hit !== 0 && raster.pickKind[at] !== PICK_STRUCTURE) phantom++;
             continue;
           }
-          body++;
           table[zoneOfBone(raster.pickBone[at]! - 1)]![hit]!++;
         }
       }
     }
   }
-  console.log(`\n${SEX_LABELS[sex]} body: zone drawn (rows) against zone hit (columns)`);
+  return { label, table, phantom };
+}
+
+/** Every pixel of the body drawn, of any zone. */
+const bodyPixels = (a: Agreement): number => a.table.reduce((n, row) => n + row.reduce((x, y) => x + y, 0), 0);
+
+/** Prints an agreement as a table, a row a zone drawn, and the share of body pixels whose ray found the zone drawn. */
+function printAgreement(a: Agreement): void {
+  const { table, phantom } = a;
+  console.log(`\n${a.label}: zone drawn (rows) against zone hit (columns)`);
   console.log("".padEnd(12), ZONE_NAMES.map((name) => name.replace("left ", "L ").replace("right ", "R ").padStart(7)).join(""), "   same");
   let same = 0;
+  const body = bodyPixels(a);
   for (let z = 1; z < HUMAN_ZONE_COUNT; z++) {
     const row = table[z]!;
-    const total = row.reduce((a, b) => a + b, 0);
+    const total = row.reduce((x, y) => x + y, 0);
     same += row[z]!;
     console.log(ZONE_NAMES[z]!.padEnd(12), [...row].map((v) => String(v).padStart(7)).join(""), "  ", ((row[z]! / total) * 100).toFixed(1) + "%");
   }
   console.log(`same zone ${((same / body) * 100).toFixed(1)}% of ${body} body pixels; hits where no body is drawn: ${phantom} (${((phantom / body) * 100).toFixed(1)}% of that)`);
+}
+
+function measure(sex: number): void {
+  const look = defaultLook();
+  look[LOOK_SEX] = sex;
+  printAgreement(agreement(look, `${SEX_LABELS[sex]} body`));
+}
+
+/** The shares tests/combat/render-aim.test.ts holds a body to, of its body pixels. */
+export const AIM_GATES = { head: 0.965, same: 0.88, missed: 0.02, phantom: 0.3, zone: 0.78, zonePixels: 150 };
+
+/** What an agreement comes to: the shares of body pixels whose ray found the zone drawn, the head, none, and air. */
+export interface AimShares {
+  label: string;
+  body: number;
+  same: number;
+  head: number;
+  missed: number;
+  phantom: number;
+  worstZone: string;
+  worst: number;
+  /** The gates of AIM_GATES this look misses, by name. */
+  misses: string[];
+}
+
+export function sharesOf(a: Agreement): AimShares {
+  let same = 0, missed = 0, worst = Infinity, worstZone = "", thin = false;
+  const body = bodyPixels(a);
+  for (let z = 1; z < HUMAN_ZONE_COUNT; z++) {
+    const row = a.table[z]!;
+    const total = row.reduce((x, y) => x + y, 0);
+    same += row[z]!;
+    missed += row[0]!;
+    if (total <= AIM_GATES.zonePixels) thin = true;
+    const share = total > 0 ? row[z]! / total : 0;
+    if (share < worst) [worst, worstZone] = [share, ZONE_NAMES[z]!];
+  }
+  const head = a.table[ZONE_HEAD]!, headTotal = head.reduce((x, y) => x + y, 0);
+  const s = { label: a.label, body, same: same / body, head: headTotal > 0 ? head[ZONE_HEAD]! / headTotal : 0, missed: missed / body, phantom: a.phantom / body, worstZone, worst, misses: [] as string[] };
+  if (s.head <= AIM_GATES.head) s.misses.push("head");
+  if (s.same <= AIM_GATES.same) s.misses.push("same");
+  if (s.missed >= AIM_GATES.missed) s.misses.push("missed");
+  if (s.phantom >= AIM_GATES.phantom) s.misses.push("phantom");
+  if (s.worst < AIM_GATES.zone) s.misses.push("zone");
+  if (thin) s.misses.push("zone seen");
+  return s;
+}
+
+/** Worst first: most gates missed, then the least share of the head, then of all zones. */
+export function worstFirst(list: readonly AimShares[]): AimShares[] {
+  return [...list].sort((a, b) => b.misses.length - a.misses.length || a.head - b.head || a.same - b.same);
+}
+
+/**
+ * The looks the audit draws, for each sex: the default; each slider of REGIONS at -1 and at +1, the rest at the default;
+ * every slider at -1 and every one at +1; and 20 looks from `randomLook`, seeded 1 to 20, each made that sex.
+ */
+export function auditLooks(): { label: string; look: Uint8Array }[] {
+  const out: { label: string; look: Uint8Array }[] = [];
+  for (let sex = 0; sex < SEX_LABELS.length; sex++) {
+    const base = (): Uint8Array => {
+      const l = defaultLook();
+      l[LOOK_SEX] = sex;
+      return l;
+    };
+    const name = SEX_LABELS[sex]!;
+    out.push({ label: `${name}, default`, look: base() });
+    REGIONS.forEach((r, i) => {
+      for (const v of [-1, 1]) {
+        const l = base();
+        setRegion(l, i, v);
+        out.push({ label: `${name}, ${r.label} ${v > 0 ? "+1" : "-1"}`, look: l });
+      }
+    });
+    for (const v of [-1, 1]) {
+      const l = base();
+      for (let i = 0; i < REGION_COUNT; i++) setRegion(l, i, v);
+      out.push({ label: `${name}, every slider ${v > 0 ? "+1" : "-1"}`, look: l });
+    }
+    for (let seed = 1; seed <= 20; seed++) {
+      const l = randomLook(new Rng(seed));
+      l[LOOK_SEX] = sex;
+      if (sex !== 0) l[LOOK_BEARD] = 0;
+      out.push({ label: `${name}, random ${seed}`, look: l });
+    }
+  }
+  return out;
+}
+
+const pct = (v: number): string => `${(v * 100).toFixed(1)}%`;
+
+/** Each look's table, then one line a look, worst first, and how many looks miss each gate. */
+function measureLooks(): void {
+  const all: AimShares[] = [];
+  for (const { label, look } of auditLooks()) {
+    const a = agreement(look, label);
+    printAgreement(a);
+    all.push(sharesOf(a));
+  }
+  console.log(`\nEvery look, worst first (gates: head over ${pct(AIM_GATES.head)}, same over ${pct(AIM_GATES.same)}, missed under ${pct(AIM_GATES.missed)}, air under ${pct(AIM_GATES.phantom)}, each zone over ${pct(AIM_GATES.zone)})`);
+  console.log(`${"look".padEnd(34)} ${"head".padStart(7)} ${"same".padStart(7)} ${"missed".padStart(7)} ${"air".padStart(7)}  worst zone          misses`);
+  for (const s of worstFirst(all)) console.log(`${s.label.padEnd(34)} ${pct(s.head).padStart(7)} ${pct(s.same).padStart(7)} ${pct(s.missed).padStart(7)} ${pct(s.phantom).padStart(7)}  ${`${s.worstZone} ${pct(s.worst)}`.padEnd(18)}  ${s.misses.join(", ") || "none"}`);
+  const gates = ["head", "same", "missed", "phantom", "zone", "zone seen"];
+  console.log(`\n${all.length} looks; missing each gate: ${gates.map((g) => `${g} ${all.filter((s) => s.misses.includes(g)).length}`).join(", ")}; missing none: ${all.filter((s) => s.misses.length === 0).length}`);
 }
 
 /**
@@ -259,6 +378,10 @@ if (import.meta.main) {
   const creature = process.argv.slice(2).find((a) => !a.startsWith("--"));
   if (creature) {
     await measureCreature(creature);
+    process.exit(0);
+  }
+  if (process.argv.includes("--looks")) {
+    measureLooks();
     process.exit(0);
   }
   if (!process.argv.includes("--check")) {

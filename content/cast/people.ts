@@ -1,23 +1,24 @@
 // Cast's people: looks, archetypes, name pools and the lines they say. A few of each, enough to run every scene; more
-// come from the teams filling the catalogue (planning/workstreams/cast.md). Looks are the human body in the game's own
-// clothes until people have models and skins of their own: each look that waits for art is a placeholder with a note.
+// come from the teams filling the catalogue (planning/workstreams/cast.md). A look's people are drawn from its population,
+// clothes and all (content/people/defaults.ts), and it puts on only the armour its role needs. Each look still waits for
+// art of its own (a hat, a badge, sandals) and is a placeholder with a note.
 
 import type { Archetype, Look } from "../../shared/cast/catalogue.ts";
 
 const HUMAN = "core:human";
-const wear = (tier: string, ...pieces: string[]) => pieces.map((p) => `core:${tier}_${p}`);
+const FLAK = ["core:flak_hat", "core:flak_shirt", "core:flak_pants", "core:flak_boots"];
 
 export const LOOKS: Look[] = [
-  { id: "cast:street_plain", mesh: HUMAN, wear: wear("cloth", "shirt", "pants", "boots"), colors: [15, 1, 225], placeholder: true, note: "t-shirt, jeans, trainers" },
-  { id: "cast:street_bright", mesh: HUMAN, wear: wear("cloth", "shirt", "pants", "boots"), colors: [93, 46, 1], placeholder: true, note: "loud shirt, shorts, sandals" },
-  { id: "cast:office", mesh: HUMAN, wear: wear("cloth", "shirt", "pants", "boots"), colors: [1, 65, 2], placeholder: true, note: "shirt and slacks, a lanyard" },
-  { id: "cast:tourist", mesh: HUMAN, wear: wear("cloth", "hat", "shirt", "pants", "boots"), colors: [50, 93, 15], placeholder: true, note: "sun hat, camera, sunburn" },
-  { id: "cast:runner", mesh: HUMAN, wear: wear("cloth", "shirt", "pants"), colors: [46, 2, 1], placeholder: true, note: "running vest and shorts, earbuds" },
-  { id: "cast:swimwear", mesh: HUMAN, wear: wear("cloth", "pants"), colors: [65, 50, 93], placeholder: true, note: "swimwear, towel over a shoulder" },
-  { id: "cast:vendor_apron", mesh: HUMAN, wear: wear("cloth", "hat", "shirt", "pants", "boots"), colors: [1, 46, 15], placeholder: true, note: "apron and cap" },
-  { id: "cast:police", mesh: HUMAN, wear: wear("flak", "hat", "shirt", "pants", "boots"), colors: [65, 2, 2], placeholder: true, note: "Miami police uniform, badge, duty belt" },
-  { id: "cast:gang_red", mesh: HUMAN, wear: wear("hide", "shirt", "pants", "boots"), colors: [46, 2, 2], placeholder: true, note: "red bandana and colours, Southside" },
-  { id: "cast:gang_teal", mesh: HUMAN, wear: wear("hide", "shirt", "pants", "boots"), colors: [50, 2, 1], placeholder: true, note: "teal colours, Bayfront" },
+  { id: "cast:street_plain", mesh: HUMAN, wear: [], population: "core:people_city", placeholder: true, note: "t-shirt, jeans, trainers" },
+  { id: "cast:street_bright", mesh: HUMAN, wear: [], population: "core:people_city", placeholder: true, note: "loud shirt, shorts, sandals" },
+  { id: "cast:office", mesh: HUMAN, wear: [], population: "core:people_workers", placeholder: true, note: "shirt and slacks, a lanyard" },
+  { id: "cast:tourist", mesh: HUMAN, wear: [], population: "core:people_tourists", placeholder: true, note: "sun hat, camera, sunburn" },
+  { id: "cast:runner", mesh: HUMAN, wear: [], population: "core:people_beach", placeholder: true, note: "running vest and shorts, earbuds" },
+  { id: "cast:swimwear", mesh: HUMAN, wear: [], population: "core:people_beach", placeholder: true, note: "swimwear, towel over a shoulder" },
+  { id: "cast:vendor_apron", mesh: HUMAN, wear: [], population: "core:people_vendors", placeholder: true, note: "apron and cap" },
+  { id: "cast:police", mesh: HUMAN, wear: FLAK, population: "core:people_police", placeholder: true, note: "Miami police uniform, badge, duty belt" },
+  { id: "cast:gang_red", mesh: HUMAN, wear: [], population: "core:people_southside", placeholder: true, note: "red bandana and colours, Southside" },
+  { id: "cast:gang_teal", mesh: HUMAN, wear: [], population: "core:people_bayfront", placeholder: true, note: "teal colours, Bayfront" },
 ];
 
 /** Lines every everyday person can say, merged into each such archetype's own. */
@@ -96,3 +97,7 @@ export const NAMES: Record<string, string[]> = {
   officers: ["Officer Reyes", "Officer Banks", "Officer Duarte", "Officer Kim", "Officer Wallace", "Officer Ortiz", "Sergeant Pratt", "Officer Lowe"],
   street: ["Ghost", "Tiny", "Smoke", "Lefty", "Chino", "Dre", "Junebug", "Nene", "Bones", "Cuervo", "Lil Mo", "Spider"],
 };
+
+const MEN = ["Luis", "Dante", "Raúl", "Marcus", "Tomás", "Jorge", "Andre", "Diego", "Hector", "Omar", "Kevin", "Darnell", "Wes", "Javier", "Ernesto", "Hank", "Sven", "Doug", "Ravi", "Pierre", "Lars"];
+const WOMEN = ["Ana", "Marisol", "Keisha", "Yolanda", "Isabel", "Brianna", "Lena", "Carmen", "Tasha", "Nadia", "Rosa", "Gabriela", "Pilar", "Celia", "Monique", "Greta", "Priya", "Mei", "Ingrid", "Colleen", "Yuki", "Barb", "Fiona"];
+export const SEXES: Record<string, number> = Object.fromEntries([...MEN.map((n) => [n, 0]), ...WOMEN.map((n) => [n, 1])]);

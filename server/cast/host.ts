@@ -7,6 +7,7 @@ import { Cast } from "./engine.ts";
 import type { PlayerView } from "./intent.ts";
 import { ModelGate, openRouter, type Ask } from "./model.ts";
 import { Planner } from "./planner.ts";
+import { castBody, type CastStore } from "./people.ts";
 import { CastStage, type CastBodies, type IncidentKind, type StagePlayer } from "./stage.ts";
 import type { CastPlace, CastWorld } from "./world.ts";
 import type { Chat } from "../chat.ts";
@@ -20,6 +21,7 @@ import type { Records } from "../records.ts";
 import type { Rules } from "../settings/rules.ts";
 import type { Urban } from "../urban.ts";
 import type { Bus } from "../events/bus.ts";
+import type { PeopleStore } from "../people/store.ts";
 import type { EntityRecord } from "../records.ts";
 import { worldHour, type ServerWorld } from "../world.ts";
 import { GOAL_NONE, TEMPER_DEFENDS } from "../behavior.ts";
@@ -32,6 +34,7 @@ import { CHUNK_SIZE, TICK_RATE } from "../../shared/coords.ts";
 import { RESULT_OK, TEXT_LOCAL } from "../../shared/net/protocol.ts";
 import { BTN_JUMP } from "../../shared/sim/character.ts";
 import { F_ALIVE, F_AWAKE, GEAR_HELD } from "../../shared/sim/entities.ts";
+import type { Bodies, Revision, RevisedKind } from "../../shared/people/doc.ts";
 import { W_GUN } from "../../shared/sim/weapon.ts";
 import { groundUnder } from "../../shared/world/collide.ts";
 
@@ -68,6 +71,8 @@ export interface CastHostContext {
   ask?: Ask | null;
   /** Folder of the decision log; none keeps it in memory. */
   logDir?: string | null;
+  /** The cluster's people store: admin populations, outfits and named people. None draws everyone from the content. */
+  people?: PeopleStore | null;
 }
 
 export class CastHost {
@@ -82,15 +87,23 @@ export class CastHost {
   private readonly kind: number;
   private readonly players: StagePlayer[] = [];
   private readonly pool: StagePlayer[] = [];
+  /** The store as Cast reads it, or null. */
+  readonly store: CastStore | null;
 
   constructor(ctx: CastHostContext) {
     this.ctx = ctx;
+    const people = ctx.people ?? null;
+    this.store = people ? {
+      latest: <K extends RevisedKind>(kind: K, id: number) => (people.held().records[kind] as ReadonlyMap<number, Revision<Bodies[K]>>).get(id),
+      population: (id, rev) => people.population(id, rev),
+    } : null;
     const kind = ctx.world.reg.index.get("core:civilian");
     if (kind === undefined) throw new Error("cast: the content has no core:civilian");
     this.kind = kind;
     this.cast = new Cast(this.worldView(), CAST_CATALOGUE, ctx.seed, CAST_CAN, this.settingsNow());
     this.stage = new CastStage(this.cast, this.bodyView(), ctx.seed ^ 0x2545f491);
     this.cast.stage = this.stage;
+    this.cast.personName = (id) => this.store?.latest("person", id)?.body.name ?? null;
     // People hear what is said near them, as anyone standing there would: local chat only, never a tribe's or global, and
     // nothing while Cast is off. A line is kept two minutes at most for the planner's read of the speaker.
     ctx.chat.listeners.push((speaker, channel, x, z, text) => {
@@ -336,17 +349,32 @@ export class CastHost {
         rec.name = c.name;
         rec.extra.set(COMP_CAST, new TextEncoder().encode(c.id));
         const look = CAST_CATALOGUE.looks.find((l) => l.id === c.look);
-        if (look?.colors && rec.genome) look.colors.forEach((col, i) => void (i < rec.genome!.colors.length && (rec.genome!.colors[i] = col)));
-        // What it wears, in its gear slots; and what it carries.
+        // Its body is a named person's record, or a person of its look's population sent as the seed it was drawn from.
+        const body = castBody(c, look, CAST_CATALOGUE, reg, this.store, this.cast.casting.looks[c.look]);
+        if (body) ents.setBodyLook(e, body.look, body.born);
+        // What it wears, in its gear slots and its wardrobe; and what it carries.
         const inv = items.inv(rec);
         /** Makes an item in its bag and moves it to `to`, a gear slot, if one is given. */
         const put = (item: number, n: number, to: number) => {
           if (items.mint(rec, item, n, 0, 0, -1, "cast") === 0 || to < 0) return;
           for (let k = 0; k < inv.hotbar; k++) if (inv.item[k] === item) return void items.move(rec, k, rec, to, n);
         };
-        for (const w of look?.wear ?? []) {
-          const item = reg.index.get(w), slot = item === undefined ? -1 : reg.wearSlot[item]!;
-          if (item !== undefined && slot >= 0 && inv.armor >= 0) put(item, 1, inv.armor + slot);
+        const slotOf = (item: number) => (inv.armor < 0 ? -1 : reg.wearSlot[item]! >= 0 ? inv.armor + reg.wearSlot[item]! : reg.garmentSlot[item]! >= 0 ? inv.wardrobe + reg.garmentSlot[item]! : -1);
+        // Garments go through the items' own restyle, which takes only an edition the store holds of that garment.
+        for (const [k, w] of (body?.wardrobe ?? []).entries()) {
+          const item = w ? reg.index.get(w[0]) : undefined;
+          if (!w || item === undefined || inv.wardrobe < 0 || reg.garmentSlot[item] !== k) continue;
+          const s = inv.wardrobe + k;
+          if (inv.item[s] !== item) {
+            if (inv.item[s] !== 0) continue;
+            put(item, 1, s);
+          }
+          if (inv.item[s] === item && (w[1] !== 0 || w[2] !== 0)) void (items.restyle(rec, s, w[1], w[2]) || items.restyle(rec, s, w[1], 0) || items.restyle(rec, s, 0, w[2]));
+        }
+        // What the role wears fills the slots its wardrobe left.
+        for (const w of body?.wear ?? look?.wear ?? []) {
+          const item = reg.index.get(w), slot = item === undefined ? -1 : slotOf(item);
+          if (item !== undefined && slot >= 0 && inv.item[slot] === 0) put(item, 1, slot);
         }
         // A weapon goes on its hotbar, ready to be drawn; the rest in its bag.
         let bar = 0;

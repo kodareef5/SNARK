@@ -7,7 +7,7 @@
 //
 //   client -> server
 //     HELLO     reliable     version u32, content hash u32 (of the definitions as written, untuned), clip hash u32,
-//                            name string, flags u8, device key (16 bytes), with HELLO_LOOK a look (28 bytes),
+//                            name string, flags u8, device key (16 bytes), with HELLO_LOOK a look (72 bytes),
 //                            with HELLO_TICKET a travel ticket (32 bytes), password string ("" for none), with HELLO_NEW a 16-byte create request id
 //     INPUT     unreliable   ack tick u32, ticks behind it that others are drawn u8 (sixteenths), newest tick u32,
 //                            count-1 (3 bits), then inputs newest first. Each after the first is preceded by
@@ -370,7 +370,7 @@ export const CMD_LEARN = command();
 /** Recipe content index u16, count u8. */
 export const CMD_CRAFT = command();
 
-/** A look, 28 bytes (shared/anim/look.ts). Accepted only in SESSION_CREATING. */
+/** A look, 72 bytes (shared/anim/look.ts). Accepted only in SESSION_CREATING. */
 export const CMD_CREATE = command();
 
 /** Hotbar slot u8, 0 to 9, or 255 to put away the held item. */
@@ -543,6 +543,14 @@ export const CMD_PLAN_COMMIT = command();
 export const CMD_PLAN_CANCEL = command();
 /** Chunks the client read without the map's slots and now holds them for: a count u8, HAVE_MOST at most, then chunk u16 of each. Each is sent again whole. */
 export const CMD_CHUNK_AGAIN = command();
+/**
+ * Uses scissors or a hair dye from an own slot on a survivor's hair (server/people/look.ts): slot varint, expected item u16,
+ * the survivor's handle u32 (0 for one's own), the part u8 (0 hair, 1 beard; for a dye 0 the hair's colour, 1 its second)
+ * and, for scissors, the stage to cut to u8 (shared/people/hair.ts HAIR_STAGES).
+ */
+export const CMD_GROOM = command();
+/** Ends a remake the server offered (OWN_REMAKE): made 1 bit, then for one made its look, LOOK_BYTES. */
+export const CMD_REMAKE = command();
 /** Chunks from its own within which a client says what it kept: the server's structRadius and the one more it lets go at. */
 export const HAVE_REACH = 4;
 export const SPOT_TICKS = 1800;
@@ -667,7 +675,7 @@ export const CHOOSE_TRAVEL = 2;
  */
 export const OWN_PROGRESSION = ownKind();
 
-/** 28 bytes. Sent when the survivor gets a body. */
+/** LOOK_BYTES, then the hair clock: has one 1 bit, its start tick over HAIR_TICK svarint. Sent whenever either changes. */
 export const OWN_LOOK = ownKind();
 
 /** Hotbar slot u8, 255 for none. */
@@ -748,6 +756,10 @@ export const OWN_SCREEN = ownKind();
 export const OWN_ARMS = ownKind();
 /** What a seeker does to whatever its owner drives or sits in, u8: 0 nothing, 1 looked for, 2 locked, 3 a missile coming. */
 export const OWN_WARNED = ownKind();
+/** 1 u8 while the survivor may be made again in the creator (server/people/look.ts), else 0. */
+export const OWN_REMAKE = ownKind();
+/** The id of the cluster's people manifest string (shared/people/doc.ts peopleManifestPath), sent when it changes; "" for none. */
+export const OWN_PEOPLE = ownKind();
 
 export const MARKER_DEATH = 1;
 

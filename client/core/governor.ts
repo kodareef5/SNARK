@@ -101,6 +101,8 @@ interface Knobs {
   screenFps?: number;
   stills?: boolean;
   screenCount?: number;
+  /** Prints on garments drawn as their swatches. */
+  swatches?: boolean;
 }
 
 /**
@@ -108,12 +110,14 @@ interface Knobs {
  * the nearest 8 screens drawn, and any screen drawn. A step whose bit no frame of a window showed is passed by.
  */
 export const SCREENS_UPLOADING = 1, SCREENS_DECODING = 2, SCREENS_MANY = 4, SCREENS_DRAWN = 8;
+/** The same for the prints on garments (render/prints.ts): any print drawn. */
+export const PRINTS_DRAWN = 16;
 /** The screens a step keeps. */
 export const SCREENS_NEAREST = 8;
 
 /**
  * The steps. Screens on props go first, whatever they buy: their clips' frames fewer, their clips stilled, the nearest
- * eight, none; each is passed by where no frame drew what it takes. Then what a player notices least for what it buys on a phone first (tools/bench/governor.ts counts each in the
+ * eight, none; then prints on clothes as their swatches; each is passed by where no frame drew what it takes. Then what a player notices least for what it buys on a phone first (tools/bench/governor.ts counts each in the
  * soaks' scenes and the woods, and with a built map in its downtown). Levels give first: the tier's error loosened,
  * where at the phone's view most triangles of bodies, vehicles, pieces and rocks are under a pixel; half again takes 10
  * to 17% of a frame's triangles, twice 19 to 27%. Downtown, where the far city is most of a frame and levels find little
@@ -141,6 +145,8 @@ export const STEPS: readonly { readonly name: string; readonly knobs: Knobs; rea
   { name: "screens: stills only", knobs: { stills: true }, screens: SCREENS_DECODING },
   { name: "screens: the nearest 8", knobs: { screenCount: SCREENS_NEAREST }, screens: SCREENS_MANY },
   { name: "screens: off", knobs: { screenCount: 0 }, screens: SCREENS_DRAWN },
+  // Then prints on clothes, which as swatches read no picture and upload none.
+  { name: "prints: swatches", knobs: { swatches: true }, screens: PRINTS_DRAWN },
   { name: "no more pixels than the screen's own", knobs: { own: true } },
   { name: "the scene at 90% a side", knobs: { scale: 0.9 } },
   { name: "the scene at 80% a side", knobs: { scale: 0.8 } },
@@ -189,6 +195,7 @@ function governed(base: Tier, knobs: Knobs, dpr: number): Tier {
     // Stills only decodes no clip for the ball either: it shows its poster.
     orb: knobs.stills ? { ...base.orb, video: false } : base.orb,
     screens: knobs.screenFps || knobs.stills || knobs.screenCount !== undefined ? { ...base.screens, fps: Math.min(base.screens.fps, knobs.screenFps ?? Infinity), video: knobs.stills ? 0 : base.screens.video, count: Math.min(base.screens.count, knobs.screenCount ?? Infinity) } : base.screens,
+    prints: knobs.swatches && base.prints.layers > 0 ? { ...base.prints, swatches: true } : base.prints,
   };
 }
 

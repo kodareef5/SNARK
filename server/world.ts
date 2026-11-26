@@ -27,6 +27,8 @@ export interface ServerWorld extends CollisionWorld {
   reg: Registry;
   /** The server's three clock-speed rules (shared/sim/clock.ts). */
   readonly clock: { cycle: number; day: number; night: number };
+  /** How fast hair grows, in thousandths (shared/people/hair.ts hairRate): HairGrowthSpeedMultiplier, sent to every client. */
+  hairRate: number;
   readonly dims: MapDims;
   readonly hf: Heightfield;
   readonly structs: StructureStore;
@@ -92,6 +94,7 @@ export function createWorld(reg: Registry, dims: MapDims, hf: Heightfield, mapId
   return {
     reg,
     clock: { cycle: 1, day: 1, night: 1 },
+    hairRate: 1000,
     dims,
     hf,
     nodeField,

@@ -41,7 +41,7 @@ function fill(template: string, d: Def, vars: Vars): string {
   return whole ? out : "";
 }
 
-const styles = (list: readonly { id: string; source: unknown }[]): string[] => list.filter((s) => s.source !== null).map((s) => s.id);
+const styles = (list: readonly { id: string; drawn: boolean }[]): string[] => list.filter((s) => s.drawn).map((s) => s.id);
 
 /** Every slot of every definition, in the order of the definitions. */
 export function slotsOf(defs: readonly Def[]): SlotUse[] {

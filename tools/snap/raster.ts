@@ -5,7 +5,7 @@ import { deflectTire, tireShadow } from "../../client/core/render/tire-contact.t
 
 import { paneOptics } from "../../client/core/render/windscreens.ts";
 import { glassAt, glassCovers, glassReflected, opticsGlass } from "../../client/core/render/vehicle-glass.ts";
-import { CHANNEL, DROP_GLOW, DROP_LIGHT, ENAMEL_ARMOR, EXHAUST, INSTRUMENT, LENS } from "../../content/street-finishes.ts";
+import { CHANNEL, DROP_GLOW, DROP_LIGHT, ENAMEL_ARMOR, EXHAUST, EYE, INSTRUMENT, LENS, SKIN } from "../../content/street-finishes.ts";
 import { dropGlow, dropLight } from "../../client/core/render/supply-light.ts";
 import { dropStreaks } from "../../client/core/render/supply-sky.ts";
 import { exhaustLight, polishedSky, polishMask } from "../../client/core/render/suit-finish.ts";
@@ -48,13 +48,15 @@ import { MOST_LOD, detailKeeps, lampOf, poolOf, rotorOf, scorchOf, shapeOf, smok
 import { drawFire, type FireLook, type FireTarget } from "./fire.ts";
 import { FACE_PLAIN, FACE_WEARS, PIECE_MADE_AT, PIECE_MADE_BITS, PIECE_STAGE, PIECE_STATE_AT, PieceFit } from "../../client/core/render/piece-fit.ts";
 import { WEAR_OVER_MADE, WEAR_STAGE, pieceMade, pieceShown, pieceWear, wearShade } from "../../client/core/render/pieces.ts";
-import { MADE_AT, DROPS_AT, DROP_STREAKS, ATLAS_REGION, ATLAS_WIDTH, BEND_BUFFERS, BONE_FLOATS, DRAW_BENT, DRAW_HEAT_SHIFT, GLASS_AT, DETAIL, DETAIL_FLOATS, DETAIL_TEK, DETAIL_DIGITS, DETAIL_GLOW, DETAIL_SCORCH, DETAIL_SMOKE, GLOW_STEPS, SMOKE_STEPS, DRAW_FIRE, DETAIL_GLASS, DETAIL_TIRE, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_WAKE, DETAIL_WIRE, DRAW_ORB, DRAW_SCREENS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_SKYLINE, SKYLINE_MAX_FOG, DRAW_ONE_BONE, DRAW_PIECE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, WORLD_LAYERS, quadIndices, stepOf, type TextureUpload, SHORE_AT, DETAIL_SHADED_POOL, MAX_CONTACTS } from "../../client/core/render/packet.ts";
+import { MADE_AT, DROPS_AT, DROP_STREAKS, ATLAS_REGION, ATLAS_WIDTH, BEND_BUFFERS, BONE_FLOATS, DRAW_BENT, DRAW_HEAT_SHIFT, GLASS_AT, DETAIL, DETAIL_FLOATS, DETAIL_TEK, DETAIL_DIGITS, DETAIL_GLOW, DETAIL_SCORCH, DETAIL_SMOKE, GLOW_STEPS, SMOKE_STEPS, DRAW_FIRE, DETAIL_GLASS, DETAIL_TIRE, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_WAKE, DETAIL_WIRE, DRAW_ORB, DRAW_SCREENS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_SKYLINE, SKYLINE_MAX_FOG, DRAW_ONE_BONE, DRAW_PIECE, DRAW_PLAIN, DRAW_PRINTED, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, WORLD_LAYERS, quadIndices, stepOf, type TextureUpload, SHORE_AT, DETAIL_SHADED_POOL, MAX_CONTACTS } from "../../client/core/render/packet.ts";
 import { HALF_HEIGHT, OUTLINE_RGB, digitsOf, halfWidth } from "../../client/core/render/digits.ts";
 import { WET_DARK, WET_ROUGH, shoreWet } from "../../client/core/render/bank.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
 import { domeLight, theSky, trueSun } from "../../client/core/render/sky.ts";
 import { wearLate } from "../../client/core/render/wear.ts";
-import { heatOfShown, LAYER_LEVELS, NEUTRAL, bounce, bumped, direct, dyed, glowAt, lampsOn, materialEmission, lit, moonCasts, regionDyes, shown, skinMode, skyFrom, skyLight, skyOn, srgbToLinear, through, wounded } from "../../client/core/render/surface.ts";
+import { printPicture, printedOver, type PrintPicture } from "../../client/core/render/print-term.ts";
+import { PRINT_REGION } from "../../client/core/render/prints.ts";
+import { heatOfShown, LAYER_LEVELS, NEUTRAL, bodyMirror, bounce, bumped, direct, dyed, glowAt, lampsOn, materialEmission, lit, moonCasts, normalUnder, regionDyes, scattered, skinNear, DIELECTRIC, EYE_COAT, EYE_RIM, EYE_UNDER, SKIN_F0, shown, skinMode, skyFrom, skyLight, skyOn, srgbToLinear, through, wounded } from "../../client/core/render/surface.ts";
 import type { AssetUpload } from "../../client/core/assets/residency.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
 import { finishTable, type FinishTable } from "../../shared/pack/finish.ts";
@@ -109,6 +111,8 @@ interface Surfaced {
   label: number;
   seed: number;
   wheelBones: number;
+  /** Whether it is a body on four-bone skin, whose mirror `bodyMirror` turns. */
+  body: boolean;
   spokeCrown: boolean;
   /** The material's glass set (vehicle-glass.ts), 0 for none. */
   glass: number;
@@ -127,6 +131,8 @@ interface Surfaced {
   cutoff: number;
   /** The material's sheet (shared/pack/finish.ts), 0 for none. */
   sheet: number;
+  /** Whether the material has masks, and is drawn dyed: skin without them is skin all over, as SURFACE's undyed text has it. */
+  masked: boolean;
   emissive: number;
   twoSided: boolean;
   uvs: Float32Array;
@@ -138,6 +144,9 @@ interface Surfaced {
   /** A bent piece's bend, and its vertices' place along its kerb line, across and up (bend.ts gBent); null for any other. */
   bend: Bend | null;
   bent: Float32Array | null;
+  /** The layer of the prints' array its instance's print is in, -1 for none, and the material's grey (print-term.ts). */
+  print: number;
+  grey: number;
 }
 
 /** What a draw reads where its material has no texture: one pixel of NEUTRAL. */
@@ -167,6 +176,14 @@ function turned(m: Float64Array, from: Float32Array, at: number, out: Float32Arr
   out[to + 1] = b / l;
   out[to + 2] = c / l;
 }
+
+/** A normal through bone rows `m`, as SURFACE_VERTEX carries it (surface.ts normalUnder), made length 1. */
+function turnedNormal(m: Float64Array, from: Float32Array, at: number, out: Float32Array, to: number): void {
+  normalUnder(underBone, m, from[at]!, from[at + 1]!, from[at + 2]!);
+  const l = Math.hypot(underBone[0]!, underBone[1]!, underBone[2]!) || 1;
+  for (let c = 0; c < 3; c++) out[to + c] = underBone[c]! / l;
+}
+const underBone = new Float64Array(3);
 
 /** Numbers a corner of a textured triangle carries to its pixels: position, texture coordinate, normal, tangent and the bitangent's side. */
 /**
@@ -720,6 +737,9 @@ export class Rasterizer {
   private readonly poly = new Float64Array(5 * 7);
   private readonly cutScratch = new Float64Array(5 * (CARRIED + 4));
   private readonly textures = new Map<number, Texture>();
+  /** The prints' layers as the card holds them (render/prints.ts), and the array's side and layers. */
+  private prints: (PrintPicture | null)[] = [];
+  private printSide = 0;
   /** Textures being made: their pictures as bytes, and how many bytes are still to come. */
   /** Each world finish's base colour, normal and packed map, once all of them have come. */
   private worldMaps: Texture[][] | null = null;
@@ -834,6 +854,12 @@ export class Rasterizer {
   take(packet: FramePacket): void {
     for (const u of packet.uploads) this.buffers.set(u.buffer, { data: u.data.slice(), slots: u.slots.slice() });
     for (const id of packet.drops) this.buffers.delete(id);
+    // What is let go goes first, as the shell lets it go (client/shell/gl.ts), so a slot may be filled again in one frame.
+    for (const slot of packet.assetDrops) {
+      if (!this.manifest && slot < FAR_SLOTS) continue;
+      this.lods.delete(slot);
+      for (const [level, s] of this.surfaces) if (s.slot === slot) this.surfaces.delete(level);
+    }
     // Far blocks come as levels of their own (far.ts), with a manifest or without.
     for (const piece of packet.assetUploads) {
       if (!this.manifest && piece.slot < FAR_SLOTS) continue;
@@ -851,19 +877,23 @@ export class Rasterizer {
         u = { ...piece, data: whole };
       }
       if (u.of === undefined) this.lods.set(u.slot, this.decodeUpload(u));
-      else this.surfaces.set(u.of, { slot: u.slot, surface: surfaceOf(u.data.subarray(0, u.skinAt), u.data.subarray(u.skinAt ?? u.data.length), this.manifest!.meshes[u.mesh]!.uv) });
+      else this.surfaces.set(u.of, { slot: u.slot, surface: surfaceOf(u.data.subarray(0, u.skinAt), u.data.subarray(u.skinAt ?? u.data.length), (this.manifest ?? this.pack.header).meshes[u.mesh]!.uv) });
     }
-    for (const slot of packet.assetDrops) {
-      if (!this.manifest && slot < FAR_SLOTS) continue;
-      this.lods.delete(slot);
-      for (const [level, s] of this.surfaces) if (s.slot === slot) this.surfaces.delete(level);
-    }
+
     // A texture that is let go goes first, with any copy of it being made. Then rows begin a copy, add to it or complete it.
     for (const slot of packet.texDrops) {
       this.textures.delete(slot);
       this.making.delete(slot);
     }
     for (const u of packet.texUploads) this.texture(u);
+    if (packet.printSide !== this.printSide || packet.printLayers !== this.prints.length) {
+      this.printSide = packet.printSide;
+      this.prints = new Array<PrintPicture | null>(packet.printLayers).fill(null);
+    }
+    if (packet.printUploads > 0) {
+      if (!(packet.printSource instanceof Uint8Array) || packet.printSource.length !== this.printSide * this.printSide * 4) throw new Error("a print is put on the card as bytes of its layer's size");
+      this.prints[packet.printLayer] = printPicture(packet.printSource, this.printSide);
+    }
     if (packet.openWidth !== this.openWidth || packet.openHeight !== this.openHeight) {
       [this.openWidth, this.openHeight] = [packet.openWidth, packet.openHeight];
       this.open = new Uint8Array(this.openWidth * this.openHeight * OPEN_BYTES);
@@ -1797,7 +1827,7 @@ export class Rasterizer {
    */
   private textured(p: FramePacket, d: number): void {
     const lod = this.decode(p.drawMesh[d]!, p.drawLod[d]!, p.drawSlot[d]!);
-    const surface = this.manifest ? this.surfaces.get(p.drawSlot[d]!)?.surface : lod.surface;
+    const surface = this.manifest || p.drawSlot[d]! >= FAR_SLOTS ? this.surfaces.get(p.drawSlot[d]!)?.surface : lod.surface;
     const material = (this.manifest ?? this.pack.header).materials?.[p.drawMaterial[d]!];
     if (!surface) throw new Error(`draw ${d} is textured, and the surface of its level is not on the graphics card`);
     if (!material) throw new Error(`draw ${d} uses material ${p.drawMaterial[d]}, which the pack does not have`);
@@ -1816,7 +1846,7 @@ export class Rasterizer {
     const mesh = (this.manifest ?? this.pack.header).meshes[p.drawMesh[d]!]!;
     const rig = this.pack.header.rigs?.[mesh.rig ?? -1];
     const wheels = p.drawWheelBones[d]!, finish = p.drawStreetMaterial[d]!;
-    const s: Surfaced = { pieceWear: 0, weather: (finish - Math.floor(finish))*4, spokeCrown: (p.drawOptics[d]! & 1) === 1, glass: opticsGlass(p.drawOptics[d]!), firstBone: 0, positions: lod.positions, rest: rig?.rest, wheelBones: skinMode(flags,surface.skin !== undefined) === 1 ? wheels : 0, label: Math.floor(finish), seed: 0, maps, layer, level: level / LAYER_LEVELS, wear, box, tint: material.tint, cutoff: (flags & DRAW_CUTOUT) !== 0 ? material.cutoff : 0, sheet: material.sheet ?? 0, emissive: materialEmission(material, lampsOn(p.frame), p.frame[FRAME.exposure]!), twoSided: (flags & DRAW_TWO_SIDED) !== 0, uvs: surface.uvs, tangents: surface.tangents, normals: surface.normals, center, half, bend: null, bent: null };
+    const s: Surfaced = { pieceWear: 0, weather: (finish - Math.floor(finish))*4, spokeCrown: (p.drawOptics[d]! & 1) === 1, glass: opticsGlass(p.drawOptics[d]!), firstBone: 0, positions: lod.positions, rest: rig?.rest, wheelBones: skinMode(flags,surface.skin !== undefined) === 1 ? wheels : 0, body: skinMode(flags,surface.skin !== undefined) === 3, label: Math.floor(finish), seed: 0, maps, layer, level: level / LAYER_LEVELS, wear, box, tint: material.tint, cutoff: (flags & DRAW_CUTOUT) !== 0 ? material.cutoff : 0, sheet: material.sheet ?? 0, masked: material.mask >= 0 || material.mask2 >= 0, emissive: materialEmission(material, lampsOn(p.frame), p.frame[FRAME.exposure]!), twoSided: (flags & DRAW_TWO_SIDED) !== 0, uvs: surface.uvs, tangents: surface.tangents, normals: surface.normals, center, half, bend: null, bent: null, print: -1, grey: material.grey };
     const end = p.drawFirstIndex[d]! + p.drawIndexCount[d]!;
     if (end > lod.indices.length) throw new Error(`draw ${d} runs past the indices of its level`);
     const transient = p.drawBuffer[d] === TRANSIENT_BUFFER;
@@ -1824,7 +1854,7 @@ export class Rasterizer {
     if (!transient && !buffer) throw new Error(`draw ${d} uses buffer ${p.drawBuffer[d]} which was never uploaded`);
     const data = transient ? p.transient : buffer!.data;
     const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-    const skinned = (flags & DRAW_SKINNED) !== 0;
+    const skinned = (flags & DRAW_SKINNED) !== 0, printed = (flags & DRAW_PRINTED) !== 0 && s.masked;
     for (let k = 0; k < p.drawInstances[d]!; k++) {
       const inst = p.drawFirst[d]! + k;
       const at = inst * INSTANCE_BYTES;
@@ -1843,6 +1873,9 @@ export class Rasterizer {
       } else s.uvs = surface.uvs;
       this.handAt = Math.hypot(view.getFloat32(at, true) + p.drawOffset[d * 3]!, view.getFloat32(at + 4, true) + p.drawOffset[d * 3 + 1]!, view.getFloat32(at + 8, true) + p.drawOffset[d * 3 + 2]!);
       regionDyes(this.dyes, this.pack.palette, data, at + 14, material.grey);
+      // A printed draw's third region is its print's layer and dyes nothing (print-term.ts).
+      s.print = printed ? data[at + 14 + PRINT_REGION]! - 1 : -1;
+      if (printed) this.dyes.fill(1, PRINT_REGION * 3, PRINT_REGION * 3 + 3);
       // A sized instance's last region is its size, and dyes nothing.
       if ((flags & DRAW_SIZED) !== 0) this.dyes.fill(1, SIZE_REGION * 3, SIZE_REGION * 3 + 3);
       // A built piece's last three are its material, state and fit, and it is darker by its stage.
@@ -1921,7 +1954,8 @@ export class Rasterizer {
       const bone = lod.bones[v]!;
       if (mode === 1 && s.rest && bone < 32 && (s.wheelBones & (1 << bone))) deflectTire(p.frame,first,bone,s.rest,positions,v,px,py,pz,m,out);
       if (mode === -2) out[v * 3 + 1] = this.onGround(p, out[v * 3]!, out[v * 3 + 1]!, out[v * 3 + 2]!, ly);
-      turned(m, bend ? this.bentFrame : normals, bend ? 0 : v * 3, this.frames, v * 6);
+      if (mode > 0) turnedNormal(m, normals, v * 3, this.frames, v * 6);
+      else turned(m, bend ? this.bentFrame : normals, bend ? 0 : v * 3, this.frames, v * 6);
       turned(m, bend ? this.bentFrame : tangents, bend ? 3 : v * 4, this.frames, v * 6 + 3);
     }
   }
@@ -2390,6 +2424,7 @@ export class Rasterizer {
           const dist = Math.hypot(carried[0]!, carried[1]!, carried[2]!);
           for (let i = 0; i < 3; i++) eye[i] = -carried[i]! / dist;
           dyed(albedo, base, s.tint, this.dyes, mask, mask2);
+          if (s.print >= 0) printedOver(albedo, base, s.grey, p.printTable, s.print, this.prints[s.print] ?? null, p.printSwatches, u, v, ux, vx, uy, vy);
           if (s.pieceWear > 0) for (let i = 0; i < 3; i++) albedo[i]! *= wearShade(s.pieceWear);
           // As SURFACE's PIECE_SPALL: past worn, lost to its core in patches where the tier reads the finishes in full.
           if (s.pieceWear >= 2 && p.lit && p.tier.finish === "full") {
@@ -2477,15 +2512,32 @@ export class Rasterizer {
             own = bodyOpen(carried[15]!, carried[16]!, carried[17]!, carried[18]!*side, carried[19]!*side, carried[20]!*side, -carriedNormal[1]!*nl, s.rest!, s.wheelBones, s.center, s.half);
           }
           mro[0] = Math.min(mro[0]!, own);
-          const lens = s.label === LENS, armor = s.label === ENAMEL_ARMOR, instrument = s.label === INSTRUMENT;
-          const polished = lens ? 1 : armor || instrument ? polishMask(mro[1]!) : 0;
+          const lens = s.label === LENS, armor = s.label === ENAMEL_ARMOR, instrument = s.label === INSTRUMENT, eyed = s.label === EYE;
+          let skin = 0;
+          if (s.label === SKIN) {
+            // As SURFACE's: how far the way to the eye turns to the next pixel right and down, times the distance.
+            let across = 0;
+            for (const [w0, w1, w2] of [[r0, r1, r2], [d0, d1, d2]]) {
+              const at0 = (w0! * poly[v0]! + w1! * poly[v1]! + w2! * poly[v2]!) / (w0! + w1! + w2!);
+              const at1 = (w0! * poly[v0 + 1]! + w1! * poly[v1 + 1]! + w2! * poly[v2 + 1]!) / (w0! + w1! + w2!);
+              const at2 = (w0! * poly[v0 + 2]! + w1! * poly[v1 + 2]! + w2! * poly[v2 + 2]!) / (w0! + w1! + w2!);
+              const l = Math.hypot(at0, at1, at2);
+              across = Math.max(across, Math.hypot(at0 / l + eye[0]!, at1 / l + eye[1]!, at2 / l + eye[2]!));
+            }
+            const near = skinNear(across * dist, p.tier.threshold);
+            skin = (s.masked ? mask[0]! : 1) * near;
+            mro[0] = 1 + (mro[0]! - 1) * near;
+            mro[1] = 1 + (mro[1]! - 1) * near;
+          }
+          const polished = lens || eyed ? 1 : armor || instrument ? polishMask(mro[1]!) : 0;
           let opticalNormal = normal, specularLayer = 0;
           const gloss = p.frame[FRAME.streetLook]!;
           if (polished > 0) {
             const t = Math.max(0, Math.min(1, (mro[2]! - 0.45) / (0.86 - 0.45)));
             const metal = t*t*(3-2*t);
             specularLayer = polished*(1-metal);
-            const smooth = lens ? 0 : 0.72*specularLayer;
+            const smooth = lens ? 0 : eyed ? 1 : 0.72*specularLayer;
+            if (eyed) mro[1] = Math.max(mro[1]!, EYE_UNDER);
             for (let c = 0; c < 3; c++) coatingNormal[c] = normal[c]!*(1-smooth) + carriedNormal[c]!*nl*smooth;
             const length = Math.hypot(coatingNormal[0]!, coatingNormal[1]!, coatingNormal[2]!);
             for (let c = 0; c < 3; c++) coatingNormal[c]! /= length;
@@ -2503,7 +2555,10 @@ export class Rasterizer {
           const twice = 2 * (opticalNormal[0]! * eye[0]! + opticalNormal[1]! * eye[1]! + opticalNormal[2]! * eye[2]!);
           const edge = 1 - Math.max(0, Math.min(1, twice*0.5));
           for (let i = 0; i < 3; i++) reflected[i] = twice * opticalNormal[i]! - eye[i]!;
+          // As SURFACE has it, the light from the ground is the pixel's before anything mirrors the sky.
+          const open = this.opened(carried[0]!, carried[1]!, carried[2]!, carriedNormal[0]! * nl, carriedNormal[1]! * nl, carriedNormal[2]! * nl, false, bone === 0);
           skyFrom(mirrored, p.frame, reflected, this.look);
+          if (s.body) bodyMirror(mirrored, p.frame, reflected, mro[1]!);
           if (instrument) {
             albedo2.fill(0);
             eyeGlint(p.frame, albedo2, carried[0]!, carried[2]!, reflected[1]!);
@@ -2522,9 +2577,9 @@ export class Rasterizer {
             } else {
               const grey = 0.2126*mirrored[0]! + 0.7152*mirrored[1]! + 0.0722*mirrored[2]!;
               for (let c = 0; c < 3; c++) mirrored[c]! += (grey-mirrored[c]!)*0.18*specularLayer;
-              coat = specularLayer*(instrument ? 0.055 + 0.45*edge2*edge : 0.16 + 0.51*edge2);
+              coat = specularLayer*(eyed ? EYE_COAT + EYE_RIM*edge2*edge : instrument ? 0.055 + 0.45*edge2*edge : 0.16 + 0.51*edge2);
             }
-          } else if (!armor && !instrument && s.label) {
+          } else if (!armor && !instrument && s.label !== SKIN && s.label) {
             const share = receiver(s.label, mask[0]!, mro[1]!, mro[2]!);
             if (share > 0) {
               const paint = s.label === PAINT || s.label === BURNT_SHEET ? mask[0]!*Math.max(0,Math.min(1,(0.72-mro[1]!)*3.5)) : 0;
@@ -2546,10 +2601,10 @@ export class Rasterizer {
               mirrored[c] = mirrored[c]!*(1+0.85*chrome*visibility)+(0.55*p.frame[sky+c]!+0.45*grey)*fill*hue;
             }
           }
-          const open = this.opened(carried[0]!, carried[1]!, carried[2]!, carriedNormal[0]! * nl, carriedNormal[1]! * nl, carriedNormal[2]! * nl, false, bone === 0);
           opened.set([mro[0]! * open, mro[1]!, mro[2]!]);
           const cast = ballShade(p, carried[0]!, carried[1]!, carried[2]!);
-          lit(light, albedo, opened, normal, eye, p.frame, mirrored, cast);
+          lit(light, albedo, opened, normal, eye, p.frame, mirrored, cast, DIELECTRIC + (SKIN_F0 - DIELECTRIC) * skin);
+          scattered(light, albedo, mro[2]!, normal, p.frame, skin, cast);
           for (let c=0; c<3; c++) light[c] = light[c]!*(1-coat)+mirrored[c]!*open*own*coat;
           if (specularLayer > 0) {
             let variance = 0;

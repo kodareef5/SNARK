@@ -168,7 +168,7 @@ const names = (lines: readonly string[]): string[] => [...new Set(lines.map((l) 
 
 test("a played script raises every wired event of the server, its sessions, chat, commands and tribes, with what happened in each", () => {
   const wired = wiredOf("server", "command", "session", "chat", "name", "tribe");
-  expect(wired.length).toBe(28);
+  expect(wired.length).toBe(29);
   const all = listener("all", wired);
   const made = loadConfig({ gus: "[ServerSettings]\nAutoSavePeriodMinutes=0.1", game: "" });
   expect([made.report.refused, made.report.unknown]).toEqual([[], []]);
@@ -244,6 +244,12 @@ test("a played script raises every wired event of the server, its sessions, chat
   h.run(600);
   expect(said("session.create")).toEqual(['{"name":"cy"}']);
   expect(last("session.join")).toMatchObject({ name: "cy", isNew: true });
+  // Made, she dyes her hair from her bag.
+  const cyPid = h.client(cy)!.pid;
+  expect(h.host.items.mint(h.host.records.byPid.get(cyPid)!, h.reg.index.get("core:hair_dye_red")!, 1)).toBe(1);
+  h.run(100);
+  expect(h.say(cy, "dye hair")).toEqual(["Dyed."]);
+  expect(last("session.relook")).toEqual({ pid: cyPid, byPid: cyPid, cause: "dye" });
 
   // A setting changes, the disk fills and empties, a backup is asked for, and the server stops.
   expect(h.host.exec("setting XPMultiplier 3")).toContain("XPMultiplier");
