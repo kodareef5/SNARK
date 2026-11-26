@@ -3,6 +3,9 @@
 import { TICK_RATE } from "../../coords.ts";
 import { GAME_HOUR_TICKS } from "../../sim/lazy.ts";
 import { validateSeats, type Seat } from "../../sim/seats.ts";
+import { WARDROBE_NAMES, type WardrobeName } from "../../sim/items.ts";
+import { SKIN_ZONE_COUNT } from "../../anim/skin-zones.ts";
+import { HAIR_COLORS } from "../../pack/palette.ts";
 import type { StatName } from "../../sim/genome.ts";
 import type { Content } from "../defs.ts";
 import { f, f32, i8, icon, list, mesh, row, stub, u16, u32, u8, type Fields, type Kind, type Named } from "../kind.ts";
@@ -20,7 +23,7 @@ export const WEAR_SLOTS: readonly string[] = ["head", "torso", "hands", "legs", 
 
 export interface ItemDef extends Named, WeaponFields {
   readonly type: "item";
-  readonly class: "resource" | "consumable" | "weapon" | "ammo" | "attachment" | "armor" | "saddle" | "structure" | "vehicle" | "egg" | "feces" | "shield" | "costume" | "skin" | "dye" | "artifact" | "glider" | "ball" | "instrument";
+  readonly class: "resource" | "consumable" | "weapon" | "ammo" | "attachment" | "armor" | "saddle" | "structure" | "vehicle" | "egg" | "feces" | "shield" | "costume" | "skin" | "dye" | "artifact" | "glider" | "ball" | "instrument" | "garment" | "scissors";
   readonly id: string;
   /** Largest stack. 1 for things that carry their own quality and durability. */
   readonly stack: number;
@@ -55,6 +58,10 @@ export interface ItemDef extends Named, WeaponFields {
   /** What it works on ("wood", "stone"), how many times stronger than bare hands it is, and how many uses it lasts. */
   readonly tool?: { readonly on: string; readonly power: number; readonly uses: number };
   readonly wear?: WearFacet;
+  /** Clothing worn in a wardrobe slot, over the body and under any armor. It gives no armor. */
+  readonly garment?: GarmentFacet;
+  /** What it does to a survivor's hair, used on itself or a tribe mate near it (server/people/look.ts). */
+  readonly groom?: GroomFacet;
   /**
    * A weapon lists the attachment items it takes in `fits`. What each does (planning/reference/weapons-plan.md, M10): a
    * scope zooms about 3 times with a reticle and sways the weapons that sway; a holo-scope zooms about 1.25 times with a
@@ -199,6 +206,28 @@ export interface WearFacet {
   readonly jet?: boolean;
 }
 
+/**
+ * A garment: what it covers and how it is drawn. Which edition it is and how it is
+ * dyed belong to the slot that holds it (Inventory.edition and dye), so two of one garment may look unlike.
+ */
+export interface GarmentFacet {
+  readonly slot: WardrobeName;
+  /** The skin zones it covers (SKIN_ of shared/anim/skin-zones.ts), which a body under it does not draw. */
+  readonly covers: readonly number[];
+  /** Whether it takes dye. */
+  readonly dyes?: boolean;
+  /** The mesh of its cut. Absent, it is not drawn yet. */
+  readonly cut?: string;
+}
+
+/** Scissors cut hair or a beard to a shorter stage; a hair dye colours hair. */
+export interface GroomFacet {
+  /** Cuts, and is kept. */
+  readonly cut?: boolean;
+  /** The hair colour it dyes (shared/pack/palette.ts HAIR_COLORS), and is used up. */
+  readonly hair?: number;
+}
+
 const FIELDS = {
   stack: f("number", "MaxItemQuantity"),
   weight: f("number", "BaseItemWeight"),
@@ -217,6 +246,8 @@ const FIELDS = {
   tool: f("facet"),
   ...WEAPON_FIELDS,
   wear: f("facet", "equipment type and ItemStatInfos"),
+  garment: f("facet", "none: ARK's shirts, pants and hats are armor; here clothing gives none"),
+  groom: f("facet", "the scissors and dyes used on a survivor's hair"),
   attachment: f("text", "item type WeaponAttachment"),
   optic: f("facet", "the scope's zoom (ScopeOverlay, FOV)"),
   places: f("list", "StructureToBuild", { refs: { "[]": "structure" }, open: true }),
@@ -264,6 +295,14 @@ const columns = (n: number) => ({
   wearSlot: i8(n, -1),
   /** Per item: 1 for a worn piece that flies (WearFacet.jet). */
   wearJet: u8(n),
+  /** The wardrobe slot a garment is worn in (WARDROBE_NAMES), or -1. */
+  garmentSlot: i8(n, -1),
+  /** Per garment: the skin zones it covers, one bit each (shared/anim/skin-zones.ts), and 1 if it takes dye. */
+  garmentZones: u32(n),
+  garmentDyes: u8(n),
+  /** Per item: 1 for scissors (GroomFacet.cut), and the hair colour a hair dye gives (GroomFacet.hair), or -1. */
+  groomCut: u8(n),
+  groomHair: i8(n, -1),
   /** Per item: a glider's grade, 0 for anything else, and the ticks in the air that cost it one use (GlideFacet). */
   glide: u8(n),
   glideTicks: u32(n),
@@ -326,9 +365,11 @@ export const items: Kind<ItemDef, ReturnType<typeof columns>> = {
     row("item/feces", "item", FIELDS, { parent: "item/resource", ark: "the feces items, small to massive", shelf: "items/feces", must: ["stack"], may: [...ANY_ITEM, "spoilHours", "spoilsInto", "fuel"], slots: ITEM_SLOTS, doc: "What a creature leaves when it defecates, a size for each kind of creature." }),
     row("item/glider", "item", FIELDS, { parent: "item", ark: "PrimalItemConsumable_Parachute, and the Glider Suit skin", shelf: "items/gliders", must: ["stack", "glide"], may: ANY_ITEM, slots: { held: HELD, wing_r: mesh("may", "{id}/wing_r", "none"), wing_l: mesh("may", "{id}/wing_l", "none"), ...ITEM_SLOTS }, doc: "Carried anywhere in the bag, and opened in the air to glide: a wing for each hand, and folded in the hand when chosen." }),
     row("item/shield", "item", FIELDS, { parent: "item/equipment", ark: "equipment type Shield", status: "stub", waits: "cosmetics", shelf: "items/shields", must: ["stack"], may: ANY_ITEM, slots: { held: HELD, ...ITEM_SLOTS }, doc: "Held in the other hand to block." }),
+    row("item/garment", "item", FIELDS, { parent: "item/equipment", ark: "the cloth and hide pieces' look, without their armor", shelf: "items/garments", must: ["stack", "garment"], may: ANY_ITEM, slots: ITEM_SLOTS, doc: "Clothing worn in a wardrobe slot (top, bottom, outer, shoes, hat): drawn over the body, under any armor, giving none. Each one carries its edition and dye in its slot." }),
     row("item/costume", "item", FIELDS, { parent: "item/equipment", ark: "equipment types Costume and Trophy", status: "stub", waits: "cosmetics", shelf: "items/costumes", must: ["stack"], may: ANY_ITEM, slots: ITEM_SLOTS, doc: "Worn for its look alone." }),
     row("item/skin", "item", FIELDS, { parent: "item", ark: "PrimalItemSkin_", status: "stub", waits: "cosmetics", shelf: "items/skins", must: ["stack"], may: ANY_ITEM, slots: ITEM_SLOTS, doc: "Changes the look of the item it is put on." }),
-    row("item/dye", "item", FIELDS, { parent: "item", ark: "PrimalItemDye_", status: "stub", waits: "cosmetics", shelf: "items/dyes", must: ["stack"], may: ANY_ITEM, slots: ITEM_SLOTS, doc: "Colours a region of what it is used on." }),
+    row("item/dye", "item", FIELDS, { parent: "item", ark: "PrimalItemDye_", status: "partial", waits: "cosmetics", shelf: "items/dyes", must: ["stack"], may: [...ANY_ITEM, "groom"], slots: ITEM_SLOTS, doc: "Colours a region of what it is used on. A hair dye (groom.hair) colours a survivor's hair and is used up; dyeing what is built or worn waits." }),
+    row("item/scissors", "item", FIELDS, { parent: "item", ark: "PrimalItem_WeaponScissors", shelf: "items/scissors", must: ["stack", "groom"], may: ANY_ITEM, slots: ITEM_SLOTS, doc: "Cuts a survivor's hair or beard to a shorter stage, its own or a tribe mate's near it. It is kept." }),
     row("item/instrument", "item", FIELDS, { parent: "item", ark: "PrimalItem_WeaponSpyglass, _WeaponCompass, _WeaponGPS, _WeaponMagnifyingGlass, PrimalItemRadio", status: "partial", waits: "instruments", shelf: "items/instruments", must: ["stack"], may: [...ANY_ITEM, "optic"], slots: { held: HELD, ...ITEM_SLOTS }, doc: "Held to look through or to read. Blocked out: it is made, carried and dropped, and does nothing in the hand yet." }),
     row("item/artifact", "item", FIELDS, { parent: "item", ark: "PrimalItemArtifact_", status: "stub", waits: "bosses", shelf: "items/artifacts", must: ["stack"], may: ANY_ITEM, slots: ITEM_SLOTS, doc: "Found once in its place and spent to call a boss." }),
   ],
@@ -384,6 +425,17 @@ export const items: Kind<ItemDef, ReturnType<typeof columns>> = {
       if (!(d.wear.armor >= 0)) errors.push(`${d.id}: wear.armor must not be negative`);
       positive(d, "wear.uses", d.wear.uses, 60000);
     }
+    if (d.garment) {
+      const g = d.garment;
+      if (!(WARDROBE_NAMES as readonly string[]).includes(g.slot)) errors.push(`${d.id}: garment.slot must be one of ${WARDROBE_NAMES.join(", ")}`);
+      if (!Array.isArray(g.covers) || g.covers.some((z) => !Number.isInteger(z) || z < 0 || z >= SKIN_ZONE_COUNT)) errors.push(`${d.id}: garment.covers lists skin zones, 0 to ${SKIN_ZONE_COUNT - 1}`);
+      if (d.stack !== 1 || d.wear || d.weapon || d.tool) errors.push(`${d.id}: a garment stacks to 1 and is no armor, weapon or tool`);
+    }
+    if (d.groom) {
+      const g = d.groom;
+      if ((g.cut === true) === (g.hair !== undefined)) errors.push(`${d.id}: groom either cuts or gives a hair colour`);
+      if (g.hair !== undefined && !(Number.isInteger(g.hair) && g.hair >= 0 && g.hair < HAIR_COLORS)) errors.push(`${d.id}: groom.hair is a hair colour, 0 to ${HAIR_COLORS - 1}`);
+    }
     if (d.spoilsInto !== undefined && (d.spoilsInto === d.id || d.spoilHours === undefined)) errors.push(`${d.id}: spoilsInto names another item, and only something that spoils has it`);
     // A blueprint crafts what it is of, so only an item that is crafted may be one.
     if (d.blueprint === true && !d.craft) errors.push(`${d.id}: only an item that is crafted may be a blueprint`);
@@ -423,6 +475,13 @@ export const items: Kind<ItemDef, ReturnType<typeof columns>> = {
     if (d.charge) reg.charge[i] = 1;
     if (d.wear) reg.wearSlot[i] = WEAR_SLOTS.indexOf(d.wear.slot);
     if (d.wear?.jet) reg.wearJet[i] = 1;
+    if (d.garment) {
+      reg.garmentSlot[i] = WARDROBE_NAMES.indexOf(d.garment.slot);
+      reg.garmentZones[i] = d.garment.covers.reduce((m, z) => (m | (1 << z)) >>> 0, 0);
+      reg.garmentDyes[i] = d.garment.dyes ? 1 : 0;
+    }
+    if (d.groom?.cut) reg.groomCut[i] = 1;
+    if (d.groom?.hair !== undefined) reg.groomHair[i] = d.groom.hair;
     reg.uses[i] = d.wear?.uses ?? d.weapon?.uses ?? d.tool?.uses ?? d.glide?.uses ?? 0;
     if (d.glide) {
       reg.glide[i] = d.glide.grade;

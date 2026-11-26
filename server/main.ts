@@ -30,6 +30,7 @@ import { serveFile } from "./files.ts";
 import { BODY_BYTES_MAX, clientAddress } from "./front.ts";
 import { VideoLibrary } from "./video/library.ts";
 import { screensAdmin } from "./video/routes.ts";
+import { peopleAdmin } from "./admin/people-routes.ts";
 import { ScreenFeed, screenWorld } from "./video/screens.ts";
 import { boardOwners, soundBoard } from "./sound-board.ts";
 import { TitleScenes } from "./admin/title-scenes.ts";
@@ -397,7 +398,8 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   const screens = new ScreenFeed(video, host.world);
   screens.attach(host.game);
   screens.poll();
-  const screenTimer = setInterval(() => screens.poll(), 1000);
+  host.people.poll();
+  const screenTimer = setInterval(() => (screens.poll(), host.people.poll()), 1000);
   const listings = opts.directory ? new ServerDirectory(host.cluster ? join(host.cluster.folder.root,"directory.sqlite") : opts.dbPath ? opts.dbPath+".directory.sqlite" : ":memory:") : null;
   const directories = opts.directories ?? [];
   const directory = [...directories, ...(listings ? ["directory"] : [])].join(" ");
@@ -560,6 +562,8 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
           ? titleScenes.admin(call, host.acts, host) : entryReply({ error: "Open the studio on this cluster." }, 403),
         screens: (call, at) => call.method === "POST" && !originAllowed(call.headers.get("origin"), call.headers.get("host"), "")
           ? entryReply({ error: "Open the screens page on this cluster." }, 403) : screensAdmin(call, at, video, () => screenWorld(host), host.acts, host),
+        people: (call, at) => call.method === "POST" && !originAllowed(call.headers.get("origin"), call.headers.get("host"), "")
+          ? entryReply({ error: "Open the people pages on this cluster." }, 403) : peopleAdmin(call, at, host.people, () => host.world.reg, host.acts, host),
       }));
       if (siteAdmin) return siteAdmin;
       const { at, path } = placeOf(base, url.pathname);
@@ -567,10 +571,13 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
       if (path === "/directory") return listings ? listings.answer(req, who) : new Response("this world hosts no server directory", { status: 404 });
       const same = alike(path, req.headers.get("host") ?? "");
       if (same) return same;
-      // Uploaded clips and manifests from the library's folder, starters from the built client.
+      // Uploaded clips, prints and manifests from the cluster's media folder, starters from the built client.
       if (path.startsWith("/media/")) {
         const kept = await serveFile(video.media, req, path.slice("/media".length));
-        return kept.status !== 404 ? kept : serveFile(clientDir, req, path);
+        if (kept.status !== 404) return kept;
+        // A world with no save keeps its prints and people manifests in a folder of their own.
+        const people = host.people.media !== video.media ? await serveFile(host.people.media, req, path.slice("/media".length)) : kept;
+        return people.status !== 404 ? people : serveFile(clientDir, req, path);
       }
       if (at === "site") {
         if (path === "/" || path === "/index.html") return htmlResponse(startPage(worlds(req.headers.get("host") ?? ""), links(), entryBuilt ? {world:false,directory} : undefined));

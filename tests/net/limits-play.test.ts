@@ -61,11 +61,11 @@ test("a server shows no client more than its cap, and each client its own share 
   h.run(200);
   expect([c.viewCap, c.snapshotBytes]).toEqual([96, 1100]);
   // Asked again within the second, she waits for the second to pass.
-  ada.view(8, 600);
+  ada.view(8, 720);
   h.run(500);
   expect([c.viewCap, c.snapshotBytes, seen(ada).count]).toEqual([96, 1100, 95]);
   h.run(2000);
-  expect([c.viewCap, c.snapshotBytes, seen(ada).count, has(seen(ada), "bob")]).toEqual([8, 600, 7, true]);
+  expect([c.viewCap, c.snapshotBytes, seen(ada).count, has(seen(ada), "bob")]).toEqual([8, 720, 7, true]);
   // Unconscious, she may do little else but may still ask.
   h.host.records.byPid.get(c.pid)!.out = true;
   const codes: number[] = [];
@@ -95,9 +95,9 @@ test("a whole client asks for what its graphics and connection settings say, and
   h.run(1500, frame);
   expect([c.viewCap, c.snapshotBytes]).toEqual([1024, 2200]);
   for (let k = 0; k < 3; k++) row.step(app.ui.settings, -1);
-  expect(row.value(app.ui.settings)).toBe("18 KB/s");
+  expect(row.value(app.ui.settings)).toBe("22 KB/s");
   h.run(1500, frame);
-  expect([c.viewCap, c.snapshotBytes]).toEqual([1024, 600]);
+  expect([c.viewCap, c.snapshotBytes]).toEqual([1024, 720]);
 });
 
 test("a chat line of 120 characters arrives whole in any script, and a command too long for a message is counted and not sent", () => {

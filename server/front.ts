@@ -17,6 +17,7 @@ import { backlog, MESSAGE_BYTES_MAX, VOICE_BACKLOG } from "../shared/net/transpo
 import { worldAdminPage } from "./admin/site.ts";
 import { CLIP_MAX_BYTES } from "../shared/video/clip.ts";
 import { SCREEN_POSTS } from "./video/routes.ts";
+import { PEOPLE_POSTS } from "./admin/people-routes.ts";
 import { PERMISSIONS_API } from "../shared/permissions/page.ts";
 import { ClusterFolder, LIVE_MS, type Announcement } from "./cluster/folder.ts";
 import { serveFile } from "./files.ts";
@@ -42,7 +43,7 @@ export function frontPasses(method: string, path: string): boolean {
 
 /** Whether the front passes a POST to the site's cluster-wide pages. */
 export function sitePost(path: string): boolean {
-  return path === "/admin/scenes/api" || path === "/cluster/admin/scenes/api" || SCREEN_POSTS.includes(path);
+  return path === "/admin/scenes/api" || path === "/cluster/admin/scenes/api" || SCREEN_POSTS.includes(path) || PEOPLE_POSTS.includes(path);
 }
 
 /** The most a request may carry: a clip at its cap, and room for its headers. */

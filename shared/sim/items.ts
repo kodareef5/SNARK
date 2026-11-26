@@ -4,7 +4,14 @@
 export const HOTBAR_SLOTS = 10;
 /** One per body slot, in the order of shared/anim/human.ts: head, torso, hands, legs, feet. */
 export const ARMOR_SLOTS = 5;
-export const GEAR_SLOTS = HOTBAR_SLOTS + ARMOR_SLOTS;
+/** What a body wears that is not armor and gives none, in slot order. A garment names one (GarmentFacet.slot). */
+export const WARDROBE_NAMES = ["top", "bottom", "outer", "shoes", "hat"] as const;
+export type WardrobeName = (typeof WARDROBE_NAMES)[number];
+export const WARDROBE_SLOTS = WARDROBE_NAMES.length;
+/** The tail an inventory saved before the wardrobe has: the hotbar and the armor. */
+export const ARMORED_TAIL = HOTBAR_SLOTS + ARMOR_SLOTS;
+/** The whole tail after the bag: the hotbar, the armor, then the wardrobe. */
+export const GEAR_SLOTS = ARMORED_TAIL + WARDROBE_SLOTS;
 
 /** Lowest first. QUALITY_MUL multiplies the values in an item's definition. */
 export const QUALITY_NAMES: readonly string[] = ["primitive", "ramshackle", "apprentice", "journeyman", "mastercraft", "ascendant"];
@@ -76,6 +83,8 @@ export interface ItemTable {
   readonly spoilTicks: Uint32Array;
   /** The armor slot an item is worn in (0 to 4), or -1 for anything not worn. */
   readonly wearSlot: Int8Array;
+  /** The wardrobe slot a garment is worn in (WARDROBE_NAMES), or -1. Absent, nothing is a garment. */
+  readonly garmentSlot?: Int8Array;
   /**
    * 1 for an item whose spoil clock is a charge, as a full soul ball's is (planning/workstreams/soul-ball.md). A charge
    * is not stretched by where it lies (`Inventory.keep`); an inventory that `charges` holds it full, at CHARGED; and
@@ -87,9 +96,12 @@ export interface ItemTable {
 /** The clock of a charge held full: the last tick a clock can name, which never comes. */
 export const CHARGED = 0xffffffff;
 
+/** Stamps `Inventory.worn`, one count for every inventory, so two inventories never share a stamp. */
+let wornClock = 0;
+
 export class Inventory {
   readonly cap: number;
-  /** Slots below `bag` are the bag. When `cap` is larger, the hotbar and then the armor slots follow, and `add` never fills those. */
+  /** Slots below `bag` are the bag. When `cap` is larger, the hotbar, the armor and the wardrobe follow, and `add` never fills those. */
   readonly bag: number;
   /** Content index. 0 is an empty slot. */
   readonly item: Uint16Array;
@@ -120,6 +132,15 @@ export class Inventory {
    * moves with its slot and is never sent. Null until a slot has one.
    */
   ref: Float64Array | null = null;
+  /**
+   * The edition a slot's item is: an immutable record of its cut, colours and print, or 0 for the plain item. Null until a
+   * slot has one, as `ref` is.
+   */
+  edition: Uint32Array | null = null;
+  /** Three palette colours each slot is dyed, at 3 * slot, 0 for the item's own. Null until a slot has one. */
+  dye: Uint8Array | null = null;
+  /** Changes whenever a slot of the armor or the wardrobe does, and never repeats, for a body that redraws only then. */
+  worn = ++wornClock;
 
   constructor(cap: number, bag = cap) {
     this.cap = cap;
@@ -138,12 +159,23 @@ export class Inventory {
 
   /** First hotbar slot, or -1 for an inventory with no equipment tail. */
   get hotbar(): number {
-    return this.cap >= this.bag + GEAR_SLOTS ? this.bag : -1;
+    return this.cap >= this.bag + ARMORED_TAIL ? this.bag : -1;
   }
 
   /** First armor slot, or -1. */
   get armor(): number {
-    return this.cap >= this.bag + GEAR_SLOTS ? this.bag + HOTBAR_SLOTS : -1;
+    return this.cap >= this.bag + ARMORED_TAIL ? this.bag + HOTBAR_SLOTS : -1;
+  }
+
+  /** First wardrobe slot, or -1. */
+  get wardrobe(): number {
+    return this.cap >= this.bag + GEAR_SLOTS ? this.bag + ARMORED_TAIL : -1;
+  }
+
+  /** Marks the slot changed. */
+  touch(slot: number): void {
+    this.mod[slot] = ++this.version;
+    if (slot >= this.bag + HOTBAR_SLOTS) this.worn = ++wornClock;
   }
 
   /** Count 0 or item 0 empties the slot. Also clears ammo, loaded and attach, which setGear sets. */
@@ -159,7 +191,9 @@ export class Inventory {
     this.loaded[slot] = 0;
     this.attach[slot] = 0;
     if (this.ref) this.ref[slot] = 0;
-    this.mod[slot] = ++this.version;
+    if (this.edition) this.edition[slot] = 0;
+    if (this.dye) this.dye[slot * 3] = this.dye[slot * 3 + 1] = this.dye[slot * 3 + 2] = 0;
+    this.touch(slot);
   }
 
   refOf(slot: number): number {
@@ -172,21 +206,50 @@ export class Inventory {
     this.ref[slot] = pid;
   }
 
+  editionOf(slot: number): number {
+    return this.edition ? this.edition[slot]! : 0;
+  }
+
+  /** The slot's three dye colours as one number, the first in the low byte. */
+  dyeOf(slot: number): number {
+    const d = this.dye;
+    return d ? d[slot * 3]! | (d[slot * 3 + 1]! << 8) | (d[slot * 3 + 2]! << 16) : 0;
+  }
+
+  /** Sets the slot's edition and dye (as `dyeOf` gives it). */
+  setStyle(slot: number, edition: number, dye: number): void {
+    if (edition === this.editionOf(slot) && dye === this.dyeOf(slot)) return;
+    if (edition !== 0) this.edition ??= new Uint32Array(this.cap);
+    if (this.edition) this.edition[slot] = edition;
+    if (dye !== 0) this.dye ??= new Uint8Array(this.cap * 3);
+    if (this.dye) {
+      this.dye[slot * 3] = dye & 0xff;
+      this.dye[slot * 3 + 1] = (dye >>> 8) & 0xff;
+      this.dye[slot * 3 + 2] = (dye >>> 16) & 0xff;
+    }
+    this.touch(slot);
+  }
+
+  /** Whether slot `s` here and slot `o` of `other` have one edition and one dye, which stacks must to join. */
+  sameStyle(s: number, other: Inventory, o: number): boolean {
+    return this.editionOf(s) === other.editionOf(o) && this.dyeOf(s) === other.dyeOf(o);
+  }
+
   setGear(slot: number, ammo: number, loaded: number, attach: number): void {
     this.ammo[slot] = ammo;
     this.loaded[slot] = loaded;
     this.attach[slot] = attach;
-    this.mod[slot] = ++this.version;
+    this.touch(slot);
   }
 
   setDur(slot: number, dur: number): void {
     this.dur[slot] = dur;
-    this.mod[slot] = ++this.version;
+    this.touch(slot);
   }
 
   setFlags(slot: number, flags: number): void {
     this.flags[slot] = flags;
-    this.mod[slot] = ++this.version;
+    this.touch(slot);
   }
 
   /** The caller has checked the slot holds `n`. */
@@ -195,7 +258,7 @@ export class Inventory {
     if (left <= 0) this.set(slot, 0, 0, 0, 0, 0);
     else {
       this.count[slot] = left;
-      this.mod[slot] = ++this.version;
+      this.touch(slot);
     }
   }
 
@@ -229,14 +292,14 @@ export class Inventory {
     return kg;
   }
 
-  /** Counts the bag only. */
-  room(item: number, quality: number, t: ItemTable, flags = 0): number {
+  /** Counts the bag only. A stack joins only its like: the same quality, flags, edition and dye. */
+  room(item: number, quality: number, t: ItemTable, flags = 0, edition = 0, dye = 0): number {
     const stack = stackOf(item, flags, t);
     let n = 0;
     for (let s = 0; s < this.bag; s++) {
       if (this.item[s] === 0) n += stack;
       // A stack may hold more than a stack limit that has since shrunk. It then has no room, not negative room.
-      else if (stack > this.count[s]! && this.item[s] === item && this.quality[s] === quality && this.flags[s] === flags) n += stack - this.count[s]!;
+      else if (stack > this.count[s]! && this.item[s] === item && this.quality[s] === quality && this.flags[s] === flags && this.editionOf(s) === edition && this.dyeOf(s) === dye) n += stack - this.count[s]!;
     }
     return n;
   }
@@ -244,22 +307,22 @@ export class Inventory {
   /**
    * Fills the bag only, matching stacks before empty slots. Returns how many did not fit. New items start their spoil clock at
    * `now`. Transferred items bring theirs as `spoilAt`, and a stack they join becomes as old as its oldest part, so moving food
-   * never makes it fresher. Stacks join only at the same quality and flags. A blueprint (`flags`) takes a slot of its own and
-   * never spoils.
+   * never makes it fresher. Stacks join only at the same quality, flags, edition and dye. A blueprint (`flags`) takes a slot of
+   * its own and never spoils.
    */
-  add(item: number, n: number, quality: number, dur: number, now: number, t: ItemTable, spoilAt = 0, flags = 0): number {
+  add(item: number, n: number, quality: number, dur: number, now: number, t: ItemTable, spoilAt = 0, flags = 0, edition = 0, dye = 0): number {
     if (t.stack[item] === 0) return n;
     const stack = stackOf(item, flags, t);
     const spoil = flags !== 0 ? 0 : t.spoilTicks[item]!;
     const clock = spoil === 0 ? 0 : t.charge?.[item] === 1 ? this.chargeFrom(spoilAt, now, spoil) : spoilAt > 0 ? spoilAt : clock32(now + Math.round(spoil * this.keep));
     if (stack > 1) {
       for (let s = 0; s < this.bag && n > 0; s++) {
-        if (this.item[s] !== item || this.quality[s] !== quality || this.flags[s] !== flags) continue;
+        if (this.item[s] !== item || this.quality[s] !== quality || this.flags[s] !== flags || this.editionOf(s) !== edition || this.dyeOf(s) !== dye) continue;
         const fit = Math.min(n, stack - this.count[s]!);
         if (fit <= 0) continue;
         this.count[s] = this.count[s]! + fit;
         if (spoilAt > 0 && (this.spoilAt[s] === 0 || spoilAt < this.spoilAt[s]!)) this.spoilAt[s] = spoilAt;
-        this.mod[s] = ++this.version;
+        this.touch(s);
         n -= fit;
       }
     }
@@ -267,6 +330,7 @@ export class Inventory {
       if (this.item[s] !== 0) continue;
       const fit = Math.min(n, stack);
       this.set(s, item, fit, quality, dur, clock, flags);
+      this.setStyle(s, edition, dye);
       n -= fit;
     }
     return n;
@@ -315,7 +379,7 @@ export class Inventory {
       else {
         this.count[s] = this.count[s]! - gone;
         this.spoilAt[s] = clock32(at + gone * interval);
-        this.mod[s] = ++this.version;
+        this.touch(s);
       }
     }
   }
@@ -370,8 +434,12 @@ export function moveSlot(a: Inventory, sa: number, b: Inventory, sb: number, n: 
   if (!fitsSlot(b, sb, item, t, flags) || (other !== 0 && (other !== item || b.flags[sb] !== flags) && !fitsSlot(a, sa, other, t, b.flags[sb]!))) return 0;
   const sp = clockMoved(a, sa, b, now, t);
   const ref = a.refOf(sa);
+  const edition = a.editionOf(sa);
+  const dye = a.dyeOf(sa);
   if (other === 0) {
     b.set(sb, item, n, a.quality[sa]!, a.dur[sa]!, sp, flags);
+    // Both halves of a split stack are the one edition and dye.
+    b.setStyle(sb, edition, dye);
     // A weapon moved whole keeps its rounds and attachment, and a one of a kind what it stands for.
     if (n === have) {
       b.setGear(sb, a.ammo[sa]!, a.loaded[sa]!, a.attach[sa]!);
@@ -381,13 +449,13 @@ export function moveSlot(a: Inventory, sa: number, b: Inventory, sb: number, n: 
     return n;
   }
   const stack = stackOf(item, flags, t);
-  if (other === item && stack > 1 && b.quality[sb] === a.quality[sa] && b.flags[sb] === flags) {
+  if (other === item && stack > 1 && b.quality[sb] === a.quality[sa] && b.flags[sb] === flags && b.sameStyle(sb, a, sa)) {
     const fit = Math.min(n, stack - b.count[sb]!);
     if (fit <= 0) return 0;
     // The joined stack spoils as its older part would have.
     if (sp !== 0 && (b.spoilAt[sb] === 0 || sp < b.spoilAt[sb]!)) b.spoilAt[sb] = sp;
     b.count[sb] = b.count[sb]! + fit;
-    b.mod[sb] = ++b.version;
+    b.touch(sb);
     a.remove(sa, fit);
     return fit;
   }
@@ -398,21 +466,34 @@ export function moveSlot(a: Inventory, sa: number, b: Inventory, sb: number, n: 
   const loaded = a.loaded[sa]!;
   const attach = a.attach[sa]!;
   const otherRef = b.refOf(sb);
+  const otherEdition = b.editionOf(sb);
+  const otherDye = b.dyeOf(sb);
   a.set(sa, other, b.count[sb]!, b.quality[sb]!, b.dur[sb]!, clockMoved(b, sb, a, now, t), b.flags[sb]! & ~FLAG_ON);
   a.setGear(sa, b.ammo[sb]!, b.loaded[sb]!, b.attach[sb]!);
   a.setRef(sa, otherRef);
+  a.setStyle(sa, otherEdition, otherDye);
   b.set(sb, item, have, q, d, sp, flags);
   b.setGear(sb, ammo, loaded, attach);
   b.setRef(sb, ref);
+  b.setStyle(sb, edition, dye);
   return have;
 }
 
 /**
- * Any slot takes any item, except that an armor slot takes only its own kind of piece, and a blueprint (`flags`) lies only in
- * the bag: it is never held or worn. Chosen: the wiki gives a blueprint no use but crafting from it.
+ * Any slot takes any item, except that an armor slot takes only its own kind of piece and a wardrobe slot only its own kind
+ * of garment, and a blueprint (`flags`) lies only in the bag: it is never held or worn. Chosen: the wiki gives a blueprint no
+ * use but crafting from it.
  */
 export function fitsSlot(inv: Inventory, slot: number, item: number, t: ItemTable, flags = 0): boolean {
   if ((flags & FLAG_BLUEPRINT) !== 0 && slot >= inv.bag) return false;
   const armor = inv.armor;
-  return armor < 0 || slot < armor || t.wearSlot[item] === slot - armor;
+  if (armor < 0 || slot < armor) return true;
+  if (slot < armor + ARMOR_SLOTS) return t.wearSlot[item] === slot - armor;
+  const wardrobe = inv.wardrobe;
+  return wardrobe < 0 || slot >= wardrobe + WARDROBE_SLOTS || (t.garmentSlot?.[item] ?? -1) === slot - wardrobe;
+}
+
+/** The size an inventory saved with `cap` slots and `bag` in its bag has now: one saved before the wardrobe gains it, empty. */
+export function capNow(cap: number, bag: number): number {
+  return cap - bag === ARMORED_TAIL ? bag + GEAR_SLOTS : cap;
 }

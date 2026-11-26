@@ -63,7 +63,7 @@ const arm: Rule = (d, c) => (c.fitted.has(d.id) ? { out: "hidden" } : { entry: d
 export const RULINGS: Readonly<Record<string, Rule>> = {
   "item/resource": entry, "item/consumable": entry, "item/weapon": arm, "item/ammo": arm, "item/attachment": entry, "item/instrument": entry,
   "item/armor": entry, "item/saddle": entry, "item/structure": entry, "item/vehicle": entry, "item/egg": entry,
-  "item/feces": entry, "item/glider": entry, "item/shield": entry, "item/costume": entry, "item/skin": entry, "item/dye": entry, "item/artifact": entry,
+  "item/feces": entry, "item/glider": entry, "item/shield": entry, "item/costume": entry, "item/skin": entry, "item/dye": entry, "item/scissors": entry, "item/garment": entry, "item/artifact": entry,
   // A full soul ball is the same ball with a tame in it, on the ball's page.
   "item/ball": (d) => {
     const empty = (d as Extract<Def, { type: "item" }>).ball?.empty;

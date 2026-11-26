@@ -45,6 +45,10 @@ import {
   MAX_SERVER_TEXT_BYTES,
   MAX_TEXT_BYTES,
   CMD_CREATE,
+  CMD_GROOM,
+  CMD_REMAKE,
+  OWN_REMAKE,
+  OWN_PEOPLE,
   OWN_BUFFS,
   OWN_RULES,
   OWN_SCREEN,
@@ -138,6 +142,7 @@ import {
   writeInputs,
 } from "../../shared/net/protocol.ts";
 import { LOOK_BYTES, upgradeLook } from "../../shared/anim/look.ts";
+import { HAIR_TICK, NO_CLOCK } from "../../shared/people/hair.ts";
 import { readMotions, type MotionState } from "../../shared/sim/motion.ts";
 import { AIR_ACTION, emptyAirSupport, readAirSupport, type AirSupportView } from "../../shared/sim/air-support.ts";
 import { readSupply, type SupplyList } from "../../shared/sim/supply.ts";
@@ -158,7 +163,7 @@ import { stepVehicleBody, unpackVehiclePitch, unpackVehicleRoll, unpackVehicleSt
 import { stepCreature } from "../../shared/sim/creature-actions.ts";
 import { ACT_NONE, FISTS, actionOut, biteCost, stepAction } from "../../shared/sim/weapon.ts";
 import { aimSeed, aimShot, scopeFitted, shotAim, stepAim, zeroUnits } from "../../shared/sim/aim.ts";
-import { F_PROP, GEAR_COUNT } from "../../shared/sim/entities.ts";
+import { F_PROP, GEAR_COUNT, WORN_LENGTH } from "../../shared/sim/entities.ts";
 import { FootContacts, FootVehicles } from "../../shared/sim/foot-contact.ts";
 import { Inventory } from "../../shared/sim/items.ts";
 import type { Kept } from "./balls.ts";
@@ -349,6 +354,10 @@ export class RemoteSample {
   readonly hasLook = new Uint8Array(MAX_VIEW);
   /** GEAR_COUNT content indices each, 0 for nothing. */
   readonly gear = new Uint16Array(MAX_VIEW * GEAR_COUNT);
+  /** A survivor's hair clock start, -1 for none (shared/people/hair.ts), and WORN_LENGTH each, valid where `hasWardrobe` is 1. */
+  readonly hairFrom = new Float64Array(MAX_VIEW).fill(-1);
+  readonly wardrobe = new Uint32Array(MAX_VIEW * WORN_LENGTH);
+  readonly hasWardrobe = new Uint8Array(MAX_VIEW);
   /** 1 while the laser in its hand is on (the gear's "on" bit). */
   readonly on = new Uint8Array(MAX_VIEW);
   /** Each 0 for none: the owning team, the entity it sits on plus one, the ticks its growing takes, and the tick it will be grown. */
@@ -609,6 +618,13 @@ export class ClientSession {
   /** Cheats enabled. */
   admin = false;
   ownLook: Uint8Array | null = null;
+  /** The own survivor's hair clock start (OWN_LOOK), -1 for none, and how fast every head grows (shared/people/hair.ts). */
+  ownHairFrom = -1;
+  hairRate = 0;
+  /** The server lets the own survivor be made again in the creator (OWN_REMAKE). */
+  remaking = false;
+  /** The id of the cluster's people manifest, its editions (OWN_PEOPLE, shared/people/doc.ts), or "" for none yet. */
+  peopleManifest = "";
   /** With a piece in hand: the structures of every tribe counted round the survivor, and the most that may stand there, 0 for no cap (OWN_STRUCTURES). */
   structuresNear = 0;
   structuresCap = 0;
@@ -1003,6 +1019,19 @@ export class ClientSession {
     this.farSeq = seq;
   }
 
+  /** Ends the remake the server offered: with a look, the survivor is made again so; with null, it stays as it is. */
+  remake(look: Uint8Array | null): number {
+    return this.command(CMD_REMAKE, (w) => {
+      w.bool(look !== null);
+      for (let i = 0; look && i < LOOK_BYTES; i++) w.u8(look[i] ?? 0);
+    });
+  }
+
+  /** Scissors or a hair dye in `slot` used on the survivor `handle` (0 for one's own): see CMD_GROOM. */
+  groom(slot: number, item: number, handle: number, what: number, stage = 0): number {
+    return this.command(CMD_GROOM, (w) => (w.varint(slot), w.u16(item), w.u32(handle), w.u8(what), w.u8(stage)));
+  }
+
   create(look: Uint8Array, spawn?: number): number {
     const full = upgradeLook(look);
     return this.command(CMD_CREATE, (w) => {
@@ -1237,6 +1266,10 @@ export class ClientSession {
       const look = b.look[j]!;
       out.hasLook[n] = look ? 1 : 0;
       if (look) out.look.set(look, n * LOOK_BYTES);
+      out.hairFrom[n] = b.hairFrom[j]!;
+      const worn = b.wardrobe[j]!;
+      out.hasWardrobe[n] = worn ? 1 : 0;
+      if (worn) out.wardrobe.set(worn, n * WORN_LENGTH);
       const gear = b.gear[j]!;
       if (gear) out.gear.set(gear, n * GEAR_COUNT);
       else out.gear.fill(0, n * GEAR_COUNT, (n + 1) * GEAR_COUNT);
@@ -1913,7 +1946,9 @@ export class ClientSession {
         const handle = r.u32();
         const dayOffset = r.u32();
         const cycle = r.f64(), day = r.f64(), night = r.f64();
+        const hairRate = r.varint();
         if (r.overflow) return;
+        s.hairRate = hairRate;
         s.clock.cycle = cycle;
         s.clock.day = day;
         s.clock.night = night;
@@ -1985,9 +2020,13 @@ export class ClientSession {
           const ammo = holds ? r.u16() : 0;
           const loaded = holds ? r.u8() : 0;
           const attach = holds ? r.u16() : 0;
+          const styled = item !== 0 && r.bool();
+          const edition = styled ? r.u32() : 0;
+          const dye = styled ? r.u8() | (r.u8() << 8) | (r.u8() << 16) : 0;
           if (r.overflow || slot >= cap) return;
           inv.set(slot, item, n, quality, dur, spoilAt, flags);
           if (holds) inv.setGear(slot, ammo, loaded, attach);
+          inv.setStyle(slot, edition, dye);
         }
       },
     });
@@ -2159,7 +2198,24 @@ export class ClientSession {
       read(s, r) {
         const look = new Uint8Array(LOOK_BYTES);
         for (let i = 0; i < LOOK_BYTES; i++) look[i] = r.u8();
-        if (!r.overflow) s.ownLook = look;
+        const clock = r.bool() ? r.svarint() * HAIR_TICK : NO_CLOCK;
+        if (r.overflow) return;
+        s.ownLook = look;
+        s.ownHairFrom = clock;
+      },
+    });
+    ownKinds.add({
+      kind: OWN_REMAKE,
+      read(s, r) {
+        const on = r.u8() === 1;
+        if (!r.overflow) s.remaking = on;
+      },
+    });
+    ownKinds.add({
+      kind: OWN_PEOPLE,
+      read(s, r) {
+        const id = r.string(16);
+        if (!r.overflow && (id === "" || /^[0-9a-f]{16}$/.test(id))) s.peopleManifest = id;
       },
     });
     ownKinds.add({
@@ -2399,6 +2455,7 @@ export class ClientSession {
     const dims = { chunksX: r.u8() + 1, chunksZ: r.u8() + 1 };
     readBody(r, this.own);
     const yaw = r.u16();
+    const hairRate = r.varint();
     const contentHash = r.u32();
     const tuning = r.string(MAX_TUNING_BYTES);
     const cycle = r.f64();
@@ -2425,6 +2482,7 @@ export class ClientSession {
     this.clock.cycle = cycle;
     this.clock.day = day;
     this.clock.night = night;
+    this.hairRate = hairRate;
     this.motdSeconds = motdSeconds;
     const source = this.opts.nodes?.(hf, reg) ?? null;
     this.nodeField = source ? new NodeField(dims, reg, source) : null;

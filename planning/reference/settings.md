@@ -5,8 +5,8 @@ edit it by hand: change the catalogue and run the tool.
 
 A server is configured as ARK's is ([how](round5-settings.md), and [what the
 values mean](round5-game-ini.md)). Every setting an ARK dedicated server reads
-is listed here, 621 of them: 257 take effect,
-174 wait for a feature that is not built yet, and 190 have no meaning in this
+is listed here, 621 of them: 258 take effect,
+173 wait for a feature that is not built yet, and 190 have no meaning in this
 engine. A setting that does not take effect is still read, checked and
 reported when the server starts.
 
@@ -252,6 +252,7 @@ the admin's settings page may change a setting without a restart.
 | `FuelConsumptionIntervalMultiplier` | 1 | How long a piece of fuel burns. Higher is longer. *Direction taken from the name; the reference gives none.* | yes |
 | `ConfigOverrideItemCraftingCosts` | none | What a thing is made of: `(ItemClassString="core:hatchet",BaseCraftingResourceRequirements=((ResourceItemTypeString="core:thatch",BaseResourceRequirement=1.0,bCraftingRequireExactResourceType=false),…))`. | yes; clients are told |
 | `ConfigOverrideItemMaxQuantity` | none | One thing's stack size: `(ItemClassString="core:arrow_stone",Quantity=(MaxItemQuantity=543,bIgnoreMultiplier=True))`. | yes; clients are told |
+| `HairGrowthSpeedMultiplier` | 1 | How fast hair and beards grow. Higher is faster; 0 keeps them as cut. At 1, about a stage a day. *Ascended's default is 0. Changed while running, every head is grown again from its last cut at the new rate.* | yes; clients are told |
 | `SupplyCrateLootQualityMultiplier` | 1 | Quality of what supply drops hold, from 1 to 5: every quality band of the drop book, and of ConfigOverrideSupplyCrateItems, is multiplied by it. | yes |
 | `bDisableLootCrates` | False | No supply drops: the drop book's circuits call none. One called from the console or the admin page still comes. | yes |
 | `ConfigOverrideSupplyCrateItems` | none | What a supply drop holds, in ARK's own form, a crate to an entry: `(SupplyCrateClassString="SupplyCrate_Level25_C",MinItemSets=1,MaxItemSets=2,ItemSets=((MinNumItems=1,MaxNumItems=2,ItemEntries=((EntryWeight=1,ItemClassStrings=("core:bow"),ItemsWeights=(1),MinQuantity=1,MaxQuantity=1,MinQuality=1,MaxQuality=2,ChanceToBeBlueprintOverride=0.25))))))`. The crate's level picks the tier (the highest that opens at or under it), `_Double` its ringed drops, and the table replaces the drop book's for every class of that tier. *The admin page shows such a tier's tables locked, and can copy them into the drop book.* | yes |
@@ -437,7 +438,6 @@ what is built next.
 | `CropGrowthSpeedMultiplier` | 1 | How fast crops grow. Higher is faster. | Game.ini |
 | `CropDecaySpeedMultiplier` | 1 | How fast crops wither. Higher is slower. | Game.ini |
 | `PoopIntervalMultiplier` | 1 | Time between droppings. Higher is longer. | Game.ini |
-| `HairGrowthSpeedMultiplier` | 1 | How fast hair grows. Higher is faster. *Ascended's default is 0.* | Game.ini |
 
 ### Loot: supply crates, fishing, quality, item stat clamps, custom recipes
 

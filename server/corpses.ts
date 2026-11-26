@@ -27,7 +27,7 @@ import { GROWN, growthStep, leftAtPeriod, youngScale } from "../shared/sim/breed
 import { Body as Mover, MF_OUT, MF_ROOTED, MODE_FLYER, MODE_WALK, STANCE_PRONE, STANCE_STAND, stepBody, type MoveParams } from "../shared/sim/character.ts";
 import { copyMoveSize } from "../shared/sim/move-size.ts";
 import { F_GROUNDED, F_PROP, GEAR_COUNT, GEAR_WORN } from "../shared/sim/entities.ts";
-import { ARMOR_SLOTS, Inventory } from "../shared/sim/items.ts";
+import { ARMOR_SLOTS, Inventory, WARDROBE_SLOTS } from "../shared/sim/items.ts";
 import { createBoat, type BoatState } from "../shared/sim/boat.ts";
 import { stepBoatWreck } from "../shared/sim/boat-wreck.ts";
 import { boatWorld } from "../shared/world/boat.ts";
@@ -48,6 +48,7 @@ import type { GameServer } from "./game.ts";
 import type { Items } from "./items.ts";
 import { XP_HARVEST, type Progression } from "./progression.ts";
 import { part, type EntityRecord, type Records } from "./records.ts";
+import { grownLook } from "./people/look.ts";
 import { saved } from "./saved.ts";
 import type { Lists } from "./settings/lists.ts";
 import type { Rules } from "./settings/rules.ts";
@@ -172,6 +173,13 @@ const HUMAN_SHAPE = { skel: HUMAN, ragdoll: HUMAN_RAGDOLL };
 
 /** The gear a survivor's body is drawn in: what it wore as it died, with nothing in hand, as the entity's gear lays it out. */
 const WORN = part(() => new Uint16Array(GEAR_COUNT));
+/** What a survivor's body wore in its wardrobe as it died: per wardrobe slot, the item, its edition and its dye. */
+const WARDROBE = part(() => new Uint32Array(WARDROBE_SLOTS * 3));
+
+/** The wardrobe a survivor's body was left wearing (WARDROBE), or undefined for one that wore none. */
+export function corpseWardrobe(rec: EntityRecord): Uint32Array | undefined {
+  return rec.part(WARDROBE);
+}
 
 const NO_MOVERS: readonly RagdollMover[] = [];
 export class Corpses {
@@ -263,10 +271,19 @@ export class Corpses {
     body.genome = rec.genome;
     // A survivor's body keeps its face and what it wore, though its things go to the cache. What it held falls with them.
     if (def.class === "survivor") {
-      const look = rec.look ?? ents.looks.get(e);
-      if (look) body.look = look.slice();
+      // Its hair as grown when it fell, which grows no more.
+      const look = grownLook(rec, tick, world.hairRate) ?? ents.looks.get(e)?.slice();
+      if (look) body.look = look;
       const worn = rec.inv && rec.inv.armor >= 0 ? rec.inv.item.subarray(rec.inv.armor, rec.inv.armor + ARMOR_SLOTS) : null;
       if (worn?.some((id) => id !== 0)) body.own(WORN).set(worn, GEAR_WORN);
+      const inv = rec.inv, at = inv ? inv.wardrobe : -1;
+      for (let k = 0; inv && at >= 0 && k < WARDROBE_SLOTS; k++) {
+        if (inv.item[at + k] === 0) continue;
+        const kept = body.own(WARDROBE);
+        kept[k * 3] = inv.item[at + k]!;
+        kept[k * 3 + 1] = inv.editionOf(at + k);
+        kept[k * 3 + 2] = inv.dyeOf(at + k);
+      }
     }
     // A slot for each of the creature's and one for its saddle. Items.move sets each stack's spoil clock for where it now lies.
     // A survivor's things go to the cache Death leaves (server/death.ts), so its body carries none.
@@ -455,6 +472,7 @@ export class Corpses {
     if (rec.look) ents.setBodyLook(e, rec.look);
     const worn = rec.part(WORN);
     if (worn) ents.setGear(e, worn);
+    ents.setWardrobe(e, rec.part(WARDROBE) ?? null);
     ents.setYoung(e, sizeSpan(b.size), 0);
     records.entOf.set(rec.pid, e);
     this.byEnt.set(e, b);
@@ -975,6 +993,38 @@ saved({
     for (let k = GEAR_WORN; k < GEAR_COUNT; k++) {
       const v = r.varint();
       worn[k] = v === 0 ? 0 : (from.toRuntime[v] ?? 0);
+    }
+  },
+});
+
+/** What a survivor's body wore in its wardrobe (WARDROBE): each slot's item, edition and dye. */
+saved({
+  name: "corpse-wardrobe",
+  has: (rec) => rec.part(WARDROBE) !== undefined,
+  write(rec, w, to) {
+    const kept = rec.part(WARDROBE)!;
+    w.varint(WARDROBE_SLOTS);
+    for (let k = 0; k < WARDROBE_SLOTS; k++) {
+      const item = kept[k * 3]!;
+      w.varint(item === 0 ? 0 : to.toSaved[item]!);
+      w.varint(item === 0 ? 0 : kept[k * 3 + 1]!);
+      w.varint(item === 0 ? 0 : kept[k * 3 + 2]!);
+    }
+  },
+  read(rec, r, from) {
+    const kept = rec.own(WARDROBE);
+    // Saved with its slot count, so a build with more or fewer slots reads what it can.
+    const slots = r.varint();
+    for (let k = 0; k < slots; k++) {
+      const v = r.varint();
+      // A garment this build lacks is not drawn.
+      const item = v === 0 ? 0 : (from.toRuntime[v] ?? 0);
+      const edition = r.varint();
+      const dye = r.varint();
+      if (k >= WARDROBE_SLOTS) continue;
+      kept[k * 3] = item;
+      kept[k * 3 + 1] = item === 0 ? 0 : edition;
+      kept[k * 3 + 2] = item === 0 ? 0 : dye;
     }
   },
 });

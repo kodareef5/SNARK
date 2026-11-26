@@ -66,3 +66,13 @@ listed nowhere, and its server list shows only its cluster. The game enforces it
 it too. The file is beside the save (`<save>.directory.sqlite`), or `directory.sqlite` in a cluster's folder, which its
 worlds share. Its operator keeps a world out of it for good with `bun server/directory.ts <file> hide <address>`;
 `bun server/directory.ts <file>` lists them all.
+
+## The person stage
+
+`person-stage.html` draws one person with the game's renderer on a plain floor, for the admin pages that hold it in an
+iframe. It takes messages only from its parent on its own origin: a look, gear, a wardrobe, a print picture, a pose, an
+hour, a framing, and a request for a picture, which it answers with a PNG. Their shapes are in
+`shared/people/stage.ts`, which the stage and the pages both import. What it holds of them is
+`client/core/studio/person.ts`. Garments and prints are held and answered but not drawn until their cuts and the print
+array are built. `bun tools/people/stage-drive.ts` works it in headless Chrome and saves pictures under
+`artifacts/people/stage/`.

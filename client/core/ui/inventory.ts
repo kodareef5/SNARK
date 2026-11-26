@@ -15,7 +15,7 @@ import type { Registry } from "../../../shared/content/registry.ts";
 import type { Screen, ScreenCtx } from "./screen.ts";
 import { RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_FULL, RESULT_NO_SUPPORT, RESULT_NOT_YOURS, RESULT_OBSTRUCTED, RESULT_OK, RESULT_SHORT, BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_DETACH, CMD_DROP, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_UNLOAD, CMD_FEED, CMD_ORDER, ORDER_FOLLOW, ORDER_LEVEL, ORDER_MATE, ORDER_STANCE, ORDER_STAY, ORDER_UNMATE, ORDER_UNSADDLE, ORDER_WANDER, ORDER_YOURS, CMD_USE, CMD_CRAFT_BLUEPRINT, CMD_VEHICLE, VEHICLE_REFUEL, VEHICLE_REPAIR, VEHICLE_RECOVER, VEHICLE_FLIP, VEHICLE_PULL } from "../../../shared/net/protocol.ts";
 import { VEHICLE_FUEL_PER_GASOLINE, VEHICLE_REPAIR_BILL, VEHICLE_REPAIR_STEP } from "../../../shared/sim/vehicle-maintenance.ts";
-import { ARMOR_SLOTS, FLAG_BLUEPRINT, HOTBAR_SLOTS, QUALITY_MUL, QUALITY_NAMES, blueprintCost, type Inventory } from "../../../shared/sim/items.ts";
+import { ARMOR_SLOTS, FLAG_BLUEPRINT, FLAG_ON, HOTBAR_SLOTS, QUALITY_MUL, QUALITY_NAMES, WARDROBE_NAMES, WARDROBE_SLOTS, blueprintCost, fitsSlot, type Inventory } from "../../../shared/sim/items.ts";
 import { RemoteSample, type ClientSession } from "../session.ts";
 import { K_BUTTON, K_PANEL, fitText, lineHeight, wrapText, type UiFrame } from "./nodes.ts";
 import { KEY_STATION_PANEL, KEY_STATION_SLOTS, KEY_STATION_VIEW, StationPanel } from "./station.ts";
@@ -60,7 +60,7 @@ const SERVICE_REFUSAL: Readonly<Partial<Record<number, string>>> = {
 
 /** Rows of the open container shown at once. */
 const OPEN_ROWS = 6;
-/** Labels of the hotbar and armor rows, and the four buttons that act on the picked-up stack. */
+/** Labels of the hotbar, armor and wardrobe rows, and the four buttons that act on the picked-up stack. */
 export const KEY_INV_ROW_LABEL = 280;
 export const KEY_INV_ACTION = 284;
 const ACTIONS: readonly string[] = ["Drop", "Repair", "Unload", "Detach"];
@@ -84,6 +84,8 @@ export const KEY_INV_USE = 2905;
 export const KEY_INV_HALF = 2906;
 /** On a box that is only taken from (a supply drop's capsule): everything it holds, into the bag. */
 export const KEY_OPEN_TAKE_ALL = 2907;
+/** The dye swatches of wardrobe slot `k`: three keys from KEY_INV_DYE + 3 * k, one a colour. */
+export const KEY_INV_DYE = 2908;
 /** A slot's colour by quality: none for primitive, then green, blue, purple, gold and cyan, as ARK's tiers read. */
 const QUALITY_TINT: readonly number[] = [-1, 0x3f7a42, 0x31579a, 0x6c4290, 0x8f7426, 0x2b8790];
 
@@ -105,7 +107,7 @@ export class InventoryScreen implements Screen {
   readonly focusNav = true;
   private readonly card = new EquipmentCard();
   private lastItem = -1;
-  readonly bands = [{ from: CARD, count: 100 }, { from: KEY_OPEN_ORDER, count: KEY_OPEN_SLOT + 300 - KEY_OPEN_ORDER }, { from: KEY_STATION_PANEL, count: KEY_STATION_SLOTS + 100 - KEY_STATION_PANEL }, { from: KEY_VEHICLE_SERVICE, count: KEY_OPEN_TAKE_ALL + 1 - KEY_VEHICLE_SERVICE }];
+  readonly bands = [{ from: CARD, count: 100 }, { from: KEY_OPEN_ORDER, count: KEY_OPEN_SLOT + 300 - KEY_OPEN_ORDER }, { from: KEY_STATION_PANEL, count: KEY_STATION_SLOTS + 100 - KEY_STATION_PANEL }, { from: KEY_VEHICLE_SERVICE, count: KEY_INV_DYE + 3 * WARDROBE_SLOTS - KEY_VEHICLE_SERVICE }];
   open = false;
   /** Take all, while it is still asking for stacks. */
   readonly taking = new TakeAll();
@@ -320,12 +322,14 @@ export class InventoryScreen implements Screen {
     const fromBox = this.heldBox;
     const from = this.held;
     const src = this.box(session, fromBox);
+    // A slot that does not take the stack keeps it picked up, as the server would refuse the move.
+    if (src && !(fromBox === box && from === slot) && this.refuses(session, fromBox, from, box, slot)) return;
     this.held = -1;
     if (!src || (fromBox === box && from === slot) || src.item[from] === 0) return;
     const count = this.half ? Math.max(1, src.count[from]! >> 1) : 0;
     // Out of a box that is only taken from, a stack cannot change places with another: put down on one it does not join,
     // it goes to the first free slot of the bag.
-    if (fromBox === BOX_OPEN && box === BOX_SELF && session.open?.takeOnly && inv.item[slot] !== 0 && (inv.item[slot] !== src.item[from] || inv.quality[slot] !== src.quality[from] || inv.flags[slot] !== src.flags[from])) {
+    if (fromBox === BOX_OPEN && box === BOX_SELF && session.open?.takeOnly && inv.item[slot] !== 0 && (inv.item[slot] !== src.item[from] || inv.quality[slot] !== src.quality[from] || inv.flags[slot] !== src.flags[from] || !inv.sameStyle(slot, src, from))) {
       const free = inv.free();
       if (free >= 0) slot = free;
     }
@@ -348,6 +352,23 @@ export class InventoryScreen implements Screen {
       w.u16(count);
       w.u16(src.item[from]!);
     });
+  }
+
+  /**
+   * Whether a stack moved from `from` of `fromBox` to `slot` of `box` breaks the slot rules the server moves by (fitsSlot):
+   * it does not fit there, or what lies there would swap back into a slot that does not take it.
+   */
+  private refuses(session: ClientSession, fromBox: number, from: number, box: number, slot: number): boolean {
+    const reg = this.registry, a = this.box(session, fromBox), b = this.box(session, box);
+    if (!reg || !a || !b || from >= a.cap || slot >= b.cap || a.item[from] === 0) return false;
+    const item = a.item[from]!, flags = a.flags[from]! & ~FLAG_ON, other = b.item[slot]!;
+    if (!fitsSlot(b, slot, item, reg, flags)) return true;
+    // A loaded round or a fitted part put down on a weapon loads or fits it, and never swaps.
+    if (fromBox === BOX_SELF && box === BOX_SELF) {
+      const weapon = (reg.defs[other] as ItemDef | null)?.weapon, what = reg.ids[item] ?? "";
+      if (weapon?.ammo?.includes(what) || weapon?.fits?.includes(what)) return false;
+    }
+    return other !== 0 && (other !== item || b.flags[slot] !== flags) && !fitsSlot(a, from, other, reg, b.flags[slot]!);
   }
 
   /** Takes the stack in `slot` of the open box into the first free slot of the bag that `taken` does not hold. False with no room. */
@@ -426,7 +447,10 @@ export class InventoryScreen implements Screen {
     const rows = (n: number): number => Math.ceil(n / cols) * (CELL + GAP);
     // Own slots are the bag, then the hotbar and the armor if the inventory has them, each under a label.
     const tail = own.hotbar >= 0;
-    const tailH = tail ? infoH * 2 + rows(HOTBAR_SLOTS) + rows(ARMOR_SLOTS) + 4 : 0;
+    const clothes = own.wardrobe >= 0;
+    // The wardrobe shares the armor's row where the row holds both, and takes a row of its own under a label where not.
+    const besideArmor = clothes && cols >= ARMOR_SLOTS + WARDROBE_SLOTS;
+    const tailH = tail ? infoH * 2 + rows(HOTBAR_SLOTS) + rows(ARMOR_SLOTS) + 4 + (clothes && !besideArmor ? infoH + rows(WARDROBE_SLOTS) : 0) : 0;
     const actionH = tail ? 28 : 0;
     const ownH = titleH + rows(own.bag) + tailH + infoH + actionH + PAD * 2 + 6;
     this.pageSize = cols * OPEN_ROWS;
@@ -505,21 +529,24 @@ export class InventoryScreen implements Screen {
       return;
     }
 
-    /** Slots `from` .. `from + n - 1` of `inv` as a grid starting at `top`. */
-    const grid = (inv: Inventory, which: number, base: number, top: number, from: number, n: number): void => {
+    /** Slots `from` .. `from + n - 1` of `inv` as a grid starting at `top`, its first cell in column `at`. */
+    const grid = (inv: Inventory, which: number, base: number, top: number, from: number, n: number, at = 0): void => {
       for (let i = 0; i < n; i++) {
         const s = from + i;
-        const x = x0 + PAD + (i % cols) * (CELL + GAP);
-        const yy = top + Math.floor(i / cols) * (CELL + GAP);
+        const x = x0 + PAD + ((at + i) % cols) * (CELL + GAP);
+        const yy = top + Math.floor((at + i) / cols) * (CELL + GAP);
         const inHand = which === BOX_SELF && inv.hotbar >= 0 && s === inv.hotbar + session.held;
         const key = base + (which === BOX_OPEN ? i : s) * 3;
         const cell = f.add(key, K_BUTTON, x, yy, CELL, CELL, this.held === s && this.heldBox === which ? S_SLOT_HELD : S_SLOT);
         cell.interactive = true;
         if (inHand && cell.style === S_SLOT) cell.tint = 0x5a6a7a;
         const item = inv.item[s]!;
-        const place = which === BOX_SELF && inv.armor >= 0 && s >= inv.armor ? ARMOR_LABELS[s - inv.armor] : "";
+        const place = which !== BOX_SELF || inv.armor < 0 || s < inv.armor ? "" : s < inv.armor + ARMOR_SLOTS ? ARMOR_LABELS[s - inv.armor] : inv.wardrobe >= 0 && s < inv.wardrobe + WARDROBE_SLOTS ? WARDROBE_NAMES[s - inv.wardrobe] : "";
         cell.label = item ? itemLabel(reg, item) : place ? "Empty " + place + " slot" : "Empty slot";
-        if (item === 0) { cell.alpha = .27; continue; }
+        // With a stack picked up, a slot it may not go in is dimmed, and a click there does nothing.
+        const refused = this.held >= 0 && !(this.heldBox === which && this.held === s) && this.refuses(session, this.heldBox, this.held, which, s);
+        if (item === 0) { cell.alpha = refused ? .12 : .27; continue; }
+        if (refused) cell.alpha = .45;
         // Quality shows as the cell's colour, and a blueprint as "BP" where a count would be.
         const bp = (inv.flags[s]! & FLAG_BLUEPRINT) !== 0;
         if (inv.quality[s]! > 0 && cell.style === S_SLOT && !inHand) cell.tint = QUALITY_TINT[inv.quality[s]!] ?? -1;
@@ -534,6 +561,16 @@ export class InventoryScreen implements Screen {
         // A stack shows its count. A weapon shows its loaded rounds.
         const number = bp ? "BP" : inv.count[s]! > 1 ? String(inv.count[s]) : def?.weapon?.ammo ? String(inv.loaded[s]) : "";
         f.text(key + 2, x + 2, yy + CELL - lineHeight(S_SLOT_TEXT), CELL - 4, S_SLOT_TEXT, number);
+        // What a worn garment is dyed shows as up to three swatches along its top, the item's own colours left out.
+        const k = which === BOX_SELF && inv.wardrobe >= 0 ? s - inv.wardrobe : -1;
+        const dye = k >= 0 && k < WARDROBE_SLOTS ? inv.dyeOf(s) : 0;
+        for (let j = 0; dye !== 0 && j < 3; j++) {
+          const colour = (dye >>> (8 * j)) & 0xff;
+          if (colour === 0) continue;
+          const chip = f.add(KEY_INV_DYE + 3 * k + j, K_PANEL, x + 3 + j * 10, yy + 3, 8, 8, S_SWATCH);
+          chip.label = `dye ${j + 1}: colour ${colour}`;
+          if (palette) chip.tint = (palette[colour * 4]! << 16) | (palette[colour * 4 + 1]! << 8) | palette[colour * 4 + 2]!;
+        }
       }
     };
     const fit = (text: string): string => fitText(text, w - PAD * 2, S_TITLE);
@@ -646,10 +683,20 @@ export class InventoryScreen implements Screen {
       top += infoH;
       grid(own, BOX_SELF, KEY_INV_SLOT, top, own.hotbar, HOTBAR_SLOTS);
       top += rows(HOTBAR_SLOTS);
-      f.text(KEY_INV_ROW_LABEL + 1, x0 + PAD, top, w - PAD * 2, S_LABEL, "Worn");
+      const half = ARMOR_SLOTS * (CELL + GAP);
+      f.text(KEY_INV_ROW_LABEL + 1, x0 + PAD, top, besideArmor ? half - GAP : w - PAD * 2, S_LABEL, "Worn");
+      if (besideArmor) f.text(KEY_INV_ROW_LABEL + 2, x0 + PAD + half, top, w - PAD * 2 - half, S_LABEL, "Clothes");
       top += infoH;
       grid(own, BOX_SELF, KEY_INV_SLOT, top, own.armor, ARMOR_SLOTS);
-      top += rows(ARMOR_SLOTS) + 4;
+      if (besideArmor) grid(own, BOX_SELF, KEY_INV_SLOT, top, own.wardrobe, WARDROBE_SLOTS, ARMOR_SLOTS);
+      top += rows(ARMOR_SLOTS);
+      if (clothes && !besideArmor) {
+        f.text(KEY_INV_ROW_LABEL + 2, x0 + PAD, top, w - PAD * 2, S_LABEL, "Clothes");
+        top += infoH;
+        grid(own, BOX_SELF, KEY_INV_SLOT, top, own.wardrobe, WARDROBE_SLOTS);
+        top += rows(WARDROBE_SLOTS);
+      }
+      top += 4;
       // A finger has no right or middle button: Use and Half stand first in the row, for the stack picked up.
       const extra = this.touch ? 2 : 0, across = ACTIONS.length + extra;
       const bw = (w - PAD * 2 - GAP * (across - 1)) / across;
@@ -683,6 +730,10 @@ export class InventoryScreen implements Screen {
         if (inv.ammo[shown] !== 0) info += `  ${inv.loaded[shown]} ${itemLabel(reg, inv.ammo[shown]!)}`;
         if (inv.attach[shown] !== 0) info += `  + ${itemLabel(reg, inv.attach[shown]!)}`;
       }
+      // An edition and a dye are named by number until editions have names.
+      const edition = inv.editionOf(shown), dye = inv.dyeOf(shown);
+      if (edition !== 0) info += `  edition ${edition}`;
+      if (dye !== 0) info += `  dyed ${dye & 0xff}/${(dye >>> 8) & 0xff}/${(dye >>> 16) & 0xff}`;
       // A vessel holds its water as its durability (server/use.ts).
       const holds = (reg.defs[item] as ItemDef | null)?.use?.holds;
       if (holds) info += `  water ${inv.dur[shown]}/${holds.water}`;

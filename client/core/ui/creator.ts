@@ -1,5 +1,6 @@
 // Edits a look (shared/anim/look.ts). The app draws it on a body at the spawn point from `look` and `turn`.
-// Nothing is sent until "Create", which sends the look to the server once.
+// Nothing is sent until "Create", which sends the look to the server once. Offered a remake (OWN_REMAKE), it opens on the
+// survivor's own look, its hair as grown, and sends the remake or keeps the survivor as it is.
 
 import {
   BEARD_STYLES, HAIR_STYLES, LOOK_BEARD, LOOK_EYE_COLOR, LOOK_HAIR, LOOK_HAIR_COLOR, LOOK_SEX, LOOK_SKIN, REGIONS, REGION_COUNT, SEX_LABELS,
@@ -8,7 +9,8 @@ import {
 import { hashString } from "../../../shared/hash.ts";
 import { EYE_BASE, EYE_COLORS, HAIR_BASE, HAIR_COLORS, SKIN_BASE, SKIN_TONES } from "../../../shared/pack/palette.ts";
 import { Rng } from "../../../shared/rng.ts";
-import { RESULT_OK, SESSION_CREATING } from "../../../shared/net/protocol.ts";
+import { RESULT_OK, SESSION_ALIVE, SESSION_CREATING } from "../../../shared/net/protocol.ts";
+import { bakeHair } from "../../../shared/people/hair.ts";
 import type { ClientSession } from "../session.ts";
 import { K_BUTTON, K_PANEL, lineHeight, type UiFrame } from "./nodes.ts";
 import type { Screen, ScreenCtx } from "./screen.ts";
@@ -26,6 +28,8 @@ export const KEY_CREATOR_RANDOM = 3014;
 export const KEY_CREATOR_RESET = 3015;
 export const KEY_CREATOR_CREATE = 3016;
 export const KEY_CREATOR_NOTE = 3017;
+/** Ends a remake with the survivor as it was. */
+export const KEY_CREATOR_KEEP = 3018;
 /** One key per swatch for skin, hair colour and eyes, then one per style for hair and beard. */
 export const KEY_CREATOR_SKIN = 3100;
 export const KEY_CREATOR_HAIR_COLOR = 3120;
@@ -48,6 +52,11 @@ const CHOSEN = 0x3f6ea8;
 
 const TAB_LOOK = 0;
 
+/** In the creator: making a new survivor, or remaking its own while alive. */
+export function inCreator(s: ClientSession | null): boolean {
+  return s !== null && (s.sessionState === SESSION_CREATING || (s.remaking === true && s.sessionState === SESSION_ALIVE));
+}
+
 export class CreatorScreen implements Screen {
   readonly name = "creator";
   readonly layer = "modal";
@@ -64,13 +73,22 @@ export class CreatorScreen implements Screen {
   private rng: Rng | null = null;
   /** The session it last read: the screen is up while that session is in the creator. */
   private session: ClientSession | null = null;
+  /** Open on a remake, whose look it was filled with. */
+  private remaking = false;
 
   isOpen(): boolean {
-    return this.session?.sessionState === SESSION_CREATING;
+    return inCreator(this.session);
   }
 
   absorb(c: ScreenCtx): void {
     this.session = c.session;
+    const remaking = inCreator(c.session) && c.session!.remaking;
+    if (remaking && !this.remaking && c.session!.ownLook) {
+      this.look.set(c.session!.ownLook);
+      bakeHair(this.look, c.session!.ownHairFrom, c.session!.serverTick, c.session!.hairRate);
+      this.refused = false;
+    }
+    this.remaking = remaking;
   }
 
   /** Only the session closes it, once the survivor is made. */
@@ -89,7 +107,7 @@ export class CreatorScreen implements Screen {
     const inner = w - PAD * 2;
     const lh = lineHeight(S_LABEL);
     f.add(KEY_CREATOR_PANEL, K_PANEL, x, y0, w, h, S_PANEL);
-    f.text(KEY_CREATOR_TITLE, x + PAD, y0 + PAD, inner, S_TITLE, `New survivor: ${name}`.slice(0, Math.floor(inner / (18 * 0.6))));
+    f.text(KEY_CREATOR_TITLE, x + PAD, y0 + PAD, inner, S_TITLE, `${this.remaking ? "Remake" : "New survivor"}: ${name}`.slice(0, Math.floor(inner / (18 * 0.6))));
     let y = y0 + PAD + lineHeight(S_TITLE) + 6;
     const button = (key: number, bx: number, bw: number, text: string, chosen = false, bh = ROW): void => {
       const b = f.add(key, K_BUTTON, bx, y, bw, bh, S_BUTTON);
@@ -169,10 +187,16 @@ export class CreatorScreen implements Screen {
     button(KEY_CREATOR_RANDOM, x + PAD + (quarter + 4) * 2, quarter, "Random");
     button(KEY_CREATOR_RESET, x + PAD + (quarter + 4) * 3, quarter, "Reset");
     y += ROW + 6;
-    const create = f.add(KEY_CREATOR_CREATE, K_BUTTON, x + PAD, y, inner, 34, S_BUTTON);
-    create.text = "Create survivor";
+    const keep = this.remaking ? Math.floor(inner / 3) : 0;
+    const create = f.add(KEY_CREATOR_CREATE, K_BUTTON, x + PAD, y, inner - (keep > 0 ? keep + 4 : 0), 34, S_BUTTON);
+    create.text = this.remaking ? "Remake survivor" : "Create survivor";
     create.interactive = true;
     create.tint = 0x2f7a46;
+    if (keep > 0) {
+      const as = f.add(KEY_CREATOR_KEEP, K_BUTTON, x + PAD + inner - keep, y, keep, 34, S_BUTTON);
+      as.text = "Keep as is";
+      as.interactive = true;
+    }
   }
 
   /** Sets `refused` from the answer to the "Create" command. Other results are ignored. */
@@ -214,8 +238,9 @@ export class CreatorScreen implements Screen {
     } else if (key === KEY_CREATOR_RESET) defaultLook(look);
     else if (key === KEY_CREATOR_CREATE) {
       this.refused = false;
-      this.sent = session.create(look);
-    } else if (
+      this.sent = this.remaking ? session.remake(look) : session.create(look);
+    } else if (key === KEY_CREATOR_KEEP && this.remaking) this.sent = session.remake(null);
+    else if (
       !pick(KEY_CREATOR_SEX, SEX_LABELS.length, LOOK_SEX) &&
       !pick(KEY_CREATOR_SKIN, SKIN_TONES, LOOK_SKIN) &&
       !pick(KEY_CREATOR_HAIR_COLOR, HAIR_COLORS, LOOK_HAIR_COLOR) &&
