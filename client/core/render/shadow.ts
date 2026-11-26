@@ -1,9 +1,11 @@
 // Sun shadows as plain numbers: cascades over the near view, and which casters each cascade takes at which level.
 //
 // A cascade's square is fitted round the bounding sphere of its slice of the view. The sphere's size depends on the
-// lens and the splits alone, so turning the camera never changes a texel's size. The square moves only in whole texels
-// of a light space fixed to the world, so a world point keeps its place in its texel however the camera moves. All of
-// it is worked in double precision, and the matrices are made camera-relative at the end, as every other position is.
+// lens and the splits alone, so turning the camera never changes a texel's size. Each cascade keeps its centre as a
+// world point, which moves toward its sphere's only by whole texels and depth steps along the light space's axes, so a
+// world point keeps its place in its texel however the camera moves; when the sun turns, the centre stays put and the
+// grid turns about it, not about the world's origin. All of it is worked in double precision, and the matrices are made
+// camera-relative at the end, as every other position is.
 
 export const MAX_CASCADES = 4;
 /** Metres along the light that the box a cascade takes casters from is stretched toward the sun, at most. */
@@ -150,7 +152,7 @@ export class Cascades {
   readonly texel = new Float64Array(MAX_CASCADES);
   /** Texels a lookup's filter reaches either way: a tap's along each axis (shadowtext.ts `shadowKernel`). */
   blur = 1;
-  /** Per cascade: the centre of its square and depth range in the light space, whole texels and depth steps from the world's origin. */
+  /** Per cascade: the world point at the centre of its square and depth range, which moves only by whole texels and depth steps. */
   readonly centre = new Float64Array(MAX_CASCADES * 3);
   /** Per cascade: the sphere round its slice, camera-relative x, y, z and radius. A pixel takes the finest cascade whose sphere holds it. */
   readonly sphere = new Float64Array(MAX_CASCADES * 4);
@@ -188,14 +190,10 @@ export class Cascades {
     const fx = Math.sin(view.yaw) * cp;
     const fy = Math.sin(view.pitch);
     const fz = Math.cos(view.yaw) * cp;
-    const cu = view.x * b[0]! + view.y * b[1]! + view.z * b[2]!;
-    const cv = view.x * b[3]! + view.y * b[4]! + view.z * b[5]!;
-    const cw = view.x * b[6]! + view.y * b[7]! + view.z * b[8]!;
-    const fu = fx * b[0]! + fy * b[1]! + fz * b[2]!;
-    const fv = fx * b[3]! + fy * b[4]! + fz * b[5]!;
-    const fw = fx * b[6]! + fy * b[7]! + fz * b[8]!;
     const tanY = Math.tan(view.fovY / 2);
     const size = setup.size;
+    // The first fit moves each centre out from the world's origin; a jump is the same, by however many texels it takes.
+    const at = this.centre;
     for (let i = 0; i < n; i++) {
       sliceSphere(this.splits[i]!, this.splits[i + 1]!, tanY, view.aspect, this.slice);
       const c = this.slice[0]!;
@@ -205,28 +203,38 @@ export class Cascades {
       this.sphere[s + 1] = fy * c;
       this.sphere[s + 2] = fz * c;
       this.sphere[s + 3] = r;
-      // Snapping moves the centre half a texel at most, so the square is that much wider than the sphere.
+      // Snapping leaves the centre half a texel off the sphere's at most, so the square is that much wider than the sphere.
       const last = i === n - 1 && setup.everyOther;
       const h = (r * (last ? 1 + KEPT_MARGIN : 1) * size) / (size - 1);
-      const su = cu + fu * c;
-      const sv = cv + fv * c;
-      const sw = cw + fw * c;
       const o = i * 3;
-      const at = this.centre;
-      const keep = last && (frame & 1) === 1 && !turned && this.half[i] === h && Math.abs(su - at[o]!) + r <= h && Math.abs(sv - at[o + 1]!) + r <= h && Math.abs(sw - at[o + 2]!) + r <= h;
+      // From the centre to the sphere's, along the light space's axes.
+      const dx = view.x + fx * c - at[o]!;
+      const dy = view.y + fy * c - at[o + 1]!;
+      const dz = view.z + fz * c - at[o + 2]!;
+      const du = dx * b[0]! + dy * b[1]! + dz * b[2]!;
+      const dv = dx * b[3]! + dy * b[4]! + dz * b[5]!;
+      const dw = dx * b[6]! + dy * b[7]! + dz * b[8]!;
+      const keep = last && (frame & 1) === 1 && !turned && this.half[i] === h && Math.abs(du) + r <= h && Math.abs(dv) + r <= h && Math.abs(dw) + r <= h;
       if (!keep) {
         const t = (2 * h) / size;
         const d = (2 * h) / DEPTH_STEPS;
-        at[o] = Math.round(su / t) * t;
-        at[o + 1] = Math.round(sv / t) * t;
-        at[o + 2] = Math.round(sw / d) * d;
+        const mu = Math.round(du / t) * t;
+        const mv = Math.round(dv / t) * t;
+        const mw = Math.round(dw / d) * d;
+        // A move rounds by about 1e-12 m, which a session's moves cannot add up to a visible slide.
+        at[o] = at[o]! + mu * b[0]! + mv * b[3]! + mw * b[6]!;
+        at[o + 1] = at[o + 1]! + mu * b[1]! + mv * b[4]! + mw * b[7]!;
+        at[o + 2] = at[o + 2]! + mu * b[2]! + mv * b[5]! + mw * b[8]!;
         this.drawn |= 1 << i;
       }
       this.half[i] = h;
       this.texel[i] = (2 * h) / size;
-      const ru = (this.rel[o] = at[o]! - cu);
-      const rv = (this.rel[o + 1] = at[o + 1]! - cv);
-      const rw = (this.rel[o + 2] = at[o + 2]! - cw);
+      const ex = at[o]! - view.x;
+      const ey = at[o + 1]! - view.y;
+      const ez = at[o + 2]! - view.z;
+      const ru = (this.rel[o] = ex * b[0]! + ey * b[1]! + ez * b[2]!);
+      const rv = (this.rel[o + 1] = ex * b[3]! + ey * b[4]! + ez * b[5]!);
+      const rw = (this.rel[o + 2] = ex * b[6]! + ey * b[7]! + ez * b[8]!);
       const m = this.matrix;
       const k = i * 16;
       const inv = 1 / h;

@@ -16,6 +16,10 @@ import { FRAME, FRAME_FLOATS, MAX_CASCADES } from "../../client/core/render/pack
 import { PROGRAMS, UNIT } from "../../client/core/render/programs.ts";
 import { Scene } from "../../client/core/render/scene.ts";
 import "../../client/core/render/city-late.ts";
+import { Cascades } from "../../client/core/render/shadow.ts";
+import { zoomed } from "../../client/core/optics.ts";
+import { FOV_MAX } from "../../client/core/settings.ts";
+import { Rng } from "../../shared/rng.ts";
 import { comparedLookup } from "../../client/core/render/shadowfilter.ts";
 import { DEPTH_VERTEX, EDGE, axisWeights, clampDepth, handOver, shadowBytes, shadowCascade, shadowKernel } from "../../client/core/render/shadowtext.ts";
 import { skyFrame, theSky } from "../../client/core/render/sky.ts";
@@ -55,6 +59,52 @@ test("over the last tenth of its sphere a pixel hands over to the next cascade i
   expect(shadowCascade(0, 0, 68, spheres, 2, 0, 0).fade).toBeCloseTo((share(68, 1) - 1 + EDGE) / EDGE, 9);
   expect(shadowCascade(0, 0, 71, spheres, 2, 0, 0).cascade).toBe(-1);
   expect(shadowCascade(0, 0, 7, spheres, 0, 0, 0).cascade).toBe(-1);
+});
+
+test("through an 8x scope all 16 pattern places hold a point 8.6 m ahead", () => {
+  const cam = new Camera();
+  [cam.x, cam.y, cam.z, cam.yaw, cam.pitch] = [3000, 1.7, 3000, 0.4, -0.05];
+  cam.fovY = zoomed((70 * Math.PI) / 180, 8);
+  const c = new Cascades();
+  c.fit(cam, 0.3, 0.8, 0.52, tierOf("high").shadows, 0);
+  const cp = Math.cos(cam.pitch);
+  const [x, y, z] = [Math.sin(cam.yaw) * cp * 8.6, Math.sin(cam.pitch) * 8.6, Math.cos(cam.yaw) * cp * 8.6];
+  const share = (k: number): number => Math.hypot(x - c.sphere[k * 4]!, y - c.sphere[k * 4 + 1]!, z - c.sphere[k * 4 + 2]!) / c.sphere[k * 4 + 3]!;
+  const held = Array.from({ length: 16 }, (_, i) => shadowCascade(x, y, z, c.sphere, c.count, i & 3, i >> 2).cascade).filter((k) => k >= 0 && share(k) < 1);
+  expect(held.length).toBe(16);
+});
+
+test("on every lens and lit tier a pixel takes only a cascade whose sphere holds it", () => {
+  const rng = new Rng(41);
+  const base = (70 * Math.PI) / 180;
+  const lenses = [base, zoomed(base, 2), zoomed(base, 4), zoomed(base, 8), (FOV_MAX * Math.PI) / 180];
+  const c = new Cascades();
+  let checked = 0;
+  for (const name of ["medium", "high", "ultra"]) {
+    for (const fovY of lenses) {
+      const cam = new Camera();
+      [cam.x, cam.y, cam.z, cam.yaw, cam.pitch, cam.fovY] = [rng.range(0, 8192), 1.7, rng.range(0, 8192), rng.range(-Math.PI, Math.PI), rng.range(-0.5, 0.5), fovY];
+      c.fit(cam, 0.3, 0.8, 0.52, tierOf(name).shadows, 0);
+      const cp = Math.cos(cam.pitch);
+      const f = [Math.sin(cam.yaw) * cp, Math.sin(cam.pitch), Math.cos(cam.yaw) * cp];
+      const share = (k: number, p: number[]): number => Math.hypot(p[0]! - c.sphere[k * 4]!, p[1]! - c.sphere[k * 4 + 1]!, p[2]! - c.sphere[k * 4 + 2]!) / c.sphere[k * 4 + 3]!;
+      for (let n = 0; n < 400; n++) {
+        // Along the view and off it, out to past the farthest sphere.
+        const d = c.splits[c.count]! * 1.2 * rng.float() ** 2;
+        const aside = d * Math.tan(fovY / 2) * rng.range(-2, 2);
+        const up = d * Math.tan(fovY / 2) * rng.range(-1.2, 1.2);
+        const p = [f[0]! * d + Math.cos(cam.yaw) * aside, f[1]! * d + up, f[2]! * d - Math.sin(cam.yaw) * aside];
+        const some = Array.from({ length: c.count }, (_, k) => share(k, p) < 1).some(Boolean);
+        for (let i = 0; i < 16; i++) {
+          const k = shadowCascade(p[0]!, p[1]!, p[2]!, c.sphere, c.count, i & 3, i >> 2).cascade;
+          if (k < 0) expect(some).toBe(false);
+          else expect(share(k, p)).toBeLessThan(1);
+          checked++;
+        }
+      }
+    }
+  }
+  expect(checked).toBe(3 * 5 * 400 * 16);
 });
 
 test("the lit tiers look the sun's shadow up as their tier says, with the same texts down the governor's steps, a device that compares hard in the shader, and casters keep the view's heights", () => {

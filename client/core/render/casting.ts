@@ -51,7 +51,8 @@ export class Casting {
   /** Metres from the camera past which nothing casts into a cascade: as far as a cascade's cube reaches, and MAX_REACH on. */
   castRange = 0;
   readonly sunAt = new Float64Array(3);
-  readonly pairs = new Uint8Array(MAX_CASCADES * 2);
+  /** A mesh's level and mask pairs from `Cascades.entries`: one for each cascade and one for the lamp's map, at most. */
+  readonly pairs = new Uint8Array((MAX_CASCADES + 1) * 2);
   /** The camera of the frame being built. */
   camera: Camera | null = null;
   /**

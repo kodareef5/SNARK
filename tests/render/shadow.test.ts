@@ -4,6 +4,7 @@ import { expect, test } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { Cascades, DEPTH_STEPS, MAX_REACH, casterLevel, reach, sliceSphere, splitDepths, type ShadowSetup } from "../../client/core/render/shadow.ts";
+import { SUN_STEP, SUN_TOP, hourOfSun, sunDirection, sunTravel } from "../../client/core/render/sky.ts";
 import { Rng } from "../../shared/rng.ts";
 
 const MEDIUM: ShadowSetup = tierOf("medium").shadows;
@@ -193,6 +194,88 @@ test("a world point keeps its place in its shadow texel over 100 sub-texel camer
     expect(loose).toBeGreaterThan(0.3);
   }
   if (process.env.SHADOW_REPORT) console.log(report.join("\n"));
+});
+
+test("one step of the sun moves no point in a cascade a tenth of a texel, 8 km out", () => {
+  const rng = new Rng(29);
+  const off = (d: number): number => Math.abs(d - Math.round(d));
+  const report: string[] = [];
+  for (const s of [MEDIUM, HIGH, ULTRA]) {
+    let worst = 0;
+    for (const height of [4, 30, 55, SUN_TOP - 0.01]) {
+      for (const evening of [false, true]) {
+        const hour = hourOfSun(height, evening);
+        const later = hour + SUN_STEP / 15;
+        expect(sunTravel(later) - sunTravel(hour)).toBeCloseTo(SUN_STEP, 9);
+        const [a, b] = [new Float64Array(3), new Float64Array(3)];
+        sunDirection(hour, a);
+        sunDirection(later, b);
+        const c = new Cascades();
+        const cam = camera(8000, 31.4, 8000, rng.range(-Math.PI, Math.PI), -0.2);
+        c.fit(cam, a[0]!, a[1]!, a[2]!, s, 0);
+        // The sphere's centre, its point nearest the camera, and points just inside its edge every way.
+        const points: number[][] = [];
+        for (let i = 0; i < c.count; i++) {
+          const [x, y, z, r] = Array.from(c.sphere.subarray(i * 4, i * 4 + 4)) as [number, number, number, number];
+          const out = Math.hypot(x, y, z);
+          const near = out < r ? 0 : 1 - (0.99 * r) / out;
+          points.push([i, x, y, z], [i, x * near, y * near, z * near]);
+          for (const k of [0, 3, 6]) for (const side of [-0.99, 0.99]) points.push([i, x + side * r * c.basis[k]!, y + side * r * c.basis[k + 1]!, z + side * r * c.basis[k + 2]!]);
+          for (let n = 0; n < 12; n++) {
+            const [p, q] = [rng.range(0, 2 * Math.PI), Math.acos(rng.range(-1, 1))];
+            points.push([i, x + 0.99 * r * Math.sin(q) * Math.cos(p), y + 0.99 * r * Math.cos(q), z + 0.99 * r * Math.sin(q) * Math.sin(p)]);
+          }
+        }
+        const before = points.map(([i, x, y, z]) => texelOf(c, i!, s.size, x!, y!, z!));
+        c.fit(cam, b[0]!, b[1]!, b[2]!, s, 1);
+        points.forEach(([i, x, y, z], p) => {
+          const [u, v] = texelOf(c, i!, s.size, x!, y!, z!);
+          worst = Math.max(worst, off(u - before[p]![0]!), off(v - before[p]![1]!));
+        });
+      }
+    }
+    report.push(`${s.cascades}x${s.size}/${s.distance}: ${worst.toFixed(4)} texel`);
+    expect(worst).toBeLessThan(0.1);
+  }
+  if (process.env.SHADOW_REPORT) console.log(report.join("\n"));
+});
+
+test("after jumps of kilometres the cascades hold their slices and keep world texels", () => {
+  const rng = new Rng(31);
+  const off = (d: number): number => Math.abs(d - Math.round(d));
+  for (const s of SETUPS) {
+    const c = new Cascades();
+    const light = sun(41, 230);
+    const cam = camera(120, 20, 90, 0.3, -0.1);
+    c.fit(cam, ...light, s, 0);
+    // A world point far from every jump, whose place in each cascade's texels the snap must keep.
+    const mark = [4100.123, 7.7, 3900.456];
+    const place = (i: number): number[] => texelOf(c, i, s.size, mark[0]! - cam.x, mark[1]! - cam.y, mark[2]! - cam.z);
+    const start = Array.from({ length: c.count }, (_, i) => place(i));
+    let worst = 0, drift = 0;
+    for (let n = 1; n <= 2000; n++) {
+      if (n % 100 === 0) {
+        cam.x = rng.range(0, 8192);
+        cam.y = rng.range(-20, 400);
+        cam.z = rng.range(0, 8192);
+      } else {
+        cam.x += rng.range(-0.3, 0.3);
+        cam.z += rng.range(-0.3, 0.3);
+      }
+      cam.yaw += rng.range(-0.05, 0.05);
+      c.fit(cam, ...light, s, 2 * n);
+      for (let i = 0; i < c.count; i++) {
+        for (const [x, y, z] of sliceCorners(cam, c, i)) {
+          const [u, v, w] = texelOf(c, i, s.size, x!, y!, z!);
+          worst = Math.max(worst, Math.abs(u / s.size - 0.5), Math.abs(v / s.size - 0.5), Math.abs(w / DEPTH_STEPS - 0.5));
+        }
+        const [u, v, w] = place(i);
+        drift = Math.max(drift, off(u - start[i]![0]!), off(v - start[i]![1]!), off(w - start[i]![2]!));
+      }
+    }
+    expect(worst).toBeLessThanOrEqual(0.5 + 1e-9);
+    expect(drift).toBeLessThan(1e-5);
+  }
 });
 
 test("turning and moving leave every cascade's scale alone, and keep the matrices' offsets small enough for float32", () => {

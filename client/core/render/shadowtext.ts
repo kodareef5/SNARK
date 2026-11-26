@@ -92,7 +92,9 @@ export function handOver(x: number, y: number): number {
 
 /**
  * The cascade a camera-relative point takes at pixel (x, y), and how far its shadow has faded, from the frame's spheres
- * (x, y, z, radius each) and how many there are: -1 outside every sphere. The twin of the GLSL's choice.
+ * (x, y, z, radius each) and how many there are: -1 outside every sphere. Over the last tenth of its sphere the pattern
+ * hands it to the next cascade only where that one's sphere holds it too, which through a narrow lens it often does not.
+ * The twin of the GLSL's choice.
  */
 export function shadowCascade(px: number, py: number, pz: number, spheres: ArrayLike<number>, count: number, x: number, y: number): { cascade: number; fade: number } {
   const share = (i: number): number => Math.hypot(px - spheres[i * 4]!, py - spheres[i * 4 + 1]!, pz - spheres[i * 4 + 2]!) / spheres[i * 4 + 3]!;
@@ -100,7 +102,13 @@ export function shadowCascade(px: number, py: number, pz: number, spheres: Array
   let t = count > 0 ? share(0) : 1;
   while (t >= 1 && k + 1 < count) t = share(++k);
   if (t >= 1) return { cascade: -1, fade: 1 };
-  if (k + 1 < count && (t - 1 + EDGE) / EDGE > handOver(x, y)) t = share(++k);
+  if (k + 1 < count && (t - 1 + EDGE) / EDGE > handOver(x, y)) {
+    const next = share(k + 1);
+    if (next < 1) {
+      k++;
+      t = next;
+    }
+  }
   return { cascade: k, fade: k + 1 < count ? 0 : Math.min(1, Math.max(0, (t - 1 + EDGE) / EDGE)) };
 }
 
@@ -262,8 +270,11 @@ float mapShadow(vec3 rel, vec3 normal) {
   ivec2 q = ivec2(gl_FragCoord.xy) & 3;
   int order = ((q.x ^ q.y) & 1) * 8 + (q.y & 1) * 4 + (((q.x ^ q.y) >> 1) & 1) * 2 + ((q.y >> 1) & 1);
   if (k + 1 < uCascades && (t - ${g(1 - EDGE)}) / ${g(EDGE)} > (float(order) + 0.5) / 16.0) {
-    k++;
-    t = shadowShare(rel, k);
+    float next = shadowShare(rel, k + 1);
+    if (next < 1.0) {
+      k++;
+      t = next;
+    }
   }
   float fade = k + 1 < uCascades ? 0.0 : clamp((t - ${g(1 - EDGE)}) / ${g(EDGE)}, 0.0, 1.0);
   float scale = length(fCascades[k][0].xyz);

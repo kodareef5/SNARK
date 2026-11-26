@@ -7,6 +7,7 @@ import { Camera } from "../../client/core/render/camera.ts";
 import { DRAW_CUTOUT, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, MAX_CASTERS, SOURCE_MAP, SOURCE_WINDOW, TILE_CASTS, TRANSIENT_BUFFER, type FramePacket } from "../../client/core/render/packet.ts";
 import { Scene } from "../../client/core/render/scene.ts";
 import "../../client/core/render/city-late.ts";
+import { LAMP_BIT } from "../../client/core/render/lamp.ts";
 import { DEPTH_STEPS } from "../../client/core/render/shadow.ts";
 import { hourOfSun } from "../../client/core/render/sky.ts";
 import { moonCasts } from "../../client/core/render/surface.ts";
@@ -301,6 +302,20 @@ test("casters ask for nothing, name only what the card holds, and cut out a sect
   const last = on.flagged.at(-1)!;
   expect([first & (DRAW_TEXTURED | DRAW_TWO_SIDED), first & DRAW_CUTOUT]).toEqual([DRAW_TEXTURED | DRAW_TWO_SIDED, 0]);
   expect(last & DRAW_CUTOUT).toBe(DRAW_CUTOUT);
+});
+
+test("a mesh at five levels in four cascades and the lamp's map keeps all five pairs", () => {
+  const casting = world(tierOf("ultra")).scene.casting;
+  const c = casting.cascades;
+  const cam = new Camera();
+  [cam.x, cam.y, cam.z] = [500, 2, 500];
+  c.fit(cam, 0.3, 0.8, 0.52, tierOf("ultra").shadows, 0);
+  c.lampTexel = 0.0025;
+  c.drawn |= LAMP_BIT;
+  // Ultra's filters blur 2.4, 6.6, 19.8 and 80 cm, the lamp's 0.5 cm: a level each.
+  const n = c.entries(0b11111, [0, 0.004, 0.02, 0.06, 0.15, 0.5], 0b111111, casting.pairs);
+  const pairs = Array.from({ length: n }, (_, e) => [casting.pairs[e * 2], casting.pairs[e * 2 + 1]]);
+  expect(pairs).toEqual([[2, 0b0001], [3, 0b0010], [4, 0b0100], [5, 0b1000], [1, LAMP_BIT]]);
 });
 
 test("the siege scene fits the caster list on every lit tier, with none dropped", () => {
