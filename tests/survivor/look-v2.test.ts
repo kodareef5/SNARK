@@ -89,8 +89,8 @@ test("bytes past the body's shape change no bone stretch", () => {
 
 test("one region alone that fits keeps all of its stretch; all at once are eased", () => {
   const scales = new Float32Array(HUMAN_BONES * 3);
-  // Upper leg, Torso depth, Waist: each alone keeps its flesh within LIMB_SLACK.
-  for (const [r, bone, axis, amount] of [[13, 14, 0, 0.18], [18, 1, 2, 0.14], [20, 1, 0, 0.14]] as const) {
+  // Build alone keeps its flesh within LIMB_SLACK: the upper arm's girth and the spine's width.
+  for (const [r, bone, axis, amount] of [[21, 7, 1, 0.1], [21, 1, 0, 0.07]] as const) {
     const look = defaultLook();
     setRegion(look, r, 1);
     lookScales(look, scales);
