@@ -3,7 +3,7 @@
 // edit changed, and the page's lists as HTML. The store's state, the calls and the stage's wear are people.ts's.
 
 import { BROW_STYLES, COMPLEXIONS, HAIR_STYLES, LOOK_BYTES } from "../../../shared/anim/look.ts";
-import { REGION_KEYS, type PopulationDef, type Span } from "../../../shared/content/kinds/populations.ts";
+import { REGION_KEYS, type Outfit, type PopulationDef, type Span } from "../../../shared/content/kinds/populations.ts";
 import { POPULATION_OUTFITS_MAX, RECORD_NAME_MAX, WEAR_MAX, readPopulation, storePopulationId, type PartName, type PopulationDoc, type PopulationRef } from "../../../shared/people/doc.ts";
 import { partSeed, personFrom } from "../../../shared/people/person.ts";
 import { EYE_COLORS, HAIR_COLORS, SKIN_TONES } from "../../../shared/pack/palette.ts";
@@ -162,18 +162,18 @@ export function removeOutfit(doc: PopulationDoc, k: number): void {
   else mut(doc).outfits = now;
 }
 
-/** Puts a piece in outfit `k`, or takes it out; an outfit holds WEAR_MAX at most. */
+/** Puts a piece in outfit `k`, or takes it out with its dyes; an outfit holds WEAR_MAX at most. A piece put in keeps its own colour. */
 export function setPiece(doc: PopulationDoc, k: number, piece: string, on: boolean): void {
-  const now = (doc.outfits ?? []).map((o) => ({ wear: [...o.wear], weight: o.weight }));
-  const o = now[k];
+  const o = doc.outfits?.[k];
   if (!o) return;
-  o.wear = o.wear.filter((w) => w !== piece);
-  if (on && o.wear.length < WEAR_MAX) o.wear.push(piece);
-  mut(doc).outfits = now;
+  const kept = o.wear.map((w, i) => [w, o.dyes?.[i] ?? []] as const).filter(([w]) => w !== piece);
+  if (on && kept.length < WEAR_MAX) kept.push([piece, []]);
+  const now: Outfit = { wear: kept.map(([w]) => w), weight: o.weight, ...(o.dyes ? { dyes: kept.map(([, d]) => [...d]) } : {}) };
+  mut(doc).outfits = doc.outfits!.map((x, i) => (i === k ? now : x));
 }
 
 export function setOutfitWeight(doc: PopulationDoc, k: number, weight: number): void {
-  mut(doc).outfits = (doc.outfits ?? []).map((o, i) => (i === k ? { wear: [...o.wear], weight: Math.max(0.001, Math.min(1e6, Number.isFinite(weight) ? weight : 1)) } : o));
+  mut(doc).outfits = (doc.outfits ?? []).map((o, i) => (i === k ? { ...o, weight: Math.max(0.001, Math.min(1e6, Number.isFinite(weight) ? weight : 1)) } : o));
 }
 
 export function setLabel(doc: PopulationDoc, label: string): void {
@@ -182,12 +182,13 @@ export function setLabel(doc: PopulationDoc, label: string): void {
 
 // ---- The sheet ----
 
-/** One person on the sheet: its seed, look and which outfit it wears. */
+/** One person on the sheet: its seed, look and which outfit it wears, each piece's main colour (0 its own) with it. */
 export interface SheetPerson {
   readonly seed: number;
   readonly look: Uint8Array;
   readonly outfit: number;
   readonly wear: readonly string[];
+  readonly dyes: readonly number[];
 }
 
 /** The 24 seeds a sheet's `base` gives. */
@@ -197,7 +198,7 @@ export const sheetSeeds = (base: number): number[] => Array.from({ length: SHEET
 export function sheetOf(p: PopulationDef, seeds: readonly number[]): SheetPerson[] {
   return seeds.map((seed) => {
     const person = personFrom(seed, p, new Uint8Array(LOOK_BYTES));
-    return { seed, look: person.look, outfit: person.outfit, wear: person.outfit >= 0 ? (p.outfits?.[person.outfit]?.wear ?? []) : [] };
+    return { seed, look: person.look, outfit: person.outfit, wear: person.outfit >= 0 ? (p.outfits?.[person.outfit]?.wear ?? []) : [], dyes: person.dyes };
   });
 }
 
@@ -206,12 +207,12 @@ export function sheetChanges(was: readonly SheetPerson[], now: readonly SheetPer
   return now.map((p, i) => {
     const o = was[i];
     if (!o || o.seed !== p.seed) return { parts: ["sex", "figure", "body", "skin", "hair", "beard", "brows", "face"], wear: true };
-    return { parts: partsChanged(o.look, p.look), wear: o.wear.join(",") !== p.wear.join(",") };
+    return { parts: partsChanged(o.look, p.look), wear: o.wear.join(",") !== p.wear.join(",") || o.dyes.join(",") !== p.dyes.join(",") };
   });
 }
 
 /** A key a sheet picture is kept by: the look's bytes and what it wears. */
-export const pictureKey = (p: SheetPerson): string => `${Array.from(p.look, (b) => b.toString(16).padStart(2, "0")).join("")}|${p.wear.join(",")}`;
+export const pictureKey = (p: SheetPerson): string => `${Array.from(p.look, (b) => b.toString(16).padStart(2, "0")).join("")}|${p.wear.join(",")}|${p.dyes.join(",")}`;
 
 // ---- The page's lists as HTML ----
 

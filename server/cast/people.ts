@@ -11,6 +11,7 @@ import type { Registry } from "../../shared/content/registry.ts";
 import type { Bodies, PersonDoc, Revision, RevisedKind, WornDoc } from "../../shared/people/doc.ts";
 import { dyeNumber, partSeed, personFrom, populationsOf, sexOf, wardrobeFrom, wireNumber } from "../../shared/people/person.ts";
 import { Rng } from "../../shared/rng.ts";
+import { WARDROBE_SLOTS } from "../../shared/sim/items.ts";
 import type { Born } from "../../shared/sim/entities.ts";
 
 /** Facts a person keeps; past this the oldest unlocked go (the keeper's summaries keep what matters). */
@@ -59,48 +60,40 @@ function populationBy(ref: string | number, reg: Registry, store: CastStore | nu
 }
 
 const wornOf = (w: WornDoc | null): Worn | null => (w ? [w.garment, w.edition, dyeNumber(w.dye)] : null);
-const isGarment = (id: string, reg: Registry): boolean => (reg.garmentSlot[reg.index.get(id) ?? -1] ?? -1) >= 0;
-
-/** A role's pieces a body wears: all of them, but cloth where it wears a garment. Cloth stands in for clothes; armour stays. */
-function roleWear(wear: readonly string[], dressed: boolean, reg: Registry): readonly string[] {
-  if (!dressed) return wear;
-  return wear.filter((id) => {
-    const d = reg.defs[reg.index.get(id) ?? -1];
-    return !(d?.type === "item" && d.wear?.set === "cloth");
-  });
-}
 
 /**
  * The person a character's body is, from its seed and its look's population (an admin's choice of population first): of
  * its first name's sex where the catalogue knows it. What an admin chose takes its slots first: an admin outfit chosen for
- * the look, then an admin population's own outfit, armour or garments. The look's pieces fill the slots left, less its
- * cloth where a garment is worn. Null where no population it names is held.
+ * the look, then an admin population's own outfit. The look's own clothes, else its population's, fill the slots left,
+ * and the look's armour goes over them. Null where no population it names is held.
  */
 export function castPerson(c: Character, look: Look | undefined, cat: Catalogue, reg: Registry, store: CastStore | null = null, choice?: LookChoice) {
   let ref: string | number = CAST_POPULATION, by: { p: PopulationDef; rev: number } | undefined;
   for (const r of [choice?.population, look?.population, CAST_POPULATION]) if (!by && r !== undefined && (by = populationBy(r, reg, store))) ref = r;
   const number = by ? wireNumber(reg, ref) : undefined;
   if (!by || number === undefined) return null;
-  const p = by.p;
+  // Only the outfit stream reads the outfits, so the look's own leave its look as the population draws it.
+  const p = look?.outfits && !(typeof ref === "number" && by.p.outfits?.length) ? { ...by.p, outfits: look.outfits } : by.p;
   const wanted = cat.sexes?.[c.name.split(" ")[0]!];
   let seed = c.seed >>> 0;
   for (let k = 1; wanted !== undefined && k < SEX_TRIES && sexOf(seed, p) !== wanted; k++) seed = partSeed(c.seed, 0x100 + k);
   if (wanted !== undefined && sexOf(seed, p) !== wanted) seed = c.seed >>> 0;
   const person = personFrom(seed, p);
   const outfit = choice?.outfit !== undefined ? store?.latest("outfit", choice.outfit) : undefined;
-  const wardrobe = outfit ? wardrobeFrom(c.seed >>> 0, outfit.body).map(wornOf) : [];
-  const own = person.outfit >= 0 ? p.outfits![person.outfit]!.wear : null;
-  // A content population's outfit dresses only a look that wears nothing.
-  const chosen = typeof ref === "number" ? own ?? [] : [];
-  const role = look?.wear.length ? look.wear : typeof ref === "number" ? [] : own ?? [];
-  const wear = [...chosen, ...roleWear(role, wardrobe.some((w) => w) || chosen.some((id) => isGarment(id, reg)), reg)];
-  return { person, born: { seed, population: number, revision: by.rev } as Born, wear, wardrobe };
+  const wardrobe: (Worn | null)[] = outfit ? wardrobeFrom(c.seed >>> 0, outfit.body).map(wornOf) : new Array<Worn | null>(WARDROBE_SLOTS).fill(null);
+  const wear: string[] = [];
+  for (const [i, id] of (person.outfit >= 0 ? p.outfits![person.outfit]!.wear : []).entries()) {
+    const slot = reg.garmentSlot[reg.index.get(id) ?? -1] ?? -1;
+    if (slot < 0) wear.push(id);
+    else wardrobe[slot] ??= [id, 0, dyeNumber([person.dyes[i]!, 0, 0])];
+  }
+  return { person, born: { seed, population: number, revision: by.rev } as Born, wear: [...wear, ...(look?.wear ?? [])], wardrobe };
 }
 
 /** A named person's body: its look's bytes and its wardrobe as saved, never a seed form, and its role's armour. */
 function namedBody(rec: Revision<PersonDoc>, look: Look | undefined, reg: Registry): CastBody {
   const wardrobe = (rec.body.wardrobe ?? []).map(wornOf);
-  return { look: Uint8Array.from(rec.body.look), born: null, wear: roleWear(look?.wear ?? [], wardrobe.some((w) => w), reg), wardrobe };
+  return { look: Uint8Array.from(rec.body.look), born: null, wear: look?.wear ?? [], wardrobe };
 }
 
 /** The body a character is drawn as: a named person's record as it is now, anyone else drawn from its look. */

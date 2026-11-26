@@ -1,7 +1,7 @@
 // The people and populations admin pages worked in headless Chrome against a development world, as an admin works them.
 // People: a person made with one part locked and others drawn again, dressed, saved, refused once over another page's
 // save, and bound to a Cast role, which the people page and the Cast page then show. Populations: a built-in population
-// copied; a shirt added to its outfits, which changes no face on the sheet of 24 (by the look bytes the page holds and by
+// copied, its outfits taken off and a hoodie put on, which changes no face on the sheet of 24 (by the look bytes the page holds and by
 // the pictures' heads); a save refused once and taken; and one person promoted and saved as a named person. Each act is
 // judged by what the store then holds. Fails on any fault. --shots saves pictures under artifacts/people/pages/.
 //
@@ -237,7 +237,7 @@ try {
       check("a built-in population is read only", [await run(`${q("#label")}.disabled`), await run(`!${q("#read-only")}.hidden`)], [true, true]);
       await snap("populations-built-in");
 
-      console.log("copied, and a shirt added: no face changes");
+      console.log("copied, undressed and a hoodie added: no face changes");
       let g = await gen();
       await press('[data-copy="core:people_city"]');
       await said("Copied core:people_city as population 1.");
@@ -246,24 +246,28 @@ try {
       g = await gen();
       await choose("#framing", "portrait");
       if (!(await drawn("the copy's sheet, as portraits", g))) return;
+      g = await gen();
+      await run(`(() => { for (let k = 0; k < 32 && document.querySelector('[data-outfit-del="0"]'); k++) document.querySelector('[data-outfit-del="0"]').click(); })()`);
+      check("the copy wears nothing", await run(`document.querySelectorAll("[data-outfit]").length`), 0);
+      if (!(await drawn("the undressed copy's sheet", g))) return;
       const cards = (): Promise<{ seed: number; look: string; wear: string }[]> => run(`[...document.querySelectorAll(".card")].map((c) => ({ seed: Number(c.dataset.seed), look: c.dataset.look, wear: c.dataset.wear }))`);
       const before = await cards();
       await run(`(async () => { window.beforePictures = await Promise.all([...document.querySelectorAll(".card img")].map((i) => fetch(i.src).then((r) => r.blob()))); })()`);
       g = await gen();
       await press("#add-outfit");
       await until(`${q('[data-add-piece="0"]')}`, "the new outfit");
-      await choose('[data-add-piece="0"]', "core:cloth_shirt");
+      await choose('[data-add-piece="0"]', "core:hoodie");
       await press('[data-piece-off="0"][data-piece="core:tee"]');
-      check("the outfit wears the shirt alone", await run(`[...document.querySelectorAll('[data-outfit="0"] [data-piece]')].map((b) => b.dataset.piece)`), ["core:cloth_shirt"]);
-      if (!(await drawn("the sheet with the shirt", g))) return;
+      check("the outfit wears the hoodie alone", await run(`[...document.querySelectorAll('[data-outfit="0"] [data-piece]')].map((b) => b.dataset.piece)`), ["core:hoodie"]);
+      if (!(await drawn("the sheet with the hoodie", g))) return;
       const after = await cards();
       const changed = before.map((b, k) => partsChanged(unhex(b.look), unhex(after[k]!.look)));
       check("the sheet kept its 24 seeds", after.map((c) => c.seed), before.map((c) => c.seed));
       check("no part of any look changed", changed.flat(), []);
       check("every look's face, body, skin and hair bytes are the same", after.every((c, k) => c.look === before[k]!.look), true);
-      check("everyone wears the shirt now", after.every((c) => c.wear === "core:cloth_shirt"), true);
+      check("everyone wears the hoodie now", after.every((c) => c.wear === "core:hoodie"), true);
       check("the page marks clothes changed and no look changed", [await run(`document.querySelectorAll(".chip.moved").length`), await run(`document.querySelectorAll(".chip.rewear").length`)], [0, 24]);
-      // The heads in the pictures: the top half of each portrait, against its picture before the shirt.
+      // The heads in the pictures: the top half of each portrait, against its picture before the hoodie.
       const diffs = (await run(`(async () => {
         const read = async (b) => { const i = await createImageBitmap(b); const c = new OffscreenCanvas(i.width, i.height), g = c.getContext("2d"); g.drawImage(i, 0, 0); return g.getImageData(0, 0, i.width, i.height); };
         const now = await Promise.all([...document.querySelectorAll(".card img")].map((i) => fetch(i.src).then((r) => r.blob())));
@@ -284,17 +288,17 @@ try {
       const head = Math.max(...diffs.map((d) => d[0])), whole = Math.max(...diffs.map((d) => d[1]));
       console.log(`  heads differ by at most ${head.toFixed(2)} of 255 a pixel on average; whole pictures by up to ${whole.toFixed(2)}`);
       check("no head in the pictures changed", head < 1.5, true);
-      check("the shirt shows in the pictures", whole > head, true);
-      await snap("populations-shirt-portraits");
+      check("the hoodie shows in the pictures", whole > head, true);
+      await snap("populations-hoodie-portraits");
       g = await gen();
       await choose("#framing", "full");
       if (!(await drawn("the sheet at full length", g))) return;
-      await snap("populations-shirt");
+      await snap("populations-hoodie");
 
       console.log("saved, refused once, saved again");
       await press("#save");
       await said("Saved population 1, revision 2.");
-      check("the store has the shirt", (latest("population", 1)?.body as { outfits?: unknown } | undefined)?.outfits, [{ wear: ["core:cloth_shirt"], weight: 1 }]);
+      check("the store has the hoodie", (latest("population", 1)?.body as { outfits?: unknown } | undefined)?.outfits, [{ wear: ["core:hoodie"], weight: 1 }]);
       const theirs = await outside({ kind: "population", id: 1, rev: 2, doc: { ...(latest("population", 1)!.body as object), label: "Their crowd" } });
       check("the other page's save was taken", theirs.status, 200);
       await run(`(() => { const e = ${q('[data-share="women"]')}; e.value = "0.7"; e.dispatchEvent(new Event("change", { bubbles: true })); })()`);

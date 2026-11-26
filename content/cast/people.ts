@@ -1,24 +1,51 @@
 // Cast's people: looks, archetypes, name pools and the lines they say. A few of each, enough to run every scene; more
-// come from the teams filling the catalogue (planning/workstreams/cast.md). Looks are the human body in the game's own
-// clothes until people have models and skins of their own: each look that waits for art is a placeholder with a note.
-// The body under the clothes is drawn from the look's population (content/people/defaults.ts).
+// come from the teams filling the catalogue (planning/workstreams/cast.md). A look dresses its people in garments, its
+// own or its population's, and puts on only the armour its role needs. Each look still waits for art of its own (a hat,
+// a badge, sandals, a face) and is a placeholder with a note. The body under the clothes is drawn from the look's population
+// (content/people/defaults.ts).
 
 import type { Archetype, Look } from "../../shared/cast/catalogue.ts";
+import { APRONS, BRIGHT, DENIM, MUTED, SHOES, SHORTS, SWIM, TEES, dress } from "../people/defaults.ts";
 
 const HUMAN = "core:human";
-const wear = (tier: string, ...pieces: string[]) => pieces.map((p) => `core:${tier}_${p}`);
+const FLAK = ["core:flak_hat", "core:flak_shirt", "core:flak_pants", "core:flak_boots"];
+/** Palette numbers of a gang's colours: reds for Southside, teals for Bayfront. */
+const RED = [22, 34, 46];
+const TEAL = [28, 40, 52];
+const DARK = [11, 82, 30];
 
 export const LOOKS: Look[] = [
-  { id: "cast:street_plain", mesh: HUMAN, wear: wear("cloth", "shirt", "pants", "boots"), population: "core:people_city", placeholder: true, note: "t-shirt, jeans, trainers" },
-  { id: "cast:street_bright", mesh: HUMAN, wear: wear("cloth", "shirt", "pants", "boots"), population: "core:people_city", placeholder: true, note: "loud shirt, shorts, sandals" },
-  { id: "cast:office", mesh: HUMAN, wear: wear("cloth", "shirt", "pants", "boots"), population: "core:people_workers", placeholder: true, note: "shirt and slacks, a lanyard" },
-  { id: "cast:tourist", mesh: HUMAN, wear: wear("cloth", "hat", "shirt", "pants", "boots"), population: "core:people_tourists", placeholder: true, note: "sun hat, camera, sunburn" },
-  { id: "cast:runner", mesh: HUMAN, wear: wear("cloth", "shirt", "pants"), population: "core:people_beach", placeholder: true, note: "running vest and shorts, earbuds" },
-  { id: "cast:swimwear", mesh: HUMAN, wear: [], population: "core:people_beach", placeholder: true, note: "swimwear, towel over a shoulder" },
-  { id: "cast:vendor_apron", mesh: HUMAN, wear: wear("cloth", "hat", "shirt", "pants", "boots"), population: "core:people_workers", placeholder: true, note: "apron and cap" },
-  { id: "cast:police", mesh: HUMAN, wear: wear("flak", "hat", "shirt", "pants", "boots"), population: "core:people_city", placeholder: true, note: "Miami police uniform, badge, duty belt" },
-  { id: "cast:gang_red", mesh: HUMAN, wear: wear("hide", "shirt", "pants", "boots"), population: "core:people_city", placeholder: true, note: "red bandana and colours, Southside" },
-  { id: "cast:gang_teal", mesh: HUMAN, wear: wear("hide", "shirt", "pants", "boots"), population: "core:people_city", placeholder: true, note: "teal colours, Bayfront" },
+  { id: "cast:street_plain", mesh: HUMAN, wear: [], outfits: [dress(1, ["tee", TEES], ["jeans", DENIM], ["trainers", SHOES])], population: "core:people_city", placeholder: true, note: "t-shirt, jeans, trainers" },
+  {
+    id: "cast:street_bright", mesh: HUMAN, wear: [], population: "core:people_city", placeholder: true, note: "loud shirt, shorts, sandals",
+    outfits: [dress(2, ["loose_tee", BRIGHT], ["shorts", SHORTS]), dress(1, ["tee", BRIGHT], ["shorts", SWIM], ["trainers", SHOES])],
+  },
+  {
+    id: "cast:office", mesh: HUMAN, wear: [], population: "core:people_workers", placeholder: true, note: "shirt and slacks, a lanyard",
+    outfits: [dress(1, ["tee", [10, 10, 77, 91, 105]], ["jeans", [11, 82, 84, 30, 121]], ["trainers", [11, 11, 98]])],
+  },
+  { id: "cast:tourist", mesh: HUMAN, wear: [], population: "core:people_tourists", placeholder: true, note: "sun hat, camera, sunburn" },
+  {
+    id: "cast:runner", mesh: HUMAN, wear: [], population: "core:people_beach", placeholder: true, note: "running vest and shorts, earbuds",
+    outfits: [dress(1, ["tee", BRIGHT], ["shorts", [11, 30, 84, 41]], ["trainers", SHOES])],
+  },
+  { id: "cast:swimwear", mesh: HUMAN, wear: [], outfits: [dress(1, ["shorts", SWIM])], population: "core:people_beach", placeholder: true, note: "swimwear, towel over a shoulder" },
+  {
+    id: "cast:vendor_apron", mesh: HUMAN, wear: [], population: "core:people_workers", placeholder: true, note: "apron and cap",
+    outfits: [dress(1, ["tee", MUTED], ["apron", APRONS], ["jeans", DENIM], ["trainers", SHOES])],
+  },
+  {
+    id: "cast:police", mesh: HUMAN, wear: FLAK, population: "core:people_city", placeholder: true, note: "Miami police uniform, badge, duty belt",
+    outfits: [dress(1, ["tee", [30]], ["jeans", [30]], ["trainers", [11]])],
+  },
+  {
+    id: "cast:gang_red", mesh: HUMAN, wear: [], population: "core:people_city", placeholder: true, note: "red bandana and colours, Southside",
+    outfits: [dress(2, ["tee", RED], ["jeans", DARK], ["trainers", SHOES]), dress(1, ["hoodie", RED], ["jeans", DARK], ["trainers", SHOES]), dress(1, ["hoodie", DARK], ["jeans", DENIM], ["trainers", RED])],
+  },
+  {
+    id: "cast:gang_teal", mesh: HUMAN, wear: [], population: "core:people_city", placeholder: true, note: "teal colours, Bayfront",
+    outfits: [dress(2, ["tee", TEAL], ["jeans", DARK], ["trainers", SHOES]), dress(1, ["hoodie", TEAL], ["jeans", DARK], ["trainers", SHOES]), dress(1, ["loose_tee", TEAL], ["shorts", DARK], ["trainers", TEAL])],
+  },
 ];
 
 /** Lines every everyday person can say, merged into each such archetype's own. */

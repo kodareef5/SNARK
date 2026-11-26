@@ -107,7 +107,7 @@ test("a role's named person wears its admin outfit with its edition and dye", ()
     const worn = ents.wardrobes.get(e)!, reg = h.world.reg;
     expect([worn[TOP * 3], worn[TOP * 3 + 1], worn[TOP * 3 + 2]]).toEqual([reg.index.get("core:tee")!, edition, dyeNumber([3, 4, 5])]);
     expect([worn[BOTTOM * 3], worn[BOTTOM * 3 + 1]]).toEqual([reg.index.get("core:jeans")!, 0]);
-    // Dressed by its outfit, it wears none of the look's placeholder cloth.
+    // A vendor needs no armour, so it wears none.
     const inv = h.host.records.byPid.get(pid!)!.inv!;
     for (let k = 0; k < 5; k++) expect(inv.item[inv.armor + k]).toBe(0);
   } finally {

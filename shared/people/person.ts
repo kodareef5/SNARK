@@ -21,6 +21,8 @@ export interface Person {
   readonly sex: number;
   /** Which of the population's outfits it wears, or -1 where it has none. */
   readonly outfit: number;
+  /** The main colour each piece of that outfit is dyed, 0 for its own. */
+  readonly dyes: readonly number[];
 }
 
 /** Each part's tag. A new part takes a new tag; a tag is never reused or changed. */
@@ -150,7 +152,11 @@ export function personFrom(seed: number, population: PopulationDef, out: Uint8Ar
 
   rng = stream(seed, "outfit", locks);
   const outfit = weighted(rng, p.outfits?.map((o) => o.weight));
-  return { look: out, sex, outfit };
+  const dyes = outfit < 0 ? [] : p.outfits![outfit]!.wear.map((_, i) => {
+    const from = p.outfits![outfit]!.dyes?.[i];
+    return from?.length ? from[rng.int(from.length)]! : 0;
+  });
+  return { look: out, sex, outfit, dyes };
 }
 
 /**

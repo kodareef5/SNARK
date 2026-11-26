@@ -102,7 +102,8 @@ function drawEditor(): void {
   const label2 = (id: string): string => st.garments.find((g) => g.id === id)?.label ?? st.armour.find((a) => a.id === id)?.label ?? id;
   const pieces = [...st.garments.map((g) => ({ id: g.id, text: `${g.label} (garment, ${g.slot})` })), ...st.armour.map((a) => ({ id: a.id, text: `${a.label} (armour)` }))];
   $("outfits").innerHTML = (doc.outfits ?? []).map((o, k) => {
-    const chips = o.wear.map((w) => `<span class="chip piece">${esc(label2(w))}${ro ? "" : ` <button data-piece-off="${k}" data-piece="${esc(w)}" aria-label="Take off ${esc(label2(w))}">✕</button>`}</span>`).join(" ");
+    const colours = (i: number): string => (o.dyes?.[i]?.length ? `<span class="faint"> · ${o.dyes[i]!.length} colours</span>` : "");
+    const chips = o.wear.map((w, i) => `<span class="chip piece">${esc(label2(w))}${colours(i)}${ro ? "" : ` <button data-piece-off="${k}" data-piece="${esc(w)}" aria-label="Take off ${esc(label2(w))}">✕</button>`}</span>`).join(" ");
     const add = ro ? "" : `<select data-add-piece="${k}" aria-label="Add a piece"><option value="">Add a piece…</option>${pieces.filter((p) => !o.wear.includes(p.id)).map((p) => `<option value="${esc(p.id)}">${esc(p.text)}</option>`).join("")}</select>`;
     return `<div class="outfit" data-outfit="${k}"><b>Outfit ${k + 1}</b> ${chips || `<span class="faint">nothing</span>`} ${add} <label>Weight <input type="number" min="0.001" step="0.5" data-outfit-weight="${k}" value="${num(o.weight)}"${dis}></label>${ro ? "" : ` <button data-outfit-del="${k}" class="risk">Remove</button>`}</div>`;
   }).join("") || `<p class="faint">No outfits.</p>`;
@@ -201,7 +202,7 @@ async function work(): Promise<void> {
         if (gen !== generation) break;
         const key = keyOf(p);
         if (pictures.has(key)) continue;
-        const { armour, worn } = wearPieces(st, p.wear), wear = stageWear(st, worn, armour);
+        const { armour, worn } = wearPieces(st, p.wear, p.dyes), wear = stageWear(st, worn, armour);
         await stage.send({ kind: "look", look: p.look });
         await stage.send(wear.gear);
         await stage.send(wear.wardrobe);

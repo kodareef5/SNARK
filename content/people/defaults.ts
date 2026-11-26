@@ -3,9 +3,25 @@
 // colours blond, dark blond, ginger, brown, dark brown, near black, black, grey, white, dyed red; eyes brown, dark
 // brown, blue, green, grey, amber.
 
-import type { PopulationDef } from "../../shared/content/kinds/populations.ts";
+import type { Outfit, PopulationDef } from "../../shared/content/kinds/populations.ts";
 
-const cloth = (...pieces: string[]) => pieces.map((p) => `core:cloth_${p}`);
+// Colours a piece is dyed from, as palette numbers (shared/pack/palette.ts): 10 white, 11 black, 22 to 81 the dyes in
+// five rows of twelve hues, dark to light, then the natural tones.
+export const TEES = [10, 10, 11, 84, 87, 89, 105, 30, 41, 34, 22, 38, 47, 65, 77];
+export const BRIGHT = [10, 46, 47, 48, 52, 53, 58, 64, 65, 69, 70, 72, 76, 81];
+export const MUTED = [10, 11, 84, 85, 87, 98, 105, 116, 129, 30, 22, 41, 137, 163];
+export const RUGGED = [11, 84, 87, 96, 98, 117, 128, 138, 148, 156, 164, 172, 179];
+export const HOODIES = [11, 84, 87, 89, 30, 22, 29, 34, 137, 117];
+export const DENIM = [29, 29, 41, 30, 82, 85, 88];
+export const SHORTS = [121, 123, 124, 166, 168, 129, 30, 41, 11, 85];
+export const SWIM = [41, 53, 34, 46, 47, 40, 52, 58, 64, 69, 30, 11, 10];
+export const SHOES = [10, 10, 10, 11, 11, 87, 105, 30, 34];
+export const APRONS = [10, 10, 122, 11, 30, 22, 139, 174];
+
+/** An outfit of garments by their names in the core content, each with the colours it is dyed from. */
+export const dress = (weight: number, ...pieces: (readonly [garment: string, dyes: readonly number[]])[]): Outfit => ({
+  wear: pieces.map(([g]) => `core:${g}`), weight, dyes: pieces.map(([, d]) => d),
+});
 
 /** Everyone about the city: all ages and builds, both sexes alike. */
 export const CITY: PopulationDef = {
@@ -21,9 +37,16 @@ export const CITY: PopulationDef = {
   face: 0.55,
   age: [-0.7, 0.7], weight: [-0.5, 0.6], muscle: [-0.4, 0.5],
   hairLength: [0, 0.5], beardLength: [0, 0.6],
+  outfits: [
+    dress(4, ["tee", TEES], ["jeans", DENIM], ["trainers", SHOES]),
+    dress(2, ["loose_tee", TEES], ["jeans", DENIM], ["trainers", SHOES]),
+    dress(2, ["tee", BRIGHT], ["shorts", SHORTS], ["trainers", SHOES]),
+    dress(2, ["hoodie", HOODIES], ["jeans", DENIM], ["trainers", SHOES]),
+    dress(1, ["loose_tee", BRIGHT], ["shorts", SHORTS], ["trainers", SHOES]),
+  ],
 };
 
-/** Young people on the sand: slim and fit, long and fair hair, in little but swimwear. */
+/** Young people on the sand: slim and fit, long and fair hair, in little but swimwear and shorts, often barefoot. */
 export const BEACH: PopulationDef = {
   type: "population", id: "core:people_beach", label: "Young beachgoers",
   women: 0.55,
@@ -38,7 +61,12 @@ export const BEACH: PopulationDef = {
   face: 0.5,
   age: [-0.95, -0.45], weight: [-0.6, 0], muscle: [0.1, 0.7],
   hairLength: [0.2, 0.8], beardLength: [0, 0.3],
-  outfits: [{ wear: cloth("pants"), weight: 3 }, { wear: cloth("shirt", "pants"), weight: 1 }, { wear: cloth("hat", "pants"), weight: 1 }],
+  outfits: [
+    dress(4, ["shorts", SWIM]),
+    dress(2, ["tee", BRIGHT], ["shorts", SWIM]),
+    dress(2, ["loose_tee", BRIGHT], ["shorts", SWIM], ["trainers", SHOES]),
+    dress(1, ["shorts", SWIM], ["trainers", SHOES]),
+  ],
 };
 
 /** Older people at work: greying, heavier about the middle, short hair and beards. */
@@ -56,6 +84,12 @@ export const WORKERS: PopulationDef = {
   face: 0.7,
   age: [0.35, 0.95], weight: [0.1, 0.8], muscle: [-0.2, 0.4],
   hairLength: [0, 0.2], beardLength: [0.1, 0.7],
+  outfits: [
+    dress(3, ["tee", MUTED], ["jeans", DENIM], ["trainers", SHOES]),
+    dress(3, ["hoodie", HOODIES], ["jeans", DENIM], ["trainers", SHOES]),
+    dress(2, ["loose_tee", MUTED], ["jeans", DENIM], ["trainers", SHOES]),
+    dress(2, ["tee", MUTED], ["apron", APRONS], ["jeans", DENIM], ["trainers", SHOES]),
+  ],
 };
 
 /** Visitors: fairer skin and eyes, every age, the older ones grey. */
@@ -72,6 +106,12 @@ export const TOURISTS: PopulationDef = {
   face: 0.55,
   age: [-0.6, 0.8], weight: [-0.3, 0.7], muscle: [-0.5, 0.3],
   hairLength: [0, 0.4], beardLength: [0, 0.5],
+  outfits: [
+    dress(4, ["tee", BRIGHT], ["shorts", SHORTS], ["trainers", SHOES]),
+    dress(3, ["loose_tee", BRIGHT], ["shorts", SHORTS], ["trainers", SHOES]),
+    dress(2, ["tee", TEES], ["jeans", DENIM], ["trainers", SHOES]),
+    dress(1, ["hoodie", HOODIES], ["shorts", SHORTS], ["trainers", SHOES]),
+  ],
 };
 
 /** The bots: anyone at all, as a creator's random look is. */
@@ -90,6 +130,12 @@ export const SURVIVORS: PopulationDef = {
   face: 0.6,
   age: [-0.6, 0.6], weight: [-0.5, 0.5], muscle: [-0.4, 0.6],
   hairLength: [0, 0.6], beardLength: [0, 0.6],
+  outfits: [
+    dress(3, ["tee", RUGGED], ["jeans", DENIM], ["trainers", SHOES]),
+    dress(3, ["hoodie", RUGGED], ["jeans", DENIM], ["trainers", SHOES]),
+    dress(2, ["loose_tee", RUGGED], ["jeans", DENIM], ["trainers", SHOES]),
+    dress(1, ["tee", RUGGED], ["shorts", SHORTS], ["trainers", SHOES]),
+  ],
 };
 
 export const POPULATIONS: readonly PopulationDef[] = [CITY, BEACH, WORKERS, TOURISTS, SURVIVORS];

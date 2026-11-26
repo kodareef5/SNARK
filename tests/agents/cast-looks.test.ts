@@ -68,7 +68,7 @@ test("Cast's bodies are varied people of both sexes, each sent as its seed", () 
   }
 });
 
-test("200 of Cast's people come into view in 11 KB", () => {
+test("200 of Cast's people, in dyed garments, come into view in 14 KB", () => {
   const { h, ents } = crowd(200);
   try {
     const w = h.world.ents;
@@ -84,7 +84,7 @@ test("200 of Cast's people come into view in 11 KB", () => {
     const seeded = bytes(w);
     const whole = bytes({ level: w.level, colors: w.colors, names: w.names, looks: w.looks, gears: w.gears, on: w.on, team: w.team, seat: w.seat, span: w.span, grown: w.grown });
     console.log(`200 creates: ${(seeded.length / 1024).toFixed(2)} KB as seeds, ${(whole.length / 1024).toFixed(2)} KB with their looks`);
-    expect(seeded.length).toBeLessThanOrEqual(11 * 1024);
+    expect(seeded.length).toBeLessThanOrEqual(14 * 1024);
     // Read back, each look is the server's.
     const r = new BitReader();
     r.reset(seeded);

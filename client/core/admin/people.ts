@@ -548,12 +548,12 @@ export function stageWear(state: StoreState, worn: readonly (WornDoc | null)[], 
   return { gear: { kind: "gear", held: null, armor }, wardrobe: { kind: "wardrobe", slots, hide: 0 }, prints };
 }
 
-/** Splits a population outfit's pieces into armour and garments worn plain. */
-export function wearPieces(state: StoreState, wear: readonly string[]): { armour: string[]; worn: (WornDoc | null)[] } {
+/** Splits a population outfit's pieces into armour and garments, each garment in its main colour `dyes` gives (0 its own). */
+export function wearPieces(state: StoreState, wear: readonly string[], dyes: readonly number[] = []): { armour: string[]; worn: (WornDoc | null)[] } {
   const worn = emptyWardrobe(), armour: string[] = [];
-  for (const id of wear) {
+  for (const [i, id] of wear.entries()) {
     const g = state.garments.find((x) => x.id === id);
-    if (g) worn[(WARDROBE_NAMES as readonly string[]).indexOf(g.slot)] = { garment: id, edition: 0, dye: [0, 0, 0] };
+    if (g) worn[(WARDROBE_NAMES as readonly string[]).indexOf(g.slot)] = { garment: id, edition: 0, dye: [dyes[i] ?? 0, 0, 0] };
     else armour.push(id);
   }
   return { armour, worn };

@@ -812,6 +812,7 @@ export function personHash(reg: Registry): string {
       for (let q = 0; q < LOOK_BYTES; q++) mix(look[q]!);
       mix(person.sex);
       mix(person.outfit);
+      for (const d of person.dyes) mix(d);
       if (k % 8 !== 0) continue;
       lookScales(look, scales);
       for (let q = 0; q < scaleBits.length; q++) mix(scaleBits[q]!);
