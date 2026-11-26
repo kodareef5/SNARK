@@ -11,6 +11,7 @@ import type { FrameTable } from "./piece-fit.ts";
 import { PIECE_KEYS, PIECE_ROWS } from "./pieces.ts";
 import { DEFAULT_TIER, tierOf, type Tier } from "../assets/tiers.ts";
 import { STREET_TILE_BYTES, STREET_TILES_FRAME } from "./streets.ts";
+import { MAX_PRINT_LAYERS, PRINT_FLOATS } from "./print-term.ts";
 // What the shell puts the streets' tiles on the card by.
 export { STREET_SIDE, STREET_TILE_BYTES, STREET_TILE_SIDE } from "./streets.ts";
 
@@ -192,6 +193,11 @@ export const DRAW_PIECE = 1 << 21;
  * quad laid on a screen's face. It names no mesh, level or buffer.
  */
 export const DRAW_SCREENS = 1 << 22;
+/**
+ * A textured draw whose instances carry a print's layer in their third region byte (render/prints.ts), one more than the
+ * layer and 0 for none, which dyes nothing: its program draws the print (print-term.ts).
+ */
+export const DRAW_PRINTED = 1 << 23;
 /** Screens a frame may draw, and the floats of each, as `faces` lays them out (FACE). */
 export const MAX_FACES = 32;
 export const FACE_FLOATS = 24;
@@ -778,6 +784,18 @@ export class FramePacket {
   readonly faceHeight = new Uint16Array(MAX_FACE_UPLOADS);
   readonly faceVideo = new Uint8Array(MAX_FACE_UPLOADS);
   readonly faceMade = new Uint8Array(MAX_FACE_UPLOADS);
+  /**
+   * The prints on garments (render/prints.ts), which the shell keeps on UNIT.prints: the side and layers of their array,
+   * 0 for none, which lets it go; whether they are drawn as their swatches; the picture to put in a layer this frame,
+   * premultiplied, the layer's size, one at most; and the table of where each layer's print lies (print-term.ts).
+   */
+  printSide = 0;
+  printLayers = 0;
+  printSwatches = false;
+  printUploads = 0;
+  printLayer = 0;
+  printSource: unknown = null;
+  readonly printTable = new Float32Array(MAX_PRINT_LAYERS * PRINT_FLOATS);
   /** The draw before which the dome goes, on a lit frame. */
   skyAt = 0;
   /** The samples the light target is drawn with (post.ts lightSamples), on a frame drawn into one. */
@@ -1046,6 +1064,8 @@ export class FramePacket {
     this.screenFresh = this.screenMips = false;
     for (let k = 0; k < this.faceUploads; k++) this.faceSource[k] = null;
     this.faceUploads = this.faceCount = 0;
+    this.printUploads = 0;
+    this.printSource = null;
     this.triangles = 0;
     this.detailCount = 0;
     this.detailFill = 0;

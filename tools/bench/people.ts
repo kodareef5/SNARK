@@ -19,7 +19,8 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { loadavg, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { CROWD_SCENES, CROWD_VIEWER, crowdView, type CrowdScene } from "../../client/core/people-crowd.ts";
+import { CROWD_PRINT_FIRST, CROWD_SCENES, CROWD_SHAPES, CROWD_VIEWER, crowdView, type CrowdScene } from "../../client/core/people-crowd.ts";
+import { encodePng } from "../snap/png.ts";
 import { SETTLE_MS } from "../../client/core/bench-run.ts";
 import { startServer } from "../../server/main.ts";
 import { buildClientApart } from "../build-client.ts";
@@ -44,13 +45,42 @@ interface Saved {
   runs: Record<string, RunNumbers[]>;
 }
 
+/**
+ * Print `k` of a printed crowd as the page fetches it (people-crowd.ts crowdPrints): a disc of a colour of its own on
+ * nothing, ringed, with `k`'s bits as bars across it; every third twice as wide as high.
+ */
+export function crowdPrintPng(k: number): Uint8Array {
+  const [w, h] = k % 3 === 2 ? [512, 256] : [512, 512];
+  const px = new Uint8Array(w * h * 4), long = w / h - 1;
+  const hue = (k * 0.618034) % 1, rgb = [0, 1, 2].map((c) => Math.round(255 * (0.5 + 0.5 * Math.cos(2 * Math.PI * (hue + c / 3)))));
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    // In halves of the height from the middle: a disc, or on a wide one a stadium, of radius 0.95.
+    const dx = (x + 0.5 - w / 2) / (h / 2), dy = (y + 0.5 - h / 2) / (h / 2);
+    const r = Math.hypot(Math.max(Math.abs(dx) - long, 0), dy);
+    if (r >= 0.95) continue;
+    const column = Math.floor((dx + long + 0.9) / 0.3);
+    const bar = r < 0.8 && Math.abs(dy) < 0.45 && column >= 0 && column < 6 && ((k >> column) & 1) === 1;
+    const c = r > 0.8 ? [250, 250, 250] : bar ? [20, 20, 30] : rgb;
+    px.set([c[0]!, c[1]!, c[2]!, 255], (y * w + x) * 4);
+  }
+  return encodePng(w, h, px);
+}
+
 /** Runs every cell of `list` `runs` times by turns after `warm` rounds not kept, and returns each run's numbers by cell. */
 async function measure(list: readonly Cell[], runs: number, warm: number, dist: string, say: (line: string) => void, shots: string | null): Promise<{ results: Map<string, RunNumbers[]>; renderer: string }> {
   const chrome = findChrome();
   if (!chrome) throw new Error("no Chrome: set CHROME");
   let got: (report: Record<string, any>) => void = () => {};
+  const prints = new Map<string, Uint8Array>();
   const routes = (req: Request, url: URL): Response | Promise<Response> | null => {
     const view = url.searchParams.get("view") as CrowdScene;
+    // A printed crowd's pictures, made once each.
+    const print = /^\/media\/print\.([0-9a-f]{16})\.png$/.exec(url.pathname);
+    const k = print ? parseInt(print[1]!, 16) - CROWD_PRINT_FIRST : -1;
+    if (k >= 0 && k < CROWD_SHAPES.far.count) {
+      const png = prints.get(print![1]!) ?? prints.set(print![1]!, crowdPrintPng(k)).get(print![1]!)!;
+      return new Response(png, { headers: { "content-type": "image/png", "cache-control": "no-store" } });
+    }
     if (url.pathname === "/__look" && CROWD_SCENES.includes(view)) {
       const v = crowdView(view);
       return Response.json({ look: [v.yaw, v.pitch] });

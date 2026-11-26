@@ -4,7 +4,7 @@
 
 import { expect } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
-import { DRAW_RANGED, DRAW_SKINNED, DRAW_TEXTURED, TRANSIENT_BUFFER, type FramePacket } from "../../client/core/render/packet.ts";
+import { DRAW_PRINTED, DRAW_RANGED, DRAW_SKINNED, DRAW_TEXTURED, TRANSIENT_BUFFER, type FramePacket } from "../../client/core/render/packet.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { LOOK_BYTES, LOOK_SEX, defaultLook } from "../../shared/anim/look.ts";
 import type { Def } from "../../shared/content/defs.ts";
@@ -207,7 +207,7 @@ function garmentBytes(view: ProvingView): number[][] {
 }
 
 test("a garment's regions take its slot's dye over its edition's colours over its own", () => {
-  const own = gameOf().reg.defs[gameOf().reg.index.get("core:plain_tee")!]!.color;
+  const own = (gameOf().reg.defs[gameOf().reg.index.get("core:plain_tee")!] as { color: number }).color;
   const plain = garmentBytes(crowd({ top: "core:plain_tee" }, 1))[0]!;
   expect([plain[1], plain[2], plain[4], plain[5]]).toEqual([own, 0, own, own]);
   const edition = crowd({ top: "core:plain_tee", edition: 7 }, 1);
@@ -238,4 +238,23 @@ test("armour takes its slot's dye where its pieces have colour regions", () => {
   const after = shirt(view);
   expect([after[1], after[4], after[5]]).toEqual([60, 61, before[5]]);
   expect([after[0], after[2], after[3]]).toEqual([before[0], before[2], before[3]]);
+});
+
+test("only a garment draw with a print in it is drawn printed", () => {
+  const flagsOf = (view: ProvingView): Map<string, number> => {
+    const p = settled(view), ids = view.scene.assets.manifest.meshes.map((m) => m.id), out = new Map<string, number>();
+    for (let d = 0; d < p.drawCount; d++) if (p.drawBuffer[d] === TRANSIENT_BUFFER && (p.drawFlags[d]! & DRAW_SKINNED) !== 0) out.set(ids[p.drawMesh[d]!]!, (out.get(ids[p.drawMesh[d]!]!) ?? 0) | p.drawFlags[d]!);
+    return out;
+  };
+  const plain = crowd({ top: "core:plain_tee", bottom: "core:plain_trousers", edition: 7 }, 2);
+  for (const f of flagsOf(plain).values()) expect(f & DRAW_PRINTED).toBe(0);
+  const printed = crowd({ top: "core:plain_tee", bottom: "core:plain_trousers", edition: 7 }, 2);
+  printed.remote.wardrobe[WORN_LENGTH + 1] = 8;
+  printed.remote.wardrobe[WORN_LENGTH + WORN_FIELDS + 1] = 0;
+  printed.remote.wardrobe[WORN_FIELDS + 1] = 0;
+  // The woman's tee alone has a print.
+  printed.scene.characters.printByte = (id, flat) => (id === 8 && !flat ? 3 : 0);
+  const f = flagsOf(printed);
+  expect(f.get("core:human_f/garment/tee")! & DRAW_PRINTED).toBe(DRAW_PRINTED);
+  for (const [mesh, flags] of f) if (mesh !== "core:human_f/garment/tee") expect(flags & DRAW_PRINTED).toBe(0);
 });

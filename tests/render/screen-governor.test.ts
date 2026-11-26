@@ -2,7 +2,7 @@
 // and passes their steps by where no screen draws what a step takes.
 import { expect, test } from "bun:test";
 import { TIERS, tierOf } from "../../client/core/assets/tiers.ts";
-import { SCREENS_DECODING, SCREENS_DRAWN, SCREENS_MANY, SCREENS_UPLOADING, STEPS, ladder } from "../../client/core/governor.ts";
+import { PRINTS_DRAWN, SCREENS_DECODING, SCREENS_DRAWN, SCREENS_MANY, SCREENS_UPLOADING, STEPS, ladder } from "../../client/core/governor.ts";
 import { run } from "../fixtures/frames.ts";
 
 const SCREEN_STEPS = ["screens: clips at 10 frames a second", "screens: stills only", "screens: the nearest 8", "screens: off"];
@@ -13,7 +13,11 @@ const leave = (level: number): number => 0.88 ** Math.max(0, level - SCREEN_STEP
 test("the screens' steps come before every other step, in their order", () => {
   expect(STEPS.slice(0, 4).map((s) => s.name)).toEqual(SCREEN_STEPS);
   expect(STEPS.slice(0, 4).map((s) => s.screens)).toEqual([SCREENS_UPLOADING, SCREENS_DECODING, SCREENS_MANY, SCREENS_DRAWN]);
-  expect(STEPS.slice(4).every((s) => !s.screens)).toBe(true);
+  // Prints on clothes as swatches come next, taken whatever they buy where a print is drawn.
+  expect([STEPS[4]!.name, STEPS[4]!.screens]).toEqual(["prints: swatches", PRINTS_DRAWN]);
+  expect(STEPS.slice(5).every((s) => !s.screens)).toBe(true);
+  expect(ladder(tierOf("medium"), 2).find((l) => l.name === "prints: swatches")!.tier.prints).toEqual({ side: 256, layers: 32, swatches: true });
+  expect(ladder(tierOf("lowpoly"), 1).some((l) => l.name === "prints: swatches")).toBe(false);
   for (const t of TIERS) {
     const names = ladder(t, 2).map((l) => l.name);
     const last = Math.max(...SCREEN_STEPS.map((n) => names.indexOf(n)));
@@ -34,6 +38,12 @@ test("with screens drawn, slow frames give them up first though they buy nothing
   const { governor } = run(3, (_, level) => ({ gpu: 24 * leave(level), screens: ALL }));
   expect(governor.steps.slice(0, 5).map((s) => s.name)).toEqual([...SCREEN_STEPS, "the scene at 90% a side"]);
   // Nothing was undone for the screens buying nothing.
+  expect(governor.steps.some((s) => s.why.includes("not what is slow"))).toBe(false);
+});
+
+test("with prints drawn too, slow frames give them up after the screens, as swatches, then go on as before", () => {
+  const { governor } = run(3, (_, level) => ({ gpu: 24 * leave(level - 1), screens: ALL | PRINTS_DRAWN }));
+  expect(governor.steps.slice(0, 6).map((s) => s.name)).toEqual([...SCREEN_STEPS, "prints: swatches", "the scene at 90% a side"]);
   expect(governor.steps.some((s) => s.why.includes("not what is slow"))).toBe(false);
 });
 
