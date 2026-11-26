@@ -5,8 +5,11 @@
 // is the scene the people are added to. Every cell is run on each tier asked, warmed first, then `runs` times by turns,
 // each round starting one cell further on. The world is held at noon.
 //
-//   bun tools/bench/people.ts [--runs 4] [--tiers medium,high] [--only far] [--label intel] [--client dir] [--shots]
-//   bun tools/bench/people.ts --table var/people-bench/intel.json var/people-bench/rtx.json
+//   bun tools/bench/people.ts [--runs 4] [--warm 1] [--tiers medium,high] [--only far] [--label intel] [--client dir] [--shots]
+//   bun tools/bench/people.ts --table [--drop 1] var/people-bench/intel.json var/people-bench/rtx.json
+//
+// A GPU's first round runs up to twice as slow as the rest, so `--warm` rounds are run first and not kept, and
+// `--drop` leaves out each cell's first runs of a saved file.
 //
 // The card is the one tools/chrome.ts picks: SNARK_GPU=mesa or nvidia. The page is a client built for the bench into
 // var/people-bench/client, or the one --client or CLIENT_DIR names, which must be built from this source. What it writes
@@ -41,8 +44,8 @@ interface Saved {
   runs: Record<string, RunNumbers[]>;
 }
 
-/** Runs every cell of `list` `runs` times by turns after one warming run a tier, and returns each run's numbers by cell. */
-async function measure(list: readonly Cell[], runs: number, dist: string, say: (line: string) => void, shots: string | null): Promise<{ results: Map<string, RunNumbers[]>; renderer: string }> {
+/** Runs every cell of `list` `runs` times by turns after `warm` rounds not kept, and returns each run's numbers by cell. */
+async function measure(list: readonly Cell[], runs: number, warm: number, dist: string, say: (line: string) => void, shots: string | null): Promise<{ results: Map<string, RunNumbers[]>; renderer: string }> {
   const chrome = findChrome();
   if (!chrome) throw new Error("no Chrome: set CHROME");
   let got: (report: Record<string, any>) => void = () => {};
@@ -81,22 +84,18 @@ async function measure(list: readonly Cell[], runs: number, dist: string, say: (
     }
   };
   try {
-    for (const tier of [...new Set(list.map((c) => c.tier))]) {
-      const heaviest = list.filter((c) => c.tier === tier).at(-1)!;
-      const r = await once(heaviest);
-      say(`warmed on ${cellName(heaviest)}: ${r ? `${r.gpuMs?.frame?.median ?? "untimed"} ms on the GPU, ${r.renderer}` : "no report"}`);
-    }
-    for (const [k, round] of rounds(list, runs).entries()) {
+    for (const [k, round] of rounds(list, warm + runs).entries()) {
+      const name = k < warm ? `warming round ${k + 1}` : `round ${k + 1 - warm}`;
       for (const c of round) {
         const r = await once(c);
         if (!r) {
-          say(`round ${k + 1}, ${cellName(c)}: no report`);
+          say(`${name}, ${cellName(c)}: no report`);
           continue;
         }
         renderer ||= String(r.renderer ?? "");
         const n = numbersOf(r);
-        results.set(cellName(c), [...(results.get(cellName(c)) ?? []), n]);
-        say(`round ${k + 1}, ${cellName(c)}: GPU ${n.gpuMedian} ms (p95 ${n.gpuP95}), ours ${n.cpuMs} ms, ${n.glDraws} GL draws, ${n.draws} draws, ${n.triangles} triangles, ${n.bones} bones, ${n.posed} posed, ${n.dropped} dropped${n.gaveUp ? ", NOT STILL" : ""} (load ${loadavg()[0]!.toFixed(1)})`);
+        if (k >= warm) results.set(cellName(c), [...(results.get(cellName(c)) ?? []), n]);
+        say(`${name}, ${cellName(c)}: GPU ${n.gpuMedian} ms (p95 ${n.gpuP95}), ours ${n.cpuMs} ms, ${n.glDraws} GL draws, ${n.draws} draws, ${n.triangles} triangles, ${n.bones} bones, ${n.posed} posed, ${n.dropped} dropped${n.gaveUp ? ", NOT STILL" : ""} (load ${loadavg()[0]!.toFixed(1)})`);
       }
     }
   } finally {
@@ -112,14 +111,17 @@ if (import.meta.main) {
   const argv = process.argv.slice(2);
   const arg = (name: string, or: string): string => (argv.includes(name) ? argv[argv.indexOf(name) + 1]! : or);
   if (argv[0] === "--table") {
-    for (const file of argv.slice(1)) {
+    const drop = Number(arg("--drop", "0"));
+    for (const file of argv.slice(1).filter((a, i, all) => a !== "--drop" && all[i - 1] !== "--drop")) {
       const saved = JSON.parse(readFileSync(file, "utf8")) as Saved;
-      console.log(`\n${saved.label}: ${saved.renderer}, ${saved.window.join(" by ")} window, ${saved.date}, ${saved.commit}\n`);
-      console.log(table(saved.cells));
+      const runs = new Map(Object.entries(saved.runs).map(([k, v]) => [k, v.slice(drop)]));
+      console.log(`\n${saved.label}: ${saved.renderer}, ${saved.window.join(" by ")} window, ${saved.date}, ${saved.commit}${drop ? `, first ${drop} runs left out` : ""}\n`);
+      console.log(table(drop ? summarise(saved.cells.map((c) => c.cell), runs) : saved.cells));
     }
     process.exit(0);
   }
   const runs = Number(arg("--runs", "4"));
+  const warm = Number(arg("--warm", "1"));
   const tiers = arg("--tiers", "medium,high").split(",");
   const only = arg("--only", "");
   const label = arg("--label", process.env.SNARK_GPU ?? "default");
@@ -130,10 +132,10 @@ if (import.meta.main) {
   if (!given) await buildClientApart({ stress: false, quick: true, dist });
   if (!existsSync(join(dist, "index.html"))) throw new Error(`no built client at ${dist}`);
   const load = [loadavg()[0]!];
-  console.log(`${list.length} cells, ${runs} runs each, card ${process.env.SNARK_GPU ?? "as Chrome finds it"}, load ${load[0]!.toFixed(1)}`);
+  console.log(`${list.length} cells, ${warm} warming and ${runs} kept runs each, card ${process.env.SNARK_GPU ?? "as Chrome finds it"}, load ${load[0]!.toFixed(1)}`);
   const shots = argv.includes("--shots") ? join(OUT, `${label}-shots`) : null;
   if (shots) mkdirSync(shots, { recursive: true });
-  const { results, renderer } = await measure(list, runs, dist, (line) => console.log(`  ${line}`), shots);
+  const { results, renderer } = await measure(list, runs, warm, dist, (line) => console.log(`  ${line}`), shots);
   load.push(loadavg()[0]!);
   const summaries = summarise(list, results);
   const commit = Bun.spawnSync(["git", "rev-parse", "--short", "HEAD"], { cwd: ROOT }).stdout.toString().trim();
