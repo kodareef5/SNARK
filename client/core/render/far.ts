@@ -39,6 +39,8 @@ export const FAR_TILE_SPAN = FAR_SPAN - 4096;
 export const FAR_BUFFER = 2 << 20;
 /** The far city's tiles and the city's blocks are drawn with the next one (farcity.ts, cityblocks.ts). */
 export const CITY_BUFFER = FAR_BUFFER + 1;
+/** The instance buffer the landmarks are drawn with: one instance a landmark, at the origin, turned by its yaw. */
+export const LANDMARK_BUFFER = FAR_BUFFER + 3;
 /** What the far blocks hold on the card, as residency.ts reserves it. */
 const RESERVE = "far blocks";
 /**

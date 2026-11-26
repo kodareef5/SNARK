@@ -110,10 +110,10 @@ export class FaceFinder {
         } else if (city) {
           const square = city.squareOf(chunk);
           if (!square) continue;
-          const m = square.map, from = square.mapFrom(chunk), faced = this.facedOf(square), at = square.at(chunk);
+          const m = square.map, from = square.mapFrom(chunk), faced = this.facedOf(square, city.bentKind), at = square.at(chunk);
           for (let k = faced.first[at]!; k < faced.first[at + 1]!; k++) {
-            const row = faced.rows[k]!;
-            this.consider(cam, reach, chunk * 65536 + (row - from), m.kind[row]!, m.x[row]!, m.y[row]!, m.z[row]!, (m.yaw[row]! / 65536) * TAU);
+            const row = faced.rows[k]!, kind = city.bentKind[m.kind[row]!]!;
+            this.consider(cam, reach, chunk * 65536 + (row - from), kind, m.x[row]!, m.y[row]!, m.z[row]!, (m.yaw[row]! / 65536) * TAU);
           }
         }
       }
@@ -185,19 +185,20 @@ export class FaceFinder {
   }
 
   /** A square's map rows that have a face, by its chunks: rows `first[k]` up to `first[k + 1]` of `rows`. */
-  private facedOf(square: CitySquare): { first: Uint32Array; rows: Uint32Array } {
+  private facedOf(square: CitySquare, registryKinds: Uint16Array): { first: Uint32Array; rows: Uint32Array } {
     const known = this.faced.get(square);
     if (known) return known;
     const m = square.map, chunks = m.first.length - 1, first = new Uint32Array(chunks + 1);
-    let n = 0;
+    const rows: number[] = [];
     for (let c = 0; c < chunks; c++) {
-      first[c] = n;
-      for (let r = m.first[c]!; r < m.first[c + 1]!; r++) if (this.typeOf[m.kind[r]!]! > 0) n++;
+      first[c] = rows.length;
+      for (let r = m.first[c]!; r < m.first[c + 1]!; r++) {
+        const kind = registryKinds[m.kind[r]!]!;
+        if (this.typeOf[kind]! > 0) rows.push(r);
+      }
     }
-    first[chunks] = n;
-    const rows = new Uint32Array(n);
-    for (let c = 0, k = 0; c < chunks; c++) for (let r = m.first[c]!; r < m.first[c + 1]!; r++) if (this.typeOf[m.kind[r]!]! > 0) rows[k++] = r;
-    const made = { first, rows };
+    first[chunks] = rows.length;
+    const made = { first, rows: Uint32Array.from(rows) };
     this.faced.set(square, made);
     return made;
   }

@@ -1,7 +1,7 @@
 // Resolve the authored finish once per material or mesh and put each draw's optical inputs in the frame.
 import { crownedSpokes, fixtureKind, CHANNEL, DROP_GLOW, DROP_LIGHT, EXHAUST, LENS } from "../../../content/street-finishes.ts";
 import { MATERIAL_EXHAUST, MATERIAL_LENS, type PackHeader } from "../../../shared/pack/pack.ts";
-import { nearMeshSlot } from "./nearcity.ts";
+import { nearMeshSlot } from "./near-slots.ts";
 import { DRAW_EMISSIVE, DRAW_CUTOUT, DRAW_TEXTURED, type FramePacket } from "./packet.ts";
 import { StreetMaterials, wheelBoneMask } from "./street-finish.ts";
 import { OPTICS_CUT, glassSet } from "./vehicle-glass.ts";

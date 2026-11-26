@@ -70,6 +70,10 @@ holds several gigabytes of them; `du -sh var/mapdata/*` says what each city keep
 
 For the pinned GitHub release, run `bun run media kit <city>` and then `bun tools/maps/city.ts <city>`. The installer fetches only the selected kit and verifies its checksum. Prepared stages whose code has not changed are reused, and the final build needs only Bun. Install the Python environment above when changing a Python stage or starting a new cut.
 
+A newer kit for the same cut replaces its prepared layers together. The installer keeps the entire previous cut,
+including local edits and reports, under `var/mapdata/<city>/previous-kits/` and prints its path. A cut created
+from source stays in place. City builds and kit installs share the city's lock.
+
 A machine that works on what the build makes of a city (buildings, furniture, the look) needs the prepared layers, not
 the downloads. The machine that holds the downloads packs the cities' kits into its `var/kits` and gives them over
 http; another machine downloads them and builds. Kits stay out of git: on a branch they would come with every clone

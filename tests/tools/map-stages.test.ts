@@ -205,6 +205,33 @@ test("a download's job comes from its name, and an extract without SHA-256 holds
   expect(changedJobs(kept, { ...kept, "dem/y.tif": { bytes: 2, sha256: "e" }, "tl_2025_1_roads.zip": { bytes: 1, sha256: "t" } }, settings)).toEqual(["dem", "tiger"]);
 });
 
+test("a kit reuses prepared layers after a retry change until a source changes", () => {
+  const steps = stages();
+  const osm = join(dir, "code/osm_local.py");
+  steps.find((s) => s.name === "fetch")!.code.push(osm);
+  const old = "args = ['curl', '-sSL', '--retry', '5', '-o', output, url]\n";
+  const retry = old.replace("'-o'", "'--retry-all-errors', '-o'");
+  writeFileSync(osm, old);
+  const { work } = run({ stages: steps });
+  rmSync(join(work, "raw"), { recursive: true });
+  mkdirSync(join(work, "raw"));
+  writeFileSync(join(work, "raw/KIT"), "commit\n");
+  const held = keys(work);
+  delete held.build;
+  writeFileSync(join(work, "stages.json"), JSON.stringify(held));
+  writeFileSync(join(work, "runs.log"), "");
+
+  writeFileSync(osm, retry);
+  expect(run({ stages: steps }).ran).toEqual(["build"]);
+  expect(keys(work).fetch).toBe(held.fetch);
+  expect(existsSync(join(work, "raw/fetched"))).toBe(false);
+
+  writeFileSync(osm, retry.replace(", url]", ", another_url]"));
+  expect(run({ stages: steps }).ran).toEqual(["fetch", "prepare", "ways", "build"]);
+  expect(existsSync(join(work, "raw/KIT"))).toBe(false);
+  expect(readFileSync(join(work, "runs.log"), "utf8").trim().split("\n")).toEqual(["build", "fetch", "prepare", "ways", "build"]);
+});
+
 test("another cut by --bounds runs up to the build in its own folder and moves nothing", () => {
   const a = run();
   const other = run({ bounds: B });

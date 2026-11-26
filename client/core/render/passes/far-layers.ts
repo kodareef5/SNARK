@@ -10,16 +10,16 @@ import { WRECK } from "../../../../shared/world/breaking.ts";
 import { floatingKinds } from "../../../../shared/world/city.ts";
 import type { Assets } from "../../assets/assets.ts";
 import type { Casting } from "../casting.ts";
+import type { cityRenderers } from "../city-late.ts";
 import type { BlocksSource, CityBlocks } from "../cityblocks.ts";
 import type { Draws } from "../draws.ts";
-import { CITY_BUFFER, FAR_BUFFER, FAR_MESH, FarBlocks, farColours } from "../far.ts";
+import { CITY_BUFFER, FAR_BUFFER, FAR_MESH, LANDMARK_BUFFER, FarBlocks, farColours } from "../far.ts";
 import type { CitySource, FarCity } from "../farcity.ts";
-import { FarLandmarks, LANDMARK_BUFFER } from "../farlandmarks.ts";
+import type { FarLandmarks } from "../farlandmarks.ts";
 import { FarNodes, farLevelOf, type NodeLooks } from "../farnodes.ts";
-import { FarShadow } from "../farshadow.ts";
+import type { FarShadow } from "../farshadow.ts";
 import { DRAW_PULLED, DRAW_RANGED, FRAME, MAX_DRAWS, PASS_FAR, PASS_NEAR, type FramePacket } from "../packet.ts";
 import type { Frame, PassRow } from "../pass.ts";
-import type { RoofMap } from "../roofmap.ts";
 import { TopFix } from "../topfix.ts";
 import type { RenderWorld } from "../scene.ts";
 import { HIDDEN } from "./near-store.ts";
@@ -57,8 +57,8 @@ export class FarLayers {
   blocks: CityBlocks | null = null;
   /** What the city's blocks are made from, until the late code (city-late.ts) has come to make them. */
   private blocksFrom: { tops: BlocksSource; colours: Uint8Array } | null;
-  /** The far city and the city's blocks, once city-late.ts has loaded. Until then a scene draws neither. */
-  static late: { FarCity: typeof FarCity; CityBlocks: typeof CityBlocks; RoofMap: typeof RoofMap } | null = null;
+  /** The city renderers arrive together after the first frame. */
+  static late: typeof cityRenderers | null = null;
   /** Per content index, 1 for a kind that stands in the air with nothing under it, which casts no far shadow (city.ts floatingKinds). */
   private readonly floatingKinds: Uint8Array;
   readonly farMesh: number;
@@ -68,7 +68,7 @@ export class FarLayers {
   /** The map's tops made of what stands where they are wrong, past the statics held, for the city's blocks and the far shadow. */
   readonly fix: TopFix | null;
   /** Called when a far city is made, of the map's statics as they first come or as they are handed over again. */
-  onCity: () => void = () => {};
+  onCity: (code: typeof cityRenderers) => void = () => {};
   private readonly world: RenderWorld;
   private readonly assets: Assets;
   private readonly packet: FramePacket;
@@ -189,9 +189,9 @@ export class FarLayers {
     this.farShadow?.hand(source.statics, this.city);
     this.far?.leaveTo(this.city);
     const placed = this.world.landmarks ?? [];
-    if (placed.length > 0) this.landmarks = new FarLandmarks(source, this.world.dims, placed, landmarkFars(this.assets.manifest));
+    if (placed.length > 0) this.landmarks = new FarLayers.late.FarLandmarks(source, this.world.dims, placed, landmarkFars(this.assets.manifest));
     for (const l of this.landmarks?.placed ?? []) this.fix?.mark(l.chunk);
-    this.onCity();
+    this.onCity(FarLayers.late);
     return this.city;
   }
 
@@ -203,7 +203,7 @@ export class FarLayers {
     const w = this.world;
     if (!FarLayers.late || !(w.tops || w.city)) return null;
     const complete = (c: number): boolean => w.city?.complete(c) ?? w.far?.complete(c) ?? false;
-    const shadow = new FarShadow(w.dims, w.hf, w.tops?.tops ?? null, w.tops?.maker ?? w.city?.maker ?? null, complete, this.landmarkKinds, this.floatingKinds);
+    const shadow = new FarLayers.late.FarShadow(w.dims, w.hf, w.tops?.tops ?? null, w.tops?.maker ?? w.city?.maker ?? null, complete, this.landmarkKinds, this.floatingKinds);
     shadow.fix = this.fix;
     shadow.roof = new FarLayers.late.RoofMap();
     shadow.roof.palette = this.palette;

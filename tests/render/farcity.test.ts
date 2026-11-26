@@ -12,7 +12,7 @@ import { CITY_BUFFER } from "../../client/core/render/farcity.ts";
 import { zoomed } from "../../client/core/optics.ts";
 import { doSweep, type SweepJob, type SweepMade } from "../../client/core/render/farshadow.ts";
 import { FRAME, type FramePacket } from "../../client/core/render/packet.ts";
-import { NODE_BUFFERS } from "../../client/core/render/scene.ts";
+import { NODE_BUFFERS, Scene } from "../../client/core/render/scene.ts";
 import { PICK_STRUCTURE } from "../../tools/snap/raster.ts";
 import type { ShapeBox, ShapeDef } from "../../shared/content/defs.ts";
 import { compileContent, type Registry } from "../../shared/content/registry.ts";
@@ -233,6 +233,31 @@ test("far blocks draw only what players built above the city: none for a chunk o
   w.send(chunk);
   const q = w.frame();
   expect(blocks(q)).toBeGreaterThan(0);
+});
+
+test("the first frame shows near buildings before their mesh code arrives", () => {
+  const code = Scene.late;
+  try {
+    Scene.late = null;
+    const [x, z] = mid(2, 2);
+    const w = cityWorld({ chunks: 5, statics: building(x, z, 0, 3), tops: true });
+    const chunk = w.chunkOf(x, z);
+    w.rows(chunk);
+    w.look(x, 5, z, 30, 0, 5);
+    w.frame();
+    expect([w.scene.near, w.scene.city, w.scene.farShadow]).toEqual([null, null, null]);
+    expect(sum(w.covered().near)).toBeGreaterThan(0);
+
+    Scene.late = code;
+    w.frame();
+    expect(w.scene.city).not.toBeNull();
+    expect(w.scene.farShadow).not.toBeNull();
+    for (let f = 0; f < 20 && !w.scene.near?.chunk(chunk)?.mesh; f++) w.frame();
+    expect(w.scene.near?.chunk(chunk)?.mesh).toBeTruthy();
+    expect(sum(w.covered().near)).toBeGreaterThan(0);
+  } finally {
+    Scene.late = code;
+  }
 });
 
 test("statics that come after the first frame start the far city then, and the far blocks made before leave its cells to it", () => {

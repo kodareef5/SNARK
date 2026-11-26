@@ -12,6 +12,7 @@
 import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { withCityLock } from "./city-lock.ts";
 
 const ROOT = resolve(import.meta.dir, "../..");
 const HERE = import.meta.dir;
@@ -89,6 +90,21 @@ const sha = (...parts: (string | Uint8Array)[]): string => {
   for (const p of parts) h.update(p);
   return h.digest("hex");
 };
+
+function stageKey(stage: Stage, chain: string, own: (string | Uint8Array)[], held?: string): string {
+  const files = stage.code.some((f) => f.endsWith(".py")) ? [...stage.code, COMMON] : stage.code;
+  const code = files.map((f) => readFileSync(f));
+  const key = sha(chain, stage.name, ...code, ...own);
+  if (!held || key === held || stage.name !== "fetch") return key;
+  // Four published v3 kits fetched the same OSM bytes before curl retried broken transfers.
+  const osm = files.findIndex((f) => f.endsWith("/osm_local.py"));
+  if (osm < 0) return key;
+  const present = code[osm]!.toString("utf8");
+  const earlier = present.replace("['curl', '-sSL', '--retry', '5', '--retry-all-errors', '-o'", "['curl', '-sSL', '--retry', '5', '-o'");
+  if (earlier === present) return key;
+  code[osm] = Buffer.from(earlier);
+  return sha(chain, stage.name, ...code, ...own) === held ? held : key;
+}
 
 /** `over` laid on `base`: objects key by key, anything else replaced; keys starting "_" are notes and dropped. */
 function lay(base: unknown, over: unknown): unknown {
@@ -229,28 +245,10 @@ export function runCity(name: string, o: CityRun = {}): { cut: string; work: str
   const cut = sha(JSON.stringify([settings.centre, settings.bounds])).slice(0, 10);
   const top = join(o.mapdata ?? join(ROOT, "var/mapdata"), name);
   const work = join(top, cut, name);
-  mkdirSync(join(work, "ruins"), { recursive: true });
-  // One run of a city at a time, taken before the run writes anything: two wrote one stages.json and one set of layers,
-  // and stopping one took pkill. Made only where none is (wx), so two runs starting together cannot both take it; it
-  // holds the run's process id and is let go when the run ends, and one a process no longer running left is taken over.
-  const lock = join(top, "run.lock");
-  const take = (): boolean => { try { writeFileSync(lock, String(process.pid), { flag: "wx" }); return true; } catch { return false; } };
-  if (!take()) {
-    const held = Number(readFileSync(lock, "utf8"));
-    let alive = false;
-    try { alive = held > 0 && process.kill(held, 0); } catch { alive = false; }
-    if (alive) throw new Error(`${name}: another run of this city is going, process ${held} (${lock})`);
-    unlinkSync(lock);
-    if (!take()) throw new Error(`${name}: another run took ${lock} as this one found it left behind`);
-  }
-  const release = (): void => { try { if (readFileSync(lock, "utf8") === String(process.pid)) unlinkSync(lock); } catch { /* gone already */ } };
-  process.on("exit", release);
-  try {
+  return withCityLock(top, cut, () => {
+    mkdirSync(join(work, "ruins"), { recursive: true });
     return stagesOf(name, { stages, names, cwd, maps, source, settings, cut, top, work, from, to, only, other: o.bounds !== undefined });
-  } finally {
-    release();
-    process.off("exit", release);
-  }
+  });
 }
 
 interface Prepared {
@@ -322,8 +320,7 @@ function stagesOf(name: string, p: Prepared): { cut: string; work: string; ran: 
     const own = stage.own ? [JSON.stringify(stage.own.sections.map((s) => settings[s] ?? null)),
       ...stage.own.files.map((f) => (existsSync(join(source, f)) ? readFileSync(join(source, f)) : `no ${f}`)),
       ...(stage.own.folders ?? []).flatMap((d) => overlay(join(source, d)).flatMap((f) => [`${d}/${f}`, readFileSync(join(source, d, f))]))] : [];
-    const code = stage.code.some((f) => f.endsWith(".py")) ? [...stage.code, COMMON] : stage.code;
-    chain = sha(chain, stage.name, ...code.map((f) => readFileSync(f)), ...own);
+    chain = stageKey(stage, chain, own, keys[stage.name]);
     now[stage.name] = chain;
   }
   const records = (path: string): Record<string, Download> => (existsSync(path) ? readJson(path) : {}) as Record<string, Download>;
@@ -372,6 +369,7 @@ function stagesOf(name: string, p: Prepared): { cut: string; work: string; ran: 
     const run = Bun.spawnSync(stage.run(work, name), { cwd, env, stdout: "inherit", stderr: "inherit" });
     ran.push(stage.name);
     if (run.exitCode !== 0) throw new Error(`${name}: ${stage.name} failed with ${run.exitCode}`);
+    if (stage.name === "fetch") rmSync(kitted, { force: true });
     if (stage.stamped && !stampHolds(maps, name, cut, key)) throw new Error(`${name}: ${stage.name} left no stamp for cut ${cut} beside ${join(maps, `${name}.snmap`)}`);
     keys[stage.name] = key;
     writeFileSync(keysPath, `${JSON.stringify(keys, null, 2)}\n`);
