@@ -27,6 +27,7 @@ import { binKey, hash3 } from "./raster.ts";
 import { seedOf } from "./building-id.ts";
 import type { SiteBuilding } from "./buildings.ts";
 import { own } from "./known.ts";
+import { dropTwins } from "./twins.ts";
 import { readSurvey, surveyInventory } from "./survey.ts";
 import { makeSigns, nearSign } from "./signs.ts";
 import type { Footprint, Site, SiteOrb, StaticLayer, StaticPiece } from "./statics.ts";
@@ -361,6 +362,9 @@ export function makeRuins(site: Site): StaticPiece[] {
     const [x, z] = site.toLattice(p.e, p.n);
     for (let row = Math.max(0, Math.floor((z1 - z - radius) / 4)); row <= Math.min(down - 1, Math.ceil((z1 - z + radius) / 4)); row++) for (let col = Math.max(0, Math.floor((x1 - x - radius) / 4)); col <= Math.min(across - 1, Math.ceil((x1 - x + radius) / 4)); col++) if ((x1 - col * 4 - x) ** 2 + (z1 - row * 4 - z) ** 2 <= radius * radius) site.lowPlants[row * across + col] = 1;
   }
+  // Pieces placed twice go here, the last change to the list, with each record moved to where its pieces now are:
+  // the roofs' plant and the reports find a building's pieces by its record.
+  const twins = dropTwins(pieces, records);
   // Whose each piece is, for the map's buildings section: a record's pieces are its building's. A building nothing was
   // stacked for is as many storeys as its pieces stand high.
   records.forEach((r, k) => {
@@ -425,7 +429,7 @@ export function makeRuins(site: Site): StaticPiece[] {
     reduced: records.filter((r) => r.detail > 0).map((r) => ({ id: r.id, name: r.name, detail: r.detail })),
     compounds: records.filter((r) => r.wings.length).map((r) => ({ id: r.id, name: r.name, wings: r.wings.length, cores: r.routes.length, entrances: r.entries.length })), approaches: records.reduce((n, r) => n + r.approaches.length, 0), escapes: records.reduce((n, r) => n + r.escapes.length, 0),
     routes: records.reduce((a, r) => a + r.routes.length, 0), infrastructure, publicPlaces: tally(publicPlaces.map((p) => p.status)), signs: tally(signs.map((s) => s.status)), budgets: v.budgets });
-  console.log(`ruins: ${records.length} buildings, ${pieces.length} blocks, peak chunk ${topChunks[0]?.blocks ?? 0}; ${supplied.length} direct labels, ${data.research.size} research matches`);
+  console.log(`ruins: ${records.length} buildings, ${pieces.length} blocks, ${twins} placed twice taken out, peak chunk ${topChunks[0]?.blocks ?? 0}; ${supplied.length} direct labels, ${data.research.size} research matches`);
   return pieces;
 }
 /** The first place of a lattice grid, `from` plus whole steps of `step`, at or past `from` in from a map's edge at `edge`. */
@@ -462,7 +466,7 @@ function makeInfrastructure(site: Site, accept: (m: Mason) => boolean): Record<s
   return { containerStacks: containers, causewayParapets: parapets };
 }
 
-export const RUINS: StaticLayer = { name: "ruins", make: makeRuins };
+export const RUINS: StaticLayer = { name: "ruins", make: makeRuins, keepsPlaces: true };
 
 function levelFloor(site: Site, frame: Frame, owner: number, base: number, protectedGround: ReadonlySet<number>): void {
   const { height, heaps } = site.ground; const { nx, nz, x1, z1 } = site.ground.grid;

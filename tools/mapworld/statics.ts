@@ -75,6 +75,8 @@ export interface StaticLayer {
   readonly name: string;
   /** Its pieces, given those the layers before it set down. */
   make(site: Site, placed: readonly StaticPiece[]): StaticPiece[];
+  /** It keeps places in its list (the ruins' records), so nothing may be taken out of the list after it. */
+  readonly keepsPlaces?: true;
 }
 
 /**

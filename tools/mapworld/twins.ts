@@ -6,8 +6,14 @@ import { STRUCT_UNITS } from "../../shared/coords.ts";
 import { toYaw } from "../map/layers.ts";
 import type { StaticPiece } from "./statics.ts";
 
-/** Takes every later twin out of `pieces`, in place and in order; gives how many went. */
-export function dropTwins(pieces: StaticPiece[]): number {
+/** A run of `pieces` something keeps by its place: where it starts and how many it is. */
+export interface PieceRun { firstPiece: number; blocks: number }
+
+/**
+ * Takes every later twin out of `pieces`, in place and in order; gives how many went. `runs` kept by place (the ruins'
+ * records of their buildings' pieces) are moved to where their pieces now are.
+ */
+export function dropTwins(pieces: StaticPiece[], runs: readonly PieceRun[] = []): number {
   const n = pieces.length, unit = (v: number): number => Math.round(v * STRUCT_UNITS);
   // A bucket a 64 m square, so one set of keys is small and let go before the next.
   const cell = (v: number): number => Math.floor(unit(v) / (64 * STRUCT_UNITS)) & 255;
@@ -32,8 +38,15 @@ export function dropTwins(pieces: StaticPiece[]): number {
     }
   }
   if (gone === 0) return 0;
-  let w = 0;
-  for (let i = 0; i < n; i++) if (twin[i] === 0) pieces[w++] = pieces[i]!;
-  pieces.length = w;
+  // Where each piece goes: its place less the twins before it.
+  const to = new Uint32Array(n + 1);
+  for (let i = 0; i < n; i++) to[i + 1] = to[i]! + 1 - twin[i]!;
+  for (const r of runs) {
+    const end = to[Math.min(n, r.firstPiece + r.blocks)]!;
+    r.firstPiece = to[Math.min(n, r.firstPiece)]!;
+    r.blocks = end - r.firstPiece;
+  }
+  for (let i = 0; i < n; i++) if (twin[i] === 0) pieces[to[i]!] = pieces[i]!;
+  pieces.length = to[n]!;
   return gone;
 }

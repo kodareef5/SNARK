@@ -33,3 +33,12 @@ test("pieces that round onto the same chunk boundary share one slot", () => {
     expect(pieces).toEqual([a]);
   }
 });
+
+test("a run kept by place moves to where its pieces are once twins go", () => {
+  const pieces = [slab(10), slab(10), slab(14), slab(18), slab(14), slab(22), slab(26)];
+  const runs = [{ firstPiece: 0, blocks: 3 }, { firstPiece: 3, blocks: 2 }, { firstPiece: 5, blocks: 2 }];
+  const third = [pieces[5], pieces[6]];
+  expect(dropTwins(pieces, runs)).toBe(2);
+  expect(runs).toEqual([{ firstPiece: 0, blocks: 2 }, { firstPiece: 2, blocks: 1 }, { firstPiece: 3, blocks: 2 }]);
+  expect(pieces.slice(runs[2]!.firstPiece, runs[2]!.firstPiece + runs[2]!.blocks)).toEqual(third);
+});

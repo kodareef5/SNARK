@@ -97,7 +97,9 @@ export async function buildMap(named: string, release = false, output = join(ROO
   const layered: StaticPiece[] = [];
   for (const layer of STATIC_LAYERS) {
     const pieces = layer.make(site, layered);
+    // The ruins take their own twins out, with their records; a later layer keeps no place in its list.
     const twins = dropTwins(pieces);
+    if (twins && layer.keepsPlaces) throw new Error(`${twins} pieces of ${layer.name} placed twice after it took its twins out: its records would name other pieces`);
     Bun.gc(true);
     lap(`${pieces.length} static pieces of ${layer.name}${twins ? `, ${twins} placed twice taken out` : ""}`);
     for (const p of pieces) layered.push(p);

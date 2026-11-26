@@ -30,6 +30,7 @@ import { hullPoint } from "../../shared/world/convex.ts";
 import { S } from "./ground.ts";
 import { SLACK } from "./cell-lists.ts";
 import { binKey, hash3 } from "./raster.ts";
+import { SECTOR } from "./street-cars.ts";
 import { boxOf, meets, obstacleIndex, type Box } from "./ruin-obstacles.ts";
 import { vocabulary } from "./ruin-vocabulary.ts";
 import type { Site, StaticLayer, StaticPiece } from "./statics.ts";
@@ -813,18 +814,33 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
     // Least first is a draw without return in which a class is its weight times likelier.
     boards.push({ x, z, dx, dz, half, h, cls, key: -Math.log((hash3(h, 3, seed) + 0.5) / 4294967296) / (W.weights?.[cls] ?? 1) });
   });
-  let land = 0;
-  for (let i = 0; i < ground.surface.length; i++) if (ground.surface[i]! > S.POOL) land++;
-  const most = W.perKm2 === undefined ? Infinity : Math.round((W.perKm2 * land * 4) / 1e6);
-  if (W.perKm2 !== undefined) boards.sort((a, b) => a.key - b.key || a.h - b.h || a.x - b.x || a.z - b.z);
-  let standing = 0;
-  for (const b of boards) {
-    if (standing >= most) break;
-    if (W.perKm2 === undefined && !chance(b.h, W.chance)) continue;
-    const set = W.sets?.[b.cls] ?? W.set;
-    const back = set[0] + (hash3(b.h, 1, seed) % 1000) / 1000 * (set[1] - set[0]);
-    const [px, pz, yaw] = side(b.x, b.z, b.dx, b.dz, b.half + back, b.h % 2 === 0 ? 1 : -1);
-    if (put("billboards", form(W.forms?.[b.cls] ?? "billboard", hash3(b.h, 2, seed)), px, pz, yaw)) standing++;
+  // Counted a sector of the lattice at a time, as parked cars are: what stands in a sector a map holds whole is the
+  // same whatever else the map holds. A sector's share is its land's, the part of a board over by its own draw.
+  const sectorOf = (x: number, z: number): number => binKey(Math.floor(x / SECTOR), Math.floor(z / SECTOR));
+  const land = new Map<number, number>();
+  if (W.perKm2 !== undefined) {
+    for (let row = 0; row < nz; row++) for (let col = 0; col < nx; col++) {
+      if (ground.surface[row * nx + col]! <= S.POOL) continue;
+      const k = sectorOf(x1 - col * 2, z1 - row * 2);
+      land.set(k, (land.get(k) ?? 0) + 1);
+    }
+  }
+  const bySector = new Map<number, typeof boards>();
+  for (const b of boards) { const k = W.perKm2 === undefined ? 0 : sectorOf(b.x, b.z); const list = bySector.get(k); if (list) list.push(b); else bySector.set(k, [b]); }
+  for (const sector of [...bySector.keys()].sort((a, b) => a - b)) {
+    const mine = bySector.get(sector)!;
+    const share = W.perKm2 === undefined ? Infinity : (W.perKm2 * (land.get(sector) ?? 0) * 4) / 1e6;
+    const most = share === Infinity ? Infinity : Math.floor(share) + (hash3(sector, 0, seed + 11) / 4294967296 < share - Math.floor(share) ? 1 : 0);
+    if (W.perKm2 !== undefined) mine.sort((a, b) => a.key - b.key || a.h - b.h || a.x - b.x || a.z - b.z);
+    let standing = 0;
+    for (const b of mine) {
+      if (standing >= most) break;
+      if (W.perKm2 === undefined && !chance(b.h, W.chance)) continue;
+      const set = W.sets?.[b.cls] ?? W.set;
+      const back = set[0] + (hash3(b.h, 1, seed) % 1000) / 1000 * (set[1] - set[0]);
+      const [px, pz, yaw] = side(b.x, b.z, b.dx, b.dz, b.half + back, b.h % 2 === 0 ? 1 : -1);
+      if (put("billboards", form(W.forms?.[b.cls] ?? "billboard", hash3(b.h, 2, seed)), px, pz, yaw)) standing++;
+    }
   }
   if (graph.mapped.points) {
     summary.mapped = {};
