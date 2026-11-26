@@ -7,6 +7,7 @@ import { S_CHUNK } from "../../shared/net/protocol.ts";
 import { HeldStatics } from "../../client/core/map-statics.ts";
 import { readHead, readPart, writeMap, type MapStatic, type StaticsPiece } from "../../shared/world/mapfile.ts";
 import { GONE_FELL, toldHealth, type StructureStore } from "../../shared/world/structures.ts";
+import { boxBase, layBase } from "../../tools/bench/base.ts";
 import { flatMap } from "../fixtures/map.ts";
 import { Harness } from "../fixtures/net.ts";
 
@@ -320,6 +321,51 @@ test("a chunk read without its map slots stays incomplete, and is sent again who
   h.run(1000);
   expect([waiting(), read.every(complete), differ(structs, dana.world!.structs, [...read, middle])]).toEqual([0, true, 0]);
 });
+
+test("a chunk message kept past its time is read without its map slots", () => {
+  const { h, said, dana, set, waiting, structs, middle } = sectorPage();
+  dana.waitingMs = 1500;
+  h.run(1000);
+  const complete = (c: number): boolean => (dana as unknown as { whole: Uint8Array }).whole[c] !== 0;
+  // Three chunks east of the body's, which came as rows before the server heard the page holds the map.
+  const east = middle + 3;
+  expect([waiting() > 0, complete(middle), complete(east)]).toEqual([true, true, false]);
+  // A wall built there meanwhile reaches the page once the wait is out, though the map's pieces round it have not.
+  const ref = structs.add(h.reg.index.get("core:wall")!, (east % 9) * CHUNK_SIZE + 2, 1.88, Math.floor(east / 9) * CHUNK_SIZE + 60, 0, 1, 100);
+  h.run(1500);
+  expect([waiting(), complete(east), dana.world!.structs.chunks[east]?.kind[ref % 65536], said]).toEqual([0, false, structs.chunks[east]!.kind[ref % 65536], []]);
+  set();
+  h.run(1000);
+  const c = h.client(dana)!;
+  const window = c.subscribed.filter((k) => structs.chunks[k] && c.known[k] === structs.chunks[k]!.version);
+  expect([window.every(complete), differ(structs, dana.world!.structs, window)]).toEqual([true, 0]);
+});
+
+for (const bare of [3, 4]) {
+  test(`a frame is the server's while one of its chunks waits for its sector (${bare})`, () => {
+    // The 7 by 7 chunks round the middle hold crates but one, three rows north of the body; a wooden box 63 m long lies
+    // across that one and the next on one frame.
+    const crates: MapStatic[] = [];
+    for (let cz = 1; cz <= 7; cz++) for (let cx = 1; cx <= 7; cx++) for (let k = 0; k < 64 && (cz !== 1 || cx !== bare); k++) crates.push({ kind: "core:crate", x: cx * CHUNK_SIZE + 4 + (k % 8) * 8, y: 40, z: cz * CHUNK_SIZE + 4 + Math.floor(k / 8) * 8, yaw: 0 });
+    const file = writeMap(flatMap(9, { statics: crates }));
+    const h = new Harness({}, 1, 30, { map: file });
+    const structs = h.world.structs, head = readHead(file), held = new HeldStatics(head);
+    layBase(structs, boxBase(h.reg, "wood", 3 * CHUNK_SIZE + 32.5, 100, CHUNK_SIZE + 0.5, 21, 1, 3000), 7, (kind) => h.reg.maxHp[kind]!);
+    const [waits, other] = [9 + (bare === 3 ? 4 : 3), 9 + bare];
+    expect([structs.chunks[waits]!.live > 64, structs.chunks[other]!.live > 0, structs.frames.count]).toEqual([true, true, 1]);
+    const dana = h.join("dana", {}, { statics: false, held });
+    h.run(1500);
+    // The chunk with none of the map's pieces is whole on the frame the server has, while the other's messages wait.
+    const mine = dana.world!.structs;
+    const frames = (of: StructureStore): number[][] => [...of.frames.all()].map((f) => [f.gid, f.ox, f.oy, f.oz, f.yaw, f.team]);
+    expect([(dana as unknown as { waitingRows: unknown[] }).waitingRows.length > 0, mine.chunks[waits]?.live ?? 0, differ(structs, mine, [other]), frames(mine)]).toEqual([true, 0, 0, frames(structs)]);
+    const part = held.parts[0]!;
+    const steps = held.set(part, readPart(head, part, file.subarray(part.at, part.at + part.length)) as StaticsPiece);
+    while (!steps.next().done);
+    h.run(500);
+    expect([differ(structs, mine, [waits, other]), frames(mine)]).toEqual([0, frames(structs)]);
+  });
+}
 
 test("a chunk dropped while messages wait is kept aside in order, and CMD_HAVE takes it back", () => {
   const { h, dana, set, waiting, structs, chunks } = sectorPage(13);

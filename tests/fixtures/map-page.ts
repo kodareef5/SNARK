@@ -246,7 +246,7 @@ export const serverOn = (file: Uint8Array<ArrayBuffer>, seed = 3): Harness => ne
 
 /** The private parts of a session a test reads. */
 export interface SessionInside {
-  waitingRows: (Uint8Array | number)[];
+  waitingRows: unknown[];
   whole: Uint8Array;
   parked: Map<number, { version: number }>;
   unbased: Set<number>;
