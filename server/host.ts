@@ -1050,6 +1050,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     rules,
     ...(typeof opts.cast === "object" ? { settings: { enabled: true, ...opts.cast } } : opts.cast === true ? { settings: { enabled: true } } : {}),
     logDir: opts.dbPath ? join(dirname(resolve(opts.dbPath)), "cast") : null,
+    people,
   });
   const fixtures = new Fixtures(world, records, items);
   fixtures.rules = rules;

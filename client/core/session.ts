@@ -173,7 +173,7 @@ import type { Heightfield } from "../../shared/world/heightfield.ts";
 import type { TideEyeSite } from "../../shared/world/tide-eye.ts";
 import { ORB_GAIN_UNITS, type OrbSite } from "../../shared/world/orb.ts";
 import { readScreens, type ScreenState } from "../../shared/video/screen.ts";
-import { staticKinds, type MapLandmark, type MapSpawn, type MapStatics } from "../../shared/world/mapfile.ts";
+import { staticKinds, type MapLandmark, type MapPart, type MapSpawn, type MapStatics } from "../../shared/world/mapfile.ts";
 import type { Buildings } from "../../shared/world/buildings.ts";
 import { NodeField, type NodeSource } from "../../shared/world/nodes.ts";
 import { heapAt, heapHealth } from "../../shared/world/breaking.ts";
@@ -188,11 +188,12 @@ import type { FarSource } from "./render/far.ts";
 import type { CityMaker } from "./render/citymake.ts";
 import type { CitySource } from "./render/farcity.ts";
 import type { HeldTops } from "./render/blocks.ts";
+import type { HeldStatics, MapRows } from "./map-statics.ts";
 import type { BlocksSource } from "./render/cityblocks.ts";
 import { CityStatics } from "../../shared/world/city.ts";
 import { NodeChanges, type FarNodeSource } from "./render/farnodes.ts";
 import { MapStore } from "./tactical.ts";
-import { lookOfSeed } from "../../shared/people/person.ts";
+import { PeopleBook } from "./people-book.ts";
 
 export interface SessionOptions {
   intent?: "create" | "resume";
@@ -223,6 +224,11 @@ export interface SessionOptions {
   cityMaker?: CityMaker;
   /** The statics of the map file resolveMap accepts. With them the server sends a chunk's only where they differ (HELLO_STATICS). */
   statics?: MapStatics;
+  /**
+   * That map's statics a sector at a time, as the page holds them (map-statics.ts). With them the server is told at once
+   * (CMD_STATICS), and a chunk message that takes from a sector not yet held waits for it, with every one after it.
+   */
+  held?: HeldStatics;
   /** The landmarks that map file sets down (MapContent). Past the near rows the scene draws each from its far mesh. */
   landmarks?: readonly MapLandmark[];
   /** Named public places baked into this map header. */
@@ -403,6 +409,8 @@ export const PARK_CHUNKS = 8;
 export const PARK_CHUNKS_TOUCH = 2;
 const PARK_BYTES = 4 * 1024 * 1024;
 const SLOT_BYTES = 32;
+/** Chunk messages kept waiting for a sector at most: past that the first is read, its slots from the map left out. */
+export const WAITING_MOST = 2048;
 /** In `whole`: the chunk was put back from those kept, and the server's next rows for it bring it up to date. */
 const CAUGHT_UP_NEXT = 2;
 /** Milliseconds after a hand change is answered that its slot is still awaited. */
@@ -585,7 +593,7 @@ export class ClientSession {
   /** Sparse exact launch/resume state, keyed by generation-qualified entity handle. Kept across packet/snapshot ordering. */
   readonly corpseMotions = new FallCheckpoints();
   private corpseRetryAt = -TICK_RATE;
-  private readonly motionSource: MotionSource = { states: () => this.motions, tick: () => this.tickClock, statics: () => this.arrived ?? this.opts.statics ?? null };
+  private readonly motionSource: MotionSource = { states: () => this.motions, tick: () => this.tickClock, statics: () => this.world?.city?.statics ?? this.wholeCity() };
   world: (CollisionWorld & { mapId: string; dims: MapDims; far: FarSource; farNodes?: FarNodeSource; city?: CitySource; motion?: MotionSource; tideEyes?: readonly TideEyeSite[]; orbs?: readonly OrbSite[]; landmarks?: readonly MapLandmark[]; tops?: BlocksSource }) | null = null;
   /** Handle of the local entity, or 0 while there is none (spectating, dead). */
   ownHandle = 0;
@@ -625,6 +633,8 @@ export class ClientSession {
   remaking = false;
   /** The id of the cluster's people manifest, its editions (OWN_PEOPLE, shared/people/doc.ts), or "" for none yet. */
   peopleManifest = "";
+  /** The cluster's admin populations this client has loaded from the people manifests it was named. */
+  readonly peopleBook = new PeopleBook();
   /** With a piece in hand: the structures of every tribe counted round the survivor, and the most that may stand there, 0 for no cap (OWN_STRUCTURES). */
   structuresNear = 0;
   structuresCap = 0;
@@ -755,6 +765,15 @@ export class ClientSession {
   private staticsSeq = 0;
   /** The map's statics' kinds as content indices, from the welcome or CMD_STATICS's answer, when the client takes chunks from them. */
   private staticKinds: Uint16Array | null = null;
+  /**
+   * Chunk messages waiting, in the order they came, from the first that takes slots from a sector of `opts.held` not yet held:
+   * the bytes after its kind, or a chunk number for a drop. And a reader for them, and the rows of a whole map's table.
+   */
+  private readonly waitingRows: (Uint8Array | number)[] = [];
+  private readonly waitingReader = new BitReader();
+  /** Chunk messages kept waiting at most (WAITING_MOST). */
+  waitingMost = WAITING_MOST;
+  private readonly wholeRows: MapRows = { kind: new Uint16Array(0), yaw: new Uint16Array(0), x: new Float32Array(0), y: new Float32Array(0), z: new Float32Array(0), from: 0, to: 0 };
   /** Reads a chunk message's rows (shared/world/rows.ts), made with the world. */
   private rows: RowCoder | null = null;
   /** The frames the server has defined to this session, for one this store let go with its last row and a row names again. */
@@ -831,8 +850,8 @@ export class ClientSession {
   tap: NetTap | null = null;
   /** Where the tap was last told a snapshot's section ended, in bits from the message's start. */
   private marked = 0;
-  /** A person sent as a seed, made from the content the server tuned (shared/people/person.ts). */
-  private readonly makePerson = (seed: number, population: number, revision: number): Uint8Array | null => lookOfSeed(this.registry, seed, population, revision);
+  /** A person sent as a seed, made from the content the server tuned or the cluster's admin populations (shared/people/person.ts). */
+  private readonly makePerson = (seed: number, population: number, revision: number): Uint8Array | null => this.peopleBook.look(this.registry, seed, population, revision);
   private readonly tally = (op: number, kind: number, bits: number): void => {
     this.marked += bits;
     this.tap?.snapshot(SNAP_BODIES, op, kind, bits);
@@ -936,6 +955,8 @@ export class ClientSession {
     this.welcomed = new Promise((go) => (this.welcomedNow = go));
     for (let i = 0; i < HISTORY; i++) this.bodies.push(new Body());
     conn.onMessage = (channel, data) => this.receive(channel, data);
+    opts.held?.onSet(() => this.readWaiting());
+    if (opts.held) opts.held.keep = (part) => this.holdsSector(part);
     conn.onClose = () => {
       if (this.state !== "closed") {
         const was = this.state;
@@ -1073,7 +1094,8 @@ export class ClientSession {
     let dt = this.lastNow < 0 ? 0 : nowMs - this.lastNow;
     const frameMs = dt;
     this.lastNow = nowMs;
-    if (this.arrived && !this.staticKinds && this.staticsSeq === 0) this.staticsSeq = this.command(CMD_STATICS);
+    if ((this.arrived || this.opts.held) && !this.staticKinds && this.staticsSeq === 0) this.staticsSeq = this.command(CMD_STATICS);
+    this.peopleBook.poll();
     if (dt > 250) dt = 250;
     const ticks = (dt / 1000) * TICK_RATE;
     // The input clock keeps real time through a long frame, so the first input after it is on time. Margins told of
@@ -1223,8 +1245,11 @@ export class ClientSession {
   }
 
   private groundHeld(): boolean {
-    const b = this.own, r = PREDICTED_REACH;
-    return this.world?.hf.exactIn(b.x - r, b.z - r, b.x + r, b.z + r) ?? false;
+    const b = this.own, r = PREDICTED_REACH, hf = this.world?.hf;
+    if (!hf?.exactIn(b.x - r, b.z - r, b.x + r, b.z + r)) return false;
+    // A wheel grips by the streets' lines where they are held and the 4 m cells where not; the server holds them all.
+    const wheeled = this.driving >= 0 && !!this.registry.vehicle[this.own.kind];
+    return !wheeled || (hf.streets?.heldIn(b.x - r, b.z - r, b.x + r, b.z + r) ?? true);
   }
 
   /** Fill `out` with remote entities interpolated to the current render time. */
@@ -1661,11 +1686,13 @@ export class ClientSession {
         if (s.state === "active") s.snapshot(r);
       },
     });
-    messages.add({ kind: S_CHUNK, read: (s, r) => s.chunk(r) });
+    messages.add({ kind: S_CHUNK, read: (s, r) => s.chunkOrKeep(r) });
     messages.add({
       kind: S_CHUNK_DROP,
       read(s, r) {
-        s.park(r.u16());
+        const chunk = r.u16();
+        if (s.waitingRows.length > 0) s.waitingRows.push(chunk);
+        else s.park(chunk);
       },
     });
     messages.add({ kind: S_NODES, read: (s, r) => s.nodes(r) });
@@ -1696,7 +1723,7 @@ export class ClientSession {
         const code = r.u8();
         if (r.overflow) return;
         if (seq !== 0 && seq === s.staticsSeq) {
-          if (code === RESULT_OK) s.staticKinds = staticKinds(s.arrived!, s.registry);
+          if (code === RESULT_OK) s.staticKinds = staticKinds(s.opts.held ?? s.arrived!, s.registry);
           else if (code === RESULT_BUSY) s.staticsSeq = 0;
         }
         if (seq !== 0 && seq === s.haveSeq) s.unpark(code === RESULT_OK);
@@ -2215,7 +2242,9 @@ export class ClientSession {
       kind: OWN_PEOPLE,
       read(s, r) {
         const id = r.string(16);
-        if (!r.overflow && (id === "" || /^[0-9a-f]{16}$/.test(id))) s.peopleManifest = id;
+        if (r.overflow || !(id === "" || /^[0-9a-f]{16}$/.test(id))) return;
+        s.peopleManifest = id;
+        s.peopleBook.want(id);
       },
     });
     ownKinds.add({
@@ -2495,12 +2524,14 @@ export class ClientSession {
     [this.parkedBytes, this.haveSeq, this.haveAt] = [0, 0, -1];
     this.staticKinds = fills && this.opts.statics ? staticKinds(this.opts.statics, reg) : null;
     this.staticsSeq = 0;
+    this.waitingRows.length = 0;
+    this.opts.held?.needed.clear();
     const far: FarSource = { cells: this.far, lists: this.gone, complete: (chunk) => this.whole[chunk] !== 0 };
     const field = this.nodeField;
     this.nodeChanges = field ? new NodeChanges(dims) : null;
     const nodes = field ? { nodes: field.store, farNodes: { nodes: field.source, held: (c: number) => field.isLoaded(c), gone: (c: number) => this.nodeGone.get(c), changes: this.nodeChanges!, city: () => this.world?.city?.statics ?? this.nodeCity(), ground: hf } } : {};
     // The file's dims, which say where the map sits on the lattice as the welcome's do not.
-    this.world = { mapId, tideEyes: this.opts.tideEyes, ...(this.opts.orbs?.length ? { orbs: this.opts.orbs } : {}), dims: hf.dims, hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), far, ...nodes, ...(reg.motion.some((t) => t !== null) ? { motion: this.motionSource } : {}), ...(this.opts.landmarks?.length ? { landmarks: this.opts.landmarks } : {}), ...(this.opts.tops ? { tops: { tops: this.opts.tops, ...(this.opts.cityMaker ? { maker: this.opts.cityMaker } : {}) } } : {}) };
+    this.world = { mapId, tideEyes: this.opts.tideEyes, ...(this.opts.orbs?.length ? { orbs: this.opts.orbs } : {}), dims: hf.dims, hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), far, ...nodes, ...(reg.motion.some((t) => t !== null) ? { motion: this.motionSource } : {}), ...(this.opts.landmarks?.length ? { landmarks: this.opts.landmarks } : {}), ...(this.opts.tops ? { tops: { tops: this.opts.tops, ...(this.opts.cityMaker ? { maker: this.opts.cityMaker } : {}), ...(this.opts.held ? { rows: this.opts.held, kinds: this.opts.held.kinds } : {}) } } : {}) };
     this.vehicleTrees = field ? new PredictedTrees(this.world, reg, field) : null;
     this.startCity(this.arrived);
     this.vehicleContacts = new VehiclePrediction(this.world, reg, field ? () => new PredictedTrees(this.world!, reg, field) : undefined, this.vehicleTrees ?? undefined);
@@ -2518,9 +2549,10 @@ export class ClientSession {
   }
 
   /**
-   * Call when map statics arrive after the session began: those of the sectors round the body first, `whole` false, which
-   * the far city starts with, and then the whole map's, which it is made again of and the server is told of, so that from
-   * its answer on it sends a chunk's statics only where they differ from them (CMD_STATICS).
+   * Call when map statics arrive after the session began, on a page that holds no store of them a sector at a time: those
+   * of the sectors round the body first, `whole` false, which the far city starts with, and then the whole map's, which it
+   * is made again of and the server is told of, so that from its answer on it sends a chunk's statics only where they
+   * differ from them (CMD_STATICS).
    */
   staticsArrived(statics: MapStatics, whole = true): void {
     const steps = this.staticsSteps(statics, whole);
@@ -2529,14 +2561,23 @@ export class ClientSession {
 
   /**
    * staticsArrived a step at a time (CityStatics.steps), for a page that lets frames go between them: what it changes of
-   * this session and its world is changed at the last step.
+   * this session and its world is changed at the last step. Without `statics`, the statics a page holds a sector at a time
+   * were handed over: the city follows them already.
    */
-  *staticsSteps(statics: MapStatics, whole = true): Generator<void, void> {
+  *staticsSteps(statics?: MapStatics, whole = true): Generator<void, void> {
+    this.prediction.handed++;
+    if (!statics) return;
     const world = this.world, reg = this.registry;
     const city = world && !this.opts.city ? yield* CityStatics.steps(world.dims, statics, reg) : null;
-    this.prediction.handed++;
-    if (whole) this.arrived = statics;
+    if (whole && this.arrived !== statics) [this.arrived, this.heldCity] = [statics, null];
     this.startCity(statics, true, world === this.world && reg === this.registry ? city : null);
+  }
+
+  /** The city of the whole map's statics this session was given or handed, made once, or null. */
+  private wholeCity(): CityStatics | null {
+    const statics = this.arrived ?? this.opts.statics;
+    if (!this.world || !statics) return null;
+    return (this.heldCity ??= new CityStatics(this.world.dims, statics, this.registry));
   }
 
   /**
@@ -2544,16 +2585,27 @@ export class ClientSession {
    * hello): the server sends no far cells of a chunk still as the map placed it to a session that holds them.
    */
   private nodeCity(): CityStatics | null {
-    if (!this.staticKinds || !this.world) return null;
-    return (this.heldCity ??= new CityStatics(this.world.dims, (this.arrived ?? this.opts.statics)!, this.registry));
+    return this.staticKinds ? this.wholeCity() : null;
   }
 
-  /** The far city of `statics`, `made` where it is made already, where the world has none or, `again`, in place of the one it has. */
+  /**
+   * The far city of `statics`, `made` where it is made already, where the world has none or, `again`, in place of the one it
+   * has; on a page that holds its statics a sector at a time, of those, followed as they come and go.
+   */
   private startCity(statics: MapStatics | null, again = false, made: CityStatics | null = null): void {
-    const world = this.world;
+    const world = this.world, held = this.opts.held;
     if (!world || (world.city && !again)) return;
-    const city = this.opts.city?.(this.registry) ?? made ?? (statics ? new CityStatics(world.dims, statics, this.registry) : null);
-    if (city && city.count > 0) world.city = { statics: city, complete: world.far.complete, maker: this.opts.cityMaker };
+    const city = this.opts.city?.(this.registry) ?? made ?? (held ? held.follow(this.registry) : statics ? new CityStatics(world.dims, statics, this.registry) : null);
+    if (city && (city.count > 0 || city.byParts)) world.city = { statics: city, complete: world.far.complete, maker: this.opts.cityMaker };
+  }
+
+  /** Whether the near store holds or keeps aside a chunk of sector `part`, whose rows it then reads (mapKind, the near city). */
+  private holdsSector(part: MapPart): boolean {
+    const structs = this.world?.structs, held = this.opts.held;
+    if (!structs || !held) return false;
+    for (const c of structs.held) if (held.partOf(c) === part) return true;
+    for (const c of this.parked.keys()) if (held.partOf(c) === part) return true;
+    return false;
   }
 
   private snapshot(r: BitReader): void {
@@ -2849,10 +2901,83 @@ export class ClientSession {
    * has that kind's finish, material and full health in any form. 0 for a slot past the map's, or without the map's statics.
    */
   mapKind(chunk: number, slot: number): number {
-    const statics = this.staticKinds ? (this.arrived ?? this.opts.statics) : null;
-    if (!statics || chunk + 1 >= statics.first.length) return 0;
-    const at = statics.first[chunk]! + slot;
-    return at < statics.first[chunk + 1]! ? this.staticKinds![statics.kind[at]!]! : 0;
+    const rows = this.mapRows(chunk);
+    if (!rows) return 0;
+    const at = rows.from + slot;
+    return at < rows.to ? this.staticKinds![rows.kind[at]!]! : 0;
+  }
+
+  /** How many rows the map holds in `chunk`, where this client takes chunks from the map's statics; else 0. */
+  private mapCount(chunk: number): number {
+    if (!this.staticKinds) return 0;
+    const held = this.opts.held, whole = this.arrived ?? this.opts.statics;
+    if (held) return held.count(chunk);
+    return whole && chunk + 1 < whole.first.length ? whole.first[chunk + 1]! - whole.first[chunk]! : 0;
+  }
+
+  /**
+   * Where the map's rows of `chunk` are read, where this client takes chunks from the map's statics: from the sector held,
+   * or from the whole map's table. Null where they are not held.
+   */
+  private mapRows(chunk: number): MapRows | null {
+    if (!this.staticKinds) return null;
+    const held = this.opts.held;
+    if (held) return held.find(chunk);
+    const t = this.arrived ?? this.opts.statics;
+    if (!t || chunk + 1 >= t.first.length) return null;
+    const r = this.wholeRows;
+    [r.kind, r.yaw, r.x, r.y, r.z, r.from, r.to] = [t.kind, t.yaw, t.x, t.y, t.z, t.first[chunk]!, t.first[chunk + 1]!];
+    return r;
+  }
+
+  /**
+   * S_CHUNK. Held back, with every chunk message after it, where it takes slots from a sector of the map not yet held: they are
+   * read in order once it is (readWaiting). Rows sent for a chunk kept aside mean it comes whole, so that is let go at once.
+   */
+  private chunkOrKeep(r: BitReader): void {
+    if (!this.world) return;
+    const start = r.pos;
+    const chunk = this.waitsFor(r);
+    r.pos = start;
+    if (this.waitingRows.length === 0 && chunk < 0) return this.chunk(r);
+    this.forget(r.u16());
+    r.pos = start;
+    if (chunk >= 0) this.opts.held?.need(chunk);
+    this.waitingRows.push(r.rest());
+    if (this.waitingRows.length > this.waitingMost) this.readWaiting(true);
+  }
+
+  /** The chunk whose sector a chunk message read from `r` takes slots from where that is not held; else -1. */
+  private waitsFor(r: BitReader): number {
+    const chunk = r.u16();
+    r.u32();
+    r.bool();
+    r.bits(16);
+    return !r.overflow && chunk < this.world!.structs.chunks.length && this.mapCount(chunk) > 0 && r.bool() && !this.mapRows(chunk) && !this.opts.held?.brokenAt(chunk) ? chunk : -1;
+  }
+
+  /**
+   * Reads the chunk messages waiting, in order, up to the first that still takes slots from a sector not held; with
+   * `over`, the first whatever it waits for, its slots from the map left out (WAITING_MOST).
+   */
+  private readWaiting(over = false): void {
+    const r = this.waitingReader;
+    while (this.waitingRows.length > 0 && this.world) {
+      const m = this.waitingRows[0]!;
+      if (typeof m === "number") {
+        this.waitingRows.shift();
+        this.park(m);
+        continue;
+      }
+      r.reset(m);
+      const chunk = this.waitsFor(r);
+      if (chunk >= 0 && !over) return this.opts.held?.need(chunk);
+      if (chunk >= 0) this.opts.held?.say?.(`the map's statics of chunk ${chunk} were waited for too long: its pieces the map set are left out until it comes whole`);
+      over = false;
+      this.waitingRows.shift();
+      r.reset(m);
+      this.chunk(r);
+    }
   }
 
   /**
@@ -2944,15 +3069,16 @@ export class ClientSession {
     // Rows for a chunk kept aside were sent before the server heard it was kept: it comes whole.
     this.forget(chunk);
     const structs = world.structs;
-    const statics = this.staticKinds ? (this.arrived ?? this.opts.statics)! : null;
     const maxHp = this.registry.maxHp;
-    if (statics && statics.first[chunk + 1]! > statics.first[chunk]! && r.bool()) {
+    if (this.mapCount(chunk) > 0 && r.bool()) {
       // Slots the server has as the map has them, set down from this client's own copy of the map.
       const first = r.u16();
       const n = r.u16();
-      const at = statics.first[chunk]! + first;
-      if (r.overflow || at + n > statics.first[chunk + 1]!) return;
-      for (let m = at; m < at + n; m++) {
+      // Where its sector is broken, or was waited for too long, the slots the map sets are left out.
+      const statics = this.mapRows(chunk);
+      const at = statics ? statics.from + first : 0;
+      if (r.overflow || (statics && at + n > statics.to)) return;
+      for (let m = at; statics && m < at + n; m++) {
         const kind = this.staticKinds![statics.kind[m]!]!;
         structs.put(chunk, m - at + first, kind, statics.x[m]!, statics.y[m]!, statics.z[m]!, statics.yaw[m]!, 0, maxHp[kind]!, version, PUT_FREE);
       }

@@ -101,7 +101,7 @@ export function cataloguePage(): string {
     if (fields) {
       const arks = Object.entries(fields).filter(([, f]) => f.ark !== "");
       if (arks.length > 0) out.push(`ARK's names: ${arks.map(([name, f]) => `\`${name}\` is ${cell(f.ark)}`).join("; ")}.`, "");
-      const refs = Object.entries(fields).flatMap(([name, f]) => Object.entries(f.refs ?? {}).map(([path, to]) => `\`${name}${path === "" ? "" : path.startsWith("[") ? path : `.${path}`}\` names a \`${to}\``));
+      const refs = Object.entries(fields).flatMap(([name, f]) => Object.entries(f.refs ?? {}).map(([path, to]) => `\`${name}${path === "" ? "" : path.startsWith("[") ? path : `.${path}`}\` names ${(typeof to === "string" ? [to] : to).map((t) => `a \`${t}\``).join(" or ")}`));
       if (refs.length > 0) out.push(`What names what: ${refs.join("; ")}.`, "");
       const open = Object.entries(fields).filter(([, f]) => f.open).map(([name]) => name);
       if (open.length > 0) out.push(`Packs may add to: ${code(open)}.`, "");

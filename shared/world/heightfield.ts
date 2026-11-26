@@ -12,6 +12,20 @@ import type { MapWater } from "./water.ts";
 
 export const TERRAIN_CELL = 2;
 
+/** What Heightfield.view gives: sample (i, j) of the box asked for is `heights[off + j * stride + i]`. */
+export interface GroundView {
+  heights: Uint16Array;
+  stride: number;
+  off: number;
+}
+
+/** What Heightfield.tints gives: the tint of sample (i, j) of the box asked for is `tint[off + j * stride + i]`. */
+export interface TintView {
+  tint: Uint8Array;
+  stride: number;
+  off: number;
+}
+
 export class Heightfield {
   /** With its frame and display origin, the defaults where the dims it was made with give none. */
   readonly dims: FramedDims;
@@ -34,6 +48,8 @@ export class Heightfield {
    * Empty where a map gives none: every place is then plain ground.
    */
   readonly ground: Uint8Array;
+  /** Whether its samples have tints. A server's ground draws nothing and has none. */
+  readonly tinted: boolean;
   /** Its roads' frame, used only for drawing (shared/world/roadframe.ts), as far as it is held; null for a server's ground and wherever nothing draws it. */
   road: RoadSectors | null = null;
   /**
@@ -56,9 +72,29 @@ export class Heightfield {
    * cx0, cz0 up to but not including cx1, cz1. A reader that made something of the samples makes it again where they changed.
    */
   readonly changes: number[] = [];
+  /**
+   * Per change, true for a fill, which sets stand-ins, and false for a hold, whose samples its caller set. A page holds a
+   * sector only after its overview's fill, which set every OVERVIEW_STEP-th sample as the map's own (mapload.ts).
+   */
+  readonly filled: boolean[] = [];
+  /**
+   * Per chunk, row by row, a bound on its samples, edges among them, in stored steps: its lowest, then its highest. Kept
+   * by whoever sets the samples where it can say it without a scan (mapload.ts StagedMap); null where a reader scans.
+   */
+  bounds: Uint16Array | null = null;
+  /**
+   * Cells a piece of the samples spans along an axis, its pieces starting at multiples of it: a view within one piece is
+   * no copy. The dense array is one piece.
+   */
+  span: number;
+  private readonly whole: GroundView;
+  private readonly wholeTint: TintView;
 
-  /** Use a power-of-two fraction such as 1/256 for `stepY`, so round heights (sea level, floors) are exact. */
-  constructor(dims: MapDims, cell: number, minY: number, stepY: number, heights?: Uint16Array, tint?: Uint8Array, ground?: Uint8Array) {
+  /**
+   * Use a power-of-two fraction such as 1/256 for `stepY`, so round heights (sea level, floors) are exact. A `paged`
+   * heightfield keeps no arrays of its own: a subclass backs every reader (client/core/ground/pages.ts).
+   */
+  constructor(dims: MapDims, cell: number, minY: number, stepY: number, heights?: Uint16Array, tint?: Uint8Array, ground?: Uint8Array, paged = false) {
     this.dims = framed(dims);
     this.cell = cell;
     this.sizeX = dims.chunksX * CHUNK_SIZE;
@@ -67,15 +103,58 @@ export class Heightfield {
     this.nz = Math.round(this.sizeZ / cell) + 1;
     this.minY = minY;
     this.stepY = stepY;
-    this.heights = heights ?? new Uint16Array(this.nx * this.nz);
-    this.tint = tint ?? new Uint8Array(this.nx * this.nz);
+    this.heights = heights ?? new Uint16Array(paged ? 0 : this.nx * this.nz);
+    this.tint = tint ?? new Uint8Array(paged ? 0 : this.nx * this.nz);
     this.groundX = (this.nx + 1) >> 1;
     this.ground = ground ?? new Uint8Array(0);
-    if (this.heights.length !== this.nx * this.nz || (this.tint.length !== 0 && this.tint.length !== this.nx * this.nz) ||
+    this.tinted = paged || this.tint.length > 0;
+    if (!paged && this.heights.length !== this.nx * this.nz || (this.tint.length !== 0 && this.tint.length !== this.nx * this.nz) ||
       (this.ground.length !== 0 && this.ground.length !== this.groundX * ((this.nz + 1) >> 1))) {
       throw new Error("heightfield data does not match map dimensions");
     }
     this.exact = new Uint8Array(chunkCount(dims)).fill(1);
+    this.span = Math.max(this.nx, this.nz) - 1;
+    this.whole = { heights: this.heights, stride: this.nx, off: 0 };
+    this.wholeTint = { tint: this.tint, stride: this.nx, off: 0 };
+  }
+
+  /**
+   * The samples of the box from (i0, j0) to (i1, j1), both included, as `GroundView` reads them. Good until the next call.
+   * Shared code asks once a query and keeps its loops on the arrays it is given.
+   */
+  view(_i0: number, _j0: number, _i1: number, _j1: number): GroundView {
+    return this.whole;
+  }
+
+  /** The tints of the box from (i0, j0) to (i1, j1), both included, as `TintView` reads them. Good until the next call. */
+  tints(_i0: number, _j0: number, _i1: number, _j1: number): TintView {
+    return this.wholeTint;
+  }
+
+  /** The tint of sample (i, j). */
+  tintOf(i: number, j: number): number {
+    return this.tint[j * this.nx + i]!;
+  }
+
+  /** The stored height of sample (i, j), in steps of `stepY` over `minY`. */
+  stepsAt(i: number, j: number): number {
+    return this.heights[j * this.nx + i]!;
+  }
+
+  /**
+   * Every `step`-th sample from (i0, j0), `w` across and `h` down, held to the map's last sample: their stored heights
+   * into `heights` and tints into `tint`, either may be null, row by row. A reader of a coarse picture asks this, not `view`.
+   */
+  every(i0: number, j0: number, step: number, w: number, h: number, heights: Uint16Array | null, tint: Uint8Array | null): void {
+    const [nx, lastI, lastJ] = [this.nx, this.nx - 1, this.nz - 1];
+    for (let b = 0; b < h; b++) {
+      const row = Math.min(lastJ, j0 + b * step) * nx;
+      for (let a = 0; a < w; a++) {
+        const k = row + Math.min(lastI, i0 + a * step);
+        if (heights) heights[b * w + a] = this.heights[k]!;
+        if (tint) tint[b * w + a] = this.tint[k]!;
+      }
+    }
   }
 
   /**
@@ -143,12 +222,14 @@ export class Heightfield {
       }
     }
     this.changes.push(cx0, cz0, cx1, cz1);
+    this.filled.push(true);
   }
 
   /** Chunks cx0, cz0 up to cx1, cz1 hold their own samples from now on, which the caller has just set. */
   hold(cx0: number, cz0: number, cx1: number, cz1: number): void {
     for (let z = cz0; z < cz1; z++) this.exact.fill(1, z * this.dims.chunksX + cx0, z * this.dims.chunksX + cx1);
     this.changes.push(cx0, cz0, cx1, cz1);
+    this.filled.push(false);
   }
 
   /** Whether every chunk the box from (x0, z0) to (x1, z1) metres touches holds its own samples, the box held to the map. */

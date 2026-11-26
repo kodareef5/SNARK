@@ -70,7 +70,7 @@ const FIELDS = {
   muscle: f("list"),
   hairLength: f("list"),
   beardLength: f("list"),
-  outfits: f("list", "", { refs: { "[].wear[]": "item/armor" } }),
+  outfits: f("list", "", { refs: { "[].wear[]": ["item/armor", "item/garment"] } }),
 } satisfies Fields<PopulationDef>;
 
 const share = (v: unknown): boolean => typeof v === "number" && v >= 0 && v <= 1;

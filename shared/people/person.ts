@@ -10,6 +10,7 @@ import {
 import type { Registry } from "../content/registry.ts";
 import { REGION_KEYS, type PopulationDef, type Span } from "../content/kinds/populations.ts";
 import { Rng } from "../rng.ts";
+import type { Dye, OutfitDoc, PartName, PartSeeds, WornDoc } from "./doc.ts";
 
 export type { PopulationDef as Population } from "../content/kinds/populations.ts";
 
@@ -32,6 +33,12 @@ export const PART_BROWS = 6;
 export const PART_FACE = 7;
 export const PART_FIGURE = 8;
 export const PART_OUTFIT = 9;
+/** An admin outfit's slots, each on a stream of its own under this tag (wardrobeFrom). */
+export const PART_WARDROBE = 10;
+/** Each part's tag by its name in a person's locks (shared/people/doc.ts). */
+export const PART_TAGS: Readonly<Record<PartName, number>> = {
+  sex: PART_SEX, figure: PART_FIGURE, body: PART_BODY, skin: PART_SKIN, hair: PART_HAIR, beard: PART_BEARD, brows: PART_BROWS, face: PART_FACE, outfit: PART_OUTFIT,
+};
 
 /** The most a look's hair or beard length byte holds that a population's 1 means. */
 const LENGTH_MOST = 96;
@@ -81,34 +88,42 @@ function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;
 }
 
-/** The sex a seed gives in a population, drawn alone: a caller that needs one sex tries seeds until it has it. */
-export function sexOf(seed: number, population: PopulationDef): number {
-  return new Rng(partSeed(seed, PART_SEX)).float() < population.women ? 1 : 0;
+/** A part's stream where `locks` may give the part a seed of its own. */
+function stream(seed: number, part: PartName, locks: PartSeeds | null): Rng {
+  return new Rng(partSeed(locks?.[part] ?? seed, PART_TAGS[part]));
 }
 
-/** The person `seed` is in `population`. Pure: the same bytes for the same seed and population on every engine. */
-export function personFrom(seed: number, population: PopulationDef, out: Uint8Array = new Uint8Array(LOOK_BYTES)): Person {
+/** The sex a seed gives in a population, drawn alone: a caller that needs one sex tries seeds until it has it. */
+export function sexOf(seed: number, population: PopulationDef, locks: PartSeeds | null = null): number {
+  return stream(seed, "sex", locks).float() < population.women ? 1 : 0;
+}
+
+/**
+ * The person `seed` is in `population`, each part in `locks` drawn from its own seed there. Pure: the same bytes for the
+ * same seed, population and locks on every engine.
+ */
+export function personFrom(seed: number, population: PopulationDef, out: Uint8Array = new Uint8Array(LOOK_BYTES), locks: PartSeeds | null = null): Person {
   const p = population;
   out.fill(0, 0, LOOK_BYTES);
   out[LOOK_LAYOUT] = LAYOUT_VERSION;
-  const sex = sexOf(seed, p);
+  const sex = sexOf(seed, p, locks);
   out[LOOK_SEX] = sex;
 
-  let rng = new Rng(partSeed(seed, PART_FIGURE));
+  let rng = stream(seed, "figure", locks);
   const age = signedIn(rng, p.age);
   out[LOOK_AGE] = age & 255;
   out[LOOK_WEIGHT] = signedIn(rng, p.weight) & 255;
   out[LOOK_MUSCLE] = signedIn(rng, p.muscle) & 255;
 
-  rng = new Rng(partSeed(seed, PART_BODY));
+  rng = stream(seed, "body", locks);
   for (let r = 0; r < REGION_COUNT; r++) out[LOOK_REGIONS + r] = signedIn(rng, p.regions?.[REGION_KEYS[r]!] ?? p.build) & 255;
 
-  rng = new Rng(partSeed(seed, PART_SKIN));
+  rng = stream(seed, "skin", locks);
   out[LOOK_SKIN] = Math.max(0, weighted(rng, p.skin));
   out[LOOK_EYE_COLOR] = Math.max(0, weighted(rng, p.eyes));
   out[LOOK_COMPLEXION] = Math.max(0, weighted(rng, p.complexions));
 
-  rng = new Rng(partSeed(seed, PART_HAIR));
+  rng = stream(seed, "hair", locks);
   out[LOOK_HAIR] = Math.min(HAIR_STYLES.length - 1, Math.max(0, weighted(rng, sex === 1 ? p.hair.women : p.hair.men)));
   let color = Math.max(0, weighted(rng, p.hairColors));
   // Greying is drawn whatever the age, so an edit of the ages moves no other draw.
@@ -122,22 +137,40 @@ export function personFrom(seed: number, population: PopulationDef, out: Uint8Ar
   out[LOOK_HAIR_COLOR_2] = rng.float() < (p.streak ?? 0) ? 1 + Math.max(0, weighted(rng, p.hairColors)) : 0;
   out[LOOK_HAIR_LENGTH] = unsignedIn(rng, p.hairLength, LENGTH_MOST);
 
-  rng = new Rng(partSeed(seed, PART_BEARD));
+  rng = stream(seed, "beard", locks);
   const bearded = rng.float() < (sex === 1 ? p.beard.women : p.beard.men);
   out[LOOK_BEARD] = bearded ? 1 + rng.int(BEARD_STYLES.length - 1) : 0;
   out[LOOK_BEARD_LENGTH] = bearded ? unsignedIn(rng, p.beardLength, LENGTH_MOST) : 0;
 
-  rng = new Rng(partSeed(seed, PART_BROWS));
+  rng = stream(seed, "brows", locks);
   out[LOOK_BROW] = Math.max(0, weighted(rng, p.brows));
 
-  rng = new Rng(partSeed(seed, PART_FACE));
+  rng = stream(seed, "face", locks);
   const spread: Span = [-p.face, p.face];
   for (let f = 0; f < FACE_COUNT; f++) out[LOOK_FACE + f] = signedIn(rng, spread) & 255;
 
-  rng = new Rng(partSeed(seed, PART_OUTFIT));
+  rng = stream(seed, "outfit", locks);
   const outfit = weighted(rng, p.outfits?.map((o) => o.weight));
   return { look: out, sex, outfit };
 }
+
+/**
+ * What `seed` wears of an admin outfit (shared/people/doc.ts): one garment a slot by the slot's weights, in the slot's dye,
+ * or null. Each slot is drawn on its own stream, so a choice added to one slot changes no other.
+ */
+export function wardrobeFrom(seed: number, outfit: OutfitDoc): (WornDoc | null)[] {
+  const base = partSeed(seed, PART_WARDROBE);
+  return outfit.slots.map((slot, i) => {
+    if (!slot) return null;
+    const k = weighted(new Rng(partSeed(base, i + 1)), slot.choices.map((c) => c.weight));
+    if (k < 0) return null;
+    const c = slot.choices[k]!;
+    return { garment: c.garment, edition: c.edition, dye: slot.dye };
+  });
+}
+
+/** A dye's three palette colours as one number, the first in the low byte, as an inventory slot keeps it. */
+export const dyeNumber = (d: Dye): number => (d[0] | (d[1] << 8) | (d[2] << 16)) >>> 0;
 
 /** The populations of a registry in index order: a population's place in `list` is its number on the wire. */
 export interface Populations {
@@ -157,8 +190,39 @@ export function populationsOf(reg: Registry): Populations {
   return t;
 }
 
-/** The look a seed form names, or null for a population or edit the registry lacks. */
-export function lookOfSeed(reg: Registry, seed: number, population: number, revision: number): Uint8Array | null {
-  const p = populationsOf(reg).list[population];
-  return p && p.revision === revision ? personFrom(seed, p).look : null;
+/** The revisions of the cluster's admin populations a world or client holds (server/people/store.ts, its manifest). */
+export interface StorePopulations {
+  /** Revision `rev` of admin population `id`, or undefined where it is not held. */
+  population(id: number, rev: number): PopulationDef | undefined;
+}
+
+/**
+ * A population's number on the wire: the content's populations first, in registry order, then the cluster's admin
+ * populations by store id. A client compiles the content the server does, so both count alike.
+ */
+export function wireNumber(reg: Registry, ref: string | number): number | undefined {
+  const content = populationsOf(reg);
+  return typeof ref === "number" ? (Number.isSafeInteger(ref) && ref >= 1 ? content.list.length + ref - 1 : undefined) : content.number.get(ref);
+}
+
+/** The admin population's store id a wire number names, or 0 for a content population. */
+export function storeIdOf(reg: Registry, number: number): number {
+  const n = populationsOf(reg).list.length;
+  return number >= n ? number - n + 1 : 0;
+}
+
+/** The population a seed form names, or undefined for a population or revision neither the registry nor `store` holds. */
+export function populationOf(reg: Registry, number: number, revision: number, store: StorePopulations | null = null): PopulationDef | undefined {
+  const list = populationsOf(reg).list;
+  if (number < list.length) {
+    const p = list[number]!;
+    return p.revision === revision ? p : undefined;
+  }
+  return store?.population(number - list.length + 1, revision);
+}
+
+/** The look a seed form names, or null for a population or edit the registry and `store` lack. */
+export function lookOfSeed(reg: Registry, seed: number, population: number, revision: number, store: StorePopulations | null = null): Uint8Array | null {
+  const p = populationOf(reg, population, revision, store);
+  return p ? personFrom(seed, p).look : null;
 }

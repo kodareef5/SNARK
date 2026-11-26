@@ -332,6 +332,24 @@ export class StreetSectors {
     return this.held.has(key);
   }
 
+  /**
+   * The sectors a map has streets for, by key, each its square's chunks cx0, cz0, cx1, cz1, as a page lists them that
+   * holds some at a time; none where each part is held as it is read (a server's, a build's).
+   */
+  private readonly listed = new Map<number, readonly number[]>();
+
+  /** Lists sector `key`, whose square covers the map's chunks cx0 up to cx1 and cz0 up to cz1, as one the map has streets for. */
+  list(key: number, cx0: number, cz0: number, cx1: number, cz1: number): void {
+    this.listed.set(key, [cx0, cz0, cx1, cz1]);
+  }
+
+  /** Whether every listed sector whose square meets the box from (x0, z0) to (x1, z1) metres is held. */
+  heldIn(x0: number, z0: number, x1: number, z1: number): boolean {
+    const a0 = Math.floor(x0 / CHUNK_SIZE), b0 = Math.floor(z0 / CHUNK_SIZE), a1 = Math.floor(x1 / CHUNK_SIZE), b1 = Math.floor(z1 / CHUNK_SIZE);
+    for (const [key, sq] of this.listed) if (a0 < sq[2]! && a1 >= sq[0]! && b0 < sq[3]! && b1 >= sq[1]! && !this.held.has(key)) return false;
+    return true;
+  }
+
   /** Every part held, for whatever reads all of them (kerb lines, a report). */
   parts(): StreetsPart[] {
     return [...this.held.values()].map((h) => h.part);

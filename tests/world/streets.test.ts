@@ -4,7 +4,7 @@
 
 import { expect, test } from "bun:test";
 import { CHUNK_SIZE } from "../../shared/coords.ts";
-import { mapHeightfield, parseMap, writeMap } from "../../shared/world/mapfile.ts";
+import { holdStreets, mapHeightfield, parseMap, readHead, readPart, writeMap, type StreetsPiece } from "../../shared/world/mapfile.ts";
 import {
   CHUNK_SIDE, DROP_CROSSING, DROP_DRIVE, DROP_RAMP, PLANE_BYTES, StreetPoint, StreetSectors, alongByte, chunkPlanes, chunkTag, decodeStreets, encodeStreets, heldSide, kerbLines, kindsByte,
   planeMetres, streetAt, streetClass, type StreetsPart,
@@ -286,6 +286,19 @@ test("a map carries its streets' parts and gives them back, and its heightfield'
   // A map with none is the map it was.
   expect(parseMap(writeMap(base)).streets).toBeUndefined();
   expect(CHUNK_SIZE).toBe(64);
+});
+
+test("a streets part is decoded once, as it is read: a page and a server hold the lines its reading gave", () => {
+  const map = { ...wideMap(), streets: [{ col: 127, row: 128, bytes: encodeStreets({ ...along, x0: -512, z0: -128 }) }] };
+  const file = writeMap(map), head = readHead(file), p = head.parts.find((q) => q.kind === "streets")!;
+  const piece = readPart(head, p, file.subarray(p.at, p.at + p.length)) as StreetsPiece;
+  expect(piece.part).toEqual(decodeStreets(map.streets[0]!.bytes, -512, -128));
+  const page = new StreetSectors();
+  holdStreets(page, piece);
+  expect(page.parts()[0]).toBe(piece.part);
+  // The bytes a map's writer needs stay, and the server's heightfield holds the lines parseMap read.
+  const back = parseMap(file);
+  expect([back.streets![0]!.bytes, mapHeightfield(back).streets!.parts()[0] === back.streets![0]!.part]).toEqual([map.streets[0]!.bytes, true]);
 });
 
 test("the ground's cover from the streets: the band's tint, the one across its nearer edge, and half of it on the edge", () => {

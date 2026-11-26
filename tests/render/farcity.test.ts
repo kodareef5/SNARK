@@ -12,7 +12,7 @@ import { CITY_BUFFER } from "../../client/core/render/farcity.ts";
 import { zoomed } from "../../client/core/optics.ts";
 import { doSweep, type SweepJob, type SweepMade } from "../../client/core/render/farshadow.ts";
 import { FRAME, type FramePacket } from "../../client/core/render/packet.ts";
-import { NODE_BUFFERS } from "../../client/core/render/scene.ts";
+import { NODE_BUFFERS, Scene } from "../../client/core/render/scene.ts";
 import { PICK_STRUCTURE } from "../../tools/snap/raster.ts";
 import type { ShapeBox, ShapeDef } from "../../shared/content/defs.ts";
 import { compileContent, type Registry } from "../../shared/content/registry.ts";
@@ -21,7 +21,7 @@ import { CHUNK_SIZE, YAW_UNITS, chunkAt, chunkCx, chunkCz } from "../../shared/c
 import { TAU, detCos, detSin } from "../../shared/math/scalar.ts";
 import { VERTEX_BYTES } from "../../shared/pack/pack.ts";
 import { Rng } from "../../shared/rng.ts";
-import { CityStatics, cellPart, cityReach, cityTops, goneByCells, goneByRows, landmarkKinds, mergedPart, type CityPart } from "../../shared/world/city.ts";
+import { CityPieces, CityStatics, cellPart, cityTops, goneByCells, goneByRows, landmarkKinds, mergedPart, type CityPart } from "../../shared/world/city.ts";
 import { hullOf, hullPoint, type HullDef } from "../../shared/world/convex.ts";
 import { HeightWindow } from "../../shared/world/heightfield.ts";
 import { MapStatics, mapHeightfield, parseMap, placeStatics, writeMap, type MapStatic } from "../../shared/world/mapfile.ts";
@@ -235,6 +235,31 @@ test("far blocks draw only what players built above the city: none for a chunk o
   expect(blocks(q)).toBeGreaterThan(0);
 });
 
+test("the first frame shows near buildings before their mesh code arrives", () => {
+  const code = Scene.late;
+  try {
+    Scene.late = null;
+    const [x, z] = mid(2, 2);
+    const w = cityWorld({ chunks: 5, statics: building(x, z, 0, 3), tops: true });
+    const chunk = w.chunkOf(x, z);
+    w.rows(chunk);
+    w.look(x, 5, z, 30, 0, 5);
+    w.frame();
+    expect([w.scene.near, w.scene.city, w.scene.farShadow]).toEqual([null, null, null]);
+    expect(sum(w.covered().near)).toBeGreaterThan(0);
+
+    Scene.late = code;
+    w.frame();
+    expect(w.scene.city).not.toBeNull();
+    expect(w.scene.farShadow).not.toBeNull();
+    for (let f = 0; f < 20 && !w.scene.near?.chunk(chunk)?.mesh; f++) w.frame();
+    expect(w.scene.near?.chunk(chunk)?.mesh).toBeTruthy();
+    expect(sum(w.covered().near)).toBeGreaterThan(0);
+  } finally {
+    Scene.late = code;
+  }
+});
+
 test("statics that come after the first frame start the far city then, and the far blocks made before leave its cells to it", () => {
   const [x, z] = mid(6, 6);
   const w = cityWorld({ chunks: 16, statics: building(x, z, 0, 3), late: true });
@@ -295,13 +320,14 @@ test("a city made a step at a time is the one made at once, the reach of its chu
     for (let k = 0; k < 20 && (w.scene.city!.stats.behind > 0 || w.scene.city!.stats.missing > 0); k++) w.frame();
     const p = w.frame();
     const kinds = landmarkKinds(w.reg);
-    return { city: city!, draws: cityDraws(p).length, far: [...w.covered().far], reach: cityReach(city!, kinds), kept: cityReach(city!, kinds) === cityReach(city!, kinds) };
+    const sq = city!.squareOf(0)!;
+    return { city: city!, sq, draws: cityDraws(p).length, far: [...w.covered().far], reach: sq.reach(city!, kinds), kept: sq.reach(city!, kinds) === sq.reach(city!, kinds) };
   };
   const once = drawn(false), stepped = drawn(true);
-  expect([stepped.city.first, stepped.city.kind, stepped.city.yaw, stepped.city.x, stepped.city.y, stepped.city.z]).toEqual([once.city.first, once.city.kind, once.city.yaw, once.city.x, once.city.y, once.city.z]);
+  expect([stepped.sq.first, stepped.sq.kind, stepped.sq.yaw, stepped.sq.x, stepped.sq.y, stepped.sq.z]).toEqual([once.sq.first, once.sq.kind, once.sq.yaw, once.sq.x, once.sq.y, once.sq.z]);
   expect([stepped.city.color, stepped.city.plain, stepped.city.walked, stepped.city.look]).toEqual([once.city.color, once.city.plain, once.city.walked, once.city.look]);
-  // The reach steps made is kept and given each time it is asked for; the one made at once is worked out alike when asked.
-  expect([stepped.kept, once.kept]).toEqual([true, false]);
+  // Each square's reach is made the first time it is asked for, and kept.
+  expect([stepped.kept, once.kept]).toEqual([true, true]);
   expect([stepped.reach.reach, [...stepped.reach.landmarks]]).toEqual([once.reach.reach, [...once.reach.landmarks]]);
   expect(stepped.draws).toBeGreaterThan(0);
   expect([stepped.draws, sum(Uint8Array.from(stepped.far))]).toEqual([once.draws, sum(Uint8Array.from(once.far))]);
@@ -588,7 +614,7 @@ test("levels made on threads are each asked of the one with the fewest in hand, 
       if ("kinds" in m) this.kinds = m.kinds;
       else if ("sweep" in m) {
         // The far shadow's map (farshadow.ts) is swept where levels are made.
-        const made = doSweep(this.kinds!, m.sweep);
+        const made = doSweep(m.sweep);
         setTimeout(() => this.onmessage!({ data: made }));
       } else {
         asked.push(this.n);
@@ -655,19 +681,20 @@ test("a map's statics written, read back and set down give the rows and far city
     const of = drawn.map((s) => reg.index.get(s.kind)!).map((k) => (reg.defs[k]!.type === "structure" ? k : 0));
     const chunkOf = drawn.map((s) => chunkAt(dims, s.x, s.z));
     const order = [...drawn.keys()].filter((i) => of[i] !== 0).sort((a, b) => chunkOf[a]! - chunkOf[b]! || a - b);
-    const old = Object.assign(new CityStatics(dims, [], reg), {
+    const cols = {
       first: Uint32Array.from({ length: 17 }, (_, c) => order.filter((i) => chunkOf[i]! < c).length),
       kind: Uint16Array.from(order, (i) => of[i]!),
       yaw: Uint16Array.from(order, (i) => drawn[i]!.yaw),
       x: Float32Array.from(order, (i) => drawn[i]!.x),
       y: Float32Array.from(order, (i) => drawn[i]!.y),
       z: Float32Array.from(order, (i) => drawn[i]!.z),
-    });
-    const city = new CityStatics(dims, map.statics, reg);
-    expect([city.first, city.kind, city.yaw, city.x, city.y, city.z]).toEqual([old.first, old.kind, old.yaw, old.x, old.y, old.z]);
-    expect(head(old.first, 17).filter((n, c) => c > 0 && n > old.first[c - 1]!).length).toBeGreaterThanOrEqual(5);
+    };
+    const city = new CityStatics(dims, map.statics, reg), sq = city.squareOf(0)!;
+    const old = CityStatics.of(city, new CityPieces(Array.from({ length: 16 }, (_, c) => c), Array.from({ length: 16 }, (_, c) => cols.first[c + 1]! - cols.first[c]!), cols));
+    expect([sq.first, sq.kind, sq.yaw, sq.x, sq.y, sq.z]).toEqual([cols.first, cols.kind, cols.yaw, cols.x, cols.y, cols.z]);
+    expect(head(cols.first, 17).filter((n, c) => c > 0 && n > cols.first[c - 1]!).length).toBeGreaterThanOrEqual(5);
     // With every piece drawn the map's columns are the city's; a piece left out is left out of a copy.
-    expect([city.x === map.statics.x, city.first === map.statics.first]).toEqual(drawn === listed ? [false, false] : [true, true]);
+    expect([sq.x === map.statics.x, sq.first === map.statics.first]).toEqual(drawn === listed ? [false, false] : [true, true]);
     const hf = mapHeightfield(map);
     for (let c = 0; c < 16; c++) {
       const forms = [(s: CityStatics) => mergedPart(s, c, hf, none, 0.01, 0), (s: CityStatics) => mergedPart(s, c, hf, none, 0.5, 2.1), (s: CityStatics) => cellPart(s, c, hf, null, 4, 4)];
@@ -698,7 +725,7 @@ test("a level made from what a worker is sent, its tile's statics, those round i
   const goneOf = (c: number): Uint8Array | null => lost.get(c) ?? null;
   // The bare lattice's pieces under 1.3 m across, the piers and beams here, are left out as gone ones are.
   const across = (k: number): number => [w.reg.halfX[k]!, w.reg.halfY[k]!, w.reg.halfZ[k]!].sort((a, b) => a - b)[1]! * 2;
-  const thinOf = (c: number): Uint8Array => Uint8Array.from({ length: city.in(c) }, (_, i) => (goneOf(c)?.[i] === 1 || across(city.kind[city.first[c]! + i]!) < 1.3 ? 1 : 0));
+  const thinOf = (c: number): Uint8Array => Uint8Array.from({ length: city.in(c) }, (_, i) => (goneOf(c)?.[i] === 1 || across(city.rows(c)!.kind[city.rows(c)!.from(c) + i]!) < 1.3 ? 1 : 0));
   expect(chunks.map(thinOf).flatMap((g) => [...g]).filter((g) => g === 1).length).toBeGreaterThan(30);
   for (const level of [{ gap: 0.01, least: 0, cell: 0, tall: 0 }, { gap: 0.5, least: 2.1, cell: 0, tall: 0 }, { gap: 0.5, least: 2.1, cell: 0, tall: 0, thin: 1.3 }, { gap: -1, least: 0, cell: 4, tall: 4 }]) {
     const made = makeLevel(cityKinds(city, w.hf, bounds), cityJob(0, city, w.hf, goneOf, chunks, level, 32, -8, 32));

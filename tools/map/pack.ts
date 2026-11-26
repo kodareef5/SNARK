@@ -1,9 +1,9 @@
-// A map's head and parts as files of their own beside it (shared/world/mapfile.ts), each with its copies for the wire,
-// written once so the server compresses nothing: Brotli, and gzip for a browser that takes no Brotli (on plain http).
+// A map's head and parts' copies for the wire in a folder beside it (shared/world/mapfile.ts), written once so the server
+// compresses nothing: Brotli, and gzip for a browser that takes no Brotli (on plain http). The raw bytes stay in the map.
 // What one player waits for is held to budgets here: each part's size, and the heaviest first frame on the map, by the rule
 // the page asks by (client/core/mapload.ts).
 
-import { mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { availableParallelism } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { promisify } from "node:util";
@@ -72,13 +72,17 @@ export interface Packed {
 /** Bytes of every part's copy in `encoding`. */
 export const wireBytes = (packed: Packed, encoding: "br" | "gz"): number => packed.parts.reduce((n, p) => n + p[encoding].length, 0);
 
+/** Copies already made at this build's levels, by part name, or undefined where a part has none. */
+export type KeptCopies = (name: string) => { br: Buffer; gz: Buffer } | undefined;
+
 /** The copies of every part of a map's file, the Brotli and the gzip made side by side on threads of their own. */
-export async function packMap(file: Uint8Array, release = false): Promise<Packed> {
+export async function packMap(file: Uint8Array, release = false, kept: KeptCopies = () => undefined): Promise<Packed> {
   const level = release ? LEVELS.release : LEVELS.everyday;
   const [br, gz] = [promisify(brotliCompress), promisify(gzip)];
   const pack = async ({ name, part, bytes }: ReturnType<typeof partsOf>[number]): Promise<PackedPart> => {
     const params = { [constants.BROTLI_PARAM_QUALITY]: level.brotli, [constants.BROTLI_PARAM_LGWIN]: 24, [constants.BROTLI_PARAM_SIZE_HINT]: bytes.length };
-    const [b, z] = await Promise.all([br(bytes, { params }), gz(bytes, { level: level.gzip })]);
+    const had = kept(name);
+    const [b, z] = had ? [had.br, had.gz] : await Promise.all([br(bytes, { params }), gz(bytes, { level: level.gzip })]);
     return { name, kind: part?.kind ?? "head", col: part?.col ?? 0, row: part?.row ?? 0, bytes, br: b, gz: z };
   };
   // A few parts at a time, each its own encoders' memory: asked for all at once, a big map's 500 to 630 parts each
@@ -152,27 +156,53 @@ function writeWhole(path: string, bytes: Uint8Array): void {
   renameSync(`${path}.tmp`, path);
 }
 
+/** The parts folder's record of the levels its copies were made at. */
+export const COPIES_FILE = "copies.json";
+
+/** The levels a parts folder's copies were made at, or null where it records none. */
+export function copiesLevel(folder: string): { brotli: number; gzip: number } | null {
+  try {
+    const level = JSON.parse(readFileSync(join(folder, COPIES_FILE), "utf8")) as { brotli?: unknown; gzip?: unknown };
+    return typeof level.brotli === "number" && typeof level.gzip === "number" ? { brotli: level.brotli, gzip: level.gzip } : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Writes the map at `path`, and beside it the folder of its head's and parts' files with their copies, a release build's if
- * `release`. Takes away any file of that folder that is not one of them. Throws over a budget, before writing anything.
- * Each file is replaced whole, the map last, so a server still running on the map before (server/main.ts mapRoutes) holds
- * that file open and cuts from it the parts that were taken away.
+ * Writes the map at `path`, and beside it the folder of its head's and parts' Brotli and gzip copies, a release build's if
+ * `release`; the raw bytes are the map file's alone. A copy whose part's name and levels match one already there is kept.
+ * Throws over a budget, before writing anything. Each file is replaced whole, the map last, and only then is any file of
+ * the folder that is not one of them taken away, so a server still running on the map before (server/main.ts mapRoutes)
+ * holds that file open and cuts from it the parts that were taken away.
  */
 export async function writeMapFile(path: string, file: Uint8Array, release = false): Promise<Packed> {
-  const packed = await packMap(file, release);
-  checkBudgets(packed);
+  const level = release ? LEVELS.release : LEVELS.everyday;
   const folder = partsFolder(path);
+  const had = copiesLevel(folder);
+  const same = had !== null && had.brotli === level.brotli && had.gzip === level.gzip;
+  const reused = new Set<string>();
+  const kept: KeptCopies = (name) => {
+    if (!same || !existsSync(join(folder, `${name}.br`)) || !existsSync(join(folder, `${name}.gz`))) return undefined;
+    reused.add(name);
+    return { br: readFileSync(join(folder, `${name}.br`)), gz: readFileSync(join(folder, `${name}.gz`)) };
+  };
+  const packed = await packMap(file, release, kept);
+  checkBudgets(packed);
   mkdirSync(folder, { recursive: true });
-  const names = new Set(packed.parts.flatMap((p) => [p.name, `${p.name}.br`, `${p.name}.gz`]));
-  for (const name of readdirSync(folder)) if (!names.has(name)) rmSync(join(folder, name), { recursive: true });
+  // Copies of another level are about to stand beside these: until the record is written again, none is reused.
+  if (!same) rmSync(join(folder, COPIES_FILE), { force: true });
   for (const p of packed.parts) {
+    if (reused.has(p.name)) continue;
     writeWhole(join(folder, `${p.name}.br`), p.br);
     writeWhole(join(folder, `${p.name}.gz`), p.gz);
-    writeWhole(join(folder, p.name), p.bytes);
   }
+  writeWhole(path, file);
+  writeWhole(join(folder, COPIES_FILE), new TextEncoder().encode(`${JSON.stringify(level)}\n`));
+  const names = new Set([COPIES_FILE, ...packed.parts.flatMap((p) => [`${p.name}.br`, `${p.name}.gz`])]);
+  for (const name of readdirSync(folder)) if (!names.has(name)) rmSync(join(folder, name), { recursive: true });
   // The whole map's copies of the version before parts.
   const whole = new RegExp(`^${basename(path).replace(/\./g, "\\.")}\\.[0-9a-f]{8}\\.(br|gz)$`);
   for (const name of readdirSync(dirname(path))) if (whole.test(name)) rmSync(join(dirname(path), name));
-  writeWhole(path, file);
   return packed;
 }

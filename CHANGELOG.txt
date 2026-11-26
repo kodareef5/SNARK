@@ -10,6 +10,10 @@ Building
 - Craft 22 Tek building pieces at the Fabricator. They fit Metal structures and have 25% more health. Set adjoining Tek wall panels to door mode to open a passage for your tribe.
 - Build a Tek workstation at the Fabricator, then use it to craft plasma rifles and pistols. The structure menu shows station capacity and Tek wall mode.
 
+Cities
+- Miami, Tampa, San Francisco, Los Angeles and Las Vegas now stream detailed ground and buildings around you. Distant blocks keep their skyline as you cross the city.
+- Operators can rebuild each city from its Maps v3 kit. Start a fresh world for a rebuilt city and keep the old save with its map.
+
 Joining a world
 - Use the title as soon as it appears. Play brings a returning survivor back to their world, and new survivors can choose starting areas from maps and photographs.
 - The loading screen shows progress into the world. On slow connections or with Data Saver enabled, live previews start only when you ask for them.

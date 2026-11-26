@@ -21,24 +21,206 @@ import { CHUNK_SIZE, YAW_UNITS, chunkCount, chunkCx, chunkCz, type MapDims } fro
 import { TAU, detCos, detSin, len3 } from "../math/scalar.ts";
 import { MAX_CORNERS, hullPoint, hullSteps, type HullDef, type HullTable } from "./convex.ts";
 import type { Heightfield } from "./heightfield.ts";
-import { MapStatics, type MapStatic } from "./mapfile.ts";
+import { MapStatics, type ChunkBends, type MapStatic } from "./mapfile.ts";
 import { TACTICAL_CELL, farTopByte } from "./tactical.ts";
 import { EYE_COLLIDERS } from "./tide-eye.ts";
 import { orbCollider } from "./orb.ts";
 
 const QUARTER = YAW_UNITS / 4;
 
-/** The map's static pieces by the chunk their centre is in, as a structure store holds them. */
-export class CityStatics {
-  readonly dims: MapDims;
-  /** Chunk `c` holds pieces `first[c]` up to `first[c + 1]`, in the order the map lists them. */
-  readonly first: Uint32Array;
+/**
+ * A table of a city's pieces: chunk `c`'s are its rows `from(c)` up to `to(c)`, both 0 for a chunk it does not hold, each a
+ * content index, a turn and a centre in world metres (float32 as a chunk table has them, so a bake matches the server's).
+ */
+export interface CityTable {
   readonly kind: Uint16Array;
   readonly yaw: Uint16Array;
-  /** Centres in world metres, as float32 like a chunk table, so a bake of them matches the server's. */
   readonly x: Float32Array;
   readonly y: Float32Array;
   readonly z: Float32Array;
+  /**
+   * As a near mesh's making sees a chunk (render/nearcity.ts), per row: the kind the map placed where a slot holds its
+   * broken form, whose colour and material the form wears, 0 for a piece drawn as its own kind; and 1 for a piece whose
+   * boxes merge with no other's (a form, a piece whose state its own faces must show).
+   */
+  readonly dye?: Uint16Array;
+  readonly apart?: Uint8Array;
+  from(chunk: number): number;
+  to(chunk: number): number;
+}
+
+/** The map's rows a square was made of, with their own kinds and layout, which a bent piece is drawn by (mapfile.ts MapStatics.bends). */
+export interface SquareRows {
+  readonly first: Uint32Array;
+  readonly kind: Uint16Array;
+  readonly yaw: Uint16Array;
+  readonly x: Float32Array;
+  readonly y: Float32Array;
+  readonly z: Float32Array;
+  readonly bends: ReadonlyMap<number, ChunkBends>;
+}
+
+/** A square of chunks, `cx0` up to `cx1` across and `cz0` up to `cz1` down. */
+export interface ChunkSquare {
+  readonly cx0: number;
+  readonly cz0: number;
+  readonly cx1: number;
+  readonly cz1: number;
+}
+
+/**
+ * A square of chunks' pieces, row by row of the square: a sector's statics as a page holds them, or a whole map's. Its
+ * turns and centres are the map's own columns where every row is a structure here, so the rows are held once.
+ */
+export class CitySquare implements CityTable {
+  readonly cx0: number;
+  readonly cz0: number;
+  readonly cx1: number;
+  readonly cz1: number;
+  private readonly chunksX: number;
+  /** Rows of each of its chunks, by its place in the square. */
+  readonly first: Uint32Array;
+  readonly kind: Uint16Array;
+  readonly yaw: Uint16Array;
+  readonly x: Float32Array;
+  readonly y: Float32Array;
+  readonly z: Float32Array;
+  /** The map's rows it was made of. */
+  readonly map: SquareRows;
+  /** What chunkReach gave of it, with the landmark kinds it was given. */
+  private reached: (CityReach & { readonly landmark: Uint8Array }) | null = null;
+
+  constructor(dims: MapDims, sq: ChunkSquare, rows: { first: Uint32Array; kind: Uint16Array; yaw: Uint16Array; x: Float32Array; y: Float32Array; z: Float32Array }, map: SquareRows) {
+    [this.cx0, this.cz0, this.cx1, this.cz1, this.chunksX] = [sq.cx0, sq.cz0, sq.cx1, sq.cz1, dims.chunksX];
+    ({ first: this.first, kind: this.kind, yaw: this.yaw, x: this.x, y: this.y, z: this.z } = rows);
+    this.map = map;
+  }
+
+  /**
+   * The square `sq` of the map's rows `map`, a slice of SLICE rows a step, those of a kind `reg` lacks or that is not a
+   * structure left out. `mapKinds` are the map's kinds as content indexes (structureKinds).
+   */
+  static *steps(dims: MapDims, sq: ChunkSquare, map: SquareRows, mapKinds: Uint16Array): Generator<void, CitySquare> {
+    const kind = new Uint16Array(map.kind.length);
+    let n = 0;
+    for (let r = 0; r < kind.length; r++) {
+      if ((kind[r] = mapKinds[map.kind[r]!]!) !== 0) n++;
+      if (r % SLICE === SLICE - 1) yield;
+    }
+    if (n === kind.length) return new CitySquare(dims, sq, { first: map.first, kind, yaw: map.yaw, x: map.x, y: map.y, z: map.z }, map);
+    const chunks = map.first.length - 1;
+    const rows = { first: new Uint32Array(chunks + 1), kind: new Uint16Array(n), yaw: new Uint16Array(n), x: new Float32Array(n), y: new Float32Array(n), z: new Float32Array(n) };
+    let i = 0;
+    for (let c = 0; c < chunks; c++) {
+      for (let r = map.first[c]!; r < map.first[c + 1]!; r++) {
+        if (kind[r] === 0) continue;
+        [rows.kind[i], rows.yaw[i], rows.x[i], rows.y[i], rows.z[i]] = [kind[r]!, map.yaw[r]!, map.x[r]!, map.y[r]!, map.z[r]!];
+        if (++i % SLICE === 0) yield;
+      }
+      rows.first[c + 1] = i;
+    }
+    return new CitySquare(dims, sq, rows, map);
+  }
+
+  /** Whether `chunk` is in the square. */
+  has(chunk: number): boolean {
+    const cx = chunk % this.chunksX, cz = Math.floor(chunk / this.chunksX);
+    return cx >= this.cx0 && cx < this.cx1 && cz >= this.cz0 && cz < this.cz1;
+  }
+
+  /** `chunk`'s place in `first`, or -1 outside the square. */
+  at(chunk: number): number {
+    const cx = chunk % this.chunksX, cz = Math.floor(chunk / this.chunksX);
+    if (cx < this.cx0 || cx >= this.cx1 || cz < this.cz0 || cz >= this.cz1) return -1;
+    return (cz - this.cz0) * (this.cx1 - this.cx0) + cx - this.cx0;
+  }
+
+  from(chunk: number): number {
+    const k = this.at(chunk);
+    return k < 0 ? 0 : this.first[k]!;
+  }
+
+  to(chunk: number): number {
+    const k = this.at(chunk);
+    return k < 0 ? 0 : this.first[k + 1]!;
+  }
+
+  /** Where the map's own rows of `chunk` start, and end, in `map`. */
+  mapFrom(chunk: number): number {
+    const k = this.at(chunk);
+    return k < 0 ? 0 : this.map.first[k]!;
+  }
+
+  mapTo(chunk: number): number {
+    const k = this.at(chunk);
+    return k < 0 ? 0 : this.map.first[k + 1]!;
+  }
+
+  get count(): number {
+    return this.kind.length;
+  }
+
+  /** Bytes it holds of its own, the map's columns it shares left out. */
+  get bytes(): number {
+    const own = this.kind.byteLength + (this.yaw === this.map.yaw ? 0 : this.first.byteLength + this.yaw.byteLength + this.x.byteLength * 3);
+    return own + (this.reached ? this.reached.reach.byteLength + [...this.reached.landmarks.values()].reduce((n, l) => n + l.byteLength, 0) : 0);
+  }
+
+  /** What chunkReach gives of it with `landmark`'s kinds, made the first time it is asked for with them. */
+  reach(city: CityKinds, landmark: Uint8Array): CityReach {
+    if (this.reached?.landmark !== landmark) finish(this.reachSteps(city, landmark));
+    return this.reached!;
+  }
+
+  /** `reach` a slice of SLICE pieces a step. */
+  *reachSteps(city: CityKinds, landmark: Uint8Array): Generator<void, void> {
+    if (this.reached?.landmark !== landmark) this.reached = { landmark, ...(yield* chunkReach(city, this, landmark)) };
+  }
+}
+
+/** A few chunks' pieces in one table, in any order: what a level's making or a near mesh's step sees (render/citymake.ts, nearcity.ts). */
+export class CityPieces implements CityTable {
+  readonly kind: Uint16Array;
+  readonly yaw: Uint16Array;
+  readonly x: Float32Array;
+  readonly y: Float32Array;
+  readonly z: Float32Array;
+  readonly dye?: Uint16Array;
+  readonly apart?: Uint8Array;
+  private readonly starts = new Map<number, number>();
+  private readonly ends = new Map<number, number>();
+
+  /** Chunk `chunks[k]` holds `counts[k]` rows, the chunks' rows one after another in that order. */
+  constructor(chunks: ArrayLike<number>, counts: ArrayLike<number>, cols: { kind: Uint16Array; yaw: Uint16Array; x: Float32Array; y: Float32Array; z: Float32Array; dye?: Uint16Array; apart?: Uint8Array }) {
+    ({ kind: this.kind, yaw: this.yaw, x: this.x, y: this.y, z: this.z } = cols);
+    if (cols.dye) this.dye = cols.dye;
+    if (cols.apart) this.apart = cols.apart;
+    for (let k = 0, at = 0; k < chunks.length; at += counts[k++]!) {
+      this.starts.set(chunks[k]!, at);
+      this.ends.set(chunks[k]!, at + counts[k]!);
+    }
+  }
+
+  from(chunk: number): number {
+    return this.starts.get(chunk) ?? 0;
+  }
+
+  to(chunk: number): number {
+    return this.ends.get(chunk) ?? 0;
+  }
+
+  /** Whether it holds `chunk`'s rows. */
+  has(chunk: number): boolean {
+    return this.starts.has(chunk);
+  }
+}
+
+/** A table of no rows, for a reader to read a chunk not held from. */
+export const NO_ROWS: CityTable = new CityPieces([], [], { kind: new Uint16Array(0), yaw: new Uint16Array(0), x: new Float32Array(0), y: new Float32Array(0), z: new Float32Array(0) });
+
+/** What a city keeps by content index, the same for every city of one registry. */
+export interface CityKinds {
+  readonly dims: MapDims;
   /** Per content index: half extents and palette colour. */
   readonly halfX: Float32Array;
   readonly halfY: Float32Array;
@@ -53,61 +235,196 @@ export class CityStatics {
   /** Every kind's boxes and convex parts as walked (the registry's parts), and as drawn near. */
   readonly walked: CityForm;
   readonly look: CityForm;
-  /**
-   * The map's statics the near store draws a bent piece by, its row and its bend by chunk and slot (mapfile.ts
-   * MapStatics.bends): those this city is made of, or, where those are some sectors' rows copied out of the map's as a page
-   * sets it in, that table, so that a sector's kerbs are drawn once its statics have come, whatever is still on its way.
-   * Its kinds as content indexes in `bentKind`, 0 for one that is not a structure here.
-   */
-  readonly bent: MapStatics;
-  readonly bentKind: Uint16Array;
-  /**
-   * Per piece, where a near mesh is made of a slot's broken form (render/nearcity.ts): the kind the map placed there, whose
-   * colour and material the form wears, having none of its own; 0 for a piece drawn as its own kind. And how a form
-   * kind's convex parts are painted (PartPaint). `apart` marks the pieces whose boxes merge with no other piece's: a
-   * form, and a piece whose state its own faces must show.
-   */
-  readonly dye?: Uint16Array;
-  readonly apart?: Uint8Array;
+  /** How a form kind's convex parts are painted (PartPaint), where a near mesh's making says. */
   readonly paint?: (kind: number) => PartPaint | null;
+}
 
-  /** `rows`, where given, are what CityStatics.steps made of `statics` with `reg`. */
-  constructor(dims: MapDims, statics: MapStatics | readonly MapStatic[], reg: Registry, rows?: CityRows) {
+/**
+ * The map's static pieces by the chunk their centre is in, as a structure store holds them: one table of the whole map's,
+ * or a table a square (CitySquare) of those a page holds, set in and let go as its sectors are (`set`, `drop`). A reader
+ * asks for a chunk's rows (`rows`) and gets the table that holds them, or null where none is held.
+ */
+export class CityStatics implements CityKinds {
+  readonly dims: MapDims;
+  readonly halfX: Float32Array;
+  readonly halfY: Float32Array;
+  readonly halfZ: Float32Array;
+  readonly color: Uint8Array;
+  readonly under?: Uint8Array;
+  readonly plain: Uint8Array;
+  readonly near: Uint8Array;
+  readonly walked: CityForm;
+  readonly look: CityForm;
+  readonly paint?: (kind: number) => PartPaint | null;
+  /** The map's kinds as content indexes, 0 for one that is not a structure here: a square's `map` rows' kinds, for a bent piece. */
+  readonly bentKind: Uint16Array;
+  /** One table every chunk is read from, or null for a table a square. */
+  private readonly one: CityTable | null;
+  /** Per chunk, 1 + the square it is in, 0 for none; and the squares held, by number. */
+  private readonly squareAt: Uint16Array | null;
+  private readonly squares: (CitySquare | null)[];
+  /** Counts the squares set in and let go, and per square the count when it last was: what a reader follows (`news`). */
+  version = 0;
+  readonly versions: Uint32Array;
+  /** Pieces held. */
+  count = 0;
+
+  /** The city of `statics`, one table of them; `rows`, where given, are what CityStatics.steps made of them with `reg`. */
+  constructor(dims: MapDims, statics: MapStatics | readonly MapStatic[] | null, reg: CityKinds | Registry, rows?: CitySquare | CityTable) {
     this.dims = dims;
-    const table = MapStatics.of(dims, statics);
-    this.bent = table.coming ?? table;
-    this.bentKind = structureKinds(this.bent.kinds, reg);
-    ({ first: this.first, kind: this.kind, yaw: this.yaw, x: this.x, y: this.y, z: this.z } = rows ?? finish(rowSteps(dims, table, reg)));
-    this.halfX = reg.halfX;
-    this.halfY = reg.halfY;
-    this.halfZ = reg.halfZ;
-    ({ color: this.color, under: this.under, plain: this.plain, near: this.near, walked: this.walked, look: this.look } = kindTables(reg));
+    const tables: Omit<CityKinds, "dims"> = "defs" in reg ? kindTables(reg) : reg;
+    ({ halfX: this.halfX, halfY: this.halfY, halfZ: this.halfZ, color: this.color, plain: this.plain, near: this.near, walked: this.walked, look: this.look } = tables);
+    if (tables.under) this.under = tables.under;
+    if (tables.paint) this.paint = tables.paint;
+    const table = statics ? MapStatics.of(dims, statics) : null;
+    this.bentKind = table && "defs" in reg ? structureKinds((table.coming ?? table).kinds, reg) : new Uint16Array(0);
+    this.squareAt = null;
+    this.squares = [];
+    this.versions = new Uint32Array(1);
+    this.one = rows ?? (table && "defs" in reg ? finish(wholeSquare(dims, table, reg)) : null);
+    this.count = this.one?.kind.length ?? 0;
   }
 
   /**
-   * The city of `statics` a slice of SLICE pieces a step, with what chunkReach gives of it with `reg`'s landmark kinds
-   * (cityReach), and the look form of `reg`'s kinds HULL_STEP parts a step the first time: so that a page makes a whole
-   * map's between its frames.
+   * The city of `statics` a slice of SLICE pieces a step, with what chunkReach gives of it with `reg`'s landmark kinds, so
+   * that a page makes a whole map's between its frames.
    */
   static *steps(dims: MapDims, statics: MapStatics, reg: Registry): Generator<void, CityStatics> {
-    const { landmark } = known.get(reg) ?? (yield* kindSteps(reg));
-    const city = new CityStatics(dims, statics, reg, yield* rowSteps(dims, statics, reg));
-    madeReach.set(city, { landmark, ...(yield* chunkReach(city, landmark)) });
+    known.get(reg) ?? (yield* kindSteps(reg));
+    const square = yield* wholeSquare(dims, statics, reg);
+    const city = new CityStatics(dims, statics, reg, square);
+    yield* square.reachSteps(city, landmarkKinds(reg));
     return city;
   }
 
-  get count(): number {
-    return this.kind.length;
+  /** A city of `table` alone, with `kinds`' tables: a level's making or a near mesh's step. */
+  static of(kinds: CityKinds, table: CityTable): CityStatics {
+    return new CityStatics(kinds.dims, null, kinds, table);
   }
 
-  /** Pieces of `chunk`. */
+  /**
+   * A city of no square yet, its squares set in and let go as a page's sectors are: `squares` of them at most, numbered
+   * from 0, and `kinds` the map's, which their rows' kinds index. `reg` is the content.
+   */
+  static held(dims: MapDims, squares: number, kinds: readonly string[], reg: Registry): CityStatics {
+    return new CityStatics(dims, null, reg).asHeld(squares, kinds, reg);
+  }
+
+  private asHeld(squares: number, kinds: readonly string[], reg: Registry): CityStatics {
+    const self = this as unknown as { squareAt: Uint16Array; squares: (CitySquare | null)[]; versions: Uint32Array; bentKind: Uint16Array };
+    self.squareAt = new Uint16Array(chunkCount(this.dims));
+    self.squares = Array.from({ length: squares }, () => null);
+    self.versions = new Uint32Array(squares);
+    self.bentKind = structureKinds(kinds, reg);
+    return this;
+  }
+
+  /** Whether its squares are set in and let go (CityStatics.held). */
+  get byParts(): boolean {
+    return this.squareAt !== null;
+  }
+
+  /** Sets in square `n`, in place of any it held there. */
+  set(n: number, square: CitySquare): void {
+    this.drop(n);
+    const at = this.squareAt!;
+    for (let cz = square.cz0; cz < square.cz1; cz++) for (let cx = square.cx0; cx < square.cx1; cx++) at[cz * this.dims.chunksX + cx] = n + 1;
+    this.squares[n] = square;
+    this.count += square.count;
+    this.versions[n] = ++this.version;
+  }
+
+  /** Lets square `n` go. */
+  drop(n: number): void {
+    const square = this.squares[n];
+    if (!square) return;
+    const at = this.squareAt!;
+    for (let cz = square.cz0; cz < square.cz1; cz++) for (let cx = square.cx0; cx < square.cx1; cx++) at[cz * this.dims.chunksX + cx] = 0;
+    this.squares[n] = null;
+    this.count -= square.count;
+    this.versions[n] = ++this.version;
+  }
+
+  /** Square `n`, or null while it is not held. */
+  square(n: number): CitySquare | null {
+    return this.squares[n] ?? null;
+  }
+
+  /** How many squares it may hold. */
+  get size(): number {
+    return this.versions.length;
+  }
+
+  /** The table `chunk`'s pieces are read from, or null while none holds them. */
+  rows(chunk: number): CityTable | null {
+    if (this.one) return this.one;
+    const n = this.squareAt![chunk];
+    return n ? this.squares[n - 1]! : null;
+  }
+
+  /** The square that holds `chunk`'s pieces, or null where none does or they are one table that is not a square. */
+  squareOf(chunk: number): CitySquare | null {
+    if (this.one) return this.one instanceof CitySquare ? this.one : null;
+    const n = this.squareAt![chunk];
+    return n ? this.squares[n - 1]! : null;
+  }
+
+  /** Whether `chunk`'s pieces are held, so that none there means it has none. */
+  holds(chunk: number): boolean {
+    if (this.one) return !(this.one instanceof CityPieces) || this.one.has(chunk);
+    return this.squareAt![chunk] !== 0;
+  }
+
+  /** Pieces of `chunk`, 0 where they are not held. */
   in(chunk: number): number {
-    return this.first[chunk + 1]! - this.first[chunk]!;
+    const t = this.rows(chunk);
+    return t ? t.to(chunk) - t.from(chunk) : 0;
+  }
+
+  /**
+   * Calls `fn` with each square set in or let go since `seen` (a count a square, as `versions`) last took them, and its
+   * place, and brings `seen` up to date. A city of one table calls it once, for the whole map.
+   */
+  news(seen: Uint32Array, fn: (sq: ChunkSquare, held: boolean) => void): void {
+    if (this.one) {
+      if (seen[0] === 1) return;
+      seen[0] = 1;
+      return fn({ cx0: 0, cz0: 0, cx1: this.dims.chunksX, cz1: this.dims.chunksZ }, true);
+    }
+    for (let n = 0; n < this.versions.length; n++) {
+      if (seen[n] === this.versions[n]) continue;
+      seen[n] = this.versions[n]!;
+      const square = this.squares[n];
+      const was = this.gone.get(n);
+      if (square) this.gone.set(n, square);
+      if (square ?? was) fn(square ?? was!, square !== null);
+    }
+  }
+
+  /** The place of each square last held, so a reader is told where one went. */
+  private readonly gone = new Map<number, ChunkSquare>();
+
+  /**
+   * What chunkReach gives of `chunk` with `reg`'s landmark kinds `landmark`: the box its pieces but a landmark's reach, six
+   * numbers into `out` at `at`, and its landmark's pieces a byte a piece; Infinity to -Infinity and none where it has none.
+   */
+  reachOf(chunk: number, landmark: Uint8Array, out: Float64Array, at = 0): Uint8Array | undefined {
+    const sq = this.squareOf(chunk);
+    if (!sq) {
+      out.fill(Infinity, at, at + 3).fill(-Infinity, at + 3, at + 6);
+      return undefined;
+    }
+    const r = sq.reach(this, landmark), k = sq.at(chunk) * 6;
+    for (let a = 0; a < 6; a++) out[at + a] = r.reach[k + a]!;
+    return r.landmarks.get(chunk);
+  }
+
+  /** Bytes the city holds of its own: its squares', the map's columns they share left out, and its index by chunk. */
+  get bytes(): number {
+    if (this.one) return this.one instanceof CitySquare ? this.one.bytes : 0;
+    return this.squares.reduce((n, s) => n + (s?.bytes ?? 0), this.squareAt!.byteLength);
   }
 }
-
-/** No bent piece, for a city made only for its faces (render/citymake.ts, render/farshadow.ts on a thread). */
-export const UNBENT: Pick<CityStatics, "bent" | "bentKind"> = { bent: MapStatics.blank([], 0, 0, false), bentKind: new Uint16Array(0) };
 
 /** Pieces made between two pauses (CityStatics.steps, chunkReach). */
 const SLICE = 1 << 15;
@@ -122,33 +439,17 @@ export interface PartPaint {
   readonly bare: number;
 }
 
-/** A city's pieces by chunk. */
-interface CityRows {
-  readonly first: Uint32Array;
-  readonly kind: Uint16Array;
-  readonly yaw: Uint16Array;
-  readonly x: Float32Array;
-  readonly y: Float32Array;
-  readonly z: Float32Array;
-}
-
-/** Per chunk, the box its pieces but a landmark's reach, and its landmark's pieces (chunkReach). */
+/** Per chunk of a square, the box its pieces but a landmark's reach, and its landmark's pieces (chunkReach). */
 export interface CityReach {
   readonly reach: Float64Array;
   readonly landmarks: ReadonlyMap<number, Uint8Array>;
 }
 
-/** What chunkReach gave of a city CityStatics.steps made, with the landmark kinds it was given. */
-const madeReach = new WeakMap<CityStatics, CityReach & { readonly landmark: Uint8Array }>();
-
-/** What chunkReach gives of `city` with `landmark`: as CityStatics.steps made it, where it made it with those kinds. */
-export function cityReach(city: CityStatics, landmark: Uint8Array): CityReach {
-  const made = madeReach.get(city);
-  return made?.landmark === landmark ? made : finish(chunkReach(city, landmark));
-}
-
 /** What a city keeps by content index, the same for every city of one registry. */
 interface KindTables {
+  readonly halfX: Float32Array;
+  readonly halfY: Float32Array;
+  readonly halfZ: Float32Array;
   readonly color: Uint8Array;
   readonly under: Uint8Array;
   readonly plain: Uint8Array;
@@ -168,6 +469,9 @@ function kindTables(reg: Registry): KindTables {
 function* kindSteps(reg: Registry): Generator<void, KindTables> {
   const walked: CityForm = { start: reg.parts.start, box: reg.parts.box, color: null, hulls: reg.parts.hulls ?? null };
   const tables = {
+    halfX: reg.halfX,
+    halfY: reg.halfY,
+    halfZ: reg.halfZ,
     color: Uint8Array.from(reg.defs, (d) => (d?.type === "structure" ? d.color : 0)),
     under: Uint8Array.from(reg.defs, (d) => (d?.type === "structure" ? d.under ?? d.color : 0)),
     plain: Uint8Array.from(reg.defs, (d) => (d?.type === "structure" && d.shape !== undefined ? 0 : 1)),
@@ -184,8 +488,8 @@ const landmarksOf = new WeakMap<Registry, Uint8Array>();
 
 /**
  * Per content index, 1 for a kind a landmark brings, a tide eye's collider or a piece of an orb's shell, which the far
- * drawings leave to a landmark's far mesh or to the eye's or the orb's own pass: one array a registry, so a city made
- * with them is known by it (cityReach).
+ * drawings leave to a landmark's far mesh or to the eye's or the orb's own pass: one array a registry, so a square's reach
+ * made with them is known by it (CitySquare.reach).
  */
 export function landmarkKinds(reg: Registry): Uint8Array {
   let kinds = landmarksOf.get(reg);
@@ -213,72 +517,49 @@ function finish<T>(steps: Generator<void, T>): T {
 }
 
 /** Each of a map's kinds `kinds` as a content index of `reg`, or 0 for one it lacks or that is not a structure. */
-function structureKinds(kinds: readonly string[], reg: Registry): Uint16Array {
+export function structureKinds(kinds: readonly string[], reg: Registry): Uint16Array {
   return Uint16Array.from(kinds, (id) => {
     const k = reg.index.get(id);
     return k !== undefined && reg.defs[k]?.type === "structure" ? k : 0;
   });
 }
 
-/** The pieces of `t` with a content index each, those of a kind this content lacks or that is not a structure left out. */
-function* rowSteps(dims: MapDims, t: MapStatics, reg: Registry): Generator<void, CityRows> {
-  const of = structureKinds(t.kinds, reg);
-  const kind = new Uint16Array(t.length);
-  let n = 0;
-  for (let r = 0; r < kind.length; r++) {
-    if ((kind[r] = of[t.kind[r]!]!) !== 0) n++;
-    if (r % SLICE === SLICE - 1) yield;
-  }
-  // Every piece is drawn, so the map's own columns serve and the city is held once.
-  if (n === t.length) return { first: t.first, kind, yaw: t.yaw, x: t.x, y: t.y, z: t.z };
-  const chunks = chunkCount(dims);
-  const rows = { first: new Uint32Array(chunks + 1), kind: new Uint16Array(n), yaw: new Uint16Array(n), x: new Float32Array(n), y: new Float32Array(n), z: new Float32Array(n) };
-  let i = 0;
-  for (let c = 0; c < chunks; c++) {
-    for (let r = t.first[c]!; r < t.first[c + 1]!; r++) {
-      if (kind[r] === 0) continue;
-      rows.kind[i] = kind[r]!;
-      rows.yaw[i] = t.yaw[r]!;
-      rows.x[i] = t.x[r]!;
-      rows.y[i] = t.y[r]!;
-      rows.z[i] = t.z[r]!;
-      if (++i % SLICE === 0) yield;
-    }
-    rows.first[c + 1] = i;
-  }
-  return rows;
+/** The whole map's statics `t` as one square, a slice of SLICE pieces a step. */
+function wholeSquare(dims: MapDims, t: MapStatics, reg: Registry): Generator<void, CitySquare> {
+  return CitySquare.steps(dims, { cx0: 0, cz0: 0, cx1: dims.chunksX, cz1: dims.chunksZ }, t, structureKinds(t.kinds, reg));
 }
 
 /**
- * Per chunk of `city`, the box its pieces reach, but those of a kind `landmark` names (by content index), which the far
- * drawings leave to the landmark's far mesh: six numbers a chunk, its least x, y and z and its most, a turned piece
- * reaching no farther across than its half diagonal, and Infinity to -Infinity where it has no other piece. And per chunk
- * with a piece of such a kind, a byte a piece, 1 for those. A pause after every SLICE pieces.
+ * Per chunk of `square`, by its place there, the box its pieces but those of a kind `landmark` names (by content index)
+ * reach, which the far drawings leave to the landmark's far mesh: six numbers a chunk, its least x, y and z and its most,
+ * a turned piece reaching no farther across than its half diagonal, and Infinity to -Infinity where it has no other piece.
+ * And per chunk with a piece of such a kind, by its number on the map, a byte a piece, 1 for those. A pause after every
+ * SLICE pieces.
  */
-function* chunkReach(city: CityStatics, landmark: Uint8Array): Generator<void, CityReach> {
-  const { first, kind, x, y, z, halfY } = city;
-  const chunks = chunkCount(city.dims);
+function* chunkReach(city: Pick<CityKinds, "dims" | "halfX" | "halfY" | "halfZ">, square: CitySquare, landmark: Uint8Array): Generator<void, CityReach> {
+  const { first, kind, x, y, z } = square, halfY = city.halfY;
   const across = Float64Array.from(city.halfX, (hx, k) => len3(hx, 0, city.halfZ[k]!));
+  const w = square.cx1 - square.cx0, chunks = w * (square.cz1 - square.cz0);
   const reach = new Float64Array(chunks * 6);
   const landmarks = new Map<number, Uint8Array>();
   let since = 0;
-  for (let c = 0; c < chunks; c++) {
-    const o = c * 6;
+  for (let k = 0; k < chunks; k++) {
+    const o = k * 6, c = (square.cz0 + Math.floor(k / w)) * city.dims.chunksX + square.cx0 + (k % w);
     let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
-    for (let i = first[c]!; i < first[c + 1]!; i++) {
-      const k = kind[i]!;
-      if (landmark[k] === 1) {
+    for (let i = first[k]!; i < first[k + 1]!; i++) {
+      const kd = kind[i]!;
+      if (landmark[kd] === 1) {
         let left = landmarks.get(c);
-        if (!left) landmarks.set(c, (left = new Uint8Array(first[c + 1]! - first[c]!)));
-        left[i - first[c]!] = 1;
+        if (!left) landmarks.set(c, (left = new Uint8Array(first[k + 1]! - first[k]!)));
+        left[i - first[k]!] = 1;
         continue;
       }
-      const r = across[k]!;
+      const r = across[kd]!;
       x0 = Math.min(x0, x[i]! - r);
-      y0 = Math.min(y0, y[i]! - halfY[k]!);
+      y0 = Math.min(y0, y[i]! - halfY[kd]!);
       z0 = Math.min(z0, z[i]! - r);
       x1 = Math.max(x1, x[i]! + r);
-      y1 = Math.max(y1, y[i]! + halfY[k]!);
+      y1 = Math.max(y1, y[i]! + halfY[kd]!);
       z1 = Math.max(z1, z[i]! + r);
     }
     reach[o] = x0;
@@ -287,7 +568,7 @@ function* chunkReach(city: CityStatics, landmark: Uint8Array): Generator<void, C
     reach[o + 3] = x1;
     reach[o + 4] = y1;
     reach[o + 5] = z1;
-    if ((since += first[c + 1]! - first[c]!) >= SLICE) {
+    if ((since += first[k + 1]! - first[k]!) >= SLICE) {
       since = 0;
       yield;
     }
@@ -699,7 +980,7 @@ const ring = new Float64Array(3 * MAX_CORNERS);
  * has them, and with `own` its own.
  */
 function gather(city: CityStatics, chunk: number, gone: (chunk: number) => Gone, own: boolean, form: CityForm, far = false, labels?: Uint8Array, keys?: Uint32Array): void {
-  const { dims, first, kind, yaw, x, y, z, halfX, halfY, halfZ, color, plain } = city;
+  const { dims, halfX, halfY, halfZ, color, plain } = city;
   const under = city.under ?? color;
   const cx = chunkCx(dims, chunk);
   const cz = chunkCz(dims, chunk);
@@ -710,9 +991,12 @@ function gather(city: CityStatics, chunk: number, gone: (chunk: number) => Gone,
       const ncz = cz + dz;
       if (ncx < 0 || ncz < 0 || ncx >= dims.chunksX || ncz >= dims.chunksZ || (!own && dx === 0 && dz === 0)) continue;
       const c = ncz * dims.chunksX + ncx;
+      const t = city.rows(c);
+      if (!t) continue;
       const g = gone(c);
-      for (let i = first[c]!; i < first[c + 1]!; i++) {
-        if (g && g[i - first[c]!] === 1) continue;
+      const { kind, yaw, x, y, z } = t, from = t.from(c);
+      for (let i = from; i < t.to(c); i++) {
+        if (g && g[i - from] === 1) continue;
         const k = kind[i]!;
         if (far && city.near[k] === 1) continue;
         const r = Math.max(halfX[k]!, halfZ[k]!) * 1.5;
@@ -1093,10 +1377,12 @@ let order: number[] = [];
 /** The frames of the standing pieces of chunk `c`: their turns short of a quarter, in the order first met. */
 function framesOf(city: CityStatics, chunk: number, g: Gone): number[] {
   const frames: number[] = [];
-  const from = city.first[chunk]!;
-  for (let i = from; i < city.first[chunk + 1]!; i++) {
+  const t = city.rows(chunk);
+  if (!t) return frames;
+  const from = t.from(chunk);
+  for (let i = from; i < t.to(chunk); i++) {
     if (g && g[i - from] === 1) continue;
-    const f = city.yaw[i]! % QUARTER;
+    const f = t.yaw[i]! % QUARTER;
     if (!frames.includes(f)) frames.push(f);
   }
   return frames;
@@ -1107,16 +1393,18 @@ function framesOf(city: CityStatics, chunk: number, g: Gone): number[] {
  * boxes as `form` has them; with `parts`, their convex parts in `hulls` too, placed in the frame. Returns how many boxes.
  */
 function frameBoxes(city: CityStatics, chunk: number, g: Gone, f: number, c: number, s: number, form: CityForm, parts: boolean, far = false, labels?: Uint8Array, rows = false): number {
-  const { first, kind, yaw, x, y, z, halfX, halfY, halfZ, color, plain } = city;
-  const from = first[chunk]!;
+  const { halfX, halfY, halfZ, color, plain } = city;
+  const t = city.rows(chunk);
+  if (!t) return 0;
+  const { kind, yaw, x, y, z } = t, from = t.from(chunk);
   let nb = 0;
-  for (let i = from; i < first[chunk + 1]!; i++) {
+  for (let i = from; i < t.to(chunk); i++) {
     if ((g && g[i - from] === 1) || yaw[i]! % QUARTER !== f) continue;
     const k = kind[i]!;
     if (far && city.near[k] === 1) continue;
     // A broken form wears the colour and material of the kind the map placed. A piece set apart merges with no other's.
-    const worn = city.dye?.[i] || k;
-    const label = (labels?.[worn] ?? 0) << 8 | (city.apart?.[i] === 1 ? (i - from + 1) << 16 : 0);
+    const worn = t.dye?.[i] || k;
+    const label = (labels?.[worn] ?? 0) << 8 | (t.apart?.[i] === 1 ? (i - from + 1) << 16 : 0);
     const quarter = Math.floor(yaw[i]! / QUARTER) % 4;
     const odd = quarter % 2 === 1;
     // The world to the frame: the inverse of the turn a piece's vertices are given.
@@ -1193,7 +1481,8 @@ export function mergedPart(city: CityStatics, chunk: number, hf: Ground, gone: (
   const form = least > 0 ? city.walked : city.look;
   const keyed = keys && gap >= 0 && least <= 0 ? keying.begin() : null;
   // A broken form's faces are a group's of its slot alone: its slot's own key says whether the whole piece stands.
-  for (let i = city.first[chunk]!; keyed && city.dye && i < city.first[chunk + 1]!; i++) if (city.dye[i] !== 0 && keys![i] !== 0) keys![i] = keyed.alone(keys![i]! - 1);
+  const t = city.rows(chunk)!;
+  for (let i = t.from(chunk); keyed && t.dye && i < t.to(chunk); i++) if (t.dye[i] !== 0 && keys![i] !== 0) keys![i] = keyed.alone(keys![i]! - 1);
   boxes.n = 0;
   hulls.n = 0;
   gather(city, chunk, gone, gap < 0 && least <= 0, form, least > 0, labels, keyed ? keys : undefined);
@@ -1214,12 +1503,12 @@ export function mergedPart(city: CityStatics, chunk: number, hf: Ground, gone: (
         boxes.push(c * fx + s * fz, fy, c * fz - s * fx, hx, hy, hz, c, s, framed[o + 6]! & 0xffff, true, undefined, keyed ? keyed.key(b, keys!, c, s) : 0);
       }
     }
-    const { first, kind, yaw, x, y, z, color, plain } = city;
-    for (let i = first[chunk]!; i < first[chunk + 1]!; i++) {
-      if ((g && g[i - first[chunk]!] === 1) || plain[kind[i]!] === 1) continue;
+    const { color, plain } = city, { kind, yaw, x, y, z } = t, from = t.from(chunk);
+    for (let i = from; i < t.to(chunk); i++) {
+      if ((g && g[i - from] === 1) || plain[kind[i]!] === 1) continue;
       const a = (yaw[i]! / YAW_UNITS) * TAU;
       const k = kind[i]!;
-      const worn = city.dye?.[i] || k;
+      const worn = t.dye?.[i] || k;
       const label = (labels?.[worn] ?? 0) << 8;
       pushHulls(form, k, x[i]!, y[i]!, z[i]!, detCos(a), detSin(a), label | color[worn]!, true, least, undefined, keyed ? keys![i]! : 0, worn !== k ? city.paint?.(k) ?? null : null);
     }
@@ -1298,14 +1587,14 @@ const SMALL_HALF = TACTICAL_CELL / 2;
  * tactical.ts bakeChunk's rule: a narrow piece its centre's cell, a wide one every cell whose centre its turned box,
  * grown by half a cell, reaches. A sloped piece is the box that holds it, as the feed has it.
  */
-function pieceCells(city: CityStatics, i: number, x0: number, z0: number, hf: Heightfield, each: (cell: number, top: number) => void): void {
-  const k = city.kind[i]!;
+function pieceCells(city: CityKinds, t: CityTable, i: number, x0: number, z0: number, hf: Ground, each: (cell: number, top: number) => void): void {
+  const k = t.kind[i]!;
   // A float32, as the bake keeps a cell's top.
-  const h = Math.fround(city.y[i]! + city.halfY[k]!);
+  const h = Math.fround(t.y[i]! + city.halfY[k]!);
   const hx = city.halfX[k]!;
   const hz = city.halfZ[k]!;
-  const px = city.x[i]! - x0;
-  const pz = city.z[i]! - z0;
+  const px = t.x[i]! - x0;
+  const pz = t.z[i]! - z0;
   const top = (c: number): number => farTopByte(h - hf.heightAt(x0 + ((c % FAR_SIDE) + 0.5) * TACTICAL_CELL, z0 + (Math.floor(c / FAR_SIDE) + 0.5) * TACTICAL_CELL));
   if (hx <= SMALL_HALF && hz <= SMALL_HALF) {
     const cx = Math.min(FAR_SIDE - 1, Math.max(0, (px / TACTICAL_CELL) | 0));
@@ -1313,7 +1602,7 @@ function pieceCells(city: CityStatics, i: number, x0: number, z0: number, hf: He
     each(cz * FAR_SIDE + cx, top(cz * FAR_SIDE + cx));
     return;
   }
-  const a = city.yaw[i]! * (TAU / YAW_UNITS);
+  const a = t.yaw[i]! * (TAU / YAW_UNITS);
   const sn = detSin(a);
   const cs = detCos(a);
   const ex = Math.abs(cs) * hx + Math.abs(sn) * hz;
@@ -1333,13 +1622,14 @@ function pieceCells(city: CityStatics, i: number, x0: number, z0: number, hf: He
 }
 
 /** The far feed's top byte of each cell of `chunk` as its standing pieces alone would give it (tactical.ts FarCells.top). */
-export function cityTops(city: CityStatics, chunk: number, hf: Heightfield, gone: Gone): Uint8Array {
-  const tops = new Uint8Array(FAR_SIDE * FAR_SIDE);
-  const from = city.first[chunk]!;
+export function cityTops(city: CityStatics, chunk: number, hf: Ground, gone: Gone, tops = new Uint8Array(FAR_SIDE * FAR_SIDE)): Uint8Array {
+  const t = city.rows(chunk);
+  if (!t) return tops;
+  const from = t.from(chunk);
   const [x0, z0] = [chunkCx(city.dims, chunk) * CHUNK_SIZE, chunkCz(city.dims, chunk) * CHUNK_SIZE];
-  for (let i = from; i < city.first[chunk + 1]!; i++) {
+  for (let i = from; i < t.to(chunk); i++) {
     if (gone && gone[i - from] === 1) continue;
-    pieceCells(city, i, x0, z0, hf, (c, t) => void (tops[c] = Math.max(tops[c]!, t)));
+    pieceCells(city, t, i, x0, z0, hf, (c, top) => void (tops[c] = Math.max(tops[c]!, top)));
   }
   return tops;
 }
@@ -1350,13 +1640,15 @@ export function cityTops(city: CityStatics, chunk: number, hf: Heightfield, gone
  * tall. `tops` is the cells' top bytes as sent, all 0 for a chunk sent empty. Returns how many it marked.
  */
 export function goneByCells(city: CityStatics, chunk: number, hf: Heightfield, tops: Uint8Array, gone: Uint8Array): number {
-  const from = city.first[chunk]!;
+  const t = city.rows(chunk);
+  if (!t) return 0;
+  const from = t.from(chunk);
   const [x0, z0] = [chunkCx(city.dims, chunk) * CHUNK_SIZE, chunkCz(city.dims, chunk) * CHUNK_SIZE];
   let marked = 0;
-  for (let i = from; i < city.first[chunk + 1]!; i++) {
+  for (let i = from; i < t.to(chunk); i++) {
     if (gone[i - from] === 1) continue;
     let over = false;
-    pieceCells(city, i, x0, z0, hf, (c, t) => void (over ||= t > tops[c]!));
+    pieceCells(city, t, i, x0, z0, hf, (c, top) => void (over ||= top > tops[c]!));
     if (over) {
       gone[i - from] = 1;
       marked++;
@@ -1372,10 +1664,12 @@ export function goneByCells(city: CityStatics, chunk: number, hf: Heightfield, t
 export function goneByRows(city: CityStatics, chunk: number, rows: { readonly high: number; readonly kind: Uint16Array; readonly x: Float32Array; readonly y: Float32Array; readonly z: Float32Array; readonly yaw: Uint16Array }, gone: Uint8Array): number {
   const held = new Set<string>();
   for (let s = 0; s < rows.high; s++) if (rows.kind[s] !== 0) held.add(`${rows.kind[s]},${rows.x[s]},${rows.y[s]},${rows.z[s]},${rows.yaw[s]}`);
-  const from = city.first[chunk]!;
+  const t = city.rows(chunk);
+  if (!t) return 0;
+  const from = t.from(chunk);
   let marked = 0;
-  for (let i = from; i < city.first[chunk + 1]!; i++) {
-    const there = held.has(`${city.kind[i]},${city.x[i]},${city.y[i]},${city.z[i]},${city.yaw[i]}`);
+  for (let i = from; i < t.to(chunk); i++) {
+    const there = held.has(`${t.kind[i]},${t.x[i]},${t.y[i]},${t.z[i]},${t.yaw[i]}`);
     gone[i - from] = there ? 0 : 1;
     if (!there) marked++;
   }

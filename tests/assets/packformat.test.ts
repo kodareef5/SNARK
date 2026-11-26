@@ -148,13 +148,19 @@ test("the flat renderer's shader text is the text low poly was always drawn with
   const unshaded = manyColoured.replace(PIECE_SHADE, "");
   const unkeyed = unshaded.replace(PIECE_GLSL, "").replace(PIECE_PLACE, "").replace(PIECE_END, "");
   const unbent = unkeyed.replace(BEND_GLSL, "").replace(BEND_PLACE, "");
-  expect(hashString(FLAT_FRAGMENT + unbent.replace(sizing, "") + FLAT_TERRAIN_VERTEX)).toBe(2880639374);
-  expect(hashString(FLAT_FRAGMENT + unbent + FLAT_TERRAIN_VERTEX)).toBe(1010688119);
-  expect(hashString(FLAT_FRAGMENT + unkeyed + FLAT_TERRAIN_VERTEX)).toBe(3957629961);
-  expect(hashString(FLAT_FRAGMENT + unshaded + FLAT_TERRAIN_VERTEX)).toBe(1090828137);
-  expect(hashString(FLAT_FRAGMENT + manyColoured + FLAT_TERRAIN_VERTEX)).toBe(2435062563);
-  expect(hashString(FLAT_FRAGMENT + unfitted + FLAT_TERRAIN_VERTEX)).toBe(2887871706);
-  expect(hashString(FLAT_FRAGMENT + FLAT_MESH_VERTEX + FLAT_TERRAIN_VERTEX)).toBe(453623214);
+  // The moving terrain window offsets both height and tint reads. Restore the two old lines to check the historical shaders.
+  const wrapUniform = "uniform vec2 uLast, uWrap;";
+  const wrappedSample = "ivec2 at = (ivec2(ij) + ivec2(uWrap)) % textureSize(uHeight, 0);";
+  expect(FLAT_TERRAIN_VERTEX).toContain(wrapUniform);
+  expect(FLAT_TERRAIN_VERTEX).toContain(wrappedSample);
+  const originalTerrain = FLAT_TERRAIN_VERTEX.replace(wrapUniform, "uniform vec2 uLast;").replace(wrappedSample, "ivec2 at = ivec2(ij);");
+  expect(hashString(FLAT_FRAGMENT + unbent.replace(sizing, "") + originalTerrain)).toBe(2880639374);
+  expect(hashString(FLAT_FRAGMENT + unbent + originalTerrain)).toBe(1010688119);
+  expect(hashString(FLAT_FRAGMENT + unkeyed + originalTerrain)).toBe(3957629961);
+  expect(hashString(FLAT_FRAGMENT + unshaded + originalTerrain)).toBe(1090828137);
+  expect(hashString(FLAT_FRAGMENT + manyColoured + originalTerrain)).toBe(2435062563);
+  expect(hashString(FLAT_FRAGMENT + unfitted + originalTerrain)).toBe(2887871706);
+  expect(hashString(FLAT_FRAGMENT + FLAT_MESH_VERTEX + originalTerrain)).toBe(453623214);
 });
 
 test("draw flags are one bit each, a frame starts with no texture work, and the tiers ask for more as they go up", () => {

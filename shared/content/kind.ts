@@ -82,8 +82,8 @@ export interface Field {
   kind: "text" | "number" | "switch" | "vec3" | "list" | "facet";
   /** ARK's name for the same thing, or "" for a field of our own. */
   ark: string;
-  /** Paths in the field that name other definitions, and the class or family each must be. "" is the field itself, "[]" each entry. */
-  refs?: Record<string, string>;
+  /** Paths in the field that name other definitions, and the class or family each must be, or the classes it may be. "" is the field itself, "[]" each entry. */
+  refs?: Record<string, string | readonly string[]>;
   /** Packs may add entries to it, and a remap rewrites what it names. */
   open?: boolean;
   /** A stub field is declared and checked, and nothing reads it until the feature it waits for is built. */

@@ -354,7 +354,7 @@ Packs may add to: `buffs`.
 
 - **`population`** on shelf `people`. Who a crowd is made of: by weight and range, each part of a person the generator draws from a seed.
 
-What names what: `outfits[].wear[]` names a `item/armor`.
+What names what: `outfits[].wear[]` names a `item/armor` or a `item/garment`.
 
 ## Renames
 

@@ -30,7 +30,7 @@ writeFileSync(join(root, "slopes.json"), JSON.stringify({
   flight: { width: 2, run: 5.5, rise: 4, degrees: Math.atan2(4, 5.5) * 180 / Math.PI, landingGap: 0 },
   ramp: { run: 4, riseQuantum: .25, maxRise: 3, maxDegrees: Math.atan2(3, 4) * 180 / Math.PI },
   stairsByFloors: floorCounts,
-  highBuildings: buildings.filter((r) => r.routes.some((s) => s.floors >= 12)).map((r) => ({ part: r.part, name: r.name, floors: Math.max(...r.routes.map((s) => s.floors)), refuges: r.rooms.filter((s) => s.kind === "refuge").length, exits: r.escapes.length })),
+  highBuildings: buildings.filter((r) => r.routes.some((s) => s.floors >= 12)).map((r) => ({ id: r.id, name: r.name, floors: Math.max(...r.routes.map((s) => s.floors)), refuges: r.rooms.filter((s) => s.kind === "refuge").length, exits: r.escapes.length })),
   refugeCircuits: buildings.reduce((n, r) => n + r.rooms.filter((s) => s.kind === "refuge").length, 0),
   bidirectionalExits: buildings.reduce((n, r) => n + r.escapes.filter((s) => s.bidirectional).length, 0),
   slopedKinds: Object.fromEntries(Object.entries(g.kinds).filter(([k]) => /_flight_|_ramp\d+_|_zpitch\d+_|_plate\d+_|_front60_|_mound_/.test(k))),

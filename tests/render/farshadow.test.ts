@@ -1,20 +1,25 @@
 // The sun's shadow past the cascades (client/core/render/farshadow.ts): the sweep over solid heights shades the cells a
 // tower's shadow covers and leaves the rest lit, ground that rises shades what lies behind it, a piece gone takes its
-// shadow with it, the map is the same bytes made twice or on another thread, the lookup leaves a building's own sunlit
-// faces lit and shades the ground in its shadow, within the cascades it is looked up past the chunks the near store
-// holds, whose pieces cast there, and the scene's part makes it again when the sun has moved enough, puts it on the card
-// within the frame's allowance and looks it up only once it is all there.
+// shadow with it, the solid heights made from the map's tops are those of its statics and pool as the sweep and the
+// openness pooled them, the map is the same bytes made twice or on another thread, the lookup leaves a building's own
+// sunlit faces lit and shades the ground in its shadow, within the cascades it is looked up past the chunks the near
+// store holds, whose pieces cast there, and the scene's part makes it again when the sun has moved enough, puts it on the
+// card within the frame's allowance and looks it up only once it is all there.
 
 import { expect, test } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
-import { ThreadedCityMaker, cityKinds, type CityThread } from "../../client/core/render/citymake.ts";
-import { FAR_SPAN, FarShadow, SWEEP_QUIET, SWEEP_WAIT, TOP_CELL, chunkSolid, doSweep, farBeyondLookup, farCell, farLookup, makeSolid, nearLead, sweep, sweepBuffers, tipMoves, type SweepJob, type SweepMade } from "../../client/core/render/farshadow.ts";
+import { HeldTops } from "../../client/core/render/blocks.ts";
+import { ThreadedCityMaker, type CityMaker, type CityThread } from "../../client/core/render/citymake.ts";
+import { FAR_SPAN, FarShadow, SOLID_CHUNKS, SWEEP_QUIET, SWEEP_WAIT, TOP_CELL, chunkSolid, doSweep, farBeyondLookup, farCell, farLookup, makeSolid, nearLead, sweep, sweepBuffers, tipMoves, type Standing, type SweepJob, type SweepMade } from "../../client/core/render/farshadow.ts";
 import { CAST_AT, FRAME, FramePacket } from "../../client/core/render/packet.ts";
 import { OPEN_BYTES, openMeasure } from "../../client/core/render/skyopen.ts";
-import { CHUNK_SIZE, chunkAt, chunkCount, type MapDims } from "../../shared/coords.ts";
+import { CHUNK_SIZE, chunkAt, chunkCount, chunkCx, chunkCz, type MapDims } from "../../shared/coords.ts";
+import type { Registry } from "../../shared/content/registry.ts";
 import { CityStatics, cityTops, floatingKinds, landmarkKinds, type Gone } from "../../shared/world/city.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import type { MapStatic } from "../../shared/world/mapfile.ts";
+import { StructureStore } from "../../shared/world/structures.ts";
+import { Summary, bakeChunk, pieceShapes } from "../../shared/world/tactical.ts";
 import { asWritten, building } from "../fixtures/cityworld.ts";
 import { farRegistry } from "../fixtures/farworld.ts";
 
@@ -121,7 +126,99 @@ function twoTowers() {
   const a = [160, 160], b = [352, 352];
   const statics: MapStatic[] = asWritten([...building(a[0]!, a[1]!, 0, 12), ...building(b[0]!, b[1]!, 0, 12)]);
   const city = new CityStatics(dims, statics, reg);
-  return { reg, dims, hf, city, a, b, chunkA: chunkAt(dims, a[0]!, a[1]!), chunkB: chunkAt(dims, b[0]!, b[1]!) };
+  return { reg, dims, hf, city, statics, a, b, chunkA: chunkAt(dims, a[0]!, a[1]!), chunkB: chunkAt(dims, b[0]!, b[1]!) };
+}
+
+/** What stands of `city`: nothing gone, or as `gone` says, with a count of changes a chunk. */
+function standingOf(city: CityStatics, hf: Heightfield, gone = new Map<number, Uint8Array>()): Standing {
+  return { goneOf: (c) => gone.get(c) ?? null, goneVersion: new Uint32Array(chunkCount(city.dims)), topsOf: (c) => (city.in(c) > 0 ? cityTops(city, c, hf, gone.get(c) ?? null) : null) };
+}
+
+/** The map's tops as its maker bakes them from the server's store (shared/world/mapfile.ts mapTops), as one part. */
+function bakedTops(reg: Registry, dims: MapDims, hf: Heightfield, statics: readonly MapStatic[]) {
+  const server = new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
+  for (const s of statics) {
+    const k = reg.index.get(s.kind)!;
+    server.add(k, s.x, s.y, s.z, s.yaw, 0, reg.maxHp[k]!);
+  }
+  const shapes = pieceShapes(reg);
+  const chunks: number[] = [], top: number[] = [], tint: number[] = [];
+  for (const c of [...server.held].sort((x, y) => x - y)) {
+    const s = new Summary();
+    bakeChunk(server.chunks[c]!, chunkCx(dims, c) * CHUNK_SIZE, chunkCz(dims, c) * CHUNK_SIZE, shapes, hf, s);
+    if (s.far.filled === 0) continue;
+    chunks.push(c);
+    top.push(...s.far.top);
+    tint.push(...s.far.tint);
+  }
+  return { chunks: Uint32Array.from(chunks), top: Uint8Array.from(top), tint: Uint8Array.from(tint) };
+}
+
+/** `tops` held as a page holds them once their part has come. */
+function held(dims: MapDims, tops: ReturnType<typeof bakedTops>): HeldTops {
+  const h = new HeldTops(dims);
+  h.take(tops);
+  return h;
+}
+
+/** `grid`, `nx` by `nz`, pooled `k` a side: each cell's highest, and the mean of each cell's, rounded. */
+function pool(grid: Uint16Array, nx: number, nz: number, k: number): { top: Uint16Array; mean: Uint16Array } {
+  const w = Math.ceil(nx / k), h = Math.ceil(nz / k);
+  const top = new Uint16Array(w * h), sum = new Float64Array(w * h), count = new Uint16Array(w * h);
+  for (let j = 0; j < nz; j++) {
+    for (let i = 0; i < nx; i++) {
+      const at = Math.floor(j / k) * w + Math.floor(i / k);
+      top[at] = Math.max(top[at]!, grid[j * nx + i]!);
+      sum[at]! += grid[j * nx + i]!;
+      count[at]!++;
+    }
+  }
+  return { top, mean: Uint16Array.from(sum, (s, c) => Math.round(s / count[c]!)) };
+}
+
+/** A maker on other threads as a test sees it: each job it is asked for kept, and answered at once. */
+function capture(): { maker: CityMaker; jobs: SweepJob[] } {
+  const jobs: SweepJob[] = [], made: SweepMade[] = [];
+  const maker: CityMaker = {
+    onMade: null,
+    start() {},
+    make() {},
+    take: () => 0,
+    sweep(job) {
+      jobs.push(structuredClone(job));
+      made.push(doSweep(job));
+    },
+    swept: () => made.shift() ?? null,
+  };
+  return { maker, jobs };
+}
+
+/** A lit frame packet of a tier whose shadow layer is `size` texels a side. */
+function litPacket(size: number): FramePacket {
+  const p = new FramePacket();
+  p.tier = { ...tierOf("high"), shadows: { ...tierOf("high").shadows, size } };
+  p.lit = true;
+  return p;
+}
+
+/** Frames of `shadow`, the clock going on a second a frame from `at`, until it has asked for one more job than `jobs` holds. */
+function nextJob(shadow: FarShadow, jobs: SweepJob[], p: FramePacket, at = { now: 0 }, sun = sunAt(40, 30)): SweepJob {
+  const had = jobs.length;
+  for (let f = 0; jobs.length === had; f++) {
+    if (f > 2000) throw new Error("no job asked for");
+    p.beginFrame();
+    shadow.update(p, { left: 1e9, spend() {} }, 0, 0, 0, sun, (at.now += 1000));
+  }
+  return jobs.at(-1)!;
+}
+
+/** Two towers on ground with hills, so a coarse cell's ground is a mean of others. */
+function hilly() {
+  const t = twoTowers();
+  const at = (x: number, z: number): number => 6 * Math.sin(x / 37) + 4 * Math.cos(z / 23);
+  for (let j = 0; j < t.hf.nz; j++) for (let i = 0; i < t.hf.nx; i++) t.hf.setSample(i, j, at(i * t.hf.cell, j * t.hf.cell));
+  const statics = t.statics.map((s) => ({ ...s, y: s.y + at(s.x, s.z) }));
+  return { ...t, statics, city: new CityStatics(t.dims, statics, t.reg) };
 }
 
 /** Whether ground at (x, z) is in the map's shadow, the map's cells `cell` metres. */
@@ -161,22 +258,109 @@ test("the map made twice from the same statics and sun is the same bytes, and th
   };
   const first = once();
   expect(Buffer.from(once().buffer).equals(Buffer.from(first.buffer))).toBe(true);
-  // A worker is sent the statics' columns and the ground, and makes the solid heights and the ground under them itself,
-  // and the sky's openness from them where asked.
-  const kinds = cityKinds(city, hf, { center: [0, 0, 0], half: [1, 1, 1] });
-  const job: SweepJob = { id: 1, solid: null, ground: null, make: { first: city.first.slice(), kind: city.kind.slice(), yaw: city.yaw.slice(), x: city.x.slice(), y: city.y.slice(), z: city.z.slice(), gone: null, skip: null, heights: hf.heights.slice() }, bare: null, k: 1, size, sun, open: true };
-  const there = doSweep(kinds, structuredClone(job));
-  expect(Buffer.from(there.map!.buffer).equals(Buffer.from(first.buffer))).toBe(true);
+  // A worker is sent the solid heights and their ground, nothing else of the map, and sweeps them and makes the sky's
+  // openness from them where asked.
   const ground = new Uint16Array(128 * 128);
-  expect(Buffer.from(there.solid.buffer).equals(Buffer.from(makeSolid(city, hf, () => null, ground).buffer))).toBe(true);
-  expect(there.ground).toEqual(ground);
-  expect(there.open).toEqual(openMeasure(there.solid, ground, 128, 128, 1, TOP_CELL, UNIT));
-  // Coarser cells, as a layer half as wide has them, take each cell's highest of its four; with no sun there is no map.
+  const solid = makeSolid(city, hf, () => null, ground);
+  const job: SweepJob = { id: 1, solid, ground, w: 128, h: 128, cell: TOP_CELL, bareAt: null, bareTo: null, size, sun, open: true };
+  const there = doSweep(structuredClone(job));
+  expect(Buffer.from(there.map!.buffer).equals(Buffer.from(first.buffer))).toBe(true);
+  expect(there.open).toEqual(openMeasure(solid, ground, 128, 128, 1, TOP_CELL, UNIT));
+  // Cells twice as wide, as a layer half as wide has them, each the highest of its four: swept as the fine cells are
+  // when the sweep pools them itself. With no sun there is no map.
   const coarse = new Uint16Array(64 * 64);
-  sweep(there.solid, 128, 128, 2, 64, sun[0]!, sun[1]!, sun[2]!, coarse);
+  sweep(solid, 128, 128, 2, 64, sun[0]!, sun[1]!, sun[2]!, coarse);
   expect(farCell(dims, 64)).toBe(2 * TOP_CELL);
-  expect(doSweep(kinds, { id: 2, solid: there.solid, ground, bare: null, make: null, k: 2, size: 64, sun, open: false }).map).toEqual(coarse);
-  expect(doSweep(kinds, { id: 3, solid: there.solid, ground, bare: null, make: null, k: 2, size: 64, sun: null, open: false }).map).toBe(null);
+  const pooled = pool(solid, 128, 128, 2);
+  const wide = { ...job, solid: pooled.top, ground: pool(ground, 128, 128, 2).mean, w: 64, h: 64, cell: 2 * TOP_CELL, size: 64, open: false };
+  expect(doSweep(wide).map).toEqual(coarse);
+  expect(doSweep({ ...wide, sun: null }).map).toBe(null);
+});
+
+test("solid heights from the map's tops equal those from its statics, at three cells", () => {
+  const { reg, dims, hf, city, statics } = hilly();
+  const tops = bakedTops(reg, dims, hf, statics);
+  const ground4 = new Uint16Array(128 * 128);
+  const solid4 = makeSolid(city, hf, () => null, ground4);
+  const sun = sunAt(40, 30);
+  // Layers of 128, 64 and 48 texels: cells of 4, 8 and 12 m, the last reaching across the chunks' edges.
+  for (const size of [128, 64, 48]) {
+    const k = farCell(dims, size) / TOP_CELL;
+    const a = capture(), b = capture();
+    const fromTops = nextJob(new FarShadow(dims, hf, held(dims, tops), a.maker, () => false), a.jobs, litPacket(size));
+    const shadow = new FarShadow(dims, hf, null, b.maker, () => false);
+    shadow.hand(city, standingOf(city, hf));
+    const fromStatics = nextJob(shadow, b.jobs, litPacket(size));
+    expect([fromTops.w, fromTops.cell]).toEqual([Math.ceil(128 / k), k * TOP_CELL]);
+    expect(fromTops.solid).toEqual(fromStatics.solid);
+    expect(fromTops.ground).toEqual(fromStatics.ground);
+    // The grid is the 4 m cells pooled, so the map and the openness are those the sweep and the openness made of them.
+    expect(fromTops.solid).toEqual(pool(solid4, 128, 128, k).top);
+    expect(fromTops.ground).toEqual(pool(ground4, 128, 128, k).mean);
+    const map = new Uint16Array(size * size);
+    sweep(solid4, 128, 128, k, size, sun[0]!, sun[1]!, sun[2]!, map);
+    const made = doSweep({ ...fromTops, sun, open: true });
+    expect(made.map).toEqual(map);
+    expect(made.open).toEqual(openMeasure(solid4, ground4, 128, 128, k, TOP_CELL, UNIT));
+  }
+});
+
+test("a piece gone changes its chunk alike from the map's tops and from its statics", () => {
+  const { reg, dims, hf, city, statics, chunkA } = hilly();
+  const tops = held(dims, bakedTops(reg, dims, hf, statics));
+  const gone = new Map<number, Uint8Array>();
+  const standing = standingOf(city, hf, gone);
+  const run = (from: HeldTops | null) => {
+    const { maker, jobs } = capture();
+    const shadow = new FarShadow(dims, hf, from, maker, () => false);
+    shadow.hand(city, standing);
+    return { shadow, jobs, p: litPacket(128), at: { now: 0 } };
+  };
+  const [a, b] = [run(tops), run(null)];
+  const before = [nextJob(a.shadow, a.jobs, a.p, a.at), nextJob(b.shadow, b.jobs, b.p, b.at)];
+  expect(before[0]!.solid).toEqual(before[1]!.solid);
+  // Tower A falls: every piece of its chunk is gone, and the map is swept again once that has been quiet a while.
+  gone.set(chunkA, new Uint8Array(city.in(chunkA)).fill(1));
+  standing.goneVersion[chunkA]!++;
+  const after = [nextJob(a.shadow, a.jobs, a.p, a.at), nextJob(b.shadow, b.jobs, b.p, b.at)];
+  expect(after[0]!.solid).toEqual(after[1]!.solid);
+  // Only chunk A's cells changed, and to its ground.
+  const [i0, j0] = [chunkCx(dims, chunkA) * 16, chunkCz(dims, chunkA) * 16];
+  let changed = 0;
+  for (let c = 0; c < 128 * 128; c++) {
+    if (after[0]!.solid[c] === before[0]!.solid[c]) continue;
+    const [i, j] = [c % 128, Math.floor(c / 128)];
+    expect(i >= i0 && i < i0 + 16 && j >= j0 && j < j0 + 16).toBe(true);
+    expect(after[0]!.solid[c]).toBe(after[0]!.ground[c]!);
+    changed++;
+  }
+  expect(changed).toBeGreaterThan(16);
+});
+
+test("tops and ground that come later make their chunks again", () => {
+  const { reg, dims, hf, city, statics, chunkB } = hilly();
+  const tops = new HeldTops(dims);
+  const { maker, jobs } = capture();
+  const shadow = new FarShadow(dims, hf, tops, maker, () => false);
+  const p = litPacket(128), at = { now: 0 };
+  // Before any tops have come the map is of the ground alone.
+  const bare = nextJob(shadow, jobs, p, at);
+  expect(bare.solid).toEqual(bare.ground);
+  // The tops' part comes: the towers stand, as their statics make them.
+  tops.take(bakedTops(reg, dims, hf, statics));
+  const ground4 = new Uint16Array(128 * 128);
+  expect(nextJob(shadow, jobs, p, at).solid).toEqual(makeSolid(city, hf, () => null, ground4));
+  // A sector's own ground comes under tower B, a metre higher: its chunk's cells rise with it, and no other's.
+  const [ci, cj] = [chunkCx(dims, chunkB), chunkCz(dims, chunkB)];
+  for (let j = cj * 32; j <= cj * 32 + 32; j++) for (let i = ci * 32; i <= ci * 32 + 32; i++) hf.setSample(i, j, hf.sample(i, j) + 1);
+  hf.hold(ci, cj, ci + 1, cj + 1);
+  const raised = nextJob(shadow, jobs, p, at);
+  for (let c = 0; c < 128 * 128; c++) {
+    const [i, j] = [c % 128, Math.floor(c / 128)];
+    const inB = Math.floor(i / 16) === ci && Math.floor(j / 16) === cj;
+    const rise = raised.ground[c]! - ground4[c]!;
+    expect([c, inB ? Math.abs(rise - 1 / UNIT) <= 1 : rise === 0]).toEqual([c, true]);
+  }
 });
 
 /** A frame's allowance, counting what it spends. */
@@ -196,7 +380,8 @@ test("the scene's part sweeps when the statics come and again when the tallest t
   const version = new Uint32Array(chunkCount(dims));
   const gone = new Map<number, Uint8Array>();
   const standing = { goneOf: (c: number): Gone => gone.get(c) ?? null, goneVersion: version, topsOf: (c: number) => (city.in(c) > 0 ? cityTops(city, c, hf, gone.get(c) ?? null) : null) };
-  const shadow = new FarShadow(city, hf, standing, null, () => false);
+  const shadow = new FarShadow(dims, hf, null, null, () => false);
+  shadow.hand(city, standing);
   const p = new FramePacket();
   p.tier = { ...tierOf("high"), shadows: { ...tierOf("high").shadows, size: 256 } };
   p.lit = true;
@@ -262,12 +447,19 @@ test("the scene's part sweeps when the statics come and again when the tallest t
     expect(shadow.stats.sweeps).toBe(at < 4000 + SWEEP_WAIT ? 3 : 4);
   }
   const swept = shadow.stats.sweeps;
-  // A lost context: the layer is empty, so nothing is looked up until the map is all on it again, unswept.
+  // A lost context while the map goes up: the layer is empty, so nothing is looked up until the map is all on it again,
+  // from the map still held, unswept.
   shadow.reset();
   expect(frame().scale).toBe(-1 / TOP_CELL);
   frame();
   expect(frame().scale).toBe(1 / TOP_CELL);
   expect(shadow.stats.sweeps).toBe(swept);
+  // Once all of it is on the card the map is let go, and a lost context sweeps it again.
+  shadow.reset();
+  expect(frame().scale).toBe(-1 / TOP_CELL);
+  frame();
+  expect(frame().scale).toBe(1 / TOP_CELL);
+  expect(shadow.stats.sweeps).toBe(swept + 1);
   // A sun gone far from the map's, as the day's first is from last evening's: not looked up until the new one is all there.
   sun = sunAt(60, 200);
   expect(frame().scale).toBe(-1 / TOP_CELL);
@@ -287,37 +479,35 @@ test("the scene's part sweeps when the statics come and again when the tallest t
 
 test("a maker on other threads sweeps there, moving the solid heights and the map rather than copying them", async () => {
   const { dims, hf, city } = twoTowers();
-  const kinds = cityKinds(city, hf, { center: [0, 0, 0], half: [1, 1, 1] });
-  // Threads as a worker runs them, each message cloned with what it moves taken out of the sender.
+  // Threads as a worker runs them, each message cloned with what it moves taken out of the sender; a sweep needs no kinds.
   const opened: CityThread[] = [];
+  const moved: number[] = [];
   const open = (): CityThread => {
-    let held: typeof kinds | null = null;
     const thread: CityThread = {
       onmessage: null,
       postMessage(m, transfer = []) {
+        if ("sweep" in m) moved.push(...transfer.map((b) => b.byteLength));
         const sent = structuredClone(m, { transfer });
-        if ("kinds" in sent) held = sent.kinds;
-        else if ("sweep" in sent) {
-          const made: SweepMade = doSweep(held!, sent.sweep);
-          const back = structuredClone(made, { transfer: sweepBuffers(made) });
-          queueMicrotask(() => thread.onmessage?.({ data: back }));
-        }
+        if (!("sweep" in sent)) return;
+        const made: SweepMade = doSweep(sent.sweep);
+        const back = structuredClone(made, { transfer: sweepBuffers(made) });
+        queueMicrotask(() => thread.onmessage?.({ data: back }));
       },
     };
     opened.push(thread);
     return thread;
   };
   const maker = new ThreadedCityMaker(open, 2);
-  maker.start(kinds);
-  const standing = { goneOf: (): Gone => null, goneVersion: new Uint32Array(chunkCount(dims)), topsOf: (c: number) => (city.in(c) > 0 ? cityTops(city, c, hf, null) : null) };
-  const shadow = new FarShadow(city, hf, standing, maker, () => false);
+  const shadow = new FarShadow(dims, hf, null, maker, () => false);
+  shadow.hand(city, standingOf(city, hf));
   const p = new FramePacket();
   p.tier = { ...tierOf("medium"), shadows: { ...tierOf("medium").shadows, size: 128 } };
   p.lit = true;
   const sun = sunAt(40, 30);
   shadow.update(p, allowance(1e9), 0, 0, 0, sun);
-  // Asked, and away: nothing yet.
+  // Asked, and away: nothing yet. What went is the solid heights and their ground, moved.
   expect([opened.length, p.farRows, shadow.stats.sweeps]).toEqual([2, 0, 0]);
+  expect(moved).toEqual([128 * 128 * 2, 128 * 128 * 2]);
   await new Promise((r) => setTimeout(r, 0));
   p.beginFrame();
   shadow.update(p, allowance(1e9), 0, 0, 0, sun);
@@ -332,35 +522,46 @@ test("a maker on other threads sweeps there, moving the solid heights and the ma
   expect(CHUNK_SIZE / TOP_CELL).toBe(16);
 });
 
-test("the first job for a maker on other threads is a copy of the city and the ground made 16 MB a frame, as they are, and what is gone as it is the frame it goes", () => {
-  // Ground of 96 chunks a side, 19 MB of heights: two frames of copying.
+test("solid heights are made SOLID_CHUNKS a frame and swept once all are made", () => {
+  // 96 chunks a side on a layer of 128: 128 cells of 48 m a side, 9,216 chunks made in 72 frames.
   const reg = farRegistry();
   const dims: MapDims = { chunksX: 96, chunksZ: 96 };
   const hf = new Heightfield(dims, TERRAIN_CELL, -64, 1 / 64);
   for (let j = 0; j < hf.nz; j += 7) hf.setSample(5, j, j % 50);
-  const city = new CityStatics(dims, asWritten(building(160, 160, 0, 12)), reg);
-  const jobs: SweepJob[] = [];
-  const maker = new ThreadedCityMaker(() => ({ onmessage: null, postMessage: (m) => void ("sweep" in m && jobs.push(m.sweep)) }), 1);
-  maker.start(cityKinds(city, hf, { center: [0, 0, 0], half: [1, 1, 1] }));
-  const goneVersion = new Uint32Array(chunkCount(dims));
-  let gone: Gone = null;
-  const chunk = chunkAt(dims, 160, 160);
-  const standing = { goneOf: (c: number): Gone => (c === chunk ? gone : null), goneVersion, topsOf: () => null };
-  const shadow = new FarShadow(city, hf, standing, maker, () => false);
-  const p = new FramePacket();
-  p.tier = { ...tierOf("medium"), shadows: { ...tierOf("medium").shadows, size: 128 } };
-  p.lit = true;
-  shadow.update(p, allowance(1e9), 0, 0, 0, sunAt(40, 30));
-  expect(jobs.length).toBe(0);
-  // A piece goes while the copy is made: the job holds it gone.
-  gone = new Uint8Array(city.in(chunk)).fill(1, 0, 3);
-  goneVersion[chunk]!++;
-  p.beginFrame();
-  shadow.update(p, allowance(1e9), 0, 0, 0, sunAt(40, 30));
-  expect(jobs.length).toBe(1);
-  const made = jobs[0]!.make!;
-  expect([made.first, made.kind, made.yaw, made.x, made.y, made.z, made.heights]).toEqual([city.first, city.kind, city.yaw, city.x, city.y, city.z, hf.heights]);
-  expect([made.heights === hf.heights, made.gone!.subarray(city.first[chunk]!, city.first[chunk + 1]!)]).toEqual([false, gone]);
+  const statics = asWritten([...building(160, 160, 0, 12), ...building(4000, 5000, 0, 20)]);
+  const city = new CityStatics(dims, statics, reg);
+  const gone = new Map<number, Uint8Array>();
+  const standing = standingOf(city, hf, gone);
+  const { maker, jobs } = capture();
+  const shadow = new FarShadow(dims, hf, held(dims, bakedTops(reg, dims, hf, statics)), maker, () => false);
+  shadow.hand(city, standing);
+  const p = litPacket(128);
+  const frame = (): void => {
+    p.beginFrame();
+    shadow.update(p, allowance(1e9), 0, 0, 0, sunAt(40, 30));
+  };
+  frame();
+  expect([jobs.length, shadow.stats.chunks]).toEqual([0, SOLID_CHUNKS]);
+  // The second tower falls before its chunk is made.
+  const chunk = chunkAt(dims, 4000, 5000);
+  expect(chunk).toBeGreaterThan(SOLID_CHUNKS * 2);
+  gone.set(chunk, new Uint8Array(city.in(chunk)).fill(1));
+  standing.goneVersion[chunk]!++;
+  let frames = 1;
+  while (jobs.length === 0) {
+    frame();
+    frames++;
+  }
+  expect([frames, shadow.stats.chunks]).toEqual([(96 * 96) / SOLID_CHUNKS, 96 * 96]);
+  const job = jobs[0]!;
+  expect([job.w, job.h, job.cell, job.solid.length, job.bareAt]).toEqual([128, 128, 48, 128 * 128, null]);
+  const ground4 = new Uint16Array(1536 * 1536);
+  const solid4 = makeSolid(city, hf, (c) => gone.get(c) ?? null, ground4);
+  expect(job.solid).toEqual(pool(solid4, 1536, 1536, 12).top);
+  expect(job.ground).toEqual(pool(ground4, 1536, 1536, 12).mean);
+  const fell = Math.floor(5000 / 48) * 128 + Math.floor(4000 / 48);
+  expect(job.solid[fell]).toBe(job.ground[fell]!);
+  expect(job.solid[Math.floor(160 / 48) * 128 + Math.floor(160 / 48)]).toBeGreaterThan(job.ground[Math.floor(160 / 48) * 128 + Math.floor(160 / 48)]!);
 });
 
 test("the lookup leaves a building's own sunlit walls and roof lit wherever they lie in their cells and however it is turned, and shades the ground in its shadow", () => {
@@ -382,7 +583,8 @@ test("the lookup leaves a building's own sunlit walls and roof lit wherever they
   for (const [elevation, azimuth] of [[35, 200], [15, 70], [60, 330]] as const) {
     const sun = sunAt(elevation, azimuth);
     for (let k = 0; k < 3; k++) [p.frame[FRAME.moon + k], p.frame[CAST_AT + k]] = [-sun[k]!, sun[k]!];
-    const shadow = new FarShadow(city, hf, standing, null, () => false);
+    const shadow = new FarShadow(dims, hf, null, null, () => false);
+    shadow.hand(city, standing);
     p.beginFrame();
     shadow.update(p, allowance(1e9), cam[0]!, cam[1]!, cam[2]!, sun);
     const map = p.farMap.slice();
@@ -421,7 +623,8 @@ test("within the cascades the far map is looked up past the chunks the near stor
   const [bi, bj] = [chunkB % dims.chunksX, Math.floor(chunkB / dims.chunksX)];
   const held = (c: number): boolean => Math.abs((c % dims.chunksX) - bi) <= 1 && Math.abs(Math.floor(c / dims.chunksX) - bj) <= 1;
   expect(held(chunkA)).toBe(false);
-  const shadow = new FarShadow(city, hf, standing, null, held);
+  const shadow = new FarShadow(dims, hf, null, null, held);
+  shadow.hand(city, standing);
   const p = new FramePacket();
   p.tier = { ...tierOf("high"), shadows: { ...tierOf("high").shadows, size: 128 } };
   p.lit = true;
@@ -451,7 +654,8 @@ test("within the cascades the far map is looked up past the chunks the near stor
   expect(nearLead(f, rb[0]! - ux * 300, rb[2]! - uz * 300)).toBeGreaterThan(300);
   expect(nearLead(f, rb[0]! + ux * 300, rb[2]! + uz * 300)).toBe(0);
   // With no chunk held the box is empty and the lead none.
-  const none = new FarShadow(city, hf, standing, null, () => false);
+  const none = new FarShadow(dims, hf, null, null, () => false);
+  none.hand(city, standing);
   none.update(p, allowance(1e9), cam[0]!, cam[1]!, cam[2]!, sun);
   expect(nearLead(p.frame, rb[0]!, rb[2]!)).toBe(0);
   expect(p.frame[FRAME.nearFromX]! > p.frame[FRAME.nearToX]!).toBe(true);
@@ -468,7 +672,8 @@ test("a piece that stands in the air with nothing under it, a tide eye's collide
   const standing = { goneOf: (): Gone => null, goneVersion: new Uint32Array(chunkCount(dims)), topsOf: (c: number) => (city.in(c) > 0 ? cityTops(city, c, hf, null) : null) };
   const sun = sunAt(35, 200);
   const shadeOf = (floating: Uint8Array | null): ((x: number, z: number) => number) => {
-    const shadow = new FarShadow(city, hf, standing, null, () => false, landmarkKinds(reg), floating);
+    const shadow = new FarShadow(dims, hf, null, null, () => false, landmarkKinds(reg), floating);
+    shadow.hand(city, standing);
     const p = new FramePacket();
     p.tier = { ...tierOf("high"), shadows: { ...tierOf("high").shadows, size: 256 } };
     p.lit = true;
@@ -486,4 +691,31 @@ test("a piece that stands in the air with nothing under it, a tide eye's collide
   expect(columns(...behind(tower))).toBe(0);
   expect(columns(...behind(spar))).toBe(0);
   expect(kept(...behind(spar))).toBe(1);
+});
+
+test("a floating piece casts nothing from the map's tops, nor once its statics come", () => {
+  const reg = farRegistry();
+  const dims: MapDims = { chunksX: 8, chunksZ: 8 };
+  const hf = new Heightfield(dims, TERRAIN_CELL, -64, 1 / 64);
+  const spar = [352, 352];
+  const statics = asWritten([...building(160, 160, 0, 12), { kind: "core:zztide_eye_spar", x: spar[0]!, y: 300, z: spar[1]!, yaw: 0 }]);
+  const city = new CityStatics(dims, statics, reg);
+  const tops = held(dims, bakedTops(reg, dims, hf, statics));
+  const { maker, jobs } = capture();
+  const shadow = new FarShadow(dims, hf, tops, maker, () => false, landmarkKinds(reg), floatingKinds(reg));
+  const p = litPacket(128), at = { now: 0 };
+  // The map's tops leave the spar out, as the far feed does (tactical.ts pieceShapes), and keep the tower.
+  const cell = Math.floor(spar[1]! / TOP_CELL) * 128 + Math.floor(spar[0]! / TOP_CELL);
+  const towerCell = Math.floor(160 / TOP_CELL) * 128 + Math.floor(160 / TOP_CELL);
+  const before = nextJob(shadow, jobs, p, at);
+  expect([before.solid[cell] === before.ground[cell], before.solid[towerCell]! > before.ground[towerCell]!]).toEqual([true, true]);
+  // Its statics come: its chunk is made of them, the spar left out, as a map made of statics alone has it.
+  shadow.hand(city, standingOf(city, hf));
+  const after = nextJob(shadow, jobs, p, at);
+  expect(after.solid[cell]).toBe(after.ground[cell]!);
+  const alone = capture();
+  const own = new FarShadow(dims, hf, null, alone.maker, () => false, landmarkKinds(reg), floatingKinds(reg));
+  own.hand(city, standingOf(city, hf));
+  const plain = nextJob(own, alone.jobs, litPacket(128));
+  expect([after.solid, after.bareAt, after.bareTo]).toEqual([plain.solid, plain.bareAt, plain.bareTo]);
 });
