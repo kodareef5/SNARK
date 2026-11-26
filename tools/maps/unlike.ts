@@ -1,5 +1,5 @@
 // What two built maps hold differently below their parts, each thing with its place on the lattice, for the local gate
-// (local-gate.ts): static pieces, what the head lists by place, and the street stretches their builds reported. A part
+// (local-gate.ts): static pieces, ground heights, what the head lists by place, and the street stretches their builds reported. A part
 // that differs says only that its square does; these say where in it.
 
 import { existsSync, readFileSync, readdirSync } from "node:fs";
@@ -32,7 +32,8 @@ export function shared(a: MapFile, b: MapFile): [number, number, number, number]
 
 /**
  * The static pieces and the head's placed rows (vehicles, spawn points and regions, landmarks, Tide Eyes, orbs) that
- * one of two maps alone holds on the ground both hold. A piece is its kind, place, yaw and bend; a row all it says.
+ * one of two maps alone holds on the ground both hold, and the samples of the ground's height that differ. A piece is
+ * its kind, place, yaw and bend; a row all it says.
  */
 export function unlikePlaces(a: MapFile, b: MapFile): Unlike[] {
   const out: Unlike[] = [], [x0, z0, x1, z1] = shared(a, b);
@@ -45,6 +46,12 @@ export function unlikePlaces(a: MapFile, b: MapFile): Unlike[] {
     return into;
   };
   for (let cz = z0 / CHUNK_SIZE; cz < z1 / CHUNK_SIZE; cz++) for (let cx = x0 / CHUNK_SIZE; cx < x1 / CHUNK_SIZE; cx++) only("piece", pieces(a, cx, cz), pieces(b, cx, cz), out);
+  // Every 2 m sample of the ground's height.
+  const sample = (m: MapFile, x: number, z: number): number => m.heights[((z - m.dims.frameZ * CHUNK_SIZE) / 2) * (m.dims.chunksX * 32 + 1) + (x - m.dims.frameX * CHUNK_SIZE) / 2]!;
+  for (let z = z0; z <= z1; z += 2) for (let x = x0; x <= x1; x += 2) {
+    const [ha, hb] = [sample(a, x, z), sample(b, x, z)];
+    if (ha !== hb) out.push({ kind: "height", x, z, reach: 0, what: `a ${(a.minY + ha * a.stepY).toFixed(3)} m, b ${(b.minY + hb * b.stepY).toFixed(3)} m` });
+  }
   // A row's place is its x and z, or the first two numbers of its `at`.
   type Row = { x?: number; z?: number; at?: readonly number[] };
   const rows = (m: MapFile, list: readonly Row[] | undefined): Tally => {

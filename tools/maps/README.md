@@ -136,7 +136,7 @@ tops and the head ([maps v3](../../planning/workstreams/maps-v3.md)).
 the shore, one inland; `--places N` for more of its spread of nine, `--only` by name) it cuts two nested rectangles,
 takes one footprint and one pool out of the outer, and builds the three, one at a time, each once 15 GB of memory is
 free: about ten minutes. It exits 1 if anything differs 600 m or more inside the inner's edge, or from both edits: a
-part, and below the parts a static piece, a vehicle, spawn point, region or landmark of the head, or a street stretch as
+part, and below the parts a static piece, a sample of the ground's height, a vehicle, spawn point, region or landmark of the head, or a street stretch as
 the build reported it (`unlike.ts`). A footprint goes from the list, the 2 m mask and the labels, as the stages would
 have left it out. Found aircraft are told and not failed: they are still picked over the whole map. Run it after any change under `tools/mapworld`: a list compacted under kept places, a count over the
 whole map or a distance with no bound passes every test and still moves pieces kilometres from an edit.

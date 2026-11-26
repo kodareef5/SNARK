@@ -9,7 +9,7 @@
 //   nested   nothing that differs between inner and outer stands 600 m or more inside the inner's edge
 //   edited   taking the footprint and the pool out changes nothing 600 m or more from both
 //
-// "Nothing" is a part (diff.ts), and below the parts a static piece, a row the head lists by place (a vehicle, a spawn
+// "Nothing" is a part (diff.ts), and below the parts a static piece, a sample of the ground's height, a row the head lists by place (a vehicle, a spawn
 // point or region, a landmark) and a street stretch as the build reported it (unlike.ts): a part may differ within the
 // reach and still hold pieces that differ past it. Found aircraft are told and not failed (gated). The places are the city's middle, one at the shore, one inland and the
 // rest of a three by three spread (placements); --places takes the first N, three where it is not given, which is about
@@ -197,7 +197,7 @@ export function below(rows: readonly Unlike[], far: (x: number, z: number) => nu
     const families = new Map<string, number>();
     if (kind === "piece") for (const o of past) { const f = /: core:z*([a-y][a-z]*_[a-z]+)/.exec(o.r.what)?.[1] ?? "other"; families.set(f, (families.get(f) ?? 0) + 1); }
     if (families.size > 0) lines.push(`  of them ${[...families].sort((p, q) => q[1] - p[1]).slice(0, 10).map(([f, n]) => `${f} ${n}`).join(", ")}`);
-    if (past.length > 0) bad.push(`${label}: ${past.length} ${kind}s differ ${REACH} m or more away, the farthest ${Math.round(past[0]!.d)} m`);
+    if (past.length > 0) bad.push(`${label}: ${past.length} ${kind}${kind.endsWith("ch") ? "es" : "s"} differ ${REACH} m or more away, the farthest ${Math.round(past[0]!.d)} m`);
   }
   return lines;
 }

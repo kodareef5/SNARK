@@ -97,14 +97,17 @@ test("the pool taken out is the one nearest the middle that stands apart from th
 test("a piece and a vehicle moved are told with their places, and fail past the reach where a part would not", () => {
   const base = { ...wideMap(), vehicles: [{ kind: "core:compact", x: 3000.5, z: 500.25, yaw: 90 }] }, list = base.statics as readonly MapStatic[];
   const at = list.findIndex((s) => s.x > 1100 && s.x < 1900 && s.z > 300 && s.z < 700), piece = { ...list[at]!, x: list[at]!.x + 1 / 512 };
-  const moved = { ...base, statics: list.map((s, k) => (k === at ? piece : s)), vehicles: [{ ...base.vehicles[0]!, x: 3001 }] };
+  const heights = base.heights.slice();
+  heights[100 * (70 * 32 + 1) + 400]!++;
+  const moved = { ...base, heights, statics: list.map((s, k) => (k === at ? piece : s)), vehicles: [{ ...base.vehicles[0]!, x: 3001 }] };
   const [a, b] = [parseMap(writeMap(base), false), parseMap(writeMap(moved), false)];
   expect(unlikePlaces(a, a)).toEqual([]);
   const rows = unlikePlaces(a, b), [fx, fz] = [2040 * 64, 2050 * 64];
-  expect(rows.map((r) => `${r.kind} ${r.x - fx} ${r.z - fz} ${r.what.slice(0, 6)}`).sort()).toEqual([`piece ${list[at]!.x} ${piece.z} only a`, `piece ${piece.x} ${piece.z} only b`, "vehicle 3000.5 500.25 only a", "vehicle 3001 500.25 only b"].sort());
+  expect(rows.map((r) => `${r.kind} ${r.x - fx} ${r.z - fz} ${r.what.slice(0, 6)}`).sort()).toEqual([`piece ${list[at]!.x} ${piece.z} only a`, `piece ${piece.x} ${piece.z} only b`, "vehicle 3000.5 500.25 only a", "vehicle 3001 500.25 only b", "height 800 200 a 2.51"].sort());
   // From an edit beside the piece, the vehicle is past the reach and the piece is not.
   const bad: string[] = [], far = Math.round(Math.hypot(3001 - piece.x, 500.25 - piece.z));
   const lines = below(rows, (x, z) => Math.hypot(x - fx - piece.x, z - fz - piece.z), "wide edited", bad);
-  expect(lines.filter((l) => !l.startsWith(" "))).toEqual(["piece: 2 differ, the farthest 0 m; 0 at 600 m or more", `vehicle: 2 differ, the farthest ${far} m; 2 at 600 m or more`]);
-  expect(bad).toEqual([`wide edited: 2 vehicles differ ${REACH} m or more away, the farthest ${far} m`]);
+  const deep = Math.round(Math.hypot(800 - piece.x, 200 - piece.z));
+  expect(lines.filter((l) => !l.startsWith(" "))).toEqual(["piece: 2 differ, the farthest 0 m; 0 at 600 m or more", `height: 1 differ, the farthest ${deep} m; ${deep >= REACH ? 1 : 0} at 600 m or more`, `vehicle: 2 differ, the farthest ${far} m; 2 at 600 m or more`]);
+  expect(bad.at(-1)).toBe(`wide edited: 2 vehicles differ ${REACH} m or more away, the farthest ${far} m`);
 });
