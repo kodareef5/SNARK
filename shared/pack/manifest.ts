@@ -352,7 +352,7 @@ export function parseManifest(text: string): Manifest {
   const faced = new Set<number>();
   for (const e of m.faces ?? []) {
     const file = m.files[e.file];
-    if (!(Number.isInteger(e.mesh) && e.mesh >= 0 && e.mesh < m.meshes.length) || faced.has(e.mesh) || file?.role !== "clip" || !partFits(e.at, e.part, file.bytes)) throw new Error(`manifest: the face table of mesh ${String(e.mesh)} is not described`);
+    if (!(Number.isInteger(e.mesh) && e.mesh >= 0 && e.mesh < m.meshes.length) || faced.has(e.mesh) || (file?.role !== "clip" && file?.role !== "boot") || !partFits(e.at, e.part, file.bytes)) throw new Error(`manifest: the face table of mesh ${String(e.mesh)} is not described`);
     faced.add(e.mesh);
   }
   const seen = new Set<string>();
