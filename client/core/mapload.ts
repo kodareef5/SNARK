@@ -4,7 +4,8 @@
 // which the welcome's registry holds. Then the ground of the sectors within reach of the body and the overviews they lie
 // in, which the first frame waits for and which come alone (firstFrameParts says which, for the loader and for the map's
 // build). Then, while the game is played, the parts the page wants (map-want.ts) from where the body is and is heading,
-// the camera, a sight's focus and the map screen, looked at again each LOOK_EVERY ms and as parts come, nearest first:
+// the camera, a sight's focus and the map screen (those two for WANT_HOLD ms after they go), looked at again each
+// LOOK_EVERY ms and as parts come, nearest first:
 // the overviews, ground and statics within RING and the statics a chunk the server sent waits for, then the overviews
 // within the statics reach, then its sectors, then the rest, each sector's ground before its statics; URGENT_AT_ONCE at
 // once while what is urgent is wanted, AFTER_AT_ONCE otherwise. A part no longer wanted is let go a sector past its reach,
@@ -34,7 +35,7 @@ import { HeldTops } from "./render/blocks.ts";
 import { everywhere, firstFrameParts, overviewOf, partDistance, squareKey } from "./map-first.ts";
 export { FIRST_REACH, firstFrameParts } from "./map-first.ts";
 import { HeldStatics } from "./map-statics.ts";
-import { KEEP_PAST, PartBoxes, ROAD_REACH, Wanted, centresOf, tierWant, type Centre, type Reach, type WantFrom } from "./map-want.ts";
+import { KEEP_PAST, Lingering, PartBoxes, ROAD_REACH, Wanted, centresOf, tierWant, type Centre, type Reach, type WantFrom } from "./map-want.ts";
 export { ROAD_REACH } from "./map-want.ts";
 import { holdRoad, holdStreets } from "../../shared/world/mapfile.ts";
 import { RoadSectors } from "../../shared/world/roadframe.ts";
@@ -445,6 +446,9 @@ export class MapLoader {
   /** The centres the wanted set was last made round, and a set for what is wanted now where they have moved (`wantedNow`). */
   private looked: Centre[] = [];
   private readonly fresh = new Wanted();
+  /** What a focus and the map screen last wanted (map-want.ts WANT_HOLD), and the milliseconds the look clock has told. */
+  private readonly linger: Lingering;
+  private clock = 0;
   private readonly came = new Set<MapPart>();
   private readonly going = new Set<MapPart>();
   private readonly waiting = new Set<MapPart>();
@@ -474,6 +478,7 @@ export class MapLoader {
     this.held.wake = () => this.look();
     this.held.say = (line) => this.asker.say(line);
     this.boxes = new PartBoxes(staged.head);
+    this.linger = new Lingering(this.boxes);
   }
 
   /**
@@ -562,7 +567,8 @@ export class MapLoader {
   /** Makes `want` the parts wanted round `centres`, as far as the budgets reach, and gives the centres. */
   private wantFrom(centres: Centre[], want: Wanted): Centre[] {
     const from = this.from();
-    want.look(this.boxes, centres, this.held.needed);
+    // Only the look clock tells time, so without one nothing lingers; and only the page's own set notes what passes.
+    want.look(this.boxes, centres, this.held.needed, this.every ? this.linger : undefined, this.clock, want === this.want);
     this.cap(want, from.budget ?? Infinity);
     this.capGround(want, from.ground ?? Infinity);
     return centres;
@@ -580,10 +586,13 @@ export class MapLoader {
     return this.fresh;
   }
 
-  /** Metres from the body, the camera or a sight's focus to part `p`: a ground page within ROAD_REACH of any is pinned. */
-  private pinOff(p: MapPart): number {
+  /**
+   * Metres from the body, the camera or a sight's focus, or a focus `want` still holds a part of, to part `p`: a ground
+   * page within ROAD_REACH of any is pinned.
+   */
+  private pinOff(p: MapPart, want: Wanted = this.want): number {
     const head = this.staged.head, { camera, focus } = this.from(), { x, z } = this.place();
-    return Math.min(partDistance(head, p, x, z), camera ? partDistance(head, p, camera.x, camera.z) : Infinity, focus ? partDistance(head, p, focus.x, focus.z) : Infinity);
+    return Math.min(partDistance(head, p, x, z), camera ? partDistance(head, p, camera.x, camera.z) : Infinity, focus ? partDistance(head, p, focus.x, focus.z) : Infinity, want.held.get(p) ?? Infinity);
   }
 
   /** Whether part `p` has come and is in place: a sector's ground that waits for its overview is not. */
@@ -598,14 +607,15 @@ export class MapLoader {
   private capGround(want: Wanted, budget: number): void {
     if (budget === Infinity) return;
     const head = this.staged.head, grounds: [MapPart, number][] = [];
-    for (const p of want.parts.keys()) if (p.kind === "ground") grounds.push([p, Math.min(this.off(p), this.pinOff(p)) - (this.came.has(p) ? KEEP_PAST : 0)]);
+    for (const p of want.parts.keys()) if (p.kind === "ground") grounds.push([p, Math.min(this.off(p), this.pinOff(p, want)) - (this.came.has(p) ? KEEP_PAST : 0)]);
     grounds.sort((a, b) => a[1] - b[1]);
     let room = budget;
     for (const [p] of grounds) {
       room -= pageBytes(squareOf(head.dims, SECTOR_CHUNKS, p.col, p.row)!);
-      if (room >= 0 || this.pinOff(p) <= ROAD_REACH) continue;
+      if (room >= 0 || this.pinOff(p, want) <= ROAD_REACH) continue;
       want.parts.delete(p);
       want.kept.delete(p);
+      want.held.delete(p);
     }
   }
 
@@ -640,6 +650,7 @@ export class MapLoader {
       if (room >= 0) continue;
       want.parts.delete(p);
       want.kept.delete(p);
+      want.held.delete(p);
       room = -Infinity;
     }
   }
@@ -666,6 +677,7 @@ export class MapLoader {
   private async followWant(every: (ms: number) => Promise<void>): Promise<void> {
     for (;;) {
       await every(LOOK_EVERY);
+      this.clock += LOOK_EVERY;
       this.look();
     }
   }

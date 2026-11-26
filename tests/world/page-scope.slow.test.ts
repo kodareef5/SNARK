@@ -16,7 +16,7 @@ import { Page, pagedMap, say, serverOn, type Wants } from "../fixtures/map-page.
 
 const file = writeMap(pagedMap(0));
 
-test("a scope raised and lowered ten times makes nothing again that stood before", async () => {
+test("a scope lowered and raised again asks for nothing and makes nothing again", async () => {
   const h = serverOn(file);
   try {
     const inline = new InlineCityMaker(), made: BlocksMade[] = [];
@@ -50,27 +50,33 @@ test("a scope raised and lowered ten times makes nothing again that stood before
     const hf = loader.staged.hf;
     const count = () => ({ asked: link.log.length, changes: hf.changes.length / 4, shadow: scene.farShadow?.stats.chunks ?? 0, sweeps: scene.farShadow?.stats.sweeps ?? 0, blocks: asks.tiles, city: asks.levels, pages: hf.count });
     const stats = (ms: number[]) => { const a = [...ms].sort((x, y) => x - y); return { median: +a[a.length >> 1]!.toFixed(2), p99: +a[Math.floor(a.length * 0.99)]!.toFixed(2), worst: +a[a.length - 1]!.toFixed(2), total: +a.reduce((x, y) => x + y, 0).toFixed(0) }; };
-    // 30 s at rest, then 30 s of the scope up 1.5 s and down 1.5 s.
+    // 10 s at rest, the scope up 1.5 s and down 1.5 s twice, by when the far shadow has swept for the first, then eight times more.
+    const delta = (a: ReturnType<typeof count>, b: ReturnType<typeof count>) => ({ asked: b.asked - a.asked, changes: b.changes - a.changes, shadow: b.shadow - a.shadow, sweeps: b.sweeps - a.sweeps, blocks: b.blocks - a.blocks, city: b.city - a.city });
+    const scopes = async (times: number): Promise<void> => {
+      for (let k = 0; k < times * 2; k++) {
+        wants.focus = k % 2 === 0 ? { x: 4000, z: 4000 } : null;
+        scene.focusX = scene.focusZ = k % 2 === 0 ? 4000 : NaN;
+        await page.run(1500);
+      }
+    };
     builds.length = 0;
     const rest0 = count();
-    await page.run(30_000);
+    await page.run(10_000);
     const rest1 = count(), restMs = stats(builds);
+    await scopes(2);
+    const once = count();
     builds.length = 0;
-    for (let k = 0; k < 20; k++) {
-      wants.focus = k % 2 === 0 ? { x: 4000, z: 4000 } : null;
-      scene.focusX = k % 2 === 0 ? 4000 : NaN;
-      scene.focusZ = k % 2 === 0 ? 4000 : NaN;
-      await page.run(1500);
-    }
-    const flick1 = count(), flickMs = stats(builds);
-    const delta = (a: ReturnType<typeof count>, b: ReturnType<typeof count>) => ({ asked: b.asked - a.asked, changes: b.changes - a.changes, shadow: b.shadow - a.shadow, sweeps: b.sweeps - a.sweeps, blocks: b.blocks - a.blocks, city: b.city - a.city });
-    const [rest, flick] = [delta(rest0, rest1), delta(rest1, flick1)];
-    say(`at rest 30 s: ${JSON.stringify(rest)}, build ms ${JSON.stringify(restMs)}, ${rest1.pages} pages held`);
-    say(`ten scopes in 30 s: ${JSON.stringify(flick)}, build ms ${JSON.stringify(flickMs)}`);
-    expect(rest).toEqual({ asked: 0, changes: 0, shadow: 0, sweeps: 0, blocks: 0, city: 0 });
-    // After the first raise, which fetches the ground round the focus once, nothing should be asked for or made again.
-    expect(flick.asked).toBeLessThan(30);
-    expect(flick.shadow).toBeLessThan(2000);
+    await scopes(8);
+    const more = count(), moreMs = stats(builds);
+    say(`at rest 10 s: ${JSON.stringify(delta(rest0, rest1))}, build ms ${JSON.stringify(restMs)}, ${rest1.pages} pages held`);
+    say(`the first two scopes: ${JSON.stringify(delta(rest1, once))}, ${once.pages} pages held`);
+    say(`eight more in 24 s: ${JSON.stringify(delta(once, more))}, build ms ${JSON.stringify(moreMs)}`);
+    const none = { asked: 0, changes: 0, shadow: 0, sweeps: 0, blocks: 0, city: 0 };
+    expect(delta(rest0, rest1)).toEqual(none);
+    // The first raise brings the ground round the focus, which pushes pages far from the body out of the budget: the far
+    // shadow is made again under those pages once. Lowered and raised again within WANT_HOLD (map-want.ts), nothing is.
+    expect(delta(rest1, once).asked).toBeGreaterThan(0);
+    expect(delta(once, more)).toEqual(none);
   } finally {
     h.host.shutdown();
   }

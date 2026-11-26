@@ -4,8 +4,8 @@
 // taken, hurt and built near and far. After each run what the page holds is compared with the map read whole, with a
 // page that took the same parts in order, and in the game with the server.
 
-import type { Place } from "../../client/core/mapload.ts";
-import { ROAD_REACH } from "../../client/core/map-want.ts";
+import { LOOK_EVERY, type Place } from "../../client/core/mapload.ts";
+import { ROAD_REACH, WANT_HOLD } from "../../client/core/map-want.ts";
 import { CHUNK_SIZE, chunkAt } from "../../shared/coords.ts";
 import { Rng } from "../../shared/rng.ts";
 import { writeMap, type MapPart } from "../../shared/world/mapfile.ts";
@@ -15,6 +15,8 @@ import { Link, PER, Page, differ, inside, offOf, pagedMap, serverOn, sessionInsi
 const file = writeMap(pagedMap(36000));
 const { head, reg, whole, wholeHf, sectorOf, mapRows, heldRows, reference, compare, books } = checksOf(file);
 const SIZE = head.dims.chunksX * CHUNK_SIZE;
+/** Rounds of 250 ms a page says it is settled for before it is taken to be. */
+const QUIET = (WANT_HOLD + LOOK_EVERY) / 250 + 6;
 
 /** What one run found wrong, a line each; none is a pass. */
 export interface LoaderRun {
@@ -131,9 +133,10 @@ export async function fuzzLoader(seed: number, events: number): Promise<LoaderRu
   // Everything is answered, and the clock runs until the page says it is settled.
   link.eager = true;
   keep = new Set();
-  // Settled is taken once it has said so, with its roads in, for a second and a half: a look a second (LOOK_EVERY).
+  // Settled is taken once it has said so, with its roads in, for a second and a half past what a focus or the map screen
+  // left held: a look a second (LOOK_EVERY).
   let rounds = 0, quiet = 0;
-  for (; rounds < 600 && quiet < 6; rounds++) {
+  for (; rounds < 600 && quiet < QUIET; rounds++) {
     await link.drain(250, 2);
     const q = loader.progress();
     quiet = q.settled && q.roads === 0 && link.waiting.length === 0 ? quiet + 1 : 0;
@@ -278,17 +281,18 @@ export async function fuzzGame(seed: number, events: number): Promise<GameRun> {
         was = now;
       };
     }
-    // Everything is answered and the game runs until the page has been settled, with nothing waiting, for a second and a half.
+    // Everything is answered and the game runs until the page has been settled, with nothing waiting, for a second and a
+    // half past what a focus or the map screen left held.
     link.eager = true;
     let rounds = 0, quiet = 0;
-    for (; rounds < 800 && quiet < 6; rounds++) {
+    for (; rounds < 800 && quiet < QUIET; rounds++) {
       await page.run(250);
       await link.drain(0, 1);
       const p = loader.progress();
       quiet = p.settled && p.roads === 0 && link.waiting.length === 0 && si.waitingRows.length === 0 ? quiet + 1 : 0;
     }
     const p = loader.progress();
-    if (quiet < 6) say(`not settled after ${rounds} rounds: ${p.left} of ${p.parts} left, roads ${p.roads}, ${li.going.size} going, ${li.waiting.size} waiting, ${si.waitingRows.length} chunk messages kept, needed ${loader.held.needed.size}, broken ${li.broken.size}`);
+    if (quiet < QUIET) say(`not settled after ${rounds} rounds: ${p.left} of ${p.parts} left, roads ${p.roads}, ${li.going.size} going, ${li.waiting.size} waiting, ${si.waitingRows.length} chunk messages kept, needed ${loader.held.needed.size}, broken ${li.broken.size}`);
     // Four seconds more for the far lists, and nothing more is asked of the link.
     const asked = link.log.length;
     for (let k = 0; k < 16; k++) (await page.run(250), await link.drain(0, 1));

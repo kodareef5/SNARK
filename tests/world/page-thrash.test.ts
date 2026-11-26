@@ -1,6 +1,6 @@
 // What the page fetches again: a body that jitters on the corner of four sectors, a map screen panned back and forth, a
-// scope flicked on and off and swept, a survivor dead, on a link that answers at once. Each minute's requests are
-// counted, and those of parts that had come before.
+// scope flicked on and off and swept, a survivor dead, on a link that answers at once. Each minute starts from the page
+// at rest; its requests are counted, and those of parts the same minute had brought before.
 //
 // On the off-lattice map by default. On a built city with the tiers' own reaches:
 //   PAGE_MAP=/path/miami.snmap PAGE_AT=7520,5280 PAGE_SAY=1 bun test tests/world/page-thrash.test.ts
@@ -9,7 +9,8 @@ import { expect, test } from "bun:test";
 import { existsSync, openSync, readSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { tierOf } from "../../client/core/assets/tiers.ts";
-import { tierWant } from "../../client/core/map-want.ts";
+import { LOOK_EVERY } from "../../client/core/mapload.ts";
+import { WANT_HOLD, tierWant } from "../../client/core/map-want.ts";
 import { Rng } from "../../shared/rng.ts";
 import { partsFolder, readHead, writeMap } from "../../shared/world/mapfile.ts";
 import { Link, pagedMap, say, startLoader, wantOf, type Wants } from "../fixtures/map-page.ts";
@@ -46,7 +47,7 @@ interface Minute {
   kinds: string;
 }
 
-/** A page settled with the body at `at`, and a minute of `drive` on it: the requests, those of parts come before, and their megabytes on the wire. */
+/** A page settled with the body at `at`, and a minute of each drive on it: its requests, those of parts that minute had brought before, and their megabytes on the wire. */
 async function minutes(at: { x: number; z: number }, base: Partial<Wants>, drives: Record<string, (t: number, body: { x: number; z: number; vx: number; vz: number; dead?: boolean }, wants: Wants) => void>): Promise<Record<string, Minute>> {
   const { link, wire } = linkOf();
   const loader = await startLoader(link);
@@ -66,12 +67,13 @@ async function minutes(at: { x: number; z: number }, base: Partial<Wants>, drive
   await settle();
   const out: Record<string, Minute> = {};
   for (const [name, drive] of Object.entries(drives)) {
-    // Back to rest between two drives, so each minute starts from the same page.
+    // Back to rest between two drives, what a focus or the map screen left held let go, so each minute starts from the same page.
     [body.x, body.z, body.vx, body.vz, body.dead] = [at.x, at.z, 0, 0, false];
     [wants.camera, wants.focus, wants.screen] = [base.camera ?? null, base.focus ?? null, base.screen ?? null];
+    await link.drain(WANT_HOLD + LOOK_EVERY, 1);
     await settle();
     const from = link.log.length;
-    const before = new Set(link.log.slice(0, from).map((l) => l.url));
+    const before = new Set<string>();
     for (let t = 0; t < 60_000; t += 100) {
       drive(t, body, wants);
       await link.drain(100, 1);
@@ -135,7 +137,7 @@ test("a map screen panned and a scope flicked ask again for nothing just held", 
     "a scope down for 0.4 s in every 3 s": (t, _body, wants) => void (wants.focus = t % 3000 < 400 ? null : { x: seen.x, z: seen.z }),
   });
   say(`screen and scope ${JSON.stringify(got, null, 1)}`);
-  // A part let go the moment its centre goes has no time to be wanted again: each of these is asked for again and again.
+  // A part let go the moment its centre goes is asked for again each time it comes back.
   expect(Object.fromEntries(Object.entries(got).map(([name, m]) => [name, m.again]))).toEqual({ "the map screen panned every 3 s": 0, "a scope flicked every 1.5 s": 0, "a scope swept at 150 m/s": 0, "a scope down for 0.4 s in every 3 s": 0 });
 });
 
