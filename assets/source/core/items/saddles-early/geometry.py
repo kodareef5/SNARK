@@ -68,7 +68,7 @@ class Tack:
     def textured(self):
         return self.level < 2
 
-    def face(self, indices, surface, chart=None, smooth=True, *, center=None, seam=False):
+    def face(self, indices, surface, chart=None, smooth=True, *, v_center=None, seam=False):
         surface = self.aliases.get(surface, surface)
         self.faces.append(indices)
         self.surfaces.append(surface)
@@ -77,17 +77,17 @@ class Tack:
             return
         if chart is None:
             vertices = [self.points[index] for index in indices]
-            center = sum(vertices, Vector()) / len(vertices)
-            chart = planar_uv(vertices, origin=center)
+            origin = sum(vertices, Vector()) / len(vertices)
+            chart = planar_uv(vertices, origin=origin)
         swatch = SWATCHES[surface]
         if swatch.sewn and not seam:
             u, v = zip(*chart)
             if max(v) - min(v) > CLEAN_END - CLEAN_START:
                 chart = [(-y, x) for x, y in chart]
                 v = u
-                center = None
-            center = (min(v) + max(v)) / 2 if center is None else center
-            offset = (CLEAN_START + CLEAN_END) / 2 - center
+                v_center = None
+            v_center = (min(v) + max(v)) / 2 if v_center is None else v_center
+            offset = (CLEAN_START + CLEAN_END) / 2 - v_center
             chart = [(u, v + offset) for u, v in chart]
         self.uv.append([(u / swatch.span, v / swatch.span) for u, v in chart])
 
@@ -105,8 +105,8 @@ class Tack:
             for index in range(count):
                 step = (index + 1) % count
                 chart = charts[row][index] if self.textured else None
-                center = centers[row] if self.textured else None
-                self.face((low + index, low + step, high + step, high + index), surface, chart, center=center)
+                v_center = centers[row] if self.textured else None
+                self.face((low + index, low + step, high + step, high + index), surface, chart, v_center=v_center)
         if not closed:
             self.face(tuple(reversed(range(start, start + count))), surface, smooth=False)
             last = start + (len(rings) - 1) * count
@@ -176,7 +176,7 @@ class Tack:
                     if layer:
                         face = tuple(reversed(face))
                     chart = [(self.points[k].x, self.points[k].z * (-1 if not layer else 1)) for k in face]
-                    self.face(face, surface, chart, center=centers[layer][j])
+                    self.face(face, surface, chart, v_center=centers[layer][j])
         for index, (j, i) in enumerate(ring):
             following = (index + 1) % len(ring)
             j2, i2 = ring[following]
