@@ -1,5 +1,6 @@
 // Signing in with Discord (server/signin/discord.ts) against a Discord made of maps (tests/fixtures/discord.ts).
 import { afterAll, expect, test } from "bun:test";
+import { defaultLook, setFace } from "../../shared/anim/look.ts";
 import { hashKey } from "../../server/records.ts";
 import { NOT_MEMBER, NOT_SET_UP, NO_ROLE, SIGN_IN, UNREACHABLE } from "../../server/signin/discord.ts";
 import { SurvivorAccess, ownerOf } from "../../server/survivor-access.ts";
@@ -195,6 +196,33 @@ test("while Discord cannot be reached its last answer stands, and one it never a
   const { state, cookie } = await startSignIn(h.host, testKey("cy-laptop"));
   await discordReturn(h.host, `code=${fake.code("4400000000000000003", "Cy")}&state=${state}`, cookie);
   expect(await signinPost(h.host, { action: "finish", key: hexKey(testKey("cy-laptop")), state })).toEqual({ status: 403, body: { error: UNREACHABLE } });
+});
+
+test("a returning Discord survivor keeps their face and wardrobe on a new device", async () => {
+  const fake = new FakeDiscord();
+  fake.members.set(ADA, []);
+  const h = discordWorld(fake);
+  try {
+    const laptop = testKey("wardrobe-laptop"), phone = testKey("wardrobe-phone");
+    const look = defaultLook();
+    setFace(look, 3, 0.65);
+    await signInAs(h.host, fake, laptop, ADA);
+    const first = h.join("Ada", {}, { key: laptop, look });
+    h.run(600);
+    expect(first.ownLook).toEqual(look);
+    const ada = h.host.survivorRecord("Ada")!;
+    const tee = h.reg.index.get("core:tee")!;
+    const slot = h.host.items.inv(ada).wardrobe;
+    expect(h.host.items.mintAt(ada, slot, tee, 1)).toBe(1);
+
+    await signInAs(h.host, fake, phone, ADA);
+    const back = h.join("Ada", {}, { key: phone });
+    h.run(600);
+    expect(back.ownLook).toEqual(look);
+    expect(back.inventory!.item[back.inventory!.wardrobe]).toBe(tee);
+  } finally {
+    h.host.shutdown();
+  }
 });
 
 test("an account's survivors follow it to another browser, and a signed-out browser is kept out", async () => {
