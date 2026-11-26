@@ -90,7 +90,8 @@ test("what a thing names is checked against the world's content and the store, a
       [{ kind: "person", id: null, rev: 0, doc: { ...mara, look: { ...mara.look, revision: 2 } } }, /core:people_city is at revision 1/],
       [{ kind: "person", id: null, rev: 0, doc: { ...mara, look: { ...mara.look, population: "core:nobody" } } }, /not a population/],
       [{ kind: "person", id: null, rev: 0, doc: { ...mara, outfit: 3 } }, /no outfit 3/],
-      [{ kind: "population", id: null, rev: 0, doc: { ...BEACH, outfits: [{ wear: ["core:nothing"], weight: 1 }] } }, /core:nothing is not an item/],
+      [{ kind: "population", id: null, rev: 0, doc: { ...BEACH, outfits: [{ wear: ["core:nothing"], weight: 1 }] } }, /"core:nothing" is not an item\/armor or an item\/garment/],
+      [{ kind: "population", id: null, rev: 0, doc: { ...BEACH, outfits: [{ wear: ["core:stone"], weight: 1 }] } }, /"core:stone" is not an item\/armor or an item\/garment/],
       [{ kind: "population", id: null, rev: 0, copyOf: "core:people_nowhere" }, /not a built-in population/],
       [{ kind: "edition", id: null, rev: 0, doc: mara }, /Name the kind/],
       [{ kind: "person", id: "1", rev: 0, doc: mara }, /by its id/],
@@ -101,9 +102,12 @@ test("what a thing names is checked against the world's content and the store, a
       expect([status, why.test(String(reply.error))]).toEqual([400, true]);
     }
     expect((await post(a, "/admin/people/save", { kind: "person", id: 5, rev: 1, doc: mara })).status).toBe(404);
-    expect((await post(a, "/admin/people/retire", { revision: 1, kind: "population", id: 1, retired: true })).status).toBe(404);
+    // A population may wear armour and garments, as a content one may.
+    const dressed = await post(b, "/admin/people/save", { kind: "population", id: null, rev: 0, doc: { ...BEACH, label: "Dressed", outfits: [{ wear: ["core:plain_tee", "core:cloth_pants"], weight: 1 }] } });
+    expect(dressed.status).toBe(200);
+    expect((await post(a, "/admin/people/retire", { revision: 2, kind: "population", id: 2, retired: true })).status).toBe(404);
     const s = await state(b);
-    expect([s.revision, s.people, s.outfits, s.populations, acts(a)]).toEqual([1, [], [], [], []]);
+    expect([s.revision, s.people, s.outfits, s.populations.map((p) => p.doc.label), acts(a)]).toEqual([2, [], [], ["Dressed"], []]);
   } finally {
     a.h.host.shutdown();
     b.h.host.shutdown();

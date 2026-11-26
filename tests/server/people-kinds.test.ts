@@ -1,6 +1,7 @@
 // Named people, outfits and admin populations in the cluster's people store (server/people/store.ts): ids given once,
 // each save a new revision made from the one before, a stale save refused with nothing lost, two worlds and three
 // processes on one file, and every population revision kept in the manifest for good.
+import { Database } from "bun:sqlite";
 import { afterAll, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
@@ -196,6 +197,47 @@ test("the store keeps a body as its check reads it and refuses one not of its sh
     expect(store.save("population", id, 1, { ...beach(), women: 3 }, ADA)).toMatchObject({ status: 400 });
     expect(store.save("person", null, 0, { ...mara(), name: "" }, ADA)).toMatchObject({ status: 400 });
     expect(store.view().records.population.get(id)!.length).toBe(1);
+  } finally {
+    store.close();
+  }
+});
+
+test("a kind's page is told it is stale only by a change of that kind", () => {
+  const store = open(folder());
+  try {
+    const shown = store.view().revision;
+    saved(store.save("person", null, 0, mara(), ADA));
+    saved(store.save("population", null, 0, beach(), ADA));
+    // Editions: a publish and a retirement from the page's revision pass, since no edition changed meanwhile.
+    expect(store.publish(shown, { garment: "core:plain_tee", colours: [0, 0, 0], print: null, name: "Tee" }, ADA)).toMatchObject({ id: 1 });
+    const seen = store.view().revision;
+    saved(store.save("outfit", null, 0, vendor(), BO));
+    expect(store.retire(seen, 1, true, "edition")).toMatchObject({ changed: true });
+    // A page that missed that retirement is stale for editions, and its words say so.
+    expect(store.publish(seen, { garment: "core:plain_tee", colours: [0, 0, 0], print: null, name: "Late" }, ADA)).toMatchObject({ status: 409, error: "The editions changed in another page. Reload to see them." });
+    // Retiring a person is not refused for an outfit's save, but is for another person's retirement.
+    const before = store.view().revision;
+    saved(store.save("person", null, 0, mara("two"), BO));
+    expect(store.retire(before, 1, true, "person")).toMatchObject({ changed: true });
+    expect(store.retire(before, 2, true, "person")).toMatchObject({ status: 409, error: "Another page retired or brought back a person. Reload to see it." });
+    expect(store.retire(store.view().revision + 1, 2, true, "person")).toMatchObject({ status: 409 });
+  } finally {
+    store.close();
+  }
+});
+
+test("a store file from before kinds kept their own changes treats every kind as changed now", () => {
+  const dir = folder();
+  const first = open(dir);
+  first.publish(0, { garment: "core:plain_tee", colours: [0, 0, 0], print: null, name: "Tee" }, ADA);
+  first.close();
+  const db = new Database(join(dir, "people.sqlite"));
+  db.exec(`UPDATE store SET doc='{"schema":1,"retired":{}}'`);
+  db.close();
+  const store = open(dir);
+  try {
+    expect(store.publish(0, { garment: "core:plain_tee", colours: [0, 0, 0], print: null, name: "Stale" }, ADA)).toMatchObject({ status: 409 });
+    expect(store.publish(1, { garment: "core:plain_tee", colours: [0, 0, 0], print: null, name: "Fresh" }, ADA)).toMatchObject({ id: 2 });
   } finally {
     store.close();
   }

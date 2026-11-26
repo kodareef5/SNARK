@@ -21,6 +21,7 @@ import { PassClock } from "../core/passes.ts";
 import { giveSky, SKY_FILE } from "../core/render/sky.ts";
 import { groundSize } from "../core/render/terrain.ts";
 import { ClientSession, PARK_CHUNKS_TOUCH } from "../core/session.ts";
+import { FETCH_TIMEOUT_MS } from "../core/people-book.ts";
 import { arrivalOf, socketAddress } from "../core/travel.ts";
 import { GlRenderer } from "./gl.ts";
 import { bindInput } from "./input.ts";
@@ -137,7 +138,7 @@ async function boot(): Promise<void> {
     orbs: head.orbs,
     ...(land ? { landmarks: land.landmarks } : {}),
   });
-  session.peopleBook.fetcher = (path) => fetch(path).then((r) => (r.ok ? r.json() : Promise.reject(new Error(`${path}: ${r.status}`))));
+  session.peopleBook.fetcher = (path) => fetch(path, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) }).then((r) => (r.ok ? r.json() : Promise.reject(new Error(`${path}: ${r.status}`))));
   // Riding out a restart (client/core/waiting.ts). The page learns which start of the server it is on, and when the
   // server says "go", or the connection closes with no word, it notes who to bring back, for this tab alone.
   const tooled = selfcheck || bench !== null || device !== null || params.has("look") || params.has("trip");

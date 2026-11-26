@@ -13,10 +13,12 @@
 //   POST /admin/people/print     the raw PNG: checked on its own thread and kept by hash; answers the hash
 //
 // The manifest itself is /media/people.<id>.json, which anyone may fetch and keep for good.
+import { classesById, defRefFaults } from "../../shared/content/classes.ts";
+import type { Def } from "../../shared/content/defs.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import {
   CHOICES_MAX, EDITION_NAME_MAX, NOTES_MAX, PRINT_BYTES_MAX, PRINT_SCALE_MAX, PRINT_SCALE_MIN, PRINT_SIDE_MAX, REVISED_KINDS, STORE_KINDS, peopleManifestPath, printName, printPath,
-  readDraft, readOutfit, readPerson, readPopulation, type Bodies, type EditionDraft, type OutfitDoc, type PersonDoc, type PopulationDoc, type RevisedKind, type StoreKind,
+  readDraft, readOutfit, readPerson, readPopulation, storePopulation, type Bodies, type EditionDraft, type OutfitDoc, type PersonDoc, type PopulationDoc, type RevisedKind, type StoreKind,
   type WornDoc,
 } from "../../shared/people/doc.ts";
 import { populationsOf } from "../../shared/people/person.ts";
@@ -110,13 +112,19 @@ function worldFault(kind: RevisedKind, doc: Bodies[RevisedKind], reg: Registry, 
     }
     return null;
   }
-  for (const o of (doc as PopulationDoc).outfits ?? []) {
-    for (const w of o.wear) {
-      const i = reg.index.get(w);
-      if (i === undefined || reg.defs[i]?.type !== "item") return `${w} is not an item.`;
-    }
-  }
-  return null;
+  // Held to the content kind's own reference rules, so the two never differ.
+  const def = storePopulation(0, 1, doc as PopulationDoc) as unknown as Def;
+  const fault = defRefFaults(def, classesOf(reg))[0];
+  return fault === undefined ? null : `${fault.slice(def.id.length + 2)}.`;
+}
+
+const classes = new WeakMap<Registry, Map<string, string>>();
+
+/** Each of the world's definitions' class by id, made once for a registry. */
+function classesOf(reg: Registry): Map<string, string> {
+  let held = classes.get(reg);
+  if (!held) classes.set(reg, (held = classesById(reg.defs.filter((d): d is Def => !!d))));
+  return held;
 }
 
 /** A thing's name in the log's words. */

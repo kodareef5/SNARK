@@ -2,7 +2,7 @@
 // as its seed, and a client makes the same look from the manifest, or a stand-in made again in place until it has it.
 
 import { expect, test } from "bun:test";
-import { PENDING_MAX, PeopleBook } from "../../client/core/people-book.ts";
+import { FETCH_TIMEOUT_MS, PENDING_MAX, PeopleBook } from "../../client/core/people-book.ts";
 import { BEACH } from "../../content/people/defaults.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { compileContent } from "../../shared/content/registry.ts";
@@ -93,36 +93,68 @@ test("a manifest entry not of a population's shape is left out", () => {
   expect([book.population(3, 2), book.population(0, 1)]).toEqual([undefined, undefined]);
 });
 
-test("stand-ins waiting are held to a cap, the oldest let go", () => {
+test("past the cap, stand-ins no view holds are let go and one still held is remade", async () => {
   const book = new PeopleBook();
-  const first = book.look(reg, 0, content.list.length, 1)!;
-  for (let k = 1; k <= PENDING_MAX; k++) book.look(reg, k, content.list.length, 1);
+  const held = book.look(reg, 0, content.list.length, 1)!;
+  for (let k = 1; k < PENDING_MAX; k++) book.look(reg, k, content.list.length, 1);
   expect(book.waiting).toBe(PENDING_MAX);
-  const before = [...first];
+  await Bun.sleep(0);
+  Bun.gc(true);
+  book.look(reg, PENDING_MAX, content.list.length, 1);
+  expect(book.waiting).toBeLessThan(PENDING_MAX);
   book.take({ editions: [], populations: [{ id: 1, rev: 1, population: night }] });
-  expect([book.waiting, [...first]]).toEqual([0, before]);
+  expect([book.waiting, [...held]]).toEqual([0, [...personFrom(0, storePopulation(1, 1, night)).look]]);
 });
 
-test("a manifest is fetched once, named again after a failure, and given up after a few tries", async () => {
-  const book = new PeopleBook(), asked: string[] = [];
-  let fail = true;
-  book.fetcher = (path) => (asked.push(path), fail ? Promise.reject(new Error("offline")) : Promise.resolve(manifest));
+/** A book on a clock the test moves, whose fetches answer as `answer` says, each counted. */
+function fetching(answer: () => Promise<unknown>): { book: PeopleBook; clock: { ms: number }; asked: () => number } {
+  const book = new PeopleBook(), clock = { ms: 1_000_000 };
+  let asked = 0;
+  book.now = () => clock.ms;
+  book.fetcher = () => (asked++, answer());
+  return { book, clock, asked: () => asked };
+}
+
+test("a failed manifest is fetched again after 1, 2, 4, 8 and 16 s, then given up", async () => {
+  const { book, clock, asked } = fetching(() => Promise.reject(new Error("offline")));
   book.want("0123456789abcdef");
   await book.settled();
-  // The next stand-in asks again.
-  book.look(reg, 1, wireNumber(reg, 3)!, 2);
-  await book.settled();
-  fail = false;
-  book.look(reg, 2, wireNumber(reg, 3)!, 2);
-  await book.settled();
-  expect([asked.length, book.waiting]).toEqual([3, 0]);
-  book.want("0123456789abcdef");
-  expect(asked.length).toBe(3);
-  fail = true;
-  book.want("fedcba9876543210");
-  for (let k = 0; k < 8; k++) {
-    book.look(reg, k, wireNumber(reg, 4)!, 1);
+  const at: number[] = [];
+  for (let s = 0; s < 100; s++) {
+    clock.ms += 500;
+    const before = asked();
+    book.poll();
     await book.settled();
+    if (asked() > before) at.push((clock.ms - 1_000_000) / 1000);
   }
-  expect(asked.filter((p) => p.includes("fedcba")).length).toBe(5);
+  expect([asked(), at]).toEqual([6, [1, 3, 7, 15, 31]]);
+  // A new manifest named starts afresh, and one that comes is fetched no more.
+  const ok = fetching(() => Promise.resolve(manifest));
+  ok.book.want("fedcba9876543210");
+  await ok.book.settled();
+  ok.book.want("fedcba9876543210");
+  ok.book.poll();
+  expect([ok.asked(), ok.book.population(3, 2)?.label]).toEqual([1, "Night beach"]);
+});
+
+test("a fetch that never answers counts as failed after its timeout, and a late answer still counts", async () => {
+  let answer: (json: unknown) => void = () => {};
+  const { book, clock, asked } = fetching(() => new Promise((done) => (answer = done)));
+  book.want("0123456789abcdef");
+  const late = answer;
+  clock.ms += FETCH_TIMEOUT_MS - 1;
+  book.poll();
+  expect(asked()).toBe(1);
+  clock.ms += 1;
+  book.poll();
+  // Timed out: the next try waits its second.
+  expect(asked()).toBe(1);
+  clock.ms += 1000;
+  book.poll();
+  expect(asked()).toBe(2);
+  late(manifest);
+  await Bun.sleep(0);
+  expect(book.population(3, 2)?.label).toBe("Night beach");
+  book.poll();
+  expect(asked()).toBe(2);
 });

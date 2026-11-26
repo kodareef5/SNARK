@@ -63,7 +63,7 @@ export function classFaults(): string[] {
   }
   for (const [type, fields] of Object.entries(FIELDS)) {
     for (const [name, field] of Object.entries(fields)) {
-      for (const target of Object.values(field.refs ?? {})) if (!names(target)) out.push(`${type}.${name}: names "${target}", which is no class`);
+      for (const target of Object.values(field.refs ?? {}).flatMap(targets)) if (!names(target)) out.push(`${type}.${name}: names "${target}", which is no class`);
       if (field.waits !== undefined && !(field.waits in FEATURES)) out.push(`${type}.${name}: a stub field names the feature it waits for`);
       for (const [part, waits] of Object.entries(field.stubs ?? {})) if (field.kind !== "facet" || !(waits in FEATURES)) out.push(`${type}.${name}.${part}: a stub inside a facet names the feature it waits for`);
       // Every field belongs to some class of its family, or nothing could declare it.
@@ -140,22 +140,34 @@ function pick(v: unknown, path: string): unknown[] {
   return at;
 }
 
-/** What definitions name that does not exist or is of the wrong class. */
-export function refFaults(defs: readonly Def[]): string[] {
-  const classById = new Map(defs.map((d) => [d.id, classOf(d)]));
+/** The classes a reference may be. */
+const targets = (to: string | readonly string[]): readonly string[] => (typeof to === "string" ? [to] : to);
+
+/** A reference's classes in words: "an item/armor", or "an item/armor or an item/garment". */
+export const refWords = (to: string | readonly string[]): string => targets(to).map(article).join(" or ");
+
+/** What one definition names that does not exist or is of the wrong class, by `classById` of every definition. */
+export function defRefFaults(d: Def, classById: ReadonlyMap<string, string>): string[] {
+  const fields: Record<string, Field> = FIELDS[d.type];
   const out: string[] = [];
-  for (const d of defs) {
-    const fields: Record<string, Field> = FIELDS[d.type];
-    for (const [name, field] of Object.entries(fields)) {
-      const value = (d as unknown as Record<string, unknown>)[name];
-      if (!field.refs || value === undefined) continue;
-      for (const [path, target] of Object.entries(field.refs)) {
-        for (const id of pick(value, path)) {
-          const is = typeof id === "string" ? classById.get(id) : undefined;
-          if (is === undefined || !isA(is, target)) out.push(`${d.id}: "${String(id)}" is not ${article(target)}`);
-        }
+  for (const [name, field] of Object.entries(fields)) {
+    const value = (d as unknown as Record<string, unknown>)[name];
+    if (!field.refs || value === undefined) continue;
+    for (const [path, to] of Object.entries(field.refs)) {
+      for (const id of pick(value, path)) {
+        const is = typeof id === "string" ? classById.get(id) : undefined;
+        if (is === undefined || !targets(to).some((t) => isA(is, t))) out.push(`${d.id}: "${String(id)}" is not ${refWords(to)}`);
       }
     }
   }
   return out;
+}
+
+/** Each definition's class by its id. */
+export const classesById = (defs: readonly Def[]): Map<string, string> => new Map(defs.map((d) => [d.id, classOf(d)]));
+
+/** What definitions name that does not exist or is of the wrong class. */
+export function refFaults(defs: readonly Def[]): string[] {
+  const classById = classesById(defs);
+  return defs.flatMap((d) => defRefFaults(d, classById));
 }

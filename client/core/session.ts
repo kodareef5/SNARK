@@ -1076,6 +1076,7 @@ export class ClientSession {
     const frameMs = dt;
     this.lastNow = nowMs;
     if (this.arrived && !this.staticKinds && this.staticsSeq === 0) this.staticsSeq = this.command(CMD_STATICS);
+    this.peopleBook.poll();
     if (dt > 250) dt = 250;
     const ticks = (dt / 1000) * TICK_RATE;
     // The input clock keeps real time through a long frame, so the first input after it is on time. Margins told of

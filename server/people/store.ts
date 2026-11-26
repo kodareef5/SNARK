@@ -69,11 +69,18 @@ export interface By {
   readonly id: string;
 }
 
-/** What the one row's document holds: its layout, and the ids of each kind hidden from the admin's pick lists. */
+/**
+ * What the one row's document holds: its layout, the ids of each kind hidden from the admin's pick lists, and the store
+ * revision each kind last changed at (an edition published or retired, anything else retired), 0 for never.
+ */
 interface StoreDoc {
   schema: number;
   retired: Partial<Record<StoreKind, number[]>>;
+  moved?: Partial<Record<StoreKind, number>>;
 }
+
+/** Whether a page that showed store revision `expected` missed a change of `kind`: one after it, or a revision to come. */
+const movedSince = (doc: StoreDoc, kind: StoreKind, expected: number, revision: number): boolean => expected > revision || (doc.moved?.[kind] ?? 0) > expected;
 
 const SCHEMA = 1;
 /** How long an old manifest is kept for a page that has not reloaded, and a part file a crash left. */
@@ -89,7 +96,7 @@ const WRITE_WAIT_MS = 20;
 const OPEN_WAIT_MS = 2500;
 
 const STALE = "The editions changed in another page. Reload to see them.";
-const STALE_STORE = "The people store changed in another page. Reload to see it.";
+const STALE_RETIRED = (kind: string): string => `Another page retired or brought back a ${kind}. Reload to see it.`;
 const STALE_THING = (kind: string, id: number): string => `The ${kind} ${id} was saved in another page. Reload to see it.`;
 const sha16 = (text: string): string => new Bun.CryptoHasher("sha256").update(text).digest("hex").slice(0, 16);
 
@@ -192,9 +199,15 @@ export class PeopleStore implements StorePopulations {
           "CREATE TRIGGER IF NOT EXISTS records_never_changed BEFORE UPDATE ON records BEGIN SELECT RAISE(ABORT, 'a record is never changed'); END;" +
           "CREATE TRIGGER IF NOT EXISTS records_never_deleted BEFORE DELETE ON records BEGIN SELECT RAISE(ABORT, 'a record is never deleted'); END;",
       );
-      db.query("INSERT OR IGNORE INTO store (id, revision, doc) VALUES (1, 0, ?)").run(JSON.stringify({ schema: SCHEMA, retired: {} } satisfies StoreDoc));
-      const doc = JSON.parse((db.query("SELECT doc FROM store WHERE id=1").get() as { doc: string }).doc) as StoreDoc;
+      db.query("INSERT OR IGNORE INTO store (id, revision, doc) VALUES (1, 0, ?)").run(JSON.stringify({ schema: SCHEMA, retired: {}, moved: {} } satisfies StoreDoc));
+      const row = db.query("SELECT revision, doc FROM store WHERE id=1").get() as { revision: number; doc: string };
+      const doc = JSON.parse(row.doc) as StoreDoc;
       if (doc.schema !== SCHEMA) throw new Error(`${this.path} is a people store of layout ${doc.schema}, and this build reads ${SCHEMA} only`);
+      // A file from before `moved` was kept: every kind counts as changed at its revision now, so no stale page passes.
+      if (doc.moved === undefined) {
+        const moved = Object.fromEntries(STORE_KINDS.map((k) => [k, row.revision]));
+        db.query("UPDATE store SET doc=? WHERE id=1 AND doc=?").run(JSON.stringify({ ...doc, moved }), row.doc);
+      }
       db.exec(`PRAGMA busy_timeout=${WRITE_WAIT_MS};`);
     } catch (err) {
       db.close();
@@ -298,15 +311,19 @@ export class PeopleStore implements StorePopulations {
   }
 
   /**
-   * Appends a thing of `kind` under the next id if `expected` is still the store's revision. Answers the id, or null
-   * where the store moved on.
+   * Appends a thing of `kind` under the next id if nothing of its kind changed after store revision `expected`. Answers
+   * the id, or null where something did.
    */
   private append(kind: StoreKind, expected: number, body: unknown, by: By): number | null {
     const db = this.open();
     return db.transaction(() => {
-      const row = db.query("SELECT revision FROM store WHERE id=1").get() as { revision: number };
-      if (row.revision !== expected) return null;
-      return this.insert(db, kind, null, 0, JSON.stringify(body), by, row.revision);
+      const row = db.query("SELECT revision, doc FROM store WHERE id=1").get() as { revision: number; doc: string };
+      const doc = JSON.parse(row.doc) as StoreDoc;
+      if (movedSince(doc, kind, expected, row.revision)) return null;
+      const id = this.insert(db, kind, null, 0, JSON.stringify(body), by, row.revision);
+      doc.moved = { ...doc.moved, [kind]: row.revision + 1 };
+      db.query("UPDATE store SET doc=? WHERE id=1").run(JSON.stringify(doc));
+      return id;
     }).immediate();
   }
 
@@ -400,20 +417,22 @@ export class PeopleStore implements StorePopulations {
   }
 
   /**
-   * Retires a thing of `kind`, or brings it back, if `expected` is still the store's revision. It stays in the manifest
-   * and on whoever wears or is drawn from it; only the admin's pick lists leave it out. `changed` is false where it
-   * already was so.
+   * Retires a thing of `kind`, or brings it back, if nothing of its kind changed after store revision `expected`: a
+   * publish or a retirement of an edition, a retirement of anything else. It stays in the manifest and on whoever wears
+   * or is drawn from it; only the admin's pick lists leave it out. `changed` is false where it already was so.
    */
   retire(expected: number, id: number, retired: boolean, kind: StoreKind = "edition"): { changed: boolean; view: PeopleView } | Refusal {
     const db = this.open();
     const done = this.written(() =>
       db.transaction((): boolean | Refusal => {
         const row = db.query("SELECT revision, doc FROM store WHERE id=1").get() as { revision: number; doc: string };
-        if (row.revision !== expected) return { status: 409, error: kind === "edition" ? STALE : STALE_STORE };
+        const doc = JSON.parse(row.doc) as StoreDoc;
+        if (movedSince(doc, kind, expected, row.revision)) return { status: 409, error: kind === "edition" ? STALE : STALE_RETIRED(kind) };
         if (!db.query("SELECT 1 FROM records WHERE kind=? AND id=?").get(kind, id)) return { status: 404, error: `There is no ${kind} ${id}.` };
-        const doc = JSON.parse(row.doc) as StoreDoc, was = doc.retired[kind] ?? [];
+        const was = doc.retired[kind] ?? [];
         if (was.includes(id) === retired) return false;
         doc.retired[kind] = retired ? [...was, id].sort((a, b) => a - b) : was.filter((e) => e !== id);
+        doc.moved = { ...doc.moved, [kind]: row.revision + 1 };
         db.query("UPDATE store SET revision=?, doc=? WHERE id=1").run(row.revision + 1, JSON.stringify(doc));
         return true;
       }).immediate(),
