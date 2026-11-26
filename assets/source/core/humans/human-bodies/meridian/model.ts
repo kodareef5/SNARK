@@ -1,5 +1,5 @@
 // Meridian is built on the same rest vertices and bones the survivor actually wears.
-// The dark liner supplies every mixed-set seam; each ceramic panel follows one rigid bone.
+// The dark liner supplies every mixed-set seam; each ceramic panel bends as the skin under it, a glove's follows its hand.
 import type { PackRig } from "../../../../../../shared/pack/pack.ts";
 import type { SourceMesh } from "../../../../../../tools/pack/write.ts";
 import { B_CHEST, B_FOOT_L, B_FOOT_R, B_HEAD, B_HIPS, B_NECK, B_SPINE, B_UPPER_CHEST } from "../../../../../../shared/anim/human.ts";
@@ -1113,10 +1113,11 @@ function gloves(s: Surface, female: boolean, rest: readonly number[]) {
         6,
       );
     }
+    // The glove starts past the skin that follows the forearm (body.ts WRIST_REACH), so a bent wrist does not cut it.
     const glove = contour(
       [
-        [wrist - 0.004, y, z, 0.028, 0.039],
-        [wrist + 0.025, y, z, 0.029, 0.044],
+        [wrist + 0.02, y, z, 0.028, 0.041],
+        [wrist + 0.035, y, z, 0.029, 0.045],
         [wrist + 0.071, y - 0.006, z, 0.028, 0.048],
         [wrist + 0.097, y - 0.012, z, 0.022, 0.046],
         [wrist + 0.115, y - 0.016, z, 0.018, 0.041],
@@ -1126,8 +1127,8 @@ function gloves(s: Surface, female: boolean, rest: readonly number[]) {
     s.panel(
       glove,
       [
-        [wrist + 0.004, 34, 143],
-        [wrist + 0.023, 20, 162, 0.003],
+        [wrist + 0.028, 34, 143],
+        [wrist + 0.04, 20, 162, 0.003],
         [wrist + 0.067, 19, 164, 0.004],
         [wrist + 0.092, 32, 152, 0.003],
         [wrist + 0.103, 56, 130],
@@ -1222,17 +1223,19 @@ function bootVents(level: number) {
 
 /**
  * The suit on `body`'s slot meshes, three levels each. The plates were drawn on the Quaternius body: `shift` says how far a
- * point drawn there moves to sit as it did on the body worn, where that is another.
+ * point drawn there moves to sit as it did on the body worn, where that is another, and `weigh` the bones and weights of
+ * that body's skin nearest a point.
  */
-export function meridian(body: readonly SourceMesh[], rig: PackRig, shift: ((p: V) => V) | null = null): SourceMesh[] {
+export function meridian(body: readonly SourceMesh[], rig: PackRig, shift: ((p: V) => V) | null = null, weigh: ((p: V) => { joints: number[]; weights: number[] } | null) | null = null): SourceMesh[] {
   const female = rig.id === "human_f";
   // The vanes move as one with the point they hang from.
   const at = (root: V) => (shift ? (): V => shift(root) : null);
   return body.flatMap((base) => {
     const slot = base.id.split("/").at(-1)!;
     const lods = base.lods.map((lod, level) => {
-      // The boots stay as drawn: their soles are found on their lowest points, as the ride fit has them.
-      const s = new Surface(level, slot === "feet" ? null : shift);
+      // The boots stay where drawn, their soles found on their lowest points as the ride fit has them. Every plate but
+      // a glove's bends as the skin under it does; a glove's stays on the hand its grips are found on.
+      const s = new Surface(level, slot === "feet" ? null : shift, slot === "hands" ? null : weigh);
       s.liner(lod, slot === "hands");
       switch (slot) {
         case "head":

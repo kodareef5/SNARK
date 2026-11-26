@@ -509,3 +509,16 @@ export function shiftAt(field: BodyField, p: readonly number[]): [number, number
   }
   return out;
 }
+
+/** The new skin's bones and weights nearest `p`: the four heaviest, heaviest first, summing to 1, or null where none is near. */
+export function skinWeightsAt(field: BodyField, p: readonly number[]): { joints: number[]; weights: number[] } | null {
+  const hit: Nearest = { triangle: -1, x: 0, y: 0, z: 0, u: 0, v: 0, w: 0, d2: 0 };
+  if (!field.toGrid.nearest(p[0]!, p[1]!, p[2]!, WEIGHT_REACH, hit)) return null;
+  const sum = new Float64Array(field.bones);
+  const share = [hit.u, hit.v, hit.w];
+  for (let k = 0; k < 3; k++) for (let b = 0; b < field.bones; b++) sum[b]! += share[k]! * field.toWeights[field.to.indices[hit.triangle * 3 + k]! * field.bones + b]!;
+  const order = Array.from({ length: field.bones }, (_, b) => b).filter((b) => sum[b]! > 1e-3).sort((a, b) => sum[b]! - sum[a]!).slice(0, 4);
+  if (order.length === 0) return null;
+  const total = order.reduce((t, b) => t + sum[b]!, 0);
+  return { joints: [0, 1, 2, 3].map((k) => order[k] ?? order[0]!), weights: [0, 1, 2, 3].map((k) => (k < order.length ? sum[order[k]!]! / total : 0)) };
+}

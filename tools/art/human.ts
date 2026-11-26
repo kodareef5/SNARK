@@ -10,7 +10,7 @@ import { defaultPalette } from "../../shared/pack/palette.ts";
 import { convertHumanClips } from "../pack/anim.ts";
 import { readGltf, type Gltf } from "../pack/gltf.ts";
 import { cookBody, restBody, RIGID_BONES, type Cooked, type CookOptions } from "../pack/body.ts";
-import { bodyField, REFIT_CLEAR, refitPiece, shiftAt, type BodyField } from "../pack/refit.ts";
+import { bodyField, REFIT_CLEAR, refitPiece, shiftAt, skinWeightsAt, type BodyField } from "../pack/refit.ts";
 import { clearOf, line, liningOf, skinLevel } from "../pack/liner.ts";
 import { humanAnim, motionSet } from "./cloth-fit.ts";
 import { easeInMotion } from "./ease-fit.ts";
@@ -304,7 +304,7 @@ export function convertBodies(spec: HumanBodiesAsset, _dir: string, described: R
     if (spec.tailored && finish) {
       // The suit's lining is the cooked body's own skin, a level coarser, and its plates, drawn on the Quaternius body,
       // move as the skin under them moved.
-      const made = spec.tailored.make(suitLining(body.meshes), body.rig, (p) => shiftAt(field, p));
+      const made = spec.tailored.make(suitLining(body.meshes), body.rig, (p) => shiftAt(field, p), (p) => skinWeightsAt(field, p));
       suitClear(made, body.meshes, lines);
       for (const mesh of made) meshes.push(dressTailored(spec, mesh, finish));
     }

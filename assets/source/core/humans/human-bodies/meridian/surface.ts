@@ -1,5 +1,6 @@
 // Curved shell sections in native rest space. Angles start at the front of the body;
-// each row can change width, sweep and stand-off independently.
+// each row can change width, sweep and stand-off independently. A plate follows its own bone, or, given the skin's
+// weights, bends as the skin under each of its points does.
 import type { SourceLod } from "../../../../../../tools/pack/write.ts";
 
 export type V = [number, number, number];
@@ -78,9 +79,12 @@ export class Surface {
    * which is what stays true in every pose, 326 triangles of 4,375 are never seen, all in the helmet.
    */
   private readonly linerVertices = new Map<string, number>();
-  constructor(level: number, shift: ((p: V) => V) | null = null) {
+  /** The bones and weights of the skin under a plate's point, where a plate bends with it. */
+  private readonly weigh: ((p: V) => { joints: number[]; weights: number[] } | null) | null;
+  constructor(level: number, shift: ((p: V) => V) | null = null, weigh: ((p: V) => { joints: number[]; weights: number[] } | null) | null = null) {
     this.level = level;
     this.shift = shift;
+    this.weigh = weigh;
   }
   private vertex(point: V, normal: V, u: number, v: number, tile: number, bone: number, joints: readonly number[] = [bone, bone, bone, bone], weights: readonly number[] = [1, 0, 0, 0]): number {
     const i = this.b.length,
@@ -88,6 +92,11 @@ export class Surface {
     if (this.shift && !this.lining) {
       const d = this.shift(point);
       point = [point[0] + d[0], point[1] + d[1], point[2] + d[2]];
+    }
+    const skin = this.weigh && !this.lining ? this.weigh(point) : null;
+    if (skin) {
+      [bone, joints, weights] = [skin.joints[0]!, skin.joints, skin.weights];
+      if (weights[1]! > 0) this.blended = true;
     }
     this.p.push(...point);
     this.n.push(...normal);
