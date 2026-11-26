@@ -33,6 +33,8 @@ const dye = (a: number, b: number, c: number): number => a | (b << 8) | (c << 16
 // The first two editions a fresh people store gives, which dress publishes.
 const TEE = [tee, 1, dye(12, 40, 3)];
 const TROUSERS = [trousers, 2, dye(0, 22, 0)];
+/** Both, in item order, as `styled` lists them. */
+const DRESSED = [TEE, TROUSERS].sort((a, b) => a[0]! - b[0]!);
 
 /** Fills a survivor's hotbar, armor and bag, and puts on a dyed edition of the tee and of the trousers. */
 function dress(h: Harness, me: EntityRecord): void {
@@ -158,7 +160,7 @@ test("a cache holds an edition and a dye, and gives them back", () => {
     expect(move(h, s, inv.wardrobe, 1, tee, BOX_SELF, BOX_OPEN)).toBe(RESULT_OK);
     expect(move(h, s, inv.wardrobe + 1, 2, trousers, BOX_SELF, BOX_OPEN)).toBe(RESULT_OK);
     const box = h.host.items.inv(cache);
-    expect(styled(box)).toEqual([TEE, TROUSERS]);
+    expect(styled(box)).toEqual(DRESSED);
     // What the client has of the open box carries them too.
     expect([s.open!.inventory.editionOf(1), s.open!.inventory.dyeOf(2)]).toEqual([TEE[1], TROUSERS[2]]);
     expect(wardrobe(inv)).toEqual([EMPTY, EMPTY, EMPTY, EMPTY, EMPTY]);
@@ -286,7 +288,7 @@ test("a survivor's body keeps what it wore, through a restart, and its cache giv
   const body = [...h.host.corpses.bodies.values()].find((b) => b.kind === me.kind)!;
   expect([...corpseWardrobe(body.rec)!]).toEqual(WORN.flat());
   const cache = [...h.host.records.byPid.values()].find((r) => r.kind === id("cache"))!;
-  expect(styled(h.host.items.inv(cache))).toEqual([TEE, TROUSERS]);
+  expect(styled(h.host.items.inv(cache))).toEqual(DRESSED);
   h.run(300);
   h.host.shutdown();
 
@@ -296,7 +298,7 @@ test("a survivor's body keeps what it wore, through a restart, and its cache giv
     expect([...corpseWardrobe(again.rec)!]).toEqual(WORN.flat());
     expect([...again.rec.look!]).toEqual([...look]);
     const kept = h2.host.records.byPid.get(cache.pid)!;
-    expect(styled(h2.host.items.inv(kept))).toEqual([TEE, TROUSERS]);
+    expect(styled(h2.host.items.inv(kept))).toEqual(DRESSED);
     // Risen beside it, the survivor opens its cache and puts the two back on.
     const s2 = h2.join("ada");
     h2.run(600);
