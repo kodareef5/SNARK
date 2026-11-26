@@ -8,7 +8,6 @@ import { DRAW_SKINNED, TRANSIENT_BUFFER } from "../../client/core/render/packet.
 import { CROWD_VIEWER, crowdLooks, crowdSpots, type CrowdScene } from "../../client/core/people-crowd.ts";
 import { FACE_COUNT, LOOK_BYTES, setFace } from "../../shared/anim/look.ts";
 import { Rng } from "../../shared/rng.ts";
-import { asTextured } from "./base.ts";
 import { provingView, settle } from "../snap.ts";
 import { gameFiles } from "../snap/files.ts";
 
@@ -21,7 +20,6 @@ function measure(tier: string, scene: CrowdScene, close: boolean, unique: boolea
   const view = provingView(1920, 1080, {}, files);
   view.scene.assets.tier = tierOf(tier);
   view.scene.viewHeight = 1080;
-  asTextured(view.scene);
   const { cam, remote, reg, hf } = view;
   cam.x = CROWD_VIEWER.x;
   cam.z = CROWD_VIEWER.z;
@@ -72,7 +70,6 @@ for (const tier of tiers) for (const close of [false, true]) for (const unique o
 {
   const view = provingView(320, 180, {}, files);
   view.scene.assets.tier = tierOf("ultra");
-  asTextured(view.scene);
   const { cam, remote, reg, hf } = view;
   remote.count = 1;
   [remote.id[0], remote.kind[0], remote.flags[0], remote.anim[0], remote.hasLook[0], remote.yaw[0]] = [0x40000000, reg.index.get("core:survivor")!, 1, 0, 1, Math.PI];

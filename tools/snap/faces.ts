@@ -9,7 +9,6 @@ import { FACE_COUNT, LOOK_BYTES, LOOK_HAIR, LOOK_SEX, defaultLook, setFace } fro
 import { personFrom } from "../../shared/people/person.ts";
 import { FACE_LABELS } from "../../shared/people/face-controls.ts";
 import { SURVIVORS } from "../../content/people/defaults.ts";
-import { asTextured } from "../bench/base.ts";
 import { label, provingView, settle, type ProvingView } from "../snap.ts";
 import { gameFiles } from "./files.ts";
 import { encodePng } from "./png.ts";
@@ -29,7 +28,6 @@ async function portraitView(): Promise<ProvingView> {
   const view = provingView(SIZE, SIZE, {}, await gameFiles());
   view.scene.assets.tier = tierOf(TIER);
   view.scene.viewHeight = SIZE * 4;
-  asTextured(view.scene);
   const r = view.remote;
   r.count = 1;
   r.tick = 0;
@@ -53,10 +51,10 @@ function portrait(view: ProvingView, look: Uint8Array): Uint8ClampedArray {
   const eye = r.y[0]! + (look[LOOK_SEX] === 1 ? 1.56 : 1.64);
   cam.x = r.x[0]! - 0.55 * Math.sin(0.15);
   cam.z = r.z[0]! - 0.55 * Math.cos(0.15);
-  cam.y = eye + 0.02;
-  cam.yaw = Math.PI + 0.15;
+  cam.y = eye - 0.07;
+  cam.yaw = 0.15;
   cam.pitch = -0.05;
-  cam.fovY = 0.5;
+  cam.fovY = 0.6;
   cam.aspect = 1;
   settle(view);
   for (let k = 0; k < 6; k++) view.render();
@@ -69,7 +67,7 @@ function sheet(tiles: Uint8ClampedArray[], names: string[], file: string): void 
   tiles.forEach((t, i) => {
     const ox = (i % COLUMNS) * SIZE, oy = Math.floor(i / COLUMNS) * SIZE;
     for (let y = 0; y < SIZE; y++) pixels.set(t.subarray(y * SIZE * 4, (y + 1) * SIZE * 4), ((oy + y) * W + ox) * 4);
-    label(pixels, W, names[i]!, ox + 4, oy + SIZE - 14);
+    label(pixels, W, names[i]!.slice(0, Math.floor((SIZE - 8) / 6)), ox + 4, oy + 4, 1);
   });
   mkdirSync(OUT, { recursive: true });
   writeFileSync(join(OUT, file), encodePng(W, H, pixels));
@@ -77,6 +75,10 @@ function sheet(tiles: Uint8ClampedArray[], names: string[], file: string): void 
 }
 
 const view = await portraitView();
+if (args.includes("--one")) {
+  sheet([portrait(view, defaultLook())], ["neutral"], "one.png");
+  process.exit(0);
+}
 for (const sex of [0, 1]) {
   const tiles: Uint8ClampedArray[] = [], names: string[] = [];
   for (let seed = 1; tiles.length < 24; seed++) {
