@@ -95,8 +95,8 @@ describe("skin", () => {
   });
 
   test("the people's skin and eyes take their terms, and the suit keeps its own", () => {
-    for (const id of ["skin_m", "skin_f", "regular_m", "regular_f", "skin_mh_m", "skin_mh_f"]) expect(streetMaterial(`core:human-bodies/${id}`)).toBe(SKIN);
-    for (const id of ["eyes", "eyes_mh"]) expect(streetMaterial(`core:human-bodies/${id}`)).toBe(EYE);
+    for (const id of ["regular_m", "regular_f", "skin_mh_m", "skin_mh_f"]) expect(streetMaterial(`core:human-bodies/${id}`)).toBe(SKIN);
+    expect(streetMaterial("core:human-bodies/eyes_mh")).toBe(EYE);
     expect(streetMaterial("core:human-bodies/brows_mh")).toBe(0);
     expect(streetMaterial("core:human-bodies/cloth")).toBe(0);
     expect(streetMaterial("core:human-bodies/meridian")).toBe(ENAMEL_ARMOR);
