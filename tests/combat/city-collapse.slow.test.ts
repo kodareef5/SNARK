@@ -125,7 +125,8 @@ test.skipIf(!there)("flats lose their upper floors when too few ground walls car
   const id = 93877552490725;
   const s = site(await server(), id);
   const { p } = s;
-  const lobbies = Array.from({ length: p.n }, (_, k) => k).filter((k) => s.shape[k] === "zlobby" && p.level[k] === 0);
+  const pieces = Array.from({ length: p.n }, (_, k) => k);
+  const lobbies = pieces.filter((k) => s.shape[k] === "zlobby" && p.level[k] === 0);
   const pair = lobbies.flatMap((a) => lobbies.filter((b) => b > a && beside(s, a, b)).map((b) => [a, b] as const))[0]!;
   expect(pair).toBeDefined();
   const was = s.forms();
@@ -137,7 +138,7 @@ test.skipIf(!there)("flats lose their upper floors when too few ground walls car
   say("Flats", s, "two neighbouring ground bays opened", r);
   // Each slab over them is held by the stair beside it or by its other wall, so the balconies ride slabs that stand.
   expect([r.fell.length, r.heaps.length, r.hung.length]).toEqual([0, 0, 0]);
-  const walls = Array.from({ length: p.n }, (_, k) => k).filter((k) => s.family[k] === "wall" && p.level[k] === 0);
+  const walls = pieces.filter((k) => s.family[k] === "wall" && p.level[k] === 0);
   for (const k of walls) s.open(k);
   const beforeCollapse = s.forms(), { reg, structs } = s.h.world, rules = s.h.host.rules;
   const share = rules.num("CityCollapseStoreyShare");
@@ -165,7 +166,15 @@ test.skipIf(!there)("flats lose their upper floors when too few ground walls car
     for (const k of walls) s.open(k);
     const local = s.settle(s.forms());
     expect(local.hung.some((name) => name.startsWith("floor"))).toBe(true);
-    expect(local.fell.concat(local.heaps).filter((n) => n.startsWith("zbalc")).length).toBeGreaterThanOrEqual(2);
+    const slabs = pieces.filter((k) => p.level[k] === 1 && s.family[k] === "slab");
+    const balconies = pieces.filter((k) => p.level[k] === 1 && s.family[k] === "balcony");
+    expect(balconies.length).toBeGreaterThan(0);
+    for (const b of balconies) {
+      const under = slabs.filter((k) => p.u0[k]! <= p.u0[b]! && p.u1[b]! <= p.u1[k]! &&
+        p.v0[k]! <= p.v0[b]! && p.v1[b]! <= p.v1[k]!);
+      expect(under.length).toBeGreaterThan(0);
+      expect(s.form(b)).toBe(under.some((k) => s.form(k) === FORM_WHOLE) ? FORM_WHOLE : FORM_HEAP);
+    }
     expect(s.forms().some((f, k) => s.family[k] === "slab" && p.level[k]! > 0 && f === FORM_WHOLE)).toBe(true);
   } finally {
     rules.assign("CityCollapseStoreyShare", String(share), "console");
