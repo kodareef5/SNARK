@@ -1000,6 +1000,7 @@ saved({
   has: (rec) => rec.part(WARDROBE) !== undefined,
   write(rec, w, to) {
     const kept = rec.part(WARDROBE)!;
+    w.varint(WARDROBE_SLOTS);
     for (let k = 0; k < WARDROBE_SLOTS; k++) {
       const item = kept[k * 3]!;
       w.varint(item === 0 ? 0 : to.toSaved[item]!);
@@ -1009,12 +1010,15 @@ saved({
   },
   read(rec, r, from) {
     const kept = rec.own(WARDROBE);
-    for (let k = 0; k < WARDROBE_SLOTS; k++) {
+    // Saved with its slot count, so a build with more or fewer slots reads what it can.
+    const slots = r.varint();
+    for (let k = 0; k < slots; k++) {
       const v = r.varint();
       // A garment this build lacks is not drawn.
       const item = v === 0 ? 0 : (from.toRuntime[v] ?? 0);
       const edition = r.varint();
       const dye = r.varint();
+      if (k >= WARDROBE_SLOTS) continue;
       kept[k * 3] = item;
       kept[k * 3 + 1] = item === 0 ? 0 : edition;
       kept[k * 3 + 2] = item === 0 ? 0 : dye;

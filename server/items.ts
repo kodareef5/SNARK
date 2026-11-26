@@ -577,12 +577,15 @@ export class Items {
 
   /**
    * Sets the edition and dye of the item in `slot` of `rec` (Inventory.edition and dye): what it looks like, which mints and
-   * burns nothing. False, changing nothing, for an empty slot or a blueprint.
+   * burns nothing. False, changing nothing, for an empty slot, a blueprint, or a dye on a garment that takes none.
    */
   restyle(rec: EntityRecord, slot: number, edition: number, dye: number): boolean {
     const inv = this.inv(rec);
     if (slot < 0 || slot >= inv.cap || inv.item[slot] === 0 || (inv.flags[slot]! & FLAG_BLUEPRINT) !== 0) return false;
     if (!(Number.isInteger(edition) && edition >= 0 && edition <= 0xffffffff && Number.isInteger(dye) && dye >= 0 && dye <= 0xffffff)) return false;
+    // A garment made to take no dye keeps its own colours.
+    const item = inv.item[slot]!;
+    if (dye !== 0 && this.reg.garmentSlot[item]! >= 0 && this.reg.garmentDyes[item] === 0) return false;
     inv.setStyle(slot, edition, dye);
     this.changed(rec);
     return true;
