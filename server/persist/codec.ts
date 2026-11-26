@@ -12,7 +12,7 @@ import { EntityRecord } from "../records.ts";
 import { SAVED, moved, saved, savedAs, type Coding } from "../saved.ts";
 
 /** The revision of a record's components, in its first byte. Raise it whenever one changes: a build reads only its own. */
-const RECORD_FORMAT = 8;
+const RECORD_FORMAT = 9;
 // A record is a list of components, each a number and a length-prefixed blob. A build that does not know a
 // component keeps its bytes and writes them back, so a save survives a server that lacks a content pack.
 // Each is declared with `saved` (server/saved.ts) and numbered from its name: those every record may have at the end

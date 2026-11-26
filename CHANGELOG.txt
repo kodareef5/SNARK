@@ -1,5 +1,11 @@
 v0.0.14 — 2026-11-26
 
+Survivors and clothing
+- Shape a survivor’s face in the creator. Hair and beards grow in stages. Use scissors and dye to change them in play.
+- Wear everyday clothes in five wardrobe slots alongside armour. Look for garments in city loot.
+- Hosts can design garment prints, publish editions and give them to survivors from Wardrobe. The People and Populations pages let staff create named characters and choose how crowds dress.
+- Start a fresh world with this build. Earlier worlds use a different survivor and inventory format.
+
 City structures
 - A ruined storey gives way when most of its original supports are gone. On newly built maps, fallen window frames lie low enough to walk over, and hanging slabs leave room underneath.
 - New city builds keep plants out of paved traffic lanes. Roadside billboards range from small street signs to 30-metre displays on concrete pillars.
