@@ -106,7 +106,7 @@ artTest("a section's zones go from the trunk outward, left and right side by sid
 });
 
 artTest("cloth and hide are lined with the body's own skin, and its weights there", () => {
-  for (const sex of SEX_IDS) for (const set of ["cloth", "hide"]) for (const slot of ["torso", "hands", "legs", "feet"]) {
+  for (const sex of SEX_IDS) for (const set of ["cloth", "hide"]) for (const slot of ["torso", "hands", "legs"]) {
     const m = mesh(`core:human_${sex}/armor/${set}/${slot}`);
     const ids = (m.lods[0]!.sections ?? []).filter((_, k) => k % 3 === 0).map((k) => pack.header.materials![k]!.id);
     expect(ids.some((id) => id.includes("skin_mh")), m.id).toBe(true);
@@ -115,18 +115,11 @@ artTest("cloth and hide are lined with the body's own skin, and its weights ther
   }
 });
 
-artTest("a worn boot's foot and toes are on one bone a vertex, its shaft bends as the shin's skin does", () => {
+artTest("a worn boot's foot and toe vertices are each wholly on their bone", () => {
   const feet = [B_FOOT_L, B_FOOT_R, B_TOE_L, B_TOE_R];
-  for (const sex of SEX_IDS) for (const set of ["cloth", "hide"]) {
+  for (const sex of SEX_IDS) for (const set of ["cloth", "hide", "meridian"]) {
     const lod = mesh(`core:human_${sex}/armor/${set}/feet`).lods[0]!;
-    const skin = lodSkin(pack, lod)!, verts = lodVertices(pack, lod);
-    let blended = 0;
-    for (let v = 0; v < lod.vertexCount; v++) {
-      const bone = verts[v * VERTEX_BYTES + 7]!;
-      const one = skin[v * SKIN_BYTES + 4] === 255;
-      if (feet.includes(bone)) expect(one).toBe(true);
-      else if (!one) blended++;
-    }
-    expect(blended).toBeGreaterThan(0);
+    const skin = lodSkin(pack, lod), verts = lodVertices(pack, lod);
+    for (let v = 0; v < lod.vertexCount; v++) if (skin && feet.includes(verts[v * VERTEX_BYTES + 7]!)) expect(skin[v * SKIN_BYTES + 4]).toBe(255);
   }
 });

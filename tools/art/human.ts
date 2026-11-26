@@ -3,7 +3,7 @@
 import { join } from "node:path";
 import { BODY_SCALES, REGION_CLOTH, REGION_EYE, REGION_HAIR, REGION_SKIN, SEX_IDS } from "../../shared/anim/look.ts";
 import type { Clip } from "../../shared/anim/clip.ts";
-import { B_HEAD, HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_HANDS, SLOT_HEAD, SLOT_NAMES } from "../../shared/anim/human.ts";
+import { B_HEAD, B_TOE_L, B_TOE_R, HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_FEET, SLOT_HANDS, SLOT_HEAD, SLOT_NAMES } from "../../shared/anim/human.ts";
 import { SKIN_ZONE_SLOT } from "../../shared/anim/skin-zones.ts";
 import { MATERIAL_EXHAUST, MATERIAL_INDICATOR, MATERIAL_LENS, parsePack, type PackRig } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
@@ -71,6 +71,12 @@ export function convertClipLibraries(spec: HumanClipsAsset): { clips: Clip[]; wa
   }
   return { clips, warnings };
 }
+
+/**
+ * Whether a slot's piece is lined. A hood leaves the head drawn under it; a boot stands in for the whole foot, as its
+ * soles are found on its lowest points and the new foot's toes may come through its calibrated shell.
+ */
+const linedSlot = (slot: string): boolean => slot !== SLOT_NAMES[SLOT_HEAD] && slot !== SLOT_NAMES[SLOT_FEET];
 
 /** The rigid bones of the hands, whose glove vertices a refit leaves where they were. */
 const HAND_BONES: ReadonlySet<number> = new Set([...RIGID_BONES].filter((b) => HUMAN.slot[b] === SLOT_HANDS));
@@ -183,18 +189,17 @@ export function armorSets(spec: HumanBodiesAsset, sex: number, rest: readonly nu
       for (const mesh of made.meshes) {
         const slot = mesh.id.split("/").at(-1)!;
         const bare = body.find((m) => m.id === `${id}/${slot}`);
-        const lined = bare && slot !== SLOT_NAMES[SLOT_HEAD] ? liningOf(mesh, bare) : () => -1;
+        const lined = bare && linedSlot(slot) ? liningOf(mesh, bare) : () => -1;
         const held = (lod: SourceLod, v: number): boolean => HAND_BONES.has(lod.bones![v]!) && (!lod.weights || lod.weights[v * 4]! >= 0.999);
         const r = easeInMotion(mesh, body, Float32Array.from(rest), poses, lined, held);
         lines.push(`${mesh.id}: let out at most ${(r.most * 1000).toFixed(1)} mm in motion; skin came through it ${r.deepest.map((d) => (d * 1000).toFixed(1)).join(", ")} mm by round`);
       }
     }
-    // A piece stands in for its slot's skin: the body's own is put in where the piece leaves it showing. A hood leaves the
-    // head drawn under it.
+    // A piece stands in for its slot's skin: the body's own is put in where the piece leaves it showing.
     for (const mesh of made.meshes) {
       const slot = mesh.id.split("/").at(-1)!;
       const bare = body.find((m) => m.id === `${id}/${slot}`);
-      if (!bare || slot === SLOT_NAMES[SLOT_HEAD]) continue;
+      if (!bare || !linedSlot(slot)) continue;
       lines.push(`${mesh.id}: lined with ${line(mesh, bare).join(" / ")} triangles of the body's skin`);
     }
     // A slot whose part of the outfit was all skin is the body's own: an item worn there still has its piece.
@@ -214,7 +219,17 @@ export function armorSets(spec: HumanBodiesAsset, sex: number, rest: readonly nu
  * as a sealed helmet hides all but the face behind its visor, and the cook holds the neck's seam at every level.
  */
 export function suitLining(meshes: readonly SourceMesh[]): SourceMesh[] {
-  return meshes.map((m) => ({ ...m, lods: (m.id.endsWith("/head") ? [1, 1, 2] : [0, 1, 2]).map((k) => m.lods[k]!) }));
+  return meshes.map((m) => ({ ...m, lods: (m.id.endsWith("/head") ? [1, 1, 2] : [0, 1, 2]).map((k) => (m.id.endsWith("/feet") ? toeless(m.lods[k]!) : m.lods[k]!)) }));
+}
+
+/** A foot's skin without its toes, which the boot's toe cap stands in for, so the sole is found on the boot. */
+function toeless(lod: SourceLod): SourceLod {
+  const keep: number[] = [];
+  for (let t = 0; t < lod.indices.length / 3; t++) {
+    const c = [lod.indices[t * 3]!, lod.indices[t * 3 + 1]!, lod.indices[t * 3 + 2]!];
+    if (!c.every((v) => lod.bones![v] === B_TOE_L || lod.bones![v] === B_TOE_R)) keep.push(t);
+  }
+  return { ...lod, indices: Uint32Array.from(keep.flatMap((t) => [lod.indices[t * 3]!, lod.indices[t * 3 + 1]!, lod.indices[t * 3 + 2]!])), ...(lod.sections ? { sections: Uint8Array.from(keep, (t) => lod.sections![t]!) } : {}), ...(lod.zones ? { zones: Uint8Array.from(keep, (t) => lod.zones![t]!) } : {}) };
 }
 
 /** Keeps a suit's plates clear of the skin of each level, as cloth and hide are; its lining, the body's own skin, stays. */
