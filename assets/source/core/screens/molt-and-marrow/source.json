@@ -1,0 +1,15 @@
+{
+  "kind": "image",
+  "title": "Molt & Marrow — Walk-in central heating.",
+  "year": 2026,
+  "from": {
+    "by": "SNARK",
+    "sha256": "4d7f8025906c2d61d67dc32231969ed0c505de41db4ce43fb7f2d018b2a2be91"
+  },
+  "rights": "Made for SNARK, 2026",
+  "licence": "Made for the game and given to it under CC0 1.0.",
+  "audio": false,
+  "types": [
+    "billboard"
+  ]
+}

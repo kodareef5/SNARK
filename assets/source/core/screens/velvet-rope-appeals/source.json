@@ -1,0 +1,15 @@
+{
+  "title": "Velvet Rope Appeals",
+  "year": 2026,
+  "from": {
+    "by": "SNARK",
+    "sha256": "ed53b343f4ae6b6fb682701b92af20161da9c9509a175ec463bc3debe73e6a1a"
+  },
+  "rights": "Made for SNARK, 2026",
+  "licence": "Made for the game and given to it under CC0 1.0.",
+  "poster": 12,
+  "audio": false,
+  "types": [
+    "tv"
+  ]
+}

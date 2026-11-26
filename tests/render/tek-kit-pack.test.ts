@@ -5,8 +5,27 @@ import { ALL_FORMS } from "../../content/building/forms.ts";
 import { TEK_INLAY_COLOUR, TEK_RAIL_COLOUR } from "../../content/building/tek-wall.ts";
 import { defaultPalette, REGION_BASE } from "../../shared/pack/palette.ts";
 import { MADE_PIECE_TRIANGLES, TRIM_TRIANGLES } from "../../tools/art/check.ts";
+import { Shape, flatLod } from "../../tools/pack/pieces/kit.ts";
 import { buildPack } from "../../tools/pack/write.ts";
 import { bakeTek } from "../../tools/pack/pieces/tek.ts";
+
+test("the Tek bake picks the same diagonal on nearly equal quads", () => {
+  const quad = (offset: number): Shape => {
+    const shape = new Shape();
+    shape.faces.push({
+      points: [[0, 0, 0], [1, 0, 0], [1 + offset, 1, 0], [0, 1, 0]],
+      uvs: [[0, 0], [1, 0], [1, 1], [0, 1]],
+      mat: "titanium",
+    });
+    return shape;
+  };
+  const legacyCut = [0, 1, 3, 1, 2, 3];
+  for (const offset of [-1e-14, 0, 1e-14]) {
+    expect([...flatLod(quad(offset), () => 1, false, { stableDiagonals: true }).indices]).toEqual([0, 1, 2, 0, 2, 3]);
+  }
+  expect([...flatLod(quad(.01), () => 1, false, { stableDiagonals: true }).indices]).toEqual(legacyCut);
+  expect([...flatLod(quad(1e-14), () => 1).indices]).toEqual(legacyCut);
+});
 
 test("every Tek form and fitted trim bakes its intended opaque finish", () => {
   const kit = bakeTek(ALL_FORMS);

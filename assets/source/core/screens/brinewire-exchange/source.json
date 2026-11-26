@@ -1,0 +1,15 @@
+{
+  "kind": "image",
+  "title": "Brinewire Shore Exchange",
+  "year": 2026,
+  "from": {
+    "by": "SNARK",
+    "sha256": "b668167953793d26cda013d291dc4f97f40817d19d744e06ae58c63772bc0689"
+  },
+  "rights": "Made for SNARK, 2026",
+  "licence": "Made for the game and given to it under CC0 1.0.",
+  "audio": false,
+  "types": [
+    "laptop"
+  ]
+}

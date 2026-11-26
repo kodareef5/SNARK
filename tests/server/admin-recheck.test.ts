@@ -202,7 +202,8 @@ test("a signed-in admin owns the event book revision and its journal entry", asy
 });
 
 test("every admin POST the front passes is judged again once its body is in", async () => {
-  const clip = readFileSync(join(import.meta.dir, "../fixtures/video/small.mp4"));
+  const clip = readFileSync(join(import.meta.dir, "../fixtures/video/late.mp4"));
+  const image = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/02sAAAAASUVORK5CYII=", "base64");
   /** What each route is sent, and whether it changes anything: a pasted override is only read into the page's draft. */
   const sent: Record<string, { body: Uint8Array | string; headers?: Record<string, string>; reads?: true }> = {
     "/admin/cast": { body: JSON.stringify({ op: "set", name: "CastActivity", value: "1.5" }) },
@@ -226,6 +227,7 @@ test("every admin POST the front passes is judged again once its body is in", as
     "/admin/events/down": { body: JSON.stringify({ id: "all" }) },
     "/admin/events/cancel": { body: JSON.stringify({ id: "all" }) },
     "/admin/screens/upload": { body: clip, headers: { "content-type": "video/mp4", "content-length": String(clip.length) } },
+    "/admin/screens/image": { body: image, headers: { "content-type": "image/png", "content-length": String(image.length) } },
     "/admin/screens/clip": { body: JSON.stringify({ id: "0000000000000000", title: "x", rights: "x" }) },
     "/admin/screens/edit": { body: JSON.stringify({ revision: 0, op: "screen", screen: "orb", show: "night" }) },
     [SCENES]: { body: JSON.stringify({ shot: OPENING_SHOT, revision: 0, publish: false }) },
@@ -247,7 +249,7 @@ test("every admin POST the front passes is judged again once its body is in", as
       expect(refusals(m.b).map(([, what]) => what.slice(0, what.indexOf(":"))).sort()).toEqual(posts.filter((p) => !sent[p]!.reads).map((p) => `POST ${p}`).sort());
       // The upload left no clip, waiting or kept, and no file of its own.
       const files = ["media", "tmp"].flatMap((f) => readdirSync(join(m.cluster.dir, "pages", f))).filter((f) => !f.endsWith(".json"));
-      expect([pages.lib.view().doc.clips.length, files, m.b.h.host.stopLeft]).toEqual([0, [], -1]);
+      expect([pages.lib.view().doc.clips.length, pages.lib.allPending(), files, m.b.h.host.stopLeft]).toEqual([0, [], [], -1]);
       expect([m.b.h.host.eventBook.book.revision, m.b.h.host.mapEvents.calls]).toEqual([0, 0]);
     } finally {
       pages.close();

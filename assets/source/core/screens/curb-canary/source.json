@@ -1,0 +1,15 @@
+{
+  "kind": "image",
+  "title": "Curb Canary — Let the pack pass.",
+  "year": 2026,
+  "from": {
+    "by": "SNARK",
+    "sha256": "812698c6f6ec3e9aa8d1bc4b0e93153fd79ccea2ace9b3390cbad8dc8f443851"
+  },
+  "rights": "Made for SNARK, 2026",
+  "licence": "Made for the game and given to it under CC0 1.0.",
+  "audio": false,
+  "types": [
+    "billboard"
+  ]
+}

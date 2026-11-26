@@ -1,0 +1,15 @@
+{
+  "kind": "image",
+  "title": "Parcel Weather",
+  "year": 2026,
+  "from": {
+    "by": "SNARK",
+    "sha256": "fe7eb4edd3c5f8019cf107f3eb83dcf6e3bc10242b25c363d0cc115efa5a768d"
+  },
+  "rights": "Made for SNARK, 2026",
+  "licence": "Made for the game and given to it under CC0 1.0.",
+  "audio": false,
+  "types": [
+    "laptop"
+  ]
+}

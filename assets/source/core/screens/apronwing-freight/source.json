@@ -1,0 +1,15 @@
+{
+  "kind": "image",
+  "title": "Apronwing Freight — If it fits, it flies.",
+  "year": 2026,
+  "from": {
+    "by": "SNARK",
+    "sha256": "727e1d69e8fbf14a60a69ddd398e5a0a7c65220bb6f887aa52a2ebfd323581e9"
+  },
+  "rights": "Made for SNARK, 2026",
+  "licence": "Made for the game and given to it under CC0 1.0.",
+  "audio": false,
+  "types": [
+    "billboard"
+  ]
+}

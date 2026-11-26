@@ -159,7 +159,7 @@ function bake(name: string, shapes: Shape[]): SourceMesh {
   return {
     id: `core:${name}_tek`,
     lods: shapes.map((shape, level) => {
-      const lod = flatLod(shape, colour, level < 3 && shape.triangles > 2);
+      const lod = flatLod(shape, colour, level < 3 && shape.triangles > 2, { stableDiagonals: true });
       if (name !== "wall" && !name.startsWith("wall_join_")) {
         const bones = lod.bones ??= new Uint8Array(lod.colors.length);
         for (let i = 0; i < bones.length; i++) bones[i]! |= FACE_PLAIN;

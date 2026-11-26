@@ -96,11 +96,9 @@ test("the former starter playlist gains the curated order without changing the o
   const again = reopen(dir, () => birth + 60_000);
   const reply = await call(again, "/admin/screens/state");
   expect(reply.status).toBe(200);
-  expect(await reply.json()).toMatchObject({
-    revision: old.revision + 1,
-    channels: [{ name: "strip", items: [TRAIN, CLOUDS], epoch: birth, shuffle: false }],
-    screens: [{ screen: "orb", show: "scene:core", sound: true, mode: "fixed" }],
-  });
+  const state = (await reply.json()) as { revision: number; channels: unknown[]; screens: unknown[] };
+  expect(state).toMatchObject({ revision: old.revision + 1, channels: [{ name: "strip", items: [TRAIN, CLOUDS], epoch: birth, shuffle: false }] });
+  expect(state.screens[0]).toMatchObject({ screen: "orb", show: "scene:core", sound: true, mode: "fixed" });
   expect(lib.view().revision).toBe(old.revision + 1);
   expect((await call(lib, "/admin/screens/edit", json({ revision: old.revision, op: "channels", channels: [] }))).status).toBe(409);
 
@@ -350,6 +348,24 @@ test("a screens request that changed nothing writes no act", async () => {
   expect((await post("/admin/screens/upload", { method: "POST", headers: { "content-length": String(wide.length) }, body: wide })).status).toBe(422);
   expect((await post("/admin/screens/clip", json({ id: "0123456789abcdef", title: "Card", rights: "test", poster: POSTER, colours: track(2) }))).status).toBe(404);
   expect(acts.recent()).toEqual([]);
+  lib.close();
+});
+
+test("the screens log identifies image uploads, publication and screen types", async () => {
+  const { lib } = library();
+  const { acts, post, edit } = signedIn(lib);
+  const bytes = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/02sAAAAASUVORK5CYII=", "base64");
+  const pending = await post("/admin/screens/image", { method: "POST", headers: { "content-length": String(bytes.length) }, body: bytes }, "?name=Card");
+  expect(pending.status).toBe(200);
+  const { id } = (await pending.json()) as { id: string };
+  expect((await post("/admin/screens/clip", json({ id, title: "Card", rights: "test", poster: POSTER, colours: Buffer.alloc(COLOUR_PARTS * 3).toString("base64"), types: ["billboard"] }))).status).toBe(200);
+  expect((await edit({ op: "types", clip: id, types: ["billboard", "tv"] })).status).toBe(200);
+  expect((await post("/admin/screens/live", { method: "GET" })).status).toBe(200);
+  expect(acts.recent().map((a) => [a.name, a.what])).toEqual([
+    ["(kody)", `uploaded the image file card.${id}.png (1×1, 1 KB)`],
+    ["(kody)", 'published the image "Card" (1×1, 1 KB)'],
+    ["(kody)", 'offered the image "Card" on billboard, tv'],
+  ]);
   lib.close();
 });
 

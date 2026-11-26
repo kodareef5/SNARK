@@ -86,7 +86,8 @@ test("a frame on high at a laptop's canvas is drawn at its share, the governor's
   const view = provingView(640, 360);
   const s = view.scene;
   [s.canvasWidth, s.canvasHeight, s.share] = [3600, 1924, sceneShare(tierOf("high"), 0, 3600 * 1924)];
-  const levels = ladder(tierOf("high"), 2);
+  // Past the screens' steps, which come first.
+  const levels = ladder(tierOf("high"), 2).filter((l) => !l.screens);
   for (const [tier, room, share] of [[tierOf("high"), 0.85, 0.85], [levels[1]!.tier, 0.85, 0.765], [levels[3]!.tier, 0.85, 0.595], [tierOf("medium"), 1, 1]] as const) {
     s.assets.tier = tier;
     const p = s.build(view.cam, view.remote);

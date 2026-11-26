@@ -49,6 +49,7 @@ import { SQUEEZE_MOST } from "./render/budget.ts";
 import type { FramePacket } from "./render/packet.ts";
 import { Scene, type OwnBody } from "./render/scene.ts";
 import type { ScreenPlayer, VideoHost } from "./video/player.ts";
+import type { FaceHost } from "./video/faces.ts";
 import { Feedback } from "./feedback.ts";
 import { Shots } from "./shots.ts";
 import { SupplyView } from "./supply.ts";
@@ -459,6 +460,12 @@ export class App {
   /** The page's side of the screens' video (client/shell/screen-video.ts), set on a map with an orb, and the player made with it. */
   screenHost: VideoHost | null = null;
   private screenPlayer: ScreenPlayer | null = null;
+  /**
+   * The page's side of the screens on props (client/shell/screen-faces.ts), and how the page fetches it: once, the first
+   * frame a screen is in reach.
+   */
+  faceHost: FaceHost | null = null;
+  loadFaceHost: (() => void) | null = null;
   /** The volumes the sounds play at, as the settings have them this frame. */
   private readonly volumes = { master: 0, effects: 0, ambience: 0, music: 0, interface: 0 };
   /** Tames already heard of the session's queue, which the naming prompt empties. */
@@ -708,7 +715,7 @@ export class App {
     const crowns = budget && budget.squeeze < SQUEEZE_MOST ? budget.last.crowns : 0;
     const work = workMs(packet.triangles, packet.drawCount, packet.castTriangles, packet.castDraws, packet.tier.shadows.size);
     const city = (this.scene?.city?.drawn.reduce((n, t) => n + t, 0) ?? 0) + (this.scene?.blocks?.stats.triangles ?? 0);
-    this.governor.frame(this.nowMs, this.interval, ours, packet.assetUploads.length + packet.texUploads.length > 0, work, crowns * PHONE_MS.triangle, city * PHONE_MS.triangle);
+    this.governor.frame(this.nowMs, this.interval, ours, packet.assetUploads.length + packet.texUploads.length > 0, work, crowns * PHONE_MS.triangle, city * PHONE_MS.triangle, this.scene?.screens.mask ?? 0);
     this.session.prediction.page(ours, packet, this.scene?.assets.residency, this.governor, this.dpr, width, height);
   }
 
@@ -1115,6 +1122,16 @@ export class App {
     scene.orbGain = session.orbGain;
     const player = this.screenHost && Scene.orb ? (this.screenPlayer ??= new Scene.orb.ScreenPlayer(this.screenHost)) : null;
     scene.orbScreen = player?.step({ state: session.screens[0], tick: session.renderClock, option: this.ui.settings.videoScreens, tierVideo: scene.assets.tier.orb.video, sites: session.world?.orbs, cam: this.cam, height, now: nowMs, artIdle: scene.assets.residency.flying + scene.assets.residency.waiting === 0 }) ?? null;
+    const screens = scene.screens;
+    screens.states = session.screens;
+    screens.tick = session.renderClock;
+    screens.option = this.ui.settings.videoScreens;
+    if (screens.wanted && !this.faceHost && this.loadFaceHost) {
+      const load = this.loadFaceHost;
+      this.loadFaceHost = null;
+      load();
+    }
+    screens.attach(this.faceHost);
     scene.wants = this.texgen?.wants ?? null;
     f.packet = scene.build(this.cam, this.remote);
     player?.upload(f.packet, scene.orbDrawn, this.cam.fovY / Math.max(1, scene.canvasHeight));

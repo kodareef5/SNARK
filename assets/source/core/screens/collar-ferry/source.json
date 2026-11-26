@@ -1,0 +1,15 @@
+{
+  "kind": "image",
+  "title": "The Collar Took the Ferry",
+  "year": 2026,
+  "from": {
+    "by": "SNARK",
+    "sha256": "38e4a8b0f2a2fe76020718cc868f51bb71ac4b42e13d14709a3071d47d5cdc4b"
+  },
+  "rights": "Made for SNARK, 2026",
+  "licence": "Made for the game and given to it under CC0 1.0.",
+  "audio": false,
+  "types": [
+    "laptop"
+  ]
+}

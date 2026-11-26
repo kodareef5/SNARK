@@ -1,0 +1,15 @@
+{
+  "title": "Neon Rain",
+  "from": {
+    "page": "https://commons.wikimedia.org/wiki/File:Science_On_a_Sphere-_IMERG_Daily_Precipitation_Climatology_(2001_-_2022)_(SVS5478).webm",
+    "by": "Vegas ball collection",
+    "sha256": "6cce56feb22f22c64f8caf601b03e3cf58cda9b511b522c8bebb6c96950de006"
+  },
+  "rights": "NASA's Scientific Visualization Studio - Global Science and Technology, Inc./Alex Kekesi, NASA/GSFC/George Huffman, University of Maryland/Jackson Tan, ADNET Systems, Inc./Laurence Schuler, ADNET Systems, Inc./Ian Jones. Public domain. Sphere adaptation dedicated to CC0 1.0.",
+  "licence": "Science On a Sphere- IMERG Daily Precipitation Climatology (2001 - 2022) (SVS5478).webm \u2014 Public domain (https://creativecommons.org/publicdomain/mark/1.0/). New adaptation contributions are offered under CC0 1.0.",
+  "changes": "Kept the source\u2019s spherical projection and resampled to the display raster. Source excerpt 0\u201317.5 s. Encoded the supplied spherical cut at 640\u00d7320. [NASA visualization](https://svs.gsfc.nasa.gov/5478/)",
+  "audio": false,
+  "types": [
+    "orb"
+  ]
+}

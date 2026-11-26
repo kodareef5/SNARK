@@ -103,6 +103,7 @@ import { MovingStatics } from "./passes/moving-statics.ts";
 import { Beams } from "./passes/beams.ts";
 import { Ghost } from "./passes/ghost.ts";
 import { Things, type Thing } from "./passes/things.ts";
+import { Screens } from "./passes/screens.ts";
 import { CUTOUTS, Draws, NEAR_BUCKETS, type Cutouts } from "./draws.ts";
 
 export interface RenderWorld {
@@ -331,6 +332,8 @@ export class Scene {
   shotTick = 0;
   /** The scene draws rocket flames, smoke and blasts. */
   readonly blasts: Blasts;
+  /** The screens on props (passes/screens.ts), which the app tells each frame what each type shows. */
+  readonly screens: Screens;
   /** Whether what burns is drawn, which a page turns off for a before and after (passes.ts "bursts"). */
   get bursts(): boolean { return this.blasts.on; }
   set bursts(on: boolean) {
@@ -663,6 +666,7 @@ export class Scene {
     this.supplyDrops = new SupplyDrops(reg, this.assets, pack.palette, this.details);
     this.palette = pack.palette;
     this.blasts = new Blasts(reg, this.assets, this.put, this.details);
+    this.screens = new Screens(reg.screenFace);
     this.characters.thrusterPlumes.pictures(pack.header.details);
     this.dust.pictures(pack.header.details);
     this.dropped = new Dropped(reg, bind);
@@ -959,6 +963,8 @@ export class Scene {
       ["details", { draw: (f) => this.showDetails(f.cam, f.remote) }],
       // After the details, so fire is drawn over the dust and smoke round it.
       ["blasts", { draw: (f) => this.blasts.draw(p, f.cam, f.now) }],
+      // Last but the viewer's own body: screens are the least of a frame.
+      ["screens", this.screens],
       [
         "own body",
         {

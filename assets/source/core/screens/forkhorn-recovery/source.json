@@ -1,0 +1,15 @@
+{
+  "kind": "image",
+  "title": "Forkhorn Recovery — Three horns. No jack.",
+  "year": 2026,
+  "from": {
+    "by": "SNARK",
+    "sha256": "f2948b2e30ba07d39e9f0ba2f703aeb50a229850cbaf38baf009cc63c69bddd2"
+  },
+  "rights": "Made for SNARK, 2026",
+  "licence": "Made for the game and given to it under CC0 1.0.",
+  "audio": false,
+  "types": [
+    "billboard"
+  ]
+}
