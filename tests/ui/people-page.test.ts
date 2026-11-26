@@ -34,7 +34,7 @@ test("a new person is drawn from the city crowd and its doc is one the store rea
   d.name = "Rosa";
   expect(bytes(d)).toEqual(personFrom(77, POPULATIONS[0]!).look);
   expect(personFaults(d, S, BOOK)).toEqual([]);
-  expect(readPerson(personDoc(d) as unknown as Record<string, unknown>)).toEqual({ name: "Rosa", look: { seed: 77, population: "core:people_city", revision: 1, locks: {} }, outfit: null, wardrobe: null, notes: "" });
+  expect(readPerson(personDoc(d) as unknown as Record<string, unknown>)).toEqual({ name: "Rosa", look: { seed: 77, population: "core:people_city", revision: POPULATIONS[0]!.revision, locks: {} }, outfit: null, wardrobe: null, notes: "" });
 });
 
 test("drawing one part again changes only that part's bytes and locks it", () => {
@@ -96,7 +96,7 @@ test("another population keeps the seed and locks and names its revision", () =>
   const d = newPerson(S, 3);
   setLock(d.look, "face", true);
   choosePopulation(d, "core:people_beach", S);
-  expect(d.look).toMatchObject({ kind: "seed", seed: 3, population: "core:people_beach", revision: 1, locks: { face: 3 } });
+  expect(d.look).toMatchObject({ kind: "seed", seed: 3, population: "core:people_beach", revision: POPULATIONS.find((p) => p.id === "core:people_beach")!.revision, locks: { face: 3 } });
   expect(bytes(d)).toEqual(personFrom(3, POPULATIONS[1]!, undefined, { face: 3 }).look);
   d.look = { ...d.look, revision: 9 } as PersonDraft["look"];
   expect(personFaults({ ...d, name: "x" }, S, BOOK).map((f) => f.at)).toEqual(["look"]);
@@ -121,10 +121,10 @@ test("a promoted person comes from its page address with every part locked to it
   expect(d.look).toMatchObject({ kind: "seed", seed: 4242, population: 7, revision: 3 });
   expect(Object.keys((d.look as { locks: object }).locks).sort()).toEqual([...PART_NAMES].sort());
   expect(d.name).toBe("From the sheet");
-  expect(promotedFrom("?seed=x&population=core:people_city&revision=1")).toBeNull();
-  expect(promotedFrom("?seed=12&population=core%3Apeople_city&revision=1")!.look).toMatchObject({ population: "core:people_city" });
+  expect(promotedFrom(`?seed=x&population=core:people_city&revision=${POPULATIONS[0]!.revision}`)).toBeNull();
+  expect(promotedFrom(`?seed=12&population=core%3Apeople_city&revision=${POPULATIONS[0]!.revision}`)!.look).toMatchObject({ population: "core:people_city" });
   // Locked to its own seed, it is the very person of the sheet.
-  const p = promotedFrom("?seed=12&population=core:people_city&revision=1")!;
+  const p = promotedFrom(`?seed=12&population=core:people_city&revision=${POPULATIONS[0]!.revision}`)!;
   expect(lookBytes(p.look, S, BOOK)).toEqual(personFrom(12, POPULATIONS[0]!).look);
 });
 

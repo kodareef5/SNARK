@@ -5,7 +5,7 @@ import { CAST_CATALOGUE } from "../../content/cast/index.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { BEACH, CITY, POPULATIONS, WORKERS } from "../../content/people/defaults.ts";
 import { castPerson } from "../../server/cast/people.ts";
-import { HEAD_GROW, LOOK_AGE, LOOK_BEARD, LOOK_BEARD_LENGTH, LOOK_BYTES, LOOK_HAIR, LOOK_HAIR_COLOR, LOOK_HAIR_COLOR_2, LOOK_HAIR_LENGTH, LOOK_REGIONS, LOOK_SEX, REGIONS, lookScales, regionOf, validLook } from "../../shared/anim/look.ts";
+import { HAIR_STYLES, HEAD_GROW, LOOK_AGE, LOOK_BEARD, LOOK_BEARD_LENGTH, LOOK_BYTES, LOOK_HAIR, LOOK_HAIR_COLOR, LOOK_HAIR_COLOR_2, LOOK_HAIR_LENGTH, LOOK_REGIONS, LOOK_SEX, REGIONS, lookScales, regionOf, validLook } from "../../shared/anim/look.ts";
 import { B_HEAD, HUMAN_BONES } from "../../shared/anim/human.ts";
 import type { Character } from "../../shared/cast/state.ts";
 import { compileContent } from "../../shared/content/registry.ts";
@@ -105,7 +105,7 @@ test("two Cast presets of one character make different people of the name's sex"
 });
 
 test("a population that is not sound is told plainly", () => {
-  const bad = { ...CITY, id: "core:people_bad", revision: 0, women: 2, skin: [0, 0], hair: { men: [1], women: [1, 1, 1, 1, 1, 1, 1, 1] }, regions: { tail: [0, 1] as const, waist: [1, 0] as const }, age: [-2, 0] as const, outfits: [{ wear: ["core:stone"], weight: 1 }] } as PopulationDef;
+  const bad = { ...CITY, id: "core:people_bad", revision: 0, women: 2, skin: [0, 0], hair: { men: [1], women: Array(HAIR_STYLES.length + 1).fill(1) }, regions: { tail: [0, 1] as const, waist: [1, 0] as const }, age: [-2, 0] as const, outfits: [{ wear: ["core:stone"], weight: 1 }] } as PopulationDef;
   const errors = compileContent([...CORE_CONTENT, bad]).errors.join("\n");
   for (const want of ["revision is a whole number", "women is a share", "skin wants weights", "hair wants weights", "tail is no body region", "regions: waist is a low and a high", "age is a low and a high", '"core:stone" is not an item/armor']) expect([want, errors.includes(want)]).toEqual([want, true]);
 });

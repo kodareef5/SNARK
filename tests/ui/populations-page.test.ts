@@ -111,7 +111,7 @@ test("an outfit's pieces are garments or armour the world has", () => {
 
 test("a person is promoted only from a saved population, at the revision the sheet showed", () => {
   const built = draftOfBuiltIn(CITY);
-  expect(promoteRef(built, false)).toEqual({ ref: "core:people_city", revision: 1 });
+  expect(promoteRef(built, false)).toEqual({ ref: "core:people_city", revision: POPULATIONS[0]!.revision });
   expect(promoteRef(built, true)).toBeNull();
   const mine = draftOfListed({ id: 3, rev: 2, retired: false, doc: docOf(CITY) });
   expect(promoteRef(mine, false)).toEqual({ ref: 3, revision: 2 });
