@@ -136,10 +136,15 @@ test("a page's build stores the table as a file a page gives back byte for byte"
   giveSky(skyFile(table));
   expect(theSky().table).toEqual(table);
   expect(theSky().lights).toEqual(sky.lights);
-  const oldFile = Uint8Array.from(table, (byte, i) => byte - (table[i - 4] ?? 0));
+  const varied = Uint8Array.from(table, (_, i) => (i * 13) ^ (i >> 2) ^ (i >> 9));
+  varied.set([83, 75, 89, 2]);
+  giveSky(skyFile(varied));
+  expect(theSky().table).toEqual(varied);
+  const oldFile = Uint8Array.from(varied, (byte, i) => byte - (varied[i - 4] ?? 0));
   giveSky(oldFile);
-  expect(theSky().table).toEqual(table);
-  const short = skyFile(table).subarray(0, table.length);
+  expect(theSky().table).toEqual(varied);
+  giveSky(skyFile(table));
+  const short = skyFile(table).subarray(0, -1);
   expect(() => giveSky(short)).toThrow(`the sky's table is ${short.length} bytes`);
 });
 
