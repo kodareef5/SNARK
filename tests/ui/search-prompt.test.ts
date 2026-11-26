@@ -5,9 +5,13 @@ import { expect, test } from "bun:test";
 import { KEY_PROMPT } from "../../client/core/hud/prompt.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
 import { flatMap } from "../fixtures/map.ts";
+import { coreRegistry } from "../fixtures/world.ts";
 import { camp, look, put, screen, shown, tap, until } from "../kit/kit.ts";
 
-const file = writeMap(flatMap(4, { statics: [{ kind: "core:zzstreet_bin", x: 120, y: 0, z: 120, yaw: 0 }, { kind: "core:zzstreet_hydrant", x: 130, y: 0, z: 120, yaw: 0 }] }));
+const reg = coreRegistry();
+const wreck = reg.ids.find((id, i) => reg.holds[i] === "wreck" && reg.salvageYield[i] != null)!;
+const hull = reg.ids.find((id, i) => reg.holds[i] === "hull")!;
+const file = writeMap(flatMap(4, { statics: [{ kind: "core:zzstreet_bin", x: 120, y: 0, z: 120, yaw: 0 }, { kind: "core:zzstreet_hydrant", x: 130, y: 0, z: 120, yaw: 0 }, { kind: wreck, x: 150, y: 0, z: 120, yaw: 0 }, { kind: hull, x: 180, y: 0, z: 120, yaw: 0 }] }));
 
 test("the use key held on a bin searches it and opens it; a tap does nothing, and an emptied bin says searched", () => {
   const { h, ada } = camp({ place: { map: file, at: () => ({ x: 120, z: 118.6 }) }, screen: true, god: true, rules: { WorldLootChanceMultiplier: 4 } });
@@ -47,4 +51,19 @@ test("the use key held on a bin searches it and opens it; a tap does nothing, an
   look(h, ada, { x: 130, y: 0.4, z: 120 });
   h.run(300);
   expect(shown(view, KEY_PROMPT)).toBeNull();
+});
+
+test("a street wreck and a dead boat are searched by the same hold, each by its own word", () => {
+  const { h, ada } = camp({ place: { map: file, at: () => ({ x: 150, z: 117 }) }, screen: true, god: true });
+  const view = screen(h, ada);
+  const prompt = (x: number, back: number): string | null => {
+    put(h, ada, { x, z: 120 - back });
+    look(h, ada, { x, y: 0.8, z: 120 });
+    h.run(400);
+    return shown(view, KEY_PROMPT);
+  };
+  expect(prompt(150, 3)).toBe("hold E  search the wreck");
+  // A dead boat keeps the word that tells it from one that sails.
+  const half = reg.halfZ[reg.index.get(hull)!]!;
+  expect(prompt(180, half + 1.5)).toBe("hold E  search the derelict");
 });

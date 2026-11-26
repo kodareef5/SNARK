@@ -5,7 +5,7 @@ edit it by hand: change the catalogue and run the tool.
 
 A server is configured as ARK's is ([how](round5-settings.md), and [what the
 values mean](round5-game-ini.md)). Every setting an ARK dedicated server reads
-is listed here, 629 of them: 265 take effect,
+is listed here, 630 of them: 266 take effect,
 174 wait for a feature that is not built yet, and 190 have no meaning in this
 engine. A setting that does not take effect is still read, checked and
 reported when the server starts.
@@ -155,6 +155,7 @@ the admin's settings page may change a setting without a restart.
 | `CastHourlyBatch` | 50 | Featured people the planner's hourly pass looks in on. *Ours.* | yes |
 | `WorldLootEnabled` | True | Loot lies in the world besides supply drops: in creatures' bodies, by the drop book's sources. Off, nothing of it is rolled. *Ours (planning/workstreams/loot.md).* | yes |
 | `BodyLootEnabled` | True | A wild creature's body holds loot, more for a bigger creature of a higher level. Off, a body holds only what the creature carried. *Ours.* | yes |
+| `VehicleLootEnabled` | True | A found car or boat holds loot, rolled when its hold is first opened, and dead wrecks and hulls are searched. Off, a found vehicle is empty and a wreck is only salvage. *Ours.* | yes |
 | `StreetLootEnabled` | True | Street things hold loot: bins, mailboxes, newspaper boxes and pay stations are searched by holding the use key. Off, they are scenery. *Ours.* | yes |
 | `WorldLootRefillPeriodMultiplier` | 1 | How long a searched thing takes to hold loot again. Higher is longer. *Ours. A thing already searched keeps the time it was given.* | yes |
 | `WorldLootChanceMultiplier` | 1 | How often a thing that may hold loot does: every source's chance is multiplied by it. *Ours.* | yes |
