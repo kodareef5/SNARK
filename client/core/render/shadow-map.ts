@@ -1,3 +1,4 @@
+import type { Tier } from "../assets/tiers.ts";
 import type { OpenMap } from "./skyopen.ts";
 
 /** Metres over the ground's floor (Heightfield minY) the map's heights reach: 16-bit steps of 3.1 cm. */
@@ -14,6 +15,12 @@ export const FAR_LEAD = 1;
 export const FAR_RISE = 1;
 /** The least of the sun's way along the ground a lookup's lead is divided by, so it stays finite with the sun overhead. */
 export const FLAT_LEAST = 0.05;
+
+/**
+ * The first of the far map's two layers of the shadow array, after a layer for each cascade the tier had before the
+ * governor took any (tiers.ts `base`), so a governor's step moves no layer.
+ */
+export const farLayer = (shadows: Tier["shadows"]): number => shadows.base ?? shadows.cascades;
 
 /** A sweep asked of where levels are made: the solid heights and their ground, nothing else of the map. */
 export interface SweepJob {

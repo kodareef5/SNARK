@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { BREAK_BLOCKS } from "../../content/breaks/kinds.ts";
 import { CITY_MATERIALS } from "../../content/breaks/materials.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
+import { CLOUD_GRENADE_PROPS } from "../../content/items/explosives.ts";
 import { RUIN_BLOCKS } from "../../content/miami-ruins.ts";
 import { SLOPE_BLOCKS, SLOPE_SHAPES } from "../../content/slopes.ts";
 import { LETTER_BLOCKS } from "../../content/lettering.ts";
@@ -106,14 +107,14 @@ test("the core pack's definitions fall into the classes, each passing its row", 
     "prop/container": 2,
     "prop/crate": 3,
     // And the jet's missile in flight.
-    "prop/projectile": 3,
+    "prop/projectile": 5,
     buff: 7,
     spawns: 4,
     map: 5, // miami-coast became Miami (D810)
   });
   // 253 with the supply drop's capsule (content/core.ts), the template hammer and its engram, air support's three vehicles,
   // the map events' two crates, and the jet's six: its species, two weapons, two rounds and its missile in flight.
-  expect(rest.length).toBe(253 + 2 + 3 + 2 + 6 + FREIGHT_ORDER.length + SKATEBOARDS.length + ROAD_FLEET.length + MARINE_FLEET.length + RUIN_BLOCKS.length + TERMINALS.length + ORBS.length + SLOPE_BLOCKS.length + LETTER_BLOCKS.length + WRECKS.length + TANKER_WRECKS.length + HARBOUR_WRECKS.length + STREET.length + SCREEN_PROPS.length + DOCKS.length + BREAK_BLOCKS.length + CITY_MATERIALS.length);
+  expect(rest.length).toBe(253 + 2 + 3 + 2 + 6 + CLOUD_GRENADE_PROPS.length + FREIGHT_ORDER.length + SKATEBOARDS.length + ROAD_FLEET.length + MARINE_FLEET.length + RUIN_BLOCKS.length + TERMINALS.length + ORBS.length + SLOPE_BLOCKS.length + LETTER_BLOCKS.length + WRECKS.length + TANKER_WRECKS.length + HARBOUR_WRECKS.length + STREET.length + SCREEN_PROPS.length + DOCKS.length + BREAK_BLOCKS.length + CITY_MATERIALS.length);
   // Each creature file has one species, and what else it has is the egg it lays, its saddle and how the saddle is made.
   expect(CORE_CONTENT.length).toBe(rest.length + later.length + CREATURES.length + FEATURES_CONTENT.length);
   const brought: Record<string, number> = {};
@@ -177,7 +178,7 @@ const STUBS: ContentPack = {
     { id: "stub:poison", type: "damage", label: "poison", torpor: 2, trueShare: 1 },
     { id: "stub:drop", type: "loot", sets: { min: 1, max: 2 }, from: [{ min: 1, max: 3, entries: [{ items: ["core:stone", "stub:relic"], min: 1, max: 20, quality: [1, 3], blueprint: 0.25 }] }] },
     { id: "stub:beach", type: "spawns", entries: [{ group: ["core:parasaur"], weight: 3 }, { name: "Alphas", group: ["stub:alpha", "core:raptor"], chances: [1, 0.5], offsets: [[0, 2], [0, -2]], weight: 0.1 }], limits: [{ species: "stub:alpha", share: 0.05 }] },
-    { id: "stub:alpha", extends: "core:raptor", tag: "raptor", variant: "alpha", boss: true, loot: "stub:drop", buffs: ["core:fed"], saddle: "core:saddle_raptor", attacks: [{ name: "bite", damage: 60, type: "melee", reach: 2, ticks: 27, lands: 11 }] },
+    { id: "stub:alpha", extends: "core:raptor", tag: "raptor", variant: "alpha", boss: true, size: "apex", buffs: ["core:fed"], saddle: "core:saddle_raptor", attacks: [{ name: "bite", damage: 60, type: "melee", reach: 2, ticks: 27, lands: 11 }] },
     { id: "stub:rules", type: "game", survivor: "core:survivor", cache: "core:cache", bag: "core:bag", levels: "core:levels", buffs: ["core:fed"] },
     { id: "stub:island", type: "map", label: "The island", seaLevel: 0, game: "stub:rules", zones: [{ kind: "spawn", at: [100, 100], radius: 80, spawns: "stub:beach", count: 12 }, { kind: "crate", at: [300, 200], radius: 40, crate: "stub:crate" }] },
     { id: "stub:engram-shield", type: "engram", label: "Shield", level: 80, cost: 0, item: "stub:shield", requires: ["core:engram-spear"], group: "island", from: "stub:alpha" },
@@ -207,7 +208,7 @@ test("one of every stub class and stub field compiles beside the core pack, and 
   expect(bad("stub:engram-shield", { item: "core:spear" })).toEqual(['stub:engram-shield: core:engram-spear already unlocks "core:spear"']);
   expect(bad("stub:shield", { craft: { needs: [{ item: "core:wood", count: 1 }], seconds: 1, xp: 1, at: "core:wall_wood" } })).toEqual(['stub:shield: "core:wall_wood" is not a structure/station']);
   expect(bad("stub:alpha", { saddle: "core:hide_hat" })).toEqual(['stub:alpha: "core:hide_hat" is not an item/saddle']);
-  expect(bad("stub:alpha", { loot: "nowhere:x" })).toEqual(['stub:alpha: "nowhere:x" is not a loot']);
+  expect(bad("stub:alpha", { size: "vast" })).toEqual(["stub:alpha: size is one of small, medium, large, apex"]);
   expect(bad("stub:poison", { trueShare: "all" })).toEqual(['stub:poison: "trueShare" must be a number']);
   expect(bad("stub:island", { weather: "rain" })).toEqual(['stub:island: class map may not declare "weather"']);
 });

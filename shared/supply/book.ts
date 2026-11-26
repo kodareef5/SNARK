@@ -6,14 +6,14 @@
 
 import type { LootCount } from "../content/defs.ts";
 import { fitBytes } from "../net/codec.ts";
-import { MOST_LOOT, POWER_MOST, POWER_STEPS } from "../sim/loot.ts";
+import { BODY_SIZES, MOST_LOOT, POWER_MOST, POWER_STEPS } from "../sim/loot.ts";
 import { SUPPLY_NAME_BYTES } from "../sim/supply.ts";
 
 export const BOOK_FORMAT = 1;
 /** A key of a tier, class, set, table, circuit or site: what a path in a fault or a URL can carry unescaped. */
 export const KEY = /^[a-z0-9][a-z0-9_.\/-]{0,47}$/;
 /** The most of each a book may hold, so that a mistaken or hostile document costs a bounded amount to check and roll. */
-export const MOST = { tiers: 16, classes: 32, sets: 2000, entries: 64, items: 64, tables: 1024, slots: 16, from: 64, circuits: 64, sites: 4096, future: 4000, bytes: 2 * 1024 * 1024 } as const;
+export const MOST = { tiers: 16, classes: 32, sets: 2000, entries: 64, items: 64, tables: 1024, slots: 16, from: 64, circuits: 64, sites: 4096, future: 4000, sources: 256, steps: 16, bytes: 2 * 1024 * 1024 } as const;
 /** Slots of the capsule a drop lands as (content/supply/capsule.ts gives the prop this many). */
 export const CAPSULE_SLOTS = 60;
 
@@ -186,6 +186,65 @@ export interface SiteDoc {
   weight?: number;
 }
 
+/** What a source is the loot of. More kinds come with the things that hold loot (planning/workstreams/loot.md). */
+export const SOURCE_KINDS = ["body", "static", "vehicle"] as const;
+export type SourceKind = (typeof SOURCE_KINDS)[number];
+/** Where a source's table key takes the key of the tier it is rolled at: "{tier}/arms". */
+export const TIER_MARK = "{tier}";
+
+/** Which things a source is the loot of. Each part not given lets everything by. */
+export interface SourceWhen {
+  /** A body's species or a vehicle's kind, by content id. */
+  species?: string[];
+  /** A body's size (BODY_SIZES, shared/sim/loot.ts). */
+  size?: string[];
+  /** A body's level, or the storey a static stands on, least and most. */
+  level?: [number, number];
+  /** The kind of building a static stands in: "hospital", "warehouse". */
+  building?: string[];
+  /** The band of the map a static stands in, by the drops' sites: "shore", "inland", "deep". */
+  band?: string[];
+  /** A static's tag (StructureDef.holds): "bin", "mailbox". */
+  holds?: string[];
+  /** How a found vehicle moves: "wheeled", "boat", "rotor", "jet". Its kind is told by `species`. */
+  vehicle?: string[];
+}
+
+/** A table a source rolls: its key, which may hold TIER_MARK, and the slots of it rolled, by name; all where not given. */
+export interface SourceTable {
+  table: string;
+  slots?: string[];
+  weight?: number;
+}
+
+/**
+ * A place loot lies besides a drop: a creature's body, and later a hold, a street thing, a room. Every source that
+ * matches a thing rolls for it, so a narrower one adds to a wider one.
+ */
+export interface SourceDoc {
+  key: string;
+  name?: string;
+  on: boolean;
+  kind: SourceKind;
+  when?: SourceWhen;
+  /** The share of such things that hold anything of it; 1 where not given. */
+  chance?: number;
+  /** How many of its tables are rolled, least and most; one where not given. */
+  rolls?: [number, number];
+  tables: SourceTable[];
+  /** The tier it rolls at, and steps that raise it: the last whose level the thing has reached (a body's level, a static's storey). */
+  tier?: string;
+  ladder?: { level: number; tier: string }[];
+  /** Game hours before a thing that stands holds loot again, least and most, from when it was first searched. A day where not given. */
+  refillHours?: [number, number];
+  /**
+   * What one such thing is balanced to give, those that give nothing counted: `share` of its tier's target, or the
+   * worth `target` where it has no tier.
+   */
+  share?: number;
+  target?: number;
+}
+
 export interface SupplyBook {
   format: typeof BOOK_FORMAT;
   /** The map it was written for. A server on another map passes the book over. "" is any map (the starter). */
@@ -201,6 +260,8 @@ export interface SupplyBook {
   future: Record<string, FutureDoc>;
   circuits: CircuitDoc[];
   sites: SiteDoc[];
+  /** Where loot lies besides drops. A book without the section has the starter's (content/loot/starter.ts). */
+  sources?: SourceDoc[];
 }
 
 /** The key of the table of a tier and a class. */
@@ -463,6 +524,68 @@ export function bookFaults(book: unknown): BookFault[] {
       }
       share(`${path}.ringedChance`, c.ringedChance);
     });
+  }
+
+  // Sources.
+  if (b.sources !== undefined) {
+    const tables = isObject(b.tables) ? (b.tables as Record<string, unknown>) : {};
+    const sourceKeys = new Set<string>();
+    if (!Array.isArray(b.sources) || b.sources.length > MOST.sources) bad("sources", `at most ${MOST.sources} sources`);
+    else {
+      b.sources.forEach((src, i) => {
+        const path = `sources.${i}`;
+        if (!isObject(src)) return bad(path, "a source is an object");
+        const s = src as unknown as Partial<SourceDoc>;
+        if (key(`${path}.key`, s.key)) {
+          if (sourceKeys.has(s.key as string)) bad(`${path}.key`, "a source's key is its own");
+          sourceKeys.add(s.key as string);
+        }
+        if (s.name !== undefined && !named(s.name)) bad(`${path}.name`, NAME_FAULT);
+        if (typeof s.on !== "boolean") bad(`${path}.on`, "true or false");
+        if (!SOURCE_KINDS.includes(s.kind as SourceKind)) bad(`${path}.kind`, `one of ${SOURCE_KINDS.join(", ")}`);
+        share(`${path}.chance`, s.chance);
+        if (s.rolls !== undefined && !(Array.isArray(s.rolls) && s.rolls.length === 2 && Number.isInteger(s.rolls[0]) && Number.isInteger(s.rolls[1]) && s.rolls[0] >= 0 && s.rolls[1] >= s.rolls[0] && s.rolls[1] <= MOST.slots)) bad(`${path}.rolls`, `[least, most], whole, from 0 to ${MOST.slots}`);
+        const w = s.when;
+        if (w !== undefined) {
+          if (!isObject(w)) bad(`${path}.when`, "{ species, size, level, holds, vehicle, building, band }");
+          else {
+            if (w.species !== undefined && !(Array.isArray(w.species) && w.species.length <= MOST.items && w.species.every((id) => typeof id === "string" && id.length > 0 && id.length <= 96))) bad(`${path}.when.species`, `at most ${MOST.items} species ids`);
+            if (w.size !== undefined && !(Array.isArray(w.size) && w.size.every((v) => (BODY_SIZES as readonly string[]).includes(v)))) bad(`${path}.when.size`, `of ${BODY_SIZES.join(", ")}`);
+            if (w.holds !== undefined && !(Array.isArray(w.holds) && w.holds.length <= MOST.items && w.holds.every((v) => typeof v === "string" && /^[a-z][a-z0-9_/-]{0,31}$/.test(v)))) bad(`${path}.when.holds`, `at most ${MOST.items} tags of small letters`);
+            for (const part of ["building", "band"] as const) if (w[part] !== undefined && !(Array.isArray(w[part]) && w[part].length <= MOST.items && w[part].every((v) => typeof v === "string" && /^[a-z][a-z0-9_/-]{0,47}$/.test(v)))) bad(`${path}.when.${part}`, `at most ${MOST.items} names of small letters`);
+            if (w.vehicle !== undefined && !(Array.isArray(w.vehicle) && w.vehicle.every((v) => ["wheeled", "boat", "rotor", "jet"].includes(v)))) bad(`${path}.when.vehicle`, "of wheeled, boat, rotor, jet");
+            if (w.level !== undefined && !(Array.isArray(w.level) && w.level.length === 2 && finite(w.level[0]) && finite(w.level[1]) && w.level[0] >= 0 && w.level[1] >= w.level[0])) bad(`${path}.when.level`, "[least, most]");
+          }
+        }
+        const tiers: string[] = [];
+        if (s.tier !== undefined) (tierKeys.has(s.tier) ? tiers.push(s.tier) : bad(`${path}.tier`, "names a tier of the book"));
+        if (s.ladder !== undefined) {
+          if (!Array.isArray(s.ladder) || s.ladder.length > MOST.steps) bad(`${path}.ladder`, `at most ${MOST.steps} steps`);
+          else
+            s.ladder.forEach((step, j) => {
+              if (!isObject(step) || !(Number.isInteger(step.level) && step.level >= 0 && step.level <= 100000)) return bad(`${path}.ladder.${j}`, "{ level, tier }, the level a whole number");
+              if (j > 0 && !(step.level > (s.ladder![j - 1]?.level ?? -1))) bad(`${path}.ladder.${j}.level`, "each step is higher than the one before");
+              if (tierKeys.has(step.tier)) tiers.push(step.tier);
+              else bad(`${path}.ladder.${j}.tier`, "names a tier of the book");
+            });
+        }
+        if (!Array.isArray(s.tables) || s.tables.length === 0 || s.tables.length > MOST.from) bad(`${path}.tables`, `1 to ${MOST.from} tables`);
+        else
+          s.tables.forEach((t, j) => {
+            const at = `${path}.tables.${j}`;
+            if (!isObject(t) || typeof t.table !== "string") return bad(at, "{ table, slots, weight }");
+            weightOf(`${at}.weight`, t.weight);
+            if (t.slots !== undefined && !(Array.isArray(t.slots) && t.slots.length > 0 && t.slots.length <= MOST.slots && t.slots.every((n) => typeof n === "string" && n.length > 0 && n.length <= 48))) bad(`${at}.slots`, `1 to ${MOST.slots} slot names`);
+            const marked = t.table.includes(TIER_MARK);
+            if (marked && tiers.length === 0) bad(`${at}.table`, `${TIER_MARK} needs the source to have a tier`);
+            for (const k of marked ? tiers.map((tier) => t.table.replace(TIER_MARK, tier)) : [t.table]) if (!Object.hasOwn(tables, k)) bad(`${at}.table`, `names a table of the book (${k})`);
+          });
+        if (s.refillHours !== undefined && !(Array.isArray(s.refillHours) && s.refillHours.length === 2 && finite(s.refillHours[0]) && finite(s.refillHours[1]) && s.refillHours[0] > 0 && s.refillHours[1] >= s.refillHours[0] && s.refillHours[1] <= 24 * 365)) bad(`${path}.refillHours`, "[least, most] game hours, above 0");
+        if (s.share !== undefined) num(`${path}.share`, s.share, 0, 100, "a share of its tier's target");
+        if (s.target !== undefined) num(`${path}.target`, s.target, 0, 1e9, "a worth");
+        if (s.share !== undefined && tiers.length === 0) bad(`${path}.share`, "a share is of a tier's target: the source has none");
+      });
+    }
   }
   return out;
 }

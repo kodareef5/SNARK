@@ -7,6 +7,14 @@ City structures
 Doors
 - Hinged doors and Tek doors respect tribe access. A blocked door or a Tek field that stays open leaves nearby survivors in place.
 
+World loot
+- Hold E to search street bins, mailboxes, wrecks, beds and counters. Found vehicles can carry supplies, and wild creatures can leave loot on their bodies.
+- Search weed-covered hulls in Miami for organic polymer, sunken hulks in Tampa for angler gel, and residential beds in San Francisco for pelt.
+
+Shadows
+- Building shadows stay visible as city blocks stream in. Distant shadows update together, and fine shadow edges stay steadier through a scope.
+- Shade under creatures fades with distance. A body just outside the camera view can still cast a shadow into the scene.
+
 Resources
 - All 25 resource drops have their own models and matching inventory icons. Look for the shape of the charcoal, pelt or folded freight order on the ground and in your pack.
 - Another 21 items have matching drops and icons, including raw and cooked meats, waterskins, the radio and the magnifying glass.
@@ -19,6 +27,8 @@ Marinas
 - On rebuilt maps, weathered hulls sit low or crooked in their berths. Some marina wrecks burn and give off smoke.
 
 Item art
+- Hand tools have new silhouettes in hand, on the ground and in inventory. Camp gear and industrial stations have their own models, including the sleeping bag, grinder and forge.
+- Creature eggs keep their species markings when laid or dropped. A pale ring marks a fertile egg. The death cache, skate ramps, vehicle kits and depleted resource nodes are also easier to recognise.
 - Radio and GPS screens stay legible up close. Saddle leather, straps and stitching have clearer finishes, and dropped gear keeps its colours as it switches to simpler models at a distance.
 
 City maps

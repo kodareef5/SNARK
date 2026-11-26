@@ -1,4 +1,4 @@
-import type { Def } from "../../shared/content/defs.ts";
+import type { Def, PropDef } from "../../shared/content/defs.ts";
 import { crafting, making } from "../craft.ts";
 
 // The weapons program's thrown things: the explosives, the bola and later the clouds (planning/reference/weapons-plan.md,
@@ -60,7 +60,7 @@ export const EXPLOSIVES: readonly Def[] = [
   // global 4 as the grenade's is (45.4); made in the inventory of 1 metal ingot, 10 charcoal, 2 wood, 6 hide, 3 flint, 15
   // fiber, 5 thatch and 5 sparkpowder, after Sparkpowder. Its height and its making time are on no page: 5 m, so it stands
   // over a survivor, and the grenade's 8 s. Its 10 charcoal went in with stations S6, once fires left charcoal (S1).
-  { type: "item", class: "weapon", id: id("grenade_smoke"), label: "smoke grenade", stack: 10, weight: 0.5, color: 2, weapon: { kind: "thrown", speed: 18, fuse: 5, uses: 1, mesh: id("grenade"), hold: "tool", cloud: { prop: id("cloud_smoke"), seconds: 40 } } },
+  { type: "item", class: "weapon", id: id("grenade_smoke"), label: "smoke grenade", stack: 10, weight: 0.5, color: 2, weapon: { kind: "thrown", speed: 18, fuse: 5, uses: 1, mesh: id("grenade_smoke"), hold: "tool", cloud: { prop: id("cloud_smoke"), seconds: 40 } } },
   { type: "prop", class: "cloud", id: id("cloud_smoke"), mesh: "box", color: 2, radius: 9, height: 5 },
   ...crafting(id("grenade_smoke"), { needs: needs([["ingot", 1], ["charcoal", 10], ["wood", 2], ["hide", 6], ["flint", 3], ["fiber", 15], ["thatch", 5], ["sparkpowder", 5]]), seconds: 8, xp: 45.4 }),
   { type: "engram", id: id("engram-grenade_smoke"), label: "Smoke grenade", level: 24, cost: 18, item: id("grenade_smoke"), requires: [id("engram-sparkpowder")] },
@@ -74,10 +74,15 @@ export const EXPLOSIVES: readonly Def[] = [
   // stops it (Gas Mask) is not built. It is made at the fabricator of the page's eight ingredients, charcoal and crystal now
   // items (stations S6); the tripwire narcotic trap its engram also needs is not built (DEV143). No page gives its making
   // time: the grenade's 8 s.
-  { type: "item", class: "weapon", id: id("grenade_poison"), label: "poison grenade", stack: 10, weight: 1.5, color: 17, weapon: { kind: "thrown", speed: 18, fuse: 2.5, uses: 1, mesh: id("grenade"), hold: "tool", cloud: { prop: id("cloud_poison"), seconds: 20, buff: id("poisoned") } } },
+  { type: "item", class: "weapon", id: id("grenade_poison"), label: "poison grenade", stack: 10, weight: 1.5, color: 17, weapon: { kind: "thrown", speed: 18, fuse: 2.5, uses: 1, mesh: id("grenade_poison"), hold: "tool", cloud: { prop: id("cloud_poison"), seconds: 20, buff: id("poisoned") } } },
   { type: "prop", class: "cloud", id: id("cloud_poison"), mesh: "box", color: 17, radius: 6, height: 4 },
   // Given for a little over half a second at a time by the cloud a survivor stands in (server/clouds.ts CLOUD_HOLD).
   { type: "buff", id: id("poisoned"), label: "Poisoned", color: 17, seconds: 0.7, torpor: 25 },
   ...crafting(id("grenade_poison"), { needs: needs([["narcotic", 10], ["charcoal", 14], ["ingot", 5], ["sparkpowder", 18], ["gunpowder", 12], ["crystal", 5], ["fiber", 20], ["flint", 5]]), seconds: 8, xp: 33, at: id("fabricator") }),
   { type: "engram", id: id("engram-grenade_poison"), label: "Poison grenade", level: 40, cost: 18, item: id("grenade_poison"), requires: [id("engram-grenade_smoke")] },
+];
+
+export const CLOUD_GRENADE_PROPS: readonly PropDef[] = [
+  { type: "prop", class: "projectile", id: id("grenade_smoke_live"), mesh: id("grenade_smoke/dropped"), color: 2, radius: 0.08, height: 0.12 },
+  { type: "prop", class: "projectile", id: id("grenade_poison_live"), mesh: id("grenade_poison/dropped"), color: 17, radius: 0.08, height: 0.12 },
 ];

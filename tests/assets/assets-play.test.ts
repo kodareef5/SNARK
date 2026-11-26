@@ -180,11 +180,11 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // The map events' two crates and the jet's kinds move the kind and mesh numbers again: 5d794b7d without them.
   // The UFO's core drawn by its own mesh, not the box, moves the mesh numbers: 4274b395 as a box.
   // Tek and the screen props shift the mesh indices for both versions of this scene.
-  expect(beforePlain).toBe("5a596e5d");
+  expect(beforePlain).toBe("e3f8049");
   // And 8a56e259 without them.
   // And abaec19d without the launcher's and the fire's.
   // And 9b5eca1d without the map events' crates and the jet's kinds, and c0bba30d with the UFO's core a box.
-  expect(hash).toBe("69c639dd");
+  expect(hash).toBe("b9cef0b9");
   // What the hash cannot say: the 300 frames' draws, triangles and bytes put on the card. A change that moves the hash
   // and leaves the frames as they were leaves these.
   expect(counts).toEqual([34500, 32934000, 0]);
@@ -215,10 +215,10 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // And da3d705d and bf469505 until a built piece's draws said so, as above.
   // And 78cbed4d and cff7a70d with the built piece's flag on bit 20, as above.
   // And 63cbed4d until the map events' crates and the jet's kinds, and cb9a5279 with the UFO's core a box, as above.
-  expect(saddled.beforePlain).toBe("c5122a9");
+  expect(saddled.beforePlain).toBe("45222e55");
   // And e2d31e0d until the things blocked out and their box.
   // And 8e058329 until the launcher's and the fire's meshes.
   // And 3e37a70d until the map events' crates and the jet's kinds, and 47f3aaf1 with the UFO's core a box.
-  expect(saddled.hash).toBe("66aaf6d9");
+  expect(saddled.hash).toBe("679a0f85");
   expect(saddled.counts).toEqual([34800, 32952000, 0]);
 });

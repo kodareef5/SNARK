@@ -305,8 +305,8 @@ test("a frame at night on high: the lamp's lens, light and way in the frame bloc
   const p = frames(0);
   const f = p.frame;
   [10, 8.85 - 1.7, 0.9].forEach((v, k) => expect(f[LAMP_AT + k]).toBeCloseTo(v, 4));
-  expect([f[LAMP_AT + 3], f[LAMP_AT + 7], f[LAMP_AT + 24], f[LAMP_AT + 25]]).toEqual([LAMP_RANGE, shadowLayer(MAX_CASCADES, 3), 0, 1]);
-  expect(shadowLayer(MAX_CASCADES, 3)).toBe(shadowLayers(tierOf("high").shadows) - 1);
+  expect([f[LAMP_AT + 3], f[LAMP_AT + 7], f[LAMP_AT + 24], f[LAMP_AT + 25]]).toEqual([LAMP_RANGE, 5, 0, 1]);
+  expect(shadowLayer(MAX_CASCADES, tierOf("high").shadows)).toBe(shadowLayers(tierOf("high").shadows) - 1);
   expect(p.cascadesDrawn & LAMP_BIT).toBe(LAMP_BIT);
   expect(Array.from(p.maps.subarray(MAX_CASCADES * 16))).toEqual(Array.from(f.subarray(LAMP_AT + 8, LAMP_AT + 24)));
   expect(Array.from(p.maps.subarray(0, 16))).toEqual(Array.from(p.cascades.subarray(0, 16)));
@@ -335,7 +335,7 @@ test("by day, at dusk before the lamps are on, on medium and on a phone, no lamp
     for (let e = 0; e < p.casterCount; e++) expect(p.casterCascades[e]! & LAMP_BIT).toBe(0);
   }
   // Only high and ultra off a phone hold its layer.
-  expect([tierOf("medium"), tierOf("high"), tierOf("ultra"), forTouch(tierOf("high"), true)].map((t) => shadowLayers(t.shadows))).toEqual([3, 5, 6, 4]);
+  expect([tierOf("medium"), tierOf("high"), tierOf("ultra"), forTouch(tierOf("high"), true)].map((t) => shadowLayers(t.shadows))).toEqual([4, 6, 7, 5]);
 });
 
 /** A frame block whose contact list holds `boxes`: each its middle, camera-relative, its yaw and its half extents across, up and along. */

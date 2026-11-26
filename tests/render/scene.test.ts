@@ -584,7 +584,7 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // forms (content/street.ts BOARDS) numbered the meshes after them on.
   // It was 763957391 until the tall and the grand billboard and their bare forms did the same.
   // Boat wreck kinds renumber the meshes. Distant loose items now use their coarser levels.
-  expect(hash).toBe(766397611);
+  expect(hash).toBe(2041450253);
 
   // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
   // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of
@@ -636,7 +636,7 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // And 3617411346 until the laid fallen front and the billboards' other sizes, as above.
   // And 3606419820 until the tall and the grand billboard, as above.
   // The saddled scene uses the same wreck kinds and distance-based loose item levels.
-  expect(saddled.hash).toBe(3070105846);
+  expect(saddled.hash).toBe(3741717295);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {

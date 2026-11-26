@@ -14,12 +14,18 @@ import { vehicleWeather } from "./street-finish.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
 import type { RemoteSample } from "../session.ts";
 import { isWheelVehicle } from "../../../shared/sim/vehicle.ts";
-import { FRAME, MAX_CONTACTS } from "./packet.ts";
+import { CONTACT_REACH_AT, FRAME, MAX_CONTACTS } from "./packet.ts";
 
 /** The most of the sky's light contact takes, where a body hides all of it. */
 export const CONTACT_MOST = 0.8;
 /** Metres from the camera past which a body is left out: its contact is under a pixel or two. */
 const CONTACT_REACH = 60;
+/**
+ * The share of the list's reach past which a body's shade fades, to none at the reach, by its distance squared. The
+ * reach is CONTACT_REACH or, nearer, the distance of the nearest body left out for want of a slot (CONTACT_REACH_AT),
+ * so a body leaving the list, by distance or for a nearer one, has no shade left as it goes.
+ */
+const CONTACT_FADE = 0.75;
 
 /** The bodies taken this frame, nearest first, by their place in the remote sample (its count for the viewer's own), and how far each is. */
 const pick = new Int32Array(MAX_CONTACTS);
@@ -32,17 +38,25 @@ const far = new Float64Array(MAX_CONTACTS);
  * tail on a body of 1.25 m radius) is as long as it is.
  * Each is two slots: its middle, camera-relative, and the cosine of its yaw; then its half extents across, up and
  * along, and the sine of its yaw. A negative half length marks an upright, wheeled chassis. A list shorter than the slots ends at a half extent of 0.
+ * A body is as far as its middle, which is what the shader knows of it. The list's reach goes to CONTACT_REACH_AT.
  */
 export function contactFrame(frame: Float32Array, on: boolean, reg: Pick<Registry, "bodyRadius" | "bodyHeight" | "vehicle">, remote: RemoteSample | null, own: { kind: number; x: number; y: number; z: number; yaw: number } | null, cam: { x: number; y: number; z: number }, long: (kind: number) => number = () => 0): void {
   frame.fill(0, FRAME.contact, FRAME.contact + MAX_CONTACTS * 8);
+  frame[CONTACT_REACH_AT] = 0;
   if (!on) return;
   const n = remote?.count ?? 0;
-  let count = 0;
+  let count = 0, out = Infinity;
   for (let i = 0; i <= n; i++) {
     if (i === n ? !own : (remote!.cue[i]! & CUE_DEAD) !== 0) continue;
     const kind = i < n ? remote!.kind[i]! : own!.kind;
-    const d = i < n ? Math.hypot(remote!.x[i]! - cam.x, remote!.y[i]! - cam.y, remote!.z[i]! - cam.z) : Math.hypot(own!.x - cam.x, own!.y - cam.y, own!.z - cam.z);
-    if (d > CONTACT_REACH || reg.bodyRadius[kind]! <= 0 || (count === MAX_CONTACTS && d >= far[count - 1]!)) continue;
+    const spec = reg.vehicle[kind]?.spec, up = spec ? spec.height / 2 : reg.bodyHeight[kind]! / 2;
+    const d = i < n ? Math.hypot(remote!.x[i]! - cam.x, remote!.y[i]! + up - cam.y, remote!.z[i]! - cam.z) : Math.hypot(own!.x - cam.x, own!.y + up - cam.y, own!.z - cam.z);
+    if (d > CONTACT_REACH || reg.bodyRadius[kind]! <= 0) continue;
+    // A full list leaves out the farther of this body and its last.
+    if (count === MAX_CONTACTS) {
+      out = Math.min(out, Math.max(d, far[count - 1]!));
+      if (d >= far[count - 1]!) continue;
+    }
     // Into the list kept nearest first.
     let j = Math.min(count, MAX_CONTACTS - 1);
     for (; j > 0 && far[j - 1]! > d; j--) {
@@ -73,6 +87,7 @@ export function contactFrame(frame: Float32Array, on: boolean, reg: Pick<Registr
     frame[o + 6] = vehicle && isWheelVehicle(vehicle) && upright ? -length : length;
     frame[o + 7] = Math.sin(yaw);
   }
+  if (out < Infinity) frame[CONTACT_REACH_AT] = Math.max(out, 0.01);
 }
 
 /** Nearby parked vehicles share the moving bodies' contact slots. A changed chunk rebuilds its short list once. */
@@ -88,8 +103,11 @@ export class ParkedContacts {
     });
   }
 
+  /** Puts the parked vehicles near `cam` into the list `contactFrame` left, and narrows its reach by any left out. */
   add(frame: Float32Array, store: StructureStore, meshes: readonly { half: readonly number[]; center: readonly number[] }[], meshOf: Uint16Array, cam: { x: number; y: number; z: number }): void {
     const { chunksX, chunksZ } = store.dims;
+    const end = FRAME.contact + MAX_CONTACTS*8;
+    let out = Infinity;
     const x0 = Math.max(0, Math.floor((cam.x - CONTACT_REACH) / CHUNK_SIZE));
     const x1 = Math.min(chunksX - 1, Math.floor((cam.x + CONTACT_REACH) / CHUNK_SIZE));
     const z0 = Math.max(0, Math.floor((cam.z - CONTACT_REACH) / CHUNK_SIZE));
@@ -113,10 +131,14 @@ export class ParkedContacts {
           const dz = t.z[i]! - cam.z + c * center[2]! - s * center[0]!;
           const distance2 = dx*dx+dy*dy+dz*dz;
           if (distance2 >= CONTACT_REACH*CONTACT_REACH) continue;
-          const end = FRAME.contact + MAX_CONTACTS*8;
           let at = FRAME.contact;
           while (at < end && frame[at+4]! > 0 && frame[at]!**2+frame[at+1]!**2+frame[at+2]!**2 <= distance2) at += 8;
-          if (at === end) continue;
+          if (at === end) {
+            out = Math.min(out, distance2);
+            continue;
+          }
+          // The last slot's body leaves the list for this one.
+          if (frame[end-4]! > 0) out = Math.min(out, frame[end-8]!**2+frame[end-7]!**2+frame[end-6]!**2);
           frame.copyWithin(at+8,at,end-8);
           frame[at] = dx;
           frame[at+1] = dy;
@@ -129,6 +151,7 @@ export class ParkedContacts {
         }
       }
     }
+    if (out < Infinity) frame[CONTACT_REACH_AT] = Math.max(0.01, Math.min(frame[CONTACT_REACH_AT]! || CONTACT_REACH, Math.sqrt(out)));
   }
 }
 
@@ -142,6 +165,7 @@ function smooth(x: number): number {
 }
 export function contactAt(frame: ArrayLike<number>, x: number, y: number, z: number, nx: number, ny: number, nz: number): number {
   let keep = 1;
+  const reach = frame[CONTACT_REACH_AT]! || CONTACT_REACH, reach2 = reach * reach, fade = 1 / ((1 - CONTACT_FADE * CONTACT_FADE) * reach2);
   for (let k = 0; k < MAX_CONTACTS; k++) {
     const o = FRAME.contact + k * 8;
     const c = frame[o + 3]!,
@@ -163,16 +187,16 @@ export function contactAt(frame: ArrayLike<number>, x: number, y: number, z: num
       my = ny * by,
       mz = (s * nx + c * nz) * bz;
     const cos = -(mx * qx + my * qy + mz * qz) / Math.sqrt(Math.max(1e-8, (mx * mx + my * my + mz * mz) * l2));
-    keep *= 1 - (CONTACT_MOST * Math.min(Math.max(cos, 0), 1)) / Math.max(l2, 1);
+    let body = 1 - (CONTACT_MOST * Math.min(Math.max(cos, 0), 1)) / Math.max(l2, 1);
     if (length < 0 && ny > 0.45) {
       const ex = Math.max(0, Math.abs(qx) - 0.78) / 1.02,
         ez = Math.max(0, Math.abs(qz) - 0.78) / 0.66;
       const gap = -(dx * nx + (dy + by) * ny + dz * nz);
       const strength = smooth((ny - 0.45) / 0.4) * smooth((gap + 0.36) / 0.3) * (1 - smooth((gap - 0.06) / 0.94));
-      const distance2 = frame[o]! ** 2 + frame[o + 1]! ** 2 + frame[o + 2]! ** 2;
-      const near = 1 - smooth((distance2 - 45 * 45) / (CONTACT_REACH ** 2 - 45 * 45));
-      keep *= 1 - 0.84 * near * strength * (1 - smooth(Math.hypot(ex, ez)));
+      body *= 1 - 0.84 * strength * (1 - smooth(Math.hypot(ex, ez)));
     }
+    const near = Math.min(1, Math.max(0, (reach2 - (frame[o]! ** 2 + frame[o + 1]! ** 2 + frame[o + 2]! ** 2)) * fade));
+    keep *= 1 - near + near * body;
   }
   return keep;
 }
@@ -181,11 +205,14 @@ const g = (v: number): string => (Number.isInteger(v) ? v.toFixed(1) : String(v)
 
 /**
  * `contact` as GLSL, after the frame block: the share of the sky's light left to a surface at `rel` facing `n` by the
- * bodies in fContact, 1 where `on` is 0 (a body's own surfaces) and on a tier that does not define CONTACT.
+ * bodies in fContact, 1 where `on` is 0 (a body's own surfaces) and on a tier that does not define CONTACT. The list's
+ * reach is fShore.y (CONTACT_REACH_AT).
  */
 export const CONTACT_GLSL = `float contact(vec3 rel, vec3 n, float on) {
 #ifdef CONTACT
   float keep = 1.0;
+  float reach2 = fShore.y > 0.0 ? fShore.y * fShore.y : ${g(CONTACT_REACH * CONTACT_REACH)};
+  float fade = 1.0 / (${g(1 - CONTACT_FADE * CONTACT_FADE)} * reach2);
   for (int k = 0; k < ${MAX_CONTACTS} && on > 0.5; k++) {
     vec4 a = fContact[k * 2], b = fContact[k * 2 + 1];
     if (b.x <= 0.0) break;
@@ -196,15 +223,15 @@ export const CONTACT_GLSL = `float contact(vec3 rel, vec3 n, float on) {
     float l2 = dot(q, q);
     if (l2 > 25.0) continue;
     vec3 m = normalize(vec3(c * n.x - s * n.z, n.y, s * n.x + c * n.z) * extent);
-    keep *= 1.0 - ${g(CONTACT_MOST)} * clamp(-dot(m, q) * inversesqrt(max(l2,1e-8)), 0.0, 1.0) / max(l2, 1.0);
+    float body = 1.0 - ${g(CONTACT_MOST)} * clamp(-dot(m, q) * inversesqrt(max(l2,1e-8)), 0.0, 1.0) / max(l2, 1.0);
     if (b.z < 0.0 && n.y > 0.45) {
       vec2 edge = max(abs(q.xz)-vec2(0.78),vec2(0.0))/vec2(1.02,0.66);
       // Signed clearance measured on the receiver plane also works on ramps and decks.
       float gap = -dot(d+vec3(0.0,b.y,0.0),n);
       float strength = smoothstep(0.45,0.85,n.y)*smoothstep(-0.36,-0.06,gap)*(1.0-smoothstep(0.06,1.0,gap));
-      float near = 1.0-smoothstep(2025.0,${g(CONTACT_REACH*CONTACT_REACH)},dot(a.xyz,a.xyz));
-      keep *= 1.0-0.84*near*strength*(1.0-smoothstep(0.0,1.0,length(edge)));
+      body *= 1.0-0.84*strength*(1.0-smoothstep(0.0,1.0,length(edge)));
     }
+    keep *= mix(1.0, body, clamp((reach2 - dot(a.xyz, a.xyz)) * fade, 0.0, 1.0));
   }
   return keep;
 #else

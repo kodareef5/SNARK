@@ -52,7 +52,8 @@ export class Casting {
   /** Metres from the camera past which nothing casts into a cascade: as far as a cascade's cube reaches, and MAX_REACH on. */
   castRange = 0;
   readonly sunAt = new Float64Array(3);
-  readonly pairs = new Uint8Array(MAX_CASCADES * 2);
+  /** A mesh's level and mask pairs from `Cascades.entries`: one for each cascade and one for the lamp's map, at most. */
+  readonly pairs = new Uint8Array((MAX_CASCADES + 1) * 2);
   /** The camera of the frame being built. */
   camera: Camera | null = null;
   /**
@@ -200,7 +201,7 @@ export class Casting {
       return;
     }
     lamp.set(x, y, z, setup.size);
-    lampFrame(p.frame, lamps.lens, lamps.way, lamps.shows, shadowLayer(MAX_CASCADES, setup.cascades));
+    lampFrame(p.frame, lamps.lens, lamps.way, lamps.shows, shadowLayer(MAX_CASCADES, setup));
     p.frame.set(lamp.matrix, LAMP_AT + 8);
     p.maps.set(lamp.matrix, MAX_CASCADES * 16);
     c.lampTexel = lamp.texel;
@@ -256,8 +257,9 @@ export class Casting {
   }
 
   /**
-   * A standing tree's levels (`foliageOf`) that cut its leaves out and can be cut out in a depth map now, a bit each,
-   * which a sharp enough map casts it at (shadow.ts LEAF_BLUR, D953); 0 for any other mesh, or while none can.
+   * A standing tree's levels (`foliageOf`) that cut its leaves out and can be cut out in a depth map now, their surface
+   * and their cut-out sections' pictures held, a bit each, which a sharp enough map casts it at (shadow.ts LEAF_BLUR);
+   * 0 for any other mesh, or while none can.
    */
   leafy(mesh: number): number {
     if (this.foliageOf[mesh] === 0) return 0;
@@ -271,22 +273,29 @@ export class Casting {
 
   /**
    * Puts `count` instances of a held level into the caster list for `cascades`. A level with cut-out, two-sided or
-   * shadowless sections is a caster for each section but the shadowless, cut out where the card holds what that reads;
-   * any other is its whole level.
+   * shadowless sections is a caster for each section but the shadowless, each cut-out one cut out where the card holds
+   * the level's surface and its own base colour; any other is its whole level.
    */
   cast(mesh: number, level: number, buffer: number, first: number, count: number, ox: number, oy: number, oz: number, flags: number, cascades: number): void {
     if (level < 0) return;
     const runs = this.assets.table.sections[mesh]![level] ?? FLAT;
-    let split = false;
-    for (let k = 0; k < runs.length; k += 3) split ||= runs[k]! >= 0 && ((this.materialFlags[runs[k]!]! & (DRAW_CUTOUT | DRAW_TWO_SIDED)) !== 0 || this.shadowless[runs[k]!] === 1);
-    const cutouts = split && this.assets.heldCutouts(mesh, level);
-    this.assets.keep(mesh, level, cutouts);
-    const slot = this.assets.residency.slot(mesh, level);
+    let split = false, cut = false;
+    for (let k = 0; k < runs.length; k += 3) {
+      const m = runs[k]! >= 0 ? this.materialFlags[runs[k]!]! : 0;
+      split ||= (m & (DRAW_CUTOUT | DRAW_TWO_SIDED)) !== 0 || (runs[k]! >= 0 && this.shadowless[runs[k]!] === 1);
+      cut ||= (m & DRAW_CUTOUT) !== 0;
+    }
+    const residency = this.assets.residency;
+    const surface = cut && residency.heldSurface(mesh, level);
+    this.assets.keep(mesh, level, surface);
+    const slot = residency.slot(mesh, level);
     flags = (flags & CAST_FLAGS) | this.bentFlags[mesh]!;
     if (!split) return this.caster(mesh, level, slot, buffer, first, count, ox, oy, oz, flags, 0, 0, 0, cascades);
     for (let k = 0; k < runs.length; k += 3) {
       if (runs[k]! >= 0 && this.shadowless[runs[k]!] === 1) continue;
-      const m = this.materialFlags[runs[k]!]! & (cutouts ? DRAW_TEXTURED | DRAW_TWO_SIDED | DRAW_CUTOUT : DRAW_TEXTURED | DRAW_TWO_SIDED);
+      let m = this.materialFlags[runs[k]!]! & (DRAW_TEXTURED | DRAW_TWO_SIDED | DRAW_CUTOUT);
+      // A cut-out section casts solid until its own picture is held.
+      if ((m & DRAW_CUTOUT) !== 0 && !(surface && residency.heldBase(runs[k]!))) m &= ~DRAW_CUTOUT;
       this.caster(mesh, level, slot, buffer, first, count, ox, oy, oz, flags | m, runs[k]!, runs[k + 1]!, runs[k + 2]!, cascades);
     }
   }

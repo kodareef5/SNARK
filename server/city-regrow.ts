@@ -68,12 +68,18 @@ export class CityRegrow {
     return handle < 0 ? -1 - chunk : this.ctx.world.buildings!.id(handle);
   }
 
+  /** Whether a piece of no building is this clock's to bring back: one that breaks in forms, or one that holds loot, so no map loses its bins for good. */
+  private mine(kind: number): boolean {
+    const reg = this.ctx.world.reg;
+    return reg.breakFamily[kind] !== 0 || reg.holds[kind] != null;
+  }
+
   /** The city piece `ref` was harmed now. */
   harmed(ref: number): void {
     const { world } = this.ctx;
     const key = this.key(Math.floor(ref / 65536), ref & 0xffff);
-    // A piece of no building that does not break in forms is not this clock's to bring back.
-    if (key < 0 && world.reg.breakFamily[world.structs.mapKind(Math.floor(ref / 65536), ref & 0xffff)] === 0) return;
+    // A piece of no building is this clock's only if it breaks in forms or holds loot.
+    if (key < 0 && !this.mine(world.structs.mapKind(Math.floor(ref / 65536), ref & 0xffff))) return;
     if (this.last.get(key) === world.tick) return;
     this.last.set(key, world.tick);
     this.saved.dirty = true;
@@ -102,7 +108,7 @@ export class CityRegrow {
     for (const slot of structs.changedSlots(chunk)) {
       if (t.owner[slot] !== 0) continue;
       const key = this.key(chunk, slot);
-      if (seen.has(key) || (key < 0 && world.reg.breakFamily[structs.mapKind(chunk, slot)] === 0)) continue;
+      if (seen.has(key) || (key < 0 && !this.mine(structs.mapKind(chunk, slot)))) continue;
       seen.add(key);
       let at = this.last.get(key);
       if (at === undefined) {

@@ -618,6 +618,8 @@ export const RESULT_BODY = 28;
 export const RESULT_TERRAIN = 29;
 /** A placement refused because its session has set down as many pieces this second as it may. */
 export const RESULT_RATE = 30;
+/** A thing that holds loot was searched already and has nothing left to take. */
+export const RESULT_SEARCHED = 31;
 
 const ownKind = counter();
 export const OWN_SESSION = ownKind();
@@ -695,6 +697,9 @@ export const RULE_CORPSE_LOCATOR = ruleFlag();
 export const RULE_CREATIVE = ruleFlag();
 /** Survivors pass through one another (SurvivorsBlock off, server/blocking.ts). */
 export const RULE_SURVIVORS_PASS = ruleFlag();
+/** Street things that hold loot are searched (StreetLootEnabled), and dead wrecks and hulls are (VehicleLootEnabled). */
+export const RULE_SEARCH_STREET = ruleFlag();
+export const RULE_SEARCH_WRECKS = ruleFlag();
 /**
  * team varint, tribe name string (empty for a survivor alone, and then rank and members are absent), rank u8, members (count
  * u8, then per member: name string, online 1 bit, owner 1 bit). Then a pending invitation: tribe name string (empty for

@@ -4,7 +4,7 @@
 // sets one down with y the ground and its yaw along the street (tools/mapworld/ruins.ts).
 import { shapeHalf, type Def, type ShapeBox, type ShapeDef, type StructureDef } from "../../shared/content/defs.ts";
 import { COMPACT_SPECIES } from "./compact.ts";
-import { WRECK_FORMS, rungsOf, wreckFormDef, wreckFormShape, wreckSalvage, wreckWhole, type Rung, type WreckForm, type WreckSize } from "./salvage.ts";
+import { WRECK_FORMS, rungsOf, wreckFormDef, wreckFormShape, wreckSalvage, wreckWhole, type Rung, type WreckForm, type WreckSize, WRECK_HOLDS } from "./salvage.ts";
 import fitted from "./abandoned-bounds.json" with { type: "json" };
 import tanker from "./tanker-wreck-bounds.json" with { type: "json" };
 
@@ -142,7 +142,7 @@ const FORM_NAMES = Object.keys(WRECK_FORMS) as WreckForm[];
 const STATICS: readonly StructureDef[] = OURS.flatMap((l) => STREET_KINDS[l.mesh]!.map(({ id, paint }): StructureDef => ({
   type: "structure", class: "static", id, mesh: l.mesh, shape: shapeOf(l), half: shapeHalf(l.boxes),
   color: colourOf(l, paint), hp: healthOf(l), material: "core:mat_metal",
-  breaks: wreckWhole(l.mesh), salvage: wreckSalvage(rungs(l), SIZES[l.body] ?? "car", 1 + FORM_NAMES.filter((form) => lesserLook(l, form)).length),
+  holds: WRECK_HOLDS, breaks: wreckWhole(l.mesh), salvage: wreckSalvage(rungs(l), SIZES[l.body] ?? "car", 1 + FORM_NAMES.filter((form) => lesserLook(l, form)).length),
 })));
 /** A look's lesser looks, each one kind whatever the paint (salvage.ts). */
 const FORMS: readonly StructureDef[] = OURS.flatMap((l) => (Object.keys(WRECK_FORMS) as WreckForm[]).flatMap((form) => {

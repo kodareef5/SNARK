@@ -49,6 +49,7 @@ export const TRILOBITE: readonly Def[] = [
     ],
     takes: { bullet: 0.7 },
     killXp: 4,
+    size: "small",
     torporDrain: 0.3,
     stats: { health: [160, 0.2, 0.054], stamina: [100, 0.1, 0.1], oxygen: [150, 0.1, 0.1], food: [450, 0.1, 0.1], weight: [150, 0.02, 0.04], melee: [1, 0.05, 0.017], speed: [1, 0, 0.01], torpidity: [50, 0.06, 0] },
   },

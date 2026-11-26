@@ -10,6 +10,7 @@ import { crafted, crafting, making } from "./craft.ts";
 import { CREATURES } from "./creatures/index.ts";
 import { EGGS } from "./eggs.ts";
 import { FOODS } from "./foods.ts";
+import { CLOUD_GRENADE_PROPS } from "./items/explosives.ts";
 import { ITEMS } from "./items/index.ts";
 import { KNOCKOUT } from "./knockout.ts";
 import { MAPS } from "./maps.ts";
@@ -518,7 +519,7 @@ const ALL: readonly Def[] = [
   LEVELS,
 ];
 
-export const CORE_CONTENT: readonly Def[] = crafted([...ALL, ...RUIN_BLOCKS, ...BREAK_BLOCKS, ...TERMINALS, ...ORBS, ...SLOPE_BLOCKS, ...LETTER_BLOCKS, ...POPULATIONS]);
+export const CORE_CONTENT: readonly Def[] = crafted([...ALL, ...RUIN_BLOCKS, ...BREAK_BLOCKS, ...TERMINALS, ...ORBS, ...SLOPE_BLOCKS, ...LETTER_BLOCKS, ...CLOUD_GRENADE_PROPS, ...POPULATIONS]);
 
 /** CORE_CONTENT as a pack, for stacking other packs on top. */
 export const CORE_PACK: ContentPack = { name: "core", defs: CORE_CONTENT as readonly Def[] as unknown as ContentPack["defs"] };

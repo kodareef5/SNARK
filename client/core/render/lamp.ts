@@ -2,7 +2,7 @@
 // draws its cards (street-lamps.ts); on a tier whose shadows say so, the nearest within LAMP_REACH of the camera is a
 // light in the lit programs as well: its pool thrown out over the road as a cobra head's refractor throws it, falling off
 // with the square of the distance and cut off at LAMP_RANGE, and a shadow drawn from the lens into a layer of the shadow
-// array of its own, after the far map's (shadowtext.ts `shadowLayer`). Its pool card fades out as its light fades in,
+// array of its own, after the far map's two (shadowtext.ts `shadowLayer`). Its pool card fades out as its light fades in,
 // and the light goes from one lamp to the next through their cards, which on such a tier lie where its light does and
 // show on the road as it does. The software render has no shadow maps, so there the lamp lights unshadowed (`lampSees`).
 

@@ -100,20 +100,19 @@ test("every blocked-out thing is the item ARK has: its stack, weight, level, poi
   expect(Object.keys(starterBook().future)).toEqual(["core:raft_assembly"]);
 });
 
-test("a blocked-out thing is a plain box in the hand and a swatch in the bag, and what is set down is a box of its own", () => {
+test("held items and placed shapes use their declared asset slots", () => {
   const blocked = new Set(BLOCKED_OUT);
   const held = BLOCKED_OUT.map((id) => byId.get(id) as ItemDef).filter((d) => d.weapon);
-  // Twelve are held: each as the box, and none borrows another thing's model.
-  expect([held.length, held.every((d) => d.weapon!.mesh === BLOCKOUT_MESH)]).toEqual([12, true]);
+  for (const d of held) expect(d.weapon!.mesh, d.id).toBe(d.id);
   // The box is no picture: with it in the pack, no thing that is held as it has an icon drawn, so each keeps its swatch.
   expect(iconSubjects(reg.defs, (mesh) => mesh === BLOCKOUT_MESH).filter((s) => blocked.has(s.owner)).map((s) => s.owner)).toEqual([]);
   // Ten are set down, each a structure of one box, with ARK's health, slots and days to decay.
   const things = BLOCKED_OUT.map((id) => byId.get(id) as ItemDef).filter((d) => d.places);
   const body = (d: ItemDef): StructureDef => byId.get(d.places![0]!) as StructureDef;
   expect(things.map((d) => [d.id.slice(11), body(d).class, body(d).mesh, body(d).hp, body(d).slots ?? 0, body(d).decayDays])).toEqual([
-    ["standing_torch", "container", "shape", 500, 8, 4],
+    ["standing_torch", "station", "shape", 500, 8, 4],
     ["cooking_pot", "station", "shape", 500, 12, 16],
-    ["fireplace", "container", "shape", 100, 3, 48],
+    ["fireplace", "station", "shape", 100, 3, 48],
     ["generator", "container", "shape", 1000, 8, 16],
     ["refrigerator", "container", "shape", 1000, 80, 16],
     ["air_conditioner", "station", "shape", 1000, 0, 8],
@@ -122,10 +121,13 @@ test("a blocked-out thing is a plain box in the hand and a swatch in the bag, an
     ["chemistry_bench", "station", "shape", 2500, 100, 16],
     ["cooker_industrial", "station", "shape", 13000, 80, 48],
   ]);
-  // None of them does its work yet: nothing is made at one, none keeps food longer, none is lit.
+  const hearths = new Set(["core:standing_torch", "core:cooking_pot", "core:fireplace"]);
   for (const d of things) {
     const s = body(d);
-    expect([s.id, CORE_CONTENT.some((x) => x.type === "item" && x.craft?.at === s.id), s.keeps ?? 1, s.lights ?? ""]).toEqual([s.id, false, 1, ""]);
+    expect(CORE_CONTENT.some((x) => x.type === "item" && x.craft?.at === s.id)).toBe(false);
+    expect(s.keeps ?? 1).toBe(1);
+    expect(s.lights, s.id).toBe(hearths.has(s.id) ? `${s.id}_lit` : undefined);
+    if (s.lights) expect(byId.get(s.lights)).toMatchObject({ lit: true, lights: s.id, half: s.half, cooks: false });
   }
 });
 

@@ -1,4 +1,4 @@
-import type { Def } from "../../shared/content/defs.ts";
+import type { Def, StructureDef } from "../../shared/content/defs.ts";
 import { making } from "../craft.ts";
 import { armorCovers } from "./armor-covers.ts";
 import { ARROWS, ATTACHMENTS, BLOW, BOW_AIM, PISTOL_AIM, RIFLE_AIM, SHOTGUN_AIM } from "./weapons.ts";
@@ -17,7 +17,6 @@ import { ARROWS, ATTACHMENTS, BLOW, BOW_AIM, PISTOL_AIM, RIFLE_AIM, SHOTGUN_AIM 
 
 const id = (name: string): string => `core:${name}`;
 /** The plain box every blocked-out thing is in the hand (tools/pack/blockout.ts). */
-const BOX = id("blockout");
 const engram = (name: string): string => id(`engram-${name}`);
 /** ARK's minutes, as in-game hours (content/core.ts). */
 const minutes = (n: number): number => (n * 60) / 140;
@@ -81,62 +80,62 @@ const MATTER: Def[] = [
 const ARMS: Def[] = [
   // Torch: weight 1, melee 10, durability 40; 1 flint, 1 wood and 1 stone in the hand; level 1 and no points. It strikes.
   // Its light, its warmth and the fire it sets are not built.
-  { type: "item", class: "weapon", id: id("torch"), stack: 1, weight: 1, color: 3, weapon: { kind: "melee", damage: 10, type: "melee", uses: 40, mesh: BOX, hold: "tool" } },
+  { type: "item", class: "weapon", id: id("torch"), stack: 1, weight: 1, color: 3, weapon: { kind: "melee", damage: 10, type: "melee", uses: 40, mesh: id("torch"), hold: "tool" } },
   ...making("torch", "Torch", 1, 0, 1, 5, [["flint", 1], ["wood", 1], ["stone", 1]], 1.2),
   // Pike: weight 10, melee 50; durability 40 at 0.15 a use, 267 uses; 10 ingots, 10 wood and 20 hide at the smithy; level
   // 25, 10 points, after the spear. It is not thrown. Its reach, half a metre past the spear's, is chosen.
-  { type: "item", class: "weapon", id: id("pike"), stack: 1, weight: 10, color: 2, weapon: { kind: "melee", damage: 50, type: "pierce", reach: 3.5, uses: 267, mesh: BOX, hold: "spear" } },
+  { type: "item", class: "weapon", id: id("pike"), stack: 1, weight: 10, color: 2, weapon: { kind: "melee", damage: 50, type: "pierce", reach: 3.5, uses: 267, mesh: id("pike"), hold: "spear" } },
   ...made("pike", "Pike", 25, 10, 1, 5, [["ingot", 10], ["wood", 10], ["hide", 20]], "smithy", ["spear"]),
   // Sword: weight 5, melee 90; durability 70 at 0.3 a use, 233 uses; 50 ingots, 1 wood and 15 hide at the smithy; level
   // 30, 11 points, after the wooden club.
-  { type: "item", class: "weapon", id: id("sword"), stack: 1, weight: 5, color: 2, weapon: { kind: "melee", damage: 90, type: "melee", uses: 233, mesh: BOX, hold: "tool" } },
+  { type: "item", class: "weapon", id: id("sword"), stack: 1, weight: 5, color: 2, weapon: { kind: "melee", damage: 90, type: "melee", uses: 233, mesh: id("sword"), hold: "tool" } },
   ...made("sword", "Sword", 30, 11, 1, 5, [["ingot", 50], ["wood", 1], ["hide", 15]], "smithy", ["club"]),
   // Metal Pick and Metal Hatchet: weight 2, melee 32 and 40; durability 40 at 0.075 a use, 533 uses; 1 ingot (the
   // hatchet 8), 1 wood and 10 hide at the smithy; level 20, 6 points, the hatchet after the stone one. ARK gives no
   // number for how much more they gather than stone ones: 5 times bare hands, where a stone tool is 3, is chosen.
-  { type: "item", class: "weapon", id: id("pick_metal"), label: "metal pick", stack: 1, weight: 2, color: 2, tool: { on: "stone", power: 5, uses: 533 }, weapon: { kind: "melee", damage: 32, type: "melee", torpor: 0.5, uses: 533, mesh: BOX, hold: "tool", swing: "pick" } },
+  { type: "item", class: "weapon", id: id("pick_metal"), label: "metal pick", stack: 1, weight: 2, color: 2, tool: { on: "stone", power: 5, uses: 533 }, weapon: { kind: "melee", damage: 32, type: "melee", torpor: 0.5, uses: 533, mesh: id("pick_metal"), hold: "tool", swing: "pick" } },
   ...made("pick_metal", "Metal pick", 20, 6, 1, 5, [["ingot", 1], ["wood", 1], ["hide", 10]], "smithy"),
-  { type: "item", class: "weapon", id: id("hatchet_metal"), label: "metal hatchet", stack: 1, weight: 2, color: 2, tool: { on: "wood", power: 5, uses: 533 }, weapon: { kind: "melee", damage: 40, type: "melee", uses: 533, mesh: BOX, hold: "tool" } },
+  { type: "item", class: "weapon", id: id("hatchet_metal"), label: "metal hatchet", stack: 1, weight: 2, color: 2, tool: { on: "wood", power: 5, uses: 533 }, weapon: { kind: "melee", damage: 40, type: "melee", uses: 533, mesh: id("hatchet_metal"), hold: "tool" } },
   ...made("hatchet_metal", "Metal hatchet", 20, 6, 1, 5, [["ingot", 8], ["wood", 1], ["hide", 10]], "smithy", ["hatchet"]),
   // Metal Sickle: weight 2, melee 50, durability 40 (what a use costs is not given: the metal tools' 533 uses); 18 ingots,
   // 4 wood and 16 hide at the smithy; level 30, 12 points, after the metal hatchet and pick. It strikes. That it reaps
   // fibre from plants is not built.
-  { type: "item", class: "weapon", id: id("sickle"), label: "metal sickle", stack: 1, weight: 2, color: 2, weapon: { kind: "melee", damage: 50, type: "melee", uses: 533, mesh: BOX, hold: "tool" } },
+  { type: "item", class: "weapon", id: id("sickle"), label: "metal sickle", stack: 1, weight: 2, color: 2, weapon: { kind: "melee", damage: 50, type: "melee", uses: 533, mesh: id("sickle"), hold: "tool" } },
   ...made("sickle", "Metal sickle", 30, 12, 1, 5, [["ingot", 18], ["wood", 4], ["hide", 16]], "smithy", ["hatchet_metal", "pick_metal"]),
   // Electric Prod: weight 6, melee 1 and 400 torpor a strike, and it is spent by one; 120 polymer, 130 ingots, 120
   // electronics, 70 paste, 120 crystal and 15 AnglerGel at the fabricator in 5 s; level 95, 60 points. Charging it again
   // with AnglerGel is not built: it is mended as any thing is.
-  { type: "item", class: "weapon", id: id("prod"), label: "electric prod", stack: 1, weight: 6, color: 11, weapon: { kind: "melee", damage: 1, type: "melee", torpor: 400, uses: 1, wet: true, mesh: BOX, hold: "tool" } },
+  { type: "item", class: "weapon", id: id("prod"), label: "electric prod", stack: 1, weight: 6, color: 11, weapon: { kind: "melee", damage: 1, type: "melee", torpor: 400, uses: 1, wet: true, mesh: id("prod"), hold: "tool" } },
   ...made("prod", "Electric prod", 95, 60, 1, 5, [["polymer", 120], ["ingot", 130], ["electronics", 120], ["paste", 70], ["crystal", 120], ["angler_gel", 15]], "fabricator"),
 
   // Compound Bow: weight 12; a stone arrow does 75 from it and a metal one 175.5, 1.35 times the arrow; durability 55 at
   // 0.1 a use, 550 uses; 95 polymer, 85 ingots and 75 paste at the fabricator; level 79, 40 points, after the bow and the
   // fabricator. It alone looses metal arrows. Its draw and its aim are the bow's.
-  { type: "item", class: "weapon", id: id("bow_compound"), label: "compound bow", stack: 1, weight: 12, color: 11, weapon: { kind: "bow", ammo: [...ARROWS, id("arrow_metal")], power: 1.35, reload: 0.66, draw: 1.2, uses: 550, melee: BLOW, mesh: BOX, hold: "bow", ...BOW_AIM } },
+  { type: "item", class: "weapon", id: id("bow_compound"), label: "compound bow", stack: 1, weight: 12, color: 11, weapon: { kind: "bow", ammo: [...ARROWS, id("arrow_metal")], power: 1.35, reload: 0.66, draw: 1.2, uses: 550, melee: BLOW, mesh: id("bow_compound"), hold: "bow", ...BOW_AIM } },
   ...made("bow_compound", "Compound bow", 79, 40, 1, 5, [["polymer", 95], ["ingot", 85], ["paste", 75]], "fabricator", ["bow", "piece_fabricator"]),
   // Fabricated Pistol: weight 2.5; 50 a shot, 5 shots a second, 13 in the magazine, 1.45 s to reload; durability 210 at
   // 0.1 a shot, 2,100 shots; 35 polymer, 20 ingots and 30 paste at the fabricator; level 55, 18 points, after the simple
   // pistol. Its aim is the simple pistol's.
-  { type: "item", class: "weapon", id: id("pistol_fabricated"), label: "fabricated pistol", stack: 1, weight: 2.5, color: 11, weapon: { kind: "gun", ammo: [id("round_advanced")], power: 1, clip: 13, reload: 1.45, interval: 1 / 5, uses: 2100, fits: ATTACHMENTS, melee: BLOW, mesh: BOX, hold: "pistol", ...PISTOL_AIM } },
+  { type: "item", class: "weapon", id: id("pistol_fabricated"), label: "fabricated pistol", stack: 1, weight: 2.5, color: 11, weapon: { kind: "gun", ammo: [id("round_advanced")], power: 1, clip: 13, reload: 1.45, interval: 1 / 5, uses: 2100, fits: ATTACHMENTS, melee: BLOW, mesh: id("pistol_fabricated"), hold: "pistol", ...PISTOL_AIM } },
   ...made("pistol_fabricated", "Fabricated pistol", 55, 18, 1, 5, [["polymer", 35], ["ingot", 20], ["paste", 30]], "fabricator", ["pistol"]),
   // Pump-Action Shotgun: weight 15; "46*14", 46 a pellet and 14 pellets of the simple shotgun's shell, which does 64 a
   // pellet from the double barrel; 0.91 shots a second, 6 in the magazine, 4.3 s to reload; durability 300 (what a shot
   // costs is not given: 300 shots); 30 ingots, 55 polymer and 45 paste at the fabricator in 15 s; level 55, 18 points,
   // after the shotgun. Its changelog says 12 pellets where its infobox says 14: the infobox's. Its spread is the double
   // barrel's aimed, which is the pump-action's own 7.5 degrees (weapons.ts).
-  { type: "item", class: "weapon", id: id("shotgun_pump"), label: "pump-action shotgun", stack: 1, weight: 15, color: 11, weapon: { kind: "gun", ammo: [id("round_shotgun")], power: 46 / 64, pellets: 14, clip: 6, reload: 4.3, interval: 1 / 0.91, uses: 300, fits: [id("flashlight"), id("laser")], melee: BLOW, mesh: BOX, hold: "rifle", spread: { hip: 3.75, aim: 3.75, move: 3 }, recoil: SHOTGUN_AIM.recoil } },
+  { type: "item", class: "weapon", id: id("shotgun_pump"), label: "pump-action shotgun", stack: 1, weight: 15, color: 11, weapon: { kind: "gun", ammo: [id("round_shotgun")], power: 46 / 64, pellets: 14, clip: 6, reload: 4.3, interval: 1 / 0.91, uses: 300, fits: [id("flashlight"), id("laser")], melee: BLOW, mesh: id("shotgun_pump"), hold: "rifle", spread: { hip: 3.75, aim: 3.75, move: 3 }, recoil: SHOTGUN_AIM.recoil } },
   ...made("shotgun_pump", "Pump-action shotgun", 55, 18, 1, 15, [["ingot", 30], ["polymer", 55], ["paste", 45]], "fabricator", ["shotgun"]),
   // Assault Rifle: weight 10; 47 a shot, 10 shots a second held down, 40 in the magazine, 2.18 s to reload; durability
   // 40 at 0.05 a shot, 800 shots; it takes no scope; 60 polymer, 35 ingots and 50 paste at the fabricator; level 58, 24
   // points, after the longneck. ARK publishes no spread: the pistol's bloom on the long rifle's hold is chosen.
-  { type: "item", class: "weapon", id: id("rifle_assault"), label: "assault rifle", stack: 1, weight: 10, color: 11, weapon: { kind: "gun", ammo: [id("round_advanced_rifle")], power: 1, clip: 40, reload: 2.18, interval: 1 / 10, auto: true, uses: 800, fits: [id("silencer"), id("flashlight"), id("laser")], melee: BLOW, mesh: BOX, hold: "rifle", spread: { hip: 2.5, aim: 0.3, move: 3, bloom: 0.4, recover: 3 }, recoil: { kick: 1, recover: 8 } } },
+  { type: "item", class: "weapon", id: id("rifle_assault"), label: "assault rifle", stack: 1, weight: 10, color: 11, weapon: { kind: "gun", ammo: [id("round_advanced_rifle")], power: 1, clip: 40, reload: 2.18, interval: 1 / 10, auto: true, uses: 800, fits: [id("silencer"), id("flashlight"), id("laser")], melee: BLOW, mesh: id("rifle_assault"), hold: "rifle", spread: { hip: 2.5, aim: 0.3, move: 3, bloom: 0.4, recover: 3 }, recoil: { kick: 1, recover: 8 } } },
   ...made("rifle_assault", "Assault rifle", 58, 24, 1, 5, [["polymer", 60], ["ingot", 35], ["paste", 50]], "fabricator", ["rifle"]),
   // Fabricated Sniper Rifle: weight 25; 165 a shot, 3.3 shots a second, 8 in the magazine, 4.24 s to reload; durability
   // 70 at 1 a shot, 70 shots; 115 polymer, 80 ingots and 110 paste at the fabricator in 15 s; level 83, 36 points, after
   // the longneck. Its aim is the longneck's. "A built-in scope" (Fabricated Sniper Rifle): ours zooms 4 to 40 times on the
   // wheel, its window tightening, with a reticle in milliradians and a zero dialled with Alt and the wheel (D1083, DEV205);
   // it takes the silencer, flashlight and laser, as ARK's does, and no scope.
-  { type: "item", class: "weapon", id: id("rifle_sniper"), label: "fabricated sniper rifle", stack: 1, weight: 25, color: 11, optic: { min: 4, max: 40, window: [0.96, 0.5], reticle: "mil" }, weapon: { kind: "gun", ammo: [id("round_advanced_sniper")], power: 1, clip: 8, reload: 4.24, interval: 1 / 3.3, uses: 70, fits: [id("silencer"), id("flashlight"), id("laser")], melee: BLOW, mesh: BOX, hold: "rifle", ...RIFLE_AIM } },
+  { type: "item", class: "weapon", id: id("rifle_sniper"), label: "fabricated sniper rifle", stack: 1, weight: 25, color: 11, optic: { min: 4, max: 40, window: [0.96, 0.5], reticle: "mil" }, weapon: { kind: "gun", ammo: [id("round_advanced_sniper")], power: 1, clip: 8, reload: 4.24, interval: 1 / 3.3, uses: 70, fits: [id("silencer"), id("flashlight"), id("laser")], melee: BLOW, mesh: id("rifle_sniper"), hold: "rifle", ...RIFLE_AIM } },
   ...made("rifle_sniper", "Fabricated sniper rifle", 83, 36, 1, 15, [["polymer", 115], ["ingot", 80], ["paste", 110]], "fabricator", ["rifle"]),
 ];
 
@@ -250,8 +249,7 @@ const ARMOUR: Def[] = SUITS.flatMap((s) =>
   ]),
 );
 
-// ---- What is set down. Each is a box of a chosen size that stands, is struck and decays as ARK's does, and holds what
-// ARK's holds. None does its work: nothing is made at one, none is lit or fuelled, and nothing is powered.
+// ---- What is set down. Camp hearth variants share a placement box and switch with the fire state.
 
 interface Thing {
   name: string;
@@ -263,6 +261,7 @@ interface Thing {
   material: "wood" | "stone" | "metal";
   decayDays: number;
   slots?: number;
+  fire?: true;
   weight: number;
   stack: number;
   level: number;
@@ -276,13 +275,13 @@ interface Thing {
 const THINGS: readonly Thing[] = [
   // Standing Torch: 500 health, 8 slots for what it burns, decays in 4 days; weight 4, stacks to 3; in the hand; level 7,
   // 6 points. Its light and its warmth are not built.
-  { name: "standing_torch", label: "standing torch", kind: "container", half: [0.15, 0.9, 0.15], hp: 500, material: "wood", decayDays: 4, slots: 8, weight: 4, stack: 3, level: 7, cost: 6, seconds: 5, needs: [["thatch", 8], ["flint", 1], ["stone", 1], ["wood", 3]], color: 3 },
+  { name: "standing_torch", label: "standing torch", kind: "station", half: [0.15, 0.9, 0.15], hp: 500, material: "wood", decayDays: 4, slots: 8, fire: true, weight: 4, stack: 3, level: 7, cost: 6, seconds: 5, needs: [["thatch", 8], ["flint", 1], ["stone", 1], ["wood", 3]], color: 3 },
   // Cooking Pot: 500 health, 12 slots, decays in 16 days; weight 4, stacks to 100; in the hand in 10 s; level 8, 9
   // points, after the campfire. No recipe is cooked in it yet.
-  { name: "cooking_pot", label: "cooking pot", kind: "station", half: [0.4, 0.35, 0.4], hp: 500, material: "stone", decayDays: 16, slots: 12, weight: 4, stack: 100, level: 8, cost: 9, seconds: 10, needs: [["stone", 75], ["thatch", 15], ["wood", 10], ["flint", 5]], after: ["piece_campfire"], color: 4 },
+  { name: "cooking_pot", label: "cooking pot", kind: "station", half: [0.4, 0.35, 0.4], hp: 500, material: "stone", decayDays: 16, slots: 12, fire: true, weight: 4, stack: 100, level: 8, cost: 9, seconds: 10, needs: [["stone", 75], ["thatch", 15], ["wood", 10], ["flint", 5]], after: ["piece_campfire"], color: 4 },
   // Stone Fireplace: 100 health, 3 slots, decays in 48 days; weight 4, stacks to 3; in the hand in 5 s; level 28, 15
   // points, after the campfire and the stone wall. Its warmth is not built.
-  { name: "fireplace", label: "stone fireplace", kind: "container", half: [0.9, 1.2, 0.5], hp: 100, material: "stone", decayDays: 48, slots: 3, weight: 4, stack: 3, level: 28, cost: 15, seconds: 5, needs: [["stone", 450], ["wood", 120], ["thatch", 80], ["flint", 20]], after: ["piece_campfire", "piece_wall_stone"], color: 4 },
+  { name: "fireplace", label: "stone fireplace", kind: "station", half: [0.9, 1.2, 0.5], hp: 100, material: "stone", decayDays: 48, slots: 3, fire: true, weight: 4, stack: 3, level: 28, cost: 15, seconds: 5, needs: [["stone", 450], ["wood", 120], ["thatch", 80], ["flint", 20]], after: ["piece_campfire", "piece_wall_stone"], color: 4 },
   // Electrical Generator: 1,000 health, 8 slots for its gasoline, decays in 16 days; weight 5, stacks to 100; at the
   // fabricator; level 49, 24 points. Nothing is powered yet, so it runs nothing.
   { name: "generator", label: "electrical generator", kind: "container", half: [0.6, 0.5, 0.4], hp: 1000, material: "metal", decayDays: 16, slots: 8, weight: 5, stack: 100, level: 49, cost: 24, seconds: 5, at: "fabricator", needs: [["ingot", 25], ["electronics", 10]], color: 11 },
@@ -307,12 +306,22 @@ const THINGS: readonly Thing[] = [
   // points, after the cooking pot. It cooks nothing yet.
   { name: "cooker_industrial", label: "industrial cooker", kind: "station", half: [1, 1.1, 0.8], hp: 13000, material: "metal", decayDays: 48, slots: 80, weight: 4, stack: 1, level: 89, cost: 60, seconds: 15, at: "fabricator", needs: [["polymer", 300], ["ingot", 1800], ["paste", 450], ["oil", 300]], after: ["piece_cooking_pot"], color: 11 },
 ];
-const SET_DOWN: Def[] = THINGS.flatMap((t): Def[] => [
-  { type: "shape", id: id(`shape_${t.name}`), role: "thing", boxes: [{ at: [0, 0, 0], half: [...t.half] }] },
-  { type: "structure", class: t.kind, id: id(t.name), mesh: "shape", shape: id(`shape_${t.name}`), half: [...t.half], color: t.color, hp: t.hp, material: id(`mat_${t.material}`), decayDays: t.decayDays, ...(t.slots !== undefined ? { slots: t.slots } : {}) },
-  { type: "item", class: "structure", id: id(`piece_${t.name}`), stack: t.stack, weight: t.weight, label: t.label, color: t.color, places: [id(t.name)] },
-  ...made(`piece_${t.name}`, `${t.label[0]!.toUpperCase()}${t.label.slice(1)}`, t.level, t.cost, 1, t.seconds, t.needs, t.at, t.after),
-]);
+const SET_DOWN: Def[] = THINGS.flatMap((t): Def[] => {
+  const shape = id(`shape_${t.name}`);
+  const structure: StructureDef = {
+    type: "structure", class: t.kind, id: id(t.name), mesh: "shape", shape, half: [...t.half],
+    color: t.color, hp: t.hp, material: id(`mat_${t.material}`), decayDays: t.decayDays,
+    ...(t.slots !== undefined ? { slots: t.slots } : {}),
+    ...(t.fire ? { lights: id(`${t.name}_lit`), cooks: false } : {}),
+  };
+  return [
+    { type: "shape", id: shape, role: "thing", boxes: [{ at: [0, 0, 0], half: [...t.half] }] },
+    structure,
+    ...(t.fire ? [{ ...structure, id: id(`${t.name}_lit`), color: 8, lights: structure.id, lit: true }] : []),
+    { type: "item", class: "structure", id: id(`piece_${t.name}`), stack: t.stack, weight: t.weight, label: t.label, color: t.color, places: [structure.id] },
+    ...made(`piece_${t.name}`, `${t.label[0]!.toUpperCase()}${t.label.slice(1)}`, t.level, t.cost, 1, t.seconds, t.needs, t.at, t.after),
+  ];
+});
 
 // ---- What is eaten and drunk. These work whole.
 

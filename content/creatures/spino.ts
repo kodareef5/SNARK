@@ -67,6 +67,7 @@ export const SPINO: readonly Def[] = [
     keeps: 4,
     torporDrain: 1.1,
     killXp: 110,
+    size: "apex",
     takes: { bullet: 0.7 },
     taming: { a0: 3100, a1: 145, foodBase: 0.0025, proneMult: 175, k: 1.25 },
     eats: [

@@ -452,7 +452,59 @@ export class NearStore implements Pass {
    * Chunk `c` of the store uses instance buffer `base + c`. A slot's kind is drawn as `meshOf` and `colorOf` say, and at the
    * size `sizeOf` says if it is given: a store of nodes.
    */
+  /**
+   * Map pieces that shimmer for a moment (client/core/shine.ts): each by its ref, and how far its shimmer has come, 0 to
+   * 1. Each is drawn as a draw of its own out of its chunk's buffer, carrying the shimmer as a body's draw does.
+   */
+  shine: { readonly count: number; readonly refs: Float64Array; readonly phase: Float32Array } | null = null;
+  /** The pieces of the chunk being drawn that shimmer: each one's instance and its row of `shine`, by instance. */
+  private readonly lit = new Int32Array(8);
+  private litN = 0;
+  /** The store whose chunks are being drawn, where its pieces may shimmer: not the node field's. */
+  private litStore: StructureStore | null = null;
+
+  /** Finds the pieces of chunk `chunk` that shimmer, in the order their instances lie in `b`. */
+  private light(b: ChunkBatch, chunk: number): void {
+    this.litN = 0;
+    const shine = this.shine;
+    if (!shine || shine.count === 0 || !this.litStore) return;
+    for (let k = 0; k < shine.count && this.litN < 4; k++) {
+      const ref = shine.refs[k]!;
+      if (Math.floor(ref / 65536) !== chunk) continue;
+      const i = b.at[ref & 0xffff] ?? -1;
+      if (i < 0) continue;
+      let n = this.litN++;
+      for (; n > 0 && this.lit[(n - 1) * 2]! > i; n--) this.lit.copyWithin(n * 2, (n - 1) * 2, n * 2);
+      this.lit[n * 2] = i;
+      this.lit[n * 2 + 1] = k;
+    }
+  }
+
+  /** Draws instances `first` to `first + count` of a chunk's buffer, a piece that shimmers among them as a draw of its own. */
+  private span(cam: Camera, mesh: number, level: number, id: number, first: number, count: number, ox: number, oy: number, oz: number, flags: number, passes: number, hand: number, crown: number, leaves: number): void {
+    let from = first;
+    const end = first + count;
+    for (let n = 0; n < this.litN; n++) {
+      const i = this.lit[n * 2]!;
+      if (i < from || i >= end) continue;
+      if (i > from) this.put.draw(mesh, level, id, from, i - from, ox, oy, oz, flags, passes, hand, 0, crown, leaves);
+      const store = this.litStore!, shine = this.shine!, k = this.lit[n * 2 + 1]!;
+      const ref = shine.refs[k]!, t = store.chunks[Math.floor(ref / 65536)]!, slot = ref & 0xffff, kind = t.kind[slot]!;
+      const glow = this.put.glow;
+      // Its strength, how far its sweep has come, and its foot and height for the band that climbs it (shimmer-glsl.ts).
+      glow[0] = Math.sin(Math.PI * shine.phase[k]!);
+      glow[1] = shine.phase[k]!;
+      glow[2] = t.y[slot]! + store.low[kind]! - cam.y;
+      glow[3] = Math.max(0.5, store.top[kind]! - store.low[kind]!);
+      this.put.draw(mesh, level, id, i, 1, ox, oy, oz, flags, passes, hand, 0, crown, leaves);
+      glow.fill(0);
+      from = i + 1;
+    }
+    if (end > from) this.put.draw(mesh, level, id, from, end - from, ox, oy, oz, flags, passes, hand, 0, crown, leaves);
+  }
+
   private structures(cam: Camera, store: StructureStore, base: number, meshOf: Uint16Array, colorOf: Uint8Array, sizeOf: Uint8Array | null): void {
+    this.litStore = sizeOf || base !== 0 ? null : store;
     const p = this.packet;
     const world = this.world;
     const chunks = store.chunks;
@@ -758,6 +810,7 @@ export class NearStore implements Pass {
    */
   private ranges(cam: Camera, b: ChunkBatch, id: number, dist: number, ox: number, oy: number, oz: number, passes: number, all: boolean): void {
     const sized = b.sized;
+    this.light(b, id);
     const band = this.assets.tier.nodes.band;
     const from = sized ? band[0] * this.handScale : Infinity, to = sized ? band[1] * this.handScale : Infinity;
     const cells = b.cells;
@@ -810,7 +863,7 @@ export class NearStore implements Pass {
           this.assets.wantTextured(mesh, near, dist / reach);
           if (crown !== near) this.assets.wantTextured(mesh, crown, dist / reach);
           const d0 = this.packet.drawCount;
-          for (let s = 0, n = this.spansOf(b, at0, 0, cells, all); s < n; s++) this.put.draw(mesh, near, id, spans[s * 2]!, spans[s * 2 + 1]!, ox, oy, oz, flags, passes, 0, 0, crown, leavesAt(b.thin[q]!));
+          for (let s = 0, n = this.spansOf(b, at0, 0, cells, all); s < n; s++) this.span(cam, mesh, near, id, spans[s * 2]!, spans[s * 2 + 1]!, ox, oy, oz, flags, passes, 0, crown, leavesAt(b.thin[q]!));
           this.boxRun(d0, b, q, mesh, 0, cells, cam);
         }
         if (whole || light) continue;
@@ -916,10 +969,10 @@ export class NearStore implements Pass {
         const qc = runs[k + 12]!;
         const swap = runs[k + 11] !== 0 && this.put.texturedAt(mesh, runs[k + 6]!, flags) && this.put.texturedAt(mesh, b.cellWas[qc]!, flags) ? runs[k + 11]! : 0;
         this.put.swap = swap;
-        for (let s = 0, n = this.spansOf(b, at0, runs[k + 9]!, runs[k + 10]!, all); s < n; s++) this.put.draw(mesh, runs[k + 2]!, id, spans[s * 2]!, spans[s * 2 + 1]!, ox, oy, oz, flags, passes, runs[k + 5]!, 0, runs[k + 6]!, leavesAt(runs[k + 8]!));
+        for (let s = 0, n = this.spansOf(b, at0, runs[k + 9]!, runs[k + 10]!, all); s < n; s++) this.span(cam, mesh, runs[k + 2]!, id, spans[s * 2]!, spans[s * 2 + 1]!, ox, oy, oz, flags, passes, runs[k + 5]!, runs[k + 6]!, leavesAt(runs[k + 8]!));
         if (swap !== 0) {
           this.put.swap = -swap;
-          for (let s = 0, n = this.spansOf(b, at0, runs[k + 9]!, runs[k + 10]!, all); s < n; s++) this.put.draw(mesh, b.cellWasTrunk[qc]!, id, spans[s * 2]!, spans[s * 2 + 1]!, ox, oy, oz, flags, passes, runs[k + 5]!, 0, b.cellWas[qc]!, leavesAt(runs[k + 8]!));
+          for (let s = 0, n = this.spansOf(b, at0, runs[k + 9]!, runs[k + 10]!, all); s < n; s++) this.span(cam, mesh, b.cellWasTrunk[qc]!, id, spans[s * 2]!, spans[s * 2 + 1]!, ox, oy, oz, flags, passes, runs[k + 5]!, b.cellWas[qc]!, leavesAt(runs[k + 8]!));
         }
         this.put.swap = 0;
         this.boxRun(d0, b, q, mesh, runs[k + 9]!, runs[k + 10]!, cam);
