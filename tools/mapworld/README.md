@@ -289,10 +289,11 @@ After admission, circulation removes conflicting overhangs from neighbouring
 buildings. Street grading reserves enough width for its slopes and rejects
 crossings with incompatible levels. Bridge decks constrain the final ground.
 `verify.ts` runs all ten proofs in sequence and exits; it opens no server socket.
-`audit.ts` is one of them: it scans the whole map and prints a JSON line a check. Four are
+`audit.ts` is one of them: it scans the whole map and prints a JSON line a check. Five are
 gates and must count 0 (pieces off the map, pieces placed twice, a lake wrapping a map edge,
-a hull inside another piece); four are numbers to watch (water ending in a wall, streets
-through buildings, doors off the ground, building pieces under the ground).
+a hull inside another piece, water a survivor swims in and cannot walk out of); four are
+numbers to watch (water ending in a wall, streets through buildings, doors off the ground,
+building pieces under the ground).
 
 Large inventories are generated, not committed. Keep counts, test summaries,
 cameras, selection records and the rasterizer images. The report tool makes a

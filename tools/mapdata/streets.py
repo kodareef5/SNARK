@@ -178,6 +178,58 @@ def run_starts(whole, g):
     return [round(whole.project(Point(r.coords[0])), 3) for r in (g.geoms if hasattr(g, 'geoms') else [g])]
 
 
+def passage(tags):
+    """Whether a way runs through a building at the street's own level: a building passage, or a covered or an indoor
+    way. It stays a street of the ground, and the build opens the ground storey along it (tools/mapworld/passages.ts)."""
+    return tags.get('tunnel') == 'building_passage' or tags.get('covered') == 'yes' or tags.get('indoor') == 'yes'
+
+
+def levels(text):
+    """The floors a level or a layer tag names ('1', '0;1', '-1', '0-2' for 0 to 2), none where it names none."""
+    out = []
+    for part in re.split(r'[;,]', text or ''):
+        span = re.fullmatch(r'\s*(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)\s*', part)
+        try:
+            ends = [float(span[1]), float(span[2])] if span else [float(part)]
+        except ValueError:
+            continue
+        # A span across the ground's floor holds it.
+        out += ends + ([0.0] if len(ends) == 2 and ends[0] < 0 < ends[1] else [])
+    return out
+
+
+def parking_buildings(buildings, to_map):
+    """OpenStreetMap's multi-storey car parks (raw/osm/buildings.json's elements) as an index of their shapes, None for none."""
+    shapes = []
+    for el in buildings:
+        t = el.get('tags') or {}
+        if t.get('parking') != 'multi-storey' and t.get('building') != 'parking':
+            continue
+        g = el.get('geometry') or []
+        area = relation_polygon(el.get('members') or [], to_map) if el['type'] == 'relation' else Polygon([to_map(q['lon'], q['lat']) for q in g]) if len(g) >= 4 else None
+        if area is not None and not area.is_empty:
+            shapes.append(make_valid(area))
+    return STRtree(shapes) if shapes else None
+
+
+def off_ground(tags, pts, garages):
+    """Why a way is no street on the ground, or None: 'level' or 'layer' where its tag puts it on a floor or a layer
+    that is not the ground's, 'parking' for an aisle more than half inside a multi-storey car park. A bridge or a tunnel
+    is neither: those stand or are hidden by their own rules (prepare.py, tunnels.py), a building passage with them. Nor
+    is any way but a service road: a main road tagged a layer and no bridge (22 of Las Vegas's) is a street all the same."""
+    if tags.get('highway') != 'service' or tags.get('bridge') not in (None, 'no') or tags.get('tunnel') not in (None, 'no'):
+        return None
+    for key in ('level', 'layer'):
+        floors = levels(tags.get(key))
+        if floors and 0 not in floors:
+            return key
+    if tags.get('service') == 'parking_aisle' and garages is not None and len(pts) >= 2:
+        line = LineString(pts)
+        if sum(line.intersection(garages.geometries[i]).length for i in garages.query(line)) > line.length / 2:
+            return 'parking'
+    return None
+
+
 def roads(m, elements, tiger_roads):
     """The roads to burn: OpenStreetMap's, cut at junctions and straightened, and TIGER's where OpenStreetMap has none."""
     to_map = Transformer.from_crs(4326, m.crs, always_xy=True).transform
@@ -185,6 +237,13 @@ def roads(m, elements, tiger_roads):
     ways = [e for e in elements if e['type'] == 'way' and e.get('tags', {}).get('highway') in DRIVE and 'geometry' in e]
     ways = [w for w in ways if not (w['tags']['highway'] == 'service' and w['tags'].get('service') in PRIVATE_SERVICE)
             and w['tags'].get('area') != 'yes' and w['tags'].get('access') not in ('no', 'private')]
+    # A way on a car park's upper deck or an upper floor's drive is no street of the ground: it ran through the walls of
+    # the building it is in. Left out before the junctions are counted, so it cuts no street where it met one.
+    path = m.raw / 'osm/buildings.json'
+    garages = parking_buildings(json.loads(path.read_text())['elements'], to_map) if path.exists() else None
+    why = [off_ground(w['tags'], [to_map(q['lon'], q['lat']) for q in w['geometry']] if w['tags'].get('service') == 'parking_aisle' else [], garages) for w in ways]
+    left = Counter(r for r in why if r)
+    ways = [w for w, r in zip(ways, why) if not r]
     uses = Counter(n for w in ways for n in w.get('nodes', []))
     tiger_tree = STRtree([g for g, _ in tiger_roads]) if tiger_roads else None
     out, straightened, cut = [], 0, {}
@@ -220,6 +279,7 @@ def roads(m, elements, tiger_roads):
                             # oneway_dir: 1 one way along the drawn direction, -1 against it (OpenStreetMap's oneway=-1), 0 both.
                             'highway': t['highway'], 'lanes': lanes, 'oneway': oneway, 'oneway_dir': cut[w['id']][1], 'width_m': width,
                             'bridge': t.get('bridge') not in (None, 'no'), 'tunnel': t.get('tunnel') == 'yes',  # a building passage runs at the street's own level
+                            'passage': passage(t),
                             'tunnel_name': t.get('tunnel:name'),
                             'sidewalk': t.get('sidewalk'), 'layer': number(t.get('layer')) or 0,
                             # Left and right of the way's drawn direction, which its line keeps.
@@ -241,7 +301,7 @@ def roads(m, elements, tiger_roads):
                 kept_tiger.append((g, {**p, 'tiger_name': p.get('name'), 'oneway_dir': 0, 'maxspeed_mph': None, 'lit': None, 'surface': None,
                                        'parking_left': None, 'parking_right': None}))
     lines = [g for g, _ in out + kept_tiger for g in getattr(g, 'geoms', [g]) if g.geom_type == 'LineString']
-    stats = {'osm_ways': len(ways), 'road_pieces': len(out), 'straightened': straightened, 'tiger_kept': len(kept_tiger),
+    stats = {'osm_ways': len(ways), 'off_ground_ways': dict(sorted(left.items())), 'road_pieces': len(out), 'straightened': straightened, 'tiger_kept': len(kept_tiger),
              'tiger_lines': len(tiger_roads or []), 'lanes_tagged': sum(1 for w in ways if number(w['tags'].get('lanes'))),
              'oneway': sum(1 for _, p in out if p['oneway']), 'oneway_against_drawn': sum(1 for _, p in out if p['oneway_dir'] < 0), 'road_network_largest_share': connected(lines, 1.0),
              'maxspeed_tagged': sum(1 for _, p in out if p['maxspeed_mph']), 'lit_tagged': sum(1 for _, p in out if p['lit'] is not None),
