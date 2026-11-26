@@ -1,0 +1,14 @@
+FlexUnit, "3D Game Ready UFO spaceship"
+https://flexunit.itch.io/3d-game-ready-ufo-spaceship
+
+The itch.io page's licence field reads, as captured on 2026-11-23:
+
+    Creative Commons Zero v1.0 Universal
+
+That is CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/): the author has dedicated the work to the public
+domain. Downloaded by the owner and copied here unchanged on 2026-11-23:
+
+    UFO_Source.blend    SHA-256 5ce0afd1beb27a2e1c1ee626e4c2ef21dbd79b5e8a6727266d09243ee9de093a
+    UFO_Low_Poly.fbx    SHA-256 fc0bc64722dda4694df3d94f34ac7caed14195df76ef40473030beee6821ca92
+
+Neither file carries other licence text. The .blend is opened with its scripts disabled.

@@ -61,7 +61,8 @@ const MAX_PENDING = 64;
 const HELLO_TICKS = 150;
 /** With no room, one that has waited this long is put out for a newcomer. A client says hello at once, so this is a slow link's round trip. */
 const HELLO_GRACE_TICKS = 15;
-const NAME = /^[A-Za-z0-9 _-]{1,24}$/;
+/** What a survivor's name may be. */
+export const NAME = /^[A-Za-z0-9 _-]{1,24}$/;
 /** Metres. */
 const SPECTATOR_LIFT = 1.6;
 /** New names one machine may make in NEW_NAME_TICKS, an hour (Allowance). */
@@ -166,6 +167,8 @@ export class Sessions {
   readonly onEnter = new Signal<[c: Client]>();
   /** Called before the session's body, if any, is removed. */
   readonly onExit = new Signal<[c: Client]>();
+  /** A reconnect took an open session over, before its welcome is written. */
+  readonly onRelink = new Signal<[c: Client]>();
   /** The connection dropped while the body lingers, or a reconnect took the body over. */
   readonly onPresence = new Signal<[c: Client]>();
   /** An entity was created for the session: at login, on respawn, or when it stops spectating. */
@@ -318,6 +321,7 @@ export class Sessions {
       other.relink(conn);
       other.statics = (flags & HELLO_STATICS) !== 0 && world.statics !== null;
       this.bind(other, conn);
+      this.onRelink.emit(other);
       this.welcome(other);
       this.onPresence.emit(other);
       return true;

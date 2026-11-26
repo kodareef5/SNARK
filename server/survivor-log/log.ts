@@ -35,6 +35,7 @@ export interface SurvivorLogContext {
   readonly persistence: Persistence | null;
   /** The ops of the journal entries the log marks, and the words for causes of death. */
   readonly opAdmin: number;
+  readonly opActs?: readonly number[];
   readonly opDeath: number;
   readonly causes: readonly string[];
   readonly say: (line: string) => void;
@@ -238,7 +239,7 @@ export class SurvivorLog {
     if (this.backend) this.backend.cap(mb * MEGABYTE);
     else {
       const p = this.ctx.persistence!;
-      const world: LogWorld = { saveId: p.saveId, mapId: this.ctx.world.mapId, world: this.ctx.records.worldId, opAdmin: this.ctx.opAdmin, opDeath: this.ctx.opDeath, causes: this.ctx.causes };
+      const world: LogWorld = { saveId: p.saveId, mapId: this.ctx.world.mapId, world: this.ctx.records.worldId, opAdmin: this.ctx.opAdmin, ...(this.ctx.opActs === undefined ? {} : { opActs: this.ctx.opActs }), opDeath: this.ctx.opDeath, causes: this.ctx.causes };
       try {
         this.backend = (this.opts.mode === "worker" ? workerBackend : inlineBackend)(this.folder, mb * MEGABYTE, world, this.ctx.say);
       } catch (err) {

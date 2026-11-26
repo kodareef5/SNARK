@@ -7,7 +7,7 @@ import { HIT_NONE, castWorld, lookDirection } from "../../../shared/world/ray.ts
 import { MAX_DOTS, daylight } from "../render/laser.ts";
 import { K_PANEL } from "../ui/nodes.ts";
 import { S_CROSS } from "../ui/style.ts";
-import type { HudWidget } from "./widget.ts";
+import { band, type HudWidget } from "./widget.ts";
 
 /** One mark per laser dot, MAX_DOTS at most. */
 export const KEY_DOT = 5010;
@@ -27,6 +27,7 @@ const spot = [0, 0, 0];
 /** Laser dots lie on the world, so under everything else. */
 export const DOTS: HudWidget<DotsModel> = {
   name: "laser dots",
+  bands: [band(KEY_DOT, MAX_DOTS)],
   make: () => ({ dots: [], dotCount: 0 }),
   fill(m, c) {
     const f = c.frame;

@@ -20,14 +20,17 @@ function clearStep(): void {
   vehicleStep.propHit = vehicleStep.capsized = false; vehicleStep.immersion = vehicleStep.propellerImmersion = vehicleStep.planing = 0;
 }
 
-/** Inputs use the ordinary signed bytes/buttons. Each family reads them its own way (families.ts). */
-export function stepVehicleBody(w: CollisionWorld, b: Body, moveX: number, moveZ: number, buttons: number, def: VehicleDefinition, dt = TICK_DT, _yaw = b.yaw, pilot = true, environment?: VehicleWorld): void {
+/**
+ * Inputs use the ordinary signed bytes/buttons. Each family reads them its own way (families.ts). `yaw` and `pitch` are
+ * the look the input holds, in 1/65536 turns: a jet's flight controls chase it.
+ */
+export function stepVehicleBody(w: CollisionWorld, b: Body, moveX: number, moveZ: number, buttons: number, def: VehicleDefinition, dt = TICK_DT, yaw = b.yaw, pilot = true, environment?: VehicleWorld, pitch = 0): void {
   if (dt !== TICK_DT) throw new Error("vehicles step at the shared fixed tick");
   clearStep();
   if (b.mode === MODE_NONE) { b.vx = b.vy = b.vz = 0; return; }
   const family = familyOf(def);
   if (!family) throw new Error(`no vehicle family moves by ${String(def.movement)}`);
-  family.step(w, b, moveX, moveZ, buttons, def, pilot, environment);
+  family.step(w, b, moveX, moveZ, buttons, def, pilot, environment, yaw, pitch);
 }
 
 /**

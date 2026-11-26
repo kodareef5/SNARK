@@ -40,6 +40,27 @@ export interface ScreenCtx {
   press(key: number, x: number, y: number): void;
   /** Turns the focused control a step, or with `end` to its end: true if something took it. */
   adjust(by: number, end: boolean): boolean;
+  /** Presses and lets go of a key as the keyboard would, through the app's key rows. */
+  pressKey(code: string): void;
+  /** Every screen of the list, in its order. */
+  readonly screens: readonly Screen[];
+  /** The view rests on something that can be attacked. */
+  aimed: boolean;
+  /** Shift is held. */
+  shift: boolean;
+}
+
+/** A way to a screen that the field menu offers (ui/field-dock.ts). */
+export interface DockEntry {
+  readonly id: string;
+  readonly label: string;
+  /** Its picture: "ui:glass-" and this. */
+  readonly art: string;
+  /** Its place in the field menu, lowest first. */
+  readonly rank: number;
+  /** Offered by touch alone, where a keyboard has a key for it. */
+  readonly touchOnly?: boolean;
+  open(c: ScreenCtx): void;
 }
 
 /** Why every screen is told to let go. */
@@ -72,6 +93,12 @@ export interface Screen {
   close(c: ScreenCtx): void;
   /** While open, the mouse stays with the camera. Without it an open screen frees the pointer. */
   keepsPointer?: boolean;
+  /** While open the body is still played, by keys and by fingers; only the mouse is freed. The dock and the corner chart. */
+  readonly keepsField?: boolean;
+  /** While open by touch, the right thumb's controls give way to it. */
+  readonly coversThumbs?: boolean;
+  /** Its ways in from the field menu. */
+  readonly dock?: readonly DockEntry[];
   /** A press on it makes no click sound, as on a map that is dragged. */
   quiet?: boolean;
   /** While open the HUD under it is drawn bare, as under the map. */
@@ -113,6 +140,10 @@ export interface Screen {
   result?(seq: number, code: number, c: ScreenCtx): void;
   /** The session died or went to the creator. */
   reset?(why: ScreenReset, c: ScreenCtx): void;
+  /** While open, a press on the world by `finger` (0 for the mouse). True if it took the press. */
+  pressWorld?(c: ScreenCtx, finger: number): boolean;
+  /** The window lost focus or a touch was cancelled: let go of any press in progress. */
+  letGo?(c: ScreenCtx): void;
 }
 
 /** A row of SCREENS: makes the screen once for each `Ui`. */

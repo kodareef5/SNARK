@@ -7,7 +7,7 @@ import { HIT_NONE, castWorld } from "../../../shared/world/ray.ts";
 import { MARK_SPOT } from "../../../shared/world/tactical.ts";
 import { K_PANEL } from "../ui/nodes.ts";
 import { S_CROSS } from "../ui/style.ts";
-import type { HudWidget } from "./widget.ts";
+import { band, type HudWidget } from "./widget.ts";
 
 /** A spotted creature's mark over it in the view (D1082), and its ink. */
 export const KEY_SPOT = 5200;
@@ -36,6 +36,7 @@ const spot = [0, 0, 0];
 
 export const MARKS: HudWidget<MarksModel> = {
   name: "marks in view",
+  bands: [band(KEY_SPOT, 8), band(KEY_GLINT, 4)],
   make: () => ({ glints: [], glintCount: 0, spots: [], spotCount: 0 }),
   fill(m, c) {
     const a = c.frame;

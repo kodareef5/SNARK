@@ -1,4 +1,7 @@
 import { SurvivorActivity } from "./survivor-activity.ts";
+import { SurvivorIds, idText } from "./survivor-ids.ts";
+// The jet's family code, which a browser fetches late (shared/sim/families.ts JET_FAMILY): the server has it from the start.
+import "../shared/sim/families/jet.ts";
 import { CREATE_REQUEST,ownsSurvivor } from "./survivor-access.ts";
 import { ZONE_NONE, ZONE_TORSO } from "../shared/anim/human.ts";
 import { IMPALE_SLOT } from "../shared/sim/seats.ts";
@@ -8,7 +11,7 @@ import { CreatureContacts } from "./creature-combat.ts";
 // Assembles a running world: map, records, persistence and the game loop. server/main.ts and the tests both use it.
 
 import { withContent, type Registry } from "../shared/content/registry.ts";
-import { CHOOSE_ARRIVED, CHOOSE_DIED, SESSION_DEAD, CMD_CARRY, CMD_CHAT, CMD_EMOTE, CMD_CLOSE, CMD_FAR, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_PLAN_CANCEL, CMD_PLAN_COMMIT, CMD_PLAN_PART, CMD_STRUCT, CMD_TAKE, CMD_TEXT, CMD_THROW, CMD_TRAVEL, CMD_VEHICLE, MAX_CHAT_BYTES, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_KICKED, RESTART_MOST, RESTART_OFF } from "../shared/net/protocol.ts";
+import { CHOOSE_ARRIVED, CHOOSE_DIED, SESSION_DEAD, CMD_CARRY, CMD_CHAT, CMD_EMOTE, CMD_CLOSE, CMD_FAR, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_PLAN_CANCEL, CMD_PLAN_COMMIT, CMD_PLAN_PART, CMD_STRUCT, CMD_TAKE, CMD_TEXT, CMD_THROW, CMD_TRAVEL, CMD_VEHICLE, MAX_CHAT_BYTES, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_DENIED, REJECT_KICKED, RESTART_MOST, RESTART_OFF } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
 import { Genome } from "../shared/sim/genome.ts";
 import { Build } from "./build.ts";
@@ -25,7 +28,8 @@ import { foundVehicle, vehiclePlaceFree, VehicleService, VEHICLE_ORIGIN, type Ve
 import { vehicleRotation } from "../shared/sim/vehicle-frame.ts";
 import { carShapes } from "../shared/world/vehicle-shapes.ts";
 import { StaticVehicleSolids } from "../shared/world/vehicle-solid.ts";
-import { isBoatVehicle, isSkateboard, isRotorVehicle, isWheelVehicle } from "../shared/sim/vehicle.ts";
+import { isAircraft, isBoatVehicle, isJetVehicle, isSkateboard, isRotorVehicle, isWheelVehicle } from "../shared/sim/vehicle.ts";
+import { jetRestY } from "../shared/world/jet.ts";
 import { boatRestY } from "../shared/sim/boat.ts";
 import { groundUnder } from "../shared/world/collide.ts";
 import { VehicleContacts } from "./vehicle-contacts.ts";
@@ -37,7 +41,7 @@ import { Carry } from "./carry.ts";
 import { Corpses } from "./corpses.ts";
 import { CorpseReplication } from "./corpse-motion.ts";
 import { CMD_AIR_SUPPORT, CMD_CLOCK, CMD_CORPSE, IMPACT_BLAST, IMPACT_SHOT } from "../shared/net/protocol.ts";
-import { Creative } from "./creative.ts";
+import { Creative, NO_GROUPS } from "./creative.ts";
 import { Balls } from "./balls.ts";
 import { Eggs } from "./eggs.ts";
 import { MountedRoars } from "./creature-roar.ts";
@@ -54,10 +58,22 @@ import { Stations, tellStation } from "./stations.ts";
 import { wirePower } from "./power.ts";
 import { wirePreserve } from "./preserve.ts";
 import { TICK_RATE } from "../shared/coords.ts";
-import { Chat } from "./chat.ts";
+import { Chat, plainRuns } from "./chat.ts";
+import { ChatRelay } from "./cluster/chat-relay.ts";
+import { globalRefused, shownTagNames, speakerLine } from "./permissions/chat-tags.ts";
 import { Tribes } from "./tribes.ts";
 import { Voice } from "./voice.ts";
 import { Console, OP_ADMIN } from "./console.ts";
+import { Acts, OP_OPEN, OP_STAFF, PAGE_ACTOR, sessionActor, type Actor } from "./acts.ts";
+import { PermissionStore } from "./permissions/store.ts";
+import { Permissions, type Acting, type PermissionSubject } from "./permissions/permissions.ts";
+import { CHANGED_MEANWHILE, type PermissionOp } from "../shared/permissions/model.ts";
+import { changeWords } from "../shared/permissions/commands.ts";
+import { makePassword, passwordHash } from "./permissions/secrets.ts";
+import { applyPlan, type Applied, type ImportPlan } from "./permissions/import.ts";
+import { IdRegister, catchUp, tellLost } from "./permissions/register.ts";
+import { RANK_CLUSTER, RANK_MAP, RANK_NAMES, RANK_STAFF } from "../shared/ranks.ts";
+import { CHEAT_GUESSES } from "../shared/console.ts";
 import { DeadlineHeap } from "../shared/sim/schedule.ts";
 import { Buffs } from "./buffs.ts";
 import { CityCollapse } from "./city-collapse.ts";
@@ -74,6 +90,7 @@ import { JET_BOOTS, JET_CUIRASS, JET_HELMET, MODE_WALK, stanceEye } from "../sha
 import { V_HEALTH } from "../shared/sim/vitals.ts";
 import { ACT_EQUIP, ACT_NONE, FISTS, HOLD_CARRY, poseHold } from "../shared/sim/weapon.ts";
 import { GameServer, type Client, type GameOptions } from "./game.ts";
+import { VehicleWeapons } from "./vehicle-weapons.ts";
 import { walk, type System } from "./system.ts";
 import { Items } from "./items.ts";
 import { COMMAND_FAMILIES } from "./commands/families.ts";
@@ -106,6 +123,7 @@ import { Spawner, wildStep } from "./spawner.ts";
 import { PART } from "./admin/parts.ts";
 import { LANE_ROW } from "./lane.ts";
 import { CarReturn } from "./car-return.ts";
+import { HANGARS, type HangarSite } from "../content/vehicles/hangars.ts";
 import { withSites } from "../content/supply/sites.ts";
 import { starterBook } from "../content/supply/starter.ts";
 import { catalogOf } from "../shared/supply/catalog.ts";
@@ -114,12 +132,14 @@ import { AirSupport } from "./air-support.ts";
 import { helicopterAirspace } from "../shared/world/helicopter.ts";
 import { Hitches } from "./hitches.ts";
 import { Supply } from "./supply.ts";
-import { BookStore } from "./supply/store.ts";
+import { BookStore, Store } from "./supply/store.ts";
+import { MapEvents } from "./mapevent/events.ts";
+import type { EventBook } from "../shared/mapevent/book.ts";
 import { builtinLoadouts } from "../content/loadouts.ts";
 import { Loadouts } from "./loadout/loadouts.ts";
 import { LoadoutStore } from "./loadout/store.ts";
 import { spawnTables } from "./settings/spawns.ts";
-import { parseMap, type MapFile } from "../shared/world/mapfile.ts";
+import { parseMap, type MapFile, type MapVehicle } from "../shared/world/mapfile.ts";
 import { Tactical } from "./tactical.ts";
 import type { ClipSet } from "../shared/anim/clip.ts";
 import { defaultLook } from "../shared/anim/look.ts";
@@ -130,10 +150,14 @@ import { REACT_RULES, TIER_FALL } from "../shared/sim/react.ts";
 import { Reactions, SHOVE_MOST } from "./reactions.ts";
 import { bodyMass } from "../shared/sim/body-mass.ts";
 import { solidOf } from "../shared/sim/vehicle-movers.ts";
-import { Cluster } from "./cluster/cluster.ts";
+import { Cluster, mapLabel } from "./cluster/cluster.ts";
 import { SurvivorLog, type SurvivorLogOptions } from "./survivor-log/log.ts";
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+
+/** A connection changes its chat tags at most this often: each change is a write that every map reads. */
+const TAG_CHANGES = 3;
+const TAG_CHANGES_TICKS = 10 * TICK_RATE;
 
 export interface HostOptions {
   /** SQLite file. Omit for a world that lives only in memory. */
@@ -141,6 +165,10 @@ export interface HostOptions {
   worldId?: number;
   /** Ticks between commits. 6 ticks is 200 ms. */
   commitEvery?: number;
+  /** Journal entries the save keeps; a hundred thousand unless said. */
+  journalKeep?: number;
+  /** Milliseconds a survivor waits to replace a password they claimed; an hour unless said. */
+  claimWaitMs?: number;
   /** "worker" gives checkpoints and backups to a thread of their own, as a running server wants. The default does them on the calling thread. */
   keeper?: "inline" | "worker";
   /** Back the save up beside itself at every autosave mark (AutoSavePeriodMinutes). */
@@ -161,6 +189,8 @@ export interface HostOptions {
   startingCreatures?: number;
   startingSpecies?: string;
   startingHunters?: number;
+  /** Where the jet is parked, for a map content/vehicles/hangars.ts has no site for, or null for none. */
+  hangar?: HangarSite | null;
   /** Chunks around a player in which creatures are simulated. */
   wakeRadius?: number;
   /**
@@ -178,6 +208,8 @@ export interface HostOptions {
   seed?: number;
   /** Password for `enablecheats`. Without one, cheats are off unless `dev` is set. */
   adminPassword?: string;
+  /** The cluster's password, which `enablecheats` and the admin pages take at the cluster's rank. */
+  clusterPassword?: string;
   /** Development server. Cheats need no password. Never set it in a public deployment. */
   dev?: boolean;
   /** Load a save whose item ledger does not match its contents, instead of refusing. */
@@ -203,6 +235,8 @@ const TEXT_INTERVAL = 6;
 export interface Host {
   survivorIds(): IterableIterator<number>;
   survivorRecord(name: string): EntityRecord | undefined;
+  /** The survivor here with this ID (shared/ids.ts), or null. */
+  survivorById(id: string): EntityRecord | null;
   readonly world: ServerWorld;
   /**
    * The map file the world stands on, for clients to fetch: HostOptions.map's bytes, or the proving ground's. Null for a world
@@ -277,10 +311,15 @@ export interface Host {
   /** Trailers on fifth wheels (server/hitches.ts). */
   readonly hitches: Hitches;
   readonly supplyBook: BookStore;
+  /** Map events, the kinds modules define, and the event book that switches, schedules and tunes them (server/mapevent/events.ts). */
+  readonly mapEvents: MapEvents;
+  readonly eventBook: Store<EventBook>;
   /** The loadouts new survivors are given, kept beside the save (server/loadout/store.ts). */
   readonly loadoutBook: LoadoutStore;
   /** Hands loadouts out: to a new survivor, after a death, and when an admin asks (server/loadout/loadouts.ts). */
   readonly loadouts: Loadouts;
+  /** Creative mode and what a connection has with no sign-in (server/creative.ts). */
+  readonly creative: Creative;
   /** Where a survivor without a body may rise, and its choosing (server/beds.ts). */
   readonly beds: Beds;
   /** The cluster the server is part of (-clusterid), or null for one alone. */
@@ -300,7 +339,7 @@ export interface Host {
    * (settings/kept.ts). Null words take the page's value away. `why` is "" if it was done; `unkept` says why the
    * change, though made, was not written beside the save.
    */
-  pageSetting(name: string, words: string | null): { why: string; unkept?: string };
+  pageSetting(name: string, words: string | null, by?: Actor): { why: string; unkept?: string };
   /** What the admin page set. */
   readonly kept: KeptSettings;
   /** Reads the live file again now. Returns the report lines. */
@@ -308,6 +347,7 @@ export interface Host {
   /** The setting values a loaded save's timers were computed under. Null for a new world. */
   readonly loadedUnder: Record<string, number> | null;
   readonly projectiles: Projectiles;
+  readonly vehicleWeapons: VehicleWeapons;
   /** Smoke and gas where grenades went off (W5). */
   readonly clouds: Clouds;
   readonly progression: Progression;
@@ -315,12 +355,42 @@ export interface Host {
   readonly harvest: Harvest | null;
   readonly deadlines: DeadlineHeap;
   readonly persistence: Persistence | null;
+  /** The folder the world's save is in, for a page's passing files; null for a world with no save. */
+  readonly saveFolder: string | null;
+  /** Who did what as an admin, and when (server/acts.ts). */
+  readonly acts: Acts;
+  /** The cluster's permission groups as this world holds them (server/permissions/permissions.ts). */
+  readonly permissions: Permissions;
+  /** Makes one permission change as `by`: the one way commands, pages and modules change them. Answers "" or why not. */
+  changePermissions(by: Actor, op: PermissionOp): string;
+  /**
+   * The session's survivor claims its own staff password, giving `typed` as the one it has ("" for none). The new password
+   * is in the answer and nowhere else. A wrong one given is counted as `enablecheats` counts a wrong password.
+   */
+  claimPassword(c: Client, typed: string): { readonly why: string; readonly password: string };
+  /**
+   * Works a session's standing out again from the permissions file as it is now, before it acts on what its groups give:
+   * this map's view may be a poll behind another map's change. Answers false where the file could not be read.
+   */
+  freshStanding(c: Client): boolean;
+  /** Takes survivor `id`'s password away as `by`. Answers "" or why not. */
+  clearPassword(by: Actor, id: string): string;
+  /** Shows or hides one of the session's survivor's own chat tags. Answers "" or why not. */
+  chooseTag(c: Client, tag: string, show: boolean): string;
+  /**
+   * Makes an import's changes as `by`, who needs the top rank there is: each under the rule, all as one act that names
+   * `what`. Where a group its plan saw changed before the write, nothing is made or logged, and `changed` says so.
+   */
+  importPermissions(by: Actor, what: string, plan: ImportPlan): Applied & { readonly why: string };
+  /** A session as its groups know it, or null before it has a survivor with an ID. */
+  subjectOf(c: Client): PermissionSubject | null;
   readonly loaded: LoadReport | null;
   readonly console: Console;
   /** Carries events to modules. */
   readonly bus: Bus;
   readonly modules: Modules;
   readonly adminPassword: string | null;
+  readonly clusterPassword: string | null;
   readonly dev: boolean;
   /** `id` is a content id. Returns the entity index, or -1. */
   spawnCreature(id: string, x: number, z: number, level: number, why?: string): number;
@@ -400,6 +470,7 @@ const SESSION_LEAVE = event("session.leave");
 const SESSION_SPAWN = event("session.spawn");
 const DEATH = event("death");
 const BODY_OUT = event("body.out");
+const PERM_CHANGED = event("perm.changed");
 
 /**
  * The folder a server of cluster `id` shares with the others: ARK's -ClusterDirOverride, or where it is not given, `clusters`
@@ -443,6 +514,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   if (parsed) opts.onMapLoaded?.(parsed);
   // Every world starts from the map's statics. A save's chunks are laid over them (Persistence.load).
   const world = opts.world ?? createMapWorld(reg, parsed!, { entityMax: opts.entityMax ?? rules.num("MaxEntities"), entityStart: opts.entityStart });
+  // The map's hangar: its one jet, a place of its own that keeps one to a world (server/car-return.ts). Its id makes its origin <map>/hangar.
+  const site = opts.hangar !== undefined ? opts.hangar : HANGARS[world.mapId] ?? null;
+  const hangar: MapVehicle[] = site && reg.index.has("core:jet") ? [{ kind: "core:jet", id: "hangar", x: site.x, z: site.z, yaw: Math.round(site.yaw / (2 * Math.PI) * 65536) & 65535 }] : [];
   world.clock.cycle = rules.num("DayCycleSpeedScale");
   world.clock.day = rules.num("DayTimeSpeedScale");
   world.clock.night = rules.num("NightTimeSpeedScale");
@@ -498,7 +572,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   /** Creates the entity store had refused when the log last said so, and the tick from which it may say so again. */
   let refusedTold = 0;
   let refusedNext = 0;
-  const persistence = store ? new Persistence(world, records, store) : null;
+  // An admin's acts and a staff member's are each counted apart in the journal, so no number of deaths, open commands or
+  // a moderator's own acts pushes an admin's out of the save.
+  const persistence = store ? new Persistence(world, records, store, { journalApart: [OP_ADMIN, OP_STAFF], ...(opts.journalKeep ? { journalKeep: opts.journalKeep } : {}) }) : null;
   const loaded = persistence ? persistence.load() : null;
   const commitEvery = opts.commitEvery ?? 6;
   const survivor = reg.index.get("core:survivor")!;
@@ -558,10 +634,13 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     const kind = reg.index.get(id);
     if (kind === undefined || !reg.vehicle[kind] || !Number.isSafeInteger(ownerTeam) || ownerTeam < 0 || !Number.isFinite(yaw)) return -1;
     const def = reg.vehicle[kind]!;
-    const y = start.y ?? (isBoatVehicle(def) ? boatRestY(def.spec, world.hf.waterAt(x, z)) : groundUnder(world.hf, x, z, def.spec.halfWidth));
+    // A jet stands where its three wheels find the ground.
+    const y = start.y ?? (isBoatVehicle(def) ? boatRestY(def.spec, world.hf.waterAt(x, z))
+      : isJetVehicle(def) ? jetRestY(world, x, z, yaw, groundUnder(world.hf, x, z, def.spec.halfWidth) + 2, 8, def)
+      : groundUnder(world.hf, x, z, def.spec.halfWidth));
     if (!Number.isFinite(y) || [start.hull, start.engine, start.rotor, start.fuel].some(n => n !== undefined && (!Number.isFinite(n) || n < 0 || n > 1))) return -1;
     if (start.airborne && isRotorVehicle(def)) { if (!helicopterAirspace(world, x, y, z, yaw, def)) return -1; }
-    else if ((isRotorVehicle(def) || isBoatVehicle(def)) && !vehiclePlaceFree(world, x, y, z, yaw, def)) return -1;
+    else if ((isAircraft(def) || isBoatVehicle(def)) && !vehiclePlaceFree(world, x, y, z, yaw, def)) return -1;
     const e = creatures.spawn(kind, x, z, 1, why, y);
     if (e < 0) return e;
     const rec = records.byPid.get(world.ents.pid[e]!)!;
@@ -646,8 +725,23 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   tribes.rules = rules;
   tribes.bus = bus;
   if (persistence && !loaded!.fresh) tribes.restore(persistence.store.meta("tribes"));
-  const survivorLog = new SurvivorLog({ world, records, tribes, rules, persistence, opAdmin: OP_ADMIN, opDeath: OP_DEATH, causes: CAUSE_WORDS, say }, opts.survivorLog);
+  const survivorLog = new SurvivorLog({ world, records, tribes, rules, persistence, opAdmin: OP_ADMIN, opActs: [OP_STAFF, OP_OPEN], opDeath: OP_DEATH, causes: CAUSE_WORDS, say }, opts.survivorLog);
   opened.push({ close: () => survivorLog.stop() });
+  const ids = new SurvivorIds(records);
+  // The cluster's permission groups, kept in its folder for every world, else beside the save, else in memory.
+  const permissionStore = new PermissionStore(cluster ? join(cluster.folder.root, "permissions.sqlite") : opts.dbPath ? `${opts.dbPath}.permissions.sqlite` : ":memory:");
+  opened.push(permissionStore);
+  const permissions: Permissions = new Permissions({
+    store: permissionStore,
+    world: cluster?.world ?? 0,
+    now: opts.survivorLog?.wall ?? Date.now,
+    say,
+    ...(opts.claimWaitMs === undefined ? {} : { claimWaitMs: opts.claimWaitMs }),
+    tribeMembers: (team) => (tribes.byId.get(team)?.members ?? []).map((pid) => records.byPid.get(pid)).map((rec) => (rec ? idText(rec) : "")).filter((id) => id !== ""),
+  });
+  // Before anything can make an ID or a team, so a save put back from a backup or started afresh makes none twice.
+  const behindFrom = catchUp(permissions, records, say);
+  const register = new IdRegister(permissions, records, say);
   // What the cluster's folder says came and went that the save does not know is done again now, before anything resumes.
   cluster?.start(
     {
@@ -665,11 +759,14 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       mayLeave: (c, rec) => (rec.out ? "you are unconscious" : riding.riding(c) ? "get off your mount first: it stays here" : urban.riding(c) ? "get out of the vehicle first: it stays here" : carry.holding(c) >= 0 ? "put down what is in your arms first" : ""),
       suspend: (rec, off) => { if (off) activity.checkpoint(rec.pid); survival.suspend(rec, off); },
       adopt: (rec) => {
+        if (ids.take(rec)) register.made(rec);
+        else register.knows(rec);
         survival.restore(rec, false);
         progression.resume(rec);
         buffs.restore(rec, false);
       },
       forget: (rec) => {
+        ids.drop(rec);
         buffs.died(rec);
         survival.forget(rec.pid);
         inHand.delete(rec.pid);
@@ -678,6 +775,15 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     },
     loaded!.fresh,
   );
+  // Survivors of a save made before IDs get theirs here, in pid order, so the same save numbers them alike every time.
+  for (const pid of [...(persistence?.survivors.values() ?? [])].sort((a, b) => a - b)) {
+    const rec = records.byPid.get(pid);
+    if (!rec) continue;
+    if (ids.take(rec)) register.made(rec);
+    else register.knows(rec);
+  }
+  register.write();
+  if (behindFrom >= 0) tellLost(permissions, records.worldId, behindFrom, (id) => ids.find(id) !== null, say);
   const taming = new Taming({ world, game, records, items, survival, buffs, rules, lists, tribes, deadlines, creatures, progression, onNotice: (pid, text) => notice(pid, text), openOf: (c) => containers.openOf(c), refresh: (rec) => refreshBody(rec), onTamed: (rec) => {
     const e = records.entOf.get(rec.pid);
     spawner?.left(rec);
@@ -899,6 +1005,27 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   combat.onHarm.on((victim, points) => taming.harmed(victim, points));
   combat.onHarm.on((victim, points) => hurt.harmed(victim, points));
   const chat = new Chat({ game, records, rules, tribes, bus });
+  // A survivor's line is made from their groups; an NPC's, and one from a session with no survivor yet, stay plain.
+  chat.format = (speaker, channel, text, map) => {
+    const subject = typeof speaker === "string" ? null : subjectOf(speaker);
+    if (typeof speaker === "string" || !subject) return plainRuns(speaker, channel, text, map);
+    const words = { sender: speaker.name, tribe: tribes.byId.get(subject.team)?.name ?? "", message: text };
+    return speakerLine(permissions, subject, speaker.rank, words, map, world.mapId);
+  };
+  chat.globalRefused = (c) => {
+    const subject = subjectOf(c);
+    return subject ? globalRefused(permissions, subject) : "";
+  };
+  chat.tagsOf = (c) => {
+    const subject = subjectOf(c);
+    return subject ? shownTagNames(permissions, subject, c.rank) : [];
+  };
+  // ClusterChat sends global lines to the cluster's other maps and shows theirs here; reading goes on while it is off, so switching it on replays nothing.
+  const chatRelay = cluster ? new ChatRelay({ root: cluster.folder.root, world: cluster.world, now: () => cluster.now(), say, onLine: (l) => void (rules.on("ClusterChat") && chat.fromOtherMap(l.speaker, l.runs)) }) : null;
+  if (chatRelay) {
+    chat.mapName = mapLabel(world.reg, world.mapId);
+    chat.relay = (speaker, runs) => void (rules.on("ClusterChat") && chatRelay.send(speaker, runs));
+  }
   // Cast is always there, doing nothing while CastEnabled is off, so the admin page can turn it on live.
   const castHost = new CastHost({
     world, game, records, creatures, emotes, chat, items, urban, bus, refresh: (rec) => refreshBody(rec), seed: (opts.seed ?? 1) + 907,
@@ -967,7 +1094,6 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   tribes.onSave = () => {
     tribesSaved.dirty = true;
   };
-  tribes.onTeam = (rec) => refreshBody(rec);
   tribes.onNotice = (pid, text) => notice(pid, text);
   // Templates set down and not yet built: they follow their team, and go with it.
   const plans = new Plans({ world, game, records, items, tribes, rules });
@@ -1023,6 +1149,12 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   combat.onFire.on((c, rec, weapon, quality, ammo, draw) => projectiles.launch(c, rec, weapon, quality, ammo, draw));
   // A thrown thing with an ammo facet of its own flies and hits (the bola); any other is lobbed and goes off on its fuse.
   combat.onThrow.on((c, rec, item, quality, draw) => (reg.ammoSpeed[item]! > 0 ? projectiles.fling(c, rec, item, quality, draw) : projectiles.lob(c, rec, item, quality)));
+  // A vehicle's own guns and missiles, through the same rounds and blasts (planning/workstreams/jet.md).
+  const vehicleWeapons = new VehicleWeapons({ world, game, records, combat, projectiles, remote: (c, tick) => game.players.remoteInput?.(c, tick) ?? false,
+    far: (e, reach) => game.replication.far(e, reach) }, (opts.seed ?? 1) + 101);
+  vehicles.ctx.arms = (rec) => vehicleWeapons.words(rec);
+  vehicles.ctx.armed = (rec) => vehicleWeapons.full(rec);
+  vehicles.ctx.rearm = (rec) => vehicleWeapons.rearm(rec);
   const clouds = new Clouds({ world, records, buffs, rules });
   projectiles.onCloud = (item, x, y, z, by) => clouds.make(item, x, y, z, by);
   // The killer is credited before death.die, which may delete the record.
@@ -1343,7 +1475,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     scatter(world.zones[world.zones.length - 1], "core:raptor", opts.startingHunters ?? 0);
     // The map's parked vehicles, owned by nobody. From here on the save keeps them, as it keeps any record.
     const missed = new Map<string, number>();
-    for (const v of parsed?.vehicles ?? []) {
+    for (const v of [...parsed?.vehicles ?? [], ...hangar]) {
       if (parkVehicle(v.kind, v.x, v.z, 0, (v.yaw / 65536) * 2 * Math.PI, "wild", foundVehicle(world.mapId, v, opts.seed ?? 1)) < 0) missed.set(v.kind, (missed.get(v.kind) ?? 0) + 1);
     }
     if (missed.size > 0) say(`not parked, for want of the content or of room: ${[...missed].map(([id, n]) => `${n} of the map's ${id}`).join(", ")}`);
@@ -1360,7 +1492,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   }
   // A place where the map parks a car gets another some days after its car went (server/car-return.ts).
   const returning = new CarReturn({ world, game, records, rules, deadlines, seed: opts.seed ?? 1,
-    park: (v, start) => parkVehicle(v.kind, v.x, v.z, 0, (v.yaw / 65536) * 2 * Math.PI, "wild", start) }, parsed?.vehicles ?? []);
+    park: (v, start) => parkVehicle(v.kind, v.x, v.z, 0, (v.yaw / 65536) * 2 * Math.PI, "wild", start) }, parsed?.vehicles ?? [], hangar);
   const carReturn = returning.places.length > 0 ? returning : null;
   if (carReturn) {
     carReturn.begin(persistence && !loaded!.fresh ? (persistence.store.meta("carReturn") as string | null) : null);
@@ -1382,6 +1514,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   recrate();
   supply.begin(persistence && !loaded!.fresh ? (persistence.store.meta("supply") as string | null) : null);
   persistence?.sidecar("supply", supply.saved);
+  // Map events (server/mapevent/events.ts). Made before the modules, which define its kinds; begun after them.
+  const mapEvents = new MapEvents({ world, game, records, items, death, combat, projectiles, supply, containers, deadlines, bus, seed: opts.seed ?? 1, say, now: opts.now });
   hitches.begin(persistence && !loaded!.fresh ? persistence.store.meta("hitches") as string | null : null);
   persistence?.sidecar("hitches", hitches.saved);
   const airSupport = new AirSupport({ world, game, records, rules, combat, projectiles, urban, hitches, items, wake: wakeView,
@@ -1469,8 +1603,11 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       rec.team = records.newTeam();
       records.dirty.add(rec.pid);
     }
+    // A survivor is named as it is made and never renamed, so the register takes its name here.
+    if (ids.take(rec)) register.made(rec);
     // A survivor's stat points live in a genome, like any body's.
     rec.genome ??= new Genome();
+    const had = c.pid;
     c.pid = rec.pid;
     if (persistence) persistence.attach(rec, c.ent);
     else {
@@ -1483,8 +1620,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     // A save from a server that stopped without standing its drivers down has them inside their cars.
     urban.settle(c.ent);
     bus.after(SESSION_SPAWN, { pid: rec.pid, first, why: first ? "made" : c.entered ? "respawned" : "returned" });
-    // A session that was in the creator has its survivor only now.
+    // A session that was in the creator has its survivor only now, and with it its groups.
     if (c.entered) joined(c);
+    if (c.entered && had !== rec.pid) creative.stand(c);
   });
   game.sessions.onBodyGone.on((c) => {
     impale.release(c.pid);
@@ -1510,7 +1648,149 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       records.entOf.delete(c.pid);
     }
   });
-  const creative = new Creative(world, game, rules, bus, persistence);
+  // Timed by the survivor log's clock, so a command's mark there stands at its own time.
+  const acts = new Acts({ persistence, tick: () => world.tick, wall: opts.survivorLog?.wall ?? Date.now, say, shown: () => rules.on("AdminLogging"), tellAll });
+  const adminPassword = opts.adminPassword || rules.text("ServerAdminPassword") || null;
+  const clusterPassword = opts.clusterPassword || rules.text("ClusterAdminPassword") || null;
+  if (adminPassword !== null && adminPassword === clusterPassword) say("settings: ServerAdminPassword is the same as ClusterAdminPassword: they should differ, or every map admin is the cluster's");
+  const subjectOf = (c: Client): PermissionSubject | null => {
+    const rec = c.pid !== 0 ? records.byPid.get(c.pid) : undefined;
+    const id = rec ? idText(rec) : "";
+    return rec && id ? { id, team: tribes.byId.has(rec.team) ? rec.team : 0, signed: c.signed, world: permissions.world } : null;
+  };
+  const creative = new Creative(world, game, rules, bus, acts, records, buffs);
+  creative.groups = (c) => {
+    const subject = subjectOf(c);
+    return subject ? { rank: permissions.rankOf(subject), every: permissions.has(subject, "*") } : NO_GROUPS;
+  };
+  creative.granted = (c, command) => {
+    const subject = subjectOf(c);
+    return subject !== null && permissions.mayRun(subject, command);
+  };
+  /** Tells a staff member once a connection to claim their own password, or once to sign in with it. */
+  const tellPassword = (c: Client): void => {
+    if (c.toldClaim && c.toldSignIn) return;
+    const subject = subjectOf(c);
+    if (!subject) return;
+    if (permissions.secretOf(subject.id) === "") {
+      if (c.toldClaim || permissions.staffRank(subject.id) < RANK_STAFF) return;
+      c.toldClaim = true;
+      game.sendText(c, TEXT_NOTICE, "You are in a staff group. Claim your own password: open the console and type claimpassword.");
+    } else if (!c.toldSignIn && !c.signed && permissions.rankOf({ ...subject, signed: true }) >= RANK_STAFF) {
+      c.toldSignIn = true;
+      game.sendText(c, TEXT_NOTICE, "Your staff group counts once you sign in: type enablecheats and your password in the console.");
+    }
+  };
+  /** Every live session's standing, worked out again after groups changed. A sign-in by a password since replaced or cleared ends. */
+  const restand = (): void => {
+    const gone = permissions.takeGone();
+    for (const c of game.clients) {
+      if (!c?.active) continue;
+      if (c.signed && gone.length > 0 && gone.includes(subjectOf(c)?.id ?? "")) {
+        c.signed = false;
+        c.signedHash = "";
+      }
+      creative.stand(c);
+      if (!c.closed) tellPassword(c);
+    }
+  };
+  /** The permissions' version every live session was last worked out at. */
+  let settledAt = permissions.version;
+  /** Once the permissions moved, for whatever reason: modules hear what changed, and every live session is worked out again. */
+  const settleStanding = (): void => {
+    if (permissions.version === settledAt) return;
+    settledAt = permissions.version;
+    for (const changed of permissions.takeChanged()) bus.after(PERM_CHANGED, { account: changed.account, group: changed.group });
+    restand();
+  };
+  /** Who `by` is to a permission change: the rank it holds apart from any group, and a survivor's own sign-in. */
+  const acting = (by: Actor): Acting => ({
+    rank: by.rank,
+    name: by.name,
+    world: permissions.world,
+    baseRank: by.baseRank,
+    signedIn: by.signedHash ? { id: by.id, hash: by.signedHash } : undefined,
+    id: by.id,
+    via: by.via,
+  });
+  const changePermissions = (by: Actor, op: PermissionOp): string => {
+    register.write();
+    const actor = acting(by);
+    // The act says it in the words and at the rank the store's history row does: as judged inside the write.
+    const { why, words, rank } = permissions.make(actor, op);
+    // A change the store already held wrote nothing, and has no words.
+    if (why === "") { if (words !== "") acts.write(by, words, "change", rank); }
+    // An editor who began from a value since changed is answered, not logged: they did nothing wrong.
+    else if (why !== CHANGED_MEANWHILE) {
+      // An op from a page may be any JSON: changeWords copes, and the act holds no value of a secret.
+      const everyWorld = op?.op === "addMember" && permissions.world !== 0 && op.world === 0;
+      acts.refused(by, rank, changeWords(op, everyWorld), why);
+    }
+    settleStanding();
+    return why;
+  };
+  const claimPassword = (c: Client, typed: string): { why: string; password: string } => {
+    register.write();
+    const subject = subjectOf(c);
+    if (!subject) return { why: "You need a survivor to claim a password.", password: "" };
+    const guesses = game.sessions.cheatGuesses;
+    const who = c.conn.address ?? c.name;
+    const wait = typed === "" ? 0 : guesses.wait(who, world.tick);
+    if (wait > 0) return { why: `too many wrong passwords: wait ${Math.ceil(wait / TICK_RATE)} s`, password: "" };
+    const password = makePassword();
+    const claimed = permissions.claim(subject.id, passwordHash(password), typed === "" ? "" : passwordHash(typed), { name: c.name, rank: c.rank, via: "session" });
+    if (claimed.wrong) {
+      guesses.wrong(who, world.tick);
+      if (++c.cheatAttempts >= CHEAT_GUESSES) game.sessions.reject(c, REJECT_DENIED);
+    }
+    if (claimed.why === "") {
+      acts.write(sessionActor(c, records), "claimed their own password", "change");
+      // The answer says how to sign in with it.
+      c.toldSignIn = true;
+    }
+    settleStanding();
+    return { why: claimed.why, password: claimed.why === "" ? password : "" };
+  };
+  const importPermissions = (by: Actor, what: string, plan: ImportPlan): Applied & { why: string } => {
+    const top = cluster ? RANK_CLUSTER : RANK_MAP;
+    if (by.rank < top) {
+      const why = `An import needs the ${RANK_NAMES[top]} rank.`;
+      acts.refused(by, permissions.actingRank(acting(by)), `import ${what}`, why);
+      return { why, changed: false, done: 0, refused: [], rank: null };
+    }
+    const actor: Acting = { ...acting(by), needs: top };
+    const applied = applyPlan(permissions, actor, plan);
+    // A plan overtaken before its write made nothing: the page is answered, and nothing is logged.
+    if (applied.changed) return { why: "", ...applied };
+    const rank = applied.rank ?? permissions.actingRank(actor);
+    acts.write(by, `imported ${what}: ${applied.done} ${applied.done === 1 ? "change" : "changes"}`, "change", rank);
+    const first = applied.refused[0];
+    if (first) acts.refused(by, rank, `${applied.refused.length} of the import's ${plan.ops.length} changes, the first ${changeWords(first.op, false)}`, first.reason);
+    settleStanding();
+    return { why: "", ...applied };
+  };
+  /** The ticks of each survivor's latest tag changes, by ID: a new connection does not start the count again. */
+  const tagged = new Map<string, number[]>();
+  const chooseTag = (c: Client, tag: string, show: boolean): string => {
+    const subject = subjectOf(c);
+    if (!subject) return "That needs a survivor with an ID.";
+    if (permissions.tagChoice(subject.id, tag) !== false === show) return "";
+    // What ran out is dropped as it is met, so the map holds only those who changed a tag in the last seconds.
+    for (const [id, ticks] of tagged) if (world.tick - ticks.at(-1)! >= TAG_CHANGES_TICKS) tagged.delete(id);
+    const recent = (tagged.get(subject.id) ?? []).filter((at) => world.tick - at < TAG_CHANGES_TICKS);
+    if (recent.length >= TAG_CHANGES) return "You changed your tags a moment ago. Try again shortly.";
+    tagged.set(subject.id, [...recent, world.tick]);
+    const why = permissions.apply(acting(sessionActor(c, records)), { op: "tag", id: subject.id, tag, show });
+    settleStanding();
+    return why;
+  };
+  // A tribe's groups are its members'.
+  tribes.onTeam = (rec) => {
+    register.knows(rec);
+    refreshBody(rec);
+    const c = sessionOf(rec.pid);
+    if (c) creative.stand(c);
+  };
   const loadouts = new Loadouts({ world, records, items, creative, store: loadoutBook, refresh: (rec) => refreshBody(rec) }, (opts.seed ?? 1) + 113);
   game.sessions.onEnter.on((c) => {
     // A survivor that joins dead gets no onBody call, so its pid is set here.
@@ -1529,8 +1809,13 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     const name = rules.text("SessionName");
     if (name !== "") game.sendText(c, TEXT_MOTD, name);
     for (const line of rules.text("Message").split("\\n")) if (line.trim() !== "") game.sendText(c, TEXT_MOTD, line.trim());
+    tellPassword(c);
     // One who joins during the countdown to a stop is told of it too.
     if (stopAt >= 0) game.sendRestart(Math.max(1, Math.ceil((stopAt - world.tick) / TICK_RATE)), c);
+  });
+  game.sessions.onRelink.on((c) => {
+    creative.stand(c);
+    tellPassword(c);
   });
   game.sessions.onPresence.on((c) => {
     if (c.closed) activity.leave(c.pid);
@@ -1902,6 +2187,18 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const con = new Console();
   con.bus = bus;
   for (const [, add] of COMMAND_FAMILIES) add(con);
+  const idOfPid = (pid: number): string => {
+    const rec = pid !== 0 ? records.byPid.get(pid) : undefined;
+    return rec?.kind === survivor ? idText(rec) : "";
+  };
+  // One with no live session has not signed in.
+  const subjectOfPid = (pid: number): PermissionSubject | null => {
+    const c = sessionOf(pid);
+    if (c) return subjectOf(c);
+    const id = idOfPid(pid);
+    const team = records.byPid.get(pid)?.team ?? 0;
+    return id ? { id, team: tribes.byId.has(team) ? team : 0, signed: false, world: permissions.world } : null;
+  };
   // After the server's own commands, so a module can take no name of theirs.
   const modules = new Modules(
     {
@@ -1910,22 +2207,46 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
         get tick() {
           return world.tick;
         },
-        online: () => game.clients.flatMap((c) => (c?.active && !c.closed ? [{ pid: c.pid, name: c.name }] : [])),
+        online: () => game.clients.flatMap((c) => (c?.active && !c.closed ? [{ pid: c.pid, id: idOfPid(c.pid), name: c.name }] : [])),
       },
+      perms: {
+        has: (pid, permission) => {
+          const s = subjectOfPid(pid);
+          return s !== null && permissions.has(s, permission);
+        },
+        inGroup: (pid, group) => {
+          const s = subjectOfPid(pid);
+          return s !== null && permissions.inGroup(s, group);
+        },
+        groups: (pid) => {
+          const s = subjectOfPid(pid);
+          return s ? permissions.groupsOf(s).map((g) => g.name) : [];
+        },
+        id: idOfPid,
+      },
+      permissionWorld: permissions.world,
+      changePermissions,
       act: {
         tell: (pid, text) => notice(pid, text),
         broadcast: (text) => {
           for (const c of game.clients) if (c?.active && !c.closed) game.sendText(c, TEXT_NOTICE, text);
         },
       },
+      defineEvent: (module, def) => mapEvents.define(module, def),
+      events: (module) => mapEvents.api(module),
       addCommand: (module, c) => {
         if (con.commands.has(c.name.toLowerCase())) throw new Error(`module ${module}: there is already a command "${c.name}"`);
-        con.add({ name: c.name.toLowerCase(), usage: c.usage, help: c.help, admin: c.admin, run: (ctx, args) => c.run({ pid: ctx.client?.pid ?? 0, name: ctx.client?.name ?? "(operator)", operator: ctx.client === null }, args) });
+        con.add({ name: c.name.toLowerCase(), usage: c.usage, help: c.help, admin: c.admin, run: (ctx, args) => c.run({ pid: ctx.client?.pid ?? 0, id: idOfPid(ctx.client?.pid ?? 0), name: ctx.client?.name ?? "(operator)", operator: ctx.client === null }, args) });
       },
       log: say,
     },
     opts.modules ?? [],
   );
+  // The event book is a file beside the save, as the drop book is, checked against the kinds the modules defined. The
+  // events that are live are the save's, written in the commit that writes their crates.
+  const eventBook = new Store<EventBook>(mapEvents.bookKind(), opts.dbPath ? `${opts.dbPath}.events.json` : null, world.mapId, () => mapEvents.starterBook(), say);
+  mapEvents.begin(persistence && !loaded!.fresh ? (persistence.store.meta("mapevent") as string | null) : null, eventBook);
+  persistence?.sidecar("mapevent", mapEvents.saved);
   const mark = (part: number): System => ({ step: () => parts.mark(part) });
   /** Physics: its time is the lane's, kept in row `row` (server/lane.ts). */
   const physics = (s: System, row: number): System => ({ step: (tick) => { lane.enter(row); s.step!(tick); lane.leave(); } });
@@ -1934,6 +2255,13 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const systems: System[] = [
     { beforeStep: refreshInventories },
     creative,
+    {
+      step: () => {
+        register.write();
+        permissions.poll();
+        settleStanding();
+      },
+    },
     gaze,
     { step: followFocus },
     mark(PART.focus),
@@ -1961,6 +2289,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     // Combat resolves this tick's swings and shots now that every body has moved.
     combat,
     projectiles,
+    vehicleWeapons,
+    // After this tick's shots and missiles, so the kinds hear of what they did in the same tick.
+    mapEvents,
     physics(loose, LANE_ROW.loose),
     clouds,
     mark(PART.combat),
@@ -1989,6 +2320,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     { step: keepHouse },
     { step: tellModules },
     ...(cluster ? [cluster] : []),
+    ...(chatRelay ? [{ step: () => void chatRelay.poll() }] : []),
     { step: announceBackup },
     modules,
     { step: () => bus.flush() },
@@ -2003,6 +2335,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     { replicate: (c) => tactical.sync(c) },
     { replicate: (c) => supply.sync(c) },
     { replicate: (c) => airSupport.sync(c) },
+    { replicate: (c) => mapEvents.sync(c) },
     { snapshot: (c, view) => corpseReplication.sync(c, view) },
   ];
   const tick = walk(systems);
@@ -2062,13 +2395,17 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     airSupport,
     hitches,
     supplyBook,
+    mapEvents,
+    eventBook,
     loadoutBook,
     loadouts,
+    creative,
     beds,
     cluster,
     settled,
     survivorIds: () => (persistence?.survivors ?? names).values(),
     survivorRecord: recordOf,
+    survivorById: (id) => ids.find(id),
     online: (pid) => sessionOf(pid) !== null,
     setSetting(name, words) {
       const row = rowOf(name);
@@ -2083,7 +2420,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       rules.put(row, was.value, was.source);
       return `${row.name} gives content that does not compile: ${fault}`;
     },
-    pageSetting(name, words) {
+    pageSetting(name, words, by = PAGE_ACTOR) {
       const row = rowNamed(name);
       if (!row) return { why: `there is no setting called ${name}` };
       const fixed = fixedWhy(row);
@@ -2092,7 +2429,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       if (did.why !== "") return { why: words === null ? did.why : `${row.name} ${did.why}` };
       // In the admin journal as the console's `setting` is, a list by its size and a secret not at all.
       const shown = words === null ? "(as before the page set it)" : row.secret ? "****" : words.includes("\n") ? `(${words.split("\n").length} lines)` : words;
-      persistence?.journal(OP_ADMIN, new TextEncoder().encode(`(admin page)\tsetting ${name} ${shown}`));
+      acts.write(by, `setting ${name} ${shown}`);
       return did;
     },
     kept,
@@ -2119,16 +2456,32 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     readLive,
     loadedUnder,
     projectiles,
+    vehicleWeapons,
     clouds,
     progression, activity, survivorLog,
     harvest,
     deadlines,
     persistence,
+    saveFolder: opts.dbPath ? dirname(resolve(opts.dbPath)) : null,
+    acts,
+    permissions,
+    changePermissions,
+    claimPassword,
+    freshStanding: (c) => {
+      permissions.lookNow();
+      settleStanding();
+      return permissions.readable && !c.closed;
+    },
+    clearPassword: (by, id) => changePermissions(by, { op: "clearSecret", id }),
+    chooseTag,
+    importPermissions,
+    subjectOf,
     loaded,
     console: con,
     bus,
     modules,
-    adminPassword: opts.adminPassword || rules.text("ServerAdminPassword") || null,
+    adminPassword,
+    clusterPassword,
     lists,
     get passed() {
       return [...contentPassed, ...spawnsPassed];
@@ -2146,6 +2499,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       bus.after(SERVER_STOP, { why: "stopped" });
       bus.flush();
       impale.stop();
+      register.write();
+      permissionStore.close();
       if (!persistence) return;
       // A creature in someone's arms is saved standing where it is set down, not where the arms had it, and so is whoever
       // sits in a car or on a creature.

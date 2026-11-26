@@ -1,12 +1,10 @@
-// Play by touch: two zones and a few buttons, turned into the moves, looks, keys and mouse buttons the rest of the
-// client already takes from a keyboard or a pad. The left zone is a stick that appears where a thumb lands; the right
-// zone turns the view; a button acts while it is held. Where they stand is client/core/ui/touch.ts, and the shell only
-// forwards pointers. Nothing here allocates once made.
+// Touch contacts keep their original controls until release or cancellation.
 
 /** What the layer drives: the app's own key, mouse, move and look. */
 export interface TouchTarget {
   key(code: string, down: boolean): void;
   mouse(button: number, down: boolean): void;
+  cancelPrimary?(): void;
   /** -1..1 each: right, forward. */
   move(x: number, z: number): void;
   /** In CSS pixels, as a mouse moves. */
@@ -42,6 +40,8 @@ export const SPRINT_AT = 0.92;
 export const LOOK_GAIN = 2.2;
 /** A press held this long is a long press. */
 export const LONG_MS = 400;
+const TAP_MS = 330;
+const LOOK_SLOP_PX = 9;
 
 /** What a tap of a button presses for a moment. */
 const TAPS: Readonly<Record<number, string>> = {
@@ -59,17 +59,35 @@ export function touchKey(button: number): string | undefined {
 export class TouchPlay {
   /** The finger on each zone, as the shell numbers it plus one; 0 for none. */
   private moveFinger = 0;
+  private moveSince = 0;
+  private clock = 0;
   private lookFinger = 0;
   /** Where the stick's middle is and where its knob is from there, in units. */
   stickX = 0;
   stickY = 0;
   knobX = 0;
   knobY = 0;
+  actionX = 0;
+  actionY = 0;
   private lookX = 0;
   private lookY = 0;
-  /** When the look finger went down, how far it has moved since in units, and whether its long press has fired. */
+  looking = false;
+  private primaryPulse = false;
+  worldAction = true;
+  tools = false;
+  width = Infinity;
+  height = Infinity;
+  get action(): boolean { return this.lookFinger !== 0; }
+  get pendingPrimary(): boolean { return this.primaryPulse; }
+  get primary(): boolean { return this.primaryPulse || this.held(T_ATTACK); }
+
+  contactScale(action: boolean): number {
+    const age = this.clock - (action ? this.lookSince : this.moveSince);
+    const remaining = Math.max(0, 1 - Math.max(0, age) / 120);
+    return 1 - .16 * remaining * remaining * remaining;
+  }
+  /** A long press picks a built piece under the contact. */
   private lookSince = 0;
-  private lookMoved = 0;
   private lookLong = false;
   /** Where the finger on Attack was last, which turns the view as it drags. */
   private aimX = 0;
@@ -82,6 +100,9 @@ export class TouchPlay {
   private readonly finger = new Int32Array(T_COUNT);
   private readonly since = new Float64Array(T_COUNT);
   private readonly long = new Uint8Array(T_COUNT);
+  private readonly tapX = new Float32Array(T_COUNT);
+  private readonly tapY = new Float32Array(T_COUNT);
+  private readonly slid = new Uint8Array(T_COUNT);
   /** Aim stays on from one press to the next, and so do the cluster's second page and the way of going that Shift holds. */
   aiming = false;
   /**
@@ -99,41 +120,49 @@ export class TouchPlay {
   held(button: number): boolean { return this.finger[button] !== 0; }
 
   /**
-   * A pointer on one of the layer's nodes: `kind` 0 down, 1 up or cancelled, 2 moved, at `x`, `y` in units, by `finger`
+   * A pointer on one of the layer's nodes: `kind` 0 down, 1 up, 2 moved or 3 cancelled, at `x`, `y` in units, by `finger`
    * (the shell's number for it), with `unit` CSS pixels to a unit. False for any other node's key.
    */
   pointer(kind: number, key: number, x: number, y: number, finger: number, nowMs: number, t: TouchTarget, unit: number): boolean {
     const who = finger + 1;
     if (key === KEY_ZONE_MOVE) {
-      if (kind === 0 && this.moveFinger === 0) { this.moveFinger = who; this.stickX = x; this.stickY = y; this.knobX = this.knobY = 0; }
+      if (kind === 0 && this.moveFinger === 0) { this.moveFinger = who; this.moveSince = nowMs; this.stickX = x; this.stickY = y; this.knobX = this.knobY = 0; }
       else if (who !== this.moveFinger) return true;
-      else if (kind === 1) this.letGo(t);
+      else if (kind === 1 || kind === 3) this.letGo(t);
       else if (kind === 2) this.push(x, y, t);
       return true;
     }
     if (key === KEY_ZONE_LOOK) {
-      if (kind === 0 && this.lookFinger === 0) { this.lookFinger = who; this.lookX = x; this.lookY = y; this.lookSince = nowMs; this.lookMoved = 0; this.lookLong = false; }
-      else if (who !== this.lookFinger) return true;
-      else if (kind === 1) this.lookFinger = 0;
+      if (kind === 0 && this.lookFinger === 0) {
+        this.lookFinger = who;
+        this.actionX = this.lookX = x;
+        this.actionY = this.lookY = y;
+        this.lookSince = nowMs;
+        this.looking = this.lookLong = false;
+      } else if (who !== this.lookFinger) return true;
       else if (kind === 2) this.turn(x, y, t, unit);
+      else if (kind === 1 || kind === 3) {
+        this.lookFinger = 0;
+        const inside = x >= 0 && x < this.width && y >= 0 && y < this.height;
+        const distance = Math.hypot(x - this.actionX, y - this.actionY) * unit;
+        if (kind === 1 && inside && this.worldAction && !this.looking && !this.lookLong &&
+          distance <= LOOK_SLOP_PX && nowMs - this.lookSince < TAP_MS && !this.held(T_ATTACK) && !this.primaryPulse) {
+          this.primaryPulse = true;
+          t.mouse(0, true);
+        }
+      }
       return true;
     }
     const b = key - KEY_TOUCH_BUTTON;
     if (b < 0 || b >= T_COUNT) return false;
     if (kind === 0 && this.finger[b] === 0) {
-      this.finger[b] = who; this.since[b] = nowMs; this.long[b] = 0;
-      if (b === T_ATTACK) { t.mouse(0, true); this.aimX = x; this.aimY = y; }
-      else if (b === T_AIM) {
-        if (!this.aiming) this.aimedWith = this.aimButton;
-        t.mouse(this.aimedWith, (this.aiming = !this.aiming));
-      }
-      else if (b === T_MORE) this.more = !this.more;
-      else if (b === T_SHIFT) t.key("ShiftLeft", (this.shifted = !this.shifted));
+      this.finger[b] = who; this.since[b] = nowMs; this.long[b] = this.slid[b] = 0;
+      this.tapX[b] = x; this.tapY[b] = y;
+      if (b === T_ATTACK) { this.primaryPulse = false; t.mouse(0, true); this.aimX = x; this.aimY = y; }
       else if (HELD[b]) {
         t.key(HELD[b]!, true);
         if (b === T_FOLLOW_ONE) [this.formX, this.formY] = [x, y];
       }
-      else if (TAPS[b]) { t.key(TAPS[b]!, true); t.key(TAPS[b]!, false); }
     } else if (who !== this.finger[b]) return true;
     else if (kind === 2 && b === T_ATTACK) {
       t.look((x - this.aimX) * unit * LOOK_GAIN, (y - this.aimY) * unit * LOOK_GAIN);
@@ -143,18 +172,38 @@ export class TouchPlay {
       t.look((x - this.formX) * unit * LOOK_GAIN, (y - this.formY) * unit * LOOK_GAIN);
       this.formX = x; this.formY = y;
     }
-    else if (kind === 1) this.lift(b, t, false);
+    else {
+      if (!HELD[b] && b !== T_ATTACK && Math.hypot(x - this.tapX[b]!, y - this.tapY[b]!) * unit > LOOK_SLOP_PX) this.slid[b] = 1;
+      if (kind === 1 || kind === 3) this.lift(b, t, kind === 3 || !!this.slid[b]);
+    }
     return true;
   }
 
+  /** A confirmed tap stays pressed until the simulation has sampled its next input. */
+  sampled(t: TouchTarget): void {
+    if (this.primaryPulse) {
+      this.primaryPulse = false;
+      t.mouse(0, false);
+    }
+  }
+
   /** Each frame: long presses fire, and a button no longer `shown` (bit `1 << button`) lets go of what it held. */
-  frame(nowMs: number, shown: number, t: TouchTarget): void {
+  frame(nowMs: number, shown: number, t: TouchTarget, zonesActive = true): void {
+    this.clock = nowMs;
+    if (!zonesActive) {
+      if (this.moveFinger !== 0) this.letGo(t);
+      this.lookFinger = 0;
+      if (this.primaryPulse) {
+        this.primaryPulse = false;
+        this.cancelPrimary(t);
+      }
+    }
     for (let b = 0; b < T_COUNT; b++) {
       if (this.finger[b] === 0) continue;
       if ((shown & (1 << b)) === 0) this.lift(b, t, true);
-      else if (b === T_STANCE && !this.long[b] && nowMs - this.since[b]! >= LONG_MS) { this.long[b] = 1; t.key("KeyX", true); t.key("KeyX", false); }
+      else if (b === T_STANCE && !this.long[b] && !this.slid[b] && nowMs - this.since[b]! >= LONG_MS) { this.long[b] = 1; t.key("KeyX", true); t.key("KeyX", false); }
     }
-    if (this.lookFinger !== 0 && !this.lookLong && this.lookMoved <= STICK_DEAD && nowMs - this.lookSince >= LONG_MS) {
+    if (this.lookFinger !== 0 && !this.lookLong && !this.looking && nowMs - this.lookSince >= LONG_MS) {
       this.lookLong = true;
       t.longPress?.(this.lookX, this.lookY);
     }
@@ -167,16 +216,31 @@ export class TouchPlay {
   reset(): void {
     this.moveFinger = this.lookFinger = 0;
     this.knobX = this.knobY = 0;
-    this.sprinting = this.aiming = this.shifted = this.more = false;
+    this.sprinting = this.aiming = this.shifted = this.more = this.primaryPulse = false;
+    this.tools = false;
     this.finger.fill(0);
+  }
+
+  private cancelPrimary(t: TouchTarget): void {
+    if (t.cancelPrimary) t.cancelPrimary();
+    else t.mouse(0, false);
   }
 
   private lift(b: number, t: TouchTarget, gone: boolean): void {
     this.finger[b] = 0;
-    if (b === T_ATTACK) t.mouse(0, false);
+    if (b === T_ATTACK) {
+      if (gone) this.cancelPrimary(t);
+      else t.mouse(0, false);
+    }
     else if (HELD[b]) t.key(HELD[b]!, false);
-    // A short press crouches or stands; the long one has already lain down.
-    else if (b === T_STANCE && !gone && !this.long[b]) { t.key("KeyC", true); t.key("KeyC", false); }
+    else if (gone) return;
+    else if (b === T_AIM) {
+      if (!this.aiming) this.aimedWith = this.aimButton;
+      t.mouse(this.aimedWith, (this.aiming = !this.aiming));
+    } else if (b === T_MORE) this.more = !this.more;
+    else if (b === T_SHIFT) t.key("ShiftLeft", (this.shifted = !this.shifted));
+    else if (TAPS[b]) { t.key(TAPS[b]!, true); t.key(TAPS[b]!, false); }
+    else if (b === T_STANCE && !this.long[b]) { t.key("KeyC", true); t.key("KeyC", false); }
   }
 
   private push(x: number, y: number, t: TouchTarget): void {
@@ -202,8 +266,11 @@ export class TouchPlay {
   }
 
   private turn(x: number, y: number, t: TouchTarget, unit: number): void {
+    if (!this.looking) {
+      if (Math.hypot(x - this.actionX, y - this.actionY) * unit <= LOOK_SLOP_PX) return;
+      this.looking = true;
+    }
     t.look((x - this.lookX) * unit * LOOK_GAIN, (y - this.lookY) * unit * LOOK_GAIN);
-    this.lookMoved += Math.hypot(x - this.lookX, y - this.lookY);
     this.lookX = x; this.lookY = y;
   }
 }

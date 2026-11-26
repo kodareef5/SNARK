@@ -2,7 +2,7 @@
 // frame on the ground under its middle. Each way a vehicle moves says its boxes (families.ts movers); a creature is its
 // footprint up to its height.
 
-import { familyOf } from "./families.ts";
+import { familyOf, familyReady } from "./families.ts";
 import type { VehicleDefinition } from "./vehicle.ts";
 import type { Registry } from "../content/registry.ts";
 import type { MoverPose } from "../anim/ragdoll.ts";
@@ -15,8 +15,9 @@ const known = new WeakMap<VehicleDefinition, Float64Array>();
 export function moverBoxes(def: VehicleDefinition): Float64Array {
   const cached = known.get(def);
   if (cached) return cached;
-  const out = Float64Array.from(familyOf(def)?.movers(def) ?? []);
-  known.set(def, out);
+  const family = familyOf(def);
+  const out = Float64Array.from(family?.movers(def) ?? []);
+  if (!family || familyReady(family)) known.set(def, out);
   return out;
 }
 

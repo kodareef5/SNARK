@@ -33,3 +33,14 @@ pill and 48 glyphs, cut for a phone's own pixels. `touch.webp` is the copy the b
 black so that black could become transparency. It measures each part's rim, brings it exactly round or square and to
 its cell's size, puts dark glass under it, and measures what it placed, failing on a part off its size or centre. A
 page fetches the sheet only when a touch control is drawn. Without it the game draws plain rings and discs and words.
+
+## Field art
+
+`field/` holds the generated plates of the field dock, its menus, the item pictures it shares with the bag, the
+command glyphs and the thumbs' pads; their prompts are in `field/PROVENANCE.md`. `bun tools/ui/field-art.ts` cuts them
+into four sheets beside this file: `field-icons.webp` (128-pixel cells, for a laptop's two pixels to a point),
+`field-equipment.webp` (the items again at 384, for the card that shows one), `field-parts.webp` (glass tiles, an item's
+mount and a wheel's dial at 512) and `field-touch.webp` (the pads at 256). Every connected piece of a plate belongs to
+the grid cell its middle falls in, so an antenna may cross a grid line; each object is centred in its cell and the
+tool fails where one lands off its size or centre. A page fetches a sheet the first time something on it is shown,
+and without the sheets the game draws plain stand-ins.

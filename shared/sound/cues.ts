@@ -177,6 +177,16 @@ cue("supply/gone", "prop", "item", "world", "fire", "a capsule shuts and goes", 
 // The orb (shared/world/orb.ts). Nothing is sent for it: each client hears it from the map's sites (client/core/sound/orb.ts).
 // No take of its own exists yet (assets/source/core/sfx/orb): the obelisk's drone stands in, played lower.
 cue("orb/hum", "prop", "build", "world", "fire", "an orb within hearing, at the point of its sphere nearest the ear", { loop: true, falls: ["core:orb/hum", "core:tech/obelisk@0.8"] });
+// Map events (planning/workstreams/map-events.md). Nothing is sent for these: each client hears an event from the feed
+// it is told (S_MAPEVENT) and the poses its parts' ticks give (client/core/sound/mapevent.ts). A look names the owner its
+// own takes are under (core:ufo/sound/craft/hum); until it has them, the tech family's, the supply's and the weather's.
+cue("event/notice", "prop", "item", "ear", "fire", "a map event has just been called: heard over the whole map before it comes", { falls: ["core:weather/thunder/far"] });
+cue("event/gone", "prop", "item", "ear", "fire", "a map event is over and nothing of it was brought down: its craft flew its path out", { falls: ["core:tech/pulse"] });
+cue("craft/hum", "prop", "vehicle", "world", "fire", "a map event's craft in the sky, heard from its way, louder as it is nearer, out to kilometres", { loop: true, falls: ["core:tech/obelisk"] });
+cue("craft/beam", "prop", "build", "world", "fire", "a craft's beam is on: heard along it, nearest the ear", { loop: true, falls: ["core:supply/shaft", "core:tech/beam"] });
+cue("craft/shield", "prop", "hit", "world", "fire", "a heavy blow broke a craft's shield: the tick it is broken to rose", { falls: ["core:tech/shimmer"] });
+cue("craft/fall", "prop", "vehicle", "world", "fire", "a craft brought down falls, heard from its way, louder as it is nearer", { loop: true, falls: ["core:supply/jet"] });
+cue("craft/impact", "prop", "weapon", "ear", "fire", "a craft comes to rest: heard as late as its distance makes it, at most 12 s", { falls: ["core:weapon/blast/far"] });
 cue("hit/marker", "ui", "ui", "ear", "fire", "EVENT_HIT for the attacker", { falls: ["core:weapon/hit/marker"] });
 cue("hit/head", "ui", "ui", "ear", "fire", "EVENT_HIT on the head zone", { falls: ["core:weapon/hit/head"] });
 cue("kill", "ui", "ui", "ear", "fire", "EVENT_HIT with the killed bit, or EVENT_KILL", { falls: ["core:weapon/kill"] });
@@ -321,7 +331,7 @@ cue("vehicle/thruster/burst", VEHICLE, "vehicle", "body", vstatus("vehicle/thrus
 /** The shared families a vehicle may belong to, each by the words that name it, and the family each one also falls back to. */
 export const VEHICLE_FAMILIES: Readonly<Record<string, { words: readonly string[]; also?: string }>> = {
   helicopter: { words: ["helicopter", "heli", "chopper", "gyrocopter"] },
-  plane: { words: ["plane", "airplane", "aeroplane", "aircraft", "biplane", "seaplane", "glider"] },
+  plane: { words: ["plane", "airplane", "aeroplane", "aircraft", "jet", "biplane", "seaplane", "glider"] },
   speedboat: { words: ["speedboat", "powerboat", "jetski"], also: "boat" },
   boat: { words: ["boat", "motorboat", "dinghy", "skiff"] },
   raft: { words: ["raft", "canoe", "kayak"], also: "boat" },

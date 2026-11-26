@@ -20,7 +20,7 @@ import { feedHash } from "../render/feed.ts";
 import type { ClientSession, RemoteSample } from "../session.ts";
 import { K_BAR, K_PANEL, textWidth, type UiFrame, type UiNode } from "../ui/nodes.ts";
 import { STYLES, S_CROSS, S_FEED_RIGHT, S_HEALTH, S_TRACK_NOTE, S_TRACK_OTHER, S_TRACK_TRIBE, S_TRACK_WILD } from "../ui/style.ts";
-import type { HudWidget } from "./widget.ts";
+import { band, type HudWidget } from "./widget.ts";
 
 /** The boxes' nodes, and the target's readout's. */
 export const KEY_TRACKS = 46400;
@@ -297,6 +297,7 @@ export function buildTarget(f: UiFrame, m: TracksModel, right: number, y: number
 
 export const TRACKS: HudWidget<TracksModel> = {
   name: "feed tracks",
+  bands: [band(KEY_TRACKS, 420)],
   make: () => ({ tracks: [], trackCount: 0, trackLock: -1, trackHealth: -1, trackTribe: "", trackNow: 0, trackSignal: 1, trackMarkedAt: -Infinity }),
   fill(m, c) {
     const a = c.frame, s: ClientSession = c.session, feed = s.airFeed;

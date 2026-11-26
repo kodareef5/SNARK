@@ -7,6 +7,7 @@ import { loadoutCommands } from "./loadout.ts";
 import { lootCommands } from "./loot.ts";
 import { cityCommands } from "./city.ts";
 import { supplyCommands } from "./supply.ts";
+import { eventCommands } from "./event.ts";
 import { groundUnder } from "../../shared/world/collide.ts";
 import { placeFree } from "../place.ts";
 import { named, type Console, type ConsoleCommand } from "../console.ts";
@@ -323,5 +324,5 @@ export function addAdminCommands(con: Console): void {
       },
     },
   ];
-  con.add(...commands, ...lootCommands(), ...supplyCommands(), ...loadoutCommands(), ...cityCommands());
+  con.add(...commands, ...lootCommands(), ...supplyCommands(), ...eventCommands(), ...loadoutCommands(), ...cityCommands());
 }

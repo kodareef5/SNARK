@@ -1,5 +1,5 @@
 import { ADMIN_TERRAIN_SIDE as SIDE } from "../../shared/admin.ts";
-import { ClusterAdmin, counts, preview, type ClusterWorld } from "../core/admin/cluster.ts";
+import { ClusterAdmin, basicAuth, counts, preview, signedInText, type ClusterWorld } from "../core/admin/cluster.ts";
 import { worldAdminAddress } from "./cluster-address.ts";
 import { addChatChannels, chatPanel } from "./chat.ts";
 import { adminContext } from "./shell.ts";
@@ -16,6 +16,7 @@ $("cluster-chat").hidden = !isChat;
 
 const worldFilter = $<HTMLSelectElement>("chat-world"), channel = $<HTMLSelectElement>("chat-channel");
 const password = $<HTMLInputElement>("password");
+const signInName = $<HTMLInputElement>("sign-in-name");
 const signInWorld = $<HTMLSelectElement>("sign-in-world");
 const submitPassword = $<HTMLButtonElement>("submit-password");
 const elements = new Map<string, HTMLElement>();
@@ -112,15 +113,18 @@ function renderAccess(): void {
   $("access").hidden = !locked.length && !dashboard.signedIn;
   $("sign-out").hidden = !dashboard.signedIn;
   $("sign-in-world-field").hidden = locked.length < 2;
-  submitPassword.hidden = $("password-field").hidden = !locked.length;
+  submitPassword.hidden = $("password-field").hidden = $("name-field").hidden = !locked.length;
   const options = locked.map(({ world, admin }) => new Option(world.name, admin.link));
   if (locked.length > 1) options.unshift(new Option("Choose a world", ""));
   setOptions(signInWorld, options, sole?.admin.link);
   signInWorld.required = locked.length > 1;
   signInWorld.disabled = busy || locked.length < 2;
-  submitPassword.disabled = password.disabled = busy || !locked.length;
+  submitPassword.disabled = password.disabled = signInName.disabled = busy || !locked.length;
   submitPassword.textContent = busy ? "Signing in…" : "Sign in";
-  $("password-label").textContent = sole ? `Password for ${sole.world.name}` : "Admin password";
+  $("password-label").textContent = sole ? `Password for ${sole.world.name}` : "Password";
+  const who = signedInText(dashboard.signedInAs);
+  if ($("signed-in-as").textContent !== who) $("signed-in-as").textContent = who;
+  $("signed-in-as").hidden = who === "";
   const selected = dashboard.worlds.get(signInWorld.value);
   const notice = !busy && selected?.locked ? selected.cover : "";
   const noun = locked.length === 1 ? "world needs its" : "worlds need their";
@@ -176,9 +180,7 @@ async function refresh(): Promise<void> {
 $("sign-in").addEventListener("submit", async (e) => {
   e.preventDefault();
   if (!signInWorld.value || dashboard.authenticating) return;
-  const bytes = new TextEncoder().encode(`admin:${password.value}`);
-  const auth = `Basic ${btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join(""))}`;
-  const pending = dashboard.signIn(signInWorld.value, auth);
+  const pending = dashboard.signIn(signInWorld.value, basicAuth(signInName.value, password.value));
   password.value = "";
   render();
   await pending;

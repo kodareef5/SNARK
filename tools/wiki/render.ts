@@ -15,6 +15,7 @@ import type { PlaceShot } from "./places-shots.ts";
 import type { WikiScene } from "./scenes.ts";
 import type { Drawn } from "./posters.ts";
 import type { Command, Setting } from "./reference.ts";
+import { RANK_NAMES } from "../../shared/ranks.ts";
 
 export type { Sound, Track } from "./audio.ts";
 
@@ -411,7 +412,7 @@ ${figure}
     const command = (c: Command): string => {
       const id = commandId(c.name);
       const examples = c.examples.length ? `<ul class="examples">${join(c.examples.map((text, i) => [text, `${id}-example-${i + 1}`] as const), ([text, example]) => `<li><code id="${example}">${esc(text)}</code>${copy(example)}</li>`)}</ul>` : "";
-      return `<article class="command" id="${id}"><h3><a href="#${id}">${esc(c.name)}</a></h3>${c.admin ? '<p class="note">Requires cheats</p>' : ""}<p>${esc(c.help)}</p><div class="console"><code id="${id}-syntax">${esc(c.name)}${c.usage ? ` ${esc(c.usage)}` : ""}</code>${copy(`${id}-syntax`)}</div>${examples}</article>`;
+      return `<article class="command" id="${id}"><h3><a href="#${id}">${esc(c.name)}</a></h3>${c.rank !== undefined ? `<p class="note">Requires the ${RANK_NAMES[c.rank]} rank</p>` : c.admin ? '<p class="note">Requires cheats</p>' : ""}<p>${esc(c.help)}</p><div class="console"><code id="${id}-syntax">${esc(c.name)}${c.usage ? ` ${esc(c.usage)}` : ""}</code>${copy(`${id}-syntax`)}</div>${examples}</article>`;
     };
     const families = [...groupBy(site.commands, (c) => c.family)];
     return `${trail([[`${BASE}server/`, "Server & controls"]])}${banner("commands/", "Console commands", "", "Press Tab or Backquote to open the console on the keyboard. Use enablecheats with the server password when an admin command requires it.")}

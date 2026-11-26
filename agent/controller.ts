@@ -424,8 +424,9 @@ export class Controller {
     // Travelling from a bed leaves the body, and its answer comes with the leaving.
     if (t?.kind === "act" && t.step === 1 && s.sessionState !== SESSION_ALIVE) return this.actOn(now, t);
     // With nothing to do, a flyer kept in the air hovers, and a car stands on its handbrake. A rotor's jump is its
-    // collective, so a helicopter is left alone, holding where it is.
-    if (!t && s.driving >= 0 && ((this.hover && s.own.mode === MODE_FLYER) || (s.own.vehicle && s.registry.vehicle[s.bodyKind]?.movement !== "rotor"))) this.buttons |= BTN_JUMP;
+    // collective and a jet's its climb, so an aircraft is left alone, holding where it is.
+    const flown = s.registry.vehicle[s.bodyKind]?.movement;
+    if (!t && s.driving >= 0 && ((this.hover && s.own.mode === MODE_FLYER) || (s.own.vehicle && flown !== "rotor" && flown !== "jet"))) this.buttons |= BTN_JUMP;
     if (!t || s.sessionState !== SESSION_ALIVE) return;
     const b = s.own;
     if ((b.mflags & MF_OUT) !== 0) return this.end({ state: "danger", reason: "you are knocked out" });

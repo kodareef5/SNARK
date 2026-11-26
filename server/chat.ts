@@ -1,8 +1,9 @@
-// Text chat. A line goes out as "name: words" to everyone its channel reaches who has not muted the speaker.
+// Text chat. A line goes out as runs, the speaker's name then ": words", to everyone its channel reaches who has not muted the speaker.
 // The server decides who that is. A client names a channel and nothing else.
 
 import type { AdminChatLine } from "../shared/admin.ts";
 import { TICK_RATE } from "../shared/coords.ts";
+import type { TextRun } from "../shared/net/chat.ts";
 import { MAX_CHAT_CHARS, RESULT_BUSY, RESULT_DENIED, RESULT_INVALID, RESULT_OK, SESSION_SPECTATING, TEXT_GLOBAL, TEXT_LOCAL, TEXT_NOTICE, TEXT_TRIBE } from "../shared/net/protocol.ts";
 import { event, type Bus } from "./events/bus.ts";
 import type { Client, GameServer } from "./game.ts";
@@ -37,6 +38,12 @@ export function cleanChat(text: string): string {
   return clean.length > MAX_CHAT_CHARS ? clean.slice(0, MAX_CHAT_CHARS) : clean;
 }
 
+/** The runs a line is sent as: the speaker's name, then the words, both in the channel's colour. For other maps, `map` goes first in brackets. */
+export function plainRuns(speaker: Client | string, _channel: number, text: string, map?: string): TextRun[] {
+  const runs = [{ text: typeof speaker === "string" ? speaker : speaker.name }, { text: `: ${text}` }];
+  return map ? [{ text: `[${map}] ` }, ...runs] : runs;
+}
+
 export class Chat {
   /** Counts one per listener a line reaches. */
   delivered = 0;
@@ -49,6 +56,19 @@ export class Chat {
   private readonly ctx: ChatContext;
   /** Told of every line a survivor says, once it is said: Cast's people hear it (server/cast/host.ts). */
   readonly listeners: ((speaker: string, channel: number, x: number, z: number, text: string) => void)[] = [];
+  /**
+   * Makes a line's runs from its speaker (a survivor's client, or one of the world's people by name), its channel and its cleaned
+   * text. `map` is given, as this map's name, only when the runs are for the cluster's other maps.
+   */
+  format: (speaker: Client | string, channel: number, text: string, map?: string) => TextRun[] = plainRuns;
+  /** This map's name as the cluster's other maps show it before a line from here; "" for none. */
+  mapName = "";
+  /** Where it is set, told of every global line said here, with the runs the cluster's other maps show (server/cluster/chat-relay.ts). */
+  relay: ((speaker: string, runs: TextRun[]) => void) | null = null;
+  /** Why a survivor may not use global chat now, or "". Asked before the line is counted against them. */
+  globalRefused: (c: Client) => string = () => "";
+  /** The names of the tags a survivor's line is said with, for the admin's feed. */
+  tagsOf: (c: Client) => string[] = () => [];
 
   constructor(ctx: ChatContext) {
     this.ctx = ctx;
@@ -94,6 +114,8 @@ export class Chat {
       return code;
     };
     if (channel === TEXT_GLOBAL && rules.on("ProximityChat")) return refuse(RESULT_DENIED, "There is no global channel on this server; Insert speaks to those near you.");
+    const shut = channel === TEXT_GLOBAL ? this.globalRefused(c) : "";
+    if (shut !== "") return refuse(RESULT_DENIED, shut);
     // Local chat needs a position and tribe chat needs a tribe, so both need a survivor.
     if (channel !== TEXT_GLOBAL && (!rec || c.state === SESSION_SPECTATING)) return refuse(RESULT_DENIED, "Only a survivor can say that.");
     const tribe = channel === TEXT_TRIBE ? tribes.of(rec!) : null;
@@ -117,7 +139,7 @@ export class Chat {
     if (refused !== "" || line === "") return refuse(RESULT_DENIED, refused === "" ? "Nothing was said." : refused);
     const heard = this.delivered;
 
-    const out = `${c.name}: ${line}`;
+    const out = this.format(c, channel, line);
     const x = c.body.x;
     const y = c.body.y;
     const z = c.body.z;
@@ -132,14 +154,33 @@ export class Chat {
           if (dx * dx + dy * dy + dz * dz > LOCAL_RANGE * LOCAL_RANGE) continue;
         } else if (channel === TEXT_TRIBE && records.byPid.get(to.pid)?.team !== tribe!.id) continue;
       }
-      game.sendText(to, channel, out);
+      game.sendChat(to, channel, out);
       this.delivered++;
     }
     if (this.recent.length === RECENT_LINES) this.recent.shift();
-    this.recent.push({ at: Date.now(), channel, speaker: c.name, text: line });
+    const tags = this.tagsOf(c);
+    this.recent.push({ at: Date.now(), channel, speaker: c.name, text: line, ...(tags.length > 0 ? { tags } : {}) });
+    if (channel === TEXT_GLOBAL && this.relay) this.relay(c.name, this.format(c, channel, line, this.mapName));
     bus.after(CHAT_SAID, { pid: c.pid, channel, text: line, heard: this.delivered - heard });
     for (const l of this.listeners) l(c.name, channel, x, z, line);
     return RESULT_OK;
+  }
+
+  /**
+   * A global line said on another map of the cluster, shown here as it was made there, to everyone who has not muted its
+   * speaker. It is not this map's: it is not in recentLines, no module hears of it, and it counts against nobody. Returns how
+   * many saw it.
+   */
+  fromOtherMap(speaker: string, runs: readonly TextRun[]): number {
+    if (this.ctx.rules.on("ProximityChat")) return 0;
+    let n = 0;
+    for (const to of this.ctx.game.clients) {
+      if (!to?.active || to.closed || this.muted(to.name, speaker)) continue;
+      this.ctx.game.sendChat(to, TEXT_GLOBAL, runs);
+      this.delivered++;
+      n++;
+    }
+    return n;
   }
 
   /**
@@ -149,13 +190,13 @@ export class Chat {
   npcSay(name: string, x: number, y: number, z: number, text: string, range = LOCAL_RANGE): number {
     const line = cleanChat(text);
     if (line === "") return 0;
-    const out = `${name}: ${line}`;
+    const out = this.format(name, TEXT_LOCAL, line);
     let n = 0;
     for (const to of this.ctx.game.clients) {
       if (!to?.active || to.closed || this.muted(to.name, name)) continue;
       const dx = to.body.x - x, dy = to.body.y - y, dz = to.body.z - z;
       if (dx * dx + dy * dy + dz * dz > range * range) continue;
-      this.ctx.game.sendText(to, TEXT_LOCAL, out);
+      this.ctx.game.sendChat(to, TEXT_LOCAL, out);
       this.delivered++;
       n++;
     }

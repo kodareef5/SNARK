@@ -4,13 +4,15 @@ import { afterAll, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { OP_ADMIN } from "../../server/console.ts";
 import { WorldStore } from "../../server/persist/store.ts";
 import { rowOf } from "../../server/settings/catalog.ts";
 import { applyLive, emptyReport, formatReport, loadConfig, loadConfigFolder } from "../../server/settings/config.ts";
 import { timersOf } from "../../server/settings/rules.ts";
 import type { SpeciesDef } from "../../shared/content/defs.ts";
+import { TEXT_NOTICE } from "../../shared/net/protocol.ts";
 import { Harness } from "../fixtures/net.ts";
+import { adminLines } from "../fixtures/acts.ts";
+import { listener } from "../fixtures/module.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "snark-settings-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -198,7 +200,7 @@ test("a folder is read from disk, any of its files missing; a server started on 
   h.run(500);
   h.host.shutdown();
   const store = new WorldStore(dbPath, h.reg);
-  const typed = store.journal().filter((j) => j.op === OP_ADMIN).map((j) => new TextDecoder().decode(j.data));
+  const typed = adminLines(store);
   store.close();
   expect(typed).toContain("ada\tsetting EggHatchSpeedMultiplier 80");
   expect(typed).toContain("ada\tsetting ServerAdminPassword ****");
@@ -247,4 +249,64 @@ test("the single-player factors are not on top of the live file: what it gives i
   expect([rules.num("BabyMatureSpeedMultiplier"), rules.num("EggHatchSpeedMultiplier")]).toEqual([70, 8]);
   // Without the live file the factor is on the file's value.
   expect(loadConfig({ game, live }).rules.num("EggHatchSpeedMultiplier")).toBe(18);
+});
+
+const KEY = "sk-or-v1-0123456789abcdef";
+
+/** A development world whose module hears every command, with an admin and a bystander in it; `db` keeps its journal. */
+function heardWorld(db?: string): { h: Harness; ada: ReturnType<Harness["join"]>; heard: string[]; said: string[]; notices: () => string[] } {
+  const ears = listener("ears", ["command", "command.ran"]);
+  const said: string[] = [];
+  const h = new Harness({}, 1, 60, { dev: true, modules: [ears.def], log: (line) => said.push(line), ...(db ? { dbPath: db } : {}) });
+  const ada = h.join("ada");
+  const bo = h.join("bo");
+  h.run(500);
+  h.say(ada, "enablecheats");
+  return { h, ada, heard: ears.heard.lines, said, notices: () => bo.log.filter((l) => l.channel === TEXT_NOTICE).map((l) => l.text) };
+}
+
+/** The commands in a shut world's journal, as `name\twhat`. */
+function journalled(h: Harness, db: string): string[] {
+  h.host.shutdown();
+  const store = new WorldStore(db, h.reg);
+  const lines = adminLines(store);
+  store.close();
+  return lines;
+}
+
+test("settings and setting show a secret key masked, whatever its name", () => {
+  const { h, ada } = heardWorld();
+  expect(h.say(ada, "setting CastModelKey")[0]).toBe("CastModelKey=(none)  (default; may be changed while the server runs)");
+  expect(h.host.setSetting("CastModelKey", KEY)).toBe("");
+  expect(h.say(ada, "setting CastModelKey")[0]).toBe("CastModelKey=****  (console; may be changed while the server runs)");
+  expect(h.say(ada, "settings")).toContain("CastModelKey=****  (console)");
+  h.host.shutdown();
+  const { report, rules } = loadConfig({ live: `CastModelKey=${KEY}\n` }, ["-UseDynamicConfig"]);
+  expect(formatReport(report, rules)).toContain("  applied   CastModelKey=****  (DynamicConfig.ini:1)");
+});
+
+test("setting a secret key leaves it out of the act, the events and the notice to everyone", () => {
+  const db = join(dir, "secret-key.db");
+  const { h, ada, heard, said, notices } = heardWorld(db);
+  expect(h.host.setSetting("AdminLogging", "True")).toBe("");
+  const replies = [...h.say(ada, `setting CastModelKey ${KEY}`), ...h.say(ada, `cheat setting CastModelKey ${KEY}`), h.host.exec(`setting castmodelkey ${KEY}`)];
+  h.run(300);
+  expect(h.host.rules.text("CastModelKey")).toBe(KEY);
+  expect(notices().filter((n) => /CastModelKey/i.test(n))).toEqual(["ada: setting CastModelKey ****", "ada: setting CastModelKey ****", "(operator): setting castmodelkey ****"]);
+  for (const event of ["command:", "command.ran:"]) expect(heard.filter((l) => l.startsWith(event) && l.includes("setting CastModelKey ****"))).not.toEqual([]);
+  const texts = [...replies, ...said, ...heard, ...notices()];
+  for (const text of texts) expect(text).not.toContain(KEY);
+  expect(journalled(h, db).filter((l) => /CastModelKey/i.test(l))).toEqual(["ada\tsetting CastModelKey ****", "ada\tsetting CastModelKey ****", "(operator)\tsetting castmodelkey ****"]);
+});
+
+test("a setting that is not secret still shows and logs its value", () => {
+  const db = join(dir, "plain-setting.db");
+  const { h, ada, heard, notices } = heardWorld(db);
+  expect(h.host.setSetting("AdminLogging", "True")).toBe("");
+  expect(h.say(ada, "setting EggHatchSpeedMultiplier 80")).toContain("EggHatchSpeedMultiplier=80  (until the server is started again)");
+  expect(h.say(ada, "settings")).toContain("EggHatchSpeedMultiplier=80  (console)");
+  h.run(300);
+  expect(notices()).toContain("ada: setting EggHatchSpeedMultiplier 80");
+  for (const event of ["command:", "command.ran:"]) expect(heard.filter((l) => l.startsWith(event) && l.includes("setting EggHatchSpeedMultiplier 80"))).not.toEqual([]);
+  expect(journalled(h, db)).toContain("ada\tsetting EggHatchSpeedMultiplier 80");
 });

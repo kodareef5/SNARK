@@ -173,14 +173,17 @@ export class AirFlights {
       const waterAt = bodyAlong(world.hf.water, f.x, f.y, f.z, dx, dy, dz, length);
       const stop = Math.min(length, solidAt, waterAt);
       const body = combat.castBodiesBesides(home, e, f.x, f.y, f.z, dx, dy, dz, stop);
-      const hit = body >= 0 || solidAt <= length || waterAt <= length;
-      const distance = hit ? Math.max(0, (body >= 0 ? combat.t : stop) - 0.05) : length;
+      const near = body >= 0 ? combat.t : stop;
+      // A craft in the sky it flies into (server/sky.ts): its payload's blast then reaches the hull.
+      const sky = combat.sky.targets.length > 0 && combat.sky.ray(f.x, f.y, f.z, dx, dy, dz, near, tick) !== null;
+      const hit = sky || body >= 0 || solidAt <= length || waterAt <= length;
+      const distance = hit ? Math.max(0, (sky ? combat.sky.t : near) - 0.05) : length;
       droneMove(f, travel, distance);
       if (f.x < 0 || f.z < 0 || f.x >= world.hf.sizeX || f.z >= world.hf.sizeZ) { this.finish(c, "Drone left the map"); continue; }
       this.place(f, e, dx * distance / TICK_DT, dy * distance / TICK_DT, dz * distance / TICK_DT);
       if (hit) {
-        const vehicle = body >= 0 && !!world.reg.vehicle[world.ents.kind[body]!];
-        this.payload(c, f, body, body >= 0 ? (vehicle ? SURFACE_VEHICLE : SURFACE_BODY) : solidAt <= waterAt ? SURFACE_GROUND : SURFACE_WATER);
+        const vehicle = sky || (body >= 0 && !!world.reg.vehicle[world.ents.kind[body]!]);
+        this.payload(c, f, sky ? -1 : body, vehicle ? SURFACE_VEHICLE : body >= 0 ? SURFACE_BODY : solidAt <= waterAt ? SURFACE_GROUND : SURFACE_WATER);
         continue;
       }
       const chunk = chunkAt(world.dims, f.x, f.z);

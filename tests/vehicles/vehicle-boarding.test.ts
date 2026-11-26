@@ -15,15 +15,13 @@ import { CUE_HELD } from "../../shared/anim/pose.ts";
 import { RESULT_NOT_YOURS, RESULT_OK } from "../../shared/net/protocol.ts";
 import { BTN_CROUCH, BTN_JUMP, BTN_USE, MODE_SWIM, stanceEye } from "../../shared/sim/character.ts";
 import { F_GROUNDED } from "../../shared/sim/entities.ts";
-import { isBoatVehicle, isRotorVehicle, type BoatVehicleDefinition, type VehicleDefinition } from "../../shared/sim/vehicle.ts";
+import { familyOf } from "../../shared/sim/families.ts";
+import { isBoatVehicle, isJetVehicle, isRotorVehicle, type BoatVehicleDefinition, type VehicleDefinition } from "../../shared/sim/vehicle.ts";
 import { vehiclePoint, type VehicleFrame } from "../../shared/sim/vehicle-frame.ts";
-import { boatMeetsCapsule } from "../../shared/world/boat.ts";
 import { capsuleFree } from "../../shared/world/collide.ts";
-import { helicopterMeetsCapsule } from "../../shared/world/helicopter.ts";
 import { Heightfield } from "../../shared/world/heightfield.ts";
 import { writeMap, type MapData, type MapStatic } from "../../shared/world/mapfile.ts";
 import { castWorld, HIT_NONE, HIT_STRUCTURE, rayHit } from "../../shared/world/ray.ts";
-import { carMeetsCapsule } from "../../shared/world/vehicle.ts";
 import { LAUNCH_BOARDING } from "../../content/vehicles/boat-art.ts";
 import { Harness } from "../fixtures/net.ts";
 import { artTest } from "../fixtures/needs-art.ts";
@@ -142,9 +140,11 @@ function words(c: Crew, i: number, from: number, piece: number): string[] {
 /** Where survivor `i` gets in: by its seat's door, half a metre out from the hull, looking at the door. */
 function door(c: Crew, i: number): { at: number[]; look: number[]; name: string } {
   const { h, def, e } = c, seat = def.seats[i]!, side = seat.entry[0] >= 0 ? 1 : -1, move = h.reg.move[h.world.ents.kind[c.clients[i]!.ent]!]!;
-  const at = local(h, e, [side * (Math.max(Math.abs(seat.entry[0]), def.spec.halfWidth + move.radius + .08) + .5), 0, seat.entry[2]]);
+  // A jet's half width is its wing's: its pilot climbs in where its entry is, ahead of the wing, by the fuselage.
+  const jet = isJetVehicle(def);
+  const at = local(h, e, [side * ((jet ? Math.abs(seat.entry[0]) : Math.max(Math.abs(seat.entry[0]), def.spec.halfWidth + move.radius + .08)) + .5), 0, seat.entry[2]]);
   at[1] = QUAY;
-  return { at, look: local(h, e, [side * def.spec.halfWidth * .5, Math.min(1, def.spec.height * .5), seat.entry[2]]), name: `${seat.id}'s door` };
+  return { at, look: local(h, e, [side * (jet ? .5 : def.spec.halfWidth * .5), jet ? 2 : Math.min(1, def.spec.height * .5), seat.entry[2]]), name: `${seat.id}'s door` };
 }
 
 /** A place on the deck by local (x, z): on the top of the nearest hull part no higher than `most`, half a metre inside its edge. */
@@ -229,9 +229,7 @@ function leave(c: Crew, box: number): void {
       expect(h.host.urban.occupancy.seatOf(client.pid)).toBeNull();
       // Beside the vehicle where it was as the seat let go, clear of it and of the world, and standing or swimming after.
       expect(Math.hypot(got.x - got.vehicle.x, got.z - got.vehicle.z)).toBeLessThan(Math.hypot(def.spec.halfWidth, def.spec.halfLength) + 3);
-      const meets = isBoatVehicle(def) ? boatMeetsCapsule(def, got.vehicle, got.x, got.y, got.z, move.radius, move.height)
-        : isRotorVehicle(def) ? helicopterMeetsCapsule(def, got.vehicle, got.x, got.y, got.z, move.radius, move.height)
-        : carMeetsCapsule(def.spec, got.vehicle, got.x, got.y, got.z, move.radius, move.height);
+      const meets = familyOf(def)!.meetsCapsule(def, got.vehicle, got.x, got.y, got.z, move.radius, move.height);
       expect(`${who}: ${meets ? "inside the hull" : "clear"}`).toBe(`${who}: clear`);
       expect(capsuleFree(h.world, got.x, got.y, got.z, move.radius, move.height)).toBe(true);
       expect(`${who}: ${ents.mode[client.ent] === MODE_SWIM || (ents.flags[client.ent]! & F_GROUNDED) !== 0 ? "standing or swimming" : "falling"}`).toBe(`${who}: standing or swimming`);

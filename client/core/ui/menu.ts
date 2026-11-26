@@ -41,9 +41,18 @@ export function unmuteButton(f: UiFrame, touch: TouchPlan | null, pill: typeof i
   // Under the compass where it stands at the top.
   let y = touch ? touch.stackY - 52 : Math.max(f.top + 12, below);
   let x = touch ? left : Math.max(left, Math.min(Math.round((f.width - w) / 2), room));
-  for (let i = 0; i < f.count; i++) {
-    const q = f.nodes[i]!;
-    if (q.interactive && q.kind !== K_HOLD && x < q.x + q.w && q.x < x + w && y < q.y + q.h && q.y < y + h) return;
+  const occupied = (): boolean => {
+    for (let i = 0; i < f.count; i++) {
+      const q = f.nodes[i]!;
+      if (q.interactive && q.kind !== K_HOLD && x < q.x + q.w && q.x < x + w && y < q.y + q.h && q.y < y + h) return true;
+    }
+    return false;
+  };
+  if (occupied()) {
+    if (!hud) return;
+    x = left;
+    y = Math.max(y, f.top + 64);
+    if (occupied()) return;
   }
   // The HUD's glass under it, or by touch the touch sheet's pill, which that page already has.
   if (touch && pill) pill(f, 3400000, x, y, w, h, false);

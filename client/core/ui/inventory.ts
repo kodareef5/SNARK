@@ -1,7 +1,10 @@
 // Every action is a command, and the grids show what the server last said, so nothing here can get out of step with it.
 // A click picks a stack up or puts it down, a middle click picks up half, and a right click eats, uses or puts on.
 
+import { CARD, EquipmentCard } from "./equipment-card.ts";
+import { glass } from "./skin.ts";
 import { isSkateboard } from "../../../shared/sim/vehicle.ts";
+import { jetSpoolAt } from "../../../shared/sim/jet-gauge.ts";
 import { ballInfo } from "../balls.ts";
 import { CUE_HURT_SHIFT } from "../../../shared/anim/pose.ts";
 import { makeHandle } from "../../../shared/ids.ts";
@@ -104,8 +107,12 @@ export class InventoryScreen implements Screen {
   readonly layer = "modal";
   readonly group = "bag";
   readonly hotkey = "KeyI";
+  readonly dock = [{ id: "bag", label: "Inventory", art: "bag", rank: 10, open: (c: ScreenCtx) => c.pressKey("KeyI") }];
   readonly catchAll = true;
-  readonly bands = [{ from: KEY_OPEN_ORDER, count: KEY_OPEN_SLOT + 300 - KEY_OPEN_ORDER }, { from: KEY_STATION_PANEL, count: KEY_STATION_SLOTS + 100 - KEY_STATION_PANEL }, { from: KEY_VEHICLE_SERVICE, count: KEY_OPEN_TAKE_ALL + 1 - KEY_VEHICLE_SERVICE }];
+  readonly focusNav = true;
+  private readonly card = new EquipmentCard();
+  private lastItem = -1;
+  readonly bands = [{ from: CARD, count: 100 }, { from: KEY_OPEN_ORDER, count: KEY_OPEN_SLOT + 300 - KEY_OPEN_ORDER }, { from: KEY_STATION_PANEL, count: KEY_STATION_SLOTS + 100 - KEY_STATION_PANEL }, { from: KEY_VEHICLE_SERVICE, count: KEY_OPEN_TAKE_ALL + 1 - KEY_VEHICLE_SERVICE }];
   open = false;
   /** Take all, while it is still asking for stacks. */
   readonly taking = new TakeAll();
@@ -128,11 +135,29 @@ export class InventoryScreen implements Screen {
   }
 
   result(seq: number, code: number, c: ScreenCtx): void {
+    if (this.card.answer(seq, code, c.session)) this.shut(c.session);
     this.answer(seq, code, c.session?.tickClock ?? 0);
   }
 
-  pointer(kind: number, key: number, _x: number, _y: number, button: number, c: ScreenCtx): boolean {
+  key(code: string, down: boolean, repeat: boolean): boolean {
+    if (code !== "Escape" || !this.card.depth) return false;
+    if (down && !repeat) this.card.back();
+    return true;
+  }
+
+  private inspectSlot(inv: Inventory): number {
+    if (this.heldBox === BOX_SELF && this.held >= 0 && inv.item[this.held]) return this.held;
+    if (this.lastItem >= 0 && inv.item[this.lastItem]) return this.lastItem;
+    return inv.item.findIndex(id => id !== 0);
+  }
+
+  pointer(kind: number, key: number, _x: number, y: number, button: number, c: ScreenCtx): boolean {
     if (!c.session) return false;
+    if (c.session.inventory && !c.session.open && key >= CARD && key < CARD + 100) {
+      if (kind !== 0 || button === 0) this.card.input(kind, key, y, c.finger, this.inspectSlot(c.session.inventory), c.session);
+      return true;
+    }
+    if (this.card.depth) return true;
     this.press(kind, key, button, c.session);
     return true;
   }
@@ -192,6 +217,7 @@ export class InventoryScreen implements Screen {
   /** Closes it, and closes the container the server has open. */
   shut(session: ClientSession | null): void {
     this.open = false;
+    this.card.reset(); this.lastItem = -1;
     this.serviceSeq = 0; this.serviceFeedback = "";
     this.held = -1;
     this.taking.stop();
@@ -203,6 +229,7 @@ export class InventoryScreen implements Screen {
     const at = this.where(key, session);
     const box = at < 0 ? BOX_SELF : Math.floor(at / 1000);
     let slot = at < 0 ? -1 : at % 1000;
+    if (box === BOX_SELF && slot >= 0 && session.inventory?.item[slot]) this.lastItem = slot;
     if (kind === 2) {
       this.hoverBox = box;
       this.hover = slot;
@@ -385,6 +412,9 @@ export class InventoryScreen implements Screen {
     const own = session?.inventory;
     if (!this.open || !own || !session || !reg) return;
     const other = session.open?.inventory ?? null;
+    if (other) this.card.reset();
+    this.card.validate(own);
+    if (this.card.depth) { this.card.draw(f, own, reg, this.touch); return; }
     const heldInv = this.box(session, this.heldBox);
     if (this.held >= 0 && (!heldInv || heldInv.item[this.held] === 0)) this.held = -1;
 
@@ -417,7 +447,9 @@ export class InventoryScreen implements Screen {
       else if (def && index >= 0) {
         const fuel = r.vehicleFuel[index]!, engine = r.vehicleEngineCondition[index]!, rotor = r.vehicleRotorCondition[index]!;
         const boat = def.movement === "boat", car = def.movement === undefined || def.movement === "wheeled";
-        const stopped = boat ? !r.vehicleEngineOn[index] && r.vehicleRpm[index]! <= 30 : r.vehicleGrounded[index] !== 0 && (def.movement !== "rotor" || (!r.vehicleEngineOn[index] && r.vehicleRotorRpm[index]! <= 30));
+        // A jet's spool is a share of its thrust, which the same limit at a thirtieth says has wound down.
+        const jet = def.movement === "jet", wound = !r.vehicleEngineOn[index] && (jet ? jetSpoolAt(r, index) <= .02 : r.vehicleRotorRpm[index]! <= 30);
+        const stopped = boat ? !r.vehicleEngineOn[index] && r.vehicleRpm[index]! <= 30 : r.vehicleGrounded[index] !== 0 && ((def.movement !== "rotor" && !jet) || wound);
         const gasoline = reg.index.get("core:gasoline")!, haveFuel = own.total(gasoline);
         const repairItems = VEHICLE_REPAIR_BILL.map(([id]) => own.total(reg.index.get(id)!));
         const maxCost = VEHICLE_REPAIR_BILL.map(([, n]) => Math.ceil(n * VEHICLE_REPAIR_STEP));
@@ -429,8 +461,9 @@ export class InventoryScreen implements Screen {
         const lines = [`Hull ${hull} | Fuel ${(fuel * def.spec.fuelCapacity).toFixed(1)}/${def.spec.fuelCapacity}`];
         if (boat || car) lines.push(`Health ${health}`);
         if (def.movement === "rotor") lines.push(`Engine ${Math.round(engine * 100)}% | Rotor ${Math.round(rotor * 100)}%`);
+        if (jet) lines.push(`Engine ${Math.round(engine * 100)}% | Repair also rearms`);
         if (boat || car) lines.push(`Engine ${Math.round(engine * 100)}% | ${boat ? "Bilge" : "Flooding"} ${Math.round(r.vehicleFlooding[index]! * 100)}%`);
-        lines.push(boat ? "To service: release throttle, exit and let boat settle" : car ? "To service: stop and get out; recover from water before repair" : stopped ? "Service available when stationary" : "To service: land, exit and wait for rotors");
+        lines.push(boat ? "To service: release throttle, exit and let boat settle" : car ? "To service: stop and get out; recover from water before repair" : stopped ? "Service available when stationary" : jet ? "To service: land, exit and let the engine wind down" : "To service: land, exit and wait for rotors");
         if (car) lines.push("Stand beside a stopped car to flip it. Push or pull a flooded car.");
         lines.push(`Refuel: ${VEHICLE_FUEL_PER_GASOLINE} fuel per gasoline | carrying ${haveFuel}`);
         lines.push(`Repair: up to ${VEHICLE_REPAIR_STEP * 100}%; at most ${maxCost[0]} ingots, ${maxCost[1]} polymer, ${maxCost[2]} electronics`);
@@ -457,7 +490,9 @@ export class InventoryScreen implements Screen {
     const narrow = stationW > 0 && w + stationW > f.width - 8;
     this.station.begin(session, narrow);
     const vehicleWide = !!this.service && f.width >= 2 * w + 16, vehicleNarrow = !!this.service && !vehicleWide;
-    let x0 = Math.round((f.width - w - (vehicleWide ? w + 8 : narrow ? 0 : stationW)) / 2);
+    const item = this.inspectSlot(own);
+    const caseWidth = !other && item >= 0 && f.width - f.left - f.right >= w + 210 ? 184 : 0;
+    let x0 = Math.round((f.width + caseWidth - w - (vehicleWide ? w + 8 : narrow ? 0 : stationW)) / 2);
     let y = Math.max(4, Math.round((f.height - ownH - otherH - (other ? 8 : 0)) / 2));
     if (this.service) y = vehicleNarrow ? 36 : Math.max(4, Math.round((f.height - Math.max(ownH, otherH)) / 2));
     if (vehicleNarrow) {
@@ -483,7 +518,9 @@ export class InventoryScreen implements Screen {
         cell.interactive = true;
         if (inHand && cell.style === S_SLOT) cell.tint = 0x5a6a7a;
         const item = inv.item[s]!;
-        if (item === 0) continue;
+        const place = which === BOX_SELF && inv.armor >= 0 && s >= inv.armor ? ARMOR_LABELS[s - inv.armor] : "";
+        cell.label = item ? itemLabel(reg, item) : place ? "Empty " + place + " slot" : "Empty slot";
+        if (item === 0) { cell.alpha = .27; continue; }
         // Quality shows as the cell's colour, and a blueprint as "BP" where a count would be.
         const bp = (inv.flags[s]! & FLAG_BLUEPRINT) !== 0;
         if (inv.quality[s]! > 0 && cell.style === S_SLOT && !inHand) cell.tint = QUALITY_TINT[inv.quality[s]!] ?? -1;
@@ -595,17 +632,22 @@ export class InventoryScreen implements Screen {
       if (vehicleWide) x0 += w + 8;
       else y += otherH + 8;
     }
-    f.add(KEY_INV_PANEL, K_PANEL, x0, y, w, ownH, S_PANEL);
+    glass(f, KEY_INV_PANEL, x0 - caseWidth, y, w + caseWidth, ownH);
+    f.add(KEY_INV_PANEL, K_PANEL, x0, y, w, ownH, S_SLOT).alpha = .65;
     f.text(KEY_INV_TITLE, x0 + PAD, y + PAD, w - PAD * 2, S_TITLE, fit(`Inventory  ${own.weight(reg).toFixed(1)} kg`));
+    if (caseWidth) {
+      this.card.preview(f, x0 - caseWidth, y, caseWidth, ownH, own, reg, item);
+      if (this.touch) this.card.grip(f, x0, y, w);
+    } else if (!other && item >= 0) this.card.entry(f, x0, y, w, this.touch);
     let top = y + PAD + titleH + 4;
     grid(own, BOX_SELF, KEY_INV_SLOT, top, 0, own.bag);
     top += rows(own.bag);
     if (tail) {
-      f.text(KEY_INV_ROW_LABEL, x0 + PAD, top, w - PAD * 2, S_LABEL, this.touch ? "Hotbar" : "Hotbar: keys 1 to 0");
+      f.text(KEY_INV_ROW_LABEL, x0 + PAD, top, w - PAD * 2, S_LABEL, "Hotbar");
       top += infoH;
       grid(own, BOX_SELF, KEY_INV_SLOT, top, own.hotbar, HOTBAR_SLOTS);
       top += rows(HOTBAR_SLOTS);
-      f.text(KEY_INV_ROW_LABEL + 1, x0 + PAD, top, w - PAD * 2, S_LABEL, `Worn: ${ARMOR_LABELS.join(", ")}`.slice(0, Math.floor((w - PAD * 2) / 7.2)));
+      f.text(KEY_INV_ROW_LABEL + 1, x0 + PAD, top, w - PAD * 2, S_LABEL, "Worn");
       top += infoH;
       grid(own, BOX_SELF, KEY_INV_SLOT, top, own.armor, ARMOR_SLOTS);
       top += rows(ARMOR_SLOTS) + 4;

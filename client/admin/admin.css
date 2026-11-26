@@ -93,11 +93,19 @@ th { color: var(--dim); font-weight: 650; font-size: .78rem }
   .admin-switch select { max-width: 30vw; font-size: .79rem }
   body > main { padding: 18px 12px }
 }
-.settings-page #groups,.drops-page #main,.loadouts-page #list { display: grid; gap: 14px; min-width: 0 }
+.settings-page #groups,.drops-page #main,.events-page #main,.loadouts-page #list { display: grid; gap: 14px; min-width: 0 }
 .settings-page .group .row { display: grid; grid-template-columns: minmax(150px, 1.6fr) minmax(115px, 1fr) minmax(75px, .5fr); border-top: 1px solid var(--edge); padding: 12px 0 }
 .settings-page .what,.settings-page .box,.settings-page .from { display: grid; gap: 3px; justify-items: start; overflow-wrap: anywhere }
 .settings-page .group :is(.dim,.faint,.from) { font-size: .81rem }
 .settings-page .kept { border-left: 3px solid var(--copper); padding-left: 8px !important }
+.acts-page td { vertical-align: top }
+.acts-page :is(.when,td:nth-child(4),.from) { white-space: nowrap }
+.acts-page .who .id { display: block; font-size: .8rem }
+.acts-page .typed { text-decoration: underline dotted; cursor: help }
+.acts-page .what { overflow-wrap: anywhere }
+.acts-page tr.open { color: var(--dim) }
+.acts-page .chip.open { cursor: help; border-style: dashed }
+.acts-page .bar label { display: inline-flex; align-items: center; gap: 6px; color: var(--dim) }
 .loadout-editor { display: grid; grid-template-columns: minmax(150px, 230px) minmax(0,1fr); gap: 18px; align-items: start }
 .loadouts-page .pick { text-align: left; display: grid }
 .loadouts-page .pick span,.loadouts-page .faint,.loadouts-page .lines { font-size: .82rem }
@@ -118,24 +126,24 @@ th { color: var(--dim); font-weight: 650; font-size: .78rem }
 .first-frame-page .bar i { display: block; height: 100% }
 .first-frame-page .bar .mark { position: absolute; height: 100%; width: 2px; background: var(--bad) }
 .first-frame-page i.key { display: inline-block; width: 9px; height: 9px; margin-right: 5px }
-.drops-page .tabs { margin-top: 12px }
-.drops-page .slots,.drops-page .mapgrid { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(300px,100%),1fr)); gap: 12px }
-.drops-page .slot { border: 1px solid var(--edge); border-radius: 5px; padding: 12px }
-.drops-page .entry,.drops-page .line { border-top: 1px solid var(--edge); padding-block: 5px; display: flex; flex-wrap: wrap; gap: 6px; font-size: .85rem }
+.drops-page .tabs,.events-page .tabs { margin-top: 12px }
+.drops-page .slots,.drops-page .mapgrid,.events-page .slots,.events-page .mapgrid { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(300px,100%),1fr)); gap: 12px }
+.drops-page .slot,.events-page .slot { border: 1px solid var(--edge); border-radius: 5px; padding: 12px }
+.drops-page .entry,.drops-page .line,.events-page .line { border-top: 1px solid var(--edge); padding-block: 5px; display: flex; flex-wrap: wrap; gap: 6px; font-size: .85rem }
 .drops-page .gone { text-decoration: line-through }
 .drops-page .matrix :is(th,td) { min-width: 95px; text-align: center }
 .drops-page .cell { width: 100% }
-.drops-page .sub,.drops-page .tag { font-size: .78rem; color: var(--dim) }
-.drops-page .swatch { display: inline-block; width: 10px; height: 10px; margin-right: 5px }
-.drops-page .meter,.drops-page .mix,.drops-page .bars { position: relative; display: flex; background: #e3eaf1 }
-.drops-page .meter { height: 4px }
-.drops-page .meter i { background: var(--ice) }
+.drops-page .sub,.drops-page .tag,.events-page .sub { font-size: .78rem; color: var(--dim) }
+.drops-page .swatch,.events-page .swatch { display: inline-block; width: 10px; height: 10px; margin-right: 5px }
+.drops-page .meter,.drops-page .mix,.drops-page .bars,.events-page .meter { position: relative; display: flex; background: #e3eaf1 }
+.drops-page .meter,.events-page .meter { height: 4px }
+.drops-page .meter i,.events-page .meter i { background: var(--ice) }
 .drops-page .meter b { position: absolute; top: -2px; left: 66.7%; width: 1px; height: 8px; background: var(--copper) }
 .drops-page .bars { height: 116px; align-items: end; gap: 2px }
 .drops-page .bars i { flex: 1; background: var(--ice) }
 .drops-page .mix { height: 15px }
-.drops-page .mapbox { overflow: auto; background: #153048; max-height: 75vh }
-.drops-page canvas { display: block; touch-action: none }
+.drops-page .mapbox,.events-page .mapbox { overflow: auto; background: #153048; max-height: 75vh }
+.drops-page canvas,.events-page canvas { display: block; touch-action: none }
 .board-page #list { min-width: 0 }
 .board-page summary { cursor: pointer; padding: 12px; background: #edf2f7 }
 .board-page details { border: 1px solid var(--edge); border-radius: 6px; margin-bottom: 12px; background: white }
@@ -212,3 +220,35 @@ th { color: var(--dim); font-weight: 650; font-size: .78rem }
 @media(max-width:900px) { .screens-page .monitors { grid-template-columns: 1fr } }
 .screens-page .send { margin-top: 10px }
 .screens-page .bar h2 { margin: 0 }
+
+.permissions-page .group,.permissions-page .chat-block { border-top: 1px solid var(--edge); padding-block: 12px; display: grid; gap: 8px }
+.permissions-page .group h3,.permissions-page .chat-block h3 { margin: 0 }
+.permissions-page .conflict { border: 1px solid var(--warn); border-radius: 6px; padding: 8px 10px; display: grid; gap: 6px }
+.permissions-page .conflict pre { margin: 0; white-space: pre-wrap; word-break: break-all; max-height: 10em; overflow: auto }
+.permissions-page .chip { display: inline-flex; align-items: center; gap: 4px; font-family: ui-monospace, monospace }
+.permissions-page .chip .x { border: 0; background: none; padding: 0 2px; line-height: 1; color: var(--bad) }
+.permissions-page code { font-size: .85em; color: var(--dim) }
+.permissions-page .line { display: grid; gap: 3px }
+.permissions-page .parts { display: grid; gap: 6px }
+.permissions-page .part { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px }
+.permissions-page .part label { display: flex; align-items: center; gap: 6px; flex: 1; min-width: min(320px, 100%) }
+.permissions-page .part label input,.permissions-page .line input { flex: 1; font-family: ui-monospace, monospace; font-size: .85rem }
+.permissions-page input[type=color] { width: 2.4em; height: 2em; padding: 2px; border: 1px solid #becbd7; border-radius: 5px; background: white; cursor: pointer }
+.permissions-page .sample { display: block; background: #0b1424; color: #eef7ff; padding: 6px 10px; border-radius: 5px; font-size: .9rem; min-height: 2em; white-space: pre-wrap }
+.permissions-page td .sample { display: inline-block; min-width: 6em }
+.permissions-page .fault { font-size: .82rem }
+.permissions-page .fault:empty { display: none }
+.permissions-page textarea { width: 100%; font-family: ui-monospace, monospace; font-size: .85rem }
+.permissions-page td input:not([type=checkbox],[type=color]) { min-width: 9em }
+.permissions-page td input[type=number] { width: 6em; min-width: 0 }
+.permissions-page :is(.glass,#chat-settings) > .bar { margin-block: 8px }
+.permissions-page .glass h3:not(.grow) { margin-top: 20px }
+.permissions-page [data-grant] { min-width: min(24em, 100%) }
+.permissions-page td [data-set="tag.text"] { min-width: 20em; font-family: ui-monospace, monospace; font-size: .85rem }
+
+.events-page .about { max-width: 820px }
+.events-page .fault { color: var(--bad); font-size: .85rem }
+.events-page .key i { display: inline-block; width: 18px; height: 3px; vertical-align: 4px; margin-right: 6px }
+.events-page .meter { width: 90px; display: inline-flex; vertical-align: 1px }
+.events-page .mapgrid { grid-template-columns: minmax(0,880px) minmax(260px,1fr) }
+@media (max-width: 1300px) { .events-page .mapgrid { grid-template-columns: 1fr } }

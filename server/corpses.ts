@@ -33,6 +33,9 @@ import { stepBoatWreck } from "../shared/sim/boat-wreck.ts";
 import { boatWorld } from "../shared/world/boat.ts";
 import { createHelicopter, type HelicopterState } from "../shared/sim/helicopter.ts";
 import { helicopterWreckDefinition, stepHelicopterWreck } from "../shared/sim/helicopter-wreck.ts";
+import { createJet, type JetState } from "../shared/sim/jet.ts";
+import { clampJetWreck, stepJetWreck } from "../shared/sim/jet-wreck.ts";
+import { jetWorld } from "../shared/world/jet.ts";
 import { rayVehicle, vehiclePoint } from "../shared/sim/vehicle-frame.ts";
 import type { DeadlineHeap } from "../shared/sim/schedule.ts";
 import { groundUnder, restingAt, type CollisionWorld } from "../shared/world/collide.ts";
@@ -139,7 +142,7 @@ export interface Body {
   drop: Mover | null;
   dropped: number;
   /** Rigid rotorcraft salvage, carrying its complete crash orientation independently of creature ragdolls. */
-  readonly wreck: HelicopterState | BoatState | null;
+  readonly wreck: HelicopterState | BoatState | JetState | null;
   /** A physical death starts directly in the replicated ragdoll; the capsule never also owns its motion. */
   launch: CorpseImpact | null;
   /** A survivor's fall it died in (server/falls.ts take), which its ragdoll goes on from instead of being laid anew. */
@@ -351,7 +354,8 @@ export class Corpses {
   private make(rec: EntityRecord, kind: number, max: number, left: number, young: boolean, size: number, out: boolean, air: boolean, life: number): Body {
     const rig = this.rigOf(kind);
     const def = this.ctx.world.reg.vehicle[kind];
-    const wreck = def?.movement === "rotor" ? createHelicopter(def.spec, rec.x, rec.y, rec.z, yawOf16(rec.yaw), 0) : def?.movement === "boat" ? createBoat(def.spec, rec.x, rec.y, rec.z, yawOf16(rec.yaw), 0) : null;
+    const wreck = def?.movement === "rotor" ? createHelicopter(def.spec, rec.x, rec.y, rec.z, yawOf16(rec.yaw), 0) : def?.movement === "boat" ? createBoat(def.spec, rec.x, rec.y, rec.z, yawOf16(rec.yaw), 0)
+      : def?.movement === "jet" ? createJet(def.spec, rec.x, rec.y, rec.z, yawOf16(rec.yaw), 0) : null;
     if (wreck && "flooding" in wreck) { wreck.hullCondition = 0; wreck.engineCondition = 0; }
     const saved = rec.extra.get(WRECK_COMPONENT);
     if (wreck && saved) {
@@ -363,7 +367,9 @@ export class Corpses {
       for (let i = 0; i < WRECK_FIELDS.length; i++) wreck[WRECK_FIELDS[i]!] = values[i]!;
       wreckRotation.set([wreck.qx, wreck.qy, wreck.qz, wreck.qw]); quatNormalize(wreckRotation, 0);
       [wreck.qx, wreck.qy, wreck.qz, wreck.qw] = Array.from(wreckRotation) as [number, number, number, number];
-      for (const field of ["vx", "vy", "vz"] as const) wreck[field] = Math.max(-120, Math.min(120, wreck[field]));
+      // A jet's wreck keeps up to the jet's own cap; a helicopter's or a boat's 120.
+      if ("throttle" in wreck) clampJetWreck(wreck);
+      else for (const field of ["vx", "vy", "vz"] as const) wreck[field] = Math.max(-120, Math.min(120, wreck[field]));
       for (const field of ["pitchRate", "yawRate", "rollRate"] as const) wreck[field] = Math.max(-5, Math.min(5, wreck[field]));
       if ("flooding" in wreck) {
         const fields = values.slice(WRECK_FIELDS.length);
@@ -396,7 +402,8 @@ export class Corpses {
       const hit = def.movement === "boat" && "flooding" in b.wreck
         ? boatWorld(world).blocked(b.wreck, { ...b.wreck, y: b.wreck.y - .035 }, def)
         : def.movement === "rotor" && "rotorRpm" in b.wreck
-          ? helicopterWorld(world).blocked(b.wreck, { ...b.wreck, y: b.wreck.y - .035 }, helicopterWreckDefinition(def)) : null;
+          ? helicopterWorld(world).blocked(b.wreck, { ...b.wreck, y: b.wreck.y - .035 }, helicopterWreckDefinition(def))
+          : def.movement === "jet" && "throttle" in b.wreck ? jetWorld(world).blocked(b.wreck, { ...b.wreck, y: b.wreck.y - .035 }, def) : null;
       return !!hit && (hit.ny ?? 0) > .45;
     }
     return rests(world, b.x, b.y, b.z, b.move);
@@ -518,10 +525,11 @@ export class Corpses {
     const world = this.ctx.world;
     const m = b.drop!;
     const def = world.reg.vehicle[b.kind];
-    if (b.wreck && (def?.movement === "rotor" || def?.movement === "boat")) {
+    if (b.wreck && (def?.movement === "rotor" || def?.movement === "boat" || def?.movement === "jet")) {
       if ("flooding" in b.wreck) b.wreck.payloadMass = b.rec.inv ? this.ctx.items.inv(b.rec).weight(this.ctx.items.table) : 0;
       const stopped = def.movement === "boat" && "flooding" in b.wreck
         ? stepBoatWreck(b.wreck, def, boatWorld(world))
+        : def.movement === "jet" && "throttle" in b.wreck ? stepJetWreck(b.wreck, def, jetWorld(world))
         : def.movement === "rotor" && "rotorRpm" in b.wreck && stepHelicopterWreck(b.wreck, def, helicopterWorld(world));
       m.x = b.wreck.x; m.y = b.wreck.y; m.z = b.wreck.z;
       b.x = b.rec.x = m.x; b.y = b.rec.y = m.y; b.z = b.rec.z = m.z; b.dropped++;

@@ -3,8 +3,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RemoteSample } from "../../client/core/session.ts";
-import { OP_ADMIN } from "../../server/console.ts";
 import { WorldStore } from "../../server/persist/store.ts";
+import { idText } from "../../server/survivor-ids.ts";
 import { handleIndex } from "../../shared/ids.ts";
 import { BitWriter } from "../../shared/net/codec.ts";
 import {
@@ -29,6 +29,7 @@ import { BTN_SPRINT } from "../../shared/sim/character.ts";
 import { hourOfDay } from "../../shared/sim/clock.ts";
 import { V_FOOD } from "../../shared/sim/vitals.ts";
 import { Harness, testKey } from "../fixtures/net.ts";
+import { adminLines } from "../fixtures/acts.ts";
 
 /** A new world's day offset: nine game hours of 126 seconds each, in ticks. */
 const MORNING = 9 * 3780;
@@ -151,9 +152,10 @@ test("the console obeys admins, refuses everyone else, and never moves the world
   expect(Math.abs(hourOfDay(h.world.tick, h.world.dayOffset) - 6.5)).toBeLessThan(0.01);
   expect(bo.dayOffset).toBe(h.world.dayOffset);
   expect(h.say(bo, "time")).toEqual(["06:30"]);
-  expect(h.say(ada, "who").sort()).toEqual(["ada  alive  admin", "bo  alive"]);
-  // Who is an admin is for admins and the operator to know.
-  expect([h.say(bo, "who").sort(), h.host.exec("who").split("\n").sort()]).toEqual([["ada  alive", "bo  alive"], ["ada  alive  admin", "bo  alive"]]);
+  const [adaId, boId] = ["ada", "bo"].map((name) => idText(h.host.survivorRecord(name)!));
+  expect(h.say(ada, "who").sort()).toEqual([`ada  ${adaId}  alive  admin`, `bo  ${boId}  alive`]);
+  // Who is an admin, and each survivor's ID, is for admins and the operator to know.
+  expect([h.say(bo, "who").sort(), h.host.exec("who").split("\n").sort()]).toEqual([["ada  alive", "bo  alive"], [`ada  ${adaId}  alive  admin`, `bo  ${boId}  alive`]]);
   // Where it stands in metres, and then as the map screen says it, which the proving ground reads 5 to 10 each way.
   expect(h.say(bo, "pos")[0]).toMatch(/^x 2\d\d\.\d\d  y -?\d+\.\d\d  z 2\d\d\.\d\d  [5-9]\.\d lat  [5-9]\.\d lon  alive$/);
 
@@ -178,10 +180,7 @@ test("the console obeys admins, refuses everyone else, and never moves the world
 
   // Admin commands are journalled. The password never is.
   const store = new WorldStore(db, h.reg);
-  const lines = store
-    .journal()
-    .filter((j) => j.op === OP_ADMIN)
-    .map((j) => new TextDecoder().decode(j.data));
+  const lines = adminLines(store);
   expect(lines).toEqual(["ada\tsettime 6:30", "ada\tkick cy", "(operator)\tsettime 12", "ada\tsave"]);
   expect(Number(store.meta("day_offset"))).toBe(offset);
   store.close();

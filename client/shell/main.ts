@@ -131,6 +131,7 @@ async function boot(): Promise<void> {
     cityMaker: new WorkerCityMaker(),
     tops: loader.staged.tops,
     buildings: loader.staged.buildings,
+    chartPlaces: head.spawns,
     tideEyes: head.tideEyes,
     orbs: head.orbs,
     ...(land ? { landmarks: land.landmarks } : {}),

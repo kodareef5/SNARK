@@ -6,9 +6,11 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RESULT_OK } from "../../shared/net/protocol.ts";
+import { WorldStore } from "../../server/persist/store.ts";
 import { Rules } from "../../server/settings/rules.ts";
 import { STATE_DEAD } from "../../server/survivor-log/format.ts";
 import { flatGround } from "../fixtures/arena.ts";
+import { savedActs } from "../fixtures/acts.ts";
 import { Harness } from "../fixtures/net.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "snark-survivor-log-"));
@@ -107,6 +109,27 @@ test("what survivors do is logged as they play, read back by wall time, and a re
   expect(await h2.host.survivorLog.tickAt(now + 1_800_000)).toBe(stoppedAt);
   expect(await h2.host.survivorLog.wallAt(stoppedAt + 30)).toBeGreaterThanOrEqual(later);
   h2.host.shutdown();
+});
+
+test("a command's mark carries its admin's survivor and its own time", async () => {
+  const h = world({ db: join(dir, "marks.db") });
+  const ana = h.join("ana");
+  h.run(1500);
+  h.say(ana, "enablecheats");
+  const said = W0 + h.now;
+  h.say(ana, "settime 6:30");
+  h.host.exec("settime 7");
+  h.run(1000);
+  h.host.survivorLog.flush();
+  const marks = (await h.host.survivorLog.marks(W0, W0 + h.now)).marks.filter((m) => m.kind === "admin");
+  expect(marks.map((m) => [m.name, m.pid, m.text, m.act])).toEqual([["ana", h.client(ana)!.pid, "settime 6:30", "command"], ["(operator)", 0, "settime 7", "command"]]);
+  expect(marks[0]!.wall - said).toBeGreaterThanOrEqual(0);
+  expect(marks[0]!.wall - said).toBeLessThan(400);
+  h.host.shutdown();
+  // The time is the act's own, as the journal keeps it.
+  const store = new WorldStore(join(dir, "marks.db"), h.reg);
+  expect(savedActs(store).find((a) => a.what === "settime 6:30")!.at).toBe(marks[0]!.wall);
+  store.close();
 });
 
 test("a world with no save keeps no log, and nothing fails", async () => {

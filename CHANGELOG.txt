@@ -13,11 +13,19 @@ Joining a world
 - The loading screen shows progress into the world. On slow connections or with Data Saver enabled, live previews start only when you ask for them.
 - The first download is smaller. The browser builds city ruins from the same shapes it uses for destruction and fetches the building editor when you need it.
 
+Blue Glass HUD
+- Desktop players can open their map, inventory, and action menus from the dock beside the hotbar. On touchscreens, the same controls open from wheels at the edges.
+- Expand the corner map in place. The radio keeps a separate draft for each chat channel.
+
+Map events
+- Fly the XF-51 Wraith to intercept the UFO. Its shield opens when its beam fires. Bring it down and recover loot from the wreck.
+
 Crowded worlds
 - Nearby animals stay visible when a crowd fills the view. A slow connection can catch up with the current world as soon as it drains.
 
 Operator tools
 - Open the cluster console for world maps, population and chat. Each world has its own tools, including a live map and survivor activity replay.
+- Schedule map events or call one from the Events page. On the Permissions page, assign staff roles by survivor or tribe and review changes in the admin log.
 - Publish the title and loading shots separately in Scene Studio. In Screens, preview and publish the Sphere's program, upload clips and edit channels.
 
 v0.0.12 — 2026-11-24

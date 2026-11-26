@@ -71,6 +71,13 @@ test("code a page needs only after its first frame is not in the script the firs
     "client/core/ui/storage.ts",
     "client/core/assets/keeping.ts",
     "client/core/light-capture.ts",
+    "client/core/jet-late.ts",
+    "shared/sim/families/jet.ts",
+    "shared/sim/jet.ts",
+    "shared/world/jet.ts",
+    "client/core/render/jet-parts.ts",
+    "client/core/hud/fighter.ts",
+    "client/core/missile-trail.ts",
     ...SOUND_FILES,
     ...DEBUG_FILES,
   ];

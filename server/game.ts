@@ -5,7 +5,7 @@
 // input does each tick (server/players.ts), and what each session is sent (server/replication.ts). Here are the tick
 // that calls them, what a session remembers (Client), and the messages any system may send a session.
 
-import { BitReader, BitWriter } from "../shared/net/codec.ts";
+import { BitReader, BitWriter, fitBytes } from "../shared/net/codec.ts";
 import {
   INPUT_WINDOW,
   InputBuffer,
@@ -20,7 +20,11 @@ import {
   S_RESTART,
   S_TEXT,
   S_TUNING,
+  S_CHAT,
+  S_SECRET,
+  MAX_SECRET_BYTES,
 } from "../shared/net/protocol.ts";
+import { writeChat, type TextRun } from "../shared/net/chat.ts";
 import { CH_RELIABLE, type Connection } from "../shared/net/transport.ts";
 import { PassengerView } from "./passenger-view.ts";
 import { OwnState } from "./ownstate.ts";
@@ -104,6 +108,20 @@ export class Client {
   state = SESSION_ALIVE;
   /** Cheats enabled. Belongs to the connection, never saved. */
   admin = false;
+  /** How far its word reaches (shared/ranks.ts). Belongs to the connection, as `admin` does. */
+  rank = 0;
+  /** The survivor gave their own password on this connection. */
+  signed = false;
+  /** The hash of that password, or "". Only the permissions' own check reads it. */
+  signedHash = "";
+  /** This connection was told to claim the survivor's own password, and to sign in with it (server/host.ts tellPassword). */
+  toldClaim = false;
+  toldSignIn = false;
+  /** What a host password gave this connection: a rank, and whether every cheat (server/creative.ts stand). */
+  passwordRank = 0;
+  passwordCheats = false;
+  /** The rank it proved: the higher of its host password's and its groups' that count, nothing from creative mode for all. */
+  proved = 0;
   /** Tick of its last input change or command, for the idle kick. */
   activeAt = 0;
   cheatAttempts = 0;
@@ -272,6 +290,14 @@ export class Client {
     this.queue.length = 0;
     this.textReadyAt = 0;
     this.admin = false;
+    this.rank = 0;
+    this.signed = false;
+    this.signedHash = "";
+    this.toldClaim = false;
+    this.toldSignIn = false;
+    this.passwordRank = 0;
+    this.passwordCheats = false;
+    this.proved = 0;
     this.cheatAttempts = 0;
     this.entered = false;
     this.joined = false;
@@ -395,6 +421,28 @@ export class GameServer {
       w.string(line.length > 330 ? line.slice(0, 330) : line);
       c.conn.send(CH_RELIABLE, w.bytes());
     }
+  }
+
+  /** A chat line in runs (S_CHAT). */
+  sendChat(c: Client, channel: number, runs: readonly TextRun[]): void {
+    if (c.closed) return;
+    const w = this.w;
+    w.reset();
+    w.u8(S_CHAT);
+    writeChat(w, channel, runs);
+    c.conn.send(CH_RELIABLE, w.bytes());
+  }
+
+  /** A secret for this session alone, such as a password it claimed (S_SECRET). Nothing else on the server keeps it. */
+  sendSecret(c: Client, secret: string): void {
+    if (c.closed) return;
+    const w = this.w;
+    w.reset();
+    w.u8(S_SECRET);
+    w.string(fitBytes(secret, MAX_SECRET_BYTES));
+    c.conn.send(CH_RELIABLE, w.bytes());
+    // The writer is shared: the secret is not left in it.
+    w.reset();
   }
 
   /**
