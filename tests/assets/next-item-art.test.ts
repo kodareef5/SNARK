@@ -1,7 +1,7 @@
 import { expect } from "bun:test";
 import { nearestTriangle } from "../../client/core/assets/look.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
-import { B_PROP_R } from "../../shared/anim/human.ts";
+import { B_PROP_L, B_PROP_R } from "../../shared/anim/human.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { slotsOf } from "../../shared/content/slots.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
@@ -22,10 +22,12 @@ const handTools = ["torch", "slingshot", "club", "hatchet_metal", "pick_metal", 
 const camp = ["campfire", "storage_box", "sleeping_bag", "bed", "standing_torch", "cooking_pot", "storage_large", "fireplace"];
 const campFires = ["campfire", "standing_torch", "cooking_pot", "fireplace"];
 const projectiles = ["arrow_stone", "arrow_tranq", "grenade_smoke", "arrow_flame", "grenade_poison", "grappling_hook", "dart_tranq", "c4", "arrow_metal"];
+const grenades = ["grenade_smoke", "grenade_poison"];
 const rounds = ["round_pistol", "round_rifle", "round_shotgun", "round_advanced", "round_advanced_rifle", "round_advanced_sniper", "rocket"];
 const later = ["scope", "silencer", "flashlight", "pistol_fabricated", "shotgun_pump", "rifle_assault", "laser", "bow_compound", "rifle_sniper"];
 const laterHeld = ["pistol_fabricated", "shotgun_pump", "rifle_assault", "bow_compound", "rifle_sniper"];
 const industrial = ["generator", "refrigerator", "air_conditioner", "grinder", "vault", "forge_industrial", "chemistry_bench", "soul_vault", "cooker_industrial"];
+const bowHolds = new Set(CORE_CONTENT.flatMap(d => d.type === "item" && d.weapon?.hold === "bow" ? [d.id] : []));
 const heldSlots = new Map(slotsOf(CORE_CONTENT).filter(slot => slot.slot === "held").map(slot => [slot.owner, slot.id]));
 
 function expectLevels(mesh: SourceMesh, densityFloor: number): void {
@@ -70,7 +72,8 @@ async function expectItemArt(pack: string, items: readonly string[], heldItems: 
       const held = meshes.get(id);
       expect(held, id).toBeDefined();
       expect(held!.skeleton, id).toBe("human");
-      for (const lod of held!.lods) expect(lod.bones?.every((bone) => bone === B_PROP_R), id).toBe(true);
+      const bone = bowHolds.has(id) ? B_PROP_L : B_PROP_R;
+      for (const lod of held!.lods) expect(new Set(lod.bones), id).toEqual(new Set([bone]));
       expectLevels(held!, 1000);
     }
 
@@ -83,7 +86,7 @@ async function expectItemArt(pack: string, items: readonly string[], heldItems: 
   }
 }
 
-artTest("hand tools ship grounded models, right-hand models and icons", async () => {
+artTest("hand tools ship grounded models, hand grips and icons", async () => {
   await expectItemArt("core:hand-tools", handTools, handTools);
 });
 
@@ -111,8 +114,23 @@ artTest("camp stations ship centred models, lit variants and inventory icons", a
   await expectStationArt("core:camp", camp, campFires);
 });
 
-artTest("projectiles ship grounded models and inventory icons", async () => {
-  await expectItemArt("core:projectile-drops", projectiles, []);
+artTest("projectiles ship icons and grenades keep their size from hand to ground", async () => {
+  await expectItemArt("core:projectile-drops", projectiles, grenades);
+  const meshes = await meshesIn("core:projectile-drops");
+  for (const name of grenades) {
+    const id = `core:${name}`;
+    const held = meshes.get(id)!;
+    const drop = meshes.get(`${id}/dropped`)!;
+    expect(drop.lods.length, id).toBe(held.lods.length);
+    for (const [level, lod] of held.lods.entries()) {
+      const [min, max] = boundsOf(lod);
+      const [from, to] = boundsOf(drop.lods[level]!);
+      expect(from[1], id).toBeCloseTo(0, 3);
+      for (const [axis, gripAxis] of [0, 2, 1].entries()) {
+        expect(to[axis]! - from[axis]!, id).toBeCloseTo(max[gripAxis]! - min[gripAxis]!, 3);
+      }
+    }
+  }
 });
 
 artTest("rounds ship grounded models and inventory icons", async () => {
@@ -121,6 +139,21 @@ artTest("rounds ship grounded models and inventory icons", async () => {
 
 artTest("later equipment ships drop art, weapon grips and inventory icons", async () => {
   await expectItemArt("core:later-weapons", later, laterHeld);
+});
+
+artTest("bow holds bind upright to the left prop bone", async () => {
+  const art = [await meshesIn("core:hand-tools"), await meshesIn("core:later-weapons")];
+  const stock = new Map(weaponMeshes().map(mesh => [mesh.id, mesh]));
+  for (const item of bowHolds) {
+    const id = heldSlots.get(item)!;
+    const held = art.map(pack => pack.get(id)).find(mesh => mesh !== undefined) ?? stock.get(id);
+    expect(held, item).toBeDefined();
+    for (const lod of held!.lods) {
+      expect(new Set(lod.bones), item).toEqual(new Set([B_PROP_L]));
+      const [from, to] = boundsOf(lod);
+      expect(to[1]! - from[1]!, item).toBeGreaterThan(Math.max(to[0]! - from[0]!, to[2]! - from[2]!));
+    }
+  }
 });
 
 artTest("industrial stations ship centred models and their working state", async () => {

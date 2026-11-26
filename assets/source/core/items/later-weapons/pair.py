@@ -2,50 +2,59 @@
 
 from math import copysign, cos, sin, tau
 
-from hand_geometry import X, Y, Z
+from hand_geometry import X, Y, Z, circle
 
 
-# Each casing station gives its reach, bottom, top and half-width.
-PISTOL_CASE = (
-    (-0.073, 0.040, 0.088, 0.014),
-    (-0.067, 0.033, 0.098, 0.019),
-    (-0.053, 0.032, 0.102, 0.021),
-    (-0.032, 0.032, 0.102, 0.021),
-    (-0.008, 0.032, 0.100, 0.021),
-    (0.041, 0.034, 0.100, 0.021),
-    (0.072, 0.035, 0.094, 0.020),
-    (0.099, 0.037, 0.085, 0.018),
-    (0.140, 0.040, 0.085, 0.018),
-    (0.155, 0.045, 0.080, 0.014),
+# Each slide station gives its reach, bottom, top and half-width.
+PISTOL_SLIDE = (
+    (-0.073, 0.046, 0.092, 0.016),
+    (-0.067, 0.036, 0.101, 0.021),
+    (-0.058, 0.032, 0.102, 0.023),
+    (0.084, 0.032, 0.102, 0.023),
+    (0.117, 0.032, 0.102, 0.022),
+    (0.149, 0.032, 0.102, 0.022),
+    (0.153, 0.037, 0.098, 0.019),
 )
 PISTOL_FRAME = (
-    (-0.063, 0.014, 0.051, 0.012),
-    (-0.052, 0.010, 0.053, 0.017),
-    (-0.021, 0.008, 0.053, 0.019),
-    (0.019, 0.012, 0.053, 0.020),
-    (0.051, 0.013, 0.046, 0.019),
-    (0.087, 0.017, 0.045, 0.017),
-    (0.128, 0.025, 0.049, 0.015),
-    (0.145, 0.031, 0.047, 0.013),
+    (-0.062, 0.026, 0.048, 0.012),
+    (-0.044, 0.014, 0.049, 0.016),
+    (-0.021, 0.009, 0.047, 0.018),
+    (0.023, 0.012, 0.044, 0.018),
+    (0.058, 0.017, 0.040, 0.017),
+    (0.098, 0.021, 0.041, 0.016),
+    (0.130, 0.026, 0.041, 0.015),
+    (0.148, 0.029, 0.043, 0.013),
+)
+PISTOL_SIGHTS = (
+    (
+        (-0.064, 0.098, 0.109, 0.012),
+        (-0.060, 0.098, 0.112, 0.013),
+        (-0.048, 0.098, 0.108, 0.011),
+    ),
+    (
+        (0.127, 0.100, 0.105, 0.005),
+        (0.133, 0.100, 0.110, 0.006),
+        (0.144, 0.100, 0.109, 0.005),
+    ),
 )
 # Each upright station gives its height, offset across, back, front and half-width.
 PISTOL_GRIP = (
-    (-0.101, 0, -0.062, -0.011, 0.015),
-    (-0.092, 0, -0.065, -0.008, 0.019),
-    (-0.076, 0, -0.058, -0.006, 0.020),
-    (-0.054, 0, -0.049, 0.002, 0.020),
-    (-0.032, 0, -0.040, 0.008, 0.019),
-    (-0.012, 0, -0.030, 0.017, 0.018),
+    (-0.105, 0, -0.067, -0.011, 0.017),
+    (-0.095, 0, -0.069, -0.006, 0.020),
+    (-0.075, 0, -0.057, -0.001, 0.021),
+    (-0.055, 0, -0.049, 0.004, 0.021),
+    (-0.034, 0, -0.039, 0.007, 0.020),
+    (-0.013, 0, -0.029, 0.014, 0.019),
     (0.008, 0, -0.025, 0.024, 0.017),
     (0.023, 0, -0.035, 0.027, 0.018),
     (0.036, 0, -0.052, 0.022, 0.017),
     (0.046, 0, -0.052, 0.014, 0.014),
 )
 PISTOL_HEEL = (
-    (-0.111, 0, -0.065, -0.005, 0.018),
-    (-0.107, 0, -0.072, 0.002, 0.022),
-    (-0.094, 0, -0.072, 0.004, 0.022),
-    (-0.087, 0, -0.063, -0.006, 0.017),
+    (-0.116, 0, -0.070, -0.011, 0.017),
+    (-0.112, 0, -0.079, 0.002, 0.022),
+    (-0.100, 0, -0.075, 0.004, 0.022),
+    (-0.094, 0, -0.067, -0.005, 0.018),
 )
 
 BOW_RISER = (
@@ -117,13 +126,13 @@ def _section(center, u, v, width, depth, chamfer):
     )]
 
 
-def _case(prop, profile, indices, surface, chamfer):
+def _case_rings(profile, indices, chamfer):
     rings = []
     for i in indices:
         z, bottom, top, width = profile[i]
         center = Z * z + Y * ((bottom + top) / 2)
         rings.append(_section(center, X, Y, width, (top - bottom) / 2, chamfer))
-    prop.shell(rings, surface, planar_sides=True)
+    return rings
 
 
 def _upright(prop, profile, indices, surface, chamfer, side=1):
@@ -162,18 +171,32 @@ def _side_band(prop, center, outside, inside, sides, width, surface, *, squarene
 
 
 def pistol_fabricated(prop):
-    """Set a raised steel casing over a short frame and swept dark palm."""
+    """Set a straight steel slide above a narrow frame and an angled grip."""
     level = prop.level
-    case = (range(10), (0, 2, 5, 7, 8, 9), (0, 2, 7, 9), (0, 2, 7, 9))[level]
+    slide = (range(7), (0, 2, 3, 5, 6), (0, 2, 5, 6), (0, 6))[level]
     frame = (range(8), (0, 2, 4, 6, 7), (0, 2, 4, 7), (0, 7))[level]
-    grip = (range(10), (0, 1, 3, 5, 7, 9), (0, 3, 6, 9), (0, 5, 9))[level]
+    grip = (range(10), (0, 1, 3, 5, 6, 8, 9), (0, 3, 6, 9), (0, 6, 9))[level]
     heel = (range(4), (0, 2, 3), (0, 2), (0, 2))[level]
-    _case(prop, PISTOL_CASE, case, "steel", level < 3)
-    _case(prop, PISTOL_FRAME, frame, "polymer", level < 2)
+
+    rings = _case_rings(PISTOL_SLIDE, slide, level < 2)
+    muzzle = Y * 0.067 + Z * PISTOL_SLIDE[-1][0]
+    muzzle_sides = len(rings[0])
+    muzzle_profile = ((0, 0.014), (0.002, 0.012), (0.002, 0.009), (-0.004, 0.008))
+    if level == 3:
+        muzzle_profile = ((0.002, 0.011), (-0.004, 0.008))
+    phase = -tau / 4 - tau / (2 * muzzle_sides)
+    for reach, radius in muzzle_profile:
+        rings.append(circle(muzzle + Z * reach, Z, radius, muzzle_sides, phase=phase))
+    prop.shell(rings, "steel", planar_sides=True, cap_surface="rubber",
+               band_surfaces=["steel"] * (len(rings) - 2) + ["rubber"])
+    prop.shell(_case_rings(PISTOL_FRAME, frame, level == 0), "polymer", planar_sides=True)
     _upright(prop, PISTOL_GRIP, grip, "rubber", level < 3)
     _upright(prop, PISTOL_HEEL, heel, "polymer", level == 0)
-    _side_band(prop, Y * 0.002 + Z * 0.055, (0.036, 0.047), (0.020, 0.030),
-               (24, 12, 8, 6)[level], 0.010, "polymer", squareness=0.65)
+    _side_band(prop, Z * 0.054, (0.037, 0.046), (0.022, 0.031),
+               (24, 12, 8, 6)[level], 0.010, "polymer", squareness=0.48)
+    if level < 2:
+        for sight in PISTOL_SIGHTS:
+            prop.shell(_case_rings(sight, range(len(sight)), False), "polymer", planar_sides=True)
 
 
 def bow_compound(prop):

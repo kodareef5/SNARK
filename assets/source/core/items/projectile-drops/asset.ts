@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { shared, type MaterialSpec, type PiecesAsset } from "../../../../../tools/art/spec.ts";
+import { shared, type MaterialSpec, type PieceSpec, type PiecesAsset } from "../../../../../tools/art/spec.ts";
 import handTools from "../hand-tools/asset.ts";
 import saddles from "../saddles-early/asset.ts";
 
@@ -10,6 +10,7 @@ const views = {
   grenade_poison: can, grappling_hook: { ...arrow, above: 0.85 }, dart_tranq: arrow,
   c4: { ...can, above: 0.86 }, arrow_metal: arrow,
 };
+const held = new Set(["grenade_smoke", "grenade_poison"]);
 
 const fromSaddles = (name: string): MaterialSpec =>
   shared(join(import.meta.dir, "../saddles-early"), `core:saddles-early/${name}`, saddles.materials[name]!);
@@ -23,7 +24,9 @@ const own = (name: string): MaterialSpec => ({
 export default {
   kind: "pieces",
   source: { scripts: ["model.py"] },
-  pieces: Object.entries(views).map(([object, icon]) => ({ id: `core:${object}/dropped`, object, icon })),
+  pieces: Object.entries(views).map(([object, icon]): PieceSpec => held.has(object)
+    ? { id: `core:${object}`, object, hold: "prop_r", dropped: `${object}_ground`, icon }
+    : { id: `core:${object}/dropped`, object, icon }),
   materials: {
     wood: fromSaddles("wood"), hide: fromSaddles("trail"), iron: fromSaddles("iron"), brass: fromSaddles("brass"),
     steel: fromTools("steel", 0.24), cloth: fromTools("cloth", 0.16),
