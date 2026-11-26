@@ -222,6 +222,6 @@ export class MenuScreen implements Screen {
       this.creativeScreen.build(f, session, hud, c.focus);
       // The password's field gives way to the tools once the server has given the role.
       if (!f.find(c.focus)?.interactive && !c.focusPending) c.focusTo(this.creativeScreen.first(session));
-    } else buildMenu(f, hud, session?.state === "active", c.focus, this.links, session?.creative ?? false);
+    } else buildMenu(f, hud, session?.state === "active", c.focus, this.links, session?.creative ?? false, c.inputDevice === 2 && c.settings.muted);
   }
 }

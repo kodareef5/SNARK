@@ -133,7 +133,7 @@ export const LEVEL: HudWidget<LevelModel> = {
   },
   build(f, m, at) {
     const v = m.levelBar;
-    if (!v.shown) return;
+    if (!v.shown || (at.touch && v.points === 0 && v.gainAlpha <= 0 && v.flash <= 0)) return;
     const slots = m.hotbar.length || HOTBAR_SLOTS;
     const x = hotbarLeft(f, slots), y = hotbarBottom(f);
     const width = slots * (hotbarCell(f, slots) + 3) - 3;

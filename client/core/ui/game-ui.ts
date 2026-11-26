@@ -520,9 +520,8 @@ export class GameUi {
     if (!this.creating && !this.console.open && !this.takingAll()) this.buildOver(f, session, hud);
     // A screen, the chat box or a prompt that a keyboard would leave by Escape has a button for it by touch.
     if (plan && this.touchPlay && !this.openedField() && !this.wantsPointerLock && !this.hudHidden() && !this.dead && !this.console.open) this.touchShown |= layer!.touchClose(f, this.touchPlay);
-    // The offer to unmute is over every screen, where a free pointer, a finger or the pad's focus reaches it.
-    // Not while a finger types in the chat box, which has its place.
-    if (this.settings.muted && !this.console.open && !(plan && this.chat.open)) unmuteButton(f, plan, layer?.pill ?? null, this.hudHidden() ? 0 : hud.compassBottom, this.hudHidden() ? null : hud);
+    if (!this.touch && this.settings.muted && !this.console.open)
+      unmuteButton(f, this.hudHidden() ? 0 : hud.compassBottom, this.hudHidden() ? null : hud);
     if (this.settings.debug) this.debug?.build(f);
     if (session) this.console.absorb(session);
     this.console.build(f);

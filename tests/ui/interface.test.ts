@@ -227,12 +227,13 @@ test("sliders accept pointer values, reject invalid input, and support repeated 
   ui.console.open=false;ui.screen<MenuScreen>("menu").options=ui.screen<MenuScreen>("menu").menu=false;ui.key("ArrowLeft",true,false,null);expect(ui.settings.sensitivity).toBe(3);
 });
 
-test("a page starts muted and offers to unmute over the HUD and the menu; a press unmutes, and the choice is saved", () => {
+test("sound starts muted and can be enabled from the touch menu or desktop HUD", () => {
   const ui=new Ui(),hud=new HudModel();
   ui.layer=layout;
   expect(ui.settings.muted).toBe(true);
   for (const aspect of [9/16,4/3,16/9,32/9]) for (const menu of [false,true]) for (const touch of [false,true]) {
     ui.screen<MenuScreen>("menu").menu=menu;ui.inputDevice=touch?2:0;ui.build(aspect,hud,null);
+    if (touch && !menu) { expect(ui.frame.find(KEY_UNMUTE)).toBeNull(); continue; }
     const b=ui.frame.find(KEY_UNMUTE)!,where=`aspect=${aspect} menu=${menu} touch=${touch}`;
     expect([b.interactive,b.text],where).toEqual([true,"Unmute sound"]);
     expect(textWidth(b.text,b.style),where).toBeLessThanOrEqual(b.w);
