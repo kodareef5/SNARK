@@ -9,7 +9,7 @@
 // within the statics reach, then its sectors, then the rest, each sector's ground before its statics; URGENT_AT_ONCE at
 // once while what is urgent is wanted, AFTER_AT_ONCE otherwise. A part no longer wanted is let go a sector past its reach,
 // but statics of a sector the session still holds chunks of; statics and ground pages past their budgets farthest first,
-// but ground round the body and the camera; an overview a band at a time. Each sector's statics are a table of their own (map-statics.ts), which the city follows. Whenever those held
+// but ground round the body, the camera and a focus; an overview a band at a time. Each sector's statics are a table of their own (map-statics.ts), which the city follows. Whenever those held
 // change and every overview, ground and statics part within the statics reach of the body has come, the statics are
 // handed over: to a tool, a copy of them all, a step at a time. A sector asked for once (HeldStatics.once) comes after
 // what is urgent and is handed to who asked, not kept unless it is wanted. The city's tops come with the
@@ -210,6 +210,11 @@ export class StagedMap {
       if (z1 < sq.cz1) yield;
     }
     this.overviews.end(block);
+  }
+
+  /** Whether sector `sq`'s ground has come but waits for its overview. */
+  waits(sq: Chunks & { readonly col: number; readonly row: number }): boolean {
+    return this.early.get(overviewOf(sq))?.some((g) => g.sq.cx0 === sq.cx0 && g.sq.cz0 === sq.cz0) ?? false;
   }
 
   /** Sector `sq`'s ground let go: its samples stand in with its overview's, else the coarse picture's. */
@@ -544,14 +549,19 @@ export class MapLoader {
     this.pump();
   }
 
-  /** Metres from the body, or the camera, to part `p`: a ground page within ROAD_REACH of either is pinned. */
+  /** Metres from the body, the camera or a sight's focus to part `p`: a ground page within ROAD_REACH of any is pinned. */
   private pinOff(p: MapPart): number {
-    const head = this.staged.head, cam = this.from().camera, { x, z } = this.place();
-    return Math.min(partDistance(head, p, x, z), cam ? partDistance(head, p, cam.x, cam.z) : Infinity);
+    const head = this.staged.head, { camera, focus } = this.from(), { x, z } = this.place();
+    return Math.min(partDistance(head, p, x, z), camera ? partDistance(head, p, camera.x, camera.z) : Infinity, focus ? partDistance(head, p, focus.x, focus.z) : Infinity);
+  }
+
+  /** Whether part `p` has come and is in place: a sector's ground that waits for its overview is not. */
+  private holds(p: MapPart): boolean {
+    return this.came.has(p) && !(p.kind === "ground" && this.staged.waits(squareOf(this.staged.head.dims, SECTOR_CHUNKS, p.col, p.row)!));
   }
 
   /**
-   * The ground wanted, nearest the body, where it heads or the camera first, as far as `budget` bytes of pages reach,
+   * The ground wanted, nearest the body, where it heads, the camera or a focus first, as far as `budget` bytes of pages reach,
    * and none past but those pinned. A page held counts a sector nearer.
    */
   private capGround(budget: number): void {
@@ -670,7 +680,7 @@ export class MapLoader {
   /** Whether every overview, ground and statics part wanted within the statics reach of the body has come. */
   private statsIn(): boolean {
     const reach = this.from().statics;
-    for (const p of this.want.parts.keys()) if ((p.kind === "statics" || p.kind === "ground" || p.kind === "overview") && !this.came.has(p) && !this.broken.has(p) && this.off(p) <= reach) return false;
+    for (const p of this.want.parts.keys()) if ((p.kind === "statics" || p.kind === "ground" || p.kind === "overview") && !this.holds(p) && !this.broken.has(p) && this.off(p) <= reach) return false;
     return true;
   }
 
@@ -799,7 +809,7 @@ export class MapLoader {
     const head = this.staged.head;
     let roads = 0, left = 0;
     for (const p of head.parts) if ((p.kind === "road" || p.kind === "streets") && !this.roadsHeld.has(p) && this.off(p) <= ROAD_REACH) roads++;
-    for (const p of this.want.parts.keys()) if (!this.came.has(p)) left++;
+    for (const p of this.want.parts.keys()) if (!this.holds(p)) left++;
     const settled = this.followed && left === 0 && this.going.size === 0 && this.waiting.size === 0 && !this.handing && this.handedAt === this.held.version;
     return { left, parts: this.want.parts.size, near: this.handedOnce, settled, roads };
   }

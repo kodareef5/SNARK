@@ -60,17 +60,23 @@ test("a part is kept a sector past its reach, so a body on a border does not let
   expect(asks.size).toBe(statics.filter((p) => off(p, 0, 600) <= 4480).length);
 });
 
-test("a sight's focus wants the fine window's ground and a sector of statics; the map screen its overviews", () => {
-  const body = { x: 100, z: 600 }, focus = { x: 4300, z: 600 };
+test("a sight's focus wants the fine window's ground, its overviews and a sector of statics; the map screen its overviews", () => {
+  const body = { x: 4300, z: 600 }, focus = { x: 100, z: 600 };
   const from = { view: 1500, statics: 600 };
   const alone = new Wanted().look(boxes, centresOf(body, body, from));
   const sighted = new Wanted().look(boxes, centresOf(body, body, { ...from, focus }));
   const added = boxes.parts.filter((p) => sighted.parts.has(p) && !alone.parts.has(p));
-  expect(added.length).toBeGreaterThan(0);
-  for (const p of added) expect([p.kind, off(p, focus.x, focus.z) <= (p.kind === "ground" ? ROAD_REACH : FOCUS_STATICS)]).toEqual([p.kind, p.kind === "ground" || p.kind === "statics" || p.kind === "buildings"]);
-  // The map screen open over the east end: its overviews, and nothing else.
+  expect(added.some((p) => p.kind === "overview")).toBe(true);
+  for (const p of added) expect([p.kind, off(p, focus.x, focus.z) <= (p.kind === "ground" || p.kind === "overview" ? ROAD_REACH : FOCUS_STATICS)]).toEqual([p.kind, p.kind !== "tops"]);
+  // Each ground it wants lies in an overview it wants, which that ground waits for.
+  const overviews = boxes.parts.filter((p) => p.kind === "overview" && sighted.parts.has(p)).map((p) => squareOf(head.dims, OVERVIEW_CHUNKS, p.col, p.row)!);
+  for (const p of added.filter((q) => q.kind === "ground")) {
+    const sq = squareOf(head.dims, SECTOR_CHUNKS, p.col, p.row)!;
+    expect(overviews.some((o) => o.cx0 <= sq.cx0 && o.cx1 >= sq.cx1 && o.cz0 <= sq.cz0 && o.cz1 >= sq.cz1)).toBe(true);
+  }
+  // The map screen open over the west end: its overviews, and nothing else.
   const near = { view: 300, statics: 300 }, mine = new Wanted().look(boxes, centresOf(body, body, near));
-  const screen = new Wanted().look(boxes, centresOf(body, body, { ...near, screen: { x: 4000, z: 600, half: 500 } }));
+  const screen = new Wanted().look(boxes, centresOf(body, body, { ...near, screen: { x: 200, z: 600, half: 500 } }));
   const shown = boxes.parts.filter((p) => screen.parts.has(p) && !mine.parts.has(p));
   expect(shown.length > 0 && shown.every((p) => p.kind === "overview")).toBe(true);
   // Where the body is heading counts as the body.

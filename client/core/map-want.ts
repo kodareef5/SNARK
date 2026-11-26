@@ -47,7 +47,7 @@ export interface WantFrom {
   readonly statics: number;
   /** Bytes of statics held at most: past it those kept beyond their reach go, farthest first. */
   readonly budget?: number;
-  /** Bytes of ground pages held at most, as `budget` is for statics; those round the body and the camera are kept past it. */
+  /** Bytes of ground pages held at most, as `budget` is for statics; those round the body, the camera and a focus are kept past it. */
   readonly ground?: number;
   readonly camera?: { readonly x: number; readonly z: number } | null;
   readonly focus?: { readonly x: number; readonly z: number } | null;
@@ -79,8 +79,9 @@ export function centresOf(body: { readonly x: number; readonly z: number }, ahea
   const out: Centre[] = [{ x: body.x, z: body.z, reach: near }];
   if (ahead.x !== body.x || ahead.z !== body.z) out.push({ x: ahead.x, z: ahead.z, reach: near });
   if (from.camera) out.push({ x: from.camera.x, z: from.camera.z, reach: near });
-  // The fine window is drawn round a focus (render/scene.ts), and the server sends rows along the sight's cone.
-  if (from.focus) out.push({ x: from.focus.x, z: from.focus.z, reach: { overview: 0, ground: ROAD_REACH, statics: FOCUS_STATICS, tops: 0 } });
+  // The fine window is drawn round a focus (render/scene.ts), and the server sends rows along the sight's cone. Its ground
+  // waits for the overviews it lies in, which are within as far.
+  if (from.focus) out.push({ x: from.focus.x, z: from.focus.z, reach: { overview: ROAD_REACH, ground: ROAD_REACH, statics: FOCUS_STATICS, tops: 0 } });
   if (from.screen) out.push({ x: from.screen.x, z: from.screen.z, reach: { overview: from.screen.half, ground: 0, statics: 0, tops: 0 } });
   return out;
 }
