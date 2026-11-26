@@ -94,8 +94,9 @@ artTest("a frame on medium at the iPhone's view keeps within medium's draws and 
   // four (tools/pack/body.ts); MakeHuman's bodies, whose finer levels are coarser, cast these: 365,147 and 1,591,582 until
   // the neck seam kept its points on the second level, 365,140 and 1,591,572 until the hide set went flat there, and
   // 365,158 and 1,591,592 until the thumb's root moved onto its joint and the torso's coarser levels lost triangles,
-  // and 365,093 and 1,591,522 until the hem bands' borders kept more of the torso's coarser levels.
-  expect(Object.values(scenes).map((frames) => most(frames, (f) => f.cast))).toEqual([365239, 1591682, 207978]);
+  // and 365,093 and 1,591,522 until the hem bands' borders kept more of the torso's coarser levels, and 365,239 and
+  // 1,591,682 until hair was made on the new head, its coarse levels lighter and its cards out of the shadows.
+  expect(Object.values(scenes).map((frames) => most(frames, (f) => f.cast))).toEqual([364787, 1591242, 207978]);
 });
 
 artTest("a 20,000-piece base 30 and 60 m off on medium at the iPhone's view draws and casts what it did", () => {
