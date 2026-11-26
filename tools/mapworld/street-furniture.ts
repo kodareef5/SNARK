@@ -30,7 +30,6 @@ import { hullPoint } from "../../shared/world/convex.ts";
 import { S } from "./ground.ts";
 import { SLACK } from "./cell-lists.ts";
 import { binKey, hash3 } from "./raster.ts";
-import { SECTOR } from "./street-cars.ts";
 import { boxOf, meets, obstacleIndex, type Box } from "./ruin-obstacles.ts";
 import { vocabulary } from "./ruin-vocabulary.ts";
 import type { Site, StaticLayer, StaticPiece } from "./statics.ts";
@@ -46,6 +45,8 @@ import { HIT_PREFIX } from "../../shared/world/bends.ts";
  * left to the lanes' own rule.
  */
 const KERB_CLEAR = 0.45;
+/** Metres a side of the squares of the lattice billboards are counted in. */
+const BOARD_CELL = 256;
 
 /** A rule's kinds by their names after "core:zzstreet_", with their weights. */
 type Forms = readonly (readonly [string, number])[];
@@ -814,9 +815,10 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
     // Least first is a draw without return in which a class is its weight times likelier.
     boards.push({ x, z, dx, dz, half, h, cls, key: -Math.log((hash3(h, 3, seed) + 0.5) / 4294967296) / (W.weights?.[cls] ?? 1) });
   });
-  // Counted a sector of the lattice at a time, as parked cars are: what stands in a sector a map holds whole is the
-  // same whatever else the map holds. A sector's share is its land's, the part of a board over by its own draw.
-  const sectorOf = (x: number, z: number): number => binKey(Math.floor(x / SECTOR), Math.floor(z / SECTOR));
+  // Counted a square of the lattice at a time, BOARD_CELL a side: what stands in a square a map holds whole is the same
+  // whatever else the map holds, and a board that goes or comes moves none past its own square, which is under the
+  // generator's reach corner to corner. A square's share is its land's, the part of a board over by its own draw.
+  const sectorOf = (x: number, z: number): number => binKey(Math.floor(x / BOARD_CELL), Math.floor(z / BOARD_CELL));
   const land = new Map<number, number>();
   if (W.perKm2 !== undefined) {
     for (let row = 0; row < nz; row++) for (let col = 0; col < nx; col++) {
