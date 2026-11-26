@@ -143,7 +143,7 @@ test("adding and removing a bridge joins and splits only its active wall", () =>
 
 test("a veto on one field cell holds the whole opening or closure", () => {
   let refuse = -1;
-  const { h, owner, wall, kind, stand, door, open } = yard(undefined, [{ name: "tek_test", api: 1, setup(m) {
+  const { h, w, owner, guest, wall, kind, stand, door, open } = yard(undefined, [{ name: "tek_test", api: 1, setup(m) {
     m.on("structure.act", e => { if (e.data.action === "use" && e.data.ref === refuse) e.refuse("hold"); });
   }}]);
   const a = wall(1), b = wall(3);
@@ -156,8 +156,12 @@ test("a veto on one field cell holds the whole opening or closure", () => {
   expect([kind(a), kind(b)]).toEqual([open, open]);
   refuse = a;
   stand(owner, a, 0, -4);
+  stand(guest, b, 0, .12);
+  const e = h.ent(guest), position = () => [w.ents.x[e], w.ents.z[e]];
+  const before = position();
   h.run(2500);
   expect([kind(a), kind(b)]).toEqual([open, open]);
+  expect(position()).toEqual(before);
   refuse = -1;
   h.run(2500);
   expect([kind(a), kind(b)]).toEqual([door, door]);

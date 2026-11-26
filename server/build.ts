@@ -510,7 +510,7 @@ export class Build {
 
   /** Moves aside every body in the way of `kind` of `parts` at `ref`'s pose that is not of the piece's own tribe. A piece nobody owns moves none. */
   private shoveStrangers(ref: number, kind: number, parts: PartTable, slack: number, reach: number): void {
-    const { ents, structs, dims } = this.ctx.world;
+    const { ents, reg, structs, dims } = this.ctx.world;
     const t = structs.chunks[ref >>> 16]!, slot = ref & 65535, owner = t.owner[slot]!;
     if (owner === 0) return;
     const x = t.x[slot]!, y = t.y[slot]!, z = t.z[slot]!, yaw = t.yaw[slot]!, tw = t.twAt(slot);
@@ -521,7 +521,9 @@ export class Build {
     for (let oz = -1; oz <= 1; oz++) for (let ox = -1; ox <= 1; ox++) {
       if (cx + ox < 0 || cz + oz < 0 || cx + ox >= dims.chunksX || cz + oz >= dims.chunksZ) continue;
       for (let i = ents.chunkHead[(cz + oz) * dims.chunksX + cx + ox]!; i >= 0; i = ents.next[i]!) {
-        if ((ents.flags[i]! & (F_ALIVE | F_PROP)) === F_ALIVE && !holds(ents.team[i]!, owner) && this.bodyMeets(i, kind, x, y, z, yaw, tw, parts, slack)) found.push(i);
+        if ((ents.flags[i]! & (F_ALIVE | F_PROP)) !== F_ALIVE || !this.bodyMeets(i, kind, x, y, z, yaw, tw, parts, slack)) continue;
+        if (holds(ents.team[i]!, owner) || reg.vehicle[ents.kind[i]!] || ents.seat[i] !== 0) return;
+        found.push(i);
       }
     }
     for (const i of found) this.shove(i, kind, x, y, z, yaw, tw, parts, slack, reach);

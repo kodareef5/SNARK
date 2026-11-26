@@ -109,7 +109,7 @@ export class TekPhaseWalls {
       if (field.visited === tick) continue;
       if (this.occupied(field)) field.closeAt = tick + HOLD;
       else if (tick >= field.closeAt) {
-        if (this.clear(field) && this.move(field, this.kinds.door, 0)) this.forget(field);
+        if (this.move(field, this.kinds.door, 0)) this.forget(field);
         else field.closeAt = tick + HOLD;
       }
     }
@@ -229,6 +229,7 @@ export class TekPhaseWalls {
       const from = this.kind(ref);
       if (!isTekWall(this.kinds, from, true) || (from !== to && this.veto(ref, pid))) return false;
     }
+    if (to === this.kinds.door && !this.clear(field)) return false;
     this.moving = true;
     structs.hold();
     try {
