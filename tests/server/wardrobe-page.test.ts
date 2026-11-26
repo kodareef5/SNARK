@@ -45,6 +45,7 @@ function routes(store: PeopleStore): PublishIo {
     upload: (png) => answer("print", png, "image/png"),
     publish: (body) => answer("publish", JSON.stringify(body), "application/json"),
     retire: (body) => answer("retire", JSON.stringify(body), "application/json"),
+    give: (body) => answer("give", JSON.stringify(body), "application/json"),
     wait: async () => {},
   };
 }

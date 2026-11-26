@@ -32,6 +32,7 @@ import { BODY_BYTES_MAX, clientAddress } from "./front.ts";
 import { VideoLibrary } from "./video/library.ts";
 import { screensAdmin } from "./video/routes.ts";
 import { peopleAdmin } from "./admin/people-routes.ts";
+import { dressFromPage } from "./people/give.ts";
 import { ScreenFeed, screenWorld } from "./video/screens.ts";
 import { boardOwners, soundBoard } from "./sound-board.ts";
 import { TitleScenes } from "./admin/title-scenes.ts";
@@ -593,7 +594,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
         screens: (call, at) => call.method === "POST" && !originAllowed(call.headers.get("origin"), call.headers.get("host"), "")
           ? entryReply({ error: "Open the screens page on this cluster." }, 403) : screensAdmin(call, at, video, () => screenWorld(host), host.acts, host),
         people: (call, at) => call.method === "POST" && !originAllowed(call.headers.get("origin"), call.headers.get("host"), "")
-          ? entryReply({ error: "Open the people pages on this cluster." }, 403) : peopleAdmin(call, at, host.people, () => host.world.reg, host.acts, host),
+          ? entryReply({ error: "Open the people pages on this cluster." }, 403) : peopleAdmin(call, at, host.people, () => host.world.reg, host.acts, host, (edition, survivor, dye, by) => dressFromPage(host, edition, survivor, dye, by)),
       }));
       if (siteAdmin) return siteAdmin;
       const { at, path } = placeOf(base, url.pathname);

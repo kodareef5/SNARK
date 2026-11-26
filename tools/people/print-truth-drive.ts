@@ -1,8 +1,9 @@
 // What an admin places is what the world shows, in real Chrome against a development world. On the Wardrobe page a tee's
 // draft gets a print no turn or mirror leaves alike: a red box at its upper left, a blue box at its lower right and a
-// yellow R between. The person stage's picture of the draft is kept; the edition is published, the page loaded again and
-// the edition reopened on the stage, pictured; then a survivor in a second page wears the edition, and a third page's
-// survivor looks at its chest, pictured. In each picture the red box must be left of and above the blue one, as on the
+// yellow R between. The person stage's picture of the draft is kept. The edition is published while its upload is held
+// and the draft switched to jeans: the store must hold the tee as pressed. The page is loaded again and the edition
+// reopened on the stage, pictured; then the page's give dresses a survivor in a second page in it, the admin log keeps
+// the give, and a third page's survivor looks at its chest, pictured. In each picture the red box must be left of and above the blue one, as on the
 // sheet, and the print on the middle of the chest. Fails on any fault. Pictures go to var/people/truth/.
 //
 //   bun tools/people/print-truth-drive.ts [--dist var/people/dist] [--out var/people/truth] [--port 8794] [--seconds 40]
@@ -97,10 +98,34 @@ function judge(name: string, file: string, middle: number): void {
 
 const q = (selector: string): string => `document.querySelector(${JSON.stringify(selector)})`;
 
+const browsers: { browser: ReturnType<typeof Bun.spawn>; profile: string }[] = [];
+let hold: ReturnType<typeof setInterval> | null = null;
 try {
   const chrome = findChrome();
   if (!chrome) throw new Error("no Chrome");
   let edition = 0;
+  /** A Chrome of its own for each page, so neither is a tab behind the other, whose frames would stop. */
+  const open = async (name: string, view: string): Promise<string> => {
+    const profile = mkdtempSync(join(scratch, "chrome-")), port = 9800 + Math.floor(Math.random() * 150);
+    const browser = Bun.spawn([chrome, "--headless=new", ...CHROME_FLAGS, "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--disable-background-timer-throttling", "--disable-renderer-backgrounding", "--window-size=1200,900", "--force-device-scale-factor=1", `--user-data-dir=${profile}`, `--remote-debugging-port=${port}`, "about:blank"], { stdout: "ignore", stderr: "ignore" });
+    browsers.push({ browser, profile });
+    let target: { webSocketDebuggerUrl: string } | undefined;
+    for (let k = 0; k < 100 && !target; k++) {
+      await Bun.sleep(200);
+      try {
+        target = ((await (await fetch(`http://127.0.0.1:${port}/json`)).json()) as { type: string; webSocketDebuggerUrl: string }[]).find((t) => t.type === "page");
+      } catch { /* not up yet */ }
+    }
+    if (!target) throw new Error(`Chrome for ${name} did not open a page`);
+    const ws = new WebSocket(target.webSocketDebuggerUrl);
+    await new Promise((r) => (ws.onopen = r));
+    ws.send(JSON.stringify({ id: 1, method: "Page.navigate", params: { url: `${base}/?quick&tier=high&name=${name}&look=${view}` } }));
+    await Bun.sleep(200);
+    ws.close();
+    for (let k = 0; k < 720 && !game.clients.some((c) => c?.active && !c.closed && c.ent >= 0 && c.name === name); k++) await Bun.sleep(250);
+    if (!game.clients.some((c) => c?.active && c.name === name)) throw new Error(`${name} never joined; in the world: ${game.clients.filter((c) => c?.active).map((c) => c!.name).join(", ")}`);
+    return target.webSocketDebuggerUrl;
+  };
   await browse(chrome, `${base}/admin/wardrobe/`, scratch, async (page: Page) => {
     const { run, press, type, choose } = page;
     const until = async (expression: string, what: string, tenths = 300): Promise<void> => {
@@ -163,11 +188,21 @@ try {
     await page.shot(join(out, "page-draft.png"));
     judge("the stage, the draft", await picture("stage-draft"), 0.5);
 
-    console.log("published, loaded again and reopened");
+    console.log("published while the garment is switched to jeans mid-upload, loaded again and reopened");
+    const upload = await page.hold("/admin/people/print");
     await press("#publish");
+    for (let k = 0; k < 100 && upload.held() === 0; k++) await Bun.sleep(100);
+    check("the upload is held", upload.held() > 0);
+    await choose("#garment", "core:jeans");
+    await upload.go();
     await until(`${q("#msg")}.textContent.startsWith("Published edition")`, "the publish");
     edition = host.people.view().editions.at(-1)!.id;
-    check("the store holds the edition's print on the tee's chest", JSON.stringify(host.people.view().byId.get(edition)?.print?.place) === JSON.stringify({ u: 0.06, v: 0.12, w: 0.25, h: 0.2, scale: 1, turn: 0 }));
+    const published = host.people.view().byId.get(edition);
+    check("the store holds a tee, as pressed, not the jeans chosen during the upload", published?.garment === "core:tee", published?.garment);
+    check("its print is on the tee's chest", JSON.stringify(published?.print?.place) === JSON.stringify({ u: 0.06, v: 0.12, w: 0.25, h: 0.2, scale: 1, turn: 0 }));
+    const said = (await run(`${q("#msg")}.textContent`)) as string;
+    check("the page says it published the tee as pressed, and kept the jeans in the draft", said.includes(`tee "Truth tee"`) && said.includes("as it was when Publish was pressed") && said.includes("stay in the draft"), said);
+    check("the draft is still the jeans", (await run(`${q("#garment")}.value`)) === "core:jeans");
     await page.send("Page.reload");
     await Bun.sleep(500);
     await ready();
@@ -176,34 +211,8 @@ try {
     await Bun.sleep(1500);
     await page.shot(join(out, "page-reopened.png"));
     judge("the stage, the edition reopened", await picture("stage-reopened"), 0.5);
-  });
 
-  console.log("a second player wears it, a third looks");
-  const browsers: { browser: ReturnType<typeof Bun.spawn>; profile: string }[] = [];
-  let hold: ReturnType<typeof setInterval> | null = null;
-  try {
-    /** A Chrome of its own for each page, so neither is a tab behind the other, whose frames would stop. */
-    const open = async (name: string, view: string): Promise<string> => {
-      const profile = mkdtempSync(join(scratch, "chrome-")), port = 9800 + Math.floor(Math.random() * 150);
-      const browser = Bun.spawn([chrome, "--headless=new", ...CHROME_FLAGS, "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--disable-background-timer-throttling", "--disable-renderer-backgrounding", "--window-size=1200,900", "--force-device-scale-factor=1", `--user-data-dir=${profile}`, `--remote-debugging-port=${port}`, "about:blank"], { stdout: "ignore", stderr: "ignore" });
-      browsers.push({ browser, profile });
-      let target: { webSocketDebuggerUrl: string } | undefined;
-      for (let k = 0; k < 100 && !target; k++) {
-        await Bun.sleep(200);
-        try {
-          target = ((await (await fetch(`http://127.0.0.1:${port}/json`)).json()) as { type: string; webSocketDebuggerUrl: string }[]).find((t) => t.type === "page");
-        } catch { /* not up yet */ }
-      }
-      if (!target) throw new Error(`Chrome for ${name} did not open a page`);
-      const ws = new WebSocket(target.webSocketDebuggerUrl);
-      await new Promise((r) => (ws.onopen = r));
-      ws.send(JSON.stringify({ id: 1, method: "Page.navigate", params: { url: `${base}/?quick&tier=high&name=${name}&look=${view}` } }));
-      await Bun.sleep(200);
-      ws.close();
-      for (let k = 0; k < 720 && !game.clients.some((c) => c?.active && !c.closed && c.ent >= 0 && c.name === name); k++) await Bun.sleep(250);
-      if (!game.clients.some((c) => c?.active && c.name === name)) throw new Error(`${name} never joined; in the world: ${game.clients.filter((c) => c?.active).map((c) => c!.name).join(", ")}`);
-      return target.webSocketDebuggerUrl;
-    };
+    console.log("staff give it to a second player, a third looks");
     // Orders are read once a page starts, so both are set before either opens.
     orders.set("wear", { run: ["enablecheats", "settime 12"], look: [0, 0] });
     orders.set("watch", { run: ["enablecheats", "settime 12"], look: [Math.PI, Math.atan2(1.3 - 1.62, 1.8)] });
@@ -211,10 +220,18 @@ try {
     const who = game.clients.find((c) => c?.active && c.name === "wearer")!;
     const [x, z] = [world.ents.x[who.ent]!, world.ents.z[who.ent]!], y = world.ents.y[who.ent]!;
     const wearerAt: [number, number, number] = [x, y, z], watcherAt: [number, number, number] = [x, y, z + 1.8];
-    const rec = host.records.byPid.get(who.pid)!, items = host.items, inv = items.inv(rec), tee = world.reg.index.get("core:tee")!;
-    check("the wearer puts the tee on", items.mintAt(rec, inv.wardrobe, tee, 1) === 1);
-    check("in the published edition", items.restyle(rec, inv.wardrobe, edition, 0));
-    host.refreshBody(rec);
+    const rec = host.records.byPid.get(who.pid)!, inv = host.items.inv(rec), tee = world.reg.index.get("core:tee")!;
+    // Staff dress the wearer from the Wardrobe page, as the console's dress.
+    await page.run(`${q("#give-edition")}.value = "${edition}"`);
+    await type("#give-who", "wearer");
+    await press("#give");
+    await until(`document.body.dataset.given === "1" || ${q("#give-note")}.className === "bad"`, "the give");
+    const gave = (await run(`${q("#give-note")}.textContent`)) as string;
+    check("the page dressed the wearer", gave.startsWith(`Dressed wearer in edition ${edition}`), gave);
+    check("the wearer wears the tee in the edition", inv.item[inv.wardrobe] === tee && inv.editionOf(inv.wardrobe) === edition);
+    const logged = host.acts.recent(0, 1e9).filter((a) => a.what.startsWith("dress ")).map((a) => a.what);
+    check("the admin log has the give", logged.length === 1 && logged[0] === `dress ${edition} #${rec.pid}`, logged.join("; "));
+    await page.shot(join(out, "page-given.png"));
     const socket = await open("watcher", "watch");
     hold = setInterval(() => {
       for (const c of game.clients) {
@@ -246,18 +263,17 @@ try {
     console.log(`  picture ${file}`);
     ws.close();
     judge("the game, a second player's tee", file, 0.5);
-  } finally {
-    if (hold) clearInterval(hold);
-    for (const { browser, profile } of browsers) {
-      browser.kill();
-      await browser.exited;
-      rmSync(profile, { recursive: true, force: true });
-    }
-  }
+  });
 } catch (e) {
   faults.push(String(e instanceof Error ? e.stack : e));
   console.log(`  FAIL ${String(e)}`);
 } finally {
+  if (hold) clearInterval(hold);
+  for (const { browser, profile } of browsers) {
+    browser.kill();
+    await browser.exited;
+    rmSync(profile, { recursive: true, force: true });
+  }
   server.stop();
 }
 console.log(faults.length === 0 ? "every check passed" : `${faults.length} faults:\n  ${faults.join("\n  ")}`);

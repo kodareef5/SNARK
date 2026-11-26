@@ -19,6 +19,14 @@
         <section class="glass wardrobe-list">
           <h2>Published editions</h2>
           <div id="editions"></div>
+          <h3>Give to a survivor</h3>
+          <div class="give">
+            <label>Edition <select id="give-edition"></select></label>
+            <label>Survivor <input id="give-who" maxlength="64" autocomplete="off" placeholder="Name, or #12"></label>
+            <label>Dye <input id="give-dye" maxlength="11" autocomplete="off" placeholder="None, or 12,40,200"></label>
+            <button id="give">Give</button>
+          </div>
+          <p id="give-note" class="faint">Worn where its slot is empty, else put in the bag. The survivor must be in this world.</p>
           <h3>Start from a garment</h3>
           <div id="garments" class="starts"></div>
         </section>

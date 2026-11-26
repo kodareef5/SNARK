@@ -7,7 +7,7 @@ import { parseStageCommand, stageMessage } from "../../shared/people/stage.ts";
 import { cluster, resolveAdmin } from "../../client/core/admin/navigation.ts";
 import {
   BUSY_WAITS, CLOTH_COLOURS, DRAFT_PRINT, FIT_LEAST, FIT_TRIES, LAYERS_MAX, LOOKS, STORE_CAPS, addPicture, addShape, addText, draftFaults, draftFrom, fitNote, fitStep,
-  changeGarment, heldSize, layerAt, placeFor, sheetOfCut, lookOf, moveLayer, newDraft, newSheet, outcomeText, placeOf, previewChanges, publishBody, publishDraft, retireEdition, wardrobeCommand,
+  Latest, changeGarment, freezeDraft, giveEdition, latestOnly, publishAsPressed, publishedText, sameDesign, heldSize, layerAt, placeFor, sheetOfCut, lookOf, moveLayer, newDraft, newSheet, outcomeText, placeOf, previewChanges, publishBody, publishDraft, retireEdition, wardrobeCommand,
   type Answer, type Draft, type PeopleState, type Preview, type PublishIo,
 } from "../../client/core/admin/wardrobe.ts";
 
@@ -129,14 +129,15 @@ test("a big picture is held smaller, and a new picture layer fits the sheet", ()
 });
 
 /** A fake set of routes: each call takes the next answer of its kind, and every call is kept. */
-function routes(answers: Partial<Record<"upload" | "publish" | "retire", Answer[]>>): PublishIo & { calls: string[]; waits: number[]; bodies: unknown[] } {
+function routes(answers: Partial<Record<"upload" | "publish" | "retire" | "give", Answer[]>>): PublishIo & { calls: string[]; waits: number[]; bodies: unknown[] } {
   const calls: string[] = [], waits: number[] = [], bodies: unknown[] = [];
-  const next = (kind: "upload" | "publish" | "retire"): Answer => answers[kind]?.shift() ?? { status: 500, answer: { error: "no answer left" } };
+  const next = (kind: "upload" | "publish" | "retire" | "give"): Answer => answers[kind]?.shift() ?? { status: 500, answer: { error: "no answer left" } };
   return {
     calls, waits, bodies,
     upload: async (png) => (calls.push(`upload ${png.length}`), next("upload")),
     publish: async (body) => (calls.push("publish"), bodies.push(body), next("publish")),
     retire: async (body) => (calls.push("retire"), bodies.push(body), next("retire")),
+    give: async (body) => (calls.push("give"), bodies.push(body), next("give")),
     wait: async (ms) => void waits.push(ms),
   };
 }
@@ -274,4 +275,67 @@ test("a print not yet moved follows a change of garment to the new cut's place",
   d.place = { ...d.place, u: 0.3 };
   changeGarment(d, jeans, tee);
   expect(d.place.u).toBe(0.3);
+});
+
+/** A promise and the hand that settles it, so a test says in which order things come back. */
+function later<T>(): { promise: Promise<T>; settle: (v: T) => void } {
+  let settle: (v: T) => void = () => {};
+  const promise = new Promise<T>((r) => (settle = r));
+  return { promise, settle };
+}
+
+test("a publish sends the design as it was pressed, whatever is changed while it uploads", async () => {
+  const upload = later<Answer>();
+  const io = routes({ publish: [ok({ id: 4, ...state(1, ["a"]) })] });
+  io.upload = async (png) => (io.calls.push(`upload ${png.length}`), upload.promise);
+  const live = good();
+  live.place = placeFor("tee");
+  const pressed = freezeDraft(live);
+  const picture = later<Uint8Array>();
+  const drawn: string[] = [];
+  const done = publishAsPressed(io, live, (frozen) => (drawn.push(frozen.garment), picture.promise), 0);
+  // The admin switches to jeans, moves the print, recolours and renames before the picture is even made.
+  live.garment = "core:jeans";
+  live.place = placeFor("jeans");
+  live.colours = [1, 2, 3];
+  live.name = "Jeans now";
+  live.sheet!.layers.length = 0;
+  picture.settle(PNG);
+  await Bun.sleep(0);
+  upload.settle(ok({ hash: "bbbbbbbbbbbbbbbb", known: false }));
+  const { outcome, sent } = await done;
+  expect(outcome).toMatchObject({ kind: "published", id: 4 });
+  expect(drawn).toEqual(["core:tee"]);
+  expect(io.bodies[0]).toEqual({ revision: 0, garment: "core:tee", colours: [34, 58, 11], name: "Sunrise tee", print: { hash: "bbbbbbbbbbbbbbbb", place: placeFor("tee") } });
+  expect([sameDesign(sent, pressed), sameDesign(live, sent)]).toEqual([true, false]);
+  expect(publishedText(4, sent, "tee", true)).toBe(`Published edition 4, tee "Sunrise tee", as it was when Publish was pressed. Your changes since stay in the draft.`);
+});
+
+test("a picture that fails to fit is not published, and nothing is uploaded", async () => {
+  const io = routes({});
+  const { outcome } = await publishAsPressed(io, good(), async () => ({ error: "too big" }), 0);
+  expect([outcome, io.calls]).toEqual([{ kind: "refused", status: 0, error: "too big" }, []]);
+});
+
+test("of answers coming back out of order only the last asked for is taken", async () => {
+  const latest = new Latest(), first = later<string>(), second = later<string>();
+  const a = latestOnly(latest, () => first.promise), b = latestOnly(latest, () => second.promise);
+  second.settle("new picture");
+  first.settle("old picture");
+  expect(await b).toBe("new picture");
+  expect(await a).toBeNull();
+  // Settled the other way round, the same one wins.
+  const c = later<string>(), d = later<string>();
+  const x = latestOnly(latest, () => c.promise), y = latestOnly(latest, () => d.promise);
+  c.settle("old");
+  d.settle("new");
+  expect([await x, await y]).toEqual([null, "new"]);
+});
+
+test("a give sends the edition, the survivor and the dye, and says what was done", async () => {
+  const io = routes({ give: [ok({ said: `dressed ada in edition 4 "Sunrise tee" of core:tee` }), ok({ said: "no edition 9 is published" }), { status: 409, answer: { error: "Ada is not in the world." } }] });
+  expect(await giveEdition(io, 4, " ada ", [12, 40, 200])).toEqual({ ok: true, text: `Dressed ada in edition 4 "Sunrise tee" of core:tee.` });
+  expect(io.bodies[0]).toEqual({ edition: 4, survivor: "ada", dye: [12, 40, 200] });
+  expect(await giveEdition(io, 9, "ada")).toEqual({ ok: false, text: "No edition 9 is published." });
+  expect(await giveEdition(io, 4, "Ada")).toEqual({ ok: false, text: "Not given: Ada is not in the world." });
 });

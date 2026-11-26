@@ -208,14 +208,14 @@ test("a draft's print is drawn as the game draws an edition's, by a stand-in edi
   expect(stage.printOf(DRAFT_EDITION)).toBeNull();
   stage.apply(command({ kind: "print", key: "draft-1", url: "/x.png" }));
   expect(stage.printOf(DRAFT_EDITION)).toBeNull();
-  stage.sized("draft-1", 512, 256);
+  stage.sized("draft-1", stage.hashOf("draft-1")!, 512, 256);
   const print = stage.printOf(DRAFT_EDITION)!;
   expect(print).toMatchObject({ width: 512, height: 256, place: PLACE });
   expect(stage.pathOf("draft-1")).toBe(printPath(print.hash));
   // The same object each frame, so the renderer keeps its layer; a picture sent again is a new one.
   expect(stage.printOf(DRAFT_EDITION)).toBe(print);
   stage.apply(command({ kind: "print", key: "draft-1", url: "/y.png" }));
-  stage.sized("draft-1", 512, 256);
+  stage.sized("draft-1", stage.hashOf("draft-1")!, 512, 256);
   expect(stage.printOf(DRAFT_EDITION)!.hash).not.toBe(print.hash);
   expect(stage.printOf(7)).toBeNull();
 });
@@ -223,9 +223,22 @@ test("a draft's print is drawn as the game draws an edition's, by a stand-in edi
 test("a published edition's print is drawn under its own edition", () => {
   const stage = new PersonStage(reg);
   stage.apply(command({ kind: "print", key: "print.abc", url: "/media/print.abc.png" }));
-  stage.sized("print.abc", 256, 256);
+  stage.sized("print.abc", stage.hashOf("print.abc")!, 256, 256);
   stage.apply(command({ kind: "wardrobe", slots: [{ item: "core:tee", edition: 7, dye: [0, 0, 0], print: { key: "print.abc", place: PLACE } }, null, null, null, null], hide: 0 }));
   expect(stage.printOf(7)).toMatchObject({ width: 256, place: PLACE });
   stage.unheld("print.abc");
   expect(stage.printOf(7)).toBeNull();
+});
+
+test("a picture read after a later one under its key never puts the older back", () => {
+  const stage = new PersonStage(reg);
+  stage.apply(command({ kind: "wardrobe", slots: [{ item: "core:tee", edition: 0, dye: [0, 0, 0], print: { key: "d", place: PLACE } }, null, null, null, null], hide: 0 }));
+  stage.apply(command({ kind: "print", key: "d", url: "/old.png" }));
+  const old = stage.hashOf("d")!;
+  stage.apply(command({ kind: "print", key: "d", url: "/new.png" }));
+  const fresh = stage.hashOf("d")!;
+  // The newer is read first, then the older comes in late.
+  expect(stage.sized("d", fresh, 512, 256)).toBe(true);
+  expect(stage.sized("d", old, 256, 256)).toBe(false);
+  expect(stage.printOf(DRAFT_EDITION)).toMatchObject({ hash: fresh, width: 512, height: 256 });
 });
