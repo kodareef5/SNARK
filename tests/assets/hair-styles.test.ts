@@ -8,13 +8,14 @@ import { join } from "node:path";
 import { B_HEAD } from "../../shared/anim/human.ts";
 import { BEARD_STYLES, HAIR_STYLES, SEX_IDS } from "../../shared/anim/look.ts";
 import { MATERIAL_CUTOUT, MATERIAL_SHADOWLESS, MATERIAL_TWO_SIDED, parsePack, type Pack } from "../../shared/pack/pack.ts";
-import { SOURCE } from "../../tools/art/source.ts";
+import { SOURCE, artModule } from "../../tools/art/source.ts";
 import { unpackMeshes, type SourceMesh } from "../../tools/pack/write.ts";
-import { HAIR_BUDGETS, UNDER_HAT } from "../../assets/source/core/humans/hair/hair.ts";
-import { cardCell } from "../../assets/source/core/humans/hair/sheet.ts";
-import { CENTRE } from "../../assets/source/core/humans/hair/head.ts";
-import { BRIM, GAP, PRESSED } from "../../assets/source/core/humans/hair/styles.ts";
 import { artTest, fromArt } from "../fixtures/needs-art.ts";
+
+const { HAIR_BUDGETS, UNDER_HAT } = await artModule("core/humans/hair/hair.ts");
+const { cardCell } = await artModule("core/humans/hair/sheet.ts");
+const { CENTRE } = await artModule("core/humans/hair/head.ts");
+const { BRIM, GAP, PRESSED } = await artModule("core/humans/hair/styles.ts");
 
 const pack = fromArt((): Pack => parsePack(new Uint8Array(readFileSync(join(SOURCE, "core/humans/human-bodies/human-bodies.snpk")))));
 const meshes = fromArt(() => new Map(unpackMeshes(pack).map((m) => [m.id, m])));

@@ -6,8 +6,10 @@ import { alphaCoverage, baseMips, type Picture } from "../../tools/pack/image.ts
 import { coverageOf } from "../../tools/art/materials.ts";
 import { findAssets } from "../../tools/art/assets.ts";
 import { materialsOf } from "../../tools/art/materials.ts";
-import { paintSheet, sheetPictures, SIDE } from "../../assets/source/core/humans/hair/paint.ts";
-import { CARD_KINDS, SHEET_CELLS, cardCell } from "../../assets/source/core/humans/hair/sheet.ts";
+import { artModule } from "../../tools/art/source.ts";
+
+const { paintSheet, sheetPictures, SIDE } = await artModule("core/humans/hair/paint.ts");
+const { CARD_KINDS, SHEET_CELLS, cardCell } = await artModule("core/humans/hair/sheet.ts");
 
 /** Strands down a square picture, a few pixels apart and of varied width, their edges soft, as a card's alpha is. */
 function strands(side: number, every: number): Picture {
@@ -57,8 +59,8 @@ test("each card on the strand sheet keeps its coverage down to 8 texels across",
   const base = sheetPictures(paintSheet()).base;
   expect(base.width).toBe(SIDE);
   const mips = baseMips(base, 0.5, SHEET_CELLS);
-  for (const kind of CARD_KINDS) {
-    const cell = cardCell(kind);
+  for (const kind of CARD_KINDS as string[]) {
+    const cell = cardCell(kind) as [number, number];
     // Below 8 texels a stubble's bristles are less than a texel each, and its cell's alpha is one grey.
     const shares = mips.filter((m) => Math.sqrt(m.length / 4) * (cell[1] - cell[0]) >= 7.9).map((m) => alphaCoverage(m, 0.5, cell));
     const top = shares.at(-1)!;

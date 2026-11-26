@@ -8,6 +8,8 @@ import type { TextureRole } from "../../shared/pack/texture.ts";
 import type { PackRig } from "../../shared/pack/pack.ts";
 import type { SourceMesh } from "../pack/write.ts";
 import type { ClipSpec } from "../pack/anim.ts";
+import type { CookMaterial } from "../pack/body.ts";
+import type { FittedBody } from "../makehuman/fit.ts";
 
 export type AssetSpec = CreatureAsset | PiecesAsset | HumanClipsAsset | HumanBodiesAsset | SkyAsset | WaterAsset | DetailsAsset;
 
@@ -513,6 +515,13 @@ export interface HumanBodiesAsset {
   /** Each body's joint rests, in the order of SEX_IDS. The cook writes these and refuses a body whose joints sit more than 3 mm off. */
   readonly rigs: readonly (readonly number[])[];
   readonly eyes: string;
+  /**
+   * Makes every hair and beard style for one sex on the MakeHuman body it is drawn on, as meshes under `id`
+   * (assets/source/core/humans/hair/). `levels` are the hair's triangles a level and `flat` its first flat level.
+   */
+  readonly hair: {
+    readonly make: (body: FittedBody, sex: number, id: string, rig: string, core: CookMaterial, cards: CookMaterial, levels: readonly number[], flat: number) => { meshes: SourceMesh[]; lines: string[] };
+  };
   readonly outfits: {
     readonly folder: string;
     readonly files: readonly string[];

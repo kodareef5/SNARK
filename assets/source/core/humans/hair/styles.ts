@@ -308,10 +308,9 @@ export function hairStyles(head: Head): Record<string, HairStyleForms> {
     const radius = (v: number): number => (v < 0.15 ? 0.017 + 0.009 * smooth(0, 0.15, v) : 0.026 - 0.016 * smooth(0.15, 1, v)) * (sex === 0 ? 0.75 : 1);
     return tube(head, "tail", path, radius, fallingFrom(B_UPPER_CHEST, headY, headY - 0.2));
   };
-  // Under a hat the tail comes out below the brim.
-  const tail = tailFrom(98);
   out.tied = {
-    worn: { patches: [cap(head, tiedCap), tail], cards: [...layers("cap", [["fine", 2 * MM, 0.04, 1.03, 0.024]]), ...layers("tail", [["clumps", 3 * MM, 0.16, 1, 0.022], ["fine", 7 * MM, 0.2, 1, 0.026]])] },
+    worn: { patches: [cap(head, tiedCap), tailFrom(98)], cards: [...layers("cap", [["fine", 2 * MM, 0.04, 1.03, 0.024]]), ...layers("tail", [["clumps", 3 * MM, 0.16, 1, 0.022], ["fine", 7 * MM, 0.2, 1, 0.026]])] },
+    // Under a hat the tail comes out below the brim.
     hat: { patches: [cap(head, pressed(head, tiedCap)), tailFrom(BRIM(180) + 16)], cards: layers("tail", [["clumps", 3 * MM, 0.16, 1, 0.022]]) },
   };
   return out;

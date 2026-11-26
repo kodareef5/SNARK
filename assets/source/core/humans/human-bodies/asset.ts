@@ -4,6 +4,7 @@
 import { meridian } from "./meridian/model.ts";
 import { RIGS } from "./rigs.ts";
 import { SHEET_CELLS } from "../hair/sheet.ts";
+import { hairMeshes } from "../hair/hair.ts";
 import type { HumanBodiesAsset, MaterialSpec } from "../../../../../tools/art/spec.ts";
 
 /** A material skin/paint.ts painted, by its name there: base colour and normal at 2,048, the packed map at 1,024, masks at 512. */
@@ -56,6 +57,7 @@ export default {
   ],
   rigs: RIGS,
   eyes: "base-characters/T_Eye_Brown.png",
+  hair: { make: hairMeshes },
   outfits: {
     folder: "outfits-fantasy",
     files: [

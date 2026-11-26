@@ -13,7 +13,6 @@ import { readPng } from "../pack/png-read.ts";
 import { cookBody, restBody, RIGID_BONES, type Cooked, type CookOptions } from "../pack/body.ts";
 import { bodyField, headShift, refitPiece, shiftLod, type BodyField, type HeadShift } from "../pack/refit.ts";
 import { fitBody, type FittedBody } from "../makehuman/fit.ts";
-import { hairMeshes, HAIR_BUDGETS } from "../../assets/source/core/humans/hair/hair.ts";
 import { scriptedBody } from "../makehuman/cooked.ts";
 import { convertBody, rigOf, type ColorRule, type MaterialRule } from "../pack/skin.ts";
 import { buildPack, unpackMeshes, type SourceMesh } from "../pack/write.ts";
@@ -225,8 +224,8 @@ export function convertBodies(spec: HumanBodiesAsset, dir: string, described: Re
         meshes.push(mesh);
       }
     }
-    // Hair and beards are made on the MakeHuman head (assets/source/core/humans/hair/).
-    const styled = hairMeshes(hairOn, sex, id, rig, hairCore!, hairCards!, { ...HAIR_BUDGETS, levels: spec.triangles.hair });
+    // Hair and beards are made on the MakeHuman head by the asset's own script.
+    const styled = spec.hair.make(hairOn, sex, id, rig, hairCore!, hairCards!, spec.triangles.hair, spec.flat);
     if (onHead) for (const mesh of styled.meshes) for (const lod of mesh.lods) shiftLod(lod, onHead);
     meshes.push(...styled.meshes);
     lines.push(...styled.lines);

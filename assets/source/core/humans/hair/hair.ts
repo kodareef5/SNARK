@@ -36,8 +36,12 @@ export interface HairMade {
   lines: string[];
 }
 
-/** The hair and beards of the body `f` is, for mesh ids under `id`, drawn with `core` and `cards`. */
-export function hairMeshes(f: FittedBody, sex: number, id: string, rig: string, core: CookMaterial, cards: CookMaterial, budgets: Budgets = HAIR_BUDGETS): HairMade {
+/**
+ * The hair and beards of the body `f` is, for mesh ids under `id`, drawn with `core` and `cards`, `levels` triangles a
+ * level and flat from `flat` on (asset.ts gives them; HAIR_BUDGETS where not).
+ */
+export function hairMeshes(f: FittedBody, sex: number, id: string, rig: string, core: CookMaterial, cards: CookMaterial, levels = HAIR_BUDGETS.levels, flat = HAIR_BUDGETS.flat): HairMade {
+  const budgets: Budgets = { ...HAIR_BUDGETS, levels, flat };
   const head = headOf(f, sex);
   const { materials, textures } = pooled([core, cards]);
   const meshes: SourceMesh[] = [];
