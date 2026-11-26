@@ -7,9 +7,11 @@
 //     op 2 bits: 0 update, 1 create, 2 remove, 3 remove because it died
 //     create: kind varint, generation 12 bits, x 22, y 20, z 22, yaw 10, flags 4, pose state 32, [cues? 1][31], [emote? 1][29], [stride? 1][8], [reaction? 1][32],
 //             then its appearance:
-//             kept 1, level varint, [colours? 1][6 x 8], unless kept: [name? 1][string], [look? 1][72 x 8]; then [gear? 1][6 x 16, on 1],
+//             kept 1, level varint, [colours? 1][6 x 8], unless kept: [name? 1][string], [look? 1][look]; then [gear? 1][6 x 16, on 1],
 //             [team? 1][varint], [seat? 1][varint], [young? 1][span 32, grown 32]
 //             `kept` says the name and look are the baseline's: legal only for an id the baseline has at the same generation.
+//             A look is [born? 1] then a seed 32, a population varint and its revision varint, from which the reader makes
+//             the look (shared/people/person.ts), or else its 72 x 8: a population or revision the reader lacks is malformed.
 //             then [vehicle? 1][its parts], the parts a vehicle's: pose 32, wheel 16, ride 32, doors 32, drive 32, rotor 32, systems 32, attitude 64, water 16
 //             (shared/sim/vehicle-body.ts packs each). A seat is the entity, its slot u8 and the entity's generation 12, so
 //             nothing is drawn on a recycled one.
@@ -37,7 +39,7 @@
 import { ANIM_ACTION_BITS, ANIM_ACTION_SHIFT, ANIM_LOOK_BITS, ANIM_LOOK_SHIFT, ANIM_MOTION_BITS, ANIM_MOTION_MASK, CUE_BITS, EMOTE_BITS, REACT_BITS } from "../anim/pose.ts";
 import { LOOK_BYTES } from "../anim/look.ts";
 import { WORLD_MIN_Y } from "../coords.ts";
-import { GEAR_COUNT } from "../sim/entities.ts";
+import { GEAR_COUNT, type Born } from "../sim/entities.ts";
 import type { BitReader, BitWriter } from "./codec.ts";
 
 export const VIEW_RING = 32;
@@ -123,6 +125,8 @@ export interface Looks {
   /** Only for the entities that have one. */
   readonly names: ReadonlyMap<number, string>;
   readonly looks: ReadonlyMap<number, Uint8Array>;
+  /** What each generated look was made from: such a look is sent as that. */
+  readonly born?: ReadonlyMap<number, Born>;
   readonly gears: ReadonlyMap<number, Uint16Array>;
   /** The gear's "on" bit: 1 while the laser in hand is switched on. Absent, 0. */
   readonly on?: Uint8Array;
@@ -136,11 +140,20 @@ export interface Looks {
   readonly died?: Uint16Array;
 }
 
+/** The look a create's seed form names (writeViewDelta): its seed, population and revision, or null where there is none to make. */
+export type MakePerson = (seed: number, population: number, revision: number) => Uint8Array | null;
+
+/** The bits a look takes after its own bit: its seed form where it was generated, else its bytes. */
+function lookBits(v: Looks, id: number): number {
+  const born = v.born?.get(id);
+  return 1 + (born ? 32 + varintBits(born.population) + varintBits(born.revision) : LOOK_BYTES * 8);
+}
+
 /** An upper bound on the bits a create for entity `id` takes, its name and look left out where `kept`. */
 function createBits(v: Looks, id: number, kept: boolean): number {
   const name = kept ? "" : (v.names.get(id) ?? "");
   // The optional fields: a look, gear, a team, a seat, an age.
-  const look = (v.looks.has(id) && !kept ? LOOK_BYTES * 8 : 0) + (v.gears.has(id) ? GEAR_COUNT * 16 + 1 : 0) + (v.team[id] !== 0 ? 40 : 0) + (v.seat[id] !== 0 ? 60 : 0) + (v.span[id] !== 0 || v.grown[id] !== 0 ? 64 : 0);
+  const look = (v.looks.has(id) && !kept ? lookBits(v, id) : 0) + (v.gears.has(id) ? GEAR_COUNT * 16 + 1 : 0) + (v.team[id] !== 0 ? 40 : 0) + (v.seat[id] !== 0 ? 60 : 0) + (v.span[id] !== 0 || v.grown[id] !== 0 ? 64 : 0);
   if (name === "") return CREATE_BITS + look;
   let bytes = 1;
   for (let i = 0; i < name.length; i++) {
@@ -937,7 +950,15 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, shared: Sent
         if (name !== "") w.string(name);
         const look = looks.looks.get(id);
         w.bool(look !== undefined);
-        if (look) for (let q = 0; q < LOOK_BYTES; q++) w.u8(look[q]!);
+        if (look) {
+          const born = looks.born?.get(id);
+          w.bool(born !== undefined);
+          if (born) {
+            w.u32(born.seed);
+            w.varint(born.population);
+            w.varint(born.revision);
+          } else for (let q = 0; q < LOOK_BYTES; q++) w.u8(look[q]!);
+        }
       }
       const gear = looks.gears.get(id);
       w.bool(gear !== undefined);
@@ -1051,8 +1072,9 @@ function untold(drawn: EntityView, before: EntityView | null, l: number, next: E
  * before this one, with this snapshot's ops applied. A body the snapshot says nothing of stays as it was last told of.
  * The ids of bodies taken away because they died are pushed to `died`. `tally`, if given, is told the bits of the count as
  * op -1, then of each op read: its OP_, its body's kind (as a create reads it, else as the base has it, or -1) and its bits.
+ * `person` makes a look sent as a seed; without it such a create is malformed.
  */
-export function readViewDelta(r: BitReader, base: EntityView | null, next: EntityView, before: EntityView | null = null, drawn: EntityView | null = null, died: number[] | null = null, tally: ((op: number, kind: number, bits: number) => void) | null = null): boolean {
+export function readViewDelta(r: BitReader, base: EntityView | null, next: EntityView, before: EntityView | null = null, drawn: EntityView | null = null, died: number[] | null = null, tally: ((op: number, kind: number, bits: number) => void) | null = null, person: MakePerson | null = null): boolean {
   const nb = base ? base.count : 0;
   // With no baseline and no snapshot for a second, the server has started again from nothing.
   if (!base && before && next.tick - before.tick >= VIEW_RING) before = null;
@@ -1114,8 +1136,14 @@ export function readViewDelta(r: BitReader, base: EntityView | null, next: Entit
       } else {
         if (r.bool()) name = r.string(MAX_NAME_LENGTH);
         if (r.bool()) {
-          look = new Uint8Array(LOOK_BYTES);
-          for (let q = 0; q < LOOK_BYTES; q++) look[q] = r.u8();
+          if (r.bool()) {
+            const seed = r.u32() >>> 0, population = r.varint(), revision = r.varint();
+            look = person && !r.overflow ? person(seed, population, revision) : null;
+            if (!look) return false;
+          } else {
+            look = new Uint8Array(LOOK_BYTES);
+            for (let q = 0; q < LOOK_BYTES; q++) look[q] = r.u8();
+          }
         }
       }
       let gear: Uint16Array | null = null;

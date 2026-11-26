@@ -4,6 +4,8 @@
 
 import { Pose } from "../anim/clip.ts";
 import { HUMAN, HUMAN_BONES } from "../anim/human.ts";
+import { LOOK_BYTES, lookScales } from "../anim/look.ts";
+import { personFrom, populationsOf } from "../people/person.ts";
 import { AnimState, CUE_LAND, CUE_NONE, CUE_ROLL, CUE_STARTLE, CUE_TAKEOFF, CUE_TORPOR, DIR_STEPS, HumanAnim, LAYER_EAT, LAYER_FLINCH, LAYER_NONE, humanPose } from "../anim/pose.ts";
 import { ACT_COOL, ACT_DRAW, ACT_HOLD, ACT_NONE, ACT_RELOAD, ACT_SWING, HOLD_BOW, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_TOOL, POSE_LAUNCHER, POSE_PLAIN } from "./weapon.ts";
 import { Solved, rayZones, solve, zoneHit } from "../anim/skeleton.ts";
@@ -783,6 +785,36 @@ export function nodeHash(base: Registry): string {
       f[0] = castWorld(world, b.x, b.y + 1.5, b.z, d[0]!, d[1]!, d[2]!, 40);
       [f[1], f[2], f[3], f[4], f[5], f[6], f[7], f[8], f[9]] = [rayHit.t, rayHit.ref, rayHit.nx, rayHit.ny, rayHit.nz, b.x, b.y, b.z, b.grounded ? 1 : 0];
       add(10);
+    }
+  }
+  return (h1 >>> 0).toString(16).padStart(8, "0") + (h2 >>> 0).toString(16).padStart(8, "0");
+}
+
+/**
+ * Many seeds through every population of the content, small ones and seeds spread over all 32 bits: hashes each person's
+ * look, sex and outfit and the bone stretches lookScales makes of the look. Equal hashes mean every client makes the
+ * person its server sent as a seed.
+ */
+export function personHash(reg: Registry): string {
+  const rng = new Rng(5309);
+  const look = new Uint8Array(LOOK_BYTES);
+  const scales = new Float32Array(HUMAN_BONES * 3);
+  const scaleBits = new Int32Array(scales.buffer);
+  let h1 = 0x811c9dc5;
+  let h2 = 0x9747b28c;
+  const mix = (v: number): void => {
+    h1 = Math.imul(h1 ^ (v | 0), 0x01000193);
+    h2 = Math.imul(h2 + (v | 0), 0x85ebca6b) ^ (h2 >>> 13);
+  };
+  for (const p of populationsOf(reg).list) {
+    for (let k = 0; k < 4000; k++) {
+      const person = personFrom(k < 2000 ? k : rng.u32(), p, look);
+      for (let q = 0; q < LOOK_BYTES; q++) mix(look[q]!);
+      mix(person.sex);
+      mix(person.outfit);
+      if (k % 8 !== 0) continue;
+      lookScales(look, scales);
+      for (let q = 0; q < scaleBits.length; q++) mix(scaleBits[q]!);
     }
   }
   return (h1 >>> 0).toString(16).padStart(8, "0") + (h2 >>> 0).toString(16).padStart(8, "0");

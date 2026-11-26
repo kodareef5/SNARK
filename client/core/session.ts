@@ -186,6 +186,7 @@ import type { BlocksSource } from "./render/cityblocks.ts";
 import { CityStatics } from "../../shared/world/city.ts";
 import { NodeChanges, type FarNodeSource } from "./render/farnodes.ts";
 import { MapStore } from "./tactical.ts";
+import { lookOfSeed } from "../../shared/people/person.ts";
 
 export interface SessionOptions {
   intent?: "create" | "resume";
@@ -813,6 +814,8 @@ export class ClientSession {
   tap: NetTap | null = null;
   /** Where the tap was last told a snapshot's section ended, in bits from the message's start. */
   private marked = 0;
+  /** A person sent as a seed, made from the content the server tuned (shared/people/person.ts). */
+  private readonly makePerson = (seed: number, population: number, revision: number): Uint8Array | null => lookOfSeed(this.registry, seed, population, revision);
   private readonly tally = (op: number, kind: number, bits: number): void => {
     this.marked += bits;
     this.tap?.snapshot(SNAP_BODIES, op, kind, bits);
@@ -2524,7 +2527,7 @@ export class ClientSession {
     const drawn = this.drawn.alloc(tick);
     const dying = this.dying;
     dying.length = 0;
-    if (!readViewDelta(r, base, next, this.drawn.find(this.latestSnapshot), drawn, dying, this.tap && this.tally) || r.overflow) {
+    if (!readViewDelta(r, base, next, this.drawn.find(this.latestSnapshot), drawn, dying, this.tap && this.tally, this.makePerson) || r.overflow) {
       next.tick = drawn.tick = 0;
       this.stats.undecodable++;
       this.needFull = true;

@@ -23,6 +23,13 @@ export const GEAR_HELD = 0;
 export const GEAR_WORN = 1;
 export const GEAR_COUNT = 6;
 
+/** What a generated look was made from (shared/people/person.ts): a seed, the population's number on the wire and its revision. */
+export interface Born {
+  readonly seed: number;
+  readonly population: number;
+  readonly revision: number;
+}
+
 export const F_ALIVE = 1;
 export const F_GROUNDED = 2;
 /** Stepped every tick. Cleared while the entity's chunk sleeps. */
@@ -213,6 +220,8 @@ export class EntityStore {
   /** Only for the slots that have one, as few do: a name and a survivor's look (shared/anim/look.ts), which bump `identityRev`, and gear. */
   readonly names = new Map<number, string>();
   readonly looks = new Map<number, Uint8Array>();
+  /** For a look the person generator made: what it was made from, so a create sends that and not the look. */
+  readonly born = new Map<number, Born>();
   /** Content indices: GEAR_HELD, then one per armor slot. Replaced, never changed in place. */
   readonly gears = new Map<number, Uint16Array>();
   /**
@@ -450,6 +459,7 @@ export class EntityStore {
     this.colors.fill(0, i * 6, i * 6 + 6);
     this.names.delete(i);
     this.looks.delete(i);
+    this.born.delete(i);
     this.gears.delete(i);
     this.on[i] = 0;
     this.identityRev[i]++;
@@ -676,14 +686,16 @@ export class EntityStore {
     this.rev[i]++;
   }
 
-  /** Keeps a copy, so a caller's array changed later is not taken for this one. */
-  setBodyLook(i: number, look: Uint8Array | null): void {
-    const old = this.looks.get(i);
+  /** Keeps a copy, so a caller's array changed later is not taken for this one. `born` is given for a look personFrom made from it. */
+  setBodyLook(i: number, look: Uint8Array | null, born: Born | null = null): void {
+    const old = this.looks.get(i), was = this.born.get(i);
+    if (born && look) this.born.set(i, born);
+    else this.born.delete(i);
     if (!look) {
       if (!old) return;
       this.looks.delete(i);
     } else {
-      let same = old !== undefined && old.length === look.length;
+      let same = old !== undefined && old.length === look.length && (born ? was !== undefined && was.seed === born.seed && was.population === born.population && was.revision === born.revision : was === undefined);
       for (let k = 0; k < look.length && same; k++) same = old![k] === look[k];
       if (same) return;
       this.looks.set(i, look.slice());

@@ -36,11 +36,14 @@ export interface Traits {
 export const TRAIT_NAMES: readonly (keyof Traits)[] = ["calm", "social", "bold", "playful"];
 
 /** What one wears and looks like. `mesh` is the body (the human's until other models come); `wear` are items put on
- * from the game's own (cloth, hide, flak pieces); `colors` are palette indices for the body's regions. */
+ * from the game's own (cloth, hide, flak pieces), or none for an outfit of the population's; `colors` are palette indices
+ * for the body's regions. */
 export interface Look {
   id: string;
   mesh: string;
   wear: string[];
+  /** The population its people are drawn from (content/people), the city's where not given. */
+  population?: string;
   colors?: number[];
   placeholder?: boolean;
   /** For an artist: what this look is meant to be once it has its own art. */
@@ -173,6 +176,8 @@ export interface Catalogue {
   scenes: Scene[];
   reactions: ReactionTable[];
   names: Record<string, string[]>;
+  /** First names that are a man's (0) or a woman's (1): a person of one is drawn of that sex. */
+  sexes?: Record<string, number>;
 }
 
 /** What the world offers, to check a catalogue against: the emotes, items and species it has. */
@@ -180,6 +185,8 @@ export interface Known {
   emotes: ReadonlySet<string>;
   items: ReadonlySet<string>;
   species: ReadonlySet<string>;
+  /** The populations a look may name; any where not given. */
+  populations?: ReadonlySet<string>;
 }
 
 const isTarget = (t: unknown): boolean =>
@@ -205,6 +212,7 @@ export function validateCatalogue(c: Catalogue, known: Known): string[] {
   for (const l of c.looks) {
     unique("look", l.id);
     for (const w of l.wear) if (!known.items.has(w)) out.push(`look ${l.id}: wears ${w}, which is no item`);
+    if (l.population !== undefined && known.populations && !known.populations.has(l.population)) out.push(`look ${l.id}: draws from ${l.population}, which is no population`);
     if (l.colors && (l.colors.length > 6 || l.colors.some((n) => !Number.isInteger(n) || n < 0 || n > 255))) out.push(`look ${l.id}: up to six palette colours, 0 to 255`);
   }
   for (const a of c.archetypes) {
@@ -271,5 +279,6 @@ export function validateCatalogue(c: Catalogue, known: Known): string[] {
     for (const a of c.archetypes.filter((a) => a.reactions === t.id)) for (const row of t.rows) if (row.line && !a.lines[row.line]?.length) out.push(`reactions ${t.id}: ${a.id} has no lines for ${row.line}`);
   }
   for (const [k, v] of Object.entries(c.names)) if (!v.length) out.push(`names ${k}: empty`);
+  for (const [k, v] of Object.entries(c.sexes ?? {})) if (v !== 0 && v !== 1) out.push(`sexes ${k}: 0 for a man's name, 1 for a woman's`);
   return out;
 }

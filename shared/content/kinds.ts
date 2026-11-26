@@ -21,6 +21,7 @@ import { loot } from "./kinds/loot.ts";
 import { maps } from "./kinds/maps.ts";
 import { materials } from "./kinds/materials.ts";
 import { nodes } from "./kinds/nodes.ts";
+import { populations } from "./kinds/populations.ts";
 import { props } from "./kinds/props.ts";
 import { renames } from "./kinds/renames.ts";
 import { shapes } from "./kinds/shapes.ts";
@@ -48,5 +49,6 @@ export const KINDS = [
   spawns,
   maps,
   game,
+  populations,
   renames,
 ] as const;
