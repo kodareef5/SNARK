@@ -1,6 +1,6 @@
 // Sheets of drawn faces: each a survivor's head close up, through the game's renderer and the rasterizer, its face made
 // on the client (client/core/render/faces.ts). One sheet a sex of 24 people the survivors' population makes, and one of
-// every face slider at each end. `bun tools/snap/faces.ts [--out var/faces] [--graphics high] [--size 160]`.
+// every face slider at each end. `bun tools/snap/faces.ts [--out var/faces] [--graphics high] [--size 160] [--sex 0|1] [--one]`.
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -48,7 +48,7 @@ async function portraitView(): Promise<ProvingView> {
 function portrait(view: ProvingView, look: Uint8Array): Uint8ClampedArray {
   const r = view.remote, cam = view.cam;
   r.look.set(look, 0);
-  const eye = r.y[0]! + (look[LOOK_SEX] === 1 ? 1.56 : 1.64);
+  const eye = r.y[0]! + 1.64;
   cam.x = r.x[0]! - 0.55 * Math.sin(0.15);
   cam.z = r.z[0]! - 0.55 * Math.cos(0.15);
   cam.y = eye - 0.07;
@@ -82,7 +82,7 @@ if (args.includes("--one")) {
   sheet([portrait(view, defaultLook()), portrait(view, tiny), portrait(view, wide)], ["neutral", "tiny", "all 0.3"], "one.png");
   process.exit(0);
 }
-for (const sex of [0, 1]) {
+for (const sex of arg("sex") === undefined ? [0, 1] : [Number(arg("sex"))]) {
   const tiles: Uint8ClampedArray[] = [], names: string[] = [];
   for (let seed = 1; tiles.length < 24; seed++) {
     const person = personFrom(seed * 7919, SURVIVORS);
