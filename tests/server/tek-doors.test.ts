@@ -214,3 +214,16 @@ test("an owner shuts an ordinary door on a stranger in the doorway, and not on a
   expect(leaf()).toBe(h.reg.ids[open]!);
   h.host.shutdown();
 });
+
+test("a blocked door leaves strangers in the doorway where they stand", () => {
+  const { h, owner, guest, world, kind, stand, ref } = scene();
+  const open = kind("door_open_metal");
+  world.structs.swap(ref, open);
+  stand(owner, .25, 0);
+  stand(guest, 0, 0);
+  const e = h.ent(guest), position = () => [world.ents.x[e], world.ents.z[e]];
+  const before = position();
+  expect(h.host.build.use(h.client(owner)!, ref)).toBe(RESULT_OBSTRUCTED);
+  expect(position()).toEqual(before);
+  h.host.shutdown();
+});
