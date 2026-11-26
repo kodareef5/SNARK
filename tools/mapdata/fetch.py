@@ -217,9 +217,14 @@ def osm_extract(m, man, names):
         print('osm', name, len(answers['all' if name == 'osm' else name]['elements']), 'elements', flush=True)
     stamp_file.write_text(stamp)
     md5 = Path(str(pbf) + '.md5').read_text().split()[0] if Path(str(pbf) + '.md5').exists() else None
+    # The same URL serves a newer extract each day: its digest tells a kit's layers from ones made of another.
+    digest = hashlib.sha256()
+    with open(pbf, 'rb') as f:
+        for block in iter(lambda: f.read(1 << 22), b''):
+            digest.update(block)
     man.records['osm/extract'] = {'url': f"https://download.geofabrik.de/{o['extract']}-latest.osm.pbf", 'method': 'GET',
                                   'source': o['source'] + ', through Geofabrik\'s regional extract', 'licence': o['licence'],
-                                  'bytes': pbf.stat().st_size, 'md5': md5,
+                                  'bytes': pbf.stat().st_size, 'md5': md5, 'sha256': digest.hexdigest(),
                                   'retrieved_utc': dt.datetime.fromtimestamp(pbf.stat().st_mtime, dt.timezone.utc).isoformat(),
                                   'note': 'cut to the frame with osmium extract --strategy smart; raw/osm/*.json answered locally (osm_local.py)'}
     man.save()

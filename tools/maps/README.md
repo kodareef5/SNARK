@@ -90,7 +90,9 @@ and whole is not downloaded again.
 A kit is the cut's work folder less `raw/` and `reports/`, with `raw/osm/all.json` kept for the world stage, and the
 stages' keys. Keys are inputs and code, never paths, so at the kit's commit every stage but the build is done; an edit
 to the build's code (`tools/mapworld`, `tools/map`, the shared world code) builds again from the kit alone. An edit that
-reaches a stage reading the downloads (prepare to ways) makes `city.ts` fetch them first. A kit made at another commit
+reaches a stage reading the downloads (a stage's `reads` in `STAGES`) makes `city.ts` fetch them first. The kit keeps
+`downloads.json`, each download's size and SHA-256: a source fetched with other bytes (a newer extract at the same URL)
+runs again from the first stage that reads it, or stops a `--from` or `--only` run that starts after it. A kit made at another commit
 still unpacks: the stages whose code differs run again. Make kits again after a change to a stage before the build.
 
 ## The cities' transfer terminals

@@ -316,22 +316,24 @@ export function planStreets(source: string, base: Base, world: World, vocab: { s
       const meets = (b: readonly number[]): boolean => b[2]! >= x0 && b[0]! <= x0 + span && b[3]! >= z0 && b[1]! <= z0 + span;
       const mine = new Map<number, number>();
       boxes.forEach((b, k) => { if (meets(b)) mine.set(k, mine.size); });
-      const myCorners = corners.filter((c) => {
+      // The corners this square meets, by their place in `corners`.
+      const myCorners: number[] = [];
+      corners.forEach((c, k) => {
         const r = c.reach + 1 + sideReach(stretches[c.stretch]!.sides[c.side]);
-        if (!meets([c.cx - r, c.cz - r, c.cx + r, c.cz + r])) return false;
+        if (!meets([c.cx - r, c.cz - r, c.cx + r, c.cz + r])) return;
         if (!mine.has(c.stretch)) mine.set(c.stretch, mine.size);
-        return true;
+        myCorners.push(k);
       });
       if (mine.size === 0) continue;
       const order = [...mine.keys()];
-      const part = { x0, z0, stretches: order.map((k) => stretches[k]!), corners: myCorners.map((c) => ({ ...c, stretch: mine.get(c.stretch)! })) };
+      const part = { x0, z0, stretches: order.map((k) => stretches[k]!), corners: myCorners.map((k) => ({ ...corners[k]!, stretch: mine.get(corners[k]!.stretch)! })) };
       const encoded = encodeStreets(part);
       bytes += encoded.length;
       parts.push({ col, row, bytes: encoded });
       const decoded = decodeStreets(encoded, x0, z0);
       held.put(col * 4096 + row, decoded, Math.max(0, ox), Math.max(0, oz), Math.min(chunksX, ox + SECTOR_CHUNKS), Math.min(chunksZ, oz + SECTOR_CHUNKS));
       held.keep(decoded, Float64Array.from(order.flatMap((k) => [sideWear[k * 2]!, sideWear[k * 2 + 1]!])), Uint8Array.from(order.flatMap((k) => [sideAsked[k * 2]!, sideAsked[k * 2 + 1]!])));
-      heldParts.push({ part: decoded, stretches: order, corners: myCorners.map((c) => corners.indexOf(c)) });
+      heldParts.push({ part: decoded, stretches: order, corners: myCorners });
     }
   }
   };

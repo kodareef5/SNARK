@@ -56,6 +56,32 @@ print(len(asked), json.loads((root / 'raw/a.tif').read_text())['coverage'], sort
   }
 });
 
+test("a regional extract is recorded with its size and SHA-256", () => {
+  const root = mkdtempSync(join(tmpdir(), "snark-extract-"));
+  try {
+    expect(python(`
+import hashlib, json, pathlib, fetch, osm_local
+root = pathlib.Path(${JSON.stringify(root)})
+(root / 'raw').mkdir()
+pbf = root / 'region-latest.osm.pbf'
+pbf.write_bytes(b'x' * 5_000_001)
+osm_local.region_file = lambda cache, region: pbf
+osm_local.cut = lambda src, bounds, out: None
+osm_local.answer = lambda area, names: {n: {'elements': []} for n in names}
+class M:
+    raw = root / 'raw'; root = root
+    city = {'osm': {'extract': 'north-america/us/region', 'source': 's', 'licence': 'l'}}
+    def lonlat_bounds(self, margin=0): return (0, 0, 1, 1)
+man = fetch.Manifest(M)
+fetch.osm_extract(M(), man, ['osm', 'ways'])
+r = json.loads((root / 'downloads.json').read_text())['osm/extract']
+print(r['bytes'], r['sha256'] == hashlib.sha256(pbf.read_bytes()).hexdigest())
+`).trim().split("\n").at(-1)).toBe("5000001 True");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("a water relation whose ring is drawn in several ways keeps its lake and its island", () => {
   expect(python(`
 from common import relation_polygon
