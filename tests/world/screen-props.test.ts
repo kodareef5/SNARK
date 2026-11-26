@@ -22,8 +22,8 @@ const MODELS = join(import.meta.dir, "../../assets/source/core/props/screens");
 /** What model.py wrote: each piece's box, and the face its content gives a whole one, in the game's frame. */
 const BUILT: Record<string, { half: number[]; face?: number[] }> = JSON.parse(readFileSync(join(MODELS, "faces.json"), "utf8"));
 const PROPS = ["tv_flat", "tv_flat_stand", "tv_crt", "laptop"];
-/** The four billboards (content/street.ts BOARDS), the props and the workstation. */
-const WITH_FACES = [...["", "_low", "_mid", "_small"].map((b) => `core:zzstreet_billboard${b}`), ...PROPS.map((p) => `core:${p}`), "core:workstation"];
+/** The six billboards (content/street.ts BOARDS), the props and the workstation. */
+const WITH_FACES = [...["", "_low", "_mid", "_small", "_tall", "_grand"].map((b) => `core:zzstreet_billboard${b}`), ...PROPS.map((p) => `core:${p}`), "core:workstation"];
 
 test("every screen face is sound and on a static or a station, and only the expected kinds carry one", () => {
   const carried = CORE_CONTENT.filter((d): d is StructureDef => d.type === "structure" && d.screen !== undefined);

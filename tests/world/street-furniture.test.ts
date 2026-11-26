@@ -302,8 +302,9 @@ artTest("each piece is met where it is drawn: its mesh within its shape, and its
     const mesh = meshes.find((m) => m.id === streetKind(piece.name));
     expect(mesh?.lods.length).toBeGreaterThan(0);
     const p = mesh!.lods[0]!.positions, lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
-    // What stands above the ground: a footing or a post carried into it is met as the ground.
-    for (let v = 0; v < p.length; v += 3) if (p[v + 1]! > 0.01) for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k]!, p[v + k]!); hi[k] = Math.max(hi[k]!, p[v + k]!); }
+    // What stands above the ground: a footing or a post carried into it is met as the ground. A tall piece's origin is
+    // `lift` over the ground, so its ground is that far under it.
+    for (let v = 0; v < p.length; v += 3) if (p[v + 1]! > 0.01 - (piece.lift ?? 0)) for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k]!, p[v + k]!); hi[k] = Math.max(hi[k]!, p[v + k]!); }
     // Paint lies a hair over the ground, and its box wholly under the ground, so that the ground is what anything meets.
     if (piece.paint) {
       expect([piece.name, lo[1]! > 0, hi[1]! < 0.03]).toEqual([piece.name, true, true]);
@@ -587,15 +588,32 @@ test("billboards stand about so many a square kilometre of land, in the sizes th
   expect(boards(0)).toEqual([]);
   // The few are among the many: a larger budget adds boards and moves none.
   for (const p of few) expect(many.some((q) => q.kind === p.kind && q.x === p.x && q.z === p.z)).toBe(true);
-  // An avenue draws the standard and the mid board, a street the small and the mid: each from its class's row of forms.
+  // An avenue draws the standard, the mid and the tall board, a street the small and the mid: each from its class's row of forms.
   const all = boards(400), name = (p: StaticPiece): string => p.kind.slice(streetKind("billboard").length);
   const nearest = (p: StaticPiece): number => Math.min(Math.abs(p.x - Math.round(p.x / 100) * 100), Math.abs(p.z - Math.round(p.z / 100) * 100));
   const onAvenue = (p: StaticPiece): boolean => (Math.abs(p.x - 500) < 30 && Math.abs(p.x - 500) === nearest(p)) || (Math.abs(p.z - 500) < 30 && Math.abs(p.z - 500) === nearest(p));
-  expect(new Set(all.filter(onAvenue).map(name))).toEqual(new Set(["", "_mid", "_bare", "_mid_bare"]));
+  const avenue = new Set(all.filter(onAvenue).map(name));
+  for (const n of avenue) expect(["", "_mid", "_tall", "_bare", "_mid_bare", "_tall_bare"]).toContain(n);
+  for (const n of ["", "_mid", "_tall"]) expect(avenue.has(n)).toBe(true);
   expect(new Set(all.filter((p) => !onAvenue(p)).map(name))).toEqual(new Set(["_small", "_mid", "_small_bare", "_mid_bare"]));
   // Five in six work.
   const bare = all.filter((p) => p.kind.endsWith("_bare")).length;
   expect(all.length).toBeGreaterThan(100);
   expect(bare / all.length).toBeGreaterThan(0.08);
   expect(bare / all.length).toBeLessThan(0.28);
+});
+
+test("a tall billboard stands with its origin lifted over the ground, its pillars' feet on it, and reaches 30 m", () => {
+  const avenue: Line = { points: [[60, 500], [964, 500]], mtfcc: "S1200", width: 14 };
+  const site = fixture([], [], { lines: [avenue] });
+  const only = (name: string): StaticPiece[] => place(site, [], { ...RULES, forms: { ...RULES.forms, billboard_avenue: [[name, 1]] }, billboards: { ...RULES.billboards, perKm2: 6 } }, 4000).pieces.filter((p) => p.kind === streetKind(name));
+  for (const name of ["billboard_tall", "billboard_grand"]) {
+    const piece = STREET_PIECES.find((p) => p.name === name)!, stood = only(name);
+    expect(stood.length).toBeGreaterThan(0);
+    const low = Math.min(...piece.boxes.map((b) => b.at[1] - b.half[1])), high = Math.max(...piece.boxes.map((b) => b.at[1] + b.half[1]));
+    // No box reaches more than 16 m from the origin, and the whole stands about 30 m.
+    expect([name, low >= -16, high <= 16, high - low > 29]).toEqual([name, true, true, true]);
+    // Its origin is its lift over the ground, so its pillars' feet are on the ground.
+    for (const p of stood) expect([name, Math.abs(p.y - GROUND - piece.lift!) < 1e-6, Math.abs(p.y + low - GROUND) < 1e-6]).toEqual([name, true, true]);
+  }
 });
