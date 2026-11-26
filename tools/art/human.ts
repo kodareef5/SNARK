@@ -304,7 +304,7 @@ export function convertBodies(spec: HumanBodiesAsset, _dir: string, described: R
     if (spec.tailored && finish) {
       // The suit's lining is the cooked body's own skin, a level coarser, and its plates, drawn on the Quaternius body,
       // move as the skin under them moved.
-      const made = spec.tailored.make(suitLining(body.meshes), body.rig, (p) => shiftAt(field, p), (p) => skinWeightsAt(field, p));
+      const made = spec.tailored.make(suitLining(body.meshes), body.rig, (p) => shiftAt(field, p), (p) => skinWeightsAt(field, p, RIGID_BONES));
       suitClear(made, body.meshes, lines);
       for (const mesh of made) meshes.push(dressTailored(spec, mesh, finish));
     }

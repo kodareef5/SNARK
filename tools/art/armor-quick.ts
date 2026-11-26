@@ -9,6 +9,7 @@ import { SEX_IDS } from "../../shared/anim/look.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
 import { LAST_STEP, stepSize } from "../../shared/pack/texture.ts";
+import { RIGID_BONES } from "../pack/body.ts";
 import { shiftAt, skinWeightsAt } from "../pack/refit.ts";
 import { buildPack, unpackMeshes } from "../pack/write.ts";
 import { findAssets } from "./assets.ts";
@@ -34,7 +35,7 @@ export async function armorQuick(pack: Uint8Array): Promise<{ pack: Uint8Array; 
     const made = armorSets(spec, sex, rest, field, described, palette, lines, warnings, body);
     // The suit, its materials as the pack has them.
     const rig = was.header.rigs.find((r) => r.id === `human_${SEX_IDS[sex]}`)!;
-    const made2 = spec.tailored!.make(suitLining(body), rig, (p) => shiftAt(field, p), (p) => skinWeightsAt(field, p));
+    const made2 = spec.tailored!.make(suitLining(body), rig, (p) => shiftAt(field, p), (p) => skinWeightsAt(field, p, RIGID_BONES));
     suitClear(made2, body, lines);
     const suit = made2.map((mesh) => dressTailored(spec, mesh, described.get(spec.tailored!.material)!));
     const ours = new Set([...made, ...suit].map((m) => m.id));
