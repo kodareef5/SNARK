@@ -24,7 +24,7 @@ const ADA: By = { name: "ada", id: "S-ADA" };
 const BO: By = { name: "bo", id: "S-BO" };
 const mara = (notes = ""): PersonDoc => ({ name: "Mara", look: [...personFrom(7, CITY).look], wardrobe: null, source: { seed: 7, population: "core:people_city", locks: { face: 99 }, outfit: null }, notes });
 const vendor = (name = "Vendor"): OutfitDoc => ({ name, slots: [{ choices: [{ garment: "core:plain_tee", edition: 0, weight: 1 }], dye: [0, 0, 0] }, null, null, null, null] });
-const { type: _t, id: _i, revision: _r, ...beachBody } = BEACH;
+const { type: _t, id: _i, ...beachBody } = BEACH;
 const beach = (face = 0.3): PopulationDoc => ({ ...beachBody, label: "Beach copy", face });
 
 function saved(done: Saved | { status: number; error: string }): Saved {
@@ -144,7 +144,7 @@ test("every population revision is in the manifest, retired or not, after a rest
       expect(s.view().retiredOf.population.has(id)).toBe(true);
       expect(readPeopleManifest(manifest(s)).populations.map((p) => [p.id, p.rev, p.population.face])).toEqual([[1, 1, 0.3], [1, 2, 0.6]]);
       // The generator takes the first revision as it was saved, whichever world reads it.
-      expect([...personFrom(0xc0ffee, s.population(id, 1)!).look]).toEqual([...personFrom(0xc0ffee, storePopulation(1, 1, beach())).look]);
+      expect([...personFrom(0xc0ffee, s.population(id, 1)!).look]).toEqual([...personFrom(0xc0ffee, storePopulation(1, beach())).look]);
     }
     expect(a.view().manifestId).toBe(b.view().manifestId);
     expect(a.population(id, 3)).toBeUndefined();
@@ -194,7 +194,7 @@ test("the store keeps a body as its check reads it and refuses one not of its sh
     const id = saved(store.save("population", null, 0, { ...beach(), extra: 1, label: " Beach  copy " } as PopulationDoc, ADA)).id;
     const kept = manifest(store).populations![0] as unknown as { population: Record<string, unknown> };
     expect([kept.population.extra, kept.population.label]).toEqual([undefined, "Beach copy"]);
-    expect(store.population(id, 1)).toEqual(storePopulation(id, 1, readPopulation(beach()) as PopulationDoc));
+    expect(store.population(id, 1)).toEqual(storePopulation(id, readPopulation(beach()) as PopulationDoc));
     expect(store.save("population", id, 1, { ...beach(), women: 3 }, ADA)).toMatchObject({ status: 400 });
     expect(store.save("person", null, 0, { ...mara(), name: "" }, ADA)).toMatchObject({ status: 400 });
     expect(store.view().records.population.get(id)!.length).toBe(1);

@@ -69,7 +69,7 @@ test("a person and a copied population are saved as the pages send them, and a s
     expect(copied).toMatchObject({ kind: "saved", id: 1, rev: 1 });
     let state = copied.kind === "saved" ? copied.state! : null;
     const pop = draftOfListed(state!.populations[0]!);
-    const seeds = sheetSeeds(9), before = sheetOf(draftDef(pop, false), seeds);
+    const seeds = sheetSeeds(9), before = sheetOf(draftDef(pop), seeds);
     addOutfit(pop.doc, ["core:cloth_shirt"]);
     const saved = await saveThing(io, "population", pop.id, pop.rev, pop.doc);
     expect(saved).toMatchObject({ kind: "saved", id: 1, rev: 2 });

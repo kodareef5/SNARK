@@ -197,8 +197,8 @@ export interface OutfitDoc {
   readonly slots: readonly (OutfitSlot | null)[];
 }
 
-/** An admin population as the store keeps it: a content population without its type, id and revision. */
-export type PopulationDoc = Omit<PopulationDef, "type" | "id" | "revision">;
+/** An admin population as the store keeps it: a content population without its type and id. */
+export type PopulationDoc = Omit<PopulationDef, "type" | "id">;
 
 /** A record's body by its kind. */
 export interface Bodies {
@@ -211,7 +211,7 @@ export interface Bodies {
 export const storePopulationId = (id: number): string => `population/${id}`;
 
 /** An admin population's revision as the person generator takes it. */
-export const storePopulation = (id: number, rev: number, body: PopulationDoc): PopulationDef => ({ type: "population", id: storePopulationId(id), revision: rev, ...body });
+export const storePopulation = (id: number, body: PopulationDoc): PopulationDef => ({ type: "population", id: storePopulationId(id), ...body });
 
 /** One revision of an admin population in the manifest clients fetch. */
 export interface ManifestPopulation {
@@ -388,7 +388,7 @@ export function readPopulation(sent: Record<string, unknown>): PopulationDoc | s
   }
   for (const key of Object.keys(body)) if (body[key] === undefined) delete body[key];
   const errors: string[] = [];
-  const def = { type: "population", id: "population/0", revision: 1, ...body } as unknown as PopulationDef;
+  const def = { type: "population", id: "population/0", ...body } as unknown as PopulationDef;
   for (const [k, v] of Object.entries(body)) if (v === null) errors.push(`population/0: ${k} is not of its shape`);
   if (Object.values(body.regions ?? {}).some((v) => v === null)) errors.push("population/0: regions: each is a low and a high");
   try {

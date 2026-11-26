@@ -131,7 +131,7 @@ export class PeopleBook implements StorePopulations {
     for (const e of read.editions) if (Number.isInteger(e?.id) && Array.isArray(e.colours)) this.editions.set(e.id, e);
     for (const p of read.populations) {
       const defs = this.defs.get(p.id) ?? [];
-      defs[p.rev - 1] ??= storePopulation(p.id, p.rev, p.population);
+      defs[p.rev - 1] ??= storePopulation(p.id, p.population);
       this.defs.set(p.id, defs);
     }
     this.pending = this.pending.filter((w) => {
@@ -145,7 +145,7 @@ export class PeopleBook implements StorePopulations {
 
   /**
    * The look a seed form names (shared/net/view.ts MakePerson). An admin population's revision not held yet gives a
-   * stand-in, the seed in the content's first population; a content population or revision the registry lacks, null.
+   * stand-in, the seed in the content's first population; a population the registry lacks, null.
    */
   look(reg: Registry, seed: number, number: number, revision: number): Uint8Array | null {
     const id = storeIdOf(reg, number);

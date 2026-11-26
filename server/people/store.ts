@@ -253,7 +253,7 @@ export class PeopleStore implements StorePopulations {
     for (const p of addedPopulations) {
       this.populationLines.push(JSON.stringify({ id: p.id, rev: p.rev, population: p.body }));
       const defs = this.populationDefs.get(p.id) ?? [];
-      defs[p.rev - 1] = storePopulation(p.id, p.rev, p.body);
+      defs[p.rev - 1] = storePopulation(p.id, p.body);
       this.populationDefs.set(p.id, defs);
     }
     const retiredOf = Object.fromEntries(STORE_KINDS.map((k) => [k, new Set(doc.retired[k] ?? [])])) as unknown as PeopleView["retiredOf"];

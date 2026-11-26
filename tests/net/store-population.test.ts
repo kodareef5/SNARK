@@ -15,7 +15,7 @@ import { EntityStore, F_ALIVE } from "../../shared/sim/entities.ts";
 const reg = compileContent(CORE_CONTENT).registry!;
 const content = populationsOf(reg);
 const DIMS = { chunksX: 4, chunksZ: 4 };
-const { type: _t, id: _i, revision: _r, ...beachBody } = BEACH;
+const { type: _t, id: _i, ...beachBody } = BEACH;
 const night = readPopulation({ ...beachBody, label: "Night beach", face: 0.9, women: 0.2 }) as PopulationDoc;
 const manifest = { editions: [], populations: [{ id: 3, rev: 2, population: night }] };
 
@@ -46,7 +46,7 @@ function body(store: EntityStore, held: StorePopulations, seed: number, id = 3, 
   return look;
 }
 
-const world: StorePopulations = { population: (id, rev) => (id === 3 && rev === 2 ? storePopulation(3, 2, night) : undefined) };
+const world: StorePopulations = { population: (id, rev) => (id === 3 && rev === 2 ? storePopulation(3, night) : undefined) };
 
 test("content populations keep their numbers and admin ones follow them by store id", () => {
   for (const [i, p] of content.list.entries()) expect(wireNumber(reg, p.id)).toBe(i);
@@ -80,9 +80,8 @@ test("a client without the revision draws a stand-in, made again in place when t
   expect([seen.look[0] === held, [...held], book.waiting]).toEqual([true, [...look], 0]);
 });
 
-test("a content population or revision the client lacks is still malformed", () => {
+test("a population the client lacks is still malformed", () => {
   const book = new PeopleBook();
-  expect(book.look(reg, 1, 0, 99)).toBeNull();
   expect(book.look(reg, 1, content.list.length, 0)).toBeNull();
   expect(book.waiting).toBe(0);
 });
@@ -103,7 +102,7 @@ test("past the cap, stand-ins no view holds are let go and one still held is rem
   book.look(reg, PENDING_MAX, content.list.length, 1);
   expect(book.waiting).toBeLessThan(PENDING_MAX);
   book.take({ editions: [], populations: [{ id: 1, rev: 1, population: night }] });
-  expect([book.waiting, [...held]]).toEqual([0, [...personFrom(0, storePopulation(1, 1, night)).look]]);
+  expect([book.waiting, [...held]]).toEqual([0, [...personFrom(0, storePopulation(1, night)).look]]);
 });
 
 /** A book on a clock the test moves, whose fetches answer as `answer` says, each counted. */

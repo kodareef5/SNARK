@@ -97,9 +97,9 @@ test("another population keeps the seed and locks and names its revision", () =>
   const d = newPerson(S, 3);
   setLock(d.look, "face", true);
   choosePopulation(d, "core:people_beach", S);
-  expect(d.look).toMatchObject({ kind: "seed", seed: 3, population: "core:people_beach", revision: POPULATIONS.find((p) => p.id === "core:people_beach")!.revision, locks: { face: 3 } });
+  expect(d.look).toMatchObject({ kind: "seed", seed: 3, population: "core:people_beach", revision: 0, locks: { face: 3 } });
   expect(bytes(d)).toEqual(personFrom(3, POPULATIONS[1]!, undefined, { face: 3 }).look);
-  d.look = { ...d.look, revision: 9 } as PersonDraft["look"];
+  d.look = { ...d.look, population: 99, revision: 9 } as PersonDraft["look"];
   expect(personFaults({ ...d, name: "x" }, S, BOOK).map((f) => f.at)).toEqual(["look"]);
 });
 
@@ -122,10 +122,10 @@ test("a promoted person comes from its page address with every part locked to it
   expect(d.look).toMatchObject({ kind: "seed", seed: 4242, population: 7, revision: 3 });
   expect(Object.keys((d.look as { locks: object }).locks).sort()).toEqual([...PART_NAMES].sort());
   expect(d.name).toBe("From the sheet");
-  expect(promotedFrom(`?seed=x&population=core:people_city&revision=${POPULATIONS[0]!.revision}`)).toBeNull();
-  expect(promotedFrom(`?seed=12&population=core%3Apeople_city&revision=${POPULATIONS[0]!.revision}`)!.look).toMatchObject({ population: "core:people_city" });
+  expect(promotedFrom(`?seed=x&population=core:people_city&revision=0`)).toBeNull();
+  expect(promotedFrom(`?seed=12&population=core%3Apeople_city&revision=0`)!.look).toMatchObject({ population: "core:people_city" });
   // Locked to its own seed, it is the very person of the sheet.
-  const p = promotedFrom(`?seed=12&population=core:people_city&revision=${POPULATIONS[0]!.revision}`)!;
+  const p = promotedFrom(`?seed=12&population=core:people_city&revision=0`)!;
   expect(lookBytes(p.look, S, BOOK)).toEqual(personFrom(12, POPULATIONS[0]!).look);
 });
 
@@ -161,9 +161,9 @@ test("a store outfit is drawn from the person's outfit seed, which a reroll chan
   expect(personWear({ ...d, dress: { kind: "outfit", outfit: 9 } }, S).note).toContain("not in the store");
 });
 
-/** The state after an edit of the city crowd (new skins, at a new revision) and of outfit 2 (another tee and a dye). */
+/** The state after an edit of the city crowd (new skins) and of outfit 2 (another tee and a dye). */
 function edited(): { state: StoreState; book: ReturnType<typeof bookOf> } {
-  const city = { ...POPULATIONS[0]!, revision: POPULATIONS[0]!.revision + 1, skin: [0, 0, 0, 0, 0, 0, 0, 0, 1, 5], face: 0.9 };
+  const city = { ...POPULATIONS[0]!, skin: [0, 0, 0, 0, 0, 0, 0, 0, 1, 5], face: 0.9 };
   const outfit = { name: "Vendor", slots: [{ choices: [{ garment: "core:plain_tee", edition: 0, weight: 1 }], dye: [7, 7, 7] }, null, null, null, null] };
   const state = storeStateOf(answer({ builtIns: [city, ...POPULATIONS.slice(1)], outfits: [{ id: 2, rev: 2, retired: false, doc: outfit }] }))!;
   return { state, book: bookOf(state, null) };
@@ -204,7 +204,7 @@ test("drawing from its source draws the look and outfit as they are now", () => 
   const doc = savedPerson(), { state, book } = edited();
   const d = draftOf({ id: 5, rev: 3, retired: false, doc }, state, book);
   expect(drawFromSource(d, state)).toBe(true);
-  expect(d.look).toMatchObject({ kind: "seed", seed: 9, revision: POPULATIONS[0]!.revision + 1, locks: { hair: 9 } });
+  expect(d.look).toMatchObject({ kind: "seed", seed: 9, revision: 0, locks: { hair: 9 } });
   expect([...lookBytes(d.look, state, book)!]).toEqual([...personFrom(9, state.builtIns[0]!, undefined, { hair: 9 }).look]);
   expect(lookBytes(d.look, state, book)).not.toEqual(Uint8Array.from(doc.look));
   expect(dressSlots(d, state)?.[0]).toEqual({ garment: "core:plain_tee", edition: 0, dye: [7, 7, 7] });

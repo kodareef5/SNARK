@@ -30,7 +30,7 @@ export const GEAR_HELD = 0;
 export const GEAR_WORN = 1;
 export const GEAR_COUNT = 6;
 
-/** What a generated look was made from (shared/people/person.ts): a seed, the population's number on the wire and its revision. */
+/** What a generated look was made from (shared/people/person.ts): a seed, the population's number on the wire and its revision (0 for a content population). */
 export interface Born {
   readonly seed: number;
   readonly population: number;

@@ -81,7 +81,7 @@ function drawLook(): void {
   const d = S.draft!, st = S.state!, look = d.look, bytes = bytesNow();
   const drawn = look.kind === "seed" ? look : look.drawn;
   $("look-mode").innerHTML = look.kind === "seed"
-    ? `Drawn from seed <b>${look.seed}</b> in ${esc(populationLabel(st, S.book, look.population, look.revision))} (revision ${look.revision}). A part locked keeps its own seed when the person is drawn again; hair and beard are drawn for the sex, so they keep only while it does.`
+    ? `Drawn from seed <b>${look.seed}</b> in ${esc(populationLabel(st, S.book, look.population, look.revision))} ${typeof look.population === "number" ? ` (revision ${look.revision})` : ""}. A part locked keeps its own seed when the person is drawn again; hair and beard are drawn for the sex, so they keep only while it does.`
     : `Fixed: the look is kept as its 72 bytes.${drawn ? ` It came from seed ${drawn.seed}; drawing a part again copies that part from a new person of ${esc(populationLabel(st, S.book, drawn.population, drawn.revision))}.` : " Drawing a part again copies that part from a new person of the city crowd."}`;
   const choices = populationChoices(st), at = drawn ? refKey(drawn.population) : "";
   const listed = choices.map((c) => ({ value: refKey(c.ref), text: `${c.label}${typeof c.ref === "number" ? ` (#${c.ref})` : ""}` }));

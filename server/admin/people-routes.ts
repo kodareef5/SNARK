@@ -119,7 +119,7 @@ function worldFault(kind: RevisedKind, doc: Bodies[RevisedKind], reg: Registry, 
     return null;
   }
   // Held to the content kind's own reference rules, so the two never differ.
-  const def = storePopulation(0, 1, doc as PopulationDoc) as unknown as Def;
+  const def = storePopulation(0, doc as PopulationDoc) as unknown as Def;
   const fault = defRefFaults(def, classesOf(reg))[0];
   return fault === undefined ? null : `${fault.slice(def.id.length + 2)}.`;
 }
@@ -142,7 +142,7 @@ function docOf(kind: RevisedKind, body: Record<string, unknown>, reg: Registry):
     if (body.id !== null) return "Only a new population is made as a copy.";
     const content = populationsOf(reg), n = typeof body.copyOf === "string" ? content.number.get(body.copyOf) : undefined;
     if (n === undefined) return `${String(body.copyOf)} is not a built-in population.`;
-    const { type: _t, id: _i, revision: _r, aliases: _a, ...rest } = content.list[n]! as unknown as Record<string, unknown>;
+    const { type: _t, id: _i, aliases: _a, ...rest } = content.list[n]! as unknown as Record<string, unknown>;
     return readPopulation({ ...rest, label: body.label ?? [...`${String(rest.label)} copy`].slice(0, EDITION_NAME_MAX).join("") });
   }
   const doc = body.doc;

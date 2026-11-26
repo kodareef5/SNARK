@@ -75,7 +75,7 @@ function drawEditor(): void {
   const ro = readOnly(), dis = ro ? " disabled" : "", doc = d.doc;
   $("read-only").hidden = !ro;
   const listed = d.id === null ? undefined : st.populations.find((p) => p.id === d.id);
-  $("editor-title").textContent = ro ? `${doc.label} (built in, revision ${d.rev})` : `Population #${d.id}, revision ${d.rev}${S.edited ? ", edited" : ""}${listed?.retired ? " (retired)" : ""}`;
+  $("editor-title").textContent = ro ? `${doc.label} (built in)` : `Population #${d.id}, revision ${d.rev}${S.edited ? ", edited" : ""}${listed?.retired ? " (retired)" : ""}`;
   const label = $<HTMLInputElement>("label");
   label.disabled = ro;
   if (document.activeElement !== label) label.value = doc.label;
@@ -166,7 +166,7 @@ function drawSheet(): void {
     $("sheet").innerHTML = "";
     return;
   }
-  const people = sheetOf(draftDef(d, S.edited), sheetSeeds(S.base));
+  const people = sheetOf(draftDef(d), sheetSeeds(S.base));
   const same = S.sheet.length > 0 && S.sheet[0]!.seed === people[0]!.seed;
   // An edit is judged against the sheet before it; another view keeps the marks of the last edit.
   if (marking) S.previous = same ? S.sheet : [];
