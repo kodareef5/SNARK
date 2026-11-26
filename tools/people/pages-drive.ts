@@ -166,7 +166,7 @@ try {
       check("a new seed kept the locked face and hair, and moved the rest", [moved.includes("face"), moved.includes("hair") && !moved.includes("sex"), moved.includes("body"), await partText("face")], [false, false, true, face]);
       // A hand control fixes the bytes; going back gives the seed form again.
       await press('[data-hand-pick="skin"][data-value="7"]');
-      check("a skin tone set by hand fixes the look", [(await text("#look-mode")).startsWith("Fixed by hand"), (await previewed())[23]], [true, 7]);
+      check("a skin tone set by hand fixes the look", [(await text("#look-mode")).startsWith("Fixed"), (await previewed())[23]], [true, 7]);
       await press("#back-to-drawn");
       check("and back to the seed, the look is as it was", [...(await previewed())], [...again]);
       console.log("dressed in its own wardrobe");
@@ -182,8 +182,7 @@ try {
       await press("#save");
       await said("Saved person 1, revision 1.");
       const saved = latest("person", 1)?.body as PersonDoc | undefined;
-      const look = saved?.look as { seed?: number; locks?: Record<string, number> } | undefined;
-      check("the store has the person as drafted", saved && { name: saved.name, seedForm: look?.seed !== undefined, locked: Object.keys(look?.locks ?? {}).sort(), top: saved.wardrobe?.[0] }, { name: "Rosa Diaz", seedForm: true, locked: ["face", "hair"], top: { garment: "core:plain_tee", edition: 0, dye: [34, 0, 0] } });
+      check("the store has the person as drafted", saved && { name: saved.name, look: saved.look, locked: Object.keys(saved.source?.locks ?? {}).sort(), top: saved.wardrobe?.[0] }, { name: "Rosa Diaz", look: [...(await previewed())], locked: ["face", "hair"], top: { garment: "core:plain_tee", edition: 0, dye: [34, 0, 0] } });
       const theirs = await outside({ kind: "person", id: 1, rev: 1, doc: { ...saved, notes: "from another page" } });
       check("the other page's save was taken", theirs.status, 200);
       await type("#notes", "Sells mangoes by the bay");
@@ -321,7 +320,7 @@ try {
       await press("#save");
       await said(`Saved person ${id}, revision 1.`);
       const promoted = latest("person", id)?.body as PersonDoc | undefined;
-      check("the store has it drawn in population 1 at revision 4", promoted && "seed" in promoted.look ? [promoted.look.seed, promoted.look.population, promoted.look.revision, Object.keys(promoted.look.locks).length] : null, [pick.seed, 1, 4, PART_NAMES.length]);
+      check("the store has the sheet's look, drawn from population 1", promoted?.source ? [Buffer.from(promoted.look).toString("hex"), promoted.source.seed, promoted.source.population, Object.keys(promoted.source.locks).length] : null, [pick.look, pick.seed, 1, PART_NAMES.length]);
       await snap("people-promoted");
     }
 

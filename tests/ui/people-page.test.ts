@@ -8,7 +8,7 @@ import { personFrom } from "../../shared/people/person.ts";
 import { POPULATIONS } from "../../content/people/defaults.ts";
 import { cluster } from "../../client/core/admin/navigation.ts";
 import {
-  PART_BYTES, backToDrawn, bookOf, castHtml, castRolesOf, choosePopulation, draftOf, drawAgain, emptyWardrobe, featureOp, isLocked, lookBytes, newPerson, partsChanged,
+  PART_BYTES, bookOf, castHtml, castRolesOf, choosePopulation, draftOf, drawAgain, drawFromSource, dressSlots, emptyWardrobe, featureOp, isLocked, lookBytes, newPerson, partsChanged,
   personDoc, personFaults, personWear, promoteHref, promotedFrom, rerollPart, retireThing, roleOp, rolesOf, saveText, saveThing, setByHand, setLock, storeStateOf,
   type PersonDraft, type SaveIo, type StoreState,
 } from "../../client/core/admin/people.ts";
@@ -21,7 +21,7 @@ const answer = (extra: Record<string, unknown> = {}): Record<string, unknown> =>
     { id: "core:plain_trousers", label: "plain trousers", slot: "bottom", dyes: true, cut: null },
   ],
   armour: [{ id: "core:cloth_shirt", label: "Cloth shirt", slot: 1 }, { id: "core:cloth_hat", label: "Cloth hat", slot: 0 }],
-  editions: [{ id: 1, garment: "core:plain_tee", colours: [34, 58, 11], print: { hash: "0123456789abcdef", width: 512, height: 512, place: {} }, name: "Sunrise", retired: false, printPath: "/media/print.0123456789abcdef.png" }],
+  editions: [{ id: 1, garment: "core:plain_tee", colours: [34, 58, 11], print: { hash: "0123456789abcdef", width: 512, height: 512, place: { u: 0.06, v: 0.12, w: 0.25, h: 0.2, scale: 1, turn: 0 } }, name: "Sunrise", retired: false, printPath: "/media/print.0123456789abcdef.png" }],
   people: [], outfits: [{ id: 2, rev: 1, retired: false, doc: { name: "Vendor", slots: [{ choices: [{ garment: "core:plain_tee", edition: 1, weight: 1 }, { garment: "core:plain_tee", edition: 0, weight: 1 }], dye: [0, 0, 0] }, null, null, null, null] } }],
   populations: [], builtIns: POPULATIONS, ...extra,
 });
@@ -34,7 +34,8 @@ test("a new person is drawn from the city crowd and its doc is one the store rea
   d.name = "Rosa";
   expect(bytes(d)).toEqual(personFrom(77, POPULATIONS[0]!).look);
   expect(personFaults(d, S, BOOK)).toEqual([]);
-  expect(readPerson(personDoc(d) as unknown as Record<string, unknown>)).toEqual({ name: "Rosa", look: { seed: 77, population: "core:people_city", revision: POPULATIONS[0]!.revision, locks: {} }, outfit: null, wardrobe: null, notes: "" });
+  const source = { seed: 77, population: "core:people_city", locks: {}, outfit: null };
+  expect(readPerson(personDoc(d, S, BOOK) as unknown as Record<string, unknown>)).toEqual({ name: "Rosa", look: [...personFrom(77, POPULATIONS[0]!).look], wardrobe: null, source, notes: "" });
 });
 
 test("drawing one part again changes only that part's bytes and locks it", () => {
@@ -72,8 +73,8 @@ test("a hand control fixes the bytes, keeps the rest, and can go back to the see
   setByHand(d, "region:3", 0.5, S, BOOK);
   expect(bytes(d)[1 + 3]).toBe(64);
   expect(personFaults({ ...d, name: "Fixed" }, S, BOOK)).toEqual([]);
-  expect("bytes" in personDoc(d).look).toBe(true);
-  expect(backToDrawn(d)).toBe(true);
+  expect(personDoc(d, S, BOOK).look).toEqual([...bytes(d)]);
+  expect(drawFromSource(d, S)).toBe(true);
   expect(bytes(d)).toEqual(drawn);
 });
 
@@ -135,8 +136,8 @@ test("a wardrobe is judged by slot, dye and edition, and the stage wears it", ()
   slots[0] = { garment: "core:plain_tee", edition: 1, dye: [0, 0, 9] };
   d.dress = { kind: "wardrobe", slots };
   expect(personFaults(d, S, BOOK)).toEqual([]);
-  const { wear } = personWear(d, S, 1);
-  expect(wear.wardrobe.slots[0]).toEqual({ item: "core:plain_tee", edition: 1, dye: [34, 58, 9], print: "print.0123456789abcdef" });
+  const { wear } = personWear(d, S);
+  expect(wear.wardrobe.slots[0]).toEqual({ item: "core:plain_tee", edition: 1, dye: [34, 58, 9], print: { key: "print.0123456789abcdef", place: { u: 0.06, v: 0.12, w: 0.25, h: 0.2, scale: 1, turn: 0 } } });
   expect(wear.prints).toEqual([{ key: "print.0123456789abcdef", url: "/media/print.0123456789abcdef.png" }]);
   slots[1] = { garment: "core:plain_tee", edition: 0, dye: [0, 0, 0] };
   expect(personFaults(d, S, BOOK).map((f) => f.at)).toEqual(["slot:1"]);
@@ -153,20 +154,61 @@ test("a store outfit is drawn from the person's outfit seed, which a reroll chan
   const look = bytes(d);
   for (let s = 0; s < 16; s++) {
     rerollPart(d.look, "outfit", s, S, BOOK);
-    editions.add(personWear(d, S, 0).wear.wardrobe.slots[0]!.edition);
+    editions.add(personWear(d, S).wear.wardrobe.slots[0]!.edition);
   }
   expect([...editions].sort()).toEqual([0, 1]);
   expect(bytes(d)).toEqual(look);
-  expect(personWear({ ...d, dress: { kind: "outfit", outfit: 9 } }, S, 0).note).toContain("not in the store");
+  expect(personWear({ ...d, dress: { kind: "outfit", outfit: 9 } }, S).note).toContain("not in the store");
 });
 
-test("a listed person opens as the draft it was saved from", () => {
-  const doc: PersonDoc = { name: "Ana", look: { seed: 9, population: "core:people_city", revision: 1, locks: { hair: 4 } }, outfit: 2, wardrobe: null, notes: "vendor" };
-  const d = draftOf({ id: 5, rev: 3, retired: false, doc });
-  expect(personDoc(d)).toEqual(doc);
-  expect([d.id, d.rev, d.dress]).toEqual([5, 3, { kind: "outfit", outfit: 2 }]);
-  const fixed = draftOf({ id: 6, rev: 1, retired: false, doc: { ...doc, look: { bytes: [...personFrom(1, POPULATIONS[0]!).look] }, outfit: null } });
+/** The state after an edit of the city crowd (new skins, at a new revision) and of outfit 2 (another tee and a dye). */
+function edited(): { state: StoreState; book: ReturnType<typeof bookOf> } {
+  const city = { ...POPULATIONS[0]!, revision: POPULATIONS[0]!.revision + 1, skin: [0, 0, 0, 0, 0, 0, 0, 0, 1, 5], face: 0.9 };
+  const outfit = { name: "Vendor", slots: [{ choices: [{ garment: "core:plain_tee", edition: 0, weight: 1 }], dye: [7, 7, 7] }, null, null, null, null] };
+  const state = storeStateOf(answer({ builtIns: [city, ...POPULATIONS.slice(1)], outfits: [{ id: 2, rev: 2, retired: false, doc: outfit }] }))!;
+  return { state, book: bookOf(state, null) };
+}
+
+/** A person saved from seed 9 with its hair locked, in outfit 2, as the store keeps it. */
+function savedPerson(): PersonDoc {
+  const d = newPerson(S, 9);
+  d.name = "Ana";
+  d.notes = "vendor";
+  setLock(d.look, "hair", true);
+  d.dress = { kind: "outfit", outfit: 2 };
+  return personDoc(d, S, BOOK);
+}
+
+test("a listed person opens as its seed and outfit while they draw what was saved", () => {
+  const doc = savedPerson();
+  expect([doc.source, doc.wardrobe?.[0]?.garment]).toEqual([{ seed: 9, population: "core:people_city", locks: { hair: 9 }, outfit: 2 }, "core:plain_tee"]);
+  const d = draftOf({ id: 5, rev: 3, retired: false, doc }, S, BOOK);
+  expect([d.id, d.rev, d.look.kind, d.dress]).toEqual([5, 3, "seed", { kind: "outfit", outfit: 2 }]);
+  expect(personDoc(d, S, BOOK)).toEqual(doc);
+  const fixed = draftOf({ id: 6, rev: 1, retired: false, doc: { ...doc, look: [...personFrom(1, POPULATIONS[0]!).look], wardrobe: null, source: null } }, S, BOOK);
   expect([fixed.look.kind, fixed.dress.kind]).toEqual(["bytes", "role"]);
+});
+
+test("a population or outfit edit moves no saved person, and a rename saves", () => {
+  const doc = savedPerson(), { state, book } = edited();
+  const d = draftOf({ id: 5, rev: 3, retired: false, doc }, state, book);
+  expect([...lookBytes(d.look, state, book)!]).toEqual([...doc.look]);
+  expect(dressSlots(d, state)).toEqual(doc.wardrobe as never);
+  d.name = "Ana Reyes";
+  expect(personFaults(d, state, book)).toEqual([]);
+  expect(personDoc(d, state, book)).toEqual({ ...doc, name: "Ana Reyes" });
+  expect(personWear(d, state).wear.wardrobe.slots[0]?.dye).toEqual(personWear(draftOf({ id: 5, rev: 3, retired: false, doc }, S, BOOK), S).wear.wardrobe.slots[0]?.dye);
+});
+
+test("drawing from its source draws the look and outfit as they are now", () => {
+  const doc = savedPerson(), { state, book } = edited();
+  const d = draftOf({ id: 5, rev: 3, retired: false, doc }, state, book);
+  expect(drawFromSource(d, state)).toBe(true);
+  expect(d.look).toMatchObject({ kind: "seed", seed: 9, revision: POPULATIONS[0]!.revision + 1, locks: { hair: 9 } });
+  expect([...lookBytes(d.look, state, book)!]).toEqual([...personFrom(9, state.builtIns[0]!, undefined, { hair: 9 }).look]);
+  expect(lookBytes(d.look, state, book)).not.toEqual(Uint8Array.from(doc.look));
+  expect(dressSlots(d, state)?.[0]).toEqual({ garment: "core:plain_tee", edition: 0, dye: [7, 7, 7] });
+  expect(drawFromSource(d, state)).toBe(false);
 });
 
 /** Calls answered in turn from `answers`, keeping what was sent. */

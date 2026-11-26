@@ -204,7 +204,7 @@ export function convertBodies(spec: HumanBodiesAsset, dir: string, described: Re
     if (spec.garments && spec.body === "makehuman") for (const g of spec.garments.make(body.meshes, id, body.rig.rest)) {
       const d = described.get(g.material);
       if (!d) throw new Error(`${g.id}: asset.ts has no material "${g.material}"`);
-      const made = cookBody(g.body, { id, rig, scale: 1, onto: body.rig.rest, whole: g.id, zoned: true, triangles: g.triangles, flat: g.flat ?? spec.flat, palette, sections: {}, materials: [{ material: d.material, textures: d.textures, maps: d.maps }] });
+      const made = cookBody(g.body, { id, rig, scale: 1, onto: body.rig.rest, whole: g.id, zoned: true, triangles: g.triangles, flat: g.flat ?? spec.flat, printArea: g.print, palette, sections: {}, materials: [{ material: d.material, textures: d.textures, maps: d.maps }] });
       warn(g.id, made.warnings);
       lines.push(...g.lines.map((l) => `${id}: ${l}`));
       meshes.push(...made.meshes);

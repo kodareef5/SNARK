@@ -41,7 +41,7 @@
 .wardrobe-page .layer-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px 12px }
 .wardrobe-page .layer-fields label, .wardrobe-page .place-fields label { display: grid; gap: 2px; font-size: .82rem; color: var(--dim) }
 .wardrobe-page .layer-fields label.wide { grid-column: 1 / -1 }
-.wardrobe-page .place { display: grid; grid-template-columns: minmax(0, 220px) 1fr; gap: 12px; align-items: start }
+.wardrobe-page .place { display: grid; grid-template-columns: minmax(0, 320px) 1fr; gap: 12px; align-items: start }
 .wardrobe-page #place { width: 100%; height: auto; border: 1px solid var(--edge); border-radius: 4px }
 .wardrobe-page .place-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px }
 .wardrobe-page .publish-bar { margin-top: 18px }

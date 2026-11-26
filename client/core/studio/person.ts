@@ -8,6 +8,7 @@ import type { Clip } from "../../../shared/anim/clip.ts";
 import type { HumanAnim } from "../../../shared/anim/pose.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
 import { GEAR_COUNT, GEAR_HELD, GEAR_WORN, WORN_FIELDS } from "../../../shared/sim/entities.ts";
+import { printPath, type EditionPrint } from "../../../shared/people/doc.ts";
 import { STAGE_SLOTS, type StageCommand, type StageFraming, type StageGarment, type StagePose } from "../../../shared/people/stage.ts";
 
 /** The most print pictures held at once; the oldest goes first. */
@@ -15,9 +16,13 @@ export const PRINTS_HELD = 8;
 /** The item a tool pose holds when the gear holds none. */
 export const STAGE_TOOL = "core:hatchet";
 
-/** A held print: its key and, once the shell has decoded it, its size. */
+/** The edition a draft in wardrobe slot k is drawn as (plus k): a draft is edition 0, which draws no print. */
+export const DRAFT_EDITION = 0xffffff00;
+
+/** A held print: its key, the hash it is drawn under (one a picture sent), and once the shell has read it, its size. */
 export interface HeldPrint {
   readonly key: string;
+  readonly hash: string;
   width: number;
   height: number;
 }
@@ -54,6 +59,9 @@ export class PersonStage {
   /** The skin zones a draft's garments cover, a bit each (shared/anim/skin-zones.ts). */
   hide = 0;
   readonly prints: HeldPrint[] = [];
+  /** By wardrobe slot, the print it is drawn with, as the game draws an edition's (Scene.editionPrint). */
+  private readonly drawn: (EditionPrint | null)[] = new Array<EditionPrint | null>(STAGE_SLOTS).fill(null);
+  private pictures = 0;
   pose: StagePose = "idle";
   /** The share of the way through its move a pose is held at, or null while it plays. */
   at: number | null = null;
@@ -98,13 +106,14 @@ export class PersonStage {
           this.wardrobe[k] = g && this.item(g.item, notes, -1) ? g : null;
         }
         this.hide = c.hide;
-        this.version++;
+        this.redraw();
         break;
       case "print": {
         const at = this.prints.findIndex((p) => p.key === c.key);
         if (at >= 0) this.prints.splice(at, 1);
-        this.prints.push({ key: c.key, width: 0, height: 0 });
+        this.prints.push({ key: c.key, hash: `stage${++this.pictures}`, width: 0, height: 0 });
         while (this.prints.length > PRINTS_HELD) this.prints.shift();
+        this.redraw();
         break;
       }
       case "pose":
@@ -126,16 +135,57 @@ export class PersonStage {
     return { held: this.heldOf(c.kind), notes };
   }
 
+  /** The shell read print `key`'s picture: `width` x `height`. */
+  sized(key: string, width: number, height: number): void {
+    const p = this.prints.find((x) => x.key === key);
+    if (!p) return;
+    p.width = width;
+    p.height = height;
+    this.redraw();
+  }
+
+  /** Print `key` could not be read: it is no longer held. */
+  unheld(key: string): void {
+    const at = this.prints.findIndex((p) => p.key === key);
+    if (at >= 0) this.prints.splice(at, 1);
+    this.redraw();
+  }
+
+  /** Where the renderer asks for a held print's picture (Prints fetches printPath of its hash). */
+  pathOf(key: string): string | null {
+    const p = this.prints.find((x) => x.key === key);
+    return p ? printPath(p.hash) : null;
+  }
+
+  /** The print of an edition as wornInto numbers it, or null: what Scene.editionPrint answers on the stage. */
+  printOf(edition: number): EditionPrint | null {
+    for (let k = 0; k < STAGE_SLOTS; k++) if (this.wardrobe[k] && this.editionAt(k) === edition) return this.drawn[k]!;
+    return null;
+  }
+
+  private editionAt(k: number): number {
+    return this.wardrobe[k]!.edition || DRAFT_EDITION + k;
+  }
+
+  /** Each slot's print from the wardrobe and the prints held, made once a change so the renderer keeps its key. */
+  private redraw(): void {
+    for (let k = 0; k < STAGE_SLOTS; k++) {
+      const g = this.wardrobe[k], p = g?.print ? this.prints.find((x) => x.key === g.print!.key) : undefined;
+      this.drawn[k] = g?.print && p && p.width > 0 ? { hash: p.hash, width: p.width, height: p.height, place: g.print.place } : null;
+    }
+    this.version++;
+  }
+
   /**
    * The wardrobe as the renderer takes it (Characters.wardrobe) into `out`, WORN_LENGTH numbers: per slot the item's
-   * content index, its edition and its dye packed as Inventory.dyeOf does. False while it wears nothing.
+   * content index, its edition (a draft's DRAFT_EDITION) and its dye packed as Inventory.dyeOf does. False while it wears nothing.
    */
   wornInto(out: Uint32Array): boolean {
     let any = false;
     for (let k = 0; k < STAGE_SLOTS; k++) {
       const g = this.wardrobe[k], item = g ? (this.reg.index.get(g.item) ?? 0) : 0;
       out[k * WORN_FIELDS] = item;
-      out[k * WORN_FIELDS + 1] = item === 0 ? 0 : g!.edition;
+      out[k * WORN_FIELDS + 1] = item === 0 ? 0 : this.editionAt(k);
       out[k * WORN_FIELDS + 2] = item === 0 ? 0 : (g!.dye[0] | (g!.dye[1] << 8) | (g!.dye[2] << 16)) >>> 0;
       if (item !== 0) any = true;
     }
@@ -154,8 +204,7 @@ export class PersonStage {
         // A garment whose cut is made is drawn (wornInto).
         return { slots: this.wardrobe.map((g) => g && { ...g }), hide: this.hide, drawn: true };
       case "print":
-        // Prints are held, not drawn: the print array comes with prints at run time.
-        return { prints: this.prints.map((p) => ({ ...p })), drawn: false };
+        return { prints: this.prints.map((p) => ({ key: p.key, width: p.width, height: p.height })), drawn: true };
       case "pose":
         return { pose: this.pose, at: this.at };
       case "hour":

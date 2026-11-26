@@ -12,8 +12,8 @@ import { address, type AdminWorld } from "../core/admin/navigation.ts";
 import { $, esc, palette } from "./dom.ts";
 import { FRAMING_WORDS, POSE_WORDS, hexOf, paletteHtml } from "../core/admin/wardrobe.ts";
 import {
-  EYE_WORDS, HAIR_COLOUR_WORDS, PART_WORDS, backToDrawn, bookOf, castHtml, castRolesOf, choosePopulation, draftOf, drawAgain, editionsOf, emptyWardrobe, featureOp,
-  garmentsFor, handValue, isLocked, lookBytes, newPerson, partSummary, peopleHtml, personDoc, personFaults, personWear, populationChoices, populationLabel, promotedFrom,
+  EYE_WORDS, HAIR_COLOUR_WORDS, PART_WORDS, bookOf, castHtml, castRolesOf, choosePopulation, draftOf, drawAgain, drawFromSource, editionsOf, emptyWardrobe, featureOp,
+  garmentsFor, handValue, isLocked, lookBytes, newPerson, outfitSeed, partSummary, peopleHtml, personDoc, personFaults, personWear, populationChoices, populationLabel, promotedFrom,
   rebase, refKey, refOfKey, rerollPart, retireThing, roleOp, roleOptions, saveText, saveThing, setByHand, setLock, storeStateOf, type CastRoles, type Fault, type HandField,
   type PersonDraft, type PopulationBook, type SaveIo, type StoreState,
 } from "../core/admin/people.ts";
@@ -28,8 +28,6 @@ const S = {
   draft: null as PersonDraft | null,
   faults: [] as Fault[],
   busy: false,
-  /** Stands for a body's own seed where the look is fixed, for what an outfit's choices give. */
-  bodySeed: (Math.random() * 0xffffffff) >>> 0,
   /** The dye well in hand: slot and which of its three. */
   well: null as { slot: number; k: number } | null,
   cast: null as CastRoles | null,
@@ -84,7 +82,7 @@ function drawLook(): void {
   const drawn = look.kind === "seed" ? look : look.drawn;
   $("look-mode").innerHTML = look.kind === "seed"
     ? `Drawn from seed <b>${look.seed}</b> in ${esc(populationLabel(st, S.book, look.population, look.revision))} (revision ${look.revision}). A part locked keeps its own seed when the person is drawn again; hair and beard are drawn for the sex, so they keep only while it does.`
-    : `Fixed by hand: the look is kept as its 72 bytes.${drawn ? ` It came from seed ${drawn.seed}; drawing a part again copies that part from a new person of ${esc(populationLabel(st, S.book, drawn.population, drawn.revision))}.` : " Drawing a part again copies that part from a new person of the city crowd."}`;
+    : `Fixed: the look is kept as its 72 bytes.${drawn ? ` It came from seed ${drawn.seed}; drawing a part again copies that part from a new person of ${esc(populationLabel(st, S.book, drawn.population, drawn.revision))}.` : " Drawing a part again copies that part from a new person of the city crowd."}`;
   const choices = populationChoices(st), at = drawn ? refKey(drawn.population) : "";
   const listed = choices.map((c) => ({ value: refKey(c.ref), text: `${c.label}${typeof c.ref === "number" ? ` (#${c.ref})` : ""}` }));
   if (drawn && !listed.some((o) => o.value === at)) listed.push({ value: at, text: `${populationLabel(st, S.book, drawn.population, drawn.revision)} (retired)` });
@@ -92,11 +90,11 @@ function drawLook(): void {
   const seed = $<HTMLInputElement>("seed");
   seed.disabled = look.kind !== "seed";
   if (document.activeElement !== seed) seed.value = look.kind === "seed" ? String(look.seed) : "";
-  $("back-to-drawn").hidden = !(look.kind === "bytes" && look.drawn);
+  $("back-to-drawn").hidden = !(look.kind === "bytes" && look.drawn) && !(d.dress.kind === "wardrobe" && d.dress.outfit !== undefined);
   $("parts").innerHTML = PART_NAMES.map((p) => {
     const now = p === "outfit" ? outfitWords() : bytes ? partSummary(p, bytes) : "?";
     const own = look.kind === "seed" && look.locks[p] !== undefined && look.locks[p] !== look.seed ? ` <span class="faint">seed ${look.locks[p]}</span>` : "";
-    const off = p === "outfit" && (look.kind === "bytes" || d.dress.kind !== "outfit");
+    const off = p === "outfit" && (d.dress.kind !== "outfit" || (look.kind === "bytes" && !look.drawn));
     return `<tr data-part="${p}"><td>${PART_WORDS[p]}</td><td class="now">${esc(now)}${own}</td><td><input type="checkbox" data-lock="${p}"${isLocked(look, p) ? " checked" : ""}${off ? " disabled" : ""} aria-label="Lock ${PART_WORDS[p]}"></td><td><button data-reroll="${p}"${off ? " disabled" : ""}>Draw again</button></td></tr>`;
   }).join("");
   if (bytes) drawHand(bytes);
@@ -105,8 +103,7 @@ function drawLook(): void {
 function outfitWords(): string {
   const d = S.draft!;
   if (d.dress.kind !== "outfit") return d.dress.kind === "wardrobe" ? "its own wardrobe" : "the role's clothes";
-  if (d.look.kind === "bytes") return "drawn by each body";
-  return `choices from seed ${d.look.locks.outfit ?? d.look.seed}`;
+  return `choices from seed ${outfitSeed(d.look)}`;
 }
 
 const slider = (field: HandField, label: string, value: number): string =>
@@ -217,7 +214,7 @@ async function send(): Promise<void> {
   sending = true;
   try {
     const bytes = bytesNow();
-    const { wear, note } = S.draft ? personWear(S.draft, S.state, S.bodySeed) : { wear: personWear(newPerson(S.state, 0), S.state, 0).wear, note: "" };
+    const { wear, note } = S.draft ? personWear(S.draft, S.state) : { wear: personWear(newPerson(S.state, 0), S.state).wear, note: "" };
     $("wear-note").textContent = note;
     const pose = $<HTMLSelectElement>("pose").value as StagePose, framing = $<HTMLSelectElement>("framing").value as StageFraming;
     const key = JSON.stringify([bytes ? [...bytes] : null, wear.gear.armor, wear.wardrobe.slots, pose, framing]);
@@ -313,7 +310,7 @@ async function save(): Promise<void> {
   S.busy = true;
   drawFaults();
   try {
-    const o = await saveThing(io, "person", d.id, d.rev, personDoc(d), (attempt, ms) => say(`The store is busy. Trying again in ${ms} ms (try ${attempt + 1}).`, "warn"));
+    const o = await saveThing(io, "person", d.id, d.rev, personDoc(d, st, S.book), (attempt, ms) => say(`The store is busy. Trying again in ${ms} ms (try ${attempt + 1}).`, "warn"));
     if ((o.kind === "saved" || o.kind === "stale") && o.state) await take(o.state);
     if (o.kind === "saved") {
       d.id = o.id;
@@ -359,7 +356,7 @@ document.addEventListener("click", (ev) => {
     say("A new person. Name them, draw them again until they look right, and save.");
   } else if (data.open) {
     const l = st.people.find((p) => p.id === Number(data.open));
-    if (l && sure("Open another person? The draft goes.")) open(draftOf(l));
+    if (l && sure("Open another person? The draft goes.")) open(draftOf(l, st, S.book));
   } else if (data.reroll && d) {
     rerollPart(d.look, data.reroll as PartName, random(), st, S.book);
     edited();
@@ -367,7 +364,7 @@ document.addEventListener("click", (ev) => {
     drawAgain(d.look, random(), st, S.book);
     edited();
   } else if (t.id === "back-to-drawn" && d) {
-    backToDrawn(d);
+    drawFromSource(d, st);
     edited();
   } else if (data.handPick && d) {
     setByHand(d, data.handPick as HandField, Number(data.value), st, S.book);
@@ -493,7 +490,7 @@ load().then(async () => {
     S.dirty = true;
     say("Promoted from a population's sheet: every part is locked to its seed. Name them and save.");
   } else if (listed) {
-    open(draftOf(listed));
+    open(draftOf(listed, st, S.book));
     say("");
   } else {
     open(null);

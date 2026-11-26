@@ -6,7 +6,7 @@ import { afterAll, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { PeopleStore, type By, type Saved } from "../../server/people/store.ts";
-import { BEACH } from "../../content/people/defaults.ts";
+import { BEACH, CITY } from "../../content/people/defaults.ts";
 import {
   readOutfit, readPeopleManifest, readPerson, readPopulation, storePopulation, type OutfitDoc, type PeopleManifest, type PersonDoc, type PopulationDoc,
 } from "../../shared/people/doc.ts";
@@ -22,7 +22,7 @@ const open = (dir: string, now: () => number = Date.now): PeopleStore => new Peo
 
 const ADA: By = { name: "ada", id: "S-ADA" };
 const BO: By = { name: "bo", id: "S-BO" };
-const mara = (notes = ""): PersonDoc => ({ name: "Mara", look: { seed: 7, population: "core:people_city", revision: 1, locks: { face: 99 } }, outfit: null, wardrobe: null, notes });
+const mara = (notes = ""): PersonDoc => ({ name: "Mara", look: [...personFrom(7, CITY).look], wardrobe: null, source: { seed: 7, population: "core:people_city", locks: { face: 99 }, outfit: null }, notes });
 const vendor = (name = "Vendor"): OutfitDoc => ({ name, slots: [{ choices: [{ garment: "core:plain_tee", edition: 0, weight: 1 }], dye: [0, 0, 0] }, null, null, null, null] });
 const { type: _t, id: _i, revision: _r, ...beachBody } = BEACH;
 const beach = (face = 0.3): PopulationDoc => ({ ...beachBody, label: "Beach copy", face });
@@ -177,10 +177,11 @@ test("the doc checks keep a body's known fields in one order and refuse what is 
   expect(readPopulation({ ...beach(), skin: "lots" })).toMatch(/skin/);
   expect(readPopulation({ ...beach(), regions: { tail: [0, 1] } })).toMatch(/tail is no body region/);
   expect(readPopulation({ ...beach(), hair: undefined })).toMatch(/hair/);
-  expect(readPerson({ ...mara(), look: { seed: -1, population: "core:people_city", revision: 1 } })).toMatch(/seed/);
-  expect(readPerson({ ...mara(), look: { seed: 1, population: "core:people_city", revision: 1, locks: { toes: 3 } } })).toMatch(/locks/);
-  expect(readPerson({ ...mara(), look: { bytes: [1, 2, 3] } })).toMatch(/72/);
-  expect(readPerson({ ...mara(), outfit: 1, wardrobe: [null, null, null, null, null] })).toMatch(/not both/);
+  expect(readPerson({ ...mara(), source: { seed: -1, population: "core:people_city" } })).toMatch(/seed/);
+  expect(readPerson({ ...mara(), source: { seed: 1, population: "core:people_city", locks: { toes: 3 } } })).toMatch(/locks/);
+  expect(readPerson({ ...mara(), source: { seed: 1, population: "core:people_city", outfit: "vendor" } })).toMatch(/outfit/);
+  expect(readPerson({ ...mara(), look: [1, 2, 3] })).toMatch(/72/);
+  expect(readPerson({ ...mara(), look: { seed: 7, population: "core:people_city", revision: 1, locks: {} } })).toMatch(/72/);
   expect(readPerson({ ...mara(), name: "" })).toMatch(/name/);
   expect(readOutfit({ name: "Bare", slots: [null, null, null, null, null] })).toMatch(/wears something/);
   expect(readOutfit({ name: "Odd", slots: [{ choices: [{ garment: "core:plain_tee", edition: 0, weight: 0 }], dye: [0, 0, 0] }, null, null, null, null] })).toMatch(/weight/);

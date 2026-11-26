@@ -106,7 +106,7 @@ try {
 
     await ask(page, { kind: "look", look: woman });
     await ask(page, { kind: "print", key: "draft-tee", url: "/title/snark-emblem.webp", png: null });
-    const wardrobe = await ask(page, { kind: "wardrobe", slots: [null, { item: "core:cloth_shirt", edition: 0, dye: [12, 40, 200], print: "draft-tee" }, null, null, null], hide: 0 });
+    const wardrobe = await ask(page, { kind: "wardrobe", slots: [null, { item: "core:cloth_shirt", edition: 0, dye: [12, 40, 200], print: { key: "draft-tee", place: { u: 0.06, v: 0.12, w: 0.25, h: 0.2, scale: 1, turn: 0 } } }, null, null, null], hide: 0 });
     const prints = await page.run(`answers.find((a) => a.of === "print")`);
     if (!prints?.held?.prints?.[0]?.width) faults.push("the print's picture was not decoded");
     else console.log(`  print held: ${JSON.stringify(prints.held.prints)}; wardrobe held: ${JSON.stringify(wardrobe?.held)}`);

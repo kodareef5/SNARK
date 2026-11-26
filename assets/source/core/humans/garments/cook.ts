@@ -18,6 +18,8 @@ export interface GarmentPiece {
   triangles: readonly number[];
   /** Its first flat level, where not the body's. */
   flat?: number;
+  /** Where its print lies until moved, which its flat levels show a print's swatch on. */
+  print: readonly [number, number, number, number];
   lines: string[];
 }
 
@@ -31,7 +33,7 @@ export function garmentPieces(meshes: readonly SourceMesh[], id: string, rest: A
   return BODY_CUTS.map((def) => {
     const m = made.get(def.name)!;
     const reach = Object.entries(m.reach).map(([hem, r]) => `${hem} ${r.map((x) => (x * 100).toFixed(1)).join("/")}`).join(", ");
-    return { id: cutMesh(id, def.name), material: garmentMaterial(def.name, sex), body: m.body, triangles: CUTS[def.name]!.levels, flat: CUTS[def.name]!.flat, lines: [...m.report, `${def.name}: past the hidden zones by, in cm at each body level: ${reach}`] };
+    return { id: cutMesh(id, def.name), material: garmentMaterial(def.name, sex), body: m.body, triangles: CUTS[def.name]!.levels, flat: CUTS[def.name]!.flat, print: CUTS[def.name]!.print, lines: [...m.report, `${def.name}: past the hidden zones by, in cm at each body level: ${reach}`] };
   });
 }
 
