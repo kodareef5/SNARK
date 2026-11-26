@@ -1210,10 +1210,9 @@ function openVents(female: boolean, level: number, shift: ((p: V) => V) | null =
 }
 
 /** Separate foot bones keep the two boot nozzles on the soles as the ankles swing. */
-function bootVents(level: number, at: (root: V) => ((p: V) => V) | null = () => null) {
+function bootVents(level: number) {
   const s = new Surface(level);
   for (const side of [-1, 1]) {
-    s.moveBy(at([side * 0.112, 0, -0.064]));
     const rings = [[0.32,0.001], [0.23,0.019], [0.13,0.031], [0.06,0.036], [0,0.018]] as const;
     const shape = rings.map(([d,r]) => [-0.014-d, side*0.112, -0.064-d*0.3, r, r] as const);
     s.panel(contour(shape), shape.map(([y]) => [y,-180,180]), f.plume, side > 0 ? B_FOOT_L : B_FOOT_R, 12, 0);
@@ -1227,12 +1226,13 @@ function bootVents(level: number, at: (root: V) => ((p: V) => V) | null = () => 
  */
 export function meridian(body: readonly SourceMesh[], rig: PackRig, shift: ((p: V) => V) | null = null): SourceMesh[] {
   const female = rig.id === "human_f";
-  // The vanes and the boot nozzles move as one with the point they hang from.
+  // The vanes move as one with the point they hang from.
   const at = (root: V) => (shift ? (): V => shift(root) : null);
   return body.flatMap((base) => {
     const slot = base.id.split("/").at(-1)!;
     const lods = base.lods.map((lod, level) => {
-      const s = new Surface(level, shift);
+      // The boots stay as drawn: their soles are found on their lowest points, as the ride fit has them.
+      const s = new Surface(level, slot === "feet" ? null : shift);
       s.liner(lod, slot === "hands");
       switch (slot) {
         case "head":
@@ -1258,7 +1258,7 @@ export function meridian(body: readonly SourceMesh[], rig: PackRig, shift: ((p: 
     if (slot === "torso")
       parts.push({ ...worn, id: `core:${rig.id}/armor/meridian/vents`, lods: lods.map((_, level) => openVents(female, level, at([0, 1.36, -0.2]))) });
     if (slot === "feet")
-      parts.push({ ...worn, id: `core:${rig.id}/armor/meridian/boot_jets`, lods: lods.map((_, level) => bootVents(level, at)) });
+      parts.push({ ...worn, id: `core:${rig.id}/armor/meridian/boot_jets`, lods: lods.map((_, level) => bootVents(level)) });
     return parts;
   });
 }

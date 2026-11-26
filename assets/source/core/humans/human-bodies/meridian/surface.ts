@@ -70,7 +70,7 @@ export class Surface {
   private slots: number[] = [];
   readonly level: number;
   /** How far a point drawn on the body the plates were made on moves to sit as it did on the body worn. */
-  private shift: ((p: V) => V) | null;
+  private readonly shift: ((p: V) => V) | null;
   /**
    * The liner's vertices by what each holds, so that two corners alike are one. The liner itself stays whole: taking
    * away what the plates hide was tried and measured (2026-11-18). With rays cast outward it took what shows from
@@ -80,10 +80,6 @@ export class Surface {
   private readonly linerVertices = new Map<string, number>();
   constructor(level: number, shift: ((p: V) => V) | null = null) {
     this.level = level;
-    this.shift = shift;
-  }
-  /** Moves what is drawn from here on by `shift` in place of the one it was made with. */
-  moveBy(shift: ((p: V) => V) | null) {
     this.shift = shift;
   }
   private vertex(point: V, normal: V, u: number, v: number, tile: number, bone: number, joints: readonly number[] = [bone, bone, bone, bone], weights: readonly number[] = [1, 0, 0, 0]): number {

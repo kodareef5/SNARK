@@ -232,12 +232,15 @@ function toeless(lod: SourceLod): SourceLod {
   return { ...lod, indices: Uint32Array.from(keep.flatMap((t) => [lod.indices[t * 3]!, lod.indices[t * 3 + 1]!, lod.indices[t * 3 + 2]!])), ...(lod.sections ? { sections: Uint8Array.from(keep, (t) => lod.sections![t]!) } : {}), ...(lod.zones ? { zones: Uint8Array.from(keep, (t) => lod.zones![t]!) } : {}) };
 }
 
-/** Keeps a suit's plates clear of the skin of each level, as cloth and hide are; its lining, the body's own skin, stays. */
+/**
+ * Keeps a suit's plates clear of the skin of each level, as cloth and hide are; its lining, the body's own skin, stays,
+ * and so do its gloves and boots, on which grips and soles are found.
+ */
 export function suitClear(suit: SourceMesh[], body: readonly SourceMesh[], lines: string[]): void {
   const at = (lod: SourceLod, v: number): string => `${lod.positions[v * 3]},${lod.positions[v * 3 + 1]},${lod.positions[v * 3 + 2]}`;
   const lining = new Set(suitLining(body).flatMap((m) => m.lods.flatMap((lod) => Array.from({ length: lod.positions.length / 3 }, (_, v) => at(lod, v)))));
   for (const mesh of suit) {
-    if (!/\/armor\/[^/]+\/(head|torso|legs|feet)$/.test(mesh.id)) continue;
+    if (!/\/armor\/[^/]+\/(head|torso|legs)$/.test(mesh.id)) continue;
     let moved = 0;
     mesh.lods.forEach((lod, level) => (moved += clearOf(lod, skinLevel(body, level), REFIT_CLEAR, (v) => lining.has(at(lod, v)))));
     lines.push(`${mesh.id}: ${moved} vertices moved clear of the skin`);
