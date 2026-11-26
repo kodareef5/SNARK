@@ -1,0 +1,4 @@
+# Oil and obsidian references
+
+- The Pismo Beach bluff survey describes the exposed bituminous sandstone as a rounded black mass. The cobble shown in the USGS petroleum bulletin has uneven asphalt staining. These outcrops guide the smoothed sandstone shoulders and dark pockets along the oil nodes’ bedding. [Pismo Beach bluff survey](https://pismobeach.org/DocumentCenter/View/109/1992-Bluff-Erosion-Study-Update?bidId=), [USGS Bulletin 2195](https://pubs.usgs.gov/bul/2195/b2195.pdf)
+- Yellowstone’s Obsidian Cliff and the Big Obsidian Flow at Newberry Volcano show natural obsidian in outcrops and broken accumulations. Obsidian Cliff’s shell-like fracture and sharp edges guide the shallow scoops in broad glass surfaces and the angular silhouettes. [National Park Service, Obsidian Cliff](https://www.nps.gov/articles/archeology-obsidian-mvp-yellowstone-stones.htm), [USGS, Big Obsidian Flow](https://pubs.usgs.gov/sir/2017/5022/m/sir20175022m.pdf)

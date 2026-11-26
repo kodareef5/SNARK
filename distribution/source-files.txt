@@ -2447,6 +2447,7 @@ assets/source/core/nodes/plants/tex/seagrape/source/leaf7_original.png
 assets/source/core/nodes/plants/tex/seagrape/source/leaf8_original.png
 assets/source/core/nodes/plants/tex/seagrape/source/leaf9_original.png
 assets/source/core/nodes/plants/tex/seagrape/source/twig1_original.png
+assets/source/core/nodes/resource-nodes/resource-nodes.snpk
 assets/source/core/nodes/rocks/mesh/metal_rock_1.obj
 assets/source/core/nodes/rocks/mesh/metal_rock_1_depleted.obj
 assets/source/core/nodes/rocks/mesh/metal_rock_2.obj

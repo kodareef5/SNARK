@@ -2,8 +2,10 @@ import { expect } from "bun:test";
 import { nearestTriangle } from "../../client/core/assets/look.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { B_PROP_R } from "../../shared/anim/human.ts";
+import { compileContent } from "../../shared/content/registry.ts";
 import { slotsOf } from "../../shared/content/slots.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
+import { nodeForms } from "../../shared/world/nodes.ts";
 import { findAssets } from "../../tools/art/assets.ts";
 import { grayboxMeshes } from "../../tools/pack/build.ts";
 import { iconSubjects } from "../../tools/pack/icons.ts";
@@ -225,6 +227,48 @@ artTest("skate surfaces follow their walked shapes at every level", async () => 
           const walkedAt = nearestTriangle(ref.positions, ref.indices, x, 2, z, 0, -1, 0, walkedHit);
           expect(hit >= 0, id).toBe(walkedAt >= 0);
           if (walkedAt >= 0) expect(artHit[0]!, id).toBeCloseTo(walkedHit[0]!, 3);
+        }
+      }
+    }
+  }
+});
+
+artTest("resource nodes keep walked variants and mined remnants within bounds", async () => {
+  const meshes = await meshesIn("core:resource-nodes");
+  const registry = compileContent(CORE_CONTENT).registry!;
+  const forms = nodeForms(registry);
+  for (const name of ["oil_rock", "crystal_rock", "obsidian_rock", "clam"]) {
+    const kind = registry.index.get(`core:${name}`)!;
+    const def = registry.defs[kind];
+    if (def?.type !== "node") throw new Error(name);
+    expect(def.variants?.length, name).toBe(2);
+    for (const [index, variant] of def.variants!.entries()) {
+      const key = `core:${name}_${index + 1}`;
+      const form = forms.first[kind]! + index * forms.steps[kind]!;
+      const left = forms.left[form]!;
+      expect([variant.mesh, forms.mesh[form], forms.mesh[left], forms.depleted[left]], key)
+        .toEqual([key, key, `${key}_depleted`, 1]);
+      const intact = meshes.get(key), spent = meshes.get(forms.mesh[left]!);
+      expect(intact, key).toBeDefined();
+      expect(spent, key).toBeDefined();
+      expect(boundsOf(spent!.lods[0]!)[1][1], key).toBeLessThan(boundsOf(intact!.lods[0]!)[1][1]);
+      for (const [mesh, boxes] of [[intact!, variant.boxes], [spent!, variant.depleted?.boxes]] as const) {
+        expectLevels(mesh, 500);
+        expect(boxes?.length, mesh.id).toBeGreaterThan(0);
+        for (const box of boxes!) {
+          expect(box.at[1] - box.half[1], mesh.id).toBeGreaterThanOrEqual(-.001);
+          expect(box.at[1] + box.half[1], mesh.id).toBeLessThanOrEqual(2 * def.half[1] + .001);
+          for (const axis of [0, 2] as const) {
+            expect(Math.abs(box.at[axis]) + box.half[axis], mesh.id).toBeLessThanOrEqual(def.half[axis] + .001);
+          }
+        }
+        for (const lod of mesh.lods) {
+          const [from, to] = boundsOf(lod);
+          expect(from[1], mesh.id).toBeCloseTo(0, 3);
+          expect(to[1], mesh.id).toBeLessThanOrEqual(2 * def.half[1] + .001);
+          for (const axis of [0, 2] as const) {
+            expect(Math.max(-from[axis], to[axis]), mesh.id).toBeLessThanOrEqual(def.half[axis] + .001);
+          }
         }
       }
     }

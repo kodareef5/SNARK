@@ -2,7 +2,7 @@
   "repository": "kodareef5/SNARK",
   "art": {
     "release": "art",
-    "id": "674e933ba0d48701",
+    "id": "e8bfa0748138fff7",
     "files": [
       {"name": "core-creatures-allosaur", "file": "core-creatures-allosaur.5eb2682fdf0a.tar.zst", "bytes": 2833562, "sha256": "5eb2682fdf0abb902fa1807673cf9dc46c3111e728eda23299b3a910d74129e2"},
       {"name": "core-creatures-ankylo", "file": "core-creatures-ankylo.d19e9025be7c.tar.zst", "bytes": 1901178, "sha256": "d19e9025be7ccaeb84f4bf80f6554f9e9a6a2971b062a6666ab9f50e8901146b"},
@@ -87,6 +87,7 @@
       {"name": "core-music-ruins", "file": "core-music-ruins.f415c2015ef0.tar.zst", "bytes": 5254950, "sha256": "f415c2015ef09606925a9021d7b02a5db50735139eee136d7d5fe8d50551c96b"},
       {"name": "core-music-shoreline", "file": "core-music-shoreline.b0a294875024.tar.zst", "bytes": 3604604, "sha256": "b0a2948750240e78272715bd3cbb2f80677eddc0a3ccac72e67de2787b53f066"},
       {"name": "core-nodes-plants", "file": "core-nodes-plants.f9c655d3111c.tar.zst", "bytes": 165701541, "sha256": "f9c655d3111cae23776e16159e180ff039d2153f00846b0483a70e2cbc8f6e2a"},
+      {"name": "core-nodes-resource-nodes", "file": "core-nodes-resource-nodes.7bae66f6aef5.tar.zst", "bytes": 406379, "sha256": "7bae66f6aef5d4dcad054c81605e4ed2cf84e6605eec74412038249cd37b3b21"},
       {"name": "core-nodes-rocks", "file": "core-nodes-rocks.d477d2e27a55.tar.zst", "bytes": 539753632, "sha256": "d477d2e27a556ef131c1db017cfa51d184a8dd7b45a27e8f5a900ae070a09cb0"},
       {"name": "core-nodes-trees", "file": "core-nodes-trees.34307f9cf0db.tar.zst", "bytes": 602402195, "sha256": "34307f9cf0db78bc92a0d17e1acd1c723509e160d72c3de27ceede8ea5ff6209"},
       {"name": "core-props-eggs", "file": "core-props-eggs.0aa7a21e179e.tar.zst", "bytes": 285449, "sha256": "0aa7a21e179e69370b67b7ee1c76a81d84a3eb0e536755f4e9f90841dbbcfe32"},
