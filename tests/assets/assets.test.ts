@@ -16,10 +16,10 @@ artTest("the table knows each mesh's levels, size and bone without reading its b
   const head = table.find("core:human_m/head");
   expect([table.tris[head]!.length, table.skeleton[head], table.rig[head]! >= 0]).toEqual([3, "human", true]);
   expect(table.tris[head]![0]!).toBeGreaterThan(table.tris[head]![2]!);
-  // A rigid mesh of one level: the vault's grey box, which no building tier's art replaces.
-  const box = table.find("core:vault");
+  const box = table.find("core:missing");
   expect([table.tris[box]!.length, table.skeleton[box], table.rig[box]]).toEqual([1, "", -1]);
-  expect(table.radius[box]!).toBeGreaterThan(1);
+  const missing = pack.header.meshes[box]!;
+  expect(table.radius[box]!).toBeCloseTo(Math.hypot(...missing.half) + Math.hypot(...missing.center));
   // A held item hangs on a hand bone, and a body part's first vertex names a bone of its own.
   expect(table.bone[table.find("core:rifle")]!).toBeGreaterThan(20);
   expect(table.find("core:nothing")).toBe(-1);
@@ -97,7 +97,7 @@ artTest("a level is left only when another is right by a margin, and a mesh is n
   // From far off to near in one step, and back.
   expect([assets.choose(errors, 1, 2), assets.choose(errors, 1000, 0)]).toEqual([0, 2]);
 
-  const [box, head] = [table.find("core:vault"), table.find("core:human_m/head")];
+  const [box, head] = [table.find("core:missing"), table.find("core:human_m/head")];
   expect([assets.level(box, 2), assets.level(head, 2), assets.level(head, 1)]).toEqual([0, 2, 1]);
 });
 
