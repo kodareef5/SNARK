@@ -150,13 +150,17 @@ function sag(patch: Patch, grid: Grid): number {
   return Math.max(across, along);
 }
 
+/** How much of its chords' sag a coarse level is lifted by. */
+const SAG_SHARE = 0.4;
+
 /** The core's u and v on the sheet: its streaks run along v. */
 const coreUv = (u: number, v: number): [number, number] => [0.002 + Math.min(1, Math.max(0, u)) * (CORE_U - 0.004), 0.002 + Math.min(1, Math.max(0, v)) * 0.996];
 
 /** Lays `patch` into `lod` as a grid, drawn with its own section. */
 function lay(lod: Lod, patch: Patch, grid: Grid, inflate: boolean): void {
   const [nu, nv] = grid;
-  const lift = inflate ? sag(patch, grid) : 0;
+  // A part of the sag: the head's own coarse levels sag inside it too, and the hair is held to the hit head.
+  const lift = inflate ? SAG_SHARE * sag(patch, grid) : 0;
   const p: Vec = [0, 0, 0];
   if (patch.drawn !== "core") {
     // Drawn as cards all through: each column is a card of its own, its cell's width across, so a bristle keeps its shape.

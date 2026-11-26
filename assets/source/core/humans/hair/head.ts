@@ -25,8 +25,6 @@ export interface Head {
   skin: Float64Array;
   /** The skin widened to its neighbours' and evened: a point kept this far out clears the skin between rays too. */
   clear: Float64Array;
-  /** How far the skin stands out of a much smoother head, metres: an ear, a nose, a chin. */
-  bump: Float64Array;
 }
 
 /** The unit direction of polar angle `theta` from straight up and `phi` round from the front. */
@@ -151,9 +149,7 @@ export function headOf(f: FittedBody, sex: number): Head {
   const raw = filled(radii(f.positions, triangles, centre));
   const skin = around(raw, 1, mean);
   const clear = around(around(raw, 2, most), 2, mean);
-  const smooth = around(raw, 12, mean);
-  const bump = Float64Array.from(raw, (v, i) => v - smooth[i]!);
-  return { sex, centre, rest, skin, clear, bump };
+  return { sex, centre, rest, skin, clear };
 }
 
 /** The point `lift` metres out from the skin (or the clear surface) along the ray of `theta` and `phi`. */
