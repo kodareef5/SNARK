@@ -20,7 +20,7 @@ export const MARINA: BoatSite = { id: "place/marina/Test_Marina@0,0", kind: "civ
 /** A pier way as ways.json gives one, from (x0, z0) to (x1, z1) in the map's metres. */
 export function pierPath(id: number, points: [number, number][]): Path {
   const way: Way = { id, kind: "pier", name: null, class: null, lanes: null, layer: 1, width_m: null, closed: false, length_m: 0, points };
-  return { way, points, width: 4, outline: false };
+  return { way, points, width: 4, outline: false, spans: [] };
 }
 
 export interface Harbour { map: MapData; layout: MarinaLayout; found: Berthed[]; rules: Harbours }

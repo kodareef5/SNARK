@@ -10,7 +10,15 @@ export interface Way {
   /** OpenStreetMap's bridge:structure, where it is mapped. */
   structure?: string | null;
 }
-export interface Path { way: Way; points: Point[]; width: number; outline: boolean; }
+/** Metres between a deck's points along a way at most. */
+export const DECK_STEP = 3.5;
+/**
+ * A path's segment within its way's own: `first` the deck points the way has before that segment, counted from the
+ * way's own start by its length alone, `steps` those the segment has, and `lo` and `hi` the shares of it the map keeps.
+ * A deck's point then has the same number in every cut, wherever the cut clips the way.
+ */
+export interface Span { first: number; steps: number; lo: number; hi: number }
+export interface Path { way: Way; points: Point[]; width: number; outline: boolean; spans: Span[]; }
 export const readWays = (source: string): Way[] => {
   const file = join(source, "blocks/ways.json");
   return existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) as Way[] : [];
@@ -41,25 +49,26 @@ export function pathsOf(ways: Way[], grid: Grid): { paths: Path[]; outlines: { i
     const engine = points.map(([e, n]) => [grid.east + grid.x0 - e, n - (grid.south - grid.z0)] as Point);
     const low = [grid.x0, grid.z0]; const high = [grid.x1, grid.z1];
     // Clip each segment to the map with an inset for the box extents.
-    let run: Point[] = [];
+    let run: Point[] = []; let spans: Span[] = []; let first = 0;
     for (let i = 1; i < engine.length; i++) {
       const a = engine[i - 1]!; const b = engine[i]!; const d = [b[0] - a[0], b[1] - a[1]];
+      const whole = Math.hypot(d[0]!, d[1]!); const span = { first, steps: whole < .01 ? 0 : Math.max(1, Math.ceil(whole / DECK_STEP)) }; first += span.steps;
       let lo = 0; let hi = 1; const edge = Math.max(10, width);
       for (let axis = 0; axis < 2; axis++) {
         if (Math.abs(d[axis]!) < 1e-8) { if (a[axis]! < low[axis]! + edge || a[axis]! > high[axis]! - edge) hi = -1; }
         else { const t0 = (low[axis]! + edge - a[axis]!) / d[axis]!; const t1 = (high[axis]! - edge - a[axis]!) / d[axis]!; lo = Math.max(lo, Math.min(t0, t1)); hi = Math.min(hi, Math.max(t0, t1)); }
       }
-      if (hi <= lo) { if (run.length > 1) paths.push({ way, points: run, width, outline: way.closed }); run = []; continue; }
+      if (hi <= lo) { if (run.length > 1) paths.push({ way, points: run, width, outline: way.closed, spans }); run = []; spans = []; continue; }
       const start: Point = [a[0] + d[0]! * lo, a[1] + d[1]! * lo]; const end: Point = [a[0] + d[0]! * hi, a[1] + d[1]! * hi];
-      if (run.length && Math.hypot(run.at(-1)![0] - start[0], run.at(-1)![1] - start[1]) > .01) { paths.push({ way, points: run, width, outline: way.closed }); run = []; }
-      if (!run.length) run.push(start); run.push(end);
+      if (run.length && Math.hypot(run.at(-1)![0] - start[0], run.at(-1)![1] - start[1]) > .01) { paths.push({ way, points: run, width, outline: way.closed, spans }); run = []; spans = []; }
+      if (!run.length) run.push(start); run.push(end); spans.push({ ...span, lo, hi });
     }
-    if (run.length > 1) paths.push({ way, points: run, width, outline: way.closed });
+    if (run.length > 1) paths.push({ way, points: run, width, outline: way.closed, spans });
   }
   return { paths, outlines };
 }
 
-export function cutBridgeWater(paths: Path[], height: Float32Array, water: Uint8Array, grid: Grid): number {
+export function cutBridgeWater(paths: Omit<Path, "spans">[], height: Float32Array, water: Uint8Array, grid: Grid): number {
   const { nx, x0, z0, x1, z1 } = grid; let cut = 0;
   const shore = water.slice();
   const made = new Uint8Array(height.length);

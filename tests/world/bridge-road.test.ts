@@ -320,3 +320,30 @@ test("station access replans around a continuing road and remains walkable in bo
     }
   } finally { rmSync(source, { recursive: true, force: true }); }
 });
+
+test("a viaduct's deck, piers and sills stand at the same places in two cuts that clip it", () => {
+  const source = mkdtempSync(join(tmpdir(), "snark-viaduct-"));
+  try {
+    mkdirSync(join(source, "blocks")); writeFileSync(join(source, "blocks/places.json"), "[]");
+    // One rail viaduct 1.8 km long, its corners unevenly spaced, through both cuts' middle.
+    const way: Way = { id: 7, kind: "rail_bridge", name: null, class: "rail", lanes: null, layer: 1, width_m: 8, closed: false, length_m: 1800,
+      points: [[-900, 20], [-611, 12], [-333, 31], [-97, 3], [158, -22], [407, 9], [900, 40]] };
+    writeFileSync(join(source, "blocks/ways.json"), JSON.stringify([way]));
+    // The same lattice in both: a cut of 512 m, and one of 1,024 m round it.
+    const laid = (half: number, frame: number) => {
+      const grid = gridAt([-half, -half, half, half], 2, [frame, frame]), n = grid.nx;
+      const site = { source, ground: { grid, gaps: new Uint8Array(n * n), water: new Uint8Array(n * n), height: new Float32Array(n * n), heaps: { owner: new Int32Array(n * n).fill(-1) } },
+        groundAt: () => 1, waterAt: () => 0, toLattice: (e: number, no: number) => [grid.east + grid.x0 - e, no - grid.south + grid.z0] } as unknown as Site;
+      const built: Mason[] = [], made = makeBridges(site, m => { built.push(m); return true; });
+      // What stands 30 m or more inside the smaller cut, by kind and place.
+      const within = (x: number): boolean => Math.abs(x - 512) < 256 - 30;
+      const places = (kind: string): string[] => built.flatMap(m => m.pieces).filter(p => p.kind.includes(kind) && within(p.x)).map(p => `${p.x.toFixed(3)},${p.y.toFixed(3)},${p.z.toFixed(3)}`).sort();
+      return { deck: made.records[0]!.deck.filter(d => within(d.x)).map(d => `${d.x.toFixed(3)},${d.z.toFixed(3)}`).sort(), piers: places("_pier4_"), sills: places("_sill4_") };
+    };
+    const [inner, outer] = [laid(256, 2052), laid(512, 2048)];
+    expect(inner.deck.length).toBeGreaterThan(100);
+    expect(inner.piers.length).toBeGreaterThan(20);
+    expect(inner.sills.length).toBeGreaterThan(50);
+    expect(inner).toEqual(outer);
+  } finally { rmSync(source, { recursive: true, force: true }); }
+});
