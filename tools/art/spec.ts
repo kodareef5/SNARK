@@ -491,19 +491,18 @@ export interface HumanBodiesAsset {
     readonly visor?: boolean;
     /** Slot 3 draws a powered exhaust plume in its own local coordinates. */
     readonly exhaust?: boolean;
-    readonly make: (body: readonly SourceMesh[], rig: PackRig) => SourceMesh[];
+    /** `shift` moves a point drawn on the Quaternius body to sit as it did on the body worn, where that is another. */
+    readonly make: (body: readonly SourceMesh[], rig: PackRig, shift?: (p: [number, number, number]) => [number, number, number]) => SourceMesh[];
   };
   readonly materials?: Readonly<Record<string, MaterialSpec>>;
   readonly kind: "human-bodies";
   /** A folder under assets/raw that the paths below are in. */
   readonly raw: string;
   /**
-   * Triangles at each level, the finest first, for a hair or beard (made by assets/source/core/humans/hair/) and a whole armor set. A source with
-   * more than the finest's is brought down to it. The levels before `flat` keep their surface. `tailored` is the body
-   * the tailored outfit is cut from: one bone a vertex, flat, made by Blender (tools/blender/reduce.py), so that the
-   * outfit, which copies every one of its triangles, keeps its counts.
+   * Triangles at each level, the finest first, for a hair or beard (made by assets/source/core/humans/hair/) and a whole
+   * armor set. A source with more than the finest's is brought down to it. The levels before `flat` keep their surface.
    */
-  readonly triangles: { readonly hair: readonly number[]; readonly armor: readonly number[]; readonly tailored: readonly number[] };
+  readonly triangles: { readonly hair: readonly number[]; readonly armor: readonly number[] };
   readonly flat: number;
   /**
    * The bare bodies: MakeHuman's base fitted to `rigs` (tools/makehuman/fit.ts), its triangles a level, and the materials,
@@ -524,7 +523,6 @@ export interface HumanBodiesAsset {
   readonly bodies: readonly { readonly file: string; readonly material: string; readonly texture: string; readonly outfits: string }[];
   /** Each body's joint rests, in the order of SEX_IDS. The cook writes these and refuses a body whose joints sit more than 3 mm off. */
   readonly rigs: readonly (readonly number[])[];
-  readonly eyes: string;
   /**
    * Makes every hair and beard style for one sex on the MakeHuman body it is drawn on, as meshes under `id`
    * (assets/source/core/humans/hair/). `levels` are the hair's triangles a level and `flat` its first flat level.
@@ -537,6 +535,8 @@ export interface HumanBodiesAsset {
     readonly files: readonly string[];
     /** An armor set is an outfit's parts together. `texture` is its base colour. */
     readonly sets: readonly { readonly id: string; readonly parts: readonly string[]; readonly texture: string }[];
+    /** The outfits' own skin, by source material: left out, and the body's own skin put in where it shows (tools/pack/liner.ts). */
+    readonly skin?: readonly string[];
   };
 }
 

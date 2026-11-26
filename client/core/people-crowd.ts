@@ -1,8 +1,8 @@
 // The people bench's crowd (tools/bench/people.ts). A bench page told `?people=` stands survivors in front of its held
 // view: one close enough to fill it, 40 at 8 to 25 m, or 200 at 8 to 80 m, in one shared look, each in a look of its own,
-// or each in its own look and its own mix of clothes and armour; or each in its own look and one of four outfits of
-// garments, all in the first outfit, or in it with a print of its own on the tee (`dressed`, `uniform`, `printed`). They
-// are written into each sample after the session's own, so the renderer draws them as it draws a crowd that came over
+// or each in its own look and its own mix of clothes and armour, or the whole Meridian suit; or each in its own look and
+// one of four outfits of garments, all in the first outfit, or in it with a print of its own on the tee (`dressed`,
+// `uniform`, `printed`). They are written into each sample after the session's own, so the renderer draws them as it draws a crowd that came over
 // the link, and the link does not limit how many.
 
 import { SLOT_NAMES } from "../../shared/anim/human.ts";
@@ -20,7 +20,7 @@ import { noVehicle, type RemoteSample } from "./session.ts";
 
 export const CROWD_SCENES = ["portrait", "near", "far"] as const;
 export type CrowdScene = (typeof CROWD_SCENES)[number];
-export const CROWD_LOOKS = ["shared", "unique", "gear", "dressed", "uniform", "printed"] as const;
+export const CROWD_LOOKS = ["shared", "unique", "gear", "dressed", "uniform", "printed", "meridian"] as const;
 export type CrowdLooks = (typeof CROWD_LOOKS)[number];
 
 /** How many stand in each scene, and how near and far from the viewer, in metres. */
@@ -101,10 +101,15 @@ export function distinctLooks(looks: readonly Uint8Array[]): number {
 /**
  * What each of `n` bodies wears and holds, GEAR_COUNT content indices each: nothing, but in mixed gear each body takes
  * the next of OUTFITS from Meridian on (a mixed one draws each slot from the sets or bare), and every third body from
- * the first holds a rifle and every third from the second a hatchet. An item the content lacks is left off.
+ * the first holds a rifle and every third from the second a hatchet; in Meridian, each the whole suit and nothing held.
+ * An item the content lacks is left off.
  */
 export function crowdGear(n: number, looks: CrowdLooks, reg: Registry, seed = 1): Uint16Array {
   const out = new Uint16Array(n * GEAR_COUNT);
+  if (looks === "meridian") {
+    for (let k = 0; k < n; k++) SLOT_NAMES.forEach((slot, s) => (out[k * GEAR_COUNT + GEAR_WORN + s] = reg.index.get(`core:meridian_${PIECES[slot]}`) ?? 0));
+    return out;
+  }
   if (looks !== "gear") return out;
   const id = (name: string): number => reg.index.get(`core:${name}`) ?? 0;
   const rng = new Rng(seed + 17);

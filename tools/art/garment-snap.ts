@@ -43,7 +43,7 @@ function sample(t: Texture, u: number, v: number, c: number): number {
 }
 
 /** A skinned level posed by a frame's bone rows: positions and normals. */
-function pose(lod: SourceLod, m: Float32Array): { p: Float64Array; n: Float64Array } {
+export function pose(lod: SourceLod, m: Float32Array): { p: Float64Array; n: Float64Array } {
   const count = lod.positions.length / 3;
   const p = new Float64Array(count * 3), n = new Float64Array(count * 3);
   for (let v = 0; v < count; v++) {
@@ -63,10 +63,10 @@ function pose(lod: SourceLod, m: Float32Array): { p: Float64Array; n: Float64Arr
   return { p, n };
 }
 
-interface Frame { width: number; height: number; rgb: Float32Array; depth: Float32Array }
+export interface Frame { width: number; height: number; rgb: Float32Array; depth: Float32Array }
 
 /** Draws posed triangles into a frame, seen along -z (front) or +z (back), with a colour for each pixel's surface point. */
-function draw(f: Frame, p: Float64Array, n: Float64Array, idx: ArrayLike<number>, keep: (t: number) => boolean, back: boolean, centre: number[], scale: number, colour: (t: number, b: number[], out: number[]) => void): void {
+export function draw(f: Frame, p: Float64Array, n: Float64Array, idx: ArrayLike<number>, keep: (t: number) => boolean, back: boolean, centre: number[], scale: number, colour: (t: number, b: number[], out: number[]) => void): void {
   const sx = (x: number): number => f.width / 2 + (back ? -1 : 1) * (x - centre[0]!) * scale;
   const sy = (y: number): number => f.height / 2 - (y - centre[1]!) * scale;
   const out = [0, 0, 0];
