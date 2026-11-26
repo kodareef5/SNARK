@@ -56,7 +56,35 @@ print(len(asked), json.loads((root / 'raw/a.tif').read_text())['coverage'], sort
   }
 });
 
-test("a regional extract is recorded with its size and SHA-256", () => {
+test("a failed record leaves the download missing until its digest is saved", () => {
+  const root = mkdtempSync(join(tmpdir(), "snark-fetch-retry-"));
+  try {
+    expect(python(`
+import pathlib, fetch
+root = pathlib.Path(${JSON.stringify(root)})
+(root / 'raw').mkdir()
+class M: raw = root / 'raw'; root = root
+class R: content = b'new'
+fetch.get = lambda *a, **k: R()
+man = fetch.Manifest(M)
+man.record('a.tif', 'https://x/y', 's', 'l', b'old')
+def fail(*args): raise OSError('out of space')
+man.record = fail
+try:
+    fetch.keep(M, man, 'a.tif', 'https://x/y', 's', 'l')
+except OSError:
+    pass
+print((M.raw / 'a.tif').exists())
+man = fetch.Manifest(M)
+fetch.keep(M, man, 'a.tif', 'https://x/y', 's', 'l')
+print(man.records['a.tif']['sha256'] == __import__('hashlib').sha256(b'new').hexdigest())
+`).trim()).toBe("False\nTrue");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a regional extract is recorded before its answers are marked complete", () => {
   const root = mkdtempSync(join(tmpdir(), "snark-extract-"));
   try {
     expect(python(`
@@ -72,6 +100,13 @@ class M:
     raw = root / 'raw'; root = root
     city = {'osm': {'extract': 'north-america/us/region', 'source': 's', 'licence': 'l'}}
     def lonlat_bounds(self, margin=0): return (0, 0, 1, 1)
+man = fetch.Manifest(M)
+def fail(): raise OSError('out of space')
+man.save = fail
+try:
+    fetch.osm_extract(M(), man, ['osm', 'ways'])
+except OSError:
+    pass
 man = fetch.Manifest(M)
 fetch.osm_extract(M(), man, ['osm', 'ways'])
 r = json.loads((root / 'downloads.json').read_text())['osm/extract']
@@ -145,6 +180,9 @@ class Down:
     def json(self): return {'error': 'Expecting value', 'showToast': True}
 fetch.get = lambda *a, **k: Down()
 d = {'kind': 'tnm', 'dataset': 'D', 'project': 'P1'}
+print([t['name'] for t in fetch.dem_tiles(m, None, d)])
+def timeout(*args, **kwargs): raise RuntimeError('request retries exhausted')
+fetch.get = timeout
 print([t['name'] for t in fetch.dem_tiles(m, None, d)])
 try:
     fetch.dem_tiles(m, None, {**d, 'project': 'P3'})

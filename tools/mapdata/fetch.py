@@ -28,8 +28,9 @@ def keep(m, man, name, url, source, licence, params=None, data=None, accept=None
     # Whole or not there: a write cut short is never taken for the download.
     part = path.with_name(path.name + '.part')
     part.write_bytes(r.content)
-    part.replace(path)
+    path.unlink(missing_ok=True)
     man.record(name, full, source, licence, r.content, method, data)
+    part.replace(path)
     return path
 
 
@@ -90,7 +91,7 @@ def dem_tiles(m, man, d):
                 offset += len(page['items'])
                 if not page['items'] or offset >= page['total']:
                     break
-        except (requests.RequestException, ValueError) as err:
+        except (requests.RequestException, RuntimeError, ValueError) as err:
             return selected_before(m, d, err)
         items = sorted((i for i in items if d['project'] in i['downloadURL']), key=lambda i: i['downloadURL'])
         tiles = [{'name': i['downloadURL'].rsplit('/', 1)[1], 'url': i['downloadURL'], 'metadata': i.get('vendorMetaUrl'),
@@ -230,7 +231,6 @@ def osm_extract(m, man, names):
         part.write_text(json.dumps(answers['all' if name == 'osm' else name], separators=(',', ':')))
         part.replace(path)
         print('osm', name, len(answers['all' if name == 'osm' else name]['elements']), 'elements', flush=True)
-    stamp_file.write_text(stamp)
     md5 = Path(str(pbf) + '.md5').read_text().split()[0] if Path(str(pbf) + '.md5').exists() else None
     # The same URL serves a newer extract each day: its digest tells a kit's layers from ones made of another.
     digest = hashlib.sha256()
@@ -243,6 +243,7 @@ def osm_extract(m, man, names):
                                   'retrieved_utc': dt.datetime.fromtimestamp(pbf.stat().st_mtime, dt.timezone.utc).isoformat(),
                                   'note': 'cut to the frame with osmium extract --strategy smart; raw/osm/*.json answered locally (osm_local.py)'}
     man.save()
+    stamp_file.write_text(stamp)
 
 
 def osm(m, man):

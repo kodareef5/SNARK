@@ -91,11 +91,21 @@ const sha = (...parts: (string | Uint8Array)[]): string => {
   return h.digest("hex");
 };
 
+// These five fetch keys differ only in how a failed transfer is retried (Maps v3 at 4e5df30ab).
+const completedFetches = new Map([
+  ["352e77885c67dfdffedac86a0ed3fa9e19fb30e1cb55de1ce16d42deb0648a1a", "2945fa2252ce544e5a6c343b9bac27ca6a22ba8ae454a26f6f5a165dd26617f1"],
+  ["38cbe5538f2a48844015f14f42bc7fa5a967f01621632a1a05dc5c780ab54a69", "40a4078987d3410584cb016ac3b605e96f8f0f03dc722400028e795586fa652d"],
+  ["d39ca17d0c983724f129f19aa41e3dcd020fd40d01931b553101a78c889d1a76", "295edfd12b81eb6dc6fec250bebb445855c9d673a99b39f1e4b36f46df0eacf0"],
+  ["9232eba2fa0ccd0755c1a83b3263dd88966c7bf140a320c322e752d5092beebc", "09e28c2911736dbd25a417826d1b16d6cb9e52afaddc2283dc16333713dccfc4"],
+  ["38bb547c258469c3c2042e719321b6f8d2addc78c62c0075b9f8d046116dea46", "186ebe317f8d7809a1f381ae6cc791740da6152cdd8beb0c9fe828db9e00b01a"],
+]);
+
 function stageKey(stage: Stage, chain: string, own: (string | Uint8Array)[], held?: string): string {
   const files = stage.code.some((f) => f.endsWith(".py")) ? [...stage.code, COMMON] : stage.code;
   const code = files.map((f) => readFileSync(f));
   const key = sha(chain, stage.name, ...code, ...own);
   if (!held || key === held || stage.name !== "fetch") return key;
+  if (completedFetches.get(key) === held) return held;
   // Four published v3 kits fetched the same OSM bytes before curl retried broken transfers.
   const osm = files.findIndex((f) => f.endsWith("/osm_local.py"));
   if (osm < 0) return key;
@@ -304,6 +314,11 @@ function stagesOf(name: string, p: Prepared): { cut: string; work: string; ran: 
   for (const f of overlay(join(work, "streets"))) if (!existsSync(join(source, "streets", f))) unlinkSync(join(work, "streets", f));
   for (const f of overlay(join(source, "streets"))) write(join("streets", f), readFileSync(join(source, "streets", f), "utf8"));
 
+  const save = (path: string, value: object): void => {
+    const part = `${path}.part`;
+    writeFileSync(part, `${JSON.stringify(value, null, 2)}\n`);
+    renameSync(part, path);
+  };
   const keysPath = join(work, "stages.json");
   const keys = (existsSync(keysPath) ? readJson(keysPath) : {}) as Record<string, string>;
   const ownSections = new Set(stages.flatMap((s) => s.own?.sections ?? []));
@@ -338,17 +353,19 @@ function stagesOf(name: string, p: Prepared): { cut: string; work: string; ran: 
       console.log(`== ${stage.name} reads the downloads a kit leaves out: fetching them first`);
       // The kit's records as it came, kept until a fetch ends whole: one cut short has rewritten some of them.
       const kept = join(work, "raw/downloads.kit.json");
-      if (!existsSync(kept)) writeFileSync(kept, `${JSON.stringify(records(join(work, "downloads.json")))}\n`);
+      if (!existsSync(kept)) save(kept, records(join(work, "downloads.json")));
       const fetched = Bun.spawnSync(stages[names.indexOf("fetch")]!.run(work, name), { cwd, env: process.env, stdout: "inherit", stderr: "inherit" });
       if (fetched.exitCode !== 0) throw new Error(`${name}: fetch failed with ${fetched.exitCode}`);
       // A source served anew under the same request (a newer extract) must not meet layers made from the old one.
       const changed = changedJobs(records(kept), records(join(work, "downloads.json")), settings);
+      const first = stages.findIndex((s) => s.reads?.some((j) => changed.includes(j)));
+      if (first >= 0) {
+        for (const later of stages.slice(first)) delete keys[later.name];
+        save(keysPath, keys);
+      }
       unlinkSync(kitted);
       unlinkSync(kept);
-      const first = stages.findIndex((s) => s.reads?.some((j) => changed.includes(j)));
       if (first >= 0 && first < i) {
-        for (const later of stages.slice(first)) delete keys[later.name];
-        writeFileSync(keysPath, `${JSON.stringify(keys, null, 2)}\n`);
         const why = `${changed.join(", ")} fetched again differs from what the kit's layers were made from (downloads.json)`;
         if (first < from || only) throw new Error(`${name}: ${why}; run bun tools/maps/city.ts ${name} --from ${names[first]}`);
         console.log(`== ${why}: from ${names[first]} again`);
@@ -364,7 +381,7 @@ function stagesOf(name: string, p: Prepared): { cut: string; work: string; ran: 
     // This stage and every one after it are out of date from now until each runs again: a run that dies half way must
     // not leave a key standing over half-written layers.
     for (const later of stages.slice(i)) delete keys[later.name];
-    writeFileSync(keysPath, `${JSON.stringify(keys, null, 2)}\n`);
+    save(keysPath, keys);
     const env = stage.stamped ? { ...process.env, SNARK_MAP_STAMP: JSON.stringify({ cut, key }) } : process.env;
     const run = Bun.spawnSync(stage.run(work, name), { cwd, env, stdout: "inherit", stderr: "inherit" });
     ran.push(stage.name);
@@ -372,7 +389,7 @@ function stagesOf(name: string, p: Prepared): { cut: string; work: string; ran: 
     if (stage.name === "fetch") rmSync(kitted, { force: true });
     if (stage.stamped && !stampHolds(maps, name, cut, key)) throw new Error(`${name}: ${stage.name} left no stamp for cut ${cut} beside ${join(maps, `${name}.snmap`)}`);
     keys[stage.name] = key;
-    writeFileSync(keysPath, `${JSON.stringify(keys, null, 2)}\n`);
+    save(keysPath, keys);
     console.log(`== ${stage.name} done in ${((performance.now() - t0) / 1000).toFixed(1)} s`);
   }
   // current: the cut built last, once every stage of it stands done with today's inputs and code (a run --to fetch, or
