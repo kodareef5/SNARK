@@ -530,7 +530,8 @@ function faceRows(body: FittedBody, src: Sources, share: Float64Array): FaceRows
     if (!(of[best]! > 0) || !(head > 0)) continue;
     vertices.push(i);
     row.push(best);
-    amount.push(Math.min(1, of[best]! / head));
+    // An eyeball turns whole with its eye.
+    amount.push(src.part[i] === PART_EYES && (best === FACE_EYE_L || best === FACE_EYE_R) ? 1 : Math.min(1, of[best]! / head));
   }
   return { vertices: Uint32Array.from(vertices), row: Uint8Array.from(row), share: Float32Array.from(amount) };
 }
