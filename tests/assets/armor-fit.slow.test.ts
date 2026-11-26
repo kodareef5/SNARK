@@ -8,7 +8,7 @@ import { test } from "../fixtures/needs-art.ts";
 /** Millimetres, rounded up, as measured when armour was lined and let out (people-90 to 95); the audit looks 30 deep. */
 const PINNED: Readonly<Record<string, number>> = {
   "m/armor/cloth/feet": 0, "m/armor/cloth/hands": 0, "m/armor/cloth/head": 0, "m/armor/cloth/legs": 15, "m/armor/cloth/torso": 28,
-  "m/armor/hide/feet": 21, "m/armor/hide/hands": 30, "m/armor/hide/head": 0, "m/armor/hide/legs": 22, "m/armor/hide/torso": 30,
+  "m/armor/hide/feet": 0, "m/armor/hide/hands": 30, "m/armor/hide/head": 0, "m/armor/hide/legs": 22, "m/armor/hide/torso": 30,
   "m/armor/meridian/feet": 29, "m/armor/meridian/hands": 30, "m/armor/meridian/head": 30, "m/armor/meridian/legs": 1, "m/armor/meridian/torso": 28,
   "f/armor/cloth/feet": 0, "f/armor/cloth/hands": 28, "f/armor/cloth/head": 0, "f/armor/cloth/legs": 0, "f/armor/cloth/torso": 26,
   "f/armor/hide/feet": 0, "f/armor/hide/hands": 29, "f/armor/hide/head": 0, "f/armor/hide/legs": 24, "f/armor/hide/torso": 30,
