@@ -3,7 +3,7 @@
 // (keys.ts) to act on; the server's answer is the one that counts.
 
 import { CUE_DEAD, CUE_HELD, CUE_OUT } from "../../shared/anim/pose.ts";
-import { isMoored } from "../../content/docks.ts";
+import { isMoored } from "../../content/vehicles/mooring.ts";
 import { FORM_BREACH_A, FORM_OPEN } from "../../shared/content/breaks.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { TICK_RATE } from "../../shared/coords.ts";

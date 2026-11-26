@@ -17,6 +17,9 @@ import type { HullDef } from "../shared/world/convex.ts";
 import { BOAT, BOAT_SPECIES } from "./vehicles/boat.ts";
 import { MARINE_FLEET, MARINE_MODELS } from "./vehicles/marine-fleet.ts";
 import { hulkBoxes, hulkOf } from "./vehicles/harbour-wrecks.ts";
+import { burningKind, mooredKind } from "./vehicles/mooring.ts";
+
+export { burningKind, isMoored, mooredKind, mooredVessel } from "./vehicles/mooring.ts";
 
 /** The kit's measures, in metres. A module's origin is on its deck's top at its middle, +Z along it. */
 export const DOCK = {
@@ -99,12 +102,6 @@ export const MOORED_PAINTS: Readonly<Record<string, readonly (readonly [number, 
 const TRIMS = new Map([BOAT_SPECIES, ...MARINE_FLEET].map((s) => [s.id, s.regions!.slice(1, 6).map((r) => r !== null && r !== undefined)]));
 /** How many times farther off a moored hull's levels are chosen than a found vessel's (StructureDef.coarse). */
 export const MOORED_COARSE = 3;
-/** The static of a vessel moored in a paint. */
-export const mooredKind = (vessel: string, paint: number): string => `${vessel.replace("core:", "core:zzzzhull_")}_${paint}`;
-/** Whether a static is a moored vessel. */
-export const isMoored = (kind: string): boolean => kind.startsWith("core:zzzzhull_");
-/** The vessel a moored static is of. */
-export const mooredVessel = (kind: string): string => kind.slice(0, kind.lastIndexOf("_")).replace("core:zzzzhull_", "core:");
 
 // The launch has no hulk (its wreck is its corpse's), so its moored shape is its own; the others' are their intact
 // hulks', as the far city and bodies meet them.
@@ -119,8 +116,6 @@ const MOORED: readonly StructureDef[] = [{ id: BOAT_SPECIES.id, shape: LAUNCH_SH
     coarse: MOORED_COARSE,
   })));
 
-/** The static of a vessel burning at its mooring: its mesh charred, with fire on it (StructureDef.ablaze). */
-export const burningKind = (vessel: string): string => `${vessel.replace("core:", "core:zzzzhull_")}_burning`;
 const CHARRED = DEAD_DYES[0]!;
 const BURNING: readonly StructureDef[] = MOORED.filter((m) => m.color === CHARRED.paint).map((m): StructureDef => ({ ...m, id: burningKind(m.mesh as string), ablaze: true }));
 
