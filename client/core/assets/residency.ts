@@ -1150,6 +1150,8 @@ export class Residency {
 
   /** The graphics card could not take a level or a surface it was sent. */
   failed(slot: number): void {
+    // A mesh made on the client (render/faces.ts) is not this ledger's.
+    if (!(slot >= 0 && slot < this.given.length)) return;
     this.stats.refused++;
     this.restart(slot);
     if (this.state[slot] !== RESIDENT) return;

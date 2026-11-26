@@ -16,8 +16,8 @@ import { test } from "../fixtures/needs-art.ts";
 const ID = 500;
 
 /** A crowd of `count` survivors from 2.5 m, each its own face, on `tier`, drawn `frames` times. */
-function crowd(tier: string, count: number, frames = 12) {
-  const view = provingView(320, 180);
+function crowd(tier: string, count: number, frames = 12, net = false) {
+  const view = net ? provingView(320, 180, {}) : provingView(320, 180);
   const { scene, cam, remote, reg, hf } = view;
   scene.assets.tier = tierOf(tier);
   scene.viewHeight = 1080;
@@ -85,4 +85,39 @@ test("2,048 bodies with the most face rows any tier allows fit in 65,536 bones",
   const most = Math.max(...(["lowpoly", "medium", "high", "ultra"] as const).map((t) => tierOf(t).finestBodies[SLOT_HEAD]!));
   // The viewer's own body may be one more.
   expect(2048 * HUMAN_BONES + (most + 1) * FACE_ROWS).toBeLessThan(MAX_BONES);
+});
+
+test("a made head the card refuses is let go and the card's ledger stays a number", () => {
+  const { p, view } = crowd("high", 8);
+  const { scene, cam, remote } = view, r = scene.assets.residency;
+  let slot = -1;
+  for (let d = 0; d < p.drawCount && slot < 0; d++) if (p.drawSlot[d]! >= FACE_SLOTS && p.drawSlot[d]! < FACE_SLOTS + 4096) slot = p.drawSlot[d]!;
+  expect(slot).toBeGreaterThan(0);
+  const before = r.ledger;
+  scene.refused(slot);
+  scene.refused(slot + 1);
+  let q = p;
+  for (let f = 0; f < 5; f++) q = scene.build(cam, remote);
+  expect(r.ledger).toBe(before);
+  for (let d = 0; d < q.drawCount; d++) expect(q.drawSlot[d] === slot).toBe(false);
+});
+
+test("after a made mesh is refused the card's budget still lets go of what is least lately drawn", () => {
+  // Over a port, which the budget evicts to.
+  const { view } = crowd("high", 8, 0, true);
+  const { scene, cam, remote } = view, r = scene.assets.residency;
+  const step = (): void => {
+    scene.now += 1000 / 60;
+    view.port?.advance(scene.now);
+    scene.build(cam, remote);
+  };
+  for (let f = 0; f < 120; f++) step();
+  scene.refused(FACE_SLOTS);
+  scene.refused(FACE_SLOTS + 1);
+  for (let f = 0; f < 5; f++) step();
+  expect(Number.isFinite(r.ledger)).toBe(true);
+  const evicted = r.stats.evicted;
+  scene.assets.tier = { ...scene.assets.tier, gpuBytes: r.ledger * 0.25 };
+  for (let f = 0; f < 5; f++) step();
+  expect(r.stats.evicted).toBeGreaterThan(evicted);
 });

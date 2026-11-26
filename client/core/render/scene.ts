@@ -791,6 +791,11 @@ export class Scene {
   }
 
   /** Call after a lost graphics context. Every buffer and every level is uploaded again. */
+  /** The card could not take the level or surface in `slot`: a made head's, hair's or beard's, or an asset's. */
+  refused(slot: number): void {
+    if (!this.characters.faces.refused(slot)) this.assets.residency.failed(slot);
+  }
+
   resetUploads(): void {
     this.nearStore.reset();
     this.characters.faces.reset();

@@ -361,3 +361,33 @@ test("hair hanging on the upper chest takes the guide rows; a beard the jaw's", 
   expect(Math.abs(weight(beardSkin, 3, 1, HUMAN_BONES + FACE_JAW) - 128)).toBeLessThanOrEqual(1);
   expect(weight(beardSkin, 3, 2, B_HEAD)).toBe(255);
 });
+
+test("a refused head lets go at once, is made again after a wait, and keeps its bytes counted", () => {
+  const f = new Faces(fakeAssets());
+  f.register(MESH, REST);
+  const look = lookOf(9);
+  for (let k = 0; k < 5; k++) frame(f, "high", [look]);
+  const made = frame(f, "high", [look]).slots[0]!, shared = f.head(MESH, defaultLook(), 0, ONES, 0, 0).slot;
+  expect(made).not.toBe(shared);
+  const bytes = f.bytes;
+  expect(f.refused(made + 1)).toBe(true);
+  expect(f.refused(5)).toBe(false);
+  expect(Number.isFinite(f.bytes) && f.bytes < bytes).toBe(true);
+  // The next frame lets its slots go and draws the shared head; none is made while it waits.
+  const next = frame(f, "high", [look]);
+  expect(next.drops.sort()).toEqual([made, made + 1]);
+  expect(next.slots[0]).toBe(shared);
+  let back = -1;
+  for (let k = 0; k < 200 && back < 0; k++) {
+    const { uploads, slots } = frame(f, "high", [look]);
+    if (uploads.length > 0) back = k;
+    else expect(slots[0]).toBe(shared);
+  }
+  expect(back).toBeGreaterThan(100);
+  expect(frame(f, "high", [look]).slots[0]).not.toBe(shared);
+  // Refused again and again, it stops making heads and draws the pack's.
+  for (let k = 0; k < 5; k++) f.refused(shared);
+  for (let k = 0; k < 2000; k++) frame(f, "high", [look]);
+  expect(f.ready(MESH)).toBe(false);
+  expect(Number.isFinite(f.bytes)).toBe(true);
+});

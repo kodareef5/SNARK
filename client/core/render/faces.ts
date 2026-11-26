@@ -26,6 +26,9 @@ const GROW_STEPS = 4096;
 const FOLLOWS = 4;
 const FOLLOW_NEAR = 0.012;
 const FOLLOW_FAR = 0.03;
+/** Frames nothing is made after the card refuses a made mesh, times the refusals so far; past the most, none is made again. */
+const REFUSAL_WAIT = 120;
+const MOST_REFUSALS = 4;
 
 /** What faces.ts needs of the asset library (client/core/assets). */
 export interface FaceAssets {
@@ -94,8 +97,9 @@ interface Worn extends Placed {
   readonly near: Int32Array;
   readonly share: Float32Array;
   readonly at: Float32Array;
-  /** Its slot on the shared head, 0 where the pack's own is drawn. */
-  shared: number;
+  /** The slots its shared mesh takes, and whether that is on the card. */
+  readonly slot: number;
+  shared: boolean;
 }
 
 /** A head mesh's finest level as it came, its face table, and what making a head of it needs. */
@@ -148,6 +152,10 @@ export class Faces {
   private readonly wanted = new Set<number>();
   private readonly wantedWorn = new Set<number>();
   private nextSlot = FACE_SLOTS;
+  /** Made meshes the card refused, the frame before which nothing is made again, and the slots to let go next frame. */
+  private refusals = 0;
+  private waitUntil = 0;
+  private readonly dropLater: number[] = [];
   private readonly made: Made[] = [];
   private readonly byKey = new Map<number, Made>();
   private frame = 0;
@@ -205,9 +213,12 @@ export class Faces {
    */
   begin(tier: Tier, uploads: AssetUpload[], drops: number[]): void {
     this.frame++;
-    this.cap = FACE_HEADS[tier.name] ?? 0;
+    this.cap = this.refusals > MOST_REFUSALS ? 0 : (FACE_HEADS[tier.name] ?? 0);
     for (const mesh of this.wanted) this.assets.wantFaces(mesh);
-    let made = false;
+    for (const slot of this.dropLater) drops.push(slot);
+    this.dropLater.length = 0;
+    // Waiting after a refusal, nothing is made.
+    let made = this.frame < this.waitUntil || this.refusals > MOST_REFUSALS;
     for (const mesh of this.wanted) {
       if (made) break;
       if (!this.sources.has(mesh)) made = this.prepare(mesh);
@@ -222,9 +233,9 @@ export class Faces {
       if (made) break;
       const w = this.worn.get(mesh);
       if (!w) made = this.prepareWorn(mesh);
-      else if (w.rows && w.shared === 0) {
-        w.shared = this.take();
-        this.uploadWorn(w, w.shared, w.level, null, uploads);
+      else if (w.rows && !w.shared) {
+        w.shared = true;
+        this.uploadWorn(w, w.slot, w.level, null, uploads);
         made = true;
       }
     }
@@ -242,7 +253,7 @@ export class Faces {
 
   /** Whether a body drawing `mesh` at its finest level may take face rows: its shared head is on the card. Asks for it. */
   ready(mesh: number): boolean {
-    if (!this.heads.has(mesh)) return false;
+    if (!this.heads.has(mesh) || this.refusals > MOST_REFUSALS) return false;
     this.wanted.add(mesh);
     return this.sources.get(mesh)?.shared != null;
   }
@@ -261,8 +272,8 @@ export class Faces {
     worn[1] = this.read(beard) ? beard : -1;
     out.slot = shared.slot;
     out.pivots = shared.pivots;
-    out.hair = worn[0] >= 0 ? this.worn.get(worn[0])!.shared : 0;
-    out.beard = worn[1] >= 0 ? this.worn.get(worn[1])!.shared : 0;
+    out.hair = this.sharedSlot(worn[0]!);
+    out.beard = this.sharedSlot(worn[1]!);
     const face = this.scratchFace, g = this.scratchGrow;
     let any = false;
     for (let f = 0; f < FACE_COUNT; f++) {
@@ -291,6 +302,45 @@ export class Faces {
     return out;
   }
 
+  /** The slot of hair or beard `mesh`'s shared mesh, 0 where the pack's own is drawn. */
+  private sharedSlot(mesh: number): number {
+    const w = mesh >= 0 ? this.worn.get(mesh) : undefined;
+    return w?.shared ? w.slot : 0;
+  }
+
+  /**
+   * The card refused the made mesh in `slot`: what used it lets it go at once and is drawn as the shared head, or the
+   * pack's own, and is made again after a wait. False for a slot that is not a made one's.
+   */
+  refused(slot: number): boolean {
+    if (slot < FACE_SLOTS || slot >= this.nextSlot) return false;
+    const pair = slot - ((slot - FACE_SLOTS) & 1);
+    this.refusals++;
+    this.waitUntil = this.frame + REFUSAL_WAIT * this.refusals;
+    for (const h of this.made) {
+      if (h.key < 0 || pair < h.slot || pair >= h.slot + 6) continue;
+      this.byKey.delete(h.key);
+      h.key = -1;
+      this.bytes -= h.bytes;
+      this.dropLater.push(h.slot + 1, h.slot);
+      for (let k = 0; k < 2; k++) if (h.worn[k]! >= 0) this.dropLater.push(h.slot + 3 + 2 * k, h.slot + 2 + 2 * k);
+      return true;
+    }
+    for (const s of this.sources.values()) if (s.slot === pair && s.shared) {
+      this.bytes -= s.shared.bytes;
+      s.shared = null;
+      this.dropLater.push(pair + 1, pair);
+      return true;
+    }
+    for (const w of this.worn.values()) if (w.slot === pair && w.shared) {
+      this.bytes -= w.level.length + w.surface.length;
+      w.shared = false;
+      this.dropLater.push(pair + 1, pair);
+      return true;
+    }
+    return true;
+  }
+
   /** Whether hair or beard `mesh` has been read. Asks for it, and for its shared mesh. */
   private read(mesh: number): boolean {
     if (mesh < 0 || !this.wearing.has(mesh)) return false;
@@ -308,10 +358,13 @@ export class Faces {
   /** After a lost context the card holds no head: each is made again as it is wanted, in the slots it had. */
   reset(): void {
     for (const s of this.sources.values()) s.shared = null;
-    for (const w of this.worn.values()) w.shared = 0;
+    for (const w of this.worn.values()) w.shared = false;
     for (const h of this.made) h.key = -1;
     this.byKey.clear();
     this.bytes = 0;
+    this.refusals = 0;
+    this.waitUntil = 0;
+    this.dropLater.length = 0;
   }
 
   /** Reads a head's face table and finest level once both have come. False while either has not. */
@@ -376,7 +429,7 @@ export class Faces {
     const jaw = wearing.beard && jawSkin(s, near, share, skin, n);
     this.worn.set(mesh, {
       mesh, head: wearing.head, vertices: n, vertexAt, indexCount: kept.indexCount, indexBytes: kept.indexBytes, level: kept.level, center, half, base, surface, groomed, rows: groomed || jaw,
-      near, share, at: new Float32Array(n * 3), lo: new Float64Array(3), hi: new Float64Array(3), shared: 0,
+      near, share, at: new Float32Array(n * 3), lo: new Float64Array(3), hi: new Float64Array(3), slot: this.take(), shared: false,
     });
     return true;
   }
