@@ -87,6 +87,21 @@ const sha = (...parts: (string | Uint8Array)[]): string => {
   return h.digest("hex");
 };
 
+function stageKey(stage: Stage, chain: string, own: (string | Uint8Array)[], held?: string): string {
+  const files = stage.code.some((f) => f.endsWith(".py")) ? [...stage.code, COMMON] : stage.code;
+  const code = files.map((f) => readFileSync(f));
+  const key = sha(chain, stage.name, ...code, ...own);
+  if (!held || key === held || stage.name !== "fetch") return key;
+  // Four published v3 kits fetched the same OSM bytes before curl retried broken transfers.
+  const osm = files.findIndex((f) => f.endsWith("/osm_local.py"));
+  if (osm < 0) return key;
+  const present = code[osm]!.toString("utf8");
+  const earlier = present.replace("['curl', '-sSL', '--retry', '5', '--retry-all-errors', '-o'", "['curl', '-sSL', '--retry', '5', '-o'");
+  if (earlier === present) return key;
+  code[osm] = Buffer.from(earlier);
+  return sha(chain, stage.name, ...code, ...own) === held ? held : key;
+}
+
 /** `over` laid on `base`: objects key by key, anything else replaced; keys starting "_" are notes and dropped. */
 function lay(base: unknown, over: unknown): unknown {
   if (over === undefined) return base;
@@ -296,8 +311,7 @@ function stagesOf(name: string, p: Prepared): { cut: string; work: string; ran: 
     const own = stage.own ? [JSON.stringify(stage.own.sections.map((s) => settings[s] ?? null)),
       ...stage.own.files.map((f) => (existsSync(join(source, f)) ? readFileSync(join(source, f)) : `no ${f}`)),
       ...(stage.own.folders ?? []).flatMap((d) => overlay(join(source, d)).flatMap((f) => [`${d}/${f}`, readFileSync(join(source, d, f))]))] : [];
-    const code = stage.code.some((f) => f.endsWith(".py")) ? [...stage.code, COMMON] : stage.code;
-    const key = sha(chain, stage.name, ...code.map((f) => readFileSync(f)), ...own);
+    const key = stageKey(stage, chain, own, keys[stage.name]);
     chain = key;
     now[stage.name] = key;
     if (i < from || i > to) continue;
@@ -324,6 +338,7 @@ function stagesOf(name: string, p: Prepared): { cut: string; work: string; ran: 
     const run = Bun.spawnSync(stage.run(work, name), { cwd, env, stdout: "inherit", stderr: "inherit" });
     ran.push(stage.name);
     if (run.exitCode !== 0) throw new Error(`${name}: ${stage.name} failed with ${run.exitCode}`);
+    if (stage.name === "fetch") rmSync(kitted, { force: true });
     if (stage.stamped && !stampHolds(maps, name, cut, key)) throw new Error(`${name}: ${stage.name} left no stamp for cut ${cut} beside ${join(maps, `${name}.snmap`)}`);
     keys[stage.name] = key;
     writeFileSync(keysPath, `${JSON.stringify(keys, null, 2)}\n`);
