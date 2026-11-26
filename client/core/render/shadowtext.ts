@@ -3,10 +3,11 @@
 // software rasterizer lights everything as if in the sun, and the numbers here are what the lit probe holds the GPU to.
 //
 // A pixel takes the finest cascade whose sphere holds it, and over the last tenth of that sphere it hands over to the
-// next by a 4 by 4 pattern on the screen, so it always makes one lookup. Over the last tenth of the farthest sphere the
-// shadow hands over to the far map's (farshadow.ts), which a pixel past every sphere takes alone and one within them takes
-// for what lies past the near store's chunks, and it fades with the casting strength of the light that owns the
-// cascades: the sun's at dusk, and at night the moon's, which then owns them (sky.ts `castLight`). The lookup is moved off the surface along its normal by up to half a texel, the more
+// next by a 4 by 4 pattern on the screen where the next sphere holds it too, so it always makes one lookup. Over the
+// last tenth of the farthest sphere the shadow hands over to the far map's (farshadow.ts), which a pixel past every
+// sphere takes alone and one within them takes for what lies past the near store's chunks, and it fades with the
+// casting strength of the light that owns the cascades: the sun's at dusk, and at night the moon's, which then owns
+// them (sky.ts `castLight`). The lookup is moved off the surface along its normal by up to half a texel, the more
 // the more the surface turns from the sun, and is filtered by compared taps after Castaño (The Witness, 2013). A device
 // whose compared lookups come back hard compares four texels in the shader for each. The far map is the layer after the
 // cascades', looked up with one tap.
@@ -17,6 +18,7 @@ import { FAR_LEAD, FAR_OUT, FAR_RISE, FAR_SPAN, FLAT_LEAST } from "./shadow-map.
 import { LAMP_CORNER, LAMP_GROUND, LAMP_LONG, LAMP_NEAREST, LAMP_OUT, LAMP_TAN, LAMP_WIDE } from "./lamp.ts";
 import { ORB_SEES_GLSL, ORB_SHADE_GLSL } from "./orb-light.ts";
 import { BONES_PER_ROW, MAX_CASCADES } from "./packet.ts";
+import { MAX_REACH } from "./shadow.ts";
 import { BEND_GLSL, BEND_PLACE } from "./bend.ts";
 import { PIECE_FIT_GLSL, PIECE_FIT_PLACE } from "./piece-fit.ts";
 import { PIECE_END, PIECE_GLSL, PIECE_PLACE } from "./pieces.ts";
@@ -163,13 +165,15 @@ function filterText(m: number): string {
  * map are in texels, the receiver's `at` with its depth, and `slope` is how its plane's depth rises a texel along each
  * axis. `farShadow` is the twin of farshadow.ts `farLookup`; with fFarScale not over 0 there is no far map and the
  * farthest cascade fades to the sun. The far map's lanes are named whether or not there are cascades, since the sky's
- * openness (skyopen.ts) reads them too. Within the cascades, which the near store's pieces cast into and the far city does not, a
- * pixel is shaded by the far map too, looked up where its ray to the sun leaves the chunks the near store holds
- * (`farBeyond`, farshadow.ts `nearLead`), so the far city's shadows reach near the camera and the near pieces' are not
- * cast twice. With LAMP, `sunShadow` first finds how much of the street lamp's light reaches the point (`lampSees`, the
- * twin of lamp.ts `lampReach` but for the shadow): by its pool, distance and facing, and by four compared taps of the
- * lamp's map in its corner of its layer, moved off the surface as the cascades' are; LIGHT's `lit` adds it from gLamp.
- * With ORB_LIGHT it finds an orb's light too, shadows or none (orb-light.ts), which `lit` adds from gOrb. The maps'
+ * openness (skyopen.ts) reads them too. Within the cascades, which the near store's pieces cast into and the far city
+ * does not, a pixel is shaded by the far map too, looked up on along its ray to the sun to where that leaves the box of
+ * chunks the near store holds, but no farther than MAX_REACH along the light, past which no cascade takes a caster, and
+ * at the pixel where it lies outside that box (`farBeyond`, farshadow.ts `nearLead`): so the far city's shadows reach
+ * near the camera, and the near pieces' are not cast twice where the cascades are sure to take them. With LAMP,
+ * `sunShadow` first finds how much of the street lamp's light reaches the point (`lampSees`, the twin of lamp.ts
+ * `lampReach` but for the shadow): by its pool, distance and facing, and by four compared taps of the lamp's map in
+ * its corner of its layer, moved off the surface as the cascades' are; LIGHT's `lit` adds it from gLamp. With ORB_LIGHT
+ * it finds an orb's light too, shadows or none (orb-light.ts), which `lit` adds from gOrb. The maps'
  * share is `mapShadow`; with ORB_SHADE the share an orb's own shadow leaves is taken of it (orb-light.ts `orbShade`),
  * whether or not the frame has cascades.
  */
@@ -219,7 +223,7 @@ float farBeyond(vec3 rel, vec3 normal) {
   vec2 a = (fNearFrom - rel.xz) / d, b = (fNearTo - rel.xz) / d;
   vec2 lo = min(a, b), hi = max(a, b);
   float leave = min(hi.x, hi.y);
-  float lead = fNearFrom.x <= fNearTo.x && leave >= max(max(lo.x, lo.y), 0.0) ? leave : 0.0;
+  float lead = fNearFrom.x <= fNearTo.x && max(lo.x, lo.y) <= 0.0 && leave >= 0.0 ? min(leave, ${g(MAX_REACH)} * ground) : 0.0;
   return farShadow(rel + fCast.xyz * (lead / ground), normal);
 }
 #ifdef LAMP

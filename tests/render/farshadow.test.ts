@@ -12,6 +12,7 @@ import { HeldTops } from "../../client/core/render/blocks.ts";
 import { ThreadedCityMaker, type CityMaker, type CityThread } from "../../client/core/render/citymake.ts";
 import { FAR_SPAN, FarShadow, SOLID_CHUNKS, SWEEP_QUIET, SWEEP_WAIT, TOP_CELL, chunkSolid, doSweep, farBeyondLookup, farCell, farLookup, makeSolid, nearLead, sweep, sweepBuffers, tipMoves, type Standing, type SweepJob, type SweepMade } from "../../client/core/render/farshadow.ts";
 import { CAST_AT, FRAME, FramePacket } from "../../client/core/render/packet.ts";
+import { MAX_REACH } from "../../client/core/render/shadow.ts";
 import { OPEN_BYTES, openMeasure } from "../../client/core/render/skyopen.ts";
 import { CHUNK_SIZE, chunkAt, chunkCount, chunkCx, chunkCz, type MapDims } from "../../shared/coords.ts";
 import type { Registry } from "../../shared/content/registry.ts";
@@ -633,32 +634,111 @@ test("within the cascades the far map is looked up past the chunks the near stor
   const cam = [b[0]! - 20, 20, b[1]! - 40];
   shadow.update(p, allowance(1e9), cam[0]!, cam[1]!, cam[2]!, sun);
   const f = p.frame;
-  expect([f[FRAME.nearFromX], f[FRAME.nearFromZ], f[FRAME.nearToX], f[FRAME.nearToZ]]).toEqual([(bi - 1) * 64 - cam[0]!, (bj - 1) * 64 - cam[2]!, (bi + 2) * 64 - cam[0]!, (bj + 2) * 64 - cam[2]!]);
+  // The empty chunks round them count as held; A's column stops the box.
+  expect(nearChunks(f, cam)).toEqual([3, 7, 0, 7]);
   const map = p.farMap.slice();
   // Behind each tower, half its shadow's length on: B's shadow is the cascades' to draw, A's is the far map's.
   const behind = (t: number[]): number[] => [t[0]! + 10 - cam[0]!, -cam[1]!, t[1]! + 30 - cam[2]!];
   const [ra, rb] = [behind(a), behind(b)];
   expect([farLookup(map, 128, f, ra[0]!, ra[1]!, ra[2]!, 0, 0), farLookup(map, 128, f, rb[0]!, rb[1]!, rb[2]!, 0, 0)]).toEqual([0, 0]);
   expect([farBeyondLookup(map, 128, f, ra[0]!, ra[1]!, ra[2]!, 0, 0), farBeyondLookup(map, 128, f, rb[0]!, rb[1]!, rb[2]!, 0, 0)]).toEqual([0, 1]);
-  // The lead is where the ray to the sun leaves the box, marched for: from inside it, from outside through it, and none
-  // from a point it does not cross.
+  // The lead is how far the ray to the sun stays in the box, but no more than MAX_REACH along the light, marched for: from
+  // inside it far from its edge and near it, and none from outside it, though the ray crosses it.
   const flat = Math.hypot(sun[0]!, sun[2]!);
   const [ux, uz] = [sun[0]! / flat, sun[2]! / flat];
   const inside = (x: number, z: number): boolean => x >= f[FRAME.nearFromX]! && x <= f[FRAME.nearToX]! && z >= f[FRAME.nearFromZ]! && z <= f[FRAME.nearToZ]!;
   const marched = (x: number, z: number): number => {
-    let last = 0;
-    for (let t = 0; t < 2000; t += 0.01) if (inside(x + ux * t, z + uz * t)) last = t;
-    return last;
+    let t = 0;
+    while (inside(x, z) && t < MAX_REACH * flat && inside(x + ux * (t + 0.01), z + uz * (t + 0.01))) t += 0.01;
+    return t;
   };
-  for (const [x, z] of [[rb[0]!, rb[2]!], [rb[0]! - ux * 300, rb[2]! - uz * 300], [rb[0]! + ux * 300, rb[2]! + uz * 300]]) expect(nearLead(f, x!, z!)).toBeCloseTo(marched(x!, z!), 1);
-  expect(nearLead(f, rb[0]! - ux * 300, rb[2]! - uz * 300)).toBeGreaterThan(300);
-  expect(nearLead(f, rb[0]! + ux * 300, rb[2]! + uz * 300)).toBe(0);
-  // With no chunk held the box is empty and the lead none.
+  const edge = [300 - cam[0]!, 40 - cam[2]!], outside = [rb[0]! - ux * 300, rb[2]! - uz * 300];
+  for (const [x, z] of [[rb[0]!, rb[2]!], edge, outside]) expect(nearLead(f, x!, z!)).toBeCloseTo(marched(x!, z!), 1);
+  expect(nearLead(f, rb[0]!, rb[2]!)).toBeCloseTo(MAX_REACH * flat, 3);
+  expect(nearLead(f, edge[0]!, edge[1]!)).toBeLessThan(50);
+  expect(nearLead(f, outside[0]!, outside[1]!)).toBe(0);
+  // With no chunk held, a camera in B's chunk has no box and no lead.
   const none = new FarShadow(dims, hf, null, null, () => false);
   none.hand(city, standing);
-  none.update(p, allowance(1e9), cam[0]!, cam[1]!, cam[2]!, sun);
-  expect(nearLead(p.frame, rb[0]!, rb[2]!)).toBe(0);
-  expect(p.frame[FRAME.nearFromX]! > p.frame[FRAME.nearToX]!).toBe(true);
+  const inB = [b[0]! + 20, 20, b[1]! + 20];
+  none.update(p, allowance(1e9), inB[0]!, inB[1]!, inB[2]!, sun);
+  expect(nearChunks(p.frame, inB)).toBeNull();
+  expect(nearLead(p.frame, rb[0]! + cam[0]! - inB[0]!, rb[2]! + cam[2]! - inB[2]!)).toBe(0);
+});
+
+/** A far shadow of `city` on high, its layer `size` a side, run a frame at a time until it is looked up: the frame and the map. */
+function lookedUp(dims: MapDims, hf: Heightfield, city: CityStatics, held: (c: number) => boolean, cam: number[], sun: number[], size = 128): { f: Float32Array; map: Uint16Array } {
+  const shadow = new FarShadow(dims, hf, null, null, held);
+  shadow.hand(city, standingOf(city, hf));
+  const p = litPacket(size);
+  for (let k = 0; k < 3; k++) [p.frame[FRAME.moon + k], p.frame[CAST_AT + k]] = [-sun[k]!, sun[k]!];
+  for (let n = 0; n < 8 && !(p.frame[FRAME.farScale]! > 0); n++) shadow.update(p, allowance(1e9), cam[0]!, cam[1]!, cam[2]!, sun);
+  expect([p.frame[FRAME.farScale]! > 0, p.farRows]).toEqual([true, size]);
+  return { f: p.frame, map: p.farMap!.slice() };
+}
+
+/** The near box a frame holds, in chunks of the world: first and last column, first and last row; null for none. */
+function nearChunks(f: Float32Array, cam: number[]): number[] | null {
+  if (f[FRAME.nearFromX]! > f[FRAME.nearToX]!) return null;
+  const at = (v: number, c: number): number => Math.round((v + c) / CHUNK_SIZE);
+  return [at(f[FRAME.nearFromX]!, cam[0]!), at(f[FRAME.nearToX]!, cam[0]!) - 1, at(f[FRAME.nearFromZ]!, cam[2]!), at(f[FRAME.nearToZ]!, cam[2]!) - 1];
+}
+
+test("the near box grows from the camera's chunk while each new row is held or empty", () => {
+  const reg = farRegistry();
+  const dims: MapDims = { chunksX: 10, chunksZ: 10 };
+  const hf = new Heightfield(dims, TERRAIN_CELL, -64, 1 / 64);
+  // A storey in every chunk but (3, 8), which is bare ground.
+  const open = 8 * 10 + 3;
+  const statics = asWritten(Array.from({ length: 100 }, (_, c) => c).filter((c) => c !== open).flatMap((c) => building((c % 10) * 64 + 32, Math.floor(c / 10) * 64 + 32, 0, 1, 1)));
+  const city = new CityStatics(dims, statics, reg);
+  const sun = sunAt(35, 200);
+  const boxOf = (cam: number[], missing: number[]): number[] | null => nearChunks(lookedUp(dims, hf, city, (c) => c !== open && !missing.includes(c), cam, sun).f, cam);
+  const mid = [5 * 64 + 20, 20, 5 * 64 + 40];
+  // All held: the whole map, its edges stopping it, and from near a corner NEAR_SCAN chunks on.
+  expect(boxOf(mid, [])).toEqual([0, 9, 0, 9]);
+  expect(boxOf([70, 20, 90], [])).toEqual([0, 7, 0, 7]);
+  // A hole next to the camera's chunk stops that side at once; one two rings out stops it a ring later.
+  expect(boxOf(mid, [5 * 10 + 6])).toEqual([0, 5, 0, 9]);
+  expect(boxOf(mid, [5 * 10 + 7])).toEqual([0, 6, 0, 9]);
+  expect(boxOf(mid, [2 * 10 + 5])).toEqual([0, 9, 3, 9]);
+  // The camera's own chunk missing: no box at all.
+  expect(boxOf(mid, [5 * 10 + 5])).toBeNull();
+});
+
+test("a tower in a missing chunk between two held ones shades the street", () => {
+  const reg = farRegistry();
+  const dims: MapDims = { chunksX: 8, chunksZ: 8 };
+  const hf = new Heightfield(dims, TERRAIN_CELL, -64, 1 / 64);
+  for (let j = 0; j < hf.nz; j++) for (let i = 0; i < hf.nx; i++) hf.setSample(i, j, 0);
+  // Chunks (3, 4), (4, 4) and (5, 4): the ends held, a tower of 12 storeys in the middle, the sun low over it from +x.
+  const city = new CityStatics(dims, asWritten(building(288, 288, 0, 12)), reg);
+  const held = (c: number): boolean => c === 4 * 8 + 3 || c === 4 * 8 + 5;
+  const cam = [200, 20, 300];
+  const sun = sunAt(30, 90);
+  const { f, map } = lookedUp(dims, hf, city, held, cam, sun);
+  const r = [250 - cam[0]!, -cam[1]!, 288 - cam[2]!];
+  expect(farLookup(map, 128, f, r[0]!, r[1]!, r[2]!, 0, 0)).toBe(0);
+  expect(farBeyondLookup(map, 128, f, r[0]!, r[1]!, r[2]!, 0, 0)).toBe(0);
+});
+
+test("a tower 300 m toward a low sun shades the street; one in reach is not doubled", () => {
+  const reg = farRegistry();
+  const dims: MapDims = { chunksX: 16, chunksZ: 16 };
+  const hf = new Heightfield(dims, TERRAIN_CELL, -64, 1 / 64);
+  for (let j = 0; j < hf.nz; j++) for (let i = 0; i < hf.nx; i++) hf.setSample(i, j, 0);
+  // Towers of 25 storeys: one 300 m from a street toward the sun, another 40 m from a second street.
+  const city = new CityStatics(dims, asWritten([...building(800, 400, 0, 25), ...building(540, 640, 0, 25)]), reg);
+  const cam = [520, 20, 520];
+  const sun = sunAt(8, 90);
+  const { f, map } = lookedUp(dims, hf, city, () => true, cam, sun, 256);
+  expect(nearChunks(f, cam)).toEqual([2, 14, 2, 14]);
+  const far = [500 - cam[0]!, -cam[1]!, 400 - cam[2]!], near = [500 - cam[0]!, -cam[1]!, 640 - cam[2]!];
+  expect([farLookup(map, 256, f, far[0]!, far[1]!, far[2]!, 0, 0), farLookup(map, 256, f, near[0]!, near[1]!, near[2]!, 0, 0)]).toEqual([0, 0]);
+  expect(farBeyondLookup(map, 256, f, far[0]!, far[1]!, far[2]!, 0, 0)).toBe(0);
+  expect(farBeyondLookup(map, 256, f, near[0]!, near[1]!, near[2]!, 0, 0)).toBe(1);
+  // The lead stops MAX_REACH along the light, the furthest a cascade takes a caster from.
+  expect(nearLead(f, far[0]!, far[2]!)).toBeCloseTo(MAX_REACH * Math.hypot(sun[0]!, sun[2]!), 3);
 });
 
 test("a piece that stands in the air with nothing under it, a tide eye's collider, casts no far shadow: as a column from the ground it would be a tower where there is open air", () => {
