@@ -220,3 +220,42 @@ test("a piece outside the frame and a piece somebody owns never fall", () => {
   expect(verdicts(b)).toEqual([STANDS, STANDS]);
   expect(porch).toBe(0);
 });
+
+/** Three bays walled front and back on two storeys, a stair in the middle one. Returns the ground walls by tile, and the pieces over them. */
+function flats(): { b: Stood; ground: number[][]; over: number[]; beam: number } {
+  const s = new Sketch(3, 1);
+  s.storeys = s.playable = 2;
+  s.stair(1, 0, 2);
+  const walls = (storey: number): number[][] => [0, 1, 2].map((i) => [s.edge("wall8", "concrete", i, 0, SIDE_FRONT, storey), s.edge("wall8", "concrete", i, 0, SIDE_BACK, storey)]);
+  const ground = walls(0);
+  const beam = s.edge("beam8", "concrete", 0, 0, SIDE_FRONT, 0, 3.4);
+  const over = [...[0, 1, 2].map((i) => s.slab(i, 0, 1)), ...walls(1).flat(), ...[0, 1, 2].map((i) => s.slab(i, 0, 2))];
+  return { b: stood(s), ground, over, beam };
+}
+
+test("a storey left a quarter of its uprights stands, and with less it gives way with all over it", () => {
+  const { b, ground, over, beam } = flats();
+  const at = (share: number): number[] => { const v = b.judge(share).map((x) => x & VERDICT); return over.map((k) => v[k]!); };
+  expect(at(0.25)).toEqual(over.map(() => STANDS));
+  // Four of six ground walls opened leave a third: the stair holds every slab, as it does without the storey's rule.
+  for (const w of [...ground[0]!, ...ground[2]!]) open(b, b.refs[w]!);
+  expect(at(0.25)).toEqual(over.map(() => STANDS));
+  // A fifth leaves a sixth. The stair does not hold the storey up: every slab and wall over it falls, and its beam.
+  open(b, b.refs[ground[1]![0]!]!);
+  expect(at(0.25)).toEqual(over.map(() => FALLS));
+  expect(b.judge(0.25)[beam]! & VERDICT).toBe(FALLS);
+  // The wall left on the ground and the opened ones stand where they are.
+  expect(ground.flat().map((k) => b.judge(0.25)[k]! & VERDICT)).toEqual(ground.flat().map(() => STANDS));
+  // With no share asked, the stair holds it all up as before.
+  expect(at(0)).toEqual(over.map(() => STANDS));
+  // A lower share asks for more to be broken.
+  expect(at(0.1)).toEqual(over.map(() => STANDS));
+});
+
+test("a storey the map stood no upright on is not asked for its share", () => {
+  const s = new Sketch(3, 1);
+  s.stair(0, 0, 2);
+  const slabs = [0, 1, 2].map((i) => s.slab(i, 0, 1));
+  const b = stood(s);
+  expect(b.judge(0.25).map((v) => v & VERDICT)).toEqual(slabs.map(() => STANDS));
+});

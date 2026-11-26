@@ -5,7 +5,7 @@ edit it by hand: change the catalogue and run the tool.
 
 A server is configured as ARK's is ([how](round5-settings.md), and [what the
 values mean](round5-game-ini.md)). Every setting an ARK dedicated server reads
-is listed here, 621 of them: 258 take effect,
+is listed here, 622 of them: 259 take effect,
 173 wait for a feature that is not built yet, and 190 have no meaning in this
 engine. A setting that does not take effect is still read, checked and
 reported when the server starts.
@@ -209,6 +209,7 @@ the admin's settings page may change a setting without a restart.
 | `CityToolSalvage` | True | Tools and blows cut the map's sheet, timber, tile, plaster and glass, and mine a heap for what its material gives. Off, a blow does nothing to a piece of the map or to a heap. *Ours.* | yes |
 | `CityProtectRadius` | 12 | Metres. A piece of the map within this of something a tribe built is spared as that tribe's own would be: from other tribes on a PvE server, and from its own tribe by the friendly-fire rules. A heap may still be mined. 0 spares none. *Ours. Measured from the piece's box to the middle of what was built.* | yes |
 | `CityCollapse` | True | A building of the map comes down when what carried it is broken: a second after the loss, the pieces left standing on nothing fall two storeys every quarter second, lowest first, slabs beside what still stands hang, and what lands on something standing is left as a heap. Stairs never fall. Off, pieces break and nothing falls: what was over them stays where it was. A map built without its buildings acts as off. *Ours. ARK's maps do not break.* | yes |
+| `CityCollapseStoreyShare` | 0.25 | A storey of a building of the map gives way, and all over it comes down, once less than this share is left of what the map stood on its floor to carry: its walls, piers, fins, panels and shop fronts, by their length along the ground. 0.25 is three quarters broken open. A stair does not hold a storey up. 0 asks no such thing, and then only what stands on nothing falls. *Ours.* | yes |
 | `CityCollapseMostAtOnce` | 8 | The most buildings of the map that come down at once. Past it a building that has lost what carried it waits as it stands, and falls when another has finished. *Ours.* | yes |
 | `CityCollapseDamage` | 1 | What a storey of the map coming down does to a body under it: 35 health for each quarter second it is under one, times this. 0 harms none. *Ours. Dealt as a fall is, so a module is asked of it as of a fall.* | yes |
 | `CityRegrowDays` | 7 | Days of the game's clock after a building of the map was last harmed before it returns whole, as the map placed it. It returns only while no survivor is within CityRegrowClearDistance, nothing a tribe built stands in it, no body is where a piece would return and it is not coming down. Broken pieces of no building return the same way. 0 brings nothing back. *Ours. A building is the unit, so a tower never returns half.* | yes |

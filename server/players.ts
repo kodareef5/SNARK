@@ -7,6 +7,7 @@ import type { BitReader } from "../shared/net/codec.ts";
 import { IMPALE_SLOT } from "../shared/sim/seats.ts";
 import {
   CMD_HAVE,
+  CMD_CHUNK_AGAIN,
   CMD_STATICS,
   CMD_VIEW,
   C_COMMAND,
@@ -83,7 +84,7 @@ export interface PlayersContext {
   /** Of the sessions: a session that sends nonsense, or whose command threw, is put out, and its device refused a while. */
   readonly sessions: { reject(c: Client, reason: number): void; fault(c: Client): void };
   /** Of replication: its answers to the two commands that are a session's own to ask in any state. */
-  readonly replication: { askView(c: Client, r: BitReader): number; takeStatics(c: Client): number; have(c: Client, r: BitReader): number };
+  readonly replication: { askView(c: Client, r: BitReader): number; takeStatics(c: Client): number; have(c: Client, r: BitReader): number; chunkAgain(c: Client, r: BitReader): number };
 }
 
 /** A camera a session looks through from away from its body: a drone it flies (server/air-flight.ts). */
@@ -419,7 +420,7 @@ export class Players {
       let code: number;
       try {
         // What a session is shown is its own to ask in any state, so that is answered here.
-        code = op === CMD_VIEW ? this.replication.askView(c, r) : op === CMD_STATICS ? this.replication.takeStatics(c) : op === CMD_HAVE ? this.replication.have(c, r) : !handler ? RESULT_INVALID : !this.allows.ask(c, op) ? RESULT_DENIED : handler(c, r, seq);
+        code = op === CMD_VIEW ? this.replication.askView(c, r) : op === CMD_STATICS ? this.replication.takeStatics(c) : op === CMD_HAVE ? this.replication.have(c, r) : op === CMD_CHUNK_AGAIN ? this.replication.chunkAgain(c, r) : !handler ? RESULT_INVALID : !this.allows.ask(c, op) ? RESULT_DENIED : handler(c, r, seq);
       } catch (err) {
         this.stats.faults++;
         this.sessions.fault(c);

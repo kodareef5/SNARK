@@ -61,19 +61,22 @@ export interface Stage {
   own?: { files: string[]; sections: string[]; folders?: string[] };
   /** It writes `<maps>/<city>.snmap`, which every cut shares, and stands done only while the stamp beside it is its own. */
   stamped?: boolean;
+  /** The fetch jobs whose downloads in raw/ it reads, which a kit leaves out (`jobOf` names a download's job). */
+  reads?: string[];
 }
 
 export const STAGES: Stage[] = [
   { name: "frame", run: py("frame.py", "--force"), code: [join(LEGACY, "frame.py")] },
   { name: "fetch", run: py("fetch.py", "tiger", "dem", "nlcd", "fema", "bathymetry", "osm"), code: [join(LEGACY, "fetch.py"), join(LEGACY, "osm_local.py"), ...["buildings", "features", "osm", "streets", "ways"].map((q) => join(LEGACY, `${q}.overpassql`))] },
-  { name: "prepare", run: py("prepare.py"), code: [join(LEGACY, "prepare.py"), join(LEGACY, "streets.py")] },
-  { name: "attributes", run: (work) => ["bun", join(ROOT, "tools/mapworld/fetch-attributes.ts"), work], code: [join(ROOT, "tools/mapworld/fetch-attributes.ts")] },
-  { name: "split", run: py("split.py"), code: [join(LEGACY, "split.py")] },
+  { name: "prepare", run: py("prepare.py"), code: [join(LEGACY, "prepare.py"), join(LEGACY, "streets.py")], reads: ["tiger", "dem", "nlcd", "fema", "osm"] },
+  { name: "attributes", run: (work) => ["bun", join(ROOT, "tools/mapworld/fetch-attributes.ts"), work], code: [join(ROOT, "tools/mapworld/fetch-attributes.ts")], reads: ["fema"] },
+  { name: "split", run: py("split.py"), code: [join(LEGACY, "split.py")], reads: ["osm"] },
   { name: "future", run: py("future.py"), code: [join(LEGACY, "future.py"), join(LEGACY, "tunnels.py")] },
   { name: "fine", run: py("fine.py"), code: [join(LEGACY, "fine.py"), join(LEGACY, "tunnels.py")] },
-  { name: "bathymetry", run: py("bathy.py"), code: [join(LEGACY, "bathy.py")] },
-  { name: "labels", run: py("labels.py"), code: [join(LEGACY, "labels.py")], own: { files: ["heights.json"], sections: [] } },
-  { name: "ways", run: py("ways.py"), code: [join(LEGACY, "ways.py")] },
+  { name: "bathymetry", run: py("bathy.py"), code: [join(LEGACY, "bathy.py")], reads: ["bathymetry"] },
+  { name: "labels", run: py("labels.py"), code: [join(LEGACY, "labels.py")], own: { files: ["heights.json"], sections: [] }, reads: ["osm"] },
+  { name: "ways", run: py("ways.py"), code: [join(LEGACY, "ways.py")], reads: ["osm"] },
+  // The world stage reads raw/osm/all.json too, which a kit keeps.
   { name: "world", run: py("world.py", "--accept"), code: [join(LEGACY, "world.py")], own: { files: ["world.json"], sections: ["world"] } },
   { name: "vocabulary", run: py("vocabulary.py"), code: [join(LEGACY, "vocabulary.py"), join(HERE, "rules/tables.json"), join(ROOT, "tools/mapworld/rules/default.json")],
     own: { files: ["rules.json", "places.json", "compositions.json", "districts.json"], sections: ["ruins"] } },
@@ -88,11 +91,21 @@ const sha = (...parts: (string | Uint8Array)[]): string => {
   return h.digest("hex");
 };
 
+// These five fetch keys differ only in how a failed transfer is retried (Maps v3 at 4e5df30ab).
+const completedFetches = new Map([
+  ["352e77885c67dfdffedac86a0ed3fa9e19fb30e1cb55de1ce16d42deb0648a1a", "2945fa2252ce544e5a6c343b9bac27ca6a22ba8ae454a26f6f5a165dd26617f1"],
+  ["38cbe5538f2a48844015f14f42bc7fa5a967f01621632a1a05dc5c780ab54a69", "40a4078987d3410584cb016ac3b605e96f8f0f03dc722400028e795586fa652d"],
+  ["d39ca17d0c983724f129f19aa41e3dcd020fd40d01931b553101a78c889d1a76", "295edfd12b81eb6dc6fec250bebb445855c9d673a99b39f1e4b36f46df0eacf0"],
+  ["9232eba2fa0ccd0755c1a83b3263dd88966c7bf140a320c322e752d5092beebc", "09e28c2911736dbd25a417826d1b16d6cb9e52afaddc2283dc16333713dccfc4"],
+  ["38bb547c258469c3c2042e719321b6f8d2addc78c62c0075b9f8d046116dea46", "186ebe317f8d7809a1f381ae6cc791740da6152cdd8beb0c9fe828db9e00b01a"],
+]);
+
 function stageKey(stage: Stage, chain: string, own: (string | Uint8Array)[], held?: string): string {
   const files = stage.code.some((f) => f.endsWith(".py")) ? [...stage.code, COMMON] : stage.code;
   const code = files.map((f) => readFileSync(f));
   const key = sha(chain, stage.name, ...code, ...own);
   if (!held || key === held || stage.name !== "fetch") return key;
+  if (completedFetches.get(key) === held) return held;
   // Four published v3 kits fetched the same OSM bytes before curl retried broken transfers.
   const osm = files.findIndex((f) => f.endsWith("/osm_local.py"));
   if (osm < 0) return key;
@@ -198,6 +211,29 @@ function stampHolds(maps: string, city: string, cut: string, key: string): boole
   }
 }
 
+/** The fetch job a download in downloads.json is of, by the name fetch.py keeps it under. */
+export function jobOf(name: string, settings: Json): string {
+  if (name.startsWith("tl_")) return "tiger";
+  if (name === ((settings.nlcd ?? {}) as Json).file) return "nlcd";
+  return name.includes("/") ? name.split("/")[0]! : name;
+}
+
+interface Download { bytes?: number; sha256?: string; md5?: string }
+
+/**
+ * The jobs whose downloads differ between two downloads.json records: one fetched, gone or of other bytes. A record
+ * without a SHA-256 (an extract recorded before they had one) is held to its MD5.
+ */
+export function changedJobs(before: Record<string, Download>, after: Record<string, Download>, settings: Json): string[] {
+  const same = (a: Download | undefined, b: Download | undefined): boolean => {
+    if (!a || !b || a.bytes !== b.bytes) return false;
+    if (a.sha256 && b.sha256) return a.sha256 === b.sha256;
+    return Boolean(a.md5 && b.md5 && a.md5 === b.md5);
+  };
+  const names = new Set([...Object.keys(before), ...Object.keys(after)]);
+  return [...new Set([...names].filter((n) => !same(before[n], after[n])).map((n) => jobOf(n, settings)))].sort();
+}
+
 /** One run of a city's stages: the CLI's whole work, its folders and stage table open to a test. */
 export function runCity(name: string, o: CityRun = {}): { cut: string; work: string; ran: string[]; current: boolean } {
   const stages = o.stages ?? STAGES;
@@ -278,6 +314,11 @@ function stagesOf(name: string, p: Prepared): { cut: string; work: string; ran: 
   for (const f of overlay(join(work, "streets"))) if (!existsSync(join(source, "streets", f))) unlinkSync(join(work, "streets", f));
   for (const f of overlay(join(source, "streets"))) write(join("streets", f), readFileSync(join(source, "streets", f), "utf8"));
 
+  const save = (path: string, value: object): void => {
+    const part = `${path}.part`;
+    writeFileSync(part, `${JSON.stringify(value, null, 2)}\n`);
+    renameSync(part, path);
+  };
   const keysPath = join(work, "stages.json");
   const keys = (existsSync(keysPath) ? readJson(keysPath) : {}) as Record<string, string>;
   const ownSections = new Set(stages.flatMap((s) => s.own?.sections ?? []));
@@ -290,14 +331,17 @@ function stagesOf(name: string, p: Prepared): { cut: string; work: string; ran: 
   const now: Record<string, string> = {};
   // A stage stands done when its key is today's; the map's stage also needs the stamp beside the map to be its own.
   const done = (s: Stage): boolean => keys[s.name] === now[s.name] && (!s.stamped || stampHolds(maps, name, cut, now[s.name]!));
-  for (const [i, stage] of stages.entries()) {
+  for (const stage of stages) {
     const own = stage.own ? [JSON.stringify(stage.own.sections.map((s) => settings[s] ?? null)),
       ...stage.own.files.map((f) => (existsSync(join(source, f)) ? readFileSync(join(source, f)) : `no ${f}`)),
       ...(stage.own.folders ?? []).flatMap((d) => overlay(join(source, d)).flatMap((f) => [`${d}/${f}`, readFileSync(join(source, d, f))]))] : [];
-    const key = stageKey(stage, chain, own, keys[stage.name]);
-    chain = key;
-    now[stage.name] = key;
-    if (i < from || i > to) continue;
+    chain = stageKey(stage, chain, own, keys[stage.name]);
+    now[stage.name] = chain;
+  }
+  const records = (path: string): Record<string, Download> => (existsSync(path) ? readJson(path) : {}) as Record<string, Download>;
+  for (let i = from; i <= to; i++) {
+    const stage = stages[i]!;
+    const key = now[stage.name]!;
     if (done(stage) && !only) {
       console.log(`== ${stage.name}: unchanged`);
       continue;
@@ -305,18 +349,39 @@ function stagesOf(name: string, p: Prepared): { cut: string; work: string; ran: 
     if (keys[stage.name] === key && stage.stamped) console.log(`== ${stage.name}: ${name}.snmap is another cut's or build's`);
     // A kit's work folder (tools/maps/kit.ts) has no downloads: a stage that reads them runs after fetch makes them.
     const kitted = join(work, "raw/KIT");
-    if (existsSync(kitted) && names.includes("prepare") && i >= names.indexOf("prepare") && i <= names.indexOf("ways")) {
+    if (existsSync(kitted) && stage.reads?.length && names.includes("fetch")) {
       console.log(`== ${stage.name} reads the downloads a kit leaves out: fetching them first`);
-      const fetched = Bun.spawnSync(stages[names.indexOf("fetch")]!.run(work, name), { cwd, stdout: "inherit", stderr: "inherit" });
+      // The kit's records as it came, kept until a fetch ends whole: one cut short has rewritten some of them.
+      const kept = join(work, "raw/downloads.kit.json");
+      if (!existsSync(kept)) save(kept, records(join(work, "downloads.json")));
+      const fetched = Bun.spawnSync(stages[names.indexOf("fetch")]!.run(work, name), { cwd, env: process.env, stdout: "inherit", stderr: "inherit" });
       if (fetched.exitCode !== 0) throw new Error(`${name}: fetch failed with ${fetched.exitCode}`);
+      // A source served anew under the same request (a newer extract) must not meet layers made from the old one.
+      const changed = changedJobs(records(kept), records(join(work, "downloads.json")), settings);
+      const first = stages.findIndex((s) => s.reads?.some((j) => changed.includes(j)));
+      if (first >= 0) {
+        for (const later of stages.slice(first)) delete keys[later.name];
+        save(keysPath, keys);
+      }
       unlinkSync(kitted);
+      unlinkSync(kept);
+      if (first >= 0 && first < i) {
+        const why = `${changed.join(", ")} fetched again differs from what the kit's layers were made from (downloads.json)`;
+        if (first < from || only) throw new Error(`${name}: ${why}; run bun tools/maps/city.ts ${name} --from ${names[first]}`);
+        console.log(`== ${why}: from ${names[first]} again`);
+        i = first - 1;
+        continue;
+      }
     }
+    // The city's map, which every cut shares, is never made over a stage left out of date by --only or --from.
+    const stale = stage.stamped ? stages.slice(0, i).filter((s) => keys[s.name] !== now[s.name]).map((s) => s.name) : [];
+    if (stale.length > 0) throw new Error(`${name}: ${stale.join(", ")} out of date for this ${stage.name}, which would stamp ${name}.snmap as current; run bun tools/maps/city.ts ${name} --from ${stale[0]}, or build apart with bun tools/mapworld/build.ts ${work} --out <folder>`);
     const t0 = performance.now();
     console.log(`== ${stage.name}`);
     // This stage and every one after it are out of date from now until each runs again: a run that dies half way must
     // not leave a key standing over half-written layers.
     for (const later of stages.slice(i)) delete keys[later.name];
-    writeFileSync(keysPath, `${JSON.stringify(keys, null, 2)}\n`);
+    save(keysPath, keys);
     const env = stage.stamped ? { ...process.env, SNARK_MAP_STAMP: JSON.stringify({ cut, key }) } : process.env;
     const run = Bun.spawnSync(stage.run(work, name), { cwd, env, stdout: "inherit", stderr: "inherit" });
     ran.push(stage.name);
@@ -324,7 +389,7 @@ function stagesOf(name: string, p: Prepared): { cut: string; work: string; ran: 
     if (stage.name === "fetch") rmSync(kitted, { force: true });
     if (stage.stamped && !stampHolds(maps, name, cut, key)) throw new Error(`${name}: ${stage.name} left no stamp for cut ${cut} beside ${join(maps, `${name}.snmap`)}`);
     keys[stage.name] = key;
-    writeFileSync(keysPath, `${JSON.stringify(keys, null, 2)}\n`);
+    save(keysPath, keys);
     console.log(`== ${stage.name} done in ${((performance.now() - t0) / 1000).toFixed(1)} s`);
   }
   // current: the cut built last, once every stage of it stands done with today's inputs and code (a run --to fetch, or

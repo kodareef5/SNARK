@@ -398,6 +398,53 @@ pieces: [{ id: "core:pick", object: "pick", hold: "prop_r", dropped: "auto", ico
 Its materials, levels and budgets are any piece's. Seen closer than anything
 else in first person, a held piece is worth its finest level.
 
+### Reviewing a resource drop
+
+- **Start with the object.** Name a real reference and pick the few features
+  that give it away. Check the flat-colour silhouette from above and at a
+  low angle, then as a single stack on the ground and as the built inventory
+  icon at its actual size. Put look-alikes beside each other. Limestone breaks
+  in lumps, ore in layers and flint in sharp flakes. A pelt needs a shoulder,
+  a fur fringe and enough side profile to read on the ground. Hide needs leg
+  tabs that lie with the skin. Organic polymer needs torn, irregular layers
+  that distinguish it from stock cut to size.
+- **Spend triangles where a player can see the shape.** Give a cast ingot a
+  taper, a clean rim, a shallow well and side marks that follow the mould.
+  Leave enough profile for the oiler's spout and lever, and let the putty tin's
+  rim and knife explain its contents. Fit a label or patch to its surface and
+  check its corners at grazing angles for clipping. Check every level for
+  contact with the ground, outward faces and a recognisable outline. Keep
+  triangle counts decreasing and errors increasing. Match the far palette to
+  the material and inspect both sides of the transition at its drawn size.
+- **Lay UVs in metres.** Use the shared resource loft unwrap. Accumulate ring
+  height along the surface and use the same scale around it and on caps. Look
+  for stripes between rings, stretched side faces, tiny pieces with finer grain
+  than their neighbours, mirrored letters and visible seams. The packed test
+  floors each textured level at 500 texels per metre. Use the checker to find
+  local stretch that can hide in that average. Repeat a small swatch where the
+  surface can carry it and use a continuous side chart where repetition would
+  reveal itself. Give bark, end grain, straw, canvas and fur enough pixels to
+  retain their defining detail. Check a full mip step and any atlas borders for
+  bleeding before trading separate material sections for an atlas.
+- **Give relief and reflections their own review.** Paint or derive height
+  from the actual surface structure. Albedo flecks, tint and rust veins can
+  stay flat. Paint and enamel use dielectric metalness. Check glossy surfaces
+  under more than one lighting or camera angle in the game. Keep large cast
+  marks distinct from fine roughness, and tame periodic relief when it makes
+  a glassy fracture look like corrugated metal. Share maps where the finishes
+  match. Compare the result in place before carrying a tool face over to a
+  boulder.
+- **Compare what ships.** Install the pinned art and run the art check. Read
+  the packed triangle, UV and material figures and inspect the flat, textured,
+  wireframe and checker views. Compare against the previous review at matching
+  size and angle, including pieces that already looked good and share the
+  changed code or textures. Check that the built client streams the intended
+  drop and icon.
+  Record texture bytes, shared dependencies and material sections when a fix
+  changes cost. Count actual draw calls in a representative scene if draw cost
+  drives the work. Keep the review sheets and game captures that show the
+  lighting or ground read, with their angles and graphics tier.
+
 ## Trees, rocks and bushes
 
 A node kind is a row in `content/core.ts`: what is harvested from it and what it

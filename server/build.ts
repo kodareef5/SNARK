@@ -8,7 +8,7 @@ import { OWN_STRUCTURES, MAX_NAME_BYTES, TEXT_NOTICE, PLACED_COUNTS, PLACED_METR
 import { stanceEye, stanceHeight } from "../shared/sim/character.ts";
 import { HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayHit } from "../shared/world/ray.ts";
 import { F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
-import { SKIN, capsuleFree, capsuleKind, groundUnder } from "../shared/world/collide.ts";
+import { SKIN, capsuleFree, capsuleKind, groundUnder, push } from "../shared/world/collide.ts";
 import { PLACE_JOIN, PLACE_NEW, PLACE_PLAN, PLACE_REST, makePlaceRequest, readPlace, type PlaceRequest } from "../shared/net/place.ts";
 import { PLACED_MOST, makePlaced, writePlaced } from "../shared/net/placed.ts";
 import { makeVerdict, runKey, startBase, validate, validateFree, validatePlan, type Site, type Verdict } from "../shared/world/lattice/place.ts";
@@ -21,6 +21,7 @@ import { Support } from "../shared/world/support.ts";
 import { ACT_REACH, NO_PIN, PIN_TRIES, PIN_WAIT_TICKS, STRUCT_DEMOLISH, STRUCT_LIGHT, STRUCT_LOCK, STRUCT_NAME, STRUCT_PICKUP, STRUCT_PIN, STRUCT_REPAIR, STRUCT_TRAVEL, STRUCT_TEK_DOOR, STRUCT_TEK_SOLID, STRUCT_UNLOCK, STRUCT_USE, cost, refundOf, repairCostOf } from "../shared/world/upkeep.ts";
 import { TekPhaseWalls } from "./tek-phase-walls.ts";
 import { TekDoors } from "./tek-doors.ts";
+import { holds } from "./door-sensor.ts";
 import type { Fixtures } from "./fixtures.ts";
 import { TICK_RATE } from "../shared/coords.ts";
 import { Decay } from "./decay.ts";
@@ -171,7 +172,7 @@ export class Build {
     this.support = new Support(structs, world.reg, heightAt);
     this.collapse = new Collapse(structs, world.reg, heightAt);
     this.decay = new Decay(world, ctx.rules);
-    this.tekDoors = new TekDoors(ctx, (e, ref, x, y, z) => this.inSight(e, ref, x, y, z, true), (ref, sweep) => this.inSwing(ref, sweep), (ref, to, byPid, sweep) => {
+    this.tekDoors = new TekDoors(ctx, (e, ref, x, y, z) => this.inSight(e, ref, x, y, z, true), (ref, sweep) => this.heldBy(ref, 0, sweep, 0), (ref, to, byPid, sweep) => {
       if (ctx.bus.before(STRUCTURE_ACT, { byPid, ref, action: "use" }) !== "" || !this.swing(ref, to, sweep)) return false;
       this.used++;
       return true;
@@ -181,7 +182,10 @@ export class Build {
       const x = row.x[i]!, y = row.y[i]!, z = row.z[i]!, yaw = row.yaw[i]!, tw = row.twAt(i);
       return entity === undefined ? this.bodyIn(kind, x, y, z, yaw, tw, world.reg.parts, 0) >= 0
         : this.bodyMeets(entity, kind, x, y, z, yaw, tw, world.reg.parts, 0);
-    }, (ref, kind) => this.changeKind(ref, kind), (ref, byPid) => ctx.bus.before(STRUCTURE_ACT, { byPid, ref, action: "use" }) !== "");
+    }, (ref, kind) => this.changeKind(ref, kind), (ref, byPid) => ctx.bus.before(STRUCTURE_ACT, { byPid, ref, action: "use" }) !== "", (ref, kind, entity) => {
+      const row = structs.chunks[ref >>> 16]!, i = ref & 65535;
+      return this.shove(entity, kind, row.x[i]!, row.y[i]!, row.z[i]!, row.yaw[i]!, row.twAt(i), world.reg.parts, 0, structs.spread[kind]!);
+    });
     this.site = {
       structs,
       tables: world.reg,
@@ -457,17 +461,82 @@ export class Build {
     return RESULT_OK;
   }
 
-  private inSwing(ref: number, parts: PartTable): boolean {
-    const t = this.ctx.world.structs.chunks[ref >>> 16]!, slot = ref & 65535;
-    return this.bodyIn(0, t.x[slot]!, t.y[slot]!, t.z[slot]!, t.yaw[slot]!, t.twAt(slot), parts, 0) >= 0;
+  /** Whether a body of the piece's own tribe, or any vehicle, stands where `kind` of `parts` would be at `ref`'s pose: what holds a door open. */
+  private heldBy(ref: number, kind: number, parts: PartTable, slack: number): boolean {
+    const { ents, reg, structs, dims } = this.ctx.world;
+    const t = structs.chunks[ref >>> 16]!, slot = ref & 65535, owner = t.owner[slot]!;
+    const x = t.x[slot]!, y = t.y[slot]!, z = t.z[slot]!, yaw = t.yaw[slot]!, tw = t.twAt(slot);
+    const cx = Math.floor(x / 64), cz = Math.floor(z / 64);
+    for (let oz = -1; oz <= 1; oz++) for (let ox = -1; ox <= 1; ox++) {
+      if (cx + ox < 0 || cz + oz < 0 || cx + ox >= dims.chunksX || cz + oz >= dims.chunksZ) continue;
+      for (let i = ents.chunkHead[(cz + oz) * dims.chunksX + cx + ox]!; i >= 0; i = ents.next[i]!) {
+        if ((ents.flags[i]! & (F_ALIVE | F_PROP)) !== F_ALIVE || !(reg.vehicle[ents.kind[i]!] || holds(ents.team[i]!, owner))) continue;
+        if (this.bodyMeets(i, kind, x, y, z, yaw, tw, parts, slack)) return true;
+      }
+    }
+    return false;
   }
 
-  /** A swing keeps the row, lock and PIN and tells the normal structure and save paths. */
+  /**
+   * Moves body `i` out of the place `kind` of `parts` would have at this pose: by the shortest way out of it, then the other
+   * ways, each clear all along. False where it stands there still: a vehicle, a rider, or a body with no clear place within `reach`.
+   */
+  private shove(i: number, kind: number, x: number, y: number, z: number, yaw: number, tw: number, parts: PartTable, slack: number, reach: number): boolean {
+    const world = this.ctx.world, { ents, reg } = world, k = ents.kind[i]!;
+    const move = reg.move[k], r = reg.bodyRadius[k]!, h = move ? stanceHeight(move, ents.stance[i]!) : reg.bodyHeight[k]!;
+    const bx = ents.x[i]!, by = ents.y[i]!, bz = ents.z[i]!;
+    if (!capsuleKind(parts, kind, x, y, z, yaw, tw, bx, by, bz, r, h, slack)) return true;
+    if (reg.vehicle[k] || ents.seat[i] !== 0) return false;
+    let ux = push.x, uz = push.z, off = Math.hypot(ux, uz);
+    if (off < 1e-3) [ux, uz, off] = [bx - x, bz - z, Math.hypot(bx - x, bz - z)];
+    ux = off > 1e-3 ? ux / off : 1;
+    uz = off > 1e-3 ? uz / off : 0;
+    const step = r * 0.5, most = Math.ceil((2 * (reach + r)) / step);
+    for (let turn = 0; turn < 4; turn++) {
+      const dx = turn === 0 ? ux : turn === 1 ? -ux : turn === 2 ? -uz : uz;
+      const dz = turn === 0 ? uz : turn === 1 ? -uz : turn === 2 ? ux : -ux;
+      for (let n = 1; n <= most; n++) {
+        const px = bx + dx * step * n, pz = bz + dz * step * n;
+        const py = Math.max(groundUnder(world.hf, px, pz, r), by);
+        if (!capsuleFree(world, px, py, pz, r, h)) break;
+        if (capsuleKind(parts, kind, x, y, z, yaw, tw, px, py, pz, r, h, slack)) continue;
+        ents.setPosition(i, px, py, pz);
+        ents.vx[i] = ents.vy[i] = ents.vz[i] = 0;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** Moves aside every body in the way of `kind` of `parts` at `ref`'s pose that is not of the piece's own tribe. A piece nobody owns moves none. */
+  private shoveStrangers(ref: number, kind: number, parts: PartTable, slack: number, reach: number): void {
+    const { ents, reg, structs, dims } = this.ctx.world;
+    const t = structs.chunks[ref >>> 16]!, slot = ref & 65535, owner = t.owner[slot]!;
+    if (owner === 0) return;
+    const x = t.x[slot]!, y = t.y[slot]!, z = t.z[slot]!, yaw = t.yaw[slot]!, tw = t.twAt(slot);
+    // Found first and moved after, because a move may take a body from one chunk's list to another's.
+    const found = this.inWay;
+    found.length = 0;
+    const cx = Math.floor(x / 64), cz = Math.floor(z / 64);
+    for (let oz = -1; oz <= 1; oz++) for (let ox = -1; ox <= 1; ox++) {
+      if (cx + ox < 0 || cz + oz < 0 || cx + ox >= dims.chunksX || cz + oz >= dims.chunksZ) continue;
+      for (let i = ents.chunkHead[(cz + oz) * dims.chunksX + cx + ox]!; i >= 0; i = ents.next[i]!) {
+        if ((ents.flags[i]! & (F_ALIVE | F_PROP)) !== F_ALIVE || !this.bodyMeets(i, kind, x, y, z, yaw, tw, parts, slack)) continue;
+        if (holds(ents.team[i]!, owner) || reg.vehicle[ents.kind[i]!] || ents.seat[i] !== 0) return;
+        found.push(i);
+      }
+    }
+    for (const i of found) this.shove(i, kind, x, y, z, yaw, tw, parts, slack, reach);
+  }
+
+  /** A swing keeps the row, lock and PIN and tells the normal structure and save paths. A stranger in its way is moved aside; its own tribe's body stops it. */
   private swing(ref: number, to: number, sweep?: PartTable): boolean {
     const { world } = this.ctx;
     const t = world.structs.chunks[ref >>> 16], slot = ref & 65535;
     if (!t || world.reg.opens[t.kind[slot]!] !== to) return false;
-    if (sweep ? this.inSwing(ref, sweep) : this.bodyIn(to, t.x[slot]!, t.y[slot]!, t.z[slot]!, t.yaw[slot]!, t.twAt(slot)) >= 0) return false;
+    const kind = sweep ? 0 : to, parts = sweep ?? world.reg.parts, slack = sweep ? 0 : BODY_SLACK;
+    this.shoveStrangers(ref, kind, parts, slack, Math.max(world.structs.spread[t.kind[slot]!]!, world.structs.spread[to]!));
+    if (this.bodyIn(kind, t.x[slot]!, t.y[slot]!, t.z[slot]!, t.yaw[slot]!, t.twAt(slot), parts, slack) >= 0) return false;
     return this.changeKind(ref, to);
   }
 

@@ -6,7 +6,7 @@ import { F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
 import { vehicleSolidRadius } from "../shared/world/vehicle-shapes.ts";
 import { Found } from "../shared/world/structures.ts";
 import type { BuildContext } from "./build.ts";
-import { DOOR_REACH, DoorSensor } from "./door-sensor.ts";
+import { DOOR_REACH, DoorSensor, holds } from "./door-sensor.ts";
 
 const EVERY = Math.max(1, Math.round(TICK_RATE / 6)), HOLD = 2 * TICK_RATE;
 const CELL = 4, SIDE = 3;
@@ -27,6 +27,8 @@ export class TekPhaseWalls {
   private readonly blocked: (ref: number, kind: number, entity?: number) => boolean;
   private readonly swap: (ref: number, kind: number) => void;
   private readonly veto: (ref: number, pid: number) => boolean;
+  private readonly shove: (ref: number, kind: number, entity: number) => boolean;
+  private readonly inField: number[] = [];
   private readonly active = new Set<Aperture>();
   private readonly byRef = new Map<number, Aperture>();
   private readonly changed = new Set<number>();
@@ -38,8 +40,9 @@ export class TekPhaseWalls {
   private reach = 0;
 
   constructor(ctx: BuildContext, sight: TekPhaseWalls["sight"], blocked: TekPhaseWalls["blocked"],
-    swap: TekPhaseWalls["swap"], veto: TekPhaseWalls["veto"]) {
+    swap: TekPhaseWalls["swap"], veto: TekPhaseWalls["veto"], shove: TekPhaseWalls["shove"]) {
     this.ctx = ctx;
+    this.shove = shove;
     this.sight = sight;
     this.blocked = blocked;
     this.swap = swap;
@@ -160,21 +163,46 @@ export class TekPhaseWalls {
     return { refs, chunks, closeAt: tick + HOLD, visited: -1, mixed: false };
   }
 
-  /** Each nearby body queries the cells it could cover, even when a gate spans hundreds of panels. */
+  /** Its own tribe's body or any vehicle in the opening holds it. A stranger on foot does not. */
   private occupied(field: Aperture): boolean {
-    const { ents, structs, reg } = this.ctx.world;
+    return this.meeting(field, false) > 0;
+  }
+
+  /** Moves strangers out of the opening. True when nobody stands in it after, so that it may reform. */
+  private clear(field: Aperture): boolean {
+    const found = this.inField;
+    this.meeting(field, true);
+    for (let i = 0; i < found.length; i += 2) this.shove(found[i + 1]!, this.kinds.door, found[i]!);
+    return found.length === 0 || this.meeting(field, true) === 0;
+  }
+
+  /**
+   * How many bodies stand in the opening that hold it, its own tribe's and vehicles, or with `all` how many of any kind,
+   * each listed in `inField` with the cell it stands in. Each nearby body queries the cells it could cover, even when a
+   * gate spans hundreds of panels.
+   */
+  private meeting(field: Aperture, all: boolean): number {
+    const { ents, structs, reg } = this.ctx.world, found = this.inField;
+    const first = field.refs[0]!, owner = structs.chunks[first >>> 16]?.owner[first & 65535] ?? 0;
+    found.length = 0;
+    let count = 0;
     for (const chunk of field.chunks) for (let e = ents.chunkHead[chunk]!; e >= 0; e = ents.next[e]!) {
       if ((ents.flags[e]! & (F_ALIVE | F_PROP)) !== F_ALIVE) continue;
       const kind = ents.kind[e]!, vehicle = reg.vehicle[kind];
+      if (!all && !vehicle && !holds(ents.team[e]!, owner)) continue;
       const r = vehicle ? vehicleSolidRadius(vehicle) : reg.bodyRadius[kind]!;
       const x = ents.x[e]!, y = ents.y[e]!, z = ents.z[e]!;
       const n = structs.query(x - r, z - r, x + r, z + r, this.found, vehicle ? y - r : y, y + (vehicle ? r : reg.bodyHeight[kind]!));
       for (let i = 0; i < n; i++) {
         const ref = this.found.refs[i]!;
-        if (this.byRef.get(ref) === field && this.blocked(ref, this.kinds.door, e)) return true;
+        if (this.byRef.get(ref) !== field || !this.blocked(ref, this.kinds.door, e)) continue;
+        if (!all) return 1;
+        found.push(e, ref);
+        count++;
+        break;
       }
     }
-    return false;
+    return count;
   }
 
   private remember(field: Aperture): void {
@@ -201,6 +229,7 @@ export class TekPhaseWalls {
       const from = this.kind(ref);
       if (!isTekWall(this.kinds, from, true) || (from !== to && this.veto(ref, pid))) return false;
     }
+    if (to === this.kinds.door && !this.clear(field)) return false;
     this.moving = true;
     structs.hold();
     try {
