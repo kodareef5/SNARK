@@ -45,7 +45,8 @@ test("written a texture at a time, the texture files and the manifest are those 
   const dir = mkdtempSync(join(tmpdir(), "snark-written-"));
   try {
     const capped = { id: "test:small_base", top: 64, role: "base" as const, mips: () => pattern(64, 1) };
-    const all = [capped, ...sources()];
+    const secondMask = { id: "test:small_mask2", top: 64, role: "mask2" as const, mips: () => pattern(64, 0) };
+    const all = [capped, secondMask, ...sources()];
     const whole = splitPack(tubePack(), "tube");
     for (const s of [capped, all.find((s) => s.id === "test:large_base")!]) {
       const base = whole.manifest.textures!.length;
@@ -72,7 +73,11 @@ test("written a texture at a time, the texture files and the manifest are those 
     const small = manifest.textures![manifest.materials!.find((m) => m.id === capped.id + "_mat")!.base]!;
     const large = manifest.textures![manifest.materials!.find((m) => m.id === "test:large_base_mat")!.base]!;
     expect([small.id, small.top, large.id, large.top]).toEqual([capped.id, 64, "test:large_base", 128]);
+    const mask = manifest.textures!.find((t) => t.id === "test:large_mask")!;
+    const mask2 = manifest.textures!.find((t) => t.id === secondMask.id)!;
+    expect([mask.role, mask2.role]).toEqual(["mask", "mask2"]);
     for (const format of TEXTURE_FORMATS) {
+      expect(textureParts(mask2, format, 0)).toEqual(textureParts(mask, format, 1).slice(0, 1));
       const first = textureParts(small, format, 0);
       const chain = textureParts(large, format, 1);
       expect(first).toEqual(chain.slice(0, 1));

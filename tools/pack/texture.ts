@@ -78,7 +78,8 @@ export class TexturePrefixes {
   private readonly owners = new Map<string, PlacedTexture>();
 
   owner(role: TextureRole, placed: PlacedTexture): PlacedTexture | undefined {
-    const start = role + "/" + (placed.block ?? 4) + "/";
+    // Both dye masks store the same channels and use the same filters.
+    const start = (role === "mask2" ? "mask" : role) + "/" + (placed.block ?? 4) + "/";
     const owner = this.owners.get(start + placed.hash.join(""));
     if (owner) return owner;
     let key = start;
