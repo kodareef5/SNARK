@@ -368,10 +368,6 @@ export class CastHost {
           for (let k = 0; k < inv.hotbar; k++) if (inv.item[k] === item) return void items.move(rec, k, rec, to, n);
         };
         const slotOf = (item: number) => (reg.wearSlot[item]! >= 0 && inv.armor >= 0 ? inv.armor + reg.wearSlot[item]! : reg.garmentSlot[item]! >= 0 && inv.wardrobe >= 0 ? inv.wardrobe + reg.garmentSlot[item]! : -1);
-        for (const w of body?.wear ?? look?.wear ?? []) {
-          const item = reg.index.get(w), slot = item === undefined ? -1 : slotOf(item);
-          if (item !== undefined && slot >= 0 && inv.item[slot] === 0) put(item, 1, slot);
-        }
         // Garments go through the items' own restyle, which takes only an edition the store holds of that garment.
         for (const [k, w] of (body?.wardrobe ?? []).entries()) {
           const item = w ? reg.index.get(w[0]) : undefined;
@@ -382,6 +378,11 @@ export class CastHost {
             put(item, 1, s);
           }
           if (inv.item[s] === item && (w[1] !== 0 || w[2] !== 0)) void (items.restyle(rec, s, w[1], w[2]) || items.restyle(rec, s, w[1], 0) || items.restyle(rec, s, 0, w[2]));
+        }
+        // What the role wears fills the slots its wardrobe left.
+        for (const w of body?.wear ?? look?.wear ?? []) {
+          const item = reg.index.get(w), slot = item === undefined ? -1 : slotOf(item);
+          if (item !== undefined && slot >= 0 && inv.item[slot] === 0) put(item, 1, slot);
         }
         if (body && !body.kept) {
           const worn: (Worn | null)[] = [];

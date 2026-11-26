@@ -16,6 +16,7 @@ import { parsePack } from "../../shared/pack/pack.ts";
 import { fetchBytes, fetchContent, fetchJson, fetchText, withLandmarks } from "../core/fetched.ts";
 import { RemoteSample } from "../core/session.ts";
 import { tierOf } from "../core/assets/tiers.ts";
+import { printHost } from "../shell/picture-array.ts";
 import { Playback } from "../core/studio/clock.ts";
 import { Orbit, pinchZoom } from "../core/studio/orbit.ts";
 import { framingOf, PersonStage } from "../core/studio/person.ts";
@@ -72,6 +73,10 @@ async function start(): Promise<void> {
   const stage = new PersonStage(reg);
   chars.skinHidden = (id) => (id === BODY ? stage.hide : 0);
   chars.wardrobe = (id, out) => id === BODY && stage.wornInto(out);
+  // Prints go the game's way: an edition's print from the scene, its picture fetched by its path, here a copy the stage holds.
+  scene.editionPrint = (edition) => stage.printOf(edition);
+  const held = new Map<string, string>(), host = printHost();
+  scene.prints.host = { image: (path, width, height) => host.image(held.get(path) ?? path, width, height), drop: (path) => host.drop?.(held.get(path) ?? path) };
   const survivor = reg.index.get("core:survivor")!;
   const x = hf.sizeX / 2, z = hf.sizeZ / 2, ground = hf.heightAt(x, z);
   const actors = new RemoteSample();
@@ -97,22 +102,21 @@ async function start(): Promise<void> {
     orbit.clamp();
   };
 
-  // Each print's picture, decoded, by key; let go once the stage no longer holds its key.
-  const pictures = new Map<string, ImageBitmap>();
+  // Each print's picture as a copy of the stage's own, by the path the renderer asks for; let go once no longer held.
   const loadPrint = async (c: Extract<StageCommand, { kind: "print" }>): Promise<void> => {
     const blob = c.png ? new Blob([c.png.slice().buffer], { type: "image/png" }) : await (await fetch(c.url!)).blob();
     const bitmap = await createImageBitmap(blob);
-    const held = stage.prints.find((p) => p.key === c.key);
-    if (!held) return bitmap.close();
-    pictures.get(c.key)?.close();
-    pictures.set(c.key, bitmap);
-    held.width = bitmap.width;
-    held.height = bitmap.height;
+    const path = stage.pathOf(c.key);
+    if (!path) return bitmap.close();
+    held.set(path, URL.createObjectURL(blob));
+    stage.sized(c.key, bitmap.width, bitmap.height);
+    bitmap.close();
   };
   const forget = (): void => {
-    for (const key of [...pictures.keys()]) if (!stage.prints.some((p) => p.key === key)) {
-      pictures.get(key)!.close();
-      pictures.delete(key);
+    const kept = new Set(stage.prints.map((p) => stage.pathOf(p.key)));
+    for (const [path, url] of [...held]) if (!kept.has(path)) {
+      URL.revokeObjectURL(url);
+      held.delete(path);
     }
   };
 
@@ -138,7 +142,7 @@ async function start(): Promise<void> {
         () => (forget(), tell({ kind: "applied", ...id, of: "print", held: stage.heldOf("print"), notes })),
         (problem) => {
           console.info(`person stage: the print ${c.key} could not be read (${String(problem)})`);
-          stage.prints.splice(stage.prints.findIndex((p) => p.key === c.key), 1);
+          stage.unheld(c.key);
           forget();
           tell({ kind: "applied", ...id, of: "print", held: stage.heldOf("print"), notes: [...notes, `the print ${c.key} could not be read`] });
         },
@@ -247,7 +251,8 @@ async function start(): Promise<void> {
     }
     // A seated pose without its clip once the emotes have come is drawn standing, as the game would.
     const posed = clip !== null || (stage.pose === "seated" && chars.emotesHere);
-    const settled = residency.flying === 0 && residency.waiting === 0 && residency.wanting() === 0 && residency.bare() === 0 && meshes.size > 0 && posed;
+    const prints = scene.prints.loads.fetching === 0 && scene.prints.loads.waiting === 0;
+    const settled = residency.flying === 0 && residency.waiting === 0 && residency.wanting() === 0 && residency.bare() === 0 && meshes.size > 0 && posed && prints;
     settledFrames = settled ? settledFrames + 1 : 0;
     frames++;
     document.body.dataset.settled = String(settledFrames >= 3);

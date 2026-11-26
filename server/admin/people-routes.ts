@@ -100,15 +100,9 @@ const dyed = (w: WornDoc | { dye: readonly number[] }): boolean => w.dye.some((c
 /** Why a thing may not be saved as the world's content and the store have them, or null. */
 function worldFault(kind: RevisedKind, doc: Bodies[RevisedKind], reg: Registry, store: PeopleStore): string | null {
   if (kind === "person") {
-    const p = doc as PersonDoc, look = p.look;
-    if ("seed" in look) {
-      if (typeof look.population === "string") {
-        const content = populationsOf(reg), n = content.number.get(look.population);
-        if (n === undefined) return `${look.population} is not a population.`;
-        if (content.list[n]!.revision !== look.revision) return `${look.population} is at revision ${content.list[n]!.revision}.`;
-      } else if (!store.population(look.population, look.revision)) return `There is no population ${look.population} at revision ${look.revision}.`;
-    }
-    if (p.outfit !== null && !store.view().records.outfit.has(p.outfit)) return `There is no outfit ${p.outfit}.`;
+    const p = doc as PersonDoc, from = p.source, view = store.view();
+    if (from && (typeof from.population === "string" ? !populationsOf(reg).number.has(from.population) : !view.records.population.has(from.population))) return `There is no population ${from.population}.`;
+    if (from?.outfit != null && !view.records.outfit.has(from.outfit)) return `There is no outfit ${from.outfit}.`;
     for (const [slot, w] of (p.wardrobe ?? []).entries()) {
       const fault = w && pieceFault(w, slot, dyed(w), reg, store);
       if (fault) return fault;

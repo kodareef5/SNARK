@@ -54,7 +54,7 @@ test("the page publishes a print, meets a stale revision, publishes again and re
   const store = new PeopleStore({ db: join(dir, "people.sqlite"), media: join(dir, "media"), tmp: join(dir, "tmp") });
   try {
     const io = routes(store);
-    const d = newDraft("core:plain_tee");
+    const d = newDraft("core:plain_tee", "tee");
     d.name = "Page tee";
     d.colours = [34, 0, 11];
     d.sheet = newSheet();
@@ -63,7 +63,7 @@ test("the page publishes a print, meets a stale revision, publishes again and re
     const png = encodePng(512, 256, Uint8Array.from({ length: 512 * 256 * 4 }, (_, i) => (i % 4 === 3 ? 255 : (i * 7) & 0xff)));
     const first = await publishDraft(io, d, png, store.view().revision);
     expect(first).toMatchObject({ kind: "published", id: 1, state: { revision: 1 } });
-    expect(store.view().byId.get(1)).toMatchObject({ name: "Page tee", colours: [34, 0, 11], print: { width: 512, height: 256, place: { u: 0.3, scale: 1 } } });
+    expect(store.view().byId.get(1)).toMatchObject({ name: "Page tee", colours: [34, 0, 11], print: { width: 512, height: 256, place: { u: 0.06, scale: 1 } } });
 
     // Another admin publishes over revision 1; the page, still at 1, is refused and shown the store as it is.
     const theirs = await io.publish({ revision: 1, garment: "core:plain_trousers", colours: [0, 0, 0], name: "Theirs", print: null });

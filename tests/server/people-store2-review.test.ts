@@ -6,10 +6,11 @@ import { peopleAdmin } from "../../server/admin/people-routes.ts";
 import { refused, type AdminGate } from "../../server/admin/gate.ts";
 import { Guesses } from "../../server/guesses.ts";
 import { PeopleStore, type By } from "../../server/people/store.ts";
-import { BEACH } from "../../content/people/defaults.ts";
+import { BEACH, CITY } from "../../content/people/defaults.ts";
 import { refFaults } from "../../shared/content/classes.ts";
 import type { Def } from "../../shared/content/defs.ts";
 import type { PersonDoc } from "../../shared/people/doc.ts";
+import { personFrom } from "../../shared/people/person.ts";
 import { TestCluster, type Server } from "../fixtures/cluster.ts";
 
 const scratch = join(import.meta.dir, "../../var");
@@ -23,7 +24,7 @@ afterAll(() => {
 const clock = { ms: Date.now() };
 const PASSWORD = "kiwi-7731";
 const ADA: By = { name: "ada", id: "S-ADA" };
-const mara: PersonDoc = { name: "Mara", look: { seed: 7, population: "core:people_city", revision: 1, locks: {} }, outfit: null, wardrobe: null, notes: "" };
+const mara: PersonDoc = { name: "Mara", look: [...personFrom(7, CITY).look], wardrobe: null, source: null, notes: "" };
 
 function call(s: Server, path: string, body: unknown): Promise<Response> {
   const host = s.h.host;
