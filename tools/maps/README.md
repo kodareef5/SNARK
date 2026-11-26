@@ -9,6 +9,7 @@ tools/mapdata/.venv/bin/python -I tools/maps/survey.py assets/source/maps/chicag
 bun tools/maps/city.ts chicago                   # every stage, then var/maps/chicago.snmap
 bun tools/maps/city.ts chicago --from labels     # from one stage on
 bun tools/maps/city.ts chicago --only build      # one stage, whether or not its inputs changed
+bun tools/maps/city.ts chicago --bounds w,s,e,n  # another cut, up to the vocabulary, to compare with diff-layers.ts
 ```
 
 The Python steps need `tools/mapdata/.venv` (Python 3.12 with OpenSSL; on Ubuntu `apt install python3.12-venv`):
@@ -24,7 +25,7 @@ tools/mapdata/.venv/bin/pip install -r tools/maps/requirements.txt
 
 | File | Holds |
 | --- | --- |
-| `city.json` | `"v": 2`, `name`, `label`, `centre` (the city's projection, fixed for its life) and `bounds` (the cut: west, south, east and north in metres from the centre, on chunk edges, which fall 32 m off a multiple of 64; up to 255 chunks a side). Then only what differs from [defaults.json](defaults.json) and [sources.json](sources.json): the elevation project (`dem`), the coastal model (`bathymetry`), how footprints are split (`footprints.split_*`), `succession`, `canopy`, `future` (broken spans and wrecks), `world` (spawn places, obelisks, landmarks, the port), `ruins` (budgets) and `height_zero_m` |
+| `city.json` | `"v": 2`, `name`, `label`, `centre` (the city's projection, fixed for its life) and `bounds` (the cut: west, south, east and north in metres from the centre, on chunk edges, which fall 32 m off a multiple of 64; up to 255 chunks a side). Then only what differs from [defaults.json](defaults.json) and [sources.json](sources.json): the elevation project (`dem`), the coastal model (`bathymetry`), how footprints are split (`footprints.split_*`), `succession`, `canopy`, `future` (broken spans and wrecks), `world` (spawn places, obelisks, landmarks, the port), `ruins` (budgets) and `height_zero_m`. Two facts a city records so a wider cut cannot turn them: `height_units` ("metres" or "feet", what OpenStreetMap's bare heights are) and `ruins.budgets.maxHeight` (its tallest building). The stages propose both and stop when the evidence disagrees |
 | `rules.json` | The city's rule tables over [rules/tables.json](rules/tables.json), key by key: its own recipes, categories, surge (`event`), sight corridors, choices. The rest of the rule library is [tools/mapworld/rules](../mapworld/rules/README.md) |
 | `places.json`, `compositions.json` | Named places and the shapes built on them. A place names its building by OpenStreetMap way (`osm_way`, a relation's id negative) or by a point in it (`at`, longitude and latitude), which the build finds again whatever the download or split does; one it cannot find stops the vocabulary stage |
 | `heights.json` | Reviewed building heights where the sources are wrong (Aria on the Bay is 163 m, not 8.4): each a `name`, a point in the building (`at`), what to `set` (`height_m`, `levels`, `height_from`), and its `reason` and `sources`. The labels stage sets them; one on no building stops it |
@@ -117,6 +118,13 @@ A map has one painted picture, from the top, as wide and deep as the map and nor
 reference it is painted over, the built map's ground as the game colours it, and a brief for artist into
 `var/mapdata/<city>/current/art/`. artist's picture, checked against the reference for coasts and roads, is the one
 art file the city keeps: `assets/source/maps/<city>/art/map.png`.
+
+## Comparing two builds
+
+`bun tools/maps/diff.ts a.snmap b.snmap --near x,z --list` compares two built maps part by part on the lattice, and
+`bun tools/maps/diff-layers.ts <work folder> <work folder>` two cuts' 2 m layers away from the smaller's edge. A place
+holds the same layers and pieces whatever cut is made round it; an edit changes its own sector's parts, its overview's
+tops and the head ([maps v3](../../planning/workstreams/maps-v3.md)).
 
 ## Adding to it
 
