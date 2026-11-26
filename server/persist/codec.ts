@@ -5,7 +5,7 @@ import { JET_CAPACITY } from "../../shared/sim/character.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { COLOR_REGIONS, Genome, STAT_COUNT } from "../../shared/sim/genome.ts";
-import { FLAG_BLUEPRINT, FLAG_ON, Inventory } from "../../shared/sim/items.ts";
+import { FLAG_BLUEPRINT, FLAG_ON, Inventory, capNow } from "../../shared/sim/items.ts";
 import { V_COUNT, Vitals } from "../../shared/sim/vitals.ts";
 import { upgradeLook, validLook } from "../../shared/anim/look.ts";
 import { EntityRecord } from "../records.ts";
@@ -77,6 +77,7 @@ export class RecordCodec implements Coding {
   refused = false;
   stale = false;
   readonly refs: number[] = [];
+  readonly styles: number[] = [];
   /**
    * What reading left out because its content is gone and the reader chose to go on. `count` is how many things of each
    * missing id. `burn` is what went with them and still has content, by item, for the ledger to burn: what a record of a
@@ -186,6 +187,8 @@ export class RecordCodec implements Coding {
     const c = this.cr;
     const refs = this.refs;
     refs.length = 0;
+    const styles = this.styles;
+    styles.length = 0;
     this.refused = false;
     this.stale = false;
     for (let n = r.varint(); n > 0 && !r.overflow; n--) {
@@ -203,6 +206,7 @@ export class RecordCodec implements Coding {
     if (r.overflow) throw new Error(`entity ${row.pid}: truncated record`);
     // A slot whose item was left out with its content stands for nothing. Its record is let go when eggs resume.
     for (let k = 0; k < refs.length && rec.inv; k += 2) if (refs[k]! < rec.inv.cap && rec.inv.item[refs[k]!] !== 0) rec.inv.setRef(refs[k]!, refs[k + 1]!);
+    for (let k = 0; k < styles.length && rec.inv; k += 3) if (styles[k]! < rec.inv.cap && rec.inv.item[styles[k]!] !== 0) rec.inv.setStyle(styles[k]!, styles[k + 1]!, styles[k + 2]!);
     if (kind === 0) {
       this.drop(row.kind, 1);
       this.dropped.pids.push(row.pid);
@@ -330,7 +334,10 @@ saved({
   },
 });
 
-/** The inventory's size and bag, then each slot with what a weapon holds and its flags (FLAG_ bits, shared/sim/items.ts). */
+/**
+ * The inventory's size and bag, then each slot with what a weapon holds and its flags (FLAG_ bits, shared/sim/items.ts). One
+ * saved before the wardrobe is read with it, empty (capNow).
+ */
 saved({
   name: "slots",
   has(rec) {
@@ -362,8 +369,9 @@ saved({
     }
   },
   read(rec, r, from) {
-    const cap = r.varint();
-    const inv = (rec.inv = new Inventory(cap, r.varint()));
+    const size = r.varint();
+    const bag = r.varint();
+    const inv = (rec.inv = new Inventory(capNow(size, bag), bag));
     for (let k = r.varint(); k > 0 && !r.overflow; k--) {
       const slot = r.varint();
       const saved = r.varint();
@@ -425,6 +433,34 @@ saved({
   },
   read(_rec, r, from) {
     for (let k = r.varint(); k > 0 && !r.overflow; k--) from.refs.push(r.varint(), r.uint53());
+  },
+});
+
+/** The slots whose item is an edition or dyed (Inventory.edition and dye): each slot, its edition and its three dye colours. */
+saved({
+  name: "styles",
+  has(rec) {
+    const inv = rec.inv;
+    if (inv && (inv.edition || inv.dye)) for (let slot = 0; slot < inv.cap; slot++) if (inv.item[slot] !== 0 && (inv.editionOf(slot) !== 0 || inv.dyeOf(slot) !== 0)) return true;
+    return false;
+  },
+  write(rec, w) {
+    const inv = rec.inv!;
+    let n = 0;
+    for (let slot = 0; slot < inv.cap; slot++) if (inv.item[slot] !== 0 && (inv.editionOf(slot) !== 0 || inv.dyeOf(slot) !== 0)) n++;
+    w.varint(n);
+    for (let slot = 0; slot < inv.cap; slot++) {
+      const edition = inv.editionOf(slot), dye = inv.dyeOf(slot);
+      if (inv.item[slot] === 0 || (edition === 0 && dye === 0)) continue;
+      w.varint(slot);
+      w.varint(edition);
+      w.u8(dye & 0xff);
+      w.u8((dye >>> 8) & 0xff);
+      w.u8((dye >>> 16) & 0xff);
+    }
+  },
+  read(_rec, r, from) {
+    for (let k = r.varint(); k > 0 && !r.overflow; k--) from.styles.push(r.varint(), r.varint(), r.u8() | (r.u8() << 8) | (r.u8() << 16));
   },
 });
 

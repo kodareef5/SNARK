@@ -1985,9 +1985,13 @@ export class ClientSession {
           const ammo = holds ? r.u16() : 0;
           const loaded = holds ? r.u8() : 0;
           const attach = holds ? r.u16() : 0;
+          const styled = item !== 0 && r.bool();
+          const edition = styled ? r.u32() : 0;
+          const dye = styled ? r.u8() | (r.u8() << 8) | (r.u8() << 16) : 0;
           if (r.overflow || slot >= cap) return;
           inv.set(slot, item, n, quality, dur, spoilAt, flags);
           if (holds) inv.setGear(slot, ammo, loaded, attach);
+          inv.setStyle(slot, edition, dye);
         }
       },
     });

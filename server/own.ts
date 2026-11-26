@@ -96,6 +96,15 @@ function sendSlots(ctx: OwnContext, c: Client, box: number, inv: Inventory, sinc
         w.u8(inv.loaded[s]!);
         w.u16(inv.attach[s]!);
       }
+      // An edition and a dye, for the few slots that have one.
+      const edition = inv.editionOf(s), dye = inv.dyeOf(s);
+      w.bool(edition !== 0 || dye !== 0);
+      if (edition !== 0 || dye !== 0) {
+        w.u32(edition);
+        w.u8(dye & 0xff);
+        w.u8((dye >>> 8) & 0xff);
+        w.u8((dye >>> 16) & 0xff);
+      }
     }
     n++;
   }
@@ -564,6 +573,12 @@ export function addOwnCommands(ctx: OwnContext): void {
     const worn = ctx.world.reg.wearSlot[item]!;
     if (worn >= 0 && inv.armor >= 0) {
       const to = slot >= inv.armor ? inv.free() : inv.armor + worn;
+      if (to < 0) return RESULT_FULL;
+      return ctx.items.move(rec, slot, rec, to, 0) > 0 ? RESULT_OK : RESULT_INVALID;
+    }
+    const garment = ctx.world.reg.garmentSlot[item]!;
+    if (garment >= 0 && inv.wardrobe >= 0) {
+      const to = slot >= inv.wardrobe ? inv.free() : inv.wardrobe + garment;
       if (to < 0) return RESULT_FULL;
       return ctx.items.move(rec, slot, rec, to, 0) > 0 ? RESULT_OK : RESULT_INVALID;
     }

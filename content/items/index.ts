@@ -4,6 +4,7 @@ import { BALLS } from "./balls.ts";
 import { BLOCKOUTS } from "./blockouts.ts";
 import { CONSUMABLES } from "./consumables.ts";
 import { EXPLOSIVES } from "./explosives.ts";
+import { GARMENTS } from "./garments.ts";
 import { GLIDERS } from "./gliders.ts";
 import { LAUNCHER } from "./launcher.ts";
 import { PLASMA } from "./plasma.ts";
@@ -16,4 +17,4 @@ import { WEAPONS } from "./weapons.ts";
 // category, each owned by one task. A new category adds its file here and nothing else, so tasks built side by side meet
 // only on this list.
 
-export const ITEMS: readonly Def[] = [...CONSUMABLES, ...STATIONS, ...WEAPONS, ...AMMO, ...EXPLOSIVES, ...RESOURCES, ...RESOURCE_NODES, ...GLIDERS, ...BALLS, ...BLOCKOUTS, ...PLASMA, ...LAUNCHER];
+export const ITEMS: readonly Def[] = [...CONSUMABLES, ...STATIONS, ...WEAPONS, ...AMMO, ...EXPLOSIVES, ...RESOURCES, ...RESOURCE_NODES, ...GLIDERS, ...BALLS, ...BLOCKOUTS, ...PLASMA, ...LAUNCHER, ...GARMENTS];

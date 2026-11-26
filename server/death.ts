@@ -167,8 +167,8 @@ export class Death {
       const src = items.inv(rec);
       const what = src.item[slot]!;
       let to = -1;
-      // Only onto a stack it joins: the same item at the same quality and flags. Put on another, the move would swap.
-      for (let s = 0; s < inv.bag && to < 0; s++) if (inv.item[s] === what && inv.quality[s] === src.quality[slot] && inv.flags[s] === src.flags[slot] && inv.count[s]! < stackOf(what, inv.flags[s]!, items.table)) to = s;
+      // Only onto a stack it joins: the same item at the same quality, flags, edition and dye. Put on another, the move would swap.
+      for (let s = 0; s < inv.bag && to < 0; s++) if (inv.item[s] === what && inv.quality[s] === src.quality[slot] && inv.flags[s] === src.flags[slot] && inv.sameStyle(s, src, slot) && inv.count[s]! < stackOf(what, inv.flags[s]!, items.table)) to = s;
       if (to < 0) to = inv.free();
       if (to >= 0 && items.move(rec, slot, last, to, n) > 0) {
         this.renew(last);

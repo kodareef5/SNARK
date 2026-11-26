@@ -3,6 +3,8 @@
 import { TICK_RATE } from "../../coords.ts";
 import { GAME_HOUR_TICKS } from "../../sim/lazy.ts";
 import { validateSeats, type Seat } from "../../sim/seats.ts";
+import { WARDROBE_NAMES, type WardrobeName } from "../../sim/items.ts";
+import { SKIN_ZONE_COUNT } from "../../anim/skin-zones.ts";
 import type { StatName } from "../../sim/genome.ts";
 import type { Content } from "../defs.ts";
 import { f, f32, i8, icon, list, mesh, row, stub, u16, u32, u8, type Fields, type Kind, type Named } from "../kind.ts";
@@ -20,7 +22,7 @@ export const WEAR_SLOTS: readonly string[] = ["head", "torso", "hands", "legs", 
 
 export interface ItemDef extends Named, WeaponFields {
   readonly type: "item";
-  readonly class: "resource" | "consumable" | "weapon" | "ammo" | "attachment" | "armor" | "saddle" | "structure" | "vehicle" | "egg" | "feces" | "shield" | "costume" | "skin" | "dye" | "artifact" | "glider" | "ball" | "instrument";
+  readonly class: "resource" | "consumable" | "weapon" | "ammo" | "attachment" | "armor" | "saddle" | "structure" | "vehicle" | "egg" | "feces" | "shield" | "costume" | "skin" | "dye" | "artifact" | "glider" | "ball" | "instrument" | "garment";
   readonly id: string;
   /** Largest stack. 1 for things that carry their own quality and durability. */
   readonly stack: number;
@@ -55,6 +57,8 @@ export interface ItemDef extends Named, WeaponFields {
   /** What it works on ("wood", "stone"), how many times stronger than bare hands it is, and how many uses it lasts. */
   readonly tool?: { readonly on: string; readonly power: number; readonly uses: number };
   readonly wear?: WearFacet;
+  /** Clothing worn in a wardrobe slot, over the body and under any armor. It gives no armor. */
+  readonly garment?: GarmentFacet;
   /**
    * A weapon lists the attachment items it takes in `fits`. What each does (planning/reference/weapons-plan.md, M10): a
    * scope zooms about 3 times with a reticle and sways the weapons that sway; a holo-scope zooms about 1.25 times with a
@@ -199,6 +203,20 @@ export interface WearFacet {
   readonly jet?: boolean;
 }
 
+/**
+ * A garment: what it covers and how it is drawn. Which edition it is and how it is
+ * dyed belong to the slot that holds it (Inventory.edition and dye), so two of one garment may look unlike.
+ */
+export interface GarmentFacet {
+  readonly slot: WardrobeName;
+  /** The skin zones it covers (SKIN_ of shared/anim/skin-zones.ts), which a body under it does not draw. */
+  readonly covers: readonly number[];
+  /** Whether it takes dye. */
+  readonly dyes?: boolean;
+  /** The mesh of its cut. Absent, it is not drawn yet. */
+  readonly cut?: string;
+}
+
 const FIELDS = {
   stack: f("number", "MaxItemQuantity"),
   weight: f("number", "BaseItemWeight"),
@@ -217,6 +235,7 @@ const FIELDS = {
   tool: f("facet"),
   ...WEAPON_FIELDS,
   wear: f("facet", "equipment type and ItemStatInfos"),
+  garment: f("facet", "none: ARK's shirts, pants and hats are armor; here clothing gives none"),
   attachment: f("text", "item type WeaponAttachment"),
   optic: f("facet", "the scope's zoom (ScopeOverlay, FOV)"),
   places: f("list", "StructureToBuild", { refs: { "[]": "structure" }, open: true }),
@@ -264,6 +283,11 @@ const columns = (n: number) => ({
   wearSlot: i8(n, -1),
   /** Per item: 1 for a worn piece that flies (WearFacet.jet). */
   wearJet: u8(n),
+  /** The wardrobe slot a garment is worn in (WARDROBE_NAMES), or -1. */
+  garmentSlot: i8(n, -1),
+  /** Per garment: the skin zones it covers, one bit each (shared/anim/skin-zones.ts), and 1 if it takes dye. */
+  garmentZones: u32(n),
+  garmentDyes: u8(n),
   /** Per item: a glider's grade, 0 for anything else, and the ticks in the air that cost it one use (GlideFacet). */
   glide: u8(n),
   glideTicks: u32(n),
@@ -326,6 +350,7 @@ export const items: Kind<ItemDef, ReturnType<typeof columns>> = {
     row("item/feces", "item", FIELDS, { parent: "item/resource", ark: "the feces items, small to massive", shelf: "items/feces", must: ["stack"], may: [...ANY_ITEM, "spoilHours", "spoilsInto", "fuel"], slots: ITEM_SLOTS, doc: "What a creature leaves when it defecates, a size for each kind of creature." }),
     row("item/glider", "item", FIELDS, { parent: "item", ark: "PrimalItemConsumable_Parachute, and the Glider Suit skin", shelf: "items/gliders", must: ["stack", "glide"], may: ANY_ITEM, slots: { held: HELD, wing_r: mesh("may", "{id}/wing_r", "none"), wing_l: mesh("may", "{id}/wing_l", "none"), ...ITEM_SLOTS }, doc: "Carried anywhere in the bag, and opened in the air to glide: a wing for each hand, and folded in the hand when chosen." }),
     row("item/shield", "item", FIELDS, { parent: "item/equipment", ark: "equipment type Shield", status: "stub", waits: "cosmetics", shelf: "items/shields", must: ["stack"], may: ANY_ITEM, slots: { held: HELD, ...ITEM_SLOTS }, doc: "Held in the other hand to block." }),
+    row("item/garment", "item", FIELDS, { parent: "item/equipment", ark: "the cloth and hide pieces' look, without their armor", shelf: "items/garments", must: ["stack", "garment"], may: ANY_ITEM, slots: ITEM_SLOTS, doc: "Clothing worn in a wardrobe slot (top, bottom, outer, shoes, hat): drawn over the body, under any armor, giving none. Each one carries its edition and dye in its slot." }),
     row("item/costume", "item", FIELDS, { parent: "item/equipment", ark: "equipment types Costume and Trophy", status: "stub", waits: "cosmetics", shelf: "items/costumes", must: ["stack"], may: ANY_ITEM, slots: ITEM_SLOTS, doc: "Worn for its look alone." }),
     row("item/skin", "item", FIELDS, { parent: "item", ark: "PrimalItemSkin_", status: "stub", waits: "cosmetics", shelf: "items/skins", must: ["stack"], may: ANY_ITEM, slots: ITEM_SLOTS, doc: "Changes the look of the item it is put on." }),
     row("item/dye", "item", FIELDS, { parent: "item", ark: "PrimalItemDye_", status: "stub", waits: "cosmetics", shelf: "items/dyes", must: ["stack"], may: ANY_ITEM, slots: ITEM_SLOTS, doc: "Colours a region of what it is used on." }),
@@ -384,6 +409,12 @@ export const items: Kind<ItemDef, ReturnType<typeof columns>> = {
       if (!(d.wear.armor >= 0)) errors.push(`${d.id}: wear.armor must not be negative`);
       positive(d, "wear.uses", d.wear.uses, 60000);
     }
+    if (d.garment) {
+      const g = d.garment;
+      if (!(WARDROBE_NAMES as readonly string[]).includes(g.slot)) errors.push(`${d.id}: garment.slot must be one of ${WARDROBE_NAMES.join(", ")}`);
+      if (!Array.isArray(g.covers) || g.covers.some((z) => !Number.isInteger(z) || z < 0 || z >= SKIN_ZONE_COUNT)) errors.push(`${d.id}: garment.covers lists skin zones, 0 to ${SKIN_ZONE_COUNT - 1}`);
+      if (d.stack !== 1 || d.wear || d.weapon || d.tool) errors.push(`${d.id}: a garment stacks to 1 and is no armor, weapon or tool`);
+    }
     if (d.spoilsInto !== undefined && (d.spoilsInto === d.id || d.spoilHours === undefined)) errors.push(`${d.id}: spoilsInto names another item, and only something that spoils has it`);
     // A blueprint crafts what it is of, so only an item that is crafted may be one.
     if (d.blueprint === true && !d.craft) errors.push(`${d.id}: only an item that is crafted may be a blueprint`);
@@ -423,6 +454,11 @@ export const items: Kind<ItemDef, ReturnType<typeof columns>> = {
     if (d.charge) reg.charge[i] = 1;
     if (d.wear) reg.wearSlot[i] = WEAR_SLOTS.indexOf(d.wear.slot);
     if (d.wear?.jet) reg.wearJet[i] = 1;
+    if (d.garment) {
+      reg.garmentSlot[i] = WARDROBE_NAMES.indexOf(d.garment.slot);
+      reg.garmentZones[i] = d.garment.covers.reduce((m, z) => (m | (1 << z)) >>> 0, 0);
+      reg.garmentDyes[i] = d.garment.dyes ? 1 : 0;
+    }
     reg.uses[i] = d.wear?.uses ?? d.weapon?.uses ?? d.tool?.uses ?? d.glide?.uses ?? 0;
     if (d.glide) {
       reg.glide[i] = d.glide.grade;

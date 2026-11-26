@@ -770,6 +770,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
         buffs.died(rec);
         survival.forget(rec.pid);
         inHand.delete(rec.pid);
+        wornSeen.delete(rec.pid);
       },
       say,
     },
@@ -1380,6 +1381,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     urban.retable();
     game.players.feet.retable();
     // A body's limits are worked out from its species' numbers, so each body in the world is worked out again.
+    wornSeen.clear();
     for (const pid of [...records.entOf.keys()]) {
       const rec = records.byPid.get(pid);
       if (rec) refreshBody(rec);
@@ -1407,6 +1409,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const gear = new Uint16Array(GEAR_COUNT);
   /** The held slot of each record at its last refresh. */
   const inHand = new Map<number, number>();
+  /** Per survivor pid, the inventory's worn stamp and the body's generation that refreshBody last worked out what it wears for. */
+  const wornSeen = new Map<number, number>();
   if (loaded && !loaded.fresh) {
     // Bodies saved under other rates are rated again as they load.
     survival.rerate = RATES.some((name) => wasAt(name) !== rules.num(name));
@@ -1634,6 +1638,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     const gone = records.byPid.get(c.pid);
     if (gone) survival.suspend(gone, true);
     inHand.delete(c.pid);
+    wornSeen.delete(c.pid);
     glidingSince.delete(c.pid);
     if (persistence) persistence.detach(c.pid);
     else {
@@ -2137,21 +2142,24 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       const item = slot >= 0 ? inv.item[slot]! : 0;
       const was = ents.gears.get(e)?.[GEAR_HELD] ?? 0;
       gear[GEAR_HELD] = item;
-      let suit = 0;
-      for (let k = 0; k < ARMOR_SLOTS; k++) {
-        const slot = inv.armor + k, id = inv.item[slot]!;
-        gear[GEAR_WORN + k] = id;
+      for (let k = 0; k < ARMOR_SLOTS; k++) gear[GEAR_WORN + k] = inv.item[inv.armor + k]!;
+      // What it wears is worked out again only when its armor or wardrobe changed, or it is a new body. A shot changes neither.
+      const stamp = inv.worn * 65536 + ents.gen[e]!;
+      if (wornSeen.get(rec.pid) !== stamp) {
+        wornSeen.set(rec.pid, stamp);
+        let suit = 0;
         // A piece that flies (WearFacet.jet) and is not worn out lends its slot's bit.
-        if (inv.dur[slot]! > 0) suit |= reg.wearJet[id]! << k;
+        for (let k = 0; k < ARMOR_SLOTS; k++) if (inv.dur[inv.armor + k]! > 0) suit |= reg.wearJet[inv.item[inv.armor + k]!]! << k;
+        const helmetChanged = ((ents.jetGear[e]! ^ suit) & JET_HELMET) !== 0;
+        ents.jetGear[e] = suit;
+        // Its air under water follows the helmet at once, not at the vitals' next deadline.
+        if (helmetChanged) survival.touch(rec);
       }
-      const helmetChanged = ((ents.jetGear[e]! ^ suit) & JET_HELMET) !== 0;
-      ents.jetGear[e] = suit;
+      const suit = ents.jetGear[e]!;
       // The glider it flies is the best serviceable one it carries, wherever it lies. Arms round a creature fly none.
       const flown = arms < 0 ? gliderSlot(rec) : -1;
       ents.glideGear[e] = flown >= 0 ? reg.glide[inv.item[flown]!]! : 0;
       if (!(suit & JET_CUIRASS)) ents.jetThrust[e] = ents.jetKeys[e] = ents.jetJumpTap[e] = ents.jetSprintTap[e] = 0;
-      // Its air under water follows the helmet at once, not at the vitals' next deadline.
-      if (helmetChanged) survival.touch(rec);
       ents.setGear(e, gear);
       // Only the thing in hand has its attachment on, and taking another in hand switches it off: "it does require you to
       // press N each time you switch" (Flashlight Attachment). Others see a laser on (weapons-plan.md, M10).
