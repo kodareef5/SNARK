@@ -10,7 +10,7 @@ import {
 import type { Registry } from "../content/registry.ts";
 import { REGION_KEYS, type PopulationDef, type Span } from "../content/kinds/populations.ts";
 import { Rng } from "../rng.ts";
-import type { PartName, PartSeeds } from "./doc.ts";
+import type { Dye, OutfitDoc, PartName, PartSeeds, WornDoc } from "./doc.ts";
 
 export type { PopulationDef as Population } from "../content/kinds/populations.ts";
 
@@ -33,6 +33,8 @@ export const PART_BROWS = 6;
 export const PART_FACE = 7;
 export const PART_FIGURE = 8;
 export const PART_OUTFIT = 9;
+/** An admin outfit's slots, each on a stream of its own under this tag (wardrobeFrom). */
+export const PART_WARDROBE = 10;
 /** Each part's tag by its name in a person's locks (shared/people/doc.ts). */
 export const PART_TAGS: Readonly<Record<PartName, number>> = {
   sex: PART_SEX, figure: PART_FIGURE, body: PART_BODY, skin: PART_SKIN, hair: PART_HAIR, beard: PART_BEARD, brows: PART_BROWS, face: PART_FACE, outfit: PART_OUTFIT,
@@ -151,6 +153,24 @@ export function personFrom(seed: number, population: PopulationDef, out: Uint8Ar
   const outfit = weighted(rng, p.outfits?.map((o) => o.weight));
   return { look: out, sex, outfit };
 }
+
+/**
+ * What `seed` wears of an admin outfit (shared/people/doc.ts): one garment a slot by the slot's weights, in the slot's dye,
+ * or null. Each slot is drawn on its own stream, so a choice added to one slot changes no other.
+ */
+export function wardrobeFrom(seed: number, outfit: OutfitDoc): (WornDoc | null)[] {
+  const base = partSeed(seed, PART_WARDROBE);
+  return outfit.slots.map((slot, i) => {
+    if (!slot) return null;
+    const k = weighted(new Rng(partSeed(base, i + 1)), slot.choices.map((c) => c.weight));
+    if (k < 0) return null;
+    const c = slot.choices[k]!;
+    return { garment: c.garment, edition: c.edition, dye: slot.dye };
+  });
+}
+
+/** A dye's three palette colours as one number, the first in the low byte, as an inventory slot keeps it. */
+export const dyeNumber = (d: Dye): number => (d[0] | (d[1] << 8) | (d[2] << 16)) >>> 0;
 
 /** The populations of a registry in index order: a population's place in `list` is its number on the wire. */
 export interface Populations {

@@ -269,6 +269,16 @@ export class PeopleStore implements StorePopulations {
     return this.manifestOwed ? this.writeOwed() : this.cached;
   }
 
+  /** The store as this world last read it, without a look at the file but the first; poll() and every change read it again. Never throws. */
+  held(): PeopleView {
+    if (this.cached.revision >= 0) return this.cached;
+    try {
+      return this.view();
+    } catch {
+      return this.cached;
+    }
+  }
+
   /** Writes the manifest that is owed, and holds its id; where it cannot be written, the clients keep the last one. */
   private writeOwed(): PeopleView {
     try {

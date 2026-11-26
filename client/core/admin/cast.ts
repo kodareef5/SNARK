@@ -12,9 +12,13 @@ export interface CastJson {
   players: { name: string; x: number; z: number }[];
   regions: { x: number; z: number; heat: number; players: number; pace: string }[];
   stories: { id: string; scene: string; phase: string; x: number; z: number; people: number; choices: Record<string, string>; slots: Record<string, string>; engaged: string[]; age: number }[];
-  people: { id: string; name: string; kind: string; want?: string; struggle?: string; hope?: string; dead: boolean; story: string | null; facts: string[]; knows: Record<string, { stance: number; met: number }> }[];
+  people: { id: string; name: string; person: number | null; kept: boolean; kind: string; want?: string; struggle?: string; hope?: string; dead: boolean; story: string | null; facts: string[]; knows: Record<string, { stance: number; met: number }> }[];
   decisions: { t: number; point: string; policy: string; why: string; choice: string }[];
   scenes: { id: string; name: string; weight: number; placeholder: boolean; ok: boolean }[];
+  /** Each look's population and an admin's choice over it, each role a named person plays, and what the people store offers. */
+  looks: { id: string; population: string | number | null; note: string; chosen: { population?: number; outfit?: number } }[];
+  roles: { key: string; scene: string; role: string; person: number | null }[];
+  store: { populations: { id: number; label: string }[]; outfits: { id: number; name: string }[]; people: { id: number; name: string }[] };
 }
 
 /** The knobs: setting, label, range, step, and the field of cast.json's settings it shows. */
@@ -60,7 +64,7 @@ export function peopleHtml(s: CastJson): string {
     const life = p.want ? `<div class="dim">wants ${esc(p.want)} · struggles with ${esc(p.struggle ?? "")} · hopes for ${esc(p.hope ?? "")}</div>` : "";
     const facts = p.facts.length ? `<div>${p.facts.map(esc).join(" · ")}</div>` : "";
     const knows = Object.entries(p.knows).map(([n, r]) => `${esc(n)} ${r.stance > 0.1 ? "likes" : r.stance < -0.1 ? "dislikes" : "knows"} (${r.met}×)`).join(", ");
-    return `<div class="person"><b>${esc(p.name)}</b> <span class="dim">${esc(p.kind)}${p.dead ? " · dead" : ""}${p.story ? ` · in ${esc(p.story)}` : ""}</span>${life}${facts}${knows ? `<div class="dim">${knows}</div>` : ""}</div>`;
+    return `<div class="person"><b>${esc(p.name)}</b> <span class="dim">${esc(p.kind)}${p.person !== null ? ` · named person ${p.person}` : ""}${p.dead ? " · dead" : ""}${p.story ? ` · in ${esc(p.story)}` : ""}</span>${life}${facts}${knows ? `<div class="dim">${knows}</div>` : ""}</div>`;
   });
   return rows.join("") || '<p class="dim">Nobody yet: people become featured when a player engages them, or play a featured part.</p>';
 }
@@ -93,10 +97,26 @@ export function castMarks(side: number, s: CastJson): CastMark[] {
   return out;
 }
 
-/** What each part of the page shows, by element id; the knobs and the scene list only the first time. */
+function options(none: string, list: readonly { id: number; text: string }[], at: number | null | undefined): string {
+  return `<option value="">${esc(none)}</option>` + list.map((o) => `<option value="${o.id}"${o.id === at ? " selected" : ""}>${esc(o.text)} (${o.id})</option>`).join("");
+}
+
+/** Each look's population and outfit, and each role's named person, as selects the page's wiring sends on change. */
+export function castingHtml(s: CastJson): string {
+  const pops = s.store.populations.map((p) => ({ id: p.id, text: p.label })), outfits = s.store.outfits.map((o) => ({ id: o.id, text: o.name }));
+  const people = s.store.people.map((p) => ({ id: p.id, text: p.name }));
+  const looks = s.looks.map((l) => `<tr><td>${esc(l.id)} <span class="dim">${esc(l.note)}</span></td>` +
+    `<td><select data-look="${esc(l.id)}" data-field="population">${options(`its own (${l.population ?? "city"})`, pops, l.chosen.population)}</select></td>` +
+    `<td><select data-look="${esc(l.id)}" data-field="outfit">${options("its own clothes", outfits, l.chosen.outfit)}</select></td></tr>`).join("");
+  const roles = s.roles.map((r) => `<tr><td>${esc(r.scene)} · ${esc(r.role)}</td><td><select data-role="${esc(r.key)}">${options("anyone of its kinds", people, r.person)}</select></td></tr>`).join("");
+  return `<table><thead><tr><th>Look</th><th>Population</th><th>Outfit</th></tr></thead><tbody>${looks}</tbody></table>` +
+    `<table><thead><tr><th>Role</th><th>Named person</th></tr></thead><tbody>${roles}</tbody></table>`;
+}
+
+/** What each part of the page shows, by element id; the knobs, the scene list and the casting only the first time. */
 export function castView(s: CastJson, first: boolean): Record<string, string> {
   return {
     tiles: tilesHtml(s), state: s.enabled ? '<span class="well">on</span>' : '<span class="warn">off</span>', toggle: s.enabled ? "Turn Cast off" : "Turn Cast on",
-    stories: storiesHtml(s), people: peopleHtml(s), decisions: decisionsHtml(s), ...(first ? { knobs: knobsHtml(), scene: scenesHtml(s) } : {}),
+    stories: storiesHtml(s), people: peopleHtml(s), decisions: decisionsHtml(s), ...(first ? { knobs: knobsHtml(), scene: scenesHtml(s), casting: castingHtml(s) } : {}),
   };
 }
