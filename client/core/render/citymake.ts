@@ -8,7 +8,7 @@ import { VERTEX_BYTES } from "../../../shared/pack/pack.ts";
 import { CityPieces, CityStatics, cellPart, cornerByte, mergedPart, type CityForm, type CityPart, type Gone } from "../../../shared/world/city.ts";
 import { HeightWindow, type Heightfield } from "../../../shared/world/heightfield.ts";
 import { blocksBuffers, type BlocksJob, type BlocksMade } from "./blocks.ts";
-import { sweepBuffers, type SweepJob, type SweepMade } from "./farshadow.ts";
+import { sweepBuffers, type SweepJob, type SweepMade } from "./shadow-map.ts";
 import { quadBytes } from "./packet.ts";
 
 /**

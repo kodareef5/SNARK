@@ -30,7 +30,8 @@ import { VERTEX_BYTES } from "../../../shared/pack/pack.ts";
 import { CityPieces, CityStatics, NEIGHBOUR_HOLDER, NO_ROWS, PIECE_KEY_BITS, PIECE_SLOTS, cornerByte, mergedPart, type CityPart, type CityTable, type Gone, type Ground, type PartPaint } from "../../../shared/world/city.ts";
 import type { ChunkTable } from "../../../shared/world/structures.ts";
 import { KindPlates, OCCLUDER, chunkOccluders } from "./hide.ts";
-import { LAKE_SLOTS, LAKE_SLOT_SPAN } from "./lakes.ts";
+import { NEAR_SLOTS, NEAR_SLOT_SPAN } from "./near-slots.ts";
+export { NEAR_SLOTS, nearMeshSlot, MESH_SLOT } from "./near-slots.ts";
 import { fixtureKind } from "./street-finish.ts";
 import { materialIndex } from "../texgen/layers.ts";
 import { FramePacket, quadBytes } from "./packet.ts";
@@ -401,13 +402,6 @@ function view(city: CityStatics, chunk: number, own: readonly number[], beside: 
   return { city: CityStatics.of(paint ? { ...city, dims: city.dims, paint } : city, pieces), keys };
 }
 
-/** Slots of meshes on the card start here, past the lakes' (lakes.ts). */
-export const NEAR_SLOTS = LAKE_SLOTS + LAKE_SLOT_SPAN;
-const NEAR_SLOT_SPAN = 2 ** 29;
-/** These generated meshes carry each source fixture's finish in bits 6–7 of the static vertex. */
-export const nearMeshSlot = (slot: number): boolean => slot >= NEAR_SLOTS && slot < NEAR_SLOTS + NEAR_SLOT_SPAN;
-/** A slot of a chunk's instances that no piece takes: the one instance at its corner its mesh is drawn with. */
-export const MESH_SLOT = 0xffff;
 /**
  * Pieces a frame makes the faces of. A piece laid out as an instance that frame takes a LAID_SHARE of one: a band of 400
  * took about 0.5 ms on the Mac (M5) and laying a chunk's 1,815 out 0.1 ms. A frame that lays nothing out makes a band

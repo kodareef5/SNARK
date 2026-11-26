@@ -13,7 +13,7 @@
 
 import { SIZE_UNITS } from "../../../shared/world/nodes.ts";
 import type { Tier } from "../assets/tiers.ts";
-import { FAR_LEAD, FAR_OUT, FAR_RISE, FAR_SPAN, FLAT_LEAST } from "./farshadow.ts";
+import { FAR_LEAD, FAR_OUT, FAR_RISE, FAR_SPAN, FLAT_LEAST } from "./shadow-map.ts";
 import { LAMP_CORNER, LAMP_GROUND, LAMP_LONG, LAMP_NEAREST, LAMP_OUT, LAMP_TAN, LAMP_WIDE } from "./lamp.ts";
 import { ORB_SEES_GLSL, ORB_SHADE_GLSL } from "./orb-light.ts";
 import { BONES_PER_ROW, MAX_CASCADES } from "./packet.ts";
