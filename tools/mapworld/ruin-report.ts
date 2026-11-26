@@ -33,7 +33,7 @@ writeFileSync(join(root, "slopes.json"), JSON.stringify({
   highBuildings: buildings.filter((r) => r.routes.some((s) => s.floors >= 12)).map((r) => ({ id: r.id, name: r.name, floors: Math.max(...r.routes.map((s) => s.floors)), refuges: r.rooms.filter((s) => s.kind === "refuge").length, exits: r.escapes.length })),
   refugeCircuits: buildings.reduce((n, r) => n + r.rooms.filter((s) => s.kind === "refuge").length, 0),
   bidirectionalExits: buildings.reduce((n, r) => n + r.escapes.filter((s) => s.bidirectional).length, 0),
-  slopedKinds: Object.fromEntries(Object.entries(g.kinds).filter(([k]) => /_flight_|_ramp\d+_|_zpitch\d+_|_plate\d+_|_front60_|_mound_/.test(k))),
+  slopedKinds: Object.fromEntries(Object.entries(g.kinds).filter(([k]) => /_flight_|_ramp\d+_|_zpitch\d+_|_plate\d+_|_front\d+_|_mound_/.test(k))),
 }, null, 2) + "\n");
 const csv = (rows: unknown[][]): string => rows.map((r) => r.map((v) => `"${String(v).replaceAll('"', '""')}"`).join(",")).join("\n") + "\n";
 writeFileSync(join(root, "pieces-by-kind.csv"), csv([["kind", "before_buildings", "before_pieces", "before_mean", "after_buildings", "after_pieces", "after_mean", "after_max"], ...[...new Set([...Object.keys(comparison.byKind), ...Object.keys(g.piecesByKind)])].sort().map((kind) => {

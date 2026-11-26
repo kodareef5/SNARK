@@ -16,7 +16,7 @@
 //   wooden utility poles down one side of the lesser streets of residential districts; hydrants; parking meters in runs
 //   before shops; bus shelters, or a bench and a bin, along the avenues; speed limit signs at the limit each class posts,
 //   and evacuation route signs on the larger ways; guard rails where a highway's edge drops or meets water; chain-link fence along the street line of open lots
-//   and yards; billboards set back from the largest roads.
+//   and yards; billboards set back from the roads, about so many a square kilometre, in four sizes by the road's class.
 //
 // Where the ruins laid a walk along the street (ruins.ts, makeWalks), a piece stands on the walk's top at its setback from
 // the curb's face; the walk's ramps, drains and boxes it keeps clear of as of any piece. None stands where a lane runs, on a reserved route (a way to a door, a room's walk, a stair, a car's door room), in a
@@ -86,7 +86,14 @@ export interface Furniture {
   rails: { classes: string[]; set: number; drop: number; water: number };
   /** Fence along the street line of an open lot or a yard at least `least` metres long, a 3 m run at a time. */
   fences: { classes: string[]; set: number; depth: number; least: number; yard: number; open: number; gap: number };
-  billboards: { classes: string[]; spacing: number; set: [number, number]; chance: number };
+  /**
+   * Billboards facing the roads of `classes`, a place tried every `spacing` metres, `set` metres back from the road's edge
+   * (`sets` by class where it differs). With `perKm2` the map takes about that many a square kilometre of its land: the
+   * places are taken in a hashed order, a class's `weights` times likelier (1 where it has none), until that many
+   * stand. Without it each place is kept by `chance`. `forms` names, by class, the row of `furniture.forms` its boards
+   * are drawn from: their sizes, and how many are bare.
+   */
+  billboards: { classes: string[]; spacing: number; set: [number, number]; chance: number; perKm2?: number; weights?: Record<string, number>; sets?: Record<string, [number, number]>; forms?: Record<string, string> };
   /** A pay station for each lot of at least `least` stalls, at the head of one of the `tries` stalls nearest its middle. */
   paystations?: { least: number; tries: number; set: number };
   /** Stripes laid on a crossing: the forms of each length of stripes, in metres, and how far in from each kerb they stop;
@@ -123,8 +130,14 @@ const pick = (rows: Forms, h: number): string => {
 };
 const chance = (h: number, p: number): boolean => h / 4294967296 < p;
 
-/** Each piece's parts as boxes in its own frame (a tilted part as the box round it), and the box round its parts within 2.2 m of the ground. */
-const PARTS = new Map(STREET_PIECES.map((p) => {
+/**
+ * Each piece's parts as boxes measured from the ground under it (a tilted part as the box round it; a piece whose origin
+ * is `lift` up, that much higher than its own frame has them), the box round its parts within 2.2 m of the ground, and
+ * the lift.
+ */
+const PARTS = new Map(STREET_PIECES.map((whole) => {
+  const lift = whole.lift ?? 0;
+  const p = lift === 0 ? whole : { ...whole, boxes: whole.boxes.map((b) => ({ at: [b.at[0], b.at[1] + lift, b.at[2]] as const, half: b.half })), hulls: whole.hulls?.map((h) => ({ ...h, corners: h.corners.map((c) => [c[0], c[1] + lift, c[2]] as [number, number, number]) })) };
   const parts: Part[] = p.boxes.map((b) => ({ lo: [b.at[0] - b.half[0], b.at[1] - b.half[1], b.at[2] - b.half[2]], hi: [b.at[0] + b.half[0], b.at[1] + b.half[1], b.at[2] + b.half[2]] }));
   for (const h of p.hulls ?? []) {
     const points = h.corners.map((c) => hullPoint(c, h.sixty === true));
@@ -139,7 +152,7 @@ const PARTS = new Map(STREET_PIECES.map((p) => {
     for (const a of corners) for (const b of corners) if (a[1] < FOOT && b[1] > FOOT) { const t = (FOOT - a[1]) / (b[1] - a[1]); points.push([a[0] + (b[0] - a[0]) * t, FOOT, a[2] + (b[2] - a[2]) * t]); }
   }
   const foot: Part = { lo: [Math.min(...points.map((q) => q[0]!)), 0, Math.min(...points.map((q) => q[2]!))], hi: [Math.max(...points.map((q) => q[0]!)), Math.max(...points.map((q) => q[1]!)), Math.max(...points.map((q) => q[2]!))] };
-  return [p.name, { parts, foot }];
+  return [p.name, { parts, foot, lift }];
 }));
 
 /** A part of a piece standing at (x, y, z) turned `yaw` as a box in the world. */
@@ -315,7 +328,7 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
     counts[chunk]!++;
     for (const b of boxes) { const k = binKey(Math.floor(b.x / 16), Math.floor(b.z / 16)); if (!mine.has(k)) mine.set(k, []); mine.get(k)!.push(b); }
     const kind = streetKind(name);
-    pieces.push({ kind, x, y, z, yaw });
+    pieces.push({ kind, x, y: y + shape.lift, z, yaw });
     summary.placed[kind] = (summary.placed[kind] ?? 0) + 1; summary.byRule[rule] = (summary.byRule[rule] ?? 0) + 1;
     return true;
   };
@@ -792,13 +805,27 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
       put("fences", form("fence", hash3(h, k, seed)), px, pz, yaw, -0.05);
     }
   }, () => 0);
-  // Billboards set back from the largest roads, facing them.
+  // Billboards set back from the roads, facing them.
   const W = rules.billboards;
-  along(W.classes, () => W.spacing, 10, (x, z, dx, dz, half, k, line) => {
-    const h = hash3(lineSeed(line), k, seed + 10); if (!chance(h, W.chance) || nearJunction(x, z, 20)) return;
-    const back = W.set[0] + (hash3(h, 1, seed) % 1000) / 1000 * (W.set[1] - W.set[0]);
-    const [px, pz, yaw] = side(x, z, dx, dz, half + back, h % 2 === 0 ? 1 : -1); put("billboards", form("billboard", hash3(h, 2, seed)), px, pz, yaw);
+  const boards: { x: number; z: number; dx: number; dz: number; half: number; h: number; cls: string; key: number }[] = [];
+  along(W.classes, () => W.spacing, 10, (x, z, dx, dz, half, k, line, cls) => {
+    const h = hash3(lineSeed(line), k, seed + 10); if (nearJunction(x, z, 20)) return;
+    // Least first is a draw without return in which a class is its weight times likelier.
+    boards.push({ x, z, dx, dz, half, h, cls, key: -Math.log((hash3(h, 3, seed) + 0.5) / 4294967296) / (W.weights?.[cls] ?? 1) });
   });
+  let land = 0;
+  for (let i = 0; i < ground.surface.length; i++) if (ground.surface[i]! > S.POOL) land++;
+  const most = W.perKm2 === undefined ? Infinity : Math.round((W.perKm2 * land * 4) / 1e6);
+  if (W.perKm2 !== undefined) boards.sort((a, b) => a.key - b.key || a.h - b.h || a.x - b.x || a.z - b.z);
+  let standing = 0;
+  for (const b of boards) {
+    if (standing >= most) break;
+    if (W.perKm2 === undefined && !chance(b.h, W.chance)) continue;
+    const set = W.sets?.[b.cls] ?? W.set;
+    const back = set[0] + (hash3(b.h, 1, seed) % 1000) / 1000 * (set[1] - set[0]);
+    const [px, pz, yaw] = side(b.x, b.z, b.dx, b.dz, b.half + back, b.h % 2 === 0 ? 1 : -1);
+    if (put("billboards", form(W.forms?.[b.cls] ?? "billboard", hash3(b.h, 2, seed)), px, pz, yaw)) standing++;
+  }
   if (graph.mapped.points) {
     summary.mapped = {};
     for (const m of graph.marked) {

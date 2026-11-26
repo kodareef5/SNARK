@@ -543,6 +543,9 @@ function interior(m: Mason, t: Tile, dir: number, floors: number, base: number, 
   m.level(-1);
 }
 
+/** Metres from a failed bay's floor to its roof before a slab is hung there: two storeys. */
+export const HANG_LEAST = 8;
+
 function collapse(m: Mason, t: Tile, mode: string, height: number, rule: Rule, opts: LayoutOptions, base: number, bay: number, facadeSide: number, hang: number): void {
   m.at(t);
   m.falls.push({ mode, u: t.u, v: t.v });
@@ -566,14 +569,15 @@ function collapse(m: Mason, t: Tile, mode: string, height: number, rule: Rule, o
     }
   }
   else if (mode === "hanging") {
-    const shape = rule.damage?.plates?.[0] ?? "plate30";
-    if (hang > base) m.put(shape, t.u + 1, hang - RUIN_SHAPES[shape][1] / 2, t.v, "concrete", 12);
+    // The slab hangs clear of the ground, square in its own bay: under a roof one storey up it would stand where the walls were.
+    const shape = bay === 4 ? "plate4" : (rule.damage?.plates?.[0] ?? "plate30");
+    if (hang - base >= HANG_LEAST) m.put(shape, t.u, hang - RUIN_SHAPES[shape][1] / 2, t.v, "concrete");
     m.put("rubble4", t.u, .55, t.v + 1, "concrete", 21);
   }
   else if (mode !== "burnt") {
     m.put("rubble4", t.u, .55, t.v + 1, "concrete", 21); m.put("rubble", t.u - 2, .35, t.v - 1, "concrete", 63);
     if (mode === "lost-top") { m.put("mound", t.u, 1, t.v - 1); m.put("plate30", t.u + .5, RUIN_SHAPES.plate30[1] / 2, t.v, "concrete", 160); }
-    if (mode === "facade" && !facadeSide) { const shape = rule.damage?.front ?? "front60"; m.put(shape, t.u, RUIN_SHAPES[shape][1] / 2, t.v, "concrete", 15); }
+    if (mode === "facade" && !facadeSide) { const shape = rule.damage?.front ?? "front12"; m.put(shape, t.u, RUIN_SHAPES[shape][1] / 2, t.v, "concrete", 15); }
     if (mode === "shear" && bay === 8 && !m.rooms.some((r) => r.kind === "rubble") && hash3(t.i, t.j, opts.seed) % 3 === 0) {
       m.floor([t.u, t.v], 0, 8);
       const points = [[-3, 0, -3], [-2, .7, -1], [0, 1.1, 1], [2.5, 0, -2.5]].map(([u, y, v]) => { const [x, z] = m.point(t.u + u!, t.v + v!); return { x, y: m.base + y!, z }; });

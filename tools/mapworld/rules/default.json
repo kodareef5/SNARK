@@ -1642,7 +1642,7 @@
       "radius": 0.6,
       "retain": 0.72,
       "layers": 3,
-      "front": "front60"
+      "front": "front12"
     },
     "hanging": {
       "radius": 0.55,
@@ -1962,7 +1962,10 @@
       "bin": [["bin", 3], ["bin_tipped", 1]],
       "rail": [["rail", 4], ["rail_bent", 1]],
       "fence": [["fence", 5], ["fence_sagging", 3], ["fence_down", 1]],
-      "billboard": [["billboard", 2], ["billboard_bare", 1]]
+      "billboard": [["billboard", 5], ["billboard_bare", 1]],
+      "billboard_highway": [["billboard_tall", 6], ["billboard_grand", 4], ["billboard", 3], ["billboard_low", 2], ["billboard_tall_bare", 1], ["billboard_grand_bare", 1], ["billboard_bare", 1]],
+      "billboard_avenue": [["billboard", 5], ["billboard_mid", 7], ["billboard_tall", 3], ["billboard_bare", 1], ["billboard_mid_bare", 1], ["billboard_tall_bare", 1]],
+      "billboard_street": [["billboard_small", 7], ["billboard_mid", 3], ["billboard_small_bare", 1], ["billboard_mid_bare", 1]]
     },
     "lamps": { "spacing": { "highway": 44, "avenue": 35, "street": 30, "ramp": 44, "lot": 40 }, "both": ["highway", "avenue"], "set": 0.9, "lit": { "highway": 0.15, "avenue": 0.3, "street": 0.1, "ramp": 0.15, "lot": 0.05 }, "dark": ["industrial"] },
     "junctions": { "major": ["avenue"], "minor": ["street"], "signalCross": 0.5, "signal": 1.2, "stop": 0.75, "name": 1.4, "stopBack": 2, "standing": 0.9, "past": 2.6, "marked": 14, "seek": 12, "room": 6 },
@@ -1982,7 +1985,7 @@
     },
     "rails": { "classes": ["highway", "ramp"], "set": 0.8, "drop": 1.2, "water": 9 },
     "fences": { "classes": ["avenue", "street"], "set": 2.5, "depth": 12, "least": 12, "yard": 0.75, "open": 0.3, "gap": 0.08 },
-    "billboards": { "classes": ["highway", "ramp", "avenue"], "spacing": 380, "set": [10, 16], "chance": 0.7 },
+    "billboards": { "classes": ["highway", "ramp", "avenue", "street"], "spacing": 60, "set": [10, 16], "sets": { "avenue": [6, 12], "street": [3, 6] }, "chance": 0.7, "perKm2": 10, "weights": { "highway": 4, "ramp": 3, "avenue": 4, "street": 1 }, "forms": { "highway": "billboard_highway", "ramp": "billboard_highway", "avenue": "billboard_avenue", "street": "billboard_street" } },
     "paystations": { "least": 8, "tries": 6, "set": 0.6 },
     "stripes": { "pieces": { "crosswalk8": 9.6, "crosswalk4": 4.8, "crosswalk2": 2.4, "crosswalk1": 1.2 }, "inset": 0.3, "bare": ["unmarked", "no"], "fresh": ["avenue", "highway"] },
     "clear": { "road": 0.25, "inside": 0.35, "route": 0.4, "piece": 0.3, "between": 0.4, "edge": 12, "junction": 3, "rise": 0.6, "crossing": 0.3 }

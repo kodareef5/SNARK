@@ -6,7 +6,7 @@ import { expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import type { Source } from "../../server/combat.ts";
 import { BREAK_FAMILIES, FORM_BREACH_A, FORM_BREACH_B, FORM_HEAP, FORM_HUNG, FORM_OPEN, FORM_WHOLE } from "../../shared/content/breaks.ts";
-import { Pieces, gather } from "../../shared/world/bearing.ts";
+import { Pieces, carrying, gather } from "../../shared/world/bearing.ts";
 import { formOf } from "../../shared/world/breaking.ts";
 import { readHead, type MapHead } from "../../shared/world/mapfile.ts";
 import { rocket } from "../fixtures/city.ts";
@@ -121,8 +121,9 @@ test.skipIf(!there)("a shop row with a storefront breached, then opened, loses n
   expect([s.form(store), r.fell.length, r.heaps.length, r.hung.length]).toEqual([FORM_OPEN, 0, 0, 0]);
 });
 
-test.skipIf(!there)("flats with two ground bays opened stand on their stair and room walls, and peel without those", async () => {
-  const s = site(await server(), 93877552490725);
+test.skipIf(!there)("flats lose their upper floors when too few ground walls carry them", async () => {
+  const id = 93877552490725;
+  const s = site(await server(), id);
   const { p } = s;
   const lobbies = Array.from({ length: p.n }, (_, k) => k).filter((k) => s.shape[k] === "zlobby" && p.level[k] === 0);
   const pair = lobbies.flatMap((a) => lobbies.filter((b) => b > a && beside(s, a, b)).map((b) => [a, b] as const))[0]!;
@@ -136,16 +137,39 @@ test.skipIf(!there)("flats with two ground bays opened stand on their stair and 
   say("Flats", s, "two neighbouring ground bays opened", r);
   // Each slab over them is held by the stair beside it or by its other wall, so the balconies ride slabs that stand.
   expect([r.fell.length, r.heaps.length, r.hung.length]).toEqual([0, 0, 0]);
-  // Every wall of the ground storey opened, the rooms' too: a corner's slab hangs, and the balconies on it come down.
   const walls = Array.from({ length: p.n }, (_, k) => k).filter((k) => s.family[k] === "wall" && p.level[k] === 0);
-  const began = s.h.world.tick;
   for (const k of walls) s.open(k);
-  const all = s.settle(s.forms().map((f, k) => (walls.includes(k) ? f : was[k]!)));
-  say("Flats", s, `all ${walls.length} walls of its ground storey opened`, all);
-  console.log(`Flats: settled in ${s.h.world.tick - began} ticks`);
+  const beforeCollapse = s.forms(), { reg, structs } = s.h.world, rules = s.h.host.rules;
+  const share = rules.num("CityCollapseStoreyShare");
+  let standing = 0;
+  for (let k = 0; k < p.n; k++) {
+    const ref = p.ref[k]!, kind = structs.chunks[ref >>> 16]!.kind[ref & 65535]!;
+    if (p.level[k] === 0 && carrying(reg, kind)) standing += p.post[k]!;
+  }
+  expect(standing).toBeGreaterThan(0);
+  expect(standing).toBeLessThan(p.posts[0]! * share);
+  const all = s.settle(beforeCollapse);
+  say("Flats", s, `opened all ground walls, leaving ${standing.toFixed(1)} of ${p.posts[0]!.toFixed(1)} m of supports`, all);
+  expect(all.hung).toHaveLength(0);
   expect(all.fell.concat(all.heaps).filter((n) => n.startsWith("zbalc")).length).toBeGreaterThanOrEqual(2);
-  expect(all.hung.length).toBeGreaterThan(0);
+  const floors = s.forms().filter((_, k) => p.level[k]! > 0 && s.family[k] === "slab");
+  expect(floors.length).toBeGreaterThan(0);
+  for (const form of floors) expect(form).toBe(-1);
   for (let k = 0; k < p.n; k++) if (s.shape[k] === "flight" || s.shape[k] === "landing") expect(s.form(k)).toBe(FORM_WHOLE);
+
+  // The same building and damage still produce a local collapse when only individual supports count.
+  s.h.host.cityRegrow.heal(id);
+  expect(s.forms()).toEqual(was);
+  expect(rules.assign("CityCollapseStoreyShare", "0", "console")).toBe("");
+  try {
+    for (const k of walls) s.open(k);
+    const local = s.settle(s.forms());
+    expect(local.hung.some((name) => name.startsWith("floor"))).toBe(true);
+    expect(local.fell.concat(local.heaps).filter((n) => n.startsWith("zbalc")).length).toBeGreaterThanOrEqual(2);
+    expect(s.forms().some((f, k) => s.family[k] === "slab" && p.level[k]! > 0 && f === FORM_WHOLE)).toBe(true);
+  } finally {
+    rules.assign("CityCollapseStoreyShare", String(share), "console");
+  }
 });
 
 test.skipIf(!there)("a tower with its ground piers cut to stubs keeps its stairs, its walls and its shell", async () => {

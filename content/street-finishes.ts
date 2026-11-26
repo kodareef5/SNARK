@@ -92,5 +92,5 @@ for (const variant of ["concrete", "limestone", "rose", "mint", "clay", "steel",
 }
 for (const piece of ["lamp", "lamp_lit", "lamp_leaning", "lamp_fallen", "signal", "signal_bent", "hydrant", "shelter", "shelter_wrecked",
   "mailbox", "meter", "meter_broken", "paystation", "paystation_broken", "bollard", "fence", "fence_sagging", "fence_down",
-  "rail", "rail_bent", "billboard", "billboard_bare", "newsbox"]) priorities.set("core:zzstreet_" + piece, 0.4);
+  "rail", "rail_bent", ...["", "_low", "_mid", "_small", "_tall", "_grand"].flatMap((board) => [`billboard${board}`, `billboard${board}_bare`]), "newsbox"]) priorities.set("core:zzstreet_" + piece, 0.4);
 export const streetPriority = (id: string): number => priorities.get(id) ?? 0;

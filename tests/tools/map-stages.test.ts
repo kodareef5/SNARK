@@ -187,6 +187,20 @@ test("a kit's fetch cut short still holds the next to the kit's own records", ()
   expect(existsSync(join(work, "raw/downloads.kit.json"))).toBe(false);
 });
 
+test("a failed stage record keeps the kit digests for another run", () => {
+  const { work } = run();
+  kitted(work);
+  process.env.EXTRACT = "newer";
+  const part = join(work, "stages.json.part");
+  mkdirSync(part);
+  expect(() => run({ only: "ways" })).toThrow();
+  expect(existsSync(join(work, "raw/KIT"))).toBe(true);
+  expect(existsSync(join(work, "raw/downloads.kit.json"))).toBe(true);
+  rmSync(part, { recursive: true });
+  expect(() => run({ only: "ways" })).toThrow("differs from what the kit's layers were made from");
+  expect(run().ran).toEqual(["prepare", "ways", "build"]);
+});
+
 test("a changed kit source stops a run that cannot reach its first reader", () => {
   const { work } = run();
   kitted(work);

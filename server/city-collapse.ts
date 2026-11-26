@@ -251,7 +251,7 @@ export class CityCollapse implements CitySupport {
       const pin = this.pinsOf(id, handles);
       const p = gather(buildings, handles, world.structs, world.reg, false, this.now, gone);
       const out = this.scratch(p.n);
-      judge(p, out, pin);
+      judge(p, out, pin, this.ctx.rules.num("CityCollapseStoreyShare"));
       this.count(p.n);
       // Every piece of it that is going and would rest: those of `falls` are the ones asked of.
       for (let k = 0; k < p.n; k++) if ((p.bits[k]! & BIT_GHOST) !== 0 && (out[k]! & RESTS) !== 0) this.rest.add(p.ref[k]!);
@@ -302,7 +302,7 @@ export class CityCollapse implements CitySupport {
     const pin = this.pinsOf(d.id, d.handles);
     const p = (d.plan = gather(world.buildings!, d.handles, world.structs, world.reg, false, d.plan ?? new Pieces()));
     if (!d.verdict || d.verdict.length < p.n) d.verdict = new Uint8Array(p.n);
-    judge(p, d.verdict, pin);
+    judge(p, d.verdict, pin, this.ctx.rules.num("CityCollapseStoreyShare"));
     this.count(p.n);
     d.stale = false;
   }

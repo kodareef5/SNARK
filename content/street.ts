@@ -41,6 +41,11 @@ type Material = "core:mat_metal" | "core:mat_wood" | "core:mat_stone";
  */
 export interface StreetPiece {
   readonly name: string;
+  /**
+   * Metres its origin stands over the ground under its foot, where that is not on it: a piece's box may reach 16 m from
+   * its origin (shared/content/kinds/shapes.ts), so one taller than that has its origin partway up and reaches both ways.
+   */
+  readonly lift?: number;
   readonly color: number;
   readonly hp: number;
   readonly material?: Material;
@@ -71,12 +76,37 @@ const SHELTER = [
 // The yield sign's post above its bend at 0.5 m, and its face.
 const YIELD_POST = box(-0.04, 0.04, 0.5, 2.84, -0.04, 0.04);
 const YIELD_FACE = box(-0.46, 0.46, 2.1, 2.89, 0.04, 0.06);
-const BILLBOARD = [box(-0.45, 0.45, 0, 10, -0.45, 0.45), box(-7.4, 7.4, 9.55, 14.4, -0.45, 1.55)];
 /**
- * A billboard's LED face: the 14.6 by 4.3 m sheet its mesh hangs at z 0.1 (model.py `billboard_frame`, its far form's
- * front at 0.11), toward the road, and 5 mm in front of it. The bare one, its broken form, has none.
+ * The billboards, by the name after "billboard": each face is the first's 14.6 by 4.3 m times `scale`, its foot `pole`
+ * metres up, with a catwalk and lamps before it or, the small one, none (model.py BOARDS has the same numbers). Every
+ * face has one proportion, so a picture made for one fits them all. A board stands on a steel monopole `post` thick, or,
+ * the tall ones, on square concrete pillars `post` from middle to face at each of `pillars` along it. A tall one's
+ * origin is `lift` metres up its pillars, so that it reaches no more than 16 m from it either way and may stand 30 m.
  */
-export const BILLBOARD_FACE: ScreenFace = { type: "billboard", face: [-7.3, 7.3, 9.95, 14.25, 0.115], led: true };
+export const BOARDS = {
+  "": { scale: 1, pole: 10, post: 0.45, walk: true, lift: 0, pillars: [0] },
+  _low: { scale: 1, pole: 5.5, post: 0.45, walk: true, lift: 0, pillars: [0] },
+  _mid: { scale: 0.67, pole: 6, post: 0.3, walk: true, lift: 0, pillars: [0] },
+  _small: { scale: 0.42, pole: 3.5, post: 0.18, walk: false, lift: 0, pillars: [0] },
+  // Over the roofs, to be read from the highway and from blocks away: one pillar, and a face half as large again on two.
+  _tall: { scale: 1, pole: 25, post: 0.7, walk: true, lift: 14, pillars: [0] },
+  _grand: { scale: 1.5, pole: 24, post: 0.6, walk: true, lift: 15, pillars: [-5.5, 5.5] },
+} as const;
+export type Board = keyof typeof BOARDS;
+/** Each pillar or the pole, and the face with its beam behind and its lamps' arms before it, about the piece's origin. */
+const boardBoxes = (b: (typeof BOARDS)[Board]): ShapeBox[] => [
+  ...b.pillars.map((x) => box(x - b.post, x + b.post, -b.lift, b.pole - b.lift, -b.post, b.post)),
+  box(-7.3 * b.scale - 0.1, 7.3 * b.scale + 0.1, b.pole - 0.45 - b.lift, b.pole - 0.05 + 4.3 * b.scale + 0.15 - b.lift, -Math.max(b.post, 0.4), b.walk ? 1.55 : 0.15),
+];
+/**
+ * A billboard's LED face: the sheet its mesh hangs at z 0.1 (its far form's front at 0.11), toward the road, and 5 mm in
+ * front of it. A bare one, its broken form, has none.
+ */
+export const boardFace = (board: Board): ScreenFace => {
+  const b = BOARDS[board];
+  return { type: "billboard", face: [-7.3 * b.scale, 7.3 * b.scale, b.pole - 0.05 - b.lift, b.pole - 0.05 + 4.3 * b.scale - b.lift, 0.115], led: true };
+};
+export const BILLBOARD_FACE: ScreenFace = boardFace("");
 /**
  * A crosswalk of `bars` bars, 1.2 m a bar across the road (x) and 3 m along it (z), drawn on the ground as paint is
  * (`paint`). Paint is walked and driven over as the road is, and a static has to have a box (shared/content/registry.ts):
@@ -158,8 +188,10 @@ export const STREET_PIECES: readonly StreetPiece[] = [
   { name: "fence_down", color: GALV, hp: 400, material: "core:mat_metal", boxes: [box(-1.54, -1.46, 0, 1.86, -0.04, 0.04), box(1.46, 1.54, 0, 1.86, -0.04, 0.04), box(-1.45, 1.45, 0, 0.07, 0.06, 1.82)] },
   { name: "rail", color: GALV, hp: 1500, material: "core:mat_metal", boxes: [box(-2, 2, 0, 0.85, -0.12, 0.34)] },
   { name: "rail_bent", color: RUST, hp: 1000, material: "core:mat_metal", boxes: [box(-2, 2, 0, 0.85, -0.55, 0.34)] },
-  { name: "billboard", color: GALV, hp: 6000, material: "core:mat_metal", boxes: BILLBOARD },
-  { name: "billboard_bare", color: RUST, hp: 5000, material: "core:mat_metal", boxes: BILLBOARD },
+  ...(Object.keys(BOARDS) as Board[]).flatMap((board): StreetPiece[] => [
+    { name: `billboard${board}`, color: GALV, hp: Math.round(6000 * BOARDS[board].scale), material: "core:mat_metal", boxes: boardBoxes(BOARDS[board]), ...(BOARDS[board].lift > 0 ? { lift: BOARDS[board].lift } : {}) },
+    { name: `billboard${board}_bare`, color: RUST, hp: Math.round(5000 * BOARDS[board].scale), material: "core:mat_metal", boxes: boardBoxes(BOARDS[board]), ...(BOARDS[board].lift > 0 ? { lift: BOARDS[board].lift } : {}) },
+  ]),
   // Its window faces the walk.
   { name: "newsbox", color: BLUE, hp: 600, material: "core:mat_metal", boxes: [box(-0.26, 0.26, 0, 1.06, -0.25, 0.24)] },
   // Crosswalk bars on the road, 1, 2, 4 and 8 of them, fresh and worn; nothing harms paint.
@@ -179,8 +211,8 @@ const STATICS: readonly StructureDef[] = STREET_PIECES.map((p) => ({
   ...(p.name === "rail" ? { grindLine: [[-2, .85, .1], [2, .85, .1]] as const } : {}),
   color: p.color, hp: p.hp, ...(p.material ? { material: p.material } : {}), ...(p.paint ? { paint: true as const } : {}),
   // Drawn near only: left out of the far city's lattice and mass, where a lamp would take a whole cell. A billboard is seen from afar.
-  ...(p.name.startsWith("billboard") ? {} : { near: true as const }),
-  ...(p.name === "billboard" ? { screen: BILLBOARD_FACE } : {}),
+  ...(p.name.startsWith("billboard") && !p.name.startsWith("billboard_small") ? {} : { near: true as const }),
+  ...(p.name.startsWith("billboard") && !p.name.endsWith("_bare") ? { screen: boardFace(p.name.slice("billboard".length) as Board) } : {}),
 }));
 // The curb returns at street corners (content/curbs.ts) are the street's too.
 export const STREET: readonly Def[] = [...SHAPES, ...STATICS, ...CURB_RETURNS, ...BENT_SECTIONS];

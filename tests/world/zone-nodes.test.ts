@@ -50,3 +50,19 @@ test("zone pictures are the same from the mask as from the scan", () => {
   expect(scanned.plants.some((p) => p === 0)).toBe(true);
   expect(scanned.plants.some((p) => p !== 0)).toBe(true);
 });
+
+test("nothing grows on a street, a highway or a crosswalk, and a walk, a plaza and a lot keep their gardens", () => {
+  const side = 129, across = (side - 1) / 2;
+  const growth = { zones: {} } as unknown as NonNullable<Parameters<typeof makeNodes>[4]>;
+  const plantsOn = (surface: number): number => {
+    const g = ground(side);
+    g.surface.fill(surface);
+    return makeNodes(g, world, () => false, () => false, growth).plants.filter((p) => p !== 0).length;
+  };
+  for (const s of [S.STREET, S.HIGHWAY, S.CROSSWALK]) expect([s, plantsOn(s)]).toEqual([s, 0]);
+  for (const s of [S.SIDEWALK, S.PLAZA, S.LOT]) expect(plantsOn(s)).toBeGreaterThan(across * across / 8);
+  // Stones still lie in the road.
+  const g = ground(side);
+  g.surface.fill(S.STREET);
+  expect(makeNodes(g, world, () => false, () => false, growth).stones.every((t) => t !== 0)).toBe(true);
+});
