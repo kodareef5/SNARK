@@ -1,0 +1,12 @@
+Source: OpenAI built-in ImageGen. Original SNARK surface study.
+Source output: material-source.png. Game maps: ../tex/build_maps.py.
+
+Use case: stylized-concept
+Asset type: game PBR base color material source sheet for nine hand-built 3D survival inventory consumables, their worn packaging and contents.
+Create one square image composed of an exact 4 by 4 grid of equal square rectangular swatches. Each swatch must be a uniform close-up material texture across the entire square, straight-on orthographic, filling its cell edge to edge. The grid aligns at 0%, 25%, 50%, 75%, 100% horizontally and vertically. There must be NO borders, titles, swatch gaps, padding, gradients, props, text, marks that read as letters, perspective, shading, reflections, highlights, vignette, shadows or baked ambient occlusion. Include restrained scale-independent mottling and very fine wear so the maps remain useful when heavily reduced.
+Rows from top to bottom, and columns left to right:
+Row 1: muted cool light grey mortar putty fine grit | beige kraft wrapping paper flecks and fiber | matte deep verdigris green electronics board resin | muted weathered industrial ochre brass with fine scratches
+Row 2: vermilion red worn molded HDPE | charcoal grey worn rubber | deep black graphite powder very fine angular grains | warm grey dusty canvas fibers
+Row 3: petroleum-black tar with faint umber mottling | battleship blue grey worn enamel on steel | pale cool ivory polymer with microscopic speckling | sun yellow orange mineral grit fine powder
+Row 4: saturated teal turquoise organic gel monochromatic soft mottling with no gloss highlights | midnight purple black shell with subtle worn striations | cream heavy parchment paper with water freckles | dark desaturated warm brown distressed rexine strap.
+All materials should be realistic grounded tactile albedo, no artificial light and no background. No text or graphics. Emphasize color differences between the cells and very subtle material variation within each cell.

@@ -412,3 +412,44 @@ test("after a restart a building with a carrier broken is judged once and comes 
   expect(slabs.flat().every((k) => form(c.refs[k]!) === 0)).toBe(true);
   h.host.shutdown();
 });
+
+/** Flats four bays by two on three storeys, walled all round, a stair inside. Returns the ground storey's uprights and every piece over them. */
+function walled(): { s: Sketch; ground: number[]; over: number[] } {
+  const s = new Sketch(4, 2);
+  s.storeys = s.playable = 3;
+  s.stair(1, 1, 3);
+  const ground: number[] = [], over: number[] = [];
+  for (let storey = 0; storey < 3; storey++) {
+    const into = storey === 0 ? ground : over;
+    for (let i = 0; i < 4; i++) into.push(s.edge("wall8", "concrete", i, 0, SIDE_FRONT, storey), s.edge("zpanel8", "concrete", i, 1, SIDE_BACK, storey));
+    for (let j = 0; j < 2; j++) into.push(s.edge("zpanel8", "concrete", 0, j, SIDE_LEFT, storey), s.edge("zpanel8", "concrete", 3, j, SIDE_RIGHT, storey));
+  }
+  for (let level = 1; level <= 3; level++) for (let k = 0; k < 8; k++) over.push(s.slab(k % 4, k >> 2, level));
+  return { s, ground, over };
+}
+
+test("a building comes down once three quarters of a storey's uprights are opened, stair or no stair", () => {
+  const { s, ground, over } = walled();
+  const c = sketchCity(s);
+  const up = (): number => over.filter((k) => { const f = c.form(c.refs[k]!); return f !== -1 && f !== FORM_HEAP; }).length;
+  // Eight of twelve opened leave a third of the storey: the stair and the walls left still hold floors up.
+  for (const k of ground.slice(0, 8)) openUp(c, c.refs[k]!);
+  settle(c);
+  expect(up()).toBeGreaterThan(0);
+  // Ten of twelve leave a sixth: the storey gives way and nothing over it is left up.
+  for (const k of ground.slice(8, 10)) openUp(c, c.refs[k]!);
+  settle(c);
+  expect(up()).toBe(0);
+  expect(ground.map((k) => c.form(c.refs[k]!))).toEqual([...new Array(10).fill(FORM_OPEN), FORM_WHOLE, FORM_WHOLE]);
+  c.h.host.shutdown();
+});
+
+test("with CityCollapseStoreyShare 0 a storey never gives way as a whole", () => {
+  const { s, ground, over } = walled();
+  const c = sketchCity(s);
+  expect(c.h.host.rules.assign("CityCollapseStoreyShare", "0", "console")).toBe("");
+  for (const k of ground.slice(0, 10)) openUp(c, c.refs[k]!);
+  settle(c);
+  expect(over.filter((k) => c.form(c.refs[k]!) === FORM_WHOLE).length).toBeGreaterThan(0);
+  c.h.host.shutdown();
+});

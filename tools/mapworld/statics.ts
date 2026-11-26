@@ -13,6 +13,7 @@ import type { District, Ground, World } from "./ground.ts";
 import type { SiteBuilding } from "./buildings.ts";
 import { RUINS } from "./ruins.ts";
 import { STRUCT_UNITS, YAW_UNITS } from "../../shared/coords.ts";
+import { cellHeight } from "../../shared/world/heightfield.ts";
 import { orbCollision } from "../../shared/world/orb.ts";
 import { toYaw } from "../map/layers.ts";
 import { own } from "./known.ts";
@@ -116,14 +117,11 @@ export function siteOf(world: World, ground: Ground, source: string): Site {
     footprints: ground.heaps.ruins.map((ruin) => ({ building: ruin.building, ruin, district: world.districts[ruin.district - 1] ?? null })),
     toLattice: (e, no) => [eastX - e, no - southZ],
     groundAt(x, z) {
-      // Columns run west to east and rows north to south, so x and z count back from the far corner.
-      const fc = (x1 - x) / 2;
-      const fr = (z1 - z) / 2;
-      const c = Math.floor(fc);
-      const r = Math.floor(fr);
-      const u = fc - c;
-      const v = fr - r;
-      return (at(c, r) * (1 - u) + at(c + 1, r) * u) * (1 - v) + (at(c, r + 1) * (1 - u) + at(c + 1, r + 1) * u) * v;
+      // On the triangles the game collides with: engine sample (i, j) is base sample (nx - 1 - i, nz - 1 - j).
+      const fx = Math.min(nx - 1, Math.max(0, (x - x0) / 2)), fz = Math.min(nz - 1, Math.max(0, (z - z0) / 2));
+      const i = Math.min(nx - 2, Math.floor(fx)), j = Math.min(nz - 2, Math.floor(fz));
+      const c = nx - 1 - i, r = nz - 1 - j;
+      return cellHeight(at(c, r), at(c - 1, r), at(c, r - 1), at(c - 1, r - 1), fx - i, fz - j);
     },
     waterAt(x, z) {
       const lakes = ground.lakes;

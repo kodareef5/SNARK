@@ -40,6 +40,7 @@ import type { BuildingLabel, PublicPlace } from "./labels.ts";
 import { growRuins } from "./ruin-growth.ts";
 import { landmarkDefs, landmarksOf, layLandmarkGround, placeLandmarks } from "./landmarks.ts";
 import { workFolder } from "../maps/work.ts";
+import { dropTwins } from "./twins.ts";
 import { encodeKnown, knownPlaces, mapBuildings, orderPieces, type KnownPlaces } from "./buildings.ts";
 import type { Buildings } from "../../shared/world/buildings.ts";
 
@@ -96,8 +97,9 @@ export async function buildMap(named: string, release = false, output = join(ROO
   const layered: StaticPiece[] = [];
   for (const layer of STATIC_LAYERS) {
     const pieces = layer.make(site, layered);
+    const twins = dropTwins(pieces);
     Bun.gc(true);
-    lap(`${pieces.length} static pieces of ${layer.name}`);
+    lap(`${pieces.length} static pieces of ${layer.name}${twins ? `, ${twins} placed twice taken out` : ""}`);
     for (const p of pieces) layered.push(p);
   }
   // A kind the content does not have would load nowhere: say so here, not when a server or a picture opens the map.
@@ -157,6 +159,7 @@ export async function buildMap(named: string, release = false, output = join(ROO
   const marinas = layMarinas(latticeSites, docks, piers, harbours, reg, statics, {
     waterAt: site.waterAt, groundAt: site.groundAt, inside, chunk: chunkOf,
     room: (x, z) => pieceCounts[chunkOf(x, z)]! < budget - 2, took: (x, z) => { pieceCounts[chunkOf(x, z)]!++; },
+    gave: (x, z) => { pieceCounts[chunkOf(x, z)]!--; },
   }, districtAt, (mesh) => meshes.has(mesh), lanes);
   // The street's furniture where a dock comes ashore is taken up in one pass, the rest keeping their order.
   const ashore = new Set(marinas.cleared);
@@ -364,6 +367,14 @@ export async function buildMap(named: string, release = false, output = join(ROO
   const packedMax = Math.max(...parsed.statics.first.slice(1).map((end, i) => end - parsed.statics.first[i]!));
   if (packedMax > budget) throw new Error(`Packed static chunk budget ${budget} exceeded: ${packedMax}`);
   const hf = mapHeightfield(parsed);
+  // What the generator stood pieces on is the ground the game collides with, within a step of its heights.
+  let seed = 1, groundWorst = 0;
+  const rand = (): number => (seed = (seed * 1103515245 + 12345) >>> 0) / 2 ** 32;
+  for (let k = 0; k < 10000; k++) {
+    const x = rand() * hf.sizeX, z = rand() * hf.sizeZ;
+    groundWorst = Math.max(groundWorst, Math.abs(site.groundAt(x + x0, z + z0) - hf.heightAt(x, z)));
+  }
+  if (groundWorst > hf.stepY) throw new Error(`the generator's ground is ${groundWorst.toFixed(3)} m from the map's`);
   const placed = mapNodes(parsed, hf, reg)!;
   const byKind = new Map<string, number>();
   const spot = { kind: 0, form: 0, x: 0, y: 0, z: 0, yaw: 0 };
@@ -384,9 +395,11 @@ export async function buildMap(named: string, release = false, output = join(ROO
       const h = hf.sample(i, j);
       if (h < hf.waterAt(i * hf.cell + 1, j * hf.cell + 1)) continue;
       land++;
-      const gx = (hf.sample(i + 1, j) - h) / hf.cell;
-      const gz = (hf.sample(i, j + 1) - h) / hf.cell;
-      if (1 / Math.sqrt(1 + gx * gx + gz * gz) >= cosLimit) walkable++;
+      // Each of the cell's two triangles, as the game walks them, is half of it.
+      const h10 = hf.sample(i + 1, j), h01 = hf.sample(i, j + 1), h11 = hf.sample(i + 1, j + 1);
+      for (const [gx, gz] of [[(h10 - h) / hf.cell, (h11 - h10) / hf.cell], [(h11 - h01) / hf.cell, (h01 - h) / hf.cell]] as const) {
+        if (1 / Math.sqrt(1 + gx * gx + gz * gz) >= cosLimit) walkable += 0.5;
+      }
     }
   }
   const surfaces: Record<string, number> = {};

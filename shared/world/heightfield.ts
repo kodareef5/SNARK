@@ -12,6 +12,11 @@ import type { MapWater } from "./water.ts";
 
 export const TERRAIN_CELL = 2;
 
+/** A height inside a cell of corners h00 (i, j), h10 (i+1, j), h01 (i, j+1), h11 (i+1, j+1), on the triangle (u, v) is in. */
+export function cellHeight(h00: number, h10: number, h01: number, h11: number, u: number, v: number): number {
+  return u >= v ? h00 + (h10 - h00) * u + (h11 - h10) * v : h00 + (h11 - h01) * u + (h01 - h00) * v;
+}
+
 /** What Heightfield.view gives: sample (i, j) of the box asked for is `heights[off + j * stride + i]`. */
 export interface GroundView {
   heights: Uint16Array;

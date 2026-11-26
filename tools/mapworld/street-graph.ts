@@ -10,7 +10,11 @@ import { join } from "node:path";
 import { binKey, textSeed } from "./raster.ts";
 
 /** A road piece's stretch between two of its points, in engine metres, with its class (TIGER MTFCC) and half width. */
-export interface Segment { ax: number; az: number; bx: number; bz: number; half: number; mtfcc: string; line: number; }
+export interface Segment {
+  ax: number; az: number; bx: number; bz: number; half: number; mtfcc: string; line: number;
+  /** Metres along the whole piece where it starts, which a run the frame left out of the piece's middle adds to. */
+  along: number;
+}
 
 /** What the data says of a road piece. Sides are of its drawn direction: left, then right. */
 export interface Piece {
@@ -103,11 +107,16 @@ export function readStreetGraph(source: string, toLattice: (e: number, n: number
       maxspeed: num(p.maxspeed_mph), lit: typeof p.lit === "boolean" ? p.lit : null, parking: [text(p.parking_left), text(p.parking_right)],
     });
     const runs = f.geometry.type === "MultiLineString" ? (f.geometry.coordinates as number[][][]) : [f.geometry.coordinates as number[][]];
-    for (const run of runs) {
+    // Where each run starts along the whole piece (streets.py runs_from_m); data made before it says only the first's.
+    const starts = Array.isArray(p.runs_from_m) && p.runs_from_m.length === runs.length ? (p.runs_from_m as unknown[]).map(Number) : null;
+    let walked = pieces[line]!.from;
+    for (const [r, run] of runs.entries()) {
+      if (starts) walked = starts[r]!;
       const points = run.map(([e, n]) => toLattice(e!, n!)).filter((q, i, all) => i === 0 || Math.hypot(q[0] - all[i - 1]![0], q[1] - all[i - 1]![1]) >= 0.01);
       for (let i = 1; i < points.length; i++) {
         const [ax, az] = points[i - 1]!; const [bx, bz] = points[i]!;
-        segments.push({ ax, az, bx, bz, half: pieces[line]!.half, mtfcc: pieces[line]!.mtfcc, line });
+        segments.push({ ax, az, bx, bz, half: pieces[line]!.half, mtfcc: pieces[line]!.mtfcc, line, along: walked });
+        walked += Math.hypot(bx - ax, bz - az);
       }
       // A piece's ends are its nodes; a point inside it that another piece shares is a node it passes through.
       for (const [i, [x, z]] of points.entries()) {

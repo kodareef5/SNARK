@@ -2,39 +2,128 @@
 //
 //   bun tools/map/encode-trial.ts <file.snmap> [--parts 40] [--quality 11]
 //
-// Each statics part's own pieces are decoded and coded again as today (which must give its bytes back), then:
+// Each statics part is taken apart where the reader takes it (shared/world/mapfile.ts readStatics: its own kinds' table,
+// its count, its columns, its bent pieces) and its columns coded again as today, which must give the part's bytes back
+// exactly, then:
 //   steps   x, y and z as the change in the step from the piece before, so a row of bays at any turn repeats exactly;
 //   turned  the step in the frame of the turn of the piece before, rounded, and a byte a piece that makes it exact;
 //   kinds   each chunk's pieces in order of kind, then place: what an order by kind could save at most, since a building
 //           keeps its pieces by storey and the buildings part names their runs.
-// Bent pieces' extra numbers are kept as they are in every way. It prints the Brotli bytes of each way over the parts tried.
+// A bent piece after a bent piece is coded against where the one before's line puts it, as today, in every way but kinds,
+// and the bent pieces' own numbers are kept as they are. Every way is decoded again and must give the same kinds, turns
+// and places in the same order (kinds: in its own order); the trial stops where one does not. It prints the Brotli bytes
+// of each way over the parts tried.
 
 import { brotliCompressSync, constants } from "node:zlib";
 import { readFileSync } from "node:fs";
-import { CHUNK_SIZE, STRUCT_UNITS, chunkAt } from "../../shared/coords.ts";
+import { CHUNK_SIZE, STRUCT_UNITS } from "../../shared/coords.ts";
 import { detCos, detSin } from "../../shared/math/scalar.ts";
+import { BitReader } from "../../shared/net/codec.ts";
+import { bentNext } from "../../shared/world/bends.ts";
 import { partsOf, readHead, readPart, squareOf, type StaticsPiece } from "../../shared/world/mapfile.ts";
 
-/** Bytes of a part's columns: `n` rows of 13 bytes as planes. */
+/** Bytes of a row of a part's columns: kind, turn, x, y and z, as planes. */
 const ROW = 13;
+
+/** A part's rows as its columns code them: its own kind, turn, and place in 1/512 m from its square's corner. */
+interface Rows { id: Uint16Array; yaw: Uint16Array; x: Int32Array; y: Int32Array; z: Int32Array }
+type Way = "today" | "steps" | "turned";
+/** For a bent piece after a bent piece, the two pieces' bends; null for any other. */
+type Pair = (i: number) => readonly [ArrayLike<number>, ArrayLike<number>] | null;
 
 /** A difference modulo 2^24, zigzagged, as the map writes it. */
 const zigzag = (v: number): number => ((v = (v << 8) >> 8), (v << 1) ^ (v >> 31));
+const unzig = (v: number): number => (v >>> 1) ^ -(v & 1);
+const next = [0, 0, 0, 0];
 
-/** The columns of `n` pieces as planes, the place columns given by `place(i, axis)` as already-made 24-bit numbers. */
-function columns(n: number, id: ArrayLike<number>, yawDelta: (i: number) => number, place: (i: number, axis: number) => number): Uint8Array {
-  const b = new Uint8Array(n * ROW);
+/** Where a v15 statics part's own kinds, count, columns and what follows them are, as readStatics reads it. */
+function layout(raw: Uint8Array): { names: string[]; n: number; cols: number; rest: number } {
+  const view = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
+  const names: string[] = [];
+  let at = 2;
+  for (let k = view.getUint16(0, true); k > 0; k--) {
+    const r = new BitReader(raw.subarray(at));
+    names.push(r.string(255));
+    if (r.overflow) throw new Error("a statics part's kinds run past its end");
+    at += r.pos >>> 3;
+  }
+  const n = view.getUint32(at, true);
+  return { names, n, cols: at + 4, rest: at + 4 + n * ROW };
+}
+
+/** Each turn's cosine and sine, made as first asked for. */
+const COS = new Float64Array(65536).fill(NaN), SIN = new Float64Array(65536).fill(NaN);
+function turnOf(w: number): [number, number] {
+  if (Number.isNaN(COS[w]!)) [COS[w], SIN[w]] = [detCos((w / 65536) * 2 * Math.PI), detSin((w / 65536) * 2 * Math.PI)];
+  return [COS[w]!, SIN[w]!];
+}
+
+/** The rows' columns coded `way`, and for turned a byte a row that makes its turned step exact. */
+function encode(r: Rows, way: Way, pair: Pair): { cols: Uint8Array; fix: Uint8Array } {
+  const n = r.id.length, b = new Uint8Array(n * ROW), fix = new Uint8Array(way === "turned" ? n : 0);
   const plane = (column: number, i: number, v: number, bytes: number): void => {
     for (let k = 0; k < bytes; k++) b[(column + k) * n + i] = v >>> (8 * k);
   };
   for (let i = 0; i < n; i++) {
-    plane(0, i, id[i]!, 2);
-    plane(2, i, yawDelta(i), 2);
-    plane(4, i, place(i, 0), 3);
-    plane(7, i, place(i, 1), 3);
-    plane(10, i, place(i, 2), 3);
+    const p = i - 1;
+    let [gx, gy, gz, gyaw] = p >= 0 ? [r.x[p]!, r.y[p]!, r.z[p]!, r.yaw[p]!] : [0, 0, 0, 0];
+    const bent = pair(i);
+    let [dx, dz] = [0, 0];
+    if (bent) {
+      bentNext(gx, gy, gz, gyaw, bent[0], bent[1], next);
+      [gx, gy, gz, gyaw] = next as [number, number, number, number];
+    } else if (way === "steps" && i > 1) {
+      [gx, gy, gz] = [2 * gx - r.x[p - 1]!, 2 * gy - r.y[p - 1]!, 2 * gz - r.z[p - 1]!];
+    } else if (way === "turned" && i > 0) {
+      const [c, sn] = turnOf(r.yaw[p]!), sx = r.x[i]! - gx, sz = r.z[i]! - gz;
+      [dx, dz] = [Math.round(sx * c - sz * sn), Math.round(sx * sn + sz * c)];
+      const ex = sx - Math.round(dx * c + dz * sn), ez = sz - Math.round(-dx * sn + dz * c);
+      if (Math.abs(ex) > 7 || Math.abs(ez) > 7) throw new Error(`a turned step needs a correction of ${ex}, ${ez}, more than a byte holds`);
+      fix[i] = zigzag(ex) | (zigzag(ez) << 4);
+    }
+    const turned = way === "turned" && i > 0 && !bent;
+    plane(0, i, r.id[i]!, 2);
+    plane(2, i, r.yaw[i]! - gyaw, 2);
+    plane(4, i, zigzag(turned ? dx : r.x[i]! - gx), 3);
+    plane(7, i, zigzag(r.y[i]! - gy), 3);
+    plane(10, i, zigzag(turned ? dz : r.z[i]! - gz), 3);
   }
-  return b;
+  return { cols: b, fix };
+}
+
+/** The rows `encode` coded `way` into `b`, read back as a reader would. */
+function decode(b: Uint8Array, n: number, way: Way, pair: Pair, fix: Uint8Array): Rows {
+  const r: Rows = { id: new Uint16Array(n), yaw: new Uint16Array(n), x: new Int32Array(n), y: new Int32Array(n), z: new Int32Array(n) };
+  const three = (column: number, i: number): number => unzig(b[column * n + i]! | (b[(column + 1) * n + i]! << 8) | (b[(column + 2) * n + i]! << 16));
+  for (let i = 0; i < n; i++) {
+    const p = i - 1;
+    let [gx, gy, gz, gyaw] = p >= 0 ? [r.x[p]!, r.y[p]!, r.z[p]!, r.yaw[p]!] : [0, 0, 0, 0];
+    const bent = pair(i);
+    let [dx, dz] = [three(4, i), three(10, i)];
+    if (bent) {
+      bentNext(gx, gy, gz, gyaw, bent[0], bent[1], next);
+      [gx, gy, gz, gyaw] = next as [number, number, number, number];
+    } else if (way === "steps" && i > 1) {
+      [gx, gy, gz] = [2 * gx - r.x[p - 1]!, 2 * gy - r.y[p - 1]!, 2 * gz - r.z[p - 1]!];
+    } else if (way === "turned" && i > 0) {
+      const [c, sn] = turnOf(r.yaw[p]!), f = fix[i]!;
+      [dx, dz] = [Math.round(dx * c + dz * sn) + unzig(f & 15), Math.round(-dx * sn + dz * c) + unzig(f >> 4)];
+    }
+    r.id[i] = b[i]! | (b[n + i]! << 8);
+    r.yaw[i] = (gyaw + (b[2 * n + i]! | (b[3 * n + i]! << 8))) & 0xffff;
+    r.x[i] = (gx + dx) & 0xffffff;
+    r.y[i] = ((gy + three(7, i)) << 8) >> 8;
+    r.z[i] = (gz + dz) & 0xffffff;
+  }
+  return r;
+}
+
+/** Throws, naming the part, the way and the first row, where two sets of rows differ. */
+function same(a: Rows, b: Rows, what: string): void {
+  for (const f of ["id", "yaw", "x", "y", "z"] as const) {
+    const i = a[f].findIndex((v, k) => v !== b[f][k]);
+    if (i >= 0) throw new Error(`${what}: row ${i}'s ${f} decodes as ${b[f][i]}, not ${a[f][i]}`);
+  }
 }
 
 const args = process.argv.slice(2);
@@ -48,104 +137,73 @@ const quality = args.includes("--quality") ? Number(args[args.indexOf("--quality
 const bytes = new Uint8Array(readFileSync(file));
 const head = readHead(bytes, false);
 const br = (b: Uint8Array): number => brotliCompressSync(b, { params: { [constants.BROTLI_PARAM_QUALITY]: quality, [constants.BROTLI_PARAM_SIZE_HINT]: b.length } }).length;
+const kindOf = new Map(head.kinds.map((k, i) => [k, i]));
 
 const statics = partsOf(bytes).filter((p) => p.part?.kind === "statics").sort((a, b) => b.bytes.length - a.bytes.length).slice(0, most);
-const sum = { parts: 0, pieces: 0, today: 0, again: 0, steps: 0, kinds: 0, turned: 0, columns: 0, mismatched: 0 };
-/** Each turn's cosine and sine, made as first asked for. */
-const COS = new Float64Array(65536).fill(NaN), SIN = new Float64Array(65536).fill(NaN);
-let decodeMs = 0, readToday = 0, readTurned = 0;
-for (const { part, bytes: raw } of statics) {
+const sum = { parts: 0, pieces: 0, bent: 0, today: 0, steps: 0, kinds: 0, turned: 0 };
+let decodeMs = 0, readToday = 0, readSteps = 0, readTurned = 0;
+for (const { name, part, bytes: raw } of statics) {
   const t0 = performance.now();
   const piece = readPart(head, part!, raw, false) as StaticsPiece;
   decodeMs += performance.now() - t0;
-  const n = new DataView(raw.buffer, raw.byteOffset).getUint32(0, true);
-  const rest = raw.subarray(4 + n * ROW);
+  const { names, n, cols, rest } = layout(raw);
+  const local = new Map(names.map((k, i) => [kindOf.get(k)!, i]));
   const sq = squareOf(head.dims, 16, part!.col, part!.row)!;
   const [x0, z0] = [sq.ox * CHUNK_SIZE * STRUCT_UNITS, sq.oz * CHUNK_SIZE * STRUCT_UNITS];
-  const ux = Int32Array.from({ length: n }, (_, i) => Math.round(piece.x[i]! * STRUCT_UNITS) - x0);
-  const uy = Int32Array.from({ length: n }, (_, i) => Math.round(piece.y[i]! * STRUCT_UNITS));
-  const uz = Int32Array.from({ length: n }, (_, i) => Math.round(piece.z[i]! * STRUCT_UNITS) - z0);
-  const axis = [ux, uy, uz];
-  const yawDelta = (order: ArrayLike<number>) => (i: number): number => (piece.yaw[order[i]!]! - (i > 0 ? piece.yaw[order[i - 1]!]! : 0)) & 0xffff;
-  const identity = Uint32Array.from({ length: n }, (_, i) => i);
-  const bent = new Set(Array.from(piece.bendAt));
-  // Today: the change from the piece before (a bent piece after a bent piece is coded otherwise; its bytes are kept).
-  const today = columns(n, piece.id, yawDelta(identity), (i, a) => zigzag(axis[a]![i]! - (i > 0 ? axis[a]![i - 1]! : 0)));
-  const original = raw.subarray(4, 4 + n * ROW);
-  let mismatch = 0;
-  for (let k = 0; k < today.length; k++) if (today[k] !== original[k]) mismatch++;
-  const kept = (made: Uint8Array): Uint8Array => {
-    // Where today's coding of a bent piece differs from the plain one, the trial keeps the part's own bytes for it.
-    if (bent.size === 0) return made;
-    const out = made.slice();
-    for (const i of bent) for (let c = 0; c < ROW; c++) out[c * n + i] = original[c * n + i]!;
+  // The reader's own pieces come first, before the collision pieces it makes under bent ones.
+  const rows: Rows = {
+    id: Uint16Array.from({ length: n }, (_, i) => local.get(piece.id[i]!)!),
+    yaw: piece.yaw.slice(0, n),
+    x: Int32Array.from({ length: n }, (_, i) => Math.round(piece.x[i]! * STRUCT_UNITS) - x0),
+    y: Int32Array.from({ length: n }, (_, i) => Math.round(piece.y[i]! * STRUCT_UNITS)),
+    z: Int32Array.from({ length: n }, (_, i) => Math.round(piece.z[i]! * STRUCT_UNITS) - z0),
+  };
+  const bendOf = new Int32Array(n).fill(-1);
+  piece.bendAt.forEach((i, q) => { bendOf[i] = q; });
+  const bend = (q: number): Int16Array => piece.bend.subarray(q * 8, q * 8 + 8);
+  const pair: Pair = (i) => (i > 0 && bendOf[i]! > 0 && bendOf[i - 1]! === bendOf[i]! - 1 ? [bend(bendOf[i - 1]!), bend(bendOf[i]!)] : null);
+  const whole = (c: Uint8Array, extra: Uint8Array = new Uint8Array(0)): Uint8Array => {
+    const out = new Uint8Array(cols + c.length + extra.length + raw.length - rest);
+    out.set(raw.subarray(0, cols));
+    out.set(c, cols);
+    out.set(extra, cols + c.length);
+    out.set(raw.subarray(rest), cols + c.length + extra.length);
     return out;
   };
-  const steps = columns(n, piece.id, yawDelta(identity), (i, a) => {
-    const v = axis[a]!;
-    const guess = i > 1 ? 2 * v[i - 1]! - v[i - 2]! : i > 0 ? v[i - 1]! : 0;
-    return zigzag(v[i]! - guess);
-  });
-  // The step turned into the frame of the turn of the piece before, and the exact correction that makes it whole again.
-  const fix = new Uint8Array(n);
-  const turnedAt = (i: number, a: number): number => {
-    if (i === 0 || a === 1) return zigzag(axis[a]![i]! - (i > 0 ? axis[a]![i - 1]! : 0));
-    const t = (piece.yaw[i - 1]! / 65536) * 2 * Math.PI, c = detCos(t), sn = detSin(t);
-    const dx = ux[i]! - ux[i - 1]!, dz = uz[i]! - uz[i - 1]!;
-    const rx = Math.round(dx * c - dz * sn), rz = Math.round(dx * sn + dz * c);
-    if (a === 0) {
-      const ex = dx - Math.round(rx * c + rz * sn), ez = dz - Math.round(-rx * sn + rz * c);
-      if (Math.abs(ex) > 7 || Math.abs(ez) > 7) throw new Error(`a correction of ${ex}, ${ez}`);
-      fix[i] = zigzag(ex) | (zigzag(ez) << 4);
-    }
-    return zigzag(a === 0 ? rx : rz);
+  const trial = (r: Rows, way: Way, p: Pair, what: string): { coded: Uint8Array; ms: number } => {
+    const { cols: c, fix } = encode(r, way, p);
+    const t1 = performance.now();
+    const back = decode(c, n, way, p, fix);
+    const ms = performance.now() - t1;
+    same(r, back, `${name}, ${what}`);
+    return { coded: whole(c, fix), ms };
   };
-  const turned = columns(n, piece.id, yawDelta(identity), turnedAt);
-  // What reading each way back costs, both from their planes: today's sums of steps, and the turned steps turned back and corrected.
-  const sx = new Int32Array(n), sz = new Int32Array(n);
-  const unzig = (v: number): number => (v >>> 1) ^ -(v & 1);
-  const three = (b: Uint8Array, column: number, i: number): number => unzig(b[column * n + i]! | (b[(column + 1) * n + i]! << 8) | (b[(column + 2) * n + i]! << 16));
-  let t1 = performance.now();
-  for (let i = 1; i < n; i++) {
-    sx[i] = (sx[i - 1]! + three(today, 4, i)) & 0xffffff;
-    sz[i] = (sz[i - 1]! + three(today, 10, i)) & 0xffffff;
-  }
-  readToday += performance.now() - t1;
-  t1 = performance.now();
-  for (let i = 1; i < n; i++) {
-    const w = piece.yaw[i - 1]!;
-    if (Number.isNaN(COS[w]!)) [COS[w], SIN[w]] = [detCos((w / 65536) * 2 * Math.PI), detSin((w / 65536) * 2 * Math.PI)];
-    const c = COS[w]!, sn = SIN[w]!, rx = three(turned, 4, i), rz = three(turned, 10, i), f = fix[i]!;
-    sx[i] = (sx[i - 1]! + Math.round(rx * c + rz * sn) + unzig(f & 15)) & 0xffffff;
-    sz[i] = (sz[i - 1]! + Math.round(-rx * sn + rz * c) + unzig(f >> 4)) & 0xffffff;
-  }
-  readTurned += performance.now() - t1;
-  const chunk = Uint32Array.from({ length: n }, (_, i) => chunkAt(head.dims, piece.x[i]!, piece.z[i]!));
-  const byKind = Array.from(identity).sort((a, b) => chunk[a]! - chunk[b]! || piece.id[a]! - piece.id[b]! || uy[a]! - uy[b]! || ux[a]! - ux[b]! || uz[a]! - uz[b]! || a - b);
-  const kinds = columns(n, Uint16Array.from(byKind, (k) => piece.id[k]!), yawDelta(byKind), (i, a) => zigzag(axis[a]![byKind[i]!]! - (i > 0 ? axis[a]![byKind[i - 1]!]! : 0)));
-  const whole = (cols: Uint8Array, extra: Uint8Array = new Uint8Array(0)): Uint8Array => {
-    const out = new Uint8Array(4 + cols.length + extra.length + rest.length);
-    out.set(raw.subarray(0, 4));
-    out.set(cols, 4);
-    out.set(extra, 4 + cols.length);
-    out.set(rest, 4 + cols.length + extra.length);
-    return out;
-  };
+
+  const today = trial(rows, "today", pair, "today");
+  const k = today.coded.findIndex((v, i) => v !== raw[i]);
+  if (k >= 0 || today.coded.length !== raw.length) throw new Error(`${name}: today's coding does not give the part's bytes back (first at byte ${k}, ${today.coded.length} bytes for ${raw.length})`);
+  readToday += today.ms;
+  same(rows, decode(raw.subarray(cols, rest), n, "today", pair, new Uint8Array(0)), `${name}, the part's own columns`);
+  const steps = trial(rows, "steps", pair, "steps");
+  readSteps += steps.ms;
+  const turned = trial(rows, "turned", pair, "turned");
+  readTurned += turned.ms;
+  const byKind = Array.from({ length: n }, (_, i) => i).sort((a, b) => piece.chunk[a]! - piece.chunk[b]! || rows.id[a]! - rows.id[b]! || rows.y[a]! - rows.y[b]! || rows.x[a]! - rows.x[b]! || rows.z[a]! - rows.z[b]! || a - b);
+  const sorted: Rows = { id: Uint16Array.from(byKind, (i) => rows.id[i]!), yaw: Uint16Array.from(byKind, (i) => rows.yaw[i]!), x: Int32Array.from(byKind, (i) => rows.x[i]!), y: Int32Array.from(byKind, (i) => rows.y[i]!), z: Int32Array.from(byKind, (i) => rows.z[i]!) };
+  const kinds = trial(sorted, "today", () => null, "kinds");
+
   sum.parts++;
   sum.pieces += n;
+  sum.bent += piece.bendAt.length;
   sum.today += br(raw);
-  sum.again += br(whole(kept(today)));
-  sum.steps += br(whole(kept(steps)));
-  sum.kinds += br(whole(kinds));
-  sum.turned += br(whole(kept(turned), fix));
-  sum.columns += n * ROW;
-  sum.mismatched += mismatch;
+  sum.steps += br(steps.coded);
+  sum.turned += br(turned.coded);
+  sum.kinds += br(kinds.coded);
 }
 const pct = (v: number): string => `${((v / sum.today - 1) * 100).toFixed(1)}%`;
-console.log(`${sum.parts} statics parts of ${head.id}, ${sum.pieces} pieces, Brotli ${quality}; decode ${decodeMs.toFixed(0)} ms`);
-console.log(`reading the steps back: today ${readToday.toFixed(0)} ms, turned ${readTurned.toFixed(0)} ms, of a part's whole decode ${decodeMs.toFixed(0)} ms`);
+console.log(`${sum.parts} statics parts of ${head.id}, ${sum.pieces} pieces (${sum.bent} bent), Brotli ${quality}; each part's bytes coded again as today, and every way decoded back to its rows`);
+console.log(`reading the columns back: today ${readToday.toFixed(0)} ms, steps ${readSteps.toFixed(0)} ms, turned ${readTurned.toFixed(0)} ms; the parts' whole decode ${decodeMs.toFixed(0)} ms`);
 console.log(`today     ${(sum.today / 1e6).toFixed(2)} MB`);
-console.log(`again     ${(sum.again / 1e6).toFixed(2)} MB ${pct(sum.again)} (${sum.mismatched} column bytes differ from the part's: bent pieces)`);
 console.log(`steps     ${(sum.steps / 1e6).toFixed(2)} MB ${pct(sum.steps)}`);
 console.log(`turned    ${(sum.turned / 1e6).toFixed(2)} MB ${pct(sum.turned)} (with a byte a piece that makes it exact)`);
 console.log(`kinds     ${(sum.kinds / 1e6).toFixed(2)} MB ${pct(sum.kinds)} (at most: an order by kind within a storey keeps less)`);

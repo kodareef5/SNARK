@@ -212,7 +212,7 @@ test("the scene's part makes the measure when the statics come, by night and wit
   const { dims, hf, city, chunkA } = twoTowers();
   const version = new Uint32Array(chunkCount(dims));
   const gone = new Map<number, Uint8Array>();
-  const standing = { goneOf: (c: number): Gone => gone.get(c) ?? null, goneVersion: version, topsOf: (c: number) => (city.in(c) > 0 ? cityTops(city, c, hf, gone.get(c) ?? null) : null) };
+  const standing = { goneOf: (c: number): Gone => gone.get(c) ?? null, goneVersion: version, get goneChanges() { return this.goneVersion.reduce((n: number, v: number) => n + v, 0); }, topsOf: (c: number) => (city.in(c) > 0 ? cityTops(city, c, hf, gone.get(c) ?? null) : null) };
   const shadow = new FarShadow(dims, hf, null, null, () => false);
   shadow.hand(city, standing);
   const p = new FramePacket();
@@ -263,7 +263,7 @@ test("the scene's part makes the measure when the statics come, by night and wit
 
 test("a landmark's pieces cast the sun's shadow but hide no sky, so a ship's own masts keep their light, here and on another thread", () => {
   const { dims, hf, city } = twoTowers();
-  const standing = { goneOf: (): Gone => null, goneVersion: new Uint32Array(chunkCount(dims)), topsOf: (c: number) => (city.in(c) > 0 ? cityTops(city, c, hf, null) : null) };
+  const standing = { goneOf: (): Gone => null, goneVersion: new Uint32Array(chunkCount(dims)), get goneChanges() { return this.goneVersion.reduce((n: number, v: number) => n + v, 0); }, topsOf: (c: number) => (city.in(c) > 0 ? cityTops(city, c, hf, null) : null) };
   /** Every kind of the towers a landmark's, as a map's own are. */
   const own = new Uint8Array(Math.max(...city.squareOf(0)!.kind) + 1).fill(1);
   const jobs: SweepJob[] = [], back: SweepMade[] = [];

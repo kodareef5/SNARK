@@ -56,12 +56,15 @@ export function roadIndex(site: Site): { near: (x: number, z: number, reach: num
   const bins = new Map<number, Segment[]>(); const ends = new Map<number, Set<number>>();
   const key = (x: number, z: number): number => binKey(Math.floor(x / 32), Math.floor(z / 32));
   if (existsSync(file)) {
-    const lines = (JSON.parse(readFileSync(file, "utf8")) as { features: { geometry: { type: string; coordinates: number[][] | number[][][] }; properties: { mtfcc?: string; width_m?: number; from_m?: number } }[] }).features;
+    const lines = (JSON.parse(readFileSync(file, "utf8")) as { features: { geometry: { type: string; coordinates: number[][] | number[][][] }; properties: { mtfcc?: string; width_m?: number; from_m?: number; runs_from_m?: number[] } }[] }).features;
     lines.forEach((f, line) => {
       const runs = f.geometry.type === "MultiLineString" ? f.geometry.coordinates as number[][][] : [f.geometry.coordinates as number[][]];
-      // Metres from the whole piece's start, where the frame cut it (tools/mapdata/streets.py from_m).
+      // Metres from the whole piece's start, where the frame cut it (tools/mapdata/streets.py from_m), and where each run
+      // of one that leaves the frame and comes back starts (runs_from_m).
     const id = lineId(f, line); const seed = textSeed(id); let from = typeof f.properties.from_m === "number" ? f.properties.from_m : 0;
-      for (const run of runs) {
+      const starts = f.properties.runs_from_m?.length === runs.length ? f.properties.runs_from_m : null;
+      for (const [r, run] of runs.entries()) {
+        if (starts) from = starts[r]!;
         const points = run.map(([e, n]) => site.toLattice(e!, n!));
         // A junction is a point two lines share, or a line's end (README, "Cars"). Keyed by its half metres, kept
         // positive, so that a point of a line past the map's edge keeps a key of its own.

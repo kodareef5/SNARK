@@ -180,7 +180,7 @@ import { heapAt, heapHealth } from "../../shared/world/breaking.ts";
 import { tekWallKinds } from "../../shared/world/lattice/tek-walls.ts";
 import { FramesTold, ROW_EMPTY, ROW_IN_PLACE, ROW_KEYED, RowCoder } from "../../shared/world/rows.ts";
 import { GONE_BLAST, GONE_TAKEN, PUT_AS_IS, PUT_FREE, StructureStore, withSurfaces, type ChunkTable } from "../../shared/world/structures.ts";
-import { CMD_FAR, CMD_HAVE, CMD_SELECT, CMD_STATICS, HAVE_MOST, HAVE_REACH, RESULT_BUSY, RESULT_OK, S_FAR, S_MARKS, S_TACTICAL } from "../../shared/net/protocol.ts";
+import { CMD_CHUNK_AGAIN, CMD_FAR, CMD_HAVE, CMD_SELECT, CMD_STATICS, HAVE_MOST, HAVE_REACH, RESULT_BUSY, RESULT_OK, S_FAR, S_MARKS, S_TACTICAL } from "../../shared/net/protocol.ts";
 import { FarStore } from "./farcells.ts";
 import { GoneStore } from "./gonelists.ts";
 import { ArmsState } from "./arms.ts";
@@ -955,7 +955,7 @@ export class ClientSession {
     this.welcomed = new Promise((go) => (this.welcomedNow = go));
     for (let i = 0; i < HISTORY; i++) this.bodies.push(new Body());
     conn.onMessage = (channel, data) => this.receive(channel, data);
-    opts.held?.onSet(() => this.readWaiting());
+    opts.held?.onSet(() => (this.readWaiting(), this.askAgain()));
     if (opts.held) opts.held.keep = (part) => this.holdsSector(part);
     conn.onClose = () => {
       if (this.state !== "closed") {
@@ -1160,6 +1160,7 @@ export class ClientSession {
       this.sendInputs(newestInput, steps);
       this.recenterNodes();
       this.sayKept();
+      this.askAgain();
     }
   }
 
@@ -1727,6 +1728,7 @@ export class ClientSession {
           else if (code === RESULT_BUSY) s.staticsSeq = 0;
         }
         if (seq !== 0 && seq === s.haveSeq) s.unpark(code === RESULT_OK);
+        if (seq !== 0 && seq === s.againSeq) s.againAnswered(code === RESULT_OK);
         if (seq !== 0 && seq === s.handSeq) {
           // The slot it left in hand comes after this, in the same tick's own state.
           s.handSeq = 0;
@@ -2525,6 +2527,8 @@ export class ClientSession {
     this.staticKinds = fills && this.opts.statics ? staticKinds(this.opts.statics, reg) : null;
     this.staticsSeq = 0;
     this.waitingRows.length = 0;
+    [this.unbased, this.againAsked].forEach((s) => s.clear());
+    this.againSeq = 0;
     this.opts.held?.needed.clear();
     const far: FarSource = { cells: this.far, lists: this.gone, complete: (chunk) => this.whole[chunk] !== 0 };
     const field = this.nodeField;
@@ -2972,7 +2976,10 @@ export class ClientSession {
       r.reset(m);
       const chunk = this.waitsFor(r);
       if (chunk >= 0 && !over) return this.opts.held?.need(chunk);
-      if (chunk >= 0) this.opts.held?.say?.(`the map's statics of chunk ${chunk} were waited for too long: its pieces the map set are left out until it comes whole`);
+      if (chunk >= 0) {
+        this.opts.held?.say?.(`the map's statics of chunk ${chunk} were waited for too long: its pieces the map set are left out until it comes whole`);
+        this.unbased.add(chunk);
+      }
       over = false;
       this.waitingRows.shift();
       r.reset(m);
@@ -2987,6 +2994,7 @@ export class ClientSession {
   private park(chunk: number): void {
     const structs = this.world?.structs;
     if (!structs || chunk >= structs.chunks.length) return;
+    this.unbased.delete(chunk);
     const was = this.whole[chunk];
     this.whole[chunk] = 0;
     if (this.forget(chunk)) return;
@@ -2998,6 +3006,35 @@ export class ClientSession {
       if (this.parked.size <= this.parkMost && this.parkedBytes <= PARK_BYTES) break;
       this.forget(old);
     }
+  }
+
+  /**
+   * Chunks read without the map's slots, their sector waited for too long (readWaiting): never complete until the server
+   * sends one again whole, which is asked for once the sector is held (CMD_CHUNK_AGAIN). Those the server took the asking
+   * of; the command under way and the chunks it named; and when one refused may be sent again.
+   */
+  private readonly unbased = new Set<number>();
+  private readonly againAsked = new Set<number>();
+  private againSeq = 0;
+  private readonly againSaid: number[] = [];
+  private againAt = -Infinity;
+
+  /** Asks the server to send again whole the chunks read without the map's slots whose sector is now held, HAVE_MOST a command. */
+  private askAgain(): void {
+    if (this.unbased.size === 0 || this.againSeq !== 0 || this.lastNow < this.againAt) return;
+    const said = this.againSaid;
+    said.length = 0;
+    for (const chunk of this.unbased) if (said.length < HAVE_MOST && !this.againAsked.has(chunk) && this.mapRows(chunk)) said.push(chunk);
+    if (said.length === 0) return;
+    this.againSeq = this.command(CMD_CHUNK_AGAIN, (w) => (w.u8(said.length), said.forEach((chunk) => w.u16(chunk))));
+  }
+
+  /** CMD_CHUNK_AGAIN's answer: the next chunks are asked for at once, and those refused after ASK_AGAIN_MS. */
+  private againAnswered(ok: boolean): void {
+    this.againSeq = 0;
+    if (ok) for (const chunk of this.againSaid) this.againAsked.add(chunk);
+    else this.againAt = this.lastNow + ASK_AGAIN_MS;
+    this.askAgain();
   }
 
   /** Lets go of what was kept of `chunk`, and says whether anything was. */
@@ -3076,6 +3113,7 @@ export class ClientSession {
       const n = r.u16();
       // Where its sector is broken, or was waited for too long, the slots the map sets are left out.
       const statics = this.mapRows(chunk);
+      if (statics) [this.unbased, this.againAsked].forEach((s) => s.delete(chunk));
       const at = statics ? statics.from + first : 0;
       if (r.overflow || (statics && at + n > statics.to)) return;
       for (let m = at; statics && m < at + n; m++) {
@@ -3177,7 +3215,7 @@ export class ClientSession {
     }
     if (!final) return;
     world.structs.setVersion(chunk, version);
-    this.whole[chunk] = 1;
+    if (!this.unbased.has(chunk)) this.whole[chunk] = 1;
   }
 }
 

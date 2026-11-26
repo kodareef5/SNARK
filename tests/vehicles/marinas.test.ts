@@ -115,6 +115,31 @@ test("a bench where a dock comes ashore gives way to it; a run that cannot come 
   expect(b.slips.filter((s) => s.how !== "anchored")).toEqual([]);
 });
 
+test("a boat at anchor keeps clear of other pieces and of a bridge's swim lane", () => {
+  const rules: Harbours = { ...HARBOURS, moored: { ...HARBOURS.moored, anchored: { ...HARBOURS.moored.anchored, share: 1, least: 4, most: 4 } } };
+  const anchored = (l: { slips: { how: string; vessel: string; x: number; z: number; yaw: number }[] }) => l.slips.filter((s) => s.how === "anchored");
+  const first = anchored(marinaHarbour(reg, rules).layout)[0]!;
+  const lane: Box = { x: first.x, y: -.75, z: first.z, yaw: 0, size: [6, 3.5, 30] };
+  const wall = { kind: "core:zruin_wall8_concrete", x: first.x, y: -1, z: first.z, yaw: 0 };
+  for (const [pieces, keep] of [[[], [lane]], [[wall], []]] as const) {
+    const near = anchored(marinaHarbour(reg, rules, undefined, undefined, [...pieces], [...keep]).layout);
+    expect(near.length).toBeGreaterThan(0);
+    for (const s of near) expect(meets(hullOf(s.vessel, s.x, s.z, s.yaw), { x: first.x, y: 0, z: first.z, yaw: 0, size: [6, 2, 6] })).toBe(false);
+  }
+});
+
+test("a run taken up gives back its chunks' room and the furniture it came ashore over", () => {
+  const bench = { kind: "core:zzstreet_bench", x: EDGE - 4, y: QUAY, z: 256, yaw: 90 };
+  const wall = Array.from({ length: 26 }, (_, i) => ({ kind: "core:zruin_wall8_concrete", x: EDGE + 1.7, y: QUAY + 1.4, z: 156 + i * 8, yaw: 90 }));
+  const held = new Map<number, number>();
+  const { layout } = marinaHarbour(reg, HARBOURS, undefined, undefined, [bench, ...wall], [], held);
+  expect(layout.pieces.filter((p) => isDock(p.kind))).toEqual([]);
+  expect(layout.cleared).toEqual([]);
+  const standing = new Map<number, number>();
+  for (const p of layout.pieces) { const c = Math.floor(p.z / 64) * 8 + Math.floor(p.x / 64); standing.set(c, (standing.get(c) ?? 0) + 1); }
+  expect([...held].filter(([, n]) => n > 0).sort((a, b) => a[0] - b[0])).toEqual([...standing].sort((a, b) => a[0] - b[0]));
+});
+
 test("nothing of a marina stands in a bridge's swim lane: the walkway is broken there, and its part out of reach is taken up", () => {
   const lane: Box = { x: EDGE + 50, y: -.75, z: 256, yaw: 0, size: [6, 3.5, 60] };
   const { layout } = marinaHarbour(reg, HARBOURS, undefined, undefined, [], [lane]);

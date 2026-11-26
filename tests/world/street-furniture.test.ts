@@ -577,3 +577,41 @@ test("a mapped give-way on a junction's way keeps the classes' stop off it, and 
   // The give-way the stop serves counts as standing: a sign faces its traffic.
   expect(summary.mapped?.give_way).toEqual({ mapped: 2, used: 2, rest: {} });
 });
+
+test("billboards stand about so many a square kilometre of land, in the sizes their road's class draws, most of them working", () => {
+  const site = fixture(GRID), km2 = (N * N * 4) / 1e6;
+  const boards = (perKm2: number): StaticPiece[] => place(site, [], { ...RULES, billboards: { ...RULES.billboards, perKm2 } }, 4000).pieces.filter((p) => p.kind.startsWith(streetKind("billboard")));
+  // The number is the map's budget: four times it stands four times as many.
+  const [few, many] = [boards(10), boards(40)];
+  expect([few.length, many.length]).toEqual([Math.round(10 * km2), Math.round(40 * km2)]);
+  expect(boards(0)).toEqual([]);
+  // The few are among the many: a larger budget adds boards and moves none.
+  for (const p of few) expect(many.some((q) => q.kind === p.kind && q.x === p.x && q.z === p.z)).toBe(true);
+  // An avenue draws the standard and the mid board, a street the small and the mid: each from its class's row of forms.
+  const all = boards(400), name = (p: StaticPiece): string => p.kind.slice(streetKind("billboard").length);
+  const nearest = (p: StaticPiece): number => Math.min(Math.abs(p.x - Math.round(p.x / 100) * 100), Math.abs(p.z - Math.round(p.z / 100) * 100));
+  const onAvenue = (p: StaticPiece): boolean => (Math.abs(p.x - 500) < 30 && Math.abs(p.x - 500) === nearest(p)) || (Math.abs(p.z - 500) < 30 && Math.abs(p.z - 500) === nearest(p));
+  expect(new Set(all.filter(onAvenue).map(name))).toEqual(new Set(["", "_mid", "_bare", "_mid_bare"]));
+  expect(new Set(all.filter((p) => !onAvenue(p)).map(name))).toEqual(new Set(["_small", "_mid", "_small_bare", "_mid_bare"]));
+  // Five in six work.
+  const bare = all.filter((p) => p.kind.endsWith("_bare")).length;
+  expect(all.length).toBeGreaterThan(100);
+  expect(bare / all.length).toBeGreaterThan(0.08);
+  expect(bare / all.length).toBeLessThan(0.28);
+});
+
+test("a road that leaves the map and comes back keeps its lamps where the whole road has them", () => {
+  const avenue: Line = { points: [[60, 500], [964, 500]], mtfcc: "S1200", width: 14 };
+  const whole = fixture([], [], { lines: [avenue] });
+  const cut = fixture([], [], { lines: [avenue] });
+  // The same piece as the frame would cut it, 203 m of its middle past the map's edge.
+  const path = join(cut.source, "base/roads.geojson");
+  const roads = JSON.parse(readFileSync(path, "utf8")) as { features: { geometry: unknown; properties: Record<string, unknown> }[] };
+  roads.features[0]!.geometry = { type: "MultiLineString", coordinates: [[[60, 500], [400, 500]], [[603, 500], [964, 500]]] };
+  roads.features[0]!.properties = { ...roads.features[0]!.properties, from_m: 0, runs_from_m: [0, 543] };
+  writeFileSync(path, JSON.stringify(roads));
+  const lamps = (site: Site): string[] => place(site).pieces.filter((p) => p.kind.startsWith(streetKind("lamp")) && p.x > 650 && p.x < 900).map((p) => `${p.x.toFixed(2)},${p.z.toFixed(2)}`).sort();
+  const want = lamps(whole);
+  expect(want.length).toBeGreaterThan(4);
+  expect(lamps(cut)).toEqual(want);
+});
