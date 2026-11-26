@@ -1025,13 +1025,14 @@ ${dyed ? "  vec3 mask = texture(uMask, uv).rgb;\n  vec3 mask2 = texture(uMask2, 
   vec2 bump = texture(uNormal, uv).${format === "astc" ? "ra" : "rg"};
   vec3 v = -normalize(vRel);
 ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth(base.a), 0.0001) + 0.5, 0.0, 1.0) : 1.0;\n" + GLASS_COVER + "  if (cover == 0.0) discard;\n" : "  float cover = 1.0, reflected = -1.0;\n"}
+  // The colour first, so the masks are let go before the shadow's loop: held past it they spilled on the Intel GPU.
+  vec3 albedo = ${layered ? `wounded(${albedo}, mro)` : albedo};
   vec3 n = bumped(bump);
   vec3 face = normalize(gl_FrontFacing ? vNormal : -vNormal);
   float shade = sunShadow(vRel, sunward(face, uSheet));
   float over = overGround(vRel);
   float open = skyOpen(vRel, face, over, uSkin > 0.5 ? 0.0 : 1.0) * contact(vRel, face, uSkin > 0.5 ? 0.0 : 1.0) * roofOpen(vRel, face, over);
   roofBounce(vRel, face, over);
-  vec3 albedo = ${layered ? `wounded(${albedo}, mro)` : albedo};
   // A built piece is darker by its stage (piece-fit.ts), as it is drawn flat.
   float pieceWear = max(-vWheel.w, 0.0);
   albedo *= 1.0 - ${WEAR_SHADE} * pieceWear;
