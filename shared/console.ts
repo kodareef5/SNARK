@@ -27,7 +27,7 @@ export function tokenize(line: string): string[] {
 /** Commands whose arguments are a password. A line of one is shown masked and is not kept, by the client and the server alike. */
 export const SECRET_COMMANDS: readonly string[] = ["enablecheats", "claimpassword"];
 /** Settings whose value is a secret, in lower case: `setting <name> <value>` is masked for these (server/settings, `secret`). */
-export const SECRET_SETTINGS: readonly string[] = ["serverpassword", "serveradminpassword", "clusteradminpassword", "spectatorpassword", "castmodelkey"];
+export const SECRET_SETTINGS: readonly string[] = ["serverpassword", "serveradminpassword", "clusteradminpassword", "spectatorpassword", "castmodelkey", "discordclientsecret", "discordbottoken"];
 /** Words before a line that run the rest of it as a command (server/commands/permissions.ts). */
 const RUN_PREFIXES: readonly string[] = ["cheat", "admincheat"];
 

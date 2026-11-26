@@ -2,7 +2,7 @@ import { logTo } from "./early-log.ts";
 import { launchKey, readLaunch } from "../core/entry-state.ts";
 import { SETTLED_MS, backAddress, readComeback, readReady, waitKey, waitOut, type Comeback } from "../core/waiting.ts";
 import type { Ready } from "../../shared/ready.ts";
-import { SESSION_CREATING, REJECT_NAME, REJECT_PASSWORD, RESULT_OK, TEXT_NOTICE } from "../../shared/net/protocol.ts";
+import { SESSION_CREATING, REJECT_NAME, REJECT_PASSWORD, REJECT_SIGNIN, RESULT_OK, TEXT_NOTICE } from "../../shared/net/protocol.ts";
 // Browser entry point. Each frame it asks the app what to draw, and hands the world to WebGL and the interface to the DOM binder.
 
 import { defaultLook } from "../../shared/anim/look.ts";
@@ -289,6 +289,7 @@ async function boot(): Promise<void> {
   function showEntryProblem(){
     bootError(createFailed ? "This spawn is unavailable. Choose another starting area."
       : session.closeReason === REJECT_PASSWORD ? "Incorrect server password."
+      : session.closeReason === REJECT_SIGNIN ? "This server asks you to sign in first."
       : session.closeReason === REJECT_NAME ? "This survivor is unavailable." : "Disconnected from world.");
   }
   let nextCityLoad = 0;

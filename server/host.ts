@@ -2,7 +2,11 @@ import { SurvivorActivity } from "./survivor-activity.ts";
 import { SurvivorIds, idText } from "./survivor-ids.ts";
 // The jet's family code, which a browser fetches late (shared/sim/families.ts JET_FAMILY): the server has it from the start.
 import "../shared/sim/families/jet.ts";
-import { CREATE_REQUEST,ownsSurvivor } from "./survivor-access.ts";
+import { CREATE_REQUEST, addBrowserHash, hasBrowserHash, ownerOf, ownsAs, setOwner } from "./survivor-access.ts";
+import { SignIn } from "./signin/method.ts";
+import { SignInStore } from "./signin/store.ts";
+import { DiscordApi, type Fetch } from "./signin/discord-api.ts";
+import { DiscordSignIn, idsOf } from "./signin/discord.ts";
 import { ZONE_NONE, ZONE_TORSO } from "../shared/anim/human.ts";
 import { IMPALE_SLOT } from "../shared/sim/seats.ts";
 import { CreatureTraits, inventoryEffectiveWeight } from "./creature-traits.ts";
@@ -11,7 +15,7 @@ import { CreatureContacts } from "./creature-combat.ts";
 // Assembles a running world: map, records, persistence and the game loop. server/main.ts and the tests both use it.
 
 import { withContent, type Registry } from "../shared/content/registry.ts";
-import { CHOOSE_ARRIVED, CHOOSE_DIED, SESSION_DEAD, CMD_CARRY, CMD_CHAT, CMD_EMOTE, CMD_CLOSE, CMD_FAR, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_PLAN_CANCEL, CMD_PLAN_COMMIT, CMD_PLAN_PART, CMD_STRUCT, CMD_TAKE, CMD_TEXT, CMD_THROW, CMD_TRAVEL, CMD_VEHICLE, MAX_CHAT_BYTES, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_DENIED, REJECT_KICKED, RESTART_MOST, RESTART_OFF } from "../shared/net/protocol.ts";
+import { REJECT_SIGNIN, CHOOSE_ARRIVED, CHOOSE_DIED, SESSION_DEAD, CMD_CARRY, CMD_CHAT, CMD_EMOTE, CMD_CLOSE, CMD_FAR, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_PLAN_CANCEL, CMD_PLAN_COMMIT, CMD_PLAN_PART, CMD_STRUCT, CMD_TAKE, CMD_TEXT, CMD_THROW, CMD_TRAVEL, CMD_VEHICLE, MAX_CHAT_BYTES, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_DENIED, REJECT_KICKED, RESTART_MOST, RESTART_OFF } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
 import { Genome } from "../shared/sim/genome.ts";
 import { Build } from "./build.ts";
@@ -214,6 +218,8 @@ export interface HostOptions {
   adminPassword?: string;
   /** The cluster's password, which `enablecheats` and the admin pages take at the cluster's rank. */
   clusterPassword?: string;
+  /** For SignIn=discord: the application's secret and its bot's token, before the settings of those names; `fetch` in place of the network; `site`, the server's address, said to Discord with each call; `page`, its --public-url. */
+  discord?: { secret?: string; botToken?: string; fetch?: Fetch; site?: string; now?: () => number; page?: string };
   /** Development server. Cheats need no password. Never set it in a public deployment. */
   dev?: boolean;
   /** Load a save whose item ledger does not match its contents, instead of refusing. */
@@ -395,6 +401,11 @@ export interface Host {
   /** Carries events to modules. */
   readonly bus: Bus;
   readonly modules: Modules;
+  /** Writes a line to the host's own log. */
+  readonly say: (line: string) => void;
+  /** How survivors sign in here (server/signin/method.ts). */
+  readonly signin: SignIn;
+  readonly discord: DiscordSignIn;
   readonly adminPassword: string | null;
   readonly clusterPassword: string | null;
   readonly dev: boolean;
@@ -739,6 +750,24 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   opened.push({ close: () => survivorLog.stop() });
   const ids = new SurvivorIds(records);
   // The cluster's permission groups, kept in its folder for every world, else beside the save, else in memory.
+  const signinStore = new SignInStore(cluster ? join(cluster.folder.root, "signin.sqlite") : opts.dbPath ? `${opts.dbPath}.signin.sqlite` : ":memory:");
+  const discord = new DiscordSignIn({
+    store: signinStore,
+    world: records.worldId,
+    api: new DiscordApi(opts.discord?.fetch, opts.discord?.site),
+    say,
+    ...(opts.discord?.now ? { now: opts.discord.now } : {}),
+    ...(opts.discord?.page ? { page: opts.discord.page } : {}),
+    config: () => ({
+      clientId: rules.text("DiscordClientId").trim(),
+      secret: opts.discord?.secret || rules.text("DiscordClientSecret"),
+      botToken: opts.discord?.botToken || rules.text("DiscordBotToken"),
+      guild: rules.text("DiscordGuild").trim(),
+      roles: idsOf(rules.text("DiscordRoles")).ids,
+      days: rules.num("DiscordSignInDays"),
+    }),
+  });
+  const signin = new SignIn(rules, [discord]);
   const permissionStore = new PermissionStore(cluster ? join(cluster.folder.root, "permissions.sqlite") : opts.dbPath ? `${opts.dbPath}.permissions.sqlite` : ":memory:");
   opened.push(permissionStore);
   const permissions: Permissions = new Permissions({
@@ -1576,16 +1605,40 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   // A name belongs to the first device key that takes a body under it.
   game.sessions.sameCreation=(name,key,request)=>{
     const rec=recordOf(name), prior=rec?.extra.get(CREATE_REQUEST);
-    return !!rec && !!prior && ownsSurvivor(rec,key) && prior.length===request.length && request.every((b,i)=>prior[i]===b);
+    return !!rec && !!prior && owns(rec,key) && prior.length===request.length && request.every((b,i)=>prior[i]===b);
   };
-  game.sessions.owns = (name, key) => { const rec = recordOf(name); return !!rec && ownsSurvivor(rec, key); };
+  // Under a sign-in method with accounts, a survivor an account has taken is that account's on any browser.
+  const subjectOfKey = (key: Uint8Array): string => signin.method.subject(hashKey(key));
+  const owns = (rec: EntityRecord, key: Uint8Array): boolean => ownsAs(rec, key, subjectOfKey(key));
+  game.sessions.signedIn = (key) => signin.method.admits(hashKey(key)) === "";
+  game.sessions.owns = (name, key) => { const rec = recordOf(name); return !!rec && owns(rec, key); };
   game.sessions.authorize = (name, key) => {
     // Nobody joins a world that has not saved for a minute.
     if (persistence?.failing && world.tick - persistence.failing.since >= UNSAVED_REFUSE_TICKS) return false;
     const rec = recordOf(name);
-    return !rec || !rec.keyHash || ownsSurvivor(rec,key);
+    return !rec || !rec.keyHash || owns(rec,key);
   };
+  // A survivor no account has taken becomes the account's that plays it, and keeps each browser it is played from.
+  const takeFor = (rec: EntityRecord, key: Uint8Array): void => {
+    const subject = subjectOfKey(key);
+    const hash = hashKey(key);
+    if (subject === "" || (ownerOf(rec) !== "" && hasBrowserHash(rec, hash))) return;
+    if (ownerOf(rec) === "") setOwner(rec, subject);
+    if (!hasBrowserHash(rec, hash)) addBrowserHash(rec, hash);
+    records.dirty.add(rec.pid);
+  };
+  // The method is told of each session let in, and may close it: Discord is asked again whether its account may be here.
+  const signedInAs = (c: Client): void => {
+    const conn = c.conn;
+    const rec = recordOf(c.name);
+    if (rec) takeFor(rec, c.key);
+    signin.method.joined(hashKey(c.key), () => void (!c.closed && c.conn === conn && game.sessions.reject(c, REJECT_SIGNIN)));
+  };
+  game.sessions.onEnter.on(signedInAs);
+  game.sessions.onRelink.on(signedInAs);
   if (cluster) {
+    cluster.signedAs = subjectOfKey;
+    cluster.carry = (keyHash, subject) => signin.method.carry(keyHash, subject);
     game.sessions.arrive = (name, key, ticket) => (persistence?.failing && world.tick - persistence.failing.since >= UNSAVED_REFUSE_TICKS ? "this server has not been able to save for a minute, so nobody may come yet" : cluster.arrive(name, key, ticket));
     game.sessions.nameAway = name => cluster.away.has(name);
     game.sessions.away = (name, key) => cluster.awayCheck(name, key);
@@ -1610,6 +1663,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       rec.keyHash = hashKey(c.key);
       records.dirty.add(rec.pid);
     }
+    takeFor(rec, c.key);
     // A survivor without a look takes the one it came with, or the default.
     if (!rec.look) {
       rec.look = c.look ?? defaultLook();
@@ -2501,6 +2555,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     console: con,
     bus,
     modules,
+    say,
+    signin,
+    discord,
     adminPassword,
     clusterPassword,
     lists,
@@ -2522,6 +2579,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       impale.stop();
       register.write();
       permissionStore.close();
+      signinStore.close();
       if (!persistence) return;
       // A creature in someone's arms is saved standing where it is set down, not where the arms had it, and so is whoever
       // sits in a car or on a creature.
