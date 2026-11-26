@@ -102,6 +102,26 @@ the roads takes them through `readRoads`, so all follow one line.
   ruins open their ground storey along them across the street's width
   (`passages.ts`), as for a way the data tags a passage.
 
+An opened building still stands (`ruin-openings.ts`, from the building's own
+pieces and the passage's line). The clearance takes the ground storey a storey
+high, 3.3 m, leaving the slabs and beams over it, and any stair in the street
+with its route. A pier then stands each side, a metre outside the street's
+width, wherever the building's own floor is over that place and no street's
+carriageway is. What happens over the street is settled every 4 m along it:
+
+- Walls or piers on both sides, and an opening no wider than 12 m wall to wall
+  (a street up to 11 m): the storeys above stay, and the street runs under them.
+- Else, a building too narrow to stand a pier in, a side with no floor over it,
+  a wider street: what is over the street is taken away at every storey, a slab
+  cut to its 4 m tiles at the edge.
+- A piece the opening left with no wall or pier of its building within 5 m goes
+  too, and a room or a way out whose floor went.
+- A building left with no wall or pier of its own loses every piece, and its
+  record its doors, ways and rooms: it is in no map.
+
+A passage is kept clear as a way is (`growthRoutes`): no prop, parked car or
+tree stands in it.
+
 Left as the data has them: pieces marked bridge, tunnel or passage; a small
 way's mouth, up to 8 m, on a piece that keeps its line in the wall; small ways
 that meet a parking structure (a label of kind `parking_garage` or primary use
@@ -317,7 +337,11 @@ A door's approach runs from the nearest street, walk or plaza sample that passes
 (`ruin-access.ts`), graded 5 m either side to its level. Of those that pass, it
 takes the first that keeps within 2 m of the ground it crosses (`APPROACH_DEPTH`),
 since deeper leaves a trench or a bank no survivor climbs; where none does, the
-one that keeps nearest it, so a door keeps its way in. It is planned on the
+one that keeps nearest it, so a door keeps its way in. A way keeps half a metre
+off every other building's outline where it can (`NEIGHBOUR_CLEAR`, the
+clearance's reach beside a way), and never crosses one. A way that a neighbour's
+wall, fin or pier still stands in is given up before the clearance, with the
+slabs laid for it: cleared, it would cut that building open. It is planned on the
 ground as the bridges' decks leave it, which dig the ground under them out once
 the buildings are planned: beside a deck it starts at the dug level, and it never
 runs over ground dug from under it.
@@ -326,11 +350,12 @@ After admission, circulation removes conflicting overhangs from neighbouring
 buildings. Street grading reserves enough width for its slopes and rejects
 crossings with incompatible levels. Bridge decks constrain the final ground.
 `verify.ts` runs all ten proofs in sequence and exits; it opens no server socket.
-`audit.ts` is one of them: it scans the whole map and prints a JSON line a check. Five are
+`audit.ts` is one of them: it scans the whole map and prints a JSON line a check. Six are
 gates and must count 0 (pieces off the map, pieces placed twice, a lake wrapping a map edge,
-a hull inside another piece, water a survivor swims in and cannot get out of); six are numbers
-to watch (water ending in a wall, water standing in a pit, sunk pools, streets through
-buildings, doors off the ground, building pieces under the ground).
+a hull inside another piece, water a survivor swims in and cannot get out of, buildings with no
+support of their own); seven are numbers to watch (water ending in a wall, water standing in a
+pit, sunk pools, streets through buildings, doors off the ground, building pieces under the
+ground, overhead pieces with no support within 6 m).
 
 The swim gate walks each part of each body with the game's stepper and every piece standing
 (`way-out.ts`): straight walks, then a search of the stepper's moves, never a jump. Out is
@@ -345,6 +370,11 @@ out, and the build says which it left.
 over 1 m under the ground two corners out from it. "Sunk pools" counts only bodies a survivor
 swims in, by the rim itself (the dry corners of their wet squares) over 1 m above the water at
 the median, and says how many stand over 3 m.
+
+A support is a building's piece that stands from within 1.2 m of the ground, or of the water
+over it, to 2.4 m or higher; a piece is overhead with its foot 2 m or more over the ground and
+within 4.6 m of its building's base. Fallen bays and hanging slabs leave some pieces hanging by
+design: about 1 to 5 in a thousand overhead.
 
 Large inventories are generated, not committed. Keep counts, test summaries,
 cameras, selection records and the rasterizer images. The report tool makes a
