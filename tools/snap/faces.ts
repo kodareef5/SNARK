@@ -76,7 +76,10 @@ function sheet(tiles: Uint8ClampedArray[], names: string[], file: string): void 
 
 const view = await portraitView();
 if (args.includes("--one")) {
-  sheet([portrait(view, defaultLook())], ["neutral"], "one.png");
+  const tiny = defaultLook(), wide = defaultLook();
+  setFace(tiny, 0, 1 / 127);
+  for (let f = 0; f < FACE_COUNT; f++) setFace(wide, f, 0.3);
+  sheet([portrait(view, defaultLook()), portrait(view, tiny), portrait(view, wide)], ["neutral", "tiny", "all 0.3"], "one.png");
   process.exit(0);
 }
 for (const sex of [0, 1]) {

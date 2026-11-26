@@ -217,8 +217,9 @@ export class Faces {
     for (let v = 0; v < n; v++) for (let a = 0; a < 3; a++) base[v * 3 + a] = center[a]! + (view.getInt16(vertexAt + v * VERTEX_BYTES + a * 2, true) / 32767) * half[a]!;
     const indices = new Uint32Array(kept.indexCount);
     for (let i = 0; i < kept.indexCount; i++) indices[i] = kept.indexBytes === 4 ? view.getUint32(i * 4, true) : view.getUint16(i * 2, true);
-    const surface = kept.surface.slice(0, n * SURFACE_BYTES);
-    const sview = new DataView(surface.buffer);
+    // A copy, whatever kind of array the bytes came in: a Buffer's slice is a view.
+    const surface = new Uint8Array(kept.surface.subarray(0, n * SURFACE_BYTES));
+    const sview = new DataView(surface.buffer, surface.byteOffset, surface.byteLength);
     const normal = new Float32Array(n * 3), tangent = new Float32Array(n * 4);
     for (let v = 0; v < n; v++) {
       unpack(sview.getUint32(v * SURFACE_BYTES + 4, true), normal, v * 3, null, 0);

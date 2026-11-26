@@ -55,8 +55,15 @@ function table(): FaceTable {
   };
 }
 
+/** The bytes inside a larger buffer, as a port's arrivals may be: a Buffer, whose slice is a view. */
+function inside(bytes: Uint8Array): Uint8Array {
+  const big = new Uint8Array(bytes.length + 20);
+  big.set(bytes, 12);
+  return Buffer.from(big.buffer, 12, bytes.length);
+}
+
 function fakeAssets(): FaceAssets & { spent: number; reserved: number } {
-  const { level, surface, indices } = headLevel();
+  const made = headLevel(), level = inside(made.level), surface = inside(made.surface), indices = made.indices;
   const blob = encodeFaces(table());
   return {
     spent: 0, reserved: 0,
@@ -228,4 +235,20 @@ test("look bytes are read where the look sits in a longer array", () => {
   f.head(MESH, many, LOOK_BYTES, ONES, 0, 0);
   const { uploads } = frame(f, "high", []);
   expect(uploads.length).toBe(2);
+});
+
+test("a made head keeps its stored normals and tangents where the face barely moves it", () => {
+  const f = new Faces(fakeAssets());
+  f.register(MESH, REST);
+  const look = defaultLook();
+  setFace(look, 0, 1 / 127);
+  for (let k = 0; k < 3; k++) frame(f, "high", [look]);
+  const made = frame(f, "high", [look]).uploads.find((u) => u.of !== undefined)!;
+  const { surface } = headLevel(), a = new DataView(surface.buffer), b = new DataView(made.data.buffer, made.data.byteOffset);
+  const un = (w: number): number[] => [((w << 22) >> 22) / 511, ((w << 12) >> 22) / 511, ((w << 2) >> 22) / 511];
+  for (let v = 0; v < N; v++) for (const at of [4, 8]) {
+    const p = un(a.getUint32(v * SURFACE_BYTES + at, true)), q = un(b.getUint32(v * SURFACE_BYTES + at, true));
+    expect(p[0]! * q[0]! + p[1]! * q[1]! + p[2]! * q[2]!).toBeGreaterThan(0.99);
+    expect(b.getUint32(v * SURFACE_BYTES + at, true) >>> 30).toBe(a.getUint32(v * SURFACE_BYTES + at, true) >>> 30);
+  }
 });
