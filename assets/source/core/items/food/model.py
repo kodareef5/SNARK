@@ -1,45 +1,25 @@
 """Model the cuts and dried strips at the scale of their grounded drops."""
 
-from math import cos, hypot, pi, sin
+from math import cos, dist, hypot, pi, sin
 from pathlib import Path
 import sys
 
 import bpy
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+FOLDER = Path(__file__).resolve().parent
+sys.path[:0] = [str(FOLDER), str(FOLDER.parent)]
 from resource_uv import atlas_uv, loft_uv, planar_uv
+from steaks import COOKED_SCALE, CUTS, LIP_SCALE, RIB_EYE, SPAN, smooth_outline
 
 
 REPEAT = 0.18
 PALETTES = {
-    "raw": (157, 44, 47),
-    "cooked": (112, 57, 36),
     "spoiled": (115, 98, 77),
     "dry": (112, 62, 49),
-    "raw_fat": (224, 169, 131),
-    "cooked_fat": (164, 103, 61),
     "spoil_fold": (85, 73, 57),
     "dry_edge": (82, 45, 34),
+    **{name: (112, 57, 36) if cooked else (157, 44, 47) for name, (_, _, cooked) in CUTS.items()},
 }
-# Counterclockwise points give x, y, edge height and fat width in metres.
-CHUCK = (
-    (0.157, -0.017, 0.036, 0), (0.129, 0.039, 0.047, 0),
-    (0.084, 0.071, 0.051, 0), (0.016, 0.098, 0.047, 0),
-    (-0.063, 0.093, 0.048, 0), (-0.123, 0.061, 0.053, 0),
-    (-0.156, 0.009, 0.055, 0.008), (-0.146, -0.050, 0.050, 0.020),
-    (-0.096, -0.087, 0.054, 0.018), (-0.025, -0.092, 0.049, 0.010),
-    (0.052, -0.076, 0.045, 0), (0.123, -0.055, 0.038, 0),
-)
-RIB_EYE = (
-    (0.180, 0.011, 0.036, 0.004), (0.154, 0.055, 0.041, 0.007),
-    (0.107, 0.101, 0.049, 0.021), (0.047, 0.113, 0.047, 0.031),
-    (-0.014, 0.083, 0.053, 0.013), (-0.078, 0.121, 0.058, 0.023),
-    (-0.145, 0.110, 0.064, 0.030), (-0.176, 0.059, 0.061, 0.021),
-    (-0.164, 0.006, 0.059, 0.008), (-0.130, -0.058, 0.053, 0),
-    (-0.074, -0.092, 0.055, 0), (-0.015, -0.085, 0.059, 0),
-    (0.048, -0.047, 0.046, 0), (0.086, -0.071, 0.037, 0.011),
-    (0.151, -0.054, 0.040, 0.019),
-)
 SLUMP = (
     (0.149, 0.008, 0.031, 0), (0.115, 0.059, 0.026, 0),
     (0.068, 0.049, 0.011, 0), (0.048, 0.086, 0.030, 0),
@@ -85,11 +65,13 @@ class Part:
         chart = planar_uv([self.points[i] for i in corners], normal=(0, 0, side))
         self.face(tile, corners, chart)
 
-    def rims(self, rings, tile_at):
-        positions = [[self.points[index] for index in row] for row in rings]
-        for band, charts in enumerate(loft_uv(positions)):
+    def rims(self, rings, tile_at, charts=None):
+        if charts is None:
+            positions = [[self.points[index] for index in row] for row in rings]
+            charts = loft_uv(positions)
+        for band, row in enumerate(charts):
             lower, upper = rings[band:band + 2]
-            for i, chart in enumerate(charts):
+            for i, chart in enumerate(row):
                 following = (i + 1) % len(lower)
                 self.face(tile_at(band, i), [lower[i], lower[following], upper[following], upper[i]], chart)
 
@@ -109,42 +91,45 @@ class Part:
             polygon.material_index = slots[tile]
             polygon.use_smooth = True
             if uv_layer is not None:
-                for index, uv in zip(polygon.loop_indices, atlas_uv(chart, span=REPEAT)):
+                span = SPAN if tile in CUTS else REPEAT
+                for index, uv in zip(polygon.loop_indices, atlas_uv(chart, span=span)):
                     uv_layer.data[index].uv = uv
         mesh.update()
         bpy.context.scene.collection.objects.link(bpy.data.objects.new(name, mesh))
 
 
-def smooth_outline(profile):
-    rows = []
-    count = len(profile)
-    for index, point in enumerate(profile):
-        before, next_point, after = (profile[(index + step) % count] for step in (-1, 1, 2))
-        for t in (0, 1 / 3, 2 / 3):
-            # Catmull–Rom keeps each butchered cut's landmarks in the fine outline.
-            rows.append(tuple(0.5 * (2 * b + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t ** 2
-                                     + (-a + 3 * b - 3 * c + d) * t ** 3)
-                              for a, b, c, d in zip(before, point, next_point, after)))
-    return rows
+def rolled_chart(part, base, side, lip):
+    # Unfold the side out from the cut face so the same fat cap turns over the edge.
+    upper = [part.points[i][:2] for i in lip]
+    lower, middle = [], []
+    for b, s, l in zip(base, side, lip):
+        start, turn, edge = (part.points[i] for i in (b, s, l))
+        x, y, _ = edge
+        radius = hypot(x, y)
+        step = dist(edge, turn)
+        length = step + dist(turn, start)
+        middle.append((x + x * step / radius, y + y * step / radius))
+        lower.append((x + x * length / radius, y + y * length / radius))
+    count = len(lip)
+    return [[(outer[i], outer[(i + 1) % count], inner[(i + 1) % count], inner[i]) for i in range(count)]
+            for outer, inner in ((lower, middle), (middle, upper))]
 
 
-def cut(part, level, profile, far_points, tile, fat=None):
-    cooked = tile == "cooked"
+def cut(part, level, profile, far_points, tile, cooked=False):
     slumped = tile == "spoiled"
-    scale = 0.90 if cooked else 1
+    scale = COOKED_SCALE if cooked else 1
     height = 0.83 if cooked else 1
     crest = 0.016 if slumped else 0.064 if profile is RIB_EYE else 0.054
     outline = (smooth_outline(profile) if level == 0 else profile if level == 1
                else [profile[i] for i in far_points])
     base, side, lip, trim, shoulder = [], [], [], [], []
-    for i, (x, y, edge, width) in enumerate(outline):
+    for x, y, edge, width in outline:
         x, y = x * scale, y * scale
         edge = height * edge + (0.004 * sin(x * 20) if cooked else 0)
-        outer = 0.95
-        trim_radius = outer - max(0.008, width) / hypot(x, y)
+        trim_radius = LIP_SCALE - max(0.008, width) / hypot(x, y)
         trim_height = edge + (crest * height - edge) * 0.22
         base.append(part.point((x * 0.81, y * 0.81, 0)))
-        lip.append(part.point((x * outer, y * outer, edge)))
+        lip.append(part.point((x * LIP_SCALE, y * LIP_SCALE, edge)))
         trim.append(part.point((x * trim_radius, y * trim_radius, trim_height)))
         if level < 2:
             side.append(part.point((x, y, edge * (0.60 if slumped else 0.51))))
@@ -153,21 +138,13 @@ def cut(part, level, profile, far_points, tile, fat=None):
     bottom_center = part.point((0, 0, 0))
     count = len(outline)
 
-    def trim_tile(i):
-        following = (i + 1) % count
-        width = (outline[i][3] + outline[following][3]) * 0.5
-        return fat if fat is not None and width > 0.009 else tile
-
-    def rim_tile(band, i):
-        if level == 2:
-            return "spoil_fold" if slumped else tile
-        return trim_tile(i) if band == 1 else tile
-
-    part.rims((base, side, lip) if level < 2 else (base, lip), rim_tile)
+    rim_tile = "spoil_fold" if level == 2 and slumped else tile
+    charts = rolled_chart(part, base, side, lip) if level < 2 and not slumped else None
+    part.rims((base, side, lip) if level < 2 else (base, lip), lambda _band, _i: rim_tile, charts)
     for i in range(count):
         j = (i + 1) % count
         part.cap(tile, [bottom_center, base[j], base[i]], -1)
-        part.cap(trim_tile(i), [trim[i], lip[i], lip[j], trim[j]], 1)
+        part.cap(tile, [trim[i], lip[i], lip[j], trim[j]], 1)
         if level < 2:
             part.cap(tile, [shoulder[i], trim[i], trim[j], shoulder[j]], 1)
             part.cap(tile, [top_center, shoulder[i], shoulder[j]], 1)
@@ -227,22 +204,16 @@ def jerky(part, level, prime):
 
 def build():
     materials = {name: material(name, rgb) for name, rgb in PALETTES.items()}
-    chuck_far = (0, 2, 4, 6, 7, 9, 11)
-    rib_eye_far = (0, 2, 3, 4, 6, 8, 10, 12, 14)
     slump_far = (0, 1, 2, 4, 7, 8, 10, 11, 13)
-    cuts = {
-        "meat": (CHUCK, chuck_far, "raw", "raw_fat"),
-        "meat_cooked": (CHUCK, chuck_far, "cooked", "cooked_fat"),
-        "meat_prime": (RIB_EYE, rib_eye_far, "raw", "raw_fat"),
-        "meat_prime_cooked": (RIB_EYE, rib_eye_far, "cooked", "cooked_fat"),
-        "spoiled_meat": (SLUMP, slump_far, "spoiled"),
-    }
-    for name in (*cuts, "jerky", "jerky_prime"):
+    for name in (*CUTS, "spoiled_meat", "jerky", "jerky_prime"):
         center = None
         for level in range(3):
             part = Part()
-            if name in cuts:
-                cut(part, level, *cuts[name])
+            if name in CUTS:
+                outline, far, cooked = CUTS[name]
+                cut(part, level, outline, far, name, cooked)
+            elif name == "spoiled_meat":
+                cut(part, level, SLUMP, slump_far, "spoiled")
             else:
                 jerky(part, level, name == "jerky_prime")
             if center is None:

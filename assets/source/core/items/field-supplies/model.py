@@ -12,10 +12,12 @@ from resource_uv import atlas_uv, loft_uv, planar_uv
 
 
 REPEAT_METRES = 0.115
+SACHET_SPAN = 0.172
+SACHET_FACE = 0.041
 COLORS = {
     "currant": (170, 49, 55), "nightshade": (54, 50, 78), "snowberry": (220, 211, 173),
     "leaf": (81, 103, 50), "purple_stem": (79, 55, 72), "green_glass": (63, 100, 72),
-    "wax_paper": (209, 184, 139), "seal": (163, 105, 46), "hide": (124, 72, 41),
+    "wax_paper": (214, 206, 181), "hide": (124, 72, 41),
     "twine": (169, 138, 86), "crystal": (117, 166, 167), "cement": (72, 91, 83),
     "polymer": (85, 105, 90), "steel": (147, 150, 150), "rubber": (47, 46, 44),
     "green_stem": (112, 105, 62),
@@ -54,7 +56,7 @@ class Mesh:
         if self.textured:
             if uv is None:
                 uv = planar_uv([self.vertices[index] for index in ids])
-            uv = atlas_uv(uv, span=REPEAT_METRES)
+            uv = atlas_uv(uv, span=SACHET_SPAN if surface == "wax_paper" else REPEAT_METRES)
         for j in range(1, len(ids) - 1):
             self.faces.append((ids[0], ids[j], ids[j + 1]))
             self.appearance.append((self.materials[name][0], smooth,
@@ -280,30 +282,39 @@ def shell(mesh, outline, profile, level, *, center=(0, 0), rock=0):
 
 
 def stimulant(mesh, level):
-    # Folded tips and an ochre wax seal keep the paper dose distinct.
-    outline = [(-0.060, -0.016), (-0.034, -0.028), (0.039, -0.025), (0.064, -0.013),
-               (0.064, 0.014), (0.032, 0.025), (-0.036, 0.027), (-0.061, 0.013)]
-    body = [(0, 0.66, "wax_paper"), (0.004, 1, "wax_paper"), (0.012, 0.98, "wax_paper"),
-            (0.023, 0.76, "wax_paper"), (0.028, 0.45, "wax_paper")]
-    if level == 2:
-        outline = outline[1::2]
-        body = body[:2] + [(0.021, 0.76, "wax_paper")]
-    shell(mesh, outline, body, 0, rock=0.026)
-    flap = [(-0.049, -0.010), (0.028, -0.015), (0.046, -0.004),
-            (0.031, 0.009), (-0.039, 0.011), (-0.052, 0.005)]
-    if level < 2:
-        angles = [turn(x, y, 0.11) for x, y in flap]
-        curves = [[(x * width, y * width, height - abs(x) * 0.11) for x, y in angles]
-                  for height, width in ((0.022, 1), (0.026, 0.96), (0.028, 0.68))]
-        mesh.loft(curves, "wax_paper")
-        for side in (-1, 1):
-            for i in range(5 if level == 0 else 2):
-                y = -0.010 + 0.0047 * i
-                tube(mesh, [(side * 0.059, y, 0.011), (side * 0.051, y - side * 0.003, 0.0145)],
-                     0.0011, "wax_paper", 4, smooth=False)
-    seal = [(0.019, 0.010, 0.0085, "seal"), (0.028, 0.014, 0.010, "seal"),
-            (0.031, 0.011, 0.008, "seal")]
-    turned(mesh, seal, (10, 8, 6)[level], at=(0.016, -0.003, 0), uneven=0.13)
+    # The paper runs nearly straight across the dose and closes in two flattened folds.
+    profile = [
+        (-.064, .029, .0015, .0045), (-.060, .032, .0005, .006),
+        (-.057, .032, .0010, .0035), (-.054, .033, .0005, .0065),
+        (-.050, .032, .0020, .0050), (-.041, .034, .0000, .0140),
+        (-.012, .034, .0000, .0160), (.031, .033, .0000, .0145),
+        (.044, .031, .0015, .0075), (.050, .033, .0020, .0040),
+        (.054, .034, .0008, .0065), (.057, .034, .0010, .0045),
+        (.062, .031, .0008, .0055), (.065, .028, .0020, .0040),
+    ]
+    stations = (tuple(range(len(profile))), (0, 3, 5, 6, 7, 8, 10, 13), (0, 5, 7, 13))[level]
+    sides = ((0, 1, 2, 3, 4, 5, 6, 7), (0, 1, 2, 4, 6, 7), (0, 1, 3, 6))[level]
+    curves = []
+    for i in stations:
+        x, width, bottom, top = profile[i]
+        section = [(-.84, 0), (.85, 0), (1, .39), (.86, .76),
+                   (.29, 1), (-.32, .96), (-.88, .80), (-1, .37)]
+        curves.append([(x + .09 * width * u, u * width, bottom + (top - bottom) * z)
+                       for u, z in (section[j] for j in sides)])
+    rings = [mesh.ring(curve) for curve in curves]
+    for ring in (rings[0][::-1], rings[-1]):
+        chart = planar_uv([mesh.vertices[index] for index in ring])
+        mesh.face(ring, "wax_paper", [(u, v - .003) for u, v in chart])
+    for lower, upper in zip(rings, rings[1:]):
+        for j, side in enumerate(sides):
+            k = (j + 1) % len(sides)
+            ids = (lower[j], lower[k], upper[k], upper[j])
+            positions = [mesh.vertices[index] for index in ids]
+            if side in (0, 1, 7):
+                chart = [(x, -SACHET_FACE - y) for x, y, _ in positions]
+            else:
+                chart = [(x, SACHET_FACE + y) for x, y, _ in positions]
+            mesh.face(ids, "wax_paper", chart)
 
 
 SKIN = [(0.077, -0.070), (0.067, -0.025), (0.049, 0.010), (0.030, 0.036),
