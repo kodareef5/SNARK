@@ -121,6 +121,8 @@ export function makeRuins(site: Site): StaticPiece[] {
   const corridors = corridorIndex(bridges.corridors);
   const entrances = bridges.records.flatMap(r => r.entrances);
   const roadGround = roadGroundSamples(site, entrances);
+  // A pool's rim is kept as a road's soil is: a floor levelled or an approach graded across it would let its water out.
+  for (const i of site.ground.rim ?? []) roadGround.add(i);
   const planAccess = accessPlanner(site, pieces, bridges.records, roadGround);
   // Reserve the real dry road, including its width, before choosing pedestrian door approaches. Unlike the
   // bridge deck this is solid earth: a route several metres below it must be replanned, not cut through it.

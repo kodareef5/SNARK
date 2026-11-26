@@ -34,16 +34,20 @@ const DEFAULTS = { shoreDepth: 0.3, slope: 0.08, deepest: 8, bank: 0.25, flatten
 export interface Lakes {
   /** Per sample, north up as the base layers are, its body's number counting from 1, or 0. */
   readonly body: Uint16Array;
-  /** Each body's name and surface in metres over the sea, on the map's lattice of heights. */
-  readonly bodies: { readonly name: string; readonly surface: number }[];
+  /** Each body's name, its surface in metres over the sea on the map's lattice of heights, and what the data calls it. */
+  readonly bodies: { readonly name: string; readonly surface: number; readonly kind: string }[];
   /** Each outline: its id and name, samples of water and of bank, its bodies' surfaces from the highest, and why it is none. */
   readonly made: { readonly id: string; readonly name: string; readonly water: number; readonly bank: number; readonly surfaces: readonly number[]; readonly left?: string }[];
 }
 
 interface Feature {
   readonly geometry: { readonly type: string; readonly coordinates: unknown };
-  readonly properties: { readonly id: string; readonly name?: string | null; readonly mtfcc?: string; readonly above_sea_m: number; readonly intermittent?: boolean };
+  readonly properties: { readonly id: string; readonly name?: string | null; readonly kind?: string; readonly mtfcc?: string; readonly above_sea_m: number; readonly intermittent?: boolean };
 }
+
+/** Water a built rim holds at its own level on any ground: it has no bank, and no water past its edge. */
+const RIMMED = new Set(["pool", "fountain", "reflecting_pool"]);
+export const rimmed = (kind: string): boolean => RIMMED.has(kind);
 
 /** TIGER's short names, written out. */
 const WORDS: readonly (readonly [RegExp, string])[] = [[/ Lk$/, " Lake"], [/ Riv$/, " River"], [/ Res$/, " Reservoir"], [/ Crk$/, " Creek"], [/ Cnl$/, " Canal"]];
@@ -94,7 +98,7 @@ export function readLakes(base: Base, rules: LakeRules | false | undefined, sea:
     const level = (s: number): number => {
       let b = levels.get(s);
       if (b === undefined) {
-        bodies.push({ name, surface: s });
+        bodies.push({ name, surface: s, kind: f.properties.kind ?? "" });
         levels.set(s, (b = bodies.length));
       }
       return b;
@@ -180,11 +184,45 @@ export function carveLakes(lakes: Lakes, rules: LakeRules | false | undefined, h
 }
 
 /**
+ * Raises the rim of each rimmed body: a dry sample beside one of its samples, by a side or a corner, comes up to its
+ * surface, so its water ends at ground and not in the air over a yard that falls away. `kept` is ground never moved,
+ * footprints and roads. Returns the rims' samples, for later grading to leave alone, and how many of them rose.
+ */
+export function raiseRims(lakes: Lakes, height: Float32Array, grid: Grid, kept: (i: number) => boolean): { rim: Set<number>; raised: number } {
+  const { body, bodies } = lakes;
+  const { nx, nz } = grid;
+  const rim = new Set<number>();
+  let raised = 0;
+  for (let row = 0; row < nz; row++) {
+    for (let col = 0; col < nx; col++) {
+      const i = row * nx + col;
+      if (body[i] !== 0 || kept(i)) continue;
+      let top = -Infinity;
+      for (let dr = -1; dr <= 1; dr++) {
+        for (let dc = -1; dc <= 1; dc++) {
+          const [c, r] = [col + dc, row + dr];
+          const b = c >= 0 && r >= 0 && c < nx && r < nz ? body[r * nx + c]! : 0;
+          if (b !== 0 && rimmed(bodies[b - 1]!.kind)) top = Math.max(top, bodies[b - 1]!.surface);
+        }
+      }
+      if (top === -Infinity) continue;
+      rim.add(i);
+      if (top > height[i]!) {
+        height[i] = top;
+        raised++;
+      }
+    }
+  }
+  return { rim, raised };
+}
+
+/**
  * The bodies' squares of `cell` metres for the map file, row by row from z = 0 as the engine has them: a square is the
- * body of a corner sample in one, else of a corner next to one, so that each body's squares reach over its shore.
+ * body of a corner sample in one, else of a corner next to one, so that each body's squares reach over its shore. A
+ * rimmed body takes no square past its own: its rim is its shore.
  */
 export function lakeSquares(lakes: Lakes, grid: Grid, cell: number): Uint16Array {
-  const { body } = lakes;
+  const { body, bodies } = lakes;
   const { nx, nz } = grid;
   // Each dry sample next to a lake takes that lake's number.
   const shore = new Uint16Array(nx * nz);
@@ -195,7 +233,7 @@ export function lakeSquares(lakes: Lakes, grid: Grid, cell: number): Uint16Array
       for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]] as const) {
         const c = col + dc;
         const r = row + dr;
-        if (c >= 0 && r >= 0 && c < nx && r < nz && body[r * nx + c] !== 0) {
+        if (c >= 0 && r >= 0 && c < nx && r < nz && body[r * nx + c] !== 0 && !rimmed(bodies[body[r * nx + c]! - 1]!.kind)) {
           shore[i] = body[r * nx + c]!;
           break;
         }

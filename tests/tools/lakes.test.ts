@@ -4,8 +4,8 @@ import { afterAll, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Base } from "../../tools/mapworld/base.ts";
-import { readLakes } from "../../tools/mapworld/lakes.ts";
+import type { Base, Grid } from "../../tools/mapworld/base.ts";
+import { lakeSquares, raiseRims, readLakes, type Lakes } from "../../tools/mapworld/lakes.ts";
 
 const folder = mkdtempSync(join(tmpdir(), "snark-lakes-"));
 afterAll(() => rmSync(folder, { recursive: true, force: true }));
@@ -24,4 +24,42 @@ test("a lake at the map's east edge grows no water on the west edge of the next 
   const wet = [...lakes.body.keys()].filter((i) => lakes.body[i]! > 0);
   expect(wet.length).toBeGreaterThan(0);
   expect(wet.filter((i) => i % nx < 5)).toEqual([]);
+});
+
+/** One body of `kind`, its surface a metre up, on the middle sample of nine by nine, 2 m apart. */
+function oneBody(kind: string): { lakes: Lakes; grid: Grid } {
+  const body = new Uint16Array(81);
+  body[4 * 9 + 4] = 1;
+  return { lakes: { body, bodies: [{ name: "", surface: 1, kind }], made: [] }, grid: { nx: 9, nz: 9, cell: 2, sizeX: 16, sizeZ: 16 } as Grid };
+}
+
+test("a pool takes the squares at its own samples; a pond's reach a square past them", () => {
+  const count = (kind: string): number => { const { lakes, grid } = oneBody(kind); return lakeSquares(lakes, grid, 2).filter((b) => b === 1).length; };
+  expect([count("pool"), count("fountain"), count("pond")]).toEqual([4, 4, 16]);
+});
+
+test("the ground beside a pool rises to its surface, but for footprints and roads", () => {
+  const { lakes, grid } = oneBody("pool");
+  // Falling to the east, a footprint north of the pool and a road north-east of it.
+  const height = Float32Array.from({ length: 81 }, (_, i) => 2.9 - (i % 9) * 0.5);
+  const before = Array.from(height);
+  const made = raiseRims(lakes, height, grid, (i) => i === 3 * 9 + 4 || i === 3 * 9 + 5);
+  // Six samples beside the pool are no footprint or road; the three west of it stand over its surface already.
+  expect([made.raised, made.rim.size]).toEqual([3, 6]);
+  const changed = [...height.keys()].filter((i) => height[i] !== before[i]);
+  expect(changed).toEqual([4 * 9 + 5, 5 * 9 + 4, 5 * 9 + 5]);
+  expect(changed.map((i) => height[i])).toEqual([1, 1, 1]);
+  const pond = oneBody("pond");
+  expect(raiseRims(pond.lakes, Float32Array.from(before), pond.grid, () => false).rim.size).toBe(0);
+});
+
+test("a body keeps what the data calls its water", () => {
+  const dir = join(folder, "kinds");
+  mkdirSync(join(dir, "base"), { recursive: true });
+  const square = (w: number): number[][] => [[w, 9], [w + 5, 9], [w + 5, 3], [w, 3], [w, 9]];
+  const feature = (id: string, kind: string, w: number) => ({ geometry: { type: "Polygon", coordinates: [square(w)] }, properties: { id, kind, above_sea_m: 3 } });
+  writeFileSync(join(dir, "base/perched_water.geojson"), JSON.stringify({ features: [feature("a", "pool", 1.5), feature("b", "pond", 11.5)] }));
+  const base = { folder: dir, grid: { nx: 10, nz: 6, cell: 2, west: 0, north: 12 } } as unknown as Base;
+  const lakes = readLakes(base, {}, 0, -32, 1 / 256, new Float32Array(60).fill(3), () => false)!;
+  expect(lakes.bodies.map((b) => b.kind)).toEqual(["pool", "pond"]);
 });
