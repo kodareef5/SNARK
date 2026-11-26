@@ -214,6 +214,8 @@ export const MATERIAL_ROWS: readonly UniformRow[] = [
   one("uSheet", AT_DRAW, (c) => c.material!.sheet ?? 0),
   one("uEmissive", AT_DRAW, (c) => materialEmission(c.material!, c.night, c.exposure)),
   uv,
+  // The tier's threshold, by which skin's own light fades toward its flat level (surface.ts skinNear).
+  one("uThreshold", AT_FRAME, (c) => c.p.tier.threshold),
 ];
 
 /** After those, for a body with a layer (packet.ts drawLayer): the level it is drawn at and its wear story. */
