@@ -30,7 +30,8 @@ export default {
   materials: {
     wood: instrument("wood"), hide: instrument("hide"), iron: instrument("iron"),
     brass: instrument("bronze"), rubber: instrument("rubber"),
-    steel: swatch("steel", 0.16), cloth: swatch("cloth", 0.10), char: swatch("char", 0.10),
+    steel: { ...swatch("steel", 0.16), tops: { normal: 128 } },
+    cloth: swatch("cloth", 0.10), char: swatch("char", 0.10),
   },
   budgets: { triangles: [1500, 750, 360, 176], texture: { top: 256, megabytes: 4.9 } },
 } satisfies PiecesAsset;

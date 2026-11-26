@@ -2,7 +2,7 @@
   "repository": "kodareef5/SNARK",
   "art": {
     "release": "art",
-    "id": "34aeb8f87a9991e2",
+    "id": "6fec82c19612cc25",
     "files": [
       {"name": "core-creatures-allosaur", "file": "core-creatures-allosaur.5eb2682fdf0a.tar.zst", "bytes": 2833562, "sha256": "5eb2682fdf0abb902fa1807673cf9dc46c3111e728eda23299b3a910d74129e2"},
       {"name": "core-creatures-ankylo", "file": "core-creatures-ankylo.d19e9025be7c.tar.zst", "bytes": 1901178, "sha256": "d19e9025be7ccaeb84f4bf80f6554f9e9a6a2971b062a6666ab9f50e8901146b"},
@@ -60,6 +60,7 @@
       {"name": "core-items-field-supplies", "file": "core-items-field-supplies.4229526ca768.tar.zst", "bytes": 6458306, "sha256": "4229526ca768f5c562cd6034b55b29f3984f6b0493b595c15ce0664b53c62acd"},
       {"name": "core-items-food", "file": "core-items-food.533eaa787ce0.tar.zst", "bytes": 4554649, "sha256": "533eaa787ce07894ef1976a816b7c87ecdc7074a1db8430de3154f263800374a"},
       {"name": "core-items-frond-glider", "file": "core-items-frond-glider.0bf8f2a357f9.tar.zst", "bytes": 90313, "sha256": "0bf8f2a357f92691e34957703356e4f4e17fd6ee7c0b5a7a5f9151fbec2383cd"},
+      {"name": "core-items-hand-tools", "file": "core-items-hand-tools.28d1291a4907.tar.zst", "bytes": 2508049, "sha256": "28d1291a49079383c29495f0a9f70dc812b559f350c717c509ebc4dc5b300874"},
       {"name": "core-items-instruments", "file": "core-items-instruments.bf09a5ee5fc2.tar.zst", "bytes": 12917904, "sha256": "bf09a5ee5fc213346fb726ed3f16ebc7ebafd5ef28f475b394abddb0a63f5438"},
       {"name": "core-items-resource-minerals", "file": "core-items-resource-minerals.db37d6d137e4.tar.zst", "bytes": 658476, "sha256": "db37d6d137e43171bfe31e48ab9f838e4144961089a2210658e00e2bb20f4557"},
       {"name": "core-items-resource-organics", "file": "core-items-resource-organics.190dae046504.tar.zst", "bytes": 1030003, "sha256": "190dae0465044f09c03a83aeb7f271adcc248e1f6892acff5351b87d14c6d507"},
