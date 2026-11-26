@@ -59,3 +59,16 @@ test("only the nearest eight burn at once", () => {
   // The eighth stands 47 m along; the ninth's cards, 53 m along, are not there.
   expect(far).toBeLessThan(47 + 8);
 });
+
+test("a streamed replacement chunk shows its own fires", () => {
+  const s = store(), f = new WreckFires(reg), cam = new Camera(), packet = new FramePacket();
+  const burning = reg.index.get(burningKind("core:jon_boat"))!;
+  const plain = reg.index.get("core:zzzzhull_jon_boat_229")!;
+  const ref = s.add(burning, 10, 0, 10, 0, 0, 1);
+  f.build(packet, cam, s, 8, 8, 100);
+  expect(f.count).toBeGreaterThan(0);
+  s.detach(ref >>> 16);
+  s.add(plain, 10, 0, 10, 0, 0, 1);
+  f.build(packet, cam, s, 8, 8, 200);
+  expect(f.count).toBe(0);
+});

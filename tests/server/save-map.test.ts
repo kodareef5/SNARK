@@ -69,6 +69,29 @@ test("a fresh save on a map with statics holds none of them, and a restart sets 
   again.host.shutdown();
 });
 
+test("earlier marina paint IDs load in their original map and save slots", () => {
+  const dbPath = join(dir, "marina-paint.db");
+  const ids = ["core:zzzzhull_belvedere_232", "core:wall", "core:zzzzhull_needle_20"];
+  const map = writeMap(flatMap(2, { statics: ids.map((kind, i) => ({ kind, x: 8 + i * 12, y: 0, z: 10, yaw: 0 })) }));
+  const h = new Harness({}, 1, 60, { dbPath, map });
+  const kinds = h.world.structs.chunks[0]!.kind;
+  expect(h.reg.ids[kinds[0]!]).toBe("core:zzzzhull_belvedere_231");
+  expect(h.reg.ids[kinds[1]!]).toBe("core:wall");
+  expect(h.reg.ids[kinds[2]!]).toBe("core:zzzzhull_needle_229");
+  h.world.structs.damage(0, 1e9);
+  const added = h.world.structs.add(kinds[2]!, 54, 0, 10, 0, 7, 100);
+  h.run(500);
+  h.host.shutdown();
+  const old = new Database(dbPath);
+  old.query("UPDATE content_ids SET id = ? WHERE id = ?").run(ids[2]!, "core:zzzzhull_needle_229");
+  old.close();
+  const next = new Harness({}, 1, 60, { dbPath, map });
+  const slots = next.world.structs.chunks[0]!.kind;
+  expect([slots[0], next.reg.ids[slots[1]!], next.reg.ids[slots[2]!]]).toEqual([0, "core:wall", "core:zzzzhull_needle_229"]);
+  expect(next.reg.ids[slots[added & 0xffff]!]).toBe("core:zzzzhull_needle_229");
+  next.host.shutdown();
+});
+
 test("one static destroyed is one chunk in the save, still gone after a restart, and every other chunk stands as placed; a backup and saveas hold the same", () => {
   const db = join(dir, "one.db");
   const h = new Harness({}, 1, 60, { dbPath: db });

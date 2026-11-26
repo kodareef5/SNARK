@@ -78,3 +78,23 @@ test("four shimmer at once at most, the nearest first, and the rest when there i
   s.update(SHIMMER_MS + 1, reg, r, 0, 0, 0, 0, () => true, -1);
   expect(s.count).toBe(0);
 });
+
+test("the nearest vehicle can arrive after a crowd of farther ones", () => {
+  const r = parked(Array.from({ length: 25 }, () => "core:compact")), s = new Shimmer();
+  for (let i = 0; i < r.count; i++) r.x[i] = r.count - i;
+  s.update(0, reg, r, 0, 0, 0, 0, () => true, -1);
+  expect(Array.from(s.ids)).toEqual([124, 123, 122, 121]);
+});
+
+test("recycled body slots start their own glows and a wreck loses its glow", () => {
+  const r = parked(["core:compact"]), s = new Shimmer();
+  const at = (now: number): number => { s.update(now, reg, r, 0, 0, 0, 0, () => true, -1); return s.count; };
+  expect(at(0)).toBe(1);
+  r.flags[0] = 8;
+  expect(at(20)).toBe(0);
+  r.gen[0] = 2; r.flags[0] = 0;
+  expect(at(40)).toBe(1);
+  expect(s.phase[0]).toBe(0);
+  r.count = 0;
+  expect(at(60)).toBe(0);
+});

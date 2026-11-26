@@ -21,14 +21,14 @@ const RISE = 16, LEAN = 6, LIFE = 9, WIND = [0.8, 0.6] as const;
 const word = (r: number, g: number, b: number): number => ((255 << 24) | (b << 16) | (g << 8) | r) >>> 0;
 const FLAME = word(255, 150, 58), SOOT = word(52, 50, 48);
 
-interface Held { table: ChunkTable; version: number; at: Float32Array }
+interface Held { version: number; at: Float32Array }
 
 export class WreckFires extends VehicleCards {
   /** False where no kind burns: the pass then does nothing at all. */
   readonly any: boolean;
   private readonly ablaze: Uint8Array;
   private readonly top: (kind: number) => number;
-  private readonly chunks = new Map<number, Held>();
+  private readonly chunks = new WeakMap<ChunkTable, Held>();
   private readonly near: number[] = [];
 
   constructor(reg: Registry) {
@@ -103,13 +103,13 @@ export class WreckFires extends VehicleCards {
   /** A chunk's burning wrecks, four numbers each: where it stands and how high its box reaches. Read again only when its table has changed. */
   private firesOf(structs: StructureStore, chunk: number): Float32Array {
     const t = structs.chunks[chunk];
-    if (!t) { this.chunks.delete(chunk); return NONE; }
-    const held = this.chunks.get(chunk);
-    if (held && held.table === t && held.version === t.shape) return held.at;
+    if (!t) return NONE;
+    const held = this.chunks.get(t);
+    if (held && held.version === t.shape) return held.at;
     const at: number[] = [];
     for (let s = 0; s < t.high; s++) if (this.ablaze[t.kind[s]!] === 1) at.push(t.x[s]!, t.y[s]!, t.z[s]!, this.top(t.kind[s]!));
     const made = at.length ? Float32Array.from(at) : NONE;
-    this.chunks.set(chunk, { table: t, version: t.shape, at: made });
+    this.chunks.set(t, { version: t.shape, at: made });
     return made;
   }
 }

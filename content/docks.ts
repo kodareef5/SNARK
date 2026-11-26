@@ -124,4 +124,16 @@ export const burningKind = (vessel: string): string => `${vessel.replace("core:"
 const CHARRED = DEAD_DYES[0]!;
 const BURNING: readonly StructureDef[] = MOORED.filter((m) => m.color === CHARRED.paint).map((m): StructureDef => ({ ...m, id: burningKind(m.mesh as string), ablaze: true }));
 
-export const DOCKS: readonly Def[] = [...SHAPES, ...STATICS, LAUNCH_SHAPE, ...MOORED, ...BURNING];
+// Maps and saves made before the derelict dyes name these hulls by their original paint.
+const oldPaints = {
+  boat: [103, 124], needle: [20, 46, 230, 48, 53], thunderbolt: [29, 230, 34, 84, 41],
+  jon_boat: [136, 128, 120, 87, 98], riptide: [52, 49, 46, 230, 53, 48], solstice: [131, 29, 84, 104],
+  meridian: [98, 84, 30], belvedere: [93, 29, 87], sovereign: [87, 230, 29], manta: [40, 46, 230], lagoon: [91, 104, 236],
+};
+const earlier: Def[] = Object.entries(oldPaints).flatMap(([name, paints]) =>
+  [232, ...paints].map((paint) => ({
+    type: "rename" as const, id: mooredKind(`core:${name}`, paint),
+    to: [mooredKind(`core:${name}`, DEAD_DYES[paint === 232 ? 2 : paint % DEAD_DYES.length]!.paint)],
+  })));
+
+export const DOCKS: readonly Def[] = [...SHAPES, ...STATICS, LAUNCH_SHAPE, ...MOORED, ...BURNING, ...earlier];

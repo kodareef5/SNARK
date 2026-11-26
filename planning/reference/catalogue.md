@@ -11,7 +11,7 @@ list is refused. Names and ids are this engine's own. The ARK column says what
 the class corresponds to, so that what is known of ARK carries over.
 
 There are 47 classes: 34 built, 6 partly built, and 7 stubs that
-wait for a feature. The core pack holds 6201 definitions.
+wait for a feature. The core pack holds 6254 definitions.
 
 An asset slot is addressed `owner#slot`, or `owner#slot/key` for a slot with
 several values: `core:raptor#clip/walk`. Levels of detail are inside the asset
@@ -344,7 +344,7 @@ Packs may add to: `buffs`.
 
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
-| `rename` | a redirect for a class that was renamed | built | `to` |  | 0 |
+| `rename` | a redirect for a class that was renamed | built | `to` |  | 53 |
 
 - **`rename`** on shelf `renames`. An id that is no longer defined, and what it is called now. Saves and settings that use it still read.
 
@@ -442,3 +442,5 @@ built.
 **`spawns`** (4): spawns_beach, spawns_jungle, spawns_proving_herd, spawns_proving_hunters.
 
 **`map`** (5): miami, tampa, san-francisco, los-angeles, las-vegas.
+
+**`rename`** (53): zzzzhull_boat_232, zzzzhull_boat_103, zzzzhull_boat_124, zzzzhull_needle_232, zzzzhull_needle_20, zzzzhull_needle_46, zzzzhull_needle_230, zzzzhull_needle_48, zzzzhull_needle_53, zzzzhull_thunderbolt_232, zzzzhull_thunderbolt_29, zzzzhull_thunderbolt_230, zzzzhull_thunderbolt_34, zzzzhull_thunderbolt_84, zzzzhull_thunderbolt_41, zzzzhull_jon_boat_232, zzzzhull_jon_boat_136, zzzzhull_jon_boat_128, zzzzhull_jon_boat_120, zzzzhull_jon_boat_87, zzzzhull_jon_boat_98, zzzzhull_riptide_232, zzzzhull_riptide_52, zzzzhull_riptide_49, zzzzhull_riptide_46, zzzzhull_riptide_230, zzzzhull_riptide_53, zzzzhull_riptide_48, zzzzhull_solstice_232, zzzzhull_solstice_131, zzzzhull_solstice_29, zzzzhull_solstice_84, zzzzhull_solstice_104, zzzzhull_meridian_232, zzzzhull_meridian_98, zzzzhull_meridian_84, zzzzhull_meridian_30, zzzzhull_belvedere_232, zzzzhull_belvedere_93, zzzzhull_belvedere_29, zzzzhull_belvedere_87, zzzzhull_sovereign_232, zzzzhull_sovereign_87, zzzzhull_sovereign_230, zzzzhull_sovereign_29, zzzzhull_manta_232, zzzzhull_manta_40, zzzzhull_manta_46, zzzzhull_manta_230, zzzzhull_lagoon_232, zzzzhull_lagoon_91, zzzzhull_lagoon_104, zzzzhull_lagoon_236.

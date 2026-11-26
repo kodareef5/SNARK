@@ -312,6 +312,8 @@ export function layMarinas(sites: readonly BoatSite[], docks: ReadonlyMap<string
     if (burns) burningIn.set(site.id, (burningIn.get(site.id) ?? 0) + 1);
     put({ kind: burns ? burningKind(vessel) : mooredKind(vessel, paint), x, y: boatRestY(def.spec, water(x, z)) - (burns ? 0 : sunk), z, yaw: lies }, vessel);
     boxes.add(hull(vessel, x, z, lies, .2), `boat:${id}`);
+    // The live boat, if this slip is selected after placement, floats at the berth's original heading.
+    if (dock && lies !== yaw) boxes.add(hull(vessel, x, z, yaw, .2), `boat:${id}`);
     out.slips.push({ id, site: site.id, district, vessel, x, z, yaw, found: false, how, dock, run });
     return true;
   };
