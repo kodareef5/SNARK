@@ -79,20 +79,22 @@ test("A cancelled dock slide preserves equipment and a second finger cannot equi
     if (op === CMD_SELECT) write?.({ u8: (v: number) => selects.push(v) } as never);
     return command(op, write);
   }) as typeof app.session.command;
-  const key = KEY_DOCK_SLOT, last = point(KEY_DOCK_SLOT+7);
+  const key = KEY_DOCK_SLOT, origin = point(key);
+  const last = { x: origin.x - 165, y: origin.y };
   pointer(0,key);
   pointer(2,key,last);
   run(90);
-  expect(dock.preview).toBe(7);
-  expect(app.hud.dockSizes[7]).toBeGreaterThan(.5);
-  expect(app.hud.dockSizes[3]).toBe(0);
+  const preview = dock.preview;
+  expect(preview).toBeGreaterThan(0);
+  expect(app.hud.dockSizes[preview]).toBeGreaterThan(.5);
+  expect(app.ui.frame.nodes.slice(0, app.ui.frame.count).some(n => n.text === "Empty slot")).toBe(true);
   pointer(1,key,last,2); run();
   expect(selects).toEqual([]);
   pointer(3,key,last); run();
   expect(dock.preview).toBe(-1);
   expect(selects).toEqual([]);
   pointer(0,key); pointer(2,key,last); pointer(1,key,last); run();
-  expect(selects).toEqual([7]);
+  expect(selects).toEqual([preview]);
 });
 
 test("A swipe browses an action family and an outward swipe returns one level", () => {
@@ -158,4 +160,46 @@ test("A press on the world shuts the dock, by mouse and by finger", () => {
   phone.pointer(0, KEY_ZONE_LOOK, { x: 600, y: 200 });
   phone.run();
   expect(phone.dock.isOpen()).toBe(false);
+});
+
+test("The phone shelf wraps the ten slots under a thumb and cancels upward swipes", () => {
+  const { app, run, pointer, point, dock } = survivor(true);
+  const f = app.ui.frame;
+  const slots = () => Array.from({ length: 10 }, (_, i) => f.find(KEY_DOCK_SLOT + i)).filter(Boolean);
+  const shown = slots().length;
+  expect(shown).toBeGreaterThanOrEqual(5);
+  expect(shown).toBeLessThan(10);
+  const selected: number[] = [];
+  const send = app.session.command.bind(app.session);
+  app.session.command = ((op, write) => {
+    if (op === CMD_SELECT) write?.({ u8: (n: number) => selected.push(n) } as never);
+    return send(op, write);
+  }) as typeof app.session.command;
+  const center = point(KEY_DOCK_SLOT);
+  pointer(0, KEY_DOCK_SLOT, center);
+  pointer(2, KEY_DOCK_SLOT, { x: center.x + 72, y: center.y });
+  run(120);
+  expect(dock.preview).toBe(9);
+  pointer(1, KEY_DOCK_SLOT, { x: center.x + 72, y: center.y - 100 });
+  run();
+  expect(selected).toEqual([]);
+  pointer(0, KEY_DOCK_SLOT, center);
+  pointer(1, KEY_DOCK_SLOT, { x: center.x + 72, y: center.y });
+  run();
+  expect(selected).toEqual([9]);
+});
+
+test("The touch menu unfolds a whole wheel and the two rims use distinct faces", () => {
+  const { app, run, tap, point } = survivor(true);
+  const art = new Set<string>();
+  app.ui.frame.icons = { place(_node, owner) { art.add(owner); return true; } };
+  run();
+  expect(art.has("ui:mobile-wheel") && art.has("ui:mobile-fan")).toBe(true);
+  const shut = point(KEY_FIELD_HUB);
+  tap(KEY_FIELD_HUB);
+  const open = point(KEY_FIELD_HUB);
+  const stations = Array.from({ length: 7 }, (_, i) => point(KEY_FIELD_LEAF + i));
+  expect(open.x).toBeGreaterThan(shut.x + 70);
+  expect(stations.some(p => p.x < open.x)).toBe(true);
+  expect(stations.some(p => p.x > open.x)).toBe(true);
 });

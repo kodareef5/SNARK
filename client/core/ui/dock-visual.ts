@@ -6,17 +6,6 @@ import { S_ICE, S_LABEL } from "./style.ts";
 /** A part's rim is this share of its picture (tools/ui/field-art.ts), the rest its glow. */
 const PART_BODY = 0.8;
 
-/** Half a dial at `edge`, its rim `radius` from `cy`, the half toward the field, `reveal` of it out from the edge. */
-export function rim(f: UiFrame, key: number, left: boolean, edge: number, cy: number, radius: number, alpha: number, reveal = 1): void {
-  const side = (radius * 2) / PART_BODY, wide = (side / 2) * reveal;
-  const n = f.picture(key, left ? edge : edge - wide, cy - side / 2, wide, side, S_LABEL, "ui:part-dial");
-  if (!n) return;
-  const cell = n.sw, shown = (cell / 2) * reveal;
-  n.sx += left ? cell / 2 : cell / 2 - shown;
-  n.sw = shown;
-  n.alpha = alpha;
-}
-
 /** A glass tile whose rim is the box `x`, `y`, `w`, `h`, at rest or lit. Null where the build has no parts. */
 export function tile(f: UiFrame, key: number, x: number, y: number, w: number, h: number, lit: boolean): UiNode | null {
   const gw = w / PART_BODY, gh = h / PART_BODY;

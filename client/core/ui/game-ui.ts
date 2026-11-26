@@ -190,6 +190,7 @@ export class GameUi {
     if (hud) c.hud = hud;
     c.focus = this.menuFocus;
     c.inputDevice = this.inputDevice;
+    c.touchDock = this.layer?.touchDock;
     c.covered = this.console.open || this.chat.open;
     c.focusPending = this.focusNext !== 0;
     c.aimed = this.aimed;

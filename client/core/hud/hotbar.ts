@@ -19,7 +19,7 @@ export const KEY_HOTBAR = 40;
 /** The held slot's glow, each slot's number, and the rail with its dividers and condition lines. */
 export const KEY_HOTBAR_LIT = 9460;
 export const KEY_HOTBAR_NUMBER = 9470;
-const KEY_HOTBAR_RAIL = 17400;
+export const KEY_HOTBAR_RAIL = 17400;
 
 /** label is the first letters of the item's name. number is a count, or the rounds loaded. */
 export interface HotbarCell {
@@ -43,6 +43,7 @@ export interface HotbarModel {
   buildSays: string;
   /** The slot under a thumb sliding along the dock, or -1: the dock sets it. Each slot grows toward it by touch. */
   dockPreview: number;
+  dockPhase: number | null;
   dockSizes: number[];
   /** The frame's time, for the growth and for the dock's own. */
   hotbarNow: number;
@@ -86,12 +87,13 @@ export function fillHotbar(m: HotbarModel, inv: Inventory | null, held: number, 
 export const HOTBAR: HudWidget<HotbarModel> = {
   name: "hotbar",
   bands: [band(KEY_AMMO, 1), band(KEY_HOTBAR, 30), band(KEY_HOTBAR_LIT, 10), band(KEY_HOTBAR_NUMBER, 10), band(KEY_BUILD_SAYS, 1), band(KEY_HOTBAR_RAIL, 50)],
-  make: () => ({ hotbar: [], held: -1, ammo: "", buildSays: "", dockPreview: -1, dockSizes: new Array<number>(HOTBAR_SLOTS).fill(0), hotbarNow: 0 }),
+  make: () => ({ hotbar: [], held: -1, ammo: "", buildSays: "", dockPreview: -1, dockPhase: null, dockSizes: new Array<number>(HOTBAR_SLOTS).fill(0), hotbarNow: 0 }),
   fill(m, c) {
     const now = c.nowMs ?? m.hotbarNow, step = Math.min(1, Math.max(0, now - m.hotbarNow) / 170);
     m.hotbarNow = now;
     for (let i = 0; i < m.dockSizes.length; i++) {
-      const target = m.dockPreview < 0 ? 0 : Math.max(0, 1 - Math.abs(i - m.dockPreview) * .58), size = m.dockSizes[i]!;
+      const gap = Math.abs(i - m.dockPreview);
+      const target = m.dockPreview < 0 ? 0 : Math.max(0, 1 - Math.min(gap, HOTBAR_SLOTS - gap) * .58), size = m.dockSizes[i]!;
       m.dockSizes[i] = Math.abs(target - size) < .012 ? target : size + (target - size) * Math.min(1, step * 2.5);
     }
     const a = c.frame;
@@ -105,40 +107,40 @@ export const HOTBAR: HudWidget<HotbarModel> = {
       const x0 = hotbarLeft(f, m.hotbar.length);
       const end = x0 + m.hotbar.length * (cell + 3) - 3;
       const bottom = hotbarTop(f, m.hotbar.length) + cell;
-      const touch = at.touch !== null;
-      const y0 = bottom - (touch ? 23 : cell);
-      const railHeight = touch ? 16 : cell - 3;
-      glass(f, KEY_HOTBAR_RAIL, x0-3, bottom-railHeight, end-x0+6, railHeight, touch ? .60 : .76);
+      const y0 = at.touch ? f.height - f.bottom - (m.dockPreview >= 0 ? 108 : 30) / f.unit : bottom - cell;
+      if (m.ammo !== "") f.text(KEY_AMMO, Math.max(left, W / 2 - 150), y0 - lineHeight(S_PROMPT) - 3, Math.min(300, right - left), S_PROMPT, m.ammo);
+      if (m.buildSays !== "") f.text(KEY_BUILD_SAYS, Math.max(left, W / 2 - 150), y0 - (m.ammo !== "" ? 2 : 1) * (lineHeight(S_PROMPT) + 3), Math.min(300, right - left), S_PROMPT, fitText(m.buildSays, Math.min(300, right - left), S_PROMPT));
+      if (at.touch) { at.touch.drawBelt(f, m); return; }
+      const railHeight = cell - 3;
+      glass(f, KEY_HOTBAR_RAIL, x0-3, bottom-railHeight, end-x0+6, railHeight, .76);
       line(f, KEY_HOTBAR_RAIL + 1, x0, bottom-1, end-x0, 1, 0xc4e5f4, .71);
       for (let i = 0; i < m.hotbar.length; i++) {
         const c = m.hotbar[i]!;
         const x = x0 + i * (cell + 3);
         const key = KEY_HOTBAR + i * 3, selected = i === m.held;
-        const magnify = touch ? m.dockSizes[i] ?? 0 : 0;
-        const size = touch ? (selected ? 23 : 17) + magnify * 32 : cell - 7;
+        const size = cell - 7;
         const center = x + cell/2;
         f.add(key, K_PANEL, x, bottom-cell, cell, cell, S_HUD_HIT);
         if (selected) {
           line(f, KEY_HOTBAR_LIT+i, x+1, bottom-Math.min(cell,size+2), cell-2, Math.min(cell,size+2), 0x2476aa, .42);
           line(f, KEY_HOTBAR_RAIL+10+i, x+1, bottom-2, cell-2, 2, 0xa3e6ff, 1);
         }
-        if (i && !touch) line(f, KEY_HOTBAR_RAIL+20+i, x-2, y0+9, 1, cell-13, 0x87adc2, .30);
-        if (!touch) f.text(KEY_HOTBAR_NUMBER+i, x+3, y0, 15, S_HUD_KEY, String((i+1)%10));
+        if (i) line(f, KEY_HOTBAR_RAIL+20+i, x-2, y0+9, 1, cell-13, 0x87adc2, .30);
+        f.text(KEY_HOTBAR_NUMBER+i, x+3, y0, 15, S_HUD_KEY, String((i+1)%10));
         if (c.tint >= 0) {
           if (!f.picture(key+1, center-size/2, bottom-size-2, size, size, S_SLOT_TEXT, c.id ?? "")) {
             const fallback = f.add(key+1, K_PANEL, x+4, bottom-Math.min(18,size)-2, cell-8, Math.min(18,size), S_HUD_KEY);
             fallback.text = fitText(c.label, cell-8, S_HUD_KEY);
             fallback.tint = c.tint;
           }
-          if (!touch || magnify > .5) f.text(key+2, x+2, bottom-lineHeight(S_SLOT_TEXT)-2, cell-7, S_HUD_COUNT, c.number);
-          if (!touch && c.condition !== undefined && c.condition >= 0) {
+          f.text(key+2, x+2, bottom-lineHeight(S_SLOT_TEXT)-2, cell-7, S_HUD_COUNT, c.number);
+          if (c.condition !== undefined && c.condition >= 0) {
             line(f, KEY_HOTBAR_RAIL+30+i, x+5, bottom-5, cell-10, 1, 0x102434, .9);
             line(f, KEY_HOTBAR_RAIL+40+i, x+5, bottom-5, (cell-10)*c.condition, 1, c.condition < .2 ? 0xe7b67d : 0xabcfdd, .8);
           }
         }
       }
-      if (m.ammo !== "") f.text(KEY_AMMO, Math.max(left, W / 2 - 150), y0 - lineHeight(S_PROMPT) - 3, Math.min(300, right - left), S_PROMPT, m.ammo);
-      if (m.buildSays !== "") f.text(KEY_BUILD_SAYS, Math.max(left, W / 2 - 150), y0 - (m.ammo !== "" ? 2 : 1) * (lineHeight(S_PROMPT) + 3), Math.min(300, right - left), S_PROMPT, fitText(m.buildSays, Math.min(300, right - left), S_PROMPT));
+
     }
   },
 };

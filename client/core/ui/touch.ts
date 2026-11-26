@@ -13,6 +13,9 @@ import { K_HOLD, K_IMAGE, fitText, textWidth, type UiFrame, type UiNode } from "
 import { S_KEY, S_LABEL, S_PROMPT } from "./style.ts";
 import { BODY, ICON, ICON_COLUMNS, ICON_Y, IMAGE_TOUCH, I_AIM, I_ANCHOR, I_ATTACK, I_BAG, I_BRAKE, I_CANCEL, I_CREATURE, I_CROUCH, I_DOWN, I_JUMP, I_LEFT, I_LIGHTS, I_MELEE, I_MIC, I_MORE, I_ORBIT, I_PLACE, I_PROPELLER, I_RELOAD, I_RIGHT, I_ROTATE, I_ROTOR, I_SNAP, I_SPRINT, I_UP, I_VARIANT, I_VIEW, I_WHISTLE, I_WINGS, PART, PILL_BODY, PILL_CAP, PILL_H, PILL_W, PILL_Y, P_KNOB, P_RING, P_ROUND, P_SQUARE, TOUCH_HEIGHT, TOUCH_URL, TOUCH_WIDTH, touchPixels } from "./touch-art.ts";
 
+import * as touchDock from "./touch-dock.ts";
+export { touchDock };
+
 /** Keys of the layer's pictures, which are never pressed: four to a button, then the stick's. */
 const KEY_TOUCH_ART = 3300000;
 /** The share of the canvas's width the move zone takes, from the left. */
@@ -39,11 +42,13 @@ const RADIANS = Math.PI / 180;
 
 /** The phone's upper instruments share safe insets and 44 CSS pixel targets. */
 export interface TouchPlan {
+  drawBelt: typeof touchDock.drawBelt;
   vitalsX: number; vitalsY: number; vitalPitch: number; topEnd: number;
   toolsX: number; toolsY: number; toolSize: number; under: number; stackY: number;
   map: number; mapX: number; mapY: number; mic: boolean;
 }
 const plan: TouchPlan = {
+  drawBelt: touchDock.drawBelt,
   vitalsX: 0, vitalsY: 0, vitalPitch: 0, topEnd: 0, toolsX: 0, toolsY: 0,
   toolSize: 0, under: 0, stackY: 0, map: 64, mapX: 0, mapY: 0, mic: false,
 };

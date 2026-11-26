@@ -8,8 +8,9 @@ import type { ItemDef } from "../../../shared/content/defs.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
 import { CMD_SELECT, CMD_USE } from "../../../shared/net/protocol.ts";
 import { FLAG_BLUEPRINT, HOTBAR_SLOTS, type Inventory } from "../../../shared/sim/items.ts";
+import { KEY_HOTBAR } from "../hud/hotbar.ts";
 import { hotbarCell, hotbarLeft, hotbarTop } from "../hud/layout.ts";
-import { line, rim, tile } from "./dock-visual.ts";
+import { line, tile } from "./dock-visual.ts";
 import type { EmoteMenu } from "./emotes.ts";
 import { K_BUTTON, K_HOLD, type UiFrame } from "./nodes.ts";
 import type { DockEntry, Screen, ScreenCtx } from "./screen.ts";
@@ -91,6 +92,9 @@ export class FieldDock implements Screen {
   private originKey = -1;
   private downX = 0;
   private downY = 0;
+  private downSlot = 0;
+  private downFocus = 0;
+  private phase: number | null = null;
   private dragged = false;
   private startPage: DockPage | null = null;
   private expanded = 0;
@@ -119,7 +123,7 @@ export class FieldDock implements Screen {
     this.page = null; this.focus = 0; this.familyParent = false; this.mouseKey = -1; this.release();
     this.expanded = 0; this.clock = -1;
   }
-  private release(): void { this.finger = this.originKey = this.preview = -1; this.dragged = false; }
+  private release(): void { this.finger = this.originKey = this.preview = -1; this.dragged = false; this.phase = null; }
 
   private leaves(p: DockPage, c: ScreenCtx): readonly Leaf[] {
     if (p !== "emblem") return OWN[p];
@@ -256,7 +260,7 @@ export class FieldDock implements Screen {
     const entries = this.list(c);
     const leaf = key >= KEY_FIELD_LEAF && key < KEY_FIELD_LEAF + entries.length;
     if (!equipment && !hub && !leaf && this.originKey !== key) return false;
-    if (!this.enabled || (kind === 0 && button !== 0) || !f.find(key)?.interactive) {
+    if (!this.enabled || (kind === 0 && button !== 0) || (!f.find(key)?.interactive && !(finger && this.originKey === key && finger === this.finger))) {
       if (finger === this.finger && kind !== 2) this.release();
       return true;
     }
@@ -279,21 +283,25 @@ export class FieldDock implements Screen {
     if (kind === 0) {
       if (this.finger >= 0) return true;
       this.finger = finger; this.originKey = key; this.downX = x; this.downY = y; this.startPage = this.page;
-      if (equipment) { this.page = null; this.preview = slot; }
+      this.downFocus = this.focus;
+      if (equipment) {
+        this.page = null; this.preview = slot;
+        this.downSlot = Math.max(0, c.hud?.held ?? 0);
+      }
       return true;
     }
     if (this.finger !== finger || this.originKey !== key) return true;
     const dx = x - this.downX, dy = y - this.downY;
     this.dragged ||= Math.hypot(dx, dy) >= 12;
     if (equipment) {
-      this.preview = Math.max(0, Math.min(HOTBAR_SLOTS - 1, Math.floor((x - hotbarLeft(f, HOTBAR_SLOTS) + 1.5) / (hotbarCell(f, HOTBAR_SLOTS) + 3))));
+      const lens = c.touchDock?.slide(f, slot, this.downX, dx, this.downSlot);
+      if (lens && this.dragged) { this.phase = lens.phase; this.preview = lens.preview; }
       if (kind === 1) {
-        const selected = this.dragged ? this.preview : slot;
-        const hit = f.find(key)!;
-        const inRow = y >= hit.y - 23 && y <= hit.y + hit.h + 18;
-        const equip = inRow && (!this.dragged || selected !== c.session?.held);
+        const chosen = this.preview;
+        const inRow = Math.abs(dy) * f.unit < 38 && (!this.dragged || Math.abs(dx) >= Math.abs(dy));
+        const equip = inRow && (!this.dragged || chosen !== c.session?.held);
         this.release();
-        if (equip) this.equip(selected, c);
+        if (equip) this.equip(chosen, c);
       }
       return true;
     }
@@ -301,6 +309,12 @@ export class FieldDock implements Screen {
     const inward = left ? dx : -dx;
     const entry = this.page && leaf ? entries[key - KEY_FIELD_LEAF] : undefined;
     if (kind === 2 && this.dragged && hub?.page && !this.page && inward > 16) this.openPage(hub.page, c);
+    if (this.dragged && this.page && Math.abs(dy) > Math.abs(dx) && this.startPage) {
+      const n = entries.length, steps = Math.round(dy * f.unit / 51);
+      this.focus = ((this.downFocus - steps) % n + n) % n;
+      if (kind === 1) this.release();
+      return true;
+    }
     if (kind === 1) {
       const dragged = this.dragged, previous = this.startPage;
       this.release();
@@ -348,73 +362,63 @@ export class FieldDock implements Screen {
     this.clock = now;
     this.expanded = this.page ? Math.min(1, this.expanded + step) : 0;
     hud.dockPreview = this.preview;
+    hud.dockPhase = this.phase;
     const n = hud.hotbar.length, cell = hotbarCell(f, n), x0 = hotbarLeft(f, n);
     const end = x0 + n * (cell + 3) - 3, bottom = hotbarTop(f, n) + cell;
     for (let i = 0; i < n; i++) {
-      const s = hud.hotbar[i]!, hitH = touch ? 40 : cell;
-      const box = f.add(KEY_DOCK_SLOT + i, touch ? K_HOLD : K_BUTTON, x0 + i * (cell + 3), bottom - hitH, cell, hitH, S_HUD_HIT);
+      const s = hud.hotbar[i]!;
+      const visual = touch ? f.find(KEY_HOTBAR + i * 3) : null;
+      if (touch && !visual && this.originKey !== KEY_DOCK_SLOT + i) continue;
+      const box = touch
+        ? f.add(KEY_DOCK_SLOT + i, K_HOLD, visual?.x ?? this.downX, visual?.y ?? this.downY, visual?.w ?? 1, visual?.h ?? 1, S_HUD_HIT)
+        : f.add(KEY_DOCK_SLOT + i, K_BUTTON, x0 + i * (cell + 3), bottom - cell, cell, cell, S_HUD_HIT);
       box.label = `Slot ${(i + 1) % 10}: ${s.name || s.id || s.label || "empty"}`;
       box.interactive = true;
     }
-    this.draw(f, x0, end, bottom, c);
+    if (touch) {
+      c.touchDock?.drawWheels(f, {
+        page: this.page, focus: this.focus, expanded: this.expanded, menu: this.leaves("emblem", c), actions: OWN.actions, entries: this.list(c),
+        hubs: KEY_FIELD_HUB, leaves: KEY_FIELD_LEAF, rims: KEY_RIM,
+        tile: (key, leaf, x, y, size, active) => this.tile(f, key, leaf, x, y, size, size, active, false, c),
+        hub: (key, label, x, y, w, h) => {
+          const hit = f.add(key, K_HOLD, x, y, w, h, S_HUD_HIT);
+          hit.label = label; hit.interactive = true;
+        },
+      });
+    } else this.draw(f, x0, end, bottom, c);
   }
 
   private draw(f: UiFrame, x: number, end: number, bottom: number, c: ScreenCtx): void {
     const narrow = x < f.left + 120;
-    const size = this.touch ? 35 : Math.max(24, Math.min(36, Math.floor((x - f.left - 16) / 3)));
-    const left = this.touch ? f.left : narrow ? x : x - size * 3 - 10;
-    const right = this.touch ? f.width - f.right : narrow ? end - size * 3 : end + 10;
+    const size = Math.max(24, Math.min(36, Math.floor((x - f.left - 16) / 3)));
+    const left = narrow ? x : x - size * 3 - 10;
+    const right = narrow ? end - size * 3 : end + 10;
     const cell = hotbarCell(f, HOTBAR_SLOTS);
-    const cy = this.touch ? f.top + (f.height - f.top - f.bottom) * .60 : bottom - (narrow ? cell + size / 2 + 6 : size / 2);
-    if (this.touch) {
-      this.edge(f, true, left, cy, c); this.edge(f, false, right, cy, c);
-    } else {
-      for (let i = 0; i < 3; i++) {
-        this.tile(f, KEY_FIELD_HUB + i, this.find(LEFT_HUBS[i]!, c), left + i * size, cy - size / 2, size, size, false, false, c);
-        this.tile(f, KEY_FIELD_HUB + 3 + i, this.find(RIGHT_HUBS[i]!, c), right + i * size, cy - size / 2, size, size, false, false, c);
-      }
+    const cy = bottom - (narrow ? cell + size / 2 + 6 : size / 2);
+    for (let i = 0; i < 3; i++) {
+      this.tile(f, KEY_FIELD_HUB + i, this.find(LEFT_HUBS[i]!, c), left + i * size, cy - size / 2, size, size, false, false, c);
+      this.tile(f, KEY_FIELD_HUB + 3 + i, this.find(RIGHT_HUBS[i]!, c), right + i * size, cy - size / 2, size, size, false, false, c);
     }
     if (!this.page) return;
     const entries = this.list(c), count = entries.length, onLeft = this.page === "emblem";
-    if (this.touch) {
-      const edge = onLeft ? left : right;
-      const radius = Math.min(152, (f.height - f.top - f.bottom) * .30, (f.width - f.left - f.right) * .39);
-      const side = Math.min(46, 2.58 * radius / (count + 1));
-      const spread = count > 4 ? 1.30 : .87;
-      for (let i = 0; i < count; i++) {
-        const a = count === 1 ? 0 : -spread + 2 * spread * i / (count - 1);
-        const distance = radius * (.65 + .13 * this.expanded);
-        const px = edge + (onLeft ? 1 : -1) * Math.cos(a) * distance;
-        this.tile(f, KEY_FIELD_LEAF + i, entries[i], px - side / 2, cy + Math.sin(a) * distance - side / 2, side, side, i === this.focus, true, c);
-      }
-    } else {
-      // The tray stands over the hotbar's top edge, never on a slot: from its hub outward, kept on the canvas.
-      const w = Math.min(76, (f.width - f.left - f.right - 12) / count), h = 70;
-      const x0 = Math.max(f.left + 4, Math.min(f.width - f.right - count * w - 4, onLeft ? left : right + size * 3 - count * w));
-      const y = Math.min(cy - size / 2, bottom - cell) - h - 8;
-      for (let i = 0; i < count; i++) this.tile(f, KEY_FIELD_LEAF + i, entries[i], x0 + i * w, y, w, h, i === this.focus, true, c);
-    }
-  }
-
-  private edge(f: UiFrame, left: boolean, edge: number, cy: number, c: ScreenCtx): void {
-    const opened = left ? this.page === "emblem" : !!this.page && this.page !== "emblem";
-    const radius = opened ? Math.min(152, (f.height - f.top - f.bottom) * .30, (f.width - f.left - f.right) * .39) : 30;
-    rim(f, KEY_RIM + (left ? 0 : 1), left, edge, cy, radius, opened ? 1 : .71, opened ? .30 + .70 * this.expanded : 1);
-    const x = left ? edge : edge - 35;
-    this.tile(f, KEY_FIELD_HUB + (left ? 0 : 3), this.find(left ? "emblem" : "actions", c), x, cy - 24, 35, 48, false, false, c);
+    // The tray stands over the hotbar's top edge, never on a slot: from its hub outward, kept on the canvas.
+    const w = Math.min(76, (f.width - f.left - f.right - 12) / count), h = 70;
+    const x0 = Math.max(f.left + 4, Math.min(f.width - f.right - count * w - 4, onLeft ? left : right + size * 3 - count * w));
+    const y = Math.min(cy - size / 2, bottom - cell) - h - 8;
+    for (let i = 0; i < count; i++) this.tile(f, KEY_FIELD_LEAF + i, entries[i], x0 + i * w, y, w, h, i === this.focus, true, c);
   }
 
   private tile(f: UiFrame, key: number, l: Leaf | undefined, x: number, y: number, w: number, h: number, active: boolean, leaf: boolean, c: ScreenCtx): void {
     if (!l) return;
     const enabled = this.available(l, c);
-    // On a desktop a leaf's caption stands under its tile; by touch the chosen one's under its picture.
-    const caption = leaf && (!this.touch || active), under = caption && !this.touch ? 15 : 0, th = h - under;
+    const caption = leaf, under = caption ? 15 : 0, th = h - under;
     if (!this.touch && !tile(f, key + 100, x + 2, y + 2, w - 4, th - 4, active)) {
       line(f, key + 100, x + 1, y + 1, w - 2, th - 2, active ? 0x24526d : 0x0b2438, active ? .84 : .61);
       line(f, key + 200, x + 1, y + th - 2, w - 2, active ? 2 : 1, active ? 0xa3e5ff : 0x86acc2, active ? 1 : .65);
     }
-    const icon = Math.min(w - 8, th - (caption && this.touch ? 14 : 8));
-    const pic = f.picture(key + 300, x + (w - icon) / 2, y + (th - icon) / 2 - (caption && this.touch ? 4 : 0), icon, icon, S_LABEL, "ui:glass-" + l.art);
+    const side = Math.min(w, th);
+    const icon = this.touch ? side * (active ? .88 : .75) : side - 8;
+    const pic = f.picture(key + 300, x + (w - icon) / 2, y + (th - icon) / 2, icon, icon, S_LABEL, "ui:glass-" + l.art);
     if (pic) pic.alpha = enabled ? 1 : .39;
     if (caption || !pic) {
       // A caption stays on the canvas, as a leaf near a wheel's edge would carry it off.
