@@ -1,4 +1,5 @@
-// Hair and beards grow by a clock that is never stepped. A survivor's look holds its hair and beard length as they were
+// Hair and beards grow by a clock that is never stepped. A clock's start is a whole number of HAIR_TICK steps, which may lie
+// before tick 0 once a survivor moves to a younger world; -1, which no step is, means no clock. A survivor's look holds its hair and beard length as they were
 // when its clock started (LOOK_HAIR_LENGTH, LOOK_BEARD_LENGTH), and the clock's start is kept beside it. The length at any
 // tick is worked out from those, the tick and the server's rate, in whole numbers only, so the server and every client
 // that was sent the same start get the same length at the same tick.
@@ -7,6 +8,8 @@ import { LOOK_BEARD_LENGTH, LOOK_HAIR_LENGTH } from "../anim/look.ts";
 
 /** A clock starts on a whole number of these ticks, about 34 s, so a create sends its start in a byte or two. */
 export const HAIR_TICK = 1024;
+/** No clock: the lengths stay as stored. */
+export const NO_CLOCK = -1;
 /** The lengths a cut leaves and hair is drawn at: 0 is the style as modelled. Hair grows no longer than the last. */
 export const HAIR_STAGES: readonly number[] = [0, 64, 128, 192, 255];
 export const HAIR_LONGEST = 255;
@@ -28,7 +31,7 @@ export function hairClock(tick: number): number {
 
 /** A length stored at a clock's `start`, grown at `rate` until `now`. A start of -1 is no clock: the length stays. */
 export function lengthAt(stored: number, start: number, now: number, rate: number): number {
-  if (start < 0 || rate <= 0 || stored >= HAIR_LONGEST) return Math.min(stored, HAIR_LONGEST);
+  if (start === NO_CLOCK || rate <= 0 || stored >= HAIR_LONGEST) return Math.min(stored, HAIR_LONGEST);
   const steps = Math.floor(now / HAIR_TICK) - Math.floor(start / HAIR_TICK);
   if (steps <= 0) return stored;
   // Steps past those that grow the longest hair change nothing, and a large count would lose whole numbers.
@@ -57,25 +60,12 @@ export function bakeHair(look: Uint8Array, start: number, now: number, rate: num
  * before now keeps that growth, to within a step's worth.
  */
 export function carrySteps(start: number, now: number, rate: number): number {
-  if (start < 0 || rate <= 0) return 0;
+  if (start === NO_CLOCK || rate <= 0) return 0;
   const steps = Math.floor(now / HAIR_TICK) - Math.floor(start / HAIR_TICK);
   if (steps <= 0) return 0;
   // A long count is reduced first: whole units of it carry nothing.
   const units = Math.floor((steps * rate) / STEPS_PER_UNIT);
   return Math.floor((steps * rate - units * STEPS_PER_UNIT) / rate);
-}
-
-/**
- * Writes into `look` its hair and beard as grown from a clock at `start` (which may be before tick 0) until `to`, rounding a
- * part-grown unit up so that nothing is lost: for a clock that must start at `to` instead.
- */
-export function bakeHairUp(look: Uint8Array, start: number, to: number, rate: number): void {
-  if (rate <= 0 || to <= start) return;
-  const steps = Math.floor(to / HAIR_TICK) - Math.floor(start / HAIR_TICK);
-  if (steps <= 0) return;
-  const units = Math.min(HAIR_LONGEST, Math.ceil((Math.min(steps, HAIR_LONGEST * STEPS_PER_UNIT) * rate) / STEPS_PER_UNIT));
-  look[LOOK_HAIR_LENGTH] = Math.min(HAIR_LONGEST, look[LOOK_HAIR_LENGTH]! + units);
-  look[LOOK_BEARD_LENGTH] = Math.min(HAIR_LONGEST, look[LOOK_BEARD_LENGTH]! + units);
 }
 
 /** The stage a length is drawn at: the longest stage it has reached. */

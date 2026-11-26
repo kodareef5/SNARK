@@ -19,7 +19,7 @@ import type { Survival } from "./survival.ts";
 import type { Subject } from "./taming.ts";
 import type { Use } from "./use.ts";
 import { hairStart, type Relook } from "./people/look.ts";
-import { HAIR_TICK } from "../shared/people/hair.ts";
+import { HAIR_TICK, NO_CLOCK } from "../shared/people/hair.ts";
 import type { Voice } from "./voice.ts";
 import type { Beds } from "./beds.ts";
 import type { ServerWorld } from "./world.ts";
@@ -146,7 +146,8 @@ export function addOwnState(ctx: OwnContext): void {
     write(w, _c, rec) {
       for (let i = 0; i < LOOK_BYTES; i++) w.u8(rec.look![i]!);
       const start = hairStart(rec);
-      w.varint(start < 0 ? 0 : start / HAIR_TICK + 1);
+      w.bool(start !== NO_CLOCK);
+      if (start !== NO_CLOCK) w.svarint(start / HAIR_TICK);
     },
   });
   own.add({

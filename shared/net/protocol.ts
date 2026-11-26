@@ -669,7 +669,7 @@ export const CHOOSE_TRAVEL = 2;
  */
 export const OWN_PROGRESSION = ownKind();
 
-/** LOOK_BYTES, then the hair clock varint: its start tick over HAIR_TICK plus 1, 0 for none. Sent whenever either changes. */
+/** LOOK_BYTES, then the hair clock: has one 1 bit, its start tick over HAIR_TICK svarint. Sent whenever either changes. */
 export const OWN_LOOK = ownKind();
 
 /** Hotbar slot u8, 255 for none. */

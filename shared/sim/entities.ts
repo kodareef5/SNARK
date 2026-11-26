@@ -9,7 +9,7 @@ import { AnimState, CUE_DEAD, CUE_JET, turnSteps } from "../anim/pose.ts";
 import { PI, TAU } from "../math/scalar.ts";
 import { MODE_WALK, STAMINA_UNITS, glidePhase, type Body, type MoveParams } from "./character.ts";
 import { WARDROBE_SLOTS } from "./items.ts";
-import { HAIR_TICK } from "../people/hair.ts";
+import { HAIR_TICK, NO_CLOCK } from "../people/hair.ts";
 
 const posed = new AnimState();
 const wornScratch = new Uint32Array(WARDROBE_SLOTS * 3);
@@ -717,11 +717,11 @@ export class EntityStore {
     this.identityRev[i]++;
   }
 
-  /** `start` is the hair clock's start tick, or -1 for a body whose hair does not grow. It is kept to its clock step. */
+  /** `start` is the hair clock's start tick, before tick 0 too, or NO_CLOCK for a body whose hair does not grow. It is kept to its clock step. */
   setHairClock(i: number, start: number): void {
-    if (start >= 0) start = Math.floor(start / HAIR_TICK) * HAIR_TICK;
-    if ((this.hairs.get(i) ?? -1) === start) return;
-    if (start < 0) this.hairs.delete(i);
+    if (start !== NO_CLOCK) start = Math.floor(start / HAIR_TICK) * HAIR_TICK;
+    if ((this.hairs.get(i) ?? NO_CLOCK) === start) return;
+    if (start === NO_CLOCK) this.hairs.delete(i);
     else this.hairs.set(i, start);
     this.identityRev[i]++;
   }

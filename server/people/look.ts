@@ -10,7 +10,7 @@
 import { LOOK_BEARD_LENGTH, LOOK_BYTES, LOOK_HAIR_COLOR, LOOK_HAIR_COLOR_2, LOOK_HAIR_LENGTH, validLook } from "../../shared/anim/look.ts";
 import type { BitReader } from "../../shared/net/codec.ts";
 import { CMD_GROOM, CMD_REMAKE, OWN_REMAKE, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_OK, RESULT_STALE, SESSION_ALIVE, TEXT_NOTICE } from "../../shared/net/protocol.ts";
-import { HAIR_STAGES, HAIR_TICK, bakeHair, bakeHairUp, carrySteps, hairClock, stageOf } from "../../shared/people/hair.ts";
+import { HAIR_STAGES, HAIR_TICK, NO_CLOCK, bakeHair, carrySteps, hairClock, stageOf } from "../../shared/people/hair.ts";
 import { FLAG_BLUEPRINT } from "../../shared/sim/items.ts";
 import { event } from "../events/bus.ts";
 import type { Client, GameServer } from "../game.ts";
@@ -39,7 +39,7 @@ const ITEM_USE = event("item.use");
 
 /**
  * A survivor's hair clock, null for none yet, and whether it may be made again in the creator. Moved to a younger world's
- * ticks, the start may lie before its first tick until the survivor takes a body there (Relook.wear).
+ * ticks, the start lies before its first tick, and the hair goes on growing from it as before.
  */
 interface Clock {
   start: number | null;
@@ -79,10 +79,10 @@ saved({
   },
 });
 
-/** The survivor's hair clock start, a tick, or -1 for one whose hair has no clock. */
+/** The survivor's hair clock start, a tick (before tick 0 after a move to a younger world), or NO_CLOCK for none. */
 export function hairStart(rec: EntityRecord): number {
   const start = rec.part(CLOCK)?.start ?? null;
-  return start === null ? -1 : Math.max(0, start);
+  return start === null ? NO_CLOCK : start;
 }
 
 /** A copy of the survivor's look with its hair and beard as grown at `now`: what a body it leaves keeps. */
@@ -120,18 +120,15 @@ export class Relook {
   wear(rec: EntityRecord, e: number): void {
     const { world, records } = this.ctx;
     const clock = rec.own(CLOCK);
-    if (clock.start === null || clock.start < 0 || clock.start > world.tick) {
-      const look = rec.look?.slice() ?? null;
-      // Moved before this world's first tick, it keeps what grew until then, a part-grown unit rounded up. Ahead of
-      // this world's tick (a save from one whose ticks ran further), nothing has grown yet, so it starts now.
-      if (look && clock.start !== null && clock.start < 0) bakeHairUp(look, clock.start, 0, world.hairRate);
-      clock.start = clock.start !== null && clock.start < 0 ? 0 : hairClock(world.tick);
+    // A clock ahead of this world's tick (a save from one whose ticks ran further) has grown nothing yet, so it starts now.
+    if (clock.start === null || clock.start > world.tick) {
+      clock.start = hairClock(world.tick);
       records.dirty.add(rec.pid);
       // A new array is a new version of OWN_LOOK, which carries the clock.
-      rec.look = look;
+      if (rec.look) rec.look = rec.look.slice();
     }
     world.ents.setBodyLook(e, rec.look);
-    world.ents.setHairClock(e, rec.look ? clock.start : -1);
+    world.ents.setHairClock(e, rec.look ? clock.start : NO_CLOCK);
   }
 
   /**
@@ -154,7 +151,7 @@ export class Relook {
     if (refused !== "") return refused;
     rec.look = next.slice();
     // A cut starts the clock again as far back as the growth not yet a whole unit, so the part not cut keeps it.
-    if (restarts) clock.start = Math.max(0, hairClock(world.tick) - (cause === CAUSE_CUT ? carrySteps(start, world.tick, world.hairRate) * HAIR_TICK : 0));
+    if (restarts) clock.start = hairClock(world.tick) - (cause === CAUSE_CUT ? carrySteps(start, world.tick, world.hairRate) * HAIR_TICK : 0);
     if (cause === CAUSE_REMAKE) clock.offered = false;
     records.dirty.add(rec.pid);
     const e = records.entOf.get(rec.pid);

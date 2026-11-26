@@ -13,7 +13,8 @@
 //             `kept` says the identity is the baseline's: legal only for an id the baseline has at the same generation.
 //             A look is [born? 1] then a seed 32, a population varint and its revision varint, from which the reader makes
 //             the look (shared/people/person.ts), or else its 72 x 8: a population or revision the reader lacks is malformed.
-//             A hair clock is how many HAIR_TICK steps before the snapshot's tick it started, signed (shared/people/hair.ts).
+//             A hair clock is how many HAIR_TICK steps before the snapshot's tick it started, signed, and may start before
+//             tick 0 (shared/people/hair.ts).
 //             A wardrobe is, per wardrobe slot, [worn? 1] then the item varint and [styled? 1][[edition? 1][varint]
 //             [dye? 1][24]]; one with nothing worn, a style with neither, and an edition or dye of 0 are malformed.
 //             then [vehicle? 1][its parts], the parts a vehicle's: pose 32, wheel 16, ride 32, doors 32, drive 32, rotor 32, systems 32, attitude 64, water 16
@@ -1234,9 +1235,7 @@ export function readViewDelta(r: BitReader, base: EntityView | null, next: Entit
           }
         }
         if (r.bool()) {
-          const steps = Math.floor(next.tick / HAIR_TICK) - r.svarint();
-          if (steps < 0) return false;
-          hairFrom = steps * HAIR_TICK;
+          hairFrom = (Math.floor(next.tick / HAIR_TICK) - r.svarint()) * HAIR_TICK;
         }
         if (r.bool() && !(wardrobe = readWardrobe(r))) return false;
       }

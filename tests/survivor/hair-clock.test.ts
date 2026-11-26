@@ -1,9 +1,9 @@
 // The hair clock's arithmetic: a cut that starts the clock again keeps the part-grown unit of the part not cut, and a clock
-// moved before a world's first tick keeps all that grew.
+// moved before a world's first tick grows on from there.
 
 import { expect, test } from "bun:test";
 import { LOOK_BEARD_LENGTH, LOOK_HAIR_LENGTH, defaultLook } from "../../shared/anim/look.ts";
-import { HAIR_TICK, bakeHair, bakeHairUp, beardAt, carrySteps, hairClock } from "../../shared/people/hair.ts";
+import { HAIR_TICK, bakeHair, beardAt, carrySteps, hairAt, hairClock } from "../../shared/people/hair.ts";
 import { Rng } from "../../shared/rng.ts";
 
 test("a clock started again with its carry keeps the beard's growth to within a step", () => {
@@ -15,7 +15,7 @@ test("a clock started again with its carry keeps the beard's growth to within a 
     const start = hairClock(rng.int(1 << 24)), now = start + rng.int(1 << 22);
     const baked = look.slice();
     bakeHair(baked, start, now, rate);
-    const again = Math.max(0, hairClock(now) - carrySteps(start, now, rate) * HAIR_TICK);
+    const again = hairClock(now) - carrySteps(start, now, rate) * HAIR_TICK;
     expect(again).toBeLessThanOrEqual(now);
     for (const later of [now, now + HAIR_TICK, now + 37 * HAIR_TICK, now + 5000 * HAIR_TICK]) {
       const kept = beardAt(baked, again, later, rate), was = beardAt(look, start, later, rate);
@@ -26,18 +26,14 @@ test("a clock started again with its carry keeps the beard's growth to within a 
   }
 });
 
-test("a clock moved before tick 0 keeps all that grew until then, rounded up", () => {
+test("a clock that starts before tick 0 grows on as it would have", () => {
+  const look = defaultLook();
+  look[LOOK_HAIR_LENGTH] = 10;
   for (const rate of [1, 1000, 30000, 1_000_000]) {
     for (const start of [-1024, -7 * 1024, -40_000 * 1024]) {
-      const look = defaultLook();
-      look[LOOK_HAIR_LENGTH] = 10;
-      const up = look.slice();
-      bakeHairUp(up, start, 0, rate);
       for (const t of [0, 3 * HAIR_TICK, 90 * HAIR_TICK]) {
-        const exact = Math.min(255, 10 + Math.floor((Math.floor(t / HAIR_TICK) - start / HAIR_TICK) * rate / 40000));
-        const got = Math.min(255, up[LOOK_HAIR_LENGTH]! + Math.floor(Math.floor(t / HAIR_TICK) * rate / 40000));
-        expect(got).toBeGreaterThanOrEqual(exact);
-        expect(got - exact).toBeLessThanOrEqual(1);
+        const exact = Math.min(255, 10 + Math.floor(((t / HAIR_TICK - start / HAIR_TICK) * rate) / 40000));
+        expect(hairAt(look, start, t, rate)).toBe(exact);
       }
     }
   }

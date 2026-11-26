@@ -141,7 +141,7 @@ import {
   writeInputs,
 } from "../../shared/net/protocol.ts";
 import { LOOK_BYTES, upgradeLook } from "../../shared/anim/look.ts";
-import { HAIR_TICK } from "../../shared/people/hair.ts";
+import { HAIR_TICK, NO_CLOCK } from "../../shared/people/hair.ts";
 import { readMotions, type MotionState } from "../../shared/sim/motion.ts";
 import { AIR_ACTION, emptyAirSupport, readAirSupport, type AirSupportView } from "../../shared/sim/air-support.ts";
 import { readSupply, type SupplyList } from "../../shared/sim/supply.ts";
@@ -2195,10 +2195,10 @@ export class ClientSession {
       read(s, r) {
         const look = new Uint8Array(LOOK_BYTES);
         for (let i = 0; i < LOOK_BYTES; i++) look[i] = r.u8();
-        const clock = r.varint();
+        const clock = r.bool() ? r.svarint() * HAIR_TICK : NO_CLOCK;
         if (r.overflow) return;
         s.ownLook = look;
-        s.ownHairFrom = clock === 0 ? -1 : (clock - 1) * HAIR_TICK;
+        s.ownHairFrom = clock;
       },
     });
     ownKinds.add({

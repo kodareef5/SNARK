@@ -205,8 +205,8 @@ test("the reader refuses a wardrobe written in a form the writer never uses", ()
     return [store, null, viewOf(store, NOW)];
   })());
   expect(read(bytes, null, NOW)).not.toBeNull();
-  // A clock that would have started before the world's first tick.
-  expect(read(bytes, null, 0)).toBeNull();
+  // Read early in a younger world, the clock starts before its first tick, and is kept so.
+  expect(read(bytes, null, 0)!.hairFrom[0]).toBe(hairClock(NOW - 30 * 3600 * 20) - Math.floor(NOW / HAIR_TICK) * HAIR_TICK);
   // Each malformed wardrobe after a valid head: nothing worn, a style of nothing, an edition of 0, a dye of 0.
   const head = (w: BitWriter): void => void w.bool(true);
   const forms: ((w: BitWriter) => void)[] = [
