@@ -6,7 +6,7 @@
 // the link, and the link does not limit how many.
 
 import { SLOT_NAMES } from "../../shared/anim/human.ts";
-import { LOOK_BYTES, LOOK_SEX, defaultLook, randomLook } from "../../shared/anim/look.ts";
+import { HAIR_STYLES, LOOK_BYTES, LOOK_HAIR, LOOK_SEX, defaultLook, randomLook } from "../../shared/anim/look.ts";
 import { AnimState } from "../../shared/anim/pose.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { MAX_VIEW } from "../../shared/net/view.ts";
@@ -168,10 +168,33 @@ export function crowdPrints(n: number, looks: CrowdLooks): (EditionPrint | null)
   });
 }
 
-/** What the page's address asks: `?people=<scene>&looks=<looks>`, or null where it asks for no crowd. */
-export function crowdAsked(get: (name: string) => string | null): { scene: CrowdScene; looks: CrowdLooks } | null {
+/**
+ * A close crowd that comes near late, to time a first meeting (tools/bench/people-arrive.ts): `close` bodies at 2.5 to 6 m
+ * in long or tied hair and faces of their own, held far off until `arrive` ms into the bench run (BenchRun.clock).
+ */
+export interface Arrival {
+  close: number;
+  arrive: number;
+}
+
+/** What the page's address asks: `?people=<scene>&looks=<looks>[&close=<n>&arrive=<ms>]`, or null where it asks for no crowd. */
+export function crowdAsked(get: (name: string) => string | null): { scene: CrowdScene; looks: CrowdLooks; arrival: Arrival | null } | null {
   const scene = get("people") as CrowdScene, looks = (get("looks") ?? "shared") as CrowdLooks;
-  return CROWD_SCENES.includes(scene) && CROWD_LOOKS.includes(looks) ? { scene, looks } : null;
+  const close = Number(get("close") ?? 0), arrive = Number(get("arrive") ?? 0);
+  const arrival = close > 0 ? { close, arrive: arrive > 0 ? arrive : 0 } : null;
+  return CROWD_SCENES.includes(scene) && CROWD_LOOKS.includes(looks) ? { scene, looks, arrival } : null;
+}
+
+/** Where a close crowd of `n` stands: 2.5 to 6 m ahead, in the wedge. */
+function closeSpots(n: number, viewer: Spot = CROWD_VIEWER): Spot[] {
+  const rng = new Rng(3), out: Spot[] = [];
+  for (let tries = 0; out.length < n && tries < n * 200; tries++) {
+    const d = rng.range(2.5, 6), way = viewer.yaw + rng.range(-CROWD_WEDGE, CROWD_WEDGE);
+    const x = viewer.x + Math.sin(way) * d, z = viewer.z + Math.cos(way) * d;
+    if (out.some((s) => Math.hypot(s.x - x, s.z - z) < CROWD_SPACING)) continue;
+    out.push({ x, z, yaw: wrap(way + Math.PI + rng.range(-0.6, 0.6)) });
+  }
+  return out;
 }
 
 /** The pose word of body `k`: three in four standing, the fourth walking in place, so some are posed every frame. */
@@ -196,10 +219,17 @@ export class Crowd {
   private readonly ground: number[];
   private readonly anims: number[];
 
-  constructor(session: { sampleRemote(out: RemoteSample, delayTicks?: number): void }, hf: Heightfield, reg: Registry, scene: CrowdScene, looks: CrowdLooks) {
-    this.spots = crowdSpots(scene);
+  /** A close crowd's arrival, and the bench run's clock it waits on: ms into the run, -1 before it. */
+  private readonly arrival: Arrival | null;
+  clock: () => number = () => 0;
+
+  constructor(session: { sampleRemote(out: RemoteSample, delayTicks?: number): void }, hf: Heightfield, reg: Registry, scene: CrowdScene, looks: CrowdLooks, arrival: Arrival | null = null) {
+    this.arrival = arrival;
+    this.spots = arrival ? closeSpots(arrival.close) : crowdSpots(scene);
     const n = this.spots.length;
     this.looks = crowdLooks(n, looks);
+    // A close crowd wears long hair or a ponytail, by turns, which take guide rows near.
+    if (arrival) this.looks.forEach((look, k) => (look[LOOK_HAIR] = HAIR_STYLES.findIndex((h) => h.id === (k % 2 === 0 ? "long" : "tied"))));
     this.gear = crowdGear(n, looks, reg);
     this.wardrobes = crowdWardrobes(n, looks, reg);
     this.dressed = Uint8Array.from({ length: n }, (_, k) => (this.wardrobes.subarray(k * WORN_LENGTH, (k + 1) * WORN_LENGTH).some((v) => v !== 0) ? 1 : 0));
@@ -225,6 +255,8 @@ export class Crowd {
       const to = out.count++, s = this.spots[k]!;
       [out.id[to], out.gen[to], out.kind[to], out.flags[to], out.level[to], out.name[to]] = [CROWD_ID + k, 0, this.human, F_ALIVE | F_GROUNDED, 1, ""];
       [out.x[to], out.y[to], out.z[to], out.yaw[to]] = [s.x, this.ground[k]!, s.z, s.yaw];
+      // Before it arrives, a close crowd stands 300 m further off.
+      if (this.arrival && this.arrival.arrive > 0 && this.clock() < this.arrival.arrive) out.z[to] = s.z - 300;
       [out.anim[to], out.cue[to], out.emote[to], out.react[to], out.stride[to], out.on[to]] = [this.anims[k]!, 0, 0, 0, 0, 0];
       out.colors.fill(0, to * 6, to * 6 + 6);
       out.hasLook[to] = 1;

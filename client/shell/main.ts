@@ -242,7 +242,8 @@ async function boot(): Promise<void> {
   // The people bench's crowd (tools/bench/people.ts) comes only to a bench page that asks for one.
   const crowd = bench ? (await import("../core/people-crowd.ts")) : null;
   const asked = crowd?.crowdAsked((name) => params.get(name));
-  const people = crowd && asked ? new crowd.Crowd(session, hf, reg, asked.scene, asked.looks) : null;
+  const people = crowd && asked ? new crowd.Crowd(session, hf, reg, asked.scene, asked.looks, asked.arrival) : null;
+  if (people && bench) people.clock = () => bench.clock(performance.now());
   let crowdPrinted = false;
   // A trip's page is a tool's too: nobody is at it to unmute, and its pictures are of the world.
   if (params.has("trip")) app.ui.settings.muted = false;

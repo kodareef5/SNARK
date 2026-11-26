@@ -177,7 +177,9 @@ export class BenchRun {
       // where the run gave up waiting at SETTLE_MS), and STILL frames of it drawn alike with nothing on its way.
       waited: { mapMs: this.mapAt >= 0 ? Math.round(this.mapAt) : null, map: this.mapThen, stillFrames: this.began, gaveUp: this.began < STILL },
       frameMs: { median: at(f, 0.5), p95: at(f, 0.95), p99: at(f, 0.99), worst: at(f, 1) },
-      buildAndSubmitMs: { median: at(this.ours, 0.5), p99: at(this.ours, 0.99) },
+      buildAndSubmitMs: { median: at(this.ours, 0.5), p99: at(this.ours, 0.99), worst: at(this.ours, 1) },
+      // Each frame's own work, in order, where a moment in the run is wanted (people-arrive.ts).
+      ourFrames: this.ours.map((ms) => Math.round(ms * 100) / 100),
       gpuMs: passSpread(this.gpu),
       // Each frame's, in order, which the view's turn makes the same frame for frame from run to run.
       gpuFrames: this.gpu.map((f) => Math.round(f.reduce((a, b) => a + b, 0) * 100) / 100),
