@@ -2,6 +2,7 @@
 // each row can change width, sweep and stand-off independently. A plate follows its own bone, or, given the skin's
 // weights, bends as the skin under each of its points does.
 import type { SourceLod } from "../../../../../../tools/pack/write.ts";
+import { B_CHEST, B_HIPS, B_SPINE, B_UPPER_CHEST } from "../../../../../../shared/anim/human.ts";
 
 export type V = [number, number, number];
 export type Profile = readonly (readonly [number, number, number, number, number])[];
@@ -32,6 +33,8 @@ export const finish = {
 // Keep the broad ivory plates and slate joins distinct in the palette-only distance mesh.
 const palette = [10, 85, 82, 86, 41, 64, 206, 91, 10, 93, 83, 82, 93, 87, 83, 10];
 const rad = Math.PI / 180;
+/** The trunk's bones, whose plates stay whole on them: a breastplate bent with the neck's skin rises at the eye. */
+const TRUNK = new Set([B_HIPS, B_SPINE, B_CHEST, B_UPPER_CHEST]);
 const mix = (a: number, b: number, t: number) => a + (b - a) * t;
 const cross = (a: V, b: V): V => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 const sub = (a: V, b: V): V => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -93,7 +96,7 @@ export class Surface {
       const d = this.shift(point);
       point = [point[0] + d[0], point[1] + d[1], point[2] + d[2]];
     }
-    const skin = this.weigh && !this.lining ? this.weigh(point) : null;
+    const skin = this.weigh && !this.lining && !TRUNK.has(bone) ? this.weigh(point) : null;
     if (skin) {
       [bone, joints, weights] = [skin.joints[0]!, skin.joints, skin.weights];
       if (weights[1]! > 0) this.blended = true;
