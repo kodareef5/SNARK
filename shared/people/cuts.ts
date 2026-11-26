@@ -22,7 +22,7 @@ export interface Sheet {
   readonly panels: readonly SheetPanel[];
 }
 
-export type SheetName = "top" | "bottom" | "shoes" | "cap" | "apron";
+export type SheetName = "top" | "bottom" | "shoes" | "apron";
 
 export const SHEETS: Readonly<Record<SheetName, Sheet>> = {
   top: {
@@ -53,14 +53,6 @@ export const SHEETS: Readonly<Record<SheetName, Sheet>> = {
       { name: "right sole", rect: [0.75, 0.5, 0.24, 0.48], note: "the right sole from below, the toe up" },
     ],
   },
-  cap: {
-    metres: 0.7,
-    panels: [
-      { name: "crown", rect: [0, 0, 1, 0.3], note: "round the crown from the back: the front at u 0.5, the button at the top" },
-      { name: "brim", rect: [0, 0.35, 0.5, 0.3], note: "the brim seen from above, its front edge at the bottom" },
-      { name: "under brim", rect: [0.5, 0.35, 0.5, 0.3], note: "the brim seen from below" },
-    ],
-  },
   apron: {
     metres: 1.2,
     panels: [
@@ -78,18 +70,20 @@ export interface CutSheet {
   readonly fabric: Fabric;
   /** Where a print is placed until an admin moves it: the front's chest, or the cut's best face. */
   readonly print: SheetRect;
+  /** The most triangles at each level, the finest first; levels before `flat` are drawn with pictures. */
+  readonly levels: readonly number[];
+  readonly flat: number;
 }
 
 /** Every cut by its name, which a garment's `cut` gives. */
 export const CUTS: Readonly<Record<string, CutSheet>> = {
-  tee: { sheet: "top", fabric: "jersey", print: [0.06, 0.12, 0.25, 0.2] },
-  tee_loose: { sheet: "top", fabric: "jersey", print: [0.06, 0.12, 0.25, 0.2] },
-  hoodie: { sheet: "top", fabric: "jersey", print: [0.06, 0.14, 0.25, 0.18] },
-  jeans: { sheet: "bottom", fabric: "denim", print: [0.62, 0.05, 0.12, 0.12] },
-  shorts: { sheet: "bottom", fabric: "denim", print: [0.62, 0.05, 0.12, 0.12] },
-  trainers: { sheet: "shoes", fabric: "canvas", print: [0.12, 0.05, 0.26, 0.12] },
-  cap: { sheet: "cap", fabric: "canvas", print: [0.38, 0.05, 0.24, 0.2] },
-  apron: { sheet: "apron", fabric: "canvas", print: [0.12, 0.08, 0.36, 0.3] },
+  tee: { sheet: "top", fabric: "jersey", print: [0.06, 0.12, 0.25, 0.2], levels: [4800, 640, 310, 100], flat: 2 },
+  tee_loose: { sheet: "top", fabric: "jersey", print: [0.06, 0.12, 0.25, 0.2], levels: [4800, 640, 310, 100], flat: 2 },
+  hoodie: { sheet: "top", fabric: "jersey", print: [0.06, 0.14, 0.25, 0.18], levels: [5600, 760, 360, 110], flat: 2 },
+  jeans: { sheet: "bottom", fabric: "denim", print: [0.62, 0.05, 0.12, 0.12], levels: [3600, 560, 270, 80], flat: 2 },
+  shorts: { sheet: "bottom", fabric: "denim", print: [0.62, 0.05, 0.12, 0.12], levels: [2200, 360, 170, 56], flat: 2 },
+  trainers: { sheet: "shoes", fabric: "canvas", print: [0.12, 0.05, 0.26, 0.12], levels: [1800, 320, 130, 44], flat: 1 },
+  apron: { sheet: "apron", fabric: "canvas", print: [0.12, 0.08, 0.36, 0.3], levels: [1800, 420, 200, 64], flat: 2 },
 };
 
 /** The colour regions an edition's three colours dye, in order: main, accent and trim. A slot's dye goes over them. */

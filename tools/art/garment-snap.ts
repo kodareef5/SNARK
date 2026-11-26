@@ -3,7 +3,7 @@
 // it with its sheet's weave, its masks dyed in three sample colours and a test print where its print goes. A small
 // depth-buffered rasterizer of its own, lit from the front and above; it draws shape and fit, not the game's lighting.
 //
-//   bun tools/art/garment-snap.ts [--pack FILE] [--cut tee,jeans] [--level N] [--out DIR] [--outfit tee+jeans+trainers]
+//   bun tools/art/garment-snap.ts [--pack FILE] [--cut tee,jeans] [--level N] [--out DIR] [--outfit tee+jeans+trainers] [--frame X,Y,HIGH]
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -13,7 +13,8 @@ import { CORE_CONTENT } from "../../content/core.ts";
 import { HUMAN_BONES, SLOT_NAMES } from "../../shared/anim/human.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
-import { CUTS, SHEETS, cutMesh } from "../../shared/people/cuts.ts";
+import { REGION_BASE } from "../../shared/pack/palette.ts";
+import { CUTS, cutMesh } from "../../shared/people/cuts.ts";
 import { encodePng, readPicture, type Picture } from "../pack/image.ts";
 import { unpackMeshes, type SourceLod, type SourceMesh } from "../pack/write.ts";
 import { humanAnim, motionSet } from "./cloth-fit.ts";
@@ -106,6 +107,8 @@ export interface SnapOptions {
   out?: string;
   /** Cuts worn together in one picture, each list one picture: "tee+jeans+trainers". */
   outfits?: readonly (readonly string[])[];
+  /** Where the picture is centred, x and y in metres, and how many metres high it shows. */
+  frame?: readonly [number, number, number];
 }
 
 export function snapGarments(o: SnapOptions = {}): string[] {
@@ -141,7 +144,8 @@ export function snapGarments(o: SnapOptions = {}): string[] {
         writeBones(bones, 0, solved, rest, null, 0, 0, 0, 0);
         for (const back of [false, true]) {
           const f: Frame = { width: W, height: H, rgb: new Float32Array(W * H * 3).fill(0.93), depth: new Float32Array(W * H).fill(-Infinity) };
-          const centre = [0, 0.86], scale = H / 2.0;
+          const [cx, cy, tall] = o.frame ?? [0, 0.86, 2];
+          const centre = [cx, cy], scale = H / tall;
           for (const mesh of parts) {
             const lod = mesh.lods[Math.min(level, mesh.lods.length - 1)]!;
             const { p, n } = pose(lod, bones);
@@ -160,8 +164,8 @@ export function snapGarments(o: SnapOptions = {}): string[] {
             draw(f, p, n, lod.indices, () => true, back, centre, scale, (t, b, c) => {
               if (!lod.uvs) {
                 // A flat level: its region's colour.
-                const r = lod.colors[lod.indices[t * 3]!]!;
-                const d = DYE[r >= 5 ? 2 : r >= 4 ? 1 : 0]!;
+                const r = lod.colors[lod.indices[t * 3]!]! - REGION_BASE;
+                const d = DYE[r === 5 ? 2 : r === 4 ? 1 : 0]!;
                 c[0] = d[0]; c[1] = d[1]; c[2] = d[2];
                 return;
               }
@@ -184,11 +188,10 @@ export function snapGarments(o: SnapOptions = {}): string[] {
         }
       });
     });
-    const file = join(out, `${set.join("+")}${level ? `-level${level}` : ""}.png`);
+    const file = join(out, `${set.join("+")}${level ? `-level${level}` : ""}${o.frame ? "-near" : ""}.png`);
     writeFileSync(file, encodePng({ width: W * cols, height: H * rows, channels: 3, depth: 8, data: sheet }));
     written.push(file);
   }
-  void SHEETS;
   return written;
 }
 
@@ -201,6 +204,7 @@ if (import.meta.main) {
     level: Number(arg("level") ?? 0),
     out: arg("out"),
     outfits: arg("outfit")?.split(",").map((s) => s.split("+")),
+    frame: arg("frame")?.split(",").map(Number) as [number, number, number] | undefined,
   });
   for (const f of files) console.log(f);
 }

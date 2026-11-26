@@ -4,10 +4,11 @@
 
 import { HUMAN_BONES } from "../../../../../shared/anim/human.ts";
 import { SHEETS, type SheetName } from "../../../../../shared/people/cuts.ts";
-import { smoothNormals, TriangleGrid, welded, type Nearest } from "../../../../../tools/pack/refit.ts";
+import { smoothNormals, welded, type Nearest } from "../../../../../tools/pack/refit.ts";
 import type { ScriptedBody } from "../../../../../tools/pack/body.ts";
 import { Cloth } from "./cloth.ts";
 import { measureRing, onRing, seamSide, unit, type Ring, type RingFrame, type Vec } from "./rings.ts";
+import { convexHull, hullReach } from "./shapes.ts";
 import { zonePoints, type Skin } from "./skin.ts";
 
 /** A joint's rest, three numbers a bone. */
@@ -61,14 +62,17 @@ export interface CutDef {
   rigid?: (weights: Float32Array, p: Vec) => number;
   /** Its colour region at a point, from the skin point under it, how far inside its nearest hem it is, and that hem. */
   region?: (p: Vec, inside: number, hem: Hem | null, rest: Rest) => number;
-  /** Triangles at each level, the finest first. */
-  triangles: readonly number[];
   /** A surface of its own to start from, in place of the skin of the zones it hides and reaches into. */
   shape?: (skin: Skin, rest: Rest) => Cloth;
   /** The lowest the cloth goes: a shoe's sole on the ground. */
   floor?: number;
-  /** Its first flat level, where not the body's: a small cut has no second level with pictures. */
-  flat?: number;
+  /** Keeps the weights its shape gave each point, in place of the skin's nearest the lifted cloth. */
+  ownWeights?: boolean;
+  /**
+   * Below this height it hangs: each point goes out to the hull of the body's slice there, so it spans the cleft and the
+   * groin as a shirt's tail does. The zones the slices are taken from.
+   */
+  drape?: { below: (rest: Rest) => number; zones: readonly number[] };
 }
 
 /** A cut as made: what the cook takes, with what the painter needs to paint its masks. */
@@ -81,8 +85,6 @@ export interface MadeCut {
   report: string[];
 }
 
-/** Points nearer than this to each other are one. */
-const SAME = 1e-7;
 const TURNS = 72;
 
 /** For each turn about a hem's axis, how far along it the cloth must reach. */
@@ -227,12 +229,16 @@ export function buildCut(def: CutDef, rest: Rest, levels: readonly Skin[], panel
       const { along: a, turn } = frameAt(frame, cloth.point(v));
       return a - reachAt(reach, turn);
     };
-    const value = cloth.split(g, (t) => zones.has(cloth.zone[t]!));
-    cloth.keep((t) => !zones.has(cloth.zone[t]!) || cloth.centroid(value, t) <= 0);
+    // A cut of its own shape is cut wherever the hem passes; one made of the skin only in the zones the hem reaches into.
+    const cuts = (t: number): boolean => (def.shape ? hem.near(cloth.point(cloth.idx[t * 3]!), rest) : zones.has(cloth.zone[t]!));
+    const value = cloth.split(g, cuts);
+    cloth.keep((t) => !cuts(t) || cloth.centroid(value, t) <= 0);
   });
   // Bits left over that do not touch what is hidden are not part of it.
-  const joined = cloth.connected((t) => hidden.has(cloth.zone[t]!));
-  cloth.keep((t) => joined[t] === 1);
+  if (hidden.size > 0) {
+    const joined = cloth.connected((t) => hidden.has(cloth.zone[t]!));
+    cloth.keep((t) => joined[t] === 1);
+  }
   // Split along each panel's bounds and each ring's seam.
   for (const panel of panels) for (const b of panel.bounds) cloth.split((v) => b(cloth.point(v), cloth.normal(v)));
   for (const panel of panels) {
@@ -322,8 +328,51 @@ function lift(def: CutDef, rest: Rest, skin: Skin, cloth: Cloth, inside: number[
     if (pass % 2 === 1) pushOut(skin, q, Array.from(want, (w) => Math.min(w, Math.max(def.least, w * 0.8))), hit);
   }
   pushOut(skin, q, Array.from(want, (w) => Math.min(w, Math.max(def.least, w * 0.8))), hit);
+  if (def.drape) hang(def.drape.below(rest), def.drape.zones, skin, cloth, q, want);
   if (def.floor !== undefined) for (let v = 0; v < n; v++) q[v * 3 + 1] = Math.max(def.floor, q[v * 3 + 1]!);
   return { q, inside: insideOf, hemOf };
+}
+
+/** How far over the drape's top it fades in, in metres, and the slices' step. */
+const DRAPE_FADE = 0.06;
+const SLICE = 0.01;
+
+/** Moves each point of the cloth below `below` out to the hull of the skin's slice at its height, by its offset. */
+function hang(below: number, zones: readonly number[], skin: Skin, cloth: Cloth, q: number[], want: Float64Array): void {
+  const keep = new Set(zones);
+  const slices = new Map<number, [number, number][]>();
+  for (const v of zonePoints(skin, keep)) {
+    const y = skin.positions[v * 3 + 1]!;
+    if (y > below + SLICE) continue;
+    const k = Math.round(y / SLICE);
+    (slices.get(k) ?? slices.set(k, []).get(k)!).push([skin.positions[v * 3]!, skin.positions[v * 3 + 2]!]);
+  }
+  const hulls = new Map<number, { h: [number, number][]; c: [number, number] }>();
+  const hullAt = (k: number) => {
+    let got = hulls.get(k);
+    if (!got) {
+      const pts = [...(slices.get(k - 1) ?? []), ...(slices.get(k) ?? []), ...(slices.get(k + 1) ?? [])];
+      const h = convexHull(pts);
+      got = { h, c: [h.reduce((s, p) => s + p[0], 0) / (h.length || 1), h.reduce((s, p) => s + p[1], 0) / (h.length || 1)] };
+      hulls.set(k, got);
+    }
+    return got;
+  };
+  for (let v = 0; v < q.length / 3; v++) {
+    const y = cloth.p[v * 3 + 1]!;
+    if (y > below) continue;
+    const share = Math.min(1, (below - y) / DRAPE_FADE);
+    const { h, c } = hullAt(Math.round(y / SLICE));
+    if (h.length < 3) continue;
+    const dx = q[v * 3]! - c[0], dz = q[v * 3 + 2]! - c[1];
+    const r = Math.hypot(dx, dz);
+    if (r < 1e-6) continue;
+    const reach = hullReach(h, c, Math.atan2(dz, dx)) + want[v]!;
+    if (r >= reach) continue;
+    const to = r + (reach - r) * share;
+    q[v * 3] = c[0] + (dx / r) * to;
+    q[v * 3 + 2] = c[1] + (dz / r) * to;
+  }
 }
 
 /** Moves each point out of the skin along the skin's normal until it is `least[v]` off it. */
@@ -383,7 +432,7 @@ function finish(def: CutDef, rest: Rest, skin: Skin, cloth: Cloth, lifted: Lifte
       near[t] = onRing(ring, far).share;
     }
   }
-  const lost = [...panelOf].filter((p) => p < 0).length;
+  const lost = cloth.uv ? 0 : [...panelOf].filter((p) => p < 0).length;
   if (lost) report.push(`${def.name}: ${lost} triangles on no panel of the ${def.sheet} sheet`);
   // Output vertices by cloth point, panel and seam side.
   const positions: number[] = [], uvs: number[] = [], weights: Float32Array[] = [], regions: number[] = [];
@@ -408,9 +457,9 @@ function finish(def: CutDef, rest: Rest, skin: Skin, cloth: Cloth, lifted: Lifte
     key.set(k, i);
     positions.push(q[v * 3]!, q[v * 3 + 1]!, q[v * 3 + 2]!);
     const panel = panels[panelOf[t]!];
-    const uv = panel ? panel.uv(cloth.point(v), near[t]!) : [0, 0];
+    const uv = cloth.uv ? [cloth.uv[v * 2]!, cloth.uv[v * 2 + 1]!] : panel ? panel.uv(cloth.point(v), near[t]!) : [0, 0];
     uvs.push(uv[0]!, uv[1]!);
-    weights.push(weightsAt(q.slice(v * 3, v * 3 + 3), cloth.w[v]!));
+    weights.push(def.ownWeights ? cloth.w[v]! : weightsAt(q.slice(v * 3, v * 3 + 3), cloth.w[v]!));
     regions.push(...region(cloth.point(v), lifted.inside[v]!, lifted.hemOf[v]!));
     return i;
   };
@@ -421,7 +470,8 @@ function finish(def: CutDef, rest: Rest, skin: Skin, cloth: Cloth, lifted: Lifte
     outerOf.push(c);
   }
   // The turned hems: from each border edge's outer points, in by the cloth's edge, then back inside under it.
-  const border = cloth.borderEdges();
+  // A cut of its own shape closes itself; only openings cut at hems are turned in.
+  const border = def.hems.length ? cloth.borderEdges() : [];
   const edgeTri = new Map<string, number>();
   for (let t = 0; t < tris; t++) for (let k = 0; k < 3; k++) edgeTri.set(`${cloth.idx[t * 3 + k]},${cloth.idx[t * 3 + ((k + 1) % 3)]}`, t);
   const facing = def.facing ?? 0.015;
@@ -438,7 +488,7 @@ function finish(def: CutDef, rest: Rest, skin: Skin, cloth: Cloth, lifted: Lifte
       inward.set(v, [was[0]! + inn[0], was[1]! + inn[1], was[2]! + inn[2]]);
     }
   }
-  const uvOut = (t: number, v: number, a: number, b: number): [number, number] => {
+  const uvOut = (t: number, a: number, b: number): [number, number] => {
     // Away from the triangle's third corner, across the border edge, on the sheet.
     const corners = [0, 1, 2].map((k) => cloth.idx[t * 3 + k]!);
     const c = corners.find((x) => x !== a && x !== b)!;
@@ -447,13 +497,11 @@ function finish(def: CutDef, rest: Rest, skin: Skin, cloth: Cloth, lifted: Lifte
     let px = -(ub[1]! - ua[1]!), py = ub[0]! - ua[0]!;
     if (px * (uc[0]! - ua[0]!) + py * (uc[1]! - ua[1]!) > 0) [px, py] = [-px, -py];
     const l = Math.hypot(px, py) || 1;
-    void v;
     return [px / l, py / l];
   };
-  let facings = 0;
   for (const [a, b] of border) {
     const t = edgeTri.get(`${a},${b}`)!;
-    const dirUv = uvOut(t, a, a, b);
+    const dirUv = uvOut(t, a, b);
     const ends = [a, b].map((v) => {
       const ring = panels[panelOf[t]!]?.ring;
       const k = `${v} ${panelOf[t]} ${ring ? Math.round(near[t]! - onRing(ring, cloth.point(v)).share) : 0}`;
@@ -487,7 +535,6 @@ function finish(def: CutDef, rest: Rest, skin: Skin, cloth: Cloth, lifted: Lifte
         };
         made = { turn: add(turnAt, EDGE), back: add(backAt, EDGE + facing) };
         ringOf.set(k, made);
-        void o;
       }
       return { outer: outerOf[t]![[0, 1, 2].find((i) => cloth.idx[t * 3 + i] === v)!]!, ...made };
     });
@@ -498,10 +545,8 @@ function finish(def: CutDef, rest: Rest, skin: Skin, cloth: Cloth, lifted: Lifte
     // The facing, both ways, so it hides the gap under the cloth from any side.
     indices.push(B.turn, A.turn, A.back, B.turn, A.back, B.back);
     indices.push(A.turn, B.turn, A.back, B.turn, B.back, A.back);
-    facings++;
   }
   report.push(`${def.name}: ${tris} triangles of shell, ${border.length} border edges turned in`);
-  void facings;
   // Normals from the made surface, one across a sheet's seams.
   const count = positions.length / 3;
   const w = welded({ positions, indices });
@@ -519,7 +564,6 @@ function finish(def: CutDef, rest: Rest, skin: Skin, cloth: Cloth, lifted: Lifte
     joints.set(four.joints, v * 4);
     wts.set(four.weights, v * 4);
   }
-  void SAME;
   return {
     body: { positions: Float32Array.from(positions), normals, uvs: Float32Array.from(uvs), indices: Uint32Array.from(indices), joints, weights: wts, sections: new Uint8Array(indices.length / 3) },
     regions: Float32Array.from(regions),
@@ -527,5 +571,3 @@ function finish(def: CutDef, rest: Rest, skin: Skin, cloth: Cloth, lifted: Lifte
   };
 }
 
-/** A grid of a skin's triangles, for tests that want one of their own. */
-export const gridOf = (skin: Skin): TriangleGrid => skin.grid;

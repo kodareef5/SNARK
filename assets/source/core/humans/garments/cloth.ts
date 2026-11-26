@@ -17,6 +17,8 @@ export class Cloth {
   idx: number[] = [];
   /** Per triangle, the skin zone it lies over. */
   zone: number[] = [];
+  /** A shape's own sheet coordinates, two a point, where it lays itself out; then it is never split. */
+  uv?: number[];
 
   static fromSkin(skin: Skin, keep: (zone: number) => boolean): Cloth {
     const c = new Cloth();
@@ -144,6 +146,7 @@ export class Cloth {
       }
       out.zone.push(this.zone[t]!);
     }
+    if (this.uv) this.uv = old.flatMap((v) => [this.uv![v * 2]!, this.uv![v * 2 + 1]!]);
     Object.assign(this, { p: out.p, n: out.n, w: out.w, idx: out.idx, zone: out.zone });
     return old;
   }

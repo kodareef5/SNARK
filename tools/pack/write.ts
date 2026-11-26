@@ -154,7 +154,7 @@ function pool(meshes: readonly SourceMesh[]): { materials: PackMaterial[]; textu
  * The order skin zones go in within a section (shared/anim/skin-zones.ts): from the trunk outward, left and right side by
  * side, so a sleeve or a leg of any length hides one run at the end.
  */
-const ZONE_ORDER: readonly number[] = [0, 1, 2, 3, 4, 7, 5, 8, 6, 9, 10, 11, 12, 13, 16, 14, 17, 15, 18, 19, 20];
+const ZONE_ORDER: readonly number[] = [0, 1, 21, 2, 3, 22, 4, 7, 5, 8, 6, 9, 23, 24, 10, 11, 12, 13, 16, 14, 17, 15, 18, 25, 26, 19, 20];
 const ZONE_RANK: readonly number[] = Array.from({ length: MOST_ZONES }, (_, z) => (z < ZONE_ORDER.length ? ZONE_ORDER.indexOf(z) : z));
 
 function inSections(lod: SourceLod, place: readonly number[] | null): { indices: Uint32Array; sections: number[]; zones: number[] | null; runs: number[] } {

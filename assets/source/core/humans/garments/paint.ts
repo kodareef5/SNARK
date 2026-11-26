@@ -20,10 +20,10 @@ export const MAPS = resolve(HERE, "../human-bodies/garments");
 const PACK = resolve(HERE, "../human-bodies/human-bodies.snpk");
 
 /** Sides of a sheet's base colour and normal, and of every cut's masks. */
-export const SHEET_SIDE: Readonly<Record<SheetName, number>> = { top: 1024, bottom: 1024, shoes: 512, cap: 512, apron: 1024 };
+export const SHEET_SIDE: Readonly<Record<SheetName, number>> = { top: 1024, bottom: 1024, shoes: 512, apron: 1024 };
 export const MASK_SIDE = 256;
 /** The fabric each sheet is woven of. */
-const FABRIC: Readonly<Record<SheetName, Fabric>> = { top: "jersey", bottom: "denim", shoes: "canvas", cap: "canvas", apron: "canvas" };
+const FABRIC: Readonly<Record<SheetName, Fabric>> = { top: "jersey", bottom: "denim", shoes: "canvas", apron: "canvas" };
 /** How high a thread stands, in metres, and a seam's groove's half width and depth. */
 const RELIEF = 0.00018;
 const SEAM = 0.0016;
