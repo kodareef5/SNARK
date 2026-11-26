@@ -1,7 +1,7 @@
 """Grounded mineral resources in Blender metres, with three authored levels."""
 
 import sys
-from math import cos, dist, pi, radians, sin, tau
+from math import cos, dist, hypot, pi, radians, sin, tau
 from pathlib import Path
 from random import Random
 
@@ -13,8 +13,8 @@ from resource_uv import atlas_uv, loft_uv, planar_uv
 
 
 TILES = {
-    "stone": 0.20, "flint": 0.20, "crystal": 0.19, "obsidian": 0.18,
-    "ore": 0.23, "ingot": 0.24, "silica_pearls": 0.12, "charcoal": 0.19,
+    "stone": 0.21, "flint": 0.20, "crystal": 0.19, "obsidian": 0.18,
+    "ore": 0.23, "ingot": 0.24, "silica_pearls": 0.18, "charcoal": 0.19,
 }
 ROCK_TEXTURE_ORIGIN = (0, 0, 0.075)
 
@@ -22,7 +22,7 @@ ROCK_TEXTURE_ORIGIN = (0, 0, 0.075)
 def planar_chart(name, corners, origin, normal):
     uv = planar_uv(corners, origin=origin, normal=normal)
     span = TILES[name]
-    if name in ("stone", "flint"):
+    if name == "flint":
         # Keep the metric projection inside the stone tools' flake face where it fits.
         low, high = min(v for _, v in uv) / span, max(v for _, v in uv) / span
         lowest, highest = 0.025 - low, 0.725 - high
@@ -41,15 +41,21 @@ class Drop:
         self.smooth = []
 
     def shell(self, rings, bottom, top, origin, *, rotation=(0, 0, 0),
-              loft=False, smooth=False, top_bands=None):
+              loft=False, smooth=False, top_bands=None, smooth_top=False, ridge=None):
         """Join counterclockwise rings, with a triangle fan at each end."""
         columns = len(rings[0])
         points = [Vector(v) for ring in rings for v in ring] + [Vector(bottom), Vector(top)]
+        bottom_index, top_index = len(points) - 2, len(points) - 1
+        if ridge:
+            point, begin, end = ridge
+            caps = [len(points) if begin <= j < end else top_index for j in range(columns)]
+            points.append(Vector(point))
+        else:
+            caps = [top_index] * columns
         start = len(self.points)
         turn = Euler(tuple(map(radians, rotation))).to_matrix()
         posed = [turn @ point + Vector(origin) for point in points]
         self.points.extend(posed)
-        bottom_index, top_index = len(points) - 2, len(points) - 1
         textured = self.level < 2
         strips = loft_uv(rings) if loft and textured else None
         chart_points = points if loft else posed
@@ -57,9 +63,9 @@ class Drop:
         bottom_cap = sum(dist(bottom, point) for point in rings[0]) / columns if smooth else 0
         top_cap = sum(dist(top, point) for point in rings[-1]) / columns if smooth else 0
 
-        def face(indices, uv=None, normal=None):
+        def face(indices, uv=None, normal=None, smooth_face=False):
             self.faces.append(tuple(i + start for i in indices))
-            self.smooth.append(smooth)
+            self.smooth.append(smooth or smooth_face)
             if not textured:
                 return
             if uv is None:
@@ -82,9 +88,12 @@ class Drop:
                 upper_face = top_bands is not None and row >= top_bands
                 quad = None if strips is None or upper_face else strips[row][j]
                 normal = (0, 0, 1) if upper_face else None
+                if textured and self.name in ("flint", "obsidian"):
+                    normal = (chart_points[c] - chart_points[a]).cross(chart_points[d] - chart_points[b])
 
                 def cut_triangle(corners, chart_indices):
-                    face(corners, [quad[i] for i in chart_indices] if quad else None, normal)
+                    face(corners, [quad[i] for i in chart_indices] if quad else None, normal,
+                         smooth_face=upper_face and smooth_top)
 
                 if (row + j) % 2:
                     cut_triangle((a, b, d), (0, 1, 3))
@@ -93,9 +102,11 @@ class Drop:
                     cut_triangle((a, b, c), (0, 1, 2))
                     cut_triangle((a, c, d), (0, 2, 3))
             last = (len(rings) - 1) * columns
-            face((top_index, last + j, last + k),
+            face((caps[j], last + j, last + k),
                  pole(strips[-1][j][3], strips[-1][j][2], top_cap) if strips and smooth else None,
-                 normal=(0, 0, 1) if top_bands is not None else None)
+                 normal=(0, 0, 1) if top_bands is not None else None, smooth_face=smooth_top)
+            if caps[j] != caps[k]:
+                face((caps[j], last + k, caps[k]))
 
     def build(self):
         name = self.name if self.level == 0 else f"{self.name}_LOD{self.level}"
@@ -179,20 +190,20 @@ def ore(drop):
         ore_block(drop, (-0.085, -0.058, 0.003), (0.043, 0.037, 0.043), -43, ORE_BANDS[drop.level])
 
 
-# Flint fractures across a low ridge. Obsidian breaks into steeper, leaner wedges.
-FLINT_EDGE = ((-0.92, -0.34), (-0.41, -0.91), (0.46, -0.63), (1.05, -0.02),
-              (0.36, 0.83), (-0.48, 0.73), (-0.96, 0.16))
-OBSIDIAN_EDGE = ((-1.02, -0.33), (-0.42, -0.73), (0.28, -0.76), (0.98, -0.11),
-                 (0.37, 0.60), (-0.32, 0.77), (-0.82, 0.25))
+# Each outline carries its fracture height from the heel to the thin tip.
+FLINT_EDGE = ((-0.99, -0.31, 0.15), (-0.45, -0.91, 0.06), (0.41, -0.57, -0.08),
+              (1.16, -0.06, -0.25), (0.38, 0.71, -0.12), (-0.39, 0.81, 0.10), (-0.91, 0.25, 0.22))
+OBSIDIAN_EDGE = ((-1.02, -0.30, -0.13), (-0.41, -0.79, 0.10), (0.29, -0.58, -0.06),
+                 (1.10, -0.06, -0.25), (0.35, 0.48, 0.13), (-0.34, 0.72, 0.21), (-0.90, 0.23, 0.09))
 FLINT_BANDS = (
-    ((0, 0.62, -0.05, 0), (0.23, 1, 0, 0), (0.59, 0.80, -0.04, 0.15), (0.77, 0.32, -0.22, 0.04)),
-    ((0, 0.62, -0.05, 0), (0.23, 1, 0, 0), (0.59, 0.80, -0.04, 0.15)),
-    ((0, 0.68, -0.06, 0), (0.24, 1, 0, 0)),
+    ((0, 0.59, -0.06, 0), (0.24, 1, 0, 0), (0.59, 0.73, -0.06, 0.10), (0.77, 0.40, -0.20, 0.035)),
+    ((0, 0.59, -0.06, 0), (0.24, 1, 0, 0), (0.59, 0.73, -0.06, 0.10)),
+    ((0, 0.66, -0.06, 0), (0.26, 1, 0, 0)),
 )
 OBSIDIAN_BANDS = (
-    ((0, 0.68, -0.16, 0), (0.25, 1, 0, 0), (0.57, 0.74, 0.13, 0.02), (0.79, 0.40, 0.21, -0.18)),
-    ((0, 0.72, -0.12, 0), (0.30, 1, 0, 0), (0.70, 0.62, 0.19, -0.13)),
-    ((0, 0.70, -0.14, 0), (0.32, 1, 0.05, 0), (0.71, 0.56, 0.22, -0.10)),
+    ((0, 0.62, -0.13, 0), (0.28, 1, 0, 0), (0.53, 0.77, 0.08, 0.012), (0.74, 0.53, 0.13, -0.040)),
+    ((0, 0.62, -0.13, 0), (0.28, 1, 0, 0), (0.62, 0.71, 0.10, -0.023)),
+    ((0, 0.67, -0.13, 0), (0.31, 1, 0, 0), (0.70, 0.57, 0.12, -0.031)),
 )
 
 
@@ -200,12 +211,14 @@ def shard(drop, origin, size, turn, bands, *, glass=False):
     edge = OBSIDIAN_EDGE if glass else FLINT_EDGE
     rx, ry, h = size
     rings = [
-        [(rx * (width * x + lx), ry * (width * y + ly), h * (z + 0.17 * x * y))
-         for x, y in edge]
+        [(rx * (width * x + lx), ry * (width * y + ly), h * (z + rise * (0.11 + 0.55 * z)))
+         for x, y, rise in edge]
         for z, width, lx, ly in bands
     ]
-    tip_x, tip_y = (0.26, -0.13) if glass else (-0.28, 0.12)
-    drop.shell(rings, (0, 0, 0), (tip_x * rx, tip_y * ry, h), origin, rotation=(0, 0, turn))
+    tip, crest = ((-0.12, -0.13), (0.43, 0.06)) if glass else ((-0.32, -0.065), (-0.045, 0.14))
+    ridge = ((crest[0] * rx, crest[1] * ry, 0.92 * h), 3, 6) if drop.level < 2 else None
+    drop.shell(rings, (0, 0, 0), (tip[0] * rx, tip[1] * ry, h), origin,
+               rotation=(0, 0, turn), ridge=ridge)
 
 
 def flint(drop):
@@ -219,10 +232,12 @@ def flint(drop):
 
 def obsidian(drop):
     bands = OBSIDIAN_BANDS[drop.level]
-    shard(drop, (-0.018, 0.020, 0.025), (0.134, 0.078, 0.121), 22, bands, glass=True)
-    shard(drop, (0.067, -0.049, 0.009), (0.084, 0.055, 0.076), -46, bands, glass=True)
+    main = OBSIDIAN_BANDS[0 if drop.level < 2 else 2]
+    shard(drop, (-0.018, 0.020, 0), (0.134, 0.078, 0.139), 22, main, glass=True)
+    shard(drop, (0.067, -0.049, 0.004), (0.084, 0.055, 0.075), -46, bands, glass=True)
     if drop.level < 2:
-        shard(drop, (-0.079, -0.049, 0.002), (0.040, 0.033, 0.048), 56, bands, glass=True)
+        chip = OBSIDIAN_BANDS[0 if drop.level == 0 else 2]
+        shard(drop, (-0.079, -0.049, 0.002), (0.040, 0.033, 0.046), 56, chip, glass=True)
 
 
 CRYSTAL_BANDS = (
@@ -258,25 +273,42 @@ INGOT_OUTLINE = ((-0.177, -0.049), (-0.159, -0.079), (-0.113, -0.086),
                  (0.124, -0.058), (0.169, -0.039), (0.174, 0.032),
                  (0.145, 0.056), (-0.115, 0.080), (-0.170, 0.070), (-0.183, 0.041))
 INGOT_BANDS = (
-    ((0, 0.93, 0.72, 0), (0.008, 0.97, 0.80, 0), (0.045, 0.985, 0.88, 0),
-     (0.052, 1.00, 1.00, 0), (0.065, 0.98, 0.96, 0),
-     (0.059, 0.84, 0.72, 0.009), (0.050, 0.53, 0.42, 0.027)),
-    ((0, 0.93, 0.72, 0), (0.045, 0.985, 0.88, 0),
-     (0.052, 1.00, 1.00, 0), (0.065, 0.98, 0.96, 0), (0.053, 0.72, 0.60, 0.014)),
-    ((0, 0.93, 0.72, 0), (0.063, 0.98, 0.96, 0)),
+    ((0, 0.93, 0.72), (0.008, 0.97, 0.80), (0.045, 0.985, 0.88),
+     (0.052, 1.00, 1.00), (0.065, 0.98, 0.96)),
+    ((0, 0.93, 0.72), (0.045, 0.985, 0.88), (0.052, 1.00, 1.00), (0.065, 0.98, 0.96)),
+    ((0, 0.93, 0.72), (0.057, 0.98, 0.96)),
 )
+POUR = (-0.052, 0.002)
+
+
+def cast_level(x, y, z):
+    return z + min(z / 0.05, 1) * (-0.022 * x + 0.036 * y)
+
+
+def shrink_ring(rim, radius, depth):
+    """Build the well along rays from the pouring spot so the surrounding lid stays planar."""
+    ring = []
+    for px, py, _ in rim:
+        dx, dy = px - POUR[0], py - POUR[1]
+        step = radius / hypot(dx / 0.067, dy / 0.033)
+        x, y = POUR[0] + dx * step, POUR[1] + dy * step
+        ring.append((x, y, cast_level(x, y, 0.065) - depth))
+    return ring
 
 
 def ingot(drop):
     bands = INGOT_BANDS[drop.level]
-    rings = [
-        [(x * width + offset, y * depth, z + z * (-0.33 * x + 0.50 * y))
-         for x, y in INGOT_OUTLINE]
-        for z, width, depth, offset in bands
-    ]
-    basin = (0.042, 0.046, 0.058)[drop.level]
-    drop.shell(rings, (0, 0, 0), (0.044, -0.009, basin), (0, 0, 0),
-               rotation=(0, 0, -11), loft=True, top_bands=(4, 3, 1)[drop.level])
+    rings = []
+    for z, width, length in bands:
+        outline = [(x * width, y * length) for x, y in INGOT_OUTLINE]
+        rings.append([(x, y, cast_level(x, y, z)) for x, y in outline])
+    rim = rings[-1]
+    depths = (((1, 0), (0.51, 0.0065)), ((1, 0),), ())[drop.level]
+    rings.extend(shrink_ring(rim, radius, depth) for radius, depth in depths)
+    x, y = POUR
+    basin = cast_level(x, y, bands[-1][0]) - (0.0105, 0.0080, 0)[drop.level]
+    drop.shell(rings, (0, 0, 0), (x, y, basin), (0, 0, 0), rotation=(0, 0, -11),
+               loft=True, top_bands=len(bands) - 1, smooth_top=drop.level < 2)
 
 
 def pearl(drop, origin, radii, turn):

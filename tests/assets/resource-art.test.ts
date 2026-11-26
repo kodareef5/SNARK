@@ -22,26 +22,23 @@ artTest("resource packs supply grounded drop meshes and inventory icons", async 
   for (const asset of assets) {
     const pack = parsePack(await Bun.file(asset.file).bytes());
     meshes.push(...pack.header.meshes);
-    if (asset.id === "core:resource-minerals") {
-      const minerals = unpackMeshes(pack);
-      const materialsOf = (id: string) => minerals.find((mesh) => mesh.id === id)?.materials?.map((material) => material.id);
-      expect(materialsOf("core:stone/dropped")).toContain("core:stone-tools/stone");
+    const family = unpackMeshes(pack);
+    const organic = asset.id === "core:resource-organics";
+    const minerals = asset.id === "core:resource-minerals";
+    for (const mesh of family) {
+      for (const [index, material] of mesh.materials!.entries()) {
+        const density = mesh.textures![material.base]!.top / spanOf(mesh.lods[0]!, index);
+        expect(density, mesh.id).toBeGreaterThanOrEqual(500);
+      }
+    }
+    if (minerals) {
+      const materialsOf = (id: string) => family.find((mesh) => mesh.id === id)?.materials?.map((material) => material.id);
+      expect(materialsOf("core:stone/dropped")).toContain("core:resource-minerals/stone");
       expect(materialsOf("core:flint/dropped")).toContain("core:stone-tools/flint");
-    } else {
-      const organic = asset.id === "core:resource-organics";
-      const [min, max] = organic ? [135, 165] : [105, 135];
-      const family = unpackMeshes(pack);
-      for (const mesh of family) {
-        for (const [index, material] of mesh.materials!.entries()) {
-          const density = mesh.textures![material.base]!.top / spanOf(mesh.lods[0]!, index);
-          expect(density, mesh.id).toBeGreaterThan(min);
-          expect(density, mesh.id).toBeLessThan(max);
-        }
-      }
-      if (organic) {
-        const flat = family.map((mesh) => mesh.lods.at(-1)!.colors[0]);
-        expect(new Set(flat).size).toBe(family.length);
-      }
+    }
+    if (organic) {
+      const flat = family.map((mesh) => mesh.lods.at(-1)!.colors[0]);
+      expect(new Set(flat).size).toBe(family.length);
     }
   }
 
@@ -82,6 +79,8 @@ chart = uv["planar_uv"]([(0, 0, 0), (0.24, 0, 0), (0.24, 0, 0.04), (0, 0, 0.04)]
 tile = uv["atlas_uv"](chart, span=0.48)
 assert isclose(dist(tile[0], tile[1]), 0.5)
 assert isclose(dist(tile[1], tile[2]), 0.04 / 0.48)
+repeat = uv["atlas_uv"](chart, span=0.20)
+assert isclose(dist(repeat[0], repeat[1]), 1.20)
 `, fileURLToPath(new URL("../../assets/source/core/items/resource_uv.py", import.meta.url))]);
   expect(result.exitCode, result.stderr.toString()).toBe(0);
 });

@@ -18,6 +18,7 @@ SWATCHES = {
     "ingot": (1, 1, 0.075, 0.37, 0.10),
     "silica_pearls": (2, 1, 0.00, 0.28, 0.04),
     "charcoal": (3, 1, 0.05, 0.91, 0.34),
+    "stone": (0, 0, 0.00, 0.84, 0.25),
 }
 
 
@@ -108,12 +109,18 @@ def surface(name, base, roughness):
         bands = np.sin(tau * (11 * Y + 0.65 * np.sin(tau * X)))
         relief = 0.075 * bands + 0.024 * noise(rng, 2.0, 4.5)
         rough += 0.02 * bands
-    else:
+    elif name == "charcoal":
         grain = np.sin(tau * (11 * X + 0.31 * np.sin(tau * Y)))
         splits = np.maximum(np.sin(tau * (5 * X + 0.45 * np.sin(tau * Y))), 0) ** 12
         fissures = splits * np.clip(0.55 + 0.65 * np.sin(tau * (2 * Y + X)), 0, 1)
         relief = 0.40 * grain - 0.90 * fissures + 0.18 * noise(rng, 1.0, 5.2)
         rough += 0.075 * fissures + 0.032 * grain
+    else:
+        pits = grains(rng, 170, (0.7, 2.15), 0.66)
+        grains_in_stone = noise(rng, 1.1, 1.35)
+        weathering = noise(rng, 5.5, 6.5)
+        relief = 0.23 * grains_in_stone + 0.10 * weathering - 0.78 * pits
+        rough += 0.025 * weathering + 0.12 * pits
     return base, relief, np.clip(rough, 0.1, 0.98), metal
 
 

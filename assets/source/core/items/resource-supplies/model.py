@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from resource_uv import atlas_uv, loft_uv, planar_uv
 
 
-# Reading order of the material study, with colors for the texture-free level.
+# Material colors for the texture-free level.
 COLORS = {
     "mortar": (160, 158, 153), "kraft": (196, 155, 107),
     "board": (30, 89, 64), "brass": (157, 116, 53),
@@ -22,8 +22,7 @@ COLORS = {
     "gel": (28, 158, 158), "shell": (61, 48, 66),
     "paper": (207, 181, 134), "strap": (86, 57, 43),
 }
-CELLS = {name: divmod(i, 4) for i, name in enumerate(COLORS)}
-TILE_METRES = 1.10
+TILE_METRES = 0.22
 
 
 def material(name, rgb):
@@ -51,17 +50,11 @@ class Mesh:
         return list(range(start, len(self.verts)))
 
     def face(self, indices, surface, smooth=False, uv=None):
-        name = ("gel" if surface == "gel" else "atlas") if self.textured else f"far_{surface}"
-        color = COLORS[surface] if name != "atlas" else (128, 128, 128)
+        name = surface if self.textured else f"far_{surface}"
         if name not in self.materials:
-            self.materials[name] = (len(self.materials), material(name, color))
+            self.materials[name] = (len(self.materials), material(name, COLORS[surface]))
         if self.textured:
-            if surface == "gel":
-                uv = atlas_uv(uv, span=TILE_METRES)
-            else:
-                row, col = CELLS[surface]
-                uv = atlas_uv(uv, span=TILE_METRES, center=((col + 0.5) / 4, (3.5 - row) / 4),
-                              cell=(0.25, 0.25))
+            uv = atlas_uv(uv, span=TILE_METRES)
         for j in range(1, len(indices) - 1):
             self.faces.append((indices[0], indices[j], indices[j + 1]))
             self.surfaces.append((self.materials[name][0], smooth,
@@ -184,7 +177,7 @@ def paste(mesh, level):
         blade = [(-0.042, -0.025), (0.026, -0.010), (0.034, 0.008),
                  (0.018, 0.013), (-0.042, 0.021)]
         mesh.loft([(0, blade), (0.005, blade)], "brass", at=(0.045, -0.021, 0.058), yaw=-0.33)
-        plate(mesh, 0.054, 0.023, 0.012, "strap", at=(0.085, -0.035, 0.060), yaw=-0.33, cut=0.007)
+        plate(mesh, 0.054, 0.023, 0.012, "enamel", at=(0.085, -0.035, 0.060), yaw=-0.33, cut=0.007)
 
 
 def electronics(mesh, level):
@@ -204,7 +197,7 @@ def electronics(mesh, level):
             for y in (-0.025, 0.040):
                 plate(mesh, 0.006, 0.017, 0.002, "brass", at=(x, y, top))
         cylinder(mesh, [(0, 0.013), (0.020, 0.013), (0.023, 0.010)], 1, 8,
-                 "enamel", at=(0.053, -0.035, top))
+                 ["rubber", "brass", "brass"], at=(0.053, -0.035, top))
     if level == 0:
         for i, (x, y) in enumerate(((0.035, 0), (0.048, -0.008), (0.062, -0.013))):
             plate(mesh, 0.042 - i * 0.008, 0.004, 0.003, "brass", at=(x, y, top), yaw=0.33)
@@ -224,8 +217,13 @@ def gasoline(mesh, level):
     sides = (12, 8, 6)[level]
     if level < 2:
         cylinder(mesh, [(0, 0.024), (0.024, 0.024)], 1, sides, "red", at=(0.085, -0.012, 0.181))
-    cylinder(mesh, [(0, 0.028), (0.010, 0.028), (0.014, 0.024)], 1, sides, "rubber",
-             at=(0.085, -0.012, 0.201 if level < 2 else 0.185))
+    cap = [(0, 0.028), (0.010, 0.028), (0.014, 0.024)]
+    if level == 0:
+        mesh.loft([(z, [(x * (1 if i % 2 else 0.93), y * (1 if i % 2 else 0.93))
+                        for i, (x, y) in enumerate(radial(radius, radius, 20))]) for z, radius in cap],
+                  "rubber", at=(0.085, -0.012, 0.201))
+    else:
+        cylinder(mesh, cap, 1, sides, "rubber", at=(0.085, -0.012, 0.201 if level == 1 else 0.185))
     if level < 2:
         plate(mesh, 0.087, 0.083, 0.002, "ivory", at=(0, -0.0605, 0.089),
               front=True, cut=0.011, yaw=0.14)
@@ -244,7 +242,7 @@ def gunpowder(mesh, level):
                (0.103, 0.072, 0.058), (0.125, 0.036, 0.032), (0.151, 0.044, 0.039)]
     if level == 2:
         profile = [profile[i] for i in (0, 2, 4, 5)]
-    mesh.loft([(z, [(x + z * 0.18, y) for x, y in radial(rx, ry, sides, 0.13)])
+    mesh.loft([(z, [(x + z * 0.18, y) for x, y in radial(rx, ry, sides, 0.23 if 0.09 < z < 0.14 else 0.13)])
                for z, rx, ry in profile], "powder", smooth=level < 2)
     cylinder(mesh, [(0, 0.041), (0.012, 0.041)], 0.88, sides, "kraft", at=(0.022, 0, 0.122))
     if level < 2:
@@ -348,12 +346,12 @@ def freight_order(mesh, level):
     plate(mesh, 0.026, 0.237, 0.005, "strap", at=(0.056, -0.002, top), cut=0.003, yaw=-0.045)
     top += 0.002
     wing = [(0.030, 0.027), (-0.034, 0.008), (-0.011, -0.001), (0.004, -0.021)]
-    mesh.loft([(0, wing), (0.002, wing)], "board", at=(-0.015, 0.047, top))
+    mesh.loft([(0, wing), (0.002, wing)], "strap", at=(-0.015, 0.047, top))
     if level < 2:
         widths = (0.073, 0.080, 0.058, 0.066) if level == 0 else (0.073, 0.080)
         for i, width in enumerate(widths):
             plate(mesh, width, 0.004, 0.001, "strap", at=(-0.026, -0.006 - 0.014 * i, top))
-        plate(mesh, 0.040, 0.011, 0.003, "red", at=(-0.037, -0.080, top), yaw=0.03)
+        plate(mesh, 0.040, 0.011, 0.003, "strap", at=(-0.037, -0.080, top), yaw=0.03)
         plate(mesh, 0.029, 0.047, 0.006, "brass", at=(0.056, 0.076, top + 0.002), cut=0.005)
 
 

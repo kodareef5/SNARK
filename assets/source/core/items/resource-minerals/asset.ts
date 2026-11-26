@@ -3,7 +3,7 @@ import { shared, type PiecesAsset } from "../../../../../tools/art/spec.ts";
 import tools from "../stone-tools/asset.ts";
 
 const TOOL_DIR = resolve(import.meta.dir, "../stone-tools");
-const tiles = { crystal: 0.19, obsidian: 0.18, ore: 0.23, ingot: 0.24, silica_pearls: 0.12, charcoal: 0.19 };
+const tiles = { stone: 0.21, crystal: 0.19, obsidian: 0.18, ore: 0.23, ingot: 0.24, silica_pearls: 0.18, charcoal: 0.19 };
 
 const mineral = Object.fromEntries(Object.entries(tiles).map(([name, span]) => [name, {
   base: `tex/${name}_base.png`,
@@ -33,10 +33,9 @@ export default {
     icon,
   })),
   materials: {
-    stone: shared(TOOL_DIR, "core:stone-tools/stone", tools.materials.stone),
     flint: shared(TOOL_DIR, "core:stone-tools/flint", tools.materials.flint),
     ...mineral,
   },
-  // The shared 1024-pixel stone-tool maps count in the pack and are uploaded once.
-  budgets: { triangles: [640, 340, 144], texture: { top: 1024, megabytes: 26 } },
+  // The existing flint set counts against this pack's budget.
+  budgets: { triangles: [640, 340, 144], texture: { top: 1024, megabytes: 11 } },
 } satisfies PiecesAsset;

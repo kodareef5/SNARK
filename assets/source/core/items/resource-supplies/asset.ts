@@ -1,10 +1,19 @@
 import type { MaterialSpec, PiecesAsset } from "../../../../../tools/art/spec.ts";
 
-const atlas = {
-  base: "tex/supplies_base.png",
-  normal: "tex/supplies_normal.png",
-  packed: "tex/supplies_orm.png",
-} satisfies MaterialSpec;
+const surfaces = [
+  "mortar", "kraft", "board", "brass", "red", "rubber", "powder", "canvas",
+  "tar", "enamel", "ivory", "spark", "gel", "shell", "paper", "strap",
+] as const;
+
+const materials = Object.fromEntries(surfaces.map((name) => [
+  name, {
+    base: `tex/${name}_base.png`,
+    normal: `tex/${name}_normal.png`,
+    packed: `tex/${name}_orm.png`,
+    tiles: 0.22,
+    ...(name === "gel" ? { emissive: 0.15 } : {}),
+  } satisfies MaterialSpec,
+]));
 
 export default {
   kind: "pieces",
@@ -20,9 +29,6 @@ export default {
     { id: "core:angler_gel/dropped", object: "angler_gel", icon: { around: -0.30, above: 0.58, roll: 0 } },
     { id: "core:freight_order/dropped", object: "freight_order", icon: { around: 0.18, above: 1.39, roll: 0.14 } },
   ],
-  materials: {
-    atlas,
-    gel: { base: "tex/gel_base.png", normal: "tex/gel_normal.png", packed: "tex/gel_orm.png", emissive: 0.15 },
-  },
-  budgets: { triangles: [650, 365, 160], texture: { top: 512, megabytes: 4 } },
+  materials,
+  budgets: { triangles: [650, 365, 160], texture: { top: 128, megabytes: 4 } },
 } satisfies PiecesAsset;

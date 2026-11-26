@@ -17,7 +17,9 @@ BARE = (
     (76, 54, 38), (211, 193, 152), (187, 199, 179),
 )
 BARK, GRAIN, STRAW, BAST, HIDE, FUR, SHELL, HORN, WAX = range(len(BARE))
-TILE_METRES = 0.95
+# Metres per texture repeat. The same spans are declared in asset.ts.
+TILE_METRES = (0.36, 0.20, 0.20, 0.20, 0.20, 0.40, 0.20, 0.20, 0.20)
+MATERIAL_NAMES = ("bark", "end_grain", "straw", "bast", "hide", "fur", "chitin", "horn", "wax")
 
 
 def linear(value):
@@ -33,15 +35,7 @@ def material(name, rgb):
     return mat
 
 
-ATLAS = material("organics", (150, 98, 66))
-FLAT = [material(f"organics_{name}", rgb) for name, rgb in zip(
-    ("bark", "grain", "straw", "bast", "hide", "fur", "shell", "horn", "wax"), BARE)]
-
-
-def in_atlas(tile, chart):
-    row, col = divmod(tile, 3)
-    center = ((96 + col * 160) / 512, 1 - (96 + row * 160) / 512)
-    return atlas_uv(chart, span=TILE_METRES, center=center, cell=(143 / 512, 143 / 512))
+MATERIALS = [material(name, rgb) for name, rgb in zip(MATERIAL_NAMES, BARE)]
 
 
 class Part:
@@ -68,19 +62,17 @@ class Part:
         origin = Vector((*center, lowest))
         mesh = bpy.data.meshes.new(name)
         mesh.from_pydata([point - origin for point in self.points], [], [corners for _, corners, _, _ in self.faces])
-        if textured:
-            mesh.materials.append(ATLAS)
-            uv_map = mesh.uv_layers.new(name="UVMap")
-            for poly, (tile, _, uvs, smooth) in zip(mesh.polygons, self.faces):
-                poly.use_smooth = smooth
-                for index, uv in zip(poly.loop_indices, in_atlas(tile, uvs)):
+        tiles = sorted({tile for tile, _, _, _ in self.faces})
+        slots = {tile: slot for slot, tile in enumerate(tiles)}
+        for tile in tiles:
+            mesh.materials.append(MATERIALS[tile])
+        uv_map = mesh.uv_layers.new(name="UVMap") if textured else None
+        for poly, (tile, _, chart, smooth) in zip(mesh.polygons, self.faces):
+            poly.material_index = slots[tile]
+            poly.use_smooth = smooth
+            if uv_map is not None:
+                for index, uv in zip(poly.loop_indices, atlas_uv(chart, span=TILE_METRES[tile])):
                     uv_map.data[index].uv = uv
-        else:
-            for mat in FLAT:
-                mesh.materials.append(mat)
-            for poly, (tile, _, _, smooth) in zip(mesh.polygons, self.faces):
-                poly.material_index = tile
-                poly.use_smooth = smooth
         mesh.update()
         bpy.context.scene.collection.objects.link(bpy.data.objects.new(name, mesh))
 
@@ -160,13 +152,9 @@ def cover(part, perimeter, center, top_height, bottom_height, rim, tile, rings, 
 
     top, bottom = edges
     band = loft_uv([[part.points[i] for i in edge] for edge in (bottom, top)])[0]
-    patch = max(1, count // 5)
-    for start in range(0, count, patch):
-        charts = band[start:start + patch]
-        offset = (charts[0][0][0] + charts[-1][1][0]) / 2
-        for j, chart in enumerate(charts, start):
-            following = (j + 1) % count
-            part.face(tile, [bottom[j], bottom[following], top[following], top[j]], [(u - offset, v) for u, v in chart])
+    for j, chart in enumerate(band):
+        following = (j + 1) % count
+        part.face(tile, [bottom[j], bottom[following], top[following], top[j]], chart)
 
 
 def outline(sides, center, extent, height, angle, flutes, teeth=0, detail=0):
@@ -251,16 +239,16 @@ def hide(part, level):
     # The hips and shoulders lead into four uneven cut leg tabs.
     edge = (
         (0.224, 0.008, 0.029), (0.202, 0.044, 0.033), (0.147, 0.065, 0.027),
-        (0.139, 0.110, 0.045), (0.173, 0.166, 0.059), (0.160, 0.195, 0.071),
-        (0.126, 0.204, 0.064), (0.075, 0.161, 0.039), (0.059, 0.110, 0.037),
+        (0.139, 0.110, 0.035), (0.173, 0.166, 0.035), (0.160, 0.195, 0.039),
+        (0.126, 0.204, 0.043), (0.075, 0.161, 0.034), (0.059, 0.110, 0.037),
         (0.004, 0.090, 0.032), (-0.065, 0.098, 0.021), (-0.103, 0.151, 0.029),
         (-0.139, 0.176, 0.037), (-0.172, 0.170, 0.041), (-0.181, 0.146, 0.037),
         (-0.148, 0.103, 0.024), (-0.169, 0.068, 0.022), (-0.203, 0.037, 0.015),
         (-0.209, -0.013, 0.017), (-0.173, -0.054, 0.022), (-0.162, -0.088, 0.023),
         (-0.193, -0.146, 0.026), (-0.181, -0.170, 0.030), (-0.147, -0.177, 0.038),
         (-0.103, -0.139, 0.048), (-0.061, -0.104, 0.035), (0.006, -0.092, 0.030),
-        (0.062, -0.115, 0.037), (0.090, -0.160, 0.048), (0.122, -0.186, 0.063),
-        (0.159, -0.173, 0.068), (0.168, -0.145, 0.058), (0.138, -0.114, 0.040),
+        (0.062, -0.115, 0.037), (0.090, -0.160, 0.043), (0.122, -0.186, 0.047),
+        (0.159, -0.173, 0.048), (0.168, -0.145, 0.047), (0.138, -0.114, 0.040),
         (0.130, -0.077, 0.020), (0.190, -0.057, 0.021), (0.214, -0.028, 0.023),
     )
     outline_indices = (
