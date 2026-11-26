@@ -19,7 +19,8 @@ const say = (text: string, kind = "dim"): void => {
 
 async function send(body: object, done: string): Promise<void> {
   const r = await fetch((await adminContext()).api("settings"), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-  if (r.status !== 200 && r.status !== 400) return say(`The server answered ${r.status}.`, "bad");
+  // A refusal that is not about the change, such as a rank lost since sign-in, says why.
+  if (r.status !== 200 && r.status !== 400) return say(((await r.json().catch(() => null)) as { why?: string } | null)?.why ?? `The server answered ${r.status}.`, "bad");
   const p = (await r.json()) as SettingsPage;
   show(p);
   if (!p.ok) say(p.why, "bad");

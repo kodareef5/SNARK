@@ -22,14 +22,22 @@ import type { TouchPlan } from "../ui/touch.ts";
  * every other widget's (HudModel), so `app.hud.field` reads them; two widgets may not use the same name. `fill` and
  * `build` are handed that model, and may read what another widget filled before them.
  */
+/** A run of node keys, `count` from `from`, compared by baseKey (ui/nodes.ts). */
+export interface KeyBand { readonly from: number; readonly count: number }
+export const band = (from: number, count: number): KeyBand => ({ from, count });
+
 export interface HudWidget<M extends object = object> {
   name: string;
+  /** The node keys it draws with. No two widgets' bands meet, nor a widget's and a screen's (tests/ui/hud-keys.test.ts). */
+  bands: readonly KeyBand[];
   /** The slice as it starts. Called once for each model: arrays and objects in it are refilled, never made again. */
   make?(): M;
   /** Each frame, before anything is drawn. It must not allocate. */
   fill?(m: HudModel & M, c: HudFill): void;
   /** Draws into `f`. `at` is where the HUD's shared places are on this canvas. */
   build?(f: UiFrame, m: HudModel & M, at: HudLayout): void;
+  /** A press on one of its nodes, `key`, while the body is played. True if it used it. */
+  press?(key: number, m: HudModel & M, settings: Settings): boolean;
 }
 
 /** What a fill reads. The app keeps one and sets it each frame; `updateHud` alone fills from a session, with no `frame`. */

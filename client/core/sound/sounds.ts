@@ -16,7 +16,7 @@ import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import type { AssetPort } from "../assets/port.ts";
 import type { RemoteSample } from "../session.ts";
 import { ActionSounds, type OwnState } from "./actions.ts";
-import { BodySounds, type OwnBody } from "./bodies.ts";
+import { BodySounds, type Hear, type OwnBody } from "./bodies.ts";
 import { BuildSounds, type Lit } from "./build.ts";
 import { CreatureSounds } from "./creatures.ts";
 import { InlineDecoder, SoundLibrary, type SoundDecoder } from "./library.ts";
@@ -97,6 +97,14 @@ export interface SoundView {
   orbs?: readonly OrbSite[];
 }
 
+/** A looping sound kept playing while it is asked for each frame (Sounds.loop), by its owner's number. */
+export type OwnedLoop = (id: number, owner: number, key: number, x: number, y: number, z: number, level: number, on: boolean, flat: boolean) => void;
+
+/** What a late file hears each frame after the rest (mapevent-late.ts): given the ear, owners' numbers by id, hear and loop. */
+export interface SoundProducer {
+  update(ear: Readonly<Ear>, owner: (id: string) => number, hear: Hear, loop: OwnedLoop): void;
+}
+
 /** What became of an occasion asked for: the sound board and the in-game log read these. */
 export const HEARD_PLAYED = 0;
 export const HEARD_DROPPED = 1;
@@ -175,6 +183,9 @@ export class Sounds {
   private readonly capsule: number;
   private readonly orbs = new OrbSounds();
   private readonly orb: number;
+  /** What late files add to be heard each frame (SoundProducer). */
+  readonly producers: SoundProducer[] = [];
+  private readonly ownerOf = (id: string): number => this.resolver.owner(id);
   private readonly asked: { sound: number; x: number; y: number; z: number; untilMs: number }[] = [];
   private lastMs = -1;
   private firstMs = -1;
@@ -305,6 +316,7 @@ export class Sounds {
     if (view?.airSupport) this.airSounds.update(view.airSupport, this.helicopter, this.capsule, this.hear, this.airLoop, ear);
     if (view?.supply) this.supply.update(view.supply.list, view.supply.tick, TICK_RATE, ear.x, ear.y, ear.z, this.capsule, this.hear, (id, key, x, y, z, level, on) => this.loop(id, this.capsule, key, x, y, z, level, on, false));
     this.orbs.update(view?.orbs, ear.x, ear.y, ear.z, (id, key, x, y, z, level, on) => this.loop(id, this.orb, key, x, y, z, level, on, false));
+    for (let i = 0; i < this.producers.length; i++) this.producers[i]!.update(this.ear, this.ownerOf, this.hear, this.airLoop);
     this.actions.nowMs = nowMs;
     this.build.update(ear.x, ear.y, ear.z, this.hear, (id, owner, key, x, y, z, on) => this.loop(1000 + id, owner < 0 ? this.ui : owner, key, x, y, z, 1, on, false), view?.lit ?? null);
     for (const a of this.asked) {

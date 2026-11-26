@@ -10,9 +10,10 @@ import { fleetTables } from "../../tools/wiki/driving.ts";
 import { KMH, driven, handlingOf, roadHandling, type Handling } from "../../tools/wiki/handling.ts";
 
 const every = CORE_CONTENT.filter((d): d is SpeciesDef & { vehicle: VehicleDefinition } => d.type === "species" && d.class === "vehicle" && d.vehicle !== undefined);
-/** The vehicles a player sits in to drive, which are measured by driving them. */
-const vehicles = every.filter((d) => driven(d.vehicle));
 const entries = buildCatalogue();
+const inWiki = new Set(entries.filter((e) => e.kind === "vehicles").map((e) => e.id));
+/** The vehicles with wiki pages that a player sits in to drive. */
+const vehicles = every.filter((d) => inWiki.has(d.id) && driven(d.vehicle));
 const text = (c: Cell | Cell[]): string => (Array.isArray(c) ? c.map(text).join("") : typeof c === "string" ? c : "rate" in c ? c.text : c.id);
 
 /** Each measured figure, by name, for the ones a definition of this movement is held to. */
@@ -56,9 +57,15 @@ function sensible(def: VehicleDefinition, h: Handling): void {
   }
 }
 
-test("every vehicle is measured by its own model, each figure finite and of its kind's sensible size", () => {
+test("each listed vehicle's model yields finite, sensible handling figures", () => {
   expect(vehicles.length).toBeGreaterThan(10);
   for (const d of vehicles) sensible(d.vehicle, handlingOf(d.vehicle, 80));
+});
+
+test("the hidden jet has a driver and no wiki article", () => {
+  const jet = every.find((d) => d.id === "core:jet")!;
+  expect(driven(jet.vehicle)).toBe(true);
+  expect(inWiki.has(jet.id)).toBe(false);
 });
 
 test("a vehicle nobody sits in to drive is not measured: its page has no figures and no table", () => {
@@ -72,9 +79,8 @@ test("a vehicle nobody sits in to drive is not measured: its page has no figures
 });
 
 test("every vehicle's page says how it drives and its top speed as measured, with no figure missing", () => {
-  // A vehicle nobody drives has no such page (the test above).
   const listed = entries.filter((e) => e.kind === "vehicles" && e.handling !== undefined);
-  expect(listed.length).toBeGreaterThan(10);
+  expect(listed.map((e) => e.id).sort()).toEqual(vehicles.map((d) => d.id).sort());
   for (const e of listed) {
     const table = e.tables.find((t) => ["How it drives", "How it handles", "How it flies", "How it rides"].includes(t.title))!;
     expect([e.id, table.rows.length]).toEqual([e.id, e.handling!.movement === "wheeled" ? 11 : e.handling!.movement === "boat" ? 10 : e.handling!.movement === "skateboard" ? 14 : 7]);

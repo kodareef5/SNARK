@@ -11,10 +11,10 @@ export const chatChannels: Record<AdminChatChannel, string> = {
 const clock = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit", second: "2-digit" });
 
 export function chatRows(entries: readonly (AdminChatLine & { world?: string })[]): string {
-  return entries.map(({ at, channel, speaker, text, world }) => {
+  return entries.map(({ at, channel, speaker, text, tags, world }) => {
     const date = new Date(at);
     const channelLabel = world ? `${esc(world)} · ${chatChannels[channel]}` : chatChannels[channel];
-    return `<li><div class="chat-meta"><time datetime="${date.toISOString()}" title="${esc(date.toLocaleString())}">${esc(clock.format(at))}</time> · ${channelLabel}</div><strong>${esc(speaker)}</strong> ${esc(text)}</li>`;
+    return `<li><div class="chat-meta"><time datetime="${date.toISOString()}" title="${esc(date.toLocaleString())}">${esc(clock.format(at))}</time> · ${channelLabel}</div>${tags?.length ? `${tags.map((t) => `[${esc(t)}]`).join(" ")} ` : ""}<strong>${esc(speaker)}</strong> ${esc(text)}</li>`;
   }).join("");
 }
 

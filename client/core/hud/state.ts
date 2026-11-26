@@ -6,7 +6,7 @@ import { MF_OUT } from "../../../shared/sim/character.ts";
 import { latOf, lonOf } from "../../../shared/world/coords.ts";
 import { K_PANEL, lineHeight } from "../ui/nodes.ts";
 import { S_BANNER, S_DARK, S_TEXT } from "../ui/style.ts";
-import type { HudWidget } from "./widget.ts";
+import { band, type HudWidget } from "./widget.ts";
 
 /** The dark panel over the world while unconscious. */
 export const KEY_OUT = 36;
@@ -55,6 +55,7 @@ export function headingOf(yaw: number): number {
 
 export const STATE: HudWidget<StateModel> = {
   name: "state",
+  bands: [band(KEY_OUT, 1)],
   make: () => ({ frames: 0, scale: 1, dpr: 1, hour: 12, lat: 0, lon: 0, x: 0, y: 0, z: 0, heading: 0, compass: "N", mapSizeX: 1, mapSizeZ: 1, speed: 0, out: false, status: "", banner: "", crosshair: true, bare: false }),
   fill(m, c) {
     const session = c.session, b = session.own, hf = session.world!.hf;
@@ -83,6 +84,7 @@ export const STATE: HudWidget<StateModel> = {
 /** The status line and the banner, over the rest. */
 export const WORDS: HudWidget = {
   name: "words",
+  bands: [band(KEY_STATUS, 2)],
   build(f, m, at) {
     const { W, H, left, right } = at;
     if (m.status !== "") f.text(KEY_STATUS, left, H / 2 - 100, right - left, S_TEXT, m.status.slice(0, Math.floor((right - left) / 7.8)));

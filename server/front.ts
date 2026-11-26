@@ -17,16 +17,21 @@ import { backlog, MESSAGE_BYTES_MAX, VOICE_BACKLOG } from "../shared/net/transpo
 import { worldAdminPage } from "./admin/site.ts";
 import { CLIP_MAX_BYTES } from "../shared/video/clip.ts";
 import { SCREEN_POSTS } from "./video/routes.ts";
+import { PERMISSIONS_API } from "../shared/permissions/page.ts";
 import { ClusterFolder, LIVE_MS, type Announcement } from "./cluster/folder.ts";
 import { serveFile } from "./files.ts";
 import { pathOf, placeOf } from "./site.ts";
 
-const WORLD_POSTS = new Set([
+/** The POSTs the front passes to a world: its own registered writes. */
+export const WORLD_POSTS: ReadonlySet<string> = new Set([
   "/survivors", "/directory", "/__play", "/__report", "/__debug",
   "/admin/cast", "/admin/settings", "/admin/stop",
   "/admin/loadouts/book", "/admin/loadouts/reset", "/admin/loadouts/apply",
   "/admin/supply/book", "/admin/supply/reset", "/admin/supply/restore", "/admin/supply/call",
   "/admin/supply/land", "/admin/supply/cancel", "/admin/supply/ark",
+  PERMISSIONS_API,
+  "/admin/events/book", "/admin/events/reset", "/admin/events/restore", "/admin/events/call",
+  "/admin/events/hurry", "/admin/events/down", "/admin/events/cancel",
 ]);
 
 /** The front passes reads, registered writes at a world's path, and the site's scene editor. */
@@ -35,7 +40,8 @@ export function frontPasses(method: string, path: string): boolean {
   return method === "OPTIONS" ? path === "/directory" : method === "POST" && WORLD_POSTS.has(path);
 }
 
-function sitePost(path: string): boolean {
+/** Whether the front passes a POST to the site's cluster-wide pages. */
+export function sitePost(path: string): boolean {
   return path === "/admin/scenes/api" || path === "/cluster/admin/scenes/api" || SCREEN_POSTS.includes(path);
 }
 

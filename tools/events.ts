@@ -45,6 +45,7 @@ const GROUPS: Readonly<Record<string, string>> = {
   limit: "Services",
   protect: "Services",
   module: "Modules",
+  mapevent: "Map events",
 };
 
 export const groupOf = (r: EventRow): string => GROUPS[r.name.split(".")[0]!] ?? "";

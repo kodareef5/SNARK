@@ -1,0 +1,16 @@
+mgg8, "F-35B Lightning II - RAF 617 Squadron"
+https://sketchfab.com/3d-models/f-35b-lightning-ii-raf-617-squadron-1161f64164ce481189ce67d39502c068
+
+Sketchfab's API for the model gives license.label, as checked on 2026-11-21 and again on 2026-11-23:
+
+    CC0 Public Domain
+
+That is CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/): the author has dedicated the work to the public
+domain. The author describes it as an "AI-assisted procedural Blender model". 177,948 triangles and 9 textures.
+Downloaded by the owner and copied here unchanged on 2026-11-23:
+
+    f-35b_lightning_ii__raf_617_squadron.glb    SHA-256 2066fa8e60e65892e4f474b615a75a26c6056f33e4f517ca7254d334f0d0e6f9
+
+The glTF carries no other licence text. The model depicts a real aircraft type and wears a real air force's roundels
+and a real squadron's tail art; the game's jet (assets/source/core/vehicles/jet) keeps none of its pictures, takes its
+name from no real aircraft, and is reshaped (ref/SOURCES.md there).

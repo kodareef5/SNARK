@@ -72,6 +72,16 @@ export class CharacterScreen implements Screen {
   readonly layer = "modal";
   readonly group = "bag";
   readonly hotkey = "KeyP";
+  readonly dock = [
+    { id: "craft", label: "Craft", art: "craft", rank: 20, open: (c: ScreenCtx) => this.openAt(TAB_MAKE, c) },
+    { id: "survivor", label: "Survivor", art: "survivor", rank: 30, open: (c: ScreenCtx) => this.openAt(TAB_STATS, c) },
+  ];
+
+  /** Opens by its hotkey, as the bag's keys do, on tab `tab`. */
+  private openAt(tab: number, c: ScreenCtx): void {
+    c.pressKey(this.hotkey);
+    if (this.isOpen() && c.session && c.registry) this.click(KEY_CHAR_TAB + tab, c.session, c.registry);
+  }
   readonly bands = [{ from: KEY_CHAR_PANEL, count: KEY_CHAR_XP + 1 - KEY_CHAR_PANEL }, { from: KEY_CHAR_ENGRAM, count: 4 * LIST_KEYS }, { from: KEY_CHAR_PARTS, count: MAX_PARTS * PART_KEYS }];
   /** Its tabs after its own, from other files (character-parts.ts). */
   readonly parts: ScreenPart[] = [...CHARACTER_PARTS];

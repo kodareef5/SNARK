@@ -6,7 +6,7 @@ import { resolve } from "node:path";
 import type { Registry } from "../../shared/content/registry.ts";
 import type { ItemDef } from "../../shared/content/defs.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
-import { pidSeq, pidWorld } from "../../shared/ids.ts";
+import { ID_COUNT_RANGE, pidSeq, pidWorld } from "../../shared/ids.ts";
 import { TRAVEL_TERMINAL } from "../../shared/world/obelisks.ts";
 import { ACT_REACH } from "../../shared/world/upkeep.ts";
 import { RESULT_INVALID, RESULT_OK, SESSION_ALIVE, TICKET_BYTES } from "../../shared/net/protocol.ts";
@@ -358,6 +358,7 @@ export class Cluster {
       pids: recs.map((r) => r.pid),
       seq: records.nextSeq,
       teams: records.nextTeam,
+      survivors: records.nextSurvivor,
     };
     // Its clock stops as it leaves, as any survivor's does out of the world, and it goes from where it stands.
     ctx.suspend(rec, true);
@@ -527,6 +528,7 @@ export class Cluster {
       records.put(r);
       items.receive(r);
       if (pidWorld(r.pid) === this.world && pidSeq(r.pid) >= records.nextSeq) records.nextSeq = pidSeq(r.pid) + 1;
+      if (Math.floor(r.sid / ID_COUNT_RANGE) === this.world && r.sid % ID_COUNT_RANGE >= records.nextSurvivor) records.nextSurvivor = (r.sid % ID_COUNT_RANGE) + 1;
     }
     if (persistence.survivors.get(head.name) !== rec.pid) persistence.bindSurvivor(head.name, rec.pid);
     ctx.tribes.arrived(rec, head.tribe?.team === rec.team ? head.tribe.name : "", head.tribe?.owner ?? false);
@@ -628,6 +630,7 @@ export class Cluster {
     for (const r of recs) records.delete(r.pid);
     if (head.seq > records.nextSeq) records.nextSeq = head.seq;
     if (head.teams > records.nextTeam) records.nextTeam = head.teams;
+    if ((head.survivors ?? 0) > records.nextSurvivor) records.nextSurvivor = head.survivors!;
     this.note(head, TRANSFER_OUT);
     const lost = rec ? "" : ", which this save did not have";
     this.recovered.push(`${head.name} left for ${this.serverName(head.to)} by transfer ${head.id}, which this save did not know: given up again${lost}${differs ? "; what the save held of it and what the transfer carried differ, and the ledger counts the difference as the restore's" : ""}`);

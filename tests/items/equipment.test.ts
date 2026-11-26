@@ -1,4 +1,5 @@
 import { BLOCKED_OUT } from "../../content/items/blockouts.ts";
+import { JET_ARMS } from "../../content/vehicles/jet.ts";
 import { BTN_JUMP } from "../../shared/sim/character.ts";
 import { afterAll, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -8,6 +9,7 @@ import { App } from "../../client/core/app.ts";
 import { DRAW_NEAR, DRAW_SKINNED } from "../../client/core/render/packet.ts";
 import { RemoteSample, type ClientSession } from "../../client/core/session.ts";
 import { KEY_HOTBAR } from "../../client/core/ui/hud.ts";
+import { KEY_HOTBAR_LIT } from "../../client/core/hud/hotbar.ts";
 import { KEY_INV_ACTION, KEY_INV_PANEL, KEY_INV_ROW_LABEL, KEY_INV_SLOT, KEY_INV_INFO } from "../../client/core/ui/inventory.ts";
 import { K_TEXT, textWidth, type UiFrame } from "../../client/core/ui/nodes.ts";
 import { BAG_TICKS } from "../../server/death.ts";
@@ -106,8 +108,9 @@ artTest("the content hangs together: every engram can be reached, every thing th
   expect(points).toBeGreaterThan(engrams.reduce((a, e) => a + e.cost, 0));
   // A soul ball is held and swung as a thrown weapon is, and harms nothing (content/items/balls.ts): the full one is never
   // made, an empty one becomes it. tests/creatures/balls.test.ts holds them; here, that their meshes follow a hand.
-  // What is blocked out is a plain box in the hand (tests/items/blockouts.test.ts).
-  const blocked = new Set(BLOCKED_OUT);
+  // What is blocked out is a plain box in the hand (tests/items/blockouts.test.ts), and so is what is fitted to the jet,
+  // which no hand holds.
+  const blocked = new Set([...BLOCKED_OUT, ...JET_ARMS.map((d) => d.id)]);
   const weapons = items.filter((d) => d.weapon && !d.ball && !blocked.has(d.id));
   const balls = items.filter((d) => d.ball);
   expect(balls.map((d) => [d.id.slice(5), d.weapon?.kind, d.craft !== undefined, pack.header.meshes[pack.meshIndex.get(d.weapon!.mesh!)!]!.skeleton])).toEqual([["soul_ball", "thrown", true, "human"], ["soul_ball_full", "thrown", false, "human"]]);
@@ -558,7 +561,7 @@ artTest("the client draws what is worn and held, and the hotbar and inventory sc
     fits(f, name);
     expect(f.find(cell(inv.hotbar + 9))!.interactive).toBe(true);
     expect(f.find(cell(inv.armor + 4))!.interactive).toBe(true);
-    expect(f.find(KEY_INV_ROW_LABEL)!.text).toBe("Hotbar: keys 1 to 0");
+    expect(f.find(KEY_INV_ROW_LABEL)!.text).toBe("Hotbar");
     expect(f.find(KEY_INV_ACTION + 3)!.text).toBe("Detach");
   }
   run(50);
@@ -607,7 +610,7 @@ artTest("the client draws what is worn and held, and the hotbar and inventory sc
   app.key("Digit1", true);
   run(150);
   expect(s.held).toBe(0);
-  expect(f.find(5500)).not.toBeNull();
+  expect(f.find(KEY_HOTBAR_LIT)).not.toBeNull();
   expect(f.find(KEY_HOTBAR + 1)!.text).toBe("long");
   expect(f.find(KEY_HOTBAR + 2)!.text).toBe("0");
   // In first person the head and the hat are not drawn.

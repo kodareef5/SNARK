@@ -65,7 +65,7 @@ function pointIn(d: Director, at: Parameters<typeof vehiclePoint>[0], x: number,
 /** A vehicle the body drives: its chase camera, or the driver's eye in its cabin. */
 function driving(d: Director, f: AppFrame): void {
   const session = f.session, c = f.controls, cam = f.cam, world = f.world, car = f.car!, vehiclePose = f.vehiclePose!, carYaw = f.carYaw;
-  const rotor = car.movement === "rotor", boat = car.movement === "boat", at = d.carFrame, spot = d.seatSpot;
+  const rotor = car.movement === "rotor", boat = car.movement === "boat", jet = car.movement === "jet", at = d.carFrame, spot = d.seatSpot;
   const board = isSkateboard(car), own = session.own, speed = Math.hypot(own.vx, own.vz);
   if (f.third) {
     // The chase camera looks at two thirds of the vehicle's height from a boom one and a half times its length.
@@ -73,14 +73,16 @@ function driving(d: Director, f: AppFrame): void {
     // A board's view follows where it travels, not the deck, which spins, slides crosswise and rides switch; a little
     // to the side, to see the rider's stance. It turns after the travel sooner than a car's, and dips as it lands.
     const travel = board && speed > .5 ? Math.atan2(own.vx, own.vz) : carYaw - (own.skate?.switched ? Math.PI : 0);
-    const motion = motionOf(d, own.vx, own.vy, own.vz, session.driving, board ? 3.6 : rotor || boat ? Math.max(boat ? 8 : 10, car.spec.halfLength * 2) : car.spec.halfLength * 3);
+    const motion = motionOf(d, own.vx, own.vy, own.vz, session.driving, board ? 3.6 : rotor || boat || jet ? Math.max(boat ? 8 : 10, car.spec.halfLength * 2) : car.spec.halfLength * 3);
     if (board) {
       motion.followAfter = 350; motion.followEase = 650;
       if (own.grounded && !d.boardGrounded && d.boardFall > 2) motion.kick = Math.min(2.4, d.boardFall * .35);
       d.boardGrounded = own.grounded; d.boardFall = -own.vy;
     }
-    const heading = d.view.placeVehicle(cam, world, spot[0]!, spot[1]!, spot[2]!, c.yaw, c.pitch - (board ? .09 : 0), board ? travel + .24 : carYaw, speed, f.dt, !rotor && !boat, motion);
-    if (!rotor && !boat) c.yaw = heading;
+    // A jet's view is its aim: it is not drawn round behind the jet as a car's is.
+    const free = rotor || boat || jet;
+    const heading = d.view.placeVehicle(cam, world, spot[0]!, spot[1]!, spot[2]!, c.yaw, c.pitch - (board ? .09 : 0), board ? travel + .24 : carYaw, speed, f.dt, !free, motion);
+    if (!free) c.yaw = heading;
   } else {
     const slot = driverSlot(car.seats), ch = f.scene.characters;
     ch.seat(session.bodyKind, f.bx, f.by, f.bz, carYaw, d.own.state, session.tickClock, spot, slot, vehiclePose);

@@ -263,9 +263,9 @@ export function loadConfigFolder(dir: string, argv: readonly string[] = []): { r
   return loadConfig(readConfigFolder(dir), argv);
 }
 
-/** A password is never shown. */
+/** A secret row's value (a password, a key) is never shown. */
 function shown(row: Row, rules: Rules): string {
-  if (/password/i.test(row.name)) return rules.valueOf(row) === "" ? "(none)" : "****";
+  if (row.secret) return rules.valueOf(row) === "" ? "(none)" : "****";
   const v = rules.valueOf(row);
   if (row.kind === "struct" || row.kind === "names" || row.kind === "lines") return `${(v as readonly unknown[]).length} ${(v as readonly unknown[]).length === 1 ? "entry" : "entries"}`;
   if (row.kind === "indexed") return (v as readonly number[]).join(",");

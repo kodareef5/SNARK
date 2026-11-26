@@ -208,6 +208,6 @@ export function figures(survivors: readonly LogSurvivor[], marks: readonly LogMa
     players,
     deaths: inside.filter((m) => m.kind === "death").length,
     causes: [...causes].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)),
-    commands: inside.filter((m) => m.kind === "admin").length,
+    commands: inside.filter((m) => m.kind === "admin" && (m.act ?? "command") === "command").length,
   };
 }

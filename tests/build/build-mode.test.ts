@@ -13,6 +13,7 @@ import { KEY_TOUCH_BUTTON, KEY_ZONE_LOOK, LONG_MS, T_CANCEL } from "../../client
 import { KEY_AMMO, KEY_PROMPT } from "../../client/core/ui/hud.ts";
 import { KEY_PROMPT_UNDER } from "../../client/core/hud/prompt.ts";
 import { KEY_STRUCT_BUTTON } from "../../client/core/ui/structure.ts";
+import * as touchLayout from "../../client/core/ui/touch.ts";
 import { ENEMY_FOUNDATION, ENEMY_PILLAR } from "../../server/build.ts";
 import { Rules } from "../../server/settings/rules.ts";
 import { STRUCT_UNITS, TICK_RATE } from "../../shared/coords.ts";
@@ -542,8 +543,11 @@ test("in the whole client each build key does its action, E uses, cancel puts th
 
   // A finger held still on a built piece picks it, and its Cancel puts the piece away.
   app.key("Digit3", true);
+  app.ui.layer = touchLayout;
+  app.ui.inputDevice = 2;
   look(5);
   run(300);
+  expect(app.ui.frame.find(KEY_ZONE_LOOK)?.interactive).toBe(true);
   expect(b.kind).toBe(id("pillar_wood"));
   const dt = h.world.structs.chunks[Math.floor(door / 65536)]!, on = [0, 0, 0];
   expect(app.cam.project(dt.x[door & 0xffff]!, dt.y[door & 0xffff]! + 1.3, dt.z[door & 0xffff]!, on)).toBe(true);
@@ -553,8 +557,9 @@ test("in the whole client each build key does its action, E uses, cancel puts th
   app.pointer(1, KEY_ZONE_LOOK, fx, fy, 0, 1);
   run(300);
   expect([s.held, b.kind]).toEqual([1, id("doorframe_wood")]);
-  app.pointer(0, KEY_TOUCH_BUTTON + T_CANCEL, 10, 10, 0, 1);
-  app.pointer(1, KEY_TOUCH_BUTTON + T_CANCEL, 10, 10, 0, 1);
+  const cancel = app.ui.frame.find(KEY_TOUCH_BUTTON + T_CANCEL)!;
+  app.pointer(0, cancel.key, cancel.x + cancel.w / 2, cancel.y + cancel.h / 2, 0, 1);
+  app.pointer(1, cancel.key, cancel.x + cancel.w / 2, cancel.y + cancel.h / 2, 0, 1);
   run(300);
   expect([s.held, app.ui.screen<MenuScreen>("menu").menu]).toEqual([-1, false]);
   expect(BUILD_REASONS[RESULT_SHORT]).toBe("You have none left");

@@ -35,7 +35,7 @@ const rayVehicleLook: typeof useVehicle = (def, x, y, z, yaw, ox, oy, oz, dx, dy
 /** What a seat on remote body kind `kind` is on, for the words of a refusal, or null where it is no vehicle and has no saddle. */
 export function riddenOf(reg: Registry, kind: number, saddled: boolean): Ridden | null {
   const def = reg.vehicle[kind];
-  if (def) return def.movement === "rotor" ? "rotor" : def.movement === "boat" ? "boat" : "wheeled";
+  if (def) return def.movement === "rotor" || def.movement === "jet" ? "rotor" : def.movement === "boat" ? "boat" : "wheeled";
   return saddled ? "creature" : null;
 }
 

@@ -2021,7 +2021,7 @@ export class Rasterizer {
             continue;
           }
           if (this.drawing >= 0 && (p.drawFlags[this.drawing]! & DRAW_EMISSIVE)) {
-            this.deferred[at] = 0;
+            if (!blend) this.deferred[at] = 0;
             // An instrument's light, energy along the instrument, as the signal program shows it with no light target.
             const facing = Math.abs(nx * rx + ny * ry + nz * rz) / Math.max(dist, 1e-6);
             const fx = p.drawEffect, o = this.drawing * 4;
@@ -2029,7 +2029,9 @@ export class Rasterizer {
             if (fx[o + 1]! > 0) dropLight(energy, 0, Math.sqrt(Math.max(0, 1 - facing * facing)), fx[o]!, fx[o + 1]!, fx[o + 2]!, fx[o + 3]!);
             else if (p.frame[FRAME.eyes + 3]! > 0) eyeEnergy(p.frame, rx, ry, rz, NaN, 0.85 * Math.sqrt(Math.max(0, 1 - facing * facing)), footprint || dist * 0.0015, energy);
             else for (let k = 0; k < 3; k++) energy[k] = (pal[colorIndex * 4 + k]! / 255) ** 2;
-            for (let k = 0; k < 3; k++) this.color[at * 4 + k] = 255 * (1 - Math.exp(-energy[k]!));
+            // See-through, it shows its share of what is behind it, as the signal program's uAlpha has it.
+            const alpha = blend ? (this.finishRow === 0 ? WATER_ALPHA : 1) * (1 - p.drawTint[this.drawing * 2 + 1]!) : 1;
+            for (let k = 0; k < 3; k++) this.color[at * 4 + k] += (255 * (1 - Math.exp(-energy[k]!)) - this.color[at * 4 + k]!) * alpha;
             continue;
           }
           if (p.lit && !blend) {

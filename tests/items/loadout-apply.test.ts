@@ -7,7 +7,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ClientSession } from "../../client/core/session.ts";
 import { builtinLoadouts } from "../../content/loadouts.ts";
-import { OP_ADMIN } from "../../server/console.ts";
 import type { GameOptions } from "../../server/game.ts";
 import type { HostOptions } from "../../server/host.ts";
 import { WorldStore } from "../../server/persist/store.ts";
@@ -21,6 +20,7 @@ import { listener } from "../fixtures/module.ts";
 import { Harness, asShipped, type JoinOptions } from "../fixtures/net.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 import { send } from "../kit/kit.ts";
+import { adminLines } from "../fixtures/acts.ts";
 
 const reg = coreRegistry();
 const id = (name: string): number => reg.index.get(`core:${name}`)!;
@@ -385,10 +385,7 @@ test("loadout is refused without cheats, and an admin's is in the journal", () =
   h.run(200);
   h.host.shutdown();
   const store = new WorldStore(db, h.reg);
-  const lines = store
-    .journal()
-    .filter((j) => j.op === OP_ADMIN)
-    .map((j) => new TextDecoder().decode(j.data));
+  const lines = adminLines(store);
   store.close();
   expect(lines).toEqual(["ada\tloadout stone bo -clear", '(operator)\tloadout hunter "ada"']);
 });

@@ -6,7 +6,7 @@ import type { HudModel } from "../hud.ts";
 import { SHAPE_TWIN, SHAPE_VISOR, TWIN_WIDE, VISOR_WIDE } from "../optics.ts";
 import { K_PANEL, type UiFrame } from "../ui/nodes.ts";
 import { S_CROSS, S_DARK, S_LENS, S_LENS_TWIN, S_MAGNIFY, S_SPOT_WORD, S_VISOR, S_VISOR_LEFT } from "../ui/style.ts";
-import type { HudWidget } from "./widget.ts";
+import { band, type HudWidget } from "./widget.ts";
 
 /** A holo-scope's tint over the view; a scope's reticle (eight panels). */
 export const KEY_TINT = 38;
@@ -16,7 +16,7 @@ export const KEY_SIGHT_SHADE = 5100;
 /** A visor's frame and readouts (D1080). */
 export const KEY_VISOR = 5110;
 /** The magnification ladder's nodes (D1086), its gap from the window, width and most height. */
-export const KEY_MAGNIFY = 5440;
+export const KEY_MAGNIFY = 9400;
 const MAG_GAP = 16;
 const MAG_WIDE = 70;
 const MAG_TALL = 220;
@@ -27,6 +27,9 @@ export const KEY_MIL = 5300;
 /** A milliradian, in radians, and the most marks an arm of the reticle has. */
 const MIL = 0.001;
 const MIL_MARKS = 20;
+/** The mils' two lines, four ticks a mark, and the zero under them. */
+const MIL_KEYS = 3 + MIL_MARKS * 4;
+export const KEY_MIL_ZERO = KEY_MIL + MIL_KEYS - 1;
 /** The visor's ink: its frame, its marks and its words. */
 const VISOR_INK = 0x7fe6d4;
 /** A holo-scope's night tint. */
@@ -185,7 +188,7 @@ function buildMils(f: UiFrame, H: number, cx: number, cy: number, r: number, m: 
     }
   }
   const y = Math.min(H - 20, cy + r + 6);
-  f.text(KEY_MIL + 98, cx - r / 2, y, r, S_VISOR, m.sightZero > 0 ? `ZERO ${m.sightZero} m` : "ZERO ---");
+  f.text(KEY_MIL_ZERO, cx - r / 2, y, r, S_VISOR, m.sightZero > 0 ? `ZERO ${m.sightZero} m` : "ZERO ---");
 }
 
 /** The right edge of a sight's window, and its half height, in the frame's units (optics.ts windowBox, as the HUD draws it). */
@@ -265,6 +268,7 @@ function buildVisor(f: UiFrame, W: number, H: number, m: HudModel): void {
 /** A holo-scope's tint, under everything but the dark panel, which it gives way to. */
 export const HOLO_TINT: HudWidget = {
   name: "holo tint",
+  bands: [band(KEY_TINT, 1)],
   build(f, m, at) {
     if (m.out || !(m.tint > 0)) return;
     const n = f.add(KEY_TINT, K_PANEL, 0, 0, at.W, at.H, S_DARK);
@@ -276,6 +280,7 @@ export const HOLO_TINT: HudWidget = {
 /** A scope's reticle over the laser dots, and under the readouts. */
 export const SIGHT: HudWidget<SightModel> = {
   name: "sight",
+  bands: [band(KEY_SIGHT, 10), band(KEY_SIGHT_SHADE, 3), band(KEY_VISOR, 30), band(KEY_GLASS, 4), band(KEY_MIL, MIL_KEYS), band(KEY_MAGNIFY, 40)],
   make: start,
   fill(m, c) {
     const s = c.frame?.sight;

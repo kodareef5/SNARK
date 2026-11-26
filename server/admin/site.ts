@@ -2,21 +2,25 @@ import { serveFile } from "../files.ts";
 import { pathOf, worldAddress, type SiteWorld } from "../site.ts";
 import type { Destination } from "../cluster/cluster.ts";
 import { SCREEN_PATHS } from "../video/routes.ts";
+import { OLD_PERMISSIONS_PATHS } from "../../shared/permissions/page.ts";
 import { adminPath, refused, type AdminGate } from "./gate.ts";
 
 const WORLD_PAGES = {
   map: "index.html",
   survivors: "index.html",
   items: "index.html",
+  acts: "acts.html",
   settings: "settings.html",
   loadouts: "loadouts.html",
   drops: "drops.html",
+  events: "events.html",
   cast: "cast.html",
   health: "index.html",
   saves: "index.html",
   restart: "index.html",
   "first-frame": "first-frame.html",
   sounds: "sounds.html",
+  permissions: "permissions.html",
 };
 
 type WorldPage = keyof typeof WORLD_PAGES;
@@ -25,7 +29,7 @@ type WorldId = SiteWorld["id"];
 const UI_FILES = new Set([
   "admin.css", "investigate.css", "overview.css", "scene-studio.css",
   "admin.js", "cluster.js", "overview.js", "chat.js", "shell.js", "investigate.js", "map.js",
-  "settings.js", "loadouts.js", "drops.js", "cast.js", "first-frame.js", "sounds.js", "board.js", "scene-studio.js", "screens.js", "screens-stage.js",
+  "settings.js", "loadouts.js", "drops.js", "events.js", "cast.js", "first-frame.js", "sounds.js", "board.js", "scene-studio.js", "screens.js", "screens-stage.js", "permissions.js", "acts.js",
 ]);
 const OLD_UI_FILES = /^(?:(?:scene-studio|board)\.js(?:\.map)?|scene-studio\.css)$/;
 
@@ -112,6 +116,9 @@ export function adminSite(req: Request, url: URL, o: AdminSite): Promise<Respons
   if (path === "/admin/screens" || path === "/admin/screens/") {
     return refused(req, o.who, o.gate) ?? (!mayRead(req) ? refuseMethod() : path === "/admin/screens/" ? privatePage(o.dir, req, "screens.html") : redirect(`/admin/screens/${url.search}`));
   }
+  // Permissions was the cluster's page. It is a world's now: its old address goes to this world's, and its old API is gone.
+  if (OLD_PERMISSIONS_PATHS.includes(path)) return notFound();
+  if (path === "/admin/permissions" || path === "/admin/permissions/") return mayRead(req) ? redirect(worldLink(o.id, "permissions") + url.search) : refuseMethod();
 
   const mounted = o.base !== "" && path.startsWith(`${o.base}/`);
   const route = worldAdminPage(mounted ? path.slice(o.base.length) : path);

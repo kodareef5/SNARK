@@ -14,13 +14,13 @@ const lines:string[]=[];
 
 /** The touch page: what each zone and button does, in words. */
 const TOUCH: readonly (readonly [string, string])[] = [
-  ["Left side", "Move. A stick appears where your thumb lands; push it to its rim to sprint."],
-  ["Right side", "Drag to look around."],
-  ["Attack", "Hold to strike, gather or shoot. Drag from it to aim as you do."],
-  ["Jump and Stance", "Tap Stance to crouch, hold it to lie prone, tap again to stand."],
-  ["Aim and Reload", "Shown when what you hold can. Aim stays on until pressed again."],
-  ["The pill", "Does what the world offers: ride, open, exit. Hold it on a structure for its actions."],
-  ["Top left", "Menu, bag and character. Tap the minimap for the map."],
+  ["Left side", "Drag to move. Push the stick to its rim to sprint."],
+  ["Right side", "Tap to use your held item. Drag to look while moving with your other thumb."],
+  ["Bottom dock", "Slide along the items. Lift on a slot to equip it. Slide away to cancel."],
+  ["Edge wheels", "Swipe in from the left wheel for menus or the right wheel for actions. Swipe out to go back."],
+  ["Play controls", "Open Field kit, then Play controls for jump, stance and held attack."],
+  ["World prompt", "Tap to ride, open or exit. Hold on a structure for its actions."],
+  ["Corner chart", "Tap to expand. Choose Tools to pan, zoom or save a private pin."],
 ];
 /** A canvas shorter than this has no room for the keyboard's or the pad's picture, and is offered the touch page alone. */
 const PICTURES = 640;

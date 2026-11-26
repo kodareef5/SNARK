@@ -6,6 +6,7 @@ import { TICK_RATE } from "../../shared/coords.ts";
 import { MARKER_DEATH } from "../../shared/net/protocol.ts";
 import type { Client } from "../game.ts";
 import type { Host } from "../host.ts";
+import { idText } from "../survivor-ids.ts";
 
 /** The tick and wall time this run of the server began at, so a tick since then reads as a time. */
 export interface RunStart {
@@ -46,6 +47,7 @@ export function survivorsOf(host: Host, start: RunStart, now = Date.now()): Surv
     const { lastLogin, playMs } = host.activity.summary(rec);
     out.push({
       pid,
+      id: idText(rec),
       name: rec.name,
       tribe: host.tribes.of(rec)?.name ?? "",
       team: rec.team,

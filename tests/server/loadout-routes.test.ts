@@ -10,7 +10,6 @@ import { AdminPages } from "../../server/admin/routes.ts";
 import { LoadoutRoutes, applyLine } from "../../server/admin/loadout-routes.ts";
 import { gaugesOf } from "../../server/admin/stats.ts";
 import { PAGE } from "../../server/admin/supply-routes.ts";
-import { OP_ADMIN } from "../../server/console.ts";
 import { Guesses } from "../../server/guesses.ts";
 import { captureLoadout } from "../../server/loadout/capture.ts";
 import { WorldStore } from "../../server/persist/store.ts";
@@ -19,6 +18,7 @@ import { loadoutFaults, type Entry, type LoadoutBook, type LoadoutFault } from "
 import type { LoadoutCatalog } from "../../shared/loadout/catalog.ts";
 import { QUALITY_NAMES } from "../../shared/sim/items.ts";
 import { Harness } from "../fixtures/net.ts";
+import { adminLines } from "../fixtures/acts.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "snark-loadout-routes-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -87,7 +87,7 @@ test("a saved book is in force, is kept beside the save and is in the journal", 
   h.run(60);
   h.host.shutdown();
   const store = new WorldStore(dbPath, h.reg);
-  const typed = store.journal().filter((j) => j.op === OP_ADMIN).map((j) => new TextDecoder().decode(j.data));
+  const typed = adminLines(store);
   store.close();
   expect(typed).toEqual([`${PAGE}\tloadouts saved (admins start as scouts): revision 1`, `${PAGE}\tloadouts saved: revision 2`]);
 });
