@@ -151,7 +151,7 @@ function sag(patch: Patch, grid: Grid): number {
 }
 
 /** How much of its chords' sag a coarse level is lifted by. */
-const SAG_SHARE = 0.4;
+const SAG_SHARE = 0.15;
 
 /** The core's u and v on the sheet: its streaks run along v. */
 const coreUv = (u: number, v: number): [number, number] => [0.002 + Math.min(1, Math.max(0, u)) * (CORE_U - 0.004), 0.002 + Math.min(1, Math.max(0, v)) * 0.996];

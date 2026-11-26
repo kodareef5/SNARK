@@ -235,7 +235,9 @@ export function hairStyles(head: Head): Record<string, HairStyleForms> {
 
   // A buzz cut lies on the skin itself, not the widened surface: it is the default look, held to the hit head.
   const onSkin = (t: number, p: number): number => sample(head.clear, t, p) - sample(head.skin, t, p);
-  out.buzzed = capStyle(head, { hairline, whorl: [26, 180], thickness: (t, p, v) => 3 * MM * taper(v, 0.9, 0.35) - onSkin(t, p) }, [["stubble", 1.2 * MM, 0.04, 1.03, 0.025]]);
+  // Cut high at the nape, where a lower edge would be drawn over the neck's capsule.
+  const nape = curve([[0, 180], [110, 180], [140, 104], [180, 110]]);
+  out.buzzed = capStyle(head, { hairline: (p) => Math.min(hairline(p), nape(p)), whorl: [26, 180], thickness: (t, p, v) => 1.2 * MM * taper(v, 0.9, 0.5) - onSkin(t, p) }, [["stubble", 0.8 * MM, 0.04, 1.03, 0.025]]);
 
   out.parted = capStyle(head, {
     hairline, whorl: [30, 40],
