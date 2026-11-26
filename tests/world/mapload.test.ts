@@ -1018,6 +1018,18 @@ test("the store of statics finds a chunk's rows in its sector, and in the table 
   expect(same()).toBe(true);
 });
 
+test("a sector not yet come is guessed larger by what those come took over their guesses", () => {
+  const file = writeMap(kerbed()), h = readHead(file), held = new HeldStatics(h);
+  const [a, b] = held.parts.filter((p) => squareOf(h.dims, SECTOR_CHUNKS, p.col, p.row)!.cx0 < 2 * SECTOR_CHUNKS) as [MapPart, MapPart];
+  const [guessA, guessB] = [held.bytesOf(a), held.bytesOf(b)];
+  const steps = held.set(a, readPart(h, a, file.subarray(a.at, a.at + a.length)) as StaticsPiece);
+  while (!steps.next().done);
+  // The head counts a sector's rows, not its bends: A took more than was guessed, and B is guessed that much larger.
+  const took = held.bytesOf(a);
+  expect(took).toBeGreaterThan(guessA);
+  expect(held.bytesOf(b)).toBe(Math.ceil((guessB * took) / guessA));
+});
+
 test("a sector let go is told to the city's reader by its place, and its rows are not kept", async () => {
   const held = new HeldStatics(head), city = held.follow(coreRegistry());
   const p = head.parts.find((q) => q.kind === "statics")!, n = held.parts.indexOf(p);
