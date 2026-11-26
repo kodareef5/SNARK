@@ -13,6 +13,6 @@ the upper shoulder, from about 71 to 75 percent of the height. Its faces
 follow the curve of the shell. The instance palette makes the band blend into
 plain eggs or show up chalk-coloured on fertile eggs.
 
-Each size has 1,280, 624, 288 and 144 triangles. The first two levels have
-metre UVs at a 0.22-metre repeat. The two flat levels keep the shoulder band
-and use scattered groups of faces for blotches, speckles, streaks and dashes.
+Each size has 1,280, 624, 160 and 60 triangles. The first two levels have
+metre UVs at a 0.22-metre repeat. Palette-only draws keep the shell colour and
+the shoulder band. The texture supplies the markings where it is drawn.

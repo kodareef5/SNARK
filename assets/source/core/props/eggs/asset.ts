@@ -18,8 +18,8 @@ export default {
     icon: { around: 0.73, above: 0.52 },
   })),
   materials: {
-    shell: { ...shell, regions: { mask: "tex/shell_mask.png", mask2: "tex/shell_mask2.png" } },
-    shell_band: { ...shell, regions: { mask: "tex/shell_band_mask.png", mask2: "tex/shell_band_mask2.png" } },
+    shell: { ...shell, flat: "region0", regions: { mask: "tex/shell_mask.png", mask2: "tex/shell_mask2.png" } },
+    shell_band: { ...shell, flat: "region5", regions: { mask: "tex/shell_band_mask.png", mask2: "tex/shell_band_mask2.png" } },
   },
-  budgets: { triangles: [1320, 640, 310, 150], texture: { top: 256, megabytes: 4.9 } },
+  budgets: { triangles: [1320, 640, 165, 62], texture: { top: 256, megabytes: 4.9 } },
 } satisfies PiecesAsset;

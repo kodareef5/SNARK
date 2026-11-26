@@ -5,15 +5,17 @@ import { B_PROP_R } from "../../shared/anim/human.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { slotsOf } from "../../shared/content/slots.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
+import { REGION_BASE } from "../../shared/pack/palette.ts";
 import { nodeForms } from "../../shared/world/nodes.ts";
 import { findAssets } from "../../tools/art/assets.ts";
 import { grayboxMeshes } from "../../tools/pack/build.ts";
 import { assetIconInputs, iconSubjects } from "../../tools/pack/icons.ts";
 import { readPicture } from "../../tools/pack/image.ts";
 import { boundsOf } from "../../tools/pack/lying.ts";
+import { checkMasks } from "../../tools/pack/mask.ts";
 import { spanOf } from "../../tools/pack/surface.ts";
 import { weaponMeshes } from "../../tools/pack/weapons.ts";
-import { unpackMeshes, type SourceMesh } from "../../tools/pack/write.ts";
+import { unpackMeshes, type SourceLod, type SourceMesh } from "../../tools/pack/write.ts";
 import { artTest } from "../fixtures/needs-art.ts";
 
 const handTools = ["torch", "slingshot", "club", "hatchet_metal", "pick_metal", "pike", "sickle", "sword"];
@@ -196,6 +198,37 @@ artTest("egg pairs share the laid shell and colour only the fertile ring", async
   for (const mesh of meshes.values()) expectLevels(mesh, 500);
 });
 
+
+function eggMarkShare(lod: SourceLod): number {
+  const positions = lod.positions;
+  const marks = (vertex: number): number => Number(lod.colors[vertex]! > REGION_BASE && lod.colors[vertex]! < REGION_BASE + 5);
+  let marked = 0, total = 0;
+  for (let i = 0; i < lod.indices.length; i += 3) {
+    const [a, b, c] = [lod.indices[i]!, lod.indices[i + 1]!, lod.indices[i + 2]!];
+    const edge = (from: number) => [0, 1, 2].map(axis => positions[from * 3 + axis]! - positions[a * 3 + axis]!);
+    const [ux, uy, uz] = edge(b), [vx, vy, vz] = edge(c);
+    const area = Math.hypot(uy! * vz! - uz! * vy!, uz! * vx! - ux! * vz!, ux! * vy! - uy! * vx!);
+    marked += area * (marks(a) + marks(b) + marks(c)) / 3;
+    total += area;
+  }
+  return marked / total;
+}
+
+artTest("distance eggs keep the fertile ring without enlarging shell markings", async () => {
+  const asset = (await findAssets()).find(entry => entry.id === "core:eggs")!;
+  const { cover } = checkMasks(readPicture(`${asset.dir}/tex/shell_mask.png`), readPicture(`${asset.dir}/tex/shell_mask2.png`));
+  const painted = cover.slice(1, 5).reduce((sum, region) => sum + region, 0);
+  expect(painted).toBeGreaterThan(0);
+  for (const mesh of (await meshesIn(asset.id)).values()) {
+    expect(mesh.lods.slice(mesh.flat!)).toHaveLength(2);
+    for (const [level, lod] of mesh.lods.entries()) {
+      const name = `${mesh.id} level ${level}`;
+      expect(eggMarkShare(lod), name).toBeLessThanOrEqual(painted);
+      expect(new Set(lod.colors), name).toEqual(new Set([REGION_BASE, REGION_BASE + 5]));
+      if (level >= mesh.flat!) expect(lod.indices.length / 3, name).toBeLessThanOrEqual(level === mesh.flat ? 165 : 62);
+    }
+  }
+});
 
 artTest("skate surfaces follow their walked shapes at every level", async () => {
   const pack = "core:skate-camp-kits";
