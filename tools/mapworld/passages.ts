@@ -1,10 +1,11 @@
-// Streets the data says run through a building at the street's own level (tools/mapdata/streets.py `passage`: a
-// building passage, a covered or an indoor way). The street stays a ground street; the ruins clear their ground storey
-// along it (ruin-clearance.ts), as they clear a bridge's runout, and the storeys above stand over it.
+// Streets that run through a building at the street's own level: those the data says do (tools/mapdata/streets.py
+// `passage`: a building passage, a covered or an indoor way), and those that keep their line through a footprint
+// (streets/yield.ts `passage_runs`: a through street the building yields to). The street stays a ground street; the
+// ruins clear their ground storey along it (ruin-clearance.ts), as they clear a bridge's runout, and the storeys above
+// stand over it.
 
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import type { Site } from "./statics.ts";
+import { readRoads } from "./streets/yield.ts";
 
 /** A passage's line at the ground, in lattice metres, and the street's width. */
 export interface Passage {
@@ -15,16 +16,16 @@ export interface Passage {
 /** Metres between a passage's points: its height follows the ground, a floor's inside a building. */
 const STEP = 4;
 
-/** The site's passages, from base/roads.geojson; none where the layer is absent or older than the tag. */
+/** The site's passages, from its road pieces; none where the layer is absent or older than the tag. */
 export function readPassages(site: Pick<Site, "source" | "toLattice" | "groundAt">): Passage[] {
-  const file = join(site.source, "base/roads.geojson");
-  if (!existsSync(file)) return [];
-  const lines = (JSON.parse(readFileSync(file, "utf8")) as { features: { geometry: { type: string; coordinates: number[][] | number[][][] }; properties: { passage?: boolean; bridge?: boolean; tunnel?: boolean; width_m?: number } }[] }).features;
+  const lines = readRoads<{ geometry: { type: string; coordinates: number[][] | number[][][] }; properties: { passage?: boolean; passage_runs?: number[][][]; bridge?: boolean; tunnel?: boolean; width_m?: number } }>(site.source);
   const out: Passage[] = [];
   for (const f of lines) {
     // A bridge or a tunnel is not on the ground, whatever else its way is tagged.
-    if (f.properties.passage !== true || f.properties.bridge === true || f.properties.tunnel === true) continue;
-    for (const run of f.geometry.type === "MultiLineString" ? (f.geometry.coordinates as number[][][]) : [f.geometry.coordinates as number[][]]) {
+    if (f.properties.bridge === true || f.properties.tunnel === true) continue;
+    // A tagged passage is its whole line; a street that keeps its line through a footprint, the runs of it inside.
+    const whole = f.geometry.type === "MultiLineString" ? (f.geometry.coordinates as number[][][]) : [f.geometry.coordinates as number[][]];
+    for (const run of f.properties.passage === true ? whole : f.properties.passage_runs ?? []) {
       const ends = run.map(([e, n]) => site.toLattice(e!, n!));
       const points: Passage["points"] = [];
       for (let i = 1; i < ends.length; i++) {

@@ -10,9 +10,9 @@ import type { Base } from "../base.ts";
 import type { District } from "../ground.ts";
 import { binKey } from "../raster.ts";
 import { LONGEST_STEP } from "../../../shared/world/streets.ts";
+import { NOT_DRIVEN, readRoads } from "./yield.ts";
 
-/** Classes and kinds that carry no traffic, which have no stretch: as the roads' frame has them (road-frame.ts). */
-export const NOT_DRIVEN = new Set(["S1710", "S1720", "S1820", "S1830", "footway", "path", "pedestrian", "steps", "cycleway", "bridleway", "corridor"]);
+export { NOT_DRIVEN };
 /** Metres between the places along a stretch its sides are looked at from, and the furthest out each look goes. */
 const STATION = 4;
 const LOOK = 30;
@@ -25,7 +25,7 @@ const PAIR_COS = 0.94;
 
 /** What the data says of a stretch: a run of one road piece of base/roads.geojson, as one line. */
 export interface Run {
-  /** The piece's id (osm:<way>:<n>, or TIGER's), and which run of it. */
+  /** The piece's id (osm:<way>:<n>, or TIGER's), and which run of it: its place, or the number a cut gave it (yield.ts). */
   readonly id: string;
   readonly run: number;
   /** Its piece's place in base/roads.geojson, as the street graph numbers its lines. */
@@ -41,6 +41,10 @@ export interface Run {
   readonly sidewalk: string | null;
   readonly parking: readonly [string | null, string | null];
   readonly maxspeed: number | null;
+  /** What became of its piece where it met a building (yield.ts): shifted, narrowed, cut, opens, or null. */
+  readonly yielded: string | null;
+  /** Why a building opens along it: "tagged" by the data, "through street" where it keeps its line through a footprint, or null. */
+  readonly passage: string | null;
   /** x and z pairs in the map's metres. */
   readonly xz: Float64Array;
 }
@@ -86,15 +90,15 @@ export type ToMap = (e: number, n: number) => [number, number];
 
 /** The runs of the work folder's road pieces on the ground that carry traffic, a step longer than LONGEST_STEP cut. */
 export function readRuns(source: string, toMap: ToMap): Run[] {
-  const doc = JSON.parse(readFileSync(join(source, "base/roads.geojson"), "utf8")) as { features: { geometry: { type: string; coordinates: number[][] | number[][][] }; properties: Record<string, unknown> }[] };
   const out: Run[] = [];
-  doc.features.forEach((f, line) => {
+  readRoads(source).forEach((f, line) => {
     const p = f.properties;
     const mtfcc = text(p.mtfcc) ?? "", highway = text(p.highway);
     if (NOT_DRIVEN.has(mtfcc) || NOT_DRIVEN.has(highway ?? "") || p.bridge === true || p.tunnel === true) return;
     const id = text(p.id) ?? `line:${line}`;
     const way = /^osm:(-?\d+)/.exec(id)?.[1];
     const runs = f.geometry.type === "MultiLineString" ? (f.geometry.coordinates as number[][][]) : [f.geometry.coordinates as number[][]];
+    const numbers = Array.isArray(p.run_numbers) ? (p.run_numbers as number[]) : null;
     runs.forEach((run, k) => {
       const pts: number[] = [];
       for (const [e, n] of run) {
@@ -110,8 +114,8 @@ export function readRuns(source: string, toMap: ToMap): Run[] {
       }
       if (pts.length < 4) return;
       out.push({
-        id, run: k, line, way: way === undefined ? null : Number(way), name: text(p.name), mtfcc, highway, lanes: num(p.lanes) ?? 2, half: (num(p.width_m) ?? 8) / 2,
-        oneway: num(p.oneway_dir) ?? (p.oneway === true ? 1 : 0), sidewalk: text(p.sidewalk), parking: [text(p.parking_left), text(p.parking_right)], maxspeed: num(p.maxspeed_mph), xz: Float64Array.from(pts),
+        id, run: numbers?.[k] ?? k, line, way: way === undefined ? null : Number(way), name: text(p.name), mtfcc, highway, lanes: num(p.lanes) ?? 2, half: (num(p.width_m) ?? 8) / 2,
+        oneway: num(p.oneway_dir) ?? (p.oneway === true ? 1 : 0), sidewalk: text(p.sidewalk), parking: [text(p.parking_left), text(p.parking_right)], maxspeed: num(p.maxspeed_mph), yielded: text(p.yielded), passage: p.passage === true ? "tagged" : text(p.passage_why), xz: Float64Array.from(pts),
       });
     });
   });

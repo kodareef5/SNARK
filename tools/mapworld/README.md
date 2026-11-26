@@ -83,6 +83,43 @@ break mask, and `map.bathymetry` names the coastal raster relative to `base/`
 CLI tools require a map argument. No city names or named compositions live in
 these modules.
 
+Where a street's line runs through a footprint, or within half a metre of one,
+its class settles which of the two yields (`streets/yield.ts`). Every reader of
+the roads takes them through `readRoads`, so all follow one line.
+
+- A small way yields: a service way, an alley, a track, or a residential or
+  unclassified street of one lane. A junction of small ways in the wall moves
+  clear, up to 4 m, with every piece that meets there. The line shifts sideways,
+  up to 6 m, by the least that clears its full width, else to where it has most
+  room; a piece squeezed for a third of its length narrows, to no less than 3 m.
+  What still lies inside a building is cut out: each end stops half a metre off
+  the wall, and an end under 6 m is dropped.
+- A residential, unclassified or living street shifts up to 2 m where that
+  clears its whole width. It is never narrowed or cut.
+- A tertiary street, anything above it and every link keeps its line.
+- Where a street keeps its line through a footprint, the building yields: the
+  piece carries the runs inside as `passage_runs`, with `passage_why`, and the
+  ruins open their ground storey along them across the street's width
+  (`passages.ts`), as for a way the data tags a passage.
+
+Left as the data has them: pieces marked bridge, tunnel or passage; a small
+way's mouth, up to 8 m, on a piece that keeps its line in the wall; small ways
+that meet a parking structure (a label of kind `parking_garage` or primary use
+`Parking`); and a small way where a lot's stalls stand along it.
+
+What the data painted for a small way that is gone is taken up before the
+ground reads it (`paint.ts` `takeUp`): its street samples of `roads.png`, the
+crossing samples of `use.png` on it, and the sidewalk samples beside a local
+street. The street graph leaves out the crossings of `walks.geojson` and the
+controls of `controls.json` that stood on it. The ground under a way that only
+shifted keeps its paving up to the wall. `plan-edges.ts` and `road-angles.ts`
+are pictures and reports of the data's own lines and read them unchanged.
+
+The yield reads only the piece, the footprints near it and the pieces it
+joins, in the data's metres, so a place gets the same line whatever cut is made
+round it. The build's log and `streets.json` count each outcome, and
+`access-kept.ts` compares two builds for a building that lost its last approach.
+
 `statics.ts` is the seam. A `StaticLayer.make(site, placed)` returns kind, centre
 and yaw for each box, given the pieces the layers before it set down: the ruins,
 then the street furniture (`street-furniture.ts`, planning/reference/maps.md).

@@ -13,6 +13,7 @@
 
 import { CHUNK_SIDE, PLANE_BYTES, chunkPlanes, vergeOf, type StreetSectors } from "../../../shared/world/streets.ts";
 import type { Grid } from "../base.ts";
+import type { Band, Gone } from "./yield.ts";
 
 /** What use.png's values say (tools/mapdata/streets.py USE), as ground.ts reads them. */
 const SIDEWALK = 1, CROSSING = 2, PLAZA = 4;
@@ -20,6 +21,35 @@ const SIDEWALK = 1, CROSSING = 2, PLAZA = 4;
 const PAVED = 4;
 
 export interface Painted { road: number; verge: number; walk: number; cleared: number }
+
+/** How far past a gone street's edge the data's samples of its asphalt and its crossings lie, and its walks ran. */
+const ROAD_PAST = 1.5, WALK_PAST = 4.5;
+
+export interface TakenUp { road: number; walk: number; crossing: number }
+
+/**
+ * Takes up what the data painted for the roads that are gone (yield.ts): each street and crossing sample on a gone
+ * band or just past it, and each sidewalk sample beside one the data made walks along, where no road that is left is
+ * as near. The bands are in the data's metres, as the samples are: `cell` apart from the grid's west and north edges.
+ */
+export function takeUp(bands: readonly Band[], own: Gone, walked: Gone, grid: Grid, roads: Uint8Array, use: Uint8Array): TakenUp {
+  const { nx, nz, cell, west, north } = grid;
+  const out: TakenUp = { road: 0, walk: 0, crossing: 0 };
+  for (const b of bands) for (let i = 1; i < b.line.length; i++) {
+    const [ax, az] = b.line[i - 1] as [number, number], [bx, bz] = b.line[i] as [number, number], r = b.half + WALK_PAST;
+    const [c0, c1] = [Math.max(0, Math.floor((Math.min(ax, bx) - r - west) / cell)), Math.min(nx - 1, Math.ceil((Math.max(ax, bx) + r - west) / cell))];
+    const [r0, r1] = [Math.max(0, Math.floor((north - Math.max(az, bz) - r) / cell)), Math.min(nz - 1, Math.ceil((north - Math.min(az, bz) + r) / cell))];
+    for (let row = r0; row <= r1; row++) for (let col = c0; col <= c1; col++) {
+      const k = row * nx + col, [e, n] = [west + col * cell, north - row * cell];
+      if ((roads[k] === 1 || use[k] === CROSSING) && own(e, n, ROAD_PAST) < Infinity) {
+        if (roads[k] === 1) { roads[k] = 0; out.road++; }
+        if (use[k] === CROSSING) { use[k] = 0; out.crossing++; }
+      }
+      if (use[k] === SIDEWALK && walked(e, n, WALK_PAST) < Infinity) { use[k] = 0; out.walk++; }
+    }
+  }
+  return out;
+}
 
 /**
  * Paints `roads`, `use` and `verge` (a byte a sample, the verge's kind or 0) of the map `grid` frames from the streets

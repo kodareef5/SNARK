@@ -8,6 +8,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { binKey, textSeed } from "./raster.ts";
+import { goneOf, readRoads } from "./streets/yield.ts";
 
 /** A road piece's stretch between two of its points, in engine metres, with its class (TIGER MTFCC) and half width. */
 export interface Segment {
@@ -94,7 +95,7 @@ export function readStreetGraph(source: string, toLattice: (e: number, n: number
     if (!n) { n = { x, z, ways: [], key }; at.set(key, n); }
     return n;
   };
-  const roads = read<{ features: Feature<Line>[] }>(join(source, "base/roads.geojson"))?.features ?? [];
+  const roads = readRoads<Feature<Line>>(source);
   const interior: [number, number, number, [number, number, number][]][] = [];
   let tags = false;
   roads.forEach((f, line) => {
@@ -154,16 +155,33 @@ export function readStreetGraph(source: string, toLattice: (e: number, n: number
   // The controls the data maps, on the pieces whose ids it names.
   const byId = new Map(pieces.map((p, i) => [p.id, i]));
   const controls = read<unknown>(join(source, "base/controls.json"));
+  // Where a street was cut back from a building or dropped (streets/yield.ts), what the data set on it goes with it.
+  const gone = goneOf(source);
+  /** Whether a piece cut or dropped still comes within 15 m of a place in the data's metres. */
+  const reaches = (line: number, e: number, n: number): boolean => {
+    const f = roads[line]!;
+    if (!/cut|dropped/.test(text(f.properties.yielded) ?? "")) return true;
+    const runs = f.geometry.type === "MultiLineString" ? (f.geometry.coordinates as number[][][]) : [f.geometry.coordinates as number[][]];
+    return runs.some((run) => run.some((p, i) => {
+      if (i === 0) return Math.hypot(p[0]! - e, p[1]! - n) <= 15;
+      const q = run[i - 1]!, ex = p[0]! - q[0]!, ez = p[1]! - q[1]!, t = Math.max(0, Math.min(1, ((e - q[0]!) * ex + (n - q[1]!) * ez) / (ex * ex + ez * ez || 1)));
+      return Math.hypot(e - q[0]! - ex * t, n - q[1]! - ez * t) <= 15;
+    }));
+  };
   const marked: Marked[] = (Array.isArray(controls) ? (controls as Record<string, unknown>[]) : []).flatMap((c) => {
     const e = num(c.e); const n = num(c.n); if (e === null || n === null) return [];
+    if (gone && gone.own(e, n, 1) < Infinity) return [];
     const [x, z] = toLattice(e, n);
-    const governs = (Array.isArray(c.approaches) ? (c.approaches as Record<string, unknown>[]) : []).flatMap((a) => {
+    const approaches = Array.isArray(c.approaches) ? (c.approaches as Record<string, unknown>[]) : [];
+    const governs = approaches.flatMap((a) => {
       const line = byId.get(String(a.road)); const t = a.travel as number[] | undefined;
-      if (line === undefined || !Array.isArray(t)) return [];
+      if (line === undefined || !Array.isArray(t) || !reaches(line, e, n)) return [];
       // The way it travels, east and north, as the engine's metres turn it.
       const [tx, tz] = toLattice(e + t[0]!, n + t[1]!);
       return [{ line, dx: tx - x, dz: tz - z }];
     });
+    // One that governed only streets no longer there governs nothing.
+    if (governs.length === 0 && approaches.some((a) => { const line = byId.get(String(a.road)); return line !== undefined && !reaches(line, e, n); })) return [];
     return [{ x, z, kind: text(c.kind) ?? "", allWay: c.all_way === true, crossing: text(c.crossing), governs }];
   });
 
@@ -172,6 +190,8 @@ export function readStreetGraph(source: string, toLattice: (e: number, n: number
   const crossings: Crossing[] = [];
   for (const f of walks) {
     if (f.properties.kind !== "crossing" || f.geometry.type !== "LineString") continue;
+    const across = f.geometry.coordinates as number[][];
+    if (gone && across.length > 1 && gone.own((across[0]![0]! + across.at(-1)![0]!) / 2, (across[0]![1]! + across.at(-1)![1]!) / 2, 1) < Infinity) continue;
     // A crossing drawn in pieces that run on in one line (a point at each kerb, one on the road's middle) is one piece.
     const run = (f.geometry.coordinates as number[][]).map(([e, n]) => toLattice(e!, n!)).filter((q, i, all) => {
       if (i === 0 || i === all.length - 1) return true;
