@@ -49,7 +49,14 @@ export class GameUi {
    * The touch layer's layout (ui/touch.ts), once the shell has fetched it: a page fetches it when a finger is first
    * used, and until it comes the HUD is drawn as for a mouse. Null on a page never touched, which never pays for it.
    */
-  layer: typeof import("./touch.ts") | null = null;
+  private touchLayer: typeof import("./touch.ts") | null = null;
+  get layer(): typeof this.touchLayer { return this.touchLayer; }
+  set layer(next: typeof this.touchLayer) {
+    if (this.touchLayer === next) return;
+    if (this.touchLayer) this.activeScreens.pop();
+    this.touchLayer = next;
+    if (next) this.activeScreens.push(next.touchVitals());
+  }
   /** The debug bar (debug/debug.ts), which the app fetches once Settings.debug is first on; null until then. */
   debug: import("../debug/debug.ts").DebugBar | null = null;
   flyer = false;

@@ -15,6 +15,7 @@ import { BODY, ICON, ICON_COLUMNS, ICON_Y, IMAGE_TOUCH, I_AIM, I_ANCHOR, I_ATTAC
 
 import * as touchDock from "./touch-dock.ts";
 export { touchDock };
+import { TouchVitals } from "./touch-vitals.ts";
 
 /** Keys of the layer's pictures, which are never pressed: four to a button, then the stick's. */
 const KEY_TOUCH_ART = 3300000;
@@ -52,6 +53,8 @@ const plan: TouchPlan = {
   vitalsX: 0, vitalsY: 0, vitalPitch: 0, topEnd: 0, toolsX: 0, toolsY: 0,
   toolSize: 0, under: 0, stackY: 0, map: 64, mapX: 0, mapY: 0, mic: false,
 };
+
+export const touchVitals = (): TouchVitals => new TouchVitals(plan);
 
 /** The plan for this canvas. The same object each time. */
 export function touchPlan(f: UiFrame, _muted: boolean, mic = false): TouchPlan {

@@ -111,8 +111,8 @@ export const VITALS: HudWidget<VitalsModel> = {
       if (icon) {
         if (touch) icon.alpha = .85;
         const hit = f.add(hitKey, K_BUTTON, x, y - 4, slot, size + 11, S_HUD_HIT);
-        hit.label = label; hit.value = fraction; hit.interactive = controls;
-      } else filledVital(f, hitKey, i, pos, y, size, fraction, v.label, controls, false);
+        hit.label = label; hit.value = fraction; hit.interactive = controls && !touch;
+      } else filledVital(f, hitKey, i, pos, y, size, fraction, v.label, controls && !touch, false);
       const barX = touch ? pos : wide ? pos + size + 5 : x + 4;
       const barW = touch ? size : wide ? slot - size - 13 : slot - 8;
       const barY = y + size + (touch ? 5 / f.unit : wide ? -2 : 3);

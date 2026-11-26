@@ -7,6 +7,8 @@ import { UiFrame, canvasHeight } from "../../client/core/ui/nodes.ts";
 import { KEY_COMPASS } from "../../client/core/ui/compass.ts";
 import { KEY_FIELD_TELEMETRY } from "../../client/core/hud/readout.ts";
 import { touchPlan } from "../../client/core/ui/touch.ts";
+import { KEY_STATUS_CLOSE, KEY_STATUS_STRIP } from "../../client/core/ui/touch-vitals.ts";
+import { direct } from "../kit/screen.ts";
 import { buildHud, KEY_VITAL } from "../../client/core/ui/hud.ts";
 import { buildProvingHeightfield } from "../../shared/world/proving.ts";
 import { StreetSectors, heldSide } from "../../shared/world/streets.ts";
@@ -182,4 +184,38 @@ test("A phone's instruments leave the notch and the corner chart clear", () => {
   const caret = f.find(KEY_COMPASS + 98)!;
   expect(caret.x).toBeGreaterThan(f.find(KEY_VITAL + 11)!.x);
   expect(caret.x + caret.w).toBeLessThan(plan.mapX);
+});
+
+test("One touch opens live vitals and level progress and one closes the sheet", () => {
+  const d = direct(390, 844, [0, 0, 0, 0], { finger: true });
+  d.hud.vitals[0]!.fraction = .15;
+  Object.assign(d.hud.levelBar, { shown: true, level: 3, xp: 1525, points: 1 });
+  const f = d.build();
+  const tap = (key: number) => {
+    const hit = f.find(key)!;
+    expect(hit.interactive).toBe(true);
+    d.ui.pointer(0, key, hit.x + hit.w / 2, hit.y + hit.h / 2, 0, d.session, 7);
+    d.build();
+  };
+  expect(f.find(KEY_VITAL + 1)!.interactive).toBe(false);
+  tap(KEY_STATUS_STRIP);
+  const words = () => f.nodes.slice(0, f.count).map(n => n.text);
+  expect(words()).toContain("Health");
+  expect(words()).toContain("15%");
+  expect(words()).toContain("Low");
+  expect(words()).toContain("Level 3 · 1,525 XP · 1 point to spend");
+  d.hud.vitals[0]!.fraction = .64;
+  d.build();
+  expect(words()).toContain("64%");
+  tap(KEY_STATUS_CLOSE);
+  expect(f.find(KEY_STATUS_CLOSE)).toBeNull();
+  tap(KEY_STATUS_STRIP);
+  expect(d.ui.fieldPress(9)).toBe(true);
+  d.build();
+  expect(f.find(KEY_STATUS_CLOSE)).toBeNull();
+  tap(KEY_STATUS_STRIP);
+  d.ui.inputDevice = 0;
+  d.build();
+  expect(f.find(KEY_STATUS_CLOSE)).toBeNull();
+  expect(f.find(KEY_STATUS_STRIP)).toBeNull();
 });
