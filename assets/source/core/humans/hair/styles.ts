@@ -120,7 +120,7 @@ function curtain(head: Head, from: (phi: number) => number, stand: number, openi
   const span = 360 - 2 * opening;
   return {
     name: "curtain", wrap: false, poles: [false, false], size: [deg(span) * 0.12, 0.2], bend: 0.12, drawn: "core",
-    bones: fallingFrom(B_UPPER_CHEST, headY, headY - 0.16),
+    bones: fallingFrom(B_UPPER_CHEST, headY + 0.03, headY - 0.06),
     at(u, v, lift, out) {
       const phi = deg(opening + u * span);
       onHead(head, deg(from(side(phi))), phi, GAP + stand, top);
@@ -129,11 +129,11 @@ function curtain(head: Head, from: (phi: number) => number, stand: number, openi
       const fall = top[1] - (headY - drop(side(phi)));
       const y = top[1] - fall * v;
       // Hair hangs a little out from the neck as it falls.
-      const flare = 0.12 * (top[1] - y) + lift;
+      const flare = 0.05 * (top[1] - y) + lift;
       out[0] = top[0] + (out2[0]! / l) * flare;
       out[1] = y;
       out[2] = top[2] + (out2[1]! / l) * flare;
-      keepOut(head, out, GAP + 0.008 + lift);
+      keepOut(head, out, GAP + 0.004 + lift);
     },
   };
 }
@@ -242,7 +242,7 @@ export function hairStyles(head: Head): Record<string, HairStyleForms> {
     thickness: (t, p, v) => {
       // The parting runs back from the forehead on the head's left, where the hair lies thin.
       const parting = Math.exp(-(((((p * 180) / Math.PI) - 38) / 9) ** 2)) * (1 - smooth(55, 70, theta(t)));
-      return (sex === 0 ? 13 : 15) * MM * (1 - 0.65 * parting) * taper(v, 0.82, 0.25);
+      return (sex === 0 ? 10 : 4.5) * MM * (1 - 0.65 * parting) * taper(v, 0.82, 0.25);
     },
   }, [["fine", 2.5 * MM, 0.04, 1.06, 0.022], ["fine", 6 * MM, 0.08, 1.04, 0.03], ["clumps", 10 * MM, 0.1, 0.7, 0.035]]);
 
@@ -275,9 +275,9 @@ export function hairStyles(head: Head): Record<string, HairStyleForms> {
   // Long: a cap that reaches over the ears, and a curtain from it round the back.
   const opening = sex === 0 ? 56 : 54;
   const turn = curve([[0, hairline(0)], [36, hairline(36)], [opening - 4, 92], [90, 94], [180, 104]]);
-  const longCap: CapSpec = { hairline: turn, whorl: [28, 25], thickness: (t, p, v) => (sex === 0 ? 11 : 12) * MM * taper(v, 0.85, side(p) > opening ? 0.7 : 0.3) };
-  const stand = 0.6 * (sex === 0 ? 11 : 12) * MM;
-  const drop = sex === 0 ? curve([[60, 0.03], [120, 0.05], [180, 0.07]]) : curve([[60, 0.12], [120, 0.17], [180, 0.21]]);
+  const longCap: CapSpec = { hairline: turn, whorl: [28, 25], thickness: (t, p, v) => 8 * MM * taper(v, 0.85, side(p) > opening ? 0.7 : 0.3) };
+  const stand = 0.6 * 8 * MM;
+  const drop = sex === 0 ? curve([[60, 0.03], [120, 0.05], [180, 0.07]]) : curve([[60, 0.07], [120, 0.1], [180, 0.13]]);
   const hang = (spec: CapSpec): Form => {
     const c = cap(head, spec);
     const hung = curtain(head, (p) => turn(p) - 6, stand, opening, drop);
