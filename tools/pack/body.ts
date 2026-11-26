@@ -27,7 +27,7 @@ export const RIGID_BONES: ReadonlySet<number> = new Set([B_HAND_L, B_FINGERS_L, 
  * rigid, so a level made by error alone keeps little of them. These give each slot about the share of a level Blender's
  * reduction gave it.
  */
-export const ZONE_WEIGHTS: readonly number[] = [100, 5, 1, 1, 1, 1, 1, 1, 1, 1, 100, 100, 1, 1, 1, 1, 1, 1, 1, 25, 25];
+export const ZONE_WEIGHTS: readonly number[] = [100, 5, 1, 1, 1, 1, 1, 1, 1, 1, 100, 100, 1, 1, 1, 1, 1, 1, 1, 25, 25, 1, 1, 1, 1, 1, 1];
 
 /**
  * Metres past the wrist joint that the hand's skin follows the forearm, flat, and blends towards the hand, drawn with

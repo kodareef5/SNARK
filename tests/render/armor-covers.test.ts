@@ -21,6 +21,7 @@ const TOP = (1 << SKIN_CHEST) | (1 << SKIN_ABDOMEN);
 const EXTRA: Def[] = [
   { type: "item", class: "armor", id: "test:long_gloves", stack: 1, color: 1, wear: { slot: "hands", armor: 1, uses: 1, set: "cloth", colors: [1, 15, 225], covers: [SKIN_FOREARM_L, SKIN_FOREARM_R] } },
   { type: "item", class: "garment", id: "test:cut_tee", stack: 1, color: 15, garment: { slot: "top", covers: [SKIN_CHEST, SKIN_ABDOMEN], cut: "test:cut_tee" } },
+  { type: "item", class: "garment", id: "test:uncut_tee", stack: 1, color: 15, garment: { slot: "top", covers: [SKIN_CHEST, SKIN_ABDOMEN] } },
 ] as Def[];
 
 interface Dress {
@@ -76,7 +77,7 @@ test("gloves that cover the forearms draw as gloves with forearms hidden", () =>
 
 test("a garment hides what it covers only once its cut is drawn", () => {
   const plain = drawn({ gloves: "core:cloth_gloves" });
-  expect(drawn({ gloves: "core:cloth_gloves", garment: "core:plain_tee" })).toEqual(plain);
+  expect(drawn({ gloves: "core:cloth_gloves", garment: "test:uncut_tee" })).toEqual(plain);
   const cut = drawn({ gloves: "core:cloth_gloves", garment: "test:cut_tee" });
   expect(cut.triangles).toBeLessThan(plain.triangles);
   expect(cut).toEqual(drawn({ gloves: "core:cloth_gloves", hide: TOP }));
