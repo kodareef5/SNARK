@@ -1,5 +1,5 @@
-// A worn piece's covers (WearFacet.covers) and a drawn garment's join the body's hide mask (characters.ts `hideOf`), so a
-// body in them draws as the same body with those zones hidden by hand.
+// A worn piece's covers (WearFacet.covers) join the body's hide mask (characters.ts `hideOf`), so a body in it draws as the
+// same body with those zones hidden by hand; a garment's join it only while its cut is drawn.
 
 import { expect } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
@@ -17,7 +17,6 @@ import { corePackBytes } from "../fixtures/pack.ts";
 import { test } from "../fixtures/needs-art.ts";
 
 const FOREARMS = (1 << SKIN_FOREARM_L) | (1 << SKIN_FOREARM_R);
-const TOP = (1 << SKIN_CHEST) | (1 << SKIN_ABDOMEN);
 const EXTRA: Def[] = [
   { type: "item", class: "armor", id: "test:long_gloves", stack: 1, color: 1, wear: { slot: "hands", armor: 1, uses: 1, set: "cloth", colors: [1, 15, 225], covers: [SKIN_FOREARM_L, SKIN_FOREARM_R] } },
   { type: "item", class: "garment", id: "test:cut_tee", stack: 1, color: 15, garment: { slot: "top", covers: [SKIN_CHEST, SKIN_ABDOMEN], cut: "test:cut_tee" } },
@@ -75,10 +74,9 @@ test("gloves that cover the forearms draw as gloves with forearms hidden", () =>
   expect(long).toEqual(drawn({ gloves: "core:cloth_gloves", hide: FOREARMS }));
 });
 
-test("a garment hides what it covers only once its cut is drawn", () => {
+// A cut drawn is tests/render/garments-drawn.test.ts.
+test("a garment with no cut, or a cut not made on the body, hides nothing", () => {
   const plain = drawn({ gloves: "core:cloth_gloves" });
   expect(drawn({ gloves: "core:cloth_gloves", garment: "test:uncut_tee" })).toEqual(plain);
-  const cut = drawn({ gloves: "core:cloth_gloves", garment: "test:cut_tee" });
-  expect(cut.triangles).toBeLessThan(plain.triangles);
-  expect(cut).toEqual(drawn({ gloves: "core:cloth_gloves", hide: TOP }));
+  expect(drawn({ gloves: "core:cloth_gloves", garment: "test:cut_tee" })).toEqual(plain);
 });

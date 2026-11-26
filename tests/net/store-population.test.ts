@@ -158,3 +158,15 @@ test("a fetch that never answers counts as failed after its timeout, and a late 
   book.poll();
   expect(asked()).toBe(2);
 });
+
+test("the book keeps each manifest's editions, and gives their colours to the renderer", () => {
+  const book = new PeopleBook();
+  const tee = { id: 4, garment: "core:plain_tee", colours: [12, 0, 200] as const, print: null, name: "Navy tee" };
+  book.take({ editions: [tee], populations: [] });
+  book.take({ editions: [], populations: [] });
+  expect(book.edition(4)?.name).toBe("Navy tee");
+  const out = new Uint8Array(3);
+  expect(book.editionColours(4, out)).toBe(true);
+  expect([...out]).toEqual([12, 0, 200]);
+  expect(book.editionColours(5, out)).toBe(false);
+});

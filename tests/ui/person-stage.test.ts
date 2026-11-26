@@ -5,7 +5,7 @@
 import { expect, test } from "bun:test";
 import { defaultLook, LOOK_BYTES, LOOK_LAYOUT, LOOK_SEX } from "../../shared/anim/look.ts";
 import { compileContent } from "../../shared/content/registry.ts";
-import { GEAR_HELD, GEAR_WORN } from "../../shared/sim/entities.ts";
+import { GEAR_HELD, GEAR_WORN, WORN_FIELDS, WORN_LENGTH } from "../../shared/sim/entities.ts";
 import { isStageReply, parseStageCommand, PRINT_MOST_BYTES, STAGE_FROM, STAGE_TO, stageMessage, type StageCommand } from "../../shared/people/stage.ts";
 import { framingOf, PersonStage, PRINTS_HELD, STAGE_TOOL } from "../../client/core/studio/person.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
@@ -129,11 +129,11 @@ test("the stage judges gear ids against its content and armor by its slot", () =
   expect(stage.apply(command({ kind: "gear", held: "core:survivor" })).notes).toEqual(["core:survivor is not an item here"]);
 });
 
-test("the stage holds a wardrobe and its hide mask, and says garments are not drawn", () => {
+test("the stage holds a wardrobe and its hide mask, and says garments are drawn", () => {
   const stage = new PersonStage(reg);
   const { held, notes } = stage.apply(command({ kind: "wardrobe", slots: [null, garment, { ...garment, item: "core:nothing_here" }, null, null], hide: 4 }));
   expect(notes).toEqual(["core:nothing_here is not an item here"]);
-  expect(held).toEqual({ slots: [null, garment, null, null, null], hide: 4, drawn: false });
+  expect(held).toEqual({ slots: [null, garment, null, null, null], hide: 4, drawn: true });
   expect(stage.hide).toBe(4);
 });
 
@@ -181,4 +181,14 @@ test("the stage writes its person into a sample as a survivor with its look and 
   expect([...actors.look.subarray(LOOK_BYTES)]).toEqual([...stage.look]);
   expect(actors.gear[6 + GEAR_HELD]).toBe(0);
   expect(actors.gear[6 + GEAR_WORN + 4]).toBe(reg.index.get("core:cloth_boots")!);
+});
+
+test("the stage's wardrobe goes to the renderer as items, editions and packed dye", () => {
+  const stage = new PersonStage(reg);
+  const out = new Uint32Array(WORN_LENGTH);
+  expect(stage.wornInto(out)).toBe(false);
+  stage.apply(command({ kind: "wardrobe", slots: [{ item: "core:plain_tee", edition: 3, dye: [12, 40, 200], print: null }, null, null, null, null], hide: 0 }));
+  expect(stage.wornInto(out)).toBe(true);
+  expect([...out.subarray(0, WORN_FIELDS)]).toEqual([reg.index.get("core:plain_tee")!, 3, 12 | (40 << 8) | (200 << 16)]);
+  expect(out.subarray(WORN_FIELDS).every((v) => v === 0)).toBe(true);
 });

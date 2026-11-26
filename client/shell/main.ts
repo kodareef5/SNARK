@@ -243,6 +243,7 @@ async function boot(): Promise<void> {
   const crowd = bench ? (await import("../core/people-crowd.ts")) : null;
   const asked = crowd?.crowdAsked((name) => params.get(name));
   const people = crowd && asked ? new crowd.Crowd(session, hf, reg, asked.scene, asked.looks) : null;
+  let crowdPrinted = false;
   // A trip's page is a tool's too: nobody is at it to unmute, and its pictures are of the world.
   if (params.has("trip")) app.ui.settings.muted = false;
   app.page = {
@@ -354,8 +355,12 @@ async function boot(): Promise<void> {
       if (session.state === "closed") splash.hidden = true;
       return;
     }
-    // A printed crowd wears its prints on the torso once the scene is made.
-    if (people && app.scene && !app.scene.prints.worn) app.scene.prints.worn = people.worn((id) => app.scene!.assets.table.find(id));
+    // A printed crowd's tees are editions only the page knows: their prints are its own.
+    if (people && app.scene && !crowdPrinted) {
+      const book = app.scene.editionPrint;
+      app.scene.editionPrint = (edition) => people.printOf(edition) ?? book?.(edition) ?? null;
+      crowdPrinted = true;
+    }
     const built = (marks[3] = performance.now());
     // The tier says how many pixels to draw for one CSS pixel: the screen's own at most, or on ultra more (canvasRatio).
     const ratio = app.scene ? canvasRatio(app.scene.assets.tier, devicePixelRatio, cssWidth, cssHeight) : devicePixelRatio;

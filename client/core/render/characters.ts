@@ -28,7 +28,9 @@ import type { Seat } from "../../../shared/sim/seats.ts";
 import { isAircraft, isSkateboard, isBoatVehicle, isWheelVehicle, type VehicleDefinition } from "../../../shared/sim/vehicle.ts";
 import { quatAxis, quatMul, quatRotate } from "../../../shared/math/quat.ts";
 import { TAU } from "../../../shared/math/scalar.ts";
-import { B_HEAD, B_HIPS, B_NECK, B_PROP_L, B_PROP_R, B_SHOULDER_L, B_SHOULDER_R, B_UPPER_CHEST, SOCKET_EYE, HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_HEAD, SLOT_FEET, SLOT_HANDS, SLOT_NAMES } from "../../../shared/anim/human.ts";
+import { B_HEAD, B_HIPS, B_NECK, B_PROP_L, B_PROP_R, B_SHOULDER_L, B_SHOULDER_R, B_UPPER_CHEST, SOCKET_EYE, HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_HEAD, SLOT_FEET, SLOT_HANDS, SLOT_LEGS, SLOT_NAMES, SLOT_TORSO } from "../../../shared/anim/human.ts";
+import { WARDROBE_SLOTS } from "../../../shared/sim/items.ts";
+import { cutMesh } from "../../../shared/people/cuts.ts";
 import { RiderSoles, soleOffsets } from "../../../shared/anim/rider-soles.ts";
 import { RiderGrips } from "../../../shared/anim/rider-grips.ts";
 import { BEARD_STYLES, HAIR_STYLES, LOOK_BEARD, LOOK_BODY_BYTES, LOOK_BYTES, LOOK_HAIR, LOOK_SEX, REGION_MAIN, REGION_SECOND, REGION_TRIM, SEX_IDS, defaultLook, lookColors, lookJoints, plantLookFeet, lookScales } from "../../../shared/anim/look.ts";
@@ -59,7 +61,7 @@ import { nearestColour, REGION_BASE } from "../../../shared/pack/palette.ts";
 import { RIDER_TARGET_FLOATS, RIDER_SOLES, RIDER_GRIPS, RIDER_GRIP_RADIUS, RIDER_GRIP_LOW, RIDER_GRIP_HIGH, RIDER_FOREARM_ALIGNMENT, fitRiderControls } from "../../../shared/anim/rider-controls.ts";
 import { anchorFrame, riderTargets, saddleSeat, seatFrame } from "../../../shared/anim/seat.ts";
 import { GEAR_HELD, GEAR_WORN, WORN_FIELDS, WORN_LENGTH } from "../../../shared/sim/entities.ts";
-import { BONE_FLOATS, DRAW_HEAT_SHIFT, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SKINNED, HEAT_COLD, HEAT_WARM, HEAT_WORLD, MAX_BONES, MAX_SKINNED, type FramePacket, type InstanceWriter } from "./packet.ts";
+import { BONE_FLOATS, DRAW_HEAT_SHIFT, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PRINTED, DRAW_SKINNED, HEAT_COLD, HEAT_WARM, HEAT_WORLD, MAX_BONES, MAX_SKINNED, type FramePacket, type InstanceWriter } from "./packet.ts";
 import { Layers, corpseWanted, layerWanted } from "./layers.ts";
 import { MARINE_STORIES, ROAD_STORIES, WEAR_KEY, wearOf } from "./wear.ts";
 import { TireContacts } from "./tire-contact.ts";
@@ -122,8 +124,18 @@ function pastEdge(at: Float64Array, y: number, lean: number): number {
   const below = -(at[1]! + y);
   return below > 0 ? Math.max(0, at[2]! - below * lean) : 0;
 }
-/** The most meshes one body queues: its slots, hair, a beard, a piece worn on its head, deployed vents, a held item and its round. */
-const PARTS = SLOT_COUNT + 7;
+/** The most meshes one body queues: its slots, hair, a beard, a piece worn on its head, deployed vents, a held item and its round, and its garments. */
+const PARTS = SLOT_COUNT + 7 + WARDROBE_SLOTS;
+/**
+ * The body slot each wardrobe slot (WARDROBE_NAMES: top, bottom, outer, shoes, hat) lies on: a garment is drawn at that
+ * slot's level, and not at all while armour is drawn there.
+ */
+const GARMENT_ON: readonly number[] = [SLOT_TORSO, SLOT_LEGS, SLOT_TORSO, SLOT_FEET, SLOT_HEAD];
+/** The palette byte of a garment's instance that carries its print (shared/people/cuts.ts: its regions are 1, 4 and 5). */
+const PRINT_BYTE = 2;
+/** The wardrobe slots of a top and of what is worn over it. */
+const WARDROBE_TOP = 0;
+const WARDROBE_OUTER = 2;
 const PLAIN = defaultLook();
 
 /** Warm a small area of the living hide while keeping its inherited colour visible.
@@ -247,6 +259,8 @@ interface BodySet {
   vents: Int32Array;
   /** Per armor set, 1 where the set is heavy (HEAVY_OUTFIT). */
   heavy: Uint8Array;
+  /** Per content index: the mesh of a garment's cut made on this body, -1 for anything else. */
+  garments: Int32Array;
 }
 
 interface Worn {
@@ -416,6 +430,18 @@ export class Characters {
    * whether it has one. Null for none. The zones of its garments that are drawn are hidden.
    */
   wardrobe: ((id: number, out: Uint32Array) => boolean) | null = null;
+  /**
+   * Fills `out` with the three colours of garment edition `edition` (main, accent and trim; 0 for the garment's own) and
+   * says whether this client knows it. Null knows none, and each garment is drawn in its own colours.
+   */
+  edition: ((edition: number, out: Uint8Array) => boolean) | null = null;
+  /**
+   * The byte a wearer of `edition` carries in its print's region (palette byte 2) at a level drawn `flat` or with
+   * pictures: 0 for no print. Null draws no prints.
+   */
+  printByte: ((edition: number, flat: boolean) => number) | null = null;
+  /** The three dye colours of armour slot `slot` of survivor `id`, as Inventory.dyeOf packs them; 0 for none. Null dyes none. */
+  armorDye: ((id: number, slot: number) => number) | null = null;
   /** Set while the sun casts. Null leaves every body out of the shadows. */
   shadows: BodyShadows | null = null;
   private readonly kinds: (BodyKind | null)[];
@@ -430,7 +456,20 @@ export class Characters {
   private readonly worn: (Worn | null)[];
   /** Per item: the skin zones a garment hides while its cut is drawn, a bit each; 0 for anything else. */
   private readonly garmentHides: Uint32Array;
+  /** Per item: its own colour, which a garment's regions take where neither edition nor dye gives one; and 1 where it takes dye. */
+  private readonly garmentColor: Uint8Array;
+  private readonly garmentDyes: Uint8Array;
   private readonly wornNow = new Uint32Array(WORN_LENGTH);
+  /** Per wardrobe slot of the body being added: the mesh of the garment drawn there this frame, -1 for none. */
+  private readonly garmentAt = new Int32Array(WARDROBE_SLOTS);
+  /** Per body slot of the body being added: 1 while armour is drawn there, as its piece or painted on the body's part. */
+  private readonly armorAt = new Uint8Array(SLOT_COUNT);
+  private readonly editionColor = new Uint8Array(3);
+  /** The instances queued this frame that name a print's layer, and per key while a group is written, 1 where one does. */
+  private readonly printedAt = new Int32Array(MAX_SKINNED);
+  private printedCount = 0;
+  private readonly printedKey: Uint8Array;
+  private readonly garmentTint = new Uint8Array(6);
   /** Per slot of the body being added: the mesh drawn for its worn piece, -1 for its own part. */
   private readonly pieceAt = new Int32Array(SLOT_COUNT);
   private readonly held: (Held | null)[];
@@ -577,6 +616,7 @@ export class Characters {
     this.levels = table.error.reduce((most, e) => Math.max(most, e.length), 1);
     this.plain = table.count * this.levels;
     this.counts = new Uint32Array(this.plain + EXTRA_KEYS);
+    this.printedKey = new Uint8Array(this.plain + EXTRA_KEYS);
     this.cursor = new Uint32Array(this.plain + EXTRA_KEYS);
     this.maskCounts = new Uint32Array(this.counts.length * MASKS);
     this.maskCursor = new Uint32Array(this.counts.length * MASKS);
@@ -589,6 +629,8 @@ export class Characters {
       return { sealed: d.wear.sealed === true, vented: !!d.wear.vents, slot: SLOT_NAMES.indexOf(d.wear.slot), set: sets.indexOf(d.wear.set), colors: d.wear.colors, hides: reg.wearZones[i]! };
     });
     this.garmentHides = Uint32Array.from(reg.defs, (d, i) => (d?.type === "item" && d.garment?.cut ? reg.garmentZones[i]! : 0));
+    this.garmentColor = Uint8Array.from(reg.defs, (d) => (d?.type === "item" && d.garment ? d.color || 15 : 0));
+    this.garmentDyes = Uint8Array.from(reg.defs, (d, i) => (d?.type === "item" && d.garment ? reg.garmentDyes[i]! : 0));
     // Any item whose class gives it a held slot (shared/content/classes.ts) is drawn in the hand by its mesh there: a
     // weapon's code-made box, or a piece converted onto a prop bone (tools/art/build.ts, heldOn).
     this.held = reg.defs.map((d, item) => {
@@ -635,6 +677,8 @@ export class Characters {
         // A missing piece is -1 here, and the body's own part is drawn in the piece's colours.
         vents: Int32Array.from(sets.flatMap(set => SLOT_NAMES.map(part => human(bind.own(piece(set, part), "vents", body))))),
         armor: sets.map((set) => Int32Array.from(SLOT_NAMES, (part) => human(bind.own(piece(set, part), "worn", body)))),
+        // A garment is cut for a body, and keyed by the body's mesh id with the sex.
+        garments: Int32Array.from(reg.defs, (g) => (g?.type === "item" && g.garment?.cut ? human(table.find(cutMesh(`${d.mesh}_${sex}`, g.garment.cut))) : -1)),
         heavy: Uint8Array.from(sets, (set) => {
           const coarsest = (m: number): number => assets.manifest.meshes[m]!.levels.at(-1)!.tris;
           let worn = 0, bare = 0;
@@ -1531,13 +1575,58 @@ export class Characters {
 
   /**
    * The skin zones a survivor leaves undrawn, a bit each: the one place a body's hide mask is made. The pieces drawn for
-   * it (pieceAt) and its drawn garments hide what they cover.
+   * it (pieceAt) and the garments drawn for it (garmentAt, after `dress`) hide what they cover.
    */
   private hideOf(id: number, gear: Uint16Array | null, gearAt: number): number {
     let hide = this.skinHidden?.(id) ?? 0;
     if (gear) for (let slot = 0; slot < SLOT_COUNT; slot++) if (this.pieceAt[slot]! >= 0) hide |= this.worn[gear[gearAt + GEAR_WORN + slot]!]!.hides;
-    if (this.wardrobe?.(id, this.wornNow)) for (let k = 0; k < WORN_LENGTH; k += WORN_FIELDS) hide |= this.garmentHides[this.wornNow[k]!] ?? 0;
+    for (let k = 0; k < WARDROBE_SLOTS; k++) if (this.garmentAt[k]! >= 0) hide |= this.garmentHides[this.wornNow[k * WORN_FIELDS]!]!;
     return hide >>> 0;
+  }
+
+  /**
+   * Which garments of survivor `id` are drawn this frame, into garmentAt, its wardrobe into wornNow: each whose cut is
+   * made on `set` and can be drawn now, where no armour is drawn on its body slot (armorAt). A top under something worn
+   * over it that covers all the top does is left out.
+   */
+  private dress(id: number, set: BodySet, headless: boolean): void {
+    const at = this.garmentAt.fill(-1);
+    if (!this.wardrobe?.(id, this.wornNow)) return;
+    for (let k = 0; k < WARDROBE_SLOTS; k++) {
+      const mesh = set.garments[this.wornNow[k * WORN_FIELDS]!] ?? -1, slot = GARMENT_ON[k]!;
+      if (mesh < 0 || this.armorAt[slot] === 1 || (headless && slot === SLOT_HEAD)) continue;
+      // A cut whose page has not come, or with no level here yet, is asked for, and the skin is drawn until it can be.
+      if (this.assets.known(mesh) && this.assets.level(mesh, this.slotLod[slot]!) >= 0) at[k] = mesh;
+    }
+    const top = this.garmentHides[this.wornNow[WARDROBE_TOP * WORN_FIELDS]!]!, over = this.garmentHides[this.wornNow[WARDROBE_OUTER * WORN_FIELDS]!]!;
+    if (at[WARDROBE_TOP]! >= 0 && at[WARDROBE_OUTER]! >= 0 && top !== 0 && (top & ~over) === 0) at[WARDROBE_TOP] = -1;
+  }
+
+  /**
+   * Queues the garments `dress` chose for the body being added, each at its body slot's level, in its slot's dye over its
+   * edition's colours over its own, the look's colours `tint` in the other regions. They cast no shadow: the body does.
+   */
+  private queueGarments(tint: Uint8Array, tintAt: number): void {
+    const part = this.part, casts = part.casts, c = this.garmentTint, e = this.editionColor;
+    part.casts = 0;
+    for (let k = 0; k < WARDROBE_SLOTS; k++) {
+      const mesh = this.garmentAt[k]!;
+      if (mesh < 0) continue;
+      const item = this.wornNow[k * WORN_FIELDS]!, edition = this.wornNow[k * WORN_FIELDS + 1]!;
+      const dye = this.garmentDyes[item] === 1 ? this.wornNow[k * WORN_FIELDS + 2]! : 0, own = this.garmentColor[item]!;
+      if (edition === 0 || !this.edition?.(edition, e)) e.fill(0);
+      for (let q = 0; q < 6; q++) c[q] = tint[tintAt + q]!;
+      c[REGION_MAIN - REGION_BASE] = (dye & 0xff) || e[0]! || own;
+      c[REGION_SECOND - REGION_BASE] = ((dye >>> 8) & 0xff) || e[1]! || own;
+      c[REGION_TRIM - REGION_BASE] = ((dye >>> 16) & 0xff) || e[2]! || own;
+      part.lod = this.slotLod[GARMENT_ON[k]!]!;
+      const flat = part.lod >= this.assets.table.flat[mesh]!;
+      c[PRINT_BYTE] = edition !== 0 && this.printByte ? this.printByte(edition, flat) : 0;
+      this.queuePart(mesh, c, 0, -1, false);
+      // Only a draw with a print in it takes the printed program, which costs more on every pixel.
+      if (c[PRINT_BYTE] !== 0 && !flat) this.printedAt[this.printedCount++] = this.count - 1;
+    }
+    part.casts = casts;
   }
 
   /** The first level from which each of a body set's parts is flat. */
@@ -1586,6 +1675,7 @@ export class Characters {
     this.groundWorld = world;
     this.packet = p ?? this.packet;
     this.count = 0;
+    this.printedCount = 0;
     this.tireContacts.begin();
     this.windscreens.begin();
     this.fallingDoors.begin(this.frame + 1);
@@ -1852,7 +1942,11 @@ export class Characters {
       // Too far to tell plates from paint, a heavy outfit is drawn as the body's own part in its colours.
       const painted = piece >= 0 && !own && set.heavy[worn!.set] === 1 && lod === set.error.length - 1 && set.slots[slot]! >= 0;
       this.pieceAt[slot] = painted ? -1 : piece;
+      this.armorAt[slot] = piece >= 0 ? 1 : 0;
     }
+    // A body seen only in the shadows wears nothing over its skin: its garments cast none.
+    if (unseen) this.garmentAt.fill(-1);
+    else this.dress(id, set, headless);
     const hide = unseen ? 0 : this.hideOf(id, gear, gearAt);
     const tint = view ? this.lookColor : colors;
     const tintAt = view ? 0 : colorAt;
@@ -1867,21 +1961,21 @@ export class Characters {
       part.lod = this.slotLod[slot]!;
       if (heavy && lod === set.error.length - 1 && set.slots[slot]! >= 0) {
         // Too far to tell plates from paint: the body's own part in the outfit's colours, a fifth of the triangles.
-        const c = this.wornColor;
-        c.fill(worn!.colors[0]);
-        c[REGION_SECOND - REGION_BASE] = worn!.colors[1];
-        c[REGION_TRIM - REGION_BASE] = worn!.colors[2];
+        const c = this.wornColor, dye = this.armorDye?.(id, slot) ?? 0;
+        c.fill((dye & 0xff) || worn!.colors[0]);
+        c[REGION_SECOND - REGION_BASE] = ((dye >>> 8) & 0xff) || worn!.colors[1];
+        c[REGION_TRIM - REGION_BASE] = ((dye >>> 16) & 0xff) || worn!.colors[2];
         this.queuePart(set.slots[slot]!, c, 0, -1, unseen || hidden);
         if (slot === SLOT_HEAD) { covered = true; sealed = worn!.sealed; }
         continue;
       }
       if (piece >= 0) {
-        // The piece uses its own three colours, and the body's colours for the other regions.
-        const c = this.wornColor;
+        // The piece uses its own three colours or its slot's dye, and the body's colours for the other regions.
+        const c = this.wornColor, dye = this.armorDye?.(id, slot) ?? 0;
         for (let q = 0; q < 6; q++) c[q] = view ? this.lookColor[q]! : colors[colorAt + q]!;
-        c[REGION_MAIN - REGION_BASE] = worn!.colors[0];
-        c[REGION_SECOND - REGION_BASE] = worn!.colors[1];
-        c[REGION_TRIM - REGION_BASE] = worn!.colors[2];
+        c[REGION_MAIN - REGION_BASE] = (dye & 0xff) || worn!.colors[0];
+        c[REGION_SECOND - REGION_BASE] = ((dye >>> 8) & 0xff) || worn!.colors[1];
+        c[REGION_TRIM - REGION_BASE] = ((dye >>> 16) & 0xff) || worn!.colors[2];
         if (heavy) {
           // Never finer than the body beside it, and coarser sooner (HEAVY_RELAX).
           const level = Math.max(part.lod, this.assets.choose(set.error, far * this.assets.tier.bodyError * HEAVY_RELAX, this.lastHeavy.get(id) ?? -1));
@@ -1905,6 +1999,7 @@ export class Characters {
       const body = set.slots[slot]!;
       if (body >= 0 && (piece < 0 || (slot === SLOT_HEAD && !sealed))) this.queuePart(body, tint, tintAt, -1, unseen || hidden, hide);
     }
+    this.queueGarments(tint, tintAt);
     // Hair and a beard go with the head; wings and what is held with the hands.
     part.lod = this.slotLod[SLOT_HEAD]!;
     if (view && (!headless || casts !== 0)) {
@@ -2256,6 +2351,8 @@ export class Characters {
       any++;
     }
     if (any === 0) return;
+    const printed = this.printedKey;
+    if (this.printedCount > 0) for (let q = 0; q < this.printedCount; q++) if (this.near[this.printedAt[q]!] === want) printed[this.key[this.printedAt[q]!]!] = 1;
     let total = p.transientCount;
     for (let k = 0; k < counts.length; k++) {
       this.cursor[k] = total;
@@ -2265,7 +2362,8 @@ export class Characters {
       const stand = x < 0 ? -1 : this.extra[x + 2]!;
       const mesh = Math.floor(key / this.levels), lod = key % this.levels;
       // Bodies standing in a pose on one bone are a draw of their own. Each shows as hot as its kind in a heat view.
-      const f = (stand >= 0 ? flags | DRAW_ONE_BONE : flags) | (this.heatView ? (this.meshHeat.get(mesh) ?? HEAT_WARM) << DRAW_HEAT_SHIFT : 0);
+      const f = (stand >= 0 ? flags | DRAW_ONE_BONE : flags) | (this.heatView ? (this.meshHeat.get(mesh) ?? HEAT_WARM) << DRAW_HEAT_SHIFT : 0) | (printed[k] === 1 ? DRAW_PRINTED : 0);
+      printed[k] = 0;
       draw?.(mesh, lod, total, counts[k]!, f, x < 0 ? 0 : this.extra[x + 1]!, stand < 0 ? 0 : stand, x < 0 ? 0 : this.extra[x + 3]!);
       if (byMask) {
         for (let m = 0, at = total; m < MASKS; m++) {
