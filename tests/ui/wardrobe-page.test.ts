@@ -7,7 +7,7 @@ import { parseStageCommand, stageMessage } from "../../shared/people/stage.ts";
 import { cluster, resolveAdmin } from "../../client/core/admin/navigation.ts";
 import {
   BUSY_WAITS, CLOTH_COLOURS, DRAFT_PRINT, FIT_LEAST, FIT_TRIES, LAYERS_MAX, LOOKS, STORE_CAPS, addPicture, addShape, addText, draftFaults, draftFrom, fitNote, fitStep,
-  heldSize, layerAt, lookOf, moveLayer, newDraft, newSheet, outcomeText, placeOf, previewChanges, publishBody, publishDraft, retireEdition, wardrobeCommand,
+  changeGarment, heldSize, layerAt, placeFor, sheetOfCut, lookOf, moveLayer, newDraft, newSheet, outcomeText, placeOf, previewChanges, publishBody, publishDraft, retireEdition, wardrobeCommand,
   type Answer, type Draft, type PeopleState, type Preview, type PublishIo,
 } from "../../client/core/admin/wardrobe.ts";
 
@@ -24,7 +24,7 @@ const S0 = state(0);
 
 /** A draft that passes: named, coloured, with a text on a square sheet. */
 function good(): Draft {
-  const d = newDraft("core:plain_tee");
+  const d = newDraft("core:plain_tee", null);
   d.name = "Sunrise tee";
   d.colours = [34, 58, 11];
   d.sheet = newSheet();
@@ -199,7 +199,7 @@ test("a retire goes over the page's revision and a stale one answers the newer s
 });
 
 test("the wardrobe sent puts the garment in its slot and parses as a stage command", () => {
-  const top = wardrobeCommand(GARMENTS[0], 0, [34, 58, 11], DRAFT_PRINT);
+  const top = wardrobeCommand(GARMENTS[0], 0, [34, 58, 11], { key: DRAFT_PRINT, place: placeFor("tee") });
   expect(top.slots.map((s) => s?.item ?? null)).toEqual(["core:plain_tee", null, null, null, null]);
   const bottom = wardrobeCommand(GARMENTS[1], 3, [1, 2, 3], null);
   expect(bottom.slots[1]).toEqual({ item: "core:plain_trousers", edition: 3, dye: [1, 2, 3], print: null });
@@ -253,4 +253,25 @@ test("the cluster nav lists the wardrobe, which opens at /admin/wardrobe/", () =
   expect(cluster.map(([slug]) => slug)).toContain("wardrobe");
   const at = resolveAdmin("https://snark.test/admin/wardrobe/", [], (href, base) => new URL(href, base));
   expect([at.view, at.title, at.world]).toEqual(["wardrobe", "Wardrobe", null]);
+});
+
+test("a new print starts on the cut's own place, a tee's on the chest", () => {
+  const d = newDraft("core:plain_tee", "tee");
+  expect(d.place).toEqual({ u: 0.06, v: 0.12, w: 0.25, h: 0.2, scale: 1, turn: 0 });
+  const front = sheetOfCut("tee")!.panels.find((p) => p.name === "torso")!;
+  // The chest is the torso's left half: the front.
+  expect(d.place.u + d.place.w / 2).toBeLessThan(front.rect[0] + front.rect[2] / 2);
+  expect(front.halves).toEqual(["front", "back"]);
+  expect(sheetOfCut(null)).toBeNull();
+});
+
+test("a print not yet moved follows a change of garment to the new cut's place", () => {
+  const tee = { id: "core:plain_tee", label: "tee", slot: "top", dyes: true, cut: "tee" };
+  const jeans = { id: "core:plain_trousers", label: "jeans", slot: "bottom", dyes: true, cut: "jeans" };
+  const d = newDraft(tee.id, tee.cut);
+  changeGarment(d, tee, jeans);
+  expect([d.garment, d.place]).toEqual([jeans.id, placeFor("jeans")]);
+  d.place = { ...d.place, u: 0.3 };
+  changeGarment(d, jeans, tee);
+  expect(d.place.u).toBe(0.3);
 });

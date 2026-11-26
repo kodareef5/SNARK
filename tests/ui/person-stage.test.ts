@@ -7,7 +7,8 @@ import { defaultLook, LOOK_BYTES, LOOK_LAYOUT, LOOK_SEX } from "../../shared/ani
 import { compileContent } from "../../shared/content/registry.ts";
 import { GEAR_HELD, GEAR_WORN, WORN_FIELDS, WORN_LENGTH } from "../../shared/sim/entities.ts";
 import { isStageReply, parseStageCommand, PRINT_MOST_BYTES, STAGE_FROM, STAGE_TO, stageMessage, type StageCommand } from "../../shared/people/stage.ts";
-import { framingOf, PersonStage, PRINTS_HELD, STAGE_TOOL } from "../../client/core/studio/person.ts";
+import { DRAFT_EDITION, framingOf, PersonStage, PRINTS_HELD, STAGE_TOOL } from "../../client/core/studio/person.ts";
+import { printPath } from "../../shared/people/doc.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 
 const reg = compileContent(CORE_CONTENT).registry!;
@@ -17,7 +18,8 @@ const command = (data: object): StageCommand => {
   if (!p.command) throw new Error(p.problem);
   return p.command;
 };
-const garment = { item: "core:cloth_shirt", edition: 0, dye: [12, 40, 200], print: "draft-1" };
+const PLACE = { u: 0.06, v: 0.12, w: 0.25, h: 0.2, scale: 1, turn: 0 };
+const garment = { item: "core:cloth_shirt", edition: 0, dye: [12, 40, 200], print: { key: "draft-1", place: PLACE } };
 
 test("a message not addressed to the stage is not a command", () => {
   for (const data of [null, 1, "look", [], {}, { kind: "look" }, { to: "elsewhere", kind: "hour", hour: 3 }]) {
@@ -59,7 +61,9 @@ test("a wardrobe is five garments or nulls, each with an edition, a dye and a pr
     [{ ...garment, dye: [1, 2, 300] }, "dye"],
     [{ ...garment, edition: -1 }, "edition"],
     [{ ...garment, edition: 1.5 }, "edition"],
-    [{ ...garment, print: "a b" }, "print"],
+    [{ ...garment, print: { key: "a b", place: PLACE } }, "print"],
+    [{ ...garment, print: "draft-1" }, "print"],
+    [{ ...garment, print: { key: "d", place: { ...PLACE, u: 2 } } }, "place"],
     [{ ...garment, item: "shirt" }, "item"],
   ];
   for (const [g, word] of bad) expect(parse({ kind: "wardrobe", slots: [g, null, null, null, null] }).problem).toContain(word);
@@ -191,4 +195,37 @@ test("the stage's wardrobe goes to the renderer as items, editions and packed dy
   expect(stage.wornInto(out)).toBe(true);
   expect([...out.subarray(0, WORN_FIELDS)]).toEqual([reg.index.get("core:plain_tee")!, 3, 12 | (40 << 8) | (200 << 16)]);
   expect(out.subarray(WORN_FIELDS).every((v) => v === 0)).toBe(true);
+});
+
+test("a draft's print is drawn as the game draws an edition's, by a stand-in edition", () => {
+  const stage = new PersonStage(reg);
+  const tee = { item: "core:plain_tee", edition: 0, dye: [12, 40, 200], print: { key: "draft-1", place: PLACE } };
+  stage.apply(command({ kind: "wardrobe", slots: [tee, null, null, null, null], hide: 0 }));
+  const out = new Uint32Array(WORN_LENGTH);
+  stage.wornInto(out);
+  expect(out[1]).toBe(DRAFT_EDITION);
+  // No picture held yet: nothing printed.
+  expect(stage.printOf(DRAFT_EDITION)).toBeNull();
+  stage.apply(command({ kind: "print", key: "draft-1", url: "/x.png" }));
+  expect(stage.printOf(DRAFT_EDITION)).toBeNull();
+  stage.sized("draft-1", 512, 256);
+  const print = stage.printOf(DRAFT_EDITION)!;
+  expect(print).toMatchObject({ width: 512, height: 256, place: PLACE });
+  expect(stage.pathOf("draft-1")).toBe(printPath(print.hash));
+  // The same object each frame, so the renderer keeps its layer; a picture sent again is a new one.
+  expect(stage.printOf(DRAFT_EDITION)).toBe(print);
+  stage.apply(command({ kind: "print", key: "draft-1", url: "/y.png" }));
+  stage.sized("draft-1", 512, 256);
+  expect(stage.printOf(DRAFT_EDITION)!.hash).not.toBe(print.hash);
+  expect(stage.printOf(7)).toBeNull();
+});
+
+test("a published edition's print is drawn under its own edition", () => {
+  const stage = new PersonStage(reg);
+  stage.apply(command({ kind: "print", key: "print.abc", url: "/media/print.abc.png" }));
+  stage.sized("print.abc", 256, 256);
+  stage.apply(command({ kind: "wardrobe", slots: [{ item: "core:plain_tee", edition: 7, dye: [0, 0, 0], print: { key: "print.abc", place: PLACE } }, null, null, null, null], hide: 0 }));
+  expect(stage.printOf(7)).toMatchObject({ width: 256, place: PLACE });
+  stage.unheld("print.abc");
+  expect(stage.printOf(7)).toBeNull();
 });
