@@ -337,7 +337,9 @@ The swim gate walks each part of each body with the game's stepper and every pie
 standing on dry ground in no body's square, 12 m past the body's own. The build asks the same
 walk of its pools once its pieces stand (`pool-pieces.ts`), and where pieces close every way
 out it cuts a ladder clear of them, else takes the street's small pieces from the way
-(furniture, fences, wrecks: never a building's piece), else takes the pool out.
+(furniture, fences, wrecks: never a building's piece), else takes the pool out. A pond's or a
+stream's part of up to 10,000 m2 gets the ladder or loses the pieces too; it is never taken
+out, and the build says which it left.
 
 "Water standing in a pit" counts any body of up to 10,000 m2, waded or swum, whose water lies
 over 1 m under the ground two corners out from it. "Sunk pools" counts only bodies a survivor

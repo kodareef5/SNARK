@@ -3,6 +3,9 @@
 // walk the map's audit gates on (way-out.ts). Where pieces stand in every way out of a part of a pool, in this order: a
 // ladder is cut at a stretch of rim no piece stands on; else the street's small pieces in the way are taken (`givesWay`,
 // never a building's); else the part, and with its last part the pool, is taken out and its ground restored.
+//
+// A pond's or a stream's part of up to 10,000 m2 is walked too, and one a survivor is caught in gets the ladder or loses
+// the pieces; it is never taken out, and where neither serves it is left and said.
 
 import { streetKind } from "../../content/street.ts";
 import type { Registry } from "../../shared/content/registry.ts";
@@ -31,6 +34,8 @@ const PAST = CLEAR + 8;
 const WIDE = 32;
 /** Metres over a stretch of rim, from above a step up to over a head, in which a piece makes it no place for a ladder. */
 const OVER_RIM = [0.55, 1.9] as const;
+/** The most squares of a pond or a stream that is walked here, 10,000 m2, and the stretches of its bank a ladder is tried at. */
+const SMALL = 2500, BANK_TRIES = 48;
 /** Times every pool is walked again after ground changed, before what is still caught is taken out unasked. */
 const ROUNDS = 4;
 
@@ -42,6 +47,8 @@ export interface PoolsOpened {
   cleared: number;
   /** Pools taken out whole or in part. */
   takenOut: number;
+  /** Ponds' and streams' parts left with no way out. */
+  left: number;
   notSettled: number;
   readonly taken: Set<number>;
   readonly kinds: Map<string, number>;
@@ -51,22 +58,21 @@ export interface PoolsOpened {
 
 export function openedLine(o: PoolsOpened): string {
   const kinds = [...o.kinds].sort((p, q) => q[1] - p[1] || (p[0] < q[0] ? -1 : 1)).map(([k, c]) => `${c} ${k.replace("core:", "")}`).join(", ");
-  return `${o.swum} swum, ${o.caught} with no way out past the pieces; a ladder cut clear of the pieces in ${o.laddered}; pieces taken from the way in ${o.cleared} (${o.taken.size}${kinds ? `: ${kinds}` : ""}); ${o.takenOut} taken out whole or in part, their ground restored; ${o.notSettled} not settled`;
+  return `${o.swum} swum, ${o.caught} with no way out past the pieces; a ladder cut clear of the pieces in ${o.laddered}; pieces taken from the way in ${o.cleared} (${o.taken.size}${kinds ? `: ${kinds}` : ""}); ${o.takenOut} taken out whole or in part, their ground restored; ${o.left} parts of ponds and streams left with no way out; ${o.notSettled} not settled`;
 }
 
 /**
- * Walks each rimmed pool of `lakes` a survivor swims in on `height`, with `statics` standing (in lattice metres:
- * `grid.x0` and `z0` off the map's), and mends those it is caught in. `height`, `lakes` and `pools` change as settleRims
- * changes them, and it settles them again after any change. `sea` is the sea's level, -Infinity for none.
+ * Walks each pool of `lakes` a survivor swims in on `height`, and each pond or stream of up to SMALL squares, with
+ * `statics` standing (in lattice metres: `grid.x0` and `z0` off the map's), and mends those it is caught in. `height`,
+ * `lakes` and `pools` change as settleRims changes them, and it settles them again after any change. `sea` is the sea's
+ * level, -Infinity for none.
  */
 export function openPools(lakes: Lakes, rules: LakeRules | false | undefined, height: Float32Array, grid: Grid, minY: number, stepY: number, sea: number, pools: PoolGround, reg: Registry, statics: readonly StaticPiece[]): PoolsOpened {
   const { nx, nz, sizeX, sizeZ } = grid, N = nx * nz, cell = TERRAIN_CELL;
   const dims: MapDims = { chunksX: sizeX / CHUNK_SIZE, chunksZ: sizeZ / CHUNK_SIZE }, chunks = dims.chunksX * dims.chunksZ;
-  const done: PoolsOpened = { swum: 0, caught: 0, laddered: 0, cleared: 0, takenOut: 0, notSettled: 0, taken: new Set(), kinds: new Map(), did: [] };
-  const judged = (b: number): boolean => rimmed(lakes.bodies[b - 1]!.kind);
-  let any = false;
-  for (const i of pools.beds.keys()) if (lakes.body[i] !== 0) { any = true; break; }
-  if (!any) return done;
+  const done: PoolsOpened = { swum: 0, caught: 0, laddered: 0, cleared: 0, takenOut: 0, left: 0, notSettled: 0, taken: new Set(), kinds: new Map(), did: [] };
+  const pool = (b: number): boolean => rimmed(lakes.bodies[b - 1]!.kind);
+  if (lakes.bodies.length === 0) return done;
 
   // The ground as the map will hold it: engine sample (si, sj) is the build's (nx - 1 - si, nz - 1 - sj), its place N - 1 - i.
   const heights = new Uint16Array(N);
@@ -155,14 +161,14 @@ export function openPools(lakes: Lakes, rules: LakeRules | false | undefined, he
     }
     return [...own].sort((p, q) => p - q);
   };
-  const found = new Found(), outOf = new Set<number>();
+  const found = new Found(), outOf = new Set<number>(), givenUp = new Set<number>();
   const lift = (k: number): void => { const ref = refOf.get(k)!; structs.remove(ref); refOf.delete(k); pieceOf.delete(ref); };
 
   wet();
   for (let round = 0; round <= ROUNDS; round++) {
     let moved = false;
     for (let b = 1; b <= lakes.bodies.length; b++) {
-      if (!judged(b) || of[b]!.length === 0) continue;
+      if (of[b]!.length === 0 || (!pool(b) && of[b]!.length > SMALL)) continue;
       const parts = walked(b), swum = parts.filter((p) => p.swims), caught = swum.filter((p) => p.out === false);
       if (round === 0) {
         if (swum.length > 0) done.swum++;
@@ -171,7 +177,8 @@ export function openPools(lakes: Lakes, rules: LakeRules | false | undefined, he
       }
       let left = parts.length;
       for (const part of caught) {
-        const inPart = new Set(part.squares), where = `${part.x.toFixed(0)}, ${part.z.toFixed(0)}`;
+        if (givenUp.has(part.squares[0]!)) continue;
+        const inPart = new Set(part.squares), where = `${pool(b) ? "pool" : "water"} at ${part.x.toFixed(0)}, ${part.z.toFixed(0)}`;
         /** Whether this part is still one a survivor is caught in. */
         const still = (): boolean => walked(b).some((p) => p.swims && p.out === false && p.squares.some((k) => inPart.has(k)));
         const own = samplesOf(b, part);
@@ -183,9 +190,10 @@ export function openPools(lakes: Lakes, rules: LakeRules | false | undefined, he
           },
           sync,
           works: () => !still(),
+          ...(pool(b) ? {} : { tries: BANK_TRIES }),
         })) {
           done.laddered++;
-          done.did.push(`pool at ${where}: a ladder cut where no piece stands`);
+          done.did.push(`${where}: a ladder cut where no piece stands`);
           moved = true;
           continue;
         }
@@ -209,10 +217,17 @@ export function openPools(lakes: Lakes, rules: LakeRules | false | undefined, he
           }
           for (const k of gone) { done.taken.add(k); done.kinds.set(statics[k]!.kind, (done.kinds.get(statics[k]!.kind) ?? 0) + 1); }
           done.cleared++;
-          done.did.push(`pool at ${where}: ${gone.map((k) => statics[k]!.kind.replace("core:", "")).join(", ")} taken from its way out`);
+          done.did.push(`${where}: ${gone.map((k) => statics[k]!.kind.replace("core:", "")).join(", ")} taken from its way out`);
           continue;
         }
         for (const k of near) put(k);
+        if (!pool(b)) {
+          // A stream is no pool to take out: said, left, and not tried again.
+          givenUp.add(part.squares[0]!);
+          done.left++;
+          done.did.push(`${where}: left with no way out, ${part.squares.length * cell * cell} m2`);
+          continue;
+        }
         // No way past what stands: the part goes back to ground, and with its last part the pool.
         const whole = --left === 0;
         const out = whole ? [...pools.beds.keys()].filter((i) => lakes.body[i] === b) : own;
@@ -222,7 +237,7 @@ export function openPools(lakes: Lakes, rules: LakeRules | false | undefined, he
         sync(round1);
         if (!outOf.has(b)) done.takenOut++;
         outOf.add(b);
-        done.did.push(`pool at ${where}: ${whole ? "taken out" : "the caught part of it taken out"}, ${out.length} samples back to ground`);
+        done.did.push(`${where}: ${whole ? "taken out" : "the caught part of it taken out"}, ${out.length} samples back to ground`);
         moved = true;
         wet();
       }

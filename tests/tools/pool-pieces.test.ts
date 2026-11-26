@@ -21,10 +21,10 @@ const inPool = (col: number, row: number): boolean => col >= 29 && col <= 35 && 
  * A pool 12 m square in the middle of the yard, its water at 1 m and its bed 1.5 m under it, the ground round it at
  * `rim`; settled as the build settles it, with `rules`.
  */
-function yard(rim: number, rules: object = {}): { lakes: Lakes; height: Float32Array; pools: PoolGround; open: (statics: StaticPiece[]) => PoolsOpened; wet: () => number } {
+function yard(rim: number, rules: object = {}, kind = "pool"): { lakes: Lakes; height: Float32Array; pools: PoolGround; open: (statics: StaticPiece[]) => PoolsOpened; wet: () => number } {
   const body = new Uint16Array(N * N), height = new Float32Array(N * N).fill(rim);
   for (let row = 29; row <= 35; row++) for (let col = 29; col <= 35; col++) { body[at(col, row)] = 1; height[at(col, row)] = -0.5; }
-  const lakes: Lakes = { body, bodies: [{ name: "", surface: 1, kind: "pool" }], made: [] };
+  const lakes: Lakes = { body, bodies: [{ name: "", surface: 1, kind }], made: [] };
   const pools = poolGround(lakes, height);
   settleRims(lakes, rules, height, grid, MIN_Y, STEP_Y, pools);
   return { lakes, height, pools, open: (statics) => openPools(lakes, rules, height, grid, MIN_Y, STEP_Y, -Infinity, pools, reg, statics), wet: () => body.filter((b) => b === 1).length };
@@ -90,6 +90,23 @@ test("a pool a building's walls stand all round is taken out and its ground laid
   expect(y.wet()).toBe(0);
   for (let row = 29; row <= 35; row++) for (let col = 29; col <= 35; col++) expect(y.height[at(col, row)]).toBeCloseTo(1.1, 2);
   expect(y.pools.restored.size).toBe(49);
+});
+
+test("a pond in a pit gets a ladder at its bank; walled round by a building it is left, never taken out", () => {
+  const pit = yard(4.1, {}, "pond"), before = Array.from(pit.height);
+  const o = pit.open([]);
+  expect([o.swum, o.caught, o.laddered, o.takenOut, o.left]).toEqual([1, 1, 1, 0, 0]);
+  const cut = [...pit.height.keys()].filter((i) => pit.height[i] !== before[i]);
+  expect(cut.length).toBeGreaterThan(0);
+  expect(cut.every((i) => inPool(i % N, Math.floor(i / N)))).toBe(true);
+  // No pool's bed is kept of it: the settling of pools would take it for one.
+  expect(pit.pools.beds.size).toBe(0);
+  expect(pit.open([]).caught).toBe(0);
+  const flat = yard(1.1, {}, "pond"), level = Array.from(flat.height);
+  const walled = flat.open([...walls(0, 1.1), ...walls(1, 1.1), ...walls(2, 1.1), ...walls(3, 1.1)]);
+  expect([walled.swum, walled.caught, walled.laddered, walled.cleared, walled.takenOut, walled.left]).toEqual([1, 1, 0, 0, 0, 1]);
+  expect(flat.wet()).toBe(49);
+  expect(Array.from(flat.height)).toEqual(level);
 });
 
 test("only the street's unowned small pieces give way: no wall, no roof plant, no piece a building owns", () => {

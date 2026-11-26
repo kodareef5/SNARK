@@ -634,19 +634,19 @@ function cutLadder({ q, q2, e, top }: LadderRim, inPart: (i: number) => boolean,
 }
 
 /**
- * One more ladder for the rimmed body of `samples`, where the ground's own way out is not one: a piece stands on it
+ * One more ladder for the body of `samples`, where the ground's own way out is not one: a piece stands on it
  * (pool-pieces.ts). The stretches of rim are tried from the lowest, those `free` passes by their two dry samples and
- * their height: each is cut, `sync` is told the samples that changed, and `works` says whether the body is now left. One
- * that does not work is put back. True where a ladder was kept, its samples the body's bed.
+ * their height, `tries` of them at the most: each is cut, `sync` is told the samples that changed, and `works` says
+ * whether the body is now left. One that does not work is put back. True where a ladder was kept: a pool's bed from then on.
  */
 export function ladderClear(lakes: Lakes, rules: LakeRules | false | undefined, height: Float32Array, grid: Grid, pools: PoolGround, samples: readonly number[],
-  o: { free: (rim: readonly [number, number], top: number) => boolean; sync: (changed: readonly number[]) => void; works: () => boolean }): boolean {
+  o: { free: (rim: readonly [number, number], top: number) => boolean; sync: (changed: readonly number[]) => void; works: () => boolean; tries?: number }): boolean {
   const r = { ...DEFAULTS, ...(rules || {}) }, { body } = lakes, { nx, nz } = grid, N = nx * nz;
   const b = body[samples[0]!]!;
   const inPart = (i: number): boolean => i >= 0 && i < N && body[i] === b, dry = (i: number): boolean => i >= 0 && i < N && body[i] === 0;
   let tried = 0;
   for (const rim of ladderRims(samples, inPart, dry, height, nx)) {
-    if (tried === LADDERS) break;
+    if (tried === (o.tries ?? LADDERS)) break;
     if (!o.free([rim.q + rim.e, rim.q2 + rim.e], rim.top)) continue;
     const saved = cutLadder(rim, inPart, height, nx, r.poolClimb);
     if (saved.length === 0) continue;
@@ -654,7 +654,7 @@ export function ladderClear(lakes: Lakes, rules: LakeRules | false | undefined, 
     const changed = saved.map(([i]) => i);
     o.sync(changed);
     if (o.works()) {
-      for (const i of changed) pools.beds.set(i, height[i]!);
+      if (rimmed(lakes.bodies[b - 1]!.kind)) for (const i of changed) pools.beds.set(i, height[i]!);
       return true;
     }
     for (const [i, h] of saved) height[i] = h;
