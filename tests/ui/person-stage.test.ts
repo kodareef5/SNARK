@@ -3,7 +3,7 @@
 // stage's content.
 
 import { expect, test } from "bun:test";
-import { defaultLook, LOOK_BYTES, LOOK_LAYOUT, LOOK_SEX } from "../../shared/anim/look.ts";
+import { defaultLook, LOOK_BYTES, LOOK_SEX, LOOK_SPARE } from "../../shared/anim/look.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { GEAR_HELD, GEAR_WORN, WORN_FIELDS, WORN_LENGTH } from "../../shared/sim/entities.ts";
 import { isStageReply, parseStageCommand, PRINT_MOST_BYTES, STAGE_FROM, STAGE_TO, stageMessage, type StageCommand } from "../../shared/people/stage.ts";
@@ -115,7 +115,7 @@ test("the stage takes a valid look and keeps its own for one out of range", () =
   expect(stage.apply(command({ kind: "look", look })).held).toEqual({ sex: "f", bytes: LOOK_BYTES });
   const version = stage.version;
   const wrong = defaultLook();
-  wrong[LOOK_LAYOUT] = 9;
+  wrong[LOOK_SPARE] = 9;
   const { notes } = stage.apply(command({ kind: "look", look: wrong }));
   expect(notes.join()).toContain("out of range");
   expect(stage.look[LOOK_SEX]).toBe(1);

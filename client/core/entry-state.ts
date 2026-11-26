@@ -1,4 +1,4 @@
-import { LOOK_BYTES, LOOK_V1_BYTES, upgradeLook, validLook } from "../../shared/anim/look.ts";
+import { LOOK_BYTES, validLook } from "../../shared/anim/look.ts";
 export interface EntrySurvivor {
   id: number;
   name: string;
@@ -36,8 +36,8 @@ export function readLaunch(input: string | null): Launch | null {
     if (
       a.intent !== "create" || !validName(a.name) ||
       !Array.isArray(a.look) ||
-      (a.look.length !== LOOK_BYTES && a.look.length !== LOOK_V1_BYTES) || !a.look.every((b:unknown)=>typeof b==="number" && Number.isInteger(b) && b>=0 && b<=255) ||
-      !validLook(upgradeLook(Uint8Array.from(a.look))) ||
+      a.look.length !== LOOK_BYTES || !a.look.every((b:unknown)=>typeof b==="number" && Number.isInteger(b) && b>=0 && b<=255) ||
+      !validLook(Uint8Array.from(a.look)) ||
       !Number.isInteger(a.spawn) ||
       a.spawn < 0 ||
       a.spawn > 254
@@ -47,7 +47,7 @@ export function readLaunch(input: string | null): Launch | null {
       intent: a.intent,
       name: a.name,
       password: a.password,
-      look: Array.from(upgradeLook(Uint8Array.from(a.look))),
+      look: [...a.look] as number[],
       spawn: a.spawn,
       ...(/^[a-f0-9]{32}$/.test(a.request) ? { request: a.request } : {}),
     };

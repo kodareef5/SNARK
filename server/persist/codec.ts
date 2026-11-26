@@ -7,7 +7,7 @@ import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { COLOR_REGIONS, Genome, STAT_COUNT } from "../../shared/sim/genome.ts";
 import { FLAG_BLUEPRINT, FLAG_ON, Inventory } from "../../shared/sim/items.ts";
 import { V_COUNT, Vitals } from "../../shared/sim/vitals.ts";
-import { upgradeLook, validLook } from "../../shared/anim/look.ts";
+import { validLook } from "../../shared/anim/look.ts";
 import { EntityRecord } from "../records.ts";
 import { SAVED, moved, saved, savedAs, type Coding } from "../saved.ts";
 
@@ -545,9 +545,8 @@ const LOOK = saved({
   has: (rec) => rec.look !== null,
   write: (rec, w) => writeBytes(w, rec.look!),
   read(rec, _r, from) {
-    // A look this build cannot read is kept in rec.extra and not worn. A first-layout look is padded.
-    const look = upgradeLook(from.blob);
-    if (validLook(look)) rec.look = look.slice();
+    // A look this build cannot read is kept in rec.extra and not worn.
+    if (validLook(from.blob)) rec.look = from.blob.slice();
     else rec.extra.set(LOOK.id, from.blob.slice());
   },
 });

@@ -1,19 +1,19 @@
-// A look's second layout (shared/anim/look.ts): 72 bytes whose first 28 keep their meaning, so a first-layout look
-// converts by padding. Every field has a range a client cannot step out of, and bytes past the body's shape no bone.
+// A look (shared/anim/look.ts): 72 bytes. Every field has a range a client cannot step out of, and bytes past the body's
+// shape move no bone.
 import { expect, test } from "bun:test";
 import { HUMAN_BONES } from "../../shared/anim/human.ts";
 import {
-  BEARD_STYLES, BROW_STYLES, COMPLEXIONS, FACE_COUNT, LAYOUT_VERSION, LOOK_AGE, LOOK_BEARD, LOOK_BEARD_LENGTH, LOOK_BODY_BYTES, LOOK_BROW, LOOK_BYTES,
-  LOOK_COMPLEXION, LOOK_FACE, LOOK_HAIR_COLOR_2, LOOK_HAIR_LENGTH, LOOK_LAYOUT, LOOK_MUSCLE, LOOK_RESERVED, LOOK_SEX, LOOK_V1_BYTES, LOOK_WEIGHT, REGION_COUNT,
-  defaultLook, faceOf, lookScales, randomLook, setFace, setRegion, upgradeLook, validLook,
+  BEARD_STYLES, BROW_STYLES, COMPLEXIONS, FACE_COUNT, LOOK_AGE, LOOK_BEARD, LOOK_BEARD_LENGTH, LOOK_BODY_BYTES, LOOK_BROW, LOOK_BYTES,
+  LOOK_COMPLEXION, LOOK_FACE, LOOK_HAIR_COLOR_2, LOOK_HAIR_LENGTH, LOOK_MUSCLE, LOOK_RESERVED, LOOK_SEX, LOOK_SPARE, LOOK_WEIGHT, REGION_COUNT,
+  defaultLook, faceOf, lookScales, randomLook, setFace, setRegion, validLook,
 } from "../../shared/anim/look.ts";
 import { HAIR_COLORS } from "../../shared/pack/palette.ts";
 import { Rng } from "../../shared/rng.ts";
 
-test("the default and random looks are valid, of the second layout, and neutral past the colours", () => {
+test("the default and random looks are valid, and neutral past the colours", () => {
   const plain = defaultLook();
-  expect([plain.length, plain[LOOK_LAYOUT], validLook(plain)]).toEqual([LOOK_BYTES, LAYOUT_VERSION, true]);
-  expect([...plain.subarray(LOOK_LAYOUT + 1)].every((v) => v === 0)).toBe(true);
+  expect([plain.length, validLook(plain)]).toEqual([LOOK_BYTES, true]);
+  expect([...plain.subarray(LOOK_SPARE)].every((v) => v === 0)).toBe(true);
   const rng = new Rng(5), faces = new Set<number>();
   for (let i = 0; i < 500; i++) {
     const look = randomLook(rng);
@@ -38,14 +38,14 @@ test("validLook holds every field to its range", () => {
     expect(bad(at, 128)).toBe(false);
     expect(bad(at, 127) && bad(at, 129)).toBe(true);
   }
-  expect([bad(LOOK_LAYOUT, 0), bad(LOOK_LAYOUT, LAYOUT_VERSION + 1)]).toEqual([false, false]);
+  expect(bad(LOOK_SPARE, 1)).toBe(false);
   expect([bad(LOOK_BROW, BROW_STYLES - 1), bad(LOOK_BROW, BROW_STYLES)]).toEqual([true, false]);
   expect([bad(LOOK_COMPLEXION, COMPLEXIONS - 1), bad(LOOK_COMPLEXION, COMPLEXIONS)]).toEqual([true, false]);
   expect([bad(LOOK_HAIR_COLOR_2, HAIR_COLORS), bad(LOOK_HAIR_COLOR_2, HAIR_COLORS + 1)]).toEqual([true, false]);
   expect([bad(LOOK_HAIR_LENGTH, 255), bad(LOOK_BEARD_LENGTH, 255)]).toEqual([true, true]);
   for (let at = LOOK_RESERVED; at < LOOK_FACE; at++) expect(bad(at, 1)).toBe(false);
   expect(validLook(new Uint8Array(LOOK_BYTES - 1))).toBe(false);
-  expect(validLook(defaultLook().subarray(0, LOOK_V1_BYTES))).toBe(false);
+  expect(validLook(defaultLook().subarray(0, 28))).toBe(false);
 });
 
 test("a beard is valid on either body", () => {
@@ -55,20 +55,6 @@ test("a beard is valid on either body", () => {
     look[LOOK_BEARD] = beard;
     expect(validLook(look)).toBe(true);
   }
-});
-
-test("a first-layout look is padded to the second: the same first bytes, then neutral", () => {
-  const old = randomLook(new Rng(11)).slice(0, LOOK_V1_BYTES);
-  const look = upgradeLook(old);
-  expect(look.length).toBe(LOOK_BYTES);
-  expect([...look.subarray(0, LOOK_V1_BYTES)]).toEqual([...old]);
-  expect(look[LOOK_LAYOUT]).toBe(LAYOUT_VERSION);
-  expect([...look.subarray(LOOK_LAYOUT + 1)].every((v) => v === 0)).toBe(true);
-  expect(validLook(look)).toBe(true);
-  // A look of this layout, or of no layout, is left for validLook to judge.
-  const now = defaultLook();
-  expect(upgradeLook(now)).toBe(now);
-  expect(validLook(upgradeLook(new Uint8Array(30)))).toBe(false);
 });
 
 test("bytes past the body's shape change no bone stretch", () => {
