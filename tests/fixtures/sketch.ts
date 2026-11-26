@@ -118,8 +118,8 @@ export interface Stood {
   readonly buildings: Buildings;
   readonly handle: number;
   readonly refs: number[];
-  /** The answer for each piece put, as `judge` gives it with the building's pins, for the store as it stands. */
-  judge(): number[];
+  /** The answer for each piece put, as `judge` gives it with the building's pins, for the store as it stands. `share` is the storey rule's, 0 for none. */
+  judge(share?: number): number[];
   /** The pin of each piece put. */
   pins(): number[];
 }
@@ -147,10 +147,10 @@ export function stood(s: Sketch, chunks = 4): Stood {
   const now = new Pieces();
   return {
     structs, buildings, handle, refs,
-    judge: () => {
+    judge: (share = 0) => {
       gather(buildings, [handle], structs, reg, false, now);
       const out = new Uint8Array(now.n);
-      judge(now, out, pin);
+      judge(now, out, pin, share);
       return refs.map((ref) => out[where.get(ref)!]!);
     },
     pins: () => refs.map((ref) => pin[where.get(ref)!]!),
