@@ -234,6 +234,7 @@ test("every admin POST the front passes is judged again once its body is in", as
     [SCENES]: { body: JSON.stringify({ shot: OPENING_SHOT, revision: 0, publish: false }) },
     "/admin/people/publish": { body: JSON.stringify({ revision: 0, garment: "core:plain_tee", colours: [1, 2, 3], name: "Tee" }) },
     "/admin/people/retire": { body: JSON.stringify({ revision: 0, id: 1, retired: true }) },
+    "/admin/people/save": { body: JSON.stringify({ kind: "outfit", id: null, rev: 0, doc: { name: "Vendor", slots: [{ choices: [{ garment: "core:plain_tee", edition: 0 }], dye: [0, 0, 0] }, null, null, null, null] } }) },
     "/admin/people/print": { body: image, headers: { "content-type": "image/png", "content-length": String(image.length) } },
   };
   // The Permissions page's own changes are judged inside the store's write (permissions-two-maps.test.ts).
@@ -255,9 +256,9 @@ test("every admin POST the front passes is judged again once its body is in", as
       const files = ["media", "tmp"].flatMap((f) => readdirSync(join(m.cluster.dir, "pages", f))).filter((f) => !f.endsWith(".json"));
       expect([pages.lib.view().doc.clips.length, pages.lib.allPending(), files, m.b.h.host.stopLeft]).toEqual([0, [], [], -1]);
       expect([m.b.h.host.eventBook.book.revision, m.b.h.host.mapEvents.calls]).toEqual([0, 0]);
-      // No edition was published and no print kept.
+      // No edition or outfit was made and no print kept.
       const people = m.b.h.host.people;
-      expect([people.view().editions, readdirSync(people.media).filter((f) => f.startsWith("print."))]).toEqual([[], []]);
+      expect([people.view().editions, people.view().records.outfit.size, readdirSync(people.media).filter((f) => f.startsWith("print."))]).toEqual([[], 0, []]);
     } finally {
       pages.close();
     }
