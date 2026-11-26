@@ -8,7 +8,7 @@ import { settledLine, settleRims } from "./lakes.ts";
 import { onGround, readPassages } from "./passages.ts";
 import { accessPlanner, deckCeiling, gradeApproaches, type Approach } from "./ruin-access.ts";
 import { clearCirculation, reconcileRubble } from "./ruin-clearance.ts";
-import { contextualize } from "./ruin-context.ts";
+import { contextualize, waterNear } from "./ruin-context.ts";
 import { joinFrontages } from "./ruin-frontage.ts";
 import { boxOf, extentOf, middleOf, obstacleIndex, obstructs, type Box } from "./ruin-obstacles.ts";
 import { parkFreightTrailers } from "./freight.ts";
@@ -92,9 +92,10 @@ export function makeRuins(site: Site): StaticPiece[] {
       if (distance < 140) nearby.push({ frame: frames.get(other.building.id)!, height: facts.get(other.building.row)!.height });
     }
     const [x, z] = site.toLattice(b.e, b.n); const index = Math.max(0, Math.min(site.ground.shore.length - 1, Math.round((z1 - z) / 2) * nx + Math.round((x1 - x) / 2)));
-    let rule = ruleFor(f, v, resolved, { water: site.ground.shore[index]!, neighbours: count });
+    const water = waterNear(site.ground.shore[index]!, v);
+    let rule = ruleFor(f, v, resolved, { water, neighbours: count });
     if (n) rule = { ...rule, recipe: n.recipe, height: Math.min(v.budgets.maxHeight, Math.max(4, Math.floor(resolved.height * n.retain / 4) * 4)), finish: n.finish, bay: 8 };
-    rule = contextualize(rule, frames.get(b.id)!, nearby, site.ground.shore[index]!, resolved.research?.built, v);
+    rule = contextualize(rule, frames.get(b.id)!, nearby, water, resolved.research?.built, v);
     return { f, frame: frames.get(b.id)!, rule, named: n, square, facts: resolved };
   }).sort((a, b) => Number(!!b.named) - Number(!!a.named) || Number(!!b.facts.label.name) - Number(!!a.facts.label.name) || b.rule.height - a.rule.height || a.f.building.id - b.f.building.id);
   const pieces: StaticPiece[] = [];

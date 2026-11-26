@@ -1773,6 +1773,9 @@
       0.35
     ],
     "reach": 650,
+    "near": 320,
+    "far": 448,
+    "inland": 0.18,
     "shelter": 0.55,
     "cell": 192,
     "bands": [

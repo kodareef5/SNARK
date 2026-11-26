@@ -74,7 +74,7 @@ export interface StretchFit {
   tall: number;
   /** Left, then right of the drawn way: its own where it has looks enough across, else its street's. */
   sides: [SideFit, SideFit];
-  /** Its street's sides: the looks of every stretch of its way in its district, which its type is named by. */
+  /** Its street's sides: the looks of the stretches of its name in its district near it (pooled), which its type is named by. */
   street: [SideFit, SideFit];
   /** The stretch of a pair across the median, and the median's width, or null. */
   pair: { stretch: number; median: number } | null;
@@ -205,6 +205,7 @@ export function fitRuns(runs: readonly Run[], base: Base, toMap: ToMap, district
   const rings = districts.map((d) => d.ring.map(([lon, lat]) => toMap(...base.tm.forward(lon, lat))));
   const boxes = rings.map((ring) => [Math.min(...ring.map((p) => p[0])), Math.min(...ring.map((p) => p[1])), Math.max(...ring.map((p) => p[0])), Math.max(...ring.map((p) => p[1]))]);
 
+  const mids: [number, number][] = [];
   const fits: StretchFit[] = runs.map((r) => {
     const p = r.xz, n = p.length / 2;
     let length = 0;
@@ -215,6 +216,7 @@ export function fitRuns(runs: readonly Run[], base: Base, toMap: ToMap, district
     const slope = Number.isFinite(h0) && Number.isFinite(h1) && length > 0 ? Math.abs(h1 - h0) / length : 0;
     // The district its middle is in, a later district over an earlier one as the ground has them.
     const m = Math.floor(n / 2), mx = n % 2 ? p[m * 2]! : (p[m * 2 - 2]! + p[m * 2]!) / 2, mz = n % 2 ? p[m * 2 + 1]! : (p[m * 2 - 1]! + p[m * 2 + 1]!) / 2;
+    mids.push([mx, mz]);
     let district: District | null = null;
     for (let d = districts.length - 1; d >= 0 && !district; d--) {
       const b = boxes[d]!;
@@ -291,25 +293,26 @@ export function fitRuns(runs: readonly Run[], base: Base, toMap: ToMap, district
     return own;
   });
   // A short stretch between two driveways has few looks or none, and takes its way's (whose stretches are drawn one way);
-  // and a street is typed as one, by the looks of every stretch of its name in its district (StretchFit.street).
-  const ways = new Map<string, Looks>(), streets = new Map<string, Looks>();
-  const gather = (into: Map<string, Looks>, key: string, own: Looks): void => {
-    const c = into.get(key) ?? into.set(key, { stations: 0, rooms: [[], []], drawn: [[], []], built: [0, 0], green: [0, 0] }).get(key)!;
-    c.stations += own.stations;
-    for (const side of [0, 1]) {
-      c.rooms[side]!.push(...own.rooms[side]!);
-      c.drawn[side]!.push(...own.drawn[side]!);
-      c.built[side]! += own.built[side]!;
-      c.green[side]! += own.green[side]!;
+  // and a street is typed as one, by the looks of the stretches of its name in its district (StretchFit.street). Both
+  // are pooled over the stretches near it alone (pooled), so an edit beside one changes no street past the reach.
+  const sum = (of: readonly number[]): Looks => {
+    const c: Looks = { stations: 0, rooms: [[], []], drawn: [[], []], built: [0, 0], green: [0, 0] };
+    for (const o of of) {
+      const own = looks[o]!;
+      c.stations += own.stations;
+      for (const side of [0, 1]) {
+        c.rooms[side]!.push(...own.rooms[side]!);
+        c.drawn[side]!.push(...own.drawn[side]!);
+        c.built[side]! += own.built[side]!;
+        c.green[side]! += own.green[side]!;
+      }
     }
+    return c;
   };
-  runs.forEach((r, k) => {
-    gather(ways, `${r.way ?? r.id}|${fits[k]!.district ?? ""}`, looks[k]!);
-    gather(streets, streetKey(r, fits[k]!), looks[k]!);
-  });
-  runs.forEach((r, k) => {
-    const fit = fits[k]!, own = looks[k]!, way = ways.get(`${r.way ?? r.id}|${fit.district ?? ""}`)!, street = streets.get(streetKey(r, fit))!;
-    const from = own.stations >= OWN_LOOKS ? own : way;
+  const wayKey = (k: number): string => `${runs[k]!.way ?? runs[k]!.id}|${fits[k]!.district ?? ""}`;
+  const byWay = pooled(runs.length, wayKey, mids, fits), byStreet = pooled(runs.length, (k) => streetKey(runs[k]!, fits[k]!), mids, fits);
+  runs.forEach((_, k) => {
+    const fit = fits[k]!, own = looks[k]!, from = own.stations >= OWN_LOOKS ? own : sum(byWay[k]!), street = sum(byStreet[k]!);
     for (const side of [0, 1]) {
       sideFit(fit.sides[side]!, from, side);
       fit.street[side] = sideFit({ ...fit.sides[side]! }, street, side);
@@ -327,26 +330,41 @@ export function fitRuns(runs: readonly Run[], base: Base, toMap: ToMap, district
     pairUp(fits[k]!, best.stretch, best.side, median);
   });
   // A street most of whose length is one of a pair is one all along: a short stretch between two driveways, or at a
-  // junction's mouth, takes its street's inner side and median, so the median runs on unbroken.
-  const pairedShare = new Map<string, { paired: number; length: number; side: number[]; medians: number[]; stretch: number }>();
+  // junction's mouth, takes its street's inner side and median, so the median runs on unbroken. Its length is that of
+  // its way's stretches near it (pooled), and its partner the nearest paired one's.
+  const pairs = fits.map((f) => (f.pair ? { ...f.pair, side: f.sides[0].inner ? 0 : 1 } : null));
   runs.forEach((r, k) => {
-    if (r.oneway === 0) return;
-    const key = `${r.way ?? r.id}|${fits[k]!.district ?? ""}`, f = fits[k]!;
-    const c = pairedShare.get(key) ?? pairedShare.set(key, { paired: 0, length: 0, side: [0, 0], medians: [], stretch: -1 }).get(key)!;
-    c.length += f.length;
-    if (!f.pair) return;
-    c.paired += f.length;
-    c.side[f.sides[0].inner ? 0 : 1]! += f.length;
-    c.medians.push(f.pair.median);
-    c.stretch = f.pair.stretch;
-  });
-  runs.forEach((r, k) => {
-    const c = pairedShare.get(`${r.way ?? r.id}|${fits[k]!.district ?? ""}`);
-    if (fits[k]!.pair || !c || c.paired < c.length * 0.5) return;
-    const ms = [...c.medians].sort((a, b) => a - b);
-    pairUp(fits[k]!, c.stretch, c.side[0]! >= c.side[1]! ? 0 : 1, ms[Math.floor(ms.length / 2)]!);
+    if (r.oneway === 0 || pairs[k]) return;
+    const side = [0, 0], medians: number[] = [];
+    let paired = 0, length = 0, nearest = -1, least = Infinity;
+    for (const o of byWay[k]!) {
+      const f = fits[o]!, pair = pairs[o];
+      length += f.length;
+      if (!pair) continue;
+      paired += f.length;
+      side[pair.side]! += f.length;
+      medians.push(pair.median);
+      const d = Math.hypot(mids[o]![0] - mids[k]![0], mids[o]![1] - mids[k]![1]);
+      if (d < least || (d === least && runs[o]!.id < runs[nearest]!.id)) [least, nearest] = [d, o];
+    }
+    if (nearest < 0 || paired < length * 0.5) return;
+    medians.sort((a, b) => a - b);
+    pairUp(fits[k]!, pairs[nearest]!.stretch, side[0]! >= side[1]! ? 0 : 1, medians[Math.floor(medians.length / 2)]!);
   });
   return fits;
+}
+
+/** Metres within which a street's stretches lend each other their looks, far end to far end: under the generator's reach of 600 m, with room for a kerb and a look across. */
+export const POOL_WITHIN = 448;
+
+/**
+ * For each of `n` stretches, those of its key (itself among them) that lie with it inside POOL_WITHIN: their middles'
+ * distance and half of each one's length. A stretch's pool is then the same in every cut that holds what is near it.
+ */
+export function pooled(n: number, keyOf: (k: number) => string, mids: readonly (readonly [number, number])[], fits: readonly { length: number }[]): number[][] {
+  const groups = new Map<string, number[]>();
+  for (let k = 0; k < n; k++) (groups.get(keyOf(k)) ?? groups.set(keyOf(k), []).get(keyOf(k))!).push(k);
+  return Array.from({ length: n }, (_, k) => groups.get(keyOf(k))!.filter((o) => o === k || Math.hypot(mids[o]![0] - mids[k]![0], mids[o]![1] - mids[k]![1]) + (fits[o]!.length + fits[k]!.length) / 2 <= POOL_WITHIN));
 }
 
 /**

@@ -240,6 +240,27 @@ test("a kerb's drops come back from a part's bytes and with its kerb lines, and 
   expect(Array.from(ramp.drops!)).toEqual([4, 5.5, DROP_RAMP]);
 });
 
+test("a corner into a drive is let down whole where its arc crosses a sector's line too", () => {
+  const flush = heldSide(3, 0, 0, kindsByte(0, 0, FLUSH));
+  // The arc ends at x = 1025, 0.125 m short of the drive's kerb: its middle is in the first sector, that end in the second.
+  const stretches = [
+    { type: 0, flags: 0, seed: 1, sides: [side, side] as const, xz: Float64Array.of(800, 100, 1200, 100) },
+    { type: 0, flags: 0, seed: 2, sides: [flush, flush] as const, xz: Float64Array.of(1028.125, 100, 1028.125, 160) },
+  ];
+  const corners = [{ cx: 1019, cz: 110, radius: 6, reach: Math.hypot(6, 6), ax: 0, az: -1, bx: 1, bz: 0, stretch: 0, side: 0 }];
+  const both = new StreetSectors();
+  const parts = [0, 1024].map((x0, k) => {
+    const part = decodeStreets(encodeStreets({ x0, z0: 0, stretches, corners }), x0, 0);
+    both.put(k, part, k * 16, 0, k * 16 + 16, 16);
+    return part;
+  });
+  const arcs = parts.flatMap((p) => kerbLines(both, p)).filter((l) => l.corner === 0);
+  expect(arcs.length).toBe(1);
+  const arc = arcs[0]!, last = arc.stations.length - 1;
+  expect([arc.xz[0]! < 1024, arc.xz[last * 2]! > 1024]).toEqual([true, true]);
+  expect(Array.from(arc.drops!)).toEqual([0, arc.stations[last]!, DROP_DRIVE]);
+});
+
 test("a road of two points across the map's edge has its kerbs, from the sector it crosses", () => {
   // Held is one sector, 0 to 1,024 m; the road runs from inside it to 76 m past its edge, its end point off the map.
   const part: StreetsPart = { x0: 0, z0: 0, stretches: [{ type: 0, flags: 0, seed: 1, sides: [side, side], xz: Float64Array.of(1000, 500, 1100, 500) }], corners: [] };

@@ -383,11 +383,17 @@ export class StreetPoint {
   alongZ = 0;
 }
 
+/** Whether held corner `c` is `skip`, or the same corner as another sector's part holds it: its places are the same numbers there. */
+function sameCorner(c: StreetCorner, skip: Stretch | StreetCorner): boolean {
+  return c === skip || ("radius" in skip && skip.cx === c.cx && skip.cz === c.cz && skip.radius === c.radius && skip.ax === c.ax && skip.az === c.az && skip.bx === c.bx && skip.bz === c.bz);
+}
+
 /**
  * The streets at map point (x, z): the least of the signed distances to every carriageway near it (its centre line's
  * distance less its kerb's on that side, so a carriageway's end is round) and to every corner's fill (its radius less
  * the distance from its centre, between its two ends and within its reach), and the section of the side that gives it.
- * Into `out`; false where no street is held near. `skip`, a stretch or a corner of the held parts, is left out.
+ * Into `out`; false where no street is held near. `skip`, a stretch or a corner of the held parts, is left out: a
+ * corner in every part that holds it, as a point past its sector's line is read from the next sector's part.
  */
 export function streetAt(held: StreetSectors, x: number, z: number, out: StreetPoint, skip: Stretch | StreetCorner | null = null): boolean {
   out.near = false;
@@ -401,7 +407,7 @@ export function streetAt(held: StreetSectors, x: number, z: number, out: StreetP
   for (let n = h.first[k]!; n < h.first[k + 1]!; n++) {
     const item = h.near[n]!;
     if (item & CORNER_BIT) {
-      const c = corners[item & ~CORNER_BIT]!, f = c === skip ? Infinity : cornerFill(c, x, z);
+      const c = corners[item & ~CORNER_BIT]!, f = skip !== null && sameCorner(c, skip) ? Infinity : cornerFill(c, x, z);
       if (f < best) {
         best = f; owner = stretches[c.stretch]!; from = owner.sides[c.side];
         const vx = x - c.cx, vz = z - c.cz, r = Math.sqrt(vx * vx + vz * vz) || 1;
