@@ -9,7 +9,8 @@
 // --canvas is the page in points and the device pixels a point (1800x962@2 is a laptop's 3,600 by 1,924 canvas), --page
 // adds to each page's address (`scale=1`, client/core/app.ts address), and --suffix ends each picture's name. --screen
 // sets the orb, through the Screens page's own route, to play a starter clip whose title holds <clip>, or a channel;
-// --fixed holds the wrap to the ball instead of facing each view, and --fit keeps the picture whole instead of filling the ball.
+// --fixed holds the wrap to the ball instead of facing each view, and --fit keeps the picture whole instead of filling the ball,
+// and on the billboards, TVs and laptops too.
 //
 // The client is one built apart (`bun run build -- --dist DIR`), never the checkout's client/dist. A server on the map
 // answers each view's /__look with its orders (cheats, the hour, the way to face) and holds the survivor there as a ghost,
@@ -81,6 +82,7 @@ const server = startServer({
   routes: (_req, url) => (url.pathname === "/__look" ? (orders.has(url.searchParams.get("view") ?? "") ? Response.json(orders.get(url.searchParams.get("view")!)) : new Response("no such view", { status: 404 })) : null),
 });
 if (values.screen) await showOnOrb(`http://127.0.0.1:${server.port}`, values.screen, values.fixed ?? false, !(values.fit ?? false));
+if (values.fit) await fitProps(`http://127.0.0.1:${server.port}`);
 const hf = server.host.world.hf;
 const ground = (x: number, z: number): number => Math.max(hf.heightAt(x, z), hf.seaLevel);
 for (const v of views) {
@@ -209,6 +211,15 @@ async function showOnOrb(base: string, what: string, fixed: boolean, fill: boole
     if (!clip) throw new Error(`--screen: no clip's title holds "${name}"`);
     await edit({ op: "once", screen: "orb", clip: clip.id });
   } else if (kind !== "channel" && kind !== "scene") throw new Error("--screen once:<clip>, channel:<name> or scene:<name>");
+}
+
+/** Sets the billboards, TVs and laptops to keep their pictures whole. */
+async function fitProps(base: string): Promise<void> {
+  for (const screen of ["billboard", "tv", "laptop"]) {
+    const { revision } = (await (await fetch(`${base}/admin/screens/state`)).json()) as { revision: number };
+    const res = await fetch(`${base}/admin/screens/edit`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ revision, op: "screen", screen, fill: false }) });
+    if (!res.ok) throw new Error(`--fit: ${res.status} ${await res.text()}`);
+  }
 }
 
 /** The playing element's lag behind the server's programme, in seconds, or null with none playing. */

@@ -21,6 +21,7 @@ import { LETTER_BLOCKS } from "./lettering.ts";
 import { TERMINALS } from "./terminals.ts";
 import { ORBS } from "./orb.ts";
 import { SPAWNS } from "./spawns.ts";
+import { SCREEN_PROPS } from "./screens.ts";
 import { STREET } from "./street.ts";
 import { ROADS } from "./vehicles/roads.ts";
 import { ROAD_FLEET } from "./vehicles/road-fleet.ts";
@@ -450,6 +451,7 @@ const ALL: readonly Def[] = [
   ...HARBOUR_WRECKS,
   ...DOCKS,
   ...STREET,
+  ...SCREEN_PROPS,
   CIVILIAN,
   ...SPAWNS,
   ...KNOCKOUT,

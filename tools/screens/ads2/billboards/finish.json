@@ -1,0 +1,22 @@
+{
+  "curb-canary": ["spec", "#ffd041", "#231a16", "#b52c18", "NimbusSans-Bold", "RAPTOR HORNS"],
+  "seamsure-mutual": ["policy", "#f4e4bb", "#303026", "#9d321f", "C059-Roman", "FOUNDATION POLICY"],
+  "peck-and-portion": ["menu", "#260e10", "#ffe5a9", "#a47441", "P052-Italic", ""],
+  "second-mile-tires": ["spec", "#d9f0df", "#153a40", "#b23a2f", "NimbusSans-BoldItalic", "ROLLBACK WHITEWALLS"],
+  "stake-and-satin": ["menu", "#641f2a", "#ffe8d2", "#bf8384", "NimbusRoman-Italic", ""],
+  "ohm-orchard": ["policy", "#efe5ce", "#212026", "#ca402b", "NimbusMonoPS-Bold", "TRAFFIC REPORT"],
+  "fen-and-frill": ["menu", "#f8ecd3", "#2e231f", "#37736f", "URWGothic-Demi", ""],
+  "forkhorn-recovery": ["spec", "#fee5b4", "#2a3331", "#a32c25", "NimbusSansNarrow-Bold", "SERVICE BULLETIN"],
+  "penthouse-plumb": ["menu", "#322239", "#f5d9aa", "#b39063", "P052-Italic", ""],
+  "parallax-pearl": ["menu", "#ebe8e6", "#392a3a", "#998a96", "NimbusRoman-Italic", ""],
+  "orbside-rooms": ["spec", "#211d3c", "#ffe8ad", "#ffbd5c", "URWGothic-Demi", "GUEST SERVICES"],
+  "rim-fare-coaches": ["policy", "#f6dfb8", "#3c263e", "#9b5239", "NimbusMonoPS-Bold", "TERMS OF PASSAGE"],
+  "gravelark-saddlery": ["menu", "#302f25", "#f6e7c8", "#96845d", "URWBookman-LightItalic", ""],
+  "cinder-cradle": ["policy", "#e8ecdb", "#183a35", "#417e69", "NimbusSans-Regular", "HATCHERY GUARANTEE"],
+  "proofpocket-color": ["spec", "#241923", "#ffeee0", "#f176ac", "NimbusSans-Bold", "INCIDENT FILM"],
+  "plumbfall-parcel": ["spec", "#043f56", "#fff2cf", "#ffbd78", "NimbusSansNarrow-Bold", "DELIVERY RECEIPT"],
+  "molt-and-marrow": ["menu", "#4b2f1b", "#feebc5", "#a88b5a", "URWBookman-LightItalic", ""],
+  "palisade-picnic": ["menu", "#f9e9c6", "#523a35", "#be4b43", "P052-Italic", ""],
+  "morrowmoth-storage": ["policy", "#f0eae1", "#342329", "#814550", "C059-Roman", "KEYHOLDER AGREEMENT"],
+  "apronwing-freight": ["policy", "#f0e6c6", "#243532", "#79672b", "URWGothic-Demi", "CARRIAGE CONDITIONS"]
+}

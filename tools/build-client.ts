@@ -18,10 +18,7 @@ import { FAR_MESH, farColours } from "../client/core/render/far.ts";
 import { SLOT_EDGE_MESH, SLOT_SQUARE_MESH, SLOT_TRIANGLE_MESH, SLOT_VERTEX_MESH } from "../client/core/render/passes/ghost.ts";
 import { skyFile, theSky } from "../client/core/render/sky.ts";
 import { WATER_MATERIAL } from "../client/core/render/water.ts";
-import { BENT_SECTIONS } from "../content/bends.ts";
-import { BREAK_BLOCKS } from "../content/breaks/kinds.ts";
-import { ORBS } from "../content/orb.ts";
-import { RUIN_BLOCKS } from "../content/ruins.ts";
+import { WORLD_GENERATED_CONTENT } from "../content/client-generated.ts";
 import { CORE_CONTENT } from "../content/core.ts";
 import { MASK_MATERIALS, SURFACE_NAMES, surfaceMaterial } from "../content/surfaces.ts";
 import { HUMAN } from "../shared/anim/human.ts";
@@ -38,7 +35,7 @@ import { farMeshId } from "../shared/pack/far.ts";
 import { BEAM_MESH, MISSING_MESH, WATER_MESH, buildCorePack, importedMeshes } from "./pack/build.ts";
 import { writeTextures, type TextureSource } from "./pack/encode.ts";
 import { landmarkArt, landmarkPack } from "./pack/far.ts";
-import { copyStarterClips } from "./video/starter.ts";
+import { copyStarterMedia } from "./screens/starter.ts";
 import { gameIcons } from "./pack/icons.ts";
 import { partHash } from "./pack/manifest.ts";
 import { orderPack } from "./pack/order.ts";
@@ -135,9 +132,9 @@ function wholeFarColours(reg: Registry, pack: Pack): number[] {
   return [...farColours(reg, pack, meshOf)];
 }
 
-/** The content file carries the definitions the page cannot generate from its street and building kits and its orbs' sizes. */
+/** The content file carries definitions the page cannot generate from its city kit or the orbs' sizes. */
 export function clientContent(): Uint8Array {
-  const generated = new Set([...BENT_SECTIONS, ...BREAK_BLOCKS, ...ORBS, ...RUIN_BLOCKS].map((d) => d.id));
+  const generated = new Set(WORLD_GENERATED_CONTENT.map((d) => d.id));
   return new TextEncoder().encode(JSON.stringify(CORE_CONTENT.filter((d) => !generated.has(d.id))));
 }
 
@@ -179,8 +176,8 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
     // The lab goes beside the files it plays: assets/music/listen.html on the dev server.
     cpSync(music, join(dist, "assets/music"), { recursive: true, filter: (f) => statSync(f).isDirectory() || (/\.(opus|json|js|html)$/.test(f) && !f.slice(music.length).includes(`${sep}sound${sep}`)) });
   }
-  const starter = copyStarterClips(join(root, "assets/source/core/video"), dist);
-  console.log(`video        ${starter ? `${starter} default clips in media/` : "no default clips: the art is not installed (bun run media art core-video)"}`);
+  const starter = copyStarterMedia(join(root, "assets/source/core/screens"), dist);
+  console.log(`screens      ${starter ? `${starter} default items in media/` : "no default screen media: the art is not installed (bun run media art core-screens)"}`);
   const { registry, errors } = compileContent(CORE_CONTENT);
   if (!registry) throw new Error(`Content cannot be built:\n${errors.join("\n")}`);
   const core = orderPack(buildCorePack([...importedMeshes(), ...(opts.stress ? stressMeshes() : [])]));

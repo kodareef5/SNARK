@@ -1,0 +1,15 @@
+{
+  "kind": "image",
+  "title": "Rim Fare Coaches — The end is a scheduled stop.",
+  "year": 2026,
+  "from": {
+    "by": "SNARK",
+    "sha256": "2af8e28a8932a22cee09d71fbd35e64e1c27c05def3cbc1dd91066d18b2b95eb"
+  },
+  "rights": "Made for SNARK, 2026",
+  "licence": "Made for the game and given to it under CC0 1.0.",
+  "audio": false,
+  "types": [
+    "billboard"
+  ]
+}

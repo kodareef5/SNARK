@@ -1,0 +1,15 @@
+{
+  "kind": "image",
+  "title": "Penthouse Plumb — Management rides for free.",
+  "year": 2026,
+  "from": {
+    "by": "SNARK",
+    "sha256": "4fde87a4b064e7e688fad84d9d684d2fee5d99a87b8d9d13f6489130a88ec0cd"
+  },
+  "rights": "Made for SNARK, 2026",
+  "licence": "Made for the game and given to it under CC0 1.0.",
+  "audio": false,
+  "types": [
+    "billboard"
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "kind": "image",
+  "title": "Stake & Satin — Sleep through the auction.",
+  "year": 2026,
+  "from": {
+    "by": "SNARK",
+    "sha256": "69dd6cf1da46e1635d2e9dae2c8c45512365aecbe03584f1e5510fee201610f7"
+  },
+  "rights": "Made for SNARK, 2026",
+  "licence": "Made for the game and given to it under CC0 1.0.",
+  "audio": false,
+  "types": [
+    "billboard"
+  ]
+}

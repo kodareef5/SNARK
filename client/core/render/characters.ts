@@ -33,7 +33,7 @@ import { RiderGrips } from "../../../shared/anim/rider-grips.ts";
 import { BEARD_STYLES, HAIR_STYLES, LOOK_BEARD, LOOK_BODY_BYTES, LOOK_BYTES, LOOK_HAIR, LOOK_SEX, REGION_MAIN, REGION_SECOND, REGION_TRIM, SEX_IDS, defaultLook, lookColors, lookJoints, plantLookFeet, lookScales } from "../../../shared/anim/look.ts";
 import { EMOTES, EMOTE_GROUP, emoteClipId, emoteOf } from "../../../shared/anim/emotes.ts";
 import { AnimState, CUE_TORPOR, DIR_STEPS, HumanAnim, LAUNCHER_AT_MUZZLE, LAUNCHER_FETCHED, LAUNCHER_HOME, advanceHuman, humanPose, launcherReloadShare } from "../../../shared/anim/pose.ts";
-import { ROUND_HELD, ROUND_SLIDE } from "../../../shared/anim/authored.ts";
+import { ROUND_HELD, ROUND_SLIDE } from "../../../shared/anim/launcher-pose.ts";
 import { wield } from "../../../shared/anim/wield.ts";
 import { HELD_ROUND } from "../../../shared/content/kinds/weapons.ts";
 import { handsAt } from "../../../shared/anim/hold.ts";

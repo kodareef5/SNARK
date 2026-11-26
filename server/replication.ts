@@ -17,7 +17,8 @@ import { drivetrainShifting } from "../shared/sim/vehicle-drivetrain.ts";
 import { isWheelVehicle } from "../shared/sim/vehicle.ts";
 import { jetNozzleAt, packJetNozzle } from "../shared/sim/jet.ts";
 import { F_ALIVE, F_PLAYER, F_PROP, F_GROUNDED } from "../shared/sim/entities.ts";
-import { ROW_BITS_MOST, RowCoder } from "../shared/world/rows.ts";
+import { tekWallKinds } from "../shared/world/lattice/tek-walls.ts";
+import { NET_ROW_BITS_MOST, RowCoder } from "../shared/world/rows.ts";
 import { GONE_BLAST, GONE_TAKEN, RECENT, TOUCH_KIND, TOUCH_LEFT, TOUCH_MOVED } from "../shared/world/structures.ts";
 import { sortU32 } from "../shared/sort.ts";
 import type { ChunkTable } from "../shared/world/structures.ts";
@@ -145,7 +146,7 @@ export class Replication {
     this.w = ctx.w;
     this.parts = ctx.parts;
     this.cap = Math.max(1, Math.min(MAX_VIEW, Math.floor(this.opts.viewCap)));
-    this.rows = new RowCoder(world.structs.forms, world.reg.maxHp);
+    this.rows = new RowCoder(world.structs.forms, world.reg.maxHp, { phaseKinds: tekWallKinds(world.reg.index) });
     this.aroundTick = new Uint32Array(chunkCount(world.dims));
     this.aroundAt = new Uint16Array(chunkCount(world.dims));
     this.entityOffsets = nearestFirst(this.opts.entityRadius);
@@ -832,7 +833,7 @@ export class Replication {
     let final = true;
     // Rows stop where another might not fit, with a byte left for the count of removals, and once they pass what is left
     // of the window. The first row always goes, so a chunk begun moves on.
-    const room = Math.min(w.buf.length * 8 - ROW_BITS_MOST - 8, Math.max(w.pos, this.room * 8));
+    const room = Math.min(w.buf.length * 8 - NET_ROW_BITS_MOST - 8, Math.max(w.pos, this.room * 8));
     // A client a few changes behind is sent those from the chunk's log. Otherwise every slot is looked at.
     const logged = cursor === 0 && !filling ? this.changedSince(t, from, byRemoval, budget) : -1;
     if (logged >= 0) {

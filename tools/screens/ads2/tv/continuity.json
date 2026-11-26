@@ -1,0 +1,16 @@
+{
+  "plume-ledger-4": {
+    "refs": [
+      "plume-ledger-1"
+    ],
+    "prompt": "Use case: precise-object-edit. Match-cut for a fictional 1950s estate photograph advertisement. Image 1 is the EDIT TARGET. Preserve the exact same landscape aspect ratio, camera, original composition, triceratops, backyard palm trees, egg-shaped mailbox on the lower left, art medium and hand-tinted muted colors. Show this exact address the morning after an offline raid: erase the entire house, carport and car, leaving only the house's freestanding tall stone chimney exactly where it was before with a little rubble and foundation behind it. The pet triceratops is awake now, sitting on the right near the original sleeping position, looking puzzled. Maintain the lawn and front path. Late morning now. No fire, no gore, no signage, no text at all. The chimney and mailbox should match the original pixel positions as closely as an animator's matched dissolve."
+  },
+  "fussbudget-feed-4": {
+    "refs": [
+      "fussbudget-feed-3",
+      "fussbudget-feed-1",
+      "fussbudget-feed-2"
+    ],
+    "prompt": "Use case: identity-preserve. Image 1 is the EDIT TARGET, the wide walking-leash shot in the yellow kitchen. Image 2 is continuity reference for the identity of the little dinosaur. Image 3 is color reference for the box. In Image 1, change the feather pattern of the baby tyrannosaur to the tuxedo black and cream markings from Image 2, especially the black crown and feathers on its back, cream tummy and face. Put a neat black bow tie on the baby's red collar. Preserve the baby dinosaur's happy imploring portrait, pose, red leash dangling from its mouth, chef, house, kitchen, perspective, framing and sunny egg-tempera illustration. Change only the OUTSIDE of the kibble box on the counter to powder blue like Image 3, with red satin inside; no text. Landscape ratio as before. No lettering or markings anywhere."
+  }
+}

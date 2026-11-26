@@ -20,5 +20,6 @@
   "core/vehicles/veloce_salvaged",
   "core/items/weapons/plasma",
   "core/items/weapons/launcher",
-  "core/structures/orb"
+  "core/structures/orb",
+  "core/structures/tek"
 ]

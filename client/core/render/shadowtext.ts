@@ -316,6 +316,7 @@ export const DEPTH_VERTEX = clampDepth(`#version 300 es
 layout(location=0) in vec3 aPos;
 layout(location=2) in vec3 iPos;
 layout(location=3) in float iYaw;
+layout(location=4) in uvec4 iRegA;
 layout(location=5) in uvec2 iRegB;
 layout(location=6) in uint aBone;
 layout(location=7) in vec2 aUv;

@@ -2,7 +2,9 @@
 // A click picks a stack up or puts it down, a middle click picks up half, and a right click eats, uses or puts on.
 
 import { CARD, EquipmentCard } from "./equipment-card.ts";
+import { inventoryDock } from "./bag-dock.ts";
 import { glass } from "./skin.ts";
+import { itemLabel, waitWords } from "./item-words.ts";
 import { isSkateboard } from "../../../shared/sim/vehicle.ts";
 import { jetSpoolAt } from "../../../shared/sim/jet-gauge.ts";
 import { ballInfo } from "../balls.ts";
@@ -19,6 +21,8 @@ import { K_BUTTON, K_PANEL, fitText, lineHeight, wrapText, type UiFrame } from "
 import { KEY_STATION_PANEL, KEY_STATION_SLOTS, KEY_STATION_VIEW, StationPanel } from "./station.ts";
 import { TakeAll } from "./take-all.ts";
 import { S_BUTTON, S_LABEL, S_PANEL, S_SLOT, S_SLOT_HELD, S_SLOT_TEXT, S_SWATCH, S_TITLE } from "./style.ts";
+
+export { itemLabel, waitWords } from "./item-words.ts";
 
 export const KEY_INV_PANEL = 290;
 export const KEY_INV_TITLE = 291;
@@ -54,12 +58,6 @@ const SERVICE_REFUSAL: Readonly<Partial<Record<number, string>>> = {
   [RESULT_FULL]: "Already serviced.",
 };
 
-/** Formats seconds as "45s", "12m" or "5h 12m". */
-export function waitWords(seconds: number): string {
-  if (seconds < 60) return `${seconds}s`;
-  const m = Math.floor(seconds / 60);
-  return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`;
-}
 /** Rows of the open container shown at once. */
 const OPEN_ROWS = 6;
 /** Labels of the hotbar and armor rows, and the four buttons that act on the picked-up stack. */
@@ -97,17 +95,12 @@ export function blueprintInfo(reg: Registry, item: number, q: number): string {
   return `${QUALITY_NAMES[q] ?? ""} ${itemLabel(reg, item)} blueprint: ${cost.join(", ")}`;
 }
 
-export function itemLabel(reg: Registry, item: number): string {
-  const def = reg.defs[item] as ItemDef | null;
-  return def?.label ?? reg.ids[item]!.slice(reg.ids[item]!.indexOf(":") + 1);
-}
-
 export class InventoryScreen implements Screen {
   readonly name = "inventory";
   readonly layer = "modal";
   readonly group = "bag";
   readonly hotkey = "KeyI";
-  readonly dock = [{ id: "bag", label: "Inventory", art: "bag", rank: 10, open: (c: ScreenCtx) => c.pressKey("KeyI") }];
+  readonly dock = inventoryDock;
   readonly catchAll = true;
   readonly focusNav = true;
   private readonly card = new EquipmentCard();
@@ -125,6 +118,12 @@ export class InventoryScreen implements Screen {
   private serviceSeq = 0;
   private serviceHandle = 0;
   private serviceFeedback = "";
+
+  /** Keep the container and its close state if the screen arrived after the server opened it. */
+  constructor(open = false, containerOpen = false) {
+    this.open = open;
+    this.hadOpen = containerOpen;
+  }
 
   isOpen(): boolean {
     return this.open;

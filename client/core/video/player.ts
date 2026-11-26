@@ -12,6 +12,9 @@ import type { OrbSite } from "../../../shared/world/orb.ts";
 import { SCREEN_LOD, nearestOrb, screenTexels, topLevel, type OrbScreen } from "../render/orb.ts";
 import type { FramePacket } from "../render/packet.ts";
 import { distanceGain } from "../sound/place.ts";
+import { DRIFT_SEEK, WAIT_FOR_ART, base64Bytes, mustSeek, syncRate } from "./sync.ts";
+
+export { DRIFT_LEAVE, DRIFT_SEEK, NUDGE, WAIT_FOR_ART, base64Bytes, mustSeek, syncRate } from "./sync.ts";
 
 /** A video element as the player uses it: HTMLVideoElement has all of this. */
 export interface VideoLike {
@@ -59,10 +62,6 @@ export interface VideoHost {
 export const MIN_PIXELS = 48;
 /** Seconds before a clip's end at which the next one is buffered. */
 export const BUFFER_AHEAD = 5;
-/** Seconds of drift left alone, and past which the element seeks; between, the rate is nudged by NUDGE. Sync is best effort: a seek costs a fetch. */
-export const DRIFT_LEAVE = 0.5;
-export const DRIFT_SEEK = 3;
-export const NUDGE = 0.05;
 /** Seconds an element stays paused before it lets its stream go. */
 export const UNLOAD_AFTER = 10;
 /** Metres from the ball's skin the clip's sound carries. */
@@ -90,38 +89,13 @@ export interface Watch {
 /** Whether a clip plays: everything must allow it. Otherwise it is paused and fetches nothing. */
 export const mayPlay = (w: Watch): boolean => w.option && w.tier && w.orb && w.inView && w.pixels >= MIN_PIXELS && w.visible && w.settled;
 
-/** Milliseconds a clip waits for the map's art to stop coming before it plays anyway. A clip is fetched in seconds, and on arrival the map comes first. */
-export const WAIT_FOR_ART = 20_000;
 
-/** The playback rate for a clip `drift` seconds behind where it should be (ahead when negative). */
-export function syncRate(drift: number): number {
-  const a = Math.abs(drift);
-  return a < DRIFT_LEAVE || a > DRIFT_SEEK ? 1 : 1 + Math.sign(drift) * NUDGE;
-}
-/** Whether a clip that far off seeks instead. */
-export const mustSeek = (drift: number): boolean => Math.abs(drift) > DRIFT_SEEK;
 
 /** Pixels across a ball of `radius` spans `d` metres off, on a view `fovY` radians high and `height` pixels. */
 export function orbPixels(radius: number, d: number, fovY: number, height: number): number {
   return d <= radius ? Infinity : ((2 * Math.asin(radius / d)) / fovY) * height;
 }
 
-/** Bytes from base64, as a manifest's colour track is written. */
-export function base64Bytes(text: string): Uint8Array {
-  const clean = text.replace(/[^A-Za-z0-9+/]/g, "");
-  const out = new Uint8Array(Math.floor((clean.length * 3) / 4));
-  let bits = 0, count = 0, at = 0;
-  for (let i = 0; i < clean.length; i++) {
-    const c = clean.charCodeAt(i), v = c >= 97 ? c - 71 : c >= 65 ? c - 65 : c >= 48 ? c + 4 : c === 43 ? 62 : 63;
-    bits = (bits << 6) | v;
-    count += 6;
-    if (count >= 8) {
-      count -= 8;
-      out[at++] = (bits >> count) & 255;
-    }
-  }
-  return out.subarray(0, at);
-}
 
 /** A clip of the manifest with its colour track as bytes. */
 export interface Playable {

@@ -172,6 +172,7 @@ import { staticKinds, type MapLandmark, type MapSpawn, type MapStatics } from ".
 import type { Buildings } from "../../shared/world/buildings.ts";
 import { NodeField, type NodeSource } from "../../shared/world/nodes.ts";
 import { heapAt, heapHealth } from "../../shared/world/breaking.ts";
+import { tekWallKinds } from "../../shared/world/lattice/tek-walls.ts";
 import { FramesTold, ROW_EMPTY, ROW_IN_PLACE, ROW_KEYED, RowCoder } from "../../shared/world/rows.ts";
 import { GONE_BLAST, GONE_TAKEN, PUT_AS_IS, PUT_FREE, StructureStore, withSurfaces, type ChunkTable } from "../../shared/world/structures.ts";
 import { CMD_FAR, CMD_HAVE, CMD_SELECT, CMD_STATICS, HAVE_MOST, HAVE_REACH, RESULT_BUSY, RESULT_OK, S_FAR, S_MARKS, S_TACTICAL } from "../../shared/net/protocol.ts";
@@ -2900,7 +2901,7 @@ export class ClientSession {
     const kinds = this.registry.defs.length;
     const told = this.onStructure && this.whole[chunk] === 1 ? this.onStructure : null;
     const rows = structs.chunks[chunk];
-    const row = (this.rows ??= new RowCoder(structs.forms, maxHp));
+    const row = (this.rows ??= new RowCoder(structs.forms, maxHp, { phaseKinds: tekWallKinds(this.registry.index) }));
     row.maxHp = maxHp;
     row.begin(x0, z0);
     // The frames a message defines count once its rows are read, as the server counts them once it is sent.
@@ -2919,6 +2920,7 @@ export class ClientSession {
         if (was === 0) continue;
         if (told && (was !== now || hpWas !== Math.fround(hp))) told(was, now, rows!.x[slot]!, rows!.y[slot]!, rows!.z[slot]!, hpWas, hp, -1);
         structs.put(chunk, slot, now, rows!.x[slot]!, rows!.y[slot]!, rows!.z[slot]!, rows!.yaw[slot]!, row.owner, hp, version, PUT_AS_IS);
+        if (kind !== 0 && (row.phaseTick !== undefined || rows!.phaseTick)) rows!.setPhaseTick(slot, row.phaseTick);
         continue;
       }
       if (row.form === ROW_EMPTY) {
@@ -2938,6 +2940,8 @@ export class ClientSession {
       const hp = row.health(maxHp[kind]!);
       if (told && (was !== kind || hpWas !== Math.fround(hp))) told(was, kind, x, y, z, hpWas, hp, -1);
       structs.put(chunk, slot, kind, x, y, z, yaw, row.owner, hp, version, fr, row.k0, row.k1);
+      const table = structs.chunks[chunk]!;
+      if (row.phaseTick !== undefined || table.phaseTick) table.setPhaseTick(slot, row.phaseTick);
       // A frame is its rows' owner's.
       if (fr !== PUT_FREE) structs.frames.get(fr)!.team = row.owner;
       this.onRow?.(chunk * 65536 + slot);

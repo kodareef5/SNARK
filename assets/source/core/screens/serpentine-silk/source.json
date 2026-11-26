@@ -1,0 +1,15 @@
+{
+  "title": "Serpentine Silk",
+  "from": {
+    "page": "https://commons.wikimedia.org/wiki/File:Danse_serpentine_(Lumi%C3%A8re,_1897).webm",
+    "by": "Vegas ball collection",
+    "sha256": "915969edd389101cc67fb795eb5a202b71b042ce7251f8c90f4372dfdfd366a3"
+  },
+  "rights": "Unknown filmmaker, produced by the Lumi\u00e8re brothers. Public domain. Sphere adaptation dedicated to CC0 1.0.",
+  "licence": "Danse serpentine (Lumi\u00e8re, 1897).webm \u2014 Public domain (https://creativecommons.org/publicdomain/mark/1.0/). New adaptation contributions are offered under CC0 1.0.",
+  "changes": "Isolated the hand-tinted dancer from the stage and repeated the performance at three longitudes. Source excerpt 4\u201336 s. Encoded the supplied spherical cut at 640\u00d7320.",
+  "audio": false,
+  "types": [
+    "orb"
+  ]
+}

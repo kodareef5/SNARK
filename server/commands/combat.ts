@@ -166,9 +166,11 @@ export function addCombatCommands(con: Console): void {
         const z = c.body.z + Math.cos(a) * 3;
         const team = ctx.host.records.byPid.get(c.pid)?.team ?? 0;
         const y = world.hf.heightAt(x, z) + def.half[1];
+        // A screen faces the one who set it down, so its picture is what they see.
+        const yaw = reg.screenFace[kind] ? (c.heldYaw + 32768) & 0xffff : c.heldYaw & 0xffff;
         // A piece that may begin a base begins one, as one set down by hand does. Any other stands by its pose, in no base.
         const begins = team !== 0 && reg.forms.def[kind]?.root !== undefined;
-        const ref = begins ? startBase(world.structs, kind, { x: Math.round(x * STRUCT_UNITS), y: Math.round(y * STRUCT_UNITS), z: Math.round(z * STRUCT_UNITS), yaw: c.heldYaw & 0xffff }, team, def.hp) : world.structs.add(kind, x, y, z, c.heldYaw, team, def.hp);
+        const ref = begins ? startBase(world.structs, kind, { x: Math.round(x * STRUCT_UNITS), y: Math.round(y * STRUCT_UNITS), z: Math.round(z * STRUCT_UNITS), yaw }, team, def.hp) : world.structs.add(kind, x, y, z, yaw, team, def.hp);
         // A bed is one only with its record, as one built is (Build.place).
         if (ref >= 0 && reg.isBed[kind] === 1) ctx.host.fixtures.ensure(ref);
         return ref < 0 ? "no room for it there" : `placed ${def.id} (${def.hp} health)`;

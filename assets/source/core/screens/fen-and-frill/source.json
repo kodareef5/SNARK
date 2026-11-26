@@ -1,0 +1,15 @@
+{
+  "kind": "image",
+  "title": "Fen & Frill — Clear skies. Localized spit.",
+  "year": 2026,
+  "from": {
+    "by": "SNARK",
+    "sha256": "902ea05756a8f0b612aa569141322f18f1e7056978e62488d17ea78a14e7a194"
+  },
+  "rights": "Made for SNARK, 2026",
+  "licence": "Made for the game and given to it under CC0 1.0.",
+  "audio": false,
+  "types": [
+    "billboard"
+  ]
+}

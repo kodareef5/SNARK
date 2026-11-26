@@ -20,6 +20,7 @@ import { CAST_PHASE, EYE_PERIOD, eyeKnot, type TideEyeSite } from "../../../shar
 import { linearToSrgb, srgbToLinear } from "./color-space.ts";
 import { ORB_COLOUR, ORB_SEEN } from "./orb-light.ts";
 import { FRAME, FRAME_BLOCK, ORB_AT, ORB_LANES } from "./packet.ts";
+import { ORB_DAY_STOPS, ORB_NIGHT_STOPS, orbLevel } from "./screen-level.ts";
 import { sunDirection } from "./sky.ts";
 import { GRADED, TONE, graded, tone } from "./surface.ts";
 import { EYE_SKY, aperture, eyePhase, eyePower, eyeSeed, eyeStorm, strike } from "./tide-eye.ts";
@@ -33,16 +34,8 @@ export const ORB_FAR = 2000;
 /** Octaves of a scene's noise where a tier does not say (`#define ORB_OCTAVES`). */
 export const ORB_OCTAVES = 4;
 
-// ---- The level: the screen's white as light after exposure, by the frame's exposure. Tune these from real frames.
-/** White at noon, when exposure is 1: under bloom's threshold, pucks and all, so the picture reads in the sun. */
-export const ORB_NOON = 1.15;
-/** White on a dark night: at bloom's threshold, so a scene's whites and what it makes brighter than white glow, and its colours are not washed out. */
-export const ORB_NIGHT = 2;
-/** The stops of exposure over noon's between which the level rises from the one to the other. */
-export const ORB_DAY_STOPS = 1.5;
-export const ORB_NIGHT_STOPS = 9;
-/** White on low poly, which has no exposure and shows it through the tone curve alone. */
-export const ORB_FLAT = 1;
+// ---- The level: the screen's white as light after exposure, by the frame's exposure (screen-level.ts).
+export { ORB_DAY_STOPS, ORB_FLAT, ORB_NIGHT, ORB_NIGHT_STOPS, ORB_NOON, orbLevel, orbRaw } from "./screen-level.ts";
 
 // ---- The pucks.
 /** Metres between pucks along a ring, and between rings. */
@@ -867,16 +860,6 @@ export function orbPick(f: ArrayLike<number>, nx: number, ny: number, nz: number
   return across < f[ORB_AT + 10]! * 1.1 - 0.05 ? f[ORB_AT + 8]! : f[ORB_AT + 9]!;
 }
 
-/**
- * The screen's white as light after exposure, at a frame's exposure (1 at noon, some tens of thousands on a dark
- * night): ORB_NOON by day, rising with the stops of exposure to ORB_NIGHT. Low poly has no exposure and takes ORB_FLAT.
- */
-export function orbLevel(exposure: number): number {
-  if (!(exposure > 0)) return ORB_FLAT;
-  return mix(ORB_NOON, ORB_NIGHT, sstep(ORB_DAY_STOPS, ORB_NIGHT_STOPS, Math.log2(Math.max(1, exposure))));
-}
-/** The same as light before exposure, which is what the screen gives out: a real screen turned far down by night. */
-export const orbRaw = (exposure: number): number => (exposure > 0 ? orbLevel(exposure) / exposure : ORB_FLAT);
 
 const picture = [0, 0, 0];
 const puck: Puck = { ring: 0, count: 0, x: 0, y: 0, z: 0, off: 0 };

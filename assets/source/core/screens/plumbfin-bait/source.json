@@ -1,0 +1,15 @@
+{
+  "title": "Plumbfin Bait Works",
+  "year": 2026,
+  "from": {
+    "by": "SNARK",
+    "sha256": "790d5a2ad4f4aa52b42585defb12ad5b9afe01b14ee1ec82bf4eb49269187d80"
+  },
+  "rights": "Made for SNARK, 2026",
+  "licence": "Made for the game and given to it under CC0 1.0.",
+  "poster": 3,
+  "audio": false,
+  "types": [
+    "billboard"
+  ]
+}

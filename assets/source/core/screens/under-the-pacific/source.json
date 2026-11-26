@@ -1,0 +1,15 @@
+{
+  "title": "Under the Pacific",
+  "from": {
+    "page": "https://commons.wikimedia.org/wiki/File:Earth_360_Video_The_Call_of_Science.webm",
+    "by": "Vegas ball collection",
+    "sha256": "bf66f66ce5e5a9eb0a575e08dfdea5fa511bf563127c1aeb74880af540be6f0e"
+  },
+  "rights": "NASA / Jet Propulsion Laboratory\u2013Caltech. Public domain. Sphere adaptation dedicated to CC0 1.0.",
+  "licence": "Earth 360 Video The Call of Science.webm \u2014 Public domain (https://creativecommons.org/publicdomain/mark/1.0/). New adaptation contributions are offered under CC0 1.0.",
+  "changes": "Kept the source\u2019s spherical projection and resampled to the display raster. Source excerpt 395\u2013430 s. Encoded the supplied spherical cut at 640\u00d7320. [NASA film](https://science.nasa.gov/resource/earth-360-video-the-call-of-science/) [JPL image use](https://www.jpl.nasa.gov/jpl-image-use-policy/)",
+  "audio": false,
+  "types": [
+    "orb"
+  ]
+}

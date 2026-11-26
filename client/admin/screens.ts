@@ -1,25 +1,44 @@
-// The cluster's Screens page: the Vegas ball live as its players see it and a preview of what is picked, with tiles
-// for its scenes and channels and a table of clips to pick from; then uploads and channel edits, over /admin/screens/
-// (server/video/routes.ts). The ball is drawn by its own bundle (screens-stage.ts) with the game's shader. The parts
-// that need no browser are in client/core/admin/screens.ts and screens-stage.ts; this is the page's wiring.
+// The cluster's Screens page: a tab for each type of screen (the Vegas ball, billboards, TVs, laptops), each with its
+// screens live as players see them and a preview of what is picked, tiles for its scenes and channels and a table of
+// the clips and images offered on it; then uploads and channel edits, over /admin/screens/ (server/video/routes.ts).
+// The monitors are drawn by their own bundle (screens-stage.ts). The parts that need no browser are in
+// client/core/admin/screens.ts, screens-stage.ts and screens-faces.ts; this is the page's wiring.
 
 import "./shell.ts";
 import { esc } from "../core/admin/format.ts";
 import {
-  ColourTrack, POSTER_BYTES, POSTER_LONG, POSTER_QUALITIES, SAMPLE_LONG, bandMeans, base64, draftChannels, draftDiffers, draftFault, ffmpegLine, findClips,
-  fitLong, freeChannelName, kbpsOf, lengthText, moveIn, overCaps, progressOf, sortClips, timedOf, titleOf, type ChannelDraft, type ClipSort, type Probe, type ScreensState, type StateClip,
+  ColourTrack, POSTER_BYTES, POSTER_LONG, POSTER_QUALITIES, SAMPLE_LONG, TYPE_LINES, addToChannel, bandMeans, base64, batchWords, channelsLeft, checkImage, draftChannels, draftDiffers,
+  draftFault, ffmpegLine, findClips, fitLong, freeChannelName, kbpsOf, lengthText, liveStep, moveIn, overCaps, progressOf, searchOfType, sentChannels, sortClips, stillColours, timedOf, titleOf,
+  typeOfSearch, typeWords, withLive, withType, type ChannelDraft, type ClipSort, type Probe, type ScreensLive, type ScreensState, type StateClip,
 } from "../core/admin/screens.ts";
+import type { FaceWipe } from "../core/admin/screens-faces.ts";
 import type { StageFrame, StageLook, Target, Tile } from "../core/admin/screens-stage.ts";
-import { COLOUR_PARTS } from "../../shared/video/clip.ts";
-import { channelAt, screenAt } from "../../shared/video/programme.ts";
+import { COLOUR_PARTS, SCREENS, SCREEN_TYPES, STILL_SECONDS, channelType, isImage, offeredOn, type Channel, type ScreenType } from "../../shared/video/clip.ts";
+import type { ImageInfo } from "../../shared/video/image.ts";
+import { channelAt, onceShowing, screenAt } from "../../shared/video/programme.ts";
 import type { PictureSlot, ScreensStage, Stage } from "./screens-stage.ts";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
 const API = "/admin/screens/";
-const SCREEN_NAMES: Readonly<Record<string, string>> = { orb: "The Vegas ball" };
+/** Each type's short name for a tick box in a table row. */
+const SHORT: Readonly<Record<ScreenType, string>> = { orb: "Ball", billboard: "Billboards", tv: "TVs", laptop: "Laptops" };
+
+/** An image picked to add: its file, what its header says or why it may not be added, and how its sending went. */
+interface Still {
+  readonly key: number;
+  readonly file: File;
+  readonly url: string;
+  title: string;
+  info: ImageInfo | null;
+  faults: string[];
+  state: "ready" | "sending" | "done" | "failed";
+  note: string;
+  id: string;
+}
 
 /** The page's state: the library as last read and when, what is picked for the preview, the table's order, the channels being edited, and the file picked to add. */
 const S = {
+  type: typeOfSearch(location.search) as ScreenType,
   state: null as ScreensState | null,
   at: 0,
   picked: null as Target | null,
@@ -38,14 +57,22 @@ const S = {
   probe: null as Probe | null,
   busy: false,
   loading: false,
+  /** The types what is added is offered on; the tab's own until changed. */
+  addTypes: null as ScreenType[] | null,
+  stills: [] as Still[],
+  stillBusy: false,
 };
+let stillKeys = 0;
 
 /** The wall clock as the server keeps it, run on from its last answer. */
 const wall = (): number => (S.state ? S.state.now + (performance.now() - S.at) : Date.now());
 /** The world's clock in seconds, as its players' orb runs on it. */
 const worldSeconds = (): number => (S.state ? S.state.world.seconds + (performance.now() - S.at) / 1000 : 0);
 const clipsById = (): Map<string, StateClip> => new Map((S.state?.clips ?? []).map((c) => [c.id, c]));
-const titleText = (id: string | null): string => (id ? (clipsById().get(id)?.title ?? id) : "the scenes");
+const titleText = (id: string | null): string => (id ? (clipsById().get(id)?.title ?? id) : S.type === "orb" ? "the scenes" : "dark");
+/** The tab's own screen, and its channels by name. */
+const screenNow = (): ScreensState["screens"][number] | undefined => S.state?.screens.find((s) => s.screen === S.type);
+const channelMap = (): Map<string, Channel> => new Map((S.state?.channels ?? []).map((c) => [c.name, c]));
 
 function say(text: string, kind = "dim"): void {
   $("msg").textContent = text;
@@ -55,7 +82,7 @@ const failed = (err: unknown): void => say(err instanceof Error ? err.message : 
 
 const deferred = new Map<HTMLElement, string>();
 const painted = new WeakMap<HTMLElement, string>();
-/** Writes `html` into `el` when it changed, keeping what its named fields hold, but not under a field in hand: that waits until it is let go. */
+/** Keeps field edits and focused preview buttons as the live state changes. */
 function paint(el: HTMLElement, html: string): boolean {
   if (painted.get(el) === html) {
     deferred.delete(el);
@@ -68,12 +95,14 @@ function paint(el: HTMLElement, html: string): boolean {
   }
   deferred.delete(el);
   const kept = [...el.querySelectorAll<HTMLInputElement | HTMLSelectElement>("select[id], input[id]")].map((f) => [f.id, f.value] as const);
+  const focus = held instanceof HTMLElement && el.contains(held) ? held.dataset.focus : undefined;
   el.innerHTML = html;
   painted.set(el, html);
   for (const [id, value] of kept) {
     const f = document.getElementById(id) as HTMLInputElement | HTMLSelectElement | null;
     if (f && el.contains(f) && (f instanceof HTMLInputElement || [...f.options].some((o) => o.value === value))) f.value = value;
   }
+  if (focus) el.querySelector<HTMLElement>(`[data-focus="${CSS.escape(focus)}"]`)?.focus({ preventScroll: true });
   return true;
 }
 document.addEventListener("focusout", () => setTimeout(() => {
@@ -113,6 +142,32 @@ async function load(): Promise<void> {
   }
 }
 
+/** Reads what plays now, and the whole library only where it changed. */
+async function poll(): Promise<void> {
+  if (!S.state) return load();
+  if (S.loading) return;
+  S.loading = true;
+  let full = false;
+  try {
+    const r = await fetch(API + "live", { cache: "no-store" });
+    if (!r.ok) throw new Error(r.status === 401 ? "Sign in on the overview first." : `The library answered ${r.status}: ${await r.text()}`);
+    const live = (await r.json()) as ScreensLive, step = liveStep(S.state, live);
+    full = step === "state";
+    if (step === "merge") {
+      S.state = withLive(S.state, live);
+      S.at = performance.now();
+      draw();
+    }
+    $("reload").hidden = true;
+  } catch (e) {
+    failed(e);
+    $("reload").hidden = false;
+  } finally {
+    S.loading = false;
+  }
+  if (full) await load();
+}
+
 async function post(path: string, body: unknown): Promise<{ status: number; answer: Record<string, unknown> }> {
   const r = await fetch(API + path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   return { status: r.status, answer: (await r.json().catch(() => ({}))) as Record<string, unknown> };
@@ -136,13 +191,20 @@ async function edit(body: Record<string, unknown>, done = ""): Promise<boolean> 
   return true;
 }
 
-// ---- The stage: the live monitor, the preview and every thumbnail, drawn by the game's own shader.
+// ---- The stage: the live monitor, the preview and every thumbnail; the ball by the game's own shader, the flat screens by their own.
 
+/** A monitor: the ball's frame lanes, the picture's texture, the video it plays and a flat face's wipe. */
+interface Monitor {
+  frame: StageFrame;
+  slot: PictureSlot;
+  video: HTMLVideoElement;
+  wipe: FaceWipe;
+}
 let mod: ScreensStage | null = null;
 let stage: Stage | null = null;
-let live: { frame: StageFrame; slot: PictureSlot; video: HTMLVideoElement } | null = null;
-let preview: { frame: StageFrame; slot: PictureSlot; video: HTMLVideoElement } | null = null;
-let thumb: { frame: StageFrame; slot: PictureSlot } | null = null;
+let live: Monitor | null = null;
+let preview: Monitor | null = null;
+let thumb: { frame: StageFrame; slot: PictureSlot; wipe: FaceWipe } | null = null;
 
 /** The stage's own bundle, loaded once as a module script that leaves its exports on the page. */
 function loadStage(): Promise<ScreensStage> {
@@ -181,34 +243,42 @@ async function startStage(): Promise<void> {
     $("no-stage").textContent = `${e instanceof Error ? e.message : String(e)} The tiles show posters instead.`;
     return;
   }
-  live = { frame: new mod.StageFrame(), slot: new mod.PictureSlot(), video: hiddenVideo() };
-  preview = { frame: new mod.StageFrame(), slot: new mod.PictureSlot(), video: hiddenVideo() };
-  thumb = { frame: new mod.StageFrame(), slot: new mod.PictureSlot() };
+  live = { frame: new mod.StageFrame(), slot: new mod.PictureSlot(), video: hiddenVideo(), wipe: new mod.FaceWipe() };
+  preview = { frame: new mod.StageFrame(), slot: new mod.PictureSlot(), video: hiddenVideo(), wipe: new mod.FaceWipe() };
+  thumb = { frame: new mod.StageFrame(), slot: new mod.PictureSlot(), wipe: new mod.FaceWipe() };
   drawViews();
   drawTiles();
   wantThumbs();
   requestAnimationFrame(frame);
 }
 
-const posters = new Map<string, HTMLImageElement>();
-/** A clip's poster, decoded, or null while it loads. */
-function posterImage(clip: StateClip): HTMLImageElement | null {
-  let img = posters.get(clip.poster);
+const images = new Map<string, HTMLImageElement>();
+/** A picture by its address, decoded, or null while it loads: posters for thumbnails, a still's own file for a monitor. */
+function imageAt(url: string): HTMLImageElement | null {
+  let img = images.get(url);
   if (!img) {
     img = new Image();
     img.decoding = "async";
-    img.src = clip.poster;
-    posters.set(clip.poster, img);
+    img.src = url;
+    images.set(url, img);
     img.decode().then(() => wantThumbs(), () => undefined);
   }
   return img.complete && img.naturalWidth > 0 ? img : null;
 }
+const posterImage = (clip: StateClip): HTMLImageElement | null => imageAt(clip.poster);
 
-/** Plays `look`'s clip on `m`'s video where it is in step with `look`, and puts its frame, or its poster until one comes, in the slot. */
+/**
+ * Plays `look`'s clip on `m`'s video where it is in step with `look`, and puts its frame, or its poster until one
+ * comes, in the slot. A still is its own file, its poster until that loads.
+ */
 function feed(m: { slot: PictureSlot; video: HTMLVideoElement }, look: StageLook): void {
   const v = m.video, clip = look.clip;
-  if (!clip) {
+  if (!clip || isImage(clip)) {
     if (!v.paused) v.pause();
+    if (clip) {
+      const img = imageAt(clip.file) ?? posterImage(clip);
+      if (img) stage!.upload(m.slot, img);
+    }
     return;
   }
   if (!v.src.endsWith(clip.file)) {
@@ -236,25 +306,29 @@ function frame(): void {
   requestAnimationFrame(frame);
   const st = S.state;
   if (!st || !stage || !mod || !live || !preview || document.hidden) return;
-  const now = wall(), seconds = worldSeconds(), view = mod.STAGE_VIEWS[S.view]!, w = st.world;
-  const shown = mod.liveLook(st, now);
+  const now = wall(), seconds = worldSeconds(), view = mod.STAGE_VIEWS[S.view]!, w = st.world, type = S.type, t = performance.now();
+  const show = (c: HTMLCanvasElement, m: Monitor, look: StageLook): void => {
+    if (type === "orb") stage!.draw(c, m.frame, look, view, S.bearing, seconds, w.hour, w.gain, m.slot);
+    else stage!.drawFace(c, type, look, w.hour, m.slot, m.wipe, t);
+  };
+  const shown = mod.liveLook(st, now, type);
   feed(live, shown);
   const lc = $<HTMLCanvasElement>("live");
   fit(lc);
-  stage.draw(lc, live.frame, shown, view, S.bearing, seconds, w.hour, w.gain, live.slot);
+  show(lc, live, shown);
   const pc = $<HTMLCanvasElement>("preview");
   fit(pc);
   if (S.picked) {
-    const look = mod.targetLook(st, S.picked, performance.now() - S.pickedAt, now);
+    const look = mod.targetLook(st, S.picked, t - S.pickedAt, now, type);
     feed(preview, look);
-    stage.draw(pc, preview.frame, look, view, S.bearing, seconds, w.hour, w.gain, preview.slot);
+    show(pc, preview, look);
   } else {
     feed(preview, { ...shown, clip: null });
     pc.getContext("2d")!.clearRect(0, 0, pc.width, pc.height);
   }
   // A scene's tile under the pointer moves.
   const tile = hovered ? document.querySelector<HTMLCanvasElement>(`canvas[data-thumb="${CSS.escape(hovered)}"]`) : null;
-  if (tile && hovered.startsWith("scene")) drawThumb(tile, seconds);
+  if (tile && hovered.startsWith("scene") && type === "orb") drawThumb(tile, seconds);
   // Thumbnails wanting a picture, a few a frame.
   for (let n = 0; n < 4 && thumbQueue.length; n++) {
     const c = thumbQueue.shift()!;
@@ -265,26 +339,29 @@ function frame(): void {
 /** The tiles and the table's rows, by key. */
 let tiles = new Map<string, Tile>();
 
-/** A thumbnail: the ball showing its tile's target from the street, still, its clip at its poster. */
+/** A thumbnail: the tab's screen showing its tile's target, still, its clip at its poster; the ball from the street. */
 function drawThumb(c: HTMLCanvasElement, seconds: number): void {
-  const st = S.state, t = tiles.get(c.dataset.thumb ?? "");
-  if (!st || !t || !stage || !mod || !thumb) return;
+  const st = S.state, key = c.dataset.thumb ?? "", t = tiles.get(key);
+  // A row of an item not offered here has no tile, but is drawn as one.
+  const clip = t?.clip ?? (key.startsWith("clip:") ? (clipsById().get(key.slice(5)) ?? null) : null);
+  if (!st || (!t && !clip) || !stage || !mod || !thumb) return;
   fit(c);
-  let look = mod.targetLook(st, t.target, 0, wall());
-  if (t.clip) {
-    const p = posterImage(t.clip);
+  let look = mod.targetLook(st, t?.target ?? { kind: "clip", clip: clip!.id }, 0, wall(), S.type);
+  if (clip) {
+    const p = posterImage(clip);
     if (!p) return;
     stage.upload(thumb.slot, p);
-    look = { ...look, clip: t.clip, clipSeconds: t.clip.seconds * 0.1 };
+    look = { ...look, clip, clipSeconds: clip.seconds * 0.1 };
   }
-  stage.draw(c, thumb.frame, look, mod.STAGE_VIEWS[0]!, Math.PI, seconds, st.world.hour, st.world.gain, thumb.slot, true);
+  if (S.type === "orb") stage.draw(c, thumb.frame, look, mod.STAGE_VIEWS[0]!, Math.PI, seconds, st.world.hour, st.world.gain, thumb.slot, true);
+  else stage.drawFace(c, S.type, look, st.world.hour, thumb.slot, thumb.wipe, 0, true);
   c.dataset.drawn = thumbStamp();
 }
 
-/** What a drawn thumbnail depends on beyond its tile: the clips' mode and fill, and night or day. */
+/** What a drawn thumbnail depends on beyond its tile: the tab, its screen's mode and fill, and night or day. */
 function thumbStamp(): string {
-  const orb = S.state?.screens.find((s) => s.screen === "orb");
-  return `${orb?.mode} ${orb?.fill} ${S.state?.night}`;
+  const s = screenNow();
+  return `${S.type} ${s?.mode} ${s?.fill} ${S.state?.night}`;
 }
 
 const thumbQueue: HTMLCanvasElement[] = [];
@@ -311,60 +388,68 @@ function pickTarget(target: Target): void {
   S.pickedAt = performance.now();
   if (preview) preview.frame = new mod!.StageFrame();
   drawPicked();
-  for (const el of document.querySelectorAll<HTMLElement>("[data-pick]")) el.classList.toggle("picked", el.dataset.pick === mod?.targetKey(target));
+  for (const el of document.querySelectorAll<HTMLElement>("[data-pick]")) {
+    const picked = el.dataset.pick === mod?.targetKey(target);
+    el.classList.toggle("picked", picked);
+    (el instanceof HTMLButtonElement ? el : el.querySelector(".preview-clip"))?.setAttribute("aria-pressed", String(picked));
+  }
 }
 
 function drawPicked(): void {
   const st = S.state, t = S.picked;
   if (!st || !mod) return;
   const button = $<HTMLButtonElement>("take");
+  $("preview-empty").hidden = !!t;
   if (!t) {
     button.disabled = true;
+    button.textContent = "Go live";
+    $("pv-title").textContent = "";
     $("pv-note").textContent = "";
     return;
   }
-  const key = mod.targetKey(t), tile = tiles.get(key), isLive = mod.liveKey(st, wall()) === key;
-  $("pv-title").textContent = tile?.title ?? "";
-  button.disabled = isLive;
-  button.textContent = isLive ? "It is live" : "Go live";
-  const orb = st.screens.find((s) => s.screen === "orb");
-  const back = orb ? (orb.show === "scenes" ? "the scenes in turn" : orb.show.startsWith("scene:") ? (tiles.get(orb.show)?.title ?? "its scene") : `the channel ${orb.show}`) : "";
-  $("pv-note").textContent = isLive ? "This is on the ball now." : t.kind === "clip" ? `Plays once, then the ball goes back to ${back}.` : (tile?.note ?? "");
+  const key = mod.targetKey(t), tile = tiles.get(key), isLive = mod.liveKey(st, wall(), S.type) === key;
+  if ($("pv-title").textContent !== (tile?.title ?? "")) $("pv-title").textContent = tile?.title ?? "";
+  button.disabled = isLive || !tile;
+  button.textContent = isLive ? "Live now" : "Go live";
+  const s = screenNow(), orb = S.type === "orb", where = typeWords(S.type);
+  const back = !s ? "" : s.show === "scenes" ? (orb ? "the scenes in turn" : "dark") : s.show.startsWith("scene:") ? (tiles.get(s.show)?.title ?? "its scene") : `the channel ${s.show}`;
+  $("pv-note").textContent = !tile ? `It is not offered on ${where}.` : isLive ? `This is on ${where} now.` : t.kind === "clip" ? `Plays once, then ${orb ? "the ball goes" : `${where} go`} back to ${back}.` : tile.note;
 }
 
 /** The line under the live monitor: what plays, how far in, and what comes next. */
 function drawLiveLine(): void {
   const st = S.state;
   if (!st || !mod) return;
-  const now = wall(), look = mod.liveLook(st, now), orb = st.screens.find((s) => s.screen === "orb");
-  const playing = orb ? screenAt(orb, new Map(st.channels.map((c) => [c.name, c])), timedOf(st.clips), now, st.night) : null;
-  const next = mod.nextWords(st, now);
-  let html = `<b>${esc(mod.lookWords(st, look))}</b>`;
-  if (playing) {
-    const p = progressOf(playing, timedOf(st.clips), now);
+  const now = wall(), look = mod.liveLook(st, now, S.type), s = screenNow(), channels = channelMap(), timed = timedOf(st.clips);
+  const playing = s ? screenAt(s, channels, timed, now, st.night) : null;
+  const next = mod.nextWords(st, now, S.type);
+  let html = `<b>${esc(mod.lookWords(st, look, S.type))}</b>`;
+  if (playing && s) {
+    const p = progressOf(playing, timed, now, onceShowing(s, timed, now) ? null : (channels.get(s.show) ?? null));
     html += ` <span class="dim">${lengthText(p.at)} of ${lengthText(p.of)}</span><div class="time"><i style="width:${(p.share * 100).toFixed(1)}%"></i></div>`;
-  } else if (orb?.night && !st.night) html += ` <span class="dim">Clips wait for night here; the scenes run by day.</span>`;
+  } else if (s?.night && !st.night) html += ` <span class="dim">${S.type === "orb" ? "Clips wait for night here; the scenes run by day." : "They wait for night; the faces are dark by day."}</span>`;
   if (next) html += `<span class="dim">Next: ${esc(next)}</span>`;
   paint($("live-line"), html);
   const hour = st.world.hour, h = Math.floor(hour), m = Math.floor((hour - h) * 60);
-  $("clock").textContent = `It is ${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")} in the world, ${st.night ? "night" : "day"}.`;
+  $("clock").textContent = `World time ${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")} · ${st.night ? "Night" : "Day"}`;
 }
 
 function tileHtml(t: Tile, liveNow: string): string {
   const on = t.key === liveNow, picked = S.picked && mod?.targetKey(S.picked) === t.key;
   const art = stage ? `<canvas data-thumb="${esc(t.key)}"></canvas>` : t.clip ? `<img src="${esc(t.clip.poster)}" alt="" loading="lazy">` : `<span class="art"></span>`;
-  return `<button class="tile${on ? " live" : ""}${picked ? " picked" : ""}" data-pick="${esc(t.key)}" title="Click to preview; double-click to go live">
+  return `<button class="tile${on ? " live" : ""}${picked ? " picked" : ""}" data-pick="${esc(t.key)}" data-focus="${esc(t.key)}" aria-pressed="${!!picked}">
     ${art}${on ? `<span class="tag on-air">Live</span>` : ""}<span class="t-title">${esc(t.title)}</span><span class="t-note">${esc(t.note)}</span></button>`;
 }
 
 function drawTiles(): void {
   const st = S.state;
   if (!st || !mod) return;
-  tiles = new Map(mod.stageTiles(st).map((t) => [t.key, t]));
-  const now = mod.liveKey(st, wall()), all = [...tiles.values()];
+  tiles = new Map(mod.stageTiles(st, S.type).map((t) => [t.key, t]));
+  const now = mod.liveKey(st, wall(), S.type), all = [...tiles.values()];
   const scenes = all.filter((t) => t.group === "scenes"), channels = all.filter((t) => t.group === "channels");
   paint($("tiles-scenes"), scenes.map((t) => tileHtml(t, now)).join(""));
-  paint($("tiles-channels"), channels.length ? channels.map((t) => tileHtml(t, now)).join("") : `<p class="dim">No channel has clips yet.</p>`);
+  const some = channels.some((t) => t.target.kind === "channel");
+  paint($("tiles-channels"), channels.map((t) => tileHtml(t, now)).join("") + (some ? "" : `<p class="dim">No channel for ${esc(typeWords(S.type))} has anything to play yet. Make one below.</p>`));
   drawClips(now);
 }
 
@@ -376,49 +461,56 @@ function drawViews(): void {
 // ---- The clips' table.
 
 function clipRow(c: StateClip, liveNow: string): string {
-  const key = `clip:${c.id}`, on = key === liveNow, picked = S.picked && mod?.targetKey(S.picked) === key;
-  const inChannels = S.state!.channels.filter((ch) => ch.items.includes(c.id)).map((ch) => ch.name);
+  const key = `clip:${c.id}`, on = key === liveNow, picked = S.picked && mod?.targetKey(S.picked) === key, here = offeredOn(c, S.type), image = isImage(c);
+  const inChannels = S.state!.channels.filter((ch) => ch.items.includes(c.id)).map((ch) => (channelType(ch) === S.type ? ch.name : `${ch.name} (${SHORT[channelType(ch)].toLowerCase()})`));
   const badges = [on ? `<span class="tag on-air">Live</span>` : "", c.starter ? `<span class="chip">Starter</span>` : "", c.hidden ? `<span class="chip">Hidden</span>` : "", c.audio ? `<span class="chip">Sound</span>` : ""].join("");
   const art = stage ? `<canvas data-thumb="${key}"></canvas>` : `<img src="${esc(c.poster)}" alt="" loading="lazy">`;
   const actions = S.renaming === c.id
     ? `<label class="dim">Title <input id="rename-title" maxlength="80" value="${esc(c.title)}"></label>
        <label class="dim">Source <input id="rename-rights" maxlength="240" value="${esc(c.rights)}"></label>
        <div class="row"><button class="primary" data-do="rename-save" data-clip="${c.id}">Save</button><button data-do="rename-cancel">Cancel</button></div>`
-    : `<div class="row"><button data-do="go" data-clip="${c.id}"${c.hidden || on ? " disabled" : ""}>Go live</button>
+    : `<div class="row"><button data-do="go" data-clip="${c.id}"${c.hidden || on || !here ? " disabled" : ""}>Go live</button>
        ${c.starter ? `<button data-do="${c.hidden ? "unhide" : "hide"}" data-clip="${c.id}">${c.hidden ? "Unhide" : "Hide"}</button>`
          : `<button data-do="rename" data-clip="${c.id}">Rename</button><button class="risk" data-do="delete" data-clip="${c.id}">Delete</button>`}</div>`;
-  return `<tr class="${on ? "live" : ""}${picked ? " picked" : ""}${c.hidden ? " hidden-clip" : ""}" data-pick="${key}">
-    <td class="art">${art}</td>
-    <td><b>${esc(c.title)}</b> ${badges}<div class="rights">${esc(c.rights)}</div>${inChannels.length ? `<div class="faint">In ${esc(inChannels.join(", "))}</div>` : ""}</td>
-    <td>${lengthText(c.seconds)}</td><td>${(c.bytes / 1048576).toFixed(1)} MB<div class="faint">${c.width}×${c.height}</div></td>
-    <td>${c.kbps} kbit/s<div class="faint">${c.kBps} KB/s a player</div></td><td>${c.starter ? "Starter" : "Uploaded"}</td><td class="acts">${actions}</td></tr>`;
+  const offers = SCREENS.map((t) => `<label><input type="checkbox" data-do="offer" data-clip="${c.id}" data-type="${t}"${c.types.includes(t) ? " checked" : ""}> ${SHORT[t]}</label>`).join("");
+  const size = image ? `${Math.max(1, Math.round(c.bytes / 1024))} KB` : `${(c.bytes / 1048576).toFixed(1)} MB`;
+  return `<tr class="${on ? "live" : ""}${picked ? " picked" : ""}${c.hidden ? " hidden-clip" : ""}${here ? "" : " elsewhere"}" data-pick="${key}" role="row">
+    <td class="media" role="cell"><div class="media-entry"><div class="art">${art}</div>
+      <div><button type="button" class="preview-clip" data-focus="${key}" aria-pressed="${!!picked}" title="Preview ${esc(c.title)}">${esc(c.title)}</button>
+      ${badges ? `<div class="media-badges">${badges}</div>` : ""}<div class="rights">${esc(c.rights)}</div>${inChannels.length ? `<div class="faint">In ${esc(inChannels.join(", "))}</div>` : ""}</div></div></td>
+    <td class="media-facts" role="cell"><b>${image ? "Image" : `Clip · ${lengthText(c.seconds)}`}</b><div>${c.width}×${c.height} · ${size}</div>${image ? "" : `<div>${c.kbps} kbit/s · ${c.kBps} KB/s per player</div>`}</td>
+    <td class="offers" role="cell"><div role="group" aria-label="Screens offering ${esc(c.title)}">${offers}</div></td>
+    <td class="acts" role="cell">${actions}</td></tr>`;
 }
 
-function drawClips(liveNow = mod && S.state ? mod.liveKey(S.state, wall()) : ""): void {
+function drawClips(liveNow = mod && S.state ? mod.liveKey(S.state, wall(), S.type) : ""): void {
   const st = S.state;
   if (!st) return;
-  const hidden = $<HTMLInputElement>("show-hidden").checked, all = hidden ? st.clips : st.clips.filter((c) => !c.hidden);
+  const hidden = $<HTMLInputElement>("show-hidden").checked, everywhere = $<HTMLInputElement>("show-all").checked;
+  const here = st.clips.filter((c) => offeredOn(c, S.type)), all = (everywhere ? st.clips : here).filter((c) => hidden || !c.hidden);
   const rows = sortClips(findClips(all, S.query), S.sort, S.down, st.clips);
-  const html = rows.length ? rows.map((c) => clipRow(c, liveNow)).join("") : `<tr><td colspan="7" class="dim">${st.clips.length ? "No clip has those words." : "The library is empty."}</td></tr>`;
+  const empty = !st.clips.length ? "The library is empty." : !here.length && !everywhere ? `Nothing is offered on ${typeWords(S.type)} yet. Tick ${SHORT[S.type]} on an item (show those not offered here), or add some below.` : "Nothing has those words.";
+  const html = rows.length ? rows.map((c) => clipRow(c, liveNow)).join("") : `<tr><td colspan="4" class="dim">${esc(empty)}</td></tr>`;
   paint($("clips"), html);
-  const shownHidden = st.clips.filter((c) => c.hidden).length;
-  $("clips-count").textContent = `${rows.length} of ${st.clips.length} clips${shownHidden && !hidden ? `, ${shownHidden} hidden` : ""}. Click a row to preview it; Go live plays it once, then the ball goes back.`;
-  for (const b of document.querySelectorAll<HTMLButtonElement>("th button[data-sort]")) {
-    const on = b.dataset.sort === S.sort;
-    b.classList.toggle("on", on);
-    b.closest("th")!.setAttribute("aria-sort", on ? (S.down ? "descending" : "ascending") : "none");
-    b.textContent = b.textContent!.replace(/ [↑↓]$/, "") + (on ? (S.down ? " ↓" : " ↑") : "");
-  }
+  const shownHidden = here.filter((c) => c.hidden).length, others = st.clips.length - here.length;
+  $("clips-count").textContent = `${rows.length} shown · ${here.length} offered on ${typeWords(S.type)}${everywhere && others ? ` · ${others} offered elsewhere` : ""}${shownHidden && !hidden ? ` · ${shownHidden} hidden` : ""}`;
+  const direction = $("clip-direction");
+  direction.textContent = S.down ? "↓" : "↑";
+  direction.setAttribute("aria-label", S.down ? "Descending order. Switch to ascending" : "Ascending order. Switch to descending");
   wantThumbs();
 }
 
 // ---- How clips sit on the ball.
 
 function knobsHtml(): string {
-  const st = S.state!, s = st.screens.find((x) => x.screen === "orb");
+  const s = screenNow(), type = S.type;
   if (!s) return "";
   const pick = (field: string, value: string, label: string, on: boolean) =>
-    `<button data-do="screen" data-screen="orb" data-field="${field}" data-value="${value}" class="${on ? "on" : ""}" aria-pressed="${on}">${label}</button>`;
+    `<button data-do="screen" data-screen="${type}" data-field="${field}" data-value="${value}" class="${on ? "on" : ""}" aria-pressed="${on}">${label}</button>`;
+  if (type !== "orb") {
+    return `<span>Size</span><div class="row">${pick("fill", "true", "Fill the face, cropping the picture", s.fill)}${pick("fill", "false", "Whole picture, with dark bars", !s.fill)}</div>
+    <span>When</span><label><input type="checkbox" data-do="flag" data-screen="${type}" data-field="night"${s.night ? " checked" : ""}> Only by night; dark by day</label>`;
+  }
   return `<span>Turned</span><div class="row">${pick("mode", "facing", "To face each player", s.mode === "facing")}${pick("mode", "fixed", "Fixed to the ball", s.mode === "fixed")}</div>
     <span>Size</span><div class="row">${pick("fill", "true", "Fill the ball", s.fill)}${pick("fill", "false", "Whole picture, with a glow round it", !s.fill)}</div>
     <span>Sound</span><label><input type="checkbox" data-do="flag" data-screen="orb" data-field="sound"${s.sound ? " checked" : ""}> Play the clip's sound near the ball</label>
@@ -434,28 +526,31 @@ function waitingHtml(): string {
 
 // ---- Channels
 function channelsHtml(): string {
-  const st = S.state!, all = st.clips;
-  const shownOn = (name: string): string[] => st.screens.filter((s) => s.show === name).map((s) => SCREEN_NAMES[s.screen] ?? s.screen);
-  if (!S.draft.length) return `<p class="dim">No channels. A screen shows the scenes until one is made.</p>`;
-  return S.draft.map((d, i) => {
+  const st = S.state!, type = S.type, all = st.clips.filter((c) => offeredOn(c, type)), byId = clipsById();
+  const shownOn = (name: string): boolean => st.screens.some((s) => s.screen === type && s.show === name);
+  const mine = S.draft.map((d, i) => [d, i] as const).filter(([d]) => d.type === type);
+  if (!mine.length) return `<p class="dim">No channels for ${esc(typeWords(type))}. ${type === "orb" ? "The ball shows its scenes" : "They stay dark"} until one is made and shown.</p>`;
+  return mine.map(([d, i]) => {
     const items = d.items.map((id, j) => {
-      const c = all.find((x) => x.id === id);
-      return `<li><span class="row"><span class="grow">${esc(c?.title ?? id)}${c?.hidden ? ' <span class="chip">Hidden</span>' : ""} <span class="dim">${c ? lengthText(c.seconds) : ""}</span></span>
+      const c = byId.get(id), still = d.still ?? st.caps.still ?? STILL_SECONDS;
+      return `<li><span class="row"><span class="grow">${esc(c?.title ?? id)}${c?.hidden ? ' <span class="chip">Hidden</span>' : ""} <span class="dim">${c ? (isImage(c) ? `image, ${still} s` : lengthText(c.seconds)) : ""}</span></span>
         <button data-do="item-up" data-ch="${i}" data-at="${j}" aria-label="Move up"${j === 0 ? " disabled" : ""}>↑</button>
         <button data-do="item-down" data-ch="${i}" data-at="${j}" aria-label="Move down"${j === d.items.length - 1 ? " disabled" : ""}>↓</button>
         <button data-do="item-out" data-ch="${i}" data-at="${j}" aria-label="Remove">✕</button></span></li>`;
     }).join("");
-    const on = shownOn(d.name);
+    const on = shownOn(d.name), hasImage = d.items.some((id) => { const c = byId.get(id); return !!c && isImage(c); });
+    const still = `<label class="dim">Each image for <input type="number" data-do="ch-still" data-ch="${i}" min="${st.caps.stillMin ?? 2}" max="${st.caps.stillMax ?? 120}" step="1" value="${d.still ?? st.caps.still ?? STILL_SECONDS}" aria-label="Seconds each image holds"> s</label>`;
     return `<div class="channel">
       <div class="row"><input data-do="ch-name" data-ch="${i}" value="${esc(d.name)}" maxlength="40" aria-label="Channel name">
         <button data-do="ch-order" data-ch="${i}" data-value="false" class="${d.shuffle ? "" : "on"}" aria-pressed="${!d.shuffle}">Loop in order</button>
         <button data-do="ch-order" data-ch="${i}" data-value="true" class="${d.shuffle ? "on" : ""}" aria-pressed="${d.shuffle}">Shuffle</button>
         <label><input type="checkbox" data-do="ch-reset" data-ch="${i}"${d.reset ? " checked" : ""}> Restart from the top on save</label>
+        ${hasImage || type !== "orb" ? still : ""}
         <span class="grow"></span><button class="risk" data-do="ch-delete" data-ch="${i}">Delete channel</button></div>
-      ${on.length ? `<p class="dim">Shown on ${esc(on.join(", "))}.</p>` : ""}
+      ${on ? `<p class="dim">Live on ${esc(typeWords(type))} now.</p>` : ""}
       <p class="dim" data-now-channel="${esc(d.name)}"></p>
-      ${items ? `<ol>${items}</ol>` : `<p class="faint">No clips yet.</p>`}
-      <div class="row"><select id="add-${i}" aria-label="Clip to add">${all.map((c) => `<option value="${c.id}">${esc(c.title)}${c.hidden ? " (hidden)" : ""}</option>`).join("")}</select>
+      ${items ? `<ol>${items}</ol>` : `<p class="faint">Nothing in it yet.</p>`}
+      <div class="row"><select id="add-${i}" aria-label="Clip or image to add">${all.map((c) => `<option value="${c.id}">${esc(c.title)}${isImage(c) ? " (image)" : ""}${c.hidden ? " (hidden)" : ""}</option>`).join("")}</select>
         <button data-do="item-add" data-ch="${i}"${all.length ? "" : " disabled"}>Add to the channel</button></div>
     </div>`;
   }).join("");
@@ -477,16 +572,16 @@ function drawNow(): void {
   drawLiveLine();
   drawPicked();
   // What is live moves on as clips end, so the tiles and the rows marked live follow it.
-  const now = mod ? mod.liveKey(st, wall()) : "";
+  const now = mod ? mod.liveKey(st, wall(), S.type) : "";
   if (now !== liveShown) {
     liveShown = now;
     drawTiles();
   }
-  const timed = timedOf(st.clips), channels = new Map(st.channels.map((c) => [c.name, c])), at = wall();
+  const timed = timedOf(st.clips), channels = channelMap(), at = wall();
   for (const el of document.querySelectorAll<HTMLElement>("[data-now-channel]")) {
     const c = channels.get(el.dataset.nowChannel!);
     const playing = c ? channelAt(c, timed, at) : null;
-    paint(el, !c ? "Not saved yet." : !playing ? "Nothing it lists can play." : `Now ${esc(titleText(playing.clip))} (${lengthText(progressOf(playing, timed, at).at)} in), next ${esc(titleText(playing.next))}.`);
+    paint(el, !c ? "Not saved yet." : !playing ? "Nothing it lists can play." : `Now ${esc(titleText(playing.clip))} (${lengthText(progressOf(playing, timed, at, c).at)} in), next ${esc(titleText(playing.next))}.`);
   }
 }
 let liveShown = "";
@@ -496,16 +591,71 @@ function draw(): void {
   if (!st) return;
   $("cap-wide").textContent = String(st.caps.wide);
   $("cap-high").textContent = String(st.caps.high);
+  $("cap-long").textContent = String(st.caps.imageLong ?? 1280);
+  $("cap-bytes").textContent = `${Math.round(((st.caps.imageBytes ?? 1048576) / 1048576) * 10) / 10} MB`;
+  drawType();
   // A picked clip or channel that is gone is let go.
-  if (S.picked && mod && !mod.stageTiles(st).some((t) => t.key === mod!.targetKey(S.picked!))) S.picked = null;
-  liveShown = mod ? mod.liveKey(st, wall()) : "";
+  if (S.picked && mod && !mod.stageTiles(st, S.type).some((t) => t.key === mod!.targetKey(S.picked!))) S.picked = null;
+  liveShown = mod ? mod.liveKey(st, wall(), S.type) : "";
   drawTiles();
   if (!mod) drawClips();
   paint($("knobs"), knobsHtml());
   paint($("waiting"), waitingHtml());
   paint($("channels"), channelsHtml());
+  paint($("add-types"), addTypesHtml());
+  drawStillChannel();
   drawChannelBar();
   drawNow();
+}
+
+/** The parts of the page that are the tab's: the tabs, the title and its line, and what only the ball has. */
+function drawType(): void {
+  const type = S.type, label = SCREEN_TYPES[type].label;
+  for (const a of document.querySelectorAll<HTMLAnchorElement>("#tabs a[data-type]")) {
+    const on = a.dataset.type === type;
+    a.classList.toggle("on", on);
+    if (on) a.setAttribute("aria-current", "page");
+    else a.removeAttribute("aria-current");
+  }
+  $("type-title").textContent = label;
+  $("type-line").textContent = TYPE_LINES[type];
+  document.title = `${label} · Screens · SNARK Admin`;
+  const orb = type === "orb";
+  $("scenes-section").hidden = !orb;
+  $("views-row").hidden = !orb;
+  $("offset-note").hidden = orb;
+  document.querySelector("main")!.dataset.type = type;
+  $("knobs-title").textContent = `${label} display settings`;
+  $("channels-line").textContent = orb
+    ? "Choose a playlist for the ball in every world."
+    : `Choose a playlist for all ${typeWords(type)}, or select Dark to turn them off.`;
+  $("preview-empty").textContent = orb ? "Select a scene, channel or media item." : "Select a channel or media item.";
+  for (const id of ["live", "preview"]) {
+    const c = $<HTMLCanvasElement>(id);
+    c.tabIndex = orb ? 0 : -1;
+    if (orb) c.setAttribute("aria-describedby", "orbit-help");
+    else c.removeAttribute("aria-describedby");
+  }
+}
+
+/** Changes the tab, and the address with it so the tab can be linked; `push` is false for the browser's own back and forward. */
+function setType(type: ScreenType, push = true): void {
+  if (type === S.type && push) return;
+  S.type = type;
+  S.picked = null;
+  S.addTypes = null;
+  S.query = "";
+  $<HTMLInputElement>("find").value = "";
+  if (push) history.pushState(null, "", location.pathname + searchOfType(location.search, type) + location.hash);
+  if (mod && preview && live) {
+    preview.frame = new mod.StageFrame();
+    live.frame = new mod.StageFrame();
+    live.wipe = new mod.FaceWipe();
+    preview.wipe = new mod.FaceWipe();
+  }
+  for (const el of document.querySelectorAll<HTMLElement>("[data-pick].picked")) el.classList.remove("picked");
+  draw();
+  drawPicked();
 }
 
 /** The draft changed: draw the channels again. */
@@ -520,18 +670,17 @@ async function saveChannels(): Promise<void> {
     say("The channels were changed elsewhere. Undo your changes to see theirs, then make yours again.", "warn");
     return;
   }
-  const channels = S.draft.map((d) => ({ name: d.name, items: d.items, shuffle: d.shuffle, reset: d.reset }));
-  if (!(await edit({ op: "channels", channels }, "Channels saved."))) return;
+  if (!(await edit({ op: "channels", channels: sentChannels(S.draft) }, "Channels saved."))) return;
   S.draft = draftChannels(S.state!.channels);
   S.base = JSON.stringify(S.state!.channels);
   draw();
 }
 
-/** Takes `target` live on the ball. */
+/** Takes `target` live on the tab's screens. */
 async function goLive(target: Target): Promise<void> {
   if (!mod) return;
   const tile = tiles.get(mod.targetKey(target));
-  await edit(mod.takeBody(target), `${tile?.title ?? "It"} is live. Players see it within a few seconds.`);
+  await edit(mod.takeBody(target, S.type), `${tile?.title ?? "It"} is live on ${typeWords(S.type)}. Players see it within a few seconds.`);
 }
 
 // ---- Upload
@@ -606,12 +755,12 @@ function forget(): void {
   $<HTMLInputElement>("file").value = "";
 }
 
-/** Sends the file with its upload's progress, which fetch cannot show. */
-function upload(file: File, title: string, progress: (share: number) => void): Promise<{ status: number; answer: Record<string, unknown> }> {
+/** Sends the file with its upload's progress, which fetch cannot show: a clip, or an image to `path` "image". */
+function upload(file: File, title: string, progress: (share: number) => void, path = "upload"): Promise<{ status: number; answer: Record<string, unknown> }> {
   return new Promise((resolve) => {
     const x = new XMLHttpRequest();
-    x.open("POST", `${API}upload?name=${encodeURIComponent(title)}`);
-    x.setRequestHeader("content-type", "video/mp4");
+    x.open("POST", `${API}${path}?name=${encodeURIComponent(title)}`);
+    x.setRequestHeader("content-type", path === "upload" ? "video/mp4" : file.type || "application/octet-stream");
     x.upload.onprogress = (e) => e.lengthComputable && progress(e.loaded / e.total);
     x.onload = () => {
       let answer: Record<string, unknown> = {};
@@ -630,11 +779,19 @@ function upload(file: File, title: string, progress: (share: number) => void): P
 /** A frame at a tenth of the clip as a JPEG of POSTER_BYTES at most, in base64. */
 async function posterOf(v: HTMLVideoElement): Promise<string> {
   await seek(v, v.duration * 0.1);
+  return posterFrom(v, v.videoWidth, v.videoHeight);
+}
+
+/** A picture `w` by `h` as a JPEG of POSTER_BYTES at most, in base64: smaller and smaller until it fits. */
+async function posterFrom(source: CanvasImageSource, w: number, h: number): Promise<string> {
   const c = document.createElement("canvas"), g = c.getContext("2d")!;
-  let { width, height } = fitLong(v.videoWidth, v.videoHeight, POSTER_LONG);
+  let { width, height } = fitLong(w, h, POSTER_LONG);
   while (width >= 16 && height >= 16) {
     [c.width, c.height] = [width, height];
-    g.drawImage(v, 0, 0, width, height);
+    // A still with clear parts is laid on black, as a screen shows it.
+    g.fillStyle = "#000";
+    g.fillRect(0, 0, width, height);
+    g.drawImage(source, 0, 0, width, height);
     for (const q of POSTER_QUALITIES) {
       const blob = await new Promise<Blob | null>((ok) => c.toBlob(ok, "image/jpeg", q));
       if (blob && blob.size <= POSTER_BYTES) return base64(new Uint8Array(await blob.arrayBuffer()));
@@ -733,7 +890,7 @@ async function send(): Promise<void> {
     const { poster, track } = await made;
     read.value = 1;
     const samples = Math.max(1, Math.round(Number(r.answer.seconds) * st.caps.colourRate));
-    const done = await post("clip", { id: r.answer.id, title, rights, poster, colours: base64(track.finish(samples)) });
+    const done = await post("clip", { id: r.answer.id, title, rights, poster, colours: base64(track.finish(samples)), types: addTypes() });
     if (done.status !== 200) throw new Error(String(done.answer.error ?? `Publishing answered ${done.status}.`));
     S.busy = false;
     forget();
@@ -750,6 +907,211 @@ async function send(): Promise<void> {
   }
 }
 
+// ---- What is added is offered on: the tab's type until ticked otherwise.
+
+const addTypes = (): ScreenType[] => S.addTypes ?? [S.type];
+
+function addTypesHtml(): string {
+  const on = addTypes(), forced = stillChannelName() ? S.type : null;
+  return SCREENS.map((t) => `<label><input type="checkbox" data-do="add-type" data-type="${t}"${on.includes(t) || t === forced ? " checked" : ""}${t === forced ? " disabled" : ""}> ${esc(SCREEN_TYPES[t].label)}</label>`).join("");
+}
+
+// ---- Images: many at once, each checked here first, then sent, given its poster and colour, and published.
+
+/** The channel the batch goes into, by name: "" for none. A new one takes the name typed. */
+function stillChannelName(): string {
+  const pick = $<HTMLSelectElement>("still-channel").value;
+  return pick === " new" ? $<HTMLInputElement>("still-new").value.replace(/\s+/g, " ").trim() : pick;
+}
+
+function drawStillChannel(): void {
+  const st = S.state;
+  if (!st) return;
+  const mine = st.channels.filter((c) => channelType(c) === S.type), select = $<HTMLSelectElement>("still-channel"), was = select.value;
+  if (paint(select, `<option value="">no channel</option>${mine.map((c) => `<option value="${esc(c.name)}">the channel ${esc(c.name)}</option>`).join("")}<option value=" new">a new channel for ${esc(typeWords(S.type))}</option>`)) {
+    if ([...select.options].some((o) => o.value === was)) select.value = was;
+  }
+  const fresh = select.value === " new";
+  $("still-new").hidden = $("still-secs-label").hidden = !fresh;
+}
+
+async function pickStills(files: readonly File[]): Promise<void> {
+  if (S.stillBusy || !S.state) return;
+  // A finished batch is cleared when a new one comes.
+  if (S.stills.length && S.stills.every((s) => s.state !== "ready")) forgetStills();
+  for (const file of files) {
+    const bytes = new Uint8Array(await file.arrayBuffer()), checked = checkImage(file.name, file.type, bytes, S.state.caps);
+    S.stills.push({
+      key: ++stillKeys, file, url: URL.createObjectURL(file), title: titleOf(file.name), info: Array.isArray(checked) ? null : checked,
+      faults: Array.isArray(checked) ? checked : [], state: "ready", note: "", id: "",
+    });
+  }
+  $("stills").hidden = false;
+  drawStills();
+}
+
+function drawStills(): void {
+  const rows = S.stills.map((s, i) => {
+    const facts = s.info ? `${s.info.width}×${s.info.height}, ${s.info.type.toUpperCase()}, ${Math.max(1, Math.round(s.file.size / 1024))} KB` : "";
+    const status = s.faults.length ? `<span class="bad">${esc(s.faults.join(" "))}</span>`
+      : s.state === "done" ? `<span class="well">${esc(s.note || "In the library.")}</span>` : s.state === "failed" ? `<span class="bad">${esc(s.note)}</span>`
+        : s.state === "sending" ? `<span class="dim">Sending…</span>` : `<span class="dim">Ready.</span>`;
+    const locked = S.stillBusy || s.state !== "ready" || s.faults.length > 0;
+    return `<div class="still${s.faults.length ? " bad-still" : ""}"><img src="${esc(s.url)}" alt="">
+      <div class="still-words"><input data-do="still-title" data-at="${i}" maxlength="80" value="${esc(s.title)}" aria-label="Title"${locked ? " disabled" : ""}>
+      <div class="faint">${esc(s.file.name)}${facts ? ` · ${facts}` : ""}</div><div>${status}</div></div>
+      <button data-do="still-out" data-at="${i}" aria-label="Leave it out"${S.stillBusy ? " disabled" : ""}>✕</button></div>`;
+  }).join("");
+  paint($("still-rows"), rows);
+  const ready = S.stills.filter((s) => s.state === "ready" && !s.faults.length).length;
+  const send = $<HTMLButtonElement>("still-send");
+  send.disabled = S.stillBusy || ready === 0;
+  send.textContent = S.stillBusy ? "Sending…" : ready ? `Upload and publish ${ready} image${ready === 1 ? "" : "s"}` : "Upload and publish";
+  $<HTMLButtonElement>("still-forget").disabled = S.stillBusy;
+  if (!S.stills.length) $("stills").hidden = true;
+}
+
+function forgetStills(): void {
+  if (S.stillBusy) return;
+  for (const s of S.stills) URL.revokeObjectURL(s.url);
+  S.stills = [];
+  $("still-work").hidden = true;
+  drawStills();
+}
+
+/** A still's poster and its one colour sample, from the file decoded here. */
+async function stillParts(file: File): Promise<{ poster: string; colours: string }> {
+  let bitmap: ImageBitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch {
+    throw new Error("This browser could not open the picture.");
+  }
+  try {
+    const poster = await posterFrom(bitmap, bitmap.width, bitmap.height);
+    const { width, height } = fitLong(bitmap.width, bitmap.height, SAMPLE_LONG), c = document.createElement("canvas");
+    [c.width, c.height] = [width, height];
+    const g = c.getContext("2d", { willReadFrequently: true })!;
+    g.fillStyle = "#000";
+    g.fillRect(0, 0, width, height);
+    g.drawImage(bitmap, 0, 0, width, height);
+    return { poster, colours: base64(stillColours(g.getImageData(0, 0, width, height).data, width, height)) };
+  } finally {
+    bitmap.close();
+  }
+}
+
+/** Sends one still and publishes it; answers its id. One already in the library is taken as it is. */
+async function sendStill(s: Still, rights: string, types: ScreenType[]): Promise<string> {
+  const parts = await stillParts(s.file);
+  const r = await upload(s.file, s.title, () => undefined, "image");
+  if (r.status === 409 && typeof r.answer.id === "string") {
+    s.note = "It was in the library already.";
+    return r.answer.id;
+  }
+  if (r.status !== 200) throw new Error(String(r.answer.error ?? `The upload answered ${r.status}.`));
+  const done = await post("clip", { id: r.answer.id, title: s.title, rights, ...parts, types });
+  if (done.status !== 200) throw new Error(String(done.answer.error ?? `Publishing answered ${done.status}.`));
+  s.note = "In the library.";
+  return String(r.answer.id);
+}
+
+async function sendStills(): Promise<void> {
+  const st = S.state;
+  if (!st || S.stillBusy) return;
+  const rights = $<HTMLInputElement>("still-rights").value.replace(/\s+/g, " ").trim();
+  if (!rights) {
+    $("still-rights").focus();
+    return say("Say who made the images and why we may show them.", "bad");
+  }
+  const channel = stillChannelName(), type = S.type;
+  if ($<HTMLSelectElement>("still-channel").value === " new" && !channel) {
+    $("still-new").focus();
+    return say("Name the new channel.", "bad");
+  }
+  const secs = Number($<HTMLInputElement>("still-secs").value);
+  const still = $<HTMLSelectElement>("still-channel").value === " new" && secs !== (st.caps.still ?? STILL_SECONDS) ? secs : undefined;
+  // A channel of this type lists only what is offered on it.
+  const types = channel ? [...new Set([...addTypes(), type])] : addTypes();
+  const batch = S.stills.filter((s) => s.state === "ready" && !s.faults.length && s.title.trim());
+  if (!batch.length) return say("Give each image a title.", "bad");
+  S.stillBusy = true;
+  $("still-work").hidden = false;
+  const bar = $<HTMLProgressElement>("still-progress");
+  bar.max = batch.length;
+  let done = 0, failed = 0;
+  const ids: string[] = [];
+  try {
+    for (const s of batch) {
+      $("still-say").textContent = batchWords(done, failed, batch.length);
+      bar.value = done + failed;
+      s.state = "sending";
+      drawStills();
+      try {
+        s.title = s.title.replace(/\s+/g, " ").trim();
+        s.id = await sendStill(s, rights, types);
+        s.state = "done";
+        ids.push(s.id);
+        done++;
+      } catch (e) {
+        s.state = "failed";
+        s.note = e instanceof Error ? e.message : String(e);
+        failed++;
+      }
+      drawStills();
+    }
+    bar.value = batch.length;
+    $("still-say").textContent = batchWords(done, failed, batch.length);
+    await load();
+    if (channel && ids.length) await stillsToChannel(channel, ids, type, still);
+    else say(batchWords(done, failed, batch.length), failed ? "warn" : "well");
+  } finally {
+    S.stillBusy = false;
+    drawStills();
+  }
+}
+
+/** Puts the new stills in a channel of `type`: saved at once, unless channels are being changed here, where they join the changes. */
+async function stillsToChannel(name: string, ids: string[], type: ScreenType, still: number | undefined): Promise<void> {
+  const st = S.state!, dirty = draftDiffers(S.draft, st.channels);
+  const draft = dirty ? S.draft : draftChannels(st.channels);
+  const fault = addToChannel(draft, name, ids, type, still);
+  if (fault) return say(fault, "bad");
+  if (dirty) {
+    redrawDraft();
+    return say(`The images are in the library, and added to ${name} with your other channel changes: save the channels to keep them.`, "warn");
+  }
+  if (await edit({ op: "channels", channels: sentChannels(draft) }, `The images are in the library and in the channel ${name}.`)) {
+    S.draft = draftChannels(S.state!.channels);
+    S.base = JSON.stringify(S.state!.channels);
+    draw();
+  }
+}
+
+/** Changes which types an item is offered on, warning where that takes it out of this tab's channels. */
+async function offer(clip: string, type: ScreenType, on: boolean): Promise<void> {
+  const c = clipsById().get(clip);
+  if (!c || !S.state) return;
+  const types = withType(c.types, type, on);
+  if (typeof types === "string") {
+    drawClips();
+    return say(types, "bad");
+  }
+  const left = on ? [] : channelsLeft(S.state.channels, clip, type);
+  if (left.length && !confirm(`${c.title} leaves ${left.join(", ")}, which play on ${typeWords(type)}. Go on?`)) return drawClips();
+  await edit({ op: "types", clip, types }, on ? `${c.title} is offered on ${typeWords(type)}.` : `${c.title} is no longer offered on ${typeWords(type)}.`);
+}
+
+/** Files picked or dropped: a clip to its own form, images to the batch. */
+function picked(files: readonly File[]): void {
+  const clip = files.find((f) => f.type === "video/mp4" || /\.mp4$/i.test(f.name));
+  const stills = files.filter((f) => f !== clip && (f.type.startsWith("image/") || /\.(png|jpe?g|webp)$/i.test(f.name)));
+  const others = files.filter((f) => f !== clip && !stills.includes(f));
+  if (clip) void pick(clip).catch(failed);
+  if (stills.length) void pickStills(stills).catch(failed);
+  if (others.length) say(`${others.map((f) => f.name).join(", ")}: a clip is an .mp4, and an image a PNG, JPEG or WebP.`, "bad");
+}
+
 // ---- Wiring
 
 const num = (el: HTMLElement, key: string): number => Number(el.dataset[key]);
@@ -758,12 +1120,10 @@ const targetOf = (key: string): Target | null => tiles.get(key)?.target ?? (key.
 
 document.addEventListener("click", (e) => {
   const el = e.target as HTMLElement;
-  const sort = el.closest<HTMLElement>("th button[data-sort]");
-  if (sort) {
-    const key = sort.dataset.sort as ClipSort;
-    S.down = S.sort === key ? !S.down : key !== "title" && key !== "added";
-    S.sort = key;
-    return drawClips();
+  const tab = el.closest<HTMLAnchorElement>("#tabs a[data-type]");
+  if (tab && !(e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0)) {
+    e.preventDefault();
+    return setType(tab.dataset.type as ScreenType);
   }
   const b = el.closest<HTMLElement>("button[data-do]");
   if (!b) {
@@ -821,16 +1181,11 @@ document.addEventListener("click", (e) => {
       if (d && id) d.items.push(id);
       return redrawDraft();
     }
-  }
-});
-
-document.addEventListener("dblclick", (e) => {
-  const p = (e.target as HTMLElement).closest<HTMLElement>("[data-pick]");
-  if (!p || (e.target as HTMLElement).closest("button[data-do],input,label")) return;
-  const t = targetOf(p.dataset.pick!);
-  if (t) {
-    pickTarget(t);
-    void goLive(t).catch(failed);
+    case "still-out": {
+      const [gone] = S.stills.splice(num(b, "at"), 1);
+      if (gone) URL.revokeObjectURL(gone.url);
+      return drawStills();
+    }
   }
 });
 
@@ -841,16 +1196,46 @@ document.addEventListener("pointerover", (e) => {
 
 document.addEventListener("change", (e) => {
   const el = e.target as HTMLInputElement & HTMLSelectElement;
-  if (el.id === "show-hidden") return drawClips();
+  if (el.id === "show-hidden" || el.id === "show-all") return drawClips();
+  if (el.id === "still-channel") return void (drawStillChannel(), paint($("add-types"), addTypesHtml()));
   if (!S.state || !el.dataset.do) return;
   const d = S.draft[num(el, "ch")];
   if (el.dataset.do === "flag") void edit({ op: "screen", screen: el.dataset.screen, [el.dataset.field!]: el.checked }).catch(failed);
   else if (el.dataset.do === "ch-name" && d) (d.name = el.value.replace(/\s+/g, " ").trim()), redrawDraft();
   else if (el.dataset.do === "ch-reset" && d) (d.reset = el.checked), redrawDraft();
+  else if (el.dataset.do === "ch-still" && d) {
+    const secs = Math.round(Number(el.value));
+    d.still = secs === (S.state.caps.still ?? STILL_SECONDS) && S.state.channels.find((c) => c.name === d.name)?.still === undefined ? undefined : secs;
+    redrawDraft();
+  } else if (el.dataset.do === "offer") void offer(el.dataset.clip!, el.dataset.type as ScreenType, el.checked).catch(failed);
+  else if (el.dataset.do === "add-type") {
+    const next = withType(addTypes(), el.dataset.type as ScreenType, el.checked);
+    if (typeof next === "string") say("Offer what you add on one type of screen at least.", "bad");
+    else S.addTypes = next;
+    paint($("add-types"), addTypesHtml());
+  } else if (el.dataset.do === "still-title") {
+    const s = S.stills[num(el, "at")];
+    if (s) s.title = el.value;
+  }
 });
+document.addEventListener("input", (e) => {
+  const el = e.target as HTMLInputElement;
+  if (el.id === "still-new") paint($("add-types"), addTypesHtml());
+});
+addEventListener("popstate", () => setType(typeOfSearch(location.search), false));
 
 $<HTMLInputElement>("find").oninput = () => {
   S.query = $<HTMLInputElement>("find").value;
+  drawClips();
+};
+$<HTMLSelectElement>("clip-sort").onchange = (e) => {
+  const key = (e.currentTarget as HTMLSelectElement).value as ClipSort;
+  S.sort = key;
+  S.down = key !== "title" && key !== "added";
+  drawClips();
+};
+$("clip-direction").onclick = () => {
+  S.down = !S.down;
   drawClips();
 };
 $("take").onclick = () => S.picked && void goLive(S.picked).catch(failed);
@@ -859,17 +1244,26 @@ $("take").onclick = () => S.picked && void goLive(S.picked).catch(failed);
 for (const id of ["live", "preview"]) {
   const c = $<HTMLCanvasElement>(id);
   let from: number | null = null;
-  c.onpointerdown = (e) => ((from = e.clientX), c.setPointerCapture(e.pointerId));
+  c.onpointerdown = (e) => {
+    if (S.type !== "orb") return;
+    from = e.clientX;
+    c.setPointerCapture(e.pointerId);
+  };
   c.onpointermove = (e) => {
     if (from === null) return;
     S.bearing -= ((e.clientX - from) / Math.max(1, c.clientWidth)) * Math.PI;
     from = e.clientX;
   };
   c.onpointerup = c.onpointercancel = () => (from = null);
+  c.onkeydown = (e) => {
+    if (S.type !== "orb" || (e.key !== "ArrowLeft" && e.key !== "ArrowRight")) return;
+    e.preventDefault();
+    S.bearing += (e.key === "ArrowLeft" ? 1 : -1) * Math.PI / 12;
+  };
 }
 
 $("add-channel").onclick = () => {
-  S.draft.push({ name: freeChannelName(S.draft), items: [], shuffle: false, reset: false });
+  S.draft.push({ name: freeChannelName(S.draft), items: [], shuffle: false, reset: false, type: S.type });
   redrawDraft();
 };
 $("save-channels").onclick = () => void saveChannels().catch(failed);
@@ -883,21 +1277,22 @@ $("reload").onclick = () => void load();
 $("send").onclick = () => void send();
 $("forget").onclick = forget;
 $<HTMLInputElement>("file").onchange = () => {
-  const f = $<HTMLInputElement>("file").files?.[0];
-  if (f) void pick(f).catch(failed);
+  picked([...($<HTMLInputElement>("file").files ?? [])]);
+  $<HTMLInputElement>("file").value = "";
 };
+$("still-send").onclick = () => void sendStills().catch(failed);
+$("still-forget").onclick = forgetStills;
 const drop = $("drop");
 drop.ondragover = (e) => (e.preventDefault(), drop.classList.add("over"));
 drop.ondragleave = () => drop.classList.remove("over");
 drop.ondrop = (e) => {
   e.preventDefault();
   drop.classList.remove("over");
-  const f = e.dataTransfer?.files[0];
-  if (f) void pick(f).catch(failed);
+  picked([...(e.dataTransfer?.files ?? [])]);
 };
 
 void load().then(() => startStage());
-// The library is read again every five seconds while the page is in view, and what plays is run on each second.
-setInterval(() => !document.hidden && void load(), 5000);
+// What plays is read every five seconds while the page is in view, the library only when it changed; the clock runs on each second.
+setInterval(() => !document.hidden && void poll(), 5000);
 setInterval(() => !document.hidden && drawNow(), 1000);
-document.addEventListener("visibilitychange", () => !document.hidden && void load());
+document.addEventListener("visibilitychange", () => !document.hidden && void poll());

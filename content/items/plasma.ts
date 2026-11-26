@@ -10,9 +10,9 @@ import { BLOW } from "./weapons.ts";
 const id = (name: string): string => `core:${name}`;
 const engram = (name: string): string => id(`engram-${name}`);
 type Needs = readonly (readonly [item: string, count: number])[];
-/** `making` at the fabricator, with the engrams it comes after. */
-const made = (name: string, label: string, level: number, cost: number, count: number, seconds: number, needs: Needs, after: readonly string[]): Def[] =>
-  making(name, label, level, cost, count, seconds, needs, undefined, "fabricator").map((d) => (d.type === "engram" ? { ...d, requires: after.map(engram) } : d));
+/** `making` at a station, the fabricator where not given, with the engrams it comes after. */
+const made = (name: string, label: string, level: number, cost: number, count: number, seconds: number, needs: Needs, after: readonly string[], at = "fabricator"): Def[] =>
+  making(name, label, level, cost, count, seconds, needs, undefined, at).map((d) => (d.type === "engram" ? { ...d, requires: after.map(engram) } : d));
 
 /** A bolt's look: the flash where it leaves, the burst where it ends, and its size beside the rifle's. */
 const bolt = (size: number) => ({ flash: id("plasma_flash"), burst: id("plasma_burst"), size });
@@ -40,12 +40,13 @@ export const PLASMA: readonly Def[] = [
   { type: "item", class: "ammo", id: id("plasma_cell"), label: "plasma cell", stack: 100, weight: 0.1, color: 14, ammo: { damage: 150, type: "energy", speed: 240, gravity: 0, reach: 300, mesh: id("plasma_bolt"), bolt: bolt(1) } },
   { type: "item", class: "ammo", id: id("plasma_charge"), label: "plasma charge", stack: 100, weight: 0.05, color: 14, ammo: { damage: 40, type: "energy", speed: 200, gravity: 0, reach: 150, mesh: id("plasma_bolt"), bolt: bolt(0.6) } },
 
-  // How each is made. ARK makes both at the Tek Replicator, of element and black pearls beside these: the fabricator,
-  // electronics and silica pearls stand for them. The rifle's 120 polymer, 450 ingots and 120 crystal and the pistol's 70,
+  // How each is made. ARK makes both at the Tek Replicator, of element and black pearls beside these: the tek
+  // workstation (content/screens.ts), electronics and silica pearls stand for them. What they fire is made at the
+  // fabricator. The rifle's 120 polymer, 450 ingots and 120 crystal and the pistol's 70,
   // 300 and 70 are their infoboxes'. ARK's rifle is a boss's Tekgram and its pistol needs level 118: the levels and the
   // rifle's points are ours, under the 105 levels a survivor has.
-  ...made("rifle_plasma", "Plasma rifle", 100, 60, 1, 15, [["polymer", 120], ["ingot", 450], ["crystal", 120], ["electronics", 20], ["silica_pearls", 55]], ["rifle_assault"]),
-  ...made("pistol_plasma", "Plasma pistol", 95, 55, 1, 10, [["polymer", 70], ["ingot", 300], ["crystal", 70], ["electronics", 15], ["silica_pearls", 35]], ["pistol_fabricated"]),
+  ...made("rifle_plasma", "Plasma rifle", 100, 60, 1, 15, [["polymer", 120], ["ingot", 450], ["crystal", 120], ["electronics", 20], ["silica_pearls", 55]], ["rifle_assault", "piece_workstation"], "workstation"),
+  ...made("pistol_plasma", "Plasma pistol", 95, 55, 1, 10, [["polymer", 70], ["ingot", 300], ["crystal", 70], ["electronics", 15], ["silica_pearls", 35]], ["pistol_fabricated", "piece_workstation"], "workstation"),
   // A making fills a magazine, as a unit of element does the Tek Rifle's. What it is made of is ours.
   ...made("plasma_cell", "Plasma cell", 100, 8, 50, 2, [["crystal", 10], ["electronics", 5], ["oil", 5]], ["rifle_plasma"]),
   ...made("plasma_charge", "Plasma charge", 95, 8, 20, 2, [["crystal", 3], ["electronics", 2], ["oil", 1]], ["pistol_plasma"]),

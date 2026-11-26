@@ -6,18 +6,21 @@ import type { ItemDef } from "../../../shared/content/defs.ts";
 import { CMD_STRUCT, MAX_NAME_BYTES, SESSION_CREATING, SESSION_DEAD, RESULT_DAMAGED, RESULT_DENIED, RESULT_FAR, RESULT_FULL, RESULT_LOCKED, RESULT_NOT_EMPTY, RESULT_NOT_YOURS, RESULT_OBSTRUCTED, RESULT_OK, RESULT_PIN, RESULT_SHORT, RESULT_WAIT } from "../../../shared/net/protocol.ts";
 import type { StructureStore } from "../../../shared/world/structures.ts";
 import { FALL_MOST, Support } from "../../../shared/world/support.ts";
-import { NO_PIN, STRUCT_DEMOLISH, STRUCT_LIGHT, STRUCT_LOCK, STRUCT_NAME, STRUCT_PICKUP, STRUCT_PIN, STRUCT_REPAIR, STRUCT_TRAVEL, STRUCT_UNLOCK, STRUCT_USE, cost, refundOf, repairCostOf } from "../../../shared/world/upkeep.ts";
+import { NO_PIN, STRUCT_DEMOLISH, STRUCT_LIGHT, STRUCT_LOCK, STRUCT_NAME, STRUCT_PICKUP, STRUCT_PIN, STRUCT_REPAIR, STRUCT_TRAVEL, STRUCT_TEK_DOOR, STRUCT_TEK_SOLID, STRUCT_UNLOCK, STRUCT_USE, cost, refundOf, repairCostOf } from "../../../shared/world/upkeep.ts";
 import { fitBytes } from "./tame.ts";
 import type { ClientSession } from "../session.ts";
-import { K_BUTTON, K_INPUT, K_PANEL, lineHeight, textWidth, type UiFrame } from "./nodes.ts";
+import { K_BAR, K_BUTTON, K_INPUT, K_PANEL, fitText, lineHeight, textWidth, type UiFrame } from "./nodes.ts";
 import type { Screen, ScreenCtx } from "./screen.ts";
-import { S_BUTTON, S_INPUT, S_LABEL, S_PANEL, S_TITLE } from "./style.ts";
+import { glass } from "./skin.ts";
+import { S_BUTTON, S_HEALTH, S_INPUT, S_LABEL, S_MENU_HEADING, S_MENU_WARN, S_PANEL, S_STAMINA, S_TITLE } from "./style.ts";
 
 export const KEY_STRUCT_PANEL = 2400;
 export const KEY_STRUCT_TITLE = 2401;
 export const KEY_STRUCT_HEALTH = 2402;
 /** Under the health, for a piece of the tribe's own that holds others up: how many would fall with it. */
 export const KEY_STRUCT_FALLS = 2403;
+const KEY_STRUCT_ART = 2404;
+const KEY_STRUCT_BAR = 2405;
 /** One button per action, in LISTED order. KEY_STRUCT_DETAIL is the line under each that says what it costs or gives. */
 export const KEY_STRUCT_BUTTON = 2410;
 export const KEY_STRUCT_DETAIL = 2420;
@@ -36,6 +39,9 @@ export const STRUCT_UNDO = 255;
 /** The actions a piece of `kind` lists, in order: digit n + 1 chooses the nth. */
 export function actionsOf(reg: Registry, kind: number): number[] {
   const out = [STRUCT_PICKUP, STRUCT_REPAIR, STRUCT_DEMOLISH];
+  const id = reg.ids[kind];
+  if (id === "core:wall_tek") out.unshift(STRUCT_TEK_DOOR);
+  if (id === "core:phase_wall_tek" || id === "core:phase_wall_open_tek") out.unshift(STRUCT_TEK_SOLID);
   if (reg.opens[kind] !== 0 || reg.structSlots[kind] !== 0) out.push(STRUCT_LOCK, STRUCT_UNLOCK, STRUCT_PIN);
   if ((reg.opens[kind] !== 0 || reg.structSlots[kind] !== 0) && reg.lights[kind] !== 0) out.push(STRUCT_LIGHT);
   if (reg.isBed[kind] === 1) out.push(STRUCT_NAME, STRUCT_TRAVEL);
@@ -59,6 +65,7 @@ export const STRUCT_REASONS: Readonly<Record<number, string>> = {
 /** The item's label. For another form of the piece, the form's name replaces the label's last word. */
 export function structName(reg: Registry, kind: number): string {
   const id = reg.ids[kind] ?? "";
+  if (id === "core:phase_wall_tek" || id === "core:phase_wall_open_tek") return "Tek wall · door mode";
   const item = reg.pieceItem[kind]!;
   const label = item !== 0 ? ((reg.defs[item] as ItemDef).label ?? "") : "";
   if (label === "") return id.slice(id.indexOf(":") + 1).replace(/_/g, " ");
@@ -68,7 +75,6 @@ export function structName(reg: Registry, kind: number): string {
   return `${label.slice(0, label.indexOf(" ") + 1)}${form}`;
 }
 
-/** Formats the shared `cost` buffer, as in "40 wood, 10 thatch". */
 /**
  * What `cost` holds, as "4 metal ingot, 2 cementing paste", after `lead`. A list wider than `width` keeps the items that
  * fit whole and says how many more there are, so a piece of many ingredients still reads in its row.
@@ -314,10 +320,10 @@ export class StructMenu implements Screen {
   }
 
   build(f: UiFrame, c: ScreenCtx): void {
-    if (c.session && c.registry) this.draw(f, c.session, c.registry);
+    if (c.session && c.registry) this.draw(f, c.session, c.registry, c.inputDevice === 2, c.focus);
   }
 
-  draw(f: UiFrame, session: ClientSession, reg: Registry): void {
+  draw(f: UiFrame, session: ClientSession, reg: Registry, touch = false, focus = 0): void {
     if (!this.open || this.pad !== 0) this.falling = 0;
     if (!this.open) return;
     const t = session.world?.structs.chunks[Math.floor(this.ref / 65536)];
@@ -330,42 +336,51 @@ export class StructMenu implements Screen {
     const kind = t.kind[slot]!;
     const hp = t.hp[slot]!;
     const max = reg.maxHp[kind]!;
-    const usable = reg.opens[kind] !== 0 || reg.structSlots[kind] !== 0;
-    const w = Math.min(f.width - 16, usable ? 400 : 360);
-    const titleH = lineHeight(S_TITLE);
+    const pad = 12, gap = 8;
+    const left = f.left + pad, right = f.width - f.right - pad;
+    // The touch close control sits above the panel.
+    const top = f.top + (touch ? 60 : pad), bottom = f.height - f.bottom - pad;
+    const rowH = touch ? Math.max(44, Math.ceil(44 / f.unit)) : 34;
     const labelH = lineHeight(S_LABEL);
-    const rowH = 28;
-    const pad = 12;
-    if (this.pad === STRUCT_NAME) {
-      const h = pad * 2 + titleH + labelH + 8 + rowH;
-      const x = Math.round((f.width - w) / 2);
-      const y = Math.round(Math.min(f.height - h - 8, f.height / 2 + 40));
-      f.add(KEY_PIN_PANEL, K_PANEL, x, y, w, h, S_PANEL);
-      f.text(KEY_PIN_TITLE, x + pad, y + pad, w - pad * 2, S_TITLE, `Name the ${structName(reg, kind)}`);
-      f.text(KEY_PIN_DIGITS, x + pad, y + pad + titleH, w - pad * 2, S_LABEL, "Its tribe sees it by this name. Enter to keep it.");
-      const field = f.add(KEY_STRUCT_NAME_INPUT, K_INPUT, x + pad, y + pad + titleH + labelH + 8, w - pad * 2, rowH, S_INPUT);
-      field.text = this.typed;
-      field.interactive = true;
-      field.focus = true;
-      return;
-    }
+    const name = structName(reg, kind);
+    const panel = (key: number, w: number, h: number, beside = false): [number, number] => {
+      const side = f.width / 2 + 38;
+      beside &&= side >= left && side + w <= right;
+      const x = Math.floor(beside ? side : (left + right - w) / 2);
+      let y = Math.floor((top + bottom - h) / 2);
+      if (beside) y = Math.floor(Math.max(top, Math.min(bottom - h, f.height / 2 - 48)));
+      if (this.pad === STRUCT_NAME && touch) y = Math.ceil(top);
+      f.add(key, K_PANEL, x, y, w, h, S_PANEL);
+      glass(f, key, x, y, w, h);
+      return [x + pad, y + pad];
+    };
+    const button = (key: number, x: number, y: number, w: number, label: string) => {
+      const b = f.add(key, K_BUTTON, x, y, w, rowH, S_BUTTON);
+      b.text = fitText(label, w - 8, S_BUTTON);
+      b.label = label;
+      b.interactive = true;
+      if (focus === key) b.tint = 0x2d5672;
+      return b;
+    };
     if (this.pad !== 0) {
-      const cell = Math.floor((w - pad * 2 - 4 * 4) / 5);
-      const h = pad * 2 + titleH + labelH + 8 + 2 * (rowH + 4) + (this.pad === STRUCT_PIN ? rowH + 4 : 0);
-      const x = Math.round((f.width - w) / 2);
-      const y = Math.round(Math.min(f.height - h - 8, f.height / 2 + 40));
-      f.add(KEY_PIN_PANEL, K_PANEL, x, y, w, h, S_PANEL);
-      f.text(KEY_PIN_TITLE, x + pad, y + pad, w - pad * 2, S_TITLE, this.pad === STRUCT_PIN ? "Give it a PIN" : "It wants its PIN");
-      f.text(KEY_PIN_DIGITS, x + pad, y + pad + titleH, w - pad * 2, S_LABEL, `${structName(reg, kind)}:  ${"*".repeat(this.digits.length)}${"_".repeat(4 - this.digits.length)}`);
-      for (let d = 0; d < 10; d++) {
-        const b = f.add(KEY_PIN_BUTTON + d, K_BUTTON, x + pad + (d % 5) * (cell + 4), y + pad + titleH + labelH + 8 + Math.floor(d / 5) * (rowH + 4), cell, rowH, S_BUTTON);
-        b.text = String(d);
-        b.interactive = true;
-      }
-      if (this.pad === STRUCT_PIN) {
-        const b = f.add(KEY_PIN_CLEAR, K_BUTTON, x + pad, y + pad + titleH + labelH + 8 + 2 * (rowH + 4), w - pad * 2, rowH, S_BUTTON);
-        b.text = "No PIN";
-        b.interactive = true;
+      const w = Math.min(right - left, 360), inner = w - pad * 2;
+      const titleH = lineHeight(S_TITLE), header = titleH + labelH + gap;
+      const naming = this.pad === STRUCT_NAME, setting = this.pad === STRUCT_PIN;
+      const rows = naming ? 1 : setting ? 3 : 2;
+      const h = pad * 2 + header + rows * rowH + (rows - 1) * gap;
+      const [x, y] = panel(KEY_PIN_PANEL, w, h);
+      const title = naming ? `Name the ${name}` : setting ? "Give it a PIN" : "It wants its PIN";
+      const detail = naming ? "Its tribe sees it by this name. Enter to keep it." : `${name}:  ${"*".repeat(this.digits.length)}${"_".repeat(4 - this.digits.length)}`;
+      f.text(KEY_PIN_TITLE, x, y, inner, S_TITLE, fitText(title, inner, S_TITLE));
+      f.text(KEY_PIN_DIGITS, x, y + titleH, inner, S_LABEL, fitText(detail, inner, S_LABEL));
+      if (naming) {
+        const field = f.add(KEY_STRUCT_NAME_INPUT, K_INPUT, x, y + header, inner, rowH, S_INPUT);
+        field.text = this.typed;
+        field.interactive = field.focus = true;
+      } else {
+        const cell = Math.floor((inner - 4 * gap) / 5);
+        for (let d = 0; d < 10; d++) button(KEY_PIN_BUTTON + d, x + (d % 5) * (cell + gap), y + header + Math.floor(d / 5) * (rowH + gap), cell, String(d));
+        if (setting) button(KEY_PIN_CLEAR, x, y + header + 2 * (rowH + gap), inner, "No PIN");
       }
       return;
     }
@@ -374,37 +389,51 @@ export class StructMenu implements Screen {
     // Taking away a piece of the tribe's own: what it holds up is counted, and the app shows those pieces.
     const mine = session.tribe.team !== 0 && t.owner[slot] === session.tribe.team;
     const falling = mine ? this.wouldFall(session, reg, this.ref) : (this.falling = 0);
-    const fallH = falling > 0 ? labelH : 0;
-    const inner = w - pad * 2;
+    const step = rowH + labelH + gap;
+    const titleH = lineHeight(S_MENU_HEADING);
+    const header = titleH + labelH + 17 + (falling > 0 ? lineHeight(S_MENU_WARN) : 0);
+    const rowsFit = Math.max(1, Math.floor((bottom - top - pad * 2 - header) / step));
+    const cols = Math.ceil(this.actions.length / rowsFit);
+    const w = Math.min(right - left, cols === 1 ? 360 : cols * 236);
+    const inner = w - pad * 2, cell = Math.floor((inner - (cols - 1) * gap) / cols);
+    const h = pad * 2 + header + Math.ceil(this.actions.length / cols) * step;
+    const [x, y] = panel(KEY_STRUCT_PANEL, w, h, !touch);
+    const item = reg.pieceItem[kind]!;
+    const picture = item !== 0 && f.picture(KEY_STRUCT_ART, x, y + 2, 54, 54, S_LABEL, reg.ids[item]!);
+    const inset = picture ? 64 : 0, titleW = inner - inset;
+    f.text(KEY_STRUCT_TITLE, x + inset, y, titleW, S_MENU_HEADING, fitText(name, titleW, S_MENU_HEADING));
+    const slots = reg.structSlots[kind]!;
+    const id = reg.ids[kind];
+    const state = id === "core:phase_wall_open_tek" ? " · Open" : id === "core:phase_wall_tek" ? " · Closed"
+      : reg.lights[kind] !== 0 ? reg.burning[kind] === 1 ? " · On" : " · Off" : slots > 0 ? ` · ${slots} slots` : "";
+    const health = `Health ${Math.ceil(hp)} of ${max}${state}`;
+    f.text(KEY_STRUCT_HEALTH, x + inset, y + titleH, titleW, S_LABEL, fitText(health, titleW, S_LABEL));
+    const bar = f.add(KEY_STRUCT_BAR, K_BAR, x + inset, y + titleH + labelH + 3, titleW, 3, hp < max ? S_HEALTH : S_STAMINA);
+    bar.value = max > 0 ? hp / max : 0;
+    if (falling > 0) f.text(KEY_STRUCT_FALLS, x, y + titleH + labelH + 11, inner, S_MENU_WARN, `${falling === FALL_MOST ? `${falling} or more` : falling} ${falling === 1 ? "piece" : "pieces"} would fall with it`);
     const said: Record<number, [string, string]> = {
-      [STRUCT_PICKUP]: ["Take it back", hp < max ? "not while it is damaged" : "into your hands, as it was"],
-      [STRUCT_REPAIR]: ["Mend it", repairCostOf(reg, kind, hp) ? listed(reg, "costs", inner) : "it is whole"],
-      [STRUCT_DEMOLISH]: ["Take it down", refundOf(reg, kind) && cost.n > 0 ? listed(reg, "gives", inner) : "gives nothing back"],
+      [STRUCT_PICKUP]: ["Take it back", hp < max ? "not while it is damaged" : ""],
+      [STRUCT_REPAIR]: ["Mend it", repairCostOf(reg, kind, hp) ? listed(reg, "costs", cell - 8) : "it is whole"],
+      [STRUCT_DEMOLISH]: ["Take it down", refundOf(reg, kind) && cost.n > 0 ? listed(reg, "gives", cell - 8) : "gives nothing back"],
+      [STRUCT_TEK_DOOR]: ["Set to door mode", "joined door panels open for your tribe"],
+      [STRUCT_TEK_SOLID]: ["Set to solid wall", "this panel stays closed"],
       [STRUCT_LOCK]: ["Lock it", "for your tribe alone"],
       [STRUCT_UNLOCK]: ["Unlock it", "for anyone"],
       [STRUCT_PIN]: ["Give it a PIN", "four digits let others in"],
       [STRUCT_LIGHT]: reg.burning[kind] === 1 ? ["Put it out", "what is half cooked starts again"] : ["Light it", "it burns what fuel lies on it"],
       [STRUCT_NAME]: ["Name it", "as its tribe sees it on the map"],
       [STRUCT_TRAVEL]: ["Travel from it", "to another of your tribe's beds"],
-      [STRUCT_UNDO]: ["Undo your last piece", "takes back the piece you set down last"],
+      [STRUCT_UNDO]: ["Undo your last piece", ""],
     };
-    const lines = this.actions.map((a, i) => `${i + 1}  ${said[a]![0]}`);
-    const details = this.actions.map((a) => said[a]![1]);
-    const step = rowH + labelH + 8;
-    const h = pad * 2 + titleH + labelH + fallH + 8 + lines.length * step;
-    // Beside the crosshair where there is room, else under it.
-    const x = Math.round(f.width / 2 + 40 + w <= f.width - 8 ? f.width / 2 + 40 : (f.width - w) / 2);
-    const y = Math.round(Math.min(f.height - h - 8, f.height / 2 + 40));
-    f.add(KEY_STRUCT_PANEL, K_PANEL, x, y, w, h, S_PANEL);
-    f.text(KEY_STRUCT_TITLE, x + pad, y + pad, w - pad * 2, S_TITLE, structName(reg, kind));
-    f.text(KEY_STRUCT_HEALTH, x + pad, y + pad + titleH, w - pad * 2, S_LABEL, `${Math.ceil(hp)} of ${max}`);
-    if (falling > 0) f.text(KEY_STRUCT_FALLS, x + pad, y + pad + titleH + labelH, w - pad * 2, S_LABEL, `${falling === FALL_MOST ? `${falling} or more` : falling} ${falling === 1 ? "piece" : "pieces"} would fall with it`);
-    lines.forEach((line, i) => {
-      const top = y + pad + titleH + labelH + fallH + 8 + i * step;
-      const b = f.add(KEY_STRUCT_BUTTON + i, K_BUTTON, x + pad, top, w - pad * 2, rowH, S_BUTTON);
-      b.text = line;
-      b.interactive = true;
-      f.text(KEY_STRUCT_DETAIL + i, x + pad, top + rowH + 2, w - pad * 2, S_LABEL, details[i]!);
+    this.actions.forEach((action, i) => {
+      const [label, detail] = said[action]!;
+      const bx = x + i % cols * (cell + gap), by = y + header + Math.floor(i / cols) * step;
+      const b = button(KEY_STRUCT_BUTTON + i, bx, by, cell, `${i + 1}  ${label}`);
+      if (focus !== b.key && (action === STRUCT_TEK_DOOR || action === STRUCT_TEK_SOLID)) b.tint = 0x244c62;
+      if (detail) {
+        b.label += `. ${detail}`;
+        f.text(KEY_STRUCT_DETAIL + i, bx + 4, by + rowH + 2, cell - 8, S_LABEL, fitText(detail, cell - 8, S_LABEL)).alpha = .8;
+      }
     });
   }
 }

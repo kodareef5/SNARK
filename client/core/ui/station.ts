@@ -14,7 +14,7 @@ import { BOX_OPEN, CMD_CRAFT_AT, CMD_CRAFT_BLUEPRINT, CMD_STRUCT } from "../../.
 import { FLAG_BLUEPRINT, QUALITY_NAMES, blueprintCost, type Inventory } from "../../../shared/sim/items.ts";
 import { STRUCT_LIGHT } from "../../../shared/world/upkeep.ts";
 import type { ClientSession } from "../session.ts";
-import { itemLabel } from "./inventory.ts";
+import { itemLabel } from "./item-words.ts";
 import { K_BUTTON, K_PANEL, fitText, lineHeight, type UiFrame } from "./nodes.ts";
 import { S_BUTTON, S_LABEL, S_PANEL, S_TITLE } from "./style.ts";
 

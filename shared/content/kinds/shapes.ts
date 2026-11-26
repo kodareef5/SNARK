@@ -98,8 +98,9 @@ export const shapes: Kind<ShapeDef> = {
   check(d, { errors, positive }) {
     if (!PIECE_ROLES.includes(d.role)) errors.push(`${d.id}: role must be one of ${PIECE_ROLES.join(", ")}`);
     const parts = d.boxes.length + (d.hulls?.length ?? 0);
-    if (parts < 1 || parts > MAX_SHAPE_BOXES) errors.push(`${d.id}: a shape has 1 to ${MAX_SHAPE_BOXES} boxes and convex parts`);
     const drawn = (d.look?.boxes?.length ?? 0) + (d.look?.hulls?.length ?? 0);
+    const emptyOpening = parts === 0 && drawn > 0 && d.form?.closes === "none";
+    if ((!emptyOpening && parts < 1) || parts > MAX_SHAPE_BOXES) errors.push(`${d.id}: a shape has 1 to ${MAX_SHAPE_BOXES} boxes and convex parts`);
     if (d.look !== undefined && (drawn < 1 || drawn > MAX_LOOK_PARTS)) errors.push(`${d.id}: a look has 1 to ${MAX_LOOK_PARTS} boxes and convex parts`);
     if (d.boxes.some((b) => b.color !== undefined)) errors.push(`${d.id}: only a look's boxes have colours of their own`);
     for (const b of d.look?.boxes ?? []) if (b.color !== undefined && !(Number.isInteger(b.color) && b.color > 0 && b.color < REGION_BASE)) errors.push(`${d.id}: a box's colour is a fixed palette colour`);
@@ -118,7 +119,7 @@ export const shapes: Kind<ShapeDef> = {
     if (shapeHalf([], hulls).some((v) => !(v <= MAX_STRUCTURE_HALF))) for (const h of hulls) if (shapeHalf([], [h]).some((v) => !(v <= MAX_STRUCTURE_HALF))) errors.push(`${d.id}: a convex part reaches further than ${MAX_STRUCTURE_HALF} m from the origin`);
     if (d.form !== undefined) {
       const faults = formFaults(d.form);
-      for (const fault of faults.length > 0 ? faults : colliderFaults(d.form, d.boxes, d.hulls ?? [])) errors.push(`${d.id}: ${fault}`);
+      for (const fault of faults.length > 0 || emptyOpening ? faults : colliderFaults(d.form, d.boxes, d.hulls ?? [])) errors.push(`${d.id}: ${fault}`);
     }
   },
 };

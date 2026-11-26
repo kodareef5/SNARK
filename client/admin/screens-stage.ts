@@ -3,7 +3,9 @@
 // The page loads it as a module script, which leaves its exports on the page.
 
 import { STAGE_FLAT_FRAGMENT, STAGE_SITE, STAGE_TIER, STAGE_VERTEX, STAGE_VIEWS, StageFrame, liveKey, liveLook, lookWords, newStageCamera, nextWords, stageCamera, stageGround, stageOrbFragment, stageSky, stageSphere, stageTiles, takeBody, targetKey, targetLook, type StageLook, type StagePicture, type StageView } from "../core/admin/screens-stage.ts";
+import { FaceWipe, spillOf, type FlatType } from "../core/admin/screens-faces.ts";
 import { mustSeek, syncRate } from "../core/video/player.ts";
+import { FaceDrawer } from "./screens-faces.ts";
 
 /** A texture the ball reads its picture from, and what was last put in it. */
 export class PictureSlot {
@@ -44,6 +46,8 @@ export class Stage {
   private readonly ubo: WebGLBuffer;
   private readonly blank: WebGLTexture;
   private readonly cam = newStageCamera();
+  private faces: FaceDrawer | null = null;
+  private readonly tracks = new Map<string, Uint8Array>();
 
   constructor() {
     const gl = this.canvas.getContext("webgl2", { antialias: true, alpha: false, depth: true, premultipliedAlpha: false });
@@ -105,10 +109,49 @@ export class Stage {
       slot.width = w;
       slot.height = h;
     }
+    // The slot's own texture, not the last one drawn with.
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, slot.tex);
     gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, source);
     gl.generateMipmap(gl.TEXTURE_2D);
     slot.source = source;
     slot.time = time;
+  }
+
+  /** Makes the hidden canvas at least `w` by `h` and points the drawing at its corner of that size. */
+  private begin(w: number, h: number): void {
+    const gl = this.gl;
+    if (this.canvas.width < w || this.canvas.height < h) {
+      this.canvas.width = Math.max(this.canvas.width, w);
+      this.canvas.height = Math.max(this.canvas.height, h);
+    }
+    gl.viewport(0, 0, w, h);
+    gl.enable(gl.SCISSOR_TEST);
+    gl.scissor(0, 0, w, h);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  }
+
+  /** Copies the drawing into `target`: GL's rows run up from the bottom, as the copy's source rect does. */
+  private end(target: HTMLCanvasElement, w: number, h: number): void {
+    target.getContext("2d")!.drawImage(this.canvas, 0, this.canvas.height - h, w, h, 0, 0, w, h);
+  }
+
+  /**
+   * Draws a billboard, TV or laptop into `target` showing `look` at the world's `hour`, its picture in `slot`, wiping
+   * from what `wipe` last saw at `now` ms (performance time); a still one, for a tile, shows it with no wipe.
+   */
+  drawFace(target: HTMLCanvasElement, type: FlatType, look: StageLook, hour: number, slot: PictureSlot | null, wipe: FaceWipe, now: number, still = false): void {
+    const w = target.width, h = target.height;
+    if (w <= 0 || h <= 0) return;
+    this.faces ??= new FaceDrawer(this.gl);
+    const picture = look.clip && slot?.tex && slot.width > 0 ? slot : null;
+    const share = wipe.at(picture ? look.clip!.id : null, now, still);
+    this.begin(w, h);
+    this.faces.draw(type, w, h, hour, {
+      tex: picture?.tex ?? null, width: picture?.width ?? 0, height: picture?.height ?? 0, fill: look.fill, wipe: share,
+      spill: spillOf(picture ? look.clip : null, look.clipSeconds, this.tracks),
+    }, this.blank);
+    this.end(target, w, h);
   }
 
   /**
@@ -118,19 +161,12 @@ export class Stage {
   draw(target: HTMLCanvasElement, frame: StageFrame, look: StageLook, view: StageView, bearing: number, seconds: number, hour: number, gain: number, slot: PictureSlot | null, still = false): void {
     const gl = this.gl, w = target.width, h = target.height;
     if (w <= 0 || h <= 0) return;
-    if (this.canvas.width < w || this.canvas.height < h) {
-      this.canvas.width = Math.max(this.canvas.width, w);
-      this.canvas.height = Math.max(this.canvas.height, h);
-    }
+    this.begin(w, h);
     const cam = stageCamera(view, bearing, w / h, this.cam);
     const picture = look.clip && slot ? slot.picture : null;
     frame.write(look, cam, seconds, hour, gain, picture, h, still);
     const sky = stageSky(hour), s = STAGE_SITE;
     const bx = s.x - cam.eye[0]!, by = s.y + s.centre - cam.eye[1]!, bz = s.z - cam.eye[2]!;
-    gl.viewport(0, 0, w, h);
-    gl.enable(gl.SCISSOR_TEST);
-    gl.scissor(0, 0, w, h);
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.enable(gl.DEPTH_TEST);
     gl.depthFunc(gl.LEQUAL);
     // The sky behind it all, then the ground, then the ball.
@@ -165,8 +201,7 @@ export class Stage {
     gl.bindVertexArray(this.sphere.vao);
     gl.drawElements(gl.TRIANGLES, this.sphere.count, gl.UNSIGNED_SHORT, 0);
     gl.bindVertexArray(null);
-    // GL's rows run up from the bottom, as the copy's source rect does.
-    target.getContext("2d")!.drawImage(this.canvas, 0, this.canvas.height - h, w, h, 0, 0, w, h);
+    this.end(target, w, h);
   }
 }
 
@@ -179,6 +214,6 @@ export function keepInStep(v: HTMLVideoElement, want: number): void {
   if (v.paused) void v.play().catch(() => undefined);
 }
 
-const screensStage = { Stage, PictureSlot, StageFrame, STAGE_VIEWS, STAGE_TIER, keepInStep, liveKey, liveLook, lookWords, nextWords, stageTiles, takeBody, targetKey, targetLook };
+const screensStage = { Stage, PictureSlot, StageFrame, FaceWipe, STAGE_VIEWS, STAGE_TIER, keepInStep, liveKey, liveLook, lookWords, nextWords, stageTiles, takeBody, targetKey, targetLook };
 export type ScreensStage = typeof screensStage;
 (globalThis as { screensStage?: ScreensStage }).screensStage = screensStage;

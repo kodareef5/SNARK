@@ -159,6 +159,7 @@ test("each of the smithy's moved recipes is refused in the hand and made at the 
 });
 
 // The fabricator's (DEV136, removed). Its own numbers are S2's (tests/items/fabricator.test.ts).
+const tekBuildings = recipes("smithy").filter(name => name.startsWith("piece_") && name.endsWith("_metal")).map(name => name.replace(/_metal$/, "_tek"));
 const FABRICATOR: Readonly<Record<string, Made>> = {
   // Shocking Tranquilizer Dart: ARK's is 3 bio toxin, 2 ingots and a tranquilizer dart; bio toxin does not exist (DEV139).
   dart_shock: ["fabricator", "6 narcotic, 4 ingot, 4 gunpowder", 1, 0.2, 1, 96, 30],
@@ -177,10 +178,11 @@ test("the fabricator makes the shock dart, the flashlight and laser, the poison 
   const makes = recipes;
   // The soul ball and its vault are ARK's Cryopod and Cryofridge, whose numbers tests/creatures/balls.test.ts holds. The
   // freight order is what an air support call spends (content/vehicles/air-freight.ts).
-  // The plasma guns and what they fire are ours, in place of ARK's Tek Replicator (tests/combat/plasma.test.ts).
+  // What the plasma guns fire is ours (tests/combat/plasma.test.ts); the guns are made at the tek workstation
+  // (tests/world/screen-props.test.ts).
   // The rocket launcher and its rocket are ARK's, with numbers held by tests/combat/rockets.test.ts.
-  const expected = [...Object.keys(FABRICATOR), "electronics", "polymer", "helicopter_assembly", "boat_assembly", "soul_ball", "piece_soul_vault", "freight_order",
-    "rifle_plasma", "pistol_plasma", "plasma_cell", "plasma_charge", "rocket_launcher", "rocket",
+  const expected = [...Object.keys(FABRICATOR), "electronics", "polymer", "helicopter_assembly", "boat_assembly", "soul_ball", "piece_soul_vault", "freight_order", ...tekBuildings,
+    "plasma_cell", "plasma_charge", "rocket_launcher", "rocket", "piece_workstation",
     ...["hat", "shirt", "gloves", "pants", "boots"].map(piece => `meridian_${piece}`)].sort();
   expect([makes("fabricator"), makes("fabricator_lit")]).toEqual([expected, expected]);
   // The vault weighs 20 and stacks to 1 (Vault).
@@ -188,7 +190,7 @@ test("the fabricator makes the shock dart, the flashlight and laser, the poison 
 });
 
 test("each of the fabricator's moved recipes is refused in the hand and made at a lit fabricator, from its slots into them", () => {
-  makesEach("fabricator", Object.keys(FABRICATOR), ["gasoline", 1]);
+  makesEach("fabricator", [...Object.keys(FABRICATOR), ...tekBuildings], ["gasoline", 1]);
 });
 
 // The preserving bin's: jerky, which the lit bin makes by itself (fired, D534).
