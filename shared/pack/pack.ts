@@ -36,6 +36,9 @@
 //             zigzagged as i32, in four planes of bytes
 //
 // A flat level stores no normals. The renderer derives the face normal for flat shading.
+//
+//   faces     a mesh's face table (shared/people/faces.ts), one run of bytes the pack does not read: the client fetches
+//             it after the first frame and keeps it as bytes, never on the graphics card
 
 import type { Clip, ClipSet } from "../anim/clip.ts";
 import { hashBytes, hashString } from "../hash.ts";
@@ -167,6 +170,8 @@ export interface PackMesh {
   uv?: [number, number, number, number];
   /** Drawn see-through, its finishes showing their share (shared/pack/finish.ts). */
   seeThrough?: boolean;
+  /** Where its face table is (see the top of this file). Absent for none. */
+  faces?: { offset: number; length: number };
 }
 
 /** Native upright-grip calibration at unit hand size. Twelve values per radius, six per hand (left then right): marker X/Z,
@@ -303,6 +308,8 @@ export function parsePack(file: Uint8Array): Pack {
     m.lods.forEach((lod, level) => {
       if ((lod.surfaceOffset !== undefined) !== level < (m.flat ?? 0)) throw new Error(`pack: mesh ${m.id} does not turn flat where it says`);
     });
+    const f = m.faces;
+    if (f && !(Number.isSafeInteger(f.offset) && Number.isSafeInteger(f.length) && f.offset >= 0 && f.length > 0 && f.offset + f.length <= blob.length)) throw new Error(`pack: the face table of ${m.id} points outside the file`);
     for (const lod of m.lods) {
       if (lod.zones !== undefined) checkZones(lod.zones, lod.sections, lod.indexCount, m.id);
       if (lod.vertexOffset + lod.vertexCount * VERTEX_BYTES > blob.length || lod.indexOffset + lod.indexCount * lod.indexBytes > blob.length) {
@@ -438,6 +445,11 @@ export function decodeClips(list: readonly PackClip[], blob: Uint8Array): ClipSe
 export function detailsAtlas(pack: Pack): Uint8Array {
   const d = pack.header.details;
   return d ? pack.blob.subarray(d.atlas.offset, d.atlas.offset + atlasBytes(d.atlas.side >> (d.atlas.firstMip ?? 0))) : new Uint8Array(0);
+}
+
+/** A mesh's face table as a view into the pack, or null for a mesh that has none. */
+export function meshFaces(pack: Pack, m: PackMesh): Uint8Array | null {
+  return m.faces ? pack.blob.subarray(m.faces.offset, m.faces.offset + m.faces.length) : null;
 }
 
 /** lodVertices and lodIndices return views into the pack. Indices are little-endian, `indexBytes` each. */

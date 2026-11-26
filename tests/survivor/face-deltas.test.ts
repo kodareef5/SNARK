@@ -1,6 +1,10 @@
 import { expect, test } from "bun:test";
 import { FACE_COUNT, defaultLook, faceOf, setFace } from "../../shared/anim/look.ts";
-import { blendFace, decodeFaces, encodeFaces, faceValues, remapFaces, sideStep, type FaceSide, type FaceTable } from "../../shared/people/faces.ts";
+import {
+  allowed, axisDistanceAt, blendFace, clampFace, decodeFaces, encodeFaces, facePivots, faceValues, headBound, remapFaces, sideStep, FACE_EYE_R, FACE_JAW, FACE_LID_L, FACE_PIVOTS,
+  OUTSIDE_TOLERANCE, type FaceSide, type FaceTable,
+} from "../../shared/people/faces.ts";
+import { HUMAN } from "../../shared/anim/human.ts";
 import { Rng } from "../../shared/rng.ts";
 
 /** A table of `modifiers` modifiers on `count` vertices, each side moving a random few by up to `most` metres. */
@@ -95,4 +99,47 @@ test("a table follows its vertices onto a mesh that splits and drops them", () =
   sourceOf.forEach((from, v) => {
     for (let c = 0; c < 3; c++) expect(newFace[v * 3 + c]).toBe(from < 0 ? 0 : oldFace[from * 3 + c]!);
   });
+});
+
+test("face rows and pivots come back and follow a remap", () => {
+  const base = randomTable(6, 40, FACE_COUNT);
+  const rng = new Rng(7);
+  const rowsAt = [2, 5, 9, 30];
+  const table: FaceTable = {
+    ...base,
+    rows: { vertices: Uint32Array.from(rowsAt), row: Uint8Array.of(FACE_JAW, FACE_LID_L, FACE_EYE_R, FACE_JAW), share: Float32Array.of(1, 0.5, 0.25, 0.75) },
+    pivots: Float32Array.from({ length: FACE_PIVOTS * 3 }, () => rng.range(-1, 2)),
+    pivotMoves: Float32Array.from({ length: FACE_COUNT * 2 * FACE_PIVOTS * 3 }, () => rng.range(-0.01, 0.01)),
+  };
+  const back = decodeFaces(encodeFaces(table));
+  expect([...back.rows!.vertices]).toEqual(rowsAt);
+  expect([...back.rows!.row]).toEqual([...table.rows!.row]);
+  back.rows!.share.forEach((s, i) => expect(Math.abs(s - table.rows!.share[i]!)).toBeLessThan(1 / 255));
+  expect([...back.pivots!]).toEqual([...table.pivots!]);
+  expect(encodeFaces(back)).toEqual(encodeFaces(table));
+  // Pivots move by each side's move times its value's size.
+  const values = new Float32Array(FACE_COUNT);
+  values[3] = -0.5;
+  const at = facePivots(back, values, new Float32Array(FACE_PIVOTS * 3));
+  for (let k = 0; k < FACE_PIVOTS * 3; k++) expect(at[k]).toBeCloseTo(back.pivots![k]! + 0.5 * back.pivotMoves![3 * 2 * FACE_PIVOTS * 3 + k]!, 6);
+  const moved = remapFaces(back, Int32Array.of(9, -1, 2, 2));
+  expect([...moved.rows!.vertices]).toEqual([0, 2, 3]);
+  expect([...moved.rows!.row]).toEqual([FACE_EYE_R, FACE_JAW, FACE_JAW]);
+});
+
+test("the clamp draws only vertices past their bound back onto it", () => {
+  const rest = Float32Array.from(HUMAN.rest);
+  const bound = headBound(rest);
+  const mid = [0, 1, 2].map((k) => (bound.a[k]! + bound.b[k]!) / 2 - bound.drawn[k]! + bound.rig[k]!);
+  // One vertex inside, one pushed far out in front, one already outside at neutral and pushed a little more.
+  const neutral = Float32Array.of(mid[0]!, mid[1]!, mid[2]! + 0.05, mid[0]!, mid[1]!, mid[2]! + 0.08, mid[0]!, mid[1]!, mid[2]! + bound.r + 0.01);
+  const face = Float32Array.of(mid[0]!, mid[1]!, mid[2]! + 0.06, mid[0]!, mid[1]!, mid[2]! + 0.5, mid[0]!, mid[1]!, mid[2]! + bound.r + 0.02);
+  const grow = [1.04, 1, 1.04];
+  expect(clampFace(bound, grow, neutral, face, Uint32Array.of(0, 1, 2))).toBe(2);
+  expect(face[2]).toBeCloseTo(mid[2]! + 0.06, 6);
+  const drawn = (v: number, p: Float32Array): number[] => [0, 1, 2].map((k) => bound.drawn[k]! + grow[k]! * (p[v * 3 + k]! - bound.rig[k]!));
+  const d = (v: number, p: Float32Array): number => { const q = drawn(v, p); return axisDistanceAt(bound, q[0]!, q[1]!, q[2]!); };
+  expect(d(1, face)).toBeCloseTo(bound.r, 6);
+  expect(d(2, face)).toBeCloseTo(d(2, neutral) + OUTSIDE_TOLERANCE, 6);
+  expect(allowed(bound, 0)).toBe(bound.r);
 });

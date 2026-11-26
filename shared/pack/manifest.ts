@@ -163,6 +163,15 @@ export interface ManifestClips {
   clips: { id: string; bones: number; frames: number; loop: boolean }[];
 }
 
+/** A mesh's face table (shared/pack/pack.ts): a part of the clip file, asked for after the first frame and kept as bytes, never on the card. */
+export interface ManifestFaces {
+  /** Index into `meshes`. */
+  mesh: number;
+  file: number;
+  at: number;
+  part: ManifestPart;
+}
+
 export interface Manifest {
   version: number;
   files: ManifestFile[];
@@ -174,6 +183,7 @@ export interface Manifest {
   meshes: ManifestMesh[];
   pages?: ManifestPage[];
   clips?: ManifestClips[];
+  faces?: ManifestFaces[];
   /** Every material and texture, those a page holds as stand-ins until it comes. */
   materials?: PackMaterial[];
   textures?: ManifestTexture[];
@@ -258,6 +268,11 @@ export function describePack(pack: Pack, file: { name: string; bytes: number }, 
   // A pack names its textures and holds none of their pixels, so no variant is listed here. The build adds them.
   if (pack.header.textures) out.textures = pack.header.textures.map((t) => ({ ...t, in: {} }));
   if (pack.header.landmarks) out.landmarks = pack.header.landmarks;
+  const faces: ManifestFaces[] = [];
+  pack.header.meshes.forEach((m, mesh) => {
+    if (m.faces) faces.push({ mesh, file: 0, at: pack.blobAt + m.faces.offset, part: { bytes: m.faces.length, hash: hash(pack.blob.subarray(m.faces.offset, m.faces.offset + m.faces.length)) } });
+  });
+  if (faces.length > 0) out.faces = faces;
   return out;
 }
 
@@ -333,6 +348,12 @@ export function parseManifest(text: string): Manifest {
     const file = m.files[e.file];
     const bytes = Array.isArray(e.clips) ? e.clips.reduce((sum, c) => sum + (c.frames > 0 && c.bones > 0 ? c.frames * (clipRotBytes(c.bones) + CLIP_ROOT_BYTES) : NaN), 0) : NaN;
     if (typeof e.rig !== "string" || file?.role !== "clip" || e.part?.bytes !== bytes || !partFits(e.at, e.part, file.bytes)) throw new Error(`manifest: the clips of ${String(e.rig)} are not described`);
+  }
+  const faced = new Set<number>();
+  for (const e of m.faces ?? []) {
+    const file = m.files[e.file];
+    if (!(Number.isInteger(e.mesh) && e.mesh >= 0 && e.mesh < m.meshes.length) || faced.has(e.mesh) || (file?.role !== "clip" && file?.role !== "boot") || !partFits(e.at, e.part, file.bytes)) throw new Error(`manifest: the face table of mesh ${String(e.mesh)} is not described`);
+    faced.add(e.mesh);
   }
   const seen = new Set<string>();
   m.meshes = (m.meshes as (ManifestMesh | MeshStub)[]).map((row) => {
