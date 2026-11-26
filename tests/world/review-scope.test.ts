@@ -20,7 +20,9 @@ test("a scope raised and lowered ten times makes nothing again that stood before
   const h = serverOn(file);
   try {
     const inline = new InlineCityMaker(), made: BlocksMade[] = [];
-    const maker: CityMaker = { onMade: null, start: (k) => inline.start(k), make: (j) => inline.make(j), take: (out) => inline.take(out), run: (ms) => inline.run(ms), blocks: (job) => void made.push(makeBlocks(job)), built: () => made.shift() ?? null };
+    // Counts the far city's levels and the blocks' tiles asked of the maker.
+    const asks = { levels: 0, tiles: 0 };
+    const maker: CityMaker = { onMade: null, start: (k) => inline.start(k), make: (j) => (asks.levels++, inline.make(j)), take: (out) => inline.take(out), run: (ms) => inline.run(ms), blocks: (job) => void (asks.tiles++, made.push(makeBlocks(job))), built: () => made.shift() ?? null };
     // The medium tier's shape on a map a third the size: statics and ground to 2 km, 16 pages of ground, a view of 2.6 km.
     const wants: Wants = { view: 2600, statics: 2000, budget: 30e6, ground: 14e6, camera: null, focus: null, screen: null };
     const page = await Page.open(h, file, "ada", wants, undefined, maker);
@@ -46,7 +48,7 @@ test("a scope raised and lowered ten times makes nothing again that stood before
       quiet = loader.progress().settled && loader.progress().roads === 0 && link.waiting.length === 0 ? quiet + 1 : 0;
     }
     const hf = loader.staged.hf;
-    const count = () => ({ asked: link.log.length, changes: hf.changes.length / 4, shadow: scene.farShadow?.stats.chunks ?? 0, sweeps: scene.farShadow?.stats.sweeps ?? 0, blocks: scene.blocks?.stats.made ?? 0, city: scene.city?.stats.made ?? 0, pages: hf.count });
+    const count = () => ({ asked: link.log.length, changes: hf.changes.length / 4, shadow: scene.farShadow?.stats.chunks ?? 0, sweeps: scene.farShadow?.stats.sweeps ?? 0, blocks: asks.tiles, city: asks.levels, pages: hf.count });
     const stats = (ms: number[]) => { const a = [...ms].sort((x, y) => x - y); return { median: +a[a.length >> 1]!.toFixed(2), p99: +a[Math.floor(a.length * 0.99)]!.toFixed(2), worst: +a[a.length - 1]!.toFixed(2), total: +a.reduce((x, y) => x + y, 0).toFixed(0) }; };
     // 30 s at rest, then 30 s of the scope up 1.5 s and down 1.5 s.
     builds.length = 0;

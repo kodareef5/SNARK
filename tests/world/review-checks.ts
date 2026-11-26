@@ -21,6 +21,12 @@ export function checksOf(file: Uint8Array) {
   const reg = coreRegistry();
   const wholeHf = mapHeightfield(whole);
   const pieceOf = (p: MapPart): MapPiece => readPart(head, p, file.subarray(p.at, p.at + p.length));
+  /** The whole map's nodes by chunk, as nodesOf says them. */
+  const wholeNodes = new Map<number, string[]>();
+  for (const line of nodesOf(wholeHf, reg, whole.nodes)) {
+    const c = Number(line.slice(0, line.indexOf(" ")));
+    wholeNodes.set(c, [...(wholeNodes.get(c) ?? []), line]);
+  }
   const sectorOf = (p: MapPart) => squareOf(head.dims, SECTOR_CHUNKS, p.col, p.row)!;
 
   /** The rows the map holds in `chunk`, as text. */
@@ -116,6 +122,15 @@ export function checksOf(file: Uint8Array) {
     if (count(wa.squares, wb.squares) > 0 || count(wa.chunks(), wb.chunks()) > 0) wrong.push("the water differs");
     const [na, nb] = [nodesOf(hf, reg, loader.staged.nodes), nodesOf(ref.staged.hf, reg, ref.staged.nodes)];
     if (na.length !== nb.length || na.some((s, k) => s !== nb[k])) wrong.push(`the nodes differ: ${na.length} and ${nb.length}`);
+    // Where a chunk's ground is the map's own, the nodes that stand in it are the map's, as the server places them.
+    const mineByChunk = new Map<number, string[]>();
+    for (const line of na) {
+      const c = Number(line.slice(0, line.indexOf(" ")));
+      if (hf.exact[c] === 1) mineByChunk.set(c, [...(mineByChunk.get(c) ?? []), line]);
+    }
+    let nodesWrong = 0;
+    for (let c = 0; c < chunksX * chunksZ; c++) if (hf.exact[c] === 1 && (mineByChunk.get(c) ?? []).join("|") !== (wholeNodes.get(c) ?? []).join("|")) nodesWrong++;
+    if (nodesWrong > 0) wrong.push(`${nodesWrong} chunks of the map's own ground stand other nodes than the map's`);
     let tops = 0, rows = 0, mine = 0, cityWrong = 0;
     for (let c = 0; c < chunksX * chunksZ; c++) {
       const [ta, tb] = [loader.staged.tops.top(c), ref.staged.tops.top(c)];

@@ -39,7 +39,9 @@ interface Lap {
 test(`${LAPS} laps of one loop with every reader attached hold no more at the last than at the second`, async () => {
   const h = serverOn(file);
   const inline = new InlineCityMaker(), made: BlocksMade[] = [];
-  const maker: CityMaker = { onMade: null, start: (k) => inline.start(k), make: (j) => inline.make(j), take: (out) => inline.take(out), run: (ms) => inline.run(ms), blocks: (job) => void made.push(makeBlocks(job)), built: () => made.shift() ?? null };
+  // Counts the far city's levels and the blocks' tiles asked of the maker.
+  const asks = { levels: 0, tiles: 0 };
+  const maker: CityMaker = { onMade: null, start: (k) => inline.start(k), make: (j) => (asks.levels++, inline.make(j)), take: (out) => inline.take(out), run: (ms) => inline.run(ms), blocks: (job) => void (asks.tiles++, made.push(makeBlocks(job))), built: () => made.shift() ?? null };
   const wants: Wants = { view: 1800, statics: 800, budget: 900e3, ground: 6e6, camera: null, focus: null, screen: null };
   const page = await Page.open(h, file, "ada", wants, undefined, maker);
   const { link, loader, session: s } = page;
@@ -122,11 +124,11 @@ test(`${LAPS} laps of one loop with every reader attached hold no more at the la
         "node chunks": si.nodeHeld.length,
         "link timers": (link as unknown as { timers: unknown[] }).timers.length,
         // What the readers made and keep by chunk: the far city's levels and its lists by chunk, the blocks' tiles, the far shadow's chunks, the tops fixed.
-        "far city made": scene.city?.stats.made ?? -1,
+        "far city levels": asks.levels,
         "far city gone": (scene.city as unknown as { gone: Map<number, unknown> } | null)?.gone.size ?? -1,
         "far city tops": (scene.city as unknown as { tops: Map<number, unknown> } | null)?.tops.size ?? -1,
         "far city left": (scene.city as unknown as { left: Map<number, unknown> } | null)?.left.size ?? -1,
-        "blocks made": scene.blocks?.stats.made ?? -1,
+        "blocks tiles": asks.tiles,
         "shadow chunks": scene.farShadow?.stats.chunks ?? -1,
         "shadow sweeps": scene.farShadow?.stats.sweeps ?? -1,
         "tops fixed": scene.blocks?.fix?.fixes.size ?? -1,

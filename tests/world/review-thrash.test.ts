@@ -144,7 +144,10 @@ test("a survivor dead for 10 s in every 30, its camera over where it fell, asks 
   const home = CITY ? corner : { x: 4600, z: 700 };
   const got = await minutes(home, { camera: { x: home.x, z: home.z } }, {
     "dead for 10 s in every 30": (t, body) => void (body.dead = t % 30000 >= 10000 && t % 30000 < 20000),
+    "dead once for 10 s": (t, body) => void (body.dead = t >= 10000 && t < 20000),
+    "dead from the tenth second on": (t, body) => void (body.dead = t >= 10000),
   });
-  console.log("dead", got);
+  const spawn = linkOf().link.head.spawns[0]!;
+  console.log("dead", got, `the first spawn point is ${Math.round(Math.hypot(spawn.x - home.x, spawn.z - home.z))} m off`);
   expect(got["dead for 10 s in every 30"]!.asked).toBe(0);
 }, 3_600_000);

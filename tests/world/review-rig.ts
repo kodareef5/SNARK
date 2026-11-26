@@ -164,14 +164,18 @@ export class Link {
     this.now = end;
   }
 
+  /** Requests `drain` leaves waiting, where set: a part the test keeps back. */
+  keepBack: ((url: string) => boolean) | null = null;
+
   /** Answers every request and pause, those they bring on too, moving the clock by `ms` a round, until none is left for `quiet` rounds. */
   async drain(ms = 0, quiet = 3): Promise<void> {
+    const next = (): number => this.waiting.findIndex((w) => !this.keepBack?.(w.url));
     for (let still = 0; still < quiet; ) {
       await turn();
-      if (this.waiting.length === 0 && this.pauses.length === 0) still++;
+      if (next() < 0 && this.pauses.length === 0) still++;
       else still = 0;
       while (this.pauses.length > 0) (this.step(), await turn());
-      while (this.waiting.length > 0) (this.answer(0), await turn());
+      for (let k = next(); k >= 0; k = next()) (this.answer(k), await turn());
       if (ms > 0) await this.advance(ms);
     }
   }
