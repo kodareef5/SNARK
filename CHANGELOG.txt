@@ -2,7 +2,7 @@ v0.0.14 — 2026-11-26
 
 City structures
 - A ruined storey gives way when most of its original supports are gone. On newly built maps, fallen window frames lie low enough to walk over, and hanging slabs leave room underneath.
-- New city builds keep plants out of paved traffic lanes. Four sizes of billboard line the roads, from small street signs to highway displays.
+- New city builds keep plants out of paved traffic lanes. Roadside billboards range from small street signs to 30-metre displays on concrete pillars.
 
 Doors
 - Hinged doors and Tek doors respect tribe access. A blocked door or a Tek field that stays open leaves nearby survivors in place.
