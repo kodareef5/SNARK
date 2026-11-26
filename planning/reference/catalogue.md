@@ -10,8 +10,8 @@ declare, what it may, and which assets it expects. A field that is in neither
 list is refused. Names and ids are this engine's own. The ARK column says what
 the class corresponds to, so that what is known of ARK carries over.
 
-There are 48 classes: 35 built, 6 partly built, and 7 stubs that
-wait for a feature. The core pack holds 6182 definitions.
+There are 49 classes: 36 built, 6 partly built, and 7 stubs that
+wait for a feature. The core pack holds 6184 definitions.
 
 An asset slot is addressed `owner#slot`, or `owner#slot/key` for a slot with
 several values: `core:raptor#clip/walk`. Levels of detail are inside the asset
@@ -43,6 +43,7 @@ share a `tag`.
 | `item/feces` | the feces items, small to massive | built | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels`, `spoilHours`, `spoilsInto`, `fuel` | 4 |
 | `item/glider` | PrimalItemConsumable_Parachute, and the Glider Suit skin | built | `stack`, `glide` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels` | 1 |
 | `item/shield` | equipment type Shield | stub: cosmetics | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels` | 0 |
+| `item/garment` | the cloth and hide pieces' look, without their armor | built | `stack`, `garment` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels` | 2 |
 | `item/costume` | equipment types Costume and Trophy | stub: cosmetics | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels` | 0 |
 | `item/skin` | PrimalItemSkin_ | stub: cosmetics | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels` | 0 |
 | `item/dye` | PrimalItemDye_ | stub: cosmetics | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels` | 0 |
@@ -65,6 +66,7 @@ share a `tag`.
 - **`item/feces`** on shelf `items/feces`. What a creature leaves when it defecates, a size for each kind of creature.
 - **`item/glider`** on shelf `items/gliders`. Carried anywhere in the bag, and opened in the air to glide: a wing for each hand, and folded in the hand when chosen.
 - **`item/shield`** on shelf `items/shields`. Held in the other hand to block.
+- **`item/garment`** on shelf `items/garments`. Clothing worn in a wardrobe slot (top, bottom, outer, shoes, hat): drawn over the body, under any armor, giving none. Each one carries its edition and dye in its slot.
 - **`item/costume`** on shelf `items/costumes`. Worn for its look alone.
 - **`item/skin`** on shelf `items/skins`. Changes the look of the item it is put on.
 - **`item/dye`** on shelf `items/dyes`. Colours a region of what it is used on.
@@ -87,13 +89,14 @@ Asset slots:
 - `item/feces`: `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
 - `item/glider`: `#held` mesh, may, from `{id}`, else `none`; `#wing_r` mesh, may, from `{id}/wing_r`, else `none`; `#wing_l` mesh, may, from `{id}/wing_l`, else `none`; `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
 - `item/shield`: `#held` mesh, may, from `{id}`, else `none`; `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
+- `item/garment`: `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
 - `item/costume`: `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
 - `item/skin`: `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
 - `item/dye`: `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
 - `item/instrument`: `#held` mesh, may, from `{id}`, else `none`; `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
 - `item/artifact`: `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
 
-ARK's names: `stack` is MaxItemQuantity; `weight` is BaseItemWeight; `spoilHours` is SpoilingTime; `decomposeHours` is the time a dropped item decomposes in; `youngFor` is prime meat from the young in place of raw meat; `eat` is UseItemAddCharacterStatusValues; `burnsInto` is the charcoal a fire leaves for each piece of wood burnt out; `saddle` is equipment type DinoSaddle; `dose` is UseItemAddCharacterStatusValues; `label` is DescriptiveNameBase; `weapon` is WeaponTemplate; `wear` is equipment type and ItemStatInfos; `attachment` is item type WeaponAttachment; `optic` is the scope's zoom (ScopeOverlay, FOV); `places` is StructureToBuild; `deploys` is the vehicle an assembly deploys; `craft` is BaseCraftingResourceRequirements, BlueprintTimeToCraft, BaseCraftingXP; `description` is ItemDescription; `folder` is DefaultFolderPaths; `spoilsInto` is SpoilingItem; `blueprint` is whether it may be a blueprint (a crafted item may, unless false); `use` is UseItemAddCharacterStatusValues and the buffs a consumable gives; `glide` is none of its own: the Parachute's slow fall and the Glider Suit's glide, as one thing carried; `ball` is PrimalItem_WeaponEmptyCryopod and the creature it holds; `charge` is a cryopod's charge, which only a powered cryofridge holds; `travels` is bPreventUpload, inverted.
+ARK's names: `stack` is MaxItemQuantity; `weight` is BaseItemWeight; `spoilHours` is SpoilingTime; `decomposeHours` is the time a dropped item decomposes in; `youngFor` is prime meat from the young in place of raw meat; `eat` is UseItemAddCharacterStatusValues; `burnsInto` is the charcoal a fire leaves for each piece of wood burnt out; `saddle` is equipment type DinoSaddle; `dose` is UseItemAddCharacterStatusValues; `label` is DescriptiveNameBase; `weapon` is WeaponTemplate; `wear` is equipment type and ItemStatInfos; `garment` is none: ARK's shirts, pants and hats are armor; here clothing gives none; `attachment` is item type WeaponAttachment; `optic` is the scope's zoom (ScopeOverlay, FOV); `places` is StructureToBuild; `deploys` is the vehicle an assembly deploys; `craft` is BaseCraftingResourceRequirements, BlueprintTimeToCraft, BaseCraftingXP; `description` is ItemDescription; `folder` is DefaultFolderPaths; `spoilsInto` is SpoilingItem; `blueprint` is whether it may be a blueprint (a crafted item may, unless false); `use` is UseItemAddCharacterStatusValues and the buffs a consumable gives; `glide` is none of its own: the Parachute's slow fall and the Glider Suit's glide, as one thing carried; `ball` is PrimalItem_WeaponEmptyCryopod and the creature it holds; `charge` is a cryopod's charge, which only a powered cryofridge holds; `travels` is bPreventUpload, inverted.
 
 What names what: `youngFor` names a `item`; `burnsInto` names a `item`; `saddle.fits` names a `species/creature`; `cooks.into` names a `item`; `weapon.ammo[]` names a `item`; `weapon.fits[]` names a `item/attachment`; `weapon.cloud.prop` names a `prop/cloud`; `weapon.cloud.buff` names a `buff`; `ammo.buff` names a `buff`; `places[]` names a `structure`; `deploys` names a `species/vehicle`; `craft.needs[].item` names a `item`; `craft.at` names a `structure/station`; `spoilsInto` names a `item`; `use.buffs[]` names a `buff`; `ball.full` names a `item`; `ball.empty` names a `item`.
 
@@ -404,6 +407,8 @@ built.
 **`item/feces`** (4): feces_small, feces_medium, feces_large, feces_massive.
 
 **`item/glider`** (1): frond_glider.
+
+**`item/garment`** (2): plain_tee, plain_trousers.
 
 **`item/instrument`** (6): template_hammer, spyglass, compass, magnifying_glass, radio, gps.
 
