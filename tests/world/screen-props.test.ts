@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { stationRecipes } from "../../client/core/ui/station.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
-import { BILLBOARD_FACE } from "../../content/street.ts";
+import { BILLBOARD_FACE, BOARDS, streetKind } from "../../content/street.ts";
 import type { Def, EngramDef, ItemDef, StructureDef } from "../../shared/content/defs.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
@@ -42,6 +42,23 @@ test("a billboard's LED face lies on its panel's road side, a few mm in front of
   expect([x0 >= -7.4, x1 <= 7.4, y0 >= 9.55, y1 <= 14.4]).toEqual([true, true, true, true]);
   expect(z).toBeGreaterThan(0.11);
   expect(z).toBeLessThan(0.13);
+});
+
+artTest("the four video corners meet the panel at every billboard mesh level", () => {
+  const street = unpackMeshes(parsePack(readFileSync(join(MODELS, "../street/street.snpk"))));
+  for (const board of Object.keys(BOARDS)) {
+    const name = streetKind("billboard" + board);
+    const [left, right, bottom, top, z] = reg.screenFace[at(name)]!.face;
+    const mesh = street.find((m) => m.id === name)!;
+    for (const level of mesh.lods) for (const x of [left, right]) for (const y of [bottom, top]) {
+      let front = -Infinity;
+      const p = level.positions;
+      for (let i = 0; i < p.length; i += 3) {
+        if (Math.abs(p[i]! - x) < .002 && Math.abs(p[i + 1]! - y) < .002) front = Math.max(front, p[i + 2]!);
+      }
+      expect([name, z > front && z - front < .011]).toEqual([name, true]);
+    }
+  }
 });
 
 test("broken forms carry no screen", () => {
