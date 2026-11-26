@@ -311,6 +311,7 @@ export function buildAsset(asset: Asset): Built {
       out.meshes.push(...made.meshes);
       out.rigs.push(...made.rigs);
       out.warnings.push(...made.warnings);
+      out.lines.push(...made.lines);
       for (const m of made.meshes) out.lines.push(`${m.id.padEnd(34)} ${triangles(m)} triangles`);
     }
     if (out.meshes.some((m) => m.flat)) out.lines.push("a level marked * is drawn with materials");

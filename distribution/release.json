@@ -2,7 +2,7 @@
   "repository": "kodareef5/SNARK",
   "art": {
     "release": "art",
-    "id": "3c5be11917e478b0",
+    "id": "d60cdf4bdc7feb30",
     "files": [
       {"name": "core-creatures-allosaur", "file": "core-creatures-allosaur.5eb2682fdf0a.tar.zst", "bytes": 2833562, "sha256": "5eb2682fdf0abb902fa1807673cf9dc46c3111e728eda23299b3a910d74129e2"},
       {"name": "core-creatures-ankylo", "file": "core-creatures-ankylo.d19e9025be7c.tar.zst", "bytes": 1901178, "sha256": "d19e9025be7ccaeb84f4bf80f6554f9e9a6a2971b062a6666ab9f50e8901146b"},
@@ -289,6 +289,7 @@
       {"name": "raw-flexunit", "file": "raw-flexunit.ac487ca94e54.tar.zst", "bytes": 219730, "sha256": "ac487ca94e540bf4c0dbe319b1723a788a3c011756214d8afb878e3504d19f1d"},
       {"name": "raw-fonts", "file": "raw-fonts.9d03b86abb5c.tar.zst", "bytes": 52703, "sha256": "9d03b86abb5c7c5e26df1e55a3157feeb0d915b16127f6e2ab4277c8cadc6036"},
       {"name": "raw-grab3d", "file": "raw-grab3d.5016a1571d71.tar.zst", "bytes": 6033112, "sha256": "5016a1571d71ae6b11a368b1bb793453fc97393289cd43cffe4bfba65a216113"},
+      {"name": "raw-makehuman", "file": "raw-makehuman.9e1b507ae4e4.tar.zst", "bytes": 278556214, "sha256": "9e1b507ae4e4b9b93163f9b1548dc308636bfd3abae4ba91e1e9fb9c85ee28f1"},
       {"name": "raw-mgg8", "file": "raw-mgg8.4e462a71333e.tar.zst", "bytes": 2681374, "sha256": "4e462a71333ea1ff57d87ef75e77b736111d677ed1d6c2d8198eb817de9106d7"},
       {"name": "raw-patch", "file": "raw-patch.d4691162c90e.tar.zst", "bytes": 8567550, "sha256": "d4691162c90e470e3979d54e02c930429617dd17f73e507b3cafb0d24a90b5ce"},
       {"name": "raw-quaternius", "file": "raw-quaternius.5783fa5f4302.tar.zst", "bytes": 35280772, "sha256": "5783fa5f4302909c9b72a19d3306c07c1d9e1050ac7bd5d75a128a46b2de82cf"},

@@ -117,7 +117,9 @@ export function describe(m: Material, top: number, palette: Uint8Array, layer = 
     if (tops[role] !== undefined) tops[role] = Math.min(tops[role]!, side);
   }
   if (masks?.mask2) tops.mask2 = tops.mask;
-  const textures = (Object.keys(tops) as TextureRole[]).sort().map((role): PackTexture => ({ id: `${m.id}/${role}`, role, top: tops[role]! }));
+  const lender = m.spec.borrows ? `${m.id.slice(0, m.id.length - m.name.length)}${m.spec.borrows.from}` : null;
+  const owner = (role: TextureRole): string => (lender && m.spec.borrows!.roles.includes(role) ? lender : m.id);
+  const textures = (Object.keys(tops) as TextureRole[]).sort().map((role): PackTexture => ({ id: `${owner(role)}/${role}`, role, top: tops[role]! }));
   const layered = maps.hurt ?? maps.decay;
   if (layered) {
     if (maps.hurt && maps.decay && maps.hurt.width !== maps.decay.width) throw new Error(`${m.id}: its hurt and decay pictures are not one size`);

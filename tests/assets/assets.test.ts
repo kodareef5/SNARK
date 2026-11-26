@@ -57,7 +57,7 @@ const bodyErrors = (sex: string): number[] => {
   return [0, 1, 2, 3].map((level) => parts.reduce((sum, e) => sum + e[level]!, 0) / parts.length);
 };
 
-artTest("a level is chosen by its error on screen: a body goes coarser near 9, 19 and 58 m at 720p", () => {
+artTest("a level is chosen by its error on screen: a body goes coarser near 11, 22 and 74 m at 720p", () => {
   const assets = new Assets(coreRegistry(), pack);
   /** The distance at which something seen afresh is first drawn at `level`. */
   const from = (errors: number[], level: number): number => {
@@ -68,9 +68,9 @@ artTest("a level is chosen by its error on screen: a body goes coarser near 9, 1
     const errors = bodyErrors(sex);
     assets.tier = tierOf("medium");
     assets.begin(0, 720, 1.2217);
-    // Four levels since the cook kept the source's own (tools/pack/body.ts); with three they turned near 14 and 45 m.
+    // MakeHuman's body at 26,000, 3,400, 1,480 and 420 triangles (tools/pack/body.ts); Quaternius's turned near 9, 19 and 58 m.
     const [near, mid, far] = [from(errors, 1), from(errors, 2), from(errors, 3)];
-    expect([sex, near > 9 * 0.8 && near < 9 * 1.2, mid > 19 * 0.8 && mid < 19 * 1.2, far > 58 * 0.8 && far < 58 * 1.2]).toEqual([sex, true, true, true]);
+    expect([sex, near > 11 * 0.8 && near < 11 * 1.2, mid > 22 * 0.8 && mid < 22 * 1.2, far > 74 * 0.8 && far < 74 * 1.2]).toEqual([sex, true, true, true]);
     // Twice the pixels, or a scope's narrow view, and the finer level is held further out.
     assets.begin(0, 1440, 1.2217);
     expect(from(errors, 1)).toBeCloseTo(near * 2, 0);

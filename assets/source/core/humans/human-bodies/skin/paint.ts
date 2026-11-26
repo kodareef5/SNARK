@@ -35,9 +35,9 @@ interface Spec {
   smooth?: number;
 }
 
-const luma = (r: number, g: number, b: number): number => 0.2126 * r + 0.7152 * g + 0.0722 * b;
+export const luma = (r: number, g: number, b: number): number => 0.2126 * r + 0.7152 * g + 0.0722 * b;
 const srgb = (l: number): number => (l <= 0.0031308 ? l * 12.92 : 1.055 * Math.pow(l, 1 / 2.4) - 0.055);
-const fromLinear = (l: number): number => Math.round(srgb(Math.min(1, Math.max(0, l))) * 255);
+export const fromLinear = (l: number): number => Math.round(srgb(Math.min(1, Math.max(0, l))) * 255);
 const saturation = (r: number, g: number, b: number): number => {
   const [lo, hi] = [Math.min(r, g, b), Math.max(r, g, b)];
   return hi > 0 ? (hi - lo) / hi : 0;
@@ -118,9 +118,9 @@ const SURROUND = 24;
 const FADE = 6;
 
 /** A square picture's texels, `channels` floats each. */
-interface Field { side: number; channels: number; data: Float32Array }
+export interface Field { side: number; channels: number; data: Float32Array }
 
-const field = (side: number, channels: number): Field => ({ side, channels, data: new Float32Array(side * side * channels) });
+export const field = (side: number, channels: number): Field => ({ side, channels, data: new Float32Array(side * side * channels) });
 
 /** `f` at half the side, each texel the mean of four, or where `weight` says, the weighted mean. */
 function halve(f: Field): Field {
@@ -132,7 +132,7 @@ function halve(f: Field): Field {
   return out;
 }
 
-function shrink(f: Field, side: number): Field {
+export function shrink(f: Field, side: number): Field {
   while (f.side > side) f = halve(f);
   if (f.side !== side) throw new Error(`a picture of ${f.side} cannot be made ${side} across`);
   return f;
@@ -170,7 +170,7 @@ function coverage(spec: Spec, side: number): Uint8Array {
 }
 
 /** Fills every texel `known` does not mark from the known ones near it, coarse to fine, so nothing bleeds in from unused texels. */
-function fill(f: Field, known: Uint8Array): void {
+export function fill(f: Field, known: Uint8Array): void {
   const levels: { f: Field; w: Float32Array }[] = [{ f, w: Float32Array.from(known) }];
   while (levels[levels.length - 1]!.f.side > 1) {
     const { f: top, w } = levels[levels.length - 1]!;
@@ -204,7 +204,7 @@ function fill(f: Field, known: Uint8Array): void {
 }
 
 /** A blur of one channel by a box `r` texels each way, twice, which is near a Gaussian. */
-function blurred(src: Float32Array, side: number, r: number): Float32Array {
+export function blurred(src: Float32Array, side: number, r: number): Float32Array {
   let a = Float32Array.from(src);
   for (let pass = 0; pass < 2; pass++) {
     for (const across of [true, false]) {
@@ -224,10 +224,49 @@ function blurred(src: Float32Array, side: number, r: number): Float32Array {
   return a;
 }
 
-function picture(f: Field, encode: (v: number, c: number) => number): Picture {
+export function picture(f: Field, encode: (v: number, c: number) => number): Picture {
   const data = new Uint8Array(f.side * f.side * f.channels);
   for (let i = 0; i < data.length; i++) data[i] = Math.max(0, Math.min(255, encode(f.data[i]!, i % f.channels)));
   return { width: f.side, height: f.side, channels: f.channels, depth: 8, data };
+}
+
+/** A gentle normal from the colour's lightness against its surroundings, leaning less near an island's edge, and the occlusion of its hollows. */
+export function leaning(colour: Field, used: Uint8Array): { normal: Field; occlusion: Field } {
+  const side = colour.side;
+  const n = side * side;
+  // Height is lightness against its surroundings; the normal leans with it, less near an island's edge.
+  const light = Float32Array.from({ length: n }, (_, i) => Math.sqrt(luma(colour.data[i * 3]!, colour.data[i * 3 + 1]!, colour.data[i * 3 + 2]!)));
+  const scale = side / 2048;
+  const height = blurred(light, side, Math.max(1, Math.round(scale)));
+  const around = blurred(light, side, Math.max(2, Math.round(SURROUND * scale)));
+  // How far each texel is inside its island, by erosion, as a share of FADE.
+  const inner = new Float32Array(n);
+  let left = Float32Array.from(used);
+  for (let pass = 0; pass < FADE; pass++) {
+    const next = new Float32Array(n);
+    for (let y = 0; y < side; y++) for (let x = 0; x < side; x++) {
+      const i = y * side + x;
+      next[i] = Math.min(left[i]!, left[y * side + Math.max(0, x - 1)]!, left[y * side + Math.min(side - 1, x + 1)]!, left[Math.max(0, y - 1) * side + x]!, left[Math.min(side - 1, y + 1) * side + x]!);
+      inner[i]! += next[i]! / FADE;
+    }
+    left = next;
+  }
+  const normal = field(side, 3);
+  const occlusion = field(side, 1);
+  for (let y = 0; y < side; y++) for (let x = 0; x < side; x++) {
+    const i = y * side + x;
+    const h = (dx: number, dy: number): number => height[Math.min(side - 1, Math.max(0, y + dy)) * side + Math.min(side - 1, Math.max(0, x + dx))]! - around[i]!;
+    const lean = DEPTH * inner[i]! * scale;
+    // Green points up the picture, and rows run down it.
+    const nx = -(h(1, 0) - h(-1, 0)) * 0.5 * lean;
+    const ny = (h(0, 1) - h(0, -1)) * 0.5 * lean;
+    const len = Math.hypot(nx, ny, 1);
+    normal.data[i * 3] = nx / len;
+    normal.data[i * 3 + 1] = ny / len;
+    normal.data[i * 3 + 2] = 1 / len;
+    occlusion.data[i] = 1 - Math.min(0.35, Math.max(0, around[i]! - height[i]!) * 1.5);
+  }
+  return { normal, occlusion };
 }
 
 function paint(spec: Spec, dir: string): string {
@@ -286,38 +325,7 @@ function paint(spec: Spec, dir: string): string {
     rough.data[i] = spec.roughness[k as Region] ?? spec.roughness[-1] ?? 0.6;
   }
 
-  // Height is lightness against its surroundings; the normal leans with it, less near an island's edge.
-  const light = Float32Array.from({ length: n }, (_, i) => Math.sqrt(luma(colour.data[i * 3]!, colour.data[i * 3 + 1]!, colour.data[i * 3 + 2]!)));
-  const scale = side / 2048;
-  const height = blurred(light, side, Math.max(1, Math.round(scale)));
-  const around = blurred(light, side, Math.max(2, Math.round(SURROUND * scale)));
-  // How far each texel is inside its island, by erosion, as a share of FADE.
-  const inner = new Float32Array(n);
-  let left = Float32Array.from(used);
-  for (let pass = 0; pass < FADE; pass++) {
-    const next = new Float32Array(n);
-    for (let y = 0; y < side; y++) for (let x = 0; x < side; x++) {
-      const i = y * side + x;
-      next[i] = Math.min(left[i]!, left[y * side + Math.max(0, x - 1)]!, left[y * side + Math.min(side - 1, x + 1)]!, left[Math.max(0, y - 1) * side + x]!, left[Math.min(side - 1, y + 1) * side + x]!);
-      inner[i]! += next[i]! / FADE;
-    }
-    left = next;
-  }
-  const normal = field(side, 3);
-  const occlusion = field(side, 1);
-  for (let y = 0; y < side; y++) for (let x = 0; x < side; x++) {
-    const i = y * side + x;
-    const h = (dx: number, dy: number): number => height[Math.min(side - 1, Math.max(0, y + dy)) * side + Math.min(side - 1, Math.max(0, x + dx))]! - around[i]!;
-    const lean = DEPTH * inner[i]! * scale;
-    // Green points up the picture, and rows run down it.
-    const nx = -(h(1, 0) - h(-1, 0)) * 0.5 * lean;
-    const ny = (h(0, 1) - h(0, -1)) * 0.5 * lean;
-    const len = Math.hypot(nx, ny, 1);
-    normal.data[i * 3] = nx / len;
-    normal.data[i * 3 + 1] = ny / len;
-    normal.data[i * 3 + 2] = 1 / len;
-    occlusion.data[i] = 1 - Math.min(0.35, Math.max(0, around[i]! - height[i]!) * 1.5);
-  }
+  const { normal, occlusion } = leaning(colour, used);
   const packed = field(side, 3);
   for (let i = 0; i < n; i++) {
     packed.data[i * 3] = occlusion.data[i]!;

@@ -8,18 +8,19 @@ import { test } from "../fixtures/needs-art.ts";
 test("a scene whose levels stream never draws what the card lacks, and ends with the picture the whole pack gives", () => {
   const [whole, stream] = [provingView(320, 180), provingView(320, 180, { latencyMs: 150, bytesPerSecond: 300e3 })];
   for (const view of [whole, stream]) {
-    // Three metres from the survivor, so its finest level is wanted.
+    // Two metres from the survivor, so its head's finest level is wanted (it was 3 m, past where the head's own error asks).
     view.cam.yaw = 0;
     view.cam.x = view.remote.x[0]!;
     view.cam.y = view.remote.y[0]! + 1.5;
-    view.cam.z = view.remote.z[0]! - 3;
+    view.cam.z = view.remote.z[0]! - 2;
   }
   whole.render();
   const first = stream.render();
-  // The first frame has the boot pack alone: every body part at its coarsest, and nothing left out.
+  // The first frame has the boot pack alone: every body part at its coarsest, and nothing left out. MakeHuman's head
+  // at its first flat level is past what the boot file holds of a finer level (split.ts HELD_LEVEL_BYTES), so its last.
   const head = stream.pack.meshIndex.get("core:human_m/head")!;
   const level = (p: typeof first): number => p.drawLod[[...Array(p.drawCount).keys()].find((i) => p.drawMesh[i] === head)!]!;
-  expect([level(first), first.skipped, first.drawCount]).toEqual([2, 0, whole.scene.packet.drawCount]);
+  expect([level(first), first.skipped, first.drawCount]).toEqual([3, 0, whole.scene.packet.drawCount]);
   expect(stream.raster.color).not.toEqual(whole.raster.color);
   let uploads = first.assetUploads.length;
   // The rasterizer throws at a draw of anything not uploaded, so each of these frames is a check.

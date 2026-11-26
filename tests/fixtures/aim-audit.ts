@@ -59,8 +59,8 @@ export interface AimHeld {
 
 /** The thresholds of planning/architecture/animation.md. */
 export const AIM_MALE: AimHeld = { head: 0.965, body: 0.88, missed: 0.02, spill: 0.3, zone: 0.78 };
-/** Her narrower shoulders and arms sit inside capsules sized for his: her shares of 2026-11-25, with a little room. */
-export const AIM_FEMALE: AimHeld = { head: 0.935, body: 0.848, missed: 0.032, spill: 0.385, zone: 0.68 };
+/** Her narrower shoulders and arms sit inside capsules sized for his: her shares on MakeHuman's body, with a little room. */
+export const AIM_FEMALE: AimHeld = { head: 0.965, body: 0.875, missed: 0.02, spill: 0.365, zone: 0.7 };
 
 export function aimShares(c: AimCount): AimShares {
   let all = 0, agreed = 0, worst = "", worstShare = 2;

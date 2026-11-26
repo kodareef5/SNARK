@@ -80,6 +80,10 @@ __pycache__/
 /assets/**/*.wav
 /assets/**/*.webp
 /assets/source/core/items/stone-tools/ref/concept/.start
+# MakeHuman's data is 410 MB and goes in the art release. Git keeps each pack's licence and listing.
+/assets/raw/makehuman/**/*.*
+!/assets/raw/makehuman/*/LICENSE*.md
+!/assets/raw/makehuman/*/packs/*.json
 /planning/**/*.jpg
 /planning/**/*.json
 /planning/**/*.npz
