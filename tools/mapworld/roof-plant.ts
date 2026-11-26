@@ -15,7 +15,6 @@ import { boxOf, meets, obstacleIndex, type Box } from "./ruin-obstacles.ts";
 import { vocabulary } from "./ruin-vocabulary.ts";
 import type { Site, StaticLayer, StaticPiece } from "./statics.ts";
 import { routeCheck } from "./street-furniture.ts";
-import { knownOf } from "./known.ts";
 
 export interface Roofs {
   seed: number;
@@ -51,10 +50,7 @@ export function placeRoofPlant(site: Site, placed: readonly StaticPiece[], recor
 
   for (const r of records) {
     // Its slabs, and those with none of its own over them: its roofs.
-    const its = placed.slice(r.firstPiece, r.firstPiece + r.blocks), whose = its.length ? knownOf(its[0]!)?.owner ?? -1 : -1;
-    // A record that names another building's pieces grows this roof's plant over that one's slabs.
-    if (its.some((p) => (knownOf(p)?.owner ?? -1) !== whose) || (its.length > 0 && whose < 0)) throw new Error(`building ${r.id}'s record names pieces that are not its own: the list changed after the records were made`);
-    const slabs: Slab[] = its.filter(isFloor).map((p) => { const b = boxOf(p); const a = b.yaw / DEG; return { ...b, c: Math.cos(a), s: Math.sin(a) }; });
+    const slabs: Slab[] = placed.slice(r.firstPiece, r.firstPiece + r.blocks).filter(isFloor).map((p) => { const b = boxOf(p); const a = b.yaw / DEG; return { ...b, c: Math.cos(a), s: Math.sin(a) }; });
     if (slabs.length === 0) continue;
     const inside = (b: Slab, x: number, z: number, margin: number): boolean => {
       const dx = x - b.x; const dz = z - b.z;

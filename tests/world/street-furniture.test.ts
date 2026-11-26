@@ -582,9 +582,9 @@ test("a mapped give-way on a junction's way keeps the classes' stop off it, and 
 test("billboards stand about so many a square kilometre of land, in the sizes their road's class draws, most of them working", () => {
   const site = fixture(GRID), km2 = (N * N * 4) / 1e6;
   const boards = (perKm2: number): StaticPiece[] => place(site, [], { ...RULES, billboards: { ...RULES.billboards, perKm2 } }, 4000).pieces.filter((p) => p.kind.startsWith(streetKind("billboard")));
-  // The number is the map's budget: four times it stands four times as many.
+  // The number is a sector's budget by its land, the part of a board over by the sector's draw: four times it stands four times as many.
   const [few, many] = [boards(10), boards(40)];
-  expect([few.length, many.length]).toEqual([Math.round(10 * km2), Math.round(40 * km2)]);
+  for (const [stood, share] of [[few.length, 10 * km2], [many.length, 40 * km2]] as const) expect([Math.floor(share), Math.ceil(share)]).toContain(stood);
   expect(boards(0)).toEqual([]);
   // The few are among the many: a larger budget adds boards and moves none.
   for (const p of few) expect(many.some((q) => q.kind === p.kind && q.x === p.x && q.z === p.z)).toBe(true);
