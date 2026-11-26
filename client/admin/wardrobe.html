@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Wardrobe · SNARK Admin</title>
+    <link rel="stylesheet" href="/admin/ui/admin.css">
+    <link rel="stylesheet" href="/admin/ui/wardrobe.css">
+  </head>
+  <body>
+    <main class="tool-page wardrobe-page">
+      <header class="tool-intro"><h1>Wardrobe</h1><p>Design garment editions: their colours, a print, and where it sits. A published edition is kept for good; retire one to take it off the pick list.</p></header>
+      <section class="glass wardrobe-status">
+        <p id="msg" class="dim" role="status">Loading…</p>
+        <p id="store" class="faint"></p>
+        <p id="fit-note" class="warn"></p>
+      </section>
+      <div class="wardrobe-grid">
+        <section class="glass wardrobe-list">
+          <h2>Published editions</h2>
+          <div id="editions"></div>
+          <h3>Start from a garment</h3>
+          <div id="garments" class="starts"></div>
+        </section>
+        <section class="glass wardrobe-editor">
+          <h2>Draft</h2>
+          <p id="no-draft" class="dim">No draft. Start one from a garment, or from a published edition with Start from.</p>
+          <div id="editor" hidden>
+            <div class="fields">
+              <label>Garment <select id="garment"></select></label>
+              <label class="grow">Name <input id="name" maxlength="40" autocomplete="off" placeholder="Miami sunrise tee"></label>
+            </div>
+            <h3>Cloth colours</h3>
+            <div class="wells" id="wells"></div>
+            <div class="palette" id="palette"></div>
+            <p id="colour-note" class="faint"></p>
+            <h3><label><input type="checkbox" id="has-print"> A print</label></h3>
+            <div id="print" hidden>
+              <div class="fields">
+                <label>Sheet <select id="sheet-size"></select></label>
+                <label>Fill <input type="color" id="fill" value="#f4f1ea"></label>
+                <label><input type="checkbox" id="clear"> Clear</label>
+              </div>
+              <div class="sheet-box"><canvas id="sheet" aria-label="The print sheet: drag a layer to move it"></canvas></div>
+              <div class="bar">
+                <button data-add="text">Add text</button>
+                <select id="shape-kind" aria-label="Shape"><option value="box">Box</option><option value="disc">Disc</option><option value="ring">Ring</option><option value="star">Star</option></select>
+                <button data-add="shape">Add shape</button>
+                <button data-add="picture">Add picture…</button>
+                <input type="file" id="picture-file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+              </div>
+              <div id="layers" class="layers"></div>
+              <div id="layer" class="layer-fields"></div>
+              <h3>Where it lies on the garment</h3>
+              <div class="place">
+                <canvas id="place" width="320" height="320" aria-label="The garment's print sheet with the print's rectangle"></canvas>
+                <div class="place-fields" id="place-fields"></div>
+              </div>
+              <p class="faint">The garment's cut has one sheet that the print is laid on. Until the cuts are made, this square stands for it.</p>
+            </div>
+            <div class="bar publish-bar">
+              <button id="publish" class="primary">Publish</button>
+              <button id="discard">Discard draft</button>
+              <span class="grow"></span>
+            </div>
+            <ul id="faults" class="faults"></ul>
+          </div>
+        </section>
+        <section class="glass wardrobe-stage">
+          <h2>On a person</h2>
+          <iframe id="stage" src="/person-stage.html" title="The person stage"></iframe>
+          <div class="fields">
+            <label>Person <select id="look"></select></label>
+            <button id="reroll" title="Someone else from the same people">Someone else</button>
+          </div>
+          <div class="fields">
+            <label>Pose <select id="pose"></select></label>
+            <label>View <select id="framing"></select></label>
+            <label>Hour <input type="range" id="hour" min="0" max="24" step="0.5" value="11"></label>
+          </div>
+          <div class="bar"><button id="stage-picture">Save a picture</button><span class="grow"></span><span id="showing" class="faint"></span></div>
+          <p id="stage-note" class="faint"></p>
+        </section>
+      </div>
+    </main>
+    <script type="module" src="/admin/ui/wardrobe.js"></script>
+  </body>
+</html>

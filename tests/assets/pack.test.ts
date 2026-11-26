@@ -70,8 +70,8 @@ test("the core pack has a mesh for every graybox definition and rejects damaged 
 
 artTest("the pack carries bodies cut into slots, each vertex naming its bone, and the clips that move them", () => {
   const pack = parsePack(corePackBytes());
-  // The mannequin is the skeleton's own capsules. Each modelled body is on its own rig, at four levels of detail: the
-  // source's own and 4,000 with materials, 1,500 and 420 flat (tools/pack/body.ts).
+  // The mannequin is the skeleton's own capsules. Each modelled body is on its own rig, at four levels of detail:
+  // MakeHuman's body at 26,000 and 3,400 with materials, 1,480 and 420 flat (tools/pack/body.ts).
   for (const [base, rig, levels] of [["core:mannequin", undefined, 1], ["core:human_m", "human_m", 4], ["core:human_f", "human_f", 4]] as const) {
     let triangles = 0;
     for (const slot of SLOT_NAMES) {
@@ -90,8 +90,8 @@ artTest("the pack carries bodies cut into slots, each vertex naming its bone, an
       }
     }
     if (rig !== undefined) {
-      expect(triangles).toBeGreaterThan(12_500);
-      expect(triangles).toBeLessThan(16_000);
+      expect(triangles).toBeGreaterThan(20_000);
+      expect(triangles).toBeLessThanOrEqual(26_000);
     }
   }
   // A rig is the skeleton's bones at that body's rest positions, close to the skeleton's own.
@@ -251,8 +251,10 @@ artTest("the manifest lists every level with the bytes that hold it, and reads b
   // What the client knows of the meshes comes out the same from the file as from the pack it describes.
   const [a, b] = [new AssetTable(parseManifest(text), pack), new AssetTable(describePack(pack, { name: "", bytes: file.length }), pack)];
   expect([a.count, a.tris, a.error, [...a.radius], a.skeleton, [...a.rig], [...a.bone]]).toEqual([b.count, b.tris, b.error, [...b.radius], b.skeleton, [...b.rig], [...b.bone]]);
-  // The full source's torso, its 4,000-triangle body's share, then the flat 1,500 and 420 (tools/pack/body.ts).
-  expect(a.tris[a.find("core:human_m/torso")]).toEqual([2770, 826, 380, 105]);
+  // MakeHuman's torso: its share of the 26,000- and 3,400-triangle bodies, then the flat 1,480 and 420 (tools/pack/body.ts).
+  // It was 634, 318 and 94 until the neck seam kept its points on the second level, and 4818, 645, 329 and 101 until the
+  // thumb's root moved onto its joint and took palm skin within the forearm's reach.
+  expect(a.tris[a.find("core:human_m/torso")]).toEqual([4834, 641, 311, 97]);
   expect(a.has("clip", "human/walk") && a.has("rig", "human_f") && !a.has("mesh", "core:nothing")).toBe(true);
   const binding = new Binding(CORE_CONTENT, a);
   const wall = a.find("core:wall_tek");

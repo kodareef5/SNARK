@@ -23,6 +23,8 @@ export interface Coding {
   stale: boolean;
   /** Slot and pid pairs a read gives for the record's inventory, put on it once every component is read. */
   readonly refs: number[];
+  /** Slot, edition and dye triples a read gives for the record's inventory, put on it as `refs` are. */
+  readonly styles: number[];
   /** An item by its written index. One whose content is gone stops the read, or is 0 and counted with the `n` that record `pid` held. */
   item(saved: number, pid: number, n: number): number;
   /** Counts `n` of `item` as gone with something that was left out. */

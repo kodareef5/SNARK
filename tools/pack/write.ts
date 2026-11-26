@@ -61,6 +61,8 @@ export interface SourceMesh {
   textures?: PackTexture[];
   /** Drawn see-through, its finishes showing their share (shared/pack/finish.ts): a landmark's wires. */
   seeThrough?: boolean;
+  /** The box its positions are stored in, where it shares one with other meshes; its own where not given. */
+  bounds?: { center: [number, number, number]; half: [number, number, number] };
 }
 
 /** The blob of a pack as it is put together: runs of bytes, each padded to a multiple of 4. */
@@ -148,6 +150,13 @@ function pool(meshes: readonly SourceMesh[]): { materials: PackMaterial[]; textu
  * the level has zones: the runs as PackLod lists them. `place` is where the pack has each of the mesh's materials; a
  * flat level has none, and is one run.
  */
+/**
+ * The order skin zones go in within a section (shared/anim/skin-zones.ts): from the trunk outward, left and right side by
+ * side, so a sleeve or a leg of any length hides one run at the end.
+ */
+const ZONE_ORDER: readonly number[] = [0, 1, 2, 3, 4, 7, 5, 8, 6, 9, 10, 11, 12, 13, 16, 14, 17, 15, 18, 19, 20];
+const ZONE_RANK: readonly number[] = Array.from({ length: MOST_ZONES }, (_, z) => (z < ZONE_ORDER.length ? ZONE_ORDER.indexOf(z) : z));
+
 function inSections(lod: SourceLod, place: readonly number[] | null): { indices: Uint32Array; sections: number[]; zones: number[] | null; runs: number[] } {
   const n = lod.indices.length / 3;
   const zones = lod.zones ?? null;
@@ -155,7 +164,7 @@ function inSections(lod: SourceLod, place: readonly number[] | null): { indices:
   // Counted out by key, each key's triangles in the order they came: a stable sort, at the cost of one pass.
   const of = new Int32Array(n);
   let most = 0;
-  for (let t = 0; t < n; t++) most = Math.max(most, (of[t] = (place ? place[lod.sections?.[t] ?? 0]! : 0) * MOST_ZONES + (zones ? zones[t]! : 0) + 1));
+  for (let t = 0; t < n; t++) most = Math.max(most, (of[t] = (place ? place[lod.sections?.[t] ?? 0]! : 0) * MOST_ZONES + (zones ? ZONE_RANK[zones[t]!]! : 0) + 1));
   const start = new Uint32Array(most + 2);
   for (let t = 0; t < n; t++) start[of[t]! + 1]!++;
   const sections: number[] = [];
@@ -165,7 +174,7 @@ function inSections(lod: SourceLod, place: readonly number[] | null): { indices:
   for (let key = 0; key <= most; key++) {
     const count = start[key + 1]!;
     if (count > 0) {
-      const [material, zone, first] = [Math.floor((key - 1) / MOST_ZONES), (key - 1) % MOST_ZONES, start[key]! * 3];
+      const [material, zone, first] = [Math.floor((key - 1) / MOST_ZONES), ZONE_RANK.indexOf((key - 1) % MOST_ZONES), start[key]! * 3];
       runs.push(material, first, count * 3);
       if (zones) zoned.push(zone, first, count * 3);
       const last = sections.length - 3;
@@ -216,8 +225,14 @@ export function buildPack(meshes: SourceMesh[], palette: Uint8Array, clips: read
         if (v > max[i % 3]!) max[i % 3] = v;
       }
     }
-    const center = min.map((lo, a) => (lo + max[a]!) / 2) as [number, number, number];
-    const half = min.map((lo, a) => Math.max((max[a]! - lo) / 2, 1e-4)) as [number, number, number];
+    let center = min.map((lo, a) => (lo + max[a]!) / 2) as [number, number, number];
+    let half = min.map((lo, a) => Math.max((max[a]! - lo) / 2, 1e-4)) as [number, number, number];
+    if (mesh.bounds) {
+      const b = mesh.bounds;
+      if (min.some((lo, a) => lo < b.center[a]! - b.half[a]! * (1 + 1e-6) || max[a]! > b.center[a]! + b.half[a]! * (1 + 1e-6))) throw new Error(`${mesh.id}: a position lies outside the box it is stored in`);
+      center = [...b.center];
+      half = [...b.half];
+    }
     const out: PackMesh = { id: mesh.id, center, half, lods: [] };
     if (mesh.collider) out.collider = mesh.collider;
     if (mesh.skeleton) out.skeleton = mesh.skeleton;
@@ -341,6 +356,22 @@ export function encodeClip(clip: Clip): { rot: Uint8Array; root: Uint8Array } {
 }
 
 /** The meshes of a pack back in authoring form, to put them into another pack. */
+/** Whether a mesh's stored positions touch both faces of its box on every axis, as a box made from them does. */
+function reachesBox(pack: Pack, m: PackMesh): boolean {
+  const lo = [32767, 32767, 32767];
+  const hi = [-32767, -32767, -32767];
+  for (const lod of m.lods) {
+    const verts = lodVertices(pack, lod);
+    const view = new DataView(verts.buffer, verts.byteOffset, verts.byteLength);
+    for (let v = 0; v < lod.vertexCount; v++) for (let a = 0; a < 3; a++) {
+      const q = view.getInt16(v * VERTEX_BYTES + a * 2, true);
+      lo[a] = Math.min(lo[a]!, q);
+      hi[a] = Math.max(hi[a]!, q);
+    }
+  }
+  return lo.every((q, a) => q === -32767 && hi[a] === 32767);
+}
+
 export function unpackMeshes(pack: Pack): SourceMesh[] {
   return pack.header.meshes.map((m) => {
     const lods = m.lods.map((lod, level): SourceLod => {
@@ -368,6 +399,8 @@ export function unpackMeshes(pack: Pack): SourceMesh[] {
       return out;
     });
     const out: SourceMesh = { id: m.id, lods };
+    // A mesh whose positions do not reach its box on both sides of every axis was stored in a shared box, and keeps it.
+    if (m.lods.length > 0 && !reachesBox(pack, m)) out.bounds = { center: [...m.center] as [number, number, number], half: [...m.half] as [number, number, number] };
     if (m.seeThrough) out.seeThrough = true;
     if (m.collider) out.collider = m.collider;
     if (m.skeleton) out.skeleton = m.skeleton;

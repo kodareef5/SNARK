@@ -11,7 +11,7 @@ export { linearToSrgb, srgbToLinear } from "./color-space.ts";
 import { MATERIAL_INDICATOR, MATERIAL_NIGHT, type PackMaterial } from "../../../shared/pack/pack.ts";
 import { linearToSrgb, srgbToLinear } from "./color-space.ts";
 import { EXHAUST_GLSL, POLISHED_SKY } from "./suit-finish.ts";
-import { CHANNEL, DROP_GLOW, DROP_LIGHT, ENAMEL_ARMOR, EXHAUST, INSTRUMENT, LENS } from "../../../content/street-finishes.ts";
+import { CHANNEL, DROP_GLOW, DROP_LIGHT, ENAMEL_ARMOR, EXHAUST, EYE, INSTRUMENT, LENS, SKIN } from "../../../content/street-finishes.ts";
 import { DROP_GLSL } from "./supply-light.ts";
 import { CHANNEL_DIM, CHANNEL_STRIP, EYE_ENERGY_GLSL, EYE_GLINT_GLSL, EYE_STRIKE_GLSL } from "./tide-eye.ts";
 import { BURNT_SHEET, visor, SEED_GLSL, STREET_GLSL, WHEEL_FINISH_GLSL } from "./street-finish.ts";
@@ -246,7 +246,7 @@ export function skyLight(out: Out, frame: Numbers, n: Numbers): void {
  * Adds one light's share: the frame block's direction at `way` and colour at `colour`, `shade` of it reaching the
  * surface. Lambert and a GGX highlight as wide as the roughness squared, shadowed by Smith's term and edged by Schlick's.
  */
-export function direct(out: Out, frame: Numbers, way: number, colour: number, albedo: Numbers, metal: number, a2: number, n: Numbers, v: Numbers, nv: number, shade = 1): void {
+export function direct(out: Out, frame: Numbers, way: number, colour: number, albedo: Numbers, metal: number, a2: number, n: Numbers, v: Numbers, nv: number, shade = 1, dielectric = DIELECTRIC): void {
   const lx = frame[way]!, ly = frame[way + 1]!, lz = frame[way + 2]!;
   const nl = Math.max(n[0]! * lx + n[1]! * ly + n[2]! * lz, 0);
   // What the shader works out and adds as nothing.
@@ -260,7 +260,7 @@ export function direct(out: Out, frame: Numbers, way: number, colour: number, al
   const gloss = ((a2 / (d * d)) * 0.5) / (nl * Math.sqrt(nv * nv * (1 - a2) + a2) + nv * Math.sqrt(nl * nl * (1 - a2) + a2));
   const edge = Math.pow(1 - vh, 5);
   for (let c = 0; c < 3; c++) {
-    const f0 = DIELECTRIC + (albedo[c]! - DIELECTRIC) * metal;
+    const f0 = dielectric + (albedo[c]! - dielectric) * metal;
     out[c]! += shade * frame[colour + c]! * nl * (albedo[c]! * (1 - metal) + gloss * (f0 + (1 - f0) * edge));
   }
 }
@@ -282,9 +282,10 @@ export function moonCasts(frame: Numbers): boolean {
  * occluded: the colour under the highlight, and the highlight itself, which shows `mirror` where the surface is smooth
  * and turns to the same light as the colour's as it roughens. `shade` is how much of the light the shadow cascades are
  * cast from reaches the pixel, the sun's by day and the moon's by night, which only the GPU's shadow maps know
- * (shadowtext.ts), so the rasterizer leaves it 1.
+ * (shadowtext.ts), so the rasterizer leaves it 1. `dielectric` is what a surface that is not metal reflects head on: skin's is
+ * SKIN_F0. The GLSL's is the global gF0.
  */
-export function lit(out: Out, albedo: Numbers, mro: Numbers, n: Numbers, v: Numbers, frame: Numbers, mirror: Numbers, shade = 1): void {
+export function lit(out: Out, albedo: Numbers, mro: Numbers, n: Numbers, v: Numbers, frame: Numbers, mirror: Numbers, shade = 1, dielectric = DIELECTRIC): void {
   const rough = Math.max(mro[1]!, SMOOTHEST);
   const metal = mro[2]!;
   const a = rough * rough;
@@ -292,20 +293,72 @@ export function lit(out: Out, albedo: Numbers, mro: Numbers, n: Numbers, v: Numb
   skyLight(sky, frame, n);
   skyParts(rough, nv);
   for (let c = 0; c < 3; c++) {
-    const f0 = DIELECTRIC + (albedo[c]! - DIELECTRIC) * metal;
+    const f0 = dielectric + (albedo[c]! - dielectric) * metal;
     out[c] = mro[0]! * (sky[c]! * albedo[c]! * (1 - metal) + (f0 * parts[0]! + (1 - f0) * parts[1]!) * (mirror[c]! * (1 - a) + sky[c]! * a));
   }
   // The street lamp's light where it reaches the point being lit (lamp.ts `lampSees`), unshadowed here, on the
   // colour its narrow band finds.
   if (frame[LAMP_AT + 3]! > 0) {
     lampAlbedo(sodium, albedo);
-    direct(out, lampLight, 0, 4, sodium, metal, a * a, n, v, nv);
+    direct(out, lampLight, 0, 4, sodium, metal, a * a, n, v, nv, 1, dielectric);
   }
   // The orb's light on the point being lit (orb-light.ts `orbSees`): no shadow and no highlight.
   if (frame[ORB_AT + 3]! > 0) for (let c = 0; c < 3; c++) out[c]! += orbCast[c]! * albedo[c]! * (1 - metal);
   const moon = moonCasts(frame);
-  direct(out, frame, FRAME.sun, FRAME.sunColor, albedo, metal, a * a, n, v, nv, moon ? 1 : shade);
-  direct(out, frame, FRAME.moon, FRAME.moonColor, albedo, metal, a * a, n, v, nv, moon ? shade : 1);
+  direct(out, frame, FRAME.sun, FRAME.sunColor, albedo, metal, a * a, n, v, nv, moon ? 1 : shade, dielectric);
+  direct(out, frame, FRAME.moon, FRAME.moonColor, albedo, metal, a * a, n, v, nv, moon ? shade : 1, dielectric);
+}
+
+/**
+ * An eye's wet coat: how much of what it mirrors it shows face on, how much more at its edge (by the edge's cube), and
+ * the least roughness of what lies under the coat, whose own highlight would otherwise fall between pixels.
+ */
+export const EYE_COAT = 0.06, EYE_RIM = 0.3, EYE_UNDER = 0.3;
+
+/**
+ * Skin's own light fades into its flat level's (LIT: fully rough, no occlusion, no scattering) toward where that level is
+ * drawn, so the change of level shows no change of light. A level is drawn where the metres a pixel covers, times the
+ * tier's threshold and 1.5 for a textured body (characters.ts TEXTURED_BODY_RELAX), passes its error (assets.ts
+ * `choose`): skin is whole while that product is under SKIN_KEEP and gone by SKIN_GONE, about the survivor's last textured
+ * level's error and a little under its first flat one's, over 1.5. On the MakeHuman bodies those are 0.0049 and 0.0094 to
+ * 0.0098 m, each the mean of its parts' over both sexes.
+ */
+export const SKIN_KEEP = 0.0032, SKIN_GONE = 0.006;
+
+/** How much a pixel of skin keeps of skin's own light, `pixel` metres across on a tier of threshold `threshold`. The twin of SURFACE's. */
+export function skinNear(pixel: number, threshold: number): number {
+  const t = Math.min(Math.max((pixel * threshold - SKIN_KEEP) / (SKIN_GONE - SKIN_KEEP), 0), 1);
+  return 1 - t * t * (3 - 2 * t);
+}
+
+/** What skin reflects head on: water's and oil's, from a refractive index of about 1.4. */
+export const SKIN_F0 = 0.028;
+/**
+ * How far past its shading edge skin takes the sun's and the moon's light, red, green and blue: light scattered under the
+ * surface comes out round the edge, and red the furthest. The edge is wrapped to where the light lies this far behind,
+ * which near enough follows a head's pre-integrated skin profile: whole face on, a warm band at the edge.
+ */
+export const SKIN_WRAP = [0.3, 0.1, 0.05] as const;
+
+/**
+ * Skin's light scattered under it, added to `out`: for the sun and the moon, a diffuse wrapped by SKIN_WRAP less the
+ * Lambert `direct` already gave, `share` of it, where `share` is how much of the pixel is skin. It adds nothing face on to
+ * a light, and on the far side of the edge only a warm band. `shade` is as `lit` has it.
+ */
+export function scattered(out: Out, albedo: Numbers, metal: number, n: Numbers, frame: Numbers, share: number, shade = 1): void {
+  if (share <= 0) return;
+  const moon = moonCasts(frame);
+  wrapped(out, albedo, metal, n, frame, FRAME.sun, FRAME.sunColor, share, moon ? 1 : shade);
+  wrapped(out, albedo, metal, n, frame, FRAME.moon, FRAME.moonColor, share, moon ? shade : 1);
+}
+
+/** One light's part of `scattered`: the frame block's direction at `way` and colour at `colour`, `cast` of it reaching the skin. */
+function wrapped(out: Out, albedo: Numbers, metal: number, n: Numbers, frame: Numbers, way: number, colour: number, share: number, cast: number): void {
+  const nl = n[0]! * frame[way]! + n[1]! * frame[way + 1]! + n[2]! * frame[way + 2]!;
+  for (let c = 0; c < 3; c++) {
+    const w = share * SKIN_WRAP[c]!;
+    out[c]! += albedo[c]! * (1 - metal) * frame[colour + c]! * cast * (Math.min(Math.max((nl + w) / (1 + w), 0), 1) - Math.max(nl, 0));
+  }
 }
 
 const behind = new Float64Array(3);
@@ -438,6 +491,26 @@ export function skinMode(flags: number, entries: boolean): number {
   return (flags & DRAW_ONE_BONE) !== 0 ? 2 : entries ? 3 : 1;
 }
 
+/**
+ * A normal `n` carried through the bone rows `m` (three rows of four, as the bone texture holds them), into `out`
+ * unnormalised: by the inverse transpose of their turn, up to its determinant, which a body's look stretching a bone
+ * more along one axis than another needs and a turn alone leaves as the turn. Its rows are the cross products of the
+ * turn's rows. The GLSL twin is NORMAL_UNDER.
+ */
+export function normalUnder(out: Out, m: Numbers, x: number, y: number, z: number): void {
+  const a0 = m[0]!, a1 = m[1]!, a2 = m[2]!, b0 = m[4]!, b1 = m[5]!, b2 = m[6]!, c0 = m[8]!, c1 = m[9]!, c2 = m[10]!;
+  out[0] = (b1 * c2 - b2 * c1) * x + (b2 * c0 - b0 * c2) * y + (b0 * c1 - b1 * c0) * z;
+  out[1] = (c1 * a2 - c2 * a1) * x + (c2 * a0 - c0 * a2) * y + (c0 * a1 - c1 * a0) * z;
+  out[2] = (a1 * b2 - a2 * b1) * x + (a2 * b0 - a0 * b2) * y + (a0 * b1 - a1 * b0) * z;
+}
+
+/** `normalUnder` as GLSL, for a vertex text's bone rows. */
+export const NORMAL_UNDER = `vec3 normalUnder(mat3x4 m, vec3 n) {
+  vec3 a = m[0].xyz, b = m[1].xyz, c = m[2].xyz;
+  return vec3(dot(cross(b, c), n), dot(cross(c, a), n), dot(cross(a, b), n));
+}
+`;
+
 /** A number as GLSL writes it. */
 const f = (n: number): string => (Number.isInteger(n) ? n.toFixed(1) : String(n));
 
@@ -501,7 +574,7 @@ ${layered ? "out vec3 vBox;\n" : ""}${dyed ? "flat out mat3 vDye, vDye2;\n" : ""
   ivec2 at = ivec2(n % ${BONES_PER_ROW * 3}, n / ${BONES_PER_ROW * 3});
   return mat3x4(texelFetch(uBones, at, 0), texelFetch(uBones, at + ivec2(1, 0), 0), texelFetch(uBones, at + ivec2(2, 0), 0));
 }
-${dyed ? DYE : ""}${ON_GROUND}${BEND_GLSL}${PIECE_FIT_GLSL}void main() {
+${NORMAL_UNDER}${dyed ? DYE : ""}${ON_GROUND}${BEND_GLSL}${PIECE_FIT_GLSL}void main() {
 
   // A body's rest normal, which its own shade reads (vehicle-shade.ts); on a wheel, its way out from the hub.
   vWheel = vec4(aNormal, 0.0);
@@ -525,7 +598,7 @@ ${dyed ? DYE : ""}${ON_GROUND}${BEND_GLSL}${PIECE_FIT_GLSL}void main() {
       // Standing in a pose: first its bone of that pose, whose first bone is uOffset.x, about the body's origin.
       mat3x4 s = bone(int(uOffset.x) + int(aBone));
       v = vec4(v * s, 1.0);
-      nv = vec4(nv * s, 0.0);
+      nv = vec4(normalUnder(s, nv.xyz), 0.0);
       tv = vec4(tv * s, 0.0);
     }
     p = v * m;
@@ -548,7 +621,7 @@ ${dyed ? DYE : ""}${ON_GROUND}${BEND_GLSL}${PIECE_FIT_GLSL}void main() {
         break;
       }
     }
-    n = nv * m;
+    n = normalUnder(m, nv.xyz);
     t = tv * m;
   } else {
     float a = iYaw * 6.283185307;
@@ -680,6 +753,7 @@ vec3 skyLight(vec3 n) {
   float toward = dot(n.xz, fLook.xy);
   return skyOn(n.y) + fSkySide.rgb * (1.0 - n.y * n.y) + (fSkySun.rgb + fSkyAlong.rgb * toward) * toward;
 }
+float gF0 = ${f(DIELECTRIC)};
 vec3 direct(vec3 l, vec3 colour, vec3 albedo, float metal, float a2, vec3 n, vec3 v, float nv) {
   if (colour.r + colour.g + colour.b <= 0.0) return vec3(0.0);
   float nl = max(dot(n, l), 0.0);
@@ -689,7 +763,7 @@ vec3 direct(vec3 l, vec3 colour, vec3 albedo, float metal, float a2, vec3 n, vec
   float vh = clamp(dot(v, h), 0.0, 1.0);
   float d = nh * nh * (a2 - 1.0) + 1.0;
   float gloss = a2 / (d * d) * 0.5 / (nl * sqrt(nv * nv * (1.0 - a2) + a2) + nv * sqrt(nl * nl * (1.0 - a2) + a2));
-  vec3 f0 = mix(vec3(${f(DIELECTRIC)}), albedo, metal);
+  vec3 f0 = mix(vec3(gF0), albedo, metal);
   return colour * nl * (albedo * (1.0 - metal) + gloss * (f0 + (1.0 - f0) * pow(1.0 - vh, 5.0)));
 }
 vec2 keyShade(float shade) {
@@ -706,7 +780,7 @@ vec3 lit(vec3 albedo, vec3 mro, vec3 n, vec3 v, vec3 mirrored, float shade) {
   float a = rough * rough;
   float nv = clamp(dot(n, v), 0.001, 1.0);
   vec3 sky = skyLight(n);
-  vec3 f0 = mix(vec3(${f(DIELECTRIC)}), albedo, mro.b);
+  vec3 f0 = mix(vec3(gF0), albedo, mro.b);
   vec3 light = mro.r * (sky * albedo * (1.0 - mro.b) + skyShare(f0, rough, nv) * mix(mirrored, sky, a));
 #ifdef LAMP
   if (gLamp.w > 0.0) {
@@ -773,6 +847,21 @@ vec3 sunward(vec3 n, float sheet) {
 }
 `;
 
+/** `skinNear`, and `scattered` as GLSL after LIGHT, by `wrapped`, one light's part of it. */
+export const SKIN_GLSL = `float skinNear(float pixel, float threshold) {
+  return 1.0 - smoothstep(${f(SKIN_KEEP)}, ${f(SKIN_GONE)}, pixel * threshold);
+}
+vec3 wrapped(vec3 l, vec3 colour, vec3 n, vec3 w) {
+  float nl = dot(n, l);
+  return colour * (clamp((nl + w) / (1.0 + w), 0.0, 1.0) - max(nl, 0.0));
+}
+vec3 scattered(vec3 albedo, float metal, vec3 n, float share, float shade) {
+  vec3 w = share * vec3(${SKIN_WRAP.map(f).join(", ")});
+  vec2 key = keyShade(shade);
+  return albedo * (1.0 - metal) * (wrapped(fSun.xyz, fSunColor.rgb, n, w) * key.x + wrapped(fMoon.xyz, fMoonColor.rgb, n, w) * key.y);
+}
+`;
+
 /**
  * The sky's light from direction `r` into `out`: the sky table read by `look` (sky.ts domeLight on the table, at
  * where the sun is, sky.ts trueSun) and scaled to light. It is what a smooth surface mirrors, and the dome. The GLSL
@@ -782,6 +871,41 @@ export function skyFrom(out: Out, frame: Float32Array, r: Numbers, look: (view: 
   look(r, out);
   for (let c = 0; c < 3; c++) out[c]! *= frame[FRAME.skyScale]!;
 }
+
+/**
+ * A body's mirror (a draw on four-bone skin, skinMode 3) turns from the sky table's to the sky's light that way
+ * (`skyLight`) as it roughens, from BODY_ROUGH's first to its second, and as the way goes BODY_BELOW under the
+ * horizon. The table holds its bright horizon below the horizon too: a limb turned down mirrored it, and a rough limb's
+ * curve swept the horizon's sharp band across it, both pale as the haze behind, so the body looked see-through.
+ */
+export const BODY_ROUGH = [0.3, 0.5] as const;
+export const BODY_BELOW = 0.1;
+
+const step = (a: number, b: number, x: number): number => {
+  const t = Math.min(Math.max((x - a) / (b - a), 0), 1);
+  return t * t * (3 - 2 * t);
+};
+
+/** How much of a body's mirror is the sky's light, at roughness `rough` along a way `up` high. The twin of BODY_MIRROR_GLSL's. */
+export function bodyBlur(rough: number, up: number): number {
+  return Math.max(step(BODY_ROUGH[0], BODY_ROUGH[1], rough), step(0, BODY_BELOW, -up));
+}
+
+const blurred = new Float64Array(3);
+
+/** Turns `out`, what `skyFrom` gave along `r`, into a body's mirror at roughness `rough`. */
+export function bodyMirror(out: Out, frame: Numbers, r: Numbers, rough: number): void {
+  const t = bodyBlur(rough, r[1]!);
+  if (t <= 0) return;
+  skyLight(blurred, frame, r);
+  for (let c = 0; c < 3; c++) out[c] = out[c]! + (blurred[c]! - out[c]!) * t;
+}
+
+/** `bodyBlur` as GLSL. */
+export const BODY_MIRROR_GLSL = `float bodyBlur(float rough, float up) {
+  return max(smoothstep(${f(BODY_ROUGH[0])}, ${f(BODY_ROUGH[1])}, rough), smoothstep(0.0, ${f(BODY_BELOW)}, -up));
+}
+`;
 
 /** `skyFrom` as GLSL, with the sky table on its unit: `sky` is the table's lookup (sky.ts SKY_GLSL). */
 export const skyFromGlsl = (sky: string): string => `uniform highp sampler3D uSkyTable;
@@ -814,6 +938,8 @@ const GLASS_COVER = `  float reflected = -1.0;
  * hand-over between the near store and the far one says (hand.ts). With `layered` it draws a body's hurt and decay
  * layer as `wounded` has it, at `uLevel`; without, its text is the one every unhurt body is drawn with. Undyed, the
  * albedo is the base colour under the tint, which is what `dyed` gives with no mask; one that never drops writes alpha 1.
+ * A person's skin (street-finishes.ts SKIN) takes skin's reflectance and its scattered light where its first region is,
+ * fading into its flat level's light as a pixel widens (skinNear); an eye (EYE) wears a wet coat.
  */
 export function surfaceFragment(format: TextureFormat, air: string, { dyed, drops, layered }: SurfaceVariant = SURFACE_ANY): string {
   const albedo = dyed ? "dyed(base.rgb, mask, mask2)" : "base.rgb * uTint";
@@ -825,7 +951,7 @@ in vec4 vTangent;
 in vec2 vUv;
 ${dyed ? "flat in mat3 vDye, vDye2;\n" : ""}uniform sampler2D uBase, uNormal, uMro${dyed ? ", uMask, uMask2" : ""};
 uniform vec3 uTint;
-uniform float uCutoff, uSheet, uSkin, uEmissive;
+uniform float uCutoff, uSheet, uSkin, uEmissive, uThreshold;
 
 flat in float vFinishSeed;
 in vec3 vWheelPoint;
@@ -833,7 +959,7 @@ in vec4 vWheel;
 uniform float uStreetMaterial, uOptics, uFrom;
 uniform vec4 uEffect;
 ${layered ? "uniform sampler2D uLayer;\nuniform float uLevel;\n" : ""}out vec4 o;
-${LIGHT}${THROUGH}${drops ? HAND_GLSL + SWAP_GLSL + VEHICLE_GLASS_GLSL : ""}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${air}${STREET_GLSL}${POLISHED_SKY}${EYE_GLINT_GLSL}${EYE_STRIKE_GLSL}${EYE_ENERGY_GLSL}${EXHAUST_GLSL}${DROP_GLSL}${WHEEL_FINISH_GLSL}${VEHICLE_SHADE_UNIFORMS}${VEHICLE_SHADE_GLSL}${dyed ? DYED : ""}${layered ? WEAR_GLSL + WOUNDED : ""}${BENT_WEAR_GLSL}#ifdef PIECE_SPALL
+${LIGHT}${THROUGH}${SKIN_GLSL}${BODY_MIRROR_GLSL}${drops ? HAND_GLSL + SWAP_GLSL + VEHICLE_GLASS_GLSL : ""}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${air}${STREET_GLSL}${POLISHED_SKY}${EYE_GLINT_GLSL}${EYE_STRIKE_GLSL}${EYE_ENERGY_GLSL}${EXHAUST_GLSL}${DROP_GLSL}${WHEEL_FINISH_GLSL}${VEHICLE_SHADE_UNIFORMS}${VEHICLE_SHADE_GLSL}${dyed ? DYED : ""}${layered ? WEAR_GLSL + WOUNDED : ""}${BENT_WEAR_GLSL}#ifdef PIECE_SPALL
 uniform vec3 uWorldEye;
 ${PIECE_SPALL_TEXT}
 #endif
@@ -966,10 +1092,19 @@ ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth
   bool armor = int(uStreetMaterial) == ${ENAMEL_ARMOR};
   // An instrument's glaze, enamel and glass wear the same clear coat, and its metal the same sky, but keep their own colour.
   bool instrument = int(uStreetMaterial) == ${INSTRUMENT};
-  float polished = lens ? 1.0 : armor || instrument ? polishMask(mro.g) : 0.0;
+  // An eye wears a wet coat over the geometry's smooth face; skin is skin where its first region is (scattered).
+  bool eye = int(uStreetMaterial) == ${EYE};
+  float skin = 0.0;
+  if (int(uStreetMaterial) == ${SKIN}) {
+    // The pixel's width in metres across the view, as skinNear takes it.
+    float near = skinNear(max(length(dFdx(v)), length(dFdy(v))) * length(vRel), uThreshold);
+    skin = ${dyed ? "mask.r" : "1.0"} * near;
+    mro.rg = mix(vec2(1.0), mro.rg, near);
+  }
+  float polished = lens || eye ? 1.0 : armor || instrument ? polishMask(mro.g) : 0.0;
   float specularLayer = 0.0;
   float coatA2 = 0.00104976; // 0.18 perceptual roughness, to the fourth power for GGX.
-  if (armor || lens || instrument) {
+  if (armor || lens || instrument || eye) {
     vec3 dx = dFdx(vNormal), dy = dFdy(vNormal);
     coatA2 += min(0.024,0.16*(dot(dx,dx)+dot(dy,dy)));
   }
@@ -979,7 +1114,8 @@ ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth
     specularLayer = polished*(1.0-metal);
     // The clear outer varnish bridges fine engravings in the substrate.
     vec3 shell = normalize(gl_FrontFacing ? vNormal : -vNormal);
-    coatNormal = normalize(mix(n,shell,lens ? 0.0 : 0.72*specularLayer));
+    coatNormal = normalize(mix(n,shell,lens ? 0.0 : eye ? 1.0 : 0.72*specularLayer));
+    if (eye) mro.g = max(mro.g,${f(EYE_UNDER)});
     if (armor) {
       albedo = mix(albedo*(1.0-0.12*specularLayer),mix(albedo,vec3(0.85,0.89,0.94),0.77),polished*metal);
       mro.g = mix(mro.g,glossRoughness(max(0.095,mro.g*0.58),1.0),polished*metal);
@@ -987,6 +1123,8 @@ ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth
     if (instrument) mro.g = mix(mro.g,glossRoughness(max(0.095,mro.g*0.7),1.0),polished*metal);
   }
   vec3 ray = reflect(-v,coatNormal), mirror = skyFrom(ray);
+  // A body's mirror turns to the sky's light that way as it roughens and below the horizon (BODY_ROUGH).
+  if (uSkin > 2.5) mirror = mix(mirror, skyLight(ray), bodyBlur(mro.g, ray.y));
   float edge = 1.0-clamp(dot(coatNormal,v),0.0,1.0);
   // Its own display overhead shows in it, in the site's colour.
   if (instrument) mirror += eyeGlint(vRel,ray);
@@ -1001,9 +1139,9 @@ ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth
     } else {
       mirror = mix(mirror,vec3(dot(mirror,vec3(0.2126,0.7152,0.0722))),0.18*specularLayer);
       // An instrument's glaze is a thinner coat than the suit's lacquer: its colour holds face on, and it mirrors at a glance.
-      coat = specularLayer*(instrument ? 0.055+0.45*edge*edge*edge : 0.16+0.51*edge*edge);
+      coat = specularLayer*(eye ? ${f(EYE_COAT)}+${f(EYE_RIM)}*edge*edge*edge : instrument ? 0.055+0.45*edge*edge*edge : 0.16+0.51*edge*edge);
     }
-  } else if (!armor && !instrument && uStreetMaterial > 0.5) {
+  } else if (!armor && !instrument && int(uStreetMaterial) != ${SKIN} && uStreetMaterial > 0.5) {
     float paint = ${dyed ? "(uStreetMaterial < 1.5 || burntSheet) ? mask.r * clamp((0.72-mro.g)*3.5,0.0,1.0) : 0.0" : "0.0"};
     float receives = max(paint,max(clamp(mro.b*1.5,0.0,1.0)*clamp((0.85-mro.g)*3.0,0.0,1.0),clamp((0.34-mro.g)*5.0,0.0,1.0)));
     if (receives > 0.0) {
@@ -1026,7 +1164,9 @@ ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth
     mirror *= 1.0+0.85*chrome*visibility;
     mirror += chrome*fill*(0.12+1.15*exp2(-9.0*abs(ray.y-0.12)))*(0.40+2.20*visibility);
   }
+  gF0 = mix(${f(DIELECTRIC)}, ${f(SKIN_F0)}, skin);
   vec3 radiance = lit(albedo, mro * vec3(open, 1.0, 1.0), n, v, mirror, shade);
+  if (skin > 0.0) radiance += scattered(albedo, mro.b, n, skin, shade);
   radiance = mix(radiance,mirror*open*own,coat);
   if (specularLayer > 0.0) {
     radiance += specularLayer*keyShade(shade).x*direct(fSun.xyz,fSunColor.rgb,vec3(0.065),1.0,coatA2,coatNormal,v,max(0.001,1.0-edge));

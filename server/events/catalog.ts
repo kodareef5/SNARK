@@ -62,6 +62,7 @@ ev("session.join", "after", "pid name isNew", "the new-player handler", "server/
 ev("session.presence", "after", "pid connected", "", "server/host.ts", "wired", "A survivor's connection came or went. Its body may linger.");
 ev("session.leave", "after", "pid why", "logout and kick", "server/host.ts", "wired", "A session ended.");
 ev("session.create", "before", "name", "the create-character request", "server/own.ts", "wired", "A survivor is about to be made.");
+ev("session.relook", "before", "pid byPid cause", "the change-appearance request", "server/people/look.ts", "wired", "A survivor's look is about to change once made: `cause` is \"cut\", \"dye\" or \"remake\". `byPid` is the survivor who does it, 0 for a remake.");
 ev("session.spawn", "after", "pid first why", "the first spawn, and taking a body", "server/host.ts", "wired", "A survivor's body entered the world.");
 ev("session.respawn", "before", "pid bed wait!", "the respawn-at-point request", "server/beds.ts", "wired", "A dead survivor is about to come back.");
 ev("session.admin", "after", "pid", "the admin-detected notice", "server/creative.ts", "wired", "A session was given the admin role: by `enablecheats`, or as it entered while CreativeForAll was on.");

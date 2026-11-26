@@ -1,12 +1,13 @@
-// A create splits a body's appearance in two: its identity (name and look) and the rest. A re-create whose identity is the
-// baseline's sends one bit for it, and the client keeps the name and look it has.
+// A create splits a body's appearance in two: its identity (name, look, hair clock and wardrobe) and the rest. A re-create
+// whose identity is the baseline's sends one bit for it, and the client keeps the identity it has.
 
 import { expect, test } from "bun:test";
 import { defaultLook, LOOK_BYTES } from "../../shared/anim/look.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { EntityView, SentView, ViewRing, VIEW_RING, quantX, quantY, readViewDelta, writeViewDelta } from "../../shared/net/view.ts";
 import { Rng } from "../../shared/rng.ts";
-import { EntityStore, F_ALIVE } from "../../shared/sim/entities.ts";
+import { HAIR_TICK } from "../../shared/people/hair.ts";
+import { EntityStore, F_ALIVE, WORN_LENGTH } from "../../shared/sim/entities.ts";
 
 const DIMS = { chunksX: 4, chunksZ: 4 };
 
@@ -50,7 +51,7 @@ function read(bytes: Uint8Array, base: EntityView | null): EntityView | null {
   return readViewDelta(r, base, next) && !r.overflow ? next : null;
 }
 
-function same(a: Uint8Array | Uint16Array | null | undefined, b: Uint8Array | Uint16Array | null | undefined): boolean {
+function same(a: Uint8Array | Uint16Array | Uint32Array | null | undefined, b: Uint8Array | Uint16Array | Uint32Array | null | undefined): boolean {
   if (!a || !b) return !a && !b;
   return a.length === b.length && a.every((v, k) => v === b[k]);
 }
@@ -201,6 +202,8 @@ interface Observer {
 interface Shown {
   name: string;
   look: Uint8Array | null;
+  hair: number;
+  wardrobe: Uint32Array | null;
 }
 interface Rest {
   gear: Uint16Array | null;
@@ -213,7 +216,7 @@ interface Rest {
   grown: number;
 }
 
-function churn(seed: number): { kept: number; identity: number; checked: number } {
+function churn(seed: number): { kept: number; identity: number; checked: number; wardrobes: number } {
   const rng = new Rng(seed);
   const N = 48;
   const store = new EntityStore(DIMS, N);
@@ -234,8 +237,10 @@ function churn(seed: number): { kept: number; identity: number; checked: number 
       const known = identities.get(ik);
       const look = store.looks.get(e) ?? null;
       const name = store.names.get(e) ?? "";
-      if (known) expect([known.name, same(known.look, look)]).toEqual([name, true]);
-      else identities.set(ik, { name, look: look && look.slice() });
+      const hair = store.hairs.get(e) ?? -1;
+      const wardrobe = store.wardrobes.get(e) ?? null;
+      if (known) expect([known.name, same(known.look, look), known.hair, same(known.wardrobe, wardrobe)]).toEqual([name, true, hair, true]);
+      else identities.set(ik, { name, look: look && look.slice(), hair, wardrobe: wardrobe && wardrobe.slice() });
       const rk = `${e}:${g}:${store.rev[e]}`;
       const rest: Rest = { gear: store.gears.get(e)?.slice() ?? null, on: store.on[e]!, level: store.level[e]!, colors: [...store.colors.subarray(e * 6, e * 6 + 6)], team: store.team[e]!, seat: store.seat[e]!, span: store.span[e]!, grown: store.grown[e]! };
       const was = rests.get(rk);
@@ -249,7 +254,7 @@ function churn(seed: number): { kept: number; identity: number; checked: number 
   const hidden = new Set<number>();
   const w = new BitWriter(1 << 15);
   const r = new BitReader();
-  let kept = 0, identity = 0, checked = 0;
+  let kept = 0, identity = 0, checked = 0, wardrobes = 0;
   const TICKS = 700;
   for (let tick = 1; tick <= TICKS; tick++) {
     const quiet = tick > TICKS - 60;
@@ -280,6 +285,14 @@ function churn(seed: number): { kept: number; identity: number; checked: number 
           if (hidden.has(e)) hidden.delete(e);
           else hidden.add(e);
         } else store.x[e] = Math.min(4000, Math.max(0, store.x[e]! + rng.range(-3, 3)));
+        // What it wears and its hair clock, now and then, and often set to what they already are.
+        const extra = rng.int(100);
+        if ((store.flags[e]! & F_ALIVE) === 0 || extra >= 24) continue;
+        if (extra < 14) {
+          const worn = new Uint32Array(WORN_LENGTH);
+          for (let k = 0; k < WORN_LENGTH; k += 3) if (rng.int(3) === 0) [worn[k], worn[k + 1], worn[k + 2]] = [1 + rng.int(3), rng.int(3) === 0 ? 1 + rng.int(40000) : 0, rng.int(2) * rng.int(0x1000000)];
+          store.setWardrobe(e, rng.int(4) === 0 ? null : worn);
+        } else store.setHairClock(e, rng.int(4) === 0 ? -1 : rng.int(3) * HAIR_TICK * 7);
       }
     } else hidden.clear();
     remember();
@@ -330,7 +343,7 @@ function churn(seed: number): { kept: number; identity: number; checked: number 
           expect([next.id[k], next.gen[k], next.qx[k]]).toEqual([id, g, want.qx[k]!]);
           const who = identities.get(`${id}:${g}:${want.identityRev[k]}`)!;
           const rest = rests.get(`${id}:${g}:${want.rev[k]}`)!;
-          expect([next.name[k], same(next.look[k], who.look)]).toEqual([who.name, true]);
+          expect([next.name[k], same(next.look[k], who.look), next.hairFrom[k], same(next.wardrobe[k], who.wardrobe)]).toEqual([who.name, true, who.hair, true]);
           expect([same(next.gear[k], rest.gear), next.on[k], next.level[k], [...next.colors.subarray(k * 6, k * 6 + 6)], next.team[k], next.seat[k], next.span[k], next.grown[k]]).toEqual([true, rest.gear ? rest.on : 0, rest.level, rest.colors, rest.team, rest.seat, rest.span, rest.grown]);
           checked++;
           if (base) {
@@ -338,6 +351,16 @@ function churn(seed: number): { kept: number; identity: number; checked: number 
             if (j >= 0 && base.gen[j] === g && next.look[k] !== null) {
               if (next.look[k] === base.look[j] && next.gear[k] !== base.gear[j]) kept++;
               else if (!same(next.look[k], base.look[j])) identity++;
+            }
+            // The identity is read again exactly when its revision moved: else the client's own arrays stand.
+            const was = sentViews[o]!.get(f.base)!;
+            const b = was.id.subarray(0, was.count).indexOf(id);
+            if (j >= 0 && b >= 0 && base.gen[j] === g && was.gen[b] === g) {
+              const moved = was.identityRev[b] !== want.identityRev[k];
+              if (next.look[k] !== null) expect(next.look[k] !== base.look[j]).toBe(moved);
+              if (next.wardrobe[k] !== null) expect(next.wardrobe[k] !== base.wardrobe[j]).toBe(moved);
+              if (!moved) expect([next.name[k], next.hairFrom[k]]).toEqual([base.name[j]!, base.hairFrom[j]!]);
+              if (moved && next.wardrobe[k] !== null) wardrobes++;
             }
           }
         }
@@ -354,20 +377,22 @@ function churn(seed: number): { kept: number; identity: number; checked: number 
     expect(last.count).toBe(live.count);
     for (let k = 0; k < last.count; k++) {
       const e = last.id[k]!;
-      expect([e, last.gen[k], last.name[k], same(last.look[k], store.looks.get(e) ?? null), same(last.gear[k], store.gears.get(e) ?? null), last.team[k], last.seat[k]]).toEqual([live.id[k]!, live.gen[k]!, store.names.get(e) ?? "", true, true, store.team[e]!, store.seat[e]!]);
+      expect([e, last.gen[k], last.name[k], same(last.look[k], store.looks.get(e) ?? null), same(last.gear[k], store.gears.get(e) ?? null), last.team[k], last.seat[k], last.hairFrom[k], same(last.wardrobe[k], store.wardrobes.get(e) ?? null)]).toEqual([live.id[k]!, live.gen[k]!, store.names.get(e) ?? "", true, true, store.team[e]!, store.seat[e]!, store.hairs.get(e) ?? -1, true]);
     }
   }
-  return { kept, identity, checked };
+  return { kept, identity, checked, wardrobes };
 }
 
-test("random identity and gear changes, drops and late acks leave observers right", () => {
-  let kept = 0, identity = 0, checked = 0;
+test("random identity, wardrobe, hair and gear changes leave observers right", () => {
+  let kept = 0, identity = 0, checked = 0, wardrobes = 0;
   for (const seed of [1, 2, 3, 4, 5, 6]) {
     const run = churn(seed);
     kept += run.kept;
     identity += run.identity;
     checked += run.checked;
+    wardrobes += run.wardrobes;
   }
+  expect(wardrobes).toBeGreaterThan(100);
   // Both kinds of re-create happened, often.
   expect(kept).toBeGreaterThan(500);
   expect(identity).toBeGreaterThan(100);

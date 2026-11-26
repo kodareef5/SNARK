@@ -172,6 +172,8 @@ const NO_SHOTS: readonly ShotEnd[] = [];
 const NO_EYES: readonly TideEyeSite[] = [];
 /** A body in the viewer's own body's seat or arms (Scene.mountOf). */
 const MOUNT_OWN = -2;
+/** A survivor that drew its finest level last frame ranks for it as if this share as far, so two near one place do not swap it each frame. */
+const FINEST_KEPT = 0.8;
 
 /** The index among the remote entities, which are sorted by id, of the one with this id, or -1. */
 function indexOfId(remote: RemoteSample, id: number): number {
@@ -438,6 +440,8 @@ export class Scene {
   private readonly viewed = new Int16Array(MAX_VIEW);
   /** Scratch for sorting them: survivors and the viewer's mount before the rest, then by distance, with the body's number in the low bits. */
   private readonly bodyOrder = new Uint32Array(MAX_VIEW);
+  /** Each body's place among the survivors in view, nearest on screen first (rankNear), MAX_VIEW for any other. */
+  private readonly bodyRank = new Uint16Array(MAX_VIEW);
   private readonly mountState = new AnimState();
   private readonly state = new AnimState();
   /** The characters' draws, given their depth ranges once their instances are written (bodyPasses). A one-bone draw's offset holds its stand-in's first bone. */
@@ -1159,12 +1163,14 @@ export class Scene {
         wanted += ch.bones(kind);
         n++;
       }
+      // Which survivors may draw their finest level is known before their bones are counted.
+      this.rankNear(remote, n);
       // The tier's bones less those taken, and those of the viewer's own body, which comes last.
       const budget = Math.min(p.tier.bones, MAX_BONES) - p.boneCount - (own && ch.has(own.kind) ? ch.bones(own.kind) : 0);
       this.bodyRigid.fill(0, 0, n);
       if (wanted > budget) this.thin(remote, n, wanted, budget);
       for (let k = 0; k < n; k++) if (this.bodyMount[k] !== -1) this.seatIn(remote, from[k]!, this.bodyMount[k]!, place, k);
-      for (let k = 0; k < n; k++) this.addRemote(remote, from[k]!, place, k, this.bodyRigid[k] !== 0, false);
+      for (let k = 0; k < n; k++) this.addRemote(remote, from[k]!, place, k, this.bodyRigid[k] !== 0, false, this.bodyRank[k]!);
     }
     if (own && ch.has(own.kind)) {
       ch.eye.pitch = cam.pitch;
@@ -1205,6 +1211,24 @@ export class Scene {
     if (own && own.id === on && (remote.seatSlot[i] === 0 || own.generation === remote.seatGen[i])) return MOUNT_OWN;
     const j = indexOfId(remote, on);
     return j >= 0 && (remote.seatSlot[i] === 0 || remote.seatGen[i] === remote.gen[j]) ? j : -1;
+  }
+
+  /** Ranks the survivors among the `n` bodies in view by how near they are on screen, for the tier's finestBodies. */
+  private rankNear(remote: RemoteSample, n: number): void {
+    const ch = this.characters;
+    const place = this.bodyAt;
+    const order = this.bodyOrder;
+    let m = 0;
+    for (let k = 0; k < n; k++) {
+      const i = this.bodyFrom[k]!;
+      this.bodyRank[k] = MAX_VIEW;
+      if (!ch.human(remote.kind[i]!)) continue;
+      const size = remote.grown[i] !== 0 ? youngScale(this.birthScale[remote.kind[i]!]!, remote.span[i]!, remote.grown[i]!, remote.tick) : 1;
+      const far = (Math.hypot(place[k * 4]!, place[k * 4 + 1]!, place[k * 4 + 2]!) / size) * (ch.finestKept(remote.id[i]!) ? FINEST_KEPT : 1);
+      order[m++] = Math.min(Math.floor(far * 256), 0xfffff) * MAX_VIEW + k;
+    }
+    sortU32(order, m);
+    for (let r = 0; r < m; r++) this.bodyRank[order[r]! % MAX_VIEW] = r;
   }
 
   /**
@@ -1290,15 +1314,18 @@ export class Scene {
     if (!steers) place[k * 4 + 3] = remote.yaw[i]!;
   }
 
-  /** Poses remote entity `i` at the place `at` holds at `k` (x, y, z camera-relative, and yaw), for the view or, `unseen`, for its shadow alone. */
-  private addRemote(remote: RemoteSample, i: number, at: Float64Array, k: number, rigid: boolean, unseen: boolean): void {
+  /**
+   * Poses remote entity `i` at the place `at` holds at `k` (x, y, z camera-relative, and yaw), for the view or, `unseen`, for
+   * its shadow alone; `rank` is its place among the survivors in view (rankNear).
+   */
+  private addRemote(remote: RemoteSample, i: number, at: Float64Array, k: number, rigid: boolean, unseen: boolean, rank = MAX_VIEW): void {
     const st = this.state;
     const kind = remote.kind[i]!;
     st.unpack(remote.anim[i]!, remote.cue[i]!, remote.emote[i]!, remote.react[i]!, remote.stride[i]!);
     st.seed = bodySeed(remote.id[i]!);
     const look = remote.hasLook[i] !== 0 ? remote.look : null;
     const size = remote.grown[i] !== 0 ? youngScale(this.birthScale[kind]!, remote.span[i]!, remote.grown[i]!, remote.tick) : 1;
-    this.characters.add(this.packet, kind, at[k * 4]!, at[k * 4 + 1]!, at[k * 4 + 2]!, at[k * 4 + 3]!, st, remote.tick, look, i * LOOK_BYTES, remote.colors, i * 6, remote.gear, i * GEAR_COUNT, remote.id[i]!, false, this.own?.cockpitActor === remote.id[i]! || this.headless === remote.id[i]!, size, rigid, unseen, this.seated[i] !== 0 ? this.seatTurn : null, i * 9, this.characters.vehicle(kind) ? remoteVehiclePose(remote, i, this.vehiclePose) : undefined, this.vehicleSeats[i], this.seated[i] !== 2, remote.seatSlot[i] === IMPALE_SLOT, this.seated[i] ? this.riderFits[i] : undefined);
+    this.characters.add(this.packet, kind, at[k * 4]!, at[k * 4 + 1]!, at[k * 4 + 2]!, at[k * 4 + 3]!, st, remote.tick, look, i * LOOK_BYTES, remote.colors, i * 6, remote.gear, i * GEAR_COUNT, remote.id[i]!, false, this.own?.cockpitActor === remote.id[i]! || this.headless === remote.id[i]!, size, rigid, unseen, this.seated[i] !== 0 ? this.seatTurn : null, i * 9, this.characters.vehicle(kind) ? remoteVehiclePose(remote, i, this.vehiclePose) : undefined, this.vehicleSeats[i], this.seated[i] !== 2, remote.seatSlot[i] === IMPALE_SLOT, this.seated[i] ? this.riderFits[i] : undefined, rank);
   }
 
   /**

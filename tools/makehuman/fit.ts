@@ -82,7 +82,21 @@ export interface FitOptions {
   readonly skinning?: "dual" | "linear";
   /** Macro sliders to hold instead of the sex's defaults; height and proportions are still fitted. */
   readonly macro?: Partial<Pick<Macro, "age" | "muscle" | "weight">>;
+  /** Face targets to add in place of the sex's FACE_BASE, each with its weight. */
+  readonly face?: readonly { readonly file: string; readonly weight: number }[];
 }
+
+/**
+ * Face targets each sex is fitted with: the chin and jaw drawn in a little, so his stays inside the head's hit capsule
+ * grown by HEAD_SLACK even at HEAD_GROW, and faces have room to vary about it.
+ */
+const CHIN_IN = [
+  { file: "chin/chin-jaw-drop-decr.target", weight: 0.5 },
+  { file: "chin/chin-prognathism-decr.target", weight: 0.5 },
+  { file: "chin/chin-height-decr.target", weight: 0.4 },
+  { file: "chin/chin-prominent-decr.target", weight: 0.3 },
+];
+export const FACE_BASE: Readonly<Record<Sex, readonly { readonly file: string; readonly weight: number }[]>> = { male: CHIN_IN, female: CHIN_IN };
 
 // ---- The mapping: MakeHuman's bones and joints onto the thirty -----------------------------------------------------
 
@@ -116,8 +130,8 @@ const OWN: Readonly<Record<string, string>> = {
 };
 
 /**
- * Bones whose joint is the rig's, carried by another bone: the props, and the thumb, whose rig joint sits two to three
- * centimetres from any of MakeHuman's thumb joints. Moving the thumb there would tear it from the palm.
+ * Bones whose joint is the rig's, carried by another bone: the props, and the thumb, whose rig joint sits two to four
+ * centimetres from any of MakeHuman's thumb joints; landFingers moves the thumb's root to it instead.
  */
 const CARRIED: readonly (readonly [string, string])[] = [["prop", "hand"], ["thumb", "hand"]];
 
@@ -301,8 +315,8 @@ function measureTargets(values: ArrayLike<number>): { file: string; weight: numb
  * heavier than MakeHuman's average, which fills the capsules (sized on stockier bodies) without leaving them.
  */
 const MACRO_BASE: Readonly<Record<Sex, Macro>> = {
-  male: { gender: 1, age: 0.5, muscle: 0.8, weight: 0.7, height: 0.5, proportions: 0.5 },
-  female: { gender: 0, age: 0.5, muscle: 0.8, weight: 0.7, height: 0.5, proportions: 0.5 },
+  male: { gender: 1, age: 0.5, muscle: 0.8, weight: 0.78, height: 0.5, proportions: 0.5 },
+  female: { gender: 0, age: 0.5, muscle: 1, weight: 0.7, height: 0.5, proportions: 0.5 },
 };
 
 /** Joint positions (decimetres, a joint of `names` each) on the base and each target's change to them. */
@@ -798,6 +812,135 @@ function boneMove(b: number, x: number, y: number, z: number, own: Float64Array,
   out[2] = oz / total;
 }
 
+// ---- Fingers on the rig's hinges ----------------------------------------------------------------------------------
+
+/** MakeHuman's four fingers, index to little: the number in its bone names, and the metacarpal before it. */
+const FINGERS: readonly (readonly [number, number])[] = [[2, 1], [3, 2], [4, 3], [5, 4]];
+
+/** A map x -> m x + t: a 3 x 3 matrix by rows, then the move. */
+type Affine = Float64Array;
+
+/** The least turn from u to v as a matrix, times a stretch along v by `s`: the map of a segment onto another. */
+function segmentMap(u: readonly number[], v: readonly number[], s: number): Float64Array {
+  const a = unit(u), b = unit(v);
+  const q = new Float64Array(4);
+  fromTo(a, b, q, 0);
+  const m = new Float64Array(9);
+  const col = [0, 0, 0];
+  for (let c = 0; c < 3; c++) {
+    quatRotate(q, 0, c === 0 ? 1 : 0, c === 1 ? 1 : 0, c === 2 ? 1 : 0, col, 0);
+    // Stretch along b: col + (s - 1) (b . col) b.
+    const along = (s - 1) * (b[0]! * col[0]! + b[1]! * col[1]! + b[2]! * col[2]!);
+    for (let r = 0; r < 3; r++) m[r * 3 + c] = col[r]! + along * b[r]!;
+  }
+  return m;
+}
+
+/** The affine map that takes `from` to `to` and turns and stretches by `m` about it. */
+function about(m: Float64Array, from: readonly number[], to: readonly number[]): Affine {
+  const a = new Float64Array(12);
+  a.set(m);
+  for (let r = 0; r < 3; r++) a[9 + r] = to[r]! - (m[r * 3]! * from[0]! + m[r * 3 + 1]! * from[1]! + m[r * 3 + 2]! * from[2]!);
+  return a;
+}
+
+/** The middle of the thumb's vertices that share a face with the hand's: where the thumb meets the palm. */
+export function thumbRing(m: Pick<Mirror, "base" | "bodyFaces">, p: Float64Array, skin: Pick<Skin, "bones">, thumb: number, hand: number): number[] {
+  const ring = new Set<number>();
+  const corners: number[] = [];
+  for (const f of m.bodyFaces) {
+    corners.length = 0;
+    for (let c = m.base.faceStart[f]!; c < m.base.faceStart[f + 1]!; c++) corners.push(m.base.corners[c]!);
+    const bones = corners.map((v) => skin.bones[v * MOST_INFLUENCES]!);
+    if (bones.includes(thumb) && bones.includes(hand)) corners.forEach((v, i) => bones[i] === thumb && ring.add(v));
+  }
+  if (ring.size === 0) throw new Error("the thumb meets no palm");
+  return meanOf(p, [...ring]);
+}
+
+/**
+ * Moves each finger so its knuckle sits on the hinge the rig's fingers bone turns about and its middle joint on the one
+ * the fingertips bone turns about: those are lines along Z through the rig's joints, and the hands are rigid a bone, so a
+ * finger off them shears when it curls. Each finger is turned parallel to the rig's middle finger and its first bone
+ * stretched to the rig's length; the rest of it keeps its shape. The thumb moves by as much as where it meets the palm
+ * misses the rig's thumb joint, which it turns about. MakeHuman's own weights carry the moves into the palm and webs.
+ * Returns the most a knuckle or middle joint missed its hinge, in metres.
+ */
+function landFingers(m: Mirror, p: Float64Array, rig: readonly number[], skin: Skin): number {
+  const index = new Map(m.skel.bones.map((b, i) => [b.name, i]));
+  const n = p.length / 3;
+  const from = Float64Array.from(p);
+  let worst = 0;
+  for (const side of ["L", "R"]) {
+    const F = [0, 1, 2].map((k) => rig[sided("fingers", side) * 3 + k]!);
+    const T = [0, 1, 2].map((k) => rig[sided("fingertips", side) * 3 + k]!);
+    const at = (q: Float64Array, joint: string): number[] => meanOf(q, m.skel.joints.get(`${joint}.${side}____head`)!);
+    const fingers = FINGERS.map(([k, c]) => {
+      const knuckle = at(from, `finger${k}-1`), middle = at(from, `finger${k}-2`), base = at(from, `metacarpal${c}`);
+      const want = [[F[0]!, F[1]!, knuckle[2]!], [T[0]!, T[1]!, knuckle[2]! + T[2]! - F[2]!]];
+      return { k, c, knuckle, middle, base, want, aim: want.map((w) => w.slice()) };
+    });
+    const maps = new Map<number, Affine>();
+    const bone = (name: string): number => index.get(`${name}.${side}`)!;
+    const P = [0, 1, 2].map((k) => rig[sided("thumb", side) * 3 + k]!);
+    const ring = thumbRing(m, from, skin, sided("thumb", side), sided("hand", side));
+    const thumb = [0, 1, 2].map((k) => P[k]! - ring[k]!);
+    for (let pass = 0; pass < 20; pass++) {
+      maps.clear();
+      for (const f of fingers) {
+        const [knuckle, middle] = f.aim as [number[], number[]];
+        const was = [0, 1, 2].map((k) => f.middle[k]! - f.knuckle[k]!), now = [0, 1, 2].map((k) => middle[k]! - knuckle[k]!);
+        const palm = [0, 1, 2].map((k) => f.knuckle[k]! - f.base[k]!), reach = [0, 1, 2].map((k) => knuckle[k]! - f.base[k]!);
+        maps.set(bone(`metacarpal${f.c}`), about(segmentMap(palm, reach, Math.hypot(...reach) / Math.hypot(...palm)), f.base, f.base));
+        maps.set(bone(`finger${f.k}-1`), about(segmentMap(was, now, Math.hypot(...now) / Math.hypot(...was)), f.knuckle, knuckle));
+        const turn = segmentMap(was, now, 1);
+        for (const j of [2, 3]) maps.set(bone(`finger${f.k}-${j}`), about(turn, f.middle, middle));
+      }
+      const still = new Float64Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
+      for (const j of [1, 2, 3]) maps.set(bone(`finger1-${j}`), about(still, [0, 0, 0], thumb));
+      for (let v = 0; v < n; v++) {
+        let moved = false;
+        let x = 0, y = 0, z = 0;
+        for (let k = m.infStart[v]!; k < m.infStart[v + 1]!; k++) {
+          const a = maps.get(m.infBone[k]!);
+          const px = from[v * 3]!, py = from[v * 3 + 1]!, pz = from[v * 3 + 2]!, w = m.infWeight[k]!;
+          if (a) {
+            moved = true;
+            x += w * (a[0]! * px + a[1]! * py + a[2]! * pz + a[9]!);
+            y += w * (a[3]! * px + a[4]! * py + a[5]! * pz + a[10]!);
+            z += w * (a[6]! * px + a[7]! * py + a[8]! * pz + a[11]!);
+          } else {
+            x += w * px;
+            y += w * py;
+            z += w * pz;
+          }
+        }
+        if (!moved) continue;
+        p[v * 3] = x;
+        p[v * 3 + 1] = y;
+        p[v * 3 + 2] = z;
+      }
+      // The joints land where the blend of the maps around them puts them; feeding back the miss closes it.
+      let miss = 0;
+      for (const f of fingers) {
+        [at(p, `finger${f.k}-1`), at(p, `finger${f.k}-2`)].forEach((got, j) => {
+          for (let k = 0; k < 3; k++) {
+            const d = f.want[j]![k]! - got[k]!;
+            f.aim[j]![k]! += d;
+            miss = Math.max(miss, Math.abs(d));
+          }
+        });
+      }
+      if (miss < 1e-6) {
+        worst = Math.max(worst, miss);
+        break;
+      }
+      if (pass === 19) worst = Math.max(worst, miss);
+    }
+  }
+  return worst;
+}
+
 // ---- Assembly -----------------------------------------------------------------------------------------------------
 
 interface Built {
@@ -903,11 +1046,28 @@ export interface FitStages {
  * Squashes each foot's body vertices below its ankle, in place, so the lowest stands on y = 0. The joint cubes are not
  * moved, so no joint moves. Returns the factor for each foot.
  */
+/** How far the ball of a levelled foot sits under its heel, in metres. */
+const BALL_LOWER = 0.0005;
+
 function soles(body: number, p: Float64Array, skin: Skin, rig: readonly number[]): [number, number] {
   return (["L", "R"] as const).map((side) => {
     const members = FOOT_GROUP.map((g) => sided(g, side));
     const ankle = rig[sided("foot", side) * 3 + 1]!;
     const on = (v: number): boolean => members.includes(skin.bones[v * MOST_INFLUENCES]!);
+    // The sole is first levelled, heel to ball, by a shear that fades out at the ankle, the ball left BALL_LOWER under the
+    // heel: the lowest point is what bears a stirrup or a tread (tools/pack/write.ts soles).
+    const heelZ = rig[sided("foot", side) * 3 + 2]!, ballZ = rig[sided("toe", side) * 3 + 2]!;
+    const lowIn = (z0: number, z1: number): [number, number] => {
+      let y = Infinity, at = 0;
+      for (let v = 0; v < body; v++) if (on(v) && p[v * 3 + 2]! >= z0 && p[v * 3 + 2]! < z1 && p[v * 3 + 1]! < y) [y, at] = [p[v * 3 + 1]!, p[v * 3 + 2]!];
+      return [y, at];
+    };
+    const [heelY, heelAt] = lowIn(-Infinity, heelZ);
+    const [ballY, ballAt] = lowIn(ballZ - 0.06, ballZ);
+    if (Number.isFinite(heelY + ballY) && ballAt > heelAt) {
+      const slope = (ballY - heelY + BALL_LOWER) / (ballAt - heelAt);
+      for (let v = 0; v < body; v++) if (on(v) && p[v * 3 + 1]! < ankle) p[v * 3 + 1]! -= slope * (p[v * 3 + 2]! - heelAt) * ((ankle - p[v * 3 + 1]!) / ankle);
+    }
     let lo = Infinity;
     for (let v = 0; v < body; v++) if (on(v)) lo = Math.min(lo, p[v * 3 + 1]!);
     if (lo >= 0) return 1;
@@ -921,6 +1081,8 @@ export function fitStages(sex: Sex, rig: readonly number[], opts: FitOptions = {
   const m = readMirror();
   if (rig.length !== HUMAN_BONES * 3) throw new Error(`a rig has ${HUMAN_BONES * 3} numbers, not ${rig.length}`);
   const shaped = shape(m, sex, rig, opts.macro);
+  // Face targets move no joint, so they are added after the shape is found.
+  shaped.targets.push(...(opts.face ?? FACE_BASE[sex]));
   // Decimetres to metres, standing on y = 0.
   const morphed = morphAll(m, shaped.targets);
   let floor = Infinity;
@@ -958,6 +1120,8 @@ export function fitStages(sex: Sex, rig: readonly number[], opts: FitOptions = {
     }
     if (worst < 1e-6) break;
   }
+  const fingers = landFingers(m, landed, rig, skin);
+  if (fingers > 1e-5) throw new Error(`a finger's joint misses its hinge by ${(fingers * 1000).toFixed(3)} mm`);
   const squash = soles(m.body, landed, skin, rig);
   after = ownJoints(m, landed, rig, nudge);
   return { rig, shaped, placed, posed, landed, shiftZ, before, after, skin, body: m.body, squash };

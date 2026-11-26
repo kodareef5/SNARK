@@ -8,8 +8,11 @@ import { HANDLE_GEN_MASK, HANDLE_INDEX_MASK, NULL_HANDLE, handleGen, handleIndex
 import { AnimState, CUE_DEAD, CUE_JET, turnSteps } from "../anim/pose.ts";
 import { PI, TAU } from "../math/scalar.ts";
 import { MODE_WALK, STAMINA_UNITS, glidePhase, type Body, type MoveParams } from "./character.ts";
+import { WARDROBE_SLOTS } from "./items.ts";
+import { HAIR_TICK, NO_CLOCK } from "../people/hair.ts";
 
 const posed = new AnimState();
+const wornScratch = new Uint32Array(WARDROBE_SLOTS * 3);
 /** A slot whose turn has not been measured yet. */
 const NO_TICK = 0xffffffff;
 
@@ -17,6 +20,10 @@ const NO_TICK = 0xffffffff;
 export function carriageRate(p: MoveParams | null | undefined): number {
   return p && !p.strafe ? p.turnRate : 0;
 }
+
+/** An entity's wardrobe (EntityStore.wardrobes): per wardrobe slot, the item, its edition and its dye. */
+export const WORN_FIELDS = 3;
+export const WORN_LENGTH = WARDROBE_SLOTS * WORN_FIELDS;
 
 /** Indices into EntityStore.gears: the item in hand, then one per armor slot. */
 export const GEAR_HELD = 0;
@@ -222,6 +229,10 @@ export class EntityStore {
   readonly looks = new Map<number, Uint8Array>();
   /** For a look the person generator made: what it was made from, so a create sends that and not the look. */
   readonly born = new Map<number, Born>();
+  /** A survivor's hair clock: the tick its look's hair and beard lengths were set (shared/people/hair.ts). Part of its identity. */
+  readonly hairs = new Map<number, number>();
+  /** What a body wears in its wardrobe, WORN_LENGTH numbers, for one that wears something. Part of its identity. */
+  readonly wardrobes = new Map<number, Uint32Array>();
   /** Content indices: GEAR_HELD, then one per armor slot. Replaced, never changed in place. */
   readonly gears = new Map<number, Uint16Array>();
   /**
@@ -230,7 +241,8 @@ export class EntityStore {
    */
   on: Uint8Array;
   /**
-   * Appearance revisions, each bumped by a real change only. `identityRev` is the name and the look, which seldom change and
+   * Appearance revisions, each bumped by a real change only. `identityRev` is the name, the look, the hair clock and the
+   * wardrobe, which seldom change and
    * a snapshot does not resend while it holds; `rev` is the rest: gear, its on bit, level, colours, team, seat and growth.
    */
   identityRev: Uint16Array;
@@ -460,6 +472,8 @@ export class EntityStore {
     this.names.delete(i);
     this.looks.delete(i);
     this.born.delete(i);
+    this.hairs.delete(i);
+    this.wardrobes.delete(i);
     this.gears.delete(i);
     this.on[i] = 0;
     this.identityRev[i]++;
@@ -699,6 +713,37 @@ export class EntityStore {
       for (let k = 0; k < look.length && same; k++) same = old![k] === look[k];
       if (same) return;
       this.looks.set(i, look.slice());
+    }
+    this.identityRev[i]++;
+  }
+
+  /** `start` is the hair clock's start tick, before tick 0 too, or NO_CLOCK for a body whose hair does not grow. It is kept to its clock step. */
+  setHairClock(i: number, start: number): void {
+    if (start !== NO_CLOCK) start = Math.floor(start / HAIR_TICK) * HAIR_TICK;
+    if ((this.hairs.get(i) ?? NO_CLOCK) === start) return;
+    if (start === NO_CLOCK) this.hairs.delete(i);
+    else this.hairs.set(i, start);
+    this.identityRev[i]++;
+  }
+
+  /** `worn` holds WORN_LENGTH numbers, as `wardrobes` does; null or nothing worn takes the wardrobe away. Kept as a copy. */
+  setWardrobe(i: number, worn: ArrayLike<number> | null): void {
+    // A slot with nothing in it keeps no edition or dye, so two wardrobes alike are alike in every number.
+    let any = false;
+    for (let k = 0; k < WORN_LENGTH; k += WORN_FIELDS) {
+      const item = worn ? worn[k]! : 0;
+      any ||= item !== 0;
+      for (let f = 0; f < WORN_FIELDS; f++) wornScratch[k + f] = item !== 0 ? worn![k + f]! : 0;
+    }
+    const old = this.wardrobes.get(i);
+    if (!any) {
+      if (!old) return;
+      this.wardrobes.delete(i);
+    } else {
+      let same = old !== undefined;
+      for (let k = 0; k < WORN_LENGTH && same; k++) same = old![k] === wornScratch[k];
+      if (same) return;
+      this.wardrobes.set(i, wornScratch.slice());
     }
     this.identityRev[i]++;
   }

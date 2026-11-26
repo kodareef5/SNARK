@@ -16,6 +16,7 @@ import { staffPasswords } from "../../server/permissions/secrets.ts";
 import { idText } from "../../server/survivor-ids.ts";
 import { VideoLibrary } from "../../server/video/library.ts";
 import { SCREEN_POSTS, screensAdmin } from "../../server/video/routes.ts";
+import { PEOPLE_POSTS, peopleAdmin } from "../../server/admin/people-routes.ts";
 import { PERMISSIONS_API } from "../../shared/permissions/page.ts";
 import { RANK_ADMIN } from "../../shared/ranks.ts";
 import { OPENING_SHOT } from "../../shared/title-scene.ts";
@@ -111,7 +112,7 @@ function pagesOf(s: Server, dir: string) {
     const no = refused(req, "1.2.3.4", gate);
     if (no) return Promise.resolve(no);
     if (path === SCENES) return scenes.admin(req, host.acts, host);
-    return Promise.resolve(screensAdmin(req, path, lib, screen, host.acts, host) ?? pages.answer(req, "1.2.3.4", gate, path)!);
+    return Promise.resolve(screensAdmin(req, path, lib, screen, host.acts, host) ?? peopleAdmin(req, path, host.people, () => host.world.reg, host.acts, host) ?? pages.answer(req, "1.2.3.4", gate, path)!);
   };
   return { post, lib, scenes, close: () => (lib.close(), scenes.close()) };
 }
@@ -231,9 +232,12 @@ test("every admin POST the front passes is judged again once its body is in", as
     "/admin/screens/clip": { body: JSON.stringify({ id: "0000000000000000", title: "x", rights: "x" }) },
     "/admin/screens/edit": { body: JSON.stringify({ revision: 0, op: "screen", screen: "orb", show: "night" }) },
     [SCENES]: { body: JSON.stringify({ shot: OPENING_SHOT, revision: 0, publish: false }) },
+    "/admin/people/publish": { body: JSON.stringify({ revision: 0, garment: "core:plain_tee", colours: [1, 2, 3], name: "Tee" }) },
+    "/admin/people/retire": { body: JSON.stringify({ revision: 0, id: 1, retired: true }) },
+    "/admin/people/print": { body: image, headers: { "content-type": "image/png", "content-length": String(image.length) } },
   };
   // The Permissions page's own changes are judged inside the store's write (permissions-two-maps.test.ts).
-  const posts = [...WORLD_POSTS].filter((p) => p.startsWith("/admin/") && p !== PERMISSIONS_API).concat(SCREEN_POSTS, [SCENES]);
+  const posts = [...WORLD_POSTS].filter((p) => p.startsWith("/admin/") && p !== PERMISSIONS_API).concat(SCREEN_POSTS, PEOPLE_POSTS, [SCENES]);
   expect(posts.filter((p) => !(p in sent))).toEqual([]);
   await maps(async (m) => {
     const { id, password } = adminOnB(m);
@@ -251,6 +255,9 @@ test("every admin POST the front passes is judged again once its body is in", as
       const files = ["media", "tmp"].flatMap((f) => readdirSync(join(m.cluster.dir, "pages", f))).filter((f) => !f.endsWith(".json"));
       expect([pages.lib.view().doc.clips.length, pages.lib.allPending(), files, m.b.h.host.stopLeft]).toEqual([0, [], [], -1]);
       expect([m.b.h.host.eventBook.book.revision, m.b.h.host.mapEvents.calls]).toEqual([0, 0]);
+      // No edition was published and no print kept.
+      const people = m.b.h.host.people;
+      expect([people.view().editions, readdirSync(people.media).filter((f) => f.startsWith("print."))]).toEqual([[], []]);
     } finally {
       pages.close();
     }

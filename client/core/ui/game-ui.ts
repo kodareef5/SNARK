@@ -14,7 +14,8 @@ import { CANVAS_HEIGHT, K_SLIDER, UiFrame } from "./nodes.ts";
 import { Settings } from "../settings.ts";
 import { buildOverhead } from "./tame.ts";
 import type { Screen, ScreenCtx, ScreenRow } from "./screen.ts";
-import { SESSION_CREATING, SESSION_DEAD, TEXT_GLOBAL, TEXT_LOCAL } from "../../../shared/net/protocol.ts";
+import { SESSION_DEAD, TEXT_GLOBAL, TEXT_LOCAL } from "../../../shared/net/protocol.ts";
+import { inCreator } from "./creator.ts";
 
 /** The keys that turn a focused control: left and right a step, Home and End to its ends. */
 const ARROWS = ["ArrowLeft", "ArrowRight", "Home", "End"];
@@ -475,7 +476,7 @@ export class GameUi {
     const layer = this.touch ? this.layer : null;
     const plan = layer ? layer.touchPlan(f, this.settings.muted, this.canTalk) : null;
     this.touchShown = 0;
-    this.creating = session?.sessionState === SESSION_CREATING;
+    this.creating = inCreator(session);
     this.dead = session?.sessionState === SESSION_DEAD;
     // A screen that came up by itself, as the inventory does with a container the server opens, shuts the others.
     for (const s of this.screens) if (s.absorb?.(this.at(session, hud))) this.closeModals(this.ctx, s);

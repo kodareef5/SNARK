@@ -3,13 +3,17 @@
 import { join } from "node:path";
 import { BEARD_STYLES, BODY_SCALES, HAIR_STYLES, REGION_CLOTH, REGION_EYE, REGION_HAIR, REGION_SKIN, SEX_IDS } from "../../shared/anim/look.ts";
 import type { Clip } from "../../shared/anim/clip.ts";
-import { HUMAN, HUMAN_BONES } from "../../shared/anim/human.ts";
+import { B_HEAD, HUMAN, HUMAN_BONES, SLOT_HEAD, SLOT_NAMES } from "../../shared/anim/human.ts";
+import { SKIN_ZONE_SLOT } from "../../shared/anim/skin-zones.ts";
 import { MATERIAL_EXHAUST, MATERIAL_INDICATOR, MATERIAL_LENS, parsePack, type PackRig } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
 import { convertHumanClips } from "../pack/anim.ts";
 import { readGltf, type Gltf } from "../pack/gltf.ts";
 import { readPng } from "../pack/png-read.ts";
-import { cookBody, type CookOptions } from "../pack/body.ts";
+import { cookBody, restBody, RIGID_BONES, type Cooked, type CookOptions } from "../pack/body.ts";
+import { bodyField, headShift, refitPiece, shiftLod, type BodyField, type HeadShift } from "../pack/refit.ts";
+import { fitBody } from "../makehuman/fit.ts";
+import { scriptedBody } from "../makehuman/cooked.ts";
 import { convertBody, rigOf, type ColorRule, type MaterialRule } from "../pack/skin.ts";
 import { buildPack, unpackMeshes, type SourceMesh } from "../pack/write.ts";
 import { calibrateHand } from "../pack/grips.ts";
@@ -33,6 +37,9 @@ const eye: ColorRule = (r, g, b) => {
   return light < 40 ? BLACK : REGION_EYE;
 };
 const hair: MaterialRule = { image: null, color: () => REGION_HAIR };
+
+/** How far past its budget an armor set's second level may come, made with pictures, before that level is made flat. */
+const ARMOR_OVER = 1.2;
 
 /** How far a body's own joint may sit from the rig it is fitted to, in metres. */
 export const FIT_REACH = 0.003;
@@ -60,6 +67,28 @@ export function convertClipLibraries(spec: HumanClipsAsset): { clips: Clip[]; wa
   return { clips, warnings };
 }
 
+/** A cooked body's skin at its finest level, its slot meshes together: the triangles of its first material. */
+function skinOf(meshes: readonly SourceMesh[]): { positions: number[]; indices: number[]; joints: number[]; weights: number[]; slots: number[] } {
+  const out = { positions: [] as number[], indices: [] as number[], joints: [] as number[], weights: [] as number[], slots: [] as number[] };
+  for (const mesh of meshes) {
+    const lod = mesh.lods[0]!;
+    const slot = SLOT_NAMES.indexOf(mesh.id.split("/").at(-1)!);
+    const base = out.positions.length / 3;
+    out.positions.push(...lod.positions);
+    lod.bones!.forEach((b, v) => {
+      for (let k = 0; k < 4; k++) {
+        out.joints.push(lod.joints?.[v * 4 + k] ?? b);
+        out.weights.push(lod.weights ? lod.weights[v * 4 + k]! : k === 0 ? 1 : 0);
+      }
+    });
+    for (let t = 0; t < lod.indices.length / 3; t++) if ((lod.sections?.[t] ?? 0) === 0) {
+      out.indices.push(base + lod.indices[t * 3]!, base + lod.indices[t * 3 + 1]!, base + lod.indices[t * 3 + 2]!);
+      out.slots.push(slot);
+    }
+  }
+  return out;
+}
+
 /** The source material names the primitives of `sources` are drawn with, in the order first met. */
 function sourceMaterials(sources: readonly Gltf[]): string[] {
   const out: string[] = [];
@@ -74,11 +103,12 @@ function sourceMaterials(sources: readonly Gltf[]): string[] {
  * `dir` is a folder for what Blender writes. `described` are the asset's materials by the name asset.ts gives them, the
  * tailored outfit's among them.
  */
-export function convertBodies(spec: HumanBodiesAsset, dir: string, described: ReadonlyMap<string, Described>, palette: Uint8Array): { meshes: SourceMesh[]; rigs: PackRig[]; warnings: string[] } {
+export function convertBodies(spec: HumanBodiesAsset, dir: string, described: ReadonlyMap<string, Described>, palette: Uint8Array): { meshes: SourceMesh[]; rigs: PackRig[]; warnings: string[]; lines: string[] } {
   const raw = join(RAW, spec.raw);
   const meshes: SourceMesh[] = [];
   const rigs: PackRig[] = [];
   const warnings: string[] = [];
+  const lines: string[] = [];
   const warn = (what: string, list: string[]): void => list.forEach((w) => warnings.push(`${what}: ${w}`));
   const reduced = new Map<string, Gltf>();
   const reduce = (source: string, triangles: readonly number[]): Gltf => {
@@ -122,9 +152,40 @@ export function convertBodies(spec: HumanBodiesAsset, dir: string, described: Re
     const id = `core:human_${SEX_IDS[sex]}`;
     const rig = `human_${SEX_IDS[sex]}`;
     const file = source(b.file);
-    // The body is moved onto the frozen rig, as its hair and armor are below.
-    const onto = fittedRest(rigOf(file, rig, scale), spec.rigs[sex]!);
-    const body = cookBody(file, { id, rig, scale, onto, zoned: true, triangles: spec.triangles.body, flat: spec.flat, palette, ...dressedFor([file], id) });
+    let body: Cooked;
+    /** How hair and beards made on the Quaternius head move to sit on this body's. */
+    let onHead: HeadShift | null = null;
+    /** How the armor sets made on the Quaternius body move to sit on this one. */
+    let onBody: BodyField | null = null;
+    if (spec.body === "makehuman") {
+      const mh = spec.makehuman;
+      if (!mh) throw new Error("human-bodies: a MakeHuman body needs the asset's makehuman entry");
+      const fitted = fitBody(sex === 0 ? "male" : "female", spec.rigs[sex]!);
+      const { body: made, kept } = scriptedBody(fitted);
+      const materials = [mh.skin[sex]!, mh.eyes, mh.brows].map((name) => {
+        const d = described.get(name);
+        if (!d) throw new Error(`${id}: asset.ts has no material "${name}"`);
+        return { material: d.material, textures: d.textures, maps: d.maps };
+      });
+      body = cookBody(made, { id, rig, scale: 1, onto: [...spec.rigs[sex]!], zoned: true, triangles: mh.triangles, flat: spec.flat, palette, sections: {}, materials });
+      const frozen = spec.rigs[sex]!;
+      const was = restBody(file, { id, rig, scale, onto: fittedRest(rigOf(file, rig, scale), frozen), triangles: [], flat: 1, palette, sections: { [b.material]: 0 }, materials: [] });
+      const headOf = (positions: ArrayLike<number>, indices: ArrayLike<number>, bone: (v: number) => number, keep: (t: number) => boolean) => ({
+        positions,
+        indices: Array.from({ length: indices.length / 3 }, (_, t) => t).filter((t) => keep(t) && [0, 1, 2].every((k) => bone(indices[t * 3 + k]!) === B_HEAD)).flatMap((t) => [indices[t * 3]!, indices[t * 3 + 1]!, indices[t * 3 + 2]!]),
+      });
+      onHead = headShift(
+        headOf(was.positions, was.indices, (v) => was.bones[v]!, () => true),
+        headOf(fitted.positions, fitted.indices, (v) => fitted.bone[v]!, (t) => fitted.part[t] === 0),
+        [frozen[B_HEAD * 3]!, frozen[B_HEAD * 3 + 1]! + 0.09, frozen[B_HEAD * 3 + 2]! + 0.02],
+      );
+      onBody = bodyField({ positions: was.positions, indices: was.indices }, skinOf(body.meshes), HUMAN_BONES);
+      lines.push(`${id}: MakeHuman's body fitted; triangles kept by part: ${Object.entries(kept).map(([k, n]) => `${k} ${n}`).join(", ")}`);
+    } else {
+      // The body is moved onto the frozen rig, as its hair and armor are below.
+      const onto = fittedRest(rigOf(file, rig, scale), spec.rigs[sex]!);
+      body = cookBody(file, { id, rig, scale, onto, zoned: true, triangles: spec.triangles.body, flat: spec.flat, palette, ...dressedFor([file], id) });
+    }
     warn(id, body.warnings);
     meshes.push(...body.meshes);
     rigs.push(body.rig);
@@ -160,6 +221,7 @@ export function convertBodies(spec: HumanBodiesAsset, dir: string, described: Re
         const piece = source(`${spec.hair}/${name}.gltf`);
         const whole = `${id}/${kind}/${style.id}`;
         const made = cookBody(piece, { id, rig, scale, whole, onto: body.rig.rest, triangles: spec.triangles.hair, flat: spec.flat, palette, ...dressedFor([piece], whole) });
+        if (onHead) for (const mesh of made.meshes) for (const lod of mesh.lods) shiftLod(lod, onHead);
         warn(whole, made.warnings);
         meshes.push(...made.meshes);
       }
@@ -172,7 +234,22 @@ export function convertBodies(spec: HumanBodiesAsset, dir: string, described: Re
         return name ? [source(`${o.folder}/${name}.gltf`)] : [];
       });
       const armor = `${id}/armor/${set.id}`;
-      const made = cookBody(parts, { id: armor, rig, scale, onto: body.rig.rest, triangles: spec.triangles.armor, flat: spec.flat, palette, ...dressedFor(parts, armor) });
+      const field = onBody;
+      let said = "";
+      const refit = field ? (piece: Parameters<typeof refitPiece>[0]) => {
+        // The cloth and hide sets' hoods leave the face drawn under them.
+        const r = refitPiece(piece, field, RIGID_BONES, (worn, skin) => skin !== worn || worn === SLOT_HEAD, (zone) => SKIN_ZONE_SLOT[zone]!);
+        said = `${armor}: refit ${r.vertices} vertices, moved at most ${(r.most * 1000).toFixed(1)} mm; ${r.pushed} pushed out of the skin, the deepest ${(r.deepest * 1000).toFixed(1)} mm in`;
+      } : undefined;
+      const cook = (flat: number): Cooked => cookBody(parts, { id: armor, rig, scale, onto: body.rig.rest, triangles: spec.triangles.armor, flat, palette, refit, ...dressedFor(parts, armor) });
+      let made = cook(spec.flat);
+      // A set whose pictures are cut too fine to come down to its second level's budget is flat from there.
+      const second = made.meshes.reduce((t, m) => t + ((m.flat ?? 0) > 1 ? m.lods[1]!.indices.length / 3 : 0), 0);
+      if (spec.flat > 1 && second > spec.triangles.armor[1]! * ARMOR_OVER) {
+        made = cook(1);
+        lines.push(`${armor}: ${second} triangles drawn with pictures at its second level for a budget of ${spec.triangles.armor[1]}; flat from there`);
+      }
+      if (said) lines.push(said);
       warn(armor, made.warnings);
       meshes.push(...made.meshes);
     }
@@ -190,5 +267,5 @@ export function convertBodies(spec: HumanBodiesAsset, dir: string, described: Re
     if (result.checks.some(c => !Number.isFinite(c.clearance + c.gap) || c.clearance < 0 || Math.max(...c.contacts) > .002)) throw new Error(`${mesh.id}: native grip calibration failed physical contact`);
     (rig.grips ??= []).push(result.calibration);
   }
-  return { meshes, rigs, warnings };
+  return { meshes, rigs, warnings, lines };
 }
