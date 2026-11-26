@@ -22,6 +22,14 @@ export default {
     // Painted by skin/paint.ts from the base colours the packs came with.
     ...painted("skin_m", "skin-m"), ...painted("skin_f", "skin-f"), ...painted("eyes", "eyes", 128), ...painted("hair_1", "hair-1"), ...painted("hair_2", "hair-2"),
     ...painted("cloth", "cloth"), ...painted("hide", "hide"), ...painted("regular_m", "regular-m"), ...painted("regular_f", "regular-f"),
+    // Painted by skin/makehuman.ts from MakeHuman's CC0 pictures: one skin for both sexes, each with its own underwear masks.
+    skin_mh_m: { base: "skin/mh-skin-base.png", normal: "skin/mh-skin-normal.png", packed: "skin/mh-skin-orm.png", regions: { mask: "skin/mh-skin-m-mask.png", mask2: "skin/mh-skin-m-mask2.png" }, tops: { mask: 512 } },
+    skin_mh_f: {
+      base: "skin/mh-skin-base.png", normal: "skin/mh-skin-normal.png", packed: "skin/mh-skin-orm.png", regions: { mask: "skin/mh-skin-f-mask.png", mask2: "skin/mh-skin-f-mask2.png" }, tops: { mask: 512 },
+      borrows: { from: "skin_mh_m", roles: ["base", "normal", "mro"] },
+    },
+    eyes_mh: { base: "skin/mh-eyes-base.png", normal: "skin/mh-eyes-normal.png", packed: "skin/mh-eyes-orm.png", regions: { mask: "skin/mh-eyes-mask.png", mask2: "skin/mh-eyes-mask2.png" } },
+    brows_mh: { base: "skin/mh-brows-base.png", normal: "skin/mh-brows-normal.png", packed: "skin/mh-brows-orm.png", regions: { mask: "skin/mh-brows-mask.png", mask2: "skin/mh-brows-mask2.png" }, cutout: true, twoSided: true },
   },
   dressed: {
     MI_Superhero_Male: "skin_m", MI_Superhero_Female: "skin_f", MI_Eyes: "eyes", MI_Hair_1: "hair_1", MI_Hair_2: "hair_2",
@@ -29,6 +37,8 @@ export default {
   },
   triangles: { body: [16000, 4000, 1500, 420], hair: [1400, 420, 150, 48], armor: [9000, 3000, 1500, 480], tailored: [4400, 1500, 420] },
   flat: 2,
+  body: "makehuman",
+  makehuman: { triangles: [26000, 7000, 1500, 420], skin: ["skin_mh_m", "skin_mh_f"], eyes: "eyes_mh", brows: "brows_mh" },
   bodies: [
     { file: "base-characters/Superhero_Male_FullBody.gltf", material: "MI_Superhero_Male", texture: "base-characters/T_Superhero_Male_Ligh.png", outfits: "Male" },
     { file: "base-characters/Superhero_Female_FullBody.gltf", material: "MI_Superhero_Female", texture: "base-characters/T_Superhero_Female_Light_BaseColor.png", outfits: "Female" },

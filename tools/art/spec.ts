@@ -124,6 +124,8 @@ export interface MaterialSpec {
   /** The widest a map is stored, where its content needs less than its picture: `--check` notes the side each needs. */
   readonly tops?: Readonly<Partial<Record<TextureRole, number>>>;
   readonly twoSided?: boolean;
+  /** Roles whose textures are another material's of the same asset, named here, whose pictures for them are these: one texture serves both. */
+  readonly borrows?: { readonly from: string; readonly roles: readonly TextureRole[] };
   /** Nothing is drawn where the base colour's alpha is under this. `true` is 0.5. */
   readonly cutout?: boolean | number;
   /** Metres one whole picture spans, for a material that tiles. Measured on the meshes where not given. */
@@ -490,6 +492,13 @@ export interface HumanBodiesAsset {
    */
   readonly triangles: { readonly body: readonly number[]; readonly hair: readonly number[]; readonly armor: readonly number[]; readonly tailored: readonly number[] };
   readonly flat: number;
+  /**
+   * Where the bare bodies come from: MakeHuman's base, fitted to `rigs` (tools/makehuman/fit.ts), or the Quaternius
+   * bodies of `bodies`. Hair, beards, armor and the tailored outfit come from the Quaternius packs either way.
+   */
+  readonly body?: "makehuman" | "quaternius";
+  /** The MakeHuman bodies: triangles a level, and the materials, by their names in `materials`, of each sex's skin, the eyes and the brows. */
+  readonly makehuman?: { readonly triangles: readonly number[]; readonly skin: readonly [string, string]; readonly eyes: string; readonly brows: string };
   /** The material each source material is drawn with, by the source's name for it and the name `materials` gives it. */
   readonly dressed: Readonly<Record<string, string>>;
   /** In the order of SEX_IDS. `outfits` is how its outfit files and textures are named. */

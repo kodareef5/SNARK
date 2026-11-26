@@ -3,13 +3,16 @@
 import { join } from "node:path";
 import { BEARD_STYLES, BODY_SCALES, HAIR_STYLES, REGION_CLOTH, REGION_EYE, REGION_HAIR, REGION_SKIN, SEX_IDS } from "../../shared/anim/look.ts";
 import type { Clip } from "../../shared/anim/clip.ts";
-import { HUMAN, HUMAN_BONES } from "../../shared/anim/human.ts";
+import { B_HEAD, HUMAN, HUMAN_BONES } from "../../shared/anim/human.ts";
 import { MATERIAL_EXHAUST, MATERIAL_INDICATOR, MATERIAL_LENS, parsePack, type PackRig } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
 import { convertHumanClips } from "../pack/anim.ts";
 import { readGltf, type Gltf } from "../pack/gltf.ts";
 import { readPng } from "../pack/png-read.ts";
-import { cookBody, type CookOptions } from "../pack/body.ts";
+import { cookBody, restBody, type Cooked, type CookOptions } from "../pack/body.ts";
+import { headShift, shiftLod, type HeadShift } from "../pack/refit.ts";
+import { fitBody } from "../makehuman/fit.ts";
+import { scriptedBody } from "../makehuman/cooked.ts";
 import { convertBody, rigOf, type ColorRule, type MaterialRule } from "../pack/skin.ts";
 import { buildPack, unpackMeshes, type SourceMesh } from "../pack/write.ts";
 import { calibrateHand } from "../pack/grips.ts";
@@ -74,11 +77,12 @@ function sourceMaterials(sources: readonly Gltf[]): string[] {
  * `dir` is a folder for what Blender writes. `described` are the asset's materials by the name asset.ts gives them, the
  * tailored outfit's among them.
  */
-export function convertBodies(spec: HumanBodiesAsset, dir: string, described: ReadonlyMap<string, Described>, palette: Uint8Array): { meshes: SourceMesh[]; rigs: PackRig[]; warnings: string[] } {
+export function convertBodies(spec: HumanBodiesAsset, dir: string, described: ReadonlyMap<string, Described>, palette: Uint8Array): { meshes: SourceMesh[]; rigs: PackRig[]; warnings: string[]; lines: string[] } {
   const raw = join(RAW, spec.raw);
   const meshes: SourceMesh[] = [];
   const rigs: PackRig[] = [];
   const warnings: string[] = [];
+  const lines: string[] = [];
   const warn = (what: string, list: string[]): void => list.forEach((w) => warnings.push(`${what}: ${w}`));
   const reduced = new Map<string, Gltf>();
   const reduce = (source: string, triangles: readonly number[]): Gltf => {
@@ -122,9 +126,37 @@ export function convertBodies(spec: HumanBodiesAsset, dir: string, described: Re
     const id = `core:human_${SEX_IDS[sex]}`;
     const rig = `human_${SEX_IDS[sex]}`;
     const file = source(b.file);
-    // The body is moved onto the frozen rig, as its hair and armor are below.
-    const onto = fittedRest(rigOf(file, rig, scale), spec.rigs[sex]!);
-    const body = cookBody(file, { id, rig, scale, onto, zoned: true, triangles: spec.triangles.body, flat: spec.flat, palette, ...dressedFor([file], id) });
+    let body: Cooked;
+    /** How hair and beards made on the Quaternius head move to sit on this body's. */
+    let onHead: HeadShift | null = null;
+    if (spec.body === "makehuman") {
+      const mh = spec.makehuman;
+      if (!mh) throw new Error("human-bodies: a MakeHuman body needs the asset's makehuman entry");
+      const fitted = fitBody(sex === 0 ? "male" : "female", spec.rigs[sex]!);
+      const { body: made, kept } = scriptedBody(fitted);
+      const materials = [mh.skin[sex]!, mh.eyes, mh.brows].map((name) => {
+        const d = described.get(name);
+        if (!d) throw new Error(`${id}: asset.ts has no material "${name}"`);
+        return { material: d.material, textures: d.textures, maps: d.maps };
+      });
+      body = cookBody(made, { id, rig, scale: 1, onto: [...spec.rigs[sex]!], zoned: true, triangles: mh.triangles, flat: spec.flat, palette, sections: {}, materials });
+      const frozen = spec.rigs[sex]!;
+      const was = restBody(file, { id, rig, scale, onto: fittedRest(rigOf(file, rig, scale), frozen), triangles: [], flat: 1, palette, sections: { [b.material]: 0 }, materials: [] });
+      const headOf = (positions: ArrayLike<number>, indices: ArrayLike<number>, bone: (v: number) => number, keep: (t: number) => boolean) => ({
+        positions,
+        indices: Array.from({ length: indices.length / 3 }, (_, t) => t).filter((t) => keep(t) && [0, 1, 2].every((k) => bone(indices[t * 3 + k]!) === B_HEAD)).flatMap((t) => [indices[t * 3]!, indices[t * 3 + 1]!, indices[t * 3 + 2]!]),
+      });
+      onHead = headShift(
+        headOf(was.positions, was.indices, (v) => was.bones[v]!, () => true),
+        headOf(fitted.positions, fitted.indices, (v) => fitted.bone[v]!, (t) => fitted.part[t] === 0),
+        [frozen[B_HEAD * 3]!, frozen[B_HEAD * 3 + 1]! + 0.09, frozen[B_HEAD * 3 + 2]! + 0.02],
+      );
+      lines.push(`${id}: MakeHuman's body fitted; triangles kept by part: ${Object.entries(kept).map(([k, n]) => `${k} ${n}`).join(", ")}`);
+    } else {
+      // The body is moved onto the frozen rig, as its hair and armor are below.
+      const onto = fittedRest(rigOf(file, rig, scale), spec.rigs[sex]!);
+      body = cookBody(file, { id, rig, scale, onto, zoned: true, triangles: spec.triangles.body, flat: spec.flat, palette, ...dressedFor([file], id) });
+    }
     warn(id, body.warnings);
     meshes.push(...body.meshes);
     rigs.push(body.rig);
@@ -160,6 +192,7 @@ export function convertBodies(spec: HumanBodiesAsset, dir: string, described: Re
         const piece = source(`${spec.hair}/${name}.gltf`);
         const whole = `${id}/${kind}/${style.id}`;
         const made = cookBody(piece, { id, rig, scale, whole, onto: body.rig.rest, triangles: spec.triangles.hair, flat: spec.flat, palette, ...dressedFor([piece], whole) });
+        if (onHead) for (const mesh of made.meshes) for (const lod of mesh.lods) shiftLod(lod, onHead);
         warn(whole, made.warnings);
         meshes.push(...made.meshes);
       }
@@ -190,5 +223,5 @@ export function convertBodies(spec: HumanBodiesAsset, dir: string, described: Re
     if (result.checks.some(c => !Number.isFinite(c.clearance + c.gap) || c.clearance < 0 || Math.max(...c.contacts) > .002)) throw new Error(`${mesh.id}: native grip calibration failed physical contact`);
     (rig.grips ??= []).push(result.calibration);
   }
-  return { meshes, rigs, warnings };
+  return { meshes, rigs, warnings, lines };
 }

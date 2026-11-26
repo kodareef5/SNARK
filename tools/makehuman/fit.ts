@@ -82,7 +82,20 @@ export interface FitOptions {
   readonly skinning?: "dual" | "linear";
   /** Macro sliders to hold instead of the sex's defaults; height and proportions are still fitted. */
   readonly macro?: Partial<Pick<Macro, "age" | "muscle" | "weight">>;
+  /** Face targets to add in place of the sex's FACE_BASE, each with its weight. */
+  readonly face?: readonly { readonly file: string; readonly weight: number }[];
 }
+
+/**
+ * Face targets each sex is fitted with: the chin and jaw drawn in a little, so more of them stays inside the head's hit
+ * capsule as faces later vary about it.
+ */
+const CHIN_IN = [
+  { file: "chin/chin-jaw-drop-decr.target", weight: 0.5 },
+  { file: "chin/chin-prognathism-decr.target", weight: 0.5 },
+  { file: "chin/chin-height-decr.target", weight: 0.4 },
+];
+export const FACE_BASE: Readonly<Record<Sex, readonly { readonly file: string; readonly weight: number }[]>> = { male: CHIN_IN, female: CHIN_IN };
 
 // ---- The mapping: MakeHuman's bones and joints onto the thirty -----------------------------------------------------
 
@@ -302,7 +315,7 @@ function measureTargets(values: ArrayLike<number>): { file: string; weight: numb
  */
 const MACRO_BASE: Readonly<Record<Sex, Macro>> = {
   male: { gender: 1, age: 0.5, muscle: 0.8, weight: 0.7, height: 0.5, proportions: 0.5 },
-  female: { gender: 0, age: 0.5, muscle: 0.8, weight: 0.7, height: 0.5, proportions: 0.5 },
+  female: { gender: 0, age: 0.5, muscle: 1, weight: 0.7, height: 0.5, proportions: 0.5 },
 };
 
 /** Joint positions (decimetres, a joint of `names` each) on the base and each target's change to them. */
@@ -921,6 +934,8 @@ export function fitStages(sex: Sex, rig: readonly number[], opts: FitOptions = {
   const m = readMirror();
   if (rig.length !== HUMAN_BONES * 3) throw new Error(`a rig has ${HUMAN_BONES * 3} numbers, not ${rig.length}`);
   const shaped = shape(m, sex, rig, opts.macro);
+  // Face targets move no joint, so they are added after the shape is found.
+  shaped.targets.push(...(opts.face ?? FACE_BASE[sex]));
   // Decimetres to metres, standing on y = 0.
   const morphed = morphAll(m, shaped.targets);
   let floor = Infinity;

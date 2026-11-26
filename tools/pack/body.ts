@@ -90,6 +90,20 @@ interface Gathered {
   rigid: number[];
 }
 
+/** A body made by script, every vertex its own, at rest on the rig it is cooked on: tools/makehuman/fit.ts gives one. */
+export interface ScriptedBody {
+  positions: ArrayLike<number>;
+  normals: ArrayLike<number>;
+  /** u, v a vertex, with v = 0 at a picture's first row. */
+  uvs: ArrayLike<number>;
+  indices: ArrayLike<number>;
+  /** Four bones and four weights a vertex. */
+  joints: ArrayLike<number>;
+  weights: ArrayLike<number>;
+  /** Per triangle, its place in the cook's `materials`. */
+  sections: ArrayLike<number>;
+}
+
 /** The materials' textures as one list, each material naming its own by their place in it. */
 export function pooled(materials: readonly CookMaterial[]): { materials: PackMaterial[]; textures: PackTexture[] } {
   const textures: PackTexture[] = [];
@@ -120,6 +134,70 @@ function normalBy(m: Float64Array, x: number, y: number, z: number, out: number[
   for (let a = 0; a < 3; a++) out[a] = r0[a]! * x + r1[a]! * y + r2[a]! * z;
   const len = Math.hypot(out[0]!, out[1]!, out[2]!) || 1;
   for (let a = 0; a < 3; a++) out[a]! /= len;
+}
+
+/**
+ * Adds one vertex at rest on `rest`, moved onto `onto` by its bones' weights: `sum` is its weight on each bone, `bones`
+ * and `weights` every influence it came with.
+ */
+function take(at: Gathered, rest: readonly number[], onto: readonly number[], sum: Float64Array, bones: readonly number[], weights: readonly number[], p: readonly number[], normal: readonly number[], u: number, v: number): void {
+  let own = ownBone(sum);
+  let four = fourHeaviest(bones, weights);
+  // The hand's skin as far as the forearm's capsule reaches past the wrist follows the forearm, as a shot there hits the arm.
+  const wrist = own === B_HAND_L ? B_LOWER_ARM_L : own === B_HAND_R ? B_LOWER_ARM_R : -1;
+  if (wrist >= 0 && alongFrom(rest, wrist, own, p) < WRIST_REACH) {
+    own = wrist;
+    four = { bones: [own], weights: [1], dropped: false };
+  }
+  const rigid = RIGID_BONES.has(own);
+  at.rigid.push(rigid ? 1 : 0);
+  if (rigid || four.bones.length === 0) four = { bones: [own], weights: [1], dropped: false };
+  else if (!four.bones.includes(own)) {
+    four.bones[four.bones.length - 1] = own;
+    const total = four.weights.reduce((t, w, k) => t + (k < four.weights.length - 1 ? w : 0), 0) + sum[own]!;
+    four.weights[four.weights.length - 1] = sum[own]!;
+    four.weights = four.weights.map((w) => w / total);
+  }
+  for (let k = 0; k < 3; k++) {
+    let q = p[k]!;
+    for (let j = 0; j < four.bones.length; j++) q += four.weights[j]! * (onto[four.bones[j]! * 3 + k]! - rest[four.bones[j]! * 3 + k]!);
+    at.positions.push(q);
+  }
+  at.normals.push(normal[0]!, normal[1]!, normal[2]!);
+  at.uvs.push(u, v);
+  at.bones.push(own);
+  for (let k = 0; k < 4; k++) {
+    at.joints.push(four.bones[k] ?? own);
+    at.weights.push(four.weights[k] ?? 0);
+  }
+}
+
+/** A scripted body gathered as a glTF one is, on `rest`. */
+function gatherScripted(body: ScriptedBody, rest: readonly number[]): Gathered {
+  const at: Gathered = { positions: [], normals: [], uvs: [], bones: [], joints: [], weights: [], indices: [], sections: [], zones: [], rigid: [] };
+  const sum = new Float64Array(HUMAN_BONES);
+  const count = body.positions.length / 3;
+  for (let v = 0; v < count; v++) {
+    sum.fill(0);
+    const bones: number[] = [];
+    const weights: number[] = [];
+    for (let k = 0; k < 4; k++) {
+      const w = body.weights[v * 4 + k]!;
+      if (w <= 0) continue;
+      sum[body.joints[v * 4 + k]!]! += w;
+      bones.push(body.joints[v * 4 + k]!);
+      weights.push(w);
+    }
+    const p = [body.positions[v * 3]!, body.positions[v * 3 + 1]!, body.positions[v * 3 + 2]!];
+    take(at, rest, rest, sum, bones, weights, p, [body.normals[v * 3]!, body.normals[v * 3 + 1]!, body.normals[v * 3 + 2]!], body.uvs[v * 2]!, body.uvs[v * 2 + 1]!);
+  }
+  for (let t = 0; t * 3 + 2 < body.indices.length; t++) {
+    const [i0, i1, i2] = [body.indices[t * 3]!, body.indices[t * 3 + 1]!, body.indices[t * 3 + 2]!];
+    if (i0 === i1 || i1 === i2 || i0 === i2) continue;
+    at.indices.push(i0, i1, i2);
+    at.sections.push(body.sections[t]!);
+  }
+  return at;
 }
 
 function gather(list: readonly Gltf[], opts: CookOptions, warnings: string[]): { at: Gathered; rig: PackRig } {
@@ -186,36 +264,8 @@ function gather(list: readonly Gltf[], opts: CookOptions, warnings: string[]): {
           const m = bind[top]!;
           const x = pos[v * 3]!, y = pos[v * 3 + 1]!, z = pos[v * 3 + 2]!;
           for (let k = 0; k < 3; k++) at3[k] = (m[k]! * x + m[4 + k]! * y + m[8 + k]! * z + m[12 + k]!) * opts.scale;
-          let own = ownBone(sum);
-          let four = fourHeaviest(bones, weights);
-          // The hand's skin as far as the forearm's capsule reaches past the wrist follows the forearm, as a shot there hits the arm.
-          const wrist = own === B_HAND_L ? B_LOWER_ARM_L : own === B_HAND_R ? B_LOWER_ARM_R : -1;
-          if (wrist >= 0 && alongFrom(rig.rest, wrist, own, at3) < WRIST_REACH) {
-            own = wrist;
-            four = { bones: [own], weights: [1], dropped: false };
-          }
-          const rigid = RIGID_BONES.has(own);
-          at.rigid.push(rigid ? 1 : 0);
-          if (rigid || four.bones.length === 0) four = { bones: [own], weights: [1], dropped: false };
-          else if (!four.bones.includes(own)) {
-            four.bones[four.bones.length - 1] = own;
-            const total = four.weights.reduce((t, w, k) => t + (k < four.weights.length - 1 ? w : 0), 0) + sum[own]!;
-            four.weights[four.weights.length - 1] = sum[own]!;
-            four.weights = four.weights.map((w) => w / total);
-          }
-          for (let k = 0; k < 3; k++) {
-            let p = at3[k]!;
-            for (let j = 0; j < four.bones.length; j++) p += four.weights[j]! * (onto[four.bones[j]! * 3 + k]! - rig.rest[four.bones[j]! * 3 + k]!);
-            at.positions.push(p);
-          }
           normalBy(m, normal[v * 3]!, normal[v * 3 + 1]!, normal[v * 3 + 2]!, n);
-          at.normals.push(n[0]!, n[1]!, n[2]!);
-          at.uvs.push(uv[v * 2]!, uv[v * 2 + 1]!);
-          at.bones.push(own);
-          for (let k = 0; k < 4; k++) {
-            at.joints.push(four.bones[k] ?? own);
-            at.weights.push(four.weights[k] ?? 0);
-          }
+          take(at, rig.rest, onto, sum, bones, weights, at3, n, uv[v * 2]!, uv[v * 2 + 1]!);
         }
         for (let t = 0; t + 2 < index.length; t += 3) {
           const [i0, i1, i2] = [base + index[t]!, base + index[t + 1]!, base + index[t + 2]!];
@@ -229,13 +279,31 @@ function gather(list: readonly Gltf[], opts: CookOptions, warnings: string[]): {
   return { at, rig: opts.onto ? { id: opts.rig, skeleton: HUMAN.id, rest: [...opts.onto] } : rig };
 }
 
-/** Each triangle's skin zone: the zone most of its corners are in, or its first corner's where all three differ. */
+/** A body's triangles at rest on `opts.onto` (or its own joints), every vertex its own, with each vertex's bone: no levels, no cutting. */
+export function restBody(sources: Gltf | readonly Gltf[], opts: CookOptions): { positions: number[]; indices: number[]; bones: number[] } {
+  const list = Array.isArray(sources) ? (sources as readonly Gltf[]) : [sources as Gltf];
+  const { at } = gather(list, opts, []);
+  return { positions: at.positions, indices: at.indices, bones: at.bones };
+}
+
+/**
+ * Each triangle's skin zone: the zone most of its corners are in, or its first corner's where all three differ. A
+ * triangle that would be a hand's or a foot's but has a corner blended onto the forearm or shin is that limb's, so the
+ * hands and feet stay rigid and the limb keeps its blend.
+ */
 function zonesOf(at: Gathered, rest: readonly number[]): void {
   const of = at.bones.map((b, v) => skinZoneAt(b, at.positions[v * 3]!, at.positions[v * 3 + 1]!, at.positions[v * 3 + 2]!, rest));
   at.zones = [];
   for (let t = 0; t < at.indices.length; t += 3) {
-    const [z0, z1, z2] = [of[at.indices[t]!]!, of[at.indices[t + 1]!]!, of[at.indices[t + 2]!]!];
-    at.zones.push(z1 === z2 ? z1 : z0);
+    const corners = [at.indices[t]!, at.indices[t + 1]!, at.indices[t + 2]!];
+    const [z0, z1, z2] = corners.map((v) => of[v]!);
+    let zone = z1 === z2 ? z1! : z0!;
+    const slot = SKIN_ZONE_SLOT[zone]!;
+    if (slot === SLOT_HANDS || slot === SLOT_FEET) {
+      const blended = corners.find((v) => !RIGID_BONES.has(at.bones[v]!) && at.weights[v * 4]! < 1);
+      if (blended !== undefined) zone = of[blended]!;
+    }
+    at.zones.push(zone);
   }
 }
 
@@ -336,12 +404,23 @@ function cut(lod: SourceLod, keep: (t: number) => boolean): SourceLod | null {
   return out;
 }
 
-/** Cooks one body, or a piece worn on one, from its source files: several are parts of one thing, such as an outfit's. */
-export function cookBody(sources: Gltf | readonly Gltf[], opts: CookOptions): Cooked {
-  const list = Array.isArray(sources) ? (sources as readonly Gltf[]) : [sources as Gltf];
+/**
+ * Cooks one body, or a piece worn on one, from its source files: several are parts of one thing, such as an outfit's.
+ * A scripted body is cooked on `onto`, which it must rest on already.
+ */
+export function cookBody(sources: Gltf | readonly Gltf[] | ScriptedBody, opts: CookOptions): Cooked {
   const warnings: string[] = [];
-  const { at, rig } = gather(list, opts, warnings);
-  if (at.indices.length === 0) throw new Error(`${list[0]!.path}: no skinned mesh`);
+  let at: Gathered;
+  let rig: PackRig;
+  if ("positions" in sources) {
+    if (!opts.onto) throw new Error(`${opts.id}: a scripted body is cooked on the rig it rests on, given as onto`);
+    at = gatherScripted(sources, opts.onto);
+    rig = { id: opts.rig, skeleton: HUMAN.id, rest: [...opts.onto] };
+  } else {
+    const list = Array.isArray(sources) ? (sources as readonly Gltf[]) : [sources as Gltf];
+    ({ at, rig } = gather(list, opts, warnings));
+    if (at.indices.length === 0) throw new Error(`${list[0]!.path}: no skinned mesh`);
+  }
   zonesOf(at, rig.rest);
   if (!opts.whole) {
     stiffen(at);
@@ -378,6 +457,18 @@ export function cookBody(sources: Gltf | readonly Gltf[], opts: CookOptions): Co
     // A set need not have a piece for every slot.
     if (lods.length === 0) continue;
     meshes.push({ id: part.id, lods, skeleton: HUMAN.id, rig: opts.rig, flat: Math.min(made.flat ?? 0, lods.length), materials, textures });
+  }
+  // A bare body's slot meshes share one grid, so the wrist and ankle seams land on the same points and close.
+  if (opts.zoned && !opts.whole) {
+    const lo = [Infinity, Infinity, Infinity];
+    const hi = [-Infinity, -Infinity, -Infinity];
+    for (const mesh of meshes) for (const lod of mesh.lods) for (let i = 0; i < lod.positions.length; i++) {
+      lo[i % 3] = Math.min(lo[i % 3]!, lod.positions[i]!);
+      hi[i % 3] = Math.max(hi[i % 3]!, lod.positions[i]!);
+    }
+    const center = lo.map((l, a) => (l + hi[a]!) / 2) as [number, number, number];
+    const half = lo.map((l, a) => Math.max((hi[a]! - l) / 2, 1e-4)) as [number, number, number];
+    for (const mesh of meshes) mesh.bounds = { center, half };
   }
   let blended = 0;
   for (let v = 0; v < at.bones.length; v++) if (at.weights[v * 4]! < 1) blended++;

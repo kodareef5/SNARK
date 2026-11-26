@@ -61,6 +61,8 @@ export interface SourceMesh {
   textures?: PackTexture[];
   /** Drawn see-through, its finishes showing their share (shared/pack/finish.ts): a landmark's wires. */
   seeThrough?: boolean;
+  /** The box its positions are stored in, where it shares one with other meshes; its own where not given. */
+  bounds?: { center: [number, number, number]; half: [number, number, number] };
 }
 
 /** The blob of a pack as it is put together: runs of bytes, each padded to a multiple of 4. */
@@ -216,8 +218,14 @@ export function buildPack(meshes: SourceMesh[], palette: Uint8Array, clips: read
         if (v > max[i % 3]!) max[i % 3] = v;
       }
     }
-    const center = min.map((lo, a) => (lo + max[a]!) / 2) as [number, number, number];
-    const half = min.map((lo, a) => Math.max((max[a]! - lo) / 2, 1e-4)) as [number, number, number];
+    let center = min.map((lo, a) => (lo + max[a]!) / 2) as [number, number, number];
+    let half = min.map((lo, a) => Math.max((max[a]! - lo) / 2, 1e-4)) as [number, number, number];
+    if (mesh.bounds) {
+      const b = mesh.bounds;
+      if (min.some((lo, a) => lo < b.center[a]! - b.half[a]! * (1 + 1e-6) || max[a]! > b.center[a]! + b.half[a]! * (1 + 1e-6))) throw new Error(`${mesh.id}: a position lies outside the box it is stored in`);
+      center = [...b.center];
+      half = [...b.half];
+    }
     const out: PackMesh = { id: mesh.id, center, half, lods: [] };
     if (mesh.collider) out.collider = mesh.collider;
     if (mesh.skeleton) out.skeleton = mesh.skeleton;
@@ -341,6 +349,22 @@ export function encodeClip(clip: Clip): { rot: Uint8Array; root: Uint8Array } {
 }
 
 /** The meshes of a pack back in authoring form, to put them into another pack. */
+/** Whether a mesh's stored positions touch both faces of its box on every axis, as a box made from them does. */
+function reachesBox(pack: Pack, m: PackMesh): boolean {
+  const lo = [32767, 32767, 32767];
+  const hi = [-32767, -32767, -32767];
+  for (const lod of m.lods) {
+    const verts = lodVertices(pack, lod);
+    const view = new DataView(verts.buffer, verts.byteOffset, verts.byteLength);
+    for (let v = 0; v < lod.vertexCount; v++) for (let a = 0; a < 3; a++) {
+      const q = view.getInt16(v * VERTEX_BYTES + a * 2, true);
+      lo[a] = Math.min(lo[a]!, q);
+      hi[a] = Math.max(hi[a]!, q);
+    }
+  }
+  return lo.every((q, a) => q === -32767 && hi[a] === 32767);
+}
+
 export function unpackMeshes(pack: Pack): SourceMesh[] {
   return pack.header.meshes.map((m) => {
     const lods = m.lods.map((lod, level): SourceLod => {
@@ -368,6 +392,8 @@ export function unpackMeshes(pack: Pack): SourceMesh[] {
       return out;
     });
     const out: SourceMesh = { id: m.id, lods };
+    // A mesh whose positions do not reach its box on both sides of every axis was stored in a shared box, and keeps it.
+    if (m.lods.length > 0 && !reachesBox(pack, m)) out.bounds = { center: [...m.center] as [number, number, number], half: [...m.half] as [number, number, number] };
     if (m.seeThrough) out.seeThrough = true;
     if (m.collider) out.collider = m.collider;
     if (m.skeleton) out.skeleton = m.skeleton;

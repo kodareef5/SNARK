@@ -28,9 +28,10 @@ artTest("a bare body is four levels, two with materials and two flat, to its bud
         expect((l.sections?.length ?? 0) / 3).toBeLessThanOrEqual(3);
       });
     }
-    // The finest is the source's own; the coarsest is about what the boot file held before.
-    expect(totals[0]).toBeGreaterThan(12_500);
-    expect(totals[1]).toBeLessThanOrEqual(4_000);
+    // MakeHuman's body at 26,000 and 7,000 with materials; the coarsest is about what the boot file held before.
+    expect(totals[0]).toBeGreaterThan(20_000);
+    expect(totals[0]).toBeLessThanOrEqual(26_000);
+    expect(totals[1]).toBeLessThanOrEqual(7_000);
     expect(totals[2]).toBeLessThanOrEqual(1_500);
     expect(totals[3]).toBeLessThanOrEqual(420);
     expect(totals[3]).toBeGreaterThan(380);
@@ -81,5 +82,12 @@ artTest("every worn foot keeps its soles and every worn hand its grips, for both
       expect(rig.soles!.find((s) => s.mesh === `core:human_${sex}/${set}feet`)!.points.length).toBe(12);
       expect(rig.grips!.some((g) => g.mesh === `core:human_${sex}/${set}hands`)).toBe(true);
     }
+  }
+});
+
+artTest("a body's five slot meshes share one box, so their seams land on the same points", () => {
+  for (const sex of SEX_IDS) {
+    const boxes = SLOT_NAMES.map((slot) => JSON.stringify([mesh(`core:human_${sex}/${slot}`).center, mesh(`core:human_${sex}/${slot}`).half]));
+    expect(new Set(boxes).size).toBe(1);
   }
 });
