@@ -155,3 +155,17 @@ except SystemExit as e:
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("a service way on a car park's deck or an upper floor is no street; a bridge and a main road are", () => {
+  expect(python(`
+from streets import levels, off_ground, parking_buildings
+square = lambda w: [{'lon': x, 'lat': y} for x, y in [(w, 0), (w + 40, 0), (w + 40, 30), (w, 30), (w, 0)]]
+garages = parking_buildings([{'type': 'way', 'tags': {'building': 'yes', 'parking': 'multi-storey'}, 'geometry': square(0)}, {'type': 'way', 'tags': {'building': 'retail'}, 'geometry': square(100)}], lambda lon, lat: (lon, lat))
+aisle = {'highway': 'service', 'service': 'parking_aisle'}
+ways = [(aisle, [(5, 5), (35, 5)]), (aisle, [(-50, 5), (10, 5)]), (aisle, [(105, 5), (135, 5)]),
+        ({'highway': 'service', 'level': '2'}, []), ({'highway': 'service', 'level': '0;1'}, []), ({'highway': 'service', 'layer': '-1'}, []),
+        ({'highway': 'service', 'layer': '1', 'bridge': 'yes'}, []), ({'highway': 'service', 'layer': '-1', 'tunnel': 'building_passage'}, []),
+        ({'highway': 'primary', 'layer': '1'}, []), ({'highway': 'residential'}, [])]
+print([off_ground(t, pts, garages) for t, pts in ways], levels('0-2'), levels('-1;1'), levels('-2-1'), levels('roof'))
+`).trim()).toBe("['parking', None, None, 'level', None, 'layer', None, None, None, None] [0.0, 2.0] [-1.0, 1.0] [-2.0, 1.0, 0.0] []");
+});
