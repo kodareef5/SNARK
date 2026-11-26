@@ -1,0 +1,4 @@
+# Small and medium droppings
+
+- The small drop is a loose group of five squat pellets with uneven spacing and a darker pellet at the rear. The cottontail photograph in figure 5 shows the rounded pellets and the texture of the plant matter. The game scales the group to about 0.11 m across. [Eastern Cottontail Rabbits in Gardens and Home Landscapes, University of Maryland Extension](https://extension.umd.edu/resource/eastern-cottontail-rabbits-gardens-and-home-landscapes-fs-2024-0703)
+- The medium drop is a single 0.21 m bent bolus. A blunt shoulder and a thinner curved tail give it a different outline from the pellets. Figure 7-2 shows the coyote scat's thick cord and single taper. [McLaughlin Natural Reserve Handbook, UC Davis](https://naturalreserves.ucdavis.edu/sites/g/files/dgvnsk1091/files/inline-files/MCL_birdsmammals.pdf)

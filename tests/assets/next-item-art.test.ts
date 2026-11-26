@@ -159,3 +159,7 @@ artTest("world loot replaces the grey boxes within their existing bounds", async
   }
   expectLevels(shot!, 500);
 });
+
+artTest("droppings ship distinct grounded pickups with icons", async () => {
+  await expectItemArt("core:droppings", ["feces_small", "feces_medium", "feces_large", "feces_massive"], []);
+});
