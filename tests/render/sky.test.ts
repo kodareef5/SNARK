@@ -136,7 +136,11 @@ test("a page's build stores the table as a file a page gives back byte for byte"
   giveSky(skyFile(table));
   expect(theSky().table).toEqual(table);
   expect(theSky().lights).toEqual(sky.lights);
-  expect(() => giveSky(skyFile(table).subarray(4))).toThrow("the sky's table is 262140 bytes");
+  const oldFile = Uint8Array.from(table, (byte, i) => byte - (table[i - 4] ?? 0));
+  giveSky(oldFile);
+  expect(theSky().table).toEqual(table);
+  const short = skyFile(table).subarray(0, table.length);
+  expect(() => giveSky(short)).toThrow(`the sky's table is ${short.length} bytes`);
 });
 
 artTest("the morning and the evening have skies of their own: with the sun 2 degrees up the morning shows dawn's key and the evening the way from golden hour to sunset", () => {

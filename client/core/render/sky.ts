@@ -318,18 +318,43 @@ declare const __SKY_FILE__: string;
 /** A page's build writes the table to a file of its own, named here, and leaves it out of the script. */
 export const SKY_FILE = typeof __SKY_FILE__ === "string" ? __SKY_FILE__ : "";
 
-/** The table as its file holds it: each byte less the one four before it, which the next texel mostly repeats. */
+const SKY_HEADER = Uint8Array.of(83, 75, 89, 2); // SKY and its file version.
+const SKY_TEXELS = SKY_SIZE * SKY_SIZE * SKY_SLICES;
+
+/** The JPEG-LS median predictor stays on the nearer edge of a smooth sky gradient. */
+function skyPrediction(table: Uint8Array, i: number): number {
+  const row = SKY_SIZE * 4;
+  const left = i % row >= 4 ? table[i - 4]! : 0;
+  if (i % (row * SKY_SIZE) < row) return left;
+  const above = table[i - row]!;
+  const diagonal = i % row >= 4 ? table[i - row - 4]! : 0;
+  return Math.max(Math.min(left, above), Math.min(Math.max(left, above), left + above - diagonal));
+}
+
+/** Each channel holds its differences from nearby texels in one plane for Brotli. */
 export function skyFile(table: Uint8Array): Uint8Array {
-  const file = new Uint8Array(table.length);
-  for (let i = 0; i < table.length; i++) file[i] = table[i]! - (i >= 4 ? table[i - 4]! : 0);
+  if (table.length !== SKY_TEXELS * 4) throw new Error(`the sky's table is ${table.length} bytes`);
+  const file = new Uint8Array(SKY_HEADER.length + table.length);
+  file.set(SKY_HEADER);
+  for (let i = 0; i < table.length; i++) {
+    file[SKY_HEADER.length + (i % 4) * SKY_TEXELS + (i >> 2)] = table[i]! - skyPrediction(table, i);
+  }
   return file;
 }
 
 /** The page's table, from its file. Given before anything asks for the sky. */
 export function giveSky(file: Uint8Array): void {
-  const table = file.slice();
-  for (let i = 4; i < table.length; i++) table[i] = table[i]! + table[i - 4]!;
-  if (table.length !== SKY_SIZE * SKY_SIZE * SKY_SLICES * 4) throw new Error(`the sky's table is ${table.length} bytes`);
+  const table = new Uint8Array(SKY_TEXELS * 4);
+  if (SKY_HEADER.every((byte, i) => file[i] === byte)) {
+    if (file.length !== SKY_HEADER.length + table.length) throw new Error(`the sky's table is ${file.length} bytes`);
+    for (let i = 0; i < table.length; i++) {
+      table[i] = file[SKY_HEADER.length + (i % 4) * SKY_TEXELS + (i >> 2)]! + skyPrediction(table, i);
+    }
+  } else if (file.length === table.length) {
+    for (let i = 0; i < table.length; i++) table[i] = file[i]! + (i >= 4 ? table[i - 4]! : 0);
+  } else {
+    throw new Error(`the sky's table is ${file.length} bytes`);
+  }
   made = { table, lights: Float32Array.from(SKY_LIGHTS) };
 }
 
