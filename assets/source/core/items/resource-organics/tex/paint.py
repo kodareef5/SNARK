@@ -63,21 +63,52 @@ def short_fur(reference, rgb):
     return np.clip(surface, 0, 1), relief
 
 
+def grain_field(rng, rows, columns):
+    samples = Image.fromarray(rng.random((rows, columns), dtype=np.float32))
+    return np.asarray(samples.resize((INNER, INNER), Image.Resampling.BILINEAR))
+
+
+def material_height(index):
+    """Draw relief from pores, fibers, and growth lines instead of color."""
+    rng = np.random.default_rng(290 + index)
+    y, x = np.mgrid[0:INNER, 0:INNER] / INNER
+    fine = grain_field(rng, 70, 70) - 0.5
+    broad = grain_field(rng, 7, 8) - 0.5
+    if index == 0:
+        shift = 0.026 * np.sin(9 * y) + 0.028 * broad
+        cracks = np.sin(2 * np.pi * 17 * (x + shift))
+        return 0.53 + 0.12 * broad + 0.035 * fine - 0.12 * np.maximum(0, cracks) ** 5
+    if index == 1:
+        radius = np.hypot(x - 0.47, 1.07 * (y - 0.51))
+        rings = np.sin(2 * np.pi * (16 * radius + 0.37 * broad))
+        return 0.51 + 0.028 * rings + 0.019 * fine
+    if index in (2, 3, 7):
+        # Stem ridges and horn growth run along the length of their mesh.
+        threads = grain_field(rng, 12, 76) - 0.5
+        strength = {2: 0.13, 3: 0.17, 7: 0.074}[index]
+        return 0.5 + strength * threads + 0.022 * fine
+    if index == 4:
+        pores = np.minimum(0, fine + 0.16)
+        return 0.53 + 0.052 * broad + 0.17 * pores
+    if index == 6:
+        overlap = np.sin(2 * np.pi * (7 * x + 0.22 * y * y + 0.10 * broad))
+        return 0.52 + 0.035 * overlap + 0.08 * np.minimum(0, fine + 0.12)
+    return 0.5 + 0.063 * broad + 0.014 * fine
+
+
 def maps(tile, target, strength, roughness, cavity, index):
     source = np.asarray(tile, dtype=float) / 255
     contrast = 0.53 if index == 8 else 1.0
     rgb = np.clip((source - np.median(source, axis=(0, 1))) * contrast + np.array(target) / 255, 0, 1)
-    luminance = rgb @ np.array([0.2126, 0.7152, 0.0722])
-    # A local reference level keeps broad color variation out of the relief.
-    relief = blur(luminance, 0.45) - 0.79 * blur(luminance, 5)
     if index == 5:
         rgb, relief = short_fur(tile, rgb)
-        luminance = rgb @ np.array([0.2126, 0.7152, 0.0722])
+    else:
+        relief = material_height(index)
     down, right = np.gradient(relief)
     vectors = np.stack((-right * strength, down * strength, np.ones_like(right)), axis=2)
     normal = 0.5 + 0.5 * vectors / np.linalg.norm(vectors, axis=2, keepdims=True)
-    crevices = np.clip((blur(luminance, 6) - blur(luminance, 1)) * 7, 0, 1)
-    orm = np.stack((1 - cavity * crevices, roughness + 0.12 * (crevices - 0.08), np.zeros_like(luminance)), axis=2)
+    crevices = np.clip((blur(relief, 5) - relief) * 5, 0, 1)
+    orm = np.stack((1 - cavity * crevices, roughness + 0.12 * (crevices - 0.08), np.zeros_like(relief)), axis=2)
     return byte(rgb), byte(normal), byte(orm)
 
 
