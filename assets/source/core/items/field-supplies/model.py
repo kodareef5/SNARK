@@ -14,7 +14,7 @@ from resource_uv import atlas_uv, loft_uv, planar_uv
 REPEAT_METRES = 0.115
 COLORS = {
     "currant": (170, 49, 55), "nightshade": (54, 50, 78), "snowberry": (220, 211, 173),
-    "leaf": (81, 103, 50), "purple_stem": (79, 55, 72), "green_glass": (53, 110, 76),
+    "leaf": (81, 103, 50), "purple_stem": (79, 55, 72), "green_glass": (63, 100, 72),
     "wax_paper": (209, 184, 139), "seal": (163, 105, 46), "hide": (124, 72, 41),
     "twine": (169, 138, 86), "crystal": (117, 166, 167), "cement": (72, 91, 83),
     "polymer": (85, 105, 90), "steel": (147, 150, 150), "rubber": (47, 46, 44),
@@ -233,7 +233,7 @@ def stimberry(mesh, level):
     positions = [(-0.026, -0.040, 0.023), (0.022, -0.028, 0.022), (-0.005, 0.007, 0.027), (0.028, 0.025, 0.023)]
     for i, point in enumerate(positions):
         r = (0.025, 0.026, 0.029, 0.023)[i]
-        fruit(mesh, point, (r, r * 0.94, r * 0.81), -0.08 + i * 0.1, "snowberry", "purple_stem", i, level)
+        fruit(mesh, point, (r, r * 0.94, r * 0.81), -0.08 + i * 0.1, "snowberry", "green_stem", i, level)
     branch = [(-0.043, 0.067, 0.027), (-0.019, 0.026, 0.032), (-0.005, -0.024, 0.044)]
     tube(mesh, branch if level < 2 else branch[::2], [0.0029, 0.0024, 0.0020] if level < 2 else 0.0025,
          "green_stem", (6, 5, 4)[level])
@@ -257,7 +257,7 @@ def narcotic(mesh, level):
         profiles = [profiles[i] for i in (0, 2, 4, 5)]
     curves = [[(x, y, z) for x, y in box_outline(rx, ry, cut)] for z, rx, ry, cut in profiles]
     mesh.loft(curves, "green_glass")
-    cap = [(0.084, 0.020, 0.019, "cement"), (0.091, 0.020, 0.019, "hide"),
+    cap = [(0.084, 0.020, 0.019, "green_glass"), (0.091, 0.020, 0.019, "hide"),
            (0.104, 0.016, 0.015, "twine"), (0.108, 0.014, 0.013, "hide")]
     if level == 2:
         cap.pop(2)
@@ -409,8 +409,9 @@ def canteen(mesh, level):
         cap.pop(1)
     turned(mesh, cap, (20, 12, 6)[level], at=(-0.010, 0, 0.030), axial=True, ribs=(0.12, 0.06, 0)[level])
     if level < 2:
+        # The oiled hide keeper shares the dark seam and cap finish.
         tube(mesh, [(0.008, 0.092, 0.028), (0.027, 0.075, 0.026), (0.027, 0.048, 0.034),
-                    (0.018, 0.034, 0.045)], 0.0054, "hide", (6, 4)[level], section=0.51)
+                    (0.018, 0.034, 0.045)], 0.0054, "rubber", (6, 4)[level], section=0.51)
         for x in (-0.039, 0.026):
             tube(mesh, [(x * 0.64, 0.027, 0.043), (x, 0.009, 0.058), (x * 1.30, -0.022, 0.060)],
                  [0.004, 0.0045, 0.002], "polymer", (6, 4)[level])
