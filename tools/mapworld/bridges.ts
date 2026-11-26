@@ -127,7 +127,8 @@ export function makeBridges(site: Site, accept: (m: Mason) => boolean): { record
       if (hi < 1) put(1, -1);
       length += len;
     }
-    planned.push({ p, deck, length, numbers });
+    // Under half a metre of a way inside the map's edge leaves it one point: no bridge.
+    if (deck.length >= 2) planned.push({ p, deck, length, numbers });
   }
   /** Whether point `i` of a deck is the first with a number that is `phase` past a multiple of `every`: every third, every ninth. */
   const marked = (numbers: readonly number[], i: number, every: number, phase = 0): boolean => numbers[i]! >= 0 && numbers[i]! % every === phase && numbers[i] !== numbers[i - 1];

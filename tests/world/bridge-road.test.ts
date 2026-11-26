@@ -347,3 +347,19 @@ test("a viaduct's deck, piers and sills stand at the same places in two cuts tha
     expect(inner).toEqual(outer);
   } finally { rmSync(source, { recursive: true, force: true }); }
 });
+
+test("a road bridge a cut holds only a sliver of is left out, not laid from one point", () => {
+  const source = mkdtempSync(join(tmpdir(), "snark-sliver-"));
+  try {
+    mkdirSync(join(source, "blocks")); writeFileSync(join(source, "blocks/places.json"), "[]");
+    // Two road bridges: one whole in the cut, one that comes 0.3 m in over its east edge.
+    const road = (id: number, points: [number, number][]): Way => ({ id, kind: "road_bridge", name: null, class: "primary", lanes: 2, layer: 1, width_m: 8, closed: false, length_m: 100, points });
+    writeFileSync(join(source, "blocks/ways.json"), JSON.stringify([road(1, [[-60, 0], [60, 0]]), road(2, [[255.7, 100], [400, 100]])]));
+    const grid = gridAt([-256, -256, 256, 256], 2, [2048, 2048]), n = grid.nx;
+    const site = { source, ground: { grid, gaps: new Uint8Array(n * n), water: new Uint8Array(n * n), height: new Float32Array(n * n), heaps: { owner: new Int32Array(n * n).fill(-1) } },
+      groundAt: () => 1, waterAt: () => 0, toLattice: (e: number, no: number) => [grid.east + grid.x0 - e, no - grid.south + grid.z0] } as unknown as Site;
+    const made = makeBridges(site, () => true);
+    expect(made.records.map((r) => r.deck.length >= 2)).toEqual(made.records.map(() => true));
+    expect(made.records.some((r) => r.id === 1)).toBe(true);
+  } finally { rmSync(source, { recursive: true, force: true }); }
+});
