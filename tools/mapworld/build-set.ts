@@ -52,6 +52,7 @@ export async function buildMapSet(directory: string, names: readonly string[], r
   const maps: ReturnType<typeof verifyMapPackage>[] = [];
   for (const name of names) {
     const { file } = await buildMap(name, release, output);
+    if (maps.some((m) => m.file === basename(file))) throw new Error(`Two maps of the set are named ${basename(file)}`);
     maps.push(verifyMapPackage(file, release));
     Bun.gc(true);
   }

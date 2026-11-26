@@ -1,7 +1,7 @@
 // The city orchestrator (tools/maps/city.ts) run with stages that are tiny Bun scripts, in a folder of its own.
 
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runCity, type CityRun, type Stage } from "../../tools/maps/city.ts";
@@ -144,4 +144,12 @@ test("another cut by --bounds runs up to the build in its own folder and moves n
   const other = run({ bounds: B });
   expect([other.cut === a.cut, other.ran, other.current, map(), current()]).toEqual([false, NAMES.slice(0, -1), false, a.cut, join(a.cut, CITY)]);
   expect(() => run({ bounds: B, to: "build" })).toThrow("stop before the build");
+});
+
+test("a map built by its city's name is named for the city, not the current link", async () => {
+  const { mapNameOf } = await import("../../tools/mapworld/build.ts");
+  const cut = join(dir, "work", "abc", CITY);
+  mkdirSync(cut, { recursive: true });
+  symlinkSync(join("abc", CITY), join(dir, "work", "current"));
+  expect([mapNameOf(CITY), mapNameOf(join(dir, "work", "current")), mapNameOf(cut)]).toEqual([CITY, CITY, CITY]);
 });

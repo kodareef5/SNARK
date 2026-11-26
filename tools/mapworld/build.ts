@@ -6,7 +6,7 @@
 // var/maps/<name>/layers, then the map file var/maps/<name>.snmap, and says what it holds. The same inputs give the same
 // bytes. Its copies for the wire take a few seconds; --release writes the tightest, as a map that ships has (tools/map/pack.ts).
 
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { compileContent } from "../../shared/content/registry.ts";
@@ -61,7 +61,7 @@ export async function buildMap(named: string, release = false, output = join(ROO
   };
   const lap = (what: string): void => console.log(`${((performance.now() - t0) / 1000).toFixed(1).padStart(5)} s  ${what}${memory()}`);
   const source = named.includes("/") ? resolve(named) : workFolder(named);
-  const name = basename(source);
+  const name = mapNameOf(named);
   // The map about to be written is no longer the one any stamp names, even if this build dies.
   const stampPath = join(output, name, "stamp.json");
   rmSync(stampPath, { force: true });
@@ -460,6 +460,11 @@ export async function buildMap(named: string, release = false, output = join(ROO
   }
   lap("numbers");
   return { file, stats };
+}
+
+/** The map's name: a city's own, or its folder's, read through the link `current` a city's work folder is. */
+export function mapNameOf(named: string): string {
+  return named.includes("/") ? basename(realpathSync(resolve(named))) : named;
 }
 
 if (import.meta.main) {
