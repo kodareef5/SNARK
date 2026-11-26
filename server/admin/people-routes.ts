@@ -12,6 +12,8 @@
 //                                a new person, outfit or population where id is null, else the revision after rev
 //   POST /admin/people/retire    {revision, id, retired, kind?}: hides a thing from the pick lists, or shows it again
 //   POST /admin/people/print     the raw PNG: checked on its own thread and kept by hash; answers the hash
+//   POST /admin/people/give      {edition, survivor, dye?}: the console's `dress` line for a survivor in this world, by
+//                                name or #number (server/people/give.ts); answers what the console said
 //
 // The manifest itself is /media/people.<id>.json, which anyone may fetch and keep for good.
 import { classesById, defRefFaults } from "../../shared/content/classes.ts";
@@ -24,14 +26,14 @@ import {
 } from "../../shared/people/doc.ts";
 import { populationsOf } from "../../shared/people/person.ts";
 import { WARDROBE_NAMES } from "../../shared/sim/items.ts";
-import type { Acts } from "../acts.ts";
+import type { Actor, Acts } from "../acts.ts";
 import type { PeopleStore, PeopleView } from "../people/store.ts";
 import { entryReply, readEntryJson } from "../survivor-access.ts";
 import { actorOf, onlyRead, stillHolds, type Recheck } from "./gate.ts";
 
 const PEOPLE_GETS: readonly string[] = ["/admin/people/state"];
 /** The paths that take a POST, which the front passes on (server/front.ts). */
-export const PEOPLE_POSTS: readonly string[] = ["/admin/people/publish", "/admin/people/save", "/admin/people/retire", "/admin/people/print"];
+export const PEOPLE_POSTS: readonly string[] = ["/admin/people/publish", "/admin/people/save", "/admin/people/retire", "/admin/people/print", "/admin/people/give"];
 export const PEOPLE_PATHS: readonly string[] = [...PEOPLE_GETS, ...PEOPLE_POSTS];
 
 const CHANGE_BYTES_MAX = 16 * 1024;
@@ -265,12 +267,26 @@ async function takePrint(req: Request, store: PeopleStore, did: (what: string) =
   return entryReply({ hash: info.hash, width: info.width, height: info.height, bytes: info.bytes, path: printPath(info.hash), known: !fresh });
 }
 
+/** Gives a survivor in this world an edition, as the console's `dress` (server/people/give.ts dressFromPage). */
+export type Dress = (edition: unknown, survivor: unknown, dye: unknown, by: Actor) => { status: number; answer: Record<string, unknown> };
+
+async function give(req: Request, dress: Dress | null, holds: () => Response | null): Promise<Response> {
+  const body = await change(req);
+  if (body instanceof Response) return body;
+  const lost = holds();
+  if (lost) return lost;
+  if (!dress) return entryReply({ error: "This server has no world to give in." }, 404);
+  // The console writes it in the admin log as the actor's own line.
+  const done = dress(body.edition, body.survivor, body.dye, actorOf(req));
+  return entryReply(done.answer, done.status);
+}
+
 /**
  * Answers a request under /admin/people/, or null for any other path. `reg` is the world's content, which a garment is
  * checked against. Each change is written in `acts` as the request's actor's; with `recheck`, the actor's rank is judged
  * again once its body is in.
  */
-export function peopleAdmin(req: Request, path: string, store: PeopleStore, reg: () => Registry, acts: Pick<Acts, "write"> | null = null, recheck: Recheck | null = null): Promise<Response> | Response | null {
+export function peopleAdmin(req: Request, path: string, store: PeopleStore, reg: () => Registry, acts: Pick<Acts, "write"> | null = null, recheck: Recheck | null = null, dress: Dress | null = null): Promise<Response> | Response | null {
   if (!PEOPLE_PATHS.includes(path)) return null;
   const did = (what: string): void => void acts?.write(actorOf(req), what);
   // A development world's open page passes the gate at staff rank and may change the editions, by design, as on every admin route.
@@ -282,5 +298,6 @@ export function peopleAdmin(req: Request, path: string, store: PeopleStore, reg:
   if (req.method !== "POST") return new Response(null, { status: 405, headers: { allow: "POST" } });
   if (path === "/admin/people/print") return takePrint(req, store, did, holds);
   if (path === "/admin/people/save") return save(req, store, reg(), did, holds);
+  if (path === "/admin/people/give") return give(req, dress, holds);
   return path === "/admin/people/publish" ? publish(req, store, reg(), did, holds) : retire(req, store, reg(), did, holds);
 }
