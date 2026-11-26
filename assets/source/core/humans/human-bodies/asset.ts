@@ -35,7 +35,7 @@ export default {
     MI_Superhero_Male: "skin_m", MI_Superhero_Female: "skin_f", MI_Eyes: "eyes", MI_Hair_1: "hair_1", MI_Hair_2: "hair_2",
     MI_Peasant: "cloth", MI_Ranger: "hide", MI_Regular_Male: "regular_m", MI_Regular_Female: "regular_f",
   },
-  triangles: { body: [16000, 4000, 1480, 420], hair: [1400, 420, 136, 44], armor: [9000, 3000, 1500, 480], tailored: [4400, 1500, 420] },
+  triangles: { body: [16000, 4000, 1480, 420], hair: [1400, 420, 136, 44], armor: [9000, 2400, 1500, 480], tailored: [4400, 1500, 420] },
   flat: 2,
   body: "makehuman",
   makehuman: { triangles: [26000, 3400, 1480, 420], skin: ["skin_mh_m", "skin_mh_f"], eyes: "eyes_mh", brows: "brows_mh" },

@@ -96,7 +96,7 @@ const HEAVY_RELAX = 3;
  * a body turns flat: about 15 m on medium at 1,080 rows. 40 bodies at 8 to 25 m on medium are held to 140,000 triangles,
  * and in mixed gear they come to 130,000 at this and 164,000 at 1.5.
  */
-const TEXTURED_BODY_RELAX = 2.25;
+const TEXTURED_BODY_RELAX = 2.05;
 /**
  * In first person the eye is where the head would be, and the head and what is on it are left out (`add`'s `headless`),
  * so what has no head over it is the opening at the top of the torso, where the neck comes out of the body or the

@@ -367,10 +367,11 @@ export interface BodyField {
   shift: Float64Array;
   weights: Float32Array;
   bones: number;
-  /** The new body, welded, its triangles found by place, and the slot each of them is in. */
+  /** The new body, welded, its triangles found by place, the slot each of them is in, and its weights, `bones` a point. */
   to: Welded;
   toGrid: TriangleGrid;
   toSlots: Uint8Array;
+  toWeights: Float32Array;
 }
 
 /** Farthest an old body's point looks for its place on the new one, in metres. */
@@ -433,7 +434,7 @@ export function bodyField(from: Surface, to: SkinnedSurface & { slots: ArrayLike
     shift = next;
   }
   const toSlots = Uint8Array.from(t.from, (tri) => to.slots[tri]!);
-  return { from: f, fromGrid: fg, shift, weights, bones, to: t, toGrid: tg, toSlots };
+  return { from: f, fromGrid: fg, shift, weights, bones, to: t, toGrid: tg, toSlots, toWeights: tw };
 }
 
 /** The unit normal of triangle `tri`, into `out`. */
@@ -475,18 +476,23 @@ export const REFIT_CLEAR = 0.003;
 /** Farthest a garment vertex looks for the old body, and for new skin it might be inside, in metres. */
 const PIECE_REACH = 0.3;
 const INSIDE_REACH = 0.06;
+/** Farthest a garment vertex takes its weights from the new skin; past it, from where its old place moved to. */
+const WEIGHT_REACH = 0.1;
 /**
  * How far a push out of the skin spreads to the piece's other vertices, fading, in metres: a sleeve's lining and its
  * cloth over it go out together, so neither comes through the other.
  */
 const PUSH_SPREAD = 0.03;
+/** How far inside the old body a vertex lies to be tucked, in metres. */
+const TUCKED = 0.002;
 /** Rounds of finding what is inside and pushing it out. */
 const PUSH_ROUNDS = 4;
 
 /**
  * Moves `piece` from the old body onto the new as `field` says, in place. `rigid` bones keep their vertices whole. Skin of
- * the new body pushes the piece out only where it is drawn with it: `shows(pieceSlot, skinSlot)`. A piece stands in for
- * its own slot's skin, which is not drawn under it, and may be slimmer there.
+ * the new body pushes the piece out only where it is drawn with it: `shows(pieceSlot, skinSlot)`, and only where the piece
+ * lay over the old body. A piece stands in for its own slot's skin, which is not drawn under it, and may be slimmer
+ * there; what was tucked inside the old body stays tucked.
  */
 export function refitPiece(piece: RefitPiece, field: BodyField, rigid: ReadonlySet<number>, shows: (piece: number, skin: number) => boolean, slotOf: (zone: number) => number, clear = REFIT_CLEAR): RefitReport {
   const p = piece.positions;
@@ -497,26 +503,20 @@ export function refitPiece(piece: RefitPiece, field: BodyField, rigid: ReadonlyS
   const hit: Nearest = { triangle: -1, x: 0, y: 0, z: 0, u: 0, v: 0, w: 0, d2: 0 };
   const { from, to, bones } = field;
   const sum = new Float64Array(bones);
+  /** Each vertex's weights where its old place moved to, for one with no new skin near it once moved. */
+  const found = new Float32Array(n * bones);
+  /** 1 for a vertex that was inside the old body: tucked under another piece, as a hood's hem is under a shirt. */
+  const tucked = new Uint8Array(n);
   for (let v = 0; v < n; v++) {
     const [x, y, z] = [p[v * 3]!, p[v * 3 + 1]!, p[v * 3 + 2]!];
     if (!field.fromGrid.nearest(x, y, z, PIECE_REACH, hit)) continue;
     const corners = [from.indices[hit.triangle * 3]!, from.indices[hit.triangle * 3 + 1]!, from.indices[hit.triangle * 3 + 2]!];
     const share = [hit.u, hit.v, hit.w];
-    sum.fill(0);
+    const nn = [0, 1, 2].map((a) => share.reduce((s, w, k) => s + w * from.normals[corners[k]! * 3 + a]!, 0));
+    tucked[v] = (x - hit.x) * nn[0]! + (y - hit.y) * nn[1]! + (z - hit.z) * nn[2]! < -TUCKED ? 1 : 0;
     for (let k = 0; k < 3; k++) {
       for (let a = 0; a < 3; a++) p[v * 3 + a]! += share[k]! * field.shift[corners[k]! * 3 + a]!;
-      for (let b = 0; b < bones; b++) sum[b]! += share[k]! * field.weights[corners[k]! * bones + b]!;
-    }
-    // The four heaviest, the own bone first; a hand's or a foot's vertex wholly on its own.
-    const order = Array.from({ length: bones }, (_, b) => b).filter((b) => sum[b]! > 1e-4).sort((a, b) => sum[b]! - sum[a]!).slice(0, 4);
-    if (order.length === 0) continue;
-    const own = order[0]!;
-    const four = rigid.has(own) ? [own] : order;
-    const total = four.reduce((t, b) => t + sum[b]!, 0);
-    piece.bones[v] = own;
-    for (let k = 0; k < 4; k++) {
-      piece.joints[v * 4 + k] = four[k] ?? own;
-      piece.weights[v * 4 + k] = k < four.length ? (four.length === 1 ? 1 : sum[four[k]!]! / total) : 0;
+      for (let b = 0; b < bones; b++) found[v * bones + b]! += share[k]! * field.weights[corners[k]! * bones + b]!;
     }
   }
   // A vertex's slot: that of the first triangle it is a corner of.
@@ -533,7 +533,7 @@ export function refitPiece(piece: RefitPiece, field: BodyField, rigid: ReadonlyS
     const inside: number[] = [];
     for (let v = 0; v < n; v++) {
       const [x, y, z] = [p[v * 3]!, p[v * 3 + 1]!, p[v * 3 + 2]!];
-      if (!field.toGrid.nearest(x, y, z, INSIDE_REACH, hit, (tri) => shows(slot[v]!, field.toSlots[tri]!))) continue;
+      if (tucked[v] || !field.toGrid.nearest(x, y, z, INSIDE_REACH, hit, (tri) => shows(slot[v]!, field.toSlots[tri]!))) continue;
       const corners = [to.indices[hit.triangle * 3]!, to.indices[hit.triangle * 3 + 1]!, to.indices[hit.triangle * 3 + 2]!];
       const share = [hit.u, hit.v, hit.w];
       const nn = [0, 1, 2].map((a) => share.reduce((s, w, k) => s + w * to.normals[corners[k]! * 3 + a]!, 0));
@@ -574,6 +574,26 @@ export function refitPiece(piece: RefitPiece, field: BodyField, rigid: ReadonlyS
     }
     for (let i = 0; i < p.length; i++) p[i]! += move[i]!;
     dir.fill(0);
+  }
+  // The weights of the new skin nearest each vertex as it now sits, so the piece turns as the skin under it does.
+  for (let v = 0; v < n; v++) {
+    sum.fill(0);
+    if (field.toGrid.nearest(p[v * 3]!, p[v * 3 + 1]!, p[v * 3 + 2]!, WEIGHT_REACH, hit)) {
+      const corners = [to.indices[hit.triangle * 3]!, to.indices[hit.triangle * 3 + 1]!, to.indices[hit.triangle * 3 + 2]!];
+      const share = [hit.u, hit.v, hit.w];
+      for (let k = 0; k < 3; k++) for (let b = 0; b < bones; b++) sum[b]! += share[k]! * field.toWeights[corners[k]! * bones + b]!;
+    } else for (let b = 0; b < bones; b++) sum[b] = found[v * bones + b]!;
+    // The four heaviest, the own bone first; a hand's or a foot's vertex wholly on its own.
+    const order = Array.from({ length: bones }, (_, b) => b).filter((b) => sum[b]! > 1e-4).sort((a, b) => sum[b]! - sum[a]!).slice(0, 4);
+    if (order.length === 0) continue;
+    const own = order[0]!;
+    const four = rigid.has(own) ? [own] : order;
+    const total = four.reduce((t, b) => t + sum[b]!, 0);
+    piece.bones[v] = own;
+    for (let k = 0; k < 4; k++) {
+      piece.joints[v * 4 + k] = four[k] ?? own;
+      piece.weights[v * 4 + k] = k < four.length ? (four.length === 1 ? 1 : sum[four[k]!]! / total) : 0;
+    }
   }
   // Each normal turns as the surface round it did.
   const after = new Float64Array(before.normals.length);

@@ -310,13 +310,18 @@ function zonesOf(at: Gathered, rest: readonly number[]): void {
   }
 }
 
-/** Puts every corner of a hand or foot triangle wholly on its own bone, so the hands and feet meshes follow one bone a vertex. */
-function stiffen(at: Gathered): void {
+/**
+ * Puts every corner of a hand or foot triangle wholly on its own bone, so the hands and feet meshes follow one bone a
+ * vertex. With `cuffs`, a hand triangle's corner whose own bone is a forearm's keeps its blend: a refit glove's cuff turns
+ * with the eased skin under it. A boot stays whole, as its soles are calibrated on it (write.ts).
+ */
+function stiffen(at: Gathered, cuffs = false): void {
   for (let t = 0; t < at.indices.length; t += 3) {
     const slot = SKIN_ZONE_SLOT[at.zones[t / 3]!]!;
     if (slot !== SLOT_HANDS && slot !== SLOT_FEET) continue;
     for (let k = 0; k < 3; k++) {
       const v = at.indices[t + k]!;
+      if (cuffs && slot === SLOT_HANDS && !RIGID_BONES.has(at.bones[v]!)) continue;
       at.rigid[v] = 1;
       for (let j = 0; j < 4; j++) {
         at.joints[v * 4 + j] = at.bones[v]!;
@@ -430,7 +435,7 @@ export function cookBody(sources: Gltf | readonly Gltf[] | ScriptedBody, opts: C
     for (let v = 0; v < at.bones.length; v++) at.rigid[v] = RIGID_BONES.has(at.bones[v]!) ? 1 : 0;
   }
   if (!opts.whole) {
-    stiffen(at);
+    stiffen(at, opts.refit !== undefined);
     ease(at, rig.rest);
   }
   const { materials, textures } = pooled(opts.materials);

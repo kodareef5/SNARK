@@ -2,7 +2,8 @@
 // pack is skinned with the body under it through a motion set (idle, walking, running, crouching, the strikes, held
 // guns and seats) and measured two ways at the finest level, or any asked for:
 //   - skin through cloth: a point of skin that a piece covers at rest (a ray out along its normal meets the piece) that
-//     no longer has the piece over it and has it under it instead, by how far under;
+//     no longer has the piece over it and has it under it instead, by how far under. Skin at an opening, under no part of
+//     the piece at rest, is not counted;
 //   - cloth in skin: a vertex of the piece that is under the skin, by how deep.
 // Skin counts as drawn with a piece where it is of another slot than the piece's, or under an open head piece; the
 // piece stands in for its own slot's skin otherwise, which is then counted as hidden.
@@ -47,7 +48,7 @@ export interface MotionPose {
 }
 
 /** The poses the game plays, solved on `rest`. `quick` takes fewer moments of each. */
-export function motionSet(anim: HumanAnim, rest: Float32Array, quick = false): MotionPose[] {
+export function motionSet(anim: HumanAnim, rest: Float32Array, quick = false, only = ""): MotionPose[] {
   const out: MotionPose[] = [];
   const pose = new Pose(HUMAN_BONES);
   const add = (name: string): void => {
@@ -68,6 +69,8 @@ export function motionSet(anim: HumanAnim, rest: Float32Array, quick = false): M
       add(`${name} @${tick}`);
     }
   };
+  add("rest");
+  if (only === "rest") return out;
   const look = (pitch: number) => (st: AnimState): void => st.setMotion(0, 0, 0, pitch);
   standing("idle", look(0), every(0, 120, 20));
   for (const pitch of [-1.2, 1.2]) standing(`idle pitch ${pitch}`, look(pitch), [0]);
@@ -236,6 +239,8 @@ export interface FitOptions {
   sets?: readonly string[];
   sexes?: readonly string[];
   quick?: boolean;
+  /** "rest" for the rest pose alone. */
+  only?: string;
   pack?: Uint8Array;
 }
 
@@ -253,7 +258,7 @@ export function auditClothFit(o: FitOptions = {}): PieceFit[] {
     const id = `core:human_${sex}`;
     const rig = pack.header.rigs.find((r) => r.id === `human_${sex}`)!;
     const rest = Float32Array.from(rig.rest);
-    const poses = motionSet(anim, rest, o.quick);
+    const poses = motionSet(anim, rest, o.quick, o.only);
     const body = bodyAt(meshes, id, level);
     const bw = welded({ positions: body.lod.positions, indices: body.skinTris });
     const nb = bw.positions.length / 3;
@@ -322,7 +327,8 @@ export function auditClothFit(o: FitOptions = {}): PieceFit[] {
       const c = centres(lod.positions, lod.indices);
       pieceCentres.set(piece.id, c);
       const list: number[] = [];
-      for (let i = 0; i < nb; i++) if (!Number.isNaN(through(i, posed, lod.indices, c))) list.push(i);
+      // Covered: the piece is over it at rest. Skin under no part of it at rest is at an opening.
+      for (let i = 0; i < nb; i++) if (through(i, posed, lod.indices, c) === 0) list.push(i);
       covers.set(piece.id, Int32Array.from(list));
     }
     const fits = new Map<string, PieceFit>();
@@ -382,7 +388,7 @@ if (import.meta.main) {
   const args = process.argv.slice(2);
   const arg = (name: string): string | undefined => (args.includes(`--${name}`) ? args[args.indexOf(`--${name}`) + 1] : undefined);
   const t0 = performance.now();
-  const fits = auditClothFit({ level: Number(arg("level") ?? 0), sets: arg("set")?.split(","), sexes: arg("sex")?.split(","), quick: args.includes("--quick"), pack: arg("pack") ? new Uint8Array(readFileSync(arg("pack")!)) : undefined });
+  const fits = auditClothFit({ level: Number(arg("level") ?? 0), sets: arg("set")?.split(","), sexes: arg("sex")?.split(","), quick: args.includes("--quick"), only: arg("only"), pack: arg("pack") ? new Uint8Array(readFileSync(arg("pack")!)) : undefined });
   const mm = (w: Worst): string => (w.depth > 0 ? `${(w.depth * 1000).toFixed(1)} mm (${w.zone}, ${w.pose}, at ${w.at.join(",")})` : "0");
   for (const f of fits) {
     console.log(`${f.piece} level ${f.level}: covers ${f.covered} points of skin, ${f.over2mm} ever through by more than 2 mm`);

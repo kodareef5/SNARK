@@ -195,7 +195,8 @@ function paintSkin(bodies: readonly FittedBody[]): string {
   const packed = field(side, 3);
   for (let i = 0; i < n; i++) {
     packed.data[i * 3] = occlusion.data[i]!;
-    packed.data[i * 3 + 1] = 0.56 + 0.26 * near[i]!;
+    // Rough enough that a near face shows no grey sheen of the sky; under the underwear as rough as cloth.
+    packed.data[i * 3 + 1] = 0.7 + 0.12 * near[i]!;
   }
   for (const f of [base, normal, packed]) fill(f, used);
   write("mh-skin-base", base, srgb8);

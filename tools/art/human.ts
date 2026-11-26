@@ -38,6 +38,9 @@ const eye: ColorRule = (r, g, b) => {
 };
 const hair: MaterialRule = { image: null, color: () => REGION_HAIR };
 
+/** How far past its budget an armor set's second level may come, made with pictures, before that level is made flat. */
+const ARMOR_OVER = 1.2;
+
 /** How far a body's own joint may sit from the rig it is fitted to, in metres. */
 export const FIT_REACH = 0.003;
 
@@ -232,12 +235,21 @@ export function convertBodies(spec: HumanBodiesAsset, dir: string, described: Re
       });
       const armor = `${id}/armor/${set.id}`;
       const field = onBody;
+      let said = "";
       const refit = field ? (piece: Parameters<typeof refitPiece>[0]) => {
         // The cloth and hide sets' hoods leave the face drawn under them.
         const r = refitPiece(piece, field, RIGID_BONES, (worn, skin) => skin !== worn || worn === SLOT_HEAD, (zone) => SKIN_ZONE_SLOT[zone]!);
-        lines.push(`${armor}: refit ${r.vertices} vertices, moved at most ${(r.most * 1000).toFixed(1)} mm; ${r.pushed} pushed out of the skin, the deepest ${(r.deepest * 1000).toFixed(1)} mm in`);
+        said = `${armor}: refit ${r.vertices} vertices, moved at most ${(r.most * 1000).toFixed(1)} mm; ${r.pushed} pushed out of the skin, the deepest ${(r.deepest * 1000).toFixed(1)} mm in`;
       } : undefined;
-      const made = cookBody(parts, { id: armor, rig, scale, onto: body.rig.rest, triangles: spec.triangles.armor, flat: spec.flat, palette, refit, ...dressedFor(parts, armor) });
+      const cook = (flat: number): Cooked => cookBody(parts, { id: armor, rig, scale, onto: body.rig.rest, triangles: spec.triangles.armor, flat, palette, refit, ...dressedFor(parts, armor) });
+      let made = cook(spec.flat);
+      // A set whose pictures are cut too fine to come down to its second level's budget is flat from there.
+      const second = made.meshes.reduce((t, m) => t + ((m.flat ?? 0) > 1 ? m.lods[1]!.indices.length / 3 : 0), 0);
+      if (spec.flat > 1 && second > spec.triangles.armor[1]! * ARMOR_OVER) {
+        made = cook(1);
+        lines.push(`${armor}: ${second} triangles drawn with pictures at its second level for a budget of ${spec.triangles.armor[1]}; flat from there`);
+      }
+      if (said) lines.push(said);
       warn(armor, made.warnings);
       meshes.push(...made.meshes);
     }
