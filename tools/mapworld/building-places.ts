@@ -18,7 +18,7 @@ import { familyOf } from "../../content/breaks/families.ts";
 import { compileContent, type Registry } from "../../shared/content/registry.ts";
 import { TAU, detCos, detSin } from "../../shared/math/scalar.ts";
 import { STOREY, blankFrame, place, placeOf, storeyAt, tileOf, type Buildings } from "../../shared/world/buildings.ts";
-import { parseMap, type MapStatics } from "../../shared/world/mapfile.ts";
+import { parseMap, staticKinds, type MapStatics } from "../../shared/world/mapfile.ts";
 import { YAW_UNITS } from "../../shared/coords.ts";
 import { decodeKnown, type KnownPlaces } from "./buildings.ts";
 
@@ -76,7 +76,7 @@ export interface PlacesReport {
  */
 export function comparePlaces(statics: MapStatics, buildings: Buildings, known: KnownPlaces, reg: Registry, examples = 10): PlacesReport {
   const parts = Object.fromEntries(PARTS.map((p) => [p, { pieces: 0, tiled: 0, tile: 0, touch: 0, under: 0, storey: 0, foot: 0 }])) as Record<Part, PartCount>;
-  const kinds = statics.kinds.map((id) => reg.index.get(id) ?? 0);
+  const kinds = staticKinds(statics, reg);
   const part = statics.kinds.map(partOf);
   const frame = blankFrame();
   const out: Disagreement[] = [];
