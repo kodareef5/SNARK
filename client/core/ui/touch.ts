@@ -4,12 +4,18 @@
 // shell fetches when a finger is first used, so a page played with a mouse or a pad never downloads the layout or the
 // sheet's stand-in (D871). Import its types freely; import a value from here and every page pays for it.
 
+export { installMobileArt } from "./mobile-art.ts";
+
 import type { HudModel } from "../hud.ts";
 import { KEY_TOUCH_BUTTON, KEY_ZONE_LOOK, KEY_ZONE_MOVE, T_AIM, T_ATTACK, T_CANCEL, T_CLOSE, T_DOWN, T_FOLLOW, T_FOLLOW_ONE, T_HOLD, T_JUMP, T_LOWER, T_MELEE, T_MIC, T_MORE, T_ORBIT, T_PACK, T_RAISE, T_RELOAD, T_ROLL, T_ROTATE, T_SHIFT, T_SIC, T_SNAP, T_STANCE, T_STAY, T_STAY_ONE, T_USE, T_VIEW, type TouchPlay } from "../touch.ts";
-import { VITAL_PITCH } from "./hud.ts";
+import { usePrompt } from "./use-prompt.ts";
 import { K_HOLD, K_IMAGE, fitText, textWidth, type UiFrame, type UiNode } from "./nodes.ts";
 import { S_KEY, S_LABEL, S_PROMPT } from "./style.ts";
 import { BODY, ICON, ICON_COLUMNS, ICON_Y, IMAGE_TOUCH, I_AIM, I_ANCHOR, I_ATTACK, I_BAG, I_BRAKE, I_CANCEL, I_CREATURE, I_CROUCH, I_DOWN, I_JUMP, I_LEFT, I_LIGHTS, I_MELEE, I_MIC, I_MORE, I_ORBIT, I_PLACE, I_PROPELLER, I_RELOAD, I_RIGHT, I_ROTATE, I_ROTOR, I_SNAP, I_SPRINT, I_UP, I_VARIANT, I_VIEW, I_WHISTLE, I_WINGS, PART, PILL_BODY, PILL_CAP, PILL_H, PILL_W, PILL_Y, P_KNOB, P_RING, P_ROUND, P_SQUARE, TOUCH_HEIGHT, TOUCH_URL, TOUCH_WIDTH, touchPixels } from "./touch-art.ts";
+
+import * as touchDock from "./touch-dock.ts";
+export { touchDock };
+import { TouchVitals } from "./touch-vitals.ts";
 
 /** Keys of the layer's pictures, which are never pressed: four to a button, then the stick's. */
 const KEY_TOUCH_ART = 3300000;
@@ -35,20 +41,40 @@ export type Situation = "foot" | "flyer" | "building" | "placing";
 const CLUSTER_W = ATTACK / 2 + OUTER + SMALL / 2, CLUSTER_H = ATTACK / 2 + OUTER + SMALL / 2;
 const RADIANS = Math.PI / 180;
 
-/** The vitals and microphone reserve the upper-left corner. */
-export interface TouchPlan { vitalsX: number; vitalsY: number; stackY: number; under: number; map: number; mic: boolean; topEnd: number }
-const plan: TouchPlan = { vitalsX: 0, vitalsY: 0, stackY: 0, under: 0, map: 160, mic: false, topEnd: 0 };
+/** The phone's upper instruments share safe insets and 44 CSS pixel targets. */
+export interface TouchPlan {
+  drawBelt: typeof touchDock.drawBelt;
+  vitalsX: number; vitalsY: number; vitalPitch: number; topEnd: number;
+  toolsX: number; toolsY: number; toolSize: number; under: number; stackY: number;
+  map: number; mapX: number; mapY: number; mic: boolean;
+}
+const plan: TouchPlan = {
+  drawBelt: touchDock.drawBelt,
+  vitalsX: 0, vitalsY: 0, vitalPitch: 0, topEnd: 0, toolsX: 0, toolsY: 0,
+  toolSize: 0, under: 0, stackY: 0, map: 64, mapX: 0, mapY: 0, mic: false,
+};
+
+export const touchVitals = (): TouchVitals => new TouchVitals(plan);
 
 /** The plan for this canvas. The same object each time. */
-export function touchPlan(f: UiFrame, muted: boolean, mic = false): TouchPlan {
-  const left = f.left + MARGIN, top = f.top + MARGIN;
+export function touchPlan(f: UiFrame, _muted: boolean, mic = false): TouchPlan {
+  const px = 1 / f.unit, width = f.width / px, height = f.height / px;
+  const portrait = height > width, short = !portrait && height <= 510;
+  const gutter = (width <= 600 ? 9 : 20) * px;
+  const left = Math.max(f.left, gutter), top = Math.max(f.top, (short ? 7 : 16) * px);
   plan.mic = mic;
-  plan.map = f.height < 560 || f.width < 520 ? 64 : 80;
-  plan.vitalsX = left + 6;
-  plan.vitalsY = top;
-  plan.under = top + BAR + 10 + (mic ? BAR + GAP : 0);
-  plan.stackY = plan.under + (muted ? 52 : 0);
-  plan.topEnd = plan.vitalsX + 6 * VITAL_PITCH;
+  plan.vitalPitch = (width <= 600 ? 25 : 27) * px;
+  plan.vitalsX = left + 3 * px;
+  plan.vitalsY = top + 10.5 * px;
+  plan.topEnd = left + 4 * plan.vitalPitch + 8 * px;
+  plan.toolSize = 44 * px;
+  plan.toolsX = left;
+  plan.toolsY = top + (short ? 39 : 44) * px;
+  plan.under = plan.toolsY + plan.toolSize;
+  plan.stackY = plan.under;
+  plan.map = (portrait ? 45 : short ? 48 : Math.min(83, Math.max(55, width * .072))) * px;
+  plan.mapX = f.width - Math.max(f.right, gutter) - plan.map;
+  plan.mapY = top;
   return plan;
 }
 
@@ -97,8 +123,8 @@ export function pill(f: UiFrame, key: number, x: number, y: number, w: number, h
 export function chatTop(f: UiFrame, touch: TouchPlan): { top: number; bottom: number } {
   // On its side a phone's keyboard leaves less than half the screen, and the box may cover the vitals to keep in it;
   // upright there is room under them.
-  const top = f.width > f.height ? f.top + MARGIN + BAR + 10 : touch.under;
-  return { top, bottom: top + 3 * 19 + 56 };
+  const bottom = Math.min(touch.under + 113, f.top + (f.height - f.top - f.bottom) * .43);
+  return { top: Math.max(f.top, bottom - 113), bottom };
 }
 
 /** The two zones, under everything else the HUD draws: call before it. */
@@ -113,14 +139,14 @@ export function touchZones(f: UiFrame): void {
 /** Voice keeps its own hold target below the vital signs. */
 export function touchBar(f: UiFrame, t: TouchPlay, mic: boolean): number {
   if (!mic) return 0;
-  const x = f.left + MARGIN, y = f.top + MARGIN + BAR + GAP;
-  const size = 27;
+  const { toolsX, toolsY: y, toolSize: side } = touchPlan(f, false, mic);
+  const x = toolsX + 2 * side, size = 23 / f.unit;
   if (TOUCH_URL) {
-    const icon = art(f, KEY_TOUCH_ART + T_MIC * 4, x, y + (BAR - size) / 2, size, size,
+    const icon = art(f, KEY_TOUCH_ART + T_MIC * 4, x + (side - size) / 2, y + (side - size) / 2, size, size,
       I_MIC % ICON_COLUMNS * ICON, ICON_Y + Math.floor(I_MIC / ICON_COLUMNS) * ICON, ICON, ICON);
     icon.alpha = t.held(T_MIC) ? 1 : .76;
   }
-  const hit = f.add(KEY_TOUCH_BUTTON + T_MIC, K_HOLD, x, y, BAR, BAR, S_KEY);
+  const hit = f.add(KEY_TOUCH_BUTTON + T_MIC, K_HOLD, x, y, side, side, S_KEY);
   hit.interactive = true; hit.label = "Talk";
   if (!TOUCH_URL) hit.text = "Mic";
   return 1 << T_MIC;
@@ -146,7 +172,7 @@ function touchContacts(f: UiFrame, t: TouchPlay, item = ""): void {
     const ring = 108 * t.contactScale(false) / f.unit, knob = ring * 0.39;
     if (!f.picture(k, t.stickX - ring / 2, t.stickY - ring / 2, ring, ring, S_LABEL, "ui:glass-touch-move"))
       part(f, k, P_RING, t.stickX, t.stickY, ring * .89).alpha = .8;
-    const x = t.stickX + t.knobX * .48, y = t.stickY + t.knobY * .48;
+    const x = t.stickX + t.knobX * .74, y = t.stickY + t.knobY * .74;
     if (!f.picture(k + 1, x - knob / 2, y - knob / 2, knob, knob, S_LABEL, "ui:glass-touch-knob"))
       part(f, k + 1, P_KNOB, x, y, knob * .83);
   }
@@ -154,12 +180,12 @@ function touchContacts(f: UiFrame, t: TouchPlay, item = ""): void {
     const ring = (t.looking ? 66 : 86) * t.contactScale(true) / f.unit, size = ring * .42;
     const circle = f.picture(k + 2, t.actionX - ring / 2, t.actionY - ring / 2, ring, ring, S_LABEL, t.looking ? "ui:glass-touch-look" : "ui:glass-touch-look-lit")
       ?? part(f, k + 2, P_RING, t.actionX, t.actionY, ring * .89);
-    circle.alpha = t.looking ? .52 : .95;
+    circle.alpha = t.looking ? .58 : t.lingering ? .43 : .95;
     const x = t.actionX - size / 2, y = t.actionY - size / 2;
     const gem = (item && f.picture(k + 3, x, y, size, size, S_LABEL, item)) ||
       f.picture(k + 3, x, y, size, size, S_LABEL, "ui:glass-emblem") ||
       part(f, k + 3, P_KNOB, t.actionX, t.actionY, size * .82);
-    gem.alpha = t.looking ? .35 : 1;
+    gem.alpha = t.looking || t.lingering ? .23 : 1;
   }
 }
 
@@ -265,14 +291,11 @@ export function touchControls(f: UiFrame, t: TouchPlay, m: HudModel, situation: 
         if (m.ammo !== "") at(T_RELOAD, 6, SMALL, I_RELOAD, "Reload");
       }
     }
-  } else {
-    // On foot the right thumb keeps a held Attack, for a drawn bow or a long swing, and Jump. Field kit adds the rest.
-    corner(T_ATTACK, I_ATTACK, "Attack");
-    at(T_JUMP, 0, BUTTON, I_JUMP, "Jump");
+
   }
 
   // What the world offers, as a pill by the thumb: the prompt without its key.
-  const offer = m.prompt ? usePrompt(m.prompt) : "";
+  const offer = usePrompt(m.prompt);
   if (offer !== "") {
     // Above the cluster, or on a canvas too short for that, to its left.
     // Clear of the far arc's top, which is a little above the near one's.
@@ -289,13 +312,4 @@ export function touchControls(f: UiFrame, t: TouchPlay, m: HudModel, situation: 
   return shown;
 }
 
-/** What the use key would do, from a prompt that names it ("E  ride raptor" gives "Ride raptor"); "" for any other line. */
-export function usePrompt(prompt: string): string {
-  // A built piece's line may stand under the builder's reason (prompts.ts): "E use  box" or "hold E  wall".
-  for (const line of prompt.split("\n")) {
-    if (line.startsWith("E use  ")) return `Use ${line.slice(7)}`;
-    if (line.startsWith("hold E  ")) return `Hold: ${line.slice(8)}`;
-  }
-  if (!prompt.startsWith("E  ")) return "";
-  return prompt.charAt(3).toUpperCase() + prompt.slice(4).split("   F  ")[0]!;
-}
+export { usePrompt };

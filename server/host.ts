@@ -2,7 +2,11 @@ import { SurvivorActivity } from "./survivor-activity.ts";
 import { SurvivorIds, idText } from "./survivor-ids.ts";
 // The jet's family code, which a browser fetches late (shared/sim/families.ts JET_FAMILY): the server has it from the start.
 import "../shared/sim/families/jet.ts";
-import { CREATE_REQUEST,ownsSurvivor } from "./survivor-access.ts";
+import { CREATE_REQUEST, addBrowserHash, hasBrowserHash, ownerOf, ownsAs, setOwner } from "./survivor-access.ts";
+import { SignIn } from "./signin/method.ts";
+import { SignInStore } from "./signin/store.ts";
+import { DiscordApi, type Fetch } from "./signin/discord-api.ts";
+import { DiscordSignIn } from "./signin/discord.ts";
 import { ZONE_NONE, ZONE_TORSO } from "../shared/anim/human.ts";
 import { IMPALE_SLOT } from "../shared/sim/seats.ts";
 import { CreatureTraits, inventoryEffectiveWeight } from "./creature-traits.ts";
@@ -40,7 +44,8 @@ import { Experience } from "./experience.ts";
 import { Carry } from "./carry.ts";
 import { Corpses } from "./corpses.ts";
 import { CorpseReplication } from "./corpse-motion.ts";
-import { CMD_AIR_SUPPORT, CMD_CLOCK, CMD_CORPSE, IMPACT_BLAST, IMPACT_SHOT } from "../shared/net/protocol.ts";
+import { CMD_AIR_SUPPORT, CMD_CLOCK, CMD_CORPSE, IMPACT_BLAST, IMPACT_SHOT, OWN_PEOPLE } from "../shared/net/protocol.ts";
+import { PeopleStore } from "./people/store.ts";
 import { Creative, NO_GROUPS } from "./creative.ts";
 import { Balls } from "./balls.ts";
 import { Eggs } from "./eggs.ts";
@@ -147,8 +152,10 @@ import { parseMap, type MapFile, type MapVehicle } from "../shared/world/mapfile
 import { Tactical } from "./tactical.ts";
 import type { ClipSet } from "../shared/anim/clip.ts";
 import { defaultLook } from "../shared/anim/look.ts";
-import { F_ALIVE, GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../shared/sim/entities.ts";
-import { ARMOR_SLOTS, FLAG_ON } from "../shared/sim/items.ts";
+import { F_ALIVE, GEAR_COUNT, GEAR_HELD, GEAR_WORN, WORN_FIELDS, WORN_LENGTH } from "../shared/sim/entities.ts";
+import { ARMOR_SLOTS, FLAG_ON, WARDROBE_SLOTS } from "../shared/sim/items.ts";
+import { hairRate } from "../shared/people/hair.ts";
+import { Relook } from "./people/look.ts";
 import { CUE_HELD, CUE_OUT, CUE_TORPOR, HumanAnim } from "../shared/anim/pose.ts";
 import { REACT_RULES, TIER_FALL } from "../shared/sim/react.ts";
 import { Reactions, SHOVE_MOST } from "./reactions.ts";
@@ -214,6 +221,8 @@ export interface HostOptions {
   adminPassword?: string;
   /** The cluster's password, which `enablecheats` and the admin pages take at the cluster's rank. */
   clusterPassword?: string;
+  /** For SignIn=discord: the application's secret and its bot's token, before the settings of those names; `fetch` in place of the network; `site`, the server's address, said to Discord with each call; `page`, its --public-url. */
+  discord?: { secret?: string; botToken?: string; fetch?: Fetch; site?: string; now?: () => number; page?: string };
   /** Development server. Cheats need no password. Never set it in a public deployment. */
   dev?: boolean;
   /** Load a save whose item ledger does not match its contents, instead of refusing. */
@@ -280,6 +289,8 @@ export interface Host {
   readonly tactical: Tactical;
   /** The creature packages' modules, each still doing nothing. */
   readonly corpses: Corpses;
+  /** Changes to a made survivor's look: cuts, dyes and remakes (server/people/look.ts). */
+  readonly relook: Relook;
   readonly loot: Loot;
   readonly holders: Holders;
   readonly carry: Carry;
@@ -330,6 +341,8 @@ export interface Host {
   readonly beds: Beds;
   /** The cluster the server is part of (-clusterid), or null for one alone. */
   readonly cluster: Cluster | null;
+  /** The cluster's garment editions and, to come, its named people (server/people/store.ts): in its folder, else beside the save. */
+  readonly people: PeopleStore;
   /** Bodies found inside a node or a piece as their chunk or a node near them loaded, and set free (server/place.ts). */
   readonly settled: { readonly bodies: number };
   /** The list settings that name classes, as tables, and the names this build lacks. */
@@ -395,6 +408,11 @@ export interface Host {
   /** Carries events to modules. */
   readonly bus: Bus;
   readonly modules: Modules;
+  /** Writes a line to the host's own log. */
+  readonly say: (line: string) => void;
+  /** How survivors sign in here (server/signin/method.ts). */
+  readonly signin: SignIn;
+  readonly discord: DiscordSignIn;
   readonly adminPassword: string | null;
   readonly clusterPassword: string | null;
   readonly dev: boolean;
@@ -526,6 +544,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   world.clock.cycle = rules.num("DayCycleSpeedScale");
   world.clock.day = rules.num("DayTimeSpeedScale");
   world.clock.night = rules.num("NightTimeSpeedScale");
+  world.hairRate = hairRate(rules.num("HairGrowthSpeedMultiplier"));
   // A new world starts at nine in the morning.
   world.dayOffset = offsetForHour(world.tick, 9, world.clock);
   if (opts.clips) world.anim = new HumanAnim(opts.clips);
@@ -592,6 +611,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   survival.rules = rules;
   survival.bus = bus;
   const items = new Items(world, records);
+  const relook = new Relook({ world, game, records, items, survivor });
   items.bus = bus;
   // Inventory transactions finish before their derived movement and equipment state is refreshed.
   const inventoryChanged = new Set<EntityRecord>();
@@ -739,8 +759,32 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   opened.push({ close: () => survivorLog.stop() });
   const ids = new SurvivorIds(records);
   // The cluster's permission groups, kept in its folder for every world, else beside the save, else in memory.
+  const signinStore = new SignInStore(cluster ? join(cluster.folder.root, "signin.sqlite") : opts.dbPath ? `${opts.dbPath}.signin.sqlite` : ":memory:");
+  const discord = new DiscordSignIn({
+    store: signinStore,
+    world: records.worldId,
+    api: new DiscordApi(opts.discord?.fetch, opts.discord?.site),
+    say,
+    ...(opts.discord?.now ? { now: opts.discord.now } : {}),
+    ...(opts.discord?.page ? { page: opts.discord.page } : {}),
+    config: () => ({
+      clientId: rules.text("DiscordClientId").trim(),
+      secret: opts.discord?.secret || rules.text("DiscordClientSecret"),
+      botToken: opts.discord?.botToken || rules.text("DiscordBotToken"),
+      guild: rules.text("DiscordGuild").trim(),
+      roles: rules.text("DiscordRoles").split(/[\s,]+/).filter(Boolean),
+      days: rules.num("DiscordSignInDays"),
+    }),
+  });
+  const signin = new SignIn(rules, [discord]);
   const permissionStore = new PermissionStore(cluster ? join(cluster.folder.root, "permissions.sqlite") : opts.dbPath ? `${opts.dbPath}.permissions.sqlite` : ":memory:");
   opened.push(permissionStore);
+  // The cluster's people, shared by its worlds as its permission groups are; prints and manifests go with its screens' media.
+  const root = cluster?.folder.root;
+  const people = new PeopleStore(root ? { db: join(root, "people.sqlite"), media: join(root, "media"), tmp: join(root, "tmp") } : opts.dbPath ? { db: `${opts.dbPath}.people.sqlite`, media: `${opts.dbPath}.media` } : { db: ":memory:" });
+  opened.push(people);
+  items.editions = people;
+  game.own.add<string>({ kind: OWN_PEOPLE, unsent: "", version: () => people.manifestId, write: (w) => w.string(people.manifestId) });
   const permissions: Permissions = new Permissions({
     store: permissionStore,
     world: cluster?.world ?? 0,
@@ -780,6 +824,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
         buffs.died(rec);
         survival.forget(rec.pid);
         inHand.delete(rec.pid);
+        wornSeen.delete(rec.pid);
       },
       say,
     },
@@ -1045,6 +1090,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     rules,
     ...(typeof opts.cast === "object" ? { settings: { enabled: true, ...opts.cast } } : opts.cast === true ? { settings: { enabled: true } } : {}),
     logDir: opts.dbPath ? join(dirname(resolve(opts.dbPath)), "cast") : null,
+    people,
   });
   const fixtures = new Fixtures(world, records, items);
   fixtures.rules = rules;
@@ -1353,6 +1399,10 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     if (turned("MaxEntities")) world.ents.setMax(rules.num("MaxEntities"));
     if (turned("AutoSavePeriodMinutes")) liveEvery = Math.max(1, Math.round(rules.num("AutoSavePeriodMinutes") * 60 * TICK_RATE));
     if (turned("OxygenSwimSpeedStatMultiplier")) creatures.swimGain = rules.num("OxygenSwimSpeedStatMultiplier");
+    if (turned("HairGrowthSpeedMultiplier")) {
+      world.hairRate = hairRate(rules.num("HairGrowthSpeedMultiplier"));
+      game.replication.markAllOwn();
+    }
     if (turned(ARK_CRATES)) recrate();
     if (spawner) {
       spawner.quiet = quiet();
@@ -1391,6 +1441,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     urban.retable();
     game.players.feet.retable();
     // A body's limits are worked out from its species' numbers, so each body in the world is worked out again.
+    wornSeen.clear();
     for (const pid of [...records.entOf.keys()]) {
       const rec = records.byPid.get(pid);
       if (rec) refreshBody(rec);
@@ -1416,8 +1467,11 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   // What refreshBody works with, made before the load: a buff restored there refreshes its body, and a saddled creature
   // saved with a buff on it (a tame ball sick, or poisoned) stopped the start when these were made after it.
   const gear = new Uint16Array(GEAR_COUNT);
+  const wardrobe = new Uint32Array(WORN_LENGTH);
   /** The held slot of each record at its last refresh. */
   const inHand = new Map<number, number>();
+  /** Per survivor pid, the inventory's worn stamp and the body that refreshBody last worked out what it wears for. */
+  const wornSeen = new Map<number, { worn: number; e: number; gen: number }>();
   if (loaded && !loaded.fresh) {
     // Bodies saved under other rates are rated again as they load.
     survival.rerate = RATES.some((name) => wasAt(name) !== rules.num(name));
@@ -1576,16 +1630,44 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   // A name belongs to the first device key that takes a body under it.
   game.sessions.sameCreation=(name,key,request)=>{
     const rec=recordOf(name), prior=rec?.extra.get(CREATE_REQUEST);
-    return !!rec && !!prior && ownsSurvivor(rec,key) && prior.length===request.length && request.every((b,i)=>prior[i]===b);
+    return !!rec && !!prior && owns(rec,key) && prior.length===request.length && request.every((b,i)=>prior[i]===b);
   };
-  game.sessions.owns = (name, key) => { const rec = recordOf(name); return !!rec && ownsSurvivor(rec, key); };
+  // Under a sign-in method with accounts, a survivor an account has taken is that account's on any browser.
+  const subjectOfKey = (key: Uint8Array): string => signin.method.subject(hashKey(key));
+  const owns = (rec: EntityRecord, key: Uint8Array): boolean => ownsAs(rec, key, subjectOfKey(key));
+  game.sessions.signedIn = (key, name, ticket) => {
+    const method = signin.method;
+    const subject = ticket && method.id === "discord" ? cluster?.arrivingAccount(name, ticket) : undefined;
+    const why = method.admits(hashKey(key), subject);
+    return typeof why === "string" ? why === "" : why.then((reply) => reply === "" && signin.method === method);
+  };
+  game.sessions.owns = (name, key) => { const rec = recordOf(name); return !!rec && owns(rec, key); };
   game.sessions.authorize = (name, key) => {
     // Nobody joins a world that has not saved for a minute.
     if (persistence?.failing && world.tick - persistence.failing.since >= UNSAVED_REFUSE_TICKS) return false;
     const rec = recordOf(name);
-    return !rec || !rec.keyHash || ownsSurvivor(rec,key);
+    return !rec || !rec.keyHash || owns(rec,key);
   };
+  // A survivor no account has taken becomes the account's that plays it, and keeps each browser it is played from.
+  const takeFor = (rec: EntityRecord, key: Uint8Array): void => {
+    const subject = subjectOfKey(key);
+    const hash = hashKey(key);
+    if (subject === "" || (ownerOf(rec) !== "" && hasBrowserHash(rec, hash))) return;
+    if (ownerOf(rec) === "") setOwner(rec, subject);
+    if (!hasBrowserHash(rec, hash)) addBrowserHash(rec, hash);
+    records.dirty.add(rec.pid);
+  };
+  // Remember the owner after admission for both a new session and a reconnect.
+  const signedInAs = (c: Client): void => {
+    const rec = recordOf(c.name);
+    if (rec) takeFor(rec, c.key);
+  };
+  game.sessions.onEnter.on(signedInAs);
+  game.sessions.onRelink.on(signedInAs);
   if (cluster) {
+    cluster.signedAs = subjectOfKey;
+    cluster.accountsRequired = () => signin.method.id !== "key";
+    cluster.carry = (keyHash, subject) => signin.method.carry(keyHash, subject);
     game.sessions.arrive = (name, key, ticket) => (persistence?.failing && world.tick - persistence.failing.since >= UNSAVED_REFUSE_TICKS ? "this server has not been able to save for a minute, so nobody may come yet" : cluster.arrive(name, key, ticket));
     game.sessions.nameAway = name => cluster.away.has(name);
     game.sessions.away = (name, key) => cluster.awayCheck(name, key);
@@ -1610,12 +1692,13 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       rec.keyHash = hashKey(c.key);
       records.dirty.add(rec.pid);
     }
+    takeFor(rec, c.key);
     // A survivor without a look takes the one it came with, or the default.
     if (!rec.look) {
       rec.look = c.look ?? defaultLook();
       records.dirty.add(rec.pid);
     }
-    world.ents.setBodyLook(c.ent, rec.look);
+    relook.wear(rec, c.ent);
     world.ents.jetSpent[c.ent] = rec.jetSpent;
     // Every survivor is on a team, even a team of one.
     if (rec.team === 0) {
@@ -1653,6 +1736,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     const gone = records.byPid.get(c.pid);
     if (gone) survival.suspend(gone, true);
     inHand.delete(c.pid);
+    wornSeen.delete(c.pid);
     glidingSince.delete(c.pid);
     if (persistence) persistence.detach(c.pid);
     else {
@@ -2077,6 +2161,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const own: OwnContext = {
     world, game, records, items, survival, progression, rules, voice,
     use,
+    relook,
     openOf: (c) => containers.openOf(c),
     closeOpen: (c) => containers.close(c),
     beds,
@@ -2156,21 +2241,35 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       const item = slot >= 0 ? inv.item[slot]! : 0;
       const was = ents.gears.get(e)?.[GEAR_HELD] ?? 0;
       gear[GEAR_HELD] = item;
-      let suit = 0;
-      for (let k = 0; k < ARMOR_SLOTS; k++) {
-        const slot = inv.armor + k, id = inv.item[slot]!;
-        gear[GEAR_WORN + k] = id;
+      for (let k = 0; k < ARMOR_SLOTS; k++) gear[GEAR_WORN + k] = inv.item[inv.armor + k]!;
+      // What it wears is worked out again only when its armor or wardrobe changed, or it is a new body. A shot changes neither.
+      let seen = wornSeen.get(rec.pid);
+      if (seen?.worn !== inv.worn || seen.e !== e || seen.gen !== ents.gen[e]) {
+        if (!seen) wornSeen.set(rec.pid, (seen = { worn: 0, e: 0, gen: 0 }));
+        seen.worn = inv.worn;
+        seen.e = e;
+        seen.gen = ents.gen[e]!;
+        // What it wears in its wardrobe is part of its identity, sent to watchers only when it changes.
+        for (let k = 0; k < WARDROBE_SLOTS; k++) {
+          const s = inv.wardrobe + k, item = inv.item[s]!;
+          wardrobe[k * WORN_FIELDS] = item;
+          wardrobe[k * WORN_FIELDS + 1] = item !== 0 ? inv.editionOf(s) : 0;
+          wardrobe[k * WORN_FIELDS + 2] = item !== 0 ? inv.dyeOf(s) : 0;
+        }
+        ents.setWardrobe(e, wardrobe);
+        let suit = 0;
         // A piece that flies (WearFacet.jet) and is not worn out lends its slot's bit.
-        if (inv.dur[slot]! > 0) suit |= reg.wearJet[id]! << k;
+        for (let k = 0; k < ARMOR_SLOTS; k++) if (inv.dur[inv.armor + k]! > 0) suit |= reg.wearJet[inv.item[inv.armor + k]!]! << k;
+        const helmetChanged = ((ents.jetGear[e]! ^ suit) & JET_HELMET) !== 0;
+        ents.jetGear[e] = suit;
+        // Its air under water follows the helmet at once, not at the vitals' next deadline.
+        if (helmetChanged) survival.touch(rec);
       }
-      const helmetChanged = ((ents.jetGear[e]! ^ suit) & JET_HELMET) !== 0;
-      ents.jetGear[e] = suit;
+      const suit = ents.jetGear[e]!;
       // The glider it flies is the best serviceable one it carries, wherever it lies. Arms round a creature fly none.
       const flown = arms < 0 ? gliderSlot(rec) : -1;
       ents.glideGear[e] = flown >= 0 ? reg.glide[inv.item[flown]!]! : 0;
       if (!(suit & JET_CUIRASS)) ents.jetThrust[e] = ents.jetKeys[e] = ents.jetJumpTap[e] = ents.jetSprintTap[e] = 0;
-      // Its air under water follows the helmet at once, not at the vitals' next deadline.
-      if (helmetChanged) survival.touch(rec);
       ents.setGear(e, gear);
       // Only the thing in hand has its attachment on, and taking another in hand switches it off: "it does require you to
       // press N each time you switch" (Flashlight Attachment). Others see a laser on (weapons-plan.md, M10).
@@ -2393,6 +2492,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     breeding,
     tactical,
     corpses,
+    relook,
     loot,
     holders,
     carry,
@@ -2423,6 +2523,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     creative,
     beds,
     cluster,
+    people,
     settled,
     survivorIds: () => (persistence?.survivors ?? names).values(),
     survivorRecord: recordOf,
@@ -2501,6 +2602,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     console: con,
     bus,
     modules,
+    say,
+    signin,
+    discord,
     adminPassword,
     clusterPassword,
     lists,
@@ -2522,6 +2626,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       impale.stop();
       register.write();
       permissionStore.close();
+      signinStore.close();
+      people.close();
       if (!persistence) return;
       // A creature in someone's arms is saved standing where it is set down, not where the arms had it, and so is whoever
       // sits in a car or on a creature.

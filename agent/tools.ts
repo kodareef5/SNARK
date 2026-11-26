@@ -1061,7 +1061,7 @@ export class Agent implements ToolHost {
       if (from < 0 || !box) break;
       const n = Math.min(left, inv.count[from]!);
       let to = -1;
-      for (let k = 0; k < box.bag && to < 0; k++) if (box.item[k] === item && box.count[k]! + n <= reg.stack[item]!) to = k;
+      for (let k = 0; k < box.bag && to < 0; k++) if (box.item[k] === item && box.quality[k] === inv.quality[from] && box.sameStyle(k, inv, from) && box.count[k]! + n <= reg.stack[item]!) to = k;
       if (to < 0) to = box.free();
       if (to < 0) return { state: "blocked", reason: "its inventory is full", ...this.opened() };
       const moved = await this.send(CMD_MOVE, (w) => (w.bits(BOX_SELF, 1), w.varint(from), w.bits(BOX_OPEN, 1), w.varint(to), w.u16(n === inv.count[from] ? 0 : n), w.u16(item)));
@@ -1266,7 +1266,7 @@ export class Agent implements ToolHost {
       // Onto a stack of the same item with room, else into the first empty slot.
       const stack = reg.stack[item]!;
       to = -1;
-      for (let k = 0; k < dst!.bag && to < 0; k++) if (dst!.item[k] === item && dst!.quality[k] === src.quality[slot] && dst!.flags[k] === src.flags[slot] && dst!.flags[k] === 0 && dst!.count[k]! < stack) to = k;
+      for (let k = 0; k < dst!.bag && to < 0; k++) if (dst!.item[k] === item && dst!.quality[k] === src.quality[slot] && dst!.flags[k] === src.flags[slot] && dst!.flags[k] === 0 && dst!.sameStyle(k, src, slot) && dst!.count[k]! < stack) to = k;
       if (to < 0) to = dst!.free();
       if (to < 0) return refused("there is no room there");
     }

@@ -32,9 +32,9 @@ export const T_FOLLOW_ONE = 29, T_STAY_ONE = 30;
 export const T_PACK = 31;
 export const T_COUNT = 32;
 
-/** Units from the stick's middle to its rim, the still middle, and the share of the way out at which it sprints. */
-export const STICK_REACH = 60;
-export const STICK_DEAD = 8;
+/** CSS pixels from the stick's middle to its rim, the still middle, and the share of the way out at which it sprints. */
+export const STICK_REACH = 35;
+export const STICK_DEAD = 5;
 export const SPRINT_AT = 0.92;
 /** A finger's pixel turns the view this many times a mouse's: a thumb has a third of a mouse's travel. */
 export const LOOK_GAIN = 2.2;
@@ -69,8 +69,6 @@ export class TouchPlay {
   knobY = 0;
   actionX = 0;
   actionY = 0;
-  private lookX = 0;
-  private lookY = 0;
   looking = false;
   private primaryPulse = false;
   worldAction = true;
@@ -78,6 +76,7 @@ export class TouchPlay {
   width = Infinity;
   height = Infinity;
   get action(): boolean { return this.lookFinger !== 0; }
+  get lingering(): boolean { return this.clock - this.lookSince >= TAP_MS; }
   get pendingPrimary(): boolean { return this.primaryPulse; }
   get primary(): boolean { return this.primaryPulse || this.held(T_ATTACK); }
 
@@ -129,24 +128,24 @@ export class TouchPlay {
       if (kind === 0 && this.moveFinger === 0) { this.moveFinger = who; this.moveSince = nowMs; this.stickX = x; this.stickY = y; this.knobX = this.knobY = 0; }
       else if (who !== this.moveFinger) return true;
       else if (kind === 1 || kind === 3) this.letGo(t);
-      else if (kind === 2) this.push(x, y, t);
+      else if (kind === 2) this.push(x, y, t, unit);
       return true;
     }
     if (key === KEY_ZONE_LOOK) {
       if (kind === 0 && this.lookFinger === 0) {
         this.lookFinger = who;
-        this.actionX = this.lookX = x;
-        this.actionY = this.lookY = y;
+        this.actionX = x;
+        this.actionY = y;
         this.lookSince = nowMs;
         this.looking = this.lookLong = false;
       } else if (who !== this.lookFinger) return true;
       else if (kind === 2) this.turn(x, y, t, unit);
       else if (kind === 1 || kind === 3) {
+        if (kind === 1) this.turn(x, y, t, unit);
         this.lookFinger = 0;
         const inside = x >= 0 && x < this.width && y >= 0 && y < this.height;
-        const distance = Math.hypot(x - this.actionX, y - this.actionY) * unit;
         if (kind === 1 && inside && this.worldAction && !this.looking && !this.lookLong &&
-          distance <= LOOK_SLOP_PX && nowMs - this.lookSince < TAP_MS && !this.held(T_ATTACK) && !this.primaryPulse) {
+          nowMs - this.lookSince < TAP_MS && !this.held(T_ATTACK) && !this.primaryPulse) {
           this.primaryPulse = true;
           t.mouse(0, true);
         }
@@ -205,7 +204,7 @@ export class TouchPlay {
     }
     if (this.lookFinger !== 0 && !this.lookLong && !this.looking && nowMs - this.lookSince >= LONG_MS) {
       this.lookLong = true;
-      t.longPress?.(this.lookX, this.lookY);
+      t.longPress?.(this.actionX, this.actionY);
     }
     if (this.aiming && (shown & (1 << T_AIM)) === 0) t.mouse(this.aimedWith, (this.aiming = false));
     if (this.shifted && (shown & (1 << T_SHIFT)) === 0) t.key("ShiftLeft", (this.shifted = false));
@@ -243,18 +242,19 @@ export class TouchPlay {
     else if (b === T_STANCE && !this.long[b]) { t.key("KeyC", true); t.key("KeyC", false); }
   }
 
-  private push(x: number, y: number, t: TouchTarget): void {
+  private push(x: number, y: number, t: TouchTarget, unit: number): void {
+    const reach = STICK_REACH / unit, dead = STICK_DEAD / unit;
     let dx = x - this.stickX, dy = y - this.stickY;
     const far = Math.hypot(dx, dy);
-    if (far > STICK_REACH) {
+    if (far > reach) {
       // The middle follows a thumb that has gone past the rim, so turning back answers at once.
-      this.stickX += (dx / far) * (far - STICK_REACH); this.stickY += (dy / far) * (far - STICK_REACH);
-      dx = (dx / far) * STICK_REACH; dy = (dy / far) * STICK_REACH;
+      this.stickX += (dx / far) * (far - reach); this.stickY += (dy / far) * (far - reach);
+      dx = (dx / far) * reach; dy = (dy / far) * reach;
     }
     this.knobX = dx; this.knobY = dy;
-    const out = Math.min(far, STICK_REACH), push = out <= STICK_DEAD ? 0 : (out - STICK_DEAD) / (STICK_REACH - STICK_DEAD);
+    const out = Math.min(far, reach), push = out <= dead ? 0 : (out - dead) / (reach - dead);
     t.move(push > 0 ? (dx / out) * push : 0, push > 0 ? ((0 - dy) / out) * push : 0);
-    const sprint = this.rim && out >= STICK_REACH * SPRINT_AT;
+    const sprint = this.rim && out >= reach * SPRINT_AT;
     if (sprint !== this.sprinting) t.key("ShiftLeft", (this.sprinting = sprint));
   }
 
@@ -266,11 +266,16 @@ export class TouchPlay {
   }
 
   private turn(x: number, y: number, t: TouchTarget, unit: number): void {
+    let dx = (x - this.actionX) * unit, dy = (y - this.actionY) * unit;
+    if (dx === 0 && dy === 0) return;
     if (!this.looking) {
-      if (Math.hypot(x - this.actionX, y - this.actionY) * unit <= LOOK_SLOP_PX) return;
+      const distance = Math.hypot(dx, dy);
+      if (distance <= LOOK_SLOP_PX) return;
+      const beyond = 1 - LOOK_SLOP_PX / distance;
+      dx *= beyond; dy *= beyond;
       this.looking = true;
     }
-    t.look((x - this.lookX) * unit * LOOK_GAIN, (y - this.lookY) * unit * LOOK_GAIN);
-    this.lookX = x; this.lookY = y;
+    this.actionX = x; this.actionY = y;
+    t.look(dx * LOOK_GAIN, dy * LOOK_GAIN);
   }
 }

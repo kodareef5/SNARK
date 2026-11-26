@@ -14,6 +14,7 @@ import { NO_CHANNEL, NO_CLIP, SCREEN_FILL, SCREEN_ONCE, manifestPath, type Scree
 import { SCREENS_DECODING, SCREENS_DRAWN, SCREENS_MANY, SCREENS_NEAREST, SCREENS_UPLOADING } from "../governor.ts";
 import { FACE_HIGH, FACE_LEVELS, FACE_WIDE, MAX_FACES, MAX_FACE_UPLOADS, type FramePacket } from "../render/packet.ts";
 import { pictureCrop } from "../render/picture-crop.ts";
+import { PictureLayers, PictureLoads } from "../render/picture-layers.ts";
 import { faceLevel, type FaceList, type FaceShow } from "../render/screens.ts";
 import type { VideoLike } from "./player.ts";
 import { DRIFT_SEEK, WAIT_FOR_ART, base64Bytes, mustSeek, syncRate } from "./sync.ts";
@@ -201,79 +202,10 @@ export class Programme {
   }
 }
 
-/** The layers of the pictures' array: which picture each holds, by its key, and when it was last used. */
-export class FaceLayers {
-  size = 0;
-  readonly keys: string[] = [];
-  used = new Float64Array(0);
-  /** 0 empty, 1 waiting for its picture, 2 holding it. */
-  state = new Uint8Array(0);
-  /** Since when a layer has waited, in ms, and the last of its levels that holds its picture. */
-  since = new Float64Array(0);
-  top = new Uint8Array(0);
-  private readonly at = new Map<string, number>();
-
-  /** `n` layers, every one empty. */
-  resize(n: number): void {
-    this.size = n;
-    this.keys.length = 0;
-    for (let k = 0; k < n; k++) this.keys.push("");
-    this.used = new Float64Array(n).fill(-Infinity);
-    this.state = new Uint8Array(n);
-    this.since = new Float64Array(n);
-    this.top = new Uint8Array(n);
-    this.at.clear();
-  }
-
-  /** The layer that holds or waits for `key`, marked used on `frame`, or -1. */
-  find(key: string, frame: number): number {
-    const k = this.at.get(key);
-    if (k === undefined) return -1;
-    this.used[k] = frame;
-    return k;
-  }
-
-  /** Whether layer `k` holds its picture. */
-  holds(k: number): boolean {
-    return k >= 0 && this.state[k] === 2;
-  }
-
-  /**
-   * A layer for `key`, waiting for its picture: an empty one, else the one least lately used, not on `frame`, and not
-   * waiting for a picture since less than LOAD_GIVES_UP before `now`. -1 where every layer is wanted.
-   */
-  take(key: string, frame: number, now: number): number {
-    let best = -1;
-    for (let k = 0; k < this.size; k++) {
-      if (this.state[k] === 0) {
-        best = k;
-        break;
-      }
-      if (this.used[k]! >= frame || (this.state[k] === 1 && now - this.since[k]! < LOAD_GIVES_UP * 1000)) continue;
-      if (best < 0 || this.used[k]! < this.used[best]!) best = k;
-    }
-    if (best < 0) return -1;
-    if (this.keys[best]) this.at.delete(this.keys[best]!);
-    this.keys[best] = key;
-    this.at.set(key, best);
-    this.used[best] = frame;
-    this.state[best] = 1;
-    this.since[best] = now;
-    return best;
-  }
-
-  /** Layer `k` has its picture, put there this frame, in its levels to `top`. */
-  filled(k: number, top: number): void {
-    this.state[k] = 2;
-    this.top[k] = top;
-  }
-
-  /** Layer `k` is let go, its picture having failed. */
-  empty(k: number): void {
-    if (this.keys[k]) this.at.delete(this.keys[k]!);
-    this.keys[k] = "";
-    this.state[k] = 0;
-    this.used[k] = -Infinity;
+/** The layers of the pictures' array (render/picture-layers.ts), a layer waiting for its picture kept LOAD_GIVES_UP. */
+export class FaceLayers extends PictureLayers {
+  constructor() {
+    super(LOAD_GIVES_UP * 1000);
   }
 }
 
@@ -292,15 +224,6 @@ interface Slot {
   loads: number;
   /** Whether it was given a screen this frame. */
   wanted: boolean;
-}
-
-/** A picture asked of the page: its layer's key, its path and layer, since when it has been waited for, and a count of uses. */
-interface Request {
-  key: string;
-  path: string;
-  layer: number;
-  since: number;
-  token: number;
 }
 
 /** What the screens on props are told each frame. */
@@ -331,6 +254,8 @@ export class FaceScreens {
   /** Whether a screen is in reach, so that the page's side is wanted. */
   wanted = false;
   readonly layers = new FaceLayers();
+  /** The pictures asked of the page and come from it, for the layers. */
+  private readonly loads = new PictureLoads<unknown>(this.layers, MAX_LOADS, FAILED_WAIT * 1000);
   readonly programme = new Programme();
   /** Per face of the list this frame, what it shows. */
   readonly shows: FaceShow[] = [];
@@ -344,11 +269,8 @@ export class FaceScreens {
   private retryMs = MANIFEST_RETRY * 1000;
   private library: FaceLibrary | null = null;
   private readonly slots: Slot[] = [];
-  private readonly requests: Request[] = [];
-  /** Files that failed, and the page's clock (ms) until which they are not asked for again. */
+  /** Clips that failed, and the page's clock (ms) until which they are not asked for again. */
   private readonly failed = new Map<string, number>();
-  /** Pictures come and waiting for the card: their layer, key and source. */
-  private readonly came: { layer: number; key: string; source: unknown }[] = [];
   private frame = 0;
   private now = 0;
   private lastDrawn = -Infinity;
@@ -372,12 +294,12 @@ export class FaceScreens {
 
   constructor() {
     for (let i = 0; i < MAX_FACES; i++) this.shows.push({ layer: -1, before: -1, wipe: 1, crop: new Float64Array(4), cropBefore: new Float64Array(4), mean: 0, meanBefore: 0, top: 0, topBefore: 0 });
-    for (let k = 0; k < MAX_LOADS; k++) this.requests.push({ key: "", path: "", layer: -1, since: 0, token: 0 });
   }
 
   /** The page's side, once it has come. */
   attach(host: FaceHost | null): void {
     this.host = host;
+    this.loads.host = host;
   }
 
   /** The library, for a test. */
@@ -401,11 +323,11 @@ export class FaceScreens {
     const layers = v.now - this.lastDrawn < IDLE_AFTER * 1000 ? v.layers : 0;
     if (layers !== this.layers.size) {
       this.layers.resize(layers);
-      this.came.length = 0;
+      this.loads.clear();
       for (const slot of this.slots) slot.shown = "";
     }
     p.faceLayers = layers;
-    this.sweep(v.now);
+    this.loads.sweep(this.frame, v.now);
     let id = this.manifestId;
     if (list.count > 0) {
       id = "";
@@ -418,6 +340,7 @@ export class FaceScreens {
       this.retryAt = -Infinity;
       this.retryMs = MANIFEST_RETRY * 1000;
       this.failed.clear();
+      this.loads.forget();
     }
     if (host && id && list.count > 0 && !this.library && v.now >= this.retryAt && (this.asking !== id || v.now - this.askedAt > LOAD_GIVES_UP * 1000)) this.fetchManifest(host, id, v.now);
     const lib = this.library;
@@ -460,11 +383,7 @@ export class FaceScreens {
     this.rest(!lib && !!id && v.now - this.manifestSince <= LOAD_GIVES_UP * 1000);
     // Pictures come since the last frame go to the card, as many as a frame takes.
     p.faceUploads = 0;
-    while (this.came.length > 0 && p.faceUploads < PICTURES_A_FRAME) {
-      const c = this.came.shift()!;
-      if (this.layers.keys[c.layer] !== c.key) continue;
-      this.upload(p, c.layer, c.source, false, FACE_WIDE, FACE_HIGH, FACE_LEVELS);
-    }
+    for (let c = p.faceUploads < PICTURES_A_FRAME ? this.loads.next() : null; c; c = p.faceUploads < PICTURES_A_FRAME ? this.loads.next() : null) this.upload(p, c.layer, c.source, false, FACE_WIDE, FACE_HIGH, FACE_LEVELS);
     for (let i = 0; i < drawn; i++) this.show(list, i, faces[list.kind[i]!]!, v, p);
   }
 
@@ -570,49 +489,7 @@ export class FaceScreens {
 
   /** The layer holding the picture at `path`, asked for where none does; -1 until it has come. */
   private picture(path: string, now: number): number {
-    const key = `i${path}`;
-    const k = this.layers.find(key, this.frame);
-    if (k >= 0) return this.layers.holds(k) ? k : -1;
-    const host = this.host, r = this.freeRequest();
-    if (!host || !r || this.dead(path)) return -1;
-    const layer = this.layers.take(key, this.frame, now);
-    if (layer < 0) return -1;
-    const token = ++r.token;
-    r.key = key;
-    r.path = path;
-    r.layer = layer;
-    r.since = now;
-    host.image(path, FACE_WIDE, FACE_HIGH).then((source) => {
-      if (r.token !== token || r.key !== key) return;
-      r.key = "";
-      this.came.push({ layer, key, source });
-    }, () => {
-      if (r.token !== token || r.key !== key) return;
-      r.key = "";
-      this.fail(path);
-      if (this.layers.keys[layer] === key) this.layers.empty(layer);
-    });
-    return -1;
-  }
-
-  private freeRequest(): Request | null {
-    for (const r of this.requests) if (!r.key) return r;
-    return null;
-  }
-
-  /**
-   * Lets go of the pictures asked for that no screen wants any more, whose layer has gone to another, or that have not
-   * come in LOAD_GIVES_UP: each frees its place for another, and the page stops fetching it.
-   */
-  private sweep(now: number): void {
-    for (const r of this.requests) {
-      if (!r.key) continue;
-      const mine = r.layer < this.layers.size && this.layers.keys[r.layer] === r.key;
-      if (mine && this.layers.used[r.layer]! >= this.frame - 1 && now - r.since <= LOAD_GIVES_UP * 1000) continue;
-      if (mine) this.layers.empty(r.layer);
-      this.host?.drop?.(r.path);
-      r.key = "";
-    }
+    return this.loads.want(`i${path}`, path, FACE_WIDE, FACE_HIGH, this.frame, now);
   }
 
   private upload(p: FramePacket, layer: number, source: unknown, video: boolean, width: number, height: number, made: number): void {

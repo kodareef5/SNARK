@@ -2,7 +2,7 @@
 // in the order the triangles first use them. Every score is made of square roots and the four operations, which IEEE 754
 // rounds exactly, so the order is the same on any machine.
 
-import { CLIP_ROOT_BYTES, MATERIAL_CUTOUT, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, clipRotBytes, detailsAtlas, lodSkin, lodSurface, lodVertices, parsePack, readIndices, type Pack, type PackLod } from "../../shared/pack/pack.ts";
+import { CLIP_ROOT_BYTES, MATERIAL_CUTOUT, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, clipRotBytes, detailsAtlas, lodSkin, lodSurface, lodVertices, meshFaces, parsePack, readIndices, type Pack, type PackLod } from "../../shared/pack/pack.ts";
 import { farMeshId } from "../../shared/pack/far.ts";
 import { PackBlob } from "./write.ts";
 
@@ -174,6 +174,18 @@ function orderSprays(indices: Uint32Array, first: number, count: number, vertice
   order.forEach((t, k) => indices.set(was.subarray(t * 3, t * 3 + 3), first + k * 3));
 }
 
+/** A material or landmark run may cross skin zones. Clothing still needs each zone's exact triangles. */
+function orderRun(indices: Uint32Array, first: number, count: number, vertexCount: number, zones?: number[], sprays?: Uint8Array): void {
+  const end = first + count;
+  for (let z = 0; first < end; z += 3) {
+    const stop = zones ? Math.min(end, zones[z + 1]! + zones[z + 2]!) : end;
+    if (stop <= first) continue;
+    if (sprays) orderSprays(indices, first, stop - first, sprays);
+    else cacheOrder(indices, first, stop - first, vertexCount);
+    first = stop;
+  }
+}
+
 /**
  * A level drawn with materials: vertices whose vertex, surface and skin bytes are all the same made one, then triangles
  * for the cache inside each run, then vertices, surfaces and skins in the order those first use them. A vertex made one
@@ -204,8 +216,7 @@ function orderRuns(pack: Pack, lod: PackLod, cutout: (material: number) => boole
   const vertices = permuted(allVertices, kept, VERTEX_BYTES);
   const runs = lod.sections!;
   for (let k = 0; k < runs.length; k += 3) {
-    if (cutout(runs[k]!)) orderSprays(indices, runs[k + 1]!, runs[k + 2]!, vertices);
-    else cacheOrder(indices, runs[k + 1]!, runs[k + 2]!, kept.length);
+    orderRun(indices, runs[k + 1]!, runs[k + 2]!, kept.length, lod.zones, cutout(runs[k]!) ? vertices : undefined);
   }
   const from = Array.from(fetchOrder(indices, kept.length), (k) => kept[k]!);
   return { indices, vertices: permuted(allVertices, from, VERTEX_BYTES), surface: permuted(allSurface, from, SURFACE_BYTES), skin: allSkin && permuted(allSkin, from, SKIN_BYTES) };
@@ -225,14 +236,15 @@ function weldFlat(pack: Pack, lod: PackLod, runs: readonly number[] = [lod.index
     return k;
   });
   const indices = readIndices(pack, lod).map((v) => to[v]!);
-  for (let k = 0, first = 0; k < runs.length; first += runs[k++]!) cacheOrder(indices, first, runs[k]!, kept.length);
+  for (let k = 0, first = 0; k < runs.length; first += runs[k++]!) orderRun(indices, first, runs[k]!, kept.length, lod.zones);
   const from = fetchOrder(indices, kept.length);
   return { indices, vertices: permuted(vertices, Array.from(from, (k) => kept[k]!), VERTEX_BYTES), surface: null, skin: null };
 }
 
 /**
  * The pack with every level ordered as above and written again in the same layout. Nothing moves between runs, and every
- * triangle keeps its corners in their order, with each corner's bytes as they were.
+ * triangle keeps its corners in their order, with each corner's bytes as they were. The finest level of a mesh with a
+ * face table is kept as it is: the table is by that level's vertices.
  */
 export function orderPack(file: Uint8Array): Uint8Array {
   const pack = parsePack(file);
@@ -244,7 +256,7 @@ export function orderPack(file: Uint8Array): Uint8Array {
   if (header.details) header.details.atlas.offset = out.append(detailsAtlas(pack));
   for (const mesh of header.meshes) {
     for (const [l, lod] of mesh.lods.entries()) {
-      const level = lod.sections ? orderRuns(pack, lod, cutout) : weldFlat(pack, lod, far.get(mesh.id)?.[l]);
+      const level = mesh.faces && l === 0 ? { indices: readIndices(pack, lod), vertices: lodVertices(pack, lod), surface: lodSurface(pack, lod), skin: lodSkin(pack, lod) } : lod.sections ? orderRuns(pack, lod, cutout) : weldFlat(pack, lod, far.get(mesh.id)?.[l]);
       lod.vertexCount = level.vertices.length / VERTEX_BYTES;
       lod.indexBytes = lod.vertexCount > 65535 ? 4 : 2;
       const idx = new Uint8Array(level.indices.length * lod.indexBytes);
@@ -255,6 +267,7 @@ export function orderPack(file: Uint8Array): Uint8Array {
       if (level.surface) lod.surfaceOffset = out.append(level.surface);
       if (level.skin) lod.skinOffset = out.append(level.skin);
     }
+    if (mesh.faces) mesh.faces.offset = out.append(meshFaces(pack, mesh)!);
   }
   for (const c of header.clips) {
     c.rotOffset = out.append(blob.subarray(c.rotOffset, c.rotOffset + c.frames * clipRotBytes(c.bones)));

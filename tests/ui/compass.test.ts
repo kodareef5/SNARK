@@ -175,7 +175,7 @@ test("the tape keeps out of the way: a scope, the map screen, the setting, the m
   // The offer to unmute stands under it.
   const m = model(0), f = build(m);
   expect(m.compassBottom).toBeGreaterThan(0);
-  unmuteButton(f, null, null, m.compassBottom);
+  unmuteButton(f, m.compassBottom);
   const offer = nodes(f).filter((n) => n.interactive && n.label === "Sound is off: unmute")[0]!;
   expect(offer.y).toBeGreaterThanOrEqual(m.compassBottom);
   for (const n of tape(f)) expect(n.y + n.h).toBeLessThanOrEqual(offer.y);

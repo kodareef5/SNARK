@@ -17,7 +17,7 @@ import { listBackups } from "./backup.ts";
 import { refuseNetworkDisk } from "./disk.ts";
 import { holdSave, type SaveLock } from "./lock.ts";
 
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 /**
  * A chunk's structures as what differs from the map. Integers are little-endian, and a varint is 7 bits a byte, low first.
  *   format u8, the chunk's map slots u16

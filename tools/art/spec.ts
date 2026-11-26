@@ -7,7 +7,10 @@ import { ZONE_ARM_L, ZONE_ARM_R, ZONE_FOOT_L, ZONE_FOOT_R, ZONE_HAND_L, ZONE_HAN
 import type { TextureRole } from "../../shared/pack/texture.ts";
 import type { PackRig } from "../../shared/pack/pack.ts";
 import type { SourceMesh } from "../pack/write.ts";
+import type { ScriptedBody } from "../pack/body.ts";
 import type { ClipSpec } from "../pack/anim.ts";
+import type { CookMaterial } from "../pack/body.ts";
+import type { FittedBody } from "../makehuman/fit.ts";
 
 export type AssetSpec = CreatureAsset | PiecesAsset | HumanClipsAsset | HumanBodiesAsset | SkyAsset | WaterAsset | DetailsAsset;
 
@@ -124,8 +127,17 @@ export interface MaterialSpec {
   /** The widest a map is stored, where its content needs less than its picture: `--check` notes the side each needs. */
   readonly tops?: Readonly<Partial<Record<TextureRole, number>>>;
   readonly twoSided?: boolean;
+  /** Roles whose textures are another material's of the same asset, named here, whose pictures for them are these: one texture serves both. */
+  readonly borrows?: { readonly from: string; readonly roles: readonly TextureRole[] };
   /** Nothing is drawn where the base colour's alpha is under this. `true` is 0.5. */
   readonly cutout?: boolean | number;
+  /**
+   * A cut-out whose mips keep as much over the cutoff as its top mip (tools/pack/image.ts baseMips), so it stays as full
+   * far off. A number is an atlas's cells side by side, each kept on its own.
+   */
+  readonly coverage?: boolean | number;
+  /** Never drawn into a shadow (shared/pack/pack.ts `MATERIAL_SHADOWLESS`): a hair's cards. */
+  readonly shadowless?: boolean;
   /** Metres one whole picture spans, for a material that tiles. Measured on the meshes where not given. */
   readonly tiles?: number;
   /** A thin sheet's: how much of the light on one face its other face shows, 0 to 1 (shared/pack/finish.ts). */
@@ -479,23 +491,52 @@ export interface HumanBodiesAsset {
     readonly visor?: boolean;
     /** Slot 3 draws a powered exhaust plume in its own local coordinates. */
     readonly exhaust?: boolean;
-    readonly make: (body: readonly SourceMesh[], rig: PackRig) => SourceMesh[];
+    /** `shift` moves a point drawn on the Quaternius body to sit as it did on the body worn, where that is another. */
+    readonly make: (body: readonly SourceMesh[], rig: PackRig, shift?: (p: [number, number, number]) => [number, number, number]) => SourceMesh[];
   };
   readonly materials?: Readonly<Record<string, MaterialSpec>>;
   readonly kind: "human-bodies";
   /** A folder under assets/raw that the paths below are in. */
   readonly raw: string;
-  /** Triangles at each level, for a whole body, a hair or beard, and one part of an outfit. */
-  readonly triangles: { readonly body: readonly number[]; readonly hair: readonly number[]; readonly armor: readonly number[] };
+  /**
+   * Triangles at each level, the finest first, for a hair or beard (made by assets/source/core/humans/hair/) and a whole
+   * armor set. A source with more than the finest's is brought down to it. The levels before `flat` keep their surface.
+   */
+  readonly triangles: { readonly hair: readonly number[]; readonly armor: readonly number[] };
+  readonly flat: number;
+  /**
+   * The bare bodies: MakeHuman's base fitted to `rigs` (tools/makehuman/fit.ts), its triangles a level, and the materials,
+   * by their names in `materials`, of each sex's skin, the eyes and the brows. Armor and the tailored outfit come from the
+   * Quaternius bodies of `bodies`; hair and beards are made on MakeHuman's head.
+   */
+  readonly makehuman: { readonly triangles: readonly number[]; readonly skin: readonly [string, string]; readonly eyes: string; readonly brows: string };
+  /** The material each source material is drawn with, by the source's name for it and the name `materials` gives it. */
+  readonly dressed: Readonly<Record<string, string>>;
+  /**
+   * Garment cuts made by script on each cooked MakeHuman body (assets/source/core/humans/garments/): each a mesh of its
+   * own, drawn with the material `materials` names.
+   */
+  readonly garments?: {
+    readonly make: (meshes: readonly SourceMesh[], id: string, rest: ArrayLike<number>) => readonly { readonly id: string; readonly material: string; readonly body: ScriptedBody; readonly triangles: readonly number[]; readonly flat?: number; readonly print?: readonly [number, number, number, number]; readonly lines: readonly string[] }[];
+  };
   /** In the order of SEX_IDS. `outfits` is how its outfit files and textures are named. */
   readonly bodies: readonly { readonly file: string; readonly material: string; readonly texture: string; readonly outfits: string }[];
-  readonly eyes: string;
-  readonly hair: string;
+  /** Each body's joint rests, in the order of SEX_IDS. The cook writes these and refuses a body whose joints sit more than 3 mm off. */
+  readonly rigs: readonly (readonly number[])[];
+  /**
+   * Makes every hair and beard style for one sex on the MakeHuman body it is drawn on, as meshes under `id`
+   * (assets/source/core/humans/hair/). `levels` are the hair's triangles a level and `flat` its first flat level.
+   */
+  readonly hair: {
+    readonly make: (body: FittedBody, sex: number, id: string, rig: string, core: CookMaterial, cards: CookMaterial, levels: readonly number[], flat: number) => { meshes: SourceMesh[]; lines: string[] };
+  };
   readonly outfits: {
     readonly folder: string;
     readonly files: readonly string[];
     /** An armor set is an outfit's parts together. `texture` is its base colour. */
     readonly sets: readonly { readonly id: string; readonly parts: readonly string[]; readonly texture: string }[];
+    /** The outfits' own skin, by source material: left out, and the body's own skin put in where it shows (tools/pack/liner.ts). */
+    readonly skin?: readonly string[];
   };
 }
 

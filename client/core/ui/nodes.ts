@@ -90,10 +90,38 @@ export interface UiNode {
   owner: number;
   /** Its screen drew it with the HUD (Screen.play), not as the open screen. */
   inPlay: boolean;
+  /** Its box is the ellipse inside it: a press on a corner goes to what lies under. */
+  round: boolean;
 }
 
 /** HUD widget i stamps its nodes with this less i. */
 export const WIDGET_OWNER = -2;
+
+/** A paint for a pen: a colour, or a gradient the pen made. */
+export type Ink = string | { addColorStop(at: number, colour: string): void };
+
+/** The part of a page's 2D context a painted picture draws with. Core names no browser type. */
+export interface Pen {
+  fillStyle: unknown;
+  strokeStyle: unknown;
+  lineWidth: number;
+  globalAlpha: number;
+  globalCompositeOperation: string;
+  save(): void;
+  restore(): void;
+  translate(x: number, y: number): void;
+  rotate(angle: number): void;
+  scale(x: number, y: number): void;
+  beginPath(): void;
+  closePath(): void;
+  moveTo(x: number, y: number): void;
+  lineTo(x: number, y: number): void;
+  arc(x: number, y: number, radius: number, from: number, to: number, counter?: boolean): void;
+  fill(): void;
+  stroke(): void;
+  createLinearGradient(x0: number, y0: number, x1: number, y1: number): Exclude<Ink, string>;
+  createRadialGradient(x0: number, y0: number, r0: number, x1: number, y1: number, r1: number): Exclude<Ink, string>;
+}
 
 export interface UiImage {
   width: number;
@@ -109,6 +137,11 @@ export interface UiImage {
    * pictures. `data` may then be empty, and is the same picture where a tool fills it.
    */
   url?: string;
+  /**
+   * Draws the picture on a clear canvas of `width` by `height`, each time `version` changes: glass that turns or opens
+   * (ui/touch-glass.ts). `data` is then empty.
+   */
+  paint?(pen: Pen): void;
 }
 
 /** Where a screen finds the picture of a definition (client/core/assets/icons.ts). */
@@ -149,7 +182,7 @@ export class UiFrame {
   add(key: number, kind: number, x: number, y: number, w: number, h: number, style: number): UiNode {
     let n = this.nodes[this.count];
     if (!n) {
-      n = { key: 0, kind: 0, x: 0, y: 0, w: 0, h: 0, style: 0, text: "", runs: null, label: "", value: 0, step: .01, image: 0, sx: 0, sy: 0, sw: 0, sh: 0, interactive: false, focus: false, tint: -1, alpha: 1, owner: -1, inPlay: false };
+      n = { key: 0, kind: 0, x: 0, y: 0, w: 0, h: 0, style: 0, text: "", runs: null, label: "", value: 0, step: .01, image: 0, sx: 0, sy: 0, sw: 0, sh: 0, interactive: false, focus: false, tint: -1, alpha: 1, owner: -1, inPlay: false, round: false };
       this.nodes.push(n);
     }
     this.count++;
@@ -173,6 +206,7 @@ export class UiFrame {
     n.alpha = 1;
     n.owner = this.owner;
     n.inPlay = this.inPlay;
+    n.round = false;
     return n;
   }
 

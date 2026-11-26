@@ -16,6 +16,8 @@ export interface ScreenCtx {
   /** Null until the first build. */
   hud: HudModel | null;
   readonly settings: Settings;
+  touchDock?: typeof import("./touch-dock.ts");
+  touchHelp?: boolean;
   /** The node with the menu's focus. */
   focus: number;
   /** 0 the keyboard and mouse, 1 a pad, 2 a finger. */
@@ -42,6 +44,8 @@ export interface ScreenCtx {
   adjust(by: number, end: boolean): boolean;
   /** Presses and lets go of a key as the keyboard would, through the app's key rows. */
   pressKey(code: string): void;
+  /** Holds a key down or lets it go, as a finger on a control that stands for it. */
+  holdKey(code: string, down: boolean): void;
   /** Every screen of the list, in its order. */
   readonly screens: readonly Screen[];
   /** The view rests on something that can be attacked. */

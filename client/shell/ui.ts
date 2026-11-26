@@ -27,6 +27,7 @@ interface Bound {
   interactive: boolean;
   tint: number;
   alpha: number;
+  round: boolean;
   order: number;
   seen: number;
   label: string;
@@ -169,7 +170,13 @@ export class UiView {
           b.image = image; b.version = image.version;
           b.sx = n.sx; b.sy = n.sy; b.sw = w; b.sh = h;
           const canvas = b.el as HTMLCanvasElement;
-          if (image.url) {
+          if (image.paint) {
+            s.background = "none";
+            s.imageRendering = "auto";
+            // Setting a canvas's size clears it.
+            canvas.width = image.width; canvas.height = image.height;
+            image.paint(canvas.getContext("2d")!);
+          } else if (image.url) {
             if (canvas.width !== 1) canvas.width = 1;
             s.background = `url("${image.url}") ${n.sx / Math.max(1, image.width - w) * 100}% ${n.sy / Math.max(1, image.height - h) * 100}% / ${image.width / w * 100}% ${image.height / h * 100}% no-repeat`;
             s.imageRendering = "auto";
@@ -181,6 +188,10 @@ export class UiView {
             canvas.getContext("2d")!.putImageData(new ImageData(image.data as Uint8ClampedArray<ArrayBuffer>, image.width, image.height), -n.sx, -n.sy, n.sx, n.sy, w, h);
           }
         }
+      }
+      if (b.round !== n.round) {
+        b.round = n.round;
+        s.borderRadius = n.round ? "50%" : "";
       }
       if (b.interactive !== n.interactive) {
         b.interactive = n.interactive;
@@ -236,7 +247,7 @@ export class UiView {
     el.dataset.k = String(n.key);
     el.style.pointerEvents = "none";
     this.root.append(el);
-    const b: Bound = { el, fill, kind: n.kind, x: NaN, y: NaN, w: NaN, h: NaN, style: -1, text: "", runs: null, label: "", value: NaN, version: 0, sx: -1, sy: -1, sw: 0, sh: 0, interactive: false, tint: -2, alpha: 1, order: -1, seen: 0 };
+    const b: Bound = { el, fill, kind: n.kind, x: NaN, y: NaN, w: NaN, h: NaN, style: -1, text: "", runs: null, label: "", value: NaN, version: 0, sx: -1, sy: -1, sw: 0, sh: 0, interactive: false, tint: -2, alpha: 1, round: false, order: -1, seen: 0 };
     this.bound.set(n.key, b);
     return b;
   }

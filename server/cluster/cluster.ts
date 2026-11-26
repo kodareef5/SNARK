@@ -1,4 +1,4 @@
-import { addBrowserHash,hasBrowserHash,ownsSurvivor } from "../survivor-access.ts";
+import { addBrowserHash,hasBrowserHash,ownerOf,ownsAs } from "../survivor-access.ts";
 // The servers of a cluster as one of them sees them, and the survivors that leave it for another and come from one. The
 // design, its durable states and how each is recovered are in planning/architecture/transfers.md.
 
@@ -97,6 +97,12 @@ export class Cluster {
   private files: Announcement["files"];
   /** The wall clock, in milliseconds. Tickets end by it, and time in transit is measured by it. */
   now: () => number = () => Date.now();
+  /** The account the browser with this key is signed in as, or "" (server/signin/method.ts). */
+  signedAs: (key: Uint8Array) => string = () => "";
+  /** Does this world require an account for its survivors? */
+  accountsRequired: () => boolean = () => false;
+  /** Signs a key hash in as the account its arriving survivor belongs to. */
+  carry: (keyHash: Uint8Array, subject: string) => void = () => {};
   /** What recovering at the load did, one line each. */
   readonly recovered: string[] = [];
   /** Names given out here whose survivor is elsewhere. */
@@ -338,6 +344,7 @@ export class Cluster {
     const ticket = crypto.getRandomValues(new Uint8Array(TICKET_BYTES));
     const id = hex(ticket.subarray(0, 16));
     const tribe = tribes.of(rec);
+    const subject = this.signedAs(c.key);
     const head: ParcelHead = {
       format: PARCEL_FORMAT,
       id,
@@ -352,6 +359,7 @@ export class Cluster {
       expires: this.now() + TICKET_SECONDS * 1000,
       ticket: sha256(ticket.subarray(16)),
       key: rec.keyHash ? hex(rec.keyHash) : "",
+      ...(subject && subject === ownerOf(rec) ? { signedAs: subject } : {}),
       content: reg.coreHash,
       tribe: tribe ? { team: tribe.id, name: tribe.name, owner: tribe.owner === rec.pid } : null,
       items: Object.fromEntries([...held].map(([item, n]) => [reg.ids[item]!, n])),
@@ -384,6 +392,15 @@ export class Cluster {
     return "";
   }
 
+  /** The account vouched for by a still-unused ticket to this world. Admission checks it before claiming the parcel. */
+  arrivingAccount(name: string, ticket: Uint8Array): string {
+    const place = this.folder.place(hex(ticket.subarray(0, 16)));
+    if (!place || place.by !== 0) return "";
+    const head = this.read(place)?.head;
+    if (!head || head.to !== this.world || head.name !== name || (head.expires && this.now() >= head.expires)) return "";
+    return sha256(ticket.subarray(16, TICKET_BYTES)) === head.ticket ? head.signedAs ?? "" : "";
+  }
+
   /**
    * A survivor arrives with a ticket, for a session with this name and device key. Returns why not, or "" once it is here and
    * bound to that key: its file is taken, so nobody else can take it, and the next commit saves it here.
@@ -413,6 +430,8 @@ export class Cluster {
     } catch (err) {
       return `${head.name} cannot come here: ${err instanceof Error ? err.message : String(err)}`;
     }
+    const owner = ownerOf(recs[0]!);
+    if (owner && this.accountsRequired() && (head.signedAs || this.signedAs(key)) !== owner) return "this survivor belongs to another account";
     const refused = ctx.bus.before(TRANSFER_IN_EVENT, { op: "survivor", what: head.name });
     if (refused !== "") return refused;
     const keyHash = hashKey(key);
@@ -447,8 +466,8 @@ export class Cluster {
     if (place.by !== 0) return `${name} is on ${this.serverName(place.by)}: travel back from there`;
     const parcel = this.read(place);
     if (!parcel) return `${name}'s file in the cluster's folder is damaged: ask an operator`;
-    let owner=parcel.head.key!=="" && hex(hashKey(key))===parcel.head.key;
-    if(!owner){try{owner=ownsSurvivor(parcelRecords(this.ctx!.reg,parcel)[0]!,key);}catch{}}
+    let owner = !this.accountsRequired() && parcel.head.key !== "" && hex(hashKey(key)) === parcel.head.key;
+    if(!owner){try{owner=ownsAs(parcelRecords(this.ctx!.reg,parcel)[0]!,key,this.signedAs(key));}catch{}}
     if (!owner) return `${name} is travelling to ${this.serverName(a.to)}`;
     return this.takeBack(parcel, false) ? "" : `${name} is on ${this.serverName(a.to)}: travel back from there`;
   }
@@ -511,6 +530,8 @@ export class Cluster {
     if (key.length > 0) {
       if(rec.keyHash && hasBrowserHash(rec,key) && hex(rec.keyHash)!==hex(key))addBrowserHash(rec,rec.keyHash);
       rec.keyHash = key.slice();
+      // The browser at this address is another key, and is signed in as the survivor's account from here on.
+      if (head.from !== this.world && head.signedAs) this.carry(key, head.signedAs);
     }
     // Every arrival, home included, chooses where it rises, at a spawn point or a bed of its tribe's, as on ARK's spawn screen,
     // and never where it last stood: that would let one leave from inside a base it broke into and come back inside it. Until

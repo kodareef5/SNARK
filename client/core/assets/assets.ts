@@ -101,11 +101,12 @@ export class Assets {
 
   /**
    * The level to draw something at, `distance` metres off, whose levels lie `errors` metres from its finest: the
-   * coarsest whose error covers no more pixels than the tier lets pass. `was` is the level it had last, or -1.
+   * coarsest whose error covers no more pixels than the tier lets pass, and none finer than `least`. `was` is the level
+   * it had last, or -1.
    */
-  choose(errors: readonly number[], distance: number, was: number): number {
+  choose(errors: readonly number[], distance: number, was: number, least = 0): number {
     const allowed = (this.tier.threshold * this.residency.relax * distance) / this.scale;
-    const finest = Math.min(this.tier.finest, errors.length - 1);
+    const finest = Math.min(Math.max(this.tier.finest, least), errors.length - 1);
     const want = within(errors, finest, allowed);
     if (was < 0 || was >= errors.length || want === was) return want;
     if (want > was) return Math.max(was, within(errors, finest, allowed * (1 - HYSTERESIS)));
@@ -189,6 +190,31 @@ export class Assets {
   /** The clips of the manifest's skeleton `c`, or null until they have come. */
   clips(c: number): ClipSet | null {
     return this.residency.clips(c);
+  }
+
+  /** Whether the manifest has a face table for `mesh`. */
+  facesOf(mesh: number): boolean {
+    return this.residency.facesOf(mesh);
+  }
+
+  /** Says the face table of `mesh` is wanted: asked for at once and until it comes, then kept. Once is enough. */
+  wantFaces(mesh: number): void {
+    this.residency.wantFaces(mesh);
+  }
+
+  /** The face table of `mesh` as the bytes that came, or null until they have. */
+  faces(mesh: number): Uint8Array | null {
+    return this.residency.faces(mesh);
+  }
+
+  /** From now on keeps a copy of a level's bytes and its surface's as they reach the card (Residency.keepBytes). */
+  keepBytes(mesh: number, level: number): void {
+    this.residency.keepBytes(mesh, level);
+  }
+
+  /** The copies `keepBytes` keeps, once both are (Residency.keptBytes). */
+  keptBytes(mesh: number, level: number): ReturnType<Residency["keptBytes"]> {
+    return this.residency.keptBytes(mesh, level);
   }
 
   /**

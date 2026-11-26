@@ -36,6 +36,9 @@
 //             zigzagged as i32, in four planes of bytes
 //
 // A flat level stores no normals. The renderer derives the face normal for flat shading.
+//
+//   faces     a mesh's face table (shared/people/faces.ts), one run of bytes the pack does not read: the client fetches
+//             it after the first frame and keeps it as bytes, never on the graphics card
 
 import type { Clip, ClipSet } from "../anim/clip.ts";
 import { hashBytes, hashString } from "../hash.ts";
@@ -73,7 +76,16 @@ export interface PackLod {
    * index, how many. The runs follow one another and cover the level. Absent in a flat level.
    */
   sections?: number[];
+  /**
+   * The runs of indices of each skin zone (shared/anim/skin-zones.ts), three numbers a run: zone, first index, how many.
+   * Within each section a level's triangles go by zone, so a zone has one run a section. The runs follow one another and
+   * cover the level. Absent where the level is not cut by zone.
+   */
+  zones?: number[];
 }
+
+/** The most skin zones a level may name: a part's hide mask is a 32-bit word. */
+export const MOST_ZONES = 32;
 
 /** PackMaterial.flags. A cut-out material shows nothing where the base colour's alpha is under `cutoff`. */
 export const MATERIAL_TWO_SIDED = 1;
@@ -88,6 +100,8 @@ export const MATERIAL_INDICATOR = 16;
 export const MATERIAL_EXHAUST = 32;
 /** Light with no surface of its own: drawn after everything opaque, blended over it, showing both faces and writing no depth. */
 export const MATERIAL_BLEND = 64;
+/** Never drawn into a shadow map: a hair's cut-out cards, whose solid core casts for them. */
+export const MATERIAL_SHADOWLESS = 128;
 
 export interface PackMaterial {
   id: string;
@@ -156,6 +170,8 @@ export interface PackMesh {
   uv?: [number, number, number, number];
   /** Drawn see-through, its finishes showing their share (shared/pack/finish.ts). */
   seeThrough?: boolean;
+  /** Where its face table is (see the top of this file). Absent for none. */
+  faces?: { offset: number; length: number };
 }
 
 /** Native upright-grip calibration at unit hand size. Twelve values per radius, six per hand (left then right): marker X/Z,
@@ -185,6 +201,20 @@ export interface PackHitSurface {
   root: number;
   zone: number;
   bones: { bone: number; pieces: { box: number[]; planes: number[] }[] }[];
+}
+
+/** Restores the contact geometry by rig id, including when landmarks have added more rigs. */
+export function rigsWithHits(rigs: readonly PackRig[], text: string): PackRig[] {
+  const rows = new Map(Object.entries(JSON.parse(text) as Record<string, PackHitSurface[]>));
+  const result = rigs.map((rig) => {
+    const hitSurfaces = rows.get(rig.id);
+    if (hitSurfaces === undefined) return rig;
+    if (!Array.isArray(hitSurfaces)) throw new Error(`pack: invalid hit surfaces for ${rig.id}`);
+    rows.delete(rig.id);
+    return { ...rig, hitSurfaces };
+  });
+  if (rows.size) throw new Error("pack: hit surfaces refer to an unknown rig");
+  return result;
 }
 
 /** Rig proportions and anatomy, with each rest joint in model space. */
@@ -292,7 +322,10 @@ export function parsePack(file: Uint8Array): Pack {
     m.lods.forEach((lod, level) => {
       if ((lod.surfaceOffset !== undefined) !== level < (m.flat ?? 0)) throw new Error(`pack: mesh ${m.id} does not turn flat where it says`);
     });
+    const f = m.faces;
+    if (f && !(Number.isSafeInteger(f.offset) && Number.isSafeInteger(f.length) && f.offset >= 0 && f.length > 0 && f.offset + f.length <= blob.length)) throw new Error(`pack: the face table of ${m.id} points outside the file`);
     for (const lod of m.lods) {
+      if (lod.zones !== undefined) checkZones(lod.zones, lod.sections, lod.indexCount, m.id);
       if (lod.vertexOffset + lod.vertexCount * VERTEX_BYTES > blob.length || lod.indexOffset + lod.indexCount * lod.indexBytes > blob.length) {
         throw new Error(`pack: mesh ${m.id} points outside the file`);
       }
@@ -357,6 +390,21 @@ export function parsePack(file: Uint8Array): Pack {
   return { header, blob, blobAt: 12 + jsonLength, palette: blob.subarray(header.paletteOffset, header.paletteOffset + 1024), meshIndex, clips: decodeClips(header.clips, blob) };
 }
 
+/** Throws unless `zones` are runs that follow one another, cover `indexCount` indices and stay each within one of `sections`. */
+export function checkZones(zones: readonly number[], sections: readonly number[] | undefined, indexCount: number, id: string, of = "pack"): void {
+  const ends: number[] = [];
+  for (let k = 0; k + 2 < (sections?.length ?? 0); k += 3) ends.push(sections![k + 1]! + sections![k + 2]!);
+  let next = 0;
+  for (let k = 0; k < zones.length; k += 3) {
+    const [zone, first, count] = [zones[k]!, zones[k + 1]!, zones[k + 2]!];
+    if (!(Number.isInteger(zone) && zone >= 0 && zone < MOST_ZONES) || first !== next || !(count > 0 && count % 3 === 0)) throw new Error(`${of}: a level of ${id} has a zone that does not fit`);
+    next += count;
+    // A run that ends inside a section ends where the next run of that section begins, so no run spans two sections.
+    for (const end of ends) if (first < end && next > end) throw new Error(`${of}: a zone of a level of ${id} runs across two sections`);
+  }
+  if (zones.length % 3 !== 0 || next !== indexCount) throw new Error(`${of}: the zones of a level of ${id} do not cover it`);
+}
+
 const unzig = (z: number): number => (z >>> 1) ^ -(z & 1);
 
 /** The clips `list` names in `blob`. A clip's hash is taken over the bytes it is stored in. */
@@ -411,6 +459,11 @@ export function decodeClips(list: readonly PackClip[], blob: Uint8Array): ClipSe
 export function detailsAtlas(pack: Pack): Uint8Array {
   const d = pack.header.details;
   return d ? pack.blob.subarray(d.atlas.offset, d.atlas.offset + atlasBytes(d.atlas.side >> (d.atlas.firstMip ?? 0))) : new Uint8Array(0);
+}
+
+/** A mesh's face table as a view into the pack, or null for a mesh that has none. */
+export function meshFaces(pack: Pack, m: PackMesh): Uint8Array | null {
+  return m.faces ? pack.blob.subarray(m.faces.offset, m.faces.offset + m.faces.length) : null;
 }
 
 /** lodVertices and lodIndices return views into the pack. Indices are little-endian, `indexBytes` each. */

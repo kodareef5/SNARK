@@ -42,6 +42,34 @@ export function studioContent(defs: readonly Def[]): Def[] {
   return defs.filter((def) => !omitted.has(def.id));
 }
 
+/** The first file in `assets` whose name starts with `prefix`, as a page names it. */
+function assetNamed(assets: string): (prefix: string) => string {
+  const files = readdirSync(assets).sort();
+  return (prefix) => "assets/" + files.find((n) => n.startsWith(prefix) && !n.endsWith(".br"));
+}
+
+function entryBundle(dist: string, releases: unknown) {
+  const named = assetNamed(join(dist, "assets"));
+  return {
+    outdir: dist,
+    target: "browser" as const,
+    minify: true,
+    define: { __TITLE_RELEASES__: JSON.stringify(releases), __SKY_FILE__: JSON.stringify(named("sky.")), __HUD_ATLAS_URL__: JSON.stringify(named("hud.")) },
+  };
+}
+
+/**
+ * The person stage, which an admin page holds in an iframe to draw one person (client/entry/person-stage.ts). It needs
+ * nothing of buildEntry's but its files, so it can be built again alone into a built client.
+ */
+export async function buildPersonStage(dist: string): Promise<void> {
+  const source = resolve(import.meta.dir, "../client/entry");
+  const built = await Bun.build({ ...entryBundle(dist, []), entrypoints: [join(source, "person-stage.ts")], naming: "[name].[ext]" });
+  if (!built.success) throw Error(built.logs.map(String).join("\n"));
+  cpSync(join(source, "person-stage.html"), join(dist, "person-stage.html"));
+  for (const name of ["person-stage.html", "person-stage.js"]) writeFileSync(join(dist, name + ".br"), brotliCompressSync(readFileSync(join(dist, name))));
+}
+
 /** The title has its own small initial bundle. The title, the wiki model viewer, and the admin camera studio open their native views on demand. */
 export async function buildEntry(dist: string): Promise<void> {
   const source = resolve(import.meta.dir, "../client/entry"),
@@ -50,15 +78,9 @@ export async function buildEntry(dist: string): Promise<void> {
   // The package's version is read, not imported: package.json is outside every zone the check knows.
   const project = JSON.parse(readFileSync(resolve(source, "../../package.json"), "utf8")) as { version: string };
   const releases = titleReleases(changelog, project.version);
-  const files = readdirSync(assets).sort();
-  const named = (prefix: string) => "assets/" + files.find((n) => n.startsWith(prefix) && !n.endsWith(".br"));
+  const named = assetNamed(assets);
   const manifest = parseManifest(readFileSync(join(assets, "manifest.json"), "utf8"));
-  const bundle = {
-    outdir: dist,
-    target: "browser" as const,
-    minify: true,
-    define: { __TITLE_RELEASES__: JSON.stringify(releases), __SKY_FILE__: JSON.stringify(named("sky.")), __HUD_ATLAS_URL__: JSON.stringify(named("hud.")) },
-  };
+  const bundle = entryBundle(dist, releases);
   const entry = await Bun.build({
     ...bundle, entrypoints: [join(source, "entry.ts")], splitting: true,
     naming: { entry: "[name].[ext]", chunk: "entry-chunks/[name]-[hash].[ext]" },
@@ -68,6 +90,7 @@ export async function buildEntry(dist: string): Promise<void> {
     naming: "[name].[ext]",
   });
   for (const built of [entry, result]) if (!built.success) throw Error(built.logs.map(String).join("\n"));
+  await buildPersonStage(dist);
   for (const output of entry.outputs) {
     if (output.kind === "chunk") writeFileSync(output.path + ".br", brotliCompressSync(readFileSync(output.path)));
   }

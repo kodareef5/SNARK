@@ -61,7 +61,7 @@ function setup(host = {}) {
 
 test("an inventory with an equipment tail: things land in the bag, an armor slot takes only its piece, and a weapon moves with what it holds", () => {
   const inv = new Inventory(8 + GEAR_SLOTS, 8);
-  expect([inv.bag, inv.hotbar, inv.armor, inv.cap]).toEqual([8, 8, 18, 23]);
+  expect([inv.bag, inv.hotbar, inv.armor, inv.wardrobe, inv.cap]).toEqual([8, 8, 18, 23, 28]);
   expect(new Inventory(40).hotbar).toBe(-1);
   // Adding fills only the bag. Eight stacks of 100 leave 200 over.
   expect(inv.add(id("stone"), 1000, 0, 0, 0, reg)).toBe(200);
@@ -429,7 +429,7 @@ test("equipment survives death in the cache and a restart in the save: rounds lo
   expect(h2.host.items.audit()).toEqual([]);
   const rec2 = h2.host.records.byPid.get(pid)!;
   const inv2 = h2.host.items.inv(rec2);
-  expect([inv2.cap, inv2.bag]).toEqual([55, 40]);
+  expect([inv2.cap, inv2.bag]).toEqual([40 + GEAR_SLOTS, 40]);
   expect([inv2.item[hot + 1], inv2.ammo[hot + 1], inv2.loaded[hot + 1], inv2.attach[hot + 1], inv2.dur[hot + 1]]).toEqual([id("rifle"), id("round_rifle"), 1, id("scope"), 31]);
   expect(inv2.item[inv2.armor]).toBe(id("meridian_hat"));
   expect(rec2.held).toBe(1);
@@ -630,7 +630,7 @@ artTest("the client draws what is worn and held, and the hotbar and inventory sc
   run(150);
   expect(sent.slice(-5).every((op) => op === CMD_SELECT)).toBe(true);
 
-  // Seen by another, the hat hides the hair and the shirt replaces the bare torso.
+  // Another player sees the hair fitted under the hide hat and the shirt over the torso.
   app.key("Digit2", true);
   const bo = new App(h.join("bo", { latencyMs: 20 }, { manual: true }), h.reg, pack);
   // He looks from the eye too, so his own body is not among what he sees of her.
@@ -650,7 +650,11 @@ artTest("the client draws what is worn and held, and the hotbar and inventory sc
     seen = bo.frame(now, 1280, 720);
   });
   const others = [...seen!.drawMesh.subarray(0, seen!.drawCount)].filter((_, d) => (seen!.drawFlags[d]! & (DRAW_SKINNED | DRAW_NEAR)) === DRAW_SKINNED).map((m) => pack.header.meshes[m]!.id);
-  expect(others.sort()).toEqual(["core:bow", "core:human_m/armor/hide/head", "core:human_m/armor/hide/torso", "core:human_m/feet", "core:human_m/hands", "core:human_m/head", "core:human_m/legs"]);
+  expect(others.sort()).toEqual([
+    "core:bow", "core:human_m/armor/hide/head", "core:human_m/armor/hide/torso",
+    "core:human_m/feet", "core:human_m/hair/buzzed/under-hat", "core:human_m/hands",
+    "core:human_m/head", "core:human_m/legs",
+  ]);
 
   // Wear the complete suit from the inventory and inspect the first-person pass.
   app.key("KeyI", true);

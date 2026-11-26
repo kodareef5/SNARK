@@ -53,14 +53,14 @@ export const READOUT: HudWidget<ReadoutModel> = {
   build(f, m, at) {
     const { left, top, lh, readW } = at;
     if (at.controls && !m.out && !m.bare) {
-      const x = at.touch ? at.touch.topEnd + 2 : left;
-      const y = at.touch ? at.touch.vitalsY : f.top + 37;
-      const w = at.touch ? 32 : 26;
+      const x = at.touch ? at.touch.toolsX + at.touch.toolSize : left;
+      const y = at.touch ? at.touch.toolsY : f.top + 37;
+      const w = at.touch?.toolSize ?? 26;
       if (x + w < (at.options.minimap ? at.mapX - 4 : at.right)) {
-        const hit = f.add(KEY_FIELD_TELEMETRY, K_BUTTON, x, y, w, at.touch ? 32 : 21, S_HUD_HIT);
+        const hit = f.add(KEY_FIELD_TELEMETRY, K_BUTTON, x, y, w, at.touch ? w : 21, S_HUD_HIT);
         hit.label = at.readout ? "Hide diagnostics" : "Show FPS and coordinates";
         hit.interactive = true; hit.alpha = at.readout ? 1 : .76;
-        glyph(f, KEY_FIELD_TELEMETRY + 60000, hit, "telemetry", "⌁", 0.8);
+        glyph(f, KEY_FIELD_TELEMETRY + 60000, hit, "telemetry", "⌁", at.touch ? .46 : .8);
       }
     }
     if (at.readout && !at.inspect) {

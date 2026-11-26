@@ -15,6 +15,8 @@ import type { SiteLink } from "../travel.ts";
 /** Keys the creative password's field types with, which the menu does not take from it. */
 const FIELD_KEEPS = ["Escape", "Tab", "Enter", "NumpadEnter", "ArrowUp", "ArrowDown", "ShiftLeft", "ShiftRight"];
 
+export const KEY_TOUCH_HELP = 5407;
+
 export class MenuScreen implements Screen {
   readonly name = "menu";
   readonly layer = "modal";
@@ -45,6 +47,7 @@ export class MenuScreen implements Screen {
   menu = false;
   options = false;
   help = false;
+  private helpFromPlay = false;
   helpDevice = 0;
   helpGroup = 0;
   /** The Creative page, within the menu. */
@@ -94,7 +97,7 @@ export class MenuScreen implements Screen {
   }
 
   close(): void {
-    this.menu = this.options = this.help = this.creative = false;
+    this.menu = this.options = this.help = this.creative = this.helpFromPlay = false;
   }
 
   /** The Creative entry follows the server's rule, and so does the page if it was open. */
@@ -114,6 +117,7 @@ export class MenuScreen implements Screen {
     if (down && ["ArrowLeft", "ArrowRight", "Home", "End"].includes(code) && c.adjust(code === "ArrowLeft" || code === "Home" ? -1 : 1, code === "Home" || code === "End")) return true;
     if (code === "ShiftLeft" || code === "ShiftRight") this.shift = down;
     if (code === "Escape" && down && !repeat) {
+      if (this.helpFromPlay) { this.close(); return true; }
       if (this.options || this.help) {
         this.options = this.help = false;
         c.focusTo(KEY_MENU_RESUME);
@@ -144,8 +148,18 @@ export class MenuScreen implements Screen {
     return !end && this.options && settingsAdjust(key, by, c.settings);
   }
 
+  play(f: UiFrame, c: ScreenCtx): void {
+    if (c.touchHelp) c.touchDock?.helpButton(f, KEY_TOUCH_HELP);
+  }
+
   pointer(kind: number, key: number, x: number, y: number, button: number, c: ScreenCtx): boolean {
     const session = c.session, interactive = c.frame.find(key)?.interactive === true;
+    if (key === KEY_TOUCH_HELP && c.touchHelp && interactive && kind === 0 && button === 0) {
+      this.helpFromPlay = this.help = this.menu = true;
+      this.helpDevice = 2;
+      c.focusTo(KEY_MENU_BACK);
+      return true;
+    }
     // A part of the settings page has its own presses, and none once its tab has been left.
     const part = this.options ? settingsPart(key, c.settings) : null;
     if (part === "stale") return true;
@@ -177,6 +191,7 @@ export class MenuScreen implements Screen {
       this.helpDevice = c.inputDevice;
       c.focusTo(KEY_MENU_BACK);
     } else if (key === KEY_MENU_BACK) {
+      if (this.helpFromPlay) { this.close(); return true; }
       c.focusTo(this.creative ? KEY_MENU_CREATIVE : KEY_MENU_RESUME);
       this.options = this.help = this.creative = false;
     } else if (key === KEY_MENU_LEAVE) {
@@ -222,6 +237,6 @@ export class MenuScreen implements Screen {
       this.creativeScreen.build(f, session, hud, c.focus);
       // The password's field gives way to the tools once the server has given the role.
       if (!f.find(c.focus)?.interactive && !c.focusPending) c.focusTo(this.creativeScreen.first(session));
-    } else buildMenu(f, hud, session?.state === "active", c.focus, this.links, session?.creative ?? false);
+    } else buildMenu(f, hud, session?.state === "active", c.focus, this.links, session?.creative ?? false, c.inputDevice === 2 && c.settings.muted);
   }
 }

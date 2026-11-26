@@ -77,11 +77,11 @@ class Pair {
       const before = this.drawn.find(this.latest);
       this.r.reset(p.data);
       expect(readViewDelta(this.r, base, view, before, drawn) && !this.r.overflow).toBe(true);
-      // What the server holds the client to have is what it has.
+      // What the server holds the client to have is what it has. Revisions are not sent, so these tests send each as the level.
       const held = this.sent.find(p.tick);
       if (held) {
         let differ = view.count === held.count ? 0 : 1;
-        for (let i = 0; i < view.count && differ === 0; i++) if (view.id[i] !== held.id[i] || view.gen[i] !== held.gen[i] || view.rev[i] !== held.rev[i] || view.qx[i] !== held.qx[i] || view.qy[i] !== held.qy[i] || view.qz[i] !== held.qz[i] || view.yaw[i] !== held.yaw[i] || view.flags[i] !== held.flags[i] || view.anim[i] !== held.anim[i]) differ = 1;
+        for (let i = 0; i < view.count && differ === 0; i++) if (view.id[i] !== held.id[i] || view.gen[i] !== held.gen[i] || view.level[i] !== held.rev[i] || view.qx[i] !== held.qx[i] || view.qy[i] !== held.qy[i] || view.qz[i] !== held.qz[i] || view.yaw[i] !== held.yaw[i] || view.flags[i] !== held.flags[i] || view.anim[i] !== held.anim[i]) differ = 1;
         expect(differ).toBe(0);
       }
       watch?.(p.tick, before, drawn, was, view);
@@ -378,7 +378,7 @@ test("over a link that loses and delays snapshots and acknowledgements, what a c
         // The state drawn is one the body was in, no earlier than the one drawn before.
         const h = history[id]!;
         let at = -1;
-        for (let k = Math.max(0, shown[id]!); k < h.length && at < 0; k++) if (h[k]!.gen === drawn.gen[i] && h[k]!.rev === drawn.rev[i] && h[k]!.qx === drawn.qx[i] && h[k]!.yaw === drawn.yaw[i]) at = k;
+        for (let k = Math.max(0, shown[id]!); k < h.length && at < 0; k++) if (h[k]!.gen === drawn.gen[i] && h[k]!.rev === drawn.level[i] && h[k]!.qx === drawn.qx[i] && h[k]!.yaw === drawn.yaw[i]) at = k;
         if (at < 0) older++;
         shown[id] = at;
       }
@@ -404,8 +404,9 @@ test("over a link that loses and delays snapshots and acknowledgements, what a c
             aside[id] = 1 + rng.int(rng.int(2) === 0 ? 2 : 20);
           }
           if (rng.int(200) === 0) s.gen = (s.gen % 4000) + 1;
-          if (rng.int(150) === 0) s.rev = (s.rev + 1) & 15;
+          if (rng.int(150) === 0) s.rev++;
           if (here[id] === 0) continue;
+          looks.level[id] = s.rev;
           // The other fields follow from these, each part of the pose changing at its own pace, so that every part of an update is sent.
           const pose = (((s.qx >> 4) & 0xfff) | ((s.yaw === 300 ? 17 : 0) << 12) | ((Math.floor(s.qx / 400) & 0x3fff) << 18)) >>> 0;
           cur.push(id, s.gen, 7, s.qx, 2000 + (s.qx & 127), 3000 + ((s.qx >> 2) & 0xffff), s.yaw, s.yaw === 300 ? 5 : 1, pose, s.rev);
@@ -425,6 +426,6 @@ test("over a link that loses and delays snapshots and acknowledgements, what a c
     const last = link.drawn.find(link.latest)!;
     expect(link.latest).toBeGreaterThan(540);
     expect(last.count).toBe(cur.count);
-    for (let i = 0; i < cur.count; i++) expect([last.id[i], last.gen[i], last.rev[i], last.qx[i], last.qz[i], last.yaw[i], last.flags[i], last.anim[i]]).toEqual([cur.id[i]!, cur.gen[i]!, cur.rev[i]!, cur.qx[i]!, cur.qz[i]!, cur.yaw[i]!, cur.flags[i]!, cur.anim[i]!]);
+    for (let i = 0; i < cur.count; i++) expect([last.id[i], last.gen[i], last.level[i], last.qx[i], last.qz[i], last.yaw[i], last.flags[i], last.anim[i]]).toEqual([cur.id[i]!, cur.gen[i]!, cur.rev[i]!, cur.qx[i]!, cur.qz[i]!, cur.yaw[i]!, cur.flags[i]!, cur.anim[i]!]);
   }
 });

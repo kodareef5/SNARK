@@ -89,7 +89,7 @@ export class BodyBlocking {
 
   /**
    * Keeps body `j`'s team, seat and growth by the appearance revision they were sent under (EntityStore.rev, which each
-   * of them bumps), the last LOOKS_KEPT of them, so that a walker meets a body as the snapshot its client stepped with
+   * of them bumps and a name or look does not), the last LOOKS_KEPT of them, so that a walker meets a body as the snapshot its client stepped with
    * showed it even while that body boards a car, joins a tribe or comes of age.
    */
   private remember(j: number): void {

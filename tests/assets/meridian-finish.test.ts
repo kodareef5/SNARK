@@ -69,3 +69,21 @@ test("each nozzle has independent travelling flecks that fade between emissions"
     expect(exhaustLight(rgb, age, azimuth+(seed === 2 ? 2 : -2), 1, phase, 1)).toBe(0);
   }
 });
+
+test("the lining keeps the body's weights and stays put while the plates move", () => {
+  const lod = {
+    positions: Float32Array.from([0, 0, 0, 0.1, 0, 0, 0, 0.1, 0]), colors: new Uint8Array(3), indices: Uint32Array.from([0, 1, 2]), bones: Uint8Array.from([3, 3, 4]),
+    joints: Uint8Array.from([3, 4, 0, 0, 3, 0, 0, 0, 4, 3, 0, 0]), weights: Float32Array.from([0.7, 0.3, 0, 0, 1, 0, 0, 0, 0.8, 0.2, 0, 0]),
+  };
+  const s = new Surface(0, () => [0, 0, 0.01]);
+  s.liner(lod, false);
+  s.panel(contour([[0, 0, 0, 0.05, 0.05], [0.1, 0, 0, 0.05, 0.05]]), [[0, -40, 40], [0.1, -40, 40]], finish.ceramic, 5, 6, 0);
+  const out = s.done();
+  expect([...out.positions.subarray(0, 9)]).toEqual([...lod.positions]);
+  expect([...out.joints!.subarray(0, 12)]).toEqual([...lod.joints]);
+  expect(out.weights![1]).toBeCloseTo(0.3, 6);
+  // The plate is drawn 1 cm forward of where its form puts it, on its one bone.
+  const n = out.positions.length / 3;
+  expect(out.positions[3 * 3 + 2]! - contour([[0, 0, 0, 0.05, 0.05], [0.1, 0, 0, 0.05, 0.05]])(0, -40, 0)[2]).toBeCloseTo(0.01, 6);
+  expect([out.joints![(n - 1) * 4], out.weights![(n - 1) * 4]]).toEqual([5, 1]);
+});

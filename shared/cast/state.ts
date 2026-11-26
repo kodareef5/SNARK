@@ -46,6 +46,16 @@ export interface Character {
   touched: number;
   /** Dead in the world: it stays for the memory of it, and is never cast again. */
   dead?: boolean;
+  /** The named person of the people store it plays, by store id. */
+  person?: number;
+}
+
+/** What an admin chose of who Cast's people are, over the catalogue: kept with Cast's save. */
+export interface Casting {
+  /** A look's people drawn from an admin population and dressed in an admin outfit, each by store id. */
+  looks: Record<string, { population?: number; outfit?: number }>;
+  /** A role (`scene/role`) whose first body is a named person, by store id. */
+  roles: Record<string, number>;
 }
 
 export type Phase = "planned" | "entering" | "active" | "leaving" | "done";

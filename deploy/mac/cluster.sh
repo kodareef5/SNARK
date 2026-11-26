@@ -35,6 +35,8 @@ logs=var/logs/$id
 mkdir -p var/cluster "$logs"
 [ -f var/admin-password.txt ] && export SNARK_ADMIN_PASSWORD="$(head -1 var/admin-password.txt)"
 [ -f var/cluster-password.txt ] && export SNARK_CLUSTER_PASSWORD="$(head -1 var/cluster-password.txt)"
+[ -f var/discord-secret.txt ] && export SNARK_DISCORD_SECRET="$(head -1 var/discord-secret.txt)"
+[ -f var/discord-bot-token.txt ] && export SNARK_DISCORD_BOT_TOKEN="$(head -1 var/discord-bot-token.txt)"
 [ -f var/admin-password.txt ] || [ -f var/cluster-password.txt ] || [ -n "${DEV:-}" ] || echo "no var/admin-password.txt and no var/cluster-password.txt: enablecheats is refused on a world with no password file of its own"
 worlds=()
 others=()

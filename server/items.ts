@@ -14,6 +14,12 @@ import { Signal } from "./signal.ts";
 /** For a record whose kind declares no slots (a cache, a test fixture). */
 const DEFAULT_SLOTS = 40;
 
+/** What a restyle asks of the cluster's editions (server/people/store.ts): the garment an edition is of, or null for one it does not hold. */
+export interface EditionLookup {
+  garmentOf(edition: number): string | null;
+}
+const NO_EDITIONS: EditionLookup = { garmentOf: () => null };
+
 const ITEM_GAIN = event("item.gain");
 /** Settle passes for forms that spoil into forms: meat into spoiled meat, which spoils away, takes two. */
 const MAX_SPOIL_CHAIN = 4;
@@ -22,6 +28,8 @@ export class Items {
   /** The registry, except while a save made under other tuning is brought up to date. */
   table: ItemTable;
   bus: Bus = NO_BUS;
+  /** The cluster's editions, which a restyle's edition must be one of. Without a store, no edition is. */
+  editions: EditionLookup = NO_EDITIONS;
   readonly minted: Float64Array;
   readonly burned: Float64Array;
   /**
@@ -188,7 +196,7 @@ export class Items {
         if (at <= tick || at === CHARGED || inv.item[s] === 0) continue;
         const next = tick + leftAtPeriod(at - tick, was, is);
         inv.spoilAt[s] = next > 0xffffffff ? 0xffffffff : next;
-        inv.mod[s] = ++inv.version;
+        inv.touch(s);
       }
       if (inv.version !== before) this.changed(rec);
     }
@@ -224,7 +232,7 @@ export class Items {
         const next = this.table.charge?.[item] === 1 ? inv.chargeFrom(there ? CHARGED : at, t, this.table.spoilTicks[item]!) : carried(at, t, was, is);
         if (next === at) continue;
         inv.spoilAt[s] = next;
-        inv.mod[s] = ++inv.version;
+        inv.touch(s);
       }
       if (inv.version !== before) this.changed(rec);
     }
@@ -572,7 +580,25 @@ export class Items {
     const dst = this.inv(b);
     if (sa >= src.cap || sb >= dst.cap || dst.item[sb] === 0) return true;
     const item = src.item[sa]!;
-    return dst.item[sb] === item && stackOf(item, src.flags[sa]!, this.table) > 1 && dst.quality[sb] === src.quality[sa] && dst.flags[sb] === (src.flags[sa]! & ~FLAG_ON);
+    return dst.item[sb] === item && stackOf(item, src.flags[sa]!, this.table) > 1 && dst.quality[sb] === src.quality[sa] && dst.flags[sb] === (src.flags[sa]! & ~FLAG_ON) && dst.sameStyle(sb, src, sa);
+  }
+
+  /**
+   * Sets the edition and dye of the item in `slot` of `rec` (Inventory.edition and dye): what it looks like, which mints and
+   * burns nothing. False, changing nothing, for an empty slot, a blueprint, a dye on a garment that takes none, or an
+   * edition the store does not hold or holds of another garment. A retired edition is one still.
+   */
+  restyle(rec: EntityRecord, slot: number, edition: number, dye: number): boolean {
+    const inv = this.inv(rec);
+    if (slot < 0 || slot >= inv.cap || inv.item[slot] === 0 || (inv.flags[slot]! & FLAG_BLUEPRINT) !== 0) return false;
+    if (!(Number.isInteger(edition) && edition >= 0 && edition <= 0xffffffff && Number.isInteger(dye) && dye >= 0 && dye <= 0xffffff)) return false;
+    // A garment made to take no dye keeps its own colours.
+    const item = inv.item[slot]!;
+    if (dye !== 0 && this.reg.garmentSlot[item]! >= 0 && this.reg.garmentDyes[item] === 0) return false;
+    if (edition !== 0 && edition !== inv.editionOf(slot) && this.editions.garmentOf(edition) !== this.reg.defs[item]?.id) return false;
+    inv.setStyle(slot, edition, dye);
+    this.changed(rec);
+    return true;
   }
 
   /** Within one record or across two. Returns how many moved. */
@@ -591,8 +617,9 @@ export class Items {
     if (from === to || !(n > 0) || !Number.isInteger(n) || this.reg.takeOnly[to.kind] === 1) return false;
     const src = this.inv(from);
     const dst = this.inv(to);
-    if (src.total(item) < n || dst.room(item, 0, this.table) < n) return false;
-    // Each stack keeps its spoil time, scaled if the other keeps things longer, and an unstackable item keeps its rounds and attachment.
+    if (src.total(item) < n || !this.fits(src, dst, item, n)) return false;
+    // Each stack keeps its spoil time, scaled if the other keeps things longer, and its edition and dye. An unstackable item
+    // keeps its rounds and attachment too.
     const tick = this.world.tick;
     for (let s = src.cap - 1; s >= 0 && n > 0; s--) {
       if (src.item[s] !== item || (src.flags[s]! & FLAG_BLUEPRINT) !== 0) continue;
@@ -604,12 +631,43 @@ export class Items {
         dst.set(to, item, 1, src.quality[s]!, src.dur[s]!, spoilAt);
         dst.setGear(to, src.ammo[s]!, src.loaded[s]!, src.attach[s]!);
         dst.setRef(to, src.refOf(s));
-      } else if (dst.add(item, k, src.quality[s]!, src.dur[s]!, tick, this.table, spoilAt) !== 0) throw new Error("room was checked");
+        dst.setStyle(to, src.editionOf(s), src.dyeOf(s));
+      } else if (dst.add(item, k, src.quality[s]!, src.dur[s]!, tick, this.table, spoilAt, 0, src.editionOf(s), src.dyeOf(s)) !== 0) throw new Error("room was checked");
       src.remove(s, k);
       n -= k;
     }
     this.changed(from);
     this.changed(to);
+    return true;
+  }
+
+  /**
+   * Whether `n` of `item` taken from `src` as `give` takes them, last slots first, all find room in the bag of `dst`. Each
+   * stack goes onto its like (quality, edition and dye) before empty slots, as `Inventory.add` puts it.
+   */
+  private fits(src: Inventory, dst: Inventory, item: number, n: number): boolean {
+    const stack = this.table.stack[item]!;
+    let free = 0;
+    for (let s = 0; s < dst.bag; s++) if (dst.item[s] === 0) free++;
+    if (stack === 1) return free >= n;
+    const empty = free;
+    // The room left on the partial stacks of each like, as stacks given before it have changed it.
+    const spare = new Map<string, number>();
+    for (let s = src.cap - 1; s >= 0 && n > 0; s--) {
+      if (src.item[s] !== item || (src.flags[s]! & FLAG_BLUEPRINT) !== 0) continue;
+      let k = Math.min(n, src.count[s]!);
+      n -= k;
+      const q = src.quality[s]!, edition = src.editionOf(s), dye = src.dyeOf(s);
+      const like = `${q}/${edition}/${dye}`;
+      let room = spare.get(like) ?? dst.room(item, q, this.table, 0, edition, dye) - empty * stack;
+      const join = Math.min(k, room);
+      k -= join;
+      room -= join;
+      const slots = Math.ceil(k / stack);
+      if (slots > free) return false;
+      free -= slots;
+      spare.set(like, room + slots * stack - k);
+    }
     return true;
   }
 

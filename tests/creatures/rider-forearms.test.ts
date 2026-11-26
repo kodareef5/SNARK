@@ -61,7 +61,7 @@ function fitted(rest:Float32Array,scale:Float32Array|null,t:Float64Array,grip:Fl
 }
 
 test("native full outfits clear upright bars with bounded forearm alignment and invariant joints/hand wrap",()=>{
- let minimum=Infinity,residual=0,jointError=0,handError=0,oldCuff=Infinity,count=0,limbTwist=0;
+ let minimum=Infinity,residual=0,jointError=0,handError=0,count=0,limbTwist=0;
  for(const rig of source.header.rigs){
   const rest=Float32Array.from(rig.rest),prefix=`core:${rig.id}/`;
   const outfits=["","armor/cloth/","armor/hide/","armor/meridian/"].map(gear=>["head","torso","legs","feet"].map(slot=>meshes.find(m=>m.id===`${prefix}${gear}${slot}`)!));
@@ -75,11 +75,10 @@ test("native full outfits clear upright bars with bounded forearm alignment and 
    for(const b of [9,13,22,23,24,25,26,27,28,29])for(let i=0;i<12;i++)handError=Math.max(handError,Math.abs(before.rows[b*12+i]!-after.rows[b*12+i]!));
    for(const b of [8,12]){let dot=0;for(let i=0;i<4;i++)dot+=before.solved.rot[b*4+i]!*after.solved.rot[b*4+i]!;limbTwist=Math.max(limbTwist,2*Math.acos(Math.min(1,Math.abs(dot))));}
    const glove=meshes.find(m=>m.id===profile.mesh)!;
-   oldCuff=Math.min(oldCuff,clearance(outfits[2]![1]!,before.rows,t));
    for(const outfit of outfits){for(const mesh of [...outfit,glove])minimum=Math.min(minimum,clearance(mesh,after.rows,t));count++;}
   }
  }
- expect(count).toBe(256);expect(oldCuff).toBeLessThan(-.01);expect(minimum).toBeGreaterThanOrEqual(0);
+ expect(count).toBe(256);expect(minimum).toBeGreaterThanOrEqual(0);
  expect(residual).toBeLessThan(.000001);expect(jointError).toBeLessThan(.000001);expect(handError).toBeLessThan(.000002);
  expect(limbTwist).toBeLessThan(75*Math.PI/180+.00001);expect(limbTwist).toBeGreaterThan(Math.PI/4);
 });

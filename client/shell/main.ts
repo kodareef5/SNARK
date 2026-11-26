@@ -2,7 +2,7 @@ import { logTo } from "./early-log.ts";
 import { launchKey, readLaunch } from "../core/entry-state.ts";
 import { SETTLED_MS, backAddress, readComeback, readReady, waitKey, waitOut, type Comeback } from "../core/waiting.ts";
 import type { Ready } from "../../shared/ready.ts";
-import { SESSION_CREATING, REJECT_NAME, REJECT_PASSWORD, RESULT_OK, TEXT_NOTICE } from "../../shared/net/protocol.ts";
+import { SESSION_CREATING, REJECT_NAME, REJECT_PASSWORD, REJECT_SIGNIN, RESULT_OK, TEXT_NOTICE } from "../../shared/net/protocol.ts";
 // Browser entry point. Each frame it asks the app what to draw, and hands the world to WebGL and the interface to the DOM binder.
 
 import { defaultLook } from "../../shared/anim/look.ts";
@@ -22,8 +22,10 @@ import { PassClock } from "../core/passes.ts";
 import { giveSky, SKY_FILE } from "../core/render/sky.ts";
 import { groundSize } from "../core/render/terrain.ts";
 import { ClientSession, PARK_CHUNKS_TOUCH } from "../core/session.ts";
+import { FETCH_TIMEOUT_MS } from "../core/people-book.ts";
 import { arrivalOf, socketAddress } from "../core/travel.ts";
 import { GlRenderer } from "./gl.ts";
+import { printHost } from "./picture-array.ts";
 import { bindInput } from "./input.ts";
 import { connect } from "./socket.ts";
 import { VoiceIo } from "../voice/voice.ts";
@@ -138,6 +140,7 @@ async function boot(): Promise<void> {
     orbs: head.orbs,
     ...(land ? { landmarks: land.landmarks } : {}),
   });
+  session.peopleBook.fetcher = (path) => fetch(path, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) }).then((r) => (r.ok ? r.json() : Promise.reject(new Error(`${path}: ${r.status}`))));
   // Riding out a restart (client/core/waiting.ts). The page learns which start of the server it is on, and when the
   // server says "go", or the connection closes with no word, it notes who to bring back, for this tab alone.
   const tooled = selfcheck || bench !== null || device !== null || params.has("look") || params.has("trip");
@@ -236,6 +239,11 @@ async function boot(): Promise<void> {
   app.dpr = devicePixelRatio;
   app.tierReady = (tier) => renderer.ready(tier);
   app.address((name) => params.get(name), measured, orders);
+  // The people bench's crowd (tools/bench/people.ts) comes only to a bench page that asks for one.
+  const crowd = bench ? (await import("../core/people-crowd.ts")) : null;
+  const asked = crowd?.crowdAsked((name) => params.get(name));
+  const people = crowd && asked ? new crowd.Crowd(session, hf, reg, asked.scene, asked.looks) : null;
+  let crowdPrinted = false;
   // A trip's page is a tool's too: nobody is at it to unmute, and its pictures are of the world.
   if (params.has("trip")) app.ui.settings.muted = false;
   app.page = {
@@ -271,6 +279,8 @@ async function boot(): Promise<void> {
   if (head.orbs?.length) void import("./screen-video.ts").then((m) => (app.screenHost = m.videoHost(sound)), () => {});
   // A visible prop screen fetches its player and browser adapter together.
   app.loadFaces = () => import("./screen-faces.ts").then((m) => m.createFaceScreens());
+  // Prints on garments are fetched and decoded by the page.
+  app.printHost = printHost();
   if (sound && typeof Worker !== "undefined") app.soundDecoder = new WorkerDecoder();
   // The music the build lists; without it the game has no music and plays on.
   if (sound) void fetch("assets/music/music.json").then((r) => (r.ok ? r.json() : null)).then((m) => (app.musicTracks = m?.tracks ?? null)).catch(() => {});
@@ -289,6 +299,7 @@ async function boot(): Promise<void> {
   function showEntryProblem(){
     bootError(createFailed ? "This spawn is unavailable. Choose another starting area."
       : session.closeReason === REJECT_PASSWORD ? "Incorrect server password."
+      : session.closeReason === REJECT_SIGNIN ? "This server asks you to sign in first."
       : session.closeReason === REJECT_NAME ? "This survivor is unavailable." : "Disconnected from world.");
   }
   let nextCityLoad = 0;
@@ -303,7 +314,7 @@ async function boot(): Promise<void> {
   });
   /** With ?lose=1 the self-check takes the graphics context away and gives it back, and must still see its picture. */
   const loser = params.has("lose") ? renderer.gl.getExtension("WEBGL_lose_context") : null;
-  device?.attach({ app, pack, reg, hf }, renderer);
+  device?.attach({ app, pack, reg, hf, ...(core.rigHits ? { readRigHits: () => fetchText(fetch, `assets/${core.rigHits}`) } : {}) }, renderer);
 
   // The touch layer's layout and its art's stand-in are fetched by a page a finger has used, and by no other.
   let layering = false;
@@ -323,7 +334,13 @@ async function boot(): Promise<void> {
     const cssHeight = canvas.clientHeight;
     const t0 = (marks[0] = performance.now());
     app.gamepads(document.hasFocus() ? navigator.getGamepads?.() ?? [] : [], now);
-    if (app.ui.touch && !app.ui.layer && !layering) { layering = true; void import("../core/ui/touch.ts").then((m) => (app.ui.layer = m), () => (layering = false)); }
+    if (app.ui.touch && !app.ui.layer && !layering) {
+      layering = true;
+      void import("../core/ui/touch.ts").then((m) => {
+        m.installMobileArt(app.ui.frame);
+        app.ui.layer = m;
+      }, () => { layering = false; });
+    }
     if (!app.ui.wantsPointerLock && document.pointerLockElement) document.exitPointerLock();
     if (bench) app.autopilot(params.has("still") ? -1 : bench.since(now), bench.clock(now));
     drivingCheck?.step(app, now);
@@ -344,6 +361,12 @@ async function boot(): Promise<void> {
     if (!packet) {
       if (session.state === "closed") splash.hidden = true;
       return;
+    }
+    // A printed crowd's tees are editions only the page knows: their prints are its own.
+    if (people && app.scene && !crowdPrinted) {
+      const book = app.scene.editionPrint;
+      app.scene.editionPrint = (edition) => people.printOf(edition) ?? book?.(edition) ?? null;
+      crowdPrinted = true;
     }
     const built = (marks[3] = performance.now());
     // The tier says how many pixels to draw for one CSS pixel: the screen's own at most, or on ultra more (canvasRatio).
@@ -370,7 +393,7 @@ async function boot(): Promise<void> {
       performance.mark("snark-first-world-frame");
     }
     if (renderer.failed.length + renderer.failedTextures.length > 0) {
-      for (const slot of renderer.failed) app.scene?.assets.residency.failed(slot);
+      for (const slot of renderer.failed) app.scene?.refused(slot);
       for (const t of renderer.failedTextures) app.scene?.assets.residency.failedTexture(t);
       app.pressure();
     }
@@ -385,7 +408,8 @@ async function boot(): Promise<void> {
     }
     if (progress?.frames === 45) loser?.restoreContext();
     const r = app.scene!.assets.residency;
-    const result = bench?.frame(now, ours, gpu, packet, r.flying + r.waiting === 0, { drawCalls: renderer.drawCalls, canvas: [width, height], renderer: renderer.rendererName, userAgent: navigator.userAgent, card: { bytes: r.ledger, textures: r.texLedger }, squeeze: app.scene!.budget.squeeze, map: () => loader.progress() }, app.scene!.assets.table.tris);
+    const prints = app.scene!.prints;
+    const result = bench?.frame(now, ours, gpu, packet, r.flying + r.waiting + prints.loads.fetching + prints.loads.waiting === 0, { prints: { uploaded: prints.uploaded, most: prints.most, held: prints.held, puts: renderer.prints.puts }, drawCalls: renderer.drawCalls, canvas: [width, height], renderer: renderer.rendererName, userAgent: navigator.userAgent, card: { bytes: r.ledger, textures: r.texLedger }, squeeze: app.scene!.budget.squeeze, map: () => loader.progress(), posed: app.scene!.characters.posed, fresh: app.scene!.characters.fresh }, app.scene!.assets.table.tris);
     if (result) document.title = `SNARK ${result.frameMs.median} ms`;
     if (result) void fetch("__bench", { method: "POST", body: JSON.stringify(result) });
 

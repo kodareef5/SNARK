@@ -47,7 +47,7 @@ export function readLaunch(input: string | null): Launch | null {
       intent: a.intent,
       name: a.name,
       password: a.password,
-      look: a.look,
+      look: [...a.look] as number[],
       spawn: a.spawn,
       ...(/^[a-f0-9]{32}$/.test(a.request) ? { request: a.request } : {}),
     };

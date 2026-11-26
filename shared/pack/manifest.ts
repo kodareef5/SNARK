@@ -15,7 +15,7 @@ import type { ClipSet } from "../anim/clip.ts";
 import type { LandmarkFarRow } from "./far.ts";
 import { joinedRows, type JoinedAt } from "./join.ts";
 import { checkIcons, type ManifestIcons } from "./icons.ts";
-import { CLIP_ROOT_BYTES, MOST_SECTIONS, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, clipRotBytes, decodeClips, decodeUtf8, lodVertices, meshReach, type Pack, type PackClip, type PackMaterial } from "./pack.ts";
+import { CLIP_ROOT_BYTES, MOST_SECTIONS, checkZones, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, clipRotBytes, decodeClips, decodeUtf8, lodVertices, meshReach, type Pack, type PackClip, type PackMaterial } from "./pack.ts";
 import { soundFault, type ManifestSound } from "./sound.ts";
 import { unfilterPart } from "./stored.ts";
 import { ASTC_BLOCKS, STEP0_SIZE, TEXTURE_FORMATS, TEXTURE_HEADER_BYTES, TEXTURE_ROLES, blockOf, stepBytes, stepOf, topIn, type TextureFormat, type TextureRole } from "./texture.ts";
@@ -69,6 +69,8 @@ export interface ManifestLevel {
   surface?: { file: number; at: number };
   /** See PackLod. The materials are indices into the manifest's. */
   sections?: number[];
+  /** See PackLod. */
+  zones?: number[];
 }
 
 /** A texture, and where each variant that was built keeps it. */
@@ -161,6 +163,15 @@ export interface ManifestClips {
   clips: { id: string; bones: number; frames: number; loop: boolean }[];
 }
 
+/** A mesh's face table (shared/pack/pack.ts): a part of the clip file, asked for after the first frame and kept as bytes, never on the card. */
+export interface ManifestFaces {
+  /** Index into `meshes`. */
+  mesh: number;
+  file: number;
+  at: number;
+  part: ManifestPart;
+}
+
 export interface Manifest {
   version: number;
   files: ManifestFile[];
@@ -172,12 +183,15 @@ export interface Manifest {
   meshes: ManifestMesh[];
   pages?: ManifestPage[];
   clips?: ManifestClips[];
+  faces?: ManifestFaces[];
   /** Every material and texture, those a page holds as stand-ins until it comes. */
   materials?: PackMaterial[];
   textures?: ManifestTexture[];
   /** Sounds, in a file of their own (shared/pack/sound.ts), listed in `soundRows`, a JSON file beside this. */
   sounds?: ManifestSound[];
   soundRows?: string;
+  /** Skin-fitted creature hit surfaces used by the server and simulation checks. */
+  rigHits?: string;
   /** The inventory pictures. A manifest without them has none. */
   icons?: ManifestIcons;
   /** The colour far blocks draw each palette colour in (client/core/render/far.ts), worked out by the build from every piece. */
@@ -246,6 +260,7 @@ export function describePack(pack: Pack, file: { name: string; bytes: number }, 
       });
       const level: ManifestLevel = { file: 0, at: pack.blobAt + lod.indexOffset, verts: lod.vertexCount, tris: lod.indexCount / 3, index: lod.indexBytes, error: lod.error, parts };
       if (lod.sections) level.sections = lod.sections;
+      if (lod.zones) level.zones = lod.zones;
       out.levels.push(level);
     }
     return out;
@@ -255,6 +270,11 @@ export function describePack(pack: Pack, file: { name: string; bytes: number }, 
   // A pack names its textures and holds none of their pixels, so no variant is listed here. The build adds them.
   if (pack.header.textures) out.textures = pack.header.textures.map((t) => ({ ...t, in: {} }));
   if (pack.header.landmarks) out.landmarks = pack.header.landmarks;
+  const faces: ManifestFaces[] = [];
+  pack.header.meshes.forEach((m, mesh) => {
+    if (m.faces) faces.push({ mesh, file: 0, at: pack.blobAt + m.faces.offset, part: { bytes: m.faces.length, hash: hash(pack.blob.subarray(m.faces.offset, m.faces.offset + m.faces.length)) } });
+  });
+  if (faces.length > 0) out.faces = faces;
   return out;
 }
 
@@ -305,6 +325,7 @@ function checkMesh(m: Manifest, mesh: ManifestMesh, blob: number): void {
       next += runs[k + 2]!;
     }
     if (parts.length > 1 ? runs.length === 0 || runs.length > MOST_SECTIONS * 3 || next !== level.tris * 3 : runs.length > 0) throw new Error(`manifest: the sections of a level of ${mesh.id} do not cover it`);
+    if (level.zones !== undefined) checkZones(level.zones, level.sections, level.tris * 3, mesh.id, "manifest");
   });
 }
 
@@ -316,6 +337,7 @@ export function parseManifest(text: string): Manifest {
   const m = JSON.parse(text) as Manifest;
   if (m.version !== MANIFEST_VERSION) throw new Error(`manifest: version ${String(m.version)} is not supported`);
   if (!Array.isArray(m.files) || !Array.isArray(m.meshes) || m.files[m.boot]?.role !== "boot") throw new Error("manifest: no boot pack");
+  if (m.rigHits !== undefined && !/^rig-hits\.[a-f0-9]{16}\.json$/.test(m.rigHits)) throw new Error("manifest: invalid rig hit file");
   if (m.icons) checkIcons(m.icons, (file) => m.files[file]?.role);
   const pages = m.pages ?? [];
   for (const p of pages) if (m.files[p.file]?.role !== "page" || !partFits(p.at, p.part, m.files[p.file]!.bytes)) throw new Error("manifest: a page lies outside its file");
@@ -329,6 +351,12 @@ export function parseManifest(text: string): Manifest {
     const file = m.files[e.file];
     const bytes = Array.isArray(e.clips) ? e.clips.reduce((sum, c) => sum + (c.frames > 0 && c.bones > 0 ? c.frames * (clipRotBytes(c.bones) + CLIP_ROOT_BYTES) : NaN), 0) : NaN;
     if (typeof e.rig !== "string" || file?.role !== "clip" || e.part?.bytes !== bytes || !partFits(e.at, e.part, file.bytes)) throw new Error(`manifest: the clips of ${String(e.rig)} are not described`);
+  }
+  const faced = new Set<number>();
+  for (const e of m.faces ?? []) {
+    const file = m.files[e.file];
+    if (!(Number.isInteger(e.mesh) && e.mesh >= 0 && e.mesh < m.meshes.length) || faced.has(e.mesh) || (file?.role !== "clip" && file?.role !== "boot") || !partFits(e.at, e.part, file.bytes)) throw new Error(`manifest: the face table of mesh ${String(e.mesh)} is not described`);
+    faced.add(e.mesh);
   }
   const seen = new Set<string>();
   m.meshes = (m.meshes as (ManifestMesh | MeshStub)[]).map((row) => {

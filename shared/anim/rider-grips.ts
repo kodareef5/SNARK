@@ -1,7 +1,7 @@
 // Load-authored native hand contact tables. Only changed mesh/look/hardware recomputes a cached pose.
 import type {PackGrip} from "../pack/pack.ts";
 import {B_HAND_L,B_HAND_R,HUMAN_BONES} from "./human.ts";
-import {defaultLook,LOOK_BYTES,lookScales} from "./look.ts";
+import {defaultLook,LOOK_BODY_BYTES,lookScales} from "./look.ts";
 
 const PLAIN=defaultLook();
 export const GRIP_POSE_FLOATS=12;
@@ -35,7 +35,7 @@ export function gripPose(profile:PackGrip,radius:number,low:number,high:number,s
 export class RiderGrips {
   readonly pose=new Float64Array(GRIP_POSE_FLOATS);
   revision=0;
-  private readonly look=new Uint8Array(LOOK_BYTES);
+  private readonly look=new Uint8Array(LOOK_BODY_BYTES);
   private readonly scale=new Float32Array(HUMAN_BONES*3);
   private profile:PackGrip|null=null;
   private radius=0;
@@ -48,11 +48,11 @@ export class RiderGrips {
   update(profile:PackGrip|null,look:Uint8Array|null,radius:number,low:number,high:number,at=0,alignment=0):Float64Array|null {
     const view=look??PLAIN,from=look?at:0;
     let same=this.ready&&this.profile===profile&&this.radius===radius&&this.low===low&&this.high===high&&this.alignment===alignment;
-    for(let i=0;same&&i<LOOK_BYTES;i++)same=this.look[i]===view[from+i];
+    for(let i=0;same&&i<LOOK_BODY_BYTES;i++)same=this.look[i]===view[from+i];
     if(same)return this.valid?this.pose:null;
     if(this.profile!==profile||!this.ready)this.profileValid=profile!==null&&validGrip(profile);
     this.profile=profile;this.radius=radius;this.low=low;this.high=high;this.alignment=alignment;this.ready=true;this.revision++;
-    for(let i=0;i<LOOK_BYTES;i++)this.look[i]=view[from+i]!;
+    for(let i=0;i<LOOK_BODY_BYTES;i++)this.look[i]=view[from+i]!;
     lookScales(this.look,this.scale);
     this.valid=Number.isFinite(alignment)&&alignment>=0&&alignment<=90&&this.profileValid&&profile!==null&&gripPose(profile,radius,low,high,this.scale,this.pose);
     return this.valid?this.pose:null;

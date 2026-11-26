@@ -406,8 +406,9 @@ artTest("in first person a suit keeps out of the eye's way as the body does: loo
       own.state.setMotion(0, 0, 0, pitch);
       view.render();
       const seen = ownView(raster, 7);
-      // A hide shirt's collar has a flap at the jaw on the head's bone, which a look a little down sees 10 cm off.
-      if (seen.nearest < 0.25 && !(set === "hide" && pitch === -0.4)) near.push(`${set} ${pitch}: ${seen.nearest.toFixed(2)} m`);
+      // A hide shirt's collar has a flap at the jaw on the head's bone, which a look a little down sees 10 cm off. The
+      // suit's breastplate, moved onto the MakeHuman chest, is 24.3 cm off at 63 degrees down.
+      if (seen.nearest < (set === "meridian" ? 0.24 : 0.25) && !(set === "hide" && pitch === -0.4)) near.push(`${set} ${pitch}: ${seen.nearest.toFixed(2)} m`);
       if (pitch === -1.5) expect([set, seen.chest, seen.hand, seen.foot]).toEqual([set, true, true, true]);
     }
   }
@@ -452,9 +453,11 @@ test("the third-person camera is pulled in by whatever is behind the body, and f
   expect([cam.x, cam.y, cam.z, cam.yaw, cam.pitch]).toEqual([64, 1.62, 64, 0.5, 0.2]);
 });
 
-artTest("a body is drawn coarser as it goes off, all its parts at one level, and does not flicker at the edge", () => {
+artTest("a body is drawn coarser as it goes off, its parts under the head at one level, and does not flicker", () => {
   const view = provingView();
   const { remote, cam, scene, pack } = view;
+  // On high every slot may draw its finest; the head goes coarser sooner by its own error (finest-bodies.test.ts).
+  scene.assets.tier = tierOf("high");
   remote.count = 1;
   cam.yaw = 0;
   cam.x = remote.x[0]!;
@@ -466,20 +469,22 @@ artTest("a body is drawn coarser as it goes off, all its parts at one level, and
     const out = new Set<number>();
     let parts = 0;
     for (let i = 0; i < p.drawCount; i++) {
-      if (!pack.header.meshes[p.drawMesh[i]!]!.id.startsWith("core:human_")) continue;
+      if (!/^core:human_.\/(torso|hands|legs|feet)$/.test(pack.header.meshes[p.drawMesh[i]!]!.id)) continue;
       out.add(p.drawLod[i]!);
       parts++;
     }
-    expect(parts).toBeGreaterThanOrEqual(5);
+    expect(parts).toBeGreaterThanOrEqual(4);
     return [...out];
   };
-  expect([levels(8), levels(25), levels(100)]).toEqual([[0], [1], [2]]);
-  // Seen afresh at 15 m it would be the middle level. Walking out to there from near, it is still the finest.
-  expect([levels(8), levels(15), levels(17), levels(12.5), levels(11)]).toEqual([[0], [0], [1], [1], [0]]);
+  // A body is four levels (tools/pack/body.ts): on high it turns at about 10, 20 and 70 m walking out on this view.
+  expect([levels(3), levels(15), levels(30), levels(80)]).toEqual([[0], [1], [2], [3]]);
+  // Seen afresh at 10.5 m it would be the next level. Walking out to there from near, it is still the finest.
+  expect([levels(3), levels(10.5), levels(11.6), levels(8.8), levels(7.5)]).toEqual([[0], [0], [1], [1], [0]]);
+  // Low poly starts at the first flat level, the third; it drew the second, textured, drawn flat, until it did.
   scene.assets.tier = tierOf("lowpoly");
-  expect(levels(3)).toEqual([1]);
+  expect(levels(3)).toEqual([2]);
   scene.assets.tier = tierOf("ultra");
-  expect([levels(30), levels(60), levels(200)]).toEqual([[0], [1], [2]]);
+  expect([levels(10), levels(30), levels(80), levels(200)]).toEqual([[0], [1], [2], [3]]);
 });
 
 artTest("a loose thing is drawn where it stands, at a level chosen for its distance, and not when it is out of view", () => {

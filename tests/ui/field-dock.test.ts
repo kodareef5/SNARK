@@ -1,10 +1,14 @@
 import { expect, test } from "bun:test";
 import { App } from "../../client/core/app.ts";
 import { KEY_DOCK_SLOT, KEY_FIELD_HUB, KEY_FIELD_LEAF, type FieldDock } from "../../client/core/ui/field-dock.ts";
+import { KEY_TOUCH_HELP, type MenuScreen } from "../../client/core/ui/menu-screen.ts";
+import { KEY_MENU_BACK } from "../../client/core/ui/menu.ts";
 import { KEY_CONSOLE_INPUT } from "../../client/core/ui/console.ts";
 import { TAB_MAKE, type CharacterScreen } from "../../client/core/ui/character.ts";
 import * as touch from "../../client/core/ui/touch.ts";
-import { KEY_ZONE_LOOK } from "../../client/core/touch.ts";
+import { K_IMAGE } from "../../client/core/ui/nodes.ts";
+import { IMAGE_TOUCH, I_CROUCH, I_JUMP, I_MELEE, I_PRONE, I_RELOAD, I_VIEW } from "../../client/core/ui/touch-art.ts";
+import { KEY_ZONE_LOOK, KEY_ZONE_MOVE } from "../../client/core/touch.ts";
 import { V_FOOD } from "../../shared/sim/vitals.ts";
 import { Harness } from "../fixtures/net.ts";
 import { CMD_SELECT } from "../../shared/net/protocol.ts";
@@ -25,11 +29,16 @@ function survivor(phone = false) {
   const pointer = (kind: number, key: number, pos = point(key), finger = phone ? 1 : 0) =>
     app.pointer(kind, key, pos.x, pos.y, 0, finger);
   const tap = (key: number) => { const at = point(key); pointer(0,key,at); pointer(1,key,at); run(); };
+  /** Pulls the right rim in: the fan comes out on the family its rim stands for. */
+  const pull = () => { const at = point(KEY_FIELD_HUB + 3); pointer(0, KEY_FIELD_HUB + 3, at); pointer(1, KEY_FIELD_HUB + 3, { x: at.x - 60, y: at.y }); run(400); };
+  const held: [string, boolean][] = [];
+  const holdKey = app.ui.holdKey;
+  app.ui.holdKey = (code, down) => { held.push([code, down]); holdKey(code, down); };
   const dock = app.ui.screen<FieldDock>("dock");
   const pressed: string[] = [];
   const pressKey = app.ui.pressKey;
   app.ui.pressKey = (code) => { pressed.push(code); pressKey(code); };
-  return { h, app, run, point, pointer, tap, dock, pressed };
+  return { h, app, run, point, pointer, tap, pull, dock, pressed, held };
 }
 
 test("The field kit uses the current berry stack only after a command", () => {
@@ -79,39 +88,101 @@ test("A cancelled dock slide preserves equipment and a second finger cannot equi
     if (op === CMD_SELECT) write?.({ u8: (v: number) => selects.push(v) } as never);
     return command(op, write);
   }) as typeof app.session.command;
-  const key = KEY_DOCK_SLOT, last = point(KEY_DOCK_SLOT+7);
+  const key = KEY_DOCK_SLOT, origin = point(key);
+  const last = { x: origin.x - 165, y: origin.y };
   pointer(0,key);
   pointer(2,key,last);
   run(90);
-  expect(dock.preview).toBe(7);
-  expect(app.hud.dockSizes[7]).toBeGreaterThan(.5);
-  expect(app.hud.dockSizes[3]).toBe(0);
+  const preview = dock.preview;
+  expect(preview).toBeGreaterThan(0);
+  expect(app.hud.dockBelt!.lift).toBeGreaterThan(.5);
+  expect(app.ui.frame.nodes.slice(0, app.ui.frame.count).some(n => n.text === "Empty slot")).toBe(true);
   pointer(1,key,last,2); run();
   expect(selects).toEqual([]);
-  pointer(3,key,last); run();
+  pointer(3,key,last); run(500);
   expect(dock.preview).toBe(-1);
   expect(selects).toEqual([]);
   pointer(0,key); pointer(2,key,last); pointer(1,key,last); run();
-  expect(selects).toEqual([7]);
+  expect(selects).toEqual([preview]);
 });
 
 test("A swipe browses an action family and an outward swipe returns one level", () => {
-  const { run, tap, pointer, point, dock, pressed } = survivor(true);
+  const { run, tap, pull, pointer, point, dock, pressed } = survivor(true);
+  pull();
+  expect(dock.page).toBe("moves");
+  // The hub goes back to the families: the kit stands beside the moves, and the whistles are a turn on.
   tap(KEY_FIELD_HUB+3);
   expect(dock.page).toBe("actions");
-  const first = point(KEY_FIELD_LEAF);
-  pointer(0,KEY_FIELD_LEAF,first);
-  pointer(1,KEY_FIELD_LEAF,{x:first.x-35,y:first.y});
-  run();
+  const kit = point(KEY_FIELD_LEAF+1);
+  pointer(0,KEY_FIELD_LEAF+1,kit);
+  pointer(2,KEY_FIELD_LEAF+1,{x:kit.x,y:kit.y-70});
+  pointer(1,KEY_FIELD_LEAF+1,{x:kit.x,y:kit.y-70});
+  run(400);
+  expect(dock.page).toBe("actions");
+  const first = point(KEY_FIELD_LEAF+2);
+  pointer(0,KEY_FIELD_LEAF+2,first);
+  pointer(1,KEY_FIELD_LEAF+2,{x:first.x-45,y:first.y});
+  run(400);
   expect(dock.page).toBe("whistles");
   expect(pressed).toEqual([]);
   const follow = point(KEY_FIELD_LEAF);
   pointer(0,KEY_FIELD_LEAF,follow);
-  pointer(1,KEY_FIELD_LEAF,{x:follow.x+35,y:follow.y});
-  run();
+  pointer(1,KEY_FIELD_LEAF,{x:follow.x+45,y:follow.y});
+  run(400);
   expect(dock.page).toBe("actions");
-  tap(KEY_FIELD_LEAF); tap(KEY_FIELD_LEAF+1);
+  tap(KEY_FIELD_LEAF+2); run(400); tap(KEY_FIELD_LEAF+1);
   expect(pressed).toEqual(["KeyU"]);
+});
+
+test("A tap on the right rim jumps, and a thumb that rests there holds the key down", () => {
+  const { app, run, point, pointer, dock, held, pressed } = survivor(true);
+  const rim = app.ui.frame.find(KEY_FIELD_HUB + 3)!, at = point(KEY_FIELD_HUB + 3);
+  expect(rim.label).toBe("Jump");
+  pointer(0, KEY_FIELD_HUB + 3, at); pointer(1, KEY_FIELD_HUB + 3, at); run();
+  expect([pressed, held, dock.isOpen()]).toEqual([["Space"], [], false]);
+  pointer(0, KEY_FIELD_HUB + 3, at);
+  expect(held).toEqual([]);
+  run(200);
+  expect(held).toEqual([["Space", true]]);
+  pointer(1, KEY_FIELD_HUB + 3, at); run();
+  expect([held, pressed]).toEqual([[["Space", true], ["Space", false]], ["Space"]]);
+  // A cancelled touch lets a held key go, and a quick one does nothing at all.
+  pointer(0, KEY_FIELD_HUB + 3, at); run(200); pointer(3, KEY_FIELD_HUB + 3, at); run();
+  pointer(0, KEY_FIELD_HUB + 3, at); pointer(3, KEY_FIELD_HUB + 3, at); run();
+  expect([held.slice(2), pressed, dock.isOpen()]).toEqual([[["Space", true], ["Space", false]], ["Space"], false]);
+});
+
+test("Sliding along the rim turns it to another move, and what the fan last did is what a tap does", () => {
+  const { app, run, tap, pull, point, pointer, dock, held, pressed } = survivor(true);
+  const f = app.ui.frame, at = point(KEY_FIELD_HUB + 3);
+  pointer(0, KEY_FIELD_HUB + 3, at);
+  pointer(2, KEY_FIELD_HUB + 3, { x: at.x, y: at.y - 66 });
+  run(300);
+  // A turn is no press: nothing jumped, and the moves stand out to be turned through.
+  expect([held, pressed]).toEqual([[], []]);
+  expect(dock.page).toBe("moves");
+  pointer(1, KEY_FIELD_HUB + 3, { x: at.x, y: at.y - 66 }); run(500);
+  expect(dock.isOpen()).toBe(false);
+  expect(f.find(KEY_FIELD_HUB + 3)!.label).toBe("Crouch");
+  tap(KEY_FIELD_HUB + 3);
+  expect([held, pressed]).toEqual([[], ["KeyC"]]);
+  // Chosen on the fan, a whistle is given at once and the rim is that whistle after.
+  pull(); tap(KEY_FIELD_HUB + 3);
+  const kit = point(KEY_FIELD_LEAF + 1);
+  pointer(0, KEY_FIELD_LEAF + 1, kit); pointer(2, KEY_FIELD_LEAF + 1, { x: kit.x, y: kit.y - 70 }); pointer(1, KEY_FIELD_LEAF + 1, { x: kit.x, y: kit.y - 70 }); run(400);
+  tap(KEY_FIELD_LEAF + 2); run(400); tap(KEY_FIELD_LEAF + 1); run(500);
+  expect(pressed).toEqual(["KeyC", "KeyU"]);
+  expect(f.find(KEY_FIELD_HUB + 3)!.label).toBe("Stay");
+  tap(KEY_FIELD_HUB + 3);
+  expect(pressed).toEqual(["KeyC", "KeyU", "KeyU"]);
+});
+
+test("An empty slot on the phone's shelf shows a mark where a thing would stand", () => {
+  const { app } = survivor(true);
+  const f = app.ui.frame, slot = f.find(KEY_DOCK_SLOT)!;
+  expect(slot.label).toBe("Slot 1: empty");
+  const marks = f.nodes.slice(0, f.count).filter(n => n.kind === K_IMAGE && n.image === IMAGE_TOUCH && n.y > slot.y && n.alpha < .5);
+  expect(marks.length).toBeGreaterThanOrEqual(5);
 });
 
 test("Pressing a command and releasing elsewhere leaves the order unissued", () => {
@@ -153,9 +224,133 @@ test("A press on the world shuts the dock, by mouse and by finger", () => {
   expect(dock.isOpen()).toBe(false);
   expect(app.ui.wantsPointerLock).toBe(true);
   const phone = survivor(true);
-  phone.tap(KEY_FIELD_HUB + 3);
+  phone.pull();
   expect(phone.dock.isOpen()).toBe(true);
   phone.pointer(0, KEY_ZONE_LOOK, { x: 600, y: 200 });
   phone.run();
   expect(phone.dock.isOpen()).toBe(false);
+});
+
+test("The phone shelf wraps the ten slots under a thumb and cancels upward swipes", () => {
+  const { app, run, pointer, point, dock } = survivor(true);
+  const f = app.ui.frame;
+  const slots = () => Array.from({ length: 10 }, (_, i) => f.find(KEY_DOCK_SLOT + i)).filter(Boolean);
+  const shown = slots().length;
+  expect(shown).toBeGreaterThanOrEqual(5);
+  expect(shown).toBeLessThan(10);
+  const selected: number[] = [];
+  const send = app.session.command.bind(app.session);
+  app.session.command = ((op, write) => {
+    if (op === CMD_SELECT) write?.({ u8: (n: number) => selected.push(n) } as never);
+    return send(op, write);
+  }) as typeof app.session.command;
+  const center = point(KEY_DOCK_SLOT);
+  pointer(0, KEY_DOCK_SLOT, center);
+  pointer(2, KEY_DOCK_SLOT, { x: center.x + 72, y: center.y });
+  run(120);
+  expect(dock.preview).toBe(9);
+  pointer(1, KEY_DOCK_SLOT, { x: center.x + 72, y: center.y - 100 });
+  run();
+  expect(selected).toEqual([]);
+  pointer(0, KEY_DOCK_SLOT, center);
+  pointer(1, KEY_DOCK_SLOT, { x: center.x + 72, y: center.y });
+  run();
+  expect(selected).toEqual([9]);
+});
+
+test("The touch menu eases out as a whole wheel and the two rims are painted glass", () => {
+  const { app, run, tap, point } = survivor(true);
+  const f = app.ui.frame;
+  const painted = f.nodes.slice(0, f.count).filter(n => n.kind === K_IMAGE && f.images[n.image]?.paint).map(n => n.image);
+  expect(new Set(painted).size).toBeGreaterThanOrEqual(3);
+  const disc = () => f.nodes.slice(0, f.count).find(n => n.label === "Turn the menu wheel" && n.round)!;
+  tap(KEY_FIELD_HUB);
+  const opening = disc().x;
+  run(600);
+  const open = point(KEY_FIELD_HUB);
+  expect(opening).toBeLessThan(disc().x - 10);
+  expect(disc().x).toBeGreaterThanOrEqual(f.left);
+  const stations = Array.from({ length: 7 }, (_, i) => point(KEY_FIELD_LEAF + i));
+  expect(stations.some(p => p.x < open.x)).toBe(true);
+  expect(stations.some(p => p.x > open.x)).toBe(true);
+});
+
+test("A thumb anywhere on the wheel's glass turns it, and the move stick never takes that press", () => {
+  const { app, run, tap, point, pointer, dock } = survivor(true);
+  const f = app.ui.frame;
+  tap(KEY_FIELD_HUB); run(600);
+  const disc = f.nodes.slice(0, f.count).find(n => n.label === "Turn the menu wheel")!;
+  expect(disc.round && disc.interactive).toBe(true);
+  expect(f.nodes.indexOf(disc)).toBeGreaterThan(f.nodes.indexOf(f.find(KEY_ZONE_MOVE)!));
+  const hub = point(KEY_FIELD_HUB), first = point(KEY_FIELD_LEAF);
+  // Between two stations, on bare glass, a quarter turn about the hub.
+  const r = Math.hypot(first.x - hub.x, first.y - hub.y), from = { x: hub.x + r * Math.cos(.4), y: hub.y + r * Math.sin(.4) };
+  pointer(0, disc.key, from);
+  for (let a = .4; a <= 1.3; a += .1) pointer(2, disc.key, { x: hub.x + r * Math.cos(a), y: hub.y + r * Math.sin(a) });
+  run(400);
+  expect(dock.page).toBe("emblem");
+  expect(app.touch.stick).toBe(false);
+  expect(point(KEY_FIELD_LEAF).y).toBeGreaterThan(first.y + 20);
+  pointer(3, disc.key, from); run(400);
+  expect(dock.isOpen()).toBe(false);
+});
+
+test("A swipe up the shut rim turns the wheel and letting go opens what it stopped on", () => {
+  const { app, run, point, pointer, dock } = survivor(true);
+  const f = app.ui.frame;
+  const from = { x: f.left + 20, y: point(KEY_FIELD_HUB).y };
+  pointer(0, KEY_FIELD_HUB, from);
+  for (let dy = 10; dy <= 60; dy += 10) pointer(2, KEY_FIELD_HUB, { x: from.x, y: from.y - dy });
+  run(300);
+  expect(dock.page).toBe("emblem");
+  expect(app.ui.screen("character").isOpen()).toBe(false);
+  pointer(1, KEY_FIELD_HUB, { x: from.x, y: from.y - 60 }); run(300);
+  expect(dock.isOpen()).toBe(false);
+  const open = app.ui.screens.filter(s => s.name !== "dock" && s.isOpen()).map(s => s.name);
+  expect(open.length).toBe(1);
+});
+
+test("A family's leaves fan out beside it and a swipe along them changes the one in reach", () => {
+  const { app, run, tap, pull, point, pointer, dock, pressed } = survivor(true);
+  const f = app.ui.frame, names = () => f.nodes.slice(0, f.count).filter(n => n.style !== 0 && n.text).map(n => n.text);
+  pull(); tap(KEY_FIELD_HUB + 3); run(400);
+  tap(KEY_FIELD_LEAF + 3); run(400);
+  expect(dock.page).toBe("gestures");
+  expect(names()).toContain("Wave");
+  const leaf = point(KEY_FIELD_LEAF);
+  pointer(0, KEY_FIELD_LEAF, leaf);
+  pointer(2, KEY_FIELD_LEAF, { x: leaf.x, y: leaf.y - 70 });
+  pointer(1, KEY_FIELD_LEAF, { x: leaf.x, y: leaf.y - 70 });
+  run(400);
+  expect(dock.page).toBe("gestures");
+  expect(pressed).toEqual([]);
+  expect(names()).toContain("Point");
+});
+
+test("The corner help opens touch controls and Back returns to the field", () => {
+  const { app, run, tap } = survivor(true);
+  const menu = app.ui.screen<MenuScreen>("menu"), frame = app.ui.frame;
+  const icon = frame.find(KEY_TOUCH_HELP)!;
+  expect(icon.label).toBe("Touch controls");
+  expect(icon.w * frame.unit).toBeCloseTo(44);
+  tap(KEY_TOUCH_HELP);
+  expect(menu.help && menu.helpDevice === 2).toBe(true);
+  expect(frame.find(KEY_TOUCH_HELP)).toBeNull();
+  tap(KEY_MENU_BACK);
+  expect(menu.isOpen()).toBe(false);
+  expect(frame.find(KEY_DOCK_SLOT)).not.toBeNull();
+  app.ui.settings.playControls = true;
+  run();
+  expect(frame.find(KEY_TOUCH_HELP)).toBeNull();
+  expect(survivor().app.ui.frame.find(KEY_TOUCH_HELP)).toBeNull();
+});
+
+test("The moves' glyphs are the touch sheet's own", () => {
+  const { app, pull } = survivor(true);
+  pull();
+  const f = app.ui.frame, cell = (which: number) => [which % 12 * 128, 400 + Math.floor(which / 12) * 128].join();
+  const drawn = new Set(f.nodes.slice(0, f.count).filter(n => n.kind === K_IMAGE && n.image === IMAGE_TOUCH).map(n => [n.sx, n.sy].join()));
+  // Three leaves show at a time: the jump, its neighbours either side, and no stranger.
+  for (const which of [I_JUMP, I_CROUCH, I_VIEW]) expect(drawn.has(cell(which))).toBe(true);
+  expect([I_PRONE, I_RELOAD, I_MELEE].every(which => which > 0 && which < 48)).toBe(true);
 });

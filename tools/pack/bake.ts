@@ -270,6 +270,7 @@ export function flatOf(lod: SourceLod, colours: Uint8Array): SourceLod {
   const at = placed(lod);
   const out: SourceLod = { positions: new Float32Array(n * 3), colors: new Uint8Array(n), indices: Uint32Array.from({ length: n }, (_, i) => i) };
   if (lod.bones) out.bones = new Uint8Array(n);
+  if (lod.zones) out.zones = lod.zones.slice();
   lod.indices.forEach((v, i) => {
     out.positions.set(lod.positions.subarray(at[v]! * 3, at[v]! * 3 + 3), i * 3);
     out.colors[i] = colours[Math.floor(i / 3)]!;

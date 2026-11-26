@@ -14,7 +14,8 @@ import { CANVAS_HEIGHT, K_SLIDER, UiFrame } from "./nodes.ts";
 import { Settings } from "../settings.ts";
 import { buildOverhead } from "./tame.ts";
 import type { Screen, ScreenCtx, ScreenRow } from "./screen.ts";
-import { SESSION_CREATING, SESSION_DEAD, TEXT_GLOBAL, TEXT_LOCAL } from "../../../shared/net/protocol.ts";
+import { SESSION_DEAD, TEXT_GLOBAL, TEXT_LOCAL } from "../../../shared/net/protocol.ts";
+import { inCreator } from "./creator.ts";
 
 /** The keys that turn a focused control: left and right a step, Home and End to its ends. */
 const ARROWS = ["ArrowLeft", "ArrowRight", "Home", "End"];
@@ -30,6 +31,7 @@ export class GameUi {
   readonly chat = new ChatState();
   /** Presses a key through the app's key rows: the app sets it. */
   pressKey: (code: string) => void = () => {};
+  holdKey: (code: string, down: boolean) => void = () => {};
   /** The view rests on something that can be attacked: the app sets it each frame. */
   aimed = false;
   /** Shift is held: the app's key rows set it. */
@@ -49,7 +51,14 @@ export class GameUi {
    * The touch layer's layout (ui/touch.ts), once the shell has fetched it: a page fetches it when a finger is first
    * used, and until it comes the HUD is drawn as for a mouse. Null on a page never touched, which never pays for it.
    */
-  layer: typeof import("./touch.ts") | null = null;
+  private touchLayer: typeof import("./touch.ts") | null = null;
+  get layer(): typeof this.touchLayer { return this.touchLayer; }
+  set layer(next: typeof this.touchLayer) {
+    if (this.touchLayer === next) return;
+    if (this.touchLayer) this.activeScreens.pop();
+    this.touchLayer = next;
+    if (next) this.activeScreens.push(next.touchVitals());
+  }
   /** The debug bar (debug/debug.ts), which the app fetches once Settings.debug is first on; null until then. */
   debug: import("../debug/debug.ts").DebugBar | null = null;
   flyer = false;
@@ -77,6 +86,7 @@ export class GameUi {
     press: (key, x, y) => this.pointer(0, key, x, y, 0, this.ctx.session),
     adjust: (by, end) => this.adjustFocused(by, end),
     pressKey: (code) => this.pressKey(code),
+    holdKey: (code, down) => this.holdKey(code, down),
     screens: this.screens,
     aimed: false,
     shift: false,
@@ -190,6 +200,7 @@ export class GameUi {
     if (hud) c.hud = hud;
     c.focus = this.menuFocus;
     c.inputDevice = this.inputDevice;
+    c.touchDock = this.layer?.touchDock;
     c.covered = this.console.open || this.chat.open;
     c.focusPending = this.focusNext !== 0;
     c.aimed = this.aimed;
@@ -475,7 +486,7 @@ export class GameUi {
     const layer = this.touch ? this.layer : null;
     const plan = layer ? layer.touchPlan(f, this.settings.muted, this.canTalk) : null;
     this.touchShown = 0;
-    this.creating = session?.sessionState === SESSION_CREATING;
+    this.creating = inCreator(session);
     this.dead = session?.sessionState === SESSION_DEAD;
     // A screen that came up by itself, as the inventory does with a container the server opens, shuts the others.
     for (const s of this.screens) if (s.absorb?.(this.at(session, hud))) this.closeModals(this.ctx, s);
@@ -487,6 +498,9 @@ export class GameUi {
       const controls = (this.playingField || this.inspect) && !session?.open;
       // A finger's zones lie under the whole HUD while the body is being played.
       const play = plan !== null && this.touchPlay !== null && session !== null && controls && this.playingField;
+      this.ctx.touchHelp = play && !this.openedField() && !this.settings.playControls && !hud.prompt &&
+        !this.placing && !this.building && !this.flyer && !hud.vehicle?.active && !session?.airSupport.flight &&
+        !this.touchPlay!.stick && !this.touchPlay!.action;
       if (play) layer!.touchZones(f);
       if (session?.airSupport.flight && controls && !this.dead) {
         // The drone's feed and its tracking boxes stand in for the HUD (hud/air-feed.ts).
@@ -503,8 +517,8 @@ export class GameUi {
       // Chat is built over the HUD and under every screen.
       if (session) {
         // A finger's keyboard covers the foot of the screen, so the box it types in stands at the top.
-        const band = plan && this.chat.open ? layer!.chatTop(f, plan) : chatBand(f, hud);
-        this.chat.build(f, band.top, band.bottom, session.serverTick, plan !== null, controls);
+        const band = plan ? layer!.chatTop(f, plan) : chatBand(f, hud);
+        this.chat.build(f, band.top, band.bottom, session.serverTick, plan, controls);
       }
       if (plan && this.touchPlay && controls) {
         this.touchPlay.tools = this.settings.playControls;
@@ -520,9 +534,8 @@ export class GameUi {
     if (!this.creating && !this.console.open && !this.takingAll()) this.buildOver(f, session, hud);
     // A screen, the chat box or a prompt that a keyboard would leave by Escape has a button for it by touch.
     if (plan && this.touchPlay && !this.openedField() && !this.wantsPointerLock && !this.hudHidden() && !this.dead && !this.console.open) this.touchShown |= layer!.touchClose(f, this.touchPlay);
-    // The offer to unmute is over every screen, where a free pointer, a finger or the pad's focus reaches it.
-    // Not while a finger types in the chat box, which has its place.
-    if (this.settings.muted && !this.console.open && !(plan && this.chat.open)) unmuteButton(f, plan, layer?.pill ?? null, this.hudHidden() ? 0 : hud.compassBottom, this.hudHidden() ? null : hud);
+    if (!this.touch && this.settings.muted && !this.console.open)
+      unmuteButton(f, this.hudHidden() ? 0 : hud.compassBottom, this.hudHidden() ? null : hud);
     if (this.settings.debug) this.debug?.build(f);
     if (session) this.console.absorb(session);
     this.console.build(f);

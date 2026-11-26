@@ -1,10 +1,11 @@
 import { adminContext } from "./shell.ts";
 // The admin's Cast page: what the city's background people are doing (server/admin/cast.ts's cast.json, every two seconds)
-// and the knobs an admin turns (POST cast: a Cast setting live, a scene played now, a story ended). What it shows is made
+// and the knobs an admin turns (POST cast: a Cast setting live, a scene played now, a story ended, a look's population and
+// outfit, a role's named person). What it shows is made
 // in client/core/admin/cast.ts; this is the page's wiring.
 
 import { $, ask } from "./dom.ts";
-import { CAST_KNOBS, castMarks, castView, type CastJson } from "../core/admin/cast.ts";
+import { CAST_KNOBS, castingHtml, castMarks, castView, type CastJson } from "../core/admin/cast.ts";
 
 let last: CastJson | null = null;
 
@@ -12,12 +13,14 @@ async function act(body: object): Promise<void> {
   const r = await fetch((await adminContext()).api("cast"), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   const j = (await r.json()) as { ok: boolean; why: string };
   $("msg").textContent = j.ok ? "Done." : j.why;
-  void refresh();
+  void refresh(true);
 }
 
-async function refresh(): Promise<void> {
+async function refresh(again = false): Promise<void> {
   const s = (last = (await (await ask("cast.json")).json()) as CastJson);
   const first = !$("knobs").childElementCount;
+  // The casting is drawn again only after an act, so a select is not reset while it is open.
+  if (again && !first) $("casting").innerHTML = castingHtml(s);
   for (const [id, html] of Object.entries(castView(s, first))) $(id).innerHTML = html;
   for (const [name, , , , , field] of CAST_KNOBS) {
     const input = $<HTMLInputElement>(`k-${name}`), v = String(s.settings[field]);
@@ -26,6 +29,12 @@ async function refresh(): Promise<void> {
     $(`v-${name}`).textContent = v;
   }
   for (const b of document.querySelectorAll<HTMLButtonElement>("[data-retire]")) b.onclick = () => void act({ op: "retire", story: b.dataset.retire });
+  const id = (v: string) => (v === "" ? null : Number(v));
+  for (const sel of document.querySelectorAll<HTMLSelectElement>("[data-look]")) sel.onchange = () => void act({ op: "look", look: sel.dataset.look, [sel.dataset.field!]: id(sel.value) });
+  for (const sel of document.querySelectorAll<HTMLSelectElement>("[data-role]")) {
+    const [scene, role] = sel.dataset.role!.split("/");
+    sel.onchange = () => void act({ op: "role", scene, role, person: id(sel.value) });
+  }
   const c = $<HTMLCanvasElement>("map"), g = c.getContext("2d")!;
   g.clearRect(0, 0, c.width, c.height);
   g.font = "12px sans-serif";

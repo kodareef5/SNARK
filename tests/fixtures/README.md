@@ -15,6 +15,7 @@
 | `enemy-scan.ts` | The enemy range answered by reading every slot of the chunks in range, which the claims grid is proved against |
 | `gather.ts` | Finding a resource node and standing a survivor in reach of it |
 | `agent.ts` | An agent that plays on the harness: its tools called over the protocol while virtual time runs |
+| `aim-audit.ts` | Drawn equals hit: a survivor drawn in nine motions from five sides with a ray through every pixel, the shares each sex is held to, and looks at every region's extremes |
 | `pack.ts` | The core asset pack: built once by `bun run check` for every test file, or once per test process run alone |
 | `glb.ts` | A glTF binary file written in code, standing in for a Blender export |
 | `arkapi.ts` | ArkApi's Permissions database as the plugin writes it, and a copy with its -wal file taken while the ARK server runs |
@@ -25,7 +26,6 @@
 | `preload.ts` | Loaded before each test file (`bunfig.toml`): collects what the last file in the worker left, sets that limit, and under the check says what each worker is running and what each file cost |
 | `needs-art.ts` | `test` and `artTest` for tests that need the art in `assets/`, skipped where it is not here: in the code as shown outside, never in the repository |
 | `frames.ts`, `device-reports/` | Frame traces for the governor, and the iPhone's three soaks they replay |
-| `view-before.ts` | The snapshot writer before an update kept its vehicle comparison, which the writer's bytes are held to |
 | `video/` | Tiny MP4s made once with ffmpeg from lavfi test sources (each under 10 KB): H.264 at 160×90 faststart and not, with AAC, HEVC, 1280×720, fragmented |
 | `cityslice.ts`, `miami-slice.gz` | Downtown Miami's 9 by 9 chunks of the 16 km map as built, its statics and ground (136 KB), for the city census; cut again by `bun tools/bench/census.ts <map> --cut` |
 

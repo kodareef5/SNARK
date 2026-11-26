@@ -4,6 +4,7 @@ import { MODE_FLY, MODE_GHOST, MODE_WALK } from "../../shared/sim/character.ts";
 import { Genome, POINT_CAP, STAT_NAMES } from "../../shared/sim/genome.ts";
 import { FLAG_BLUEPRINT, QUALITY_NAMES } from "../../shared/sim/items.ts";
 import { loadoutCommands } from "./loadout.ts";
+import { dressCommands } from "../people/give.ts";
 import { lootCommands } from "./loot.ts";
 import { cityCommands } from "./city.ts";
 import { supplyCommands } from "./supply.ts";
@@ -324,5 +325,5 @@ export function addAdminCommands(con: Console): void {
       },
     },
   ];
-  con.add(...commands, ...lootCommands(), ...supplyCommands(), ...eventCommands(), ...loadoutCommands(), ...cityCommands());
+  con.add(...commands, ...lootCommands(), ...supplyCommands(), ...eventCommands(), ...loadoutCommands(), ...dressCommands(), ...cityCommands());
 }

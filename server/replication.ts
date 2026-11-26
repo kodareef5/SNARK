@@ -26,8 +26,10 @@ import type { Client, GameOptions, GameStats } from "./game.ts";
 import type { ServerWorld } from "./world.ts";
 import { PART, type TickParts } from "./admin/parts.ts";
 
-/** The least snapshot budget a client may ask for, in bytes. The quarter of it that a crowd of players leaves the rest holds any one create. */
-const SNAPSHOT_BYTES_MIN = 600;
+/** The least snapshot budget a client may ask for, in bytes. The quarter of it that a crowd of players leaves the rest holds a dressed survivor's create. */
+// A plain-lettered survivor in five styled garments is about 175 bytes. The largest create is about 270 (three-byte letters,
+// editions near 2^32, seated and emoting): no quarter holds it, and none need, as a window always sends the op at its head.
+export const SNAPSHOT_BYTES_MIN = 720;
 /**
  * Chunk bytes a client may have on the way. On one stream everything sent before a snapshot it has read has reached it,
  * so what was sent since its newest acknowledged snapshot is still coming, ahead of the snapshots after it.
@@ -230,6 +232,7 @@ export class Replication {
     w.f64(this.world.clock.cycle);
     w.f64(this.world.clock.day);
     w.f64(this.world.clock.night);
+    w.varint(this.world.hairRate);
     c.conn.send(CH_RELIABLE, w.bytes());
     c.ownDirty = false;
   }
@@ -482,7 +485,7 @@ export class Replication {
       vehicle ? packVehicleSystems(far ? Math.ceil(ents.fuel[v]! / vehicle.spec.fuelCapacity * FAR_STEPS) / FAR_STEPS * vehicle.spec.fuelCapacity : ents.fuel[v]!, vehicle.spec.fuelCapacity, ents.vehicleEngineCondition[v]!, ents.vehicleRotorCondition[v]!, ents.vehicleEngineOn[v] !== 0) : 0,
       vehicle ? packVehicleQuaternionPair(ents.vehicleQx[v]!, ents.vehicleQy[v]!) : 0,
       vehicle ? packVehicleQuaternionPair(ents.vehicleQz[v]!, ents.vehicleQw[v]!) : 0,
-      vehicle ? packBoatWater(ents.vehicleHullCondition[v]!, ents.vehicleFlooding[v]!) : 0, ents.emote[i]!, ents.react[i]!, this.world.history.strideOf(i, this.world.tick, this.world));
+      vehicle ? packBoatWater(ents.vehicleHullCondition[v]!, ents.vehicleFlooding[v]!) : 0, ents.emote[i]!, ents.react[i]!, this.world.history.strideOf(i, this.world.tick, this.world), ents.identityRev[i]!);
     view.urgent[view.count - 1] = (ents.flags[i]! & F_PLAYER) !== 0 || ents.driven[i] !== 0 || (this.farCount > 0 && this.isFar(i)) ? 1 : 0;
   }
 

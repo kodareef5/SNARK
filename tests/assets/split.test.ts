@@ -8,7 +8,7 @@ import { Assets } from "../../client/core/assets/assets.ts";
 import { fireMeshes } from "../../tools/pack/fire.ts";
 import { buildPack } from "../../tools/pack/write.ts";
 import { parseManifest } from "../../shared/pack/manifest.ts";
-import { GRIP_POSE_UNITS, lodIndices, lodVertices, parsePack, type PackHeader, type PackRig } from "../../shared/pack/pack.ts";
+import { GRIP_POSE_UNITS, lodIndices, lodVertices, parsePack, rigsWithHits, type PackHeader, type PackRig } from "../../shared/pack/pack.ts";
 import { artTest } from "../fixtures/needs-art.ts";
 import { CREATURE_ASSETS } from "../fixtures/assets.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
@@ -208,6 +208,21 @@ test("boot hit planes keep exact authored values and reject truncated coefficien
   expect(parsePack(boot).header.hitPlaneOffset).toBeUndefined();
   expect(boot).toEqual(before);
   expect(() => parsePack(boot.subarray(0, boot.length - 1))).toThrow("invalid hit plane count");
+});
+
+test("the server rejoins fitted contacts and the player keeps the rig capsules", () => {
+  const rig = { id: "test:stego", skeleton: "test", rest: [0, 0, 0], caps: [0, 1, 0],
+    hitSurfaces: [{ root: 0, zone: 1, bones: [{ bone: 0, pieces: [{ box: [0, 0, 0, 1, 1, 1], planes: [1 / 7, 0, 1, 4] }] }] }] };
+  const other = { id: "test:body", skeleton: "test", rest: [0, 0, 0] };
+  const full = buildPack([], defaultPalette(), [], [other, rig]);
+  const { manifest, files, rigHits } = splitPack(full, "test", { separateHits: true });
+  const drawing = parsePack(files[0]!.bytes).header.rigs, text = new TextDecoder().decode(rigHits);
+  expect(drawing[1]!.caps).toEqual(rig.caps);
+  expect(drawing[1]!.hitSurfaces).toBeUndefined();
+  expect(parseManifest(JSON.stringify(bootManifest(manifest))).rigHits).toBe(`rig-hits.${partHash(rigHits!)}.json`);
+  expect(rigsWithHits(drawing, text)).toEqual(parsePack(full).header.rigs);
+  expect(() => rigsWithHits([other], text)).toThrow("unknown rig");
+  expect(splitPack(buildPack([], defaultPalette(), [], [other]), "empty", { separateHits: true }).manifest.rigHits).toBeUndefined();
 });
 
 test("the survivors' emotes come after the first frame: none in the boot file, one group in the clip file, all of them there", () => {

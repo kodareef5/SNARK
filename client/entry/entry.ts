@@ -1,18 +1,27 @@
 import { mountChangelog } from "./changelog.ts";
 import { imageTile, loadGallery, mapArt, mapChoices, regionTiles, serverCard, survivorStats, type WorldCard as World } from "./gallery.ts";
 import { worldUrl } from "./address.ts";
-import { defaultLook, LOOK_SEX, LOOK_BEARD, randomLook, setRegion } from "../../shared/anim/look.ts";
+import { defaultLook, randomLook, setFace, setRegion } from "../../shared/anim/look.ts";
+import { faceAction, randomFace } from "../../shared/people/face-controls.ts";
 import { Rng } from "../../shared/rng.ts";
 import { loadIdentity } from "../core/identity.ts";
 import { readLaunch, launchKey, savedName, validName, type EntrySurvivor, type Launch, type Remembered } from "../core/entry-state.ts";
-import { appearanceFields, bodyFields, identityFields, button, esc, field } from "./forms.ts";
+import { appearanceFields, bodyFields, faceFields, identityFields, button, esc, field } from "./forms.ts";
 import { defaultEntrySpawn, playSurvivor, playWorld, titlePreloadWorld } from "../core/player-flow.ts";
 import { sceneFor } from "./scenery.ts";
 import { listingsOf, mergeListings, type Listing } from "../core/directories.ts";
 
 type Screen =
-  "title" | "servers" | "roster" | "create" | "spawn" | "link" | "approve" | "backup" | "recover" | "direct" | "password";
+  "title" | "servers" | "roster" | "create" | "spawn" | "link" | "approve" | "backup" | "recover" | "direct" | "password" | "signin";
+/** What a world that asks for a sign-in says of this browser: signed in or not, as whom, and whether it may join. */
+interface Account {
+  signed: boolean;
+  name?: string;
+  ok: boolean;
+  why: string;
+}
 interface Details extends World {
+  signin?: { method: string };
   spawns: { name: string; x: number; z: number }[];
   width: number;
   height: number;
@@ -57,7 +66,10 @@ function remembered(): Remembered[] {
   }
 }
 const route = new URLSearchParams(location.search).get("screen");
-const directScreen = direct && ["roster", "link", "create"].includes(route ?? "");
+/** The state a sign-in came back from Discord with, until it is finished. */
+let returning = new URLSearchParams(location.search).get("signin");
+const directScreen = direct && (["roster", "link", "create"].includes(route ?? "") || returning !== null);
+let account: Account | null = null;
 let screen: Screen = "title",
   worlds: World[] = [],
   listed: Listing[] = [],
@@ -72,8 +84,9 @@ let screen: Screen = "title",
 let draft = "",
   look = defaultLook(),
   customise = false,
-  editor: "appearance" | "build" = "appearance",
+  editor: "appearance" | "build" | "face" = "appearance",
   group = 0,
+  faceGroup = 0,
   chart = false,
   spawn = -1,
   turn = 0.25,
@@ -108,6 +121,7 @@ const directWorld = (): World | null => direct
   : null;
 const selectedRow = () => known.find((r) => r.name === pick);
 const getInput = (id: string) => document.querySelector<HTMLInputElement>("#" + id)?.value ?? "";
+const freshRng = () => new Rng(crypto.getRandomValues(new Uint32Array(1))[0]!);
 async function json(url: string, opts?: RequestInit) {
   const r = await fetch(url, { signal: AbortSignal.timeout(8000), ...opts });
   let result;
@@ -126,6 +140,30 @@ function owner(action: string, extra: Record<string, unknown> = {}) {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ action, key, ...extra }),
   });
+}
+function sign(action: string, extra: Record<string, unknown> = {}) {
+  if (new URL(base()).origin !== location.origin) throw Error("Open this server to sign in to it.");
+  return json(new URL("signin", base()).href, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ action, key, ...extra }),
+  });
+}
+/** How this browser stands with the world's sign-in. One just back from Discord finishes signing in first. */
+async function signedIn(): Promise<Account> {
+  const state = returning;
+  returning = null;
+  if (state === null) return sign("status");
+  const here = new URL(location.href);
+  here.searchParams.delete("signin");
+  history.replaceState(null, "", here.pathname + here.search + here.hash);
+  try {
+    return await sign("finish", { state });
+  } catch (e) {
+    const now: Account = await sign("status");
+    if (!now.ok) notice = (e as Error).message;
+    return now;
+  }
 }
 function lastVisit(world: string): { name: string; time: number } | null {
   try {
@@ -196,6 +234,7 @@ function createDraft(): void {
   customise = false;
   editor = "appearance";
   group = 0;
+  faceGroup = 0;
   chart = false;
   turn = 0.25;
 }
@@ -233,10 +272,18 @@ async function selectWorld(w: World, to: Screen = "roster", wanted = ""): Promis
   render();
   topOfPage();
   try {
-    const [info, roster] = await Promise.all([json(new URL("entry-world.json", address).href), owner("roster")]);
+    const asked = owner("roster").catch((e: Error) => e);
+    const info = await json(new URL("entry-world.json", address).href);
+    const signed = info.signin ? await signedIn() : null;
+    let roster = await asked;
+    // A sign-in finished just now was not yet in force when the roster was asked for.
+    if (signed?.ok && roster instanceof Error) roster = await owner("roster");
     if (v !== version) return false;
+    if (roster instanceof Error && !signed) throw roster;
     data = info;
-    known = roster.survivors;
+    account = signed;
+    known = roster instanceof Error ? [] : roster.survivors;
+    if (signed && !signed.ok) screen = "signin";
     const current: World = { ...w, ...info, address };
     selected = current;
     const chosen = playSurvivor(known, wanted) ?? playSurvivor(known, "");
@@ -255,7 +302,8 @@ async function selectWorld(w: World, to: Screen = "roster", wanted = ""): Promis
     loadingWorld = false;
     render();
   }
-  return v === version && !loadError;
+  // A world that still waits on a sign-in is not one to enter or make a survivor in.
+  return v === version && !loadError && screen !== "signin";
 }
 async function worldsRefresh() {
   const request = ++listRequest, visit = browserVisit;
@@ -438,8 +486,10 @@ function survivors(): { content: string; primary: string } {
       + '<div class="roster-grid">' + (loadingWorld ? "" : cards || "<p>No survivors yet.</p>") + '</div>'
       + '<div class="support">'
       + (chosen ? button("new", "Create a survivor", "quiet") : "")
-      + button(fromWorld ? "link" : "link-world", "Link this browser", "quiet")
-      + (chosen ? button("approve", "Link another browser", "quiet") + button("backup", "Save recovery code", "quiet") : "")
+      // An account's survivors follow it to any browser, so there is nothing to link or recover.
+      + (fromWorld && account ? button("signout", "Sign out of " + (account.name ?? "Discord"), "quiet")
+        : button(fromWorld ? "link" : "link-world", "Link this browser", "quiet")
+          + (chosen ? button("approve", "Link another browser", "quiet") + button("backup", "Save recovery code", "quiet") : ""))
       + "</div>",
   };
 }
@@ -481,7 +531,8 @@ function render() {
       ? `<div class="appearance-editor"><div class="chips" role="group" aria-label="Appearance options">
         ${button("editor", "Appearance", "chip", `data-editor="appearance" aria-pressed="${editor === "appearance"}"`)}
         ${button("editor", "Proportions", "chip", `data-editor="build" aria-pressed="${editor === "build"}"`)}
-      </div>${editor === "appearance" ? appearanceFields(look) : bodyFields(look, group)}
+        ${button("editor", "Face", "chip", `data-editor="face" aria-pressed="${editor === "face"}"`)}
+      </div>${editor === "appearance" ? appearanceFields(look) : editor === "build" ? bodyFields(look, group) : faceFields(look, faceGroup)}
       <div class="support">${button("rotate", "Rotate preview", "quiet")}${button("random", "Randomize", "quiet")}${button("reset", "Reset appearance", "quiet")}</div></div>`
       : "";
     html = panel("Create a survivor", `<div class="identity-fields">${identityFields(look, draft)}</div>
@@ -522,6 +573,14 @@ function render() {
     html = panel("World password",
       field("password", "Password for " + (selected?.name ?? "this world"), "", 'type="password" autocomplete="current-password"'),
       button("unlock", "Enter world", "primary"));
+  } else if (screen === "signin") {
+    const world = selected?.name ?? "This world";
+    const invite = data?.discord ? `<a class="server-link" href="${esc(data.discord)}" target="_blank" rel="noopener noreferrer">${esc(world)} on Discord ↗</a>` : "";
+    html = account?.signed
+      ? panel("Sign in", `<p class="lead">${esc(account.why || "This Discord account may not join yet.")}</p><p class="context">Signed in as ${esc(account.name)}</p>
+        <div class="support">${invite}${button("signout", "Use another Discord account", "quiet")}</div>`, button("retry-world", "Check again", "primary"))
+      : panel("Sign in", `<p class="lead">${esc(account?.why || world + " asks you to sign in with Discord.")}</p>
+        <p class="context">Your survivors here belong to your Discord account, on any browser.</p><div class="support">${invite}</div>`, button("discord", "Continue with Discord", "primary discord"));
   }
   root.innerHTML = html;
   const content = root.querySelector<HTMLElement>(".entry-content");
@@ -587,7 +646,7 @@ async function action(a: string, b: HTMLElement) {
     else if (screen === "password" && pending?.intent === "create") nav("spawn");
     else if (screen === "recover") nav("link");
     else if (["create", "link", "approve", "backup", "password"].includes(screen)) nav("roster");
-    else if (screen === "direct" || (screen === "roster" && fromWorld)) nav("servers");
+    else if (screen === "direct" || ((screen === "roster" || screen === "signin") && fromWorld)) nav("servers");
     else nav("title");
     return;
   }
@@ -650,6 +709,17 @@ async function action(a: string, b: HTMLElement) {
     await selectWorld(selected, lastWorldRequest.screen, lastWorldRequest.wanted);
     return;
   }
+  if (a === "discord") {
+    const { url } = await sign("start");
+    if (new URL(url).origin !== "https://discord.com") throw Error("The server did not give a Discord address.");
+    location.assign(url);
+    return;
+  }
+  if (a === "signout" && selected) {
+    await sign("out");
+    await selectWorld(selected, "roster");
+    return;
+  }
   if (a === "choose-world") {
     const w = visibleWorlds().find((w) => w.address === worldChoice);
     if (w && joinable(w)) {
@@ -693,13 +763,22 @@ async function action(a: string, b: HTMLElement) {
   }
   if (a === "customise" || a === "editor") {
     if (a === "customise") customise = !customise;
-    else editor = b.dataset.editor === "build" ? "build" : "appearance";
+    else editor = b.dataset.editor === "build" || b.dataset.editor === "face" ? b.dataset.editor : "appearance";
     render();
     if (customise && a === "customise") root.querySelector(".appearance-editor")?.scrollIntoView({ block: "nearest" });
     return;
   }
   if (a === "group") {
     group = Number(b.dataset.index);
+    render();
+    return;
+  }
+  if (a === "face-group") {
+    faceGroup = Number(b.dataset.index);
+    render();
+    return;
+  }
+  if (faceAction(look, a, Number(b.dataset.index), freshRng)) {
     render();
     return;
   }
@@ -714,13 +793,12 @@ async function action(a: string, b: HTMLElement) {
     return;
   }
   if (a === "reset" || a === "random") {
-    look = a === "reset" ? defaultLook() : randomLook(new Rng(crypto.getRandomValues(new Uint32Array(1))[0]!));
+    look = a === "reset" ? defaultLook() : randomFace(freshRng(), randomLook(freshRng()));
     render();
     return;
   }
   if (a === "swatch" || a === "style") {
     look[Number(b.dataset.field)] = Number(b.dataset.value);
-    if (Number(b.dataset.field) === LOOK_SEX && look[LOOK_SEX]) look[LOOK_BEARD] = 0;
     render();
     return;
   }
@@ -847,6 +925,10 @@ root.addEventListener("input", (e) => {
     setRegion(look, Number(input.dataset.region), Number(input.value));
     syncScene();
   }
+  if (input.dataset.face !== undefined) {
+    setFace(look, Number(input.dataset.face), Number(input.value));
+    syncScene();
+  }
 });
 root.addEventListener("keydown", (e) => {
   if (e.key !== "Enter" || !(e.target instanceof HTMLInputElement) || !["text", "password", "url"].includes(e.target.type)) return;
@@ -907,7 +989,7 @@ async function start() {
       } catch {}
     }
     const wanted = new URLSearchParams(location.search).get("survivor") ?? "";
-    await selectWorld(directWorld()!, route as Screen, wanted);
+    await selectWorld(directWorld()!, (["roster", "link", "create"].includes(route ?? "") ? route : "roster") as Screen, wanted);
   } else {
     render();
     warmTitleAfterPaint();

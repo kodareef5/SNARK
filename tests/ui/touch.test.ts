@@ -56,9 +56,9 @@ test("the stick is where the thumb lands: still in its middle, analog to the rim
   p.pointer(2, KEY_ZONE_MOVE, 200 + STICK_DEAD - 1, 400, 7, 0, t, 1);
   expect([t.x, t.z]).toEqual([0, 0]);
   // Up the screen is forward. Half way out is half speed, less the still middle.
-  p.pointer(2, KEY_ZONE_MOVE, 200, 400 - 34, 7, 0, t, 1);
+  p.pointer(2, KEY_ZONE_MOVE, 200, 400 - 20, 7, 0, t, 1);
   expect(t.x).toBeCloseTo(0, 9);
-  expect(t.z).toBeCloseTo((34 - STICK_DEAD) / (STICK_REACH - STICK_DEAD), 9);
+  expect(t.z).toBeCloseTo((20 - STICK_DEAD) / (STICK_REACH - STICK_DEAD), 9);
   expect(t.log).toEqual([]);
   p.pointer(2, KEY_ZONE_MOVE, 200 + STICK_REACH, 400, 7, 0, t, 1);
   expect([t.x, t.z, p.knobX]).toEqual([1, 0, STICK_REACH]);
@@ -78,24 +78,38 @@ test("the stick is where the thumb lands: still in its middle, analog to the rim
   expect([p.stick, t.x, t.z, p.knobY]).toEqual([false, 0, 0, 0]);
 });
 
+test("the same thumb travel gives the same speed on every screen", () => {
+  for (const unit of [0.8, 1, 1.5]) {
+    const t = target(), p = new TouchPlay();
+    p.pointer(0, KEY_ZONE_MOVE, 100, 150, 1, 0, t, unit);
+    p.pointer(2, KEY_ZONE_MOVE, 100 + 20 / unit, 150, 1, 20, t, unit);
+    expect(t.x).toBeCloseTo(0.5, 8);
+    p.pointer(2, KEY_ZONE_MOVE, 100 + 60 / unit, 150, 1, 40, t, unit);
+    expect(t.x).toBeCloseTo(1, 8);
+    expect((p.stickX - 100) * unit).toBeCloseTo(25, 8);
+  }
+});
+
 test("a drag on the right turns the view as a mouse does, in pixels; a finger on Attack fires and turns it too", () => {
   const t = target(), p = new TouchPlay();
   p.pointer(0, KEY_ZONE_LOOK, 600, 200, 3, 0, t, 0.8);
   expect([t.dx, t.dy]).toEqual([0, 0]);
   p.pointer(2, KEY_ZONE_LOOK, 650, 190, 3, 0, t, 0.8);
-  expect(t.dx).toBeCloseTo(50 * 0.8 * LOOK_GAIN, 9);
-  expect(t.dy).toBeCloseTo(-10 * 0.8 * LOOK_GAIN, 9);
+  const first = 1 - 9 / Math.hypot(40, -8);
+  expect(t.dx).toBeCloseTo(40 * first * LOOK_GAIN, 9);
+  expect(t.dy).toBeCloseTo(-8 * first * LOOK_GAIN, 9);
   // Both thumbs at once: the stick's finger and the view's do not disturb each other.
   p.pointer(0, KEY_ZONE_MOVE, 100, 300, 4, 0, t, 0.8);
   p.pointer(2, KEY_ZONE_MOVE, 100, 250, 4, 0, t, 0.8);
   p.pointer(2, KEY_ZONE_LOOK, 660, 190, 3, 0, t, 0.8);
   expect(t.z).toBeGreaterThan(0.5);
-  expect(t.dx).toBeCloseTo(60 * 0.8 * LOOK_GAIN, 9);
+  expect(t.dx).toBeCloseTo((40 * first + 8) * LOOK_GAIN, 9);
   p.pointer(1, KEY_ZONE_LOOK, 660, 190, 3, 0, t, 0.8);
   p.pointer(2, KEY_ZONE_LOOK, 900, 190, 3, 0, t, 0.8);
-  expect(t.dx).toBeCloseTo(60 * 0.8 * LOOK_GAIN, 9);
+  expect(t.dx).toBeCloseTo((40 * first + 8) * LOOK_GAIN, 9);
   // Attack holds the primary button, and the same thumb drags the aim.
-  t.dx = t.dy = 0;
+  p.pointer(1, KEY_ZONE_MOVE, 100, 250, 4, 0, t, 0.8);
+  t.log.length = 0; t.dx = t.dy = 0;
   p.pointer(0, KEY_TOUCH_BUTTON + T_ATTACK, 900, 400, 5, 0, t, 1);
   p.pointer(2, KEY_TOUCH_BUTTON + T_ATTACK, 890, 420, 5, 0, t, 1);
   expect([t.log, t.dx, t.dy]).toEqual([["m0+"], -10 * LOOK_GAIN, 20 * LOOK_GAIN]);
@@ -171,7 +185,7 @@ test("a page that is never touched does not pay for the touch layout: nothing a 
   const ui = new Ui(), hud = new HudModel();
   ui.inputDevice = 2;
   ui.build(844 / 390, hud, null);
-  expect([ui.touch, ui.layer, ui.frame.find(KEY_ZONE_MOVE), ui.frame.find(KEY_UNMUTE) !== null]).toEqual([true, null, null, true]);
+  expect([ui.touch, ui.layer, ui.frame.find(KEY_ZONE_MOVE), ui.frame.find(KEY_UNMUTE) !== null]).toEqual([true, null, null, false]);
 });
 
 test("a prompt that names the use key is offered as a button without it", () => {

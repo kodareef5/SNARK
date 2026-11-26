@@ -4,7 +4,7 @@
 import { expect, test } from "bun:test";
 import { Pose } from "../../shared/anim/clip.ts";
 import { B_FOOT_L, B_FOOT_R, B_HEAD, B_LOWER_LEG_L, B_LOWER_LEG_R, B_UPPER_LEG_L, B_UPPER_LEG_R, HUMAN, HUMAN_BONES } from "../../shared/anim/human.ts";
-import { defaultLook, HEAD_GROW, HEAD_SLACK, LOOK_SEX, lookJoints, plantLookFeet, lookScales, REGION_COUNT, setRegion } from "../../shared/anim/look.ts";
+import { defaultLook, HEAD_GROW, HEAD_SLACK, LOOK_SEX, lookJoints, plantLookFeet, lookScales, randomLook, REGION_COUNT, setRegion } from "../../shared/anim/look.ts";
 import { AnimState, HumanAnim, humanPose, PITCH_STEPS, SPEED_MAX } from "../../shared/anim/pose.ts";
 import { Solved, boneToModel, solve } from "../../shared/anim/skeleton.ts";
 import { Rng } from "../../shared/rng.ts";
@@ -29,8 +29,10 @@ test("a look's head stays within 2 cm of the hit head in any pose on foot", () =
     const values = Array.from({ length: REGION_COUNT }, () => rng.range(-1, 1));
     sliders.push((q) => values[q]!);
   }
-  const bodies = pack.header.rigs.filter((r) => r.id === "human_m" || r.id === "human_f").flatMap((rig) => sliders.map((slider) => {
-    const rest = Float32Array.from(rig.rest), look = defaultLook(), scale = new Float32Array(HUMAN_BONES * 3), joints = new Float32Array(HUMAN_BONES * 3);
+  // Every look but the plain one has random face bytes, brow, lengths and body bytes: they move no bone.
+  const faces = new Rng(4);
+  const bodies = pack.header.rigs.filter((r) => r.id === "human_m" || r.id === "human_f").flatMap((rig) => sliders.map((slider, k) => {
+    const rest = Float32Array.from(rig.rest), look = k === 0 ? defaultLook() : randomLook(faces), scale = new Float32Array(HUMAN_BONES * 3), joints = new Float32Array(HUMAN_BONES * 3);
     look[LOOK_SEX] = rig.id === "human_f" ? 1 : 0;
     for (let r = 0; r < REGION_COUNT; r++) setRegion(look, r, slider(r));
     lookScales(look, scale, rest);

@@ -11,6 +11,7 @@ import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import { ROAD_STEP, roadSamples } from "../../../shared/world/roadframe.ts";
 import { DRAW_BLEND, DRAW_CUTOUT, DRAW_HEAT_SHIFT, DRAW_PIECE, DRAW_PLAIN, DRAW_PULLED, DRAW_SIZED, DRAW_TEXTURED, SOURCE_MAP, SOURCE_WINDOW, type FramePacket } from "./packet.ts";
 import { PIECE_ROWS } from "./pieces.ts";
+import { PRINT_FLOATS } from "./print-term.ts";
 import { WATER_ALPHA } from "./shading.ts";
 import { LAYER_LEVELS, materialEmission, skinMode } from "./surface.ts";
 import type { GroundSize } from "./terrain.ts";
@@ -223,12 +224,30 @@ export const MATERIAL_ROWS: readonly UniformRow[] = [
   one("uSheet", AT_DRAW, (c) => c.material!.sheet ?? 0),
   one("uEmissive", AT_DRAW, (c) => materialEmission(c.material!, c.night, c.exposure)),
   uv,
+  // The tier's threshold, by which skin's own light fades toward its flat level (surface.ts skinNear).
+  one("uThreshold", AT_FRAME, (c) => c.p.tier.threshold),
 ];
 
 /** After those, for a body with a layer (packet.ts drawLayer): the level it is drawn at and its wear story. */
 export const LAYER_ROWS: readonly UniformRow[] = [
   one("uLevel", AT_DRAW, (c) => c.p.drawLayer[c.d]! / LAYER_LEVELS),
   one("uWear", AT_DRAW, (c) => c.p.drawWear[c.d]!),
+];
+
+/** The prints' table as far as the frame's array has layers (print-term.ts), one view kept for each packet. */
+const printViews = new WeakMap<FramePacket, Float32Array>();
+function printTable(p: FramePacket): Float32Array | null {
+  const n = p.printLayers * PRINT_FLOATS;
+  if (n === 0) return null;
+  let view = printViews.get(p);
+  if (view?.length !== n) printViews.set(p, (view = p.printTable.subarray(0, n)));
+  return view;
+}
+
+/** After those, for a draw with prints (packet.ts DRAW_PRINTED): the prints' table, and whether they are drawn as swatches. */
+export const PRINT_ROWS: readonly UniformRow[] = [
+  array("uPrintTable", SEND_4FV, AT_FRAME, (c) => printTable(c.p), frame),
+  one("uPrintSwatch", AT_FRAME, (c) => (c.p.printSwatches ? 1 : 0)),
 ];
 
 /**

@@ -35,13 +35,15 @@ export interface Traits {
 }
 export const TRAIT_NAMES: readonly (keyof Traits)[] = ["calm", "social", "bold", "playful"];
 
-/** What one wears and looks like. `mesh` is the body (the human's until other models come); `wear` are items put on
- * from the game's own (cloth, hide, flak pieces); `colors` are palette indices for the body's regions. */
+/** What one wears and looks like. `mesh` is the body (the human's until other models come); `wear` is the armour its role
+ * needs, over the clothes its population's outfits give. */
 export interface Look {
   id: string;
   mesh: string;
   wear: string[];
-  colors?: number[];
+  /** The population its people are drawn from: a content one by id (content/people), or an admin one by its store id at
+   * its latest revision; the city's where not given. */
+  population?: string | number;
   placeholder?: boolean;
   /** For an artist: what this look is meant to be once it has its own art. */
   note?: string;
@@ -82,6 +84,8 @@ export interface Role {
   role: string;
   archetypes: string[];
   count: [number, number];
+  /** A named person of the people store, by id, who plays the first of it when free. */
+  person?: number;
 }
 
 /** Where a step goes or looks: the scene's place, a free slot about it, another role (its first, or all of them), the
@@ -173,6 +177,8 @@ export interface Catalogue {
   scenes: Scene[];
   reactions: ReactionTable[];
   names: Record<string, string[]>;
+  /** First names that are a man's (0) or a woman's (1): a person of one is drawn of that sex. */
+  sexes?: Record<string, number>;
 }
 
 /** What the world offers, to check a catalogue against: the emotes, items and species it has. */
@@ -180,6 +186,8 @@ export interface Known {
   emotes: ReadonlySet<string>;
   items: ReadonlySet<string>;
   species: ReadonlySet<string>;
+  /** The populations a look may name; any where not given. */
+  populations?: ReadonlySet<string>;
 }
 
 const isTarget = (t: unknown): boolean =>
@@ -205,7 +213,7 @@ export function validateCatalogue(c: Catalogue, known: Known): string[] {
   for (const l of c.looks) {
     unique("look", l.id);
     for (const w of l.wear) if (!known.items.has(w)) out.push(`look ${l.id}: wears ${w}, which is no item`);
-    if (l.colors && (l.colors.length > 6 || l.colors.some((n) => !Number.isInteger(n) || n < 0 || n > 255))) out.push(`look ${l.id}: up to six palette colours, 0 to 255`);
+    if (typeof l.population === "number" ? !(Number.isSafeInteger(l.population) && l.population >= 1) : l.population !== undefined && known.populations && !known.populations.has(l.population)) out.push(`look ${l.id}: draws from ${l.population}, which is no population`);
   }
   for (const a of c.archetypes) {
     unique("archetype", a.id);
@@ -233,6 +241,7 @@ export function validateCatalogue(c: Catalogue, known: Known): string[] {
     for (const r of s.roles) {
       if (!range(r.count) || r.count[1] < 1) out.push(`scene ${s.id}: role ${r.role} wants a count range of at least 1`);
       if (!r.archetypes.length) out.push(`scene ${s.id}: role ${r.role} needs an archetype`);
+      if (r.person !== undefined && !(Number.isSafeInteger(r.person) && r.person >= 1)) out.push(`scene ${s.id}: role ${r.role} names a person by store id`);
       for (const a of r.archetypes) if (!archetypes.has(a)) out.push(`scene ${s.id}: role ${r.role}: archetype ${a} is not in the catalogue`);
       const steps = s.script[r.role];
       if (!steps?.length) {
@@ -271,5 +280,6 @@ export function validateCatalogue(c: Catalogue, known: Known): string[] {
     for (const a of c.archetypes.filter((a) => a.reactions === t.id)) for (const row of t.rows) if (row.line && !a.lines[row.line]?.length) out.push(`reactions ${t.id}: ${a.id} has no lines for ${row.line}`);
   }
   for (const [k, v] of Object.entries(c.names)) if (!v.length) out.push(`names ${k}: empty`);
+  for (const [k, v] of Object.entries(c.sexes ?? {})) if (v !== 0 && v !== 1) out.push(`sexes ${k}: 0 for a man's name, 1 for a woman's`);
   return out;
 }

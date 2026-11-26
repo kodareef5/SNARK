@@ -156,6 +156,9 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
   for (const f of existsSync(dist) ? readdirSync(dist) : []) if (f.startsWith("chunk-")) rmSync(join(dist, f));
   mkdirSync(join(dist, "assets"), { recursive: true });
   const ui = buildUiAssets(dist);
+  const mobileArt = readFileSync(join(root, "client/assets/touch-instruments.svg"));
+  const mobileName = `assets/touch-instruments.${partHash(mobileArt)}.svg`;
+  writeFileSync(join(dist, mobileName), mobileArt);
   // The sky's table and the content are files of their own, not strings in the script.
   const sky = skyFile(theSky().table), skyName = `assets/sky.${partHash(sky)}.bin`;
   writeFileSync(join(dist, skyName), sky);
@@ -163,7 +166,7 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
   writeFileSync(join(dist, contentName), content);
   // The page says hello with the wire version of the source it is built from (shared/net/wire.ts), and build.json keeps it.
   const wire = sourceWire(root)!;
-  const define = { __HUD_ATLAS_URL__: JSON.stringify(ui.atlas), __FIELD_ART__: JSON.stringify(ui.field), __TOUCH_ATLAS_URL__: JSON.stringify(ui.touch), __SKY_FILE__: JSON.stringify(skyName), __CONTENT_FILE__: JSON.stringify(contentName), __WIRE__: String(wire) };
+  const define = { __MOBILE_ART__: JSON.stringify(mobileName), __HUD_ATLAS_URL__: JSON.stringify(ui.atlas), __FIELD_ART__: JSON.stringify(ui.field), __TOUCH_ATLAS_URL__: JSON.stringify(ui.touch), __SKY_FILE__: JSON.stringify(skyName), __CONTENT_FILE__: JSON.stringify(contentName), __WIRE__: String(wire) };
   // The page's script is main.js and page.js, and each file it fetches later takes what it shares with them from
   // page.js (tools/page-script.ts). Workers and worklets run in their own threads, so each is bundled as a separate file.
   const workers = await Bun.build({ entrypoints: ["client/voice/voice-worker.ts", "client/voice/voice-capture.ts", "client/voice/voice-playback.ts", "client/assets/assets-worker.ts", "client/sound/decode-worker.ts", "client/city/city-worker.ts", "client/debug/shot-worker.ts"].map((f) => join(root, f)), outdir: dist, naming: "[name].[ext]", target: "browser", minify: true, sourcemap: "linked", define });
@@ -187,8 +190,9 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
   if (!registry) throw new Error(`Content cannot be built:\n${errors.join("\n")}`);
   const core = orderPack(buildCorePack([...importedMeshes(), ...(opts.stress ? stressMeshes() : [])]));
   const whole = parsePack(core);
-  const split = splitPack(core, "core", paging(registry!, whole));
+  const split = splitPack(core, "core", { ...paging(registry!, whole), separateHits: true });
   const manifest = split.manifest;
+  if (split.rigHits) writeFileSync(join(dist, "assets", manifest.rigHits!), split.rigHits);
   const pageFile = split.files.findIndex((f) => f.role === "page");
   let packBytes = 0;
   /** Writes file `i` of the manifest, named after its hash, once its bytes are final. */
@@ -270,7 +274,7 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
     .replace("<!-- MODULES -->", modules)
     .replace("FETCHED", JSON.stringify(["map.json", "assets/manifest.json", boot, skyName, contentName]));
   writeFileSync(join(dist, "index.html"), pageWithoutNotes(html));
-  const fetchedWhole = ["index.html", "assets/manifest.json", boot, skyName, contentName, ...(rows ? [`assets/${manifest.soundRows}`] : []), ...scripts];
+  const fetchedWhole = ["index.html", "assets/manifest.json", boot, skyName, contentName, ...(rows ? [`assets/${manifest.soundRows}`] : []), ...(manifest.rigHits ? [`assets/${manifest.rigHits}`] : []), ...scripts];
   for (const name of fetchedWhole) {
     const binary = name === boot || name === skyName;
     writeFileSync(join(dist, `${name}.br`), brotli(readFileSync(join(dist, name)), opts.quick ?? false, binary));

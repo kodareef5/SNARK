@@ -15,7 +15,7 @@ import { Ui } from "../client/core/ui/ui.ts";
 import { CORE_CONTENT } from "../content/core.ts";
 import { compileContent } from "../shared/content/registry.ts";
 import { parsePack, type Pack } from "../shared/pack/pack.ts";
-import { ARMOR_SLOTS, HOTBAR_SLOTS, Inventory } from "../shared/sim/items.ts";
+import { GEAR_SLOTS, HOTBAR_SLOTS, Inventory } from "../shared/sim/items.ts";
 import { ICON_CACHE, assetFraming, drawIcons, iconPng, iconSheets, iconSubjects, type DrawnIcons, type TextureSource } from "./pack/icons.ts";
 import { standInSession } from "./snap.ts";
 import { corePack, namedTextures, rgbaOf } from "./snap/files.ts";
@@ -160,7 +160,7 @@ const countImages = (ui: Ui): number => ui.frame.nodes.slice(0, ui.frame.count).
 
 /** Items with a picture first, then some without, which keep their swatch. */
 function stocked(): Inventory {
-  const inv = new Inventory(40 + HOTBAR_SLOTS + ARMOR_SLOTS, 40);
+  const inv = new Inventory(40 + GEAR_SLOTS, 40);
   const id = (s: string): number => reg.index.get(s)!;
   subjects.forEach((s, i) => inv.set(i, id(s.owner), 1, 0, 0, 0));
   ["core:stone", "core:fiber", "core:berry", "core:meat", "core:waterskin"].forEach((s, i) => reg.index.has(s) && inv.set(subjects.length + i, id(s), [100, 180, 24, 3, 1][i]!, 0, 0, 0));

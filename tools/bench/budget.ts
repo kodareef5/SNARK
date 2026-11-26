@@ -9,7 +9,7 @@ import { STAND, terrainWood } from "../../client/core/devicescene.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { NodeChanges } from "../../client/core/render/farnodes.ts";
 import { FAR_BUFFER } from "../../client/core/render/far.ts";
-import { DRAW_DETAILS, DRAW_SCREENS, DRAW_PULLED, DRAW_SKINNED, DRAW_TEXTURED, TRANSIENT_BUFFER, type FramePacket } from "../../client/core/render/packet.ts";
+import { DRAW_DETAILS, DRAW_SCREENS, DRAW_PULLED, DRAW_RANGED, DRAW_SKINNED, DRAW_TEXTURED, TRANSIENT_BUFFER, type FramePacket } from "../../client/core/render/packet.ts";
 import { NODE_BUFFERS, Scene } from "../../client/core/render/scene.ts";
 import "../../client/core/render/city-late.ts";
 import { RemoteSample } from "../../client/core/session.ts";
@@ -67,7 +67,7 @@ export function count(scene: Scene, p: FramePacket): Counted {
       parts.fight += p.drawInstances[d]! * 2;
       continue;
     }
-    const n = ((flags & DRAW_TEXTURED) !== 0 ? p.drawIndexCount[d]! / 3 : tris[mesh]![p.drawLod[d]!]!) * p.drawInstances[d]!;
+    const n = ((flags & (DRAW_TEXTURED | DRAW_RANGED)) !== 0 ? p.drawIndexCount[d]! / 3 : tris[mesh]![p.drawLod[d]!]!) * p.drawInstances[d]!;
     const id = ids[mesh]!;
     let part: Part = "built";
     if (buffer === TRANSIENT_BUFFER) part = (flags & DRAW_SKINNED) !== 0 ? "bodies" : "fight";

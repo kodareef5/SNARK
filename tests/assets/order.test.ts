@@ -115,6 +115,23 @@ function cardsOf(pack: Pack): number[] {
   return Array.from({ length: lod.indexCount / 3 }, (_, t) => Math.floor(x(ix[t * 3]!) / 2 + 0.1));
 }
 
+test("ordering keeps every skin zone's triangles on textured and flat levels", () => {
+  const mesh = tubeMesh();
+  mesh.materials![1]!.flags |= MATERIAL_CUTOUT;
+  for (const lod of mesh.lods) lod.zones = Uint8Array.from({ length: lod.indices.length / 3 }, (_, t) => t % 3);
+  const raw = buildPack([mesh], defaultPalette(), [], [TUBE_RIG]);
+  const before = parsePack(raw);
+  const after = parsePack(orderPack(raw));
+  for (const [level, lod] of before.header.meshes[0]!.lods.entries()) {
+    const now = after.header.meshes[0]!.lods[level]!;
+    expect(now.zones).toEqual(lod.zones);
+    for (let z = 0; z < lod.zones!.length; z += 3) {
+      const first = lod.zones![z + 1]!, count = lod.zones![z + 2]!;
+      expect(corners(after, now, first, count)).toEqual(corners(before, lod, first, count));
+    }
+  }
+});
+
 test("a pack ordered draws the same triangles in each run, a cut-out run's sprays in the order the writer ranked them, and every level from welded vertices", () => {
   const before = parsePack(cutPack());
   const after = parsePack(orderPack(cutPack()));

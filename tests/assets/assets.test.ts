@@ -14,8 +14,9 @@ const id = (mesh: number): string => (mesh < 0 ? "" : pack.header.meshes[mesh]!.
 artTest("the table knows each mesh's levels, size and bone without reading its bytes again", () => {
   expect(table.count).toBe(pack.header.meshes.length);
   const head = table.find("core:human_m/head");
-  expect([table.tris[head]!.length, table.skeleton[head], table.rig[head]! >= 0]).toEqual([3, "human", true]);
-  expect(table.tris[head]![0]!).toBeGreaterThan(table.tris[head]![2]!);
+  // Four levels: the source's own and one drawn with materials, then two flat (tools/pack/body.ts).
+  expect([table.tris[head]!.length, table.skeleton[head], table.rig[head]! >= 0]).toEqual([4, "human", true]);
+  expect(table.tris[head]![0]!).toBeGreaterThan(table.tris[head]![3]!);
   const box = table.find("core:missing");
   expect([table.tris[box]!.length, table.skeleton[box], table.rig[box]]).toEqual([1, "", -1]);
   const missing = pack.header.meshes[box]!;
@@ -53,10 +54,10 @@ test("the tiers ask for more as they go up, and the default is the textured midd
 /** How far each level of a whole body lies from its finest: the average of its five parts, as the scene takes it. */
 const bodyErrors = (sex: string): number[] => {
   const parts = ["head", "torso", "hands", "legs", "feet"].map((part) => table.error[table.find(`core:human_${sex}/${part}`)]!);
-  return [0, 1, 2].map((level) => parts.reduce((sum, e) => sum + e[level]!, 0) / parts.length);
+  return [0, 1, 2, 3].map((level) => parts.reduce((sum, e) => sum + e[level]!, 0) / parts.length);
 };
 
-artTest("a level is chosen by its error on screen: a body goes coarser near 14 and 45 metres at 720p", () => {
+artTest("a level is chosen by its error on screen: a body goes coarser near 11, 22 and 74 m at 720p", () => {
   const assets = new Assets(coreRegistry(), pack);
   /** The distance at which something seen afresh is first drawn at `level`. */
   const from = (errors: number[], level: number): number => {
@@ -67,8 +68,9 @@ artTest("a level is chosen by its error on screen: a body goes coarser near 14 a
     const errors = bodyErrors(sex);
     assets.tier = tierOf("medium");
     assets.begin(0, 720, 1.2217);
-    const [near, far] = [from(errors, 1), from(errors, 2)];
-    expect([sex, near > 14 * 0.8 && near < 14 * 1.2, far > 45 * 0.8 && far < 45 * 1.2]).toEqual([sex, true, true]);
+    // MakeHuman's body at 26,000, 3,400, 1,480 and 420 triangles (tools/pack/body.ts); Quaternius's turned near 9, 19 and 58 m.
+    const [near, mid, far] = [from(errors, 1), from(errors, 2), from(errors, 3)];
+    expect([sex, near > 11 * 0.8 && near < 11 * 1.2, mid > 22 * 0.8 && mid < 22 * 1.2, far > 74 * 0.8 && far < 74 * 1.2]).toEqual([sex, true, true, true]);
     // Twice the pixels, or a scope's narrow view, and the finer level is held further out.
     assets.begin(0, 1440, 1.2217);
     expect(from(errors, 1)).toBeCloseTo(near * 2, 0);
@@ -95,7 +97,7 @@ artTest("a level is left only when another is right by a margin, and a mesh is n
   expect(assets.choose(errors, edge * (1 - m), 1)).toBe(1);
   expect(assets.choose(errors, edge * (1 - HYSTERESIS - 0.03), 1)).toBe(0);
   // From far off to near in one step, and back.
-  expect([assets.choose(errors, 1, 2), assets.choose(errors, 1000, 0)]).toEqual([0, 2]);
+  expect([assets.choose(errors, 1, 3), assets.choose(errors, 1000, 0)]).toEqual([0, 3]);
 
   const [box, head] = [table.find("core:missing"), table.find("core:human_m/head")];
   expect([assets.level(box, 2), assets.level(head, 2), assets.level(head, 1)]).toEqual([0, 2, 1]);

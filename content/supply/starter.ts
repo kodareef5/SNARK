@@ -262,7 +262,7 @@ export function starterBook(fit: Readonly<Record<string, number>> = FIT): Supply
         ).flatMap(([worth, names]) => names.map((n) => [id(n), worth])),
       ),
       // Cooked by a fire and not crafted, and the bunk bed, which nothing makes.
-      items: { [id("meat_cooked")]: 2.5, [id("meat_prime")]: 8, [id("meat_prime_cooked")]: 10.5, [id("piece_bunk_bed")]: 600 },
+      items: { [id("meat_cooked")]: 2.5, [id("meat_prime")]: 8, [id("meat_prime_cooked")]: 10.5, [id("piece_bunk_bed")]: 600, [id("tee")]: 6, [id("loose_tee")]: 6, [id("hoodie")]: 10, [id("jeans")]: 8, [id("shorts")]: 5, [id("trainers")]: 8, [id("apron")]: 4, [id("scissors")]: 6, [id("hair_dye_black")]: 3, [id("hair_dye_blond")]: 3, [id("hair_dye_brown")]: 3, [id("hair_dye_ginger")]: 3, [id("hair_dye_red")]: 3, [id("hair_dye_white")]: 3 },
     },
     tiers: [...TIERS],
     classes: [...CLASSES],

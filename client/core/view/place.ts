@@ -7,7 +7,6 @@ import { isSkateboard } from "../../../shared/sim/vehicle.ts";
 import { makeHandle } from "../../../shared/ids.ts";
 import { youngScale } from "../../../shared/sim/breeding.ts";
 import { GEAR_COUNT, GEAR_WORN } from "../../../shared/sim/entities.ts";
-import { SESSION_CREATING } from "../../../shared/net/protocol.ts";
 import { IMPALE_SLOT, type Seat } from "../../../shared/sim/seats.ts";
 import { vehiclePoint } from "../../../shared/sim/vehicle-frame.ts";
 import type { AppFrame } from "../frame.ts";
@@ -15,7 +14,7 @@ import { bodySeed } from "../render/scene.ts";
 import { remoteVehiclePose } from "../vehicle-view.ts";
 import { CHASE_BOOM, CHASE_TILT, ORBIT_BACK, type VehicleCameraMotion } from "../viewpoint.ts";
 import type { Director } from "./director.ts";
-import type { CreatorScreen } from "../ui/creator.ts";
+import { inCreator, type CreatorScreen } from "../ui/creator.ts";
 
 /** Metres the orbit's camera is behind the eye before the body is drawn whole; nearer than the near plane its head is not seen. */
 const HEAD_CLEAR = .1;
@@ -38,7 +37,7 @@ export function place(d: Director, f: AppFrame): void {
   // The orbit shows the whole body once the camera is clear of the head.
   if (d.orbit.inUse && d.orbit.shown.back > HEAD_CLEAR) d.own.firstPerson = false;
   d.view.thirdPerson = f.third;
-  if (session.sessionState === SESSION_CREATING) preview(d, f);
+  if (inCreator(session)) preview(d, f);
 }
 
 /** The slot of the seat that steers, 1 for the first; 0 where no seat does. */
@@ -209,13 +208,14 @@ function preview(d: Director, f: AppFrame): void {
   body.state.seed = 0;
   f.scene.own = body;
   f.scene.hour = 12;
-  // The panel takes the right of a wide window, so the body stands in the middle of the rest.
-  const back = 3.3;
+  // The panel takes the right of a wide window, so the body stands in the middle of the rest. The face tab frames the
+  // head, near enough for its face to be drawn at its finest level at any size of window.
+  const face = creator.faceTab, back = face ? 0.7 : 3.3;
   const side = aspect > 1 ? back * Math.tan(cam.fovY / 2) * aspect * Math.min(0.42, 190 / (360 * aspect)) : 0;
   cam.x = body.x + side;
-  cam.y = body.y + 1.15;
+  cam.y = body.y + (face ? 1.6 : 1.15);
   cam.z = body.z + back;
   cam.yaw = Math.PI;
   cam.roll = 0;
-  cam.pitch = -0.06;
+  cam.pitch = face ? 0 : -0.06;
 }

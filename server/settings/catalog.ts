@@ -32,6 +32,8 @@ export const AT_START: Readonly<Record<string, string>> = {
   bUseSingleplayerSettings: "It multiplies other settings once, as the files are read.",
   ServerAdminPassword: "It is the lock this page stands behind.",
   ClusterAdminPassword: "It is the lock this page stands behind.",
+  DiscordClientSecret: "It stays in the host's files: what this page is given is kept beside the save in plain words.",
+  DiscordBotToken: "It stays in the host's files: what this page is given is kept beside the save in plain words.",
   ModulesOff: "A module is set up once, as the server starts, and handlers are added then only.",
 };
 

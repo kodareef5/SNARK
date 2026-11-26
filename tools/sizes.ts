@@ -28,6 +28,8 @@ const MB = 1024 * KB;
 export const FIRST_FRAME_BUDGET = 1104 * KB;
 /** The reaction curves, which a page fetches after its first frame and waits for before it joins a world. */
 export const REACTION_CURVES_BUDGET = 96 * KB;
+/** What a page that boots the renderer for one subject, the wiki's studio or the person stage, fetches before it draws. */
+const PREVIEW_BUDGET = 1200 * KB;
 const BUDGETS: Record<string, number> = {
   "everything before the first frame, Brotli": FIRST_FRAME_BUDGET,
   "the reaction curves a world waits for, Brotli": REACTION_CURVES_BUDGET,
@@ -36,6 +38,8 @@ const BUDGETS: Record<string, number> = {
   "sound, kbit/s": 42,
   "sound takes stored twice": 0,
   "texture steps stored twice, astc": 0,
+  // The wiki's studio has the same (WIKI_BUDGETS): the stage boots the renderer as the studio does.
+  "person stage: what it fetches before it draws, Brotli": PREVIEW_BUDGET,
 };
 
 /** Copies past the first of each hash. */
@@ -93,6 +97,7 @@ export function weigh(dist: string): boolean {
     ["textures to 2,048, bc", textures("bc", 2048)],
     ["texture file, rgba", fileOf("tex", "rgba")],
     ["textures with a 2,048 step", (m.textures ?? []).filter((t) => t.top >= STEP0_SIZE << 5).length],
+    ["person stage: what it fetches before it draws, Brotli", previewBytes(dist, "person-stage.html", "person-stage.js")],
     ["sound file", fileOf("sound")],
     ["sound, kbit/s", (sounds.reduce((s, x) => s + x.takes.reduce((a, t) => a + t.bytes, 0), 0) * 8) / Math.max(1, seconds) / 1000],
     ["music", (existsSync(music) ? readdirSync(music, { recursive: true }) : []).reduce((s: number, n) => s + (statSync(join(music, String(n))).isFile() ? statSync(join(music, String(n))).size : 0), 0)],
@@ -212,8 +217,23 @@ const WIKI_BUDGETS: Record<string, number> = {
   "wiki: its largest picture": 320 * KB,
   "wiki: its largest card's picture": 64 * KB,
   // The studio fetches its bootstrap after View in 3D, before streaming the subject.
-  "wiki: what the studio fetches before it draws": 1200 * KB,
+  "wiki: what the studio fetches before it draws": PREVIEW_BUDGET,
 };
+
+/**
+ * What a preview page fetches before it draws, Brotli where the server has it: its page and script, then the files it
+ * boots the renderer from (entry-media.json names them). A file not built counts nothing.
+ */
+export function previewBytes(dist: string, page: string, script: string): number {
+  const sent = (address: string): number => {
+    const file = join(dist, address);
+    return existsSync(`${file}.br`) ? statSync(`${file}.br`).size : statSync(file).size;
+  };
+  const media = existsSync(join(dist, "entry-media.json")) ? (JSON.parse(readFileSync(join(dist, "entry-media.json"), "utf8")) as Record<string, string | null>) : {};
+  return [page, script, "entry-media.json", "assets/manifest.json", media.boot, media.studioContent ?? media.content, media.sky]
+    .filter((f): f is string => !!f && existsSync(join(dist, f)))
+    .reduce((n, f) => n + sent(f), 0);
+}
 
 /** Prints the wiki's rows against their budgets; false if any is over. */
 export function weighWiki(dist: string): boolean {
@@ -263,10 +283,7 @@ export function weighWiki(dist: string): boolean {
   });
   const media = [...new Bun.Glob("wiki/media/*.{png,webp}").scanSync({ cwd: dist })].map((f): [string, number] => [f, sent(f)]);
   const most = (list: [string, number][]): [string, number] => list.reduce((a, b) => (b[1] > a[1] ? b : a), ["", 0]);
-  const media3d = existsSync(join(dist, "entry-media.json")) ? (JSON.parse(readFileSync(join(dist, "entry-media.json"), "utf8")) as Record<string, string | null>) : {};
-  const studio = ["studio.html", "studio.js", "entry-media.json", "assets/manifest.json", media3d.boot, media3d.studioContent ?? media3d.content, media3d.sky]
-    .filter((f): f is string => !!f && existsSync(join(dist, f)))
-    .reduce((n, f) => n + sent(f), 0);
+  const studio = previewBytes(dist, "studio.html", "studio.js");
   const rows: [string, [string, number]][] = [
     ["wiki: the heaviest page before it can be read", most(pages)],
     ["wiki: what the studio fetches before it draws", ["studio.html", studio]],

@@ -21,7 +21,7 @@ import type { Manifest } from "../../shared/pack/manifest.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { MODE_FLYER, MODE_WALK } from "../../shared/sim/character.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
-import { CARRY_THROW, CMD_CARRY, MARKER_DEATH, REJECT_FULL, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION, RESULT_LOCKED, RESULT_OK, RESULT_WAIT, SESSION_ALIVE, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
+import { CARRY_THROW, CMD_CARRY, MARKER_DEATH, REJECT_FULL, REJECT_PASSWORD, REJECT_SIGNIN, REJECT_TRAVEL, REJECT_VERSION, RESULT_LOCKED, RESULT_OK, RESULT_WAIT, SESSION_ALIVE, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
 import { HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayHit } from "../../shared/world/ray.ts";
 import { BUILD_REACH } from "../../shared/world/snap.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
@@ -51,6 +51,7 @@ import type { FramePacket } from "./render/packet.ts";
 import { Scene, type OwnBody } from "./render/scene.ts";
 import type { ScreenPlayer, VideoHost } from "./video/player.ts";
 import type { FaceScreens } from "./video/faces.ts";
+import type { PrintHost } from "./render/prints.ts";
 import { Feedback } from "./feedback.ts";
 import { Shots } from "./shots.ts";
 import { SupplyView } from "./supply.ts";
@@ -112,6 +113,11 @@ const NO_EFFECTS: ReadonlySet<Effect> = new Set();
 
 export type ClientAssets = { manifest: Manifest; port: AssetPort };
 
+/** A microphone level this many times over opens the mouth all the way; another's voice opens it at least this far, this fast. */
+const MOUTH_GAIN = 4;
+const MOUTH_LEAST = 0.35;
+const MOUTH_RATE = 0.9;
+
 export class GameApp {
   readonly session: ClientSession;
   readonly ui: GameUi;
@@ -120,6 +126,14 @@ export class GameApp {
   readonly hud = new HudModel();
   /** What the HUD's widgets fill from (hud/widget.ts): made once, set each frame. */
   private readonly hudFill = new HudFill();
+  /** How open a survivor's mouth is as it is heard: the viewer's own by its microphone, another's while its voice plays. */
+  private readonly mouthOf = (id: number, own: boolean, tick: number): number => {
+    const v = this.voice;
+    if (!v) return 0;
+    if (own) return v.sending ? Math.min(1, v.level * MOUTH_GAIN) : 0;
+    for (const s of v.speakers.values()) if (s.speaking && handleIndex(s.handle) === id) return MOUTH_LEAST + (1 - MOUTH_LEAST) * Math.abs(Math.sin(tick * MOUTH_RATE));
+    return 0;
+  };
   /** The frame's values and its parts in their order (frame.ts): made once, the values set each frame. */
   private readonly f: AppFrame;
   private parts: readonly FramePart[];
@@ -273,6 +287,7 @@ export class GameApp {
     this.ui.palette = pack.palette;
     this.ui.touchPlay = this.touch;
     this.ui.pressKey = (code) => { this.key(code, true, false, this.ui.inputDevice); this.key(code, false, false, this.ui.inputDevice); };
+    this.ui.holdKey = (code, down) => { this.key(code, down, false, this.ui.inputDevice); };
     const app = this;
     this.padTarget = {
       get inMenu() { return !app.ui.wantsPointerLock; },
@@ -480,6 +495,8 @@ export class GameApp {
   private screenPlayer: ScreenPlayer | null = null;
   /** Loads the prop screen player after a frame with a screen in reach. */
   loadFaces: (() => Promise<FaceScreens>) | null = null;
+  /** The page's side of the prints on garments (client/shell/picture-array.ts), set before the first frame. */
+  printHost: PrintHost | null = null;
   /** The volumes the sounds play at, as the settings have them this frame. */
   private readonly volumes = { master: 0, effects: 0, ambience: 0, music: 0, interface: 0 };
   /** Tames already heard of the session's queue, which the naming prompt empties. */
@@ -729,7 +746,7 @@ export class GameApp {
     const crowns = budget && budget.squeeze < SQUEEZE_MOST ? budget.last.crowns : 0;
     const work = workMs(packet.triangles, packet.drawCount, packet.castTriangles, packet.castDraws, packet.tier.shadows.size);
     const city = (this.scene?.city?.drawn.reduce((n, t) => n + t, 0) ?? 0) + (this.scene?.blocks?.stats.triangles ?? 0);
-    this.governor.frame(this.nowMs, this.interval, ours, packet.assetUploads.length + packet.texUploads.length > 0, work, crowns * PHONE_MS.triangle, city * PHONE_MS.triangle, this.scene?.screens.mask ?? 0);
+    this.governor.frame(this.nowMs, this.interval, ours, packet.assetUploads.length + packet.texUploads.length > 0, work, crowns * PHONE_MS.triangle, city * PHONE_MS.triangle, (this.scene?.screens.mask ?? 0) | (this.scene?.prints.mask ?? 0));
     this.session.prediction.page(ours, packet, this.scene?.assets.residency, this.governor, this.dpr, width, height);
   }
 
@@ -944,7 +961,7 @@ export class GameApp {
       this.dash.none(hud);
       // Only the reasons a player can act on are spelled out.
       // A page the server sent to wait, or one that lost it, says so: it comes back by itself (waiting.ts).
-      hud.status = session.waiting !== "" ? session.waiting : session.leaving ? "The server is restarting. One moment." : session.lost ? "The server went away. Waiting for it to come back." : session.travelled ? "travelling to another server" : session.closeReason === REJECT_TRAVEL ? `turned away: ${session.closeText}` : session.closeReason === REJECT_FULL ? "turned away: this server is full" : session.closeReason === REJECT_PASSWORD ? "disconnected: this server asks a password, and that was not it" : session.closeReason === CLOSED_BAD_CONTENT ? "disconnected: this client's content is not this server's" : session.closeReason === REJECT_VERSION || session.closeReason === CLOSED_BAD_VERSION ? "disconnected: this page is not the server's version; reload it" : `disconnected (reason ${session.closeReason})`;
+      hud.status = session.waiting !== "" ? session.waiting : session.leaving ? "The server is restarting. One moment." : session.lost ? "The server went away. Waiting for it to come back." : session.travelled ? "travelling to another server" : session.closeReason === REJECT_TRAVEL ? `turned away: ${session.closeText}` : session.closeReason === REJECT_FULL ? "turned away: this server is full" : session.closeReason === REJECT_PASSWORD ? "disconnected: this server asks a password, and that was not it" : session.closeReason === REJECT_SIGNIN ? "disconnected: this server asks you to sign in; open its start page" : session.closeReason === CLOSED_BAD_CONTENT ? "disconnected: this client's content is not this server's" : session.closeReason === REJECT_VERSION || session.closeReason === CLOSED_BAD_VERSION ? "disconnected: this page is not the server's version; reload it" : `disconnected (reason ${session.closeReason})`;
       this.ui.build(f.aspect, hud, session);
       if (this.sound) this.sounds?.hush(this.sound);
       return false;
@@ -996,6 +1013,10 @@ export class GameApp {
       this.scene = new Scene(world, this.reg, this.pack, this.split ? { manifest: this.stream!.manifest, port: this.split.assets } : this.stream, { farPalms: this.tools?.farPalms ?? false });
       this.scene.shots = this.shots;
       this.scene.supply = this.supply;
+      this.scene.characters.edition = session.peopleBook.editionColours;
+      this.scene.characters.voice = this.mouthOf;
+      this.scene.editionPrint = (edition) => session.peopleBook.edition(edition)?.print ?? null;
+      this.scene.prints.host = this.printHost;
       this.ui.screen<EmoteMenu>("emotes").has = (n) => this.scene!.characters.emoteKnown(n);
       this.tools?.dress(this.scene, world);
       if (this.timer) this.scene.time(this.timer, this.spans.build);

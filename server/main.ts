@@ -13,7 +13,7 @@ import { TICK_RATE } from "../shared/coords.ts";
 import { backlog, MESSAGE_BYTES_MAX, VOICE_BACKLOG, type Connection } from "../shared/net/transport.ts";
 import { RESTART_GO, stampWire } from "../shared/net/protocol.ts";
 import { PROBE_BODY, PROBE_CREATURE } from "../shared/world/proving.ts";
-import { createHost, type Host } from "./host.ts";
+import { createHost, type Host, type HostOptions } from "./host.ts";
 import { LIVE_FILE, formatReport, loadConfigFolder } from "./settings/config.ts";
 import { publicValues, type Rules } from "./settings/rules.ts";
 import type { ModuleDef } from "./api/module.ts";
@@ -24,13 +24,15 @@ import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSyn
 import { join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 import { gzip, inflateRawSync } from "node:zlib";
-import { parsePack } from "../shared/pack/pack.ts";
+import { parsePack, rigsWithHits } from "../shared/pack/pack.ts";
 import { allClips } from "../shared/pack/clips.ts";
 import { parseManifest } from "../shared/pack/manifest.ts";
 import { serveFile } from "./files.ts";
 import { BODY_BYTES_MAX, clientAddress } from "./front.ts";
 import { VideoLibrary } from "./video/library.ts";
 import { screensAdmin } from "./video/routes.ts";
+import { peopleAdmin } from "./admin/people-routes.ts";
+import { dressFromPage } from "./people/give.ts";
 import { ScreenFeed, screenWorld } from "./video/screens.ts";
 import { boardOwners, soundBoard } from "./sound-board.ts";
 import { TitleScenes } from "./admin/title-scenes.ts";
@@ -64,6 +66,8 @@ export interface ServerOptions {
   adminPassword?: string;
   /** The cluster's password, which `enablecheats` and the admin pages take at the cluster's rank. */
   clusterPassword?: string;
+  /** For SignIn=discord: the application's secret, its bot's token, and a stand-in for the network (HostOptions.discord). */
+  discord?: HostOptions["discord"];
   /** Read console commands from standard input, as the operator. */
   terminal?: boolean;
   /** Path of the map file to run (shared/world/mapfile.ts). Without one, the proving ground. */
@@ -396,10 +400,11 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   if (stale) console.log(`client: ${clientDir} was built from other source than this server runs, so its page is refused: bun run build`);
   const served = (file: number): Uint8Array => new Uint8Array(readFileSync(join(clientDir, "assets", manifest.files[file]!.name)));
   const pack = parsePack(served(manifest.boot));
+  if (manifest.rigHits) pack.header.rigs = rigsWithHits(pack.header.rigs, readFileSync(join(clientDir, "assets", manifest.rigHits), "utf8"));
   const clips = allClips(manifest, pack, served, (stored) => new Uint8Array(inflateRawSync(stored)));
   let terrain: Uint8Array<ArrayBuffer> | undefined;
   const onMapLoaded = (map: MapFile): void => void (terrain = adminTerrain(map));
-  const roles = { onMapLoaded, dev: opts.dev ?? false, clips, rigs: pack.header.rigs, ...(opts.map ? { map: opts.map } : {}), ...(opts.adminPassword ? { adminPassword: opts.adminPassword } : {}), ...(opts.clusterPassword ? { clusterPassword: opts.clusterPassword } : {}), ...(opts.config ? { config: opts.config } : {}), ...(opts.modules ? { modules: opts.modules } : {}), now: () => performance.now(), ...(opts.live ? { live: opts.live } : {}) };
+  const roles = { onMapLoaded, dev: opts.dev ?? false, clips, rigs: pack.header.rigs, ...(opts.map ? { map: opts.map } : {}), ...(opts.adminPassword ? { adminPassword: opts.adminPassword } : {}), ...(opts.clusterPassword ? { clusterPassword: opts.clusterPassword } : {}), discord: { ...opts.discord, ...(opts.publicUrl ? { page: opts.publicUrl } : {}), ...(/^https?:\/\//i.test(opts.publicUrl ?? "") ? { site: new URL(opts.publicUrl!).origin } : {}) }, ...(opts.config ? { config: opts.config } : {}), ...(opts.modules ? { modules: opts.modules } : {}), now: () => performance.now(), ...(opts.live ? { live: opts.live } : {}) };
   const host = createHost(registry, opts.probeScene ? { ...roles, startingCreatures: 0, wakeRadius: -1 } : { ...roles, ...(opts.dbPath ? { dbPath: opts.dbPath, keeper: "worker" as const, survivorLog: { mode: "worker" as const }, backups: !opts.noBackups, store: { allowMissingContent: opts.allowMissingContent ?? false } } : {}), wild: true });
   log.tick = () => host.world.tick;
   // Settings problems are logged at startup and do not stop the server.
@@ -425,7 +430,8 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   const screens = new ScreenFeed(video, host.world);
   screens.attach(host.game);
   screens.poll();
-  const screenTimer = setInterval(() => screens.poll(), 1000);
+  host.people.poll();
+  const screenTimer = setInterval(() => (screens.poll(), host.people.poll()), 1000);
   const listings = opts.directory ? new ServerDirectory(host.cluster ? join(host.cluster.folder.root,"directory.sqlite") : opts.dbPath ? opts.dbPath+".directory.sqlite" : ":memory:") : null;
   const directories = opts.directories ?? [];
   const directory = [...directories, ...(listings ? ["directory"] : [])].join(" ");
@@ -588,6 +594,8 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
           ? titleScenes.admin(call, host.acts, host) : entryReply({ error: "Open the studio on this cluster." }, 403),
         screens: (call, at) => call.method === "POST" && !originAllowed(call.headers.get("origin"), call.headers.get("host"), "")
           ? entryReply({ error: "Open the screens page on this cluster." }, 403) : screensAdmin(call, at, video, () => screenWorld(host), host.acts, host),
+        people: (call, at) => call.method === "POST" && !originAllowed(call.headers.get("origin"), call.headers.get("host"), "")
+          ? entryReply({ error: "Open the people pages on this cluster." }, 403) : peopleAdmin(call, at, host.people, () => host.world.reg, host.acts, host, (edition, survivor, dye, by) => dressFromPage(host, edition, survivor, dye, by)),
       }));
       if (siteAdmin) return siteAdmin;
       const { at, path } = placeOf(base, url.pathname);
@@ -595,10 +603,13 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
       if (path === "/directory") return listings ? listings.answer(req, who) : new Response("this world hosts no server directory", { status: 404 });
       const same = alike(path, req.headers.get("host") ?? "");
       if (same) return same;
-      // Uploaded clips and manifests from the library's folder, starters from the built client.
+      // Uploaded clips, prints and manifests from the cluster's media folder, starters from the built client.
       if (path.startsWith("/media/")) {
         const kept = await serveFile(video.media, req, path.slice("/media".length));
-        return kept.status !== 404 ? kept : serveFile(clientDir, req, path);
+        if (kept.status !== 404) return kept;
+        // A world with no save keeps its prints and people manifests in a folder of their own.
+        const people = host.people.media !== video.media ? await serveFile(host.people.media, req, path.slice("/media".length)) : kept;
+        return people.status !== 404 ? people : serveFile(clientDir, req, path);
       }
       if (at === "site") {
         if (path === "/" || path === "/index.html") return htmlResponse(startPage(worlds(req.headers.get("host") ?? ""), links(), entryBuilt ? {world:false,directory} : undefined));
@@ -610,11 +621,15 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
         if (!local || !originAllowed(req.headers.get("origin"),req.headers.get("host"),"")) return entryReply({error:"Use this world’s own address"},403);
         return access.answer(req,who);
       }
+      if (path === "/signin" || path.startsWith("/signin/")) {
+        if (!local || (req.method === "POST" && !originAllowed(req.headers.get("origin"),req.headers.get("host"),""))) return entryReply({error:"Use this world’s own address"},403);
+        return (await host.signin.method.answer({ req, url, path, base, who })) ?? new Response("not found", { status: 404 });
+      }
       // What a waiting page asks to know the server is back (client/core/waiting.ts): this start, the version it speaks,
       // and the version of the page on disk now, which is another until the client is built.
       if (path === "/ready.json") return new Response(JSON.stringify({ started: meter.startedAt, wire, page: builtWire(clientDir), map: host.world.mapId } satisfies Ready), { headers: { "content-type": "application/json", "cache-control": "no-store" } });
-      if (path === "/entry-world.json") return entryReply({ name:host.rules.text("SessionName") || mapLabel(registry,host.world.mapId), map:mapLabel(registry,host.world.mapId), mapId:host.world.mapId, password:!!host.game.opts.password, players:host.game.playerCount, max:host.game.opts.maxClients, listed, pve:host.rules.on("serverPVE"), about:plain(host.rules.text("ServerDescription")).slice(0,ABOUT_MAX), discord:discordOf(host.rules.text("DiscordUrl")), tags:tagsOf(host.rules.text("ServerTags")), spawns:host.world.spawns.map(p=>({name:p.name,x:p.x,z:p.z})), width:host.world.hf.sizeX,height:host.world.hf.sizeZ });
-      if (entryBuilt && (path === "/" || path === "/index.html") && [...url.searchParams.keys()].every(k => ["screen","invite","survivor"].includes(k))) return htmlResponse(startPage(worlds(req.headers.get("host") ?? ""),links(),{world:true,directory}));
+      if (path === "/entry-world.json") return entryReply({ name:host.rules.text("SessionName") || mapLabel(registry,host.world.mapId), map:mapLabel(registry,host.world.mapId), mapId:host.world.mapId, password:!!host.game.opts.password, ...(host.signin.entry() ? { signin: host.signin.entry() } : {}), players:host.game.playerCount, max:host.game.opts.maxClients, listed, pve:host.rules.on("serverPVE"), about:plain(host.rules.text("ServerDescription")).slice(0,ABOUT_MAX), discord:discordOf(host.rules.text("DiscordUrl")), tags:tagsOf(host.rules.text("ServerTags")), spawns:host.world.spawns.map(p=>({name:p.name,x:p.x,z:p.z})), width:host.world.hf.sizeX,height:host.world.hf.sizeZ });
+      if (entryBuilt && (path === "/" || path === "/index.html") && [...url.searchParams.keys()].every(k => ["screen","invite","survivor","signin"].includes(k))) return htmlResponse(startPage(worlds(req.headers.get("host") ?? ""),links(),{world:true,directory}));
       if (path === "/ws" || path === "/voice") {
         if (!local) {
           const asked = (req.headers.get("host") ?? "").slice(0, 100);
@@ -869,6 +884,7 @@ if (import.meta.main) {
     key: value("--key"),
     adminPassword: process.env.SNARK_ADMIN_PASSWORD,
     clusterPassword: process.env.SNARK_CLUSTER_PASSWORD,
+    discord: { secret: process.env.SNARK_DISCORD_SECRET, botToken: process.env.SNARK_DISCORD_BOT_TOKEN },
     terminal: process.stdin.isTTY,
     log,
   });

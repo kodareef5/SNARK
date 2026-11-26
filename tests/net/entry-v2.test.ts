@@ -5,6 +5,8 @@ import { SurvivorActivity } from "../../server/survivor-activity.ts";
 import { EntityRecord, hashKey } from "../../server/records.ts";
 import { SurvivorAccess, ownsSurvivor } from "../../server/survivor-access.ts";
 import type { Host } from "../../server/host.ts";
+import { Rules } from "../../server/settings/rules.ts";
+import { SignIn } from "../../server/signin/method.ts";
 import { readLaunch } from "../../client/core/entry-state.ts";
 import { MIAMI_FLIGHT, flightPosition } from "../../client/core/title-route.ts";
 import { defaultLook } from "../../shared/anim/look.ts";
@@ -39,6 +41,7 @@ test("browser approval is scoped to a survivor, survives a new access service an
     },
     activity: { summary: () => ({ lastLogin: null, playMs: null }) },
     game: { clients: [] },
+    signin: new SignIn(new Rules()),
     progression: { levelOf: () => 1 },
     survivorIds: () => [1, 2].values(),
     survivorRecord: (name: string) => [a, b].find((r) => r.name === name),

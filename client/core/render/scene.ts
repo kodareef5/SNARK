@@ -25,7 +25,7 @@ import type { StructureStore } from "../../../shared/world/structures.ts";
 import { SIZE_UNITS, nodeForms } from "../../../shared/world/nodes.ts";
 import { LOOK_BYTES } from "../../../shared/anim/look.ts";
 import { youngScale } from "../../../shared/sim/breeding.ts";
-import { GEAR_COUNT, GEAR_WORN } from "../../../shared/sim/entities.ts";
+import { GEAR_COUNT, GEAR_WORN, WORN_LENGTH } from "../../../shared/sim/entities.ts";
 import { AnimState, CUE_DEAD, CUE_HELD, PITCH_STEPS, bodySeed } from "../../../shared/anim/pose.ts";
 import { SEAT_FLOATS } from "../../../shared/anim/seat.ts";
 import { MAX_VIEW } from "../../../shared/net/view.ts";
@@ -63,6 +63,9 @@ import { FarNodes, familyOf, type FarNodeSource } from "./farnodes.ts";
 import { Hiding } from "./hide.ts";
 import type { NearCity } from "./nearcity.ts";
 import { MADE_AT, OPTIC_AT, OPTIC_HEAT } from "./packet.ts";
+import { SLOT_HEAD } from "../../../shared/anim/human.ts";
+import { FACE_ROWS } from "../../../shared/people/faces.ts";
+import { HAIR_ROWS } from "./hair-motion.ts";
 import { BONE_FLOATS, GLASS_AT, DRAW_BENT, DRAW_BLEND, DRAW_CUTOUT, DRAW_GROUND, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SKINNED, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_DRAWS, MAX_TILES, PASS_FAR, PASS_NEAR, TRANSIENT_BUFFER, markJoins, texturedFlags, quadIndexCount, SHORE_AT } from "./packet.ts";
 import { MADE_MARK, WorldFinishes, citySurface, finishTaps, surfaceCity } from "./world-surfaces.ts";
 import { FIELD_PHASE, fieldPhase } from "./tek-field.ts";
@@ -105,6 +108,8 @@ import { Beams } from "./passes/beams.ts";
 import { Ghost } from "./passes/ghost.ts";
 import { Things, type Thing } from "./passes/things.ts";
 import { Screens } from "./passes/screens.ts";
+import { Prints } from "./prints.ts";
+import type { EditionPrint } from "../../../shared/people/doc.ts";
 import { CUTOUTS, Draws, NEAR_BUCKETS, type Cutouts } from "./draws.ts";
 
 export interface RenderWorld {
@@ -159,6 +164,11 @@ export interface OwnBody {
   attachment?: { host: number; slot: number; generation: number };
   /** Knocked down, lying as its ragdoll. */
   down?: boolean;
+  /** What it wears in its wardrobe, WORN_LENGTH numbers as EntityStore.wardrobes, while `dressed`. */
+  readonly wardrobe?: Uint32Array;
+  dressed?: boolean;
+  /** Each armour slot's dye, as Inventory.dyeOf packs it; 0 for none. */
+  readonly armorDye?: Uint32Array;
 }
 
 /** Metres the far depth range of a frame with one begins at, through a sight: the lit tiers' split (tiers.ts). */
@@ -173,6 +183,10 @@ const NO_SHOTS: readonly ShotEnd[] = [];
 const NO_EYES: readonly TideEyeSite[] = [];
 /** A body in the viewer's own body's seat or arms (Scene.mountOf). */
 const MOUNT_OWN = -2;
+/** A survivor that drew its finest level last frame ranks for it as if this share as far, so two near one place do not swap it each frame. */
+const FINEST_KEPT = 0.8;
+/** The bones a survivor whose head is drawn finest may take past its thirty: its face rows, and long hair's guide rows. */
+const EXTRA_ROWS = FACE_ROWS + HAIR_ROWS;
 
 /** The index among the remote entities, which are sorted by id, of the one with this id, or -1. */
 function indexOfId(remote: RemoteSample, id: number): number {
@@ -337,6 +351,10 @@ export class Scene {
   readonly blasts: Blasts;
   /** The screens on props (passes/screens.ts), which the app tells each frame what each type shows. */
   readonly screens: Screens;
+  /** The prints on garments (prints.ts): their pictures on the card, and the layer each wearer's instance names. */
+  readonly prints: Prints;
+  /** The print of garment edition `edition` (shared/people/doc.ts), null for none or an edition not known here. */
+  editionPrint: ((edition: number) => EditionPrint | null) | null = null;
   /** Whether what burns is drawn, which a page turns off for a before and after (passes.ts "bursts"). */
   get bursts(): boolean { return this.blasts.on; }
   set bursts(on: boolean) {
@@ -441,14 +459,17 @@ export class Scene {
   private readonly viewed = new Int16Array(MAX_VIEW);
   /** Scratch for sorting them: survivors and the viewer's mount before the rest, then by distance, with the body's number in the low bits. */
   private readonly bodyOrder = new Uint32Array(MAX_VIEW);
+  /** Each body's place among the survivors in view, nearest on screen first (rankNear), MAX_VIEW for any other. */
+  private readonly bodyRank = new Uint16Array(MAX_VIEW);
+  private readonly faceReserve = new Uint8Array(MAX_VIEW);
   private readonly mountState = new AnimState();
   private readonly state = new AnimState();
   /** The characters' draws, given their depth ranges once their instances are written (bodyPasses). A one-bone draw's offset holds its stand-in's first bone. */
-  private readonly drawBody = (mesh: number, lod: number, first: number, count: number, flags: number, layer: number, standIn: number): void => {
+  private readonly drawBody = (mesh: number, lod: number, first: number, count: number, flags: number, layer: number, standIn: number, hide: number, made: number): void => {
     // A body that shimmers carries it on its own draw, and no other does.
     const glow = this.characters.glowNow;
     if (glow > 0) this.characters.glowOf(glow, this.put.glow);
-    this.put.draw(mesh, lod, TRANSIENT_BUFFER, first, count, standIn, 0, 0, flags, NEAR, 0, layer);
+    this.put.draw(mesh, lod, TRANSIENT_BUFFER, first, count, standIn, 0, 0, flags, NEAR, 0, layer, lod, 1, hide, made);
     if (glow > 0) this.put.glow.fill(0);
   };
   /** Per content index, 1 for a kind a landmark brings, which the far city leaves to the landmark's far mesh. */
@@ -675,10 +696,17 @@ export class Scene {
     this.loose = new Things(this.assets);
     this.airSupport = new AirSupport(this.assets, this.characters.rotorBlur, this.details);
     this.characters.hiddenBones = (_kind, id) => this.airSupport.hidden(id);
+    this.characters.wardrobe = (id, out) => this.wardrobeOf(id, out);
+    this.characters.armorDye = (id, slot) => (this.own && this.own.id === id ? (this.own.armorDye?.[slot] ?? 0) : 0);
     this.supplyDrops = new SupplyDrops(reg, this.assets, pack.palette, this.details);
     this.palette = pack.palette;
     this.blasts = new Blasts(reg, this.assets, this.put, this.details);
     this.screens = new Screens(reg.screenFace);
+    this.prints = new Prints(pack.palette);
+    this.characters.printByte = (edition, flat) => {
+      const print = this.editionPrint?.(edition) ?? null;
+      return print ? this.prints.byteOf(print, flat) : 0;
+    };
     this.characters.thrusterPlumes.pictures(pack.header.details);
     this.dust.pictures(pack.header.details);
     this.dropped = new Dropped(reg, bind);
@@ -764,8 +792,14 @@ export class Scene {
   }
 
   /** Call after a lost graphics context. Every buffer and every level is uploaded again. */
+  /** The card could not take the level or surface in `slot`: a made head's, hair's or beard's, or an asset's. */
+  refused(slot: number): void {
+    if (!this.characters.faces.refused(slot)) this.assets.residency.failed(slot);
+  }
+
   resetUploads(): void {
     this.nearStore.reset();
+    this.characters.faces.reset();
     this.quadIndices[0] = this.quadIndices[1] = 0;
     this.assets.residency.reset();
     this.terrain.reset();
@@ -1002,6 +1036,8 @@ export class Scene {
           },
         },
       ],
+      // After every body is drawn: the prints their instances carry.
+      ["prints", this.prints],
     ];
   }
 
@@ -1093,11 +1129,32 @@ export class Scene {
     this.put.drawDetails(numbers, glassAndNumbers - numbers, DRAW_BLEND, this.damage.passes(cam));
   }
 
+  /**
+   * The wardrobe of body `id` into `out`, from the viewer's own body or the remote entities being drawn; false for one
+   * that wears none. A survivor's corpse is a remote entity, and wears what it died in.
+   */
+  private wardrobeOf(id: number, out: Uint32Array): boolean {
+    const own = this.own;
+    if (own && own.id === id) {
+      if (!own.dressed || !own.wardrobe) return false;
+      out.set(own.wardrobe);
+      return true;
+    }
+    const r = this.drawing, i = r ? indexOfId(r, id) : -1;
+    if (i < 0 || r!.hasWardrobe[i] === 0) return false;
+    for (let q = 0, at = i * WORN_LENGTH; q < WORN_LENGTH; q++) out[q] = r!.wardrobe[at + q]!;
+    return true;
+  }
+
+  /** The remote entities whose bodies are being drawn (wardrobeOf). */
+  private drawing: RemoteSample | null = null;
+
   private bodies(cam: Camera, remote: RemoteSample | null): void {
     const p = this.packet;
     const ch = this.characters;
     const st = this.state;
     const own = this.own;
+    this.drawing = remote;
     if (!this.charactersPrepared) {
       ch.clock = this.shotTick;
       ch.begin(p, this.world);
@@ -1177,12 +1234,16 @@ export class Scene {
         wanted += ch.bones(kind);
         n++;
       }
+      // Which survivors may draw their finest level is known before their bones are counted, and those may take rows more.
+      const finest = p.tier.finestBodies[SLOT_HEAD] ?? 0;
+      wanted += this.rankNear(remote, n, finest);
       // The tier's bones less those taken, and those of the viewer's own body, which comes last.
-      const budget = Math.min(p.tier.bones, MAX_BONES) - p.boneCount - (own && ch.has(own.kind) ? ch.bones(own.kind) : 0);
+      const ownFace = own?.look && !own.firstPerson && ch.human(own.kind) && finest > 0 ? EXTRA_ROWS : 0;
+      const budget = Math.min(p.tier.bones, MAX_BONES) - p.boneCount - (own && ch.has(own.kind) ? ch.bones(own.kind) + ownFace : 0);
       this.bodyRigid.fill(0, 0, n);
       if (wanted > budget) this.thin(remote, n, wanted, budget);
       for (let k = 0; k < n; k++) if (this.bodyMount[k] !== -1) this.seatIn(remote, from[k]!, this.bodyMount[k]!, place, k);
-      for (let k = 0; k < n; k++) this.addRemote(remote, from[k]!, place, k, this.bodyRigid[k] !== 0, false);
+      for (let k = 0; k < n; k++) this.addRemote(remote, from[k]!, place, k, this.bodyRigid[k] !== 0, false, this.bodyRank[k]!);
     }
     if (own && ch.has(own.kind)) {
       ch.eye.pitch = cam.pitch;
@@ -1226,6 +1287,36 @@ export class Scene {
     return j >= 0 && (remote.seatSlot[i] === 0 || remote.seatGen[i] === remote.gen[j]) ? j : -1;
   }
 
+  /** Ranks survivors by distance on screen and counts the extra rows their visible faces may use. */
+  private rankNear(remote: RemoteSample, n: number, finest: number): number {
+    const ch = this.characters;
+    const place = this.bodyAt;
+    const order = this.bodyOrder;
+    this.faceReserve.fill(0, 0, n);
+    let m = 0;
+    for (let k = 0; k < n; k++) {
+      const i = this.bodyFrom[k]!;
+      this.bodyRank[k] = MAX_VIEW;
+      if (!ch.human(remote.kind[i]!)) continue;
+      const size = remote.grown[i] !== 0 ? youngScale(this.birthScale[remote.kind[i]!]!, remote.span[i]!, remote.grown[i]!, remote.tick) : 1;
+      const far = (Math.hypot(place[k * 4]!, place[k * 4 + 1]!, place[k * 4 + 2]!) / size) * (ch.finestKept(remote.id[i]!) ? FINEST_KEPT : 1);
+      order[m++] = Math.min(Math.floor(far * 256), 0xfffff) * MAX_VIEW + k;
+    }
+    sortU32(order, m);
+    let rows = 0;
+    for (let r = 0; r < m; r++) {
+      const k = order[r]! % MAX_VIEW;
+      this.bodyRank[k] = r;
+      if (r >= finest) continue;
+      const i = this.bodyFrom[k]!;
+      if (remote.hasLook[i] && remote.id[i] !== this.headless && remote.id[i] !== this.own?.cockpitActor) {
+        this.faceReserve[k] = EXTRA_ROWS;
+        rows += EXTRA_ROWS;
+      }
+    }
+    return rows;
+  }
+
   /**
    * Leaves on one bone those of the `n` bodies in view, which want `wanted` bones, that `budget` has no room to pose:
    * survivors and the viewer's mount are posed first, then the nearest, and those left take a bone each and the bones of
@@ -1255,7 +1346,7 @@ export class Scene {
       const saddle = mount === MOUNT_OWN ? this.own!.gear[GEAR_WORN]! : mount >= 0 ? remote.gear[mount * GEAR_COUNT + GEAR_WORN]! : 0;
       // Missing authored sockets can only over-reserve; valid seats match add()'s separate fitted stand-in exactly.
       const profile = this.bodyRides[k] && this.saddleSeats[saddle]?.[slot - 1]?.rider ? saddle * (MAX_SEATS + 1) + slot : 0;
-      need -= ch.bones(remote.kind[i]!) - 1 - ch.standInBones(remote.kind[i]!, remote.hasLook[i] !== 0 ? remote.look : null, i * LOOK_BYTES, st, this.bodyRides[k] !== 0, slot === IMPALE_SLOT, profile, remote.gear, i * GEAR_COUNT, remote.id[i]!, remote.tick, remote.vehicleMissingPanels[i]);
+      need -= ch.bones(remote.kind[i]!) + this.faceReserve[k]! - 1 - ch.standInBones(remote.kind[i]!, remote.hasLook[i] !== 0 ? remote.look : null, i * LOOK_BYTES, st, this.bodyRides[k] !== 0, slot === IMPALE_SLOT, profile, remote.gear, i * GEAR_COUNT, remote.id[i]!, remote.tick, remote.vehicleMissingPanels[i]);
       this.bodyRigid[k] = 1;
     }
   }
@@ -1309,15 +1400,20 @@ export class Scene {
     if (!steers) place[k * 4 + 3] = remote.yaw[i]!;
   }
 
-  /** Poses remote entity `i` at the place `at` holds at `k` (x, y, z camera-relative, and yaw), for the view or, `unseen`, for its shadow alone. */
-  private addRemote(remote: RemoteSample, i: number, at: Float64Array, k: number, rigid: boolean, unseen: boolean): void {
+  /**
+   * Poses remote entity `i` at the place `at` holds at `k` (x, y, z camera-relative, and yaw), for the view or, `unseen`, for
+   * its shadow alone; `rank` is its place among the survivors in view (rankNear).
+   */
+  private addRemote(remote: RemoteSample, i: number, at: Float64Array, k: number, rigid: boolean, unseen: boolean, rank = MAX_VIEW): void {
     const st = this.state;
     const kind = remote.kind[i]!;
     st.unpack(remote.anim[i]!, remote.cue[i]!, remote.emote[i]!, remote.react[i]!, remote.stride[i]!);
     st.seed = bodySeed(remote.id[i]!);
     const look = remote.hasLook[i] !== 0 ? remote.look : null;
     const size = remote.grown[i] !== 0 ? youngScale(this.birthScale[kind]!, remote.span[i]!, remote.grown[i]!, remote.tick) : 1;
-    this.characters.add(this.packet, kind, at[k * 4]!, at[k * 4 + 1]!, at[k * 4 + 2]!, at[k * 4 + 3]!, st, remote.tick, look, i * LOOK_BYTES, remote.colors, i * 6, remote.gear, i * GEAR_COUNT, remote.id[i]!, false, this.own?.cockpitActor === remote.id[i]! || this.headless === remote.id[i]!, size, rigid, unseen, this.seated[i] !== 0 ? this.seatTurn : null, i * 9, this.characters.vehicle(kind) ? remoteVehiclePose(remote, i, this.vehiclePose) : undefined, this.vehicleSeats[i], this.seated[i] !== 2, remote.seatSlot[i] === IMPALE_SLOT, this.seated[i] ? this.riderFits[i] : undefined);
+    this.characters.hairFrom = remote.hairFrom[i]!;
+    this.characters.hairRate = remote.hairRate;
+    this.characters.add(this.packet, kind, at[k * 4]!, at[k * 4 + 1]!, at[k * 4 + 2]!, at[k * 4 + 3]!, st, remote.tick, look, i * LOOK_BYTES, remote.colors, i * 6, remote.gear, i * GEAR_COUNT, remote.id[i]!, false, this.own?.cockpitActor === remote.id[i]! || this.headless === remote.id[i]!, size, rigid, unseen, this.seated[i] !== 0 ? this.seatTurn : null, i * 9, this.characters.vehicle(kind) ? remoteVehiclePose(remote, i, this.vehiclePose) : undefined, this.vehicleSeats[i], this.seated[i] !== 2, remote.seatSlot[i] === IMPALE_SLOT, this.seated[i] ? this.riderFits[i] : undefined, rank);
   }
 
   /**
