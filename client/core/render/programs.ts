@@ -10,7 +10,7 @@ import { tekPhaseFragment, tekPhaseVertex } from "./tek-phase.ts";
 import { DETAIL_FLAT_FRAGMENT, DETAIL_LIT_FRAGMENT, DETAIL_LIT_VERTEX, DETAIL_VERTEX } from "./detailtext.ts";
 import { FACADE_GLSL, FACADE_TIERS, facadeFarVertex, facadeVertex } from "./facade.ts";
 import { FIRE_FRAGMENT, FIRE_VERTEX } from "./fire-light.ts";
-import { FAR_MESH_VERTEX, FLAT_FAR_FRAGMENT, FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_SPLIT_FRAGMENT, FLAT_TERRAIN_VERTEX, LIT_FAR_FRAGMENT, LIT_MESH_FRAGMENT, LIT_SPLIT_FRAGMENT, LIT_TERRAIN_FRAGMENT, LIT_TERRAIN_VERTEX, PULLED_VERTEX, finishVertex } from "./glsl.ts";
+import { FAR_MESH_VERTEX, FLAT_BODY_FRAGMENT, FLAT_FAR_FRAGMENT, FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_SPLIT_FRAGMENT, FLAT_TERRAIN_VERTEX, LIT_FAR_FRAGMENT, LIT_MESH_FRAGMENT, LIT_SPLIT_FRAGMENT, LIT_TERRAIN_FRAGMENT, LIT_TERRAIN_VERTEX, PULLED_VERTEX, finishVertex } from "./glsl.ts";
 import { EYE_DOME_FRAGMENT, EYE_DOME_VERTEX, EYE_ENERGY_GLSL, EYE_STRIKE_GLSL } from "./tide-eye.ts";
 import { DROP_GLSL } from "./supply-light.ts";
 import { FACE_FRAGMENT, FACE_VERTEX } from "./screen-shade.ts";
@@ -128,7 +128,7 @@ function water(tier: Tier, hard: boolean, light: boolean, wakes: boolean): Progr
 export const LATE: { orb: string | null; prints: boolean } = { orb: null, prints: false };
 
 const MAKE = {
-  flat: (tier, format, hard = false, light = false) => phaseMesh(tier, flatOr(tier, format, hard, light, FLAT_MESH_VERTEX, FLAT_FRAGMENT, LIT_MESH_FRAGMENT, MESH, undefined, true)),
+  flat: (tier, format, hard = false, light = false) => phaseMesh(tier, flatOr(tier, format, hard, light, FLAT_MESH_VERTEX, FLAT_BODY_FRAGMENT, LIT_MESH_FRAGMENT, MESH, undefined, true)),
   // Where the tier reads the finishes in full, asphalt, sand and walks wear (world-surfaces.ts `roadWorn`, `walkWorn`).
   terrain: (tier, format, hard = false, light = false) => {
     const t = flatOr(tier, format, hard, light, FLAT_TERRAIN_VERTEX, FLAT_FRAGMENT, LIT_TERRAIN_FRAGMENT, tier.lit ? { ...GROUND, uRoad: UNIT.road, uStreets: UNIT.streets, uStreetKinds: UNIT.streetKinds } : GROUND, LIT_TERRAIN_VERTEX);
@@ -268,6 +268,14 @@ const ROWS: Readonly<Record<keyof typeof MAKE, readonly UniformRow[]>> = {
 /** The same by a program's number. */
 export const UNIFORMS: readonly (readonly UniformRow[])[] = Object.keys(MAKE).map((name) => ROWS[name as keyof typeof MAKE]);
 
+/**
+ * The program a draw is ordered by among a step's (draws.ts byState): a printed one's plain twin, so prints move no draw.
+ * By their own numbers, which come last, a printed body went after what it covers, and the GPU shaded that in full.
+ */
+export function orderedAs(program: number): number {
+  return program === PROGRAM.surfacePrinted ? PROGRAM.surfaceWhole : program === PROGRAM.surfacePrintedCut ? PROGRAM.surface : program === PROGRAM.surfacePrintedLayer ? PROGRAM.surfaceLayer : program;
+}
+
 /** The programs low poly draws with: no materials, dome, sea or shadows. */
 const UNLIT = ["skyline", "signal", "sky", "flat", "terrain", "terrainWindow", "seeThrough", "far", "pulled", "details", "fire", "orb", "screens"];
 const POST = ["bloomDown", "bloomUp", "finish"];
@@ -309,9 +317,10 @@ export const CHOICE: readonly Choice[] = [
   // An instrument's light with its strip is a SURFACE draw, which its street material draws as a channel of energy.
   pick(PROGRAM.signal, DRAW_EMISSIVE, 0, DRAW_TEXTURED),
   pick(PROGRAM.skyline, DRAW_SKYLINE),
-  pick(PROGRAM.surfacePrintedLayer, DRAW_TEXTURED | DRAW_PRINTED | IS_LAYERED),
-  pick(PROGRAM.surfacePrintedCut, DRAW_TEXTURED | DRAW_PRINTED, DROPS),
-  pick(PROGRAM.surfacePrinted, DRAW_TEXTURED | DRAW_PRINTED),
+  // A print lies on dyed cloth only: an undyed material of a printed draw keeps its own, cheaper program.
+  pick(PROGRAM.surfacePrintedLayer, DRAW_TEXTURED | DRAW_PRINTED | IS_DYED | IS_LAYERED),
+  pick(PROGRAM.surfacePrintedCut, DRAW_TEXTURED | DRAW_PRINTED | IS_DYED, DROPS),
+  pick(PROGRAM.surfacePrinted, DRAW_TEXTURED | DRAW_PRINTED | IS_DYED),
   pick(PROGRAM.surfaceLayer, DRAW_TEXTURED | IS_LAYERED),
   pick(PROGRAM.surface, DRAW_TEXTURED | IS_DYED, DROPS),
   pick(PROGRAM.surfaceWhole, DRAW_TEXTURED | IS_DYED),

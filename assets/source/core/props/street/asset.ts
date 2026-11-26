@@ -67,6 +67,10 @@ const PIECES: Readonly<Record<string, readonly number[]>> = {
   billboard_mid_bare: [308, 68],
   billboard_small: [236, 36],
   billboard_small_bare: [224, 68],
+  billboard_tall: [300, 36],
+  billboard_tall_bare: [288, 72],
+  billboard_grand: [324, 48],
+  billboard_grand_bare: [312, 84],
   newsbox: [48, 12],
   // A bar is cut across every half metre of its length, as the ground under it may bend there (model.py STRIP).
   crosswalk1: [24, 4],

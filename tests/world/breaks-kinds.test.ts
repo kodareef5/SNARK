@@ -40,10 +40,10 @@ test("the content compiles with every form in it, within a 16-bit index", () => 
 });
 
 test("no id there was before the forms has its index moved by them", () => {
-  // The registry numbers definitions from 1 in the order of their ids.
-  const ids = CORE_CONTENT.map((d) => d.id);
+  // Rename records point to an existing kind and occupy no runtime index.
+  const ids = CORE_CONTENT.filter((d) => d.type !== "rename").map((d) => d.id);
   const before = ids.filter((id) => !added(id) && !skatePark(id) && !wreckForm(id)).sort();
-  expect(before.length).toBeLessThan(CORE_CONTENT.length);
+  expect(before.length).toBeLessThan(ids.length);
   const moved = before.filter((id, at) => reg.index.get(id) !== at + 1);
   expect(moved).toEqual([]);
   // Which holds because every new id sorts after the last old one.

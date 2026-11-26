@@ -387,8 +387,8 @@ const FORGET_GAIT = 600;
 const HELD_FIELDS = 10;
 /** Draws a frame may have of bodies whose layer shows or that stand in a pose, each a mesh, level, layer and pose of its own. */
 const EXTRA_KEYS = 1024;
-/** Numbers `extra` holds a key: its plain key, layer, stand-in, hide mask and made head. */
-const EXTRA_FIELDS = 5;
+/** Per extra key: its mesh level, layer, standing bone, hidden zones, shimmering body and made head. */
+const EXTRA_FIELDS = 6;
 const ONES = new Float32Array(HUMAN_BONES * 3).fill(1);
 /**
  * A body is posed every frame while a metre of it covers FULL_RATE_PIXELS, then every 2nd, 4th or 8th frame as that halves,
@@ -526,6 +526,16 @@ export class Characters {
   private readonly key = new Uint32Array(MAX_SKINNED);
   private readonly plain: number;
   private readonly extra = new Int32Array(EXTRA_KEYS * EXTRA_FIELDS);
+  /**
+   * The bodies that shimmer this frame (client/core/shimmer.ts), by id, and how far each has come, 0 to 1: each is drawn
+   * apart from its mesh's others while it does, with its shimmer on its draw. Null for none.
+   */
+  glow: { readonly count: number; readonly ids: Int32Array; readonly phase: Float32Array } | null = null;
+  /** While `group` gives a draw: the shimmering body it is of, counting from 1, or 0. */
+  glowNow = 0;
+  /** Per shimmering body, its origin's height from the eye and how far it reaches from there, set as it is queued. */
+  private readonly glowFoot = new Float32Array(8);
+  private readonly glowTall = new Float32Array(8);
   private extraKeys = 0;
   /** An open hash of those keys: one more than each one's place in `extra`, and 0 where there is none. */
   private readonly extraAt = new Int32Array(EXTRA_KEYS * 4);
@@ -1490,7 +1500,7 @@ export class Characters {
     if (!unseen) this.assets.wantTextured(mesh, lod, far);
     if (!unseen && c.clips >= 0) this.assets.wantClips(c.clips);
     const shown = layer > 0 && this.assets.wantLayers(mesh, lod, far) ? layer + (c.wear ? wearOf(colors, colorAt, c.wear) * WEAR_KEY : 0) : 0;
-    const key = this.keyOf(mesh * this.levels + lod, shown, stand);
+    const key = this.keyOf(mesh * this.levels + lod, shown, stand, 0, unseen ? 0 : this.glowing(id, y, c.anim.rig.reach * size));
     this.key[n] = key < 0 ? 0 : key;
     this.firstBone[n] = first;
     this.region0[n] = c.flatColors?.[0] ? 0 : c.color;
@@ -1501,6 +1511,28 @@ export class Characters {
     this.mask[n] = s ? s.body(x, y, z, c.anim.rig.reach * size) & s.mesh(mesh) : 0;
     this.offset.fill(0, n * 3, n * 3 + 3);
     return lod;
+  }
+
+  /** Which of the shimmering bodies `id` is, counting from 1, or 0; its foot and reach are kept for its draw. */
+  private glowing(id: number, y: number, reach: number): number {
+    const g = this.glow;
+    if (g === null) return 0;
+    for (let k = 0; k < g.count && k < this.glowFoot.length; k++) {
+      if (g.ids[k] !== id) continue;
+      this.glowFoot[k] = y;
+      this.glowTall[k] = reach;
+      return k + 1;
+    }
+    return 0;
+  }
+
+  /** The shimmer of the body `glowNow` names, to `out` as a draw carries it (packet.ts drawGlow): rising and fading over its moment. */
+  glowOf(which: number, out: Float32Array): void {
+    const t = this.glow ? this.glow.phase[which - 1]! : 1;
+    out[0] = Math.sin(Math.PI * Math.min(1, Math.max(0, t)));
+    out[1] = t;
+    out[2] = this.glowFoot[which - 1]!;
+    out[3] = this.glowTall[which - 1]!;
   }
 
   /** Zero is undyed in the surface shader. A flat region vertex needs a real palette index for the same gene. */
@@ -1567,29 +1599,31 @@ export class Characters {
 
   /**
    * The key of `key`'s bodies whose layer is at `layer`, with its wear story, that stand in the pose at bone `stand` (-1
-   * for none) and leave the skin zones `hide` undrawn. With no key left those with a layer or a mask are drawn as `key`'s,
+   * for none), leave the skin zones `hide` undrawn and shimmer as body `glow` (0 for none). With no key left those with a
+   * layer, a mask or a shimmer are drawn as `key`'s,
    * without them, and those standing in a pose not at all: -1, counted dropped.
    */
-  private keyOf(key: number, layer: number, stand: number, hide = 0, made = 0): number {
-    if (layer === 0 && stand < 0 && hide === 0 && made === 0) return key;
+  private keyOf(key: number, layer: number, stand: number, hide = 0, glow = 0, made = 0): number {
+    if (layer === 0 && stand < 0 && hide === 0 && glow === 0 && made === 0) return key;
     const l = this.extra;
     const at = this.extraAt;
-    let h = (Math.imul(key, 0x9e3779b1) ^ Math.imul(stand + 1, 0x85ebca6b) ^ Math.imul(hide, 0xc2b2ae35) ^ Math.imul(made, 0x27d4eb2f) ^ layer) & (at.length - 1);
+    let h = (Math.imul(key, 0x9e3779b1) ^ Math.imul(stand + 1, 0x85ebca6b) ^ Math.imul(hide, 0xc2b2ae35) ^ Math.imul(glow, 0x27d4eb2f) ^ Math.imul(made, 0x165667b1) ^ layer) & (at.length - 1);
     for (; at[h] !== 0; h = (h + 1) & (at.length - 1)) {
-      const k = (at[h]! - 1) * EXTRA_FIELDS;
-      if (l[k] === key && l[k + 1] === layer && l[k + 2] === stand && l[k + 3] === hide && l[k + 4] === made) return this.plain + at[h]! - 1;
+      const k = at[h]! - 1, e = k * EXTRA_FIELDS;
+      if (l[e] === key && l[e + 1] === layer && l[e + 2] === stand && l[e + 3] === hide && l[e + 4] === glow && l[e + 5] === made) return this.plain + k;
     }
     if (this.extraKeys === EXTRA_KEYS) {
       if (stand < 0) return key;
       if (this.packet) this.packet.dropped++;
       return -1;
     }
-    const k = this.extraKeys * EXTRA_FIELDS;
-    l[k] = key;
-    l[k + 1] = layer;
-    l[k + 2] = stand;
-    l[k + 3] = hide;
-    l[k + 4] = made;
+    const e = this.extraKeys * EXTRA_FIELDS;
+    l[e] = key;
+    l[e + 1] = layer;
+    l[e + 2] = stand;
+    l[e + 3] = hide;
+    l[e + 4] = glow;
+    l[e + 5] = made;
     at[h] = this.extraKeys + 1;
     return this.plain + this.extraKeys++;
   }
@@ -2290,7 +2324,7 @@ export class Characters {
     }
     const n = this.count++;
     if (!only) this.assets.wantTextured(m, part.lod, part.far);
-    const key = this.keyOf(m * this.levels + part.lod, 0, part.stand, only ? 0 : hide, only ? 0 : part.made);
+    const key = this.keyOf(m * this.levels + part.lod, 0, part.stand, only ? 0 : hide, 0, only ? 0 : part.made);
     this.key[n] = key < 0 ? 0 : key;
     this.firstBone[n] = part.first;
     this.region0[n] = part.color;
@@ -2430,7 +2464,9 @@ export class Characters {
       // Bodies standing in a pose on one bone are a draw of their own. Each shows as hot as its kind in a heat view.
       const f = (stand >= 0 ? flags | DRAW_ONE_BONE : flags) | (this.heatView ? (this.meshHeat.get(mesh) ?? HEAT_WARM) << DRAW_HEAT_SHIFT : 0) | (printed[k] === 1 ? DRAW_PRINTED : 0);
       printed[k] = 0;
-      draw?.(mesh, lod, total, counts[k]!, f, x < 0 ? 0 : this.extra[x + 1]!, stand < 0 ? 0 : stand, x < 0 ? 0 : this.extra[x + 3]!, x < 0 ? 0 : this.extra[x + 4]!);
+      this.glowNow = x < 0 ? 0 : this.extra[x + 4]!;
+      draw?.(mesh, lod, total, counts[k]!, f, x < 0 ? 0 : this.extra[x + 1]!, stand < 0 ? 0 : stand, x < 0 ? 0 : this.extra[x + 3]!, x < 0 ? 0 : this.extra[x + 5]!);
+      this.glowNow = 0;
       if (byMask) {
         for (let m = 0, at = total; m < MASKS; m++) {
           const n = byMask[k * MASKS + m]!;

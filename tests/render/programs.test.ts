@@ -3,7 +3,7 @@
 import { expect, test } from "bun:test";
 import { MATERIAL_RECIPES } from "../../content/texgen/materials.ts";
 import { TIERS, forTouch, tierOf } from "../../client/core/assets/tiers.ts";
-import { FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_TERRAIN_VERTEX } from "../../client/core/render/glsl.ts";
+import { FLAT_BODY_FRAGMENT, FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_TERRAIN_VERTEX } from "../../client/core/render/glsl.ts";
 import { tekPhaseFragment, tekPhaseVertex } from "../../client/core/render/tek-phase.ts";
 import { HAND_FAR, HAND_NEAR } from "../../client/core/render/hand.ts";
 import { ORB_AT, ORB_LANES, DROPS_AT, DROP_LANES, CAST_AT, GLASS_AT, LAMP_AT, DRAW_BLEND, DRAW_CUTOUT, DRAW_PULLED, DRAW_TEXTURED, DRAW_WATER, FRAME, FRAME_BLOCK, FRAME_FLOATS, FramePacket, MAX_CASCADES, MAX_TIRE_CONTACTS, MAX_CONTACTS, MAX_WATER_MARKS, ROOF_AT, WATER_MARK_COUNT, WATER_PATHS, WATER_BOUNDS, WATER_MARKS, SHORE_AT, OPTIC_AT, MADE_AT, WINDOW_AT } from "../../client/core/render/packet.ts";
@@ -19,7 +19,8 @@ const named = (n: number): string => Object.keys(PROGRAMS)[n]!;
 test("low poly keeps its flat shaders and phase cut without material samplers", () => {
   const low = TIERS[0]!;
   expect(["flat", "terrain"].map((name) => PROGRAMS[name]!(low, "rgba")).map((p) => [p.vertex, p.fragment, p.defines])).toEqual([
-    [tekPhaseVertex(FLAT_MESH_VERTEX), tekPhaseFragment(FLAT_FRAGMENT), ""],
+    // A mesh's flat fragment is the ground's with the shimmer of a body worth walking to (shimmer-glsl.ts).
+    [tekPhaseVertex(FLAT_MESH_VERTEX), tekPhaseFragment(FLAT_BODY_FRAGMENT), ""],
     [FLAT_TERRAIN_VERTEX, FLAT_FRAGMENT, ""],
   ]);
   const field = PROGRAMS.flat!(low, "rgba");

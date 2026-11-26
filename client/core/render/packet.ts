@@ -876,6 +876,12 @@ export class FramePacket {
    */
   readonly drawEffect = new Float32Array(MAX_DRAWS * 4);
   /**
+   * Four numbers a draw of a body that shimmers, as a vehicle worth walking to does for a moment (client/core/shimmer.ts):
+   * how strongly, 0 to 1; how far its band of light has risen, 0 to 1; and its foot's height from the eye and how tall
+   * it is, in metres, for where the band is. All 0 for any other draw, which adds nothing.
+   */
+  readonly drawGlow = new Float32Array(MAX_DRAWS * 4);
+  /**
    * Two numbers a flat draw: a palette colour plus 1 that every vertex takes in place of its own, 0 for none; and the
    * share of a see-through draw's alpha it has lost, 0 for none. A piece about to be built, fine or refused (passes/ghost.ts).
    */
@@ -1035,6 +1041,7 @@ export class FramePacket {
     this.drawHand.fill(0);
     this.drawSwap.fill(0);
     this.drawEffect.fill(0);
+    this.drawGlow.fill(0);
     this.drawTint.fill(0);
     this.drawLayer.fill(0);
     this.drawWear.fill(0);

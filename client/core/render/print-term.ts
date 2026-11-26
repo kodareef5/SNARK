@@ -134,31 +134,36 @@ const fl = (n: number): string => (Number.isInteger(n) ? n.toFixed(1) : String(n
 
 /**
  * `printedOver` as GLSL, for a SURFACE text drawn with prints: the layer is the instance's third region byte, 0 for none.
- * The vertex text reads the layer's row of the table and hands it on flat (PRINT_VERTEX), so no fragment text holds the
- * table: with it the Intel GPU drew a screen of printed tubes half a millisecond slower, with or without a texture read.
- * A swatch is the picture's last level, its mean. PRINT_LAYERS is the tier's layers, which the program defines.
+ * The vertex text reads the layer's row of the table and folds it into sums of the sheet point, handed on flat, so a
+ * pixel does the least: on the Intel GPU each instruction here shows over a screen of prints, and the same sums handed
+ * on blended cost more. A swatch is the picture's last level, its mean. PRINT_LAYERS is the tier's layers, which the
+ * program defines.
  */
 export const PRINT_VERTEX = `uniform vec4 uPrintTable[PRINT_LAYERS * 3];
-flat out float vPrint;
-flat out vec4 vPrintAt, vPrintTurn;
+flat out vec4 vPrintAt, vPrintTurn, vPrintOff;
 `;
-/** What the vertex text's main does for a print, from the instance's region bytes `iRegA`. */
+/**
+ * What the vertex text's main does for a print, from the instance's region bytes `iRegA`: the sums that take a sheet
+ * point to the rectangle, `vPrintAt`, and to the picture, `vPrintTurn` and `vPrintOff`, then its layer, -1 for none,
+ * and what the weave is divided by.
+ */
 export const PRINT_VERTEX_MAIN = `  int print = int(iRegA.z) - 1;
-  vPrint = float(print);
-  vPrintAt = print >= 0 && print < PRINT_LAYERS ? uPrintTable[print * 3] : vec4(-1.0);
-  vPrintTurn = print >= 0 && print < PRINT_LAYERS ? uPrintTable[print * 3 + 1] : vec4(0.0);
+  vec4 printAt = uPrintTable[clamp(print, 0, PRINT_LAYERS - 1) * 3], printTurn = uPrintTable[clamp(print, 0, PRINT_LAYERS - 1) * 3 + 1];
+  vec2 printFrom = -printAt.xy * printAt.zw - 0.5;
+  vPrintAt = vec4(printAt.zw, printFrom);
+  vPrintTurn = vec4(printTurn.xy * printAt.zw, printTurn.zw * printAt.zw);
+  vPrintOff = vec4(dot(printTurn.xy, printFrom) + 0.5, dot(printTurn.zw, printFrom) + 0.5, print >= 0 && print < PRINT_LAYERS ? float(print) : -1.0, 1.0 / max(uGrey, 0.01));
 `;
 export const PRINT_GLSL = `uniform highp sampler2DArray uPrints;
-uniform float uPrintSwatch, uGrey;
-flat in float vPrint;
-flat in vec4 vPrintAt, vPrintTurn;
+uniform float uPrintSwatch;
+flat in vec4 vPrintAt, vPrintTurn, vPrintOff;
 vec3 printedOver(vec3 cloth, vec3 base, vec2 uv) {
-  if (vPrintAt.x < -0.5) return cloth;
-  vec2 r = (uv - vPrintAt.xy) * vPrintAt.zw - 0.5;
-  vec2 q = vec2(dot(vPrintTurn.xy, r), dot(vPrintTurn.zw, r)) + 0.5;
-  vec4 ink = uPrintSwatch > 0.5 ? textureLod(uPrints, vec3(q, vPrint), 16.0) : texture(uPrints, vec3(q, vPrint));
-  ink *= step(abs(r.x), 0.5) * step(abs(r.y), 0.5) * step(abs(q.x - 0.5), 0.5) * step(abs(q.y - 0.5), 0.5);
-  float weave = dot(base, vec3(${LUMA.map(fl).join(", ")})) / max(uGrey, 0.01);
-  return cloth * (1.0 - ink.a) + ink.rgb * weave;
+  if (vPrintOff.z < -0.5) return cloth;
+  vec2 r = uv * vPrintAt.xy + vPrintAt.zw;
+  vec2 q = vec2(dot(vPrintTurn.xy, uv), dot(vPrintTurn.zw, uv)) + vPrintOff.xy;
+  vec4 ink = uPrintSwatch > 0.5 ? textureLod(uPrints, vec3(q, vPrintOff.z), 16.0) : texture(uPrints, vec3(q, vPrintOff.z));
+  vec4 off = abs(vec4(r, q - 0.5));
+  float inside = step(max(max(off.x, off.y), max(off.z, off.w)), 0.5);
+  return cloth * (1.0 - ink.a * inside) + ink.rgb * (dot(base, vec3(${LUMA.map(fl).join(", ")})) * vPrintOff.w * inside);
 }
 `;

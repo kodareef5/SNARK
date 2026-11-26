@@ -145,7 +145,7 @@ try {
         unpack(p, frames[k], blob);
         r.draw(p);
         if (!s.read.includes(k)) continue;
-        if (s.repeats) {
+        if (s.repeats && !s.together) {
           const pixel = new Uint8Array(4);
           gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
           const start = performance.now();
@@ -156,6 +156,32 @@ try {
         const px = new Uint8Array(s.width * s.height * 4);
         gl.readPixels(0, 0, s.width, s.height, gl.RGBA, gl.UNSIGNED_BYTE, px);
         await post("/pixels/" + s.key + "/" + k, px);
+      }
+      // Read frames timed together: each round draws every one in turn, from a frame further on each round, \`together\`
+      // times between two waits for the card, timed on the card where it has a timer, else by the wall.
+      if (s.repeats && s.together) {
+        const ps = s.read.map((k) => { const q = new FramePacket(); unpack(q, frames[k], blob); return q; });
+        const tq = gl.getExtension("EXT_disjoint_timer_query_webgl2");
+        const times = ps.map(() => []), pixel = new Uint8Array(4);
+        for (let n = 0; n < s.repeats; n++) {
+          for (let j = 0; j < ps.length; j++) {
+            const i = (j + n) % ps.length;
+            gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+            const q = tq ? gl.createQuery() : null, start = performance.now();
+            if (q) gl.beginQuery(tq.TIME_ELAPSED_EXT, q);
+            for (let m = 0; m < s.together; m++) r.draw(ps[i]);
+            if (q) gl.endQuery(tq.TIME_ELAPSED_EXT);
+            gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+            const wall = (performance.now() - start) / s.together;
+            if (!q) times[i].push(wall);
+            else {
+              while (!gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE)) await new Promise((done) => setTimeout(done, 1));
+              times[i].push(gl.getParameter(tq.GPU_DISJOINT_EXT) ? NaN : gl.getQueryParameter(q, gl.QUERY_RESULT) / 1e6 / s.together);
+              gl.deleteQuery(q);
+            }
+          }
+        }
+        for (let i = 0; i < ps.length; i++) await post("/time/" + s.key + "/" + s.read[i], JSON.stringify({ card: !!tq, ms: times[i] }));
       }
       const error = gl.getError();
       if (r.errors > 0 || r.failed.length > 0 || error !== 0) errors.push(s.key + ": " + r.errors + " frames the GL refused, " + r.failed.length + " levels it had no room for, error " + error);
@@ -286,7 +312,7 @@ export async function litProbe(chrome: string, checks: readonly LitCheck[] = cho
       if (pack === undefined) packIds.set(s.pack!, (pack = packs.push(s.pack) - 1));
       if (!grounds.includes(s.ground)) grounds.push(s.ground);
       s.pack = null;
-      return { key: s.key, width: s.width, height: s.height, read: s.read, loseAt: s.loseAt, repeats: s.repeats, lookup: s.lookup, manifest: s.manifest !== null, pack, ground: grounds.indexOf(s.ground) };
+      return { key: s.key, width: s.width, height: s.height, read: s.read, loseAt: s.loseAt, repeats: s.repeats, together: s.together, lookup: s.lookup, manifest: s.manifest !== null, pack, ground: grounds.indexOf(s.ground) };
     });
     return { shots: listed, raws: raws.map((s) => ({ key: s.key })) };
   };
@@ -295,8 +321,9 @@ export async function litProbe(chrome: string, checks: readonly LitCheck[] = cho
   const served = new Map<string, Blob>(modules.outputs.map((o) => [`/m/${o.path.slice(2)}`, o]));
   const pixels = new Map<string, Uint8Array>();
   const times = new Map<string, number>();
+  const rounds = new Map<string, { card: boolean; ms: number[] }>();
   let device: Device | null = null;
-  const back: Readback = { pixels: (key, frame) => pixels.get(`${key}/${frame}`) ?? null, time: (key) => times.get(key) ?? null, get device() { return device!; } };
+  const back: Readback = { pixels: (key, frame) => pixels.get(`${key}/${frame}`) ?? null, time: (key) => times.get(key) ?? null, rounds: (key) => rounds.get(key) ?? null, get device() { return device!; } };
   const judged: ({ ok: boolean; lines: string[] } | null)[] = checks.map(() => null);
   /** Check `c` judged, and its shots and what came back of them let go. */
   const judge = (c: number): void => {
@@ -320,6 +347,8 @@ export async function litProbe(chrome: string, checks: readonly LitCheck[] = cho
   const finished = new Promise<{ errors: string[] }>((r) => (finish = r));
   const server = Bun.serve({
     port: 0,
+    // A check's shots may take longer to make than Bun waits on a request by default.
+    idleTimeout: 255,
     async fetch(req) {
       heard = performance.now();
       const path = new URL(req.url).pathname;
@@ -354,7 +383,9 @@ export async function litProbe(chrome: string, checks: readonly LitCheck[] = cho
         pixels.set(`${shot.key}/${frame}`, topFirst(body!, shot.width, shot.height));
         came(shot.key);
       } else if (kind === "time" && shot) {
-        times.set(frame === undefined ? shot.key : `${shot.key}/${frame}`, JSON.parse(new TextDecoder().decode(body!)) as number);
+        const told = JSON.parse(new TextDecoder().decode(body!)) as number | { card: boolean; ms: number[] };
+        if (typeof told === "number") times.set(frame === undefined ? shot.key : `${shot.key}/${frame}`, told);
+        else rounds.set(`${shot.key}/${frame}`, told);
         came(shot.key);
       } else if (kind === "device") device = JSON.parse(new TextDecoder().decode(body!)) as Device;
       else if (kind === "report") finish(JSON.parse(new TextDecoder().decode(body!)) as { errors: string[] });
@@ -375,7 +406,8 @@ export async function litProbe(chrome: string, checks: readonly LitCheck[] = cho
   rmSync(profile, { recursive: true, force: true });
   if (thrown) throw thrown;
   if (!report || !device) {
-    console.error("probe: the lit page went ten minutes without a word and sent no report");
+    if (report) for (const e of report.errors) console.error(`page error: ${e}`);
+    console.error(report ? "probe: the lit page reported before it drew anything" : "probe: the lit page went ten minutes without a word and sent no report");
     return false;
   }
   const d = device as Device;

@@ -5,6 +5,7 @@ import { quatAxis, quatMul, quatNormalize, quatRotate, quatUnrotate } from "../m
 import { writeAttitude } from "./rigid-attitude.ts";
 import { approach, clamp, detCos, detSin, len3, square, TAU, unitCommand } from "../math/scalar.ts";
 import { resolveVehicleContacts, separateVehicleOverlap, type VehicleContactQueries } from "./vehicle-contact.ts";
+import { vehicleWouldRun } from "./vehicle-presentation.ts";
 import { boatDrives, validateBoatSpec, type BoatDrive, type BoatSpec, type BoatVehicleDefinition, type VehicleContact, type VehicleState } from "./vehicle.ts";
 
 export interface BoatState extends VehicleState {
@@ -76,7 +77,7 @@ function immersion(world: BoatWorld, x: number, y: number, z: number, height: nu
 }
 function motor(s: BoatState, input: Readonly<BoatInput>, p: BoatSpec, wet: number, capsized: boolean): void {
   const request = input.pilot && !input.neutral ? unitCommand(input.throttle) : 0;
-  const usable = s.fuel > 0 && s.engineCondition > .08 && s.hullCondition > 0 && s.flooding < .75 && !capsized;
+  const usable = vehicleWouldRun(s.fuel, s.engineCondition, s.hullCondition, s.flooding) && !capsized;
   if (input.pilot && Math.abs(request) > .01 && usable) s.engineOn = true;
   if (!usable || !input.pilot) s.engineOn = false;
   const wanted = request > .01 ? 1 : request < -.01 ? -1 : 0;

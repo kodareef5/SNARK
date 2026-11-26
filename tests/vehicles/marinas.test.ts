@@ -2,7 +2,10 @@
 // between them a size that fits, bow-in mostly, a share held for found vessels, each clear of the rest.
 
 import { expect, test } from "bun:test";
-import { DOCK, DOCK_KINDS, isDock, isMoored, mooredVessel } from "../../content/docks.ts";
+import { DEAD_DYES, DOCK, DOCK_KINDS, burningKind, isDock, isMoored, mooredVessel } from "../../content/docks.ts";
+import { BOAT_SPECIES } from "../../content/vehicles/boat.ts";
+import { MARINE_FLEET } from "../../content/vehicles/marine-fleet.ts";
+import { boatRestY } from "../../shared/sim/boat.ts";
 import { BOARD_REACH } from "../../shared/sim/boat-boarding.ts";
 import { isBoatVehicle, type BoatSpec } from "../../shared/sim/vehicle.ts";
 import { marinaPaths } from "../../tools/boat/marinas.ts";
@@ -57,8 +60,9 @@ test("fingers stand off both sides at the slips' pitch, each with its pile at th
 test("boats lie in the slips square to the walkway, bow-in mostly, floating, a size that fits, clear of the docks and each other", () => {
   const { layout } = marinaHarbour(reg);
   const slips = layout.slips.filter((s) => s.how === "slip" || s.how === "stern-to");
-  expect(slips.length).toBeGreaterThan(12);
-  expect(slips.filter((s) => s.how === "slip").length).toBeGreaterThan(slips.filter((s) => s.how === "stern-to").length * 2);
+  // A quarter of the berths hold wrecks, which are no slip's boat.
+  expect(slips.length + layout.wrecks.length).toBeGreaterThan(12);
+  expect(slips.filter((s) => s.how === "slip").length).toBeGreaterThan(slips.filter((s) => s.how === "stern-to").length * 1.5);
   const docks: Box[] = layout.pieces.filter((p) => p.kind.startsWith("core:zzzzdock_") && p.kind !== DOCK_KINDS.pile).map((p) => ({ x: p.x, y: 0, z: p.z, yaw: p.yaw, size: [p.kind === DOCK_KINDS.finger ? DOCK.finger : DOCK.walk, 2, DOCK.length] }));
   for (const s of slips) {
     const spec = specOf(s.vessel), bow = [Math.sin(s.yaw * Math.PI / 180), Math.cos(s.yaw * Math.PI / 180)] as const;
@@ -96,7 +100,8 @@ test("the same harbour lays out the same, and no chunk holds more moored boats o
   const by = new Map<number, string[]>();
   for (const p of layout.pieces) if (isMoored(p.kind) || p.kind.startsWith("core:hulk_")) {
     const c = Math.floor(p.z / 64) * 8 + Math.floor(p.x / 64);
-    by.set(c, [...(by.get(c) ?? []), p.kind.startsWith("core:hulk_") ? p.kind : mooredVessel(p.kind)]);
+    // By mesh, as the cap counts: an intact hulk is its vessel's own mesh, and a damaged or sunk one a mesh of its own.
+    by.set(c, [...(by.get(c) ?? []), p.kind.startsWith("core:hulk_") ? (/_(damaged|sunk)$/.test(p.kind) ? p.kind : p.kind.replace("core:hulk_", "core:")) : mooredVessel(p.kind)]);
   }
   for (const kinds of by.values()) { expect(kinds.length).toBeLessThanOrEqual(4); expect(new Set(kinds).size).toBeLessThanOrEqual(2); }
 });
@@ -159,4 +164,84 @@ test("a pier is a marina's dock when it lies near the marina's point over the wa
   const taken = marinaPaths([MARINA], [near, far, dry, shed], (x) => wet(x), HARBOURS.docks, (ring) => ring.some(([x]) => x === EDGE));
   expect([...taken.values()].flat().map((p) => p.way.id)).toEqual([1]);
   expect(QUAY).toBeGreaterThan(0);
+});
+
+test("a found boat at its launch heading stays clear of the hulls left at angles", () => {
+  const { layout, found } = marinaHarbour(reg);
+  expect(found.length).toBeGreaterThan(0);
+  for (const live of found) {
+    const boat = hullOf(live.kind, live.x, live.z, live.yaw * 360 / 65536);
+    for (const p of layout.pieces) if (isMoored(p.kind)) {
+      expect(meets(boat, hullOf(mooredVessel(p.kind), p.x, p.z, p.yaw))).toBe(false);
+    }
+  }
+});
+
+test("no hull left to rot wears a paint a running vessel is found in, and each wears one of the dead dyes", () => {
+  const dyes = new Set(DEAD_DYES.map((d) => d.paint));
+  const liveries = new Set([BOAT_SPECIES, ...MARINE_FLEET].flatMap((s) => s.regions![0]!.colors.map(([c]) => c)));
+  expect(liveries.size).toBeGreaterThan(3);
+  for (const paint of dyes) expect([paint, liveries.has(paint)]).toEqual([paint, false]);
+  const { layout } = marinaHarbour(reg);
+  // One that burns is charred, under its own name.
+  const hulls = layout.pieces.filter((p) => isMoored(p.kind) && !p.kind.endsWith("_burning"));
+  expect(hulls.length).toBeGreaterThan(8);
+  for (const p of hulls) expect([p.kind, dyes.has(Number(p.kind.slice(p.kind.lastIndexOf("_") + 1)))]).toEqual([p.kind, true]);
+  expect(new Set(hulls.map((p) => p.kind.slice(p.kind.lastIndexOf("_") + 1))).size).toBeGreaterThan(1);
+});
+
+test("some hulls lie awry and low in the water, afloat still, and their slips keep their own line", () => {
+  const { layout } = marinaHarbour(reg);
+  const hulls = layout.pieces.filter((p) => isMoored(p.kind));
+  let awry = 0, low = 0;
+  for (const p of hulls) {
+    const slip = layout.slips.find((s) => Math.hypot(s.x - p.x, s.z - p.z) < .01)!;
+    const def = { spec: specOf(mooredVessel(p.kind)) };
+    // The fixture's water lies at 0.
+    const off = Math.abs(((p.yaw - slip.yaw + 540) % 360) - 180), rest = boatRestY(def.spec, 0);
+    expect(off).toBeLessThanOrEqual(8.01);
+    if (off > 1) awry++;
+    if (p.y < rest - .05) low++;
+    // Never on the bed, and never with its rail under: at most 45% of its topsides down.
+    expect(p.y).toBeGreaterThan(harbourGround(p.x) - .001);
+    expect(rest - p.y).toBeLessThanOrEqual((def.spec.height - def.spec.draft) * .45 + 1e-6);
+  }
+  expect(awry).toBeGreaterThan(0);
+  expect(low).toBeGreaterThan(0);
+  expect(low).toBeLessThan(hulls.length);
+});
+
+test("more wrecks leave as many boats to find, and a wreck its chunk has no room for is a hull, not an empty slip", () => {
+  const few: Harbours = { ...HARBOURS, moored: { ...HARBOURS.moored, wrecked: 0 } };
+  const many: Harbours = { ...HARBOURS, moored: { ...HARBOURS.moored, wrecked: 1 } };
+  const [a, b, c] = [marinaHarbour(reg, few).layout, marinaHarbour(reg).layout, marinaHarbour(reg, many).layout];
+  const found = (l: typeof a): number => l.slips.filter((s) => s.found).length;
+  expect(found(b)).toBeGreaterThanOrEqual(found(a));
+  expect(found(c)).toBeGreaterThanOrEqual(HARBOURS.marina.least);
+  expect(b.wrecks.length).toBeGreaterThan(a.wrecks.length);
+  // Every berth filled without wrecks is filled with them: a boat, a wreck or a found vessel's slip.
+  const filled = (l: typeof a): number => l.slips.length + l.wrecks.length;
+  expect([filled(b), filled(c)]).toEqual([filled(a), filled(a)]);
+  // With one mesh a chunk, the wrecks that mesh cap refuses are hulls.
+  const tight = marinaHarbour(reg, { ...many, moored: { ...many.moored, perChunk: { boats: 22, meshes: 1 } } }).layout;
+  const loose = marinaHarbour(reg, { ...few, moored: { ...few.moored, perChunk: { boats: 22, meshes: 1 } } }).layout;
+  expect(filled(tight)).toBe(filled(loose));
+});
+
+test("a marina burns two hulls at most, each charred, afloat at its own height and a kind that is ablaze", () => {
+  const all: Harbours = { ...HARBOURS, moored: { ...HARBOURS.moored, wrecked: 0, burning: { share: 1, most: 2 } } };
+  const none: Harbours = { ...HARBOURS, moored: { ...HARBOURS.moored, burning: { share: 0, most: 2 } } };
+  const burning = (l: ReturnType<typeof marinaHarbour>["layout"]) => l.pieces.filter((p) => p.kind.endsWith("_burning"));
+  expect(burning(marinaHarbour(reg, none).layout)).toEqual([]);
+  // Two of them, less any whose slip a found vessel took.
+  const lit = burning(marinaHarbour(reg, all).layout);
+  expect(lit.length).toBeGreaterThan(0);
+  expect(lit.length).toBeLessThanOrEqual(2);
+  for (const p of lit) {
+    const k = reg.index.get(p.kind)!, vessel = mooredVessel(p.kind);
+    expect([p.kind, reg.ablaze[k], p.kind === burningKind(vessel), (reg.defs[k] as { color?: number }).color === DEAD_DYES[0]!.paint]).toEqual([p.kind, 1, true, true]);
+    expect(p.y).toBeCloseTo(boatRestY(specOf(vessel), 0), 6);
+  }
+  // Nothing else in the content burns where it stands.
+  expect(reg.ids.filter((_, k) => reg.ablaze[k] === 1).every((id) => id.endsWith("_burning") && isMoored(id))).toBe(true);
 });

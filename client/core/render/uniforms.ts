@@ -185,6 +185,14 @@ export const MESH_ROWS: readonly UniformRow[] = [
     out[2] = fx[e + 2]!;
     out[3] = fx[e + 3]!;
   }, null),
+  // A body that shimmers for a moment (packet.ts drawGlow).
+  floats("uGlow", SEND_4F, AT_DRAW, (c, out) => {
+    const g = c.p.drawGlow, e = c.d * 4;
+    out[0] = g[e]!;
+    out[1] = g[e + 1]!;
+    out[2] = g[e + 2]!;
+    out[3] = g[e + 3]!;
+  }, null),
   // A piece about to be built is one colour, whatever its mesh's own (packet.ts drawTint).
   one("uOneColor", AT_DRAW, (c) => c.p.drawTint[c.d * 2]!),
   heat,

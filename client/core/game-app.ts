@@ -35,6 +35,7 @@ import { AppFrame, type FramePart, type PartRow } from "./frame.ts";
 import { JET_CODE } from "./jet-load.ts";
 import type { Probe } from "./probe.ts";
 import { GLIDER_KEY_TICKS, Prompts } from "./prompts.ts";
+import { Shimmer } from "./shimmer.ts";
 import { Sight } from "./sight.ts";
 import { AirFeed } from "./air-feed.ts";
 import { Director } from "./view/director.ts";
@@ -273,6 +274,7 @@ export class GameApp {
     this.f = new AppFrame(session, this.controls, this.ui, this.hud, this.cam, this.remote, pack, this.sky, this.director.view, this.lasers, new SeatedAim(reg, pack));
     this.f.feed = this.feed.shown;
     this.prompts = new Prompts(reg, this.builder, this.vehiclePlacement);
+    this.shimmer.aimed = () => this.prompts.target;
     session.shotOrigin = (out, tick, yaw, pitch) => {
       if (!session.world || session.driving >= 0 || !session.own.seat) return false;
       session.sampleRemote(this.shotSample);
@@ -429,6 +431,8 @@ export class GameApp {
   readonly vehiclePlacement = new VehiclePlacement();
   /** What the use key would act on, and the words that say so (prompts.ts). */
   readonly prompts: Prompts;
+  /** The vehicles worth walking to that shimmer for a moment. */
+  readonly shimmer = new Shimmer();
   /** The page, for travel between the servers of a cluster. The shell sets it; without one nobody travels. */
   page: Page | null = null;
   /** The page is on its way to another server, or has said it arrived. */
@@ -865,6 +869,8 @@ export class GameApp {
       ["feed", this.feed],
       // The map events told, read and handed to the scene at the tick the remote bodies are shown at.
       ["map events", this.mapEvents],
+      // The vehicles that would start, marked for a moment as they come near or are aimed at.
+      ["shimmer", this.shimmer],
       // What the session brought is handed to what draws it, and the frame is built at the tier chosen.
       ["absorb", { step: (f) => this.absorb(f) }],
       // A guided missile's smoke, from the missile drawn.

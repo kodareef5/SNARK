@@ -749,14 +749,24 @@ def rail_bent():
     return w_beam(m, -2.0, 2.0, crumple, 8)
 
 
-# The billboards: a monopole, a catwalk and a face on stringers. The first is a 14.6 by 4.3 m face on a 10 m pole; the
-# others are that face times `scale` on a pole `pole` metres tall and `post` thick, the small one with no catwalk
-# (content/street.ts BOARDS has the same numbers).
-def billboard_frame(m, bare=False, scale=1.0, pole=10.0, post=0.45, walk=True):
+# The billboards: a face on stringers with a catwalk, on a steel monopole or on square concrete pillars. The first is a
+# 14.6 by 4.3 m face on a 10 m pole; the others are that face times `scale`, its foot `pole` metres up, on a pole or
+# pillars `post` thick at each of `pillars` along it, the small one with no catwalk. A tall one is made about a point
+# `lift` metres up, its origin, so that it reaches 16 m from it at most (content/street.ts BOARDS has the same numbers).
+def billboard_frame(m, bare=False, scale=1.0, pole=10.0, post=0.45, walk=True, lift=0.0, pillars=(0.0,)):
     w = 7.3 * scale
+    base = -lift
+    pole = pole - lift
     foot = pole - 0.05
     top = foot + 4.3 * scale
-    cylinder(m, (0, -0.8, 0), (0, pole, 0), post, post * 0.8, 12, "galvanised")
+    if len(pillars) == 1 and lift == 0:
+        cylinder(m, (0, base - 0.8, 0), (0, pole, 0), post, post * 0.8, 12, "galvanised")
+    else:
+        # Concrete, square, carried into the ground, a steel cap under the beam.
+        for x in pillars:
+            box(m, (x - post, base - 0.8, -post), (x + post, pole - 0.45, post), "concrete")
+            if fine():
+                box(m, (x - post - 0.08, pole - 0.6, -post - 0.08), (x + post + 0.08, pole - 0.45, post + 0.08), "rust")
     box(m, (-w - 0.1, pole - 0.45, -0.35), (w + 0.1, pole - 0.25, -0.05), "rust")
     if walk and fine(3):
         box(m, (-w, pole - 0.4, 0.15), (w, pole - 0.35, 1.05), "rust")
@@ -781,13 +791,17 @@ def billboard_frame(m, bare=False, scale=1.0, pole=10.0, post=0.45, walk=True):
     return m
 
 
-# Each board after the first: its face's scale, its pole's height and thickness, and whether it has a catwalk.
-BOARDS = {"": (1.0, 10.0, 0.45, True), "_low": (1.0, 5.5, 0.45, True), "_mid": (0.67, 6.0, 0.3, True), "_small": (0.42, 3.5, 0.18, False)}
+# Each board: its face's scale, its foot's height, its pole's or pillars' thickness, whether it has a catwalk, how far
+# up its origin is, and where its pillars stand.
+BOARDS = {
+    "": (1.0, 10.0, 0.45, True, 0.0, (0.0,)), "_low": (1.0, 5.5, 0.45, True, 0.0, (0.0,)), "_mid": (0.67, 6.0, 0.3, True, 0.0, (0.0,)),
+    "_small": (0.42, 3.5, 0.18, False, 0.0, (0.0,)), "_tall": (1.0, 25.0, 0.7, True, 14.0, (0.0,)), "_grand": (1.5, 24.0, 0.6, True, 15.0, (-5.5, 5.5)),
+}
 
 
 def board(name, bare):
-    scale, pole, post, walk = BOARDS[name]
-    piece("billboard" + name + ("_bare" if bare else ""))(lambda: billboard_frame(Mesh(), bare=bare, scale=scale, pole=pole, post=post, walk=walk))
+    scale, pole, post, walk, lift, pillars = BOARDS[name]
+    piece("billboard" + name + ("_bare" if bare else ""))(lambda: billboard_frame(Mesh(), bare=bare, scale=scale, pole=pole, post=post, walk=walk, lift=lift, pillars=pillars))
 
 
 for _name in BOARDS:
