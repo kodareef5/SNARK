@@ -384,3 +384,16 @@ test("the Display tab's render resolution is the game's by default, says what th
   restored.restoreInterface('{"version":2,"resolution":9}');
   expect(restored.resolution).toBe(3);
 });
+
+test("raw mouse is off until chosen, is kept, and is not asked for once the browser refuses it", () => {
+  const ui = new Ui(), row = SETTING_ROWS.find((r) => r.label === "Raw mouse")!;
+  expect([row.value(ui.settings), ui.wantsRawMouse]).toEqual(["off", false]);
+  row.step(ui.settings, 1);
+  expect([row.value(ui.settings), ui.wantsRawMouse]).toEqual(["on", true]);
+  ui.settings.rawMouseRefused = true;
+  expect([row.value(ui.settings), ui.wantsRawMouse]).toEqual(["not offered", false]);
+  // The refusal is this page's alone: the choice is what is saved.
+  const later = new Settings();
+  later.restoreInterface(ui.settings.interfacePreferences());
+  expect([later.rawMouse, later.rawMouseRefused]).toEqual([true, false]);
+});

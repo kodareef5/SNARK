@@ -6,8 +6,8 @@ import { adjustRow, drawRows, pressRow, rowPages, slideRow, type RowKeys } from 
 import { fitText, type UiFrame } from "./nodes.ts";
 import { S_MENU_NOTE } from "./style.ts";
 
-/** Its rows of SETTING_ROWS: mouse sensitivity, zoom sensitivity, view kick. */
-export const INPUT_ROWS: readonly number[] = [1, 22, 25];
+/** Its rows of SETTING_ROWS: mouse sensitivity, zoom sensitivity, view kick, raw mouse. */
+export const INPUT_ROWS: readonly number[] = [1, 22, 25, 27];
 const ROWS = INPUT_ROWS;
 /** Its own keys: four for each row by its index in SETTING_ROWS, then a slider for each from SLIDERS, its note, and a toggle's underline for each. */
 const SLIDERS = 200;

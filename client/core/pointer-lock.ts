@@ -4,6 +4,8 @@
 export const LOCK_KEEP = 0;
 export const LOCK_TAKE = 1;
 export const LOCK_FREE = 2;
+/** The error's name where a browser has no raw mouse movement to give (`unadjustedMovement`). */
+export const RAW_REFUSED = "NotSupportedError";
 
 export class LockRule {
   /** A click on the world has asked for the mouse since the browser last refused it. */
@@ -14,8 +16,15 @@ export class LockRule {
   /** A primary mouse click on the world. */
   click(): void { this.engaged = true; }
 
-  /** The browser refused the lock: only a new click on the world asks again. */
-  refused(): void { this.engaged = false; }
+  /**
+   * The browser refused the lock. True where it refused only the mouse's raw movement (`raw` was asked and `name` is the
+   * error's): the lock is then asked for again without it. Otherwise only a new click on the world asks again.
+   */
+  refused(raw = false, name?: string): boolean {
+    if (raw && name === RAW_REFUSED) return true;
+    this.engaged = false;
+    return false;
+  }
 
   /** What to do now that the interface `wants` the mouse or not and the page holds it or not. */
   step(wants: boolean, locked: boolean): number {

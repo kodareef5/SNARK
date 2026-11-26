@@ -8,7 +8,7 @@ import { slider } from "./slider.ts";
 import { S_HUD_COUNT, S_ICE, S_MENU_NOTE } from "./style.ts";
 
 export const ROW = 52;
-const TOGGLES = new Set([0, 4, 12, 14, 15, 16, 17, 20, 23, 24, 25]);
+const TOGGLES = new Set([0, 4, 12, 14, 15, 16, 17, 20, 23, 24, 25, 27]);
 /** Row `i`'s own keys, four from `row(i)` (label, value, two buttons), its slider's, and a toggle's underline's. */
 export interface RowKeys { row(i: number): number; slider(i: number): number; underline(i: number): number }
 /** The room the rows have: `x` and `w` within the panel's margins, `y` the first row's top, `h` down to the panel's foot. */

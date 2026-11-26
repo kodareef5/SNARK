@@ -139,6 +139,11 @@ export class GameUi {
     return this.playingField;
   }
 
+  /** The shell asks for the mouse's raw movement with the lock: the player's choice, where the browser has not refused it. */
+  get wantsRawMouse(): boolean {
+    return this.settings.rawMouse && !this.settings.rawMouseRefused;
+  }
+
   /** The body is played: no screen is open but those that keep the field (Screen.keepsField), and nothing types. */
   get playingField(): boolean {
     for (const s of this.screens) if (s.isOpen() && !s.keepsPointer && !s.keepsField) return false;

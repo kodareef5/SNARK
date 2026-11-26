@@ -7,13 +7,19 @@ export function bindInput(canvas: HTMLCanvasElement, app: App): void {
   const mouse = new Set<number>();
   let lockedBefore = false, escapedAt = -Infinity;
   const locked = () => document.pointerLockElement === canvas;
+  // A browser with no raw movement to give is asked again without it, in the same click.
+  const take = (raw: boolean): Promise<unknown> =>
+    Promise.resolve(canvas.requestPointerLock?.(raw ? { unadjustedMovement: true } : undefined)).catch((e: unknown) => {
+      if (!rule.refused(raw, (e as { name?: string } | null)?.name)) return;
+      app.ui.settings.rawMouseRefused = true;
+      return take(false);
+    });
   const sync = (): void => {
     const step = rule.step(app.ui.wantsPointerLock && !app.ui.touch, locked());
     if (step === LOCK_FREE) document.exitPointerLock();
     if (step !== LOCK_TAKE) return;
     rule.pending = true;
-    Promise.resolve(canvas.requestPointerLock?.())
-      .catch(() => rule.refused())
+    take(app.ui.wantsRawMouse)
       .finally(() => { rule.pending = false; if (!app.ui.wantsPointerLock && locked()) document.exitPointerLock(); });
   };
   const clear = () => { mouse.clear(); app.ui.inspect = false; app.blur(); };

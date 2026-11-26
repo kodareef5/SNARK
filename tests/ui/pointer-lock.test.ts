@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { LOCK_FREE, LOCK_KEEP, LOCK_TAKE, LOST_ESCAPE, LOST_TO_FIELD, LOST_TO_SCREEN, LockRule, lostLock } from "../../client/core/pointer-lock.ts";
+import { LOCK_FREE, LOCK_KEEP, LOCK_TAKE, LOST_ESCAPE, LOST_TO_FIELD, LOST_TO_SCREEN, LockRule, RAW_REFUSED, lostLock } from "../../client/core/pointer-lock.ts";
 
 test("The mouse is taken only after a click on the world", () => {
   const rule = new LockRule();
@@ -41,4 +41,17 @@ test("A lost lock opens the menu on Escape, keeps the dock, and lets go for othe
   expect(lostLock(false, true)).toBe(LOST_TO_FIELD);
   // The inventory opened: everything held lets go.
   expect(lostLock(false, false)).toBe(LOST_TO_SCREEN);
+});
+
+test("A browser with no raw mouse movement is asked again without it, in the same click", () => {
+  const rule = new LockRule();
+  rule.click();
+  expect(rule.refused(true, RAW_REFUSED)).toBe(true);
+  expect(rule.step(true, false)).toBe(LOCK_TAKE);
+  // Any other refusal of a raw request waits for a click, as a plain request's does.
+  expect(rule.refused(true, "NotAllowedError")).toBe(false);
+  expect(rule.step(true, false)).toBe(LOCK_KEEP);
+  rule.click();
+  expect(rule.refused(false, RAW_REFUSED)).toBe(false);
+  expect(rule.step(true, false)).toBe(LOCK_KEEP);
 });

@@ -398,6 +398,16 @@ test("the settings page's Input tab is a part: its slider moves by pointer, valu
   expect([ui.settings.tab, ui.settings.sensitivity]).toEqual([0, 1.7]);
 });
 
+test("the Input tab shows raw mouse as a switch, and a press turns it on", () => {
+  const ui = new Ui(), hud = new HudModel(), menu = ui.screen<MenuScreen>("menu");
+  menu.menu = menu.options = true;
+  ui.settings.tab = SETTING_GROUPS.findIndex((t) => t.part === INPUT_SETTINGS);
+  ui.build(16 / 9, hud, null);
+  const button = ui.frame.nodes.slice(0, ui.frame.count).find((n) => n.label === "Change Raw mouse: off")!;
+  ui.pointer(0, button.key, button.x, button.y, 0, null);
+  expect(ui.settings.rawMouse).toBe(true);
+});
+
 test("a field on a settings tab of another file types: the menu lets its keys through and the edit reaches the part", () => {
   const ui = new Ui(), hud = new HudModel(), menu = ui.screen<MenuScreen>("menu");
   const heard: string[] = [];
