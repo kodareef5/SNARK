@@ -2,7 +2,7 @@
   "repository": "kodareef5/SNARK",
   "art": {
     "release": "art",
-    "id": "34bf984119b213f1",
+    "id": "a37228b08b2924c3",
     "files": [
       {"name": "core-creatures-allosaur", "file": "core-creatures-allosaur.5eb2682fdf0a.tar.zst", "bytes": 2833562, "sha256": "5eb2682fdf0abb902fa1807673cf9dc46c3111e728eda23299b3a910d74129e2"},
       {"name": "core-creatures-ankylo", "file": "core-creatures-ankylo.d19e9025be7c.tar.zst", "bytes": 1901178, "sha256": "d19e9025be7ccaeb84f4bf80f6554f9e9a6a2971b062a6666ab9f50e8901146b"},
@@ -77,7 +77,7 @@
       {"name": "core-nodes-trees", "file": "core-nodes-trees.34307f9cf0db.tar.zst", "bytes": 602402195, "sha256": "34307f9cf0db78bc92a0d17e1acd1c723509e160d72c3de27ceede8ea5ff6209"},
       {"name": "core-props-eggs", "file": "core-props-eggs.981f91f8390a.tar.zst", "bytes": 4354020, "sha256": "981f91f8390adf10e8850975bd935a2353a08a850cace92a90c52331a3031c23"},
       {"name": "core-props-screens", "file": "core-props-screens.a36f52e7b6c4.tar.zst", "bytes": 18447969, "sha256": "a36f52e7b6c409572d22f4c5f12f1bdaabbac38a0639cf3f03fb4fd4903c9887"},
-      {"name": "core-props-street", "file": "core-props-street.b8eafc4660de.tar.zst", "bytes": 37808306, "sha256": "b8eafc4660deb7fc122caf5f835a1c7c546574c74e14552a538dfa7ce6db7378"},
+      {"name": "core-props-street", "file": "core-props-street.fdd51de712de.tar.zst", "bytes": 37812364, "sha256": "fdd51de712de9b7df09f8eefdd4380ecb4aca6d346694c920bb6e25b9b3acaf6"},
       {"name": "core-screens-apronwing-freight", "file": "core-screens-apronwing-freight.2fea73634736.tar.zst", "bytes": 247441, "sha256": "2fea73634736db2d2adc9ef042ebdab1b90634fdcf1d723d706ff38a086ce891"},
       {"name": "core-screens-backstep-parcel", "file": "core-screens-backstep-parcel.566416aea454.tar.zst", "bytes": 548438, "sha256": "566416aea4545e129115f4fb9145e8d76b5ddd16ff6bf73899c2391140a4b8c3"},
       {"name": "core-screens-brinewire-exchange", "file": "core-screens-brinewire-exchange.f317f7fed4d0.tar.zst", "bytes": 226628, "sha256": "f317f7fed4d0aad1f3467cec44f09303cc656e9af7443addbb566f1c1c0fdb73"},
