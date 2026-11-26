@@ -473,14 +473,16 @@ artTest("a body is drawn coarser as it goes off, all its parts at one level, and
     expect(parts).toBeGreaterThanOrEqual(5);
     return [...out];
   };
-  // A body is four levels (tools/pack/body.ts): it turns at about 9, 24 and 66 m walking out on this view.
-  expect([levels(5), levels(15), levels(40), levels(100)]).toEqual([[0], [1], [2], [3]]);
-  // Seen afresh at 9 m it would be the next level. Walking out to there from near, it is still the finest.
-  expect([levels(5), levels(9), levels(10.5), levels(8), levels(6.5)]).toEqual([[0], [0], [1], [1], [0]]);
+  // A body is four levels (tools/pack/body.ts): it turns at about 6, 16 and 44 m walking out on this view. It turned at
+  // 9, 24 and 66 m until a textured body chose its levels as if 1.5 times as far (characters.ts TEXTURED_BODY_RELAX).
+  expect([levels(3), levels(10), levels(27), levels(70)]).toEqual([[0], [1], [2], [3]]);
+  // Seen afresh at 6.2 m it would be the next level. Walking out to there from near, it is still the finest.
+  expect([levels(3), levels(6.2), levels(7.2), levels(5.5), levels(4.5)]).toEqual([[0], [0], [1], [1], [0]]);
+  // Low poly starts at the first flat level, the third; it drew the second, textured, drawn flat, until it did.
   scene.assets.tier = tierOf("lowpoly");
-  expect(levels(3)).toEqual([1]);
+  expect(levels(3)).toEqual([2]);
   scene.assets.tier = tierOf("ultra");
-  expect([levels(15), levels(45), levels(120), levels(300)]).toEqual([[0], [1], [2], [3]]);
+  expect([levels(10), levels(30), levels(80), levels(200)]).toEqual([[0], [1], [2], [3]]);
 });
 
 artTest("a loose thing is drawn where it stands, at a level chosen for its distance, and not when it is out of view", () => {

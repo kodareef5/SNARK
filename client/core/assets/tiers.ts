@@ -296,6 +296,11 @@ export function startingTier(d: Start): Tier["name"] {
   return !d.touchFirst && d.light && !SOFTWARE.test(d.renderer) && (d.memory === undefined || d.memory >= HIGH_MEMORY) ? "high" : DEFAULT_TIER;
 }
 
+/** Whether a tier draws every body in palette colours, and so from a body's first flat level on: a finer one holds triangles drawn flat for nothing. */
+export function flatBodies(tier: Tier): boolean {
+  return !tier.lit || tier.texture === 0;
+}
+
 export function tierOf(name: string): Tier {
   for (const t of TIERS) if (t.name === name) return t;
   return tierOf(DEFAULT_TIER);

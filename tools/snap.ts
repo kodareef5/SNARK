@@ -1,6 +1,7 @@
 // Draws the proving ground to a PNG without a browser. Yaw and pitch are in degrees. Yaw 0 faces +Z (north) and positive yaw turns toward +X.
 // Scene flags: --poses N, --glide, --creatures, --states knockout|flinch, --looks, --gear, --creator TAB, --house TIER (--view VIEW), --slopes KIND|scene (--from near|far), --falling MS, --ragdoll SECONDS, --build, --fight WHAT, --launcher all|N (--first, --look STEPS; tools/snap/launcher.ts), --overhead WHAT, --used X,Z, --grow KIND,X,Z[,KIND,X,Z...], --chop X,Z,DEG[,TICKS], --ui (--console TEXT, --inventory, --station ID, --chat, --cone DEGREES, --sight scope|holo|dot (--share SHARE)); --zoom N magnifies the view N times.
 // --graphics TIER draws as a client on that graphics tier does, textures and all, and --source DIR reads another tree's asset folders.
+// --hide 6,9 leaves those skin zones of every survivor undrawn.
 // --hour H draws at that hour of the day. --map FILE draws that map file in place of the proving ground, from its first spawn point unless --pos says otherwise,
 // with its landmarks; --moved 1 draws their moving statics at their second state (a yacht's sails set).
 // --saddles worn|saddled|both|own (--species ID, --close MOMENT, --levels) draws a creature in its saddle (tools/snap/saddles.ts).
@@ -1457,6 +1458,9 @@ if (import.meta.main) {
     if (args.includes("--ragdoll")) ragdollScene(view, Number(arg("ragdoll") ?? 4));
     if (args.includes("--gear")) gearScene(view, (Number(arg("face") ?? 150) * Math.PI) / 180);
     if (args.includes("--looks")) looksScene(view, (Number(arg("face") ?? 150) * Math.PI) / 180);
+    // --hide ZONES: every survivor leaves those skin zones undrawn (shared/anim/skin-zones.ts), as a garment over them would.
+    const hide = arg("hide")?.split(",").reduce((m, z) => m | (1 << Number(z)), 0);
+    if (hide) view.scene.characters.skinHidden = () => hide;
     if (args.includes("--creatures")) {
       // Each creature in the colours its asset is reviewed in.
       const samples = new Map((await findAssets(source)).flatMap((a) => (a.spec.kind === "creature" ? [[a.id, a.spec.regions.map((region) => region.sample)] as const] : [])));

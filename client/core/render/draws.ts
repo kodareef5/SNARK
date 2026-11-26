@@ -7,7 +7,7 @@ import { sortF64 } from "../../../shared/sort.ts";
 import type { Assets } from "../assets/assets.ts";
 import type { FrameBudget } from "./budget.ts";
 import { FAR_FROM } from "./camera.ts";
-import { DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_NEAR, DRAW_ORB, DRAW_SCREENS, DRAW_SKYLINE, DRAW_TEXTURED, MAX_DRAWS, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR, STEP_NEAR_SEE, type FramePacket } from "./packet.ts";
+import { DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_NEAR, DRAW_ORB, DRAW_RANGED, DRAW_SCREENS, DRAW_SKYLINE, DRAW_TEXTURED, MAX_DRAWS, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR, STEP_NEAR_SEE, type FramePacket } from "./packet.ts";
 import { PROGRAM, drawProgram } from "./programs.ts";
 import { WEAR_KEY } from "./wear.ts";
 
@@ -195,6 +195,8 @@ export class Draws {
   swap = 0;
   /** Scratch for the draws of a level, four numbers each: material, 1 if from the trunk's level, first index, indices. */
   readonly drawParts: number[] = [];
+  /** The same, cut to the skin zones a body leaves drawn (`unhidden`). */
+  readonly shownParts: number[] = [];
   /** Whether the level `drawable` last gave is drawn with its materials. */
   ready = false;
 
@@ -226,9 +228,11 @@ export class Draws {
    * are the depth ranges it is drawn in (Camera.passes), and a draw in both takes the room of two. A section whose
    * material has its layer on the card draws it at `layer`, which holds its wear story too (wear.ts WEAR_KEY). A tree's crown may be drawn at a level of its own, `crown`,
    * and its cut-out leaves at a share, the first of them (tools/pack/sprays.ts): its bark from the level wanted and the
-   * rest from the crown's, while both are drawn with their materials, else all of it at the crown's.
+   * rest from the crown's, while both are drawn with their materials, else all of it at the crown's. Where the level is
+   * cut by skin zone (PackLod.zones), the zones `hide` names, a bit each, are left out: each run of the rest is a draw of
+   * its own, a ranged one where flat. A level not cut by zone is drawn whole.
    */
-  draw(mesh: number, wanted: number, buffer: number, first: number, count: number, ox: number, oy: number, oz: number, flags: number, passes: number, hand = 0, layer = 0, crown = wanted, leaves = 1): void {
+  draw(mesh: number, wanted: number, buffer: number, first: number, count: number, ox: number, oy: number, oz: number, flags: number, passes: number, hand = 0, layer = 0, crown = wanted, leaves = 1, hide = 0): void {
     const p = this.packet;
     const n = p.drawCount;
     const copies = passes === (NEAR | FAR) ? 2 : 1;
@@ -258,7 +262,9 @@ export class Draws {
         }
       }
     }
-    const parts = this.parts(over, runs, top !== lod, leaves);
+    const zones = hide === 0 ? null : this.assets.table.zones[mesh]![top]!;
+    const ranged = zones !== null && zones.length > 0;
+    const parts = ranged ? this.unhidden(this.parts(over, runs, top !== lod, leaves), zones, hide) : this.parts(over, runs, top !== lod, leaves);
     const draws = parts.length / 4;
     // A mesh the frame has no room for all of is left out whole.
     if (n + this.doubled + draws * copies > MAX_DRAWS) {
@@ -282,7 +288,7 @@ export class Draws {
       p.drawOffset[d * 3] = ox;
       p.drawOffset[d * 3 + 1] = oy;
       p.drawOffset[d * 3 + 2] = oz;
-      p.drawFlags[d] = flags | this.groundFlags[mesh]! | this.bentFlags[mesh]! | (material < 0 ? this.flatFlags[mesh]! : this.materialFlags[material]!);
+      p.drawFlags[d] = flags | this.groundFlags[mesh]! | this.bentFlags[mesh]! | (material < 0 ? this.flatFlags[mesh]! | (ranged ? DRAW_RANGED : 0) : this.materialFlags[material]!);
       p.drawHand[d] = hand;
       p.drawSwap[d] = material < 0 ? 0 : this.swap;
       p.drawEffect[d * 4] = this.effect[0]!;
@@ -293,11 +299,11 @@ export class Draws {
       p.drawTint[d * 2 + 1] = this.fade;
       p.drawLayer[d] = layer > 0 && material >= 0 && this.assets.layered(material) ? layer % WEAR_KEY : 0;
       p.drawWear[d] = p.drawLayer[d]! > 0 ? Math.floor(layer / WEAR_KEY) : 0;
-      const made = material < 0 ? this.trisOfMesh[mesh]![top]! : indices / 3;
+      const made = material < 0 && !ranged ? this.trisOfMesh[mesh]![top]! : indices / 3;
       tris += made;
       if (material < 0 || this.barkOf[material] === 0) crowns += made;
-      if (material < 0) continue;
-      p.drawMaterial[d] = material;
+      if (material < 0 && !ranged) continue;
+      if (material >= 0) p.drawMaterial[d] = material;
       p.drawFirstIndex[d] = from;
       p.drawIndexCount[d] = indices;
     }
@@ -327,6 +333,35 @@ export class Draws {
       }
       if (leaves < 1 && material >= 0 && (this.materialFlags[material]! & DRAW_CUTOUT) !== 0) indices = Math.floor((indices / 3) * leaves) * 3;
       if (material < 0 || indices > 0) out.push(material, trunk, from, indices);
+    }
+    return out;
+  }
+
+  /**
+   * `parts` cut to the runs of `zones` (a level's skin zones, PackLod.zones) that `hide` leaves drawn, runs next to each
+   * other joined: a flat part, which is the whole level, as well as a section.
+   */
+  private unhidden(parts: readonly number[], zones: readonly number[], hide: number): readonly number[] {
+    const out = this.shownParts;
+    out.length = 0;
+    const end = zones[zones.length - 2]! + zones[zones.length - 1]!;
+    for (let k = 0; k < parts.length; k += 4) {
+      const material = parts[k]!, trunk = parts[k + 1]!;
+      const from = material < 0 ? 0 : parts[k + 2]!, to = material < 0 ? end : from + parts[k + 3]!;
+      let start = 0, stop = 0;
+      for (let z = 0; z < zones.length; z += 3) {
+        if (((hide >>> zones[z]!) & 1) !== 0) continue;
+        const a = Math.max(zones[z + 1]!, from), b = Math.min(zones[z + 1]! + zones[z + 2]!, to);
+        if (b <= a) continue;
+        if (a === stop && stop > start) {
+          stop = b;
+          continue;
+        }
+        if (stop > start) out.push(material, trunk, start, stop - start);
+        start = a;
+        stop = b;
+      }
+      if (stop > start) out.push(material, trunk, start, stop - start);
     }
     return out;
   }
