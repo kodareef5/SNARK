@@ -8,6 +8,7 @@ import { LOOK_BYTES, validLook } from "../shared/anim/look.ts";
 import { TOKEN_BYTES } from "../shared/voice/packet.ts";
 import { ORB_GAIN_UNITS, orbOnly } from "../shared/world/orb.ts";
 import { FLAG_BLUEPRINT, HOTBAR_SLOTS, type Inventory } from "../shared/sim/items.ts";
+import { holdWord } from "../shared/sim/loot.ts";
 import { V_COUNT, V_FOOD, V_WATER } from "../shared/sim/vitals.ts";
 import { sendKept } from "./balls.ts";
 import type { Client, GameServer } from "./game.ts";
@@ -218,7 +219,9 @@ export function addOwnState(ctx: OwnContext): void {
       w.bool(open !== null);
       if (open) {
         w.varint(ctx.items.inv(open).cap);
-        w.string(fitBytes(open.name, MAX_OPEN_NAME_BYTES));
+        const tag = ctx.world.reg.holds[open.kind];
+        const name = open.name || (tag ? holdWord(tag) : "");
+        w.string(fitBytes(name, MAX_OPEN_NAME_BYTES));
         // Protocol 41: what kind of box it is (OPEN_ bits).
         w.u8(ctx.world.reg.takeOnly[open.kind] === 1 ? OPEN_TAKE_ONLY : 0);
       }

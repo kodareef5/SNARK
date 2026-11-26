@@ -31,6 +31,7 @@ test("the use key held on a bin searches it and opens it; a tap does nothing, an
   expect(shown(view, KEY_PROMPT)).toMatch(/^searching the bin  \d+%$/);
   expect(until(h, () => ada.open !== null, 3)).toBe(true);
   view.app.key("KeyE", false);
+  expect(ada.open!.name).toBe("bin");
   expect([ada.open!.takeOnly, ada.open!.inventory.item.some((i) => i !== 0), h.host.holders.count]).toEqual([true, true, 1]);
   // Somebody else empties it and she shuts it: the next hold is told at once, and the prompt remembers.
   const bin = [...h.world.structs.held].flatMap((chunk) => Array.from({ length: h.world.structs.chunks[chunk]!.mapped }, (_, slot) => chunk * 65536 + slot)).find((ref) => h.host.holders.tag(ref) === "bin")!;
