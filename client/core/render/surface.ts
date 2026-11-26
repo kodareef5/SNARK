@@ -32,7 +32,7 @@ import { WEAR_GLSL, wearAlpha } from "./wear.ts";
 import { BENT_GRAIN, BENT_WEAR_GLSL, BEND_GLSL, STRIP_METRES } from "./bend.ts";
 import { PIECE_FIT_GLSL, PIECE_FIT_PLACE, PIECE_STAGE } from "./piece-fit.ts";
 import { WEAR_SHADE } from "./pieces.ts";
-import { PRINT_GLSL } from "./print-term.ts";
+import { PRINT_GLSL, PRINT_VERTEX, PRINT_VERTEX_MAIN } from "./print-term.ts";
 
 /** What a surface that is not metal reflects head on. */
 export const DIELECTRIC = 0.04;
@@ -572,7 +572,7 @@ uniform highp usampler2D uWindowHeight;
 out vec3 vRel, vNormal;
 out vec4 vTangent;
 out vec2 vUv;
-${layered ? "out vec3 vBox;\n" : ""}${printed ? "flat out float vPrint;\n" : ""}${dyed ? "flat out mat3 vDye, vDye2;\n" : ""}${drops ? "flat out float vAt;\n" : ""}${FRAME_BLOCK}${drops ? HAND_VERTEX : ""}mat3x4 bone(int i) {
+${layered ? "out vec3 vBox;\n" : ""}${printed ? PRINT_VERTEX : ""}${dyed ? "flat out mat3 vDye, vDye2;\n" : ""}${drops ? "flat out float vAt;\n" : ""}${FRAME_BLOCK}${drops ? HAND_VERTEX : ""}mat3x4 bone(int i) {
   int n = i * 3;
   ivec2 at = ivec2(n % ${BONES_PER_ROW * 3}, n / ${BONES_PER_ROW * 3});
   return mat3x4(texelFetch(uBones, at, 0), texelFetch(uBones, at + ivec2(1, 0), 0), texelFetch(uBones, at + ivec2(2, 0), 0));
@@ -637,7 +637,7 @@ ${PIECE_FIT_PLACE}    mat3 r = mat3(c, 0.0, -s, 0.0, 1.0, 0.0, s, 0.0, c);
     n = r * bn;
     t = r * bt;
   }
-${printed ? "  vPrint = float(iRegA.z);\n" : ""}${dyed ? `  vDye = mat3(dye(iRegA.x), dye(iRegA.y), ${printed ? "vec3(1.0)" : "dye(iRegA.z)"});\n  vDye2 = uPiece > 0.5 ? mat3(1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0) : mat3(dye(iRegA.w), dye(iRegB.x), dye(uSkin < -0.5 && uSkin > -1.5 ? 0u : iRegB.y));\n` : ""}  // A built piece's stage goes with the wheel's side, under 0, where a wheel's is over it: no varying is added for it.
+${printed ? PRINT_VERTEX_MAIN : ""}${dyed ? `  vDye = mat3(dye(iRegA.x), dye(iRegA.y), ${printed ? "vec3(1.0)" : "dye(iRegA.z)"});\n  vDye2 = uPiece > 0.5 ? mat3(1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0) : mat3(dye(iRegA.w), dye(iRegB.x), dye(uSkin < -0.5 && uSkin > -1.5 ? 0u : iRegB.y));\n` : ""}  // A built piece's stage goes with the wheel's side, under 0, where a wheel's is over it: no varying is added for it.
   if (uPiece > 0.5) vWheel.w = -float(iRegB.x & ${PIECE_STAGE}u);
   vRel = p;
 ${drops ? "  vAt = length(iPos + uOffset);\n" : ""}  vNormal = normalize(n);
@@ -944,7 +944,8 @@ const GLASS_COVER = `  float reflected = -1.0;
  * layer as `wounded` has it, at `uLevel`; without, its text is the one every unhurt body is drawn with. Undyed, the
  * albedo is the base colour under the tint, which is what `dyed` gives with no mask; one that never drops writes alpha 1.
  * A person's skin (street-finishes.ts SKIN) takes skin's reflectance and its scattered light where its first region is,
- * fading into its flat level's light as a pixel widens (skinNear); an eye (EYE) wears a wet coat.
+ * fading into its flat level's light as a pixel widens (skinNear); an eye (EYE) wears a wet coat. With `printed` the
+ * instance's print lies over the dyed colour, under any wound (print-term.ts `printedOver`).
  */
 export function surfaceFragment(format: TextureFormat, air: string, { dyed, drops, layered, printed = false }: SurfaceVariant = SURFACE_ANY): string {
   const cloth = dyed ? "dyed(base.rgb, mask, mask2)" : "base.rgb * uTint";

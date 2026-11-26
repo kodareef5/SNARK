@@ -5,7 +5,7 @@
 // middle, and cut to the rectangle. A layer holds its picture premultiplied, as sRGB, stretched to the layer's square.
 // Where it lies the print is the cloth's colour, its ink over the dyed cloth by its alpha, kept as bright as the weave
 // under it, before the light. The dye does not reach the ink. Drawn as swatches (the governor's step), a print is its
-// picture's mean colour over where the picture lies, and reads no texture.
+// picture's mean colour, its last level, over where the picture lies.
 //
 // The maths is here twice, as GLSL and as a function the software rasterizer runs, from the same table of numbers.
 
@@ -110,17 +110,17 @@ const ink = new Float64Array(4);
  * `cloth`, the dyed colour, with layer `k`'s print over it at sheet point `u`, `v`, into `cloth`. `ux`, `vx`, `uy`, `vy`
  * are how far the sheet point moves to the next pixel right and down, which choose the level read. `base` is the
  * material's base colour as light and `grey` its mean brightness, by which the ink keeps the weave. With `swatch` the
- * print is its mean colour. `picture` is null where the layer holds none, which draws no print.
+ * print is its picture's last level, its mean. `picture` is null where the layer holds none, which draws no print.
  */
 export function printedOver(cloth: Float64Array | number[], base: ArrayLike<number>, grey: number, table: Float32Array, k: number, picture: PrintPicture | null, swatch: boolean, u: number, v: number, ux: number, vx: number, uy: number, vy: number): void {
-  if (k < 0 || (!picture && !swatch)) return;
+  if (k < 0 || !picture) return;
   const at = k * PRINT_FLOATS;
   const az = table[at + 2]!, aw = table[at + 3]!;
   const rx = (u - table[at]!) * az - 0.5, ry = (v - table[at + 1]!) * aw - 0.5;
   const m0 = table[at + 4]!, m1 = table[at + 5]!, m2 = table[at + 6]!, m3 = table[at + 7]!;
   const qx = m0 * rx + m1 * ry + 0.5, qy = m2 * rx + m3 * ry + 0.5;
   if (!(Math.abs(rx) <= 0.5 && Math.abs(ry) <= 0.5 && Math.abs(qx - 0.5) <= 0.5 && Math.abs(qy - 0.5) <= 0.5)) return;
-  if (swatch) for (let c = 0; c < 4; c++) ink[c] = table[at + 8 + c]!;
+  if (swatch) samplePrint(picture!, qx, qy, 16, ink);
   else {
     const dxx = m0 * ux * az + m1 * vx * aw, dxy = m2 * ux * az + m3 * vx * aw;
     const dyx = m0 * uy * az + m1 * vy * aw, dyy = m2 * uy * az + m3 * vy * aw;
@@ -133,20 +133,30 @@ export function printedOver(cloth: Float64Array | number[], base: ArrayLike<numb
 const fl = (n: number): string => (Number.isInteger(n) ? n.toFixed(1) : String(n));
 
 /**
- * `printedOver` as GLSL, for a SURFACE text drawn with prints: the layer is the instance's third region byte, carried as
- * `vPrint`, 0 for none. PRINT_LAYERS is the tier's layers, which the program defines.
+ * `printedOver` as GLSL, for a SURFACE text drawn with prints: the layer is the instance's third region byte, 0 for none.
+ * The vertex text reads the layer's row of the table and hands it on flat (PRINT_VERTEX), so no fragment text holds the
+ * table: with it the Intel GPU drew a screen of printed tubes half a millisecond slower, with or without a texture read.
+ * A swatch is the picture's last level, its mean. PRINT_LAYERS is the tier's layers, which the program defines.
  */
+export const PRINT_VERTEX = `uniform vec4 uPrintTable[PRINT_LAYERS * 3];
+flat out float vPrint;
+flat out vec4 vPrintAt, vPrintTurn;
+`;
+/** What the vertex text's main does for a print, from the instance's region bytes `iRegA`. */
+export const PRINT_VERTEX_MAIN = `  int print = int(iRegA.z) - 1;
+  vPrint = float(print);
+  vPrintAt = print >= 0 && print < PRINT_LAYERS ? uPrintTable[print * 3] : vec4(-1.0);
+  vPrintTurn = print >= 0 && print < PRINT_LAYERS ? uPrintTable[print * 3 + 1] : vec4(0.0);
+`;
 export const PRINT_GLSL = `uniform highp sampler2DArray uPrints;
-uniform vec4 uPrintTable[PRINT_LAYERS * 3];
 uniform float uPrintSwatch, uGrey;
 flat in float vPrint;
+flat in vec4 vPrintAt, vPrintTurn;
 vec3 printedOver(vec3 cloth, vec3 base, vec2 uv) {
-  int k = int(vPrint + 0.5) - 1;
-  if (k < 0 || k >= PRINT_LAYERS) return cloth;
-  vec4 a = uPrintTable[k * 3], m = uPrintTable[k * 3 + 1];
-  vec2 r = (uv - a.xy) * a.zw - 0.5;
-  vec2 q = vec2(dot(m.xy, r), dot(m.zw, r)) + 0.5;
-  vec4 ink = uPrintSwatch > 0.5 ? uPrintTable[k * 3 + 2] : texture(uPrints, vec3(q, float(k)));
+  if (vPrintAt.x < -0.5) return cloth;
+  vec2 r = (uv - vPrintAt.xy) * vPrintAt.zw - 0.5;
+  vec2 q = vec2(dot(vPrintTurn.xy, r), dot(vPrintTurn.zw, r)) + 0.5;
+  vec4 ink = uPrintSwatch > 0.5 ? textureLod(uPrints, vec3(q, vPrint), 16.0) : texture(uPrints, vec3(q, vPrint));
   ink *= step(abs(r.x), 0.5) * step(abs(r.y), 0.5) * step(abs(q.x - 0.5), 0.5) * step(abs(q.y - 0.5), 0.5);
   float weave = dot(base, vec3(${LUMA.map(fl).join(", ")})) / max(uGrey, 0.01);
   return cloth * (1.0 - ink.a) + ink.rgb * weave;

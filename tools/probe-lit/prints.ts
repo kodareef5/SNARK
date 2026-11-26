@@ -3,7 +3,8 @@
 // none, drawn in one draw by a printed SURFACE program (print-term.ts). The pictures go to the card one a frame, as the
 // game sends them; then the same frame is drawn as the governor's swatches. Each is held to the rasterizer, which lays
 // the print by `printedOver`, at points on one body with no edge near, and enough of those points must be on a print.
-// Both pictures of each, the GPU's and the twin's, are written under artifacts/people/prints/.
+// Both pictures of each, the GPU's and the twin's, are written under artifacts/people/prints/. Last, 40 tubes in 40 prints
+// at a desktop's canvas are timed against the same crowd plain and the printed program with no print, and the times told.
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -29,6 +30,12 @@ const LEAST = { all: 200, printed: 100 };
 const TUBES = 6;
 const FRAMES = 30;
 const OUT = resolve(import.meta.dir, "../../artifacts/people/prints");
+/** The timed crowd: tubes in rows near the eye, each in a print of its own or none, its last frame drawn this many times more. */
+const CROWD = 40;
+const REPEATS = 300;
+/** The timed crowd is drawn at a desktop's canvas, as the people bench draws it. */
+const [TW, TH] = [1920, 1080];
+const TIMED = ["plain-a", "printed-a", "flagged-a", "plain-b", "printed-b", "flagged-b", "plain-c", "printed-c", "flagged-c", "plain-d", "printed-d", "flagged-d"] as const;
 
 interface Made {
   frame: number;
@@ -60,6 +67,30 @@ function shot(key: string, swatches: boolean): Shot {
   return Object.assign(s, { world: w, raster, ids });
 }
 
+/** The timed crowd, printed or not: everything else alike, the prints all on the card by its last frame. */
+async function timed(key: string, printed: boolean): Promise<Shot> {
+  const set = sceneSet(64);
+  const w = sceneWorld({}, tierOf("medium"), set);
+  w.scene.viewHeight = TH;
+  w.scene.plainSky = true;
+  w.cam.aspect = TW / TH;
+  const prints = Array.from({ length: CROWD }, (_, k) => testPrint(k, { ...TUBE_PLACE, turn: 0.1 * (k % 5) }));
+  for (let k = 0; k < CROWD; k++) w.place(TUBE, 32 + ((k % 10) - 4.5) * 0.62, 22.6 + Math.floor(k / 10) * 0.9, { colors: [8, 7, 14, 6], yaw: 0 });
+  w.scene.prints.host = { image: (path, side) => { const k = parseInt(/print\.([0-9a-f]{16})/.exec(path)![1]!, 16) & 0xffff; const source = printBytes(side, k); return Promise.resolve({ source, mean: [...printMean(source)] }); } };
+  if (printed) w.scene.prints.worn = { meshes: [w.mesh(TUBE)], of: (id) => prints[id - 100] ?? null };
+  const s = new Shot(key, TW, TH, w.hf, set.files[0]!.bytes);
+  s.manifest = set.manifest;
+  s.repeats = REPEATS;
+  for (let f = 0; f < 50; f++) {
+    const p = w.frame(100, false);
+    // The flagged crowd is drawn by the printed program with no print in any instance: what the program costs by itself.
+    if (f === 49 && key.startsWith("flagged")) for (let i = 0; i < p.transientCount; i++) p.transient[i * INSTANCE_BYTES + 14 + PRINT_REGION] = 0;
+    s.add(p, f === 49);
+    await new Promise((done) => setTimeout(done, 0));
+  }
+  return s;
+}
+
 export const printsCheck: LitCheck = {
   name: "prints on garments",
 
@@ -88,6 +119,7 @@ export const printsCheck: LitCheck = {
       }
       out.push(s);
     }
+    for (const key of TIMED) out.push(await timed(key, !key.startsWith("plain")));
     return out;
   },
 
@@ -135,6 +167,20 @@ export const printsCheck: LitCheck = {
       const good = p.points >= LEAST.all && printed >= LEAST.printed && p.p95 <= TOLERANCE.pixelP95 && mm.worst <= TOLERANCE.meanWorst;
       ok &&= good;
       lines.push(`${key}: ${TUBES} tubes, ${m.printed.size} printed, against the rasterizer: ${p.points} points, ${printed} on a printed body; pixels 95 in 100 within ${p.p95}, worst ${p.worst}; 5 by 5 means worst ${mm.worst.toFixed(2)}  ${good ? "ok" : "FAIL"}`);
+    }
+    // The crowd's frame drawn again and again, plain, printed and flagged by turns: what the prints add to it. Wall time on
+    // a shared card wanders by half a millisecond, so it is told, not judged: the people bench is the gate.
+    const ms = TIMED.map((key) => back.time(`${key}/49`));
+    if (ms.every((t) => t !== null)) {
+      const median = (k: string): number => {
+        const list = TIMED.flatMap((key, i) => (key.startsWith(k) ? [ms[i]!] : [])).sort((a, b) => a - b);
+        return (list[(list.length - 1) >> 1]! + list[list.length >> 1]!) / 2;
+      };
+      const [plain, printed, flagged] = [median("plain"), median("printed"), median("flagged")];
+      lines.push(`${CROWD} tubes in ${CROWD} prints at ${TW} by ${TH}, ${REPEATS} draws of its frame, medians of ${TIMED.length / 3}: plain ${plain.toFixed(3)} ms, printed ${printed.toFixed(3)} ms (${(printed - plain >= 0 ? "+" : "") + (printed - plain).toFixed(3)}), the printed program with no print ${flagged.toFixed(3)} ms (${(flagged - plain >= 0 ? "+" : "") + (flagged - plain).toFixed(3)}); told, not judged`);
+    } else {
+      ok = false;
+      lines.push("the timed crowd: NO TIME");
     }
     lines.push(`pictures in ${OUT}`);
     return { ok, lines };

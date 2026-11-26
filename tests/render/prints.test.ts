@@ -248,3 +248,37 @@ test("the rasterizer draws a tube's print where it lies", async () => {
   const pic = printPicture(printBytes(16), 16);
   expect(pic.levels.length).toBe(5);
 });
+
+test("a wearer at a flat level carries its print's swatch, the palette colour nearest its picture", async () => {
+  const w = crowd(1, true);
+  for (let f = 0; f < 6; f++) {
+    w.frame(100, false);
+    await settle();
+  }
+  const swatch = w.scene.prints.byteOf(w.prints[0]!, true), layer = w.scene.prints.byteOf(w.prints[0]!, false) - 1;
+  expect(layer).toBeGreaterThanOrEqual(0);
+  expect(w.scene.prints.swatch(layer)).toBe(swatch);
+  // Print 0 is a red disc, a white quarter and a dark bar: its swatch is a warm colour.
+  const [r, g, b] = [w.pack.palette[swatch * 4]!, w.pack.palette[swatch * 4 + 1]!, w.pack.palette[swatch * 4 + 2]!];
+  expect(swatch).toBeGreaterThan(0);
+  expect(r).toBeGreaterThan(g);
+  expect(r).toBeGreaterThan(b);
+});
+
+test("a print whose picture failed is not asked for again until the wait is over", async () => {
+  const w = crowd(1, true);
+  w.host.fail.add("/media/print.00000000ab000000.png");
+  for (let f = 0; f < 10; f++) {
+    w.frame(100, false);
+    await settle();
+  }
+  expect(w.host.asked.length).toBe(1);
+  expect(w.scene.prints.held).toBe(0);
+  w.host.fail.clear();
+  for (let t = 0; t < 31_000; t += 1000) {
+    w.frame(1000, false);
+    await settle();
+  }
+  expect(w.host.asked.length).toBe(2);
+  expect(w.scene.prints.held).toBe(1);
+});
