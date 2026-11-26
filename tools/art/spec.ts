@@ -516,7 +516,7 @@ export interface HumanBodiesAsset {
    * own, drawn with the material `materials` names.
    */
   readonly garments?: {
-    readonly make: (meshes: readonly SourceMesh[], id: string, rest: ArrayLike<number>) => readonly { readonly id: string; readonly material: string; readonly body: ScriptedBody; readonly triangles: readonly number[]; readonly flat?: number; readonly lines: readonly string[] }[];
+    readonly make: (meshes: readonly SourceMesh[], id: string, rest: ArrayLike<number>) => readonly { readonly id: string; readonly material: string; readonly body: ScriptedBody; readonly triangles: readonly number[]; readonly flat?: number; readonly print?: readonly [number, number, number, number]; readonly lines: readonly string[] }[];
   };
   /** In the order of SEX_IDS. `outfits` is how its outfit files and textures are named. */
   readonly bodies: readonly { readonly file: string; readonly material: string; readonly texture: string; readonly outfits: string }[];

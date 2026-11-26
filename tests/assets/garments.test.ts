@@ -10,6 +10,7 @@ import { SKIN_ABDOMEN, SKIN_ANKLE_L, SKIN_CHEST, SKIN_COLLAR, SKIN_FOREARM_L, SK
 import { compileContent } from "../../shared/content/registry.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { CUTS, EDITION_REGIONS, SHEETS, cutMesh } from "../../shared/people/cuts.ts";
+import { REGION_BASE } from "../../shared/pack/palette.ts";
 import { unpackMeshes } from "../../tools/pack/write.ts";
 
 const PACK = new URL("../../assets/source/core/humans/human-bodies/human-bodies.snpk", import.meta.url);
@@ -67,4 +68,38 @@ test("the hem bands are the ends of the zones beside them", () => {
   expect(skinZoneAt(B_UPPER_CHEST, neck[0]!, neck[1]! - 0.15, neck[2]! + 0.1, rest)).toBe(SKIN_CHEST);
   expect(skinZoneAt(B_SPINE, spine[0]!, spine[1]! - 0.03, spine[2]! + 0.1, rest)).toBe(SKIN_WAIST);
   expect(skinZoneAt(B_SPINE, spine[0]!, spine[1]! + 0.08, spine[2]! + 0.1, rest)).toBe(SKIN_ABDOMEN);
+});
+
+test("a cut's flat levels show the print's region, its textured levels never", () => {
+  const meshes = unpackMeshes(parsePack(new Uint8Array(readFileSync(PACK))));
+  for (const sex of ["m", "f"]) for (const [name, cut] of Object.entries(CUTS)) {
+    const mesh = meshes.find((m) => m.id === cutMesh(`core:human_${sex}`, name))!;
+    mesh.lods.forEach((lod, k) => {
+      const printed = lod.colors.filter((c) => c === REGION_BASE + 2).length;
+      if (k < cut.flat) expect(printed).toBe(0);
+      else expect(printed).toBeGreaterThan(0);
+    });
+  }
+});
+
+test("a tee's front is unmirrored from outside: across the sheet is the wearer's right to left", () => {
+  const meshes = unpackMeshes(parsePack(new Uint8Array(readFileSync(PACK))));
+  for (const sex of ["m", "f"]) {
+    const lod = meshes.find((m) => m.id === cutMesh(`core:human_${sex}`, "tee"))!.lods[0]!, uv = lod.uvs!, p = lod.positions;
+    // The print's place on the chest. The body faces +z with its left hand at +x: from in front, the viewer's left is -x.
+    const [u0, v0, w, h] = CUTS.tee!.print;
+    let n = 0, su = 0, sx = 0, sv = 0, sy = 0, sux = 0, svy = 0, suu = 0, svv = 0, front = 0;
+    for (let i = 0; i < uv.length / 2; i++) {
+      const u = uv[i * 2]!, v = uv[i * 2 + 1]!;
+      if (u < u0 || u > u0 + w || v < v0 || v > v0 + h) continue;
+      const x = p[i * 3]!, y = p[i * 3 + 1]!, z = p[i * 3 + 2]!;
+      n++, su += u, sx += x, sv += v, sy += y, sux += u * x, svy += v * y, suu += u * u, svv += v * v;
+      if (z > 0) front++;
+    }
+    expect(n).toBeGreaterThan(20);
+    expect(front / n).toBeGreaterThan(0.95);
+    // Metres of body a sheet's width: a sheet spans 1.4 m, less where the chest curves away.
+    expect((sux / n - (su / n) * (sx / n)) / (suu / n - (su / n) ** 2)).toBeGreaterThan(0.8);
+    expect((svy / n - (sv / n) * (sy / n)) / (svv / n - (sv / n) ** 2)).toBeLessThan(-0.8);
+  }
 });
