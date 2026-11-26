@@ -33,8 +33,8 @@ export interface LakeRules {
    */
   readonly poolDepth?: number;
   /**
-   * The most a step of the way out of a pool rises, in metres, from one sample to the next 2 m off: 1.5 m is 37
-   * degrees. A survivor stands on 44.8 and no steeper (1.98 m), and at 1.8 m one wading in a let-down pool was caught.
+   * The rise of a step of a ladder out of a pool, in metres, from one pair of samples to the next 2 m off: 1.5 m is 37
+   * degrees. A survivor stands on 44.8 and no steeper (1.98 m).
    */
   readonly poolClimb?: number;
 }
@@ -233,119 +233,231 @@ export function raiseRims(lakes: Lakes, height: Float32Array, grid: Grid, kept: 
 /** How far under the lowest ground beside it a let-down body's surface stands, and the least water worth keeping. */
 const RIM_OVER = 0.1;
 const LEAST_DEPTH = 0.3;
+/** The steepest ground a way out is laid over, rise a metre: 40 degrees. A survivor stands on 44.8 and no steeper. */
+const WALKED = 0.85;
+/** Metres two samples side by side may differ for a way to pass between them. */
+const LEVEL = 0.5;
+/** Metres of water a survivor floats in, over any bed. */
+const FLOATS = 1.3;
+/** The most a bed lies under the ground at its side where benches are cut all round: 32 degrees up a side, 41 in a corner. */
+const BENCH = 1.25;
+/** Ways out tried for one stretch of water before it is benched all round. */
+const LADDERS = 12;
+/** Samples past a stretch of water that a way out is followed over. */
+const REACH = 3;
+
+/** Each rimmed sample's bed as it was carved: what `settleRims` tells later grading by, and keeps up to date. */
+export function poolBeds(lakes: Lakes, height: Float32Array): Map<number, number> {
+  const beds = new Map<number, number>();
+  for (let i = 0; i < lakes.body.length; i++) if (lakes.body[i] !== 0 && rimmed(lakes.bodies[lakes.body[i]! - 1]!.kind)) beds.set(i, height[i]!);
+  return beds;
+}
 
 /**
- * Lets each rimmed body down to the fixed ground beside it. A floor levelled lower than its surface, a road, or a way
- * to a door graded through its rim cannot rise to hold it, so the water yields: its surface goes RIM_OVER under the
- * lowest dry sample beside it, on the lattice `minY + k * stepY`, and its bed down by as much, so it is as deep as it
- * was carved. A sample of its own `moved` since its bed was carved has a floor or a way graded across it: that is fixed
- * ground too, and the body gives it up before it is let down, so the way does not end in a pit.
+ * Settles each rimmed body on the ground as it stands, and makes it water a survivor walks out of. `beds` holds each of
+ * its samples' beds as last carved or settled: a sample whose ground differs since has a floor or a way to a door graded
+ * over it, and is ground the ruins made, never moved again. Run when the floors and the ways stand where they will; run
+ * again after any later grading, it changes only what that grading broke: run twice on the same ground, the second
+ * changes nothing.
  *
- * Then each part of it that still hangs together is made a place to walk out of: from every sample there is a way to
- * dry ground, sample to the next by a side, that never rises more than `poolClimb` in a step, and a bed too deep for
- * that is held up. The way goes from one sample of the bed to the next only where the bed is two samples wide there: a
- * trench one sample wide between walls is no water to swim along, so each sample of one needs dry ground it can climb
- * to at its own side. A part let down beside ground it cannot climb to is shallower for it, wading water or none. A part
- * left with under LEAST_DEPTH of water is no water any more: its samples go dry, a basin. Run once
- * the floors and the ways stand where they will. Returns how many bodies were let down, the farthest, how many dried
- * whole, how many gave up samples, and how many had their bed held up.
+ * Its surface: ground beside it lower than its surface cannot hold it, so the water yields and goes RIM_OVER under the
+ * lowest such ground, on the lattice `minY + k * stepY`. Graded ground of its own that then stands out of the water is
+ * given up; graded ground still under it stays its bed as graded, the slope down from a way beside it. Its other samples'
+ * beds go down with its surface, so it is as deep as it was carved.
+ *
+ * Its ways out, for each part that hangs together, on the triangles the game collides with: from all its water a survivor
+ * must reach ground past the body's squares, floating where the water is deep and walking where no triangle is steeper
+ * than WALKED. A way one sample wide between walls is none: its triangles are the walls'; nor is a ledge under a rim. Where
+ * the part has no
+ * such way, a ladder is cut at the lowest stretch of rim that takes one: pairs of samples side by side, each `poolClimb`
+ * under the pair before, down to the bed. Where no ladder serves, benches are cut all round, BENCH under the ground at
+ * every side; where that fails too the part is filled to its surface. A sample in no triangle of its own, a slot one
+ * sample wide, is benched from the start. A part left with under LEAST_DEPTH of water is no water: its samples go dry.
  */
-export function settleRims(lakes: Lakes, rules: LakeRules | false | undefined, height: Float32Array, grid: Grid, minY: number, stepY: number, moved: (i: number) => boolean = () => false): { lowered: number; farthest: number; dried: number; crossed: number; held: number } {
+export function settleRims(lakes: Lakes, rules: LakeRules | false | undefined, height: Float32Array, grid: Grid, minY: number, stepY: number, beds: Map<number, number>): Settled {
+  // A body that gives up samples or dries leaves ground beside the next one: again, until none changes.
+  const all: Settled = { lowered: 0, farthest: 0, dried: 0, crossed: 0, laddered: 0, benched: 0, filled: 0 };
+  for (let round = 0; round < 8; round++) {
+    const once = settleOnce(lakes, rules, height, grid, minY, stepY, beds);
+    for (const k of ["lowered", "dried", "crossed", "laddered", "benched", "filled"] as const) all[k] += once[k];
+    all.farthest = Math.max(all.farthest, once.farthest);
+    if (once.lowered + once.dried + once.crossed + once.laddered + once.benched + once.filled === 0) break;
+  }
+  return all;
+}
+
+/** What a settling did: bodies let down and the farthest, in metres; left with no water; that gave up samples; and parts given a way out, by how. */
+export interface Settled { lowered: number; farthest: number; dried: number; crossed: number; laddered: number; benched: number; filled: number }
+
+function settleOnce(lakes: Lakes, rules: LakeRules | false | undefined, height: Float32Array, grid: Grid, minY: number, stepY: number, beds: Map<number, number>): Settled {
   const r = { ...DEFAULTS, ...(rules || {}) };
   const { body, bodies } = lakes;
-  const { nx, nz } = grid;
-  const n = bodies.length;
-  const across = new Uint8Array(n + 1);
-  const own: number[] = [];
-  for (let i = 0; i < nx * nz; i++) {
-    const b = body[i]!;
-    if (b === 0 || !rimmed(bodies[b - 1]!.kind)) continue;
-    if (moved(i)) {
-      body[i] = 0;
-      across[b] = 1;
-    } else own.push(i);
-  }
-  // Its parts: samples of one body that touch, by a side or a corner, each with the lowest dry sample beside it.
-  const around = (i: number, each: (j: number) => void): void => {
-    const col = i % nx, row = (i - col) / nx;
-    for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) if ((dr || dc) && col + dc >= 0 && row + dr >= 0 && col + dc < nx && row + dr < nz) each(i + dr * nx + dc);
-  };
-  const partOf = new Map<number, number>();
-  const parts: { body: number; samples: number[]; lowest: number }[] = [];
-  for (const start of own) {
-    if (partOf.has(start)) continue;
-    const part = { body: body[start]!, samples: [start], lowest: Infinity };
-    partOf.set(start, parts.push(part) - 1);
-    for (let q = 0; q < part.samples.length; q++) {
-      around(part.samples[q]!, (j) => {
-        if (body[j] === 0) part.lowest = Math.min(part.lowest, height[j]!);
-        else if (body[j] === part.body && !partOf.has(j)) {
-          partOf.set(j, parts.length - 1);
-          part.samples.push(j);
-        }
-      });
-    }
-  }
-  const lowest = new Float32Array(n + 1).fill(Infinity);
-  for (const part of parts) lowest[part.body] = Math.min(lowest[part.body]!, part.lowest);
-  const drop = new Float32Array(n + 1);
-  let lowered = 0, farthest = 0;
-  for (let b = 1; b <= n; b++) {
-    const was = bodies[b - 1]!;
-    if (!(lowest[b]! < was.surface)) continue;
-    const surface = minY + Math.floor((lowest[b]! - RIM_OVER - minY) / stepY + 1e-6) * stepY;
-    drop[b] = was.surface - surface;
-    bodies[b - 1] = { ...was, surface };
-    lowered++;
-    farthest = Math.max(farthest, drop[b]!);
-  }
-  const wet = new Uint8Array(n + 1), up = new Uint8Array(n + 1), had = new Uint8Array(n + 1);
-  const beside = (i: number): number[] => {
+  const { nx, nz, cell } = grid;
+  const N = nx * nz;
+  const moved = (i: number): boolean => beds.get(i) !== height[i];
+  const sides = (i: number): number[] => {
     const col = i % nx;
-    return [col > 0 ? i - 1 : -1, col < nx - 1 ? i + 1 : -1, i - nx, i + nx].filter((j) => j >= 0 && j < nx * nz);
+    return [col > 0 ? i - 1 : -1, col < nx - 1 ? i + 1 : -1, i - nx, i + nx].filter((j) => j >= 0 && j < N);
   };
-  for (const [k, part] of parts.entries()) {
-    const b = part.body, surface = bodies[b - 1]!.surface;
-    had[b] = 1;
-    // The least each bed may be for a way out, from the dry ground inward: a sample's is its own bed, or a climb under
-    // the lowest ground or settled bed beside it, whichever is higher. Corners do not count: the ground between two
-    // samples that touch by a corner may be a ridge.
-    const at = new Map(part.samples.map((i, q) => [i, q]));
-    const bed = part.samples.map((i) => height[i]! - drop[b]!);
-    const least = part.samples.map((i, q) => Math.max(bed[q]!, Math.min(Infinity, ...beside(i).filter((j) => body[j] === 0).map((j) => height[j]!)) - r.poolClimb));
-    const done = new Uint8Array(part.samples.length);
+  const around = (i: number): number[] => {
+    const col = i % nx, row = (i - col) / nx, out: number[] = [];
+    for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) if ((dr || dc) && col + dc >= 0 && row + dr >= 0 && col + dc < nx && row + dr < nz) out.push(i + dr * nx + dc);
+    return out;
+  };
+  const of = new Map<number, number[]>();
+  for (const i of [...beds.keys()]) {
+    const b = body[i]!;
+    if (b === 0) beds.delete(i);
+    else if (of.has(b)) of.get(b)!.push(i);
+    else of.set(b, [i]);
+  }
+  const tally = { lowered: 0, farthest: 0, dried: 0, crossed: 0, laddered: 0, benched: 0, filled: 0 };
+  for (const [b, own] of of) {
+    // The surface, under every sample beside its water that is not its own water.
+    const was = bodies[b - 1]!;
+    let surface = was.surface;
+    const wet = (i: number): boolean => body[i] === b && (!moved(i) || height[i]! < surface);
     for (;;) {
-      let next = -1;
-      for (let q = 0; q < least.length; q++) if (!done[q] && least[q]! < Infinity && (next < 0 || least[q]! < least[next]!)) next = q;
-      if (next < 0) break;
-      done[next] = 1;
-      const i = part.samples[next]!;
-      for (const j of beside(i)) {
-        const q = partOf.get(j) === k ? at.get(j)! : -1;
-        if (q < 0 || done[q]) continue;
-        // Wide enough to swim: the two samples beside these two, on one side or the other, are the part's as well.
-        const across = Math.abs(j - i) === 1 ? nx : 1;
-        const wide = [across, -across].some((d) => (across === nx || Math.floor((i + d) / nx) === Math.floor(i / nx)) && partOf.get(i + d) === k && partOf.get(j + d) === k);
-        if (wide) least[q] = Math.min(least[q]!, Math.max(bed[q]!, least[next]! - r.poolClimb));
-      }
+      let lowest = Infinity;
+      for (const i of own) if (wet(i)) for (const j of around(i)) if (body[j] === 0 || (body[j] === b && !wet(j))) lowest = Math.min(lowest, height[j]!);
+      if (!(lowest < surface)) break;
+      surface = minY + Math.floor((lowest - RIM_OVER - minY) / stepY + 1e-6) * stepY;
     }
-    let deepest = 0;
-    part.samples.forEach((i, q) => {
-      const to = least[q]! < Infinity ? least[q]! : bed[q]!;
-      if (to > bed[q]! + 1e-6) up[b] = 1;
-      height[i] = to;
-      deepest = Math.max(deepest, surface - to);
-    });
-    if (deepest < LEAST_DEPTH) for (const i of part.samples) body[i] = 0;
-    else wet[b] = 1;
+    const drop = was.surface - surface;
+    if (drop > 0) {
+      bodies[b - 1] = { ...was, surface };
+      tally.lowered++;
+      tally.farthest = Math.max(tally.farthest, drop);
+    }
+    let gave = false;
+    const kept: number[] = [];
+    for (const i of own) {
+      if (!moved(i)) height[i] = height[i]! - drop;
+      else if (!(height[i]! < surface)) {
+        body[i] = 0;
+        beds.delete(i);
+        gave = true;
+        continue;
+      }
+      kept.push(i);
+    }
+    if (gave) tally.crossed++;
+    // Its parts: samples that touch, by a side or a corner.
+    const part = new Map<number, number>();
+    let parts = 0, water = false;
+    for (const start of kept) {
+      if (part.has(start)) continue;
+      const k = parts++, samples = [start];
+      part.set(start, k);
+      for (let q = 0; q < samples.length; q++) for (const j of around(samples[q]!)) if (body[j] === b && !part.has(j)) { part.set(j, k); samples.push(j); }
+      const inPart = (i: number): boolean => i >= 0 && i < N && part.get(i) === k;
+      const dry = (i: number): boolean => i >= 0 && i < N && body[i] === 0;
+      const how = makeWayOut(samples, inPart, dry, (i) => body[i] === b, sides, height, surface, nx, nz, cell, r.poolClimb);
+      if (how === "ladder") tally.laddered++;
+      else if (how === "benches") tally.benched++;
+      else if (how === "filled") tally.filled++;
+      let deepest = 0;
+      for (const i of samples) deepest = Math.max(deepest, surface - height[i]!);
+      if (deepest < LEAST_DEPTH) for (const i of samples) { body[i] = 0; beds.delete(i); }
+      else { water = true; for (const i of samples) beds.set(i, height[i]!); }
+    }
+    if (!water) tally.dried++;
   }
-  let dried = 0, crossed = 0, held = 0;
-  for (let b = 1; b <= n; b++) {
-    crossed += across[b]!;
-    held += up[b]!;
-    if ((had[b] || across[b]) && !wet[b]) dried++;
+  return tally;
+}
+
+/** What a settling did, in words. */
+export function settledLine(s: Settled): string {
+  return `${s.lowered} pools let down to ground beside them, the farthest ${s.farthest.toFixed(2)} m; ${s.crossed} gave up samples a floor or a way was graded over; a way out made by a ladder in ${s.laddered}, by benches in ${s.benched}, ${s.filled} filled; ${s.dried} left with no water`;
+}
+
+/**
+ * Makes one part of a rimmed body water a survivor walks out of (settleRims), raising beds in `height` where it must.
+ * Says what it took: nothing, a ladder, benches all round, or filling it to its surface.
+ */
+function makeWayOut(samples: readonly number[], inPart: (i: number) => boolean, dry: (i: number) => boolean, ours: (i: number) => boolean, sides: (i: number) => number[], height: Float32Array, surface: number, nx: number, nz: number, cell: number, climb: number): "" | "ladder" | "benches" | "filled" {
+  // The cells round the part and REACH samples past it, each two triangles split from its north-west corner to its
+  // south-east, as the game's are: (a, b, d) and (a, c, d) of a at (col, row), b east of it, c south, d south-east.
+  let [c0, c1, r0, r1] = [Infinity, -Infinity, Infinity, -Infinity];
+  for (const i of samples) { const col = i % nx, row = (i - col) / nx; c0 = Math.min(c0, col); c1 = Math.max(c1, col); r0 = Math.min(r0, row); r1 = Math.max(r1, row); }
+  [c0, r0, c1, r1] = [Math.max(0, c0 - REACH), Math.max(0, r0 - REACH), Math.min(nx - 2, c1 + REACH - 1), Math.min(nz - 2, r1 + REACH - 1)];
+  const wide = c1 - c0 + 1, deep = r1 - r0 + 1;
+  if (wide < 1 || deep < 1) return "";
+  const corners = (t: number): [number, number, number] => {
+    const cellAt = t >> 1, a = (r0 + Math.floor(cellAt / wide)) * nx + c0 + (cellAt % wide);
+    return t & 1 ? [a, a + nx, a + nx + 1] : [a, a + 1, a + nx + 1];
+  };
+  // A sample in no triangle wholly the part's is a slot: benched to the ground at its sides.
+  const open = new Set<number>();
+  for (let t = 0; t < wide * deep * 2; t++) { const c = corners(t); if (c.every(inPart)) for (const i of c) open.add(i); }
+  const bench = (i: number, from: (j: number) => boolean): boolean => {
+    let top = -Infinity;
+    for (const j of sides(i)) if (from(j)) top = Math.max(top, height[j]!);
+    if (!(top - BENCH > height[i]!)) return false;
+    height[i] = top - BENCH;
+    return true;
+  };
+  for (const i of samples) if (!open.has(i)) bench(i, dry);
+  /** Whether every triangle of the part's own that is floated over or walked reaches a walked one of a cell past the body's squares. */
+  const walksOut = (): boolean => {
+    const pass = new Uint8Array(wide * deep * 2), reached = new Uint8Array(pass.length), queue: number[] = [];
+    for (let t = 0; t < pass.length; t++) {
+      const [a, m, d] = corners(t), [ha, hm, hd] = [height[a]!, height[m]!, height[d]!];
+      // The middle corner is a's east or south neighbour: the slope is the two legs', a metre each way.
+      const walked = Math.hypot(hm - ha, hd - hm) / cell <= WALKED;
+      const floated = [a, m, d].every((i) => inPart(i) && surface - height[i]! >= FLOATS);
+      pass[t] = walked || floated ? 1 : 0;
+      // A square is the body's where a corner of it is: the cell's fourth corner is a's south or east neighbour.
+      if (walked && ![a, m, d, t & 1 ? a + 1 : a + nx].some(ours)) { reached[t] = 1; queue.push(t); }
+    }
+    for (let q = 0; q < queue.length; q++) {
+      const t = queue[q]!, at = t >> 1, col = at % wide, row = Math.floor(at / wide);
+      // (a, b, d) meets its cell's other, the cell north's (a, c, d) and the cell east's; (a, c, d) the south's and the west's.
+      const next = t & 1 ? [t - 1, row + 1 < deep ? (at + wide) * 2 : -1, col > 0 ? (at - 1) * 2 : -1] : [t + 1, row > 0 ? (at - wide) * 2 + 1 : -1, col + 1 < wide ? (at + 1) * 2 + 1 : -1];
+      for (const u of next) if (u >= 0 && pass[u] && !reached[u]) { reached[u] = 1; queue.push(u); }
+    }
+    for (let t = 0; t < pass.length; t++) if (pass[t] && !reached[t] && corners(t).every(inPart)) return false;
+    return true;
+  };
+  if (walksOut()) return "";
+  // Ladders, from the lowest stretch of rim two samples wide: q and its neighbour under two dry samples that are level.
+  const rims: { q: number; q2: number; e: number; top: number }[] = [];
+  for (const q of samples) {
+    const col = q % nx;
+    for (const e of [1, -1, nx, -nx]) {
+      if ((e === 1 && col === nx - 1) || (e === -1 && col === 0) || !dry(q + e)) continue;
+      const d = Math.abs(e) === 1 ? nx : 1, q2 = q + d;
+      if ((d === 1 && col === nx - 1) || !inPart(q2) || !dry(q2 + e) || Math.abs(height[q + e]! - height[q2 + e]!) > LEVEL) continue;
+      rims.push({ q, q2, e, top: Math.max(height[q + e]!, height[q2 + e]!) });
+    }
   }
-  return { lowered, farthest, dried, crossed, held };
+  rims.sort((a, b) => a.top - b.top || a.q - b.q || a.e - b.e);
+  let tried = 0;
+  for (const { q, q2, e, top } of rims) {
+    if (tried === LADDERS) break;
+    const saved: [number, number][] = [];
+    let level = top;
+    for (let k = 0; ; k++) {
+      const pair = [q - k * e, q2 - k * e];
+      // Inward along a row, a step stays in the row.
+      if (!pair.every(inPart) || (Math.abs(e) === 1 && Math.floor(pair[0]! / nx) !== Math.floor(q / nx))) break;
+      level -= climb;
+      const low = pair.filter((i) => height[i]! < level);
+      if (low.length === 0) break;
+      for (const i of low) { saved.push([i, height[i]!]); height[i] = level; }
+    }
+    if (saved.length > 0) tried++;
+    if (saved.length > 0 && walksOut()) return "ladder";
+    for (const [i, h] of saved) height[i] = h;
+  }
+  // Benches all round, to the ground at every side and to the bench beside.
+  for (let changed = true; changed;) {
+    changed = false;
+    for (const i of samples) if (bench(i, (j) => dry(j) || inPart(j))) changed = true;
+  }
+  if (walksOut()) return "benches";
+  for (const i of samples) height[i] = Math.max(height[i]!, surface);
+  return "filled";
 }
 
 /**

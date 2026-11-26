@@ -16,7 +16,7 @@ import { obeliskStatics } from "../../shared/world/obelisks.ts";
 import { describe } from "../map.ts";
 import { readLayers, toYaw, waterLayer, writeAttached, writeNodeLayers } from "../map/layers.ts";
 import { partsTable, wireBytes, writeMapFile } from "../map/pack.ts";
-import { lakeSquares } from "./lakes.ts";
+import { lakeSquares, settledLine, settleRims } from "./lakes.ts";
 import { writeGrey } from "../map/png.ts";
 import { Base } from "./base.ts";
 import type { BridgeRecord } from "./bridges.ts";
@@ -128,6 +128,12 @@ export async function buildMap(named: string, release = false, output = join(ROO
   gradeTransferDecks(ground, obelisks, world.minY, world.stepY);
   // Then the landmarks, on the ground they ask for, so no piece before them changes its slot.
   const berths = layLandmarkGround(ground, sited, 0);
+  // The street's pieces, the transfer decks and the landmarks graded ground after the ruins settled the pools: once
+  // more, on the ground as it ends. It changes only a pool that grading reached.
+  if (ground.lakes && ground.poolBeds) {
+    const again = settleRims(ground.lakes, world.lakes, ground.height, grid, world.minY, world.stepY, ground.poolBeds);
+    lap(`the pools settled again: ${settledLine(again)}`);
+  }
   const brought = placeLandmarks(sited, reg, 0);
   const statics = [...layered, ...obelisks.flatMap((o) => obeliskStatics(reg, o, site.groundAt).map((p) => ({ ...p, yaw: (p.yaw * 360) / 65536 }))), ...brought.statics.map((p) => ({ ...p, yaw: (p.yaw * 360) / 65536 }))];
   pieceCounts.fill(0);

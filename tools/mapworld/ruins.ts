@@ -4,7 +4,7 @@ import { BREAK_AT, pieceMiddle, RUIN_SHAPES, type RuinFinish, type RuinShape } f
 import { readLabels, resolveLabels, type Facts, type PublicPlace } from "./labels.ts";
 import { bridgeHoles, corridorIndex, makeBridges } from "./bridges.ts";
 import { gradeRoadEntrances, roadGroundSamples } from "./bridge-earthwork.ts";
-import { rimmed, settleRims } from "./lakes.ts";
+import { settledLine, settleRims } from "./lakes.ts";
 import { onGround, readPassages } from "./passages.ts";
 import { accessPlanner, deckCeiling, gradeApproaches, type Approach } from "./ruin-access.ts";
 import { clearCirculation, reconcileRubble } from "./ruin-clearance.ts";
@@ -124,10 +124,6 @@ export function makeRuins(site: Site): StaticPiece[] {
   const corridors = corridorIndex(bridges.corridors);
   const entrances = bridges.records.flatMap(r => r.entrances);
   const roadGround = roadGroundSamples(site, entrances);
-  // Each pool's bed as the ground carved it, to tell one a floor or an approach is graded across below.
-  const carved = new Map<number, number>();
-  const pools = site.ground.lakes;
-  if (pools) for (let i = 0; i < pools.body.length; i++) if (pools.body[i] !== 0 && rimmed(pools.bodies[pools.body[i]! - 1]!.kind)) carved.set(i, site.ground.height[i]!);
   const planAccess = accessPlanner(site, pieces, bridges.records, roadGround);
   // Reserve the real dry road, including its width, before choosing pedestrian door approaches. Unlike the
   // bridge deck this is solid earth: a route several metres below it must be replanned, not cut through it.
@@ -272,9 +268,9 @@ export function makeRuins(site: Site): StaticPiece[] {
   // Run after room cuts and bridge excavation, using only accepted road terminals and their actual slabs.
   gradeRoadEntrances(site, bridges.records.flatMap(r => r.entrances));
   // The floors, the roads and the ways to doors stand where they will, and nothing stands on the ground by a pool yet:
-  // a pool over one of them, or one whose rim a way was graded through, is let down to it.
-  const settled = pools ? settleRims(pools, site.world.lakes, site.ground.height, site.ground.grid, site.world.minY, site.world.stepY, (i) => carved.get(i) !== site.ground.height[i]) : null;
-  if (settled) console.log(`ruins: ${settled.lowered} pools let down to a floor or a road beside them, the farthest ${settled.farthest.toFixed(2)} m; ${settled.dried} left dry with under 0.3 m of water; ${settled.crossed} gave up samples a floor or a way to a door was graded across; ${settled.held} had their bed held up to walk out of`);
+  // each pool is settled on that ground and given a way to walk out of it. The build settles them once more at its end.
+  const { lakes: pools, poolBeds } = site.ground;
+  if (pools && poolBeds) console.log(`ruins: ${settledLine(settleRims(pools, site.world.lakes, site.ground.height, site.ground.grid, site.world.minY, site.world.stepY, poolBeds))}`);
   for (const r of records) {
     for (const a of r.approaches) site.growthRoutes.push({ points: [a.street, a.door, a.core], width: 2 });
     for (const route of [...r.rooms, ...r.escapes]) site.growthRoutes.push({ points: route.points, width: 2 });
