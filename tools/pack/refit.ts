@@ -489,7 +489,9 @@ const TUCKED = 0.002;
 const PUSH_ROUNDS = 4;
 
 /**
- * Moves `piece` from the old body onto the new as `field` says, in place. `rigid` bones keep their vertices whole. Skin of
+ * Moves `piece` from the old body onto the new as `field` says, in place. A vertex on a `rigid` bone stays where it was
+ * and on that bone: a glove's or a boot's own part, which stands in for the hand or foot and on which its grips and
+ * soles are calibrated. A vertex the new skin's weights would put on one is held wholly on it. Skin of
  * the new body pushes the piece out only where it is drawn with it: `shows(pieceSlot, skinSlot)`, and only where the piece
  * lay over the old body. A piece stands in for its own slot's skin, which is not drawn under it, and may be slimmer
  * there; what was tucked inside the old body stays tucked.
@@ -514,8 +516,9 @@ export function refitPiece(piece: RefitPiece, field: BodyField, rigid: ReadonlyS
     const share = [hit.u, hit.v, hit.w];
     const nn = [0, 1, 2].map((a) => share.reduce((s, w, k) => s + w * from.normals[corners[k]! * 3 + a]!, 0));
     tucked[v] = (x - hit.x) * nn[0]! + (y - hit.y) * nn[1]! + (z - hit.z) * nn[2]! < -TUCKED ? 1 : 0;
+    const held = rigid.has(piece.bones[v]!);
     for (let k = 0; k < 3; k++) {
-      for (let a = 0; a < 3; a++) p[v * 3 + a]! += share[k]! * field.shift[corners[k]! * 3 + a]!;
+      if (!held) for (let a = 0; a < 3; a++) p[v * 3 + a]! += share[k]! * field.shift[corners[k]! * 3 + a]!;
       for (let b = 0; b < bones; b++) found[v * bones + b]! += share[k]! * field.weights[corners[k]! * bones + b]!;
     }
   }
@@ -572,11 +575,12 @@ export function refitPiece(piece: RefitPiece, field: BodyField, rigid: ReadonlyS
       const own = need[v]! > 0 || dir[v * 3]! !== 0 || dir[v * 3 + 1]! !== 0 || dir[v * 3 + 2]! !== 0 ? v : by;
       for (let a = 0; a < 3; a++) move[v * 3 + a] = dir[own * 3 + a]! * most;
     }
-    for (let i = 0; i < p.length; i++) p[i]! += move[i]!;
+    for (let i = 0; i < p.length; i++) if (!rigid.has(piece.bones[Math.floor(i / 3)]!)) p[i]! += move[i]!;
     dir.fill(0);
   }
   // The weights of the new skin nearest each vertex as it now sits, so the piece turns as the skin under it does.
   for (let v = 0; v < n; v++) {
+    if (rigid.has(piece.bones[v]!)) continue;
     sum.fill(0);
     if (field.toGrid.nearest(p[v * 3]!, p[v * 3 + 1]!, p[v * 3 + 2]!, WEIGHT_REACH, hit)) {
       const corners = [to.indices[hit.triangle * 3]!, to.indices[hit.triangle * 3 + 1]!, to.indices[hit.triangle * 3 + 2]!];
