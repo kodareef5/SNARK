@@ -92,6 +92,20 @@ test("a survivor swims in a pool 1.5 m deep and walks out; in a pit it is caught
   expect((c.first as string[])[0]).toContain("body 2");
 });
 
+test("a survivor climbs a ladder two samples wide out of a pit; a stair one sample wide leaves it caught", () => {
+  // Two pools 16 m square in ground 3 m over their water. West of the first, two rows of steps 1.5 m apart; of the second, one.
+  const at = [20, 60], rows = [[23, 24], [23]];
+  const heights = Uint16Array.from({ length: SIDE * SIDE }, (_, k) => {
+    const [i, j] = [k % SIDE, Math.floor(k / SIDE)], p = at.findIndex((a) => i >= a && i <= a + 7 && j >= 20 && j <= 27);
+    if (p < 0) return units(3);
+    return units(rows[p]!.includes(j) && i - at[p]! < 2 ? 1.5 - (i - at[p]!) * 1.5 : -1.5);
+  });
+  const water = lakes([0, 0], (i, j) => 1 + at.findIndex((a) => i >= a - 1 && i <= a + 7 && j >= 19 && j <= 27));
+  const w = opened({ heights, water });
+  expect(bodiesSwum(w).map((s) => [s.body, s.swims, s.out])).toEqual([[1, true, true], [2, true, false]]);
+  expect(swimming(w)).toMatchObject({ count: 1, swimmable: 2, swimmableWalkedOut: 1 });
+});
+
 test("a street along a building's wall is a run; one that only crosses it is not", () => {
   const s = new Sketch(3, 1, 4);
   for (let i = 0; i < 3; i++) s.edge("wall4", "concrete", i, 0, SIDE_FRONT, 0);
