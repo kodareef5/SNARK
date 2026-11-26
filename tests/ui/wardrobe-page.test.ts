@@ -292,8 +292,8 @@ test("a publish sends the design as it was pressed, whatever is changed while it
   live.place = placeFor("tee");
   const pressed = freezeDraft(live);
   const picture = later<Uint8Array>();
-  let drawn: string | null = null;
-  const done = publishAsPressed(io, live, (frozen) => ((drawn = frozen.garment), picture.promise), 0);
+  const drawn: string[] = [];
+  const done = publishAsPressed(io, live, (frozen) => (drawn.push(frozen.garment), picture.promise), 0);
   // The admin switches to jeans, moves the print, recolours and renames before the picture is even made.
   live.garment = "core:jeans";
   live.place = placeFor("jeans");
@@ -305,7 +305,7 @@ test("a publish sends the design as it was pressed, whatever is changed while it
   upload.settle(ok({ hash: "bbbbbbbbbbbbbbbb", known: false }));
   const { outcome, sent } = await done;
   expect(outcome).toMatchObject({ kind: "published", id: 4 });
-  expect(drawn).toBe("core:tee");
+  expect(drawn).toEqual(["core:tee"]);
   expect(io.bodies[0]).toEqual({ revision: 0, garment: "core:tee", colours: [34, 58, 11], name: "Sunrise tee", print: { hash: "bbbbbbbbbbbbbbbb", place: placeFor("tee") } });
   expect([sameDesign(sent, pressed), sameDesign(live, sent)]).toEqual([true, false]);
   expect(publishedText(4, sent, "tee", true)).toBe(`Published edition 4, tee "Sunrise tee", as it was when Publish was pressed. Your changes since stay in the draft.`);

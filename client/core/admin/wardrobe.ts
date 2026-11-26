@@ -358,7 +358,7 @@ export async function publishDraft(io: PublishIo, d: Draft, png: Uint8Array | nu
 
 /** A copy of `d` that nothing done to `d` later reaches: the design as it stands. */
 export function freezeDraft(d: Draft): Draft {
-  return structuredClone(d);
+  return JSON.parse(JSON.stringify(d)) as Draft;
 }
 
 /**
