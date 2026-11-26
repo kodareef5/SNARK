@@ -23,7 +23,6 @@ export default {
       regions: "meridian/dye.png", tiles: 0.65, tops: { mask: 512 },
     },
     // Painted by skin/paint.ts from the base colours the packs came with.
-    ...painted("skin_m", "skin-m"), ...painted("skin_f", "skin-f"), ...painted("eyes", "eyes", 128), ...painted("hair_1", "hair-1"), ...painted("hair_2", "hair-2"),
     ...painted("cloth", "cloth"), ...painted("hide", "hide"), ...painted("regular_m", "regular-m"), ...painted("regular_f", "regular-f"),
     // Painted by skin/makehuman.ts from MakeHuman's CC0 pictures: one skin for both sexes, each with its own underwear masks.
     skin_mh_m: { base: "skin/mh-skin-base.png", normal: "skin/mh-skin-normal.png", packed: "skin/mh-skin-orm.png", regions: { mask: "skin/mh-skin-m-mask.png", mask2: "skin/mh-skin-m-mask2.png" }, tops: { mask: 512 } },
@@ -48,12 +47,10 @@ export default {
   },
   garments: { make: garmentPieces },
   dressed: {
-    MI_Superhero_Male: "skin_m", MI_Superhero_Female: "skin_f", MI_Eyes: "eyes", MI_Hair_1: "hair_1", MI_Hair_2: "hair_2",
     MI_Peasant: "cloth", MI_Ranger: "hide", MI_Regular_Male: "regular_m", MI_Regular_Female: "regular_f",
   },
-  triangles: { body: [16000, 4000, 1480, 420], hair: [1400, 300, 64, 20], armor: [9000, 2400, 1500, 480], tailored: [4400, 1500, 420] },
+  triangles: { hair: [1400, 300, 64, 20], armor: [9000, 2400, 1500, 480], tailored: [4400, 1500, 420] },
   flat: 2,
-  body: "makehuman",
   makehuman: { triangles: [26000, 3400, 1480, 420], skin: ["skin_mh_m", "skin_mh_f"], eyes: "eyes_mh", brows: "brows_mh" },
   bodies: [
     { file: "base-characters/Superhero_Male_FullBody.gltf", material: "MI_Superhero_Male", texture: "base-characters/T_Superhero_Male_Ligh.png", outfits: "Male" },

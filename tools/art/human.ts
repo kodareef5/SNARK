@@ -3,7 +3,7 @@
 import { join } from "node:path";
 import { BODY_SCALES, REGION_CLOTH, REGION_EYE, REGION_HAIR, REGION_SKIN, SEX_IDS } from "../../shared/anim/look.ts";
 import type { Clip } from "../../shared/anim/clip.ts";
-import { B_HEAD, HUMAN, HUMAN_BONES, SLOT_HEAD, SLOT_NAMES } from "../../shared/anim/human.ts";
+import { HUMAN, HUMAN_BONES, SLOT_HEAD, SLOT_NAMES } from "../../shared/anim/human.ts";
 import { SKIN_ZONE_SLOT } from "../../shared/anim/skin-zones.ts";
 import { MATERIAL_EXHAUST, MATERIAL_INDICATOR, MATERIAL_LENS, parsePack, type PackRig } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
@@ -11,8 +11,8 @@ import { convertHumanClips } from "../pack/anim.ts";
 import { readGltf, type Gltf } from "../pack/gltf.ts";
 import { readPng } from "../pack/png-read.ts";
 import { cookBody, restBody, RIGID_BONES, type Cooked, type CookOptions } from "../pack/body.ts";
-import { bodyField, headShift, refitPiece, shiftLod, type BodyField, type HeadShift } from "../pack/refit.ts";
-import { fitBody, type FittedBody } from "../makehuman/fit.ts";
+import { bodyField, refitPiece } from "../pack/refit.ts";
+import { fitBody } from "../makehuman/fit.ts";
 import { scriptedBody } from "../makehuman/cooked.ts";
 import { convertBody, rigOf, type ColorRule, type MaterialRule } from "../pack/skin.ts";
 import { buildPack, unpackMeshes, type SourceMesh } from "../pack/write.ts";
@@ -149,10 +149,7 @@ export function convertBodies(spec: HumanBodiesAsset, dir: string, described: Re
   const finish = spec.tailored ? described.get(spec.tailored.material) : undefined;
   if (spec.tailored && !finish) throw new Error(`human-bodies: no material "${spec.tailored.material}" for the tailored outfit`);
   if (spec.rigs.length !== spec.bodies.length) throw new Error(`human-bodies: ${spec.bodies.length} bodies and ${spec.rigs.length} rigs`);
-  const headOf = (positions: ArrayLike<number>, indices: ArrayLike<number>, bone: (v: number) => number, keep: (t: number) => boolean) => ({
-    positions,
-    indices: Array.from({ length: indices.length / 3 }, (_, t) => t).filter((t) => keep(t) && [0, 1, 2].every((k) => bone(indices[t * 3 + k]!) === B_HEAD)).flatMap((t) => [indices[t * 3]!, indices[t * 3 + 1]!, indices[t * 3 + 2]!]),
-  });
+  const mh = spec.makehuman;
   const [hairCore, hairCards] = HAIR_MATERIALS.map((name) => {
     const d = described.get(name);
     if (!d) throw new Error(`human-bodies: asset.ts has no material "${name}"`);
@@ -163,45 +160,23 @@ export function convertBodies(spec: HumanBodiesAsset, dir: string, described: Re
     const id = `core:human_${SEX_IDS[sex]}`;
     const rig = `human_${SEX_IDS[sex]}`;
     const file = source(b.file);
-    let body: Cooked;
-    /** The MakeHuman body hair and beards are made on, and how they move to sit on a Quaternius body's head. */
-    let hairOn: FittedBody;
-    let onHead: HeadShift | null = null;
-    /** How the armor sets made on the Quaternius body move to sit on this one. */
-    let onBody: BodyField | null = null;
-    if (spec.body === "makehuman") {
-      const mh = spec.makehuman;
-      if (!mh) throw new Error("human-bodies: a MakeHuman body needs the asset's makehuman entry");
-      const fitted = (hairOn = fitBody(sex === 0 ? "male" : "female", spec.rigs[sex]!));
-      const { body: made, kept } = scriptedBody(fitted);
-      const materials = [mh.skin[sex]!, mh.eyes, mh.brows].map((name) => {
-        const d = described.get(name);
-        if (!d) throw new Error(`${id}: asset.ts has no material "${name}"`);
-        return { material: d.material, textures: d.textures, maps: d.maps };
-      });
-      body = cookBody(made, { id, rig, scale: 1, onto: [...spec.rigs[sex]!], zoned: true, triangles: mh.triangles, flat: spec.flat, palette, sections: {}, materials });
-      const frozen = spec.rigs[sex]!;
-      const was = restBody(file, { id, rig, scale, onto: fittedRest(rigOf(file, rig, scale), frozen), triangles: [], flat: 1, palette, sections: { [b.material]: 0 }, materials: [] });
-      onBody = bodyField({ positions: was.positions, indices: was.indices }, skinOf(body.meshes), HUMAN_BONES);
-      lines.push(`${id}: MakeHuman's body fitted; triangles kept by part: ${Object.entries(kept).map(([k, n]) => `${k} ${n}`).join(", ")}`);
-    } else {
-      // The body is moved onto the frozen rig, as its hair and armor are below.
-      const onto = fittedRest(rigOf(file, rig, scale), spec.rigs[sex]!);
-      body = cookBody(file, { id, rig, scale, onto, zoned: true, triangles: spec.triangles.body, flat: spec.flat, palette, ...dressedFor([file], id) });
-      hairOn = fitBody(sex === 0 ? "male" : "female", spec.rigs[sex]!);
-      const was = restBody(file, { id, rig, scale, onto, triangles: [], flat: 1, palette, sections: { [b.material]: 0 }, materials: [] });
-      const fitted = hairOn;
-      onHead = headShift(
-        headOf(fitted.positions, fitted.indices, (v) => fitted.bone[v]!, (t) => fitted.part[t] === 0),
-        headOf(was.positions, was.indices, (v) => was.bones[v]!, () => true),
-        [onto[B_HEAD * 3]!, onto[B_HEAD * 3 + 1]! + 0.09, onto[B_HEAD * 3 + 2]! + 0.02],
-      );
-    }
+    const fitted = fitBody(sex === 0 ? "male" : "female", spec.rigs[sex]!);
+    const { body: made, kept } = scriptedBody(fitted);
+    const materials = [mh.skin[sex]!, mh.eyes, mh.brows].map((name) => {
+      const d = described.get(name);
+      if (!d) throw new Error(`${id}: asset.ts has no material "${name}"`);
+      return { material: d.material, textures: d.textures, maps: d.maps };
+    });
+    const body = cookBody(made, { id, rig, scale: 1, onto: [...spec.rigs[sex]!], zoned: true, triangles: mh.triangles, flat: spec.flat, palette, sections: {}, materials });
+    // The armor sets are made on the Quaternius body: this moves them to sit on MakeHuman's.
+    const was = restBody(file, { id, rig, scale, onto: fittedRest(rigOf(file, rig, scale), spec.rigs[sex]!), triangles: [], flat: 1, palette, sections: { [b.material]: 0 }, materials: [] });
+    const field = bodyField({ positions: was.positions, indices: was.indices }, skinOf(body.meshes), HUMAN_BONES);
+    lines.push(`${id}: MakeHuman's body fitted; triangles kept by part: ${Object.entries(kept).map(([k, n]) => `${k} ${n}`).join(", ")}`);
     warn(id, body.warnings);
     meshes.push(...body.meshes);
     rigs.push(body.rig);
     // Garment cuts are made on the MakeHuman body's own surface, each cooked as a mesh of its own.
-    if (spec.garments && spec.body === "makehuman") for (const g of spec.garments.make(body.meshes, id, body.rig.rest)) {
+    if (spec.garments) for (const g of spec.garments.make(body.meshes, id, body.rig.rest)) {
       const d = described.get(g.material);
       if (!d) throw new Error(`${g.id}: asset.ts has no material "${g.material}"`);
       const made = cookBody(g.body, { id, rig, scale: 1, onto: body.rig.rest, whole: g.id, zoned: true, triangles: g.triangles, flat: g.flat ?? spec.flat, printArea: g.print, palette, sections: {}, materials: [{ material: d.material, textures: d.textures, maps: d.maps }] });
@@ -234,8 +209,7 @@ export function convertBodies(spec: HumanBodiesAsset, dir: string, described: Re
       }
     }
     // Hair and beards are made on the MakeHuman head by the asset's own script.
-    const styled = spec.hair.make(hairOn, sex, id, rig, hairCore!, hairCards!, spec.triangles.hair, spec.flat);
-    if (onHead) for (const mesh of styled.meshes) for (const lod of mesh.lods) shiftLod(lod, onHead);
+    const styled = spec.hair.make(fitted, sex, id, rig, hairCore!, hairCards!, spec.triangles.hair, spec.flat);
     meshes.push(...styled.meshes);
     lines.push(...styled.lines);
     // An armor set is an outfit's parts together, cut by body slot and fitted to this body's joints.
@@ -246,13 +220,12 @@ export function convertBodies(spec: HumanBodiesAsset, dir: string, described: Re
         return name ? [source(`${o.folder}/${name}.gltf`)] : [];
       });
       const armor = `${id}/armor/${set.id}`;
-      const field = onBody;
       let said = "";
-      const refit = field ? (piece: Parameters<typeof refitPiece>[0]) => {
+      const refit = (piece: Parameters<typeof refitPiece>[0]) => {
         // The cloth and hide sets' hoods leave the face drawn under them.
         const r = refitPiece(piece, field, RIGID_BONES, (worn, skin) => skin !== worn || worn === SLOT_HEAD, (zone) => SKIN_ZONE_SLOT[zone]!);
         said = `${armor}: refit ${r.vertices} vertices, moved at most ${(r.most * 1000).toFixed(1)} mm; ${r.pushed} pushed out of the skin, the deepest ${(r.deepest * 1000).toFixed(1)} mm in`;
-      } : undefined;
+      };
       const cook = (flat: number): Cooked => cookBody(parts, { id: armor, rig, scale, onto: body.rig.rest, triangles: spec.triangles.armor, flat, palette, refit, ...dressedFor(parts, armor) });
       let made = cook(spec.flat);
       // A set whose pictures are cut too fine to come down to its second level's budget is flat from there.

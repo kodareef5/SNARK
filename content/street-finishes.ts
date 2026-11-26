@@ -32,8 +32,8 @@ for (const part of [
 ]) materials.set("core:" + part, PAINT);
 materials.set("core:compact_wreck/body", BURNT_SHEET);
 materials.set("core:human-bodies/meridian", ENAMEL_ARMOR);
-for (const skin of ["skin_m", "skin_f", "regular_m", "regular_f", "skin_mh_m", "skin_mh_f"]) materials.set("core:human-bodies/" + skin, SKIN);
-for (const eye of ["eyes", "eyes_mh"]) materials.set("core:human-bodies/" + eye, EYE);
+for (const skin of ["regular_m", "regular_f", "skin_mh_m", "skin_mh_f"]) materials.set("core:human-bodies/" + skin, SKIN);
+materials.set("core:human-bodies/eyes_mh", EYE);
 // The Miami instruments: glazed ceramic and fired enamel under a clear coat, cast and brushed metal that keeps its own colour, cut glass.
 for (const atlas of ["instrument", "livery"]) materials.set("core:tide-eye/" + atlas, INSTRUMENT);
 // The capsule is the instruments' kin: the same ceramic, bronze and glass, and its own two lights.
