@@ -2,7 +2,7 @@
 // on the street is searched as a bin is.
 
 import { expect, test } from "bun:test";
-import { CMD_STRUCT, CMD_VEHICLE, RESULT_OK, VEHICLE_INSPECT } from "../../shared/net/protocol.ts";
+import { CMD_STRUCT, CMD_VEHICLE, RESULT_DENIED, RESULT_OK, VEHICLE_INSPECT } from "../../shared/net/protocol.ts";
 import { makeHandle } from "../../shared/ids.ts";
 import { NO_PIN, STRUCT_SEARCH, STRUCT_USE } from "../../shared/world/upkeep.ts";
 import { city } from "../fixtures/city.ts";
@@ -59,4 +59,16 @@ test("a street wreck is searched as a bin is, and is still salvage", () => {
   h.run(200);
   expect([ada.open?.takeOnly, ada.open?.inventory.item.some((i) => i !== 0)]).toEqual([true, true]);
   expect(reg.salvageYield[h.world.structs.mapKind(Math.floor(ref / 65536), ref & 0xffff)]).not.toBeNull();
+});
+
+test("the vehicles' setting rules a street wreck, and the street's does not", () => {
+  const reg = coreRegistry();
+  const wreck = reg.ids.find((id, i) => reg.holds[i] === "wreck" && reg.salvageYield[i] != null)!;
+  const search = (settings: Record<string, boolean>): number => {
+    const c = city([{ kind: wreck, x: 120, z: 120 }], 4, { config: rules(settings) });
+    const ada = survivor(c.h, "ada", { god: true });
+    put(c.h, ada, { x: 120, z: 117.2 });
+    return send(c.h, ada, CMD_STRUCT, (w) => (w.u32(c.refs[0]!), w.u8(STRUCT_SEARCH)));
+  };
+  expect([search({ StreetLootEnabled: false }), search({ VehicleLootEnabled: false })]).toEqual([RESULT_OK, RESULT_DENIED]);
 });

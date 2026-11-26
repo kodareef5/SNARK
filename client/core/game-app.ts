@@ -36,6 +36,7 @@ import { JET_CODE } from "./jet-load.ts";
 import type { Probe } from "./probe.ts";
 import { GLIDER_KEY_TICKS, Prompts } from "./prompts.ts";
 import { Shimmer } from "./shimmer.ts";
+import { Shine } from "./shine.ts";
 import { Sight } from "./sight.ts";
 import { AirFeed } from "./air-feed.ts";
 import { Director } from "./view/director.ts";
@@ -261,6 +262,8 @@ export class GameApp {
     this.f.feed = this.feed.shown;
     this.prompts = new Prompts(reg, this.builder, this.vehiclePlacement);
     this.shimmer.aimed = () => this.prompts.target;
+    this.shine.aimed = () => this.prompts.searchAimed;
+    this.shine.spent = (ref) => this.prompts.searched(ref);
     session.shotOrigin = (out, tick, yaw, pitch) => {
       if (!session.world || session.driving >= 0 || !session.own.seat) return false;
       session.sampleRemote(this.shotSample);
@@ -422,6 +425,8 @@ export class GameApp {
   readonly prompts: Prompts;
   /** The vehicles worth walking to that shimmer for a moment. */
   readonly shimmer = new Shimmer();
+  /** The things that hold loot, shining for a moment as they are come upon. */
+  readonly shine = new Shine();
   /** The page, for travel between the servers of a cluster. The shell sets it; without one nobody travels. */
   page: Page | null = null;
   /** The page is on its way to another server, or has said it arrived. */
@@ -860,6 +865,7 @@ export class GameApp {
       ["map events", this.mapEvents],
       // The vehicles that would start, marked for a moment as they come near or are aimed at.
       ["shimmer", this.shimmer],
+      ["shine", this.shine],
       // What the session brought is handed to what draws it, and the frame is built at the tier chosen.
       ["absorb", { step: (f) => this.absorb(f) }],
       // A guided missile's smoke, from the missile drawn.

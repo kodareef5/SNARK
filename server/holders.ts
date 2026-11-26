@@ -2,6 +2,7 @@
 // holding the use key on it for its seconds; it then opens as a box that only gives. What it holds is rolled at that
 // first search, and it holds loot again a time after, kept here only for the ones that were searched.
 
+import { holdIsVehicle } from "../shared/sim/loot.ts";
 import { hashString } from "../shared/hash.ts";
 import { TICK_RATE } from "../shared/coords.ts";
 import { RESULT_DENIED, RESULT_OK, RESULT_SEARCHED, RESULT_WAIT, TEXT_NOTICE } from "../shared/net/protocol.ts";
@@ -85,14 +86,14 @@ export class Holders {
     return this.marks.size;
   }
 
-  /** The tag of the map's piece at `ref` if it holds loot and street loot is on, else null. */
+  /** The tag of the map's piece at `ref` if it holds loot and its kind of loot is on, else null. */
   tag(ref: number): string | null {
     const { world, rules } = this.ctx;
     const t = world.structs.chunks[Math.floor(ref / 65536)];
     const slot = ref & 0xffff;
     if (!t || slot >= t.high || t.kind[slot] === 0 || t.owner[slot] !== 0) return null;
     const tag = world.reg.holds[t.kind[slot]!] ?? null;
-    return tag !== null && rules.on("WorldLootEnabled") && rules.on("StreetLootEnabled") ? tag : null;
+    return tag !== null && rules.on("WorldLootEnabled") && rules.on(holdIsVehicle(tag) ? "VehicleLootEnabled" : "StreetLootEnabled") ? tag : null;
   }
 
   /** Whether `ref` was searched and holds nothing a survivor may still take. */

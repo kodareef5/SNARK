@@ -67,3 +67,15 @@ test("a street wreck and a dead boat are searched by the same hold, each by its 
   const half = reg.halfZ[reg.index.get(hull)!]!;
   expect(prompt(180, half + 1.5)).toBe("hold E  search the derelict");
 });
+
+test("where the server searches no street things a bin says nothing, and a wreck still does", () => {
+  const { h, ada } = camp({ place: { map: file, at: () => ({ x: 120, z: 118.6 }) }, screen: true, god: true, rules: { StreetLootEnabled: false } });
+  const view = screen(h, ada);
+  look(h, ada, { x: 120, y: 0.6, z: 120 });
+  h.run(600);
+  expect(shown(view, KEY_PROMPT)).toBeNull();
+  put(h, ada, { x: 150, z: 117 });
+  look(h, ada, { x: 150, y: 0.8, z: 120 });
+  h.run(400);
+  expect(shown(view, KEY_PROMPT)).toBe("hold E  search the wreck");
+});

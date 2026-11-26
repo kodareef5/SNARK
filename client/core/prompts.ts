@@ -2,7 +2,7 @@
 // server casts it: at what was built, at the bodies near, at a node. What it is on is kept here for the keys' rows
 // (keys.ts) to act on; the server's answer is the one that counts.
 
-import { holdWord } from "../../shared/sim/loot.ts";
+import { holdIsVehicle, holdWord } from "../../shared/sim/loot.ts";
 import { CMD_STRUCT, RESULT_OK, RESULT_SEARCHED } from "../../shared/net/protocol.ts";
 import { CUE_DEAD, CUE_HELD, CUE_OUT } from "../../shared/anim/pose.ts";
 import { isMoored } from "../../content/vehicles/mooring.ts";
@@ -218,6 +218,11 @@ export class Prompts implements FramePart {
     }
   }
 
+  /** Whether the server has said the thing at `ref` was searched already. */
+  searched(ref: number): boolean {
+    return this.spent.has(ref);
+  }
+
   /** The server's answer to a search this began: one already searched is remembered, and any refusal ends the hold. True if the answer was this one's. */
   searchResult(seq: number, code: number): boolean {
     if (seq === 0 || seq !== this.searchAsked) return false;
@@ -317,7 +322,7 @@ export class Prompts implements FramePart {
     if (t.owner[ref & 0xffff] === 0) {
       // A thing that holds loot is searched by a hold of the use key.
       const tag = reg.holds[kind];
-      if (tag != null && rayHit.t <= REACH) {
+      if (tag != null && rayHit.t <= REACH && (holdIsVehicle(tag) ? s.searchWrecks : s.searchStreet)) {
         this.searchAimed = ref;
         // A dead boat keeps its word, so that it is still told from one that sails.
         const name = deadBoatWord(reg, kind) || holdWord(tag);

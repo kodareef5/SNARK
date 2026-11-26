@@ -496,6 +496,8 @@ export class Scene {
   get near(): NearCity | null { return this.nearStore.near; }
   get cover(): CrownCover { return this.nearStore.cover; }
   get chunkCells(): number { return this.nearStore.chunkCells; }
+  /** The map's pieces that shimmer for a moment, as a usable vehicle does (near-store.ts `shine`). */
+  set shine(of: NearStore["shine"]) { this.nearStore.shine = of; }
   set chunkCells(n: number) { this.nearStore.chunkCells = n; }
   get nearMesh(): boolean { return this.nearStore.nearMesh; }
   set nearMesh(on: boolean) { this.nearStore.nearMesh = on; }
