@@ -9,7 +9,7 @@ import { test } from "../fixtures/needs-art.ts";
 const PINNED: Readonly<Record<string, number>> = {
   "m/armor/cloth/feet": 0, "m/armor/cloth/hands": 0, "m/armor/cloth/head": 0, "m/armor/cloth/legs": 15, "m/armor/cloth/torso": 28,
   "m/armor/hide/feet": 0, "m/armor/hide/hands": 39, "m/armor/hide/head": 0, "m/armor/hide/legs": 22, "m/armor/hide/torso": 60,
-  "m/armor/meridian/feet": 10, "m/armor/meridian/hands": 63, "m/armor/meridian/head": 10, "m/armor/meridian/legs": 4, "m/armor/meridian/torso": 14,
+  "m/armor/meridian/feet": 10, "m/armor/meridian/hands": 63, "m/armor/meridian/head": 10, "m/armor/meridian/legs": 4, "m/armor/meridian/torso": 28,
   "f/armor/cloth/feet": 0, "f/armor/cloth/hands": 71, "f/armor/cloth/head": 0, "f/armor/cloth/legs": 0, "f/armor/cloth/torso": 96,
   "f/armor/hide/feet": 0, "f/armor/hide/hands": 61, "f/armor/hide/head": 0, "f/armor/hide/legs": 19, "f/armor/hide/torso": 55,
   "f/armor/meridian/feet": 6, "f/armor/meridian/hands": 23, "f/armor/meridian/head": 5, "f/armor/meridian/legs": 7, "f/armor/meridian/torso": 31,
