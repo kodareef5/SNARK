@@ -142,6 +142,18 @@ function kitted(work: string): void {
 }
 const log = (work: string): string[] => readFileSync(join(work, "runs.log"), "utf8").split("\n").filter(Boolean);
 
+test("a build over a stage out of date leaves the city's map and stamp alone", () => {
+  const { work } = run();
+  const made = (): string[] => [map(), readFileSync(join(maps(), CITY, "stamp.json"), "utf8")];
+  const before = made();
+  appendFileSync(join(dir, "code/prepare.ts"), "// changed\n");
+  writeFileSync(join(work, "runs.log"), "");
+  for (const o of [{ only: "build" }, { from: "build" }, { from: "ways" }]) expect(() => run(o)).toThrow(/prepare(, ways)? out of date for this build.*--from prepare/);
+  expect(made()).toEqual(before);
+  expect(log(work)).toEqual(["ways"]);
+  expect(run().ran).toEqual(["prepare", "ways", "build"]);
+});
+
 test("a kit's work folder builds the map alone, and fetches first for a stage on the downloads", () => {
   const { work } = run();
   kitted(work);

@@ -359,6 +359,9 @@ function stagesOf(name: string, p: Prepared): { cut: string; work: string; ran: 
         continue;
       }
     }
+    // The city's map, which every cut shares, is never made over a stage left out of date by --only or --from.
+    const stale = stage.stamped ? stages.slice(0, i).filter((s) => keys[s.name] !== now[s.name]).map((s) => s.name) : [];
+    if (stale.length > 0) throw new Error(`${name}: ${stale.join(", ")} out of date for this ${stage.name}, which would stamp ${name}.snmap as current; run bun tools/maps/city.ts ${name} --from ${stale[0]}, or build apart with bun tools/mapworld/build.ts ${work} --out <folder>`);
     const t0 = performance.now();
     console.log(`== ${stage.name}`);
     // This stage and every one after it are out of date from now until each runs again: a run that dies half way must
