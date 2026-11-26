@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { DEAD_DYES } from "../../content/docks.ts";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -53,7 +54,7 @@ test("a lake run off a row's end into the next row wraps; one across the map doe
 });
 
 test("a hull in a wall is counted; one against a dock or in open water is not", () => {
-  const hull = (x: number): MapStatic => ({ kind: "core:zzzzhull_belvedere_232", x, y: 0, z: 100, yaw: 0 });
+  const hull = (x: number): MapStatic => ({ kind: `core:zzzzhull_belvedere_${DEAD_DYES[0]!.paint}`, x, y: 0, z: 100, yaw: 0 });
   // The hull's stern box is 10.5 m behind its middle, from 0.6 to 1.5 m up.
   const c = hullsInPieces(opened({ statics: [hull(50), { ...wall(50, 89.5), y: 1 }, hull(120), { kind: "core:zzzzdock_walk", x: 120, y: 1.2, z: 89.5, yaw: 0 }, hull(190)] }));
   expect([c.gate, c.count, c.hulls]).toEqual([true, 1, 3]);
