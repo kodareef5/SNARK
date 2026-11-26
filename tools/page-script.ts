@@ -193,7 +193,7 @@ if (import.meta.main && process.argv.includes("--check")) {
   const named = process.argv.slice(2).find((a) => !a.startsWith("--"));
   const dist = named ? resolve(named) : mkdtempSync(join(tmpdir(), "snark-script-"));
   try {
-    const define = { __HUD_ATLAS_URL__: '"assets/hud.webp"', __TOUCH_ATLAS_URL__: '"assets/touch.webp"', __SKY_FILE__: '"assets/sky.bin"', __CONTENT_FILE__: '"assets/content.json"' };
+    const define = { __HUD_ATLAS_URL__: '"assets/hud.webp"', __FIELD_ART__: JSON.stringify({ icons: "assets/field-icons.webp", equipment: "assets/field-equipment.webp", parts: "assets/field-parts.webp", touch: "assets/field-touch.webp" }), __TOUCH_ATLAS_URL__: '"assets/touch.webp"', __SKY_FILE__: '"assets/sky.bin"', __CONTENT_FILE__: '"assets/content.json"' };
     const files = await buildPageScript(dist, define);
     const problems = pageScriptProblems(dist);
     for (const p of problems) console.error(`the page's script: ${p}`);

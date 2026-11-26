@@ -10,8 +10,8 @@ marked "may change". An **after** event says what has happened, in values, and
 is delivered once a tick, before the commit. The module contract is in
 `server/api/module.ts`.
 
-There are 86 events: 70 raised today, 0 with a place in the code and not
-raised yet, and 16 that wait for a feature.
+There are 95 events: 80 raised today, 0 with a place in the code and not
+raised yet, and 15 that wait for a feature.
 
 The ARK column says what a plugin for ARK's unofficial server API hooks for the
 same purpose. ARK has no event API, so plugins hook the game's own functions.
@@ -216,6 +216,30 @@ same purpose. ARK has no event API, so plugins hook the game's own functions.
 - **`supply.opened`.** A survivor opened a supply drop's capsule. `first` is 1 for the first to open it.
 - **`supply.gone`.** A supply drop is over. `why` is "emptied", "expired", "cancelled", "removed", or "empty" for one that had nothing to hold and never landed.
 
+## Map events
+
+| Event | Phase | Tells | May change | ARK | Raised in | Standing |
+| --- | --- | --- | --- | --- | --- | --- |
+| `mapevent.call` | before | `kind`, `schedule`, `source` |  |  | `server/mapevent/events.ts` | wired |
+| `mapevent.called` | after | `id`, `kind`, `schedule`, `source`, `seed`, `notice` |  |  | `server/mapevent/events.ts` | wired |
+| `mapevent.started` | after | `id`, `kind`, `schedule`, `source` |  |  | `server/mapevent/events.ts` | wired |
+| `mapevent.ended` | after | `id`, `kind`, `why` |  |  | `server/mapevent/events.ts` | wired |
+| `mapevent.damage` (hot) | before | `id`, `kind`, `part`, `byPid`, `type`, `amount`, `scale` | `scale` |  | `server/mapevent/events.ts` | wired |
+| `mapevent.craftDown` | after | `id`, `kind`, `part`, `byPid`, `x`, `y`, `z` |  |  | `server/mapevent/events.ts` | wired |
+| `mapevent.craftRest` | after | `id`, `kind`, `part`, `x`, `y`, `z` |  |  | `server/mapevent/events.ts` | wired |
+| `mapevent.crate` | after | `id`, `kind`, `part`, `pid`, `x`, `y`, `z`, `stacks` |  |  | `server/mapevent/events.ts` | wired |
+| `mapevent.crateEmptied` | after | `id`, `kind`, `part`, `pid` |  |  | `server/mapevent/events.ts` | wired |
+
+- **`mapevent.call`.** A map event of a kind is about to be called, by a schedule of the event book, the console, the events page or a module (`source`). Refused, it is not.
+- **`mapevent.called`.** A map event was called. It comes in `notice` seconds. The same `seed` makes the same event.
+- **`mapevent.started`.** A map event came: its craft are in the sky and its crates are on the ground.
+- **`mapevent.ended`.** A map event is over. `why` is what its kind said ("left", "looted"), or "expired", "cancelled", or that its kind is not loaded.
+- **`mapevent.damage`.** A craft of a map event is about to take a blow: `amount` before its shield, of damage `type` ("bullet", "explosive"). A handler may set `scale`, which the blow is multiplied by. Refused, it takes nothing.
+- **`mapevent.craftDown`.** A craft of a map event was brought down where it was, by `byPid`, or 0 for none. Its fall is worked out at once.
+- **`mapevent.craftRest`.** A downed craft of a map event came to rest: where its underside lies.
+- **`mapevent.crate`.** A map event's crate was set down holding `stacks` stacks. Each stack was asked of `item.gain` with the reason "mapevent".
+- **`mapevent.crateEmptied`.** Everything was taken from a map event's crate, and the crate is gone.
+
 ## Tribes
 
 | Event | Phase | Tells | May change | ARK | Raised in | Standing |
@@ -262,13 +286,13 @@ same purpose. ARK has no event API, so plugins hook the game's own functions.
 
 | Event | Phase | Tells | May change | ARK | Raised in | Standing |
 | --- | --- | --- | --- | --- | --- | --- |
-| `perm.changed` | after | `account`, `group` |  | the permissions plugin's callbacks | `server/host.ts` | planned: ops |
+| `perm.changed` | after | `account`, `group` |  | the permissions plugin's callbacks | `server/host.ts` | wired |
 | `ban.changed` | after | `account`, `banned` |  | ban and unban | `server/host.ts` | planned: ops |
 | `points.changed` | after | `account`, `delta`, `reason`, `balance` |  | the shop's add-points call | `server/host.ts` | planned: points |
 | `limit.hit` | after | `pid`, `team`, `what` |  | structure and tame limit plugins | `server/host.ts` | planned: limits |
 | `protect.changed` | after | `team`, `on` |  | offline raid protection | `server/host.ts` | planned: offline |
 
-- **`perm.changed`.** What an account may do changed.
+- **`perm.changed`.** What an account may do changed: `account` is a survivor's ID or a tribe's team number, empty for a change to a group alone.
 - **`ban.changed`.** An account was banned or let back.
 - **`points.changed`.** An account's points changed.
 - **`limit.hit`.** Something was refused because a limit was reached.
@@ -293,5 +317,5 @@ same purpose. ARK has no event API, so plugins hook the game's own functions.
 - **Tribes in depth: alliances, the log, wars, merges, cooldowns.** `tribe.log`, `tribe.rank`, `tribe.war`, `tribe.alliance`.
 - **Flyers.** `carry.allow`.
 - **Transfers between servers.** `cluster.message`.
-- **Operations: RCON, ban and admin lists, exclusive join, logs, filters, the live file by URL.** `server.broadcast`, `perm.changed`, `ban.changed`.
+- **Operations: RCON, ban and admin lists, exclusive join, logs, filters, the live file by URL.** `server.broadcast`, `ban.changed`.
 - **A points ledger: a shop, kits and rewards.** `points.changed`.

@@ -15,10 +15,18 @@ import type { RoadSectors } from "../../shared/world/roadframe.ts";
 import { decodeTexture, sample, type Texture } from "../../client/core/render/cpu-texture.ts";
 import { DRY_ASPHALT, MASK_LAYER, MASK_MATERIALS, SURFACE_NAMES, surfaceIndex, surfaceMaterial } from "../../content/surfaces.ts";
 import { FACADE_COLOURS, FACADE_TIERS, KIND, ROOM_OPEN_LEAST, ROOM_OUT, facadeFarColour, facadeKind, facadeMarks, facadeOut, facadeSurface, type FacadeSample, type FacadeTier } from "../../client/core/render/facade.ts";
+import { TEK_WALL } from "../../content/building/tek-wall.ts";
+import { rippleOf } from "../../client/core/render/tek-ripple.ts";
+import { TEK_INLAY_COLOUR, TEK_RAIL_COLOUR } from "../../content/building/tek-wall.ts";
+import { tekCasting, tekGlass, tekInlayLight } from "../../client/core/render/tek-inlay.ts";
+import { tekFinishNormal, tekFrameSurface, tekIndicator, tekPlateSurface, tekRailLight } from "../../client/core/render/tek-frame.ts";
+import { tekPhaseColour, tekPhaseRim, tekSpanLight } from "../../client/core/render/tek-phase.ts";
+import { TEK_WALL_INSTANCE } from "../../client/core/render/tek-wall-view.ts";
+import { FIELD_PHASE, TEK_FIELD, tekFieldLight } from "../../client/core/render/tek-field.ts";
 import { texgenSide } from "../../client/core/texgen/layers.ts";
 import { weatherTwin } from "../../client/core/texgen/weather.ts";
 import { TWIN_SLOTS, madeTwin } from "../../client/core/texgen/materials.ts";
-import { MADE_MARK, PIECE_FIXED, PIECE_OWN, PIECE_PLAIN, PIECE_SEED, ownFace, pieceSeed, type PiecePixel, SPALL_LINEAR, SPALL_PALETTE, SPALL_RIM, SPALL_SURFACE, spalled, coatLost, GROUND_BAND, GROUND_SCALE, GROUND_WALK, ROAD_FRAME, alongOf, edgeOf, edged, groundCover, groundMeet, groundWander, higher, roadFrameAt, roadWorn, streetCover, walkMeet, walkWorn, staticPlace, weathered, worldSharp, worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
+import { fieldConductor, fieldRelief, MADE_MARK, PIECE_ALLOY, PIECE_FIXED, PIECE_OWN, PIECE_PLAIN, PIECE_SEED, ownFace, pieceSeed, type PiecePixel, SPALL_LINEAR, SPALL_PALETTE, SPALL_RIM, SPALL_SURFACE, spalled, coatLost, GROUND_BAND, GROUND_SCALE, GROUND_WALK, ROAD_FRAME, alongOf, edgeOf, edged, groundCover, groundMeet, groundWander, higher, roadFrameAt, roadWorn, streetCover, walkMeet, walkWorn, staticPlace, weathered, worldSharp, worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
 import { STREET_CHUNKS, StreetPlanes } from "../../client/core/render/streets.ts";
 import { PAVED_VERGE, kerbOf, type StreetSectors } from "../../shared/world/streets.ts";
 import { FAR_FROM, NEAR_BODY } from "../../client/core/render/camera.ts";
@@ -40,7 +48,7 @@ import { MOST_LOD, detailKeeps, lampOf, poolOf, rotorOf, scorchOf, shapeOf, smok
 import { drawFire, type FireLook, type FireTarget } from "./fire.ts";
 import { FACE_PLAIN, FACE_WEARS, PIECE_MADE_AT, PIECE_MADE_BITS, PIECE_STAGE, PIECE_STATE_AT, PieceFit } from "../../client/core/render/piece-fit.ts";
 import { WEAR_OVER_MADE, WEAR_STAGE, pieceMade, pieceShown, pieceWear, wearShade } from "../../client/core/render/pieces.ts";
-import { DROPS_AT, DROP_STREAKS, ATLAS_REGION, ATLAS_WIDTH, BEND_BUFFERS, BONE_FLOATS, DRAW_BENT, DRAW_HEAT_SHIFT, GLASS_AT, DETAIL, DETAIL_FLOATS, DETAIL_DIGITS, DETAIL_GLOW, DETAIL_SCORCH, DETAIL_SMOKE, GLOW_STEPS, SMOKE_STEPS, DRAW_FIRE, DETAIL_GLASS, DETAIL_TIRE, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_WAKE, DETAIL_WIRE, DRAW_ORB, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_SKYLINE, SKYLINE_MAX_FOG, DRAW_ONE_BONE, DRAW_PIECE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, WORLD_LAYERS, quadIndices, stepOf, type TextureUpload, SHORE_AT, DETAIL_SHADED_POOL, MAX_CONTACTS } from "../../client/core/render/packet.ts";
+import { MADE_AT, DROPS_AT, DROP_STREAKS, ATLAS_REGION, ATLAS_WIDTH, BEND_BUFFERS, BONE_FLOATS, DRAW_BENT, DRAW_HEAT_SHIFT, GLASS_AT, DETAIL, DETAIL_FLOATS, DETAIL_TEK, DETAIL_DIGITS, DETAIL_GLOW, DETAIL_SCORCH, DETAIL_SMOKE, GLOW_STEPS, SMOKE_STEPS, DRAW_FIRE, DETAIL_GLASS, DETAIL_TIRE, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_WAKE, DETAIL_WIRE, DRAW_ORB, DRAW_SCREENS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_SKYLINE, SKYLINE_MAX_FOG, DRAW_ONE_BONE, DRAW_PIECE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, WORLD_LAYERS, quadIndices, stepOf, type TextureUpload, SHORE_AT, DETAIL_SHADED_POOL, MAX_CONTACTS } from "../../client/core/render/packet.ts";
 import { HALF_HEIGHT, OUTLINE_RGB, digitsOf, halfWidth } from "../../client/core/render/digits.ts";
 import { WET_DARK, WET_ROUGH, shoreWet } from "../../client/core/render/bank.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
@@ -322,7 +330,7 @@ function piecePixel(f: ArrayLike<number>): PiecePixel {
   [o.x, o.y, o.z, o.c, o.s, o.bits] = [f[0]!, f[1]!, f[2]!, f[3]!, f[4]!, f[5]! & 65535];
   return o;
 }
-const pieceNow = new Float64Array(6);
+const pieceNow = new Float64Array(6), joinedPiece = new Float64Array(6);
 const faceNow = [0, 0, 0];
 
 /**
@@ -338,11 +346,23 @@ const ballShade = (p: FramePacket, x: number, y: number, z: number): number => (
  * A landmark's draw names its row of `finish` (shared/pack/finish.ts): a colour it states is lit as that finish, as LIT_MESH_FRAGMENT has it.
  * `open` is the share of the sky's light the sky's openness leaves it (skyopen.ts), which its sheet's light from behind keeps.
  */
-function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: number, rx: number, ry: number, rz: number, nx: number, ny: number, nz: number, sample: WorldSample | null = null, ground = false, footprint = 0, look?: (view: ArrayLike<number>, out: Float64Array | Float32Array | number[]) => void, smooth: Float64Array | null = null, finish?: FinishTable, row = 0, open = 1, other = -1, share = 0, weather: ArrayLike<number> | null = null, over = 0, edge: ArrayLike<number> | null = null, facade: ArrayLike<number> | null = null, facadeSample: FacadeSample | null = null, roomOpen: RoomOpen | null = null, fixture = 0, made = 0, piece: ArrayLike<number> | null = null): void {
+function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: number, rx: number, ry: number, rz: number, nx: number, ny: number, nz: number, sample: WorldSample | null = null, ground = false, footprint = 0, look?: (view: ArrayLike<number>, out: Float64Array | Float32Array | number[]) => void, smooth: Float64Array | null = null, finish?: FinishTable, row = 0, open = 1, other = -1, share = 0, weather: ArrayLike<number> | null = null, over = 0, edge: ArrayLike<number> | null = null, facade: ArrayLike<number> | null = null, facadeSample: FacadeSample | null = null, roomOpen: RoomOpen | null = null, fixture = 0, made = 0, input: ArrayLike<number> | null = null, seams = 0): void {
   const dist = Math.sqrt(rx * rx + ry * ry + rz * rz), cast = ballShade(p, rx, ry, rz);
   // A near chunk's piece's wear rides over its material (pieces.ts): it is darker by its stage, as PIECE_SHADE has it.
   const wear = made >> WEAR_OVER_MADE, dim = wearShade(wear);
   made &= (1 << WEAR_OVER_MADE) - 1;
+  const localX = input?.[0] ?? 0;
+  const joined = seams && made === TEK_FIELD && input && (input[5]! & (PIECE_OWN | PIECE_FIXED | PIECE_ALLOY)) === PIECE_OWN;
+  if (joined) {
+    const sign = Math.sign(Math.abs(input[3]!) > Math.abs(input[4]!) ? input[3]! : -input[4]!);
+    const c = sign * input[3]!, s = sign * input[4]!, x = rx + p.camX, z = rz + p.camZ;
+    joinedPiece[0] = c * x - s * z;
+    joinedPiece[1] = ry + p.camY;
+    joinedPiece[2] = s * x + c * z;
+    joinedPiece[3] = c; joinedPiece[4] = s;
+    joinedPiece[5] = (input[5]! & ~65535) | (input[5]! & ((1 << PIECE_SEED) - 1));
+  }
+  const piece = joined ? joinedPiece : input;
   for (let c = 0; c < 3; c++) albedo[c] = srgbToLinear((pal[colorIndex * 4 + c]! / 255) * dim);
   // Where no facade's part is drawn, a window is its bay's mean (facade.ts facadeFarVertex).
   const bay = !ground && facade && facade[0] === FACADE_FAR && FACADE_TIERS[p.tier.name] ? facadeFarColour(colorIndex) : null;
@@ -481,9 +501,34 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
     facadeIO.room.fill(0);
     facadeIO.farShare = 0;
     if (facade && facade[0]! >= 0 && facadeSample && tier && p.frame[FRAME.facade + 1]! > 0.5) glass = facadeFlat(facade, nx, ny, nz, rx, ry, rz, dist, over, p.frame[FRAME.facade]!, tier, facadeSample, wear);
+    const plate = !touch && made === TEK_FIELD && piece !== null && (piece[5]! & (PIECE_OWN | PIECE_FIXED)) === PIECE_OWN;
+    const solid = piece !== null && (piece[5]! & PIECE_ALLOY) !== 0;
+    const field = plate && !solid;
+    const hardware = !touch && made === TEK_FIELD && piece !== null && (piece[5]! & PIECE_FIXED) !== 0;
+    const emitter = hardware && (piece[5]! & PIECE_PLAIN) === 0;
+    const surfaceHeight = side > 0 ? fieldRelief : 0.5;
+    const inlay = plate && solid && (piece[5]! & PIECE_PLAIN) !== 0;
+    let castingSharp = false;
+    if (field) {
+      const x = piece[0]!, y = piece[1]!;
+      tekFinishNormal(normal, seams ? .54 * Math.sin(.67*x+.30*y) : x, seams ? .48 * Math.sin(.83*y-.29*x) : y, piece[3]!, piece[4]!, true, 1);
+      const facing = normal[0]! * eye[0]! + normal[1]! * eye[1]! + normal[2]! * eye[2]!;
+      tekPlateSurface(albedo, worldOrm, surfaceHeight, facing, piece[3]! * eye[0]! - piece[4]! * eye[2]!);
+    } else if (inlay) {
+      tekGlass(albedo, worldOrm, surfaceHeight);
+    } else if (plate || (hardware && !emitter)) {
+      for (let c = 0; c < 3; c++) tekPalette[c] = srgbToLinear((pal[colorIndex * 4 + c]! / 255) * dim);
+      if (solid) castingSharp = hardware ? tekCasting(albedo, worldOrm, tekPalette, surfaceHeight, true)
+        : tekCasting(albedo, worldOrm, tekPalette, surfaceHeight, false, piece[0]!, piece[1]!, piece[2]!,
+          piece[3]! * nx - piece[4]! * nz, ny, piece[4]! * nx + piece[3]! * nz, footprint);
+      else {
+        tekFrameSurface(albedo, worldOrm, tekPalette, surfaceHeight);
+        tekFinishNormal(normal, piece[0]!, piece[1]!, piece[3]!, piece[4]!, false, worldOrm[2]!);
+      }
+    }
     const twice = 2 * (normal[0]! * eye[0]! + normal[1]! * eye[1]! + normal[2]! * eye[2]!);
     for (let c = 0; c < 3; c++) reflected[c] = twice * normal[c]! - eye[c]!;
-    const sharp = glass || worldSharp(worldOrm[1]!);
+    const sharp = solid && (plate || (hardware && !emitter)) ? castingSharp : field || glass || worldSharp(worldOrm[1]!);
     if (worldOrm[1]! >= 1) mirrored.fill(0);
     else if (!sharp) skyLight(mirrored, p.frame, reflected);
     else if (look) skyFrom(mirrored, p.frame, reflected, look);
@@ -502,6 +547,19 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
     streetMirror(mirrored,p,reflected,rx,ry,rz,worldOrm[1]!,finishShare);
     worldOrm[0]! *= open;
     lit(light, albedo, worldOrm, normal, eye, p.frame, (sharp && !look) || worldOrm[1]! >= 1 ? NOTHING : mirrored, cast);
+    if (field) {
+      const facing = nx * eye[0]! + ny * eye[1]! + nz * eye[2]!;
+      if (seams) tekSpanLight(light, rx + p.camX, ry + p.camY, rz + p.camZ, localX, seams, facing, footprint, p.frame[MADE_AT + FIELD_PHASE]!, p.frame[FRAME.exposure]!);
+      else tekFieldLight(light, piece[0]!, piece[1]!, (piece[5]! & 65535) >> PIECE_SEED, facing, footprint, p.frame[MADE_AT + FIELD_PHASE]!, p.frame[FRAME.exposure]!, surfaceHeight, piece[3]! * eye[0]! - piece[4]! * eye[2]!, eye[1]!, side > 0 ? fieldConductor : 0);
+    } else if (inlay) {
+      const c = piece[3]!, s = piece[4]!;
+      tekInlayLight(light, piece[0]!, piece[1]!, piece[2]!, c * nx - s * nz, ny, s * nx + c * nz,
+        c * eye[0]! - s * eye[2]!, eye[1]!, s * eye[0]! + c * eye[2]!, p.frame[MADE_AT + FIELD_PHASE]!,
+        (piece[5]! & 65535) >> PIECE_SEED, footprint, p.frame[FRAME.exposure]!);
+    } else if (hardware && (!solid || emitter)) {
+      const indicator = solid ? tekIndicator(p.frame[MADE_AT + FIELD_PHASE]!, piece[0]! + piece[1]! + piece[2]!, (piece[5]! & 65535) >> PIECE_SEED) : 0;
+      tekRailLight(light, piece[0]!, piece[1]!, emitter, p.frame[FRAME.exposure]!, indicator);
+    }
     if (facadeIO.room[0]! + facadeIO.room[1]! + facadeIO.room[2]! > 0) {
       facadeSky[0] = nx; facadeSky[1] = ny; facadeSky[2] = nz;
       skyLight(facadeLight, p.frame, facadeSky);
@@ -519,6 +577,7 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
   shown(rgb, light, dist, p);
 }
 
+const tekPalette = new Float64Array(3);
 const facadeIO = facadeOut();
 /** The sky's share at a point over the ground, as skyopen.ts `skyOpen` reads it with no contact, for a room behind glass. */
 type RoomOpen = (rx: number, rz: number, nx: number, ny: number, nz: number, over: number) => number;
@@ -708,6 +767,9 @@ export class Rasterizer {
   /** Each pixel's place in its piece's own frame, the piece's turn, and its bits with the colour whose finish it takes over them (pieced). */
   private readonly deferredPiece: Float64Array;
   private pieceBits = 0;
+  private tekMask = 0;
+  private tekAmount = 0;
+  private readonly deferredTek: Uint16Array;
   /** The instance being drawn, where the flat program weathers it: its yaw's cosine and sine, its origin from the eye, and whether it is weathered. */
   private ownC = 1;
   private ownS = 0;
@@ -754,6 +816,7 @@ export class Rasterizer {
     this.deferredShade = new Float64Array(width * height);
     this.deferredSurface = new Uint8Array(width * height);
     this.deferredMade = new Uint8Array(width * height);
+    this.deferredTek = new Uint16Array(width * height);
     this.deferredAt = new Float64Array(width * height * 6);
     this.deferredNormal = new Float64Array(width * height * 3);
     this.deferredOther = new Int16Array(width * height);
@@ -899,9 +962,10 @@ export class Rasterizer {
       const open = this.opened(s[g6]!, s[g6 + 1]!, s[g6 + 2]!, s[g6 + 3]!, s[g6 + 4]!, s[g6 + 5]!, ground, (this.deferredSurface[at]! & 1) === 0);
       const own = this.deferredOwn.subarray(at * 4, at * 4 + 4), edge = this.deferredEdge.subarray(at * 4, at * 4 + 4);
       const over = own[3]! >= 0 ? overGround(this.hf, COARSE, p.frame, p.camY, s[g6]!, s[g6 + 1]!, s[g6 + 2]!) : 0;
-      litFlat(p, this.pack.palette, (this.deferred[at]! & 511) - 1, 1, s[g6]!, s[g6 + 1]!, s[g6 + 2]!, s[g6 + 3]!, s[g6 + 4]!, s[g6 + 5]!, (this.deferred[at]! & 1024) === 0 && (this.worldMaps || this.finishesMeant) ? this.worldSample : null, (this.deferred[at]! & 512) === 0, this.deferredShade[at]!, this.look, ground ? smoothed : null, this.finish, this.deferred[at]! >> DEFERRED_FINISH, open, ground ? this.deferredOther[at]! : -1, this.deferredShare[at]!, own, over, edge, ground ? null : this.deferredFacade.subarray(at * FACADE_FLOATS, at * FACADE_FLOATS + FACADE_FLOATS), this.facadeSample, this.roomOpen, this.deferredSurface[at]! >>> 1, this.deferredMade[at]!, this.deferredPiece.subarray(at * 6, at * 6 + 6));
+      litFlat(p, this.pack.palette, (this.deferred[at]! & 511) - 1, 1, s[g6]!, s[g6 + 1]!, s[g6 + 2]!, s[g6 + 3]!, s[g6 + 4]!, s[g6 + 5]!, (this.deferred[at]! & 1024) === 0 && (this.worldMaps || this.finishesMeant) ? this.worldSample : null, (this.deferred[at]! & 512) === 0, this.deferredShade[at]!, this.look, ground ? smoothed : null, this.finish, this.deferred[at]! >> DEFERRED_FINISH, open, ground ? this.deferredOther[at]! : -1, this.deferredShare[at]!, own, over, edge, ground ? null : this.deferredFacade.subarray(at * FACADE_FLOATS, at * FACADE_FLOATS + FACADE_FLOATS), this.facadeSample, this.roomOpen, this.deferredSurface[at]! >>> 1, this.deferredMade[at]!, this.deferredPiece.subarray(at * 6, at * 6 + 6), this.deferredTek[at]! & 15);
       bounce.fill(1);
-      for (let c = 0; c < 3; c++) this.color[at * 4 + c] = rgb[c]! * 255;
+      const rim = (this.deferredTek[at]! >>> 4) / 255;
+      for (let c = 0; c < 3; c++) this.color[at * 4 + c] = (rim ? tekPhaseColour(rim, rgb[c]!, c) : rgb[c]!) * 255;
       this.deferred[at] = 0;
     }
     heatOfShown(0);
@@ -1227,6 +1291,8 @@ export class Rasterizer {
     [this.hand, this.handFrom, this.handTo] = [p.drawHand[d]!, p.frame[FRAME.handFrom]!, p.frame[FRAME.handTo]!];
     this.swap = p.drawSwap[d]!;
     if ((p.drawFlags[d]! & DRAW_DETAILS) !== 0) return this.details(p, d);
+    // Screens on props are left out: their light's twin is render/screen-shade.ts faceLight.
+    if ((p.drawFlags[d]! & DRAW_SCREENS) !== 0) return;
     if ((p.drawFlags[d]! & DRAW_FIRE) !== 0) return this.fire(p, d);
     if ((p.drawFlags[d]! & DRAW_PULLED) !== 0) return this.pulled(p, d);
     if ((p.drawFlags[d]! & DRAW_TEXTURED) !== 0) return this.textured(p, d);
@@ -1260,6 +1326,9 @@ export class Rasterizer {
     for (let k = 0; k < p.drawInstances[d]!; k++) {
       const inst = p.drawFirst[d]! + k;
       const at = inst * INSTANCE_BYTES;
+      const marked = piece && (data[at + 17]! & TEK_WALL_INSTANCE) !== 0;
+      this.tekMask = marked ? data[at + 15]! : 0;
+      this.tekAmount = marked ? data[at + 16]! / 255 : 0;
       if (skinned) {
         // Each vertex follows one bone of this instance's body, or with DRAW_ONE_BONE its bone of the pose it stands in and then its first.
         const first = view.getUint16(at + 12, true);
@@ -1328,11 +1397,16 @@ export class Rasterizer {
         const word = lod.piece ? lod.piece[last]! : 0;
         if (word !== 0 && !pieceShown(p.pieces, p.pieceRows, rows, word)) continue;
         // As ownVertex's vMade: a near chunk's piece's material, but on a face in the core's colour, and over it its wear.
-        this.made = piece ? (color >= REGION_BASE ? data[at + PIECE_MADE_AT]! & PIECE_MADE_BITS : 0) | ((data[at + PIECE_STATE_AT]! & PIECE_STAGE) << WEAR_OVER_MADE) : word !== 0 ? (color === SPALL_PALETTE ? 0 : pieceMade(p.pieces, p.pieceRows, rows, word)) | (pieceWear(p.pieces, p.pieceRows, rows, word) << WEAR_OVER_MADE) : !skinned && color >= REGION_BASE && data[at + 18] === MADE_MARK ? data[at + 19]! : 0;
+        this.made = piece ? (data[at + PIECE_STATE_AT]! & PIECE_STAGE) << WEAR_OVER_MADE : word !== 0 ? (color === SPALL_PALETTE ? 0 : pieceMade(p.pieces, p.pieceRows, rows, word)) | (pieceWear(p.pieces, p.pieceRows, rows, word) << WEAR_OVER_MADE) : !skinned && color >= REGION_BASE && data[at + 18] === MADE_MARK ? data[at + 19]! : 0;
         // As ownVertex's piece bits: a face that wears the piece's material is read in the piece's frame, by its seed.
-        const worn = piece && (color >= REGION_BASE || (lod.bones[last]! & FACE_WEARS) !== 0) ? data[at + PIECE_MADE_AT]! & PIECE_MADE_BITS : 0;
+        const material = piece ? data[at + PIECE_MADE_AT]! & PIECE_MADE_BITS : 0;
+        const finish = material === TEK_FIELD || (lod.bones[last]! & FACE_WEARS) !== 0;
+        const plain = material === TEK_FIELD ? color < REGION_BASE && color !== TEK_RAIL_COLOUR : (lod.bones[last]! & FACE_PLAIN) !== 0;
+        const solid = material === TEK_FIELD && (lod.bones[last]! & FACE_PLAIN) !== 0;
+        const inlay = solid && color === TEK_INLAY_COLOUR;
+        const worn = color >= REGION_BASE || finish ? material : 0;
         this.made |= worn;
-        this.pieceBits = worn === 0 ? 0 : PIECE_OWN | ((lod.bones[last]! & FACE_PLAIN) !== 0 ? PIECE_PLAIN : 0) | (color >= REGION_BASE ? 0 : PIECE_FIXED) | (pieceSeed(view.getUint32(at, true), view.getUint32(at + 4, true), view.getUint32(at + 8, true)) << PIECE_SEED);
+        this.pieceBits = worn === 0 ? 0 : PIECE_OWN | (plain ? PIECE_PLAIN : 0) | (solid ? PIECE_ALLOY : 0) | (color >= REGION_BASE || inlay ? 0 : PIECE_FIXED) | (pieceSeed(view.getUint32(at, true), view.getUint32(at + 4, true), view.getUint32(at + 8, true)) << PIECE_SEED);
         if (piece && color < REGION_BASE && (lod.bones[last]! & FACE_WEARS) !== 0) this.pieceBits += (data[at + 14]! + 1) * 65536;
         if (color >= REGION_BASE) color = data[at + 14 + color - REGION_BASE]!;
         // As FLAT_MESH_VERTEX's uOneColor: a piece about to be built is one colour.
@@ -1343,6 +1417,7 @@ export class Rasterizer {
         this.triangle(out, lod.indices[t]!, lod.indices[t + 1]!, last, color, true, kind, id, (p.drawFlags[d]! & DRAW_BLEND) !== 0, fixture);
       }
     }
+    this.tekMask = this.tekAmount = 0;
   }
 
   /** A DRAW_FIRE draw: each instance as the fire program draws it (client/core/render/fire-light.ts), as a display shows its light. */
@@ -1381,6 +1456,7 @@ export class Rasterizer {
       const [cell, flags, shows, grey] = [misc & 255, (misc >>> 8) & 255, ((misc >>> 16) & 255) / 255, (misc >>> 24) / 255];
       const [a, b] = [words[o + DETAIL.colourA]!, words[o + DETAIL.colourB]!];
       const half = Math.hypot(f[o + DETAIL.along]!, f[o + DETAIL.along + 1]!, f[o + DETAIL.along + 2]!);
+      const wide = flags === DETAIL_TEK ? Math.hypot(f[o + DETAIL.across]!, f[o + DETAIL.across + 2]!) : 0;
       // The corners in turn round the card, each its place and its corner.
       [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([cx, cy], c) => {
         const width = flags === DETAIL_GLASS && cy! > 0 ? f[o + DETAIL.floor]! : 1;
@@ -1453,6 +1529,18 @@ export class Rasterizer {
                 for (let c = 0; c < 3; c++) rgb[c]! *= 255;
               }
               for (let c = 0; c < 3; c++) this.color[at * 4 + c]! += (rgb[c]! - this.color[at * 4 + c]!) * alpha;
+              continue;
+            }
+            if (flags === DETAIL_TEK) {
+              const u = cx * wide + ((a & 65535) / 65535 - 0.5) * TEK_WALL.width;
+              const v = cy * half + ((a >>> 16) / 65535 - 0.5) * TEK_WALL.height;
+              const side = misc >>> 28;
+              const dx = u + (side === 1 ? -3 : side === 2 ? 3 : 0) - ((b & 65535) / 65535 - 0.5) * TEK_WALL.width;
+              const dy = v + (side === 3 ? -3 : side === 4 ? 3 : 0) - ((b >>> 16) / 65535 - 0.5) * TEK_WALL.height;
+              const pixel = Math.max(Math.hypot((right[0]! - cx) * wide, (right[1]! - cy) * half), Math.hypot((below[0]! - cx) * wide, (below[1]! - cy) * half));
+              rippleOf(shape, u, v, dx, dy, f[o + DETAIL.floor]!, pixel, (misc >>> 24) & 15);
+              const keep = 1 - shows * shape[3]!;
+              for (let c = 0; c < 3; c++) this.color[at * 4 + c] = this.color[at * 4 + c]! * keep + 255 * shows * shape[c]!;
               continue;
             }
             if (flags === DETAIL_GLOW) {
@@ -1958,6 +2046,8 @@ export class Rasterizer {
           const rx = (q0 * poly[v0]! + q1 * poly[v1]! + q2 * poly[v2]!) * qs;
           const ry = (q0 * poly[v0 + 1]! + q1 * poly[v1 + 1]! + q2 * poly[v2 + 1]!) * qs;
           const rz = (q0 * poly[v0 + 2]! + q1 * poly[v1 + 2]! + q2 * poly[v2 + 2]!) * qs;
+          const rim = this.tekAmount ? tekPhaseRim(rx + p.camX, ry + p.camY, rz + p.camZ, this.tekAmount) : 0;
+          if (rim < 0) continue;
           const dist = Math.sqrt(rx * rx + ry * ry + rz * rz);
           // A far draw drops its fragment as FAR_FADE does, before anything is kept of it. The pattern counts rows from the bottom.
           if (this.fade !== 0 && !fadeKeeps(dist, this.fade, this.fadeShare, px, H - 1 - py)) continue;
@@ -2023,7 +2113,7 @@ export class Rasterizer {
             continue;
           }
           if (this.drawing >= 0 && (p.drawFlags[this.drawing]! & DRAW_EMISSIVE)) {
-            this.deferred[at] = 0;
+            if (!blend) this.deferred[at] = 0;
             // An instrument's light, energy along the instrument, as the signal program shows it with no light target.
             const facing = Math.abs(nx * rx + ny * ry + nz * rz) / Math.max(dist, 1e-6);
             const fx = p.drawEffect, o = this.drawing * 4;
@@ -2031,7 +2121,9 @@ export class Rasterizer {
             if (fx[o + 1]! > 0) dropLight(energy, 0, Math.sqrt(Math.max(0, 1 - facing * facing)), fx[o]!, fx[o + 1]!, fx[o + 2]!, fx[o + 3]!);
             else if (p.frame[FRAME.eyes + 3]! > 0) eyeEnergy(p.frame, rx, ry, rz, NaN, 0.85 * Math.sqrt(Math.max(0, 1 - facing * facing)), footprint || dist * 0.0015, energy);
             else for (let k = 0; k < 3; k++) energy[k] = (pal[colorIndex * 4 + k]! / 255) ** 2;
-            for (let k = 0; k < 3; k++) this.color[at * 4 + k] = 255 * (1 - Math.exp(-energy[k]!));
+            // See-through, it shows its share of what is behind it, as the signal program's uAlpha has it.
+            const alpha = blend ? (this.finishRow === 0 ? WATER_ALPHA : 1) * (1 - p.drawTint[this.drawing * 2 + 1]!) : 1;
+            for (let k = 0; k < 3; k++) this.color[at * 4 + k] += (255 * (1 - Math.exp(-energy[k]!)) - this.color[at * 4 + k]!) * alpha;
             continue;
           }
           if (p.lit && !blend) {
@@ -2049,6 +2141,7 @@ export class Rasterizer {
             this.deferred[at] = (tint + 1) | (solid ? 512 : 0) | (this.plain ? 1024 : 0) | (ground ? DEFERRED_GROUND : 0) | (this.finishRow << DEFERRED_FINISH);
             this.deferredSurface[at] = (fixture << 1) | (this.bone > 0 ? 1 : 0);
             this.deferredMade[at] = this.made;
+            this.deferredTek[at] = (Math.round(rim * 255) << 4) | this.tekMask;
             this.pieced(rx, ry, rz, pieceNow);
             this.deferredPiece.set(pieceNow, at * 6);
             this.deferredShade[at] = footprint;
@@ -2083,11 +2176,16 @@ export class Rasterizer {
             const over = ownNow[3]! >= 0 ? overGround(this.hf, COARSE, p.frame, p.camY, rx, ry, rz) : 0;
             this.facadeAt(rx, ry, rz, nx, ny, nz, colorIndex, footprint, facadeNow);
             this.pieced(rx, ry, rz, pieceNow);
-            litFlat(p, pal, colorIndex, shade, rx, ry, rz, nx, ny, nz, !this.plain && (this.worldMaps || this.finishesMeant) ? this.worldSample : null, !solid, footprint, this.look, null, this.finish, this.finishRow, this.opened(rx, ry, rz, nx, ny, nz, false, this.bone === 0), -1, 0, ownNow, over, edgeNow, facadeNow, this.facadeSample, this.roomOpen, fixture, this.made, pieceNow);
+            litFlat(p, pal, colorIndex, shade, rx, ry, rz, nx, ny, nz, !this.plain && (this.worldMaps || this.finishesMeant) ? this.worldSample : null, !solid, footprint, this.look, null, this.finish, this.finishRow, this.opened(rx, ry, rz, nx, ny, nz, false, this.bone === 0), -1, 0, ownNow, over, edgeNow, facadeNow, this.facadeSample, this.roomOpen, fixture, this.made, pieceNow, this.tekMask);
             bounce.fill(1);
             cr = rgb[0]! * 255;
             cg = rgb[1]! * 255;
             cb = rgb[2]! * 255;
+          }
+          if (rim > 0) {
+            cr = 255 * tekPhaseColour(rim, cr / 255, 0);
+            cg = 255 * tekPhaseColour(rim, cg / 255, 1);
+            cb = 255 * tekPhaseColour(rim, cb / 255, 2);
           }
           if (blend) {
             // A landmark's see-through draw shows its finish's share (shared/pack/finish.ts), as LIT_MESH_FRAGMENT has it.

@@ -1,0 +1,15 @@
+{
+  "title": "Underlot Lift Co.",
+  "year": 2026,
+  "from": {
+    "by": "SNARK",
+    "sha256": "5102393650a260186c5f53343878a0488f0bd4ad3737e2d90ff8174962ad5bb6"
+  },
+  "rights": "Made for SNARK, 2026",
+  "licence": "Made for the game and given to it under CC0 1.0.",
+  "poster": 4,
+  "audio": false,
+  "types": [
+    "billboard"
+  ]
+}

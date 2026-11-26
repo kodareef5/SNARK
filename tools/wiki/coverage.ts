@@ -21,6 +21,7 @@ export const LEFT_OUT = {
   game: "what a game names once, which code finds by id",
   rename: "old names of things",
   noFile: "maps still being made",
+  hidden: "the hidden jet and the guns and missiles fitted to it, since finding it is the point",
 } as const;
 export type LeftOut = keyof typeof LEFT_OUT;
 
@@ -42,6 +43,8 @@ interface Context extends CoverageInput {
   placer: ReadonlyMap<string, string>;
   /** Each landmark's own definitions, by id, and its name. */
   landmarkOf: ReadonlyMap<string, string>;
+  /** The weapons and rounds fitted to a hidden vehicle, which the wiki keeps quiet about with it. */
+  fitted: ReadonlySet<string>;
 }
 
 const entry: Rule = (d) => ({ entry: d.id });
@@ -49,12 +52,15 @@ const placed: Rule = (d, c) => (c.placer.has(d.id) ? { within: c.placer.get(d.id
 const out = (why: LeftOut): Rule => () => ({ out: why });
 const body: Rule = (d, c) => {
   const s = d as Extract<Def, { type: "species" }>;
+  if (s.vehicle?.movement === "jet") return { out: "hidden" };
   return s.skeleton === "human" || c.has(s.mesh) ? { entry: d.id } : { out: "standIn" };
 };
 
+const arm: Rule = (d, c) => (c.fitted.has(d.id) ? { out: "hidden" } : { entry: d.id });
+
 /** By class: how each of its definitions is ruled. Abstract classes have no definitions and no row. */
 export const RULINGS: Readonly<Record<string, Rule>> = {
-  "item/resource": entry, "item/consumable": entry, "item/weapon": entry, "item/ammo": entry, "item/attachment": entry, "item/instrument": entry,
+  "item/resource": entry, "item/consumable": entry, "item/weapon": arm, "item/ammo": arm, "item/attachment": entry, "item/instrument": entry,
   "item/armor": entry, "item/saddle": entry, "item/structure": entry, "item/vehicle": entry, "item/egg": entry,
   "item/feces": entry, "item/glider": entry, "item/shield": entry, "item/costume": entry, "item/skin": entry, "item/dye": entry, "item/artifact": entry,
   // A full soul ball is the same ball with a tame in it, on the ball's page.
@@ -98,7 +104,12 @@ export function coverage(input: CoverageInput): { def: Def; ruling: Ruling }[] {
     for (const other of d.type === "structure" ? [s.opens, s.lights] : []) if (other && placer.has(d.id) && !placer.has(other)) placer.set(other, placer.get(d.id)!);
   }
   const landmarkOf = new Map(input.landmarks.flatMap((l) => l.defs.map((d) => [d.id, l.name] as const)));
-  const context: Context = { ...input, placer, landmarkOf };
+  const fitted = new Set<string>();
+  for (const d of all) {
+    const w = d.type === "species" && d.vehicle?.movement === "jet" ? d.vehicle.weapons : undefined;
+    for (const id of [w?.cannon?.weapon, w?.cannon?.ammo, w?.missiles?.weapon, w?.missiles?.ammo]) if (id) fitted.add(id);
+  }
+  const context: Context = { ...input, placer, landmarkOf, fitted };
   return all.map((d) => {
     const rule = RULINGS[classOf(d)];
     if (!rule) throw new Error(`the wiki has no ruling on ${classOf(d)} (tools/wiki/coverage.ts), so ${d.id} is neither in it nor left out`);

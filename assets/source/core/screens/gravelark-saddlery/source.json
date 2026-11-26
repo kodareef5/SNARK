@@ -1,0 +1,15 @@
+{
+  "kind": "image",
+  "title": "Gravelark Saddlery — Last place is a place.",
+  "year": 2026,
+  "from": {
+    "by": "SNARK",
+    "sha256": "f79e527a3123205d80f81f7ae4f354551a2203ae25e23b53abb47dee927c98b4"
+  },
+  "rights": "Made for SNARK, 2026",
+  "licence": "Made for the game and given to it under CC0 1.0.",
+  "audio": false,
+  "types": [
+    "billboard"
+  ]
+}

@@ -8,7 +8,7 @@ import { CUE_DEAD } from "../../../shared/anim/pose.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
 import { cueKey } from "../../../shared/sound/cues.ts";
 import { BAIL, FLIP, GRAB, GRIND, OLLIE, PUSH, REVERT, ROLL, SLIDE, SPECIAL } from "../../../shared/sim/skate-state.ts";
-import { isBoatVehicle, isRotorVehicle } from "../../../shared/sim/vehicle.ts";
+import { isBoatVehicle, isJetVehicle, isRotorVehicle } from "../../../shared/sim/vehicle.ts";
 import { DEFAULT_DRIVETRAIN } from "../../../shared/sim/vehicle-drivetrain.ts";
 import { FIRED_BOOST, thrustBurstTick, thrustersOf } from "../../../shared/sim/vehicle-thrusters.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
@@ -48,6 +48,10 @@ export const VEHICLE_LOOPS = 1_000_000;
 const ROTOR = 1;
 const BOAT = 2;
 const CAR = 3, BOARD = 4;
+/** A jet is heard by its engine speed, and through its cabin from inside. */
+const JET = 5;
+/** A jet's engine speed at full military thrust: the afterburner runs past it, and its high layer is whole there. */
+const JET_FULL = 10000;
 const skateRoll = cueKey("vehicle/roll/smooth"), skateRough = cueKey("vehicle/roll/rough");
 const skateLand = cueKey("vehicle/land"), skatePush = cueKey("vehicle/push"), skatePop = cueKey("vehicle/ollie");
 const skateGrind = cueKey("vehicle/grind"), skateCrash = cueKey("vehicle/crash/light");
@@ -92,8 +96,8 @@ export class VehicleSounds {
       const v = reg.vehicle[kind];
       if (!v) continue;
       this.owner[kind] = ownerOf(reg.ids[kind]!);
-      this.how[kind] = isRotorVehicle(v) ? ROTOR : isBoatVehicle(v) ? BOAT : v.frame === "skateboard" ? BOARD : CAR;
-      this.full[kind] = isRotorVehicle(v) ? v.spec.rotorRpm : isBoatVehicle(v) ? v.spec.maxRpm : (v.spec.drivetrain ?? DEFAULT_DRIVETRAIN).redlineRpm;
+      this.how[kind] = isRotorVehicle(v) ? ROTOR : isBoatVehicle(v) ? BOAT : isJetVehicle(v) ? JET : v.frame === "skateboard" ? BOARD : CAR;
+      this.full[kind] = isRotorVehicle(v) ? v.spec.rotorRpm : isBoatVehicle(v) ? v.spec.maxRpm : isJetVehicle(v) ? JET_FULL : (v.spec.drivetrain ?? DEFAULT_DRIVETRAIN).redlineRpm;
       this.driver[kind] = v.seats.findIndex((s) => s.driver) + 1;
       this.thrusters[kind] = thrustersOf(v) ? 1 : 0;
     }
@@ -155,7 +159,8 @@ export class VehicleSounds {
       const layers = engineLayers(share, this.levels);
       for (let l = 0; l < 4; l++) place(base + l, owner, LAYERS[l]!, x, y + (rotor ? 2 : 0), z, layers[l]! * (rotor && id === inside ? INSIDE : 1), heard && layers[l]! > 0.01, false);
       const ground = hf.heightAt(x, z), water = hf.waterAt(x, z), wet = water > ground;
-      if (rotor) {
+      if (this.how[kind] === JET) place(base + 4, owner, K_CABIN, 0, 0, 0, Math.max(0.2, Math.min(1, share)), heard && id === inside, true);
+      else if (rotor) {
         place(base + 4, owner, K_CABIN, 0, 0, 0, Math.max(0.2, Math.min(1, share)), heard && id === inside, true);
         // The rotor's wash lands on what is under it: the water's surface where that is higher than the ground.
         const under = wet ? water : ground, wash = share >= WASH_SPIN ? Math.max(0, 1 - (y - under) / WASH_HEIGHT) : 0;

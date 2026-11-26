@@ -920,6 +920,8 @@ export interface ModelShot {
   keyLight?: readonly [number, number, number];
   /** Model-only camera roll and a neutral key, fill and reflected lights. */
   studio?: { roll?: number; exposure?: number };
+  /** The hour of the day the lit picture's light and sky are, noon where not given: a glow is seen by night. */
+  hour?: number;
   /** How many times nearer the picture is than the ball: the view narrowed from where the ball puts the camera, so near and far parts keep their sizes. */
   zoom?: number;
   /** The level of the hurt and decay layer of each material that has one, in LAYER_LEVELS (client/core/render/surface.ts); 0 for none. Its texture must be on the card. */
@@ -993,7 +995,7 @@ export class ModelView {
     for (let k = 0; k < 3; k++) p.sun[k] = sun[k]! / length;
     p.lit = shot.lit ?? true;
     if (p.lit) {
-      skyFrame(12, theSky(), p.frame);
+      skyFrame(shot.hour ?? 12, theSky(), p.frame);
       p.frame.set(p.sun, FRAME.sun);
       // The background is painted where nothing is drawn, so the dome need not be: as under water, the clear colour is.
       p.frame[FRAME.eyeHeight] = -1;

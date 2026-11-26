@@ -4,9 +4,10 @@
 
 import { expect, test } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
-import { BasePlates, PLATE_SLAB, PLATE_WALL } from "../../client/core/render/base-occluders.ts";
+import { BasePlates, PLATE_NONE, PLATE_SLAB, PLATE_WALL } from "../../client/core/render/base-occluders.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { OCCLUDER } from "../../client/core/render/hide.ts";
+import { TEK_PHASE_MS } from "../../client/core/render/tek-wall-view.ts";
 import { Scene } from "../../client/core/render/scene.ts";
 import "../../client/core/render/city-late.ts";
 import { RemoteSample } from "../../client/core/session.ts";
@@ -20,10 +21,11 @@ import type { StructureStore } from "../../shared/world/structures.ts";
 import { grayboxMeshes, withArt } from "../../tools/pack/build.ts";
 import { bakeMetal } from "../../tools/pack/pieces/metal.ts";
 import { STONE } from "../../tools/pack/pieces/stone.ts";
+import { bakeTek } from "../../tools/pack/pieces/tek.ts";
 import { tierShapes } from "../../tools/pack/pieces/tier.ts";
 import { WOOD } from "../../tools/pack/pieces/wood.ts";
 import { buildPack, unpackMeshes, type SourceLod, type SourceMesh } from "../../tools/pack/write.ts";
-import { Rasterizer } from "../../tools/snap/raster.ts";
+import { PICK_ENTITY, Rasterizer } from "../../tools/snap/raster.ts";
 import { artTest } from "../fixtures/needs-art.ts";
 import { corePack } from "../fixtures/pack.ts";
 import { baseAt, batchesOf, putAt, standInTrims } from "../fixtures/trims.ts";
@@ -91,8 +93,16 @@ function plated(reg: Registry): [id: string, what: number, stacks: number][] {
   return reg.defs.flatMap((d, k): [string, number, number][] => (d && plates.plate[k] ? [[d.id, plates.plate[k]!, plates.stacks[k]!]] : []));
 }
 
-test("stone's wall and ceiling and metal's wall may be plates, and only metal's stack", () => {
-  expect(plated(coreRegistry()).sort()).toEqual([["core:ceiling_stone", PLATE_SLAB, 0], ["core:wall_metal", PLATE_WALL, 1], ["core:wall_stone", PLATE_WALL, 0]]);
+test("stone, metal and closed Tek pieces supply the expected plates", () => {
+  const reg = coreRegistry();
+  expect(plated(reg).sort()).toEqual([
+    ["core:ceiling_stone", PLATE_SLAB, 0],
+    ["core:phase_wall_tek", PLATE_WALL, 1],
+    ["core:wall_metal", PLATE_WALL, 1],
+    ["core:wall_stone", PLATE_WALL, 0],
+    ["core:wall_tek", PLATE_WALL, 1],
+  ]);
+  expect(new BasePlates(reg).plate[reg.index.get("core:phase_wall_open_tek")!]).toBe(PLATE_NONE);
 });
 
 /**
@@ -104,13 +114,20 @@ function closed(meshes: readonly SourceMesh[], where: string): void {
   const by = new Map(meshes.map((m) => [m.id, m] as const));
   const rng = new Rng(11);
   const [whole, less]: [number, number][] = [[-END, END], [-1.5 + SHRINK, 1.5 - SHRINK]];
-  for (const [id, what, stacks] of plated(coreRegistry())) {
-    const mesh = by.get(id), wall = what === PLATE_WALL;
+  const reg = coreRegistry();
+  const checked = new Set<SourceMesh>();
+  for (const [id, what, stacks] of plated(reg)) {
+    const def = reg.defs[reg.index.get(id)!]!;
+    const mesh = def.type === "structure" ? by.get(def.mesh) ?? by.get(id) : undefined;
+    const wall = what === PLATE_WALL;
     expect(mesh, `${where} has ${id}`).toBeDefined();
-    for (const m of mesh!.materials ?? []) expect(m.flags & (MATERIAL_CUTOUT | MATERIAL_BLEND), `${where} ${id} ${m.id}`).toBe(0);
-    mesh!.lods.forEach((lod, level) => {
+    // Phase mode draws the same plate as the solid Tek wall.
+    if (!mesh || checked.has(mesh)) continue;
+    checked.add(mesh);
+    for (const m of mesh.materials ?? []) expect(m.flags & (MATERIAL_CUTOUT | MATERIAL_BLEND), `${where} ${id} ${m.id}`).toBe(0);
+    mesh.lods.forEach((lod, level) => {
       expect(seenThrough([[lod, [0, 0, 0]]], wall, rng, 4000, less!, less!, SHRINK), `${where} ${id} level ${level} alone`).toBe(0);
-      mesh!.lods.forEach((other, beside) => {
+      mesh.lods.forEach((other, beside) => {
         // A wall's neighbours stand along its x; a ceiling's along both, and at its corners.
         const round = [-3, 0, 3].flatMap((a) => (wall ? [[a, 0, 0]] : [-3, 0, 3].map((b) => [a, 0, b]))).filter((at) => at.some((c) => c !== 0));
         const set: Set[] = [[lod, [0, 0, 0]], ...round.map((at): Set => [other, at])];
@@ -124,7 +141,7 @@ function closed(meshes: readonly SourceMesh[], where: string): void {
 }
 
 test("the recipes' meshes are closed about their middle, alone and side by side", () => {
-  closed([...tierShapes(STONE, FIRST_FORMS), ...bakeMetal(FIRST_FORMS)], "the recipes");
+  closed([...tierShapes(STONE, FIRST_FORMS), ...bakeMetal(FIRST_FORMS), ...bakeTek({ wall: FORMS.wall })], "the recipes");
 });
 
 artTest("the installed meshes are closed about their middle, alone and side by side", () => {
@@ -142,14 +159,14 @@ const O = [0, 0, 0, 0] as const;
 const sq = (i: number, j: number): number[] => [2 * i, 0, 0, 2 * j];
 
 /** A world with one scene that hides by plates and one that does not, each drawn by a rasterizer of its own. */
-function world(width: number, height: number, tier = "lowpoly", trims = false) {
+function world(width: number, height: number, tier = "lowpoly", trims = false, assets = pack(trims)) {
   const w = turnedWorld(4);
   const reg = w.reg;
   const scenes = [true, false].map((plating) => {
-    const scene = new Scene({ dims: w.dims, hf: w.hf, structs: w.structs }, reg, pack(trims));
+    const scene = new Scene({ dims: w.dims, hf: w.hf, structs: w.structs }, reg, assets);
     scene.assets.tier = { ...tierOf(tier), split: 0 };
     scene.plating = plating;
-    return { scene, raster: new Rasterizer(width, height, pack(trims), w.hf) };
+    return { scene, raster: new Rasterizer(width, height, assets, w.hf) };
   });
   const cam = new Camera();
   cam.aspect = width / height;
@@ -172,6 +189,37 @@ function world(width: number, height: number, tier = "lowpoly", trims = false) {
   const plates = (): number[][] => [...batchesOf(scenes[0]!.scene).values()].flatMap((b) => Array.from({ length: b.plates.length / OCCLUDER }, (_, k) => Array.from(b.plates.subarray(k * OCCLUDER, (k + 1) * OCCLUDER))));
   return { w, reg, structs: w.structs as StructureStore, cam, remote, look, plates, scenes };
 }
+
+test("a Tek phase wall supplies a plate only when the field has sealed", () => {
+  const { reg, structs, cam, remote, look, plates, scenes } = world(160, 90, "lowpoly", false, corePack());
+  const f = baseAt(structs, 100, 0.375, 100, 0);
+  putAt(structs, reg, f, "core:foundation_metal", CLS_SQUARE, O, 0, 0);
+  const ref = putAt(structs, reg, f, "core:phase_wall_tek", CLS_EDGE, O, 0, 0);
+  remote.count = 1;
+  [remote.id[0], remote.kind[0], remote.x[0], remote.y[0], remote.z[0], remote.flags[0]] = [7, reg.index.get("core:dodo")!, 101.5, 0.4, 101, 1];
+  [cam.x, cam.y, cam.z, cam.yaw] = [101.5, 1.2, 94, 0];
+  const at = (ms: number) => {
+    for (const { scene } of scenes) scene.now = ms;
+    return look(0);
+  };
+  const visible = () => scenes[0]!.raster.pickKind.includes(PICK_ENTITY);
+  const closed = look();
+  expect([closed.differ, closed.occluders, visible()]).toEqual([0, 1, false]);
+
+  expect(structs.swap(ref, reg.index.get("core:phase_wall_open_tek")!)).toBe(true);
+  at(1);
+  const opening = at(TEK_PHASE_MS / 2);
+  expect([opening.differ, opening.occluders]).toEqual([0, 0]);
+  const open = at(TEK_PHASE_MS + 2);
+  expect([open.differ, plates().length, open.occluders, visible()]).toEqual([0, 0, 0, true]);
+
+  expect(structs.swap(ref, reg.index.get("core:phase_wall_tek")!)).toBe(true);
+  at(TEK_PHASE_MS + 3);
+  const closing = at(1.5 * TEK_PHASE_MS);
+  expect([closing.differ, closing.occluders]).toEqual([0, 0]);
+  const sealed = at(2 * TEK_PHASE_MS + 4);
+  expect([sealed.differ, sealed.occluders, visible()]).toEqual([0, 1, false]);
+});
 
 /** Each plate as its two ends on the ground and its foot and top, to the millimetre, sorted: a wall's along its row, a ceiling's across its corners. */
 function spans(plates: readonly number[][]): number[][] {

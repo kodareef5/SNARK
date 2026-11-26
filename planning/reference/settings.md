@@ -5,8 +5,8 @@ edit it by hand: change the catalogue and run the tool.
 
 A server is configured as ARK's is ([how](round5-settings.md), and [what the
 values mean](round5-game-ini.md)). Every setting an ARK dedicated server reads
-is listed here, 602 of them: 237 take effect,
-175 wait for a feature that is not built yet, and 190 have no meaning in this
+is listed here, 621 of them: 257 take effect,
+174 wait for a feature that is not built yet, and 190 have no meaning in this
 engine. A setting that does not take effect is still read, checked and
 reported when the server starts.
 
@@ -90,10 +90,13 @@ the admin's settings page may change a setting without a restart.
 | `noTributeDownloads` | False | Nothing may come to this server from another: no survivor, creature or thing. | yes |
 | `globalVoiceChat` | False | A voice is heard by everyone, wherever they are. | yes |
 | `ProximityChat` | False | What is written reaches only those near. | yes; clients are told |
+| `ClusterChat` | False | Global chat is shown on every map of the cluster. | yes |
 | `ServerPassword` | none | Asked of everyone who joins. *A browser gives it in the address it opens: `?password=...`.* | yes |
 | `ServerAdminPassword` | none | Asked of whoever would use cheats, and of a browser that opens the admin pages. | no |
+| `ClusterAdminPassword` | none | Gives the cluster's admin rank, above the map's, on every world started with it: in game with enablecheats, and on the admin pages. It should differ from ServerAdminPassword. *Ours. ARK has no key. SNARK_CLUSTER_PASSWORD gives it too.* | no |
 | `KickIdlePlayersPeriod` | 3600 | Seconds without doing anything before a survivor is put off the server. Needs -EnableIdlePlayerKick. | yes |
 | `AutoSavePeriodMinutes` | 15 | Minutes between saves. Here the world is saved continuously; this is how often the live file is read again. | yes |
+| `AdminLogging` | False | Every admin command is shown to everyone. *As a notice: who ran it, then the line, with any password left out.* | yes |
 
 ### GameUserSettings.ini `[SessionSettings]`
 
@@ -119,6 +122,7 @@ the admin's settings page may change a setting without a restart.
 
 | Setting | Default | What it does | While running |
 | --- | --- | --- | --- |
+| `ModulesOff` | none | The game's own modules not to load, by name, separated by commas or spaces: ufo keeps the UFO out of the world. Read as the server starts. --no-module <name> on the command line does the same. *Ours. ARK has no key. A module of the same name may then be loaded from the config folder's modules in its place.* | no |
 | `ViewCap` | 1024 | The most bodies any survivor is shown at once. A client asks for what its graphics setting names, up to this. *Ours. ARK has no key.* | yes |
 | `SnapshotBytesMax` | 1100 | The most bytes of a snapshot a client may ask for. Thirty snapshots are sent a second, so 1100 is 33 KB/s to each survivor. *Ours. ARK has no key.* | yes |
 | `MaxEntities` | 524288 | The most bodies the world holds at once: creatures wild and tamed, survivors, eggs, bags, caches, arrows left standing and things thrown. Memory is taken as the world fills, 188 bytes a body: 0.8 MB to start with and 94 MB for all 524288. A place is kept for each of MaxPlayers. *Ours. ARK has no key.* | yes |
@@ -132,7 +136,7 @@ the admin's settings page may change a setting without a restart.
 | `SurvivorLogMegabytes` | 1024 | The most disk the survivor log may take, in megabytes: where each survivor in the world was, what it held and when it played, kept in a folder beside the save for admins to look back over, the oldest dropped first. At the other two settings' defaults a gigabyte holds about 9 days of 200 survivors, 5 weeks of 50 and half a year of 10. 0 keeps none. Lowered while the server runs, the oldest goes at once; set to 0, the log stops and what it holds stays. *Ours. ARK has no such log. A server with no save keeps none.* | yes |
 | `SurvivorLogPositionSeconds` | 1 | Seconds between two notes of where each survivor is, and what it rides or sits in. *Ours. ARK has no key.* | yes |
 | `SurvivorLogInventorySeconds` | 5 | Seconds the survivor log waits once a survivor's inventory changes before it notes what it holds, so a burst of changes is one entry. *Ours. ARK has no key.* | yes |
-| `CreativeForAll` | True | While bShowCreativeMode is on, every survivor who joins has the admin role without the password, as enablecheats gives it, and so has cheats from the moment it is in the world. A server open to strangers sets this False, or bShowCreativeMode False. Switched on while the server runs, those already in get it too; switched off, nobody loses it before leaving. *Ours. ARK has no key; off is its behaviour, and was ours until D956 made it on unless set. It gives the role in the game only: the admin pages still ask for the password. Each grant is told to modules as session.admin, and who shows it.* | yes |
+| `CreativeForAll` | True | While bShowCreativeMode is on, every survivor who joins has the admin role without the password, as enablecheats gives it, and so has cheats from the moment it is in the world. A server open to strangers sets this False, or bShowCreativeMode False. Switched on while the server runs, those already in get it too; switched off, those with no other reason for it lose it at once, with whatever a cheat left running. *Ours. ARK has no key; off is its behaviour, and was ours until D956 made it on unless set. It gives the role in the game only: the admin pages still ask for the password. Each grant is told to modules as session.admin, and who shows it.* | yes |
 | `HeadMultipliers` | True | Where a hit lands matters: a head counts for more. Off, every part counts once. *Ours. ARK has no key; this is its behaviour.* | yes |
 | `SelfDamageMultiplier` | 1 | What a survivor's own blast does to them. *Ours. ARK has no key; 1 is its behaviour.* | yes |
 | `FullFriendlyFire` | False | Members of a tribe can hurt each other, their tames and what they built with anything, not only with blasts. *Ours. ARK has no key; off is its behaviour as far as the research could tell.* | yes |
@@ -174,6 +178,7 @@ the admin's settings page may change a setting without a restart.
 | `AirDroneDamage` | 180 | Base game damage from one drone payload. | yes |
 | `AirDroneRadius` | 5 | Game payload radius in metres. | yes |
 | `FoundCarReturnDays` | 3 | Days of the game's clock after a place where the map parks a car has lost its car, destroyed or driven off, before another is parked there, owned by nobody, its condition and fuel rolled again. One comes only while no survivor is near enough to see it come, nothing a tribe built stands within 60 m, and no body stands where it would. 0 brings none back. *Ours. ARK has no cars. A place is looked at every ten minutes.* | yes |
+| `JetReturnHours` | 6 | Real hours after the last jet from a map's hangar is destroyed before another is parked there, owned by nobody. While one lives anywhere, flown off or kept by a tribe, none comes. One comes whether or not anyone is near, once nothing stands where it would. 0 brings none back. *Ours. ARK has no jets. The hangar is looked at every ten minutes.* | yes |
 | `ThrusterBoostCooldown` | 4 | Seconds after a thruster car's boost ends before it may boost again (the Zephyr; Shift at the wheel). 0 is none: held, the boost runs on. *Ours. ARK has no cars.* | yes |
 | `ThrusterFlipCooldown` | 3 | Seconds from a thruster car's flip before it may flip again (Q at the wheel, with a direction held or none). 0 is none. *Ours.* | yes |
 | `SurfaceGripAsphalt` | 7 | Grip a wheel finds on asphalt: streets, highways, lots, and road pieces of asphalt. Higher holds the road; lower slides and spins. Each car's own tyres multiply it. *Ours. ARK has no cars.* | yes |
@@ -183,6 +188,21 @@ the admin's settings page may change a setting without a restart.
 | `SurfaceGripSand` | 2.6 | Grip a wheel finds on sand: beaches and dunes. *Ours. ARK has no cars.* | yes |
 | `SurfaceGripMud` | 1.8 | Grip a wheel finds on mud: marsh, pools, fords, and road pieces of mud. *Ours. ARK has no cars.* | yes |
 | `FoundBoatReturnDays` | 3 | Days of the game's clock after a berth where the map moors a vessel has lost it, sunk or sailed off, before another of its kind is moored there, owned by nobody, its condition and fuel rolled again. One comes as a car does, and only while the berth still has water enough under its keel. 0 brings none back. *Ours. ARK's rafts and boats are only built. Its own setting, so the yachts can be made rarer than the cars.* | yes |
+| `JetHealth` | 2400 | The jet's health. *Ours. ARK has no jets.* | yes |
+| `JetCruiseSpeed` | 120 | Metres a second the jet flies at on full military thrust. Kept below its top speed and above its stall. *Ours. ARK has no jets. Clamped between the stall and the top speed.* | yes |
+| `JetTopSpeed` | 160 | Metres a second the jet flies at on its burner (Shift), 180 at the most. *Ours. ARK has no jets. The faster it flies, the further back a shot at it is judged.* | yes |
+| `JetStallSpeed` | 46 | Metres a second under which the jet's wings stop holding it up; VTOL holds it below 40. *Ours. ARK has no jets.* | yes |
+| `JetGLimit` | 9 | The most g the jet pulls in a turn: higher turns tighter. *Ours. ARK has no jets.* | yes |
+| `JetCannonRounds` | 220 | Rounds in the jet's cannon drum, filled again at a vehicle bench. *Ours. ARK has no jets.* | yes |
+| `JetCannonDamage` | 60 | Damage of one cannon round. *Ours. ARK has no jets.* | yes |
+| `JetCannonInterval` | 0.1 | Seconds between the cannon's rounds: 0.1 is ten a second. *Ours. ARK has no jets.* | yes |
+| `JetMissiles` | 6 | Missiles on the jet's rails, filled again at a vehicle bench. *Ours. ARK has no jets.* | yes |
+| `JetMissileDamage` | 2400 | Damage of a missile's blast at its middle. *Ours. ARK has no jets.* | yes |
+| `JetMissileBlast` | 10 | Metres a missile's blast reaches. *Ours. ARK has no jets.* | yes |
+| `JetMissileLockSeconds` | 1.5 | Seconds a target must stay in the jet's sights, right mouse held, before a missile locks it. *Ours. ARK has no jets.* | yes |
+| `JetMissileRange` | 1800 | Metres out a missile may lock a target. *Ours. ARK has no jets.* | yes |
+| `JetMissileSpeed` | 240 | Metres a second a missile flies. *Ours. ARK has no jets.* | yes |
+| `JetMissileReloadSeconds` | 1.5 | Seconds between one missile's launch and the next one's being ready. *Ours. ARK has no jets.* | yes |
 | `AllowCityDamage` | True | The map's buildings break: a piece is worn, breached in the half that was hit, opened, and falls to a heap or to nothing; tools, bullets, fire and ramming harm what its material takes. Off, only explosives harm a piece of the map, heaps included, and one out of health is gone at once: none takes a broken form, none leaves a heap, and nothing is rammed through or mined. What already stands broken stays as it is. *Ours. ARK's maps do not break.* | yes |
 | `CityResistanceMultiplier` | 1 | How much the map's pieces stand. Higher takes more: at 2 every hit on one does half, and ramming through one takes twice the energy. *Ours. It divides, where StructureResistanceMultiplier multiplies; both apply to a piece of the map.* | yes |
 | `CityRamming` | True | A car that hits a piece of the map with its material's energy for one half breaks through that half, panes first, and loses that energy. Concrete that holds a building up is never rammed through. *Ours. Creatures do not ram.* | yes |
@@ -501,7 +521,6 @@ what is built next.
 | `RCONEnabled` | False | The server may be commanded from outside. | GameUserSettings.ini |
 | `RCONPort` | 27020 | The port for that. | GameUserSettings.ini |
 | `RCONServerGameLogBuffer` | 600 | Lines of the game's log it may be sent. | GameUserSettings.ini |
-| `AdminLogging` | False | Every admin command is shown to everyone. | GameUserSettings.ini |
 | `EnableAFKKickPlayerCountPercent` | 0 | The idle are put off only when the server is at least this full. | GameUserSettings.ini |
 | `BanListURL` | none | A list of those who may not join. | GameUserSettings.ini |
 | `AdminListURL` | none | A list of admins. | GameUserSettings.ini |

@@ -1,0 +1,15 @@
+{
+  "kind": "image",
+  "title": "The Mammoth Appeal",
+  "year": 2026,
+  "from": {
+    "by": "SNARK",
+    "sha256": "f3f1fee5510e14db445957adbd55a38a3bb9d90de84ccc77644ccf1efa274371"
+  },
+  "rights": "Made for SNARK, 2026",
+  "licence": "Made for the game and given to it under CC0 1.0.",
+  "audio": false,
+  "types": [
+    "laptop"
+  ]
+}

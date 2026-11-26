@@ -2,13 +2,15 @@
 // the place of a branch for each program, which is written out here to hold them to it.
 import { expect, test } from "bun:test";
 import { HAND_FAR, HAND_NEAR } from "../../client/core/render/hand.ts";
-import { DRAW_BENT, DRAW_BLEND, DRAW_CUTOUT, DRAW_EMISSIVE, DRAW_FIRE, DRAW_GROUND, DRAW_HEAT_SHIFT, DRAW_NEAR, DRAW_ONE_BONE, DRAW_ORB, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_SKYLINE, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FramePacket, WATER_MARK_COUNT } from "../../client/core/render/packet.ts";
+import { DRAW_BENT, DRAW_BLEND, DRAW_CUTOUT, DRAW_EMISSIVE, DRAW_FIRE, DRAW_GROUND, DRAW_HEAT_SHIFT, DRAW_NEAR, DRAW_ONE_BONE, DRAW_ORB, DRAW_PLAIN, DRAW_SCREENS, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_SKYLINE, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FramePacket, WATER_MARK_COUNT } from "../../client/core/render/packet.ts";
 import { CHOICE, HAS_SPLIT, IS_LAYERED, PROGRAM, PROGRAMS, drawProgram } from "../../client/core/render/programs.ts";
 import type { PackMaterial } from "../../shared/pack/pack.ts";
 
 /** The choice as the branches made it. */
 function branches(p: FramePacket, d: number, material: PackMaterial | undefined): number {
   const flags = p.drawFlags[d]!;
+  // A screen on a prop names no mesh: its quads are its program's alone.
+  if ((flags & DRAW_SCREENS) !== 0) return PROGRAM.screens;
   // Fire is its own, whatever else its draw says.
   if ((flags & DRAW_FIRE) !== 0) return PROGRAM.fire;
   // An orb's screen is its own program's, whatever its shell's mesh would be drawn with.
@@ -29,7 +31,7 @@ function branches(p: FramePacket, d: number, material: PackMaterial | undefined)
 }
 
 test("the rows pick the program the branches picked, for every mix of what picks one", () => {
-  const picking = [DRAW_BLEND, DRAW_TEXTURED, DRAW_CUTOUT, DRAW_WATER, DRAW_PULLED, DRAW_EMISSIVE, DRAW_SKYLINE, DRAW_FIRE, DRAW_ORB];
+  const picking = [DRAW_BLEND, DRAW_TEXTURED, DRAW_CUTOUT, DRAW_WATER, DRAW_PULLED, DRAW_EMISSIVE, DRAW_SKYLINE, DRAW_FIRE, DRAW_ORB, DRAW_SCREENS];
   // Every flag that picks nothing, which a draw may have or not.
   const rest = DRAW_SKINNED | DRAW_PLAIN | DRAW_NEAR | DRAW_ONE_BONE | DRAW_TWO_SIDED | DRAW_SIZED | DRAW_RANGED | DRAW_GROUND | DRAW_BENT | (3 << DRAW_HEAT_SHIFT);
   const material = (mask: number, mask2: number): PackMaterial => ({ mask, mask2 }) as PackMaterial;
@@ -55,7 +57,7 @@ test("the rows pick the program the branches picked, for every mix of what picks
     }
   }
   expect(wrong).toEqual([]);
-  expect(mixes).toBe(512 * 2 * 2 * 3 * 3 * 2 * 2 * 2 * 4);
+  expect(mixes).toBe(1024 * 2 * 2 * 3 * 3 * 2 * 2 * 2 * 4);
   // Each row is some draw's program, and no fact shares a bit with a flag.
   expect([...seen].sort((a, b) => a - b)).toEqual([...new Set(CHOICE.map((c) => c.program))].sort((a, b) => a - b));
   expect((picking.reduce((a, b) => a | b) | rest) < IS_LAYERED && HAS_SPLIT > 0).toBe(true);

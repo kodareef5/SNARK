@@ -8,13 +8,14 @@
 
 import { LOADOUT_ID, MOST } from "../../shared/loadout/book.ts";
 import { loadoutCatalog } from "../../shared/loadout/catalog.ts";
-import { OP_ADMIN } from "../console.ts";
+import type { Actor } from "../acts.ts";
 import type { Host } from "../host.ts";
 import { carried } from "../loadout/capture.ts";
 import type { LoadoutSave } from "../loadout/store.ts";
 import { NAME_NONE, NAME_UNCLEAR, meant } from "../names.ts";
 import type { EntityRecord } from "../records.ts";
-import { PAGE, body, refusedWrite } from "./supply-routes.ts";
+import { actorOf, stillHolds } from "./gate.ts";
+import { body, refusedWrite } from "./supply-routes.ts";
 
 const JSON_HEADERS = { "content-type": "application/json", "cache-control": "no-store" };
 const json = (answer: unknown, status = 200): Response => new Response(JSON.stringify(answer), { status, headers: JSON_HEADERS });
@@ -46,7 +47,8 @@ export class LoadoutRoutes {
     }
     const no = refusedWrite(req);
     if (no) return no;
-    return body(req, LOADOUT_BODY_MOST).then((b) => (b === null ? json({ error: "Expected a JSON object no larger than a book." }, 400) : this.write(what, b)));
+    const by = actorOf(req);
+    return body(req, LOADOUT_BODY_MOST).then((b) => (b === null ? json({ error: "Expected a JSON object no larger than a book." }, 400) : stillHolds(req, this.host) ?? this.write(what, b, by)));
   }
 
   private read(what: string, url: URL): Response {
@@ -87,11 +89,11 @@ export class LoadoutRoutes {
     return which === NAME_NONE ? `No survivor is called ${name}.` : all[which]!;
   }
 
-  private write(what: string, b: Record<string, unknown>): Response {
+  private write(what: string, b: Record<string, unknown>, by: Actor): Response {
     const store = this.host.loadoutBook;
     const saved = (r: LoadoutSave, did: string): Response => {
       if (r.ok) {
-        this.did(`${did}: revision ${r.revision}`);
+        this.did(by, `${did}: revision ${r.revision}`);
         return json({ revision: r.revision, warnings: store.warnings() });
       }
       if ("conflict" in r) return json({ error: STALE, revision: r.conflict }, 409);
@@ -102,14 +104,14 @@ export class LoadoutRoutes {
     if (what === "reset") {
       // The built-ins come back as a new revision: a page that names the revision it read loses to another editor's save.
       if (b.expected !== undefined && b.expected !== store.book.revision) return json({ error: STALE, revision: store.book.revision }, 409);
-      return saved(store.reset(PAGE), "loadouts reset to the built-ins");
+      return saved(store.reset(by.name), "loadouts reset to the built-ins");
     }
     if (what === "book") {
       const expected = b.expected;
       if (typeof expected !== "number" || !Number.isSafeInteger(expected) || expected < 0) return json({ error: "A save names the revision it was made from." }, 400);
       if (typeof b.book !== "object" || b.book === null) return json({ error: "A save carries the book." }, 400);
       const note = typeof b.note === "string" ? b.note.replace(/[\r\n\t]+/g, " ").trim().slice(0, 200) : "";
-      return saved(store.save(b.book, expected, PAGE, note), `loadouts saved${note === "" ? "" : ` (${note})`}`);
+      return saved(store.save(b.book, expected, by.name, note), `loadouts saved${note === "" ? "" : ` (${note})`}`);
     }
     if (what === "apply") {
       const line = applyLine(b.loadout, b.pid, b.clear === true);
@@ -118,14 +120,14 @@ export class LoadoutRoutes {
       if (typeof rec === "string") return json({ error: rec }, 404);
       // Only that survivor, and only while it is here: nobody else is dressed, or cleared, in its place.
       if (!this.host.online(rec.pid)) return json({ error: `${rec.name} is not in the world. A loadout is handed to a survivor who is.` }, 409);
-      // Run as the operator would type it: the console checks it and writes it in the journal.
-      return json({ line, survivor: rec.name, said: this.host.console.exec({ host: this.host, client: null }, line) });
+      // Run with the operator's rights: the console checks it and writes it in the journal as `by`'s.
+      return json({ line, survivor: rec.name, said: this.host.console.exec({ host: this.host, client: null, actor: by }, line) });
     }
     return json({ error: "No such act." }, 404);
   }
 
   /** A save is not a console line: it is journaled here as one would be. */
-  private did(what: string): void {
-    this.host.persistence?.journal(OP_ADMIN, new TextEncoder().encode(`${PAGE}\t${what}`));
+  private did(by: Actor, what: string): void {
+    this.host.acts.write(by, what);
   }
 }

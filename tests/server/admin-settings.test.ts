@@ -7,13 +7,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SettingRow, SettingsPage } from "../../shared/admin.ts";
 import { settingsAnswer } from "../../server/admin/settings.ts";
-import { OP_ADMIN } from "../../server/console.ts";
 import { WorldStore } from "../../server/persist/store.ts";
 import { AT_START, CATALOG, catalogFaults, rowOf } from "../../server/settings/catalog.ts";
 import { loadConfig } from "../../server/settings/config.ts";
 import { Rules } from "../../server/settings/rules.ts";
 import { boxLines, boxValue, countText, isSwitch, matches, rangeText, sentValue, settingsHtml, sourceText } from "../../client/core/admin/settings.ts";
 import { Harness } from "../fixtures/net.ts";
+import { adminLines } from "../fixtures/acts.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "snark-admin-settings-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -118,7 +118,7 @@ test("what the page set is kept beside the save, is in force at the next start o
   h.run(60);
   h.host.shutdown();
   const store = new WorldStore(dbPath, h.reg);
-  const typed = store.journal().filter((j) => j.op === OP_ADMIN).map((j) => new TextDecoder().decode(j.data));
+  const typed = adminLines(store);
   store.close();
   expect(typed).toEqual(["(admin page)\tsetting XPMultiplier 5", "(admin page)\tsetting TamingSpeedMultiplier 8", "(admin page)\tsetting TamingSpeedMultiplier (as before the page set it)"]);
 

@@ -5,7 +5,7 @@
 
 import { detCos, detSin } from "../math/scalar.ts";
 import { quatMulConj, quatRotate } from "../math/quat.ts";
-import { PoseBuilder } from "./authored.ts";
+import { PoseBuilder } from "./pose-builder.ts";
 import { Pose, blendPose } from "./clip.ts";
 import { B_HEAD, B_HIPS, B_LOWER_ARM_L, B_LOWER_ARM_R, B_LOWER_LEG_L, B_LOWER_LEG_R, B_UPPER_ARM_L, B_UPPER_ARM_R, B_UPPER_LEG_L, B_UPPER_LEG_R, HUMAN, HUMAN_RAGDOLL } from "./human.ts";
 import { Ragdoll } from "./ragdoll.ts";

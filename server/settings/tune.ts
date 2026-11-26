@@ -2,7 +2,7 @@
 // something this build does not have, or that makes no sense, is skipped and reported. It never stops the server.
 
 import type { Registry } from "../../shared/content/registry.ts";
-import type { Tuning } from "../../shared/content/tuning.ts";
+import type { Tuning, VehicleTuning } from "../../shared/content/tuning.ts";
 import { field, isList, toNumber, toSwitch, unquote, type IniList, type IniNode } from "./ini.ts";
 import type { Lists } from "./lists.ts";
 import type { Rules } from "./rules.ts";
@@ -129,6 +129,14 @@ export function tuningOf(rules: Rules, lists: Lists, reg: Registry): { tuning: T
   const creatures = { ...(some(wild) ? { wild } : {}), ...(some(tamed) ? { tamed } : {}) };
   const people = { ...(some(spent) ? { tamed: spent } : {}), ...(some(base) ? { base } : {}) };
   const thrusterBoost = rules.num("ThrusterBoostCooldown"), thrusterFlip = rules.num("ThrusterFlipCooldown");
+  // The jet's numbers, sent only where one differs from the content, so a server at the defaults changes nothing.
+  const jetSet = (name: string): number | undefined => (rules.num(name) !== rowOf(name)!.def ? rules.num(name) : undefined);
+  const jet: VehicleTuning = {
+    health: jetSet("JetHealth"), cruise: jetSet("JetCruiseSpeed"), top: jetSet("JetTopSpeed"), stall: jetSet("JetStallSpeed"), gLimit: jetSet("JetGLimit"),
+    cannon: { rounds: jetSet("JetCannonRounds"), damage: jetSet("JetCannonDamage"), interval: jetSet("JetCannonInterval") },
+    missiles: { count: jetSet("JetMissiles"), damage: jetSet("JetMissileDamage"), blast: jetSet("JetMissileBlast"), lock: jetSet("JetMissileLockSeconds"), range: jetSet("JetMissileRange"), speed: jetSet("JetMissileSpeed"), reload: jetSet("JetMissileReloadSeconds") },
+  };
+  const jetTuned = JSON.stringify(jet) !== JSON.stringify({ cannon: {}, missiles: {} });
   // Only the surfaces whose grip is set, so a server at the defaults keeps the tuning that changes nothing.
   const surfaces: Record<string, number> = {};
   for (const [surface, name] of Object.entries(SURFACE_GRIPS)) if (rules.num(name) !== rowOf(name)!.def) surfaces[surface] = rules.num(name);
@@ -154,6 +162,7 @@ export function tuningOf(rules: Rules, lists: Lists, reg: Registry): { tuning: T
     surfaces,
     // Sent only when set, so a server at the defaults keeps the tuning that changes nothing.
     ...(thrusterBoost !== rowOf("ThrusterBoostCooldown")!.def || thrusterFlip !== rowOf("ThrusterFlipCooldown")!.def ? { thrusters: { boost: thrusterBoost, flip: thrusterFlip } } : {}),
+    ...(jetTuned ? { vehicles: { "core:jet": JSON.parse(JSON.stringify(jet)) as VehicleTuning } } : {}),
   };
   return { tuning, passed };
 }

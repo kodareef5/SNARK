@@ -355,9 +355,10 @@ test("in the whole client: a piece looked at is named with how whole it is; the 
   app.key("KeyE", true);
   run(500);
   expect([app.ui.screen<StructMenu>("structure").open, app.ui.screen<StructMenu>("structure").ref, app.ui.wantsPointerLock]).toEqual([true, wall, false]);
-  expect([f.find(KEY_STRUCT_TITLE)!.text, f.find(KEY_STRUCT_HEALTH)!.text]).toEqual(["wooden wall", "10000 of 10000"]);
+  expect([f.find(KEY_STRUCT_TITLE)!.text, f.find(KEY_STRUCT_HEALTH)!.text]).toEqual(["wooden wall", "Health 10000 of 10000"]);
   expect([0, 1, 2].map((n) => f.find(KEY_STRUCT_BUTTON + n)!.text)).toEqual(["1  Take it back", "2  Mend it", "3  Take it down"]);
-  expect([0, 1, 2].map((n) => f.find(KEY_STRUCT_DETAIL + n)!.text)).toEqual(["into your hands, as it was", "it is whole", "gives 20 wood, 5 thatch, 3 fiber"]);
+  expect(f.find(KEY_STRUCT_DETAIL)).toBeNull();
+  expect([1, 2].map((n) => f.find(KEY_STRUCT_DETAIL + n)!.text)).toEqual(["it is whole", "gives 20 wood, 5 thatch, 3 fiber"]);
   app.key("KeyE", false);
   expect(app.key("Escape", true)).toBe(true);
   run(100);

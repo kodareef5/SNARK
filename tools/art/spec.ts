@@ -134,6 +134,8 @@ export interface MaterialSpec {
   readonly emissive?: number;
   /** Whether it glows only from dusk to dawn, as a lamp's lens that still works (shared/pack/pack.ts `MATERIAL_NIGHT`). */
   readonly night?: boolean;
+  /** Whether its glow is held down in the dark as a status light's is (`MATERIAL_INDICATOR`), so by night it keeps its colour. */
+  readonly indicator?: boolean;
   /**
    * Light with no surface of its own, drawn blended over what is behind it after everything opaque (`MATERIAL_BLEND`):
    * a supply drop's shaft and jets. What it shows is worked out by its street material, not painted.

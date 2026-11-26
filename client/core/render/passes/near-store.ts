@@ -26,10 +26,11 @@ import { HAND_NEAR } from "../hand.ts";
 import type { Hiding } from "../hide.ts";
 import { LAMP_BIT } from "../lamp.ts";
 import { MESH_SLOT, NearCity, type NearMesh } from "../nearcity.ts";
-import { BEND_BUFFERS, DRAW_RANGED, DRAW_SIZED, InstanceWriter, MAX_CASCADES, MAX_DRAWS, PASS_FAR, PASS_NEAR, type FramePacket } from "../packet.ts";
+import { BEND_BUFFERS, DRAW_PIECE, DRAW_RANGED, DRAW_SIZED, InstanceWriter, MAX_CASCADES, MAX_DRAWS, PASS_FAR, PASS_NEAR, type FramePacket } from "../packet.ts";
 import type { Frame, Pass } from "../pass.ts";
 import { FIT_YIELD, FrameTable, PIECE_FIT_AT, PIECE_FRAMED, PIECE_FRAMES, PIECE_STATE_AT, pieceWord, plainYaw, writePiece } from "../piece-fit.ts";
 import { PieceLooks, followStages, stageUploads } from "../piece-state.ts";
+import { TekWallView } from "../tek-wall-view.ts";
 import { Trims, borderBit, type TrimLayout } from "../trims.ts";
 import { DOOR_FRONTIER, DOOR_OPEN, RoomFinder, Rooms } from "../rooms.ts";
 import type { RenderWorld } from "../scene.ts";
@@ -231,6 +232,7 @@ export interface NearLooks {
 }
 
 export class NearStore implements Pass {
+  readonly tekWalls: TekWallView;
   readonly hiddenNodes = new Set<number>();
   private readonly hiddenChanged = new Set<number>();
   /** How many crowns stand in the way of a cell of trees (cover.ts), made from the near node field on tiers that ask. */
@@ -380,6 +382,8 @@ export class NearStore implements Pass {
     for (let m = 0; m < table.count; m++) if (this.twinOf[m]! >= 0) (this.twinsOf.get(this.twinOf[m]!) ?? this.twinsOf.set(this.twinOf[m]!, []).get(this.twinOf[m]!)!).push(m);
     this.usedMark = new Uint8Array(table.count);
     this.pieces = new PieceLooks(reg, this.meshOfKind, this.regionsOfKind, table.count, looks.missing);
+    this.tekWalls = new TekWallView(world.structs, reg.index, id => table.find(id));
+    this.tekWalls.markMeshes(this.pieces.flag, DRAW_PIECE);
     this.plates = new BasePlates(reg);
     this.platable = (kind) => this.meshOfKind[kind] !== looks.missing && this.meshOfKind[kind] !== HIDDEN && this.assets.known(this.meshOfKind[kind]!);
     this.trims = new Trims(reg, (id) => table.find(id), this.pieces);
@@ -416,6 +420,7 @@ export class NearStore implements Pass {
   /** The structures, then the nodes, and what the card holds of both. */
   draw(f: Frame): void {
     this.now = f.now;
+    this.tekWalls.update(f.now, f.tick);
     this.view = f.view;
     this.handScale = f.handScale;
     const world = this.world;
@@ -524,14 +529,16 @@ export class NearStore implements Pass {
       const flood = batch !== undefined && ((batch.differ > 0 && this.now - batch.since >= SETTLE) || (batch.holed >= 0 && (this.now - batch.holedLast >= SETTLE || this.now - batch.holed >= FLOOD_MOST)));
       // A chunk whose trims turn on the pieces of the chunks round it is laid out again when one of those gains or loses a piece.
       const met = batch !== undefined && batch.borders !== 0 && this.bordering(store, batch.bordered) !== batch.borderSum;
-      if (!batch || learnt || met || batch.mesh !== mesh || (batch.unbent && statics?.squareOf(chunk)?.map.bends.has(chunk)) || (batch.shape !== t.shape && !(turned && this.reform(batch, t, chunk, meshOf, colorOf) && (!own || !batch.mesh || this.keeps(batch, t, meshOf, own.drawn, x0, z0)))) || flood) {
+      if (!batch || (!sizeOf && this.tekWalls.layouts.has(chunk)) || learnt || met || batch.mesh !== mesh || (batch.unbent && statics?.squareOf(chunk)?.map.bends.has(chunk)) || (batch.shape !== t.shape && !(turned && this.reform(batch, t, chunk, meshOf, colorOf) && (!own || !batch.mesh || this.keeps(batch, t, meshOf, own.drawn, x0, z0)))) || flood) {
         batch = this.rebuild(store, chunk, id, batch, meshOf, colorOf, sizeOf, mesh, own?.drawn ?? null);
+        if (!sizeOf) this.tekWalls.layouts.delete(chunk);
         laid += t.high;
       }
       // A cell of its mesh opened since draws what the mesh kept there, which may reach past what it showed.
       if (batch.mesh && batch.mesh.opens !== batch.opens) this.meshIn(batch, x0, z0);
       // A piece whose health crossed a stage is drawn at it: its instance's one byte, and no layout.
       if (batch.frames && batch.seen !== t.version) followStages(batch, t, this.pieces, meshOf);
+      if (!sizeOf) this.tekWalls.follow(batch, chunk);
       const ax = batch.minX - cam.x;
       const ay = batch.minY - cam.y;
       const az = batch.minZ - cam.z;
@@ -563,12 +570,13 @@ export class NearStore implements Pass {
       } else if (batch.dirty.length > 0) this.assets.residency.spend(stageUploads(batch, id, p.uploads));
       this.zones(cam, batch, seen, casts);
       // From outside air a chunk's interior is neither seen nor seen to cast: only its shell is drawn and cast.
-      const all = batch.blocks === batch.cells || batch.exposing > 0 || batch.holed >= 0 || batch.rooms!.near(cam.x, cam.y, cam.z, reach);
+      const phasing = !sizeOf && this.tekWalls.exposing.has(chunk);
+      const all = batch.blocks === batch.cells || phasing || batch.exposing > 0 || batch.holed >= 0 || batch.rooms!.near(cam.x, cam.y, cam.z, reach);
       const ox = x0 - cam.x, oy = -cam.y, oz = z0 - cam.z;
       const left = p.skipped + p.dropped;
       if (seen) this.ranges(cam, batch, id, dist, ox, oy, oz, cam.passes(ax, ay, az, bx, by, bz), all);
       // Its plates hide only while every piece of it in view is drawn: a level not yet on the card leaves a wall out.
-      if (seen && this.plating && batch.plates.length > 0 && p.skipped + p.dropped === left) this.plated.push(id);
+      if (seen && !phasing && this.plating && batch.plates.length > 0 && p.skipped + p.dropped === left) this.plated.push(id);
       // A chunk's mesh is drawn once the frame knows what hides what, by its cells in view that are not hidden.
       if (seen && batch.mesh && this.meshCells(cam, batch, ox, oy, oz) > 0) {
         this.meshDrawn.add(id);
@@ -1373,6 +1381,7 @@ export class NearStore implements Pass {
     let bent = 0;
     // The yaws its built pieces stand at, less their quarter turns, and how many at each: the most used get the table's slots.
     const turns = this.turns, turnCounts = this.turnCounts, flag = this.pieces.flag;
+    const tek = !sizeOf && this.tekWalls.cells.has(chunk) ? this.tekWalls : null;
     turns.length = turnCounts.length = 0;
     let turnAt = -1;
     // A trim is drawn with its piece's cell, and not at all where its piece has no instance.
@@ -1380,15 +1389,16 @@ export class NearStore implements Pass {
     if (trimming) blockAt.fill(UNDRAWN, 0, t.high);
     for (let s = 0; s < t.high; s++) {
       const kind = t.kind[s]!;
-      if (kind === 0 || meshOf[kind] === HIDDEN || (skip && skip[s] === 1) || (sizeOf && this.hiddenNodes.has(chunk * 65536 + s))) continue;
+      const choice = tek ? tek.mesh(chunk, s, meshOf[kind]!) : meshOf[kind]!;
+      if (kind === 0 || choice === HIDDEN || (skip && skip[s] === 1) || (sizeOf && this.hiddenNodes.has(chunk * 65536 + s))) continue;
       if (!sizeOf) bent += this.bentKind[kind]!;
       const i = Math.min(side - 1, Math.max(0, Math.floor(((t.x[s]! - x0) * side) / CHUNK_SIZE)));
       const j = Math.min(side - 1, Math.max(0, Math.floor(((t.z[s]! - z0) * side) / CHUNK_SIZE)));
       const block = (inside && shell![s] === 0 ? cells : 0) + j * side + (j & 1 ? side - 1 - i : i);
       blockAt[s] = block;
-      this.use(meshOf[kind]!);
-      counts[meshOf[kind]! * blocks + block]!++;
-      if (sizeOf || flag[meshOf[kind]!] === 0) continue;
+      this.use(choice);
+      counts[choice * blocks + block]!++;
+      if (sizeOf || flag[choice] === 0) continue;
       const turn = t.yaw[s]! & TURN;
       if (turnAt < 0 || turns[turnAt] !== turn) {
         turnAt = turns.indexOf(turn);
@@ -1534,8 +1544,9 @@ export class NearStore implements Pass {
     const box = b.cellBox, zone = b.zone;
     for (let s = 0; s < t.high; s++) {
       const kind = t.kind[s]!;
-      if (kind === 0 || meshOf[kind] === HIDDEN || (skip && skip[s] === 1) || (sizeOf && this.hiddenNodes.has(chunk * 65536 + s))) continue;
-      const mesh = meshOf[kind]!;
+      const choice = tek ? tek.mesh(chunk, s, meshOf[kind]!) : meshOf[kind]!;
+      if (kind === 0 || choice === HIDDEN || (skip && skip[s] === 1) || (sizeOf && this.hiddenNodes.has(chunk * 65536 + s))) continue;
+      const mesh = choice;
       const x = t.x[s]!;
       const y = t.y[s]!;
       const z = t.z[s]!;
@@ -1547,6 +1558,7 @@ export class NearStore implements Pass {
       if (sizeOf) w.size(i, sizeOf[kind]!);
       else if (frames && flag[mesh] !== 0) this.setPiece(data, frames, i, t, s, kind, dye, trims ? trims.yields[s]! : 0);
       else w.bytes.set(this.regionsOfKind.subarray(dye * 5, dye * 5 + 5), i * INSTANCE_BYTES + 15);
+      tek?.write(data, i, chunk, s);
       slots[i] = s;
       kinds[i] = kind;
       b.at[s] = i;
@@ -1629,7 +1641,8 @@ export class NearStore implements Pass {
       w.set(i, x - x0, y, z - z0, 0, colorOf[dye]!);
       data[i * INSTANCE_BYTES + 15] = regions[dye * 5]!;
       data[i * INSTANCE_BYTES + 16] = regions[dye * 5 + 1]!;
-      writePiece(data, i, at < 0 ? plainYaw(yaw, tw) : pieceWord(at, yaw, tw), this.pieces.made[dye]!, (at < 0 ? 0 : PIECE_FRAMED) | this.pieces.stage(t, s) | trims.ends[k]!, trims.cut[k]!);
+      writePiece(data, i, at < 0 ? plainYaw(yaw, tw) : pieceWord(at, yaw, tw), this.trims.finish[mesh]!, (at < 0 ? 0 : PIECE_FRAMED) | this.pieces.stage(t, s) | trims.ends[k]!, trims.cut[k]!);
+      this.tekWalls.write(data, i, chunk, s, true);
       b.slots[i] = s;
       b.kinds[i] = kind;
       b.trimmed![i] = 1;

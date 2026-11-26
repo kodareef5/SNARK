@@ -15,7 +15,9 @@
 #
 # Each world listens on this machine only, from port 8798 up in the order given, keeps its save in var/cluster/<map>.db
 # and reads var/maps/<map>.snmap. Build first: bun run build, bun tools/mapworld/build.ts <map> for each, bun run wiki.
-# The one line of var/admin-password.txt is the password enablecheats asks for; without the file cheats are off. That is
+# The one line of var/admin-password.txt is each map's admin password, which enablecheats asks for; a map with a
+# var/admin-password.<map>.txt has that one in its place. The one line of var/cluster-password.txt is the cluster's: every
+# map takes it, and it stands above a map's own. With no such file cheats are off. That is
 # config/official's way: a settings folder that leaves creative mode on, as config/dev does, gives everyone cheats as they join.
 # With DEV=1 every world is a development server (--dev): enablecheats asks no password, so anyone who has the address
 # can cheat, and a world takes a page only at this machine's own names or at the tunnel's, which it is told.
@@ -32,7 +34,8 @@ maps=${MAPS:-var/maps}
 logs=var/logs/$id
 mkdir -p var/cluster "$logs"
 [ -f var/admin-password.txt ] && export SNARK_ADMIN_PASSWORD="$(head -1 var/admin-password.txt)"
-[ -f var/admin-password.txt ] || [ -n "${DEV:-}" ] || echo "no var/admin-password.txt: enablecheats is refused on every world"
+[ -f var/cluster-password.txt ] && export SNARK_CLUSTER_PASSWORD="$(head -1 var/cluster-password.txt)"
+[ -f var/admin-password.txt ] || [ -f var/cluster-password.txt ] || [ -n "${DEV:-}" ] || echo "no var/admin-password.txt and no var/cluster-password.txt: enablecheats is refused on a world with no password file of its own"
 worlds=()
 others=()
 address=
@@ -49,13 +52,15 @@ elif [ -n "${TUNNEL:-}" ]; then
   address=$TUNNEL
 fi
 dev=()
-[ -n "${DEV:-}" ] && dev=(--dev) && unset SNARK_ADMIN_PASSWORD
+[ -n "${DEV:-}" ] && dev=(--dev) && unset SNARK_ADMIN_PASSWORD SNARK_CLUSTER_PASSWORD
 port=8798
 for map in "$@"; do
   [ -f "$maps/$map.snmap" ] || { echo "$map left out: $maps/$map.snmap does not exist (bun tools/mapworld/build.ts $map)"; continue; }
   name=$(printf '%s\n' "$map" | tr - ' ' | awk '{ for (i = 1; i <= NF; i++) $i = toupper(substr($i, 1, 1)) substr($i, 2) } 1')
+  own=${SNARK_ADMIN_PASSWORD:-}
+  [ -z "${DEV:-}" ] && [ -f "var/admin-password.$map.txt" ] && own=$(head -1 "var/admin-password.$map.txt")
   # A development world is told the tunnel's host, since it takes a page at no other name but this machine's.
-  bun server/main.ts --map "$maps/$map.snmap" --db "var/cluster/$map.db" --host 127.0.0.1 --port $port --public-url "${DEV:+$address}/$map" "-clusterid=$id" "?SessionName=$name" --config "${CONFIG:-config/official}" ${dev[@]+"${dev[@]}"} >"$logs/$map.log" 2>&1 &
+  SNARK_ADMIN_PASSWORD=$own bun server/main.ts --map "$maps/$map.snmap" --db "var/cluster/$map.db" --host 127.0.0.1 --port $port --public-url "${DEV:+$address}/$map" "-clusterid=$id" "?SessionName=$name" --config "${CONFIG:-config/official}" ${dev[@]+"${dev[@]}"} >"$logs/$map.log" 2>&1 &
   worlds+=($!)
   echo "$name at /$map/ on port $port, log $logs/$map.log"
   port=$((port + 1))

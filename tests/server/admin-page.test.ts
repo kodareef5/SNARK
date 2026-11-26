@@ -139,7 +139,7 @@ test("a base's cells are squares on the world where its chunk is, in its pieces'
 
 /** A survivor as the server lists one, with what a test does not care about filled in. */
 function row(name: string, more: Partial<SurvivorRow> = {}): SurvivorRow {
-  return { pid: name.length * 1000 + name.charCodeAt(0), name, tribe: "", team: 0, level: 1, online: false, dead: false, out: false, x: 0, z: 0, riding: "", lastLogin: null, lastSeen: null, playMs: null, deaths: [], ...more };
+  return { pid: name.length * 1000 + name.charCodeAt(0), id: "", name, tribe: "", team: 0, level: 1, online: false, dead: false, out: false, x: 0, z: 0, riding: "", lastLogin: null, lastSeen: null, playMs: null, deaths: [], ...more };
 }
 
 test("the live frame has the online drawn over the offline, and a tap finds the dot under it", () => {

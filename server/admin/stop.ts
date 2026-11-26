@@ -5,8 +5,8 @@
 //
 // Behind the admin pages' gate, which the caller has passed. The answer says the seconds left, -1 for no stop.
 
-import { OP_ADMIN } from "../console.ts";
 import type { Host } from "../host.ts";
+import { actorOf, stillHolds } from "./gate.ts";
 import { body, refusedWrite } from "./supply-routes.ts";
 
 const JSON_HEADERS = { "content-type": "application/json", "cache-control": "no-store" };
@@ -16,9 +16,12 @@ export function stopAnswer(host: Host, req: Request, at: string): Response | Pro
   const json = (ok: boolean, why: string): Response => new Response(JSON.stringify({ ok, why, left: host.stopLeft }), { status: ok ? 200 : 400, headers: JSON_HEADERS });
   const no = refusedWrite(req);
   if (no) return no;
+  const by = actorOf(req);
   return body(req, 1024).then((b) => {
     if (b === null) return json(false, 'A stop is {"seconds":60} or {"cancel":true}.');
-    const say = (line: string): void => void host.persistence?.journal(OP_ADMIN, new TextEncoder().encode(`(admin page)\t${line}`));
+    const lost = stillHolds(req, host);
+    if (lost) return lost;
+    const say = (line: string): void => void host.acts.write(by, line);
     if (b.cancel === true) {
       const was = host.stopCancel();
       if (was) say("doexit cancel");

@@ -4,7 +4,7 @@
 // it up front. Loading it hands the app what it makes and drives the sounds with.
 
 import { cueKey } from "../../shared/sound/cues.ts";
-import { App } from "./app.ts";
+import { GameApp } from "./game-app.ts";
 import { soundCommand } from "./sound/command.ts";
 import { Sounds } from "./sound/sounds.ts";
 import { hearSession, soundView } from "./sound/view.ts";
@@ -12,4 +12,4 @@ import { hearSession, soundView } from "./sound/view.ts";
 const CODE = { Sounds, hearSession, soundView, soundCommand, cueKey };
 export type SoundCode = typeof CODE;
 
-App.late = CODE;
+GameApp.late = CODE;

@@ -6,7 +6,8 @@ import { CMD_CRAFT, CMD_LEARN, CMD_SPEND } from "../../../shared/net/protocol.ts
 import { STAT_NAMES } from "../../../shared/sim/genome.ts";
 import { levelFraction, levelTable, xpText } from "../hud/level.ts";
 import type { ClientSession } from "../session.ts";
-import { itemLabel } from "./inventory.ts";
+import { TAB_ENGRAMS, TAB_STATS, characterDock } from "./bag-dock.ts";
+import { itemLabel } from "./item-words.ts";
 import { K_BAR, K_BUTTON, K_PANEL, fitText, lineHeight, type UiFrame } from "./nodes.ts";
 import { CHARACTER_PARTS } from "./character-parts.ts";
 import { PART_KEYS, PartKeys, partOf, type Screen, type ScreenCtx, type ScreenPart } from "./screen.ts";
@@ -37,9 +38,7 @@ export const KEY_CHAR_ENGRAM_PICTURE = KEY_CHAR_RECIPE_PICTURE + LIST_KEYS;
 /** The keys its parts are given: PART_KEYS for each, from here (screen.ts PartKeys). */
 export const KEY_CHAR_PARTS = 900000;
 const MAX_PARTS = 64;
-export const TAB_STATS = 0;
-export const TAB_ENGRAMS = 1;
-export const TAB_MAKE = 2;
+export { TAB_STATS, TAB_ENGRAMS, TAB_MAKE } from "./bag-dock.ts";
 const TABS: readonly string[] = ["Stats", "Engrams", "Make"];
 const ROW = 22;
 const PAD = 12;
@@ -72,6 +71,7 @@ export class CharacterScreen implements Screen {
   readonly layer = "modal";
   readonly group = "bag";
   readonly hotkey = "KeyP";
+  readonly dock = characterDock;
   readonly bands = [{ from: KEY_CHAR_PANEL, count: KEY_CHAR_XP + 1 - KEY_CHAR_PANEL }, { from: KEY_CHAR_ENGRAM, count: 4 * LIST_KEYS }, { from: KEY_CHAR_PARTS, count: MAX_PARTS * PART_KEYS }];
   /** Its tabs after its own, from other files (character-parts.ts). */
   readonly parts: ScreenPart[] = [...CHARACTER_PARTS];
@@ -101,7 +101,7 @@ export class CharacterScreen implements Screen {
   pointer(kind: number, key: number, x: number, y: number, button: number, c: ScreenCtx): boolean {
     const part = partOf(key, KEY_CHAR_PARTS, this.parts.length);
     if (part && part.local < 0) {
-      if (kind === 0) this.choose(TABS.length + part.index);
+      if (kind === 0) this.selectTab(TABS.length + part.index);
       return true;
     }
     if (part) return this.shown(part.index)?.pointer?.(kind, part.local, x, y, button, c) ?? true;
@@ -123,7 +123,7 @@ export class CharacterScreen implements Screen {
     return this.tab === TABS.length + index ? this.parts[index] ?? null : null;
   }
 
-  private choose(tab: number): void {
+  selectTab(tab: number): void {
     this.tab = tab;
     this.page = 0;
   }
@@ -227,7 +227,7 @@ export class CharacterScreen implements Screen {
   /** Returns true if the key was one of this screen's buttons. */
   click(key: number, session: ClientSession, reg: Registry): boolean {
     if (key >= KEY_CHAR_TAB && key < KEY_CHAR_TAB + TABS.length) {
-      this.choose(key - KEY_CHAR_TAB);
+      this.selectTab(key - KEY_CHAR_TAB);
       return true;
     }
     if (key === KEY_CHAR_PAGE || key === KEY_CHAR_PAGE + 1) {

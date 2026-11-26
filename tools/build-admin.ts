@@ -11,13 +11,13 @@ export async function buildAdmin(dist: string): Promise<void> {
     mkdirSync(join(dist, "title"), { recursive: true });
     copyFileSync(emblem, join(dist, "title/snark-emblem.webp"));
   }
-  const entries = ["shell", "cluster", "admin", "settings", "cast", "loadouts", "first-frame", "board", "screens", "screens-stage"];
+  const entries = ["shell", "cluster", "admin", "settings", "cast", "loadouts", "events", "first-frame", "board", "screens", "screens-stage", "permissions", "acts"];
   const result = await Bun.build({
     entrypoints: [...entries.map(name => join(client, "admin", name + ".ts")), join(client, "drops/drops.ts")],
     outdir: out, naming: "[name].[ext]", target: "browser", minify: true, sourcemap: "linked",
   });
   if (!result.success) throw Error(result.logs.map(String).join("\n"));
-  for (const page of ["cluster", "cast", "loadouts", "settings", "first-frame", "screens"])
+  for (const page of ["cluster", "cast", "loadouts", "events", "settings", "first-frame", "screens", "permissions", "acts"])
     copyFileSync(join(client, "admin", page + ".html"), join(out, page + ".html"));
   for (const css of ["admin.css", "investigate.css", "overview.css"])
     copyFileSync(join(client, "admin", css), join(out, css));

@@ -2,7 +2,7 @@
 // persistent id and exist whether or not the entity is in the simulation.
 
 import type { BuffOn } from "./buffs.ts";
-import { makePid } from "../shared/ids.ts";
+import { ID_COUNT_RANGE, MAX_ID_WORLD, makePid } from "../shared/ids.ts";
 import type { Genome } from "../shared/sim/genome.ts";
 import type { Fire } from "../shared/sim/station.ts";
 import type { Inventory } from "../shared/sim/items.ts";
@@ -81,6 +81,8 @@ export class EntityRecord {
   genome: Genome | null = null;
   /** Hash of the device key that owns this survivor. Null until one claims it. */
   keyHash: Uint8Array | null = null;
+  /** A survivor's ID as its 32-bit number (shared/ids.ts), or 0 for none. Only a player's survivor has one. */
+  sid = 0;
   /** A survivor's look (shared/anim/look.ts). */
   look: Uint8Array | null = null;
   /** Hotbar slot in hand, 0 to 9, or -1 for none. */
@@ -225,6 +227,8 @@ export class Records {
   nextSeq = 1;
   /** Teams made, saved with the record counter. */
   nextTeam = 1;
+  /** Survivor IDs made, saved with the record counter. */
+  nextSurvivor = 1;
 
   constructor(worldId: number) {
     this.worldId = worldId;
@@ -234,6 +238,12 @@ export class Records {
   newTeam(): number {
     if (this.nextTeam >= TEAM_RANGE || this.worldId > MAX_TEAM_WORLD) throw new Error(`world ${this.worldId} has made all the teams it can`);
     return this.worldId * TEAM_RANGE + this.nextTeam++;
+  }
+
+  /** A survivor ID's number (EntityRecord.sid). Never repeats, here or on another world of a cluster. */
+  newSurvivor(): number {
+    if (this.nextSurvivor >= ID_COUNT_RANGE || this.worldId > MAX_ID_WORLD) throw new Error(`world ${this.worldId} has made all the survivor IDs it can`);
+    return this.worldId * ID_COUNT_RANGE + this.nextSurvivor++;
   }
 
   create(kind: number, name = ""): EntityRecord {

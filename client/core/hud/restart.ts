@@ -4,7 +4,7 @@
 import { clockText } from "../waiting.ts";
 import { K_PANEL } from "../ui/nodes.ts";
 import { S_DARK, S_WARNING } from "../ui/style.ts";
-import type { HudWidget } from "./widget.ts";
+import { band, type HudWidget } from "./widget.ts";
 
 export const KEY_RESTART = 3650;
 
@@ -20,6 +20,7 @@ export function restartLine(at: number, now: number): string {
 
 export const RESTART: HudWidget<RestartModel> = {
   name: "restart",
+  bands: [band(KEY_RESTART, 2)],
   make: () => ({ restart: "" }),
   fill(m, c) {
     m.restart = restartLine(c.session.restartAt, Date.now());

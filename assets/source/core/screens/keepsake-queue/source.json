@@ -1,0 +1,15 @@
+{
+  "kind": "image",
+  "title": "The Keepsake Queue",
+  "year": 2026,
+  "from": {
+    "by": "SNARK",
+    "sha256": "d3d84c7e71b956c5e9a33d066e2dec3ca053cd0869009a8b8694db594848308e"
+  },
+  "rights": "Made for SNARK, 2026",
+  "licence": "Made for the game and given to it under CC0 1.0.",
+  "audio": false,
+  "types": [
+    "laptop"
+  ]
+}

@@ -3,7 +3,7 @@
 
 import { K_PANEL } from "../ui/nodes.ts";
 import { S_BLOOD, S_DARK } from "../ui/style.ts";
-import type { HudWidget } from "./widget.ts";
+import { band, type HudWidget } from "./widget.ts";
 
 export const KEY_FALLEN = 3600;
 /** Bands along each side; deeper ones overlap the outer ones. */
@@ -18,6 +18,7 @@ export interface FallenModel {
 
 export const FALLEN: HudWidget<FallenModel> = {
   name: "fallen",
+  bands: [band(KEY_FALLEN, 21)],
   make: () => ({ fallenRed: 0, fallenReach: 0, fallenBlack: 0 }),
   fill(m, c) {
     const s = c.frame?.fallen;

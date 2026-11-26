@@ -1,0 +1,15 @@
+{
+  "kind": "image",
+  "title": "Cinder Cradle — Two champions. One level two.",
+  "year": 2026,
+  "from": {
+    "by": "SNARK",
+    "sha256": "a9871402f8786756ef5cc5ae3acf9c6ae6f21177fab826512dd06adee3698159"
+  },
+  "rights": "Made for SNARK, 2026",
+  "licence": "Made for the game and given to it under CC0 1.0.",
+  "audio": false,
+  "types": [
+    "billboard"
+  ]
+}

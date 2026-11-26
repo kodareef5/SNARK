@@ -19,6 +19,7 @@ import { kindWords, type Buildings } from "../../shared/world/buildings.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { TRAVEL_TERMINAL } from "../../shared/world/obelisks.ts";
 import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayHit } from "../../shared/world/ray.ts";
+import { OpenWallPick } from "./tek-wall-pick.ts";
 import { ACT_REACH } from "../../shared/world/upkeep.ts";
 import { loosePrompt } from "./balls.ts";
 import type { Builder } from "./build.ts";
@@ -28,7 +29,7 @@ import type { AppFrame, FramePart } from "./frame.ts";
 import { BAG } from "./render/dropped.ts";
 import { SeatNotice, type Ridden } from "./seat-notice.ts";
 import type { ClientSession, RemoteSample } from "./session.ts";
-import { itemLabel, waitWords } from "./ui/inventory.ts";
+import { itemLabel, waitWords } from "./ui/item-words.ts";
 import { STABILITY } from "../../shared/world/support.ts";
 import { structName, type StructMenu } from "./ui/structure.ts";
 import type { EmoteMenu } from "./ui/emotes.ts";
@@ -112,9 +113,11 @@ export class Prompts implements FramePart {
   /** Build mode, once the editor's code has come (editor-load.ts). */
   builder: Builder | null;
   private readonly placement: VehiclePlacement;
+  private readonly openWalls: OpenWallPick;
 
   /** `builder` and `placement` have the prompt while a piece or a vehicle is in hand. */
   constructor(reg: Registry, builder: Builder | null, placement: VehiclePlacement) {
+    this.openWalls = new OpenWallPick(reg);
     this.bagKind = reg.index.get(BAG) ?? -1;
     this.builder = builder;
     this.placement = placement;
@@ -220,8 +223,15 @@ export class Prompts implements FramePart {
     this.aimed = -1;
     this.terminalAimed = -1;
     const d = this.look(f.controls);
-    if (castWorld(world, s.own.x, s.own.y + eye, s.own.z, d[0]!, d[1]!, d[2]!, ACT_REACH) !== HIT_STRUCTURE) return "";
-    const ref = rayHit.ref;
+    const { x, y, z } = s.own;
+    const hit = castWorld(world, x, y + eye, z, d[0]!, d[1]!, d[2]!, ACT_REACH);
+    let ref = hit === HIT_STRUCTURE ? rayHit.ref : -1;
+    const solid = ref >= 0 ? world.structs.chunks[ref >>> 16] : null;
+    if (ref < 0 || (solid?.owner[ref & 65535] === 0 && !reg.motion[solid.kind[ref & 65535]!] && solid.kind[ref & 65535] !== reg.index.get(TRAVEL_TERMINAL))) {
+      const panel = this.openWalls.at(world.structs, s.tribe.team, x, y + eye, z, d, hit === HIT_NONE ? ACT_REACH : rayHit.t);
+      if (panel >= 0) ref = panel;
+    }
+    if (ref < 0) return "";
     const t = world.structs.chunks[Math.floor(ref / 65536)]!;
     const kind = t.kind[ref & 0xffff]!;
     const motion = reg.motion[kind];

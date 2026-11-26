@@ -32,7 +32,7 @@ To add the wiki, install Chrome or Chromium with WebGL 2 and put `cwebp` on your
 
 ## Packing
 
-1. `distribution/source-files.txt` is the inventory of binary inputs. With those files installed, `python3 tools/release/pack.py art OUTPUT` writes one archive to an asset and pins them in `distribution/release.json`. An asset that did not change packs to the same file as before. With `--only PREFIX` it packs only the assets named so and leaves every other pin alone, so new art needs only its own files installed: `--only core-video-` packs the default clips (`assets/source/core/video/README.md`).
+1. `distribution/source-files.txt` is the inventory of binary inputs. With those files installed, `python3 tools/release/pack.py art OUTPUT` writes one archive to an asset and pins them in `distribution/release.json`. An asset that did not change packs to the same file as before. With `--only PREFIX` it packs only the assets named so and leaves every other pin alone, so new art needs only its own files installed: `--only core-screens-` packs the default screen media (`assets/source/core/screens/README.md`).
 2. On the machine that built the cities, `bun tools/maps/kit.ts pack all` and then `python3 tools/release/pack.py kits OUTPUT` do the same for the kits.
 3. Upload the files the releases do not have yet with `gh release upload art OUTPUT/*` and `gh release upload map-kits OUTPUT/*`, then commit the manifest.
 

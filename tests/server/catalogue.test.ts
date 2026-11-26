@@ -1,4 +1,5 @@
 import { FIRST_FORMS, FORMS } from "../../content/building/forms.ts";
+import { BUILDING_CONTENT } from "../../content/building.ts";
 import { FREIGHT_ORDER } from "../../content/vehicles/air-freight.ts";
 import { TANKER_WRECKS } from "../../content/vehicles/tanker-wrecks.ts";
 // The class table: sound in itself, and true of the content that exists.
@@ -17,6 +18,7 @@ import { MARINE_FLEET } from "../../content/vehicles/marine-fleet.ts";
 import { HARBOUR_WRECKS } from "../../content/vehicles/harbour-wrecks.ts";
 import { SKATEBOARDS } from "../../content/vehicles/skateboard.ts";
 import { STREET } from "../../content/street.ts";
+import { SCREEN_PROPS } from "../../content/screens.ts";
 import { DOCKS } from "../../content/docks.ts";
 import { ROAD_FLEET } from "../../content/vehicles/road-fleet.ts";
 import { WRECKS } from "../../content/vehicles/wrecks.ts";
@@ -41,7 +43,8 @@ import { artTest } from "../fixtures/needs-art.ts";
 // What the creature files bring is counted apart, so a new creature moves no number here, and so is what the files of
 // the creature features and of the item and weapons programs (content/items) bring, so that those built side by side do
 // not each move the same numbers.
-const FEATURES_CONTENT = [...KNOCKOUT, ...CORPSES, ...EGGS, ...FOODS, ...ITEMS, ...SKATE_PARK];
+const tekBuildings = BUILDING_CONTENT.filter((d) => d.id.endsWith("_tek") || d.id === "core:shape_phase_wall_open");
+const FEATURES_CONTENT = [...KNOCKOUT, ...CORPSES, ...EGGS, ...FOODS, ...ITEMS, ...SKATE_PARK, ...tekBuildings];
 const ofCreatures = new Set([...CREATURES, ...FEATURES_CONTENT].map((d) => `${d.type} ${d.id}`));
 // The building pieces past the first nine forms, with their items and engrams, are held by the building tests
 // (tests/build), so a form that goes live moves no number here.
@@ -64,11 +67,13 @@ test("the core pack's definitions fall into the classes, each passing its row", 
   // The stations wave moved cementing paste and its engram to content/items/resources.ts, and took the ingot's engram out
   // (planning/reference/stations-plan.md, S0): a resource and two engrams fewer here. The city's broken forms
   // (content/breaks) added a static and a shape each, and the city its eight materials. Air support added a freight
-  // order, the resource a call spends, and its engram.
+  // order, the resource a call spends, and its engram. Map events added two crates: any kind's, and the UFO's core.
   expect(counts).toEqual({
     "item/resource": 11,
     "item/consumable": 4,
-    "item/weapon": 3,
+    // And the jet's cannon and missile rack, fitted and never carried, and their rounds (content/vehicles/jet.ts).
+    "item/weapon": 5,
+    "item/ammo": 2,
     "item/armor": 25,
     "item/structure": 29,
     "item/vehicle": 3,
@@ -79,8 +84,8 @@ test("the core pack's definitions fall into the classes, each passing its row", 
     "species/survivor": 1,
     "species/target": 1,
     // The car, and the civilian who may drive one (content/vehicles, content/civilians.ts). The 10 past the fleets are the
-    // three helicopters, the three boats, the skateboard, and air support's carrier, trailer and drone.
-    "species/vehicle": ROAD_FLEET.length + MARINE_FLEET.length + 10,
+    // three helicopters, the three boats, the skateboard, air support's carrier, trailer and drone, and the jet.
+    "species/vehicle": ROAD_FLEET.length + MARINE_FLEET.length + 11,
     "species/civilian": 1,
     // And three road surfaces to drive on, on a paving shape of their own.
     "structure/piece": 36,
@@ -90,20 +95,23 @@ test("the core pack's definitions fall into the classes, each passing its row", 
     // And the street wrecks, a shape each look and a static each of its kinds (content/vehicles/wrecks.ts), and the
     // harbours', a shape each vessel and a static each of its hulk and forms (content/vehicles/harbour-wrecks.ts), and
     // the street furniture, a shape and a static each piece (content/street.ts), and a marina's dock kit and moored
-    // hulls, a shape each module and the launch's hull and a static each module and each hull's paint (content/docks.ts).
-    "structure/static": 9 + RUIN_BLOCKS.filter((d) => d.type === "structure").length + TERMINALS.filter((d) => d.type === "structure").length + ORBS.filter((d) => d.type === "structure").length + SLOPE_SHAPES.length + LETTER_BLOCKS.length / 2 + WRECKS.filter((d) => d.type === "structure").length + TANKER_WRECKS.filter((d) => d.type === "structure").length + HARBOUR_WRECKS.filter((d) => d.type === "structure").length + STREET.filter((d) => d.type === "structure").length + DOCKS.filter((d) => d.type === "structure").length + BREAK_BLOCKS.filter((d) => d.type === "structure").length,
+    // hulls, a shape each module and the launch's hull and a static each module and each hull's paint (content/docks.ts),
+    // and the TVs and laptops, whole and broken (content/screens.ts).
+    "structure/static": 9 + RUIN_BLOCKS.filter((d) => d.type === "structure").length + TERMINALS.filter((d) => d.type === "structure").length + ORBS.filter((d) => d.type === "structure").length + SLOPE_SHAPES.length + LETTER_BLOCKS.length / 2 + WRECKS.filter((d) => d.type === "structure").length + TANKER_WRECKS.filter((d) => d.type === "structure").length + HARBOUR_WRECKS.filter((d) => d.type === "structure").length + STREET.filter((d) => d.type === "structure").length + SCREEN_PROPS.length + DOCKS.filter((d) => d.type === "structure").length + BREAK_BLOCKS.filter((d) => d.type === "structure").length,
     shape: 18 + TERMINALS.filter((d) => d.type === "shape").length + ORBS.filter((d) => d.type === "shape").length + RUIN_BLOCKS.filter((d) => d.type === "shape").length + SLOPE_SHAPES.length + LETTER_BLOCKS.length / 2 + WRECKS.filter((d) => d.type === "shape").length + TANKER_WRECKS.filter((d) => d.type === "shape").length + HARBOUR_WRECKS.filter((d) => d.type === "shape").length + STREET.filter((d) => d.type === "shape").length + DOCKS.filter((d) => d.type === "shape").length + BREAK_BLOCKS.filter((d) => d.type === "shape").length,
     material: 4 + CITY_MATERIALS.length,
     node: 14,
     "prop/container": 2,
-    "prop/crate": 1,
-    "prop/projectile": 2,
+    "prop/crate": 3,
+    // And the jet's missile in flight.
+    "prop/projectile": 3,
     buff: 7,
     spawns: 4,
     map: 5, // miami-coast became Miami (D810)
   });
-  // 253 with the supply drop's capsule (content/core.ts), the template hammer and its engram, and air support's three vehicles.
-  expect(rest.length).toBe(253 + 2 + 3 + FREIGHT_ORDER.length + SKATEBOARDS.length + ROAD_FLEET.length + MARINE_FLEET.length + RUIN_BLOCKS.length + TERMINALS.length + ORBS.length + SLOPE_BLOCKS.length + LETTER_BLOCKS.length + WRECKS.length + TANKER_WRECKS.length + HARBOUR_WRECKS.length + STREET.length + DOCKS.length + BREAK_BLOCKS.length + CITY_MATERIALS.length);
+  // 253 with the supply drop's capsule (content/core.ts), the template hammer and its engram, air support's three vehicles,
+  // the map events' two crates, and the jet's six: its species, two weapons, two rounds and its missile in flight.
+  expect(rest.length).toBe(253 + 2 + 3 + 2 + 6 + FREIGHT_ORDER.length + SKATEBOARDS.length + ROAD_FLEET.length + MARINE_FLEET.length + RUIN_BLOCKS.length + TERMINALS.length + ORBS.length + SLOPE_BLOCKS.length + LETTER_BLOCKS.length + WRECKS.length + TANKER_WRECKS.length + HARBOUR_WRECKS.length + STREET.length + SCREEN_PROPS.length + DOCKS.length + BREAK_BLOCKS.length + CITY_MATERIALS.length);
   // Each creature file has one species, and what else it has is the egg it lays, its saddle and how the saddle is made.
   expect(CORE_CONTENT.length).toBe(rest.length + later.length + CREATURES.length + FEATURES_CONTENT.length);
   const brought: Record<string, number> = {};

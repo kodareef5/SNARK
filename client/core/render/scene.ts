@@ -64,6 +64,7 @@ import { NearCity } from "./nearcity.ts";
 import { MADE_AT, OPTIC_AT, OPTIC_HEAT } from "./packet.ts";
 import { BONE_FLOATS, GLASS_AT, DRAW_BENT, DRAW_BLEND, DRAW_CUTOUT, DRAW_GROUND, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SKINNED, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_DRAWS, MAX_TILES, PASS_FAR, PASS_NEAR, TRANSIENT_BUFFER, markJoins, texturedFlags, quadIndexCount, SHORE_AT } from "./packet.ts";
 import { MADE_MARK, WorldFinishes, citySurface, finishTaps, surfaceCity } from "./world-surfaces.ts";
+import { FIELD_PHASE, fieldPhase } from "./tek-field.ts";
 import { madePhase, materialIndex, noMade, texgenBytes } from "../texgen/layers.ts";
 import type { Wants } from "../texgen/engine.ts";
 import { FinishNear, NEAR_FRONT, NEAR_GLASS, NEAR_MADE, NEAR_WALL } from "./finish-near.ts";
@@ -89,6 +90,8 @@ import { AirSupport } from "./passes/air-support.ts";
 import { SupplyDrops } from "./passes/supply-drops.ts";
 import { TideEyes } from "./passes/tide-eyes.ts";
 import type { Orbs } from "./passes/orb.ts";
+import type { MapEventPass } from "./passes/map-events.ts";
+import type { MapEventsCode, MapEventsShown } from "../mapevent/shown.ts";
 import type { OrbScreen, writeOrb } from "./orb.ts";
 import type { ScreenPlayer } from "../video/player.ts";
 import { Water } from "./passes/water.ts";
@@ -100,6 +103,7 @@ import { MovingStatics } from "./passes/moving-statics.ts";
 import { Beams } from "./passes/beams.ts";
 import { Ghost } from "./passes/ghost.ts";
 import { Things, type Thing } from "./passes/things.ts";
+import { Screens } from "./passes/screens.ts";
 import { CUTOUTS, Draws, NEAR_BUCKETS, type Cutouts } from "./draws.ts";
 
 export interface RenderWorld {
@@ -328,6 +332,8 @@ export class Scene {
   shotTick = 0;
   /** The scene draws rocket flames, smoke and blasts. */
   readonly blasts: Blasts;
+  /** The screens on props (passes/screens.ts), which the app tells each frame what each type shows. */
+  readonly screens: Screens;
   /** Whether what burns is drawn, which a page turns off for a before and after (passes.ts "bursts"). */
   get bursts(): boolean { return this.blasts.on; }
   set bursts(on: boolean) {
@@ -525,6 +531,12 @@ export class Scene {
   private readonly supplyDrops: SupplyDrops;
   get supply(): SupplyView | null { return this.supplyDrops.view; }
   set supply(view: SupplyView | null) { this.supplyDrops.view = view; }
+  /** The map events' code (mapevent-late.ts), which comes once a session is told of one. Until then a scene draws none. */
+  static mapEvents: MapEventsCode | null = null;
+  /** The map events told and the tick to draw them at, which the app sets (mapevent/part.ts); null before any. */
+  mapEventsShown: MapEventsShown | null = null;
+  private eventPass: MapEventPass | null = null;
+  private readonly palette: Uint8Array;
   get cascades(): Cascades {
     return this.casting.cascades;
   }
@@ -652,7 +664,9 @@ export class Scene {
     this.airSupport = new AirSupport(this.assets, this.characters.rotorBlur, this.details);
     this.characters.hiddenBones = (_kind, id) => this.airSupport.hidden(id);
     this.supplyDrops = new SupplyDrops(reg, this.assets, pack.palette, this.details);
+    this.palette = pack.palette;
     this.blasts = new Blasts(reg, this.assets, this.put, this.details);
+    this.screens = new Screens(reg.screenFace);
     this.characters.thrusterPlumes.pictures(pack.header.details);
     this.dust.pictures(pack.header.details);
     this.dropped = new Dropped(reg, bind);
@@ -838,6 +852,7 @@ export class Scene {
     if (this.wants) this.wants.frame(this.nearMade, p.texgenSide > 0 ? p.texgenHolds : null, p.frame, MADE_AT);
     else noMade(p.frame, MADE_AT);
     madePhase(p.frame, MADE_AT, cam.x, cam.y, cam.z);
+    p.frame[MADE_AT + FIELD_PHASE] = fieldPhase(this.now);
     this.facades.frame(p, this.assets.residency, p.tier, near[NEAR_WALL]!, near[NEAR_FRONT]!, near[NEAR_GLASS]!, scale);
     this.characters.heatView = false;
     if (p.tier.lit) {
@@ -908,6 +923,7 @@ export class Scene {
     f.skip = this.skip;
     f.tier = this.assets.tier;
     f.now = this.now;
+    f.tick = this.shotTick;
     f.view = this.viewDistance;
     f.under = under;
     f.hider = undefined;
@@ -938,6 +954,7 @@ export class Scene {
       ["loose entities", this.looseEntities],
       ["bodies", { draw: (f) => this.bodies(f.cam, f.remote) }],
       ["air support", this.airSupport],
+      ["map events", { update: (f) => this.mapEventPass?.update(f), draw: (f) => this.mapEventPass?.draw(f) }],
       ["beams", this.marks],
       ["rubble", this.looseEntities.rubble],
       ["tree falls", { draw: () => { if (this.treeFalls.count > 0) this.treeFalls.frame(this.now, this.fallTree); } }],
@@ -946,6 +963,8 @@ export class Scene {
       ["details", { draw: (f) => this.showDetails(f.cam, f.remote) }],
       // After the details, so fire is drawn over the dust and smoke round it.
       ["blasts", { draw: (f) => this.blasts.draw(p, f.cam, f.now) }],
+      // Last but the viewer's own body: screens are the least of a frame.
+      ["screens", this.screens],
       [
         "own body",
         {
@@ -977,6 +996,15 @@ export class Scene {
     return this.orbs?.screenDrawn ?? false;
   }
 
+  /** The map events' pass, made once their code has come and the app has handed it events (mapevent/part.ts). */
+  get mapEventPass(): MapEventPass | null {
+    const shown = this.mapEventsShown;
+    if (!shown || !Scene.mapEvents) return null;
+    const pass = (this.eventPass ??= new Scene.mapEvents.Pass(this.assets, this.palette));
+    pass.shown = shown;
+    return pass;
+  }
+
   /** The orbs' pass, made once its code has come (orb-late.ts), where the map has an orb. */
   private orbPass(f: Frame): Orbs | null {
     if (!f.world.orbs || !Scene.orb) return null;
@@ -990,6 +1018,8 @@ export class Scene {
     const p = this.packet;
     const { rotorBlur, patrolLights, thrusterPlumes, windscreens, tireContacts } = this.characters;
     const { streetLamps, streetWires } = this;
+    const fields = this.shots?.tekImpacts;
+    fields?.build(this.world.structs, cam, this.now);
     const orbCards = this.world.orbs ? (this.orbs?.cards ?? null) : null;
     streetWires.build(p, cam, this.world.structs, this.world.dims.chunksX, this.world.dims.chunksZ);
     tireContacts.build(p, this.world);
@@ -997,7 +1027,7 @@ export class Scene {
     this.dust.build(cam, this.now);
     this.blasts.viewHeight = this.viewHeight;
     this.blasts.cards(cam, this.now, this.own?.firstPerson);
-    const cut = this.details.frame(p, cam, remote, this.characters.fallen, this.shots?.ends ?? NO_SHOTS, this.own, this.world.hf, this.assets.tier, this.now, this.world, tireContacts.count + windscreens.count + rotorBlur.count + patrolLights.count + thrusterPlumes.count + streetLamps.count + streetWires.count + this.damage.count + this.dust.count + this.blasts.count + (orbCards?.count ?? 0));
+    const cut = this.details.frame(p, cam, remote, this.characters.fallen, this.shots?.ends ?? NO_SHOTS, this.own, this.world.hf, this.assets.tier, this.now, this.world, tireContacts.count + windscreens.count + rotorBlur.count + patrolLights.count + thrusterPlumes.count + streetLamps.count + streetWires.count + this.damage.count + this.dust.count + this.blasts.count + (orbCards?.count ?? 0) + (fields?.count ?? 0));
     const particles = p.detailCount;
     // An orb's halo first of the cards, so what is nearer is drawn over it.
     orbCards?.write(p);
@@ -1020,6 +1050,7 @@ export class Scene {
     p.burstCount = wheelsAndGlass - smoke;
     tireContacts.write(p);
     windscreens.write(p);
+    fields?.write(p);
     // The damage numbers' cards, drawn last of all below, over the clouds too.
     const numbers = p.detailCount;
     this.damage.write(p);
@@ -1038,7 +1069,7 @@ export class Scene {
     this.put.drawDetails(street, dust - street, DRAW_BLEND, streetLamps.passes(cam));
     this.put.drawDetails(dust, smoke - dust, DRAW_BLEND, this.dust.passes(cam));
     this.put.drawDetails(smoke, wheelsAndGlass - smoke, DRAW_BLEND, this.blasts.passes(cam));
-    this.put.drawDetails(wheelsAndGlass, numbers - wheelsAndGlass, DRAW_BLEND, tireContacts.passes(cam) | windscreens.passes(cam));
+    this.put.drawDetails(wheelsAndGlass, numbers - wheelsAndGlass, DRAW_BLEND, tireContacts.passes(cam) | windscreens.passes(cam) | (fields?.count ? fields.passes(cam) : 0));
     this.put.drawDetails(seen, solid, DRAW_CUTOUT, far);
     this.put.drawDetails(seen + solid, p.detailCount - seen - solid, DRAW_BLEND, far);
     this.put.drawDetails(numbers, glassAndNumbers - numbers, DRAW_BLEND, this.damage.passes(cam));

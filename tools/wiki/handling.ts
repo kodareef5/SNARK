@@ -402,6 +402,8 @@ export function handlingOf(def: VehicleDefinition, driver: number): Handling {
   const key = JSON.stringify([{ ...def, id: "" }, driver]);
   let h = measured.get(key);
   if (!h) {
+    // The hidden jet is not in the wiki (catalogue.ts), so nothing measures it.
+    if (def.movement === "jet") throw new Error(`${def.id}: a jet's handling is not measured`);
     h = def.movement === "rotor" ? rotorHandling(def, driver) : def.movement === "boat" ? boatHandling(def, driver) : def.frame === "skateboard" ? skateHandling(def) : roadHandling(def, driver);
     measured.set(key, h);
   }

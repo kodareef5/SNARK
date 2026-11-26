@@ -1,4 +1,5 @@
 import type { Def } from "../../shared/content/defs.ts";
+import { making } from "../craft.ts";
 
 // Crafting stations and what is made at them (task D of planning/reference/items-plan.md). The campfire, which only cooks
 // and burns, stays with the building pieces in content/building.ts.
@@ -139,6 +140,21 @@ export const STATIONS: readonly Def[] = [
     craft: { needs: [{ item: "core:ingot", count: 35 }, { item: "core:paste", count: 20 }, { item: "core:sparkpowder", count: 50 }, { item: "core:crystal", count: 15 }, { item: "core:oil", count: 10 }], seconds: 5, xp: 132, at: "core:smithy" },
   },
   { type: "engram", id: "core:engram-piece_fabricator", label: "Fabricator", level: 48, cost: 24, item: "core:piece_fabricator", requires: ["core:engram-piece_smithy"] },
+
+  // The tek workstation: a steel desk with a laptop and a console on it (assets/source/core/props/screens), whose screen
+  // shows the laptops' channel. The plasma guns are made at it (content/items/plasma.ts), as ARK makes them at its Tek
+  // Replicator. Its numbers are ours, as the replicator's want element, which the game has not: 3,500 health, harmed as
+  // metal; 60 slots; it burns nothing, as the smithy does not, and decays in 16 days as the fabricator does. It is made
+  // at the fabricator, at level 90 for 40 points, after the fabricator. Its face is its model's (faces.json there).
+  { type: "shape", id: "core:shape_workstation", role: "thing", boxes: [{ at: [0, 0, 0], half: [1, 0.5428, 0.4736] }] },
+  {
+    type: "structure", class: "station", id: "core:workstation", mesh: "shape", shape: "core:shape_workstation", half: [1, 0.5428, 0.4736], color: 84,
+    hp: 3500, material: "core:mat_metal", decayDays: 16, slots: 60,
+    screen: { type: "laptop", face: [-0.4217, -0.1781, 0.3267, 0.5253, -0.0552] },
+  },
+  { type: "item", class: "structure", id: "core:piece_workstation", stack: 1, weight: 10, label: "tek workstation", color: 84, places: ["core:workstation"] },
+  ...making("piece_workstation", "Tek workstation", 90, 40, 1, 10, [["ingot", 150], ["polymer", 80], ["electronics", 60], ["crystal", 60], ["silica_pearls", 30], ["paste", 40]], undefined, "fabricator")
+    .map((d) => (d.type === "engram" ? { ...d, requires: ["core:engram-piece_fabricator"] } : d)),
 
   // The preserving bin (planning/reference/stations-plan.md, S3). ark.wiki.gg/wiki/Preserving_Bin: 48 item slots (303.1),
   // 600 health, decays in 16 days (decaytime 1382400); the item weighs 4 and stacks to 100; 30 stone, 30 wood, 10 thatch

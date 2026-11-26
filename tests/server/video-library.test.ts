@@ -4,7 +4,10 @@ import { afterAll, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Acts } from "../../server/acts.ts";
+import { changedNothing, refused, type AdminGate } from "../../server/admin/gate.ts";
 import { fromDisk, startFront } from "../../server/front.ts";
+import { Guesses } from "../../server/guesses.ts";
 import { startServer } from "../../server/main.ts";
 import { loadConfig } from "../../server/settings/config.ts";
 import { splitPack } from "../../tools/pack/split.ts";
@@ -93,11 +96,9 @@ test("the former starter playlist gains the curated order without changing the o
   const again = reopen(dir, () => birth + 60_000);
   const reply = await call(again, "/admin/screens/state");
   expect(reply.status).toBe(200);
-  expect(await reply.json()).toMatchObject({
-    revision: old.revision + 1,
-    channels: [{ name: "strip", items: [TRAIN, CLOUDS], epoch: birth, shuffle: false }],
-    screens: [{ screen: "orb", show: "scene:core", sound: true, mode: "fixed" }],
-  });
+  const state = (await reply.json()) as { revision: number; channels: unknown[]; screens: unknown[] };
+  expect(state).toMatchObject({ revision: old.revision + 1, channels: [{ name: "strip", items: [TRAIN, CLOUDS], epoch: birth, shuffle: false }] });
+  expect(state.screens[0]).toMatchObject({ screen: "orb", show: "scene:core", sound: true, mode: "fixed" });
   expect(lib.view().revision).toBe(old.revision + 1);
   expect((await call(lib, "/admin/screens/edit", json({ revision: old.revision, op: "channels", channels: [] }))).status).toBe(409);
 
@@ -278,6 +279,93 @@ test("the state says what each screen plays now", async () => {
   expect(state.screens[0]).toMatchObject({ screen: "orb", show: "strip", playing: { clip: TRAIN } });
   expect((await edit(lib, { op: "stop", screen: "orb" })).status).toBe(200);
   expect((await call(lib, "/admin/screens/state", { method: "POST" })).status).toBe(405);
+  lib.close();
+});
+
+/** A library's API behind the admin gate, signed in as kody, with an acts log of its own. */
+function signedIn(lib: VideoLibrary) {
+  const acts = new Acts({ persistence: null, tick: () => 0, wall: Date.now, say: () => {}, shown: () => false, tellAll: () => {} });
+  const gate: AdminGate = { dev: false, password: "kiwi", guesses: new Guesses(), tick: () => 0 };
+  const sent: Request[] = [];
+  const post = (path: string, init: RequestInit, query = ""): Promise<Response> => {
+    const req = new Request(`http://snark.test${path}${query}`, { ...init, headers: { ...(init.headers as Record<string, string>), authorization: `Basic ${btoa("kody:kiwi")}` } });
+    sent.push(req);
+    return Promise.resolve(refused(req, "1.2.3.4", gate) ?? screensAdmin(req, path, lib, () => ({ night: false, seconds: 0, hour: 12, only: -1, gain: 1 }), acts)!);
+  };
+  return { acts, sent, post, edit: (body: Record<string, unknown>) => post("/admin/screens/edit", json({ revision: lib.view().revision, ...body })) };
+}
+
+test("a screens upload, publish and each edit are logged by what they did", async () => {
+  const { lib } = library();
+  const { acts, post, edit } = signedIn(lib);
+  const bytes = fixture("small.mp4");
+  const { id } = (await (await post("/admin/screens/upload", { method: "POST", headers: { "content-length": String(bytes.length) }, body: bytes }, "?name=Test%20Card")).json()) as { id: string };
+  const kb = Math.round(statSync(join(lib.media, `test-card.${id}.mp4`)).size / 1024);
+  expect((await post("/admin/screens/clip", json({ id, title: "Card", rights: "test", poster: POSTER, colours: track(2) }))).status).toBe(200);
+  for (const body of [
+    { op: "channels", channels: [{ name: "strip", items: [SNEEZE, id] }, { name: "night", items: [BOLT], shuffle: true }] },
+    { op: "screen", screen: "orb", show: "night", mode: "fixed", sound: true },
+    { op: "once", screen: "orb", clip: id },
+    { op: "stop", screen: "orb" },
+    { op: "take", screen: "orb", show: "scene:moon" },
+    { op: "channels", channels: [{ name: "strip", items: [SNEEZE, id] }] },
+    { op: "rename", clip: id, title: "Card two" },
+    { op: "hide", clip: SNEEZE },
+    { op: "unhide", clip: SNEEZE },
+    { op: "delete", clip: id },
+  ]) expect([body.op, (await edit(body)).status]).toEqual([body.op, 200]);
+  expect(acts.recent().map((a) => [a.name, a.what])).toEqual([
+    ["(kody)", `uploaded the clip file test-card.${id}.mp4 (2 s, ${kb} KB)`],
+    ["(kody)", `published the clip "Card" (2 s, ${kb} KB)`],
+    ["(kody)", "set the channels: strip (2 clips), night (1 clip, shuffled)"],
+    ["(kody)", "set screen orb: shows the channel night, mode fixed, with sound"],
+    ["(kody)", 'played the clip "Card" once on screen orb'],
+    ["(kody)", "stopped the clip playing once on screen orb"],
+    ["(kody)", "set screen orb to show the scene moon"],
+    ["(kody)", "set the channels: strip (2 clips)"],
+    ["(kody)", 'renamed the clip "Card" to "Card two"'],
+    ["(kody)", `hid the starter clip "${SNEEZE}"`],
+    ["(kody)", `showed the starter clip "${SNEEZE}" again`],
+    ["(kody)", 'deleted the clip "Card two"'],
+  ]);
+  lib.close();
+});
+
+test("a screens request that changed nothing writes no act", async () => {
+  const { lib } = library();
+  const { acts, sent, post, edit } = signedIn(lib);
+  const seen = lib.view().revision;
+  // A stop with nothing playing once, and a screen sent as it is, change nothing, which the log of a page's changes leaves out.
+  expect((await edit({ op: "stop", screen: "orb" })).status).toBe(200);
+  expect(changedNothing(sent.at(-1)!)).toBe(true);
+  expect((await edit({ op: "screen", screen: "orb" })).status).toBe(200);
+  expect(changedNothing(sent.at(-1)!)).toBe(true);
+  expect((await edit({ op: "screen", screen: "orb", show: "nowhere" })).status).toBe(400);
+  expect((await edit({ op: "rename", clip: SNEEZE, title: "x" })).status).toBe(400);
+  expect((await edit({ op: "dance" })).status).toBe(400);
+  expect((await post("/admin/screens/edit", json({ revision: seen, op: "stop", screen: "orb" }))).status).toBe(409);
+  const wide = fixture("wide.mp4");
+  expect((await post("/admin/screens/upload", { method: "POST", headers: { "content-length": String(wide.length) }, body: wide })).status).toBe(422);
+  expect((await post("/admin/screens/clip", json({ id: "0123456789abcdef", title: "Card", rights: "test", poster: POSTER, colours: track(2) }))).status).toBe(404);
+  expect(acts.recent()).toEqual([]);
+  lib.close();
+});
+
+test("the screens log identifies image uploads, publication and screen types", async () => {
+  const { lib } = library();
+  const { acts, post, edit } = signedIn(lib);
+  const bytes = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/02sAAAAASUVORK5CYII=", "base64");
+  const pending = await post("/admin/screens/image", { method: "POST", headers: { "content-length": String(bytes.length) }, body: bytes }, "?name=Card");
+  expect(pending.status).toBe(200);
+  const { id } = (await pending.json()) as { id: string };
+  expect((await post("/admin/screens/clip", json({ id, title: "Card", rights: "test", poster: POSTER, colours: Buffer.alloc(COLOUR_PARTS * 3).toString("base64"), types: ["billboard"] }))).status).toBe(200);
+  expect((await edit({ op: "types", clip: id, types: ["billboard", "tv"] })).status).toBe(200);
+  expect((await post("/admin/screens/live", { method: "GET" })).status).toBe(200);
+  expect(acts.recent().map((a) => [a.name, a.what])).toEqual([
+    ["(kody)", `uploaded the image file card.${id}.png (1×1, 1 KB)`],
+    ["(kody)", 'published the image "Card" (1×1, 1 KB)'],
+    ["(kody)", 'offered the image "Card" on billboard, tv'],
+  ]);
   lib.close();
 });
 

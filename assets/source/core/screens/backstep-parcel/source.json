@@ -1,0 +1,15 @@
+{
+  "title": "Backstep Parcel Express",
+  "year": 2026,
+  "from": {
+    "by": "SNARK",
+    "sha256": "1d244e456f188436c2950f809db32f60f3452d232db59e3e50f608470f7f3942"
+  },
+  "rights": "Made for SNARK, 2026",
+  "licence": "Made for the game and given to it under CC0 1.0.",
+  "poster": 2,
+  "audio": false,
+  "types": [
+    "billboard"
+  ]
+}

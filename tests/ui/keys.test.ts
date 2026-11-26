@@ -231,3 +231,8 @@ test("the controls guide shows a row's words for its key", () => {
   }
   expect(seen.size).toBeGreaterThan(0);
 });
+
+test("The Menus guide shows the field, diagnostics and action shortcuts", () => {
+  expect(["F2", "F3", "F4"].map(code => keyBinding(code, 5)?.title))
+    .toEqual(["Field menus", "Diagnostics", "Action menus"]);
+});

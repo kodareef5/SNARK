@@ -152,6 +152,8 @@ export const S_SCANLINES = 92;
 export const S_VIGNETTE = 93;
 /** A feed's small words set to the left. */
 export const S_FEED_SMALL_LEFT = 94;
+/** A caption under a tile over the world: small, centred, with a shadow. */
+export const S_HUD_CAPTION = 95;
 
 export const STYLES: readonly Style[] = [
   /* S_TEXT */ style(0, 0xeeeeee, 13, 0, true),
@@ -249,6 +251,7 @@ export const STYLES: readonly Style[] = [
   /* S_SCANLINES */ { ...style(0x000000ff, 0xffffff), lens: LENS_SCAN },
   /* S_VIGNETTE */ { ...style(0x000000ff, 0xffffff), lens: LENS_VIGNETTE },
   /* S_FEED_SMALL_LEFT */ mono(0xb9cdd4, 11, 0),
+  /* S_HUD_CAPTION */ style(0, 0xd6e9f2, 11, 1, true),
 ];
 
 /** Adds the styles of a screen the page fetches later, and returns the first one's index. */

@@ -6,7 +6,7 @@ import type { ClientSession } from "../session.ts";
 import { K_PANEL, lineHeight } from "../ui/nodes.ts";
 import { S_BUFF } from "../ui/style.ts";
 import { HOTBAR_CELL } from "./layout.ts";
-import type { HudWidget } from "./widget.ts";
+import { band, type HudWidget } from "./widget.ts";
 
 /** One mark per buff. */
 export const KEY_BUFF = 180;
@@ -30,6 +30,7 @@ export function fillBuffs(m: BuffsModel, session: ClientSession | null, reg: Reg
 
 export const BUFFS: HudWidget<BuffsModel> = {
   name: "buffs",
+  bands: [band(KEY_BUFF, 16)],
   make: () => ({ buffs: [] }),
   fill(m, c) {
     const a = c.frame;

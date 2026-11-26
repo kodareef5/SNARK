@@ -261,7 +261,7 @@ test("the server's and the client's seated eye agree to a nanometre in every sea
 
 test("the Zephyr driver reaches the rim as the steering crosses full lock", () => {
   const { def, seat } = enclosed().find((v) => v.id === "core:zephyr" && v.seat.driver)!;
-  if (def.movement === "rotor" || def.movement === "boat") throw new Error("expected the Zephyr road chassis");
+  if (def.movement === "rotor" || def.movement === "boat" || def.movement === "jet") throw new Error("expected the Zephyr road chassis");
   const { left, right, turn } = seat.controls!, pivot = turn!.pivot;
   for (const steering of [-1, -.5, 0, .5, 1]) {
     const occupant = seated(def, seat), solved = new Solved(HUMAN_BONES);

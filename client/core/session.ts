@@ -18,6 +18,7 @@ import { bolt, readBolt } from "../../shared/net/bolts.ts";
 import { blast, readBlast, readRocket, rocket } from "../../shared/net/rockets.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { makePlaced, readPlaced, type Placed } from "../../shared/net/placed.ts";
+import { readChat, type TextRun } from "../../shared/net/chat.ts";
 import { ContactSnapshot, readContacts } from "../../shared/net/contact.ts";
 import { AirCamera } from "./air-camera.ts";
 import { airFeedView, type AirFeedView } from "./air-feed.ts";
@@ -111,6 +112,9 @@ import {
   S_PLACED,
   S_SNAPSHOT,
   S_TEXT,
+  S_CHAT,
+  S_SECRET,
+  MAX_SECRET_BYTES,
   RESTART_GO,
   RESTART_OFF,
   S_RESTART,
@@ -148,6 +152,7 @@ import { quatNlerp } from "../../shared/math/quat.ts";
 import { unpackBoatHullCondition, unpackBoatFlooding, interpolateRotorPhase, unpackVehicleQuaternion, unpackRotorRpm, unpackRotorPhase, unpackVehicleFuel, unpackEngineCondition, unpackRotorCondition, vehicleEngineRunning } from "../../shared/sim/vehicle-presentation.ts";
 import { blendDoors } from "../../shared/sim/vehicle-panels.ts";
 import { isSkateboard } from "../../shared/sim/vehicle.ts";
+import { jetSpoolOfRpm, unpackJetNozzle } from "../../shared/sim/jet-gauge.ts";
 import { PredictionTrace } from "./diagnostics.ts";
 import { stepVehicleBody, unpackVehiclePitch, unpackVehicleRoll, unpackVehicleSteering, unpackVehicleWheel, unpackVehicleGroundPitch, unpackVehicleGroundRoll, unpackVehicleRideOffset, vehicleRideGrounded, unpackVehicleGear, unpackVehicleRpm, vehicleShifting, unpackVehicleLightMode, unpackVehicleMissingPanels } from "../../shared/sim/vehicle-body.ts";
 import { stepCreature } from "../../shared/sim/creature-actions.ts";
@@ -163,15 +168,17 @@ import type { Heightfield } from "../../shared/world/heightfield.ts";
 import type { TideEyeSite } from "../../shared/world/tide-eye.ts";
 import { ORB_GAIN_UNITS, type OrbSite } from "../../shared/world/orb.ts";
 import { readScreens, type ScreenState } from "../../shared/video/screen.ts";
-import { staticKinds, type MapLandmark, type MapPart, type MapStatics } from "../../shared/world/mapfile.ts";
+import { staticKinds, type MapLandmark, type MapPart, type MapSpawn, type MapStatics } from "../../shared/world/mapfile.ts";
 import type { Buildings } from "../../shared/world/buildings.ts";
 import { NodeField, type NodeSource } from "../../shared/world/nodes.ts";
 import { heapAt, heapHealth } from "../../shared/world/breaking.ts";
+import { tekWallKinds } from "../../shared/world/lattice/tek-walls.ts";
 import { FramesTold, ROW_EMPTY, ROW_IN_PLACE, ROW_KEYED, RowCoder } from "../../shared/world/rows.ts";
 import { GONE_BLAST, GONE_TAKEN, PUT_AS_IS, PUT_FREE, StructureStore, withSurfaces, type ChunkTable } from "../../shared/world/structures.ts";
 import { CMD_FAR, CMD_HAVE, CMD_SELECT, CMD_STATICS, HAVE_MOST, HAVE_REACH, RESULT_BUSY, RESULT_OK, S_FAR, S_MARKS, S_TACTICAL } from "../../shared/net/protocol.ts";
 import { FarStore } from "./farcells.ts";
 import { GoneStore } from "./gonelists.ts";
+import { ArmsState } from "./arms.ts";
 import type { FarSource } from "./render/far.ts";
 import type { CityMaker } from "./render/citymake.ts";
 import type { CitySource } from "./render/farcity.ts";
@@ -218,6 +225,8 @@ export interface SessionOptions {
   held?: HeldStatics;
   /** The landmarks that map file sets down (MapContent). Past the near rows the scene draws each from its far mesh. */
   landmarks?: readonly MapLandmark[];
+  /** Named public places baked into this map header. */
+  chartPlaces?: readonly MapSpawn[];
   tideEyes?: readonly TideEyeSite[];
   /** The orbs in that map's head, which the scene draws at any distance. */
   orbs?: readonly OrbSite[];
@@ -499,7 +508,10 @@ export interface LocalShot {
 
 export interface TextLine {
   channel: number;
+  /** A chat line's runs joined, or the whole of a plain line. */
   text: string;
+  /** A chat line's runs (S_CHAT); absent for a plain line. */
+  runs?: readonly TextRun[];
 }
 
 /** Chunks a side round what a sight is on whose near nodes are held, past the centre (D1090). */
@@ -621,6 +633,8 @@ export class ClientSession {
   /** Text from the server, oldest first. `logVersion` counts every line ever added. */
   readonly log: TextLine[] = [];
   logVersion = 0;
+  /** The last secret the server sent this session alone (S_SECRET), until the console has shown it and closed; "" for none. Never in `log`. */
+  secret = "";
   /** Values at a tick and their rates, as the server last sent them. Evaluate with `vitals.at(i, serverTick)`. */
   readonly vitals = new Vitals();
   /** It came from another server of the cluster and chooses where to rise, as the server says (CHOOSE_ARRIVED). */
@@ -709,6 +723,8 @@ export class ClientSession {
   readonly far = new FarStore();
   /** Which of the map's own pieces no longer stand in the chunks within the reach `askFar` names for them. */
   readonly gone = new GoneStore();
+  /** The weapons of what it drives, and any seeker on what it rides (client/core/arms.ts). */
+  readonly arms = new ArmsState();
   /**
    * Per chunk, 1 once its last row has come since it was last dropped: the near store holds it whole. CAUGHT_UP_NEXT for
    * one put back from those kept, until the rows changed while it was away have come: they are not news.
@@ -853,6 +869,8 @@ export class ClientSession {
 
   private readonly conn: Connection;
   private readonly opts: SessionOptions;
+
+  get chartPlaces(): readonly MapSpawn[] | undefined { return this.opts.chartPlaces; }
   private move: MoveParams | null = null;
   private readonly inputs = new InputBuffer(HISTORY);
   /** Buttons seen down on any frame since the last tick was sampled. */
@@ -1034,9 +1052,9 @@ export class ClientSession {
 
   /**
    * Samples the given input for every tick that elapses. moveX and moveZ are -1..1 (right, forward). yaw and pitch are radians.
-   * A button down on any frame since the last tick is down for the next one, so a press shorter than a tick is not lost between two.
+   * A held button seen between ticks reaches the next tick. The caller keeps single-tick buttons until sampled or canceled.
    */
-  update(nowMs: number, moveX: number, moveZ: number, yaw: number, pitch: number, buttons: number): void {
+  update(nowMs: number, moveX: number, moveZ: number, yaw: number, pitch: number, buttons: number, singleTick = 0): void {
     if (this.state !== "active") return;
     let dt = this.lastNow < 0 ? 0 : nowMs - this.lastNow;
     const frameMs = dt;
@@ -1079,6 +1097,8 @@ export class ClientSession {
     this.ownYaw = yaw;
     this.ownPitch = pitch;
 
+    const once = buttons & singleTick;
+    buttons &= ~singleTick;
     this.tapped |= buttons;
     this.holdGround();
     const target = Math.floor(this.tickClock);
@@ -1091,7 +1111,7 @@ export class ClientSession {
     while (this.simTick < target && steps < MAX_STEPS_PER_UPDATE) {
       const t = ++this.simTick;
       steps++;
-      this.inputs.set(t, qx, qz, qyaw, qpitch, this.tapped | buttons, fineYaw, finePitch);
+      this.inputs.set(t, qx, qz, qyaw, qpitch, this.tapped | buttons | (steps === 1 ? once : 0), fineYaw, finePitch);
       this.letGo[t & (HISTORY - 1)] = 0;
       this.tapped = 0;
       this.ownPrev.copy(this.own);
@@ -1305,7 +1325,7 @@ export class ClientSession {
     out.vehicleFlooding[n] = unpackBoatFlooding(b.vehicleWater[j]!);
     const rotor = b.vehicleRotor[j]!, systems = b.vehicleSystems[j]!;
     out.vehicleRotorRpm[n] = movement === "rotor" ? unpackRotorRpm(rotor) : 0; out.vehicleRotorPhase[n] = movement === "rotor" ? unpackRotorPhase(rotor) : 0;
-    out.vehicleThrust[n] = movement === "rotor" ? 0 : rotor;
+    out.vehicleThrust[n] = movement === "rotor" || movement === "jet" ? 0 : rotor;
     out.vehicleFuel[n] = unpackVehicleFuel(systems); out.vehicleEngineCondition[n] = unpackEngineCondition(systems);
     out.vehicleRotorCondition[n] = unpackRotorCondition(systems); out.vehicleEngineOn[n] = vehicleEngineRunning(systems) ? 1 : 0;
     unpackVehicleQuaternion(b.vehicleAttitudeA[j]!, b.vehicleAttitudeB[j]!, this.rotorQuat);
@@ -1315,6 +1335,12 @@ export class ClientSession {
     out.vehicleShifting[n] = vehicleShifting(drive) ? 1 : 0;
     out.vehicleMissingPanels[n] = unpackVehicleMissingPanels(a && k < .5 ? a.vehicleDrive[i]! : drive);
     out.vehicleLightMode[n] = unpackVehicleLightMode(drive);
+    // A jet's rotor word is its nozzle alone; its spool is read from the engine speed (shared/sim/jet.ts).
+    if (movement === "jet") {
+      out.vehicleRotorPhase[n] = a ? unpackJetNozzle(a.vehicleRotor[i]!) + (unpackJetNozzle(rotor) - unpackJetNozzle(a.vehicleRotor[i]!)) * k : unpackJetNozzle(rotor);
+      const rpm = a ? unpackVehicleRpm(a.vehicleDrive[i]!) + (unpackVehicleRpm(drive) - unpackVehicleRpm(a.vehicleDrive[i]!)) * k : unpackVehicleRpm(drive);
+      out.vehicleRotorRpm[n] = jetSpoolOfRpm(rpm, out.vehicleEngineOn[n] !== 0);
+    }
     if (a) {
       const oldDrive = a.vehicleDrive[i]!;
       const newTrick = movement === "skateboard" && unpackVehicleGear(oldDrive) !== unpackVehicleGear(drive);
@@ -1425,7 +1451,7 @@ export class ClientSession {
       this.contactBefore.copy(this.own);
       this.vehicleTrees?.begin(t, this.treeDriver);
       if (!this.vehicleContacts?.stepTowing(t, this.own, inp.moveX[i]!, inp.moveZ[i]!, buttons, vehicle, pilot, this.vehicleTrees ?? undefined)) {
-        stepVehicleBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, buttons, vehicle, TICK_DT, inp.yaw[i]!, pilot, this.vehicleTrees ?? undefined);
+        stepVehicleBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, buttons, vehicle, TICK_DT, inp.yaw[i]!, pilot, this.vehicleTrees ?? undefined, inp.pitch[i]!);
       }
       this.vehicleContacts?.step(t, this.contactBefore, this.own, vehicle);
     }
@@ -1596,7 +1622,7 @@ export class ClientSession {
     const tap = this.tap;
     if (tap) {
       // Owner state, an event and a line of text come one to a message, named by the byte after the kind.
-      tap.received(kind, kind === S_OWN || kind === S_EVENT || kind === S_TEXT ? (data[1] ?? -1) : -1, data.length);
+      tap.received(kind, kind === S_OWN || kind === S_EVENT || kind === S_TEXT || kind === S_CHAT ? (data[1] ?? -1) : -1, data.length);
       this.marked = 0;
     }
     // A kind with no reader is ignored.
@@ -1690,6 +1716,23 @@ export class ClientSession {
         s.log.push({ channel, text });
         if (s.log.length > LOG_LINES) s.log.shift();
         s.logVersion++;
+      },
+    });
+    messages.add({
+      kind: S_CHAT,
+      read(s, r) {
+        const line = readChat(r);
+        if (!line) return;
+        s.log.push(line);
+        if (s.log.length > LOG_LINES) s.log.shift();
+        s.logVersion++;
+      },
+    });
+    messages.add({
+      kind: S_SECRET,
+      read(s, r) {
+        const secret = r.string(MAX_SECRET_BYTES);
+        if (!r.overflow) s.secret = secret;
       },
     });
     messages.add({ kind: S_OWN, read: (s, r) => s.ownState(r) });
@@ -2360,6 +2403,8 @@ export class ClientSession {
   }
 
   private welcome(r: BitReader): void {
+    // A new connection is told its weapons and warnings afresh, and only when it has some.
+    this.arms.now = null; this.arms.warned = 0;
     this.motions.clear(); this.corpseMotions.clear(); this.corpseRetryAt = -TICK_RATE;
     const version = r.u32();
     const tick = r.u32();
@@ -2976,7 +3021,7 @@ export class ClientSession {
     const kinds = this.registry.defs.length;
     const told = this.onStructure && this.whole[chunk] === 1 ? this.onStructure : null;
     const rows = structs.chunks[chunk];
-    const row = (this.rows ??= new RowCoder(structs.forms, maxHp));
+    const row = (this.rows ??= new RowCoder(structs.forms, maxHp, { phaseKinds: tekWallKinds(this.registry.index) }));
     row.maxHp = maxHp;
     row.begin(x0, z0);
     // The frames a message defines count once its rows are read, as the server counts them once it is sent.
@@ -2995,6 +3040,7 @@ export class ClientSession {
         if (was === 0) continue;
         if (told && (was !== now || hpWas !== Math.fround(hp))) told(was, now, rows!.x[slot]!, rows!.y[slot]!, rows!.z[slot]!, hpWas, hp, -1);
         structs.put(chunk, slot, now, rows!.x[slot]!, rows!.y[slot]!, rows!.z[slot]!, rows!.yaw[slot]!, row.owner, hp, version, PUT_AS_IS);
+        if (kind !== 0 && (row.phaseTick !== undefined || rows!.phaseTick)) rows!.setPhaseTick(slot, row.phaseTick);
         continue;
       }
       if (row.form === ROW_EMPTY) {
@@ -3014,6 +3060,8 @@ export class ClientSession {
       const hp = row.health(maxHp[kind]!);
       if (told && (was !== kind || hpWas !== Math.fround(hp))) told(was, kind, x, y, z, hpWas, hp, -1);
       structs.put(chunk, slot, kind, x, y, z, yaw, row.owner, hp, version, fr, row.k0, row.k1);
+      const table = structs.chunks[chunk]!;
+      if (row.phaseTick !== undefined || table.phaseTick) table.setPhaseTick(slot, row.phaseTick);
       // A frame is its rows' owner's.
       if (fr !== PUT_FREE) structs.frames.get(fr)!.team = row.owner;
       this.onRow?.(chunk * 65536 + slot);
