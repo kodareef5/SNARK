@@ -755,12 +755,15 @@ export class ClientSession {
   private staticKinds: Uint16Array | null = null;
   /**
    * Chunk messages kept, oldest first: each takes slots from a sector of `opts.held` not yet held, or follows one kept of
-   * its own chunk. How many are kept of each chunk, the frames of the one being read, a reader for them, and the rows of
-   * a whole map's table.
+   * its own chunk or one that names a frame it names. How many are kept of each chunk and name each frame, the chunks
+   * and frames a pass has left kept, the frames of the one being read, a reader for them, and the rows of a whole map's
+   * table.
    */
   private readonly waitingRows: KeptMessage[] = [];
   private readonly waitingOf = new Map<number, number>();
+  private readonly waitingFrames = new Map<number, number>();
   private readonly stuck = new Set<number>();
+  private readonly stuckFrames = new Set<number>();
   private keptFrames: ReadonlyMap<number, FrameDef> | null = null;
   private readonly waitingReader = new BitReader();
   /** Chunk messages kept waiting at most (WAITING_MOST), and the milliseconds one is kept at most (WAITING_MS). */
@@ -1132,7 +1135,10 @@ export class ClientSession {
     }
     const newestInput = this.simTick;
     this.prediction.frame(frameMs, steps, unsampled, this, nowMs);
-    if (this.waitingRows.length > 0 && this.waitingRows[0]!.at <= nowMs - this.waitingMs) this.readWaiting();
+    const kept = this.waitingRows;
+    // A message's wait runs from the first frame after it came, so a frame that stalls does not use it up.
+    for (let k = kept.length - 1; k >= 0 && kept[k]!.at < 0; k--) kept[k]!.at = nowMs;
+    if (kept.length > 0 && kept[0]!.at <= nowMs - this.waitingMs) this.readWaiting();
     if (steps > 0) {
       this.sendInputs(newestInput, steps);
       this.recenterNodes();
@@ -2474,6 +2480,7 @@ export class ClientSession {
     this.staticsSeq = 0;
     this.waitingRows.length = 0;
     this.waitingOf.clear();
+    this.waitingFrames.clear();
     [this.unbased, this.againAsked].forEach((s) => s.clear());
     this.againSeq = 0;
     this.opts.held?.needed.clear();
@@ -2882,36 +2889,50 @@ export class ClientSession {
   }
 
   /**
-   * S_CHUNK. Kept where it takes slots from a sector of the map not yet held, or follows a message kept of its own chunk:
-   * each chunk's are read in order once its sector is held (readWaiting), and no other chunk's message waits for them.
-   * Rows sent for a chunk kept aside mean it comes whole, so that is let go at once.
+   * S_CHUNK. Kept where it takes slots from a sector of the map not yet held, or follows a message kept of its own chunk
+   * or one that names a frame it names: a chunk's messages, and a frame's, are read in the order they came once the
+   * sector is held (readWaiting). No other message waits for them. Rows sent for a chunk kept aside mean it comes whole,
+   * so that is let go at once.
    */
   private chunkOrKeep(r: BitReader): void {
     if (!this.world) return;
     const start = r.pos;
     const waits = this.waitsFor(r) >= 0;
     r.pos = start;
+    if (!waits && this.waitingRows.length === 0) return this.chunk(r);
     const chunk = r.u16();
     r.pos = start;
-    if (!waits && !this.waitingOf.has(chunk)) return this.chunk(r);
-    this.forget(chunk);
-    if (waits) this.opts.held?.need(chunk);
+    // While any is kept, each message's definitions are counted as it comes, and it is read as one kept is.
     const frames = this.framesNamed(r);
     r.pos = start;
+    if (!waits && !this.waitingOf.has(chunk) && !namesAny(frames, this.waitingFrames)) return this.readKept(r, frames);
+    this.forget(chunk);
+    if (waits) this.opts.held?.need(chunk);
     this.keep(chunk, r.rest(), frames);
     if (this.waitingRows.length > this.waitingMost) this.readWaiting();
   }
 
-  /** Keeps a chunk message's bytes, or for a drop null, to be read after those kept of its chunk. */
+  /** Keeps a chunk message's bytes, or for a drop null, to be read after those kept of its chunk and of its frames. */
   private keep(chunk: number, bytes: Uint8Array | null, frames: ReadonlyMap<number, FrameDef> | null): void {
-    this.waitingRows.push({ chunk, at: this.lastNow, bytes, frames });
+    this.waitingRows.push({ chunk, at: -1, bytes, frames, read: false });
     this.waitingOf.set(chunk, (this.waitingOf.get(chunk) ?? 0) + 1);
+    for (const gid of frames?.keys() ?? []) this.waitingFrames.set(gid, (this.waitingFrames.get(gid) ?? 0) + 1);
+  }
+
+  /** Reads a chunk message whose definitions were counted when it came, with the frames it named then. */
+  private readKept(r: BitReader, frames: ReadonlyMap<number, FrameDef> | null): void {
+    this.keptFrames = frames ?? NO_FRAMES;
+    try {
+      this.chunk(r);
+    } finally {
+      this.keptFrames = null;
+    }
   }
 
   /**
-   * Counts the frames a chunk message read from `r` defines, now, as the server counted them when it sent it: messages
-   * of other chunks are read before this one is. Gives each frame its keyed rows name as it is defined now, for when it
-   * is read: by then either end may have emptied its count.
+   * Counts the frames a chunk message read from `r` defines, now, as the server counted them when it sent it: other
+   * messages are read before this one is. Gives each frame its keyed rows name as it is defined now, for when it is
+   * read: by then either end may have emptied its count.
    */
   private framesNamed(r: BitReader): ReadonlyMap<number, FrameDef> | null {
     const world = this.world!, told = this.framesTold;
@@ -2920,7 +2941,7 @@ export class ClientSession {
     r.bool();
     const count = r.bits(16);
     if (r.overflow || chunk >= world.structs.chunks.length) return null;
-    if (this.mapCount(chunk) > 0 && r.bool()) r.bits(32);
+    if (this.mapCount(chunk) > 0 && r.bool()) (r.u16(), r.u16());
     const row = this.rowCoder(world.structs);
     row.begin(chunkCx(world.dims, chunk) * CHUNK_SIZE, chunkCz(world.dims, chunk) * CHUNK_SIZE);
     told.settle();
@@ -2954,48 +2975,53 @@ export class ClientSession {
   }
 
   /**
-   * Reads the chunk messages kept whose sector is held now, each chunk's in the order they came. One kept `waitingMs`,
-   * or older than the newest `waitingMost`, is read whatever it waits for, its slots from the map left out; the player
-   * is told of those past the most.
+   * Reads the chunk messages kept whose sector is held now, each chunk's and each frame's in the order they came. One
+   * kept `waitingMs`, or older than the newest `waitingMost`, is read whatever it waits for, its slots from the map left
+   * out and its chunk not whole; the player is told of those past the most.
    */
   private readWaiting(): void {
-    const q = this.waitingRows, r = this.waitingReader, stuck = this.stuck;
+    const q = this.waitingRows, r = this.waitingReader, stuck = this.stuck, stuckFrames = this.stuckFrames;
     const n = q.length, due = this.lastNow - this.waitingMs;
-    let kept = 0;
     stuck.clear();
-    for (let k = 0; k < n; k++) {
-      const m = q[k]!, chunk = m.chunk;
-      let waits = stuck.has(chunk);
-      if (!waits && m.bytes && this.world) {
-        r.reset(m.bytes);
-        if (this.waitsFor(r) >= 0) {
-          const over = n - k > this.waitingMost;
-          waits = !over && m.at > due;
-          if (waits) this.opts.held?.need(chunk);
-          else {
-            if (over) this.opts.held?.say?.(`the map's statics of chunk ${chunk} were waited for too long: its pieces the map set are left out until it comes whole`);
-            this.unbased.add(chunk);
-            this.againAsked.delete(chunk);
+    stuckFrames.clear();
+    try {
+      for (let k = 0; k < n; k++) {
+        const m = q[k]!, chunk = m.chunk;
+        let waits = stuck.has(chunk) || namesAny(m.frames, stuckFrames);
+        if (!waits && m.bytes && this.world) {
+          r.reset(m.bytes);
+          if (this.waitsFor(r) >= 0) {
+            const over = n - k > this.waitingMost;
+            waits = !over && (m.at < 0 || m.at > due);
+            if (waits) this.opts.held?.need(chunk);
+            else {
+              if (over) this.opts.held?.say?.(`the map's statics of chunk ${chunk} were waited for too long: its pieces the map set are left out until it comes whole`);
+              this.unbased.add(chunk);
+              this.againAsked.delete(chunk);
+              this.whole[chunk] = 0;
+            }
           }
         }
+        if (waits) {
+          stuck.add(chunk);
+          for (const gid of m.frames?.keys() ?? []) stuckFrames.add(gid);
+          continue;
+        }
+        m.read = true;
+        lessOne(this.waitingOf, chunk);
+        for (const gid of m.frames?.keys() ?? []) lessOne(this.waitingFrames, gid);
+        if (!m.bytes) this.park(chunk);
+        else {
+          r.reset(m.bytes);
+          this.readKept(r, m.frames);
+        }
       }
-      if (waits) {
-        stuck.add(chunk);
-        q[kept++] = m;
-        continue;
-      }
-      const left = this.waitingOf.get(chunk)! - 1;
-      if (left > 0) this.waitingOf.set(chunk, left);
-      else this.waitingOf.delete(chunk);
-      if (!m.bytes) this.park(chunk);
-      else {
-        r.reset(m.bytes);
-        this.keptFrames = m.frames ?? NO_FRAMES;
-        this.chunk(r);
-        this.keptFrames = null;
-      }
+    } finally {
+      // Those read leave the queue even where a reader's caller threw.
+      let kept = 0;
+      for (let k = 0; k < q.length; k++) if (!q[k]!.read) q[kept++] = q[k]!;
+      q.length = kept;
     }
-    q.length = kept;
   }
 
   /**
@@ -3036,7 +3062,8 @@ export class ClientSession {
     if (this.unbased.size === 0 || this.againSeq !== 0 || this.lastNow < this.againAt) return;
     const said = this.againSaid;
     said.length = 0;
-    for (const chunk of this.unbased) if (said.length < HAVE_MOST && !this.againAsked.has(chunk) && this.mapRows(chunk)) said.push(chunk);
+    // A sector found broken counts as come: its chunks are sent again and read as its others are, the map's slots left out.
+    for (const chunk of this.unbased) if (said.length < HAVE_MOST && !this.againAsked.has(chunk) && (this.mapRows(chunk) || this.opts.held?.brokenAt(chunk))) said.push(chunk);
     if (said.length === 0) return;
     this.againSeq = this.command(CMD_CHUNK_AGAIN, (w) => (w.u8(said.length), said.forEach((chunk) => w.u16(chunk))));
   }
@@ -3128,7 +3155,8 @@ export class ClientSession {
       const n = r.u16();
       // Where its sector is broken, or was waited for too long, the slots the map sets are left out.
       const statics = this.mapRows(chunk);
-      if (statics) [this.unbased, this.againAsked].forEach((s) => s.delete(chunk));
+      // Only a send's first message makes a chunk read without its slots good: a later part of the same send does not.
+      if (first === 0 && n > 0 && (statics || this.opts.held?.brokenAt(chunk))) [this.unbased, this.againAsked].forEach((s) => s.delete(chunk));
       const at = statics ? statics.from + first : 0;
       if (r.overflow || (statics && at + n > statics.to)) return;
       for (let m = at; statics && m < at + n; m++) {
@@ -3235,17 +3263,33 @@ export class ClientSession {
 }
 
 /**
- * A chunk message kept for its sector's statics: its chunk, when it came, its bytes after its kind (null for a drop), and
- * the frames its keyed rows name as they were defined then.
+ * A chunk message kept for its sector's statics: its chunk, the first frame's time after it came (-1 until then), its
+ * bytes after its kind (null for a drop), the frames its keyed rows name as they were defined then, and whether it has
+ * been read.
  */
 interface KeptMessage {
   readonly chunk: number;
-  readonly at: number;
+  at: number;
   readonly bytes: Uint8Array | null;
   readonly frames: ReadonlyMap<number, FrameDef> | null;
+  read: boolean;
 }
 
 const NO_FRAMES: ReadonlyMap<number, FrameDef> = new Map();
+
+/** Whether a message's `frames` name any of `among`. */
+function namesAny(frames: ReadonlyMap<number, FrameDef> | null, among: { has(gid: number): boolean; readonly size: number }): boolean {
+  if (!frames || among.size === 0) return false;
+  for (const gid of frames.keys()) if (among.has(gid)) return true;
+  return false;
+}
+
+/** One fewer of `key` in a count by key. */
+function lessOne(counts: Map<number, number>, key: number): void {
+  const left = counts.get(key)! - 1;
+  if (left > 0) counts.set(key, left);
+  else counts.delete(key);
+}
 
 /** Whether entity `j` of a view was sent any vehicle part. */
 function hasVehicleParts(v: EntityView, j: number): boolean {

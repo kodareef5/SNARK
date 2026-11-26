@@ -278,7 +278,7 @@ export class Replication {
     return RESULT_OK;
   }
 
-  /** CMD_CHUNK_AGAIN. Each chunk named that the session holds is sent to it again from nothing, as `refill` does for every session. */
+  /** CMD_CHUNK_AGAIN. Each chunk named that the session holds, or is being sent, is sent to it again from nothing, as `refill` does for every session. */
   chunkAgain(c: Client, r: BitReader): number {
     const n = r.u8(), said = this.said;
     if (r.overflow || n > HAVE_MOST) return RESULT_INVALID;
@@ -287,7 +287,7 @@ export class Replication {
     for (let i = 0; i < n; i++) {
       const chunk = said[i]!;
       c.parked.delete(chunk);
-      if (c.known[chunk] === 0) continue;
+      if (c.known[chunk] === 0 && c.syncChunk !== chunk) continue;
       c.known[chunk] = 0;
       if (c.syncChunk === chunk) c.syncChunk = -1;
     }

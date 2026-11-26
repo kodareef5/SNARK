@@ -1,7 +1,7 @@
 // What a client is told of the structures around it.
 
 import { expect, test } from "bun:test";
-import type { ClientSession } from "../../client/core/session.ts";
+import { WAITING_MS, type ClientSession } from "../../client/core/session.ts";
 import { CHUNK_SIZE, chunkCx, chunkCz } from "../../shared/coords.ts";
 import { S_CHUNK } from "../../shared/net/protocol.ts";
 import { HeldStatics } from "../../client/core/map-statics.ts";
@@ -341,8 +341,18 @@ test("a chunk message kept past its time is read without its map slots", () => {
   expect([window.every(complete), differ(structs, dana.world!.structs, window)]).toEqual([true, 0]);
 });
 
+/** Reads the chunk messages a session keeps as if `one` alone had waited its time. */
+function overdue(s: ClientSession, one: { at: number }): void {
+  const inner = s as unknown as { waitingRows: { at: number }[]; readWaiting(): void };
+  for (const m of inner.waitingRows) m.at = m === one ? 0 : Infinity;
+  s.waitingMs = 0;
+  inner.readWaiting();
+  s.waitingMs = WAITING_MS;
+  for (const m of inner.waitingRows) m.at = -1;
+}
+
 for (const bare of [3, 4]) {
-  test(`a frame is the server's while one of its chunks waits for its sector (${bare})`, () => {
+  test(`a frame's messages are read in the order they came while one waits for its sector (${bare})`, () => {
     // The 7 by 7 chunks round the middle hold crates but one, three rows north of the body; a wooden box 63 m long lies
     // across that one and the next on one frame.
     const crates: MapStatic[] = [];
@@ -355,17 +365,69 @@ for (const bare of [3, 4]) {
     expect([structs.chunks[waits]!.live > 64, structs.chunks[other]!.live > 0, structs.frames.count]).toEqual([true, true, 1]);
     const dana = h.join("dana", {}, { statics: false, held });
     h.run(1500);
-    // The chunk with none of the map's pieces is whole on the frame the server has, while the other's messages wait.
+    // The chunk with none of the map's pieces waits for no sector. Sent first, it is read at once and holds the frame as
+    // the server has it; sent after the one that waits, which names its frame, it is kept behind it.
     const mine = dana.world!.structs;
     const frames = (of: StructureStore): number[][] => [...of.frames.all()].map((f) => [f.gid, f.ox, f.oy, f.oz, f.yaw, f.team]);
-    expect([(dana as unknown as { waitingRows: unknown[] }).waitingRows.length > 0, mine.chunks[waits]?.live ?? 0, differ(structs, mine, [other]), frames(mine)]).toEqual([true, 0, 0, frames(structs)]);
+    const first = bare === 4;
+    expect([(dana as unknown as { waitingRows: unknown[] }).waitingRows.length > 0, mine.chunks[waits]?.live ?? 0, (mine.chunks[other]?.live ?? 0) > 0, frames(mine)]).toEqual([true, 0, first, first ? frames(structs) : []]);
+    if (first) expect(differ(structs, mine, [other])).toBe(0);
+    // No sector for four seconds: both are read, the one that waited without the map's pieces.
+    h.run(3500);
+    expect([differ(structs, mine, [other]), mine.chunks[waits]!.live, frames(mine)]).toEqual([0, structs.chunks[waits]!.live - 64, frames(structs)]);
     const part = held.parts[0]!;
     const steps = held.set(part, readPart(head, part, file.subarray(part.at, part.at + part.length)) as StaticsPiece);
     while (!steps.next().done);
-    h.run(500);
+    h.run(1000);
     expect([differ(structs, mine, [waits, other]), frames(mine)]).toEqual([0, frames(structs)]);
   });
 }
+
+test("a chunk cut over several messages, its first read without its map slots, is whole only once sent again", () => {
+  const crates: MapStatic[] = [];
+  for (let cz = 1; cz <= 7; cz++) for (let cx = 1; cx <= 7; cx++) for (let k = 0; k < 64; k++) crates.push({ kind: "core:crate", x: cx * CHUNK_SIZE + 4 + (k % 8) * 8, y: 40, z: cz * CHUNK_SIZE + 4 + Math.floor(k / 8) * 8, yaw: 0 });
+  const file = writeMap(flatMap(9, { statics: crates }));
+  // 16 rows a message, and 40 crates hurt three chunks east of the body: that chunk comes in three messages.
+  const h = new Harness({ chunkSlotsPerTick: 16 }, 1, 30, { map: file });
+  const structs = h.world.structs, head = readHead(file), held = new HeldStatics(head), east = 4 * 9 + 7;
+  for (let s = 0; s < 40; s++) structs.damage(east * 65536 + s, 1 + (s % 3));
+  const dana = h.join("dana", {}, { statics: false, held });
+  const inner = dana as unknown as { waitingRows: { chunk: number; at: number }[]; whole: Uint8Array; unbased: Set<number> };
+  const parts = (): { chunk: number; at: number }[] => inner.waitingRows.filter((m) => m.chunk === east);
+  for (let k = 0; k < 200 && parts().length < 3; k++) h.run(33);
+  expect(parts().length).toBe(3);
+  // Its first message has waited its time and the rest have not, when the sector comes.
+  overdue(dana, parts()[0]!);
+  expect([parts().length, inner.unbased.has(east)]).toEqual([2, true]);
+  const part = held.parts[0]!;
+  const steps = held.set(part, readPart(head, part, file.subarray(part.at, part.at + part.length)) as StaticsPiece);
+  while (!steps.next().done);
+  expect([parts().length, inner.whole[east]]).toEqual([0, 0]);
+  h.run(2000);
+  expect([inner.whole[east], inner.unbased.size, differ(structs, dana.world!.structs, [east])]).toEqual([1, 0, 0]);
+});
+
+test("a chunk asked for again while the server is still sending it is sent from its start", () => {
+  const crates: MapStatic[] = [];
+  for (let cz = 1; cz <= 7; cz++) for (let cx = 1; cx <= 7; cx++) for (let k = 0; k < 64; k++) crates.push({ kind: "core:crate", x: cx * CHUNK_SIZE + 4 + (k % 8) * 8, y: 40, z: cz * CHUNK_SIZE + 4 + Math.floor(k / 8) * 8, yaw: 0 });
+  const file = writeMap(flatMap(9, { statics: crates }));
+  const h = new Harness({ chunkSlotsPerTick: 16 }, 1, 30, { map: file });
+  const structs = h.world.structs, head = readHead(file), held = new HeldStatics(head), east = 4 * 9 + 7;
+  for (let s = 0; s < 40; s++) structs.damage(east * 65536 + s, 1 + (s % 3));
+  const dana = h.join("dana", {}, { statics: false, held });
+  const inner = dana as unknown as { waitingRows: { chunk: number; at: number }[]; whole: Uint8Array; unbased: Set<number> };
+  const parts = (): { chunk: number; at: number }[] => inner.waitingRows.filter((m) => m.chunk === east);
+  // Its first message alone has come, and has waited its time; then the sector comes, and the rest after it.
+  for (let k = 0; k < 400 && parts().length < 1; k++) h.run(8);
+  expect([parts().length, h.client(dana)!.syncChunk]).toEqual([1, east]);
+  overdue(dana, parts()[0]!);
+  const part = held.parts[0]!;
+  const steps = held.set(part, readPart(head, part, file.subarray(part.at, part.at + part.length)) as StaticsPiece);
+  while (!steps.next().done);
+  expect([inner.unbased.has(east), inner.whole[east]]).toEqual([true, 0]);
+  h.run(2000);
+  expect([inner.whole[east], inner.unbased.size, differ(structs, dana.world!.structs, [east])]).toEqual([1, 0, 0]);
+});
 
 test("a chunk dropped while messages wait is kept aside in order, and CMD_HAVE takes it back", () => {
   const { h, dana, set, waiting, structs, chunks } = sectorPage(13);
