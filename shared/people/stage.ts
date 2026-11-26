@@ -4,9 +4,10 @@
 // To the stage, each `{ to: STAGE_TO, kind, id?, ... }`; `id` is the sender's own number, echoed in the answer:
 //   look       look: the 72 look bytes (shared/anim/look.ts), as a Uint8Array or a list of numbers
 //   gear       held: an item id or null; armor: five item ids or nulls, hat, shirt, gloves, pants, boots
-//   wardrobe   slots: five garments or nulls, each { item, edition, dye: three palette bytes, print: a print key or null };
-//              an unpublished draft is edition 0 and carries its dye and print here; hide: skin zones to leave undrawn
-//   print      key, and url (a path on this origin or a blob: address) or png bytes: a garment draft's picture
+//   wardrobe   slots: five garments or nulls, each { item, edition, dye: three palette bytes, print: { key, place } or
+//              null, the picture a print command gave and where it lies on the cut's sheet }; an unpublished draft is
+//              edition 0 and carries its dye and print here; hide: skin zones to leave undrawn
+//   print      key, and url (a path on this origin or a blob: address) or png bytes: a print's picture
 //   pose       pose: idle, walk, tool or seated; at: hold the move this share of the way through, or null to play it
 //   hour       hour: 0 to 24, the game's own sky and sun at that hour
 //   framing    framing: full, portrait, back or three-quarter
@@ -20,6 +21,7 @@
 // A message that is not one of these, or is malformed, is ignored with a note on the stage's console.
 
 import { LOOK_BYTES } from "../anim/look.ts";
+import type { PrintPlace } from "./doc.ts";
 
 export const STAGE_TO = "snark-person-stage";
 export const STAGE_FROM = "snark-person-stage-reply";
@@ -41,7 +43,8 @@ export interface StageGarment {
   readonly edition: number;
   /** Three palette bytes. */
   readonly dye: readonly [number, number, number];
-  readonly print: string | null;
+  /** A held print's key and where it lies, as an edition's print does (shared/people/doc.ts EditionPrint). */
+  readonly print: { readonly key: string; readonly place: PrintPlace } | null;
 }
 
 export type StageCommand =
@@ -93,8 +96,20 @@ function garmentOf(v: unknown): StageGarment | null | string {
   if (typeof v.item !== "string" || !itemOrNull(v.item)) return "a garment's item is an item id";
   if (typeof v.edition !== "number" || !Number.isInteger(v.edition) || v.edition < 0 || v.edition > 0xffffffff) return "a garment's edition is a whole number, 0 for a draft";
   if (!Array.isArray(v.dye) || v.dye.length !== 3 || !v.dye.every(isByte)) return "a garment's dye is three palette bytes";
-  if (v.print !== null && (typeof v.print !== "string" || !PRINT_KEY.test(v.print))) return "a garment's print is a print key or null";
-  return { item: v.item, edition: v.edition, dye: [v.dye[0], v.dye[1], v.dye[2]], print: v.print };
+  if (v.print === null) return { item: v.item, edition: v.edition, dye: [v.dye[0], v.dye[1], v.dye[2]], print: null };
+  const p = v.print;
+  if (!isObject(p) || typeof p.key !== "string" || !PRINT_KEY.test(p.key)) return "a garment's print is a print key and a place, or null";
+  const place = placeOf(p.place);
+  if (!place) return "a print's place is u, v, w, h within the sheet, a scale and a turn";
+  return { item: v.item, edition: v.edition, dye: [v.dye[0], v.dye[1], v.dye[2]], print: { key: p.key, place } };
+}
+
+function placeOf(v: unknown): PrintPlace | null {
+  if (!isObject(v)) return null;
+  const { u, v: down, w, h, scale, turn } = v;
+  const unit = (n: unknown): n is number => typeof n === "number" && n >= 0 && n <= 1;
+  if (!unit(u) || !unit(down) || !unit(w) || !unit(h) || typeof scale !== "number" || !(scale > 0 && scale <= 16) || typeof turn !== "number" || !(Math.abs(turn) <= Math.PI)) return null;
+  return { u, v: down, w, h, scale, turn };
 }
 
 function side(v: unknown): number | null | string {

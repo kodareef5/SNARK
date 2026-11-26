@@ -95,7 +95,7 @@ test("two Cast presets of one character make different people of the name's sex"
   expect([office.person.sex, swim.person.sex]).toEqual([1, 1]);
   // The office look keeps its own clothes; swimwear takes what the beach population wears.
   expect(office.wear).toEqual(CAST_CATALOGUE.looks.find((l) => l.id === "cast:office")!.wear);
-  expect(BEACH.outfits!.some((o) => o.wear === swim.wear)).toBe(true);
+  expect(BEACH.outfits!.map((o) => o.wear)).toContainEqual([...swim.wear]);
   // A seed form names what made it, and makes the same look again.
   const { born } = swim;
   expect([...lookOfSeed(reg, born.seed, born.population, born.revision)!]).toEqual([...swim.person.look]);

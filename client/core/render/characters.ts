@@ -1677,6 +1677,8 @@ export class Characters {
       part.lod = this.slotLod[GARMENT_ON[k]!]!;
       const flat = part.lod >= this.assets.table.flat[mesh]!;
       c[PRINT_BYTE] = edition !== 0 && this.printByte ? this.printByte(edition, flat) : 0;
+      // A flat level's print area is cloth where no swatch is shown.
+      if (flat && c[PRINT_BYTE] === 0) c[PRINT_BYTE] = c[REGION_MAIN - REGION_BASE]!;
       this.queuePart(mesh, c, 0, -1, false);
       // Only a draw with a print in it takes the printed program, which costs more on every pixel.
       if (c[PRINT_BYTE] !== 0 && !flat) this.printedAt[this.printedCount++] = this.count - 1;
