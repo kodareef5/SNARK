@@ -18,7 +18,7 @@ import type { Def } from "../../shared/content/defs.ts";
 import { compileContent, type Registry } from "../../shared/content/registry.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
-import type { Pack, PackRig } from "../../shared/pack/pack.ts";
+import { rigsWithHits, type Pack, type PackRig } from "../../shared/pack/pack.ts";
 import { SKY_COLOR } from "../../shared/pack/palette.ts";
 import { creatureHash, hullHash, nodeHash, poseHash, simHash, snapHash, tunedHash } from "../../shared/sim/scenarios.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
@@ -892,6 +892,7 @@ export function soakLoad(rungs: readonly RungReport[] | null, tier: string): { l
 
 /** What the run needs from the page. */
 export interface DeviceSide {
+  readRigHits?: () => Promise<string>;
   app: App;
   pack: Pack;
   reg: Registry;
@@ -941,6 +942,8 @@ export class DeviceRun {
   private readonly side: DeviceSide;
   private readonly timing: Timing;
   private readonly mode: Mode;
+  private loadingHits = false;
+  private hitRigs?: PackRig[];
   private stage: Stage = "load";
   private step: Step | null = null;
   /** The quick look's phases, in order, and the one under way. */
@@ -1193,11 +1196,18 @@ export class DeviceRun {
       if (set) sets.push(set);
       else assets.wantClips(c);
     }
+    if (side.readRigHits && !this.hitRigs) {
+      if (!this.loadingHits) {
+        this.loadingHits = true;
+        void side.readRigHits().then((text) => { this.hitRigs = rigsWithHits(side.pack.header.rigs, text); }).catch((error) => this.fail(String(error)));
+      }
+      return false;
+    }
     if (sets.length <= assets.table.skeletons.size) return false;
     // The server's hashes are of the content every map has: a map's own landmarks are left out of the page's.
     const own = side.reg.own;
     const shared = own.size === 0 ? side.reg : compileContent([...side.reg.defs.filter((d, k): d is Def => d !== null && !own.has(k)), ...side.reg.renames]).registry!;
-    this.report.hashes = deviceScenarios(shared, side.pack.header.rigs, joinClips(sets)).map(([name, run]) => {
+    this.report.hashes = deviceScenarios(shared, this.hitRigs ?? side.pack.header.rigs, joinClips(sets)).map(([name, run]) => {
       const t = side.now();
       const got = run();
       return { name, got, want: side.expected?.[name] ?? null, ms: tenth(side.now() - t) };
@@ -2182,7 +2192,7 @@ export class DeviceProbe {
    * frame. The renderer makes a material's texture as its pictures arrive, and so every texture it makes from here on
    * counts, except those init() makes again for a restored context, which it does before this hears of it.
    */
-  attach(side: { app: App; pack: Pack; reg: Registry; hf: Heightfield }, renderer: RendererLike): void {
+  attach(side: Pick<DeviceSide, "app" | "pack" | "reg" | "hf" | "readRigHits">, renderer: RendererLike): void {
     const gl = renderer.gl;
     const gpu = (this.report.gpu = gpuOf(gl, renderer.rendererName, renderer.format));
     const create = gl.createTexture.bind(gl);

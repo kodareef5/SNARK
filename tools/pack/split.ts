@@ -5,7 +5,7 @@
 import { CELL, mipOffset } from "../../shared/pack/details.ts";
 import { EMOTE_GROUP } from "../../shared/anim/emotes.ts";
 import { MANIFEST_VERSION, type Manifest, type ManifestClips, type ManifestFaces, type ManifestFile, type ManifestLevel, type ManifestMesh, type MeshStub, type PageRows } from "../../shared/pack/manifest.ts";
-import { CLIP_ROOT_BYTES, GRIP_POSE_UNITS, HIT_PLANE_UNITS, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, clipRotBytes, detailsAtlas, lodVertices, meshFaces, meshReach, parsePack, setTexture, textureOf, type PackClip, type PackHeader, type PackLod } from "../../shared/pack/pack.ts";
+import { CLIP_ROOT_BYTES, GRIP_POSE_UNITS, HIT_PLANE_UNITS, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, clipRotBytes, detailsAtlas, lodVertices, meshFaces, meshReach, parsePack, setTexture, textureOf, type PackClip, type PackHeader, type PackHitSurface, type PackLod } from "../../shared/pack/pack.ts";
 import { farMeshId } from "../../shared/pack/far.ts";
 import { PARTS_HEADER_BYTES, PARTS_MAGIC, PARTS_VERSION } from "../../shared/pack/stored.ts";
 import { TEXTURE_ROLES } from "../../shared/pack/texture.ts";
@@ -27,6 +27,8 @@ export interface SplitFile {
 }
 
 export interface SplitOptions {
+  /** Keep the skin-fitted hit geometry in its own file for the server and device checks. */
+  separateHits?: boolean;
   /** Whether the boot file holds a mesh's smallest levels. Each mesh it does not is in a page. Every mesh where not given. */
   boot?: (id: string) => boolean;
   /** Boot meshes whose held levels need their material surface at first draw. */
@@ -56,13 +58,19 @@ interface Placed {
  * file's parts nor the pages are yet deflated. The bytes of a part are what they were in the whole pack. `blobs` are the
  * pages' blobs.
  */
-export function splitPack(whole: Uint8Array, name: string, opts: SplitOptions = {}): { files: SplitFile[]; manifest: Manifest; blobs: Uint8Array[] } {
+export function splitPack(whole: Uint8Array, name: string, opts: SplitOptions = {}): { files: SplitFile[]; manifest: Manifest; blobs: Uint8Array[]; rigHits?: Uint8Array } {
   const pack = parsePack(whole);
   const isBoot = opts.boot ?? (() => true);
   const place = opts.place ?? (() => [0, 0] as const);
   const blobs = [new PackBlob(), new PackBlob()];
   const headers: PackHeader[] = blobs.map((b) => ({ paletteOffset: b.append(pack.palette), meshes: [], rigs: [], clips: [] }));
-  headers[0]!.rigs = pack.header.rigs;
+  const hits: Record<string, PackHitSurface[]> = Object.create(null);
+  headers[0]!.rigs = pack.header.rigs.map((rig) => {
+    if (!opts.separateHits || !rig.hitSurfaces) return rig;
+    const { hitSurfaces, ...drawing } = rig;
+    hits[rig.id] = hitSurfaces;
+    return drawing;
+  });
   // The sections in the mesh file name materials, so it lists them.
   if (pack.header.materials) headers[1]!.materials = pack.header.materials;
   if (pack.header.textures) headers[1]!.textures = pack.header.textures;
@@ -268,7 +276,9 @@ export function splitPack(whole: Uint8Array, name: string, opts: SplitOptions = 
     manifest.pages = pages.map(() => ({ file: pageFile, at: 0, part: { bytes: 0, hash: "" } }));
     files[pageFile]!.bytes = writePages(manifest, pageBlobs);
   }
-  return { files, manifest, blobs: pageBlobs };
+  const rigHits = Object.keys(hits).length ? new TextEncoder().encode(JSON.stringify(hits)) : undefined;
+  if (rigHits) manifest.rigHits = `rig-hits.${partHash(rigHits)}.json`;
+  return { files, manifest, blobs: pageBlobs, rigHits };
 }
 
 /**
