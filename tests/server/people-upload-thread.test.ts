@@ -2,7 +2,6 @@
 // takes the body as it received it and hands it to the print's thread, which checks, hashes and writes it. Measured on a
 // real server, sent from a thread of its own, by the world's thread's own clock of time on the processor: over the
 // handler, and over the whole exchange, which takes in the server's receiving of the bytes.
-import { FFIType, dlopen, ptr } from "bun:ffi";
 import { afterAll, expect, test } from "bun:test";
 import { peopleAdmin } from "../../server/admin/people-routes.ts";
 import { checkPng, hashOf } from "../../server/people/png.ts";
@@ -25,15 +24,11 @@ const server = Bun.serve({
   },
 });
 const sender = new Worker(new URL("../fixtures/print-sender.ts", import.meta.url).href);
-afterAll(() => (sender.terminate(), server.stop(true), store.close(), libc.close()));
+afterAll(() => (sender.terminate(), server.stop(true), store.close()));
 
-const libc = dlopen("libc.so.6", { clock_gettime: { args: [FFIType.i32, FFIType.ptr], returns: FFIType.i32 } });
-const CLOCK_THREAD_CPUTIME_ID = 3;
-const spec = new BigInt64Array(2);
-/** The world's thread's own time on the processor so far, in ms. */
 function cpuMs(): number {
-  libc.symbols.clock_gettime(CLOCK_THREAD_CPUTIME_ID, ptr(spec));
-  return Number(spec[0]) * 1e3 + Number(spec[1]) / 1e6;
+  const { user, system } = process.threadCpuUsage();
+  return (user + system) / 1000;
 }
 
 /** Sends `bytes` from the sender's thread, and gives the status with the thread's time over the handler and the exchange. */
