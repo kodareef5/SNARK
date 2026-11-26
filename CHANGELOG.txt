@@ -9,6 +9,7 @@ Doors
 
 Resources
 - All 25 resource drops have their own models and matching inventory icons. Look for the shape of the charcoal, pelt or folded freight order on the ground and in your pack.
+- Another 21 items have matching drops and icons, including raw and cooked meats, waterskins, the radio and the magnifying glass.
 
 City maps
 - The map screen requests terrain around the point you select. Roadside lights keep their spacing where a road leaves the map and comes back.
