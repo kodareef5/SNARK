@@ -1,6 +1,7 @@
 // The people bench's crowd (tools/bench/people.ts). A bench page told `?people=` stands survivors in front of its held
 // view: one close enough to fill it, 40 at 8 to 25 m, or 200 at 8 to 80 m, in one shared look, each in a look of its own,
-// or each in its own look and its own mix of clothes and armour. They are written into each sample after the session's
+// or each in its own look and its own mix of clothes and armour, or each in its own look and its own print on the chest
+// (render/prints.ts, worn on the torso until garments are drawn). They are written into each sample after the session's
 // own, so the renderer draws them as it draws a crowd that came over the link, and the link does not limit how many.
 
 import { SLOT_NAMES } from "../../shared/anim/human.ts";
@@ -12,11 +13,13 @@ import { Rng } from "../../shared/rng.ts";
 import { F_ALIVE, F_GROUNDED, GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../../shared/sim/entities.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 import { PROVING_SPAWN } from "../../shared/world/proving.ts";
+import type { EditionPrint } from "../../shared/people/doc.ts";
+import type { PrintsWorn } from "./render/prints.ts";
 import { noVehicle, type RemoteSample } from "./session.ts";
 
 export const CROWD_SCENES = ["portrait", "near", "far"] as const;
 export type CrowdScene = (typeof CROWD_SCENES)[number];
-export const CROWD_LOOKS = ["shared", "unique", "gear"] as const;
+export const CROWD_LOOKS = ["shared", "unique", "gear", "printed"] as const;
 export type CrowdLooks = (typeof CROWD_LOOKS)[number];
 
 /** How many stand in each scene, and how near and far from the viewer, in metres. */
@@ -75,7 +78,7 @@ export function crowdView(scene: CrowdScene, viewer: Spot = CROWD_VIEWER): { yaw
   return { yaw: viewer.yaw, pitch: scene === "portrait" ? -Math.atan2(CROWD_EYE - 0.95, CROWD_SHAPES.portrait.near) : -0.04 };
 }
 
-/** The look of each of `n` bodies: one look for all, or one each from `randomLook`, males and females by turns. */
+/** The look of each of `n` bodies: one look for all, or one each from `randomLook`, males and females by turns. A printed crowd's are unique. */
 export function crowdLooks(n: number, looks: CrowdLooks, seed = 1): Uint8Array[] {
   if (looks === "shared") {
     const one = defaultLook();
@@ -116,6 +119,21 @@ export function crowdGear(n: number, looks: CrowdLooks, reg: Registry, seed = 1)
   return out;
 }
 
+/** The torso's region of the body's print sheet, its UV map, that a crowd's print is laid in: the chest. */
+export const CROWD_PRINT_PLACE = { u: 0.31, v: 0.2, w: 0.14, h: 0.14 } as const;
+/** The first hash of the crowd's prints: print k is this plus k, in 16 hex digits, which the bench's server serves. */
+export const CROWD_PRINT_FIRST = 0xc0de0000;
+export const crowdPrintHash = (k: number): string => (CROWD_PRINT_FIRST + k).toString(16).padStart(16, "0");
+
+/** The print each of `n` bodies wears, none but in a printed crowd: a picture of its own, every third twice as wide, turned a little. */
+export function crowdPrints(n: number, looks: CrowdLooks): (EditionPrint | null)[] {
+  return Array.from({ length: n }, (_, k) => {
+    if (looks !== "printed") return null;
+    const wide = k % 3 === 2;
+    return { hash: crowdPrintHash(k), width: 512, height: wide ? 256 : 512, place: { ...CROWD_PRINT_PLACE, scale: 0.9, turn: ((k % 5) - 2) * 0.12 } };
+  });
+}
+
 /** What the page's address asks: `?people=<scene>&looks=<looks>`, or null where it asks for no crowd. */
 export function crowdAsked(get: (name: string) => string | null): { scene: CrowdScene; looks: CrowdLooks } | null {
   const scene = get("people") as CrowdScene, looks = (get("looks") ?? "shared") as CrowdLooks;
@@ -136,6 +154,7 @@ export class Crowd {
   readonly spots: Spot[];
   readonly looks: Uint8Array[];
   readonly gear: Uint16Array;
+  readonly prints: (EditionPrint | null)[];
   private readonly human: number;
   private readonly ground: number[];
   private readonly anims: number[];
@@ -145,6 +164,7 @@ export class Crowd {
     const n = this.spots.length;
     this.looks = crowdLooks(n, looks);
     this.gear = crowdGear(n, looks, reg);
+    this.prints = crowdPrints(n, looks);
     this.human = reg.index.get("core:survivor") ?? 0;
     this.ground = this.spots.map((s) => Math.max(hf.heightAt(s.x, s.z), hf.waterAt(s.x, s.z)));
     this.anims = this.spots.map((_, k) => crowdAnim(k));
@@ -153,6 +173,12 @@ export class Crowd {
       sample(out, delayTicks);
       this.add(out);
     };
+  }
+
+  /** The prints the crowd wears on the torsos `find` names by mesh id, or null where it wears none. */
+  worn(find: (id: string) => number): PrintsWorn | null {
+    if (!this.prints.some((p) => p)) return null;
+    return { meshes: ["core:human_m/torso", "core:human_f/torso"].map(find).filter((m) => m >= 0), of: (id) => this.prints[id - CROWD_ID] ?? null };
   }
 
   private add(out: RemoteSample): void {

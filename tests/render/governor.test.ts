@@ -6,8 +6,11 @@ import { levels, replay, sceneOf } from "../../tools/bench/governor.ts";
 import { phoneSoaks, run } from "../fixtures/frames.ts";
 import { artTest } from "../fixtures/needs-art.ts";
 
-/** The screens' steps, which come first on every tier and are passed by where no screen is drawn, as in these frames. */
-const SCREEN_STEPS = ["screens: clips at 10 frames a second", "screens: stills only", "screens: the nearest 8", "screens: off"];
+/**
+ * The screens' steps and the prints', which come first on every tier that has them and are passed by where no screen or
+ * print is drawn, as in these frames.
+ */
+const SCREEN_STEPS = ["screens: clips at 10 frames a second", "screens: stills only", "screens: the nearest 8", "screens: off", "prints: swatches"];
 const S = SCREEN_STEPS.length;
 /** Each step past the screens' leaves this share of the GPU's time: a made-up card on which every step buys a little. */
 const leave = (level: number): number => 0.88 ** Math.max(0, level - S);

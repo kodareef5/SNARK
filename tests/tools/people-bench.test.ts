@@ -98,7 +98,7 @@ describe("the bench's cells and runs", () => {
 
   test("each tier has two empty views and every scene in every kind of looks", () => {
     const list = cells(["medium", "high"]);
-    expect(list.length).toBe(2 * (2 + 9));
+    expect(list.length).toBe(2 * (2 + 12));
     expect(new Set(list.map(cellName)).size).toBe(list.length);
     expect(address(80, list[0]!)).toContain("look=portrait");
     expect(address(80, list[0]!)).not.toContain("people=");

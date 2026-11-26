@@ -77,6 +77,8 @@ export interface Frame {
   frameTables: [number, number, number[]][];
   texUploads: unknown[];
   texDrops: number[];
+  /** The print put in a layer this frame (packet.ts printSource), its layer and its bytes, or null. */
+  print: [number, number, number] | null;
 }
 
 /** How much of a packet's array of this name a frame uses. */
@@ -138,6 +140,8 @@ export class Shot {
     const scalars: Frame["scalars"] = { tier: p.tier.name };
     const arrays: Frame["arrays"] = [];
     for (const [name, value] of Object.entries(p)) {
+      // A print's picture goes on its own, below.
+      if (name === "printSource") continue;
       if (typeof value === "number" || typeof value === "boolean") scalars[name] = value;
       // The cascades' arrays are views of the frame block, which goes whole: without shadows, its street lamp lights
       // with no shadow map, as the rasterizer has it.
@@ -169,6 +173,7 @@ export class Shot {
       frameTables: [...p.frameTables].map(([buffer, t]) => [buffer, t.stamp, [...t.axes]]),
       texUploads: p.texUploads.map(({ data, ...u }) => ({ ...u, data: ref(data) })),
       texDrops: [...p.texDrops],
+      print: p.printUploads > 0 && p.printSource instanceof Uint8Array ? [p.printLayer, ...ref(p.printSource)] : null,
     });
   }
 

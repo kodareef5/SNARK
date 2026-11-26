@@ -68,6 +68,8 @@ export interface Drawn {
   /** Bodies drawn on bones of their own, and of them those posed anew (render/characters.ts posed, fresh). */
   posed?: number;
   fresh?: number;
+  /** The prints on garments (render/prints.ts): pictures put on the card in all and the most in a frame, layers holding one, and what the shell put. */
+  prints?: { uploaded: number; most: number; held: number; puts: number };
 }
 
 /** A `?bench=1` run: the page flies itself (App.autopilot), or holds its look with `?still`, and reports frame times and the GPU's time by pass. */
