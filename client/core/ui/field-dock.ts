@@ -1,19 +1,19 @@
 // The field dock: the hotbar's slots, and the menus beside them. A mouse clicks or browses with F2, F4, the arrows and
-// Enter; a finger slides along the slots and swipes the two edge wheels. It is a screen of the list (screens-list.ts)
-// that draws with the HUD, and its field menu offers every screen that names a way in (Screen.dock).
-// One contact browses it at a time, so the other thumb keeps moving or acting.
+// Enter; a finger has the rims instead (touch-dock.ts): a wheel at each edge and a shelf it slides along. It is a screen
+// of the list (screens-list.ts) that draws with the HUD, and its field menu offers every screen that names a way in
+// (Screen.dock). One contact browses it at a time, so the other thumb keeps moving or acting.
 
 import { EMOTE_NUMBER } from "../../../shared/anim/emotes.ts";
 import type { ItemDef } from "../../../shared/content/defs.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
 import { CMD_SELECT, CMD_USE } from "../../../shared/net/protocol.ts";
 import { FLAG_BLUEPRINT, HOTBAR_SLOTS, type Inventory } from "../../../shared/sim/items.ts";
-import { KEY_HOTBAR } from "../hud/hotbar.ts";
 import { hotbarCell, hotbarLeft, hotbarTop } from "../hud/layout.ts";
 import { line, tile } from "./dock-visual.ts";
 import type { EmoteMenu } from "./emotes.ts";
-import { K_BUTTON, K_HOLD, type UiFrame } from "./nodes.ts";
+import { K_BUTTON, type UiFrame } from "./nodes.ts";
 import type { DockEntry, Screen, ScreenCtx } from "./screen.ts";
+import type { RimHost, TouchRims } from "./touch-dock.ts";
 import { S_HUD_CAPTION, S_HUD_HIT, S_HUD_KEY, S_LABEL } from "./style.ts";
 
 /** The dock's keys: hubs, then a page's leaves, then the slots, then the rims, each with parts at +100 to +400. */
@@ -87,18 +87,20 @@ export class FieldDock implements Screen {
   page: DockPage | null = null;
   private focus = 0;
   private familyParent = false;
-  private finger = -1;
   private mouseKey = -1;
-  private originKey = -1;
-  private downX = 0;
-  private downY = 0;
-  private downSlot = 0;
-  private downFocus = 0;
-  private phase: number | null = null;
-  private dragged = false;
-  private startPage: DockPage | null = null;
-  private expanded = 0;
-  private clock = -1;
+  /** By touch, the wheels and the shelf, made when the touch layer has come; `at` is what their choices act through. */
+  private rims: TouchRims | null = null;
+  private at: ScreenCtx | null = null;
+  private readonly host: RimHost = {
+    hubs: KEY_FIELD_HUB, leaves: KEY_FIELD_LEAF, rims: KEY_RIM, slots: KEY_DOCK_SLOT,
+    menu: () => this.leaves("emblem", this.at!),
+    families: () => OWN.actions,
+    leavesOf: (family) => OWN[OWN.actions[family]!.page as Exclude<DockPage, "emblem">],
+    available: (leaf) => this.available(leaf, this.at!),
+    // The rims have shut by now, and the page with them: a key the choice presses is the game's, not the dock's.
+    run: (leaf) => { this.page = null; this.run(leaf, this.at!); },
+    equip: (slot, slid) => { if (!slid || slot !== this.at!.session?.held) this.equip(slot, this.at!); },
+  };
   /** The field menu, made from the list's screens once they are known. */
   private menu: Leaf[] | null = null;
   private readonly shown: Leaf[] = [];
@@ -116,14 +118,18 @@ export class FieldDock implements Screen {
   get open(): boolean { return this.page !== null; }
   close(): void { this.reset(); }
   build(): void {}
-  pressWorld(): boolean { this.reset(); return true; }
-  letGo(): void { this.reset(); }
+  /** A press on the world, or a lost window: by touch the rims fold back on their springs. */
+  pressWorld(): boolean { this.letGo(); return true; }
+  letGo(): void {
+    if (!this.touch || !this.rims) return this.reset();
+    this.rims.shut(this.at ? this.host : undefined);
+    this.page = null; this.preview = -1;
+  }
 
   reset(): void {
-    this.page = null; this.focus = 0; this.familyParent = false; this.mouseKey = -1; this.release();
-    this.expanded = 0; this.clock = -1;
+    this.page = null; this.focus = 0; this.familyParent = false; this.mouseKey = -1; this.preview = -1;
+    this.rims?.reset();
   }
-  private release(): void { this.finger = this.originKey = this.preview = -1; this.dragged = false; this.phase = null; }
 
   private leaves(p: DockPage, c: ScreenCtx): readonly Leaf[] {
     if (p !== "emblem") return OWN[p];
@@ -200,7 +206,6 @@ export class FieldDock implements Screen {
   }
 
   private openPage(p: DockPage, c: ScreenCtx): void {
-    if (!this.page) this.expanded = 0;
     this.familyParent = this.page === "actions";
     this.page = p; this.focus = 0;
     const entries = this.list(c);
@@ -208,7 +213,7 @@ export class FieldDock implements Screen {
   }
 
   private back(c: ScreenCtx): void {
-    if ((this.touch || this.familyParent) && this.page && this.page !== "actions" && this.page !== "emblem") this.openPage("actions", c);
+    if (this.familyParent && this.page && this.page !== "actions" && this.page !== "emblem") this.openPage("actions", c);
     else this.reset();
   }
 
@@ -248,144 +253,73 @@ export class FieldDock implements Screen {
   private hub(key: number, c: ScreenCtx): Leaf | undefined {
     const index = key - KEY_FIELD_HUB;
     if (index < 0 || index >= 6) return undefined;
-    if (this.touch) return index === 0 ? this.find("emblem", c) : index === 3 ? this.find("actions", c) : undefined;
     return this.find(index < 3 ? LEFT_HUBS[index]! : RIGHT_HUBS[index - 3]!, c);
   }
 
   pointer(kind: number, key: number, x: number, y: number, button: number, c: ScreenCtx): boolean {
-    const f = c.frame, finger = c.finger;
-    if (!finger && (kind === 0 || kind === 3)) this.mouseKey = -1;
+    if (this.touch) {
+      const rims = this.rims;
+      if (!rims || (kind === 0 && button !== 0)) return false;
+      this.at = c;
+      // A rim shut out by a screen over it takes no new finger, and lets go of the one it held.
+      if (!this.enabled && kind === 0) return true;
+      const took = rims.pointer(this.enabled ? kind : 3, key, x, y, c.finger, c.frame, this.host);
+      this.page = rims.page(this.host) as DockPage | null;
+      this.preview = rims.preview;
+      return took;
+    }
+    if (kind === 0 || kind === 3) this.mouseKey = -1;
     const slot = key - KEY_DOCK_SLOT, equipment = slot >= 0 && slot < HOTBAR_SLOTS;
     const hub = this.hub(key, c);
     const entries = this.list(c);
     const leaf = key >= KEY_FIELD_LEAF && key < KEY_FIELD_LEAF + entries.length;
-    if (!equipment && !hub && !leaf && this.originKey !== key) return false;
-    if (!this.enabled || (kind === 0 && button !== 0) || (!f.find(key)?.interactive && !(finger && this.originKey === key && finger === this.finger))) {
-      if (finger === this.finger && kind !== 2) this.release();
-      return true;
-    }
-    if (kind === 3) {
-      if (finger === this.finger) { this.page = this.startPage; this.release(); }
-      return true;
-    }
-    if (!finger) {
-      if (kind === 2 && leaf) this.focus = key - KEY_FIELD_LEAF;
-      if (kind === 0) this.mouseKey = key;
-      // A native keyboard click arrives from the shell without mouse coordinates or a release.
-      if (this.mouseKey === key && (kind === 1 || (kind === 0 && x === 0 && y === 0))) {
-        this.mouseKey = -1;
-        if (equipment) { this.reset(); this.equip(slot, c); }
-        else if (hub) { if (hub.page && this.page === hub.page) this.reset(); else this.choose(hub, c); }
-        else if (leaf && this.page) this.choose(entries[key - KEY_FIELD_LEAF], c);
-      } else if (kind === 1) this.mouseKey = -1;
-      return true;
-    }
-    if (kind === 0) {
-      if (this.finger >= 0) return true;
-      this.finger = finger; this.originKey = key; this.downX = x; this.downY = y; this.startPage = this.page;
-      this.downFocus = this.focus;
-      if (equipment) {
-        this.page = null; this.preview = slot;
-        this.downSlot = Math.max(0, c.hud?.held ?? 0);
-      }
-      return true;
-    }
-    if (this.finger !== finger || this.originKey !== key) return true;
-    const dx = x - this.downX, dy = y - this.downY;
-    this.dragged ||= Math.hypot(dx, dy) >= 12;
-    if (equipment) {
-      const lens = c.touchDock?.slide(f, slot, this.downX, dx, this.downSlot);
-      if (lens && this.dragged) { this.phase = lens.phase; this.preview = lens.preview; }
-      if (kind === 1) {
-        const chosen = this.preview;
-        const inRow = Math.abs(dy) * f.unit < 38 && (!this.dragged || Math.abs(dx) >= Math.abs(dy));
-        const equip = inRow && (!this.dragged || chosen !== c.session?.held);
-        this.release();
-        if (equip) this.equip(chosen, c);
-      }
-      return true;
-    }
-    const left = hub?.id === "emblem" || this.startPage === "emblem";
-    const inward = left ? dx : -dx;
-    const entry = this.page && leaf ? entries[key - KEY_FIELD_LEAF] : undefined;
-    if (kind === 2 && this.dragged && hub?.page && !this.page && inward > 16) this.openPage(hub.page, c);
-    if (this.dragged && this.page && Math.abs(dy) > Math.abs(dx) && this.startPage) {
-      const n = entries.length, steps = Math.round(dy * f.unit / 51);
-      this.focus = ((this.downFocus - steps) % n + n) % n;
-      if (kind === 1) this.release();
-      return true;
-    }
-    if (kind === 1) {
-      const dragged = this.dragged, previous = this.startPage;
-      this.release();
-      if (dragged) {
-        if (inward < -25) this.back(c);
-        else if (inward > 23 && entry?.page) this.openPage(entry.page, c);
-        else if (inward > 18 && hub?.page && this.page !== hub.page) this.openPage(hub.page, c);
-        else if (hub && this.page === "actions") {
-          const near = this.nearest(f, x, y), node = f.find(KEY_FIELD_LEAF + near);
-          const family = this.list(c)[near];
-          if (family?.page && node && x >= node.x && x <= node.x + node.w && y >= node.y && y <= node.y + node.h) this.openPage(family.page, c);
-        } else if (this.page && !hub) this.focus = this.nearest(f, x, y);
-      } else if (hub) {
-        if (hub.page === previous || (hub.id === "actions" && previous && previous !== "emblem")) this.back(c); else this.choose(hub, c);
-      } else if (entry) this.choose(entry, c);
-    } else if (this.dragged && this.page) {
-      this.focus = this.nearest(f, x, y);
-    }
+    if (!equipment && !hub && !leaf) return false;
+    if (!this.enabled || (kind === 0 && button !== 0) || !c.frame.find(key)?.interactive || kind === 3) return true;
+    if (kind === 2 && leaf) this.focus = key - KEY_FIELD_LEAF;
+    if (kind === 0) this.mouseKey = key;
+    // A native keyboard click arrives from the shell without mouse coordinates or a release.
+    if (this.mouseKey === key && (kind === 1 || (kind === 0 && x === 0 && y === 0))) {
+      this.mouseKey = -1;
+      if (equipment) { this.reset(); this.equip(slot, c); }
+      else if (hub) { if (hub.page && this.page === hub.page) this.reset(); else this.choose(hub, c); }
+      else if (leaf && this.page) this.choose(entries[key - KEY_FIELD_LEAF], c);
+    } else if (kind === 1) this.mouseKey = -1;
     return true;
-  }
-
-  private nearest(f: UiFrame, x: number, y: number): number {
-    let chosen = this.focus, distance = Infinity;
-    for (let i = 0; i < this.shown.length; i++) {
-      const n = f.find(KEY_FIELD_LEAF + i);
-      if (!n) continue;
-      const d = Math.hypot(x - n.x - n.w / 2, y - n.y - n.h / 2);
-      if (d < distance) { distance = d; chosen = i; }
-    }
-    return chosen;
   }
 
   /** Drawn with the HUD: the slots' hit boxes, the hubs, and the open page. */
   play(f: UiFrame, c: ScreenCtx): void {
     const touch = c.inputDevice === 2, session = c.session, hud = c.hud;
+    this.at = c;
     if (touch !== this.touch) { this.touch = touch; this.reset(); }
     if (this.width && (this.width !== f.width || this.height !== f.height)) this.reset();
     this.width = f.width; this.height = f.height;
     let others = false;
     for (const s of c.screens) if (s.name !== this.name && s.isOpen()) others = true;
     this.enabled = !!session && !!hud && !others && !session.airSupport.flight && !session.open;
-    if (!this.enabled || !hud || hud.hotbar.length === 0) { if (this.page) this.reset(); return; }
-    const now = hud.hotbarNow;
-    const step = this.clock < 0 ? 1 : Math.min(1, Math.max(0, now - this.clock) / 170);
-    this.clock = now;
-    this.expanded = this.page ? Math.min(1, this.expanded + step) : 0;
-    hud.dockPreview = this.preview;
-    hud.dockPhase = this.phase;
+    if (!this.enabled || !hud || hud.hotbar.length === 0) {
+      if (this.page || this.preview >= 0) this.reset();
+      if (hud) { hud.dockPreview = -1; hud.dockBelt = null; }
+      return;
+    }
+    if (touch) {
+      if (!c.touchDock) return;
+      const rims = this.rims ??= new c.touchDock.TouchRims();
+      rims.play(f, hud.hotbarNow, this.host, hud);
+      this.page = rims.page(this.host) as DockPage | null;
+      this.preview = rims.preview;
+      return;
+    }
+    hud.dockPreview = -1; hud.dockBelt = null;
     const n = hud.hotbar.length, cell = hotbarCell(f, n), x0 = hotbarLeft(f, n);
     const end = x0 + n * (cell + 3) - 3, bottom = hotbarTop(f, n) + cell;
     for (let i = 0; i < n; i++) {
       const s = hud.hotbar[i]!;
-      const visual = touch ? f.find(KEY_HOTBAR + i * 3) : null;
-      if (touch && !visual && this.originKey !== KEY_DOCK_SLOT + i) continue;
-      const box = touch
-        ? f.add(KEY_DOCK_SLOT + i, K_HOLD, visual?.x ?? this.downX, visual?.y ?? this.downY, visual?.w ?? 1, visual?.h ?? 1, S_HUD_HIT)
-        : f.add(KEY_DOCK_SLOT + i, K_BUTTON, x0 + i * (cell + 3), bottom - cell, cell, cell, S_HUD_HIT);
+      const box = f.add(KEY_DOCK_SLOT + i, K_BUTTON, x0 + i * (cell + 3), bottom - cell, cell, cell, S_HUD_HIT);
       box.label = `Slot ${(i + 1) % 10}: ${s.name || s.id || s.label || "empty"}`;
       box.interactive = true;
     }
-    if (touch) {
-      c.touchDock?.drawWheels(f, {
-        page: this.page, focus: this.focus, expanded: this.expanded, menu: this.leaves("emblem", c), actions: OWN.actions, entries: this.list(c),
-        hubs: KEY_FIELD_HUB, leaves: KEY_FIELD_LEAF, rims: KEY_RIM,
-        tile: (key, leaf, x, y, size, active) => this.tile(f, key, leaf, x, y, size, size, active, false, c),
-        hub: (key, label, x, y, w, h) => {
-          const hit = f.add(key, K_HOLD, x, y, w, h, S_HUD_HIT);
-          hit.label = label; hit.interactive = true;
-        },
-      });
-    } else this.draw(f, x0, end, bottom, c);
+    this.draw(f, x0, end, bottom, c);
   }
 
   private draw(f: UiFrame, x: number, end: number, bottom: number, c: ScreenCtx): void {
@@ -412,12 +346,12 @@ export class FieldDock implements Screen {
     if (!l) return;
     const enabled = this.available(l, c);
     const caption = leaf, under = caption ? 15 : 0, th = h - under;
-    if (!this.touch && !tile(f, key + 100, x + 2, y + 2, w - 4, th - 4, active)) {
+    if (!tile(f, key + 100, x + 2, y + 2, w - 4, th - 4, active)) {
       line(f, key + 100, x + 1, y + 1, w - 2, th - 2, active ? 0x24526d : 0x0b2438, active ? .84 : .61);
       line(f, key + 200, x + 1, y + th - 2, w - 2, active ? 2 : 1, active ? 0xa3e5ff : 0x86acc2, active ? 1 : .65);
     }
     const side = Math.min(w, th);
-    const icon = this.touch ? side * (active ? .88 : .75) : side - 8;
+    const icon = side - 8;
     const pic = f.picture(key + 300, x + (w - icon) / 2, y + (th - icon) / 2, icon, icon, S_LABEL, "ui:glass-" + l.art);
     if (pic) pic.alpha = enabled ? 1 : .39;
     if (caption || !pic) {
@@ -426,7 +360,7 @@ export class FieldDock implements Screen {
       const n = f.text(key + 400, cx, y + h - 14, w + 16, under ? S_HUD_CAPTION : S_HUD_KEY, l.label);
       n.alpha = enabled ? .95 : .6;
     }
-    const hit = f.add(key, this.touch ? K_HOLD : K_BUTTON, x, y, w, h, S_HUD_HIT);
+    const hit = f.add(key, K_BUTTON, x, y, w, h, S_HUD_HIT);
     hit.interactive = true; hit.label = l.label + (enabled ? "" : " (unavailable)");
   }
 }

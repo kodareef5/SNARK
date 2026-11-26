@@ -32,7 +32,8 @@ Item art
 - Radio and GPS screens stay legible up close. Saddle leather, straps and stitching have clearer finishes, and dropped gear keeps its colours as it switches to simpler models at a distance.
 
 Touch controls
-- Swipe the left wheel for menus or the right fan for actions. Slide along the equipment dock and lift to equip. Tap the vital signs for health and experience, or the radio beneath them to chat.
+- Tap or pull the left wheel for menus: turn it under your thumb and lift to open what it stops on. The right fan opens each family of actions beside it. Slide along the equipment shelf and lift to equip. Tap the vital signs for health and experience, or the radio beneath them to chat.
+- Pressing Command on a touch page no longer switches it to the keyboard layout.
 - Hold a bin’s search button until its inventory opens. Field kit has extra controls for jumping and holding an attack.
 
 City maps

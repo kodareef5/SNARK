@@ -3,6 +3,7 @@
 import type { ItemDef } from "../../../shared/content/defs.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
 import { FLAG_BLUEPRINT, HOTBAR_SLOTS, QUALITY_MUL, type Inventory } from "../../../shared/sim/items.ts";
+import type { BeltView } from "../ui/touch-dock.ts";
 import { K_PANEL, fitText, lineHeight } from "../ui/nodes.ts";
 import { line } from "../ui/dock-visual.ts";
 import { glass } from "../ui/skin.ts";
@@ -43,9 +44,9 @@ export interface HotbarModel {
   buildSays: string;
   /** The slot under a thumb sliding along the dock, or -1: the dock sets it. Each slot grows toward it by touch. */
   dockPreview: number;
-  dockPhase: number | null;
-  dockSizes: number[];
-  /** The frame's time, for the growth and for the dock's own. */
+  /** By touch, how the shelf stands this frame: the dock's rims set it. */
+  dockBelt: BeltView | null;
+  /** The frame's time, which the dock's rims move by. */
   hotbarNow: number;
 }
 
@@ -87,15 +88,9 @@ export function fillHotbar(m: HotbarModel, inv: Inventory | null, held: number, 
 export const HOTBAR: HudWidget<HotbarModel> = {
   name: "hotbar",
   bands: [band(KEY_AMMO, 1), band(KEY_HOTBAR, 30), band(KEY_HOTBAR_LIT, 10), band(KEY_HOTBAR_NUMBER, 10), band(KEY_BUILD_SAYS, 1), band(KEY_HOTBAR_RAIL, 50)],
-  make: () => ({ hotbar: [], held: -1, ammo: "", buildSays: "", dockPreview: -1, dockPhase: null, dockSizes: new Array<number>(HOTBAR_SLOTS).fill(0), hotbarNow: 0 }),
+  make: () => ({ hotbar: [], held: -1, ammo: "", buildSays: "", dockPreview: -1, dockBelt: null, hotbarNow: 0 }),
   fill(m, c) {
-    const now = c.nowMs ?? m.hotbarNow, step = Math.min(1, Math.max(0, now - m.hotbarNow) / 170);
-    m.hotbarNow = now;
-    for (let i = 0; i < m.dockSizes.length; i++) {
-      const gap = Math.abs(i - m.dockPreview);
-      const target = m.dockPreview < 0 ? 0 : Math.max(0, 1 - Math.min(gap, HOTBAR_SLOTS - gap) * .58), size = m.dockSizes[i]!;
-      m.dockSizes[i] = Math.abs(target - size) < .012 ? target : size + (target - size) * Math.min(1, step * 2.5);
-    }
+    m.hotbarNow = c.nowMs ?? m.hotbarNow;
     const a = c.frame;
     if (a) fillHotbar(m, a.alive ? c.session.inventory : null, c.session.held, a.reg, a.palette, a.spendItem, a.spend);
   },
