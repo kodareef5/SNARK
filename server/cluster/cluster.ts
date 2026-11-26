@@ -1,4 +1,4 @@
-import { addBrowserHash,hasBrowserHash,ownsSurvivor } from "../survivor-access.ts";
+import { addBrowserHash,hasBrowserHash,ownerOf,ownsAs } from "../survivor-access.ts";
 // The servers of a cluster as one of them sees them, and the survivors that leave it for another and come from one. The
 // design, its durable states and how each is recovered are in planning/architecture/transfers.md.
 
@@ -97,6 +97,10 @@ export class Cluster {
   private files: Announcement["files"];
   /** The wall clock, in milliseconds. Tickets end by it, and time in transit is measured by it. */
   now: () => number = () => Date.now();
+  /** The account the browser with this key is signed in as, or "" (server/signin/method.ts). */
+  signedAs: (key: Uint8Array) => string = () => "";
+  /** Signs a key hash in as the account its arriving survivor belongs to. */
+  carry: (keyHash: Uint8Array, subject: string) => void = () => {};
   /** What recovering at the load did, one line each. */
   readonly recovered: string[] = [];
   /** Names given out here whose survivor is elsewhere. */
@@ -448,7 +452,7 @@ export class Cluster {
     const parcel = this.read(place);
     if (!parcel) return `${name}'s file in the cluster's folder is damaged: ask an operator`;
     let owner=parcel.head.key!=="" && hex(hashKey(key))===parcel.head.key;
-    if(!owner){try{owner=ownsSurvivor(parcelRecords(this.ctx!.reg,parcel)[0]!,key);}catch{}}
+    if(!owner){try{owner=ownsAs(parcelRecords(this.ctx!.reg,parcel)[0]!,key,this.signedAs(key));}catch{}}
     if (!owner) return `${name} is travelling to ${this.serverName(a.to)}`;
     return this.takeBack(parcel, false) ? "" : `${name} is on ${this.serverName(a.to)}: travel back from there`;
   }
@@ -511,6 +515,8 @@ export class Cluster {
     if (key.length > 0) {
       if(rec.keyHash && hasBrowserHash(rec,key) && hex(rec.keyHash)!==hex(key))addBrowserHash(rec,rec.keyHash);
       rec.keyHash = key.slice();
+      // The browser at this address is another key, and is signed in as the survivor's account from here on.
+      if (ownerOf(rec) !== "") this.carry(key, ownerOf(rec));
     }
     // Every arrival, home included, chooses where it rises, at a spawn point or a bed of its tribe's, as on ARK's spawn screen,
     // and never where it last stood: that would let one leave from inside a base it broke into and come back inside it. Until

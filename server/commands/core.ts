@@ -2,7 +2,7 @@
 
 import { CHEAT_GUESSES, WRONG_PASSWORD, parseNumber } from "../../shared/console.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
-import { REJECT_DENIED, REJECT_KICKED, SESSION_ALIVE, SESSION_DEAD, SESSION_SPECTATING } from "../../shared/net/protocol.ts";
+import { REJECT_DENIED, REJECT_KICKED, TEXT_CONSOLE, SESSION_ALIVE, SESSION_DEAD, SESSION_SPECTATING } from "../../shared/net/protocol.ts";
 import { formatHour, hourOfDay, offsetForHour } from "../../shared/sim/clock.ts";
 import { latLonText, latOf, lonOf } from "../../shared/world/coords.ts";
 import type { Console, ConsoleCommand } from "../console.ts";
@@ -284,6 +284,20 @@ export function addCoreCommands(con: Console): void {
         if (Number.isNaN(seconds)) return "usage: doexit [seconds | cancel]";
         const why = ctx.host.stopIn(seconds);
         return why !== "" ? why : seconds > 0 ? `the server stops in ${seconds} s` : "the server is stopping";
+      },
+    },
+    {
+      name: "discord",
+      usage: "",
+      help: "Say how Discord sign-in is set up, as Discord sees it: the bot, the Discord server, and its roles with the ids DiscordRoles takes.",
+      admin: true,
+      run(ctx) {
+        const c = ctx.client;
+        // Discord answers later, so the lines follow this command's own.
+        void ctx.host.discord.report().then((lines) => {
+          for (const line of lines) c ? c.closed || ctx.host.game.sendText(c, TEXT_CONSOLE, line) : ctx.host.say(line);
+        });
+        return "asking Discord";
       },
     },
     {

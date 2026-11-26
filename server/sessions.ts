@@ -22,6 +22,7 @@ import {
   REJECT_DENIED,
   REJECT_FULL,
   REJECT_KICKED,
+  REJECT_SIGNIN,
   REJECT_MALFORMED,
   REJECT_NAME,
   REJECT_PASSWORD,
@@ -156,6 +157,8 @@ export class Sessions {
   sameCreation: ((name:string,key:Uint8Array,request:Uint8Array)=>boolean)|null=null;
   owns: ((name: string, key: Uint8Array) => boolean) | null = null;
   authorize: ((name: string, key: Uint8Array) => boolean) | null = null;
+  /** Does the server's sign-in method let this browser in? */
+  signedIn: ((key: Uint8Array) => boolean) | null = null;
   /**
    * A survivor arriving from another server of the cluster with a travel ticket, for this name and device key. Returns "" once
    * it is here, bound to that key, or why it is not. Called after a hello's own checks, with room for the session.
@@ -283,6 +286,8 @@ export class Sessions {
     }
     if (!NAME.test(name)) return this.refuse(conn, REJECT_NAME);
     if (this.refusals.refused(refusedAs(key, conn.address), world.tick)) return this.refuse(conn, REJECT_DENIED);
+    // A ticket is asked after it is taken: arriving signs its browser in as the survivor's account.
+    if (!ticket && this.signedIn && !this.signedIn(key)) return this.refuse(conn, REJECT_SIGNIN);
     // A module may turn a login away, or a name nobody has had before. A survivor's name is who it is, so it is not reworded.
     const isNew = this.savedPosition?.(name) == null;
     if(flags & HELLO_NEW){
@@ -298,6 +303,7 @@ export class Sessions {
       if (!this.clients.includes(null)) return this.refuse(conn, REJECT_FULL);
       const why = this.arrive ? this.arrive(name, key, ticket) : "this server is not in a cluster";
       if (why !== "") return this.refuse(conn, REJECT_TRAVEL, why);
+      if (this.signedIn && !this.signedIn(key)) return this.refuse(conn, REJECT_SIGNIN);
     } else {
       const why = this.away?.(name, key) ?? "";
       if (why !== "") return this.refuse(conn, REJECT_TRAVEL, why);

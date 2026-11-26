@@ -325,6 +325,8 @@ export const REJECT_PASSWORD = 8;
  * was used, has expired, is for another name, or its survivor went back; this server will not take the survivor; or it is away.
  */
 export const REJECT_TRAVEL = 9;
+/** The server's sign-in method does not let this browser in: it has not signed in, or may no longer join. */
+export const REJECT_SIGNIN = 10;
 export const MAX_PASSWORD_BYTES = 64;
 export const MAX_TUNING_BYTES = 1 << 20;
 

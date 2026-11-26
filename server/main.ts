@@ -13,7 +13,7 @@ import { TICK_RATE } from "../shared/coords.ts";
 import { backlog, MESSAGE_BYTES_MAX, VOICE_BACKLOG, type Connection } from "../shared/net/transport.ts";
 import { RESTART_GO, stampWire } from "../shared/net/protocol.ts";
 import { PROBE_BODY, PROBE_CREATURE } from "../shared/world/proving.ts";
-import { createHost, type Host } from "./host.ts";
+import { createHost, type Host, type HostOptions } from "./host.ts";
 import { LIVE_FILE, formatReport, loadConfigFolder } from "./settings/config.ts";
 import { publicValues, type Rules } from "./settings/rules.ts";
 import type { ModuleDef } from "./api/module.ts";
@@ -64,6 +64,8 @@ export interface ServerOptions {
   adminPassword?: string;
   /** The cluster's password, which `enablecheats` and the admin pages take at the cluster's rank. */
   clusterPassword?: string;
+  /** For SignIn=discord: the application's secret, its bot's token, and a stand-in for the network (HostOptions.discord). */
+  discord?: HostOptions["discord"];
   /** Read console commands from standard input, as the operator. */
   terminal?: boolean;
   /** Path of the map file to run (shared/world/mapfile.ts). Without one, the proving ground. */
@@ -399,7 +401,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   const clips = allClips(manifest, pack, served, (stored) => new Uint8Array(inflateRawSync(stored)));
   let terrain: Uint8Array<ArrayBuffer> | undefined;
   const onMapLoaded = (map: MapFile): void => void (terrain = adminTerrain(map));
-  const roles = { onMapLoaded, dev: opts.dev ?? false, clips, rigs: pack.header.rigs, ...(opts.map ? { map: opts.map } : {}), ...(opts.adminPassword ? { adminPassword: opts.adminPassword } : {}), ...(opts.clusterPassword ? { clusterPassword: opts.clusterPassword } : {}), ...(opts.config ? { config: opts.config } : {}), ...(opts.modules ? { modules: opts.modules } : {}), now: () => performance.now(), ...(opts.live ? { live: opts.live } : {}) };
+  const roles = { onMapLoaded, dev: opts.dev ?? false, clips, rigs: pack.header.rigs, ...(opts.map ? { map: opts.map } : {}), ...(opts.adminPassword ? { adminPassword: opts.adminPassword } : {}), ...(opts.clusterPassword ? { clusterPassword: opts.clusterPassword } : {}), discord: { ...opts.discord, ...(/^https?:\/\//i.test(opts.publicUrl ?? "") ? { site: new URL(opts.publicUrl!).origin } : {}) }, ...(opts.config ? { config: opts.config } : {}), ...(opts.modules ? { modules: opts.modules } : {}), now: () => performance.now(), ...(opts.live ? { live: opts.live } : {}) };
   const host = createHost(registry, opts.probeScene ? { ...roles, startingCreatures: 0, wakeRadius: -1 } : { ...roles, ...(opts.dbPath ? { dbPath: opts.dbPath, keeper: "worker" as const, survivorLog: { mode: "worker" as const }, backups: !opts.noBackups, store: { allowMissingContent: opts.allowMissingContent ?? false } } : {}), wild: true });
   log.tick = () => host.world.tick;
   // Settings problems are logged at startup and do not stop the server.
@@ -610,11 +612,15 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
         if (!local || !originAllowed(req.headers.get("origin"),req.headers.get("host"),"")) return entryReply({error:"Use this world’s own address"},403);
         return access.answer(req,who);
       }
+      if (path === "/signin" || path.startsWith("/signin/")) {
+        if (!local || (req.method === "POST" && !originAllowed(req.headers.get("origin"),req.headers.get("host"),""))) return entryReply({error:"Use this world’s own address"},403);
+        return (await host.signin.method.answer({ req, url, path, base, who })) ?? new Response("not found", { status: 404 });
+      }
       // What a waiting page asks to know the server is back (client/core/waiting.ts): this start, the version it speaks,
       // and the version of the page on disk now, which is another until the client is built.
       if (path === "/ready.json") return new Response(JSON.stringify({ started: meter.startedAt, wire, page: builtWire(clientDir), map: host.world.mapId } satisfies Ready), { headers: { "content-type": "application/json", "cache-control": "no-store" } });
-      if (path === "/entry-world.json") return entryReply({ name:host.rules.text("SessionName") || mapLabel(registry,host.world.mapId), map:mapLabel(registry,host.world.mapId), mapId:host.world.mapId, password:!!host.game.opts.password, players:host.game.playerCount, max:host.game.opts.maxClients, listed, pve:host.rules.on("serverPVE"), about:plain(host.rules.text("ServerDescription")).slice(0,ABOUT_MAX), discord:discordOf(host.rules.text("DiscordUrl")), tags:tagsOf(host.rules.text("ServerTags")), spawns:host.world.spawns.map(p=>({name:p.name,x:p.x,z:p.z})), width:host.world.hf.sizeX,height:host.world.hf.sizeZ });
-      if (entryBuilt && (path === "/" || path === "/index.html") && [...url.searchParams.keys()].every(k => ["screen","invite","survivor"].includes(k))) return htmlResponse(startPage(worlds(req.headers.get("host") ?? ""),links(),{world:true,directory}));
+      if (path === "/entry-world.json") return entryReply({ name:host.rules.text("SessionName") || mapLabel(registry,host.world.mapId), map:mapLabel(registry,host.world.mapId), mapId:host.world.mapId, password:!!host.game.opts.password, ...(host.signin.entry() ? { signin: host.signin.entry() } : {}), players:host.game.playerCount, max:host.game.opts.maxClients, listed, pve:host.rules.on("serverPVE"), about:plain(host.rules.text("ServerDescription")).slice(0,ABOUT_MAX), discord:discordOf(host.rules.text("DiscordUrl")), tags:tagsOf(host.rules.text("ServerTags")), spawns:host.world.spawns.map(p=>({name:p.name,x:p.x,z:p.z})), width:host.world.hf.sizeX,height:host.world.hf.sizeZ });
+      if (entryBuilt && (path === "/" || path === "/index.html") && [...url.searchParams.keys()].every(k => ["screen","invite","survivor","signin"].includes(k))) return htmlResponse(startPage(worlds(req.headers.get("host") ?? ""),links(),{world:true,directory}));
       if (path === "/ws" || path === "/voice") {
         if (!local) {
           const asked = (req.headers.get("host") ?? "").slice(0, 100);
@@ -869,6 +875,7 @@ if (import.meta.main) {
     key: value("--key"),
     adminPassword: process.env.SNARK_ADMIN_PASSWORD,
     clusterPassword: process.env.SNARK_CLUSTER_PASSWORD,
+    discord: { secret: process.env.SNARK_DISCORD_SECRET, botToken: process.env.SNARK_DISCORD_BOT_TOKEN },
     terminal: process.stdin.isTTY,
     log,
   });

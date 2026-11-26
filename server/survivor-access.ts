@@ -6,7 +6,9 @@ import type { Host } from "./host.ts";
 // Extension components go through the normal save, cluster parcel and restore paths.
 export const CREATE_REQUEST = 82;
 const LINKED_KEYS = 80,
-  RECOVERY = 81;
+  RECOVERY = 81,
+  // 83 is the survivor's play time (server/survivor-activity.ts).
+  OWNER = 84;
 export function addBrowserHash(rec: EntityRecord, h: Uint8Array) {
   const old = rec.extra.get(LINKED_KEYS) ?? new Uint8Array(0);
   for (let i = 0; i + h.length <= old.length; i += h.length) if (equal(old.subarray(i, i + h.length), h)) return;
@@ -29,6 +31,17 @@ export function hasBrowserHash(rec: EntityRecord, h: Uint8Array): boolean {
   const slots = rec.extra.get(LINKED_KEYS);
   for (let i = 0; slots && i + h.length <= slots.length; i += h.length) if (equal(slots.subarray(i, i + h.length), h)) return true;
   return false;
+}
+
+/** The account a survivor belongs to ("discord:<id>"), or "" for one no account has taken. */
+export const ownerOf = (rec: EntityRecord): string => Buffer.from(rec.extra.get(OWNER) ?? new Uint8Array(0)).toString("utf8");
+export function setOwner(rec: EntityRecord, subject: string): void {
+  rec.extra.set(OWNER, Uint8Array.from(Buffer.from(subject, "utf8")));
+}
+/** Does whoever holds `key`, signed in as `subject`, own the survivor? One an account has taken is that account's; any other is its browsers'. */
+export function ownsAs(rec: EntityRecord, key: Uint8Array, subject: string): boolean {
+  const owner = ownerOf(rec);
+  return subject !== "" && owner !== "" ? owner === subject : ownsSurvivor(rec, key);
 }
 
 /** Small browser requests only. Count actual bytes even when there is no Content-Length. */
@@ -100,6 +113,12 @@ export class SurvivorAccess {
     }
     const key = bytes(data.key);
     if (!key) return entryReply({ error: "Browser identity unavailable" }, 400);
+    const method = this.host.signin.method;
+    const refused = method.admits(hashKey(key));
+    if (refused !== "") return entryReply({ error: refused, signin: true }, 403);
+    // An account's survivors follow it to any browser, so nothing here lends or recovers one.
+    const subject = method.subject(hashKey(key));
+    if (subject !== "" && data.action !== "roster" && data.action !== "available") return entryReply({ error: "Survivors here belong to the account signed in" }, 400);
     const now = Date.now();
     for (const [code, p] of this.pairs) if (p.until <= now) this.pairs.delete(code);
     for (const [ip, a] of this.attempts) if (a.time <= now) this.attempts.delete(ip);
@@ -127,7 +146,7 @@ export class SurvivorAccess {
       const hash = hashKey(key);
       for (const pid of this.host.survivorIds()) {
         const r = this.host.records.byPid.get(pid);
-        if (r && hasBrowserHash(r, hash)) list.push(summary(r));
+        if (r && (subject !== "" && ownerOf(r) !== "" ? ownerOf(r) === subject : hasBrowserHash(r, hash))) list.push(summary(r));
       }
       return entryReply({ survivors: list });
     }
