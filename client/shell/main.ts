@@ -393,7 +393,7 @@ async function boot(): Promise<void> {
       performance.mark("snark-first-world-frame");
     }
     if (renderer.failed.length + renderer.failedTextures.length > 0) {
-      for (const slot of renderer.failed) app.scene?.assets.residency.failed(slot);
+      for (const slot of renderer.failed) app.scene?.refused(slot);
       for (const t of renderer.failedTextures) app.scene?.assets.residency.failedTexture(t);
       app.pressure();
     }

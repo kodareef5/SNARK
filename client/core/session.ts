@@ -366,6 +366,8 @@ export class RemoteSample {
   readonly hairFrom = new Float64Array(MAX_VIEW).fill(-1);
   readonly wardrobe = new Uint32Array(MAX_VIEW * WORN_LENGTH);
   readonly hasWardrobe = new Uint8Array(MAX_VIEW);
+  /** How fast hair grows, as the server sent it (shared/people/hair.ts hairRate). */
+  hairRate = 0;
   /** 1 while the laser in its hand is on (the gear's "on" bit). */
   readonly on = new Uint8Array(MAX_VIEW);
   /** Each 0 for none: the owning team, the entity it sits on plus one, the ticks its growing takes, and the tick it will be grown. */
@@ -1264,6 +1266,7 @@ export class ClientSession {
     const renderAt = this.renderClock - delayTicks;
     const at = this.own.seat && this.driving < 0 ? Math.max(renderAt, this.latestSnapshot - PASSENGER_VIEW_DELAY) : renderAt;
     out.tick = at;
+    out.hairRate = this.hairRate;
     this.shown = at;
     let a: EntityView | null = null;
     let b: EntityView | null = null;

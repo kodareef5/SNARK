@@ -528,6 +528,8 @@ export interface SurfaceVariant {
   readonly layered: boolean;
   /** Prints on its instances (print-term.ts), the layer in the third region byte, which then dyes nothing. Dyed only. */
   readonly printed?: boolean;
+  /** Hair's shifted highlight (hairBand), in a program of its own so no other draw's holds it. */
+  readonly hair?: boolean;
 }
 
 export const SURFACE_ANY: SurfaceVariant = { dyed: true, drops: true, layered: false };
@@ -854,6 +856,43 @@ vec3 sunward(vec3 n, float sheet) {
 `;
 
 /** `skinNear`, and `scattered` as GLSL after LIGHT, by `wrapped`, one light's part of it. */
+/**
+ * Hair's shifted highlight (street-finishes.ts HAIR): a band across the strands where the sun's half way lies square to
+ * them, tilted a little to the root, tinted part by the hair's colour. A strand runs along the bitangent, as the sheet's
+ * streaks run down it. `share` of the sun at `sharp`, `shift` of the normal added to the strand, `tint` its share of colour.
+ */
+export const HAIR_SHINE = { share: 0.12, shift: -0.08, sharp: 24, tint: 0.6 } as const;
+
+/**
+ * The band of `hairShine` before the sun's colour, the hair's and the shadow: at the pixel with bumped normal `n`, its
+ * surface's normal `face` and tangent `tangent` as the triangle carries them (fourth number the bitangent's side), seen
+ * from `v`.
+ */
+export function hairBand(n: Numbers, face: Numbers, tangent: Numbers, v: Numbers, frame: Numbers): number {
+  const w = tangent[3]!;
+  let sx = w * (face[1]! * tangent[2]! - face[2]! * tangent[1]!), sy = w * (face[2]! * tangent[0]! - face[0]! * tangent[2]!), sz = w * (face[0]! * tangent[1]! - face[1]! * tangent[0]!);
+  const sl = Math.hypot(sx, sy, sz) || 1;
+  sx = sx / sl + HAIR_SHINE.shift * n[0]!; sy = sy / sl + HAIR_SHINE.shift * n[1]!; sz = sz / sl + HAIR_SHINE.shift * n[2]!;
+  const lx = frame[FRAME.sun]!, ly = frame[FRAME.sun + 1]!, lz = frame[FRAME.sun + 2]!;
+  const hx = lx + v[0]!, hy = ly + v[1]!, hz = lz + v[2]!;
+  const d = (sx * hx + sy * hy + sz * hz) / ((Math.hypot(sx, sy, sz) || 1) * (Math.hypot(hx, hy, hz) || 1));
+  const facing = Math.min(Math.max((n[0]! * lx + n[1]! * ly + n[2]! * lz) * 2 + 0.5, 0), 1);
+  return facing * HAIR_SHINE.share * Math.max(1 - d * d, 0) ** HAIR_SHINE.sharp;
+}
+
+/** `hairBand`'s light added to `out`, `cast` of the sun reaching it as `lit` has it. */
+export function hairShine(out: Out, albedo: Numbers, band: number, frame: Numbers, cast: number): void {
+  const k = band * (moonCasts(frame) ? 1 : cast);
+  for (let c = 0; c < 3; c++) out[c]! += frame[FRAME.sunColor + c]! * k * (1 - HAIR_SHINE.tint + HAIR_SHINE.tint * albedo[c]!);
+}
+
+const HAIR_GLSL = `float hairBand(vec3 n, vec3 v) {
+  vec3 s = normalize(vTangent.w * cross(vNormal, vTangent.xyz)) + ${f(HAIR_SHINE.shift)} * n;
+  float d = dot(normalize(s), normalize(fSun.xyz + v));
+  return clamp(dot(n, fSun.xyz) * 2.0 + 0.5, 0.0, 1.0) * ${f(HAIR_SHINE.share)} * pow(max(1.0 - d * d, 0.0), ${f(HAIR_SHINE.sharp)});
+}
+`;
+
 export const SKIN_GLSL = `float skinNear(float pixel, float threshold) {
   return 1.0 - smoothstep(${f(SKIN_KEEP)}, ${f(SKIN_GONE)}, pixel * threshold);
 }
@@ -948,7 +987,7 @@ const GLASS_COVER = `  float reflected = -1.0;
  * fading into its flat level's light as a pixel widens (skinNear); an eye (EYE) wears a wet coat. With `printed` the
  * instance's print lies over the dyed colour, under any wound (print-term.ts `printedOver`).
  */
-export function surfaceFragment(format: TextureFormat, air: string, { dyed, drops, layered, printed = false }: SurfaceVariant = SURFACE_ANY): string {
+export function surfaceFragment(format: TextureFormat, air: string, { dyed, drops, layered, printed = false, hair = false }: SurfaceVariant = SURFACE_ANY): string {
   const cloth = dyed ? "dyed(base.rgb, mask, mask2)" : "base.rgb * uTint";
   const albedo = printed ? `printedOver(${cloth}, base.rgb, uv)` : cloth;
   return `#version 300 es
@@ -967,7 +1006,7 @@ in vec4 vWheel;
 uniform float uStreetMaterial, uOptics, uFrom;
 uniform vec4 uEffect;
 ${layered ? "uniform sampler2D uLayer;\nuniform float uLevel;\n" : ""}${printed ? PRINT_GLSL : ""}${SHIMMER_GLSL}out vec4 o;
-${LIGHT}${THROUGH}${SKIN_GLSL}${BODY_MIRROR_GLSL}${drops ? HAND_GLSL + SWAP_GLSL + VEHICLE_GLASS_GLSL : ""}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${air}${STREET_GLSL}${POLISHED_SKY}${EYE_GLINT_GLSL}${EYE_STRIKE_GLSL}${EYE_ENERGY_GLSL}${EXHAUST_GLSL}${DROP_GLSL}${WHEEL_FINISH_GLSL}${VEHICLE_SHADE_UNIFORMS}${VEHICLE_SHADE_GLSL}${dyed ? DYED : ""}${layered ? WEAR_GLSL + WOUNDED : ""}${BENT_WEAR_GLSL}#ifdef PIECE_SPALL
+${LIGHT}${THROUGH}${SKIN_GLSL}${hair ? HAIR_GLSL : ""}${BODY_MIRROR_GLSL}${drops ? HAND_GLSL + SWAP_GLSL + VEHICLE_GLASS_GLSL : ""}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${air}${STREET_GLSL}${POLISHED_SKY}${EYE_GLINT_GLSL}${EYE_STRIKE_GLSL}${EYE_ENERGY_GLSL}${EXHAUST_GLSL}${DROP_GLSL}${WHEEL_FINISH_GLSL}${VEHICLE_SHADE_UNIFORMS}${VEHICLE_SHADE_GLSL}${dyed ? DYED : ""}${layered ? WEAR_GLSL + WOUNDED : ""}${BENT_WEAR_GLSL}#ifdef PIECE_SPALL
 uniform vec3 uWorldEye;
 ${PIECE_SPALL_TEXT}
 #endif
@@ -1176,6 +1215,8 @@ ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth
   gF0 = mix(${f(DIELECTRIC)}, ${f(SKIN_F0)}, skin);
   vec3 radiance = lit(albedo, mro * vec3(open, 1.0, 1.0), n, v, mirror, shade);
   if (skin > 0.0) radiance += scattered(albedo, mro.b, n, skin, shade);
+${hair ? `  radiance += fSunColor.rgb * (keyShade(shade).x * hairBand(n, v)) * (${f(1 - HAIR_SHINE.tint)} + ${f(HAIR_SHINE.tint)} * albedo);
+` : ""}
   radiance = mix(radiance,mirror*open*own,coat);
   if (specularLayer > 0.0) {
     radiance += specularLayer*keyShade(shade).x*direct(fSun.xyz,fSunColor.rgb,vec3(0.065),1.0,coatA2,coatNormal,v,max(0.001,1.0-edge));

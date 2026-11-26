@@ -222,8 +222,11 @@ function capStyle(head: Head, spec: CapSpec, cards: readonly (readonly [CardKind
 
 const MM = 0.001;
 
-/** Every hair style but none, by its id in shared/anim/look.ts, made on `head`. */
-export function hairStyles(head: Head): Record<string, HairStyleForms> {
+/**
+ * Every hair style but none, by its id in shared/anim/look.ts, made on `head`, grown out to stage `g` of
+ * shared/people/hair.ts HAIR_STAGES: 0 is the style as cut.
+ */
+export function hairStyles(head: Head, g = 0): Record<string, HairStyleForms> {
   const sex = head.sex;
   const hairline = curve(HAIRLINES[sex]!);
   const headY = head.rest[B_HEAD * 3 + 1]!;
@@ -237,22 +240,22 @@ export function hairStyles(head: Head): Record<string, HairStyleForms> {
   const onSkin = (t: number, p: number): number => sample(head.clear, t, p) - sample(head.skin, t, p);
   // Cut high at the nape, where a lower edge would be drawn over the neck's capsule.
   const nape = curve([[0, 180], [110, 180], [140, 104], [180, 110]]);
-  out.buzzed = capStyle(head, { hairline: (p) => Math.min(hairline(p), nape(p)), whorl: [26, 180], thickness: (t, p, v) => 1.2 * MM * taper(v, 0.9, 0.5) - onSkin(t, p) }, [["stubble", 0.8 * MM, 0.04, 1.03, 0.025]]);
+  out.buzzed = capStyle(head, { hairline: (p) => Math.min(hairline(p), nape(p)), whorl: [26, 180], thickness: (t, p, v) => (1.2 + 2 * g) * MM * taper(v, 0.9, 0.5) - onSkin(t, p) }, [["stubble", (0.8 + 1.5 * g) * MM, 0.04, 1.03, 0.025]]);
 
   out.parted = capStyle(head, {
     hairline, whorl: [30, 40],
     thickness: (t, p, v) => {
       // The parting runs back from the forehead on the head's left, where the hair lies thin.
       const parting = Math.exp(-(((((p * 180) / Math.PI) - 38) / 9) ** 2)) * (1 - smooth(55, 70, theta(t)));
-      return (sex === 0 ? 10 : 4.5) * MM * (1 - 0.65 * parting) * taper(v, 0.82, 0.25);
+      return (sex === 0 ? 10 : 4.5) * (1 + 0.25 * g) * MM * (1 - 0.65 * parting) * taper(v, 0.82, 0.25);
     },
   }, [["fine", 2.5 * MM, 0.04, 1.06, 0.022], ["fine", 6 * MM, 0.08, 1.04, 0.03], ["clumps", 10 * MM, 0.1, 0.7, 0.035]]);
 
   // Fade: length on top only; the sides and back are stubble that shows the skin through, the core's edge high above them.
   const fadeLine = curve([[0, hairline(0)], [30, hairline(30)], [55, 66], [90, 70], [140, 96], [180, 106]]);
-  const fadeTop: CapSpec = { hairline: (p) => Math.min(hairline(p), fadeLine(p)), whorl: [24, 180], thickness: (t, p, v) => (sex === 0 ? 20 : 18) * MM * taper(v, side(p) < 40 ? 0.8 : 0.4, 0.08) };
+  const fadeTop: CapSpec = { hairline: (p) => Math.min(hairline(p), fadeLine(p)), whorl: [24, 180], thickness: (t, p, v) => (sex === 0 ? 20 : 18) * (1 + 0.2 * g) * MM * taper(v, side(p) < 40 ? 0.8 : 0.4, 0.08) };
   // Stubble lies on the skin itself, not on the widened surface.
-  const fadeSides: CapSpec = { hairline, whorl: [24, 180], thickness: (t, p) => 0.5 * MM - (sample(head.clear, t, p) - sample(head.skin, t, p)) };
+  const fadeSides: CapSpec = { hairline, whorl: [24, 180], thickness: (t, p) => (0.5 + 1.5 * g) * MM - (sample(head.clear, t, p) - sample(head.skin, t, p)) };
   const sides = (spec: CapSpec): Patch => ({ ...cap(head, spec, "sides"), drawn: "stubble" });
   const fadeCards = layers("cap", [["fine", 4 * MM, 0.04, 1.08, 0.026], ["clumps", 9 * MM, 0.06, 0.85, 0.034]]);
   out.fade = {
@@ -260,7 +263,8 @@ export function hairStyles(head: Head): Record<string, HairStyleForms> {
     hat: { patches: [cap(head, pressed(head, fadeTop)), sides(fadeSides)], cards: [] },
   };
 
-  // Coils stand off the head in lumps a few centimetres across.
+  // Coils stand off the head in lumps a few centimetres across, held lower and closer at the sides than first made: with
+  // its cards' pictures loaded the female's drew 76.9% of its head pixels as head, against long hair's 80%.
   const lumps = [[0.3, 0.8, 0.5, 21, 0.4], [-0.7, 0.2, 0.6, 24, 1.9], [0.5, -0.4, 0.75, 19, 3.1], [-0.2, 0.6, -0.8, 26, 4.4], [0.9, 0.1, -0.4, 23, 5.2]] as const;
   const lumpy = (t: number, p: number): number => {
     const d = direction(t, p);
@@ -270,16 +274,17 @@ export function hairStyles(head: Head): Record<string, HairStyleForms> {
     hairline, whorl: [20, 180],
     thickness: (t, p, v) => {
       const back = smooth(100, 170, side(p));
-      return (24 + 9 * topness(t) - 8 * back * (1 - topness(t)) + 9 * lumpy(t, p)) * MM * taper(v, 0.72, 0.3);
+      return (17 + 6 * topness(t) - 7 * back * (1 - topness(t)) + 6 * lumpy(t, p)) * (1 + 0.08 * g) * MM * taper(v, 0.72, 0.3);
     },
-  }, [["coils", 3 * MM, 0.03, 1.05, 0.024], ["coils", 8 * MM, 0.04, 1.02, 0.028], ["coils", 13 * MM, 0.06, 0.95, 0.032]]);
+  }, [["coils", 2.5 * MM, 0.03, 1.05, 0.024], ["coils", 5.5 * MM, 0.04, 1.02, 0.028], ["coils", 8.5 * MM, 0.06, 0.95, 0.032]]);
 
   // Long: a cap that reaches over the ears, and a curtain from it round the back.
   const opening = sex === 0 ? 56 : 54;
   const turn = curve([[0, hairline(0)], [36, hairline(36)], [opening - 4, 92], [90, 94], [180, 104]]);
   const longCap: CapSpec = { hairline: turn, whorl: [28, 25], thickness: (t, p, v) => 8 * MM * taper(v, 0.85, side(p) > opening ? 0.7 : 0.3) };
   const stand = 0.6 * 8 * MM;
-  const drop = sex === 0 ? curve([[60, 0.03], [120, 0.05], [180, 0.07]]) : curve([[60, 0.07], [120, 0.1], [180, 0.13]]);
+  const longer = (sex === 0 ? 0.03 : 0.04) * g;
+  const drop = sex === 0 ? curve([[60, 0.03 + longer], [120, 0.05 + longer], [180, 0.07 + longer]]) : curve([[60, 0.07 + longer], [120, 0.1 + longer], [180, 0.13 + longer]]);
   const hang = (spec: CapSpec): Form => {
     const c = cap(head, spec);
     const hung = curtain(head, (p) => turn(p) - 6, stand, opening, drop);
@@ -292,7 +297,7 @@ export function hairStyles(head: Head): Record<string, HairStyleForms> {
 
   // Buns: a smooth cap, and a ball each side of the crown.
   const bunCap: CapSpec = { hairline, whorl: [10, 180], thickness: (_, __, v) => 8 * MM * taper(v, 0.85, 0.3) };
-  const bunSize = sex === 0 ? 0.038 : 0.043;
+  const bunSize = (sex === 0 ? 0.038 : 0.043) + 0.002 * g;
   out.buns = {
     worn: {
       patches: [cap(head, bunCap), bun(head, "bun-l", 36, 62, bunSize, 8 * MM), bun(head, "bun-r", 36, -62, bunSize, 8 * MM)],
@@ -306,7 +311,7 @@ export function hairStyles(head: Head): Record<string, HairStyleForms> {
   const tailFrom = (theta: number): Patch => {
     const root = onHead(head, deg(theta), Math.PI, GAP + 7 * MM - 0.012);
     const rootOut = onHead(head, deg(theta), Math.PI, GAP + 7 * MM + 0.01);
-    const length = sex === 0 ? 0.2 : 0.27;
+    const length = (sex === 0 ? 0.2 : 0.27) + 0.04 * g;
     const path: Vec[] = [root, rootOut, [0, rootOut[1] - 0.035, rootOut[2] - 0.03], [0, rootOut[1] - 0.1, rootOut[2] - 0.045], [0, rootOut[1] - length * 0.7, rootOut[2] - 0.04], [0, rootOut[1] - length, rootOut[2] - 0.035]];
     for (const p of path.slice(2)) keepOut(head, p, 0.03);
     const radius = (v: number): number => (v < 0.15 ? 0.017 + 0.009 * smooth(0, 0.15, v) : 0.026 - 0.016 * smooth(0.15, 1, v)) * (sex === 0 ? 0.75 : 1);
@@ -347,12 +352,16 @@ function ring(head: Head, mouth: number, reach: readonly (readonly [number, numb
   };
 }
 
-/** Every beard but none, by its id in shared/anim/look.ts, made on `head` with its mouth at polar angle `mouth`. */
-export function beardStyles(head: Head, mouth: number): Record<string, Form> {
-  const profile = (v: number): number => 0.3 + 0.7 * smooth(0, 0.25, v) - 0.6 * smooth(0.6, 1, v);
-  const full = ring(head, mouth, BEARD_REACH.full, (a, v) => (a < -30 ? 12 : a < 15 ? 9 : a < 45 ? 6 : 5) * MM * profile(v), "core");
-  const short = ring(head, mouth, BEARD_REACH.short, (a, v) => (a > 45 ? 4 : 5) * MM * profile(v), "core");
-  const stubble = ring(head, mouth, BEARD_REACH.short, () => 0.6 * MM, "stubble");
+/**
+ * Every beard but none, by its id in shared/anim/look.ts, made on `head` with its mouth at polar angle `mouth`, grown out
+ * to stage `g` of HAIR_STAGES.
+ */
+export function beardStyles(head: Head, mouth: number, g = 0): Record<string, Form> {
+  // Thin at the lips, full in the middle and thinned almost to the skin at its edge, so the edge reads as no shelf.
+  const profile = (v: number): number => 0.3 + 0.7 * smooth(0, 0.25, v) - 0.92 * smooth(0.5, 1, v);
+  const full = ring(head, mouth, BEARD_REACH.full, (a, v) => (a < -30 ? 12 : a < 15 ? 9 : a < 45 ? 6 : 5) * (1 + 0.3 * g) * MM * profile(v), "core");
+  const short = ring(head, mouth, BEARD_REACH.short, (a, v) => (a > 45 ? 4 : 5) * (1 + 0.4 * g) * MM * profile(v), "core");
+  const stubble = ring(head, mouth, BEARD_REACH.short, () => (0.6 + 0.8 * g) * MM, "stubble");
   return {
     full: { patches: [full], cards: layers("beard", [["clumps", 2 * MM, 0, 1.04, 0.02], ["fine", 5 * MM, 0.1, 0.95, 0.025]]) },
     stubble: { patches: [stubble], cards: [], most: [480, 200] },

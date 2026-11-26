@@ -118,7 +118,7 @@ test("cuts, dyes and a remake reach the owner and a watcher who saw the old look
     h.run(200);
     expect([ada.hairRate, bo.hairRate]).toEqual([h.world.hairRate, h.world.hairRate]);
     // Grown out past the first stage, which all three work out alike.
-    h.run(120_000);
+    h.run(160_000);
     const long = grown(h, me);
     expect(long[0]).toBeGreaterThanOrEqual(HAIR_STAGES[1]!);
     expect(grownFor(h, seen(bo, e).look!, seen(bo, e).hairFrom, bo.hairRate)).toEqual(long);
@@ -231,7 +231,7 @@ test("another's hair is cut only by its tribe, within reach", () => {
     expect(seen(ada, theirs).look).toEqual([...them.look!]);
     expect([...bo.ownLook!]).toEqual([...them.look!]);
     // The console cuts one's own, one stage shorter.
-    them.look![LOOK_BEARD_LENGTH] = 130;
+    them.look![LOOK_BEARD_LENGTH] = 200;
     expect(h.host.items.mint(them, id("scissors"), 1)).toBe(1);
     h.run(100);
     expect(h.say(bo, "cut beard")).toEqual(["Cut."]);
@@ -333,7 +333,7 @@ test("the hair clock moves to another map's ticks, the hair as long there, no of
     // The other world has run longer, so its ticks are not these.
     b.h.run(240_000);
     const ada = a.h.join("ada", {}, { key: keyAt("ada", 1), look: face() });
-    a.h.run(120_000);
+    a.h.run(160_000);
     const me = clusterRec(a, "ada")!;
     const here = grown(a.h, me);
     expect(here[0]).toBeGreaterThan(HAIR_STAGES[1]!);

@@ -10,10 +10,10 @@ import { LOOK_BEARD_LENGTH, LOOK_HAIR_LENGTH } from "../anim/look.ts";
 export const HAIR_TICK = 1024;
 /** No clock: the lengths stay as stored. */
 export const NO_CLOCK = -1;
-/** The lengths a cut leaves and hair is drawn at: 0 is the style as modelled. Hair grows no longer than the last. */
-export const HAIR_STAGES: readonly number[] = [0, 64, 128, 192, 255];
+/** The lengths a cut leaves and hair is drawn at, each its own mesh: 0 is the style as modelled. Hair is drawn no longer than the last. */
+export const HAIR_STAGES: readonly number[] = [0, 96, 192];
 export const HAIR_LONGEST = 255;
-/** At a rate of 1000 (HairGrowthSpeedMultiplier 1), one unit of length grows in 40 clock steps: a stage in about a day. */
+/** At a rate of 1000 (HairGrowthSpeedMultiplier 1), one unit of length grows in 40 clock steps: a stage in about a day and a half. */
 const STEPS_PER_UNIT = 40_000;
 /** The highest rate, in thousandths. */
 export const HAIR_RATE_MOST = 1_000_000;
@@ -74,3 +74,9 @@ export function stageOf(length: number): number {
   while (s + 1 < HAIR_STAGES.length && length >= HAIR_STAGES[s + 1]!) s++;
   return s;
 }
+
+/** The mesh id of a hair or beard mesh `id` (its style's, as modelled) grown to stage `stage`. */
+export const stageMesh = (id: string, stage: number): string => (stage === 0 ? id : `${id}/stage-${stage}`);
+
+/** The mesh id of hair style `id`'s form under a hat. */
+export const underHat = (id: string): string => `${id}/under-hat`;

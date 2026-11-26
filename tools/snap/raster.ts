@@ -5,7 +5,7 @@ import { deflectTire, tireShadow } from "../../client/core/render/tire-contact.t
 
 import { paneOptics } from "../../client/core/render/windscreens.ts";
 import { glassAt, glassCovers, glassReflected, opticsGlass } from "../../client/core/render/vehicle-glass.ts";
-import { CHANNEL, DROP_GLOW, DROP_LIGHT, ENAMEL_ARMOR, EXHAUST, EYE, INSTRUMENT, LENS, SKIN } from "../../content/street-finishes.ts";
+import { CHANNEL, DROP_GLOW, DROP_LIGHT, ENAMEL_ARMOR, EXHAUST, EYE, HAIR, INSTRUMENT, LENS, SKIN } from "../../content/street-finishes.ts";
 import { dropGlow, dropLight } from "../../client/core/render/supply-light.ts";
 import { dropStreaks } from "../../client/core/render/supply-sky.ts";
 import { exhaustLight, polishedSky, polishMask } from "../../client/core/render/suit-finish.ts";
@@ -56,7 +56,7 @@ import { domeLight, theSky, trueSun } from "../../client/core/render/sky.ts";
 import { wearLate } from "../../client/core/render/wear.ts";
 import { printPicture, printedOver, type PrintPicture } from "../../client/core/render/print-term.ts";
 import { PRINT_REGION } from "../../client/core/render/prints.ts";
-import { heatOfShown, LAYER_LEVELS, NEUTRAL, bodyMirror, bounce, bumped, direct, dyed, glowAt, lampsOn, materialEmission, lit, moonCasts, normalUnder, regionDyes, scattered, skinNear, DIELECTRIC, EYE_COAT, EYE_RIM, EYE_UNDER, SKIN_F0, shown, skinMode, skyFrom, skyLight, skyOn, srgbToLinear, through, wounded } from "../../client/core/render/surface.ts";
+import { heatOfShown, LAYER_LEVELS, NEUTRAL, bodyMirror, bounce, bumped, direct, dyed, glowAt, hairBand, hairShine, lampsOn, materialEmission, lit, moonCasts, normalUnder, regionDyes, scattered, skinNear, DIELECTRIC, EYE_COAT, EYE_RIM, EYE_UNDER, SKIN_F0, shown, skinMode, skyFrom, skyLight, skyOn, srgbToLinear, through, wounded } from "../../client/core/render/surface.ts";
 import type { AssetUpload } from "../../client/core/assets/residency.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
 import { finishTable, type FinishTable } from "../../shared/pack/finish.ts";
@@ -2605,6 +2605,7 @@ export class Rasterizer {
           const cast = ballShade(p, carried[0]!, carried[1]!, carried[2]!);
           lit(light, albedo, opened, normal, eye, p.frame, mirrored, cast, DIELECTRIC + (SKIN_F0 - DIELECTRIC) * skin);
           scattered(light, albedo, mro[2]!, normal, p.frame, skin, cast);
+          if (s.label === HAIR) hairShine(light, albedo, hairBand(normal, carriedNormal, carriedTangent, eye, p.frame), p.frame, cast);
           for (let c=0; c<3; c++) light[c] = light[c]!*(1-coat)+mirrored[c]!*open*own*coat;
           if (specularLayer > 0) {
             let variance = 0;

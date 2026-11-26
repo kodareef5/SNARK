@@ -7,6 +7,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { B_HEAD } from "../../shared/anim/human.ts";
 import { BEARD_STYLES, HAIR_STYLES, SEX_IDS } from "../../shared/anim/look.ts";
+import { HAIR_STAGES, stageMesh } from "../../shared/people/hair.ts";
 import { MATERIAL_CUTOUT, MATERIAL_SHADOWLESS, MATERIAL_TWO_SIDED, parsePack, type Pack } from "../../shared/pack/pack.ts";
 import { SOURCE, artModule } from "../../tools/art/source.ts";
 import { unpackMeshes, type SourceMesh } from "../../tools/pack/write.ts";
@@ -26,9 +27,11 @@ const mesh = (id: string): SourceMesh => {
 };
 const hairIds = (sex: string, under: boolean): string[] => HAIR_STYLES.filter((s) => s.drawn).map((s) => `core:human_${sex}/hair/${s.id}${under ? `/${UNDER_HAT}` : ""}`);
 const beardIds = (sex: string): string[] => BEARD_STYLES.filter((s) => s.drawn).map((s) => `core:human_${sex}/beard/${s.id}`);
-const every = (sex: string): string[] => [...hairIds(sex, false), ...hairIds(sex, true), ...beardIds(sex)];
+/** Each hair and beard at each later stage of its growth. */
+const grownIds = (sex: string): string[] => [...hairIds(sex, false), ...beardIds(sex)].flatMap((id) => HAIR_STAGES.slice(1).map((_, k) => stageMesh(id, k + 1)));
+const every = (sex: string): string[] => [...hairIds(sex, false), ...hairIds(sex, true), ...beardIds(sex), ...grownIds(sex)];
 
-artTest("every style has its hair, under-hat form and beard on both sexes", () => {
+artTest("every style has its hair at each stage, under-hat form and beard on both sexes", () => {
   for (const sex of SEX_IDS) for (const id of every(sex)) expect(meshes.has(id)).toBe(true);
 });
 
@@ -94,7 +97,7 @@ artTest("no point of the hair or the skin has more than three cards over it", ()
     const head = mesh(`core:human_${sex}/head`).lods[0]!;
     const rig = pack.header.rigs.find((r) => r.id === `human_${sex}`)!;
     const centre = [0, 1, 2].map((a) => rig.rest[B_HEAD * 3 + a]! + CENTRE[a]!);
-    for (const id of [...hairIds(sex, false), ...hairIds(sex, true), ...beardIds(sex)]) {
+    for (const id of every(sex)) {
       const m = mesh(id), lod = m.lods[0]!;
       const cards = m.materials!.findIndex((x) => x.id.endsWith("hair_cards"));
       const core = m.materials!.findIndex((x) => x.id.endsWith("hair_core"));

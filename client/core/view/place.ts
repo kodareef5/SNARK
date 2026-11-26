@@ -208,13 +208,14 @@ function preview(d: Director, f: AppFrame): void {
   body.state.seed = 0;
   f.scene.own = body;
   f.scene.hour = 12;
-  // The panel takes the right of a wide window, so the body stands in the middle of the rest.
-  const back = 3.3;
+  // The panel takes the right of a wide window, so the body stands in the middle of the rest. The face tab frames the
+  // head, near enough for its face to be drawn at its finest level at any size of window.
+  const face = creator.faceTab, back = face ? 0.7 : 3.3;
   const side = aspect > 1 ? back * Math.tan(cam.fovY / 2) * aspect * Math.min(0.42, 190 / (360 * aspect)) : 0;
   cam.x = body.x + side;
-  cam.y = body.y + 1.15;
+  cam.y = body.y + (face ? 1.6 : 1.15);
   cam.z = body.z + back;
   cam.yaw = Math.PI;
   cam.roll = 0;
-  cam.pitch = -0.06;
+  cam.pitch = face ? 0 : -0.06;
 }
