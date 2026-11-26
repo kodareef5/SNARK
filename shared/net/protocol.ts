@@ -749,6 +749,8 @@ export const OWN_ARMS = ownKind();
 export const OWN_WARNED = ownKind();
 /** 1 u8 while the survivor may be made again in the creator (server/people/look.ts), else 0. */
 export const OWN_REMAKE = ownKind();
+/** The id of the cluster's people manifest string (shared/people/doc.ts peopleManifestPath), sent when it changes; "" for none. */
+export const OWN_PEOPLE = ownKind();
 
 export const MARKER_DEATH = 1;
 

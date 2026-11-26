@@ -2,6 +2,7 @@ import { serveFile } from "../files.ts";
 import { pathOf, worldAddress, type SiteWorld } from "../site.ts";
 import type { Destination } from "../cluster/cluster.ts";
 import { SCREEN_PATHS } from "../video/routes.ts";
+import { PEOPLE_PATHS } from "./people-routes.ts";
 import { OLD_PERMISSIONS_PATHS } from "../../shared/permissions/page.ts";
 import { adminPath, refused, type AdminGate } from "./gate.ts";
 
@@ -75,6 +76,8 @@ interface AdminSite {
   scenes: (req: Request) => Promise<Response> | Response;
   /** The cluster's screens API (server/video/routes.ts), behind the gate; null where this server keeps no library. */
   screens?: (req: Request, path: string) => Promise<Response> | Response | null;
+  /** The cluster's people store's API (people-routes.ts), behind the gate. */
+  people?: (req: Request, path: string) => Promise<Response> | Response | null;
 }
 
 /** A named proxy can reach another world by its mount even when it sends site routes to this one. */
@@ -113,6 +116,7 @@ export function adminSite(req: Request, url: URL, o: AdminSite): Promise<Respons
     return refused(req, o.who, o.gate) ?? (!mayRead(req) ? refuseMethod() : path === "/admin/scenes/" ? privatePage(o.dir, req, "scene-studio.html") : redirect(`/admin/scenes/${url.search}`));
   }
   if ((SCREEN_PATHS as readonly string[]).includes(path)) return refused(req, o.who, o.gate) ?? o.screens?.(req, path) ?? notFound();
+  if (PEOPLE_PATHS.includes(path)) return refused(req, o.who, o.gate) ?? o.people?.(req, path) ?? notFound();
   if (path === "/admin/screens" || path === "/admin/screens/") {
     return refused(req, o.who, o.gate) ?? (!mayRead(req) ? refuseMethod() : path === "/admin/screens/" ? privatePage(o.dir, req, "screens.html") : redirect(`/admin/screens/${url.search}`));
   }

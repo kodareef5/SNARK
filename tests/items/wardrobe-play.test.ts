@@ -15,6 +15,7 @@ import { JET_CUIRASS } from "../../shared/sim/character.ts";
 import { ARMORED_TAIL, ARMOR_SLOTS, Inventory, WARDROBE_SLOTS } from "../../shared/sim/items.ts";
 import { TestCluster, keyAt, rec as clusterRec, rise, travel } from "../fixtures/cluster.ts";
 import { Harness } from "../fixtures/net.ts";
+import { editionOf } from "../fixtures/editions.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "snark-wardrobe-"));
@@ -29,8 +30,9 @@ const id = (name: string): number => reg.index.get(`core:${name}`)!;
 const tee = id("plain_tee");
 const trousers = id("plain_trousers");
 const dye = (a: number, b: number, c: number): number => a | (b << 8) | (c << 16);
-const TEE = [tee, 7, dye(12, 40, 3)];
-const TROUSERS = [trousers, 9, dye(0, 22, 0)];
+// The first two editions a fresh people store gives, which dress publishes.
+const TEE = [tee, 1, dye(12, 40, 3)];
+const TROUSERS = [trousers, 2, dye(0, 22, 0)];
 
 /** Fills a survivor's hotbar, armor and bag, and puts on a dyed edition of the tee and of the trousers. */
 function dress(h: Harness, me: EntityRecord): void {
@@ -45,6 +47,7 @@ function dress(h: Harness, me: EntityRecord): void {
   expect(items.mint(me, id("fiber"), 300)).toBe(300);
   expect(items.mintAt(me, inv.wardrobe, tee, 1)).toBe(1);
   expect(items.mintAt(me, inv.wardrobe + 1, trousers, 1)).toBe(1);
+  expect([editionOf(h.host, "core:plain_tee"), editionOf(h.host, "core:plain_trousers")]).toEqual([TEE[1]!, TROUSERS[1]!]);
   expect(items.restyle(me, inv.wardrobe, TEE[1]!, TEE[2]!)).toBe(true);
   expect(items.restyle(me, inv.wardrobe + 1, TROUSERS[1]!, TROUSERS[2]!)).toBe(true);
   h.run(200);
@@ -100,7 +103,7 @@ test("the owner's client sees each edition and dye, and they follow moves, swaps
     // The tee off into the bag, then a stone and a shirt of armor refused where it was.
     const free = inv.free();
     expect(move(h, s, inv.wardrobe, free, tee)).toBe(RESULT_OK);
-    expect([inv.item[free], inv.editionOf(free), inv.dyeOf(free), mine().editionOf(free), mine().dyeOf(free)]).toEqual([tee, 7, TEE[2], 7, TEE[2]]);
+    expect([inv.item[free], inv.editionOf(free), inv.dyeOf(free), mine().editionOf(free), mine().dyeOf(free)]).toEqual([tee, TEE[1], TEE[2], TEE[1], TEE[2]]);
     expect(mine().item[inv.wardrobe]).toBe(0);
     expect(move(h, s, inv.item.indexOf(id("stone")), inv.wardrobe, id("stone"))).toBe(RESULT_INVALID);
     expect(move(h, s, inv.armor + 1, inv.wardrobe, id("hide_shirt"))).toBe(RESULT_INVALID);
@@ -110,7 +113,7 @@ test("the owner's client sees each edition and dye, and they follow moves, swaps
     expect(wardrobe(mine())).toEqual(WORN);
     expect(send(h, s, CMD_USE, (w) => (w.varint(inv.wardrobe), w.u16(tee)))).toBe(RESULT_OK);
     const off = inv.item.indexOf(tee);
-    expect([off < inv.bag, inv.editionOf(off), mine().dyeOf(off)]).toEqual([true, 7, TEE[2]]);
+    expect([off < inv.bag, inv.editionOf(off), mine().dyeOf(off)]).toEqual([true, TEE[1], TEE[2]]);
     // A plain tee put on, then the dyed one swapped onto it: each keeps its own.
     expect(h.host.items.mintAt(me, inv.wardrobe, tee, 1)).toBe(1);
     h.run(100);
@@ -182,7 +185,8 @@ test("a garment given to another keeps its edition and dye, and a styled stack n
     // Fiber of an edition given onto a bag that holds plain fiber lies in a stack of its own.
     expect(items.mint(other, id("fiber"), 10)).toBe(10);
     const fiber = inv.item.indexOf(id("fiber"));
-    expect(items.restyle(me, fiber, 3, 0)).toBe(true);
+    // No edition is of fiber, so the column is set as a load or a parcel from another build might set it.
+    inv.setStyle(fiber, 3, 0);
     expect(items.give(me, other, id("fiber"), 300)).toBe(true);
     const stacks: number[][] = [];
     for (let slot = 0; slot < theirs.bag; slot++) if (theirs.item[slot] === id("fiber")) stacks.push([theirs.count[slot]!, theirs.editionOf(slot)]);
@@ -206,8 +210,8 @@ test("a give that would not fit is refused whole, and a styled stack takes a slo
     // Plain stone at 60 and one free slot: two stacks of ninety of an edition need two slots, as plain stone would not.
     expect(items.mint(to, id("stone"), 60)).toBe(60);
     expect(items.mint(from, id("stone"), 180)).toBe(180);
-    expect(items.restyle(from, 0, 4, 0)).toBe(true);
-    expect(items.restyle(from, 1, 4, 0)).toBe(true);
+    from.inv.setStyle(0, 4, 0);
+    from.inv.setStyle(1, 4, 0);
     expect([from.inv.count[0], from.inv.count[1]]).toEqual([100, 80]);
     expect(items.give(from, to, id("stone"), 180)).toBe(false);
     expect([items.inv(to).total(id("stone")), items.inv(from).total(id("stone"))]).toEqual([60, 180]);

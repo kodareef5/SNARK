@@ -14,6 +14,12 @@ import { Signal } from "./signal.ts";
 /** For a record whose kind declares no slots (a cache, a test fixture). */
 const DEFAULT_SLOTS = 40;
 
+/** What a restyle asks of the cluster's editions (server/people/store.ts): the garment an edition is of, or null for one it does not hold. */
+export interface EditionLookup {
+  garmentOf(edition: number): string | null;
+}
+const NO_EDITIONS: EditionLookup = { garmentOf: () => null };
+
 const ITEM_GAIN = event("item.gain");
 /** Settle passes for forms that spoil into forms: meat into spoiled meat, which spoils away, takes two. */
 const MAX_SPOIL_CHAIN = 4;
@@ -22,6 +28,8 @@ export class Items {
   /** The registry, except while a save made under other tuning is brought up to date. */
   table: ItemTable;
   bus: Bus = NO_BUS;
+  /** The cluster's editions, which a restyle's edition must be one of. Without a store, no edition is. */
+  editions: EditionLookup = NO_EDITIONS;
   readonly minted: Float64Array;
   readonly burned: Float64Array;
   /**
@@ -577,7 +585,8 @@ export class Items {
 
   /**
    * Sets the edition and dye of the item in `slot` of `rec` (Inventory.edition and dye): what it looks like, which mints and
-   * burns nothing. False, changing nothing, for an empty slot, a blueprint, or a dye on a garment that takes none.
+   * burns nothing. False, changing nothing, for an empty slot, a blueprint, a dye on a garment that takes none, or an
+   * edition the store does not hold or holds of another garment. A retired edition is one still.
    */
   restyle(rec: EntityRecord, slot: number, edition: number, dye: number): boolean {
     const inv = this.inv(rec);
@@ -586,6 +595,7 @@ export class Items {
     // A garment made to take no dye keeps its own colours.
     const item = inv.item[slot]!;
     if (dye !== 0 && this.reg.garmentSlot[item]! >= 0 && this.reg.garmentDyes[item] === 0) return false;
+    if (edition !== 0 && edition !== inv.editionOf(slot) && this.editions.garmentOf(edition) !== this.reg.defs[item]?.id) return false;
     inv.setStyle(slot, edition, dye);
     this.changed(rec);
     return true;

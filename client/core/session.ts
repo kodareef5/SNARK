@@ -48,6 +48,7 @@ import {
   CMD_GROOM,
   CMD_REMAKE,
   OWN_REMAKE,
+  OWN_PEOPLE,
   OWN_BUFFS,
   OWN_RULES,
   OWN_SCREEN,
@@ -622,6 +623,8 @@ export class ClientSession {
   hairRate = 0;
   /** The server lets the own survivor be made again in the creator (OWN_REMAKE). */
   remaking = false;
+  /** The id of the cluster's people manifest, its editions (OWN_PEOPLE, shared/people/doc.ts), or "" for none yet. */
+  peopleManifest = "";
   /** With a piece in hand: the structures of every tribe counted round the survivor, and the most that may stand there, 0 for no cap (OWN_STRUCTURES). */
   structuresNear = 0;
   structuresCap = 0;
@@ -2206,6 +2209,13 @@ export class ClientSession {
       read(s, r) {
         const on = r.u8() === 1;
         if (!r.overflow) s.remaking = on;
+      },
+    });
+    ownKinds.add({
+      kind: OWN_PEOPLE,
+      read(s, r) {
+        const id = r.string(16);
+        if (!r.overflow && (id === "" || /^[0-9a-f]{16}$/.test(id))) s.peopleManifest = id;
       },
     });
     ownKinds.add({

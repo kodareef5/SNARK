@@ -6,6 +6,7 @@ import { UiFrame } from "../../client/core/ui/nodes.ts";
 import { CMD_MOVE } from "../../shared/net/protocol.ts";
 import { WARDROBE_NAMES, WARDROBE_SLOTS } from "../../shared/sim/items.ts";
 import { Harness } from "../fixtures/net.ts";
+import { editionOf } from "../fixtures/editions.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
 const reg = coreRegistry();
@@ -23,7 +24,8 @@ test("the wardrobe row shows each slot, a dyed garment's swatches, and refuses w
     const items = h.host.items;
     const inv = items.inv(me);
     expect(items.mintAt(me, inv.wardrobe, id("plain_tee"), 1)).toBe(1);
-    expect(items.restyle(me, inv.wardrobe, 7, 12 | (0 << 8) | (40 << 16))).toBe(true);
+    const edition = editionOf(h.host, "core:plain_tee");
+    expect(items.restyle(me, inv.wardrobe, edition, 12 | (0 << 8) | (40 << 16))).toBe(true);
     expect(items.mint(me, id("plain_trousers"), 1)).toBe(1);
     h.run(300);
     const own = s.inventory!;
@@ -48,7 +50,7 @@ test("the wardrobe row shows each slot, a dyed garment's swatches, and refuses w
     // Hovered, the tee says its edition and dye.
     screen.press(2, cell(own.wardrobe), 0, s);
     draw();
-    expect(f.find(KEY_INV_INFO)?.text).toContain("edition 7");
+    expect(f.find(KEY_INV_INFO)?.text).toContain(`edition ${edition}`);
     // The trousers picked up: the top's cell is dimmed and a click on it sends nothing; the bottom's takes them.
     const sent: number[] = [];
     const command = s.command.bind(s);

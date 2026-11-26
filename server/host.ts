@@ -40,7 +40,8 @@ import { Experience } from "./experience.ts";
 import { Carry } from "./carry.ts";
 import { Corpses } from "./corpses.ts";
 import { CorpseReplication } from "./corpse-motion.ts";
-import { CMD_AIR_SUPPORT, CMD_CLOCK, CMD_CORPSE, IMPACT_BLAST, IMPACT_SHOT } from "../shared/net/protocol.ts";
+import { CMD_AIR_SUPPORT, CMD_CLOCK, CMD_CORPSE, IMPACT_BLAST, IMPACT_SHOT, OWN_PEOPLE } from "../shared/net/protocol.ts";
+import { PeopleStore } from "./people/store.ts";
 import { Creative, NO_GROUPS } from "./creative.ts";
 import { Balls } from "./balls.ts";
 import { Eggs } from "./eggs.ts";
@@ -328,6 +329,8 @@ export interface Host {
   readonly beds: Beds;
   /** The cluster the server is part of (-clusterid), or null for one alone. */
   readonly cluster: Cluster | null;
+  /** The cluster's garment editions and, to come, its named people (server/people/store.ts): in its folder, else beside the save. */
+  readonly people: PeopleStore;
   /** Bodies found inside a node or a piece as their chunk or a node near them loaded, and set free (server/place.ts). */
   readonly settled: { readonly bodies: number };
   /** The list settings that name classes, as tables, and the names this build lacks. */
@@ -737,6 +740,12 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   // The cluster's permission groups, kept in its folder for every world, else beside the save, else in memory.
   const permissionStore = new PermissionStore(cluster ? join(cluster.folder.root, "permissions.sqlite") : opts.dbPath ? `${opts.dbPath}.permissions.sqlite` : ":memory:");
   opened.push(permissionStore);
+  // The cluster's people, shared by its worlds as its permission groups are; prints and manifests go with its screens' media.
+  const root = cluster?.folder.root;
+  const people = new PeopleStore(root ? { db: join(root, "people.sqlite"), media: join(root, "media"), tmp: join(root, "tmp") } : opts.dbPath ? { db: `${opts.dbPath}.people.sqlite`, media: `${opts.dbPath}.media` } : { db: ":memory:" });
+  opened.push(people);
+  items.editions = people;
+  game.own.add<string>({ kind: OWN_PEOPLE, unsent: "", version: () => people.manifestId, write: (w) => w.string(people.manifestId) });
   const permissions: Permissions = new Permissions({
     store: permissionStore,
     world: cluster?.world ?? 0,
@@ -2434,6 +2443,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     creative,
     beds,
     cluster,
+    people,
     settled,
     survivorIds: () => (persistence?.survivors ?? names).values(),
     survivorRecord: recordOf,
@@ -2533,6 +2543,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       impale.stop();
       register.write();
       permissionStore.close();
+      people.close();
       if (!persistence) return;
       // A creature in someone's arms is saved standing where it is set down, not where the arms had it, and so is whoever
       // sits in a car or on a creature.
