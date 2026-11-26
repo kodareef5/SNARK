@@ -236,6 +236,7 @@ test("every admin POST the front passes is judged again once its body is in", as
     "/admin/people/retire": { body: JSON.stringify({ revision: 0, id: 1, retired: true }) },
     "/admin/people/save": { body: JSON.stringify({ kind: "outfit", id: null, rev: 0, doc: { name: "Vendor", slots: [{ choices: [{ garment: "core:tee", edition: 0 }], dye: [0, 0, 0] }, null, null, null, null] } }) },
     "/admin/people/print": { body: image, headers: { "content-type": "image/png", "content-length": String(image.length) } },
+    "/admin/people/give": { body: JSON.stringify({ edition: 1, survivor: "kody" }) },
   };
   // The Permissions page's own changes are judged inside the store's write (permissions-two-maps.test.ts).
   const posts = [...WORLD_POSTS].filter((p) => p.startsWith("/admin/") && p !== PERMISSIONS_API).concat(SCREEN_POSTS, PEOPLE_POSTS, [SCENES]);
