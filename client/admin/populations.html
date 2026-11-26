@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Populations · SNARK Admin</title>
+    <link rel="stylesheet" href="/admin/ui/admin.css">
+    <link rel="stylesheet" href="/admin/ui/people.css">
+  </head>
+  <body>
+    <main class="tool-page people-page populations-page">
+      <header class="tool-intro"><h1>Populations</h1><p>Tune who a crowd is made of: how likely each skin, hair and build is, and what they wear. The sheet shows 24 of its people; promote one to a named person.</p></header>
+      <section class="glass people-status">
+        <p id="msg" class="dim" role="status">Loading…</p>
+        <p id="store" class="faint"></p>
+      </section>
+      <div class="populations-grid">
+        <section class="glass people-list">
+          <h2>Populations</h2>
+          <div id="populations"></div>
+        </section>
+        <section class="glass people-editor">
+          <h2 id="editor-title">Population</h2>
+          <p id="no-draft" class="dim">Open a population. A built-in one is read only: copy it to make your own.</p>
+          <div id="editor" hidden>
+            <p id="read-only" class="warn" hidden>Built in and read only. Copy it to change it.</p>
+            <div class="fields"><label class="grow">Label <input id="label" maxlength="40" autocomplete="off"></label></div>
+            <h3>Who they are</h3>
+            <div class="shares" id="shares"></div>
+            <div id="weights"></div>
+            <h3>Ages and builds</h3>
+            <div class="spans" id="spans"></div>
+            <details><summary>Body regions drawn in their own span</summary><div class="spans" id="regions"></div></details>
+            <h3>What they wear</h3>
+            <p class="faint">Each outfit is a set of pieces, garments or armour, drawn by its weight. Without one, a person wears the clothes of the role it plays.</p>
+            <div id="outfits"></div>
+            <div class="bar"><button id="add-outfit">Add an outfit</button></div>
+            <div class="bar save-bar">
+              <button id="save" class="primary">Save</button>
+              <button id="retire">Retire</button>
+              <button id="close">Close</button>
+              <span class="grow"></span>
+            </div>
+            <p id="fault" class="bad"></p>
+          </div>
+        </section>
+        <section class="glass sheet-box">
+          <h2>Sheet of 24</h2>
+          <div class="fields">
+            <button id="new-faces" title="Another 24 seeds">Other people</button>
+            <label>View <select id="framing"></select></label>
+            <button id="redraw">Draw again</button>
+            <span id="sheet-note" class="faint"></span>
+          </div>
+          <div id="sheet" class="sheet"></div>
+          <iframe id="stage" class="sheet-stage" src="/person-stage.html" title="The person stage, drawing the sheet"></iframe>
+          <p id="stage-note" class="faint"></p>
+        </section>
+      </div>
+    </main>
+    <script type="module" src="/admin/ui/populations.js"></script>
+  </body>
+</html>

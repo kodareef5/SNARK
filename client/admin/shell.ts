@@ -18,6 +18,8 @@ const shapes: Record<string, string> = {
   scenes: "M3 8h18v12H3z M3 8l-1-4 17-3 1 4z M7 3l3 3m3-4 3 3",
   screens: "M12 3a8 8 0 100 16 8 8 0 000-16z M10 8v6l5-3z M7 21h10",
   wardrobe: "M8 3l-5 3 2 5 3-1v11h8V10l3 1 2-5-5-3q-2 3-4 0z",
+  people: "M12 3a4 4 0 100 8 4 4 0 000-8z M4 21v-1a8 8 0 0116 0v1",
+  populations: "M7 4a3 3 0 100 6 3 3 0 000-6z M17 4a3 3 0 100 6 3 3 0 000-6z M2 20v-1a5 5 0 0110 0v1 M12 20v-1a5 5 0 0110 0v1",
   permissions: "M8 12a4 4 0 100 8 4 4 0 000-8z M11 13l9-9 M17 7l3 3 M14 10l2 2",
   map: "M3 5l6-2 6 2 6-2v16l-6 2-6-2-6 2z M9 3v16m6-14v16",
   survivors: "M5 20v-2a5 5 0 0110 0v2 M14 13a5 5 0 015 5v2 M13 7a3 3 0 11-6 0 3 3 0 016 0z M16 4a3 3 0 010 6",

@@ -1,0 +1,77 @@
+/* The people and populations pages (people.html, populations.html): lists, the editors, the stage and the sheet. */
+.people-page .people-grid { display: grid; grid-template-columns: minmax(230px, 0.7fr) minmax(420px, 1.3fr) minmax(320px, 1fr); gap: 18px; align-items: start }
+.people-page .populations-grid { display: grid; grid-template-columns: minmax(220px, 0.6fr) minmax(420px, 1.2fr) minmax(420px, 1.4fr); gap: 18px; align-items: start }
+.people-page .people-status { display: flex; gap: 6px 18px; flex-wrap: wrap; align-items: baseline; padding-block: 12px }
+.people-page .people-status p { margin: 0 }
+.people-page h3 { margin: 18px 0 8px }
+.people-page h4 { margin: 10px 0 4px; font-size: .88rem; color: var(--dim); font-weight: 600 }
+.people-page .fields { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-block: 6px }
+.people-page .fields label { display: flex; gap: 6px; align-items: center; font-size: .9rem; color: var(--dim) }
+.people-page .fields label.grow { flex: 1 }
+.people-page .fields label.grow input, .people-page .fields label.grow select { flex: 1; min-width: 0 }
+.people-page .notes { display: grid; gap: 4px; font-size: .9rem; color: var(--dim) }
+.people-page .notes textarea { width: 100%; box-sizing: border-box; font: inherit }
+.people-page .mode { font-size: .9rem; line-height: 1.4; margin: 4px 0 }
+
+.people-page .named { border: 1px solid var(--edge); border-radius: 6px; margin-bottom: 8px; padding: 2px }
+.people-page .named > button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 6px 8px; line-height: 1.35 }
+.people-page .named.picked { border-color: #24588d; box-shadow: 0 0 0 1px #24588d }
+.people-page .named.retired { background: #f3f4f6 }
+.people-page .named .acts { padding: 0 8px 6px }
+
+.people-page table.parts, .people-page table.slots { width: 100%; border-collapse: collapse; font-size: .88rem }
+.people-page table.parts td, .people-page table.parts th, .people-page table.slots td, .people-page table.slots th { padding: 3px 6px; border-bottom: 1px solid var(--edge); text-align: left }
+.people-page table.parts td.now { color: var(--dim) }
+.people-page table.parts button { font-size: .8rem; padding: .2em .55em; white-space: nowrap }
+.people-page tr.wrong td { background: #fdecea }
+
+.people-page .hand-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 6px 12px }
+.people-page .hand-grid label { display: grid; gap: 2px; font-size: .82rem; color: var(--dim) }
+.people-page .sliders { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 4px 14px; margin-top: 8px }
+.people-page .sliders label { display: grid; grid-template-columns: 84px minmax(0, 1fr) 30px; gap: 6px; align-items: center; font-size: .82rem; color: var(--dim) }
+.people-page .sliders input { width: 100%; min-width: 0; margin: 0 }
+.people-page .swatches { display: flex; flex-wrap: wrap; gap: 3px }
+.people-page .sw { display: inline-block; width: 18px; height: 18px; border-radius: 3px; border: 1px solid #0003; vertical-align: middle; margin-right: 3px; padding: 0; cursor: pointer }
+.people-page .sw.on { outline: 2px solid #15263b; outline-offset: 1px }
+.people-page .sw.own { background: repeating-linear-gradient(45deg, #fff 0 3px, #c9d2dc 3px 6px) }
+.people-page .palette { display: flex; flex-wrap: wrap; gap: 2px; max-height: 110px; overflow-y: auto; padding: 4px; border: 1px solid var(--edge); border-radius: 6px; margin-top: 6px }
+.people-page .palette .sw { margin: 0 }
+.people-page .save-bar { margin-top: 18px }
+.people-page .faults { margin: 8px 0 0; padding-left: 1.2em; color: var(--bad); font-size: .9rem }
+.people-page .faults:empty { display: none }
+.people-page .roles { margin: 6px 0; padding-left: 1.1em; font-size: .9rem }
+.people-page .roles li { margin-bottom: 4px }
+.people-page .roles button { font-size: .8rem; padding: .15em .5em; margin-left: 4px }
+
+.people-page .people-stage iframe { width: 100%; aspect-ratio: 4 / 5; border: 1px solid var(--edge); border-radius: 6px; background: #20262d; display: block }
+.people-page .people-stage { position: sticky; top: 12px }
+
+.populations-page .shares { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px 12px }
+.populations-page .shares label { display: grid; gap: 2px; font-size: .82rem; color: var(--dim) }
+.populations-page .weights .cells { display: flex; flex-wrap: wrap; gap: 4px 8px }
+.populations-page .weights .cells label { display: grid; gap: 1px; font-size: .75rem; color: var(--dim); width: 74px }
+.populations-page .weights .cells input { width: 100%; box-sizing: border-box }
+.populations-page .spans { display: grid; gap: 4px }
+.populations-page .span { display: grid; grid-template-columns: minmax(160px, 1fr) auto; gap: 8px; align-items: center; font-size: .86rem }
+.populations-page .span .ends { white-space: nowrap; font-size: .82rem; color: var(--dim) }
+.populations-page .span input { width: 64px }
+.populations-page .outfit { padding: 6px 8px; border: 1px solid var(--edge); border-radius: 6px; margin-bottom: 6px; font-size: .88rem; display: flex; flex-wrap: wrap; gap: 6px; align-items: center }
+.populations-page .outfit input { width: 70px }
+.populations-page .chip.piece button { border: 0; background: none; padding: 0 2px; cursor: pointer }
+.populations-page .sheet { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px }
+.populations-page .card { margin: 0; border: 1px solid var(--edge); border-radius: 6px; padding: 4px; background: #fff; text-align: center }
+.populations-page .card img, .populations-page .card .wait { display: block; width: 100%; height: auto; border-radius: 4px; background: #20262d }
+.populations-page .card figcaption { font-size: .72rem; color: var(--dim); line-height: 1.3; margin-top: 3px }
+.populations-page .card figcaption button { font-size: .75rem; padding: .1em .5em; margin-top: 3px }
+.populations-page .chip.moved { background: #fdecea; color: #8a2a1c }
+.populations-page .chip.rewear { background: #e8f1fb; color: #24588d }
+.populations-page .sheet-stage { width: 240px; aspect-ratio: 3 / 4; border: 1px solid var(--edge); border-radius: 6px; background: #20262d; display: block; margin-top: 10px }
+
+@media (max-width: 1400px) {
+  .people-page .people-grid, .people-page .populations-grid { grid-template-columns: minmax(220px, 0.7fr) minmax(400px, 1.3fr) }
+  .people-page .people-stage, .populations-page .sheet-box { grid-column: 1 / -1; position: static }
+  .people-page .people-stage iframe { max-width: 480px }
+}
+@media (max-width: 860px) {
+  .people-page .people-grid, .people-page .populations-grid { grid-template-columns: 1fr }
+}

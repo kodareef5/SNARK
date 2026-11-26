@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>People · SNARK Admin</title>
+    <link rel="stylesheet" href="/admin/ui/admin.css">
+    <link rel="stylesheet" href="/admin/ui/people.css">
+  </head>
+  <body>
+    <main class="tool-page people-page">
+      <header class="tool-intro"><h1>People</h1><p>Design named people: their face, body, hair and clothes, each part kept or drawn again on its own. A named person can play a Cast role.</p></header>
+      <section class="glass people-status">
+        <p id="msg" class="dim" role="status">Loading…</p>
+        <p id="store" class="faint"></p>
+      </section>
+      <div class="people-grid">
+        <section class="glass people-list">
+          <h2>Named people</h2>
+          <div class="bar"><button id="new-person" class="primary">New person</button><a class="faint" href="/admin/populations/">Promote one from a population</a></div>
+          <div id="people"></div>
+        </section>
+        <section class="glass people-editor">
+          <h2 id="editor-title">Person</h2>
+          <p id="no-draft" class="dim">Open a person, or make a new one.</p>
+          <div id="editor" hidden>
+            <div class="fields"><label class="grow">Name <input id="name" maxlength="40" autocomplete="off" placeholder="Rosa the vendor"></label></div>
+            <label class="notes">Notes <textarea id="notes" rows="2" maxlength="1000" placeholder="Who she is, where she works"></textarea></label>
+            <h3>Look</h3>
+            <p id="look-mode" class="mode"></p>
+            <div class="fields">
+              <label>Drawn from <select id="population"></select></label>
+              <label>Seed <input id="seed" type="number" min="0" max="4294967295" step="1"></label>
+              <button id="draw-again" title="A new seed: every part not locked changes">Draw again</button>
+              <button id="back-to-drawn" hidden>Back to the seed</button>
+            </div>
+            <table class="parts"><thead><tr><th>Part</th><th>Now</th><th>Locked</th><th></th></tr></thead><tbody id="parts"></tbody></table>
+            <details id="hand" open>
+              <summary>By hand</summary>
+              <p class="faint">A control set by hand keeps the look as its bytes, so a population's later edits never move it. Untouched, the look stays a seed.</p>
+              <div class="hand-grid" id="hand-picks"></div>
+              <h4>Skin tone</h4><div class="swatches" id="skin-swatches"></div>
+              <h4>Hair colour</h4><div class="swatches" id="hair-swatches"></div>
+              <div class="sliders" id="figure-sliders"></div>
+              <details><summary>Body regions</summary><div class="sliders" id="region-sliders"></div></details>
+            </details>
+            <h3>Clothes</h3>
+            <div class="fields" id="dress-kinds">
+              <label><input type="radio" name="dress" value="role"> The role's own</label>
+              <label><input type="radio" name="dress" value="outfit"> A store outfit</label>
+              <label><input type="radio" name="dress" value="wardrobe"> Its own wardrobe</label>
+            </div>
+            <div class="fields" id="outfit-pick" hidden><label>Outfit <select id="outfit"></select></label></div>
+            <div id="wardrobe" hidden>
+              <table class="slots"><thead><tr><th>Slot</th><th>Garment</th><th>Edition</th><th>Dye</th></tr></thead><tbody id="slots"></tbody></table>
+              <div class="palette" id="dye-palette"></div>
+              <p class="faint">0 keeps the edition's own colour. Pick a dye well, then a colour.</p>
+            </div>
+            <div class="bar save-bar">
+              <button id="save" class="primary">Save</button>
+              <button id="retire">Retire</button>
+              <button id="close">Close</button>
+              <span class="grow"></span>
+            </div>
+            <ul id="faults" class="faults"></ul>
+          </div>
+        </section>
+        <section class="glass people-stage">
+          <h2>Preview</h2>
+          <iframe id="stage" src="/person-stage.html" title="The person stage"></iframe>
+          <div class="fields">
+            <label>Pose <select id="pose"></select></label>
+            <label>View <select id="framing"></select></label>
+            <button id="stage-picture">Save a picture</button>
+          </div>
+          <p id="wear-note" class="faint"></p>
+          <p id="stage-note" class="faint"></p>
+          <h2>In Cast</h2>
+          <div class="fields"><label>World <select id="world"></select></label></div>
+          <div class="fields"><label class="grow">Role <select id="role"></select></label><button id="bind">Play this role</button></div>
+          <div id="cast"></div>
+        </section>
+      </div>
+    </main>
+    <script type="module" src="/admin/ui/people.js"></script>
+  </body>
+</html>
