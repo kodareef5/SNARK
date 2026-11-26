@@ -15,8 +15,8 @@ const args = process.argv.slice(2);
 const tiers = (args[args.indexOf("--tiers") + 1] && args.includes("--tiers") ? args[args.indexOf("--tiers") + 1]! : "medium,high").split(",");
 const files = await gameFiles();
 
-/** A crowd's frame, measured: one look for all, or one each with faces at the survivors' spread. */
-function measure(tier: string, scene: CrowdScene, close: boolean, unique: boolean): string {
+/** A crowd's frame, measured: one look for all, or one each, with neutral faces or faces at the survivors' spread. */
+function measure(tier: string, scene: CrowdScene, close: boolean, unique: boolean, faced: boolean): string {
   const view = provingView(1920, 1080, {}, files);
   view.scene.assets.tier = tierOf(tier);
   view.scene.viewHeight = 1080;
@@ -44,7 +44,7 @@ function measure(tier: string, scene: CrowdScene, close: boolean, unique: boolea
     remote.anim[n] = 0;
     remote.hasLook[n] = 1;
     const look = looks[n]!.slice(0, LOOK_BYTES);
-    if (unique) for (let f = 0; f < FACE_COUNT; f++) setFace(look, f, ((rng.float() + rng.float()) - 1) * 0.6);
+    for (let f = 0; f < FACE_COUNT; f++) setFace(look, f, faced ? ((rng.float() + rng.float()) - 1) * 0.6 : 0);
     remote.look.set(look, n * LOOK_BYTES);
   });
   view.scene.own = null;
@@ -61,10 +61,10 @@ function measure(tier: string, scene: CrowdScene, close: boolean, unique: boolea
     bodyDraws++;
     bodyTris += (p.drawIndexCount[d]! > 0 ? p.drawIndexCount[d]! / 3 : view.scene.assets.table.tris[p.drawMesh[d]!]![p.drawLod[d]!]!) * p.drawInstances[d]!;
   }
-  return `${tier.padEnd(7)} ${(close ? "close" : scene).padEnd(6)} ${(unique ? "own faces" : "shared").padEnd(10)} draws ${String(p.drawCount).padStart(5)} body draws ${String(bodyDraws).padStart(4)} body k tris ${(bodyTris / 1000).toFixed(0).padStart(4)} bones ${String(p.boneCount).padStart(5)} faced ${String(view.scene.characters.faced).padStart(2)} heads ${String(faces.count).padStart(2)} made ${String(faces.makes).padStart(2)} 41 frames ${ms.toFixed(0)} ms`;
+  return `${tier.padEnd(7)} ${(close ? "close" : scene).padEnd(6)} ${(unique ? "own looks" : "one look").padEnd(9)} ${(faced ? "own faces" : "neutral").padEnd(9)} draws ${String(p.drawCount).padStart(5)} body draws ${String(bodyDraws).padStart(4)} body k tris ${(bodyTris / 1000).toFixed(0).padStart(4)} bones ${String(p.boneCount).padStart(5)} faced ${String(view.scene.characters.faced).padStart(2)} heads ${String(faces.count).padStart(2)} made ${String(faces.makes).padStart(2)} 41 frames ${ms.toFixed(0)} ms`;
 }
 
-for (const tier of tiers) for (const close of [false, true]) for (const unique of [false, true]) console.log(measure(tier, "near", close, unique));
+for (const tier of tiers) for (const close of [false, true]) for (const [unique, faced] of [[false, false], [true, false], [true, true]] as const) console.log(measure(tier, "near", close, unique, faced));
 
 // The time one head takes to make: a new face asked for each frame, made at the next frame's start.
 {
