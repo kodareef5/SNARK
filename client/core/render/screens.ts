@@ -19,6 +19,8 @@ export const REACH_FADE = 0.1;
 const TAU = 2 * Math.PI;
 /** The type that reaches as far as `reach` says; every other reaches as far as `near`. */
 const BILLBOARD = SCREENS.indexOf("billboard");
+/** Metres a billboard's face is wide to reach the whole of `reach`: a smaller one reaches in proportion, as it is as small on the screen that much nearer. */
+const BOARD_WIDE = 14.6;
 
 /** What the faces are found in: the structures the client holds, and the map's statics where it has them. */
 export interface FaceWorld {
@@ -125,8 +127,8 @@ export class FaceFinder {
   private consider(cam: Camera, reach: FaceReach, ref: number, kind: number, x: number, y: number, z: number, yaw: number): void {
     const face = this.faces[kind];
     if (!face) return;
-    const type = this.typeOf[kind]!, range = type === BILLBOARD ? reach.reach : reach.near;
     const r = face.face, x0 = r[0], x1 = r[1], y0 = r[2], y1 = r[3], fz = r[4];
+    const type = this.typeOf[kind]!, range = type === BILLBOARD ? reach.reach * Math.min(1, (x1 - x0) / BOARD_WIDE) : reach.near;
     const s = Math.sin(yaw), c = Math.cos(yaw);
     // The face's middle, camera-relative, and the way it faces: local +z is (sin yaw, cos yaw).
     const mx = (x0 + x1) / 2, my = (y0 + y1) / 2;

@@ -16,7 +16,7 @@ import { FOUNDATION_THICK } from "../../content/building.ts";
 import { NO_TARGET } from "../../server/build.ts";
 import { STRUCT_UNITS, TICK_RATE } from "../../shared/coords.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
-import { BOX_OPEN, BOX_SELF, CMD_MOVE, CMD_PLACE, CMD_SELECT, CMD_STRUCT, RESULT_DENIED, RESULT_INVALID, RESULT_LOCKED, RESULT_NOT_EMPTY, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_OK, RESULT_PIN, RESULT_WAIT } from "../../shared/net/protocol.ts";
+import { BOX_OPEN, BOX_SELF, CMD_MOVE, CMD_PLACE, CMD_SELECT, CMD_STRUCT, RESULT_DENIED, RESULT_INVALID, RESULT_LOCKED, RESULT_NOT_EMPTY, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_NO_SUPPORT, RESULT_OK, RESULT_PIN, RESULT_WAIT } from "../../shared/net/protocol.ts";
 import { writeNew, writeRest } from "../../shared/net/place.ts";
 import { BTN_USE, stanceEye } from "../../shared/sim/character.ts";
 import { lookDirection } from "../../shared/world/ray.ts";
@@ -279,9 +279,11 @@ test("a door opens and shuts for its tribe; for anyone once unlocked; and for wh
   press(ada);
   expect(row(h, door).kind).toBe(id("door_wood"));
   expect(h.host.fixtures.count).toBe(0);
-  // A door does not open into a body standing where its leaf would swing.
+  // A stranger standing where its leaf would swing is moved aside, and the door opens.
   h.say(bob, `tp ${leaf.x.toFixed(3)} ${leaf.z.toFixed(3)}`);
-  expect([press(ada), row(h, door).kind]).toEqual([RESULT_OBSTRUCTED, id("door_wood")]);
+  expect([press(ada), row(h, door).kind]).toEqual([-1, id("door_open_wood")]);
+  press(ada);
+  expect(row(h, door).kind).toBe(id("door_wood"));
   // A door starts locked to its tribe.
   expect(press(bob)).toBe(RESULT_LOCKED);
   expect([send(bob, STRUCT_USE), send(bob, STRUCT_UNLOCK), send(bob, STRUCT_PIN, 1111), row(h, door).kind]).toEqual([RESULT_LOCKED, RESULT_NOT_YOURS, RESULT_NOT_YOURS, id("door_wood")]);

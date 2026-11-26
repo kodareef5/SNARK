@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join as pathJoin } from "node:path";
-import { RESULT_DENIED, RESULT_OK, RESULT_PIN } from "../../shared/net/protocol.ts";
+import { RESULT_DENIED, RESULT_OBSTRUCTED, RESULT_OK, RESULT_PIN } from "../../shared/net/protocol.ts";
 import { frame, frameOf } from "../../shared/world/frame.ts";
 import type { ModuleDef } from "../../server/api/module.ts";
 import { flatGround } from "../fixtures/arena.ts";
@@ -70,8 +70,29 @@ test("a solid wall prevents a nearby owner's sensor from opening the door", () =
   h.host.shutdown();
 });
 
-test("a guest in the swing keeps the door open until two clear seconds pass", () => {
-  const { h, owner, guest, stand, leaf } = scene();
+test("a stranger in the swing is moved aside and the door shuts", () => {
+  const { h, owner, guest, world, stand, leaf, x, z } = scene();
+  stand(owner, 0, -1.6);
+  h.run(400);
+  expect(leaf()).toBe("core:door_open_tek");
+  stand(owner, 0, -4);
+  stand(guest, 0, .7);
+  const e = h.ent(guest), at = () => [world.ents.x[e]! - x, world.ents.z[e]! - z];
+  const [bx, bz] = at();
+  h.run(3400);
+  expect(leaf()).toBe("core:door_tek");
+  const [ax, az] = at();
+  expect(Math.hypot(ax - bx, az - bz)).toBeGreaterThan(.2);
+  expect(Math.hypot(ax, az)).toBeLessThan(3);
+  h.host.shutdown();
+});
+
+test("a tribemate in the swing keeps the door open until two clear seconds pass", () => {
+  const { h, owner, guest, builder, stand, leaf } = scene();
+  const visitor = h.host.records.byPid.get(h.client(guest)!.pid)!;
+  expect(h.host.tribes.create(builder, "Copper")).toBe("");
+  expect(h.host.tribes.invite(builder, visitor, true)).toBe("");
+  expect(h.host.tribes.accept(visitor)).toBe("");
   stand(owner, 0, -1.6);
   h.run(400);
   expect(leaf()).toBe("core:door_open_tek");
@@ -172,5 +193,24 @@ test("ordinary doors and Tek hatches and gates stay manual", () => {
     h.run(2200);
     expect(leaf()).toBe(h.reg.ids[open]);
   }
+  h.host.shutdown();
+});
+
+test("an owner shuts an ordinary door on a stranger in the doorway, and not on a tribemate", () => {
+  const { h, owner, guest, builder, world, kind, stand, leaf, ref } = scene();
+  const shut = kind("door_metal"), open = h.reg.opens[shut]!;
+  world.structs.swap(ref, open);
+  stand(owner, 0, -3);
+  stand(guest, 0, 0);
+  expect(h.host.build.use(h.client(owner)!, ref)).toBe(RESULT_OK);
+  expect(leaf()).toBe("core:door_metal");
+  world.structs.swap(ref, open);
+  const visitor = h.host.records.byPid.get(h.client(guest)!.pid)!;
+  expect(h.host.tribes.create(builder, "Copper")).toBe("");
+  expect(h.host.tribes.invite(builder, visitor, true)).toBe("");
+  expect(h.host.tribes.accept(visitor)).toBe("");
+  stand(guest, 0, 0);
+  expect(h.host.build.use(h.client(owner)!, ref)).toBe(RESULT_OBSTRUCTED);
+  expect(leaf()).toBe(h.reg.ids[open]!);
   h.host.shutdown();
 });

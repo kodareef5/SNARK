@@ -6,8 +6,9 @@ import { familyOf, shapeBreaks } from "./breaks/families.ts";
 import { PANE_HEALTH, cityMaterial, materialOf, pieceHealth, type CityMaterial } from "./breaks/materials.ts";
 
 const shaped = (name: string): string => `core:${name.startsWith("floorroad") ? "zzruinshape" : "zruinshape"}_${name}`;
-const fallenFrame = [[0, -3.5, 4, .5], [0, 3.5, 4, .5], [-3.5, 0, .5, 3], [3.5, 0, .5, 3]].map(([x, z, w, d]) => ({
-  corners: leaning([w!, .25, d!], 60).corners.map(([u, y, v]) => [u + x!, y + z! * Math.sin(Math.PI / 3), v + z! * .5] as const),
+/** A window front's frame, 8 m square with a 6 m opening, fallen to lean `degrees` from flat. */
+const fallenFrame = (degrees: number) => [[0, -3.5, 4, .5], [0, 3.5, 4, .5], [-3.5, 0, .5, 3], [3.5, 0, .5, 3]].map(([x, z, w, d]) => ({
+  corners: leaning([w!, .25, d!], degrees).corners.map(([u, y, v]) => [u + x!, y + z! * Math.sin(degrees * Math.PI / 180), v + z! * Math.cos(degrees * Math.PI / 180)] as const),
 }));
 export const RUIN_SLOPES = {
   flight: stairFlight(shaped("flight"), 2, 5.5, 4, { steps: 11, slab: .8 }),
@@ -17,7 +18,9 @@ export const RUIN_SLOPES = {
   plate15: slopeShape(shaped("plate15"), "thing", [leaning([4, .2, 4], 15)]),
   plate30: slopeShape(shaped("plate30"), "thing", [leaning([4, .2, 4], 30)]),
   plate4: slopeShape(shaped("plate4"), "thing", [leaning([2, .25, 2], 24)]),
-  front60: slopeShape(shaped("front60"), "thing", fallenFrame),
+  front60: slopeShape(shaped("front60"), "thing", fallenFrame(60)),
+  // Lying where it fell: low enough to walk over, so it reads as debris and not as a wall that leans.
+  front12: slopeShape(shaped("front12"), "thing", fallenFrame(12)),
   mound: slopeShape(shaped("mound"), "thing", [wedge(4, 6, 2)]),
   // A garage's ramp seen through its open deck, rising half a storey over a bay.
   zdeckramp: slopeShape(shaped("zdeckramp"), "stairs", [slopedSlab(3, 8, 2, .3)]),
