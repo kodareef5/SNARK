@@ -351,7 +351,7 @@ export interface LoaderOptions {
   readonly pause?: () => Promise<void>;
   /**
    * Resolves after `ms` milliseconds, as `wait`: the clock the wanted parts are looked at by, each LOOK_EVERY. Without it
-   * they are looked at as parts come and when MapLoader.look is called.
+   * they are looked at as parts come and when MapLoader.look is called, and nothing a focus wanted outlasts it (WANT_HOLD).
    */
   readonly every?: (ms: number) => Promise<void>;
 }
