@@ -12,7 +12,7 @@ import { LAST_STEP, stepSize } from "../../shared/pack/texture.ts";
 import { shiftAt } from "../pack/refit.ts";
 import { buildPack, unpackMeshes } from "../pack/write.ts";
 import { findAssets } from "./assets.ts";
-import { armorField, armorSets, dressTailored, suitLining } from "./human.ts";
+import { armorField, armorSets, dressTailored, suitInMotion, suitLining } from "./human.ts";
 import { describe, materialsOf } from "./materials.ts";
 import type { HumanBodiesAsset } from "./spec.ts";
 
@@ -34,7 +34,9 @@ export async function armorQuick(pack: Uint8Array): Promise<{ pack: Uint8Array; 
     const made = armorSets(spec, sex, rest, field, described, palette, lines, warnings, body);
     // The suit, its materials as the pack has them.
     const rig = was.header.rigs.find((r) => r.id === `human_${SEX_IDS[sex]}`)!;
-    const suit = spec.tailored!.make(suitLining(body), rig, (p) => shiftAt(field, p)).map((mesh) => dressTailored(spec, mesh, described.get(spec.tailored!.material)!));
+    const made2 = spec.tailored!.make(suitLining(body), rig, (p) => shiftAt(field, p));
+    suitInMotion(made2, body, rest, lines);
+    const suit = made2.map((mesh) => dressTailored(spec, mesh, described.get(spec.tailored!.material)!));
     const ours = new Set([...made, ...suit].map((m) => m.id));
     meshes = meshes.filter((m) => !ours.has(m.id) && !sets.some((s) => m.id.startsWith(`${id}/armor/${s}/`))).concat(made, suit);
   }

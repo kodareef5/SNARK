@@ -492,13 +492,12 @@ const PUSH_ROUNDS = 4;
  * Moves `piece` from the old body onto the new as `field` says, in place. A vertex on a `rigid` bone stays where it was:
  * a glove's or a boot's own part, which stands in for the hand or foot and on which its grips and soles are calibrated.
  * It stays on that bone too where the new skin nearest it is a hand's or a foot's. A vertex the new skin's weights would
- * put on one is held wholly on it. Of the rigid bones, only those in `placed` keep their vertices where they were; the
- * others' move and are pushed out of the skin with the rest, on their one bone. Skin of
+ * put on one is held wholly on it. Skin of
  * the new body pushes the piece out only where it is drawn with it: `shows(pieceSlot, skinSlot)`, and only where the piece
  * lay over the old body. A piece stands in for its own slot's skin, which is not drawn under it, and may be slimmer
  * there; what was tucked inside the old body stays tucked.
  */
-export function refitPiece(piece: RefitPiece, field: BodyField, rigid: ReadonlySet<number>, shows: (piece: number, skin: number) => boolean, slotOf: (zone: number) => number, clear = REFIT_CLEAR, tuck = true, placed: ReadonlySet<number> = rigid): RefitReport {
+export function refitPiece(piece: RefitPiece, field: BodyField, rigid: ReadonlySet<number>, shows: (piece: number, skin: number) => boolean, slotOf: (zone: number) => number, clear = REFIT_CLEAR, tuck = true): RefitReport {
   const p = piece.positions;
   const n = p.length / 3;
   const start = Float64Array.from(p);
@@ -534,7 +533,7 @@ export function refitPiece(piece: RefitPiece, field: BodyField, rigid: ReadonlyS
     const nn = [0, 1, 2].map((a) => share.reduce((s, w, k) => s + w * from.normals[corners[k]! * 3 + a]!, 0));
     tucked[v] = tuck && (x - hit.x) * nn[0]! + (y - hit.y) * nn[1]! + (z - hit.z) * nn[2]! < -TUCKED ? 1 : 0;
     for (let k = 0; k < 3; k++) {
-      if (!placed.has(piece.bones[v]!)) for (let a = 0; a < 3; a++) p[v * 3 + a]! += share[k]! * field.shift[corners[k]! * 3 + a]!;
+      if (!rigid.has(piece.bones[v]!)) for (let a = 0; a < 3; a++) p[v * 3 + a]! += share[k]! * field.shift[corners[k]! * 3 + a]!;
       for (let b = 0; b < bones; b++) found[v * bones + b]! += share[k]! * field.weights[corners[k]! * bones + b]!;
     }
   }
@@ -591,7 +590,7 @@ export function refitPiece(piece: RefitPiece, field: BodyField, rigid: ReadonlyS
       const own = need[v]! > 0 || dir[v * 3]! !== 0 || dir[v * 3 + 1]! !== 0 || dir[v * 3 + 2]! !== 0 ? v : by;
       for (let a = 0; a < 3; a++) move[v * 3 + a] = dir[own * 3 + a]! * most;
     }
-    for (let i = 0; i < p.length; i++) if (!held[Math.floor(i / 3)] || !placed.has(piece.bones[Math.floor(i / 3)]!)) p[i]! += move[i]!;
+    for (let i = 0; i < p.length; i++) if (!held[Math.floor(i / 3)]) p[i]! += move[i]!;
     dir.fill(0);
   }
   // The weights of the new skin nearest each vertex as it now sits, so the piece turns as the skin under it does.

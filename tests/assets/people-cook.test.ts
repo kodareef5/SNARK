@@ -5,7 +5,7 @@
 import { expect } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { SLOT_NAMES } from "../../shared/anim/human.ts";
+import { B_FOOT_L, B_FOOT_R, B_TOE_L, B_TOE_R, SLOT_NAMES } from "../../shared/anim/human.ts";
 import { SEX_IDS } from "../../shared/anim/look.ts";
 import { SKIN_ZONE_SLOT } from "../../shared/anim/skin-zones.ts";
 import { SKIN_BYTES, VERTEX_BYTES, lodSkin, lodVertices, parsePack, type Pack } from "../../shared/pack/pack.ts";
@@ -102,5 +102,31 @@ artTest("a section's zones go from the trunk outward, left and right side by sid
       const sameSection = !lod.sections || lod.sections.some((_, s) => s % 3 === 0 && runs[k - 2]! >= lod.sections![s + 1]! && runs[k + 1]! < lod.sections![s + 1]! + lod.sections![s + 2]!);
       if (sameSection) expect(order.indexOf(runs[k]!)).toBeGreaterThan(order.indexOf(runs[k - 3]!));
     }
+  }
+});
+
+artTest("cloth and hide are lined with the body's own skin, and its weights there", () => {
+  for (const sex of SEX_IDS) for (const set of ["cloth", "hide"]) for (const slot of ["torso", "hands", "legs", "feet"]) {
+    const m = mesh(`core:human_${sex}/armor/${set}/${slot}`);
+    const ids = (m.lods[0]!.sections ?? []).filter((_, k) => k % 3 === 0).map((k) => pack.header.materials![k]!.id);
+    expect(ids.some((id) => id.includes("skin_mh")), m.id).toBe(true);
+    // No piece keeps the outfit's own skin.
+    expect(ids.some((id) => id.includes("regular")), m.id).toBe(false);
+  }
+});
+
+artTest("a worn boot's foot and toes are on one bone a vertex, its shaft bends as the shin's skin does", () => {
+  const feet = [B_FOOT_L, B_FOOT_R, B_TOE_L, B_TOE_R];
+  for (const sex of SEX_IDS) for (const set of ["cloth", "hide"]) {
+    const lod = mesh(`core:human_${sex}/armor/${set}/feet`).lods[0]!;
+    const skin = lodSkin(pack, lod)!, verts = lodVertices(pack, lod);
+    let blended = 0;
+    for (let v = 0; v < lod.vertexCount; v++) {
+      const bone = verts[v * VERTEX_BYTES + 7]!;
+      const one = skin[v * SKIN_BYTES + 4] === 255;
+      if (feet.includes(bone)) expect(one).toBe(true);
+      else if (!one) blended++;
+    }
+    expect(blended).toBeGreaterThan(0);
   }
 });

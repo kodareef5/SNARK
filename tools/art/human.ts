@@ -154,8 +154,7 @@ export function armorSets(spec: HumanBodiesAsset, sex: number, rest: readonly nu
     let said = "";
     const refit = field ? (piece: Parameters<typeof refitPiece>[0]) => {
       // Every slot's skin may be drawn beside a piece: its own where the piece is lined, the face under a hood.
-      // A glove's hand stays where its grips were found; a boot moves onto the new foot, its soles found again when packed.
-      const r = refitPiece(piece, field, RIGID_BONES, () => true, (zone) => SKIN_ZONE_SLOT[zone]!, REFIT_CLEAR, body.length === 0, body.length === 0 ? RIGID_BONES : HAND_BONES);
+      const r = refitPiece(piece, field, RIGID_BONES, () => true, (zone) => SKIN_ZONE_SLOT[zone]!, REFIT_CLEAR, body.length === 0);
       said = `${armor}: refit ${r.vertices} vertices, moved at most ${(r.most * 1000).toFixed(1)} mm; ${r.pushed} pushed out of the skin, the deepest ${(r.deepest * 1000).toFixed(1)} mm in`;
     } : undefined;
     const cook = (flat: number): Cooked => cookBody(parts, { id: armor, rig, scale, onto: rest, triangles: spec.triangles.armor, flat, palette, refit, leave: o.skin, ...dressed(spec, described, parts, armor, o.skin) });
@@ -216,6 +215,26 @@ export function armorSets(spec: HumanBodiesAsset, sex: number, rest: readonly nu
  */
 export function suitLining(meshes: readonly SourceMesh[]): SourceMesh[] {
   return meshes.map((m) => ({ ...m, lods: (m.id.endsWith("/head") ? [1, 1, 2] : [0, 1, 2]).map((k) => m.lods[k]!) }));
+}
+
+/**
+ * Keeps a suit's plates clear of the skin and lets them out where skin comes through them in motion, as cloth and hide
+ * are; its lining, the body's own skin, stays where it is.
+ */
+export function suitInMotion(suit: SourceMesh[], body: readonly SourceMesh[], rest: readonly number[], lines: string[]): void {
+  const poses = motionSet(humanAnim(), Float32Array.from(rest), true);
+  const at = (lod: SourceLod, v: number): string => `${lod.positions[v * 3]},${lod.positions[v * 3 + 1]},${lod.positions[v * 3 + 2]}`;
+  for (const mesh of suit) {
+    if (!/\/armor\/[^/]+\/(head|torso|hands|legs|feet)$/.test(mesh.id)) continue;
+    const skins = mesh.lods.map((_, level) => skinLevel(body, level));
+    const lining = suitLining(body).flatMap((m) => m.lods.map((lod) => new Set(Array.from({ length: lod.positions.length / 3 }, (_, v) => at(lod, v)))));
+    const lined = (lod: SourceLod, v: number): boolean => lining.some((set) => set.has(at(lod, v)));
+    const still = (lod: SourceLod, v: number): boolean => lined(lod, v) || (HAND_BONES.has(lod.bones![v]!) && !mesh.id.endsWith("/feet"));
+    let moved = 0;
+    mesh.lods.forEach((lod, level) => (moved += clearOf(lod, skins[level]!, REFIT_CLEAR, (v) => still(lod, v))));
+    const r = easeInMotion(mesh, body, Float32Array.from(rest), poses, () => -1, still, false);
+    lines.push(`${mesh.id}: ${moved} vertices moved clear of the skin, let out at most ${(r.most * 1000).toFixed(1)} mm in motion; skin came through it ${r.deepest.map((d) => (d * 1000).toFixed(1)).join(", ")} mm by round`);
+  }
 }
 
 /** A tailored outfit's mesh with its finish's materials: the finish, its indicators, its visor and its exhaust. */
@@ -329,6 +348,7 @@ export function convertBodies(spec: HumanBodiesAsset, dir: string, described: Re
         // its weights, and its plates, drawn on the Quaternius body, move as the skin under them moved.
         const field = onBody;
         made = spec.tailored.make(suitLining(body.meshes), body.rig, (p) => shiftAt(field, p));
+        suitInMotion(made, body.meshes, body.rig.rest, lines);
       } else {
         // The tailored outfit is cut from the flat one-bone body it was designed on, so its counts and look stay its own.
         const eyes: MaterialRule = { image: readPng(join(raw, spec.eyes)), color: eye };
