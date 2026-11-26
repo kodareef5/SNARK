@@ -7,7 +7,7 @@ from pathlib import Path
 import bpy
 from mathutils import Vector
 
-from surfaces import SURFACES
+from surfaces import COLORS, DETAILS, DETAIL_CELLS, TILES
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from resource_uv import atlas_uv, loft_uv, planar_uv
@@ -28,13 +28,16 @@ def linear(channel):
 
 
 def material(surface, textured):
-    atlas, _, _, _, _, color = SURFACES[surface]
-    name = atlas if textured else f"flat_{surface}"
+    finish = DETAILS[surface][3] if surface in DETAILS else surface
+    name = (surface if surface in TILES else "details") if textured else f"flat_{finish}"
     existing = bpy.data.materials.get(name)
     if existing:
         return existing
     matte = bpy.data.materials.new(name)
-    matte.diffuse_color = (*map(linear, color if not textured else (128, 128, 128)), 1)
+    color = (1, 1, 1, 1) if textured else (*map(linear, COLORS[finish]), 1)
+    matte.diffuse_color = color
+    matte.use_nodes = True
+    matte.node_tree.nodes.get("Principled BSDF").inputs["Base Color"].default_value = color
     return matte
 
 
@@ -91,19 +94,25 @@ class Instrument:
         self.normals.extend(normal if normal is not None else [None] * len(indices))
         if not self.textured:
             return
+        tile = TILES.get(surface)
         if uv is None:
             if basis is None:
-                uv = planar_uv(points, origin=origin or points[0])
+                if origin is None and tile is None:
+                    origin = sum(points, Vector((0, 0, 0))) / len(points)
+                uv = planar_uv(points, origin=origin if origin is not None else (0, 0, 0))
             else:
                 across, up = basis
                 uv = [((point - origin).dot(across), (point - origin).dot(up)) for point in points]
-        _, cells, span, column, row, _ = SURFACES[surface]
-        cell = 1 / cells
-        self.uv.append(atlas_uv(uv, span=span, center=((column + 0.5) * cell, (row + 0.5) * cell), cell=(cell, cell)))
+        if tile is not None:
+            self.uv.append(atlas_uv(uv, span=tile[1]))
+        else:
+            column, row, span, _ = DETAILS[surface]
+            cell = 1 / DETAIL_CELLS
+            self.uv.append(atlas_uv(uv, span=span, center=((column + 0.5) * cell, (row + 0.5) * cell), cell=(cell, cell)))
 
     def shell(self, rings, surface, *, closed=False, smooth=False, cap_surface=None,
               cap_origin=None, cap_basis=None, planar_sides=False, band_surfaces=None,
-              project_from=None):
+              project_from=None, band_charts=None):
         """Connect ordered perimeter sections and close the two ends or the profile loop."""
         if closed:
             rings = [*rings, rings[0]]
@@ -111,11 +120,14 @@ class Instrument:
         distinct = rings[:-1] if closed else rings
         count = len(rings[0])
         self.points.extend(point for ring in distinct for point in ring)
-        charts = loft_uv(rings) if self.textured and not planar_sides else None
+        charts = band_charts
+        if charts is None and self.textured and not planar_sides:
+            charts = loft_uv(rings)
         for row, (lower, upper) in enumerate(zip(rings, rings[1:])):
             following = (row + 1) % len(distinct)
             band_surface = band_surfaces[row] if band_surfaces else surface
             projected = project_from is not None and row >= project_from
+            chart = charts[row] if charts and not projected and (band_charts is not None or band_surface in TILES) else None
             normals_lower = normals_upper = None
             if smooth:
                 along = [b - a for a, b in zip(lower, upper)]
@@ -129,14 +141,14 @@ class Instrument:
                 if normals_lower is not None:
                     normals = (normals_lower[side], normals_lower[next_side], normals_upper[next_side], normals_upper[side])
                 self.face((adjacent + side, adjacent + next_side, other + next_side, other + side), band_surface,
-                          uv=charts[row][side] if charts and not projected else None, normal=normals,
+                          uv=chart[side] if chart is not None else None, normal=normals,
                           origin=cap_origin if projected else None, basis=cap_basis if projected else None)
         if closed:
             return
         bottom = tuple(reversed(range(start, start + count)))
         top = tuple(range(start + (len(rings) - 1) * count, start + len(rings) * count))
-        self.face(bottom, surface, origin=cap_origin,
-                  basis=(-cap_basis[0], cap_basis[1]) if cap_basis is not None else None)
+        self.face(bottom, surface, origin=cap_origin if cap_surface is None else None,
+                  basis=(-cap_basis[0], cap_basis[1]) if cap_basis is not None and cap_surface is None else None)
         self.face(top, cap_surface or surface, origin=cap_origin, basis=cap_basis)
 
     def tube(self, center, axis, stations, count, surface, *, closed=False, smooth=True,
@@ -157,7 +169,17 @@ class Instrument:
         for k, point in enumerate(points):
             axis = (points[min(k + 1, len(points) - 1)] - points[max(k - 1, 0)]).normalized()
             rings.append(circle(point, axis, radius, count))
-        self.shell(rings, surface, smooth=True)
+        charts = None
+        if self.textured and surface in DETAILS:
+            charts = []
+            reach = 0.42 * DETAILS[surface][2]
+            center = -float("inf")
+            # Loft the twisted quads and start a new chart before it reaches the cell edge.
+            for band in loft_uv(rings):
+                if band[0][2][1] > center + reach:
+                    center = band[0][0][1] + reach
+                charts.append([[(u, v - center) for u, v in side] for side in band])
+        self.shell(rings, surface, smooth=True, band_charts=charts)
 
     def build(self, name, rotation=None, grounded=False):
         points = self.points if rotation is None else [rotation @ point for point in self.points]

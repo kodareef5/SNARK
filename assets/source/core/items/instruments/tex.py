@@ -1,4 +1,4 @@
-"""Paint the instrument trim atlases from seeded materials and metric dial artwork."""
+"""Paint seamless material swatches and the instruments’ unique face artwork."""
 
 from math import pi, tau
 from pathlib import Path
@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageDraw
 
-from surfaces import ATLASES, SIZE
+from surfaces import COLORS, DETAILS, DETAIL_CELLS, DETAIL_SIZE, TILES
 
 DEST = Path(__file__).resolve().parent / "tex"
 
@@ -20,14 +20,18 @@ def noise(rng, side, across, along):
     return field / field.std()
 
 
-def scratches(rng, metric_x, metric_y, count, *, slant, length, width):
+def scratches(rng, metric_x, metric_y, count, *, slant, length, width, repeat):
     marks = np.zeros_like(metric_x)
     for _ in range(count):
         cx = rng.uniform(metric_x.min(), metric_x.max())
         cy = rng.uniform(metric_y.min(), metric_y.max())
         angle = rng.normal(slant, 0.18)
-        major = (metric_x - cx) * np.cos(angle) + (metric_y - cy) * np.sin(angle)
-        minor = (metric_x - cx) * -np.sin(angle) + (metric_y - cy) * np.cos(angle)
+        x, y = metric_x - cx, metric_y - cy
+        if repeat is not None:
+            x = (x + repeat / 2) % repeat - repeat / 2
+            y = (y + repeat / 2) % repeat - repeat / 2
+        major = x * np.cos(angle) + y * np.sin(angle)
+        minor = -x * np.sin(angle) + y * np.cos(angle)
         body = np.exp(-0.5 * (minor / width) ** 2) * np.maximum(0, 1 - np.abs(major) / rng.uniform(*length))
         marks = np.maximum(marks, body * rng.uniform(0.28, 1.0))
     return marks
@@ -108,21 +112,21 @@ def optic_art(name, side, span, base, relief):
     return result()
 
 
-def finish(name, side, span, color, seed):
+def finish(surface, name, side, span, seed, *, tiled=False):
     rng = np.random.default_rng(seed)
     y, x = np.mgrid[:side, :side]
     x = (x + 0.5 - side / 2) * span / side
     y = (y + 0.5 - side / 2) * span / side
     fine = noise(rng, side, 1.0, 1.35)
     broad = noise(rng, side, 15, 20)
-    base = np.broadcast_to(np.asarray(color, dtype=float), (side, side, 3)).copy()
+    base = np.broadcast_to(np.asarray(COLORS[name], dtype=float), (side, side, 3)).copy()
     tone = 2.8 * broad + 2.5 * fine
     relief = 0.09 * broad + 0.08 * fine
     rough, metal = 0.64, 0.0
 
     if name == "wood":
         wandering = 0.45 * noise(rng, side, 10, 60)
-        grain = np.sin(tau * (x * 88 + wandering * 0.28))
+        grain = np.sin(tau * (x * round(88 * span) / span + wandering * 0.28))
         splits = np.maximum(0, grain) ** 10 * np.clip(0.55 + 0.4 * broad, 0, 1)
         fibers = noise(rng, side, 1.8, 39)
         tone += 7.5 * grain + 8.5 * fibers - 17 * splits
@@ -140,14 +144,15 @@ def finish(name, side, span, color, seed):
         tone += 15 * strand + 5 * fine
         relief += 0.38 * strand
         rough = 0.82 + 0.05 * fine
-    elif name in ("stone", "stamp"):
+    elif name == "stone":
         chips = np.maximum(0, broad - 0.25) * np.maximum(0, noise(rng, side, 4, 3) - 0.4)
         pits = np.maximum(0, -fine - 0.9) ** 1.5
         tone += 5.9 * broad + 9 * chips - 8 * pits
         relief += 0.22 * noise(rng, side, 1.5, 2.2) - 0.36 * pits
         rough = 0.8 + 0.08 * pits
     elif name in ("bronze", "iron", "amber", "rubber"):
-        wear = scratches(rng, x, y, 28, slant=0.9, length=(0.004, 0.032), width=0.00063)
+        wear = scratches(rng, x, y, 20, slant=0.9, length=(0.004, 0.023), width=0.00063,
+                         repeat=span if tiled else None)
         flecks = np.maximum(0, fine - 0.85) ** 1.7
         tone += 27 * wear + 4 * flecks
         relief += -0.16 * wear - 0.12 * flecks
@@ -160,7 +165,7 @@ def finish(name, side, span, color, seed):
         elif name == "amber":
             rough = 0.54 + 0.11 * wear
         else:
-            ribbing = np.maximum(0, np.sin(tau * (y * 115 + broad * 0.018))) ** 6
+            ribbing = np.maximum(0, np.sin(tau * (y * round(115 * span) / span + broad * 0.018))) ** 6
             tone += 4 * ribbing
             relief += 0.18 * ribbing
             rough = 0.82 - 0.1 * wear
@@ -182,8 +187,8 @@ def finish(name, side, span, color, seed):
         relief *= 0.20
 
     base += tone[..., None]
-    if name in ("dial", "receiver", "navigator", "stamp"):
-        base, relief = optic_art(name, side, span, base, relief)
+    if surface in ("dial", "receiver", "navigator", "stamp"):
+        base, relief = optic_art(surface, side, span, base, relief)
     ao = 1 - 0.17 * np.clip(-relief, 0, 1)
     orm = np.stack([ao, np.broadcast_to(rough, ao.shape), np.broadcast_to(metal, ao.shape)], axis=-1)
     return base, relief, orm
@@ -193,32 +198,38 @@ def image(values):
     return Image.fromarray(np.uint8(np.rint(np.clip(values, 0, 255))))
 
 
-def write_atlas(name, cells, span, finishes, seed):
-    base = np.empty((SIZE, SIZE, 3))
-    height = np.empty((SIZE, SIZE))
-    orm = np.empty((SIZE, SIZE, 3))
-    bounds = [round(index * SIZE / cells) for index in range(cells + 1)]
-    for index, (surface, (column, row, color)) in enumerate(finishes.items()):
-        x0, x1 = bounds[column:column + 2]
-        y0, y1 = bounds[cells - row - 1:cells - row + 1]
-        side = max(x1 - x0, y1 - y0)
-        trim = np.s_[:y1 - y0, :x1 - x0]
-        color_map, relief, packed = finish(surface, side, span, color, seed + index)
-        base[y0:y1, x0:x1] = color_map[trim]
-        height[y0:y1, x0:x1] = relief[trim]
-        orm[y0:y1, x0:x1] = packed[trim]
-
+def write_maps(name, base, height, orm, *, tiled=False):
     height = np.clip(height, -1.4, 1.35)
-    dy, dx = np.gradient(height)
+    if tiled:
+        dy, dx = [(np.roll(height, -1, axis) - np.roll(height, 1, axis)) / 2 for axis in (0, 1)]
+    else:
+        dy, dx = np.gradient(height)
     normal = np.stack((-dx, dy, np.ones_like(dx)), axis=-1)
     normal /= np.linalg.norm(normal, axis=-1, keepdims=True)
     image(base).save(DEST / f"{name}_base.png", optimize=True)
     image((normal + 1) * 127.5).save(DEST / f"{name}_normal.png", optimize=True)
     image(height * 78 + 123).save(DEST / f"{name}_height.png", optimize=True)
-    image(orm * 255).resize((SIZE // 2, SIZE // 2), Image.Resampling.BOX).save(DEST / f"{name}_orm.png", optimize=True)
+    half = height.shape[0] // 2
+    image(orm * 255).resize((half, half), Image.Resampling.BOX).save(DEST / f"{name}_orm.png", optimize=True)
+
+
+def write_detail_atlas():
+    base = np.full((DETAIL_SIZE, DETAIL_SIZE, 3), 96.0)
+    height = np.zeros((DETAIL_SIZE, DETAIL_SIZE))
+    orm = np.empty_like(base)
+    orm[:] = (1, 0.64, 0)
+    side = DETAIL_SIZE // DETAIL_CELLS
+    for index, (surface, (column, row, span, finish_name)) in enumerate(DETAILS.items()):
+        x = column * side
+        y = (DETAIL_CELLS - 1 - row) * side
+        rows, columns = slice(y, y + side), slice(x, x + side)
+        base[rows, columns], height[rows, columns], orm[rows, columns] = finish(
+            surface, finish_name, side, span, 54821 + index)
+    write_maps("details", base, height, orm)
 
 
 if __name__ == "__main__":
     DEST.mkdir(exist_ok=True)
-    for index, (name, (cells, span, finishes)) in enumerate(ATLASES.items()):
-        write_atlas(name, cells, span, finishes, 53021 + index * 100)
+    for index, (name, (side, span)) in enumerate(TILES.items()):
+        write_maps(name, *finish(name, name, side, span, 53021 + index, tiled=True), tiled=True)
+    write_detail_atlas()

@@ -10,13 +10,16 @@ const views = {
   jerky_prime: { around: -0.27, above: 1.09, roll: -0.16 },
 };
 
-const surfaces = ["raw", "cooked", "spoiled", "dry", "raw_fat", "cooked_fat"] as const;
-const materials = Object.fromEntries(surfaces.map((name) => [name, {
+const steaks = ["meat", "meat_cooked", "meat_prime", "meat_prime_cooked"] as const;
+const materials = Object.fromEntries(["spoiled", "dry", ...steaks].map((name) => [name, {
   base: `tex/${name}_base.png`,
   normal: `tex/${name}_normal.png`,
   packed: `tex/${name}_orm.png`,
   height: `tex/${name}_height.png`,
-  tiles: 0.18,
+  ...(name === "spoiled" || name === "dry" ? { tiles: 0.18 } : {
+    tops: { normal: 128, mro: 128 },
+    flat: name.endsWith("_cooked") ? [112, 57, 36] as const : [157, 44, 47] as const,
+  }),
 } satisfies MaterialSpec]));
 
 export default {
@@ -24,5 +27,5 @@ export default {
   source: { scripts: ["model.py"] },
   pieces: Object.entries(views).map(([object, icon]) => ({ id: `core:${object}/dropped`, object, icon })),
   materials,
-  budgets: { triangles: [550, 180, 60], texture: { top: 128, megabytes: 1 } },
+  budgets: { triangles: [550, 180, 60], texture: { top: 256, megabytes: 2.25 } },
 } satisfies PiecesAsset;
