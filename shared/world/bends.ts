@@ -498,13 +498,13 @@ export const walkedFlush = (kind: string): boolean => kind.includes("_flush");
  * its middle and turn on the same lattice. A map stores none of them: a server, a page, the walk proofs and the map's
  * writer all make them here from the same numbers (mapfile.ts), so every one of them holds the same boxes to the bit.
  */
-export function madeHits(ux: number, uy: number, uz: number, yaw: number, bend: ArrayLike<number>, flush: boolean, each: (kind: string, ux: number, uy: number, uz: number, yaw: number) => void): void {
+export function madeHits(ux: number, uy: number, uz: number, yaw: number, bend: ArrayLike<number>, flush: boolean, each: (kind: string, ux: number, uy: number, uz: number, yaw: number) => void, keepRepeated = false): void {
   hitsUnder(ux / STRUCT_UNITS, uy / STRUCT_UNITS, uz / STRUCT_UNITS, (yaw * 360) / YAW_UNITS, unpackBend(bend), flush, (kind, x, y, z, turn) =>
-    each(kind, round(x * STRUCT_UNITS), round(y * STRUCT_UNITS), round(z * STRUCT_UNITS), round((turn * YAW_UNITS) / 360) & 0xffff));
+    each(kind, round(x * STRUCT_UNITS), round(y * STRUCT_UNITS), round(z * STRUCT_UNITS), round((turn * YAW_UNITS) / 360) & 0xffff), keepRepeated);
 }
 
 /** underPiece's work, each piece to `each` as its kind, its middle and its turn in degrees. */
-function hitsUnder(px: number, py: number, pz: number, pyaw: number, b: Bend, flush: boolean, each: (kind: string, x: number, y: number, z: number, yaw: number) => void): void {
+function hitsUnder(px: number, py: number, pz: number, pyaw: number, b: Bend, flush: boolean, each: (kind: string, x: number, y: number, z: number, yaw: number) => void, keepRepeated = false): void {
   const phi = b.turn1 - b.turn0, length = arcLength(b.half, phi);
   // A walk let down to the ground: the kerb's boxes alone, and over the walk behind it slopes falling as it does.
   if (b.sink) slopesUnder(px, py, pz, pyaw, b, each);
@@ -533,6 +533,8 @@ function hitsUnder(px: number, py: number, pz: number, pyaw: number, b: Bend, fl
     for (let i = 0; i < HIT_LENGTHS.length; i++) if (HIT_LENGTHS[i]! <= chord + 1e-6 && HIT_LENGTHS[i]! <= level + 1e-6) sizeAt = i;
     const size: number = HIT_LENGTHS[sizeAt]!;
     const count = Math.max(1, Math.ceil(chord / size - 1e-6));
+    // Both end boxes can round to one position when the chord is a fraction of a lattice cell over one box long.
+    const first: number[] | null = !keepRepeated && count === 2 && chord - size <= Math.SQRT2 / STRUCT_UNITS ? [] : null;
     for (let q = 0; q < count; q++) for (let j = 0; j < bands; j++) {
       const along = count === 1 ? chord / 2 : size / 2 + ((chord - size) * q) / (count - 1);
       // In the piece's frame: along the chord, then across to the middle of the box's width.
@@ -541,7 +543,13 @@ function hitsUnder(px: number, py: number, pz: number, pyaw: number, b: Bend, fl
       const y = py + b.rise * (2 * t - 1) + KERB_HEIGHT / 2;
       // The world: x along (cs, -sn), z across (sn, cs).
       const yaw = pyaw + (detAtan2(-uz, ux) * 180) / PI;
-      each(kinds[(flush && j === 0 ? 1 : 0) * KINDS_RAMP + widthAt * HIT_LENGTHS.length + sizeAt]!, px + cs * lx + sn * lz, y, pz - sn * lx + cs * lz, ((yaw % 360) + 360) % 360);
+      const x = px + cs * lx + sn * lz, z = pz - sn * lx + cs * lz;
+      if (first) {
+        const [ix, iy, iz] = [round(x * STRUCT_UNITS), round(y * STRUCT_UNITS), round(z * STRUCT_UNITS)];
+        if (q === 0) first.push(ix, iy, iz);
+        else if (first[j * 3] === ix && first[j * 3 + 1] === iy && first[j * 3 + 2] === iz) continue;
+      }
+      each(kinds[(flush && j === 0 ? 1 : 0) * KINDS_RAMP + widthAt * HIT_LENGTHS.length + sizeAt]!, x, y, z, ((yaw % 360) + 360) % 360);
     }
   }
 }
