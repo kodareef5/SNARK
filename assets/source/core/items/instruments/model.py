@@ -169,7 +169,8 @@ def compass(prop):
 
 def magnifying_glass(prop):
     level = prop.level
-    sides = (36, 22, 14, 8)[level]
+    sides = (36, 22, 10, 6)[level]
+    lens_scale = (1, 1, 0.95, 0.93)[level]
     grip = [(-0.083, 0.015), (-0.074, 0.020), (-0.031, 0.021), (0.033, 0.017), (0.069, 0.012)]
     if level > 1:
         grip = [grip[0], grip[2], grip[-1]]
@@ -188,13 +189,15 @@ def magnifying_glass(prop):
            (0.014, 0.060), (0.008, 0.058), (-0.007, 0.058), (-0.012, 0.060)]
     if level > 0:
         rim = [rim[i] for i in ((0, 2, 3, 5, 6) if level == 1 else (0, 2, 4, 6) if level == 2 else (0, 2, 4))]
-    prop.tube((0, 0, 0.149), Y, rim, sides, "bronze", closed=True)
+    prop.tube((0, 0, 0.149), Y, [(height, radius * lens_scale) for height, radius in rim],
+              sides, "bronze", closed=True)
     lens = [(-0.007, 0.039), (-0.006, 0.059), (0.007, 0.059), (0.010, 0.049), (0.012, 0.030)]
     if level == 1:
         lens = [lens[i] for i in (0, 2, 4)]
     if level > 1:
         lens = [(-0.006, 0.060), (0.010, 0.061)]
-    prop.tube((0, 0, 0.149), Y, lens, sides, "hand_lens", cap_basis=(-X, Z),
+    prop.tube((0, 0, 0.149), Y, [(height, radius * lens_scale) for height, radius in lens],
+              sides, "hand_lens", cap_basis=(-X, Z),
               project_from=2 if level == 0 else 1 if level == 1 else None)
     if level == 0:
         for x in (-0.061, 0.061):
@@ -217,8 +220,12 @@ def radio(prop):
         body = [body[index] for index in (0, 2, 3)]
     prop.panel(center, outline, body, "iron")
     antenna = [(0.100, 0.013), (0.116, 0.011), (0.125, 0.0075), (0.180, 0.0050), (0.251, 0.0035), (0.258, 0.0033)]
-    if level > 0:
-        antenna = [antenna[i] for i in ((0, 1, 2, 4, 5) if level == 1 else (0, 2, 4, 5) if level == 2 else (0, 2, 5))]
+    if level == 1:
+        antenna = [antenna[i] for i in (0, 1, 2, 4, 5)]
+    elif level == 2:
+        antenna = [antenna[i] for i in (0, 2, 4, 5)]
+    elif level == 3:
+        antenna = [(0.100, 0.011), (0.220, 0.004)]
     prop.tube((-0.025, -0.003, 0), Z, antenna, (16, 10, 8, 6)[level], "rubber")
     prop.tube((0.022, 0, 0), Z, [(0.099, 0.012), (0.113, 0.011), (0.119, 0.009)],
               (16, 10, 8, 6)[level], "rubber")
