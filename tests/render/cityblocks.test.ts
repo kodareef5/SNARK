@@ -349,3 +349,45 @@ test("a city held a sector at a time: one set in or let go remakes no other's ti
   p = run(2);
   expect([drops.length > 0, drops.every((d) => second.has(d)), city.isFar(east), blockDraws(p).length > 0]).toEqual([true, true, false, true]);
 });
+
+test("pieces listed gone before their sector's statics come are left out once they come", () => {
+  const w = cityWorld({ chunks: 32, statics: grid(32, 4), tops: true, late: true, width: 320, height: 180 });
+  w.scene.viewDistance = 2400;
+  [w.cam.x, w.cam.y, w.cam.z, w.cam.yaw, w.cam.pitch] = [20, 260, 20, Math.PI / 4, -0.22];
+  const held = CityStatics.held(w.dims, 4, (w.statics.squareOf(0)!.map as MapStatics).kinds, w.reg);
+  const east: ChunkSquare = { cx0: 16, cz0: 0, cx1: 32, cz1: 16 };
+  held.set(0, squareOf(w.statics, held, { cx0: 0, cz0: 0, cx1: 16, cz1: 16 }));
+  w.arrive(held);
+  for (let f = 0; f < 4; f++) w.frame(false, 60);
+  // The server lists a building of the east sector as razed while that sector's statics are still on their way.
+  const chunk = 3 * 32 + 21, slots = [...Array(w.statics.in(chunk)).keys()];
+  w.list(chunk, slots);
+  w.frame(false, 60);
+  expect(w.scene.city!.goneOf(chunk)).toBeNull();
+  // The sector comes, and nothing more is told.
+  held.set(1, squareOf(w.statics, held, east));
+  for (let f = 0; f < 4; f++) w.frame(false, 60);
+  const gone = w.scene.city!.goneOf(chunk);
+  expect([gone?.length, slots.every((s) => gone?.[s] === 1)]).toEqual([slots.length, true]);
+});
+
+test("an idle frame looks at no chunk for pieces gone, and a piece gone is still seen", () => {
+  const w = cityWorld({ chunks: 32, statics: grid(32, 4), tops: true, late: true, width: 160, height: 90 });
+  w.arrive();
+  for (let f = 0; f < 3; f++) w.frame();
+  const blocks = w.scene.blocks!, budget = { spend() {}, reserve() {} };
+  // What stands, its counts read through a spy.
+  let reads = 0;
+  const version = new Uint32Array(32 * 32);
+  const goneVersion = new Proxy(version, { get: (t, k) => (typeof k === "string" && /^\d+$/.test(k) && reads++, t[k as keyof Uint32Array]) });
+  const standing = { goneOf: () => null, goneVersion, goneChanges: 0 };
+  const frame = (): number => {
+    reads = 0;
+    blocks.update(new FramePacket(), budget, w.cam, 2000, w.statics, standing);
+    return reads;
+  };
+  expect([frame(), frame(), frame()]).toEqual([32 * 32, 0, 0]);
+  version[5]!++;
+  standing.goneChanges++;
+  expect([frame(), frame()]).toEqual([32 * 32, 0]);
+});

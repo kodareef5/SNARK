@@ -25,6 +25,8 @@ test.skipIf(!existsSync(file))("as placed, the rule leaves under 2% of Miami's p
   expect(r.all.always / r.all.pieces).toBeLessThan(0.0005);
   // What a building is made of stands by the rule alone.
   for (const family of ["pier", "wall", "store"]) expect((r.families[family]!.hang + r.families[family]!.fall) / r.families[family]!.pieces).toBeLessThan(0.001);
+  // No building nothing has broken loses a storey by the storey rule.
+  expect(r.failing).toBe(0);
   // The costliest building is judged in well under a tick.
   expect(r.mostOps).toBeLessThan(200000);
 });

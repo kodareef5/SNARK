@@ -6,6 +6,7 @@
 // turns (client/core/mapload.ts).
 
 import { CHUNK_SIZE, SECTOR_CHUNKS } from "../../shared/coords.ts";
+import { xOfU, zOfV, type MapExtent } from "../../shared/world/coords.ts";
 import { TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { OVERVIEW_CHUNKS, squareOf, type MapHead, type MapPart } from "../../shared/world/mapfile.ts";
 import type { App } from "./app.ts";
@@ -46,7 +47,7 @@ export interface WantFrom {
   readonly statics: number;
   /** Bytes of statics held at most: past it those kept beyond their reach go, farthest first. */
   readonly budget?: number;
-  /** Bytes of ground pages held at most, as `budget` is for statics; those round the body and the camera are kept past it. */
+  /** Bytes of ground pages held at most, as `budget` is for statics; those round the body, the camera and a focus are kept past it. */
   readonly ground?: number;
   readonly camera?: { readonly x: number; readonly z: number } | null;
   readonly focus?: { readonly x: number; readonly z: number } | null;
@@ -78,8 +79,9 @@ export function centresOf(body: { readonly x: number; readonly z: number }, ahea
   const out: Centre[] = [{ x: body.x, z: body.z, reach: near }];
   if (ahead.x !== body.x || ahead.z !== body.z) out.push({ x: ahead.x, z: ahead.z, reach: near });
   if (from.camera) out.push({ x: from.camera.x, z: from.camera.z, reach: near });
-  // The fine window is drawn round a focus (render/scene.ts), and the server sends rows along the sight's cone.
-  if (from.focus) out.push({ x: from.focus.x, z: from.focus.z, reach: { overview: 0, ground: ROAD_REACH, statics: FOCUS_STATICS, tops: 0 } });
+  // The fine window is drawn round a focus (render/scene.ts), and the server sends rows along the sight's cone. Its ground
+  // waits for the overviews it lies in, which are within as far.
+  if (from.focus) out.push({ x: from.focus.x, z: from.focus.z, reach: { overview: ROAD_REACH, ground: ROAD_REACH, statics: FOCUS_STATICS, tops: 0 } });
   if (from.screen) out.push({ x: from.screen.x, z: from.screen.z, reach: { overview: from.screen.half, ground: 0, statics: 0, tops: 0 } });
   return out;
 }
@@ -140,6 +142,11 @@ export class Wanted {
 
 const NONE: ReadonlySet<MapPart> = new Set();
 
+/** The map screen's middle and half its window's diagonal in metres, for a window of the chart from (u0, v0) across (du, dv). */
+export function screenOf(view: { readonly u0: number; readonly v0: number; readonly du: number; readonly dv: number }, m: MapExtent): { x: number; z: number; half: number } {
+  return { x: xOfU(m, view.u0 + view.du / 2), z: zOfV(m, view.v0 + view.dv / 2), half: Math.hypot(view.du * m.sizeX, view.dv * m.sizeZ) / 2 };
+}
+
 /** What the game's page looks from: its tier, its camera once there is a scene, a sight's focus, and the map screen open. */
 export function pageWant(app: App): WantFrom {
   const scene = app.scene, hf = app.session.world?.hf;
@@ -150,6 +157,6 @@ export function pageWant(app: App): WantFrom {
     ...tierWant(tier, app.ui.settings.touchFirst),
     camera: scene ? { x: app.cam.x, z: app.cam.z } : null,
     focus: scene && !Number.isNaN(scene.focusX) ? { x: scene.focusX, z: scene.focusZ } : null,
-    screen: open ? { x: (view.u0 + view.du / 2) * hf.sizeX, z: (view.v0 + view.dv / 2) * hf.sizeZ, half: Math.hypot(view.du * hf.sizeX, view.dv * hf.sizeZ) / 2 } : null,
+    screen: open ? screenOf(view, hf) : null,
   };
 }

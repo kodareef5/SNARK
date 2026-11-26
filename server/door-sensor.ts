@@ -5,6 +5,8 @@ import type { BuildContext } from "./build.ts";
 import type { Client } from "./game.ts";
 
 export const DOOR_REACH = 2;
+/** Whether a body of `team` holds an opening of `owner`'s: its own tribe's does, and a stranger's is moved aside. */
+export const holds = (team: number, owner: number): boolean => team !== 0 && team === owner;
 interface Watch { gx: number; gy: number; gz: number; shapes: number; refs: number[] }
 
 export class DoorSensor {

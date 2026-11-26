@@ -304,6 +304,23 @@ test("past the most chunk messages kept waiting, the first is read without its m
   expect([waiting() <= 2, said.length > 0, said[0]?.includes("waited for too long")]).toEqual([true, true, true]);
 });
 
+test("a chunk read without its map slots stays incomplete, and is sent again whole once they come", () => {
+  const { h, said, dana, set, waiting, structs, middle } = sectorPage();
+  dana.waitingMost = 2;
+  h.run(1000);
+  const read = said.map((line) => Number(/chunk (\d+) were waited/.exec(line)?.[1] ?? -1)).filter((c) => c >= 0);
+  const complete = (c: number): boolean => (dana as unknown as { whole: Uint8Array }).whole[c] !== 0;
+  expect([read.length > 0, read.some(complete)]).toEqual([true, false]);
+  // A map piece of one of them is hurt meanwhile: its row in place has no row to land on.
+  const hurt = read[0]!;
+  expect(structs.damage(hurt * 65536 + 3, 5)).toBeGreaterThan(0);
+  h.run(500);
+  expect(read.some(complete)).toBe(false);
+  set();
+  h.run(1000);
+  expect([waiting(), read.every(complete), differ(structs, dana.world!.structs, [...read, middle])]).toEqual([0, true, 0]);
+});
+
 test("a chunk dropped while messages wait is kept aside in order, and CMD_HAVE takes it back", () => {
   const { h, dana, set, waiting, structs, chunks } = sectorPage(13);
   h.run(1000);

@@ -164,6 +164,23 @@ function readInParts(file: Uint8Array): MapStatics {
 /** Every row of a table, chunk by chunk and slot by slot, as text. */
 const rowsOf = (t: MapStatics): string[] => Array.from({ length: t.kind.length }, (_, r) => `${t.kinds[t.kind[r]!]} ${t.x[r]} ${t.y[r]} ${t.z[r]} ${t.yaw[r]}`);
 
+test("a median keeps distinct collision boxes and its neighbours keep their slots", () => {
+  const map = flatMap(4);
+  const x = 71784 / 512, z = 392152 / 512 - 640;
+  const median = { kind: "core:zzzzzbend_median_c", x, y: 509 / 512, z, yaw: 40539, bend: [483, 0, 4133, 1545, 6, 0, 300, 8246] };
+  const rock = { kind: "core:rock", x, y: 0, z, yaw: 0 };
+  const file = writeMap({ ...map, statics: [median, rock] });
+  const head = readHead(file), whole = parseMap(file).statics;
+  const rows = rowsOf(whole);
+  expect(rows).toEqual(rowsOf(readInParts(file)));
+  expect(rows).toEqual(rowsOf(MapStatics.of(map.dims, [median, rock])));
+  expect(rows.slice(0, 2).map((r) => r.split(" ")[0])).toEqual([median.kind, rock.kind]);
+  expect(new Set(rows).size).toBe(rows.length);
+  const part = head.parts.find((p) => p.kind === "statics")!;
+  const old = readPart({ ...head, version: 15 }, part, file.subarray(part.at, part.at + part.length)) as StaticsPiece;
+  expect(old.id.length).toBe(rows.length + 1);
+});
+
 test("a map holds its bent pieces' bends, by chunk and slot, read whole and read in parts", () => {
   const { map, statics } = bentMap();
   const file = writeMap({ ...map, statics });

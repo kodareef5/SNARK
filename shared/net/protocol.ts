@@ -539,6 +539,8 @@ export const CMD_PLAN_PART = command();
 export const CMD_PLAN_COMMIT = command();
 /** Takes a plan of the survivor's tribe away: its id varint. */
 export const CMD_PLAN_CANCEL = command();
+/** Chunks the client read without the map's slots and now holds them for: a count u8, HAVE_MOST at most, then chunk u16 of each. Each is sent again whole. */
+export const CMD_CHUNK_AGAIN = command();
 /**
  * Uses scissors or a hair dye from an own slot on a survivor's hair (server/people/look.ts): slot varint, expected item u16,
  * the survivor's handle u32 (0 for one's own), the part u8 (0 hair, 1 beard; for a dye 0 the hair's colour, 1 its second)

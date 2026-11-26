@@ -69,12 +69,12 @@ test("one authorized approach opens a rotated horizontal and vertical aperture",
   stand(owner, a, 0, -6);
   stand(guest, b, 0, .12);
   h.run(2700);
-  expect(kinds()).toEqual([open, open, open, solid, door]);
-  stand(guest, b, 0, 4);
-  h.run(1450);
-  expect(kind(a)).toBe(open);
-  h.run(850);
+  // A stranger standing in the opening does not hold it: it is moved aside, and the field reforms clear of it.
   expect(kinds()).toEqual([door, door, door, solid, door]);
+  const e = h.ent(guest), ents = y.w.ents;
+  const inWall = () => capsuleKind(h.reg.parts, door, row.x[i]!, row.y[i]!, row.z[i]!, row.yaw[i]!, row.twAt(i), ents.x[e]!, ents.y[e]!, ents.z[e]!, h.reg.bodyRadius[ents.kind[e]!]!, h.reg.bodyHeight[ents.kind[e]!]!, 0);
+  expect(inWall()).toBe(false);
+  expect(Math.hypot(ents.x[e]! - row.x[i]!, ents.z[e]! - row.z[i]!)).toBeLessThan(1.5);
   const member = h.host.records.byPid.get(h.client(guest)!.pid)!;
   expect(h.host.tribes.create(y.who, "Aperture")).toBe("");
   expect(h.host.tribes.invite(y.who, member, true)).toBe("");
@@ -82,6 +82,16 @@ test("one authorized approach opens a rotated horizontal and vertical aperture",
   stand(guest, b, 0, 1.6);
   h.run(400);
   expect(kind(c)).toBe(open);
+  // A tribemate standing in it holds it, until two clear seconds after it leaves.
+  stand(guest, b, 0, .12);
+  h.run(2700);
+  expect([a, b, c].map(kind)).toEqual([open, open, open]);
+  expect(inWall()).toBe(true);
+  stand(guest, b, 0, 4);
+  h.run(1450);
+  expect(kind(a)).toBe(open);
+  h.run(850);
+  expect(kinds()).toEqual([door, door, door, solid, door]);
   h.host.shutdown();
 });
 
@@ -133,7 +143,7 @@ test("adding and removing a bridge joins and splits only its active wall", () =>
 
 test("a veto on one field cell holds the whole opening or closure", () => {
   let refuse = -1;
-  const { h, owner, wall, kind, stand, door, open } = yard(undefined, [{ name: "tek_test", api: 1, setup(m) {
+  const { h, w, owner, guest, wall, kind, stand, door, open } = yard(undefined, [{ name: "tek_test", api: 1, setup(m) {
     m.on("structure.act", e => { if (e.data.action === "use" && e.data.ref === refuse) e.refuse("hold"); });
   }}]);
   const a = wall(1), b = wall(3);
@@ -146,8 +156,12 @@ test("a veto on one field cell holds the whole opening or closure", () => {
   expect([kind(a), kind(b)]).toEqual([open, open]);
   refuse = a;
   stand(owner, a, 0, -4);
+  stand(guest, b, 0, .12);
+  const e = h.ent(guest), position = () => [w.ents.x[e], w.ents.z[e]];
+  const before = position();
   h.run(2500);
   expect([kind(a), kind(b)]).toEqual([open, open]);
+  expect(position()).toEqual(before);
   refuse = -1;
   h.run(2500);
   expect([kind(a), kind(b)]).toEqual([door, door]);

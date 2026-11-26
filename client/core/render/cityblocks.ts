@@ -66,6 +66,8 @@ export interface BlocksSource {
 export interface Standing {
   goneOf(chunk: number): Gone;
   readonly goneVersion: Uint32Array;
+  /** The sum of `goneVersion`, so a frame with no change looks at no chunk. */
+  readonly goneChanges: number;
 }
 
 /**
@@ -119,6 +121,9 @@ export class CityBlocks {
   private readonly seenCame: Uint32Array;
   private readonly seenGone: Uint32Array;
   private seenTops = 0;
+  /** What stands as last looked at, and its count of changes then. */
+  private seenStanding: Standing | null = null;
+  private seenChanges = 0;
   /** The heightfield's changes taken in. */
   private seenGround: number;
   /** The ground a tile's hash is taken over, kept between tiles. */
@@ -309,11 +314,14 @@ export class CityBlocks {
         }
       }
     });
-    this.standing = statics ? standing : null;
-    const gone = this.standing?.goneVersion;
+    const stands = (this.standing = statics ? standing : null);
+    const gone = stands?.goneVersion;
     const came = tops.version !== this.seenTops;
+    const fell = stands !== null && (stands !== this.seenStanding || stands.goneChanges !== this.seenChanges);
     this.seenTops = tops.version;
-    if (came || gone) {
+    this.seenStanding = stands;
+    this.seenChanges = stands?.goneChanges ?? 0;
+    if (came || fell) {
       for (let c = 0; c < this.seenCame.length; c++) {
         const g = gone?.[c] ?? 0;
         if (tops.came[c] === this.seenCame[c] && g === this.seenGone[c]) continue;

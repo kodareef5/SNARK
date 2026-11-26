@@ -33,36 +33,20 @@ export class MapWater {
   /** Per chunk that holds water, side by side squares row by row from z = 0: a body's number, or 0. */
   readonly squares: Uint16Array;
 
-  /** `chunks` lists the chunks holding water in ascending order, and `squares` their blocks in that order. */
-  constructor(dims: MapDims, minY: number, stepY: number, cell: number, bodies: readonly WaterBody[], chunks: Uint32Array, squares: Uint16Array) {
+  /**
+   * `chunks` lists the chunks holding water in ascending order, and `squares` their blocks in that order. `made` gives
+   * the block and the bodies' boxes where the caller keeps them up to date itself, as `blockOf` and `widen` make them.
+   */
+  constructor(dims: MapDims, minY: number, stepY: number, cell: number, bodies: readonly WaterBody[], chunks: Uint32Array, squares: Uint16Array, made?: { readonly block: Int32Array; readonly box: Float64Array }) {
     this.dims = dims;
     this.cell = cell;
     this.side = CHUNK_SIZE / cell;
     this.bodies = bodies;
     this.squares = squares;
-    const per = this.side * this.side;
-    this.block = new Int32Array(chunkCount(dims)).fill(-1);
-    for (let k = 0; k < chunks.length; k++) this.block[chunks[k]!] = k * per;
+    this.block = made?.block ?? blockOf(dims, cell, chunks);
     this.surface = new Float64Array(bodies.length + 1);
     for (let b = 0; b < bodies.length; b++) this.surface[b + 1] = minY + bodies[b]!.level * stepY;
-    const box = (this.box = new Float64Array((bodies.length + 1) * 4));
-    for (let b = 0; b <= bodies.length; b++) box.set([Infinity, Infinity, -Infinity, -Infinity], b * 4);
-    for (let k = 0; k < chunks.length; k++) {
-      const c = chunks[k]!;
-      const x0 = (c % dims.chunksX) * CHUNK_SIZE;
-      const z0 = Math.floor(c / dims.chunksX) * CHUNK_SIZE;
-      for (let s = 0; s < per; s++) {
-        const b = squares[k * per + s]!;
-        if (b === 0) continue;
-        const x = x0 + (s % this.side) * cell;
-        const z = z0 + Math.floor(s / this.side) * cell;
-        const o = b * 4;
-        if (x < box[o]!) box[o] = x;
-        if (z < box[o + 1]!) box[o + 1] = z;
-        if (x + cell > box[o + 2]!) box[o + 2] = x + cell;
-        if (z + cell > box[o + 3]!) box[o + 3] = z + cell;
-      }
-    }
+    this.box = made?.box ?? widen(dims, cell, chunks, this.block, squares, emptyBoxes(bodies.length));
   }
 
   /**
@@ -122,6 +106,42 @@ export class MapWater {
     else if (j >= side) j = side - 1;
     return this.squares[at + j * side + i]!;
   }
+}
+
+/** By chunk, where its squares start for chunks `chunks` laid out in that order, -1 for one that holds none. */
+export function blockOf(dims: MapDims, cell: number, chunks: ArrayLike<number>): Int32Array {
+  const side = CHUNK_SIZE / cell, per = side * side, block = new Int32Array(chunkCount(dims)).fill(-1);
+  for (let k = 0; k < chunks.length; k++) block[chunks[k]!] = k * per;
+  return block;
+}
+
+/** Boxes of `bodies` bodies and the sea's number 0, each empty: four numbers a body, min x and z then max. */
+export function emptyBoxes(bodies: number): Float64Array {
+  const box = new Float64Array((bodies + 1) * 4);
+  for (let b = 0; b <= bodies; b++) box.set([Infinity, Infinity, -Infinity, -Infinity], b * 4);
+  return box;
+}
+
+/** `box` widened by every square of a body in the chunks `chunks`, their squares read through `block`. */
+export function widen(dims: MapDims, cell: number, chunks: ArrayLike<number>, block: Int32Array, squares: Uint16Array, box: Float64Array): Float64Array {
+  const side = CHUNK_SIZE / cell, per = side * side;
+  for (let k = 0; k < chunks.length; k++) {
+    const c = chunks[k]!, at = block[c]!;
+    const x0 = (c % dims.chunksX) * CHUNK_SIZE;
+    const z0 = Math.floor(c / dims.chunksX) * CHUNK_SIZE;
+    for (let s = 0; s < per; s++) {
+      const b = squares[at + s]!;
+      if (b === 0) continue;
+      const x = x0 + (s % side) * cell;
+      const z = z0 + Math.floor(s / side) * cell;
+      const o = b * 4;
+      if (x < box[o]!) box[o] = x;
+      if (z < box[o + 1]!) box[o + 1] = z;
+      if (x + cell > box[o + 2]!) box[o + 2] = x + cell;
+      if (z + cell > box[o + 3]!) box[o + 3] = z + cell;
+    }
+  }
+  return box;
 }
 
 /** Whether the water at (x, z) is the sea's: no body's square holds it. */
