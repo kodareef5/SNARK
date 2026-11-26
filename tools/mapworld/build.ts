@@ -40,6 +40,7 @@ import type { BuildingLabel, PublicPlace } from "./labels.ts";
 import { growRuins } from "./ruin-growth.ts";
 import { landmarkDefs, landmarksOf, layLandmarkGround, placeLandmarks } from "./landmarks.ts";
 import { workFolder } from "../maps/work.ts";
+import { dropTwins } from "./twins.ts";
 import { encodeKnown, knownPlaces, mapBuildings, orderPieces, type KnownPlaces } from "./buildings.ts";
 import type { Buildings } from "../../shared/world/buildings.ts";
 
@@ -96,8 +97,9 @@ export async function buildMap(named: string, release = false, output = join(ROO
   const layered: StaticPiece[] = [];
   for (const layer of STATIC_LAYERS) {
     const pieces = layer.make(site, layered);
+    const twins = dropTwins(pieces);
     Bun.gc(true);
-    lap(`${pieces.length} static pieces of ${layer.name}`);
+    lap(`${pieces.length} static pieces of ${layer.name}${twins ? `, ${twins} placed twice taken out` : ""}`);
     for (const p of pieces) layered.push(p);
   }
   // A kind the content does not have would load nowhere: say so here, not when a server or a picture opens the map.
