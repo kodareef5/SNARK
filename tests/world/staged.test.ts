@@ -21,6 +21,7 @@ import { OVERVIEW_STEP, joinParts, mapHeightfield, nodeLayers, parseMap, readHea
 import type { NodeSource, NodeSpot } from "../../shared/world/nodes.ts";
 import { BAND_CHUNKS, StagedMap } from "../../client/core/mapload.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
+import { MapWater } from "../../shared/world/water.ts";
 import { Rasterizer } from "../../tools/snap/raster.ts";
 import { cornerMap, wideMap } from "../fixtures/map.ts";
 import { denseOf, nodesOf } from "../fixtures/paged-ground.ts";
@@ -523,4 +524,46 @@ test("lakes drawn while an overview comes a band a frame end as those drawn afte
   frame(new Lakes(hf, hf.water!, 0), fresh);
   const sorted = (m: Map<number, Uint8Array>): string[] => [...m.values()].map((d) => Buffer.from(d).toString("base64")).sort();
   expect([live.size > 0, sorted(live)]).toEqual([true, sorted(fresh)]);
+});
+
+/** The water `staged` holds, and one made fresh from its squares: its block, its bodies' boxes and its squares. */
+const waterNow = (staged: StagedMap): unknown[] => {
+  const w = staged.hf.water!, fresh = new MapWater(w.dims, staged.head.minY, staged.head.stepY, w.cell, w.bodies, w.chunks(), w.squares.slice());
+  return [[...w.block], [...w.box], [...w.squares], [...fresh.block], [...fresh.box]];
+};
+
+test("after any run of overviews taken and let go, the water is one made fresh over the same overviews", () => {
+  for (const map of [cornerMap(), wideMap()]) {
+    const { head, overviews } = partsOf(writeMap(map));
+    const staged = new StagedMap(head), rng = new Rng(17);
+    const held = new Set<OverviewPiece>();
+    for (let step = 0; step < 24; step++) {
+      const o = overviews[rng.int(overviews.length)]!;
+      if (held.has(o)) for (const s = staged.release(o.sq.col, o.sq.row); !s.next().done; );
+      else staged.take(o);
+      if (held.has(o)) held.delete(o);
+      else held.add(o);
+      const again = new StagedMap(head);
+      for (const q of overviews) if (held.has(q)) again.take(q);
+      const [now, alone] = [waterNow(staged), waterNow(again)];
+      expect([step, now[1], now[2]]).toEqual([step, now[4], alone[2]]);
+      expect(now[0]).toEqual(now[3]);
+    }
+  }
+});
+
+test("an overview with no water does no work on the water, and one with some only its own chunks", () => {
+  const map = wideMap(), w = map.water!;
+  // Water in the east overview alone: the west one is the map's first 8 chunk columns.
+  const grid = new Uint16Array(560 * 160);
+  for (let j = 30; j < 70; j++) for (let i = 80; i < 540; i += 3) grid[j * 560 + i] = 1 + (i % 2);
+  const dry = { ...map, water: MapWater.fromGrid(map.dims, map.minY, map.stepY, w.cell, w.bodies, grid) };
+  const { head, overviews } = partsOf(writeMap(dry));
+  const staged = new StagedMap(head), waters = staged.waters!, before = staged.hf.water;
+  const west = overviews.find((o) => o.sq.cx0 === 0)!, east = overviews.find((o) => o.sq.cx0 > 0)!;
+  staged.take(west);
+  expect([waters.visited, staged.hf.water]).toEqual([0, before]);
+  staged.take(east);
+  const side = CHUNK_SIZE / w.cell;
+  expect(waters.visited).toBe(staged.hf.water!.chunks().length * side * side);
 });
