@@ -82,6 +82,16 @@ print(r['bytes'], r['sha256'] == hashlib.sha256(pbf.read_bytes()).hexdigest())
   }
 });
 
+test("an OpenStreetMap outline wholly past the cut's edge is not a building of it", () => {
+  expect(python(`
+from shapely.geometry import box
+from split import on_cut
+cut = box(0, 0, 100, 100)
+past, across, within = on_cut(box(120, 10, 150, 40), cut), on_cut(box(90, 10, 130, 40), cut), on_cut(box(10, 10, 40, 40), cut)
+print(past, across.bounds, within.area)
+`).trim()).toBe("None (90.0, 10.0, 100.0, 40.0) 900.0");
+});
+
 test("a water relation whose ring is drawn in several ways keeps its lake and its island", () => {
   expect(python(`
 from common import relation_polygon

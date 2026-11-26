@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 from pyproj import Transformer
 from shapely import make_valid
-from shapely.geometry import Polygon
+from shapely.geometry import Polygon, box
 from shapely.ops import unary_union
 from shapely.strtree import STRtree
 
@@ -50,6 +50,15 @@ def metres(v):
 
 def largest(g):
     return max(g.geoms, key=lambda h: h.area) if hasattr(g, 'geoms') else g
+
+
+def on_cut(p, clip):
+    """An OpenStreetMap outline as the cut holds it, as prepare.py cuts USA Structures' footprints, or None where none
+    of it is on the cut: the extract's margin brings whole outlines past the edge, kept for matching but not built."""
+    if not p.intersects(clip):
+        return None
+    q = largest(make_valid(p.intersection(clip)))
+    return q if q.geom_type == 'Polygon' and q.area >= SLIVER_M2 else None
 
 
 def main():
@@ -135,6 +144,7 @@ def main():
     # Buildings USA Structures lacks, most of them newer than its imagery (San Francisco's tallest among them): an
     # OpenStreetMap outline of 40 m2 or more, on land, that USA Structures' footprints overlap by less than a fifth.
     usa_tree = STRtree([g for g, _ in usa])
+    clip = box(*m.b)
     water = m.vectors('areawater')
     wet = STRtree([g for g, _ in water])
     added = 0
@@ -146,6 +156,9 @@ def main():
         if any(water[i][0].contains(q) for i in wet.query(q)):
             continue
         if sum(usa[i][0].intersection(p).area for i in usa_tree.query(p)) >= .2 * p.area:
+            continue
+        p = on_cut(p, clip)
+        if p is None:
             continue
         pid = ids.take(f'osm {way}')
         out.append((p, {'id': pid, 'parent': None, 'osm_way': way}))
