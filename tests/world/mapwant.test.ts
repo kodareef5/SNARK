@@ -3,8 +3,9 @@
 
 import { expect, test } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
-import { FOCUS_STATICS, KEEP_PAST, PHONE_STATICS, PartBoxes, ROAD_REACH, STATICS_BUDGET, Wanted, centresOf, staticsReach, tierWant } from "../../client/core/map-want.ts";
+import { FOCUS_STATICS, KEEP_PAST, PHONE_STATICS, PartBoxes, ROAD_REACH, STATICS_BUDGET, Wanted, centresOf, screenOf, staticsReach, tierWant } from "../../client/core/map-want.ts";
 import { CHUNK_SIZE, SECTOR_CHUNKS } from "../../shared/coords.ts";
+import { mapU, mapV } from "../../shared/world/coords.ts";
 import { OVERVIEW_CHUNKS, mapTops, readHead, squareOf, writeMap, type MapPart } from "../../shared/world/mapfile.ts";
 import { wideMap } from "../fixtures/map.ts";
 import { coreRegistry } from "../fixtures/world.ts";
@@ -87,4 +88,12 @@ test("a part a reader waits for is wanted wherever it is, by its metres from the
 test("a phone holds statics to 1,536 m on the tiers that reach past it, and a smaller budget", () => {
   expect([staticsReach(tierOf("medium"), false), staticsReach(tierOf("medium"), true), staticsReach(tierOf("high"), true), staticsReach(tierOf("lowpoly"), false)]).toEqual([2500, PHONE_STATICS, PHONE_STATICS, 2048]);
   expect([tierWant(tierOf("medium")).budget, tierWant(tierOf("high"), true).budget, tierWant(tierOf("ultra")).view]).toEqual([STATICS_BUDGET.medium, STATICS_BUDGET.touch, 8000]);
+});
+
+test("the map screen's centre is the world point under its window's middle", () => {
+  const m = { sizeX: 8000, sizeZ: 4000 };
+  // A window over the chart's west and north eighth: both chart axes run against the world's.
+  const at = screenOf({ u0: 0, v0: 0, du: 0.25, dv: 0.25 }, m);
+  expect([at.x, at.z, at.half]).toEqual([7000, 3500, Math.hypot(2000, 1000) / 2]);
+  expect([mapU(m, at.x), mapV(m, at.z)]).toEqual([0.125, 0.125]);
 });

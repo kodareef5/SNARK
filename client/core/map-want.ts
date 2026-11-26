@@ -6,6 +6,7 @@
 // turns (client/core/mapload.ts).
 
 import { CHUNK_SIZE, SECTOR_CHUNKS } from "../../shared/coords.ts";
+import { xOfU, zOfV, type MapExtent } from "../../shared/world/coords.ts";
 import { TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { OVERVIEW_CHUNKS, squareOf, type MapHead, type MapPart } from "../../shared/world/mapfile.ts";
 import type { App } from "./app.ts";
@@ -140,6 +141,11 @@ export class Wanted {
 
 const NONE: ReadonlySet<MapPart> = new Set();
 
+/** The map screen's middle and half its window's diagonal in metres, for a window of the chart from (u0, v0) across (du, dv). */
+export function screenOf(view: { readonly u0: number; readonly v0: number; readonly du: number; readonly dv: number }, m: MapExtent): { x: number; z: number; half: number } {
+  return { x: xOfU(m, view.u0 + view.du / 2), z: zOfV(m, view.v0 + view.dv / 2), half: Math.hypot(view.du * m.sizeX, view.dv * m.sizeZ) / 2 };
+}
+
 /** What the game's page looks from: its tier, its camera once there is a scene, a sight's focus, and the map screen open. */
 export function pageWant(app: App): WantFrom {
   const scene = app.scene, hf = app.session.world?.hf;
@@ -150,6 +156,6 @@ export function pageWant(app: App): WantFrom {
     ...tierWant(tier, app.ui.settings.touchFirst),
     camera: scene ? { x: app.cam.x, z: app.cam.z } : null,
     focus: scene && !Number.isNaN(scene.focusX) ? { x: scene.focusX, z: scene.focusZ } : null,
-    screen: open ? { x: (view.u0 + view.du / 2) * hf.sizeX, z: (view.v0 + view.dv / 2) * hf.sizeZ, half: Math.hypot(view.du * hf.sizeX, view.dv * hf.sizeZ) / 2 } : null,
+    screen: open ? screenOf(view, hf) : null,
   };
 }
