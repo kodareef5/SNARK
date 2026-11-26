@@ -905,7 +905,7 @@ vec3 scattered(vec3 albedo, float metal, vec3 n, float share, float shade) {
   vec2 key = keyShade(shade);
   return albedo * (1.0 - metal) * (wrapped(fSun.xyz, fSunColor.rgb, n, w) * key.x + wrapped(fMoon.xyz, fMoonColor.rgb, n, w) * key.y);
 }
-${HAIR_GLSL}`;
+`;
 
 /**
  * The sky's light from direction `r` into `out`: the sky table read by `look` (sky.ts domeLight on the table, at
@@ -1006,7 +1006,7 @@ in vec4 vWheel;
 uniform float uStreetMaterial, uOptics, uFrom;
 uniform vec4 uEffect;
 ${layered ? "uniform sampler2D uLayer;\nuniform float uLevel;\n" : ""}${printed ? PRINT_GLSL : ""}${SHIMMER_GLSL}out vec4 o;
-${LIGHT}${THROUGH}${SKIN_GLSL}${BODY_MIRROR_GLSL}${drops ? HAND_GLSL + SWAP_GLSL + VEHICLE_GLASS_GLSL : ""}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${air}${STREET_GLSL}${POLISHED_SKY}${EYE_GLINT_GLSL}${EYE_STRIKE_GLSL}${EYE_ENERGY_GLSL}${EXHAUST_GLSL}${DROP_GLSL}${WHEEL_FINISH_GLSL}${VEHICLE_SHADE_UNIFORMS}${VEHICLE_SHADE_GLSL}${dyed ? DYED : ""}${layered ? WEAR_GLSL + WOUNDED : ""}${BENT_WEAR_GLSL}#ifdef PIECE_SPALL
+${LIGHT}${THROUGH}${SKIN_GLSL}${hair ? HAIR_GLSL : ""}${BODY_MIRROR_GLSL}${drops ? HAND_GLSL + SWAP_GLSL + VEHICLE_GLASS_GLSL : ""}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${air}${STREET_GLSL}${POLISHED_SKY}${EYE_GLINT_GLSL}${EYE_STRIKE_GLSL}${EYE_ENERGY_GLSL}${EXHAUST_GLSL}${DROP_GLSL}${WHEEL_FINISH_GLSL}${VEHICLE_SHADE_UNIFORMS}${VEHICLE_SHADE_GLSL}${dyed ? DYED : ""}${layered ? WEAR_GLSL + WOUNDED : ""}${BENT_WEAR_GLSL}#ifdef PIECE_SPALL
 uniform vec3 uWorldEye;
 ${PIECE_SPALL_TEXT}
 #endif
