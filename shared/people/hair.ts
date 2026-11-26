@@ -52,6 +52,32 @@ export function bakeHair(look: Uint8Array, start: number, now: number, rate: num
   look[LOOK_BEARD_LENGTH] = beard;
 }
 
+/**
+ * Clock steps of growth since `start` that have not yet made a whole unit of length: a clock started again this many steps
+ * before now keeps that growth, to within a step's worth.
+ */
+export function carrySteps(start: number, now: number, rate: number): number {
+  if (start < 0 || rate <= 0) return 0;
+  const steps = Math.floor(now / HAIR_TICK) - Math.floor(start / HAIR_TICK);
+  if (steps <= 0) return 0;
+  // A long count is reduced first: whole units of it carry nothing.
+  const units = Math.floor((steps * rate) / STEPS_PER_UNIT);
+  return Math.floor((steps * rate - units * STEPS_PER_UNIT) / rate);
+}
+
+/**
+ * Writes into `look` its hair and beard as grown from a clock at `start` (which may be before tick 0) until `to`, rounding a
+ * part-grown unit up so that nothing is lost: for a clock that must start at `to` instead.
+ */
+export function bakeHairUp(look: Uint8Array, start: number, to: number, rate: number): void {
+  if (rate <= 0 || to <= start) return;
+  const steps = Math.floor(to / HAIR_TICK) - Math.floor(start / HAIR_TICK);
+  if (steps <= 0) return;
+  const units = Math.min(HAIR_LONGEST, Math.ceil((Math.min(steps, HAIR_LONGEST * STEPS_PER_UNIT) * rate) / STEPS_PER_UNIT));
+  look[LOOK_HAIR_LENGTH] = Math.min(HAIR_LONGEST, look[LOOK_HAIR_LENGTH]! + units);
+  look[LOOK_BEARD_LENGTH] = Math.min(HAIR_LONGEST, look[LOOK_BEARD_LENGTH]! + units);
+}
+
 /** The stage a length is drawn at: the longest stage it has reached. */
 export function stageOf(length: number): number {
   let s = 0;

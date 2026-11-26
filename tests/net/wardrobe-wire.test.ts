@@ -104,6 +104,51 @@ test("a survivor dressed in five styled garments fits a quarter of the least bud
   expect(bytes * 4).toBeLessThanOrEqual(SNAPSHOT_BYTES_MIN);
 });
 
+test("the largest create there is goes whole on its turn, though no quarter holds it", () => {
+  const store = new EntityStore(DIMS, 64);
+  const e = store.create(2, 3000.25, 40, 2500.5, 0);
+  // Three bytes a letter, the most styled wardrobe, a decade's clock, seated, tribed, coloured and geared.
+  store.setLook(e, 65535, [1, 2, 3, 4, 5, 6], "€".repeat(24));
+  store.setBodyLook(e, randomLook(new Rng(5)));
+  store.setHairClock(e, 0);
+  const worst: number[] = [];
+  for (let k = 0; k < WARDROBE_SLOTS; k++) worst.push(0xffff, 0xffffffff, 0xffffff);
+  store.setWardrobe(e, worst);
+  store.setGear(e, [0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff]);
+  store.setTeam(e, 0xffffffff);
+  const mount = store.create(3, 3001, 40, 2501, 0);
+  store.setSeat(e, mount, 255);
+  for (let k = 0; k < 40; k++) store.setLook(store.create(7, 2990 + k, 40, 2490, 0), 1, null, "");
+  const tick = 30 * 86400 * 3650;
+  const cur = new SentView();
+  cur.tick = tick;
+  for (let i = 0; i < store.cap; i++) {
+    if ((store.flags[i]! & F_ALIVE) === 0) continue;
+    const busy = i === e;
+    cur.push(i, store.gen[i]!, store.kind[i]!, quantX(store.x[i]!), quantY(store.y[i]!), quantX(store.z[i]!), 0, 0, store.anim[i]!, store.rev[i]!, busy ? 0x7fffffff : 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, busy ? 0x1fffffff : 0, busy ? 0xffffffff : 0, busy ? 255 : 0, store.identityRev[i]!);
+  }
+  const alone = new SentView();
+  alone.tick = tick;
+  alone.copyFrom(cur, cur.id.subarray(0, cur.count).indexOf(e));
+  const largest = write(store, null, alone).bytes.length;
+  console.log(`the largest survivor create: ${largest} B, a quarter of the least budget ${SNAPSHOT_BYTES_MIN / 4} B`);
+  expect(largest * 4).toBeGreaterThan(SNAPSHOT_BYTES_MIN);
+  // In the least budget, among others waiting, it heads its window in turn and is sent whole: the quarter is a share, not a cap.
+  let base: SentView | null = null, seen: EntityView | null = null, rotate = 0;
+  for (let t = 0; t < 20 && !(seen && seen.id.subarray(0, seen.count).includes(e)); t++) {
+    const w = new BitWriter(1 << 16), next = new SentView();
+    next.tick = cur.tick = tick + t;
+    rotate = writeViewDelta(w, base, cur, next, SNAPSHOT_BYTES_MIN * 8, rotate, store);
+    const r = new BitReader();
+    r.reset(w.bytes().slice());
+    const view = new EntityView();
+    view.tick = next.tick;
+    expect(readViewDelta(r, seen, view) && !r.overflow).toBe(true);
+    [base, seen] = [next, view];
+  }
+  expect(seen!.wardrobe[seen!.id.subarray(0, seen!.count).indexOf(e)] && [...seen!.wardrobe[seen!.id.subarray(0, seen!.count).indexOf(e)]!]).toEqual(worst);
+});
+
 test("a hotbar swap's re-create of a dressed survivor is no larger than of a bare one", () => {
   const sizes = [null, DRESSED].map((worn) => {
     const { store, e, seen, sent } = firstSight(worn);

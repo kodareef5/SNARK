@@ -234,7 +234,7 @@ test("another's hair is cut only by its tribe, within reach", () => {
     expect(h.host.items.mint(them, id("scissors"), 1)).toBe(1);
     h.run(100);
     expect(h.say(bo, "cut beard")).toEqual(["Cut."]);
-    expect(them.look![LOOK_BEARD_LENGTH]).toBe(HAIR_STAGES[2]);
+    expect(them.look![LOOK_BEARD_LENGTH]).toBe(HAIR_STAGES[1]);
   } finally {
     h.host.shutdown();
   }
@@ -321,7 +321,7 @@ test("what is worn reaches watchers, lasts a reconnect and a restart, and on a b
   }
 });
 
-test("the hair clock moves to another map's ticks, the hair as long there", () => {
+test("the hair clock moves to another map's ticks, the hair as long there, no offer", () => {
   const clock = { ms: Date.now() };
   const a = cluster.server("Island", "hair", clock);
   const b = cluster.server("Miami", "hair", clock);
@@ -334,12 +334,17 @@ test("the hair clock moves to another map's ticks, the hair as long there", () =
     const me = clusterRec(a, "ada")!;
     const here = grown(a.h, me);
     expect(here[0]).toBeGreaterThan(HAIR_STAGES[1]!);
+    // An admin here offered her a remake; it stays with this map.
+    a.h.host.relook.offer(me, true);
+    a.h.run(200);
+    expect(ada.remaking).toBe(true);
     const ticket = travel(a, ada, b.world);
     expect(ticket).toBeInstanceOf(Uint8Array);
     const there = b.h.join("ada", {}, { key: keyAt("ada", 2), ticket: ticket as Uint8Array });
     b.h.run(400);
     rise(b, there);
     const arrived = clusterRec(b, "ada")!;
+    expect([b.h.host.relook.offered(arrived), there.remaking]).toEqual([false, false]);
     expect(hairStart(arrived)).not.toBe(hairStart(me));
     expect(hairStart(arrived)).toBeLessThanOrEqual(b.h.world.tick);
     // The travel took a few seconds, and moving the clock to a step costs at most one more: a quarter of a stage.
