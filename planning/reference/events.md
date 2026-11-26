@@ -10,7 +10,7 @@ marked "may change". An **after** event says what has happened, in values, and
 is delivered once a tick, before the commit. The module contract is in
 `server/api/module.ts`.
 
-There are 95 events: 80 raised today, 0 with a place in the code and not
+There are 96 events: 81 raised today, 0 with a place in the code and not
 raised yet, and 15 that wait for a feature.
 
 The ARK column says what a plugin for ARK's unofficial server API hooks for the
@@ -59,6 +59,7 @@ same purpose. ARK has no event API, so plugins hook the game's own functions.
 | `session.presence` | after | `pid`, `connected` |  |  | `server/host.ts` | wired |
 | `session.leave` | after | `pid`, `why` |  | logout and kick | `server/host.ts` | wired |
 | `session.create` | before | `name` |  | the create-character request | `server/own.ts` | wired |
+| `session.relook` | before | `pid`, `byPid`, `cause` |  | the change-appearance request | `server/people/look.ts` | wired |
 | `session.spawn` | after | `pid`, `first`, `why` |  | the first spawn, and taking a body | `server/host.ts` | wired |
 | `session.respawn` | before | `pid`, `bed`, `wait` | `wait` | the respawn-at-point request | `server/beds.ts` | wired |
 | `session.admin` | after | `pid` |  | the admin-detected notice | `server/creative.ts` | wired |
@@ -68,6 +69,7 @@ same purpose. ARK has no event API, so plugins hook the game's own functions.
 - **`session.presence`.** A survivor's connection came or went. Its body may linger.
 - **`session.leave`.** A session ended.
 - **`session.create`.** A survivor is about to be made.
+- **`session.relook`.** A survivor's look is about to change once made: `cause` is "cut", "dye" or "remake". `byPid` is the survivor who does it, 0 for a remake.
 - **`session.spawn`.** A survivor's body entered the world.
 - **`session.respawn`.** A dead survivor is about to come back.
 - **`session.admin`.** A session was given the admin role: by `enablecheats`, or as it entered while CreativeForAll was on.

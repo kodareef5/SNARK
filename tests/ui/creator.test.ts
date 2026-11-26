@@ -198,7 +198,7 @@ artTest("a new name arrives in the creator with no body; it makes a look, and th
   expect(bo.stats.undecodable + session.stats.undecodable).toBe(0);
 });
 
-artTest("a remake an admin offers opens the creator on the survivor's own look, and closes made or kept", () => {
+artTest("an offered remake opens the creator on the own look, and closes made or kept", () => {
   const h = new Harness({}, 1, 60, { dev: true });
   const pack = corePack();
   const look = defaultLook();

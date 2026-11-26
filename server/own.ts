@@ -590,7 +590,10 @@ export function addOwnCommands(ctx: OwnContext): void {
       return ctx.items.move(rec, slot, rec, to, 0) > 0 ? RESULT_OK : RESULT_INVALID;
     }
     // Scissors used from the bag cut one stage shorter; a dye colours the survivor's own hair.
-    if (ctx.world.reg.groomCut[item] === 1 || ctx.world.reg.groomHair[item]! >= 0) return ctx.relook.groom(c, slot, item, 0, -1, -1);
+    if (ctx.world.reg.groomCut[item] === 1 || ctx.world.reg.groomHair[item]! >= 0) {
+      if (!asked(ctx, c, ITEM_USE, { byPid: c.pid, item: ctx.world.reg.ids[item]! })) return RESULT_DENIED;
+      return ctx.relook.groom(c, slot, item, 0, -1, -1);
+    }
     const def = ctx.world.reg.defs[item] as ItemDef;
     const eat = def.eat;
     const use = def.use;

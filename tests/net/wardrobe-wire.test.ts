@@ -119,7 +119,7 @@ test("a hotbar swap's re-create of a dressed survivor is no larger than of a bar
   expect(sizes[1]).toBeLessThanOrEqual(40);
 });
 
-test("a change of what is worn sends the identity again; setting the same wardrobe changes nothing", () => {
+test("a change of what is worn sends the identity again; the same wardrobe does not", () => {
   const { store, e, seen, sent } = firstSight(DRESSED);
   const rev = store.identityRev[e]!;
   // The same garments, and a slot left empty with stray numbers in it, are the same wardrobe.

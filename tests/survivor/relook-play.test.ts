@@ -243,7 +243,7 @@ const TEE = [id("plain_tee"), 7, dye(12, 40, 3)];
 const TROUSERS = [id("plain_trousers"), 0, 0];
 const EMPTY = [0, 0, 0];
 
-test("what is worn reaches watchers, lasts a reconnect and a restart, and a body shows it", () => {
+test("what is worn reaches watchers, lasts a reconnect and a restart, and on a body", () => {
   const db = join(dir, "worn.db");
   const { h, ada, bo, me, e } = setup(db);
   const pid = me.pid;
@@ -320,7 +320,7 @@ test("what is worn reaches watchers, lasts a reconnect and a restart, and a body
   }
 });
 
-test("a survivor's hair clock moves to another map's ticks, and its hair is as long there", () => {
+test("the hair clock moves to another map's ticks, the hair as long there", () => {
   const clock = { ms: Date.now() };
   const a = cluster.server("Island", "hair", clock);
   const b = cluster.server("Miami", "hair", clock);
