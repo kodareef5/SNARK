@@ -112,7 +112,7 @@ class Instrument:
 
     def shell(self, rings, surface, *, closed=False, smooth=False, cap_surface=None,
               cap_origin=None, cap_basis=None, planar_sides=False, band_surfaces=None,
-              project_from=None):
+              project_from=None, band_charts=None):
         """Connect ordered perimeter sections and close the two ends or the profile loop."""
         if closed:
             rings = [*rings, rings[0]]
@@ -120,11 +120,14 @@ class Instrument:
         distinct = rings[:-1] if closed else rings
         count = len(rings[0])
         self.points.extend(point for ring in distinct for point in ring)
-        charts = loft_uv(rings) if self.textured and not planar_sides else None
+        charts = band_charts
+        if charts is None and self.textured and not planar_sides:
+            charts = loft_uv(rings)
         for row, (lower, upper) in enumerate(zip(rings, rings[1:])):
             following = (row + 1) % len(distinct)
             band_surface = band_surfaces[row] if band_surfaces else surface
             projected = project_from is not None and row >= project_from
+            chart = charts[row] if charts and not projected and (band_charts is not None or band_surface in TILES) else None
             normals_lower = normals_upper = None
             if smooth:
                 along = [b - a for a, b in zip(lower, upper)]
@@ -138,8 +141,7 @@ class Instrument:
                 if normals_lower is not None:
                     normals = (normals_lower[side], normals_lower[next_side], normals_upper[next_side], normals_upper[side])
                 self.face((adjacent + side, adjacent + next_side, other + next_side, other + side), band_surface,
-                          uv=charts[row][side] if charts and not projected and band_surface in TILES else None,
-                          normal=normals,
+                          uv=chart[side] if chart is not None else None, normal=normals,
                           origin=cap_origin if projected else None, basis=cap_basis if projected else None)
         if closed:
             return
@@ -167,7 +169,17 @@ class Instrument:
         for k, point in enumerate(points):
             axis = (points[min(k + 1, len(points) - 1)] - points[max(k - 1, 0)]).normalized()
             rings.append(circle(point, axis, radius, count))
-        self.shell(rings, surface, smooth=True)
+        charts = None
+        if self.textured and surface in DETAILS:
+            charts = []
+            reach = 0.42 * DETAILS[surface][2]
+            center = -float("inf")
+            # Loft the twisted quads and start a new chart before it reaches the cell edge.
+            for band in loft_uv(rings):
+                if band[0][2][1] > center + reach:
+                    center = band[0][0][1] + reach
+                charts.append([[(u, v - center) for u, v in side] for side in band])
+        self.shell(rings, surface, smooth=True, band_charts=charts)
 
     def build(self, name, rotation=None, grounded=False):
         points = self.points if rotation is None else [rotation @ point for point in self.points]
