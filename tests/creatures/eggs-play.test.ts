@@ -116,7 +116,7 @@ test("a dodo's fertilised egg taken up keeps its young and the time it had left 
   expect([egg!.kind, egg!.egg!.span, egg!.team, fertile(egg!)]).toEqual([id("egg_dodo"), span, me.team, true]);
   const oldBody = h.host.records.entOf.get(egg!.pid)!;
   const originalShell = Array.from(ents().colors.subarray(oldBody * 6, oldBody * 6 + 6));
-  expect(originalShell).toEqual(eggColours("core:dodo_egg", true)!);
+  expect(originalShell).toEqual([...eggColours("core:dodo_egg", true)!]);
   const was = { wild: [...egg!.genome!.wild], colors: [...egg!.genome!.colors], female: egg!.genome!.female, mother: egg!.genome!.mother, father: egg!.genome!.father };
   beside(h, ada, egg!.x, egg!.z, ents().x[f.e]!, ents().z[f.e]!);
   const hatchAt = egg!.egg!.hatchAt;
@@ -175,7 +175,7 @@ test("a dropped dodo egg keeps the laid shell", () => {
     return Array.from(h.world.ents.colors.subarray(body * 6, body * 6 + 6));
   };
   const shell = shellOf(egg);
-  expect(shell).toEqual(eggColours("core:dodo_egg", false)!);
+  expect(shell).toEqual([...eggColours("core:dodo_egg", false)!]);
   expect(h.host.eggs.takeUp(me, egg)).toBe(RESULT_OK);
   const item = id("dodo_egg");
   const slot = h.host.items.inv(me).item.indexOf(item);
@@ -282,7 +282,7 @@ test("a modified client cannot take an egg out of reach, take one twice, set one
     return [seen.kind[i], seen.level[i], [...seen.colors.subarray(i * 6, i * 6 + 6)], seen.team[i], seen.name[i], seen.span[i]];
   };
   expect(shown(a)).toEqual(shown(b));
-  expect(shown(a)).toEqual([id("egg_dodo"), 0, eggColours("core:dodo_egg", true), 0, "dodo egg", 99999]);
+  expect(shown(a)).toEqual([id("egg_dodo"), 0, [...eggColours("core:dodo_egg", true)!], 0, "dodo egg", 99999]);
   // It cannot be opened, as a creature or with the use key.
   expect(command(h, ada, CMD_OPEN, (w) => w.u32(h.host.records.entOf.get(a.pid)!))).toBe(RESULT_INVALID);
   expect([ada.subject, ada.open]).toEqual([null, null]);

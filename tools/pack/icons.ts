@@ -526,6 +526,11 @@ export async function assetIconInputs() {
   return { framing, images, meshes };
 }
 
+/** The asset camera views used by the icon and wiki review tools. */
+export async function assetFraming(): Promise<Map<string, IconFraming>> {
+  return (await assetIconInputs()).framing;
+}
+
 /**
  * What `bun run build` adds: the pictures of the core content's items, drawn from `core`, the whole core pack, with the
  * textures of the build's files as stored, which `read` reads by the manifest's index. The manifest is told of the sheets.
