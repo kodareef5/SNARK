@@ -8,7 +8,7 @@ import { DRAW_NEAR, DRAW_SKINNED } from "../../client/core/render/packet.ts";
 import { RemoteSample } from "../../client/core/session.ts";
 import {
   KEY_CREATOR_BEARD, KEY_CREATOR_CREATE, KEY_CREATOR_HAIR, KEY_CREATOR_HAIR_COLOR, KEY_CREATOR_NOTE, KEY_CREATOR_PANEL, KEY_CREATOR_RANDOM, KEY_CREATOR_REGION,
-  KEY_CREATOR_RESET, KEY_CREATOR_SEX, KEY_CREATOR_SKIN, KEY_CREATOR_TAB, KEY_CREATOR_TITLE, KEY_CREATOR_TURN, type CreatorScreen,
+  KEY_CREATOR_KEEP, KEY_CREATOR_RESET, KEY_CREATOR_SEX, KEY_CREATOR_SKIN, KEY_CREATOR_TAB, KEY_CREATOR_TITLE, KEY_CREATOR_TURN, type CreatorScreen,
 } from "../../client/core/ui/creator.ts";
 import { KEY_CROSS, KEY_VITAL } from "../../client/core/ui/hud.ts";
 import { K_BAR, K_TEXT, textWidth, type UiFrame } from "../../client/core/ui/nodes.ts";
@@ -196,6 +196,51 @@ artTest("a new name arrives in the creator with no body; it makes a look, and th
   session.sampleRemote(seen);
   expect([...seen.look.subarray(0, LOOK_BYTES)]).toEqual([...defaultLook()]);
   expect(bo.stats.undecodable + session.stats.undecodable).toBe(0);
+});
+
+artTest("a remake an admin offers opens the creator on the survivor's own look, and closes made or kept", () => {
+  const h = new Harness({}, 1, 60, { dev: true });
+  const pack = corePack();
+  const look = defaultLook();
+  look[LOOK_HAIR_COLOR] = 2;
+  const app = new App(h.join("ada", { latencyMs: 20 }, { manual: true, look }), h.reg, pack);
+  const run = (ms: number): void => h.run(ms, (now) => void app.frame(now, 1280, 720));
+  run(600);
+  const session = app.session, ui = app.ui, f = ui.frame;
+  const rec = h.host.records.byPid.get(h.client(session)!.pid)!;
+  const click = (key: number): void => {
+    const n = f.find(key)!;
+    expect(n, `node ${key}`).not.toBeNull();
+    app.pointer(0, key, n.x + n.w / 2, n.y + n.h / 2, 0);
+    app.pointer(1, key, n.x + n.w / 2, n.y + n.h / 2, 0);
+    run(400);
+  };
+  expect(f.find(KEY_CREATOR_PANEL)).toBeNull();
+  h.host.relook.offer(rec, true);
+  run(300);
+  expect(f.find(KEY_CREATOR_TITLE)!.text).toBe("Remake: ada");
+  expect(f.find(KEY_CROSS)).toBeNull();
+  const editing = ui.screen<CreatorScreen>("creator").look;
+  expect([...editing]).toEqual([...look]);
+  for (const [name, aspect] of ASPECTS) {
+    ui.build(aspect, app.hud, session);
+    fits(f, `remake ${name}`);
+  }
+  run(34);
+  click(KEY_CREATOR_HAIR_COLOR + 5);
+  click(KEY_CREATOR_CREATE);
+  expect([rec.look![LOOK_HAIR_COLOR], h.host.relook.offered(rec), session.remaking]).toEqual([5, false, false]);
+  expect(f.find(KEY_CREATOR_PANEL)).toBeNull();
+  // Offered again and kept as is: nothing changes, and the offer is gone.
+  h.host.relook.offer(rec, true);
+  run(300);
+  const before = [...rec.look!];
+  click(KEY_CREATOR_SKIN + 4);
+  click(KEY_CREATOR_KEEP);
+  expect([[...rec.look!], h.host.relook.offered(rec)]).toEqual([before, false]);
+  expect(f.find(KEY_CREATOR_PANEL)).toBeNull();
+  expect(session.sessionState).toBe(SESSION_ALIVE);
+  h.host.shutdown();
 });
 
 test("a look is kept with the survivor: it returns as it was made, through a restart, and never sees the creator again", () => {

@@ -131,7 +131,7 @@ export const ZOOM_SENSITIVITY_MAX = 1.5;
 export const FOV_MIN = 50;
 export const FOV_MAX = 100;
 /** With a snapshot every tick they are 18, 33 and 66 KB a second. */
-export const SNAPSHOT_BYTES: readonly number[] = [600, 1100, 2200];
+export const SNAPSHOT_BYTES: readonly number[] = [720, 1100, 2200];
 
 export interface SettingRow {
   readonly label: string;

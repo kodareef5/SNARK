@@ -143,8 +143,10 @@ import { parseMap, type MapFile, type MapVehicle } from "../shared/world/mapfile
 import { Tactical } from "./tactical.ts";
 import type { ClipSet } from "../shared/anim/clip.ts";
 import { defaultLook } from "../shared/anim/look.ts";
-import { F_ALIVE, GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../shared/sim/entities.ts";
-import { ARMOR_SLOTS, FLAG_ON } from "../shared/sim/items.ts";
+import { F_ALIVE, GEAR_COUNT, GEAR_HELD, GEAR_WORN, WORN_FIELDS, WORN_LENGTH } from "../shared/sim/entities.ts";
+import { ARMOR_SLOTS, FLAG_ON, WARDROBE_SLOTS } from "../shared/sim/items.ts";
+import { hairRate } from "../shared/people/hair.ts";
+import { Relook } from "./people/look.ts";
 import { CUE_HELD, CUE_OUT, CUE_TORPOR, HumanAnim } from "../shared/anim/pose.ts";
 import { REACT_RULES, TIER_FALL } from "../shared/sim/react.ts";
 import { Reactions, SHOVE_MOST } from "./reactions.ts";
@@ -276,6 +278,8 @@ export interface Host {
   readonly tactical: Tactical;
   /** The creature packages' modules, each still doing nothing. */
   readonly corpses: Corpses;
+  /** Changes to a made survivor's look: cuts, dyes and remakes (server/people/look.ts). */
+  readonly relook: Relook;
   readonly carry: Carry;
   readonly emotes: Emotes;
   readonly feces: Feces;
@@ -520,6 +524,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   world.clock.cycle = rules.num("DayCycleSpeedScale");
   world.clock.day = rules.num("DayTimeSpeedScale");
   world.clock.night = rules.num("NightTimeSpeedScale");
+  world.hairRate = hairRate(rules.num("HairGrowthSpeedMultiplier"));
   // A new world starts at nine in the morning.
   world.dayOffset = offsetForHour(world.tick, 9, world.clock);
   if (opts.clips) world.anim = new HumanAnim(opts.clips);
@@ -586,6 +591,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   survival.rules = rules;
   survival.bus = bus;
   const items = new Items(world, records);
+  const relook = new Relook({ world, game, records, items, survivor });
   items.bus = bus;
   // Inventory transactions finish before their derived movement and equipment state is refreshed.
   const inventoryChanged = new Set<EntityRecord>();
@@ -1343,6 +1349,10 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     if (turned("MaxEntities")) world.ents.setMax(rules.num("MaxEntities"));
     if (turned("AutoSavePeriodMinutes")) liveEvery = Math.max(1, Math.round(rules.num("AutoSavePeriodMinutes") * 60 * TICK_RATE));
     if (turned("OxygenSwimSpeedStatMultiplier")) creatures.swimGain = rules.num("OxygenSwimSpeedStatMultiplier");
+    if (turned("HairGrowthSpeedMultiplier")) {
+      world.hairRate = hairRate(rules.num("HairGrowthSpeedMultiplier"));
+      game.replication.markAllOwn();
+    }
     if (turned(ARK_CRATES)) recrate();
     if (spawner) {
       spawner.quiet = quiet();
@@ -1407,6 +1417,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   // What refreshBody works with, made before the load: a buff restored there refreshes its body, and a saddled creature
   // saved with a buff on it (a tame ball sick, or poisoned) stopped the start when these were made after it.
   const gear = new Uint16Array(GEAR_COUNT);
+  const wardrobe = new Uint32Array(WORN_LENGTH);
   /** The held slot of each record at its last refresh. */
   const inHand = new Map<number, number>();
   /** Per survivor pid, the inventory's worn stamp and the body that refreshBody last worked out what it wears for. */
@@ -1600,7 +1611,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       rec.look = c.look ?? defaultLook();
       records.dirty.add(rec.pid);
     }
-    world.ents.setBodyLook(c.ent, rec.look);
+    relook.wear(rec, c.ent);
     world.ents.jetSpent[c.ent] = rec.jetSpent;
     // Every survivor is on a team, even a team of one.
     if (rec.team === 0) {
@@ -2063,6 +2074,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const own: OwnContext = {
     world, game, records, items, survival, progression, rules, voice,
     use,
+    relook,
     openOf: (c) => containers.openOf(c),
     closeOpen: (c) => containers.close(c),
     beds,
@@ -2150,6 +2162,14 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
         seen.worn = inv.worn;
         seen.e = e;
         seen.gen = ents.gen[e]!;
+        // What it wears in its wardrobe is part of its identity, sent to watchers only when it changes.
+        for (let k = 0; k < WARDROBE_SLOTS; k++) {
+          const s = inv.wardrobe + k, item = inv.wardrobe >= 0 ? inv.item[s]! : 0;
+          wardrobe[k * WORN_FIELDS] = item;
+          wardrobe[k * WORN_FIELDS + 1] = item !== 0 ? inv.editionOf(s) : 0;
+          wardrobe[k * WORN_FIELDS + 2] = item !== 0 ? inv.dyeOf(s) : 0;
+        }
+        ents.setWardrobe(e, wardrobe);
         let suit = 0;
         // A piece that flies (WearFacet.jet) and is not worn out lends its slot's bit.
         for (let k = 0; k < ARMOR_SLOTS; k++) if (inv.dur[inv.armor + k]! > 0) suit |= reg.wearJet[inv.item[inv.armor + k]!]! << k;
@@ -2385,6 +2405,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     breeding,
     tactical,
     corpses,
+    relook,
     carry,
     emotes,
     feces,

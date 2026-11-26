@@ -48,6 +48,7 @@ import type { GameServer } from "./game.ts";
 import type { Items } from "./items.ts";
 import { XP_HARVEST, type Progression } from "./progression.ts";
 import { part, type EntityRecord, type Records } from "./records.ts";
+import { grownLook } from "./people/look.ts";
 import { saved } from "./saved.ts";
 import type { Lists } from "./settings/lists.ts";
 import type { Rules } from "./settings/rules.ts";
@@ -270,8 +271,9 @@ export class Corpses {
     body.genome = rec.genome;
     // A survivor's body keeps its face and what it wore, though its things go to the cache. What it held falls with them.
     if (def.class === "survivor") {
-      const look = rec.look ?? ents.looks.get(e);
-      if (look) body.look = look.slice();
+      // Its hair as grown when it fell, which grows no more.
+      const look = grownLook(rec, tick, world.hairRate) ?? ents.looks.get(e)?.slice();
+      if (look) body.look = look;
       const worn = rec.inv && rec.inv.armor >= 0 ? rec.inv.item.subarray(rec.inv.armor, rec.inv.armor + ARMOR_SLOTS) : null;
       if (worn?.some((id) => id !== 0)) body.own(WORN).set(worn, GEAR_WORN);
       const inv = rec.inv, at = inv ? inv.wardrobe : -1;
@@ -470,6 +472,7 @@ export class Corpses {
     if (rec.look) ents.setBodyLook(e, rec.look);
     const worn = rec.part(WORN);
     if (worn) ents.setGear(e, worn);
+    ents.setWardrobe(e, rec.part(WARDROBE) ?? null);
     ents.setYoung(e, sizeSpan(b.size), 0);
     records.entOf.set(rec.pid, e);
     this.byEnt.set(e, b);

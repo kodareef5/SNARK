@@ -539,6 +539,14 @@ export const CMD_PLAN_PART = command();
 export const CMD_PLAN_COMMIT = command();
 /** Takes a plan of the survivor's tribe away: its id varint. */
 export const CMD_PLAN_CANCEL = command();
+/**
+ * Uses scissors or a hair dye from an own slot on a survivor's hair (server/people/look.ts): slot varint, expected item u16,
+ * the survivor's handle u32 (0 for one's own), the part u8 (0 hair, 1 beard; for a dye 0 the hair's colour, 1 its second)
+ * and, for scissors, the stage to cut to u8 (shared/people/hair.ts HAIR_STAGES).
+ */
+export const CMD_GROOM = command();
+/** Ends a remake the server offered (OWN_REMAKE): made 1 bit, then for one made its look, LOOK_BYTES. */
+export const CMD_REMAKE = command();
 /** Chunks from its own within which a client says what it kept: the server's structRadius and the one more it lets go at. */
 export const HAVE_REACH = 4;
 export const SPOT_TICKS = 1800;
@@ -661,7 +669,7 @@ export const CHOOSE_TRAVEL = 2;
  */
 export const OWN_PROGRESSION = ownKind();
 
-/** LOOK_BYTES. Sent when the survivor gets a body. */
+/** LOOK_BYTES, then the hair clock varint: its start tick over HAIR_TICK plus 1, 0 for none. Sent whenever either changes. */
 export const OWN_LOOK = ownKind();
 
 /** Hotbar slot u8, 255 for none. */
@@ -739,6 +747,8 @@ export const OWN_SCREEN = ownKind();
 export const OWN_ARMS = ownKind();
 /** What a seeker does to whatever its owner drives or sits in, u8: 0 nothing, 1 looked for, 2 locked, 3 a missile coming. */
 export const OWN_WARNED = ownKind();
+/** 1 u8 while the survivor may be made again in the creator (server/people/look.ts), else 0. */
+export const OWN_REMAKE = ownKind();
 
 export const MARKER_DEATH = 1;
 

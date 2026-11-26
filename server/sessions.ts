@@ -417,6 +417,7 @@ export class Sessions {
     w.f64(world.clock.night);
     w.u16(Math.min(65535, Math.max(0, Math.round(this.opts.motdSeconds))));
     w.bool(c.statics);
+    w.varint(world.hairRate);
     c.conn.send(CH_RELIABLE, w.bytes());
   }
 

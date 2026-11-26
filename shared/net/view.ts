@@ -7,11 +7,15 @@
 //     op 2 bits: 0 update, 1 create, 2 remove, 3 remove because it died
 //     create: kind varint, generation 12 bits, x 22, y 20, z 22, yaw 10, flags 4, pose state 32, [cues? 1][31], [emote? 1][29], [stride? 1][8], [reaction? 1][32],
 //             then its appearance:
-//             kept 1, level varint, [colours? 1][6 x 8], unless kept: [name? 1][string], [look? 1][look]; then [gear? 1][6 x 16, on 1],
+//             kept 1, level varint, [colours? 1][6 x 8], unless kept: its identity, [name? 1][string], [look? 1][look],
+//             [hair clock? 1][varint], [wardrobe? 1][wardrobe]; then [gear? 1][6 x 16, on 1],
 //             [team? 1][varint], [seat? 1][varint], [young? 1][span 32, grown 32]
-//             `kept` says the name and look are the baseline's: legal only for an id the baseline has at the same generation.
+//             `kept` says the identity is the baseline's: legal only for an id the baseline has at the same generation.
 //             A look is [born? 1] then a seed 32, a population varint and its revision varint, from which the reader makes
 //             the look (shared/people/person.ts), or else its 72 x 8: a population or revision the reader lacks is malformed.
+//             A hair clock is how many HAIR_TICK steps before the snapshot's tick it started, signed (shared/people/hair.ts).
+//             A wardrobe is, per wardrobe slot, [worn? 1] then the item varint and [styled? 1][[edition? 1][varint]
+//             [dye? 1][24]]; one with nothing worn, a style with neither, and an edition or dye of 0 are malformed.
 //             then [vehicle? 1][its parts], the parts a vehicle's: pose 32, wheel 16, ride 32, doors 32, drive 32, rotor 32, systems 32, attitude 64, water 16
 //             (shared/sim/vehicle-body.ts packs each). A seat is the entity, its slot u8 and the entity's generation 12, so
 //             nothing is drawn on a recycled one.
@@ -39,7 +43,8 @@
 import { ANIM_ACTION_BITS, ANIM_ACTION_SHIFT, ANIM_LOOK_BITS, ANIM_LOOK_SHIFT, ANIM_MOTION_BITS, ANIM_MOTION_MASK, CUE_BITS, EMOTE_BITS, REACT_BITS } from "../anim/pose.ts";
 import { LOOK_BYTES } from "../anim/look.ts";
 import { WORLD_MIN_Y } from "../coords.ts";
-import { GEAR_COUNT, type Born } from "../sim/entities.ts";
+import { HAIR_TICK } from "../people/hair.ts";
+import { GEAR_COUNT, WORN_FIELDS, WORN_LENGTH, type Born } from "../sim/entities.ts";
 import type { BitReader, BitWriter } from "./codec.ts";
 
 export const VIEW_RING = 32;
@@ -113,7 +118,7 @@ function readVehicleParts(r: BitReader, base: SentView | null, i: number, out: n
   for (let p = 0; p < VEHICLE_PART_BITS.length; p++) if (r.bool()) out[p] = r.bits(VEHICLE_PART_BITS[p]!) >>> 0;
 }
 const LOOK_MASK = (1 << ANIM_LOOK_BITS) - 1;
-const CREATE_BITS = 1 + 24 + 2 + 24 + 12 + 64 + 10 + 4 + ANIM_BITS + 1 + 1 + 16 + 4 + 48 + 3;
+const CREATE_BITS = 1 + 24 + 2 + 24 + 12 + 64 + 10 + 4 + ANIM_BITS + 1 + 1 + 16 + 4 + 48 + 5;
 /** In bytes. */
 export const MAX_NAME_LENGTH = 72;
 
@@ -127,6 +132,10 @@ export interface Looks {
   readonly looks: ReadonlyMap<number, Uint8Array>;
   /** What each generated look was made from: such a look is sent as that. */
   readonly born?: ReadonlyMap<number, Born>;
+  /** A survivor's hair clock start, a tick (EntityStore.hairs). */
+  readonly hairs?: ReadonlyMap<number, number>;
+  /** What each body wears in its wardrobe, WORN_LENGTH numbers (EntityStore.wardrobes). */
+  readonly wardrobes?: ReadonlyMap<number, Uint32Array>;
   readonly gears: ReadonlyMap<number, Uint16Array>;
   /** The gear's "on" bit: 1 while the laser in hand is switched on. Absent, 0. */
   readonly on?: Uint8Array;
@@ -149,11 +158,24 @@ function lookBits(v: Looks, id: number): number {
   return 1 + (born ? 32 + varintBits(born.population) + varintBits(born.revision) : LOOK_BYTES * 8);
 }
 
-/** An upper bound on the bits a create for entity `id` takes, its name and look left out where `kept`. */
+/** The bits a wardrobe takes after its own bit. */
+function wardrobeBits(worn: Uint32Array): number {
+  let bits = 0;
+  for (let k = 0; k < WORN_LENGTH; k += WORN_FIELDS) {
+    bits++;
+    if (worn[k] === 0) continue;
+    bits += varintBits(worn[k]!) + 1;
+    if (worn[k + 1] !== 0 || worn[k + 2] !== 0) bits += 2 + (worn[k + 1] !== 0 ? varintBits(worn[k + 1]!) : 0) + (worn[k + 2] !== 0 ? 24 : 0);
+  }
+  return bits;
+}
+
+/** An upper bound on the bits a create for entity `id` takes, its identity left out where `kept`. */
 function createBits(v: Looks, id: number, kept: boolean): number {
   const name = kept ? "" : (v.names.get(id) ?? "");
-  // The optional fields: a look, gear, a team, a seat, an age.
-  const look = (v.looks.has(id) && !kept ? lookBits(v, id) : 0) + (v.gears.has(id) ? GEAR_COUNT * 16 + 1 : 0) + (v.team[id] !== 0 ? 40 : 0) + (v.seat[id] !== 0 ? 60 : 0) + (v.span[id] !== 0 || v.grown[id] !== 0 ? 64 : 0);
+  const worn = kept ? undefined : v.wardrobes?.get(id);
+  // The optional fields: a look, a hair clock, a wardrobe, gear, a team, a seat, an age.
+  const look = (v.looks.has(id) && !kept ? lookBits(v, id) : 0) + (!kept && v.hairs?.has(id) ? 40 : 0) + (worn ? wardrobeBits(worn) : 0) + (v.gears.has(id) ? GEAR_COUNT * 16 + 1 : 0) + (v.team[id] !== 0 ? 40 : 0) + (v.seat[id] !== 0 ? 60 : 0) + (v.span[id] !== 0 || v.grown[id] !== 0 ? 64 : 0);
   if (name === "") return CREATE_BITS + look;
   let bytes = 1;
   for (let i = 0; i < name.length; i++) {
@@ -308,6 +330,10 @@ export class EntityView extends SentView {
   readonly look: (Uint8Array | null)[] = new Array<Uint8Array | null>(VIEW_START).fill(null);
   /** GEAR_COUNT content indices, shared by reference. */
   readonly gear: (Uint16Array | null)[] = new Array<Uint16Array | null>(VIEW_START).fill(null);
+  /** The hair clock's start tick, -1 for none (shared/people/hair.ts). */
+  hairFrom = new Float64Array(VIEW_START).fill(-1);
+  /** WORN_LENGTH numbers (EntityStore.wardrobes), shared by reference, or null for nothing worn. */
+  readonly wardrobe: (Uint32Array | null)[] = new Array<Uint32Array | null>(VIEW_START).fill(null);
   /** 1 while the laser in hand is on (EntityStore.on). */
   on = new Uint8Array(VIEW_START);
   /** As in `EntityStore`, each 0 for none. */
@@ -327,7 +353,11 @@ export class EntityView extends SentView {
       this.name.push("");
       this.look.push(null);
       this.gear.push(null);
+      this.wardrobe.push(null);
     }
+    const hairFrom = new Float64Array(cap).fill(-1);
+    hairFrom.set(this.hairFrom);
+    this.hairFrom = hairFrom;
     this.on = wider(this.on, cap);
     this.team = wider(this.team, cap);
     this.seat = wider(this.seat, cap);
@@ -349,6 +379,13 @@ export class EntityView extends SentView {
     this.grown[n] = grown;
   }
 
+  /** For the entry just pushed: its hair clock and wardrobe. Call it after `appear`, which clears them. */
+  dress(hairFrom: number, wardrobe: Uint32Array | null): void {
+    const n = this.count - 1;
+    this.hairFrom[n] = hairFrom;
+    this.wardrobe[n] = wardrobe;
+  }
+
   /** For the entry just pushed. Reads six bytes of `colors` from `at`. */
   appear(rev: number, level: number, colors: Uint8Array, at: number, name: string, look: Uint8Array | null, gear: Uint16Array | null, on = 0): void {
     const n = this.count - 1;
@@ -360,12 +397,15 @@ export class EntityView extends SentView {
     this.gear[n] = gear;
     this.on[n] = gear ? on : 0;
     this.team[n] = this.seat[n] = this.seatSlot[n] = this.seatGen[n] = this.span[n] = this.grown[n] = 0;
+    this.hairFrom[n] = -1;
+    this.wardrobe[n] = null;
   }
 
   override copyFrom(o: EntityView, i: number): boolean {
     if (!super.copyFrom(o, i)) return false;
     this.appear(o.rev[i]!, o.level[i]!, o.colors, i * 6, o.name[i]!, o.look[i]!, o.gear[i]!, o.on[i]!);
     this.belong(o.team[i]!, o.seat[i]!, o.span[i]!, o.grown[i]!, o.seatSlot[i]!, o.seatGen[i]!);
+    this.dress(o.hairFrom[i]!, o.wardrobe[i]!);
     return true;
   }
 }
@@ -594,7 +634,7 @@ const K_SPARE = 8;
 const NONE = 0xffffffff;
 
 function varintBits(v: number): number {
-  return v < 0x80 ? 8 : v < 0x4000 ? 16 : v < 0x200000 ? 24 : 32;
+  return v < 0x80 ? 8 : v < 0x4000 ? 16 : v < 0x200000 ? 24 : v < 0x10000000 ? 32 : 40;
 }
 
 /**
@@ -959,6 +999,12 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, shared: Sent
             w.varint(born.revision);
           } else for (let q = 0; q < LOOK_BYTES; q++) w.u8(look[q]!);
         }
+        const hair = looks.hairs?.get(id);
+        w.bool(hair !== undefined);
+        if (hair !== undefined) w.svarint(Math.floor(tick / HAIR_TICK) - Math.floor(hair / HAIR_TICK));
+        const worn = looks.wardrobes?.get(id);
+        w.bool(worn !== undefined);
+        if (worn) writeWardrobe(w, worn);
       }
       const gear = looks.gears.get(id);
       w.bool(gear !== undefined);
@@ -1074,6 +1120,44 @@ function untold(drawn: EntityView, before: EntityView | null, l: number, next: E
  * op -1, then of each op read: its OP_, its body's kind (as a create reads it, else as the base has it, or -1) and its bits.
  * `person` makes a look sent as a seed; without it such a create is malformed.
  */
+/** A wardrobe in its wire form (the header). Only a worn slot carries anything. */
+function writeWardrobe(w: BitWriter, worn: Uint32Array): void {
+  for (let k = 0; k < WORN_LENGTH; k += WORN_FIELDS) {
+    const item = worn[k]!, edition = worn[k + 1]!, dye = worn[k + 2]!;
+    w.bool(item !== 0);
+    if (item === 0) continue;
+    w.varint(item);
+    w.bool(edition !== 0 || dye !== 0);
+    if (edition === 0 && dye === 0) continue;
+    w.bool(edition !== 0);
+    if (edition !== 0) w.varint(edition);
+    w.bool(dye !== 0);
+    if (dye !== 0) w.bits(dye, 24);
+  }
+}
+
+/** A wardrobe as writeWardrobe writes it, or null for one malformed. */
+function readWardrobe(r: BitReader): Uint32Array | null {
+  const worn = new Uint32Array(WORN_LENGTH);
+  let any = false;
+  for (let k = 0; k < WORN_LENGTH; k += WORN_FIELDS) {
+    if (!r.bool()) continue;
+    const item = r.varint();
+    if (item === 0 || item > 0xffff) return null;
+    worn[k] = item;
+    any = true;
+    if (!r.bool()) continue;
+    const edited = r.bool();
+    const edition = edited ? r.varint() : 0;
+    const dyed = r.bool();
+    const dye = dyed ? r.bits(24) : 0;
+    if ((edited && edition === 0) || (dyed && dye === 0) || (!edited && !dyed)) return null;
+    worn[k + 1] = edition;
+    worn[k + 2] = dye;
+  }
+  return any && !r.overflow ? worn : null;
+}
+
 export function readViewDelta(r: BitReader, base: EntityView | null, next: EntityView, before: EntityView | null = null, drawn: EntityView | null = null, died: number[] | null = null, tally: ((op: number, kind: number, bits: number) => void) | null = null, person: MakePerson | null = null): boolean {
   const nb = base ? base.count : 0;
   // With no baseline and no snapshot for a second, the server has started again from nothing.
@@ -1128,11 +1212,15 @@ export function readViewDelta(r: BitReader, base: EntityView | null, next: Entit
       else scratchColors.fill(0);
       let name = "";
       let look: Uint8Array | null = null;
+      let hairFrom = -1;
+      let wardrobe: Uint32Array | null = null;
       if (kept) {
         // Only a body the baseline holds, the same one, has a name and look to keep.
         if (!present || base!.gen[i] !== gen) return false;
         name = base!.name[i]!;
         look = base!.look[i]!;
+        hairFrom = base!.hairFrom[i]!;
+        wardrobe = base!.wardrobe[i]!;
       } else {
         if (r.bool()) name = r.string(MAX_NAME_LENGTH);
         if (r.bool()) {
@@ -1145,6 +1233,12 @@ export function readViewDelta(r: BitReader, base: EntityView | null, next: Entit
             for (let q = 0; q < LOOK_BYTES; q++) look[q] = r.u8();
           }
         }
+        if (r.bool()) {
+          const steps = Math.floor(next.tick / HAIR_TICK) - r.svarint();
+          if (steps < 0) return false;
+          hairFrom = steps * HAIR_TICK;
+        }
+        if (r.bool() && !(wardrobe = readWardrobe(r))) return false;
       }
       let gear: Uint16Array | null = null;
       let on = 0;
@@ -1164,6 +1258,7 @@ export function readViewDelta(r: BitReader, base: EntityView | null, next: Entit
       if (kind > 0xffff || level > 0xffff || !next.push(id, gen, kind, qx, qy, qz, yaw, flags, anim, 0, cue, vehiclePose, vehicleWheel, vehicleRide, vehicleDoors, vehicleDrive, vehicleRotor, vehicleSystems, vehicleAttitudeA, vehicleAttitudeB, vehicleWater, emote, react, stride)) return false;
       next.appear(0, level, scratchColors, 0, name, look, gear, on);
       next.belong(team, seat, span, grown, seatSlot, seatGen);
+      next.dress(hairFrom, wardrobe);
       if (drawn) drawn.copyFrom(next, next.count - 1);
     } else if (op === OP_UPDATE) {
       if (!present) return false;
@@ -1208,6 +1303,7 @@ export function readViewDelta(r: BitReader, base: EntityView | null, next: Entit
       if (!next.push(id, base!.gen[i]!, base!.kind[i]!, qx, qy, qz, yaw, flags, anim >>> 0, 0, cue, vehiclePose, vehicleWheel, vehicleRide, vehicleDoors, vehicleDrive, vehicleRotor, vehicleSystems, vehicleAttitudeA, vehicleAttitudeB, vehicleWater, emote, react, stride)) return false;
       next.appear(base!.rev[i]!, base!.level[i]!, base!.colors, i * 6, base!.name[i]!, base!.look[i]!, base!.gear[i]!, base!.on[i]!);
       next.belong(base!.team[i]!, base!.seat[i]!, base!.span[i]!, base!.grown[i]!, base!.seatSlot[i]!, base!.seatGen[i]!);
+      next.dress(base!.hairFrom[i]!, base!.wardrobe[i]!);
       if (drawn) drawn.copyFrom(next, next.count - 1);
       i++;
     } else return false;

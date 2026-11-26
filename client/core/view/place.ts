@@ -7,7 +7,6 @@ import { isSkateboard } from "../../../shared/sim/vehicle.ts";
 import { makeHandle } from "../../../shared/ids.ts";
 import { youngScale } from "../../../shared/sim/breeding.ts";
 import { GEAR_COUNT, GEAR_WORN } from "../../../shared/sim/entities.ts";
-import { SESSION_CREATING } from "../../../shared/net/protocol.ts";
 import { IMPALE_SLOT, type Seat } from "../../../shared/sim/seats.ts";
 import { vehiclePoint } from "../../../shared/sim/vehicle-frame.ts";
 import type { AppFrame } from "../frame.ts";
@@ -38,7 +37,7 @@ export function place(d: Director, f: AppFrame): void {
   // The orbit shows the whole body once the camera is clear of the head.
   if (d.orbit.inUse && d.orbit.shown.back > HEAD_CLEAR) d.own.firstPerson = false;
   d.view.thirdPerson = f.third;
-  if (session.sessionState === SESSION_CREATING) preview(d, f);
+  if (session.inCreator) preview(d, f);
 }
 
 /** The slot of the seat that steers, 1 for the first; 0 where no seat does. */

@@ -18,6 +18,8 @@ import type { Rules } from "./settings/rules.ts";
 import type { Survival } from "./survival.ts";
 import type { Subject } from "./taming.ts";
 import type { Use } from "./use.ts";
+import { hairStart, type Relook } from "./people/look.ts";
+import { HAIR_TICK } from "../shared/people/hair.ts";
 import type { Voice } from "./voice.ts";
 import type { Beds } from "./beds.ts";
 import type { ServerWorld } from "./world.ts";
@@ -65,6 +67,8 @@ export interface OwnContext {
   drop(rec: EntityRecord, slot: number, n: number): boolean;
   /** What using an item does beyond eating it (server/use.ts). */
   readonly use: Use;
+  /** Changes to a made survivor's look, and its hair clock (server/people/look.ts). */
+  readonly relook: Relook;
 }
 
 /** Sends the slots of `inv` changed after version `since`, or every occupied slot if `full`. */
@@ -137,9 +141,12 @@ export function addOwnState(ctx: OwnContext): void {
   const own = game.own;
   own.add({
     kind: OWN_LOOK,
+    // Every change installs a new array (server/people/look.ts), so the array is the version, the clock's start with it.
     version: (_c, rec) => rec.look ?? undefined,
     write(w, _c, rec) {
       for (let i = 0; i < LOOK_BYTES; i++) w.u8(rec.look![i]!);
+      const start = hairStart(rec);
+      w.varint(start < 0 ? 0 : start / HAIR_TICK + 1);
     },
   });
   own.add({
@@ -582,6 +589,8 @@ export function addOwnCommands(ctx: OwnContext): void {
       if (to < 0) return RESULT_FULL;
       return ctx.items.move(rec, slot, rec, to, 0) > 0 ? RESULT_OK : RESULT_INVALID;
     }
+    // Scissors used from the bag cut one stage shorter; a dye colours the survivor's own hair.
+    if (ctx.world.reg.groomCut[item] === 1 || ctx.world.reg.groomHair[item]! >= 0) return ctx.relook.groom(c, slot, item, 0, -1, -1);
     const def = ctx.world.reg.defs[item] as ItemDef;
     const eat = def.eat;
     const use = def.use;

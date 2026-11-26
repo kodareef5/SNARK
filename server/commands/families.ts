@@ -6,6 +6,7 @@ import { addClusterCommands } from "./cluster.ts";
 import { addCombatCommands } from "./combat.ts";
 import { addCoreCommands } from "./core.ts";
 import { addCreatureCommands } from "./creatures.ts";
+import { addLookCommands } from "./looks.ts";
 import { addPermissionsCommands } from "./permissions.ts";
 import { addSettingsCommands } from "./settings.ts";
 import { addSocialCommands } from "./social.ts";
@@ -15,6 +16,7 @@ export const COMMAND_FAMILIES: readonly (readonly [family: string, add: (con: Co
   ["Moving and making", addAdminCommands],
   ["Combat and equipment", addCombatCommands],
   ["Tribes and talk", addSocialCommands],
+  ["Looks", addLookCommands],
   ["Creatures and breeding", addCreatureCommands],
   ["Settings", addSettingsCommands],
   ["Cluster", addClusterCommands],
