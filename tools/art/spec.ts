@@ -7,6 +7,7 @@ import { ZONE_ARM_L, ZONE_ARM_R, ZONE_FOOT_L, ZONE_FOOT_R, ZONE_HAND_L, ZONE_HAN
 import type { TextureRole } from "../../shared/pack/texture.ts";
 import type { PackRig } from "../../shared/pack/pack.ts";
 import type { SourceMesh } from "../pack/write.ts";
+import type { ScriptedBody } from "../pack/body.ts";
 import type { ClipSpec } from "../pack/anim.ts";
 
 export type AssetSpec = CreatureAsset | PiecesAsset | HumanClipsAsset | HumanBodiesAsset | SkyAsset | WaterAsset | DetailsAsset;
@@ -501,6 +502,13 @@ export interface HumanBodiesAsset {
   readonly makehuman?: { readonly triangles: readonly number[]; readonly skin: readonly [string, string]; readonly eyes: string; readonly brows: string };
   /** The material each source material is drawn with, by the source's name for it and the name `materials` gives it. */
   readonly dressed: Readonly<Record<string, string>>;
+  /**
+   * Garment cuts made by script on each cooked MakeHuman body (assets/source/core/humans/garments/): each a mesh of its
+   * own, drawn with the material `materials` names.
+   */
+  readonly garments?: {
+    readonly make: (meshes: readonly SourceMesh[], id: string, rest: ArrayLike<number>) => readonly { readonly id: string; readonly material: string; readonly body: ScriptedBody; readonly triangles: readonly number[]; readonly flat?: number; readonly lines: readonly string[] }[];
+  };
   /** In the order of SEX_IDS. `outfits` is how its outfit files and textures are named. */
   readonly bodies: readonly { readonly file: string; readonly material: string; readonly texture: string; readonly outfits: string }[];
   /** Each body's joint rests, in the order of SEX_IDS. The cook writes these and refuses a body whose joints sit more than 3 mm off. */
