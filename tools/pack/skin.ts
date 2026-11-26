@@ -52,7 +52,7 @@ interface Part {
 }
 
 /** The human bone each source joint moves, by node index. */
-function boneOfJoints(g: Gltf): Map<number, number> {
+export function boneOfJoints(g: Gltf): Map<number, number> {
   const nodes = g.json.nodes ?? [];
   const parent = nodeParents(g);
   const direct = new Map<number, number>();
@@ -82,6 +82,21 @@ function boneOfJoints(g: Gltf): Map<number, number> {
     }
   });
   return out;
+}
+
+/**
+ * The one bone a vertex follows, from what its joints weigh on each human bone (`sum`, by bone). The bones before the
+ * fingertips are chosen among first, each finger weighed whole, so splitting a finger cannot let a weaker hand or
+ * forearm branch win and change ordinary deformation or slot classification. `sum` is not changed.
+ */
+export function ownBone(sum: ArrayLike<number>): number {
+  const tipL = sum[B_FINGERTIPS_L]!, tipR = sum[B_FINGERTIPS_R]!;
+  const weigh = (b: number): number => sum[b]! + (b === B_FINGERS_L ? tipL : b === B_FINGERS_R ? tipR : 0);
+  let best = 0;
+  for (let b = 1; b < B_FINGERTIPS_L; b++) if (weigh(b) > weigh(best)) best = b;
+  if (best === B_FINGERS_L && tipL > sum[B_FINGERS_L]!) return B_FINGERTIPS_L;
+  if (best === B_FINGERS_R && tipR > sum[B_FINGERS_R]!) return B_FINGERTIPS_R;
+  return best;
 }
 
 /** The source's joint rest positions, scaled, including the appended distal-finger pivots. */
@@ -168,15 +183,8 @@ export function convertBody(sources: Gltf | readonly Gltf[], opts: BodyOptions):
           if (b !== undefined) sum[b]! += w;
           if (w > weights[v * 4 + top]!) top = k;
         }
-        // First choose among the bones before the fingertips, each finger weighed whole. Splitting the finger must not
-        // let a weaker hand/forearm branch win and change ordinary deformation or slot classification.
-        const tipL = sum[B_FINGERTIPS_L]!, tipR = sum[B_FINGERTIPS_R]!;
-        sum[B_FINGERS_L]! += tipL; sum[B_FINGERS_R]! += tipR;
-        let best = 0;
-        for (let b = 1; b < B_FINGERTIPS_L; b++) if (sum[b]! > sum[best]!) best = b;
-        const whole = best;
-        if (best === B_FINGERS_L && tipL > sum[B_FINGERS_L]! - tipL) best = B_FINGERTIPS_L;
-        if (best === B_FINGERS_R && tipR > sum[B_FINGERS_R]! - tipR) best = B_FINGERTIPS_R;
+        const best = ownBone(sum);
+        const whole = best === B_FINGERTIPS_L ? B_FINGERS_L : best === B_FINGERTIPS_R ? B_FINGERS_R : best;
         bone[v] = best;
         const m = bind[joints[v * 4 + top]!]!;
         const x = pos[v * 3]!, y = pos[v * 3 + 1]!, z = pos[v * 3 + 2]!;

@@ -241,6 +241,8 @@ export function splitPack(whole: Uint8Array, name: string, opts: SplitOptions = 
       }
       const sections = m.lods[k]!.sections;
       if (sections) level.sections = sections;
+      const zones = m.lods[k]!.zones;
+      if (zones) level.zones = zones;
       return level;
     });
     return out;

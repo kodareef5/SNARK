@@ -3,17 +3,32 @@
 
 import { meridian } from "./meridian/model.ts";
 import { RIGS } from "./rigs.ts";
-import type { HumanBodiesAsset } from "../../../../../tools/art/spec.ts";
+import type { HumanBodiesAsset, MaterialSpec } from "../../../../../tools/art/spec.ts";
+
+/** A material skin/paint.ts painted, by its name there: base colour and normal at 2,048, the packed map at 1,024, masks at 512. */
+const painted = (name: string, file: string, mask = 512): Record<string, MaterialSpec> => ({
+  [name]: { base: `skin/${file}-base.png`, normal: `skin/${file}-normal.png`, packed: `skin/${file}-orm.png`, regions: { mask: `skin/${file}-mask.png`, mask2: `skin/${file}-mask2.png` }, tops: { mask } },
+});
 
 export default {
   kind: "human-bodies",
   raw: "quaternius",
   tailored: { material: "meridian", indicatorEmission: 1.05, visor: true, exhaust: true, make: meridian },
-  materials: { meridian: {
-    base: "meridian/finish.png", normal: "meridian/normal.png", packed: "meridian/orm.png",
-    regions: "meridian/dye.png", tiles: 0.65, tops: { mask: 512 },
-  } },
-  triangles: { body: [4400, 1500, 420], hair: [420, 150, 48], armor: [900, 320, 100] },
+  materials: {
+    meridian: {
+      base: "meridian/finish.png", normal: "meridian/normal.png", packed: "meridian/orm.png",
+      regions: "meridian/dye.png", tiles: 0.65, tops: { mask: 512 },
+    },
+    // Painted by skin/paint.ts from the base colours the packs came with.
+    ...painted("skin_m", "skin-m"), ...painted("skin_f", "skin-f"), ...painted("eyes", "eyes", 128), ...painted("hair_1", "hair-1"), ...painted("hair_2", "hair-2"),
+    ...painted("cloth", "cloth"), ...painted("hide", "hide"), ...painted("regular_m", "regular-m"), ...painted("regular_f", "regular-f"),
+  },
+  dressed: {
+    MI_Superhero_Male: "skin_m", MI_Superhero_Female: "skin_f", MI_Eyes: "eyes", MI_Hair_1: "hair_1", MI_Hair_2: "hair_2",
+    MI_Peasant: "cloth", MI_Ranger: "hide", MI_Regular_Male: "regular_m", MI_Regular_Female: "regular_f",
+  },
+  triangles: { body: [16000, 4000, 1500, 420], hair: [1400, 420, 150, 48], armor: [9000, 3000, 1500, 480], tailored: [4400, 1500, 420] },
+  flat: 2,
   bodies: [
     { file: "base-characters/Superhero_Male_FullBody.gltf", material: "MI_Superhero_Male", texture: "base-characters/T_Superhero_Male_Ligh.png", outfits: "Male" },
     { file: "base-characters/Superhero_Female_FullBody.gltf", material: "MI_Superhero_Female", texture: "base-characters/T_Superhero_Female_Light_BaseColor.png", outfits: "Female" },

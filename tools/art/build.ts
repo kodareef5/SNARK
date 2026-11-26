@@ -305,11 +305,9 @@ export function buildAsset(asset: Asset): Built {
       out.warnings.push(...made.warnings);
       for (const c of made.clips) out.lines.push(`${c.id.padEnd(22)} ${String(c.frames).padStart(4)} frames${c.loop ? "  loop" : ""}`);
     } else {
-      const finish = spec.tailored && materialsOf(asset).find(m => m.name === spec.tailored!.material);
-      if (spec.tailored && !finish) throw new Error(`Missing tailored outfit material ${spec.tailored.material}`);
-      const described = finish && describe(finish, stepSize(LAST_STEP), defaultPalette());
-      if (described) out.faults.push(...described.faults);
-      const made = convertBodies(spec, dir, described);
+      const described = new Map(materialsOf(asset).map((m) => [m.name, describe(m, stepSize(LAST_STEP), defaultPalette())]));
+      for (const d of described.values()) out.faults.push(...d.faults);
+      const made = convertBodies(spec, dir, described, defaultPalette());
       out.meshes.push(...made.meshes);
       out.rigs.push(...made.rigs);
       out.warnings.push(...made.warnings);

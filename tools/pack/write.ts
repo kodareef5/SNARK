@@ -3,7 +3,7 @@
 import type { Clip } from "../../shared/anim/clip.ts";
 import { B_FOOT_L, B_FOOT_R, B_TOE_L, B_TOE_R, B_LOWER_LEG_L, B_LOWER_LEG_R, HUMAN } from "../../shared/anim/human.ts";
 import {
-  CLIP_ROOT_BYTES, CLIP_ROOT_STEPS, CLIP_ROT_STEPS, MATERIAL_CUTOUT, MOST_SECTIONS, PACK_MAGIC, PACK_VERSION, SKIN_BYTES, VERTEX_BYTES, clipRotBytes, lodSkin, lodSurface, lodVertices, readIndices,
+  CLIP_ROOT_BYTES, CLIP_ROOT_STEPS, CLIP_ROT_STEPS, MATERIAL_CUTOUT, MOST_SECTIONS, MOST_ZONES, PACK_MAGIC, PACK_VERSION, SKIN_BYTES, VERTEX_BYTES, clipRotBytes, lodSkin, lodSurface, lodVertices, readIndices,
   setTexture, textureOf, type Pack, type PackHeader, type PackLod, type PackMaterial, type PackMesh, type PackRig, type PackTexture,
 } from "../../shared/pack/pack.ts";
 import type { PackDetails } from "../../shared/pack/details.ts";
@@ -37,6 +37,8 @@ export interface SourceLod {
   weights?: Float32Array;
   /** Per triangle, which of the mesh's `materials` it is drawn with. Absent where every triangle is drawn with the first. */
   sections?: Uint8Array;
+  /** Per triangle, its skin zone (shared/anim/skin-zones.ts), on a level of any kind. Absent where the level is not cut by zone. */
+  zones?: Uint8Array;
 }
 
 export interface SourceMesh {
@@ -142,21 +144,35 @@ function pool(meshes: readonly SourceMesh[]): { materials: PackMaterial[]; textu
 }
 
 /**
- * A level's triangles as one run for each material, in the pack's order of materials, and the runs as PackLod lists
- * them. `place` is where the pack has each of the mesh's materials.
+ * A level's triangles as one run for each material, in the pack's order of materials, and within each by skin zone where
+ * the level has zones: the runs as PackLod lists them. `place` is where the pack has each of the mesh's materials; a
+ * flat level has none, and is one run.
  */
-function inSections(lod: SourceLod, place: readonly number[]): { indices: Uint32Array; sections: number[] } {
+function inSections(lod: SourceLod, place: readonly number[] | null): { indices: Uint32Array; sections: number[]; zones: number[] | null; runs: number[] } {
   const n = lod.indices.length / 3;
-  // Counted out by material, each material's triangles in the order they came: a stable sort, at the cost of one pass.
+  const zones = lod.zones ?? null;
+  if (zones && zones.length !== n) throw new Error(`a level has ${n} triangles and ${zones.length} zones`);
+  // Counted out by key, each key's triangles in the order they came: a stable sort, at the cost of one pass.
   const of = new Int32Array(n);
   let most = 0;
-  for (let t = 0; t < n; t++) most = Math.max(most, (of[t] = place[lod.sections?.[t] ?? 0]! + 1));
+  for (let t = 0; t < n; t++) most = Math.max(most, (of[t] = (place ? place[lod.sections?.[t] ?? 0]! : 0) * MOST_ZONES + (zones ? zones[t]! : 0) + 1));
   const start = new Uint32Array(most + 2);
   for (let t = 0; t < n; t++) start[of[t]! + 1]!++;
   const sections: number[] = [];
-  for (let m = 0; m <= most; m++) {
-    if (start[m + 1]! > 0) sections.push(m - 1, start[m]! * 3, start[m + 1]! * 3);
-    start[m + 1]! += start[m]!;
+  const zoned: number[] = [];
+  /** Material, first index and how many, for each run of one key. */
+  const runs: number[] = [];
+  for (let key = 0; key <= most; key++) {
+    const count = start[key + 1]!;
+    if (count > 0) {
+      const [material, zone, first] = [Math.floor((key - 1) / MOST_ZONES), (key - 1) % MOST_ZONES, start[key]! * 3];
+      runs.push(material, first, count * 3);
+      if (zones) zoned.push(zone, first, count * 3);
+      const last = sections.length - 3;
+      if (last >= 0 && sections[last] === material) sections[last + 2]! += count * 3;
+      else sections.push(material, first, count * 3);
+    }
+    start[key + 1]! += start[key]!;
   }
   const indices = new Uint32Array(n * 3);
   const from = lod.indices;
@@ -166,7 +182,7 @@ function inSections(lod: SourceLod, place: readonly number[]): { indices: Uint32
     indices[k + 1] = from[t * 3 + 1]!;
     indices[k + 2] = from[t * 3 + 2]!;
   }
-  return { indices, sections };
+  return { indices, sections, zones: zones ? zoned : null, runs };
 }
 
 /** Small details as a build carries them: the header's numbers, whose atlas offset is set when written, and the atlas. */
@@ -251,10 +267,11 @@ export function buildPack(meshes: SourceMesh[], palette: Uint8Array, clips: read
       }
       if (mesh.skeleton && !lod.bones) throw new Error(`${mesh.id}: a mesh with a skeleton needs a bone for every vertex`);
       // A level drawn with materials has its triangles sorted by material, a cut-out material's best seen first (sprays.ts).
-      // A flat one keeps the order it came in.
+      // A flat one keeps the order it came in. Within either, a level cut by zone goes zone by zone.
       const textured = level < flat ? inSections(lod, place) : null;
-      if (textured) rankSprays(lod.positions, textured.indices, textured.sections, (m) => (materials[m]!.flags & MATERIAL_CUTOUT) !== 0);
-      const indices = textured ? textured.indices : lod.indices;
+      const sorted = textured ?? (lod.zones ? inSections(lod, null) : null);
+      if (textured) rankSprays(lod.positions, textured.indices, textured.runs, (m) => (materials[m]!.flags & MATERIAL_CUTOUT) !== 0);
+      const indices = sorted ? sorted.indices : lod.indices;
       const indexBytes = n > 65535 ? 4 : 2;
       const idx = new Uint8Array(indices.length * indexBytes);
       const iview = new DataView(idx.buffer);
@@ -274,6 +291,7 @@ export function buildPack(meshes: SourceMesh[], palette: Uint8Array, clips: read
         if (skin?.some((w, k) => k % SKIN_BYTES === 4 && w !== 255)) made.skinOffset = append(skin);
         made.sections = textured.sections;
       }
+      if (sorted?.zones) made.zones = sorted.zones;
       out.lods.push(made);
     });
     header.meshes.push(out);
@@ -337,6 +355,10 @@ export function unpackMeshes(pack: Pack): SourceMesh[] {
         bones[v] = verts[v * VERTEX_BYTES + 7]!;
       }
       const out: SourceLod = { positions, colors, indices: readIndices(pack, lod) };
+      if (lod.zones) {
+        const zones = (out.zones = new Uint8Array(lod.indexCount / 3));
+        for (let k = 0; k < lod.zones.length; k += 3) zones.fill(lod.zones[k]!, lod.zones[k + 1]! / 3, (lod.zones[k + 1]! + lod.zones[k + 2]!) / 3);
+      }
       // A rigid mesh's byte says its faces' corners and outer edges, where it says anything (shared/world/city.ts cornerByte).
       if (m.skeleton || bones.some((b) => b !== 0)) out.bones = bones;
       if (level > 0) out.error = lod.error;

@@ -97,6 +97,17 @@ class Heap {
   }
 }
 
+/** A group of zones keeps at least this share of a level's triangles, of the share it has of the finest's. */
+const ZONE_FLOOR = 0.5;
+
+/** For a level whose triangles have zones (SourceLod.zones), how its zones are kept as it is made coarser. */
+export interface ByZone {
+  /** By zone, how much more moving a point of it costs: more keeps it finer. 1 where not given. */
+  readonly weights?: readonly number[];
+  /** By zone, the group it is counted in. Each group keeps at least ZONE_FLOOR of its share of every level. */
+  readonly groups?: readonly number[];
+}
+
 export interface Simplified {
   lod: SourceLod;
   /**
@@ -112,8 +123,8 @@ export interface Simplified {
  * left behind. With `holdParts`, each separate part keeps its extent and the edges of its sheets as a border is kept,
  * so it shrinks or goes by what that costs (see collapsed()).
  */
-export function simplify(fine: SourceLod, targets: readonly number[], preserveBones: readonly number[] = [], holdParts = false): Simplified[] {
-  return collapsed(fine, targets, false, preserveBones, holdParts);
+export function simplify(fine: SourceLod, targets: readonly number[], preserveBones: readonly number[] = [], holdParts = false, byZone: ByZone = {}): Simplified[] {
+  return collapsed(fine, targets, false, preserveBones, holdParts, byZone);
 }
 
 /**
@@ -122,12 +133,12 @@ export function simplify(fine: SourceLod, targets: readonly number[], preserveBo
  * than STRETCH. It costs more the further it slides the picture over the surface, and the further its new edges reach
  * across changing bone weights, so the loops of edges at a joint are the last to go.
  */
-export function simplifySurface(fine: SourceLod, targets: readonly number[], preserveBones: readonly number[] = []): Simplified[] {
+export function simplifySurface(fine: SourceLod, targets: readonly number[], preserveBones: readonly number[] = [], byZone: ByZone = {}): Simplified[] {
   if (!fine.uvs || !fine.normals) throw new Error("a level keeps its surface only if it has texture coordinates and normals");
-  return collapsed(fine, targets, true, preserveBones);
+  return collapsed(fine, targets, true, preserveBones, false, byZone);
 }
 
-function collapsed(fine: SourceLod, targets: readonly number[], textured: boolean, preserveBones: readonly number[], holdParts = false): Simplified[] {
+function collapsed(fine: SourceLod, targets: readonly number[], textured: boolean, preserveBones: readonly number[], holdParts = false, byZone: ByZone = {}): Simplified[] {
   const { joints, weights, tangents } = fine;
   const uvs = fine.uvs ?? new Float32Array(0);
   const normals = fine.normals ?? new Float32Array(0);
@@ -188,8 +199,8 @@ function collapsed(fine: SourceLod, targets: readonly number[], textured: boolea
   const wedges: number[] = [];
   const source: number[] = [];
   const wedgeIds = new Map<string, number>();
-  const wedge = (v: number, point: number, section: number): number => {
-    const key = `${point},${section},${uvs.subarray(v * 2, v * 2 + 2)},${normals.subarray(v * 3, v * 3 + 3)},${tangents ? tangents.subarray(v * 4, v * 4 + 4) : ""}`;
+  const wedge = (v: number, point: number, section: number, zone: number): number => {
+    const key = `${point},${section},${zone},${uvs.subarray(v * 2, v * 2 + 2)},${normals.subarray(v * 3, v * 3 + 3)},${tangents ? tangents.subarray(v * 4, v * 4 + 4) : ""}`;
     let id = wedgeIds.get(key);
     if (id === undefined) {
       id = source.length;
@@ -201,16 +212,21 @@ function collapsed(fine: SourceLod, targets: readonly number[], textured: boolea
   const corners: number[] = [];
   const colors: number[] = [];
   const sections: number[] = [];
+  /** A zone's border is held as a material's is, so a part drawn without a zone shows no crack. */
+  const zones = fine.zones;
+  const faceZones: number[] = [];
   for (let t = 0; t + 2 < fine.indices.length; t += 3) {
     const [a, b, c] = [weld(fine.indices[t]!), weld(fine.indices[t + 1]!), weld(fine.indices[t + 2]!)];
     if (a === b || b === c || a === c) continue;
     corners.push(a, b, c);
     // A triangle is drawn in the colour of its last vertex.
     colors.push(fine.colors[fine.indices[t + 2]!]!);
+    if (zones) faceZones.push(zones[t / 3]!);
     if (!textured) continue;
     const section = fine.sections?.[t / 3] ?? 0;
     sections.push(section);
-    wedges.push(wedge(fine.indices[t]!, a, section), wedge(fine.indices[t + 1]!, b, section), wedge(fine.indices[t + 2]!, c, section));
+    const zone = zones ? zones[t / 3]! : 0;
+    wedges.push(wedge(fine.indices[t]!, a, section, zone), wedge(fine.indices[t + 1]!, b, section, zone), wedge(fine.indices[t + 2]!, c, section, zone));
   }
   const faces = colors.length;
   const alive = new Uint8Array(faces).fill(1);
@@ -333,7 +349,7 @@ function collapsed(fine: SourceLod, targets: readonly number[], textured: boolea
     }
   }
   /** Whether faces `f` and `g` are one piece across the edge they share at `point`: one colour, or with a surface one wedge. */
-  const joined = (f: number, g: number, point: number): boolean => (textured ? wedges[f * 3 + cornerAt(f, point)] === wedges[g * 3 + cornerAt(g, point)] : colors[f] === colors[g]);
+  const joined = (f: number, g: number, point: number): boolean => (textured ? wedges[f * 3 + cornerAt(f, point)] === wedges[g * 3 + cornerAt(g, point)] : colors[f] === colors[g] && (!zones || faceZones[f] === faceZones[g]));
   const other = [0, 0, 0];
   /** Whether faces `f` and `g` turn back on each other further than FOLD, as at the edge of a sheet or a fin. */
   const folded = (f: number, g: number): boolean => {
@@ -440,12 +456,33 @@ function collapsed(fine: SourceLod, targets: readonly number[], textured: boolea
     return SLIDE * slide + BEND * bend;
   };
 
+  /** How much more moving each point costs: the most that a zone of a triangle at it weighs. */
+  const worth = new Float64Array(bone.length).fill(1);
+  if (zones && byZone.weights) {
+    worth.fill(0);
+    for (let f = 0; f < faces; f++) for (let k = 0; k < 3; k++) worth[corners[f * 3 + k]!] = Math.max(worth[corners[f * 3 + k]!]!, byZone.weights[faceZones[f]!] ?? 1);
+  }
+  /** Each face's group of zones, the faces each group has left, and the fewest it may keep at this target. */
+  const group = zones && byZone.groups ? faceZones.map((z) => byZone.groups![z] ?? 0) : null;
+  const groupLeft: number[] = [];
+  if (group) for (const g of group) groupLeft[g] = (groupLeft[g] ?? 0) + 1;
+  const groupFine = [...groupLeft];
+  const groupFloor: number[] = [];
+  const dying: number[] = [];
+  /** Whether moving `from` onto `to` would take a group of zones under its floor. */
+  const starves = (from: number, to: number): boolean => {
+    if (!group) return false;
+    dying.length = 0;
+    for (const f of around[from]!) if (alive[f] && cornerAt(f, to) >= 0) dying[group[f]!] = (dying[group[f]!] ?? 0) + 1;
+    return dying.some((n, g) => n > 0 && groupLeft[g]! - n < groupFloor[g]!);
+  };
   const version = new Uint32Array(bone.length);
   const heap = new Heap();
   const price = (from: number, to: number): void => {
     if (locked[from]) return;
     let cost = Math.max(0, errorAt(quadrics[from]!, quadrics[to]!, pos[to * 3]!, pos[to * 3 + 1]!, pos[to * 3 + 2]!));
     if (textured) cost += strain(from, to);
+    cost *= worth[from]!;
     if (cost < Infinity) heap.push({ cost, from, to, stamp: version[from]! + version[to]! });
   };
   const neighbours = (v: number): Set<number> => {
@@ -527,6 +564,7 @@ function collapsed(fine: SourceLod, targets: readonly number[], textured: boolea
     }
     const lod: SourceLod = { positions: Float32Array.from(positions), colors: Uint8Array.from(outColors), indices: Uint32Array.from(indices) };
     if (fine.bones) lod.bones = Uint8Array.from(bones);
+    if (zones) lod.zones = Uint8Array.from(faceZones.filter((_, f) => alive[f]));
     return lod;
   };
   /** With a surface, a vertex is a wedge that is still in use, with all that its vertex of `fine` has. */
@@ -553,16 +591,18 @@ function collapsed(fine: SourceLod, targets: readonly number[], textured: boolea
     if (joints) lod.joints = bytes(joints, 4);
     if (weights) lod.weights = floats(weights, 4);
     if (fine.sections) lod.sections = Uint8Array.from(drawn);
+    if (zones) lod.zones = Uint8Array.from(faceZones.filter((_, f) => alive[f]));
     return lod;
   };
 
   const out: Simplified[] = [];
   let dearest = 0;
   for (const target of targets) {
+    groupFine.forEach((n, g) => (groupFloor[g] = Math.floor(ZONE_FLOOR * target * (n / faces))));
     while (left > target) {
       const m = heap.pop();
       if (!m) break;
-      if (m.stamp !== version[m.from]! + version[m.to]! || turns(m.from, m.to) || (holdParts && opens(m.from, m.to))) continue;
+      if (m.stamp !== version[m.from]! + version[m.to]! || turns(m.from, m.to) || (holdParts && opens(m.from, m.to)) || starves(m.from, m.to)) continue;
       const part = component[m.from]!;
       const delta = closed[part] && initialVolume[part] !== 0 ? volumeChange(m.from, m.to) : 0;
       if (closed[part] && (volume[part]! + delta) * Math.sign(initialVolume[part]!) < -Math.abs(initialVolume[part]!) * 1e-12) continue;
@@ -579,6 +619,7 @@ function collapsed(fine: SourceLod, targets: readonly number[], textured: boolea
         if (corners[f * 3] === m.to || corners[f * 3 + 1] === m.to || corners[f * 3 + 2] === m.to) {
           alive[f] = 0;
           left--;
+          if (group) groupLeft[group[f]!]!--;
           continue;
         }
         corners[f * 3 + k] = m.to;
@@ -634,6 +675,8 @@ export interface LevelPlan {
   preserveBones?: readonly number[];
   /** Whether the flat levels hold each part's extent and the edges of its sheets: simplify()'s `holdParts`. */
   holdParts?: boolean;
+  /** How a level's zones are kept, where its triangles have zones. */
+  byZone?: ByZone;
   distanceLods?: readonly SourceLod[];
 }
 
@@ -653,7 +696,7 @@ export function withSurfaceLevels(mesh: SourceMesh, plan: LevelPlan): SourceMesh
   const colours = baker(fine, mesh.materials ?? [], plan.maps, plan.palette);
   const worth = (made: SourceLod, last: SourceLod): boolean => made.indices.length <= last.indices.length * 0.8;
   const surface = [fine];
-  for (const made of simplifySurface(fine, plan.budgets.slice(0, plan.flat - 1), plan.preserveBones)) {
+  for (const made of simplifySurface(fine, plan.budgets.slice(0, plan.flat - 1), plan.preserveBones, plan.byZone)) {
     if (!worth(made.lod, surface[surface.length - 1]!)) break;
     surface.push(made.lod);
   }
@@ -664,7 +707,7 @@ export function withSurfaceLevels(mesh: SourceMesh, plan: LevelPlan): SourceMesh
   const generated = budgets.length - authored.length;
   if (generated < 0) throw new Error(`${mesh.id}: more authored flat levels than distance budgets`);
   if (generated > 0) {
-    for (const made of simplify(flatOf(surface[surface.length - 1]!, flat[flat.length - 1]!), budgets.slice(0, generated), plan.preserveBones, plan.holdParts)) {
+    for (const made of simplify(flatOf(surface[surface.length - 1]!, flat[flat.length - 1]!), budgets.slice(0, generated), plan.preserveBones, plan.holdParts, plan.byZone)) {
       if (!worth(made.lod, lods[lods.length - 1]!)) break;
       lods.push(made.lod);
     }

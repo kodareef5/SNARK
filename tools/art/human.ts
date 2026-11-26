@@ -1,7 +1,7 @@
 // Converts the humanoid's clips and bodies from the packs in assets/raw. What to convert is in each asset's asset.ts.
 
 import { join } from "node:path";
-import { BEARD_STYLES, BODY_SCALES, HAIR_STYLES, REGION_CLOTH, REGION_EYE, REGION_HAIR, REGION_MAIN, REGION_SECOND, REGION_SKIN, REGION_TRIM, SEX_IDS } from "../../shared/anim/look.ts";
+import { BEARD_STYLES, BODY_SCALES, HAIR_STYLES, REGION_CLOTH, REGION_EYE, REGION_HAIR, REGION_SKIN, SEX_IDS } from "../../shared/anim/look.ts";
 import type { Clip } from "../../shared/anim/clip.ts";
 import { HUMAN, HUMAN_BONES } from "../../shared/anim/human.ts";
 import { MATERIAL_EXHAUST, MATERIAL_INDICATOR, MATERIAL_LENS, parsePack, type PackRig } from "../../shared/pack/pack.ts";
@@ -9,6 +9,7 @@ import { defaultPalette } from "../../shared/pack/palette.ts";
 import { convertHumanClips } from "../pack/anim.ts";
 import { readGltf, type Gltf } from "../pack/gltf.ts";
 import { readPng } from "../pack/png-read.ts";
+import { cookBody, type CookOptions } from "../pack/body.ts";
 import { convertBody, rigOf, type ColorRule, type MaterialRule } from "../pack/skin.ts";
 import { buildPack, unpackMeshes, type SourceMesh } from "../pack/write.ts";
 import { calibrateHand } from "../pack/grips.ts";
@@ -32,14 +33,6 @@ const eye: ColorRule = (r, g, b) => {
   return light < 40 ? BLACK : REGION_EYE;
 };
 const hair: MaterialRule = { image: null, color: () => REGION_HAIR };
-/** Three colour regions by lightness. The worn item supplies the colours. */
-const threeTones = (dark: number, light: number): ColorRule => (r, g, b) => {
-  const lum = (r + g + b) / 3;
-  return lum < dark ? REGION_SECOND : lum < light ? REGION_MAIN : REGION_TRIM;
-};
-/** Share of an outfit's surface that is its second colour, and the share that is not its trim. */
-const SECOND_SHARE = 0.28;
-const TRIM_FROM = 0.9;
 
 /** How far a body's own joint may sit from the rig it is fitted to, in metres. */
 export const FIT_REACH = 0.003;
@@ -67,8 +60,21 @@ export function convertClipLibraries(spec: HumanClipsAsset): { clips: Clip[]; wa
   return { clips, warnings };
 }
 
-/** `dir` is a folder for what Blender writes. */
-export function convertBodies(spec: HumanBodiesAsset, dir: string, finish?: Described): { meshes: SourceMesh[]; rigs: PackRig[]; warnings: string[] } {
+/** The source material names the primitives of `sources` are drawn with, in the order first met. */
+function sourceMaterials(sources: readonly Gltf[]): string[] {
+  const out: string[] = [];
+  for (const g of sources) for (const mesh of g.json.meshes ?? []) for (const prim of mesh.primitives) {
+    const name = g.json.materials?.[prim.material ?? -1]?.name ?? "";
+    if (!out.includes(name)) out.push(name);
+  }
+  return out;
+}
+
+/**
+ * `dir` is a folder for what Blender writes. `described` are the asset's materials by the name asset.ts gives them, the
+ * tailored outfit's among them.
+ */
+export function convertBodies(spec: HumanBodiesAsset, dir: string, described: ReadonlyMap<string, Described>, palette: Uint8Array): { meshes: SourceMesh[]; rigs: PackRig[]; warnings: string[] } {
   const raw = join(RAW, spec.raw);
   const meshes: SourceMesh[] = [];
   const rigs: PackRig[] = [];
@@ -85,26 +91,54 @@ export function convertBodies(spec: HumanBodiesAsset, dir: string, finish?: Desc
     }
     return gltf;
   };
-  const eyes: MaterialRule = { image: readPng(join(raw, spec.eyes)), color: eye };
+  const read = new Map<string, Gltf>();
+  const source = (file: string): Gltf => {
+    let gltf = read.get(file);
+    if (!gltf) read.set(file, (gltf = readGltf(join(raw, file))));
+    return gltf;
+  };
+  /** The cook's sections and materials for what `sources` are drawn with: each source material's own, as `dressed` names it. */
+  const dressedFor = (sources: readonly Gltf[], what: string): Pick<CookOptions, "sections" | "materials"> => {
+    const names: string[] = [];
+    const sections: Record<string, number> = {};
+    for (const m of sourceMaterials(sources)) {
+      const name = spec.dressed[m];
+      if (name === undefined) continue;
+      if (!names.includes(name)) names.push(name);
+      sections[m] = names.indexOf(name);
+    }
+    const materials = names.map((name) => {
+      const d = described.get(name);
+      if (!d) throw new Error(`${what}: asset.ts has no material "${name}"`);
+      return { material: d.material, textures: d.textures, maps: d.maps };
+    });
+    return { sections, materials };
+  };
+  const finish = spec.tailored ? described.get(spec.tailored.material) : undefined;
+  if (spec.tailored && !finish) throw new Error(`human-bodies: no material "${spec.tailored.material}" for the tailored outfit`);
   if (spec.rigs.length !== spec.bodies.length) throw new Error(`human-bodies: ${spec.bodies.length} bodies and ${spec.rigs.length} rigs`);
   spec.bodies.forEach((b, sex) => {
     const scale = BODY_SCALES[sex]!;
     const id = `core:human_${SEX_IDS[sex]}`;
     const rig = `human_${SEX_IDS[sex]}`;
-    const source = reduce(b.file, spec.triangles.body);
-    // The body is moved bone by bone onto the frozen rig, as its hair and armor are below.
-    const body = convertBody(source, {
-      id,
-      rig,
-      scale,
-      materials: { [b.material]: { image: readPng(join(raw, b.texture)), color: skin }, MI_Eyes: eyes, MI_Hair_1: hair, MI_Hair_2: hair },
-      onto: fittedRest(rigOf(source, rig, scale), spec.rigs[sex]!),
-    });
+    const file = source(b.file);
+    // The body is moved onto the frozen rig, as its hair and armor are below.
+    const onto = fittedRest(rigOf(file, rig, scale), spec.rigs[sex]!);
+    const body = cookBody(file, { id, rig, scale, onto, zoned: true, triangles: spec.triangles.body, flat: spec.flat, palette, ...dressedFor([file], id) });
     warn(id, body.warnings);
     meshes.push(...body.meshes);
     rigs.push(body.rig);
     if (spec.tailored && finish) {
-      for (const mesh of spec.tailored.make(body.meshes, body.rig)) {
+      // The tailored outfit is cut from the flat one-bone body it was designed on, so its counts and look stay its own.
+      const eyes: MaterialRule = { image: readPng(join(raw, spec.eyes)), color: eye };
+      const reducedBody = reduce(b.file, spec.triangles.tailored);
+      const plain = convertBody(reducedBody, {
+        id, rig, scale,
+        materials: { [b.material]: { image: readPng(join(raw, b.texture)), color: skin }, MI_Eyes: eyes, MI_Hair_1: hair, MI_Hair_2: hair },
+        onto: fittedRest(rigOf(reducedBody, rig, scale), spec.rigs[sex]!),
+      });
+      warn(`${id} tailored`, plain.warnings);
+      for (const mesh of spec.tailored.make(plain.meshes, plain.rig)) {
         mesh.materials = [finish.material];
         if (spec.tailored.indicatorEmission) mesh.materials.push({ ...finish.material, id: finish.material.id + "/indicators", flags: finish.material.flags | MATERIAL_INDICATOR, emissive: spec.tailored.indicatorEmission });
         if (spec.tailored.visor) {
@@ -122,45 +156,31 @@ export function convertBodies(spec: HumanBodiesAsset, dir: string, finish?: Desc
     for (const [kind, styles] of [["hair", HAIR_STYLES], ["beard", BEARD_STYLES]] as const) {
       for (const style of styles) {
         if (style.source === null) continue;
-        const source = (sex === 1 && style.female) || style.source;
-        const piece = convertBody(reduce(`${spec.hair}/${source}.gltf`, spec.triangles.hair), {
-          id,
-          rig,
-          scale,
-          materials: { MI_Hair_1: hair, MI_Hair_2: hair },
-          whole: `${id}/${kind}/${style.id}`,
-          onto: body.rig.rest,
-        });
-        warn(`${id}/${kind}/${style.id}`, piece.warnings);
-        meshes.push(...piece.meshes);
+        const name = (sex === 1 && style.female) || style.source;
+        const piece = source(`${spec.hair}/${name}.gltf`);
+        const whole = `${id}/${kind}/${style.id}`;
+        const made = cookBody(piece, { id, rig, scale, whole, onto: body.rig.rest, triangles: spec.triangles.hair, flat: spec.flat, palette, ...dressedFor([piece], whole) });
+        warn(whole, made.warnings);
+        meshes.push(...made.meshes);
       }
     }
     // An armor set is an outfit's parts together, cut by body slot and fitted to this body's joints.
     const o = spec.outfits;
-    const skinOf: MaterialRule = { image: readPng(join(raw, o.folder, `T_Regular_${b.outfits}_Dark_BaseColor.png`)), color: skin };
     for (const set of o.sets) {
       const parts = set.parts.flatMap((part) => {
-        const file = o.files.find((f) => f === `${b.outfits}_${part}` || f.startsWith(`${b.outfits}_${part}`));
-        return file ? [reduce(`${o.folder}/${file}.gltf`, spec.triangles.armor)] : [];
+        const name = o.files.find((f) => f === `${b.outfits}_${part}` || f.startsWith(`${b.outfits}_${part}`));
+        return name ? [source(`${o.folder}/${name}.gltf`)] : [];
       });
-      // The first pass samples how light each triangle is. The second cuts the regions at those shares.
-      const image = readPng(join(raw, o.folder, set.texture));
-      const seen: number[] = [];
-      const options = (color: ColorRule) => ({
-        id: `${id}/armor/${set.id}`,
-        rig,
-        scale,
-        onto: body.rig.rest,
-        materials: { MI_Peasant: { image, color }, MI_Ranger: { image, color }, MI_Regular_Male: skinOf, MI_Regular_Female: skinOf },
-      });
-      convertBody(parts, options((r, g, bl) => (seen.push((r + g + bl) / 3), REGION_MAIN)));
-      seen.sort((p, q) => p - q);
-      const at = (share: number): number => seen[Math.floor((seen.length - 1) * share)] ?? 0;
-      const armor = convertBody(parts, options(threeTones(at(SECOND_SHARE), at(TRIM_FROM))));
-      warn(`${id}/armor/${set.id}`, armor.warnings);
-      meshes.push(...armor.meshes);
+      const armor = `${id}/armor/${set.id}`;
+      const made = cookBody(parts, { id: armor, rig, scale, onto: body.rig.rest, triangles: spec.triangles.armor, flat: spec.flat, palette, ...dressedFor(parts, armor) });
+      warn(armor, made.warnings);
+      meshes.push(...made.meshes);
     }
   });
+  // A material is measured on each piece it is cooked on; it spans what the widest measure says, on all of them.
+  const span = new Map<string, number>();
+  for (const m of meshes.flatMap((mesh) => mesh.materials ?? [])) span.set(m.id, Math.max(span.get(m.id) ?? 0, m.span));
+  for (const mesh of meshes) if (mesh.materials) mesh.materials = mesh.materials.map((m) => ({ ...m, span: span.get(m.id)! }));
   // Calibrate the exact positions the native quantizer will ship, once at source build. Ordinary repacks/boot
   // streaming preserve these compact tables and never run the offline search.
   const native = parsePack(buildPack(meshes.filter(m => m.id.endsWith("/hands")), defaultPalette(), [], rigs));

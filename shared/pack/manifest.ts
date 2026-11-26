@@ -15,7 +15,7 @@ import type { ClipSet } from "../anim/clip.ts";
 import type { LandmarkFarRow } from "./far.ts";
 import { joinedRows, type JoinedAt } from "./join.ts";
 import { checkIcons, type ManifestIcons } from "./icons.ts";
-import { CLIP_ROOT_BYTES, MOST_SECTIONS, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, clipRotBytes, decodeClips, decodeUtf8, lodVertices, meshReach, type Pack, type PackClip, type PackMaterial } from "./pack.ts";
+import { CLIP_ROOT_BYTES, MOST_SECTIONS, checkZones, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, clipRotBytes, decodeClips, decodeUtf8, lodVertices, meshReach, type Pack, type PackClip, type PackMaterial } from "./pack.ts";
 import { soundFault, type ManifestSound } from "./sound.ts";
 import { unfilterPart } from "./stored.ts";
 import { ASTC_BLOCKS, STEP0_SIZE, TEXTURE_FORMATS, TEXTURE_HEADER_BYTES, TEXTURE_ROLES, blockOf, stepBytes, stepOf, topIn, type TextureFormat, type TextureRole } from "./texture.ts";
@@ -69,6 +69,8 @@ export interface ManifestLevel {
   surface?: { file: number; at: number };
   /** See PackLod. The materials are indices into the manifest's. */
   sections?: number[];
+  /** See PackLod. */
+  zones?: number[];
 }
 
 /** A texture, and where each variant that was built keeps it. */
@@ -246,6 +248,7 @@ export function describePack(pack: Pack, file: { name: string; bytes: number }, 
       });
       const level: ManifestLevel = { file: 0, at: pack.blobAt + lod.indexOffset, verts: lod.vertexCount, tris: lod.indexCount / 3, index: lod.indexBytes, error: lod.error, parts };
       if (lod.sections) level.sections = lod.sections;
+      if (lod.zones) level.zones = lod.zones;
       out.levels.push(level);
     }
     return out;
@@ -305,6 +308,7 @@ function checkMesh(m: Manifest, mesh: ManifestMesh, blob: number): void {
       next += runs[k + 2]!;
     }
     if (parts.length > 1 ? runs.length === 0 || runs.length > MOST_SECTIONS * 3 || next !== level.tris * 3 : runs.length > 0) throw new Error(`manifest: the sections of a level of ${mesh.id} do not cover it`);
+    if (level.zones !== undefined) checkZones(level.zones, level.sections, level.tris * 3, mesh.id, "manifest");
   });
 }
 

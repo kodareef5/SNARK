@@ -73,7 +73,16 @@ export interface PackLod {
    * index, how many. The runs follow one another and cover the level. Absent in a flat level.
    */
   sections?: number[];
+  /**
+   * The runs of indices of each skin zone (shared/anim/skin-zones.ts), three numbers a run: zone, first index, how many.
+   * Within each section a level's triangles go by zone, so a zone has one run a section. The runs follow one another and
+   * cover the level. Absent where the level is not cut by zone.
+   */
+  zones?: number[];
 }
+
+/** The most skin zones a level may name: a part's hide mask is a 32-bit word. */
+export const MOST_ZONES = 32;
 
 /** PackMaterial.flags. A cut-out material shows nothing where the base colour's alpha is under `cutoff`. */
 export const MATERIAL_TWO_SIDED = 1;
@@ -293,6 +302,7 @@ export function parsePack(file: Uint8Array): Pack {
       if ((lod.surfaceOffset !== undefined) !== level < (m.flat ?? 0)) throw new Error(`pack: mesh ${m.id} does not turn flat where it says`);
     });
     for (const lod of m.lods) {
+      if (lod.zones !== undefined) checkZones(lod.zones, lod.sections, lod.indexCount, m.id);
       if (lod.vertexOffset + lod.vertexCount * VERTEX_BYTES > blob.length || lod.indexOffset + lod.indexCount * lod.indexBytes > blob.length) {
         throw new Error(`pack: mesh ${m.id} points outside the file`);
       }
@@ -355,6 +365,21 @@ export function parsePack(file: Uint8Array): Pack {
     }
   }
   return { header, blob, blobAt: 12 + jsonLength, palette: blob.subarray(header.paletteOffset, header.paletteOffset + 1024), meshIndex, clips: decodeClips(header.clips, blob) };
+}
+
+/** Throws unless `zones` are runs that follow one another, cover `indexCount` indices and stay each within one of `sections`. */
+export function checkZones(zones: readonly number[], sections: readonly number[] | undefined, indexCount: number, id: string, of = "pack"): void {
+  const ends: number[] = [];
+  for (let k = 0; k + 2 < (sections?.length ?? 0); k += 3) ends.push(sections![k + 1]! + sections![k + 2]!);
+  let next = 0;
+  for (let k = 0; k < zones.length; k += 3) {
+    const [zone, first, count] = [zones[k]!, zones[k + 1]!, zones[k + 2]!];
+    if (!(Number.isInteger(zone) && zone >= 0 && zone < MOST_ZONES) || first !== next || !(count > 0 && count % 3 === 0)) throw new Error(`${of}: a level of ${id} has a zone that does not fit`);
+    next += count;
+    // A run that ends inside a section ends where the next run of that section begins, so no run spans two sections.
+    for (const end of ends) if (first < end && next > end) throw new Error(`${of}: a zone of a level of ${id} runs across two sections`);
+  }
+  if (zones.length % 3 !== 0 || next !== indexCount) throw new Error(`${of}: the zones of a level of ${id} do not cover it`);
 }
 
 const unzig = (z: number): number => (z >>> 1) ^ -(z & 1);

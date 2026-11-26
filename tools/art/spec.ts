@@ -480,8 +480,16 @@ export interface HumanBodiesAsset {
   readonly kind: "human-bodies";
   /** A folder under assets/raw that the paths below are in. */
   readonly raw: string;
-  /** Triangles at each level, for a whole body, a hair or beard, and one part of an outfit. */
-  readonly triangles: { readonly body: readonly number[]; readonly hair: readonly number[]; readonly armor: readonly number[] };
+  /**
+   * Triangles at each level, the finest first, for a whole body, a hair or beard, and a whole armor set. A source with
+   * more than the finest's is brought down to it. The levels before `flat` keep their surface. `tailored` is the body
+   * the tailored outfit is cut from: one bone a vertex, flat, made by Blender (tools/blender/reduce.py), so that the
+   * outfit, which copies every one of its triangles, keeps its counts.
+   */
+  readonly triangles: { readonly body: readonly number[]; readonly hair: readonly number[]; readonly armor: readonly number[]; readonly tailored: readonly number[] };
+  readonly flat: number;
+  /** The material each source material is drawn with, by the source's name for it and the name `materials` gives it. */
+  readonly dressed: Readonly<Record<string, string>>;
   /** In the order of SEX_IDS. `outfits` is how its outfit files and textures are named. */
   readonly bodies: readonly { readonly file: string; readonly material: string; readonly texture: string; readonly outfits: string }[];
   /** Each body's joint rests, in the order of SEX_IDS. The cook writes these and refuses a body whose joints sit more than 3 mm off. */

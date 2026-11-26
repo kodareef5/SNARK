@@ -22,6 +22,8 @@ export class AssetTable {
   readonly bodyError: readonly number[][];
   /** The sections of each level of each mesh: a material, its first index and how many indices, for each. None on a flat level. */
   readonly sections: readonly (readonly number[])[][];
+  /** The skin zones of each level of each mesh: a zone, its first index and how many indices, for each (see PackLod). None where a level is not cut by zone. */
+  readonly zones: readonly (readonly number[])[][];
   /** The first level of each mesh that is flat. Every level from it on is drawn in palette colours on any tier. */
   readonly flat: Uint8Array;
   /** The materials that sections name. */
@@ -58,6 +60,7 @@ export class AssetTable {
     this.error = meshes.map((m) => m.levels.map(() => 0));
     this.bodyError = meshes.map((m, i) => BODY_LEVEL_TOLERANCE[m.id] ? m.levels.map(() => 0) : this.error[i]!);
     this.sections = meshes.map((m) => m.levels.map(() => NONE));
+    this.zones = meshes.map((m) => m.levels.map(() => NONE));
     this.flat = new Uint8Array(this.count);
     this.materials = manifest.materials ?? [];
     this.radius = new Float32Array(this.count);
@@ -85,6 +88,7 @@ export class AssetTable {
       this.error[mesh]![k] = l.error;
       if (tolerance) this.bodyError[mesh]![k] = bodyLevelError(tolerance, k, l.error);
       this.sections[mesh]![k] = l.sections ?? [];
+      this.zones[mesh]![k] = l.zones ?? NONE;
     });
     this.flat[mesh] = m.flat ?? 0;
     this.radius[mesh] = Math.hypot(m.half[0], m.half[1], m.half[2]) + Math.hypot(m.center[0], m.center[1], m.center[2]);
