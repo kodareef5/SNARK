@@ -5,14 +5,14 @@ import { readFileSync } from "node:fs";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { isDock, isMoored } from "../../content/docks.ts";
 import { compileContent, withContent, type Registry } from "../../shared/content/registry.ts";
-import { CHUNK_SIZE, TICK_DT } from "../../shared/coords.ts";
-import { Body, MODE_SWIM, stepBody } from "../../shared/sim/character.ts";
+import { CHUNK_SIZE } from "../../shared/coords.ts";
 import { blankFrame } from "../../shared/world/buildings.ts";
 import { frame, frameOf } from "../../shared/world/frame.ts";
 import { HIT_PREFIX } from "../../shared/world/bends.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 import { bendOf, mapHeightfield, parseMap, placeStatics, staticKinds, type MapFile } from "../../shared/world/mapfile.ts";
 import { Found, StructureStore } from "../../shared/world/structures.ts";
+import { CLEAR, rimOver, squaresByBody, squaresOf, wayOut, type Part, type Squares } from "./way-out.ts";
 
 /** A map opened for the checks: its ground, and its statics set down as a server's. */
 export interface Audited {
@@ -132,20 +132,7 @@ export function twins(w: Audited): Check {
   return { check: "pieces placed twice", gate: true, count, of: s.length, madeBoxesTwice, first };
 }
 
-/** The bodies' numbers a square, row by row from z = 0, and the squares along x and z. */
-function waterGrid(w: Audited): { body: Uint16Array; wx: number; wz: number } | null {
-  const water = w.map.water, dims = w.map.dims;
-  if (!water) return null;
-  const side = water.side, [wx, wz] = [dims.chunksX * side, dims.chunksZ * side];
-  const body = new Uint16Array(wx * wz);
-  for (let c = 0; c < water.block.length; c++) {
-    const from = water.block[c]!;
-    if (from < 0) continue;
-    const cx = c % dims.chunksX, cz = Math.floor(c / dims.chunksX);
-    for (let j = 0; j < side; j++) body.set(water.squares.subarray(from + j * side, from + (j + 1) * side), (cz * side + j) * wx + cx * side);
-  }
-  return { body, wx, wz };
-}
+const waterGrid = (w: Audited): Squares | null => (w.map.water ? squaresOf(w.map.water, w.map.dims) : null);
 
 /**
  * Bodies that go on from a row's last square into the next row's first with no way between the two on the map: a lake
@@ -371,145 +358,55 @@ export interface Swum {
   /** Squares of it with water in them, and the most water over one of their corners. */
   readonly wet: number;
   readonly depth: number;
-  /** Whether a survivor set down at its deepest corner swims. */
+  /** Whether a survivor set down in a part of it swims. */
   readonly swims: boolean;
-  /** Whether it then walks out onto dry ground; null for a body too big to be walked here. */
+  /**
+   * Whether it gets out of every part it swims in, or of every part where it swims in none; null where a part was not
+   * settled and none caught it: too big to search, or a search that ran past its places.
+   */
   readonly out: boolean | null;
-  /** How many other bodies' squares touch its own or theirs: with them it is one water. */
+  /** How many other bodies' squares touch its own or theirs. */
   readonly touches: number;
+  /** Its parts, each walked (way-out.ts). */
+  readonly parts: readonly Part[];
 }
 
-/** The most wet squares of a body whose way out is walked: 10,000 m2 of 2 m squares, a resort.s pool or a pond. */
+/** The most wet squares of a body counted among the pits: 10,000 m2 of 2 m squares, a resort's pool or a pond. */
 const WALKED_SQUARES = 2500;
-/** Ways out tried of each kind, from the best; the ticks a walk to one place may take; the metres past the rim it aims. */
-const WAYS_OUT = 12, OUT_TICKS = 1500, PAST_RIM = 5;
-/** Corners a survivor is set down at to see whether it swims: the deepest, then others as deep. */
-const STARTS = 8;
+
+const swumOf = new WeakMap<Audited, Swum[]>();
 
 /**
- * Each body with water, as the game's own stepper finds it: a survivor set down at one of its deepest corners swims or not by
- * the content's swim depth, and from there walks out: over a stretch of rim two corners wide, toward the lowest corners
- * of its rim, or along the eight winds, until it stands on ground that is no body's water. Bodies that touch are one
- * water: it walks on through the next and over that one's rim.
+ * Each body with water, as the game's own stepper finds it with every piece standing (way-out.ts): a survivor set down
+ * in each of its parts swims or not by the content's swim depth, and from there gets out or does not, by a straight walk
+ * or a search of the stepper's moves, onto dry ground that is no body's and CLEAR metres past its own squares.
  */
 export function bodiesSwum(w: Audited): Swum[] {
+  const had = swumOf.get(w);
+  if (had) return had;
   const g = waterGrid(w), water = w.map.water;
   if (!g || !water) return [];
-  const { body, wx, wz } = g, cell = water.cell, n = water.bodies.length, { hf, structs, reg, sizeX, sizeZ } = w;
-  const wet = new Uint32Array(n + 1), depth = new Float32Array(n + 1), deep = new Float64Array(2 * (n + 1));
-  const rims: number[][] = [];
-  // Bodies whose squares touch are one water: a survivor out of one into the next is out of neither.
+  const { body, wx, wz } = g, n = water.bodies.length, of = squaresByBody(g, n);
   const group = Int32Array.from({ length: n + 1 }, (_, b) => b);
   const root = (b: number): number => { while (group[b] !== b) b = group[b] = group[group[b]!]!; return b; };
   for (let j = 0; j < wz; j++) for (let i = 0; i < wx; i++) {
     const b = body[j * wx + i]!;
     if (b === 0) continue;
     for (const o of [i + 1 < wx ? body[j * wx + i + 1]! : 0, j + 1 < wz ? body[(j + 1) * wx + i]! : 0]) if (o !== 0 && o !== b) group[root(o)] = root(b);
-    const S = water.surface[b]!, corners = [[i, j], [i + 1, j], [i, j + 1], [i + 1, j + 1]].map(([a, c]) => [a! * cell, c! * cell, hf.heightAt(a! * cell, c! * cell)] as const);
-    if (!corners.some(([, , h]) => h < S)) continue;
-    wet[b]!++;
-    for (const [x, z, h] of corners) {
-      if (S - h > depth[b]!) [depth[b], deep[b * 2], deep[b * 2 + 1]] = [S - h, x, z];
-      // A corner out of the water is rim: kept for a body small enough to be walked.
-      if (h >= S && wet[b]! <= WALKED_SQUARES) (rims[b] ??= []).push(h, x, z);
-    }
   }
-  const members = new Map<number, number[]>();
+  const walk = wayOut({ ...w, water }, g), walked: [number, Part[]][] = [];
   for (let b = 1; b <= n; b++) {
-    if (wet[b] === 0) continue;
-    const at = root(b);
-    members.set(at, [...(members.get(at) ?? []), b]);
+    const parts = of[b]!.length > 0 ? walk(b, of[b]!) : [];
+    if (parts.length > 0) walked.push([b, parts]);
   }
-  const across = wx + 1;
-  /** A body's corners, wet and dry, by their place on the corners' lattice. */
-  const cornersOf = (b: number): { wetAt: Map<number, number>; dryAt: Map<number, number> } => {
-    const S = water.surface[b]!, wetAt = new Map<number, number>(), dryAt = new Map<number, number>();
-    const box = water.box.subarray(b * 4, b * 4 + 4);
-    for (let j = Math.max(0, Math.floor(box[1]! / cell)); j < Math.min(wz, Math.ceil(box[3]! / cell)); j++) for (let i = Math.max(0, Math.floor(box[0]! / cell)); i < Math.min(wx, Math.ceil(box[2]! / cell)); i++) {
-      if (body[j * wx + i] !== b) continue;
-      const at = [[i, j], [i + 1, j], [i, j + 1], [i + 1, j + 1]].map(([u, v]) => [v! * across + u!, hf.heightAt(u! * cell, v! * cell)] as const);
-      if (at.some(([, h]) => h < S)) for (const [k, h] of at) (h < S ? wetAt : dryAt).set(k, h);
-    }
-    return { wetAt, dryAt };
-  };
-  /**
-   * A body's ways out over its rim, each the places to walk to in turn: where the rim is two corners wide and level,
-   * from the least step up to it, to a square inside the water before it and then straight out, as a ladder is climbed.
-   */
-  const made = new Map<number, [number, number][][]>();
-  const overRim = (b: number, { wetAt, dryAt }: ReturnType<typeof cornersOf>): [number, number][][] => {
-    let ways = made.get(b);
-    if (ways) return ways;
-    made.set(b, (ways = []));
-    const pairs: { score: number; k: number; e: number; d: number }[] = [];
-    for (const [k, h] of wetAt) for (const e of [1, -1, across, -across]) {
-      const d = Math.abs(e) === 1 ? across : 1, [h2, r, r2] = [wetAt.get(k + d), dryAt.get(k + e), dryAt.get(k + d + e)];
-      if (h2 !== undefined && r !== undefined && r2 !== undefined) pairs.push({ score: Math.max(r, r2) - Math.min(h, h2) + Math.abs(r - r2) + Math.abs(h - h2), k, e, d });
-    }
-    pairs.sort((p, q) => p.score - q.score || p.k - q.k || p.e - q.e);
-    const taken: { k: number; e: number }[] = [];
-    for (const { k, e, d } of pairs) {
-      if (taken.length === WAYS_OUT) break;
-      // One a stretch of rim: not within two corners of one taken on the same side.
-      if (taken.some((o) => o.e === e && Math.abs((o.k % across) - (k % across)) <= 2 && Math.abs(Math.floor(o.k / across) - Math.floor(k / across)) <= 2)) continue;
-      taken.push({ k, e });
-      const [ex, ez] = [Math.abs(e) === 1 ? e : 0, Math.abs(e) === 1 ? 0 : Math.sign(e)];
-      const [mx, mz] = [((k % across) + (d === 1 ? 0.5 : 0)) * cell, (Math.floor(k / across) + (d === 1 ? 0 : 0.5)) * cell];
-      ways.push([[mx - ex * cell, mz - ez * cell], [mx + ex * (cell + PAST_RIM), mz + ez * (cell + PAST_RIM)]]);
-    }
-    return ways;
-  };
-  const world = { hf, structs }, params = reg.move[reg.index.get("core:survivor")!]!;
-  const set = (b: Body, x: number, y: number, z: number): void => { Object.assign(b, new Body()); [b.x, b.y, b.z] = [x, y, z]; };
-  /** Out of the water: on ground no body's squares hold and the sea does not cover. */
-  const isOut = (b: Body): boolean => water.bodyAt(b.x, b.z) === 0 && !(hf.heightAt(b.x, b.z) < hf.seaLevel);
-  const out: Swum[] = [], walker = new Body();
-  for (let b = 1; b <= n; b++) {
-    if (wet[b] === 0) continue;
-    const S = water.surface[b]!, together = members.get(root(b))!, small = wet[b]! <= WALKED_SQUARES;
-    const own = small ? cornersOf(b) : { wetAt: new Map<number, number>(), dryAt: new Map<number, number>() };
-    // Set down at its deepest corner; where a piece stands or lies there, rubble in a pool, at the next of its deepest.
-    const starts: [number, number][] = [[deep[b * 2]!, deep[b * 2 + 1]!]];
-    for (const [k, h] of own.wetAt) if (starts.length < STARTS && S - h > depth[b]! - 0.1) starts.push([(k % across) * cell, Math.floor(k / across) * cell]);
-    let [x0, z0] = starts[0]!, swims = false;
-    for (const [x, z] of starts) {
-      set(walker, x, S - params.height / 2, z);
-      for (let t = 0; t < 60; t++) stepBody(world, walker, 0, 0, 0, 0, 0, params, TICK_DT);
-      if (walker.mode !== MODE_SWIM) continue;
-      [x0, z0, swims] = [x, z, true];
-      break;
-    }
-    let left: boolean | null = null;
-    if (small) {
-      // Over its own rim first, then over the rim of each body it touches, through that body's water.
-      const ways = [...overRim(b, own)];
-      for (const o of together) if (o !== b && wet[o]! <= WALKED_SQUARES) ways.push(...overRim(o, cornersOf(o)));
-      // Then its rim's corners from the lowest, one a place, and the eight winds, for water that stands over its shore.
-      const r = rims[b] ?? [], order = Array.from({ length: r.length / 3 }, (_, k) => k).sort((p, q) => r[p * 3]! - r[q * 3]!);
-      const tried = new Set<number>();
-      for (const k of order) {
-        const [x, z] = [r[k * 3 + 1]!, r[k * 3 + 2]!], far = Math.hypot(x - x0, z - z0) || 1;
-        if (tried.size < WAYS_OUT && !tried.has(x * 65536 + z) && tried.add(x * 65536 + z)) ways.push([[x + ((x - x0) / far) * PAST_RIM, z + ((z - z0) / far) * PAST_RIM]]);
-      }
-      for (let wind = 0; wind < 8; wind++) ways.push([[x0 + Math.sin((wind * Math.PI) / 4) * 128, z0 + Math.cos((wind * Math.PI) / 4) * 128]]);
-      left = false;
-      for (const way of ways) {
-        set(walker, x0, S - params.height / 2, z0);
-        for (const [k, [px, pz]] of way.entries()) {
-          // On the map; a place on the way is reached within a step, the last is walked at until out.
-          const [tx, tz] = [Math.max(0, Math.min(sizeX, px)), Math.max(0, Math.min(sizeZ, pz))], close = k + 1 < way.length ? 0.4 : 0.2;
-          for (let t = 0; t < OUT_TICKS && !left && Math.hypot(walker.x - tx, walker.z - tz) > close; t++) {
-            const yaw = Math.round((Math.atan2(tx - walker.x, tz - walker.z) * 65536) / (2 * Math.PI)) & 65535;
-            stepBody(world, walker, 0, 100, yaw, 0, 0, params, TICK_DT);
-            // Dry ground within its squares may be a ledge under a rim it cannot climb; the next body's water is water.
-            left = t > 10 && isOut(walker);
-          }
-        }
-        if (left) break;
-      }
-    }
-    out.push({ body: b, wet: wet[b]!, depth: depth[b]!, swims, out: left, touches: together.length - 1 });
-  }
+  const together = new Map<number, number>();
+  for (const [b] of walked) together.set(root(b), (together.get(root(b)) ?? 0) + 1);
+  const out = walked.map(([b, parts]): Swum => {
+    const swum = parts.filter((p) => p.swims), judged = swum.length > 0 ? swum : parts;
+    return { body: b, wet: parts.reduce((sum, p) => sum + p.squares.length, 0), depth: Math.max(...parts.map((p) => p.depth)), swims: swum.length > 0,
+      out: judged.some((p) => p.out === false) ? false : judged.some((p) => p.out === null) ? null : true, touches: together.get(root(b))! - 1, parts };
+  });
+  swumOf.set(w, out);
   return out;
 }
 
@@ -573,22 +470,63 @@ export function poolsInPits(w: Audited): Check {
   return { check, gate: false, count, bodies, deepest: count ? where : null };
 }
 
+/** A rim this far over a swum body's water makes it a sunk pool, and this far a deep one. */
+const SUNK = 1, SUNK_DEEP = 3;
+
 /**
- * Water a survivor swims in and gets out of. The gate counts bodies of up to 10,000 m2 it swims in, from whose deepest
- * corner no walk over the rim or along the eight winds reaches dry ground that is no body's: a pool it would be caught in. Shallower water
- * it did not walk out of is counted apart and fails nothing: a puddle in a walled room is no trap.
+ * Sunk pools: bodies a survivor swims in whose rim, the corners of their wet squares that stand out of the water, lies
+ * over SUNK metres above it at the median. Every pool found with no way out was one of these.
+ */
+export function sunkPools(w: Audited): Check {
+  const g = waterGrid(w), water = w.map.water, check = "sunk pools";
+  if (!g || !water) return { check, gate: false, count: 0, swimmable: 0 };
+  const of = squaresByBody(g, water.bodies.length), walked = { ...w, water };
+  let swimmable = 0, count = 0, over3 = 0, deepest = 0, where = "";
+  for (const s of bodiesSwum(w)) {
+    if (!s.swims) continue;
+    swimmable++;
+    const rim = rimOver(walked, g, s.body, of[s.body]!);
+    const over = rim.length > 0 ? rim[rim.length >> 1]! : 0;
+    if (!(over > SUNK)) continue;
+    count++;
+    if (over > SUNK_DEEP) over3++;
+    if (over > deepest) [deepest, where] = [over, `body ${s.body} at ${s.parts[0]!.x.toFixed(0)}, ${s.parts[0]!.z.toFixed(0)}: its rim ${over.toFixed(2)} m over its water`];
+  }
+  return { check, gate: false, count, swimmable, overThreeMetres: over3, deepest: count ? where : null };
+}
+
+/**
+ * Water a survivor swims in and gets out of. The gate counts bodies with a part it swims in and does not get out of, the
+ * pieces standing: a pool it would be caught in. Of those, the ones the ground alone lets it out of are caught by a
+ * piece. Parts neither a walk nor the search settled, and shallower water it did not walk out of, are counted apart and
+ * fail nothing: a puddle in a walled room is no trap.
  */
 export function swimming(w: Audited): Check {
-  const all = bodiesSwum(w);
+  const all = bodiesSwum(w), water = w.map.water;
   const swum = all.filter((s) => s.swims), caught = swum.filter((s) => s.out === false);
-  const name = (s: Swum): string => `body ${s.body}, ${s.wet * w.map.water!.cell ** 2} m2, ${s.depth.toFixed(2)} m deep`;
-  return { check: "water to swim in with no way out", gate: true, count: caught.length, bodiesWithWater: all.length, swimmable: swum.length, swimmableWalkedOut: swum.filter((s) => s.out === true).length, wading: all.length - swum.length,
-    wadingNotWalkedOut: all.filter((s) => !s.swims && s.out === false).length, tooBigToWalk: all.filter((s) => s.out === null).length, touchingPairs: touchingPairs(w), first: caught.slice(0, 3).map(name) };
+  let byPieces = 0;
+  const first: string[] = [];
+  if (caught.length > 0 && water) {
+    const g = waterGrid(w)!, of = squaresByBody(g, water.bodies.length), walk = wayOut({ ...w, water }, g);
+    const bare = new StructureStore(w.map.dims, w.reg.halfX, w.reg.halfY, w.reg.halfZ, null, w.reg.parts);
+    for (const s of caught) {
+      const p = s.parts.find((q) => q.swims && q.out === false)!;
+      // The same part with no piece standing: is it the ground's or a piece's?
+      const alone = walk(s.body, of[s.body]!, bare).find((q) => q.squares[0] === p.squares[0]);
+      const pieces = alone !== undefined && alone.out === true;
+      if (pieces) byPieces++;
+      if (first.length < 3) first.push(`body ${s.body} at ${p.x.toFixed(0)}, ${p.z.toFixed(0)}: ${p.squares.length * water.cell ** 2} m2, ${p.depth.toFixed(2)} m deep, ${pieces ? "out with no piece standing" : "caught by the ground"}`);
+    }
+  }
+  const parts = swum.flatMap((s) => s.parts.filter((p) => p.swims));
+  return { check: "water to swim in with no way out", gate: true, count: caught.length, bodiesWithWater: all.length, swimmable: swum.length, swimmableWalkedOut: swum.filter((s) => s.out === true).length,
+    caughtByPieces: byPieces, parts: parts.length, outBySearch: parts.filter((p) => p.by === "search").length, outIntoTheSea: parts.filter((p) => p.by === "sea").length, notSettled: swum.filter((s) => s.out === null).length,
+    wading: all.length - swum.length, wadingNotWalkedOut: all.filter((s) => !s.swims && s.out === false).length, clearMetres: CLEAR, touchingPairs: touchingPairs(w), first };
 }
 
 /** Every check, the gates first. */
 export function audit(w: Audited): Check[] {
-  return [offMap(w), twins(w), lakeWraps(w), hullsInPieces(w), swimming(w), waterWalls(w), poolsInPits(w), streetsThroughBuildings(w), doorsOffGround(w), piecesUnderGround(w)];
+  return [offMap(w), twins(w), lakeWraps(w), hullsInPieces(w), swimming(w), waterWalls(w), poolsInPits(w), sunkPools(w), streetsThroughBuildings(w), doorsOffGround(w), piecesUnderGround(w)];
 }
 
 if (import.meta.main) {
@@ -598,7 +536,7 @@ if (import.meta.main) {
   const w = openMap(new Uint8Array(file.buffer, file.byteOffset, file.byteLength));
   console.log(JSON.stringify({ map: w.map.id, hash: w.map.hash, statics: w.map.statics.length, buildings: w.map.buildings?.count ?? 0 }));
   let failed = false;
-  for (const run of [offMap, twins, lakeWraps, hullsInPieces, swimming, waterWalls, poolsInPits, streetsThroughBuildings, doorsOffGround, piecesUnderGround]) {
+  for (const run of [offMap, twins, lakeWraps, hullsInPieces, swimming, waterWalls, poolsInPits, sunkPools, streetsThroughBuildings, doorsOffGround, piecesUnderGround]) {
     const start = performance.now();
     const c = run(w);
     const ok = !c.gate || c.count === 0;

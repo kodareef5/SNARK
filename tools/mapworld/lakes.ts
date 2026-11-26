@@ -344,6 +344,47 @@ export function settleRims(lakes: Lakes, rules: LakeRules | false | undefined, h
 }
 
 /**
+ * Returns `samples` of a rimmed body to dry ground: each laid level between the ground beside it, graded ground among
+ * them left as it is. With `whole`, the body is gone: the rim raised for it alone goes back to what it was first.
+ */
+export function restorePool(lakes: Lakes, height: Float32Array, grid: Grid, pools: PoolGround, samples: readonly number[], whole: boolean): void {
+  const { body, bodies } = lakes, { beds, rims, restored } = pools, { nx, nz } = grid, N = nx * nz;
+  const sides = (i: number): number[] => {
+    const col = i % nx;
+    return [col > 0 ? i - 1 : -1, col < nx - 1 ? i + 1 : -1, i - nx, i + nx].filter((j) => j >= 0 && j < N);
+  };
+  const around = (i: number): number[] => {
+    const col = i % nx, row = (i - col) / nx, out: number[] = [];
+    for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) if ((dr || dc) && col + dc >= 0 && row + dr >= 0 && col + dc < nx && row + dr < nz) out.push(i + dr * nx + dc);
+    return out;
+  };
+  const free = samples.filter((i) => beds.get(i) === height[i]);
+  for (const i of samples) { body[i] = 0; beds.delete(i); restored.add(i); }
+  if (whole) {
+    for (const i of samples) for (const j of around(i)) {
+      const raised = rims.get(j);
+      // Still as raised, and beside no other pool that wants it.
+      if (raised && height[j] === raised[1] && !around(j).some((k) => body[k] !== 0 && rimmed(bodies[body[k]! - 1]!.kind))) height[j] = raised[0];
+    }
+  }
+  // From the mean of the ground beside them, until no sample moves 2 mm more.
+  const at = new Set(free);
+  let sum = 0, count = 0;
+  for (const i of free) for (const j of sides(i)) if (!at.has(j)) { sum += height[j]!; count++; }
+  if (count === 0) return;
+  for (const i of free) height[i] = sum / count;
+  for (let sweep = 0, most = Infinity; sweep < 400 && most > 0.002; sweep++) {
+    most = 0;
+    for (const i of free) {
+      const near = sides(i);
+      const to = near.reduce((s, j) => s + height[j]!, 0) / near.length;
+      most = Math.max(most, Math.abs(to - height[i]!));
+      height[i] = to;
+    }
+  }
+}
+
+/**
  * What a settling did, in bodies: let down and raised to the ground round them, and the farthest either went in metres;
  * that gave up samples graded over; given a retaining edge; given a way out by a ladder and by benches; and taken out.
  */
@@ -352,7 +393,7 @@ export interface Settled { lowered: number; raised: number; farthest: number; cr
 function settleOnce(lakes: Lakes, rules: LakeRules | false | undefined, height: Float32Array, grid: Grid, minY: number, stepY: number, pools: PoolGround): Settled {
   const r = { ...DEFAULTS, ...(rules || {}) };
   const { body, bodies } = lakes;
-  const { beds, rims, stood, restored } = pools;
+  const { beds, stood } = pools;
   const { nx, nz, cell } = grid;
   const N = nx * nz;
   const moved = (i: number): boolean => beds.get(i) !== height[i];
@@ -373,36 +414,7 @@ function settleOnce(lakes: Lakes, rules: LakeRules | false | undefined, height: 
     else if (of.has(b)) of.get(b)!.push(i);
     else of.set(b, [i]);
   }
-  /**
-   * Returns `samples` to dry ground: each laid level between the ground beside it, graded ground among them left as it
-   * is. With `whole`, the body is gone: the rim raised for it alone goes back to what it was first.
-   */
-  const restore = (samples: readonly number[], whole: boolean): void => {
-    const free = samples.filter((i) => !moved(i));
-    for (const i of samples) { body[i] = 0; beds.delete(i); restored.add(i); }
-    if (whole) {
-      for (const i of samples) for (const j of around(i)) {
-        const raised = rims.get(j);
-        // Still as raised, and beside no other pool that wants it.
-        if (raised && height[j] === raised[1] && !around(j).some((k) => body[k] !== 0 && rimmed(bodies[body[k]! - 1]!.kind))) height[j] = raised[0];
-      }
-    }
-    // From the mean of the ground beside them, until no sample moves 2 mm more.
-    const at = new Set(free);
-    let sum = 0, count = 0;
-    for (const i of free) for (const j of sides(i)) if (!at.has(j)) { sum += height[j]!; count++; }
-    if (count === 0) return;
-    for (const i of free) height[i] = sum / count;
-    for (let sweep = 0, most = Infinity; sweep < 400 && most > 0.002; sweep++) {
-      most = 0;
-      for (const i of free) {
-        const near = sides(i);
-        const to = near.reduce((s, j) => s + height[j]!, 0) / near.length;
-        most = Math.max(most, Math.abs(to - height[i]!));
-        height[i] = to;
-      }
-    }
-  };
+  const restore = (samples: readonly number[], whole: boolean): void => restorePool(lakes, height, grid, pools, samples, whole);
   const tally: Settled = { lowered: 0, raised: 0, farthest: 0, crossed: 0, edged: 0, laddered: 0, benched: 0, takenOut: 0, walled: 0, gone: 0, dry: 0 };
   for (const [b, own] of of) {
     const was = bodies[b - 1]!;
@@ -569,32 +581,10 @@ function makeWayOut(samples: readonly number[], inPart: (i: number) => boolean, 
     return true;
   };
   if (walksOut()) return "";
-  // Ladders, from the lowest stretch of rim two samples wide: q and its neighbour under two dry samples that are level.
-  const rims: { q: number; q2: number; e: number; top: number }[] = [];
-  for (const q of samples) {
-    const col = q % nx;
-    for (const e of [1, -1, nx, -nx]) {
-      if ((e === 1 && col === nx - 1) || (e === -1 && col === 0) || !dry(q + e)) continue;
-      const d = Math.abs(e) === 1 ? nx : 1, q2 = q + d;
-      if ((d === 1 && col === nx - 1) || !inPart(q2) || !dry(q2 + e) || Math.abs(height[q + e]! - height[q2 + e]!) > LEVEL) continue;
-      rims.push({ q, q2, e, top: Math.max(height[q + e]!, height[q2 + e]!) });
-    }
-  }
-  rims.sort((a, b) => a.top - b.top || a.q - b.q || a.e - b.e);
   let tried = 0;
-  for (const { q, q2, e, top } of rims) {
+  for (const rim of ladderRims(samples, inPart, dry, height, nx)) {
     if (tried === LADDERS) break;
-    const saved: [number, number][] = [];
-    let level = top;
-    for (let k = 0; ; k++) {
-      const pair = [q - k * e, q2 - k * e];
-      // Inward along a row, a step stays in the row.
-      if (!pair.every(inPart) || (Math.abs(e) === 1 && Math.floor(pair[0]! / nx) !== Math.floor(q / nx))) break;
-      level -= climb;
-      const low = pair.filter((i) => height[i]! < level);
-      if (low.length === 0) break;
-      for (const i of low) { saved.push([i, height[i]!]); height[i] = level; }
-    }
+    const saved = cutLadder(rim, inPart, height, nx, climb);
     if (saved.length > 0) tried++;
     if (saved.length > 0 && walksOut()) return "ladder";
     for (const [i, h] of saved) height[i] = h;
@@ -607,6 +597,70 @@ function makeWayOut(samples: readonly number[], inPart: (i: number) => boolean, 
   if (walksOut()) return "benches";
   for (const i of samples) height[i] = Math.max(height[i]!, surface);
   return "filled";
+}
+
+/** A stretch of rim a ladder is cut at: `q` and `q2` side by side in the water, the dry samples `e` past them level, the higher at `top`. */
+interface LadderRim { readonly q: number; readonly q2: number; readonly e: number; readonly top: number }
+
+/** The stretches of rim two samples wide of `samples`, from the lowest. */
+function ladderRims(samples: readonly number[], inPart: (i: number) => boolean, dry: (i: number) => boolean, height: Float32Array, nx: number): LadderRim[] {
+  const rims: LadderRim[] = [];
+  for (const q of samples) {
+    const col = q % nx;
+    for (const e of [1, -1, nx, -nx]) {
+      if ((e === 1 && col === nx - 1) || (e === -1 && col === 0) || !dry(q + e)) continue;
+      const d = Math.abs(e) === 1 ? nx : 1, q2 = q + d;
+      if ((d === 1 && col === nx - 1) || !inPart(q2) || !dry(q2 + e) || Math.abs(height[q + e]! - height[q2 + e]!) > LEVEL) continue;
+      rims.push({ q, q2, e, top: Math.max(height[q + e]!, height[q2 + e]!) });
+    }
+  }
+  return rims.sort((a, b) => a.top - b.top || a.q - b.q || a.e - b.e);
+}
+
+/** Cuts a ladder at a stretch of rim: pairs each `climb` under the pair before, down to the bed. Returns each sample it raised with what it stood at. */
+function cutLadder({ q, q2, e, top }: LadderRim, inPart: (i: number) => boolean, height: Float32Array, nx: number, climb: number): [number, number][] {
+  const saved: [number, number][] = [];
+  let level = top;
+  for (let k = 0; ; k++) {
+    const pair = [q - k * e, q2 - k * e];
+    // Inward along a row, a step stays in the row.
+    if (!pair.every(inPart) || (Math.abs(e) === 1 && Math.floor(pair[0]! / nx) !== Math.floor(q / nx))) break;
+    level -= climb;
+    const low = pair.filter((i) => height[i]! < level);
+    if (low.length === 0) break;
+    for (const i of low) { saved.push([i, height[i]!]); height[i] = level; }
+  }
+  return saved;
+}
+
+/**
+ * One more ladder for the body of `samples`, where the ground's own way out is not one: a piece stands on it
+ * (pool-pieces.ts). The stretches of rim are tried from the lowest, those `free` passes by their two dry samples and
+ * their height, `tries` of them at the most: each is cut, `sync` is told the samples that changed, and `works` says
+ * whether the body is now left. One that does not work is put back. True where a ladder was kept: a pool's bed from then on.
+ */
+export function ladderClear(lakes: Lakes, rules: LakeRules | false | undefined, height: Float32Array, grid: Grid, pools: PoolGround, samples: readonly number[],
+  o: { free: (rim: readonly [number, number], top: number) => boolean; sync: (changed: readonly number[]) => void; works: () => boolean; tries?: number }): boolean {
+  const r = { ...DEFAULTS, ...(rules || {}) }, { body } = lakes, { nx, nz } = grid, N = nx * nz;
+  const b = body[samples[0]!]!;
+  const inPart = (i: number): boolean => i >= 0 && i < N && body[i] === b, dry = (i: number): boolean => i >= 0 && i < N && body[i] === 0;
+  let tried = 0;
+  for (const rim of ladderRims(samples, inPart, dry, height, nx)) {
+    if (tried === (o.tries ?? LADDERS)) break;
+    if (!o.free([rim.q + rim.e, rim.q2 + rim.e], rim.top)) continue;
+    const saved = cutLadder(rim, inPart, height, nx, r.poolClimb);
+    if (saved.length === 0) continue;
+    tried++;
+    const changed = saved.map(([i]) => i);
+    o.sync(changed);
+    if (o.works()) {
+      if (rimmed(lakes.bodies[b - 1]!.kind)) for (const i of changed) pools.beds.set(i, height[i]!);
+      return true;
+    }
+    for (const [i, h] of saved) height[i] = h;
+    o.sync(changed);
+  }
+  return false;
 }
 
 /**

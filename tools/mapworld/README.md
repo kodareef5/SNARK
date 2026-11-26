@@ -328,9 +328,23 @@ crossings with incompatible levels. Bridge decks constrain the final ground.
 `verify.ts` runs all ten proofs in sequence and exits; it opens no server socket.
 `audit.ts` is one of them: it scans the whole map and prints a JSON line a check. Five are
 gates and must count 0 (pieces off the map, pieces placed twice, a lake wrapping a map edge,
-a hull inside another piece, water a survivor swims in and cannot walk out of onto dry ground
-that is no body's); five are numbers to watch (water ending in a wall, water standing in a
-pit, streets through buildings, doors off the ground, building pieces under the ground).
+a hull inside another piece, water a survivor swims in and cannot get out of); six are numbers
+to watch (water ending in a wall, water standing in a pit, sunk pools, streets through
+buildings, doors off the ground, building pieces under the ground).
+
+The swim gate walks each part of each body with the game's stepper and every piece standing
+(`way-out.ts`): straight walks, then a search of the stepper's moves, never a jump. Out is
+standing on dry ground in no body's square, 12 m past the body's own. The build asks the same
+walk of its pools once its pieces stand (`pool-pieces.ts`), and where pieces close every way
+out it cuts a ladder clear of them, else takes the street's small pieces from the way
+(furniture, fences, wrecks: never a building's piece), else takes the pool out. A pond's or a
+stream's part of up to 10,000 m2 gets the ladder or loses the pieces too; it is never taken
+out, and the build says which it left.
+
+"Water standing in a pit" counts any body of up to 10,000 m2, waded or swum, whose water lies
+over 1 m under the ground two corners out from it. "Sunk pools" counts only bodies a survivor
+swims in, by the rim itself (the dry corners of their wet squares) over 1 m above the water at
+the median, and says how many stand over 3 m.
 
 Large inventories are generated, not committed. Keep counts, test summaries,
 cameras, selection records and the rasterizer images. The report tool makes a
