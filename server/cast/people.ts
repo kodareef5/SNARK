@@ -9,7 +9,7 @@ import type { Character, Fact } from "../../shared/cast/state.ts";
 import type { PopulationDef } from "../../shared/content/kinds/populations.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import type { Bodies, PersonDoc, Revision, RevisedKind, WornDoc } from "../../shared/people/doc.ts";
-import { dyeNumber, partSeed, personFrom, populationsOf, sexOf, wardrobeFrom, wireNumber, wornOf } from "../../shared/people/person.ts";
+import { dyeNumber, partSeed, personFrom, populationsOf, sexOf, wardrobeFrom, wireNumber, wornOf, type Person } from "../../shared/people/person.ts";
 import { Rng } from "../../shared/rng.ts";
 import { WARDROBE_SLOTS } from "../../shared/sim/items.ts";
 import { WORN_FIELDS, type Born } from "../../shared/sim/entities.ts";
@@ -25,6 +25,8 @@ const pick = <T>(rng: Rng, xs: readonly T[]): T => xs[rng.int(xs.length)]!;
 export const CAST_POPULATION = "core:people_city";
 /** Mixed with a named person's store id for its character's seed. */
 const NAMED_TAG = 0x6e616d65;
+/** Mixed with a character's seed for the look it wears in a role it is cast in. */
+const LOOK_TAG = 0x6c6f6f6b;
 /** Seeds tried for a person of its name's sex before the first is kept whatever it gives. */
 const SEX_TRIES = 16;
 
@@ -61,40 +63,61 @@ function populationBy(ref: string | number, reg: Registry, store: CastStore | nu
 
 const asWorn = (w: WornDoc | null): Worn | null => (w ? [w.garment, w.edition, dyeNumber(w.dye)] : null);
 
+/** The population a look's people are drawn from: an admin's choice first, then the look's, then the city's. */
+function lookPopulation(look: Look | undefined, reg: Registry, store: CastStore | null, choice?: LookChoice): { p: PopulationDef; rev: number; number: number } | null {
+  for (const r of [choice?.population, look?.population, CAST_POPULATION]) {
+    const by = r === undefined ? undefined : populationBy(r, reg, store), number = by ? wireNumber(reg, r!) : undefined;
+    if (by && number !== undefined) return { ...by, number };
+  }
+  return null;
+}
+
 /**
- * The person a character's body is, from its seed and its look's population (an admin's choice of population first): of
- * its first name's sex where the catalogue knows it. What an admin chose takes its slots first: an admin outfit chosen for
- * the look, then the population's outfit as its seed draws it, then the look's armour. Null where no population it names
- * is held.
+ * The clothes and armour a role puts on `person` of `p`: an admin outfit chosen for the look takes its slots first, then
+ * the population's outfit as the seed draws it (`worn`), then the look's armour.
+ */
+function roleDress(seed: number, p: PopulationDef, person: Person, look: Look | undefined, reg: Registry, store: CastStore | null, choice?: LookChoice) {
+  const worn = wornOf(reg, p, person);
+  const outfit = choice?.outfit !== undefined ? store?.latest("outfit", choice.outfit) : undefined;
+  const wardrobe: (Worn | null)[] = outfit ? wardrobeFrom(seed, outfit.body).map(asWorn) : new Array<Worn | null>(WARDROBE_SLOTS).fill(null);
+  for (let k = 0; k < WARDROBE_SLOTS; k++) if (worn[k * WORN_FIELDS] !== 0) wardrobe[k] ??= [reg.defs[worn[k * WORN_FIELDS]!]!.id, 0, worn[k * WORN_FIELDS + 2]!];
+  const armour = person.outfit >= 0 ? p.outfits![person.outfit]!.wear.filter((id) => (reg.garmentSlot[reg.index.get(id) ?? -1] ?? -1) < 0) : [];
+  return { worn, wardrobe, wear: [...armour, ...(look?.wear ?? [])] };
+}
+
+/**
+ * The person a character's body is, from its seed and its look's population: of its first name's sex where the catalogue
+ * knows it, dressed by its role (roleDress). Null where no population it names is held.
  */
 export function castPerson(c: Character, look: Look | undefined, cat: Catalogue, reg: Registry, store: CastStore | null = null, choice?: LookChoice) {
-  let ref: string | number = CAST_POPULATION, by: { p: PopulationDef; rev: number } | undefined;
-  for (const r of [choice?.population, look?.population, CAST_POPULATION]) if (!by && r !== undefined && (by = populationBy(r, reg, store))) ref = r;
-  const number = by ? wireNumber(reg, ref) : undefined;
-  if (!by || number === undefined) return null;
+  const by = lookPopulation(look, reg, store, choice);
+  if (!by) return null;
   const p = by.p;
   const wanted = cat.sexes?.[c.name.split(" ")[0]!];
   let seed = c.seed >>> 0;
   for (let k = 1; wanted !== undefined && k < SEX_TRIES && sexOf(seed, p) !== wanted; k++) seed = partSeed(c.seed, 0x100 + k);
   if (wanted !== undefined && sexOf(seed, p) !== wanted) seed = c.seed >>> 0;
-  const person = personFrom(seed, p), worn = wornOf(reg, p, person);
-  const outfit = choice?.outfit !== undefined ? store?.latest("outfit", choice.outfit) : undefined;
-  const wardrobe: (Worn | null)[] = outfit ? wardrobeFrom(c.seed >>> 0, outfit.body).map(asWorn) : new Array<Worn | null>(WARDROBE_SLOTS).fill(null);
-  for (let k = 0; k < WARDROBE_SLOTS; k++) if (worn[k * WORN_FIELDS] !== 0) wardrobe[k] ??= [reg.defs[worn[k * WORN_FIELDS]!]!.id, 0, worn[k * WORN_FIELDS + 2]!];
-  const armour = person.outfit >= 0 ? p.outfits![person.outfit]!.wear.filter((id) => (reg.garmentSlot[reg.index.get(id) ?? -1] ?? -1) < 0) : [];
-  return { person, born: { seed, population: number, revision: by.rev, worn } as Born, wear: [...armour, ...(look?.wear ?? [])], wardrobe };
+  const person = personFrom(seed, p), { worn, wardrobe, wear } = roleDress(c.seed >>> 0, p, person, look, reg, store, choice);
+  return { person, born: { seed, population: by.number, revision: by.rev, worn } as Born, wear, wardrobe };
 }
 
-/** A named person's body: its look's bytes and its wardrobe as saved, never a seed form, and its role's armour. */
-function namedBody(rec: Revision<PersonDoc>, look: Look | undefined, reg: Registry): CastBody {
-  const wardrobe = (rec.body.wardrobe ?? []).map(asWorn);
-  return { look: Uint8Array.from(rec.body.look), born: null, wear: look?.wear ?? [], wardrobe };
+/**
+ * A named person's body in the role it plays: its look's bytes, never a seed form; its saved wardrobe, or where it has
+ * none the clothes the role puts on; and the role's armour either way.
+ */
+function namedBody(rec: Revision<PersonDoc>, c: Character, look: Look | undefined, reg: Registry, store: CastStore | null, choice?: LookChoice): CastBody {
+  const bytes = Uint8Array.from(rec.body.look);
+  if (rec.body.wardrobe) return { look: bytes, born: null, wear: look?.wear ?? [], wardrobe: rec.body.wardrobe.map(asWorn) };
+  const by = lookPopulation(look, reg, store, choice);
+  if (!by) return { look: bytes, born: null, wear: look?.wear ?? [], wardrobe: [] };
+  const { wardrobe, wear } = roleDress(c.seed >>> 0, by.p, personFrom(c.seed >>> 0, by.p), look, reg, store, choice);
+  return { look: bytes, born: null, wear, wardrobe };
 }
 
 /** The body a character is drawn as: a named person's record as it is now, anyone else drawn from its look. */
 export function castBody(c: Character, look: Look | undefined, cat: Catalogue, reg: Registry, store: CastStore | null, choice?: LookChoice): CastBody | null {
   const rec = c.person !== undefined ? store?.latest("person", c.person) : undefined;
-  if (rec) return namedBody(rec, look, reg);
+  if (rec) return namedBody(rec, c, look, reg, store, choice);
   const made = castPerson(c, look, cat, reg, store, choice);
   return made && { look: made.person.look, born: made.born, wear: made.wear, wardrobe: made.wardrobe };
 }
@@ -142,6 +165,17 @@ export class People {
     return c;
   }
 
+  /**
+   * Cast as one of an archetype for a role: it takes the archetype's behaviour, things carried and one of its looks, and
+   * keeps who it is (name, seed, traits, life, facts, who it knows). A named person is cast so for each role it plays.
+   */
+  castAs(c: Character, archetype: string): void {
+    const a = this.archetypes.get(archetype);
+    if (!a) return;
+    c.archetype = archetype;
+    c.look = a.looks[new Rng(c.seed ^ LOOK_TAG).int(a.looks.length)]!;
+  }
+
   /** Made featured: its life is drawn from its seed and its archetype's seeds of one, and kept from now on. */
   promote(c: Character, tick: number): void {
     if (c.tier === "featured") return;
@@ -159,7 +193,8 @@ export class People {
   free(archetypes: readonly string[], region: number, near: (home: number) => boolean, not: ReadonlySet<string> = new Set(), players: readonly string[] = []): Character | null {
     let best: Character | null = null, bestKnows = false;
     for (const c of this.byId.values()) {
-      if (c.tier !== "featured" || c.story || c.dead || not.has(c.id) || !archetypes.includes(c.archetype)) continue;
+      // A named person plays only the roles it is cast in.
+      if (c.tier !== "featured" || c.story || c.dead || c.person !== undefined || not.has(c.id) || !archetypes.includes(c.archetype)) continue;
       if (c.home !== region && !near(c.home)) continue;
       // One who knows a player near comes first: the jogger you waved at, the gang member who drew on you.
       const knows = players.some((n) => c.relations[n]);

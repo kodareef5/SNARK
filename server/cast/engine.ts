@@ -412,8 +412,9 @@ export class Cast {
       c = this.people.mintNamed(archetype, region, id, name, tick);
       minted.push(c.id);
     }
-    // It goes by its record's name now, edited or not.
+    // It goes by its record's name now, edited or not, and plays this role as its archetype.
     c.name = name;
+    this.people.castAs(c, archetype);
     return c;
   }
 
