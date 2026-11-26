@@ -27,11 +27,12 @@ test("a lobby building's canopies hang at its doors alone", () => {
   }
 });
 
-test("the side of an entry lane's tile is walled as any other bay is", () => {
+test("the side of an entry lane's tile stays an open bay, with no canopy", () => {
   // Two tiles by two: the lane is one column, so each of its tiles has a side on the street.
   const b = flats(16, 16, 5);
   expect(b.doors.map((d) => [d.x, d.z])).toEqual([[124, 120], [124, 136]]);
   expect(b.canopies.filter((c) => Math.abs(c.x - 128) > 8.5)).toEqual([]);
-  // The lane's west face, 4 m either side of the middle, wears the lobby's wall module.
-  expect(b.walls.filter((w) => Math.abs(w.x - 120) < 0.1).map((w) => Math.round(w.z)).sort()).toEqual([124, 132]);
+  // The lane's west face is open, as ways to its doors need it; the east face of the other column is walled.
+  expect(b.walls.filter((w) => Math.abs(w.x - 120) < 0.1)).toEqual([]);
+  expect(b.walls.filter((w) => Math.abs(w.x - 136) < 0.1).length).toBeGreaterThan(0);
 });
