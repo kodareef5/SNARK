@@ -315,7 +315,7 @@ test("a look picks colours and stretches bones along their own axes: longer legs
       for (let k = 0; k < 3; k++) expect(scales[twin * 3 + k]).toBe(scales[b * 3 + k]!);
     }
   }
-  // Region 8 is arm length. At its end the arm is a tenth longer, so the hand moves out along the arm only. The forearm's girth is unchanged.
+  // Region 8 is arm length. At its end the arm is up to a tenth longer, as far as holdLimbs lets it, and the hand moves out along the arm only. The forearm's girth is unchanged.
   defaultLook(look);
   setRegion(look, 8, 1);
   lookScales(look, scales);
@@ -326,7 +326,9 @@ test("a look picks colours and stretches bones along their own axes: longer legs
   solve(HUMAN, pose, long, HUMAN.rest, scales);
   const upper = HUMAN.rest[B_LOWER_ARM_L * 3]! - HUMAN.rest[B_UPPER_ARM_L * 3]!;
   const lower = HUMAN.rest[B_HAND_L * 3]! - HUMAN.rest[B_LOWER_ARM_L * 3]!;
-  expect(long.pos[B_HAND_L * 3]! - rest.pos[B_HAND_L * 3]!).toBeCloseTo((upper + lower) * 0.1, 4);
+  const out = (long.pos[B_HAND_L * 3]! - rest.pos[B_HAND_L * 3]!) / ((upper + lower) * 0.1);
+  expect(out).toBeGreaterThan(0.8);
+  expect(out).toBeLessThanOrEqual(1 + 1e-6);
   expect(long.pos[B_HAND_L * 3 + 1]).toBeCloseTo(rest.pos[B_HAND_L * 3 + 1]!, 5);
   expect(long.pos[B_HAND_L * 3 + 2]).toBeCloseTo(rest.pos[B_HAND_L * 3 + 2]!, 5);
   expect([scales[B_LOWER_ARM_L * 3 + 1], scales[B_LOWER_ARM_L * 3 + 2]]).toEqual([1, 1]);
