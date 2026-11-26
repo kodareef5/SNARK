@@ -136,6 +136,21 @@ test("the 512-body frame on medium leaves no more bodies on one bone with long h
   expect(counts[1]!.bones).toBeLessThanOrEqual(Math.min(tierOf("medium").bones, MAX_BONES));
 });
 
+test("bodies on a shared pose leave face and hair rows for the nearest two", () => {
+  const { view } = crowd("high", 5, styled("long", 0, 1), "", 40, 0.15);
+  const { scene, cam, remote } = view;
+  const bones = 2 * (HUMAN_BONES + FACE_ROWS + HAIR_ROWS) + HUMAN_BONES + 3;
+  scene.assets.tier = { ...scene.assets.tier, bones };
+  const p = scene.build(cam, remote);
+  expect([scene.characters.posed, scene.characters.groomed, p.boneCount, p.dropped]).toEqual([2, 2, bones, 0]);
+  const posed = new Set<number>();
+  for (let d = 0; d < p.drawCount; d++) {
+    if (p.drawSlot[d]! < FACE_SLOTS || p.drawSlot[d]! >= FACE_SLOTS + 4096) continue;
+    for (let i = p.drawFirst[d]!; i < p.drawFirst[d]! + p.drawInstances[d]!; i++) posed.add(p.transientIds[i]!);
+  }
+  expect([...posed].sort()).toEqual([ID + 3, ID + 4]);
+});
+
 test("2,048 bodies with the most face and hair rows any tier allows fit in 65,536 bones", () => {
   const most = Math.max(...(["lowpoly", "medium", "high", "ultra"] as const).map((t) => tierOf(t).finestBodies[SLOT_HEAD]!));
   // The viewer's own body may be one more.
