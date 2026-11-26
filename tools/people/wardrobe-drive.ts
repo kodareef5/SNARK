@@ -150,7 +150,8 @@ try {
     if (!(await until(`document.body.dataset.stage === "ready" || document.body.dataset.stage === "error"`, "the stage to say it is ready", 1200))) return;
     check("the stage said ready", await run(`document.body.dataset.stage`), "ready");
     check("no edition is published yet", await listed(), []);
-    check("both garments can be started from", await run(`[...document.querySelectorAll("[data-start]")].map((b) => b.dataset.start)`), ["core:tee", "core:jeans"]);
+    const garments = server.host.world.reg.defs.flatMap((d) => d?.type === "item" && d.garment ? [d.id] : []).sort();
+    check("every garment has a starting button", await run(`[...document.querySelectorAll("[data-start]")].map((b) => b.dataset.start).sort()`), garments);
     await stageTook("the default person");
     await snap("empty");
 
@@ -186,7 +187,7 @@ try {
     await slide('[data-pf="scale"]', "1.2");
     check("the draft can be published", [await run(`${q("#publish")}.disabled`), await text("#faults")], [false, ""]);
     await stageTook("the draft, its print and its wardrobe");
-    check("the page says the stage holds the garment but cannot draw it yet", await text("#stage-note"), "The person holds the garment and its print, but draws neither until the garment's cut is made.");
+    check("the stage accepts the printed tee without a fallback warning", await text("#stage-note"), "");
     await snap("draft");
     await press("#stage-picture");
     if (await until(`document.body.dataset.pictures === "1"`, "the stage's picture", 300)) {
@@ -199,7 +200,7 @@ try {
 
     console.log("published");
     await press("#publish");
-    await said("Published edition 1.");
+    await said('Published edition 1, tee "Drive tee", as it was when Publish was pressed.');
     let view = people.view();
     const first = view.editions[0];
     check("the store has the edition as drafted", first && { name: first.name, garment: first.garment, colours: first.colours, side: [first.print?.width, first.print?.height], scale: first.print?.place.scale }, { name: "Drive tee", garment: "core:tee", colours: [34, 58, 11], side: [512, 512], scale: 1.2 });
@@ -233,7 +234,7 @@ try {
     check("the person wears the draft", await text("#showing"), "Wearing the draft");
     await snap("conflict");
     await press("#publish");
-    await said("Published edition 3.");
+    await said('Published edition 3, tee "Drive tee two", as it was when Publish was pressed.');
     view = people.view();
     check("published over the newer revision", view.editions.map((e) => `${e.id} ${e.name} ${e.colours.join(",")}`), ["1 Drive tee 34,58,11", "2 Outside trousers 0,0,0", "3 Drive tee two 0,58,11"]);
     check("the copy kept edition 1's print size and place", [view.byId.get(3)?.print?.width, view.byId.get(3)?.print?.place.scale], [512, 1.2]);
@@ -255,7 +256,7 @@ try {
       if (held) lock.exec("ROLLBACK");
       lock.close();
     }
-    await said("Published edition 4.");
+    await said('Published edition 4, jeans "Busy trousers", as it was when Publish was pressed.');
     check("the busy publish went in once", people.view().editions.map((e) => e.name), ["Drive tee", "Outside trousers", "Drive tee two", "Busy trousers"]);
     await snap("busy-then-published");
 
@@ -295,7 +296,7 @@ try {
     await said("Added noise.png.");
     await slide('[data-lf="w"]', "1");
     await press("#publish");
-    await said("Published edition 5.", 300);
+    await said('Published edition 5, tee "Noise tee", as it was when Publish was pressed.', 300);
     const fitted = people.view().byId.get(5)?.print;
     check("the print was saved smaller, still square", !!fitted && fitted.width < 512 && fitted.width === fitted.height, true);
     const note = await text("#fit-note");
