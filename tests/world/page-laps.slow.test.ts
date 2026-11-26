@@ -158,4 +158,4 @@ test(`${LAPS} laps of a loop with every reader hold no more than the second did`
   expect(last.card).toBeLessThanOrEqual(second.card);
   expect(last.scene - second.scene).toBeLessThan(64e3);
   expect(last.heap + last.buffers - second.heap - second.buffers).toBeLessThan(1e6);
-}, 3_600_000);
+});

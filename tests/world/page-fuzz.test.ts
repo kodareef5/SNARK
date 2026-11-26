@@ -1,7 +1,7 @@
 // Two seeded random runs of a page of a map it takes in parts (tests/fixtures/map-page-fuzz.ts): the loader alone. The
-// slow tier runs many more (page-fuzz.slow.test.ts). One seed again, with what it measured:
+// slow tier runs 440 (page-fuzz.slow.test.ts). One seed again:
 //
-//   PAGE_FROM=17 PAGE_SEEDS=1 PAGE_SAY=1 bun test tests/world/page-fuzz.test.ts
+//   PAGE_FROM=17 PAGE_SEEDS=1 bun test tests/world/page-fuzz.test.ts
 
 import { expect, test } from "bun:test";
 import { fuzzLoader, wrongSeeds } from "../fixtures/map-page-fuzz.ts";
