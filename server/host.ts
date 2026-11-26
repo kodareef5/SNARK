@@ -218,8 +218,8 @@ export interface HostOptions {
   adminPassword?: string;
   /** The cluster's password, which `enablecheats` and the admin pages take at the cluster's rank. */
   clusterPassword?: string;
-  /** For SignIn=discord: the application's secret and its bot's token, before the settings of those names; `fetch` in place of the network; `site`, the server's address, said to Discord with each call. */
-  discord?: { secret?: string; botToken?: string; fetch?: Fetch; site?: string; now?: () => number };
+  /** For SignIn=discord: the application's secret and its bot's token, before the settings of those names; `fetch` in place of the network; `site`, the server's address, said to Discord with each call; `page`, its --public-url. */
+  discord?: { secret?: string; botToken?: string; fetch?: Fetch; site?: string; now?: () => number; page?: string };
   /** Development server. Cheats need no password. Never set it in a public deployment. */
   dev?: boolean;
   /** Load a save whose item ledger does not match its contents, instead of refusing. */
@@ -757,6 +757,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     api: new DiscordApi(opts.discord?.fetch, opts.discord?.site),
     say,
     ...(opts.discord?.now ? { now: opts.discord.now } : {}),
+    ...(opts.discord?.page ? { page: opts.discord.page } : {}),
     config: () => ({
       clientId: rules.text("DiscordClientId").trim(),
       secret: opts.discord?.secret || rules.text("DiscordClientSecret"),

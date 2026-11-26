@@ -58,6 +58,8 @@ export interface DiscordContext {
   readonly api: DiscordApi;
   readonly say: (line: string) => void;
   readonly now?: () => number;
+  /** The server's --public-url: an address, a path of whatever address it is reached at, or "". */
+  readonly page?: string;
 }
 
 /** A sign-in on its way: begun by a key, back from Discord or not, and not yet finished. */
@@ -261,8 +263,18 @@ export class DiscordSignIn implements SignInMethod {
     return back;
   }
 
+  /** The redirect the Discord application must list for this world, as far as the server knows its own address. */
+  redirect(): string {
+    const page = (this.ctx.page ?? "").replace(/\/+$/, "");
+    return `${/^https?:\/\//i.test(page) ? page : `<the address players open>${page}`}/signin/discord/callback`;
+  }
+
   /** The setup as Discord sees it, a line each, for the host to read. */
   async report(): Promise<string[]> {
+    return [...(await this.setup()), `discord: the application's redirects must list ${this.redirect()}`];
+  }
+
+  private async setup(): Promise<string[]> {
     const c = this.ctx.config();
     const fault = this.fault();
     if (fault !== "") return [`discord: ${fault}`];

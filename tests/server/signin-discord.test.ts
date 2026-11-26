@@ -198,7 +198,8 @@ test("a server whose Discord settings are not whole lets nobody in, and says wha
   const key = testKey("ada-laptop");
   expect(h.host.signin.method.admits(hashKey(key))).toBe(NOT_SET_UP);
   expect((await signinPost(h.host, { action: "start", key: hexKey(key) })).status).toBe(503);
-  expect(await h.host.discord.report()).toEqual(["discord: DiscordClientId is not set to the application's id"]);
+  const lists = "discord: the application's redirects must list <the address players open>/signin/discord/callback";
+  expect(await h.host.discord.report()).toEqual(["discord: DiscordClientId is not set to the application's id", lists]);
   expect(h.host.setSetting("DiscordClientId", fake.clientId)).toBe("");
   expect(h.host.signin.method.admits(hashKey(key))).toBe(SIGN_IN);
   expect(h.host.setSetting("DiscordRoles", `${SURVIVOR} 3300000000000000009`)).toBe("");
@@ -206,9 +207,13 @@ test("a server whose Discord settings are not whole lets nobody in, and says wha
     "discord: the bot Reef Gate is in Reef Club; asks for Survivor or 3300000000000000009, which is not a role there",
     `  ${SURVIVOR}  Survivor`,
     `  ${HELPER}  Helper`,
+    lists,
   ]);
   expect(h.host.setSetting("DiscordGuild", "2200000000000000009")).toBe("");
-  expect(await h.host.discord.report()).toEqual(["discord: DiscordGuild names no Discord server the bot can see"]);
+  expect(await h.host.discord.report()).toEqual(["discord: DiscordGuild names no Discord server the bot can see", lists]);
+  // A server told its own address names the redirect whole; one told only its path names the rest.
+  for (const [page, redirect] of [["https://play.example/miami/", "https://play.example/miami/signin/discord/callback"], ["/miami", "<the address players open>/miami/signin/discord/callback"]] as const)
+    expect(new Harness({}, 1, 60, { discord: { page } }).host.discord.redirect()).toBe(redirect);
   // A bot that cannot ask leaves one already signed in unanswered, so they are not let in.
   expect((await signInAs(h.host, fake, key, ADA)).body).toMatchObject({ signed: true, ok: false, why: NOT_SET_UP });
 });
