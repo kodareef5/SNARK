@@ -4,7 +4,7 @@
 export const SNAP_HEAD = 0, SNAP_OWN = 1, SNAP_CONTACTS = 2, SNAP_BODIES = 3, SNAP_REST = 4;
 
 export interface NetTap {
-  /** A message from the server: its S_ kind, the byte after it where that names a sub-kind (S_OWN, S_EVENT, S_TEXT) or -1, and its bytes. */
+  /** A message from the server: its S_ kind, the byte after it where that names a sub-kind (S_OWN, S_EVENT, S_TEXT, S_CHAT) or -1, and its bytes. */
   received(kind: number, sub: number, bytes: number): void;
   /** A message to the server: its C_ kind, the command's CMD_ op or -1, and its bytes. */
   sent(kind: number, sub: number, bytes: number): void;

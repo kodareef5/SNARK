@@ -22,6 +22,10 @@ test("every row of the catalogue is whole: one of each name, a meaning, a defaul
   expect(Object.keys(FEATURES).filter((f) => !waited.has(f))).toEqual([]);
 });
 
+test("a setting named for a password is marked secret, so it is never shown", () => {
+  expect(CATALOG.filter((r) => /password/i.test(r.name) && !r.secret).map((r) => r.name)).toEqual([]);
+});
+
 test("keys are found whatever their case, and a command-line flag is not the file key of the same letters", () => {
   expect(rowOf("tamingspeedmultiplier")!.name).toBe("TamingSpeedMultiplier");
   expect(rowOf("TAMINGSPEEDMULTIPLIER")!.at).toBe("server");

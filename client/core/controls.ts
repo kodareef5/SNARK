@@ -11,6 +11,12 @@ const BOARD_BINDINGS: Record<string, number> = { ...BINDINGS, ShiftRight: BTN_SP
 /** A flyer takes off or lands with Space and rolls or brakes while C or X is held. */
 const FLYER_BINDINGS: Record<string, number> = { ...BINDINGS, Space: 0, KeyC: BTN_ROLL, KeyX: BTN_BRAKE };
 const HELICOPTER_BINDINGS: Record<string, number> = { Space: BTN_JUMP, ControlLeft: BTN_CROUCH, ControlRight: BTN_CROUCH, ShiftLeft: BTN_SPRINT, ShiftRight: BTN_SPRINT, KeyE: BTN_USE, KeyQ: BTN_PRIMARY, KeyR: BTN_SECONDARY, KeyX: BTN_PRONE, KeyC: 0 };
+/**
+ * Flying a jet (planning/workstreams/jet.md): W/S throttle and A/D roll, the mouse aims, Shift lights the afterburner,
+ * Ctrl the airbrake and wheel brakes, Space and C climb and sink in VTOL, and N swings the nozzle to VTOL and back. The
+ * mouse buttons fire: the cannon, and the missile lock held and let go.
+ */
+const JET_BINDINGS: Record<string, number> = { Space: BTN_JUMP, KeyC: BTN_CROUCH, ControlLeft: BTN_PRONE, ControlRight: BTN_PRONE, ShiftLeft: BTN_SPRINT, ShiftRight: BTN_SPRINT, KeyE: BTN_USE, KeyN: 0 };
 /** At the wheel of a car with thrusters: Shift boosts (sprint's bit), and Q flips, as does G, a pad's right bumper. */
 const THRUSTER_BINDINGS: Record<string, number> = { ...BINDINGS, ShiftRight: BTN_SPRINT, KeyQ: BTN_BURST, KeyG: BTN_BURST };
 const MOVE_KEYS = new Set(["KeyW", "KeyA", "KeyS", "KeyD"]);
@@ -25,7 +31,7 @@ const MOUSE: readonly number[] = [BTN_PRIMARY, 0, BTN_SECONDARY];
 export class Controls {
   /** The keys the body or vehicle being driven now takes as buttons. A key one claims is no one else's (client/core/app.ts). */
   bindings(): Record<string, number> {
-    return this.board ? BOARD_BINDINGS : this.helicopter ? HELICOPTER_BINDINGS : this.flyer ? FLYER_BINDINGS : this.thrusters ? THRUSTER_BINDINGS : BINDINGS;
+    return this.board ? BOARD_BINDINGS : this.flyingJet ? JET_BINDINGS : this.helicopter ? HELICOPTER_BINDINGS : this.flyer ? FLYER_BINDINGS : this.thrusters ? THRUSTER_BINDINGS : BINDINGS;
   }
 
   /** Whether what is driven now takes `code` as one of its buttons. */
@@ -40,6 +46,8 @@ export class Controls {
   yaw = 0;
   pitch = 0;
   buttons = 0;
+  /** Buttons held only by a finger. */
+  touchOnly = 0;
   /** Scales LOOK_SPEED. It is the player's sensitivity, reduced while the view is narrowed to aim. */
   zoom = 1;
   /**
@@ -89,6 +97,16 @@ export class Controls {
   heli(on: boolean): void {
     if (on === this.helicopter) return;
     this.helicopter = on; this.directFlight = false; this.stance = 0; this.wing = false;
+    this.held.clear(); this.padHeld.clear(); this.mouse = this.padMouse = this.touchMouse = 0; this.refresh();
+  }
+  /** VTOL is wanted: BTN_MOD is sent every tick it is on, as a helicopter's direct flight is. */
+  vtol = false;
+  private flyingJet = false;
+  get onJet(): boolean { return this.flyingJet; }
+  /** Gives the keys a jet's meaning while `on`. `slow` says it is taken at rest or in the hover, so VTOL starts on. */
+  jet(on: boolean, slow: boolean): void {
+    if (on === this.flyingJet) return;
+    this.flyingJet = on; this.vtol = on && slow; this.stance = 0; this.wing = false;
     this.held.clear(); this.padHeld.clear(); this.mouse = this.padMouse = 0; this.refresh();
   }
   /** At the wheel of a car with thrusters, or not. */
@@ -100,6 +118,7 @@ export class Controls {
   private readonly padHeld = new Set<string>();
   private mouse = 0;
   private padMouse = 0;
+  private touchMouse = 0;
   private analogX = 0;
   private analogZ = 0;
   /** The touch stick's, apart from the pad's: a pad not there sends its stick at rest every frame. */
@@ -131,9 +150,11 @@ export class Controls {
   /** Returns true if the key is bound. */
   key(code: string, down: boolean, source = 0): boolean {
     const held = source === 1 ? this.padHeld : this.held;
-    const stance = this.board || this.flyer || this.helicopter ? undefined : STANCE_KEYS[code];
+    const stance = this.board || this.flyer || this.helicopter || this.flyingJet ? undefined : STANCE_KEYS[code];
     if (this.helicopter && code === "KeyC") {
       if (down && !held.has(code)) this.directFlight = !this.directFlight;
+    } else if (this.flyingJet && code === "KeyN") {
+      if (down && !held.has(code)) this.vtol = !this.vtol;
     } else if (this.gliding && stance !== undefined) {
       // Neither stance is taken in the air under a glider, and C throws it open or folds it.
       if (down && !held.has(code) && code === "KeyC") this.glideUntil = this.tick + GLIDE_PULSE;
@@ -155,11 +176,12 @@ export class Controls {
     return true;
   }
 
-  mouseButton(button: number, down: boolean, source = 0): void {
+  mouseButton(button: number, down: boolean, source = 0, singleTick = false): void {
     const bit = this.helicopter ? 0 : MOUSE[button] ?? 0;
     if (bit === 0) return;
-    if (this.board && down) this.pulses.set(bit, this.tick + SKATE_PULSE);
+    if (this.board && down && !singleTick) this.pulses.set(bit, this.tick + SKATE_PULSE);
     if (source === 1) this.padMouse = down ? this.padMouse | bit : this.padMouse & ~bit;
+    else if (source === 2) this.touchMouse = down ? this.touchMouse | bit : this.touchMouse & ~bit;
     else this.mouse = down ? this.mouse | bit : this.mouse & ~bit;
     this.refresh();
   }
@@ -175,7 +197,7 @@ export class Controls {
   release(): void {
     this.held.clear();
     this.padHeld.clear();
-    this.mouse = 0;
+    this.mouse = this.touchMouse = 0;
     this.padMouse = this.analogX = this.analogZ = this.touchX = this.touchZ = 0;
     this.refresh();
   }
@@ -196,12 +218,13 @@ export class Controls {
     const k = this.held;
     this.moveX = Math.max(-1,Math.min(1,(k.has("KeyD") ? 1 : 0) - (k.has("KeyA") ? 1 : 0) + this.analogX + this.touchX));
     this.moveZ = Math.max(-1,Math.min(1,(k.has("KeyW") ? 1 : 0) - (k.has("KeyS") ? 1 : 0) + this.analogZ + this.touchZ));
-    let buttons = this.mouse | this.padMouse | this.stance | (this.wing ? BTN_JUMP : 0) | (this.helicopter && this.directFlight ? BTN_MOD : 0);
+    let buttons = this.mouse | this.padMouse | this.stance | (this.wing ? BTN_JUMP : 0) | (this.helicopter && this.directFlight ? BTN_MOD : 0) | (this.flyingJet && this.vtol ? BTN_MOD : 0);
     if (this.gliding && (this.glideUntil >= 0 || k.has("KeyC") || this.padHeld.has("KeyC"))) buttons |= BTN_CROUCH;
     const bindings = this.bindings();
     for (const code of k) buttons |= bindings[code] ?? 0;
     for (const code of this.padHeld) buttons |= bindings[code] ?? 0;
     if (this.board) for (const [bit, until] of this.pulses) if (until >= this.tick) buttons |= bit;
-    this.buttons = buttons;
+    this.touchOnly = this.touchMouse & ~buttons;
+    this.buttons = buttons | this.touchMouse;
   }
 }

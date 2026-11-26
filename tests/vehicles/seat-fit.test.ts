@@ -127,7 +127,12 @@ test("a seated passenger keeps its own arm lengths when it aims", () => {
   const { def, seat } = enclosed().find(e => !e.seat.driver)!;
   const sp = seated(def, seat, frame.yaw + Math.PI / 3);
   const lengths = new Map<string, number>();
-  for (const body of bodies) {
+  // Arm length alone keeps all its stretch; every slider at once eases the arms with the rest.
+  const arms = pack.header.rigs.filter((r) => r.id === "human_m" || r.id === "human_f").flatMap((rig) => [1, -1].map((value) => {
+    const rest = Float32Array.from(rig.rest);
+    return { name: `${rig.id} ${value > 0 ? "longest" : "shortest"}`, rest, scale: stretched((r) => (r === 8 ? value : 0), rest) };
+  }));
+  for (const body of [...bodies, ...arms]) {
     const { solved } = drawnSeated(sp, state(holds[2]!), body.rest, body.scale);
     let reach = 0;
     for (const [parent, child] of [[B_UPPER_ARM_L, B_LOWER_ARM_L], [B_LOWER_ARM_L, B_HAND_L]] as const) {
@@ -138,7 +143,10 @@ test("a seated passenger keeps its own arm lengths when it aims", () => {
     }
     lengths.set(body.name, reach);
   }
-  for (const rig of ["human_f", "human_m"]) expect(lengths.get(rig + " largest")!).toBeGreaterThan(lengths.get(rig + " smallest")! * 1.1);
+  for (const rig of ["human_f", "human_m"]) {
+    expect(lengths.get(rig + " longest")!).toBeGreaterThan(lengths.get(rig + " shortest")! * 1.1);
+    expect(lengths.get(rig + " largest")!).toBeGreaterThan(lengths.get(rig + " smallest")!);
+  }
 });
 
 const boneOrigin = new Float64Array(3), boneDirection = new Float64Array(3);
@@ -261,7 +269,7 @@ test("the server's and the client's seated eye agree to a nanometre in every sea
 
 test("the Zephyr driver reaches the rim as the steering crosses full lock", () => {
   const { def, seat } = enclosed().find((v) => v.id === "core:zephyr" && v.seat.driver)!;
-  if (def.movement === "rotor" || def.movement === "boat") throw new Error("expected the Zephyr road chassis");
+  if (def.movement === "rotor" || def.movement === "boat" || def.movement === "jet") throw new Error("expected the Zephyr road chassis");
   const { left, right, turn } = seat.controls!, pivot = turn!.pivot;
   for (const steering of [-1, -.5, 0, .5, 1]) {
     const occupant = seated(def, seat), solved = new Solved(HUMAN_BONES);

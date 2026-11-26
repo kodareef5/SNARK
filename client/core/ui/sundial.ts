@@ -311,7 +311,7 @@ export class Sundial {
     this.dirty = true;
   }
 
-  /** `kind` 0 for a press, 1 for a release, 2 for a move. Returns true if it was the dial's. */
+  /** `kind` 0 for a press, 1 for a release, 2 for a move, 3 for a cancel. Returns true if it was the dial's. */
   pointer(kind: number, key: number, x: number, y: number, session: ClientSession): boolean {
     if (kind === 0 && key >= KEY_SUNDIAL_PRESET && key < KEY_SUNDIAL_PRESET + PRESETS.length) {
       if (!this.dragging) {
@@ -328,7 +328,8 @@ export class Sundial {
       this.dragging = true;
       this.set(hour);
     } else if (kind === 2 && this.dragging) this.set(this.hourAt(x, y, 0.08));
-    else if (kind === 1 && this.dragging) {
+    // A cancelled touch ends the turn where the hand stands, as a release does: its hours have already been sent.
+    else if ((kind === 1 || kind === 3) && this.dragging) {
       this.dragging = false;
       this.finish(session);
     }

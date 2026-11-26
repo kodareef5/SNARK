@@ -134,6 +134,8 @@ export interface MaterialSpec {
   readonly emissive?: number;
   /** Whether it glows only from dusk to dawn, as a lamp's lens that still works (shared/pack/pack.ts `MATERIAL_NIGHT`). */
   readonly night?: boolean;
+  /** Whether its glow is held down in the dark as a status light's is (`MATERIAL_INDICATOR`), so by night it keeps its colour. */
+  readonly indicator?: boolean;
   /**
    * Light with no surface of its own, drawn blended over what is behind it after everything opaque (`MATERIAL_BLEND`):
    * a supply drop's shaft and jets. What it shows is worked out by its street material, not painted.
@@ -484,6 +486,8 @@ export interface HumanBodiesAsset {
   readonly triangles: { readonly body: readonly number[]; readonly hair: readonly number[]; readonly armor: readonly number[] };
   /** In the order of SEX_IDS. `outfits` is how its outfit files and textures are named. */
   readonly bodies: readonly { readonly file: string; readonly material: string; readonly texture: string; readonly outfits: string }[];
+  /** Each body's joint rests, in the order of SEX_IDS. The cook writes these and refuses a body whose joints sit more than 3 mm off. */
+  readonly rigs: readonly (readonly number[])[];
   readonly eyes: string;
   readonly hair: string;
   readonly outfits: {

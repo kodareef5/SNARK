@@ -16,9 +16,11 @@ test("HUD export is bounded, content-addressed and carries its local font licens
   const dir=mkdtempSync(join(tmpdir(),"snark-ui-"));
   try {
     const out=buildUiAssets(dir), files=readdirSync(join(dir,"assets"));
-    // The sheet, the font's two parts and its licence, and the touch controls' sheet, which only a touched page fetches and `bytes` leaves out.
-    expect(files.length).toBe(5); expect(out.bytes).toBeLessThan(96*1024); expect(out.decodedBytes).toBeLessThanOrEqual(1024*1024);
-    for (const name of [out.atlas,...out.faces.map(f=>f.url),out.touch]) expect(name).toContain(partHash(readFileSync(join(dir,name))));
+    expect(files).toContain("hud-font-license.txt");
+    // The field icons are cut for a laptop's two pixels to a point: 128 to a cell, 54 cells.
+    expect(out.fieldDecodedBytes).toBeLessThanOrEqual(4*1024*1024);
+    expect(out.bytes).toBeLessThan(96*1024); expect(out.decodedBytes).toBeLessThanOrEqual(1024*1024);
+    for (const name of [out.atlas,out.field.icons,out.field.equipment,out.field.parts,out.field.touch,...out.faces.map(f=>f.url),out.touch]) expect(name).toContain(partHash(readFileSync(join(dir,name))));
     expect(out.touch).toMatch(/^assets\/touch\.[0-9a-f]+\.webp$/);
     expect(statSync(join(dir,out.touch)).size).toBeLessThan(400*1024);
     const path = join(dir, out.atlas);

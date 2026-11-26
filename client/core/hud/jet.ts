@@ -7,7 +7,7 @@ import { K_BAR } from "../ui/nodes.ts";
 import { glass } from "../ui/skin.ts";
 import { S_HUD_COUNT, S_MENU_NOTE, S_OXYGEN, S_WARNING } from "../ui/style.ts";
 import { JET_W, NARROW } from "./layout.ts";
-import type { HudWidget } from "./widget.ts";
+import { band, type HudWidget } from "./widget.ts";
 
 export const KEY_JET_FUEL = 3520;
 
@@ -20,6 +20,7 @@ export interface JetModel {
 
 export const JET: HudWidget<JetModel> = {
   name: "jet fuel",
+  bands: [band(KEY_JET_FUEL, 5)],
   make: () => ({ jetGear: 0, jetSpent: 0, jetThrust: 0, jetGrounded: false }),
   fill(model, c) {
     const session = c.session, b = session.own;

@@ -13,6 +13,10 @@ const RIGHTS_MAX = 240;
 
 let uploads = 0;
 
+/** A clip's length and size, as its act says them. */
+export const lengthOf = (seconds: number, bytes: number): string =>
+  `${Math.round(seconds * 10) / 10} s, ${bytes < 1048576 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1048576).toFixed(1)} MB`}`;
+
 /** Writes `parts` to `file` whole, through a file beside it in `tmp`. */
 function writeParts(tmp: string, file: string, parts: readonly Uint8Array[]): void {
   const part = join(tmp, `clip-${process.pid}-${++uploads}`);
@@ -25,8 +29,11 @@ function writeParts(tmp: string, file: string, parts: readonly Uint8Array[]): vo
   renameSync(part, file);
 }
 
-/** POST /admin/screens/upload?name=<title>: the raw MP4. Answers what its boxes say, and the id to publish it by. */
-export async function takeUpload(req: Request, lib: VideoLibrary): Promise<Response> {
+/**
+ * POST /admin/screens/upload?name=<title>: the raw MP4. Answers what its boxes say, and the id to publish it by. `did` is
+ * told what it did, and `holds` refuses it once the body is in where the sender may no longer change anything.
+ */
+export async function takeUpload(req: Request, lib: VideoLibrary, did: (what: string) => void = () => {}, holds: () => Response | null = () => null): Promise<Response> {
   if (req.method !== "POST") return new Response(null, { status: 405, headers: { allow: "POST" } });
   // The length comes first, so a body over the cap is not read: a browser sending a File always says it.
   const length = Number(req.headers.get("content-length") ?? Number.NaN);
@@ -58,6 +65,8 @@ export async function takeUpload(req: Request, lib: VideoLibrary): Promise<Respo
   }
   closeSync(fd);
   try {
+    const lost = holds();
+    if (lost) return lost;
     if (over) return entryReply({ error: `A clip is ${CLIP_MAX_BYTES / 1048576} MB at most.` }, 413);
     if (size === 0) return entryReply({ error: "The upload was empty." }, 400);
     const id = clipId(hash.digest("hex"));
@@ -70,7 +79,9 @@ export async function takeUpload(req: Request, lib: VideoLibrary): Promise<Respo
     const name = `${slug}.${id}.mp4`, file = join(lib.media, name);
     if (info.faststart) renameSync(tmp, file);
     else writeParts(lib.tmp, file, parts);
-    lib.addPending({ id, file: `/media/${name}`, width: info.width, height: info.height, seconds: info.seconds, kbps: info.kbps, bytes: statSync(file).size, audio: info.audio, at: Date.now() });
+    const bytesOnDisk = statSync(file).size;
+    lib.addPending({ id, file: `/media/${name}`, width: info.width, height: info.height, seconds: info.seconds, kbps: info.kbps, bytes: bytesOnDisk, audio: info.audio, at: Date.now() });
+    did(`uploaded the clip file ${name} (${lengthOf(info.seconds, bytesOnDisk)})`);
     return entryReply({ id, width: info.width, height: info.height, seconds: info.seconds, kbps: info.kbps, audio: info.audio });
   } finally {
     rmSync(tmp, { force: true });
@@ -92,14 +103,16 @@ function line(text: unknown, most: number): string | null {
   return t.length > 0 && t.length <= most ? t : null;
 }
 
-/** POST /admin/screens/clip {id, title, rights, poster, colours}: publishes an upload. Answers the clip. */
-export async function publishClip(req: Request, lib: VideoLibrary): Promise<Response> {
+/** POST /admin/screens/clip {id, title, rights, poster, colours}: publishes an upload. Answers the clip. `did` and `holds` are as takeUpload's. */
+export async function publishClip(req: Request, lib: VideoLibrary, did: (what: string) => void = () => {}, holds: () => Response | null = () => null): Promise<Response> {
   let body: Record<string, unknown>;
   try {
     body = await readEntryJson(req, 4 * POSTER_BYTES_MAX + 256 * 1024);
   } catch {
     return entryReply({ error: "Expected a JSON clip." }, 400);
   }
+  const lost = holds();
+  if (lost) return lost;
   const id = typeof body.id === "string" && isClipId(body.id) ? body.id : "";
   const pending = id ? lib.pending(id) : null;
   if (!pending) return entryReply({ error: "That upload is not waiting: send the clip again." }, 404);
@@ -122,5 +135,6 @@ export async function publishClip(req: Request, lib: VideoLibrary): Promise<Resp
   const done = lib.edit(null, (doc) => (doc.clips.some((c) => c.id === id) ? null : (doc.clips.push(clip), null)));
   if ("error" in done) return entryReply({ error: done.error }, done.status);
   lib.dropPending(id);
+  did(`published the clip "${title}" (${lengthOf(clip.seconds, clip.bytes)})`);
   return entryReply(clip);
 }

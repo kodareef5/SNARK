@@ -114,3 +114,20 @@ name AGPL or CC BY despite the pack's listing.
 
 Downloaded on 2026-11-20. The file says its mesh and motion were made with AI by Patch's anymove
 (github.com/patch-gg/anymove). It is kept unchanged.
+
+## FlexUnit
+
+| Folder | Source | License | Used for |
+| --- | --- | --- | --- |
+| `flexunit/ufo-spaceship` | [3D Game Ready UFO spaceship](https://flexunit.itch.io/3d-game-ready-ufo-spaceship), `UFO_Source.blend` (SHA-256 `5ce0afd1beb27a2e1c1ee626e4c2ef21dbd79b5e8a6727266d09243ee9de093a`) and `UFO_Low_Poly.fbx` (`fc0bc64722dda4694df3d94f34ac7caed14195df76ef40473030beee6821ca92`) | itch.io "Creative Commons Zero v1.0 Universal", captured in `LICENSE.txt` | The map events' UFO, its wreck and its core (`assets/source/core/events/ufo/`): its turned profile, windows and lights, read by `convert.py` into `ref/flexunit.json` |
+
+Downloaded by the owner on 2026-11-22 and copied unchanged on 2026-11-23.
+
+## mgg8
+
+| Folder | Source | License | Used for |
+| --- | --- | --- | --- |
+| `mgg8/f-35b` | [F-35B Lightning II - RAF 617 Squadron](https://sketchfab.com/3d-models/f-35b-lightning-ii-raf-617-squadron-1161f64164ce481189ce67d39502c068), `f-35b_lightning_ii__raf_617_squadron.glb` (SHA-256 `2066fa8e60e65892e4f474b615a75a26c6056f33e4f517ca7254d334f0d0e6f9`) | Sketchfab API `license.label` "CC0 Public Domain", captured in `LICENSE.txt` | The XF-51 Wraith's airframe (`assets/source/core/vehicles/jet/`), reshaped, repainted and renamed: none of its markings or pictures are kept |
+
+The author calls it an "AI-assisted procedural Blender model". Downloaded by the owner on 2026-11-22 and copied
+unchanged on 2026-11-23. Only `LICENSE.txt` is kept in the repository; the model itself stays out of it.

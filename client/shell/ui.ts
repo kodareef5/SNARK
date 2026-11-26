@@ -1,9 +1,10 @@
 // Draws the interface: one element per node, placed where client/core says, with no layout or state here.
 // Text is always set as text, never as markup, so nothing a player types or is named can become HTML.
 
-import { K_BAR, K_BUTTON, K_DIAL, K_HOLD, K_IMAGE, K_INPUT, K_SECRET, K_SLIDER, type UiFrame, type UiNode } from "../core/ui/nodes.ts";
+import { K_BAR, K_BUTTON, K_DIAL, K_HOLD, K_IMAGE, K_INPUT, K_SECRET, K_SLIDER, type UiFrame, type UiImage, type UiNode } from "../core/ui/nodes.ts";
 import { bindTextInput, type UiEvents } from "../core/ui/events.ts";
 import { STYLES } from "../core/ui/style.ts";
+import type { TextRun } from "../../shared/net/chat.ts";
 const LENS = ["none", "radial-gradient(closest-side,#0000 99%,#000 100%)", "radial-gradient(circle closest-side at 28.4% 50%,#0000 99%,#000 100%),radial-gradient(circle closest-side at 71.6% 50%,#0000 99%,#000 100%)",
   "repeating-linear-gradient(#0000 0 2px,#000 2px 3px)", "radial-gradient(farthest-corner,#0000 45%,#000 100%)"];
 
@@ -18,10 +19,11 @@ interface Bound {
   h: number;
   style: number;
   text: string;
+  runs: readonly TextRun[] | null;
   value: number;
   version: number;
-  /** For a picture in a file: the background that shows the part of it drawn. */
-  src: string;
+  image?: UiImage;
+  sx: number; sy: number; sw: number; sh: number;
   interactive: boolean;
   tint: number;
   alpha: number;
@@ -32,6 +34,17 @@ interface Bound {
 
 const rgba = (c: number): string => `rgba(${c >>> 24},${(c >>> 16) & 255},${(c >>> 8) & 255},${(c & 255) / 255})`;
 const rgb = (c: number): string => `#${c.toString(16).padStart(6, "0")}`;
+
+/** One span a run, each set as text; a run with no ink takes the node's. */
+function spans(el: HTMLElement, runs: readonly TextRun[]): void {
+  el.textContent = "";
+  for (const r of runs) {
+    const span = document.createElement("span");
+    span.textContent = r.text;
+    if (r.ink !== undefined) span.style.color = rgb(r.ink);
+    el.append(span);
+  }
+}
 
 export class UiView {
   private readonly root: HTMLElement;
@@ -51,14 +64,21 @@ export class UiView {
     this.root = root;
     this.events = events;
     root.textContent = "";
+    const held = new Map<number, number>();
     const forward = (kind: number) => (e: PointerEvent) => {
-      const el = (e.target as HTMLElement).closest<HTMLElement>("[data-k]");
-      const key = Number(el?.dataset.k ?? 0);
-      // A dial or a held control keeps the pointer from its press to its release, wherever it goes, and a cancelled touch lets go of it.
-      const held = this.bound.get(key)?.kind, dial = held === K_DIAL || held === K_HOLD;
-      if (kind === 0 && dial) el!.setPointerCapture(e.pointerId);
-      if (kind === 3 && !dial) return;
-      if (key !== 0 && this.scale > 0) events.pointer(kind === 3 ? 1 : kind, key, e.clientX / this.scale, e.clientY / this.scale, e.button, e.pointerType === "touch" ? Math.abs(e.pointerId) + 1 : 0);
+      const el = (e.target as HTMLElement).closest?.<HTMLElement>("[data-k]");
+      const owner = held.get(e.pointerId);
+      const key = owner ?? Number(el?.dataset.k ?? 0);
+      if (kind === 3 && owner === undefined) return;
+      if (kind === 0 && el) {
+        const node = this.bound.get(key)?.kind;
+        if (node === K_DIAL || node === K_HOLD) {
+          held.set(e.pointerId, key);
+          el.setPointerCapture(e.pointerId);
+        }
+      }
+      if (kind === 1 || kind === 3) held.delete(e.pointerId);
+      if (key !== 0 && this.scale > 0) events.pointer(kind, key, e.clientX / this.scale, e.clientY / this.scale, e.button, e.pointerType === "touch" ? Math.abs(e.pointerId) + 1 : 0);
       if (e.pointerType === "touch" && kind < 2 && events.typing?.() && !(document.activeElement instanceof HTMLInputElement)) this.lure.focus();
     };
     this.lure.style.cssText = "position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;font-size:16px;pointer-events:none;border:0;padding:0";
@@ -67,6 +87,7 @@ export class UiView {
     root.addEventListener("pointerup", forward(1));
     root.addEventListener("pointermove", forward(2));
     root.addEventListener("pointercancel", forward(3));
+    document.addEventListener("lostpointercapture", forward(3));
     root.addEventListener("click", (e) => {
       const key = Number((e.target as HTMLElement).dataset?.k ?? 0);
       if (e.detail === 0 && key) events.pointer(0, key, 0, 0, 0, 0);
@@ -104,7 +125,7 @@ export class UiView {
       if (rescaled || b.style !== n.style || b.tint !== n.tint) {
         b.style = n.style;
         b.tint = n.tint;
-        b.src = "";
+        b.image = undefined;
         const st = STYLES[n.style]!;
         s.background = n.tint >= 0 ? rgb(n.tint) : (st.fill & 255) === 0 ? "none" : rgba(st.fill);
         // A sight's lens: the fill only outside its round hole, or its two (style.ts Style.lens).
@@ -129,9 +150,13 @@ export class UiView {
         b.value = n.value;
         if (n.kind === K_SLIDER && b.text !== n.text) field.setAttribute("aria-valuetext", n.text);
         b.text = n.text;
-      } else if (b.text !== n.text) {
+      } else if (b.text !== n.text || b.runs !== n.runs) {
         b.text = n.text;
-        if (!b.fill && n.kind !== K_IMAGE) b.el.textContent = n.text;
+        b.runs = n.runs;
+        if (!b.fill && n.kind !== K_IMAGE) {
+          if (n.runs) spans(b.el, n.runs);
+          else b.el.textContent = n.text;
+        }
       }
       if (b.fill && b.value !== n.value) {
         b.value = n.value;
@@ -139,25 +164,22 @@ export class UiView {
       }
       if (n.kind === K_IMAGE) {
         const image = f.images[n.image];
-        // A picture in a file is the background, the part shown scaled to fill the node. The browser fetches the file once.
         const w = n.sw || image?.width || 1, h = n.sh || image?.height || 1;
-        const src = image?.url ? `url("${image.url}") ${(n.sx / Math.max(1, image.width - w)) * 100}% ${(n.sy / Math.max(1, image.height - h)) * 100}% / ${(image.width / w) * 100}% ${(image.height / h) * 100}% no-repeat` : "";
-        if (src !== "" && b.src !== src) {
-          b.src = src;
-          (b.el as HTMLCanvasElement).width = 1;
-          s.background = src;
-          s.imageRendering = "auto";
-        }
-        const crop = `${n.image}/${n.sx}/${n.sy}/${w}/${h}`;
-        if (image && !image.url && (b.version !== image.version || b.src !== crop)) {
-          b.version = image.version;
-          b.src = crop;
+        if (image && (b.image !== image || b.version !== image.version || b.sx !== n.sx || b.sy !== n.sy || b.sw !== w || b.sh !== h)) {
+          b.image = image; b.version = image.version;
+          b.sx = n.sx; b.sy = n.sy; b.sw = w; b.sh = h;
           const canvas = b.el as HTMLCanvasElement;
-          s.imageRendering = image.smooth ? "auto" : "pixelated";
-          if (canvas.width !== w) canvas.width = w;
-          if (canvas.height !== h) canvas.height = h;
-          // The part shown goes straight from the picture's own pixels onto the node.
-          canvas.getContext("2d")!.putImageData(new ImageData(image.data as Uint8ClampedArray<ArrayBuffer>, image.width, image.height), -n.sx, -n.sy, n.sx, n.sy, w, h);
+          if (image.url) {
+            if (canvas.width !== 1) canvas.width = 1;
+            s.background = `url("${image.url}") ${n.sx / Math.max(1, image.width - w) * 100}% ${n.sy / Math.max(1, image.height - h) * 100}% / ${image.width / w * 100}% ${image.height / h * 100}% no-repeat`;
+            s.imageRendering = "auto";
+          } else {
+            s.background = "none";
+            s.imageRendering = image.smooth ? "auto" : "pixelated";
+            if (canvas.width !== w) canvas.width = w;
+            if (canvas.height !== h) canvas.height = h;
+            canvas.getContext("2d")!.putImageData(new ImageData(image.data as Uint8ClampedArray<ArrayBuffer>, image.width, image.height), -n.sx, -n.sy, n.sx, n.sy, w, h);
+          }
         }
       }
       if (b.interactive !== n.interactive) {
@@ -214,7 +236,7 @@ export class UiView {
     el.dataset.k = String(n.key);
     el.style.pointerEvents = "none";
     this.root.append(el);
-    const b: Bound = { el, fill, kind: n.kind, x: NaN, y: NaN, w: NaN, h: NaN, style: -1, text: "", label: "", value: NaN, version: 0, src: "", interactive: false, tint: -2, alpha: 1, order: -1, seen: 0 };
+    const b: Bound = { el, fill, kind: n.kind, x: NaN, y: NaN, w: NaN, h: NaN, style: -1, text: "", runs: null, label: "", value: NaN, version: 0, sx: -1, sy: -1, sw: 0, sh: 0, interactive: false, tint: -2, alpha: 1, order: -1, seen: 0 };
     this.bound.set(n.key, b);
     return b;
   }

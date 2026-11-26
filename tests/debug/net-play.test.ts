@@ -15,7 +15,7 @@ function keyOf(dir: number, data: Uint8Array): string {
     return `${dir} ${kind} ${kind === P.C_COMMAND ? ((data[2]! >>> 4) | (data[3]! << 4)) & 255 : -1}`;
   }
   const kind = data[0]!;
-  return `${dir} ${kind} ${kind === P.S_OWN || kind === P.S_EVENT || kind === P.S_TEXT ? data[1]! : -1}`;
+  return `${dir} ${kind} ${kind === P.S_OWN || kind === P.S_EVENT || kind === P.S_TEXT || kind === P.S_CHAT ? data[1]! : -1}`;
 }
 
 /** Adds `bytes` to `key` in `to`. */
@@ -108,5 +108,5 @@ test("the tap counts each byte that crossed the socket by kind, and splits each 
 
   // The text, the event, the chat and the snapshot's parts are each in their category.
   const seen = rows.slice(0, n).map((r) => `${r.kindName} ${r.subName} ${CATEGORIES[r.category]}`);
-  expect(seen).toEqual(expect.arrayContaining(["S_EVENT EVENT_KILL combat", "S_TEXT TEXT_NOTICE text", "S_TEXT TEXT_GLOBAL text", "C_COMMAND CMD_CHAT commands", "C_INPUT  input", "S_SNAPSHOT bodies bodies", "S_SNAPSHOT own body player"]));
+  expect(seen).toEqual(expect.arrayContaining(["S_EVENT EVENT_KILL combat", "S_TEXT TEXT_NOTICE text", "S_CHAT TEXT_GLOBAL text", "C_COMMAND CMD_CHAT commands", "C_INPUT  input", "S_SNAPSHOT bodies bodies", "S_SNAPSHOT own body player"]));
 });

@@ -12,7 +12,7 @@ import { K_BAR, K_PANEL, type UiFrame } from "../ui/nodes.ts";
 import { S_CROSS, S_DARK, S_FEED, S_FEED_BIG, S_FEED_REC, S_FEED_RIGHT, S_FEED_SMALL, S_FEED_SMALL_LEFT, S_FEED_WARN, S_HEALTH, S_OXYGEN, S_SCANLINES, S_VIGNETTE } from "../ui/style.ts";
 import { headingOf } from "./state.ts";
 import { buildTarget, buildTracks, type TracksModel } from "./tracks.ts";
-import type { HudWidget } from "./widget.ts";
+import { band, type HudWidget } from "./widget.ts";
 
 /** The feed's nodes: its frame and words, its heading tape, and its two scales. */
 export const KEY_FEED = 46000;
@@ -64,6 +64,7 @@ function clockOf(hour: number): string {
 
 export const FEED: HudWidget<FeedModel> = {
   name: "drone feed",
+  bands: [band(KEY_FEED, 300)],
   make: () => ({ feed: false, feedName: "", feedClock: "", feedFuel: 0, feedSignal: 0, feedSpeed: 0, feedAgl: 0, feedHeading: 0, feedPitch: 0, feedMode: 0, feedZoom: 1, feedFrozen: false, feedNow: 0, feedPost: false, feedLat: 0, feedLon: 0, feedRange: 0 }),
   fill(m, c) {
     const a = c.frame, s = c.session, v = s.airFeed;

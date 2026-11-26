@@ -202,6 +202,7 @@ test("the stand-in sheet has every part in its cell, a hollow ring, and room for
 test("with no weapon to aim and a helmet's visor, the aim toggle holds the visor up, as the middle button; a glass held is aimed; a raised sight that zooms has zoom buttons, the arrows", async () => {
   const { touchControls } = await import("../../client/core/ui/touch.ts");
   const p = new TouchPlay(), f = new UiFrame(), m = new HudModel();
+  p.tools = true;
   const shown = (): Map<number, string> => {
     f.begin(16 / 9);
     touchControls(f, p, m, "foot", 0, f.height, 0);

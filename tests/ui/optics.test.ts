@@ -10,7 +10,7 @@ import { FRAME, FramePacket, HEAT_COLD, HEAT_HOT, HEAT_WARM, HEAT_WORLD, OPTIC_A
 import { PHOSPHOR, opticFrame, postFrame, type Optic } from "../../client/core/render/post.ts";
 import { graded, heatOfShown, ironbow, shown } from "../../client/core/render/surface.ts";
 import { tierOf } from "../../client/core/assets/tiers.ts";
-import { KEY_CROSS, KEY_GLASS, KEY_MAGNIFY, KEY_MIL, KEY_SPOT, KEY_VISOR, MARKER_TINT } from "../../client/core/ui/hud.ts";
+import { KEY_CROSS, KEY_GLASS, KEY_MAGNIFY, KEY_MIL, KEY_MIL_ZERO, KEY_SPOT, KEY_VISOR, MARKER_TINT } from "../../client/core/ui/hud.ts";
 import { Glass, SHAKE } from "../../client/core/glass.ts";
 import { BTN_SECONDARY, BTN_SPRINT, Body, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND } from "../../shared/sim/character.ts";
 import { BREATH_STEADY, aimShot, holdsBreath, scopeFitted, shotAim, sway, swayOut, zeroUnits } from "../../shared/sim/aim.ts";
@@ -388,7 +388,7 @@ test("a milliradian reticle's marks are a milliradian apart at the view's field,
     f.begin(16 / 9);
     buildHud(f, m);
     // The first two marks right of the middle, on the horizontal line.
-    const marks = f.nodes.slice(0, f.count).filter((n) => n.key > KEY_MIL + 1 && n.key < KEY_MIL + 90 && n.w < 3 && n.x > f.width / 2).map((n) => n.x).sort((a, b) => a - b);
+    const marks = f.nodes.slice(0, f.count).filter((n) => n.key > KEY_MIL + 1 && n.key < KEY_MIL_ZERO && n.w < 3 && n.x > f.width / 2).map((n) => n.x).sort((a, b) => a - b);
     return marks[1]! - marks[0]!;
   };
   const base = (70 * Math.PI) / 180;
@@ -401,7 +401,7 @@ test("a milliradian reticle's marks are a milliradian apart at the view's field,
   m.sightZero = 300;
   f.begin(16 / 9);
   buildHud(f, m);
-  expect(f.find(KEY_MIL + 98)!.text).toBe("ZERO 300 m");
+  expect(f.find(KEY_MIL_ZERO)!.text).toBe("ZERO 300 m");
 });
 
 test("a sight's magnification ladder: its zoom in words beside the window, a rung marked on a ladder from its least to its most on the logarithm, a fixed sight's words alone", () => {

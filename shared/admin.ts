@@ -144,6 +144,8 @@ export interface SurvivorDeath {
 
 export interface SurvivorRow {
   pid: number;
+  /** Its ID (shared/ids.ts), or "" for none. */
+  id: string;
   name: string;
   tribe: string;
   team: number;
@@ -181,6 +183,8 @@ export interface AdminChatLine {
   channel: AdminChatChannel;
   speaker: string;
   text: string;
+  /** The names of the tags it was said with; absent for none. */
+  tags?: string[];
 }
 
 /** /admin/overview.json, the live data for one card in the cluster admin. */

@@ -4,6 +4,7 @@
 import type { CraftFacet, Def, EngramDef, ItemDef, LevelsDef, NodeDef, SpeciesDef, StructureDef } from "./defs.ts";
 import { MAX_BURN_SECONDS, MAX_LEVELS, MAX_NODE_HITS, MAX_SPOIL_HOURS, STAMINA_DEFAULT, compileContent, type Registry } from "./registry.ts";
 import { cooldownTicks } from "../sim/vehicle-thrusters.ts";
+import { JET_SPEED_CAP, type JetSpec, type VehicleDefinition, type VehicleWeapons } from "../sim/vehicle.ts";
 import { hashString } from "../hash.ts";
 
 export interface Tuning {
@@ -47,6 +48,71 @@ export interface Tuning {
    * (shared/world/vehicle-surface.ts) and every road piece of that surface.
    */
   readonly surfaces?: Readonly<Record<string, number>>;
+  /** A vehicle's health, flight and fitted weapons, by its content id, where the server's settings change them (the jet). */
+  readonly vehicles?: Readonly<Record<string, VehicleTuning>>;
+}
+
+/** What may be tuned of a vehicle. Each is left as the content has it where not given. */
+export interface VehicleTuning {
+  readonly health?: number;
+  /** A jet's speeds, metres a second: on military thrust, on its burner, and where it stalls. */
+  readonly cruise?: number;
+  readonly top?: number;
+  readonly stall?: number;
+  readonly gLimit?: number;
+  readonly cannon?: { readonly rounds?: number; readonly damage?: number; readonly interval?: number };
+  readonly missiles?: { readonly count?: number; readonly damage?: number; readonly blast?: number; readonly lock?: number; readonly range?: number; readonly speed?: number; readonly reload?: number };
+}
+
+/** What a vehicle's tuning makes of the items it fires, by the item's id. */
+interface ArmTuning {
+  damage?: number;
+  blast?: number;
+  speed?: number;
+  clip?: number;
+  interval?: number;
+  reload?: number;
+}
+
+/** A vehicle species as tuned, and what it makes of its weapons' items into `arms`. Speeds keep stall < cruise < top. */
+function tunedVehicle(d: SpeciesDef, vt: VehicleTuning, arms: Map<string, ArmTuning>): SpeciesDef {
+  const vehicle = d.vehicle;
+  if (!vehicle) return d;
+  let stats = d.stats;
+  if (isNumber(vt.health) && stats?.health) stats = { ...stats, health: [within(vt.health, 1, 1e7), stats.health[1], stats.health[2]] };
+  let next: VehicleDefinition = vehicle;
+  if (vehicle.movement === "jet" && (isNumber(vt.top) || isNumber(vt.cruise) || isNumber(vt.stall) || isNumber(vt.gLimit))) {
+    const spec: JetSpec = vehicle.spec;
+    const topSpeed = isNumber(vt.top) ? within(vt.top, spec.rotateSpeed + 2, JET_SPEED_CAP) : spec.topSpeed;
+    const cruiseSpeed = within(isNumber(vt.cruise) ? vt.cruise : spec.cruiseSpeed, spec.rotateSpeed + 1, topSpeed - 1);
+    const stallSpeed = within(isNumber(vt.stall) ? vt.stall : spec.stallSpeed, spec.vtolSpeed, cruiseSpeed - 1);
+    const gLimit = isNumber(vt.gLimit) ? within(vt.gLimit, 1, 12) : spec.gLimit;
+    next = { ...vehicle, spec: { ...spec, topSpeed, maxForward: topSpeed, cruiseSpeed, stallSpeed, gLimit } };
+  }
+  const weapons: VehicleWeapons | undefined = next.weapons;
+  const c = vt.cannon, m = vt.missiles;
+  if (weapons?.cannon && c) {
+    const cannon = { ...weapons.cannon };
+    if (isNumber(c.rounds)) cannon.rounds = whole(c.rounds, 1, 65535);
+    if (isNumber(c.interval)) cannon.interval = within(c.interval, 0.02, 10);
+    next = { ...next, weapons: { ...next.weapons, cannon } };
+    // The item's clip says at most 255: the drum itself holds what the tuning says.
+    arms.set(cannon.weapon, { clip: Math.min(255, cannon.rounds), interval: cannon.interval });
+    if (isNumber(c.damage)) arms.set(cannon.ammo, { damage: within(c.damage, 0, 100000) });
+  }
+  if (weapons?.missiles && m) {
+    const missiles = { ...weapons.missiles };
+    if (isNumber(m.count)) missiles.count = whole(m.count, 1, 255);
+    if (isNumber(m.reload)) missiles.reload = within(m.reload, 0.1, 3600);
+    if (isNumber(m.lock)) missiles.lock = within(m.lock, 0.1, 30);
+    if (isNumber(m.range)) missiles.range = within(m.range, 50, 3000);
+    if (isNumber(m.speed)) missiles.speed = within(m.speed, 20, 400);
+    next = { ...next, weapons: { ...next.weapons, missiles } };
+    arms.set(missiles.weapon, { clip: missiles.count, reload: missiles.reload });
+    arms.set(missiles.ammo, { ...(isNumber(m.damage) ? { damage: within(m.damage, 0, 100000) } : {}), ...(isNumber(m.blast) ? { blast: within(m.blast, 0.5, 60) } : {}), speed: missiles.speed });
+  }
+  if (next === vehicle && stats === d.stats) return d;
+  return { ...d, ...(stats ? { stats } : {}), vehicle: next };
 }
 
 /** The least and the most grip a surface may be tuned to, as a surface's own check has them (validVehicleSurface). */
@@ -164,8 +230,24 @@ export function applyTuning(defs: readonly Def[], t: Tuning): Def[] {
   const xp = levelTable(t.xp);
   const tameXp = levelTable(t.tameXp);
   const grips = surfaceGrips(t);
+  // Vehicles first: what their tuning makes of the items they fire is applied to those items below.
+  const vehicles = record<VehicleTuning>(t.vehicles);
+  const arms = new Map<string, ArmTuning>();
+  const tunedVehicles = new Map<string, SpeciesDef>();
+  for (const d of defs) if (d.type === "species" && d.vehicle && Object.hasOwn(vehicles, d.id)) tunedVehicles.set(d.id, tunedVehicle(d, vehicles[d.id]!, arms));
 
-  return defs.map((d): Def => {
+  /** An item as a vehicle's tuning makes it, before what tunes every item. */
+  const armed = (d: ItemDef): ItemDef => {
+    const a = arms.get(d.id);
+    if (!a) return d;
+    const out: { -readonly [K in keyof ItemDef]: ItemDef[K] } = { ...d };
+    if (d.weapon && (a.clip !== undefined || a.interval !== undefined || a.reload !== undefined)) out.weapon = { ...d.weapon, ...(a.clip !== undefined ? { clip: a.clip } : {}), ...(a.interval !== undefined ? { interval: a.interval } : {}), ...(a.reload !== undefined ? { reload: a.reload } : {}) };
+    if (d.ammo && (a.damage !== undefined || a.blast !== undefined || a.speed !== undefined)) out.ammo = { ...d.ammo, ...(a.damage !== undefined ? { damage: a.damage } : {}), ...(a.blast !== undefined ? { blast: a.blast } : {}), ...(a.speed !== undefined && d.ammo.speed !== undefined ? { speed: a.speed } : {}) };
+    return out;
+  };
+
+  return defs.map((given): Def => {
+    const d = given.type === "item" ? armed(given) : given;
     if (d.type === "item") {
       // An item that cannot stack because it wears out or holds rounds stays so. A stack above 1 never tunes down to 1.
       const single = (d.weapon !== undefined || d.wear !== undefined || d.tool !== undefined) && d.weapon?.kind !== "thrown";
@@ -219,7 +301,7 @@ export function applyTuning(defs: readonly Def[], t: Tuning): Def[] {
       return out;
     }
     if (d.type === "species") {
-      const sp = tunedThrusters(d, t.thrusters);
+      const sp = tunedThrusters(tunedVehicles.get(d.id) ?? d, t.thrusters);
       const own = Object.hasOwn(staminaOf, sp.id) ? staminaOf[sp.id] : undefined;
       const m = isNumber(own) && own >= 0 ? own : stamina;
       const g = record<unknown>(Object.hasOwn(gainsOf, sp.id) ? gainsOf[sp.id] : gains);

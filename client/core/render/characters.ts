@@ -2,6 +2,8 @@ import { skateDeckRotation } from "../../../shared/anim/skate.ts";
 import { caughtStrikeTick } from "./strike-contact.ts";
 import { ownArms, PunchGuard } from "./own-arms.ts";
 import { ImpactSprings } from "./impact-springs.ts";
+import { jetPoseOf, jetRig, type JetPose, type JetRig } from "./jet-bones.ts";
+import { askJet, JET_CODE, type JetPartsCode } from "../jet-load.ts";
 import { TICK_RATE } from "../../../shared/coords.ts";
 import { survivorKind } from "../../../shared/sim/blockers.ts";
 import { bodyMass } from "../../../shared/sim/body-mass.ts";
@@ -22,13 +24,13 @@ import { fitSeatControls } from "../../../shared/anim/seat-controls.ts";
 import { vehicleRotation, type VehicleFrame } from "../../../shared/sim/vehicle-frame.ts";
 import { vehicleDoor } from "../../../shared/sim/vehicle-body.ts";
 import type { Seat } from "../../../shared/sim/seats.ts";
-import { isSkateboard, isBoatVehicle, isWheelVehicle, type VehicleDefinition } from "../../../shared/sim/vehicle.ts";
+import { isAircraft, isSkateboard, isBoatVehicle, isWheelVehicle, type VehicleDefinition } from "../../../shared/sim/vehicle.ts";
 import { quatAxis, quatMul, quatRotate } from "../../../shared/math/quat.ts";
 import { TAU } from "../../../shared/math/scalar.ts";
 import { B_HEAD, B_HIPS, B_NECK, B_PROP_L, B_PROP_R, B_SHOULDER_L, B_SHOULDER_R, B_UPPER_CHEST, SOCKET_EYE, HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_HEAD, SLOT_FEET, SLOT_HANDS, SLOT_NAMES } from "../../../shared/anim/human.ts";
 import { RiderSoles, soleOffsets } from "../../../shared/anim/rider-soles.ts";
 import { RiderGrips } from "../../../shared/anim/rider-grips.ts";
-import { BEARD_STYLES, HAIR_STYLES, LOOK_BEARD, LOOK_BYTES, LOOK_HAIR, LOOK_SEX, REGION_MAIN, REGION_SECOND, REGION_TRIM, SEX_IDS, defaultLook, lookColors, lookJoints, plantLookFeet, lookScales } from "../../../shared/anim/look.ts";
+import { BEARD_STYLES, HAIR_STYLES, LOOK_BEARD, LOOK_BODY_BYTES, LOOK_BYTES, LOOK_HAIR, LOOK_SEX, REGION_MAIN, REGION_SECOND, REGION_TRIM, SEX_IDS, defaultLook, lookColors, lookJoints, plantLookFeet, lookScales } from "../../../shared/anim/look.ts";
 import { EMOTES, EMOTE_GROUP, emoteClipId, emoteOf } from "../../../shared/anim/emotes.ts";
 import { AnimState, CUE_TORPOR, DIR_STEPS, HumanAnim, LAUNCHER_AT_MUZZLE, LAUNCHER_FETCHED, LAUNCHER_HOME, advanceHuman, humanPose, launcherReloadShare } from "../../../shared/anim/pose.ts";
 import { ROUND_HELD, ROUND_SLIDE } from "../../../shared/anim/authored.ts";
@@ -178,6 +180,8 @@ interface VehicleRig {
   slideOffsets?: Float32Array;
   steer: number;
   drives: { bone: number; axis: readonly [number, number, number]; ratio: number; spin: boolean }[];
+  /** A jet's moving bones (jet-parts.ts). */
+  jet?: JetRig;
 }
 
 export interface VehicleRenderPose {
@@ -197,6 +201,9 @@ export interface VehicleRenderPose {
   lightMode?: number;
   /** A thruster car's packed state (shared/sim/vehicle-thrusters.ts): which nozzles blow. */
   thrust?: number;
+  /** Its gear and whether its drive word's shift bit is set: a jet's wheels down, and its afterburner lit. */
+  gear?: number;
+  shifting?: boolean;
 }
 /** The pelvis target in camera-relative world space; the character's own rest proportions determine its origin. */
 export interface VehicleSeatPose extends VehicleRenderPose, OccupantSeat {
@@ -488,6 +495,13 @@ export class Characters {
   private frame = 0;
   /** Blows landed on bodies, drawn as springs (impact-springs.ts), the body being posed now, and the clock they last moved at. */
   readonly springs = new ImpactSprings();
+  /** Each jet's gear, nozzle, surfaces and burner as drawn (jet-parts.ts). */
+  private jetMoves: JetPartsCode | null = null;
+  /** What moves on each jet drawn, once the jet's code has come (jet-load.ts). */
+  get jetParts(): JetPartsCode | null {
+    return (this.jetMoves ??= JET_CODE.code?.parts() ?? null);
+  }
+  private readonly jetPose: JetPose = { gear: 1, nozzle: 0, wheelAngle: 0, qx: 0, qy: 0, qz: 0, qw: 1, burner: false };
   private posingId = -1;
   private springsAt = -1;
   /** The session's tick clock at this frame, fractional (ClientSession.tickClock); the scene sets it before `begin`. */
@@ -725,7 +739,7 @@ export class Characters {
     out.engineRpm = vehicle.engineRpm; out.engineOn = vehicle.engineOn; out.hullCondition = vehicle.hullCondition; out.flooding = vehicle.flooding;
     out.groundPitch = vehicle.groundPitch; out.groundRoll = vehicle.groundRoll; out.rideOffset = vehicle.rideOffset; out.grounded = vehicle.grounded; out.doors = vehicle.doors; out.missingPanels = vehicle.missingPanels;
     out.definition = seat; out.x = at[0]!; out.y = at[1]!; out.z = at[2]!; out.yaw = yaw; out.driver = seat.driver === true;
-    out.steer = def.movement === "rotor" ? 0 : vehicle.steering / def.spec.maxSteer;
+    out.steer = isAircraft(def) ? 0 : vehicle.steering / def.spec.maxSteer;
     out.skateMove = vehicle.skateMove; out.skateTrick = vehicle.skateTrick; out.crouch = vehicle.crouch; out.switched = vehicle.switched; out.role = seat.pose; out.weapons = seat.weapons; out.aimYaw = aimYaw;
     return out;
   }
@@ -1209,6 +1223,11 @@ export class Characters {
             if (b >= 0) quatAxis(rig.a.rot, b * 4, rotor.axis[0], rotor.axis[1], rotor.axis[2], (vehicle?.rotorPhase ?? 0) * rotor.ratio);
           }
         }
+        if (v.jet && vehicle) {
+          const parts = this.jetParts;
+          if (parts) parts.pose(rig.a.rot, v.jet, id, jetPoseOf(vehicle, yaw, this.jetPose), this.clock);
+          else void askJet().catch(() => {});
+        }
         for (const part of v.drives) {
           const angle = part.spin ? vehicle?.wheelAngle ?? 0 : steering;
           quatAxis(rig.a.rot, part.bone * 4, part.axis[0], part.axis[1], part.axis[2], angle * part.ratio);
@@ -1231,10 +1250,10 @@ export class Characters {
         // Wheel contact follows the support plane while the sprung body and its occupants roll, pitch and heave.
         this.turn(undefined, yaw, vehicle?.groundPitch ?? vehicle?.pitch ?? 0, vehicle?.groundRoll ?? vehicle?.roll ?? 0, this.groundRotation);
         // Without a full attitude, a wheel in the air hangs a quarter of its travel below the body.
-        const droop = v.def.movement !== "rotor" && v.def.movement !== "boat" ? (v.def.spec.suspensionTravel ?? 0.18) / 4 : 0;
+        const droop = isWheelVehicle(v.def) ? (v.def.spec.suspensionTravel ?? 0.18) / 4 : 0;
         for (const b of v.wheels) {
           if (b < 0) continue;
-          if (vehicle?.qw !== undefined && v.def.movement !== "rotor" && v.def.movement !== "boat") {
+          if (vehicle?.qw !== undefined && isWheelVehicle(v.def)) {
             // A rigid car's wheels travel along its local spring axes, also when it rolls onto its roof. The ride offset is
             // that travel, all of it where no wheel has ground. The grounded bit is the hull's contact too, and a rolled car
             // rocking on its side or roof touches and leaves the ground from tick to tick, so it does not move the wheels.
@@ -1250,6 +1269,8 @@ export class Characters {
         if (vehicle?.missingPanels) hidePanels(p.bones, first, v.panels, vehicle.missingPanels);
         if (!unseen && v.def.breakablePanels) this.fallingDoors.draw(p, first, v.def.breakablePanels, v.panels, v.doors,
           id, kind, this.frame, this.clock, vehicle?.missingPanels ?? 0, x, y, z);
+        // A jet's afterburner glow is there only while it is lit.
+        if (v.jet && v.jet.burner >= 0 && !vehicle?.shifting) for (let row = 0; row < 3; row++) for (let col = 0; col < 3; col++) p.bones[(first + v.jet.burner) * BONE_FLOATS + row * 4 + col]! *= 1e-4;
         // Bones game state hides, as a rack's launched drones, shrink to nothing.
         const hidden = v.hides.length ? this.hiddenBones?.(kind, id) ?? 0 : 0;
         for (let h = 0; h < v.hides.length; h++) {
@@ -1491,6 +1512,7 @@ export class Characters {
     // The springs move on by the frame's time, on the session's tick clock (`clock`), as the scene sets it.
     if (this.springsAt >= 0 && this.clock > this.springsAt) this.springs.step(Math.min(0.1, (this.clock - this.springsAt) / TICK_RATE));
     this.springsAt = this.clock;
+    this.jetMoves?.sweep(this.clock);
     this.cameraBody.clear();
     this.groundWorld = world;
     this.packet = p ?? this.packet;
@@ -1587,7 +1609,7 @@ export class Characters {
 
   /**
    * `x, y, z` is the origin relative to the camera, `yaw` is in radians, and `tick` may fall between ticks. `look` holds a
-   * 28-byte look at `lookAt`, or is null for a body drawn in the six colour regions of `colors` at `colorAt`. `gear` is
+   * look (LOOK_BYTES) at `lookAt`, or is null for a body drawn in the six colour regions of `colors` at `colorAt`. `gear` is
    * laid out as EntityStore.gear, at `gearAt`, or is null. `own` draws it in the near pass. `headless` leaves out the head
    * and what is on it. `size` scales a creature, below 1 for a young one. `rigid` draws it on one bone, standing in a pose
    * for what it is doing (standIn), for a frame without the bones to pose it. `unseen` poses it as a body in view is posed, for its shadow alone: none of it is
@@ -2190,11 +2212,11 @@ function moving(st: AnimState, move: number): AnimState {
  */
 function scalesOf(g: Stride, view: Uint8Array, rest: Float32Array): Float32Array {
   let same = g.look !== null;
-  for (let q = 0; q < LOOK_BYTES && same; q++) same = g.look![q] === view[q];
+  for (let q = 0; q < LOOK_BODY_BYTES && same; q++) same = g.look![q] === view[q];
   if (same) return g.scales!;
-  g.look ??= new Uint8Array(LOOK_BYTES);
+  g.look ??= new Uint8Array(LOOK_BODY_BYTES);
   g.scales ??= new Float32Array(HUMAN_BONES * 3);
-  for (let q = 0; q < LOOK_BYTES; q++) g.look[q] = view[q]!;
+  for (let q = 0; q < LOOK_BODY_BYTES; q++) g.look[q] = view[q]!;
   lookScales(g.look, g.scales, rest);
   g.armRest = undefined;
   return g.scales;
@@ -2266,7 +2288,7 @@ function vehicleRig(def: VehicleDefinition | null, names: readonly string[]): Ve
       if (joint && bone(joint.bone) >= 0) drives.push({ ...joint, bone: bone(joint.bone), spin: kind === "propeller" });
     }
   }
-  return { def, drives, panels: Int16Array.from(def.breakablePanels ?? [], p => bone(p.bone)), ...(def.doors.some(d => d.slide) ? { slideOffsets: new Float32Array(names.length * 3) } : {}), rotors: Int16Array.from(def.movement === "rotor" ? def.rotors : [], (r) => bone(r.bone)), hides: Int16Array.from(def.hides ?? [], bone), wheels: Int16Array.from(def.wheels, (w) => bone(w.bone)), doors: Int16Array.from(def.doors, (d) => bone(d.bone)), steer: def.steeringWheel ? bone(def.steeringWheel.bone) : -1 };
+  return { def, drives, panels: Int16Array.from(def.breakablePanels ?? [], p => bone(p.bone)), ...(def.doors.some(d => d.slide) ? { slideOffsets: new Float32Array(names.length * 3) } : {}), rotors: Int16Array.from(def.movement === "rotor" ? def.rotors : [], (r) => bone(r.bone)), ...(def.movement === "jet" ? { jet: jetRig(names) } : {}), hides: Int16Array.from(def.hides ?? [], bone), wheels: Int16Array.from(def.wheels, (w) => bone(w.bone)), doors: Int16Array.from(def.doors, (d) => bone(d.bone)), steer: def.steeringWheel ? bone(def.steeringWheel.bone) : -1 };
 }
 
 function hidePanels(rows: Float32Array, first: number, bones: Int16Array, missing: number): void {

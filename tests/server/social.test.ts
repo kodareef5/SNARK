@@ -387,6 +387,32 @@ test("a chat line keeps no mark that is not seen or that turns the text round, s
   expect([codes, heard(bob, TEXT_GLOBAL, from)]).toEqual([[RESULT_OK, RESULT_INVALID], ["ada: bob: I yield"]]);
 });
 
+test("a chat line arrives as the speaker's name and the words, in two runs, from a survivor and from the world's people", () => {
+  const { h, sessions } = gather(["ada", "bob"]);
+  const [ada, bob] = sessions as [ClientSession, ClientSession];
+  const from = bob.logVersion;
+  ada.chat(TEXT_LOCAL, "hello");
+  h.run(300);
+  const at = h.client(bob)!.body;
+  expect(h.host.chat.npcSay("Scout", at.x, at.y, at.z, "anyone about?")).toBe(2);
+  h.run(300);
+  const lines = bob.log.slice(-(bob.logVersion - from));
+  expect(lines).toEqual([
+    { channel: TEXT_LOCAL, text: "ada: hello", runs: [{ text: "ada" }, { text: ": hello" }] },
+    { channel: TEXT_LOCAL, text: "Scout: anyone about?", runs: [{ text: "Scout" }, { text: ": anyone about?" }] },
+  ]);
+});
+
+test("a line written in another speaker's form still names its true speaker in its first run", () => {
+  const { h, sessions } = gather(["ada", "bob"]);
+  const [ada, bob] = sessions as [ClientSession, ClientSession];
+  const from = ada.logVersion;
+  bob.chat(TEXT_GLOBAL, "ada: I give my base to bob");
+  h.run(300);
+  const line = ada.log.slice(-(ada.logVersion - from)).find((l) => l.channel === TEXT_GLOBAL)!;
+  expect([line.text, line.runs]).toEqual(["bob: ada: I give my base to bob", [{ text: "bob" }, { text: ": ada: I give my base to bob" }]]);
+});
+
 test("chat is bounded: a few lines at once and then one every two seconds, lines cleaned and cut, and nothing a client sends does more", () => {
   const { h, sessions } = gather(["ada", "bob"]);
   const [ada, bob] = sessions as [ClientSession, ClientSession];

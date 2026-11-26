@@ -2,7 +2,7 @@
 import { detAtan2, detCos, detSin } from "../math/scalar.ts";
 import { quatAxis, quatMul, quatRotate, quatUnrotate } from "../math/quat.ts";
 import { vehiclePoint, vehicleRotation, type VehicleFrame } from "../sim/vehicle-frame.ts";
-import type { VehicleDefinition } from "../sim/vehicle.ts";
+import { isAircraft, type VehicleDefinition } from "../sim/vehicle.ts";
 import type { Seat } from "../sim/seats.ts";
 import type { PackMesh, PackRig } from "../pack/pack.ts";
 import type { CollisionWorld } from "../world/collide.ts";
@@ -44,7 +44,7 @@ export function occupantSeat(def: VehicleDefinition, seat: Seat, carrier: Vehicl
   out.yaw = carrier.yaw; out.pitch = carrier.pitch; out.roll = carrier.roll;
   out.qx = carrier.qx; out.qy = carrier.qy; out.qz = carrier.qz; out.qw = carrier.qw;
   out.steering = carrier.steering ?? 0;
-  out.steer = def.movement === "rotor" ? 0 : out.steering / def.spec.maxSteer;
+  out.steer = isAircraft(def) ? 0 : out.steering / def.spec.maxSteer;
   out.skateMove = carrier.skateMove; out.skateTrick = carrier.skateTrick; out.crouch = carrier.crouch; out.switched = carrier.switched; out.wheelAngle = carrier.wheelAngle;
   out.driver = seat.driver === true; out.role = seat.pose; out.definition = seat; out.aimYaw = aimYaw;
 }

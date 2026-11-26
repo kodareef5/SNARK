@@ -4,7 +4,7 @@
 import { K_PANEL, lineHeight } from "../ui/nodes.ts";
 import { S_BUFF } from "../ui/style.ts";
 import { HEARD_MOST } from "../voice/heard.ts";
-import type { HudWidget } from "./widget.ts";
+import { band, type HudWidget } from "./widget.ts";
 
 /** Indexed by MODE_*. */
 const TALK_LABEL: readonly string[] = ["WHISPERING", "TALKING", "YELLING"];
@@ -23,6 +23,7 @@ export interface VoiceModel {
 
 export const VOICE: HudWidget<VoiceModel> = {
   name: "voice",
+  bands: [band(KEY_VOICE, 1), band(KEY_TALKER, 8)],
   make: () => ({ voice: "", talkers: [], micLevel: 0 }),
   fill(m, c) {
     const f = c.frame;

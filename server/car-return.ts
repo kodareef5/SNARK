@@ -2,6 +2,9 @@
 // off: owned by nobody, its condition and fuel rolled again in the map's ranges. Each place is checked on a deadline of its
 // own, so a world costs nothing between checks. The days are FoundCarReturnDays for a car and FoundBoatReturnDays for a
 // vessel, of the game's clock; 0 brings none back.
+//
+// A unique place keeps one vehicle in the world, the jet in its hangar: while any record from it lives, wherever it
+// was flown, none comes back. JetReturnHours of real time after the last is destroyed another is parked, watched or not.
 
 import { CHUNK_SIZE, TICK_RATE } from "../shared/coords.ts";
 import { cycleTicks } from "../shared/sim/clock.ts";
@@ -53,6 +56,10 @@ interface Place {
   /** How many times a car has come back to it. */
   times: number;
   due: number;
+  /** One to a world: it counts its vehicles anywhere, waits real hours, and comes while it is watched. */
+  readonly unique: boolean;
+  /** Whether the save said anything of it, or one has been found from it. */
+  known: boolean;
 }
 
 export class CarReturn {
@@ -68,16 +75,20 @@ export class CarReturn {
   /** Its kind in the deadline heap. */
   private readonly deadline: number;
 
-  /** The map's parked vehicles: those on wheels and the vessels the content has are places one comes back to. */
-  constructor(ctx: CarReturnContext, placements: readonly MapVehicle[]) {
+  /**
+   * The map's parked vehicles: those on wheels and the vessels the content has are places one comes back to. Each of
+   * `unique` is a place of any vehicle that keeps one to a world.
+   */
+  constructor(ctx: CarReturnContext, placements: readonly MapVehicle[], unique: readonly MapVehicle[] = []) {
     this.ctx = ctx;
     this.deadline = ctx.deadlines.kind("car", (a, stamp) => this.due(a, stamp));
     const reg = ctx.world.reg;
-    for (const at of placements) {
+    for (const at of [...placements, ...unique]) {
+      const one = unique.includes(at);
       const kind = reg.index.get(at.kind), def = kind === undefined ? undefined : reg.vehicle[kind];
-      if (!def || !(isWheelVehicle(def) || isBoatVehicle(def))) continue;
+      if (!def || !(one || isWheelVehicle(def) || isBoatVehicle(def))) continue;
       const door = Math.max(def.spec.halfWidth, ...def.seats.map((s) => Math.abs(s.entry[0])));
-      this.places.push({ at, origin: foundVehicle(ctx.world.mapId, at, ctx.seed).origin!, side: door + ROOM, end: def.spec.halfLength + ROOM, draft: isBoatVehicle(def) ? def.spec.draft : -1, pids: [], gone: -1, times: 0, due: 0 });
+      this.places.push({ at, origin: foundVehicle(ctx.world.mapId, at, ctx.seed).origin!, side: door + ROOM, end: def.spec.halfLength + ROOM, draft: isBoatVehicle(def) ? def.spec.draft : -1, pids: [], gone: -1, times: 0, due: 0, unique: one, known: false });
     }
   }
 
@@ -86,12 +97,13 @@ export class CarReturn {
     const by = new Map(this.places.map((p) => [p.origin, p]));
     for (const [origin, [gone, times]] of Object.entries(JSON.parse(saved ?? "{}") as Record<string, [number, number]>)) {
       const p = by.get(origin);
-      if (p) { p.gone = gone; p.times = times; }
+      if (p) { p.gone = gone; p.times = times; p.known = true; }
     }
     const text = new TextDecoder();
     for (const rec of this.ctx.records.byPid.values()) {
       const origin = rec.extra.get(VEHICLE_ORIGIN);
-      if (origin) by.get(text.decode(origin))?.pids.push(rec.pid);
+      const p = origin ? by.get(text.decode(origin)) : undefined;
+      if (p) { p.pids.push(rec.pid); p.known = true; }
     }
     // Spread over one period, so the checks do not come together.
     const tick = this.ctx.world.tick, n = this.places.length;
@@ -103,22 +115,26 @@ export class CarReturn {
     const p = this.places[i];
     if (!p || p.due !== stamp) return;
     this.checks++;
-    const { world, rules } = this.ctx, tick = world.tick, days = rules.num(p.draft < 0 ? "FoundCarReturnDays" : "FoundBoatReturnDays");
+    const { world, rules } = this.ctx, tick = world.tick;
+    const wait = p.unique ? rules.num("JetReturnHours") * 3600 * TICK_RATE : rules.num(p.draft < 0 ? "FoundCarReturnDays" : "FoundBoatReturnDays") * cycleTicks(world.clock);
     if (this.there(p)) {
       if (p.gone >= 0) { p.gone = -1; this.saved.dirty = true; }
-    } else if (days > 0) {
+    } else if (wait > 0) {
+      // A save from before the place was is owed its vehicle at once.
+      if (p.unique && !p.known) { p.known = true; p.gone = tick - wait; }
       if (p.gone < 0) { p.gone = tick; this.saved.dirty = true; }
-      else if (tick - p.gone >= days * cycleTicks(world.clock) && this.clear(p)) this.bring(p);
+      else if (tick - p.gone >= wait && this.clear(p)) this.bring(p);
     }
     this.schedule(i, tick + this.checkTicks);
   }
 
-  /** Whether a car that came from the place, not destroyed, stands within GONE_RANGE of it. */
+  /** Whether a car that came from the place, not destroyed, stands within GONE_RANGE of it; for a unique place, anywhere. */
   there(p: Place): boolean {
     const { records, world } = this.ctx, ents = world.ents;
     for (let k = p.pids.length - 1; k >= 0; k--) {
       const rec = records.byPid.get(p.pids[k]!);
       if (!rec || rec.dead) { p.pids.splice(k, 1); continue; }
+      if (p.unique) return true;
       const e = records.entOf.get(rec.pid);
       const x = e === undefined ? rec.x : ents.x[e]!, z = e === undefined ? rec.z : ents.z[e]!;
       if (Math.hypot(x - p.at.x, z - p.at.z) < GONE_RANGE) return true;
@@ -126,8 +142,12 @@ export class CarReturn {
     return false;
   }
 
-  /** Whether one may come back now: nobody is shown its chunk, nothing a tribe built is near, no body is in its room, and a vessel's berth still floats it. */
+  /**
+   * Whether one may come back now: nobody is shown its chunk, nothing a tribe built is near, no body is in its room, and a
+   * vessel's berth still floats it. A unique place needs only its room: one camped or built round would never come.
+   */
   clear(p: Place): boolean {
+    if (p.unique) return !this.taken(p);
     return !this.seen(p) && !this.based(p) && !this.taken(p) && this.afloat(p);
   }
 
@@ -174,7 +194,7 @@ export class CarReturn {
     const e = this.ctx.park(p.at, foundVehicle(world.mapId, p.at, this.ctx.seed + p.times + 1));
     if (e < 0) return;
     p.pids.push(world.ents.pid[e]!);
-    p.times++; p.gone = -1; this.returned++;
+    p.times++; p.gone = -1; p.known = true; this.returned++;
     this.saved.dirty = true;
   }
 

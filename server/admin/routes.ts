@@ -23,11 +23,17 @@
 //                           changes (loadout-routes.ts)
 //   /admin/first-frame.html what the client's first frame downloads (client/admin/first-frame.ts), and
 //                           /admin/first-frame.json the build's weighing of it, beside the client (tools/first-frame.ts)
+//   /admin/me.json          who the viewer is: the gate's name, ID and rank, and the cluster's world id or 0
+//   /admin/acts.json        the latest acts, after=<seq> those after it, open=1 with the open commands too, with
+//                           addresses for the map's rank and up
+//   /admin/permissions...   the Permissions page's state, history and changes (server/permissions/routes.ts)
 
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { ADMIN_TERRAIN_SIDE, type AdminOverview, type Stats, type Survivors } from "../../shared/admin.ts";
+import { ACTS_PAGE } from "../../shared/admin-acts.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
+import { RANK_MAP } from "../../shared/ranks.ts";
 import { BUILDING_SPANS, blankFrame, type Buildings } from "../../shared/world/buildings.ts";
 import { mapHeightfield, type MapData } from "../../shared/world/mapfile.ts";
 import { paintRelief } from "../../shared/world/relief.ts";
@@ -38,10 +44,12 @@ import { castAct, castState } from "./cast.ts";
 import { settingsAnswer } from "./settings.ts";
 import { stopAnswer } from "./stop.ts";
 import { originAllowed } from "../origin.ts";
-import { adminAsked, adminPath, refused, type AdminGate } from "./gate.ts";
+import { actorOf, adminAsked, adminPath, onlyRead, refused, stillHolds, type AdminGate } from "./gate.ts";
 import { SupplyRoutes } from "./supply-routes.ts";
 import { LoadoutRoutes } from "./loadout-routes.ts";
+import { EventRoutes } from "./event-routes.ts";
 import { LogRoutes } from "./log-routes.ts";
+import { permissionsAdmin } from "../permissions/routes.ts";
 import type { TickMeter } from "./meter.ts";
 import { BackupList, bodiesOf, statsOf } from "./stats.ts";
 import { onlinePositions, survivorsOf, type RunStart } from "./survivors.ts";
@@ -92,6 +100,10 @@ const FILES: Readonly<Record<string, [string, string]>> = {
   "/admin/loadouts.html": ["loadouts.html", "text/html; charset=utf-8"],
   "/admin/loadouts.js": ["loadouts.js", "text/javascript"],
   "/admin/loadouts.js.map": ["loadouts.js.map", "application/json"],
+  // The map events' page: its requests are event-routes.ts's.
+  "/admin/events.html": ["events.html", "text/html; charset=utf-8"],
+  "/admin/events.js": ["events.js", "text/javascript"],
+  "/admin/events.js.map": ["events.js.map", "application/json"],
   "/admin/first-frame.html": ["first-frame.html", "text/html; charset=utf-8"],
   "/admin/first-frame.js": ["first-frame.js", "text/javascript"],
   "/admin/first-frame.js.map": ["first-frame.js.map", "application/json"],
@@ -109,6 +121,9 @@ export interface AdminOptions {
   /** Wall ms. */
   now?: () => number;
 }
+
+/** The paths besides the page's files that only read, whatever the method, so a POST to one is not logged as a change. */
+const READS = new Set(["/admin/stats.json", "/admin/overview.json", "/admin/chat.json", "/admin/terrain.rgba", "/admin/survivors.json", "/admin/minutes.json", "/admin/ticks.json", "/admin/content.json", "/admin/cast.json", "/admin/bases.bin", "/admin/settings.json"]);
 
 /** Paint the preview while the map's colour data is available at startup. */
 export function adminTerrain(map: MapData): Uint8Array<ArrayBuffer> {
@@ -166,6 +181,8 @@ export class AdminPages {
   /** The drop book's page: the one part of these pages that may change the world (supply-routes.ts). */
   readonly supply: SupplyRoutes;
   private readonly loadouts: LoadoutRoutes;
+  /** The map events' page, which also calls and ends events (event-routes.ts). */
+  readonly events: EventRoutes;
 
   constructor(o: AdminOptions) {
     this.o = o;
@@ -189,6 +206,7 @@ export class AdminPages {
     this.log = new LogRoutes(o.host, this.now);
     this.supply = new SupplyRoutes(o.host, this.now);
     this.loadouts = new LoadoutRoutes(o.host);
+    this.events = new EventRoutes(o.host, this.now);
   }
 
   /**
@@ -200,6 +218,7 @@ export class AdminPages {
     const no = refused(req, who, gate);
     if (no) return no;
     const at = adminPath(pathname)!;
+    if (FILES[at] || READS.has(at) || at.startsWith("/admin/log/")) onlyRead(req);
     const url = new URL(req.url);
     if (at === "/admin") return new Response(null, { status: 308, headers: { location: `admin/${url.search}` } });
     const file = FILES[at];
@@ -217,6 +236,14 @@ export class AdminPages {
       return new Response(this.mapContext, { headers: JSON_HEADERS });
     }
     if (at === "/admin/terrain.rgba") return this.terrainImage(req);
+    if (at === "/admin/me.json" || at === "/admin/acts.json") {
+      if (req.method !== "GET" && req.method !== "HEAD") return new Response(null, { status: 405, headers: { allow: "GET, HEAD" } });
+      const by = actorOf(req);
+      if (at === "/admin/me.json") return new Response(JSON.stringify({ name: by.name, id: by.id, rank: by.rank, world: this.o.host.cluster?.world ?? 0 }), { headers: JSON_HEADERS });
+      const after = Number(url.searchParams.get("after")) || 0;
+      const acts = url.searchParams.get("open") === "1" ? this.o.host.acts.recentWithOpen(after, ACTS_PAGE) : this.o.host.acts.recent(after, ACTS_PAGE);
+      return new Response(JSON.stringify({ acts: by.rank >= RANK_MAP ? acts : acts.map((a) => ({ ...a, from: "" })) }), { headers: JSON_HEADERS });
+    }
     if (at === "/admin/survivors.json") return this.survivors.get(now).then((text) => new Response(text, { headers: JSON_HEADERS }));
     if (at === "/admin/minutes.json") return new Response(this.minutes(Number(url.searchParams.get("from") ?? 0)), { headers: JSON_HEADERS });
     if (at === "/admin/ticks.json") return new Response(this.ticks.get(now), { headers: JSON_HEADERS });
@@ -225,8 +252,13 @@ export class AdminPages {
     if (at === "/admin/cast" && req.method === "POST") {
       // A change is taken only from a page this server served (the scene studio's rule), whatever the password.
       if (!originAllowed(req.headers.get("origin"), req.headers.get("host"), "")) return new Response(JSON.stringify({ ok: false, why: "open the admin page on this server" }), { status: 403, headers: JSON_HEADERS });
+      const by = actorOf(req);
       return req.json().then((body: unknown) => {
-        const why = castAct(this.o.host, body);
+        const lost = stillHolds(req, this.o.host);
+        if (lost) return lost;
+        const why = castAct(this.o.host, body, by);
+        // Every change writes its act, so a request that wrote none changed nothing.
+        if (!this.o.host.acts.wroteFor(by)) onlyRead(req);
         return new Response(JSON.stringify({ ok: why === "", why }), { status: why === "" ? 200 : 400, headers: JSON_HEADERS });
       }, () => new Response(JSON.stringify({ ok: false, why: "not JSON" }), { status: 400, headers: JSON_HEADERS }));
     }
@@ -235,7 +267,8 @@ export class AdminPages {
       if (!(level >= 0 && level <= 3 && Number.isInteger(level))) return new Response("level is 0 to 3", { status: 400 });
       return new Response(this.basesAt(level, now), { headers: { ...FRESH, "content-type": "application/octet-stream" } });
     }
-    return this.log.answer(at, url) ?? settingsAnswer(this.o.host, req, at) ?? stopAnswer(this.o.host, req, at) ?? this.supply.answer(req, at, url) ?? this.loadouts.answer(req, at, url) ?? new Response("not found", { status: 404 });
+    return this.log.answer(at, url) ?? settingsAnswer(this.o.host, req, at) ?? stopAnswer(this.o.host, req, at) ?? this.supply.answer(req, at, url) ?? this.loadouts.answer(req, at, url) ??
+      this.events.answer(req, at, url) ?? permissionsAdmin(req, at, this.o.host) ?? new Response("not found", { status: 404 });
   }
 
   private terrainImage(req: Request): Response {

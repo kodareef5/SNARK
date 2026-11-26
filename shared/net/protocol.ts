@@ -7,7 +7,7 @@
 //
 //   client -> server
 //     HELLO     reliable     version u32, content hash u32 (of the definitions as written, untuned), clip hash u32,
-//                            name string, flags u8, device key (16 bytes), with HELLO_LOOK a look (28 bytes),
+//                            name string, flags u8, device key (16 bytes), with HELLO_LOOK a look (72 bytes),
 //                            with HELLO_TICKET a travel ticket (32 bytes), password string ("" for none), with HELLO_NEW a 16-byte create request id
 //     INPUT     unreliable   ack tick u32, ticks behind it that others are drawn u8 (sixteenths), newest tick u32,
 //                            count-1 (3 bits), then inputs newest first. Each after the first is preceded by
@@ -57,7 +57,7 @@
 
 import { SkateState, readSkate, writeSkate } from "../sim/skate-state.ts";
 import { BitReader, BitWriter } from "./codec.ts";
-import { LOOK_BYTES } from "../anim/look.ts";
+import { LOOK_BYTES, upgradeLook } from "../anim/look.ts";
 import { REACT_BITS } from "../anim/pose.ts";
 import { counter, flags } from "../codes.ts";
 import { BTN_CROUCH, BTN_JUMP, BTN_PRONE, Body, buttonCount } from "../sim/character.ts";
@@ -294,6 +294,22 @@ export const S_PLAN = serverKind();
 export const S_PLAN_GONE = serverKind();
 /** What became of a CMD_PLAN_COMMIT (shared/net/plan.ts PlanReport). Reliable. */
 export const S_PLAN_REPORT = serverKind();
+/**
+ * A chat line as runs of text (shared/net/chat.ts). Reliable. channel u8, count of runs 4 bits (1 to 8), then per run: 1 bit
+ * for an ink, and if set its colour 24 bits (0xRRGGBB), then its text string. The runs' text takes at most
+ * MAX_SERVER_TEXT_BYTES. A run with no ink is in its channel's colour. Notices and other plain lines stay on S_TEXT.
+ */
+export const S_CHAT = serverKind();
+/**
+ * A secret for this session's eyes alone, such as the staff password its survivor just claimed (claimpassword). Reliable.
+ * The text string, at most MAX_SECRET_BYTES. The client shows it once and keeps it out of its log of text.
+ */
+export const S_SECRET = serverKind();
+/**
+ * The map events, whole, to every session: a blob of at most MAPEVENT_BYTES holding the feed (shared/mapevent/wire.ts
+ * writeMapEvents). Sent when one is called, changes or ends, and to a session that joins; never per tick. Reliable.
+ */
+export const S_MAPEVENT = serverKind();
 
 export const REJECT_VERSION = 1;
 export const REJECT_CONTENT = 2;
@@ -352,7 +368,7 @@ export const CMD_LEARN = command();
 /** Recipe content index u16, count u8. */
 export const CMD_CRAFT = command();
 
-/** A look, 28 bytes (shared/anim/look.ts). Accepted only in SESSION_CREATING. */
+/** A look, 72 bytes (shared/anim/look.ts). Accepted only in SESSION_CREATING. */
 export const CMD_CREATE = command();
 
 /** Hotbar slot u8, 0 to 9, or 255 to put away the held item. */
@@ -645,7 +661,7 @@ export const CHOOSE_TRAVEL = 2;
  */
 export const OWN_PROGRESSION = ownKind();
 
-/** 28 bytes. Sent when the survivor gets a body. */
+/** LOOK_BYTES. Sent when the survivor gets a body. */
 export const OWN_LOOK = ownKind();
 
 /** Hotbar slot u8, 255 for none. */
@@ -714,6 +730,15 @@ export const OWN_XP = ownKind();
 export const OWN_STRUCTURES = ownKind();
 /** What the screens play (shared/video/screen.ts writeScreens): the manifest's id, then per screen show, flags, clip, start tick, next clip. */
 export const OWN_SCREEN = ownKind();
+/**
+ * An armed vehicle's weapons, to its driver (server/vehicle-weapons.ts): armed 1 bit; then rounds u16 and their most u16,
+ * missiles u8 and their most u8, the lock 2 bits (0 none, 1 seeking, 2 locked), its progress u8 (255ths), and what it is
+ * on 2 bits: 1 an entity, its handle u32; 2 a craft in the sky; 0 nothing. For 1 and 2, its middle 3 x f32, and for 2
+ * its name string.
+ */
+export const OWN_ARMS = ownKind();
+/** What a seeker does to whatever its owner drives or sits in, u8: 0 nothing, 1 looked for, 2 locked, 3 a missile coming. */
+export const OWN_WARNED = ownKind();
 
 export const MARKER_DEATH = 1;
 
@@ -801,7 +826,7 @@ export const REMOVAL_NEWS_TICKS = 60;
 
 export const TEXT_CONSOLE = 0;
 export const TEXT_NOTICE = 1;
-/** Chat channels: everyone, those nearby, the tribe. The text is "name: words". */
+/** Chat channels: everyone, those nearby, the tribe. A line comes as S_CHAT, the speaker's name its first run, then ": words". */
 export const TEXT_GLOBAL = 2;
 export const TEXT_LOCAL = 3;
 export const TEXT_TRIBE = 4;
@@ -839,11 +864,11 @@ export const INPUT_KEPT = BTN_CROUCH | BTN_PRONE;
 /** Ticks a body's last input goes on when none comes: `driven`, a vehicle someone drives or flies. Both ends step by it. */
 export const holdTicks = (driven: boolean): number => (driven ? VEHICLE_HOLD_TICKS : INPUT_HOLD_TICKS);
 /**
- * The buttons a body is stepped with once its input is let go: a car stands on its handbrake, a rotor vehicle has none,
+ * The buttons a body is stepped with once its input is let go: a car stands on its handbrake, an aircraft has none,
  * and a body on foot keeps its stance of `buttons`. Both ends step by it.
  */
 export function letGoButtons(vehicle: { readonly movement?: string } | null | undefined, buttons: number): number {
-  return vehicle ? (vehicle.movement === "rotor" ? 0 : BTN_JUMP) : buttons & INPUT_KEPT;
+  return vehicle ? (vehicle.movement === "rotor" || vehicle.movement === "jet" ? 0 : BTN_JUMP) : buttons & INPUT_KEPT;
 }
 /** In bytes. */
 export const MAX_CLIENT_MESSAGE = 512;
@@ -856,6 +881,8 @@ export const MAX_TEXT_BYTES = 200;
 export const MAX_CHAT_BYTES = 360;
 /** A text message from the server. */
 export const MAX_SERVER_TEXT_BYTES = 1000;
+/** A secret from the server (S_SECRET). */
+export const MAX_SECRET_BYTES = 64;
 /** Bits of an input's buttons on the wire: one a button. InputBuffer.set clears any outside the mask. */
 export const BUTTON_BITS = buttonCount();
 export const BUTTON_MASK = (1 << BUTTON_BITS) - 1;
@@ -1028,7 +1055,8 @@ export function writeHello(w: BitWriter, version: number, contentHash: number, c
   const marked = look ? flags | HELLO_LOOK : flags & ~HELLO_LOOK;
   w.u8(ticket ? marked | HELLO_TICKET : marked & ~HELLO_TICKET);
   for (let i = 0; i < KEY_BYTES; i++) w.u8(key[i] ?? 0);
-  if (look) for (let i = 0; i < LOOK_BYTES; i++) w.u8(look[i] ?? 0);
+  const full = look && upgradeLook(look);
+  if (full) for (let i = 0; i < LOOK_BYTES; i++) w.u8(full[i] ?? 0);
   if (ticket) for (let i = 0; i < TICKET_BYTES; i++) w.u8(ticket[i] ?? 0);
   w.string(password);
   if ((flags & HELLO_NEW) && createRequest?.length===KEY_BYTES) for(const b of createRequest)w.u8(b);

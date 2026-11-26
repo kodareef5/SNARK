@@ -3,12 +3,13 @@
 import { join } from "node:path";
 import { BEARD_STYLES, BODY_SCALES, HAIR_STYLES, REGION_CLOTH, REGION_EYE, REGION_HAIR, REGION_MAIN, REGION_SECOND, REGION_SKIN, REGION_TRIM, SEX_IDS } from "../../shared/anim/look.ts";
 import type { Clip } from "../../shared/anim/clip.ts";
+import { HUMAN, HUMAN_BONES } from "../../shared/anim/human.ts";
 import { MATERIAL_EXHAUST, MATERIAL_INDICATOR, MATERIAL_LENS, parsePack, type PackRig } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
 import { convertHumanClips } from "../pack/anim.ts";
 import { readGltf, type Gltf } from "../pack/gltf.ts";
 import { readPng } from "../pack/png-read.ts";
-import { convertBody, type ColorRule, type MaterialRule } from "../pack/skin.ts";
+import { convertBody, rigOf, type ColorRule, type MaterialRule } from "../pack/skin.ts";
 import { buildPack, unpackMeshes, type SourceMesh } from "../pack/write.ts";
 import { calibrateHand } from "../pack/grips.ts";
 import type { Described } from "./materials.ts";
@@ -40,6 +41,21 @@ const threeTones = (dark: number, light: number): ColorRule => (r, g, b) => {
 const SECOND_SHARE = 0.28;
 const TRIM_FROM = 0.9;
 
+/** How far a body's own joint may sit from the rig it is fitted to, in metres. */
+export const FIT_REACH = 0.003;
+
+/** The frozen rest a body is cooked on, once its own joints (`own`) are found within FIT_REACH of it. */
+export function fittedRest(own: PackRig, frozen: readonly number[]): number[] {
+  if (frozen.length !== HUMAN_BONES * 3 || own.rest.length !== HUMAN_BONES * 3) throw new Error(`${own.id}: a rig has ${HUMAN_BONES * 3} numbers`);
+  const off: string[] = [];
+  for (let b = 0; b < HUMAN_BONES; b++) {
+    const d = Math.hypot(own.rest[b * 3]! - frozen[b * 3]!, own.rest[b * 3 + 1]! - frozen[b * 3 + 1]!, own.rest[b * 3 + 2]! - frozen[b * 3 + 2]!);
+    if (d > FIT_REACH) off.push(`${HUMAN.names[b]} ${(d * 1000).toFixed(1)} mm`);
+  }
+  if (off.length > 0) throw new Error(`${own.id}: joints sit more than ${FIT_REACH * 1000} mm from the frozen rig (rigs.ts beside the asset): ${off.join(", ")}. Fit the body to the rig; the rig does not move`);
+  return [...frozen];
+}
+
 export function convertClipLibraries(spec: HumanClipsAsset): { clips: Clip[]; warnings: string[] } {
   const clips: Clip[] = [];
   const warnings: string[] = [];
@@ -70,15 +86,19 @@ export function convertBodies(spec: HumanBodiesAsset, dir: string, finish?: Desc
     return gltf;
   };
   const eyes: MaterialRule = { image: readPng(join(raw, spec.eyes)), color: eye };
+  if (spec.rigs.length !== spec.bodies.length) throw new Error(`human-bodies: ${spec.bodies.length} bodies and ${spec.rigs.length} rigs`);
   spec.bodies.forEach((b, sex) => {
     const scale = BODY_SCALES[sex]!;
     const id = `core:human_${SEX_IDS[sex]}`;
     const rig = `human_${SEX_IDS[sex]}`;
-    const body = convertBody(reduce(b.file, spec.triangles.body), {
+    const source = reduce(b.file, spec.triangles.body);
+    // The body is moved bone by bone onto the frozen rig, as its hair and armor are below.
+    const body = convertBody(source, {
       id,
       rig,
       scale,
       materials: { [b.material]: { image: readPng(join(raw, b.texture)), color: skin }, MI_Eyes: eyes, MI_Hair_1: hair, MI_Hair_2: hair },
+      onto: fittedRest(rigOf(source, rig, scale), spec.rigs[sex]!),
     });
     warn(id, body.warnings);
     meshes.push(...body.meshes);

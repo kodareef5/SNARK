@@ -7,7 +7,7 @@ import { RemoteSample, type ClientSession } from "../../client/core/session.ts";
 import { Chart, type MapPicture } from "../../client/core/tactical.ts";
 import { IMAGE_MAP, IMAGE_MINIMAP, KEY_MARKER, KEY_SELF_ARROW, KEY_MINIMAP, buildHud } from "../../client/core/ui/hud.ts";
 import { UiFrame } from "../../client/core/ui/nodes.ts";
-import { KEY_MAP_IMAGE, KEY_MAP_LINE, KEY_MAP_PIN, KEY_MAP_TITLE, KEY_MAP_ZOOM, buildMap, mapPointer } from "../../client/core/ui/screens.ts";
+import { KEY_MAP_IMAGE, KEY_MAP_LINE, KEY_MAP_PIN, KEY_MAP_TITLE, KEY_MAP_ZOOM, KEY_MAP_SURFACE, buildMap, mapPointer } from "../../client/core/ui/screens.ts";
 import { chunkAt } from "../../shared/coords.ts";
 import { CMD_MAP_ZOOM } from "../../shared/net/protocol.ts";
 import { latLonText, lonOf, mapU, mapV, xOfU } from "../../shared/world/coords.ts";
@@ -293,7 +293,7 @@ test("the minimap is a window on one zoom around its reader, and the map screen 
   const mini = chart.mini;
   expect([chart.miniZoom, mini.view.zoom, a.tactical.marks.zoom]).toEqual([3, 3, 3]);
   expect(mini.view.du).toBe(1 / 8);
-  expect(mini.image.width).toBe(240);
+  expect(mini.image.width).toBe(Math.round(f.find(KEY_MINIMAP)!.w * 1.5));
   expect(a.tactical.chunks.get(chunkAt(DIMS, 122, 112))!.level).toBe(0);
   // Its own hut is on the picture in its tribe's green. The mate two kilometres off is outside the window.
   expect(green(mini, 124, 112)).toBe(true);
@@ -356,9 +356,10 @@ test("a whole client draws its minimap at the size of its window, and the map's 
   const chart = app.hud.chart!;
   const images = app.ui.frame.images;
   // The proving ground is 512 m, so its minimap starts on the whole map.
-  expect([chart.miniZoom, images[IMAGE_MINIMAP]!.width]).toEqual([0, 160]);
+  expect(chart.miniZoom).toBe(0);
+  expect(images[IMAGE_MINIMAP]!.width).toBe(app.ui.frame.find(KEY_MINIMAP)!.w);
   run(100, 1080);
-  expect(images[IMAGE_MINIMAP]!.width).toBe(240);
+  expect(images[IMAGE_MINIMAP]!.width).toBe(Math.round(app.ui.frame.find(KEY_MINIMAP)!.w * 1.5));
   expect(app.key("Equal", true)).toBe(true);
   run(200);
   expect(chart.mini.view.zoom).toBe(1);
@@ -369,7 +370,7 @@ test("a whole client draws its minimap at the size of its window, and the map's 
   // With the map open the same keys are the map's.
   app.key("KeyM", true);
   run(100);
-  expect(app.ui.frame.find(KEY_MAP_IMAGE)!.interactive).toBe(true);
+  expect(app.ui.frame.find(KEY_MAP_SURFACE)!.interactive).toBe(true);
   expect(images[IMAGE_MAP]!.width).toBe(Math.round(app.ui.frame.find(KEY_MAP_IMAGE)!.w));
   app.key("Equal", true);
   run(100);

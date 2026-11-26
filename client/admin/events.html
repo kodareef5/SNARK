@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Map events · SNARK Admin</title>
+    <link rel="stylesheet" href="/admin/ui/admin.css">
+  </head>
+  <body>
+    <main class="tool-page events-page">
+      <header class="tool-intro"><h1>Map events</h1><p>The kinds of event the server's modules define: switch them, schedule them, tune them, and call one now.</p></header>
+      <section class="tool-panel">
+        <div class="row"><span id="world"></span><span id="chips" class="row"></span></div>
+        <nav id="tabs" class="tabs" aria-label="Event tools"></nav>
+        <p id="said" role="status"></p>
+      </section>
+      <div id="main"></div>
+      <input type="file" id="file" accept="application/json,.json" hidden>
+    </main>
+    <script type="module" src="/admin/ui/events.js"></script>
+  </body>
+</html>

@@ -4,7 +4,7 @@
 
 import { watch } from "node:fs";
 import { resolve } from "node:path";
-import { DEV_CONFIG, liveFileOf, startServer } from "../server/main.ts";
+import { DEV_CONFIG, liveFileOf, loadModules, startServer } from "../server/main.ts";
 import { formatReport, loadConfigFolder } from "../server/settings/config.ts";
 import { buildClientApart } from "./build-client.ts";
 
@@ -21,7 +21,9 @@ for (const line of formatReport(report, rules)) console.log(line);
 const live = liveFileOf(folder);
 const host = args.indexOf("--host");
 const hostname = host >= 0 ? args[host + 1] : undefined;
-const server = startServer({ dev: true, port: Number(process.env.PORT ?? 8787), config: rules, ...(hostname ? { hostname } : {}), ...(live ? { live } : {}) });
+// The game's own modules, then --module files and the config folder's, as a server loads them.
+const modules = await loadModules(args, folder, rules.text("ModulesOff"));
+const server = startServer({ dev: true, port: Number(process.env.PORT ?? 8787), config: rules, modules, ...(hostname ? { hostname } : {}), ...(live ? { live } : {}) });
 console.log(`SNARK dev: http://localhost:${server.port}   (self-check: http://localhost:${server.port}/?selfcheck=1, admin: http://localhost:${server.port}/admin/, sound board: http://localhost:${server.port}/sounds.html)`);
 if (!hostname) console.log("  this machine only; --host 0.0.0.0 lets others on the network in, and they need no password to cheat");
 

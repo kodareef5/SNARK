@@ -3,7 +3,9 @@
 
 import { ClientSession } from "../client/core/session.ts";
 import { fetchMapFile } from "../client/core/fetched.ts";
-import { defaultLook } from "../shared/anim/look.ts";
+import { randomLook } from "../shared/anim/look.ts";
+import { hashString } from "../shared/hash.ts";
+import { Rng } from "../shared/rng.ts";
 import type { Registry } from "../shared/content/registry.ts";
 import { withContent } from "../shared/content/registry.ts";
 import { stampWire } from "../shared/net/protocol.ts";
@@ -39,7 +41,8 @@ export async function joinServer(url: string, name: string, key: Uint8Array, reg
     // A map's landmarks bring definitions of their own, compiled after the core's as the server's are.
     registry: withContent(reg, map.content?.defs ?? []),
     clipHash,
-    look: defaultLook(),
+    // Seeded by the name, so a bot keeps its look from one run to the next.
+    look: randomLook(new Rng(hashString(name))),
     password: process.env.SNARK_PASSWORD ?? "",
     ...(ticket ? { ticket } : {}),
     resolveMap: (id, hash) => (id === map.id && hash === map.hash ? hf : null),

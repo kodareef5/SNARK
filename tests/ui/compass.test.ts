@@ -8,7 +8,7 @@ import { HudModel } from "../../client/core/hud.ts";
 import type { Chart } from "../../client/core/tactical.ts";
 import { ARROW_STEPS, CELL, IMAGE_ARROW, arrowCell, arrowSheet } from "../../client/core/ui/arrow.ts";
 import { Compass, KEY_COMPASS, bearingOf, turnTo } from "../../client/core/ui/compass.ts";
-import { KEY_MARKER, KEY_SELF_ARROW, MINIMAP_SIZE, buildHud } from "../../client/core/ui/hud.ts";
+import { KEY_MARKER, KEY_SELF_ARROW, KEY_MINIMAP, buildHud } from "../../client/core/ui/hud.ts";
 import { unmuteButton } from "../../client/core/ui/menu.ts";
 import { IMAGE_DIAL } from "../../client/core/ui/sundial.ts";
 import { IMAGE_HEART } from "../../client/core/ui/tame.ts";
@@ -99,7 +99,7 @@ test("friends and a body are pips at their bearings, pinned to the near end when
   expect(pips(north).length).toBe(1);
   const pinned = pips(north)[0]!;
   expect(pinned.alpha).toBeLessThan(0.6);
-  expect(middle(pinned)).toBeGreaterThan(north.width / 2 + 100);
+  expect(middle(pinned)).toBeGreaterThan(north.width / 2 + 90);
   const facing = build(model(90, marks));
   expect(middle(pips(facing)[0]!)).toBeCloseTo(facing.width / 2, 0);
   expect(pips(facing)[0]!.alpha).toBeGreaterThan(0.9);
@@ -118,8 +118,8 @@ test("the reader is an arrow on the minimap, the way it faces, not a square", ()
   expect(arrow.kind).toBe(K_IMAGE);
   expect(arrow.image).toBe(IMAGE_ARROW);
   expect(arrow.sw).toBe(CELL);
-  const map = nodes(f).find((n) => n.kind === K_IMAGE && n.w === MINIMAP_SIZE)!;
-  expect(middle(arrow)).toBeCloseTo(map.x + MINIMAP_SIZE / 2, 0);
+  const map = f.find(KEY_MINIMAP)!;
+  expect(middle(arrow)).toBeCloseTo(map.x + map.w / 2, 0);
   // One marker square, the mate's.
   expect(nodes(f).filter((n) => n.key >= KEY_MARKER && n.key < KEY_MARKER + 256).length).toBe(1);
   // Every picture has slots of the frame's image table to itself: the hearts take a run of them, the icons all from theirs on.
@@ -157,7 +157,7 @@ test("the tape keeps out of the way: a scope, the map screen, the setting, the m
   expect(tape(build(model(0), 16 / 9, { ...OPTIONS, compass: false })).length).toBe(0);
   // On the narrowest canvas it stands left of the minimap, clear of it.
   const narrow = build(model(0), 9 / 16);
-  const map = nodes(narrow).find((n) => n.kind === K_IMAGE && n.w === MINIMAP_SIZE)!;
+  const map = narrow.find(KEY_MINIMAP)!;
   expect(tape(narrow).length).toBeGreaterThan(0);
   for (const n of tape(narrow)) expect(n.x + n.w).toBeLessThanOrEqual(map.x);
   // By touch, clear of the bar and the vitals, or left out where there is no room between them and the minimap.

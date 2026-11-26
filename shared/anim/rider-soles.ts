@@ -1,6 +1,6 @@
 // Native foot support calibration. Only a change of actual body/look/footwear recomputes these six offsets.
 import { B_FOOT_L, B_FOOT_R, B_TOE_L, B_TOE_R, HUMAN_BONES } from "./human.ts";
-import { defaultLook, LOOK_BYTES, lookScales } from "./look.ts";
+import { defaultLook, LOOK_BODY_BYTES, lookScales } from "./look.ts";
 
 const PLAIN = defaultLook();
 
@@ -26,7 +26,7 @@ export function soleOffsets(points: readonly number[], rest: Float32Array, scale
 export class RiderSoles {
   readonly offsets = new Float64Array(6);
   revision = 0;
-  private readonly look = new Uint8Array(LOOK_BYTES);
+  private readonly look = new Uint8Array(LOOK_BODY_BYTES);
   private readonly scale = new Float32Array(HUMAN_BONES * 3);
   private points: readonly number[] | null = null;
   private rest: Float32Array | null = null;
@@ -36,10 +36,10 @@ export class RiderSoles {
   update(points: readonly number[] | null, rest: Float32Array, look: Uint8Array | null, at = 0): Float64Array | null {
     const view = look ?? PLAIN, from = look ? at : 0;
     let same = this.ready && this.points === points && this.rest === rest;
-    for (let i = 0; same && i < LOOK_BYTES; i++) same = this.look[i] === view[from + i];
+    for (let i = 0; same && i < LOOK_BODY_BYTES; i++) same = this.look[i] === view[from + i];
     if (same) return this.valid ? this.offsets : null;
     this.ready = true; this.points = points; this.rest = rest; this.revision++;
-    for (let i = 0; i < LOOK_BYTES; i++) this.look[i] = view[from + i]!;
+    for (let i = 0; i < LOOK_BODY_BYTES; i++) this.look[i] = view[from + i]!;
     lookScales(this.look, this.scale, rest);
     this.valid = points !== null && soleOffsets(points, rest, this.scale, this.offsets);
     return this.valid ? this.offsets : null;

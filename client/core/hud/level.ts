@@ -7,7 +7,7 @@ import { HOTBAR_SLOTS } from "../../../shared/sim/items.ts";
 import { K_BAR, textWidth } from "../ui/nodes.ts";
 import { S_HUD_KEY, S_OXYGEN, S_SLOT_TEXT, S_STAMINA } from "../ui/style.ts";
 import { hotbarBottom, hotbarCell, hotbarLeft } from "./layout.ts";
-import type { HudWidget } from "./widget.ts";
+import { band, type HudWidget } from "./widget.ts";
 
 /** The words, the bar, the bar lit for a level just reached, and the gain. */
 export const KEY_LEVEL = 3560;
@@ -102,6 +102,7 @@ export interface LevelModel {
 
 export const LEVEL: HudWidget<LevelModel> = {
   name: "level",
+  bands: [band(KEY_LEVEL, 4)],
   make: () => ({ levelBar: new LevelBar() }),
   fill(m, c) {
     const s = c.session, p = s.progress, v = m.levelBar, now = c.nowMs;
