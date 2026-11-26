@@ -41,7 +41,7 @@ function read(bytes: Uint8Array, base: EntityView | null, person: MakePerson | n
 }
 
 /** A civilian of the city population, its look made from `seed`. */
-function civilian(store: EntityStore, seed: number, population = "people:city"): number {
+function civilian(store: EntityStore, seed: number, population = "core:people_city"): number {
   const e = store.create(3, 1000 + seed % 50, 40, 1000, 0);
   const n = people.number.get(population)!, p = people.list[n]!;
   store.setLook(e, 1, null, "Rosa");

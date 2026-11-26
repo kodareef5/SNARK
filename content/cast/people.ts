@@ -9,16 +9,16 @@ const HUMAN = "core:human";
 const wear = (tier: string, ...pieces: string[]) => pieces.map((p) => `core:${tier}_${p}`);
 
 export const LOOKS: Look[] = [
-  { id: "cast:street_plain", mesh: HUMAN, wear: wear("cloth", "shirt", "pants", "boots"), colors: [15, 1, 225], population: "people:city", placeholder: true, note: "t-shirt, jeans, trainers" },
-  { id: "cast:street_bright", mesh: HUMAN, wear: wear("cloth", "shirt", "pants", "boots"), colors: [93, 46, 1], population: "people:city", placeholder: true, note: "loud shirt, shorts, sandals" },
-  { id: "cast:office", mesh: HUMAN, wear: wear("cloth", "shirt", "pants", "boots"), colors: [1, 65, 2], population: "people:workers", placeholder: true, note: "shirt and slacks, a lanyard" },
-  { id: "cast:tourist", mesh: HUMAN, wear: wear("cloth", "hat", "shirt", "pants", "boots"), colors: [50, 93, 15], population: "people:tourists", placeholder: true, note: "sun hat, camera, sunburn" },
-  { id: "cast:runner", mesh: HUMAN, wear: wear("cloth", "shirt", "pants"), colors: [46, 2, 1], population: "people:beach", placeholder: true, note: "running vest and shorts, earbuds" },
-  { id: "cast:swimwear", mesh: HUMAN, wear: [], colors: [65, 50, 93], population: "people:beach", placeholder: true, note: "swimwear, towel over a shoulder" },
-  { id: "cast:vendor_apron", mesh: HUMAN, wear: wear("cloth", "hat", "shirt", "pants", "boots"), colors: [1, 46, 15], population: "people:workers", placeholder: true, note: "apron and cap" },
-  { id: "cast:police", mesh: HUMAN, wear: wear("flak", "hat", "shirt", "pants", "boots"), colors: [65, 2, 2], population: "people:city", placeholder: true, note: "Miami police uniform, badge, duty belt" },
-  { id: "cast:gang_red", mesh: HUMAN, wear: wear("hide", "shirt", "pants", "boots"), colors: [46, 2, 2], population: "people:city", placeholder: true, note: "red bandana and colours, Southside" },
-  { id: "cast:gang_teal", mesh: HUMAN, wear: wear("hide", "shirt", "pants", "boots"), colors: [50, 2, 1], population: "people:city", placeholder: true, note: "teal colours, Bayfront" },
+  { id: "cast:street_plain", mesh: HUMAN, wear: wear("cloth", "shirt", "pants", "boots"), colors: [15, 1, 225], population: "core:people_city", placeholder: true, note: "t-shirt, jeans, trainers" },
+  { id: "cast:street_bright", mesh: HUMAN, wear: wear("cloth", "shirt", "pants", "boots"), colors: [93, 46, 1], population: "core:people_city", placeholder: true, note: "loud shirt, shorts, sandals" },
+  { id: "cast:office", mesh: HUMAN, wear: wear("cloth", "shirt", "pants", "boots"), colors: [1, 65, 2], population: "core:people_workers", placeholder: true, note: "shirt and slacks, a lanyard" },
+  { id: "cast:tourist", mesh: HUMAN, wear: wear("cloth", "hat", "shirt", "pants", "boots"), colors: [50, 93, 15], population: "core:people_tourists", placeholder: true, note: "sun hat, camera, sunburn" },
+  { id: "cast:runner", mesh: HUMAN, wear: wear("cloth", "shirt", "pants"), colors: [46, 2, 1], population: "core:people_beach", placeholder: true, note: "running vest and shorts, earbuds" },
+  { id: "cast:swimwear", mesh: HUMAN, wear: [], colors: [65, 50, 93], population: "core:people_beach", placeholder: true, note: "swimwear, towel over a shoulder" },
+  { id: "cast:vendor_apron", mesh: HUMAN, wear: wear("cloth", "hat", "shirt", "pants", "boots"), colors: [1, 46, 15], population: "core:people_workers", placeholder: true, note: "apron and cap" },
+  { id: "cast:police", mesh: HUMAN, wear: wear("flak", "hat", "shirt", "pants", "boots"), colors: [65, 2, 2], population: "core:people_city", placeholder: true, note: "Miami police uniform, badge, duty belt" },
+  { id: "cast:gang_red", mesh: HUMAN, wear: wear("hide", "shirt", "pants", "boots"), colors: [46, 2, 2], population: "core:people_city", placeholder: true, note: "red bandana and colours, Southside" },
+  { id: "cast:gang_teal", mesh: HUMAN, wear: wear("hide", "shirt", "pants", "boots"), colors: [50, 2, 1], population: "core:people_city", placeholder: true, note: "teal colours, Bayfront" },
 ];
 
 /** Lines every everyday person can say, merged into each such archetype's own. */

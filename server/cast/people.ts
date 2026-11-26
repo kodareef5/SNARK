@@ -18,7 +18,7 @@ export const MOST_NOTES = 6;
 const pick = <T>(rng: Rng, xs: readonly T[]): T => xs[rng.int(xs.length)]!;
 
 /** The population a look names where it names none. */
-export const CAST_POPULATION = "people:city";
+export const CAST_POPULATION = "core:people_city";
 /** Seeds tried for a person of its name's sex before the first is kept whatever it gives. */
 const SEX_TRIES = 16;
 

@@ -9,7 +9,7 @@ const cloth = (...pieces: string[]) => pieces.map((p) => `core:cloth_${p}`);
 
 /** Everyone about the city: all ages and builds, both sexes alike. */
 export const CITY: PopulationDef = {
-  type: "population", id: "people:city", label: "City crowd", revision: 1,
+  type: "population", id: "core:people_city", label: "City crowd", revision: 1,
   women: 0.5,
   skin: [1, 2, 3, 3, 3, 3, 3, 2, 2, 1],
   eyes: [5, 3, 1, 1, 1, 0.5],
@@ -25,7 +25,7 @@ export const CITY: PopulationDef = {
 
 /** Young people on the sand: slim and fit, long and fair hair, in little but swimwear. */
 export const BEACH: PopulationDef = {
-  type: "population", id: "people:beach", label: "Young beachgoers", revision: 1,
+  type: "population", id: "core:people_beach", label: "Young beachgoers", revision: 1,
   women: 0.55,
   skin: [1, 2, 3, 4, 4, 3, 2, 2, 1, 1],
   eyes: [3, 2, 2, 1, 1, 1],
@@ -43,7 +43,7 @@ export const BEACH: PopulationDef = {
 
 /** Older people at work: greying, heavier about the middle, short hair and beards. */
 export const WORKERS: PopulationDef = {
-  type: "population", id: "people:workers", label: "Older workers", revision: 1,
+  type: "population", id: "core:people_workers", label: "Older workers", revision: 1,
   women: 0.35,
   skin: [1, 2, 3, 3, 3, 3, 3, 2, 2, 1],
   eyes: [5, 3, 1, 1, 2, 0.5],
@@ -60,7 +60,7 @@ export const WORKERS: PopulationDef = {
 
 /** Visitors: fairer skin and eyes, every age, the older ones grey. */
 export const TOURISTS: PopulationDef = {
-  type: "population", id: "people:tourists", label: "Tourists", revision: 1,
+  type: "population", id: "core:people_tourists", label: "Tourists", revision: 1,
   women: 0.5,
   skin: [4, 4, 3, 2, 1, 1, 0.5, 0.5, 0.3, 0.2],
   eyes: [2, 1, 3, 2, 2, 0.5],
@@ -76,7 +76,7 @@ export const TOURISTS: PopulationDef = {
 
 /** The bots: anyone at all, as a creator's random look is. */
 export const SURVIVORS: PopulationDef = {
-  type: "population", id: "people:survivors", label: "Survivors", revision: 1,
+  type: "population", id: "core:people_survivors", label: "Survivors", revision: 1,
   women: 0.5,
   skin: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
   eyes: [1, 1, 1, 1, 1, 1],

@@ -453,4 +453,4 @@ built.
 
 **`map`** (5): miami, tampa, san-francisco, los-angeles, las-vegas.
 
-**`population`** (5): people:city, people:beach, people:workers, people:tourists, people:survivors.
+**`population`** (5): people_city, people_beach, people_workers, people_tourists, people_survivors.

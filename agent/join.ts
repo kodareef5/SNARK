@@ -20,7 +20,7 @@ import { fileUrl } from "./main.ts";
 import { connect } from "./socket.ts";
 
 /** The population bots are drawn from. */
-export const BOT_POPULATION = "people:survivors";
+export const BOT_POPULATION = "core:people_survivors";
 
 /** A bot's look: a survivor drawn from its name, or a random one where the content has no survivors' population. */
 export function botLook(reg: Registry, name: string): Uint8Array {

@@ -11,7 +11,7 @@ artTest("a civilian with a look is drawn in its sex's body, and without one in t
   const { remote, reg, cam } = view;
   remote.kind[0] = reg.index.get("core:civilian")!;
   cam.yaw = Math.atan2(remote.x[0]! - cam.x, remote.z[0]! - cam.z);
-  const city = populationsOf(reg).list[populationsOf(reg).number.get("people:city")!]!;
+  const city = populationsOf(reg).list[populationsOf(reg).number.get("core:people_city")!]!;
   let seed = 1;
   while (personFrom(seed, city).sex !== 1) seed++;
   const bodies = (): string[] => {
