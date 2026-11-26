@@ -11,6 +11,10 @@ import { gridAt } from "../../tools/mapworld/base.ts";
 import { S } from "../../tools/mapworld/ground.ts";
 import { makeHeaps, readBuildings } from "../../tools/mapworld/heaps.ts";
 import { placeRoofPlant, type Roofs } from "../../tools/mapworld/roof-plant.ts";
+import { contextualize, waterNear } from "../../tools/mapworld/ruin-context.ts";
+import type { Frame } from "../../tools/mapworld/ruin-geometry.ts";
+import type { Rule, Vocabulary } from "../../tools/mapworld/ruin-vocabulary.ts";
+import { REACH } from "../../tools/maps/local-gate.ts";
 import type { Site, StaticPiece } from "../../tools/mapworld/statics.ts";
 import { parkCars, roadIndex, SECTOR, type Cars } from "../../tools/mapworld/street-cars.ts";
 
@@ -97,4 +101,19 @@ test("a street's pieces are in the order of its id and its metres, whatever the 
   expect(was.map((s) => s.id)).toEqual(["osm:3:0", "osm:3:1", "osm:9:0"]);
   expect(read([roads[2]!, roads[0]!, roads[1]!])).toEqual(was);
   expect(new Set(was.map((s) => s.seed)).size).toBe(3);
+});
+
+test("a ruin's storm damage does not tell how far the water is past the bound", () => {
+  const v = { ...RULES, seed: 1 } as unknown as Vocabulary;
+  const frame = { x: 100, z: 100, yaw: 0, c: 1, s: 0, width: 20, depth: 20, rings: [] } as unknown as Frame;
+  const surge = (water: number): number => contextualize({ height: 12, matched: [] } as unknown as Rule, frame, [], water, undefined, v).event!.exposure;
+  // The bound leaves room for a footprint's reach under the generator's 600 m.
+  expect(v.event.far).toBeLessThanOrEqual(REACH - 150);
+  expect([surge(v.event.far), surge(2000), surge(5000), surge(Infinity)]).toEqual([0.18, 0.18, 0.18, 0.18]);
+  expect([waterNear(v.event.far - 1, v), waterNear(v.event.far, v), waterNear(3000, v)]).toEqual([v.event.far - 1, Infinity, Infinity]);
+  // Near the shore the curve is the one it was, then it falls to the far value without a step.
+  for (const water of [0, 100, v.event.near]) expect(surge(water)).toBeCloseTo(0.18 + 0.82 * Math.exp(-water / v.event.reach), 12);
+  const eased = [0, 0.25, 0.5, 0.75, 1].map((t) => surge(v.event.near + (v.event.far - v.event.near) * t));
+  for (let k = 1; k < eased.length; k++) expect(eased[k]!).toBeLessThan(eased[k - 1]!);
+  expect(surge(v.event.far - 1)).toBeLessThan(0.19);
 });
