@@ -12,6 +12,9 @@ import { SLOT_NAMES } from "../../shared/anim/human.ts";
 import { HAIR_STYLES, LOOK_HAIR, LOOK_SEX, SEX_IDS, defaultLook, lookColors } from "../../shared/anim/look.ts";
 import type { Def, EngramDef, ItemDef, NodeDef, ShapeDef, SpeciesDef, StructureDef } from "../../shared/content/defs.ts";
 import { compileContent } from "../../shared/content/registry.ts";
+import { starterBook } from "../../content/supply/starter.ts";
+import { catalogOf } from "../../shared/supply/catalog.ts";
+import { reachOf } from "../../shared/supply/reach.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { STAT_NAMES, type StatName } from "../../shared/sim/genome.ts";
 import { GAME_HOUR_TICKS } from "../../shared/sim/lazy.ts";
@@ -450,6 +453,18 @@ export function buildCatalogue(input: CatalogueInput = {}): Entry[] {
     if (b.after) back(b.after, "Follows", { id: b.id });
   }
   for (const l of input.landmarks ?? LANDMARKS) for (const v of l.vehicles) back(v.kind, "Moored at", { id: l.name });
+  // What content alone does not link: the starter book's drops, the street's wrecks and the rubble of what is broken.
+  const book = starterBook();
+  const loot = catalogOf(reg);
+  for (const [item, ways] of reachOf(defs, book, (id) => !loot.byId.get(id)?.never).ways) {
+    const e = entries.get(item);
+    if (!e) continue;
+    const tiers = book.tiers.filter((t) => ways.some((w) => w.how === "dropped" && book.tables[w.from]?.tier === t.key)).map((t) => t.name);
+    if (tiers.length) e.facts.push({ label: "Supply drops", value: [tiers.join(", ")] });
+    if (ways.some((w) => w.how === "salvaged")) e.facts.push({ label: "Salvaged from", value: ["Street wrecks"] });
+    const rubble = ways.filter((w) => w.how === "mined").map((w) => w.from.slice(w.from.indexOf(":") + 1).replace(/^z*mat_/, "").replace(/_/g, " "));
+    if (rubble.length) e.facts.push({ label: "Mined from", value: [`Rubble of ${rubble.join(", ")}`] });
+  }
   return KINDS.flatMap((k) => [...entries.values()].filter((e) => e.kind === k).sort((a, b) => a.label.localeCompare(b.label)));
 }
 

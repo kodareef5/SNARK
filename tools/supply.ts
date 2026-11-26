@@ -4,6 +4,8 @@
 //   bun run supply -- waiting      what the book names that the game does not have, and how often each would drop
 //   bun run supply -- fit          scale each kit's ballast line to its target and write content/supply/fit.ts
 //   bun run supply -- table blue/arms [--ringed] [--rolls N] [--seed N]    one table in full
+//   bun run supply -- reach [item] [--all]    where each item comes from, and what has no source
+//   bun run supply -- flow <map.snmap>        what stands on a built map that could hold loot
 //
 // The same figures are the admin page's and the tests' (shared/supply/simulate.ts).
 
@@ -67,6 +69,11 @@ if (import.meta.main) {
   const what = args[0] ?? "report";
   if (what === "sites") {
     await (await import("./supply/sites.ts")).sitesCommand(args.slice(1));
+    process.exit(0);
+  }
+  if (what === "reach" || what === "flow") {
+    const tool = await import("./supply/reach.ts");
+    (what === "reach" ? tool.reachCommand : tool.flowCommand)(args.slice(1));
     process.exit(0);
   }
   const pct = (v: number, of: number): string => `${Math.round((v / of) * 100)}%`.padStart(4);
