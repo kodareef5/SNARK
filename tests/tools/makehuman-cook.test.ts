@@ -4,7 +4,7 @@
 import { expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { artModule } from "../../tools/art/source.ts";
-import { BROWS_SHEET, EYES_SHEET, scriptedBody, SECTION_BROWS, SECTION_EYES, SECTION_SKIN, COOK_PLAN } from "../../tools/makehuman/cooked.ts";
+import { BROWS_SHEET, EYES_SHEET, fittedSourceOf, scriptedBody, SECTION_BROWS, SECTION_EYES, SECTION_SKIN, COOK_PLAN } from "../../tools/makehuman/cooked.ts";
 import { fitBody } from "../../tools/makehuman/fit.ts";
 import { BASE_OBJ } from "../../tools/makehuman/index.ts";
 
@@ -18,7 +18,7 @@ mirrorTest("the cook's body has three materials, a hard-cut mouth and no eye bac
   expect(kept.tongue).toBeLessThanOrEqual(COOK_PLAN.tongue);
   expect(kept.body).toBe(f.report.triangles.body!);
   expect(kept.eyes).toBeLessThan(f.report.triangles.eyes! * 0.75);
-  expect(new Set(body.sections)).toEqual(new Set([SECTION_SKIN, SECTION_EYES, SECTION_BROWS]));
+  expect(new Set(Array.from(body.sections))).toEqual(new Set([SECTION_SKIN, SECTION_EYES, SECTION_BROWS]));
   // Each part's texture coordinates stay inside its place on the sheet.
   const inside = (section: number, places: readonly (readonly number[])[]): boolean => {
     for (let t = 0; t < body.sections.length; t++) {
@@ -33,4 +33,14 @@ mirrorTest("the cook's body has three materials, a hard-cut mouth and no eye bac
   expect(inside(SECTION_EYES, Object.values(EYES_SHEET))).toBe(true);
   expect(inside(SECTION_BROWS, Object.values(BROWS_SHEET))).toBe(true);
   expect(inside(SECTION_SKIN, [[0, 0, 1, 1]])).toBe(true);
+});
+
+mirrorTest("every vertex the cook keeps unmoved finds its fitted vertex, for faces", async () => {
+  const { RIGS } = await artModule("core/humans/human-bodies/rigs.ts");
+  const f = fitBody("male", RIGS[0]);
+  const { body } = scriptedBody(f);
+  const map = fittedSourceOf(body.positions, f);
+  for (let v = 0; v < map.length; v++) if (body.uvs[v * 2]! < 1 && map[v]! >= 0) expect(Math.hypot(f.positions[map[v]! * 3]! - body.positions[v * 3]!, f.positions[map[v]! * 3 + 1]! - body.positions[v * 3 + 1]!)).toBeLessThan(5e-5);
+  // The teeth and tongue are cut, so a few of theirs are new points; every other vertex is the fitted body's own.
+  expect([...map].filter((s) => s < 0).length).toBeLessThan(400);
 });
