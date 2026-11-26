@@ -6,11 +6,14 @@ import { expect } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { DRAW_PRINTED, DRAW_RANGED, DRAW_SKINNED, DRAW_TEXTURED, TRANSIENT_BUFFER, type FramePacket } from "../../client/core/render/packet.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
+import { CITY } from "../../content/people/defaults.ts";
 import { LOOK_BYTES, LOOK_SEX, defaultLook } from "../../shared/anim/look.ts";
 import type { Def } from "../../shared/content/defs.ts";
 import { compileContent, withContent, type Registry } from "../../shared/content/registry.ts";
 import { hashBytes } from "../../shared/hash.ts";
 import { INSTANCE_BYTES } from "../../shared/pack/pack.ts";
+import { cutMesh } from "../../shared/people/cuts.ts";
+import { partSeed, personFrom } from "../../shared/people/person.ts";
 import { GEAR_COUNT, GEAR_WORN, WORN_FIELDS, WORN_LENGTH } from "../../shared/sim/entities.ts";
 import { asTextured } from "../../tools/bench/base.ts";
 import { provingView, type ProvingView } from "../../tools/snap.ts";
@@ -198,6 +201,31 @@ test("200 wearers of one cut are the draws of one", () => {
   const keys = b.garments.map((g) => `${g.mesh} ${g.lod}`);
   expect(new Set(keys).size).toBe(keys.length);
   for (const cut of ["tee", "jeans"]) expect(b.garments.filter((g) => g.mesh.endsWith(cut)).reduce((n, g) => n + g.instances, 0)).toBe(200);
+});
+
+test("a city crowd of 200 in dyed outfits draws one cut a level once", () => {
+  const view = crowd({}, 200), { remote, reg } = view, wearers = new Map<string, number>();
+  for (let n = 0; n < 200; n++) {
+    const person = personFrom(partSeed(n, 77), CITY), o = CITY.outfits![person.outfit]!;
+    remote.look.set(person.look, n * LOOK_BYTES);
+    o.wear.forEach((id, i) => {
+      const item = reg.index.get(id)!;
+      remote.wardrobe.set([item, 0, person.dyes[i]!], n * WORN_LENGTH + reg.garmentSlot[item]! * WORN_FIELDS);
+      const key = `${person.look[LOOK_SEX]}/${(reg.defs[item] as { garment: { cut: string } }).garment.cut}`;
+      wearers.set(key, (wearers.get(key) ?? 0) + 1);
+    });
+    remote.hasWardrobe[n] = 1;
+  }
+  const dyed = drawsOf(view, settled(view));
+  const keys = dyed.garments.map((g) => `${g.mesh} ${g.lod}`);
+  expect(new Set(keys).size).toBe(keys.length);
+  for (const [key, n] of wearers) {
+    const [sex, cut] = key.split("/");
+    expect([key, dyed.garments.filter((g) => g.mesh === cutMesh(sex === "1" ? "core:human_f" : "core:human_m", cut!)).reduce((t, g) => t + g.instances, 0)]).toEqual([key, n]);
+  }
+  // Undyed, the crowd draws the same draws.
+  for (let n = 0; n < 200; n++) for (let k = 0; k < WORN_LENGTH; k += WORN_FIELDS) remote.wardrobe[n * WORN_LENGTH + k + 2] = 0;
+  expect(drawsOf(view, settled(view)).garments.map((g) => `${g.mesh} ${g.lod} ${g.instances}`).sort()).toEqual(dyed.garments.map((g) => `${g.mesh} ${g.lod} ${g.instances}`).sort());
 });
 
 /** The palette bytes of each garment instance drawn. */

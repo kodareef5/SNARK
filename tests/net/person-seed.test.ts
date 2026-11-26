@@ -7,12 +7,12 @@ import { defaultLook, LOOK_BYTES } from "../../shared/anim/look.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { EntityView, SentView, quantX, quantY, readViewDelta, writeViewDelta, type MakePerson } from "../../shared/net/view.ts";
-import { lookOfSeed, personFrom, populationsOf } from "../../shared/people/person.ts";
+import { bodyOfSeed, personFrom, populationsOf } from "../../shared/people/person.ts";
 import { EntityStore, F_ALIVE } from "../../shared/sim/entities.ts";
 
 const reg = compileContent(CORE_CONTENT).registry!;
 const people = populationsOf(reg);
-const make: MakePerson = (seed, population, revision) => lookOfSeed(reg, seed, population, revision);
+const make: MakePerson = (seed, population, revision) => bodyOfSeed(reg, seed, population, revision);
 const DIMS = { chunksX: 4, chunksZ: 4 };
 
 function viewOf(store: EntityStore, tick: number): SentView {
@@ -106,4 +106,40 @@ test("a look set without a seed drops the seed and is sent whole; a new body has
   store.destroy(f);
   expect(store.create(3, 1, 40, 1, 0)).toBe(e);
   expect(store.born.has(e)).toBe(false);
+});
+
+/** A civilian dressed as its seed draws it, its seed form saying so. */
+function dressed(store: EntityStore, seed: number): number {
+  const n = people.number.get("core:people_city")!, made = bodyOfSeed(reg, seed, n, 0)!;
+  const e = store.create(3, 1000 + seed % 50, 40, 1000, 0);
+  store.setLook(e, 1, null, "Rosa");
+  store.setBodyLook(e, made.look, { seed, population: n, revision: 0, worn: made.worn });
+  store.setWardrobe(e, made.worn);
+  return e;
+}
+
+test("a body in what its seed draws sends no wardrobe, and the reader draws the same one", () => {
+  const store = new EntityStore(DIMS, 8);
+  const e = dressed(store, 0x5eed);
+  const worn = [...store.wardrobes.get(e)!];
+  expect(worn.some((n) => n !== 0)).toBe(true);
+  const sent = write(store, null, viewOf(store, 1));
+  expect([...read(sent.bytes, null)!.wardrobe[0]!]).toEqual(worn);
+  // Sent apart, the same wardrobe costs bytes of its own.
+  store.setBodyLook(e, store.looks.get(e)!, { ...store.born.get(e)!, worn: undefined });
+  const apart = write(store, null, viewOf(store, 1));
+  expect([...read(apart.bytes, null)!.wardrobe[0]!]).toEqual(worn);
+  expect(apart.bytes.length - sent.bytes.length).toBeGreaterThanOrEqual(8);
+});
+
+test("a body that wears other than its seed draws sends its own wardrobe", () => {
+  const store = new EntityStore(DIMS, 8);
+  const e = dressed(store, 0x5eed);
+  const other = new Uint32Array(store.wardrobes.get(e)!);
+  other[2] = 46;
+  store.setWardrobe(e, other);
+  expect([...read(write(store, null, viewOf(store, 1)).bytes, null)!.wardrobe[0]!]).toEqual([...other]);
+  // Stripped bare, it sends that it wears nothing.
+  store.setWardrobe(e, null);
+  expect(read(write(store, null, viewOf(store, 1)).bytes, null)!.wardrobe[0]).toBeNull();
 });

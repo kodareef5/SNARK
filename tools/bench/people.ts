@@ -5,7 +5,7 @@
 // is the scene the people are added to. Every cell is run on each tier asked, warmed first, then `runs` times by turns,
 // each round starting one cell further on. The world is held at noon.
 //
-//   bun tools/bench/people.ts [--runs 4] [--warm 1] [--tiers medium,high] [--only far] [--label intel] [--client dir] [--shots]
+//   bun tools/bench/people.ts [--runs 4] [--warm 1] [--tiers medium,high] [--only far] [--looks gear,meridian] [--label intel] [--client dir] [--shots]
 //   bun tools/bench/people.ts --table [--drop 1] var/people-bench/intel.json var/people-bench/rtx.json
 //
 // A GPU's first round runs up to twice as slow as the rest, so `--warm` rounds are run first and not kept, and
@@ -155,7 +155,8 @@ if (import.meta.main) {
   const tiers = arg("--tiers", "medium,high").split(",");
   const only = arg("--only", "");
   const label = arg("--label", process.env.SNARK_GPU ?? "default");
-  const list = cells(tiers).filter((c) => !only || c.scene === "empty" || cellName(c).startsWith(only));
+  const looks = arg("--looks", "").split(",").filter(Boolean);
+  const list = cells(tiers).filter((c) => c.scene === "empty" || ((!only || cellName(c).startsWith(only)) && (looks.length === 0 || looks.includes(c.looks!))));
   mkdirSync(OUT, { recursive: true });
   const given = argv.includes("--client") ? resolve(arg("--client", "")) : process.env.CLIENT_DIR;
   const dist = given ?? join(OUT, "client");

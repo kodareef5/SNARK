@@ -5,7 +5,7 @@
 // earlier revisions are kept, as a body may be drawn from one.
 
 import { LOOK_BYTES, validLook } from "../anim/look.ts";
-import { populations as populationKind, REGION_KEYS, type PopulationDef, type Span } from "../content/kinds/populations.ts";
+import { populations as populationKind, REGION_KEYS, type Outfit, type PopulationDef, type Span } from "../content/kinds/populations.ts";
 import type { Checking } from "../content/kind.ts";
 import { WARDROBE_SLOTS } from "../sim/items.ts";
 
@@ -123,7 +123,7 @@ export function readDraft(sent: Record<string, unknown>): EditionDraft | string 
 /** A record's name: one line of 1 to this many letters. */
 export const RECORD_NAME_MAX = EDITION_NAME_MAX;
 export const NOTES_MAX = 1000;
-/** The most garments one outfit slot chooses among, and the most outfits one population has. Chosen. */
+/** The most garments one outfit slot chooses among (and colours a population's piece is dyed from), and the most outfits one population has. Chosen. */
 export const CHOICES_MAX = 16;
 export const POPULATION_OUTFITS_MAX = 32;
 export const WEAR_MAX = 8;
@@ -377,13 +377,15 @@ export function readPopulation(sent: Record<string, unknown>): PopulationDoc | s
   if (sent.outfits !== undefined) {
     const o = sent.outfits;
     if (!Array.isArray(o) || o.length > POPULATION_OUTFITS_MAX) return `A population has at most ${POPULATION_OUTFITS_MAX} outfits.`;
-    const outfits: { wear: string[]; weight: number }[] = [];
+    const outfits: Outfit[] = [];
     for (const one of o) {
       const x = asObject(one);
       if (!x || !Array.isArray(x.wear) || x.wear.length > WEAR_MAX || !x.wear.every((w) => typeof w === "string" && CONTENT_ID.test(w)) || !weightOk(x.weight)) {
         return `An outfit is at most ${WEAR_MAX} pieces by content id and a weight above 0.`;
       }
-      outfits.push({ wear: [...(x.wear as string[])], weight: x.weight });
+      const dyes = x.dyes === undefined ? undefined : Array.isArray(x.dyes) && x.dyes.every((l) => Array.isArray(l) && l.length <= CHOICES_MAX) ? (x.dyes as number[][]).map((l) => [...l]) : null;
+      if (dyes === null) return `An outfit's dyes are a list for each piece, of at most ${CHOICES_MAX} colours.`;
+      outfits.push({ wear: [...(x.wear as string[])], weight: x.weight, ...(dyes ? { dyes } : {}) });
     }
     body.outfits = outfits;
   }

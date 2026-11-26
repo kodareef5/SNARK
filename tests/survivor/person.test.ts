@@ -43,7 +43,7 @@ test("a seed gives the same person every time, into a fresh array or a used one"
 test("a choice added to one part changes no other part", () => {
   const hairBytes = new Set([LOOK_HAIR, LOOK_HAIR_COLOR, LOOK_HAIR_COLOR_2, LOOK_HAIR_LENGTH]);
   // A new hair style weighed in, and a new outfit.
-  const more: PopulationDef = { ...BEACH, hair: { men: [...BEACH.hair.men, 0, 0, 5], women: [...BEACH.hair.women, 0, 0, 5] }, outfits: [...BEACH.outfits!, { wear: ["core:cloth_boots"], weight: 4 }] };
+  const more: PopulationDef = { ...BEACH, hair: { men: [...BEACH.hair.men, 0, 0, 5], women: [...BEACH.hair.women, 0, 0, 5] }, outfits: [...BEACH.outfits!, { wear: ["core:trainers"], weight: 4 }] };
   let hairMoved = 0, outfitMoved = 0;
   for (const seed of SEEDS) {
     const a = personFrom(seed, BEACH), b = personFrom(seed, more);
@@ -93,9 +93,9 @@ test("two Cast presets of one character make different people of the name's sex"
   const swim = castPerson(c, CAST_CATALOGUE.looks.find((l) => l.id === "cast:swimwear"), CAST_CATALOGUE, reg)!;
   expect([...office.person.look]).not.toEqual([...swim.person.look]);
   expect([office.person.sex, swim.person.sex]).toEqual([1, 1]);
-  // The office look keeps its own clothes; swimwear takes what the beach population wears.
-  expect(office.wear).toEqual(CAST_CATALOGUE.looks.find((l) => l.id === "cast:office")!.wear);
-  expect(BEACH.outfits!.map((o) => o.wear)).toContainEqual([...swim.wear]);
+  // Each is dressed by its population and wears no armour: the office in jeans, swimwear in shorts.
+  const bottom = (b: typeof office) => b.wardrobe[1]?.[0];
+  expect([office.wear, bottom(office), swim.wear, bottom(swim)]).toEqual([[], "core:jeans", [], "core:shorts"]);
   // A seed form names what made it, and makes the same look again.
   const { born } = swim;
   expect([...lookOfSeed(reg, born.seed, born.population, born.revision)!]).toEqual([...swim.person.look]);

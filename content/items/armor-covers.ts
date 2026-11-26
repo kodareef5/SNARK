@@ -1,9 +1,9 @@
 import type { WearFacet } from "../../shared/content/kinds/items.ts";
 
 // The skin zones each armor set's pieces cover (WearFacet.covers), by the set's meshes and the slot. A zone is listed only
-// where `bun tools/art/cloth-fit.ts` finds the piece over or under every point of it in every pose of the motion set, so
-// hiding it never opens a hole. On today's bodies none qualifies: every cuff, collar, waistband and boot top covers only
-// the end of the zone beside it, and the zones are cut at joints and halfway along limbs, not at hems.
+// where `bun tools/art/cloth-fit.ts` finds the piece over or under all but a crease's share (6%) of it in every pose of
+// the motion set, on both bodies, so hiding it never opens a hole. A piece hides its own slot's skin and is lined with
+// it where that shows (tools/pack/liner.ts); no piece covers another slot's zone whole on both bodies yet.
 
 type Slot = WearFacet["slot"];
 

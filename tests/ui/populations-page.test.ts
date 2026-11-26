@@ -2,7 +2,10 @@
 // store's limits, its sheet of 24 people, and the gate that an outfit added changes no face on the sheet.
 import { expect, test } from "bun:test";
 import { readPopulation } from "../../shared/people/doc.ts";
+import { GARMENTS } from "../../content/items/garments.ts";
 import { POPULATIONS } from "../../content/people/defaults.ts";
+import type { ItemDef } from "../../shared/content/defs.ts";
+import type { PopulationDef } from "../../shared/content/kinds/populations.ts";
 import { promoteHref, storeStateOf, type StoreState } from "../../client/core/admin/people.ts";
 import {
   SHEET_SIZE, addOutfit, docOf, draftDef, draftOfBuiltIn, draftOfListed, pictureKey, populationFault, promoteRef, removeOutfit, setLabel, setOutfitWeight, setPiece,
@@ -11,10 +14,12 @@ import {
 
 const S: StoreState = storeStateOf({
   revision: 1, manifest: null, caps: {}, editions: [], people: [], outfits: [], populations: [], builtIns: POPULATIONS,
-  garments: [{ id: "core:tee", label: "plain tee", slot: "top", dyes: true, cut: null }],
+  garments: (GARMENTS as ItemDef[]).map((g) => ({ id: g.id, label: g.label!, slot: g.garment!.slot, dyes: !!g.garment!.dyes, cut: null })),
   armour: [{ id: "core:cloth_shirt", label: "Cloth shirt", slot: 1 }, { id: "core:cloth_pants", label: "Cloth pants", slot: 3 }],
 })!;
 const CITY = POPULATIONS[0]!;
+/** The city crowd with no outfits of its own. */
+const UNDRESSED: PopulationDef = { ...CITY, outfits: undefined };
 const FACE_PARTS = ["sex", "figure", "body", "skin", "hair", "beard", "brows", "face"];
 
 test("a sheet is 24 people from 24 seeds, the same for the same base", () => {
@@ -27,32 +32,35 @@ test("a sheet is 24 people from 24 seeds, the same for the same base", () => {
   expect(new Set(sheet.map(pictureKey)).size).toBe(SHEET_SIZE);
 });
 
-test("adding a shirt to a population's outfits changes no face on the sheet", () => {
+test("adding a hoodie to a population's outfits changes no face on the sheet", () => {
   for (const base of [1, 2, 3]) {
-    const d = draftOfBuiltIn(CITY), seeds = sheetSeeds(base);
+    const d = draftOfBuiltIn(UNDRESSED), seeds = sheetSeeds(base);
     const before = sheetOf(draftDef(d), seeds);
-    expect(addOutfit(d.doc, ["core:cloth_shirt"], 1)).toBe(true);
+    expect(addOutfit(d.doc, ["core:hoodie"], 1)).toBe(true);
     const after = sheetOf(draftDef(d), seeds);
     const changes = sheetChanges(before, after);
     expect(changes.every((c) => c.parts.length === 0)).toBe(true);
     expect(after.map((p) => [...p.look])).toEqual(before.map((p) => [...p.look]));
-    // Everyone now wears something, where the city crowd wore its role's clothes.
-    expect(after.every((p) => p.wear.join() === "core:cloth_shirt")).toBe(true);
+    // Everyone now wears something, where the crowd wore its role's clothes.
+    expect(after.every((p) => p.wear.join() === "core:hoodie")).toBe(true);
     // A second outfit changes who wears which, and still no face.
-    addOutfit(d.doc, ["core:tee", "core:cloth_pants"], 2);
+    addOutfit(d.doc, ["core:tee", "core:jeans"], 2);
     const again = sheetOf(draftDef(d), seeds);
     expect(sheetChanges(after, again).every((c) => c.parts.length === 0)).toBe(true);
     expect(sheetChanges(after, again).some((c) => c.wear)).toBe(true);
   }
 });
 
-test("a shirt added to an existing outfit changes no face either", () => {
-  const beach = draftOfBuiltIn(POPULATIONS[1]!), seeds = sheetSeeds(4);
+test("a hoodie added to an existing outfit changes no face, and its other pieces keep their dyes", () => {
+  const beach = draftOfBuiltIn(POPULATIONS[1]!), seeds = sheetSeeds(4), shorts = POPULATIONS[1]!.outfits![0]!;
   const before = sheetOf(draftDef(beach), seeds);
-  setPiece(beach.doc, 0, "core:cloth_shirt", true);
+  setPiece(beach.doc, 0, "core:hoodie", true);
   const after = sheetOf(draftDef(beach), seeds);
   expect(sheetChanges(before, after).every((c) => c.parts.length === 0)).toBe(true);
-  expect(after.filter((p) => p.outfit === 0).every((p) => p.wear.includes("core:cloth_shirt"))).toBe(true);
+  expect(after.filter((p) => p.outfit === 0).every((p) => p.wear.includes("core:hoodie"))).toBe(true);
+  expect(beach.doc.outfits![0]).toEqual({ wear: [...shorts.wear, "core:hoodie"], weight: shorts.weight, dyes: [...shorts.dyes!, []] });
+  setPiece(beach.doc, 0, "core:shorts", false);
+  expect(beach.doc.outfits![0]).toEqual({ wear: ["core:hoodie"], weight: shorts.weight, dyes: [[]] });
 });
 
 test("an edit to one part's weights changes that part alone", () => {
@@ -91,7 +99,7 @@ test("the fields stay within the store's limits and the store reads the draft", 
 });
 
 test("an outfit's pieces are garments or armour the world has", () => {
-  const d = draftOfBuiltIn(CITY);
+  const d = draftOfBuiltIn(UNDRESSED);
   addOutfit(d.doc, ["core:cloth_shirt"]);
   setPiece(d.doc, 0, "core:tee", true);
   setOutfitWeight(d.doc, 0, 3);

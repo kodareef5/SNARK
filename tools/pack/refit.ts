@@ -358,18 +358,15 @@ const WEIGHT_REACH = 0.1;
  * cloth over it go out together, so neither comes through the other.
  */
 const PUSH_SPREAD = 0.03;
-/** How far inside the old body a vertex lies to be tucked, in metres. */
-const TUCKED = 0.002;
 /** Rounds of finding what is inside and pushing it out. */
 const PUSH_ROUNDS = 4;
 
 /**
- * Moves `piece` from the old body onto the new as `field` says, in place. A vertex on a `rigid` bone stays where it was
- * and on that bone: a glove's or a boot's own part, which stands in for the hand or foot and on which its grips and
- * soles are calibrated. A vertex the new skin's weights would put on one is held wholly on it. Skin of
- * the new body pushes the piece out only where it is drawn with it: `shows(pieceSlot, skinSlot)`, and only where the piece
- * lay over the old body. A piece stands in for its own slot's skin, which is not drawn under it, and may be slimmer
- * there; what was tucked inside the old body stays tucked.
+ * Moves `piece` from the old body onto the new as `field` says, in place. A vertex on a `rigid` bone stays where it was:
+ * a glove's or a boot's own part, which stands in for the hand or foot and on which its grips and soles are calibrated.
+ * It stays on that bone too where the new skin nearest it is a hand's or a foot's. A vertex the new skin's weights would
+ * put on one is held wholly on it. Skin of the new body pushes the piece out where it is drawn with it:
+ * `shows(pieceSlot, skinSlot)`.
  */
 export function refitPiece(piece: RefitPiece, field: BodyField, rigid: ReadonlySet<number>, shows: (piece: number, skin: number) => boolean, slotOf: (zone: number) => number, clear = REFIT_CLEAR): RefitReport {
   const p = piece.positions;
@@ -382,18 +379,28 @@ export function refitPiece(piece: RefitPiece, field: BodyField, rigid: ReadonlyS
   const sum = new Float64Array(bones);
   /** Each vertex's weights where its old place moved to, for one with no new skin near it once moved. */
   const found = new Float32Array(n * bones);
-  /** 1 for a vertex that was inside the old body: tucked under another piece, as a hood's hem is under a shirt. */
-  const tucked = new Uint8Array(n);
+  // A glove's or a boot's own part stays as calibrated where the new skin under it is a hand's or a foot's too; over the
+  // wrist or the ankle, where the skin bends with the limb, it is weighted as that skin is.
+  const held = new Uint8Array(n);
+  for (let v = 0; v < n; v++) {
+    if (!rigid.has(piece.bones[v]!)) continue;
+    held[v] = 1;
+    if (!field.toGrid.nearest(p[v * 3]!, p[v * 3 + 1]!, p[v * 3 + 2]!, WEIGHT_REACH, hit)) continue;
+    let best = -1, most = 0;
+    for (let b = 0; b < bones; b++) {
+      let w = 0;
+      for (let k = 0; k < 3; k++) w += [hit.u, hit.v, hit.w][k]! * field.toWeights[to.indices[hit.triangle * 3 + k]! * bones + b]!;
+      if (w > most) [best, most] = [b, w];
+    }
+    if (best >= 0 && !rigid.has(best)) held[v] = 0;
+  }
   for (let v = 0; v < n; v++) {
     const [x, y, z] = [p[v * 3]!, p[v * 3 + 1]!, p[v * 3 + 2]!];
     if (!field.fromGrid.nearest(x, y, z, PIECE_REACH, hit)) continue;
     const corners = [from.indices[hit.triangle * 3]!, from.indices[hit.triangle * 3 + 1]!, from.indices[hit.triangle * 3 + 2]!];
     const share = [hit.u, hit.v, hit.w];
-    const nn = [0, 1, 2].map((a) => share.reduce((s, w, k) => s + w * from.normals[corners[k]! * 3 + a]!, 0));
-    tucked[v] = (x - hit.x) * nn[0]! + (y - hit.y) * nn[1]! + (z - hit.z) * nn[2]! < -TUCKED ? 1 : 0;
-    const held = rigid.has(piece.bones[v]!);
     for (let k = 0; k < 3; k++) {
-      if (!held) for (let a = 0; a < 3; a++) p[v * 3 + a]! += share[k]! * field.shift[corners[k]! * 3 + a]!;
+      if (!rigid.has(piece.bones[v]!)) for (let a = 0; a < 3; a++) p[v * 3 + a]! += share[k]! * field.shift[corners[k]! * 3 + a]!;
       for (let b = 0; b < bones; b++) found[v * bones + b]! += share[k]! * field.weights[corners[k]! * bones + b]!;
     }
   }
@@ -411,7 +418,7 @@ export function refitPiece(piece: RefitPiece, field: BodyField, rigid: ReadonlyS
     const inside: number[] = [];
     for (let v = 0; v < n; v++) {
       const [x, y, z] = [p[v * 3]!, p[v * 3 + 1]!, p[v * 3 + 2]!];
-      if (tucked[v] || !field.toGrid.nearest(x, y, z, INSIDE_REACH, hit, (tri) => shows(slot[v]!, field.toSlots[tri]!))) continue;
+      if (!field.toGrid.nearest(x, y, z, INSIDE_REACH, hit, (tri) => shows(slot[v]!, field.toSlots[tri]!))) continue;
       const corners = [to.indices[hit.triangle * 3]!, to.indices[hit.triangle * 3 + 1]!, to.indices[hit.triangle * 3 + 2]!];
       const share = [hit.u, hit.v, hit.w];
       const nn = [0, 1, 2].map((a) => share.reduce((s, w, k) => s + w * to.normals[corners[k]! * 3 + a]!, 0));
@@ -450,12 +457,12 @@ export function refitPiece(piece: RefitPiece, field: BodyField, rigid: ReadonlyS
       const own = need[v]! > 0 || dir[v * 3]! !== 0 || dir[v * 3 + 1]! !== 0 || dir[v * 3 + 2]! !== 0 ? v : by;
       for (let a = 0; a < 3; a++) move[v * 3 + a] = dir[own * 3 + a]! * most;
     }
-    for (let i = 0; i < p.length; i++) if (!rigid.has(piece.bones[Math.floor(i / 3)]!)) p[i]! += move[i]!;
+    for (let i = 0; i < p.length; i++) if (!held[Math.floor(i / 3)]) p[i]! += move[i]!;
     dir.fill(0);
   }
   // The weights of the new skin nearest each vertex as it now sits, so the piece turns as the skin under it does.
   for (let v = 0; v < n; v++) {
-    if (rigid.has(piece.bones[v]!)) continue;
+    if (held[v]) continue;
     sum.fill(0);
     if (field.toGrid.nearest(p[v * 3]!, p[v * 3 + 1]!, p[v * 3 + 2]!, WEIGHT_REACH, hit)) {
       const corners = [to.indices[hit.triangle * 3]!, to.indices[hit.triangle * 3 + 1]!, to.indices[hit.triangle * 3 + 2]!];
@@ -488,4 +495,17 @@ export function refitPiece(piece: RefitPiece, field: BodyField, rigid: ReadonlyS
   let most = 0;
   for (let v = 0; v < n; v++) most = Math.max(most, Math.hypot(p[v * 3]! - start[v * 3]!, p[v * 3 + 1]! - start[v * 3 + 1]!, p[v * 3 + 2]! - start[v * 3 + 2]!));
   return { vertices: n, most, pushed, deepest };
+}
+
+/** How far a point drawn on `field`'s old body moves to sit as it did on the new: the smoothed shift where it is nearest. */
+export function shiftAt(field: BodyField, p: readonly number[]): [number, number, number] {
+  const hit: Nearest = { triangle: -1, x: 0, y: 0, z: 0, u: 0, v: 0, w: 0, d2: 0 };
+  if (!field.fromGrid.nearest(p[0]!, p[1]!, p[2]!, PIECE_REACH, hit)) return [0, 0, 0];
+  const out: [number, number, number] = [0, 0, 0];
+  const share = [hit.u, hit.v, hit.w];
+  for (let k = 0; k < 3; k++) {
+    const c = field.from.indices[hit.triangle * 3 + k]!;
+    for (let a = 0; a < 3; a++) out[a] += share[k]! * field.shift[c * 3 + a]!;
+  }
+  return out;
 }

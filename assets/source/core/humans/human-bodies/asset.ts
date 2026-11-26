@@ -49,7 +49,7 @@ export default {
   dressed: {
     MI_Peasant: "cloth", MI_Ranger: "hide", MI_Regular_Male: "regular_m", MI_Regular_Female: "regular_f",
   },
-  triangles: { hair: [1400, 300, 64, 20], armor: [9000, 2400, 1500, 480], tailored: [4400, 1500, 420] },
+  triangles: { hair: [1400, 300, 64, 20], armor: [9000, 2400, 1500, 480] },
   flat: 2,
   makehuman: { triangles: [26000, 3400, 1480, 420], skin: ["skin_mh_m", "skin_mh_f"], eyes: "eyes_mh", brows: "brows_mh" },
   bodies: [
@@ -57,7 +57,6 @@ export default {
     { file: "base-characters/Superhero_Female_FullBody.gltf", material: "MI_Superhero_Female", texture: "base-characters/T_Superhero_Female_Light_BaseColor.png", outfits: "Female" },
   ],
   rigs: RIGS,
-  eyes: "base-characters/T_Eye_Brown.png",
   hair: { make: hairMeshes },
   outfits: {
     folder: "outfits-fantasy",
@@ -65,6 +64,8 @@ export default {
       "Male_Peasant_Arms", "Male_Peasant_Body", "Male_Peasant_Feet", "Male_Peasant_Legs", "Male_Ranger_Arms", "Male_Ranger_Body", "Male_Ranger_Feet_Boots", "Male_Ranger_Head_Hood", "Male_Ranger_Legs",
       "Female_Peasant_Arms", "Female_Peasant_Body", "Female_Peasant_Feet", "Female_Peasant_Legs", "Female_Ranger_Arms", "Female_Ranger_Body", "Female_Ranger_Feet", "Female_Ranger_Head_Hood", "Female_Ranger_Legs",
     ],
+    // The outfits' bare arms and hands: the body's own skin is drawn there instead.
+    skin: ["MI_Regular_Male", "MI_Regular_Female"],
     // The peasant outfit has no head part, so the cloth set borrows the ranger's hood.
     sets: [
       { id: "cloth", parts: ["Peasant_Arms", "Peasant_Body", "Peasant_Feet", "Peasant_Legs", "Ranger_Head_Hood"], texture: "T_Peasant_BaseColor.png" },

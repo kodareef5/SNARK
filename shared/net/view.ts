@@ -11,8 +11,9 @@
 //             [hair clock? 1][varint], [wardrobe? 1][wardrobe]; then [gear? 1][6 x 16, on 1],
 //             [team? 1][varint], [seat? 1][varint], [young? 1][span 32, grown 32]
 //             `kept` says the identity is the baseline's: legal only for an id the baseline has at the same generation.
-//             A look is [born? 1] then a seed 32, a population varint and its revision varint, from which the reader makes
-//             the look (shared/people/person.ts), or else its 72 x 8: what the reader cannot make is malformed.
+//             A look is [born? 1] then a seed 32, a population varint, its revision varint and [as drawn? 1], from which the
+//             reader makes the look (shared/people/person.ts), or else its 72 x 8: what the reader cannot make is malformed.
+//             A body "as drawn" wears what its seed dresses it in, and its wardrobe bit is 0: the reader draws it too.
 //             A hair clock is how many HAIR_TICK steps before the snapshot's tick it started, signed, and may start before
 //             tick 0 (shared/people/hair.ts).
 //             A wardrobe is, per wardrobe slot, [worn? 1] then the item varint and [styled? 1][[edition? 1][varint]
@@ -150,13 +151,24 @@ export interface Looks {
   readonly died?: Uint16Array;
 }
 
-/** The look a create's seed form names (writeViewDelta): its seed, population and revision, or null where there is none to make. */
-export type MakePerson = (seed: number, population: number, revision: number) => Uint8Array | null;
+/**
+ * The body a create's seed form names (writeViewDelta): from its seed, population and revision, its look and what its seed
+ * dresses it in (WORN_LENGTH numbers), or null where there is none to make.
+ */
+export type MakePerson = (seed: number, population: number, revision: number) => { look: Uint8Array; worn: Uint32Array } | null;
 
 /** The bits a look takes after its own bit: its seed form where it was generated, else its bytes. */
 function lookBits(v: Looks, id: number): number {
   const born = v.born?.get(id);
-  return 1 + (born ? 32 + varintBits(born.population) + varintBits(born.revision) : LOOK_BYTES * 8);
+  return 1 + (born ? 33 + varintBits(born.population) + varintBits(born.revision) : LOOK_BYTES * 8);
+}
+
+/** Whether body `id` wears just what its seed dresses it in, so its wardrobe goes as its seed. */
+function asDrawn(v: Looks, id: number): boolean {
+  const born = v.born?.get(id), worn = v.wardrobes?.get(id);
+  if (!born?.worn) return false;
+  for (let k = 0; k < WORN_LENGTH; k++) if ((worn?.[k] ?? 0) !== born.worn[k]) return false;
+  return true;
 }
 
 /** The bits a wardrobe takes after its own bit. */
@@ -174,7 +186,7 @@ function wardrobeBits(worn: Uint32Array): number {
 /** An upper bound on the bits a create for entity `id` takes, its identity left out where `kept`. */
 function createBits(v: Looks, id: number, kept: boolean): number {
   const name = kept ? "" : (v.names.get(id) ?? "");
-  const worn = kept ? undefined : v.wardrobes?.get(id);
+  const worn = kept || asDrawn(v, id) ? undefined : v.wardrobes?.get(id);
   // The optional fields: a look, a hair clock, a wardrobe, gear, a team, a seat, an age.
   const look = (v.looks.has(id) && !kept ? lookBits(v, id) : 0) + (!kept && v.hairs?.has(id) ? 40 : 0) + (worn ? wardrobeBits(worn) : 0) + (v.gears.has(id) ? GEAR_COUNT * 16 + 1 : 0) + (v.team[id] !== 0 ? 40 : 0) + (v.seat[id] !== 0 ? 60 : 0) + (v.span[id] !== 0 || v.grown[id] !== 0 ? 64 : 0);
   if (name === "") return CREATE_BITS + look;
@@ -989,7 +1001,7 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, shared: Sent
         const name = looks.names.get(id) ?? "";
         w.bool(name !== "");
         if (name !== "") w.string(name);
-        const look = looks.looks.get(id);
+        const look = looks.looks.get(id), seedWorn = look !== undefined && asDrawn(looks, id);
         w.bool(look !== undefined);
         if (look) {
           const born = looks.born?.get(id);
@@ -998,12 +1010,13 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, shared: Sent
             w.u32(born.seed);
             w.varint(born.population);
             w.varint(born.revision);
+            w.bool(seedWorn);
           } else for (let q = 0; q < LOOK_BYTES; q++) w.u8(look[q]!);
         }
         const hair = looks.hairs?.get(id);
         w.bool(hair !== undefined);
         if (hair !== undefined) w.svarint(Math.floor(tick / HAIR_TICK) - Math.floor(hair / HAIR_TICK));
-        const worn = looks.wardrobes?.get(id);
+        const worn = seedWorn ? undefined : looks.wardrobes?.get(id);
         w.bool(worn !== undefined);
         if (worn) writeWardrobe(w, worn);
       }
@@ -1215,6 +1228,7 @@ export function readViewDelta(r: BitReader, base: EntityView | null, next: Entit
       let look: Uint8Array | null = null;
       let hairFrom = -1;
       let wardrobe: Uint32Array | null = null;
+      let seedWorn = false;
       if (kept) {
         // Only a body the baseline holds, the same one, has a name and look to keep.
         if (!present || base!.gen[i] !== gen) return false;
@@ -1227,8 +1241,11 @@ export function readViewDelta(r: BitReader, base: EntityView | null, next: Entit
         if (r.bool()) {
           if (r.bool()) {
             const seed = r.u32() >>> 0, population = r.varint(), revision = r.varint();
-            look = person && !r.overflow ? person(seed, population, revision) : null;
-            if (!look) return false;
+            seedWorn = r.bool();
+            const made = person && !r.overflow ? person(seed, population, revision) : null;
+            if (!made) return false;
+            look = made.look;
+            if (seedWorn && made.worn.some((n) => n !== 0)) wardrobe = made.worn;
           } else {
             look = new Uint8Array(LOOK_BYTES);
             for (let q = 0; q < LOOK_BYTES; q++) look[q] = r.u8();
@@ -1237,7 +1254,7 @@ export function readViewDelta(r: BitReader, base: EntityView | null, next: Entit
         if (r.bool()) {
           hairFrom = (Math.floor(next.tick / HAIR_TICK) - r.svarint()) * HAIR_TICK;
         }
-        if (r.bool() && !(wardrobe = readWardrobe(r))) return false;
+        if (r.bool() && (seedWorn || !(wardrobe = readWardrobe(r)))) return false;
       }
       let gear: Uint16Array | null = null;
       let on = 0;

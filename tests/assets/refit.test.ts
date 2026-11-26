@@ -19,7 +19,7 @@ function sphere(r: number, c: readonly number[] = [0, 0, 0], rings = 16, segment
 const radius = (p: readonly number[], v: number, c: readonly number[]): number => Math.hypot(p[v * 3]! - c[0]!, p[v * 3 + 1]! - c[1]!, p[v * 3 + 2]! - c[2]!);
 
 /** A body that is a sphere: its skin on `bone`, in slot `slot`. */
-function body(r: number, bone: number, slot: number, c?: readonly number[]) {
+function body(r: number, bone: number, slot: number, c?: readonly number[]): { positions: number[]; indices: number[]; joints: number[]; weights: number[]; slots: number[] } {
   const s = sphere(r, c);
   const n = s.positions.length / 3;
   return { ...s, joints: Array.from({ length: n * 4 }, (_, i) => (i % 4 === 0 ? bone : 0)), weights: Array.from({ length: n * 4 }, (_, i) => (i % 4 === 0 ? 1 : 0)), slots: new Array(s.indices.length / 3).fill(slot) };
@@ -98,5 +98,25 @@ describe("refit", () => {
     refitPiece(shown, still, new Set(), (worn, skin) => skin !== worn, () => 1);
     expect(radius(hidden.positions, 0, [0, 0, 0])).toBeCloseTo(0.105, 6);
     for (let v = 0; v < shown.positions.length / 3; v++) expect(radius(shown.positions, v, [0, 0, 0])).toBeGreaterThan(0.13);
+  });
+
+  test("a rigid piece stays on its bone only over skin that is rigid too", () => {
+    // The new body: its upper half on bone 9 (a hand, rigid), its lower half on bone 8 (a forearm), blended with 7.
+    const b = body(0.1, 9, 2);
+    for (let v = 0; v < b.positions.length / 3; v++) if (b.positions[v * 3 + 1]! < 0) {
+      b.joints.splice(v * 4, 4, 8, 7, 0, 0);
+      b.weights.splice(v * 4, 4, 0.6, 0.4, 0, 0);
+    }
+    const field = bodyField(sphere(0.1), b, 30);
+    const p = piece(0.11, 0.12, 2);
+    p.bones.fill(9);
+    for (let v = 0; v < p.bones.length; v++) p.joints.splice(v * 4, 4, 9, 9, 9, 9);
+    const at = Float64Array.from(p.positions);
+    refitPiece(p, field, new Set([9]), () => true, () => 2);
+    for (let v = 0; v < p.bones.length; v++) {
+      const y = at[v * 3 + 1]!;
+      if (y > 0.03) expect([p.bones[v], p.weights[v * 4], [...p.positions.slice(v * 3, v * 3 + 3)]]).toEqual([9, 1, [...at.slice(v * 3, v * 3 + 3)]]);
+      if (y < -0.03) expect([p.joints[v * 4], p.joints[v * 4 + 1]]).toEqual([8, 7]);
+    }
   });
 });

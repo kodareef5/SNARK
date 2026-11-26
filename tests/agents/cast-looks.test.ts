@@ -7,7 +7,7 @@ import { CAST_CATALOGUE } from "../../content/cast/index.ts";
 import { LOOK_BYTES, LOOK_SEX } from "../../shared/anim/look.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { EntityView, SentView, quantX, quantY, readViewDelta, writeViewDelta, type Looks } from "../../shared/net/view.ts";
-import { lookOfSeed, personFrom, populationsOf } from "../../shared/people/person.ts";
+import { bodyOfSeed, personFrom, populationsOf } from "../../shared/people/person.ts";
 import { Rng } from "../../shared/rng.ts";
 import { Harness } from "../fixtures/net.ts";
 
@@ -68,7 +68,7 @@ test("Cast's bodies are varied people of both sexes, each sent as its seed", () 
   }
 });
 
-test("200 of Cast's people come into view in 11 KB", () => {
+test("200 of Cast's people, dressed as their seeds draw, come into view in 10.5 KB", () => {
   const { h, ents } = crowd(200);
   try {
     const w = h.world.ents;
@@ -84,14 +84,16 @@ test("200 of Cast's people come into view in 11 KB", () => {
     const seeded = bytes(w);
     const whole = bytes({ level: w.level, colors: w.colors, names: w.names, looks: w.looks, gears: w.gears, on: w.on, team: w.team, seat: w.seat, span: w.span, grown: w.grown });
     console.log(`200 creates: ${(seeded.length / 1024).toFixed(2)} KB as seeds, ${(whole.length / 1024).toFixed(2)} KB with their looks`);
-    expect(seeded.length).toBeLessThanOrEqual(11 * 1024);
-    // Read back, each look is the server's.
+    expect(seeded.length).toBeLessThanOrEqual(10.5 * 1024);
+    // Read back, each look and wardrobe is the server's, the wardrobes drawn from the seeds.
     const r = new BitReader();
     r.reset(seeded);
     const got = new EntityView();
-    expect(readViewDelta(r, null, got, null, null, null, null, (seed, p, rev) => lookOfSeed(h.world.reg, seed, p, rev))).toBe(true);
+    expect(readViewDelta(r, null, got, null, null, null, null, (seed, p, rev) => bodyOfSeed(h.world.reg, seed, p, rev))).toBe(true);
     expect(got.count).toBe(200);
     for (let i = 0; i < got.count; i++) expect([...got.look[i]!]).toEqual([...w.looks.get(got.id[i]!)!]);
+    for (let i = 0; i < got.count; i++) expect([...(got.wardrobe[i] ?? [])]).toEqual([...(w.wardrobes.get(got.id[i]!) ?? [])]);
+    expect(got.wardrobe.slice(0, got.count).filter((x) => x).length).toBeGreaterThan(150);
   } finally {
     h.host.shutdown();
   }

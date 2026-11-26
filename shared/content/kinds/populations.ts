@@ -2,7 +2,7 @@
 // seed, part by part, by the weights and ranges here.
 
 import { BEARD_STYLES, BROW_STYLES, COMPLEXIONS, HAIR_STYLES, REGIONS } from "../../anim/look.ts";
-import { EYE_COLORS, HAIR_COLORS, SKIN_TONES } from "../../pack/palette.ts";
+import { EYE_COLORS, HAIR_COLORS, REGION_BASE, SKIN_TONES } from "../../pack/palette.ts";
 import { f, row, type Fields, type Kind, type Named } from "../kind.ts";
 
 /** A low and a high, each from -1 to 1 unless said. */
@@ -10,6 +10,14 @@ export type Span = readonly [number, number];
 
 /** Each body region's key in `regions`: its label in lower case, words joined by "_" ("Head size" is head_size). */
 export const REGION_KEYS: readonly string[] = REGIONS.map((r) => r.label.toLowerCase().replace(/ /g, "_"));
+
+/** A set of pieces worn together, by weight. `dyes[i]` is the colours the main region of `wear[i]` is drawn from, one a
+ * person, as palette numbers; a piece with none there keeps its own colour. */
+export interface Outfit {
+  readonly wear: readonly string[];
+  readonly weight: number;
+  readonly dyes?: readonly (readonly number[])[];
+}
 
 /** Who a crowd is made of. A list of weights has one for each choice in the look's order; a missing weight is 0. */
 export interface PopulationDef extends Named {
@@ -44,7 +52,7 @@ export interface PopulationDef extends Named {
   readonly hairLength?: Span;
   readonly beardLength?: Span;
   /** What its people may wear, each set of pieces by weight. */
-  readonly outfits?: readonly { readonly wear: readonly string[]; readonly weight: number }[];
+  readonly outfits?: readonly Outfit[];
 }
 
 const FIELDS = {
@@ -69,6 +77,10 @@ const FIELDS = {
   beardLength: f("list"),
   outfits: f("list", "", { refs: { "[].wear[]": ["item/armor", "item/garment"] } }),
 } satisfies Fields<PopulationDef>;
+
+/** An outfit's dyes: no more lists than pieces, each of colours a dye may be. */
+const dyesFit = (o: Outfit): boolean =>
+  Array.isArray(o.dyes) && o.dyes.length <= o.wear.length && o.dyes.every((l) => Array.isArray(l) && l.every((c) => Number.isInteger(c) && c >= 1 && c < REGION_BASE));
 
 const share = (v: unknown): boolean => typeof v === "number" && v >= 0 && v <= 1;
 const span = (v: unknown, lo = -1): boolean => Array.isArray(v) && v.length === 2 && v.every((n) => typeof n === "number" && n >= lo && n <= 1) && v[0] <= v[1];
@@ -104,6 +116,9 @@ export const populations: Kind<PopulationDef> = {
       else if (!span(v)) bad(`regions: ${k} is a low and a high, from -1 to 1`);
     }
     if (!share(d.face)) bad("face is a share from 0 to 1");
-    for (const o of d.outfits ?? []) if (!Array.isArray(o.wear) || !(typeof o.weight === "number" && o.weight > 0)) bad("an outfit is its pieces and a weight above 0");
+    for (const o of d.outfits ?? []) {
+      if (!Array.isArray(o.wear) || !(typeof o.weight === "number" && o.weight > 0)) bad("an outfit is its pieces and a weight above 0");
+      else if (o.dyes !== undefined && !dyesFit(o)) bad(`an outfit's dyes are at most one list a piece, each of palette numbers 1 to ${REGION_BASE - 1}`);
+    }
   },
 };
