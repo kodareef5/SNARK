@@ -189,8 +189,9 @@ test("in the whole client: a survivor 1.2 km off comes through the sniper's scop
   expect(at4).toBeLessThan(Infinity);
   expect(at40).toBeLessThanOrEqual(at4);
   // The finest level a pack states for a body this large on the screen: a stand-in pack's finest, the painted survivor's
-  // third of four, whose stated error, under a centimetre, is under a pixel there.
-  expect(at40).toBeLessThanOrEqual(2);
+  // last of four, whose stated error, about 4 cm, is under a pixel there; it was the third until textured bodies went
+  // coarser as if 2.25 times as far, not 1.5 (characters.ts TEXTURED_BODY_RELAX).
+  expect(at40).toBeLessThanOrEqual(3);
   // A ridge between them hides him: the server sends no survivor the ground hides, however a page looks (D1088).
   const hf = h.world.hf;
   for (let j = 0; j < hf.nz; j++) for (let i = 0; i < hf.nx; i++) if (Math.abs(j * hf.cell - (MID - 200)) < 16) hf.heights[j * hf.nx + i] = Math.round((40 - hf.minY) / hf.stepY);

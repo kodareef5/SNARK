@@ -92,10 +92,11 @@ const HEAVY_OUTFIT = 2;
 const HEAVY_RELAX = 3;
 /**
  * How much sooner a survivor whose finer levels are textured goes to its next level on a tier that draws them so: as if
- * it stood this many times as far off. Its levels hold 14,300, 4,000 and 1,500 triangles where the flat body's held 4,400
- * and 1,500, and 40 bodies at 8 to 25 m on medium are held to 140,000 triangles: 128,000 at this, 261,000 at 1.
+ * it stood this many times as far off. With only the nearest heads at their finest (Tier.finestBodies), this sets where
+ * a body turns flat: about 15 m on medium at 1,080 rows. 40 bodies at 8 to 25 m on medium are held to 140,000 triangles,
+ * and in mixed gear they come to 130,000 at this and 164,000 at 1.5.
  */
-const TEXTURED_BODY_RELAX = 1.5;
+const TEXTURED_BODY_RELAX = 2.25;
 /**
  * In first person the eye is where the head would be, and the head and what is on it are left out (`add`'s `headless`),
  * so what has no head over it is the opening at the top of the torso, where the neck comes out of the body or the
@@ -453,6 +454,10 @@ export class Characters {
   private readonly seating: { role: MountMotionRole; tick: number; startTick: number; durationTicks: number; steering: number | undefined; upper: Pose | undefined } = { role: "ride", tick: 0, startTick: 0, durationTicks: 1, steering: undefined, upper: undefined };
   /** What the meshes of the survivor being added share (queuePart). `stand` is its stand-in's first bone, or -1 posed. */
   private readonly part = { lod: 0, far: 0, stand: -1, first: 0, color: 0, id: 0, own: false, casts: 0, rest: null as Float32Array | null };
+  /** The level each slot of the survivor being added is drawn at: its body's level, or the next where the tier's finestBodies leave it out. */
+  private readonly slotLod = new Uint8Array(SLOT_COUNT);
+  /** The frame each survivor last drew a slot at its finest level, by its id, which keeps its place in the near ranks (finestKept). */
+  private readonly finestAt = new Map<number, number>();
 
   // Instances queued this frame, one per mesh of each body.
   private count = 0;
@@ -504,6 +509,8 @@ export class Characters {
   private readonly last = new Map<number, number>();
   /** The level each body's heavy outfit was last drawn at, as `last` is the body's. */
   private readonly lastHeavy = new Map<number, number>();
+  /** The level each survivor's head was last chosen at by its own error, as `last` is the body's. */
+  private readonly lastHead = new Map<number, number>();
   /** Each body's gait, by its id, so its legs go by the ground it covers (shared/anim/gait.ts). */
   private readonly gaits = new Map<number, Stride>();
   private frame = 0;
@@ -734,6 +741,12 @@ export class Characters {
   /** The fall survivor `id` is drawn by, lying or getting up, as the last frame left it. */
   humanFall(id: number): HumanFall | undefined {
     return this.dead.humans.of(id);
+  }
+
+  /** Whether survivor `id` drew a slot at its finest level in the frame before this one, or in this one so far. */
+  finestKept(id: number): boolean {
+    const at = this.finestAt.get(id);
+    return at !== undefined && this.frame - at <= 1;
   }
 
   /** Whether this kind is on the humanoid skeleton. */
@@ -1575,7 +1588,9 @@ export class Characters {
     this.layers.begin();
     // Ids of bodies long gone would otherwise be kept for good.
     if (this.last.size > 4096) this.last.clear();
+    if (this.finestAt.size > 4096) this.finestAt.clear();
     if (this.lastHeavy.size > 4096) this.lastHeavy.clear();
+    if (this.lastHead.size > 4096) this.lastHead.clear();
     if (++this.frame % FORGET_GAIT === 0) for (const id of this.gaits.keys()) if (this.frame - this.gaits.get(id)!.seen > FORGET_GAIT) this.gaits.delete(id);
     if (this.waiting.length > 0) this.takeClips();
     if (this.emoteSlot >= 0 && this.emotesWanted) this.takeEmotes();
@@ -1656,9 +1671,11 @@ export class Characters {
    * drawn in the view and it asks for nothing. Returns false when the frame has no room left even for that, and counts a
    * body in view dropped. While the sun casts, what `headless` leaves out still casts. `seat` holds, at `seatAt`, the rows
    * of the turn of the saddle seat a survivor rides in (seat()), which turns it in place of `yaw`; it sits astride, its hands
-   * on the grips where it `steers`, else its upper body its own, to look and aim.
+   * on the grips where it `steers`, else its upper body its own, to look and aim. `rank` is its place among the survivors
+   * in view, nearest on screen first, by which the tier's finestBodies let each slot draw its finest level; below 0 for a
+   * body never held back from it.
    */
-  add(p: FramePacket, kind: number, x: number, y: number, z: number, yaw: number, st: AnimState, tick: number, look: Uint8Array | null, lookAt: number, colors: Uint8Array, colorAt: number, gear: Uint16Array | null, gearAt: number, id: number, own: boolean, headless: boolean, size = 1, rigid = false, unseen = false, seat: Float64Array | null = null, seatAt = 0, vehicle?: VehicleRenderPose, vehicleSeat?: VehicleSeatPose, steers = true, impaled = false, rider?: RiderFit): boolean {
+  add(p: FramePacket, kind: number, x: number, y: number, z: number, yaw: number, st: AnimState, tick: number, look: Uint8Array | null, lookAt: number, colors: Uint8Array, colorAt: number, gear: Uint16Array | null, gearAt: number, id: number, own: boolean, headless: boolean, size = 1, rigid = false, unseen = false, seat: Float64Array | null = null, seatAt = 0, vehicle?: VehicleRenderPose, vehicleSeat?: VehicleSeatPose, steers = true, impaled = false, rider?: RiderFit, rank = -1): boolean {
     const creature = this.creatures[kind];
     if (creature) return this.addCreature(p, kind, creature, x, y, z, yaw, st, tick, colors, colorAt, gear, gearAt, id, size, rigid, unseen, vehicle);
     const k = this.kinds[kind];
@@ -1786,6 +1803,16 @@ export class Characters {
     const least = flatBodies(this.assets.tier) ? flatFrom : 0;
     const relax = least === 0 && flatFrom > 0 ? TEXTURED_BODY_RELAX : 1;
     const lod = own ? this.assets.choose(set.error, 0, -1, least) : this.levelOf(id, set.error, far * relax, least);
+    const finest = own || rank < 0 ? null : this.assets.tier.finestBodies, next = Math.min(1, set.error.length - 1);
+    for (let slot = 0; slot < SLOT_COUNT; slot++) this.slotLod[slot] = finest && rank >= (finest[slot] ?? 0) ? Math.max(lod, next) : lod;
+    // The head's next level errs least of the five, so its finest is held only as near as its own error asks.
+    const head = set.slots[SLOT_HEAD]!;
+    if (!own && head >= 0) {
+      const level = this.assets.choose(this.assets.table.error[head]!, far * relax * this.assets.tier.bodyError, this.lastHead.get(id) ?? -1, least);
+      this.lastHead.set(id, level);
+      if (level > 0 && this.slotLod[SLOT_HEAD] === 0) this.slotLod[SLOT_HEAD] = next;
+    }
+    if (!unseen && this.slotLod.includes(0)) this.finestAt.set(id, this.frame);
     const s = this.shadows;
     const casts = s ? s.body(x, y, z, BODY_RADIUS) : 0;
     const part = this.part;
@@ -1810,6 +1837,7 @@ export class Characters {
       const hidden = headless && slot === SLOT_HEAD;
       if (hidden && casts === 0) continue;
       const heavy = piece >= 0 && !own && set.heavy[worn!.set] === 1;
+      part.lod = this.slotLod[slot]!;
       if (heavy && lod === set.error.length - 1 && set.slots[slot]! >= 0) {
         // Too far to tell plates from paint: the body's own part in the outfit's colours, a fifth of the triangles.
         const c = this.wornColor;
@@ -1829,12 +1857,12 @@ export class Characters {
         c[REGION_TRIM - REGION_BASE] = worn!.colors[2];
         if (heavy) {
           // Never finer than the body beside it, and coarser sooner (HEAVY_RELAX).
-          const level = Math.max(lod, this.assets.choose(set.error, far * this.assets.tier.bodyError * HEAVY_RELAX, this.lastHeavy.get(id) ?? -1));
+          const level = Math.max(part.lod, this.assets.choose(set.error, far * this.assets.tier.bodyError * HEAVY_RELAX, this.lastHeavy.get(id) ?? -1));
           this.lastHeavy.set(id, level);
           part.lod = level;
         }
         this.queuePart(piece, c, 0, -1, unseen || hidden);
-        part.lod = lod;
+        part.lod = this.slotLod[slot]!;
         if (worn!.vented && (slot !== SLOT_FEET || st.bootJets) && st.jet && !st.grounded && st.mode !== MODE_SWIM && !seat && !vehicleSeat && !st.dead && !st.out) {
           const vents = set.vents[worn!.set * SLOT_COUNT + slot]!;
           if (vents >= 0 && !unseen && !hidden && this.assets.known(vents)) {
@@ -1850,6 +1878,8 @@ export class Characters {
       const body = set.slots[slot]!;
       if (body >= 0 && (piece < 0 || (slot === SLOT_HEAD && !sealed))) this.queuePart(body, tint, tintAt, -1, unseen || hidden, hide);
     }
+    // Hair and a beard go with the head; wings and what is held with the hands.
+    part.lod = this.slotLod[SLOT_HEAD]!;
     if (view && (!headless || casts !== 0)) {
       // Open headgear still shows the beard.
       const hair = covered ? -1 : (set.hair[view[LOOK_HAIR]!] ?? -1);
@@ -1859,6 +1889,7 @@ export class Characters {
     }
     // Under an open glider each hand has a wing on its prop bone, and what the body held is put away
     // (planning/workstreams/glider.md). An observer is not told which glider, and there is one kind.
+    part.lod = this.slotLod[SLOT_HANDS]!;
     const wings = st.glide && !st.grounded && !impaled && !seat && !vehicleSeat && !st.dead && !st.out ? this.wings : null;
     if (wings) {
       if (wings.right >= 0) this.queuePart(wings.right, tint, tintAt, B_PROP_R, unseen);

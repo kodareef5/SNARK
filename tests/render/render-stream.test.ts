@@ -8,11 +8,11 @@ import { test } from "../fixtures/needs-art.ts";
 test("a scene whose levels stream never draws what the card lacks, and ends with the picture the whole pack gives", () => {
   const [whole, stream] = [provingView(320, 180), provingView(320, 180, { latencyMs: 150, bytesPerSecond: 300e3 })];
   for (const view of [whole, stream]) {
-    // Three metres from the survivor, so its finest level is wanted.
+    // Two metres from the survivor, so its head's finest level is wanted (it was 3 m, past where the head's own error asks).
     view.cam.yaw = 0;
     view.cam.x = view.remote.x[0]!;
     view.cam.y = view.remote.y[0]! + 1.5;
-    view.cam.z = view.remote.z[0]! - 3;
+    view.cam.z = view.remote.z[0]! - 2;
   }
   whole.render();
   const first = stream.render();

@@ -452,9 +452,11 @@ test("the third-person camera is pulled in by whatever is behind the body, and f
   expect([cam.x, cam.y, cam.z, cam.yaw, cam.pitch]).toEqual([64, 1.62, 64, 0.5, 0.2]);
 });
 
-artTest("a body is drawn coarser as it goes off, all its parts at one level, and does not flicker at the edge", () => {
+artTest("a body is drawn coarser as it goes off, its parts under the head at one level, and does not flicker", () => {
   const view = provingView();
   const { remote, cam, scene, pack } = view;
+  // On high every slot may draw its finest; the head goes coarser sooner by its own error (finest-bodies.test.ts).
+  scene.assets.tier = tierOf("high");
   remote.count = 1;
   cam.yaw = 0;
   cam.x = remote.x[0]!;
@@ -466,18 +468,17 @@ artTest("a body is drawn coarser as it goes off, all its parts at one level, and
     const out = new Set<number>();
     let parts = 0;
     for (let i = 0; i < p.drawCount; i++) {
-      if (!pack.header.meshes[p.drawMesh[i]!]!.id.startsWith("core:human_")) continue;
+      if (!/^core:human_.\/(torso|hands|legs|feet)$/.test(pack.header.meshes[p.drawMesh[i]!]!.id)) continue;
       out.add(p.drawLod[i]!);
       parts++;
     }
-    expect(parts).toBeGreaterThanOrEqual(5);
+    expect(parts).toBeGreaterThanOrEqual(4);
     return [...out];
   };
-  // A body is four levels (tools/pack/body.ts): MakeHuman's turns at about 8, 15 and 51 m walking out on this view, its
-  // second level being coarser than Quaternius's, which turned at 6, 16 and 44 m.
-  expect([levels(3), levels(10), levels(27), levels(70)]).toEqual([[0], [1], [2], [3]]);
-  // Seen afresh at 8 m it would be the next level. Walking out to there from near, it is still the finest.
-  expect([levels(3), levels(8), levels(9.6), levels(7.1), levels(6.4)]).toEqual([[0], [0], [1], [1], [0]]);
+  // A body is four levels (tools/pack/body.ts): on high it turns at about 10, 20 and 70 m walking out on this view.
+  expect([levels(3), levels(15), levels(30), levels(80)]).toEqual([[0], [1], [2], [3]]);
+  // Seen afresh at 9.5 m it would be the next level. Walking out to there from near, it is still the finest.
+  expect([levels(3), levels(9.5), levels(10.6), levels(8), levels(7)]).toEqual([[0], [0], [1], [1], [0]]);
   // Low poly starts at the first flat level, the third; it drew the second, textured, drawn flat, until it did.
   scene.assets.tier = tierOf("lowpoly");
   expect(levels(3)).toEqual([2]);
