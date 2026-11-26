@@ -78,8 +78,8 @@ def _haft(prop, profile, ferrule=False):
         z, y, width, depth = profile[index]
         center = Z * z + Y * y
         rings.append([center + X * (width * cos(angle)) + Y * (depth * sin(angle)) for angle in angles])
-    bands = ["brass" if index >= 12 and ferrule else "wood" for index in section[:-1]]
-    prop.shell(rings, "wood", smooth=True, cap_surface="brass" if ferrule else None, band_surfaces=bands)
+    bands = ["iron" if index >= 12 and ferrule else "wood" for index in section[:-1]]
+    prop.shell(rings, "wood", smooth=True, cap_surface="iron" if ferrule else None, band_surfaces=bands)
 
 
 # Each head station gives its reach, heel, toe, half thickness and outward bow.
