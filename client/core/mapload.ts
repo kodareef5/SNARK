@@ -455,6 +455,7 @@ export class MapLoader {
   private stopped = false;
   private heldBack: () => boolean = () => false;
   private where: () => Place | null = () => null;
+  private last: { x: number; z: number; vx: number; vz: number } | null = null;
 
   private constructor(asker: Asker, opts: LoaderOptions, at: (p: MapPart) => string, staged: StagedMap) {
     this.asker = asker;
@@ -495,8 +496,8 @@ export class MapLoader {
   }
 
   /**
-   * From now on the parts the page wants come (map-want.ts), from where `where` has the body, else the map's first spawn
-   * point, and whatever `then.want` names besides: nearest first, what is within RING and the statics a chunk the server
+   * From now on the parts the page wants come (map-want.ts), from where `where` has the body, else where it last had it,
+   * else the map's first spawn point, and whatever `then.want` names besides: nearest first, what is within RING and the statics a chunk the server
    * sent waits for before the rest, then the overviews and then the sectors within the statics reach, then the rest, each
    * sector's ground before its statics. Resolves once the ground and the overviews the first frame waits for where it has
    * the body now have come, alone. From then on `then.say` is told what the player is; each time the statics held change
@@ -702,11 +703,21 @@ export class MapLoader {
       });
   }
 
-  /** Where the body is, or the map's first spawn point standing still. */
+  /**
+   * Where the body is; while it has no place (dead, or the socket closed), where it last was, standing still; and before
+   * any place is known, the map's first spawn point.
+   */
   private place(): Place {
+    const at = this.where();
+    if (at) {
+      const last = (this.last ??= { x: 0, z: 0, vx: 0, vz: 0 });
+      [last.x, last.z] = [at.x, at.z];
+      return at;
+    }
+    if (this.last) return this.last;
     const head = this.staged.head;
     const spawn = head.spawns[0] ?? { x: (head.dims.chunksX * CHUNK_SIZE) / 2, z: (head.dims.chunksZ * CHUNK_SIZE) / 2 };
-    return this.where() ?? { x: spawn.x, z: spawn.z, vx: 0, vz: 0 };
+    return { x: spawn.x, z: spawn.z, vx: 0, vz: 0 };
   }
 
   /** Metres from the body, or from where it will be LEAD seconds on if that is nearer, to part `p`'s square. */

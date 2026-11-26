@@ -26,12 +26,13 @@ for (const cut of ["the page's end", "the server's end"] as const) {
         if (s.place) wants.camera = { x: s.place.x, z: s.place.z };
       };
       for (let k = 0; k < 200 && !(loader.progress().settled && loader.progress().roads === 0); k++) await page.run(250);
-      // East at 320 m/s, pieces of the map falling ahead, until chunk messages are kept and parts are under way.
+      // East at 320 m/s along the north, 1.9 km from the first spawn point, pieces of the map falling ahead, until chunk
+      // messages are kept and parts are under way.
       let x = 2600, lost = -1;
       for (let k = 0; k < 400 && lost < 0; k++) {
         x += 80;
-        page.tp(Math.min(x, 4900), 2600);
-        const c = 40 * head.dims.chunksX + Math.min(79, Math.floor(x / CHUNK_SIZE) + 2);
+        page.tp(Math.min(x, 4900), 700);
+        const c = 10 * head.dims.chunksX + Math.min(79, Math.floor(x / CHUNK_SIZE) + 2);
         if (structs.chunks[c]?.kind[0]) structs.remove(c * 65536);
         await page.run(250);
         if (x > 3300 && si.waitingRows.length > 0 && link.waiting.length > 0 && inside(loader).came.size > 0) lost = k;
