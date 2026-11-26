@@ -272,8 +272,8 @@ export function makeRuins(site: Site): StaticPiece[] {
   gradeRoadEntrances(site, bridges.records.flatMap(r => r.entrances));
   // The floors, the roads and the ways to doors stand where they will, and nothing stands on the ground by a pool yet:
   // a pool over one of them, or one whose rim a way was graded through, is let down to it.
-  const settled = pools ? settleRims(pools, site.ground.height, site.ground.grid, site.world.minY, site.world.stepY, (i) => carved.get(i) !== site.ground.height[i]) : null;
-  if (settled) console.log(`ruins: ${settled.lowered} pools let down to a floor or a road beside them, the farthest ${settled.farthest.toFixed(2)} m; ${settled.dried} left dry with under 0.3 m of water; ${settled.crossed} gave up samples a floor or a way to a door was graded across`);
+  const settled = pools ? settleRims(pools, site.world.lakes, site.ground.height, site.ground.grid, site.world.minY, site.world.stepY, (i) => carved.get(i) !== site.ground.height[i]) : null;
+  if (settled) console.log(`ruins: ${settled.lowered} pools let down to a floor or a road beside them, the farthest ${settled.farthest.toFixed(2)} m; ${settled.dried} left dry with under 0.3 m of water; ${settled.crossed} gave up samples a floor or a way to a door was graded across; ${settled.held} had their bed held up to walk out of`);
   for (const r of records) {
     for (const a of r.approaches) site.growthRoutes.push({ points: [a.street, a.door, a.core], width: 2 });
     for (const route of [...r.rooms, ...r.escapes]) site.growthRoutes.push({ points: route.points, width: 2 });
