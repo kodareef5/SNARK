@@ -216,6 +216,63 @@ export function raiseRims(lakes: Lakes, height: Float32Array, grid: Grid, kept: 
   return { rim, raised };
 }
 
+/** How far under the lowest ground beside it a let-down body's surface stands, and the least water worth keeping. */
+const RIM_OVER = 0.1;
+const LEAST_DEPTH = 0.3;
+
+/**
+ * Lets each rimmed body down to the fixed ground beside it. A floor levelled lower than its surface, or a road, cannot
+ * rise to be its rim, so the water yields: its surface goes RIM_OVER under the lowest dry sample beside it, on the
+ * lattice `minY + k * stepY`, and its bed down by as much, so it is as deep as it was carved. A body left with under
+ * LEAST_DEPTH of water, as one a later grading filled, is no water any more: its samples go dry. Run once the floors
+ * stand where they will. Returns how many were let down, the farthest, and how many dried.
+ */
+export function settleRims(lakes: Lakes, height: Float32Array, grid: Grid, minY: number, stepY: number): { lowered: number; farthest: number; dried: number } {
+  const { body, bodies } = lakes;
+  const { nx, nz } = grid;
+  const n = bodies.length;
+  const lowest = new Float32Array(n + 1).fill(Infinity);
+  const bed = new Float32Array(n + 1).fill(Infinity);
+  for (let row = 0; row < nz; row++) {
+    for (let col = 0; col < nx; col++) {
+      const b = body[row * nx + col]!;
+      if (b === 0 || !rimmed(bodies[b - 1]!.kind)) continue;
+      bed[b] = Math.min(bed[b]!, height[row * nx + col]!);
+      for (let dr = -1; dr <= 1; dr++) {
+        for (let dc = -1; dc <= 1; dc++) {
+          const [c, r] = [col + dc, row + dr];
+          if (c >= 0 && r >= 0 && c < nx && r < nz && body[r * nx + c] === 0) lowest[b] = Math.min(lowest[b]!, height[r * nx + c]!);
+        }
+      }
+    }
+  }
+  const drop = new Float32Array(n + 1);
+  const dry = new Uint8Array(n + 1);
+  let lowered = 0, farthest = 0, dried = 0;
+  for (let b = 1; b <= n; b++) {
+    const was = bodies[b - 1]!;
+    if (bed[b] === Infinity) continue;
+    if (lowest[b]! < was.surface) {
+      const surface = minY + Math.floor((lowest[b]! - RIM_OVER - minY) / stepY + 1e-6) * stepY;
+      drop[b] = was.surface - surface;
+      bodies[b - 1] = { ...was, surface };
+      lowered++;
+      farthest = Math.max(farthest, drop[b]!);
+    }
+    if (was.surface - bed[b]! < LEAST_DEPTH) {
+      dry[b] = 1;
+      dried++;
+    }
+  }
+  for (let i = 0; i < nx * nz; i++) {
+    const b = body[i]!;
+    if (b === 0) continue;
+    if (dry[b]) body[i] = 0;
+    else height[i] = height[i]! - drop[b]!;
+  }
+  return { lowered, farthest, dried };
+}
+
 /**
  * The bodies' squares of `cell` metres for the map file, row by row from z = 0 as the engine has them: a square is the
  * body of a corner sample in one, else of a corner next to one, so that each body's squares reach over its shore. A

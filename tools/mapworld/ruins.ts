@@ -4,6 +4,7 @@ import { BREAK_AT, pieceMiddle, RUIN_SHAPES, type RuinFinish, type RuinShape } f
 import { readLabels, resolveLabels, type Facts, type PublicPlace } from "./labels.ts";
 import { bridgeHoles, corridorIndex, makeBridges } from "./bridges.ts";
 import { gradeRoadEntrances, roadGroundSamples } from "./bridge-earthwork.ts";
+import { settleRims } from "./lakes.ts";
 import { accessPlanner, deckCeiling, gradeApproaches, type Approach } from "./ruin-access.ts";
 import { clearCirculation, reconcileRubble } from "./ruin-clearance.ts";
 import { contextualize } from "./ruin-context.ts";
@@ -264,6 +265,10 @@ export function makeRuins(site: Site): StaticPiece[] {
   }
   // Run after room cuts and bridge excavation, using only accepted road terminals and their actual slabs.
   gradeRoadEntrances(site, bridges.records.flatMap(r => r.entrances));
+  // The floors and the roads stand where they will, and nothing stands on the ground by a pool yet: a pool over one of
+  // them is let down to it.
+  const settled = site.ground.lakes ? settleRims(site.ground.lakes, site.ground.height, site.ground.grid, site.world.minY, site.world.stepY) : null;
+  if (settled) console.log(`ruins: ${settled.lowered} pools let down to a floor or a road beside them, the farthest ${settled.farthest.toFixed(2)} m; ${settled.dried} left dry with under 0.3 m of water`);
   for (const r of records) {
     for (const a of r.approaches) site.growthRoutes.push({ points: [a.street, a.door, a.core], width: 2 });
     for (const route of [...r.rooms, ...r.escapes]) site.growthRoutes.push({ points: route.points, width: 2 });

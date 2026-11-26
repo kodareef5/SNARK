@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Base, Grid } from "../../tools/mapworld/base.ts";
-import { lakeSquares, raiseRims, readLakes, type Lakes } from "../../tools/mapworld/lakes.ts";
+import { lakeSquares, raiseRims, readLakes, settleRims, type Lakes } from "../../tools/mapworld/lakes.ts";
 
 const folder = mkdtempSync(join(tmpdir(), "snark-lakes-"));
 afterAll(() => rmSync(folder, { recursive: true, force: true }));
@@ -62,4 +62,23 @@ test("a body keeps what the data calls its water", () => {
   const base = { folder: dir, grid: { nx: 10, nz: 6, cell: 2, west: 0, north: 12 } } as unknown as Base;
   const lakes = readLakes(base, {}, 0, -32, 1 / 256, new Float32Array(60).fill(3), () => false)!;
   expect(lakes.bodies.map((b) => b.kind)).toEqual(["pool", "pond"]);
+});
+
+test("a pool over a lower floor is let down to it and keeps its depth; a filled one dries", () => {
+  const set = (kind: string, bed: number, floor: number): { lakes: Lakes; height: Float32Array; made: ReturnType<typeof settleRims> } => {
+    const { lakes, grid } = oneBody(kind);
+    // The rim at the surface all round, but one sample, a floor.
+    const height = new Float32Array(81).fill(1);
+    [height[4 * 9 + 4], height[4 * 9 + 5]] = [bed, floor];
+    return { lakes, height, made: settleRims(lakes, height, grid, -32, 1 / 16) };
+  };
+  const low = set("pool", 0.5, 0.4);
+  // A sixteenth's lattice: 0.1 m under the floor at 0.4 is 0.25.
+  expect([low.made, low.lakes.bodies[0]!.surface, low.height[4 * 9 + 4], low.height[4 * 9 + 5]]).toEqual([{ lowered: 1, farthest: 0.75, dried: 0 }, 0.25, -0.25, 0.4000000059604645]);
+  const held = set("pool", 0.5, 1.2);
+  expect([held.made.lowered, held.lakes.bodies[0]!.surface, held.height[4 * 9 + 4]]).toEqual([0, 1, 0.5]);
+  const pond = set("pond", 0.5, 0.4);
+  expect([pond.made.lowered, pond.lakes.bodies[0]!.surface]).toEqual([0, 1]);
+  const filled = set("pool", 0.9, 1);
+  expect([filled.made.dried, filled.lakes.body[4 * 9 + 4], lakeSquares(filled.lakes, oneBody("pool").grid, 2).some((b) => b !== 0)]).toEqual([1, 0, false]);
 });
