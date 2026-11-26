@@ -149,27 +149,27 @@ export class StagedMap {
     while (!steps.next().done);
   }
 
-  /** `take` a step at a time: an overview's ground is filled BAND_CHUNKS chunk rows a step, and the rest of it set in at the last. */
+  /** `take` a step at a time: an overview's water at once, its ground and bounds BAND_CHUNKS chunk rows a step, and its nodes at the last. */
   *steps(piece: MapPiece): Generator<void, void> {
     const { dims } = this.head;
     if (piece.kind === "land") {
       if (this.content) this.content = { landmarks: this.content.landmarks, defs: piece.defs as Def[] };
     } else if (piece.kind === "overview") {
-      const sq = piece.sq;
-      // Its samples stand in a band at a time, each a change to the ground.
+      const sq = piece.sq, w = sq.cx1 - sq.cx0;
+      // Its water first, so each band's change carries it to the lakes, as a release lets its water go before its bands.
+      if (piece.water) this.hf.water = takeWater(this.head, this.hf.water!, piece.sq, piece.water);
+      // Its samples stand in a band at a time, each a change to the ground taken with its chunks' own bounds.
       const block = this.overviews.begin(piece);
       for (let z = sq.cz0; z < sq.cz1; z += BAND_CHUNKS) {
         const z1 = Math.min(sq.cz1, z + BAND_CHUNKS);
+        for (let k = (z - sq.cz0) * w; k < (z1 - sq.cz0) * w; k++) this.bound(sq.cx0 + (k % w), sq.cz0 + Math.floor(k / w), piece.low[k]!, piece.high[k]!);
         block.to = z1;
         this.hf.standing(sq.cx0, z, sq.cx1, z1);
         if (z1 < sq.cz1) yield;
         if (!this.overviews.holds(block)) return;
       }
-      const w = sq.cx1 - sq.cx0;
-      for (let k = 0; k < piece.low.length; k++) this.bound(sq.cx0 + (k % w), sq.cz0 + Math.floor(k / w), piece.low[k]!, piece.high[k]!);
       block.nodes = true;
       this.overviews.version++;
-      if (piece.water) this.hf.water = takeWater(this.head, this.hf.water!, piece.sq, piece.water);
       const key = squareKey(sq.col, sq.row);
       this.came.add(key);
       for (const g of this.early.get(key) ?? []) this.take(g);
