@@ -32,12 +32,12 @@
               <label>Drawn from <select id="population"></select></label>
               <label>Seed <input id="seed" type="number" min="0" max="4294967295" step="1"></label>
               <button id="draw-again" title="A new seed: every part not locked changes">Draw again</button>
-              <button id="back-to-drawn" hidden>Back to the seed</button>
+              <button id="back-to-drawn" hidden title="The seed in its population now, and the outfit as it is now">Draw from its source</button>
             </div>
             <table class="parts"><thead><tr><th>Part</th><th>Now</th><th>Locked</th><th></th></tr></thead><tbody id="parts"></tbody></table>
             <details id="hand" open>
               <summary>By hand</summary>
-              <p class="faint">A control set by hand keeps the look as its bytes, so a population's later edits never move it. Untouched, the look stays a seed.</p>
+              <p class="faint">A saved person keeps its look and clothes as they were saved: a population's or an outfit's later edits never move it. A control set by hand fixes the look's bytes.</p>
               <div class="hand-grid" id="hand-picks"></div>
               <h4>Skin tone</h4><div class="swatches" id="skin-swatches"></div>
               <h4>Hair colour</h4><div class="swatches" id="hair-swatches"></div>

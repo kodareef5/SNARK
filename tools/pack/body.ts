@@ -64,6 +64,8 @@ export interface CookOptions {
   /** How its zones are kept as levels are made (simplify.ts ByZone). On a piece cut by slot, ZONE_WEIGHTS and the slots where not given. */
   byZone?: ByZone;
   palette: Uint8Array;
+  /** A garment's print rectangle on its sheet, where its flat levels show a print's swatch (simplify.ts LevelPlan). */
+  printArea?: readonly [number, number, number, number];
   /** Moves a piece made on another body onto this one once gathered (refit.ts refitPiece). Its triangles keep the zones they had. */
   refit?: (piece: RefitPiece) => void;
   /** Source materials whose triangles are left out without a word: an outfit's own skin, where the body's lines it (liner.ts). */
@@ -450,7 +452,7 @@ export function cookBody(sources: Gltf | readonly Gltf[] | ScriptedBody, opts: C
   // A near body may draw its head finer than its torso (client/core/render/characters.ts), so their neck seam is held.
   const levelZones: ByZone = opts.zoned && !opts.whole ? { ...byZone, seams: [[SLOT_HEAD, SLOT_TORSO]] } : byZone;
   const made = withSurfaceLevels({ id, lods: [fine], skeleton: HUMAN.id, rig: opts.rig, materials, textures }, {
-    budgets: opts.triangles.slice(1), flat: opts.flat, maps: opts.materials.map((m) => m.maps), palette: opts.palette, byZone: levelZones,
+    budgets: opts.triangles.slice(1), flat: opts.flat, maps: opts.materials.map((m) => m.maps), palette: opts.palette, byZone: levelZones, ...(opts.printArea ? { printArea: opts.printArea } : {}),
   });
   // The levels' errors are measured again on each part; a whole piece keeps the ones measured on it.
   const parts: { id: string; keep: (t: number, lod: SourceLod) => boolean }[] = opts.whole

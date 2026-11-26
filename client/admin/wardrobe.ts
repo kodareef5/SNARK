@@ -6,7 +6,7 @@ import "./shell.ts";
 import { STAGE_FRAMINGS, STAGE_POSES, isStageReply, stageMessage, type StageCommand, type StageFraming, type StagePose } from "../../shared/people/stage.ts";
 import { $, esc, palette } from "./dom.ts";
 import {
-  DRAFT_PRINT, FONTS, FRAMING_WORDS, LOOKS, POSE_WORDS, SHEET_SIZES, TEXT_MAX, addPicture, addShape, addText, draftFaults, draftFrom, editionPrintKey, editionsHtml, fitNote, fitStep,
+  DRAFT_PRINT, FONTS, changeGarment, sheetOfCut, FRAMING_WORDS, LOOKS, POSE_WORDS, SHEET_SIZES, TEXT_MAX, addPicture, addShape, addText, draftFaults, draftFrom, editionPrintKey, editionsHtml, fitNote, fitStep,
   fontOf, garmentsHtml, heldSize, hexOf, kb, layerAt, layerBox, layersHtml, lookOf, moveLayer, newDraft, newSheet, outcomeText, paletteHtml, placeOf, previewChanges,
   publishDraft, removeLayer, retireEdition, starPoints, stateOf, stepText, wardrobeCommand, type Answer, type Draft, type Fault, type Layer, type PeopleState, type Preview,
   type PublishIo, type Shape, type Sheet,
@@ -161,23 +161,36 @@ function paintSheet(): void {
   paintPlace();
 }
 
-/** The garment's sheet with the print's rectangle, the print in it at its scale and turn; u runs across and v down. */
+/** The garment's sheet, its panels named, with the print's rectangle, the print in it at its scale and turn; u runs across and v down. */
 function paintPlace(): void {
   const d = S.draft;
   if (!d?.sheet) return;
   const c = $<HTMLCanvasElement>("place"), g = c.getContext("2d")!, W = c.width, H = c.height;
   g.setTransform(1, 0, 0, 1, 0, 0);
-  g.fillStyle = "#e9edf2";
+  g.fillStyle = "#d5dbe2";
   g.fillRect(0, 0, W, H);
-  g.strokeStyle = "#cfd8e2";
-  g.lineWidth = 1;
-  for (let k = 1; k < 4; k++) {
-    g.beginPath();
-    g.moveTo((W * k) / 4, 0);
-    g.lineTo((W * k) / 4, H);
-    g.moveTo(0, (H * k) / 4);
-    g.lineTo(W, (H * k) / 4);
-    g.stroke();
+  // Cloth outside every panel is not on the body.
+  g.font = "11px sans-serif";
+  g.textBaseline = "top";
+  for (const panel of sheetOfCut(garmentOf(d.garment)?.cut ?? null)?.panels ?? []) {
+    const [pu, pv, pw, ph] = panel.rect, x = pu * W, y = pv * H, w = pw * W, h = ph * H;
+    g.fillStyle = "#f2f5f8";
+    g.fillRect(x, y, w, h);
+    g.strokeStyle = "#8a9bb0";
+    g.lineWidth = 1;
+    g.setLineDash([]);
+    g.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    g.fillStyle = "#4a5a6e";
+    if (panel.halves) {
+      g.setLineDash([3, 3]);
+      g.beginPath();
+      g.moveTo(x + w / 2, y);
+      g.lineTo(x + w / 2, y + h);
+      g.stroke();
+      g.setLineDash([]);
+      g.fillText(`${panel.name}, ${panel.halves[0]}`, x + 4, y + 4, w / 2 - 8);
+      g.fillText(panel.halves[1], x + w / 2 + 4, y + 4, w / 2 - 8);
+    } else g.fillText(panel.name, x + 4, y + 4, w - 8);
   }
   const p = placeOf(d.place, S.state!.caps), x = p.u * W, y = p.v * H, w = p.w * W, h = p.h * H;
   g.save();
@@ -333,14 +346,14 @@ function wanted(): { preview: Preview; wardrobe: Extract<StageCommand, { kind: "
   let wardrobe = wardrobeCommand(undefined, 0, [0, 0, 0], null), print: (() => Promise<string>) | null = null, key = "", version = "";
   if (e) {
     key = e.print ? editionPrintKey(e.print.hash) : "";
-    wardrobe = wardrobeCommand(garmentOf(e.garment), e.id, e.colours, key || null);
+    wardrobe = wardrobeCommand(garmentOf(e.garment), e.id, e.colours, e.print ? { key, place: e.print.place } : null);
     const path = e.printPath;
     if (path) print = () => Promise.resolve(path);
     version = key;
   } else if (S.draft) {
     const sheet = S.draft.sheet;
     key = sheet ? DRAFT_PRINT : "";
-    wardrobe = wardrobeCommand(garmentOf(S.draft.garment), 0, S.draft.colours, key || null);
+    wardrobe = wardrobeCommand(garmentOf(S.draft.garment), 0, S.draft.colours, sheet ? { key, place: placeOf(S.draft.place, S.state!.caps) } : null);
     if (sheet) print = async () => URL.createObjectURL(await encode(sheet, sheet.width, sheet.height));
     version = sheet ? `${DRAFT_PRINT}#${S.printVersion}` : "";
   }
@@ -521,7 +534,7 @@ document.addEventListener("click", (ev) => {
   const d = S.draft, sheet = d?.sheet, data = t.dataset;
   if (data.start) {
     if (hasWork() && !confirm("Start again? The draft goes.")) return;
-    begin(newDraft(data.start));
+    begin(newDraft(data.start, garmentOf(data.start)?.cut ?? null));
     say("A new draft. Name it, colour it, and give it a print if it has one.");
   } else if (data.show) {
     S.showing = Number(data.show);
@@ -579,8 +592,8 @@ function changed(t: HTMLInputElement | HTMLSelectElement, final: boolean): void 
   if (["look", "pose", "framing", "hour"].includes(t.id)) return soon();
   if (!d) return;
   if (t.id === "garment") {
-    d.garment = t.value;
-    if (garmentOf(d.garment)?.dyes === false) d.colours = [0, 0, 0];
+    const to = garmentOf(t.value);
+    if (to) changeGarment(d, garmentOf(d.garment), to);
     return edited(false, true);
   }
   if (t.id === "has-print") {

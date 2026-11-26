@@ -7,6 +7,7 @@ import { RAMP_BASE, SKIN_BASE } from "../../../shared/pack/palette.ts";
 import {
   EDITION_NAME_MAX, PRINT_BYTES_MAX, PRINT_SCALE_MAX, PRINT_SCALE_MIN, PRINT_SIDE_MAX, editionName, readDraft, type Edition, type PrintPlace,
 } from "../../../shared/people/doc.ts";
+import { CUTS, SHEETS, type Sheet as CutSheetTable } from "../../../shared/people/cuts.ts";
 import { personFrom } from "../../../shared/people/person.ts";
 import { STAGE_SLOTS, type StageCommand, type StageFraming, type StageGarment, type StagePose } from "../../../shared/people/stage.ts";
 import { WARDROBE_NAMES } from "../../../shared/sim/items.ts";
@@ -87,12 +88,32 @@ export interface Draft {
 
 export const DEFAULT_PLACE: PrintPlace = { u: 0.3, v: 0.2, w: 0.4, h: 0.4, scale: 1, turn: 0 };
 
+/** Where a print on `cut` starts: the cut's own place for it (shared/people/cuts.ts), the chest of a top. */
+export function placeFor(cut: string | null): PrintPlace {
+  const r = cut ? CUTS[cut]?.print : undefined;
+  return r ? { u: r[0], v: r[1], w: r[2], h: r[3], scale: 1, turn: 0 } : { ...DEFAULT_PLACE };
+}
+
+/** The print sheet `cut` is drawn with, its panels named, or null for a garment with no cut. */
+export function sheetOfCut(cut: string | null): CutSheetTable | null {
+  const c = cut ? CUTS[cut] : undefined;
+  return c ? SHEETS[c.sheet] : null;
+}
+
 export function newSheet(): Sheet {
   return { width: 512, height: 512, fill: "#f4f1ea", layers: [] };
 }
 
-export function newDraft(garment: string): Draft {
-  return { garment, colours: [0, 0, 0], name: "", sheet: null, place: { ...DEFAULT_PLACE } };
+export function newDraft(garment: string, cut: string | null): Draft {
+  return { garment, colours: [0, 0, 0], name: "", sheet: null, place: placeFor(cut) };
+}
+
+/** `d` made of garment `to` in place of `from`: a print still where `from`'s cut starts it moves to where `to`'s does. */
+export function changeGarment(d: Draft, from: GarmentChoice | undefined, to: GarmentChoice): void {
+  const start = placeFor(from?.cut ?? null), p = d.place;
+  d.garment = to.id;
+  if (!to.dyes) d.colours = [0, 0, 0];
+  if (p.u === start.u && p.v === start.v && p.w === start.w && p.h === start.h && p.scale === 1 && p.turn === 0) d.place = placeFor(to.cut);
 }
 
 /** A draft begun from a published edition: its garment, colours and place, its name marked as a copy. Its print comes as a picture layer. */
@@ -403,8 +424,8 @@ export function lookOf(id: string, seed: number): Uint8Array {
   return look;
 }
 
-/** The wardrobe the stage is sent: `garment` alone, in its slot, with its dye and print. Skin stays drawn until cuts are. */
-export function wardrobeCommand(garment: GarmentChoice | undefined, edition: number, dye: readonly [number, number, number], print: string | null): Extract<StageCommand, { kind: "wardrobe" }> {
+/** The wardrobe the stage is sent: `garment` alone, in its slot, with its dye and its print's key and place. */
+export function wardrobeCommand(garment: GarmentChoice | undefined, edition: number, dye: readonly [number, number, number], print: StageGarment["print"]): Extract<StageCommand, { kind: "wardrobe" }> {
   const slots: (StageGarment | null)[] = new Array<StageGarment | null>(STAGE_SLOTS).fill(null);
   const at = garment ? (WARDROBE_NAMES as readonly string[]).indexOf(garment.slot) : -1;
   if (garment && at >= 0) slots[at] = { item: garment.id, edition, dye: [dye[0], dye[1], dye[2]], print };

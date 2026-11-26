@@ -9,6 +9,7 @@
 // only along it.
 
 import { len3 } from "../../shared/math/scalar.ts";
+import { REGION_BASE } from "../../shared/pack/palette.ts";
 import { baker, flatOf, painted, placed } from "./bake.ts";
 import { surfaceError } from "./error.ts";
 import { fourHeaviest, tangentsOf } from "./surface.ts";
@@ -685,6 +686,24 @@ export interface LevelPlan {
   /** How a level's zones are kept, where its triangles have zones. */
   byZone?: ByZone;
   distanceLods?: readonly SourceLod[];
+  /** A garment's print rectangle on its sheet (shared/people/cuts.ts): its main colour there is region 2 at the flat levels, where a print's swatch shows. */
+  printArea?: readonly [number, number, number, number];
+}
+
+/** `colours` of `lod`, each triangle of the main region whose middle on the sheet lies in `area` put in region 2. */
+export function printedColours(lod: SourceLod, colours: Uint8Array, area: readonly [number, number, number, number]): Uint8Array {
+  const out = colours.slice(), uv = lod.uvs!, [u0, v0, w, h] = area;
+  for (let t = 0; t < out.length; t++) {
+    if (out[t] !== REGION_BASE + 1) continue;
+    let u = 0, v = 0;
+    for (let k = 0; k < 3; k++) {
+      const i = lod.indices[t * 3 + k]!;
+      u += uv[i * 2]! / 3;
+      v += uv[i * 2 + 1]! / 3;
+    }
+    if (u >= u0 && u <= u0 + w && v >= v0 && v <= v0 + h) out[t] = REGION_BASE + 2;
+  }
+  return out;
 }
 
 /**
@@ -716,7 +735,8 @@ export function withSurfaceLevels(mesh: SourceMesh, plan: LevelPlan): SourceMesh
   if (generated > 0) {
     // Seams are held on the levels with a surface alone: the flat levels are few triangles and never meet a finer one.
     const { seams: _, ...flatZones } = plan.byZone ?? {};
-    for (const made of simplify(flatOf(surface[surface.length - 1]!, flat[flat.length - 1]!), budgets.slice(0, generated), plan.preserveBones, plan.holdParts, flatZones)) {
+    const last = surface[surface.length - 1]!, ink = plan.printArea ? printedColours(last, flat[flat.length - 1]!, plan.printArea) : flat[flat.length - 1]!;
+    for (const made of simplify(flatOf(last, ink), budgets.slice(0, generated), plan.preserveBones, plan.holdParts, flatZones)) {
       if (!worth(made.lod, lods[lods.length - 1]!)) break;
       lods.push(made.lod);
     }

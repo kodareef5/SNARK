@@ -14,6 +14,8 @@ export interface SheetPanel {
   readonly rect: SheetRect;
   /** What lies where in it. */
   readonly note: string;
+  /** What its left and right halves are, where it is two faces side by side. */
+  readonly halves?: readonly [string, string];
 }
 
 export interface Sheet {
@@ -28,7 +30,7 @@ export const SHEETS: Readonly<Record<SheetName, Sheet>> = {
   top: {
     metres: 1.4,
     panels: [
-      { name: "torso", rect: [0, 0, 0.75, 0.6], note: "round the trunk from the right side seam: the front is the left half (its middle at u 0.1875), the back the right half (its middle at u 0.5625); the collar at the top, the hem below. Below it the sheet is free" },
+      { name: "torso", rect: [0, 0, 0.75, 0.6], halves: ["front", "back"], note: "round the trunk from the right side seam: the front is the left half (its middle at u 0.1875), the back the right half (its middle at u 0.5625); the collar at the top, the hem below. Below it the sheet is free" },
       { name: "left sleeve", rect: [0.76, 0, 0.24, 0.5], note: "the left arm as it hangs, the shoulder at the top: round from the seam under the arm, the front at a quarter, the outside at the middle, the back at three quarters" },
       { name: "right sleeve", rect: [0.76, 0.5, 0.24, 0.5], note: "the right arm as it hangs, the shoulder at the top: round from the seam under the arm, the back at a quarter, the outside at the middle, the front at three quarters" },
     ],
@@ -36,8 +38,8 @@ export const SHEETS: Readonly<Record<SheetName, Sheet>> = {
   bottom: {
     metres: 1.3,
     panels: [
-      { name: "left leg", rect: [0, 0, 0.5, 0.86], note: "the left hip and leg from the waist (top) down: the front is the left half from the inside seam to the outer side, the back the right half" },
-      { name: "right leg", rect: [0.5, 0, 0.5, 0.86], note: "the right hip and leg from the waist (top) down: the back is the left half from the inside seam to the outer side, the front the right half" },
+      { name: "left leg", rect: [0, 0, 0.5, 0.86], halves: ["front", "back"], note: "the left hip and leg from the waist (top) down: the front is the left half from the inside seam to the outer side, the back the right half" },
+      { name: "right leg", rect: [0.5, 0, 0.5, 0.86], halves: ["back", "front"], note: "the right hip and leg from the waist (top) down: the back is the left half from the inside seam to the outer side, the front the right half" },
     ],
   },
   shoes: {
