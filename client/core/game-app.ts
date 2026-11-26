@@ -49,6 +49,7 @@ import type { FramePacket } from "./render/packet.ts";
 import { Scene, type OwnBody } from "./render/scene.ts";
 import type { ScreenPlayer, VideoHost } from "./video/player.ts";
 import type { FaceScreens } from "./video/faces.ts";
+import type { PrintHost } from "./render/prints.ts";
 import { Feedback } from "./feedback.ts";
 import { Shots } from "./shots.ts";
 import { SupplyView } from "./supply.ts";
@@ -466,6 +467,8 @@ export class GameApp {
   private screenPlayer: ScreenPlayer | null = null;
   /** Loads the prop screen player after a frame with a screen in reach. */
   loadFaces: (() => Promise<FaceScreens>) | null = null;
+  /** The page's side of the prints on garments (client/shell/picture-array.ts), set before the first frame. */
+  printHost: PrintHost | null = null;
   /** The volumes the sounds play at, as the settings have them this frame. */
   private readonly volumes = { master: 0, effects: 0, ambience: 0, music: 0, interface: 0 };
   /** Tames already heard of the session's queue, which the naming prompt empties. */
@@ -715,7 +718,7 @@ export class GameApp {
     const crowns = budget && budget.squeeze < SQUEEZE_MOST ? budget.last.crowns : 0;
     const work = workMs(packet.triangles, packet.drawCount, packet.castTriangles, packet.castDraws, packet.tier.shadows.size);
     const city = (this.scene?.city?.drawn.reduce((n, t) => n + t, 0) ?? 0) + (this.scene?.blocks?.stats.triangles ?? 0);
-    this.governor.frame(this.nowMs, this.interval, ours, packet.assetUploads.length + packet.texUploads.length > 0, work, crowns * PHONE_MS.triangle, city * PHONE_MS.triangle, this.scene?.screens.mask ?? 0);
+    this.governor.frame(this.nowMs, this.interval, ours, packet.assetUploads.length + packet.texUploads.length > 0, work, crowns * PHONE_MS.triangle, city * PHONE_MS.triangle, (this.scene?.screens.mask ?? 0) | (this.scene?.prints.mask ?? 0));
     this.session.prediction.page(ours, packet, this.scene?.assets.residency, this.governor, this.dpr, width, height);
   }
 
@@ -979,6 +982,7 @@ export class GameApp {
       this.scene = new Scene(world, this.reg, this.pack, this.split ? { manifest: this.stream!.manifest, port: this.split.assets } : this.stream, { farPalms: this.tools?.farPalms ?? false });
       this.scene.shots = this.shots;
       this.scene.supply = this.supply;
+      this.scene.prints.host = this.printHost;
       this.ui.screen<EmoteMenu>("emotes").has = (n) => this.scene!.characters.emoteKnown(n);
       this.tools?.dress(this.scene, world);
       if (this.timer) this.scene.time(this.timer, this.spans.build);

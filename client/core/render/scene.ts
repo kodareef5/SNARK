@@ -104,6 +104,7 @@ import { Beams } from "./passes/beams.ts";
 import { Ghost } from "./passes/ghost.ts";
 import { Things, type Thing } from "./passes/things.ts";
 import { Screens } from "./passes/screens.ts";
+import { Prints } from "./prints.ts";
 import { CUTOUTS, Draws, NEAR_BUCKETS, type Cutouts } from "./draws.ts";
 
 export interface RenderWorld {
@@ -336,6 +337,8 @@ export class Scene {
   readonly blasts: Blasts;
   /** The screens on props (passes/screens.ts), which the app tells each frame what each type shows. */
   readonly screens: Screens;
+  /** The prints on garments (prints.ts): their pictures on the card, and the layer each wearer's instance names. */
+  readonly prints: Prints;
   /** Whether what burns is drawn, which a page turns off for a before and after (passes.ts "bursts"). */
   get bursts(): boolean { return this.blasts.on; }
   set bursts(on: boolean) {
@@ -671,6 +674,7 @@ export class Scene {
     this.palette = pack.palette;
     this.blasts = new Blasts(reg, this.assets, this.put, this.details);
     this.screens = new Screens(reg.screenFace);
+    this.prints = new Prints(pack.palette);
     this.characters.thrusterPlumes.pictures(pack.header.details);
     this.dust.pictures(pack.header.details);
     this.dropped = new Dropped(reg, bind);
@@ -994,6 +998,8 @@ export class Scene {
           },
         },
       ],
+      // After every body is drawn: the prints their instances carry.
+      ["prints", this.prints],
     ];
   }
 

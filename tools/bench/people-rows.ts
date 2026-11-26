@@ -53,6 +53,9 @@ export interface RunNumbers {
   fresh: number;
   cardBytes: number;
   textureBytes: number;
+  /** Prints put on the card over the run's page, and the most in one frame (render/prints.ts). */
+  printUploads: number;
+  printMost: number;
   gaveUp: boolean;
 }
 
@@ -74,12 +77,14 @@ export function numbersOf(r: Record<string, any>): RunNumbers {
     fresh: turn.fresh ?? NaN,
     cardBytes: r.card?.bytes ?? NaN,
     textureBytes: r.card?.textures ?? NaN,
+    printUploads: r.prints?.uploaded ?? NaN,
+    printMost: r.prints?.most ?? NaN,
     gaveUp: r.waited?.gaveUp === true,
   };
 }
 
 export type Metric = Exclude<keyof RunNumbers, "gaveUp">;
-export const METRICS: readonly Metric[] = ["gpuMedian", "gpuP95", "frameMs", "cpuMs", "cpuP99", "glDraws", "draws", "triangles", "bones", "dropped", "posed", "fresh", "cardBytes", "textureBytes"];
+export const METRICS: readonly Metric[] = ["gpuMedian", "gpuP95", "frameMs", "cpuMs", "cpuP99", "glDraws", "draws", "triangles", "bones", "dropped", "posed", "fresh", "cardBytes", "textureBytes", "printUploads", "printMost"];
 
 /** The least, the median and the most of a list; NaN for all three where it holds no number. */
 export function spread(list: readonly number[]): { min: number; median: number; max: number } {
@@ -124,13 +129,13 @@ const signed = (v: number, digits: number, scale = 1): string => (Number.isFinit
 
 /** The table of `summaries`, as Markdown: one row a cell, ranges over its runs, then what the crowd adds. */
 export function table(summaries: readonly CellSummary[]): string {
-  const head = ["Cell", "Runs", "GPU ms, median", "GPU ms, p95", "Our ms", "GL draws", "Packet draws", "Triangles, k", "Bones", "Posed", "Dropped", "Card MB", "Textures MB", "Added: GPU ms", "Added: draws", "Added: k triangles"];
+  const head = ["Cell", "Runs", "GPU ms, median", "GPU ms, p95", "Our ms", "GL draws", "Packet draws", "Triangles, k", "Bones", "Posed", "Dropped", "Card MB", "Textures MB", "Prints put, most a frame", "Added: GPU ms", "Added: draws", "Added: k triangles"];
   const lines = [`| ${head.join(" | ")} |`, `| ${head.map(() => "---").join(" | ")} |`];
   for (const s of summaries) {
     const t = s.stats, a = s.added;
     lines.push(`| ${[
       s.name, `${s.runs}${s.gaveUp ? ` (${s.gaveUp} not still)` : ""}`, range(t.gpuMedian, 2), range(t.gpuP95, 2), range(t.cpuMs, 2), range(t.glDraws, 0), range(t.draws, 0),
-      range(t.triangles, 0, 1000), range(t.bones, 0), range(t.posed, 0), range(t.dropped, 0), range(t.cardBytes, 1, 1 << 20), range(t.textureBytes, 1, 1 << 20),
+      range(t.triangles, 0, 1000), range(t.bones, 0), range(t.posed, 0), range(t.dropped, 0), range(t.cardBytes, 1, 1 << 20), range(t.textureBytes, 1, 1 << 20), Number.isFinite(t.printUploads.max) && t.printUploads.max > 0 ? `${range(t.printUploads, 0)}, ${range(t.printMost, 0)}` : "",
       a ? signed(a.gpuMedian, 2) : "", a ? signed(a.draws, 0) : "", a ? signed(a.triangles, 0, 1000) : "",
     ].join(" | ")} |`);
   }

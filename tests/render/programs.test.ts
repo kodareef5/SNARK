@@ -2,12 +2,12 @@
 // block every lit program shares.
 import { expect, test } from "bun:test";
 import { MATERIAL_RECIPES } from "../../content/texgen/materials.ts";
-import { TIERS, forTouch } from "../../client/core/assets/tiers.ts";
+import { TIERS, forTouch, tierOf } from "../../client/core/assets/tiers.ts";
 import { FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_TERRAIN_VERTEX } from "../../client/core/render/glsl.ts";
 import { tekPhaseFragment, tekPhaseVertex } from "../../client/core/render/tek-phase.ts";
 import { HAND_FAR, HAND_NEAR } from "../../client/core/render/hand.ts";
 import { ORB_AT, ORB_LANES, DROPS_AT, DROP_LANES, CAST_AT, GLASS_AT, LAMP_AT, DRAW_BLEND, DRAW_CUTOUT, DRAW_PULLED, DRAW_TEXTURED, DRAW_WATER, FRAME, FRAME_BLOCK, FRAME_FLOATS, FramePacket, MAX_CASCADES, MAX_TIRE_CONTACTS, MAX_CONTACTS, MAX_WATER_MARKS, ROOF_AT, WATER_MARK_COUNT, WATER_PATHS, WATER_BOUNDS, WATER_MARKS, SHORE_AT, OPTIC_AT, MADE_AT, WINDOW_AT } from "../../client/core/render/packet.ts";
-import { PROGRAMS, UNIT, drawProgram, tierPrograms, type ProgramText } from "../../client/core/render/programs.ts";
+import { LATE, PROGRAMS, UNIT, drawProgram, tierPrograms, type ProgramText } from "../../client/core/render/programs.ts";
 // The orb's program is a tier's once its late text has come, as it has here.
 import "../../client/core/render/orb-late.ts";
 import type { PackMaterial } from "../../shared/pack/pack.ts";
@@ -131,6 +131,19 @@ test("a textured draw is drawn undyed where its material has no masks, and by a 
   expect(whole.fragment).toContain("mix(radiance,mirror*open*own,coat)");
 });
 
+test("the programs that draw prints are a lit tier's once a print's array is made", () => {
+  const was = LATE.prints;
+  try {
+    LATE.prints = false;
+    expect(tierPrograms(tierOf("high")).map(named).filter((n) => n.startsWith("surfacePrinted"))).toEqual([]);
+    LATE.prints = true;
+    expect(tierPrograms(tierOf("high")).map(named).filter((n) => n.startsWith("surfacePrinted"))).toEqual(["surfacePrinted", "surfacePrintedCut", "surfacePrintedLayer"]);
+    expect(tierPrograms(tierOf("lowpoly")).map(named).filter((n) => n.startsWith("surfacePrinted"))).toEqual([]);
+  } finally {
+    LATE.prints = was;
+  }
+});
+
 test("a tier's programs are every one its frames may draw with, each once, the same down the governor's steps", () => {
   for (const base of TIERS) {
     for (const touch of [false, true]) {
@@ -138,7 +151,8 @@ test("a tier's programs are every one its frames may draw with, each once, the s
       const names = tierPrograms(tier).map(named);
       expect(new Set(names).size).toBe(names.length);
       if (!tier.lit) expect(names).toEqual(["flat", "terrain", "terrainWindow", "far", "pulled", "sky", "details", "skyline", "signal", "fire", "orb", "screens"]);
-      else expect(names).toEqual(Object.keys(PROGRAMS).filter((n) => tier.post !== null || !["bloomDown", "bloomUp", "finish"].includes(n)));
+      // The programs that draw prints are a tier's once a print's array has been made (LATE.prints).
+      else expect(names).toEqual(Object.keys(PROGRAMS).filter((n) => (tier.post !== null || !["bloomDown", "bloomUp", "finish"].includes(n)) && (!n.startsWith("surfacePrinted") || LATE.prints)));
       const texts = new Set(names.map((n) => JSON.stringify(PROGRAMS[n]!(tier, "astc"))));
       expect(texts.size).toBe(names.length);
     }
