@@ -161,7 +161,7 @@ mirrorTest("a closed fist folds every fingertip back under the palm", () => {
       return [c * x - s * y, s * x + c * y];
     };
     // The middle joint, turned with the fingers about the knuckle.
-    const [mx, my] = turn(0, T[0]! - F[0]!, T[1]! - F[1]!);
+    const [mx] = turn(0, T[0]! - F[0]!, T[1]! - F[1]!);
     let reach = -Infinity;
     for (let v = 0; v < f.positions.length / 3; v++) {
       if (f.bone[v] !== B_FINGERTIPS_L) continue;
