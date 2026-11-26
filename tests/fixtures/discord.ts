@@ -20,6 +20,8 @@ export class FakeDiscord {
   readonly members = new Map<string, string[]>();
   /** Every call fails as an unreachable Discord does. */
   down = false;
+  waitForMember?: Promise<void>;
+  waitForCode?: Promise<void>;
   /** The address of each call made, in order. */
   readonly calls: string[] = [];
   private readonly tokens = new Map<string, { id: string; username: string; global_name: string | null }>();
@@ -37,6 +39,7 @@ export class FakeDiscord {
     const u = new URL(url);
     const auth = (init.headers as Record<string, string>).authorization ?? "";
     if (u.pathname === "/api/oauth2/token") {
+      await this.waitForCode;
       const form = new URLSearchParams(String(init.body));
       if (form.get("client_id") !== this.clientId || form.get("client_secret") !== this.secret) return json({ error: "invalid_client" }, 401);
       const user = this.codes.get(form.get("code") ?? "");
@@ -60,6 +63,7 @@ export class FakeDiscord {
     if (!at) return json({ message: "404: Not Found", code: 0 }, 404);
     if (at[1] !== this.guildId) return json({ message: "Unknown Guild", code: 10004 }, 404);
     if (at[2] === undefined) return json({ id: this.guildId, name: this.guildName, roles: this.roles });
+    await this.waitForMember;
     const roles = this.members.get(at[2]);
     return roles ? json({ roles, user: { id: at[2] } }) : json({ message: "Unknown Member", code: 10007 }, 404);
   };
@@ -85,29 +89,31 @@ export function discordWorld(fake: FakeDiscord, set: Record<string, string> = {}
 export const PAGE = "https://play.example";
 
 /** A POST to /signin from the world's own page. */
-export async function signinPost(host: Host, body: object, who = "203.0.113.5"): Promise<{ status: number; body: Record<string, unknown> }> {
+export async function signinPost(host: Host, body: object, who = "203.0.113.5"): Promise<{ status: number; body: Record<string, unknown>; cookie?: string }> {
   const req = new Request(`${PAGE}/signin`, { method: "POST", headers: { "content-type": "application/json", origin: PAGE }, body: JSON.stringify(body) });
   const res = (await host.signin.method.answer({ req, url: new URL(req.url), path: "/signin", base: "", who }))!;
-  return { status: res.status, body: (await res.json()) as Record<string, unknown> };
+  const cookie = res.headers.get("set-cookie");
+  return { status: res.status, body: (await res.json()) as Record<string, unknown>, ...(cookie ? { cookie } : {}) };
 }
 
 /** The browser coming back from Discord with `query`. Returns where it is sent on to. */
-export async function discordReturn(host: Host, query: string): Promise<string> {
-  const req = new Request(`${PAGE}/signin/discord/callback?${query}`);
+export async function discordReturn(host: Host, query: string, cookie = ""): Promise<string> {
+  const req = new Request(`${PAGE}/signin/discord/callback?${query}`, { headers: { cookie: cookie.split(";")[0]! } });
   const res = (await host.signin.method.answer({ req, url: new URL(req.url), path: "/signin/discord/callback", base: "", who: "203.0.113.5" }))!;
   if (res.status !== 302) throw new Error(`the callback answered ${res.status}`);
   return res.headers.get("location")!;
 }
 
-/** Begins a sign-in for `key`, and returns its state. */
-export async function startSignIn(host: Host, key: Uint8Array): Promise<string> {
-  const { body } = await signinPost(host, { action: "start", key: hexKey(key) });
-  return new URL(String(body.url)).searchParams.get("state")!;
+/** Begins a sign-in for `key`, and keeps its state and return cookie. */
+export async function startSignIn(host: Host, key: Uint8Array): Promise<{ state: string; cookie: string }> {
+  const { body, cookie } = await signinPost(host, { action: "start", key: hexKey(key) });
+  if (!cookie) throw new Error("missing return cookie");
+  return { state: new URL(String(body.url)).searchParams.get("state")!, cookie };
 }
 
 /** The whole sign-in of `key` as Discord account `id`: begun, back from Discord, finished. Returns what finishing said. */
 export async function signInAs(host: Host, fake: FakeDiscord, key: Uint8Array, id: string, name = "Ada"): Promise<{ status: number; body: Record<string, unknown> }> {
-  const state = await startSignIn(host, key);
-  await discordReturn(host, `code=${fake.code(id, name)}&state=${state}&iss=${encodeURIComponent("https://discord.com")}`);
+  const { state, cookie } = await startSignIn(host, key);
+  await discordReturn(host, `code=${fake.code(id, name)}&state=${state}&iss=${encodeURIComponent("https://discord.com")}`, cookie);
   return signinPost(host, { action: "finish", key: hexKey(key), state });
 }

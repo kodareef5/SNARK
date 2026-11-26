@@ -6,7 +6,7 @@ import { CREATE_REQUEST, addBrowserHash, hasBrowserHash, ownerOf, ownsAs, setOwn
 import { SignIn } from "./signin/method.ts";
 import { SignInStore } from "./signin/store.ts";
 import { DiscordApi, type Fetch } from "./signin/discord-api.ts";
-import { DiscordSignIn, idsOf } from "./signin/discord.ts";
+import { DiscordSignIn } from "./signin/discord.ts";
 import { ZONE_NONE, ZONE_TORSO } from "../shared/anim/human.ts";
 import { IMPALE_SLOT } from "../shared/sim/seats.ts";
 import { CreatureTraits, inventoryEffectiveWeight } from "./creature-traits.ts";
@@ -15,7 +15,7 @@ import { CreatureContacts } from "./creature-combat.ts";
 // Assembles a running world: map, records, persistence and the game loop. server/main.ts and the tests both use it.
 
 import { withContent, type Registry } from "../shared/content/registry.ts";
-import { REJECT_SIGNIN, CHOOSE_ARRIVED, CHOOSE_DIED, SESSION_DEAD, CMD_CARRY, CMD_CHAT, CMD_EMOTE, CMD_CLOSE, CMD_FAR, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_PLAN_CANCEL, CMD_PLAN_COMMIT, CMD_PLAN_PART, CMD_STRUCT, CMD_TAKE, CMD_TEXT, CMD_THROW, CMD_TRAVEL, CMD_VEHICLE, MAX_CHAT_BYTES, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_DENIED, REJECT_KICKED, RESTART_MOST, RESTART_OFF } from "../shared/net/protocol.ts";
+import { CHOOSE_ARRIVED, CHOOSE_DIED, SESSION_DEAD, CMD_CARRY, CMD_CHAT, CMD_EMOTE, CMD_CLOSE, CMD_FAR, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_PLAN_CANCEL, CMD_PLAN_COMMIT, CMD_PLAN_PART, CMD_STRUCT, CMD_TAKE, CMD_TEXT, CMD_THROW, CMD_TRAVEL, CMD_VEHICLE, MAX_CHAT_BYTES, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_DENIED, REJECT_KICKED, RESTART_MOST, RESTART_OFF } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
 import { Genome } from "../shared/sim/genome.ts";
 import { Build } from "./build.ts";
@@ -763,7 +763,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       secret: opts.discord?.secret || rules.text("DiscordClientSecret"),
       botToken: opts.discord?.botToken || rules.text("DiscordBotToken"),
       guild: rules.text("DiscordGuild").trim(),
-      roles: idsOf(rules.text("DiscordRoles")).ids,
+      roles: rules.text("DiscordRoles").split(/[\s,]+/).filter(Boolean),
       days: rules.num("DiscordSignInDays"),
     }),
   });
@@ -1610,7 +1610,12 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   // Under a sign-in method with accounts, a survivor an account has taken is that account's on any browser.
   const subjectOfKey = (key: Uint8Array): string => signin.method.subject(hashKey(key));
   const owns = (rec: EntityRecord, key: Uint8Array): boolean => ownsAs(rec, key, subjectOfKey(key));
-  game.sessions.signedIn = (key) => signin.method.admits(hashKey(key)) === "";
+  game.sessions.signedIn = (key, name, ticket) => {
+    const method = signin.method;
+    const subject = ticket && method.id === "discord" ? cluster?.arrivingAccount(name, ticket) : undefined;
+    const why = method.admits(hashKey(key), subject);
+    return typeof why === "string" ? why === "" : why.then((reply) => reply === "" && signin.method === method);
+  };
   game.sessions.owns = (name, key) => { const rec = recordOf(name); return !!rec && owns(rec, key); };
   game.sessions.authorize = (name, key) => {
     // Nobody joins a world that has not saved for a minute.
@@ -1627,17 +1632,16 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     if (!hasBrowserHash(rec, hash)) addBrowserHash(rec, hash);
     records.dirty.add(rec.pid);
   };
-  // The method is told of each session let in, and may close it: Discord is asked again whether its account may be here.
+  // Remember the owner after admission for both a new session and a reconnect.
   const signedInAs = (c: Client): void => {
-    const conn = c.conn;
     const rec = recordOf(c.name);
     if (rec) takeFor(rec, c.key);
-    signin.method.joined(hashKey(c.key), () => void (!c.closed && c.conn === conn && game.sessions.reject(c, REJECT_SIGNIN)));
   };
   game.sessions.onEnter.on(signedInAs);
   game.sessions.onRelink.on(signedInAs);
   if (cluster) {
     cluster.signedAs = subjectOfKey;
+    cluster.accountsRequired = () => signin.method.id !== "key";
     cluster.carry = (keyHash, subject) => signin.method.carry(keyHash, subject);
     game.sessions.arrive = (name, key, ticket) => (persistence?.failing && world.tick - persistence.failing.since >= UNSAVED_REFUSE_TICKS ? "this server has not been able to save for a minute, so nobody may come yet" : cluster.arrive(name, key, ticket));
     game.sessions.nameAway = name => cluster.away.has(name);

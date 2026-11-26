@@ -6,8 +6,8 @@ import { Database } from "bun:sqlite";
 const SCHEMA =
   "CREATE TABLE IF NOT EXISTS links (key TEXT PRIMARY KEY, subject TEXT NOT NULL, name TEXT NOT NULL, at INTEGER NOT NULL);" +
   "CREATE INDEX IF NOT EXISTS links_subject ON links (subject, at);" +
-  "CREATE TABLE IF NOT EXISTS verdicts (world INTEGER NOT NULL, subject TEXT NOT NULL, ok INTEGER NOT NULL, why TEXT NOT NULL," +
-  " at INTEGER NOT NULL, PRIMARY KEY (world, subject));";
+  "CREATE TABLE IF NOT EXISTS guild_verdicts (world INTEGER NOT NULL, policy TEXT NOT NULL, subject TEXT NOT NULL, ok INTEGER NOT NULL, why TEXT NOT NULL," +
+  " at INTEGER NOT NULL, PRIMARY KEY (world, policy, subject));";
 
 /** The most browsers one account stays signed in on; one more signs the oldest out. */
 export const LINKS_EACH = 16;
@@ -73,13 +73,13 @@ export class SignInStore {
     this.open().query("DELETE FROM links WHERE at < ?").run(at);
   }
 
-  verdict(world: number, subject: string): Verdict | null {
-    const r = this.open().query("SELECT ok, why, at FROM verdicts WHERE world = ? AND subject = ?").get(world, subject) as { ok: number; why: string; at: number } | null;
+  verdict(world: number, policy: string, subject: string): Verdict | null {
+    const r = this.open().query("SELECT ok, why, at FROM guild_verdicts WHERE world = ? AND policy = ? AND subject = ?").get(world, policy, subject) as { ok: number; why: string; at: number } | null;
     return r ? { ok: r.ok !== 0, why: r.why, at: r.at } : null;
   }
 
-  judge(world: number, subject: string, v: Verdict): void {
-    this.open().query("INSERT OR REPLACE INTO verdicts (world, subject, ok, why, at) VALUES (?, ?, ?, ?, ?)").run(world, subject, v.ok ? 1 : 0, v.why, v.at);
+  judge(world: number, policy: string, subject: string, v: Verdict): void {
+    this.open().query("INSERT OR REPLACE INTO guild_verdicts (world, policy, subject, ok, why, at) VALUES (?, ?, ?, ?, ?, ?)").run(world, policy, subject, v.ok ? 1 : 0, v.why, v.at);
   }
 
   close(): void {

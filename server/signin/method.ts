@@ -16,15 +16,13 @@ export interface SignInMethod {
   /** The word SignIn names it by. */
   readonly id: string;
   /** "" to let the browser with this key hash in, or why not, in words for whoever is asking. */
-  admits(keyHash: Uint8Array): string;
+  admits(keyHash: Uint8Array, travellingAs?: string): string | Promise<string>;
   /** Whom the key is signed in as, such as "discord:80351110224678912", or "" where the method has no accounts. */
   subject(keyHash: Uint8Array): string;
   /** Signs `keyHash` in as `subject`, who is signed in on another key: a survivor arriving from another address. */
   carry(keyHash: Uint8Array, subject: string): void;
   /** Answers a request under /signin, or null where the path is not one of its own. */
   answer(call: SignInCall): Promise<Response> | Response | null;
-  /** A session with this key was let in. `refuse` closes it, at once or later. */
-  joined(keyHash: Uint8Array, refuse: () => void): void;
 }
 
 /** The browser key alone, as a server with nothing set: every key may come in, and none stands for an account. */
@@ -34,7 +32,6 @@ export const KEY_METHOD: SignInMethod = {
   subject: () => "",
   carry: () => {},
   answer: () => null,
-  joined: () => {},
 };
 
 /** What SignIn names when no method has that name. It lets nobody in: a mistyped setting must not open the server. */

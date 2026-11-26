@@ -60,6 +60,7 @@ function sameText(a: string, b: string): boolean {
 /** Connections waiting to say hello, and the ticks each may take while there is room. */
 const MAX_PENDING = 64;
 const HELLO_TICKS = 150;
+const SIGNIN_TICKS = 25 * TICK_RATE;
 /** With no room, one that has waited this long is put out for a newcomer. A client says hello at once, so this is a slow link's round trip. */
 const HELLO_GRACE_TICKS = 15;
 /** What a survivor's name may be. */
@@ -111,6 +112,7 @@ interface Pending {
   readonly conn: Connection;
   readonly since: number;
   readonly from: string;
+  checking?: boolean;
 }
 
 const SESSION_LOGIN = event("session.login");
@@ -158,7 +160,7 @@ export class Sessions {
   owns: ((name: string, key: Uint8Array) => boolean) | null = null;
   authorize: ((name: string, key: Uint8Array) => boolean) | null = null;
   /** Does the server's sign-in method let this browser in? */
-  signedIn: ((key: Uint8Array) => boolean) | null = null;
+  signedIn: ((key: Uint8Array, name: string, ticket: Uint8Array | null) => boolean | Promise<boolean>) | null = null;
   /**
    * A survivor arriving from another server of the cluster with a travel ticket, for this name and device key. Returns "" once
    * it is here, bound to that key, or why it is not. Called after a hello's own checks, with room for the session.
@@ -237,17 +239,18 @@ export class Sessions {
   }
 
   /** The first message of a connection must be its hello. Anything else ends it. */
-  private greet(p: Pending, channel: number, data: Uint8Array): void {
-    if (!this.pending.delete(p)) return;
+  private greet(p: Pending, channel: number, data: Uint8Array, approved = false): void {
+    if (!this.pending.delete(p) || !p.conn.open) return;
     const r = this.r;
     r.reset(data);
-    if (channel === CH_RELIABLE && data.length <= MAX_CLIENT_MESSAGE && r.bits(4) === C_HELLO && this.hello(p.conn, r)) return;
+    if (channel === CH_RELIABLE && data.length <= MAX_CLIENT_MESSAGE && r.bits(4) === C_HELLO && this.hello(p, r, data, approved)) return;
     this.stats.malformed++;
     this.close(p.conn, REJECT_MALFORMED);
   }
 
   /** False if the hello is malformed. One that is refused is told why. Only one that is accepted is given a session. */
-  private hello(conn: Connection, r: BitReader): boolean {
+  private hello(p: Pending, r: BitReader, data: Uint8Array, approved: boolean): boolean {
+    const conn = p.conn;
     const version = r.u32();
     // Another version lays the rest out differently, so nothing more is read.
     if (!r.overflow && version !== PROTOCOL_VERSION) return this.refuse(conn, REJECT_VERSION);
@@ -286,8 +289,21 @@ export class Sessions {
     }
     if (!NAME.test(name)) return this.refuse(conn, REJECT_NAME);
     if (this.refusals.refused(refusedAs(key, conn.address), world.tick)) return this.refuse(conn, REJECT_DENIED);
-    // A ticket is asked after it is taken: arriving signs its browser in as the survivor's account.
-    if (!ticket && this.signedIn && !this.signedIn(key)) return this.refuse(conn, REJECT_SIGNIN);
+    if (!approved && this.signedIn) {
+      const answer = this.signedIn(key, name, ticket);
+      if (answer instanceof Promise) {
+        this.pending.add(p);
+        p.checking = true;
+        conn.onMessage = null;
+        const refuse = () => { if (this.pending.has(p)) this.turnAway(p, REJECT_SIGNIN); };
+        void answer.then((ok) => {
+          if (ok) this.greet(p, CH_RELIABLE, data, true);
+          else refuse();
+        }, refuse);
+        return true;
+      }
+      if (!answer) return this.refuse(conn, REJECT_SIGNIN);
+    }
     // A module may turn a login away, or a name nobody has had before. A survivor's name is who it is, so it is not reworded.
     const isNew = this.savedPosition?.(name) == null;
     if(flags & HELLO_NEW){
@@ -303,7 +319,6 @@ export class Sessions {
       if (!this.clients.includes(null)) return this.refuse(conn, REJECT_FULL);
       const why = this.arrive ? this.arrive(name, key, ticket) : "this server is not in a cluster";
       if (why !== "") return this.refuse(conn, REJECT_TRAVEL, why);
-      if (this.signedIn && !this.signedIn(key)) return this.refuse(conn, REJECT_SIGNIN);
     } else {
       const why = this.away?.(name, key) ?? "";
       if (why !== "") return this.refuse(conn, REJECT_TRAVEL, why);
@@ -464,7 +479,7 @@ export class Sessions {
   /** Once a tick, after commands: a body that has lingered its time goes, and a connection that never said hello is turned away. */
   expire(T: number): void {
     for (const c of this.clients) if (c?.closed && T >= c.lingerUntil) this.finalize(c);
-    for (const p of this.pending) if (T - p.since >= HELLO_TICKS) this.turnAway(p, REJECT_MALFORMED);
+    for (const p of this.pending) if (T - p.since >= (p.checking ? SIGNIN_TICKS : HELLO_TICKS)) this.turnAway(p, p.checking ? REJECT_SIGNIN : REJECT_MALFORMED);
   }
 
   reject(c: Client, reason: number): void {

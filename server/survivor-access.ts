@@ -114,8 +114,9 @@ export class SurvivorAccess {
     const key = bytes(data.key);
     if (!key) return entryReply({ error: "Browser identity unavailable" }, 400);
     const method = this.host.signin.method;
-    const refused = method.admits(hashKey(key));
+    const refused = await method.admits(hashKey(key));
     if (refused !== "") return entryReply({ error: refused, signin: true }, 403);
+    if (method !== this.host.signin.method) return entryReply({ error: "Sign-in changed", signin: true }, 403);
     // An account's survivors follow it to any browser, so nothing here lends or recovers one.
     const subject = method.subject(hashKey(key));
     if (subject !== "" && data.action !== "roster" && data.action !== "available") return entryReply({ error: "Survivors here belong to the account signed in" }, 400);
