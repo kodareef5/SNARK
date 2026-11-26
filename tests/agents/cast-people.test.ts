@@ -128,7 +128,7 @@ test("a named person is its saved look and wardrobe, whatever else is edited", (
     // Its population and its outfit edited: neither the record nor the body moves.
     saved(h.host.people.save("population", pop, 1, EDITED, BY));
     saved(h.host.people.save("outfit", fit, 1, { ...outfit, slots: outfit.slots.map((s) => s && { ...s, dye: [9, 9, 9] }) }, BY));
-    expect(h.host.people.view().records.person.get(marisol)!.at(-1)!.body).toEqual(person);
+    expect(h.host.people.view().records.person.get(marisol)!.body).toEqual(person);
     const same = body(h, c);
     expect([same.look, same.wardrobe, same.born]).toEqual([first.look, first.wardrobe, null]);
     same.gone();

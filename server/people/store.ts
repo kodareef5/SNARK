@@ -1,12 +1,12 @@
-// The cluster's people store: people.sqlite beside its worlds, shared by them all. It holds records, each one revision of
-// one thing of a kind (shared/people/doc.ts), appended and never changed or deleted: the file refuses an update or a
-// delete of one. An id is the highest its kind has given plus one, so none is given twice. Beside the records is one row:
-// the store's revision, which every change moves on, and a small document of what may change: which things of each kind
-// are retired. A garment edition is one record. A named person, an outfit and an admin population take a new revision at
-// each save, under the id they were first given; a save names the revision it was made from and is refused if another
-// came since, so of two pages saving one thing, one is told to reload and neither's revision is lost.
+// The cluster's people store: people.sqlite beside its worlds, shared by them all. It holds records of things of each kind
+// (shared/people/doc.ts). An id is the highest its kind has given plus one, so none is given twice. Beside the records is
+// one row: the store's revision, which every change moves on, and a small document of which things of each kind are
+// retired. A garment edition is one record, never changed. An admin population takes a new record at each save, as a
+// body on the wire names its revision; the file refuses to change or delete either. A named person and an outfit are one
+// record each, saved over with its revision moved on. A save names the revision it was made from and is refused if
+// another came since, so of two pages saving one thing, one is told to reload.
 //
-// Every world keeps the records it has read and reads only those appended since, in one snapshot. The manifest clients
+// Every world keeps the records it has read and reads only those written since, in one snapshot. The manifest clients
 // fetch is written to the media folder under its hash. It holds every edition and every revision of every admin
 // population, retired ones too, since a body may wear or be drawn from one; named people and outfits are not in it.
 import { Database } from "bun:sqlite";
@@ -14,7 +14,7 @@ import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, r
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  ID_MOST, HASH, REVISED_KINDS, STORE_KINDS, printName, readOutfit, readPerson, readPopulation, storePopulation, type Bodies, type Edition, type EditionDraft, type Made, type PopulationDoc, type Revision, type RevisedKind,
+  ID_MOST, HASH, STORE_KINDS, printName, readOutfit, readPerson, readPopulation, storePopulation, type Bodies, type Edition, type EditionDraft, type Made, type PopulationDoc, type Revision, type RevisedKind,
   type StoreKind,
 } from "../../shared/people/doc.ts";
 import type { PopulationDef } from "../../shared/content/kinds/populations.ts";
@@ -42,8 +42,8 @@ export interface PeopleView {
   readonly retired: ReadonlySet<number>;
   /** The retired things of each kind. */
   readonly retiredOf: { readonly [K in StoreKind]: ReadonlySet<number> };
-  /** Every revision of every named person, outfit and admin population, by id, the first revision first. */
-  readonly records: { readonly [K in RevisedKind]: ReadonlyMap<number, readonly Revision<Bodies[K]>[]> };
+  /** Every named person, outfit and admin population at its latest revision, by id. */
+  readonly records: { readonly [K in RevisedKind]: ReadonlyMap<number, Revision<Bodies[K]>> };
   /** The manifest's id, the first 16 hex digits of the SHA-256 of its JSON, or "" while it would be empty. */
   readonly manifestId: string;
 }
@@ -70,19 +70,17 @@ export interface By {
 }
 
 /**
- * What the one row's document holds: its layout, the ids of each kind hidden from the admin's pick lists, and the store
- * revision each kind last changed at (an edition published or retired, anything else retired), 0 for never.
+ * What the one row's document holds: the ids of each kind hidden from the admin's pick lists, and the store revision each
+ * kind last changed at (an edition published or retired, anything else retired), 0 for never.
  */
 interface StoreDoc {
-  schema: number;
   retired: Partial<Record<StoreKind, number[]>>;
-  moved?: Partial<Record<StoreKind, number>>;
+  moved: Partial<Record<StoreKind, number>>;
 }
 
 /** Whether a page that showed store revision `expected` missed a change of `kind`: one after it, or a revision to come. */
-const movedSince = (doc: StoreDoc, kind: StoreKind, expected: number, revision: number): boolean => expected > revision || (doc.moved?.[kind] ?? 0) > expected;
+const movedSince = (doc: StoreDoc, kind: StoreKind, expected: number, revision: number): boolean => expected > revision || (doc.moved[kind] ?? 0) > expected;
 
-const SCHEMA = 1;
 /** How long an old manifest is kept for a page that has not reloaded, and a part file a crash left. */
 export const MANIFEST_KEEP_MS = 60 * 60 * 1000;
 /** How often a world looks for another world's change, and sweeps. */
@@ -196,18 +194,10 @@ export class PeopleStore implements StorePopulations {
         "CREATE TABLE IF NOT EXISTS store (id INTEGER PRIMARY KEY CHECK (id = 1), revision INTEGER NOT NULL, doc TEXT NOT NULL);" +
           "CREATE TABLE IF NOT EXISTS records (kind TEXT NOT NULL, id INTEGER NOT NULL, rev INTEGER NOT NULL, body TEXT NOT NULL, by TEXT NOT NULL, by_id TEXT NOT NULL, at INTEGER NOT NULL, store INTEGER NOT NULL, PRIMARY KEY (kind, id, rev)) WITHOUT ROWID;" +
           "CREATE INDEX IF NOT EXISTS records_by_store ON records (store);" +
-          "CREATE TRIGGER IF NOT EXISTS records_never_changed BEFORE UPDATE ON records BEGIN SELECT RAISE(ABORT, 'a record is never changed'); END;" +
+          "CREATE TRIGGER IF NOT EXISTS records_never_changed BEFORE UPDATE ON records WHEN OLD.kind IN ('edition', 'population') BEGIN SELECT RAISE(ABORT, 'a record is never changed'); END;" +
           "CREATE TRIGGER IF NOT EXISTS records_never_deleted BEFORE DELETE ON records BEGIN SELECT RAISE(ABORT, 'a record is never deleted'); END;",
       );
-      db.query("INSERT OR IGNORE INTO store (id, revision, doc) VALUES (1, 0, ?)").run(JSON.stringify({ schema: SCHEMA, retired: {}, moved: {} } satisfies StoreDoc));
-      const row = db.query("SELECT revision, doc FROM store WHERE id=1").get() as { revision: number; doc: string };
-      const doc = JSON.parse(row.doc) as StoreDoc;
-      if (doc.schema !== SCHEMA) throw new Error(`${this.path} is a people store of layout ${doc.schema}, and this build reads ${SCHEMA} only`);
-      // A file from before `moved` was kept: every kind counts as changed at its revision now, so no stale page passes.
-      if (doc.moved === undefined) {
-        const moved = Object.fromEntries(STORE_KINDS.map((k) => [k, row.revision]));
-        db.query("UPDATE store SET doc=? WHERE id=1 AND doc=?").run(JSON.stringify({ ...doc, moved }), row.doc);
-      }
+      db.query("INSERT OR IGNORE INTO store (id, revision, doc) VALUES (1, 0, ?)").run(JSON.stringify({ retired: {}, moved: {} } satisfies StoreDoc));
       db.exec(`PRAGMA busy_timeout=${WRITE_WAIT_MS};`);
     } catch (err) {
       db.close();
@@ -224,7 +214,7 @@ export class PeopleStore implements StorePopulations {
     // One snapshot, so the row and the records appended under it agree whatever another world writes meanwhile.
     const { revision, doc, rows } = db.transaction(() => {
       const row = db.query("SELECT revision, doc FROM store WHERE id=1").get() as { revision: number; doc: string };
-      const rows = db.query("SELECT kind, id, rev, body, by, by_id, at FROM records WHERE store > ? ORDER BY store, kind, id, rev").all(this.cached.revision) as RecordRow[];
+      const rows = db.query("SELECT kind, id, rev, body, by, by_id, at FROM records WHERE store > ? ORDER BY store").all(this.cached.revision) as RecordRow[];
       return { revision: row.revision, doc: JSON.parse(row.doc) as StoreDoc, rows };
     }).deferred();
     const was = this.cached, added: Edition[] = [], made = new Map(was.made);
@@ -239,12 +229,10 @@ export class PeopleStore implements StorePopulations {
         made.set(r.id, { by: r.by, byId: r.by_id, at: r.at });
         continue;
       }
-      // A kind a later build added is left to that build.
-      if (!(REVISED_KINDS as readonly string[]).includes(r.kind)) continue;
-      const kind = r.kind as RevisedKind, held = records[kind].get(r.id) ?? [];
-      if (held.length >= r.rev) continue;
+      const kind = r.kind as RevisedKind;
+      if ((records[kind].get(r.id)?.rev ?? 0) >= r.rev) continue;
       const one: Revision<Bodies[RevisedKind]> = { id: r.id, rev: r.rev, body: JSON.parse(r.body) as Bodies[RevisedKind], made: { by: r.by, byId: r.by_id, at: r.at } };
-      (records[kind] as Map<number, Revision<Bodies[RevisedKind]>[]>).set(r.id, [...held, one]);
+      (records[kind] as Map<number, Revision<Bodies[RevisedKind]>>).set(r.id, one);
       if (kind === "population") addedPopulations.push(one as Revision<PopulationDoc>);
     }
     const editions = added.length > 0 ? [...was.editions, ...added] : was.editions;
@@ -293,8 +281,7 @@ export class PeopleStore implements StorePopulations {
   /** Writes the manifest as media/people.<id>.json unless it is there, and returns its id; "" while it would be empty. */
   private writeManifest(): string {
     if (this.lines.length === 0 && this.populationLines.length === 0) return "";
-    // A manifest of editions alone is written as it was before admin populations, so its id is the same.
-    const json = this.populationLines.length === 0 ? `{"editions":[${this.lines.join(",")}]}` : `{"editions":[${this.lines.join(",")}],"populations":[${this.populationLines.join(",")}]}`;
+    const json = `{"editions":[${this.lines.join(",")}],"populations":[${this.populationLines.join(",")}]}`;
     const id = sha16(json), file = join(this.media, `people.${id}.json`);
     if (!existsSync(file)) {
       this.folders();
@@ -337,7 +324,10 @@ export class PeopleStore implements StorePopulations {
     }).immediate();
   }
 
-  /** Inserts revision `rev + 1` of thing `id` (a new thing under the next id where null) and moves the store on. */
+  /**
+   * Writes revision `rev + 1` of thing `id` (a new thing under the next id where null) and moves the store on. A named
+   * person or an outfit is written over its record; anything else is a record of its own.
+   */
   private insert(db: Database, kind: StoreKind, id: number | null, rev: number, body: string, by: By, revision: number): number {
     let at = id;
     if (at === null) {
@@ -345,14 +335,16 @@ export class PeopleStore implements StorePopulations {
       at = (top.id ?? 0) + 1;
       if (at > ID_MOST) throw new Error(`the people store has given every ${kind} id there is`);
     }
-    db.query("INSERT INTO records (kind, id, rev, body, by, by_id, at, store) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(kind, at, rev + 1, body, by.name, by.id, this.now(), revision + 1);
+    if (rev > 0 && (kind === "person" || kind === "outfit")) {
+      db.query("UPDATE records SET rev=?, body=?, by=?, by_id=?, at=?, store=? WHERE kind=? AND id=?").run(rev + 1, body, by.name, by.id, this.now(), revision + 1, kind, at);
+    } else db.query("INSERT INTO records (kind, id, rev, body, by, by_id, at, store) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(kind, at, rev + 1, body, by.name, by.id, this.now(), revision + 1);
     db.query("UPDATE store SET revision=? WHERE id=1").run(revision + 1);
     return at;
   }
 
   /**
    * Saves a named person, an outfit or an admin population: a new one under the next id where `id` is null, else the
-   * revision after `expected`, which must be the thing's latest. The body is kept as its kind's check reads it, so every
+   * revision after `expected`, which must be the thing's own. The body is kept as its kind's check reads it, so every
    * reader of the manifest takes what the world does; a body the same as the latest is no change. A stale revision is
    * refused with 409 and the store as it is; nothing is changed or lost.
    */

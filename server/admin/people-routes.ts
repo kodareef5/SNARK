@@ -76,13 +76,10 @@ export function peopleState(store: PeopleStore, reg: Registry, view: PeopleView 
   };
 }
 
-/** Each thing of a kind at its latest revision, with who made that revision and whether the thing is retired. */
+/** Each thing of a kind at its latest revision in id order, with who made that revision and whether the thing is retired. */
 function latest(view: PeopleView, kind: RevisedKind): Record<string, unknown>[] {
   const retired = view.retiredOf[kind];
-  return [...view.records[kind].values()].map((revs) => {
-    const last = revs[revs.length - 1]!;
-    return { id: last.id, rev: last.rev, retired: retired.has(last.id), ...last.made, doc: last.body };
-  });
+  return [...view.records[kind].values()].sort((a, b) => a.id - b.id).map((r) => ({ id: r.id, rev: r.rev, retired: retired.has(r.id), ...r.made, doc: r.body }));
 }
 
 /** Why a piece may not be worn in wardrobe slot `slot` of the world's content, or null. */
@@ -226,10 +223,7 @@ async function retire(req: Request, store: PeopleStore, reg: Registry, did: (wha
   if ("status" in done) return entryReply({ error: done.error, ...(done.view ? peopleState(store, reg, done.view) : {}) }, done.status);
   let words: string;
   if (kind === "edition") words = named(id, done.view.byId.get(id)!.name);
-  else {
-    const revs = done.view.records[kind].get(id)!;
-    words = thing(kind, id, revs[revs.length - 1]!.body);
-  }
+  else words = thing(kind, id, done.view.records[kind].get(id)!.body);
   if (!done.changed) onlyRead(req);
   else did(body.retired ? `retired ${words}` : `brought back ${words}`);
   return entryReply(peopleState(store, reg, done.view));

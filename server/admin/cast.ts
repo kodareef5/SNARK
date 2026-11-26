@@ -39,7 +39,7 @@ export function castState(host: Host, now: number): string {
   }));
   const regions = [...cast.regions.byIndex.entries()].map(([i, r]) => ({ ...cast.spots.centre(i), heat: Math.round(r.heat * 100) / 100, players: r.players, pace: r.pace }));
   // Who an admin chose: each look's population and outfit, each role a named person plays, and what the store offers.
-  const view = host.people.held(), latest = <T,>(m: ReadonlyMap<number, readonly { rev: number; body: T }[]>) => [...m].map(([id, revs]) => ({ id, body: revs.at(-1)!.body }));
+  const view = host.people.held(), latest = <T,>(m: ReadonlyMap<number, { body: T }>) => [...m].map(([id, r]) => ({ id, body: r.body }));
   const looks = CAST_CATALOGUE.looks.map((l) => ({ id: l.id, population: l.population ?? null, note: l.note ?? "", chosen: cast.casting.looks[l.id] ?? {} }));
   const roles = cast.cat.scenes.flatMap((s) => s.roles.map((r) => ({ key: `${s.id}/${r.role}`, scene: s.name, role: r.role, person: cast.casting.roles[`${s.id}/${r.role}`] ?? r.person ?? null })));
   const store = {

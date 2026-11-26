@@ -1,8 +1,8 @@
 // What the cluster's people store holds (server/people/store.ts), as the server keeps it, the admin pages send it and the
-// clients read its manifest. Every record is one revision of one thing of a kind, under an id that kind gives once and
-// never again; a revision is appended and never changed or deleted. A garment edition has one revision only: its cut,
-// colours and print are what it is, and a change is a new edition. A named person, an outfit and an admin population
-// take a new revision at every save, under the id they were first given.
+// clients read its manifest. A thing of a kind has an id that kind gives once and never again. A garment edition has one
+// revision only: its cut, colours and print are what it is, and a change is a new edition. A named person, an outfit and
+// an admin population take a new revision at every save, under the id they were first given; only an admin population's
+// earlier revisions are kept, as a body may be drawn from one.
 
 import { LOOK_BYTES, validLook } from "../anim/look.ts";
 import { populations as populationKind, REGION_KEYS, type PopulationDef, type Span } from "../content/kinds/populations.ts";
@@ -71,9 +71,10 @@ export interface Made {
   readonly at: number;
 }
 
-/** The manifest clients fetch: every edition ever published, retired ones too, in id order. */
+/** The manifest clients fetch: every edition ever published and every admin population revision, retired ones too, in id order. */
 export interface PeopleManifest {
   readonly editions: readonly Edition[];
+  readonly populations: readonly ManifestPopulation[];
 }
 
 /** A hash is the first 16 hex digits of a SHA-256, which the media route keeps for good (server/files.ts). */
@@ -129,7 +130,7 @@ export const WEAR_MAX = 8;
 /** The most a weight is, as the content kind takes it. */
 export const WEIGHT_MAX = 1e6;
 
-/** One revision of a thing of a kind, as the store holds it and admin pages are sent it. */
+/** A thing of a kind at one revision, as the store holds it and admin pages are sent it. */
 export interface Revision<T> {
   readonly id: number;
   readonly rev: number;

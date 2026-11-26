@@ -157,7 +157,7 @@ test("the manifest is named by its hash, holds what clients need and nobody's na
     const id = store.view().manifestId, file = join(store.media, `people.${id}.json`);
     const text = readFileSync(file, "utf8");
     expect(new Bun.CryptoHasher("sha256").update(text).digest("hex").slice(0, 16)).toBe(id);
-    expect(JSON.parse(text)).toEqual({ editions: [{ id: 1, garment: "core:plain_tee", colours: [12, 40, 3], print: null, name: "Vegas tee" }] });
+    expect(JSON.parse(text)).toEqual({ editions: [{ id: 1, garment: "core:plain_tee", colours: [12, 40, 3], print: null, name: "Vegas tee" }], populations: [] });
     expect(text).not.toContain("ada");
     const req = new Request(`http://snark.test${peopleManifestPath(id)}`);
     const res = await serveFile(store.media, req, peopleManifestPath(id).slice("/media".length));
@@ -198,20 +198,6 @@ test("an edition's print must be uploaded, and takes its size from the file", ()
     writeFileSync(join(store.media, printName(hash)), picture);
     const id = publish(store, draft);
     expect(store.view().byId.get(id)!.print).toEqual({ hash, width: 64, height: 32, place: { u: 0.1, v: 0.2, w: 0.5, h: 0.25, scale: 1, turn: 0.5 } });
-  } finally {
-    store.close();
-  }
-});
-
-test("a store of another layout is refused by name", () => {
-  const dir = folder();
-  open(dir).view();
-  const db = new Database(join(dir, "people.sqlite"));
-  db.exec(`UPDATE store SET doc='{"schema":2,"retired":{}}'`);
-  db.close();
-  const store = open(dir);
-  try {
-    expect(() => store.view()).toThrow(/people.sqlite is a people store of layout 2/);
   } finally {
     store.close();
   }

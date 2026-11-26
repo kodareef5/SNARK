@@ -90,7 +90,7 @@ const check = (what: string, got: unknown, want: unknown): void => {
 };
 const q = (selector: string): string => `document.querySelector(${JSON.stringify(selector)})`;
 const unhex = (h: string): Uint8Array => Uint8Array.from(h.match(/../g) ?? [], (x) => parseInt(x, 16));
-const latest = (kind: "person" | "population", id: number) => people.view().records[kind].get(id)?.at(-1);
+const latest = (kind: "person" | "population", id: number) => people.view().records[kind].get(id);
 const outside = (body: object): Promise<Response> => fetch(`${base}/admin/people/save`, { method: "POST", headers: { "content-type": "application/json", origin: base }, body: JSON.stringify(body) });
 
 const t0 = performance.now();

@@ -94,7 +94,7 @@ export class CastHost {
     this.ctx = ctx;
     const people = ctx.people ?? null;
     this.store = people ? {
-      latest: <K extends RevisedKind>(kind: K, id: number) => (people.held().records[kind] as ReadonlyMap<number, readonly Revision<Bodies[K]>[]>).get(id)?.at(-1),
+      latest: <K extends RevisedKind>(kind: K, id: number) => (people.held().records[kind] as ReadonlyMap<number, Revision<Bodies[K]>>).get(id),
       population: (id, rev) => people.population(id, rev),
     } : null;
     const kind = ctx.world.reg.index.get("core:civilian");
