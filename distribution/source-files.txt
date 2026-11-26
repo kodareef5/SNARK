@@ -2097,6 +2097,15 @@ assets/source/core/items/instruments/tex/wood_base.png
 assets/source/core/items/instruments/tex/wood_height.png
 assets/source/core/items/instruments/tex/wood_normal.png
 assets/source/core/items/instruments/tex/wood_orm.png
+assets/source/core/items/later-weapons/later-weapons.snpk
+assets/source/core/items/later-weapons/tex/optic_base.png
+assets/source/core/items/later-weapons/tex/optic_height.png
+assets/source/core/items/later-weapons/tex/optic_normal.png
+assets/source/core/items/later-weapons/tex/optic_orm.png
+assets/source/core/items/later-weapons/tex/polymer_base.png
+assets/source/core/items/later-weapons/tex/polymer_height.png
+assets/source/core/items/later-weapons/tex/polymer_normal.png
+assets/source/core/items/later-weapons/tex/polymer_orm.png
 assets/source/core/items/projectile-drops/projectile-drops.snpk
 assets/source/core/items/projectile-drops/tex/flint_base.png
 assets/source/core/items/projectile-drops/tex/flint_height.png

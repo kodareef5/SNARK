@@ -1,6 +1,7 @@
 import { expect } from "bun:test";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { B_PROP_R } from "../../shared/anim/human.ts";
+import { slotsOf } from "../../shared/content/slots.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { findAssets } from "../../tools/art/assets.ts";
 import { iconSubjects } from "../../tools/pack/icons.ts";
@@ -14,6 +15,9 @@ const camp = ["campfire", "storage_box", "sleeping_bag", "bed", "standing_torch"
 const campFires = ["campfire", "standing_torch", "cooking_pot", "fireplace"];
 const projectiles = ["arrow_stone", "arrow_tranq", "grenade_smoke", "arrow_flame", "grenade_poison", "grappling_hook", "dart_tranq", "c4", "arrow_metal"];
 const rounds = ["round_pistol", "round_rifle", "round_shotgun", "round_advanced", "round_advanced_rifle", "round_advanced_sniper", "rocket"];
+const later = ["scope", "silencer", "flashlight", "pistol_fabricated", "shotgun_pump", "rifle_assault", "laser", "bow_compound", "rifle_sniper"];
+const laterHeld = ["pistol_fabricated", "shotgun_pump", "rifle_assault", "bow_compound", "rifle_sniper"];
+const heldSlots = new Map(slotsOf(CORE_CONTENT).filter(slot => slot.slot === "held").map(slot => [slot.owner, slot.id]));
 
 function expectLevels(mesh: SourceMesh, densityFloor: number): void {
   expect(mesh.lods[0]!.sections, mesh.id).toBeDefined();
@@ -53,6 +57,7 @@ async function expectItemArt(pack: string, items: readonly string[], heldItems: 
   for (const item of items) {
     const id = `core:${item}`;
     if (heldItems.includes(item)) {
+      expect(heldSlots.get(id), id).toBe(id);
       const held = meshes.get(id);
       expect(held, id).toBeDefined();
       expect(held!.skeleton, id).toBe("human");
@@ -103,4 +108,8 @@ artTest("projectiles ship grounded models and inventory icons", async () => {
 
 artTest("rounds ship grounded models and inventory icons", async () => {
   await expectItemArt("core:rounds", rounds, []);
+});
+
+artTest("later equipment ships drop art, weapon grips and inventory icons", async () => {
+  await expectItemArt("core:later-weapons", later, laterHeld);
 });

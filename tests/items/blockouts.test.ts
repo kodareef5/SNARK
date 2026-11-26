@@ -100,11 +100,10 @@ test("every blocked-out thing is the item ARK has: its stack, weight, level, poi
   expect(Object.keys(starterBook().future)).toEqual(["core:raft_assembly"]);
 });
 
-test("a blocked-out thing is a plain box in the hand and a swatch in the bag, and what is set down is a box of its own", () => {
+test("held items and placed shapes use their declared asset slots", () => {
   const blocked = new Set(BLOCKED_OUT);
   const held = BLOCKED_OUT.map((id) => byId.get(id) as ItemDef).filter((d) => d.weapon);
-  // Twelve are held: each as the box, and none borrows another thing's model.
-  expect([held.length, held.every((d) => d.weapon!.mesh === BLOCKOUT_MESH)]).toEqual([12, true]);
+  for (const d of held) expect(d.weapon!.mesh, d.id).toBe(d.id === "core:prod" ? BLOCKOUT_MESH : d.id);
   // The box is no picture: with it in the pack, no thing that is held as it has an icon drawn, so each keeps its swatch.
   expect(iconSubjects(reg.defs, (mesh) => mesh === BLOCKOUT_MESH).filter((s) => blocked.has(s.owner)).map((s) => s.owner)).toEqual([]);
   // Ten are set down, each a structure of one box, with ARK's health, slots and days to decay.
