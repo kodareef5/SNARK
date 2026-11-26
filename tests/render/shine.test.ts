@@ -1,7 +1,7 @@
 // A map piece that shines is drawn apart from its chunk's others of its mesh, out of the same buffer, with its shimmer on
 // its own draw (render/passes/near-store.ts `shine`), and a frame with none is the frame it was.
 
-import { expect, test } from "bun:test";
+import { expect } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { Scene } from "../../client/core/render/scene.ts";
