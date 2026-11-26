@@ -25,7 +25,8 @@ test("the whole client: a wreck's word, a blow's sparks, a rung, and the last of
   s.text("tp 128 130.4");
   [app.controls.yaw, app.controls.pitch] = [0, -0.35];
   run(500);
-  expect(app.hud.prompt).toBe("wreck");
+  // It is searched as well as salvaged (planning/workstreams/loot.md), and its look is said under that once it is not whole.
+  expect(app.hud.prompt).toBe("hold E  search the wreck");
   // What the details are asked for, a part and its count each.
   const asked: [part: number, count: number][] = [];
   const details = app.scene!.details, burst = details.breakBurst.bind(details);
@@ -49,10 +50,10 @@ test("the whole client: a wreck's word, a blow's sparks, a rung, and the last of
   blows(6);
   asked.length = 0;
   blows(1);
-  expect([c.id(car), app.hud.prompt, of(BREAK_DUST) > 0, of(BREAK_CHIPS) + of(BREAK_GLASS)]).toEqual(["core:zzzzzzzwreck_fastback_abandoned_stripped", "stripped", true, 0]);
+  expect([c.id(car), app.hud.prompt, of(BREAK_DUST) > 0, of(BREAK_CHIPS) + of(BREAK_GLASS)]).toEqual(["core:zzzzzzzwreck_fastback_abandoned_stripped", "hold E  search the wreck\nstripped", true, 0]);
   // Eight more leave its shell, and eight more cut it up: a last puff, no word, and nothing fell at any time.
   blows(8);
-  expect([c.id(car), app.hud.prompt]).toEqual(["core:zzzzzzzwreck_fastback_abandoned_shell", "shell"]);
+  expect([c.id(car), app.hud.prompt]).toEqual(["core:zzzzzzzwreck_fastback_abandoned_shell", "hold E  search the wreck\nshell"]);
   blows(7);
   asked.length = 0;
   blows(1);
