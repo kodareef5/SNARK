@@ -3,6 +3,7 @@
 // entries, the list of what the book waits for, and a simulation's figures. Nothing here touches a page: client/drops
 // draws what these give.
 
+import { holdWord } from "../../../shared/sim/loot.ts";
 import { QUALITY_NAMES } from "../../../shared/sim/items.ts";
 import { TIER_MARK, tableKey, type EntryDoc, type SupplyBook } from "../../../shared/supply/book.ts";
 import { catalogFrom, withFuture, type Catalog, type CatalogItem } from "../../../shared/supply/catalog.ts";
@@ -277,7 +278,7 @@ export interface SourceTier {
 export interface SourceRow {
   readonly key: string;
   readonly on: boolean;
-  /** "any body", "a large body", "the body of a rex, level 100 to 150". */
+  /** "any body", "a large body", "the body of a rex, level 100 to 150", "a bin". */
   readonly what: string;
   /** "arms prize, armour prize" or "body/scraps". */
   readonly tables: string;
@@ -296,7 +297,8 @@ export function sourceRows(l: Loaded): SourceRow[] {
     const of = w.species?.length ? `of a ${w.species.map((id) => nameOf(l, id)).join(" or a ")}` : "";
     const size = w.size?.length ? `${w.size.join(" or ")} ` : "";
     const level = w.level ? `, level ${w.level[0]} to ${w.level[1]}` : "";
-    const what = w.species?.length ? `the ${size}body ${of}${level}` : `${size === "" ? "any" : /^[aeiou]/.test(size) ? `an ${size.trim()}` : `a ${size.trim()}`} body${level}`;
+    const a = (word: string): string => `${/^[aeiou]/.test(word) ? "an" : "a"} ${word}`;
+    const what = s.kind === "static" ? (w.holds?.length ? w.holds.map((tag) => a(holdWord(tag))).join(" or ") : "anything that holds loot") : w.species?.length ? `the ${size}body ${of}${level}` : `${size === "" ? "any" : a(size.trim())} body${level}`;
     const tables = s.tables.map((t) => `${t.table.replace(`${TIER_MARK}/`, "")}${t.slots ? ` ${t.slots.join(" and ")}` : ""}`).join(", ");
     const keys = s.tier !== undefined ? [...new Set([s.tier, ...(s.ladder ?? []).map((step) => step.tier)])] : [""];
     const tiers = keys.map((key): SourceTier => {

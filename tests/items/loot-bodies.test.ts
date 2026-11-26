@@ -191,5 +191,5 @@ test("the console rolls a source into an admin's bag, the same for the same seed
   expect(first).toMatch(/^body\/apex at yellow, seed 7: \d+ core:/);
   expect(h.host.items.inv(me).used()).toBeGreaterThan(0);
   expect(said("lootsource body/apex 120 7")).toBe(first);
-  expect(said("lootsource body/none")).toBe('no source "body/none"; there are: body/any body/medium body/large body/apex');
+  expect(said("lootsource body/none")).toMatch(/^no source "body\/none"; there are: body\/any body\/medium body\/large body\/apex /);
 });

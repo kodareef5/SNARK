@@ -116,6 +116,10 @@ test("world loot's sources are listed with what each is the loot of, what it rol
     ["body/medium", true, "a medium body", "provisions prize, stable prize"],
     ["body/large", true, "a large body", "provisions prize, works prize, stable prize"],
     ["body/apex", true, "an apex body", "arms prize, armour prize, stable prize, works prize"],
+    ["street/bin", true, "a bin", "street/bin"],
+    ["street/mailbox", true, "a mailbox", "street/mailbox"],
+    ["street/newsbox", true, "a newspaper box", "street/newsbox"],
+    ["street/paystation", true, "a pay station", "street/paystation"],
   ]);
   const apex = rows[3]!;
   expect(apex.tiers.map((t) => t.name)).toEqual(["White", "Green", "Blue", "Purple", "Yellow", "Red"]);

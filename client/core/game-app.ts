@@ -327,7 +327,10 @@ export class GameApp {
       this.hammer?.result(seq, code);
       this.vehiclePlacement.result(seq, code, this.nowMs);
       // An unasked result answers the last press of the use key: on a seat it is the seat's, else the built piece's.
-      if (!this.seatNotice.result(seq, code, this.nowMs)) this.ui.screen<StructMenu>("structure").answer(seq, code, this.nowMs, this.session, this.aimed);
+      // A search's answer is the prompt's; a refusal's reason is said as a piece's is.
+      if (this.prompts.searchResult(seq, code)) {
+        if (code !== RESULT_OK) this.ui.screen<StructMenu>("structure").answer(0, code, this.nowMs);
+      } else if (!this.seatNotice.result(seq, code, this.nowMs)) this.ui.screen<StructMenu>("structure").answer(seq, code, this.nowMs, this.session, this.aimed);
       this.ui.results(seq, code);
       if (code === RESULT_LOCKED) this.ui.hear?.("door/locked");
     };
@@ -435,6 +438,7 @@ export class GameApp {
   get lookedAt(): number { return this.prompts.lookedAt; }
   get aimedBoat(): number { return this.prompts.aimedBoat; }
   get target(): number { return this.prompts.target; }
+  get searchAimed(): number { return this.prompts.searchAimed; }
   get aimed(): number { return this.prompts.aimed; }
   set aimed(at: number) { this.prompts.aimed = at; }
   get eggAimed(): number { return this.prompts.eggAimed; }

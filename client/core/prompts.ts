@@ -2,6 +2,8 @@
 // server casts it: at what was built, at the bodies near, at a node. What it is on is kept here for the keys' rows
 // (keys.ts) to act on; the server's answer is the one that counts.
 
+import { holdWord } from "../../shared/sim/loot.ts";
+import { CMD_STRUCT, RESULT_OK, RESULT_SEARCHED } from "../../shared/net/protocol.ts";
 import { CUE_DEAD, CUE_HELD, CUE_OUT } from "../../shared/anim/pose.ts";
 import { isMoored } from "../../content/vehicles/mooring.ts";
 import { FORM_BREACH_A, FORM_OPEN } from "../../shared/content/breaks.ts";
@@ -21,7 +23,7 @@ import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { TRAVEL_TERMINAL } from "../../shared/world/obelisks.ts";
 import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayHit } from "../../shared/world/ray.ts";
 import { OpenWallPick } from "./tek-wall-pick.ts";
-import { ACT_REACH } from "../../shared/world/upkeep.ts";
+import { ACT_REACH, NO_PIN, STRUCT_SEARCH, STRUCT_USE } from "../../shared/world/upkeep.ts";
 import { loosePrompt } from "./balls.ts";
 import type { Builder } from "./build.ts";
 import type { Controls } from "./controls.ts";
@@ -108,6 +110,16 @@ export class Prompts implements FramePart {
   aimed = -1;
   /** The use key went down on a structure. The body does not get the press until it proves to be a tap. */
   useKept = false;
+  /** The ref of the map's thing that holds loot under the crosshair within reach, or -1 (server/holders.ts). */
+  searchAimed = -1;
+  /** The thing being searched while the use key is held on it, when that began, and the command that began it. */
+  private searching = -1;
+  private searchFrom = 0;
+  private searchAsked = 0;
+  /** The thing the server refused a search of, until the use key is let go: it is not asked again every frame. */
+  private refused = -1;
+  /** Things the server said were searched already, so the prompt says so until the page is left. */
+  private readonly spent = new Set<number>();
   /** Frames left of the synthetic use press that follows a tap. */
   usePulse = 0;
   /** Entity index of the egg under the crosshair, or -1. eggKept: the use key went down on one, and took it with CMD_TAKE. */
@@ -155,7 +167,8 @@ export class Prompts implements FramePart {
     menu.tick(nowMs);
     this.seatNotice.tick(nowMs);
     // With a piece in hand what is built is still aimed at, so it is used, mended and taken down as with an empty hand.
-    const built = alive && !v.active && session.driving < 0 ? this.builtAt(f, world, eyeNow) : ((this.aimed = this.terminalAimed = -1), "");
+    const built = alive && !v.active && session.driving < 0 ? this.builtAt(f, world, eyeNow) : ((this.aimed = this.terminalAimed = this.searchAimed = -1), "");
+    this.search(f);
     if (this.aimed >= 0 && this.useDownAt >= 0 && nowMs - this.useDownAt >= STRUCT_HOLD_MS && !menu.open && f.ui.wantsPointerLock) {
       menu.begin(this.aimed);
       this.useDownAt = -1;
@@ -176,6 +189,43 @@ export class Prompts implements FramePart {
     }
     if (emotes.open) characters.wantEmotes();
     f.prompt = !alive ? "" : v.active ? v.notice : b?.active ? menu.notice || (b.notice !== "" && built !== "" ? `${b.notice}\n${built}` : b.notice || built) : menu.notice || this.seatNotice.notice || emotes.notice || this.handPrompt(f, world, eyeNow) || whom || built || this.gliderPrompt(f);
+  }
+
+  /**
+   * The use key held on a thing that holds loot: the search is begun with the server, and after the thing's seconds it is
+   * opened. Letting go, or looking away, ends it with nothing said.
+   */
+  private search(f: AppFrame): void {
+    const ref = this.searchAimed;
+    if (this.useDownAt < 0) this.refused = -1;
+    if (ref < 0 || this.useDownAt < 0 || this.spent.has(ref) || this.refused === ref || !f.ui.wantsPointerLock) {
+      this.searching = -1;
+      return;
+    }
+    const kind = f.world.structs.chunks[Math.floor(ref / 65536)]?.kind[ref & 0xffff] ?? 0;
+    if (this.searching !== ref) {
+      this.searching = ref;
+      this.searchFrom = f.nowMs;
+      this.searchAsked = f.session.command(CMD_STRUCT, (w) => (w.u32(ref), w.u8(STRUCT_SEARCH)));
+    } else if (f.nowMs - this.searchFrom >= f.reg.holdSeconds[kind]! * 1000) {
+      f.session.command(CMD_STRUCT, (w) => (w.u32(ref), w.u8(STRUCT_USE), w.u16(NO_PIN)));
+      this.searching = -1;
+      this.useDownAt = -1;
+      this.useKept = false;
+      f.controls.release();
+    }
+  }
+
+  /** The server's answer to a search this began: one already searched is remembered, and any refusal ends the hold. True if the answer was this one's. */
+  searchResult(seq: number, code: number): boolean {
+    if (seq === 0 || seq !== this.searchAsked) return false;
+    this.searchAsked = 0;
+    if (code === RESULT_SEARCHED && this.searching >= 0) {
+      if (this.spent.size >= 512) this.spent.clear();
+      this.spent.add(this.searching);
+    }
+    if (code !== RESULT_OK) [this.refused, this.searching] = [this.searching, -1];
+    return true;
   }
 
   /** What a press of the use key now would get into or out of: the seat the session is in, or what the prompt is on. */
@@ -235,6 +285,7 @@ export class Prompts implements FramePart {
     const s = f.session, reg = f.reg;
     this.aimed = -1;
     this.terminalAimed = -1;
+    this.searchAimed = -1;
     const d = this.look(f.controls);
     const { x, y, z } = s.own;
     const hit = castWorld(world, x, y + eye, z, d[0]!, d[1]!, d[2]!, ACT_REACH);
@@ -260,6 +311,16 @@ export class Prompts implements FramePart {
     }
     // A piece nobody built says its building, and under it, if it breaks, how it stands: its health is not told within a stage.
     if (t.owner[ref & 0xffff] === 0) {
+      // A thing that holds loot is searched by a hold of the use key.
+      const tag = reg.holds[kind];
+      if (tag != null && rayHit.t <= REACH) {
+        this.searchAimed = ref;
+        const name = holdWord(tag);
+        if (this.spent.has(ref)) return `${name}  searched`;
+        if (this.searching !== ref) return `hold E  search the ${name}`;
+        const done = Math.min(1, (f.nowMs - this.searchFrom) / Math.max(1, reg.holdSeconds[kind]! * 1000));
+        return `searching the ${name}  ${Math.round(done * 100)}%`;
+      }
       // A boat nobody will sail again says so, so that nobody has to try it from every side.
       const dead = deadBoatWord(reg, kind);
       if (dead !== "") return dead;

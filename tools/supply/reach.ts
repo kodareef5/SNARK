@@ -77,12 +77,8 @@ export function reachCommand(args: readonly string[]): void {
   console.log(`\nitems by way: ${[...hows].sort((a, b) => b[1] - a[1]).map(([how, n]) => `${how} ${n}`).join(", ")}`);
 }
 
-/** What a static could hold loot as, until statics say so themselves (`holds`, phase 2 of the plan). */
+/** What a static could hold loot as and does not say yet (`holds`): the dead boats, and below them the rooms' boxes. */
 const HOLDERS: readonly (readonly [string, RegExp])[] = [
-  ["bin", /^core:zzstreet_bin/],
-  ["mailbox", /^core:zzstreet_mailbox/],
-  ["newspaper box", /^core:zzstreet_newsbox/],
-  ["pay station", /^core:zzstreet_paystation/],
   ["moored hull", /^core:zzzzhull_/],
   ["harbour hulk", /^core:hulk_/],
 ];
@@ -108,6 +104,7 @@ export function flowCommand(args: readonly string[]): void {
       statics++;
       const id = reg.ids[kind]!;
       if (reg.salvageYield[kind]) add("street wreck");
+      if (reg.holds[kind] != null) add(`holds: ${reg.holds[kind]}`);
       for (const [name, like] of HOLDERS) if (like.test(id)) add(name);
       const room = ROOM.exec(id);
       const b = room && map.buildings ? map.buildings.buildingOf(c, slot) : -1;

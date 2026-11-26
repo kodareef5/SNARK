@@ -3,7 +3,7 @@
 
 import type { Registry } from "../../../shared/content/registry.ts";
 import type { ItemDef } from "../../../shared/content/defs.ts";
-import { CMD_STRUCT, MAX_NAME_BYTES, SESSION_CREATING, SESSION_DEAD, RESULT_DAMAGED, RESULT_DENIED, RESULT_FAR, RESULT_FULL, RESULT_LOCKED, RESULT_NOT_EMPTY, RESULT_NOT_YOURS, RESULT_OBSTRUCTED, RESULT_OK, RESULT_PIN, RESULT_SHORT, RESULT_WAIT } from "../../../shared/net/protocol.ts";
+import { CMD_STRUCT, MAX_NAME_BYTES, SESSION_CREATING, SESSION_DEAD, RESULT_DAMAGED, RESULT_DENIED, RESULT_FAR, RESULT_FULL, RESULT_LOCKED, RESULT_NOT_EMPTY, RESULT_NOT_YOURS, RESULT_OBSTRUCTED, RESULT_OK, RESULT_PIN, RESULT_SEARCHED, RESULT_SHORT, RESULT_WAIT } from "../../../shared/net/protocol.ts";
 import type { StructureStore } from "../../../shared/world/structures.ts";
 import { FALL_MOST, Support } from "../../../shared/world/support.ts";
 import { NO_PIN, STRUCT_DEMOLISH, STRUCT_LIGHT, STRUCT_LOCK, STRUCT_NAME, STRUCT_PICKUP, STRUCT_PIN, STRUCT_REPAIR, STRUCT_TRAVEL, STRUCT_TEK_DOOR, STRUCT_TEK_SOLID, STRUCT_UNLOCK, STRUCT_USE, cost, refundOf, repairCostOf } from "../../../shared/world/upkeep.ts";
@@ -60,6 +60,7 @@ export const STRUCT_REASONS: Readonly<Record<number, string>> = {
   [RESULT_DENIED]: "That cannot be done now",
   [RESULT_NOT_EMPTY]: "Empty it first",
   [RESULT_OBSTRUCTED]: "Something is in the way",
+  [RESULT_SEARCHED]: "Already searched",
 };
 
 /** The item's label. For another form of the piece, the form's name replaces the label's last word. */

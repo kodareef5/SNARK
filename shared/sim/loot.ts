@@ -29,6 +29,10 @@ export interface LootDrop {
 /** The most a range may ask for, so that a mistaken definition cannot mint without end. */
 export const MOST_LOOT = 10000;
 
+/** What a thing that holds loot is called, by its tag (StructureDef.holds), where the tag is not the word. */
+const HOLD_WORDS: Readonly<Record<string, string>> = { newsbox: "newspaper box", paystation: "pay station" };
+export const holdWord = (tag: string): string => HOLD_WORDS[tag] ?? tag;
+
 /** How big a creature's body is, for the loot it holds (SpeciesDef.size); medium where a species does not say. */
 export const BODY_SIZES = ["small", "medium", "large", "apex"] as const;
 export type BodySize = (typeof BODY_SIZES)[number];

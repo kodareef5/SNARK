@@ -85,14 +85,15 @@ const USE: KeyRow = {
   keys: ["KeyE"],
   touch: { KeyE: T_USE },
   pad: { KeyE: 3 },
-  guide: [{ code: "KeyE", group: G_WORLD, title: "Use / ride", detail: "Tap to interact, or to get in or out of a seat or saddle. Hold on a structure to open its actions." }],
+  guide: [{ code: "KeyE", group: G_WORLD, title: "Use / ride", detail: "Tap to interact, or to get in or out of a seat or saddle. Hold on a structure to open its actions, or on a bin or a mailbox to search it." }],
   press(c, _code, down, repeat) {
     if (down && !repeat) {
       c.seatNotice.pressed(c.seatPress());
       c.useDownAt = c.nowMs;
-      c.useKept = c.aimed >= 0;
+      c.useKept = c.aimed >= 0 || c.searchAimed >= 0;
     } else if (!down) {
-      if (c.useKept && c.useDownAt >= 0) c.usePulse = 4;
+      // A tap on a thing that is searched by a hold is no press: the hold just ends.
+      if (c.useKept && c.useDownAt >= 0 && c.searchAimed < 0) c.usePulse = 4;
       c.useDownAt = -1;
     }
     if (!c.useKept) return undefined;
