@@ -350,7 +350,7 @@ Packs may add to: `buffs`.
 
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
-| `population` |  | built | `label`, `revision`, `women`, `skin`, `eyes`, `hair`, `hairColors`, `beard`, `build`, `face`, `age`, `weight`, `muscle` | `complexions`, `streak`, `grey`, `brows`, `regions`, `hairLength`, `beardLength`, `outfits` | 5 |
+| `population` |  | built | `label`, `women`, `skin`, `eyes`, `hair`, `hairColors`, `beard`, `build`, `face`, `age`, `weight`, `muscle` | `complexions`, `streak`, `grey`, `brows`, `regions`, `hairLength`, `beardLength`, `outfits` | 5 |
 
 - **`population`** on shelf `people`. Who a crowd is made of: by weight and range, each part of a person the generator draws from a seed.
 
