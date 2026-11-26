@@ -31,6 +31,8 @@ export interface ParcelHead {
   ticket: string;
   /** Hex of the device key hash that owned the survivor where it left, so its owner can take it back there. */
   key: string;
+  /** The account the departing player proved at the source world. */
+  signedAs?: string;
   /** Registry.coreHash where it left. */
   content: number;
   /** The tribe of the first record where it left: its team, its name, and whether the record owned it. Null for none. */

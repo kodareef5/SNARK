@@ -41,14 +41,6 @@ export interface DiscordConfig {
   readonly days: number;
 }
 
-/** A setting's words as a list of Discord ids, and the words that are not ids. */
-export function idsOf(words: string): { ids: string[]; bad: string[] } {
-  const ids: string[] = [];
-  const bad: string[] = [];
-  for (const w of words.split(/[\s,]+/).filter(Boolean)) (snowflake(w) ? ids : bad).push(w);
-  return { ids, bad };
-}
-
 export interface DiscordContext {
   readonly store: SignInStore;
   /** This world's number: each world keeps its own answers. */
@@ -67,9 +59,11 @@ interface Pending {
   /** The key hash that began it, in hex. */
   readonly key: string;
   readonly redirect: string;
+  readonly cookie: string;
   /** What the state is for. A later flow (a tribe's log to a channel) is another purpose. */
   readonly purpose: "signin";
   until: number;
+  exchanging: boolean;
   user: DiscordUser | null;
   why: string;
 }
@@ -98,6 +92,7 @@ export class DiscordSignIn implements SignInMethod {
     if (c.secret === "") return "DiscordClientSecret is not set";
     if (c.guild !== "" && !snowflake(c.guild)) return "DiscordGuild is not a Discord server's id";
     if (c.guild !== "" && c.botToken === "") return "DiscordBotToken is not set, and DiscordGuild needs it";
+    if (c.roles.some((role) => !snowflake(role))) return "DiscordRoles must list Discord role ids";
     if (c.guild === "" && c.roles.length > 0) return "DiscordRoles needs DiscordGuild, the Discord server the roles are in";
     return "";
   }
@@ -107,14 +102,18 @@ export class DiscordSignIn implements SignInMethod {
     return link && link.subject.startsWith(PREFIX) && this.now() - link.at <= this.ctx.config().days * DAY_MS ? link : null;
   }
 
-  admits(keyHash: Uint8Array): string {
+  admits(keyHash: Uint8Array, travellingAs = ""): string | Promise<string> {
     if (this.fault() !== "") return NOT_SET_UP;
-    const link = this.linked(hex(keyHash));
-    if (!link) return SIGN_IN;
-    if (this.ctx.config().guild === "") return "";
-    // One never asked about here comes in, and `joined` asks: a survivor travelling in has no page to ask from.
-    const v = this.ctx.store.verdict(this.ctx.world, link.subject);
-    return v && !v.ok ? v.why : "";
+    const subject = travellingAs || this.subject(keyHash);
+    if (!subject.startsWith(PREFIX)) return SIGN_IN;
+    const c = this.ctx.config();
+    const answer = this.check(subject, c);
+    if (!(answer instanceof Promise)) return answer.why;
+    return answer.then((v) => {
+      if (this.fault() || this.policy(this.ctx.config()) !== this.policy(c)) return NOT_SET_UP;
+      if (!travellingAs && this.subject(keyHash) !== subject) return SIGN_IN;
+      return v.why;
+    });
   }
 
   subject(keyHash: Uint8Array): string {
@@ -125,39 +124,38 @@ export class DiscordSignIn implements SignInMethod {
     if (subject.startsWith(PREFIX)) this.ctx.store.bind(hex(keyHash), subject, this.ctx.store.nameOf(subject), this.now());
   }
 
-  joined(keyHash: Uint8Array, refuse: () => void): void {
-    const link = this.linked(hex(keyHash));
-    if (!link) return refuse();
-    void this.check(link.subject).then((v) => void (v.ok || refuse()));
-  }
-
   private complain(e: DiscordFault): void {
     if (this.now() - this.complained < 60_000) return;
     this.complained = this.now();
     this.ctx.say(`discord: ${e.message}${e.setup ? ": nobody new can be checked until it is mended" : ""}`);
   }
 
+  private policy(c: DiscordConfig): string {
+    return JSON.stringify([c.guild, ...c.roles]);
+  }
+
   /** May `subject` join this world? Asked of Discord unless it answered a moment ago. Where it cannot answer, its last answer stands. */
-  check(subject: string): Promise<Verdict> {
-    const c = this.ctx.config();
+  private check(subject: string, c = this.ctx.config()): Verdict | Promise<Verdict> {
     const at = this.now();
-    if (c.guild === "") return Promise.resolve({ ok: true, why: "", at });
-    const last = this.ctx.store.verdict(this.ctx.world, subject);
-    if (last && at - last.at < FRESH_MS) return Promise.resolve(last);
-    let asking = this.asking.get(subject);
+    if (c.guild === "") return { ok: true, why: "", at };
+    const policy = this.policy(c);
+    const key = policy + subject;
+    const last = this.ctx.store.verdict(this.ctx.world, policy, subject);
+    if (last && at - last.at < FRESH_MS) return last;
+    let asking = this.asking.get(key);
     if (!asking) {
-      asking = this.ask(c, subject, last).finally(() => this.asking.delete(subject));
-      this.asking.set(subject, asking);
+      asking = this.ask(c, policy, subject, last).finally(() => this.asking.delete(key));
+      this.asking.set(key, asking);
     }
     return asking;
   }
 
-  private async ask(c: DiscordConfig, subject: string, last: Verdict | null): Promise<Verdict> {
+  private async ask(c: DiscordConfig, policy: string, subject: string, last: Verdict | null): Promise<Verdict> {
     try {
       const roles = await this.ctx.api.member(c.botToken, c.guild, subject.slice(PREFIX.length));
       const why = roles === null ? NOT_MEMBER : c.roles.length > 0 && !c.roles.some((r) => roles.includes(r)) ? NO_ROLE : "";
       const v = { ok: why === "", why, at: this.now() };
-      this.ctx.store.judge(this.ctx.world, subject, v);
+      this.ctx.store.judge(this.ctx.world, policy, subject, v);
       return v;
     } catch (e) {
       if (!(e instanceof DiscordFault)) throw e;
@@ -217,14 +215,18 @@ export class DiscordSignIn implements SignInMethod {
       this.ctx.store.expire(now - DAYS_MOST * DAY_MS);
       const state = randomBytes(16).toString("hex");
       const redirect = `${origin.origin}${call.base}/signin/discord/callback`;
-      this.pending.set(state, { key, redirect, purpose: "signin", until: now + STATE_MS, user: null, why: "" });
+      const cookieName = `${origin.protocol === "https:" ? "__Host-" : ""}snark-discord-${state}`;
+      const cookie = `${cookieName}=${randomBytes(32).toString("hex")}`;
+      this.pending.set(state, { key, redirect, cookie, purpose: "signin", until: now + STATE_MS, exchanging: false, user: null, why: "" });
       const ask = new URLSearchParams({ response_type: "code", client_id: this.ctx.config().clientId, scope: "identify", state, redirect_uri: redirect, prompt: "none" });
-      return entryReply({ url: `${AUTHORIZE_URL}?${ask}` });
+      const reply = entryReply({ url: `${AUTHORIZE_URL}?${ask}` });
+      reply.headers.set("set-cookie", `${cookie}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${STATE_MS / 1000}${origin.protocol === "https:" ? "; Secure" : ""}`);
+      return reply;
     }
     if (data.action === "finish") {
       const state = typeof data.state === "string" ? data.state : "";
       const p = this.pending.get(state);
-      // Only the key that began a sign-in ends it: a link sent to someone else signs nobody in as them.
+      // The callback already verified the browser. Its original game key completes the link.
       if (!p || p.key !== key) return entryReply({ error: "That sign-in ran out. Start it again." }, 410);
       if (!p.user && p.why === "") return entryReply({ error: "Discord has not answered yet." }, 409);
       this.pending.delete(state);
@@ -241,14 +243,16 @@ export class DiscordSignIn implements SignInMethod {
     const state = q.get("state") ?? "";
     const back = new Response(null, { status: 302, headers: { location: `${call.base}/?signin=${encodeURIComponent(state.slice(0, 64))}`, "cache-control": "no-store", "referrer-policy": "no-referrer" } });
     const p = this.pending.get(state);
-    if (!p || p.until <= this.now() || p.user || p.why !== "") return back;
+    if (!p || p.until <= this.now() || p.exchanging || p.user || p.why !== "") return back;
+    if (!call.req.headers.get("cookie")?.split(/;\s*/).includes(p.cookie)) return back;
+    const [name] = p.cookie.split("=");
+    back.headers.set("set-cookie", `${name}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${p.redirect.startsWith("https:") ? "; Secure" : ""}`);
     const code = q.get("code");
     const iss = q.get("iss");
     if (iss !== null && iss !== ISSUER) p.why = "That sign-in did not come from Discord.";
     else if (!code) p.why = q.get("error") === "access_denied" ? "Discord sign-in was cancelled." : "Discord did not sign you in.";
     else {
-      // Kept from a second use while Discord is asked.
-      p.why = UNREACHABLE;
+      p.exchanging = true;
       const c = this.ctx.config();
       try {
         p.user = await this.ctx.api.exchange(c.clientId, c.secret, code.slice(0, 512), p.redirect);
@@ -256,7 +260,9 @@ export class DiscordSignIn implements SignInMethod {
       } catch (e) {
         if (!(e instanceof DiscordFault)) throw e;
         this.complain(e);
-        if (e.setup) p.why = NOT_SET_UP;
+        p.why = e.setup ? NOT_SET_UP : UNREACHABLE;
+      } finally {
+        p.exchanging = false;
       }
     }
     p.until = this.now() + FINISH_MS;

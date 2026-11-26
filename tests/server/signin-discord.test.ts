@@ -45,12 +45,13 @@ test("a browser joins only once it has signed in, and its survivor is its Discor
   expect(await roster(h, key)).toEqual({ status: 403, names: [], signin: true });
   expect((await signinPost(h.host, { action: "status", key: hexKey(key) })).body).toEqual({ method: "discord", signed: false, ok: false, why: "" });
 
-  const { body } = await signinPost(h.host, { action: "start", key: hexKey(key) });
+  const { body, cookie } = await signinPost(h.host, { action: "start", key: hexKey(key) });
   const ask = new URL(String(body.url));
   expect(`${ask.origin}${ask.pathname}`).toBe("https://discord.com/oauth2/authorize");
   expect([ask.searchParams.get("client_id"), ask.searchParams.get("scope"), ask.searchParams.get("response_type"), ask.searchParams.get("redirect_uri")]).toEqual([fake.clientId, "identify", "code", `${PAGE}/signin/discord/callback`]);
   const state = ask.searchParams.get("state")!;
-  expect(await discordReturn(h.host, `code=${fake.code(ADA, "Ada L")}&state=${state}`)).toBe(`/?signin=${state}`);
+  expect(cookie).toMatch(/^__Host-.*; Path=\/; HttpOnly; SameSite=Lax; Max-Age=600; Secure$/);
+  expect(await discordReturn(h.host, `code=${fake.code(ADA, "Ada L")}&state=${state}`, cookie)).toBe(`/?signin=${state}`);
   expect((await signinPost(h.host, { action: "finish", key: hexKey(key), state })).body).toEqual({ method: "discord", signed: true, name: "Ada L", ok: true, why: "" });
   // The token Discord gave was handed back.
   expect(fake.calls.filter((c) => c.endsWith("/oauth2/token/revoke"))).toHaveLength(1);
@@ -65,28 +66,50 @@ test("only the browser that began a sign-in finishes it, once, and in time", asy
   fake.members.set(ADA, []);
   const clock = { ms: 1_700_000_000_000 };
   const h = discordWorld(fake, {}, clock);
-  const [thief, victim] = [testKey("thief"), testKey("victim")];
-  // A link the thief began, opened by the victim, signs the thief's browser in as nobody.
-  const state = await startSignIn(h.host, thief);
-  await discordReturn(h.host, `code=${fake.code(ADA, "Ada")}&state=${state}`);
-  expect((await signinPost(h.host, { action: "finish", key: hexKey(victim), state })).status).toBe(410);
-  expect(h.host.signin.method.subject(hashKey(victim))).toBe("");
-  expect((await signinPost(h.host, { action: "finish", key: hexKey(thief), state })).status).toBe(200);
-  expect((await signinPost(h.host, { action: "finish", key: hexKey(thief), state })).status).toBe(410);
+  const [laptop, phone] = [testKey("laptop"), testKey("phone")];
+  const { state, cookie } = await startSignIn(h.host, laptop);
+  const other = await startSignIn(h.host, phone);
+  const callback = `code=${fake.code(ADA, "Ada")}&state=${state}`;
+  await discordReturn(h.host, callback, other.cookie);
+  await discordReturn(h.host, callback);
+  expect(fake.calls).toBeEmpty();
+  expect((await signinPost(h.host, { action: "finish", key: hexKey(laptop), state })).status).toBe(409);
+  expect(h.host.signin.method.subject(hashKey(laptop))).toBe("");
+  await discordReturn(h.host, callback, cookie);
+  expect((await signinPost(h.host, { action: "finish", key: hexKey(phone), state })).status).toBe(410);
+  expect((await signinPost(h.host, { action: "finish", key: hexKey(laptop), state })).status).toBe(200);
+  expect((await signinPost(h.host, { action: "finish", key: hexKey(laptop), state })).status).toBe(410);
 
-  const late = await startSignIn(h.host, victim);
-  expect((await signinPost(h.host, { action: "finish", key: hexKey(victim), state: late })).status).toBe(409);
+  const late = await startSignIn(h.host, phone);
+  expect((await signinPost(h.host, { action: "finish", key: hexKey(phone), state: late.state })).status).toBe(409);
   clock.ms += 601_000;
-  await discordReturn(h.host, `code=${fake.code(ADA, "Ada")}&state=${late}`);
-  expect((await signinPost(h.host, { action: "finish", key: hexKey(victim), state: late })).status).toBe(410);
+  await discordReturn(h.host, `code=${fake.code(ADA, "Ada")}&state=${late.state}`, late.cookie);
+  expect((await signinPost(h.host, { action: "finish", key: hexKey(phone), state: late.state })).status).toBe(410);
 
-  const refused = await startSignIn(h.host, victim);
-  await discordReturn(h.host, `error=access_denied&state=${refused}`);
-  expect(await signinPost(h.host, { action: "finish", key: hexKey(victim), state: refused })).toEqual({ status: 403, body: { error: "Discord sign-in was cancelled." } });
-  const forged = await startSignIn(h.host, victim);
-  await discordReturn(h.host, `code=${fake.code(ADA, "Ada")}&state=${forged}&iss=${encodeURIComponent("https://evil.example")}`);
-  expect((await signinPost(h.host, { action: "finish", key: hexKey(victim), state: forged })).status).toBe(403);
+  const refused = await startSignIn(h.host, phone);
+  await discordReturn(h.host, `error=access_denied&state=${refused.state}`, refused.cookie);
+  expect(await signinPost(h.host, { action: "finish", key: hexKey(phone), state: refused.state })).toEqual({ status: 403, body: { error: "Discord sign-in was cancelled." } });
+  const forged = await startSignIn(h.host, phone);
+  await discordReturn(h.host, `code=${fake.code(ADA, "Ada")}&state=${forged.state}&iss=${encodeURIComponent("https://evil.example")}`, forged.cookie);
+  expect((await signinPost(h.host, { action: "finish", key: hexKey(phone), state: forged.state })).status).toBe(403);
   expect(await discordReturn(h.host, "code=x&state=nothing")).toBe("/?signin=nothing");
+});
+
+test("parallel returns exchange one code and a pending finish can be retried", async () => {
+  const fake = new FakeDiscord();
+  const pending = Promise.withResolvers<void>();
+  fake.waitForCode = pending.promise;
+  const h = discordWorld(fake);
+  const key = testKey("ada");
+  const { state, cookie } = await startSignIn(h.host, key);
+  const query = `code=${fake.code(ADA, "Ada")}&state=${state}`;
+  const first = discordReturn(h.host, query, cookie);
+  await discordReturn(h.host, query, cookie);
+  expect((await signinPost(h.host, { action: "finish", key: hexKey(key), state })).status).toBe(409);
+  pending.resolve();
+  await first;
+  expect((await signinPost(h.host, { action: "finish", key: hexKey(key), state })).body.signed).toBe(true);
+  expect(fake.calls.filter((c) => c.endsWith("/oauth2/token"))).toHaveLength(1);
 });
 
 test("one who is not in the Discord server, or lacks its role, is told why and kept out until that changes", async () => {
@@ -109,7 +132,7 @@ test("one who is not in the Discord server, or lacks its role, is told why and k
   expect(await joined(h, "Ada", key)).toEqual(["active", 0]);
 });
 
-test("a role taken away closes the next join, and the one after is refused at once", async () => {
+test("a role taken away keeps the next session out before it can act", async () => {
   const fake = new FakeDiscord();
   fake.members.set(ADA, [SURVIVOR]);
   const clock = { ms: 1_700_000_000_000 };
@@ -120,7 +143,8 @@ test("a role taken away closes the next join, and the one after is refused at on
   clock.ms += 11_000;
   const s = h.join("Ada", {}, { key });
   h.run(300);
-  expect(s.state).toBe("active");
+  expect(s.state).not.toBe("active");
+  expect(h.host.survivorRecord("Ada")).toBeUndefined();
   await settle();
   h.run(300);
   expect([s.state, s.closeReason]).toEqual(["closed", REJECT_SIGNIN]);
@@ -128,6 +152,28 @@ test("a role taken away closes the next join, and the one after is refused at on
   const again = h.join("Ada", {}, { key });
   h.run(300);
   expect([again.state, again.closeReason, fake.calls.length]).toEqual(["closed", REJECT_SIGNIN, before]);
+});
+
+test("a browser that leaves during a role check gets no session", async () => {
+  const fake = new FakeDiscord();
+  fake.members.set(ADA, []);
+  const clock = { ms: 1_700_000_000_000 };
+  const h = discordWorld(fake, {}, clock);
+  const key = testKey("ada");
+  await signInAs(h.host, fake, key, ADA);
+  clock.ms += 11_000;
+  const pending = Promise.withResolvers<void>();
+  fake.waitForMember = pending.promise;
+  const session = h.join("Ada", {}, { key });
+  h.run(300);
+  expect(h.host.game.playerCount).toBe(0);
+  session.close();
+  h.run(300);
+  pending.resolve();
+  await settle();
+  h.run(300);
+  expect(h.host.game.playerCount).toBe(0);
+  expect(h.host.survivorRecord("Ada")).toBeUndefined();
 });
 
 test("while Discord cannot be reached its last answer stands, and one it never answered about is not kept", async () => {
@@ -146,8 +192,8 @@ test("while Discord cannot be reached its last answer stands, and one it never a
   expect(await joined(h, "Ben", ben)).toEqual(["closed", REJECT_SIGNIN]);
   expect((await signinPost(h.host, { action: "status", key: hexKey(ben) })).body).toMatchObject({ signed: true, ok: false, why: UNREACHABLE });
 
-  const state = await startSignIn(h.host, testKey("cy-laptop"));
-  await discordReturn(h.host, `code=${fake.code("4400000000000000003", "Cy")}&state=${state}`);
+  const { state, cookie } = await startSignIn(h.host, testKey("cy-laptop"));
+  await discordReturn(h.host, `code=${fake.code("4400000000000000003", "Cy")}&state=${state}`, cookie);
   expect(await signinPost(h.host, { action: "finish", key: hexKey(testKey("cy-laptop")), state })).toEqual({ status: 403, body: { error: UNREACHABLE } });
 });
 
@@ -218,6 +264,21 @@ test("a server whose Discord settings are not whole lets nobody in, and says wha
   expect((await signInAs(h.host, fake, key, ADA)).body).toMatchObject({ signed: true, ok: false, why: NOT_SET_UP });
 });
 
+test("a role policy change discards previous grants while Discord is offline", async () => {
+  const fake = new FakeDiscord();
+  fake.members.set(ADA, []);
+  const h = discordWorld(fake);
+  const key = testKey("ada");
+  await signInAs(h.host, fake, key, ADA);
+  fake.down = true;
+  h.host.setSetting("DiscordRoles", SURVIVOR);
+  expect(await joined(h, "Ada", key)).toEqual(["closed", REJECT_SIGNIN]);
+  expect((await roster(h, key)).status).toBe(403);
+  h.host.setSetting("DiscordRoles", "wrong-id");
+  expect(h.host.signin.method.admits(hashKey(key))).toBe(NOT_SET_UP);
+  expect(h.host.discord.fault()).toContain("DiscordRoles");
+});
+
 test("a browser's sign-in runs out after DiscordSignInDays", async () => {
   const fake = new FakeDiscord();
   fake.members.set(ADA, []);
@@ -260,6 +321,16 @@ test("a survivor travelling to a world at another address is signed in there as 
   // The browser has another key at Tampa's address, which nobody signed in with.
   const there = keyAt("Ada", b.world);
   expect(b.h.host.signin.method.subject(hashKey(there))).toBe("");
+  b.h.host.setSetting("DiscordRoles", SURVIVOR);
+  const refused = b.h.join("Ada", {}, { key: there, ticket });
+  b.h.run(300);
+  await settle();
+  b.h.run(300);
+  expect(refused.closeReason).toBe(REJECT_SIGNIN);
+  expect(rec(b, "Ada")).toBeUndefined();
+  expect(b.h.host.signin.method.subject(hashKey(there))).toBe("");
+  fake.members.set(ADA, [SURVIVOR]);
+  clock.ms += 11_000;
   const arrived = b.h.join("Ada", {}, { key: there, ticket });
   b.h.run(400);
   await settle();
@@ -267,4 +338,37 @@ test("a survivor travelling to a world at another address is signed in there as 
   expect(arrived.state).toBe("active");
   expect(b.h.host.signin.method.subject(hashKey(there))).toBe(`discord:${ADA}`);
   expect(ownerOf(rec(b, "Ada")!)).toBe(`discord:${ADA}`);
+});
+
+test("a world using browser keys leaves account verification to the destination", async () => {
+  const fake = new FakeDiscord();
+  fake.members.set(ADA, []).set(BEN, []);
+  const clock = { ms: 1_700_000_000_000 };
+  const discord = { secret: fake.secret, botToken: fake.botToken, fetch: fake.fetch, now: () => clock.ms };
+  const a = cluster.server("Miami", "key-source", clock, { host: { discord } });
+  const b = cluster.server("Tampa", "key-source", clock, { host: { discord } });
+  for (const s of [a, b]) {
+    s.h.host.setSetting("SignIn", "discord");
+    s.h.host.setSetting("DiscordClientId", fake.clientId);
+    s.h.host.setSetting("DiscordGuild", fake.guildId);
+  }
+  await signInAs(a.h.host, fake, keyAt("Ada", a.world), ADA);
+  const { session } = cluster.survivor(a, "Ada");
+  a.h.host.setSetting("SignIn", "key");
+  const ticket = travel(a, session, b.world) as Uint8Array;
+  const key = keyAt("Ada", b.world);
+  const enter = async () => {
+    const attempt = b.h.join("Ada", {}, { key, ticket });
+    b.h.run(300);
+    await settle();
+    b.h.run(300);
+    return attempt.state;
+  };
+  expect(await enter()).toBe("closed");
+  expect(b.h.host.signin.method.subject(hashKey(key))).toBe("");
+  await signInAs(b.h.host, fake, key, BEN);
+  expect(await enter()).toBe("closed");
+  expect(rec(b, "Ada")).toBeUndefined();
+  await signInAs(b.h.host, fake, key, ADA);
+  expect(await enter()).toBe("active");
 });
