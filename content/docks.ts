@@ -8,7 +8,7 @@
 // and galvanised strips, and walked as the boxes here.
 //
 // The moored boats are statics of the vessels' own meshes, as a harbour's intact hulks are (content/vehicles/harbour-
-// wrecks.ts), each in one of its vessel's paints: kinds that share a mesh are drawn together, so a paint costs no draw.
+// wrecks.ts), each in one of the dyes of a boat left to rot: kinds that share a mesh are drawn together, so a dye costs no draw.
 //
 // Every id here sorts after every other core id (the last before them was core:zzzcurbshape_r8), so no index moves.
 
@@ -82,17 +82,21 @@ const STATICS: readonly StructureDef[] = (Object.keys(DOCK_KINDS) as DockPart[])
 });
 
 /**
- * The paints a moored vessel is found in, a palette index each, by its share: mostly white, as a marina's hulls are, then
- * its own liveries. Each is a kind of the vessel's mesh dyed that colour (the static's colour dyes its paint region).
+ * The dyes a moored vessel is found in, by their share: its paint's palette index, and the one its stripe and seats take.
+ * None is a paint a vessel that still runs is found in (a test holds that), so a boat in clean paint is one to try and a
+ * charred, rusted, bleached or weed-grown one is not. A dye is a kind of the vessel's mesh, and kinds of one mesh are
+ * drawn together, so it costs no draw.
  */
-export const MOORED_PAINTS: Readonly<Record<string, readonly (readonly [number, number])[]>> = Object.fromEntries([BOAT_SPECIES, ...MARINE_FLEET].map((s) => {
-  const own = s.regions![0]!.colors.map(([c]) => c);
-  const rows = new Map<number, number>([[232, 5]]);
-  for (const c of own) rows.set(c, (rows.get(c) ?? 0) + (c === own[0] ? 2 : 1));
-  return [s.id, [...rows.entries()]];
-}));
-/** A vessel's colours past its paint, its stripe, seats and so on: each region's likeliest, or 0 for a region it has not. */
-const TRIMS = new Map([BOAT_SPECIES, ...MARINE_FLEET].map((s) => [s.id, s.regions!.slice(1, 6).map((r) => (r ? [...r.colors].sort((a, b) => b[1] - a[1])[0]![0] : 0))]));
+export const DEAD_DYES: readonly { readonly name: string; readonly paint: number; readonly trim: number; readonly share: number }[] = [
+  { name: "charred", paint: 229, trim: 94, share: 3 },
+  { name: "rusted", paint: 178, trim: 95, share: 3 },
+  { name: "bleached", paint: 231, trim: 99, share: 4 },
+  { name: "weed-grown", paint: 147, trim: 94, share: 2 },
+];
+/** The dyes by vessel, a palette index and its share each: the same for every vessel. */
+export const MOORED_PAINTS: Readonly<Record<string, readonly (readonly [number, number])[]>> = Object.fromEntries([BOAT_SPECIES, ...MARINE_FLEET].map((s) => [s.id, DEAD_DYES.map((d) => [d.paint, d.share] as const)]));
+/** The regions a vessel has past its paint, its stripe, seats and so on: true for each it has. */
+const TRIMS = new Map([BOAT_SPECIES, ...MARINE_FLEET].map((s) => [s.id, s.regions!.slice(1, 6).map((r) => r !== null && r !== undefined)]));
 /** How many times farther off a moored hull's levels are chosen than a found vessel's (StructureDef.coarse). */
 export const MOORED_COARSE = 3;
 /** The static of a vessel moored in a paint. */
@@ -108,8 +112,8 @@ const LAUNCH_SHAPE: ShapeDef = { type: "shape", id: "core:zzzzhullshape_boat", r
 const MOORED: readonly StructureDef[] = [{ id: BOAT_SPECIES.id, shape: LAUNCH_SHAPE.id, boxes: LAUNCH_SHAPE.boxes }, ...MARINE_MODELS.map((m) => ({ id: m.id, shape: hulkOf(m.id).replace("core:", "core:shape_"), boxes: hulkBoxes(m.boxes) }))]
   .flatMap(({ id, shape, boxes }) => MOORED_PAINTS[id]!.map(([paint]): StructureDef => ({
     type: "structure", class: "static", id: mooredKind(id, paint), mesh: id, shape, half: shapeHalf(boxes), color: paint, hp: 8000, material: "core:mat_metal",
-    // Its stripe and seats as its vessel has them; a region it has not, in its paint.
-    colors: TRIMS.get(id)!.map((c) => c || paint),
+    // Its stripe and seats dulled with it; a region it has not, in its paint.
+    colors: TRIMS.get(id)!.map((has) => (has ? DEAD_DYES.find((d) => d.paint === paint)!.trim : paint)),
     // A marina holds many: its hulls take their coarser levels at a third of the distance a found vessel does, so only
     // those near are textured, still within half a pixel of the finest (client/core/render/scene.ts).
     coarse: MOORED_COARSE,

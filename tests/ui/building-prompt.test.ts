@@ -3,13 +3,14 @@
 
 import { expect, test } from "bun:test";
 import { KEY_PROMPT, KEY_PROMPT_UNDER } from "../../client/core/hud/prompt.ts";
-import { buildingWord, cityWord } from "../../client/core/prompts.ts";
+import { buildingWord, cityWord, deadBoatWord } from "../../client/core/prompts.ts";
 import { chunkAt } from "../../shared/coords.ts";
 import { STAGES, stageOf } from "../../shared/world/breaking.ts";
 import { parseMap, writeMap } from "../../shared/world/mapfile.ts";
 import { ACT_REACH } from "../../shared/world/upkeep.ts";
 import { builtCity } from "../fixtures/buildings.ts";
 import { rocket } from "../fixtures/city.ts";
+import { coreRegistry } from "../fixtures/world.ts";
 import { camp, look, put, screen, shown, until } from "../kit/kit.ts";
 
 const city = builtCity();
@@ -54,4 +55,12 @@ test("the prompt names the building of the piece looked at, and under it how the
   look(h, ada, { x: wall.x, y: wall.y, z: wall.z });
   h.run(300);
   expect(shown(view, KEY_PROMPT)).toBeNull();
+});
+
+test("a moored hull says derelict and a harbour's wreck says wreck, and nothing else says either", () => {
+  const reg = coreRegistry();
+  const word = (id: string): string => deadBoatWord(reg, reg.index.get(id)!);
+  const hull = reg.ids.find((id) => id.startsWith("core:zzzzhull_needle_"))!;
+  expect([word(hull), word("core:hulk_needle_sunk"), word("core:hulk_needle_damaged")]).toEqual(["derelict", "wreck", "wreck"]);
+  expect([word("core:needle"), word("core:wall_wood"), word("core:compact_wreck")]).toEqual(["", "", ""]);
 });
