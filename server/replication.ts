@@ -278,6 +278,22 @@ export class Replication {
     return RESULT_OK;
   }
 
+  /** CMD_CHUNK_AGAIN. Each chunk named that the session holds is sent to it again from nothing, as `refill` does for every session. */
+  chunkAgain(c: Client, r: BitReader): number {
+    const n = r.u8(), said = this.said;
+    if (r.overflow || n > HAVE_MOST) return RESULT_INVALID;
+    for (let i = 0; i < n; i++) if ((said[i] = r.u16()) >= this.world.structs.chunks.length) return RESULT_INVALID;
+    if (r.overflow) return RESULT_INVALID;
+    for (let i = 0; i < n; i++) {
+      const chunk = said[i]!;
+      c.parked.delete(chunk);
+      if (c.known[chunk] === 0) continue;
+      c.known[chunk] = 0;
+      if (c.syncChunk === chunk) c.syncChunk = -1;
+    }
+    return RESULT_OK;
+  }
+
   /** CMD_VIEW. The snapshot takes up what was asked. */
   askView(c: Client, r: BitReader): number {
     const view = r.u16();

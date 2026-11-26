@@ -24,6 +24,7 @@ import type { Def } from "../../shared/content/defs.ts";
 import { Buildings } from "../../shared/world/buildings.ts";
 import { TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { OVERVIEW_CHUNKS, listedRows, partHash, partSteps, readHead, readPart, squareOf, type GroundPiece, type MapContent, type MapHead, type MapPart, type MapPiece, type MapStatics, type NodeLayer, type StaticsPiece } from "../../shared/world/mapfile.ts";
+import { HeldWater } from "./ground/held-water.ts";
 import { Overviews } from "./ground/overviews.ts";
 import { GroundPages, pageBytes, type Chunks } from "./ground/pages.ts";
 import { MapWater } from "../../shared/world/water.ts";
@@ -106,6 +107,8 @@ export class StagedMap {
   readonly buildings: Buildings | null;
   /** The landmarks the head places and the definitions the land part adds, or undefined where the head has none. */
   content: MapContent | undefined;
+  /** The water as its overviews come and go, an overview's square at a time; null where the head has none. */
+  readonly waters: HeldWater | null;
   /** Each sector's come so far that has rows of a listed node layer: those rows, and none of its ground. */
   private readonly listed: GroundPiece[] = [];
   /** The overviews' squares held, and the sectors' grounds come before their overview, by its square. */
@@ -140,7 +143,8 @@ export class StagedMap {
     this.tops = new HeldTops(dims);
     this.buildings = head.buildings ? new Buildings(dims, head.buildings) : null;
     this.content = head.landmarks ? { landmarks: head.landmarks, defs: [] } : undefined;
-    if (head.water) this.hf.water = coarseWater(head);
+    this.waters = head.water ? new HeldWater(head, coarseWater(head)) : null;
+    if (this.waters) this.hf.water = this.waters.water;
   }
 
   /** Takes in a part read: the land's definitions, an overview's ground, node pictures and water, a sector's ground and its listed nodes, a square's tops, or a sector's buildings. */
@@ -157,7 +161,7 @@ export class StagedMap {
     } else if (piece.kind === "overview") {
       const sq = piece.sq, w = sq.cx1 - sq.cx0;
       // Its water first, so each band's change carries it to the lakes, as a release lets its water go before its bands.
-      if (piece.water) this.hf.water = takeWater(this.head, this.hf.water!, piece.sq, piece.water);
+      if (piece.water && this.waters) this.hf.water = takeWater(this.waters, piece.sq, piece.water);
       // Its samples stand in a band at a time, each a change to the ground taken with its chunks' own bounds.
       const block = this.overviews.begin(piece);
       for (let z = sq.cz0; z < sq.cz1; z += BAND_CHUNKS) {
@@ -201,7 +205,7 @@ export class StagedMap {
     this.came.delete(squareKey(col, row));
     block.nodes = false;
     this.overviews.version++;
-    if (this.hf.water && this.head.water) this.hf.water = coarseAgain(this.head, this.hf.water, sq);
+    if (this.waters) this.hf.water = coarseAgain(this.head, this.waters, sq);
     for (let z = sq.cz0; z < sq.cz1; z += BAND_CHUNKS) {
       if (!this.overviews.holds(block)) return;
       const z1 = Math.min(sq.cz1, z + BAND_CHUNKS);
@@ -312,26 +316,22 @@ function coarseSquares(head: MapHead, c: number, out: Uint16Array, at: number): 
   for (let s = 0; s < side * side; s++) out[at + s] = coarse.bodies![nearest(Math.floor(c / dims.chunksX), Math.floor(s / side)) * across + nearest(c % dims.chunksX, s % side)]!;
 }
 
-/** The water once an overview's square is let go: its chunks' squares the coarse picture's again, in the same layout. */
-function coarseAgain(head: MapHead, was: MapWater, sq: Chunks): MapWater {
-  const { dims, squares, block } = was;
-  for (let cz = sq.cz0; cz < sq.cz1; cz++) for (let cx = sq.cx0; cx < sq.cx1; cx++) if (block[cz * dims.chunksX + cx]! >= 0) coarseSquares(head, cz * dims.chunksX + cx, squares, block[cz * dims.chunksX + cx]!);
-  return new MapWater(dims, head.minY, head.stepY, was.cell, was.bodies, was.chunks(), squares);
+/** The water once an overview's square `sq` is let go: its chunks' squares the coarse picture's again, in the same layout. */
+function coarseAgain(head: MapHead, held: HeldWater, sq: Chunks & { readonly col: number; readonly row: number }): MapWater {
+  return held.change(sq, (chunks, was) => chunks.forEach((c) => coarseSquares(head, c, was.squares, was.block[c]!)));
 }
 
 /**
  * The water once an overview's has come: its chunks' squares its own, none where it holds none, in the same layout and
  * the same squares, so whatever was made of the water before reads them where they lie.
  */
-function takeWater(head: MapHead, was: MapWater, sq: { readonly cx0: number; readonly cz0: number; readonly cx1: number; readonly cz1: number }, water: { readonly chunks: Uint32Array; readonly squares: Uint16Array }): MapWater {
-  const { dims, squares, block } = was;
-  const per = was.side * was.side;
-  for (let cz = sq.cz0; cz < sq.cz1; cz++) for (let cx = sq.cx0; cx < sq.cx1; cx++) if (block[cz * dims.chunksX + cx]! >= 0) squares.fill(0, block[cz * dims.chunksX + cx]!, block[cz * dims.chunksX + cx]! + per);
-  water.chunks.forEach((c, k) => {
-    if (block[c]! < 0) throw new Error("map: an overview holds water where its head says there is none");
-    squares.set(water.squares.subarray(k * per, k * per + per), block[c]!);
+function takeWater(held: HeldWater, sq: Chunks & { readonly col: number; readonly row: number }, water: { readonly chunks: Uint32Array; readonly squares: Uint16Array }): MapWater {
+  const { squares, block, side } = held.water, per = side * side;
+  for (const c of water.chunks) if (block[c]! < 0) throw new Error("map: an overview holds water where its head says there is none");
+  return held.change(sq, (chunks) => {
+    for (const c of chunks) squares.fill(0, block[c]!, block[c]! + per);
+    water.chunks.forEach((c, k) => squares.set(water.squares.subarray(k * per, k * per + per), block[c]!));
   });
-  return new MapWater(dims, head.minY, head.stepY, was.cell, was.bodies, was.chunks(), squares);
 }
 
 const NO_HEIGHTS = new Uint16Array(0);
