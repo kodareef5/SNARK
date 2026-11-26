@@ -12,6 +12,7 @@ import { artTest } from "../fixtures/needs-art.ts";
 const handTools = ["torch", "slingshot", "club", "hatchet_metal", "pick_metal", "pike", "sickle", "sword"];
 const camp = ["campfire", "storage_box", "sleeping_bag", "bed", "standing_torch", "cooking_pot", "storage_large", "fireplace"];
 const campFires = ["campfire", "standing_torch", "cooking_pot", "fireplace"];
+const projectiles = ["arrow_stone", "arrow_tranq", "grenade_smoke", "arrow_flame", "grenade_poison", "grappling_hook", "dart_tranq", "c4", "arrow_metal"];
 
 function expectLevels(mesh: SourceMesh, densityFloor: number): void {
   expect(mesh.lods[0]!.sections, mesh.id).toBeDefined();
@@ -45,16 +46,18 @@ async function meshesIn(id: string): Promise<Map<string, SourceMesh>> {
   return new Map(unpackMeshes(pack).map((mesh) => [mesh.id, mesh]));
 }
 
-artTest("hand tools ship grounded models, right-hand models and icons", async () => {
-  const meshes = await meshesIn("core:hand-tools");
+async function expectItemArt(pack: string, items: readonly string[], heldItems: readonly string[]): Promise<void> {
+  const meshes = await meshesIn(pack);
   const icons = new Map(iconSubjects(CORE_CONTENT, (id) => meshes.has(id)).map((icon) => [icon.owner, icon]));
-  for (const tool of handTools) {
-    const id = `core:${tool}`;
-    const held = meshes.get(id);
-    expect(held, id).toBeDefined();
-    expect(held!.skeleton, id).toBe("human");
-    for (const lod of held!.lods) expect(lod.bones?.every((bone) => bone === B_PROP_R), id).toBe(true);
-    expectLevels(held!, 1000);
+  for (const item of items) {
+    const id = `core:${item}`;
+    if (heldItems.includes(item)) {
+      const held = meshes.get(id);
+      expect(held, id).toBeDefined();
+      expect(held!.skeleton, id).toBe("human");
+      for (const lod of held!.lods) expect(lod.bones?.every((bone) => bone === B_PROP_R), id).toBe(true);
+      expectLevels(held!, 1000);
+    }
 
     const drop = meshes.get(`${id}/dropped`);
     expect(drop, id).toBeDefined();
@@ -63,6 +66,10 @@ artTest("hand tools ship grounded models, right-hand models and icons", async ()
     expectLevels(drop!, 500);
     expect(icons.get(id), id).toMatchObject({ icon: `${id}/icon`, mesh: drop!.id });
   }
+}
+
+artTest("hand tools ship grounded models, right-hand models and icons", async () => {
+  await expectItemArt("core:hand-tools", handTools, handTools);
 });
 
 async function expectStationArt(pack: string, stations: readonly string[], fires: readonly string[]): Promise<void> {
@@ -87,4 +94,8 @@ async function expectStationArt(pack: string, stations: readonly string[], fires
 
 artTest("camp stations ship centred models, lit variants and inventory icons", async () => {
   await expectStationArt("core:camp", camp, campFires);
+});
+
+artTest("projectiles ship grounded models and inventory icons", async () => {
+  await expectItemArt("core:projectile-drops", projectiles, []);
 });

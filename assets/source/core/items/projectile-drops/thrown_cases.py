@@ -54,7 +54,7 @@ def c4(prop):
     reduced = (
         (0, 2, 3, 4, 6, 8, 9, 11, 12, 14),
         (0, 3, 4, 6, 8, 10, 12, 14),
-        (0, 4, 6, 8, 10, 12, 14),
+        (0, 4, 8, 10, 14),
     )
     if prop.level:
         profile = [profile[index] for index in reduced[prop.level - 1]]
@@ -63,7 +63,8 @@ def c4(prop):
     quadrant = (corner, (corner[0], corner[2], corner[3]), (corner[0], corner[3]), ((1, 1),))[prop.level]
     perimeter = [*quadrant, *((-y, z) for y, z in reversed(quadrant)),
                  *((-y, -z) for y, z in quadrant), *((y, -z) for y, z in reversed(quadrant))]
-    rings = [[(x, 0.064 + y * height, z * depth) for y, z in perimeter]
+    rise = 0.84 if prop.level == 3 else 1
+    rings = [[(x, rise * (0.064 + y * height), z * depth) for y, z in perimeter]
              for x, height, depth, _ in profile]
     prop.shell(rings, "cloth", planar_sides=True,
                band_surfaces=[surface for _, _, _, surface in profile[:-1]])
@@ -72,5 +73,5 @@ def c4(prop):
         (-0.046, 0.042), (0.046, 0.042), (0.046, -0.042), (-0.046, -0.042),
     ]
     fold = [(0.110, 0.86), (0.120, 1), (0.133, 1), (0.143, 0.94), (0.150, 0.79)]
-    folds_by_level = (fold, (fold[0], fold[2], fold[-1]), (fold[0], fold[2], fold[-1]), (fold[0], fold[-1]))
-    prop.panel((-0.005, 0, 0), label, folds_by_level[prop.level], "orange")
+    folds_by_level = (fold, (fold[0], fold[2], fold[-1]), (fold[0], fold[2], fold[-1]), (fold[0], (0.139, 0.82)))
+    prop.panel((-0.005, 0, 0), label, [(rise * y, scale) for y, scale in folds_by_level[prop.level]], "orange")
