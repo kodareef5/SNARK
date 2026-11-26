@@ -372,7 +372,7 @@ export function settle(view: ProvingView, most = 5000): number {
     port?.advance(scene.now);
     const p = scene.build(cam, remote);
     const moved = p.uploads.length + p.drops.length + p.assetUploads.length + p.assetDrops.length + p.texUploads.length + p.texDrops.length;
-    const done = moved === 0 && r.flying === 0 && r.waiting === 0;
+    const done = moved === 0 && r.flying === 0 && r.waiting === 0 && scene.characters.faces.idle;
     if (!done) p.drawCount = p.tileCount = 0;
     raster.render(p);
     if (done) return frame;

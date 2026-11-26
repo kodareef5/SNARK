@@ -37,7 +37,8 @@ function crowd(tier: string, count: number, frames = 12, net = false) {
   }
   scene.own = null;
   let p = scene.build(cam, remote);
-  for (let f = 0; f < frames; f++) p = scene.build(cam, remote);
+  // Then on until the faces have nothing left to read or make, a share a frame.
+  for (let f = 0; f < frames || (!scene.characters.faces.idle && f < 4000); f++) p = scene.build(cam, remote);
   return { p, view };
 }
 

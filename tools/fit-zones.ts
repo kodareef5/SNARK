@@ -157,10 +157,10 @@ function agreement(look: Uint8Array, label: string, view: ProvingView = provingV
       cam.pitch = -up;
       cam.fovY = 0.7;
       cam.aspect = 1;
-      // The first shot waits for the card and for the look's own head (client/core/render/faces.ts), one a frame.
+      // The first shot waits for the card and for the look's own head (client/core/render/faces.ts), a step a frame.
       if (shot === 1) {
         ready?.(view);
-        for (let k = 0; k < 4; k++) view.render();
+        for (let k = 0; k < 2000 && (k < 4 || !view.scene.characters.faces.idle); k++) view.render();
       }
       view.render();
       for (let py = 0; py < SIZE; py++) {

@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { FACE_COUNT, defaultLook, faceOf, setFace } from "../../shared/anim/look.ts";
 import {
-  allowed, axisDistanceAt, blendFace, clampFace, decodeFaces, encodeFaces, facePivots, faceValues, headBound, remapFaces, sideStep, FACE_EYE_R, FACE_JAW, FACE_LID_L, FACE_PIVOTS,
+  allowed, axisDistanceAt, blendFace, blendSome, clampFace, decodeFaces, encodeFaces, facePivots, faceValues, FaceReader, headBound, remapFaces, sideStep, FACE_EYE_R, FACE_JAW, FACE_LID_L, FACE_PIVOTS,
   OUTSIDE_TOLERANCE, type FaceSide, type FaceTable,
 } from "../../shared/people/faces.ts";
 import { HUMAN } from "../../shared/anim/human.ts";
@@ -142,4 +142,29 @@ test("the clamp draws only vertices past their bound back onto it", () => {
   expect(d(1, face)).toBeCloseTo(bound.r, 6);
   expect(d(2, face)).toBeCloseTo(d(2, neutral) + OUTSIDE_TOLERANCE, 6);
   expect(allowed(bound, 0)).toBe(bound.r);
+});
+
+test("a table read a few entries at a time, and blended so, is the table read and blended whole", () => {
+  const base = randomTable(11, 900, FACE_COUNT);
+  const rng = new Rng(12);
+  const bytes = encodeFaces({
+    ...base,
+    rows: { vertices: Uint32Array.of(3, 400, 899), row: Uint8Array.of(FACE_JAW, FACE_LID_L, FACE_JAW), share: Float32Array.of(1, 0.5, 0.25) },
+    pivots: Float32Array.from({ length: FACE_PIVOTS * 3 }, () => rng.range(-1, 1)),
+    pivotMoves: Float32Array.from({ length: FACE_COUNT * 2 * FACE_PIVOTS * 3 }, () => rng.range(-0.01, 0.01)),
+  });
+  const whole = decodeFaces(bytes), reader = new FaceReader(bytes);
+  let table: FaceTable | null = null, steps = 0;
+  while (!table) {
+    table = reader.step(7);
+    steps++;
+  }
+  expect(steps).toBeGreaterThan(100);
+  expect(encodeFaces(table)).toEqual(encodeFaces(whole));
+  const values = Float32Array.from({ length: FACE_COUNT }, (_, k) => (k % 3 === 0 ? 0 : ((k * 37) % 19) / 9 - 1));
+  const basePoints = Float32Array.from({ length: 900 * 3 }, () => rng.range(-0.2, 0.2));
+  const once = blendFace(whole, values, basePoints, new Float32Array(900 * 3));
+  const bit = Float32Array.from(basePoints), at = new Int32Array(2);
+  while (!blendSome(table, values, bit, at, 13));
+  expect([...bit]).toEqual([...once]);
 });
