@@ -12,6 +12,7 @@
 import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { withCityLock } from "./city-lock.ts";
 
 const ROOT = resolve(import.meta.dir, "../..");
 const HERE = import.meta.dir;
@@ -203,28 +204,10 @@ export function runCity(name: string, o: CityRun = {}): { cut: string; work: str
   const cut = sha(JSON.stringify([settings.centre, settings.bounds])).slice(0, 10);
   const top = join(o.mapdata ?? join(ROOT, "var/mapdata"), name);
   const work = join(top, cut, name);
-  mkdirSync(join(work, "ruins"), { recursive: true });
-  // One run of a city at a time, taken before the run writes anything: two wrote one stages.json and one set of layers,
-  // and stopping one took pkill. Made only where none is (wx), so two runs starting together cannot both take it; it
-  // holds the run's process id and is let go when the run ends, and one a process no longer running left is taken over.
-  const lock = join(top, "run.lock");
-  const take = (): boolean => { try { writeFileSync(lock, String(process.pid), { flag: "wx" }); return true; } catch { return false; } };
-  if (!take()) {
-    const held = Number(readFileSync(lock, "utf8"));
-    let alive = false;
-    try { alive = held > 0 && process.kill(held, 0); } catch { alive = false; }
-    if (alive) throw new Error(`${name}: another run of this city is going, process ${held} (${lock})`);
-    unlinkSync(lock);
-    if (!take()) throw new Error(`${name}: another run took ${lock} as this one found it left behind`);
-  }
-  const release = (): void => { try { if (readFileSync(lock, "utf8") === String(process.pid)) unlinkSync(lock); } catch { /* gone already */ } };
-  process.on("exit", release);
-  try {
+  return withCityLock(top, cut, () => {
+    mkdirSync(join(work, "ruins"), { recursive: true });
     return stagesOf(name, { stages, names, cwd, maps, source, settings, cut, top, work, from, to, only, other: o.bounds !== undefined });
-  } finally {
-    release();
-    process.off("exit", release);
-  }
+  });
 }
 
 interface Prepared {
