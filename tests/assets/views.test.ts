@@ -62,7 +62,8 @@ artTest("a snapshot on a tier with textures draws the house with its materials o
     textured[tier] = draws.length;
     const meshes = draws.map(d => files.manifest.meshes[p.drawMesh[d]!]!.id);
     const houseArt = /_(thatch|wood|stone)$|^core:(storage_box|storage_large|vault|(?:tree|oak|fig|banyan|mangrove)_\d+)$/;
-    for (const mesh of meshes) expect(mesh).toMatch(houseArt);
+    const resourceArt = /^core:(oil_rock|crystal_rock|obsidian_rock|clam)_[12](_depleted)?$/;
+    for (const mesh of meshes) expect(houseArt.test(mesh) || resourceArt.test(mesh), mesh).toBe(true);
     if (tier === "ultra") expect(meshes).toEqual(expect.arrayContaining(["core:storage_box", "core:storage_large", "core:vault"]));
     pictures[tier] = view.raster.color.slice();
   }

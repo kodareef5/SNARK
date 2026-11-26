@@ -5,6 +5,7 @@
 // kept under .cache/icons by everything it is drawn from, so a build draws only what changed.
 
 import { BLOCKOUT_MESH } from "./blockout.ts";
+import { readPicture } from "./image.ts";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -74,7 +75,7 @@ export interface IconSubject {
  * as a structure and has neither is drawn as it will stand: from its own `#preview` mesh, else from the mesh of the
  * first structure it places (that slot's stand-in, `#mesh`), in that structure's colour (stations-plan.md, S5).
  */
-export function iconSubjects(defs: readonly (Def | null)[], has: (mesh: string) => boolean): IconSubject[] {
+export function iconSubjects(defs: readonly (Def | null)[], has: (mesh: string) => boolean, meshes?: ReadonlyMap<string, string>): IconSubject[] {
   const items = defs.filter((d): d is ItemDef => d !== null && d.type === "item");
   const structures = new Map(defs.filter((d): d is Def => d !== null && d.type === "structure").map((d) => [d.id, d]));
   const vehicles = new Map(defs.filter((d): d is SpeciesDef => d !== null && d.type === "species" && d.class === "vehicle").map(d => [d.id, d]));
@@ -91,6 +92,8 @@ export function iconSubjects(defs: readonly (Def | null)[], has: (mesh: string) 
   for (const d of items) {
     const icon = uses.find((u) => u.owner === d.id && u.slot === "icon")?.id ?? "";
     let [mesh, colors] = [own(d.id, "dropped") || own(d.id, "held"), colour(d)];
+    const iconMesh = meshes?.get(icon);
+    if (iconMesh && has(iconMesh)) mesh = iconMesh;
     const egg = eggProp.get(d.id);
     const shell = egg?.item ? eggColours(egg.item, d.id === egg.fertile) : undefined;
     if (mesh === "" && egg && shell) mesh = own(egg.id, "mesh");
@@ -390,6 +393,10 @@ export interface IconOptions {
   cache?: string | null;
   /** The view of each mesh that is not drawn the usual way, by mesh id. */
   framing?: ReadonlyMap<string, IconFraming>;
+  /** By icon id, an authored inventory picture of this build’s cell size. */
+  images?: ReadonlyMap<string, string>;
+  /** Meshes that a build draws only for the given icon slots. */
+  meshes?: ReadonlyMap<string, string>;
   /** What keys a texture's pixels: by default its rgba hashes in the manifest. */
   textureKey?: (slot: number) => string;
   size?: number;
@@ -473,10 +480,23 @@ export function iconSheets(drawn: DrawnIcons, firstFile: number): { sheets: { wi
  * after the files it lists already. The textures are read from the manifest's files as stored, by `read` (rgbaTextures).
  */
 export function buildIcons(pack: Pack, defs: readonly (Def | null)[], manifest: Manifest, read: (file: number, at: number, bytes: number) => Uint8Array, opts: IconOptions = {}): { files: SplitFile[]; report: IconReport } {
-  const subjects = iconSubjects(defs, (id) => pack.meshIndex.has(id));
+  const subjects = iconSubjects(defs, (id) => pack.meshIndex.has(id), opts.meshes);
   const textureKey = (slot: number): string => (manifest.textures?.[slot]?.in.rgba?.hash ?? []).join(",");
   // The manifest's materials name its textures, which a build may have shared out or left out.
   const drawn = drawIcons({ ...pack, header: { ...pack.header, materials: manifest.materials } }, subjects, rgbaTextures(manifest, read), { textureKey, ...opts });
+  if (opts.images?.size) {
+    const slots = new Set(slotsOf(defs.filter((d): d is Def => d !== null)).filter(slot => slot.asset === "icon").map(slot => slot.id));
+    for (const [id, path] of opts.images) {
+      if (!slots.has(id) || drawn.index.has(id)) throw new Error(`Icon ${id} needs its own unused item slot`);
+      const picture = readPicture(path);
+      if (picture.width !== drawn.size || picture.height !== drawn.size || picture.channels !== 4 || !(picture.data instanceof Uint8Array)) {
+        throw new Error(`Icon ${id} must be ${drawn.size}×${drawn.size} RGBA8`);
+      }
+      drawn.index.set(id, drawn.pictures.push(picture.data) - 1);
+      drawn.report.items++;
+      drawn.report.pictures++;
+    }
+  }
   const { sheets, icons } = iconSheets(drawn, manifest.files.length);
   const out = sheets.map((s, k): SplitFile => ({ name: `core.icons.${k}.png`, role: "icon", bytes: iconPng(s.width, s.height, s.rgba) }));
   for (const f of out) manifest.files.push({ name: f.name, bytes: f.bytes.length, role: "icon" });
@@ -485,14 +505,25 @@ export function buildIcons(pack: Pack, defs: readonly (Def | null)[], manifest: 
   return { files: out, report: drawn.report };
 }
 
-/** The views the pieces of the assets under assets/source ask for (`PieceSpec.icon`), by piece id. */
-export async function assetFraming(): Promise<Map<string, IconFraming>> {
-  const out = new Map<string, IconFraming>();
+/** The camera frames and inventory picture overrides each installed asset names. */
+export async function assetIconInputs() {
+  const framing = new Map<string, IconFraming>();
+  const images = new Map<string, string>();
+  const meshes = new Map<string, string>();
   for (const asset of await findAssets()) {
     if (asset.spec.kind !== "pieces") continue;
-    for (const p of asset.spec.pieces) if (p.icon) out.set(p.id, framingOf(p.icon));
+    for (const p of asset.spec.pieces) if (p.icon) framing.set(p.id, framingOf(p.icon));
+    if (!existsSync(asset.file)) continue;
+    for (const [id, mesh] of Object.entries(asset.spec.iconMeshes ?? {})) {
+      if (meshes.has(id) || images.has(id)) throw new Error(`More than one picture for icon ${id}`);
+      meshes.set(id, mesh);
+    }
+    for (const [id, file] of Object.entries(asset.spec.iconImages ?? {})) {
+      if (meshes.has(id) || images.has(id)) throw new Error(`More than one picture for icon ${id}`);
+      images.set(id, join(asset.dir, file));
+    }
   }
-  return out;
+  return { framing, images, meshes };
 }
 
 /**
@@ -501,7 +532,7 @@ export async function assetFraming(): Promise<Map<string, IconFraming>> {
  */
 export async function gameIcons(core: Uint8Array, manifest: Manifest, read: (file: number, at: number, bytes: number) => Uint8Array): Promise<SplitFile[]> {
   const defs = compileContent(CORE_CONTENT).registry!.defs;
-  const built = buildIcons(parsePack(core), defs, manifest, read, { framing: await assetFraming() });
+  const built = buildIcons(parsePack(core), defs, manifest, read, await assetIconInputs());
   console.log(iconLine(built.report));
   return built.files;
 }

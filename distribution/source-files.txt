@@ -1959,6 +1959,10 @@ assets/source/core/humans/survivor/sound/takes/voice/male/wake/moss-pt-2570-0148
 assets/source/core/humans/survivor/sound/takes/voice/male/wake/moss-pt-2570-05520.wav
 assets/source/core/humans/survivor/sound/takes/voice/male/winded/moss-pt-2530-07005.wav
 assets/source/core/items/droppings/droppings.snpk
+assets/source/core/items/end-game/end-game.snpk
+assets/source/core/items/end-game/icons/cannon_round.png
+assets/source/core/items/end-game/icons/jet_cannon.png
+assets/source/core/items/end-game/icons/jet_missile_rack.png
 assets/source/core/items/field-supplies/field-supplies.snpk
 assets/source/core/items/field-supplies/ref/form-study.png
 assets/source/core/items/field-supplies/ref/material-study.png

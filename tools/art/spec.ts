@@ -415,6 +415,10 @@ export interface PiecesAsset {
    *   part of a long thing that says what it is, as the spear's head.
    */
   readonly pieces: readonly PieceSpec[];
+  /** Inventory icon slots and their transparent PNGs, relative to the asset. */
+  readonly iconImages?: Readonly<Record<string, string>>;
+  /** Inventory icon slots that show existing meshes without adding a held or dropped slot. */
+  readonly iconMeshes?: Readonly<Record<string, string>>;
   /**
    * The pictures of each Blender material, by its name. A piece is drawn with them on its levels that have texture
    * coordinates, and flat in the palette colour nearest each material's mean colour.

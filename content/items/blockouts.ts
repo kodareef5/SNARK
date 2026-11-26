@@ -16,7 +16,6 @@ import { ARROWS, ATTACHMENTS, BLOW, BOW_AIM, PISTOL_AIM, RIFLE_AIM, SHOTGUN_AIM 
 
 const id = (name: string): string => `core:${name}`;
 /** The plain box every blocked-out thing is in the hand (tools/pack/blockout.ts). */
-const BOX = id("blockout");
 const engram = (name: string): string => id(`engram-${name}`);
 /** ARK's minutes, as in-game hours (content/core.ts). */
 const minutes = (n: number): number => (n * 60) / 140;
@@ -105,7 +104,7 @@ const ARMS: Def[] = [
   // Electric Prod: weight 6, melee 1 and 400 torpor a strike, and it is spent by one; 120 polymer, 130 ingots, 120
   // electronics, 70 paste, 120 crystal and 15 AnglerGel at the fabricator in 5 s; level 95, 60 points. Charging it again
   // with AnglerGel is not built: it is mended as any thing is.
-  { type: "item", class: "weapon", id: id("prod"), label: "electric prod", stack: 1, weight: 6, color: 11, weapon: { kind: "melee", damage: 1, type: "melee", torpor: 400, uses: 1, wet: true, mesh: BOX, hold: "tool" } },
+  { type: "item", class: "weapon", id: id("prod"), label: "electric prod", stack: 1, weight: 6, color: 11, weapon: { kind: "melee", damage: 1, type: "melee", torpor: 400, uses: 1, wet: true, mesh: id("prod"), hold: "tool" } },
   ...made("prod", "Electric prod", 95, 60, 1, 5, [["polymer", 120], ["ingot", 130], ["electronics", 120], ["paste", 70], ["crystal", 120], ["angler_gel", 15]], "fabricator"),
 
   // Compound Bow: weight 12; a stone arrow does 75 from it and a metal one 175.5, 1.35 times the arrow; durability 55 at

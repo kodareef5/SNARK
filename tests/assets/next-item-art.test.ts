@@ -8,7 +8,8 @@ import { parsePack } from "../../shared/pack/pack.ts";
 import { nodeForms } from "../../shared/world/nodes.ts";
 import { findAssets } from "../../tools/art/assets.ts";
 import { grayboxMeshes } from "../../tools/pack/build.ts";
-import { iconSubjects } from "../../tools/pack/icons.ts";
+import { assetIconInputs, iconSubjects } from "../../tools/pack/icons.ts";
+import { readPicture } from "../../tools/pack/image.ts";
 import { boundsOf } from "../../tools/pack/lying.ts";
 import { spanOf } from "../../tools/pack/surface.ts";
 import { weaponMeshes } from "../../tools/pack/weapons.ts";
@@ -272,5 +273,34 @@ artTest("resource nodes keep walked variants and mined remnants within bounds", 
         }
       }
     }
+  }
+});
+
+artTest("end game pickups ship art and fitted jet equipment ships icons", async () => {
+  const pack = "core:end-game";
+  await expectItemArt(pack, ["prod", "plasma_charge", "dart_shock", "plasma_cell"], ["prod"]);
+  const meshes = await meshesIn(pack);
+  const { images, meshes: overrides } = await assetIconInputs();
+  const subjects = iconSubjects(CORE_CONTENT, id => meshes.has(id));
+  for (const name of ["jet_cannon", "jet_missile_rack", "cannon_round", "jet_missile"]) {
+    const id = `core:${name}`;
+    const def = CORE_CONTENT.find(entry => entry.id === id);
+    if (def?.type !== "item") throw new Error(id);
+    expect(def.craft, id).toBeUndefined();
+    expect(CORE_CONTENT.some(entry => entry.type === "engram" && entry.item === id), id).toBe(false);
+    expect(CORE_CONTENT.some(entry => entry.type === "species" && entry.drops?.some(drop => drop.item === id)), id).toBe(false);
+    expect(subjects.some(subject => subject.owner === id), id).toBe(false);
+    if (name === "jet_missile") {
+      expect(def.ammo?.mesh, id).toBe("core:rocket_round");
+      expect(iconSubjects(CORE_CONTENT, key => key === def.ammo?.mesh, overrides).find(subject => subject.owner === id)?.mesh, id)
+        .toBe(def.ammo?.mesh);
+      continue;
+    }
+    const icon = images.get(`${id}/icon`);
+    expect(icon, id).toBeDefined();
+    const picture = readPicture(icon!);
+    expect([picture.width, picture.height, picture.channels, picture.depth], id).toEqual([128, 128, 4, 8]);
+    const alpha = picture.data.filter((_, at) => at % 4 === 3);
+    expect(alpha.some(opacity => opacity === 0) && alpha.some(opacity => opacity === 255), id).toBe(true);
   }
 });
