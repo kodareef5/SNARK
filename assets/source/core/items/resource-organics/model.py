@@ -1,17 +1,23 @@
 """Model the eight resource pickups with their own silhouette at each level."""
 
+import sys
 from math import cos, pi, sin, tau
+from pathlib import Path
 
 import bpy
 from mathutils import Vector
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from resource_uv import atlas_uv, loft_uv, planar_uv
+
 
 BARE = (
     (132, 82, 58), (202, 155, 99), (199, 164, 103),
-    (119, 128, 73), (153, 85, 61), (132, 127, 119),
-    (76, 54, 38), (211, 193, 152), (131, 169, 149),
+    (119, 128, 73), (153, 85, 61), (130, 124, 114),
+    (76, 54, 38), (211, 193, 152), (187, 199, 179),
 )
 BARK, GRAIN, STRAW, BAST, HIDE, FUR, SHELL, HORN, WAX = range(len(BARE))
+TILE_METRES = 0.95
 
 
 def linear(value):
@@ -21,7 +27,9 @@ def linear(value):
 
 def material(name, rgb):
     mat = bpy.data.materials.new(name)
-    mat.diffuse_color = (*map(linear, rgb), 1)
+    mat.use_nodes = True
+    shader = mat.node_tree.nodes.get("Principled BSDF")
+    shader.inputs["Base Color"].default_value = (*map(linear, rgb), 1)
     return mat
 
 
@@ -30,10 +38,10 @@ FLAT = [material(f"organics_{name}", rgb) for name, rgb in zip(
     ("bark", "grain", "straw", "bast", "hide", "fur", "shell", "horn", "wax"), BARE)]
 
 
-def atlas_uv(tile, uv):
+def in_atlas(tile, chart):
     row, col = divmod(tile, 3)
-    u, v = uv
-    return ((24.5 + col * 160 + 143 * u) / 512, 1 - (24.5 + row * 160 + 143 * (1 - v)) / 512)
+    center = ((96 + col * 160) / 512, 1 - (96 + row * 160) / 512)
+    return atlas_uv(chart, span=TILE_METRES, center=center, cell=(143 / 512, 143 / 512))
 
 
 class Part:
@@ -65,8 +73,8 @@ class Part:
             uv_map = mesh.uv_layers.new(name="UVMap")
             for poly, (tile, _, uvs, smooth) in zip(mesh.polygons, self.faces):
                 poly.use_smooth = smooth
-                for index, uv in zip(poly.loop_indices, uvs):
-                    uv_map.data[index].uv = atlas_uv(tile, uv)
+                for index, uv in zip(poly.loop_indices, in_atlas(tile, uvs)):
+                    uv_map.data[index].uv = uv
         else:
             for mat in FLAT:
                 mesh.materials.append(mat)
@@ -95,15 +103,14 @@ def loft(part, path, tile, sides, cap=None, closed=False, phase=pi, rugged=0):
             row.append(part.point(center + rough * (cos(angle) * rise * up + sin(angle) * width * side)))
         rings.append(row)
 
-    count = len(path) if closed else len(path) - 1
-    for i in range(count):
+    positions = [[part.points[point] for point in row] for row in rings]
+    if closed:
+        positions.append(positions[0])
+    for i, band in enumerate(loft_uv(positions)):
         lower, upper = rings[i], rings[(i + 1) % len(path)]
-        v0, v1 = i / count, (i + 1) / count
-        for j in range(sides):
+        for j, chart in enumerate(band):
             next_side = (j + 1) % sides
-            u0, u1 = j / sides, (j + 1) / sides
-            part.face(tile, [lower[j], lower[next_side], upper[next_side], upper[j]],
-                      [(u0, v0), (u1, v0), (u1, v1), (u0, v1)])
+            part.face(tile, [lower[j], lower[next_side], upper[next_side], upper[j]], chart)
 
     if closed:
         return
@@ -111,38 +118,36 @@ def loft(part, path, tile, sides, cap=None, closed=False, phase=pi, rugged=0):
         tip = part.point(centers[end])
         direction = -1 if end == 0 else 1
         ring = rings[end]
+        normal = (centers[0] - centers[1]) if end == 0 else (centers[-1] - centers[-2])
         for j in range(sides):
             next_side = (j + direction) % sides
-            angle = phase + j * tau / sides
-            following = angle + direction * tau / sides
-            uvs = [(0.5, 0.5), (0.5 + 0.47 * direction * cos(angle), 0.5 + 0.47 * sin(angle)),
-                   (0.5 + 0.47 * direction * cos(following), 0.5 + 0.47 * sin(following))]
-            part.face(tile if cap is None else cap, [tip, ring[j], ring[next_side]], uvs, smooth=False)
+            corners = [tip, ring[j], ring[next_side]]
+            chart = planar_uv([part.points[k] for k in corners], origin=centers[end], normal=normal)
+            part.face(tile if cap is None else cap, corners, chart, smooth=False)
 
 
-def cover(part, perimeter, center, top_height, bottom_height, rim, tile, rings):
+def cover(part, perimeter, center, top_height, bottom_height, rim, tile, rings, trim=0):
     """Close a thin shell between two bowed surfaces and a continuous rim."""
     count = len(perimeter)
-    reach = max(max(abs(p[0] - center[0]), abs(p[1] - center[1])) for p in perimeter)
     edges = []
     for side, summit in ((1, top_height), (-1, bottom_height)):
         crown = part.point((*center, summit))
         levels = []
-
-        def uv(index):
-            x, y, _ = part.points[index]
-            return (0.5 + 0.46 * (x - center[0]) / reach, 0.5 + side * 0.46 * (y - center[1]) / reach)
+        offset = 1 if side > 0 else 1 - trim
 
         def face(indices):
             if side < 0:
                 indices.reverse()
-            part.face(tile, indices, [uv(index) for index in indices])
+            chart = planar_uv([part.points[index] for index in indices], origin=(*center, 0), normal=(0, 0, side))
+            part.face(tile, indices, chart)
 
         for step in range(1, rings + 1):
             radius = step / rings
-            row = [part.point((center[0] * (1 - radius) + x * radius, center[1] * (1 - radius) + y * radius,
-                               summit * (1 - radius ** 2) + (z + side * rim / 2) * radius ** 2))
-                   for x, y, z in perimeter]
+            row = []
+            for x, y, z, width in perimeter:
+                height = summit * (1 - radius ** 2) + (z + side * rim * width / 2) * radius ** 2
+                row.append(part.point((center[0] + (x - center[0]) * radius * offset,
+                                       center[1] + (y - center[1]) * radius * offset, height)))
             levels.append(row)
             for j in range(count):
                 following = (j + 1) % count
@@ -154,15 +159,18 @@ def cover(part, perimeter, center, top_height, bottom_height, rim, tile, rings):
         edges.append(levels[-1])
 
     top, bottom = edges
-    for j in range(count):
-        following = (j + 1) % count
-        u0, u1 = j / count, (j + 1) / count
-        part.face(tile, [bottom[j], bottom[following], top[following], top[j]],
-                  [(u0, 0.08), (u1, 0.08), (u1, 0.17), (u0, 0.17)])
+    band = loft_uv([[part.points[i] for i in edge] for edge in (bottom, top)])[0]
+    patch = max(1, count // 5)
+    for start in range(0, count, patch):
+        charts = band[start:start + patch]
+        offset = (charts[0][0][0] + charts[-1][1][0]) / 2
+        for j, chart in enumerate(charts, start):
+            following = (j + 1) % count
+            part.face(tile, [bottom[j], bottom[following], top[following], top[j]], [(u - offset, v) for u, v in chart])
 
 
 def outline(sides, center, extent, height, angle, flutes, teeth=0, detail=0):
-    """Trace a clockwise-viewed outline from far side to near in plan."""
+    """Trace the carapace edge in plan."""
     points = []
     for j in range(sides):
         t = j * tau / sides
@@ -171,7 +179,7 @@ def outline(sides, center, extent, height, angle, flutes, teeth=0, detail=0):
         x, y = cos(t) * extent[0] * shape, sin(t) * extent[1] * shape
         points.append((center[0] + cos(angle) * x - sin(angle) * y,
                        center[1] + sin(angle) * x + cos(angle) * y,
-                       height + detail * (0.58 * cos(2 * t - 0.4) + 0.42 * sin(3 * t))))
+                       height + detail * (0.58 * cos(2 * t - 0.4) + 0.42 * sin(3 * t)), 1))
     return points
 
 
@@ -240,58 +248,59 @@ def fiber(part, level):
 
 
 def hide(part, level):
-    path = [
-        (-0.208, -0.012, 0.020, 0.100), (-0.173, -0.007, 0.018, 0.122),
-        (-0.137, 0.002, 0.034, 0.104), (-0.085, 0.001, 0.065, 0.096),
-        (-0.035, -0.007, 0.038, 0.110), (0.021, 0.002, 0.020, 0.107),
-        (0.080, 0.007, 0.019, 0.089), (0.143, 0.011, 0.031, 0.109),
-        (0.173, 0.014, 0.052, 0.105), (0.174, 0.014, 0.085, 0.101),
-        (0.149, 0.016, 0.105, 0.090), (0.111, 0.023, 0.101, 0.076),
-        (0.076, 0.028, 0.075, 0.061),
-    ]
-    indices = (tuple(range(13)), (0, 2, 3, 5, 7, 8, 9, 10, 12), (0, 3, 6, 8, 10, 12), (0, 5, 8, 10, 12))[level]
-    width = (8, 5, 4, 3)[level]
-    count = len(indices)
-    layers = []
-    for side in (1, -1):
-        surface = []
-        for i in indices:
-            x, y, z, span = path[i]
-            a = Vector(path[max(0, i - 1)][:3])
-            b = Vector(path[min(12, i + 1)][:3])
-            normal = Vector((a.z - b.z, 0, b.x - a.x)).normalized()
-            row = []
-            for j in range(width):
-                across = 2 * j / (width - 1) - 1
-                waviness = abs(across) ** 2
-                point = Vector((x + 0.013 * across * cos(i * 1.1), y + span * across,
-                                z + 0.008 * waviness * sin(i * 1.4 + across * 2)))
-                row.append(part.point(point + side * 0.005 * normal))
-            surface.append(row)
-        layers.append(surface)
-
-        def uv(i, j):
-            return (indices[i] / 12, 0.5 + side * (j / (width - 1) - 0.5))
-
-        for i in range(count - 1):
-            for j in range(width - 1):
-                grid = [(i, j), (i + 1, j), (i + 1, j + 1), (i, j + 1)]
-                part.face(HIDE, [surface[a][b] for a, b in grid[::side]], [uv(a, b) for a, b in grid[::side]])
-
-    upper, lower = layers
-    border = ([(i, 0) for i in range(count)] + [(count - 1, j) for j in range(1, width)] +
-              [(i, width - 1) for i in range(count - 2, -1, -1)] + [(0, j) for j in range(width - 2, 0, -1)])
-    for k, (i, j) in enumerate(border):
-        u, v = border[(k + 1) % len(border)]
-        a, b = k / len(border), (k + 1) / len(border)
-        part.face(HIDE, [upper[u][v], upper[i][j], lower[i][j], lower[u][v]],
-                  [(b, 0.69), (a, 0.69), (a, 0.73), (b, 0.73)])
+    # The hips and shoulders lead into four uneven cut leg tabs.
+    edge = (
+        (0.224, 0.008, 0.029), (0.202, 0.044, 0.033), (0.147, 0.065, 0.027),
+        (0.139, 0.110, 0.045), (0.173, 0.166, 0.059), (0.160, 0.195, 0.071),
+        (0.126, 0.204, 0.064), (0.075, 0.161, 0.039), (0.059, 0.110, 0.037),
+        (0.004, 0.090, 0.032), (-0.065, 0.098, 0.021), (-0.103, 0.151, 0.029),
+        (-0.139, 0.176, 0.037), (-0.172, 0.170, 0.041), (-0.181, 0.146, 0.037),
+        (-0.148, 0.103, 0.024), (-0.169, 0.068, 0.022), (-0.203, 0.037, 0.015),
+        (-0.209, -0.013, 0.017), (-0.173, -0.054, 0.022), (-0.162, -0.088, 0.023),
+        (-0.193, -0.146, 0.026), (-0.181, -0.170, 0.030), (-0.147, -0.177, 0.038),
+        (-0.103, -0.139, 0.048), (-0.061, -0.104, 0.035), (0.006, -0.092, 0.030),
+        (0.062, -0.115, 0.037), (0.090, -0.160, 0.048), (0.122, -0.186, 0.063),
+        (0.159, -0.173, 0.068), (0.168, -0.145, 0.058), (0.138, -0.114, 0.040),
+        (0.130, -0.077, 0.020), (0.190, -0.057, 0.021), (0.214, -0.028, 0.023),
+    )
+    outline_indices = (
+        range(len(edge)),
+        (0, 2, 3, 5, 6, 8, 10, 12, 14, 16, 18, 20, 21, 23, 25, 26, 28, 29, 31, 33, 35),
+        (0, 2, 5, 6, 8, 10, 12, 14, 18, 20, 21, 23, 26, 29, 31, 33),
+        (0, 2, 5, 6, 9, 12, 14, 18, 20, 22, 23, 26, 29, 31, 33),
+    )[level]
+    perimeter = [(*edge[j], 0.76 + 0.24 * cos(j * 1.8)) for j in outline_indices]
+    cover(part, perimeter, (0, 0), 0.051, 0.040, 0.009, HIDE, (3, 2, 2, 1)[level])
 
 
 def pelt(part, level):
-    count = (36, 26, 16, 13)[level]
-    edge = outline(count, (0, 0), (0.190, 0.140), 0.017, 0.22, 0.16, (0.12, 0.10, 0.06, 0.03)[level], 0.010)
-    cover(part, edge, (0, 0), 0.055, 0.016, 0.011, FUR, (4, 2, 2, 1)[level])
+    edge = (
+        (0.189, 0.006, 0.044), (0.162, 0.050, 0.047), (0.174, 0.100, 0.058),
+        (0.105, 0.114, 0.062), (0.053, 0.140, 0.063), (-0.034, 0.125, 0.050),
+        (-0.101, 0.131, 0.056), (-0.182, 0.095, 0.043), (-0.167, 0.021, 0.037),
+        (-0.174, -0.056, 0.046), (-0.104, -0.095, 0.036), (-0.061, -0.139, 0.048),
+        (-0.012, -0.128, 0.034), (0.046, -0.102, 0.040), (0.126, -0.120, 0.055),
+        (0.174, -0.066, 0.048),
+    )
+    perimeter = []
+    for j, a in enumerate(edge):
+        if level == 3 and j in (1, 4, 8, 10, 12, 14):
+            continue
+        b = edge[(j + 1) % len(edge)]
+        outward = Vector((b[1] - a[1], a[0] - b[0])).normalized()
+        perimeter.append((*a, 0.86))
+        if level > 1:
+            continue
+        length = (Vector(a) - Vector(b)).length
+        spread = min(length * 0.42, 0.014 + 0.011 * (0.5 + 0.5 * sin(j * 3.77)))
+        t = 0.66 + 0.16 * sin(j * 1.66)
+        x, y, z = (a[k] * (1 - t) + b[k] * t for k in range(3))
+        if level == 0:
+            # A narrow notch behind the swept tuft separates the tip from its roots.
+            perimeter.append((0.75 * a[0] + 0.25 * b[0] - outward.x * 0.003,
+                              0.75 * a[1] + 0.25 * b[1] - outward.y * 0.003, 0.75 * a[2] + 0.25 * b[2], 0.59))
+        perimeter.append((x + outward.x * spread, y + outward.y * spread, z + 0.008, 0.19))
+    cover(part, perimeter, (0, 0), 0.093, 0.022, 0.026, FUR, (3, 2, 2, 1)[level], trim=0.065)
 
 
 def chitin(part, level):
@@ -320,17 +329,36 @@ def keratin(part, level):
 
 
 def polymer(part, level):
-    lobes = (
-        ((-0.012, 0), (0.162, 0.119), 0.056, 0.152, 0.30),
-        ((0.116, 0.055), (0.084, 0.072), 0.048, 0.115, -0.70),
-        ((-0.123, -0.058), (0.081, 0.066), 0.032, 0.089, 0.30),
-        ((0.041, -0.092), (0.057, 0.043), 0.026, 0.071, 0.80),
+    upper = (
+        (0.178, 0.004, 0.040), (0.172, 0.026, 0.055), (0.139, 0.044, 0.065), (0.151, 0.072, 0.078),
+        (0.082, 0.089, 0.065), (0.032, 0.066, 0.056), (-0.014, 0.093, 0.049), (-0.108, 0.073, 0.031),
+        (-0.140, 0.047, 0.028), (-0.108, 0.030, 0.033), (-0.152, -0.009, 0.041), (-0.120, -0.070, 0.041),
+        (-0.072, -0.062, 0.049), (-0.035, -0.086, 0.068), (0.014, -0.059, 0.064), (0.072, -0.056, 0.058),
+        (0.098, -0.031, 0.050), (0.148, -0.043, 0.046),
     )
-    for j, (center, extent, z, top, angle) in enumerate(lobes[:(4, 4, 3, 2)[level]]):
-        sides = (18, 14, 11, 9)[level] if j == 0 else (12, 7, 8, 7)[level]
-        rings = (3, 2, 1, 1)[level] if j == 0 else (2, 2, 1, 1)[level]
-        edge = outline(sides, center, extent, z, angle, 0.13, 0.06, 0.034)
-        cover(part, edge, center, top, z - 0.041, 0.023, WAX, rings)
+    under = (
+        (0.179, 0.058, 0.016), (0.154, 0.091, 0.030), (0.120, 0.082, 0.031), (0.101, 0.116, 0.045),
+        (0.028, 0.101, 0.043), (-0.040, 0.118, 0.029), (-0.092, 0.100, 0.021), (-0.080, 0.061, 0.011),
+        (-0.105, 0.027, 0.013), (-0.065, 0.006, 0.016), (0.036, -0.004, 0.021), (0.139, 0.023, 0.025),
+    )
+    chip = (
+        (-0.074, -0.087, 0.019), (-0.077, -0.071, 0.028), (-0.104, -0.058, 0.039), (-0.123, -0.069, 0.036),
+        (-0.148, -0.056, 0.031), (-0.184, -0.062, 0.018), (-0.204, -0.083, 0.015), (-0.182, -0.105, 0.010),
+        (-0.170, -0.128, 0.015), (-0.143, -0.116, 0.019), (-0.117, -0.135, 0.029), (-0.095, -0.105, 0.021),
+    )
+    for i, (edge, center, top, bottom) in enumerate((
+        (upper, (0, 0), 0.075, 0.058), (under, (0.036, 0.057), 0.047, 0.024), (chip, (-0.139, -0.090), 0.032, 0.014),
+    )):
+        if level == 3 and i == 2:
+            continue
+        if i == 0:
+            indices = (range(18), (0, 2, 3, 4, 6, 8, 9, 10, 11, 13, 15, 17),
+                       (0, 2, 3, 4, 6, 8, 10, 11, 13, 15, 17), (0, 3, 4, 6, 8, 10, 11, 13, 17))[level]
+        else:
+            indices = (range(12), (0, 1, 3, 4, 6, 8, 10, 11), (0, 1, 3, 4, 6, 8, 10, 11),
+                       (0, 1, 3, 4, 6, 8, 10, 11))[level]
+        perimeter = [(*edge[j], 0.53 + 0.36 * cos(j * 2.7)) for j in indices]
+        cover(part, perimeter, center, top, bottom, 0.017, WAX, ((3, 2, 1, 1) if i == 0 else (2, 2, 1, 1))[level])
 
 
 for name, shape in (

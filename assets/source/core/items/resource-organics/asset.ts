@@ -4,11 +4,11 @@ const views = {
   wood: { around: 0.82, above: 0.58 },
   thatch: { around: 0.38, above: 1.18 },
   fiber: { around: 0.51, above: 1.16 },
-  hide: { around: 0.9, above: 0.94 },
-  pelt: { around: -0.35, above: 1.19 },
+  hide: { around: 0.6, above: 1.20 },
+  pelt: { around: -0.35, above: 1.04 },
   chitin: { around: 0.59, above: 0.89 },
   keratin: { around: 0.39, above: 1.02 },
-  organic_polymer: { around: 0.7, above: 0.81 },
+  organic_polymer: { around: 0.7, above: 0.94 },
 };
 
 export default {

@@ -2,7 +2,7 @@
   "repository": "kodareef5/SNARK",
   "art": {
     "release": "art",
-    "id": "dd73f308e127e452",
+    "id": "000e124b4b75ba38",
     "files": [
       {"name": "core-creatures-allosaur", "file": "core-creatures-allosaur.5eb2682fdf0a.tar.zst", "bytes": 2833562, "sha256": "5eb2682fdf0abb902fa1807673cf9dc46c3111e728eda23299b3a910d74129e2"},
       {"name": "core-creatures-ankylo", "file": "core-creatures-ankylo.d19e9025be7c.tar.zst", "bytes": 1901178, "sha256": "d19e9025be7ccaeb84f4bf80f6554f9e9a6a2971b062a6666ab9f50e8901146b"},
@@ -58,9 +58,9 @@
       {"name": "core-humans-human-clips", "file": "core-humans-human-clips.20a98a447d46.tar.zst", "bytes": 23882, "sha256": "20a98a447d463106d83038cd080a71f43e15e0bc49e97c97241904cec6faa3e0"},
       {"name": "core-humans-survivor", "file": "core-humans-survivor.8a07f7a455e2.tar.zst", "bytes": 8378528, "sha256": "8a07f7a455e20ceaecf8f7a6a8c3a739a791148a9a600c0050a0d60f30443b1d"},
       {"name": "core-items-frond-glider", "file": "core-items-frond-glider.0bf8f2a357f9.tar.zst", "bytes": 90313, "sha256": "0bf8f2a357f92691e34957703356e4f4e17fd6ee7c0b5a7a5f9151fbec2383cd"},
-      {"name": "core-items-resource-minerals", "file": "core-items-resource-minerals.0618158f2aff.tar.zst", "bytes": 619835, "sha256": "0618158f2aff887f004fb323c46a0e96f01d4a62ed2f50cac4853878eaac8174"},
-      {"name": "core-items-resource-organics", "file": "core-items-resource-organics.6bf22135aac0.tar.zst", "bytes": 915961, "sha256": "6bf22135aac0691570ff4a854afbba00c24729a063e6df45ee3a75d85d520b5d"},
-      {"name": "core-items-resource-supplies", "file": "core-items-resource-supplies.9a2c05331eb5.tar.zst", "bytes": 1041814, "sha256": "9a2c05331eb5b6aa29810cd33837811482930020f969d14f35f982c4c4011d08"},
+      {"name": "core-items-resource-minerals", "file": "core-items-resource-minerals.fbd9098535d7.tar.zst", "bytes": 447039, "sha256": "fbd9098535d766c511e0fe2bf2dff683632256651af3d767b77c5aeb9e848ed0"},
+      {"name": "core-items-resource-organics", "file": "core-items-resource-organics.77e0170c12cf.tar.zst", "bytes": 895214, "sha256": "77e0170c12cf318922ff678f21016cde4ed2a08e784631d379d19d04deaa1a14"},
+      {"name": "core-items-resource-supplies", "file": "core-items-resource-supplies.d50f7f83454d.tar.zst", "bytes": 933984, "sha256": "d50f7f83454d15ba0a122af5dd91e2323322ba5c581dfe03a663662c81395853"},
       {"name": "core-items-soul-ball", "file": "core-items-soul-ball.78fb5fb54f31.tar.zst", "bytes": 36713, "sha256": "78fb5fb54f31dc3cfa0b18a1ec411f80c368674222766cf5002b4bbd52bbec28"},
       {"name": "core-items-stone-tools", "file": "core-items-stone-tools.fb143b2816f1.tar.zst", "bytes": 34000573, "sha256": "fb143b2816f17894fb76cb3022894e093094a73346fe705da1076f75d8ecc414"},
       {"name": "core-items-weapons", "file": "core-items-weapons.2b679b6fdd81.tar.zst", "bytes": 8004901, "sha256": "2b679b6fdd818275bfe1b35d1b1bf9a47649add084eae1118eb8c047f6d6fc40"},

@@ -1,9 +1,14 @@
 """Processed resources, built in metres with Blender's +Z up."""
 
 from math import cos, sin, tau
+from pathlib import Path
+import sys
 
 import bpy
 from mathutils import Vector
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from resource_uv import atlas_uv, loft_uv, planar_uv
 
 
 # Reading order of the material study, with colors for the texture-free level.
@@ -18,6 +23,7 @@ COLORS = {
     "paper": (207, 181, 134), "strap": (86, 57, 43),
 }
 CELLS = {name: divmod(i, 4) for i, name in enumerate(COLORS)}
+TILE_METRES = 1.10
 
 
 def material(name, rgb):
@@ -28,18 +34,6 @@ def material(name, rgb):
     shader = next(node for node in result.node_tree.nodes if node.type == "BSDF_PRINCIPLED")
     shader.inputs["Base Color"].default_value = (*linear, 1)
     return result
-
-
-def chart(points):
-    normal = sum((p.cross(points[(i + 1) % len(points)]) for i, p in enumerate(points)),
-                 Vector()).normalized()
-    reference = Vector((0, 1, 0)) if abs(normal.z) > 0.9 else Vector((0, 0, 1))
-    across = reference.cross(normal).normalized()
-    up = normal.cross(across)
-    x, y = zip(*[(p.dot(across), p.dot(up)) for p in points])
-    width = max(max(x) - min(x), max(y) - min(y))
-    cx, cy = (min(x) + max(x)) / 2, (min(y) + max(y)) / 2
-    return [(0.5 + (u - cx) / width, 0.5 + (v - cy) / width) for u, v in zip(x, y)]
 
 
 class Mesh:
@@ -62,11 +56,12 @@ class Mesh:
         if name not in self.materials:
             self.materials[name] = (len(self.materials), material(name, color))
         if self.textured:
-            uv = uv if uv is not None else chart([self.verts[i] for i in indices])
-            uv = [(0.14 + u * 0.72, 0.14 + v * 0.72) for u, v in uv]
-            if surface != "gel":
+            if surface == "gel":
+                uv = atlas_uv(uv, span=TILE_METRES)
+            else:
                 row, col = CELLS[surface]
-                uv = [((col + u) / 4, (3 - row + v) / 4) for u, v in uv]
+                uv = atlas_uv(uv, span=TILE_METRES, center=((col + 0.5) / 4, (3.5 - row) / 4),
+                              cell=(0.25, 0.25))
         for j in range(1, len(indices) - 1):
             self.faces.append((indices[0], indices[j], indices[j + 1]))
             self.surfaces.append((self.materials[name][0], smooth,
@@ -74,18 +69,23 @@ class Mesh:
 
     def join(self, rings, surfaces, smooth=False):
         count = len(rings[0])
+        curves = [[self.verts[index] for index in ring] for ring in rings]
+        charts = loft_uv(curves) if self.textured else None
         self.cap(rings[0][::-1], surfaces[0])
         for i, (lower, upper) in enumerate(zip(rings, rings[1:])):
             for j in range(count):
                 k = (j + 1) % count
-                uv = [(j / count, 0), ((j + 1) / count, 0), ((j + 1) / count, 1), (j / count, 1)]
+                uv = charts[i][j] if charts is not None else None
                 self.face((lower[j], lower[k], upper[k], upper[j]), surfaces[i], smooth, uv)
         self.cap(rings[-1], surfaces[-1])
 
     def cap(self, ring, surface):
         points = [self.verts[i] for i in ring]
-        center, = self.ring([sum(points, Vector()) / len(points)])
-        uv = chart(points) if self.textured else [(0, 0)] * len(points)
+        pivot = sum(points, Vector()) / len(points)
+        center, = self.ring([pivot])
+        normal = sum(((point - pivot).cross(points[(i + 1) % len(points)] - pivot)
+                      for i, point in enumerate(points)), Vector()).normalized()
+        uv = planar_uv(points, normal=normal) if self.textured else [(0, 0)] * len(points)
         uv_center = tuple(sum(component) / len(points) for component in zip(*uv))
         for i, index in enumerate(ring):
             j = (i + 1) % len(ring)
@@ -106,12 +106,13 @@ class Mesh:
     def tube(self, path, radius, surface, *, sides=6):
         points = [Vector(p) for p in path]
         rings = []
-        for i, p in enumerate(points):
+        radii = [radius] * len(points) if isinstance(radius, (int, float)) else radius
+        for i, (p, ring_radius) in enumerate(zip(points, radii)):
             axial = (points[min(len(points) - 1, i + 1)] - points[max(0, i - 1)]).normalized()
             reference = Vector((0, 1, 0)) if abs(axial.y) < 0.95 else Vector((1, 0, 0))
             across = (reference - reference.dot(axial) * axial).normalized()
             up = axial.cross(across)
-            rings.append(self.ring(p + radius * (across * cos(a) + up * sin(a))
+            rings.append(self.ring(p + ring_radius * (across * cos(a) + up * sin(a))
                                    for a in (tau * j / sides for j in range(sides))))
         self.join(rings, [surface] * len(rings), smooth=sides > 4)
 
@@ -162,19 +163,28 @@ def cylinder(mesh, radii, lean, sides, look, *, at=(0, 0, 0), front=False):
 
 
 def paste(mesh, level):
-    # A folded kraft boat holds a dense grey scoop.
-    rim = [(-0.128, -0.067), (0.079, -0.080), (0.131, -0.041), (0.115, 0.064),
-           (0.085, 0.097), (-0.097, 0.076), (-0.137, 0.038), (-0.143, -0.020)]
-    scales = [(0, 0.7), (0.034, 1.0), (0.036, 0.91), (0.012, 0.64)]
-    mesh.loft([(z, [(x * s, y * s) for x, y in rim]) for z, s in scales], "kraft")
-    sides = (14, 10, 7)[level]
-    profile = [(0.009, 0.095, 0.051), (0.041, 0.116, 0.066), (0.072, 0.094, 0.050),
-               (0.101, 0.048, 0.025), (0.105, 0.015, 0.011)]
+    # The paste sits low in an open tin with a rolled rim.
+    sides = (20, 14, 8)[level]
+    tin = [(0, 0.089, "enamel"), (0.007, 0.097, "enamel"), (0.053, 0.103, "brass"),
+           (0.061, 0.106, "brass"), (0.064, 0.102, "brass"), (0.059, 0.095, "enamel"),
+           (0.013, 0.086, "enamel")]
+    if level == 2:
+        tin = [tin[i] for i in (0, 2, 4, 6)]
+    cylinder(mesh, [(z, radius) for z, radius, _ in tin], 0.92, sides, [look for _, _, look in tin])
+
+    # Repeated scrapes leave a broad wedge tapering into the exposed floor.
+    fill = [(0.012, 0.080, 0.071, 0.004), (0.030, 0.086, 0.074, 0.005),
+            (0.049, 0.072, 0.065, -0.010), (0.070, 0.054, 0.043, -0.025),
+            (0.079, 0.030, 0.020, -0.038)]
     if level > 0:
-        profile = [profile[i] for i in ([0, 1, 2, 4] if level == 1 else [0, 1, 3])]
-    mesh.loft([(z, [(x + z * 0.21, y + z * 0.14)
-                    for x, y in radial(rx, ry, sides, 0.17, 0.21)]) for z, rx, ry in profile],
-              "mortar", smooth=level < 2)
+        fill = [fill[i] for i in ((0, 1, 2, 4) if level == 1 else (0, 1, 3))]
+    mesh.loft([(z, [(x + shift, y - 0.004) for x, y in radial(rx, ry, (16, 12, 8)[level], 0.12, 0.14)])
+               for z, rx, ry, shift in fill], "mortar", smooth=level < 2)
+    if level == 0:
+        blade = [(-0.042, -0.025), (0.026, -0.010), (0.034, 0.008),
+                 (0.018, 0.013), (-0.042, 0.021)]
+        mesh.loft([(0, blade), (0.005, blade)], "brass", at=(0.045, -0.021, 0.058), yaw=-0.33)
+        plate(mesh, 0.054, 0.023, 0.012, "strap", at=(0.085, -0.035, 0.060), yaw=-0.33, cut=0.007)
 
 
 def electronics(mesh, level):
@@ -240,28 +250,34 @@ def gunpowder(mesh, level):
     if level < 2:
         mesh.tube([(0.047, -0.027, 0.128), (0.077, -0.047, 0.097),
                    (0.080, -0.066, 0.071)], 0.005, "kraft", sides=5)
-        patch = [(-0.039, -0.016), (0.033, -0.020), (0.036, 0.007),
-                 (0.028, 0.021), (-0.036, 0.018)]
-        mesh.loft([(0, patch), (0.003, patch)], "canvas", at=(-0.008, -0.074, 0.049), front=True)
 
 
 def oil(mesh, level):
-    sides = (16, 12, 8)[level]
-    profile = [(0, 0.084, 0.060), (0.010, 0.110, 0.078), (0.077, 0.110, 0.078),
-               (0.088, 0.105, 0.074), (0.118, 0.077, 0.055)]
+    # The pump oiler has a low enamel reservoir, a lever, and a raised tapered outlet.
+    sides = (18, 12, 8)[level]
+    body = [(0, 0.079), (0.008, 0.088), (0.016, 0.085), (0.068, 0.082), (0.095, 0.065), (0.110, 0.039)]
+    if level > 0:
+        body = [body[i] for i in ((0, 1, 3, 4, 5) if level == 1 else (0, 2, 3, 5))]
+    cylinder(mesh, body, 0.77, sides, "enamel")
+    pump = [(0, 0.030), (0.013, 0.029), (0.027, 0.022)]
     if level == 2:
-        profile.pop(3)
-    mesh.loft([(z, radial(rx, ry, sides, phase=tau / (2 * sides))) for z, rx, ry in profile],
-              "enamel", smooth=True)
-    cylinder(mesh, [(0, 0.027), (0.015, 0.027), (0.019, 0.022)], 1,
-             (12, 10, 8)[level], "tar", at=(0.031, -0.012, 0.117))
-    if level < 2:
-        plate(mesh, 0.085, 0.054, 0.002, "kraft", at=(0, -0.0755, 0.051), front=True, cut=0.008)
-        droplet = [(0.0, 0.021), (-0.016, -0.001), (-0.012, -0.016),
-                   (0.010, -0.017), (0.016, -0.003)]
-        mesh.loft([(0, droplet), (0.001, droplet)], "tar", at=(0, -0.0773, 0.051), front=True)
+        pump = [pump[0], pump[-1]]
+    cylinder(mesh, pump, 1, (12, 8, 6)[level], "tar", at=(0.005, 0.0, 0.104))
+
+    spout = [(0.012, 0, 0.124), (0.038, 0, 0.149), (0.069, 0, 0.183),
+             (0.101, 0, 0.209), (0.128, 0, 0.220), (0.151, 0, 0.219),
+             (0.169, 0, 0.211)]
+    radii = (0.018, 0.014, 0.011, 0.0085, 0.007, 0.0065, 0.006)
+    keep = (range(7), (0, 1, 3, 4, 6), (0, 3, 6))[level]
+    mesh.tube([spout[i] for i in keep], [radii[i] for i in keep], "brass", sides=(8, 6, 5)[level])
+
+    lever = [(-0.009, 0.008, 0.122), (-0.052, 0.009, 0.130),
+             (-0.084, 0.011, 0.120), (-0.096, 0.010, 0.104)]
+    if level == 2:
+        lever.pop(2)
+    mesh.tube(lever, 0.011, "tar", sides=(8, 6, 5)[level])
     if level == 0:
-        cylinder(mesh, [(0, 0.032), (0.003, 0.032)], 1, 12, "brass", at=(0.031, -0.012, 0.118))
+        cylinder(mesh, [(0, 0.016), (0.010, 0.015)], 1, 10, "brass", at=(-0.041, -0.017, 0.099))
 
 
 def polymer(mesh, level):

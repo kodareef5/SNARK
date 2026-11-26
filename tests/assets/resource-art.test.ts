@@ -1,8 +1,11 @@
-import { expect } from "bun:test";
+import { expect, test } from "bun:test";
+import { fileURLToPath } from "node:url";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { findAssets } from "../../tools/art/assets.ts";
 import { iconSubjects } from "../../tools/pack/icons.ts";
+import { spanOf } from "../../tools/pack/surface.ts";
+import { unpackMeshes } from "../../tools/pack/write.ts";
 import { artTest } from "../fixtures/needs-art.ts";
 
 const resources = [
@@ -19,6 +22,27 @@ artTest("resource packs supply grounded drop meshes and inventory icons", async 
   for (const asset of assets) {
     const pack = parsePack(await Bun.file(asset.file).bytes());
     meshes.push(...pack.header.meshes);
+    if (asset.id === "core:resource-minerals") {
+      const minerals = unpackMeshes(pack);
+      const materialsOf = (id: string) => minerals.find((mesh) => mesh.id === id)?.materials?.map((material) => material.id);
+      expect(materialsOf("core:stone/dropped")).toContain("core:stone-tools/stone");
+      expect(materialsOf("core:flint/dropped")).toContain("core:stone-tools/flint");
+    } else {
+      const organic = asset.id === "core:resource-organics";
+      const [min, max] = organic ? [135, 165] : [105, 135];
+      const family = unpackMeshes(pack);
+      for (const mesh of family) {
+        for (const [index, material] of mesh.materials!.entries()) {
+          const density = mesh.textures![material.base]!.top / spanOf(mesh.lods[0]!, index);
+          expect(density, mesh.id).toBeGreaterThan(min);
+          expect(density, mesh.id).toBeLessThan(max);
+        }
+      }
+      if (organic) {
+        const flat = family.map((mesh) => mesh.lods.at(-1)!.colors[0]);
+        expect(new Set(flat).size).toBe(family.length);
+      }
+    }
   }
 
   const expected = resources.map((id) => `${id}/dropped`);
@@ -38,4 +62,26 @@ artTest("resource packs supply grounded drop meshes and inventory icons", async 
   const ids = new Set(expected);
   const icons = new Map(iconSubjects(CORE_CONTENT, (id) => ids.has(id)).map((icon) => [icon.owner, icon]));
   for (const id of resources) expect(icons.get(id)).toMatchObject({ icon: `${id}/icon`, mesh: `${id}/dropped` });
+});
+
+test("resource UV charts keep ring spans continuous and in metres", () => {
+  const result = Bun.spawnSync(["python3", "-c", `
+from math import dist, isclose
+from runpy import run_path
+import sys
+
+uv = run_path(sys.argv[1])
+ring = [(0, 0), (0.2, 0), (0.2, 0.2), (0, 0.2)]
+loft = uv["loft_uv"]([[(x, y, z) for x, y in ring] for z in (0.0, 0.015, 0.18)])
+thin, tall = loft[0][0], loft[1][0]
+assert thin[2] == tall[1] and thin[3] == tall[0]
+assert isclose(dist(thin[0], thin[1]), 0.2)
+assert isclose(dist(thin[0], thin[3]), 0.015)
+assert isclose(dist(tall[0], tall[3]), 0.165)
+chart = uv["planar_uv"]([(0, 0, 0), (0.24, 0, 0), (0.24, 0, 0.04), (0, 0, 0.04)])
+tile = uv["atlas_uv"](chart, span=0.48)
+assert isclose(dist(tile[0], tile[1]), 0.5)
+assert isclose(dist(tile[1], tile[2]), 0.04 / 0.48)
+`, fileURLToPath(new URL("../../assets/source/core/items/resource_uv.py", import.meta.url))]);
+  expect(result.exitCode, result.stderr.toString()).toBe(0);
 });
