@@ -326,7 +326,7 @@ function stagesOf(name: string, p: Prepared): { cut: string; work: string; ran: 
     chain = sha(chain, stage.name, ...code.map((f) => readFileSync(f)), ...own);
     now[stage.name] = chain;
   }
-  const records = (): Record<string, Download> => (existsSync(join(work, "downloads.json")) ? readJson(join(work, "downloads.json")) : {}) as Record<string, Download>;
+  const records = (path: string): Record<string, Download> => (existsSync(path) ? readJson(path) : {}) as Record<string, Download>;
   for (let i = from; i <= to; i++) {
     const stage = stages[i]!;
     const key = now[stage.name]!;
@@ -339,12 +339,15 @@ function stagesOf(name: string, p: Prepared): { cut: string; work: string; ran: 
     const kitted = join(work, "raw/KIT");
     if (existsSync(kitted) && stage.reads?.length && names.includes("fetch")) {
       console.log(`== ${stage.name} reads the downloads a kit leaves out: fetching them first`);
-      const kept = records();
+      // The kit's records as it came, kept until a fetch ends whole: one cut short has rewritten some of them.
+      const kept = join(work, "raw/downloads.kit.json");
+      if (!existsSync(kept)) writeFileSync(kept, `${JSON.stringify(records(join(work, "downloads.json")))}\n`);
       const fetched = Bun.spawnSync(stages[names.indexOf("fetch")]!.run(work, name), { cwd, env: process.env, stdout: "inherit", stderr: "inherit" });
       if (fetched.exitCode !== 0) throw new Error(`${name}: fetch failed with ${fetched.exitCode}`);
-      unlinkSync(kitted);
       // A source served anew under the same request (a newer extract) must not meet layers made from the old one.
-      const changed = changedJobs(kept, records(), settings);
+      const changed = changedJobs(records(kept), records(join(work, "downloads.json")), settings);
+      unlinkSync(kitted);
+      unlinkSync(kept);
       const first = stages.findIndex((s) => s.reads?.some((j) => changed.includes(j)));
       if (first >= 0 && first < i) {
         for (const later of stages.slice(first)) delete keys[later.name];

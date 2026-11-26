@@ -23,6 +23,7 @@ if (name === "fetch") {
   const osm = { bytes: 9, md5: "m", sha256: process.env.EXTRACT ?? "one" };
   writeFileSync(join(work, "downloads.json"), JSON.stringify({ "osm/extract": osm, "tl_2025_12086_roads.zip": { bytes: 3, sha256: "t" } }));
 }
+if (process.env.FAIL_AFTER === name) process.exit(4);
 writeFileSync(join(work, name + ".out"), name);
 if (name === "build") {
   mkdirSync(join(maps, city), { recursive: true });
@@ -66,6 +67,7 @@ beforeEach(() => {
 afterEach(() => {
   delete process.env.FAIL;
   delete process.env.EXTRACT;
+  delete process.env.FAIL_AFTER;
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -159,6 +161,18 @@ test("a kit's source fetched anew with other bytes runs again from its first rea
   expect(run().ran).toEqual(["prepare", "ways", "build"]);
   expect(log(work)).toEqual(["fetch", "prepare", "ways", "build"]);
   expect(run().ran).toEqual([]);
+});
+
+test("a kit's fetch cut short still holds the next to the kit's own records", () => {
+  const { work } = run();
+  kitted(work);
+  appendFileSync(join(dir, "code/ways.ts"), "// changed\n");
+  process.env.EXTRACT = "newer";
+  process.env.FAIL_AFTER = "fetch";
+  expect(() => run()).toThrow("fetch failed with 4");
+  delete process.env.FAIL_AFTER;
+  expect(run().ran).toEqual(["prepare", "ways", "build"]);
+  expect(existsSync(join(work, "raw/downloads.kit.json"))).toBe(false);
 });
 
 test("a changed kit source stops a run that cannot reach its first reader", () => {

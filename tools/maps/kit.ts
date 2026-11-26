@@ -11,7 +11,7 @@
 // edit to the build's code builds the map again from the kit alone. An edit that reaches a stage reading the downloads
 // makes city.ts fetch them first (raw/KIT marks a kit's work folder) and hold them to downloads.json's digests.
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, readlinkSync, renameSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, readlinkSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dir, "../..");
@@ -66,6 +66,7 @@ function unpack(file: string): string {
   const { build: _built, ...made } = kit.stages;
   writeFileSync(join(work, "stages.json"), `${JSON.stringify(made, null, 2)}\n`);
   mkdirSync(join(work, "raw"), { recursive: true });
+  rmSync(join(work, "raw/downloads.kit.json"), { force: true });
   writeFileSync(join(work, "raw/KIT"), `${kit.commit}\n`);
   const current = join(top, "current");
   const next = `${current}.${process.pid}`;
