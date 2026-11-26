@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { DiskWrites, writePart } from "../../client/assets/disk-io.ts";
+import { DiskWrites, writePart } from "../../client/core/assets/disk-io.ts";
 
 test("disk writes share a pending hash and the counter drains on failure", async () => {
   const seen: number[] = [], began: string[] = [];

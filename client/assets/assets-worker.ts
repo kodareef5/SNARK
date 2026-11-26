@@ -5,7 +5,7 @@
 import { FAIL_HASH, FAIL_NET, FAIL_RANGE, rangeAsk, type AssetPart, type WorkerTotals } from "../core/assets/port.ts";
 import { BulkFill, FILL_LANES, KEEP_ON, type KeepPart } from "../core/assets/bulk.ts";
 import { unfilterPart } from "../../shared/pack/stored.ts";
-import { DiskWrites, writePart, type PartFile } from "./disk-io.ts";
+import { DiskWrites, writePart, type PartFile } from "../core/assets/disk-io.ts";
 
 interface Scope {
   onmessage: ((e: MessageEvent) => void) | null;
