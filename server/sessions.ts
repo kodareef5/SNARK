@@ -409,6 +409,7 @@ export class Sessions {
     if (c.ent >= 0) ents.loadBody(c.ent, c.body);
     writeBody(w, c.body);
     w.u16(c.heldYaw);
+    w.varint(world.hairRate);
     // The tuned content's hash, and the tuning that derives it from content as written.
     w.u32(world.reg.hash);
     w.string(world.reg.tuning);
@@ -417,7 +418,6 @@ export class Sessions {
     w.f64(world.clock.night);
     w.u16(Math.min(65535, Math.max(0, Math.round(this.opts.motdSeconds))));
     w.bool(c.statics);
-    w.varint(world.hairRate);
     c.conn.send(CH_RELIABLE, w.bytes());
   }
 

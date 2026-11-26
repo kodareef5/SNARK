@@ -9,7 +9,7 @@ import {
 import { hashString } from "../../../shared/hash.ts";
 import { EYE_BASE, EYE_COLORS, HAIR_BASE, HAIR_COLORS, SKIN_BASE, SKIN_TONES } from "../../../shared/pack/palette.ts";
 import { Rng } from "../../../shared/rng.ts";
-import { RESULT_OK } from "../../../shared/net/protocol.ts";
+import { RESULT_OK, SESSION_ALIVE, SESSION_CREATING } from "../../../shared/net/protocol.ts";
 import { bakeHair } from "../../../shared/people/hair.ts";
 import type { ClientSession } from "../session.ts";
 import { K_BUTTON, K_PANEL, lineHeight, type UiFrame } from "./nodes.ts";
@@ -52,6 +52,11 @@ const CHOSEN = 0x3f6ea8;
 
 const TAB_LOOK = 0;
 
+/** In the creator: making a new survivor, or remaking its own while alive. */
+export function inCreator(s: ClientSession | null): boolean {
+  return s !== null && (s.sessionState === SESSION_CREATING || (s.remaking === true && s.sessionState === SESSION_ALIVE));
+}
+
 export class CreatorScreen implements Screen {
   readonly name = "creator";
   readonly layer = "modal";
@@ -72,12 +77,12 @@ export class CreatorScreen implements Screen {
   private remaking = false;
 
   isOpen(): boolean {
-    return this.session?.inCreator ?? false;
+    return inCreator(this.session);
   }
 
   absorb(c: ScreenCtx): void {
     this.session = c.session;
-    const remaking = (c.session?.inCreator ?? false) && c.session!.remaking;
+    const remaking = inCreator(c.session) && c.session!.remaking;
     if (remaking && !this.remaking && c.session!.ownLook) {
       this.look.set(c.session!.ownLook);
       bakeHair(this.look, c.session!.ownHairFrom, c.session!.serverTick, c.session!.hairRate);

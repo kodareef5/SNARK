@@ -51,7 +51,7 @@ function read(bytes: Uint8Array, base: EntityView | null): EntityView | null {
   return readViewDelta(r, base, next) && !r.overflow ? next : null;
 }
 
-function same(a: Uint8Array | Uint16Array | null | undefined, b: Uint8Array | Uint16Array | null | undefined): boolean {
+function same(a: Uint8Array | Uint16Array | Uint32Array | null | undefined, b: Uint8Array | Uint16Array | Uint32Array | null | undefined): boolean {
   if (!a || !b) return !a && !b;
   return a.length === b.length && a.every((v, k) => v === b[k]);
 }
@@ -216,7 +216,7 @@ interface Rest {
   grown: number;
 }
 
-function churn(seed: number): { kept: number; identity: number; checked: number } {
+function churn(seed: number): { kept: number; identity: number; checked: number; wardrobes: number } {
   const rng = new Rng(seed);
   const N = 48;
   const store = new EntityStore(DIMS, N);

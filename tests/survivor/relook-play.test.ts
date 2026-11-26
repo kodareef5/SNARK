@@ -8,6 +8,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RemoteSample, type ClientSession } from "../../client/core/session.ts";
+import { inCreator } from "../../client/core/ui/creator.ts";
 import { corpseWardrobe } from "../../server/corpses.ts";
 import { DYE_SECOND, PART_BEARD, PART_HAIR, hairStart } from "../../server/people/look.ts";
 import type { EntityRecord } from "../../server/records.ts";
@@ -169,7 +170,7 @@ test("cuts, dyes and a remake reach the owner and a watcher who saw the old look
     expect(h.say(bo, "enablecheats")[0]).toMatch(/cheats/);
     expect(h.say(bo, "remake ada")).toEqual(["ada may make itself again in the creator."]);
     h.run(200);
-    expect([ada.remaking, ada.inCreator, bo.inCreator]).toEqual([true, true, false]);
+    expect([ada.remaking, inCreator(ada), inCreator(bo)]).toEqual([true, true, false]);
     const made = defaultLook();
     made[LOOK_HAIR_LENGTH] = 40;
     expect(send(h, ada, CMD_REMAKE, (w) => (w.bool(true), [...made].forEach((b) => w.u8(b))))).toBe(RESULT_OK);

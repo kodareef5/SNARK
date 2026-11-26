@@ -86,7 +86,6 @@ import {
   PITCH_LIMIT,
   PROTOCOL_VERSION,
   SESSION_ALIVE,
-  SESSION_CREATING,
   SESSION_DEAD,
   S_CHUNK,
   S_CHUNK_DROP,
@@ -1028,11 +1027,6 @@ export class ClientSession {
   /** Scissors or a hair dye in `slot` used on the survivor `handle` (0 for one's own): see CMD_GROOM. */
   groom(slot: number, item: number, handle: number, what: number, stage = 0): number {
     return this.command(CMD_GROOM, (w) => (w.varint(slot), w.u16(item), w.u32(handle), w.u8(what), w.u8(stage)));
-  }
-
-  /** In the creator: making a new survivor, or remaking this one. */
-  get inCreator(): boolean {
-    return this.sessionState === SESSION_CREATING || (this.remaking && this.sessionState === SESSION_ALIVE);
   }
 
   create(look: Uint8Array, spawn?: number): number {
@@ -2451,6 +2445,7 @@ export class ClientSession {
     const dims = { chunksX: r.u8() + 1, chunksZ: r.u8() + 1 };
     readBody(r, this.own);
     const yaw = r.u16();
+    const hairRate = r.varint();
     const contentHash = r.u32();
     const tuning = r.string(MAX_TUNING_BYTES);
     const cycle = r.f64();
@@ -2458,7 +2453,6 @@ export class ClientSession {
     const night = r.f64();
     const motdSeconds = r.u16();
     const fills = r.bool();
-    const hairRate = r.varint();
     const refuse = (reason: number): void => {
       this.state = "closed";
       this.closeReason = reason;

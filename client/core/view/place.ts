@@ -14,7 +14,7 @@ import { bodySeed } from "../render/scene.ts";
 import { remoteVehiclePose } from "../vehicle-view.ts";
 import { CHASE_BOOM, CHASE_TILT, ORBIT_BACK, type VehicleCameraMotion } from "../viewpoint.ts";
 import type { Director } from "./director.ts";
-import type { CreatorScreen } from "../ui/creator.ts";
+import { inCreator, type CreatorScreen } from "../ui/creator.ts";
 
 /** Metres the orbit's camera is behind the eye before the body is drawn whole; nearer than the near plane its head is not seen. */
 const HEAD_CLEAR = .1;
@@ -37,7 +37,7 @@ export function place(d: Director, f: AppFrame): void {
   // The orbit shows the whole body once the camera is clear of the head.
   if (d.orbit.inUse && d.orbit.shown.back > HEAD_CLEAR) d.own.firstPerson = false;
   d.view.thirdPerson = f.third;
-  if (session.inCreator) preview(d, f);
+  if (inCreator(session)) preview(d, f);
 }
 
 /** The slot of the seat that steers, 1 for the first; 0 where no seat does. */
