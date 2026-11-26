@@ -359,7 +359,7 @@ export class CastHost {
           if (items.mint(rec, item, n, 0, 0, -1, "cast") === 0 || to < 0) return;
           for (let k = 0; k < inv.hotbar; k++) if (inv.item[k] === item) return void items.move(rec, k, rec, to, n);
         };
-        const slotOf = (item: number) => (reg.wearSlot[item]! >= 0 && inv.armor >= 0 ? inv.armor + reg.wearSlot[item]! : reg.garmentSlot[item]! >= 0 && inv.wardrobe >= 0 ? inv.wardrobe + reg.garmentSlot[item]! : -1);
+        const slotOf = (item: number) => (inv.armor < 0 ? -1 : reg.wearSlot[item]! >= 0 ? inv.armor + reg.wearSlot[item]! : reg.garmentSlot[item]! >= 0 ? inv.wardrobe + reg.garmentSlot[item]! : -1);
         // Garments go through the items' own restyle, which takes only an edition the store holds of that garment.
         for (const [k, w] of (body?.wardrobe ?? []).entries()) {
           const item = w ? reg.index.get(w[0]) : undefined;

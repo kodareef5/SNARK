@@ -20,7 +20,7 @@ import { describePack, parseManifest, type Manifest } from "../../shared/pack/ma
 import { parsePack } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
 import { TEXT_TRIBE } from "../../shared/net/protocol.ts";
-import { ARMOR_SLOTS, HOTBAR_SLOTS, Inventory } from "../../shared/sim/items.ts";
+import { GEAR_SLOTS, Inventory } from "../../shared/sim/items.ts";
 import { IconPainter, buildIcons, framingOf, iconSubjects, type IconFraming } from "../../tools/pack/icons.ts";
 import { weaponMeshes } from "../../tools/pack/weapons.ts";
 import { boxMesh, buildPack } from "../../tools/pack/write.ts";
@@ -139,7 +139,7 @@ test("a sheet of pictures is a file of the manifest, which refuses a picture out
 
 test("the bag, the hotbar and the crafting list show an item's picture where it has one, and its swatch where not", () => {
   const id = (s: string): number => reg.index.get(s)!;
-  const inv = new Inventory(40 + HOTBAR_SLOTS + ARMOR_SLOTS, 40);
+  const inv = new Inventory(40 + GEAR_SLOTS, 40);
   inv.set(0, id("core:pick"), 1, 0, 0, 0);
   inv.set(1, id("core:stone"), 30, 0, 0, 0);
   inv.set(inv.hotbar, id("core:pick"), 1, 0, 0, 0);

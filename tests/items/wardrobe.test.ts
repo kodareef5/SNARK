@@ -6,7 +6,7 @@ import { EntityRecord } from "../../server/records.ts";
 import { SKIN_CHEST, SKIN_PELVIS } from "../../shared/anim/skin-zones.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
-import { ARMORED_TAIL, ARMOR_SLOTS, GEAR_SLOTS, HOTBAR_SLOTS, Inventory, WARDROBE_NAMES, WARDROBE_SLOTS, capNow, fitsSlot, moveSlot } from "../../shared/sim/items.ts";
+import { ARMOR_SLOTS, GEAR_SLOTS, HOTBAR_SLOTS, Inventory, WARDROBE_NAMES, WARDROBE_SLOTS, fitsSlot, moveSlot } from "../../shared/sim/items.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
 const reg = coreRegistry();
@@ -39,11 +39,6 @@ test("the wardrobe follows the armor, one slot for each name, and only on an equ
   expect([inv.hotbar, inv.armor, inv.wardrobe]).toEqual([BAG, BAG + HOTBAR_SLOTS, BAG + HOTBAR_SLOTS + ARMOR_SLOTS]);
   expect(WARDROBE_NAMES.length).toBe(WARDROBE_SLOTS);
   expect(new Inventory(BAG).wardrobe).toBe(-1);
-  // A tail as saved before the wardrobe still has its hotbar and armor where they were.
-  const old = new Inventory(BAG + ARMORED_TAIL, BAG);
-  expect([old.hotbar, old.armor, old.wardrobe]).toEqual([BAG, BAG + HOTBAR_SLOTS, -1]);
-  expect(capNow(BAG + ARMORED_TAIL, BAG)).toBe(BAG + GEAR_SLOTS);
-  expect([capNow(BAG + GEAR_SLOTS, BAG), capNow(60, 60), capNow(61, 61)]).toEqual([BAG + GEAR_SLOTS, 60, 61]);
 });
 
 test("a garment names its slot and the zones it covers, and gives no armor", () => {
@@ -162,26 +157,6 @@ test("the worn stamp moves when the armor or wardrobe does, not the hotbar or ba
   // Setting what it already is changes nothing.
   inv.setStyle(inv.wardrobe, 7, dye(1, 1, 1));
   expect(inv.worn).toBe(dyed);
-});
-
-test("an inventory saved before the wardrobe reads back with it empty and every other slot as it was", () => {
-  const c = compileContent(CORE_CONTENT).registry!;
-  const codec = new RecordCodec(Uint16Array.from(c.ids, (_, i) => i), idMap(c, c.ids.map((name, i) => [name, i]), c.ids.length), false);
-  const rec = new EntityRecord(9, c.index.get("core:survivor")!);
-  // As one was made before the wardrobe: the bag, the hotbar and the armor.
-  const old = new Inventory(BAG + ARMORED_TAIL, BAG);
-  const now = carried();
-  for (let s = 0; s < BAG + ARMORED_TAIL; s++) if (now.item[s] !== 0) old.set(s, now.item[s]!, now.count[s]!, now.quality[s]!, now.dur[s]!, now.spoilAt[s]!);
-  old.setGear(old.hotbar + 3, id("arrow_stone"), 1, 0);
-  rec.inv = old;
-  const back = codec.decode({ pid: 9, kind: rec.kind, x: 0, y: 0, z: 0, yaw: 0, data: codec.encode(rec).slice() })!;
-  const inv = back.inv!;
-  expect([inv.cap, inv.bag, inv.hotbar, inv.armor, inv.wardrobe]).toEqual([BAG + GEAR_SLOTS, BAG, BAG, BAG + HOTBAR_SLOTS, BAG + ARMORED_TAIL]);
-  for (let s = 0; s < old.cap; s++) {
-    expect([inv.item[s], inv.count[s], inv.quality[s], inv.dur[s], inv.spoilAt[s], inv.ammo[s], inv.loaded[s]]).toEqual([old.item[s], old.count[s], old.quality[s], old.dur[s], old.spoilAt[s], old.ammo[s], old.loaded[s]]);
-  }
-  for (let k = 0; k < WARDROBE_SLOTS; k++) expect(inv.item[inv.wardrobe + k]).toBe(0);
-  expect([inv.edition, inv.dye]).toEqual([null, null]);
 });
 
 test("an edition and a dye are saved with their slot, and only for the slots that have one", () => {

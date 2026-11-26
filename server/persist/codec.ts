@@ -5,7 +5,7 @@ import { JET_CAPACITY } from "../../shared/sim/character.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { COLOR_REGIONS, Genome, STAT_COUNT } from "../../shared/sim/genome.ts";
-import { FLAG_BLUEPRINT, FLAG_ON, Inventory, capNow } from "../../shared/sim/items.ts";
+import { FLAG_BLUEPRINT, FLAG_ON, Inventory } from "../../shared/sim/items.ts";
 import { V_COUNT, Vitals } from "../../shared/sim/vitals.ts";
 import { upgradeLook, validLook } from "../../shared/anim/look.ts";
 import { EntityRecord } from "../records.ts";
@@ -335,8 +335,7 @@ saved({
 });
 
 /**
- * The inventory's size and bag, then each slot with what a weapon holds and its flags (FLAG_ bits, shared/sim/items.ts). One
- * saved before the wardrobe is read with it, empty (capNow).
+ * The inventory's size and bag, then each slot with what a weapon holds and its flags (FLAG_ bits, shared/sim/items.ts).
  */
 saved({
   name: "slots",
@@ -371,7 +370,7 @@ saved({
   read(rec, r, from) {
     const size = r.varint();
     const bag = r.varint();
-    const inv = (rec.inv = new Inventory(capNow(size, bag), bag));
+    const inv = (rec.inv = new Inventory(size, bag));
     for (let k = r.varint(); k > 0 && !r.overflow; k--) {
       const slot = r.varint();
       const saved = r.varint();

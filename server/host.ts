@@ -2174,7 +2174,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
         seen.gen = ents.gen[e]!;
         // What it wears in its wardrobe is part of its identity, sent to watchers only when it changes.
         for (let k = 0; k < WARDROBE_SLOTS; k++) {
-          const s = inv.wardrobe + k, item = inv.wardrobe >= 0 ? inv.item[s]! : 0;
+          const s = inv.wardrobe + k, item = inv.item[s]!;
           wardrobe[k * WORN_FIELDS] = item;
           wardrobe[k * WORN_FIELDS + 1] = item !== 0 ? inv.editionOf(s) : 0;
           wardrobe[k * WORN_FIELDS + 2] = item !== 0 ? inv.dyeOf(s) : 0;

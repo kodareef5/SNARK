@@ -578,15 +578,9 @@ export function addOwnCommands(ctx: OwnContext): void {
     // A blueprint is crafted from (CMD_CRAFT_BLUEPRINT), never eaten, used or worn.
     if ((inv.flags[slot]! & FLAG_BLUEPRINT) !== 0) return RESULT_INVALID;
     // Using a wearable item puts it on, or takes it off.
-    const worn = ctx.world.reg.wearSlot[item]!;
-    if (worn >= 0 && inv.armor >= 0) {
-      const to = slot >= inv.armor ? inv.free() : inv.armor + worn;
-      if (to < 0) return RESULT_FULL;
-      return ctx.items.move(rec, slot, rec, to, 0) > 0 ? RESULT_OK : RESULT_INVALID;
-    }
-    const garment = ctx.world.reg.garmentSlot[item]!;
-    if (garment >= 0 && inv.wardrobe >= 0) {
-      const to = slot >= inv.wardrobe ? inv.free() : inv.wardrobe + garment;
+    const worn = ctx.world.reg.wearSlot[item]!, garment = ctx.world.reg.garmentSlot[item]!;
+    if ((worn >= 0 || garment >= 0) && inv.armor >= 0) {
+      const to = worn >= 0 ? (slot >= inv.armor ? inv.free() : inv.armor + worn) : slot >= inv.wardrobe ? inv.free() : inv.wardrobe + garment;
       if (to < 0) return RESULT_FULL;
       return ctx.items.move(rec, slot, rec, to, 0) > 0 ? RESULT_OK : RESULT_INVALID;
     }

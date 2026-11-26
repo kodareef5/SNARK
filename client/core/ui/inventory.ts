@@ -445,12 +445,11 @@ export class InventoryScreen implements Screen {
     const titleH = lineHeight(S_TITLE);
     const infoH = lineHeight(S_LABEL);
     const rows = (n: number): number => Math.ceil(n / cols) * (CELL + GAP);
-    // Own slots are the bag, then the hotbar and the armor if the inventory has them, each under a label.
+    // Own slots are the bag, then the hotbar, the armor and the wardrobe if the inventory has them, each under a label.
     const tail = own.hotbar >= 0;
-    const clothes = own.wardrobe >= 0;
     // The wardrobe shares the armor's row where the row holds both, and takes a row of its own under a label where not.
-    const besideArmor = clothes && cols >= ARMOR_SLOTS + WARDROBE_SLOTS;
-    const tailH = tail ? infoH * 2 + rows(HOTBAR_SLOTS) + rows(ARMOR_SLOTS) + 4 + (clothes && !besideArmor ? infoH + rows(WARDROBE_SLOTS) : 0) : 0;
+    const besideArmor = cols >= ARMOR_SLOTS + WARDROBE_SLOTS;
+    const tailH = tail ? infoH * 2 + rows(HOTBAR_SLOTS) + rows(ARMOR_SLOTS) + 4 + (!besideArmor ? infoH + rows(WARDROBE_SLOTS) : 0) : 0;
     const actionH = tail ? 28 : 0;
     const ownH = titleH + rows(own.bag) + tailH + infoH + actionH + PAD * 2 + 6;
     this.pageSize = cols * OPEN_ROWS;
@@ -541,7 +540,7 @@ export class InventoryScreen implements Screen {
         cell.interactive = true;
         if (inHand && cell.style === S_SLOT) cell.tint = 0x5a6a7a;
         const item = inv.item[s]!;
-        const place = which !== BOX_SELF || inv.armor < 0 || s < inv.armor ? "" : s < inv.armor + ARMOR_SLOTS ? ARMOR_LABELS[s - inv.armor] : inv.wardrobe >= 0 && s < inv.wardrobe + WARDROBE_SLOTS ? WARDROBE_NAMES[s - inv.wardrobe] : "";
+        const place = which !== BOX_SELF || inv.armor < 0 || s < inv.armor ? "" : s < inv.armor + ARMOR_SLOTS ? ARMOR_LABELS[s - inv.armor] : s < inv.wardrobe + WARDROBE_SLOTS ? WARDROBE_NAMES[s - inv.wardrobe] : "";
         cell.label = item ? itemLabel(reg, item) : place ? "Empty " + place + " slot" : "Empty slot";
         // With a stack picked up, a slot it may not go in is dimmed, and a click there does nothing.
         const refused = this.held >= 0 && !(this.heldBox === which && this.held === s) && this.refuses(session, this.heldBox, this.held, which, s);
@@ -562,7 +561,7 @@ export class InventoryScreen implements Screen {
         const number = bp ? "BP" : inv.count[s]! > 1 ? String(inv.count[s]) : def?.weapon?.ammo ? String(inv.loaded[s]) : "";
         f.text(key + 2, x + 2, yy + CELL - lineHeight(S_SLOT_TEXT), CELL - 4, S_SLOT_TEXT, number);
         // What a worn garment is dyed shows as up to three swatches along its top, the item's own colours left out.
-        const k = which === BOX_SELF && inv.wardrobe >= 0 ? s - inv.wardrobe : -1;
+        const k = which === BOX_SELF && inv.armor >= 0 ? s - inv.wardrobe : -1;
         const dye = k >= 0 && k < WARDROBE_SLOTS ? inv.dyeOf(s) : 0;
         for (let j = 0; dye !== 0 && j < 3; j++) {
           const colour = (dye >>> (8 * j)) & 0xff;
@@ -690,7 +689,7 @@ export class InventoryScreen implements Screen {
       grid(own, BOX_SELF, KEY_INV_SLOT, top, own.armor, ARMOR_SLOTS);
       if (besideArmor) grid(own, BOX_SELF, KEY_INV_SLOT, top, own.wardrobe, WARDROBE_SLOTS, ARMOR_SLOTS);
       top += rows(ARMOR_SLOTS);
-      if (clothes && !besideArmor) {
+      if (!besideArmor) {
         f.text(KEY_INV_ROW_LABEL + 2, x0 + PAD, top, w - PAD * 2, S_LABEL, "Clothes");
         top += infoH;
         grid(own, BOX_SELF, KEY_INV_SLOT, top, own.wardrobe, WARDROBE_SLOTS);

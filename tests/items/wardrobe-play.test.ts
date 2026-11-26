@@ -12,7 +12,7 @@ import type { EntityRecord } from "../../server/records.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
 import { BOX_OPEN, BOX_SELF, CMD_DROP, CMD_MOVE, CMD_RESPAWN, CMD_TAKE, CMD_USE, RESULT_INVALID, RESULT_OK } from "../../shared/net/protocol.ts";
 import { JET_CUIRASS } from "../../shared/sim/character.ts";
-import { ARMORED_TAIL, ARMOR_SLOTS, Inventory, WARDROBE_SLOTS } from "../../shared/sim/items.ts";
+import { ARMOR_SLOTS, Inventory, WARDROBE_SLOTS } from "../../shared/sim/items.ts";
 import { TestCluster, keyAt, rec as clusterRec, rise, travel } from "../fixtures/cluster.ts";
 import { Harness } from "../fixtures/net.ts";
 import { editionOf } from "../fixtures/editions.ts";
@@ -242,36 +242,6 @@ test("editions and dyes are saved, and the survivor has them after a restart", (
     const again = h2.join("ada");
     h2.run(600);
     expect(wardrobe(again.inventory!)).toEqual(WORN);
-    expect(h2.host.items.audit()).toEqual([]);
-  } finally {
-    h2.host.shutdown();
-  }
-});
-
-test("a survivor saved before the wardrobe comes back with it empty and every other slot as it was", () => {
-  const db = join(dir, "old.db");
-  const { h, s, me, inv } = setup(db);
-  // As a save written before the wardrobe holds it: the same bag, hotbar and armor, in an inventory with no wardrobe.
-  const old = new Inventory(inv.bag + ARMORED_TAIL, inv.bag);
-  for (let slot = 0; slot < old.cap; slot++) if (inv.item[slot] !== 0) old.set(slot, inv.item[slot]!, inv.count[slot]!, inv.quality[slot]!, inv.dur[slot]!, inv.spoilAt[slot]!);
-  for (let k = 0; k < WARDROBE_SLOTS; k++) if (inv.item[inv.wardrobe + k] !== 0) h.host.items.burn(me, inv.wardrobe + k, 1);
-  // The ledger counts what the old save held, which the record now holds.
-  me.inv = old;
-  h.host.records.dirty.add(me.pid);
-  s.close();
-  h.run(300);
-  h.host.shutdown();
-  const h2 = new Harness({}, 1, 60, { dev: true, dbPath: db });
-  try {
-    const back = h2.host.items.inv(h2.host.records.byPid.get(me.pid)!);
-    expect([back.cap, back.bag, back.wardrobe]).toEqual([inv.cap, inv.bag, inv.wardrobe]);
-    for (let slot = 0; slot < old.cap; slot++) expect([back.item[slot], back.count[slot], back.quality[slot], back.dur[slot]]).toEqual([old.item[slot], old.count[slot], old.quality[slot], old.dur[slot]]);
-    expect(wardrobe(back)).toEqual([EMPTY, EMPTY, EMPTY, EMPTY, EMPTY]);
-    // It can dress at once.
-    expect(h2.host.items.mintAt(h2.host.records.byPid.get(me.pid)!, back.wardrobe, tee, 1)).toBe(1);
-    const again = h2.join("ada");
-    h2.run(600);
-    expect([again.inventory!.cap, again.inventory!.item[back.wardrobe]]).toEqual([inv.cap, tee]);
     expect(h2.host.items.audit()).toEqual([]);
   } finally {
     h2.host.shutdown();

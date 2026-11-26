@@ -23,7 +23,7 @@ import { buildProvingHeightfield } from "../../shared/world/proving.ts";
 import { corePack } from "../fixtures/pack.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { emptyAirSupport } from "../../shared/sim/air-support.ts";
-import { ARMOR_SLOTS, HOTBAR_SLOTS, Inventory } from "../../shared/sim/items.ts";
+import { GEAR_SLOTS, HOTBAR_SLOTS, Inventory } from "../../shared/sim/items.ts";
 import { UNIT_CLOCK } from "../../shared/sim/clock.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import type { InventoryScreen } from "../../client/core/ui/inventory.ts";
@@ -40,7 +40,7 @@ const palette = corePack().palette;
 function fakeSession(): { session: ClientSession; sent: number[] } {
   const sent: number[] = [];
   const session = {
-    state: "active", airSupport: emptyAirSupport(), inventory: new Inventory(40 + HOTBAR_SLOTS + ARMOR_SLOTS, 40), held: 0, tamed: [],
+    state: "active", airSupport: emptyAirSupport(), inventory: new Inventory(40 + GEAR_SLOTS, 40), held: 0, tamed: [],
     serverTick: 1000, logVersion: 0, log: [], globalChat: true, tribe: { name: "", team: 0 }, world: { hf }, markers: [], tactical: null, mapLocation: true, own: { x: 100, y: 0, z: 100 }, ownKind: reg.index.get("core:survivor")!,
     progress: { level: 1, xp: 0, statPoints: 0, engramPoints: 0, jobs: [], engrams: [], version: 1 },
     command: (op: number) => (sent.push(op), 1), emote: () => (sent.push(-1), 1), airCommand: () => (sent.push(-2), 1),

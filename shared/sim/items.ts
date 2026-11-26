@@ -8,10 +8,8 @@ export const ARMOR_SLOTS = 5;
 export const WARDROBE_NAMES = ["top", "bottom", "outer", "shoes", "hat"] as const;
 export type WardrobeName = (typeof WARDROBE_NAMES)[number];
 export const WARDROBE_SLOTS = WARDROBE_NAMES.length;
-/** The tail an inventory saved before the wardrobe has: the hotbar and the armor. */
-export const ARMORED_TAIL = HOTBAR_SLOTS + ARMOR_SLOTS;
 /** The whole tail after the bag: the hotbar, the armor, then the wardrobe. */
-export const GEAR_SLOTS = ARMORED_TAIL + WARDROBE_SLOTS;
+export const GEAR_SLOTS = HOTBAR_SLOTS + ARMOR_SLOTS + WARDROBE_SLOTS;
 
 /** Lowest first. QUALITY_MUL multiplies the values in an item's definition. */
 export const QUALITY_NAMES: readonly string[] = ["primitive", "ramshackle", "apprentice", "journeyman", "mastercraft", "ascendant"];
@@ -157,19 +155,19 @@ export class Inventory {
     this.mod = new Uint32Array(cap);
   }
 
-  /** First hotbar slot, or -1 for an inventory with no equipment tail. */
+  /** First hotbar slot, or -1 for an inventory with no equipment tail. Each part of the tail is there or none is. */
   get hotbar(): number {
-    return this.cap >= this.bag + ARMORED_TAIL ? this.bag : -1;
+    return this.cap >= this.bag + GEAR_SLOTS ? this.bag : -1;
   }
 
   /** First armor slot, or -1. */
   get armor(): number {
-    return this.cap >= this.bag + ARMORED_TAIL ? this.bag + HOTBAR_SLOTS : -1;
+    return this.cap >= this.bag + GEAR_SLOTS ? this.bag + HOTBAR_SLOTS : -1;
   }
 
   /** First wardrobe slot, or -1. */
   get wardrobe(): number {
-    return this.cap >= this.bag + GEAR_SLOTS ? this.bag + ARMORED_TAIL : -1;
+    return this.cap >= this.bag + GEAR_SLOTS ? this.bag + HOTBAR_SLOTS + ARMOR_SLOTS : -1;
   }
 
   /** Marks the slot changed. */
@@ -490,10 +488,5 @@ export function fitsSlot(inv: Inventory, slot: number, item: number, t: ItemTabl
   if (armor < 0 || slot < armor) return true;
   if (slot < armor + ARMOR_SLOTS) return t.wearSlot[item] === slot - armor;
   const wardrobe = inv.wardrobe;
-  return wardrobe < 0 || slot >= wardrobe + WARDROBE_SLOTS || (t.garmentSlot?.[item] ?? -1) === slot - wardrobe;
-}
-
-/** The size an inventory saved with `cap` slots and `bag` in its bag has now: one saved before the wardrobe gains it, empty. */
-export function capNow(cap: number, bag: number): number {
-  return cap - bag === ARMORED_TAIL ? bag + GEAR_SLOTS : cap;
+  return slot >= wardrobe + WARDROBE_SLOTS || (t.garmentSlot?.[item] ?? -1) === slot - wardrobe;
 }

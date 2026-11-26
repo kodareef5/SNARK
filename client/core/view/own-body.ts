@@ -43,7 +43,7 @@ export function ownBody(d: Director, f: AppFrame): void {
   }
   // What it wears in its wardrobe, as its own inventory has it now.
   body.dressed = false;
-  if (inv && inv.wardrobe >= 0 && body.wardrobe) {
+  if (inv && inv.hotbar >= 0 && body.wardrobe) {
     for (let k = 0; k < WARDROBE_SLOTS; k++) {
       const s = inv.wardrobe + k, item = inv.item[s]!;
       body.wardrobe[k * WORN_FIELDS] = item;
