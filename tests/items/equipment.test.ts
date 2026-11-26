@@ -630,7 +630,7 @@ artTest("the client draws what is worn and held, and the hotbar and inventory sc
   run(150);
   expect(sent.slice(-5).every((op) => op === CMD_SELECT)).toBe(true);
 
-  // Seen by another, the hat hides the hair and the shirt replaces the bare torso.
+  // Another player sees the hair fitted under the hide hat and the shirt over the torso.
   app.key("Digit2", true);
   const bo = new App(h.join("bo", { latencyMs: 20 }, { manual: true }), h.reg, pack);
   // He looks from the eye too, so his own body is not among what he sees of her.
@@ -650,7 +650,11 @@ artTest("the client draws what is worn and held, and the hotbar and inventory sc
     seen = bo.frame(now, 1280, 720);
   });
   const others = [...seen!.drawMesh.subarray(0, seen!.drawCount)].filter((_, d) => (seen!.drawFlags[d]! & (DRAW_SKINNED | DRAW_NEAR)) === DRAW_SKINNED).map((m) => pack.header.meshes[m]!.id);
-  expect(others.sort()).toEqual(["core:bow", "core:human_m/armor/hide/head", "core:human_m/armor/hide/torso", "core:human_m/feet", "core:human_m/hands", "core:human_m/head", "core:human_m/legs"]);
+  expect(others.sort()).toEqual([
+    "core:bow", "core:human_m/armor/hide/head", "core:human_m/armor/hide/torso",
+    "core:human_m/feet", "core:human_m/hair/buzzed/under-hat", "core:human_m/hands",
+    "core:human_m/head", "core:human_m/legs",
+  ]);
 
   // Wear the complete suit from the inventory and inspect the first-person pass.
   app.key("KeyI", true);

@@ -461,6 +461,7 @@ export class Scene {
   private readonly bodyOrder = new Uint32Array(MAX_VIEW);
   /** Each body's place among the survivors in view, nearest on screen first (rankNear), MAX_VIEW for any other. */
   private readonly bodyRank = new Uint16Array(MAX_VIEW);
+  private readonly faceReserve = new Uint8Array(MAX_VIEW);
   private readonly mountState = new AnimState();
   private readonly state = new AnimState();
   /** The characters' draws, given their depth ranges once their instances are written (bodyPasses). A one-bone draw's offset holds its stand-in's first bone. */
@@ -1235,9 +1236,10 @@ export class Scene {
       }
       // Which survivors may draw their finest level is known before their bones are counted, and those may take rows more.
       const finest = p.tier.finestBodies[SLOT_HEAD] ?? 0;
-      wanted += Math.min(this.rankNear(remote, n), finest) * EXTRA_ROWS;
+      wanted += this.rankNear(remote, n, finest);
       // The tier's bones less those taken, and those of the viewer's own body, which comes last.
-      const budget = Math.min(p.tier.bones, MAX_BONES) - p.boneCount - (own && ch.has(own.kind) ? ch.bones(own.kind) + (finest > 0 ? EXTRA_ROWS : 0) : 0);
+      const ownFace = own?.look && !own.firstPerson && ch.human(own.kind) && finest > 0 ? EXTRA_ROWS : 0;
+      const budget = Math.min(p.tier.bones, MAX_BONES) - p.boneCount - (own && ch.has(own.kind) ? ch.bones(own.kind) + ownFace : 0);
       this.bodyRigid.fill(0, 0, n);
       if (wanted > budget) this.thin(remote, n, wanted, budget);
       for (let k = 0; k < n; k++) if (this.bodyMount[k] !== -1) this.seatIn(remote, from[k]!, this.bodyMount[k]!, place, k);
@@ -1285,11 +1287,12 @@ export class Scene {
     return j >= 0 && (remote.seatSlot[i] === 0 || remote.seatGen[i] === remote.gen[j]) ? j : -1;
   }
 
-  /** Ranks the survivors among the `n` bodies in view by how near they are on screen, for the tier's finestBodies. */
-  private rankNear(remote: RemoteSample, n: number): number {
+  /** Ranks survivors by distance on screen and counts the extra rows their visible faces may use. */
+  private rankNear(remote: RemoteSample, n: number, finest: number): number {
     const ch = this.characters;
     const place = this.bodyAt;
     const order = this.bodyOrder;
+    this.faceReserve.fill(0, 0, n);
     let m = 0;
     for (let k = 0; k < n; k++) {
       const i = this.bodyFrom[k]!;
@@ -1300,8 +1303,18 @@ export class Scene {
       order[m++] = Math.min(Math.floor(far * 256), 0xfffff) * MAX_VIEW + k;
     }
     sortU32(order, m);
-    for (let r = 0; r < m; r++) this.bodyRank[order[r]! % MAX_VIEW] = r;
-    return m;
+    let rows = 0;
+    for (let r = 0; r < m; r++) {
+      const k = order[r]! % MAX_VIEW;
+      this.bodyRank[k] = r;
+      if (r >= finest) continue;
+      const i = this.bodyFrom[k]!;
+      if (remote.hasLook[i] && remote.id[i] !== this.headless && remote.id[i] !== this.own?.cockpitActor) {
+        this.faceReserve[k] = EXTRA_ROWS;
+        rows += EXTRA_ROWS;
+      }
+    }
+    return rows;
   }
 
   /**
@@ -1333,7 +1346,7 @@ export class Scene {
       const saddle = mount === MOUNT_OWN ? this.own!.gear[GEAR_WORN]! : mount >= 0 ? remote.gear[mount * GEAR_COUNT + GEAR_WORN]! : 0;
       // Missing authored sockets can only over-reserve; valid seats match add()'s separate fitted stand-in exactly.
       const profile = this.bodyRides[k] && this.saddleSeats[saddle]?.[slot - 1]?.rider ? saddle * (MAX_SEATS + 1) + slot : 0;
-      need -= ch.bones(remote.kind[i]!) - 1 - ch.standInBones(remote.kind[i]!, remote.hasLook[i] !== 0 ? remote.look : null, i * LOOK_BYTES, st, this.bodyRides[k] !== 0, slot === IMPALE_SLOT, profile, remote.gear, i * GEAR_COUNT, remote.id[i]!, remote.tick, remote.vehicleMissingPanels[i]);
+      need -= ch.bones(remote.kind[i]!) + this.faceReserve[k]! - 1 - ch.standInBones(remote.kind[i]!, remote.hasLook[i] !== 0 ? remote.look : null, i * LOOK_BYTES, st, this.bodyRides[k] !== 0, slot === IMPALE_SLOT, profile, remote.gear, i * GEAR_COUNT, remote.id[i]!, remote.tick, remote.vehicleMissingPanels[i]);
       this.bodyRigid[k] = 1;
     }
   }
