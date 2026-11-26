@@ -17,6 +17,7 @@ const projectiles = ["arrow_stone", "arrow_tranq", "grenade_smoke", "arrow_flame
 const rounds = ["round_pistol", "round_rifle", "round_shotgun", "round_advanced", "round_advanced_rifle", "round_advanced_sniper", "rocket"];
 const later = ["scope", "silencer", "flashlight", "pistol_fabricated", "shotgun_pump", "rifle_assault", "laser", "bow_compound", "rifle_sniper"];
 const laterHeld = ["pistol_fabricated", "shotgun_pump", "rifle_assault", "bow_compound", "rifle_sniper"];
+const industrial = ["generator", "refrigerator", "air_conditioner", "grinder", "vault", "forge_industrial", "chemistry_bench", "soul_vault", "cooker_industrial"];
 const heldSlots = new Map(slotsOf(CORE_CONTENT).filter(slot => slot.slot === "held").map(slot => [slot.owner, slot.id]));
 
 function expectLevels(mesh: SourceMesh, densityFloor: number): void {
@@ -112,4 +113,8 @@ artTest("rounds ship grounded models and inventory icons", async () => {
 
 artTest("later equipment ships drop art, weapon grips and inventory icons", async () => {
   await expectItemArt("core:later-weapons", later, laterHeld);
+});
+
+artTest("industrial stations ship centred models and their working state", async () => {
+  await expectStationArt("core:industrial-stations", industrial, ["soul_vault"]);
 });
