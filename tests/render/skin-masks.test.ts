@@ -6,14 +6,14 @@ import { tierOf } from "../../client/core/assets/tiers.ts";
 import { DRAW_RANGED, DRAW_SKINNED, DRAW_TEXTURED, TRANSIENT_BUFFER, type FramePacket } from "../../client/core/render/packet.ts";
 import { B_FINGERS_L, B_FINGERS_R, B_FINGERTIPS_L, B_FINGERTIPS_R, B_HAND_L, B_HAND_R, B_LOWER_ARM_L, B_LOWER_ARM_R, B_THUMB_L, B_THUMB_R } from "../../shared/anim/human.ts";
 import { HAIR_STYLES, LOOK_BEARD, LOOK_BYTES, LOOK_HAIR, LOOK_SEX, LOOK_SKIN, defaultLook } from "../../shared/anim/look.ts";
-import { SKIN_FOREARM_L, SKIN_FOREARM_R, SKIN_HAND_L, SKIN_HAND_R } from "../../shared/anim/skin-zones.ts";
+import { SKIN_FOREARM_L, SKIN_FOREARM_R, SKIN_HAND_L, SKIN_HAND_R, SKIN_WRIST_L, SKIN_WRIST_R } from "../../shared/anim/skin-zones.ts";
 import { hashBytes } from "../../shared/hash.ts";
 import { asTextured } from "../../tools/bench/base.ts";
 import { PICK_ENTITY } from "../../tools/snap/raster.ts";
 import { provingView, type ProvingView } from "../../tools/snap.ts";
 import { test } from "../fixtures/needs-art.ts";
 
-const ARMS = (1 << SKIN_FOREARM_L) | (1 << SKIN_FOREARM_R) | (1 << SKIN_HAND_L) | (1 << SKIN_HAND_R);
+const ARMS = (1 << SKIN_FOREARM_L) | (1 << SKIN_FOREARM_R) | (1 << SKIN_WRIST_L) | (1 << SKIN_WRIST_R) | (1 << SKIN_HAND_L) | (1 << SKIN_HAND_R);
 const FIRST_ID = 1000;
 /** Two bodies in each four, a man and a woman, take the mask. */
 const masked = (id: number): boolean => ((id - FIRST_ID) & 2) === 0;
