@@ -17,8 +17,9 @@ const TOUCH: readonly (readonly [string, string])[] = [
   ["Left side", "Drag to move. Push the stick to its rim to sprint."],
   ["Right side", "Tap to use your held item. Drag to look while moving with your other thumb."],
   ["Bottom dock", "Slide along the items. Lift on a slot to equip it. Slide away to cancel."],
-  ["Edge wheels", "Swipe in from the left wheel for menus or the right wheel for actions. Swipe out to go back."],
-  ["Play controls", "Open Field kit, then Play controls for jump, stance and held attack."],
+  ["Left wheel", "Tap or pull it in for menus. Turn it under your thumb and lift to open what it stops on."],
+  ["Right rim", "Tap it to jump. Pull it in for the other actions; the one you choose becomes what a tap does. Slide up or down on the rim to turn to another move."],
+  ["Play controls", "In the right fan, open Field kit, then Play controls for a full set of buttons: held attack, aim and stance."],
   ["World prompt", "Tap to ride, open or exit. Hold on a structure for its actions."],
   ["Corner chart", "Tap to expand. Choose Tools to pan, zoom or save a private pin."],
 ];

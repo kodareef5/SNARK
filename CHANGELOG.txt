@@ -33,6 +33,8 @@ Item art
 
 Touch controls
 - Tap or pull the left wheel for menus: turn it under your thumb and lift to open what it stops on. The right fan opens each family of actions beside it. Slide along the equipment shelf and lift to equip. Tap the vital signs for health and experience, or the radio beneath them to chat.
+- Tap the right rim to jump. Slide up or down on it for crouch, prone, reload, melee or view, or pull it in for every action: the one you choose is what a tap does next.
+- Empty slots on the equipment shelf show a faint plus.
 - Pressing Command on a touch page no longer switches it to the keyboard layout.
 - Hold a bin’s search button until its inventory opens. Field kit has extra controls for jumping and holding an attack.
 

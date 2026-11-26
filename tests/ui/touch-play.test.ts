@@ -48,7 +48,14 @@ function tapLabel(app: App, label: string, step: (ms: number) => void): void {
 }
 
 function openFieldKit(app: App, run: (ms: number) => void): void {
-  for (const label of ["Actions", "Field kit", "Play controls"]) tapLabel(app, label, run);
+  // The rim is pulled in, its hub goes back to the families, and the kit stands beside the moves.
+  const f = app.ui.frame, rim = f.nodes.slice(0, f.count).find(n => n.interactive && n.label === "Jump");
+  if (!rim) throw new Error("Missing the action rim");
+  const x = rim.x + rim.w / 2, y = rim.y + rim.h / 2;
+  app.pointer(0, rim.key, x, y, 0, 3);
+  app.pointer(1, rim.key, x - 60, y, 0, 3);
+  run(400);
+  for (const label of ["Actions", "Field kit", "Play controls"]) { tapLabel(app, label, run); run(400); }
 }
 
 /** A phone's interface at a window, from models. `like` is a client whose level line it shows too. */

@@ -6,6 +6,7 @@ import { HOTBAR_SLOTS } from "../../../shared/sim/items.ts";
 import { KEY_HOTBAR, KEY_HOTBAR_LIT, KEY_HOTBAR_RAIL, type HotbarModel } from "../hud/hotbar.ts";
 import { K_BUTTON, K_HOLD, K_IMAGE, K_PANEL, fitText, textWidth, type UiFrame, type UiNode } from "./nodes.ts";
 import { S_HUD_HIT, S_HUD_KEY, S_ICE, S_LABEL, addStyles } from "./style.ts";
+import { ICON, ICON_COLUMNS, ICON_Y, IMAGE_TOUCH, I_PLUS, TOUCH_HEIGHT, TOUCH_URL, TOUCH_WIDTH, touchPixels } from "./touch-art.ts";
 import { FAN_SPREAD, clamp, fanShape, glass, paintFan, paintPlate, paintShelf, paintWheel, repaint, turn, wrap, type FanView, type Glass } from "./touch-glass.ts";
 
 const TAU = Math.PI * 2;
@@ -84,7 +85,8 @@ export function drawBelt(f: UiFrame, m: HotbarModel): void {
     if (edge >= 21) f.add(key, K_PANEL, (left + x - boxW / 2) / u, (foot - boxH) / u, boxW / u, boxH / u, S_HUD_HIT);
     if (chosen) dash(f, KEY_HOTBAR_LIT + i, left + x - 4.5, foot - 7, 9, 3, 0x90e8ff, alpha);
     const px = (left + x - size / 2) / u, py = (foot - footing - size) / u;
-    if (slot.tint < 0) dash(f, key + 1, left + x - 2, foot - 9, 4, 1, 0xa8c5d5, .5 * alpha);
+    // An empty slot shows where a thing would stand.
+    if (slot.tint < 0) glyph(f, key + 1, I_PLUS, left + x, foot - footing - size * .5, size * .8).alpha = .4 * alpha;
     else {
       const pic = f.picture(key + 1, px, py, size / u, size / u, S_LABEL, slot.id ?? "");
       if (pic) pic.alpha = alpha;
@@ -103,7 +105,29 @@ function dash(f: UiFrame, key: number, x: number, y: number, w: number, h: numbe
   n.tint = tint; n.alpha = alpha;
 }
 
-export interface RimLeaf { readonly id: string; readonly label: string; readonly art: string }
+/** `art` is "ui:glass-" and a name, or "glyph-" and a glyph of the touch sheet. `hold` is the key it stands for under a finger. */
+export interface RimLeaf {
+  readonly id: string; readonly label: string; readonly art: string; readonly hold?: string;
+  /** A setting, not an action: choosing it leaves the rim as it was. */
+  readonly setting?: boolean;
+}
+
+/** A leaf's picture, `size` across about `x`, `y`, in CSS pixels. Null where the build has none. */
+function leafArt(f: UiFrame, key: number, leaf: RimLeaf, x: number, y: number, size: number): UiNode | null {
+  const u = f.unit;
+  if (!leaf.art.startsWith("glyph-")) return f.picture(key, (x - size / 2) / u, (y - size / 2) / u, size / u, size / u, S_LABEL, "ui:glass-" + leaf.art);
+  return glyph(f, key, Number(leaf.art.slice(6)), x, y, size);
+}
+
+/** Glyph `which` of the touch sheet. A glyph fills less of its cell than a painted thing does, so it is drawn a little over. */
+function glyph(f: UiFrame, key: number, which: number, x: number, y: number, size: number): UiNode {
+  f.images[IMAGE_TOUCH] ??= TOUCH_URL ? { width: TOUCH_WIDTH, height: TOUCH_HEIGHT, data: new Uint8ClampedArray(0), version: 0, url: TOUCH_URL, smooth: true } : touchPixels();
+  const u = f.unit, side = size * 1.1;
+  const n = f.add(key, K_IMAGE, (x - side / 2) / u, (y - side / 2) / u, side / u, side / u, S_LABEL);
+  n.image = IMAGE_TOUCH;
+  n.sx = (which % ICON_COLUMNS) * ICON; n.sy = ICON_Y + Math.floor(which / ICON_COLUMNS) * ICON; n.sw = n.sh = ICON;
+  return n;
+}
 
 /** What the rims ask of the dock that owns them: its keys, its lists, and what a choice does. */
 export interface RimHost {
@@ -117,6 +141,8 @@ export interface RimHost {
   leavesOf(family: number): readonly RimLeaf[];
   available(leaf: RimLeaf): boolean;
   run(leaf: RimLeaf): void;
+  /** Holds a leaf's key down, or lets it go. */
+  hold(code: string, down: boolean): void;
   /** Slot `slot` was chosen on the shelf, by a slide or by a tap. */
   equip(slot: number, slid: boolean): void;
 }
@@ -125,6 +151,8 @@ type Side = "left" | "action" | "bottom";
 interface Contact {
   finger: number; host: Side; key: number;
   x: number; y: number;
+  /** When it came down. */
+  since: number;
   moved: boolean;
   // The wheel.
   wasOpen: boolean; phase: number; station: number; hub: boolean; first: number; last: number | null; travel: number;
@@ -134,6 +162,8 @@ interface Contact {
   origin: number; local: number; offset: number;
 }
 
+/** How long a thumb rests on the rim before its key goes down, in milliseconds. A quicker tap is a press and release. */
+const HOLD_AFTER = 80;
 const KEY_EDGE = 6, KEY_DISC = 7, KEY_FACE = 8, KEY_FAMILY = 10;
 
 export class TouchRims {
@@ -152,6 +182,11 @@ export class TouchRims {
   // The fan.
   private depth = -1; private group = 0; private leaf = 0;
   private rootPhase = 0; private rootTo = 0; private leafPhase = 0; private leafTo = 0;
+  /** The leaf the shut rim stands for: a tap there does it, and choosing another on the fan puts that one in its place. */
+  private armedGroup = 0; private armedLeaf = 0;
+  /** Lets go of the key a thumb on the rim holds, if one does; and how lit the rim's cell is under it. */
+  private release: (() => void) | null = null;
+  private pressed = 0;
   private openness = 0; private level = 0; private fanDrop = 0; private placed = false; private ease = 1;
   // The shelf.
   private belt = 0; private beltTo = 0; private lift = 0; private shift = 0; private kept = 0; private heldSeen = -2;
@@ -169,6 +204,7 @@ export class TouchRims {
   /** Puts every rim away at once. */
   reset(): void {
     this.shut();
+    this.pressed = 0;
     this.reveal = this.revealV = this.openness = this.level = this.lift = this.shift = 0;
     this.phase = this.phaseTo; this.phaseV = 0;
     this.rootPhase = this.rootTo; this.leafPhase = this.leafTo;
@@ -178,19 +214,39 @@ export class TouchRims {
   /** Lets go and shuts what is open; the rims settle back on their springs. */
   shut(h?: RimHost): void {
     this.contact = null; this.mode = null; this.preview = -1;
+    this.letKey();
     this.target = 0; this.releaseAt = 0;
     const stations = h?.menu().length ?? 0;
     if (stations) this.phaseTo = this.phase + turn(this.phase, this.rest, stations);
     this.depth = -1;
-    const families = h?.families().length ?? 0;
+    // Shut, the fan rests on the family and the leaf its rim stands for.
+    this.group = this.armedGroup; this.leaf = this.armedLeaf;
+    const families = h?.families().length ?? 0, leaves = h?.leavesOf(this.group).length ?? 0;
     if (families) this.rootTo = this.rootPhase + turn(this.rootPhase, this.group, families);
-    this.leafTo = Math.round(this.leafTo);
+    this.leafTo = leaves ? this.leafPhase + turn(this.leafPhase, this.leaf, leaves) : Math.round(this.leafTo);
   }
 
-  private step(now: number, held: number, slots: number): void {
+  private letKey(): void {
+    this.release?.();
+    this.release = null;
+  }
+
+  private armed(h: RimHost): RimLeaf | undefined {
+    return h.leavesOf(this.armedGroup)[this.armedLeaf];
+  }
+
+  private step(now: number, held: number, slots: number, h: RimHost): void {
     const ms = this.clock < 0 ? 16 : clamp(now - this.clock, 1, 36);
     this.clock = this.now = now;
     const dt = clamp(ms / 1000, .003, .029), d = this.contact;
+    // A thumb resting on the rim holds its key down. Not at once: a pull or a turn starts as a touch too, and is no press.
+    if (d?.host === "action" && d.depth < 0 && this.depth < 0 && !d.axis && !this.release && now - d.since >= HOLD_AFTER) {
+      const armed = this.armed(h), code = armed?.hold;
+      if (code && h.available(armed!)) {
+        h.hold(code, true);
+        this.release = () => h.hold(code, false);
+      }
+    }
     if (this.releaseAt && now >= this.releaseAt) { this.releaseAt = 0; this.target = 0; }
     const turning = d?.host === "left" && d.moved;
     [this.reveal, this.revealV] = spring(this.reveal, this.revealV, this.target, dt, turning ? 750 : 580, turning ? 39 : 32);
@@ -208,6 +264,7 @@ export class TouchRims {
     this.openness = near(this.openness, this.depth >= 0 ? 1 : 0);
     this.level = near(this.level, this.depth === 1 ? 1 : 0);
     this.lift = near(this.lift, this.mode === "bottom" ? 1 : 0);
+    this.pressed = near(this.pressed, d?.host === "action" && d.depth < 0 && this.depth < 0 ? 1 : 0);
     this.shift = near(this.shift, d?.host === "bottom" ? d.local - d.origin : 0);
   }
 
@@ -234,7 +291,7 @@ export class TouchRims {
     if (d) return true;
     if (this.mode && this.mode !== side) this.shut(h);
     const c: Contact = {
-      finger, host: side, key, x: px, y: py, moved: false,
+      finger, host: side, key, x: px, y: py, since: this.now, moved: false,
       wasOpen: this.mode === "left", phase: this.phase, station: -1, hub: false, first: Math.atan2(py - this.cy, px - this.cx), last: null, travel: 0,
       scrub: false, out: false, centre: false, dy: 0,
       axis: "", depth: this.depth, group: this.group, leaf: this.leaf, family: -1, child: -1, isHub: key === h.hubs + 3,
@@ -300,7 +357,14 @@ export class TouchRims {
       return;
     }
     const families = h.families().length;
-    if (d.depth < 0 && (dx < -13 || Math.abs(dy) > 22)) this.openFan();
+    if (d.depth < 0) {
+      // A pull or a turn from the rim is no press of it: the fan comes out on the rim's own family.
+      if (this.depth < 0 && (dx < -13 || Math.abs(dy) > 22)) { this.letKey(); this.openFan(); }
+      if (d.axis === "y" && this.depth === 1) {
+        this.leafTo = d.leaf - dy / 51; this.leaf = wrap(Math.round(this.leafTo), h.leavesOf(this.group).length);
+      }
+      return;
+    }
     if (d.axis !== "y") return;
     if (d.depth === 1) {
       const leaves = h.leavesOf(this.group).length;
@@ -338,7 +402,21 @@ export class TouchRims {
       h.equip(chosen, d.moved);
       return;
     }
-    if (d.depth < 0) { this.openFan(); this.family(this.group, dx < -112, h); return; }
+    if (d.depth < 0) {
+      if (this.depth < 0) {
+        // A tap on the rim does what it stands for: a held key was down all the while, and anything else happens now.
+        const armed = this.armed(h);
+        if (this.release) this.letKey();
+        else if (d.axis === "" && armed && h.available(armed)) h.run(armed);
+        return;
+      }
+      // Turned up or down, the leaf it stopped on is the rim's from now on. Pulled in, the fan stays out.
+      if (d.axis === "y") {
+        if (!h.leavesOf(this.group)[this.leaf]?.setting) this.armedLeaf = this.leaf;
+        this.shut(h);
+      } else this.toLeaf(this.leaf, h);
+      return;
+    }
     if (d.axis === "x") {
       if (dx > 28) this.back(h);
       else if (dx < -28 && d.depth === 0) this.family(d.family >= 0 ? d.family : this.group, true, h);
@@ -364,7 +442,11 @@ export class TouchRims {
   }
 
   private openFan(): void {
-    if (this.depth < 0) { this.depth = 0; this.rootPhase = this.rootTo = this.group; this.leaf = 0; this.leafPhase = this.leafTo = 0; }
+    if (this.depth < 0) {
+      this.depth = 1;
+      this.group = this.armedGroup; this.rootPhase = this.rootTo = this.group;
+      this.leaf = this.armedLeaf; this.leafPhase = this.leafTo = this.leaf;
+    }
     this.mode = "action";
   }
   private family(i: number, child: boolean, h: RimHost): void {
@@ -385,13 +467,14 @@ export class TouchRims {
   private choose(i: number, h: RimHost): void {
     const leaves = h.leavesOf(this.group), leaf = leaves[wrap(i, leaves.length)];
     if (!leaf || !h.available(leaf)) return this.toLeaf(i, h);
+    if (!leaf.setting) { this.armedGroup = this.group; this.armedLeaf = wrap(i, leaves.length); }
     this.shut(h);
     h.run(leaf);
   }
 
   /** Each frame: the rims move on, the shelf is told what to draw, and the wheel and the fan are drawn with what presses them. */
   play(f: UiFrame, now: number, h: RimHost, m: HotbarModel): void {
-    this.step(now, m.held, m.hotbar.length);
+    this.step(now, m.held, m.hotbar.length, h);
     const d = this.contact, v = this.view;
     v.phase = this.belt; v.shift = this.shift; v.lift = this.lift;
     v.focus = d?.host === "bottom" ? d.local : null;
@@ -447,7 +530,7 @@ export class TouchRims {
     for (let i = 0; i < count; i++) {
       const angle = (i - this.phase) * TAU / count, lit = i === selected, leaf = menu[i]!;
       const x = cx + Math.cos(angle) * stationR, y = cy + Math.sin(angle) * stationR, size = across * (lit ? .88 : .76);
-      const pic = f.picture(h.leaves + i + 300, (x - size / 2) / u, (y - size / 2) / u, size / u, size / u, S_LABEL, "ui:glass-" + leaf.art);
+      const pic = leafArt(f, h.leaves + i + 300, leaf, x, y, size);
       if (pic) pic.alpha = ((lit ? .88 : .54) + (lit ? .12 : .37) * shown) * dim * (h.available(leaf) ? 1 : .39);
       if (open) hold(f, h.leaves + i, x - across / 2, y - across / 2, across, across, leaf.label + (h.available(leaf) ? "" : " (unavailable)"), true);
     }
@@ -466,6 +549,7 @@ export class TouchRims {
     const view: FanView = {
       width: Math.ceil(reach + 74), height: Math.ceil(reach * 2.13 + 53), rootR, openness: this.openness, level: this.level,
       families: families.length, rootPhase: this.rootPhase, leaves: Math.max(1, leaves.length), leafPhase: this.leafPhase, depth: this.depth, group: this.group,
+      armed: .5 + .5 * this.pressed,
     };
     const s = fanShape(view), keys = h.rims, open = this.mode === "action", dim = this.mode && !open ? .38 : 1;
     const x0 = W - f.right * u - view.width, rest = H * (W < H ? .52 : .51) - view.height / 2;
@@ -480,10 +564,10 @@ export class TouchRims {
     const y0 = rest + this.fanDrop;
     const cx = x0 + s.cx, cy = y0 + s.cy;
     const at = (radius: number, angle: number): [number, number] => [cx - Math.cos(angle) * radius, cy + Math.sin(angle) * radius];
-    repaint(this.fanGlass, view.width, view.height, [rootR, this.openness, this.level, this.rootPhase, this.leafPhase].map((n) => n.toFixed(3)).join("/") + `/${this.depth}/${this.group}/${leaves.length}`, (c) => paintFan(c, view));
+    repaint(this.fanGlass, view.width, view.height, [rootR, this.openness, this.level, this.rootPhase, this.leafPhase, this.pressed].map((n) => n.toFixed(3)).join("/") + `/${this.depth}/${this.group}/${leaves.length}`, (c) => paintFan(c, view));
     painted(f, keys + 1, IMAGE_FAN, this.fanGlass, x0, y0, view.width, view.height, dim);
     const icon = (key: number, leaf: RimLeaf, x: number, y: number, size: number, alpha: number): void => {
-      const pic = f.picture(key, (x - size / 2) / u, (y - size / 2) / u, size / u, size / u, S_LABEL, "ui:glass-" + leaf.art);
+      const pic = leafArt(f, key, leaf, x, y, size);
       if (pic) pic.alpha = alpha * dim * (h.available(leaf) ? 1 : .39);
     };
     if (this.depth >= 0) {
@@ -504,9 +588,10 @@ export class TouchRims {
       }
     };
     if (this.depth < 0) {
-      icon(keys + KEY_FAMILY + 300, families[this.group]!, ...at(s.root, 0), s.half * 1.32, .72);
+      const armed = this.armed(h) ?? families[this.group]!;
+      icon(keys + KEY_FAMILY + 300, armed, ...at(s.root, 0), s.half * 1.32, .8 + .2 * this.pressed);
       const [top, foot] = clearOf(f, x0 + view.width - column, cy - 48, column, 96, cy);
-      if (foot - top >= 24) hold(f, h.hubs + 3, x0 + view.width - column, top, column, foot - top, "Actions", false);
+      if (foot - top >= 24) hold(f, h.hubs + 3, x0 + view.width - column, top, column, foot - top, armed.label, false);
     }
     track(families, s.root, s.rootWidth, this.rootPhase, false);
     track(leaves, s.leafRadius, s.childHalf, this.leafPhase, true);

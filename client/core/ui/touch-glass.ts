@@ -113,6 +113,8 @@ export interface FanView {
   depth: number;
   /** The family whose leaves are out. */
   group: number;
+  /** Shut, how lit the cell at the rim is: it is a button for one leaf. 0 for none. */
+  armed?: number;
 }
 
 /** The fan's own measures, which its painter and its layout share. */
@@ -176,8 +178,17 @@ export function paintFan(c: Pen, v: FanView): void {
       curve(c, ribbon, radius + width + 2.5, sign * 1.10, sign * end, "#d3f2fdcf", 1);
       c.beginPath(); c.arc(tx, ty, 1.55, 0, TAU); c.fillStyle = steel; c.fill();
     }
-    if (child ? v.depth !== 1 : v.depth < 0) { c.globalAlpha = 1; return; }
     const cell = width - 2.7, reach = .375;
+    if (child ? v.depth !== 1 : v.depth < 0) {
+      if (!child && v.armed) {
+        const [x, y] = at(radius, 0);
+        c.globalAlpha = v.armed;
+        band(c, at, radius - cell, radius + cell, -reach, reach, linear(c, x - 22, y - 30, x + 22, y + 20, [[0, "#8ed9f693"], [.39, "#4f9cc276"], [.73, "#173e688c"], [1, "#5e9db6b2"]]));
+        curve(c, at, radius + cell, -reach, reach, "#c4f5ff", 1.2);
+      }
+      c.globalAlpha = 1;
+      return;
+    }
     for (let i = 0; i < count; i++) {
       const rel = turn(station, i, count), angle = rel * FAN_SPREAD, [x, y] = at(radius, angle);
       const lit = Math.abs(rel) < .49, fade = clamp((1.50 - Math.abs(rel)) / .35, 0, 1);

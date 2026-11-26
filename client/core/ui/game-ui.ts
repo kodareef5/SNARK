@@ -30,6 +30,7 @@ export class GameUi {
   readonly chat = new ChatState();
   /** Presses a key through the app's key rows: the app sets it. */
   pressKey: (code: string) => void = () => {};
+  holdKey: (code: string, down: boolean) => void = () => {};
   /** The view rests on something that can be attacked: the app sets it each frame. */
   aimed = false;
   /** Shift is held: the app's key rows set it. */
@@ -84,6 +85,7 @@ export class GameUi {
     press: (key, x, y) => this.pointer(0, key, x, y, 0, this.ctx.session),
     adjust: (by, end) => this.adjustFocused(by, end),
     pressKey: (code) => this.pressKey(code),
+    holdKey: (code, down) => this.holdKey(code, down),
     screens: this.screens,
     aimed: false,
     shift: false,

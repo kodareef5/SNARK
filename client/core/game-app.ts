@@ -273,6 +273,7 @@ export class GameApp {
     this.ui.palette = pack.palette;
     this.ui.touchPlay = this.touch;
     this.ui.pressKey = (code) => { this.key(code, true, false, this.ui.inputDevice); this.key(code, false, false, this.ui.inputDevice); };
+    this.ui.holdKey = (code, down) => { this.key(code, down, false, this.ui.inputDevice); };
     const app = this;
     this.padTarget = {
       get inMenu() { return !app.ui.wantsPointerLock; },

@@ -24,7 +24,7 @@ export const KEY_DOCK_SLOT = KEY_DOCK + 60;
 const KEY_RIM = KEY_DOCK + 80;
 const MOST_LEAVES = 40;
 
-export type DockPage = "emblem" | "actions" | "whistles" | "kit" | "gestures";
+export type DockPage = "emblem" | "actions" | "moves" | "whistles" | "kit" | "gestures";
 
 /** One thing a page offers: another page, a way to a screen, or an action. */
 interface Leaf {
@@ -33,11 +33,22 @@ interface Leaf {
   readonly art: string;
   readonly page?: DockPage;
   readonly touchOnly?: boolean;
+  /** The key it stands for while a finger is on it: the rim holds it down (touch-dock.ts). */
+  readonly hold?: string;
+  /** A setting, which the rim never stands for. */
+  readonly setting?: boolean;
   run?(c: ScreenCtx): void;
 }
 
 const press = (id: string, label: string, art: string, code: string): Leaf => ({ id, label, art, run: (c) => c.pressKey(code) });
 const page = (id: DockPage, label: string, art: string): Leaf => ({ id, label, art, page: id });
+/**
+ * The touch sheet's glyphs these use, by number (touch-art.ts I_JUMP and the rest). Written out, as a value imported from
+ * the sheet's file would have every page fetch it.
+ */
+const I_JUMP = 1, I_CROUCH = 3, I_RELOAD = 4, I_VIEW = 12, I_PRONE = 31, I_MELEE = 39;
+/** A move of the body: a key a keyboard has under a finger, and a thumb has here. Its picture is a glyph of the touch sheet. */
+const move = (id: string, label: string, glyph: number, code: string, held = false): Leaf => ({ id, label, art: "glyph-" + glyph, hold: held ? code : undefined, run: (c) => c.pressKey(code) });
 
 const EMBLEM = page("emblem", "Field menus", "emblem");
 const ACTIONS = page("actions", "Actions", "gestures");
@@ -48,13 +59,24 @@ const EMOTES = ["wave", "point", "salute"] as const;
 /** The pages that are the dock's own: the families of action and what each holds. */
 const OWN: Record<Exclude<DockPage, "emblem">, readonly Leaf[]> = {
   actions: [page("whistles", "Whistles", "whistles"), page("kit", "Field kit", "kit"), page("gestures", "Gestures", "gestures")],
+  moves: [
+    // Jump is held: a swimmer rises and a glider climbs for as long as the thumb stays. The rest are a press each.
+    move("jump", "Jump", I_JUMP, "Space", true), move("crouch", "Crouch", I_CROUCH, "KeyC"), move("prone", "Lie prone", I_PRONE, "KeyX"),
+    move("reload", "Reload", I_RELOAD, "KeyR"), move("melee", "Melee", I_MELEE, "KeyG"), move("view", "Change view", I_VIEW, "KeyV"),
+  ],
   whistles: [press("follow", "Follow", "follow", "KeyJ"), press("stay", "Stay", "stay", "KeyU"), press("attack-target", "Attack target", "attack-target", "Period")],
   kit: [
     { id: "drink", label: "Drink", art: "drink" }, { id: "eat", label: "Eat berries", art: "eat" }, { id: "spyglass", label: "Equip spyglass", art: "spyglass" },
-    { id: "controls", label: "Play controls", art: "settings", touchOnly: true, run: (c) => { c.settings.playControls = !c.settings.playControls; c.settings.changed(); } },
+    { id: "controls", label: "Play controls", art: "settings", touchOnly: true, setting: true, run: (c) => { c.settings.playControls = !c.settings.playControls; c.settings.changed(); } },
   ],
   gestures: EMOTES.map((id) => ({ id, label: id[0]!.toUpperCase() + id.slice(1), art: id })),
 };
+
+/**
+ * The fan's families by touch: the moves first, which a keyboard has keys for, then the desktop's own. Three show at a
+ * time, so the kit stands beside the moves and the whistles are a turn away.
+ */
+const FAN: readonly Leaf[] = [page("moves", "Moves", "glyph-" + I_JUMP), OWN.actions[1]!, OWN.actions[0]!, OWN.actions[2]!];
 
 /** The desktop's hubs beside the hotbar, left then right, as leaves of the field menu or the action families. */
 const LEFT_HUBS = ["emblem", "bag", "craft"];
@@ -94,11 +116,12 @@ export class FieldDock implements Screen {
   private readonly host: RimHost = {
     hubs: KEY_FIELD_HUB, leaves: KEY_FIELD_LEAF, rims: KEY_RIM, slots: KEY_DOCK_SLOT,
     menu: () => this.leaves("emblem", this.at!),
-    families: () => OWN.actions,
-    leavesOf: (family) => OWN[OWN.actions[family]!.page as Exclude<DockPage, "emblem">],
+    families: () => FAN,
+    leavesOf: (family) => OWN[FAN[family]!.page as Exclude<DockPage, "emblem">],
     available: (leaf) => this.available(leaf, this.at!),
     // The rims have shut by now, and the page with them: a key the choice presses is the game's, not the dock's.
     run: (leaf) => { this.page = null; this.run(leaf, this.at!); },
+    hold: (code, down) => { this.page = null; this.at!.holdKey(code, down); },
     equip: (slot, slid) => { if (!slid || slot !== this.at!.session?.held) this.equip(slot, this.at!); },
   };
   /** The field menu, made from the list's screens once they are known. */
@@ -152,7 +175,7 @@ export class FieldDock implements Screen {
   private find(id: string, c: ScreenCtx): Leaf | undefined {
     if (id === "emblem") return EMBLEM;
     if (id === "actions") return ACTIONS;
-    for (const p of ["emblem", "actions", "kit", "whistles", "gestures"] as const) for (const l of this.leaves(p, c)) if (l.id === id) return l;
+    for (const p of ["emblem", "actions", "moves", "kit", "whistles", "gestures"] as const) for (const l of this.leaves(p, c)) if (l.id === id) return l;
     return undefined;
   }
 

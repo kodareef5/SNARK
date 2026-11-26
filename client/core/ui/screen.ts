@@ -44,6 +44,8 @@ export interface ScreenCtx {
   adjust(by: number, end: boolean): boolean;
   /** Presses and lets go of a key as the keyboard would, through the app's key rows. */
   pressKey(code: string): void;
+  /** Holds a key down or lets it go, as a finger on a control that stands for it. */
+  holdKey(code: string, down: boolean): void;
   /** Every screen of the list, in its order. */
   readonly screens: readonly Screen[];
   /** The view rests on something that can be attacked. */
