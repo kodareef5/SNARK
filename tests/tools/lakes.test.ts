@@ -65,16 +65,19 @@ test("a body keeps what the data calls its water", () => {
 });
 
 test("a pool over a lower floor is let down to it and keeps its depth; a filled one dries", () => {
-  const set = (kind: string, bed: number, floor: number): { lakes: Lakes; height: Float32Array; made: ReturnType<typeof settleRims> } => {
+  const set = (kind: string, bed: number, floor: number, crossed = false): { lakes: Lakes; height: Float32Array; made: ReturnType<typeof settleRims> } => {
     const { lakes, grid } = oneBody(kind);
     // The rim at the surface all round, but one sample, a floor.
     const height = new Float32Array(81).fill(1);
     [height[4 * 9 + 4], height[4 * 9 + 5]] = [bed, floor];
-    return { lakes, height, made: settleRims(lakes, height, grid, -32, 1 / 16) };
+    return { lakes, height, made: settleRims(lakes, height, grid, -32, 1 / 16, (i) => crossed && i === 4 * 9 + 4) };
   };
   const low = set("pool", 0.5, 0.4);
   // A sixteenth's lattice: 0.1 m under the floor at 0.4 is 0.25.
-  expect([low.made, low.lakes.bodies[0]!.surface, low.height[4 * 9 + 4], low.height[4 * 9 + 5]]).toEqual([{ lowered: 1, farthest: 0.75, dried: 0 }, 0.25, -0.25, 0.4000000059604645]);
+  expect([low.made, low.lakes.bodies[0]!.surface, low.height[4 * 9 + 4], low.height[4 * 9 + 5]]).toEqual([{ lowered: 1, farthest: 0.75, dried: 0, crossed: 0 }, 0.25, -0.25, 0.4000000059604645]);
+  // One an approach was graded across stays where it is: let down, the approach would lie in a pit.
+  const way = set("pool", 0.5, 0.4, true);
+  expect([way.made, way.lakes.bodies[0]!.surface, way.height[4 * 9 + 4]]).toEqual([{ lowered: 0, farthest: 0, dried: 0, crossed: 1 }, 1, 0.5]);
   const held = set("pool", 0.5, 1.2);
   expect([held.made.lowered, held.lakes.bodies[0]!.surface, held.height[4 * 9 + 4]]).toEqual([0, 1, 0.5]);
   const pond = set("pond", 0.5, 0.4);

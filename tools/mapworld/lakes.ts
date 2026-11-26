@@ -224,20 +224,24 @@ const LEAST_DEPTH = 0.3;
  * Lets each rimmed body down to the fixed ground beside it. A floor levelled lower than its surface, or a road, cannot
  * rise to be its rim, so the water yields: its surface goes RIM_OVER under the lowest dry sample beside it, on the
  * lattice `minY + k * stepY`, and its bed down by as much, so it is as deep as it was carved. A body left with under
- * LEAST_DEPTH of water, as one a later grading filled, is no water any more: its samples go dry. Run once the floors
- * stand where they will. Returns how many were let down, the farthest, and how many dried.
+ * LEAST_DEPTH of water, as one a later grading filled, is no water any more: its samples go dry. A body with a sample
+ * `moved` since its bed was carved has a floor or a way to a door graded across it, which letting it down would leave
+ * in a pit: it stays as it is. Run once the floors stand where they will. Returns how many were let down, the farthest,
+ * how many dried and how many stayed for a grading across them.
  */
-export function settleRims(lakes: Lakes, height: Float32Array, grid: Grid, minY: number, stepY: number): { lowered: number; farthest: number; dried: number } {
+export function settleRims(lakes: Lakes, height: Float32Array, grid: Grid, minY: number, stepY: number, moved: (i: number) => boolean = () => false): { lowered: number; farthest: number; dried: number; crossed: number } {
   const { body, bodies } = lakes;
   const { nx, nz } = grid;
   const n = bodies.length;
   const lowest = new Float32Array(n + 1).fill(Infinity);
   const bed = new Float32Array(n + 1).fill(Infinity);
+  const across = new Uint8Array(n + 1);
   for (let row = 0; row < nz; row++) {
     for (let col = 0; col < nx; col++) {
       const b = body[row * nx + col]!;
       if (b === 0 || !rimmed(bodies[b - 1]!.kind)) continue;
       bed[b] = Math.min(bed[b]!, height[row * nx + col]!);
+      if (moved(row * nx + col)) across[b] = 1;
       for (let dr = -1; dr <= 1; dr++) {
         for (let dc = -1; dc <= 1; dc++) {
           const [c, r] = [col + dc, row + dr];
@@ -248,11 +252,12 @@ export function settleRims(lakes: Lakes, height: Float32Array, grid: Grid, minY:
   }
   const drop = new Float32Array(n + 1);
   const dry = new Uint8Array(n + 1);
-  let lowered = 0, farthest = 0, dried = 0;
+  let lowered = 0, farthest = 0, dried = 0, crossed = 0;
   for (let b = 1; b <= n; b++) {
     const was = bodies[b - 1]!;
     if (bed[b] === Infinity) continue;
-    if (lowest[b]! < was.surface) {
+    if (was.surface - bed[b]! >= LEAST_DEPTH && lowest[b]! < was.surface && across[b]) crossed++;
+    else if (lowest[b]! < was.surface) {
       const surface = minY + Math.floor((lowest[b]! - RIM_OVER - minY) / stepY + 1e-6) * stepY;
       drop[b] = was.surface - surface;
       bodies[b - 1] = { ...was, surface };
@@ -270,7 +275,7 @@ export function settleRims(lakes: Lakes, height: Float32Array, grid: Grid, minY:
     if (dry[b]) body[i] = 0;
     else height[i] = height[i]! - drop[b]!;
   }
-  return { lowered, farthest, dried };
+  return { lowered, farthest, dried, crossed };
 }
 
 /**
