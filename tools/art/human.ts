@@ -217,23 +217,15 @@ export function suitLining(meshes: readonly SourceMesh[]): SourceMesh[] {
   return meshes.map((m) => ({ ...m, lods: (m.id.endsWith("/head") ? [1, 1, 2] : [0, 1, 2]).map((k) => m.lods[k]!) }));
 }
 
-/**
- * Keeps a suit's plates clear of the skin and lets them out where skin comes through them in motion, as cloth and hide
- * are; its lining, the body's own skin, stays where it is.
- */
-export function suitInMotion(suit: SourceMesh[], body: readonly SourceMesh[], rest: readonly number[], lines: string[]): void {
-  const poses = motionSet(humanAnim(), Float32Array.from(rest), true);
+/** Keeps a suit's plates clear of the skin of each level, as cloth and hide are; its lining, the body's own skin, stays. */
+export function suitClear(suit: SourceMesh[], body: readonly SourceMesh[], lines: string[]): void {
   const at = (lod: SourceLod, v: number): string => `${lod.positions[v * 3]},${lod.positions[v * 3 + 1]},${lod.positions[v * 3 + 2]}`;
+  const lining = new Set(suitLining(body).flatMap((m) => m.lods.flatMap((lod) => Array.from({ length: lod.positions.length / 3 }, (_, v) => at(lod, v)))));
   for (const mesh of suit) {
-    if (!/\/armor\/[^/]+\/(head|torso|hands|legs|feet)$/.test(mesh.id)) continue;
-    const skins = mesh.lods.map((_, level) => skinLevel(body, level));
-    const lining = suitLining(body).flatMap((m) => m.lods.map((lod) => new Set(Array.from({ length: lod.positions.length / 3 }, (_, v) => at(lod, v)))));
-    const lined = (lod: SourceLod, v: number): boolean => lining.some((set) => set.has(at(lod, v)));
-    const still = (lod: SourceLod, v: number): boolean => lined(lod, v) || (HAND_BONES.has(lod.bones![v]!) && !mesh.id.endsWith("/feet"));
+    if (!/\/armor\/[^/]+\/(head|torso|legs|feet)$/.test(mesh.id)) continue;
     let moved = 0;
-    mesh.lods.forEach((lod, level) => (moved += clearOf(lod, skins[level]!, REFIT_CLEAR, (v) => still(lod, v))));
-    const r = easeInMotion(mesh, body, Float32Array.from(rest), poses, () => -1, still, false);
-    lines.push(`${mesh.id}: ${moved} vertices moved clear of the skin, let out at most ${(r.most * 1000).toFixed(1)} mm in motion; skin came through it ${r.deepest.map((d) => (d * 1000).toFixed(1)).join(", ")} mm by round`);
+    mesh.lods.forEach((lod, level) => (moved += clearOf(lod, skinLevel(body, level), REFIT_CLEAR, (v) => lining.has(at(lod, v)))));
+    lines.push(`${mesh.id}: ${moved} vertices moved clear of the skin`);
   }
 }
 
@@ -348,7 +340,7 @@ export function convertBodies(spec: HumanBodiesAsset, dir: string, described: Re
         // its weights, and its plates, drawn on the Quaternius body, move as the skin under them moved.
         const field = onBody;
         made = spec.tailored.make(suitLining(body.meshes), body.rig, (p) => shiftAt(field, p));
-        suitInMotion(made, body.meshes, body.rig.rest, lines);
+        suitClear(made, body.meshes, lines);
       } else {
         // The tailored outfit is cut from the flat one-bone body it was designed on, so its counts and look stay its own.
         const eyes: MaterialRule = { image: readPng(join(raw, spec.eyes)), color: eye };

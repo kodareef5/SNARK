@@ -73,9 +73,9 @@ export interface EaseReport {
 /**
  * Lets `piece`, not yet lined, out at rest where skin drawn beside it comes through it in `poses`: the body's other slots,
  * and its own where `lined` says the lining will draw it, and how far under the skin (tools/pack/liner.ts). `still` keeps a vertex where it is: a hand or a foot a grip or a
- * sole is calibrated on. A head piece draws the head under it unless it is not `open`. Every level is let out as its finest is, by the nearest of its vertices there.
+ * sole is calibrated on. Every level is let out as its finest is, by the nearest of its vertices there.
  */
-export function easeInMotion(piece: SourceMesh, body: readonly SourceMesh[], rest: Float32Array, poses: readonly MotionPose[], lined: (x: number, y: number, z: number) => number, still: (lod: SourceLod, v: number) => boolean, open = true, rounds = 3): EaseReport {
+export function easeInMotion(piece: SourceMesh, body: readonly SourceMesh[], rest: Float32Array, poses: readonly MotionPose[], lined: (x: number, y: number, z: number) => number, still: (lod: SourceLod, v: number) => boolean, rounds = 3): EaseReport {
   const slot = SLOT_NAMES.indexOf(piece.id.split("/").at(-1)!);
   // The skin: the body's slot meshes at their finest level, welded, with each point drawn beside the piece or not.
   const positions: number[] = [], joints: number[] = [], weights: number[] = [], indices: number[] = [], ofSlot: number[] = [];
@@ -103,7 +103,7 @@ export function easeInMotion(piece: SourceMesh, body: readonly SourceMesh[], res
   // Per point of skin: drawn beside the piece, and how far under it the lining lies, if that is what draws it.
   const sink = new Float64Array(nb);
   const drawn = Uint8Array.from({ length: nb }, (_, i) => {
-    if (ofSlot[first[i]!] !== slot || (open && slot === SLOT_HEAD)) return 1;
+    if (ofSlot[first[i]!] !== slot || slot === SLOT_HEAD) return 1;
     sink[i] = lined(bw.positions[i * 3]!, bw.positions[i * 3 + 1]!, bw.positions[i * 3 + 2]!);
     return sink[i]! >= 0 ? 1 : 0;
   });
