@@ -1,14 +1,14 @@
 // What a page holds of its map against the map read whole, and against a page that took the same parts in order
-// (tests/world/review-*.test.ts).
+// (tests/world/page-*.test.ts).
 
 import { MapLoader, StagedMap } from "../../client/core/mapload.ts";
 import { HeldStatics } from "../../client/core/map-statics.ts";
 import { SECTOR_CHUNKS } from "../../shared/coords.ts";
 import type { CityStatics } from "../../shared/world/city.ts";
 import { mapHeightfield, parseMap, readHead, readPart, squareOf, type MapPart, type MapPiece, type StaticsPiece, type TopsPiece } from "../../shared/world/mapfile.ts";
-import { denseOf, nodesOf } from "../fixtures/paged-ground.ts";
-import { coreRegistry } from "../fixtures/world.ts";
-import { PER, inside } from "./review-rig.ts";
+import { denseOf, nodesOf } from "./paged-ground.ts";
+import { coreRegistry } from "./world.ts";
+import { PER, inside } from "./map-page.ts";
 
 const finish = <T>(steps: Generator<void, T>): T => {
   for (let s = steps.next(); ; s = steps.next()) if (s.done) return s.value;

@@ -1,26 +1,26 @@
-// A second opinion on what the page fetches again: a body that jitters on the corner of four sectors, a map screen
-// panned back and forth, a scope flicked on and off and swept, on a link that answers at once. Each minute's requests are
+// What the page fetches again: a body that jitters on the corner of four sectors, a map screen panned back and forth, a
+// scope flicked on and off and swept, a survivor dead, on a link that answers at once. Each minute's requests are
 // counted, and those of parts that had come before.
 //
-// On the review map by default. On a built city with the tiers' own reaches:
-//   REVIEW_MAP=/path/miami.snmap REVIEW_AT=7520,5280 bun test tests/world/review-thrash.test.ts
+// On the off-lattice map by default. On a built city with the tiers' own reaches:
+//   PAGE_MAP=/path/miami.snmap PAGE_AT=7520,5280 PAGE_SAY=1 bun test tests/world/page-thrash.test.ts
 
 import { expect, test } from "bun:test";
 import { existsSync, openSync, readSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { tierOf } from "../../client/core/assets/tiers.ts";
-import { FOCUS_STATICS, KEEP_PAST, ROAD_REACH, tierWant } from "../../client/core/map-want.ts";
+import { tierWant } from "../../client/core/map-want.ts";
 import { Rng } from "../../shared/rng.ts";
 import { partsFolder, readHead, writeMap } from "../../shared/world/mapfile.ts";
-import { Link, reviewMap, startLoader, wantOf, type Wants } from "./review-rig.ts";
+import { Link, pagedMap, say, startLoader, wantOf, type Wants } from "../fixtures/map-page.ts";
 
-const CITY = process.env.REVIEW_MAP;
-const [AX, AZ] = (process.env.REVIEW_AT ?? "").split(",").map(Number);
+const CITY = process.env.PAGE_MAP;
+const [AX, AZ] = (process.env.PAGE_AT ?? "").split(",").map(Number);
 
-/** A link to the review map, or to a built city's file read a part at a time, and the bytes each part is on the wire. */
+/** A link to the off-lattice map, or to a built city's file read a part at a time, and the bytes each part is on the wire. */
 function linkOf(): { link: Link; wire: (url: string) => number } {
   if (!CITY) {
-    const link = new Link(writeMap(reviewMap(36000)));
+    const link = new Link(writeMap(pagedMap(36000)));
     return { link, wire: (url) => link.read(url)?.length ?? 0 };
   }
   const fd = openSync(CITY, "r");
@@ -94,17 +94,17 @@ const size = CITY ? 16320 : 5120;
 /** The corner of four sectors nearest the middle of the map, or the place given. */
 const corner = CITY ? { x: AX || 7680, z: AZ || 5120 } : { x: 2560, z: 2560 };
 
-test("a body jittering on the corner of four sectors, standing or turning at speed, asks again for nothing", async () => {
+test("a body jittering on the corner of four sectors asks again for nothing", async () => {
   const rng = new Rng(11);
   const got = await minutes(corner, {}, {
     "a few metres of jitter": (_t, body) => void ([body.x, body.z] = [corner.x + rng.range(-5, 5), corner.z + rng.range(-5, 5)]),
     "its way turned about at 80 m/s": (t, body) => void ([body.vx, body.vz] = [80 * Math.cos(t / 700), 80 * Math.sin(t / 700)]),
     "a camera circling 300 m off": (t, _body, wants) => void (wants.camera = { x: corner.x + 300 * Math.cos(t / 900), z: corner.z + 300 * Math.sin(t / 900) }),
   });
-  console.log("corner", got);
+  say(`corner ${JSON.stringify(got, null, 1)}`);
   expect(got["a few metres of jitter"]!.asked).toBe(0);
   for (const m of Object.values(got)) expect(m.again).toBe(0);
-}, 3_600_000);
+});
 
 test("a body jittering at the edge of its statics budget asks again for nothing", async () => {
   const rng = new Rng(12);
@@ -115,11 +115,11 @@ test("a body jittering at the edge of its statics budget asks again for nothing"
     "walking a 60 m square": (t, body) => void ([body.x, body.z] = [corner.x + 30 * Math.sign(Math.cos(t / 3000)), corner.z + 30 * Math.sign(Math.sin(t / 3000))]),
     "its way turned about at 80 m/s": (t, body) => void ([body.vx, body.vz] = [80 * Math.cos(t / 700), 80 * Math.sin(t / 700)]),
   });
-  console.log("budget", got);
+  say(`budget ${JSON.stringify(got, null, 1)}`);
   for (const m of Object.values(got)) expect(m.again).toBe(0);
-}, 3_600_000);
+});
 
-test("a map screen panned away and back, and a scope flicked on and off, ask again for nothing they held a moment before", async () => {
+test("a map screen panned and a scope flicked ask again for nothing just held", async () => {
   // The scope looks at a place 3 km off; the map screen is panned to one 7 km off on a city.
   const home = CITY ? corner : { x: 400, z: 400 };
   const seen = CITY ? { x: corner.x - 2100, z: corner.z + 2100 } : { x: size - 400, z: size - 400 };
@@ -134,13 +134,13 @@ test("a map screen panned away and back, and a scope flicked on and off, ask aga
     // A scope up but for 0.4 s in every 3 s: less than the second between two looks.
     "a scope down for 0.4 s in every 3 s": (t, _body, wants) => void (wants.focus = t % 3000 < 400 ? null : { x: seen.x, z: seen.z }),
   });
-  console.log("screen and scope", got, { ROAD_REACH, FOCUS_STATICS, KEEP_PAST });
+  say(`screen and scope ${JSON.stringify(got, null, 1)}`);
   // A part let go the moment its centre goes has no time to be wanted again: each of these is asked for again and again.
   expect(Object.fromEntries(Object.entries(got).map(([name, m]) => [name, m.again]))).toEqual({ "the map screen panned every 3 s": 0, "a scope flicked every 1.5 s": 0, "a scope swept at 150 m/s": 0, "a scope down for 0.4 s in every 3 s": 0 });
-}, 3_600_000);
+});
 
-test("a survivor dead for 10 s in every 30, its camera over where it fell, asks for nothing", async () => {
-  // Far from the map's first spawn point: the far corner of the review map, downtown on a city.
+test("a survivor dead for 10 s in every 30 asks for nothing", async () => {
+  // Far from the map's first spawn point: the far corner of the off-lattice map, downtown on a city.
   const home = CITY ? corner : { x: 4600, z: 700 };
   const got = await minutes(home, { camera: { x: home.x, z: home.z } }, {
     "dead for 10 s in every 30": (t, body) => void (body.dead = t % 30000 >= 10000 && t % 30000 < 20000),
@@ -148,6 +148,6 @@ test("a survivor dead for 10 s in every 30, its camera over where it fell, asks 
     "dead from the tenth second on": (t, body) => void (body.dead = t >= 10000),
   });
   const spawn = linkOf().link.head.spawns[0]!;
-  console.log("dead", got, `the first spawn point is ${Math.round(Math.hypot(spawn.x - home.x, spawn.z - home.z))} m off`);
+  say(`dead ${JSON.stringify(got, null, 1)}, the first spawn point ${Math.round(Math.hypot(spawn.x - home.x, spawn.z - home.z))} m off`);
   expect(got["dead for 10 s in every 30"]!.asked).toBe(0);
-}, 3_600_000);
+});

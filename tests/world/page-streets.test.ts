@@ -1,13 +1,13 @@
-// A second opinion on a car's prediction at the edge of a sector whose streets the page lists and does not hold yet
+// A car's prediction at the edge of a sector whose streets the page lists and does not hold yet
 // (client/core/session.ts groundHeld, client/core/mapload.ts lookRoads): with the loader's own books, on a server.
 
 import { expect, test } from "bun:test";
 import { writeMap } from "../../shared/world/mapfile.ts";
-import { Link, Page, inside, reviewMap, serverOn, type Wants } from "./review-rig.ts";
+import { Link, Page, inside, pagedMap, say, serverOn, type Wants } from "../fixtures/map-page.ts";
 
-const file = writeMap(reviewMap(0));
+const file = writeMap(pagedMap(0));
 
-test("a car beside a sector whose streets have not come is not predicted, on foot it is, and the car is once they come", async () => {
+test("a car by a sector whose streets have not come is predicted once they do", async () => {
   const h = serverOn(file);
   try {
     const wants: Wants = { view: 1500, statics: 700, camera: null, focus: null, screen: null };
@@ -30,8 +30,7 @@ test("a car beside a sector whose streets have not come is not predicted, on foo
     // On foot the body is predicted: the ground is the map's own.
     expect([s.predicting, s.driving]).toEqual([true, -1]);
     const car = h.host.spawnVehicle("core:compact", s.own.x + 1.6, s.own.z - 0.12, 0, Math.PI);
-    const mounted = h.host.urban.mount(page.client, car);
-    if (process.env.REVIEW_SAY) console.log(`car ${car} at ${h.world.ents.x[car]}, ${h.world.ents.y[car]}, ${h.world.ents.z[car]}; body ${s.own.x}, ${s.own.y}, ${s.own.z}; mount gave ${mounted}; state ${page.client.state}`);
+    h.host.urban.mount(page.client, car);
     let predicted = 0, frames = 0;
     for (let k = 0; k < 180; k++) {
       await page.run(17);
@@ -49,9 +48,9 @@ test("a car beside a sector whose streets have not come is not predicted, on foo
       await page.run(17);
       if (!s.predicting) unpredicted++;
     }
-    console.log(`the car went from 1500, 1012 to ${s.own.x.toFixed(0)}, ${s.own.z.toFixed(0)}; ${unpredicted} frames of 360 not predicted; ${page.unsound.length} unsound`);
+    say(`the car went from 1500, 1012 to ${s.own.x.toFixed(0)}, ${s.own.z.toFixed(0)}; ${unpredicted} frames of 360 not predicted; ${page.unsound.length} unsound`);
     expect([unpredicted, page.unsound]).toEqual([0, []]);
   } finally {
     h.host.shutdown();
   }
-}, 600_000);
+});

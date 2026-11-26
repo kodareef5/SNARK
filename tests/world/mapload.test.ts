@@ -876,6 +876,27 @@ test("standing still, nothing is asked for once the page has settled, however of
   await s.drain();
 });
 
+test("a page set down far off is not settled before its next look", async () => {
+  const s = heldServer(file);
+  const ticks: (() => void)[] = [];
+  let loader: MapLoader | null = null;
+  void MapLoader.start(s.get, `map/${head.name}`, { ...NOW, every: () => new Promise<void>((go) => ticks.push(go)) }).then((l) => (loader = l));
+  await s.drain();
+  const body = { x: 1056, z: 448, vx: 0, vz: 0 };
+  void loader!.follow(() => body, { want: () => ({ view: 2000, statics: 1200 }) });
+  await s.drain();
+  await settle();
+  expect(loader!.progress().settled).toBe(true);
+  // A respawn or a tool's jump: until the clock's next look nothing is asked for, though the ground there is not held.
+  const asked = s.asked.length;
+  body.x = 3800;
+  await settle();
+  expect([s.asked.length - asked, loader!.staged.hf.exactIn(body.x - 1, body.z - 1, body.x + 1, body.z + 1), loader!.progress().settled]).toEqual([0, false, false]);
+  // Back where it was, it is settled again without a look.
+  body.x = 1056;
+  expect(loader!.progress().settled).toBe(true);
+});
+
 test("ground pages past their budget go farthest first but round the body, and an overview past the view goes; both come again", async () => {
   const s = heldServer(file);
   let loader: MapLoader | null = null;

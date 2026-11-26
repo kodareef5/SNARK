@@ -1,6 +1,6 @@
-// A second opinion's rig for the page's bounded map loader (client/core/mapload.ts): a map of 36 sectors and 9 overviews
-// off the lattice, a link whose answers the test orders, fails and damages, a clock of its own, and the readings two
-// loads are compared by. Used by tests/world/review-*.test.ts.
+// A page of a map it takes in parts (client/core/mapload.ts): a map of 36 sectors and 9 overviews off the lattice, a link
+// whose answers the test orders, fails and damages on a clock of its own, a loader on it, and that loader with a session
+// on a server as the shell wires them. Used by tests/world/page-*.test.ts.
 
 import type { Answer, Get } from "../../client/core/fetched.ts";
 import { MapLoader, type Place } from "../../client/core/mapload.ts";
@@ -11,7 +11,7 @@ import { TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { OVERVIEW_CHUNKS, mapTops, partsOf, readHead, resolveNodes, squareOf, type MapData, type MapHead, type MapPart, type MapStatic, type NodeScatter, type NodeZoned } from "../../shared/world/mapfile.ts";
 import { encodeStreets, heldSide, kindsByte } from "../../shared/world/streets.ts";
 import { MapWater } from "../../shared/world/water.ts";
-import { coreRegistry } from "../fixtures/world.ts";
+import { coreRegistry } from "./world.ts";
 
 export const PER = CHUNK_SIZE / TERRAIN_CELL;
 export const SIDE = 80;
@@ -24,7 +24,7 @@ export const FRAME = 2040;
  * `dense` of them in one sector so its reading takes several steps; trees scattered and zoned; a lake across the corner
  * of four overviews in the north-west; streets listed in a row of sectors; ground classes; and its tops.
  */
-export function reviewMap(dense = 0): MapData {
+export function pagedMap(dense = 0): MapData {
   const rng = new Rng(7001);
   const dims = { chunksX: SIDE, chunksZ: SIDE, frameX: FRAME, frameZ: FRAME };
   const n = SIDE * PER + 1;
@@ -68,7 +68,7 @@ export function reviewMap(dense = 0): MapData {
     const lo = Math.max(0, x0) - x0 + 10, hi = Math.min(size, x0 + 1024) - x0 - 10;
     return { col, row, bytes: encodeStreets({ x0, z0, stretches: [{ type: 3, flags: 0, seed: 70 + c, sides: [side, side], xz: Float64Array.of(lo, 500, hi, 500) }], corners: [] }) };
   });
-  const map = resolveNodes({ id: "test:review", dims, minY, stepY, seaLevel: 0, heights, tint, ground, statics, nodes: [scatter, zoned], spawns: [{ name: "Middle", x: 2600, z: 2600, yaw: 0 }], water, streets }, coreRegistry());
+  const map = resolveNodes({ id: "test:paged", dims, minY, stepY, seaLevel: 0, heights, tint, ground, statics, nodes: [scatter, zoned], spawns: [{ name: "Middle", x: 2600, z: 2600, yaw: 0 }], water, streets }, coreRegistry());
   return { ...map, tops: mapTops(map, coreRegistry()) };
 }
 
@@ -77,6 +77,9 @@ export function offOf(head: MapHead, p: MapPart, x: number, z: number): number {
   const sq = squareOf(head.dims, p.kind === "overview" || p.kind === "tops" ? OVERVIEW_CHUNKS : SECTOR_CHUNKS, p.col, p.row)!;
   return Math.hypot(Math.max(sq.cx0 * CHUNK_SIZE - x, x - sq.cx1 * CHUNK_SIZE, 0), Math.max(sq.cz0 * CHUNK_SIZE - z, z - sq.cz1 * CHUNK_SIZE, 0));
 }
+
+/** Says `line` where PAGE_SAY is set: what a run measured, for one read by hand. */
+export const say = (line: string): void => void (process.env.PAGE_SAY && console.log(line));
 
 /** A turn of the event loop: every promise the last answers started runs its course. */
 export const turn = (): Promise<void> => new Promise((go) => setImmediate(go));
@@ -212,7 +215,7 @@ export const wantOf = (w: Wants): WantFrom => ({ view: w.view, statics: w.static
 
 export type { Place };
 
-/** The private parts of a loader a review reads. */
+/** The private parts of a loader a test reads. */
 export interface LoaderInside {
   came: Set<MapPart>;
   going: Set<MapPart>;
@@ -236,12 +239,12 @@ import type { CityMaker } from "../../client/core/render/citymake.ts";
 import type { LoopbackEnd } from "../../shared/net/loopback.ts";
 import { nodeLayers } from "../../shared/world/mapfile.ts";
 import { toldHealth, type StructureStore } from "../../shared/world/structures.ts";
-import { Harness, testKey } from "../fixtures/net.ts";
+import { Harness, testKey } from "./net.ts";
 
 /** A server on `file`, with no clips or rigs to load. */
 export const serverOn = (file: Uint8Array<ArrayBuffer>, seed = 3): Harness => new Harness({}, seed, 60, { dev: true, clips: NO_CLIPS, rigs: [], map: file });
 
-/** The private parts of a session a review reads. */
+/** The private parts of a session a test reads. */
 export interface SessionInside {
   waitingRows: (Uint8Array | number)[];
   whole: Uint8Array;

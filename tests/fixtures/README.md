@@ -4,6 +4,7 @@
 | --- | --- |
 | `world.ts` | The core registry, compiled once per test process; a flat world, the proving ground, and a sealed room builder |
 | `map.ts` | Maps to write as files: flat ground of any size, and a small one with one of everything a file can hold |
+| `map-page.ts`, `map-page-checks.ts`, `map-page-fuzz.ts` | A page of a map it takes in parts: a map of 36 sectors off the lattice, a link the test answers, fails and damages on its own clock, the loader on it, and that with a session on a server; what it holds against the map read whole; seeded random runs of both |
 | `net.ts` | `Harness`: a host, a lossy virtual-time network, and client sessions with scripted pilots |
 | `arena.ts` | Level, dry, empty ground of a given size near the spawn point |
 | `city.ts` | A flat map whose statics are city pieces of the ruin kit, a server on it, and a rocket, a grenade and a rifle round from nobody |

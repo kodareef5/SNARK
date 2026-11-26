@@ -1,10 +1,10 @@
-// A second opinion on what a page keeps as it drives the same loop again and again: a page's loader, its session on a
+// What a page keeps as it drives the same loop again and again: a page's loader, its session on a
 // server, and a scene built every frame, with the far city, the city's blocks, the far shadow and the tops' fixes
 // following the sectors as they come and go. After each lap what is held is counted three ways: the map's ledger
 // (client/core/mapheld.ts), the process after a forced collection, and the buffers a card would hold by the frames'
 // uploads and drops.
 //
-//   REVIEW_LAPS=6 bun test tests/world/review-laps.test.ts
+//   PAGE_LAPS=6 PAGE_SAY=1 bun test tests/world/page-laps.slow.test.ts
 
 import { expect, test } from "bun:test";
 import { heapStats } from "bun:jsc";
@@ -17,10 +17,10 @@ import { InlineCityMaker, type CityMaker } from "../../client/core/render/cityma
 import { Scene } from "../../client/core/render/scene.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
 import { farPack } from "../fixtures/farworld.ts";
-import { Page, inside, reviewMap, serverOn, sessionInside, type Wants } from "./review-rig.ts";
+import { Page, inside, pagedMap, say, serverOn, sessionInside, type Wants } from "../fixtures/map-page.ts";
 
-const LAPS = Number(process.env.REVIEW_LAPS ?? 5);
-const file = writeMap(reviewMap(36000));
+const LAPS = Number(process.env.PAGE_LAPS ?? 5);
+const file = writeMap(pagedMap(36000));
 
 interface Lap {
   ledger: number;
@@ -36,7 +36,7 @@ interface Lap {
   asked: number;
 }
 
-test(`${LAPS} laps of one loop with every reader attached hold no more at the last than at the second`, async () => {
+test(`${LAPS} laps of a loop with every reader hold no more than the second did`, async () => {
   const h = serverOn(file);
   const inline = new InlineCityMaker(), made: BlocksMade[] = [];
   // Counts the far city's levels and the blocks' tiles asked of the maker.
@@ -144,13 +144,13 @@ test(`${LAPS} laps of one loop with every reader attached hold no more at the la
     await lap(n);
     laps.push(await measure());
     const l = laps[n]!;
-    console.log(`lap ${n + 1} (${((performance.now() - t) / 1000).toFixed(0)} s): ledger ${(l.ledger / 1e6).toFixed(2)} MB; heapUsed ${(l.heap / 1e6).toFixed(2)} MB, arrayBuffers ${(l.buffers / 1e6).toFixed(2)} MB, ${l.objects} objects; card ${(l.card / 1e6).toFixed(2)} MB in ${l.cardBuffers} buffers; scene's arrays ${(l.scene / 1e6).toFixed(2)} MB; asked ${l.asked}; ${Object.entries(l.counts).map(([k, v]) => `${k} ${v}`).join(", ")}`);
-    console.log(`  ${l.rows}`);
+    say(`lap ${n + 1} (${((performance.now() - t) / 1000).toFixed(0)} s): ledger ${(l.ledger / 1e6).toFixed(2)} MB; heapUsed ${(l.heap / 1e6).toFixed(2)} MB, arrayBuffers ${(l.buffers / 1e6).toFixed(2)} MB, ${l.objects} objects; card ${(l.card / 1e6).toFixed(2)} MB in ${l.cardBuffers} buffers; scene's arrays ${(l.scene / 1e6).toFixed(2)} MB; asked ${l.asked}; ${Object.entries(l.counts).map(([k, v]) => `${k} ${v}`).join(", ")}`);
+    say(`  ${l.rows}`);
   }
   const [second, last] = [laps[1]!, laps[LAPS - 1]!];
   const grew = Object.entries(last.types).map(([name, count]) => [name, count - (second.types[name] ?? 0)] as const).filter(([, d]) => d > 50).sort((a, b) => b[1] - a[1]);
-  console.log(`objects by type, lap ${LAPS} less lap 2: ${grew.slice(0, 14).map(([name, d]) => `${name} +${d}`).join(", ") || "none grew by 50"}`);
-  console.log(`unsound frames ${page.unsound.length} of ${page.frames}`);
+  say(`objects by type, lap ${LAPS} less lap 2: ${grew.slice(0, 14).map(([name, d]) => `${name} +${d}`).join(", ") || "none grew by 50"}`);
+  say(`unsound frames ${page.unsound.length} of ${page.frames}`);
   h.host.shutdown();
   expect(page.unsound).toEqual([]);
   // The ledger and the card are level from the second lap; the process within a megabyte.

@@ -1,4 +1,4 @@
-// A second opinion on the far city's pieces gone as their sector comes and goes (client/core/render/farcity.ts): a
+// The far city's pieces gone as their sector comes and goes (client/core/render/farcity.ts): a
 // chunk's pieces taken on the server while the page has let its sector's statics go, while it holds them, and while it
 // has let them go again; after each the far city leaves out just the pieces the server's list names.
 
@@ -11,11 +11,11 @@ import { InlineCityMaker, type CityMaker } from "../../client/core/render/cityma
 import { Scene } from "../../client/core/render/scene.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
 import { farPack } from "../fixtures/farworld.ts";
-import { Page, reviewMap, serverOn, type Wants } from "./review-rig.ts";
+import { Page, pagedMap, say, serverOn, type Wants } from "../fixtures/map-page.ts";
 
-const file = writeMap(reviewMap(36000));
+const file = writeMap(pagedMap(36000));
 
-test("pieces taken while their sector's statics are let go, held and let go again are left out of the far city each time it is held", async () => {
+test("pieces taken while their sector is let go are left out of the far city once held", async () => {
   const h = serverOn(file);
   try {
     const inline = new InlineCityMaker(), made: BlocksMade[] = [];
@@ -82,7 +82,7 @@ test("pieces taken while their sector's statics are let go, held and let go agai
     await go(near);
     note("held again");
     const e = state();
-    console.log(out.join("\n"));
+    say(out.join("\n"));
     expect([a.held, a.told]).toEqual([false, [0, 1, 2]]);
     expect([b.held, b.city]).toEqual([true, [0, 1, 2]]);
     expect([c.held, c.city]).toEqual([true, [0, 1, 2, 5, 6]]);
@@ -91,4 +91,4 @@ test("pieces taken while their sector's statics are let go, held and let go agai
   } finally {
     h.host.shutdown();
   }
-}, 900_000);
+});

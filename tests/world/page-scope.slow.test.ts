@@ -1,4 +1,4 @@
-// A second opinion on what a scope costs a page that holds its ground by budget: a page at rest on a server, a scene built
+// What a scope costs a page that holds its ground by budget: a page at rest on a server, a scene built
 // every frame, and a scope raised on a place 3.5 km off and lowered, again and again. The ground round the focus is held
 // past the budget, so the pages past the fine window round the body go, and come back when the scope is lowered. Counted:
 // the parts asked for again, the changes to the ground, what the readers make again, and the time a frame's build takes.
@@ -12,11 +12,11 @@ import { InlineCityMaker, type CityMaker } from "../../client/core/render/cityma
 import { Scene } from "../../client/core/render/scene.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
 import { farPack } from "../fixtures/farworld.ts";
-import { Page, reviewMap, serverOn, type Wants } from "./review-rig.ts";
+import { Page, pagedMap, say, serverOn, type Wants } from "../fixtures/map-page.ts";
 
-const file = writeMap(reviewMap(0));
+const file = writeMap(pagedMap(0));
 
-test("a scope raised and lowered ten times makes nothing again that stood before it", async () => {
+test("a scope raised and lowered ten times makes nothing again that stood before", async () => {
   const h = serverOn(file);
   try {
     const inline = new InlineCityMaker(), made: BlocksMade[] = [];
@@ -65,8 +65,8 @@ test("a scope raised and lowered ten times makes nothing again that stood before
     const flick1 = count(), flickMs = stats(builds);
     const delta = (a: ReturnType<typeof count>, b: ReturnType<typeof count>) => ({ asked: b.asked - a.asked, changes: b.changes - a.changes, shadow: b.shadow - a.shadow, sweeps: b.sweeps - a.sweeps, blocks: b.blocks - a.blocks, city: b.city - a.city });
     const [rest, flick] = [delta(rest0, rest1), delta(rest1, flick1)];
-    console.log(`at rest 30 s: ${JSON.stringify(rest)}, build ms ${JSON.stringify(restMs)}, ${rest1.pages} pages held`);
-    console.log(`ten scopes in 30 s: ${JSON.stringify(flick)}, build ms ${JSON.stringify(flickMs)}`);
+    say(`at rest 30 s: ${JSON.stringify(rest)}, build ms ${JSON.stringify(restMs)}, ${rest1.pages} pages held`);
+    say(`ten scopes in 30 s: ${JSON.stringify(flick)}, build ms ${JSON.stringify(flickMs)}`);
     expect(rest).toEqual({ asked: 0, changes: 0, shadow: 0, sweeps: 0, blocks: 0, city: 0 });
     // After the first raise, which fetches the ground round the focus once, nothing should be asked for or made again.
     expect(flick.asked).toBeLessThan(30);
@@ -74,4 +74,4 @@ test("a scope raised and lowered ten times makes nothing again that stood before
   } finally {
     h.host.shutdown();
   }
-}, 900_000);
+});
