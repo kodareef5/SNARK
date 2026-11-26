@@ -257,7 +257,8 @@ try {
       await press("#add-outfit");
       await until(`${q('[data-add-piece="0"]')}`, "the new outfit");
       await choose('[data-add-piece="0"]', "core:hoodie");
-      await press('[data-piece-off="0"][data-piece="core:tee"]');
+      // The new outfit starts in the world's first garment, which goes.
+      await run(`(() => { for (let k = 0; k < 8; k++) document.querySelector('[data-piece-off="0"]:not([data-piece="core:hoodie"])')?.click(); })()`);
       check("the outfit wears the hoodie alone", await run(`[...document.querySelectorAll('[data-outfit="0"] [data-piece]')].map((b) => b.dataset.piece)`), ["core:hoodie"]);
       if (!(await drawn("the sheet with the hoodie", g))) return;
       const after = await cards();
