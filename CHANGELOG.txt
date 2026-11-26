@@ -27,6 +27,8 @@ Marinas
 - On rebuilt maps, weathered hulls sit low or crooked in their berths. Some marina wrecks burn and give off smoke.
 
 Item art
+- Hand tools have new silhouettes in hand, on the ground and in inventory. Camp gear and industrial stations have their own models, including the sleeping bag, grinder and forge.
+- Creature eggs keep their species markings when laid or dropped. A pale ring marks a fertile egg. The death cache, skate ramps, vehicle kits and depleted resource nodes are also easier to recognise.
 - Radio and GPS screens stay legible up close. Saddle leather, straps and stitching have clearer finishes, and dropped gear keeps its colours as it switches to simpler models at a distance.
 
 City maps
