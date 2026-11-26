@@ -6,7 +6,7 @@ import type { ItemDef } from "../../../shared/content/defs.ts";
 import { CMD_STRUCT, MAX_NAME_BYTES, SESSION_CREATING, SESSION_DEAD, RESULT_DAMAGED, RESULT_DENIED, RESULT_FAR, RESULT_FULL, RESULT_LOCKED, RESULT_NOT_EMPTY, RESULT_NOT_YOURS, RESULT_OBSTRUCTED, RESULT_OK, RESULT_PIN, RESULT_SHORT, RESULT_WAIT } from "../../../shared/net/protocol.ts";
 import type { StructureStore } from "../../../shared/world/structures.ts";
 import { FALL_MOST, Support } from "../../../shared/world/support.ts";
-import { NO_PIN, STRUCT_DEMOLISH, STRUCT_LIGHT, STRUCT_LOCK, STRUCT_NAME, STRUCT_PICKUP, STRUCT_PIN, STRUCT_REPAIR, STRUCT_TRAVEL, STRUCT_UNLOCK, STRUCT_USE, cost, refundOf, repairCostOf } from "../../../shared/world/upkeep.ts";
+import { NO_PIN, STRUCT_DEMOLISH, STRUCT_LIGHT, STRUCT_LOCK, STRUCT_NAME, STRUCT_PICKUP, STRUCT_PIN, STRUCT_REPAIR, STRUCT_TRAVEL, STRUCT_TEK_DOOR, STRUCT_TEK_SOLID, STRUCT_UNLOCK, STRUCT_USE, cost, refundOf, repairCostOf } from "../../../shared/world/upkeep.ts";
 import { fitBytes } from "./tame.ts";
 import type { ClientSession } from "../session.ts";
 import { K_BUTTON, K_INPUT, K_PANEL, lineHeight, textWidth, type UiFrame } from "./nodes.ts";
@@ -36,6 +36,9 @@ export const STRUCT_UNDO = 255;
 /** The actions a piece of `kind` lists, in order: digit n + 1 chooses the nth. */
 export function actionsOf(reg: Registry, kind: number): number[] {
   const out = [STRUCT_PICKUP, STRUCT_REPAIR, STRUCT_DEMOLISH];
+  const id = reg.ids[kind];
+  if (id === "core:wall_tek") out.unshift(STRUCT_TEK_DOOR);
+  if (id === "core:phase_wall_tek" || id === "core:phase_wall_open_tek") out.unshift(STRUCT_TEK_SOLID);
   if (reg.opens[kind] !== 0 || reg.structSlots[kind] !== 0) out.push(STRUCT_LOCK, STRUCT_UNLOCK, STRUCT_PIN);
   if ((reg.opens[kind] !== 0 || reg.structSlots[kind] !== 0) && reg.lights[kind] !== 0) out.push(STRUCT_LIGHT);
   if (reg.isBed[kind] === 1) out.push(STRUCT_NAME, STRUCT_TRAVEL);
@@ -59,6 +62,7 @@ export const STRUCT_REASONS: Readonly<Record<number, string>> = {
 /** The item's label. For another form of the piece, the form's name replaces the label's last word. */
 export function structName(reg: Registry, kind: number): string {
   const id = reg.ids[kind] ?? "";
+  if (id === "core:phase_wall_tek" || id === "core:phase_wall_open_tek") return "Tek wall · door mode";
   const item = reg.pieceItem[kind]!;
   const label = item !== 0 ? ((reg.defs[item] as ItemDef).label ?? "") : "";
   if (label === "") return id.slice(id.indexOf(":") + 1).replace(/_/g, " ");
@@ -380,6 +384,8 @@ export class StructMenu implements Screen {
       [STRUCT_PICKUP]: ["Take it back", hp < max ? "not while it is damaged" : "into your hands, as it was"],
       [STRUCT_REPAIR]: ["Mend it", repairCostOf(reg, kind, hp) ? listed(reg, "costs", inner) : "it is whole"],
       [STRUCT_DEMOLISH]: ["Take it down", refundOf(reg, kind) && cost.n > 0 ? listed(reg, "gives", inner) : "gives nothing back"],
+      [STRUCT_TEK_DOOR]: ["Set to door mode", "joined door panels open for your tribe"],
+      [STRUCT_TEK_SOLID]: ["Set to solid wall", "this panel stays closed"],
       [STRUCT_LOCK]: ["Lock it", "for your tribe alone"],
       [STRUCT_UNLOCK]: ["Unlock it", "for anyone"],
       [STRUCT_PIN]: ["Give it a PIN", "four digits let others in"],

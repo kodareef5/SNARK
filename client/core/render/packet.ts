@@ -133,6 +133,8 @@ export const DETAIL_DIGITS = DETAIL_POOL | 5;
  * its grey byte is sixteenths, added over what is behind it and never hiding it.
  */
 export const DETAIL_GLOW = DETAIL_POOL | 7;
+/** A contact wave clipped to a Tek wall face. Its floor holds its radius in metres. */
+export const DETAIL_TEK = DETAIL_POOL | 4;
 /**
  * A thick puff of smoke worked out with no picture (shared/pack/details.ts `thick`), lit as a ball of smoke is, on the
  * side the sun is: its second colour's first byte is its seed and its second how far it is torn, and its grey byte is

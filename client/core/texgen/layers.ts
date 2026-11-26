@@ -61,13 +61,14 @@ export const MADE_READS: readonly { readonly name: string; readonly metres: numb
   { name: "seam", metres: 2, relief: 25, mottle: 0.04, far: 2, shift: [0.25, 0.71], lies: false, coat: false, plain: 1 },
   { name: "gravel", metres: 2, relief: 12, mottle: 0.1, far: 2, shift: [0.37, 0.71], lies: true, coat: false, plain: 1 },
   { name: "plate", metres: 0.75, relief: 8, mottle: 0.05, far: 0.75, shift: [1, 1], lies: false, coat: false, plain: 0.76 },
+  { name: "tek_field", metres: 3, relief: 12, mottle: 0.035, far: 3, shift: [0.37, 0.71], lies: false, coat: false, plain: 1 },
 ];
 /** The most materials there may be: a face's key and a look's bits keep room for these (shared/world/city.ts, render/finish-near.ts). */
 export const MOST_MATERIALS = 12;
 /** A material's number in a face's key and on the card: its place in the recipes and one; 0 for none. */
 export const materialIndex = (name: string | undefined): number => (name ? MADE_READS.findIndex((r) => r.name === name) + 1 : 0);
 
-/** Floats a material has in the frame's block: its slot's first layer (-1 for none), how far it has come up, two spare; then where the eye is in its tiles along x, y and z, less whole tiles. */
+/** Floats a material has in the frame's block: its slot's first layer (-1 for none), how far it has come up, the field phase for tek_field, one spare; then where the eye is in its tiles along x, y and z, less whole tiles. */
 export const MADE_FLOATS = 8;
 /** Each material's place in its tiles for an eye at (x, y, z), into `out` from `at` as fMade has it. */
 export function madePhase(out: Float32Array, at: number, x: number, y: number, z: number): void {

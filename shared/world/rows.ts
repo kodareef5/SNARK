@@ -15,6 +15,7 @@
 //   level  := same(1) | the difference sbits(10)
 //   turn   := same(1) | rot(2) flip(1)
 //   health := full(1) | a stage(8) for an owned piece on the wire, else f32
+//   Network rows that name a Tek wall append one bit and, if present, its phase transition tick (u32).
 //
 // N is a value named once in the message and then by its place among those named (Named); frames keep 32 places. A keyed
 // row's anchor, level, turn and step are told from the last keyed row of its kind and direction. The first such row starts
@@ -24,6 +25,7 @@
 import { STRUCT_UNITS } from "../coords.ts";
 import { type BitReader, type BitWriter, Named } from "../net/codec.ts";
 import type { FormTable } from "./lattice/forms.ts";
+import { isTekWall, type TekWallKinds } from "./lattice/tek-walls.ts";
 import type { FrameDef, Frames } from "./lattice/frames.ts";
 import { DIRECTIONS, DIRS, LVL_MOST, M_MOST, SIDE, key0, key1, keyDir, keyFlip, keyLvl, keyM0, keyM1, keyM2, keyM3, keyRot } from "./lattice/module.ts";
 import { STAGE_FULL, healthStage, stageHealth, type ChunkTable } from "./structures.ts";
@@ -51,7 +53,11 @@ const DEF_BITS = 1 + 1 + 64 + HEIGHT_BITS + 17 + 1 + 40;
 /** The most bits one row takes: a keyed row far from the last, in a frame defined with it. A free row takes 201. */
 export const ROW_BITS_MOST = HEAD_BITS + 2 + 1 + 20 + 1 + 1 + 40 + DEF_BITS + 2 + 4 * FAR_BITS + 1 + LEVEL_BITS + 1 + 3 + OWNER_BITS + HEALTH_BITS;
 
+/** Only network rows naming a phase-capable wall can carry the transition clock. */
+export const NET_ROW_BITS_MOST = ROW_BITS_MOST + 33;
+
 export interface RowOptions {
+  readonly phaseKinds?: TekWallKinds;
   /** A kind as the bytes hold it, by runtime kind, and the reverse with 0 for a kind that is gone. A message holds runtime kinds. */
   readonly kindOut?: Uint16Array;
   readonly kindIn?: Uint16Array;
@@ -89,6 +95,8 @@ export class RowCoder {
   owner = 0;
   /** The frame this row defined, or null. */
   def: FrameDef | null = null;
+  phaseTick?: number;
+  private readonly phaseKinds?: TekWallKinds;
   private full = false;
   private hp = 0;
   private dir = 0;
@@ -129,6 +137,7 @@ export class RowCoder {
 
   constructor(forms: FormTable | null, maxHp: Float32Array, opts: RowOptions = {}) {
     this.forms = forms;
+    this.phaseKinds = opts.phaseKinds;
     this.maxHp = maxHp;
     this.kindOut = opts.kindOut ?? null;
     this.kindIn = opts.kindIn ?? null;
@@ -255,6 +264,11 @@ export class RowCoder {
     }
     w.bits(a, n);
     if (stage !== STAGE_FULL && exact) w.f32(hp);
+    if (this.phaseKinds && (!stays || swapped) && isTekWall(this.phaseKinds, kind)) {
+      const tick = t.phaseTick?.get(s);
+      w.bool(tick !== undefined);
+      if (tick !== undefined) w.u32(tick);
+    }
   }
 
   private writeHeight(w: BitWriter, y: number): void {
@@ -394,6 +408,7 @@ export class RowCoder {
     if (!r.bool()) this.last = r.bits(2);
     const form = (this.form = this.last);
     this.kind = this.saved = this.owner = 0;
+    this.phaseTick = undefined;
     this.def = null;
     if (form === ROW_EMPTY) return;
     if (form === ROW_IN_PLACE) {
@@ -410,6 +425,7 @@ export class RowCoder {
     this.owner = this.owners.read(r, 0);
     this.full = r.bool();
     if (!this.full) this.hp = this.exact || this.owner === 0 ? r.f32() : r.bits(8);
+    if (this.phaseKinds && isTekWall(this.phaseKinds, kind) && r.bool()) this.phaseTick = r.u32();
     if (form !== ROW_KEYED) return;
     // readKey set it.
     const def = this.def as FrameDef | null;

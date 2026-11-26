@@ -20,6 +20,8 @@ export const STRUCT_LIGHT = 7;
 export const STRUCT_NAME = 8;
 /** Travel from a bed to another of the tribe's: the survivor leaves its body and chooses where to rise (CHOOSE_TRAVEL). */
 export const STRUCT_TRAVEL = 9;
+export const STRUCT_TEK_DOOR = 10;
+export const STRUCT_TEK_SOLID = 11;
 /** The PIN value that means none. */
 export const NO_PIN = 0xffff;
 /** Wrong PINs in a row before a survivor must wait, and the first wait in ticks. Each further wrong one doubles the wait, up to an hour. */

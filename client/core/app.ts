@@ -1036,7 +1036,7 @@ export class App {
     // Sound takes its copy of the shots, hits and tames before the tracers and hit marks use them up.
     this.sounds?.absorb(session.events, session.fired, Math.max(0, session.tamed.length - this.tamedHeard));
     this.tamedHeard = session.tamed.length;
-    this.shots.absorb(session, world, sceneMs);
+    this.shots.absorb(session, world, sceneMs, this.remote);
     this.shots.step(world, this.remote, session.tickClock, sceneMs);
     scene.shotTick = session.tickClock;
     // Blows that landed on bodies near: each is drawn snapping back where it was struck (render/impact-springs.ts).

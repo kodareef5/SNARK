@@ -12,8 +12,9 @@ import { CELL } from "../../../shared/pack/details.ts";
 import { AIR } from "./atmosphere.ts";
 import { FADE_ORDER } from "./hand.ts";
 import { FIRE_BLOOMS, UNGRADED } from "./fire-light.ts";
+import { FIELD_COORDS_GLSL, RIPPLE_GLSL } from "./tek-ripple.ts";
 import { DIGITS_GLSL } from "./digits.ts";
-import { DETAIL_DIGITS, DETAIL_GLOW, DETAIL_SCORCH, DETAIL_SMOKE, FRAME_BLOCK, GLOW_STEPS, SMOKE_STEPS, DETAIL_TIRE, DETAIL_GLASS, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_SHADED_POOL, DETAIL_WAKE, DETAIL_WIRE, MAX_CONTACTS } from "./packet.ts";
+import { DETAIL_TEK, DETAIL_DIGITS, DETAIL_GLOW, DETAIL_SCORCH, DETAIL_SMOKE, FRAME_BLOCK, GLOW_STEPS, SMOKE_STEPS, DETAIL_TIRE, DETAIL_GLASS, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_SHADED_POOL, DETAIL_WAKE, DETAIL_WIRE, MAX_CONTACTS } from "./packet.ts";
 import { POOL_ACROSS, POOL_UP, poolShadeGlsl } from "./lamp.ts";
 import { AMBIENT, DIFFUSE } from "./shading.ts";
 import { DEPTH_SLACK, SHADOW_GLSL } from "./shadowtext.ts";
@@ -64,7 +65,7 @@ out vec2 vUv, vCorner;
 flat out vec3 vA, vB, vNormal, vLens;
 flat out float vShows, vGrey, vFloor, vHalf, vShade;
 flat out uint vFlags;
-${lit ? SMOKE_SHADE : ""}void main() {
+${lit ? SMOKE_SHADE : ""}${FIELD_COORDS_GLSL}void main() {
   vec2 c = vec2(float(gl_VertexID & 1), float(gl_VertexID >> 1)) * 2.0 - 1.0;
   float width = iMisc.y == ${DETAIL_GLASS}u && c.y > 0.0 ? iFloor : 1.0;
   vec3 p = iMiddle + c.x * width * iAcross + c.y * iAlong;
@@ -83,7 +84,12 @@ ${lit ? SMOKE_SHADE : ""}void main() {
   vHalf = length(iAlong);
   vFlags = iMisc.y;
   // A puff bulges toward the eye: where a point of its card is across it and along it, and across alone for a length of rope.
-  vBulge = c.x * normalize(iAcross) + (iMisc.w > ${Math.round(1.5 * SMOKE_STEPS)}u ? 0.0 : c.y) * normalize(iAlong);
+  if (vFlags == ${DETAIL_TEK}u) {
+    vBulge = vec3(fieldCoords(iA) + c * vec2(length(iAcross), vHalf), 0.0);
+    uint side = iMisc.w >> 4u;
+    vec2 cell = vec2(side == 1u ? -1.0 : side == 2u ? 1.0 : 0.0, side == 3u ? -1.0 : side == 4u ? 1.0 : 0.0);
+    vB.xy = fieldCoords(iB) - 3.0 * cell;
+  } else vBulge = c.x * normalize(iAcross) + (iMisc.w > ${Math.round(1.5 * SMOKE_STEPS)}u ? 0.0 : c.y) * normalize(iAlong);
 ${lit ? `#ifdef SHADOW_CASCADES
   vShade = iMisc.y == ${DETAIL_SMOKE}u ? smokeShade(iMiddle) : 1.0;
 #else
@@ -227,7 +233,11 @@ ${INS}uniform vec3 uSun, uSky;
 uniform vec2 uFog;
 uniform float uLight;
 out vec4 o;
-${SHAPES}${ROTOR_SHAPE}${LAMP_SHAPE}${POOL_SHAPE}${KEEPS}${DIGITS_GLSL}void main() {
+${SHAPES}${ROTOR_SHAPE}${LAMP_SHAPE}${POOL_SHAPE}${KEEPS}${RIPPLE_GLSL}${DIGITS_GLSL}void main() {
+  if (vFlags == ${DETAIL_TEK}u) {
+    o = rippleOf() * covers(1.0);
+    return;
+  }
   if (vFlags == ${DETAIL_DIGITS}u) {
     vec3 g = digitsOf(vCorner);
     if (g.x * vShows < 0.004) discard;
@@ -254,11 +264,19 @@ precision highp float;
 ${INS}flat in vec3 vLens;
 uniform sampler2D uDetails;
 out vec4 o;
-${LIGHT}${SHADOW_GLSL}${AIR}${STREET_GLSL}${poolShadeGlsl(MAX_CONTACTS)}${ROTOR_SHAPE}${LAMP_SHAPE}${POOL_SHAPE}${KEEPS}${DIGITS_GLSL}vec3 linear(vec3 c) {
+${LIGHT}${SHADOW_GLSL}${AIR}${STREET_GLSL}${poolShadeGlsl(MAX_CONTACTS)}${ROTOR_SHAPE}${LAMP_SHAPE}${POOL_SHAPE}${KEEPS}${RIPPLE_GLSL}${DIGITS_GLSL}vec3 linear(vec3 c) {
   return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
 }
 void main() {
   // A damage number shows its own colours as the HUD would, whatever the light, and is never fogged: it is 2 m off.
+  if (vFlags == ${DETAIL_TEK}u) {
+    vec4 wave = rippleOf() * covers(1.0);
+#ifdef LIGHT_TARGET
+    wave.rgb = ${UNGRADED("wave.rgb * wave.rgb")};
+#endif
+    o = wave;
+    return;
+  }
   if (vFlags == ${DETAIL_DIGITS}u) {
     vec3 g = digitsOf(vCorner);
     if (g.x * vShows < 0.004) discard;

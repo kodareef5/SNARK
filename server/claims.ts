@@ -20,6 +20,8 @@ export class Claims {
   private readonly cellsX: number;
   private readonly cellsZ: number;
   private readonly role: ArrayLike<number>;
+  /** Owned pieces of each kind in the world. */
+  readonly byKind: Uint32Array;
   /** Per cell: its first entry + 1, or 0. */
   private readonly head: Int32Array;
   /** An entry is one team in one cell: the team, its pieces there, the next entry + 1, and its first foundation spot + 1 and pillar spot + 1. */
@@ -44,6 +46,7 @@ export class Claims {
   /** Counts what `structs` holds, and is told of every change to it from then on, in place of any grid made on it before. `role` is the registry's, by kind. */
   constructor(structs: StructureStore, role: ArrayLike<number>) {
     this.role = role;
+    this.byKind = new Uint32Array(role.length);
     this.chunksX = structs.dims.chunksX;
     this.cellsX = structs.dims.chunksX * PER_CHUNK;
     this.cellsZ = structs.dims.chunksZ * PER_CHUNK;
@@ -59,7 +62,7 @@ export class Claims {
 
   /** Bytes held, the room not yet used included. */
   get bytes(): number {
-    return this.head.byteLength + this.team.byteLength + this.count.byteLength + this.next.byteLength + this.first.byteLength + this.spotX.byteLength + this.spotZ.byteLength + this.spotN.byteLength + this.spotNext.byteLength;
+    return this.byKind.byteLength + this.head.byteLength + this.team.byteLength + this.count.byteLength + this.next.byteLength + this.first.byteLength + this.spotX.byteLength + this.spotZ.byteLength + this.spotN.byteLength + this.spotNext.byteLength;
   }
 
   /** Pieces `team` owns on the whole map. */
@@ -130,6 +133,7 @@ export class Claims {
 
   /** A piece of `kind` that `owner` owns, its middle at (x, z) as its row holds it, is set down (`by` 1) or goes (-1). */
   private put(kind: number, x: number, z: number, owner: number, by: number): void {
+    this.byKind[kind]! += by;
     const cell = this.cell(z, this.cellsZ) * this.cellsX + this.cell(x, this.cellsX);
     let before = 0;
     let e = this.head[cell]!;

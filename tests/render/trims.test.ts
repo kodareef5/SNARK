@@ -2,7 +2,8 @@
 // a piece gives way to them (client/core/render/trims.ts). Stand-in solids take the place of a tier's trim meshes.
 
 import { expect, test } from "bun:test";
-import { FIT_CLASS_SHIFT, FIT_NONE, FIT_YIELD, PIECE_FIT_AT, PIECE_FRAMED, PIECE_STATE_AT } from "../../client/core/render/piece-fit.ts";
+import { FIT_CLASS_SHIFT, FIT_NONE, FIT_YIELD, PIECE_FIT_AT, PIECE_MADE_AT, PIECE_FRAMED, PIECE_STATE_AT } from "../../client/core/render/piece-fit.ts";
+import { materialIndex } from "../../client/core/texgen/layers.ts";
 import { FOUNDATION_THICK } from "../../content/building.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { CLS_EDGE, CLS_SQUARE, CLS_VERTEX } from "../../shared/world/lattice/module.ts";
@@ -231,4 +232,17 @@ artTest("with joints on, wood and stone corners show through nowhere, leave no o
     expect(faces, `${where}: more faces in one plane`).toBeLessThanOrEqual(0);
     expect(area, `${where}: more of them, in cm2`).toBeLessThanOrEqual(0);
   }
+});
+
+test("Tek and Metal share a fitted Tek corner with Tek's finish", () => {
+  const meshes = [...standInTrims("metal"), ...standInTrims("tek")];
+  const { all } = benchOf(meshes, (structs, reg) => {
+    const frame = baseAt(structs, 40, 0, 40, 0);
+    putAt(structs, reg, frame, "core:wall_metal", CLS_EDGE, O, 0, 0);
+    putAt(structs, reg, frame, "core:wall_tek", CLS_EDGE, O, 3, 0);
+  });
+  const near = round(all(), 40, 40, .3);
+  const joint = near.find(d => d.id === "core:joint_sq_tek");
+  expect(joint?.trim).toBe(true);
+  expect(joint?.bytes[PIECE_MADE_AT]).toBe(materialIndex("tek_field"));
 });

@@ -2,6 +2,10 @@
 // low poly has always been drawn with, and a test pins its hash so that it stays so. A WebGL2 shell compiles it as is.
 // The lit tiers draw the same vertices with LIT, which lights them as surface.ts does.
 
+import { TEK_SPAN_GLSL } from "./tek-phase.ts";
+import { TEK_INLAY_GLSL } from "./tek-inlay.ts";
+import { TEK_FRAME_GLSL } from "./tek-frame.ts";
+import { TEK_FIELD, TEK_FIELD_GLSL } from "./tek-field.ts";
 import { DRY_ASPHALT } from "../../../content/surfaces.ts";
 import { GLASS, RUST, STEEL, STREET_GLSL } from "./street-finish.ts";
 import { REGION_BASE } from "../../../shared/pack/palette.ts";
@@ -18,7 +22,7 @@ import { OVER_GROUND_GLSL, SKY_OPEN_GLSL } from "./skyopen.ts";
 import { ROOF_GLSL } from "./roof.ts";
 import { LIGHT, THROUGH } from "./surface.ts";
 import { FACADE_GLSL, ROOM_OPEN_LEAST } from "./facade.ts";
-import { GROUND_BAND, GROUND_GLSL, GROUND_SCALE, PIECE_OVER_WEAR, ROAD_GLSL, SPALL_RIM, SPALL_SURFACE, STREETS_GLSL, WORLD_GLSL, WORLD_SHARP } from "./world-surfaces.ts";
+import { GROUND_BAND, GROUND_GLSL, GROUND_SCALE, PIECE_ALLOY, PIECE_FIXED, PIECE_OVER_WEAR, PIECE_OWN, PIECE_PLAIN, PIECE_SEED, ROAD_GLSL, SPALL_RIM, SPALL_SURFACE, STREETS_GLSL, WORLD_GLSL, WORLD_SHARP } from "./world-surfaces.ts";
 import { WET_DARK, WET_GLSL, WET_ROUGH } from "./bank.ts";
 
 const f = (n: number): string => n.toFixed(4);
@@ -82,7 +86,16 @@ flat in int vFacade;
 #endif
 uniform float uSolid, uAlpha, uSkin;
 out vec4 o;
-${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${AIR}${WORLD_GLSL.replace("WORLD_NORMAL", "rg")}${FACADE_GLSL}${STREET_GLSL}void main() {
+${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${AIR}${WORLD_GLSL.replace("WORLD_NORMAL", "rg")}${FACADE_GLSL}${STREET_GLSL}
+#ifdef WORLD_WEATHER
+${TEK_FIELD_GLSL}
+#ifdef TEK_CELLS
+${TEK_SPAN_GLSL}
+#endif
+${TEK_FRAME_GLSL}
+${TEK_INLAY_GLSL}
+#endif
+void main() {
   vec3 dx = dFdx(vRel), dy = dFdy(vRel);
   vec3 geometric = normalize(cross(dx, dy));
   vec3 n = geometric;
@@ -97,6 +110,14 @@ ${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${AIR}${WOR
   worldPiece = vMade >> ${PIECE_OVER_WEAR};
   worldOwn = vOwn;
   if (worldPiece > 0) worldTurn = vPlace;
+#ifdef TEK_CELLS
+  int seams = int(floor(vTekCell.w + 0.5)) >> 8;
+  if (seams != 0 && worldMade == ${TEK_FIELD} && (worldPiece & ${PIECE_OWN | PIECE_FIXED | PIECE_ALLOY}) == ${PIECE_OWN}) {
+    worldTurn *= sign(abs(worldTurn.x) > abs(worldTurn.y) ? worldTurn.x : -worldTurn.y);
+    worldOwn = ownOf(vRel + uWorldEye);
+    worldPiece &= ${(1 << PIECE_SEED) - 1};
+  }
+#endif
   float rim = 0.0;
   if ((wear & ${WEAR_STAGE}) >= 2 && uSolid < 1.5 && uSkin < 0.5 && uWorldReady > 0.5) {
     vec2 lost = spalled(vRel + uWorldEye, geometric, wear & ${WEAR_STAGE});
@@ -167,6 +188,48 @@ ${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${AIR}${WOR
     }
   }
 #endif
+  vec3 localLight = room * skyLight(geometric) * roomOpen;
+#ifdef WORLD_WEATHER
+  if (worldMade == ${TEK_FIELD} && (worldPiece & ${PIECE_OWN | PIECE_FIXED}) == ${PIECE_OWN}) {
+    vec3 sight = ownOf(v);
+    if ((worldPiece & ${PIECE_ALLOY}) == 0) {
+      vec2 press = vOwn.xy;
+#ifdef TEK_CELLS
+      if (seams != 0) press = vec2(0.54*sin(0.67*worldOwn.x+0.30*worldOwn.y),0.48*sin(0.83*worldOwn.y-0.29*worldOwn.x));
+#endif
+      n = tekFinishNormal(n, press, worldTurn, true, 1.0);
+      tekPlateSurface(albedo, orm, fieldRelief, dot(n, v), sight.x);
+      worldSharp = true;
+#ifdef TEK_CELLS
+      if (seams != 0) localLight += tekSpanLight(vTekCell.xyz, vOwn.xy, seams, dot(geometric,v), max(length(dx),length(dy)), fMade[${(TEK_FIELD - 1) * 2}].z);
+      else
+#endif
+      localLight += tekFieldLight(vOwn.xy, worldPiece >> ${PIECE_SEED}, dot(geometric, v), max(length(dx), length(dy)), fieldRelief, sight.x, sight.y, fieldConductor);
+    } else if ((worldPiece & ${PIECE_PLAIN}) != 0) {
+      tekGlass(albedo, orm, fieldRelief);
+      worldSharp = false;
+      localLight += tekInlayLight(vOwn, ownOf(geometric), sight, worldPiece >> ${PIECE_SEED}, max(length(dx), length(dy)));
+    } else {
+      worldSharp = tekCasting(albedo, orm, vColor, fieldRelief, false, vOwn, ownOf(geometric), max(length(dx),length(dy)));
+    }
+  } else if (worldMade == ${TEK_FIELD} && (worldPiece & ${PIECE_FIXED}) != 0) {
+    bool solid = (worldPiece & ${PIECE_ALLOY}) != 0;
+    bool emitter = (worldPiece & ${PIECE_PLAIN}) == 0;
+    if (!emitter) {
+      if (solid) {
+        worldSharp = tekCasting(albedo, orm, vColor, fieldRelief, true);
+      } else {
+        tekFrameSurface(albedo, orm, vColor, fieldRelief);
+        n = tekFinishNormal(n, vOwn.xy, worldTurn, false, orm.z);
+        worldSharp = orm.y < ${f(WORLD_SHARP)};
+      }
+    }
+    if (emitter || !solid) {
+      float indicator = solid ? tekIndicator(vOwn.x + vOwn.y + vOwn.z, worldPiece >> ${PIECE_SEED}) : 0.0;
+      localLight += tekRailLight(vOwn.xy, emitter, indicator);
+    }
+  }
+#endif
   vec3 r = reflect(-v,n);
   vec3 mirrored = orm.y >= 1.0 ? vec3(0.0) : worldSharp ? skyFrom(r) : skyLight(r);
   mirrored = mix(mirrored, far.rgb * skyLight(-geometric), far.a);
@@ -179,7 +242,7 @@ ${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${AIR}${WOR
   orm.y = receives > 0.0 ? glossRoughness(orm.y,receives) : orm.y;
   mirrored = streetMirror(mirrored,r,vRel,orm.y,receives);
 #endif
-  o = vec4(shown(lit(albedo, orm * vec3(open, 1.0, 1.0), n, v, mirrored, sunShadow(vRel, geometric)) + room * skyLight(geometric) * roomOpen, vRel), uAlpha);
+  o = vec4(shown(lit(albedo, orm * vec3(open, 1.0, 1.0), n, v, mirrored, sunShadow(vRel, geometric)) + localLight, vRel), uAlpha);
 }`;
 
 /** `text` with `from` put as `to`, which it must hold. */
@@ -201,7 +264,7 @@ export const LIT_MESH_FRAGMENT = [
   ["  vec3 v = -normalize(vRel);\n", "  vec3 v = -normalize(vRel);\n  if (vShare < 1.0) n = v;\n"],
   ["  orm.y = receives > 0.0", "  if (uSolid >= 2.0 && vShare >= 1.0) receives = max(receives,clamp((0.85-orm.y)*3.0,0.0,1.0)*orm.z);\n  orm.y = receives > 0.0"],
   ["worldSharp ? skyFrom(r)", "worldSharp || vFinish.y < 1.0 ? skyFrom(r)"],
-  ["  o = vec4(shown(lit(albedo, orm * vec3(open, 1.0, 1.0), n, v, mirrored, sunShadow(vRel, geometric)) + room * skyLight(geometric) * roomOpen, vRel), uAlpha);", "  float shade = sunShadow(vRel, sunward(geometric, vFinish.w));\n  o = vec4(shown(lit(albedo, orm * vec3(open, 1.0, 1.0), n, v, mirrored, shade) + through(albedo, orm, n, vFinish.w, shade) + room * skyLight(geometric) * roomOpen, vRel), uAlpha * vShare);"],
+  ["  o = vec4(shown(lit(albedo, orm * vec3(open, 1.0, 1.0), n, v, mirrored, sunShadow(vRel, geometric)) + localLight, vRel), uAlpha);", "  float shade = sunShadow(vRel, sunward(geometric, vFinish.w));\n  o = vec4(shown(lit(albedo, orm * vec3(open, 1.0, 1.0), n, v, mirrored, shade) + through(albedo, orm, n, vFinish.w, shade) + localLight, vRel), uAlpha * vShare);"],
 ].reduce((text, [from, to]) => swap(text, from!, to!), LIT_FRAGMENT);
 
 /**
