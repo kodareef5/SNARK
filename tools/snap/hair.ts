@@ -3,13 +3,16 @@
 // With --looks the rows are each sex's portraits with every face slider at -1, then at +1, under a cloth hat and a flak
 // helmet, and its head turned well round on its shoulders, seen from behind it.
 //
-//   bun tools/snap/hair.ts [--looks] [--graphics high] [--hour 10] [--size 200x240] [--out artifacts/hair.png]
+// --stage N draws every hair and beard grown to that stage (shared/people/hair.ts HAIR_STAGES).
+//
+//   bun tools/snap/hair.ts [--looks] [--stage 0] [--graphics high] [--hour 10] [--size 200x240] [--out artifacts/hair.png]
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { B_HEAD, B_NECK, B_UPPER_ARM_L, B_UPPER_ARM_R, SLOT_HEAD } from "../../shared/anim/human.ts";
-import { BEARD_STYLES, FACE_COUNT, HAIR_STYLES, LOOK_BEARD, LOOK_BYTES, LOOK_HAIR, LOOK_HAIR_COLOR, LOOK_SEX, LOOK_SKIN, defaultLook, setFace } from "../../shared/anim/look.ts";
+import { HAIR_STAGES } from "../../shared/people/hair.ts";
+import { BEARD_STYLES, FACE_COUNT, HAIR_STYLES, LOOK_BEARD, LOOK_BEARD_LENGTH, LOOK_BYTES, LOOK_HAIR_LENGTH, LOOK_HAIR, LOOK_HAIR_COLOR, LOOK_SEX, LOOK_SKIN, defaultLook, setFace } from "../../shared/anim/look.ts";
 import { clip } from "../../shared/anim/pose-builder.ts";
 import { GEAR_COUNT, GEAR_WORN } from "../../shared/sim/entities.ts";
 import { HAIR_COLORS, SKIN_TONES } from "../../shared/pack/palette.ts";
@@ -35,6 +38,7 @@ function columns(sex: number): { label: string; look: Uint8Array }[] {
     look[LOOK_BEARD] = c.beard;
     look[LOOK_SKIN] = (k * 3 + sex * 5) % SKIN_TONES;
     look[LOOK_HAIR_COLOR] = (k * 7 + sex * 3) % HAIR_COLORS;
+    look[LOOK_HAIR_LENGTH] = look[LOOK_BEARD_LENGTH] = HAIR_STAGES[Number(arg("stage") ?? 0)]!;
     return { label: c.label, look };
   });
 }
