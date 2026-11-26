@@ -349,3 +349,24 @@ test("a city held a sector at a time: one set in or let go remakes no other's ti
   p = run(2);
   expect([drops.length > 0, drops.every((d) => second.has(d)), city.isFar(east), blockDraws(p).length > 0]).toEqual([true, true, false, true]);
 });
+
+test("an idle frame looks at no chunk for pieces gone, and a piece gone is still seen", () => {
+  const w = cityWorld({ chunks: 32, statics: grid(32, 4), tops: true, late: true, width: 160, height: 90 });
+  w.arrive();
+  for (let f = 0; f < 3; f++) w.frame();
+  const blocks = w.scene.blocks!, budget = { spend() {}, reserve() {} };
+  // What stands, its counts read through a spy.
+  let reads = 0;
+  const version = new Uint32Array(32 * 32);
+  const goneVersion = new Proxy(version, { get: (t, k) => (typeof k === "string" && /^\d+$/.test(k) && reads++, t[k as keyof Uint32Array]) });
+  const standing = { goneOf: () => null, goneVersion, goneChanges: 0 };
+  const frame = (): number => {
+    reads = 0;
+    blocks.update(new FramePacket(), budget, w.cam, 2000, w.statics, standing);
+    return reads;
+  };
+  expect([frame(), frame(), frame()]).toEqual([32 * 32, 0, 0]);
+  version[5]!++;
+  standing.goneChanges++;
+  expect([frame(), frame()]).toEqual([32 * 32, 0]);
+});

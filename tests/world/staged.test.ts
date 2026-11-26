@@ -483,3 +483,44 @@ test("an overview let go a band a step stands in with the coarse picture, its wa
   staged.take(o);
   expect([denseOf(staged.hf), nodesOf(staged.hf, reg, staged.nodes), [...staged.hf.water!.squares]]).toEqual([held, nodes, water]);
 });
+
+test("each band of an overview carries its chunks' own bounds when its change is taken", () => {
+  const { head, overviews } = partsOf(file);
+  const own = ranges(whole), staged = new StagedMap(head), hf = staged.hf, bounds = hf.bounds!, w = head.dims.chunksX;
+  for (const o of overviews) {
+    const g = staged.steps(o);
+    let bands = 0;
+    for (let done = false; !done; ) {
+      done = g.next().done === true;
+      const c = hf.changes, at = c.length - 4;
+      let wrong = 0;
+      for (let cz = c[at + 1]!; cz < c[at + 3]!; cz++) for (let cx = c[at]!; cx < c[at + 2]!; cx++) if (bounds[(cz * w + cx) * 2] !== own[(cz * w + cx) * 2] || bounds[(cz * w + cx) * 2 + 1] !== own[(cz * w + cx) * 2 + 1]) wrong++;
+      expect([bands++, wrong]).toEqual([bands - 1, 0]);
+    }
+    expect(bands).toBe(Math.ceil((o.sq.cz1 - o.sq.cz0) / BAND_CHUNKS));
+  }
+});
+
+test("lakes drawn while an overview comes a band a frame end as those drawn after it came", () => {
+  const { head, overviews } = partsOf(file);
+  const staged = new StagedMap(head), hf = staged.hf;
+  const lakes = new Lakes(hf, hf.water!, 0), budget = { spend() {}, reserve() {} };
+  const live = new Map<number, Uint8Array>();
+  const frame = (l: Lakes, into: Map<number, Uint8Array>): void => {
+    const p = new FramePacket();
+    l.update(p, budget, 2000, 600, 1e5);
+    for (const s of p.assetDrops) into.delete(s);
+    for (const u of p.assetUploads) into.set(u.slot, u.data);
+  };
+  frame(lakes, live);
+  for (const o of overviews) for (const g = staged.steps(o); ; ) {
+    frame(lakes, live);
+    if (g.next().done) break;
+  }
+  // One tile is made again a frame, so enough frames for every tile.
+  for (let k = 0; k < 64; k++) frame(lakes, live);
+  const fresh = new Map<number, Uint8Array>();
+  frame(new Lakes(hf, hf.water!, 0), fresh);
+  const sorted = (m: Map<number, Uint8Array>): string[] => [...m.values()].map((d) => Buffer.from(d).toString("base64")).sort();
+  expect([live.size > 0, sorted(live)]).toEqual([true, sorted(fresh)]);
+});
