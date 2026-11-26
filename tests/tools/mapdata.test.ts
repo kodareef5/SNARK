@@ -128,3 +128,30 @@ a = coarse_buildings(m, [(box(40, 40, 60, 60), {})], fine)
 print(int(a[25, 25]), int(fine[50, 50]), int(a.sum()) > 90, int(a[0].sum()))
 `).trim()).toBe("1 1 True 0");
 });
+
+test("an elevation index that does not answer leaves the cut its tiles of before", () => {
+  const root = mkdtempSync(join(tmpdir(), "snark-dem-"));
+  try {
+    expect(python(`
+import json, pathlib, fetch
+root = pathlib.Path(${JSON.stringify(root)})
+(root / 'dem_selection.json').write_text(json.dumps([
+  {'name': 'a.tif', 'url': 'u/a.tif', 'project': 'P1', 'z_to_m': 1, 'fill': False},
+  {'name': 'b.tif', 'url': 'u/b.tif', 'project': 'P2', 'z_to_m': 1, 'fill': True}]))
+class M:
+    pass
+m = M(); m.root = root; m.lonlat_bounds = lambda margin: (0, 0, 1, 1)
+class Down:
+    def json(self): return {'error': 'Expecting value', 'showToast': True}
+fetch.get = lambda *a, **k: Down()
+d = {'kind': 'tnm', 'dataset': 'D', 'project': 'P1'}
+print([t['name'] for t in fetch.dem_tiles(m, None, d)])
+try:
+    fetch.dem_tiles(m, None, {**d, 'project': 'P3'})
+except SystemExit as e:
+    print('stopped', 'P3' in str(e))
+`).trim().split("\n").slice(-2)).toEqual(["['a.tif']", "stopped True"]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
