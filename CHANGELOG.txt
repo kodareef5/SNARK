@@ -50,6 +50,9 @@ Touch controls
 
 City maps
 - The map screen requests terrain around the point you select. Roadside lights keep their spacing where a road leaves the map and comes back.
+- Across all five cities, fewer streets run into walls and more doors meet the ground. Alleys bend around buildings where they can. On larger streets, passages open through the ruins.
+- Rebuilt pools have more ways to climb out. Some hillside pools in Los Angeles were removed where the rim sat too far below the ground.
+- Distant terrain stays in view while you look through a scope. Returning to a city block keeps pieces you already destroyed out of the scene.
 
 v0.0.13 — 2026-11-25
 
