@@ -212,6 +212,8 @@ export class FarCity {
   private readonly seenShape: Int32Array;
   private readonly seenCells: Uint32Array;
   readonly goneVersion: Uint32Array;
+  /** Changes to what stands over every chunk: the sum of `goneVersion`. */
+  goneChanges = 0;
   /** Per kind, a wreck's break set and 0 for any other, where who made the city says: a wreck's lesser look still stands in its slot. */
   wreckSets: Uint16Array | null = null;
   /** Chunks matched against the near store's rows and still held whole, and the far feed's count of messages when last looked at. */
@@ -1027,6 +1029,7 @@ export class FarCity {
     else this.gone.set(chunk, gone);
     this.tops.delete(chunk);
     this.goneVersion[chunk]!++;
+    this.goneChanges++;
     const cx = chunk % this.dims.chunksX;
     const cz = Math.floor(chunk / this.dims.chunksX);
     for (let dz = -1; dz <= 1; dz++) {
