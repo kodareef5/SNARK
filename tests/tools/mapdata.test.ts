@@ -66,3 +66,19 @@ g = relation_polygon([{**w, 'role': 'outer'} for w in outer] + [{**w, 'role': 'i
 print(round(g.area, 3), len(g.interiors))
 `).trim()).toBe("96.0 1");
 });
+
+test("a footprint split adds stands in the 2 m layer as in the 1 m, not only at its edge", () => {
+  expect(python(`
+import numpy as np
+from affine import Affine
+from shapely.geometry import box
+from common import Map
+from fine import coarse_buildings
+class M: pass
+m = M(); m.shape = (50, 50); m.grid = Affine(2, 0, 0, 0, -2, 100)
+m.burn = lambda items, shape, tx=None: Map.burn(m, items, shape, tx)
+fine = m.burn([(box(40, 40, 60, 60), 1)], (100, 100), Affine(1, 0, 0, 0, -1, 100))
+a = coarse_buildings(m, [(box(40, 40, 60, 60), {})], fine)
+print(int(a[25, 25]), int(fine[50, 50]), int(a.sum()) > 90, int(a[0].sum()))
+`).trim()).toBe("1 1 True 0");
+});
