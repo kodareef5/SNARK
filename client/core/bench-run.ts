@@ -65,6 +65,9 @@ export interface Drawn {
   squeeze: number;
   /** How much of the map has come (mapload.ts MapLoader.progress), asked only while the run waits for all of it. */
   map?: () => MapProgress;
+  /** Bodies drawn on bones of their own, and of them those posed anew (render/characters.ts posed, fresh). */
+  posed?: number;
+  fresh?: number;
 }
 
 /** A `?bench=1` run: the page flies itself (App.autopilot), or holds its look with `?still`, and reports frame times and the GPU's time by pass. */
@@ -75,7 +78,7 @@ export class BenchRun {
   /** Whether each of `gpu` was drawn with the page's other effects (FramePacket.alternate), which only a clock that times the frame it is told of (`?sync=1`) knows. */
   private readonly other: boolean[] = [];
   /** Each measured frame's counts, for their medians over the turn. */
-  private readonly counts: Record<"triangles" | "draws" | "castTriangles" | "castDraws" | "nearNodes" | "farNodes", number[]> = { triangles: [], draws: [], castTriangles: [], castDraws: [], nearNodes: [], farNodes: [] };
+  private readonly counts: Record<"triangles" | "draws" | "castTriangles" | "castDraws" | "nearNodes" | "farNodes" | "bones" | "dropped" | "posed" | "fresh", number[]> = { triangles: [], draws: [], castTriangles: [], castDraws: [], nearNodes: [], farNodes: [], bones: [], dropped: [], posed: [], fresh: [] };
   /** Each measured frame's draws by the store that made them (debug/census.ts storeOf), for where two runs differ. */
   private readonly byStore: Map<string, number>[] = [];
   private first = -1;
@@ -149,6 +152,10 @@ export class BenchRun {
     c.castDraws.push(p.castDraws);
     c.nearNodes.push(nodes.near);
     c.farNodes.push(nodes.far);
+    c.bones.push(p.boneCount);
+    c.dropped.push(p.dropped);
+    c.posed.push(drawn.posed ?? 0);
+    c.fresh.push(drawn.fresh ?? 0);
     const stores = new Map<string, number>();
     for (let d = 0; d < p.drawCount; d++) {
       const name = storeOf(p.drawBuffer[d]!);

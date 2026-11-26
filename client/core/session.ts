@@ -3061,7 +3061,7 @@ function hasVehicleParts(v: EntityView, j: number): boolean {
 }
 
 /** The vehicle columns of a body that is no vehicle and was sent no vehicle part: each part as it unpacks from 0 (vehicleColumns). */
-function noVehicle(out: RemoteSample, n: number): void {
+export function noVehicle(out: RemoteSample, n: number): void {
   out.vehiclePitch[n] = 0; out.vehicleRoll[n] = 0; out.steering[n] = 0; out.wheelAngle[n] = 0;
   out.vehicleGroundPitch[n] = 0; out.vehicleGroundRoll[n] = 0; out.vehicleRideOffset[n] = 0; out.vehicleGrounded[n] = 0;
   out.vehicleDoors[n] = 0; out.vehicleRotorcraft[n] = 0; out.vehicleBoat[n] = 0;
