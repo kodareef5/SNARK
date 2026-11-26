@@ -157,11 +157,14 @@ test("a street marked bridge, tunnel or passage is left as it is", () => {
   }
 });
 
-test("a street that meets a passage at a building's wall stays joined to it", () => {
-  // The passage starts on the wall; the street reaches it from outside.
-  const read = readRoads(folder([road("osm:1:0", [[0, 0], [30, 0]]), road("osm:1:1", [[30, 0], [70, 0]], { passage: true })], [ACROSS]));
-  expect(runsOf(read[0]!)).toEqual([[[0, 0], [30, 0]]]);
-  expect(runsOf(read[1]!)).toEqual([[[30, 0], [70, 0]]]);
+test("a street that meets a passage inside a building's wall stays joined to it", () => {
+  // The passage starts 2 m inside the wall; the street reaches it from outside.
+  const read = readRoads(folder([road("osm:1:0", [[0, 0], [32, 0]]), road("osm:1:1", [[32, 0], [70, 0]], { passage: true })], [ACROSS]));
+  expect(runsOf(read[0]!)).toEqual([[[0, 0], [32, 0]]]);
+  expect(runsOf(read[1]!)).toEqual([[[32, 0], [70, 0]]]);
+  // With no passage there, the same street ends at the wall.
+  const alone = readRoads(folder([road("osm:1:0", [[0, 0], [32, 0]])], [ACROSS]));
+  expect(runsOf(alone[0]!)[0]!.at(-1)![0]).toBeCloseTo(29.5, 1);
 });
 
 test("a way that meets a parking structure is left as it is", () => {
