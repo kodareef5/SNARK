@@ -3,9 +3,12 @@
 // part), its life is drawn once and kept, with facts and what it thinks of each player, and a featured person comes back
 // in later scenes (Shadow of Mordor's nemesis: the gang member who drew on you last week).
 
-import type { Archetype, Catalogue, Traits } from "../../shared/cast/catalogue.ts";
+import type { Archetype, Catalogue, Look, Traits } from "../../shared/cast/catalogue.ts";
 import type { Character, Fact } from "../../shared/cast/state.ts";
+import type { Registry } from "../../shared/content/registry.ts";
+import { partSeed, personFrom, populationsOf, sexOf, type Person } from "../../shared/people/person.ts";
 import { Rng } from "../../shared/rng.ts";
+import type { Born } from "../../shared/sim/entities.ts";
 
 /** Facts a person keeps; past this the oldest unlocked go (the keeper's summaries keep what matters). */
 export const MOST_FACTS = 12;
@@ -13,6 +16,27 @@ export const MOST_FACTS = 12;
 export const MOST_NOTES = 6;
 
 const pick = <T>(rng: Rng, xs: readonly T[]): T => xs[rng.int(xs.length)]!;
+
+/** The population a look names where it names none. */
+export const CAST_POPULATION = "core:people_city";
+/** Seeds tried for a person of its name's sex before the first is kept whatever it gives. */
+const SEX_TRIES = 16;
+
+/**
+ * The person a character's body is, from its seed and its look's population: of its first name's sex where the catalogue
+ * knows it. Null where the content has no such population.
+ */
+export function castPerson(c: Character, look: Look | undefined, cat: Catalogue, reg: Registry): { person: Person; born: Born; wear: readonly string[] } | null {
+  const people = populationsOf(reg), number = people.number.get(look?.population ?? CAST_POPULATION);
+  if (number === undefined) return null;
+  const p = people.list[number]!, wanted = cat.sexes?.[c.name.split(" ")[0]!];
+  let seed = c.seed >>> 0;
+  for (let k = 1; wanted !== undefined && k < SEX_TRIES && sexOf(seed, p) !== wanted; k++) seed = partSeed(c.seed, 0x100 + k);
+  if (wanted !== undefined && sexOf(seed, p) !== wanted) seed = c.seed >>> 0;
+  const person = personFrom(seed, p);
+  const wear = look?.wear.length ? look.wear : person.outfit >= 0 ? p.outfits![person.outfit]!.wear : [];
+  return { person, born: { seed, population: number, revision: p.revision }, wear };
+}
 
 export class People {
   readonly byId = new Map<string, Character>();

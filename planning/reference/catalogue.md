@@ -10,8 +10,8 @@ declare, what it may, and which assets it expects. A field that is in neither
 list is refused. Names and ids are this engine's own. The ARK column says what
 the class corresponds to, so that what is known of ARK carries over.
 
-There are 47 classes: 34 built, 6 partly built, and 7 stubs that
-wait for a feature. The core pack holds 6177 definitions.
+There are 48 classes: 35 built, 6 partly built, and 7 stubs that
+wait for a feature. The core pack holds 6182 definitions.
 
 An asset slot is addressed `owner#slot`, or `owner#slot/key` for a slot with
 several values: `core:raptor#clip/walk`. Levels of detail are inside the asset
@@ -340,6 +340,16 @@ What names what: `survivor` names a `species/survivor`; `cache` names a `prop/co
 
 Packs may add to: `buffs`.
 
+## Populations
+
+| Class | ARK | Standing | Must | May | In core |
+| --- | --- | --- | --- | --- | --- |
+| `population` |  | built | `label`, `revision`, `women`, `skin`, `eyes`, `hair`, `hairColors`, `beard`, `build`, `face`, `age`, `weight`, `muscle` | `complexions`, `streak`, `grey`, `brows`, `regions`, `hairLength`, `beardLength`, `outfits` | 5 |
+
+- **`population`** on shelf `people`. Who a crowd is made of: by weight and range, each part of a person the generator draws from a seed.
+
+What names what: `outfits[].wear[]` names a `item/armor`.
+
 ## Renames
 
 | Class | ARK | Standing | Must | May | In core |
@@ -442,3 +452,5 @@ built.
 **`spawns`** (4): spawns_beach, spawns_jungle, spawns_proving_herd, spawns_proving_hunters.
 
 **`map`** (5): miami, tampa, san-francisco, los-angeles, las-vegas.
+
+**`population`** (5): people_city, people_beach, people_workers, people_tourists, people_survivors.

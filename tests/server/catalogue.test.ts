@@ -37,6 +37,7 @@ import { FOODS } from "../../content/foods.ts";
 import { KNOCKOUT } from "../../content/knockout.ts";
 import { ITEMS } from "../../content/items/index.ts";
 import { SKATE_PARK } from "../../content/skate-park.ts";
+import { POPULATIONS } from "../../content/people/defaults.ts";
 import { CATALOGUE_PAGE, cataloguePage } from "../../tools/catalogue.ts";
 import { artTest } from "../fixtures/needs-art.ts";
 
@@ -44,7 +45,7 @@ import { artTest } from "../fixtures/needs-art.ts";
 // the creature features and of the item and weapons programs (content/items) bring, so that those built side by side do
 // not each move the same numbers.
 const tekBuildings = BUILDING_CONTENT.filter((d) => d.id.endsWith("_tek") || d.id === "core:shape_phase_wall_open");
-const FEATURES_CONTENT = [...KNOCKOUT, ...CORPSES, ...EGGS, ...FOODS, ...ITEMS, ...SKATE_PARK, ...tekBuildings];
+const FEATURES_CONTENT = [...KNOCKOUT, ...CORPSES, ...EGGS, ...FOODS, ...ITEMS, ...SKATE_PARK, ...tekBuildings, ...POPULATIONS];
 const ofCreatures = new Set([...CREATURES, ...FEATURES_CONTENT].map((d) => `${d.type} ${d.id}`));
 // The building pieces past the first nine forms, with their items and engrams, are held by the building tests
 // (tests/build), so a form that goes live moves no number here.

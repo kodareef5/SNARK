@@ -25,6 +25,7 @@ const FAMILIES: readonly [type: string, title: string][] = [
   ["spawns", "Spawns"],
   ["map", "Maps"],
   ["game", "The game"],
+  ["population", "Populations"],
   ["rename", "Renames"],
 ];
 

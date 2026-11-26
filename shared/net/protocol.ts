@@ -7,7 +7,7 @@
 //
 //   client -> server
 //     HELLO     reliable     version u32, content hash u32 (of the definitions as written, untuned), clip hash u32,
-//                            name string, flags u8, device key (16 bytes), with HELLO_LOOK a look (28 bytes),
+//                            name string, flags u8, device key (16 bytes), with HELLO_LOOK a look (72 bytes),
 //                            with HELLO_TICKET a travel ticket (32 bytes), password string ("" for none), with HELLO_NEW a 16-byte create request id
 //     INPUT     unreliable   ack tick u32, ticks behind it that others are drawn u8 (sixteenths), newest tick u32,
 //                            count-1 (3 bits), then inputs newest first. Each after the first is preceded by
@@ -57,7 +57,7 @@
 
 import { SkateState, readSkate, writeSkate } from "../sim/skate-state.ts";
 import { BitReader, BitWriter } from "./codec.ts";
-import { LOOK_BYTES } from "../anim/look.ts";
+import { LOOK_BYTES, upgradeLook } from "../anim/look.ts";
 import { REACT_BITS } from "../anim/pose.ts";
 import { counter, flags } from "../codes.ts";
 import { BTN_CROUCH, BTN_JUMP, BTN_PRONE, Body, buttonCount } from "../sim/character.ts";
@@ -368,7 +368,7 @@ export const CMD_LEARN = command();
 /** Recipe content index u16, count u8. */
 export const CMD_CRAFT = command();
 
-/** A look, 28 bytes (shared/anim/look.ts). Accepted only in SESSION_CREATING. */
+/** A look, 72 bytes (shared/anim/look.ts). Accepted only in SESSION_CREATING. */
 export const CMD_CREATE = command();
 
 /** Hotbar slot u8, 0 to 9, or 255 to put away the held item. */
@@ -661,7 +661,7 @@ export const CHOOSE_TRAVEL = 2;
  */
 export const OWN_PROGRESSION = ownKind();
 
-/** 28 bytes. Sent when the survivor gets a body. */
+/** LOOK_BYTES. Sent when the survivor gets a body. */
 export const OWN_LOOK = ownKind();
 
 /** Hotbar slot u8, 255 for none. */
@@ -1055,7 +1055,8 @@ export function writeHello(w: BitWriter, version: number, contentHash: number, c
   const marked = look ? flags | HELLO_LOOK : flags & ~HELLO_LOOK;
   w.u8(ticket ? marked | HELLO_TICKET : marked & ~HELLO_TICKET);
   for (let i = 0; i < KEY_BYTES; i++) w.u8(key[i] ?? 0);
-  if (look) for (let i = 0; i < LOOK_BYTES; i++) w.u8(look[i] ?? 0);
+  const full = look && upgradeLook(look);
+  if (full) for (let i = 0; i < LOOK_BYTES; i++) w.u8(full[i] ?? 0);
   if (ticket) for (let i = 0; i < TICKET_BYTES; i++) w.u8(ticket[i] ?? 0);
   w.string(password);
   if ((flags & HELLO_NEW) && createRequest?.length===KEY_BYTES) for(const b of createRequest)w.u8(b);

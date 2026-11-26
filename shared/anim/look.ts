@@ -1,7 +1,8 @@
-// A look is the 28 bytes the character creator makes. It picks meshes, colours and bone stretches only. Hit zones,
+// A look is the 72 bytes the character creator makes. It picks meshes, colours and bone stretches only. Hit zones,
 // collision and eyes keep the common skeleton in every pose, so no look is harder to hit than another. The stretches
 // that move the head are bounded instead: a drawn head stays within about 2 cm of the head shots are judged on as it
-// stands, a seat puts it right on it (shared/anim/seat-fit.ts), and it never grows past HEAD_GROW.
+// stands, a seat puts it right on it (shared/anim/seat-fit.ts), and it never grows past HEAD_GROW. The other stretches
+// are bounded too, so a limb's flesh stays within LIMB_SLACK of its capsule's radius (holdLimbs).
 
 import { REGION_BASE, EYE_BASE, EYE_COLORS, HAIR_BASE, HAIR_COLORS, SKIN_BASE, SKIN_TONES } from "../pack/palette.ts";
 import type { Pose } from "./clip.ts";
@@ -13,7 +14,11 @@ import {
   B_UPPER_CHEST, B_UPPER_LEG_L, B_UPPER_LEG_R, HUMAN, HUMAN_BONES,
 } from "./human.ts";
 
-export const LOOK_BYTES = 28;
+export const LOOK_BYTES = 72;
+/** The bytes that shape the body: sex and the regions. A change past them never changes a bone. */
+export const LOOK_BODY_BYTES = 23;
+/** The first layout's length. Its bytes mean the same in this one, so it converts by padding (upgradeLook). */
+export const LOOK_V1_BYTES = 28;
 export const LOOK_SEX = 0;
 export const LOOK_REGIONS = 1;
 export const REGION_COUNT = 22;
@@ -22,6 +27,28 @@ export const LOOK_HAIR_COLOR = 24;
 export const LOOK_EYE_COLOR = 25;
 export const LOOK_HAIR = 26;
 export const LOOK_BEARD = 27;
+/** Holds LAYOUT_VERSION. */
+export const LOOK_LAYOUT = 28;
+export const LAYOUT_VERSION = 2;
+export const LOOK_BROW = 29;
+/** Hair and beard length when the hair clock starts: 0 is the style as modelled, more is grown out. */
+export const LOOK_HAIR_LENGTH = 30;
+export const LOOK_BEARD_LENGTH = 31;
+/** Age, weight and muscle, each -127..127 with 0 neutral. Saved and sent, not yet drawn. */
+export const LOOK_AGE = 32;
+export const LOOK_WEIGHT = 33;
+export const LOOK_MUSCLE = 34;
+export const LOOK_COMPLEXION = 35;
+/** 0 for none, else a hair colour plus one. */
+export const LOOK_HAIR_COLOR_2 = 36;
+/** Bytes 37 to 39 are reserved and zero. */
+export const LOOK_RESERVED = 37;
+export const LOOK_FACE = 40;
+/** Face modifiers, each -127..127 with 0 neutral. They move no bone. */
+export const FACE_COUNT = 32;
+/** Brow styles and complexion sets a look may name; the art for them comes later. */
+export const BROW_STYLES = 8;
+export const COMPLEXIONS = 8;
 
 /** Mesh ids are "core:human_<sex id>/...". */
 export const SEX_IDS: readonly string[] = ["m", "f"];
@@ -114,26 +141,56 @@ export function defaultLook(out: Uint8Array = new Uint8Array(LOOK_BYTES)): Uint8
   out[LOOK_SKIN] = 3;
   out[LOOK_HAIR_COLOR] = 3;
   out[LOOK_HAIR] = 1;
+  out[LOOK_LAYOUT] = LAYOUT_VERSION;
   return out;
 }
 
 /** A client may send any bytes. */
 export function validLook(b: Uint8Array): boolean {
-  if (b.length !== LOOK_BYTES || b[LOOK_SEX]! >= SEX_IDS.length) return false;
-  // A region byte of 128 would be -128, one step outside the slider.
+  if (b.length !== LOOK_BYTES || b[LOOK_SEX]! >= SEX_IDS.length || b[LOOK_LAYOUT] !== LAYOUT_VERSION) return false;
+  // A signed byte of 128 would be -128, one step outside the slider.
   for (let r = 0; r < REGION_COUNT; r++) if (b[LOOK_REGIONS + r] === 128) return false;
-  return b[LOOK_SKIN]! < SKIN_TONES && b[LOOK_HAIR_COLOR]! < HAIR_COLORS && b[LOOK_EYE_COLOR]! < EYE_COLORS && b[LOOK_HAIR]! < HAIR_STYLES.length && b[LOOK_BEARD]! < BEARD_STYLES.length;
+  for (let f = 0; f < FACE_COUNT; f++) if (b[LOOK_FACE + f] === 128) return false;
+  if (b[LOOK_AGE] === 128 || b[LOOK_WEIGHT] === 128 || b[LOOK_MUSCLE] === 128) return false;
+  for (let i = LOOK_RESERVED; i < LOOK_FACE; i++) if (b[i] !== 0) return false;
+  return b[LOOK_SKIN]! < SKIN_TONES && b[LOOK_HAIR_COLOR]! < HAIR_COLORS && b[LOOK_EYE_COLOR]! < EYE_COLORS && b[LOOK_HAIR]! < HAIR_STYLES.length && b[LOOK_BEARD]! < BEARD_STYLES.length &&
+    b[LOOK_BROW]! < BROW_STYLES && b[LOOK_COMPLEXION]! < COMPLEXIONS && b[LOOK_HAIR_COLOR_2]! <= HAIR_COLORS;
+}
+
+/** A first-layout look in this layout, all it lacks neutral. A look of another length comes back as it is, for validLook. */
+export function upgradeLook(b: Uint8Array): Uint8Array {
+  if (b.length !== LOOK_V1_BYTES) return b;
+  const out = new Uint8Array(LOOK_BYTES);
+  out.set(b);
+  out[LOOK_LAYOUT] = LAYOUT_VERSION;
+  return out;
+}
+
+/** A signed byte in -1..1. */
+function signed(v: number): number {
+  return (v > 127 ? v - 256 : v) / 127;
+}
+
+function setSigned(look: Uint8Array, at: number, value: number): void {
+  look[at] = Math.floor((value < -1 ? -1 : value > 1 ? 1 : value) * 127 + 0.5) & 255;
+}
+
+/** Face modifier `f`, in -1..1. */
+export function faceOf(look: Uint8Array, f: number): number {
+  return signed(look[LOOK_FACE + f]!);
+}
+
+export function setFace(look: Uint8Array, f: number, value: number): void {
+  setSigned(look, LOOK_FACE + f, value);
 }
 
 /** In -1..1. */
 export function regionOf(look: Uint8Array, r: number): number {
-  const v = look[LOOK_REGIONS + r]!;
-  return (v > 127 ? v - 256 : v) / 127;
+  return signed(look[LOOK_REGIONS + r]!);
 }
 
 export function setRegion(look: Uint8Array, r: number, value: number): void {
-  const v = Math.floor((value < -1 ? -1 : value > 1 ? 1 : value) * 127 + 0.5);
-  look[LOOK_REGIONS + r] = v & 255;
+  setSigned(look, LOOK_REGIONS + r, value);
 }
 
 export function randomLook(rng: Rng, out: Uint8Array = new Uint8Array(LOOK_BYTES)): Uint8Array {
@@ -144,7 +201,17 @@ export function randomLook(rng: Rng, out: Uint8Array = new Uint8Array(LOOK_BYTES
   out[LOOK_HAIR_COLOR] = rng.int(HAIR_COLORS);
   out[LOOK_EYE_COLOR] = rng.int(EYE_COLORS);
   out[LOOK_HAIR] = rng.int(HAIR_STYLES.length);
-  out[LOOK_BEARD] = out[LOOK_SEX] === 0 && rng.int(2) === 0 ? 1 + rng.int(BEARD_STYLES.length - 1) : 0;
+  out[LOOK_BEARD] = rng.int(2) === 0 ? 1 + rng.int(BEARD_STYLES.length - 1) : 0;
+  out[LOOK_LAYOUT] = LAYOUT_VERSION;
+  out[LOOK_BROW] = rng.int(BROW_STYLES);
+  // A little growth past the style, often none.
+  out[LOOK_HAIR_LENGTH] = Math.max(0, rng.int(96) - 32);
+  out[LOOK_BEARD_LENGTH] = Math.max(0, rng.int(96) - 32);
+  for (const at of [LOOK_AGE, LOOK_WEIGHT, LOOK_MUSCLE]) setSigned(out, at, (rng.range(-1, 1) + rng.range(-1, 1)) * 0.25);
+  out[LOOK_COMPLEXION] = rng.int(COMPLEXIONS);
+  out[LOOK_HAIR_COLOR_2] = rng.int(4) === 0 ? 1 + rng.int(HAIR_COLORS) : 0;
+  out.fill(0, LOOK_RESERVED, LOOK_FACE);
+  for (let f = 0; f < FACE_COUNT; f++) setFace(out, f, (rng.range(-1, 1) + rng.range(-1, 1)) * 0.2);
   return out;
 }
 
@@ -168,10 +235,11 @@ const LEG_BONES = [B_UPPER_LEG_L, B_UPPER_LEG_R, B_LOWER_LEG_L, B_LOWER_LEG_R];
 const HEAD_MIDDLE = [0, 1, 2].map((a) => (HUMAN.capA[B_HEAD * 3 + a]! + HUMAN.capB[B_HEAD * 3 + a]!) / 2);
 
 /**
- * Writes `HUMAN_BONES * 3` stretch factors around 1, one per bone axis. Regions that touch the same bone multiply. The
- * body is `rest`'s rig, drawn with lookJoints. Its head's middle is then off the hit body's, in any pose, by no more
- * than its hips' joint is, plus what the legs lift the hips, plus what each length over the hips and the head's middle
- * stretch: the stretches that move the head are eased back together until that is within HEAD_SLACK.
+ * Writes `HUMAN_BONES * 3` stretch factors around 1, one per bone axis. Regions that touch the same bone multiply, and
+ * each limb's are eased until its flesh stays near its capsules (holdLimbs). The body is `rest`'s rig, drawn with
+ * lookJoints. Its head's middle is then off the hit body's, in any pose, by no more than its hips' joint is, plus what
+ * the legs lift the hips, plus what each length over the hips and the head's middle stretch: the stretches that move
+ * the head are eased back together until that is within HEAD_SLACK.
  */
 export function lookScales(look: Uint8Array, out: Float32Array, rest: ArrayLike<number> = HUMAN.rest): void {
   out.fill(1, 0, HUMAN_BONES * 3);
@@ -185,6 +253,7 @@ export function lookScales(look: Uint8Array, out: Float32Array, rest: ArrayLike<
       if ((axes & Z) !== 0) out[bone * 3 + 2]! *= k;
     }
   }
+  holdLimbs(out);
   for (let a = 0; a < 3; a++) out[B_HEAD * 3 + a] = Math.min(out[B_HEAD * 3 + a]!, HEAD_GROW);
   const hips = length([0, 1, 2].map((a) => rest[B_HIPS * 3 + a]! - HUMAN.rest[B_HIPS * 3 + a]!));
   // Each term is the stretch less 1 times a length, so all ease together in proportion.
@@ -198,6 +267,95 @@ export function lookScales(look: Uint8Array, out: Float32Array, rest: ArrayLike<
   if (share === 1) return;
   for (const b of [...OVER_HIPS, ...LEG_BONES]) out[b * 3 + 1] = 1 + (out[b * 3 + 1]! - 1) * share;
   for (const a of [0, 2]) out[B_HEAD * 3 + a] = 1 + (out[B_HEAD * 3 + a]! - 1) * share;
+}
+
+/** How far a limb's flesh may move off its hit capsule, as a share of the capsule's radius, from what the look widens and how far it moves the joints. */
+export const LIMB_SLACK = 0.25;
+/** A joint slid along its own length moves its flesh along its capsule, so the slide counts for this much. */
+const SLIDE = 0.3;
+/** Each bone's hit capsule: its own, or its nearest ancestor's. */
+const CAPSULE_OF = Int8Array.from({ length: HUMAN_BONES }, (_, b) => {
+  let c = b;
+  while (c >= 0 && HUMAN.capR[c] === 0) c = HUMAN.parent[c]!;
+  return c;
+});
+/** The axis each bone runs along to its first child, or its parent's for a bone with none. A stretch along it moves the child and widens nothing. */
+const ALONG = new Int8Array(HUMAN_BONES).fill(-1);
+for (let b = 1; b < HUMAN_BONES; b++) {
+  const p = HUMAN.parent[b]!;
+  if (ALONG[p] !== -1) continue;
+  const d = [0, 1, 2].map((a) => Math.abs(HUMAN.rest[b * 3 + a]! - HUMAN.rest[p * 3 + a]!));
+  ALONG[p] = d.indexOf(Math.max(...d));
+}
+for (let b = 0; b < HUMAN_BONES; b++) if (ALONG[b] === -1) ALONG[b] = ALONG[HUMAN.parent[b]!]!;
+/** How far each capsule reaches from its joint along each axis: the flesh a stretch on that axis widens. */
+const EXTENT = Float32Array.from({ length: HUMAN_BONES * 3 }, (_, i) => Math.max(Math.abs(HUMAN.capA[i]!), Math.abs(HUMAN.capB[i]!)) + HUMAN.capR[(i / 3) | 0]!);
+/** Bones eased together, the trunk first, since a limb's joints ride on it. The head is bounded by HEAD_GROW and HEAD_SLACK. */
+const LIMBS: readonly (readonly number[])[] = [
+  [B_HIPS, B_SPINE, B_CHEST, B_UPPER_CHEST, B_NECK],
+  [B_SHOULDER_L, B_UPPER_ARM_L, B_LOWER_ARM_L, B_HAND_L, B_FINGERS_L, B_THUMB_L, B_PROP_L, B_FINGERTIPS_L],
+  [B_SHOULDER_R, B_UPPER_ARM_R, B_LOWER_ARM_R, B_HAND_R, B_FINGERS_R, B_THUMB_R, B_PROP_R, B_FINGERTIPS_R],
+  [B_UPPER_LEG_L, B_LOWER_LEG_L, B_FOOT_L, B_TOE_L],
+  [B_UPPER_LEG_R, B_LOWER_LEG_R, B_FOOT_R, B_TOE_R],
+];
+const LIMB_OF = new Int8Array(HUMAN_BONES).fill(-1);
+LIMBS.forEach((g, i) => g.forEach((b) => (LIMB_OF[b] = i)));
+const PINNED = new Uint8Array(HUMAN_BONES);
+for (const b of OVER_HIPS) PINNED[b] = 1;
+/** Joints that carry on along their parent's length. */
+const ALIGNED = new Uint8Array(HUMAN_BONES);
+for (const b of [B_LOWER_ARM_L, B_HAND_L, B_FINGERS_L, B_FINGERTIPS_L, B_LOWER_ARM_R, B_HAND_R, B_FINGERS_R, B_FINGERTIPS_R, B_LOWER_LEG_L, B_FOOT_L, B_TOE_L, B_LOWER_LEG_R, B_FOOT_R, B_TOE_R]) ALIGNED[b] = 1;
+const held = new Float32Array(HUMAN_BONES * 3), moved = new Float64Array(HUMAN_BONES * 3), slid = new Float64Array(HUMAN_BONES * 3), wide = new Float64Array(HUMAN_BONES);
+
+/**
+ * Whether each bone of limb `g`, its stretches eased to `share`, keeps its flesh within LIMB_SLACK of its capsule: how
+ * far the look moves the bone's joint and the next one, at the hit body's rest and summed along the chain (so in any
+ * pose and on either rig alike), plus how far it widens the flesh.
+ */
+function limbHolds(scales: Float32Array, g: number, share: number): boolean {
+  for (let i = 0; i < HUMAN_BONES * 3; i++) held[i] = LIMB_OF[(i / 3) | 0] === g ? 1 + (scales[i]! - 1) * share : scales[i]!;
+  moved.fill(0, 0, 3);
+  slid.fill(0, 0, 3);
+  for (let b = 0; b < HUMAN_BONES; b++) {
+    const c = CAPSULE_OF[b]!;
+    let w = 0;
+    for (let a = 0; a < 3; a++) if (a !== ALONG[b]) w = Math.max(w, (held[b * 3 + a]! - 1) * EXTENT[c * 3 + a]!);
+    wide[b] = w;
+    if (b === 0) continue;
+    const p = HUMAN.parent[b]!;
+    for (let a = 0; a < 3; a++) {
+      // lookJoints keeps the trunk's joints on the hit body's but for their lengths.
+      const d = (PINNED[b] && a !== 1 ? 0 : HUMAN.rest[b * 3 + a]! - HUMAN.rest[p * 3 + a]!) * (held[p * 3 + a]! - 1);
+      const along = ALIGNED[b] === 1 && a === ALONG[p];
+      moved[b * 3 + a] = moved[p * 3 + a]! + (along ? 0 : d);
+      slid[b * 3 + a] = slid[p * 3 + a]! + (along ? d : 0);
+    }
+  }
+  for (let b = 0; b < HUMAN_BONES; b++) {
+    const p = HUMAN.parent[b]!, off = norm(moved, b) + SLIDE * norm(slid, b);
+    if (LIMB_OF[b] === g && off + wide[b]! > LIMB_SLACK * HUMAN.capR[CAPSULE_OF[b]!]!) return false;
+    // The joint is also the end of its parent's flesh.
+    if (p >= 0 && LIMB_OF[p] === g && off + wide[p]! > LIMB_SLACK * HUMAN.capR[CAPSULE_OF[p]!]!) return false;
+  }
+  return true;
+}
+
+/** Eases each limb's stretches together, the trunk's first, as far as limbHolds needs. */
+function holdLimbs(scales: Float32Array): void {
+  for (let g = 0; g < LIMBS.length; g++) {
+    if (limbHolds(scales, g, 1)) continue;
+    let lo = 0, hi = 1;
+    for (let k = 0; k < 12; k++) {
+      const mid = (lo + hi) / 2;
+      if (limbHolds(scales, g, mid)) lo = mid;
+      else hi = mid;
+    }
+    for (const b of LIMBS[g]!) for (let a = 0; a < 3; a++) scales[b * 3 + a] = 1 + (scales[b * 3 + a]! - 1) * lo;
+  }
+}
+
+function norm(v: Float64Array, b: number): number {
+  return Math.sqrt(v[b * 3]! * v[b * 3]! + v[b * 3 + 1]! * v[b * 3 + 1]! + v[b * 3 + 2]! * v[b * 3 + 2]!);
 }
 
 /** The length of a vector of three. */

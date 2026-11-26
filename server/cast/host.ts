@@ -7,6 +7,7 @@ import { Cast } from "./engine.ts";
 import type { PlayerView } from "./intent.ts";
 import { ModelGate, openRouter, type Ask } from "./model.ts";
 import { Planner } from "./planner.ts";
+import { castPerson } from "./people.ts";
 import { CastStage, type CastBodies, type IncidentKind, type StagePlayer } from "./stage.ts";
 import type { CastPlace, CastWorld } from "./world.ts";
 import type { Chat } from "../chat.ts";
@@ -337,6 +338,9 @@ export class CastHost {
         rec.extra.set(COMP_CAST, new TextEncoder().encode(c.id));
         const look = CAST_CATALOGUE.looks.find((l) => l.id === c.look);
         if (look?.colors && rec.genome) look.colors.forEach((col, i) => void (i < rec.genome!.colors.length && (rec.genome!.colors[i] = col)));
+        // Its body is a person of its look's population, sent as the seed it was drawn from.
+        const made = castPerson(c, look, CAST_CATALOGUE, reg);
+        if (made) ents.setBodyLook(e, made.person.look, made.born);
         // What it wears, in its gear slots; and what it carries.
         const inv = items.inv(rec);
         /** Makes an item in its bag and moves it to `to`, a gear slot, if one is given. */
@@ -344,7 +348,7 @@ export class CastHost {
           if (items.mint(rec, item, n, 0, 0, -1, "cast") === 0 || to < 0) return;
           for (let k = 0; k < inv.hotbar; k++) if (inv.item[k] === item) return void items.move(rec, k, rec, to, n);
         };
-        for (const w of look?.wear ?? []) {
+        for (const w of made?.wear ?? look?.wear ?? []) {
           const item = reg.index.get(w), slot = item === undefined ? -1 : reg.wearSlot[item]!;
           if (item !== undefined && slot >= 0 && inv.armor >= 0) put(item, 1, inv.armor + slot);
         }

@@ -215,10 +215,8 @@ export class CreatorScreen implements Screen {
     else if (key === KEY_CREATOR_CREATE) {
       this.refused = false;
       this.sent = session.create(look);
-    } else if (pick(KEY_CREATOR_SEX, SEX_LABELS.length, LOOK_SEX)) {
-      // Choosing a sex other than the first clears the beard.
-      if (look[LOOK_SEX] !== 0) look[LOOK_BEARD] = 0;
     } else if (
+      !pick(KEY_CREATOR_SEX, SEX_LABELS.length, LOOK_SEX) &&
       !pick(KEY_CREATOR_SKIN, SKIN_TONES, LOOK_SKIN) &&
       !pick(KEY_CREATOR_HAIR_COLOR, HAIR_COLORS, LOOK_HAIR_COLOR) &&
       !pick(KEY_CREATOR_EYE, EYE_COLORS, LOOK_EYE_COLOR) &&

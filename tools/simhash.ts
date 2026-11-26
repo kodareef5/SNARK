@@ -1,4 +1,4 @@
-// Prints hashes of the fixed, seeded scenarios of shared/sim/scenarios.ts. The same file runs under Bun (JavaScriptCore)
+// Prints hashes of the fixed, seeded scenarios of shared/sim/scenarios.ts, the person generator's last. The same file runs under Bun (JavaScriptCore)
 // and Node (V8). Equal hashes mean the simulation is bit-identical across the two engines, which client prediction relies on.
 // Here the scenarios are given the clips and rigs of the source packs. The device probe gives a browser its boot pack's.
 
@@ -86,6 +86,10 @@ export function latticeHash(): string {
   return scenarios.latticeHash();
 }
 
+export function personHash(): string {
+  return scenarios.personHash(core());
+}
+
 export function waterHash(ticks = 3000): string {
   return scenarios.waterHash(core(), ticks);
 }
@@ -94,4 +98,4 @@ export function collisionHashes(): string {
   return [carChassisTrace().hash, cityDriveTrace().hash, boatContactTrace().hash, corpseMotionTrace(), humanFallTrace(false), humanFallTrace(true), reactionTrace(), vehicleTracesHash()].join(" ");
 }
 
-if (import.meta.main) console.log(simHash() + " " + poseHash() + " " + snapHash() + " " + creatureHash() + " " + tunedHash() + " " + hullHash() + " " + nodeHash() + " " + waterHash() + " " + collisionHashes() + " " + latticeHash());
+if (import.meta.main) console.log(simHash() + " " + poseHash() + " " + snapHash() + " " + creatureHash() + " " + tunedHash() + " " + hullHash() + " " + nodeHash() + " " + waterHash() + " " + collisionHashes() + " " + latticeHash() + " " + personHash());

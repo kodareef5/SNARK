@@ -20,6 +20,7 @@ import { SLOPE_BLOCKS } from "./slopes.ts";
 import { LETTER_BLOCKS } from "./lettering.ts";
 import { TERMINALS } from "./terminals.ts";
 import { ORBS } from "./orb.ts";
+import { POPULATIONS } from "./people/defaults.ts";
 import { SPAWNS } from "./spawns.ts";
 import { SCREEN_PROPS } from "./screens.ts";
 import { STREET } from "./street.ts";
@@ -516,7 +517,7 @@ const ALL: readonly Def[] = [
   LEVELS,
 ];
 
-export const CORE_CONTENT: readonly Def[] = crafted([...ALL, ...RUIN_BLOCKS, ...BREAK_BLOCKS, ...TERMINALS, ...ORBS, ...SLOPE_BLOCKS, ...LETTER_BLOCKS]);
+export const CORE_CONTENT: readonly Def[] = crafted([...ALL, ...RUIN_BLOCKS, ...BREAK_BLOCKS, ...TERMINALS, ...ORBS, ...SLOPE_BLOCKS, ...LETTER_BLOCKS, ...POPULATIONS]);
 
 /** CORE_CONTENT as a pack, for stacking other packs on top. */
 export const CORE_PACK: ContentPack = { name: "core", defs: CORE_CONTENT as readonly Def[] as unknown as ContentPack["defs"] };

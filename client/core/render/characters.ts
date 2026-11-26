@@ -30,7 +30,7 @@ import { TAU } from "../../../shared/math/scalar.ts";
 import { B_HEAD, B_HIPS, B_NECK, B_PROP_L, B_PROP_R, B_SHOULDER_L, B_SHOULDER_R, B_UPPER_CHEST, SOCKET_EYE, HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_HEAD, SLOT_FEET, SLOT_HANDS, SLOT_NAMES } from "../../../shared/anim/human.ts";
 import { RiderSoles, soleOffsets } from "../../../shared/anim/rider-soles.ts";
 import { RiderGrips } from "../../../shared/anim/rider-grips.ts";
-import { BEARD_STYLES, HAIR_STYLES, LOOK_BEARD, LOOK_BYTES, LOOK_HAIR, LOOK_SEX, REGION_MAIN, REGION_SECOND, REGION_TRIM, SEX_IDS, defaultLook, lookColors, lookJoints, plantLookFeet, lookScales } from "../../../shared/anim/look.ts";
+import { BEARD_STYLES, HAIR_STYLES, LOOK_BEARD, LOOK_BODY_BYTES, LOOK_BYTES, LOOK_HAIR, LOOK_SEX, REGION_MAIN, REGION_SECOND, REGION_TRIM, SEX_IDS, defaultLook, lookColors, lookJoints, plantLookFeet, lookScales } from "../../../shared/anim/look.ts";
 import { EMOTES, EMOTE_GROUP, emoteClipId, emoteOf } from "../../../shared/anim/emotes.ts";
 import { AnimState, CUE_TORPOR, DIR_STEPS, HumanAnim, LAUNCHER_AT_MUZZLE, LAUNCHER_FETCHED, LAUNCHER_HOME, advanceHuman, humanPose, launcherReloadShare } from "../../../shared/anim/pose.ts";
 import { ROUND_HELD, ROUND_SLIDE } from "../../../shared/anim/launcher-pose.ts";
@@ -1609,7 +1609,7 @@ export class Characters {
 
   /**
    * `x, y, z` is the origin relative to the camera, `yaw` is in radians, and `tick` may fall between ticks. `look` holds a
-   * 28-byte look at `lookAt`, or is null for a body drawn in the six colour regions of `colors` at `colorAt`. `gear` is
+   * look (LOOK_BYTES) at `lookAt`, or is null for a body drawn in the six colour regions of `colors` at `colorAt`. `gear` is
    * laid out as EntityStore.gear, at `gearAt`, or is null. `own` draws it in the near pass. `headless` leaves out the head
    * and what is on it. `size` scales a creature, below 1 for a young one. `rigid` draws it on one bone, standing in a pose
    * for what it is doing (standIn), for a frame without the bones to pose it. `unseen` poses it as a body in view is posed, for its shadow alone: none of it is
@@ -2212,11 +2212,11 @@ function moving(st: AnimState, move: number): AnimState {
  */
 function scalesOf(g: Stride, view: Uint8Array, rest: Float32Array): Float32Array {
   let same = g.look !== null;
-  for (let q = 0; q < LOOK_BYTES && same; q++) same = g.look![q] === view[q];
+  for (let q = 0; q < LOOK_BODY_BYTES && same; q++) same = g.look![q] === view[q];
   if (same) return g.scales!;
-  g.look ??= new Uint8Array(LOOK_BYTES);
+  g.look ??= new Uint8Array(LOOK_BODY_BYTES);
   g.scales ??= new Float32Array(HUMAN_BONES * 3);
-  for (let q = 0; q < LOOK_BYTES; q++) g.look[q] = view[q]!;
+  for (let q = 0; q < LOOK_BODY_BYTES; q++) g.look[q] = view[q]!;
   lookScales(g.look, g.scales, rest);
   g.armRest = undefined;
   return g.scales;
