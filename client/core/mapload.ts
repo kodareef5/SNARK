@@ -34,7 +34,7 @@ import { HeldTops } from "./render/blocks.ts";
 import { everywhere, firstFrameParts, overviewOf, partDistance, squareKey } from "./map-first.ts";
 export { FIRST_REACH, firstFrameParts } from "./map-first.ts";
 import { HeldStatics } from "./map-statics.ts";
-import { KEEP_PAST, PartBoxes, ROAD_REACH, Wanted, centresOf, tierWant, type WantFrom } from "./map-want.ts";
+import { KEEP_PAST, PartBoxes, ROAD_REACH, Wanted, centresOf, tierWant, type Centre, type Reach, type WantFrom } from "./map-want.ts";
 export { ROAD_REACH } from "./map-want.ts";
 import { holdRoad, holdStreets } from "../../shared/world/mapfile.ts";
 import { RoadSectors } from "../../shared/world/roadframe.ts";
@@ -415,7 +415,10 @@ class Asker {
 
 /** How much of a map a page has (MapLoader.progress), for a bench that waits for what it wants (bench-run.ts). */
 export interface MapProgress {
-  /** Parts wanted not yet held, those under way or waiting to be asked again among them, and how many are wanted. */
+  /**
+   * Parts wanted not yet held, those under way or waiting to be asked again among them, and how many are wanted: from
+   * where the body and the rest are now, whether or not the page has looked from there yet.
+   */
   readonly left: number;
   readonly parts: number;
   /** Whether the statics round the body have been handed over, to the hand-over's last step. */
@@ -439,6 +442,9 @@ export class MapLoader {
   private readonly boxes: PartBoxes;
   /** The parts wanted, and those held of them and of the first frame's; those under way, waiting out a failure, or broken. */
   private readonly want = new Wanted();
+  /** The centres the wanted set was last made round, and a set for what is wanted now where they have moved (`wantedNow`). */
+  private looked: Centre[] = [];
+  private readonly fresh = new Wanted();
   private readonly came = new Set<MapPart>();
   private readonly going = new Set<MapPart>();
   private readonly waiting = new Set<MapPart>();
@@ -531,10 +537,7 @@ export class MapLoader {
    */
   look(): void {
     if (!this.followed) return;
-    const { x, z, vx, vz } = this.place(), from = this.from();
-    this.want.look(this.boxes, centresOf({ x, z }, { x: x + vx * LEAD, z: z + vz * LEAD }, from), this.held.needed);
-    this.cap(from.budget ?? Infinity);
-    this.capGround(from.ground ?? Infinity);
+    this.looked = this.wantFrom(this.centres(), this.want);
     for (const p of this.came) {
       if (this.want.kept.has(p) || (p.kind === "statics" && this.held.keep?.(p))) continue;
       if (p.kind === "statics") this.held.drop(p);
@@ -548,6 +551,33 @@ export class MapLoader {
     this.trim(0);
     this.trimGround(0);
     this.pump();
+  }
+
+  /** The centres the page wants its map round now: the body, where it will be LEAD seconds on, and what `from` names. */
+  private centres(): Centre[] {
+    const { x, z, vx, vz } = this.place();
+    return centresOf({ x, z }, { x: x + vx * LEAD, z: z + vz * LEAD }, this.from());
+  }
+
+  /** Makes `want` the parts wanted round `centres`, as far as the budgets reach, and gives the centres. */
+  private wantFrom(centres: Centre[], want: Wanted): Centre[] {
+    const from = this.from();
+    want.look(this.boxes, centres, this.held.needed);
+    this.cap(want, from.budget ?? Infinity);
+    this.capGround(want, from.ground ?? Infinity);
+    return centres;
+  }
+
+  /**
+   * The parts wanted from where the body and the rest are now. The wanted set is as old as the last look, up to
+   * LOOK_EVERY: where a centre has moved since, as a body set down far off has, this is a set made now, which nothing is
+   * asked for from.
+   */
+  private wantedNow(): Wanted {
+    const centres = this.centres(), was = this.looked;
+    if (centres.length === was.length && centres.every((c, k) => c.x === was[k]!.x && c.z === was[k]!.z && sameReach(c.reach, was[k]!.reach))) return this.want;
+    this.wantFrom(centres, this.fresh);
+    return this.fresh;
   }
 
   /** Metres from the body, the camera or a sight's focus to part `p`: a ground page within ROAD_REACH of any is pinned. */
@@ -565,17 +595,17 @@ export class MapLoader {
    * The ground wanted, nearest the body, where it heads, the camera or a focus first, as far as `budget` bytes of pages reach,
    * and none past but those pinned. A page held counts a sector nearer.
    */
-  private capGround(budget: number): void {
+  private capGround(want: Wanted, budget: number): void {
     if (budget === Infinity) return;
     const head = this.staged.head, grounds: [MapPart, number][] = [];
-    for (const p of this.want.parts.keys()) if (p.kind === "ground") grounds.push([p, Math.min(this.off(p), this.pinOff(p)) - (this.came.has(p) ? KEEP_PAST : 0)]);
+    for (const p of want.parts.keys()) if (p.kind === "ground") grounds.push([p, Math.min(this.off(p), this.pinOff(p)) - (this.came.has(p) ? KEEP_PAST : 0)]);
     grounds.sort((a, b) => a[1] - b[1]);
     let room = budget;
     for (const [p] of grounds) {
       room -= pageBytes(squareOf(head.dims, SECTOR_CHUNKS, p.col, p.row)!);
       if (room >= 0 || this.pinOff(p) <= ROAD_REACH) continue;
-      this.want.parts.delete(p);
-      this.want.kept.delete(p);
+      want.parts.delete(p);
+      want.kept.delete(p);
     }
   }
 
@@ -595,11 +625,11 @@ export class MapLoader {
    * The statics wanted, nearest first, as far as `budget` bytes of them reach, and none past: those a reader waits for
    * first, then by their metres, a sector held a sector nearer than it is so the edge does not let it go and ask again.
    */
-  private cap(budget: number): void {
+  private cap(want: Wanted, budget: number): void {
     if (budget === Infinity) return;
     const held = this.held, statics: [MapPart, number][] = [];
     let room = budget - held.index;
-    for (const [p, off] of this.want.parts) {
+    for (const [p, off] of want.parts) {
       if (p.kind !== "statics") continue;
       if (held.needed.has(p)) room -= held.bytesOf(p);
       else statics.push([p, off - (held.has(p) ? KEEP_PAST : 0)]);
@@ -608,8 +638,8 @@ export class MapLoader {
     for (const [p] of statics) {
       room -= held.bytesOf(p);
       if (room >= 0) continue;
-      this.want.parts.delete(p);
-      this.want.kept.delete(p);
+      want.parts.delete(p);
+      want.kept.delete(p);
       room = -Infinity;
     }
   }
@@ -820,9 +850,10 @@ export class MapLoader {
     const head = this.staged.head;
     let roads = 0, left = 0;
     for (const p of head.parts) if ((p.kind === "road" || p.kind === "streets") && !this.roadsHeld.has(p) && this.off(p) <= ROAD_REACH) roads++;
-    for (const p of this.want.parts.keys()) if (!this.holds(p)) left++;
+    const want = this.followed ? this.wantedNow() : this.want;
+    for (const p of want.parts.keys()) if (!this.holds(p)) left++;
     const settled = this.followed && left === 0 && this.going.size === 0 && this.waiting.size === 0 && !this.handing && this.handedAt === this.held.version;
-    return { left, parts: this.want.parts.size, near: this.handedOnce, settled, roads };
+    return { left, parts: want.parts.size, near: this.handedOnce, settled, roads };
   }
 
   /**
@@ -895,6 +926,9 @@ export class MapLoader {
     this.roadsHeld.add(p);
   }
 }
+
+/** Whether two centres reach as far for each kind of part. */
+const sameReach = (a: Reach, b: Reach): boolean => a.overview === b.overview && a.ground === b.ground && a.statics === b.statics && a.tops === b.tops;
 
 /** `steps` taken to their end, with a pause after each. */
 async function stepped<T>(steps: Generator<void, T>, pause: () => Promise<void>): Promise<T> {
