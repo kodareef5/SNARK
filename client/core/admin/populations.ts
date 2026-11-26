@@ -23,18 +23,18 @@ export interface PopulationDraft {
   doc: PopulationDoc;
 }
 
-/** A deep copy of a population's fields, without its type, id and revision. */
+/** A deep copy of a population's fields, without its type and id. */
 export function docOf(p: PopulationDef | PopulationDoc): PopulationDoc {
-  const { type: _t, id: _i, revision: _r, aliases: _a, ...rest } = p as unknown as Record<string, unknown>;
+  const { type: _t, id: _i, aliases: _a, ...rest } = p as unknown as Record<string, unknown>;
   return JSON.parse(JSON.stringify(rest)) as PopulationDoc;
 }
 
-export const draftOfBuiltIn = (p: PopulationDef): PopulationDraft => ({ id: null, rev: p.revision, builtIn: p.id, doc: docOf(p) });
+export const draftOfBuiltIn = (p: PopulationDef): PopulationDraft => ({ id: null, rev: 0, builtIn: p.id, doc: docOf(p) });
 export const draftOfListed = (l: Listed<PopulationDoc>): PopulationDraft => ({ id: l.id, rev: l.rev, builtIn: null, doc: docOf(l.doc) });
 
-/** The draft as the person generator takes it. An unsaved edit is drawn as the revision after the saved one. */
-export function draftDef(d: PopulationDraft, edited: boolean): PopulationDef {
-  return { type: "population", id: d.builtIn ?? storePopulationId(d.id ?? 0), revision: d.rev + (edited && d.id !== null ? 1 : 0), ...d.doc } as PopulationDef;
+/** The draft as the person generator takes it. */
+export function draftDef(d: PopulationDraft): PopulationDef {
+  return { type: "population", id: d.builtIn ?? storePopulationId(d.id ?? 0), ...d.doc } as PopulationDef;
 }
 
 /** What a person promoted from the sheet names: the saved population and its revision, or null while edits are unsaved. */
@@ -217,7 +217,7 @@ export const pictureKey = (p: SheetPerson): string => `${Array.from(p.look, (b) 
 
 /** The built-in populations, read only with a copy button, then the admin ones. */
 export function populationsHtml(state: StoreState, selected: string): string {
-  const built = state.builtIns.map((p) => `<div class="named${selected === p.id ? " picked" : ""}"><button data-open-built="${esc(p.id)}"><b>${esc(p.label)}</b> <span class="chip">built in</span><br><span class="faint">${esc(p.id)} · revision ${p.revision}</span></button><div class="acts"><button data-copy="${esc(p.id)}">Copy</button></div></div>`);
+  const built = state.builtIns.map((p) => `<div class="named${selected === p.id ? " picked" : ""}"><button data-open-built="${esc(p.id)}"><b>${esc(p.label)}</b> <span class="chip">built in</span><br><span class="faint">${esc(p.id)}</span></button><div class="acts"><button data-copy="${esc(p.id)}">Copy</button></div></div>`);
   const admin = [...state.populations].sort((a, b) => b.id - a.id).map((p) => `<div class="named${p.retired ? " retired" : ""}${selected === `store:${p.id}` ? " picked" : ""}" data-population="${p.id}"><button data-open="${p.id}"><b>${esc(p.doc.label)}</b>${p.retired ? ` <span class="chip">retired</span>` : ""}<br><span class="faint">#${p.id} · revision ${p.rev}${p.by ? ` · ${esc(p.by)}` : ""}</span></button></div>`);
   return `<h3>Built in</h3>${built.join("")}<h3>Made here</h3>${admin.join("") || `<p class="faint">None yet: copy a built-in one to start.</p>`}`;
 }

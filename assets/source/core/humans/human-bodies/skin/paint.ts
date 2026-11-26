@@ -1,4 +1,4 @@
-// Paints the maps of the people's materials from the base colours their packs came with, which are all Quaternius
+// Paints the maps of the Quaternius armour's materials from the base colours its packs came with, which are all Quaternius
 // shipped: a base colour that is each region's own colour over its mean, so a lip or a cheek keeps its hue under the
 // look's palette colour; a gentle normal from the colour's lightness; occlusion and roughness; and the masks that say
 // which region each texel dyes. Run it with Bun from the repository; it writes beside itself.
@@ -44,13 +44,6 @@ const saturation = (r: number, g: number, b: number): number => {
 };
 /** The cook's rule before it: a grey texel is what is worn under, any other skin. Read in sRGB as that rule was. */
 const skinOrCloth: Classify = (r, g, b) => (saturation(srgb(r), srgb(g), srgb(b)) < 0.22 ? 1 : 0);
-const eye: Classify = (r, g, b) => {
-  const [sr, sg, sb] = [srgb(r), srgb(g), srgb(b)];
-  const light = ((sr + sg + sb) / 3) * 255;
-  if (light > 150 && saturation(sr, sg, sb) < 0.3) return -1;
-  return light < 40 ? -1 : 2;
-};
-const hair: Classify = () => 3;
 /** An outfit in three colours by lightness: its largest block the main colour, of the other two the darker the second and the lighter the trim. */
 const threeTones: Classify = (r, g, b, { cuts, regions }) => {
   const l = luma(r, g, b);
@@ -79,25 +72,11 @@ function threeWays(lights: Float32Array): [number, number] {
   return [lo + best[1]! * step, lo + best[2]! * step];
 }
 
-const BODY = "base-characters";
-const HAIR = `${BODY}/hair`;
 const OUT = "outfits-fantasy";
-const hairs = (material: string, files: readonly string[]) => files.map((f) => ({ file: `${HAIR}/${f}.gltf`, material }));
 const outfit = (material: string, files: readonly string[]) => ["Male", "Female"].flatMap((sex) => files.map((f) => ({ file: `${OUT}/${sex}_${f}.gltf`, material })));
 const SKIN_ROUGH = { 0: 0.56, 1: 0.82 } as const;
 
 const SPECS: readonly Spec[] = [
-  { name: "skin-m", base: `${BODY}/T_Superhero_Male_Ligh.png`, models: [{ file: `${BODY}/Superhero_Male_FullBody.gltf`, material: "MI_Superhero_Male" }], classify: skinOrCloth, roughness: SKIN_ROUGH, sides: [2048, 1024, 512] },
-  { name: "skin-f", base: `${BODY}/T_Superhero_Female_Light_BaseColor.png`, models: [{ file: `${BODY}/Superhero_Female_FullBody.gltf`, material: "MI_Superhero_Female" }], classify: skinOrCloth, roughness: SKIN_ROUGH, sides: [2048, 1024, 512] },
-  { name: "eyes", base: `${BODY}/T_Eye_Brown.png`, models: [{ file: `${BODY}/Superhero_Male_FullBody.gltf`, material: "MI_Eyes" }], classify: eye, roughness: { 2: 0.12, [-1]: 0.16 }, sides: [256, 128, 128] },
-  {
-    name: "hair-1", base: `${BODY}/T_Hair_1_BaseColor.png`, classify: hair, roughness: { 3: 0.48 }, sides: [2048, 1024, 512],
-    models: [{ file: `${BODY}/Superhero_Male_FullBody.gltf`, material: "MI_Hair_1" }, ...hairs("MI_Hair_1", ["Hair_Buzzed", "Hair_BuzzedFemale", "Hair_SimpleParted", "Hair_Beard", "Eyebrows_Regular"])],
-  },
-  {
-    name: "hair-2", base: `${BODY}/T_Hair_2_BaseColor.png`, classify: hair, roughness: { 3: 0.48 }, sides: [2048, 1024, 512],
-    models: [{ file: `${BODY}/Superhero_Female_FullBody.gltf`, material: "MI_Hair_2" }, ...hairs("MI_Hair_2", ["Hair_Long", "Hair_Buns", "Eyebrows_Female"])],
-  },
   { name: "cloth", base: `${OUT}/T_Peasant_BaseColor.png`, models: outfit("MI_Peasant", ["Peasant_Arms", "Peasant_Body", "Peasant_Feet", "Peasant_Legs"]), classify: threeTones, roughness: { 1: 0.86, 4: 0.8, 5: 0.7 }, sides: [2048, 1024, 512], smooth: 8 },
   {
     name: "hide", base: `${OUT}/T_Ranger_BaseColor.png`, classify: threeTones, roughness: { 1: 0.62, 4: 0.7, 5: 0.5 }, sides: [2048, 1024, 512], smooth: 8,

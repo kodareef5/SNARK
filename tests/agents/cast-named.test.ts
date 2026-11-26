@@ -6,7 +6,7 @@ import type { PopulationDoc } from "../../shared/people/doc.ts";
 import { personFrom } from "../../shared/people/person.ts";
 import { Harness } from "../fixtures/net.ts";
 
-const { type: _t, id: _i, revision: _r, ...cityDoc } = CITY;
+const { type: _t, id: _i, ...cityDoc } = CITY;
 
 test("cast.json names who plays a named person, and feature keeps them", () => {
   const h = new Harness({ entityRadius: 1 }, 2, 30, { cast: { size: 0, activity: 0, hostility: 0 }, wakeRadius: 1 });

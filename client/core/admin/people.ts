@@ -69,15 +69,15 @@ export function bookOf(state: StoreState, manifest: unknown): Map<string, Popula
 
 /** A population by its content id or store id at revision `rev`, as the generator takes it; undefined where not held. */
 export function populationDef(state: StoreState, book: PopulationBook, ref: PopulationRef, rev: number): PopulationDef | undefined {
-  if (typeof ref === "string") return state.builtIns.find((p) => p.id === ref && p.revision === rev);
+  if (typeof ref === "string") return state.builtIns.find((p) => p.id === ref);
   const doc = book.get(`${ref}/${rev}`);
-  return doc ? storePopulation(ref, rev, doc) : undefined;
+  return doc ? storePopulation(ref, doc) : undefined;
 }
 
 /** The populations a person may be drawn from: the built-in ones, then the admin ones not retired, each at its latest. */
 export function populationChoices(state: StoreState): { ref: PopulationRef; revision: number; label: string }[] {
   return [
-    ...state.builtIns.map((p) => ({ ref: p.id as PopulationRef, revision: p.revision, label: p.label })),
+    ...state.builtIns.map((p) => ({ ref: p.id as PopulationRef, revision: 0, label: p.label })),
     ...state.populations.filter((p) => !p.retired).map((p) => ({ ref: p.id as PopulationRef, revision: p.rev, label: p.doc.label })),
   ];
 }
@@ -85,9 +85,9 @@ export function populationChoices(state: StoreState): { ref: PopulationRef; revi
 export const refKey = (ref: PopulationRef): string => (typeof ref === "number" ? `store:${ref}` : ref);
 export const refOfKey = (key: string): PopulationRef => (key.startsWith("store:") ? Number(key.slice(6)) : key);
 
-/** The latest revision of population `ref`, or undefined. */
+/** The latest revision of population `ref` (0 for a built-in one, which has none), or undefined. */
 export function latestRevision(state: StoreState, ref: PopulationRef): number | undefined {
-  return typeof ref === "string" ? state.builtIns.find((p) => p.id === ref)?.revision : state.populations.find((p) => p.id === ref)?.rev;
+  return typeof ref === "string" ? (state.builtIns.some((p) => p.id === ref) ? 0 : undefined) : state.populations.find((p) => p.id === ref)?.rev;
 }
 
 export function populationLabel(state: StoreState, book: PopulationBook, ref: PopulationRef, rev: number): string {
@@ -192,7 +192,7 @@ export const DEFAULT_POPULATION = "core:people_city";
 /** A new person drawn from `seed` in the city crowd (or the first population the state has). */
 export function newPerson(state: StoreState, seed: number): PersonDraft {
   const p = state.builtIns.find((x) => x.id === DEFAULT_POPULATION) ?? state.builtIns[0];
-  return { id: null, rev: 0, name: "", notes: "", look: { kind: "seed", seed: seed >>> 0, population: p?.id ?? DEFAULT_POPULATION, revision: p?.revision ?? 1, locks: {} }, dress: { kind: "role" } };
+  return { id: null, rev: 0, name: "", notes: "", look: { kind: "seed", seed: seed >>> 0, population: p?.id ?? DEFAULT_POPULATION, revision: 0, locks: {} }, dress: { kind: "role" } };
 }
 
 /** A person promoted from a population's sheet: its seed in that population, every part locked to it. */
@@ -210,7 +210,7 @@ export function promotedFrom(search: string): PersonDraft | null {
     if (at > 0) q.set(decodeURIComponent(pair.slice(0, at)), decodeURIComponent(pair.slice(at + 1).replace(/\+/g, " ")));
   }
   const seed = Number(q.get("seed")), revision = Number(q.get("revision")), pop = q.get("population") ?? "";
-  if (!q.has("seed") || !Number.isInteger(seed) || seed < 0 || seed > 0xffffffff || !Number.isSafeInteger(revision) || revision < 1 || pop === "") return null;
+  if (!q.has("seed") || !Number.isInteger(seed) || seed < 0 || seed > 0xffffffff || !Number.isSafeInteger(revision) || revision < 0 || pop === "") return null;
   const population: PopulationRef = /^\d+$/.test(pop) ? Number(pop) : pop;
   return promotedPerson(seed, population, revision, (q.get("name") ?? "").slice(0, RECORD_NAME_MAX));
 }

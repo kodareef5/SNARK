@@ -57,7 +57,7 @@
 
 import { SkateState, readSkate, writeSkate } from "../sim/skate-state.ts";
 import { BitReader, BitWriter } from "./codec.ts";
-import { LOOK_BYTES, upgradeLook } from "../anim/look.ts";
+import { LOOK_BYTES } from "../anim/look.ts";
 import { REACT_BITS } from "../anim/pose.ts";
 import { counter, flags } from "../codes.ts";
 import { BTN_CROUCH, BTN_JUMP, BTN_PRONE, Body, buttonCount } from "../sim/character.ts";
@@ -1069,8 +1069,7 @@ export function writeHello(w: BitWriter, version: number, contentHash: number, c
   const marked = look ? flags | HELLO_LOOK : flags & ~HELLO_LOOK;
   w.u8(ticket ? marked | HELLO_TICKET : marked & ~HELLO_TICKET);
   for (let i = 0; i < KEY_BYTES; i++) w.u8(key[i] ?? 0);
-  const full = look && upgradeLook(look);
-  if (full) for (let i = 0; i < LOOK_BYTES; i++) w.u8(full[i] ?? 0);
+  if (look) for (let i = 0; i < LOOK_BYTES; i++) w.u8(look[i] ?? 0);
   if (ticket) for (let i = 0; i < TICKET_BYTES; i++) w.u8(ticket[i] ?? 0);
   w.string(password);
   if ((flags & HELLO_NEW) && createRequest?.length===KEY_BYTES) for(const b of createRequest)w.u8(b);

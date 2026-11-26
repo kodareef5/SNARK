@@ -7,7 +7,7 @@ const store = new PeopleStore({ db, media });
 const ids: number[] = [];
 let refused = 0;
 for (let k = 0; k < Number(count); ) {
-  const done = store.publish(store.view().revision, { garment: "core:plain_tee", colours: [k % 256, 0, 0], print: null, name: `${name} ${k}` }, { name, id: "" });
+  const done = store.publish(store.view().revision, { garment: "core:tee", colours: [k % 256, 0, 0], print: null, name: `${name} ${k}` }, { name, id: "" });
   if ("status" in done) {
     if (done.status !== 409 && done.status !== 503) throw new Error(done.error);
     refused++;

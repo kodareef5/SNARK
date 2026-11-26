@@ -545,7 +545,7 @@ export class Cast {
     for (const [i, r] of data.regions) this.regions.byIndex.set(i, r);
     for (const [n, p] of data.players) this.player(n).hostileAt = p.hostileAt;
     this.nextStory = Math.max(this.nextStory, data.next);
-    if (data.casting) this.casting = castingOf(data.casting);
+    this.casting = castingOf(data.casting);
   }
 
   private forget(s: Story): void {
@@ -567,8 +567,7 @@ export interface CastSave {
   regions: [number, Region][];
   players: [string, { hostileAt: number }][];
   next: number;
-  /** Absent in a save from before admins chose looks and roles. */
-  casting?: Casting;
+  casting: Casting;
 }
 
 const storeId = (n: unknown): n is number => Number.isSafeInteger(n) && (n as number) >= 1;

@@ -5,7 +5,7 @@ import type { Def, LootDef } from "../../shared/content/defs.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { SLOT_BLUEPRINT } from "../../shared/net/protocol.ts";
 import { Rng } from "../../shared/rng.ts";
-import { BLUEPRINT_KG, FLAG_BLUEPRINT, Inventory, QUALITY_MUL, QUALITY_NAMES, blueprintCost, craftedQuality, moveSlot, qualityOfRating } from "../../shared/sim/items.ts";
+import { BLUEPRINT_KG, FLAG_BLUEPRINT, GEAR_SLOTS, Inventory, QUALITY_MUL, QUALITY_NAMES, blueprintCost, craftedQuality, moveSlot, qualityOfRating } from "../../shared/sim/items.ts";
 import { POWER_MOST, lootFaults, powSixteenths, rollLoot } from "../../shared/sim/loot.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
@@ -164,7 +164,7 @@ test("a loot definition with bad numbers is refused when content compiles", () =
 
 test("a blueprint lies alone at its quality, is never spent or held, weighs a tenth of a kilogram, and moves with its flags", () => {
   expect(FLAG_BLUEPRINT).toBe(SLOT_BLUEPRINT);
-  const inv = new Inventory(40 + 15, 40);
+  const inv = new Inventory(40 + GEAR_SLOTS, 40);
   const pick = id("pick");
   const stone = id("stone");
   // Stone stacks only with stone of its own quality and flags.
@@ -202,7 +202,7 @@ test("a blueprint lies alone at its quality, is never spent or held, weighs a te
 
 test("a fuzz of adds and moves never joins a blueprint to anything, never puts one outside the bag, and loses nothing", () => {
   const rng = new Rng(5);
-  const a = new Inventory(20 + 15, 20);
+  const a = new Inventory(20 + GEAR_SLOTS, 20);
   const b = new Inventory(12);
   const kinds = [id("stone"), id("pick"), id("hatchet"), id("fiber")];
   let added = 0;

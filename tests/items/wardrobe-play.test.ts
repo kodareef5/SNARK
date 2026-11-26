@@ -12,7 +12,7 @@ import type { EntityRecord } from "../../server/records.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
 import { BOX_OPEN, BOX_SELF, CMD_DROP, CMD_MOVE, CMD_RESPAWN, CMD_TAKE, CMD_USE, RESULT_INVALID, RESULT_OK } from "../../shared/net/protocol.ts";
 import { JET_CUIRASS } from "../../shared/sim/character.ts";
-import { ARMORED_TAIL, ARMOR_SLOTS, Inventory, WARDROBE_SLOTS } from "../../shared/sim/items.ts";
+import { ARMOR_SLOTS, Inventory, WARDROBE_SLOTS } from "../../shared/sim/items.ts";
 import { TestCluster, keyAt, rec as clusterRec, rise, travel } from "../fixtures/cluster.ts";
 import { Harness } from "../fixtures/net.ts";
 import { editionOf } from "../fixtures/editions.ts";
@@ -27,12 +27,14 @@ afterAll(() => {
 
 const reg = coreRegistry();
 const id = (name: string): number => reg.index.get(`core:${name}`)!;
-const tee = id("plain_tee");
-const trousers = id("plain_trousers");
+const tee = id("tee");
+const trousers = id("jeans");
 const dye = (a: number, b: number, c: number): number => a | (b << 8) | (c << 16);
 // The first two editions a fresh people store gives, which dress publishes.
 const TEE = [tee, 1, dye(12, 40, 3)];
 const TROUSERS = [trousers, 2, dye(0, 22, 0)];
+/** Both, in item order, as `styled` lists them. */
+const DRESSED = [TEE, TROUSERS].sort((a, b) => a[0]! - b[0]!);
 
 /** Fills a survivor's hotbar, armor and bag, and puts on a dyed edition of the tee and of the trousers. */
 function dress(h: Harness, me: EntityRecord): void {
@@ -47,7 +49,7 @@ function dress(h: Harness, me: EntityRecord): void {
   expect(items.mint(me, id("fiber"), 300)).toBe(300);
   expect(items.mintAt(me, inv.wardrobe, tee, 1)).toBe(1);
   expect(items.mintAt(me, inv.wardrobe + 1, trousers, 1)).toBe(1);
-  expect([editionOf(h.host, "core:plain_tee"), editionOf(h.host, "core:plain_trousers")]).toEqual([TEE[1]!, TROUSERS[1]!]);
+  expect([editionOf(h.host, "core:tee"), editionOf(h.host, "core:jeans")]).toEqual([TEE[1]!, TROUSERS[1]!]);
   expect(items.restyle(me, inv.wardrobe, TEE[1]!, TEE[2]!)).toBe(true);
   expect(items.restyle(me, inv.wardrobe + 1, TROUSERS[1]!, TROUSERS[2]!)).toBe(true);
   h.run(200);
@@ -158,7 +160,7 @@ test("a cache holds an edition and a dye, and gives them back", () => {
     expect(move(h, s, inv.wardrobe, 1, tee, BOX_SELF, BOX_OPEN)).toBe(RESULT_OK);
     expect(move(h, s, inv.wardrobe + 1, 2, trousers, BOX_SELF, BOX_OPEN)).toBe(RESULT_OK);
     const box = h.host.items.inv(cache);
-    expect(styled(box)).toEqual([TEE, TROUSERS]);
+    expect(styled(box)).toEqual(DRESSED);
     // What the client has of the open box carries them too.
     expect([s.open!.inventory.editionOf(1), s.open!.inventory.dyeOf(2)]).toEqual([TEE[1], TROUSERS[2]]);
     expect(wardrobe(inv)).toEqual([EMPTY, EMPTY, EMPTY, EMPTY, EMPTY]);
@@ -248,36 +250,6 @@ test("editions and dyes are saved, and the survivor has them after a restart", (
   }
 });
 
-test("a survivor saved before the wardrobe comes back with it empty and every other slot as it was", () => {
-  const db = join(dir, "old.db");
-  const { h, s, me, inv } = setup(db);
-  // As a save written before the wardrobe holds it: the same bag, hotbar and armor, in an inventory with no wardrobe.
-  const old = new Inventory(inv.bag + ARMORED_TAIL, inv.bag);
-  for (let slot = 0; slot < old.cap; slot++) if (inv.item[slot] !== 0) old.set(slot, inv.item[slot]!, inv.count[slot]!, inv.quality[slot]!, inv.dur[slot]!, inv.spoilAt[slot]!);
-  for (let k = 0; k < WARDROBE_SLOTS; k++) if (inv.item[inv.wardrobe + k] !== 0) h.host.items.burn(me, inv.wardrobe + k, 1);
-  // The ledger counts what the old save held, which the record now holds.
-  me.inv = old;
-  h.host.records.dirty.add(me.pid);
-  s.close();
-  h.run(300);
-  h.host.shutdown();
-  const h2 = new Harness({}, 1, 60, { dev: true, dbPath: db });
-  try {
-    const back = h2.host.items.inv(h2.host.records.byPid.get(me.pid)!);
-    expect([back.cap, back.bag, back.wardrobe]).toEqual([inv.cap, inv.bag, inv.wardrobe]);
-    for (let slot = 0; slot < old.cap; slot++) expect([back.item[slot], back.count[slot], back.quality[slot], back.dur[slot]]).toEqual([old.item[slot], old.count[slot], old.quality[slot], old.dur[slot]]);
-    expect(wardrobe(back)).toEqual([EMPTY, EMPTY, EMPTY, EMPTY, EMPTY]);
-    // It can dress at once.
-    expect(h2.host.items.mintAt(h2.host.records.byPid.get(me.pid)!, back.wardrobe, tee, 1)).toBe(1);
-    const again = h2.join("ada");
-    h2.run(600);
-    expect([again.inventory!.cap, again.inventory!.item[back.wardrobe]]).toEqual([inv.cap, tee]);
-    expect(h2.host.items.audit()).toEqual([]);
-  } finally {
-    h2.host.shutdown();
-  }
-});
-
 test("a survivor who travels to another map arrives wearing the same editions and dyes", () => {
   const clock = { ms: Date.now() };
   const a = cluster.server("Island", "dressed", clock);
@@ -316,7 +288,7 @@ test("a survivor's body keeps what it wore, through a restart, and its cache giv
   const body = [...h.host.corpses.bodies.values()].find((b) => b.kind === me.kind)!;
   expect([...corpseWardrobe(body.rec)!]).toEqual(WORN.flat());
   const cache = [...h.host.records.byPid.values()].find((r) => r.kind === id("cache"))!;
-  expect(styled(h.host.items.inv(cache))).toEqual([TEE, TROUSERS]);
+  expect(styled(h.host.items.inv(cache))).toEqual(DRESSED);
   h.run(300);
   h.host.shutdown();
 
@@ -326,7 +298,7 @@ test("a survivor's body keeps what it wore, through a restart, and its cache giv
     expect([...corpseWardrobe(again.rec)!]).toEqual(WORN.flat());
     expect([...again.rec.look!]).toEqual([...look]);
     const kept = h2.host.records.byPid.get(cache.pid)!;
-    expect(styled(h2.host.items.inv(kept))).toEqual([TEE, TROUSERS]);
+    expect(styled(h2.host.items.inv(kept))).toEqual(DRESSED);
     // Risen beside it, the survivor opens its cache and puts the two back on.
     const s2 = h2.join("ada");
     h2.run(600);
@@ -394,8 +366,8 @@ test("a loadout taken from a dressed survivor keeps its garments, in the bag and
   const { h, me } = setup();
   try {
     const entries = captureLoadout(h.host, me);
-    const garments = entries.filter((e) => "item" in e && (e.item === "core:plain_tee" || e.item === "core:plain_trousers"));
-    expect(garments).toEqual([{ item: "core:plain_tee", count: 1, place: "bag" }, { item: "core:plain_trousers", count: 1, place: "bag" }]);
+    const garments = entries.filter((e) => "item" in e && (e.item === "core:tee" || e.item === "core:jeans"));
+    expect(garments).toEqual([{ item: "core:tee", count: 1, place: "bag" }, { item: "core:jeans", count: 1, place: "bag" }]);
   } finally {
     h.host.shutdown();
   }

@@ -36,8 +36,7 @@ export interface Traits {
 export const TRAIT_NAMES: readonly (keyof Traits)[] = ["calm", "social", "bold", "playful"];
 
 /** What one wears and looks like. `mesh` is the body (the human's until other models come); `wear` are items put on
- * from the game's own (cloth, hide, flak pieces), or none for an outfit of the population's; `colors` are palette indices
- * for the body's regions. */
+ * from the game's own (cloth, hide, flak pieces), or none for an outfit of the population's. */
 export interface Look {
   id: string;
   mesh: string;
@@ -45,7 +44,6 @@ export interface Look {
   /** The population its people are drawn from: a content one by id (content/people), or an admin one by its store id at
    * its latest revision; the city's where not given. */
   population?: string | number;
-  colors?: number[];
   placeholder?: boolean;
   /** For an artist: what this look is meant to be once it has its own art. */
   note?: string;
@@ -216,7 +214,6 @@ export function validateCatalogue(c: Catalogue, known: Known): string[] {
     unique("look", l.id);
     for (const w of l.wear) if (!known.items.has(w)) out.push(`look ${l.id}: wears ${w}, which is no item`);
     if (typeof l.population === "number" ? !(Number.isSafeInteger(l.population) && l.population >= 1) : l.population !== undefined && known.populations && !known.populations.has(l.population)) out.push(`look ${l.id}: draws from ${l.population}, which is no population`);
-    if (l.colors && (l.colors.length > 6 || l.colors.some((n) => !Number.isInteger(n) || n < 0 || n > 255))) out.push(`look ${l.id}: up to six palette colours, 0 to 255`);
   }
   for (const a of c.archetypes) {
     unique("archetype", a.id);

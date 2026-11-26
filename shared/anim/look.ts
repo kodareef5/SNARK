@@ -17,8 +17,6 @@ import {
 export const LOOK_BYTES = 72;
 /** The bytes that shape the body: sex and the regions. A change past them never changes a bone. */
 export const LOOK_BODY_BYTES = 23;
-/** The first layout's length. Its bytes mean the same in this one, so it converts by padding (upgradeLook). */
-export const LOOK_V1_BYTES = 28;
 export const LOOK_SEX = 0;
 export const LOOK_REGIONS = 1;
 export const REGION_COUNT = 22;
@@ -27,9 +25,8 @@ export const LOOK_HAIR_COLOR = 24;
 export const LOOK_EYE_COLOR = 25;
 export const LOOK_HAIR = 26;
 export const LOOK_BEARD = 27;
-/** Holds LAYOUT_VERSION. */
-export const LOOK_LAYOUT = 28;
-export const LAYOUT_VERSION = 2;
+/** Reserved and zero, as are bytes 37 to 39. */
+export const LOOK_SPARE = 28;
 export const LOOK_BROW = 29;
 /** Hair and beard length when the hair clock starts: 0 is the style as modelled, more is grown out. */
 export const LOOK_HAIR_LENGTH = 30;
@@ -149,13 +146,12 @@ export function defaultLook(out: Uint8Array = new Uint8Array(LOOK_BYTES)): Uint8
   out[LOOK_SKIN] = 3;
   out[LOOK_HAIR_COLOR] = 3;
   out[LOOK_HAIR] = 1;
-  out[LOOK_LAYOUT] = LAYOUT_VERSION;
   return out;
 }
 
 /** A client may send any bytes. */
 export function validLook(b: Uint8Array): boolean {
-  if (b.length !== LOOK_BYTES || b[LOOK_SEX]! >= SEX_IDS.length || b[LOOK_LAYOUT] !== LAYOUT_VERSION) return false;
+  if (b.length !== LOOK_BYTES || b[LOOK_SEX]! >= SEX_IDS.length || b[LOOK_SPARE] !== 0) return false;
   // A signed byte of 128 would be -128, one step outside the slider.
   for (let r = 0; r < REGION_COUNT; r++) if (b[LOOK_REGIONS + r] === 128) return false;
   for (let f = 0; f < FACE_COUNT; f++) if (b[LOOK_FACE + f] === 128) return false;
@@ -163,15 +159,6 @@ export function validLook(b: Uint8Array): boolean {
   for (let i = LOOK_RESERVED; i < LOOK_FACE; i++) if (b[i] !== 0) return false;
   return b[LOOK_SKIN]! < SKIN_TONES && b[LOOK_HAIR_COLOR]! < HAIR_COLORS && b[LOOK_EYE_COLOR]! < EYE_COLORS && b[LOOK_HAIR]! < HAIR_STYLES.length && b[LOOK_BEARD]! < BEARD_STYLES.length &&
     b[LOOK_BROW]! < BROW_STYLES && b[LOOK_COMPLEXION]! < COMPLEXIONS && b[LOOK_HAIR_COLOR_2]! <= HAIR_COLORS;
-}
-
-/** A first-layout look in this layout, all it lacks neutral. A look of another length comes back as it is, for validLook. */
-export function upgradeLook(b: Uint8Array): Uint8Array {
-  if (b.length !== LOOK_V1_BYTES) return b;
-  const out = new Uint8Array(LOOK_BYTES);
-  out.set(b);
-  out[LOOK_LAYOUT] = LAYOUT_VERSION;
-  return out;
 }
 
 /** A signed byte in -1..1. */
@@ -210,7 +197,6 @@ export function randomLook(rng: Rng, out: Uint8Array = new Uint8Array(LOOK_BYTES
   out[LOOK_EYE_COLOR] = rng.int(EYE_COLORS);
   out[LOOK_HAIR] = rng.int(HAIR_STYLES.length);
   out[LOOK_BEARD] = rng.int(2) === 0 ? 1 + rng.int(BEARD_STYLES.length - 1) : 0;
-  out[LOOK_LAYOUT] = LAYOUT_VERSION;
   out[LOOK_BROW] = rng.int(BROW_STYLES);
   // A little growth past the style, often none.
   out[LOOK_HAIR_LENGTH] = Math.max(0, rng.int(96) - 32);

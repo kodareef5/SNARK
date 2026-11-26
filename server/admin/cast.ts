@@ -30,7 +30,7 @@ export function castState(host: Host, now: number): string {
     choices: s.choices, slots: s.slots, engaged: s.engaged, importance: s.importance, age: Math.round((tick - s.made) / w.rate), history: s.history.slice(-3),
   }));
   const people = [...cast.people.byId.values()].filter((c) => c.tier === "featured").sort((a, b) => b.touched - a.touched).slice(0, MOST_PEOPLE).map((c) => ({
-    id: c.id, name: c.name, person: c.person ?? null, kept: !!c.kept, kind: cast.people.archetype(c.archetype)?.name ?? c.archetype, want: c.want, struggle: c.struggle, hope: c.hope, dead: !!c.dead,
+    id: c.id, name: c.name, person: c.person ?? null, kind: cast.people.archetype(c.archetype)?.name ?? c.archetype, want: c.want, struggle: c.struggle, hope: c.hope, dead: !!c.dead,
     story: c.story ?? null, traits: c.traits, facts: c.facts.slice(-4).map((f) => f.text), knows: Object.fromEntries(Object.entries(c.relations).map(([n, r]) => [n, { stance: r.stance, met: r.met, notes: r.notes.slice(-2) }])),
   }));
   // Everyone playing a named person, so the people page can feature one.
@@ -39,7 +39,7 @@ export function castState(host: Host, now: number): string {
   }));
   const regions = [...cast.regions.byIndex.entries()].map(([i, r]) => ({ ...cast.spots.centre(i), heat: Math.round(r.heat * 100) / 100, players: r.players, pace: r.pace }));
   // Who an admin chose: each look's population and outfit, each role a named person plays, and what the store offers.
-  const view = host.people.held(), latest = <T,>(m: ReadonlyMap<number, readonly { rev: number; body: T }[]>) => [...m].map(([id, revs]) => ({ id, body: revs.at(-1)!.body }));
+  const view = host.people.held(), latest = <T,>(m: ReadonlyMap<number, { body: T }>) => [...m].map(([id, r]) => ({ id, body: r.body }));
   const looks = CAST_CATALOGUE.looks.map((l) => ({ id: l.id, population: l.population ?? null, note: l.note ?? "", chosen: cast.casting.looks[l.id] ?? {} }));
   const roles = cast.cat.scenes.flatMap((s) => s.roles.map((r) => ({ key: `${s.id}/${r.role}`, scene: s.name, role: r.role, person: cast.casting.roles[`${s.id}/${r.role}`] ?? r.person ?? null })));
   const store = {

@@ -54,7 +54,7 @@ test("the state lists armour beside the garments for a population's outfits", ()
   try {
     const state = storeStateOf(peopleState(store, reg))!;
     expect(state.armour.find((a) => a.id === "core:cloth_shirt")).toEqual({ id: "core:cloth_shirt", label: expect.any(String), slot: 1 });
-    expect(state.armour.some((a) => a.id === "core:plain_tee")).toBe(false);
+    expect(state.armour.some((a) => a.id === "core:tee")).toBe(false);
   } finally {
     store.close();
   }
@@ -69,7 +69,7 @@ test("a person and a copied population are saved as the pages send them, and a s
     expect(copied).toMatchObject({ kind: "saved", id: 1, rev: 1 });
     let state = copied.kind === "saved" ? copied.state! : null;
     const pop = draftOfListed(state!.populations[0]!);
-    const seeds = sheetSeeds(9), before = sheetOf(draftDef(pop, false), seeds);
+    const seeds = sheetSeeds(9), before = sheetOf(draftDef(pop), seeds);
     addOutfit(pop.doc, ["core:cloth_shirt"]);
     const saved = await saveThing(io, "population", pop.id, pop.rev, pop.doc);
     expect(saved).toMatchObject({ kind: "saved", id: 1, rev: 2 });
