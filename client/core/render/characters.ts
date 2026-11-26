@@ -4,6 +4,7 @@ import { ownArms, PunchGuard } from "./own-arms.ts";
 import { ImpactSprings } from "./impact-springs.ts";
 import { jetPoseOf, jetRig, type JetPose, type JetRig } from "./jet-bones.ts";
 import { askJet, JET_CODE, type JetPartsCode } from "../jet-load.ts";
+import { flatBodies } from "../assets/tiers.ts";
 import { TICK_RATE } from "../../../shared/coords.ts";
 import { survivorKind } from "../../../shared/sim/blockers.ts";
 import { bodyMass } from "../../../shared/sim/body-mass.ts";
@@ -89,6 +90,12 @@ const HEAVY_OUTFIT = 2;
  * is not drawn at all: the body's own part stands in for it in the outfit's colours.
  */
 const HEAVY_RELAX = 3;
+/**
+ * How much sooner a survivor whose finer levels are textured goes to its next level on a tier that draws them so: as if
+ * it stood this many times as far off. Its levels hold 14,300, 4,000 and 1,500 triangles where the flat body's held 4,400
+ * and 1,500, and 40 bodies at 8 to 25 m on medium are held to 140,000 triangles: 128,000 at this, 261,000 at 1.
+ */
+const TEXTURED_BODY_RELAX = 1.5;
 /**
  * In first person the eye is where the head would be, and the head and what is on it are left out (`add`'s `headless`),
  * so what has no head over it is the opening at the top of the torso, where the neck comes out of the body or the
@@ -274,9 +281,10 @@ interface BodyKind {
 
 /**
  * `layer` is the level of the bodies' hurt and decay layer (layers.ts), 0 for none, and their wear story with it
- * (wear.ts WEAR_KEY). `standIn`, on a DRAW_ONE_BONE draw, is the first bone of the pose its bodies stand in.
+ * (wear.ts WEAR_KEY). `standIn`, on a DRAW_ONE_BONE draw, is the first bone of the pose its bodies stand in. `hide` is
+ * the skin zones its bodies leave undrawn, a bit each (shared/anim/skin-zones.ts), 0 for none.
  */
-export type DrawFn = (mesh: number, lod: number, first: number, count: number, flags: number, layer: number, standIn: number) => void;
+export type DrawFn = (mesh: number, lod: number, first: number, count: number, flags: number, layer: number, standIn: number, hide: number) => void;
 /** Puts instances into the shadow caster list for `cascades`, a bit each. `lod` is the level the view would draw them at. */
 export type CastFn = (mesh: number, lod: number, first: number, count: number, flags: number, cascades: number, standIn: number) => void;
 
@@ -395,6 +403,11 @@ export class Characters {
   private eyeDrop = 0;
   /** Which of a vehicle's `hides` bones to hide, bit by bit, for the entity with this id; null hides none. */
   hiddenBones: ((kind: number, id: number) => number) | null = null;
+  /**
+   * The skin zones of the survivor with this id that are not drawn, a bit each by shared/anim/skin-zones.ts: what it wears
+   * covers them. Null hides none. Read through `hideOf`, the one place a body's mask comes from.
+   */
+  skinHidden: ((id: number) => number) | null = null;
   /** Set while the sun casts. Null leaves every body out of the shadows. */
   shadows: BodyShadows | null = null;
   private readonly kinds: (BodyKind | null)[];
@@ -444,12 +457,13 @@ export class Characters {
   // Instances queued this frame, one per mesh of each body.
   private count = 0;
   /**
-   * Pack mesh * levels + level of detail. A body whose layer shows or that stands in a pose takes a key from `plain` on,
-   * for that key, its layer level and its stand-in's first bone (-1 for none), which `extra` holds.
+   * Pack mesh * levels + level of detail. A body whose layer shows, that stands in a pose or hides skin zones takes a key
+   * from `plain` on, for that key, its layer level, its stand-in's first bone (-1 for none) and its hide mask, which
+   * `extra` holds.
    */
   private readonly key = new Uint32Array(MAX_SKINNED);
   private readonly plain: number;
-  private readonly extra = new Int32Array(EXTRA_KEYS * 3);
+  private readonly extra = new Int32Array(EXTRA_KEYS * 4);
   private extraKeys = 0;
   /** An open hash of those keys: one more than each one's place in `extra`, and 0 where there is none. */
   private readonly extraAt = new Int32Array(EXTRA_KEYS * 4);
@@ -1463,28 +1477,51 @@ export class Characters {
   }
 
   /**
-   * The key of `key`'s bodies whose layer is at `layer`, with its wear story, and that stand in the pose at bone `stand` (-1 for none). With no
-   * key left those with a layer are drawn as `key`'s, without it, and those standing in a pose not at all: -1, counted dropped.
+   * The key of `key`'s bodies whose layer is at `layer`, with its wear story, that stand in the pose at bone `stand` (-1
+   * for none) and leave the skin zones `hide` undrawn. With no key left those with a layer or a mask are drawn as `key`'s,
+   * without them, and those standing in a pose not at all: -1, counted dropped.
    */
-  private keyOf(key: number, layer: number, stand: number): number {
-    if (layer === 0 && stand < 0) return key;
+  private keyOf(key: number, layer: number, stand: number, hide = 0): number {
+    if (layer === 0 && stand < 0 && hide === 0) return key;
     const l = this.extra;
     const at = this.extraAt;
-    let h = (Math.imul(key, 0x9e3779b1) ^ Math.imul(stand + 1, 0x85ebca6b) ^ layer) & (at.length - 1);
+    let h = (Math.imul(key, 0x9e3779b1) ^ Math.imul(stand + 1, 0x85ebca6b) ^ Math.imul(hide, 0xc2b2ae35) ^ layer) & (at.length - 1);
     for (; at[h] !== 0; h = (h + 1) & (at.length - 1)) {
       const k = at[h]! - 1;
-      if (l[k * 3] === key && l[k * 3 + 1] === layer && l[k * 3 + 2] === stand) return this.plain + k;
+      if (l[k * 4] === key && l[k * 4 + 1] === layer && l[k * 4 + 2] === stand && l[k * 4 + 3] === hide) return this.plain + k;
     }
     if (this.extraKeys === EXTRA_KEYS) {
       if (stand < 0) return key;
       if (this.packet) this.packet.dropped++;
       return -1;
     }
-    l[this.extraKeys * 3] = key;
-    l[this.extraKeys * 3 + 1] = layer;
-    l[this.extraKeys * 3 + 2] = stand;
+    l[this.extraKeys * 4] = key;
+    l[this.extraKeys * 4 + 1] = layer;
+    l[this.extraKeys * 4 + 2] = stand;
+    l[this.extraKeys * 4 + 3] = hide;
     at[h] = this.extraKeys + 1;
     return this.plain + this.extraKeys++;
+  }
+
+  /** The skin zones a survivor leaves undrawn, a bit each: the one place a body's hide mask is read from. */
+  private hideOf(id: number): number {
+    return this.skinHidden?.(id) ?? 0;
+  }
+
+  /** The first level from which each of a body set's parts is flat. */
+  private flatFrom(set: BodySet): number {
+    let at = 0;
+    for (const m of set.slots) if (m >= 0) at = Math.max(at, this.assets.table.flat[m]!);
+    return at;
+  }
+
+  /** The skin zones level `lod` of `mesh` holds, a bit each; 0 where the level is not cut by zone. */
+  private zonesIn(mesh: number, lod: number): number {
+    const zones = this.assets.table.zones[mesh]!;
+    const runs = zones[Math.min(lod, zones.length - 1)] ?? [];
+    let bits = 0;
+    for (let r = 0; r < runs.length; r += 3) bits |= 1 << runs[r]!;
+    return bits;
   }
 
   /**
@@ -1600,9 +1637,12 @@ export class Characters {
     this.waiting.length = kept;
   }
 
-  /** The level a body `distance` off is drawn at: as the tier asks, and coarser at the governor's bodies step (Tier.bodyError). */
-  private levelOf(id: number, errors: readonly number[], distance: number): number {
-    const level = this.assets.choose(errors, distance * this.assets.tier.bodyError, this.last.get(id) ?? -1);
+  /**
+   * The level a body `distance` off is drawn at: as the tier asks, and coarser at the governor's bodies step
+   * (Tier.bodyError), and none finer than `least`.
+   */
+  private levelOf(id: number, errors: readonly number[], distance: number, least = 0): number {
+    const level = this.assets.choose(errors, distance * this.assets.tier.bodyError, this.last.get(id) ?? -1, least);
     this.last.set(id, level);
     return level;
   }
@@ -1741,7 +1781,11 @@ export class Characters {
     }
     // The viewer's own body is as fine as the tier draws anything.
     const far = own ? 0 : Math.sqrt(x * x + y * y + z * z);
-    const lod = own ? this.assets.choose(set.error, 0, -1) : this.levelOf(id, set.error, far);
+    // A tier that draws bodies flat starts at the first level every part has flat.
+    const flatFrom = this.flatFrom(set);
+    const least = flatBodies(this.assets.tier) ? flatFrom : 0;
+    const relax = least === 0 && flatFrom > 0 ? TEXTURED_BODY_RELAX : 1;
+    const lod = own ? this.assets.choose(set.error, 0, -1, least) : this.levelOf(id, set.error, far * relax, least);
     const s = this.shadows;
     const casts = s ? s.body(x, y, z, BODY_RADIUS) : 0;
     const part = this.part;
@@ -1754,6 +1798,7 @@ export class Characters {
     part.own = own;
     part.casts = casts;
     part.rest = set.rest;
+    const hide = unseen ? 0 : this.hideOf(id);
     const tint = view ? this.lookColor : colors;
     const tintAt = view ? 0 : colorAt;
     let covered = false, sealed = false;
@@ -1803,7 +1848,7 @@ export class Characters {
       }
       // Open headgear keeps the underlying face visible.
       const body = set.slots[slot]!;
-      if (body >= 0 && (piece < 0 || (slot === SLOT_HEAD && !sealed))) this.queuePart(body, tint, tintAt, -1, unseen || hidden);
+      if (body >= 0 && (piece < 0 || (slot === SLOT_HEAD && !sealed))) this.queuePart(body, tint, tintAt, -1, unseen || hidden, hide);
     }
     if (view && (!headless || casts !== 0)) {
       // Open headgear still shows the beard.
@@ -2009,12 +2054,21 @@ export class Characters {
     last.rot.set(this.pose.rot); last.root.set(this.pose.root);
   }
 
-  /** Queues mesh `m` of the survivor `add` is adding, tinted from `tint` at `tintAt`, hung on `bone` for a held item, and for its shadow `only`. */
-  private queuePart(m: number, tint: Uint8Array | null, tintAt: number, bone: number, only: boolean): void {
+  /**
+   * Queues mesh `m` of the survivor `add` is adding, tinted from `tint` at `tintAt`, hung on `bone` for a held item, and
+   * for its shadow `only`, its skin zones `hide` left undrawn. It casts whole.
+   */
+  private queuePart(m: number, tint: Uint8Array | null, tintAt: number, bone: number, only: boolean, hide = 0): void {
     const part = this.part;
+    // Only the zones this level holds split its draw, and a mesh hidden whole is drawn into the shadows alone.
+    if (hide !== 0) {
+      const held = this.zonesIn(m, part.lod);
+      hide &= held;
+      if (hide !== 0 && hide === held) [only, hide] = [true, 0];
+    }
     const n = this.count++;
     if (!only) this.assets.wantTextured(m, part.lod, part.far);
-    const key = this.keyOf(m * this.levels + part.lod, 0, part.stand);
+    const key = this.keyOf(m * this.levels + part.lod, 0, part.stand, only ? 0 : hide);
     this.key[n] = key < 0 ? 0 : key;
     this.firstBone[n] = part.first;
     this.region0[n] = part.color;
@@ -2145,13 +2199,13 @@ export class Characters {
     for (let k = 0; k < counts.length; k++) {
       this.cursor[k] = total;
       if (counts[k] === 0) continue;
-      const x = (k - this.plain) * 3;
+      const x = (k - this.plain) * 4;
       const key = x < 0 ? k : this.extra[x]!;
       const stand = x < 0 ? -1 : this.extra[x + 2]!;
       const mesh = Math.floor(key / this.levels), lod = key % this.levels;
       // Bodies standing in a pose on one bone are a draw of their own. Each shows as hot as its kind in a heat view.
       const f = (stand >= 0 ? flags | DRAW_ONE_BONE : flags) | (this.heatView ? (this.meshHeat.get(mesh) ?? HEAT_WARM) << DRAW_HEAT_SHIFT : 0);
-      draw?.(mesh, lod, total, counts[k]!, f, x < 0 ? 0 : this.extra[x + 1]!, stand < 0 ? 0 : stand);
+      draw?.(mesh, lod, total, counts[k]!, f, x < 0 ? 0 : this.extra[x + 1]!, stand < 0 ? 0 : stand, x < 0 ? 0 : this.extra[x + 3]!);
       if (byMask) {
         for (let m = 0, at = total; m < MASKS; m++) {
           const n = byMask[k * MASKS + m]!;

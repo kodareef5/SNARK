@@ -101,11 +101,12 @@ export class Assets {
 
   /**
    * The level to draw something at, `distance` metres off, whose levels lie `errors` metres from its finest: the
-   * coarsest whose error covers no more pixels than the tier lets pass. `was` is the level it had last, or -1.
+   * coarsest whose error covers no more pixels than the tier lets pass, and none finer than `least`. `was` is the level
+   * it had last, or -1.
    */
-  choose(errors: readonly number[], distance: number, was: number): number {
+  choose(errors: readonly number[], distance: number, was: number, least = 0): number {
     const allowed = (this.tier.threshold * this.residency.relax * distance) / this.scale;
-    const finest = Math.min(this.tier.finest, errors.length - 1);
+    const finest = Math.min(Math.max(this.tier.finest, least), errors.length - 1);
     const want = within(errors, finest, allowed);
     if (was < 0 || was >= errors.length || want === was) return want;
     if (want > was) return Math.max(was, within(errors, finest, allowed * (1 - HYSTERESIS)));

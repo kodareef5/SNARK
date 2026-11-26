@@ -146,7 +146,10 @@ export const SMOKE_STEPS = 16;
 export const DETAIL_SCORCH = DETAIL_POOL | DETAIL_LIT | 3;
 /** The sixteenths of a DETAIL_GLOW particle's grey byte. */
 export const GLOW_STEPS = 16;
-/** A flat draw of `drawIndexCount` of its level's indices from `drawFirstIndex`, as a textured draw's run is: a run of a far city tile's chunks (farcity.ts). */
+/**
+ * A flat draw of `drawIndexCount` of its level's indices from `drawFirstIndex`, as a textured draw's run is: a run of a far
+ * city tile's chunks (farcity.ts), or a run of the skin zones a body leaves drawn (draws.ts `unhidden`).
+ */
 export const DRAW_RANGED = 4096;
 /**
  * Paint on the ground (shared/content/defs.ts StructureDef `paint`): a rigid draw each of whose vertices stands its own
