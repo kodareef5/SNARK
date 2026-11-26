@@ -79,7 +79,7 @@ const FIELDS = {
 } satisfies Fields<PopulationDef>;
 
 /** An outfit's dyes: no more lists than pieces, each of colours a dye may be. */
-export const dyesFit = (o: Outfit): boolean =>
+const dyesFit = (o: Outfit): boolean =>
   Array.isArray(o.dyes) && o.dyes.length <= o.wear.length && o.dyes.every((l) => Array.isArray(l) && l.every((c) => Number.isInteger(c) && c >= 1 && c < REGION_BASE));
 
 const share = (v: unknown): boolean => typeof v === "number" && v >= 0 && v <= 1;
