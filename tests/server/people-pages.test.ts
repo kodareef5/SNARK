@@ -4,7 +4,7 @@ import { afterAll, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { bookOf, copyPopulation, lookBytes, newPerson, personDoc, promotedPerson, saveThing, storeStateOf, type SaveIo } from "../../client/core/admin/people.ts";
+import { bookOf, copyPopulation, lookBytes, newPerson, personDoc, promotedPerson, saveThing, storeStateOf, type SaveIo, type StoreState } from "../../client/core/admin/people.ts";
 import { addOutfit, draftDef, draftOfListed, sheetChanges, sheetOf, sheetSeeds } from "../../client/core/admin/populations.ts";
 import type { Answer } from "../../client/core/admin/wardrobe.ts";
 import { peopleAdmin, peopleState } from "../../server/admin/people-routes.ts";
@@ -80,7 +80,8 @@ test("a person and a copied population are saved as the pages send them, and a s
 
     // A person promoted from the sheet is saved in that revision, locked to its seed.
     const d = promotedPerson(seeds[3]!, 1, 2, "Night vendor");
-    const made = await saveThing(io, "person", null, 0, personDoc(d));
+    const doc = (at: StoreState, draft = d) => personDoc(draft, at, bookOf(at, null));
+    const made = await saveThing(io, "person", null, 0, doc(state!));
     expect(made).toMatchObject({ kind: "saved", id: 1, rev: 1 });
     state = made.kind === "saved" ? made.state! : null;
     expect(lookBytes(d.look, state!, bookOf(state!, null))).toEqual(personFrom(seeds[3]!, def).look);
@@ -88,13 +89,13 @@ test("a person and a copied population are saved as the pages send them, and a s
     // Another page saves the person first; this one is refused with the store as it is, and saves over it after.
     const other = newPerson(state!, 5);
     other.name = "Someone else";
-    expect(await saveThing(io, "person", 1, 1, personDoc(other))).toMatchObject({ kind: "saved", rev: 2 });
+    expect(await saveThing(io, "person", 1, 1, doc(state!, other))).toMatchObject({ kind: "saved", rev: 2 });
     d.notes = "sells mangoes";
-    const stale = await saveThing(io, "person", 1, 1, personDoc(d));
+    const stale = await saveThing(io, "person", 1, 1, doc(state!));
     expect(stale.kind).toBe("stale");
     expect(stale.kind === "stale" && stale.state?.people.find((p) => p.id === 1)?.doc.name).toBe("Someone else");
-    expect(await saveThing(io, "person", 1, 2, personDoc(d))).toMatchObject({ kind: "saved", rev: 3 });
-    expect(await saveThing(io, "person", 9, 1, personDoc(d))).toMatchObject({ kind: "refused", status: 404 });
+    expect(await saveThing(io, "person", 1, 2, doc(state!))).toMatchObject({ kind: "saved", rev: 3 });
+    expect(await saveThing(io, "person", 9, 1, doc(state!))).toMatchObject({ kind: "refused", status: 404 });
   } finally {
     store.close();
   }

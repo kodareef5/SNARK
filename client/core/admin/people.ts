@@ -11,7 +11,7 @@ import {
 import type { PopulationDef } from "../../../shared/content/kinds/populations.ts";
 import {
   NOTES_MAX, PART_NAMES, RECORD_NAME_MAX, editionName, readPeopleManifest, readPerson, storePopulation, type Dye, type OutfitDoc, type PartName, type PersonDoc,
-  type PersonLook, type PopulationDoc, type PopulationRef, type WornDoc,
+  type PersonSource, type PopulationDoc, type PopulationRef, type WornDoc,
 } from "../../../shared/people/doc.ts";
 import { partSeed, personFrom, sexOf, wardrobeFrom } from "../../../shared/people/person.ts";
 import { STAGE_SLOTS, type StageCommand, type StageGarment } from "../../../shared/people/stage.ts";
@@ -175,8 +175,8 @@ export interface BytesLook {
 }
 export type LookDraft = SeedLook | BytesLook;
 
-/** What a person wears: the role's own clothes, a store outfit, or a wardrobe of its own. */
-export type Dress = { kind: "role" } | { kind: "outfit"; outfit: number } | { kind: "wardrobe"; slots: (WornDoc | null)[] };
+/** What a person wears: the role's own clothes, a store outfit, or a wardrobe of its own, perhaps saved from an outfit. */
+export type Dress = { kind: "role" } | { kind: "outfit"; outfit: number } | { kind: "wardrobe"; slots: (WornDoc | null)[]; outfit?: number };
 
 export interface PersonDraft {
   id: number | null;
@@ -222,10 +222,27 @@ export function promoteHref(seed: number, population: PopulationRef, revision: n
   return `/admin/people/?${q.map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("&")}`;
 }
 
-/** A listed person as a draft to edit. */
-export function draftOf(l: Listed<PersonDoc>): PersonDraft {
-  const d = l.doc, look: LookDraft = "bytes" in d.look ? { kind: "bytes", bytes: [...d.look.bytes], drawn: null, locked: [] } : { kind: "seed", ...d.look, locks: { ...d.look.locks } };
-  const dress: Dress = d.outfit !== null ? { kind: "outfit", outfit: d.outfit } : d.wardrobe ? { kind: "wardrobe", slots: d.wardrobe.map((w) => (w ? { ...w, dye: [...w.dye] as unknown as Dye } : null)) } : { kind: "role" };
+/** The seed an outfit's choices are drawn from: the outfit part's own, else the person's. */
+export function outfitSeed(look: LookDraft): number {
+  const from = look.kind === "seed" ? look : look.drawn;
+  return from ? (from.locks.outfit ?? from.seed) >>> 0 : 0;
+}
+
+const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
+
+/**
+ * A listed person as a draft to edit, as it was saved. It opens as its seed and outfit where they still draw what was saved,
+ * else as the saved bytes and wardrobe, with the seed and outfit to draw them again from.
+ */
+export function draftOf(l: Listed<PersonDoc>, state: StoreState, book: PopulationBook): PersonDraft {
+  const d = l.doc, src = d.source, at = src ? latestRevision(state, src.population) : undefined;
+  const seed: SeedLook | null = src && at !== undefined ? { kind: "seed", seed: src.seed, population: src.population, revision: at, locks: { ...src.locks } } : null;
+  const drawn = seed && lookBytes(seed, state, book);
+  const look: LookDraft = seed && drawn && same([...drawn], d.look) ? seed : { kind: "bytes", bytes: [...d.look], drawn: seed, locked: PART_NAMES.filter((p) => src?.locks[p] !== undefined) };
+  const o = src?.outfit != null ? state.outfits.find((x) => x.id === src.outfit) : undefined;
+  let dress: Dress = { kind: "role" };
+  if (o && d.wardrobe && same(wardrobeFrom(outfitSeed(look), o.doc), d.wardrobe)) dress = { kind: "outfit", outfit: o.id };
+  else if (d.wardrobe) dress = { kind: "wardrobe", slots: d.wardrobe.map((w) => (w ? { ...w, dye: [...w.dye] as unknown as Dye } : null)), ...(src?.outfit != null ? { outfit: src.outfit } : {}) };
   return { id: l.id, rev: l.rev, name: d.name, notes: d.notes, look, dress };
 }
 
@@ -282,6 +299,7 @@ export function setLock(look: LookDraft, part: PartName, on: boolean): void {
 export function rerollPart(look: LookDraft, part: PartName, seed: number, state: StoreState, book: PopulationBook): void {
   if (look.kind === "seed") look.locks[part] = seed >>> 0;
   else if (part !== "outfit") redrawBytes(look, [part], seed, state, book);
+  else if (look.drawn) look.drawn.locks.outfit = seed >>> 0;
 }
 
 /** Draws the person again from `seed`: every part not locked changes. */
@@ -311,7 +329,7 @@ export const HAND_CHOICES: Readonly<Partial<Record<HandField, number>>> = { sex:
 
 /**
  * Sets a hand control: a choice's index, or a slider's -1..1. A drawn look becomes its bytes first, and keeps the seed
- * form it came from to go back to; an untouched look stays a seed, so a population edit never moves it.
+ * form it came from to go back to.
  */
 export function setByHand(d: PersonDraft, field: HandField, value: number, state: StoreState, book: PopulationBook): boolean {
   if (d.look.kind === "seed") {
@@ -332,11 +350,23 @@ export function setByHand(d: PersonDraft, field: HandField, value: number, state
   return true;
 }
 
-/** A fixed look back to the seed form it was made from; false where it was not made from one. */
-export function backToDrawn(d: PersonDraft): boolean {
-  if (d.look.kind !== "bytes" || !d.look.drawn) return false;
-  d.look = { ...d.look.drawn, locks: { ...d.look.drawn.locks } };
-  return true;
+/**
+ * Draws the person again from its source: a fixed look from the seed it was made from, in its population's latest
+ * revision, and a wardrobe saved from an outfit from that outfit's latest. False where there is nothing to draw from.
+ */
+export function drawFromSource(d: PersonDraft, state: StoreState): boolean {
+  let did = false;
+  if (d.look.kind === "bytes" && d.look.drawn) {
+    const from = d.look.drawn;
+    d.look = { ...from, revision: latestRevision(state, from.population) ?? from.revision, locks: { ...from.locks } };
+    did = true;
+  }
+  const outfit = d.dress.kind === "wardrobe" ? d.dress.outfit : undefined;
+  if (outfit !== undefined && state.outfits.some((o) => o.id === outfit)) {
+    d.dress = { kind: "outfit", outfit };
+    did = true;
+  }
+  return did;
 }
 
 /** A hand control's value in `look`: a choice's index or a slider's -1..1. */
@@ -348,13 +378,23 @@ export function handValue(look: Uint8Array, field: HandField): number {
 
 // ---- What is sent and what is wrong ----
 
-/** The person as the store keeps it. */
-export function personDoc(d: PersonDraft): PersonDoc {
-  const l = d.look;
-  const look: PersonLook = l.kind === "bytes" ? { bytes: [...l.bytes] } : { seed: l.seed >>> 0, population: l.population, revision: l.revision, locks: { ...l.locks } };
+/** What a draft wears, slot by slot, or null for the role's clothes: an outfit's choices drawn from its outfit seed. */
+export function dressSlots(d: PersonDraft, state: StoreState): (WornDoc | null)[] | null {
+  if (d.dress.kind === "wardrobe") return d.dress.slots;
+  if (d.dress.kind === "role") return null;
+  const id = d.dress.outfit, o = state.outfits.find((x) => x.id === id);
+  return o ? wardrobeFrom(outfitSeed(d.look), o.doc) : null;
+}
+
+/** The person as the store keeps it: its look's bytes and its wardrobe as drawn now, and what they were drawn from. */
+export function personDoc(d: PersonDraft, state: StoreState, book: PopulationBook): PersonDoc {
+  const l = d.look, from = l.kind === "seed" ? l : l.drawn, bytes = lookBytes(l, state, book);
+  const outfit = d.dress.kind === "outfit" ? d.dress.outfit : d.dress.kind === "wardrobe" ? (d.dress.outfit ?? null) : null;
+  const source: PersonSource | null = from ? { seed: from.seed >>> 0, population: from.population, locks: { ...from.locks }, outfit } : null;
+  const slots = dressSlots(d, state);
   return {
-    name: editionName(d.name) ?? d.name, look, outfit: d.dress.kind === "outfit" ? d.dress.outfit : null,
-    wardrobe: d.dress.kind === "wardrobe" ? d.dress.slots.map((w) => (w ? { garment: w.garment, edition: w.edition, dye: [...w.dye] as unknown as Dye } : null)) : null, notes: d.notes,
+    name: editionName(d.name) ?? d.name, look: bytes ? [...bytes] : [], wardrobe: slots && slots.map((w) => (w ? { garment: w.garment, edition: w.edition, dye: [...w.dye] as unknown as Dye } : null)),
+    source, notes: d.notes,
   };
 }
 
@@ -387,7 +427,7 @@ export function personFaults(d: PersonDraft, state: StoreState, book: Population
   }
   // The store's own reading catches what the lines above do not.
   if (out.length === 0) {
-    const read = readPerson(personDoc(d) as unknown as Record<string, unknown>);
+    const read = readPerson(personDoc(d, state, book) as unknown as Record<string, unknown>);
     if (typeof read === "string") out.push({ at: "look", text: read });
   }
   return out;
@@ -503,7 +543,7 @@ export function stageWear(state: StoreState, worn: readonly (WornDoc | null)[], 
     if (key && e?.printPath && !prints.some((p) => p.key === key)) prints.push({ key, url: e.printPath });
     // An edition's colours, then the dye over them: the stage takes one set of three.
     const dye = [0, 1, 2].map((k) => w.dye[k] || e?.colours[k] || 0) as [number, number, number];
-    slots[at] = { item: w.garment, edition: w.edition, dye, print: key };
+    slots[at] = { item: w.garment, edition: w.edition, dye, print: key && e?.print ? { key, place: e.print.place } : null };
   }
   return { gear: { kind: "gear", held: null, armor }, wardrobe: { kind: "wardrobe", slots, hide: 0 }, prints };
 }
@@ -519,14 +559,14 @@ export function wearPieces(state: StoreState, wear: readonly string[]): { armour
   return { armour, worn };
 }
 
-/** What a person draft wears on the stage, and a line saying so. `seed` stands for a body's own where the look is fixed. */
-export function personWear(d: PersonDraft, state: StoreState, seed: number): { wear: StageWear; note: string } {
-  if (d.dress.kind === "wardrobe") return { wear: stageWear(state, d.dress.slots), note: "Wears its own wardrobe." };
+/** What a person draft wears on the stage, and a line saying so. */
+export function personWear(d: PersonDraft, state: StoreState): { wear: StageWear; note: string } {
+  const slots = dressSlots(d, state) ?? [];
+  if (d.dress.kind === "wardrobe") return { wear: stageWear(state, slots), note: d.dress.outfit !== undefined ? `Wears what outfit ${d.dress.outfit} gave it when saved.` : "Wears its own wardrobe." };
   if (d.dress.kind === "outfit") {
-    const id = d.dress.outfit, o = state.outfits.find((x) => x.id === id);
-    if (!o) return { wear: stageWear(state, []), note: `Outfit ${id} is not in the store.` };
-    const s = d.look.kind === "seed" ? (d.look.locks.outfit ?? d.look.seed) : seed;
-    return { wear: stageWear(state, wardrobeFrom(s >>> 0, o.doc)), note: d.look.kind === "seed" ? `Wears outfit ${id}, its choices drawn from the person's outfit seed.` : `Wears outfit ${id}; each body that plays the person draws its choices.` };
+    const id = d.dress.outfit;
+    if (!state.outfits.some((x) => x.id === id)) return { wear: stageWear(state, []), note: `Outfit ${id} is not in the store.` };
+    return { wear: stageWear(state, slots), note: `Wears outfit ${id}, its choices drawn from the person's outfit seed.` };
   }
   return { wear: stageWear(state, []), note: "Wears the clothes of the role it plays." };
 }
@@ -563,7 +603,7 @@ const when = (ms: number | undefined): string => (ms ? new Date(ms).toISOString(
 export function peopleHtml(state: StoreState, selected: number | null): string {
   if (state.people.length === 0) return `<p class="dim">Nobody is named yet. Make a person, or promote one from a population's sheet.</p>`;
   return [...state.people].sort((a, b) => b.id - a.id).map((p) => {
-    const look = "bytes" in p.doc.look ? "fixed look" : `drawn, seed ${p.doc.look.seed}`;
+    const look = p.doc.source ? `seed ${p.doc.source.seed}` : "fixed look";
     return `<div class="named${p.retired ? " retired" : ""}${p.id === selected ? " picked" : ""}" data-person="${p.id}">
       <button data-open="${p.id}"><b>${esc(p.doc.name)}</b>${p.retired ? ` <span class="chip">retired</span>` : ""}<br><span class="faint">#${p.id} · revision ${p.rev} · ${look}${p.by ? ` · ${esc(p.by)}, ${when(p.at)}` : ""}</span></button>
     </div>`;

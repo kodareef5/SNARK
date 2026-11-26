@@ -1,5 +1,6 @@
-// Cast's people from the people store: a look drawn from an admin population, a role played by a named person in an
-// admin outfit, and a person met or featured kept byte for byte through a restart and edits of what it was drawn from.
+// Cast's people from the people store: a look drawn from an admin population, a role played by a named person in its
+// saved look and wardrobe, a person met or featured kept byte for byte through a restart and edits of what it was drawn
+// from, and a role's armour kept under an outfit.
 
 import { expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -11,7 +12,7 @@ import { CITY } from "../../content/people/defaults.ts";
 import { LOOK_SKIN } from "../../shared/anim/look.ts";
 import type { Character } from "../../shared/cast/state.ts";
 import type { OutfitDoc, PersonDoc, PopulationDoc } from "../../shared/people/doc.ts";
-import { dyeNumber, lookOfSeed, wireNumber } from "../../shared/people/person.ts";
+import { dyeNumber, lookOfSeed, personFrom, wardrobeFrom, wireNumber } from "../../shared/people/person.ts";
 import { WARDROBE_NAMES } from "../../shared/sim/items.ts";
 import { Harness } from "../fixtures/net.ts";
 
@@ -40,7 +41,8 @@ function stock(h: Harness) {
   const slots: OutfitDoc["slots"] = [null, null, null, null, null];
   const outfit: OutfitDoc = { name: "Vendor", slots: slots.map((_, k) => (k === TOP ? { choices: [{ garment: "core:plain_tee", edition: ed.id, weight: 1 }], dye: [3, 4, 5] } : k === BOTTOM ? { choices: [{ garment: "core:plain_trousers", edition: 0, weight: 1 }], dye: [0, 0, 0] } : null)) };
   const fit = saved(store.save("outfit", null, 0, outfit, BY)).id;
-  const person: PersonDoc = { name: "Marisol Vega", look: { seed: 777, population: pop, revision: 1, locks: {} }, outfit: fit, wardrobe: null, notes: "" };
+  const look = [...personFrom(777, store.population(pop, 1)!).look];
+  const person: PersonDoc = { name: "Marisol Vega", look, wardrobe: wardrobeFrom(777, outfit), source: { seed: 777, population: pop, locks: {}, outfit: fit }, notes: "" };
   const marisol = saved(store.save("person", null, 0, person, BY)).id;
   return { pop, edition: ed.id, outfit, fit, person, marisol };
 }
@@ -91,7 +93,7 @@ test("a role's named person wears its admin outfit with its edition and dye", ()
   try {
     h.join("Ana");
     h.run(1000);
-    const { marisol, edition } = stock(h);
+    const { marisol, edition, person } = stock(h);
     expect(castAct(h.host, { op: "role", scene: "cast:cart_queue", role: "vendor", person: marisol })).toBe("");
     expect(castAct(h.host, { op: "role", scene: "cast:cart_queue", role: "vendor", person: 404 })).toContain("no person 404");
     h.host.cast.cast.settings.maxPerPlayer = 30;
@@ -100,12 +102,12 @@ test("a role's named person wears its admin outfit with its edition and dye", ()
     const part = story.parts.find((p) => p.role === "vendor")!;
     const c = h.host.cast.cast.people.byId.get(part.character)!;
     expect([c.person, c.name, c.tier]).toEqual([marisol, "Marisol Vega", "featured"]);
-    // Its body, once the stage brings it in, is the person the record draws, in the outfit's tee and trousers.
+    // Its body, once the stage brings it in, is the person's saved bytes, in the outfit's tee and trousers.
     h.run(40_000);
     const pid = h.host.cast.stage.list().find((b) => b.character === c.id)?.pid;
     expect(pid).toBeDefined();
     const e = h.host.records.entOf.get(pid!)!, ents = h.world.ents;
-    expect(ents.born.get(e)).toEqual({ seed: 777, population: wireNumber(h.world.reg, 1)!, revision: 1 });
+    expect([ents.born.get(e) ?? null, [...ents.looks.get(e)!]]).toEqual([null, [...person.look]]);
     const worn = ents.wardrobes.get(e)!, reg = h.world.reg;
     expect([worn[TOP * 3], worn[TOP * 3 + 1], worn[TOP * 3 + 2]]).toEqual([reg.index.get("core:plain_tee")!, edition, dyeNumber([3, 4, 5])]);
     expect([worn[BOTTOM * 3], worn[BOTTOM * 3 + 1]]).toEqual([reg.index.get("core:plain_trousers")!, 0]);
@@ -186,7 +188,7 @@ test("a person a player met keeps the body it had; one nobody met keeps none", (
   }
 });
 
-test("a named person follows its own record's edits, and nothing else's", () => {
+test("a named person is its saved look and wardrobe, whatever else is edited", () => {
   const h = world();
   try {
     h.join("Ana");
@@ -194,24 +196,66 @@ test("a named person follows its own record's edits, and nothing else's", () => 
     const { pop, fit, outfit, person, marisol } = stock(h);
     const c = h.host.cast.cast.people.mintNamed("cast:vendor", 0, marisol, "Marisol Vega", h.world.tick);
     const first = body(h, c);
+    expect([first.look, first.born, first.wardrobe[TOP * 3 + 2]]).toEqual([[...person.look], null, dyeNumber([3, 4, 5])]);
     first.gone();
-    // Its population and its outfit edited: it is as it was.
+    // Its population and its outfit edited: neither the record nor the body moves.
     saved(h.host.people.save("population", pop, 1, EDITED, BY));
     saved(h.host.people.save("outfit", fit, 1, { ...outfit, slots: outfit.slots.map((s) => s && { ...s, dye: [9, 9, 9] }) }, BY));
+    expect(h.host.people.view().records.person.get(marisol)!.at(-1)!.body).toEqual(person);
     const same = body(h, c);
-    expect([same.look, same.wardrobe, same.born]).toEqual([first.look, first.wardrobe, first.born]);
+    expect([same.look, same.wardrobe, same.born]).toEqual([first.look, first.wardrobe, null]);
     same.gone();
-    // Its own record edited, with a face locked: it is drawn again, and goes as its bytes since no seed form holds a lock.
-    saved(h.host.people.save("person", marisol, 1, { ...person, look: { seed: 778, population: pop, revision: 2, locks: { face: 31 } } }, BY));
+    // Renamed, it is the same body.
+    saved(h.host.people.save("person", marisol, 1, { ...person, name: "Marisol Reyes" }, BY));
+    const renamed = body(h, c);
+    expect([renamed.look, renamed.wardrobe, renamed.born]).toEqual([first.look, first.wardrobe, null]);
+    renamed.gone();
+    // Its own record given another look and no top: the body follows it.
+    const other = [...personFrom(778, h.host.people.population(pop, 2)!).look];
+    saved(h.host.people.save("person", marisol, 2, { ...person, look: other, wardrobe: person.wardrobe!.map((w, k) => (k === TOP ? null : w)) }, BY));
     const redone = body(h, c);
-    expect(redone.look).not.toEqual(first.look);
-    expect(redone.born).toBeNull();
-    expect(redone.wardrobe[TOP * 3 + 2]).toBe(dyeNumber([9, 9, 9]));
-    expect(c.kept!.rev).toBe(2);
-    redone.gone();
-    // Its edited body is now the kept one.
-    const kept = body(h, c);
-    expect([kept.look, kept.wardrobe]).toEqual([redone.look, redone.wardrobe]);
+    expect([redone.look, redone.born, redone.wardrobe[TOP * 3]]).toEqual([other, null, 0]);
+  } finally {
+    h.host.shutdown();
+  }
+});
+
+/** The ids worn in a body's armour slots, and the garment in its top slot. */
+function dressOf(h: Harness, pid: number): { armour: string[]; top: string | undefined } {
+  const inv = h.host.records.byPid.get(pid)!.inv!, defs = h.world.reg.defs;
+  const armour = [0, 1, 2, 3, 4].map((k) => inv.item[inv.armor + k]!).filter((i) => i !== 0).map((i) => defs[i]!.id).sort();
+  return { armour, top: defs[inv.item[inv.wardrobe + TOP]!]?.id };
+}
+
+const FLAK = ["core:flak_boots", "core:flak_hat", "core:flak_pants", "core:flak_shirt"];
+
+test("a police role in a tee keeps its flak", () => {
+  const h = world();
+  try {
+    h.join("Ana");
+    h.run(1000);
+    const { person } = stock(h);
+    const tee = person.wardrobe!.map((w, k) => (k === TOP ? w : null));
+    const officer = saved(h.host.people.save("person", null, 0, { ...person, name: "Officer Vega", wardrobe: tee }, BY)).id;
+    const c = h.host.cast.cast.people.mintNamed("cast:cop", 0, officer, "Officer Vega", h.world.tick);
+    expect(c.look).toBe("cast:police");
+    const cop = body(h, c);
+    expect(dressOf(h, cop.pid)).toEqual({ armour: FLAK, top: "core:plain_tee" });
+  } finally {
+    h.host.shutdown();
+  }
+});
+
+test("an admin population's outfit takes its slots, and the role's armour the rest", () => {
+  const h = world();
+  try {
+    h.join("Ana");
+    h.run(1000);
+    const dressed = saved(h.host.people.save("population", null, 0, { ...CITY_DOC, outfits: [{ wear: ["core:plain_tee", "core:cloth_pants"], weight: 1 }] }, BY)).id;
+    expect(castAct(h.host, { op: "look", look: "cast:police", population: dressed })).toBe("");
+    const c = h.host.cast.cast.people.mint("cast:cop", 0, 31, h.world.tick);
+    const cop = body(h, c);
+    expect(dressOf(h, cop.pid)).toEqual({ armour: ["core:cloth_pants", "core:flak_boots", "core:flak_hat", "core:flak_shirt"], top: "core:plain_tee" });
   } finally {
     h.host.shutdown();
   }

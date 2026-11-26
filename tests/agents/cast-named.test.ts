@@ -3,6 +3,7 @@ import { expect, test } from "bun:test";
 import { castAct, castState } from "../../server/admin/cast.ts";
 import { CITY } from "../../content/people/defaults.ts";
 import type { PopulationDoc } from "../../shared/people/doc.ts";
+import { personFrom } from "../../shared/people/person.ts";
 import { Harness } from "../fixtures/net.ts";
 
 const { type: _t, id: _i, revision: _r, ...cityDoc } = CITY;
@@ -15,7 +16,7 @@ test("cast.json names who plays a named person, and feature keeps them", () => {
     const store = h.host.people, by = { name: "kody", id: "" };
     const pop = store.save("population", null, 0, cityDoc as PopulationDoc, by);
     if ("status" in pop) throw new Error(pop.error);
-    const made = store.save("person", null, 0, { name: "Rosa Diaz", look: { seed: 3, population: pop.id, revision: 1, locks: {} }, outfit: null, wardrobe: null, notes: "" }, by);
+    const made = store.save("person", null, 0, { name: "Rosa Diaz", look: [...personFrom(3, CITY).look], wardrobe: null, source: { seed: 3, population: pop.id, locks: {}, outfit: null }, notes: "" }, by);
     if ("status" in made) throw new Error(made.error);
     expect(castAct(h.host, { op: "role", scene: "cast:cart_queue", role: "vendor", person: made.id })).toBe("");
     const before = JSON.parse(castState(h.host, Date.now()));

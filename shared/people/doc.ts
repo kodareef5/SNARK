@@ -146,11 +146,6 @@ export type PartSeeds = Readonly<Partial<Record<PartName, number>>>;
 /** A population by its content id, or an admin population by its store id. */
 export type PopulationRef = string | number;
 
-/** A named person's look: its 72 bytes, or a seed drawn in one revision of a population with some parts locked. */
-export type PersonLook =
-  | { readonly bytes: readonly number[] }
-  | { readonly seed: number; readonly population: PopulationRef; readonly revision: number; readonly locks: PartSeeds };
-
 /** Three palette colours a piece is dyed, 0 for its own. */
 export type Dye = readonly [number, number, number];
 
@@ -161,14 +156,25 @@ export interface WornDoc {
   readonly dye: Dye;
 }
 
-/** A named person: what the people page makes and a Cast role may name. */
+/**
+ * What a named person's look and wardrobe were drawn from: a seed in a population with some parts locked, and the outfit
+ * its wardrobe was drawn from. Only the people page reads it, to draw the person again; Cast never does.
+ */
+export interface PersonSource {
+  readonly seed: number;
+  readonly population: PopulationRef;
+  readonly locks: PartSeeds;
+  readonly outfit: number | null;
+}
+
+/** A named person: what the people page makes and a Cast role may name. Its look and wardrobe are kept as drawn. */
 export interface PersonDoc {
   readonly name: string;
-  readonly look: PersonLook;
-  /** The outfit it wears, by id, at that outfit's latest revision; or null. */
-  readonly outfit: number | null;
-  /** What it wears where it names no outfit: one entry a wardrobe slot (WARDROBE_NAMES), null for nothing there. */
+  /** Its look's 72 bytes. */
+  readonly look: readonly number[];
+  /** What it wears: one entry a wardrobe slot (WARDROBE_NAMES), null for nothing there; null wears the role's clothes. */
   readonly wardrobe: readonly (WornDoc | null)[] | null;
+  readonly source: PersonSource | null;
   readonly notes: string;
 }
 
@@ -250,33 +256,37 @@ function locksOf(v: unknown): PartSeeds | null {
   return out;
 }
 
+const u32 = (n: unknown): n is number => Number.isInteger(n) && (n as number) >= 0 && (n as number) <= 0xffffffff;
+
+/** A person's source as kept, or why not. */
+function sourceOf(v: unknown): PersonSource | string {
+  const o = asObject(v);
+  if (!o || !u32(o.seed)) return "A source's seed is a whole number 0 to 4294967295.";
+  const p = o.population;
+  if (!((typeof p === "string" && CONTENT_ID.test(p)) || isId(p))) return "A source names its population by content id or store id.";
+  const locks = locksOf(o.locks);
+  if (!locks) return `A source's locks are a seed for some of its parts (${PART_NAMES.join(", ")}).`;
+  const outfit = o.outfit ?? null;
+  if (outfit !== null && !isId(outfit)) return "A source names its outfit by its store id.";
+  return { seed: o.seed, population: p as PopulationRef, locks, outfit: outfit as number | null };
+}
+
 /** A named person as a page sent it, as the store keeps it, or why not. */
 export function readPerson(sent: Record<string, unknown>): PersonDoc | string {
   const name = editionName(sent.name);
   if (name === null) return `A person's name is 1 to ${RECORD_NAME_MAX} letters.`;
   const notes = sent.notes === undefined ? "" : sent.notes;
   if (typeof notes !== "string" || notes.length > NOTES_MAX) return `A person's notes are at most ${NOTES_MAX} letters.`;
-  const l = asObject(sent.look);
-  if (!l) return "A person has a look: its bytes, or a seed in a population.";
-  let look: PersonLook;
-  if (l.bytes !== undefined) {
-    const b = l.bytes;
-    if (!Array.isArray(b) || b.length !== LOOK_BYTES || !b.every(palette) || !validLook(Uint8Array.from(b as number[]))) return `A look's bytes are the ${LOOK_BYTES} of a valid look.`;
-    look = { bytes: [...(b as number[])] };
-  } else {
-    if (!(Number.isInteger(l.seed) && (l.seed as number) >= 0 && (l.seed as number) <= 0xffffffff)) return "A drawn look's seed is a whole number 0 to 4294967295.";
-    const p = l.population;
-    if (!((typeof p === "string" && CONTENT_ID.test(p)) || isId(p))) return "A drawn look names its population by content id or store id.";
-    if (!(Number.isSafeInteger(l.revision) && (l.revision as number) >= 1)) return "A drawn look names the revision of its population.";
-    const locks = locksOf(l.locks);
-    if (!locks) return `A look's locks are a seed for some of its parts (${PART_NAMES.join(", ")}).`;
-    look = { seed: l.seed as number, population: p as PopulationRef, revision: l.revision as number, locks };
+  const b = sent.look;
+  if (!Array.isArray(b) || b.length !== LOOK_BYTES || !b.every(palette) || !validLook(Uint8Array.from(b as number[]))) return `A look is the ${LOOK_BYTES} bytes of a valid look.`;
+  let source: PersonSource | null = null;
+  if (sent.source !== undefined && sent.source !== null) {
+    const read = sourceOf(sent.source);
+    if (typeof read === "string") return read;
+    source = read;
   }
-  const outfit = sent.outfit === undefined || sent.outfit === null ? null : sent.outfit;
-  if (outfit !== null && !isId(outfit)) return "An outfit is named by its store id.";
   let wardrobe: (WornDoc | null)[] | null = null;
   if (sent.wardrobe !== undefined && sent.wardrobe !== null) {
-    if (outfit !== null) return "A person wears an outfit or a wardrobe, not both.";
     if (!Array.isArray(sent.wardrobe) || sent.wardrobe.length !== WARDROBE_SLOTS) return `A wardrobe has ${WARDROBE_SLOTS} slots, each a piece or null.`;
     wardrobe = [];
     for (const w of sent.wardrobe) {
@@ -288,7 +298,7 @@ export function readPerson(sent: Record<string, unknown>): PersonDoc | string {
       }
     }
   }
-  return { name, look, outfit: outfit as number | null, wardrobe, notes };
+  return { name, look: [...(b as number[])], wardrobe, source, notes };
 }
 
 /** An outfit as a page sent it, as the store keeps it, or why not. */
