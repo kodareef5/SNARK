@@ -5,6 +5,7 @@
 import { FAIL_HASH, FAIL_NET, FAIL_RANGE, rangeAsk, type AssetPart, type WorkerTotals } from "../core/assets/port.ts";
 import { BulkFill, FILL_LANES, KEEP_ON, type KeepPart } from "../core/assets/bulk.ts";
 import { unfilterPart } from "../../shared/pack/stored.ts";
+import { DiskWrites, writePart, type PartFile } from "./disk-io.ts";
 
 interface Scope {
   onmessage: ((e: MessageEvent) => void) | null;
@@ -39,18 +40,10 @@ let keptBytes = 0;
 const under = new Map<number, AbortController>();
 
 // The disk cache is a folder in the browser's private file system for this site: one file for each part, as stored, named by its hash.
-interface PartHandle {
-  getSize(): number;
-  read(into: Uint8Array, at: { at: number }): number;
-  write(from: Uint8Array, at: { at: number }): number;
-  flush(): void;
-  close(): void;
-}
-interface FileEntry {
+interface FileEntry extends PartFile {
   kind: "file" | "directory";
   name: string;
   getFile(): Promise<File>;
-  createSyncAccessHandle(): Promise<PartHandle>;
 }
 interface Folder {
   getFileHandle(name: string, o?: { create: boolean }): Promise<FileEntry>;
@@ -78,7 +71,7 @@ let protocol = "";
 /** What this worker has done (WorkerTotals), why the disk is not used where it is not, and the disk writes under way. */
 const totals: WorkerTotals = { memoryParts: 0, memoryBytes: 0, diskParts: 0, diskReadBytes: 0, netParts: 0, netBytes: 0, timeouts: 0, fillAsked: 0, fillDone: 0, fillBytes: 0, fillFailed: 0, fillTimeouts: 0 };
 let off: "" | "none" | "full" = "";
-let writing = 0;
+const diskWrites = new DiskWrites(report);
 /** The page hears how things stand at most once a second, when it was last told, and whether a report waits to go. */
 const REPORT_MS = 1000;
 let reportedAt = -Infinity;
@@ -88,14 +81,14 @@ let due = false;
 function post(): void {
   due = false;
   reportedAt = performance.now();
-  toldWriting = writing;
+  const writing = (toldWriting = diskWrites.pending);
   const keep = bulk.report(onDiskHas);
   scope.postMessage({ cache: { used: diskBytes, limit: diskLimit, mode: disk ? "disk" : "memory", filling: keep.mode === KEEP_ON ? keep.missing : 0, off, writing, totals, protocol, keep } });
 }
 
 function report(): void {
   // The page hears at once that writes have begun, so that it never takes the disk for still while one is under way.
-  if (writing > 0 && toldWriting === 0) return post();
+  if (diskWrites.pending > 0 && toldWriting === 0) return post();
   if (due) return;
   due = true;
   setTimeout(() => due && post(), Math.max(0, reportedAt + REPORT_MS - performance.now()));
@@ -159,8 +152,12 @@ async function forget(downTo: number): Promise<void> {
 }
 
 /** Removes every saved part, and turns the disk back on if it was full. */
-async function clear(): Promise<void> {
+function clear(): Promise<void> {
   for (const stop of runs) stop.abort();
+  return diskWrites.remove(clearDisk);
+}
+
+async function clearDisk(): Promise<void> {
   const folder = await found;
   if (!folder) return;
   await opened;
@@ -177,11 +174,13 @@ async function clear(): Promise<void> {
   report();
 }
 
-async function dropFromDisk(hash: string): Promise<void> {
-  if (!disk) return;
-  await disk.removeEntry(hash).catch(() => {});
-  diskBytes -= onDisk.get(hash) ?? 0;
-  onDisk.delete(hash);
+function dropFromDisk(hash: string): Promise<void> {
+  return diskWrites.remove(async () => {
+    if (!disk) return;
+    await disk.removeEntry(hash).catch(() => {});
+    diskBytes -= onDisk.get(hash) ?? 0;
+    onDisk.delete(hash);
+  }, hash);
 }
 
 /** A part as stored, from the disk, or null. Whether it is good is found when it is opened. */
@@ -198,29 +197,26 @@ async function fromDisk(hash: string): Promise<Bytes | null> {
     return null;
   }
   try {
-    const h = await entry.createSyncAccessHandle();
-    const data = new Uint8Array(h.getSize());
-    h.read(data, { at: 0 });
-    h.close();
+    const data = new Uint8Array(await (await entry.getFile()).arrayBuffer());
     const size = onDisk.get(hash);
-    onDisk.delete(hash);
-    onDisk.set(hash, data.length);
-    if (size === undefined) diskBytes += data.length;
+    if (size !== undefined || !counted) {
+      onDisk.delete(hash);
+      onDisk.set(hash, data.length);
+      diskBytes += data.length - (size ?? 0);
+    }
     return data;
   } catch {
-    // Another request has the file open. This one goes to the network.
+    // The file went while it was read. This request goes to the network.
     return null;
   }
 }
 
 /** Writes a part to disk where it is not there already. True where it is there after. */
-async function toDisk(hash: string, data: Bytes): Promise<boolean> {
-  writing++;
-  report();
-  await write(hash, data, true);
-  writing--;
-  report();
-  return onDisk.has(hash);
+function toDisk(hash: string, data: Bytes): Promise<boolean> {
+  return diskWrites.save(hash, async () => {
+    await write(hash, data, true);
+    return onDisk.has(hash);
+  });
 }
 
 async function write(hash: string, data: Bytes, again: boolean): Promise<void> {
@@ -228,10 +224,7 @@ async function write(hash: string, data: Bytes, again: boolean): Promise<void> {
   if (!disk || onDisk.has(hash) || data.length > diskLimit) return;
   await forget(diskLimit - data.length);
   try {
-    const h = await (await disk.getFileHandle(hash, { create: true })).createSyncAccessHandle();
-    h.write(data, { at: 0 });
-    h.flush();
-    h.close();
+    await writePart(await disk.getFileHandle(hash, { create: true }), data);
     onDisk.set(hash, data.length);
     diskBytes += data.length;
   } catch {
