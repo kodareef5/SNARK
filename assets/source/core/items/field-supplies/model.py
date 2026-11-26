@@ -286,7 +286,7 @@ def stimulant(mesh, level):
     body = [(0, 0.66, "wax_paper"), (0.004, 1, "wax_paper"), (0.012, 0.98, "wax_paper"),
             (0.023, 0.76, "wax_paper"), (0.028, 0.45, "wax_paper")]
     if level == 2:
-        body = [body[i] for i in (0, 1, 3)]
+        body = body[:2] + [(0.021, 0.76, "wax_paper")]
     shell(mesh, outline, body, 0, rock=0.026)
     flap = [(-0.049, -0.010), (0.028, -0.015), (0.046, -0.004),
             (0.031, 0.009), (-0.039, 0.011), (-0.052, 0.005)]
