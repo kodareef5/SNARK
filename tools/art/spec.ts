@@ -144,10 +144,9 @@ export interface MaterialSpec {
   /** Multiplied over the base colour: linear, 0 to 1. Nothing is, where not given. */
   readonly tint?: readonly [number, number, number];
   /**
-   * The colour it is drawn flat in, red, green and blue of 255, where that is not to be read off its pictures. The
-   * palette colour nearest it is used.
+   * The colour used on palette-only draws, given as a dye region or RGB of 255. RGB uses the nearest palette colour.
    */
-  readonly flat?: readonly [number, number, number];
+  readonly flat?: readonly [number, number, number] | `region${0 | 1 | 2 | 3 | 4 | 5}`;
   /** For a material several assets name: its id in the pack, and the folder its paths are in. Set by `shared`. */
   readonly id?: string;
   readonly dir?: string;
@@ -415,6 +414,10 @@ export interface PiecesAsset {
    *   part of a long thing that says what it is, as the spear's head.
    */
   readonly pieces: readonly PieceSpec[];
+  /** Inventory icon slots and their transparent PNGs, relative to the asset. */
+  readonly iconImages?: Readonly<Record<string, string>>;
+  /** Inventory icon slots that show existing meshes without adding a held or dropped slot. */
+  readonly iconMeshes?: Readonly<Record<string, string>>;
   /**
    * The pictures of each Blender material, by its name. A piece is drawn with them on its levels that have texture
    * coordinates, and flat in the palette colour nearest each material's mean colour.

@@ -157,7 +157,8 @@ export function describe(m: Material, top: number, palette: Uint8Array, layer = 
   // Flat, it is the region that dyes half of it or more, the colour its asset gives it, or its base colour's mean as light.
   const region = cover.indexOf(Math.max(...cover));
   let flat: number;
-  if (m.spec.flat) flat = nearestColour(palette, ...(m.spec.flat as [number, number, number]));
+  if (typeof m.spec.flat === "string") flat = REGION_BASE + Number(m.spec.flat.slice("region".length));
+  else if (m.spec.flat) flat = nearestColour(palette, ...m.spec.flat);
   else if (cover[region]! >= 0.5) flat = REGION_BASE + region;
   else {
     const mean = base ? [...base[0]!.subarray(0, 3)].map((c) => linear(c / 255)) : [1, 1, 1];

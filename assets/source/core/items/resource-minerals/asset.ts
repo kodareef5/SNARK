@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import { shared, type PiecesAsset } from "../../../../../tools/art/spec.ts";
+import { shared, type MaterialSpec, type PiecesAsset } from "../../../../../tools/art/spec.ts";
 import tools from "../stone-tools/asset.ts";
 
 const TOOL_DIR = resolve(import.meta.dir, "../stone-tools");
@@ -12,6 +12,11 @@ const mineral = Object.fromEntries(Object.entries(tiles).map(([name, span]) => [
   height: `tex/${name}_height.png`,
   tiles: span,
 }]));
+
+const materials: Record<string, MaterialSpec> = {
+  flint: shared(TOOL_DIR, "core:stone-tools/flint", tools.materials.flint),
+  ...mineral,
+};
 
 const views = {
   stone: { around: 0.55, above: 0.65 },
@@ -32,10 +37,7 @@ export default {
     object: name,
     icon,
   })),
-  materials: {
-    flint: shared(TOOL_DIR, "core:stone-tools/flint", tools.materials.flint),
-    ...mineral,
-  },
+  materials,
   // The existing flint set counts against this pack's budget.
   budgets: { triangles: [640, 340, 144], texture: { top: 1024, megabytes: 11 } },
 } satisfies PiecesAsset;
