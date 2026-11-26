@@ -21,8 +21,10 @@ export function bindInput(canvas: HTMLCanvasElement, app: App): void {
   const code = (e: KeyboardEvent) => e.code || (["Enter", "Escape", "Tab"].includes(e.key) ? e.key : "");
   function key(e: KeyboardEvent, down: boolean): void {
     if (e.isComposing || (down && code(e) === "Escape" && performance.now() - escapedAt < 150)) return;
-    const source = app.ui.touch && app.ui.typing ? 2 : 0;
+    const source = app.ui.touch && app.ui.typing ? 2 : 0, device = app.ui.inputDevice;
     if (app.key(code(e), down, e.repeat, source)) e.preventDefault();
+    // Command is the browser's key, not the game's: a shortcut pressed on a touch page leaves it a touch page.
+    if (e.metaKey || e.key === "Meta") app.ui.inputDevice = device;
     sync();
   }
   addEventListener("keydown", e => key(e, true));
