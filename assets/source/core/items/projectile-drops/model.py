@@ -1,7 +1,10 @@
-"""The grounded arrows, dart, hook and thrown equipment."""
+"""Ground pickups and the grenades held in the hand."""
 
+from math import pi
 from pathlib import Path
 import sys
+
+from mathutils import Matrix
 
 parent = Path(__file__).resolve().parent
 sys.path[:0] = [str(parent), str(parent.parent)]
@@ -23,8 +26,15 @@ SWATCHES = {
     "cloth": (0.16, (184, 161, 116)),
 }
 
+held = (grenade_smoke, grenade_poison)
+hand_swatches = {**SWATCHES, **{name: (0.12, SWATCHES[name][1]) for name in ("iron", "brass", "green", "orange")}}
+stand_upright = Matrix.Rotation(-pi / 2, 3, "X")
 for build in (arrow_stone, arrow_tranq, grenade_smoke, arrow_flame, grenade_poison, grappling_hook, dart_tranq, c4, arrow_metal):
     for level in range(4):
-        prop = Prop(level, SWATCHES)
+        prop = Prop(level, hand_swatches if build in held else SWATCHES)
         build(prop)
-        prop.build(build.__name__, grounded=True)
+        if build in held:
+            prop.build(build.__name__)
+            prop.build(f"{build.__name__}_ground", rotation=stand_upright, grounded=True)
+        else:
+            prop.build(build.__name__, grounded=True)

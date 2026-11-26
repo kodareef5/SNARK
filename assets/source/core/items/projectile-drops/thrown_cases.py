@@ -1,22 +1,22 @@
-"""Closed exterior meshes for three fictional item drops."""
+"""Closed exterior meshes for three fictional throwables."""
 
-from hand_geometry import Y, rounded_outline
+from hand_geometry import Z, rounded_outline
 
 
 def _canister(prop, profile, reduced, sides, *, oval=1):
     rows = profile if prop.level == 0 else [profile[index] for index in reduced[prop.level - 1]]
-    prop.tube((0, 0, 0), Y, [(height, radius) for height, radius, _ in rows],
+    prop.tube((0, 0, 0), Z, [(length, radius) for length, radius, _ in rows],
               sides[prop.level], rows[0][2], oval=oval,
               cap_surface=rows[-1][2], band_surfaces=[surface for _, _, surface in rows[:-1]])
 
 
 def grenade_smoke(prop):
     profile = [
-        (0.000, 0.052, "iron"), (0.021, 0.067, "iron"), (0.043, 0.067, "iron"),
-        (0.065, 0.060, "orange"), (0.139, 0.061, "orange"), (0.163, 0.062, "steel"),
-        (0.199, 0.062, "orange"), (0.228, 0.061, "orange"), (0.256, 0.060, "iron"),
-        (0.279, 0.067, "iron"), (0.306, 0.067, "iron"), (0.329, 0.053, "steel"),
-        (0.350, 0.050, "steel"),
+        (-0.075, 0.022, "iron"), (-0.066, 0.029, "iron"), (-0.057, 0.029, "iron"),
+        (-0.047, 0.026, "orange"), (-0.015, 0.026, "orange"), (-0.005, 0.027, "steel"),
+        (0.010, 0.027, "orange"), (0.022, 0.026, "orange"), (0.034, 0.026, "iron"),
+        (0.044, 0.029, "iron"), (0.056, 0.029, "iron"), (0.066, 0.023, "steel"),
+        (0.075, 0.021, "steel"),
     ]
     _canister(prop, profile, (
         (0, 1, 2, 3, 5, 6, 8, 9, 11, 12),
@@ -27,11 +27,11 @@ def grenade_smoke(prop):
 
 def grenade_poison(prop):
     profile = [
-        (0.000, 0.066, "iron"), (0.021, 0.082, "iron"), (0.044, 0.082, "green"),
-        (0.061, 0.096, "green"), (0.084, 0.106, "green"), (0.106, 0.112, "green"),
-        (0.130, 0.112, "green"), (0.153, 0.105, "green"), (0.175, 0.088, "iron"),
-        (0.187, 0.068, "iron"), (0.211, 0.065, "brass"), (0.231, 0.070, "brass"),
-        (0.251, 0.064, "brass"),
+        (-0.046, 0.024, "iron"), (-0.038, 0.029, "iron"), (-0.029, 0.029, "green"),
+        (-0.022, 0.034, "green"), (-0.013, 0.038, "green"), (-0.004, 0.040, "green"),
+        (0.005, 0.040, "green"), (0.014, 0.037, "green"), (0.023, 0.032, "iron"),
+        (0.028, 0.024, "iron"), (0.038, 0.023, "brass"), (0.046, 0.025, "brass"),
+        (0.054, 0.023, "brass"),
     ]
     _canister(prop, profile, (
         (0, 1, 2, 3, 5, 6, 8, 9, 10, 12),

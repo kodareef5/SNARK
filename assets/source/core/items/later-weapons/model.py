@@ -25,7 +25,7 @@ SWATCHES = {
 }
 
 attachments = (scope, silencer, flashlight, laser)
-bow_grip = Matrix.Rotation(pi / 2, 3, "X")
+bow_grip = Matrix.Rotation(pi / 2, 3, "Y")
 for build in (scope, silencer, flashlight, pistol_fabricated, shotgun_pump, rifle_assault, laser, bow_compound, rifle_sniper):
     for level in range(4):
         prop = Prop(level, SWATCHES)

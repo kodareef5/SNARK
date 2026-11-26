@@ -23,7 +23,7 @@ export default {
   kind: "pieces",
   source: { scripts: ["model.py"] },
   pieces: Object.entries(views).map(([object, icon]): PieceSpec => held.has(object)
-    ? { id: `core:${object}`, object, hold: "prop_r", dropped: "auto", icon }
+    ? { id: `core:${object}`, object, hold: object === "bow_compound" ? "prop_l" : "prop_r", dropped: "auto", icon }
     : { id: `core:${object}/dropped`, object, icon }),
   materials: {
     ...Object.fromEntries(reused.map(name => [name, borrowed(name)])),

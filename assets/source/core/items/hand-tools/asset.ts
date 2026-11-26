@@ -26,7 +26,7 @@ const swatch = (name: string, tiles: number): MaterialSpec => ({
 export default {
   kind: "pieces",
   source: { scripts: ["model.py"] },
-  pieces: Object.entries(views).map(([object, icon]) => ({ id: `core:${object}`, object, hold: "prop_r", dropped: "auto", icon })),
+  pieces: Object.entries(views).map(([object, icon]) => ({ id: `core:${object}`, object, hold: object === "slingshot" ? "prop_l" : "prop_r", dropped: "auto", icon })),
   materials: {
     wood: instrument("wood"), hide: instrument("hide"), iron: instrument("iron"),
     brass: instrument("bronze"), rubber: instrument("rubber"),

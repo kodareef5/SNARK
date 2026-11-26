@@ -3,6 +3,8 @@
 from pathlib import Path
 import sys
 
+from mathutils import Matrix
+
 parent = Path(__file__).resolve().parent
 sys.path[:0] = [str(parent), str(parent.parent)]
 
@@ -22,8 +24,9 @@ SWATCHES = {
     "char": (0.10, (47, 42, 37)),
 }
 
+sling_grip = Matrix(((0, -1, 0), (0, 0, 1), (-1, 0, 0)))
 for build in (torch, slingshot, club, hatchet_metal, pick_metal, pike, sickle, sword):
     for level in range(4):
         tool = Prop(level, SWATCHES)
         build(tool)
-        tool.build(build.__name__)
+        tool.build(build.__name__, rotation=sling_grip if build is slingshot else None)

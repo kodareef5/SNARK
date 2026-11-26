@@ -1,7 +1,7 @@
 # Long round drops
 
-The three drops use original game profiles. These collection photographs informed their outlines.
+The three drops use cartridge exteriors as silhouette references and keep their game scale.
 
-- The rifle round uses the broad dome and shallow curves of the finial's rounded head. [Finial, Possibly from a Cenotaph, The Met](https://www.metmuseum.org/art/collection/search/453310)
-- The advanced rifle round takes its stepped neck from the raised bands of the Egyptian rock-crystal ornament. The green neck sits between a broad brass body and a dark faceted point. [Decorative Element, The Met](https://www.metmuseum.org/art/collection/search/454900)
-- The advanced sniper round takes its elongated taper and abrupt change in width from the ivory pin. The brass shoulder and long silver-gray point break up the dark body. [Hair pin, The Met](https://www.metmuseum.org/art/collection/search/546609)
+- The rifle uses the .30-30 Winchester's projecting rim, tapered case and blunt nose. [Hmaag's .30-30 Winchester photograph](https://commons.wikimedia.org/wiki/File:30-30_Win.JPG)
+- The advanced rifle uses the 5.56 NATO's defined shoulder, narrow neck and curved point. A green tip marks the end of the dark nose. [Boris Barowski's 5.56 NATO photograph](https://commons.wikimedia.org/wiki/File:30-30.jpg)
+- The advanced sniper uses the .338 Lapua Magnum's steep shoulder and elongated nose. The brass shoulder and silver nose break up the dark case. [SB Pete's .338 Lapua Magnum photograph](https://commons.wikimedia.org/wiki/File:.338_Lapua_Magnum_pic-1.jpg)
