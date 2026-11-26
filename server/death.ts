@@ -1,6 +1,7 @@
 // A death marks everything it changes in one tick, so it lands in one commit. After a crash the survivor is alive with its
 // things or dead with a cache that holds them. Opening what lies there is Containers' (server/containers.ts).
 
+import { eggColours } from "../shared/content/egg-colours.ts";
 import { BitWriter } from "../shared/net/codec.ts";
 import { CHOOSE_DIED, MARKER_DEATH, OWN_RESPAWN, OWN_SLOTS, RESULT_INVALID, RESULT_OK, SESSION_DEAD, TEXT_NOTICE } from "../shared/net/protocol.ts";
 import { leftAtPeriod } from "../shared/sim/breeding.ts";
@@ -468,7 +469,11 @@ export class Death {
     if (e < 0 && this.evict()) e = ents.create(cache.kind, cache.x, cache.y, cache.z, F_PROP);
     if (e < 0) return;
     ents.pid[e] = cache.pid;
-    ents.setLook(e, 0, null, cache.name);
+    const egg = world.reg.propItem[cache.kind]!;
+    const fertileEgg = world.reg.propFertile[cache.kind]!;
+    const fertile = cache.genome !== null || (fertileEgg !== 0 && cache.inv?.item[0] === fertileEgg);
+    const shell = egg === 0 ? null : eggColours(world.reg.ids[egg]!, fertile) ?? null;
+    ents.setLook(e, 0, shell, cache.name);
     records.entOf.set(cache.pid, e);
     if (cache.kind === this.bag && this.bag !== this.cache) this.show(cache);
   }

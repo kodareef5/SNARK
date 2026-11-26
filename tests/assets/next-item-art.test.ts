@@ -163,3 +163,30 @@ artTest("world loot replaces the grey boxes within their existing bounds", async
 artTest("droppings ship distinct grounded pickups with icons", async () => {
   await expectItemArt("core:droppings", ["feces_small", "feces_medium", "feces_large", "feces_massive"], []);
 });
+
+artTest("egg pairs share the laid shell and colour only the fertile ring", async () => {
+  const meshes = await meshesIn("core:eggs");
+  const icons = new Map(iconSubjects(CORE_CONTENT, id => meshes.has(id)).map(icon => [icon.owner, icon]));
+  const eggSizes = new Set<string>();
+  for (const def of CORE_CONTENT) {
+    if (def.type !== "prop" || def.class !== "egg" || !def.item || !def.fertile) continue;
+    const plain = icons.get(def.item), fertile = icons.get(def.fertile);
+    expect(plain, def.item).toMatchObject({ icon: `${def.item}/icon`, mesh: def.mesh });
+    expect(fertile, def.fertile).toMatchObject({ icon: `${def.fertile}/icon`, mesh: def.mesh });
+    expect(plain!.colors[5], def.item).toBe(plain!.colors[0]);
+    expect(fertile!.colors.slice(0, 5), def.fertile).toEqual(plain!.colors.slice(0, 5));
+    expect(fertile!.colors[5], def.fertile).not.toBe(plain!.colors[5]);
+    const mesh = meshes.get(def.mesh)!;
+    eggSizes.add(def.mesh);
+    for (const lod of mesh.lods) {
+      const [from, to] = boundsOf(lod);
+      expect(from[1], def.id).toBeCloseTo(0, 3);
+      expect(to[1], def.id).toBeLessThanOrEqual(def.height + 0.001);
+      for (const axis of [0, 2] as const) expect(Math.max(-from[axis], to[axis]), def.id).toBeLessThanOrEqual(def.radius + 0.001);
+    }
+  }
+  expect(icons.size).toBe(20);
+  expect(eggSizes).toEqual(new Set(meshes.keys()));
+  expect(eggSizes.size).toBe(5);
+  for (const mesh of meshes.values()) expectLevels(mesh, 500);
+});

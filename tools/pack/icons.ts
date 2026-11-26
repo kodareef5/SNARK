@@ -10,7 +10,8 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { join, resolve } from "node:path";
 import { deflateSync, inflateRawSync } from "node:zlib";
 import { CORE_CONTENT } from "../../content/core.ts";
-import type { Def, ItemDef, SpeciesDef } from "../../shared/content/defs.ts";
+import type { Def, ItemDef, PropDef, SpeciesDef } from "../../shared/content/defs.ts";
+import { eggColours } from "../../shared/content/egg-colours.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { slotsOf } from "../../shared/content/slots.ts";
 import { ICONS_A_SHEET, ICON_SIZE, SHEET_COLUMNS, iconAt, sheetShapes, type ManifestIcons } from "../../shared/pack/icons.ts";
@@ -77,13 +78,22 @@ export function iconSubjects(defs: readonly (Def | null)[], has: (mesh: string) 
   const items = defs.filter((d): d is ItemDef => d !== null && d.type === "item");
   const structures = new Map(defs.filter((d): d is Def => d !== null && d.type === "structure").map((d) => [d.id, d]));
   const vehicles = new Map(defs.filter((d): d is SpeciesDef => d !== null && d.type === "species" && d.class === "vehicle").map(d => [d.id, d]));
-  const uses = slotsOf([...items, ...structures.values(), ...vehicles.values()]);
+  const eggs = defs.filter((d): d is PropDef => d?.type === "prop" && d.class === "egg");
+  const eggProp = new Map<string, PropDef>();
+  for (const prop of eggs) {
+    if (prop.item) eggProp.set(prop.item, prop);
+    if (prop.fertile) eggProp.set(prop.fertile, prop);
+  }
+  const uses = slotsOf([...items, ...structures.values(), ...vehicles.values(), ...eggs]);
   const own = (owner: string, slot: string): string => uses.find((u) => u.owner === owner && u.slot === slot && u.id !== "" && has(u.id))?.id ?? "";
   const colour = (d: Def): number => (d as { color?: number }).color ?? 15;
   const out: IconSubject[] = [];
   for (const d of items) {
     const icon = uses.find((u) => u.owner === d.id && u.slot === "icon")?.id ?? "";
     let [mesh, colors] = [own(d.id, "dropped") || own(d.id, "held"), colour(d)];
+    const egg = eggProp.get(d.id);
+    const shell = egg?.item ? eggColours(egg.item, d.id === egg.fertile) : undefined;
+    if (mesh === "" && egg && shell) mesh = own(egg.id, "mesh");
     const placed = mesh === "" && d.class === "structure" ? structures.get(d.places?.[0] ?? "") : undefined;
     if (placed) [mesh, colors] = [own(d.id, "preview") || own(placed.id, "mesh"), colour(placed)];
     // An assembly shows the vehicle it will deploy, using the same authored preview/body slots as placement.
@@ -91,7 +101,9 @@ export function iconSubjects(defs: readonly (Def | null)[], has: (mesh: string) 
     if (deployed) mesh = own(d.id, "preview") || own(deployed.id, "body");
     // A thing blocked out is held as a plain box, which is no picture of it: it keeps its swatch.
     if (icon === "" || mesh === "" || mesh === BLOCKOUT_MESH) continue;
-    out.push({ icon, owner: d.id, mesh, colors: deployed ? Array.from({ length: 6 }, (_, i) => deployed.regions?.[i]?.colors[0]?.[0] ?? 0) : [colors, 0, 0, 0, 0, 0] });
+    const dye = shell ? [...shell] : [colors, 0, 0, 0, 0, 0];
+    if (deployed) for (let i = 0; i < dye.length; i++) dye[i] = deployed.regions?.[i]?.colors[0]?.[0] ?? 0;
+    out.push({ icon, owner: d.id, mesh, colors: dye });
   }
   return out;
 }

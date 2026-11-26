@@ -1,27 +1,25 @@
-// The egg every species lays, standing on its blunt end, in five sizes: core:egg_xs, _s, _m, _l and _xl, by ARK's
-// names for egg sizes, 0.11, 0.16, 0.23, 0.33 and 0.48 m tall (shape.py: SIZES). A prop is drawn at the size it is
-// modelled, so a species takes its size by the mesh its egg prop names; the dodo's is core:egg_xs. The shell is one
-// material in two colour regions: region 0, the ground, is the egg prop's `color`; region 1, the markings, is the
-// second colour an instance carries, and shows the base colour's grey while it carries none. model.py makes the
-// meshes and paint.py the pictures, from the shape in shape.py.
+import type { MaterialSpec, PiecesAsset } from "../../../../../tools/art/spec.ts";
 
-import type { PiecesAsset } from "../../../../../tools/art/spec.ts";
-
-const SIZES = ["xs", "s", "m", "l", "xl"];
+const sizes = ["xs", "s", "m", "l", "xl"];
+const shell: MaterialSpec = {
+  base: "tex/shell_base.png",
+  normal: "tex/shell_normal.png",
+  packed: "tex/shell_packed.png",
+  height: "tex/shell_height.png",
+  tiles: 0.22,
+  tops: { base: 128 },
+};
 
 export default {
   kind: "pieces",
   source: { scripts: ["model.py"] },
-  pieces: SIZES.map((size) => ({ id: `core:egg_${size}`, object: `egg_${size}` })),
+  pieces: sizes.map(size => ({
+    id: `core:egg_${size}`, object: `egg_${size}`,
+    icon: { around: 0.73, above: 0.52 },
+  })),
   materials: {
-    shell: {
-      base: "tex/shell_base.png",
-      normal: "tex/shell_normal.png",
-      packed: "tex/shell_packed.png",
-      regions: { mask: "tex/shell_mask.png" },
-      height: "tex/shell_height.png",
-    },
+    shell: { ...shell, regions: { mask: "tex/shell_mask.png", mask2: "tex/shell_mask2.png" } },
+    shell_band: { ...shell, regions: { mask: "tex/shell_band_mask.png", mask2: "tex/shell_band_mask2.png" } },
   },
-  flat: 2,
-  budgets: { triangles: [1344, 448, 160, 56], texture: { top: 1024, megabytes: 15 } },
+  budgets: { triangles: [1320, 640, 310, 150], texture: { top: 256, megabytes: 4.9 } },
 } satisfies PiecesAsset;

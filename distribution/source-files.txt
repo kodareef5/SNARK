@@ -2829,9 +2829,12 @@ assets/source/core/nodes/trees/tex/stump_cuts/stump_cuts_normal.png
 assets/source/core/nodes/trees/tex/stump_cuts/stump_cuts_orm.png
 assets/source/core/nodes/trees/trees.snpk
 assets/source/core/props/eggs/eggs.snpk
+assets/source/core/props/eggs/tex/shell_band_mask.png
+assets/source/core/props/eggs/tex/shell_band_mask2.png
 assets/source/core/props/eggs/tex/shell_base.png
 assets/source/core/props/eggs/tex/shell_height.png
 assets/source/core/props/eggs/tex/shell_mask.png
+assets/source/core/props/eggs/tex/shell_mask2.png
 assets/source/core/props/eggs/tex/shell_normal.png
 assets/source/core/props/eggs/tex/shell_packed.png
 assets/source/core/props/screens/polyhaven/classic_laptop/classic_laptop.bin

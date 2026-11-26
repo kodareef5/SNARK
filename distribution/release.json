@@ -2,7 +2,7 @@
   "repository": "kodareef5/SNARK",
   "art": {
     "release": "art",
-    "id": "e03dbf158fad259f",
+    "id": "7e46024471be2b83",
     "files": [
       {"name": "core-creatures-allosaur", "file": "core-creatures-allosaur.5eb2682fdf0a.tar.zst", "bytes": 2833562, "sha256": "5eb2682fdf0abb902fa1807673cf9dc46c3111e728eda23299b3a910d74129e2"},
       {"name": "core-creatures-ankylo", "file": "core-creatures-ankylo.d19e9025be7c.tar.zst", "bytes": 1901178, "sha256": "d19e9025be7ccaeb84f4bf80f6554f9e9a6a2971b062a6666ab9f50e8901146b"},
@@ -88,7 +88,7 @@
       {"name": "core-nodes-plants", "file": "core-nodes-plants.f9c655d3111c.tar.zst", "bytes": 165701541, "sha256": "f9c655d3111cae23776e16159e180ff039d2153f00846b0483a70e2cbc8f6e2a"},
       {"name": "core-nodes-rocks", "file": "core-nodes-rocks.d477d2e27a55.tar.zst", "bytes": 539753632, "sha256": "d477d2e27a556ef131c1db017cfa51d184a8dd7b45a27e8f5a900ae070a09cb0"},
       {"name": "core-nodes-trees", "file": "core-nodes-trees.34307f9cf0db.tar.zst", "bytes": 602402195, "sha256": "34307f9cf0db78bc92a0d17e1acd1c723509e160d72c3de27ceede8ea5ff6209"},
-      {"name": "core-props-eggs", "file": "core-props-eggs.981f91f8390a.tar.zst", "bytes": 4354020, "sha256": "981f91f8390adf10e8850975bd935a2353a08a850cace92a90c52331a3031c23"},
+      {"name": "core-props-eggs", "file": "core-props-eggs.0aa7a21e179e.tar.zst", "bytes": 285449, "sha256": "0aa7a21e179e69370b67b7ee1c76a81d84a3eb0e536755f4e9f90841dbbcfe32"},
       {"name": "core-props-screens", "file": "core-props-screens.a36f52e7b6c4.tar.zst", "bytes": 18447969, "sha256": "a36f52e7b6c409572d22f4c5f12f1bdaabbac38a0639cf3f03fb4fd4903c9887"},
       {"name": "core-props-street", "file": "core-props-street.fdd51de712de.tar.zst", "bytes": 37812364, "sha256": "fdd51de712de9b7df09f8eefdd4380ecb4aca6d346694c920bb6e25b9b3acaf6"},
       {"name": "core-props-world-loot", "file": "core-props-world-loot.6f7bfbf5c4b4.tar.zst", "bytes": 81280, "sha256": "6f7bfbf5c4b4424b663885e0794ccd3069c141273b886ee784da152070b67d5f"},
