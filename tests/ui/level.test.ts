@@ -147,7 +147,9 @@ test("the call to spend shows while a stat point is unspent, by key and by touch
   expect(say(200, 2800, 24, 0).find(WORDS)!.text).toBe("Lv 24");
   // A finger has no P: it has the bar's Character button.
   const phone = direct(844, 390, [47, 0, 47, 21], { finger: true });
-  Object.assign(phone.hud.levelBar, d.hud.levelBar, { points: 1, spendTouch: "Level 24 · Character to spend" });
+  Object.assign(phone.hud.levelBar, d.hud.levelBar);
+  expect(phone.build().find(WORDS)).toBeNull();
+  Object.assign(phone.hud.levelBar, { points: 1, spendTouch: "Level 24 · Character to spend" });
   expect(phone.build().find(WORDS)!.text).toBe("Level 24 · Character to spend");
 });
 

@@ -503,8 +503,8 @@ export class GameUi {
       // Chat is built over the HUD and under every screen.
       if (session) {
         // A finger's keyboard covers the foot of the screen, so the box it types in stands at the top.
-        const band = plan && this.chat.open ? layer!.chatTop(f, plan) : chatBand(f, hud);
-        this.chat.build(f, band.top, band.bottom, session.serverTick, plan !== null, controls);
+        const band = plan ? layer!.chatTop(f, plan) : chatBand(f, hud);
+        this.chat.build(f, band.top, band.bottom, session.serverTick, plan, controls);
       }
       if (plan && this.touchPlay && controls) {
         this.touchPlay.tools = this.settings.playControls;

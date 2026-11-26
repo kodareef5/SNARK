@@ -115,8 +115,8 @@ export function pill(f: UiFrame, key: number, x: number, y: number, w: number, h
 export function chatTop(f: UiFrame, touch: TouchPlan): { top: number; bottom: number } {
   // On its side a phone's keyboard leaves less than half the screen, and the box may cover the vitals to keep in it;
   // upright there is room under them.
-  const top = Math.max(f.top, Math.min(touch.under, f.height - f.bottom - 130));
-  return { top, bottom: top + 3 * 19 + 56 };
+  const bottom = Math.min(touch.under + 113, f.top + (f.height - f.top - f.bottom) * .43);
+  return { top: Math.max(f.top, bottom - 113), bottom };
 }
 
 /** The two zones, under everything else the HUD draws: call before it. */

@@ -7,7 +7,7 @@ import { expect, test } from "bun:test";
 import { App } from "../../client/core/app.ts";
 import { VehicleTelemetry } from "../../client/core/hud.ts";
 import { KEY_TOUCH_BUTTON, KEY_ZONE_LOOK, KEY_ZONE_MOVE, T_AIM, T_ATTACK, T_BAG, T_CHARACTER, T_CHAT, T_CLOSE, T_COUNT, T_CANCEL, T_DOWN, T_FOLLOW, T_FOLLOW_ONE, T_HOLD, T_JUMP, T_LOWER, T_MAP, T_MELEE, T_MENU, T_MIC, T_MORE, T_ORBIT, T_PACK, T_RAISE, T_RELOAD, T_ROLL, T_ROTATE, T_SHIFT, T_SIC, T_SNAP, T_STANCE, T_STAY, T_STAY_ONE, T_USE, T_VIEW, touchKey, type TouchTarget } from "../../client/core/touch.ts";
-import { KEY_CHAT_INPUT, KEY_CHAT_PANEL, KEY_CHAT_ROW, KEY_CHAT_SEND, KEY_CHAT_TAG } from "../../client/core/ui/chat.ts";
+import { KEY_CHAT_OPEN, KEY_CHAT_INPUT, KEY_CHAT_PANEL, KEY_CHAT_ROW, KEY_CHAT_SEND, KEY_CHAT_TAG } from "../../client/core/ui/chat.ts";
 import { BitReader } from "../../shared/net/codec.ts";
 import { C_INPUT, InputBuffer, TEXT_GLOBAL, TEXT_MOTD, readInputs } from "../../shared/net/protocol.ts";
 import { KEY_CONSOLE_INPUT } from "../../client/core/ui/console.ts";
@@ -432,20 +432,21 @@ test("More turns the cluster's page and back, a way of going is held on by its b
 test("chat by touch: the welcome is a shut line; the box opens at the top", () => {
   for (const window of PHONES) {
     const [name] = window, d = touched(window, true), f = d.ui.frame;
-    const tap = (button: number): void => { d.ui.key(touchKey(button)!, true, false, d.session); d.ui.key(touchKey(button)!, false, false, d.session); d.build(); };
     d.ui.chat.print(TEXT_MOTD, "Welcome to SNARK. Type /help", 0, 600);
     d.build();
     expect([chatLog(f), f.find(KEY_CHAT_PANEL)], name).toEqual([["Welcome to SNARK. Type /help"], null]);
     expect([d.ui.typing, f.find(KEY_CHAT_SEND)], name).toEqual([false, null]);
-    // The bar's Chat is the Enter key.
-    tap(T_CHAT);
+    const radio = f.find(KEY_CHAT_OPEN)!;
+    expect(radio.label).toBe("Open radio chat");
+    d.ui.pointer(0, radio.key, radio.x + radio.w/2, radio.y + radio.h/2, 0, d.session, 1);
+    d.build();
     expect([d.ui.chat.open, d.ui.typing], name).toEqual([true, true]);
     chatBoxFits(f, window);
     d.ui.input(KEY_CHAT_INPUT, "anyone near the docks?");
     d.ui.pointer(0, KEY_CHAT_SEND, 0, 0, 0, d.session);
     d.build();
     expect([d.ui.chat.open, d.ui.typing, f.find(KEY_CHAT_SEND)], name).toEqual([false, false, null]);
-    // Shut, the log is back where it was, low on the left, and the layer is back with it.
+    // Closing the radio returns both thumbs to play.
     expect(f.find(KEY_ZONE_MOVE), name).not.toBeNull();
   }
 });

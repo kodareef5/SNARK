@@ -4,6 +4,7 @@ import { maskSecret } from "../../../shared/console.ts";
 import { runText, type TextRun } from "../../../shared/net/chat.ts";
 import { MAX_CHAT_CHARS, TEXT_CONSOLE, TEXT_GLOBAL, TEXT_LOCAL, TEXT_MOTD, TEXT_NOTICE, TEXT_TRIBE } from "../../../shared/net/protocol.ts";
 import type { ClientSession } from "../session.ts";
+import type { TouchPlan } from "./touch.ts";
 import { glass } from "./skin.ts";
 import { lineHeight, wrapRuns, wrapText, K_BUTTON, K_INPUT, K_PANEL, type UiFrame } from "./nodes.ts";
 import { S_CHAT, S_CHAT_LOCAL, S_CHAT_NOTICE, S_CHAT_PANEL, S_CHAT_TAG, S_CHAT_TRIBE, S_HUD_HIT, S_HUD_KEY, S_ICE, S_INPUT } from "./style.ts";
@@ -207,8 +208,8 @@ export class ChatState {
    * The log, and the box while it is open, between `top` and `bottom`. With `touch` the field and its buttons are a
    * finger's size and a Send button stands beside the field.
    */
-  build(f: UiFrame, top: number, bottom: number, now: number, touch = false, controls = true): void {
-    const x0 = f.left + MARGIN;
+  build(f: UiFrame, top: number, bottom: number, now: number, touch: TouchPlan | null = null, controls = true): void {
+    const x0 = touch ? touch.toolsX + 4 / f.unit : f.left + MARGIN;
     const w = Math.min(touch || this.open ? WIDTH : Math.max(180, Math.min(285, f.width * .22)), f.width - f.left - f.right - MARGIN * 2);
     const lh = lineHeight(S_CHAT);
     const inputH = touch && this.open ? 44 : lineHeight(S_INPUT) + 6;
@@ -259,11 +260,21 @@ export class ChatState {
       const h = most * lh + inputH + 12;
       f.add(KEY_CHAT_PANEL, K_PANEL, x0 - 4, bottom - h + 4, w + 8, h, S_CHAT_PANEL);
     }
-    let y = rowsBottom - shown * lh;
+    let y = touch && !this.open ? touch.under + 3 / f.unit : rowsBottom - shown * lh;
     // A welcome gets a backdrop that fades with it. Touch leaves the stick visible behind the closed radio.
     const headerY = y - (controls ? 21 : 0);
     if (!touch && welcome > 0)
       f.add(KEY_CHAT_PANEL, K_PANEL, x0 - 4, headerY - 4, w + 8, rowsBottom - headerY + 8, S_CHAT_PANEL).alpha = welcome;
+    if (!this.open && touch && controls) {
+      const { toolsX, toolsY, toolSize } = touch;
+      const hit = f.add(KEY_CHAT_OPEN, K_BUTTON, toolsX, toolsY, toolSize, toolSize, S_HUD_HIT);
+      hit.label = "Open radio chat";
+      hit.interactive = true;
+      const size = 24 / f.unit;
+      const margin = (toolSize - size) / 2;
+      if (!f.picture(KEY_RADIO_ICON, toolsX + margin, toolsY + margin, size, size, S_CHAT, "ui:mobile-radio"))
+        hit.text = "Radio";
+    }
     if (!this.open && !touch && controls) {
       if (welcome === 0) glass(f, KEY_RADIO_EDGE + 1, x0 - 4, headerY - 2, w + 4, shown * lh + 25, shown ? .57 : .27);
       f.add(KEY_RADIO_EDGE, K_PANEL, x0 - 4, headerY, 1, shown * lh + 19, S_ICE).alpha = .55;
