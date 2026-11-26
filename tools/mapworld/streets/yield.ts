@@ -1,8 +1,14 @@
-// Streets that yield to buildings. A road piece of base/roads.geojson whose line runs through a footprint of
-// base/buildings.geojson is changed before any reader takes it: a junction in the wall moves clear, the line shifts
-// sideways, the piece narrows, or it ends at the wall. All of it is worked out in the data's own metres from the piece,
-// the footprints near it and the pieces it joins, so a place gets the same line whatever cut is made round it.
-// Left as the data has them: pieces marked bridge, tunnel or passage, and pieces that meet a parking structure.
+// Streets and buildings that meet. A road piece of base/roads.geojson whose line runs through a footprint of
+// base/buildings.geojson is settled by its class before any reader takes it:
+// - a service way, an alley, a track or a street of one lane yields: a junction in the wall moves clear, the line shifts
+//   sideways, the piece narrows, or it ends at the wall;
+// - a residential or unclassified street shifts up to 2 m where that clears its whole width, and else keeps its line;
+// - a tertiary street, anything above it and every link keeps its line.
+// Where a street keeps its line through a footprint the building yields: the piece carries the runs inside as
+// `passage_runs`, which the ruins open their ground storey along (passages.ts).
+// All of it is worked out in the data's own metres from the piece, the footprints near it and the pieces it joins, so a
+// place gets the same line whatever cut is made round it. Left as the data has them: pieces marked bridge, tunnel or
+// passage, and small ways that meet a parking structure or a lot's stalls.
 
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -13,20 +19,26 @@ export interface RoadFeature { geometry: { type: string; coordinates: number[][]
 /** A building's outline in the data's metres, its outer ring first, then its holes. */
 export interface Footprint { rings: number[][][]; parking: boolean }
 
-/** Pieces by what became of them; one piece may count under several. */
-export interface YieldCount { shifted: number; narrowed: number; cut: number; dropped: number; junctions: number; parking: number; marked: number }
+/** Pieces by what became of them; one piece may count under several. `opened` are those a building opens for, `stalls` those kept for a lot's stalls. */
+export interface YieldCount { shifted: number; narrowed: number; cut: number; dropped: number; junctions: number; opened: number; parking: number; stalls: number; marked: number }
 
-export interface Yielded { changed: Map<number, RoadFeature>; count: YieldCount }
+/** A line in the data's metres, half the width of what ran along it, and whether the data made walks along it. */
+export interface Band { line: number[][]; half: number; walked: boolean }
+
+/** The pieces that changed, by row; what became of how many; and the bands of road that are gone. */
+export interface Yielded { changed: Map<number, RoadFeature>; count: YieldCount; gone: Band[] }
 
 /** Classes and kinds that carry no traffic: they have no stretch, and do not yield. */
 export const NOT_DRIVEN = new Set(["S1710", "S1720", "S1820", "S1830", "footway", "path", "pedestrian", "steps", "cycleway", "bridleway", "corridor"]);
-/** The classes the rules type as an alley (rules/streets.json, "alley by class"). */
-const ALLEYS = new Set(["service", "track", "living_street", "S1640", "S1730", "S1740", "S1780"]);
+/** The small ways, which yield, and the local streets, which may shift: OpenStreetMap's class, else TIGER's. */
+const SMALL = new Set(["service", "track", "S1500", "S1640", "S1730", "S1740", "S1780"]);
+const LOCAL_STREETS = new Set(["residential", "unclassified", "living_street", "road", "S1400"]);
 
 /** A line nearer a wall than this runs through the building. */
 const TRIGGER = 0.5;
-/** The furthest a line shifts sideways, and a junction moves. */
+/** The furthest a small way shifts sideways and a local street does, and a junction moves. */
 const MAX_SHIFT = 6;
+const LOCAL_SHIFT = 2;
 const MAX_NODE = 4;
 /** Metres between the places along a line its room is measured at. */
 const STATION = 1;
@@ -34,38 +46,40 @@ const STATION = 1;
 const MIN_STUB = 6;
 /** How far out a wall is looked for, which caps the room a street is given. */
 const REACH = 8;
-/** The least widths: a lane for an alley or a street of one lane, two for any other. */
-const LEAST_ALLEY = 3;
-const LEAST_STREET = 5.5;
+/** The least width a small way narrows to: a lane. */
+const LEAST = 3;
+/** How near a stall's end on its aisle a way is that serves it. */
+const STALL_REACH = 4;
 /** Conflicts nearer than this along a line are shifted as one. */
 const MERGE = 8;
 /** How far a shift holds along a line still too near a wall, and the room it keeps to taper in before a held point. */
 const HOLD = 40;
 const ROOM = 8;
 
-const WALKED = 0, MARKED = 1, STREET = 2;
+/** A piece's kind: one walked, one marked as crossing a building or another level, and a street by its class. */
+const WALKED = 0, MARKED = 1, SMALL_WAY = 2, LOCAL = 3, THROUGH = 4;
 const EDGE_BIN = 8, BOX_BIN = 16, LINE_BIN = 16;
 
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
 const runsOf = (f: RoadFeature): number[][][] => (f.geometry.type === "MultiLineString" ? (f.geometry.coordinates as number[][][]) : [f.geometry.coordinates as number[][]]);
 const widthOf = (f: RoadFeature): number => num(f.properties.width_m) ?? 8;
 
-/** Whether a piece walks, is marked as crossing a building or another level, or is a street on the ground. */
-function kindOf(f: RoadFeature): number {
+/** A piece's kind. A local street of one lane is a small way; a class neither list names keeps its line. */
+export function kindOf(f: RoadFeature): number {
   const p = f.properties;
   if (NOT_DRIVEN.has(String(p.mtfcc ?? "")) || NOT_DRIVEN.has(String(p.highway ?? ""))) return WALKED;
   if (p.bridge === true || p.tunnel === true || (typeof p.tunnel === "string" && p.tunnel !== "no") || p.covered === true) return MARKED;
   for (const [key, value] of Object.entries(p)) {
     if (/passage/i.test(key) ? value !== false && value !== null && value !== undefined : typeof value === "string" && !/name/i.test(key) && /passage/i.test(value)) return MARKED;
   }
-  return STREET;
+  const named = typeof p.highway === "string" ? p.highway : String(p.mtfcc ?? "");
+  if (SMALL.has(named)) return SMALL_WAY;
+  if (!LOCAL_STREETS.has(named)) return THROUGH;
+  return (num(p.lanes) ?? 2) <= 1 ? SMALL_WAY : LOCAL;
 }
 
-/** Half the least width a piece narrows to, never more than its own. */
-function leastHalf(f: RoadFeature): number {
-  const p = f.properties, alley = ALLEYS.has(String(p.highway ?? p.mtfcc ?? "")) || (num(p.lanes) ?? 2) <= 1;
-  return Math.min(widthOf(f), alley ? LEAST_ALLEY : LEAST_STREET) / 2;
-}
+/** Half the least width a small way narrows to, never more than its own. */
+const leastHalf = (f: RoadFeature): number => Math.min(widthOf(f), LEAST) / 2;
 
 function ringHolds(ring: number[][], x: number, z: number): boolean {
   let hit = false;
@@ -168,7 +182,7 @@ class Lines {
   constructor(features: readonly RoadFeature[], kinds: readonly number[]) {
     this.features = features;
     features.forEach((f, row) => {
-      if (kinds[row] !== STREET) return;
+      if (kinds[row]! < SMALL_WAY) return;
       for (const run of runsOf(f)) for (let i = 1; i < run.length; i++) {
         const ax = run[i - 1]![0]!, az = run[i - 1]![1]!, bx = run[i]![0]!, bz = run[i]![1]!;
         put(this.bins, LINE_BIN, Math.min(ax, bx), Math.min(az, bz), Math.max(ax, bx), Math.max(az, bz), this.row.length);
@@ -201,7 +215,7 @@ class Lines {
 /** A point's key to half a metre, as the street graph joins pieces. */
 const nodeKey = (x: number, z: number): number => (Math.round(x * 2) + 1048576) * 4194304 + Math.round(z * 2) + 1048576;
 
-/** A point pieces pass through or end at: how many do each, which, whether one of them may not move, and whether one is marked. */
+/** A point pieces pass through or end at: how many do each, which, whether one of them may not move, and whether one keeps its line there (a marked piece, a street that is no small way). */
 interface Node { x: number; z: number; ends: number; mids: number; rows: number[]; fixed: boolean; marked: boolean }
 
 /** Whether other pieces hold the line at a node: none at a dead end or a point of one piece alone. */
@@ -250,15 +264,24 @@ function simplify(points: { x: number; z: number; keep: boolean }[]): number[][]
 }
 
 /**
- * The road pieces that yield to `footprints`, by their rows in `features`, and what became of how many. A piece not in
- * `changed` is as the data has it.
+ * The road pieces that change where they meet `footprints`, by their rows in `features`, and what became of how many. A
+ * piece not in `changed` is as the data has it. `stalls` are the ends of a lot's stalls on their aisles: a small way
+ * that serves one is not cut there.
  */
-export function yieldRoads(features: readonly RoadFeature[], footprints: readonly Footprint[]): Yielded {
-  const count: YieldCount = { shifted: 0, narrowed: 0, cut: 0, dropped: 0, junctions: 0, parking: 0, marked: 0 };
-  const changed = new Map<number, RoadFeature>();
-  if (footprints.length === 0) return { changed, count };
+export function yieldRoads(features: readonly RoadFeature[], footprints: readonly Footprint[], stalls: readonly (readonly [number, number])[] = []): Yielded {
+  const count: YieldCount = { shifted: 0, narrowed: 0, cut: 0, dropped: 0, junctions: 0, opened: 0, parking: 0, stalls: 0, marked: 0 };
+  const changed = new Map<number, RoadFeature>(), bands: Band[] = [];
+  if (footprints.length === 0) return { changed, count, gone: bands };
   const walls = new Walls(footprints);
   const kinds = features.map(kindOf);
+  const stallBins = new Map<number, number[]>();
+  stalls.forEach(([e, n], k) => put(stallBins, EDGE_BIN, e, n, e, n, k));
+  const served = (x: number, z: number): boolean => {
+    for (let bz = Math.floor((z - STALL_REACH) / EDGE_BIN); bz <= Math.floor((z + STALL_REACH) / EDGE_BIN); bz++) for (let bx = Math.floor((x - STALL_REACH) / EDGE_BIN); bx <= Math.floor((x + STALL_REACH) / EDGE_BIN); bx++) {
+      for (const k of stallBins.get(binKey(bx, bz)) ?? []) if (Math.hypot(stalls[k]![0] - x, stalls[k]![1] - z) <= STALL_REACH) return true;
+    }
+    return false;
+  };
 
   // The pieces whose line a wall is at, and those of them left as they are.
   const hot: number[] = [], parked = new Set<number>();
@@ -277,10 +300,10 @@ export function yieldRoads(features: readonly RoadFeature[], footprints: readonl
     }
     if (!met) return;
     if (kinds[row] === MARKED) count.marked++;
-    else if (parking) { count.parking++; parked.add(row); }
+    else if (parking && kinds[row] === SMALL_WAY) { count.parking++; parked.add(row); }
     else hot.push(row);
   });
-  if (hot.length === 0) return { changed, count };
+  if (hot.length === 0) return { changed, count, gone: bands };
 
   const nodes = new Map<number, Node>();
   features.forEach((f, row) => {
@@ -293,12 +316,12 @@ export function yieldRoads(features: readonly RoadFeature[], footprints: readonl
       if (i === 0 || i === run.length - 1) n.ends++;
       else n.mids++;
       if (n.rows[n.rows.length - 1] !== row) n.rows.push(row);
-      if (kinds[row] !== STREET) n.fixed = true;
-      if (kinds[row] === MARKED) n.marked = true;
+      if (kinds[row] !== SMALL_WAY) n.fixed = true;
+      if (kinds[row] === MARKED || kinds[row]! > SMALL_WAY) n.marked = true;
     });
   });
 
-  // A junction in or at a wall moves clear, with every piece that meets there.
+  // A junction of small ways in or at a wall moves clear, with every piece that meets there.
   const moves = new Map<number, readonly [number, number]>();
   const asked = new Set<number>();
   for (const row of hot) for (const run of runsOf(features[row]!)) for (const p of run) {
@@ -314,7 +337,11 @@ export function yieldRoads(features: readonly RoadFeature[], footprints: readonl
 
   let lines: Lines | null = null;
   for (const row of hot) {
-    const f = features[row]!, half = widthOf(f) / 2, least = leastHalf(f), full = Math.min(half, REACH - 0.5);
+    const f = features[row]!, kind = kinds[row]!, half = widthOf(f) / 2, full = Math.min(half, REACH - 0.5);
+    // What a shifted line must keep clear, and how far it may shift: a small way its least width, a local street its whole.
+    const least = kind === SMALL_WAY ? leastHalf(f) : full, reach = kind === SMALL_WAY ? MAX_SHIFT : kind === LOCAL ? LOCAL_SHIFT : 0;
+    const opens: number[][][] = [];
+    let stallsKept = false;
     const own = new Set<number>([row]);
     for (const run of runsOf(f)) for (const p of run) for (const r of nodes.get(nodeKey(p[0]!, p[1]!))!.rows) own.add(r);
     const before = runsOf(f), after: number[][][] = [], starts: number[] = [], numbers: number[] = [];
@@ -363,7 +390,7 @@ export function yieldRoads(features: readonly RoadFeature[], footprints: readonl
 
       // Each stretch of the line still at a wall shifts sideways, by the least that clears its full width, else the most room there is.
       const tried = new Uint8Array(n);
-      for (let i0 = 0; i0 < n; i0++) {
+      for (let i0 = 0; i0 < n && reach > 0; i0++) {
         if (g[i0]! >= TRIGGER || tried[i0]) continue;
         let i1 = i0;
         for (let k = i0 + 1; k < n && s[k]! - s[i1]! <= MERGE && (!pin[k] || g[k]! < TRIGGER); k++) if (g[k]! < TRIGGER) i1 = k;
@@ -379,7 +406,7 @@ export function yieldRoads(features: readonly RoadFeature[], footprints: readonl
         const roomA = p < 0 ? Infinity : s[a]! - s[p]!, roomB = q >= n ? Infinity : s[q]! - s[b]!;
         lines ??= new Lines(features, kinds);
         let best: { d: number; ta: number; tb: number; c: number } | null = null;
-        search: for (let mag = 0.25; mag <= MAX_SHIFT && roomA >= 2 * mag && roomB >= 2 * mag; mag += 0.25) for (const d of [mag, -mag]) {
+        search: for (let mag = 0.25; mag <= reach && roomA >= 2 * mag && roomB >= 2 * mag; mag += 0.25) for (const d of [mag, -mag]) {
           const ta = Math.min(roomA, Math.max(4, Math.min(12, 3 * mag))), tb = Math.min(roomB, Math.max(4, Math.min(12, 3 * mag)));
           let c = full, ok = true;
           for (let k = p + 1; k < q && ok; k++) {
@@ -404,17 +431,33 @@ export function yieldRoads(features: readonly RoadFeature[], footprints: readonl
         }
       }
 
-      // What is still inside a building is cut out, each end left at the wall; not where a marked piece joins it there.
+      const at = (i: number): [number, number] => [x[i]! + dx[i]!, z[i]! + dz[i]!];
+      const stalled = (i: number, j: number): boolean => { for (let k = i; k <= j; k++) if (served(x[k]!, z[k]!)) return true; return false; };
+      // The road that ran from station i to j, as the data drew it.
+      const lose = (i: number, j: number): void => {
+        const [a, b] = [Math.max(0, i - 1), Math.min(n - 1, j + 1)];
+        bands.push({ half, walked: LOCAL_STREETS.has(typeof f.properties.highway === "string" ? f.properties.highway : String(f.properties.mtfcc ?? "")), line: simplify(Array.from({ length: b - a + 1 }, (_, k) => ({ x: x[a + k]!, z: z[a + k]!, keep: vertex[a + k]! }))) });
+      };
+      // What is still inside a building: a street that keeps its line opens the building along it, as far again as half
+      // its width at each end. A small way is cut out, each end left at the wall; not its mouth on a piece that keeps
+      // its line there, nor where it serves a lot's stalls.
       const gone = new Uint8Array(n);
       for (let i0 = 0; i0 < n; i0++) {
         if (g[i0]! >= TRIGGER || (i0 > 0 && g[i0 - 1]! < TRIGGER)) continue;
         let i1 = i0, deepest = g[i0]!, joined = joins[i0] === 1;
         while (i1 + 1 < n && g[i1 + 1]! < TRIGGER) { deepest = Math.min(deepest, g[++i1]!); joined ||= joins[i1] === 1; }
-        if (deepest < 0 && !joined) gone.fill(1, i0, i1 + 1);
+        if (!(deepest < 0)) continue;
+        if (kind !== SMALL_WAY) {
+          let [a, b] = [i0, i1];
+          while (a > 0 && s[i0]! - s[a]! < half) a--;
+          while (b < n - 1 && s[b]! - s[i1]! < half) b++;
+          opens.push(simplify(Array.from({ length: b - a + 1 }, (_, k) => ({ x: at(a + k)[0], z: at(a + k)[1], keep: vertex[a + k]! }))));
+        } else if (joined && s[i1]! - s[i0]! <= ROOM) continue;
+        else if (stalled(i0, i1)) stallsKept = true;
+        else { gone.fill(1, i0, i1 + 1); lose(i0, i1); }
       }
       if (gone.includes(1)) cut = true;
       else if (dx.every((v) => v === 0) && dz.every((v) => v === 0)) { after.push(run); starts.push(runStart); numbers.push(r); return; }
-      const at = (i: number): [number, number] => [x[i]! + dx[i]!, z[i]! + dz[i]!];
       /** The point between a clear station and a cut one that stands TRIGGER off the wall, and its share of the way. */
       const wallEnd = (clear: number, cutAt: number): { x: number; z: number; t: number } => {
         const [ax, az] = at(clear), [bx, bz] = at(cutAt);
@@ -452,12 +495,16 @@ export function yieldRoads(features: readonly RoadFeature[], footprints: readonl
         let metres = 0;
         for (let i = 1; i < line.length; i++) metres += Math.hypot(line[i]![0]! - line[i - 1]![0]!, line[i]![1]! - line[i - 1]![1]!);
         // A run after a cut is numbered by the metre it starts at, so a cut elsewhere along the piece renumbers none.
-        if ((u === 0 && v === n - 1) || metres >= MIN_STUB) { after.push(line); starts.push(from); numbers.push(u === 0 ? r : r + 1000 * Math.ceil(s[u]!)); }
+        const short = !(u === 0 && v === n - 1) && metres < MIN_STUB;
+        if (short && stalled(u, v)) stallsKept = true;
+        if (!short || stalled(u, v)) { after.push(line); starts.push(from); numbers.push(u === 0 ? r : r + 1000 * Math.ceil(s[u]!)); }
+        else lose(u, v);
         u = v;
       }
     });
 
-    if (!shifted && !cut) continue;
+    if (stallsKept) count.stalls++;
+    if (!shifted && !cut && opens.length === 0) continue;
     const properties: Record<string, unknown> = { ...f.properties };
     const did: string[] = [];
     if (shifted) { count.shifted++; did.push("shifted"); }
@@ -474,10 +521,16 @@ export function yieldRoads(features: readonly RoadFeature[], footprints: readonl
       else delete properties.runs_from_m;
       properties.run_numbers = numbers;
     }
+    if (opens.length > 0) {
+      count.opened++; did.push("opens");
+      properties.passage_runs = opens;
+      properties.passage_why = "through street";
+    }
     properties.yielded = did.join(" ");
-    changed.set(row, { ...f, geometry: after.length === 1 ? { type: "LineString", coordinates: after[0]! } : { type: "MultiLineString", coordinates: after }, properties });
+    const geometry = !shifted && !cut ? f.geometry : after.length === 1 ? { type: "LineString", coordinates: after[0]! } : { type: "MultiLineString", coordinates: after };
+    changed.set(row, { ...f, geometry, properties });
   }
-  return { changed, count };
+  return { changed, count, gone: bands };
 }
 
 /** The footprints of a work folder, each marked where its label says it is a parking structure. */
@@ -494,11 +547,67 @@ export function readFootprints(source: string): Footprint[] {
   });
 }
 
-const kept = new Map<string, { stamp: string; yielded: Yielded; seconds: number }>();
+/** The ends of a work folder's stalls on their aisles (base/stalls.json). */
+export function readStalls(source: string): [number, number][] {
+  const file = join(source, "base/stalls.json");
+  return existsSync(file) ? (JSON.parse(readFileSync(file, "utf8")) as { fe: number; fn: number }[]).map((s) => [s.fe, s.fn]) : [];
+}
+
+/**
+ * Metres from (e, n) to the nearest band of road that is gone, negative within it; Infinity where it is more than `reach`,
+ * or a road that is left is as near by its own band: the ground there is that road's.
+ */
+export type Gone = (e: number, n: number, reach: number) => number;
+
+/** Whose ground a place is, for `gone` bands among the roads `left` (the pieces as they stand after yielding). */
+export function goneAmong(gone: readonly Band[], left: readonly RoadFeature[]): Gone {
+  const far = (seg: readonly number[], k: number, x: number, z: number): number => {
+    const ax = seg[k * 4]!, az = seg[k * 4 + 1]!, ex = seg[k * 4 + 2]! - ax, ez = seg[k * 4 + 3]! - az;
+    const t = Math.max(0, Math.min(1, ((x - ax) * ex + (z - az) * ez) / (ex * ex + ez * ez || 1)));
+    return Math.hypot(x - ax - ex * t, z - az - ez * t);
+  };
+  const index = (): { seg: number[]; half: number[]; bins: Map<number, number[]> } => ({ seg: [], half: [], bins: new Map() });
+  const add = (into: ReturnType<typeof index>, line: number[][], half: number, where?: ReadonlySet<number>): void => {
+    for (let i = 1; i < line.length; i++) {
+      const ax = line[i - 1]![0]!, az = line[i - 1]![1]!, bx = line[i]![0]!, bz = line[i]![1]!;
+      if (where && !where.has(binKey(Math.floor(ax / 64), Math.floor(az / 64))) && !where.has(binKey(Math.floor(bx / 64), Math.floor(bz / 64)))) continue;
+      put(into.bins, LINE_BIN, Math.min(ax, bx), Math.min(az, bz), Math.max(ax, bx), Math.max(az, bz), into.half.length);
+      into.seg.push(ax, az, bx, bz);
+      into.half.push(half);
+    }
+  };
+  // A line with no step over 48 m, so that its points' 64 m squares tell where it runs.
+  const fine = (line: number[][]): number[][] => line.flatMap((p, i) => {
+    if (i === 0) return [p];
+    const q = line[i - 1]!, steps = Math.ceil(Math.hypot(p[0]! - q[0]!, p[1]! - q[1]!) / 48);
+    return Array.from({ length: Math.max(1, steps) }, (_, k) => (k + 1 >= steps ? p : [q[0]! + ((p[0]! - q[0]!) * (k + 1)) / steps, q[1]! + ((p[1]! - q[1]!) * (k + 1)) / steps]));
+  });
+  // Only the roads left that come within a square of one that is gone are kept.
+  const lost = index(), stay = index(), about = new Set<number>();
+  for (const b of gone) {
+    add(lost, b.line, b.half);
+    for (const [e, n] of fine(b.line)) for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) about.add(binKey(Math.floor(e! / 64) + dx, Math.floor(n! / 64) + dz));
+  }
+  for (const f of left) if (kindOf(f) !== WALKED) for (const run of runsOf(f)) add(stay, fine(run), widthOf(f) / 2, about);
+  const nearest = (from: ReturnType<typeof index>, x: number, z: number, reach: number): number => {
+    let best = Infinity;
+    for (let bz = Math.floor((z - reach) / LINE_BIN); bz <= Math.floor((z + reach) / LINE_BIN); bz++) for (let bx = Math.floor((x - reach) / LINE_BIN); bx <= Math.floor((x + reach) / LINE_BIN); bx++) {
+      for (const k of from.bins.get(binKey(bx, bz)) ?? []) best = Math.min(best, far(from.seg, k, x, z) - from.half[k]!);
+    }
+    return best;
+  };
+  return (e, n, reach) => {
+    if (gone.length === 0) return Infinity;
+    const own = nearest(lost, e, n, reach + 16);
+    return own > reach || nearest(stay, e, n, Math.max(0, own) + 16) <= own ? Infinity : own;
+  };
+}
+
+const kept = new Map<string, { stamp: string; yielded: Yielded; seconds: number; gone: Gone; walked: Gone }>();
 
 /** What yields in a work folder, worked out once for the files as they stand. */
 export function yieldOf(source: string, features: readonly RoadFeature[]): Yielded {
-  const stamp = ["base/roads.geojson", "base/buildings.geojson", "blocks/labels.json"].map((name) => {
+  const stamp = ["base/roads.geojson", "base/buildings.geojson", "blocks/labels.json", "base/stalls.json"].map((name) => {
     const file = join(source, name);
     if (!existsSync(file)) return "-";
     const s = statSync(file);
@@ -507,11 +616,23 @@ export function yieldOf(source: string, features: readonly RoadFeature[]): Yield
   let got = kept.get(source);
   if (got?.stamp !== stamp) {
     const t0 = performance.now();
-    const yielded = yieldRoads(features, readFootprints(source));
-    kept.set(source, (got = { stamp, yielded, seconds: (performance.now() - t0) / 1000 }));
+    const footprints = readFootprints(source);
+    const yielded = yieldRoads(features, footprints, footprints.length > 0 ? readStalls(source) : []);
+    const left = yielded.gone.length > 0 ? features.map((f, row) => yielded.changed.get(row) ?? f) : [];
+    const gone = goneAmong(yielded.gone, left), walked = goneAmong(yielded.gone.filter((b) => b.walked), left);
+    kept.set(source, (got = { stamp, yielded, seconds: (performance.now() - t0) / 1000, gone, walked }));
   }
   return got.yielded;
 }
+
+/**
+ * The bands of road a work folder's yielding took away, once its roads are read: whose ground a place near one is
+ * (`own`), and the same for those of them the data made walks along (`walked`).
+ */
+export const goneOf = (source: string): { bands: readonly Band[]; own: Gone; walked: Gone } | null => {
+  const got = kept.get(source);
+  return got ? { bands: got.yielded.gone, own: got.gone, walked: got.walked } : null;
+};
 
 /** How many pieces of a work folder yielded and the seconds that took, once its roads are read. */
 export const yieldCount = (source: string): { count: YieldCount; seconds: number } | null => {

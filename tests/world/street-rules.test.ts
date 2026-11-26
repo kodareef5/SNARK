@@ -45,7 +45,7 @@ test("a city's rules come first, its own types beside the shared, and a shared r
 
 /** A run along x at z, from x0 to x1, of way `way`. */
 const run = (way: number, name: string, z: number, x0: number, x1: number): Run => ({
-  id: `osm:${way}:0`, run: 0, line: way, way, name, mtfcc: "S1400", highway: "residential", lanes: 2, half: 4, oneway: 0, sidewalk: null, parking: [null, null], maxspeed: null, yielded: null, xz: Float64Array.of(x0, z, x1, z),
+  id: `osm:${way}:0`, run: 0, line: way, way, name, mtfcc: "S1400", highway: "residential", lanes: 2, half: 4, oneway: 0, sidewalk: null, parking: [null, null], maxspeed: null, yielded: null, passage: null, xz: Float64Array.of(x0, z, x1, z),
 });
 // Longitude and latitude as the map's metres: a hundred thousand metres a degree, x west.
 const toMap = (lon: number, lat: number): [number, number] => [-lon * 1e5, lat * 1e5];

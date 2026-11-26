@@ -1,15 +1,19 @@
-// A street yields where its line runs through a building's footprint (tools/mapworld/streets/yield.ts): it shifts
-// sideways, narrows or ends at the wall, the same for every reader of the roads and whatever else the data holds.
+// Where a street's line runs through a building's footprint (tools/mapworld/streets/yield.ts): a small way shifts
+// sideways, narrows or ends at the wall; a through street keeps its line and the building opens along it; the same for
+// every reader of the roads and whatever else the data holds. What the data painted for a way that is gone is taken up.
 
 import { afterAll, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { gridAt } from "../../tools/mapworld/base.ts";
+import { readPassages } from "../../tools/mapworld/passages.ts";
 import type { Site } from "../../tools/mapworld/statics.ts";
 import { roadIndex } from "../../tools/mapworld/street-cars.ts";
 import { readStreetGraph } from "../../tools/mapworld/street-graph.ts";
 import { readRuns } from "../../tools/mapworld/streets/fit.ts";
-import { readFootprints, readRoads, yieldRoads, type RoadFeature } from "../../tools/mapworld/streets/yield.ts";
+import { takeUp } from "../../tools/mapworld/streets/paint.ts";
+import { goneOf, readFootprints, readRoads, yieldRoads, type RoadFeature } from "../../tools/mapworld/streets/yield.ts";
 
 const folders: string[] = [];
 afterAll(() => { for (const f of folders) rmSync(f, { recursive: true, force: true }); });
@@ -22,14 +26,18 @@ const road = (id: string, line: number[][], more: Record<string, unknown> = {}):
 });
 const block = (id: number, [w, s, e, n]: Rect): object => ({ type: "Feature", properties: { id }, geometry: { type: "Polygon", coordinates: [[[w, s], [e, s], [e, n], [w, n], [w, s]]] } });
 
-/** A work folder of these roads and footprints, the footprints numbered from 1. */
-function folder(roads: readonly RoadFeature[], blocks: readonly Rect[], labels?: Record<string, object>): string {
+/** A street of two lanes 8.6 m wide: a local one, and one that keeps its line. */
+const LOCAL = { mtfcc: "S1400", highway: "residential", lanes: 2, width_m: 8.6 }, THROUGH = { ...LOCAL, highway: "tertiary" };
+
+/** A work folder of these roads and footprints, the footprints numbered from 1, with other files of base/ by name. */
+function folder(roads: readonly RoadFeature[], blocks: readonly Rect[], labels?: Record<string, object>, more: Record<string, unknown> = {}): string {
   const source = mkdtempSync(join(tmpdir(), "snark-yield-"));
   folders.push(source);
   mkdirSync(join(source, "base"));
   writeFileSync(join(source, "base/roads.geojson"), JSON.stringify({ type: "FeatureCollection", features: roads.map((r) => ({ type: "Feature", ...r })) }));
   writeFileSync(join(source, "base/buildings.geojson"), JSON.stringify({ type: "FeatureCollection", features: blocks.map((b, k) => block(k + 1, b)) }));
   if (labels) { mkdirSync(join(source, "blocks")); writeFileSync(join(source, "blocks/labels.json"), JSON.stringify(labels)); }
+  for (const [name, value] of Object.entries(more)) writeFileSync(join(source, "base", name), JSON.stringify(value));
   return source;
 }
 
@@ -201,4 +209,117 @@ test("a piece wholly inside a building is dropped, and its row stays in its plac
   expect(read[0]!.properties.yielded).toBe("dropped");
   expect(readRuns(source, same).map((r) => r.line)).toEqual([1]);
   expect(readStreetGraph(source, same).pieces.map((p) => p.id)).toEqual(["osm:1:0", "osm:2:0"]);
+});
+
+test("a through street keeps its line, and the building opens along the run inside", () => {
+  const source = folder([road("osm:1:0", STREET, THROUGH)], [ACROSS]);
+  const [f] = readRoads(source);
+  expect(runsOf(f!)).toEqual([STREET]);
+  expect(f!.properties.yielded).toBe("opens");
+  expect(f!.properties.passage_why).toBe("through street");
+  // From half its width before the wall to half its width past the far one.
+  const [inside, none] = f!.properties.passage_runs as number[][][];
+  expect(none).toBeUndefined();
+  expect(inside![0]![0]).toBeGreaterThanOrEqual(24);
+  expect(inside![0]![0]).toBeLessThanOrEqual(26);
+  expect(inside!.at(-1)![0]).toBeGreaterThanOrEqual(74);
+  expect(inside!.at(-1)![0]).toBeLessThanOrEqual(76);
+  // The ruins read it as they read a tagged passage, across the street's width.
+  const [passage, more] = readPassages({ source, toLattice: same, groundAt: () => 0 });
+  expect(more).toBeUndefined();
+  expect(passage!.width).toBe(8.6);
+  expect([passage!.points[0]!.x, passage!.points.at(-1)!.x]).toEqual([inside![0]![0]!, inside!.at(-1)![0]!]);
+  const [run] = readRuns(source, same);
+  expect(Array.from(run!.xz)).toEqual(STREET.flat());
+  expect([run!.yielded, run!.passage]).toEqual(["opens", "through street"]);
+});
+
+test("a through street opens a parking structure too; beside a wall it does not enter it is as it was", () => {
+  const garage = readRoads(folder([road("osm:1:0", STREET, THROUGH)], [ACROSS], { "1": { kind: "parking_garage" } }));
+  expect(garage[0]!.properties.yielded).toBe("opens");
+  // 0.3 m off the wall: near it, not through it.
+  const beside = readRoads(folder([road("osm:1:0", STREET, THROUGH)], [[30, -20, 70, -0.3]]));
+  expect(beside[0]!.properties.yielded).toBeUndefined();
+  expect(beside[0]!.properties.passage_runs).toBeUndefined();
+});
+
+test("a local street keeps its line where no shift of 2 m clears its whole width", () => {
+  const [f] = readRoads(folder([road("osm:1:0", STREET, LOCAL)], [BESIDE]));
+  expect(runsOf(f!)).toEqual([STREET]);
+  expect(f!.properties.width_m).toBe(8.6);
+  expect(f!.properties.yielded).toBe("opens");
+});
+
+test("a narrow local street shifts up to 2 m clear of the wall, and is not narrowed", () => {
+  // 3 m wide, its line 0.3 m inside the wall: 2 m puts its whole width clear.
+  const wall: Rect = [30, -20, 70, 0.3];
+  const [f] = readRoads(folder([road("osm:1:0", STREET, { ...LOCAL, width_m: 3 })], [wall]));
+  const line = runsOf(f!)[0]!;
+  expect(gap(line, wall)).toBeGreaterThanOrEqual(1.5 - 0.02);
+  expect(Math.max(...line.map((p) => Math.abs(p[1]!)))).toBeLessThanOrEqual(2);
+  expect([f!.properties.width_m, f!.properties.yielded]).toEqual([3, "shifted"]);
+  // A metre inside, 2 m is not enough: it keeps its line and the building opens.
+  const deeper = readRoads(folder([road("osm:1:0", STREET, { ...LOCAL, width_m: 3 })], [[30, -20, 70, 1]]));
+  expect(runsOf(deeper[0]!)).toEqual([STREET]);
+  expect(deeper[0]!.properties.yielded).toBe("opens");
+});
+
+test("a local street of one lane yields as a small way does", () => {
+  const [f] = readRoads(folder([road("osm:1:0", STREET, { ...LOCAL, lanes: 1 })], [ACROSS]));
+  expect(f!.properties.yielded).toBe("cut");
+  expect(runsOf(f!).length).toBe(2);
+});
+
+test("a small way's mouth on a through street under a building stays joined; a long run inside ends at the wall", () => {
+  const avenue = road("osm:1:0", [[0, 0], [50, 0], [100, 0]], THROUGH), alley = [[50, 60], [50, 0]];
+  // A station 6 m deep over the avenue: the alley's last 3 m are under it.
+  const thin = readRoads(folder([avenue, road("osm:2:0", alley)], [[30, -3, 70, 3]]));
+  expect(runsOf(thin[1]!)).toEqual([alley]);
+  expect(thin[0]!.properties.yielded).toBe("opens");
+  // A block 40 m deep: the alley stops at its wall.
+  const deep = readRoads(folder([avenue, road("osm:2:0", alley)], [ACROSS]));
+  expect(runsOf(deep[1]!).length).toBe(1);
+  expect(runsOf(deep[1]!)[0]!.at(-1)![1]).toBeCloseTo(20.5, 1);
+});
+
+test("a small way that serves a lot's stalls is not cut", () => {
+  const aisle = { mtfcc: "S1780" };
+  const source = folder([road("osm:1:0", STREET, aisle)], [ACROSS], undefined, { "stalls.json": [{ lot: "a", e: 50, n: 6, fe: 50, fn: 3 }] });
+  expect(runsOf(readRoads(source)[0]!)).toEqual([STREET]);
+  expect(yieldRoads([road("osm:1:0", STREET, aisle)], readFootprints(source), [[50, 3]]).count).toMatchObject({ stalls: 1, cut: 0, dropped: 0 });
+  expect(yieldRoads([road("osm:1:0", STREET, aisle)], readFootprints(source), []).count).toMatchObject({ stalls: 0, cut: 1 });
+});
+
+/** An avenue along n = 0 and an alley north from it to n = 64, a block across the alley from n = 30 to 60. */
+const ALLEY = [[0, 0], [0, 64]], OVER: Rect = [-20, 30, 20, 60];
+const corner = (more: Record<string, unknown> = {}): string => folder([road("osm:1:0", [[-90, 0], [0, 0], [90, 0]], THROUGH), road("osm:2:0", ALLEY)], [OVER], undefined, more);
+
+test("the street and the crossing the data painted for a way that is gone are taken up", () => {
+  const source = corner();
+  // The alley ends at the wall; what is left past the block is under 6 m and dropped with it.
+  const [left, none] = runsOf(readRoads(source)[1]!);
+  expect(none).toBeUndefined();
+  expect(left!.at(-1)![1]).toBeCloseTo(29.5, 1);
+  const grid = gridAt([-100, -100, 100, 100]), at = (e: number, n: number): number => ((100 - n) / 2) * grid.nx + (e + 100) / 2;
+  const roads = new Uint8Array(grid.nx * grid.nz), use = new Uint8Array(roads.length);
+  for (let n = -100; n <= 100; n += 2) for (let e = -100; e <= 100; e += 2) {
+    if (Math.abs(n) <= 4 || (Math.abs(e) <= 2 && n >= 0 && n <= 64)) roads[at(e, n)] = 1;
+  }
+  // A crossing over the alley's far end, and one over the part that stays.
+  for (const e of [-4, -2, 0, 2, 4]) [use[at(e, 62)], use[at(e, 10)]] = [2, 2];
+  const gone = goneOf(source)!;
+  const taken = takeUp(gone.bands, gone.own, gone.walked, grid, roads, use);
+  expect([roads[at(0, 40)], roads[at(2, 32)], roads[at(0, 62)], use[at(0, 62)]]).toEqual([0, 0, 0, 0]);
+  expect([roads[at(0, 20)], roads[at(0, 28)], roads[at(0, 0)], roads[at(40, 0)], roads[at(40, 4)], use[at(0, 10)]]).toEqual([1, 1, 1, 1, 1, 2]);
+  expect(taken.road).toBeGreaterThan(30);
+  expect(taken.crossing).toBeGreaterThanOrEqual(3);
+  expect(taken.walk).toBe(0);
+});
+
+test("a crossing and a stop sign on a way that is gone go with it; those on what stays are kept", () => {
+  const crossing = (n: number): object => ({ type: "Feature", geometry: { type: "LineString", coordinates: [[-4, n], [4, n]] }, properties: { kind: "crossing", drawn: false, width_m: 3 } });
+  const stop = (n: number): object => ({ e: 0, n, kind: "stop", approaches: [{ road: "osm:2:0", travel: [0, -1] }] });
+  const graph = readStreetGraph(corner({ "walks.geojson": { features: [crossing(62), crossing(10)] }, "controls.json": [stop(62), stop(6)] }), same);
+  expect(graph.crossings.map((c) => c.az)).toEqual([10]);
+  expect(graph.marked.map((m) => [m.z, m.governs.length])).toEqual([[6, 1]]);
 });

@@ -41,8 +41,10 @@ export interface Run {
   readonly sidewalk: string | null;
   readonly parking: readonly [string | null, string | null];
   readonly maxspeed: number | null;
-  /** How its piece yielded to a building (yield.ts): shifted, narrowed, cut, or null. */
+  /** What became of its piece where it met a building (yield.ts): shifted, narrowed, cut, opens, or null. */
   readonly yielded: string | null;
+  /** Why a building opens along it: "tagged" by the data, "through street" where it keeps its line through a footprint, or null. */
+  readonly passage: string | null;
   /** x and z pairs in the map's metres. */
   readonly xz: Float64Array;
 }
@@ -113,7 +115,7 @@ export function readRuns(source: string, toMap: ToMap): Run[] {
       if (pts.length < 4) return;
       out.push({
         id, run: numbers?.[k] ?? k, line, way: way === undefined ? null : Number(way), name: text(p.name), mtfcc, highway, lanes: num(p.lanes) ?? 2, half: (num(p.width_m) ?? 8) / 2,
-        oneway: num(p.oneway_dir) ?? (p.oneway === true ? 1 : 0), sidewalk: text(p.sidewalk), parking: [text(p.parking_left), text(p.parking_right)], maxspeed: num(p.maxspeed_mph), yielded: text(p.yielded), xz: Float64Array.from(pts),
+        oneway: num(p.oneway_dir) ?? (p.oneway === true ? 1 : 0), sidewalk: text(p.sidewalk), parking: [text(p.parking_left), text(p.parking_right)], maxspeed: num(p.maxspeed_mph), yielded: text(p.yielded), passage: p.passage === true ? "tagged" : text(p.passage_why), xz: Float64Array.from(pts),
       });
     });
   });
