@@ -264,8 +264,9 @@ export function buildPack(meshes: SourceMesh[], palette: Uint8Array, clips: read
         if (rig.soles) rig.soles = rig.soles.filter(s => s.mesh !== mesh.id);
         const feet = [B_FOOT_L, B_TOE_L, B_FOOT_R, B_TOE_R];
         const allowed = [...feet, B_LOWER_LEG_L, B_LOWER_LEG_R];
+        // A boot's shaft may bend with the shin as the skin under it does; what is on a foot or a toe is wholly on it.
         const rigid = lod.bones && [...lod.bones].every(b => allowed.includes(b)) &&
-          (!lod.joints || !lod.weights || [...lod.weights].every((w, k) => w === 0 || lod.joints![k] === lod.bones![(k / 4) | 0]));
+          (!lod.joints || !lod.weights || [...lod.weights].every((w, k) => w === 0 || lod.joints![k] === lod.bones![(k / 4) | 0] || !feet.includes(lod.bones![(k / 4) | 0]!)));
         // Wardrobe shoes are rigid too, but the ride fit rejects their soles and no seat reads them yet.
         if (rigid && mesh.id.endsWith("/feet")) {
           const points: number[] = [];

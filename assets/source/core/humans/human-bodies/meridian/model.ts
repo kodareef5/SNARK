@@ -3,7 +3,7 @@
 import type { PackRig } from "../../../../../../shared/pack/pack.ts";
 import type { SourceMesh } from "../../../../../../tools/pack/write.ts";
 import { B_CHEST, B_FOOT_L, B_FOOT_R, B_HEAD, B_HIPS, B_NECK, B_SPINE, B_UPPER_CHEST } from "../../../../../../shared/anim/human.ts";
-import { contour, finish as f, Surface, type Form, type Profile, type Row } from "./surface.ts";
+import { contour, finish as f, Surface, type Form, type Profile, type Row, type V } from "./surface.ts";
 
 function band(s: Surface, form: Form, lo: number, hi: number, tile: number, bone: number, off = 0) {
   s.panel(
@@ -1150,8 +1150,8 @@ function gloves(s: Surface, female: boolean, rest: readonly number[]) {
 }
 
 /** The paired ceramic vanes extend from the stowed engine blocks in air. The exhaust follows the nozzle axis and spreads into the wake. */
-function openVents(female: boolean, level: number) {
-  const s = new Surface(level);
+function openVents(female: boolean, level: number, shift: ((p: V) => V) | null = null) {
+  const s = new Surface(level, shift);
   for (const side of [-1, 1]) {
     const x = side * ((female ? 0.83 : 1) * 0.096 + 0.014);
     const vane = contour(
@@ -1210,9 +1210,10 @@ function openVents(female: boolean, level: number) {
 }
 
 /** Separate foot bones keep the two boot nozzles on the soles as the ankles swing. */
-function bootVents(level: number) {
+function bootVents(level: number, at: (root: V) => ((p: V) => V) | null = () => null) {
   const s = new Surface(level);
   for (const side of [-1, 1]) {
+    s.moveBy(at([side * 0.112, 0, -0.064]));
     const rings = [[0.32,0.001], [0.23,0.019], [0.13,0.031], [0.06,0.036], [0,0.018]] as const;
     const shape = rings.map(([d,r]) => [-0.014-d, side*0.112, -0.064-d*0.3, r, r] as const);
     s.panel(contour(shape), shape.map(([y]) => [y,-180,180]), f.plume, side > 0 ? B_FOOT_L : B_FOOT_R, 12, 0);
@@ -1220,12 +1221,18 @@ function bootVents(level: number) {
   return s.done();
 }
 
-export function meridian(body: readonly SourceMesh[], rig: PackRig): SourceMesh[] {
+/**
+ * The suit on `body`'s slot meshes, three levels each. The plates were drawn on the Quaternius body: `shift` says how far a
+ * point drawn there moves to sit as it did on the body worn, where that is another.
+ */
+export function meridian(body: readonly SourceMesh[], rig: PackRig, shift: ((p: V) => V) | null = null): SourceMesh[] {
   const female = rig.id === "human_f";
+  // The vanes and the boot nozzles move as one with the point they hang from.
+  const at = (root: V) => (shift ? (): V => shift(root) : null);
   return body.flatMap((base) => {
     const slot = base.id.split("/").at(-1)!;
     const lods = base.lods.map((lod, level) => {
-      const s = new Surface(level);
+      const s = new Surface(level, shift);
       s.liner(lod, slot === "hands");
       switch (slot) {
         case "head":
@@ -1249,9 +1256,9 @@ export function meridian(body: readonly SourceMesh[], rig: PackRig): SourceMesh[
     const worn = { id: `core:${rig.id}/armor/meridian/${slot}`, rig: rig.id, skeleton: rig.skeleton, lods, flat: 2 };
     const parts = female ? ([worn] as SourceMesh[]) : [worn, loosePiece(worn, slot)];
     if (slot === "torso")
-      parts.push({ ...worn, id: `core:${rig.id}/armor/meridian/vents`, lods: lods.map((_, level) => openVents(female, level)) });
+      parts.push({ ...worn, id: `core:${rig.id}/armor/meridian/vents`, lods: lods.map((_, level) => openVents(female, level, at([0, 1.36, -0.2]))) });
     if (slot === "feet")
-      parts.push({ ...worn, id: `core:${rig.id}/armor/meridian/boot_jets`, lods: lods.map((_, level) => bootVents(level)) });
+      parts.push({ ...worn, id: `core:${rig.id}/armor/meridian/boot_jets`, lods: lods.map((_, level) => bootVents(level, at)) });
     return parts;
   });
 }

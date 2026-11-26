@@ -61,9 +61,16 @@ export class Surface {
   private uv: number[] = [];
   private c: number[] = [];
   private b: number[] = [];
+  /** Four bones and four weights a vertex: a plate's own bone alone, the liner's as the skin it copies. */
+  private j: number[] = [];
+  private w: number[] = [];
+  private blended = false;
+  private lining = false;
   private ix: number[] = [];
   private slots: number[] = [];
   readonly level: number;
+  /** How far a point drawn on the body the plates were made on moves to sit as it did on the body worn. */
+  private shift: ((p: V) => V) | null;
   /**
    * The liner's vertices by what each holds, so that two corners alike are one. The liner itself stays whole: taking
    * away what the plates hide was tried and measured (2026-11-18). With rays cast outward it took what shows from
@@ -71,15 +78,26 @@ export class Surface {
    * which is what stays true in every pose, 326 triangles of 4,375 are never seen, all in the helmet.
    */
   private readonly linerVertices = new Map<string, number>();
-  constructor(level: number) {
+  constructor(level: number, shift: ((p: V) => V) | null = null) {
     this.level = level;
+    this.shift = shift;
   }
-  private vertex(point: V, normal: V, u: number, v: number, tile: number, bone: number): number {
+  /** Moves what is drawn from here on by `shift` in place of the one it was made with. */
+  moveBy(shift: ((p: V) => V) | null) {
+    this.shift = shift;
+  }
+  private vertex(point: V, normal: V, u: number, v: number, tile: number, bone: number, joints: readonly number[] = [bone, bone, bone, bone], weights: readonly number[] = [1, 0, 0, 0]): number {
     const i = this.b.length,
       pad = 0.035;
+    if (this.shift && !this.lining) {
+      const d = this.shift(point);
+      point = [point[0] + d[0], point[1] + d[1], point[2] + d[2]];
+    }
     this.p.push(...point);
     this.n.push(...normal);
     this.b.push(bone);
+    this.j.push(...joints);
+    this.w.push(...weights);
     if (tile >= finish.plume) {
       this.c.push(v < 0.28 ? 13 : v < 0.7 ? 64 : 41);
       this.uv.push(u + (tile-finish.plume)*2, v);
@@ -96,7 +114,7 @@ export class Surface {
     this.uv.push(((tile % 4) + pad + u * (1 - 2 * pad)) / 4, (Math.floor(tile / 4) + pad + v * (1 - 2 * pad)) / 4);
     return i;
   }
-  /** Dark textile follows the source mesh exactly, including distal fingertip weights and body-slider seams. */
+  /** Dark textile follows the source mesh exactly, with its bones and weights, including distal fingertip weights and body-slider seams. */
   liner(lod: SourceLod, hand: boolean) {
     const tile = hand ? finish.palm : finish.knit, scale = hand ? 8 : 3;
     const p = lod.positions,
@@ -132,11 +150,18 @@ export class Surface {
         const tu = Math.abs(((u * scale) % 2) - 1),
           tv = Math.abs(((w * scale) % 2) - 1),
           bone = lod.bones![v]!;
+        const joints = lod.joints && lod.weights ? [...lod.joints.subarray(v * 4, v * 4 + 4)] : undefined,
+          weights = joints ? [...lod.weights!.subarray(v * 4, v * 4 + 4)] : undefined;
         // A corner is the body's vertex with the knit's coordinate there: where two triangles agree on both it is one
         // vertex, where each corner of each triangle was its own.
-        const id = `${key(v)}|${bone}|${Math.round(tu * 1e5)}|${Math.round(tv * 1e5)}`;
+        const id = `${key(v)}|${bone}|${joints ?? ""}|${weights ?? ""}|${Math.round(tu * 1e5)}|${Math.round(tv * 1e5)}`;
         let at = this.linerVertices.get(id);
-        if (at === undefined) this.linerVertices.set(id, (at = this.vertex(pt, unit(normals.get(key(v))!), tu, tv, tile, bone)));
+        if (at === undefined) {
+          this.lining = true;
+          this.linerVertices.set(id, (at = this.vertex(pt, unit(normals.get(key(v))!), tu, tv, tile, bone, joints, weights)));
+          this.lining = false;
+          if (joints && weights!.some((x, k) => x > 0 && joints[k] !== bone)) this.blended = true;
+        }
         this.ix.push(at);
       }
     }
@@ -367,6 +392,7 @@ export class Surface {
       ...(this.level < 2
         ? { sections: Uint8Array.from(this.slots), uvs: Float32Array.from(this.uv), normals: Float32Array.from(this.n) }
         : {}),
+      ...(this.level < 2 && this.blended ? { joints: Uint8Array.from(this.j), weights: Float32Array.from(this.w) } : {}),
     };
   }
 }

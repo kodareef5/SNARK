@@ -488,7 +488,8 @@ export interface HumanBodiesAsset {
     readonly visor?: boolean;
     /** Slot 3 draws a powered exhaust plume in its own local coordinates. */
     readonly exhaust?: boolean;
-    readonly make: (body: readonly SourceMesh[], rig: PackRig) => SourceMesh[];
+    /** `shift` moves a point drawn on the Quaternius body to sit as it did on the body worn, where that is another. */
+    readonly make: (body: readonly SourceMesh[], rig: PackRig, shift?: (p: [number, number, number]) => [number, number, number]) => SourceMesh[];
   };
   readonly materials?: Readonly<Record<string, MaterialSpec>>;
   readonly kind: "human-bodies";
@@ -535,6 +536,8 @@ export interface HumanBodiesAsset {
     readonly files: readonly string[];
     /** An armor set is an outfit's parts together. `texture` is its base colour. */
     readonly sets: readonly { readonly id: string; readonly parts: readonly string[]; readonly texture: string }[];
+    /** The outfits' own skin, by source material: left out, and the body's own skin put in where it shows (tools/pack/liner.ts). */
+    readonly skin?: readonly string[];
   };
 }
 

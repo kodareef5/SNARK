@@ -66,6 +66,8 @@ export interface CookOptions {
   palette: Uint8Array;
   /** Moves a piece made on another body onto this one once gathered (refit.ts refitPiece). Its triangles keep the zones they had. */
   refit?: (piece: RefitPiece) => void;
+  /** Source materials whose triangles are left out without a word: an outfit's own skin, where the body's lines it (liner.ts). */
+  leave?: readonly string[];
 }
 
 export interface Cooked {
@@ -228,7 +230,7 @@ function gather(list: readonly Gltf[], opts: CookOptions, warnings: string[]): {
         const material = prim.material === undefined ? "" : (json.materials?.[prim.material]?.name ?? "");
         const section = opts.sections[material];
         if (section === undefined) {
-          if (!warned.has(material)) warnings.push(`material "${material}" is not cooked; its triangles are left out`);
+          if (!warned.has(material) && !opts.leave?.includes(material)) warnings.push(`material "${material}" is not cooked; its triangles are left out`);
           warned.add(material);
           continue;
         }
@@ -310,18 +312,13 @@ function zonesOf(at: Gathered, rest: readonly number[]): void {
   }
 }
 
-/**
- * Puts every corner of a hand or foot triangle wholly on its own bone, so the hands and feet meshes follow one bone a
- * vertex. With `cuffs`, a hand triangle's corner whose own bone is a forearm's keeps its blend: a refit glove's cuff turns
- * with the eased skin under it. A boot stays whole, as its soles are calibrated on it (write.ts).
- */
-function stiffen(at: Gathered, cuffs = false): void {
+/** Puts every corner of a hand or foot triangle wholly on its own bone, so the hands and feet meshes follow one bone a vertex. */
+function stiffen(at: Gathered): void {
   for (let t = 0; t < at.indices.length; t += 3) {
     const slot = SKIN_ZONE_SLOT[at.zones[t / 3]!]!;
     if (slot !== SLOT_HANDS && slot !== SLOT_FEET) continue;
     for (let k = 0; k < 3; k++) {
       const v = at.indices[t + k]!;
-      if (cuffs && slot === SLOT_HANDS && !RIGID_BONES.has(at.bones[v]!)) continue;
       at.rigid[v] = 1;
       for (let j = 0; j < 4; j++) {
         at.joints[v * 4 + j] = at.bones[v]!;
@@ -434,8 +431,9 @@ export function cookBody(sources: Gltf | readonly Gltf[] | ScriptedBody, opts: C
     opts.refit(at);
     for (let v = 0; v < at.bones.length; v++) at.rigid[v] = RIGID_BONES.has(at.bones[v]!) ? 1 : 0;
   }
-  if (!opts.whole) {
-    stiffen(at, opts.refit !== undefined);
+  // A refit piece is weighted from the cooked skin, already stiff at the hands and feet and eased before them.
+  if (!opts.whole && !opts.refit) {
+    stiffen(at);
     ease(at, rig.rest);
   }
   const { materials, textures } = pooled(opts.materials);
