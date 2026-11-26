@@ -140,6 +140,34 @@ test("a basin inside a tank is left through the tank's water and over its rim, o
   expect(bodiesSwum(made(true)).map((s) => [s.body, s.swims, s.out])).toEqual([[1, true, true], [2, true, true]]);
 });
 
+test("a pool a building's walls stand round is caught, and the audit says a piece is in the way", () => {
+  // A pool 8 m square in flat ground, and a square of walls 24 m a side round it.
+  const heights = Uint16Array.from({ length: SIDE * SIDE }, (_, k) => units(k % SIDE >= 20 && k % SIDE <= 24 && Math.floor(k / SIDE) >= 20 && Math.floor(k / SIDE) <= 24 ? -1.5 : 0));
+  const water = lakes([0], (i, j) => (i >= 19 && i <= 24 && j >= 19 && j <= 24 ? 1 : 0));
+  const round = [34, 38, 42, 46, 50, 54].flatMap((d) => [wall(d, 32), wall(d, 56), wall(32, d, 16384), wall(56, d, 16384)]);
+  expect(swimming(opened({ heights, water }))).toMatchObject({ count: 0, swimmable: 1, swimmableWalkedOut: 1 });
+  const c = swimming(opened({ heights, water, statics: round }));
+  expect(c).toMatchObject({ gate: true, count: 1, swimmable: 1, swimmableWalkedOut: 0, caughtByPieces: 1, clearMetres: 12 });
+  expect((c.first as string[])[0]).toContain("out with no piece standing");
+  // One wall away, it walks out between the rest.
+  expect(swimming(opened({ heights, water, statics: round.slice(1) })).count).toBe(0);
+});
+
+test("a body is caught where one of its parts is, though its deepest water is walked out of", () => {
+  // One body in two places 80 m apart: the first open and 1.6 m deep, the second 1.5 m deep and walled 3 m up.
+  const at = [20, 60], bed = [-1.6, -1.5];
+  const part = (i: number, j: number, reach: number): number => at.findIndex((a) => i >= a - reach && i <= a + 4 + reach && j >= 20 - reach && j <= 24 + reach);
+  const heights = Uint16Array.from({ length: SIDE * SIDE }, (_, k) => {
+    const [i, j] = [k % SIDE, Math.floor(k / SIDE)], inside = part(i, j, 0);
+    return units(inside >= 0 ? bed[inside]! : part(i, j, 3) === 1 ? 3 : 0);
+  });
+  const water = lakes([0], (i, j) => (at.some((a) => i >= a - 1 && i <= a + 4 && j >= 19 && j <= 24) ? 1 : 0));
+  const w = opened({ heights, water });
+  const [s] = bodiesSwum(w);
+  expect([s!.body, s!.swims, s!.out, s!.parts.map((p) => p.out)]).toEqual([1, true, false, [true, false]]);
+  expect(swimming(w)).toMatchObject({ count: 1, swimmable: 1, parts: 2, caughtByPieces: 0 });
+});
+
 test("water more than a metre under the ground two corners out stands in a pit", () => {
   // Two pools 8 m square: one in ground level with its water, one with ground 3 m up round it.
   const at = [20, 60];
