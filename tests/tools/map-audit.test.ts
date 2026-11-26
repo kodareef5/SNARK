@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { writeMap, type MapData, type MapStatic } from "../../shared/world/mapfile.ts";
 import { MapWater } from "../../shared/world/water.ts";
-import { audit, bodiesSwum, poolsInPits, doorsOffGround, hullsInPieces, lakeWraps, offMap, openMap, piecesUnderGround, streetsThroughBuildings, swimming, twins, waterWalls, type Audited } from "../../tools/mapworld/audit.ts";
+import { audit, bodiesSwum, poolsInPits, doorsOffGround, hullsInPieces, lakeWraps, offMap, openMap, piecesUnderGround, streetsThroughBuildings, sunkPools, swimming, twins, waterWalls, type Audited } from "../../tools/mapworld/audit.ts";
 import { flatMap } from "../fixtures/map.ts";
 import { builtSketch, SIDE_FRONT, Sketch } from "../fixtures/sketch.ts";
 
@@ -166,6 +166,20 @@ test("a body is caught where one of its parts is, though its deepest water is wa
   const [s] = bodiesSwum(w);
   expect([s!.body, s!.swims, s!.out, s!.parts.map((p) => p.out)]).toEqual([1, true, false, [true, false]]);
   expect(swimming(w)).toMatchObject({ count: 1, swimmable: 1, parts: 2, caughtByPieces: 0 });
+});
+
+test("a swum body whose rim stands over a metre above its water is a sunk pool", () => {
+  // Two pools 8 m square: one in ground just over its water, one with ground 3.5 m up round it.
+  const at = [20, 60];
+  const heights = Uint16Array.from({ length: SIDE * SIDE }, (_, k) => {
+    const [i, j] = [k % SIDE, Math.floor(k / SIDE)], p = at.findIndex((a) => i >= a && i <= a + 4 && j >= 20 && j <= 24);
+    return units(p >= 0 ? -1.5 : i > 50 ? 3.5 : 0.1);
+  });
+  const water = lakes([0, 0], (i, j) => 1 + at.findIndex((a) => i >= a - 1 && i <= a + 4 && j >= 19 && j <= 24));
+  const c = sunkPools(opened({ heights, water }));
+  expect(c).toMatchObject({ gate: false, count: 1, swimmable: 2, overThreeMetres: 1 });
+  expect(c.deepest as string).toContain("body 2");
+  expect(c.deepest as string).toContain("3.50 m over");
 });
 
 test("water more than a metre under the ground two corners out stands in a pit", () => {

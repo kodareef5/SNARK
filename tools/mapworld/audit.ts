@@ -12,7 +12,7 @@ import { HIT_PREFIX } from "../../shared/world/bends.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 import { bendOf, mapHeightfield, parseMap, placeStatics, staticKinds, type MapFile } from "../../shared/world/mapfile.ts";
 import { Found, StructureStore } from "../../shared/world/structures.ts";
-import { CLEAR, squaresByBody, squaresOf, wayOut, type Part, type Squares } from "./way-out.ts";
+import { CLEAR, rimOver, squaresByBody, squaresOf, wayOut, type Part, type Squares } from "./way-out.ts";
 
 /** A map opened for the checks: its ground, and its statics set down as a server's. */
 export interface Audited {
@@ -470,6 +470,31 @@ export function poolsInPits(w: Audited): Check {
   return { check, gate: false, count, bodies, deepest: count ? where : null };
 }
 
+/** A rim this far over a swum body's water makes it a sunk pool, and this far a deep one. */
+const SUNK = 1, SUNK_DEEP = 3;
+
+/**
+ * Sunk pools: bodies a survivor swims in whose rim, the corners of their wet squares that stand out of the water, lies
+ * over SUNK metres above it at the median. Every pool found with no way out was one of these.
+ */
+export function sunkPools(w: Audited): Check {
+  const g = waterGrid(w), water = w.map.water, check = "sunk pools";
+  if (!g || !water) return { check, gate: false, count: 0, swimmable: 0 };
+  const of = squaresByBody(g, water.bodies.length), walked = { ...w, water };
+  let swimmable = 0, count = 0, over3 = 0, deepest = 0, where = "";
+  for (const s of bodiesSwum(w)) {
+    if (!s.swims) continue;
+    swimmable++;
+    const rim = rimOver(walked, g, s.body, of[s.body]!);
+    const over = rim.length > 0 ? rim[rim.length >> 1]! : 0;
+    if (!(over > SUNK)) continue;
+    count++;
+    if (over > SUNK_DEEP) over3++;
+    if (over > deepest) [deepest, where] = [over, `body ${s.body} at ${s.parts[0]!.x.toFixed(0)}, ${s.parts[0]!.z.toFixed(0)}: its rim ${over.toFixed(2)} m over its water`];
+  }
+  return { check, gate: false, count, swimmable, overThreeMetres: over3, deepest: count ? where : null };
+}
+
 /**
  * Water a survivor swims in and gets out of. The gate counts bodies with a part it swims in and does not get out of, the
  * pieces standing: a pool it would be caught in. Of those, the ones the ground alone lets it out of are caught by a
@@ -501,7 +526,7 @@ export function swimming(w: Audited): Check {
 
 /** Every check, the gates first. */
 export function audit(w: Audited): Check[] {
-  return [offMap(w), twins(w), lakeWraps(w), hullsInPieces(w), swimming(w), waterWalls(w), poolsInPits(w), streetsThroughBuildings(w), doorsOffGround(w), piecesUnderGround(w)];
+  return [offMap(w), twins(w), lakeWraps(w), hullsInPieces(w), swimming(w), waterWalls(w), poolsInPits(w), sunkPools(w), streetsThroughBuildings(w), doorsOffGround(w), piecesUnderGround(w)];
 }
 
 if (import.meta.main) {
@@ -511,7 +536,7 @@ if (import.meta.main) {
   const w = openMap(new Uint8Array(file.buffer, file.byteOffset, file.byteLength));
   console.log(JSON.stringify({ map: w.map.id, hash: w.map.hash, statics: w.map.statics.length, buildings: w.map.buildings?.count ?? 0 }));
   let failed = false;
-  for (const run of [offMap, twins, lakeWraps, hullsInPieces, swimming, waterWalls, poolsInPits, streetsThroughBuildings, doorsOffGround, piecesUnderGround]) {
+  for (const run of [offMap, twins, lakeWraps, hullsInPieces, swimming, waterWalls, poolsInPits, sunkPools, streetsThroughBuildings, doorsOffGround, piecesUnderGround]) {
     const start = performance.now();
     const c = run(w);
     const ok = !c.gate || c.count === 0;
