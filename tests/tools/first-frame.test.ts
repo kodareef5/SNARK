@@ -55,6 +55,9 @@ test("code a page needs only after its first frame is not in the script the firs
     "client/core/ui/touch.ts",
     "client/core/render/city-late.ts",
     "client/core/render/farcity.ts",
+    "client/core/render/nearcity.ts",
+    "client/core/render/farlandmarks.ts",
+    "client/core/render/farshadow.ts",
     "client/core/render/cityblocks.ts",
     "client/core/render/orb-late.ts",
     "client/core/render/orb.ts",
@@ -99,6 +102,13 @@ test("code a page needs only after its first frame is not in the script the firs
   expect(fetchedBy("shell/main.ts")).toContain("./screen-faces.ts");
   expect(fetchedBy("core/game-app.ts")).toEqual(expect.arrayContaining(["./ui/storage.ts", "./debug/debug.ts", "./sound-late.ts"]));
   expect(fetchedBy("core/ui/bag-load.ts")).toContain("./bag-panels.ts");
+});
+
+test("the browser requests city rendering after it draws the first world frame", () => {
+  const shell = readFileSync(join(CLIENT, "shell/main.ts"), "utf8");
+  const firstDraw = shell.indexOf("renderer.draw(packet)");
+  expect(firstDraw).toBeGreaterThan(-1);
+  expect(shell.indexOf('import("../core/render/city-late.ts")')).toBeGreaterThan(firstDraw);
 });
 
 test("the page's log is the first module the page runs, and takes only the levels", () => {

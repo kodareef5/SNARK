@@ -20,9 +20,10 @@ import type { ModuleDef } from "./api/module.ts";
 import { restoreBackup } from "./persist/backup.ts";
 import { stopOnSignals } from "./signals.ts";
 import type { VoicePeer } from "./voice.ts";
-import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, statSync } from "node:fs";
+import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
-import { inflateRawSync } from "node:zlib";
+import { promisify } from "node:util";
+import { gzip, inflateRawSync } from "node:zlib";
 import { parsePack } from "../shared/pack/pack.ts";
 import { allClips } from "../shared/pack/clips.ts";
 import { parseManifest } from "../shared/pack/manifest.ts";
@@ -170,18 +171,22 @@ function readAt(fd: number, at: number, length: number): Uint8Array<ArrayBuffer>
   return bytes;
 }
 
+/** `bytes` gzipped off the request thread. */
+const gzipOff = promisify(gzip);
+
 /** The map's routes (mapRoutes), and how to let go of the file they hold. */
 export type MapRoute = ((path: string, req: Request) => Response | Promise<Response> | null) & { readonly link: string; readonly version: number; close(): void };
 
 /**
  * Answers a client's requests for the map. `/map.json` names the map and its head, and `/map/<name>` is the head or a part
  * by the name the head gives it (shared/world/mapfile.ts); any other name there is not found, and any other path is null.
- * A name carries its bytes' hash, so whoever fetched it keeps it for good. A map given by its path goes out from the folder
- * its build wrote beside it (tools/map/pack.ts), Brotli to a browser that takes it and gzip to one that does not (on plain
- * http). The file is held open as it was at the start, and `hash`, the world's, must be its: a build replaces it whole and
- * takes away the parts its new head does not name, so a part this server names and its folder no longer has is cut from
- * the file it holds, and gzipped once. That holds the old file's disk until the server stops, and its parts' gzip in memory
- * once asked for. A map made in code, or given with no such folder, is cut likewise. `link` is the header that has a page
+ * A name carries its bytes' hash, so whoever fetched it keeps it for good. A map given by its path sends each part from the
+ * copies its build wrote beside it (tools/map/pack.ts), Brotli to a browser that takes it and gzip to one that does not (on
+ * plain http). The raw bytes, for a client that takes neither and for a range, are always read from the file. The file is
+ * held open as it was at the start, and `hash`, the world's, must be its: a build replaces it whole and takes away the
+ * copies its new head does not name, so a part this server names and its folder no longer has is cut from the file it
+ * holds, and gzipped once off the request thread. That holds the old file's disk until the server stops, and its parts'
+ * gzip in memory once asked for. A map made in code is cut likewise. `link` is the header that has a page
  * ask for the head and landmark definitions before JavaScript reads map.json.
  */
 export function mapRoutes(file: Uint8Array<ArrayBuffer> | string, id: string, hash?: number): MapRoute {
@@ -203,21 +208,45 @@ export function mapRoutes(file: Uint8Array<ArrayBuffer> | string, id: string, ha
     .map(name => `<map/${name}>; rel=preload; as=fetch; crossorigin`).join(", ");
   const folder = typeof file === "string" ? partsFolder(file) : "";
   const wanted = new Map([{ name: head.name, at: 0, length: head.bytes, hash: "" }, ...head.parts].map((p) => [p.name, p]));
-  const onDisk = folder !== "" && [...wanted.values()].every((p) => existsSync(join(folder, `${p.name}.br`)) && existsSync(join(folder, `${p.name}.gz`)) && existsSync(join(folder, p.name)) && statSync(join(folder, p.name)).size === p.length);
-  if (typeof file === "string" && !onDisk) console.log(`map: ${file} has no files of its parts beside it, so they are cut and gzipped as they are asked for: bun tools/map.ts pack ${file} writes them`);
-  const zipped = new Map<string, Uint8Array>();
+  if (typeof file === "string") {
+    const bare = [...wanted.keys()].filter((name) => folder === "" || !existsSync(join(folder, `${name}.br`)) || !existsSync(join(folder, `${name}.gz`))).length;
+    if (bare > 0) console.log(`map: ${bare} of the ${wanted.size} parts of ${file} have no Brotli or gzip copy beside it, so those are cut and gzipped as they are asked for: bun tools/map.ts pack ${file} writes them`);
+  }
+  const zipped = new Map<string, Promise<Uint8Array>>();
   const headers = { "content-type": "application/octet-stream", "cache-control": "public, max-age=31536000, immutable", vary: "accept-encoding" };
   /** A part as the file this server holds has it: never another build's, which a file written over in place would give. */
-  const cut = (name: string, req: Request): Response => {
+  const cut = async (name: string, req: Request): Promise<Response> => {
+    const range = /^bytes=(\d+)-(\d*)$/.exec(req.headers.get("range") ?? "");
+    const gzip = !range && (req.headers.get("accept-encoding") ?? "").includes("gzip");
+    const kept = gzip ? zipped.get(name) : undefined;
+    if (kept) return new Response(await kept, { headers: { ...headers, "content-encoding": "gzip" } });
     const p = wanted.get(name)!;
     const bytes = name === head.name ? first.subarray(0, head.bytes) : at(p.at, p.length);
     if (name !== head.name && partHash(bytes) !== p.hash) {
       console.log(`map: ${String(file)} was written over in place while the server ran, so its part ${name} is gone: start the server again`);
       return new Response("gone", { status: 410 });
     }
-    if (!(req.headers.get("accept-encoding") ?? "").includes("gzip")) return new Response(bytes, { headers });
-    if (!zipped.has(name)) zipped.set(name, Bun.gzipSync(bytes));
-    return new Response(zipped.get(name)!, { headers: { ...headers, "content-encoding": "gzip" } });
+    if (range) {
+      const from = Number(range[1]);
+      const to = range[2] === "" ? bytes.length - 1 : Math.min(Number(range[2]), bytes.length - 1);
+      if (from >= bytes.length || to < from) return new Response(null, { status: 416, headers: { ...headers, "content-range": `bytes */${bytes.length}` } });
+      return new Response(bytes.slice(from, to + 1), { status: 206, headers: { ...headers, "accept-ranges": "bytes", "content-range": `bytes ${from}-${to}/${bytes.length}` } });
+    }
+    if (!gzip) return new Response(bytes, { headers: { ...headers, "accept-ranges": "bytes" } });
+    if (!zipped.has(name)) zipped.set(name, gzipOff(bytes));
+    return new Response(await zipped.get(name)!, { headers: { ...headers, "content-encoding": "gzip" } });
+  };
+  /** A part from its own best copy beside the map, Brotli then gzip, else cut from the file this server holds. */
+  const send = async (name: string, req: Request): Promise<Response> => {
+    if (folder !== "" && !req.headers.has("range")) {
+      const accepts = req.headers.get("accept-encoding") ?? "";
+      for (const [encoding, end] of [["br", "br"], ["gzip", "gz"]] as const) {
+        if (!accepts.includes(encoding)) continue;
+        const copy = Bun.file(join(folder, `${name}.${end}`));
+        if (await copy.exists()) return new Response(copy, { headers: { ...headers, "content-encoding": encoding } });
+      }
+    }
+    return cut(name, req);
   };
   return Object.assign(
     (path: string, req: Request): Response | Promise<Response> | null => {
@@ -225,8 +254,7 @@ export function mapRoutes(file: Uint8Array<ArrayBuffer> | string, id: string, ha
       if (!path.startsWith("/map/")) return null;
       const name = path.slice(5);
       if (!wanted.has(name)) return new Response("not found", { status: 404 });
-      if (!onDisk) return cut(name, req);
-      return serveFile(folder, req, `/${name}`).then((res) => (res.status === 404 ? cut(name, req) : res));
+      return send(name, req);
     },
     { link, version: head.version, close },
   );

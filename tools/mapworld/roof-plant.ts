@@ -10,6 +10,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { STREET_PIECES, streetKind } from "../../content/street.ts";
 import { binKey, hash3 } from "./raster.ts";
+import { seedOf } from "./building-id.ts";
 import { boxOf, meets, obstacleIndex, type Box } from "./ruin-obstacles.ts";
 import { vocabulary } from "./ruin-vocabulary.ts";
 import type { Site, StaticLayer, StaticPiece } from "./statics.ts";
@@ -24,10 +25,12 @@ export interface Roofs {
   plant: Record<string, { per: number; least: number; most: number; chance: number; tall?: number; south?: boolean; forms: [string, number][] }>;
 }
 export interface RoofSummary { roofs: number; placed: Record<string, number>; refused: Record<string, number>; }
-/** A building as the ruins record it (ruins.ts): its pieces, from its first, its height and its turn. */
-export interface RoofRecord { firstPiece: number; blocks: number; height: number; yaw: number; }
+/** A building as the ruins record it (ruins.ts): its id, its pieces from its first, its height and its turn. */
+export interface RoofRecord { id: number; firstPiece: number; blocks: number; height: number; yaw: number; }
 
 const DEG = 180 / Math.PI;
+/** A roof slab's box and the cosine and sine of its turn. */
+type Slab = Box & { c: number; s: number };
 const FLOOR = /^core:zruin_floor(4|8|16)_/;
 const SIZES = new Map(STREET_PIECES.map((p) => {
   const lo = [0, 2].map((a) => Math.min(...p.boxes.map((b) => b.at[a]! - b.half[a]!))); const hi = [0, 2].map((a) => Math.max(...p.boxes.map((b) => b.at[a]! + b.half[a]!)));
@@ -47,11 +50,11 @@ export function placeRoofPlant(site: Site, placed: readonly StaticPiece[], recor
 
   for (const r of records) {
     // Its slabs, and those with none of its own over them: its roofs.
-    const slabs = placed.slice(r.firstPiece, r.firstPiece + r.blocks).filter(isFloor).map(boxOf);
+    const slabs: Slab[] = placed.slice(r.firstPiece, r.firstPiece + r.blocks).filter(isFloor).map((p) => { const b = boxOf(p); const a = b.yaw / DEG; return { ...b, c: Math.cos(a), s: Math.sin(a) }; });
     if (slabs.length === 0) continue;
-    const inside = (b: Box, x: number, z: number, margin: number): boolean => {
-      const a = b.yaw / DEG; const c = Math.cos(a); const s = Math.sin(a); const dx = x - b.x; const dz = z - b.z;
-      return Math.abs(dx * c - dz * s) <= b.size[0] / 2 - margin && Math.abs(dx * s + dz * c) <= b.size[2] / 2 - margin;
+    const inside = (b: Slab, x: number, z: number, margin: number): boolean => {
+      const dx = x - b.x; const dz = z - b.z;
+      return Math.abs(dx * b.c - dz * b.s) <= b.size[0] / 2 - margin && Math.abs(dx * b.s + dz * b.c) <= b.size[2] / 2 - margin;
     };
     const roofs = slabs.filter((b) => !slabs.some((o) => o !== b && o.y > b.y + 1 && inside(o, b.x, b.z, 0)));
     if (roofs.length === 0) continue;
@@ -68,7 +71,8 @@ export function placeRoofPlant(site: Site, placed: readonly StaticPiece[], recor
       return top;
     };
     const area = roofs.reduce((n, b) => n + b.size[0] * b.size[2], 0);
-    const h = hash3(r.firstPiece, r.blocks, seed);
+    // By its building's id, not where its pieces fall in the city's list, which every building before it moves.
+    const h = hash3(seedOf(r.id), 0, seed);
     for (const [kind, k] of Object.entries(rules.plant)) {
       const hk = hash3(h, kind.length * 131 + kind.charCodeAt(0), seed);
       if (area < k.least || (k.tall !== undefined && r.height < k.tall) || hash3(hk, 1, seed) / 4294967296 >= k.chance) continue;

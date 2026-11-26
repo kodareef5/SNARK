@@ -8,7 +8,8 @@ import type { FinishTable } from "../../../shared/pack/finish.ts";
 import type { ManifestMesh } from "../../../shared/pack/manifest.ts";
 import type { Pack, PackMaterial } from "../../../shared/pack/pack.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
-import { DRAW_BLEND, DRAW_CUTOUT, DRAW_HEAT_SHIFT, DRAW_PIECE, DRAW_PLAIN, DRAW_PULLED, DRAW_SIZED, DRAW_TEXTURED, SOURCE_MAP, type FramePacket } from "./packet.ts";
+import { ROAD_STEP, roadSamples } from "../../../shared/world/roadframe.ts";
+import { DRAW_BLEND, DRAW_CUTOUT, DRAW_HEAT_SHIFT, DRAW_PIECE, DRAW_PLAIN, DRAW_PULLED, DRAW_SIZED, DRAW_TEXTURED, SOURCE_MAP, SOURCE_WINDOW, type FramePacket } from "./packet.ts";
 import { PIECE_ROWS } from "./pieces.ts";
 import { WATER_ALPHA } from "./shading.ts";
 import { LAYER_LEVELS, materialEmission, skinMode } from "./surface.ts";
@@ -244,7 +245,9 @@ export const DETAIL_ROWS: readonly UniformRow[] = [
 
 /**
  * What a run of terrain tiles gives a program that reads the pair of pictures `source` (packet.ts SOURCE_): that it is
- * the ground, opaque from the first; and once a frame the pair's heights and its last sample each way.
+ * the ground, opaque from the first; and once a frame the pair's heights, its last sample each way, and where the
+ * window's corner is in the texels of its pictures and of its roads' frame's, which hold a sample at its own place
+ * modulo their size (terrain.ts). The whole map's pair is not wrapped.
  */
 export function tileRows(source: number): readonly UniformRow[] {
   return [
@@ -254,6 +257,16 @@ export function tileRows(source: number): readonly UniformRow[] {
     floats("uLast", SEND_2F, AT_TILES, (c, out) => {
       out[0] = c.ground.width[source]! - 1;
       out[1] = c.ground.height[source]! - 1;
+    }, frame),
+    floats("uWrap", SEND_2F, AT_TILES, (c, out) => {
+      const window = source === SOURCE_WINDOW && c.p.groundWindow[0]! >= 0;
+      out[0] = window ? c.p.groundWindow[1]! % c.ground.width[source]! : 0;
+      out[1] = window ? c.p.groundWindow[2]! % c.ground.height[source]! : 0;
+    }, frame),
+    floats("uRoadWrap", SEND_2F, AT_TILES, (c, out) => {
+      const window = source === SOURCE_WINDOW && c.p.groundWindow[0]! >= 0;
+      out[0] = window ? (c.p.groundWindow[1]! / ROAD_STEP) % roadSamples(c.ground.width[source]!) : 0;
+      out[1] = window ? (c.p.groundWindow[2]! / ROAD_STEP) % roadSamples(c.ground.height[source]!) : 0;
     }, frame),
   ];
 }

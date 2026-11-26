@@ -57,9 +57,64 @@ QUERIES = {
 
 def cut(region, bounds, out):
     """The area round a city (west, south, east and north in degrees), every way in it whole, from a region's file."""
+    import shutil
     w, s, e, n = bounds
+    if shutil.which('osmium') is None:
+        cut_here(region, bounds, out)
+        return
     subprocess.run(['osmium', 'extract', '--strategy', 'smart', '--set-bounds', '--overwrite', '-b', f'{w},{s},{e},{n}',
                     '-o', str(out), str(region)], check=True)
+
+
+def cut_here(region, bounds, out):
+    """cut as osmium extract's smart strategy makes it, where the osmium tool is not installed: the nodes in the box, every
+    way with a node in it whole, every relation with a member in it, and a multipolygon's every way whole."""
+    w, s, e, n = bounds
+    inside, ways, rels, more, polys = set(), set(), set(), set(), set()
+
+    class Pick(osmium.SimpleHandler):
+        def node(self, o):
+            if o.location.valid() and w <= o.location.lon <= e and s <= o.location.lat <= n:
+                inside.add(o.id)
+
+        def way(self, o):
+            if any(r.ref in inside for r in o.nodes):
+                ways.add(o.id)
+
+        def relation(self, o):
+            if any((m.type == 'n' and m.ref in inside) or (m.type == 'w' and m.ref in ways) for m in o.members):
+                rels.add(o.id)
+                if o.tags.get('type') == 'multipolygon':
+                    polys.add(o.id)
+                    more.update(m.ref for m in o.members if m.type == 'w')
+    Pick().apply_file(str(region))
+    ways |= more
+    nodes = set(inside)
+
+    class Refs(osmium.SimpleHandler):
+        def way(self, o):
+            if o.id in ways:
+                nodes.update(r.ref for r in o.nodes)
+    Refs().apply_file(str(region))
+    Path(out).unlink(missing_ok=True)
+    writer = osmium.SimpleWriter(str(out))
+
+    class Keep(osmium.SimpleHandler):
+        def node(self, o):
+            if o.id in nodes:
+                writer.add_node(o)
+
+        def way(self, o):
+            if o.id in ways:
+                writer.add_way(o)
+
+        def relation(self, o):
+            if o.id in rels:
+                writer.add_relation(o)
+    try:
+        Keep().apply_file(str(region))
+    finally:
+        writer.close()
 
 
 def wants(kind, tags, names):
@@ -165,7 +220,7 @@ def region_file(cache, region):
     if not path.exists():
         url = f'https://download.geofabrik.de/{region}-latest.osm.pbf'
         path.parent.mkdir(parents=True, exist_ok=True)
-        subprocess.run(['curl', '-sSL', '--retry', '5', '-o', str(path) + '.part', url], check=True)
+        subprocess.run(['curl', '-sSL', '--retry', '5', '--retry-all-errors', '-o', str(path) + '.part', url], check=True)
         subprocess.run(['curl', '-sSL', '-o', str(path) + '.md5', url + '.md5'], check=True)
         Path(str(path) + '.part').rename(path)
         want = Path(str(path) + '.md5').read_text().split()[0]

@@ -55,7 +55,7 @@ test("a mesh made with each face's piece shows the faces one made without does, 
   const city = new CityStatics(map.dims, map.statics, reg);
   const near = new NearCity(reg, 0, new Uint8Array(reg.defs.length), () => true);
   const ground = { heightAt: () => 0 };
-  const standing = (c: number): Uint8Array => Uint8Array.from({ length: city.in(c) }, (_, i) => near.kinds[city.kind[city.first[c]! + i]!]!);
+  const standing = (c: number): Uint8Array => Uint8Array.from({ length: city.in(c) }, (_, i) => near.kinds[city.rows(c)!.kind[city.rows(c)!.from(c) + i]!]!);
   let kept = 0, groups = 0;
   for (const chunk of [0, 30, 40, 74]) {
     const [plain, keyed] = [false, true].map((keys) => {
@@ -120,12 +120,13 @@ test("across chunk borders each standing piece has one owner every frame", () =>
 function overTallest(w: ReturnType<typeof nearClient>, chunk: number): { slot: number; top: number } {
   const { cam, city, scene } = w;
   let top = -Infinity, slot = -1;
+  const t = city.rows(chunk)!;
   for (let s = 0; s < city.in(chunk); s++) {
-    const i = city.first[chunk]! + s, k = city.kind[i]!;
-    if (scene.near!.kinds[k] === 1 && city.y[i]! + city.halfY[k]! > top) [top, slot] = [city.y[i]! + city.halfY[k]!, s];
+    const i = t.from(chunk) + s, k = t.kind[i]!;
+    if (scene.near!.kinds[k] === 1 && t.y[i]! + city.halfY[k]! > top) [top, slot] = [t.y[i]! + city.halfY[k]!, s];
   }
-  const i = city.first[chunk]! + slot;
-  [cam.x, cam.y, cam.z, cam.yaw, cam.pitch] = [city.x[i]!, top + 20, city.z[i]! - 0.01, 0, -Math.PI / 2 + 0.01];
+  const i = t.from(chunk) + slot;
+  [cam.x, cam.y, cam.z, cam.yaw, cam.pitch] = [t.x[i]!, top + 20, t.z[i]! - 0.01, 0, -Math.PI / 2 + 0.01];
   w.follow(cam.x, cam.z);
   return { slot, top };
 }
@@ -186,11 +187,11 @@ test("a piece that takes another kind leaves its mesh by its state and is drawn 
   near.pieces = Infinity;
   const raster = new Rasterizer(64, 36, farPack(), w.hf);
   for (let f = 0; f < 6; f++) raster.render(w.frame());
-  const middle = 18 * 64 + 32, i = city.first[chunk]! + slot;
+  const t = city.rows(chunk)!, middle = 18 * 64 + 32, i = t.from(chunk) + slot;
   const old = new Map([...structs.held].map((c) => [c, near.chunk(c)!.mesh]));
   // The roof plate becomes a wall where it lay, as a piece that breaks will take its broken form.
   const wall = coreRegistry().index.get(WALL)!;
-  structs.put(chunk, slot, wall, city.x[i]!, city.y[i]!, city.z[i]!, city.yaw[i]!, 0, 100, 2);
+  structs.put(chunk, slot, wall, t.x[i]!, t.y[i]!, t.z[i]!, t.yaw[i]!, 0, 100, 2);
   let p = w.frame();
   raster.render(p);
   expect(raster.pickId[middle]).toBe(chunk * 65536 + slot);
@@ -534,7 +535,7 @@ test("a border crossed makes no more in a frame than a frame's pieces", () => {
   }
   // The border was crossed, the column of chunks it brought laid out as instances and then made as meshes.
   expect(Math.floor(x / CHUNK_SIZE)).toBe(4);
-  const weight = (c: number, s: number): number => pieceWeight(w.city, w.city.kind[w.city.first[c]! + s]!);
+  const weight = (c: number, s: number): number => pieceWeight(w.city, w.city.rows(c)!.kind[w.city.rows(c)!.from(c) + s]!);
   const brought = Array.from({ length: 7 }, (_, j) => j * w.dims.chunksX + 7).reduce((n, c) => n + scene.near!.chunk(c)!.mine.reduce((m, v, s) => m + v * weight(c, s), 0), 0);
   expect(frames.reduce((n, f) => n + f.made, 0)).toBe(brought);
   expect(scene.near!.stats.waiting).toBe(0);

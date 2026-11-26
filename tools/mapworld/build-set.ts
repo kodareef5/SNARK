@@ -3,22 +3,28 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { brotliDecompressSync, gunzipSync } from "node:zlib";
 import { partsFolder, partsOf, readHead } from "../../shared/world/mapfile.ts";
+import { LEVELS, copiesLevel } from "../map/pack.ts";
 import { buildMap } from "./build.ts";
 import type { EntranceReport } from "./bridge-entrances.ts";
 
 export const MAP_PRODUCER_REVISION = "road-deck-4";
 
-/** Verify the exact raw and compressed bytes that normal /map routes serve beside the map. */
-export function verifyMapPackage(file: string) {
+/**
+ * Verify the compressed bytes that normal /map routes serve beside the map against its parts' raw bytes, which the map
+ * file holds; with `release` given, that the copies were made at that build's levels.
+ */
+export function verifyMapPackage(file: string, release?: boolean) {
   const bytes = readFileSync(file), head = readHead(bytes);
   const folder = partsFolder(file), parts = partsOf(bytes);
+  if (release !== undefined) {
+    const want = release ? LEVELS.release : LEVELS.everyday, had = copiesLevel(folder);
+    if (had?.brotli !== want.brotli || had.gzip !== want.gzip) throw new Error(`Map copies are not at the ${release ? "release" : "everyday"} levels: ${folder}`);
+  }
   for (const part of parts) {
-    const raw = readFileSync(join(folder, part.name));
-    if (!raw.equals(part.bytes)) throw new Error(`Map part mismatch: ${part.name}`);
     for (const encoding of ["br", "gz"] as const) {
       const packed = readFileSync(join(folder, `${part.name}.${encoding}`));
       const decoded = encoding === "br" ? brotliDecompressSync(packed) : gunzipSync(packed);
-      if (!decoded.equals(raw)) throw new Error(`Map ${encoding} mismatch: ${part.name}`);
+      if (!decoded.equals(part.bytes)) throw new Error(`Map ${encoding} mismatch: ${part.name}`);
     }
   }
   const entranceFile = file.replace(/\.snmap$/, ".entrances.json");
@@ -46,7 +52,8 @@ export async function buildMapSet(directory: string, names: readonly string[], r
   const maps: ReturnType<typeof verifyMapPackage>[] = [];
   for (const name of names) {
     const { file } = await buildMap(name, release, output);
-    maps.push(verifyMapPackage(file));
+    if (maps.some((m) => m.file === basename(file))) throw new Error(`Two maps of the set are named ${basename(file)}`);
+    maps.push(verifyMapPackage(file, release));
     Bun.gc(true);
   }
   writeFileSync(join(output, "release.json"), JSON.stringify(mapReleaseManifest(maps, release), null, 2) + "\n");

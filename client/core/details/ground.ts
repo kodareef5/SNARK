@@ -45,7 +45,7 @@ function nearSea(hf: Heightfield, x: number, z: number): boolean {
 function tintAt(hf: Heightfield, x: number, z: number): number {
   const i = Math.max(0, Math.min(hf.nx - 1, Math.round(x / hf.cell)));
   const j = Math.max(0, Math.min(hf.nz - 1, Math.round(z / hf.cell)));
-  return hf.tint[j * hf.nx + i]!;
+  return hf.tintOf(i, j);
 }
 
 /**

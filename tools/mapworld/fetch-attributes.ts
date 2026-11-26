@@ -1,56 +1,44 @@
-// Fetches what FEMA/ORNL USA Structures says of each building of a map's footprints, by the object id the footprints
-// keep: its height, its occupancy and the source of its outline. No address, place or population field is asked for.
-// bun tools/mapworld/fetch-attributes.ts <name or folder>   writes <folder>/base/buildings_attributes.json, the folder
-// assets/source/maps/<name> or one named by a path (tools/maps/city.ts's work folder), as build.ts takes them
+// What FEMA/ORNL USA Structures says of each building of a map's footprints, by the object id the footprints keep: its
+// height, its occupancy and the source of its outline. No address, place or population field is kept. The fetch stage
+// asked for these fields with each footprint's outline (tools/mapdata/fetch.py fema), so they are read from those pages
+// and belong to the same publication as the outlines.
+// bun tools/mapworld/fetch-attributes.ts <work folder>   writes <folder>/base/buildings_attributes.json
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
-const SERVICE = "https://services2.arcgis.com/FiaPA4ga0iQKduv3/arcgis/rest/services/USA_Structures_View/FeatureServer/0/query";
-const FIELDS = ["OBJECTID", "HEIGHT", "OCC_CLS", "PRIM_OCC", "SEC_OCC", "OUTBLDG", "SQMETERS", "SOURCE", "VAL_METHOD", "IMAGE_DATE"];
-
-const name = process.argv[2] ?? (() => { throw new Error("Map name required"); })();
-const base = join(name.includes("/") ? resolve(name) : resolve(import.meta.dir, "../../assets/source/maps", name), "base");
-const geo = JSON.parse(readFileSync(join(base, "buildings.geojson"), "utf8")) as { features: { properties: { id: number; parent?: number | null } }[] };
-// USA Structures' own ids: each footprint's, and where split.py has already cut the footprints (this stage run again
-// alone) each piece's parent's, its own id being split's (from SPLIT_BASE, tools/mapdata/split.py), which the service
-// has not. Asked for the pieces' ids alone it lost the parents, and split gave their pieces nothing.
+/** The fields kept, as fetch.py FEMA_FIELDS asks for them. */
+export const FIELDS = ["OBJECTID", "HEIGHT", "OCC_CLS", "PRIM_OCC", "SEC_OCC", "OUTBLDG", "SQMETERS", "SOURCE", "VAL_METHOD", "IMAGE_DATE"];
+/** Where split.py numbers the pieces it cuts (tools/mapdata/split.py SPLIT_BASE): ids the service has not. */
 const SPLIT_BASE = 500_000_000;
-const ids = [...new Set(geo.features.flatMap((f) => [f.properties.id, f.properties.parent ?? -1]))].filter((id) => id >= 0 && id < SPLIT_BASE).sort((a, b) => a - b);
-const rows: Record<string, unknown>[] = [];
 
-/**
- * One page of the service's answer, asked again up to six times a few seconds apart: a busy service answers a bare
- * null, an error object or a dropped connection now and then, and one such page cost Los Angeles its 25-minute prepare.
- */
-async function page(body: URLSearchParams): Promise<{ attributes: Record<string, unknown> }[]> {
-  let why = "";
-  for (let attempt = 1; attempt <= 6; attempt++) {
-    try {
-      const res = await fetch(SERVICE, { method: "POST", body, headers: { "content-type": "application/x-www-form-urlencoded" } });
-      const got = (await res.json()) as { features?: { attributes: Record<string, unknown> }[]; error?: unknown } | null;
-      if (got?.features) return got.features;
-      why = `the service answered ${JSON.stringify(got?.error ?? got).slice(0, 300)}`;
-    } catch (e) {
-      why = e instanceof Error ? e.message : String(e);
-    }
-    console.log(`attributes: ${why}; asking again (${attempt} of 6)`);
-    await Bun.sleep(4000 * attempt);
+/** The attributes of each of `ids` from the fetched pages in `fema`, in the order of `FIELDS`; throws naming ids no page holds. */
+export function attributesOf(fema: string, ids: readonly number[]): { rows: unknown[][]; fetched: string } {
+  const pages = readdirSync(fema).filter((f) => /^page_\d+\.json$/.test(f)).sort();
+  if (pages.length === 0) throw new Error(`attributes: no footprint pages in ${fema}: run the fetch stage`);
+  const byId = new Map<number, Record<string, unknown>>();
+  for (const f of pages) {
+    const page = JSON.parse(readFileSync(join(fema, f), "utf8")) as { features?: { attributes: Record<string, unknown> }[] };
+    for (const { attributes } of page.features ?? []) byId.set(attributes.OBJECTID as number, attributes);
   }
-  throw new Error(why);
+  const missing = ids.filter((id) => !byId.has(id));
+  if (missing.length > 0) throw new Error(`attributes: ${missing.length} of ${ids.length} footprints are in no fetched page (the first ${missing.slice(0, 5).join(", ")}): fetch again`);
+  const lacking = FIELDS.filter((k) => !(k in byId.get(ids[0]!)!));
+  if (ids.length > 0 && lacking.length > 0) throw new Error(`attributes: the fetched pages lack ${lacking.join(", ")}: they were fetched before the fields were asked for; fetch again`);
+  const manifest = join(fema, "..", "..", "downloads.json");
+  const times = existsSync(manifest) ? Object.entries(JSON.parse(readFileSync(manifest, "utf8")) as Record<string, { retrieved_utc?: string }>).filter(([k]) => k.startsWith("fema/page_")).map(([, r]) => r.retrieved_utc ?? "") : [];
+  return { rows: ids.map((id) => FIELDS.map((k) => byId.get(id)![k] ?? null)), fetched: times.sort().at(-1)?.slice(0, 10) ?? "" };
 }
-for (let at = 0; at < ids.length; at += 500) {
-  const body = new URLSearchParams({ where: `OBJECTID IN (${ids.slice(at, at + 500).join(",")})`, outFields: FIELDS.join(","), returnGeometry: "false", f: "json" });
-  rows.push(...(await page(body)).map((f) => f.attributes));
-  console.log(`${Math.min(at + 500, ids.length)} of ${ids.length}`);
+
+if (import.meta.main) {
+  const work = resolve(process.argv[2] ?? (() => { throw new Error("Work folder required"); })());
+  const base = join(work, "base");
+  const city = JSON.parse(readFileSync(join(work, "city.json"), "utf8")) as { footprints: { service: string; licence: string } };
+  const geo = JSON.parse(readFileSync(join(base, "buildings.geojson"), "utf8")) as { features: { properties: { id: number; parent?: number | null } }[] };
+  // Each footprint's own id, and where split.py has already cut them (this stage run again alone) each piece's parent's.
+  const ids = [...new Set(geo.features.flatMap((f) => [f.properties.id, f.properties.parent ?? -1]))].filter((id) => id >= 0 && id < SPLIT_BASE).sort((a, b) => a - b);
+  const { rows, fetched } = attributesOf(join(work, "raw", "fema"), ids);
+  const out = { source: city.footprints.service, fetched, licence: city.footprints.licence, fields: FIELDS, rows };
+  writeFileSync(join(base, "buildings_attributes.json"), `${JSON.stringify(out)}\n`);
+  console.log(`${rows.length} rows of ${ids.length} ids in ${join(base, "buildings_attributes.json")}`);
 }
-rows.sort((a, b) => (a.OBJECTID as number) - (b.OBJECTID as number));
-const out = {
-  source: SERVICE.replace("/query", ""),
-  fetched: new Date().toISOString().slice(0, 10),
-  licence: "CC BY 4.0, as SOURCES.md says of USA Structures",
-  fields: FIELDS,
-  rows: rows.map((r) => FIELDS.map((f) => r[f] ?? null)),
-};
-writeFileSync(join(base, "buildings_attributes.json"), `${JSON.stringify(out)}\n`);
-console.log(`${rows.length} rows of ${ids.length} ids in ${join(base, "buildings_attributes.json")}`);

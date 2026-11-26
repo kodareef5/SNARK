@@ -75,18 +75,35 @@ test("a map written in parts and read back is the map it was made of: every heig
   expect(writeMap(back)).toEqual(file);
 });
 
-test("a map of version 11 is read as one with no streets, and any other old or new one is refused", () => {
-  const plain = writeMap(wideMap());
+test("a map of any version but this build's is refused", () => {
+  const plain = writeMap({ ...wideMap(), statics: [] });
   const as = (version: number): Uint8Array<ArrayBuffer> => {
     const f = plain.slice();
     new DataView(f.buffer).setUint16(4, version, true);
     return f;
   };
-  // The version is outside what the head's hash covers, so a file of this version with no bends or streets part is one of 11.
-  const old = parseMap(as(11), true, true);
-  expect(old.streets).toBeUndefined();
-  expect(old.heights).toEqual(parseMap(plain).heights);
-  for (const v of [10, 12, 13, 15]) expect(() => readHead(as(v))).toThrow(`map: version ${v} is not one this build reads`);
+  for (const v of [10, 11, 13, 14, 16]) expect(() => readHead(as(v))).toThrow(`map: version ${v} is not one this build reads`);
+});
+
+test("a sector's statics name their own kinds", () => {
+  const wide = wideMap();
+  // A kind only the far corner's sector holds.
+  const corner = { kind: "core:torch", x: wide.dims.chunksX * CHUNK_SIZE - 10, y: 1, z: wide.dims.chunksZ * CHUNK_SIZE - 10, yaw: 0 };
+  const map = { ...wide, statics: [...wide.statics, corner] };
+  const file = writeMap(map);
+  const head = readHead(file);
+  const part = head.parts.find((p) => p.kind === "statics")!;
+  const bytes = file.subarray(part.at, part.at + part.length);
+  const piece = readPart(head, part, bytes) as StaticsPiece;
+  // Its own table: the kinds it holds, in the head's order.
+  const used = [...new Set(piece.id)].sort((a, b) => a - b).map((k) => head.kinds[k]!);
+  const view = new DataView(bytes.buffer, bytes.byteOffset);
+  let at = 2;
+  const own = Array.from({ length: view.getUint16(0, true) }, () => new TextDecoder().decode(bytes.subarray(at + 1, (at += 1 + bytes[at]!))));
+  expect(own).toEqual(used);
+  expect(used.length).toBeLessThan(head.kinds.length);
+  // A kind the head does not name is refused.
+  expect(() => readPart({ ...head, kinds: head.kinds.filter((k) => k !== own[0]) }, part, bytes)).toThrow("which its head does not");
 });
 
 test("a map's roads' frame rides in a part of its own for each sector a road runs in, is read whole only where it is drawn from, and is held a sector at a time", () => {
@@ -182,8 +199,9 @@ test("each part reads alone given the head, and sets into what the game holds", 
   expect([...wide.statics]).toEqual([far[0], far[2], far[1]]);
   // A piece off the map in the part itself is refused as one in a map written so would be.
   const off = city.slice();
-  // The high byte of the last piece's x, in the third of x's planes, after the part's count and 6 planes.
-  off[part.at + 4 + 6 * 70000 + 69999]! = 0x7f;
+  // The high byte of the last piece's x, in the third of x's planes, after the part's kinds, its count and 6 planes.
+  const kinds = 2 + 1 + "core:crate".length + 1 + "core:wall".length;
+  off[part.at + kinds + 4 + 6 * 70000 + 69999]! = 0x7f;
   expect(() => readPart(cityHead, part, off.subarray(part.at, part.at + part.length), false)).toThrow("is off the map");
 });
 

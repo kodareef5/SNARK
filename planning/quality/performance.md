@@ -51,8 +51,8 @@ high and marked "busy".
   3 ms a frame on medium and 5 on high. A governed soak on high holds 17 ms.
 - **This Mac's GPU** spends 0.13 ms a megapixel on LIT and 0.38 with the world
   finish; the iPhone 3.5 and 4.5 times as much.
-- **A map as it comes** (the map trip, Miami): the first frame at 8.4 s over 5 Mbit/s
-  and 3.0 over 20; the far city only once every part has come, at 28.5 and 8.8 s.
+- **A map as it comes** (the map trip, the 16 km Miami): the first frame at 10.8 s over
+  5 Mbit/s and 4.2 over 20; the far city at 25.0 and 14.9 s; 27.6 MB of the map fetched in all.
 
 ## The cleanup round in the bench
 
@@ -775,6 +775,26 @@ ultra, at four times the pixels. GL draws are as they were but for the air on me
 (929 where 875). A change is judged by alternating runs with and without it, four each way (D754 was).
 
 ## A map as it comes
+
+Maps v3 on 2026-11-25: the 16 km Miami at version 15 (1,324 parts), the page that asks only for what it wants
+(`planning/workstreams/maps-v3.md`), high tier, the same link and the same failed sector. Joined at 7264, 4832; jumped to
+11232, 5408. One run each; pictures in `var/maps3/trip`.
+
+| Moment | 5 Mbit/s | 20 Mbit/s |
+| --- | --- | --- |
+| First frame | 10.75 s, 8 files, 4.09 MB | 4.20 s, the same files |
+| Far city drawn | 25.04 | 14.86 |
+| Statics handed over | 67.88 | 26.55 |
+| City's blocks drawn | 72.95 | 27.88 |
+| Street joined on drawn with its materials | not by 141 s, when the body went up | 48.23, with 52.4 MB of art and 19.8 of map in hand |
+| After the jump: predicted again; ground exact | 3.25; 13.97 s | 1.18; 3.80 s |
+| After the jump: settled | 39.05 s | 11.62 s |
+| The failed part | came at its second ask | came at its second ask |
+| In all | 203 of 1,324 parts, 27.6 MB | the same |
+| Memory at the hand-over, after a GC | 95.5 MB of heap, 190.7 of arrays | 94.9 and 191.5 |
+
+The page no longer fetches the whole map, so "last part" and "whole" no longer happen. The street waits on its art, not
+its map: 19.8 MB of map had come by then, and the 8 km map's 22.9 s below had less art to fetch.
 
 `bun tools/map/trip.ts --map var/maps/miami.snmap` on 2026-11-17: the built Miami, an everyday build at version 8,
 from a server of the tool's own behind a link of its own held to 5 or 20 Mbit/s with 100 ms there and back, shared by

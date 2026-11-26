@@ -8,6 +8,7 @@ import type { BentRules } from "./bent-walks.ts";
 import type { Harbours } from "../boat/sites.ts";
 import type { Facts } from "./labels.ts";
 import { rand3 } from "./raster.ts";
+import { seedOf } from "./building-id.ts";
 
 export interface Recipe {
   bay: number; height: number; retain: number; holes: number; wall: number; accent: RuinFinish; feature: string; play: string;
@@ -106,7 +107,7 @@ export const vocabulary = (source: string): Vocabulary => extendRules(
 
 export function ruleFor(f: Footprint, v: Vocabulary, facts: Facts, context = { water: Infinity, neighbours: 0 }): Rule {
   const d = v.districts[f.district?.name ?? ""] ?? v.districts.default!;
-  const random = rand3(f.building.id, v.seed, 1);
+  const seed = seedOf(f.building.id); const random = rand3(seed, v.seed, 1);
   let name = v.categories[facts.kind] ?? "fabric";
   // A use label describes the ground tenant; a measured high-rise still needs a tower mass.
   if (facts.height > 32 && !["arena", "hall", "utility", "theatre"].includes(name)) name = "tower";
@@ -145,16 +146,16 @@ export function ruleFor(f: Footprint, v: Vocabulary, facts: Facts, context = { w
     if (w.trades && !w.trades.some((trade) => Object.keys(facts.label.uses ?? {}).some((use) => use.includes(trade)))) continue;
     if (choice.form) formName = choice.form;
     if (choice.finish) finish = choice.finish;
-    if (choice.collapse) collapse = choice.collapse[Math.floor(rand3(f.building.id, v.seed, 91) * choice.collapse.length)]!;
+    if (choice.collapse) collapse = choice.collapse[Math.floor(rand3(seed, v.seed, 91) * choice.collapse.length)]!;
     matched.push(choice.id);
   }
   // Some buildings of a painted finish wear one the page makes from a recipe in its colour (content/ruins.ts MADE_FINISHES).
   // What the tool knows of a building is its use (the recipe's name, from its label or its size) and its real height.
   const painted = finish;
-  finish = madeFinish(finish as RuinFinish, name, Math.max(1, Math.round(facts.height / 4)), rand3(f.building.id, v.seed, 77), rand3(f.building.id, v.seed, 78));
+  finish = madeFinish(finish as RuinFinish, name, Math.max(1, Math.round(facts.height / 4)), rand3(seed, v.seed, 77), rand3(seed, v.seed, 78));
   if (finish !== painted) matched.push(`made: ${finish}`);
   // A shop's storeys are rounded, not cut short: a 7 m frontage is a shop with rooms above.
   if (v.forms?.[formName]?.facade?.ground === "zstore") height = Math.min(v.budgets.maxHeight, Math.max(4, Math.round(facts.height * retain / 4) * 4));
-  return { recipe: name, roofDraw: rand3(f.building.id, v.seed, 79), height, formName, form: v.forms?.[formName], collapse, damage: v.damage?.[collapse], assemblies: v.assemblies, interiors: v.interiors, compositions: v.compositions, finish, feature, holes: Math.min(.45, d.holes ?? holes), wall: d.wall ?? recipe.wall, infill: d.infill, bay: recipe.bay, matched,
+  return { recipe: name, roofDraw: rand3(seed, v.seed, 79), height, formName, form: v.forms?.[formName], collapse, damage: v.damage?.[collapse], assemblies: v.assemblies, interiors: v.interiors, compositions: v.compositions, finish, feature, holes: Math.min(.45, d.holes ?? holes), wall: d.wall ?? recipe.wall, infill: d.infill, bay: recipe.bay, matched,
     provisional: facts.kindFrom !== "label" || !["osm", "usa_structures", "reviewed_source"].includes(facts.heightFrom) || !!p?.estimated?.length };
 }

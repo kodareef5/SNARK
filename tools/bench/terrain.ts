@@ -1,6 +1,7 @@
 // Rows for the terrain's pictures (D253): what they hold on the card, how many frames a window takes to fill at each
 // tier's upload allowance, what the window costs the tile selection, and tiles drawn a level coarser for want of a
-// window, flying the bench map's diagonal at speeds up to past anything in the game, and after teleports.
+// window, flying the bench map's diagonal at speeds up to past anything in the game, and after teleports; and the bytes
+// a 256 m move, a sector held and a road square put on the card.
 // `bun tools/bench/terrain.ts` runs these alone.
 
 import { TIERS, tierOf } from "../../client/core/assets/tiers.ts";
@@ -9,6 +10,7 @@ import { FramePacket, SOURCE_WINDOW } from "../../client/core/render/packet.ts";
 import { TerrainLod, WINDOW, groundSize, type GroundBudget } from "../../client/core/render/terrain.ts";
 import { Rng } from "../../shared/rng.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
+import { ROAD_PLANES, RoadSectors } from "../../shared/world/roadframe.ts";
 
 type Section = (title: string) => void;
 type Row = (name: string, value: number, unit: string, budget?: number | null) => void;
@@ -44,13 +46,25 @@ function allowance(): GroundBudget & { next(): void } {
   };
 }
 
+/** Bytes the frame puts on the window's pictures, and on its roads' frame's. */
+const groundBytes = (p: FramePacket): number => {
+  let n = 0;
+  for (let k = 0; k < p.groundPartCount; k++) n += p.groundParts[k * 5 + 2]! * p.groundParts[k * 5 + 3]! * 3;
+  return n;
+};
+const roadBytes = (p: FramePacket): number => {
+  let n = 0;
+  for (let k = 0; k < p.roadPartCount; k++) n += p.roadParts[k * 5 + 2]! * p.roadParts[k * 5 + 3]! * ROAD_PLANES;
+  return n;
+};
+
 const sorted = (xs: number[]): number[] => [...xs].sort((a, b) => a - b);
 const at = (xs: number[], q: number): number => sorted(xs)[Math.min(xs.length - 1, Math.floor(xs.length * q))]!;
 
 export function benchTerrain(section: Section, record: Row, hf = benchHills()): void {
   section("Terrain pictures (headless): the bench map's 8 km, a window of 2 km round the camera");
   const size = groundSize(hf);
-  record("on the card: the whole map's pair and two windows", size.bytes / MB, "MB", 9.5);
+  record("on the card: the whole map's pair and the window", size.bytes / MB, "MB", 9.5);
   record("one pair of every sample, as before, for comparison", (hf.nx * hf.nz * 3) / MB, "MB");
   for (const tier of TIERS) record(`frames to fill a window at ${tier.name}'s ${tier.uploadBytes / 2 ** 20} MB a frame`, Math.ceil(WINDOW / Math.floor(tier.uploadBytes / (size.width[SOURCE_WINDOW]! * 3))), "");
 
@@ -71,15 +85,19 @@ export function benchTerrain(section: Section, record: Row, hf = benchHills()): 
   for (const speed of SPEEDS) {
     lod.reset();
     const times: number[] = [];
-    let [coarser, most, refills] = [0, 0, 0];
+    let [coarser, most, steps, put] = [0, 0, 0, 0];
+    let corner = -1;
     for (let d = 0; d < FLIGHT; d += speed / 60) {
       [cam.x, cam.z, cam.yaw, cam.pitch] = [1500 + d * Math.SQRT1_2, 1500 + d * Math.SQRT1_2, Math.PI / 4, -0.15];
       times.push(frame());
       coarser += lod.coarser;
       most = Math.max(most, lod.coarser);
-      if (p.groundWindow[3]! >= 0 && p.groundWindow[6] === 0) refills++;
+      if (corner >= 0 && p.groundWindow[1]! * 65536 + p.groundWindow[2]! !== corner) steps++;
+      if (p.groundWindow[0]! >= 0) corner = p.groundWindow[1]! * 65536 + p.groundWindow[2]!;
+      if (steps > 0) put = Math.max(put, groundBytes(p));
     }
-    record(`flying ${speed} m/s for ${FLIGHT / 1000} km: window refills`, refills - 1, "");
+    record(`flying ${speed} m/s for ${FLIGHT / 1000} km: window steps`, steps, "");
+    record(`  the most a step put in a frame`, put / MB, "MB");
     record(`  tiles drawn a level coarser, all frames`, coarser, "", speed < 1000 ? 0 : null);
     record(`  the most in a frame`, most, "");
     if (speed === SPEEDS[0]) {
@@ -93,15 +111,51 @@ export function benchTerrain(section: Section, record: Row, hf = benchHills()): 
   lod.reset();
   for (let k = 0; k < 20; k++) {
     [cam.x, cam.z, cam.yaw] = [rng.range(200, 7990), rng.range(200, 7990), rng.range(0, 2 * Math.PI)];
-    const old = p.groundWindow[0];
+    const old = p.groundWindow[1]! * 65536 + p.groundWindow[2]!;
     frame();
     first.push(lod.coarser);
     let n = 1;
-    while (p.groundWindow[0] === old && n < 20) (frame(), n++);
+    while ((p.groundWindow[0]! < 0 || p.groundWindow[1]! * 65536 + p.groundWindow[2]! === old) && n < 20) (frame(), n++);
     coming.push(n);
   }
   record("20 teleports: frames until the new window is in, most", Math.max(...coming), "", 4);
   record("  tiles drawn a level coarser in the frame after, mean", first.reduce((s, v) => s + v, 0) / first.length, "");
+
+  // What a part that lands costs: a sector's ground held in the window's middle, and a road square that comes inside it and outside.
+  lod.reset();
+  [cam.x, cam.z] = [4000, 4000];
+  for (let k = 0; k < 8; k++) frame();
+  const [wi, wj] = [p.groundWindow[1]!, p.groundWindow[2]!], per = 32;
+  const [cx, cz] = [Math.ceil(wi / per), Math.ceil(wj / per) + 8];
+  hf.hold(cx, cz, cx + 16, cz + 16);
+  let [bytes, roads] = [0, 0];
+  for (let k = 0; k < 8; k++) (frame(), (bytes += groundBytes(p)));
+  record("a sector held inside the window: its bytes put again", bytes / MB, "MB");
+  const road = (hf.road = new RoadSectors()), plane = (): Uint8Array => new Uint8Array(257 * 257);
+  frame();
+  for (const [key, j] of [[1, cz * 16], [2, 4000]] as const) {
+    road.put(key, cx * 16, j, 257, { across: plane(), along: plane(), half: plane(), lanes: plane() });
+    roads = 0;
+    for (let k = 0; k < 8; k++) (frame(), (roads += roadBytes(p)));
+    record(`a road square that comes ${key === 1 ? "inside" : "outside"} the window: bytes copied`, roads / MB, "MB");
+  }
+  // The camera 400 m on along x, 304 m from the middle, and held there: what the move puts, the ground's and the roads' frame's.
+  [bytes, roads] = [0, 0];
+  cam.x += 400;
+  for (let k = 0; k < 8; k++) (frame(), (bytes += groundBytes(p)), (roads += roadBytes(p)));
+  record("a 256 m move: the window's bytes put", bytes / MB, "MB", 0.4);
+  record("  its roads' frame's bytes put", roads / MB, "MB");
+  hf.road = null;
+
+  // The boxes of a 16 km map's 65,536 chunks: scanned from its 67 million samples, or read from bounds kept as its parts came.
+  const big = new Heightfield({ chunksX: 256, chunksZ: 256 }, TERRAIN_CELL, -32, 1 / 64);
+  let t = performance.now();
+  new TerrainLod(big);
+  record("a 16 km map's chunk boxes, scanned", performance.now() - t, "ms");
+  big.bounds = new Uint16Array(256 * 256 * 2);
+  t = performance.now();
+  new TerrainLod(big);
+  record("a 16 km map's chunk boxes, from bounds kept", performance.now() - t, "ms");
 }
 
 if (import.meta.main) {

@@ -140,10 +140,10 @@ test("a bench run's clock begins at the frame the scene is still and steps a six
   for (const f of [61, 200, 900, 999]) expect(halting.scene[f]).toBe(steady.scene[f]!);
 });
 
-test("a bench run waits for the whole map before the still frames it starts after, and says what it waited for", () => {
-  // The map's parts come over the first 200 frames, the whole map's statics are handed over at the 150th and the road
-  // parts round the body held at the 180th; the scene is still and nothing else is on its way all the while.
-  const progress = (f: number): MapProgress => ({ left: Math.max(0, 200 - f), parts: 200, near: f >= 50, whole: f >= 150, roads: f >= 180 ? 0 : 3 });
+test("a bench run waits for the map to settle before the still frames it starts after, and says what it waited for", () => {
+  // The parts wanted come over the first 200 frames and the page settles at the 200th; the statics are first handed over
+  // at the 150th and the road parts round the body held at the 180th; the scene is still and nothing else is on its way.
+  const progress = (f: number): MapProgress => ({ left: Math.max(0, 200 - f), parts: 200, near: f >= 150, settled: f >= 200, roads: f >= 180 ? 0 : 3 });
   const run = new BenchRun();
   const p = new FramePacket();
   let f = 0, began = -1, asked = 0;
@@ -153,7 +153,7 @@ test("a bench run waits for the whole map before the still frames it starts afte
     if (began < 0 && run.since(now) > 0) began = f;
     report = run.frame(now, 1, [[5]], p, true, drawn);
   }
-  // Begun at the 60th still frame from the 200th, the first with the whole map, and turning from the next but one; the
+  // Begun at the 60th still frame from the 200th, the first with the map settled, and turning from the next but one; the
   // map asked of only until then.
   expect([began, asked]).toEqual([261, 201]);
   expect(report!.waited).toEqual({ mapMs: Math.round(200 * 16.7), map: progress(200), stillFrames: 60, gaveUp: false });

@@ -4,6 +4,7 @@
 // Every shape is drawn from hashes of the building's id and of places, so a rebuild gives the same heights.
 
 import type { Grid } from "./base.ts";
+import { buildingIds, seedOf } from "./building-id.ts";
 import { distanceField, fbm, fillPolygon, hash3, rand3 } from "./raster.ts";
 
 /** What kind of ruin a footprint left. */
@@ -21,7 +22,11 @@ export const PART_POOL = 5;
 export const PART_COURT = 6;
 
 export interface Building {
+  /** Its id from its place and shape (building-id.ts): what the map knows it by and what seeds it. */
   readonly id: number;
+  /** Its row's id in the data (buildings.geojson), which labels and named places give, and its polygon among the row's. */
+  readonly row: number;
+  readonly polygon: number;
   /** Metres east and north of the map's centre. */
   readonly rings: readonly (readonly (readonly number[])[])[];
   readonly area: number;
@@ -68,11 +73,15 @@ const area = (ring: readonly (readonly number[])[]): number => {
   return a / 2;
 };
 
-/** The buildings of a GeoJSON collection in metres, each polygon of a multipolygon its own. */
-export function readBuildings(geojson: { features: { geometry: { type: string; coordinates: unknown }; properties: { id: number } }[] }, about: ReadonlyMap<number, { height: number | null; use: string | null }> = new Map()): Building[] {
+/**
+ * The buildings of a GeoJSON collection in metres, each polygon of a multipolygon its own, each with its id from its
+ * place and shape. `toLattice` gives the lattice x and z of a point in metres east and north of the projection's centre.
+ */
+export function readBuildings(geojson: { features: { geometry: { type: string; coordinates: unknown }; properties: { id: number } }[] }, toLattice: (e: number, n: number) => readonly [number, number], about: ReadonlyMap<number, { height: number | null; use: string | null }> = new Map()): Building[] {
   const out: Building[] = [];
   for (const f of geojson.features) {
     const polys = (f.geometry.type === "Polygon" ? [f.geometry.coordinates] : f.geometry.coordinates) as number[][][][];
+    // A polygon's id is its footprint's times four and its place, so a fifth would take the next footprint's first.
     polys.forEach((rings, k) => {
       let a = Math.abs(area(rings[0]!));
       for (const hole of rings.slice(1)) a -= Math.abs(area(hole));
@@ -86,18 +95,20 @@ export function readBuildings(geojson: { features: { geometry: { type: string; c
         cn += outer[i]![1]!;
       }
       const known = about.get(f.properties.id);
-      out.push({ id: f.properties.id * 4 + k, rings, area: a, perimeter: p, e: ce / (outer.length - 1), n: cn / (outer.length - 1), height: known?.height ?? null, use: known?.use ?? null });
+      out.push({ id: 0, row: f.properties.id, polygon: k, rings, area: a, perimeter: p, e: ce / (outer.length - 1), n: cn / (outer.length - 1), height: known?.height ?? null, use: known?.use ?? null });
     });
   }
-  return out;
+  const ids = buildingIds(out, toLattice);
+  // In the order of their ids, which another order of the rows does not change: where two heaps meet, the first keeps a tie.
+  return out.map((b, k) => ({ ...b, id: ids[k]! })).sort((a, b) => a.id - b.id);
 }
 
 /** Storeys a building is taken to have had: a house or a block from its footprint, and a tower where the district builds tall. */
-function storeysOf(b: Building, tall: number): number {
+function storeysOf(b: Building, tall: number, seed: number): number {
   // Its surveyed height where there is one, at 3.3 m a storey; else a guess from its footprint and its district.
   if (b.height !== null && b.height > 0) return Math.max(1, b.height / 3.3);
   const low = Math.min(4.5, Math.max(1, 1 + Math.log2(Math.max(60, b.area) / 110)));
-  const u = rand3(b.id, 11, 0);
+  const u = rand3(seed, 11, 0);
   const fits = Math.min(1, Math.max(0, (b.area - 250) / 1000)) * (b.area < 12000 ? 1 : 0.3);
   const tower = tall * fits * (8 + 52 * u ** 1.6);
   return Math.max(low, tower);
@@ -120,9 +131,10 @@ export function makeHeaps(input: HeapInput): Heaps {
   for (const b of buildings) {
     const d = input.districtOf(b.e, b.n);
     const round = (4 * Math.PI * b.area) / (b.perimeter * b.perimeter);
-    const storeys = storeysOf(b, d.tall);
+    const seed = seedOf(b.id);
+    const storeys = storeysOf(b, d.tall, seed);
     const kind = d.industrial && round > 0.8 && b.area > 150 && b.area < 6000 ? RUIN_TANK : b.area > 4000 && storeys < 6 ? RUIN_HALL : RUIN_HEAP;
-    const crest = kind === RUIN_HEAP ? Math.min(20, 0.8 + 0.35 * storeys) : kind === RUIN_HALL ? 2 + 2 * rand3(b.id, 5, 0) : 2.6;
+    const crest = kind === RUIN_HEAP ? Math.min(20, 0.8 + 0.35 * storeys) : kind === RUIN_HALL ? 2 + 2 * rand3(seed, 5, 0) : 2.6;
     const r = ruins.length;
     ruins.push({ building: b, kind, storeys, crest, district: d.index });
     reach.push(kind === RUIN_HEAP ? 1.5 + 0.5 * crest : 3);
@@ -161,21 +173,21 @@ export function makeHeaps(input: HeapInput): Heaps {
         core = i;
       }
     }
-    const slope = Math.tan(((30 + 18 * rand3(b.id, 3, 0)) * Math.PI) / 180);
-    const plinth = 0.5 + 1.2 * rand3(b.id, 4, 0);
-    const step = 1.7 + 0.7 * rand3(b.id, 8, 0);
+    const slope = Math.tan(((30 + 18 * rand3(seed, 3, 0)) * Math.PI) / 180);
+    const plinth = 0.5 + 1.2 * rand3(seed, 4, 0);
+    const step = 1.7 + 0.7 * rand3(seed, 8, 0);
     // Slabs lying across the heap: a centre on the footprint, a length, a width, a turn and a rise from one end to the other.
     const slabs: number[] = [];
     if (kind === RUIN_HEAP && crest > 5) {
       const cells: number[] = [];
       for (let i = 0; i < ww * wh; i++) if (inside[i]) cells.push(i);
       for (let s = 0; s < Math.floor(crest / 5) && cells.length > 0; s++) {
-        const at = cells[hash3(b.id, 20 + s, 0) % cells.length]!;
-        slabs.push((at % ww) * cell, Math.floor(at / ww) * cell, 6 + 8 * rand3(b.id, 21, s), 2 + 2 * rand3(b.id, 22, s), Math.PI * rand3(b.id, 23, s), 1 + 0.25 * crest * rand3(b.id, 24, s));
+        const at = cells[hash3(seed, 20 + s, 0) % cells.length]!;
+        slabs.push((at % ww) * cell, Math.floor(at / ww) * cell, 6 + 8 * rand3(seed, 21, s), 2 + 2 * rand3(seed, 22, s), Math.PI * rand3(seed, 23, s), 1 + 0.25 * crest * rand3(seed, 24, s));
       }
     }
     // A tower's core and lower floors still stand out of its heap, in the building's own outline, broken off unevenly.
-    const stub = storeys > 18 && core >= 0 ? crest * (0.3 + 0.4 * rand3(b.id, 6, 0)) : 0;
+    const stub = storeys > 18 && core >= 0 ? crest * (0.3 + 0.4 * rand3(seed, 6, 0)) : 0;
     const coreDepth = Math.max(4, 0.3 * Math.sqrt(deepest) * cell);
     for (let j = 0; j < wh; j++) {
       for (let i = 0; i < ww; i++) {
@@ -201,35 +213,35 @@ export function makeHeaps(input: HeapInput): Heaps {
           }
         } else if (kind === RUIN_HALL) {
           // Walls stand round the edge, broken by gaps; inside, the roof lies in a low, uneven floor of rubble.
-          const broken = fbm(x, z, 9, b.id & 0xffff) < 0.38;
+          const broken = fbm(x, z, 9, seed & 0xffff) < 0.38;
           if (dIn <= 2.2 && !broken) {
             h = crest * (0.75 + 0.5 * fbm(x, z, 5, 77));
             p = PART_WALL;
           } else {
-            h = 0.35 + 1.1 * fbm(x, z, 7, (b.id >>> 3) & 0xffff) + Math.min(0.6, dIn * 0.1);
+            h = 0.35 + 1.1 * fbm(x, z, 7, (seed >>> 3) & 0xffff) + Math.min(0.6, dIn * 0.1);
             p = PART_FLOOR;
           }
         } else {
-          const gap = fbm(x, z, 10, (b.id >>> 2) & 0xffff) < 0.35;
+          const gap = fbm(x, z, 10, (seed >>> 2) & 0xffff) < 0.35;
           const edge = gap ? 0.15 : plinth;
           h = Math.min(crest, edge + dIn * slope);
-          const rough = fbm(x, z, 6, (b.id >>> 5) & 0xffff);
+          const rough = fbm(x, z, 6, (seed >>> 5) & 0xffff);
           h *= 0.82 + 0.36 * rough;
           // A tall heap is its floors fallen one on another: ledges a body can stand on, risers it must jump, and here
           // and there a stretch where the rubble has run into a slope that walks.
-          if (crest > 6 && fbm(x, z, 12, (b.id >>> 9) & 0xffff) > 0.3) {
+          if (crest > 6 && fbm(x, z, 12, (seed >>> 9) & 0xffff) > 0.3) {
             const f = h / step;
             const k = Math.floor(f);
             h = h * 0.25 + (k + Math.min(1, Math.max(0, (f - k - 0.65) / 0.35))) * step * 0.75;
           }
-          h += (fbm(x, z, 2.5, (b.id >>> 7) & 0xffff) - 0.5) * 0.12 * crest * Math.min(1, dIn / 3);
+          h += (fbm(x, z, 2.5, (seed >>> 7) & 0xffff) - 0.5) * 0.12 * crest * Math.min(1, dIn / 3);
           for (let s = 0; s < slabs.length; s += 6) {
             const dx = (i * cell - slabs[s]!) * Math.cos(slabs[s + 4]!) + (j * cell - slabs[s + 1]!) * Math.sin(slabs[s + 4]!);
             const dz = -(i * cell - slabs[s]!) * Math.sin(slabs[s + 4]!) + (j * cell - slabs[s + 1]!) * Math.cos(slabs[s + 4]!);
             if (Math.abs(dx) < slabs[s + 2]! / 2 && Math.abs(dz) < slabs[s + 3]! / 2) h = Math.max(h, Math.min(crest * 1.1, h * 0.6 + slabs[s + 5]! * (0.5 + dx / slabs[s + 2]!) + 0.8));
           }
           if (stub > 0 && dIn >= coreDepth) {
-            const broken = fbm(x, z, 8, (b.id >>> 11) & 0xffff);
+            const broken = fbm(x, z, 8, (seed >>> 11) & 0xffff);
             h = Math.max(h, crest + stub * (broken < 0.35 ? 0.45 : 1) + (fbm(x, z, 3, 991) - 0.5) * 3);
             p = PART_WALL;
           }

@@ -13,11 +13,9 @@ import { landmarkPoint } from "../../../shared/world/landmark.ts";
 import type { MapLandmark } from "../../../shared/world/mapfile.ts";
 import type { Assets } from "../assets/assets.ts";
 import type { Camera } from "./camera.ts";
-import { FAR_BUFFER } from "./far.ts";
+import { LANDMARK_BUFFER } from "./far.ts";
+export { LANDMARK_BUFFER } from "./far.ts";
 import { InstanceWriter, type FramePacket } from "./packet.ts";
-
-/** The instance buffer the landmarks are drawn with: one instance a landmark, at the origin, turned by its yaw. */
-export const LANDMARK_BUFFER = FAR_BUFFER + 3;
 
 /** A landmark as it is drawn far: its far mesh, where it stands, and per piece where it is drawn and the chunk it belongs to. */
 export interface PlacedFar {

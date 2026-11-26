@@ -50,19 +50,24 @@ export class HeldTops {
   version = 0;
   /** Per chunk, `version` when its cells came, 0 while they have not. */
   readonly came: Uint32Array;
-  private readonly pieces: MapTops[] = [];
+  private readonly pieces: (MapTops | null)[] = [];
+  /** Places in `pieces` of pieces let go, for the next to take. */
+  private readonly free: number[] = [];
   /** Per chunk: the piece holding its cells, 1 on, or 0 for none; and its row there. */
   private readonly piece: Uint16Array;
   private readonly row: Uint32Array;
+  private readonly chunksX: number;
 
   constructor(dims: MapDims) {
     this.came = new Uint32Array(chunkCount(dims));
     this.piece = new Uint16Array(this.came.length);
     this.row = new Uint32Array(this.came.length);
+    this.chunksX = dims.chunksX;
   }
 
   take(tops: MapTops): void {
-    const n = this.pieces.push(tops);
+    const at = this.free.pop();
+    const n = at === undefined ? this.pieces.push(tops) : ((this.pieces[at] = tops), at + 1);
     this.version++;
     for (let k = 0; k < tops.chunks.length; k++) {
       const c = tops.chunks[k]!;
@@ -70,6 +75,28 @@ export class HeldTops {
       this.row[c] = k;
       this.came[c] = this.version;
     }
+  }
+
+  /**
+   * Lets go of the cells of the chunks in the square `cx0` up to `cx1` across and `cz0` up to `cz1` down. What was made of
+   * them is not told: a drawing keeps it until it makes them again, and they come again before it is in view.
+   */
+  drop(cx0: number, cz0: number, cx1: number, cz1: number): void {
+    for (let cz = cz0; cz < cz1; cz++) {
+      for (let cx = cx0; cx < cx1; cx++) {
+        const c = cz * this.chunksX + cx, n = this.piece[c]!;
+        if (n === 0) continue;
+        this.piece[c] = 0;
+        if (this.pieces[n - 1] === null) continue;
+        this.pieces[n - 1] = null;
+        this.free.push(n - 1);
+      }
+    }
+  }
+
+  /** Bytes of the cells held. */
+  get bytes(): number {
+    return this.pieces.reduce((s, p) => s + (p ? p.top.byteLength + p.tint.byteLength + p.chunks.byteLength : 0), 0);
   }
 
   /** `chunk`'s cells' top bytes (tactical.ts farTopByte, 0 for empty), or null where none have come or none is filled. */

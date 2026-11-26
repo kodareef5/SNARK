@@ -32,7 +32,8 @@ export function benchBreaking(section: Section, record: Row): void {
   let chunk = 0, most = 0;
   for (let c = 0; c < dims.chunksX * dims.chunksZ; c++) {
     let n = 0;
-    for (let i = city.first[c]!; i < city.first[c + 1]!; i++) n += near.kinds[city.kind[i]!]!;
+    const t = city.rows(c);
+    for (let i = t?.from(c) ?? 0; t && i < t.to(c); i++) n += near.kinds[t.kind[i]!]!;
     if (n > most) [chunk, most] = [c, n];
   }
   const [x, z] = [(chunkCx(dims, chunk) + 0.5) * CHUNK_SIZE, (chunkCz(dims, chunk) + 0.5) * CHUNK_SIZE];
@@ -146,13 +147,14 @@ export function benchFragments(section: Section, record: Row): void {
   let chunk = 0, most = 0;
   for (let c = 0; c < dims.chunksX * dims.chunksZ; c++) {
     let n = 0;
-    for (let i = city.first[c]!; i < city.first[c + 1]!; i++) n += reg.breakSet[city.kind[i]!] !== 0 ? 1 : 0;
+    const t = city.rows(c);
+    for (let i = t?.from(c) ?? 0; t && i < t.to(c); i++) n += reg.breakSet[t.kind[i]!] !== 0 ? 1 : 0;
     if (n > most) [chunk, most] = [c, n];
   }
   const [x, z] = [(chunkCx(dims, chunk) + 0.5) * CHUNK_SIZE, (chunkCz(dims, chunk) + 0.5) * CHUNK_SIZE];
   [cam.x, cam.z, cam.y, cam.yaw] = [x, z, hf.heightAt(x, z) + 1.7, 0.6];
   w.follow(x, z);
-  const mapKind = (c: number, s: number): number => (s < city.in(c) ? city.kind[city.first[c]! + s]! : 0);
+  const mapKind = (c: number, s: number): number => (s < city.in(c) ? city.rows(c)!.kind[city.rows(c)!.from(c) + s]! : 0);
   const falling = (scene.falling = new Falling(reg.halfY, (px, pz) => hf.heightAt(px, pz), { reg, structs, mapKind }));
   near.pieces = Infinity;
   for (let f = 0; f < 6; f++) w.frame();

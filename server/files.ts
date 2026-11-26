@@ -1,6 +1,6 @@
 // The client's files over HTTP: whole, or one range of one. A file named after its own hash never changes, so it is
 // kept for good by whoever fetched it. Any other is checked again each time, and costs nothing if it is unchanged.
-// A map's parts are served from their folder in the same way (server/main.ts mapRoutes).
+// A front serves a map's parts from their folder in the same way, its copies alone (server/front.ts fromDisk).
 
 import { existsSync } from "node:fs";
 import { join, normalize, sep } from "node:path";
@@ -18,7 +18,18 @@ export async function serveFile(dir: string, req: Request, pathname = new URL(re
   const path = normalize(join(dir, pathname.endsWith("/") ? `${pathname}index.html` : pathname));
   if (!path.startsWith(dir + sep)) return new Response("not found", { status: 404 });
   const file = Bun.file(path);
+  const accepts = req.headers.get("accept-encoding") ?? "";
   if (!(await file.exists())) {
+    // A map's part keeps only its copies (tools/map/pack.ts): a client that takes neither, or a range, is the world's to answer.
+    if (!req.headers.has("range") && HASHED.test(path.slice(path.lastIndexOf("/") + 1))) {
+      for (const [encoding, end] of [["br", "br"], ["gzip", "gz"]] as const) {
+        const packed = Bun.file(`${path}.${end}`);
+        if (accepts.includes(encoding) && (await packed.exists())) {
+          const type = TYPES[path.split(".").pop() ?? ""] ?? "application/octet-stream";
+          return new Response(packed, { headers: { "content-type": type, "cache-control": "public, max-age=31536000, immutable", vary: "accept-encoding", "content-encoding": encoding } });
+        }
+      }
+    }
     // A folder asked for without its slash goes on to its address with one, as /wiki to /wiki/, so that its page's
     // relative addresses fall inside it. The way on is relative too, so it holds under any path the server is reached at.
     if (!pathname.endsWith("/") && existsSync(join(path, "index.html"))) {
@@ -43,7 +54,6 @@ export async function serveFile(dir: string, req: Request, pathname = new URL(re
   }
   // A whole file goes out compressed where a compressed copy was built beside it: Brotli to whoever takes it, else gzip,
   // which a browser takes over plain http. A range never does: its offsets are the file's own.
-  const accepts = req.headers.get("accept-encoding") ?? "";
   for (const [encoding, end] of [["br", "br"], ["gzip", "gz"]] as const) {
     const packed = Bun.file(`${path}.${end}`);
     if (!(await packed.exists())) continue;

@@ -52,9 +52,9 @@ function street(cars: readonly string[], more: readonly MapStatic[] = []) {
     },
     /** Sets `slot` to `kind` in place at `hp`, or with 0 empties it, as a row or a removal from the server does. */
     set(slot: number, kind: number, hp = 5333): void {
-      const i = w.city.first[CHUNK]! + slot;
+      const t = w.city.rows(CHUNK)!, i = t.from(CHUNK) + slot;
       if (kind === 0) w.structs.put(CHUNK, slot, 0, 0, 0, 0, 0, 0, 0, ++version);
-      else w.structs.put(CHUNK, slot, kind, w.city.x[i]!, w.city.y[i]!, w.city.z[i]!, w.city.yaw[i]!, 0, hp, ++version);
+      else w.structs.put(CHUNK, slot, kind, t.x[i]!, t.y[i]!, t.z[i]!, t.yaw[i]!, 0, hp, ++version);
       w.structs.setVersion(CHUNK, version);
     },
     /** The instance of `slot` as last sent: its bytes, and the mesh frame `p` draws it with. */
@@ -116,7 +116,7 @@ test("a rung lays its chunk's instances out again and makes no mesh again", () =
   const made = (p: FramePacket): number => p.assetUploads.filter((u) => u.slot >= FAR_SLOTS).length;
   let uploads = 0;
   for (const slot of [0, 1, 2]) {
-    const to = rungKind(reg, w.city.kind[w.city.first[CHUNK]! + slot]!, 1);
+    const to = rungKind(reg, w.city.rows(CHUNK)!.kind[w.city.rows(CHUNK)!.from(CHUNK) + slot]!, 1);
     w.set(slot, to);
     const p = w.run(1);
     // The chunk's fourteen instances and its mesh's one go up again; and the lesser look's own mesh, the first time it is drawn.
@@ -127,7 +127,7 @@ test("a rung lays its chunk's instances out again and makes no mesh again", () =
     for (let f = 0; f < 4; f++) uploads += made(w.run(1));
   }
   // Down to its shell is no more.
-  w.set(0, rungKind(reg, w.city.kind[w.city.first[CHUNK]!]!, 2), 2667);
+  w.set(0, rungKind(reg, w.city.rows(CHUNK)!.kind[w.city.rows(CHUNK)!.from(CHUNK)]!, 2), 2667);
   const p = w.run(1);
   expect([p.uploads.map((u) => u.buffer), p.drops.length, p.assetDrops.length, made(p), near.chunk(CHUNK)!.mesh === mesh]).toEqual([[CHUNK], 0, 0, 0, true]);
   // The far layers take a salvaged wreck as standing: nothing of theirs is made again for a rung.
@@ -147,7 +147,7 @@ test("a stripped wreck blown apart falls whole, in the paint the map placed it i
   w.run(4);
   w.set(0, 0);
   const falling = (w.scene.falling = new Falling(reg.halfY, () => 0, { reg, structs: w.structs }));
-  const [x, z] = [w.city.x[w.city.first[CHUNK]!]!, w.city.z[w.city.first[CHUNK]!]!];
+  const rows = w.city.rows(CHUNK)!, [x, z] = [rows.x[rows.from(CHUNK)]!, rows.z[rows.from(CHUNK)]!];
   falling.absorb([{ kind: stripped, x, y: 0, z, yaw: 0, tw: -1, cause: GONE_BLAST, ox: x + 2, oy: 1, oz: z, tick: 0, radius: 6, into: 0, map: blue }], w.scene.now, w.cam.x, w.cam.y, w.cam.z);
   expect([falling.count, falling.sets[0]]).toEqual([1, null]);
   const p = w.run(1);

@@ -2,6 +2,7 @@
 // one bone, posed while it moves and as it was while it rests.
 
 import { MAX_MOVING_REACH, type Registry } from "../../../../shared/content/registry.ts";
+import { CityStatics } from "../../../../shared/world/city.ts";
 import type { MapStatics } from "../../../../shared/world/mapfile.ts";
 import type { Assets } from "../../assets/assets.ts";
 import type { FarLandmarks } from "../farlandmarks.ts";
@@ -12,7 +13,8 @@ import type { Frame, Pass } from "../pass.ts";
 export class MovingStatics implements Pass {
   /** The registry where it has moving statics, else null, and those of the map once its statics have come. */
   private readonly reg: Registry | null;
-  private from: MapStatics | null = null;
+  private from: CityStatics | MapStatics | null = null;
+  private fromVersion = -1;
   private moving: Moving[] = [];
   /** The map's landmarks' far meshes, once the far city has made them: a part at rest is struck where one stands for it. */
   landmarks: FarLandmarks | null = null;
@@ -40,8 +42,10 @@ export class MovingStatics implements Pass {
     if (!source || !this.reg) return;
     const p = f.packet, cam = f.cam, tier = f.tier, table = f.assets.table;
     const statics = source.statics();
-    if (statics !== this.from) {
+    const version = statics instanceof CityStatics ? statics.version : -1;
+    if (statics !== this.from || version !== this.fromVersion) {
       this.from = statics;
+      this.fromVersion = version;
       this.moving = statics ? movingOf(this.reg, statics) : [];
     }
     const own = Math.min(f.view, tier.reach.parts), landmark = Math.min(f.view, Math.max(tier.reach.parts, f.alongGround(tier.reach.city)));

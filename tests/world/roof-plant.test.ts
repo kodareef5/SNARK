@@ -19,7 +19,7 @@ for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) block.push(slab(500 + i 
 for (let i = 0; i < 2; i++) for (let j = 0; j < 4; j++) block.push(slab(500 + i * 8, 500 + j * 8, 2 * FLOOR));
 const core: StaticPiece = { kind: "core:zruin_zcore_concrete", x: 504, y: 2 * FLOOR + 0.2 + 2, z: 516, yaw: 0 };
 const pieces = [...block, core];
-const record = (height: number) => [{ firstPiece: 0, blocks: block.length, height, yaw: 0 }];
+const record = (height: number) => [{ id: 1, firstPiece: 0, blocks: block.length, height, yaw: 0 }];
 const top = (y: number): number => y + 0.2;
 const SIZES = new Map(STREET_PIECES.map((p) => [streetKind(p.name), p]));
 const boxes = (p: StaticPiece): Box[] => SIZES.get(p.kind)!.boxes.map((b) => {

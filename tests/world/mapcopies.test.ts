@@ -1,10 +1,10 @@
 import { afterAll, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { brotliDecompressSync, gunzipSync, gzipSync } from "node:zlib";
+import { brotliCompressSync, brotliDecompressSync, constants, gunzipSync, gzipSync } from "node:zlib";
 import { partsFolder, partsOf, readHead, writeMap } from "../../shared/world/mapfile.ts";
-import { FIRST_FRAME_BUDGET, PART_BUDGETS, checkBudgets, packMap, writeMapFile, type PackedPart } from "../../tools/map/pack.ts";
+import { COPIES_FILE, FIRST_FRAME_BUDGET, LEVELS, PART_BUDGETS, checkBudgets, copiesLevel, packMap, writeMapFile, type PackedPart } from "../../tools/map/pack.ts";
 import { firstFrameParts } from "../../client/core/mapload.ts";
 import { CHUNK_SIZE } from "../../shared/coords.ts";
 import { koruMap } from "../fixtures/koru.ts";
@@ -61,7 +61,7 @@ test("a part over its kind's budget, or a first frame over its own, is refused a
   expect(() => checkBudgets({ ...packed, first: { ...packed.first, br: FIRST_FRAME_BUDGET + 1 } })).toThrow("waits for 6.29 MB of it before it draws, over the 6.29 MB of tools/map/pack.ts");
 });
 
-test("a map's build writes its head and parts beside it, each with its copies, and takes away what is not one of them", async () => {
+test("a map's build writes its parts' copies beside it, no raw part, and takes away the rest", async () => {
   const path = join(dir, "busy.snmap");
   const folder = partsFolder(path);
   expect(folder).toBe(join(dir, "busy.parts"));
@@ -72,6 +72,39 @@ test("a map's build writes its head and parts beside it, each with its copies, a
   await writeMapFile(path, file);
   const head = readHead(file);
   const names = [head.name, ...head.parts.map((p) => p.name)];
-  expect(readdirSync(folder).sort()).toEqual(names.flatMap((n) => [n, `${n}.br`, `${n}.gz`]).sort());
+  expect(readdirSync(folder).sort()).toEqual([COPIES_FILE, ...names.flatMap((n) => [`${n}.br`, `${n}.gz`])].sort());
   expect([existsSync(path), existsSync(join(dir, "busy.snmap.0123abcd.br"))]).toEqual([true, false]);
+});
+
+test("a build that dies before its map is written takes no old copy away", async () => {
+  const path = join(dir, "dies.snmap");
+  const old = writeMap(wideMap());
+  await writeMapFile(path, old);
+  const before = readdirSync(partsFolder(path)).sort();
+  mkdirSync(`${path}.tmp`);
+  await expect(writeMapFile(path, writeMap(busyMap()))).rejects.toThrow();
+  expect(before.every((name) => existsSync(join(partsFolder(path), name)))).toBe(true);
+  rmSync(`${path}.tmp`, { recursive: true });
+});
+
+test("a copy is kept where its part's name and levels match, and a release makes its own", async () => {
+  const path = join(dir, "kept.snmap");
+  const folder = partsFolder(path);
+  const file = writeMap(busyMap());
+  await writeMapFile(path, file);
+  expect(copiesLevel(folder)).toEqual(LEVELS.everyday);
+  const statics = readHead(file).parts.find((p) => p.kind === "statics")!;
+  const copy = join(folder, `${statics.name}.br`);
+  const made = readFileSync(copy);
+  // A copy put there by hand proves the next everyday build read it rather than compressed again.
+  const marked = brotliCompressSync(file.subarray(statics.at, statics.at + statics.length), { params: { [constants.BROTLI_PARAM_QUALITY]: 1 } });
+  writeFileSync(copy, marked);
+  const everyday = await writeMapFile(path, file);
+  expect([Buffer.from(everyday.parts.find((p) => p.name === statics.name)!.br).equals(marked), readFileSync(copy).equals(marked)]).toEqual([true, true]);
+  const release = await writeMapFile(path, file, true);
+  expect([copiesLevel(folder), readFileSync(copy).equals(marked)]).toEqual([LEVELS.release, false]);
+  expect(release.parts.every((p) => readFileSync(join(folder, `${p.name}.gz`)).equals(gzipSync(p.bytes, { level: 9 })))).toBe(true);
+  // An everyday build after a release makes everyday copies again.
+  await writeMapFile(path, file);
+  expect([copiesLevel(folder), readFileSync(copy).equals(made)]).toEqual([LEVELS.everyday, true]);
 });

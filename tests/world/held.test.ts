@@ -10,9 +10,12 @@ import { BTN_JUMP, BTN_SPRINT } from "../../shared/sim/character.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { parseMap, readHead, readPart, resolveNodes, setGround, writeMap, type GroundPiece, type MapData, type NodeScatter } from "../../shared/world/mapfile.ts";
 import { PROVING_DIMS, buildProvingHeightfield, populateProving } from "../../shared/world/proving.ts";
+import { StreetSectors } from "../../shared/world/streets.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { simHash } from "../../tools/simhash.ts";
+import { GroundPages } from "../../client/core/ground/pages.ts";
 import { Harness } from "../fixtures/net.ts";
+import { denseOf } from "../fixtures/paged-ground.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
 /**
@@ -131,6 +134,23 @@ test("a client whose body's sector has not come predicts nothing there and draws
   expect(late.bodies.slice(-6 * 300)).not.toEqual(whole.bodies.slice(-6 * 300));
 });
 
+test("a car is predicted only once the streets listed round it are held; a body on foot either way", () => {
+  const hf = poisoned(grounds);
+  // The first sector has streets the page has not held yet: a wheel there would grip by the 4 m cells, not their lines.
+  hf.streets = new StreetSectors();
+  hf.streets.list(1, 0, 0, 16, 16);
+  let [walking, before, after, drove] = [0, 0, 0, -1];
+  walk(hf, 3, (s, frame) => {
+    if (s.state !== "active") return;
+    if (s.driving < 0) return void (s.predicting && walking++);
+    // The frame the snapshot that seats it comes, its next update has yet to look at the ground.
+    if (drove < 0) drove = frame;
+    if (frame === drove + 60) hf.streets!.put(1, { x0: 0, z0: 0, stretches: [], corners: [] }, 0, 0, 16, 16);
+    if (s.predicting && frame > drove) frame <= drove + 60 ? before++ : after++;
+  });
+  expect([walking > 100, drove > 0, before, after > 100]).toEqual([true, true, 0, true]);
+});
+
 test("the seeded simulation on the proving ground set in the first of four sectors gives the same hash with the other three poisoned and not held", () => {
   const proving = buildProvingHeightfield();
   const reg = coreRegistry();
@@ -151,4 +171,52 @@ test("the seeded simulation on the proving ground set in the first of four secto
   };
   expect(PROVING_DIMS.chunksX * CHUNK_SIZE + PREDICTED_REACH).toBeLessThan(16 * CHUNK_SIZE);
   expect(simHash(1500, reg, ground(true))).toBe(simHash(1500, reg, ground(false)));
+});
+
+/** The map's ground as the page's pages hold it with only `held` of its sectors, every sample no page holds poisoned. */
+function pages(held: readonly GroundPiece[]): GroundPages {
+  const hf = new GroundPages(map.dims, map.minY, map.stepY, { sample: () => 65535 });
+  for (const g of held) hf.put(g);
+  return hf;
+}
+
+test("ground pages with only the body's sector held, the rest poisoned, predict as the whole map does", () => {
+  const whole = walk(undefined, 12);
+  const held = walk(pages([first]), 12);
+  expect([held.unheld, held.corrections]).toEqual([0, whole.corrections]);
+  expect(held.bodies).toEqual(whole.bodies);
+});
+
+test("a page let go under the body stops its prediction, and held again predicts as the whole map does", () => {
+  const whole = walk(undefined, 6);
+  const hf = pages(grounds);
+  let [gone, back] = [-1, -1];
+  const late = walk(hf, 6, (s, frame) => {
+    if (frame === 300) {
+      hf.drop(first.sq);
+      gone = s.stats.unheld;
+    }
+    if (frame === 600) {
+      expect([s.predicting, s.stats.unheld > gone + 100]).toEqual([false, true]);
+      hf.put(first);
+      back = s.stats.unheld;
+    }
+  });
+  expect([gone, late.unheld]).toEqual([0, back]);
+  expect(late.bodies.slice(-6 * 240)).toEqual(whole.bodies.slice(-6 * 240));
+});
+
+test("a page let go stands in again and held again gives its samples, tints and classes as before", () => {
+  const hf = pages(grounds);
+  const before = denseOf(hf);
+  const { cx0, cz0, cx1, cz1 } = first.sq;
+  hf.drop(first.sq);
+  const gone = denseOf(hf), per = CHUNK_SIZE / TERRAIN_CELL;
+  // Inside the sector every sample stands in; on its edges the neighbours' pages hold theirs.
+  const inside = gone.heights[(cz0 * per + 5) * hf.nx + cx0 * per + 5];
+  expect([inside, hf.exactIn(cx0 * CHUNK_SIZE, cz0 * CHUNK_SIZE, cx1 * CHUNK_SIZE - 1, cz1 * CHUNK_SIZE - 1), hf.count]).toEqual([65535, false, grounds.length - 1]);
+  expect(gone.heights[(cz1 * per) * hf.nx + cx0 * per + 5]).toBe(before.heights[(cz1 * per) * hf.nx + cx0 * per + 5]);
+  hf.put(first);
+  expect(denseOf(hf)).toEqual(before);
+  expect([hf.exactIn(0, 0, hf.sizeX, hf.sizeZ), hf.count]).toEqual([true, grounds.length]);
 });

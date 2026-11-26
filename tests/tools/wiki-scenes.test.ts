@@ -53,9 +53,9 @@ test("the stage requests exact ground for the camera and nearby cast", () => {
 
 test("a photo waits for the ground, the city and nearby roads", () => {
   const shot = WIKI_SCENE_BRIEFS.find((brief) => brief.route === "vehicles/")!;
-  const ready: PhotoStatus = { near: true, whole: true, left: 0, roads: 0, frames: 24, quiet: 6, milliseconds: 3200, city: 1, frozen: 0, errors: [] };
+  const ready: PhotoStatus = { near: true, settled: true, left: 0, roads: 0, frames: 24, quiet: 6, milliseconds: 3200, city: 1, frozen: 0, errors: [] };
   expect(photoReady(shot, ready)).toBe(true);
-  for (const status of [{ near: false }, { whole: false }, { left: 1 }, { roads: 1 }, { quiet: 5 }, { city: 0 }]) {
+  for (const status of [{ near: false }, { settled: false }, { left: 1 }, { roads: 1 }, { quiet: 5 }, { city: 0 }]) {
     expect(photoReady(shot, { ...ready, ...status })).toBe(false);
   }
 });

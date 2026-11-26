@@ -8,8 +8,8 @@ import { DRAW_PULLED, DRAW_RANGED, DRAW_TEXTURED, type FramePacket } from "./ren
 import { NODE_BUFFERS } from "./render/scene.ts";
 
 /**
- * Frames with nothing on its way before the measured frames begin, and the most ms to wait for them: the whole map
- * comes first, every part of it handed over and the road and streets parts round the body held, then the frames.
+ * Frames with nothing on its way before the measured frames begin, and the most ms to wait for them: the map the page
+ * wants comes first, settled and handed over, and the road and streets parts round the body held, then the frames.
  */
 const STILL = 60;
 export const SETTLE_MS = 180000;
@@ -63,7 +63,7 @@ export interface Drawn {
   card: { bytes: number; textures: number };
   /** The budget's squeeze at the last frame: below none where it spends the room left on finer trees (render/budget.ts). */
   squeeze: number;
-  /** How much of the map has come (mapload.ts MapLoader.progress), asked only while the run waits for all of it. */
+  /** How much of the map wanted has come (mapload.ts MapLoader.progress), asked only while the run waits for it. */
   map?: () => MapProgress;
 }
 
@@ -123,14 +123,14 @@ export class BenchRun {
     if (this.started >= 0) this.stepped++;
     if (this.done) return null;
     if (this.first < 0) this.first = now;
-    // Still: the whole map come and handed over (the far city made of it, its tops, the road and streets parts round the
+    // Still: the map the page wants come and handed over (the far city made of it, its tops, the road and streets parts round the
     // body), nothing on its way, nothing uploaded, and the view held still drawing what it drew the frame before. A run
     // that began while the map still came measured another scene than the next: the same street drew 710 draws and
     // 2.40 M triangles on the page's clock and 580 and 1.79 M by query, and earlier 659 in one run and 2,152 in another.
     const measuring = this.previous >= 0;
     if (!measuring && this.mapAt < 0) {
       const m = drawn.map?.();
-      if (!m || (m.whole && m.left === 0 && m.roads === 0)) this.mapAt = now - this.first;
+      if (!m || (m.settled && m.roads === 0)) this.mapAt = now - this.first;
       this.mapThen = m ?? null;
     }
     const same = p.drawCount === this.draws && p.triangles === this.triangles;
@@ -164,7 +164,7 @@ export class BenchRun {
     return {
       frames: BENCH_FRAMES,
       settledMs: Math.round(now - this.first - f.reduce((a, b) => a + b, 0)),
-      // What the run waited for before its first measured frame: the map whole (when it was, or how much of it had come
+      // What the run waited for before its first measured frame: the map settled (when it was, or how much of it had come
       // where the run gave up waiting at SETTLE_MS), and STILL frames of it drawn alike with nothing on its way.
       waited: { mapMs: this.mapAt >= 0 ? Math.round(this.mapAt) : null, map: this.mapThen, stillFrames: this.began, gaveUp: this.began < STILL },
       frameMs: { median: at(f, 0.5), p95: at(f, 0.95), p99: at(f, 0.99), worst: at(f, 1) },
