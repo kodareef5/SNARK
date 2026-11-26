@@ -872,6 +872,41 @@ export function skyFrom(out: Out, frame: Float32Array, r: Numbers, look: (view: 
   for (let c = 0; c < 3; c++) out[c]! *= frame[FRAME.skyScale]!;
 }
 
+/**
+ * A body's mirror (a draw on four-bone skin, skinMode 3) turns from the sky table's to the sky's light that way
+ * (`skyLight`) as it roughens, from BODY_ROUGH's first to its second, and as the way goes BODY_BELOW under the
+ * horizon. The table holds its bright horizon below the horizon too: a limb turned down mirrored it, and a rough limb's
+ * curve swept the horizon's sharp band across it, both pale as the haze behind, so the body looked see-through.
+ */
+export const BODY_ROUGH = [0.3, 0.5] as const;
+export const BODY_BELOW = 0.1;
+
+const step = (a: number, b: number, x: number): number => {
+  const t = Math.min(Math.max((x - a) / (b - a), 0), 1);
+  return t * t * (3 - 2 * t);
+};
+
+/** How much of a body's mirror is the sky's light, at roughness `rough` along a way `up` high. The twin of BODY_MIRROR_GLSL's. */
+export function bodyBlur(rough: number, up: number): number {
+  return Math.max(step(BODY_ROUGH[0], BODY_ROUGH[1], rough), step(0, BODY_BELOW, -up));
+}
+
+const blurred = new Float64Array(3);
+
+/** Turns `out`, what `skyFrom` gave along `r`, into a body's mirror at roughness `rough`. */
+export function bodyMirror(out: Out, frame: Numbers, r: Numbers, rough: number): void {
+  const t = bodyBlur(rough, r[1]!);
+  if (t <= 0) return;
+  skyLight(blurred, frame, r);
+  for (let c = 0; c < 3; c++) out[c] = out[c]! + (blurred[c]! - out[c]!) * t;
+}
+
+/** `bodyBlur` as GLSL. */
+export const BODY_MIRROR_GLSL = `float bodyBlur(float rough, float up) {
+  return max(smoothstep(${f(BODY_ROUGH[0])}, ${f(BODY_ROUGH[1])}, rough), smoothstep(0.0, ${f(BODY_BELOW)}, -up));
+}
+`;
+
 /** `skyFrom` as GLSL, with the sky table on its unit: `sky` is the table's lookup (sky.ts SKY_GLSL). */
 export const skyFromGlsl = (sky: string): string => `uniform highp sampler3D uSkyTable;
 ${sky}
@@ -924,7 +959,7 @@ in vec4 vWheel;
 uniform float uStreetMaterial, uOptics, uFrom;
 uniform vec4 uEffect;
 ${layered ? "uniform sampler2D uLayer;\nuniform float uLevel;\n" : ""}out vec4 o;
-${LIGHT}${THROUGH}${SKIN_GLSL}${drops ? HAND_GLSL + SWAP_GLSL + VEHICLE_GLASS_GLSL : ""}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${air}${STREET_GLSL}${POLISHED_SKY}${EYE_GLINT_GLSL}${EYE_STRIKE_GLSL}${EYE_ENERGY_GLSL}${EXHAUST_GLSL}${DROP_GLSL}${WHEEL_FINISH_GLSL}${VEHICLE_SHADE_UNIFORMS}${VEHICLE_SHADE_GLSL}${dyed ? DYED : ""}${layered ? WEAR_GLSL + WOUNDED : ""}${BENT_WEAR_GLSL}#ifdef PIECE_SPALL
+${LIGHT}${THROUGH}${SKIN_GLSL}${BODY_MIRROR_GLSL}${drops ? HAND_GLSL + SWAP_GLSL + VEHICLE_GLASS_GLSL : ""}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${air}${STREET_GLSL}${POLISHED_SKY}${EYE_GLINT_GLSL}${EYE_STRIKE_GLSL}${EYE_ENERGY_GLSL}${EXHAUST_GLSL}${DROP_GLSL}${WHEEL_FINISH_GLSL}${VEHICLE_SHADE_UNIFORMS}${VEHICLE_SHADE_GLSL}${dyed ? DYED : ""}${layered ? WEAR_GLSL + WOUNDED : ""}${BENT_WEAR_GLSL}#ifdef PIECE_SPALL
 uniform vec3 uWorldEye;
 ${PIECE_SPALL_TEXT}
 #endif
@@ -1088,6 +1123,8 @@ ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth
     if (instrument) mro.g = mix(mro.g,glossRoughness(max(0.095,mro.g*0.7),1.0),polished*metal);
   }
   vec3 ray = reflect(-v,coatNormal), mirror = skyFrom(ray);
+  // A body's mirror turns to the sky's light that way as it roughens and below the horizon (BODY_ROUGH).
+  if (uSkin > 2.5) mirror = mix(mirror, skyLight(ray), bodyBlur(mro.g, ray.y));
   float edge = 1.0-clamp(dot(coatNormal,v),0.0,1.0);
   // Its own display overhead shows in it, in the site's colour.
   if (instrument) mirror += eyeGlint(vRel,ray);
