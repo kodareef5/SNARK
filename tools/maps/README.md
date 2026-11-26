@@ -132,6 +132,11 @@ art file the city keeps: `assets/source/maps/<city>/art/map.png`.
 holds the same layers and pieces whatever cut is made round it; an edit changes its own sector's parts, its overview's
 tops and the head ([maps v3](../../planning/workstreams/maps-v3.md)).
 
+`bun tools/maps/local-gate.ts <city>` holds the generator to that: it cuts two nested rectangles at the city's middle,
+takes one footprint out of the outer, builds the three (two minutes) and exits 1 if a part differs 600 m or more from
+the inner's edge or from the footprint. Run it after any change under `tools/mapworld`: a list compacted under kept
+places, or a count over the whole map, passes every test and still moves pieces kilometres from an edit.
+
 ## Adding to it
 
 - A setting every city needs: give it a value in `defaults.json`, read it in the stage, and set it in a city's
