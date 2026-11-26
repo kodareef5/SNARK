@@ -4,8 +4,6 @@
 // in content/cast without touching the engine. An entry marked `placeholder` stands in for art or behaviour still to
 // come: it has its id and works with what exists (planning/workstreams/cast.md).
 
-import type { Outfit } from "../content/kinds/populations.ts";
-
 /** Persistent and named (a cop with a beat, the gang member who drew on you), or anonymous background, promoted to
  * featured the moment a player engages one. Players are the leads and grunt's bots the second billing. */
 export type Tier = "featured" | "extra";
@@ -38,12 +36,11 @@ export interface Traits {
 export const TRAIT_NAMES: readonly (keyof Traits)[] = ["calm", "social", "bold", "playful"];
 
 /** What one wears and looks like. `mesh` is the body (the human's until other models come); `wear` is the armour its role
- * needs; `outfits` the clothes under it, by weight, else its population's. */
+ * needs, over the clothes its population's outfits give. */
 export interface Look {
   id: string;
   mesh: string;
   wear: string[];
-  outfits?: readonly Outfit[];
   /** The population its people are drawn from: a content one by id (content/people), or an admin one by its store id at
    * its latest revision; the city's where not given. */
   population?: string | number;
@@ -215,7 +212,7 @@ export function validateCatalogue(c: Catalogue, known: Known): string[] {
   const tables = new Set(c.reactions.map((t) => t.id));
   for (const l of c.looks) {
     unique("look", l.id);
-    for (const w of [...l.wear, ...(l.outfits ?? []).flatMap((o) => o.wear)]) if (!known.items.has(w)) out.push(`look ${l.id}: wears ${w}, which is no item`);
+    for (const w of l.wear) if (!known.items.has(w)) out.push(`look ${l.id}: wears ${w}, which is no item`);
     if (typeof l.population === "number" ? !(Number.isSafeInteger(l.population) && l.population >= 1) : l.population !== undefined && known.populations && !known.populations.has(l.population)) out.push(`look ${l.id}: draws from ${l.population}, which is no population`);
   }
   for (const a of c.archetypes) {

@@ -35,6 +35,8 @@ export interface Born {
   readonly seed: number;
   readonly population: number;
   readonly revision: number;
+  /** What its seed dresses it in (shared/people/person.ts wornOf): a body wearing just that is sent without its wardrobe. */
+  readonly worn?: Uint32Array;
 }
 
 export const F_ALIVE = 1;

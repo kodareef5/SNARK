@@ -70,7 +70,7 @@ test("a look may draw from an admin population, at its latest revision, as a see
       return c;
     };
     const first = body(h, mint());
-    expect(first.born).toEqual({ seed: first.born!.seed, population: wireNumber(h.world.reg, pop)!, revision: 1 });
+    expect(first.born).toMatchObject({ seed: first.born!.seed, population: wireNumber(h.world.reg, pop)!, revision: 1 });
     expect([...lookOfSeed(h.world.reg, first.born!.seed, first.born!.population, 1, h.host.people)!]).toEqual(first.look);
     // A person of the same seed, drawn after an edit, follows it.
     saved(h.host.people.save("population", pop, 1, EDITED, BY));

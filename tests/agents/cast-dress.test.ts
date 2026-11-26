@@ -9,7 +9,7 @@ import { castPerson } from "../../server/cast/people.ts";
 import type { Character } from "../../shared/cast/state.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { readPopulation, type PopulationDoc } from "../../shared/people/doc.ts";
-import { personFrom } from "../../shared/people/person.ts";
+import { bodyOfSeed, personFrom } from "../../shared/people/person.ts";
 import { WARDROBE_NAMES } from "../../shared/sim/items.ts";
 
 const reg = compileContent(CORE_CONTENT).registry!;
@@ -26,11 +26,12 @@ const character = (look: string, seed: number): Character => ({
 });
 
 test("every built-in outfit is garments, each dyed from colours of its own", () => {
-  const outfits = [...POPULATIONS.flatMap((p) => p.outfits ?? []), ...CAST_CATALOGUE.looks.flatMap((l) => l.outfits ?? [])];
-  for (const p of POPULATIONS) expect([p.id, (p.outfits ?? []).length > 0]).toEqual([p.id, true]);
-  for (const o of outfits) {
-    expect(o.wear.filter((id) => !isGarment(id))).toEqual([]);
-    expect(o.dyes!.length).toBe(o.wear.length);
+  for (const p of POPULATIONS) {
+    expect([p.id, (p.outfits ?? []).length > 0]).toEqual([p.id, true]);
+    for (const o of p.outfits!) {
+      expect(o.wear.filter((id) => !isGarment(id))).toEqual([]);
+      expect(o.dyes!.length).toBe(o.wear.length);
+    }
   }
 });
 
@@ -64,11 +65,14 @@ test("a city crowd of 200 varies in its clothes and their colours", () => {
   expect(tees.size).toBeGreaterThanOrEqual(12);
 });
 
-test("a look's own clothes leave the body its population draws", () => {
-  const look = CAST_CATALOGUE.looks.find((l) => l.id === "cast:street_plain")!;
-  for (const seed of SEEDS.slice(0, 20)) {
-    const body = castPerson(character(look.id, seed), look, CAST_CATALOGUE, reg)!;
-    expect([...body.person.look]).toEqual([...personFrom(body.born.seed, CITY).look]);
+test("a Cast person's seed form carries the clothes Cast dressed it in", () => {
+  for (const look of CAST_CATALOGUE.looks) {
+    for (const seed of SEEDS.slice(0, 20)) {
+      const body = castPerson(character(look.id, seed), look, CAST_CATALOGUE, reg)!, { seed: s, population, revision } = body.born;
+      const worn = body.wardrobe.flatMap((w) => (w ? [reg.index.get(w[0])!, w[1], w[2]] : [0, 0, 0]));
+      expect([look.id, [...body.born.worn!]]).toEqual([look.id, worn]);
+      expect([...bodyOfSeed(reg, s, population, revision)!.worn]).toEqual(worn);
+    }
   }
 });
 

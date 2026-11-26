@@ -9,7 +9,7 @@ import { compileContent } from "../../shared/content/registry.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { EntityView, SentView, quantX, quantY, readViewDelta, writeViewDelta, type MakePerson } from "../../shared/net/view.ts";
 import { readPopulation, storePopulation, type PopulationDoc } from "../../shared/people/doc.ts";
-import { lookOfSeed, personFrom, populationsOf, storeIdOf, wireNumber, type StorePopulations } from "../../shared/people/person.ts";
+import { bodyOfSeed, personFrom, populationsOf, storeIdOf, wireNumber, type StorePopulations } from "../../shared/people/person.ts";
 import { EntityStore, F_ALIVE } from "../../shared/sim/entities.ts";
 
 const reg = compileContent(CORE_CONTENT).registry!;
@@ -58,18 +58,18 @@ test("a client with the manifest makes the look the world made from the seed", (
   const store = new EntityStore(DIMS, 8), look = body(store, world, 0xabcdef);
   const book = new PeopleBook();
   book.take(manifest);
-  const seen = read(sent(store), (s, p, r) => book.look(reg, s, p, r))!;
+  const seen = read(sent(store), (s, p, r) => book.body(reg, s, p, r))!;
   expect([...seen.look[0]!]).toEqual([...look]);
   expect(book.waiting).toBe(0);
   // The shared reader with the same store makes it too, and without one the body is malformed, as before.
-  expect([...read(sent(store), (s, p, r) => lookOfSeed(reg, s, p, r, book))!.look[0]!]).toEqual([...look]);
-  expect(read(sent(store), (s, p, r) => lookOfSeed(reg, s, p, r))).toBeNull();
+  expect([...read(sent(store), (s, p, r) => bodyOfSeed(reg, s, p, r, book))!.look[0]!]).toEqual([...look]);
+  expect(read(sent(store), (s, p, r) => bodyOfSeed(reg, s, p, r))).toBeNull();
 });
 
 test("a client without the revision draws a stand-in, made again in place when the manifest comes", () => {
   const store = new EntityStore(DIMS, 8), look = body(store, world, 77);
   const book = new PeopleBook();
-  const seen = read(sent(store), (s, p, r) => book.look(reg, s, p, r))!;
+  const seen = read(sent(store), (s, p, r) => book.body(reg, s, p, r))!;
   const held = seen.look[0]!;
   expect([...held]).not.toEqual([...look]);
   expect(book.waiting).toBe(1);
@@ -82,7 +82,7 @@ test("a client without the revision draws a stand-in, made again in place when t
 
 test("a population the client lacks is still malformed", () => {
   const book = new PeopleBook();
-  expect(book.look(reg, 1, content.list.length, 0)).toBeNull();
+  expect(book.body(reg, 1, content.list.length, 0)).toBeNull();
   expect(book.waiting).toBe(0);
 });
 
@@ -94,12 +94,12 @@ test("a manifest entry not of a population's shape is left out", () => {
 
 test("past the cap, stand-ins no view holds are let go and one still held is remade", async () => {
   const book = new PeopleBook();
-  const held = book.look(reg, 0, content.list.length, 1)!;
-  for (let k = 1; k < PENDING_MAX; k++) book.look(reg, k, content.list.length, 1);
+  const held = book.body(reg, 0, content.list.length, 1)!.look;
+  for (let k = 1; k < PENDING_MAX; k++) book.body(reg, k, content.list.length, 1);
   expect(book.waiting).toBe(PENDING_MAX);
   await Bun.sleep(0);
   Bun.gc(true);
-  book.look(reg, PENDING_MAX, content.list.length, 1);
+  book.body(reg, PENDING_MAX, content.list.length, 1);
   expect(book.waiting).toBeLessThan(PENDING_MAX);
   book.take({ editions: [], populations: [{ id: 1, rev: 1, population: night }] });
   expect([book.waiting, [...held]]).toEqual([0, [...personFrom(0, storePopulation(1, night)).look]]);
