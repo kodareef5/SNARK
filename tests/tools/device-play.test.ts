@@ -33,7 +33,13 @@ test("a page shows which device it is on and the tests, starts nothing until one
   probe.start("quick");
   expect(await going).toBe(true);
   const gpu = card.r;
-  probe.attach({ app, pack, reg: h.reg, hf: h.world.hf }, gpu);
+  const hitReads: string[] = [];
+  const rows = Object.fromEntries(pack.header.rigs.filter((r) => r.hitSurfaces).map((r) => [r.id, r.hitSurfaces]));
+  const drawing = { ...pack, header: { ...pack.header, rigs: pack.header.rigs.map(({ hitSurfaces, ...r }) => r) } };
+  probe.attach({ app, pack: drawing, reg: h.reg, hf: h.world.hf, readRigHits: async () => {
+    hitReads.push(probe.report.stage);
+    return JSON.stringify(rows);
+  } }, gpu);
   // The picture probes read a frame drawn with a plain sky, as the self-check's: no haze and nothing over the table.
   const air: number[][] = [];
   gpu.readPixel = () => (air.push([app.scene!.packet.frame[FRAME.haze]!, app.scene!.packet.frame[FRAME.skyDetail]!]), [0, 0, 0]);
@@ -72,6 +78,7 @@ test("a page shows which device it is on and the tests, starts nothing until one
   expect(q.passes.filter((p) => p.per === "draw" && p.note === "").map((p) => [p.name, p.slope, p.k])).toEqual([["draw far", 100, 128], ["draw flat", 100, 128], ["draw caster", 100, 128]]);
   expect([...card.kinds].sort((a, b) => a - b)).toEqual([DRAW_SIZED, DRAW_PULLED]);
   expect([r.again?.tier, r.again?.scene]).toEqual(["lowpoly", "plain"]);
+  expect(hitReads).toEqual(["hashes"]);
   expect(r.hashes!.every((x) => x.got === x.want)).toBe(true);
   // A cache hit transfers nothing, and is counted apart.
   expect([r.load!.pageBytes, r.load!.pageCached, r.link.httpMs!.median, r.idleFrameMs, r.wakeLock, r.gpu!.maxTexture, r.gpu!.variant, r.device!.touch]).toEqual([300000, 200000, 0, 16.6, "held", 2048, "astc", 5]);

@@ -24,7 +24,7 @@ import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSyn
 import { join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 import { gzip, inflateRawSync } from "node:zlib";
-import { parsePack } from "../shared/pack/pack.ts";
+import { parsePack, rigsWithHits } from "../shared/pack/pack.ts";
 import { allClips } from "../shared/pack/clips.ts";
 import { parseManifest } from "../shared/pack/manifest.ts";
 import { serveFile } from "./files.ts";
@@ -400,6 +400,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   if (stale) console.log(`client: ${clientDir} was built from other source than this server runs, so its page is refused: bun run build`);
   const served = (file: number): Uint8Array => new Uint8Array(readFileSync(join(clientDir, "assets", manifest.files[file]!.name)));
   const pack = parsePack(served(manifest.boot));
+  if (manifest.rigHits) pack.header.rigs = rigsWithHits(pack.header.rigs, readFileSync(join(clientDir, "assets", manifest.rigHits), "utf8"));
   const clips = allClips(manifest, pack, served, (stored) => new Uint8Array(inflateRawSync(stored)));
   let terrain: Uint8Array<ArrayBuffer> | undefined;
   const onMapLoaded = (map: MapFile): void => void (terrain = adminTerrain(map));

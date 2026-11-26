@@ -203,6 +203,20 @@ export interface PackHitSurface {
   bones: { bone: number; pieces: { box: number[]; planes: number[] }[] }[];
 }
 
+/** Restores the contact geometry by rig id, including when landmarks have added more rigs. */
+export function rigsWithHits(rigs: readonly PackRig[], text: string): PackRig[] {
+  const rows = new Map(Object.entries(JSON.parse(text) as Record<string, PackHitSurface[]>));
+  const result = rigs.map((rig) => {
+    const hitSurfaces = rows.get(rig.id);
+    if (hitSurfaces === undefined) return rig;
+    if (!Array.isArray(hitSurfaces)) throw new Error(`pack: invalid hit surfaces for ${rig.id}`);
+    rows.delete(rig.id);
+    return { ...rig, hitSurfaces };
+  });
+  if (rows.size) throw new Error("pack: hit surfaces refer to an unknown rig");
+  return result;
+}
+
 /** Rig proportions and anatomy, with each rest joint in model space. */
 export interface PackRig {
   hitSurfaces?: PackHitSurface[];

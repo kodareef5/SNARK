@@ -190,8 +190,9 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
   if (!registry) throw new Error(`Content cannot be built:\n${errors.join("\n")}`);
   const core = orderPack(buildCorePack([...importedMeshes(), ...(opts.stress ? stressMeshes() : [])]));
   const whole = parsePack(core);
-  const split = splitPack(core, "core", paging(registry!, whole));
+  const split = splitPack(core, "core", { ...paging(registry!, whole), separateHits: true });
   const manifest = split.manifest;
+  if (split.rigHits) writeFileSync(join(dist, "assets", manifest.rigHits!), split.rigHits);
   const pageFile = split.files.findIndex((f) => f.role === "page");
   let packBytes = 0;
   /** Writes file `i` of the manifest, named after its hash, once its bytes are final. */
@@ -273,7 +274,7 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
     .replace("<!-- MODULES -->", modules)
     .replace("FETCHED", JSON.stringify(["map.json", "assets/manifest.json", boot, skyName, contentName]));
   writeFileSync(join(dist, "index.html"), pageWithoutNotes(html));
-  const fetchedWhole = ["index.html", "assets/manifest.json", boot, skyName, contentName, ...(rows ? [`assets/${manifest.soundRows}`] : []), ...scripts];
+  const fetchedWhole = ["index.html", "assets/manifest.json", boot, skyName, contentName, ...(rows ? [`assets/${manifest.soundRows}`] : []), ...(manifest.rigHits ? [`assets/${manifest.rigHits}`] : []), ...scripts];
   for (const name of fetchedWhole) {
     const binary = name === boot || name === skyName;
     writeFileSync(join(dist, `${name}.br`), brotli(readFileSync(join(dist, name)), opts.quick ?? false, binary));

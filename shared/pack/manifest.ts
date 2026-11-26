@@ -190,6 +190,8 @@ export interface Manifest {
   /** Sounds, in a file of their own (shared/pack/sound.ts), listed in `soundRows`, a JSON file beside this. */
   sounds?: ManifestSound[];
   soundRows?: string;
+  /** Skin-fitted creature hit surfaces used by the server and simulation checks. */
+  rigHits?: string;
   /** The inventory pictures. A manifest without them has none. */
   icons?: ManifestIcons;
   /** The colour far blocks draw each palette colour in (client/core/render/far.ts), worked out by the build from every piece. */
@@ -335,6 +337,7 @@ export function parseManifest(text: string): Manifest {
   const m = JSON.parse(text) as Manifest;
   if (m.version !== MANIFEST_VERSION) throw new Error(`manifest: version ${String(m.version)} is not supported`);
   if (!Array.isArray(m.files) || !Array.isArray(m.meshes) || m.files[m.boot]?.role !== "boot") throw new Error("manifest: no boot pack");
+  if (m.rigHits !== undefined && !/^rig-hits\.[a-f0-9]{16}\.json$/.test(m.rigHits)) throw new Error("manifest: invalid rig hit file");
   if (m.icons) checkIcons(m.icons, (file) => m.files[file]?.role);
   const pages = m.pages ?? [];
   for (const p of pages) if (m.files[p.file]?.role !== "page" || !partFits(p.at, p.part, m.files[p.file]!.bytes)) throw new Error("manifest: a page lies outside its file");

@@ -38,7 +38,7 @@ import { stopOnSignals } from "../server/signals.ts";
 import { compileContent } from "../shared/content/registry.ts";
 import { allClips } from "../shared/pack/clips.ts";
 import { parseManifest } from "../shared/pack/manifest.ts";
-import { parsePack } from "../shared/pack/pack.ts";
+import { parsePack, rigsWithHits } from "../shared/pack/pack.ts";
 import { resolveNodes, writeMap } from "../shared/world/mapfile.ts";
 import { groundUnder } from "../shared/world/collide.ts";
 import { placeFree } from "../server/place.ts";
@@ -378,6 +378,7 @@ if (import.meta.main) {
   const manifest = parseManifest(readFileSync(join(dist, "assets/manifest.json"), "utf8"));
   const served = (file: number): Uint8Array => new Uint8Array(readFileSync(join(dist, "assets", manifest.files[file]!.name)));
   const pack = parsePack(served(manifest.boot));
+  if (manifest.rigHits) pack.header.rigs = rigsWithHits(pack.header.rigs, readFileSync(join(dist, "assets", manifest.rigHits), "utf8"));
   const clips = allClips(manifest, pack, served, (stored) => new Uint8Array(inflateRawSync(stored)));
   const expected = Object.fromEntries(deviceScenarios(compileContent(CORE_CONTENT).registry!, pack.header.rigs, clips).map(([name, run]) => [name, run()]));
 

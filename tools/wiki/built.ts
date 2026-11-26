@@ -9,7 +9,7 @@ import type { ClipSet } from "../../shared/anim/clip.ts";
 import { allClips } from "../../shared/pack/clips.ts";
 import { parseManifest, readPages, storedBytes, type Manifest } from "../../shared/pack/manifest.ts";
 import { joinLandmark } from "../../shared/pack/join.ts";
-import { parsePack, type Pack, type PackLod, type PackMesh } from "../../shared/pack/pack.ts";
+import { parsePack, rigsWithHits, type Pack, type PackLod, type PackMesh } from "../../shared/pack/pack.ts";
 import type { ManifestSound } from "../../shared/pack/sound.ts";
 import { unfilterPart } from "../../shared/pack/stored.ts";
 
@@ -38,6 +38,7 @@ export function readBuilt(dist: string): Built {
   const whole = (file: number): Uint8Array => new Uint8Array(readFileSync(at(core.files[file]!.name)));
   const inflate = (stored: Uint8Array): Uint8Array => new Uint8Array(inflateRawSync(stored));
   const coreBoot = parsePack(whole(core.boot));
+  if (core.rigHits) coreBoot.header.rigs = rigsWithHits(coreBoot.header.rigs, readFileSync(at(core.rigHits), "utf8"));
   const clips = allClips(core, coreBoot, whole, inflate);
   // Every landmark's meshes, materials, textures and pages after the core's, as a client on a map that places it joins them.
   let joined = { manifest: core, boot: coreBoot };

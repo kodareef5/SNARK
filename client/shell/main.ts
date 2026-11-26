@@ -314,7 +314,7 @@ async function boot(): Promise<void> {
   });
   /** With ?lose=1 the self-check takes the graphics context away and gives it back, and must still see its picture. */
   const loser = params.has("lose") ? renderer.gl.getExtension("WEBGL_lose_context") : null;
-  device?.attach({ app, pack, reg, hf }, renderer);
+  device?.attach({ app, pack, reg, hf, ...(core.rigHits ? { readRigHits: () => fetchText(fetch, `assets/${core.rigHits}`) } : {}) }, renderer);
 
   // The touch layer's layout and its art's stand-in are fetched by a page a finger has used, and by no other.
   let layering = false;
