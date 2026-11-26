@@ -76,7 +76,7 @@ export class Holders {
     }
     if (!Array.isArray(read)) return;
     for (const row of read) {
-      if (!Array.isArray(row) || !Number.isSafeInteger(row[0]) || !Number.isSafeInteger(row[1]) || this.tag(row[0] as number) === null) continue;
+      if (!Array.isArray(row) || !Number.isSafeInteger(row[0]) || !Number.isSafeInteger(row[1]) || this.holderTag(row[0] as number) === null) continue;
       this.marks.set(row[0] as number, row[1] as number);
       this.ctx.deadlines.push(row[1] as number, this.deadline, row[0] as number, row[1] as number);
     }
@@ -88,12 +88,16 @@ export class Holders {
 
   /** The tag of the map's piece at `ref` if it holds loot and its kind of loot is on, else null. */
   tag(ref: number): string | null {
-    const { world, rules } = this.ctx;
+    const tag = this.holderTag(ref), rules = this.ctx.rules;
+    return tag !== null && rules.on("WorldLootEnabled") && rules.on(holdIsVehicle(tag) ? "VehicleLootEnabled" : "StreetLootEnabled") ? tag : null;
+  }
+
+  private holderTag(ref: number): string | null {
+    const { world } = this.ctx;
     const t = world.structs.chunks[Math.floor(ref / 65536)];
     const slot = ref & 0xffff;
     if (!t || slot >= t.high || t.kind[slot] === 0 || t.owner[slot] !== 0) return null;
-    const tag = world.reg.holds[t.kind[slot]!] ?? null;
-    return tag !== null && rules.on("WorldLootEnabled") && rules.on(holdIsVehicle(tag) ? "VehicleLootEnabled" : "StreetLootEnabled") ? tag : null;
+    return world.reg.holds[t.kind[slot]!] ?? null;
   }
 
   /** Whether `ref` was searched and holds nothing a survivor may still take. */

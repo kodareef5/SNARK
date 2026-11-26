@@ -120,8 +120,10 @@ export class Prompts implements FramePart {
   private searchAsked = 0;
   /** The thing the server refused a search of, until the use key is let go: it is not asked again every frame. */
   private refused = -1;
-  /** Things the server said were searched already, so the prompt says so until the page is left. */
+  /** Empty searches in the survivor's current 16 m square, within the 30 m refill exclusion. */
   private readonly spent = new Set<number>();
+  private spentX = 0;
+  private spentZ = 0;
   /** Frames left of the synthetic use press that follows a tap. */
   usePulse = 0;
   /** Entity index of the egg under the crosshair, or -1. eggKept: the use key went down on one, and took it with CMD_TAKE. */
@@ -198,6 +200,12 @@ export class Prompts implements FramePart {
    * opened. Letting go, or looking away, ends it with nothing said.
    */
   private search(f: AppFrame): void {
+    const x = Math.floor(f.session.own.x / 16), z = Math.floor(f.session.own.z / 16);
+    if (x !== this.spentX || z !== this.spentZ) {
+      this.spent.clear();
+      this.spentX = x;
+      this.spentZ = z;
+    }
     const ref = this.searchAimed;
     if (this.useDownAt < 0) this.refused = -1;
     if (ref < 0 || this.useDownAt < 0 || this.spent.has(ref) || this.refused === ref || !f.ui.wantsPointerLock) {
