@@ -3,7 +3,7 @@
 // (tests/fixtures/aim-audit.ts).
 
 import { expect } from "bun:test";
-import { AIM_MALE, AIM_MALE_EXTREME, AIM_MALE_LOOK, extremeLooks, holdLooks, randomLooks, REGION_GROUPS, regionLooks } from "../fixtures/aim-audit.ts";
+import { AIM_MALE, AIM_MALE_EXTREME, AIM_MALE_LOOK, extremeLooks, faceLooks, holdLooks, randomLooks, REGION_GROUPS, regionLooks } from "../fixtures/aim-audit.ts";
 import { test } from "../fixtures/needs-art.ts";
 
 for (const [name, from, to] of REGION_GROUPS) {
@@ -18,4 +18,8 @@ test("male looks with every region at -1 or +1 are hit where drawn", () => {
 
 test("eight random male looks are hit where drawn", () => {
   expect(holdLooks(randomLooks(0, 8), AIM_MALE_LOOK, AIM_MALE)).toEqual([]);
+});
+
+test("male faces with every slider at an end are hit where drawn", () => {
+  expect(holdLooks(faceLooks(0), AIM_MALE_LOOK, AIM_MALE)).toEqual([]);
 });

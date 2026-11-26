@@ -854,6 +854,12 @@ export class Rasterizer {
   take(packet: FramePacket): void {
     for (const u of packet.uploads) this.buffers.set(u.buffer, { data: u.data.slice(), slots: u.slots.slice() });
     for (const id of packet.drops) this.buffers.delete(id);
+    // What is let go goes first, as the shell lets it go (client/shell/gl.ts), so a slot may be filled again in one frame.
+    for (const slot of packet.assetDrops) {
+      if (!this.manifest && slot < FAR_SLOTS) continue;
+      this.lods.delete(slot);
+      for (const [level, s] of this.surfaces) if (s.slot === slot) this.surfaces.delete(level);
+    }
     // Far blocks come as levels of their own (far.ts), with a manifest or without.
     for (const piece of packet.assetUploads) {
       if (!this.manifest && piece.slot < FAR_SLOTS) continue;
@@ -871,13 +877,9 @@ export class Rasterizer {
         u = { ...piece, data: whole };
       }
       if (u.of === undefined) this.lods.set(u.slot, this.decodeUpload(u));
-      else this.surfaces.set(u.of, { slot: u.slot, surface: surfaceOf(u.data.subarray(0, u.skinAt), u.data.subarray(u.skinAt ?? u.data.length), this.manifest!.meshes[u.mesh]!.uv) });
+      else this.surfaces.set(u.of, { slot: u.slot, surface: surfaceOf(u.data.subarray(0, u.skinAt), u.data.subarray(u.skinAt ?? u.data.length), (this.manifest ?? this.pack.header).meshes[u.mesh]!.uv) });
     }
-    for (const slot of packet.assetDrops) {
-      if (!this.manifest && slot < FAR_SLOTS) continue;
-      this.lods.delete(slot);
-      for (const [level, s] of this.surfaces) if (s.slot === slot) this.surfaces.delete(level);
-    }
+
     // A texture that is let go goes first, with any copy of it being made. Then rows begin a copy, add to it or complete it.
     for (const slot of packet.texDrops) {
       this.textures.delete(slot);
@@ -1825,7 +1827,7 @@ export class Rasterizer {
    */
   private textured(p: FramePacket, d: number): void {
     const lod = this.decode(p.drawMesh[d]!, p.drawLod[d]!, p.drawSlot[d]!);
-    const surface = this.manifest ? this.surfaces.get(p.drawSlot[d]!)?.surface : lod.surface;
+    const surface = this.manifest || p.drawSlot[d]! >= FAR_SLOTS ? this.surfaces.get(p.drawSlot[d]!)?.surface : lod.surface;
     const material = (this.manifest ?? this.pack.header).materials?.[p.drawMaterial[d]!];
     if (!surface) throw new Error(`draw ${d} is textured, and the surface of its level is not on the graphics card`);
     if (!material) throw new Error(`draw ${d} uses material ${p.drawMaterial[d]}, which the pack does not have`);

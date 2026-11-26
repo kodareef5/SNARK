@@ -11,7 +11,7 @@ import { FAR_SLOTS, FAR_SPAN, FAR_TILE_SPAN } from "./far.ts";
 import type { FramePacket } from "./packet.ts";
 
 /** Slots of fragment meshes on the card: the end of the far blocks' span, which a tile's slot wraps short of (far.ts FAR_TILE_SPAN). */
-export const FRAGMENT_SLOT_SPAN = FAR_SPAN - FAR_TILE_SPAN;
+export const FRAGMENT_SLOT_SPAN = (FAR_SPAN - FAR_TILE_SPAN) / 2;
 export const FRAGMENT_SLOTS = FAR_SLOTS + FAR_TILE_SPAN;
 export const fragmentSlot = (slot: number): boolean => slot >= FRAGMENT_SLOTS && slot < FRAGMENT_SLOTS + FRAGMENT_SLOT_SPAN;
 /** Meshes kept on the card. The least lately drawn goes for a new one. */

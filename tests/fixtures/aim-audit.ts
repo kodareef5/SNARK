@@ -4,7 +4,7 @@
 import { bodySeed } from "../../client/core/render/scene.ts";
 import { Pose } from "../../shared/anim/clip.ts";
 import { HUMAN, HUMAN_BONES, HUMAN_ZONE_COUNT, ZONE_HEAD, ZONE_NAMES } from "../../shared/anim/human.ts";
-import { defaultLook, LOOK_BEARD, LOOK_BYTES, LOOK_HAIR, LOOK_SEX, randomLook, REGION_COUNT, REGIONS, setRegion } from "../../shared/anim/look.ts";
+import { defaultLook, FACE_COUNT, LOOK_BEARD, LOOK_BYTES, LOOK_HAIR, LOOK_SEX, randomLook, REGION_COUNT, REGIONS, setFace, setRegion } from "../../shared/anim/look.ts";
 import { AnimState } from "../../shared/anim/pose.ts";
 import { Solved, solve } from "../../shared/anim/skeleton.ts";
 import { humanHitPose, rayBody, zoneOfBone } from "../../shared/anim/zones.ts";
@@ -110,6 +110,8 @@ export function aimAudit(view: ProvingView, look: Uint8Array | null, states: rea
       cam.pitch = -up;
       cam.fovY = 0.7;
       cam.aspect = 1;
+      // The first shot waits for the look's own head to be made (client/core/render/faces.ts), one a frame.
+      if (s === states[0] && v === sides[0]) for (let k = 0; k < 4; k++) view.render();
       view.render();
       // Posed once for the shot as rayBody poses it for each ray, which every 61st ray checks.
       humanHitPose(anim, st, tick, bx, by, bz, yawUnits, null, pose);
@@ -207,6 +209,19 @@ export function randomLooks(sex: number, count: number): [string, Uint8Array][] 
     look[LOOK_HAIR] = defaultLook()[LOOK_HAIR]!;
     look[LOOK_BEARD] = 0;
     return [`random ${k + 1}`, look] as [string, Uint8Array];
+  });
+}
+
+/** Every face slider at -1, every one at +1, and two looks of each slider at one end or the other, on the default look of `sex`. */
+export function faceLooks(sex: number): [string, Uint8Array][] {
+  const rng = new Rng(31 + sex);
+  const ends: [string, number[]][] = [["every face slider -1", Array(FACE_COUNT).fill(-1)], ["every face slider +1", Array(FACE_COUNT).fill(1)]];
+  for (let k = 0; k < 2; k++) ends.push([`face sliders at random ends ${k + 1}`, Array.from({ length: FACE_COUNT }, () => (rng.int(2) === 0 ? -1 : 1))]);
+  return ends.map(([name, values]) => {
+    const look = defaultLook();
+    look[LOOK_SEX] = sex;
+    values.forEach((v, f) => setFace(look, f, v));
+    return [name, look] as [string, Uint8Array];
   });
 }
 

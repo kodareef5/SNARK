@@ -57,13 +57,13 @@ test("survivors with a finest head take face rows and draw made heads", () => {
       if (p.drawBuffer[d] !== TRANSIENT_BUFFER) continue;
       for (let i = p.drawFirst[d]!; i < p.drawFirst[d]! + p.drawInstances[d]!; i++) {
         firsts.add(firstBone(p, i));
-        if (p.drawSlot[d]! >= FACE_SLOTS && p.drawSlot[d]! < FACE_SLOTS + 1024) madeIds.add(p.transientIds[i]!);
+        if (p.drawSlot[d]! >= FACE_SLOTS && p.drawSlot[d]! < FACE_SLOTS + 4096) madeIds.add(p.transientIds[i]!);
       }
     }
     expect(madeIds.size).toBe(n);
     const sorted = [...firsts].sort((a, b) => a - b);
     for (let d = 0; d < p.drawCount; d++) {
-      if (p.drawBuffer[d] !== TRANSIENT_BUFFER || !(p.drawSlot[d]! >= FACE_SLOTS && p.drawSlot[d]! < FACE_SLOTS + 1024)) continue;
+      if (p.drawBuffer[d] !== TRANSIENT_BUFFER || !(p.drawSlot[d]! >= FACE_SLOTS && p.drawSlot[d]! < FACE_SLOTS + 4096)) continue;
       for (let i = p.drawFirst[d]!; i < p.drawFirst[d]! + p.drawInstances[d]!; i++) {
         const first = firstBone(p, i), next = sorted.find((f) => f > first) ?? p.boneCount;
         expect(next - first).toBeGreaterThanOrEqual(HUMAN_BONES + FACE_ROWS);

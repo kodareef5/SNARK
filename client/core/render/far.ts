@@ -33,8 +33,8 @@ export const FAR_HEIGHT = 1024;
  */
 export const FAR_SLOTS = 1 << 30;
 export const FAR_SPAN = 1 << 29;
-/** The last of that span is the fragments' meshes' (fragment-meshes.ts): a tile's slot wraps short of them. */
-export const FAR_TILE_SPAN = FAR_SPAN - 4096;
+/** The last of that span is the fragments' meshes' (fragment-meshes.ts) and the made heads' (faces.ts): a tile's slot wraps short of them. */
+export const FAR_TILE_SPAN = FAR_SPAN - 8192;
 /** The instance buffer every tile is drawn with: one instance at the origin. Clear of chunk indices and the node store's. */
 export const FAR_BUFFER = 2 << 20;
 /** The far city's tiles and the city's blocks are drawn with the next one (farcity.ts, cityblocks.ts). */

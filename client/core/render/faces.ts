@@ -10,10 +10,10 @@ import { SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES } from "../../../shared/pack/pa
 import { blendFace, clampFace, decodeFaces, facePivots, headBound, FACE_PIVOTS, type FaceTable, type HeadBound } from "../../../shared/people/faces.ts";
 import type { Tier } from "../assets/tiers.ts";
 import type { AssetUpload } from "../assets/residency.ts";
-import { PULL_SLOTS } from "./farnodes.ts";
+import { FRAGMENT_SLOTS, FRAGMENT_SLOT_SPAN } from "./fragment-meshes.ts";
 
-/** Slots of made heads on the card, two a head (its level and its surface), clear of the manifest's and the far nodes'. */
-export const FACE_SLOTS = PULL_SLOTS - 1024;
+/** Slots of made heads on the card, two a head (its level and its surface): the end of the far span, after the fragments'. */
+export const FACE_SLOTS = FRAGMENT_SLOTS + FRAGMENT_SLOT_SPAN;
 /** Unique heads a tier keeps on the card. A guess, to be cut where a frame's measured cost misses. */
 export const FACE_HEADS: Readonly<Record<Tier["name"], number>> = { lowpoly: 0, medium: 8, high: 16, ultra: 32 };
 const RESERVE = "faces";
