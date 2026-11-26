@@ -74,6 +74,9 @@ export class HeldStatics {
   readonly rows = new Map<MapPart, number>();
   private readonly chunks = new Map<MapPart, number>();
   private readonly took = new Map<MapPart, number>();
+  /** Of the sectors that have come: the bytes guessed before, and the bytes they took. */
+  private guessed = 0;
+  private taken = 0;
   /** Counts the sectors set in and let go. */
   version = 0;
   /** Sectors a reader waits for: chunks the server sent as the map has them (session.ts). */
@@ -209,9 +212,25 @@ export class HeldStatics {
     return this.sectorAt.byteLength * (this.#city ? 2 : 1);
   }
 
-  /** Bytes sector `part`'s statics take: as they did when last held, else by the head's count of its rows and its index, with a city's kind a row. */
+  /**
+   * Bytes sector `part`'s statics take: as they did when last held, else a guess by the head's count of its rows and its
+   * index, with a city's kind a row. The head does not count bends, so the guess is raised by as much as the sectors
+   * that have come took over theirs.
+   */
   bytesOf(part: MapPart): number {
-    return this.took.get(part) ?? this.rows.get(part)! * (this.#city ? 18 : 16) + (this.chunks.get(part)! + 1) * 4;
+    return this.took.get(part) ?? Math.ceil(this.guess(part) * Math.max(1, this.taken / (this.guessed || Infinity)));
+  }
+
+  private guess(part: MapPart): number {
+    return this.rows.get(part)! * (this.#city ? 18 : 16) + (this.chunks.get(part)! + 1) * 4;
+  }
+
+  /** Keeps that sector `part`'s statics take `bytes`, and how far its guess was off. */
+  private takes(part: MapPart, bytes: number): void {
+    const was = this.took.get(part);
+    if (was === undefined) this.guessed += this.guess(part);
+    this.taken += bytes - (was ?? 0);
+    this.took.set(part, bytes);
   }
 
   /** Sectors held. */
@@ -267,7 +286,7 @@ export class HeldStatics {
     const square = city ? yield* this.squareOf(t, city) : null;
     this.sectors[k] = t;
     const followed = square !== null && this.#city === city;
-    this.took.set(t.part, t.bytes + (followed ? square.bytes : 0));
+    this.takes(t.part, t.bytes + (followed ? square.bytes : 0));
     if (followed) city!.set(k, square);
     this.version++;
     this.needed.delete(t.part);
@@ -299,7 +318,7 @@ export class HeldStatics {
       for (let s = steps.next(); ; s = steps.next()) {
         if (!s.done) continue;
         city.set(k, s.value);
-        this.took.set(t.part, t.bytes + s.value.bytes);
+        this.takes(t.part, t.bytes + s.value.bytes);
         break;
       }
     });

@@ -3,7 +3,7 @@
 
 import { expect, test } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
-import { FOCUS_STATICS, KEEP_PAST, PHONE_STATICS, PartBoxes, ROAD_REACH, STATICS_BUDGET, Wanted, centresOf, screenOf, staticsReach, tierWant } from "../../client/core/map-want.ts";
+import { FOCUS_STATICS, KEEP_PAST, Lingering, PHONE_STATICS, PartBoxes, ROAD_REACH, STATICS_BUDGET, WANT_HOLD, Wanted, centresOf, screenOf, staticsReach, tierWant } from "../../client/core/map-want.ts";
 import { CHUNK_SIZE, SECTOR_CHUNKS } from "../../shared/coords.ts";
 import { mapU, mapV } from "../../shared/world/coords.ts";
 import { OVERVIEW_CHUNKS, mapTops, readHead, squareOf, writeMap, type MapPart } from "../../shared/world/mapfile.ts";
@@ -82,6 +82,27 @@ test("a sight's focus wants the fine window's ground, its overviews and a sector
   // Where the body is heading counts as the body.
   const ahead = new Wanted().look(boxes, centresOf(body, { x: 3000, z: 600 }, from));
   expect(boxes.parts.filter((p) => p.kind === "statics" && off(p, 3000, 600) <= 600).every((p) => ahead.parts.has(p))).toBe(true);
+});
+
+test("what a focus or the map screen wanted stays wanted WANT_HOLD ms after it goes", () => {
+  const body = { x: 4300, z: 600 }, focus = { x: 100, z: 600 }, from = { view: 300, statics: 300 };
+  const names = (w: Wanted): string[] => [...w.parts.keys()].map((p) => p.name);
+  const alone = names(new Wanted().look(boxes, centresOf(body, body, from)));
+  const linger = new Lingering(boxes), want = new Wanted();
+  const sighted = names(want.look(boxes, centresOf(body, body, { ...from, focus }), undefined, linger, 1000));
+  expect(sighted.length).toBeGreaterThan(alone.length);
+  // Lowered: wanted as it was until the hold is out, each part by its metres from where the focus was.
+  expect(names(want.look(boxes, centresOf(body, body, from), undefined, linger, 1000 + WANT_HOLD - 1))).toEqual(sighted);
+  const ground = boxes.parts.find((p) => p.kind === "ground" && off(p, focus.x, focus.z) === 0)!;
+  expect([want.held.get(ground), want.kept.has(ground)]).toEqual([0, true]);
+  // A set made to see what is wanted now notes nothing: the hold still ends when it would have.
+  new Wanted().look(boxes, centresOf(body, body, { ...from, focus }), undefined, linger, 1000 + WANT_HOLD - 1, false);
+  expect([names(want.look(boxes, centresOf(body, body, from), undefined, linger, 1000 + WANT_HOLD)), want.held.size]).toEqual([alone, 0]);
+  // The map screen panned away: the overviews of its window are held as long.
+  const screen = { x: 200, z: 600, half: 500 }, shown = names(want.look(boxes, centresOf(body, body, { ...from, screen }), undefined, linger, 20000));
+  expect(names(want.look(boxes, centresOf(body, body, { ...from, screen: { ...screen, x: body.x } }), undefined, linger, 23000))).toEqual(shown);
+  // Without the table nothing lingers.
+  expect(names(new Wanted().look(boxes, centresOf(body, body, from)))).toEqual(alone);
 });
 
 test("a part a reader waits for is wanted wherever it is, by its metres from the body", () => {

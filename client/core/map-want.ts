@@ -3,7 +3,8 @@
 // statics and their buildings within the statics reach (the far city's, nearer on a phone), and ground within the larger
 // of that and the fine window's reach, as far as its budget, but always within the fine window's. A part held is kept
 // until it is a sector past its reach from every centre, so a body on a border does not ask for a part and let it go by
-// turns (client/core/mapload.ts).
+// turns (client/core/mapload.ts). What a focus or the map screen wanted stays wanted WANT_HOLD ms after it goes or moves
+// on, so a scope lowered and raised again, or a map panned away and back, finds its parts held.
 
 import { CHUNK_SIZE, SECTOR_CHUNKS } from "../../shared/coords.ts";
 import { xOfU, zOfV, type MapExtent } from "../../shared/world/coords.ts";
@@ -25,6 +26,14 @@ export const KEEP_PAST = SECTOR_CHUNKS * CHUNK_SIZE;
 /** Metres round a sight's focus whose statics are wanted, for the chunks the server sends along its cone. */
 export const FOCUS_STATICS = SECTOR_CHUNKS * CHUNK_SIZE;
 
+/**
+ * Milliseconds a part a sight's focus or the map screen wanted stays wanted once that has gone or moved on. A scope is
+ * lowered to reload, run or look about and raised again within a few seconds, and a map is closed and opened, or panned
+ * away and back, as soon: each time cost its ground, overviews and statics again, and the ground pages its budget had
+ * pushed out. Held 5 s, that costs nothing; a focus's parts are at most nine pages of ground and its statics.
+ */
+export const WANT_HOLD = 5000;
+
 /** Metres from a centre each kind of part is wanted within. */
 export interface Reach {
   readonly overview: number;
@@ -38,6 +47,8 @@ export interface Centre {
   readonly x: number;
   readonly z: number;
   readonly reach: Reach;
+  /** A sight's focus or the map screen: it goes and comes back, and what it wanted is held meanwhile (WANT_HOLD). */
+  readonly passing?: boolean;
 }
 
 /** What the page looks from besides the body: the tier's reaches, the camera, a sight's focus, the map screen open. */
@@ -81,8 +92,8 @@ export function centresOf(body: { readonly x: number; readonly z: number }, ahea
   if (from.camera) out.push({ x: from.camera.x, z: from.camera.z, reach: near });
   // The fine window is drawn round a focus (render/scene.ts), and the server sends rows along the sight's cone. Its ground
   // waits for the overviews it lies in, which are within as far.
-  if (from.focus) out.push({ x: from.focus.x, z: from.focus.z, reach: { overview: ROAD_REACH, ground: ROAD_REACH, statics: FOCUS_STATICS, tops: 0 } });
-  if (from.screen) out.push({ x: from.screen.x, z: from.screen.z, reach: { overview: from.screen.half, ground: 0, statics: 0, tops: 0 } });
+  if (from.focus) out.push({ x: from.focus.x, z: from.focus.z, reach: { overview: ROAD_REACH, ground: ROAD_REACH, statics: FOCUS_STATICS, tops: 0 }, passing: true });
+  if (from.screen) out.push({ x: from.screen.x, z: from.screen.z, reach: { overview: from.screen.half, ground: 0, statics: 0, tops: 0 }, passing: true });
   return out;
 }
 
@@ -111,23 +122,54 @@ export class PartBoxes {
 /** How far a kind of part is wanted. */
 const reachOf = (p: MapPart, r: Reach): number => (p.kind === "overview" ? r.overview : p.kind === "ground" ? r.ground : p.kind === "tops" ? r.tops : r.statics);
 
+/**
+ * What the passing centres last wanted or kept of each part, in the order of a PartBoxes' parts: until when it is held,
+ * and its metres from the centre that wanted it, Infinity for one only kept.
+ */
+export class Lingering {
+  readonly until: Float64Array;
+  readonly least: Float64Array;
+
+  constructor(boxes: PartBoxes) {
+    this.until = new Float64Array(boxes.parts.length).fill(-Infinity);
+    this.least = new Float64Array(boxes.parts.length).fill(Infinity);
+  }
+}
+
 /** The parts wanted, by the fewest metres from a centre that wants them, and those held that are kept. */
 export class Wanted {
   readonly parts = new Map<MapPart, number>();
   readonly kept = new Set<MapPart>();
+  /** Of `parts`, those only a passing centre that has gone or moved on wants, by their metres from it. */
+  readonly held = new Map<MapPart, number>();
 
-  /** Made again for `centres`, and `also` wanted wherever they are. */
-  look(boxes: PartBoxes, centres: readonly Centre[], also: ReadonlySet<MapPart> = NONE): this {
+  /**
+   * Made again for `centres`, and `also` wanted wherever they are. With `linger`, at `now` ms: what a passing centre
+   * wanted or kept within the last WANT_HOLD is wanted or kept as it was, and with `note` what they want now is noted.
+   */
+  look(boxes: PartBoxes, centres: readonly Centre[], also: ReadonlySet<MapPart> = NONE, linger?: Lingering, now = 0, note = true): this {
     this.parts.clear();
     this.kept.clear();
+    this.held.clear();
     boxes.parts.forEach((p, k) => {
-      let least = Infinity, keep = false;
+      let least = Infinity, keep = false, pass = Infinity, passes = false;
       for (const c of centres) {
         const r = reachOf(p, c.reach);
         if (r <= 0) continue;
         const off = boxes.off(k, c.x, c.z);
         if (off <= r && off < least) least = off;
         if (off <= r + KEEP_PAST) keep = true;
+        if (!c.passing) continue;
+        if (off <= r && off < pass) pass = off;
+        if (off <= r + KEEP_PAST) passes = true;
+      }
+      if (linger && passes && note) {
+        linger.until[k] = now + WANT_HOLD;
+        linger.least[k] = pass;
+      } else if (linger && !passes && now < linger.until[k]!) {
+        keep = true;
+        const was = linger.least[k]!;
+        if (was < least) this.held.set(p, (least = was));
       }
       if (also.has(p)) {
         least = Math.min(least, boxes.off(k, centres[0]!.x, centres[0]!.z));

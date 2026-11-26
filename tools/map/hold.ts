@@ -2,10 +2,12 @@
 // in Bun, over the map's file and its parts' copies, behind a modelled link, on a clock of its own.
 //
 //   bun tools/map/hold.ts <file.snmap> [--seconds 300] [--mbit 20] [--every 10] [--at x,z] [--drive dx,dz] [--speed 80]
-//                         [--tier medium] [--touch]
+//                         [--tier medium] [--touch] [--dead from,to] [--scope x,z[,up[,down]]] [--since 60]
 //
 // The body stands at --at (map metres; the map's first spawn point if not given) or, with --drive, goes there plus
-// (dx, dz) at --speed and comes back, again and again. Every --every seconds it prints the bytes come over the link (as
+// (dx, dz) at --speed and comes back, again and again. With --dead it has no place from one second to the other, the
+// camera over where it fell. With --scope a sight is raised on (x, z) for `up` seconds and lowered for `down` (1.5 each),
+// again and again from --since on. The last line tells what was asked for and came from --since on. Every --every seconds it prints the bytes come over the link (as
 // Brotli; cold, a part's first coming, and again, a part come before, which a browser's cache would serve and the page
 // decodes again, timed apart), the parts held and asked for, and what the page holds by class (client/core/mapheld.ts), the city following
 // the statics held among them as the session makes it (HeldStatics.follow) and read as the renderers read it (news), and the most statics and city held at any
@@ -18,7 +20,7 @@ import { CORE_CONTENT } from "../../content/core.ts";
 import type { Get } from "../../client/core/fetched.ts";
 import { heldTotal, kindsBytes, mapLedger, type MapHeld } from "../../client/core/mapheld.ts";
 import { MapLoader, type Place } from "../../client/core/mapload.ts";
-import { tierWant } from "../../client/core/map-want.ts";
+import { tierWant, type WantFrom } from "../../client/core/map-want.ts";
 import { forTouch, tierOf } from "../../client/core/assets/tiers.ts";
 import { TOP_CELL, farCell } from "../../client/core/render/farshadow.ts";
 import { CHUNK_SIZE, chunkCount } from "../../shared/coords.ts";
@@ -31,7 +33,7 @@ const args = process.argv.slice(2);
 const value = (flag: string, otherwise: string): string => (args.includes(flag) ? args[args.indexOf(flag) + 1]! : otherwise);
 const file = args.find((a, k) => !a.startsWith("--") && (k === 0 || !args[k - 1]!.startsWith("--")));
 if (!file || !existsSync(file)) {
-  console.error("bun tools/map/hold.ts <file.snmap> [--seconds 300] [--mbit 20] [--every 10] [--at x,z] [--drive dx,dz] [--speed 80] [--tier medium] [--touch]");
+  console.error("bun tools/map/hold.ts <file.snmap> [--seconds 300] [--mbit 20] [--every 10] [--at x,z] [--drive dx,dz] [--speed 80] [--tier medium] [--touch] [--dead from,to] [--scope x,z[,up[,down]]] [--since 60]");
   process.exit(2);
 }
 const SECONDS = Number(value("--seconds", "300"));
@@ -41,6 +43,9 @@ const RTT = 100;
 const SPEED = Number(value("--speed", "80"));
 const TIER = tierOf(value("--tier", "medium")), TOUCH = args.includes("--touch");
 const WANT = tierWant(TIER, TOUCH);
+const SINCE = Number(value("--since", "0")) * 1000;
+const DEAD = args.includes("--dead") ? value("--dead", "").split(",").map((s) => Number(s) * 1000) : null;
+const SCOPE = args.includes("--scope") ? value("--scope", "").split(",").map(Number) : null;
 
 const head = headOf(file);
 const folder = partsFolder(file);
@@ -104,6 +109,26 @@ const get: Get = (url) =>
 const wait = (ms: number): Promise<void> => new Promise((go) => later(ms, go));
 const turn = (): Promise<void> => new Promise((go) => setImmediate(go));
 
+/** What was asked for and had come at --since. */
+let since: { asked: number; came: number; wire: number } | null = null;
+/** Where the body last was: the camera stays over it while it is dead. */
+let fell: { x: number; z: number } | null = null;
+
+/** Where the body is, or null while it is dead. */
+function bodyAt(): Place | null {
+  if (DEAD && now >= DEAD[0]! && now < DEAD[1]!) return null;
+  const at = place();
+  if (DEAD) fell = { x: at.x, z: at.z };
+  return at;
+}
+
+/** What the page wants at the clock's time: the tier's, the camera over a dead body, and the sight while it is raised. */
+function want(): WantFrom {
+  const [up, down] = [(SCOPE?.[2] ?? 1.5) * 1000, (SCOPE?.[3] ?? 1.5) * 1000];
+  const raised = SCOPE !== null && now >= SINCE && (now - SINCE) % (up + down) < up;
+  return { ...WANT, camera: fell, focus: raised ? { x: SCOPE![0]!, z: SCOPE![1]! } : null };
+}
+
 /** Where the body is at the clock's time: still, or out along (dx, dz) and back at SPEED. */
 function place(): Place {
   const length = Math.hypot(dx, dz);
@@ -150,7 +175,7 @@ void started.then(async (l) => {
   city = l.held.follow(withContent(compiled.registry!, l.staged.content?.defs ?? []));
   // Each sector set in is a moment the most may be held at.
   l.held.onSet(() => void (most.held = Math.max(most.held, heldNow())));
-  await l.follow(place, { arriving, want: () => WANT });
+  await l.follow(bodyAt, { arriving, want });
   ready = true;
   console.log(`${(now / 1000).toFixed(1)} s  first frame: ${mb(stats.wire)} MB come`);
 });
@@ -180,6 +205,7 @@ for (;;) {
     askedThen = stats.asked;
     nextSample += EVERY;
   }
+  if (now >= SINCE) since ??= { asked: stats.asked, came: stats.came, wire: stats.wire };
   if (now >= SECONDS * 1000) break;
   timers.sort((a, b) => a.at - b.at);
   // With nothing due before the next sample, the clock goes to it: a body that moves may want more.
@@ -193,5 +219,6 @@ for (;;) {
 }
 console.log(`hand-overs: ${handed.join("; ") || "none"}`);
 console.log(`came ${mb(stats.wire)} MB in ${stats.came} parts: cold ${mb(again.cold)} MB, ${again.coldParts} parts the first time; again ${mb(again.warm)} MB, ${again.warmParts} parts come before, which a browser's cache would serve, decoded again in ${again.decodeMs.toFixed(0)} ms`);
+if (since && SINCE > 0) console.log(`from ${SINCE / 1000} s on: ${stats.asked - since.asked} asked, ${mb(stats.wire - since.wire)} MB in ${stats.came - since.came} parts`);
 console.log(`statics and city held at most: ${mb(most.held)} MB at the samples, ${mb(most.handing)} MB at a hand-over; the city's kinds ${mb(city ? kindsBytes(city) : 0)} MB apart`);
 process.exit(0);

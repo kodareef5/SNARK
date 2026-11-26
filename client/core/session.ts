@@ -174,6 +174,7 @@ import { NodeField, type NodeSource } from "../../shared/world/nodes.ts";
 import { heapAt, heapHealth } from "../../shared/world/breaking.ts";
 import { tekWallKinds } from "../../shared/world/lattice/tek-walls.ts";
 import { FramesTold, ROW_EMPTY, ROW_IN_PLACE, ROW_KEYED, RowCoder } from "../../shared/world/rows.ts";
+import type { FrameDef } from "../../shared/world/lattice/frames.ts";
 import { GONE_BLAST, GONE_TAKEN, PUT_AS_IS, PUT_FREE, StructureStore, withSurfaces, type ChunkTable } from "../../shared/world/structures.ts";
 import { CMD_CHUNK_AGAIN, CMD_FAR, CMD_HAVE, CMD_SELECT, CMD_STATICS, HAVE_MOST, HAVE_REACH, RESULT_BUSY, RESULT_OK, S_FAR, S_MARKS, S_TACTICAL } from "../../shared/net/protocol.ts";
 import { FarStore } from "./farcells.ts";
@@ -399,8 +400,14 @@ export const PARK_CHUNKS = 8;
 export const PARK_CHUNKS_TOUCH = 2;
 const PARK_BYTES = 4 * 1024 * 1024;
 const SLOT_BYTES = 32;
-/** Chunk messages kept waiting for a sector at most: past that the first is read, its slots from the map left out. */
+/** Chunk messages kept waiting for a sector at most: past that the oldest is read, its slots from the map left out. */
 export const WAITING_MOST = 2048;
+/**
+ * Milliseconds a chunk message is kept for its sector at most, and then read as one past WAITING_MOST is. A near
+ * sector's statics come within a second or two of its chunks on a fair link; one that is slow, or fails, hides what
+ * players built there no longer than this.
+ */
+export const WAITING_MS = 4000;
 /** In `whole`: the chunk was put back from those kept, and the server's next rows for it bring it up to date. */
 const CAUGHT_UP_NEXT = 2;
 /** Milliseconds after a hand change is answered that its slot is still awaited. */
@@ -747,13 +754,21 @@ export class ClientSession {
   /** The map's statics' kinds as content indices, from the welcome or CMD_STATICS's answer, when the client takes chunks from them. */
   private staticKinds: Uint16Array | null = null;
   /**
-   * Chunk messages waiting, in the order they came, from the first that takes slots from a sector of `opts.held` not yet held:
-   * the bytes after its kind, or a chunk number for a drop. And a reader for them, and the rows of a whole map's table.
+   * Chunk messages kept, oldest first: each takes slots from a sector of `opts.held` not yet held, or follows one kept of
+   * its own chunk or one that names a frame it names. How many are kept of each chunk and name each frame, the chunks
+   * and frames a pass has left kept, the frames of the one being read, a reader for them, and the rows of a whole map's
+   * table.
    */
-  private readonly waitingRows: (Uint8Array | number)[] = [];
+  private readonly waitingRows: KeptMessage[] = [];
+  private readonly waitingOf = new Map<number, number>();
+  private readonly waitingFrames = new Map<number, number>();
+  private readonly stuck = new Set<number>();
+  private readonly stuckFrames = new Set<number>();
+  private keptFrames: ReadonlyMap<number, FrameDef> | null = null;
   private readonly waitingReader = new BitReader();
-  /** Chunk messages kept waiting at most (WAITING_MOST). */
+  /** Chunk messages kept waiting at most (WAITING_MOST), and the milliseconds one is kept at most (WAITING_MS). */
   waitingMost = WAITING_MOST;
+  waitingMs = WAITING_MS;
   private readonly wholeRows: MapRows = { kind: new Uint16Array(0), yaw: new Uint16Array(0), x: new Float32Array(0), y: new Float32Array(0), z: new Float32Array(0), from: 0, to: 0 };
   /** Reads a chunk message's rows (shared/world/rows.ts), made with the world. */
   private rows: RowCoder | null = null;
@@ -1120,6 +1135,10 @@ export class ClientSession {
     }
     const newestInput = this.simTick;
     this.prediction.frame(frameMs, steps, unsampled, this, nowMs);
+    const kept = this.waitingRows;
+    // A message's wait runs from the first frame after it came, so a frame that stalls does not use it up.
+    for (let k = kept.length - 1; k >= 0 && kept[k]!.at < 0; k--) kept[k]!.at = nowMs;
+    if (kept.length > 0 && kept[0]!.at <= nowMs - this.waitingMs) this.readWaiting();
     if (steps > 0) {
       this.sendInputs(newestInput, steps);
       this.recenterNodes();
@@ -1652,7 +1671,7 @@ export class ClientSession {
       kind: S_CHUNK_DROP,
       read(s, r) {
         const chunk = r.u16();
-        if (s.waitingRows.length > 0) s.waitingRows.push(chunk);
+        if (s.waitingOf.has(chunk)) s.keep(chunk, null, null);
         else s.park(chunk);
       },
     });
@@ -2460,6 +2479,8 @@ export class ClientSession {
     this.staticKinds = fills && this.opts.statics ? staticKinds(this.opts.statics, reg) : null;
     this.staticsSeq = 0;
     this.waitingRows.length = 0;
+    this.waitingOf.clear();
+    this.waitingFrames.clear();
     [this.unbased, this.againAsked].forEach((s) => s.clear());
     this.againSeq = 0;
     this.opts.held?.needed.clear();
@@ -2868,20 +2889,80 @@ export class ClientSession {
   }
 
   /**
-   * S_CHUNK. Held back, with every chunk message after it, where it takes slots from a sector of the map not yet held: they are
-   * read in order once it is (readWaiting). Rows sent for a chunk kept aside mean it comes whole, so that is let go at once.
+   * S_CHUNK. Kept where it takes slots from a sector of the map not yet held, or follows a message kept of its own chunk
+   * or one that names a frame it names: a chunk's messages, and a frame's, are read in the order they came once the
+   * sector is held (readWaiting). No other message waits for them. Rows sent for a chunk kept aside mean it comes whole,
+   * so that is let go at once.
    */
   private chunkOrKeep(r: BitReader): void {
     if (!this.world) return;
     const start = r.pos;
-    const chunk = this.waitsFor(r);
+    const waits = this.waitsFor(r) >= 0;
     r.pos = start;
-    if (this.waitingRows.length === 0 && chunk < 0) return this.chunk(r);
-    this.forget(r.u16());
+    if (!waits && this.waitingRows.length === 0) return this.chunk(r);
+    const chunk = r.u16();
     r.pos = start;
-    if (chunk >= 0) this.opts.held?.need(chunk);
-    this.waitingRows.push(r.rest());
-    if (this.waitingRows.length > this.waitingMost) this.readWaiting(true);
+    // While any is kept, each message's definitions are counted as it comes, and it is read as one kept is.
+    const frames = this.framesNamed(r);
+    r.pos = start;
+    if (!waits && !this.waitingOf.has(chunk) && !namesAny(frames, this.waitingFrames)) return this.readKept(r, frames);
+    this.forget(chunk);
+    if (waits) this.opts.held?.need(chunk);
+    this.keep(chunk, r.rest(), frames);
+    if (this.waitingRows.length > this.waitingMost) this.readWaiting();
+  }
+
+  /** Keeps a chunk message's bytes, or for a drop null, to be read after those kept of its chunk and of its frames. */
+  private keep(chunk: number, bytes: Uint8Array | null, frames: ReadonlyMap<number, FrameDef> | null): void {
+    this.waitingRows.push({ chunk, at: -1, bytes, frames, read: false });
+    this.waitingOf.set(chunk, (this.waitingOf.get(chunk) ?? 0) + 1);
+    for (const gid of frames?.keys() ?? []) this.waitingFrames.set(gid, (this.waitingFrames.get(gid) ?? 0) + 1);
+  }
+
+  /** Reads a chunk message whose definitions were counted when it came, with the frames it named then. */
+  private readKept(r: BitReader, frames: ReadonlyMap<number, FrameDef> | null): void {
+    this.keptFrames = frames ?? NO_FRAMES;
+    try {
+      this.chunk(r);
+    } finally {
+      this.keptFrames = null;
+    }
+  }
+
+  /**
+   * Counts the frames a chunk message read from `r` defines, now, as the server counted them when it sent it: other
+   * messages are read before this one is. Gives each frame its keyed rows name as it is defined now, for when it is
+   * read: by then either end may have emptied its count.
+   */
+  private framesNamed(r: BitReader): ReadonlyMap<number, FrameDef> | null {
+    const world = this.world!, told = this.framesTold;
+    const chunk = r.u16();
+    r.u32();
+    r.bool();
+    const count = r.bits(16);
+    if (r.overflow || chunk >= world.structs.chunks.length) return null;
+    if (this.mapCount(chunk) > 0 && r.bool()) (r.u16(), r.u16());
+    const row = this.rowCoder(world.structs);
+    row.begin(chunkCx(world.dims, chunk) * CHUNK_SIZE, chunkCz(world.dims, chunk) * CHUNK_SIZE);
+    told.settle();
+    let named: Map<number, FrameDef> | null = null;
+    for (let i = 0; i < count; i++) {
+      row.read(r);
+      if (r.overflow) break;
+      if (row.form !== ROW_KEYED) continue;
+      if (row.def) told.take(row.def);
+      const def = told.get(row.fr);
+      if (def) (named ??= new Map()).set(row.fr, def);
+    }
+    told.settle();
+    return named;
+  }
+
+  /** The reader of a chunk message's rows (shared/world/rows.ts), made with the world. */
+  private rowCoder(structs: StructureStore): RowCoder {
+    const row = (this.rows ??= new RowCoder(structs.forms, this.registry.maxHp, { phaseKinds: tekWallKinds(this.registry.index) }));
+    row.maxHp = this.registry.maxHp;
+    return row;
   }
 
   /** The chunk whose sector a chunk message read from `r` takes slots from where that is not held; else -1. */
@@ -2894,29 +2975,52 @@ export class ClientSession {
   }
 
   /**
-   * Reads the chunk messages waiting, in order, up to the first that still takes slots from a sector not held; with
-   * `over`, the first whatever it waits for, its slots from the map left out (WAITING_MOST).
+   * Reads the chunk messages kept whose sector is held now, each chunk's and each frame's in the order they came. One
+   * kept `waitingMs`, or older than the newest `waitingMost`, is read whatever it waits for, its slots from the map left
+   * out and its chunk not whole; the player is told of those past the most.
    */
-  private readWaiting(over = false): void {
-    const r = this.waitingReader;
-    while (this.waitingRows.length > 0 && this.world) {
-      const m = this.waitingRows[0]!;
-      if (typeof m === "number") {
-        this.waitingRows.shift();
-        this.park(m);
-        continue;
+  private readWaiting(): void {
+    const q = this.waitingRows, r = this.waitingReader, stuck = this.stuck, stuckFrames = this.stuckFrames;
+    const n = q.length, due = this.lastNow - this.waitingMs;
+    stuck.clear();
+    stuckFrames.clear();
+    try {
+      for (let k = 0; k < n; k++) {
+        const m = q[k]!, chunk = m.chunk;
+        let waits = stuck.has(chunk) || namesAny(m.frames, stuckFrames);
+        if (!waits && m.bytes && this.world) {
+          r.reset(m.bytes);
+          if (this.waitsFor(r) >= 0) {
+            const over = n - k > this.waitingMost;
+            waits = !over && (m.at < 0 || m.at > due);
+            if (waits) this.opts.held?.need(chunk);
+            else {
+              if (over) this.opts.held?.say?.(`the map's statics of chunk ${chunk} were waited for too long: its pieces the map set are left out until it comes whole`);
+              this.unbased.add(chunk);
+              this.againAsked.delete(chunk);
+              this.whole[chunk] = 0;
+            }
+          }
+        }
+        if (waits) {
+          stuck.add(chunk);
+          for (const gid of m.frames?.keys() ?? []) stuckFrames.add(gid);
+          continue;
+        }
+        m.read = true;
+        lessOne(this.waitingOf, chunk);
+        for (const gid of m.frames?.keys() ?? []) lessOne(this.waitingFrames, gid);
+        if (!m.bytes) this.park(chunk);
+        else {
+          r.reset(m.bytes);
+          this.readKept(r, m.frames);
+        }
       }
-      r.reset(m);
-      const chunk = this.waitsFor(r);
-      if (chunk >= 0 && !over) return this.opts.held?.need(chunk);
-      if (chunk >= 0) {
-        this.opts.held?.say?.(`the map's statics of chunk ${chunk} were waited for too long: its pieces the map set are left out until it comes whole`);
-        this.unbased.add(chunk);
-      }
-      over = false;
-      this.waitingRows.shift();
-      r.reset(m);
-      this.chunk(r);
+    } finally {
+      // Those read leave the queue even where a reader's caller threw.
+      let kept = 0;
+      for (let k = 0; k < q.length; k++) if (!q[k]!.read) q[kept++] = q[k]!;
+      q.length = kept;
     }
   }
 
@@ -2944,7 +3048,8 @@ export class ClientSession {
   /**
    * Chunks read without the map's slots, their sector waited for too long (readWaiting): never complete until the server
    * sends one again whole, which is asked for once the sector is held (CMD_CHUNK_AGAIN). Those the server took the asking
-   * of; the command under way and the chunks it named; and when one refused may be sent again.
+   * of, until one comes whole or is read without its slots again; the command under way and the chunks it named; and
+   * when one refused may be sent again.
    */
   private readonly unbased = new Set<number>();
   private readonly againAsked = new Set<number>();
@@ -2957,7 +3062,8 @@ export class ClientSession {
     if (this.unbased.size === 0 || this.againSeq !== 0 || this.lastNow < this.againAt) return;
     const said = this.againSaid;
     said.length = 0;
-    for (const chunk of this.unbased) if (said.length < HAVE_MOST && !this.againAsked.has(chunk) && this.mapRows(chunk)) said.push(chunk);
+    // A sector found broken counts as come: its chunks are sent again and read as its others are, the map's slots left out.
+    for (const chunk of this.unbased) if (said.length < HAVE_MOST && !this.againAsked.has(chunk) && (this.mapRows(chunk) || this.opts.held?.brokenAt(chunk))) said.push(chunk);
     if (said.length === 0) return;
     this.againSeq = this.command(CMD_CHUNK_AGAIN, (w) => (w.u8(said.length), said.forEach((chunk) => w.u16(chunk))));
   }
@@ -3020,10 +3126,13 @@ export class ClientSession {
     this.haveSaid.length = 0;
   }
 
-  /** Whether this store has the frame a keyed row names, made again from its definition where it went with its last row. */
+  /**
+   * Whether this store has the frame a keyed row names, made again from its definition where it went with its last row:
+   * for a message that was kept, as it was defined when the message came.
+   */
   private frameFor(structs: StructureStore, gid: number): boolean {
     if (structs.frames.get(gid)) return true;
-    const def = gid !== 0 ? this.framesTold.get(gid) : undefined;
+    const def = gid !== 0 ? (this.keptFrames?.get(gid) ?? this.framesTold.get(gid)) : undefined;
     if (def) structs.frames.make(def.ox, def.oy, def.oz, def.yaw, def.team, gid);
     return def !== undefined;
   }
@@ -3046,7 +3155,8 @@ export class ClientSession {
       const n = r.u16();
       // Where its sector is broken, or was waited for too long, the slots the map sets are left out.
       const statics = this.mapRows(chunk);
-      if (statics) [this.unbased, this.againAsked].forEach((s) => s.delete(chunk));
+      // Only a send's first message makes a chunk read without its slots good: a later part of the same send does not.
+      if (first === 0 && n > 0 && (statics || this.opts.held?.brokenAt(chunk))) [this.unbased, this.againAsked].forEach((s) => s.delete(chunk));
       const at = statics ? statics.from + first : 0;
       if (r.overflow || (statics && at + n > statics.to)) return;
       for (let m = at; statics && m < at + n; m++) {
@@ -3059,8 +3169,7 @@ export class ClientSession {
     const kinds = this.registry.defs.length;
     const told = this.onStructure && this.whole[chunk] === 1 ? this.onStructure : null;
     const rows = structs.chunks[chunk];
-    const row = (this.rows ??= new RowCoder(structs.forms, maxHp, { phaseKinds: tekWallKinds(this.registry.index) }));
-    row.maxHp = maxHp;
+    const row = this.rowCoder(structs);
     row.begin(x0, z0);
     // The frames a message defines count once its rows are read, as the server counts them once it is sent.
     this.framesTold.settle();
@@ -3090,7 +3199,8 @@ export class ClientSession {
       let [x, y, z, yaw, fr] = [row.x, row.y, row.z, row.yaw, PUT_FREE];
       if (row.form === ROW_KEYED) {
         // Its place and turn are its key's in its frame, as the server's are.
-        if (row.def) this.framesTold.take(row.def);
+        // A message that was kept had its definitions counted when it came (framesNamed).
+        if (row.def && !this.keptFrames) this.framesTold.take(row.def);
         const pose = this.frameFor(structs, row.fr) ? structs.keyedPose(chunk, kind, row.fr, row.k0, row.k1) : null;
         if (!pose) return void structs.frames.drop(row.fr);
         [x, y, z, yaw, fr] = [pose.x / STRUCT_UNITS, pose.y / STRUCT_UNITS, pose.z / STRUCT_UNITS, pose.yaw, row.fr];
@@ -3150,6 +3260,35 @@ export class ClientSession {
     world.structs.setVersion(chunk, version);
     if (!this.unbased.has(chunk)) this.whole[chunk] = 1;
   }
+}
+
+/**
+ * A chunk message kept for its sector's statics: its chunk, the first frame's time after it came (-1 until then), its
+ * bytes after its kind (null for a drop), the frames its keyed rows name as they were defined then, and whether it has
+ * been read.
+ */
+interface KeptMessage {
+  readonly chunk: number;
+  at: number;
+  readonly bytes: Uint8Array | null;
+  readonly frames: ReadonlyMap<number, FrameDef> | null;
+  read: boolean;
+}
+
+const NO_FRAMES: ReadonlyMap<number, FrameDef> = new Map();
+
+/** Whether a message's `frames` name any of `among`. */
+function namesAny(frames: ReadonlyMap<number, FrameDef> | null, among: { has(gid: number): boolean; readonly size: number }): boolean {
+  if (!frames || among.size === 0) return false;
+  for (const gid of frames.keys()) if (among.has(gid)) return true;
+  return false;
+}
+
+/** One fewer of `key` in a count by key. */
+function lessOne(counts: Map<number, number>, key: number): void {
+  const left = counts.get(key)! - 1;
+  if (left > 0) counts.set(key, left);
+  else counts.delete(key);
 }
 
 /** Whether entity `j` of a view was sent any vehicle part. */
