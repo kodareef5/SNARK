@@ -61,6 +61,12 @@ const PIECES: Readonly<Record<string, readonly number[]>> = {
   rail_bent: [296, 36],
   billboard: [320, 32],
   billboard_bare: [308, 68],
+  billboard_low: [320, 32],
+  billboard_low_bare: [308, 68],
+  billboard_mid: [320, 32],
+  billboard_mid_bare: [308, 68],
+  billboard_small: [236, 36],
+  billboard_small_bare: [224, 68],
   newsbox: [48, 12],
   // A bar is cut across every half metre of its length, as the ground under it may bend there (model.py STRIP).
   crosswalk1: [24, 4],
