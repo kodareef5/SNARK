@@ -28,6 +28,12 @@ export const RIGID_BONES: ReadonlySet<number> = new Set([B_HAND_L, B_FINGERS_L, 
  */
 export const ZONE_WEIGHTS: readonly number[] = [100, 5, 1, 1, 1, 1, 1, 1, 1, 1, 100, 100, 1, 1, 1, 1, 1, 1, 1, 25, 25];
 
+/**
+ * Metres past the wrist joint that the hand's skin follows the forearm, flat, and blends towards the hand, drawn with
+ * materials (`ease`): there the forearm's hit capsule is what a shot meets, so what is drawn there is the arm.
+ */
+export const WRIST_REACH = 0.025;
+
 /** A material as the cook takes it: what the pack says of it, its textures, and its pictures for the flat colours. */
 export interface CookMaterial {
   material: PackMaterial;
@@ -96,6 +102,12 @@ export function pooled(materials: readonly CookMaterial[]): { materials: PackMat
   return { materials: out, textures };
 }
 
+/** How far `p` lies past the joint of `end` along the bone from `limb`'s joint to it, in metres, on a body whose joints rest at `rest`. */
+function alongFrom(rest: readonly number[], limb: number, end: number, p: readonly number[]): number {
+  const axis = [0, 1, 2].map((k) => rest[end * 3 + k]! - rest[limb * 3 + k]!);
+  return [0, 1, 2].reduce((t, k) => t + (p[k]! - rest[end * 3 + k]!) * axis[k]!, 0) / Math.hypot(axis[0]!, axis[1]!, axis[2]!);
+}
+
 /** Rotates a direction by the inverse transpose of a matrix's upper 3 by 3: how a normal moves with a point. */
 function normalBy(m: Float64Array, x: number, y: number, z: number, out: number[]): void {
   const c = [[m[0]!, m[1]!, m[2]!], [m[4]!, m[5]!, m[6]!], [m[8]!, m[9]!, m[10]!]];
@@ -115,6 +127,7 @@ function gather(list: readonly Gltf[], opts: CookOptions, warnings: string[]): {
   const warned = new Set<string>();
   let rig = rigOf(list[0]!, opts.rig, opts.scale);
   const n = [0, 0, 0];
+  const at3 = [0, 0, 0];
   const sum = new Float64Array(HUMAN_BONES);
   for (const g of list) {
     const json = g.json;
@@ -170,8 +183,17 @@ function gather(list: readonly Gltf[], opts: CookOptions, warnings: string[]): {
               if (w > topWeight) [top, topWeight] = [joint, w];
             }
           }
-          const own = ownBone(sum);
+          const m = bind[top]!;
+          const x = pos[v * 3]!, y = pos[v * 3 + 1]!, z = pos[v * 3 + 2]!;
+          for (let k = 0; k < 3; k++) at3[k] = (m[k]! * x + m[4 + k]! * y + m[8 + k]! * z + m[12 + k]!) * opts.scale;
+          let own = ownBone(sum);
           let four = fourHeaviest(bones, weights);
+          // The hand's skin as far as the forearm's capsule reaches past the wrist follows the forearm, as a shot there hits the arm.
+          const wrist = own === B_HAND_L ? B_LOWER_ARM_L : own === B_HAND_R ? B_LOWER_ARM_R : -1;
+          if (wrist >= 0 && alongFrom(rig.rest, wrist, own, at3) < WRIST_REACH) {
+            own = wrist;
+            four = { bones: [own], weights: [1], dropped: false };
+          }
           const rigid = RIGID_BONES.has(own);
           at.rigid.push(rigid ? 1 : 0);
           if (rigid || four.bones.length === 0) four = { bones: [own], weights: [1], dropped: false };
@@ -181,10 +203,8 @@ function gather(list: readonly Gltf[], opts: CookOptions, warnings: string[]): {
             four.weights[four.weights.length - 1] = sum[own]!;
             four.weights = four.weights.map((w) => w / total);
           }
-          const m = bind[top]!;
-          const x = pos[v * 3]!, y = pos[v * 3 + 1]!, z = pos[v * 3 + 2]!;
           for (let k = 0; k < 3; k++) {
-            let p = (m[k]! * x + m[4 + k]! * y + m[8 + k]! * z + m[12 + k]!) * opts.scale;
+            let p = at3[k]!;
             for (let j = 0; j < four.bones.length; j++) p += four.weights[j]! * (onto[four.bones[j]! * 3 + k]! - rig.rest[four.bones[j]! * 3 + k]!);
             at.positions.push(p);
           }
@@ -251,9 +271,7 @@ function ease(at: Gathered, rest: readonly number[]): void {
   const n = at.bones.length;
   const rigid = (v: number): boolean => at.rigid[v] === 1;
   for (const [limb, end, reach] of EASED) {
-    const axis = [0, 1, 2].map((k) => rest[end * 3 + k]! - rest[limb * 3 + k]!);
-    const len = Math.hypot(axis[0]!, axis[1]!, axis[2]!);
-    const along = (v: number): number => [0, 1, 2].reduce((t, k) => t + (at.positions[v * 3 + k]! - rest[end * 3 + k]!) * axis[k]!, 0) / len;
+    const along = (v: number): number => alongFrom(rest, limb, end, at.positions.slice(v * 3, v * 3 + 3));
     // Where the rigid part begins along the limb: its nearest vertex that is wholly on the far bone's side.
     let edge = Infinity;
     for (let v = 0; v < n; v++) if (rigid(v) && HUMAN.slot[at.bones[v]!] === HUMAN.slot[end] && sideOf(at.bones[v]!) === sideOf(end)) edge = Math.min(edge, along(v));

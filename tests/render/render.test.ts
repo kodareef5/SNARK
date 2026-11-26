@@ -473,13 +473,14 @@ artTest("a body is drawn coarser as it goes off, all its parts at one level, and
     expect(parts).toBeGreaterThanOrEqual(5);
     return [...out];
   };
-  expect([levels(8), levels(25), levels(100)]).toEqual([[0], [1], [2]]);
-  // Seen afresh at 15 m it would be the middle level. Walking out to there from near, it is still the finest.
-  expect([levels(8), levels(15), levels(17), levels(12.5), levels(11)]).toEqual([[0], [0], [1], [1], [0]]);
+  // A body is four levels (tools/pack/body.ts): it turns at about 9, 24 and 66 m walking out on this view.
+  expect([levels(5), levels(15), levels(40), levels(100)]).toEqual([[0], [1], [2], [3]]);
+  // Seen afresh at 9 m it would be the next level. Walking out to there from near, it is still the finest.
+  expect([levels(5), levels(9), levels(10.5), levels(8), levels(6.5)]).toEqual([[0], [0], [1], [1], [0]]);
   scene.assets.tier = tierOf("lowpoly");
   expect(levels(3)).toEqual([1]);
   scene.assets.tier = tierOf("ultra");
-  expect([levels(30), levels(60), levels(200)]).toEqual([[0], [1], [2]]);
+  expect([levels(15), levels(45), levels(120), levels(300)]).toEqual([[0], [1], [2], [3]]);
 });
 
 artTest("a loose thing is drawn where it stands, at a level chosen for its distance, and not when it is out of view", () => {
