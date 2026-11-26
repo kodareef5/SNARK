@@ -20,6 +20,7 @@ export const LEFT_OUT = {
   damage: "damage types, which each figure names",
   game: "what a game names once, which code finds by id",
   rename: "old names of things",
+  population: "who the city's generated people are drawn from, not something to find in the world",
   noFile: "maps still being made",
   hidden: "the hidden jet and the guns and missiles fitted to it, since finding it is the point",
 } as const;
@@ -92,6 +93,7 @@ export const RULINGS: Readonly<Record<string, Rule>> = {
   map: (d, c) => (c.maps.has(d.id) ? { within: `maps/${d.id.slice(d.id.indexOf(":") + 1)}/` } : { out: "noFile" }),
   game: out("game"),
   rename: out("rename"),
+  population: out("population"),
 };
 
 /** The ruling on each definition of the content and of every landmark. */
