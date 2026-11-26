@@ -7,10 +7,10 @@ import sys
 import bpy
 from mathutils import Vector
 
-from surfaces import SPAN, SURFACES
+from surfaces import CLEAN_END, CLEAN_START, SEAM_MARGIN, SEAM_START, SWATCHES
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from resource_uv import atlas_uv, loft_uv, planar_uv
+from resource_uv import loft_uv, planar_uv
 
 X = Vector((1, 0, 0))
 Y = Vector((0, 1, 0))
@@ -42,11 +42,22 @@ def border_of(rows, columns):
             + [(j, columns) for j in range(rows - 2, 0, -1)])
 
 
+def clean_centers(stations):
+    centers = []
+    start = 0
+    while start < len(stations) - 1:
+        end = start + 1
+        while end < len(stations) - 1 and abs(stations[end + 1] - stations[start]) <= CLEAN_END - CLEAN_START:
+            end += 1
+        centers.extend([(stations[start] + stations[end]) / 2] * (end - start))
+        start = end
+    return centers
+
+
 class Tack:
-    def __init__(self, level, colors, groups):
+    def __init__(self, level, aliases):
         self.level = level
-        self.colors = colors
-        self.groups = groups
+        self.aliases = aliases
         self.points = []
         self.faces = []
         self.surfaces = []
@@ -57,7 +68,8 @@ class Tack:
     def textured(self):
         return self.level < 2
 
-    def face(self, indices, surface, chart=None, smooth=True):
+    def face(self, indices, surface, chart=None, smooth=True, *, center=None, seam=False):
+        surface = self.aliases.get(surface, surface)
         self.faces.append(indices)
         self.surfaces.append(surface)
         self.smooth.append(smooth)
@@ -67,9 +79,17 @@ class Tack:
             vertices = [self.points[index] for index in indices]
             center = sum(vertices, Vector()) / len(vertices)
             chart = planar_uv(vertices, origin=center)
-        _, columns, col, row = SURFACES[surface]
-        uv = atlas_uv(chart, span=SPAN, center=((col + 0.5) / columns, (row + 0.5) / 2))
-        self.uv.append(uv)
+        swatch = SWATCHES[surface]
+        if swatch.sewn and not seam:
+            u, v = zip(*chart)
+            if max(v) - min(v) > CLEAN_END - CLEAN_START:
+                chart = [(-y, x) for x, y in chart]
+                v = u
+                center = None
+            center = (min(v) + max(v)) / 2 if center is None else center
+            offset = (CLEAN_START + CLEAN_END) / 2 - center
+            chart = [(u, v + offset) for u, v in chart]
+        self.uv.append([(u / swatch.span, v / swatch.span) for u, v in chart])
 
     def shell(self, rings, surface, closed=False):
         count = len(rings[0])
@@ -77,25 +97,16 @@ class Tack:
         self.points.extend(point for ring in rings for point in ring)
         charts = loft_uv([*rings, rings[0]] if closed else rings) if self.textured else []
         rows = len(rings) if closed else len(rings) - 1
-        if self.textured:
-            groups = []
-            start_row = 0
-            while start_row < rows:
-                low = charts[start_row][0][0][1]
-                end = start_row
-                while end + 1 < rows and charts[end + 1][0][2][1] - low < SPAN / 2 - 0.10:
-                    end += 1
-                center = (charts[end][0][2][1] + low) / 2
-                groups.extend([center] * (end - start_row + 1))
-                start_row = end + 1
+        centers = clean_centers([chart[0][0][1] for chart in charts] + [charts[-1][0][2][1]]) if charts else []
 
         for row in range(rows):
             low = start + row * count
             high = start + ((row + 1) % len(rings)) * count
             for index in range(count):
                 step = (index + 1) % count
-                chart = [(u, v - groups[row]) for u, v in charts[row][index]] if self.textured else None
-                self.face((low + index, low + step, high + step, high + index), surface, chart)
+                chart = charts[row][index] if self.textured else None
+                center = centers[row] if self.textured else None
+                self.face((low + index, low + step, high + step, high + index), surface, chart, center=center)
         if not closed:
             self.face(tuple(reversed(range(start, start + count))), surface, smooth=False)
             last = start + (len(rings) - 1) * count
@@ -123,7 +134,7 @@ class Tack:
                           for a in [tau * (side + 0.5) / sides for side in range(sides)]])
         self.shell(rings, surface, closed)
 
-    def pad(self, rows, surface, thickness, *, rim=None, thread=None, bow=0.0, lip=0.0,
+    def pad(self, rows, surface, thickness, *, rim=None, sewn=False, bow=0.0, lip=0.0,
             side_surface=None, nudge=0.0):
         """Each station gives z, half width, crown height, and edge height."""
         if self.level == 2:
@@ -135,8 +146,6 @@ class Tack:
         total = len(rows) * (cols + 1)
         top = len(self.points)
         bottom = top + total
-        outline = []
-        mid_z = (rows[0][0] + rows[-1][0]) * 0.5
         source = []
         for j, (z, width, crown, edge) in enumerate(rows):
             along = j / (len(rows) - 1)
@@ -150,7 +159,14 @@ class Tack:
                 source.append(Vector((x, y, z)))
         self.points.extend(source)
         self.points.extend(point - Y * thickness for point in source)
+        outline = [source[j * (cols + 1) + i] for j, i in ring]
+        sewn = sewn and self.textured
+        outer = len(self.points) if sewn else top
+        if sewn:
+            self.seam(top, cols, len(rows), ring, outline, surface)
 
+        stations = [z for z, *_ in rows]
+        centers = (clean_centers([-z for z in stations]), clean_centers(stations))
         for layer, start in enumerate((top, bottom)):
             for j in range(len(rows) - 1):
                 for i in range(cols):
@@ -159,36 +175,42 @@ class Tack:
                     face = (a, b, b + 1, a + 1)
                     if layer:
                         face = tuple(reversed(face))
-                    chart = [(self.points[k].x, (mid_z - self.points[k].z) * (-1 if layer else 1)) for k in face]
-                    self.face(face, surface, chart)
+                    chart = [(self.points[k].x, self.points[k].z * (-1 if not layer else 1)) for k in face]
+                    self.face(face, surface, chart, center=centers[layer][j])
         for index, (j, i) in enumerate(ring):
-            j2, i2 = ring[(index + 1) % len(ring)]
+            following = (index + 1) % len(ring)
+            j2, i2 = ring[following]
             a, b = j * (cols + 1) + i, j2 * (cols + 1) + i2
-            self.face((top + b, top + a, bottom + a, bottom + b), side_surface or surface, smooth=False)
-            outline.append(source[a])
-        if rim and self.level < 2:
+            a_top, b_top = (outer + index, outer + following) if sewn else (top + a, top + b)
+            self.face((b_top, a_top, bottom + a, bottom + b), side_surface or surface, smooth=False)
+        if rim and self.textured:
             self.sweep([point - Y * thickness * 0.18 for point in outline], side_surface or surface,
                        rim, guide=Y, sides=(6, 4)[self.level], cuts=0, closed=True)
-        if thread and self.level == 0:
-            inside = []
-            for j, i in ring:
-                k = min(max(j, 1), len(rows) - 2)
-                l = min(max(i, 1), cols - 1)
-                inside.append(source[k * (cols + 1) + l])
-            self.stitch(outline, inside, thread, 0.007 + (rim or 0))
 
-    def stitch(self, outline, inside, thread, inset):
-        for index, first in enumerate(outline):
-            next_index = (index + 1) % len(outline)
-            last = outline[next_index]
-            steps = round((last - first).length / 0.030)
-            for j in range(steps):
-                progress = (j + 0.55) / steps
-                point = first.lerp(last, progress)
-                inward = (inside[index].lerp(inside[next_index], progress) - point).normalized()
-                start = point + inward * inset + Y * 0.0012
-                stop = start + inward * 0.007 + (last - first).normalized() * 0.004
-                self.sweep((start, stop), thread, 0.0012, sides=4, cuts=0)
+    def seam(self, top, cols, rows, ring, outline, surface):
+        outer = len(self.points)
+        self.points.extend(outline)
+        widths = []
+        inner = []
+        for (row, col), edge in zip(ring, outline):
+            inside_row = min(max(row, 1), rows - 2)
+            inside_col = min(max(col, 1), cols - 1)
+            a = top + row * (cols + 1) + col
+            b = top + inside_row * (cols + 1) + inside_col
+            inward = self.points[b] - edge
+            width = min(SEAM_MARGIN, inward.length * 0.45)
+            self.points[a] = edge + inward.normalized() * width
+            widths.append(width)
+            inner.append(a)
+        u = 0.0
+        for index, edge in enumerate(outline):
+            following = (index + 1) % len(outline)
+            next_u = u + (outline[following] - edge).length
+            self.face((outer + index, outer + following, inner[following], inner[index]), surface,
+                      ((u, SEAM_START), (next_u, SEAM_START),
+                       (next_u, SEAM_START + widths[following]), (u, SEAM_START + widths[index])),
+                      seam=True)
+            u = next_u
 
     def deck(self, x, y, z, width, length, thickness, surface):
         cut = min(width, length) * 0.16
@@ -216,15 +238,16 @@ class Tack:
         slots = {}
         for i, face in enumerate(mesh.polygons):
             surface = self.surfaces[i]
-            group = self.groups[surface]
-            material = SURFACES[surface][0] if self.textured else f"flat_{name}_{group}"
+            material = surface if self.textured else f"flat_{surface}"
             if material not in slots:
                 slots[material] = len(mesh.materials)
                 finish = bpy.data.materials.get(material)
                 if finish is None:
                     finish = bpy.data.materials.new(material)
-                    rgb = (255, 255, 255) if self.textured else self.colors[group]
-                    finish.diffuse_color = (*map(linear, rgb), 1)
+                    color = (*map(linear, SWATCHES[surface].color), 1)
+                    finish.use_nodes = True
+                    finish.diffuse_color = color
+                    finish.node_tree.nodes.get("Principled BSDF").inputs["Base Color"].default_value = color
                 mesh.materials.append(finish)
             face.material_index = slots[material]
             face.use_smooth = self.smooth[i]

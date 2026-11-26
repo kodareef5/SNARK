@@ -1,34 +1,33 @@
-"""Atlas cells and their colours, in sRGB."""
+"""Repeating swatches, their width in metres, and their colours in sRGB."""
 
-SIZE = 2048
-SPAN = 3.45
+from typing import NamedTuple
 
-# Cells are arranged left to right from the bottom row.
-ATLASES = {
-    "tack_hide": (2, (
-        ("trail", "leather", (140, 93, 57)),
-        ("russet", "leather", (130, 72, 39)),
-        ("oxblood", "leather", (100, 55, 56)),
-        ("chestnut", "leather", (99, 60, 38)),
-    )),
-    "tack_pad": (2, (
-        ("trail_weave", "weave", (119, 99, 69)),
-        ("olive", "weave", (77, 91, 72)),
-        ("rawhide", "suede", (135, 99, 58)),
-        ("flax", "cord", (183, 152, 101)),
-    )),
-    "tack_fittings": (3, (
-        ("wood", "wood", (143, 100, 53)),
-        ("dark_wood", "wood", (84, 59, 39)),
-        ("iron", "iron", (94, 99, 97)),
-        ("brass", "brass", (150, 113, 60)),
-        ("chitin", "chitin", (205, 184, 139)),
-        ("cord", "cord", (190, 165, 119)),
-    )),
+
+class Swatch(NamedTuple):
+    grain: str
+    color: tuple[int, int, int]
+    size: int
+    span: float
+    sewn: bool = False
+
+
+SWATCHES = {
+    "trail": Swatch("leather", (128, 83, 52), 256, 0.36, True),
+    "russet": Swatch("leather", (128, 72, 40), 256, 0.36, True),
+    "oxblood": Swatch("leather", (100, 55, 56), 256, 0.36, True),
+    "chestnut": Swatch("leather", (99, 60, 38), 256, 0.36, True),
+    "trail_weave": Swatch("weave", (119, 99, 69), 256, 0.36, True),
+    "olive": Swatch("weave", (77, 91, 72), 256, 0.36, True),
+    "rawhide": Swatch("suede", (135, 99, 58), 256, 0.36, True),
+    "wood": Swatch("wood", (149, 108, 62), 128, 0.16),
+    "dark_wood": Swatch("wood", (84, 59, 39), 128, 0.16),
+    "iron": Swatch("iron", (94, 99, 97), 128, 0.16),
+    "brass": Swatch("brass", (150, 113, 60), 128, 0.16),
+    "chitin": Swatch("chitin", (202, 181, 136), 128, 0.16),
 }
 
-SURFACES = {
-    name: (atlas, columns, index % columns, index // columns)
-    for atlas, (columns, finishes) in ATLASES.items()
-    for index, (name, _, _) in enumerate(finishes)
-}
+SEAM_START = 0.014
+SEAM_LINE = 0.032
+SEAM_MARGIN = 0.027
+CLEAN_START = 0.052
+CLEAN_END = 0.352

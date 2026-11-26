@@ -8,17 +8,20 @@ const views = {
   saddle_carbonemys: { around: 0.59, above: 0.91, roll: -0.07 },
 };
 
-const atlases = ["tack_hide", "tack_pad", "tack_fittings"] as const;
+const sewn = ["trail", "russet", "oxblood", "chestnut", "trail_weave", "olive", "rawhide"];
+const rigid = ["wood", "dark_wood", "iron", "brass", "chitin"];
+const materials = Object.fromEntries([...sewn, ...rigid].map((name) => [name, {
+  base: `tex/${name}_base.png`,
+  normal: `tex/${name}_normal.png`,
+  packed: `tex/${name}_orm.png`,
+  height: `tex/${name}_height.png`,
+  tiles: sewn.includes(name) ? 0.36 : 0.16,
+} satisfies MaterialSpec]));
 
 export default {
   kind: "pieces",
   source: { scripts: ["model.py"] },
   pieces: Object.entries(views).map(([object, icon]) => ({ id: `core:${object}/dropped`, object, icon })),
-  materials: Object.fromEntries(atlases.map((atlas) => [atlas, {
-    base: `tex/${atlas}_base.png`,
-    normal: `tex/${atlas}_normal.png`,
-    packed: `tex/${atlas}_orm.png`,
-    height: `tex/${atlas}_height.png`,
-  } satisfies MaterialSpec])),
-  budgets: { triangles: [8500, 3000, 1250, 550], texture: { top: 2048, megabytes: 40 } },
+  materials,
+  budgets: { triangles: [4000, 2500, 1000, 500], texture: { top: 256, megabytes: 3 } },
 } satisfies PiecesAsset;
