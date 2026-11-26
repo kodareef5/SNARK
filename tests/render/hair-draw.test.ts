@@ -99,7 +99,7 @@ test("open headgear draws the style's form under a hat, sealed headgear none", (
 });
 
 test("long hair near the eye takes guide rows and draws hair made to read them", () => {
-  const { view, p } = crowd("high", 12, styled("long", 0, 1));
+  const { view, p } = crowd("high", 12, styled("long", 0, 1), "", 40);
   const ch = view.scene.characters;
   expect(ch.faced).toBe(8);
   expect(ch.groomed).toBe(8);
@@ -121,7 +121,7 @@ test("long hair near the eye takes guide rows and draws hair made to read them",
   }
   expect(made.size).toBe(8);
   // A buzz cut takes no guide rows.
-  const buzz = crowd("high", 12, styled("buzzed"));
+  const buzz = crowd("high", 12, styled("buzzed"), "", 40);
   expect(buzz.view.scene.characters.groomed).toBe(0);
   expect(buzz.p.boneCount).toBeLessThan(p.boneCount);
 });
