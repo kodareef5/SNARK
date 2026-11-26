@@ -11,7 +11,7 @@ list is refused. Names and ids are this engine's own. The ARK column says what
 the class corresponds to, so that what is known of ARK carries over.
 
 There are 47 classes: 34 built, 6 partly built, and 7 stubs that
-wait for a feature. The core pack holds 6254 definitions.
+wait for a feature. The core pack holds 6259 definitions.
 
 An asset slot is addressed `owner#slot`, or `owner#slot/key` for a slot with
 several values: `core:raptor#clip/walk`. Levels of detail are inside the asset
@@ -163,8 +163,8 @@ Packs may add to: `drops`, `eats`, `buffs`.
 | --- | --- | --- | --- | --- | --- |
 | `structure` | APrimalStructure | a group |  |  |  |
 | `structure/piece` | a structure with snap points | built | `mesh`, `color`, `half`, `hp`, `shape`, `material` | `opens`, `locked`, `decayDays`, `falls`, `grindLine`, `vehicleSurface`, `made`, `trimTier`, `kit` | 164 |
-| `structure/container` | an item container | built | `mesh`, `color`, `half`, `hp`, `slots` | `shape`, `material`, `decayDays`, `locked`, `falls`, `keeps` | 7 |
-| `structure/station` | a crafting inventory with its engrams and speed | partial: stations | `mesh`, `color`, `half`, `hp` | `shape`, `material`, `decayDays`, `locked`, `falls`, `slots`, `lights`, `lit`, `burns`, `cooks`, `keeps`, `charges`, `powered`, `dry`, `screen` | 19 |
+| `structure/container` | an item container | built | `mesh`, `color`, `half`, `hp`, `slots` | `shape`, `material`, `decayDays`, `locked`, `falls`, `keeps` | 5 |
+| `structure/station` | a crafting inventory with its engrams and speed | partial: stations | `mesh`, `color`, `half`, `hp` | `shape`, `material`, `decayDays`, `locked`, `falls`, `slots`, `lights`, `lit`, `burns`, `cooks`, `keeps`, `charges`, `powered`, `dry`, `screen` | 24 |
 | `structure/bed` | a bed | built | `mesh`, `color`, `half`, `hp`, `bed` | `shape`, `material`, `decayDays`, `falls`, `wait`, `once`, `floor`, `rise` | 3 |
 | `structure/static` | level geometry, ours | built | `mesh`, `color`, `half`, `hp` | `material`, `shape`, `grindLine`, `vehicleSurface`, `opens`, `motion`, `under`, `made`, `near`, `paint`, `ablaze`, `holds`, `coarse`, `colors`, `bent`, `breaks`, `salvage`, `screen` | 3658 |
 | `structure/defence` | turrets and spikes | stub: defences | `mesh`, `color`, `half`, `hp` | `shape`, `material`, `decayDays`, `falls`, `slots` | 0 |
@@ -236,7 +236,7 @@ Packs may add to: `yields`.
 | --- | --- | --- | --- | --- | --- |
 | `prop` | an actor that is not alive | a group |  |  |  |
 | `prop/container` | a death cache, a dropped bag | built | `mesh`, `color`, `radius`, `height`, `slots` |  | 4 |
-| `prop/projectile` | a projectile actor | partial | `mesh`, `color`, `radius`, `height` | `pitched` | 4 |
+| `prop/projectile` | a projectile actor | partial | `mesh`, `color`, `radius`, `height` | `pitched` | 6 |
 | `prop/egg` | a laid or dropped egg, fertilised or not | built | `mesh`, `color`, `radius`, `height` | `size`, `item`, `fertile` | 10 |
 | `prop/cloud` | the gas and smoke actors of grenades | built | `mesh`, `color`, `radius`, `height` |  | 2 |
 | `prop/crate` | SupplyCrate_ | built | `mesh`, `color`, `radius`, `height`, `slots` |  | 3 |
@@ -413,9 +413,9 @@ built.
 
 **`structure/piece`** (164): foundation_thatch, wall_thatch, doorframe_thatch, ceiling_thatch, door_thatch, door_open_thatch, roof_thatch, roof_hip_thatch, roof_valley_thatch, sloped_wall_left_thatch, sloped_wall_right_thatch, half_wall_thatch, railing_thatch, foundation_wood, wall_wood, doorframe_wood, windowframe_wood, ceiling_wood, pillar_wood, door_wood, door_open_wood, stairs_wood, half_wall_wood, quarter_wall_wood, railing_wood, beam_wood, thin_pillar_wood, triangle_foundation_wood, triangle_ceiling_wood, ramp_wood, roof_wood, roof_hip_wood, roof_valley_wood, triangle_roof_wood, triangle_roof_low_wood, sloped_wall_left_wood, sloped_wall_right_wood, fence_foundation_wood, trapdoor_frame_wood, trapdoor_wood, trapdoor_open_wood, ladder_wood, double_doorway_wood, double_door_wood, double_door_open_wood, large_wall_wood, gateway_wood, gate_wood, gate_open_wood, foundation_stone, wall_stone, doorframe_stone, windowframe_stone, ceiling_stone, pillar_stone, door_stone, door_open_stone, stairs_stone, half_wall_stone, quarter_wall_stone, railing_stone, beam_stone, thin_pillar_stone, triangle_foundation_stone, triangle_ceiling_stone, ramp_stone, roof_stone, roof_hip_stone, roof_valley_stone, triangle_roof_stone, triangle_roof_low_stone, sloped_wall_left_stone, sloped_wall_right_stone, fence_foundation_stone, trapdoor_frame_stone, trapdoor_stone, trapdoor_open_stone, double_doorway_stone, double_door_stone, double_door_open_stone, large_wall_stone, gateway_stone, gate_stone, gate_open_stone, foundation_metal, wall_metal, doorframe_metal, windowframe_metal, ceiling_metal, pillar_metal, door_metal, door_open_metal, stairs_metal, half_wall_metal, quarter_wall_metal, railing_metal, beam_metal, thin_pillar_metal, triangle_foundation_metal, triangle_ceiling_metal, ramp_metal, roof_metal, roof_hip_metal, roof_valley_metal, triangle_roof_metal, triangle_roof_low_metal, sloped_wall_left_metal, sloped_wall_right_metal, fence_foundation_metal, trapdoor_frame_metal, trapdoor_metal, trapdoor_open_metal, ladder_metal, double_doorway_metal, double_door_metal, double_door_open_metal, large_wall_metal, gateway_metal, gate_metal, gate_open_metal, foundation_tek, wall_tek, doorframe_tek, windowframe_tek, ceiling_tek, pillar_tek, door_tek, door_open_tek, stairs_tek, half_wall_tek, quarter_wall_tek, railing_tek, beam_tek, thin_pillar_tek, triangle_foundation_tek, triangle_ceiling_tek, ramp_tek, roof_tek, roof_hip_tek, roof_valley_tek, triangle_roof_tek, triangle_roof_low_tek, sloped_wall_left_tek, sloped_wall_right_tek, fence_foundation_tek, trapdoor_frame_tek, trapdoor_tek, trapdoor_open_tek, ladder_tek, double_doorway_tek, double_door_tek, double_door_open_tek, large_wall_tek, gateway_tek, gate_tek, gate_open_tek, phase_wall_tek, phase_wall_open_tek, zzzzzzskate_kicker, zzzzzzskate_rail, zzzzzzskate_ledge, road_asphalt, road_gravel, road_mud.
 
-**`structure/container`** (7): storage_box, storage_large, vault, standing_torch, fireplace, generator, refrigerator.
+**`structure/container`** (5): storage_box, storage_large, vault, generator, refrigerator.
 
-**`structure/station`** (19): campfire, campfire_lit, mortar, forge, forge_lit, smithy, fabricator, fabricator_lit, workstation, preserving_bin, preserving_bin_lit, soul_vault, soul_vault_lit, cooking_pot, air_conditioner, grinder, forge_industrial, chemistry_bench, cooker_industrial.
+**`structure/station`** (24): campfire, campfire_lit, mortar, forge, forge_lit, smithy, fabricator, fabricator_lit, workstation, preserving_bin, preserving_bin_lit, soul_vault, soul_vault_lit, standing_torch, standing_torch_lit, cooking_pot, cooking_pot_lit, fireplace, fireplace_lit, air_conditioner, grinder, forge_industrial, chemistry_bench, cooker_industrial.
 
 **`structure/bed`** (3): sleeping_bag, bed, bunk_bed.
 
@@ -429,7 +429,7 @@ built.
 
 **`prop/container`** (4): corpse, feces, cache, bag.
 
-**`prop/projectile`** (4): jet_missile_live, flare_live, grenade_live, arrow_stuck.
+**`prop/projectile`** (6): jet_missile_live, flare_live, grenade_live, arrow_stuck, grenade_smoke_live, grenade_poison_live.
 
 **`prop/egg`** (10): egg_dodo, egg_parasaur, egg_pteranodon, egg_raptor, egg_trike, egg_stego, egg_carbonemys, egg_rex, egg_spino, egg_brachio.
 

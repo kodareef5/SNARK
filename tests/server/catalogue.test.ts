@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { BREAK_BLOCKS } from "../../content/breaks/kinds.ts";
 import { CITY_MATERIALS } from "../../content/breaks/materials.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
+import { CLOUD_GRENADE_PROPS } from "../../content/items/explosives.ts";
 import { RUIN_BLOCKS } from "../../content/miami-ruins.ts";
 import { SLOPE_BLOCKS, SLOPE_SHAPES } from "../../content/slopes.ts";
 import { LETTER_BLOCKS } from "../../content/lettering.ts";
@@ -105,14 +106,14 @@ test("the core pack's definitions fall into the classes, each passing its row", 
     "prop/container": 2,
     "prop/crate": 3,
     // And the jet's missile in flight.
-    "prop/projectile": 3,
+    "prop/projectile": 5,
     buff: 7,
     spawns: 4,
     map: 5, // miami-coast became Miami (D810)
   });
   // 253 with the supply drop's capsule (content/core.ts), the template hammer and its engram, air support's three vehicles,
   // the map events' two crates, and the jet's six: its species, two weapons, two rounds and its missile in flight.
-  expect(rest.length).toBe(253 + 2 + 3 + 2 + 6 + FREIGHT_ORDER.length + SKATEBOARDS.length + ROAD_FLEET.length + MARINE_FLEET.length + RUIN_BLOCKS.length + TERMINALS.length + ORBS.length + SLOPE_BLOCKS.length + LETTER_BLOCKS.length + WRECKS.length + TANKER_WRECKS.length + HARBOUR_WRECKS.length + STREET.length + SCREEN_PROPS.length + DOCKS.length + BREAK_BLOCKS.length + CITY_MATERIALS.length);
+  expect(rest.length).toBe(253 + 2 + 3 + 2 + 6 + CLOUD_GRENADE_PROPS.length + FREIGHT_ORDER.length + SKATEBOARDS.length + ROAD_FLEET.length + MARINE_FLEET.length + RUIN_BLOCKS.length + TERMINALS.length + ORBS.length + SLOPE_BLOCKS.length + LETTER_BLOCKS.length + WRECKS.length + TANKER_WRECKS.length + HARBOUR_WRECKS.length + STREET.length + SCREEN_PROPS.length + DOCKS.length + BREAK_BLOCKS.length + CITY_MATERIALS.length);
   // Each creature file has one species, and what else it has is the egg it lays, its saddle and how the saddle is made.
   expect(CORE_CONTENT.length).toBe(rest.length + later.length + CREATURES.length + FEATURES_CONTENT.length);
   const brought: Record<string, number> = {};
