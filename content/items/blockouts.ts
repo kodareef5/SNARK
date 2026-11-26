@@ -1,5 +1,6 @@
 import type { Def } from "../../shared/content/defs.ts";
 import { making } from "../craft.ts";
+import { armorCovers } from "./armor-covers.ts";
 import { ARROWS, ATTACHMENTS, BLOW, BOW_AIM, PISTOL_AIM, RIFLE_AIM, SHOTGUN_AIM } from "./weapons.ts";
 
 // Things blocked out (planning/workstreams/supply.md, "Blocked out"; the owner on 2026-11-21: "block out, name, claim
@@ -246,7 +247,7 @@ const SUITS: readonly Suit[] = [
 const ARMOUR: Def[] = SUITS.flatMap((s) =>
   s.pieces.flatMap((p): Def[] => [
     // Every set is drawn as hide's pieces are, in its colours, until it has pieces of its own.
-    { type: "item", class: "armor", id: id(`${s.set}_${p.name}`), stack: 1, weight: p.weight, label: p.label, color: s.colors[0], wear: { slot: p.slot, armor: p.armor ?? s.armor, uses: p.uses ?? s.uses, set: "hide", colors: s.colors } },
+    { type: "item", class: "armor", id: id(`${s.set}_${p.name}`), stack: 1, weight: p.weight, label: p.label, color: s.colors[0], wear: { slot: p.slot, armor: p.armor ?? s.armor, uses: p.uses ?? s.uses, set: "hide", colors: s.colors, covers: armorCovers("hide", p.slot) } },
     ...made(`${s.set}_${p.name}`, `${p.label[0]!.toUpperCase()}${p.label.slice(1)}`, s.level, p.cost, 1, s.seconds, p.needs, s.at, [`${s.after}_${SLOT_NAMES[p.slot]}`, ...(p.after ?? [])]),
   ]),
 );

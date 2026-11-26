@@ -4,6 +4,7 @@ import { RUIN_SHAPES, type RuinShape } from "../../content/ruins.ts";
 import { wreckLook } from "../../content/vehicles/wrecks.ts";
 import type { Def, ShapeBox } from "../../shared/content/defs.ts";
 import { hullPoint, type HullDef } from "../../shared/world/convex.ts";
+import { SLACK } from "./cell-lists.ts";
 import { binKey } from "./raster.ts";
 import type { StaticPiece } from "./statics.ts";
 
@@ -64,6 +65,9 @@ export const boxOf = (p: StaticPiece): Box => ({ ...middleOf(p), yaw: p.yaw, siz
 /** Whether two boxes, the first grown by `gap` round its sides, meet: their footprints overlap and their heights do. */
 export function meets(a: Box, b: Box, gap = 0): boolean {
   if (a.y + a.size[1] / 2 <= b.y - b.size[1] / 2 || b.y + b.size[1] / 2 <= a.y - a.size[1] / 2) return false;
+  // Half a diagonal is never more than half the two sides, so boxes this far apart are past `reach` too.
+  const far = (a.size[0] + a.size[2]) / 2 + (b.size[0] + b.size[2]) / 2 + gap * 1.5 + SLACK;
+  if (Math.abs(a.x - b.x) > far || Math.abs(a.z - b.z) > far) return false;
   const reach = Math.hypot(a.size[0], a.size[2]) / 2 + Math.hypot(b.size[0], b.size[2]) / 2 + gap * 1.5;
   if (Math.abs(a.x - b.x) > reach || Math.abs(a.z - b.z) > reach) return false;
   // A box's own axes run as a piece's: x along (cos, -sin) and z along (sin, cos) of its yaw.
@@ -90,7 +94,12 @@ export function obstacleIndex(pieces: readonly StaticPiece[]): { add: (p: Static
   const blocked = (points: readonly Point[]): boolean => {
     const minX = Math.min(...points.map((p) => p.x)); const maxX = Math.max(...points.map((p) => p.x));
     const minZ = Math.min(...points.map((p) => p.z)); const maxZ = Math.max(...points.map((p) => p.z));
-    for (let z = Math.floor(minZ / 64); z <= Math.floor(maxZ / 64); z++) for (let x = Math.floor(minX / 64); x <= Math.floor(maxX / 64); x++) for (const { p } of bins.get(binKey(x, z)) ?? []) if (obstructs(p, points)) return true;
+    for (let z = Math.floor(minZ / 64); z <= Math.floor(maxZ / 64); z++) for (let x = Math.floor(minX / 64); x <= Math.floor(maxX / 64); x++) for (const { p, box } of bins.get(binKey(x, z)) ?? []) {
+      // The box grown by obstructs' pad on each side lies within half its two sides and two pads of its middle.
+      const far = (box.size[0] + box.size[2]) / 2 + 1.4 + SLACK;
+      if (box.x + far < minX || box.x - far > maxX || box.z + far < minZ || box.z - far > maxZ) continue;
+      if (obstructs(p, points)) return true;
+    }
     return false;
   };
   /** Whether a piece already set down meets the box grown by `gap`. */

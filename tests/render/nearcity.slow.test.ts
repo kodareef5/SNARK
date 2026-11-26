@@ -72,12 +72,13 @@ test("a static of the slice shot away is gone that frame, with no mesh let go an
   // The tallest piece of the slice's busiest chunk, seen from 20 m over its top.
   const chunk = 3 * dims.chunksX + 1;
   let top = -Infinity, slot = -1;
+  const t = city.rows(chunk)!;
   for (let s = 0; s < city.in(chunk); s++) {
-    const i = city.first[chunk]! + s, k = city.kind[i]!;
-    if (near.kinds[k] === 1 && city.y[i]! + city.halfY[k]! > top) [top, slot] = [city.y[i]! + city.halfY[k]!, s];
+    const i = t.from(chunk) + s, k = t.kind[i]!;
+    if (near.kinds[k] === 1 && t.y[i]! + city.halfY[k]! > top) [top, slot] = [t.y[i]! + city.halfY[k]!, s];
   }
-  const i = city.first[chunk]! + slot;
-  [cam.x, cam.y, cam.z, cam.yaw, cam.pitch] = [city.x[i]!, top + 20, city.z[i]! - 0.01, 0, -Math.PI / 2 + 0.01];
+  const i = t.from(chunk) + slot;
+  [cam.x, cam.y, cam.z, cam.yaw, cam.pitch] = [t.x[i]!, top + 20, t.z[i]! - 0.01, 0, -Math.PI / 2 + 0.01];
   w.follow(cam.x, cam.z);
   near.pieces = Infinity;
   const raster = new Rasterizer(64, 36, farPack(), w.hf);
@@ -172,7 +173,7 @@ test("the slice's densest border crossed makes no more a frame than its pieces",
   }
   // The border was crossed, the column of chunks it brought laid out as instances and then made as meshes.
   expect(Math.floor(x / CHUNK_SIZE)).toBe(4);
-  const weight = (c: number, s: number): number => pieceWeight(w.city, w.city.kind[w.city.first[c]! + s]!);
+  const weight = (c: number, s: number): number => pieceWeight(w.city, w.city.rows(c)!.kind[w.city.rows(c)!.from(c) + s]!);
   const brought = Array.from({ length: 7 }, (_, j) => j * w.dims.chunksX + 7).reduce((n, c) => n + scene.near!.chunk(c)!.mine.reduce((m, v, s) => m + v * weight(c, s), 0), 0);
   expect(frames.reduce((n, f) => n + f.made, 0)).toBe(brought);
   expect(scene.near!.stats.waiting).toBe(0);

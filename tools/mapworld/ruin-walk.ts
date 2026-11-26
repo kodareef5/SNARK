@@ -24,9 +24,9 @@ const nodes = source ? new NodeField(map.dims, reg, source) : null;
 const world = { hf, structs, ...(nodes ? { nodes: nodes.store } : {}) };
 const params = reg.move[reg.index.get("core:survivor")!]!;
 const records = readReport<RuinRecord[]>(folder, "buildings.json", map.dims);
-const candidates = records.filter((r) => r.routes.length > 0).sort((a, b) => a.part - b.part);
+const candidates = records.filter((r) => r.routes.length > 0).sort((a, b) => a.id - b.id);
 const sample = process.argv.includes("--all") ? candidates : candidates.filter((r, i) => r.special || i % Math.max(1, Math.floor(candidates.length / 48)) === 0);
-const results: { part: number; name: string | null; floors: number; route: number; startHeight: number; ok: boolean; message: string }[] = [];
+const results: { id: number; name: string | null; floors: number; route: number; startHeight: number; ok: boolean; message: string }[] = [];
 for (const r of sample) for (let ri = 0; ri < r.routes.length; ri++) {
   const route = r.routes[ri]!;
   const chunk = chunkAt(map.dims, route.x, route.z);
@@ -63,9 +63,9 @@ for (const r of sample) for (let ri = 0; ri < r.routes.length; ri++) {
     ok = go(lane, direction * 3.25, route.y + (level + 1) * 4) && go(lane, -direction * (level ? 3.25 : 3.5), route.y + level * 4);
   }
   nodes?.retain(chunk, 1, -1, () => false);
-  results.push({ part: r.part, name: r.name, floors: route.floors, route: ri, startHeight: route.y, ok, message });
+  results.push({ id: r.id, name: r.name, floors: route.floors, route: ri, startHeight: route.y, ok, message });
 }
-const escapeResults: { part: number; route: number; ok: boolean; message: string }[] = [];
+const escapeResults: { id: number; route: number; ok: boolean; message: string }[] = [];
 for (const r of sample) for (let ri = 0; ri < (r.escapes?.length ?? 0); ri++) for (const reverse of r.escapes[ri]!.bidirectional ? [false, true] : [false]) {
   const points = reverse ? [...r.escapes[ri]!.points].reverse() : r.escapes[ri]!.points; const first = points[0]!; const b = new Body(); b.x = first.x; b.y = first.y + 1; b.z = first.z;
   nodes?.retain(chunkAt(map.dims, b.x, b.z), 1, 1, () => false);
@@ -79,7 +79,7 @@ for (const r of sample) for (let ri = 0; ri < (r.escapes?.length ?? 0); ri++) fo
     for (let t = 0; t < 45; t++) stepBody(world, b, 0, 0, 0, 0, 0, params, TICK_DT);
     if (Math.hypot(b.x - p.x, b.z - p.z) > .3 || Math.abs(b.y - p.y) > .15) { message = `target ${p.x.toFixed(1)},${p.y.toFixed(1)},${p.z.toFixed(1)} reached ${b.x.toFixed(1)},${b.y.toFixed(1)},${b.z.toFixed(1)}`; break; }
   }
-  escapeResults.push({ part: r.part, route: ri, ok: !message, message });
+  escapeResults.push({ id: r.id, route: ri, ok: !message, message });
 }
 const failed = results.filter((r) => !r.ok); const escapeFailed = escapeResults.filter((r) => !r.ok);
 const report = { mapHash: map.hash, includes: "terrain and resource-node collision; ascent, landing turns, roof exit, descent and independent stair exits in both directions", sampledBuildings: sample.length, stairRoutes: results.length, passed: results.length - failed.length, failed: failed.length, escapeRoutes: escapeResults.length, escapePassed: escapeResults.length - escapeFailed.length, escapeFailed: escapeFailed.length, results, escapeResults };

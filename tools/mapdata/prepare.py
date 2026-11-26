@@ -20,7 +20,7 @@ from shapely.geometry import Polygon, box, shape
 from shapely.ops import transform as project, unary_union
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import folder_arg, save  # noqa: E402
+from common import folder_arg, nearest_from, relation_polygon, save  # noqa: E402
 import streets  # noqa: E402
 
 HIGHWAY = ('S1100', 'S1200')
@@ -51,15 +51,10 @@ def osm_features(m):
                 from shapely.geometry import LineString
                 g = LineString(pts)
         elif el['type'] == 'relation' and el.get('members'):
-            outers = [Polygon([to_map(p['lon'], p['lat']) for p in mb['geometry']]) for mb in el['members']
-                      if mb.get('role') == 'outer' and mb.get('geometry') and len(mb['geometry']) >= 4 and mb['geometry'][0] == mb['geometry'][-1]]
-            inners = [Polygon([to_map(p['lon'], p['lat']) for p in mb['geometry']]) for mb in el['members']
-                      if mb.get('role') == 'inner' and mb.get('geometry') and len(mb['geometry']) >= 4 and mb['geometry'][0] == mb['geometry'][-1]]
-            if not outers:
+            # A ring may be drawn in several ways: joined, as split.py's buildings are.
+            g = relation_polygon(el['members'], to_map)
+            if g is None:
                 continue
-            g = unary_union([make_valid(p) for p in outers])
-            if inners:
-                g = g.difference(unary_union([make_valid(p) for p in inners]))
         else:
             continue
         g = g.intersection(clip)
@@ -254,8 +249,14 @@ def main():
         if not surveyed.any():
             rs, cs, mask = window(g, 4)
             surveyed = mask & valid[rs, cs]
-        if surveyed.any() and float(np.median(elev[rs, cs][surveyed])) > sea + above:
-            perched.append((g, {**p, 'area_m2': round(g.area, 1)}, float(np.median(elev[rs, cs][surveyed]))))
+        if not surveyed.any():
+            continue
+        surface = float(np.median(elev[rs, cs][surveyed]))
+        # A pool or a fountain holds its own water at any height; other water near the sea's is the sea's, as TIGER's is.
+        if surface > sea + above or p['kind'] in ('pool', 'fountain'):
+            perched.append((g, {**p, 'area_m2': round(g.area, 1)}, surface))
+        elif not p.get('intermittent'):
+            sea_water.append((g, {k: p[k] for k in ('id', 'source', 'name', 'kind')}))
     m.write_features('perched_water', [(g, {**p, 'surface_navd88_m': round(h, 2), 'above_sea_m': round(h - sea, 2)}) for g, p, h in perched])
     # Water that is dry most of the year, a detention basin or a wash, is listed and left as the ground it is.
     lake = m.burn([(g, 1) for g, p, h in perched if not p.get('intermittent')], dims, m.grid)
@@ -281,10 +282,7 @@ def main():
     street_areas = []
     if elements is not None:
         street_areas = streets.ground_use(m, dims, streets.walks(m, elements, roads), *streets.areas(m, elements, roads, [g for g, p in bld]), street_stats)
-    lc = np.zeros(dims, np.uint8)
-    with rasterio.open(m.raw / m.city['nlcd']['file']) as src:
-        reproject(rasterio.band(src, 1), lc, src_transform=src.transform, src_crs=src.crs,
-                  dst_transform=m.grid, dst_crs=m.crs, resampling=Resampling.nearest)
+    lc = nearest_from(m, m.raw / m.city['nlcd']['file']).astype(np.uint8)
     save(lc, m.base / 'landcover.png')
     # Fictional succession, the rule Miami's was made by; distinct from NLCD.
     coast = nd.distance_transform_edt(w == 0) * 2 if w.any() else np.full(dims, np.inf, np.float32)

@@ -32,8 +32,8 @@ const FINE = ((WINDOW - 1) / 2) * TERRAIN_CELL;
  * no look for how near the finishes come under way (render/finish-near.ts), and pieces drawn with their materials; `far`, the
  * far city drawn in the view; `blocks`, the city's blocks drawn in the view (render/cityblocks.ts); `colour`, the world's finishes drawn with their base colours, where before those come they
  * are drawn as their means (client/shell/gl.ts worldReady), or none to draw; `soft`, no texture shown without its first
- * step; `making`, the card making its textures (texgen); `weathered`, the walls' weathering come up from their first pass; `handed`, the whole map's statics handed
- * to the session, a piece in every chunk its head counts any in; `predicting`, the body predicted; `exact`, the ground the fine terrain draws all the map's own; `jump`, the body
+ * step; `making`, the card making its textures (texgen); `weathered`, the walls' weathering come up from their first pass; `handed`, the statics round the body handed
+ * to the session; `settled`, every part the page wants held and handed over (mapload.ts MapLoader.progress); `predicting`, the body predicted; `exact`, the ground the fine terrain draws all the map's own; `jump`, the body
  * moved more than JUMP metres in a frame. Each, but `frame` and `jump`, again with a minus when it went.
  */
 export class TripProbe {
@@ -45,9 +45,6 @@ export class TripProbe {
   private readonly on = new Set<string>();
   private x = NaN;
   private z = NaN;
-  /** The world's statics last looked at, and whether they are the whole map's. */
-  private city: unknown = null;
-  private allOf = false;
 
   constructor(app: App, counts: Uint16Array) {
     this.app = app;
@@ -87,11 +84,9 @@ export class TripProbe {
     this.set("soft", r.bare() === 0);
     this.set("making", p.texgenSide > 0);
     this.set("weathered", (this.app.texgen?.ready ?? 0) > 0);
-    if (world.city !== this.city) {
-      const city = (this.city = world.city);
-      this.allOf = !!city && this.counts.every((n, c) => n === 0 || city.statics.in(c) > 0);
-    }
-    this.set("handed", this.allOf);
+    const map = this.app.mapLoader?.progress();
+    this.set("handed", map?.near ?? false);
+    this.set("settled", map?.settled ?? false);
     this.set("predicting", session.predicting);
     this.set("exact", world.hf.exactIn(x - FINE, z - FINE, x + FINE, z + FINE));
   }
@@ -100,7 +95,7 @@ export class TripProbe {
   whole(): { ground: boolean; pieces: number } {
     const world = this.app.session.world;
     if (!world) return { ground: false, pieces: 0 };
-    return { ground: world.hf.exactIn(0, 0, world.hf.sizeX, world.hf.sizeZ), pieces: world.city?.statics.first.at(-1) ?? 0 };
+    return { ground: world.hf.exactIn(0, 0, world.hf.sizeX, world.hf.sizeZ), pieces: world.city?.statics.count ?? 0 };
   }
 
   /**

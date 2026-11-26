@@ -66,6 +66,26 @@ const zoneIndex = (list: readonly Zone[], name: string): number => list.findInde
 /** Districts whose woods are parks and squares among the ruins, not hammock. */
 const URBAN = new Set(["concrete", "deco", "terracotta", "mural"]);
 
+/**
+ * The zone squares inside any clearing, a byte a square as makeNodes walks them: a clearing is a column and row of the
+ * ground's samples and a squared radius in samples, and a square is inside where its middle sample is nearer than that.
+ * Each circle is stamped on the squares round it alone, by the same sum and strict compare as a test of every clearing.
+ */
+export function clearingMask(across: number, down: number, clearings: readonly (readonly [number, number, number])[]): Uint8Array {
+  const mask = new Uint8Array(across * down);
+  for (const [c, r, d2] of clearings) {
+    // Two squares past the radius either way, so a rounding of the root leaves out no square the sum takes.
+    const reach = Math.ceil(Math.sqrt(d2) / 2) + 2;
+    const px0 = Math.max(0, Math.floor((c - 1) / 2) - reach), px1 = Math.min(across - 1, Math.floor((c - 1) / 2) + reach);
+    const py0 = Math.max(0, Math.floor((r - 1) / 2) - reach), py1 = Math.min(down - 1, Math.floor((r - 1) / 2) + reach);
+    for (let py = py0; py <= py1; py++) for (let px = px0; px <= px1; px++) {
+      const col = px * 2 + 1, row = py * 2 + 1;
+      if ((c - col) ** 2 + (r - row) ** 2 < d2) mask[py * across + px] = 1;
+    }
+  }
+  return mask;
+}
+
 /** Each zone's picture, north up, a byte a square, and the layers that name them. `clear` is true where nothing may stand. */
 export function makeNodes(ground: Ground, world: World, clear: (col: number, row: number) => boolean, low: (col: number, row: number) => boolean = () => false, growth?: Vocabulary["growth"]): { plants: Uint8Array; stones: Uint8Array; sea: Uint8Array; across: number; down: number; layers: unknown[] } {
   const { surface, height, shore } = ground;

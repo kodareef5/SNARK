@@ -1956,10 +1956,12 @@ export function groundAt(hf: Heightfield, x: number, z: number, out: Float64Arra
   if (j > hf.nz - 2) j = hf.nz - 2;
   const u = fx - i;
   const v = fz - j;
-  const k = j * nx + i;
-  const hts = hf.heights;
+  const view = hf.view(i, j, i + 1, j + 1);
+  const hts = view.heights;
+  const stride = view.stride;
+  const k = view.off + j * stride + i;
   const h00 = hts[k]!;
-  const h11 = hts[k + nx + 1]!;
+  const h11 = hts[k + stride + 1]!;
   let du: number;
   let dv: number;
   if (u >= v) {
@@ -1967,7 +1969,7 @@ export function groundAt(hf: Heightfield, x: number, z: number, out: Float64Arra
     du = h10 - h00;
     dv = h11 - h10;
   } else {
-    const h01 = hts[k + nx]!;
+    const h01 = hts[k + stride]!;
     du = h11 - h01;
     dv = h01 - h00;
   }

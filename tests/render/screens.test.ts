@@ -12,7 +12,7 @@ import { pictureCrop } from "../../client/core/render/picture-crop.ts";
 import { FACE_LIFT, FaceFinder, writeFace, type FaceShow } from "../../client/core/render/screens.ts";
 import { FaceScreens } from "../../client/core/video/faces.ts";
 import type { ScreenFace } from "../../shared/video/face.ts";
-import type { CityStatics } from "../../shared/world/city.ts";
+import { CityStatics } from "../../shared/world/city.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
@@ -92,19 +92,30 @@ test("a frame keeps the nearest of many, and counts them all", () => {
   expect(Math.max(...d)).toBeLessThan(Math.hypot(80, 13, 1100 + 32 * 15 - 1000));
 });
 
-test("a chunk the client holds is read as it stands, and one it does not as the map placed it", () => {
-  const s = store(), finder = new FaceFinder(FACES), cam = eye();
-  // The map's statics: two billboards, one in a chunk the client holds, where it is bare now.
-  const statics = { first: new Uint32Array(DIMS.chunksX * DIMS.chunksZ + 1), kind: Uint16Array.of(1, 1), x: Float32Array.of(1280, 1290), y: Float32Array.of(0, 0), z: Float32Array.of(1300, 1600), yaw: Uint16Array.of(FACING, FACING) };
-  const a = Math.floor(1300 / 64) * DIMS.chunksX + 20, b = Math.floor(1600 / 64) * DIMS.chunksX + 20;
-  for (let c = 0; c < statics.first.length; c++) statics.first[c] = c <= a ? 0 : c <= b ? 1 : 2;
-  const world = { structs: s, statics: statics as unknown as CityStatics };
-  expect(Array.from(finder.find(world, cam, REACH).z.subarray(0, 2))).toEqual([1300, 1600]);
-  s.add(3, 1280, 0, 1300, FACING, 0, 1);
+test("map billboards use registry kinds and keep their original chunk slots", () => {
+  const reg = coreRegistry();
+  const billboard = "core:zzstreet_billboard", bare = "core:zzstreet_billboard_bare";
+  const placed = (kind: string, z: number) => ({ kind, x: 1280, y: 0, z, yaw: FACING });
+  const statics = new CityStatics(DIMS, [placed(billboard, 1300), placed(bare, 1600), placed(billboard, 1601)], reg);
+  const structs = new StructureStore(DIMS, reg.halfX, reg.halfY, reg.halfZ);
+  const finder = new FaceFinder(reg.screenFace), cam = eye();
+  const world = { structs, statics };
+  const first = finder.find(world, cam, REACH);
+  const kind = reg.index.get(billboard)!;
+  expect(statics.bentKind[0]).toBe(kind);
+  expect(kind).not.toBe(0);
+  expect(Array.from(first.kind.subarray(0, first.count))).toEqual([kind, kind]);
+  expect(Array.from(first.z.subarray(0, first.count))).toEqual([1300, 1601]);
+
+  structs.add(reg.index.get(bare)!, 1280, 0, 1300, FACING, 0, 1);
   const list = finder.find(world, cam, REACH);
-  expect([list.count, list.z[0]]).toEqual([1, 1600]);
-  // Its ref is its chunk and its place among the chunk's statics, as a slot's is.
-  expect(list.ref[0]).toBe(b * 65536);
+  const chunk = Math.floor(1601 / 64) * DIMS.chunksX + 20;
+  const ref = chunk * 65536 + 1;
+  expect([list.count, list.z[0], list.ref[0]]).toEqual([1, 1601, ref]);
+  structs.add(reg.index.get(bare)!, 1280, 0, 1600, FACING, 0, 1);
+  structs.add(kind, 1280, 0, 1601, FACING, 0, 1);
+  const held = finder.find(world, cam, REACH);
+  expect([held.count, held.kind[0], held.ref[0]]).toEqual([1, kind, ref]);
 });
 
 test("finding faces frame after frame makes nothing", () => {

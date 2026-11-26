@@ -59,8 +59,10 @@ interface Tile {
 function lowest(hf: Heightfield, x: number, z: number, size: number): number {
   const i1 = Math.min(hf.nx - 1, Math.ceil((x + size) / hf.cell));
   const j1 = Math.min(hf.nz - 1, Math.ceil((z + size) / hf.cell));
+  const i0 = Math.max(0, Math.floor(x / hf.cell)), j0 = Math.max(0, Math.floor(z / hf.cell));
+  const v = hf.view(i0, j0, i1, j1);
   let low = 65535;
-  for (let j = Math.max(0, Math.floor(z / hf.cell)); j <= j1; j++) for (let i = Math.max(0, Math.floor(x / hf.cell)); i <= i1; i++) low = Math.min(low, hf.heights[j * hf.nx + i]!);
+  for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) low = Math.min(low, v.heights[v.off + j * v.stride + i]!);
   return hf.minY + low * hf.stepY;
 }
 

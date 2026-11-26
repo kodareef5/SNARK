@@ -196,7 +196,8 @@ async function mapShots(path: string): Promise<Shot[]> {
   const hf = mapHeightfield(map);
   const statics = new CityStatics(map.dims, map.statics, reg);
   const structs = new StructureStore(map.dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
-  for (let i = 0; i < statics.count; i++) structs.add(statics.kind[i]!, statics.x[i]!, statics.y[i]!, statics.z[i]!, statics.yaw[i]!, 0, reg.maxHp[statics.kind[i]!]!);
+  const all = statics.squareOf(0)!;
+  for (let i = 0; i < statics.count; i++) structs.add(all.kind[i]!, all.x[i]!, all.y[i]!, all.z[i]!, all.yaw[i]!, 0, reg.maxHp[all.kind[i]!]!);
   const files = await gameFiles(undefined, undefined, [], map.content?.landmarks ?? []);
   const port = new FakeNet(files.files);
   const cam = new Camera();

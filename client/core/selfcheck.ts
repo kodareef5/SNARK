@@ -145,7 +145,7 @@ export function provingProbes(cam: Camera, reg: Registry, palette: Uint8Array, s
     // The slope is one plane there: its normal from the heights a sample either side.
     const [dx, dz] = [hf.heightAt(232 + hf.cell, 296) - hf.heightAt(232 - hf.cell, 296), hf.heightAt(232, 296 + hf.cell) - hf.heightAt(232, 296 - hf.cell)];
     const n = [-dx, 2 * hf.cell, -dz].map((c, _, all) => c / Math.hypot(...all));
-    probes.push({ name: "slope", sx: at[0]!, sy: at[1]!, rgb: color(hf.tint[Math.round(296 / hf.cell) * hf.nx + Math.round(232 / hf.cell)]!, n, { point: [232, hf.heightAt(232, 296), 296], ground: true }), mode: hue });
+    probes.push({ name: "slope", sx: at[0]!, sy: at[1]!, rgb: color(hf.tintOf(Math.round(232 / hf.cell), Math.round(296 / hf.cell)), n, { point: [232, hf.heightAt(232, 296), 296], ground: true }), mode: hue });
   }
   // The probe server stands a grazer at a known spot in a colour not its species' own, which checks the entity path and the colour regions.
   const grazer = reg.defs[reg.index.get("core:grazer") ?? 0];

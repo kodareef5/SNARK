@@ -22,6 +22,7 @@ import type { CityMaker } from "./citymake.ts";
 import { FAR_SLOTS, FAR_SPAN } from "./far.ts";
 import { CITY_BUFFER, CITY_TILE } from "./farcity.ts";
 import type { Hider } from "./hide.ts";
+import type { TopFix, TopRows } from "./topfix.ts";
 import type { FramePacket } from "./packet.ts";
 import { COARSE } from "./terrain.ts";
 
@@ -56,6 +57,9 @@ const FROM = [COARSER_FROM, COARSEST_FROM];
 export interface BlocksSource {
   readonly tops: HeldTops;
   readonly maker?: CityMaker;
+  /** Where a sector's rows are asked for once, for the tops that are wrong (topfix.ts), and the map's kinds they index. */
+  readonly rows?: TopRows;
+  readonly kinds?: readonly string[];
 }
 
 /** What stands of the map's pieces once its statics have come, as the far city follows it (farcity.ts goneOf, goneVersion). */
@@ -117,10 +121,17 @@ export class CityBlocks {
   private seenTops = 0;
   /** The heightfield's changes taken in. */
   private seenGround: number;
+  /** The ground a tile's hash is taken over, kept between tiles. */
+  private hashed = new Uint16Array(0);
   /** The map's statics and what stands of them, once they have come; per chunk, 1 where a landmark's piece stands in it. */
   private statics: CityStatics | null = null;
   private standing: Standing | null = null;
   private readonly landmarks: Uint8Array;
+  /** The statics' squares as last taken in (CityStatics.news). */
+  private seenSquares = new Uint32Array(0);
+  /** The tops made of what stands where the map's are wrong past the statics held, and their count of changes taken in. */
+  fix: TopFix | null = null;
+  private seenFix = 0;
   private readonly asked = new Map<number, number>();
   private next = 0;
   private sent = false;
@@ -277,19 +288,27 @@ export class CityBlocks {
   private changed(statics: CityStatics | null, standing: Standing | null, now: number): void {
     const tops = this.source.tops;
     if (statics !== this.statics) {
+      for (let c = 0; c < this.landmarks.length; c++) if (this.landmarks[c] === 1) this.tiles[this.tileOf(c)]!.dirty = true;
       this.statics = statics;
       this.landmarks.fill(0);
-      if (statics) {
-        for (let c = 0; c < this.landmarks.length; c++) {
-          for (let i = statics.first[c]!; i < statics.first[c + 1]!; i++) {
-            if (this.landmark[statics.kind[i]!] !== 1) continue;
+      this.seenSquares = new Uint32Array(statics?.size ?? 0);
+    }
+    // A square set in or let go: its chunks with a landmark's piece, then and now, are made again.
+    statics?.news(this.seenSquares, (sq, held) => {
+      for (let cz = sq.cz0; cz < sq.cz1; cz++) {
+        for (let cx = sq.cx0; cx < sq.cx1; cx++) {
+          const c = cz * this.dims.chunksX + cx, t = held ? statics.rows(c) : null;
+          if (this.landmarks[c] === 1) this.tiles[this.tileOf(c)]!.dirty = true;
+          this.landmarks[c] = 0;
+          for (let i = t?.from(c) ?? 0; t && i < t.to(c); i++) {
+            if (this.landmark[t.kind[i]!] !== 1) continue;
             this.landmarks[c] = 1;
             this.tiles[this.tileOf(c)]!.dirty = true;
             break;
           }
         }
       }
-    }
+    });
     this.standing = statics ? standing : null;
     const gone = this.standing?.goneVersion;
     const came = tops.version !== this.seenTops;
@@ -305,6 +324,12 @@ export class CityBlocks {
         this.seenCame[c] = tops.came[c]!;
         this.seenGone[c] = g;
       }
+    }
+    // Tops made of what stands past the statics held: a tile they change is made at once, the fetch having been the wait.
+    const fix = this.fix;
+    if (fix && fix.version !== this.seenFix) {
+      for (const f of fix.fixes.values()) if (f.stamp > this.seenFix && !statics?.holds(f.chunk)) this.tiles[this.tileOf(f.chunk)]!.dirty = true;
+      this.seenFix = fix.version;
     }
     // Ground that came: a tile whose blocks stand on samples that changed, or whose feet reach into them, is made again.
     const ch = this.hf.changes;
@@ -331,8 +356,10 @@ export class CityBlocks {
   /** A hash of the ground tile `t`'s blocks stand on, never 0. */
   private groundHash(t: number): number {
     const hf = this.hf, { i0, j0, w, rows } = this.groundOf(t);
+    const heights = (this.hashed.length >= w * rows ? this.hashed : (this.hashed = new Uint16Array(w * rows))).subarray(0, w * rows);
+    hf.every(i0 * COARSE, j0 * COARSE, COARSE, w, rows, heights, null);
     let h = 2166136261;
-    for (let j = 0; j < rows; j++) for (let i = 0; i < w; i++) h = Math.imul(h ^ hf.heights[(j0 + j) * COARSE * hf.nx + (i0 + i) * COARSE]!, 16777619);
+    for (let k = 0; k < heights.length; k++) h = Math.imul(h ^ heights[k]!, 16777619);
     return h >>> 0 || 1;
   }
 
@@ -374,17 +401,21 @@ export class CityBlocks {
     tile.ground = this.groundHash(t);
     const hf = this.hf, { i0, j0, w, rows } = this.groundOf(t);
     const heights = new Uint16Array(w * rows);
-    for (let j = 0; j < rows; j++) for (let i = 0; i < w; i++) heights[j * w + i] = hf.heights[(j0 + j) * COARSE * hf.nx + (i0 + i) * COARSE]!;
+    hf.every(i0 * COARSE, j0 * COARSE, COARSE, w, rows, heights, null);
     return { id, chunksX, ox: cx0 * CHUNK_SIZE, oz: cz0 * CHUNK_SIZE, chunks: Int32Array.from(chunks), size, top, tint, i0, j0, w, heights, minY: hf.minY, stepY: hf.stepY };
   }
 
-  /** `chunk`'s tops as its standing pieces but a landmark's make them, where the statics have come and it has a piece gone or a landmark's; else null. */
+  /**
+   * `chunk`'s tops as its standing pieces but a landmark's make them, where it has a piece gone or a landmark's: of its
+   * statics where they are held, else as made where the map's are wrong (topfix.ts); else null.
+   */
   private standingTops(chunk: number): Uint8Array | null {
     const statics = this.statics, gone = this.standing?.goneOf(chunk) ?? null;
+    if (!statics?.holds(chunk)) return this.fix?.fixOf(chunk)?.blocks ?? null;
     if (!statics || statics.in(chunk) === 0 || (gone === null && this.landmarks[chunk] === 0)) return null;
-    const from = statics.first[chunk]!;
+    const t = statics.rows(chunk)!, from = t.from(chunk);
     const left = new Uint8Array(statics.in(chunk));
-    for (let i = 0; i < left.length; i++) left[i] = gone?.[i] === 1 || this.landmark[statics.kind[from + i]!] === 1 ? 1 : 0;
+    for (let i = 0; i < left.length; i++) left[i] = gone?.[i] === 1 || this.landmark[t.kind[from + i]!] === 1 ? 1 : 0;
     return cityTops(statics, chunk, this.hf, left);
   }
 

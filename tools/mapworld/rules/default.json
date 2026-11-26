@@ -1543,7 +1543,7 @@
       "pile-up"
     ],
     "cars": {
-      "about": "A car part's family picks a body by the weights of `bodies`, changed by the district's style in `styles` and then where a public place of the kinds a rule of `near` lists is within `within` metres (0 takes a body out); then a look of that body by the family's `looks`, a body's looks sharing its weight by theirs; then a painted look a paint by `paints`, or by the body's own in `bodyPaints` (1 where unlisted). A family without bodies picks a look by its looks alone. In cells of `cell` metres where a fire went through, a share `fires` of them, a share `burnt` of the cars take the looks of `fire` in place of any family but `big`. A chunk holds the meshes of at most `perChunk` looks: a car that would be one more is one of those its chunk holds that its family may be. No car is the kind of one within `apart` metres where another paint or look will do. A share `slewed` of kerbside cars stand out of line. `parked`: drivable cars per kilometre of street of the classes, at least and at most so many a district, `apart` metres from each other, `junction` metres from one, `clear` metres of margin round body and doors, and `fromSpawn` metres from a spawn point or an obelisk. `lots`: a district first takes up to `perDistrict` car parks, a road of the lot classes each, holding `least` to `most` cars `apart` metres from each other. Each place's kind is drawn by the weights of `kinds`, changed by the district's style in `styles`, then by its name in `districts` (which a city's vocabulary may add), then within `within` metres of a public place of the kinds a rule of `near` lists (0 takes a kind out). A share `hurt.share` of the cars have their condition rolled in `hurt.condition`, the rest are whole; each car's fuel is rolled in a band of `fuel`, [from, to, weight], as fractions of its tank.",
+      "about": "A car part's family picks a body by the weights of `bodies`, changed by the district's style in `styles` and then where a public place of the kinds a rule of `near` lists is within `within` metres (0 takes a body out); then a look of that body by the family's `looks`, a body's looks sharing its weight by theirs; then a painted look a paint by `paints`, or by the body's own in `bodyPaints` (1 where unlisted). A family without bodies picks a look by its looks alone. In cells of `cell` metres where a fire went through, a share `fires` of them, a share `burnt` of the cars take the looks of `fire` in place of any family but `big`. A chunk holds the meshes of at most `perChunk` looks: a car that would be one more is one of those its chunk holds that its family may be. No car is the kind of one within `apart` metres where another paint or look will do. A share `slewed` of kerbside cars stand out of line. `parked`: drivable cars per kilometre of street of the classes, at least and at most so many a sector of the lattice (1,024 m a side), `apart` metres from each other, `junction` metres from one, `clear` metres of margin round body and doors, and `fromSpawn` metres from a spawn point or an obelisk. `lots`: a sector first takes up to `perSector` car parks, a road of the lot classes each, holding `least` to `most` cars `apart` metres from each other. Each place's kind is drawn by the weights of `kinds`, changed by the district's style in `styles`, then by its name in `districts` (which a city's vocabulary may add), then within `within` metres of a public place of the kinds a rule of `near` lists (0 takes a kind out). A share `hurt.share` of the cars have their condition rolled in `hurt.condition`, the rest are whole; each car's fuel is rolled in a band of `fuel`, [from, to, weight], as fractions of its tank.",
       "cell": 160,
       "fires": 0.18,
       "burnt": 0.65,
@@ -1590,8 +1590,8 @@
         "berlinetta": { "scarlet": 6, "crimson": 3, "yellow": 2, "silver": 2, "black": 2 }
       },
       "parked": {
-        "perKm": 0.4, "least": 2, "most": 4, "apart": 150, "junction": 15, "clear": 1, "fromSpawn": 40, "classes": ["S1400", "S1200"],
-        "lots": { "classes": ["S1780"], "least": 2, "most": 4, "apart": 9, "perDistrict": 2 },
+        "perKm": 0.4, "least": 0, "most": 2, "apart": 150, "junction": 15, "clear": 1, "fromSpawn": 40, "classes": ["S1400", "S1200"],
+        "lots": { "classes": ["S1780"], "least": 2, "most": 4, "apart": 9, "perSector": 1 },
         "kinds": { "core:compact": 30, "core:caravan": 20, "core:fastback": 16, "core:panel_van": 12, "core:taxi": 7, "core:muscle_car": 5, "core:patrol_sedan": 4, "core:patrol_jeep": 3, "core:veloce": 3, "core:berlinetta": 3, "core:monster_truck": 2 },
         "styles": {
           "industrial": { "core:semi": 20, "core:tanker": 5, "core:monster_truck": 5, "core:panel_van": 40, "core:caravan": 8, "core:fastback": 6, "core:taxi": 0, "core:veloce": 0, "core:berlinetta": 0 },
@@ -1603,7 +1603,7 @@
         },
         "districts": {},
         "near": [{ "places": ["police_station"], "within": 200, "weights": { "core:patrol_sedan": 40, "core:patrol_jeep": 20 } }, { "places": ["school"], "within": 100, "weights": { "core:bus": 10 } }],
-        "trailers": { "styles": ["industrial"], "perDistrict": 2 },
+        "trailers": { "styles": ["industrial"], "perSector": 1 },
         "hurt": { "share": 0.2, "condition": [0.35, 0.7] },
         "fuel": [[0.03, 0.15, 3], [0.15, 0.5, 1]]
       }

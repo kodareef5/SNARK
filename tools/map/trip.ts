@@ -8,7 +8,7 @@
 // is told by kind as the body goes up (client/core/trip.ts `art`).
 // It prints, by the page's clock: the first frame; when every overview was in hand, the far ground and the sea drawn from
 // them where the head's coarse picture stood before; the first in which the street is drawn with its pieces and materials;
-// the first in which the far city is drawn, and the city's blocks past it, and when every tops part was in hand; the last part; after the jump, the time until the body is predicted again,
+// the first in which the far city is drawn, and the city's blocks past it, and when every tops part was in hand; when the page settled; after the jump, the time until the body is predicted again,
 // until the ground the fine terrain draws is the map's own and until the street there is drawn; whether the failed part
 // came on a later ask and the map was whole at the end; and the page's heap and array memory at the statics' hand-over.
 // A picture is taken at each of those moments, into --out. It prints too when the world's finishes were drawn and when
@@ -306,13 +306,13 @@ export async function trip(opts: { map: string; dist: string; mbit: number; late
     await until(jump === undefined ? 0 : PATIENCE.after, () => on("exact", jump) !== undefined);
     const exact = jump === undefined ? undefined : on("exact", jump);
     await shot("exact", exact);
-    // Until the end, a picture as the last part comes and as the far city is first drawn, if it was not before the jump.
+    // Until the end, a picture as the page settles where it jumped to and as the far city is first drawn, if it was not before the jump.
     let farShot = on("far", upAt) !== undefined && on("far", upAt)! < jumpAt;
     let lastShot = false;
     const pictures = async (): Promise<void> => {
-      if (!lastShot && [...parts].every(came)) {
+      if (!lastShot && on("settled", jump ?? upAt) !== undefined) {
         lastShot = true;
-        await shot("last-part", 0);
+        await shot("settled", 0);
       }
       if (!farShot && on("far") !== undefined) {
         farShot = true;
@@ -324,7 +324,7 @@ export async function trip(opts: { map: string; dist: string; mbit: number; late
     for (const t0 = performance.now(); performance.now() - t0 < PATIENCE.end * 1000 && chrome.exitCode === null; seen = await look()) {
       await measure();
       await pictures();
-      if ([...parts].every(came) && on("handed") !== undefined && on("far", jump ?? upAt) !== undefined) break;
+      if (on("settled", jump ?? upAt) !== undefined && on("handed") !== undefined && on("far", jump ?? upAt) !== undefined) break;
       await Bun.sleep(50);
     }
     await Bun.sleep(3000);
@@ -334,7 +334,6 @@ export async function trip(opts: { map: string; dist: string; mbit: number; late
     const drawn = await page.value<string>("globalThis.snarkTrip?.app?.scene?.assets.tier.name ?? 'none'");
     writeFileSync(join(opts.out, `${opts.mbit}mbit${fails ? "" : "-whole"}.json`), JSON.stringify({ marks: seen.marks, parts: seen.parts, up: upAt, jump: jumpAt }));
     const statics = head.counts.reduce((n, c) => n + c, 0);
-    const lastPart = [...parts].every(came) ? Math.max(...seen.parts.filter((p) => parts.has(p.name) && p.status === 200).map((p) => p.end)) : undefined;
     const far = seen.marks.find((m) => m.what === "far");
     const sent = (names: readonly string[]): string => (names.reduce((n, name) => n + statSync(join(partsFolder(opts.map), `${name}.br`)).size, 0) / 1e6).toFixed(2);
     say(`trip on ${head.id} on ${drawn} over ${opts.mbit} Mbit/s, ${opts.latency} ms there and back: joined at ${from.x}, ${from.z}, went ${UP} m up at ${s(upAt)} (${Math.round(upShare * 100)}% of the map in), jumped to ${to.x}, ${to.z} at ${s(jumpAt)} (${Math.round(jumpShare * 100)}% in); ${failing.name}, the ground there, ${fails ? "was answered 503 at its first ask" : "failed at no ask (--no-fail)"}`);
@@ -363,7 +362,7 @@ export async function trip(opts: { map: string; dist: string; mbit: number; late
     };
     say(`  the finishes drawn (colour)           ${held("colour")}${bytes("colour")}`);
     say(`  no texture without its first step    ${held("soft")}${bytes("soft")}`);
-    say(`  last part                             ${lastPart === undefined ? `never: ${[...parts].filter((n) => !came(n)).join(" ")} not come` : s(lastPart)}`);
+    say(`  settled where it jumped to            ${later(on("settled", jump ?? upAt), jump ?? upAt)}; ${[...parts].filter(came).length} of ${parts.size} parts in hand`);
     say(`  statics handed over                   ${s(on("handed"))}${bytes("handed")}`);
     say(`  the jump drawn                        ${s(jump)}, ${jump === undefined ? "never" : `${((jump - jumpAt) / 1000).toFixed(2)} s after the server moved the body`}`);
     say(`  predicted again after the jump        ${later(predicted, jump)}`);

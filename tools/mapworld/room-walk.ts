@@ -17,12 +17,12 @@ const source = mapNodes(map, hf, reg); const nodes = source ? new NodeField(map.
 const world = { hf, structs, ...(nodes ? { nodes: nodes.store } : {}) };
 const params = reg.move[reg.index.get("core:survivor")!]!;
 const buildings = readReport<RuinRecord[]>(paths.folder, "buildings.json", map.dims);
-const circuits: { part: number; rooms: RuinRecord["rooms"] }[] = [...buildings];
+const circuits: { id: number; rooms: RuinRecord["rooms"] }[] = [...buildings];
 if (existsSync(`${paths.folder}/street-clusters.json`)) {
   const streets = readReport<{ points?: RuinRecord["rooms"][number]["points"] }[]>(paths.folder, "street-clusters.json", map.dims);
-  for (const [i, r] of streets.entries()) if (r.points?.length) circuits.push({ part: -i - 1, rooms: [{ kind: "street-gap", points: r.points }] });
+  for (const [i, r] of streets.entries()) if (r.points?.length) circuits.push({ id: -i - 1, rooms: [{ kind: "street-gap", points: r.points }] });
 }
-const failures: { part: number; route: number; kind: string; message: string }[] = []; let routes = 0;
+const failures: { id: number; route: number; kind: string; message: string }[] = []; let routes = 0;
 const kinds: Record<string, number> = {};
 for (const r of circuits) for (const [index, route] of r.rooms.entries()) {
   routes++; kinds[route.kind] = (kinds[route.kind] ?? 0) + 1;
@@ -35,7 +35,7 @@ for (const r of circuits) for (const [index, route] of r.rooms.entries()) {
       stepBody(world, b, 0, 90, yaw, 0, route.kind === "rubble" && p.y > b.y + .35 && b.grounded ? 1 : 0, params, TICK_DT);
     }
     for (let t = 0; t < 20; t++) stepBody(world, b, 0, 0, 0, 0, 0, params, TICK_DT);
-    if (Math.hypot(b.x - p.x, b.z - p.z) > .3 || Math.abs(b.y - p.y) > .2) { failures.push({ part: r.part, route: index, kind: route.kind, message: `target ${p.x.toFixed(1)},${p.y.toFixed(1)},${p.z.toFixed(1)} reached ${b.x.toFixed(1)},${b.y.toFixed(1)},${b.z.toFixed(1)}` }); break; }
+    if (Math.hypot(b.x - p.x, b.z - p.z) > .3 || Math.abs(b.y - p.y) > .2) { failures.push({ id: r.id, route: index, kind: route.kind, message: `target ${p.x.toFixed(1)},${p.y.toFixed(1)},${p.z.toFixed(1)} reached ${b.x.toFixed(1)},${b.y.toFixed(1)},${b.z.toFixed(1)}` }); break; }
   }
   nodes?.retain(chunk, 1, -1, () => false);
 }

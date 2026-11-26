@@ -147,7 +147,8 @@ test("none stands in a lane, in another piece, on a reserved route or over a chu
 });
 
 test("a street the data draws twice, under two names, is furnished once", () => {
-  const twice = [...GRID, { ...GRID.find((r) => r.mtfcc === "S1200" && r.from[1] === 500)! }];
+  // The second drawing's id sorts after the first's, so the first keeps the street.
+  const twice = [...GRID, { ...GRID.find((r) => r.mtfcc === "S1200" && r.from[1] === 500)!, props: { id: "z:twice" } }];
   expect(place(fixture(twice)).pieces).toEqual(place(fixture(GRID)).pieces);
 });
 
@@ -266,7 +267,8 @@ test("a street drawn as two one-way carriageways gets ONE WAY beside the way out
 
 test("a street that ends without meeting another gets a DEAD END sign at its mouth, facing traffic turning in", () => {
   const roads: Road[] = [...GRID, { mtfcc: "S1400", width: 8, from: [250, 300], to: [250, 370] }];
-  const { pieces } = place(fixture(roads), [], { ...RULES, forms: { ...RULES.forms, deadend: [["deadend", 1]] } });
+  // No hydrant, which a street's seed may set where the sign goes.
+  const { pieces } = place(fixture(roads), [], { ...RULES, hydrants: { ...RULES.hydrants, classes: [] }, forms: { ...RULES.forms, deadend: [["deadend", 1]] } });
   const dead = pieces.filter((p) => p.kind === streetKind("deadend") && Math.hypot(p.x - 250, p.z - 300) < 30);
   expect(dead.length).toBe(1);
   const p = dead[0]!;

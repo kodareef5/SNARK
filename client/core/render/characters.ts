@@ -58,7 +58,7 @@ import type { Camera } from "./camera.ts";
 import { nearestColour, REGION_BASE } from "../../../shared/pack/palette.ts";
 import { RIDER_TARGET_FLOATS, RIDER_SOLES, RIDER_GRIPS, RIDER_GRIP_RADIUS, RIDER_GRIP_LOW, RIDER_GRIP_HIGH, RIDER_FOREARM_ALIGNMENT, fitRiderControls } from "../../../shared/anim/rider-controls.ts";
 import { anchorFrame, riderTargets, saddleSeat, seatFrame } from "../../../shared/anim/seat.ts";
-import { GEAR_HELD, GEAR_WORN } from "../../../shared/sim/entities.ts";
+import { GEAR_HELD, GEAR_WORN, WORN_FIELDS, WORN_LENGTH } from "../../../shared/sim/entities.ts";
 import { BONE_FLOATS, DRAW_HEAT_SHIFT, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SKINNED, HEAT_COLD, HEAT_WARM, HEAT_WORLD, MAX_BONES, MAX_SKINNED, type FramePacket, type InstanceWriter } from "./packet.ts";
 import { Layers, corpseWanted, layerWanted } from "./layers.ts";
 import { MARINE_STORIES, ROAD_STORIES, WEAR_KEY, wearOf } from "./wear.ts";
@@ -255,6 +255,8 @@ interface Worn {
   slot: number;
   set: number;
   colors: readonly [number, number, number];
+  /** The skin zones it covers, a bit each (WearFacet.covers), which the body does not draw while the piece is drawn. */
+  hides: number;
 }
 
 interface Held {
@@ -409,6 +411,11 @@ export class Characters {
    * covers them. Null hides none. Read through `hideOf`, the one place a body's mask comes from.
    */
   skinHidden: ((id: number) => number) | null = null;
+  /**
+   * Fills `out` with the wardrobe of the survivor with this id, WORN_LENGTH numbers as EntityStore.wardrobes, and says
+   * whether it has one. Null for none. The zones of its garments that are drawn are hidden.
+   */
+  wardrobe: ((id: number, out: Uint32Array) => boolean) | null = null;
   /** Set while the sun casts. Null leaves every body out of the shadows. */
   shadows: BodyShadows | null = null;
   private readonly kinds: (BodyKind | null)[];
@@ -421,6 +428,11 @@ export class Characters {
   private readonly rigs: readonly PackRig[];
   /** Per content index. */
   private readonly worn: (Worn | null)[];
+  /** Per item: the skin zones a garment hides while its cut is drawn, a bit each; 0 for anything else. */
+  private readonly garmentHides: Uint32Array;
+  private readonly wornNow = new Uint32Array(WORN_LENGTH);
+  /** Per slot of the body being added: the mesh drawn for its worn piece, -1 for its own part. */
+  private readonly pieceAt = new Int32Array(SLOT_COUNT);
   private readonly held: (Held | null)[];
   /** The bodies posed holding an item with places on it: each one's id, the frame it was last posed in, and its floats. */
   private readonly noteId = new Int32Array(HELD_NOTES);
@@ -571,11 +583,12 @@ export class Characters {
     /** Only a mesh on the human skeleton is drawn as part of a body. */
     const human = (mesh: number): number => (mesh >= 0 && table.skeleton[mesh] === HUMAN.id ? mesh : -1);
     const sets: string[] = [];
-    this.worn = reg.defs.map((d) => {
+    this.worn = reg.defs.map((d, i) => {
       if (d?.type !== "item" || !d.wear) return null;
       if (!sets.includes(d.wear.set)) sets.push(d.wear.set);
-      return { sealed: d.wear.sealed === true, vented: !!d.wear.vents, slot: SLOT_NAMES.indexOf(d.wear.slot), set: sets.indexOf(d.wear.set), colors: d.wear.colors };
+      return { sealed: d.wear.sealed === true, vented: !!d.wear.vents, slot: SLOT_NAMES.indexOf(d.wear.slot), set: sets.indexOf(d.wear.set), colors: d.wear.colors, hides: reg.wearZones[i]! };
     });
+    this.garmentHides = Uint32Array.from(reg.defs, (d, i) => (d?.type === "item" && d.garment?.cut ? reg.garmentZones[i]! : 0));
     // Any item whose class gives it a held slot (shared/content/classes.ts) is drawn in the hand by its mesh there: a
     // weapon's code-made box, or a piece converted onto a prop bone (tools/art/build.ts, heldOn).
     this.held = reg.defs.map((d, item) => {
@@ -1516,9 +1529,15 @@ export class Characters {
     return this.plain + this.extraKeys++;
   }
 
-  /** The skin zones a survivor leaves undrawn, a bit each: the one place a body's hide mask is read from. */
-  private hideOf(id: number): number {
-    return this.skinHidden?.(id) ?? 0;
+  /**
+   * The skin zones a survivor leaves undrawn, a bit each: the one place a body's hide mask is made. The pieces drawn for
+   * it (pieceAt) and its drawn garments hide what they cover.
+   */
+  private hideOf(id: number, gear: Uint16Array | null, gearAt: number): number {
+    let hide = this.skinHidden?.(id) ?? 0;
+    if (gear) for (let slot = 0; slot < SLOT_COUNT; slot++) if (this.pieceAt[slot]! >= 0) hide |= this.worn[gear[gearAt + GEAR_WORN + slot]!]!.hides;
+    if (this.wardrobe?.(id, this.wornNow)) for (let k = 0; k < WORN_LENGTH; k += WORN_FIELDS) hide |= this.garmentHides[this.wornNow[k]!] ?? 0;
+    return hide >>> 0;
   }
 
   /** The first level from which each of a body set's parts is flat. */
@@ -1825,13 +1844,21 @@ export class Characters {
     part.own = own;
     part.casts = casts;
     part.rest = set.rest;
-    const hide = unseen ? 0 : this.hideOf(id);
+    for (let slot = 0; slot < SLOT_COUNT; slot++) {
+      const worn = gear ? this.worn[gear[gearAt + GEAR_WORN + slot]!] : null;
+      // A piece whose page has not come is asked for, and the body's own part stands in until it does.
+      const cut = worn && worn.slot === slot ? (set.armor[worn.set]?.[slot] ?? -1) : -1;
+      const piece = cut >= 0 && this.assets.known(cut) ? cut : -1;
+      // Too far to tell plates from paint, a heavy outfit is drawn as the body's own part in its colours.
+      const painted = piece >= 0 && !own && set.heavy[worn!.set] === 1 && lod === set.error.length - 1 && set.slots[slot]! >= 0;
+      this.pieceAt[slot] = painted ? -1 : piece;
+    }
+    const hide = unseen ? 0 : this.hideOf(id, gear, gearAt);
     const tint = view ? this.lookColor : colors;
     const tintAt = view ? 0 : colorAt;
     let covered = false, sealed = false;
     for (let slot = 0; slot < SLOT_COUNT; slot++) {
       const worn = gear ? this.worn[gear[gearAt + GEAR_WORN + slot]!] : null;
-      // A piece whose page has not come is asked for, and the body's own part stands in until it does.
       const cut = worn && worn.slot === slot ? (set.armor[worn.set]?.[slot] ?? -1) : -1;
       const piece = cut >= 0 && this.assets.known(cut) ? cut : -1;
       const hidden = headless && slot === SLOT_HEAD;

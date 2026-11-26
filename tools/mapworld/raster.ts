@@ -178,6 +178,13 @@ export function hash3(a: number, b: number, c: number): number {
   return (h ^ (h >>> 15)) >>> 0;
 }
 
+/** 32 well-mixed bits from a text, such as a street's id in the data. */
+export function textSeed(text: string): number {
+  let h = 0x811c9dc5;
+  for (let k = 0; k < text.length; k++) h = Math.imul(h ^ text.charCodeAt(k), 0x01000193);
+  return hash3(h, text.length, 0x51ed);
+}
+
 /** A number from 0 to 1 for three numbers. */
 export function rand3(a: number, b: number, c: number): number {
   return hash3(a, b, c) / 4294967296;

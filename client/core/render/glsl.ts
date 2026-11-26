@@ -337,12 +337,12 @@ uniform mat4 uViewProj;
 uniform highp usampler2D uHeight, uTint;
 uniform sampler2D uPalette;
 uniform vec4 uField;
-uniform vec2 uLast;
+uniform vec2 uLast, uWrap;
 out vec3 vRel;
 flat out vec3 vColor;
 void main() {
   vec2 ij = min(iOrigin + vec2(aGrid.xy) * iTile.w, uLast);
-  ivec2 at = ivec2(ij);
+  ivec2 at = (ivec2(ij) + ivec2(uWrap)) % textureSize(uHeight, 0);
   float h = uField.x + float(texelFetch(uHeight, at, 0).r) * uField.y - uField.w;
   vec2 d = (ij - iOrigin) * uField.z;
   vec3 p = vec3(iTile.x + d.x, h - float(aGrid.z) * iTile.z * 2.0, iTile.y + d.y);
@@ -363,18 +363,22 @@ layout(location=2) in vec2 iOrigin;
 uniform mat4 uViewProj;
 uniform highp usampler2D uHeight;
 uniform vec4 uField;
-uniform vec2 uLast;
+uniform vec2 uLast, uWrap;
 out vec3 vRel, vNormal;
 out vec2 vAt;
+// A sample of the picture at its texel: the window's pictures hold their samples wrapped round their size.
+float heightAt(ivec2 at) {
+  return float(texelFetch(uHeight, (at + ivec2(uWrap)) % textureSize(uHeight, 0), 0).r);
+}
 void main() {
   vec2 ij = min(iOrigin + vec2(aGrid.xy) * iTile.w, uLast);
   ivec2 at = ivec2(ij);
-  float h = uField.x + float(texelFetch(uHeight, at, 0).r) * uField.y - uField.w;
+  float h = uField.x + heightAt(at) * uField.y - uField.w;
   vec2 d = (ij - iOrigin) * uField.z;
   vec3 p = vec3(iTile.x + d.x, h - float(aGrid.z) * iTile.z * 2.0, iTile.y + d.y);
   ivec2 s = ivec2(int(iTile.w), 0), last = ivec2(uLast);
   ivec2 l = max(at - s, 0), r = min(at + s, last), b = max(at - s.yx, 0), f = min(at + s.yx, last);
-  vec2 rise = vec2(float(texelFetch(uHeight, r, 0).r) - float(texelFetch(uHeight, l, 0).r), float(texelFetch(uHeight, f, 0).r) - float(texelFetch(uHeight, b, 0).r));
+  vec2 rise = vec2(heightAt(r) - heightAt(l), heightAt(f) - heightAt(b));
   rise *= uField.y / (vec2(r.x - l.x, f.y - b.y) * uField.z);
   vNormal = normalize(vec3(-rise.x, 1.0, -rise.y));
   vAt = ij;
@@ -399,11 +403,16 @@ in vec2 vAt;
 uniform highp usampler2D uTint;
 uniform highp sampler2D uPalette;
 uniform vec4 uField;
-uniform vec2 uLast;
+uniform vec2 uLast, uWrap;
 out vec4 o;
 ${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${AIR}${WORLD_GLSL.replace("WORLD_NORMAL", "rg")}${GROUND_GLSL}${STREETS_GLSL}${ROAD_GLSL}${WET_GLSL}vec3 groundColour(int tint) {
   vec3 c = texelFetch(uPalette, ivec2(tint, 0), 0).rgb;
   return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
+}
+// The tints of the four samples from i, the picture's samples wrapped round its size as the vertex text reads them.
+ivec4 tintsAt(ivec2 i) {
+  ivec2 n = textureSize(uTint, 0), w = ivec2(uWrap);
+  return ivec4(texelFetch(uTint, (i + w) % n, 0).r, texelFetch(uTint, (i + ivec2(1, 0) + w) % n, 0).r, texelFetch(uTint, (i + ivec2(0, 1) + w) % n, 0).r, texelFetch(uTint, (i + 1 + w) % n, 0).r);
 }
 void main() {
   vec3 dx = dFdx(vRel), dy = dFdy(vRel);
@@ -420,12 +429,12 @@ void main() {
 #endif
   vec2 s = clamp(vAt + (streets ? vec2(0.0) : groundWander(world, footprint) / uField.z), vec2(0.0), uLast);
   ivec2 i = min(ivec2(s), ivec2(uLast) - 1);
-  ivec4 tints = ivec4(texelFetch(uTint, i, 0).r, texelFetch(uTint, i + ivec2(1, 0), 0).r, texelFetch(uTint, i + ivec2(0, 1), 0).r, texelFetch(uTint, i + 1, 0).r);
+  ivec4 tints = tintsAt(i);
   // A walk's edge is straight: where the sidewalk is one of the four, the cover is looked up where the pixel is.
   if (!streets && groundWalks(tints)) {
     s = clamp(vAt, vec2(0.0), uLast);
     i = min(ivec2(s), ivec2(uLast) - 1);
-    tints = ivec4(texelFetch(uTint, i, 0).r, texelFetch(uTint, i + ivec2(1, 0), 0).r, texelFetch(uTint, i + ivec2(0, 1), 0).r, texelFetch(uTint, i + 1, 0).r);
+    tints = tintsAt(i);
   }
   int tint = groundCover(tints, s - vec2(i)), streetOther = -1;
   float streetShare = 0.0;

@@ -11,8 +11,9 @@
 // edit to the build's code builds the map again from the kit alone. An edit that reaches a stage reading the downloads
 // (prepare to ways) makes city.ts fetch them first: raw/KIT marks a kit's work folder.
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, readlinkSync, renameSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
+import { readyKit, withCityLock } from "./city-lock.ts";
 
 const ROOT = resolve(import.meta.dir, "../..");
 const MAPDATA = join(ROOT, "var/mapdata");
@@ -50,29 +51,79 @@ function pack(city: string): string {
   return file;
 }
 
-function unpack(file: string): string {
-  const name = basename(file);
-  const m = /^(.+)-([0-9a-f]{10})\.tar\.gz$/.exec(name);
-  if (!m) throw new Error(`${name} is not a kit's name (<city>-<cut>.tar.gz)`);
-  const [, city, cut] = m as unknown as [string, string, string];
-  const top = join(MAPDATA, city);
-  if (existsSync(join(top, "run.lock"))) throw new Error(`${city} has a run going or left (var/mapdata/${city}/run.lock): let it end first`);
-  mkdirSync(top, { recursive: true });
-  run(["tar", "-xzf", resolve(file)], top);
-  const work = join(top, cut, city);
-  const kit = JSON.parse(readFileSync(join(work, "kit.json"), "utf8")) as Kit;
-  // Its stages' keys as the kit's machine left them, the same code here finding them done; all but the build's, whose
-  // map (var/maps/<city>.snmap) a kit does not carry, so the first run here makes it from the kit.
-  const { build: _built, ...made } = kit.stages;
-  writeFileSync(join(work, "stages.json"), `${JSON.stringify(made, null, 2)}\n`);
-  mkdirSync(join(work, "raw"), { recursive: true });
-  writeFileSync(join(work, "raw/KIT"), `${kit.commit}\n`);
+/** Switch current only after the entire cut is available. */
+function select(top: string, city: string, cut: string): void {
   const current = join(top, "current");
-  const next = `${current}.${process.pid}`;
-  symlinkSync(join(cut, city), next);
-  renameSync(next, current);
-  const here = run(["git", "rev-parse", "HEAD"]);
-  return `${city}'s cut ${cut}, made at ${kit.commit.slice(0, 9)}${here === kit.commit ? " (this commit)" : `; this tree is at ${here.slice(0, 9)}, so the stages whose code differs run again`}: bun tools/maps/city.ts ${city}`;
+  if (lstatSync(current, { throwIfNoEntry: false })?.isSymbolicLink() && readlinkSync(current) === join(cut, city)) return;
+  const dir = mkdtempSync(join(top, ".select-"));
+  try {
+    const next = join(dir, "next");
+    symlinkSync(join(cut, city), next);
+    renameSync(next, current);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/** Install a prepared cut, retaining the previous edition and any local changes to it. */
+export async function unpack(file: string, mapdata = MAPDATA): Promise<string> {
+  const name = basename(file);
+  const match = /^([a-z0-9][a-z0-9-]*)-([0-9a-f]{10})(?:\.([0-9a-f]{12}))?\.tar\.gz$/.exec(name);
+  if (!match) throw new Error(`${name} is not a city kit's name`);
+  const city = match[1]!, cut = match[2]!;
+  const digest = await sha256(file);
+  if (match[3] && !digest.startsWith(match[3])) throw new Error(`${name} has a different checksum`);
+  const top = join(mapdata, city);
+  return withCityLock(top, cut, () => {
+    const target = join(top, cut);
+    const existing = lstatSync(target, { throwIfNoEntry: false });
+    if (existing) {
+      if (!existing.isDirectory()) throw new Error(`Move the existing cut aside first: ${target}`);
+      const receipt = join(target, ".installed-sha256");
+      const previous = existsSync(receipt) && readFileSync(receipt, "utf8").trim();
+      if (previous === digest) {
+        select(top, city, cut);
+        return `${city} kit already installed.`;
+      }
+      const work = join(target, city);
+      const info = join(work, "kit.json");
+      const from = existsSync(info) ? JSON.parse(readFileSync(info, "utf8")) as Kit : null;
+      const managed = (previous && /^[0-9a-f]{64}$/.test(previous)) || existsSync(join(work, "raw/KIT"));
+      if (!managed || !from || from.city !== city || from.cut !== cut) {
+        throw new Error(`Move the existing unmanaged cut aside first: ${target}`);
+      }
+    }
+    const staging = mkdtempSync(join(top, ".unpack-"));
+    try {
+      run(["tar", "-xzf", resolve(file)], staging);
+      const entries = readdirSync(staging, { recursive: true, withFileTypes: true });
+      if (entries.some(entry => !entry.isDirectory() && !entry.isFile())) throw new Error(`${name} contains a link or special file`);
+      const edition = join(staging, cut), work = join(edition, city);
+      const kit = JSON.parse(readFileSync(join(work, "kit.json"), "utf8")) as Kit;
+      if (kit.city !== city || kit.cut !== cut || !kit.stages.build) throw new Error(`${name} contains a different or unfinished cut`);
+      const { build: _built, ...made } = kit.stages;
+      writeFileSync(join(work, "stages.json"), `${JSON.stringify(made, null, 2)}\n`);
+      mkdirSync(join(work, "raw"), { recursive: true });
+      writeFileSync(join(work, "raw/KIT"), `${kit.commit}\n`);
+      writeFileSync(join(edition, ".installed-sha256"), `${digest}\n`);
+      let saved = "";
+      if (existing) {
+        const ready = readyKit(top, cut);
+        mkdirSync(join(top, ".kit-install"), { recursive: true });
+        // A ready cut beside the active one is from an install interrupted before it moved anything.
+        rmSync(ready, { recursive: true, force: true });
+        renameSync(edition, ready);
+        mkdirSync(join(top, "previous-kits"), { recursive: true });
+        saved = mkdtempSync(join(top, "previous-kits", `${cut}-`));
+        renameSync(target, join(saved, cut));
+        renameSync(ready, target);
+      } else renameSync(edition, target);
+      select(top, city, cut);
+      return `${city}'s cut ${cut}, made at ${kit.commit.slice(0, 9)}.${saved ? ` Previous cut kept in ${saved}.` : ""} Build it with bun tools/maps/city.ts ${city}`;
+    } finally {
+      rmSync(staging, { recursive: true, force: true });
+    }
+  });
 }
 
 const CITIES = ["tampa", "miami", "los-angeles", "san-francisco", "las-vegas"];
@@ -137,7 +188,7 @@ async function fetchKits(url: string): Promise<void> {
       renameSync(`${path}.part`, path);
     }
     writeFileSync(join(KITS, `${k.file.slice(0, -".tar.gz".length)}.json`), await (await fetch(`${base}${k.file.slice(0, -".tar.gz".length)}.json`)).text());
-    console.log(unpack(path));
+    console.log(await unpack(path));
   }
 }
 
@@ -149,7 +200,7 @@ if (import.meta.main) {
       else console.log(pack(city));
     }
     await writeIndex();
-  } else if (verb === "unpack" && what) console.log(unpack(what));
+  } else if (verb === "unpack" && what) console.log(await unpack(what));
   else if (verb === "serve") serve(Number(what ?? 8455));
   else if (verb === "fetch" && (what ?? process.env.KIT_URL)) await fetchKits((what ?? process.env.KIT_URL)!);
   else { console.error("bun tools/maps/kit.ts pack <city | all> | unpack <file> | serve [port] | fetch [url]"); process.exit(2); }

@@ -4,12 +4,13 @@
 import { expect, test } from "bun:test";
 import { CHUNK_SIZE } from "../../shared/coords.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
-import { TERRAIN_CELL } from "../../shared/world/heightfield.ts";
+import { TERRAIN_CELL, type Heightfield } from "../../shared/world/heightfield.ts";
 import { StagedMap } from "../../client/core/mapload.ts";
 import { mapHeightfield, parseMap, readHead, readPart, writeMap } from "../../shared/world/mapfile.ts";
 import { HIT_STRUCTURE, HIT_TERRAIN } from "../../shared/world/ray.ts";
 import { ASPHALT, GROUND_CLASS, MUD, OFFROAD, SAND, vehicleSurfaceAt } from "../../shared/world/vehicle-surface.ts";
 import { wideMap } from "../fixtures/map.ts";
+import { denseOf } from "../fixtures/paged-ground.ts";
 
 const base = wideMap();
 const [gx, gz] = [(base.dims.chunksX * CHUNK_SIZE) / TERRAIN_CELL / 2 + 1, (base.dims.chunksZ * CHUNK_SIZE) / TERRAIN_CELL / 2 + 1];
@@ -32,11 +33,11 @@ test("the page holds the classes as its sectors' ground comes, so its car reads 
   const parts = head.parts.filter((p) => p.kind !== "statics" && p.kind !== "tops");
   for (const [k, p] of [...parts].sort((a, b) => ((a.at * 7919) % 101) - ((b.at * 7919) % 101)).entries()) {
     staged.take(readPart(head, p, file.subarray(p.at, p.at + p.length)) as never);
-    if (k === 0) expect(staged.hf.ground.length).toBe(ground.length);
+    if (k === 0) expect(denseOf(staged.hf).ground.every((c) => c === 0)).toBe(true);
   }
-  expect(staged.hf.ground).toEqual(ground);
+  expect(denseOf(staged.hf).ground).toEqual(ground);
   const server = { hf: mapHeightfield(parseMap(file)) } as CollisionWorld;
-  const page = { hf: staged.hf } as CollisionWorld;
+  const page = { hf: staged.hf as Heightfield } as CollisionWorld;
   for (const [x, z] of [[0, 0], [20, 36], [512, 128], [2800, 600], [4000, 1200]] as const) expect(vehicleSurfaceAt(page, HIT_TERRAIN, 0, x, z)).toBe(vehicleSurfaceAt(server, HIT_TERRAIN, 0, x, z));
 });
 

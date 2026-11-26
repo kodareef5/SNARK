@@ -32,6 +32,8 @@ const pack = farPack();
 const dims = slice.map.dims;
 const hf = mapHeightfield(slice.map);
 const city = new CityStatics(dims, slice.map.statics, reg);
+/** The city as one table, its rows by chunk over the whole map. */
+const rows = city.squareOf(0)!;
 /** The window round the slice's chunk (3, 3) is held whole, so the busy chunk (1, 3) and its neighbours are all near. */
 const CENTRE = [3, 3] as const;
 const CHUNK = 3 * dims.chunksX + 1;
@@ -56,12 +58,12 @@ export interface Shot {
 /** Whether (x, y, z) is in open air: no piece of the chunk or round it reaches within `r` metres. */
 function open(x: number, y: number, z: number, r: number): boolean {
   for (let c = 0; c < chunkCount(dims); c++) {
-    for (let i = city.first[c]!; i < city.first[c + 1]!; i++) {
-      const k = city.kind[i]!;
-      const a = (city.yaw[i]! / YAW_UNITS) * Math.PI * 2;
-      const dx = x - city.x[i]!, dz = z - city.z[i]!;
+    for (let i = rows.first[c]!; i < rows.first[c + 1]!; i++) {
+      const k = rows.kind[i]!;
+      const a = (rows.yaw[i]! / YAW_UNITS) * Math.PI * 2;
+      const dx = x - rows.x[i]!, dz = z - rows.z[i]!;
       const u = Math.cos(a) * dx - Math.sin(a) * dz, v = Math.sin(a) * dx + Math.cos(a) * dz;
-      if (Math.abs(u) < city.halfX[k]! + r && Math.abs(v) < city.halfZ[k]! + r && Math.abs(y - city.y[i]!) < city.halfY[k]! + r) return false;
+      if (Math.abs(u) < city.halfX[k]! + r && Math.abs(v) < city.halfZ[k]! + r && Math.abs(y - rows.y[i]!) < city.halfY[k]! + r) return false;
     }
   }
   return true;
@@ -90,19 +92,19 @@ function borderShots(): Shot[] {
 
 /** A wall of the mesh, the face of a box piece of the busy chunk with open air in front of it, a player's wall set flat against it. */
 function wallShot(): Shot | null {
-  const from = city.first[CHUNK]!;
+  const from = rows.first[CHUNK]!;
   const kind = reg.index.get("core:wall_wood")!;
-  for (let i = from; i < city.first[CHUNK + 1]!; i++) {
-    const k = city.kind[i]!;
+  for (let i = from; i < rows.first[CHUNK + 1]!; i++) {
+    const k = rows.kind[i]!;
     if (box[k] !== 1 || city.halfY[k]! < 1.3 || Math.max(city.halfX[k]!, city.halfZ[k]!) < 1.9) continue;
-    const a = (city.yaw[i]! / YAW_UNITS) * Math.PI * 2;
+    const a = (rows.yaw[i]! / YAW_UNITS) * Math.PI * 2;
     // The piece's long face, out along its own z or x, which a turn takes to (s, c) or (c, -s) in the world.
     const wide = city.halfX[k]! >= city.halfZ[k]!;
     const [nx, nz] = wide ? [Math.sin(a), Math.cos(a)] : [Math.cos(a), -Math.sin(a)];
     const depth = wide ? city.halfZ[k]! : city.halfX[k]!;
     for (const sign of [1, -1]) {
-      const fx = city.x[i]! + sign * nx * depth, fz = city.z[i]! + sign * nz * depth;
-      const y = city.y[i]!;
+      const fx = rows.x[i]! + sign * nx * depth, fz = rows.z[i]! + sign * nz * depth;
+      const y = rows.y[i]!;
       const [ex, ez] = [fx + sign * nx * 3 - sign * nz * 1.2, fz + sign * nz * 3 + sign * nx * 1.2];
       if (y - city.halfY[k]! > hf.heightAt(fx, fz) + 0.5 || !open(fx + sign * nx * 0.4, y, fz + sign * nz * 0.4, 0.2) || !open(ex, y + 0.2, ez, 0.5)) continue;
       // The player's wall is 0.2 m thick: its middle 0.1 m off the face, turned to lie along it.
@@ -116,16 +118,16 @@ function wallShot(): Shot | null {
 
 /** A floor of the mesh with open air over it, a player's foundation set down on it, seen from beside it. */
 function floorShot(): Shot | null {
-  const from = city.first[CHUNK]!;
+  const from = rows.first[CHUNK]!;
   const kind = reg.index.get("core:foundation_wood")!;
-  for (let i = from; i < city.first[CHUNK + 1]!; i++) {
-    const k = city.kind[i]!;
+  for (let i = from; i < rows.first[CHUNK + 1]!; i++) {
+    const k = rows.kind[i]!;
     if (box[k] !== 1 || city.halfY[k]! > 0.3 || Math.min(city.halfX[k]!, city.halfZ[k]!) < 3.9) continue;
-    const top = city.y[i]! + city.halfY[k]!;
-    const [x, z] = [city.x[i]!, city.z[i]!];
+    const top = rows.y[i]! + city.halfY[k]!;
+    const [x, z] = [rows.x[i]!, rows.z[i]!];
     if (!open(x, top + 1.2, z, 1) || !open(x - 3, top + 1.7, z - 3, 0.5)) continue;
     const y = top + reg.halfY[kind]!;
-    return { name: "player-floor", x: x - 3, y: top + 1.7, z: z - 3, yaw: Math.PI / 4, pitch: -0.45, piece: { kind: "core:foundation_wood", x, y, z, yaw: city.yaw[i]! } };
+    return { name: "player-floor", x: x - 3, y: top + 1.7, z: z - 3, yaw: Math.PI / 4, pitch: -0.45, piece: { kind: "core:foundation_wood", x, y, z, yaw: rows.yaw[i]! } };
   }
   return null;
 }
@@ -136,8 +138,8 @@ function storeOf(piece: Shot["piece"]): StructureStore {
   for (let cz = CENTRE[1] - 3; cz <= CENTRE[1] + 3; cz++) {
     for (let cx = CENTRE[0] - 3; cx <= CENTRE[0] + 3; cx++) {
       const c = cz * dims.chunksX + cx;
-      const first = city.first[c]!;
-      for (let i = first; i < city.first[c + 1]!; i++) structs.put(c, i - first + (c === BESIDE ? 1 : 0), city.kind[i]!, city.x[i]!, city.y[i]!, city.z[i]!, city.yaw[i]!, 0, reg.maxHp[city.kind[i]!]!, 1);
+      const first = rows.first[c]!;
+      for (let i = first; i < rows.first[c + 1]!; i++) structs.put(c, i - first + (c === BESIDE ? 1 : 0), rows.kind[i]!, rows.x[i]!, rows.y[i]!, rows.z[i]!, rows.yaw[i]!, 0, reg.maxHp[rows.kind[i]!]!, 1);
       structs.setVersion(c, 1);
     }
   }
@@ -230,7 +232,7 @@ export function compareShot(shot: Shot, tier: string, W: number, H: number): Com
   const name = (r: Picture, i: number): string => {
     const id = r.pickId[i]!, k = r.pickKind[i]!;
     const chunk = Math.floor(id / 65536), slot = id % 65536;
-    return k === PICK_STRUCTURE ? (slot === MESH_SLOT ? `${chunk}:mesh` : `${chunk}:${slot}:${reg.defs[city.kind[city.first[chunk]! + slot] ?? 0]?.id ?? "player"}`) : k === PICK_FAR ? "far" : `pick ${k}`;
+    return k === PICK_STRUCTURE ? (slot === MESH_SLOT ? `${chunk}:mesh` : `${chunk}:${slot}:${reg.defs[rows.kind[rows.first[chunk]! + slot] ?? 0]?.id ?? "player"}`) : k === PICK_FAR ? "far" : `pick ${k}`;
   };
   for (let i = 0; i < W * H; i++) {
     const d = Math.abs(a.color[i * 4]! - b.color[i * 4]!) + Math.abs(a.color[i * 4 + 1]! - b.color[i * 4 + 1]!) + Math.abs(a.color[i * 4 + 2]! - b.color[i * 4 + 2]!);
