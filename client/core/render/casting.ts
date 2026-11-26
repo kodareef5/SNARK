@@ -253,8 +253,9 @@ export class Casting {
   }
 
   /**
-   * A standing tree's levels (`foliageOf`) that cut its leaves out and can be cut out in a depth map now, a bit each,
-   * which a sharp enough map casts it at (shadow.ts LEAF_BLUR, D953); 0 for any other mesh, or while none can.
+   * A standing tree's levels (`foliageOf`) that cut its leaves out and can be cut out in a depth map now, their surface
+   * and their cut-out sections' pictures held, a bit each, which a sharp enough map casts it at (shadow.ts LEAF_BLUR);
+   * 0 for any other mesh, or while none can.
    */
   leafy(mesh: number): number {
     if (this.foliageOf[mesh] === 0) return 0;
@@ -268,20 +269,28 @@ export class Casting {
 
   /**
    * Puts `count` instances of a held level into the caster list for `cascades`. A level with cut-out or two-sided
-   * sections is a caster for each section, cut out where the card holds what that reads; any other is its whole level.
+   * sections is a caster for each section, each cut-out one cut out where the card holds the level's surface and its
+   * own base colour; any other is its whole level.
    */
   cast(mesh: number, level: number, buffer: number, first: number, count: number, ox: number, oy: number, oz: number, flags: number, cascades: number): void {
     if (level < 0) return;
     const runs = this.assets.table.sections[mesh]![level] ?? FLAT;
-    let split = false;
-    for (let k = 0; k < runs.length; k += 3) split ||= runs[k]! >= 0 && (this.materialFlags[runs[k]!]! & (DRAW_CUTOUT | DRAW_TWO_SIDED)) !== 0;
-    const cutouts = split && this.assets.heldCutouts(mesh, level);
-    this.assets.keep(mesh, level, cutouts);
-    const slot = this.assets.residency.slot(mesh, level);
+    let split = false, cut = false;
+    for (let k = 0; k < runs.length; k += 3) {
+      const m = runs[k]! >= 0 ? this.materialFlags[runs[k]!]! : 0;
+      split ||= (m & (DRAW_CUTOUT | DRAW_TWO_SIDED)) !== 0;
+      cut ||= (m & DRAW_CUTOUT) !== 0;
+    }
+    const residency = this.assets.residency;
+    const surface = cut && residency.heldSurface(mesh, level);
+    this.assets.keep(mesh, level, surface);
+    const slot = residency.slot(mesh, level);
     flags = (flags & CAST_FLAGS) | this.bentFlags[mesh]!;
     if (!split) return this.caster(mesh, level, slot, buffer, first, count, ox, oy, oz, flags, 0, 0, 0, cascades);
     for (let k = 0; k < runs.length; k += 3) {
-      const m = this.materialFlags[runs[k]!]! & (cutouts ? DRAW_TEXTURED | DRAW_TWO_SIDED | DRAW_CUTOUT : DRAW_TEXTURED | DRAW_TWO_SIDED);
+      let m = this.materialFlags[runs[k]!]! & (DRAW_TEXTURED | DRAW_TWO_SIDED | DRAW_CUTOUT);
+      // A cut-out section casts solid until its own picture is held.
+      if ((m & DRAW_CUTOUT) !== 0 && !(surface && residency.heldBase(runs[k]!))) m &= ~DRAW_CUTOUT;
       this.caster(mesh, level, slot, buffer, first, count, ox, oy, oz, flags | m, runs[k]!, runs[k + 1]!, runs[k + 2]!, cascades);
     }
   }

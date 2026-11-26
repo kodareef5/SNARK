@@ -14,6 +14,7 @@ import { moonCasts } from "../../client/core/render/surface.ts";
 import { COARSE } from "../../client/core/render/terrain.ts";
 import { RemoteSample } from "../../client/core/session.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
+import { CUE_DEAD } from "../../shared/anim/pose.ts";
 import { chunkAt } from "../../shared/coords.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { parsePack, type Pack } from "../../shared/pack/pack.ts";
@@ -26,7 +27,7 @@ import { buildPack } from "../../tools/pack/write.ts";
 import { encodePng } from "../../tools/snap/png.ts";
 import { Rasterizer } from "../../tools/snap/raster.ts";
 import { corePack } from "../fixtures/pack.ts";
-import { PANEL, sceneRegistry, sceneWorld } from "../fixtures/sceneworld.ts";
+import { PANEL, sceneRegistry, sceneSet, sceneWorld } from "../fixtures/sceneworld.ts";
 import { TUBE, TUBE_RIG, tubeClips, tubeMesh } from "../fixtures/textured.ts";
 
 const [W, H] = [160, 90];
@@ -148,6 +149,48 @@ test("a body out of view whose shadow falls in it is posed by the call that pose
   w.remote.x[0] = 70;
   const gone = w.frame();
   expect([w.scene.characters.posed, gone.boneCount, castsOf(gone, w.tube)]).toEqual([0, 0, 0]);
+});
+
+test("a corpse out of view whose shadow falls in it only casts, and is drawn once in view", () => {
+  const w = world();
+  w.scene.hour = MORNING;
+  // Dead 4 m behind the camera, its shadow reaches into the view.
+  w.body(96, 128);
+  w.remote.cue[0] = CUE_DEAD;
+  w.remote.tick = 37.5;
+  const away = w.frame();
+  expect(away.boneCount).toBeGreaterThan(0);
+  expect(castsOf(away, w.tube, TRANSIENT_BUFFER)).not.toBe(0);
+  for (let d = 0; d < away.drawCount; d++) expect(away.drawMesh[d]).not.toBe(w.tube);
+  // Turned round to it: drawn.
+  w.cam.yaw = -Math.PI / 2;
+  const seen = w.frame();
+  expect([...Array(seen.drawCount).keys()].some((d) => seen.drawMesh[d] === w.tube && (seen.drawFlags[d]! & DRAW_SKINNED) !== 0)).toBe(true);
+  // 30 m behind, its shadow cannot reach the view: it is not posed.
+  w.cam.yaw = Math.PI / 2;
+  w.remote.x[0] = 70;
+  const gone = w.frame();
+  expect([gone.boneCount, castsOf(gone, w.tube)]).toEqual([0, 0]);
+});
+
+test("a corpse out of view casts with the bones left after a body in view", () => {
+  const w = world();
+  w.scene.hour = MORNING;
+  const bones = w.scene.characters.bones(w.kind(TUBE));
+  w.scene.assets.tier = { ...tierOf("medium"), bones };
+  // A live body 8 m ahead, and a corpse behind whose shadow falls in view: the frame has the bones for one.
+  w.body(108, 128);
+  w.body(96, 128);
+  w.remote.cue[1] = CUE_DEAD;
+  const p = w.frame();
+  expect([p.boneCount, p.dropped]).toEqual([bones, 0]);
+  expect([...Array(p.drawCount).keys()].some((d) => p.drawMesh[d] === w.tube && (p.drawFlags[d]! & DRAW_SKINNED) !== 0)).toBe(true);
+  // With shadows off nothing out of view is posed.
+  w.scene.assets.tier = { ...tierOf("medium"), shadows: { ...tierOf("medium").shadows, cascades: 0 } };
+  w.remote.count = 1;
+  w.remote.x[0] = 96;
+  w.remote.cue[0] = CUE_DEAD;
+  expect(w.frame().boneCount).toBe(0);
 });
 
 test("the ground casts from the tiles the view draws and from tiles out of view chosen as the view chooses them", () => {
@@ -302,6 +345,45 @@ test("casters ask for nothing, name only what the card holds, and cut out a sect
   const last = on.flagged.at(-1)!;
   expect([first & (DRAW_TEXTURED | DRAW_TWO_SIDED), first & DRAW_CUTOUT]).toEqual([DRAW_TEXTURED | DRAW_TWO_SIDED, 0]);
   expect(last & DRAW_CUTOUT).toBe(DRAW_CUTOUT);
+});
+
+test("a cut-out section casts cut out once its own picture is held, while others stream", () => {
+  // The panel's plain face drawn with the tube's hide picture, so that its two sections need two pictures.
+  const set = sceneSet();
+  const manifest = structuredClone(set.manifest);
+  const panel = manifest.meshes.findIndex((m) => m.id === PANEL);
+  const lattice = manifest.materials!.findIndex((m) => m.id === `${PANEL}/lattice`);
+  const runs = manifest.meshes[panel]!.levels[0]!.sections!;
+  const face = runs[0] === lattice ? runs[3]! : runs[0]!;
+  const hide = manifest.textures!.findIndex((t) => t.id === `${TUBE}/base`);
+  const planks = manifest.materials![lattice]!.base;
+  manifest.materials![face]!.base = hide;
+  const run = (missing: number) => {
+    const w = sceneWorld({ latencyMs: 60, bytesPerSecond: 80e3, seed: 4 }, {}, { files: set.files, manifest });
+    w.scene.hour = hourOfSun(20, true);
+    for (let i = 0; i < 3; i++) w.structs.add(w.kind(PANEL), 30 + i * 2, 1, 26, 32768, 0, 1);
+    // The picture `missing` is asked for and never comes.
+    const slot = 2 * manifest.meshes.reduce((n, m) => n + m.levels.length, 0) + missing;
+    const request = w.port.request.bind(w.port);
+    w.port.request = (r) => (r.slot === slot ? undefined : request(r));
+    let p = w.frame(100, false);
+    for (let f = 0; f < 40; f++) p = w.frame(100, false);
+    expect([w.card.textures.has(missing), w.card.textures.has(missing === hide ? planks : hide)]).toEqual([false, true]);
+    let cut = 0, sections = 0;
+    for (let e = 0; e < p.casterCount; e++) {
+      if (p.casterMesh[e] !== panel || p.casterMaterial[e] !== lattice) continue;
+      sections++;
+      if ((p.casterFlags[e]! & DRAW_CUTOUT) !== 0) cut++;
+    }
+    expect(sections).toBeGreaterThan(0);
+    // Counted a tree's crown, its levels are cut out where the picture of its leaves is held.
+    (w.scene.casting as unknown as { foliageOf: Uint16Array }).foliageOf[panel] = (1 << manifest.meshes[panel]!.levels.length) - 1;
+    return { cut: cut === sections ? "all" : cut === 0 ? "none" : "some", leafy: w.scene.casting.leafy(panel) };
+  };
+  const held = run(hide);
+  expect(held.cut).toBe("all");
+  expect(held.leafy & 1).toBe(1);
+  expect(run(planks)).toEqual({ cut: "none", leafy: 0 });
 });
 
 test("a mesh at five levels in four cascades and the lamp's map keeps all five pairs", () => {
