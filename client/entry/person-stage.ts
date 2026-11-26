@@ -71,6 +71,7 @@ async function start(): Promise<void> {
   chars.wantEmotes();
   const stage = new PersonStage(reg);
   chars.skinHidden = (id) => (id === BODY ? stage.hide : 0);
+  chars.wardrobe = (id, out) => id === BODY && stage.wornInto(out);
   const survivor = reg.index.get("core:survivor")!;
   const x = hf.sizeX / 2, z = hf.sizeZ / 2, ground = hf.heightAt(x, z);
   const actors = new RemoteSample();

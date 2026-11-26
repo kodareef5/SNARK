@@ -9,7 +9,7 @@ import { RemoteSample, type ClientSession } from "../../client/core/session.ts";
 import { peopleAdmin } from "../../server/admin/people-routes.ts";
 import { refused, type AdminGate } from "../../server/admin/gate.ts";
 import { Guesses } from "../../server/guesses.ts";
-import { BEACH } from "../../content/people/defaults.ts";
+import { BEACH, CITY } from "../../content/people/defaults.ts";
 import { LOOK_BYTES } from "../../shared/anim/look.ts";
 import { personFrom, wireNumber } from "../../shared/people/person.ts";
 import { TestCluster, keyAt, type Server } from "../fixtures/cluster.ts";
@@ -38,7 +38,7 @@ const state = async (s: Server): Promise<State> => (await (await call(s, "/admin
 const acts = (s: Server): string[] => s.h.host.acts.recent(0, 1e9).filter((a) => /person|outfit|population/.test(a.what)).map((a) => a.what);
 const said = async (res: Response): Promise<[number, Record<string, unknown>]> => [res.status, (await res.json()) as Record<string, unknown>];
 
-const mara = { name: "Mara", look: { seed: 7, population: "core:people_city", revision: 1, locks: { face: 3 } }, outfit: null, wardrobe: null, notes: "" };
+const mara = { name: "Mara", look: { seed: 7, population: "core:people_city", revision: CITY.revision, locks: { face: 3 } }, outfit: null, wardrobe: null, notes: "" };
 const tee = { garment: "core:plain_tee", edition: 0, weight: 1 };
 const vendor = { name: "Vendor", slots: [{ choices: [tee], dye: [9, 0, 0] }, null, null, null, null] };
 
@@ -86,8 +86,8 @@ test("what a thing names is checked against the world's content and the store, a
       [{ kind: "outfit", id: null, rev: 0, doc: { ...vendor, slots: [null, { choices: [tee], dye: [0, 0, 0] }, null, null, null] } }, /worn as a top, not a bottom/],
       [{ kind: "outfit", id: null, rev: 0, doc: { ...vendor, slots: [{ choices: [{ ...tee, edition }], dye: [0, 0, 0] }, null, null, null, null] } }, /not one of core:plain_tee/],
       [{ kind: "outfit", id: null, rev: 0, doc: { ...vendor, slots: [{ choices: [{ ...tee, garment: "core:stone" }], dye: [0, 0, 0] }, null, null, null, null] } }, /not a garment/],
-      [{ kind: "person", id: null, rev: 0, doc: { ...mara, look: { ...mara.look, population: 4 } } }, /no population 4 at revision 1/],
-      [{ kind: "person", id: null, rev: 0, doc: { ...mara, look: { ...mara.look, revision: 2 } } }, /core:people_city is at revision 1/],
+      [{ kind: "person", id: null, rev: 0, doc: { ...mara, look: { ...mara.look, population: 4 } } }, new RegExp(`no population 4 at revision ${CITY.revision}`)],
+      [{ kind: "person", id: null, rev: 0, doc: { ...mara, look: { ...mara.look, revision: CITY.revision + 1 } } }, new RegExp(`core:people_city is at revision ${CITY.revision}`)],
       [{ kind: "person", id: null, rev: 0, doc: { ...mara, look: { ...mara.look, population: "core:nobody" } } }, /not a population/],
       [{ kind: "person", id: null, rev: 0, doc: { ...mara, outfit: 3 } }, /no outfit 3/],
       [{ kind: "population", id: null, rev: 0, doc: { ...BEACH, outfits: [{ wear: ["core:nothing"], weight: 1 }] } }, /"core:nothing" is not an item\/armor or an item\/garment/],
