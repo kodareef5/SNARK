@@ -1,3 +1,18 @@
+v0.0.14 — 2026-11-26
+
+City structures
+- A ruined storey gives way when most of its original supports are gone. On newly built maps, fallen window frames lie low enough to walk over, and hanging slabs leave room underneath.
+- New city builds keep plants out of paved traffic lanes. Four sizes of billboard line the roads, from small street signs to highway displays.
+
+Doors
+- Hinged doors and Tek doors respect tribe access. A blocked door or a Tek field that stays open leaves nearby survivors in place.
+
+Resources
+- All 25 resource drops have their own models and matching inventory icons. Look for the shape of the charcoal, pelt or folded freight order on the ground and in your pack.
+
+City maps
+- The map screen requests terrain around the point you select. Roadside lights keep their spacing where a road leaves the map and comes back.
+
 v0.0.13 — 2026-11-25
 
 Las Vegas
