@@ -1852,7 +1852,7 @@ export class Rasterizer {
     if (!transient && !buffer) throw new Error(`draw ${d} uses buffer ${p.drawBuffer[d]} which was never uploaded`);
     const data = transient ? p.transient : buffer!.data;
     const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-    const skinned = (flags & DRAW_SKINNED) !== 0, printed = (flags & DRAW_PRINTED) !== 0;
+    const skinned = (flags & DRAW_SKINNED) !== 0, printed = (flags & DRAW_PRINTED) !== 0 && s.masked;
     for (let k = 0; k < p.drawInstances[d]!; k++) {
       const inst = p.drawFirst[d]! + k;
       const at = inst * INSTANCE_BYTES;

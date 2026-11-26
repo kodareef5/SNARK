@@ -8,7 +8,7 @@ import type { Assets } from "../assets/assets.ts";
 import type { FrameBudget } from "./budget.ts";
 import { FAR_FROM } from "./camera.ts";
 import { DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_NEAR, DRAW_ORB, DRAW_RANGED, DRAW_SCREENS, DRAW_SKYLINE, DRAW_TEXTURED, MAX_DRAWS, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR, STEP_NEAR_SEE, type FramePacket } from "./packet.ts";
-import { PROGRAM, drawProgram } from "./programs.ts";
+import { PROGRAM, drawProgram, orderedAs } from "./programs.ts";
 import { WEAR_KEY } from "./wear.ts";
 
 /** The one run of a level drawn flat: no material, and all its indices. */
@@ -564,7 +564,7 @@ export class Draws {
     for (let k = from; k < to; k++) {
       const d = source[k]!;
       const flags = p.drawFlags[d]!;
-      const program = (flags & DRAW_DETAILS) !== 0 ? PROGRAM.details : drawProgram(p, d, materials[p.drawMaterial[d]!]);
+      const program = (flags & DRAW_DETAILS) !== 0 ? PROGRAM.details : orderedAs(drawProgram(p, d, materials[p.drawMaterial[d]!]));
       keys[k] = stateKey(this.nearFirst ? bucketOf(Math.max(least, this.nearOf[d]!)) : 0, program, (flags & DRAW_TEXTURED) !== 0 ? p.drawMaterial[d]! : 0, p.drawSlot[d]!, d);
     }
     return sortRuns(keys, from, to, turns, source);

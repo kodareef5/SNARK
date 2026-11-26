@@ -20,10 +20,10 @@ function branches(p: FramePacket, d: number, material: PackMaterial | undefined)
   const hand = p.drawHand[d]!;
   if ((flags & DRAW_TEXTURED) !== 0) {
     const drops = hand !== 0 || p.drawSwap[d] !== 0 || (flags & DRAW_CUTOUT) !== 0;
-    // A draw with prints is drawn dyed, by whether it has a layer and may drop fragments.
-    if ((flags & DRAW_PRINTED) !== 0) return p.drawLayer[d]! > 0 ? PROGRAM.surfacePrintedLayer : drops ? PROGRAM.surfacePrintedCut : PROGRAM.surfacePrinted;
-    if (p.drawLayer[d]! > 0) return PROGRAM.surfaceLayer;
     const dyed = !material || material.mask >= 0 || material.mask2 >= 0;
+    // A dyed draw with prints is drawn printed, by whether it has a layer and may drop fragments.
+    if ((flags & DRAW_PRINTED) !== 0 && dyed) return p.drawLayer[d]! > 0 ? PROGRAM.surfacePrintedLayer : drops ? PROGRAM.surfacePrintedCut : PROGRAM.surfacePrinted;
+    if (p.drawLayer[d]! > 0) return PROGRAM.surfaceLayer;
     return [PROGRAM.surfaceUndyedWhole, PROGRAM.surfaceUndyed, PROGRAM.surfaceWhole, PROGRAM.surface][(dyed ? 2 : 0) + (drops ? 1 : 0)]!;
   }
   if ((flags & DRAW_PULLED) !== 0) return PROGRAM.pulled;

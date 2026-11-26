@@ -195,6 +195,19 @@ test("forty tubes in forty prints are the draws of forty plain, one picture to t
   expect(Math.max(...layers)).toBeLessThanOrEqual(32);
 });
 
+test("printed draws come in the order the same draws take plain", async () => {
+  const plain = crowd(40, false), dressed = crowd(40, true);
+  const order = (p: FramePacket): string => Array.from({ length: p.drawCount }, (_, d) => [p.drawMesh[d], p.drawMaterial[d], p.drawSlot[d], p.drawFirst[d]].join()).join(";");
+  let printed = 0;
+  for (let f = 0; f < 40; f++) {
+    const a = plain.frame(100, false), b = dressed.frame(100, false);
+    expect(order(b)).toBe(order(a));
+    for (let d = 0; d < b.drawCount; d++) if ((b.drawFlags[d]! & DRAW_PRINTED) !== 0) printed++;
+    await settle();
+  }
+  expect(printed).toBeGreaterThan(0);
+});
+
 test("the array is made at the tier's size when a print is wanted, reserved, and let go when none is", async () => {
   const w = crowd(2, true), plain = crowd(2, false);
   const reserved = (): number => w.scene.assets.residency.reserved - plain.scene.assets.residency.reserved;
