@@ -18,6 +18,8 @@ PALETTES = {
     "dry": (112, 62, 49),
     "spoil_fold": (85, 73, 57),
     "dry_edge": (82, 45, 34),
+    "raw_fat": (224, 169, 131),
+    "cooked_fat": (164, 103, 61),
     **{name: (112, 57, 36) if cooked else (157, 44, 47) for name, (_, _, cooked) in CUTS.items()},
 }
 SLUMP = (
@@ -143,8 +145,11 @@ def cut(part, level, profile, far_points, tile, cooked=False):
     part.rims((base, side, lip) if level < 2 else (base, lip), lambda _band, _i: rim_tile, charts)
     for i in range(count):
         j = (i + 1) % count
+        trim_tile = tile
+        if level == 2 and not slumped and (outline[i][3] + outline[j][3]) * 0.5 > 0.009:
+            trim_tile = "cooked_fat" if cooked else "raw_fat"
         part.cap(tile, [bottom_center, base[j], base[i]], -1)
-        part.cap(tile, [trim[i], lip[i], lip[j], trim[j]], 1)
+        part.cap(trim_tile, [trim[i], lip[i], lip[j], trim[j]], 1)
         if level < 2:
             part.cap(tile, [shoulder[i], trim[i], trim[j], shoulder[j]], 1)
             part.cap(tile, [top_center, shoulder[i], shoulder[j]], 1)
