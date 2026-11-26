@@ -19,8 +19,6 @@ export default {
     normal: `tex/${atlas}_normal.png`,
     packed: `tex/${atlas}_orm.png`,
     height: `tex/${atlas}_height.png`,
-    tiles: 3.45,
-    tops: { packed: 1024 },
   } satisfies MaterialSpec])),
   budgets: { triangles: [8500, 3000, 1250, 550], texture: { top: 2048, megabytes: 40 } },
 } satisfies PiecesAsset;
