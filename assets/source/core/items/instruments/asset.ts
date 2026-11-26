@@ -31,7 +31,7 @@ export default {
   materials: {
     workshop: maps("workshop"),
     hardware: maps("hardware"),
-    optics: maps("optics"),
+    optics: { ...maps("optics"), tops: { normal: 512 } },
   },
   budgets: { triangles: [3000, 1240, 460, 196], texture: { top: 1024, megabytes: 40 } },
 } satisfies PiecesAsset;

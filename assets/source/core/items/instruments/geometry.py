@@ -162,9 +162,9 @@ class Instrument:
     def build(self, name, rotation=None, grounded=False):
         points = self.points if rotation is None else [rotation @ point for point in self.points]
         if grounded:
-            low, high = [(f(p[axis] for p in points) for axis in range(3)) for f in (min, max)]
-            x0, y0, z0 = low
-            x1, _, z1 = high
+            x0, y0, z0 = (min(point[axis] for point in points) for axis in range(3))
+            x1 = max(point.x for point in points)
+            z1 = max(point.z for point in points)
             origin = Vector(((x0 + x1) / 2, y0, (z0 + z1) / 2))
             points = [point - origin for point in points]
         suffix = f"_LOD{self.level}" if self.level else ""
