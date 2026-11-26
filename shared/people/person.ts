@@ -4,8 +4,8 @@
 // arithmetic is used.
 
 import {
-  BEARD_STYLES, FACE_COUNT, HAIR_STYLES, LAYOUT_VERSION, LOOK_AGE, LOOK_BEARD, LOOK_BEARD_LENGTH, LOOK_BROW, LOOK_BYTES, LOOK_COMPLEXION, LOOK_EYE_COLOR, LOOK_FACE,
-  LOOK_HAIR, LOOK_HAIR_COLOR, LOOK_HAIR_COLOR_2, LOOK_HAIR_LENGTH, LOOK_LAYOUT, LOOK_MUSCLE, LOOK_REGIONS, LOOK_SEX, LOOK_SKIN, LOOK_WEIGHT, REGION_COUNT,
+  BEARD_STYLES, FACE_COUNT, HAIR_STYLES, LOOK_AGE, LOOK_BEARD, LOOK_BEARD_LENGTH, LOOK_BROW, LOOK_BYTES, LOOK_COMPLEXION, LOOK_EYE_COLOR, LOOK_FACE,
+  LOOK_HAIR, LOOK_HAIR_COLOR, LOOK_HAIR_COLOR_2, LOOK_HAIR_LENGTH, LOOK_MUSCLE, LOOK_REGIONS, LOOK_SEX, LOOK_SKIN, LOOK_WEIGHT, REGION_COUNT,
 } from "../anim/look.ts";
 import type { Registry } from "../content/registry.ts";
 import { REGION_KEYS, type PopulationDef, type Span } from "../content/kinds/populations.ts";
@@ -105,7 +105,6 @@ export function sexOf(seed: number, population: PopulationDef, locks: PartSeeds 
 export function personFrom(seed: number, population: PopulationDef, out: Uint8Array = new Uint8Array(LOOK_BYTES), locks: PartSeeds | null = null): Person {
   const p = population;
   out.fill(0, 0, LOOK_BYTES);
-  out[LOOK_LAYOUT] = LAYOUT_VERSION;
   const sex = sexOf(seed, p, locks);
   out[LOOK_SEX] = sex;
 
@@ -211,14 +210,13 @@ export function storeIdOf(reg: Registry, number: number): number {
   return number >= n ? number - n + 1 : 0;
 }
 
-/** The population a seed form names, or undefined for a population or revision neither the registry nor `store` holds. */
+/**
+ * The population a seed form names, or undefined where neither the registry nor `store` holds it. A content population
+ * has no revision; an admin one is held at `revision`.
+ */
 export function populationOf(reg: Registry, number: number, revision: number, store: StorePopulations | null = null): PopulationDef | undefined {
   const list = populationsOf(reg).list;
-  if (number < list.length) {
-    const p = list[number]!;
-    return p.revision === revision ? p : undefined;
-  }
-  return store?.population(number - list.length + 1, revision);
+  return number < list.length ? list[number] : store?.population(number - list.length + 1, revision);
 }
 
 /** The look a seed form names, or null for a population or edit the registry and `store` lack. */

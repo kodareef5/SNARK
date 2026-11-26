@@ -1,8 +1,8 @@
 // What the cluster's people store holds (server/people/store.ts), as the server keeps it, the admin pages send it and the
-// clients read its manifest. Every record is one revision of one thing of a kind, under an id that kind gives once and
-// never again; a revision is appended and never changed or deleted. A garment edition has one revision only: its cut,
-// colours and print are what it is, and a change is a new edition. A named person, an outfit and an admin population
-// take a new revision at every save, under the id they were first given.
+// clients read its manifest. A thing of a kind has an id that kind gives once and never again. A garment edition has one
+// revision only: its cut, colours and print are what it is, and a change is a new edition. A named person, an outfit and
+// an admin population take a new revision at every save, under the id they were first given; only an admin population's
+// earlier revisions are kept, as a body may be drawn from one.
 
 import { LOOK_BYTES, validLook } from "../anim/look.ts";
 import { populations as populationKind, REGION_KEYS, type PopulationDef, type Span } from "../content/kinds/populations.ts";
@@ -71,9 +71,10 @@ export interface Made {
   readonly at: number;
 }
 
-/** The manifest clients fetch: every edition ever published, retired ones too, in id order. */
+/** The manifest clients fetch: every edition ever published and every admin population revision, retired ones too, in id order. */
 export interface PeopleManifest {
   readonly editions: readonly Edition[];
+  readonly populations: readonly ManifestPopulation[];
 }
 
 /** A hash is the first 16 hex digits of a SHA-256, which the media route keeps for good (server/files.ts). */
@@ -129,7 +130,7 @@ export const WEAR_MAX = 8;
 /** The most a weight is, as the content kind takes it. */
 export const WEIGHT_MAX = 1e6;
 
-/** One revision of a thing of a kind, as the store holds it and admin pages are sent it. */
+/** A thing of a kind at one revision, as the store holds it and admin pages are sent it. */
 export interface Revision<T> {
   readonly id: number;
   readonly rev: number;
@@ -197,8 +198,8 @@ export interface OutfitDoc {
   readonly slots: readonly (OutfitSlot | null)[];
 }
 
-/** An admin population as the store keeps it: a content population without its type, id and revision. */
-export type PopulationDoc = Omit<PopulationDef, "type" | "id" | "revision">;
+/** An admin population as the store keeps it: a content population without its type and id. */
+export type PopulationDoc = Omit<PopulationDef, "type" | "id">;
 
 /** A record's body by its kind. */
 export interface Bodies {
@@ -211,7 +212,7 @@ export interface Bodies {
 export const storePopulationId = (id: number): string => `population/${id}`;
 
 /** An admin population's revision as the person generator takes it. */
-export const storePopulation = (id: number, rev: number, body: PopulationDoc): PopulationDef => ({ type: "population", id: storePopulationId(id), revision: rev, ...body });
+export const storePopulation = (id: number, body: PopulationDoc): PopulationDef => ({ type: "population", id: storePopulationId(id), ...body });
 
 /** One revision of an admin population in the manifest clients fetch. */
 export interface ManifestPopulation {
@@ -388,7 +389,7 @@ export function readPopulation(sent: Record<string, unknown>): PopulationDoc | s
   }
   for (const key of Object.keys(body)) if (body[key] === undefined) delete body[key];
   const errors: string[] = [];
-  const def = { type: "population", id: "population/0", revision: 1, ...body } as unknown as PopulationDef;
+  const def = { type: "population", id: "population/0", ...body } as unknown as PopulationDef;
   for (const [k, v] of Object.entries(body)) if (v === null) errors.push(`population/0: ${k} is not of its shape`);
   if (Object.values(body.regions ?? {}).some((v) => v === null)) errors.push("population/0: regions: each is a low and a high");
   try {

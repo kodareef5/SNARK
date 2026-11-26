@@ -10,11 +10,9 @@ const row = SAVED.find((s) => s.name === "corpse-wardrobe")!;
 const same = Uint16Array.from({ length: 64 }, (_, i) => i);
 const coding = (): Coding => ({ toSaved: same, toRuntime: same, split: new Map(), blob: new Uint8Array(), refused: false, stale: false, refs: [], styles: [], item: (s) => s, burn: () => {} });
 
-test("a body's wardrobe saved with more slots than this build has reads the ones it has", () => {
+test("a body's wardrobe reads back as it was saved", () => {
   const w = new BitWriter(256);
-  const slots = WARDROBE_SLOTS + 2;
-  w.varint(slots);
-  for (let k = 0; k < slots; k++) (w.varint(k + 1), w.varint(100 + k), w.varint(0x010203 + k));
+  for (let k = 0; k < WARDROBE_SLOTS; k++) (w.varint(k + 1), w.varint(100 + k), w.varint(0x010203 + k));
   const rec = new EntityRecord(7, 1);
   row.read(rec, new BitReader(w.bytes()), coding());
   const kept = corpseWardrobe(rec)!;
@@ -24,15 +22,4 @@ test("a body's wardrobe saved with more slots than this build has reads the ones
   const back = new EntityRecord(8, 1);
   row.read(back, new BitReader(again.bytes()), coding());
   expect([...corpseWardrobe(back)!]).toEqual([...kept]);
-});
-
-test("a body's wardrobe saved with fewer slots leaves the rest empty", () => {
-  const w = new BitWriter(256);
-  w.varint(1);
-  w.varint(3), w.varint(9), w.varint(5);
-  const rec = new EntityRecord(9, 1);
-  row.read(rec, new BitReader(w.bytes()), coding());
-  const kept = corpseWardrobe(rec)!;
-  expect([...kept.slice(0, 3)]).toEqual([3, 9, 5]);
-  expect(kept.slice(3).every((v) => v === 0)).toBe(true);
 });

@@ -45,7 +45,7 @@ test("a print, an edition and a retirement each answer and are logged once; a st
   try {
     const fresh = await state(a);
     expect([fresh.revision, fresh.manifest, fresh.editions]).toEqual([0, null, []]);
-    expect(fresh.garments.map((g) => g.id)).toContain("core:plain_tee");
+    expect(fresh.garments.map((g) => g.id)).toContain("core:tee");
 
     const print = picture(256, 128);
     const sent = await upload(a, print);
@@ -54,7 +54,7 @@ test("a print, an edition and a retirement each answer and are logged once; a st
     expect(existsSync(join(a.h.host.people.media, printName(up.hash)))).toBe(true);
     expect(((await (await upload(a, print)).json()) as { known: boolean }).known).toBe(true);
 
-    const edition = { revision: 0, garment: "core:plain_tee", colours: [12, 40, 3], name: "Vegas tee", print: { hash: up.hash, place: PLACE } };
+    const edition = { revision: 0, garment: "core:tee", colours: [12, 40, 3], name: "Vegas tee", print: { hash: up.hash, place: PLACE } };
     const made = await post(a, "/admin/people/publish", edition);
     expect([made.status, ((await made.json()) as { id: number }).id]).toEqual([200, 1]);
     // A second page that read the same revision is told to reload, and shown what is there now.
@@ -68,7 +68,7 @@ test("a print, an edition and a retirement each answer and are logged once; a st
     expect(after.editions.map((e) => [e.id, e.name, e.retired, e.by])).toEqual([[1, "Vegas tee", true, "(kody)"]]);
     expect([...acts(a), ...acts(b)]).toEqual([
       ["(kody)", `uploaded the print ${printName(up.hash)} (256×128, ${Math.round(print.length / 1024)} KB)`],
-      ["(kody)", `published the edition 1 "Vegas tee" of core:plain_tee (colours 12, 40, 3; print ${printName(up.hash)})`],
+      ["(kody)", `published the edition 1 "Vegas tee" of core:tee (colours 12, 40, 3; print ${printName(up.hash)})`],
       ["(kody)", `retired the edition 1 "Vegas tee"`],
     ]);
   } finally {
@@ -80,7 +80,7 @@ test("a print, an edition and a retirement each answer and are logged once; a st
 test("an edition the content or the sheet cannot hold is refused with its reason and logs nothing", async () => {
   const { a, b } = worlds();
   try {
-    const good = { revision: 0, garment: "core:plain_tee", colours: [0, 0, 0], name: "Plain" };
+    const good = { revision: 0, garment: "core:tee", colours: [0, 0, 0], name: "Plain" };
     const bad: [Record<string, unknown>, RegExp][] = [
       [{ ...good, garment: "core:stone" }, /core:stone is not a garment/],
       [{ ...good, garment: "nope" }, /content id/],
@@ -135,9 +135,9 @@ test("the second world's wearers, clients and a restart all keep a retired editi
   const { a, b, folder } = worlds();
   let b2: Server | null = null;
   try {
-    const reg = a.h.reg, tee = reg.index.get("core:plain_tee")!, trousers = reg.index.get("core:plain_trousers")!;
+    const reg = a.h.reg, tee = reg.index.get("core:tee")!, trousers = reg.index.get("core:jeans")!;
     const publish = async (garment: string, name: string): Promise<number> => ((await (await post(a, "/admin/people/publish", { revision: (await state(a)).revision, garment, colours: [9, 0, 0], name })).json()) as { id: number }).id;
-    const shirt = await publish("core:plain_tee", "Market tee"), legs = await publish("core:plain_trousers", "Market jeans");
+    const shirt = await publish("core:tee", "Market tee"), legs = await publish("core:jeans", "Market jeans");
 
     // On B, a survivor puts the tee on and wears A's edition of it; another garment's edition or none it holds is refused.
     const ada = b.h.join("ada", {}, { key: keyAt("ada", b.world) });
@@ -165,7 +165,7 @@ test("the second world's wearers, clients and a restart all keep a retired editi
     const me2 = rec(b2, "ada")!, inv2 = b2.h.host.items.inv(me2);
     expect([inv2.editionOf(inv2.wardrobe), inv2.dyeOf(inv2.wardrobe), back.inventory!.editionOf(inv2.wardrobe)]).toEqual([shirt, 7, shirt]);
     // Retired, it still resolves: it is re-dyed in place, and handed out again by an admin's restyle.
-    expect(b2.h.host.people.garmentOf(shirt)).toBe("core:plain_tee");
+    expect(b2.h.host.people.garmentOf(shirt)).toBe("core:tee");
     expect(b2.h.host.items.restyle(me2, inv2.wardrobe, shirt, 8)).toBe(true);
     expect(b2.h.host.items.restyle(me2, inv2.wardrobe, 0, 0)).toBe(true);
     expect(b2.h.host.items.restyle(me2, inv2.wardrobe, shirt, 0)).toBe(true);

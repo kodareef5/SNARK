@@ -11,9 +11,8 @@ const store = new PeopleStore({ db, media });
 const revs: number[] = [];
 let refused = 0;
 for (let k = 0; k < Number(count); ) {
-  const held = store.view().records.person.get(Number(id))!;
   const doc: PersonDoc = { name: "Mara", look: [...personFrom(7, CITY).look], wardrobe: null, source: null, notes: `${name} ${k}` };
-  const done = store.save("person", Number(id), held[held.length - 1]!.rev, doc, { name, id: "" });
+  const done = store.save("person", Number(id), store.view().records.person.get(Number(id))!.rev, doc, { name, id: "" });
   if ("status" in done) {
     if (done.status !== 409 && done.status !== 503) throw new Error(done.error);
     refused++;

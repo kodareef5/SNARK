@@ -350,7 +350,7 @@ Packs may add to: `buffs`.
 
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
-| `population` |  | built | `label`, `revision`, `women`, `skin`, `eyes`, `hair`, `hairColors`, `beard`, `build`, `face`, `age`, `weight`, `muscle` | `complexions`, `streak`, `grey`, `brows`, `regions`, `hairLength`, `beardLength`, `outfits` | 5 |
+| `population` |  | built | `label`, `women`, `skin`, `eyes`, `hair`, `hairColors`, `beard`, `build`, `face`, `age`, `weight`, `muscle` | `complexions`, `streak`, `grey`, `brows`, `regions`, `hairLength`, `beardLength`, `outfits` | 5 |
 
 - **`population`** on shelf `people`. Who a crowd is made of: by weight and range, each part of a person the generator draws from a seed.
 
@@ -411,7 +411,7 @@ built.
 
 **`item/glider`** (1): frond_glider.
 
-**`item/garment`** (7): plain_tee, loose_tee, hoodie, plain_trousers, shorts, trainers, apron.
+**`item/garment`** (7): tee, loose_tee, hoodie, jeans, shorts, trainers, apron.
 
 **`item/dye`** (6): hair_dye_blond, hair_dye_ginger, hair_dye_brown, hair_dye_black, hair_dye_white, hair_dye_red.
 

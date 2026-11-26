@@ -232,9 +232,9 @@ test("every admin POST the front passes is judged again once its body is in", as
     "/admin/screens/clip": { body: JSON.stringify({ id: "0000000000000000", title: "x", rights: "x" }) },
     "/admin/screens/edit": { body: JSON.stringify({ revision: 0, op: "screen", screen: "orb", show: "night" }) },
     [SCENES]: { body: JSON.stringify({ shot: OPENING_SHOT, revision: 0, publish: false }) },
-    "/admin/people/publish": { body: JSON.stringify({ revision: 0, garment: "core:plain_tee", colours: [1, 2, 3], name: "Tee" }) },
+    "/admin/people/publish": { body: JSON.stringify({ revision: 0, garment: "core:tee", colours: [1, 2, 3], name: "Tee" }) },
     "/admin/people/retire": { body: JSON.stringify({ revision: 0, id: 1, retired: true }) },
-    "/admin/people/save": { body: JSON.stringify({ kind: "outfit", id: null, rev: 0, doc: { name: "Vendor", slots: [{ choices: [{ garment: "core:plain_tee", edition: 0 }], dye: [0, 0, 0] }, null, null, null, null] } }) },
+    "/admin/people/save": { body: JSON.stringify({ kind: "outfit", id: null, rev: 0, doc: { name: "Vendor", slots: [{ choices: [{ garment: "core:tee", edition: 0 }], dye: [0, 0, 0] }, null, null, null, null] } }) },
     "/admin/people/print": { body: image, headers: { "content-type": "image/png", "content-length": String(image.length) } },
   };
   // The Permissions page's own changes are judged inside the store's write (permissions-two-maps.test.ts).

@@ -45,7 +45,7 @@ function civilian(store: EntityStore, seed: number, population = "core:people_ci
   const e = store.create(3, 1000 + seed % 50, 40, 1000, 0);
   const n = people.number.get(population)!, p = people.list[n]!;
   store.setLook(e, 1, null, "Rosa");
-  store.setBodyLook(e, personFrom(seed, p).look, { seed, population: n, revision: p.revision });
+  store.setBodyLook(e, personFrom(seed, p).look, { seed, population: n, revision: 0 });
   store.setGear(e, [0, 300, 301, 0, 302, 0]);
   return e;
 }
@@ -69,10 +69,8 @@ test("a seed form the reader cannot make is malformed", () => {
   const e = civilian(store, 7);
   const bytes = write(store, null, viewOf(store, 1)).bytes;
   expect(read(bytes, null, null)).toBeNull();
-  // A population it lacks, or another revision of one.
+  // A population it lacks.
   store.setBodyLook(e, store.looks.get(e)!, { seed: 7, population: people.list.length, revision: 1 });
-  expect(read(write(store, null, viewOf(store, 1)).bytes, null)).toBeNull();
-  store.setBodyLook(e, store.looks.get(e)!, { seed: 7, population: 0, revision: 99 });
   expect(read(write(store, null, viewOf(store, 1)).bytes, null)).toBeNull();
 });
 

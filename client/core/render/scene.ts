@@ -459,11 +459,11 @@ export class Scene {
   private readonly mountState = new AnimState();
   private readonly state = new AnimState();
   /** The characters' draws, given their depth ranges once their instances are written (bodyPasses). A one-bone draw's offset holds its stand-in's first bone. */
-  private readonly drawBody = (mesh: number, lod: number, first: number, count: number, flags: number, layer: number, standIn: number, hide: number): void => {
+  private readonly drawBody = (mesh: number, lod: number, first: number, count: number, flags: number, layer: number, standIn: number, hide: number, made: number): void => {
     // A body that shimmers carries it on its own draw, and no other does.
     const glow = this.characters.glowNow;
     if (glow > 0) this.characters.glowOf(glow, this.put.glow);
-    this.put.draw(mesh, lod, TRANSIENT_BUFFER, first, count, standIn, 0, 0, flags, NEAR, 0, layer, lod, 1, hide);
+    this.put.draw(mesh, lod, TRANSIENT_BUFFER, first, count, standIn, 0, 0, flags, NEAR, 0, layer, lod, 1, hide, made);
     if (glow > 0) this.put.glow.fill(0);
   };
   /** Per content index, 1 for a kind a landmark brings, which the far city leaves to the landmark's far mesh. */
@@ -786,6 +786,7 @@ export class Scene {
   /** Call after a lost graphics context. Every buffer and every level is uploaded again. */
   resetUploads(): void {
     this.nearStore.reset();
+    this.characters.faces.reset();
     this.quadIndices[0] = this.quadIndices[1] = 0;
     this.assets.residency.reset();
     this.terrain.reset();

@@ -16,8 +16,6 @@ export interface PopulationDef extends Named {
   readonly type: "population";
   readonly id: string;
   readonly label: string;
-  /** Raised by every edit. A person sent as a seed names it, so a client never draws a person of another edit. */
-  readonly revision: number;
   /** The share of women, 0 to 1. */
   readonly women: number;
   /** Weights for each skin tone, eye colour and complexion. */
@@ -51,7 +49,6 @@ export interface PopulationDef extends Named {
 
 const FIELDS = {
   label: f("text"),
-  revision: f("number"),
   women: f("number"),
   skin: f("list"),
   eyes: f("list"),
@@ -83,14 +80,13 @@ export const populations: Kind<PopulationDef> = {
   fields: FIELDS,
   rows: [
     row("population", "population", FIELDS, {
-      ark: "", shelf: "people", must: ["label", "revision", "women", "skin", "eyes", "hair", "hairColors", "beard", "build", "face", "age", "weight", "muscle"],
+      ark: "", shelf: "people", must: ["label", "women", "skin", "eyes", "hair", "hairColors", "beard", "build", "face", "age", "weight", "muscle"],
       may: ["complexions", "streak", "grey", "brows", "regions", "hairLength", "beardLength", "outfits"],
       doc: "Who a crowd is made of: by weight and range, each part of a person the generator draws from a seed.",
     }),
   ],
   check(d, { errors }) {
     const bad = (what: string) => errors.push(`${d.id}: ${what}`);
-    if (!(Number.isInteger(d.revision) && d.revision >= 1 && d.revision < 1 << 20)) bad("revision is a whole number from 1");
     if (!share(d.women)) bad("women is a share from 0 to 1");
     if (!weights(d.skin, SKIN_TONES)) bad(`skin wants weights for at most ${SKIN_TONES} tones, one above 0`);
     if (!weights(d.eyes, EYE_COLORS)) bad(`eyes wants weights for at most ${EYE_COLORS} colours, one above 0`);

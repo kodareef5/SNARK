@@ -24,8 +24,8 @@ test("another client sees a survivor's body in what it died in", () => {
     h.run(500);
     const me = h.host.records.byPid.get(h.client(ada)!.pid)!;
     const inv = h.host.items.inv(me);
-    expect(h.host.items.mintAt(me, inv.wardrobe, id("plain_tee"), 1)).toBe(1);
-    expect(h.host.items.mintAt(me, inv.wardrobe + 1, id("plain_trousers"), 1)).toBe(1);
+    expect(h.host.items.mintAt(me, inv.wardrobe, id("tee"), 1)).toBe(1);
+    expect(h.host.items.mintAt(me, inv.wardrobe + 1, id("jeans"), 1)).toBe(1);
     expect(h.host.items.restyle(me, inv.wardrobe, 0, 233 | (10 << 8))).toBe(true);
     h.run(200);
     expect(h.say(ada, "enablecheats")[0]).toMatch(/cheats/);
@@ -37,7 +37,7 @@ test("another client sees a survivor's body in what it died in", () => {
     expect(bodies.length).toBe(1);
     const i = bodies[0]!;
     expect(seen.hasWardrobe[i]).toBe(1);
-    expect([...seen.wardrobe.subarray(i * WORN_LENGTH, i * WORN_LENGTH + 2 * WORN_FIELDS)]).toEqual([id("plain_tee"), 0, 233 | (10 << 8), id("plain_trousers"), 0, 0]);
+    expect([...seen.wardrobe.subarray(i * WORN_LENGTH, i * WORN_LENGTH + 2 * WORN_FIELDS)]).toEqual([id("tee"), 0, 233 | (10 << 8), id("jeans"), 0, 0]);
   } finally {
     h.host.shutdown();
   }
@@ -59,7 +59,7 @@ test("a survivor knocked down is drawn in its garments as it falls", () => {
   remote.look.set(defaultLook(), 0);
   remote.gear.fill(0, 0, GEAR_COUNT);
   remote.wardrobe.fill(0, 0, WORN_LENGTH);
-  remote.wardrobe[0] = view.reg.index.get("core:plain_tee")!;
+  remote.wardrobe[0] = view.reg.index.get("core:tee")!;
   remote.hasWardrobe[0] = 1;
   let p = scene.build(cam, remote);
   for (let f = 0; f < 4; f++) {

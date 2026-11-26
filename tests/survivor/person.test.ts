@@ -99,13 +99,12 @@ test("two Cast presets of one character make different people of the name's sex"
   // A seed form names what made it, and makes the same look again.
   const { born } = swim;
   expect([...lookOfSeed(reg, born.seed, born.population, born.revision)!]).toEqual([...swim.person.look]);
-  expect(populationsOf(reg).list[born.population]!.id).toBe("core:people_beach");
-  expect(lookOfSeed(reg, born.seed, born.population, born.revision + 1)).toBeNull();
+  expect([populationsOf(reg).list[born.population]!.id, born.revision]).toEqual(["core:people_beach", 0]);
   expect(lookOfSeed(reg, born.seed, populationsOf(reg).list.length, 1)).toBeNull();
 });
 
 test("a population that is not sound is told plainly", () => {
-  const bad = { ...CITY, id: "core:people_bad", revision: 0, women: 2, skin: [0, 0], hair: { men: [1], women: Array(HAIR_STYLES.length + 1).fill(1) }, regions: { tail: [0, 1] as const, waist: [1, 0] as const }, age: [-2, 0] as const, outfits: [{ wear: ["core:stone"], weight: 1 }] } as PopulationDef;
+  const bad = { ...CITY, id: "core:people_bad", women: 2, skin: [0, 0], hair: { men: [1], women: Array(HAIR_STYLES.length + 1).fill(1) }, regions: { tail: [0, 1] as const, waist: [1, 0] as const }, age: [-2, 0] as const, outfits: [{ wear: ["core:stone"], weight: 1 }] } as PopulationDef;
   const errors = compileContent([...CORE_CONTENT, bad]).errors.join("\n");
-  for (const want of ["revision is a whole number", "women is a share", "skin wants weights", "hair wants weights", "tail is no body region", "regions: waist is a low and a high", "age is a low and a high", '"core:stone" is not an item/armor']) expect([want, errors.includes(want)]).toEqual([want, true]);
+  for (const want of ["women is a share", "skin wants weights", "hair wants weights", "tail is no body region", "regions: waist is a low and a high", "age is a low and a high", '"core:stone" is not an item/armor']) expect([want, errors.includes(want)]).toEqual([want, true]);
 });

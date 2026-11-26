@@ -1,5 +1,5 @@
-// Skin zones: a body level's triangles go zone by zone, the pack records each zone's runs, a coarser level keeps each
-// zone's border where it was, and a pack or manifest without zones reads as before.
+// Skin zones: a body level's triangles go zone by zone, the pack records each zone's runs, and a coarser level keeps each
+// zone's border where it was.
 
 import { expect, test } from "bun:test";
 import { HUMAN, HUMAN_BONES } from "../../shared/anim/human.ts";
@@ -10,7 +10,6 @@ import { defaultPalette } from "../../shared/pack/palette.ts";
 import { AssetTable } from "../../client/core/assets/table.ts";
 import { simplify, simplifySurface } from "../../tools/pack/simplify.ts";
 import { buildPack, unpackMeshes, type SourceLod, type SourceMesh } from "../../tools/pack/write.ts";
-import { frozenPack } from "../fixtures/pack.ts";
 
 /** A square of `n` by `n` cells lying flat, two metres across: zone 3 where x < 0, zone 7 where not. */
 function plate(n: number, surface = false): SourceLod {
@@ -144,10 +143,4 @@ test("each group of zones keeps at least half its share of a coarser level", () 
   const held = simplify(lod, [40], [], false, { groups: [0, 0, 0, 1, 0, 0, 0, 2] })[0]!.lod;
   expect(count(held, 3)).toBeGreaterThanOrEqual(floor);
   expect(count(held, 7)).toBeGreaterThanOrEqual(floor);
-});
-
-test("an old pack, made before zones, still reads with none", () => {
-  const pack = frozenPack();
-  const body = pack.header.meshes[pack.meshIndex.get("core:human_m/torso")!]!;
-  expect(body.lods.every((l) => l.zones === undefined)).toBe(true);
 });

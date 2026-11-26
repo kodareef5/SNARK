@@ -134,7 +134,7 @@ try {
 
     console.log("a draft with an asymmetric print");
     await ready();
-    await press('[data-start="core:plain_tee"]');
+    await press('[data-start="core:tee"]');
     await until(`!${q("#editor")}.hidden`, "the draft's editor");
     await type("#name", "Truth tee");
     await page.tab();
@@ -211,7 +211,7 @@ try {
     const who = game.clients.find((c) => c?.active && c.name === "wearer")!;
     const [x, z] = [world.ents.x[who.ent]!, world.ents.z[who.ent]!], y = world.ents.y[who.ent]!;
     const wearerAt: [number, number, number] = [x, y, z], watcherAt: [number, number, number] = [x, y, z + 1.8];
-    const rec = host.records.byPid.get(who.pid)!, items = host.items, inv = items.inv(rec), tee = world.reg.index.get("core:plain_tee")!;
+    const rec = host.records.byPid.get(who.pid)!, items = host.items, inv = items.inv(rec), tee = world.reg.index.get("core:tee")!;
     check("the wearer puts the tee on", items.mintAt(rec, inv.wardrobe, tee, 1) === 1);
     check("in the published edition", items.restyle(rec, inv.wardrobe, edition, 0));
     host.refreshBody(rec);

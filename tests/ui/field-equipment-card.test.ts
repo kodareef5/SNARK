@@ -5,7 +5,7 @@ import { KEY_INV_SLOT } from "../../client/core/ui/inventory.ts";
 import { FIELD_EQUIPMENT, FIELD_ICONS, FIELD_TOUCH, installFieldIcons } from "../../client/core/ui/field-icons.ts";
 import { K_IMAGE, UiFrame } from "../../client/core/ui/nodes.ts";
 import { CMD_MOVE, RESULT_DENIED, RESULT_OK } from "../../shared/net/protocol.ts";
-import { Inventory } from "../../shared/sim/items.ts";
+import { GEAR_SLOTS, Inventory } from "../../shared/sim/items.ts";
 import { Harness } from "../fixtures/net.ts";
 import { corePack } from "../fixtures/pack.ts";
 
@@ -62,7 +62,7 @@ test("Field items and touch contacts keep the remaining catalogue pictures", () 
 test("A canceled swipe or rejected assignment keeps the held item", () => {
   const h = new Harness();
   const session = h.join("bag");
-  const inv = session.inventory = new Inventory(40, 25);
+  const inv = session.inventory = new Inventory(25 + GEAR_SLOTS, 25);
   const pick = h.reg.index.get("core:pick")!;
   inv.item[0] = pick;
   inv.count[0] = 1;

@@ -42,7 +42,7 @@ test("an admin population may not wear what a content population may not", async
     const wearsStone = { ...BEACH, id: "core:people_review", outfits: [{ wear: ["core:stone"], weight: 1 }] };
     // The content refuses a population dressed in a stone: its outfits wear armour.
     expect(refFaults([...(reg.defs.filter(Boolean) as Def[]), wearsStone as unknown as Def]).filter((f) => f.includes("people_review"))).toHaveLength(1);
-    const { type: _t, id: _i, revision: _r, ...doc } = wearsStone;
+    const { type: _t, id: _i, ...doc } = wearsStone;
     const res = await call(a, "/admin/people/save", { kind: "population", id: null, rev: 0, doc: { ...doc, label: "Stone wearers" } });
     expect(res.status).toBe(400);
   } finally {
@@ -58,7 +58,7 @@ test("a wardrobe page's publish is not refused because a person was saved meanwh
     const shown = store.view().revision;
     expect(store.save("person", null, 0, mara, ADA)).toMatchObject({ id: 1 });
     expect(store.view().editions).toEqual([]);
-    expect(store.publish(shown, { garment: "core:plain_tee", colours: [0, 0, 0], print: null, name: "Tee" }, ADA)).toMatchObject({ id: 1 });
+    expect(store.publish(shown, { garment: "core:tee", colours: [0, 0, 0], print: null, name: "Tee" }, ADA)).toMatchObject({ id: 1 });
   } finally {
     store.close();
   }

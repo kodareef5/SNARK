@@ -9,8 +9,10 @@ import {
   LOOK_SKIN,
   REGIONS,
   SEX_LABELS,
+  faceOf,
   regionOf,
 } from "../../shared/anim/look.ts";
+import { FACE_GROUPS, FACE_LABELS, FACE_PRESETS } from "../../shared/people/face-controls.ts";
 import { defaultPalette, EYE_BASE, EYE_COLORS, HAIR_BASE, HAIR_COLORS, SKIN_BASE, SKIN_TONES } from "../../shared/pack/palette.ts";
 export const esc = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, (c) => "&#" + c.charCodeAt(0) + ";");
 export const button = (id: string, label: string, style = "secondary", attr = "") =>
@@ -105,6 +107,32 @@ export function bodyFields(look: Uint8Array, group: number) {
         regionOf(look, i) +
         '"></label>',
     ).join("") +
+    "</div>"
+  );
+}
+export function faceFields(look: Uint8Array, group: number) {
+  const g = FACE_GROUPS[group] ?? FACE_GROUPS[0]!;
+  return (
+    '<fieldset><legend>Presets</legend><div class="chips">' +
+    FACE_PRESETS.map((p, i) => button("face-preset", p.label, "chip", 'data-index="' + i + '"')).join("") +
+    '</div></fieldset><div class="chips" role="group" aria-label="Face features">' +
+    FACE_GROUPS.map((x, i) => button("face-group", x.label, "chip", 'data-index="' + i + '" aria-pressed="' + (x === g) + '"')).join("") +
+    '</div><div class="sliders">' +
+    g.faces
+      .map(
+        (i) =>
+          "<label>" +
+          esc(FACE_LABELS[i]) +
+          '<input type="range" data-face="' +
+          i +
+          '" min="-1" max="1" step=".05" value="' +
+          faceOf(look, i) +
+          '"></label>',
+      )
+      .join("") +
+    '</div><div class="support">' +
+    button("face-random", "Random face", "quiet") +
+    button("face-reset", "Reset face", "quiet") +
     "</div>"
   );
 }

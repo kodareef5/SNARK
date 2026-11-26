@@ -1,10 +1,11 @@
 // Splits a whole pack into the file a client fetches at start, the file it fetches a level at a time, the file it
-// fetches a creature skeleton's clips from and the file of pages, and writes the manifest that says where everything is.
+// fetches a creature skeleton's clips and a mesh's face table from and the file of pages, and writes the manifest that
+// says where everything is.
 
 import { CELL, mipOffset } from "../../shared/pack/details.ts";
 import { EMOTE_GROUP } from "../../shared/anim/emotes.ts";
-import { MANIFEST_VERSION, type Manifest, type ManifestClips, type ManifestFile, type ManifestLevel, type ManifestMesh, type MeshStub, type PageRows } from "../../shared/pack/manifest.ts";
-import { CLIP_ROOT_BYTES, GRIP_POSE_UNITS, HIT_PLANE_UNITS, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, clipRotBytes, detailsAtlas, lodVertices, meshReach, parsePack, setTexture, textureOf, type PackClip, type PackHeader, type PackLod } from "../../shared/pack/pack.ts";
+import { MANIFEST_VERSION, type Manifest, type ManifestClips, type ManifestFaces, type ManifestFile, type ManifestLevel, type ManifestMesh, type MeshStub, type PageRows } from "../../shared/pack/manifest.ts";
+import { CLIP_ROOT_BYTES, GRIP_POSE_UNITS, HIT_PLANE_UNITS, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, clipRotBytes, detailsAtlas, lodVertices, meshFaces, meshReach, parsePack, setTexture, textureOf, type PackClip, type PackHeader, type PackLod } from "../../shared/pack/pack.ts";
 import { farMeshId } from "../../shared/pack/far.ts";
 import { PARTS_HEADER_BYTES, PARTS_MAGIC, PARTS_VERSION } from "../../shared/pack/stored.ts";
 import { TEXTURE_ROLES } from "../../shared/pack/texture.ts";
@@ -51,8 +52,9 @@ interface Placed {
  * coarsely, and pose its own body. A landmark's far mesh has none held. Each other mesh's smallest levels are in its page,
  * with its row. Surfaces and skins go in the mesh file unless bootSurfaces keeps them with their levels. The boot and mesh
  * files are packs. The manifest locates a mesh file surface whose geometry lives elsewhere. Each creature
- * skeleton's clips are one part of the clip file. Neither the clip file's parts nor the pages are yet deflated. The bytes
- * of a part are what they were in the whole pack. `blobs` are the pages' blobs.
+ * skeleton's clips are one part of the clip file, and so is each mesh's face table, which no pack holds. Neither the clip
+ * file's parts nor the pages are yet deflated. The bytes of a part are what they were in the whole pack. `blobs` are the
+ * pages' blobs.
  */
 export function splitPack(whole: Uint8Array, name: string, opts: SplitOptions = {}): { files: SplitFile[]; manifest: Manifest; blobs: Uint8Array[] } {
   const pack = parsePack(whole);
@@ -138,7 +140,7 @@ export function splitPack(whole: Uint8Array, name: string, opts: SplitOptions = 
       levels.push({ file, lod: moved, sizes, surfaceAt });
     });
     placed.push(levels);
-    const { flat: _, ...mesh } = m;
+    const { flat: _, faces: __, ...mesh } = m;
     for (const file of [0, 1]) {
       const lods = levels.filter((l) => l.file === file).map((l) => l.lod);
       // A file's levels are the mesh's own in the same order, so those with a surface still come first.
@@ -172,6 +174,14 @@ export function splitPack(whole: Uint8Array, name: string, opts: SplitOptions = 
     parts.push(part);
     end += bytes;
   }
+  const faces: ManifestFaces[] = [];
+  pack.header.meshes.forEach((m, i) => {
+    const bytes = meshFaces(pack, m);
+    if (!bytes) return;
+    faces.push({ mesh: i, file: 2, at: end, part: { bytes: bytes.length, hash: "" } });
+    parts.push(bytes);
+    end += bytes.length;
+  });
   const away = new Set(streamed.map((e) => e.rig));
   for (const c of pack.header.clips) if (!away.has(rigOf(c))) headers[0]!.clips.push({ ...c, rotOffset: blobs[0]!.append(rot(c)), rootOffset: blobs[0]!.append(root(c)) });
 
@@ -208,12 +218,13 @@ export function splitPack(whole: Uint8Array, name: string, opts: SplitOptions = 
     { name: `${name}.boot.snpk`, role: "boot", bytes: blobs[0]!.file(headers[0]!) },
     { name: `${name}.mesh.snpk`, role: "mesh", bytes: blobs[1]!.file(headers[1]!) },
   ];
-  if (streamed.length > 0) {
+  if (streamed.length + faces.length > 0) {
     const bytes = new Uint8Array(end);
     new DataView(bytes.buffer).setUint32(0, PARTS_MAGIC, true);
     new DataView(bytes.buffer).setUint16(4, PARTS_VERSION, true);
-    parts.forEach((p, k) => bytes.set(p, streamed[k]!.at));
-    for (const e of streamed) e.part.hash = partsAt(bytes, e.at, [e.part.bytes])[0]!.hash;
+    const owners = [...streamed, ...faces];
+    parts.forEach((p, k) => bytes.set(p, owners[k]!.at));
+    for (const e of owners) e.part.hash = partsAt(bytes, e.at, [e.part.bytes])[0]!.hash;
     files.push({ name: `${name}.clip.snpt`, role: "clip", bytes });
   }
   const pageFile = files.length;
@@ -249,6 +260,7 @@ export function splitPack(whole: Uint8Array, name: string, opts: SplitOptions = 
   });
   const manifest: Manifest = { version: MANIFEST_VERSION, files: files.map((f) => ({ name: f.name, bytes: f.bytes.length, role: f.role })), boot: 0, clipHash: pack.clips.hash, meshes };
   if (streamed.length > 0) manifest.clips = streamed;
+  if (faces.length > 0) manifest.faces = faces;
   if (pack.header.materials) manifest.materials = pack.header.materials;
   if (pack.header.textures) manifest.textures = pack.header.textures.map((t) => ({ ...t, in: {} }));
   if (pack.header.landmarks) manifest.landmarks = pack.header.landmarks;

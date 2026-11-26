@@ -12,7 +12,7 @@ export interface CastJson {
   players: { name: string; x: number; z: number }[];
   regions: { x: number; z: number; heat: number; players: number; pace: string }[];
   stories: { id: string; scene: string; phase: string; x: number; z: number; people: number; choices: Record<string, string>; slots: Record<string, string>; engaged: string[]; age: number }[];
-  people: { id: string; name: string; person: number | null; kept: boolean; kind: string; want?: string; struggle?: string; hope?: string; dead: boolean; story: string | null; facts: string[]; knows: Record<string, { stance: number; met: number }> }[];
+  people: { id: string; name: string; person: number | null; kind: string; want?: string; struggle?: string; hope?: string; dead: boolean; story: string | null; facts: string[]; knows: Record<string, { stance: number; met: number }> }[];
   decisions: { t: number; point: string; policy: string; why: string; choice: string }[];
   scenes: { id: string; name: string; weight: number; placeholder: boolean; ok: boolean }[];
   /** Each look's population and an admin's choice over it, each role a named person plays, and what the people store offers. */

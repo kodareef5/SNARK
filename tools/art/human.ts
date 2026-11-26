@@ -1,45 +1,30 @@
 // Converts the humanoid's clips and bodies from the packs in assets/raw. What to convert is in each asset's asset.ts.
 
 import { join } from "node:path";
-import { BODY_SCALES, REGION_CLOTH, REGION_EYE, REGION_HAIR, REGION_SKIN, SEX_IDS } from "../../shared/anim/look.ts";
+import { BODY_SCALES, SEX_IDS } from "../../shared/anim/look.ts";
 import type { Clip } from "../../shared/anim/clip.ts";
-import { B_HEAD, B_TOE_L, B_TOE_R, HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_FEET, SLOT_HANDS, SLOT_HEAD, SLOT_NAMES } from "../../shared/anim/human.ts";
+import { B_TOE_L, B_TOE_R, HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_FEET, SLOT_HANDS, SLOT_HEAD, SLOT_NAMES } from "../../shared/anim/human.ts";
 import { SKIN_ZONE_SLOT } from "../../shared/anim/skin-zones.ts";
 import { MATERIAL_EXHAUST, MATERIAL_INDICATOR, MATERIAL_LENS, parsePack, type PackRig } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
 import { convertHumanClips } from "../pack/anim.ts";
 import { readGltf, type Gltf } from "../pack/gltf.ts";
-import { readPng } from "../pack/png-read.ts";
 import { cookBody, restBody, RIGID_BONES, type Cooked, type CookOptions } from "../pack/body.ts";
-import { bodyField, headShift, REFIT_CLEAR, refitPiece, shiftAt, shiftLod, type BodyField, type HeadShift } from "../pack/refit.ts";
+import { bodyField, REFIT_CLEAR, refitPiece, shiftAt, type BodyField } from "../pack/refit.ts";
 import { clearOf, line, liningOf, skinLevel } from "../pack/liner.ts";
 import { humanAnim, motionSet } from "./cloth-fit.ts";
 import { easeInMotion } from "./ease-fit.ts";
-import { fitBody, type FittedBody } from "../makehuman/fit.ts";
-import { scriptedBody } from "../makehuman/cooked.ts";
-import { convertBody, rigOf, type ColorRule, type MaterialRule } from "../pack/skin.ts";
+import { fitBody } from "../makehuman/fit.ts";
+import { fittedSourceOf, scriptedBody } from "../makehuman/cooked.ts";
+import { cookFaces } from "../makehuman/faces.ts";
+import { encodeFaces, remapFaces } from "../../shared/people/faces.ts";
+import { rigOf } from "../pack/skin.ts";
 import { buildPack, unpackMeshes, type SourceLod, type SourceMesh } from "../pack/write.ts";
 import { calibrateHand } from "../pack/grips.ts";
 import type { Described } from "./materials.ts";
-import { RAW, blender } from "./blender.ts";
+import { RAW } from "./blender.ts";
 import type { HumanBodiesAsset, HumanClipsAsset } from "./spec.ts";
 
-// Palette indices.
-const WHITE = 10;
-const BLACK = 11;
-/** Grey is the model's underclothes. Anything else is skin. */
-const skin: ColorRule = (r, g, b) => {
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  return max > 0 && (max - min) / max < 0.22 ? REGION_CLOTH : REGION_SKIN;
-};
-const eye: ColorRule = (r, g, b) => {
-  const light = (r + g + b) / 3;
-  const max = Math.max(r, g, b);
-  if (light > 150 && (max - Math.min(r, g, b)) / max < 0.3) return WHITE;
-  return light < 40 ? BLACK : REGION_EYE;
-};
-const hair: MaterialRule = { image: null, color: () => REGION_HAIR };
 /** The materials every hair and beard is drawn with (assets/source/core/humans/hair/), by their names in asset.ts. */
 const HAIR_MATERIALS = ["hair_core", "hair_cards"] as const;
 
@@ -160,7 +145,7 @@ export function armorSets(spec: HumanBodiesAsset, sex: number, rest: readonly nu
     let said = "";
     const refit = field ? (piece: Parameters<typeof refitPiece>[0]) => {
       // Every slot's skin may be drawn beside a piece: its own where the piece is lined, the face under a hood.
-      const r = refitPiece(piece, field, RIGID_BONES, () => true, (zone) => SKIN_ZONE_SLOT[zone]!, REFIT_CLEAR, body.length === 0);
+      const r = refitPiece(piece, field, RIGID_BONES, () => true, (zone) => SKIN_ZONE_SLOT[zone]!);
       said = `${armor}: refit ${r.vertices} vertices, moved at most ${(r.most * 1000).toFixed(1)} mm; ${r.pushed} pushed out of the skin, the deepest ${(r.deepest * 1000).toFixed(1)} mm in`;
     } : undefined;
     const cook = (flat: number): Cooked => cookBody(parts, { id: armor, rig, scale, onto: rest, triangles: spec.triangles.armor, flat, palette, refit, leave: o.skin, ...dressed(spec, described, parts, armor, o.skin) });
@@ -263,89 +248,52 @@ export function dressTailored(spec: HumanBodiesAsset, mesh: SourceMesh, finish: 
   return mesh;
 }
 
-/**
- * `dir` is a folder for what Blender writes. `described` are the asset's materials by the name asset.ts gives them, the
- * tailored outfit's among them.
- */
-export function convertBodies(spec: HumanBodiesAsset, dir: string, described: ReadonlyMap<string, Described>, palette: Uint8Array): { meshes: SourceMesh[]; rigs: PackRig[]; warnings: string[]; lines: string[] } {
-  const raw = join(RAW, spec.raw);
+/** `described` are the asset's materials by the name asset.ts gives them, the tailored outfit's among them. */
+export function convertBodies(spec: HumanBodiesAsset, _dir: string, described: ReadonlyMap<string, Described>, palette: Uint8Array): { meshes: SourceMesh[]; rigs: PackRig[]; warnings: string[]; lines: string[] } {
   const meshes: SourceMesh[] = [];
   const rigs: PackRig[] = [];
   const warnings: string[] = [];
   const lines: string[] = [];
   const warn = (what: string, list: string[]): void => list.forEach((w) => warnings.push(`${what}: ${w}`));
-  const reduced = new Map<string, Gltf>();
-  const reduce = (source: string, triangles: readonly number[]): Gltf => {
-    const key = `${source} ${triangles}`;
-    let gltf = reduced.get(key);
-    if (!gltf) {
-      const out = join(dir, `${source.replace(/[^a-z0-9]+/gi, "_")}_${triangles.join("_")}.glb`);
-      blender("reduce.py", [join(raw, source), out, triangles.join(",")], "reduce: wrote");
-      reduced.set(key, (gltf = readGltf(out)));
-    }
-    return gltf;
-  };
-  const read = new Map<string, Gltf>();
-  const source = (file: string): Gltf => {
-    let gltf = read.get(file);
-    if (!gltf) read.set(file, (gltf = readGltf(join(raw, file))));
-    return gltf;
-  };
-  const dressedFor = (sources: readonly Gltf[], what: string) => dressed(spec, described, sources, what);
   const finish = spec.tailored ? described.get(spec.tailored.material) : undefined;
   if (spec.tailored && !finish) throw new Error(`human-bodies: no material "${spec.tailored.material}" for the tailored outfit`);
   if (spec.rigs.length !== spec.bodies.length) throw new Error(`human-bodies: ${spec.bodies.length} bodies and ${spec.rigs.length} rigs`);
-  const headOf = (positions: ArrayLike<number>, indices: ArrayLike<number>, bone: (v: number) => number, keep: (t: number) => boolean) => ({
-    positions,
-    indices: Array.from({ length: indices.length / 3 }, (_, t) => t).filter((t) => keep(t) && [0, 1, 2].every((k) => bone(indices[t * 3 + k]!) === B_HEAD)).flatMap((t) => [indices[t * 3]!, indices[t * 3 + 1]!, indices[t * 3 + 2]!]),
-  });
+  const mh = spec.makehuman;
   const [hairCore, hairCards] = HAIR_MATERIALS.map((name) => {
     const d = described.get(name);
     if (!d) throw new Error(`human-bodies: asset.ts has no material "${name}"`);
     return { material: d.material, textures: d.textures, maps: d.maps };
   });
-  spec.bodies.forEach((b, sex) => {
-    const scale = BODY_SCALES[sex]!;
+  spec.bodies.forEach((_, sex) => {
     const id = `core:human_${SEX_IDS[sex]}`;
     const rig = `human_${SEX_IDS[sex]}`;
-    const file = source(b.file);
-    let body: Cooked;
-    /** The MakeHuman body hair and beards are made on, and how they move to sit on a Quaternius body's head. */
-    let hairOn: FittedBody;
-    let onHead: HeadShift | null = null;
-    /** How the armor sets made on the Quaternius body move to sit on this one. */
-    let onBody: BodyField | null = null;
-    if (spec.body === "makehuman") {
-      const mh = spec.makehuman;
-      if (!mh) throw new Error("human-bodies: a MakeHuman body needs the asset's makehuman entry");
-      const fitted = (hairOn = fitBody(sex === 0 ? "male" : "female", spec.rigs[sex]!));
-      const { body: made, kept } = scriptedBody(fitted);
-      const materials = [mh.skin[sex]!, mh.eyes, mh.brows].map((name) => {
-        const d = described.get(name);
-        if (!d) throw new Error(`${id}: asset.ts has no material "${name}"`);
-        return { material: d.material, textures: d.textures, maps: d.maps };
-      });
-      body = cookBody(made, { id, rig, scale: 1, onto: [...spec.rigs[sex]!], zoned: true, triangles: mh.triangles, flat: spec.flat, palette, sections: {}, materials });
-      onBody = armorField(spec, sex, body.meshes, palette);
-      lines.push(`${id}: MakeHuman's body fitted; triangles kept by part: ${Object.entries(kept).map(([k, n]) => `${k} ${n}`).join(", ")}`);
-    } else {
-      // The body is moved onto the frozen rig, as its hair and armor are below.
-      const onto = fittedRest(rigOf(file, rig, scale), spec.rigs[sex]!);
-      body = cookBody(file, { id, rig, scale, onto, zoned: true, triangles: spec.triangles.body, flat: spec.flat, palette, ...dressedFor([file], id) });
-      hairOn = fitBody(sex === 0 ? "male" : "female", spec.rigs[sex]!);
-      const was = restBody(file, { id, rig, scale, onto, triangles: [], flat: 1, palette, sections: { [b.material]: 0 }, materials: [] });
-      const fitted = hairOn;
-      onHead = headShift(
-        headOf(fitted.positions, fitted.indices, (v) => fitted.bone[v]!, (t) => fitted.part[t] === 0),
-        headOf(was.positions, was.indices, (v) => was.bones[v]!, () => true),
-        [onto[B_HEAD * 3]!, onto[B_HEAD * 3 + 1]! + 0.09, onto[B_HEAD * 3 + 2]! + 0.02],
-      );
-    }
+    const fitted = fitBody(sex === 0 ? "male" : "female", spec.rigs[sex]!);
+    const { body: made, kept } = scriptedBody(fitted);
+    const materials = [mh.skin[sex]!, mh.eyes, mh.brows].map((name) => {
+      const d = described.get(name);
+      if (!d) throw new Error(`${id}: asset.ts has no material "${name}"`);
+      return { material: d.material, textures: d.textures, maps: d.maps };
+    });
+    const body = cookBody(made, { id, rig, scale: 1, onto: [...spec.rigs[sex]!], zoned: true, triangles: mh.triangles, flat: spec.flat, palette, sections: {}, materials });
+    // The armor sets and the suit are made on the Quaternius body: this moves them to sit on MakeHuman's.
+    const field = armorField(spec, sex, body.meshes, palette);
+    lines.push(`${id}: MakeHuman's body fitted; triangles kept by part: ${Object.entries(kept).map(([k, n]) => `${k} ${n}`).join(", ")}`);
     warn(id, body.warnings);
     meshes.push(...body.meshes);
     rigs.push(body.rig);
+    {
+      // The head's face table goes with it, its vertices those of its finest level (shared/people/faces.ts).
+      const head = body.meshes.find((m) => m.id === `${id}/head`);
+      if (!head) throw new Error(`${id}: no head mesh for the face table`);
+      const faces = cookFaces(sex === 0 ? "male" : "female", spec.rigs[sex]!);
+      const from = fittedSourceOf(head.lods[0]!.positions, fitted);
+      const lost = from.reduce((n, v) => n + (v < 0 ? 1 : 0), 0);
+      if (lost > 0) throw new Error(`${id}/head: ${lost} vertices of its finest level are not the fitted body's, so no face reaches them`);
+      head.faces = encodeFaces(remapFaces(faces.table, from));
+      lines.push(`${id}/head: face table ${head.faces.length} bytes; sides kept below 100%: ${faces.modifiers.flatMap((m) => m.kept.flatMap((k, s) => (k < 0.995 ? [`${m.name} ${s ? "+" : "-"}${(k * 100).toFixed(0)}%`] : []))).join(", ") || "none"}`);
+    }
     // Garment cuts are made on the MakeHuman body's own surface, each cooked as a mesh of its own.
-    if (spec.garments && spec.body === "makehuman") for (const g of spec.garments.make(body.meshes, id, body.rig.rest)) {
+    if (spec.garments) for (const g of spec.garments.make(body.meshes, id, body.rig.rest)) {
       const d = described.get(g.material);
       if (!d) throw new Error(`${g.id}: asset.ts has no material "${g.material}"`);
       const made = cookBody(g.body, { id, rig, scale: 1, onto: body.rig.rest, whole: g.id, zoned: true, triangles: g.triangles, flat: g.flat ?? spec.flat, printArea: g.print, palette, sections: {}, materials: [{ material: d.material, textures: d.textures, maps: d.maps }] });
@@ -354,33 +302,17 @@ export function convertBodies(spec: HumanBodiesAsset, dir: string, described: Re
       meshes.push(...made.meshes);
     }
     if (spec.tailored && finish) {
-      let made: SourceMesh[];
-      if (onBody) {
-        // On the MakeHuman body the suit's lining is the cooked body's own skin at each of its first three levels, with
-        // its weights, and its plates, drawn on the Quaternius body, move as the skin under them moved.
-        const field = onBody;
-        made = spec.tailored.make(suitLining(body.meshes), body.rig, (p) => shiftAt(field, p));
-        suitClear(made, body.meshes, lines);
-      } else {
-        // The tailored outfit is cut from the flat one-bone body it was designed on, so its counts and look stay its own.
-        const eyes: MaterialRule = { image: readPng(join(raw, spec.eyes)), color: eye };
-        const reducedBody = reduce(b.file, spec.triangles.tailored);
-        const plain = convertBody(reducedBody, {
-          id, rig, scale,
-          materials: { [b.material]: { image: readPng(join(raw, b.texture)), color: skin }, MI_Eyes: eyes, MI_Hair_1: hair, MI_Hair_2: hair },
-          onto: fittedRest(rigOf(reducedBody, rig, scale), spec.rigs[sex]!),
-        });
-        warn(`${id} tailored`, plain.warnings);
-        made = spec.tailored.make(plain.meshes, plain.rig);
-      }
+      // The suit's lining is the cooked body's own skin, a level coarser, and its plates, drawn on the Quaternius body,
+      // move as the skin under them moved.
+      const made = spec.tailored.make(suitLining(body.meshes), body.rig, (p) => shiftAt(field, p));
+      suitClear(made, body.meshes, lines);
       for (const mesh of made) meshes.push(dressTailored(spec, mesh, finish));
     }
     // Hair and beards are made on the MakeHuman head by the asset's own script.
-    const styled = spec.hair.make(hairOn, sex, id, rig, hairCore!, hairCards!, spec.triangles.hair, spec.flat);
-    if (onHead) for (const mesh of styled.meshes) for (const lod of mesh.lods) shiftLod(lod, onHead);
+    const styled = spec.hair.make(fitted, sex, id, rig, hairCore!, hairCards!, spec.triangles.hair, spec.flat);
     meshes.push(...styled.meshes);
     lines.push(...styled.lines);
-    meshes.push(...armorSets(spec, sex, body.rig.rest, onBody, described, palette, lines, warnings, spec.body === "makehuman" ? body.meshes : []));
+    meshes.push(...armorSets(spec, sex, body.rig.rest, field, described, palette, lines, warnings, body.meshes));
   });
   // A material is measured on each piece it is cooked on; it spans what the widest measure says, on all of them.
   const span = new Map<string, number>();

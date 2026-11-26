@@ -3,13 +3,14 @@
 // survivor's own look, its hair as grown, and sends the remake or keeps the survivor as it is.
 
 import {
-  BEARD_STYLES, HAIR_STYLES, LOOK_BEARD, LOOK_EYE_COLOR, LOOK_HAIR, LOOK_HAIR_COLOR, LOOK_SEX, LOOK_SKIN, REGIONS, REGION_COUNT, SEX_LABELS,
-  defaultLook, randomLook, regionOf, setRegion,
+  BEARD_STYLES, FACE_COUNT, HAIR_STYLES, LOOK_BEARD, LOOK_EYE_COLOR, LOOK_HAIR, LOOK_HAIR_COLOR, LOOK_SEX, LOOK_SKIN, REGIONS, REGION_COUNT, SEX_LABELS,
+  defaultLook, faceOf, randomLook, regionOf, setFace, setRegion,
 } from "../../../shared/anim/look.ts";
 import { hashString } from "../../../shared/hash.ts";
 import { EYE_BASE, EYE_COLORS, HAIR_BASE, HAIR_COLORS, SKIN_BASE, SKIN_TONES } from "../../../shared/pack/palette.ts";
 import { Rng } from "../../../shared/rng.ts";
 import { RESULT_OK, SESSION_ALIVE, SESSION_CREATING } from "../../../shared/net/protocol.ts";
+import { FACE_GROUPS, FACE_LABELS, FACE_PRESETS, randomFace, resetFace, setFaces } from "../../../shared/people/face-controls.ts";
 import { bakeHair } from "../../../shared/people/hair.ts";
 import type { ClientSession } from "../session.ts";
 import { K_BUTTON, K_PANEL, lineHeight, type UiFrame } from "./nodes.ts";
@@ -19,7 +20,7 @@ import { slider } from "./slider.ts";
 
 export const KEY_CREATOR_PANEL = 3000;
 export const KEY_CREATOR_TITLE = 3001;
-/** Two keys, one per tab. */
+/** Three keys, one per tab: look, body, face. */
 export const KEY_CREATOR_TAB = 3002;
 export const KEY_CREATOR_SEX = 3010;
 /** Two keys: turn the body left, turn it right. */
@@ -41,6 +42,16 @@ export const KEY_CREATOR_LABEL = 3180;
 export const KEY_CREATOR_MARK = 3190;
 /** Per body region: its label, a button down, its bar, a button up. */
 export const KEY_CREATOR_REGION = 3200;
+/** Per face modifier, 3300 to 3427: its label, a button down, its bar, a button up. */
+export const KEY_CREATOR_FACE = 3300;
+/** One key per face preset, 3430 to 3439. */
+export const KEY_CREATOR_FACE_PRESET = 3430;
+/** One key per face group, 3440 to 3449. */
+export const KEY_CREATOR_FACE_GROUP = 3440;
+/** A random face and a neutral face, leaving the rest of the look. */
+export const KEY_CREATOR_FACE_RANDOM = 3450;
+export const KEY_CREATOR_FACE_RESET = 3451;
+const KEY_CREATOR_END = KEY_CREATOR_FACE_RESET + 1;
 
 const PAD = 12;
 const ROW = 24;
@@ -51,6 +62,8 @@ const TURN_STEP = Math.PI / 6;
 const CHOSEN = 0x3f6ea8;
 
 const TAB_LOOK = 0;
+const TAB_BODY = 1;
+const TAB_FACE = 2;
 
 /** In the creator: making a new survivor, or remaking its own while alive. */
 export function inCreator(s: ClientSession | null): boolean {
@@ -62,9 +75,11 @@ export class CreatorScreen implements Screen {
   readonly layer = "modal";
   /** A press on it makes no click: it is the whole interface, turned and dragged. */
   readonly quiet = true;
-  readonly bands = [{ from: KEY_CREATOR_PANEL, count: KEY_CREATOR_REGION + REGION_COUNT * 4 - KEY_CREATOR_PANEL }];
+  readonly bands = [{ from: KEY_CREATOR_PANEL, count: KEY_CREATOR_END - KEY_CREATOR_PANEL }];
   readonly look = defaultLook();
   tab = TAB_LOOK;
+  /** The face group the face tab shows. */
+  faceGroup = 0;
   /** Radians. The body starts facing the viewer, a little to one side. */
   turn = 0.35;
   /** The server refused the last "Create". `sent` is that command's sequence number. */
@@ -121,15 +136,43 @@ export class CreatorScreen implements Screen {
       labels.forEach((text, i) => button(key + i, x + PAD + i * (bw + gap), bw, text, i === chosen));
       y += ROW + 6;
     };
-    across(KEY_CREATOR_TAB, ["Look", "Body"], this.tab);
+    across(KEY_CREATOR_TAB, ["Look", "Body", "Face"], this.tab);
+    let label = 0;
+    const section = (text: string): void => {
+      f.text(KEY_CREATOR_LABEL + label++, x + PAD, y, inner, S_LABEL, text);
+      y += lh + 2;
+    };
+    /** Buttons in rows of `per`. */
+    const grid = (key: number, labels: readonly string[], per: number, chosen: number): void => {
+      for (let i = 0; i < labels.length; i += per) {
+        const row = labels.slice(i, i + per);
+        const gap = 4;
+        const bw = (inner - gap * (per - 1)) / per;
+        row.forEach((text, k) => button(key + i + k, x + PAD + k * (bw + gap), bw, text, i + k === chosen));
+        y += ROW + 6;
+      }
+    };
+    /** A row of label, down, bar and up per value, keys `key + i * 4` on. */
+    const sliders = (key: number, labels: readonly string[], values: readonly number[], labelW: number, rowH: number): void => {
+      const small = 22;
+      const barX = x + PAD + labelW + small + 4;
+      const barW = inner - labelW - small * 2 - 8;
+      labels.forEach((text, i) => {
+        const k = key + i * 4, v = values[i]!;
+        f.text(k, x + PAD, y + (rowH - lh) / 2, labelW, S_LABEL, text);
+        const down = f.add(k + 1, K_BUTTON, x + PAD + labelW, y + 1, small, rowH - 3, S_BUTTON);
+        down.text = "-";
+        down.interactive = true;
+        slider(f, k + 2, barX, y + 1, barW, rowH - 3, (v + 1) / 2, 0.05, text, `${Math.round(v * 100)}%`);
+        const up = f.add(k + 3, K_BUTTON, barX + barW + 4, y + 1, small, rowH - 3, S_BUTTON);
+        up.text = "+";
+        up.interactive = true;
+        y += rowH;
+      });
+    };
 
     if (this.tab === TAB_LOOK) {
-      let label = 0;
       let mark = 0;
-      const section = (text: string): void => {
-        f.text(KEY_CREATOR_LABEL + label++, x + PAD, y, inner, S_LABEL, text);
-        y += lh + 2;
-      };
       const swatches = (key: number, base: number, count: number, chosen: number): void => {
         const gap = 3;
         const sw = (inner - gap * (count - 1)) / count;
@@ -156,24 +199,23 @@ export class CreatorScreen implements Screen {
       across(KEY_CREATOR_HAIR, HAIR_STYLES.map((s) => s.label), look[LOOK_HAIR]!);
       section("Beard");
       across(KEY_CREATOR_BEARD, BEARD_STYLES.map((s) => s.label), look[LOOK_BEARD]!);
-    } else {
-      const labelW = 92;
-      const small = 22;
-      const barX = x + PAD + labelW + small + 4;
-      const barW = inner - labelW - small * 2 - 8;
+    } else if (this.tab === TAB_BODY) {
       const rowH = Math.min(ROW, Math.floor((y0 + h - y - 96) / REGION_COUNT));
-      for (let r = 0; r < REGION_COUNT; r++) {
-        const key = KEY_CREATOR_REGION + r * 4;
-        f.text(key, x + PAD, y + (rowH - lh) / 2, labelW, S_LABEL, REGIONS[r]!.label);
-        const down = f.add(key + 1, K_BUTTON, x + PAD + labelW, y + 1, small, rowH - 3, S_BUTTON);
-        down.text = "-";
-        down.interactive = true;
-        slider(f,key+2,barX,y+1,barW,rowH-3,(regionOf(look,r)+1)/2,.05,REGIONS[r]!.label,`${Math.round(regionOf(look,r)*100)}%`);
-        const up = f.add(key + 3, K_BUTTON, barX + barW + 4, y + 1, small, rowH - 3, S_BUTTON);
-        up.text = "+";
-        up.interactive = true;
-        y += rowH;
-      }
+      sliders(KEY_CREATOR_REGION, REGIONS.map((r) => r.label), REGIONS.map((_, r) => regionOf(look, r)), 92, rowH);
+    } else {
+      // Thirty-two rows do not fit at a readable size, so the face is paged by group.
+      section("Presets");
+      grid(KEY_CREATOR_FACE_PRESET, FACE_PRESETS.map((p) => p.label), 4, -1);
+      section("Features");
+      grid(KEY_CREATOR_FACE_GROUP, FACE_GROUPS.map((g) => g.short), 4, this.faceGroup);
+      const group = FACE_GROUPS[this.faceGroup]!;
+      section(group.label);
+      const first = group.faces[0]!;
+      sliders(KEY_CREATOR_FACE + first * 4, group.faces.map((i) => FACE_LABELS[i]!), group.faces.map((i) => faceOf(look, i)), 112, ROW);
+      y += 6;
+      const half = (inner - 4) / 2;
+      button(KEY_CREATOR_FACE_RANDOM, x + PAD, half, "Random face");
+      button(KEY_CREATOR_FACE_RESET, x + PAD + half + 4, half, "Reset face");
     }
 
     y = y0 + h - PAD - 34 - 6 - ROW - (this.refused ? lh + 4 : 0);
@@ -205,36 +247,50 @@ export class CreatorScreen implements Screen {
   }
 
   value(key: number, value: number): boolean {
-    const index=key-KEY_CREATOR_REGION;
-    if(index<0 || index>=REGION_COUNT*4 || index%4!==2 || !Number.isFinite(value))return false;
-    setRegion(this.look,index>>2,Math.max(0,Math.min(1,value))*2-1); return true;
+    if (!Number.isFinite(value)) return false;
+    const v = Math.max(0, Math.min(1, value)) * 2 - 1;
+    const region = key - KEY_CREATOR_REGION, face = key - KEY_CREATOR_FACE;
+    if (region >= 0 && region < REGION_COUNT * 4 && region % 4 === 2) setRegion(this.look, region >> 2, v);
+    else if (face >= 0 && face < FACE_COUNT * 4 && face % 4 === 2) setFace(this.look, face >> 2, v);
+    else return false;
+    return true;
   }
 
   /** `kind` is 0 for down, 1 for up, 2 for move. Returns true if `key` is one of this screen's nodes. */
   pointer(kind: number, key: number, _x: number, _y: number, _button: number, c: ScreenCtx): boolean {
     const session = c.session;
-    if (!session || key < KEY_CREATOR_PANEL || key >= KEY_CREATOR_REGION + REGION_COUNT * 4) return false;
+    if (!session || key < KEY_CREATOR_PANEL || key >= KEY_CREATOR_END) return false;
     const look = this.look;
     if (kind !== 0) return true;
-    const region = key >= KEY_CREATOR_REGION ? Math.floor((key - KEY_CREATOR_REGION) / 4) : -1;
-    const part = key >= KEY_CREATOR_REGION ? (key - KEY_CREATOR_REGION) % 4 : -1;
-    if (region >= 0) {
+    if (key >= KEY_CREATOR_REGION && key < KEY_CREATOR_REGION + REGION_COUNT * 4) {
+      const region = (key - KEY_CREATOR_REGION) >> 2, part = (key - KEY_CREATOR_REGION) % 4;
       if (part === 1) setRegion(look, region, regionOf(look, region) - STEP);
       else if (part === 3) setRegion(look, region, regionOf(look, region) + STEP);
       return true;
     }
+    if (key >= KEY_CREATOR_FACE && key < KEY_CREATOR_FACE + FACE_COUNT * 4) {
+      const face = (key - KEY_CREATOR_FACE) >> 2, part = (key - KEY_CREATOR_FACE) % 4;
+      if (part === 1) setFace(look, face, faceOf(look, face) - STEP);
+      else if (part === 3) setFace(look, face, faceOf(look, face) + STEP);
+      return true;
+    }
+    // Seeded by the name, so a run can be repeated. Each press takes the next throw.
+    const rng = (): Rng => (this.rng ??= new Rng(hashString(session.name)));
     const pick = (base: number, count: number, field: number): boolean => {
       if (key < base || key >= base + count) return false;
       look[field] = key - base;
       return true;
     };
-    if (key === KEY_CREATOR_TAB || key === KEY_CREATOR_TAB + 1) this.tab = key - KEY_CREATOR_TAB;
+    if (key >= KEY_CREATOR_TAB && key <= KEY_CREATOR_TAB + TAB_FACE) this.tab = key - KEY_CREATOR_TAB;
+    else if (key >= KEY_CREATOR_FACE_PRESET && key < KEY_CREATOR_FACE_PRESET + FACE_PRESETS.length) setFaces(look, FACE_PRESETS[key - KEY_CREATOR_FACE_PRESET]!.values);
+    else if (key >= KEY_CREATOR_FACE_GROUP && key < KEY_CREATOR_FACE_GROUP + FACE_GROUPS.length) this.faceGroup = key - KEY_CREATOR_FACE_GROUP;
+    else if (key === KEY_CREATOR_FACE_RANDOM) randomFace(rng(), look);
+    else if (key === KEY_CREATOR_FACE_RESET) resetFace(look);
     else if (key === KEY_CREATOR_TURN) this.turn -= TURN_STEP;
     else if (key === KEY_CREATOR_TURN + 1) this.turn += TURN_STEP;
     else if (key === KEY_CREATOR_RANDOM) {
-      // Seeded by the name, so a run can be repeated. Each press takes the next throw.
-      this.rng ??= new Rng(hashString(session.name));
-      randomLook(this.rng, look);
+      const r = rng();
+      randomFace(r, randomLook(r, look));
     } else if (key === KEY_CREATOR_RESET) defaultLook(look);
     else if (key === KEY_CREATOR_CREATE) {
       this.refused = false;

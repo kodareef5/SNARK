@@ -4,9 +4,10 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { SURFACE_BYTES, VERTEX_BYTES, lodSurface, lodVertices, parsePack, type PackLod } from "../../shared/pack/pack.ts";
+import { SURFACE_BYTES, VERTEX_BYTES, lodSurface, lodVertices, meshFaces, parsePack, type PackLod } from "../../shared/pack/pack.ts";
 import { ART, SOURCE } from "../../tools/art/source.ts";
 import { settlePack } from "../../tools/pack/settle.ts";
+import { buildPack, unpackMeshes } from "../../tools/pack/write.ts";
 
 describe.skipIf(!ART)("a build settled on the committed pack", () => {
   const committed = (): Uint8Array => new Uint8Array(readFileSync(join(SOURCE, "core/items/stone-tools/stone-tools.snpk")));
@@ -25,6 +26,21 @@ describe.skipIf(!ART)("a build settled on the committed pack", () => {
     const pack = parsePack(file);
     return pack.header.meshes[pack.meshIndex.get(id)!]!.lods.map((l) => `${Buffer.from(lodVertices(pack, l)).toString("hex")}${Buffer.from(lodSurface(pack, l) ?? []).toString("hex")}`).join("|");
   };
+
+  test("a kept mesh takes the new build's face table", () => {
+    const was = committed();
+    const pack = parsePack(was);
+    const meshes = unpackMeshes(pack);
+    meshes.find((m) => m.id === "core:hatchet")!.faces = Uint8Array.of(1, 2, 3, 4, 5);
+    const fresh = buildPack(meshes, pack.palette, pack.clips.clips, pack.header.rigs);
+    const settled = settlePack(fresh, was);
+    expect(settled.file).not.toBe(was);
+    const out = parsePack(settled.file);
+    expect([...meshFaces(out, out.header.meshes[out.meshIndex.get("core:hatchet")!]!)!]).toEqual([1, 2, 3, 4, 5]);
+    expect(settled.kept).toContain("core:hatchet");
+    // Settled again on itself, the table is unchanged and the file is the one settled on.
+    expect(settlePack(settled.file, settled.file).file).toBe(settled.file);
+  });
 
   test("the same build is the committed file itself", () => {
     const was = committed();

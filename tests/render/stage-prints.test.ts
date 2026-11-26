@@ -46,7 +46,7 @@ function oneBody(metres: number, edition: number): ProvingView {
   remote.look.set(defaultLook(), 0);
   remote.gear.fill(0, 0, GEAR_COUNT);
   remote.wardrobe.fill(0, 0, WORN_LENGTH);
-  remote.wardrobe.set([reg.index.get("core:plain_tee")!, edition, 0], 0);
+  remote.wardrobe.set([reg.index.get("core:tee")!, edition, 0], 0);
   remote.hasWardrobe[0] = 1;
   scene.prints.host = testPrintHost();
   return view;
@@ -58,7 +58,7 @@ function onStage(metres: number, edition: number, key: string): { view: ProvingV
   view.remote.hasWardrobe[0] = 0;
   stage.apply(command({ kind: "print", key, url: "/x.png" }));
   stage.sized(key, 256, 256);
-  stage.apply(command({ kind: "wardrobe", slots: [{ item: "core:plain_tee", edition, dye: [0, 0, 0], print: { key, place: PLACE } }, null, null, null, null], hide: 0 }));
+  stage.apply(command({ kind: "wardrobe", slots: [{ item: "core:tee", edition, dye: [0, 0, 0], print: { key, place: PLACE } }, null, null, null, null], hide: 0 }));
   view.scene.characters.wardrobe = (id, out) => id === BODY && stage.wornInto(out);
   view.scene.editionPrint = (e) => stage.printOf(e);
   return { view, stage };

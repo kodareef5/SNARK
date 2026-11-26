@@ -10,7 +10,7 @@ import { StructureStore } from "../../shared/world/structures.ts";
 import { AnimState } from "../../shared/anim/pose.ts";
 import { MODE_FLYER } from "../../shared/sim/character.ts";
 import { GEAR_WORN } from "../../shared/sim/entities.ts";
-import { LOOK_BYTES, LOOK_V1_BYTES, defaultLook, upgradeLook, validLook } from "../../shared/anim/look.ts";
+import { LOOK_BYTES, defaultLook, validLook } from "../../shared/anim/look.ts";
 import { parseManifest } from "../../shared/pack/manifest.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { MapLoader } from "../core/mapload.ts";
@@ -66,8 +66,8 @@ addEventListener("message", (event) => {
   if (Number.isFinite(m.yaw)) yaw = Math.max(-route.camera.yawLimit, Math.min(route.camera.yawLimit, m.yaw));
   if (Number.isFinite(m.pitch)) pitch = Math.max(-route.camera.pitchLimit, Math.min(route.camera.pitchLimit, m.pitch));
   if (Number.isInteger(m.spawn)) focused = Math.max(0, m.spawn);
-  if (Array.isArray(m.look) && (m.look.length === LOOK_BYTES || m.look.length === LOOK_V1_BYTES)) {
-    const value = upgradeLook(Uint8Array.from(m.look));
+  if (Array.isArray(m.look) && m.look.length === LOOK_BYTES) {
+    const value = Uint8Array.from(m.look);
     if (validLook(value)) appearance = value;
   }
   reset = true;

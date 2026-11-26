@@ -17,7 +17,7 @@ let made = 0;
 
 const ADA: By = { name: "ada", id: "S-ADA" };
 const BO: By = { name: "bo", id: "S-BO" };
-const tee = (name: string, colours: [number, number, number] = [12, 40, 3]): EditionDraft => ({ garment: "core:plain_tee", colours, print: null, name });
+const tee = (name: string, colours: [number, number, number] = [12, 40, 3]): EditionDraft => ({ garment: "core:tee", colours, print: null, name });
 
 /** A cluster folder of its own, and a store on it as a world opens one. */
 function folder(): string {
@@ -72,7 +72,7 @@ test("two worlds of one cluster: the second sees the first's editions, and of tw
   try {
     const one = publish(a, tee("on A"));
     // B has not looked since: a lookup it does not hold looks again, and finds it.
-    expect(b.garmentOf(one)).toBe("core:plain_tee");
+    expect(b.garmentOf(one)).toBe("core:tee");
     expect(b.garmentOf(99)).toBeNull();
     // Both pages read the same revision; A saves first, so B is told to reload, and nothing of A's is lost.
     const seen = b.view().revision;
@@ -124,7 +124,7 @@ test("a retired edition is still in the manifest and still resolves, after a res
     a = open(dir);
     for (const s of [a, b]) {
       expect([...s.view().retired]).toEqual([id]);
-      expect(s.garmentOf(id)).toBe("core:plain_tee");
+      expect(s.garmentOf(id)).toBe("core:tee");
       expect(manifest(s).editions.map((e) => [e.id, e.name])).toEqual([[1, "old stock"], [2, "new stock"]]);
     }
     expect(b.retire(b.view().revision, id, false)).toMatchObject({ changed: true });
@@ -157,7 +157,7 @@ test("the manifest is named by its hash, holds what clients need and nobody's na
     const id = store.view().manifestId, file = join(store.media, `people.${id}.json`);
     const text = readFileSync(file, "utf8");
     expect(new Bun.CryptoHasher("sha256").update(text).digest("hex").slice(0, 16)).toBe(id);
-    expect(JSON.parse(text)).toEqual({ editions: [{ id: 1, garment: "core:plain_tee", colours: [12, 40, 3], print: null, name: "Vegas tee" }] });
+    expect(JSON.parse(text)).toEqual({ editions: [{ id: 1, garment: "core:tee", colours: [12, 40, 3], print: null, name: "Vegas tee" }], populations: [] });
     expect(text).not.toContain("ada");
     const req = new Request(`http://snark.test${peopleManifestPath(id)}`);
     const res = await serveFile(store.media, req, peopleManifestPath(id).slice("/media".length));
@@ -198,20 +198,6 @@ test("an edition's print must be uploaded, and takes its size from the file", ()
     writeFileSync(join(store.media, printName(hash)), picture);
     const id = publish(store, draft);
     expect(store.view().byId.get(id)!.print).toEqual({ hash, width: 64, height: 32, place: { u: 0.1, v: 0.2, w: 0.5, h: 0.25, scale: 1, turn: 0.5 } });
-  } finally {
-    store.close();
-  }
-});
-
-test("a store of another layout is refused by name", () => {
-  const dir = folder();
-  open(dir).view();
-  const db = new Database(join(dir, "people.sqlite"));
-  db.exec(`UPDATE store SET doc='{"schema":2,"retired":{}}'`);
-  db.close();
-  const store = open(dir);
-  try {
-    expect(() => store.view()).toThrow(/people.sqlite is a people store of layout 2/);
   } finally {
     store.close();
   }

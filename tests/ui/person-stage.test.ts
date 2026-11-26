@@ -3,7 +3,7 @@
 // stage's content.
 
 import { expect, test } from "bun:test";
-import { defaultLook, LOOK_BYTES, LOOK_LAYOUT, LOOK_SEX } from "../../shared/anim/look.ts";
+import { defaultLook, LOOK_BYTES, LOOK_SEX, LOOK_SPARE } from "../../shared/anim/look.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { GEAR_HELD, GEAR_WORN, WORN_FIELDS, WORN_LENGTH } from "../../shared/sim/entities.ts";
 import { isStageReply, parseStageCommand, PRINT_MOST_BYTES, STAGE_FROM, STAGE_TO, stageMessage, type StageCommand } from "../../shared/people/stage.ts";
@@ -115,7 +115,7 @@ test("the stage takes a valid look and keeps its own for one out of range", () =
   expect(stage.apply(command({ kind: "look", look })).held).toEqual({ sex: "f", bytes: LOOK_BYTES });
   const version = stage.version;
   const wrong = defaultLook();
-  wrong[LOOK_LAYOUT] = 9;
+  wrong[LOOK_SPARE] = 9;
   const { notes } = stage.apply(command({ kind: "look", look: wrong }));
   expect(notes.join()).toContain("out of range");
   expect(stage.look[LOOK_SEX]).toBe(1);
@@ -191,15 +191,15 @@ test("the stage's wardrobe goes to the renderer as items, editions and packed dy
   const stage = new PersonStage(reg);
   const out = new Uint32Array(WORN_LENGTH);
   expect(stage.wornInto(out)).toBe(false);
-  stage.apply(command({ kind: "wardrobe", slots: [{ item: "core:plain_tee", edition: 3, dye: [12, 40, 200], print: null }, null, null, null, null], hide: 0 }));
+  stage.apply(command({ kind: "wardrobe", slots: [{ item: "core:tee", edition: 3, dye: [12, 40, 200], print: null }, null, null, null, null], hide: 0 }));
   expect(stage.wornInto(out)).toBe(true);
-  expect([...out.subarray(0, WORN_FIELDS)]).toEqual([reg.index.get("core:plain_tee")!, 3, 12 | (40 << 8) | (200 << 16)]);
+  expect([...out.subarray(0, WORN_FIELDS)]).toEqual([reg.index.get("core:tee")!, 3, 12 | (40 << 8) | (200 << 16)]);
   expect(out.subarray(WORN_FIELDS).every((v) => v === 0)).toBe(true);
 });
 
 test("a draft's print is drawn as the game draws an edition's, by a stand-in edition", () => {
   const stage = new PersonStage(reg);
-  const tee = { item: "core:plain_tee", edition: 0, dye: [12, 40, 200], print: { key: "draft-1", place: PLACE } };
+  const tee = { item: "core:tee", edition: 0, dye: [12, 40, 200], print: { key: "draft-1", place: PLACE } };
   stage.apply(command({ kind: "wardrobe", slots: [tee, null, null, null, null], hide: 0 }));
   const out = new Uint32Array(WORN_LENGTH);
   stage.wornInto(out);
@@ -224,7 +224,7 @@ test("a published edition's print is drawn under its own edition", () => {
   const stage = new PersonStage(reg);
   stage.apply(command({ kind: "print", key: "print.abc", url: "/media/print.abc.png" }));
   stage.sized("print.abc", 256, 256);
-  stage.apply(command({ kind: "wardrobe", slots: [{ item: "core:plain_tee", edition: 7, dye: [0, 0, 0], print: { key: "print.abc", place: PLACE } }, null, null, null, null], hide: 0 }));
+  stage.apply(command({ kind: "wardrobe", slots: [{ item: "core:tee", edition: 7, dye: [0, 0, 0], print: { key: "print.abc", place: PLACE } }, null, null, null, null], hide: 0 }));
   expect(stage.printOf(7)).toMatchObject({ width: 256, place: PLACE });
   stage.unheld("print.abc");
   expect(stage.printOf(7)).toBeNull();

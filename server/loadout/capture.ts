@@ -48,11 +48,12 @@ export function carried(host: Host, rec: EntityRecord): Entry[] {
     out.push(e);
   };
 
-  if (inv.armor >= 0) for (let k = 0; k < ARMOR_SLOTS; k++) take(inv.armor + k, "wear");
-  if (inv.hotbar >= 0) for (let k = 0; k < HOTBAR_SLOTS; k++) take(inv.hotbar + k, "hotbar");
+  const tail = inv.armor >= 0;
+  if (tail) for (let k = 0; k < ARMOR_SLOTS; k++) take(inv.armor + k, "wear");
+  if (tail) for (let k = 0; k < HOTBAR_SLOTS; k++) take(inv.hotbar + k, "hotbar");
   for (let s = 0; s < inv.bag; s++) take(s, "bag");
   // A loadout wears armor only, so garments worn go in the bag, plain: their edition and dye are not kept.
-  if (inv.wardrobe >= 0) for (let k = 0; k < WARDROBE_SLOTS; k++) take(inv.wardrobe + k, "bag");
+  if (tail) for (let k = 0; k < WARDROBE_SLOTS; k++) take(inv.wardrobe + k, "bag");
   return out;
 }
 
