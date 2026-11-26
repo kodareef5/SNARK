@@ -172,18 +172,18 @@ export class FinishNear {
     const cell = hf.cell, rows = Math.ceil(reach / (cell * step));
     const k = this.row++;
     // A server's ground has no tints, and draws nothing.
-    if (k > 2 * rows || hf.tint.length === 0) return this.next();
+    if (k > 2 * rows || !hf.tinted) return this.next();
     const jc = Math.round(z / (cell * step)) * step, j = jc + (k % 2 === 0 ? k / 2 : -(k + 1) / 2) * step;
     if (j < 0 || j >= hf.nz) return 1;
     const ic = Math.round(x / (cell * step)) * step, i0 = Math.max(0, ic - rows * step), i1 = Math.min(hf.nx - 1, ic + rows * step);
     // A sample's cover shows within a cell of it, a diagonal at most.
-    const spread = cell * step * Math.SQRT2, dz = j * cell - z, row = j * hf.nx;
+    const spread = cell * step * Math.SQRT2, dz = j * cell - z, t = hf.tints(i0, j, i1, j), row = t.off + j * t.stride;
     let n = 0;
     for (let i = i0; i <= i1; i += step) {
       const dx = i * cell - x;
       if (inside > 0 && Math.abs(dx) < inside && Math.abs(dz) < inside) continue;
       n++;
-      const f = this.ground[hf.tint[row + i]!]!;
+      const f = this.ground[t.tint[row + i]!]!;
       if (step > 1 && f !== ASPHALT && f !== SAND) continue;
       const h = Math.max(0, Math.sqrt(dx * dx + dz * dz) - spread), d = Math.sqrt(h * h + over * over);
       if (d < this.found[f]!) this.found[f] = d;

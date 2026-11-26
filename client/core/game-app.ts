@@ -191,6 +191,8 @@ export class GameApp {
   readonly governor = new Governor();
   /** What each frame took and what came in it (assets/frames.ts), once the shell has fetched it. */
   frames: FrameRing | null = null;
+  /** The page's map as its parts come (mapload.ts), for the debug bar's count of what it holds. */
+  mapLoader: import("./mapload.ts").MapLoader | null = null;
   /** The textures the card makes (texgen/engine.ts), once their file has come: how far they have come up, which the shell draws them by. */
   texgen: import("./texgen/engine.ts").Texgen | null = null;
   /** The world's sounds' code (sound-late.ts), which comes after the first frame, as the sounds' rows do (D1107). */

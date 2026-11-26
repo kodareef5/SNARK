@@ -56,11 +56,11 @@ import type { FarSource } from "./far.ts";
 import { FrameBudget } from "./budget.ts";
 import type { FarCity, CitySource } from "./farcity.ts";
 import type { CityBlocks, BlocksSource } from "./cityblocks.ts";
-import { FarLandmarks } from "./farlandmarks.ts";
+import type { FarLandmarks } from "./farlandmarks.ts";
 import { CrownCover } from "./cover.ts";
 import { FarNodes, familyOf, type FarNodeSource } from "./farnodes.ts";
 import { Hiding } from "./hide.ts";
-import { NearCity } from "./nearcity.ts";
+import type { NearCity } from "./nearcity.ts";
 import { MADE_AT, OPTIC_AT, OPTIC_HEAT } from "./packet.ts";
 import { BONE_FLOATS, GLASS_AT, DRAW_BENT, DRAW_BLEND, DRAW_CUTOUT, DRAW_GROUND, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SKINNED, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_DRAWS, MAX_TILES, PASS_FAR, PASS_NEAR, TRANSIENT_BUFFER, markJoins, texturedFlags, quadIndexCount, SHORE_AT } from "./packet.ts";
 import { MADE_MARK, WorldFinishes, citySurface, finishTaps, surfaceCity } from "./world-surfaces.ts";
@@ -71,7 +71,7 @@ import { FinishNear, NEAR_FRONT, NEAR_GLASS, NEAR_MADE, NEAR_WALL } from "./fini
 import { FacadeAtlases } from "./facade.ts";
 import { UNDERWATER_DIM, UNDERWATER_VIEW } from "./shading.ts";
 import { FADE_FROM, FADE_SHARE, SKY_ASKED, SKY_MATERIAL, VIEW_FADE, airFrame } from "./atmosphere.ts";
-import { FarShadow } from "./farshadow.ts";
+import type { FarShadow } from "./farshadow.ts";
 import { Cascades } from "./shadow.ts";
 import { shadowBytes } from "./shadowtext.ts";
 import { LampView } from "./lamp.ts";
@@ -448,7 +448,7 @@ export class Scene {
   private readonly drawBody = (mesh: number, lod: number, first: number, count: number, flags: number, layer: number, standIn: number, hide: number): void => this.put.draw(mesh, lod, TRANSIENT_BUFFER, first, count, standIn, 0, 0, flags, NEAR, 0, layer, lod, 1, hide);
   /** Per content index, 1 for a kind a landmark brings, which the far city leaves to the landmark's far mesh. */
   private readonly landmarkKinds: Uint8Array;
-  /** The far city and the city's blocks, once city-late.ts has loaded. Until then a scene draws neither. */
+  /** The city renderers arrive together after the first frame. */
   static get late(): typeof FarLayers.late { return FarLayers.late; }
   static set late(code: typeof FarLayers.late) { FarLayers.late = code; }
   /** The orbs' pass and their frame lanes (orb-late.ts), which come after the first frame. Until then a scene draws no orb. */
@@ -682,11 +682,13 @@ export class Scene {
     this.layers = new FarLayers(world, reg, pack, this.assets, this.packet, this.put, this.casting, { meshOfKind: this.meshOfKind, meshOfForm: this.meshOfForm, sizeOfForm: this.sizeOfForm, colorOfForm: this.colorOfForm, flatFlags: this.flatFlags, landmarkKinds: this.landmarkKinds, missing, farPalms: opts.farPalms ?? false, hidden: (ref) => this.nearStore.hiddenNodes.has(ref) });
     const far = this.layers.farMesh;
     this.nearStore = new NearStore(world, reg, this.assets, this.packet, this.put, this.casting, this.budget, this.hiding, this.street, (stream?.manifest ?? pack.header).meshes, far, { meshOfKind: this.meshOfKind, colorOfKind: this.colorOfKind, meshOfForm: this.meshOfForm, colorOfForm: this.colorOfForm, sizeOfForm: this.sizeOfForm, mostOfForm: this.mostOfForm, reachOfMesh: this.reachOfMesh, reachOfStatic: this.reachOfStatic, groundFlags: this.groundFlags, bentKind: this.bentKind, regionsOfKind: this.regionsOfKind, treeOf: this.treeOf, trisOfMesh: this.trisOfMesh, radiusOfMesh: this.radiusOfMesh, trunkTris: this.trunkTris, leafTris: this.leafTris, landmarkKinds: this.landmarkKinds, missing });
+    if (Scene.late) this.nearStore.startMeshes(Scene.late.NearCity);
     this.placing.looks = this.nearStore.pieces;
     this.looseEntities.pieces = this.nearStore.pieces;
     this.nearStore.far = this.layers.far;
     this.occlusion = new Occlusion(world, this.assets, this.packet, this.put, this.casting, this.terrain, this.hiding, this.nearStore);
-    this.layers.onCity = () => {
+    this.layers.onCity = (code) => {
+      this.nearStore.startMeshes(code.NearCity);
       this.occlusion.forget();
       this.nearStore.city = this.occlusion.city = this.layers.city;
       this.movingStatics.landmarks = this.nearStore.landmarks = this.layers.landmarks;

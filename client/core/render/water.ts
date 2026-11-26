@@ -19,7 +19,7 @@ import { WATER_TRAILS_GLSL } from "./water-trails.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import { AIR, hazed } from "./atmosphere.ts";
 import { SEE_THROUGH_SPLIT } from "./glsl.ts";
-import { FRAME, SOURCE_MAP, SOURCE_WINDOW } from "./packet.ts";
+import { FRAME, SOURCE_MAP, SOURCE_WINDOW, WINDOW_AT } from "./packet.ts";
 import { SHADOW_GLSL } from "./shadowtext.ts";
 import { domeLight, shownSky, trueSun } from "./sky.ts";
 import { LIGHT, moonCasts, skyOn } from "./surface.ts";
@@ -137,9 +137,10 @@ export function waveStrength(height: number): number {
 /**
  * Fills the sea's part of a frame block, whose sky and eye height must be filled first: where the camera is over the two
  * wave layers, and where it is in the samples of each of the ground's two pairs of pictures (terrain.ts), the window
- * drawn (`window` as the packet's groundWindow has it) and the whole map's; among the heights, the level the eye height
- * is measured from, the sea's or 0 with none, or the camera's own height `y` where that is lower and the eye height
- * holds at 0; how strong the waves are at the hour. Core works these out in double precision.
+ * drawn (`window` as the packet's groundWindow has it) and the whole map's, and the window's corner in its pictures'
+ * texels; among the heights, the level the eye height is measured from, the sea's or 0 with none, or the camera's own
+ * height `y` where that is lower and the eye height holds at 0; how strong the waves are at the hour. Core works these
+ * out in double precision.
  */
 export function seaFrame(frame: Float32Array, hf: Heightfield, size: GroundSize, window: Int32Array, x: number, z: number, seconds: number, y = Infinity): void {
   swashFrame(frame, x, z, seconds);
@@ -151,25 +152,33 @@ export function seaFrame(frame: Float32Array, hf: Heightfield, size: GroundSize,
   frame[FRAME.ground + 1] = window[0]! >= 0 ? z / cell[SOURCE_WINDOW]! - window[2]! : -1e6;
   frame[FRAME.ground + 2] = x / cell[SOURCE_MAP]!;
   frame[FRAME.ground + 3] = z / cell[SOURCE_MAP]!;
+  frame[WINDOW_AT] = window[0]! >= 0 ? window[1]! % size.width[SOURCE_WINDOW]! : 0;
+  frame[WINDOW_AT + 1] = window[0]! >= 0 ? window[2]! % size.height[SOURCE_WINDOW]! : 0;
   frame[FRAME.sea] = (Math.min(hf.seaLevel > -Infinity ? hf.seaLevel : 0, y) - hf.minY) / hf.stepY;
   frame[FRAME.sea + 1] = hf.stepY;
   frame[FRAME.sea + 2] = 1 / cell[SOURCE_WINDOW]!;
   frame[FRAME.sea + 3] = waveStrength((Math.asin(Math.max(-1, Math.min(1, -frame[FRAME.moon + 1]!))) * 180) / Math.PI);
 }
 
-/** The height, in the field's units, of a pair's ground at (u, v) in its samples, on the triangles collision splits a cell into. */
-function floorAt(sample: (i: number, j: number) => number, last: [number, number], u: number, v: number): number {
+/**
+ * The height, in the field's units, of a pair's ground at (u, v) in its samples, on the triangles collision splits a cell
+ * into: the pair whose sample (0, 0) is map sample (i0, j0) and which takes every `step`-th, held to the map.
+ */
+function floorAt(hf: Heightfield, i0: number, j0: number, step: number, last: [number, number], u: number, v: number): number {
   const cu = Math.max(0, Math.min(last[0], u));
   const cv = Math.max(0, Math.min(last[1], v));
   const i = Math.min(Math.floor(cu), last[0] - 1);
   const j = Math.min(Math.floor(cv), last[1] - 1);
   const fu = cu - i, fv = cv - j;
-  const h00 = sample(i, j), h11 = sample(i + 1, j + 1);
+  const a = Math.min(i0 + i * step, hf.nx - 1), b = Math.min(j0 + j * step, hf.nz - 1);
+  const a1 = Math.min(i0 + (i + 1) * step, hf.nx - 1), b1 = Math.min(j0 + (j + 1) * step, hf.nz - 1);
+  const g = hf.view(a, b, a1, b1), h = g.heights, o = g.off, s = g.stride;
+  const h00 = h[o + b * s + a]!, h11 = h[o + b1 * s + a1]!;
   if (fu >= fv) {
-    const h10 = sample(i + 1, j);
+    const h10 = h[o + b * s + a1]!;
     return h00 + (h10 - h00) * fu + (h11 - h10) * fv;
   }
-  const h01 = sample(i, j + 1);
+  const h01 = h[o + b1 * s + a]!;
   return h00 + (h11 - h01) * fu + (h01 - h00) * fv;
 }
 
@@ -191,10 +200,8 @@ export function seaDepth(frame: Float32Array, hf: Heightfield, size: GroundSize,
   const wv = frame[FRAME.ground + 1]! + rz * frame[FRAME.sea + 2]!;
   const ease = Math.max(0, Math.min(1, Math.min(wu, wv, lastWin[0] - wu, lastWin[1] - wv) / EASE));
   share[0] = ease;
-  const coarse = (i: number, j: number): number => hf.heights[Math.min(j * COARSE, hf.nz - 1) * hf.nx + Math.min(i * COARSE, hf.nx - 1)]!;
-  const fine = (i: number, j: number): number => hf.heights[(window[2]! + j) * hf.nx + window[1]! + i]!;
-  let h = ease < 1 ? floorAt(coarse, lastMap, mu, mv) : 0;
-  if (ease > 0) h += (floorAt(fine, lastWin, wu, wv) - h) * ease;
+  let h = ease < 1 ? floorAt(hf, 0, 0, COARSE, lastMap, mu, mv) : 0;
+  if (ease > 0) h += (floorAt(hf, window[1]!, window[2]!, 1, lastWin, wu, wv) - h) * ease;
   return (frame[FRAME.sea]! - h) * frame[FRAME.sea + 1]! + (frame[FRAME.eyeHeight]! + ry);
 }
 
@@ -212,11 +219,11 @@ export function seaBank(frame: Float32Array, hf: Heightfield, size: GroundSize, 
   const cu = Math.max(0, Math.min(last[0]!, frame[FRAME.ground]! + rx * frame[FRAME.sea + 2]!));
   const cv = Math.max(0, Math.min(last[1]!, frame[FRAME.ground + 1]! + rz * frame[FRAME.sea + 2]!));
   const i = Math.min(Math.floor(cu), last[0]! - 1), j = Math.min(Math.floor(cv), last[1]! - 1);
-  for (let k = 0; k < 4; k++) {
-    const at = (window[2]! + j + (k >> 1)) * hf.nx + window[1]! + i + (k & 1);
-    corners[k] = hf.heights[at]!;
-    cornerTints[k] = hf.tint[at]!;
-  }
+  const a = window[1]! + i, b = window[2]! + j;
+  const g = hf.view(a, b, a + 1, b + 1);
+  for (let k = 0; k < 4; k++) corners[k] = g.heights[g.off + (b + (k >> 1)) * g.stride + a + (k & 1)]!;
+  const t = hf.tints(a, b, a + 1, b + 1);
+  for (let k = 0; k < 4; k++) cornerTints[k] = t.tint[t.off + (b + (k >> 1)) * t.stride + a + (k & 1)]!;
   const level = frame[FRAME.sea]! + (frame[FRAME.eyeHeight]! + ry) / frame[FRAME.sea + 1]!;
   return shoreBank(corners, cornerTints, cu - i, cv - j, level, size.cell[SOURCE_WINDOW]!, hf.stepY, fine, out);
 }
@@ -411,16 +418,16 @@ flat in vec3 vColor;
 uniform highp usampler2D uMapHeight, uWindowHeight;
 uniform sampler2D uWaveLong, uWaveShort;
 out vec4 o;
-${LIGHT}${SHADOW_GLSL}${AIR}${SEE_THROUGH_SPLIT}float floorAt(highp usampler2D h, vec2 at, vec2 last) {
+${LIGHT}${SHADOW_GLSL}${AIR}${SEE_THROUGH_SPLIT}float floorAt(highp usampler2D h, vec2 at, vec2 last, ivec2 wrap) {
   vec2 c = clamp(at, vec2(0.0), last);
-  ivec2 k = ivec2(min(floor(c), last - 1.0));
-  vec2 f = c - vec2(k);
-  float h00 = float(texelFetch(h, k, 0).r), h11 = float(texelFetch(h, k + 1, 0).r);
+  ivec2 k = ivec2(min(floor(c), last - 1.0)) + wrap, n = textureSize(h, 0);
+  vec2 f = c - vec2(k - wrap);
+  float h00 = float(texelFetch(h, k % n, 0).r), h11 = float(texelFetch(h, (k + 1) % n, 0).r);
   if (f.x >= f.y) {
-    float h10 = float(texelFetch(h, k + ivec2(1, 0), 0).r);
+    float h10 = float(texelFetch(h, (k + ivec2(1, 0)) % n, 0).r);
     return h00 + (h10 - h00) * f.x + (h11 - h10) * f.y;
   }
-  float h01 = float(texelFetch(h, k + ivec2(0, 1), 0).r);
+  float h01 = float(texelFetch(h, (k + ivec2(0, 1)) % n, 0).r);
   return h00 + (h11 - h01) * f.x + (h01 - h00) * f.y;
 }
 // The twin of glint: a light's glint off facets whose slopes spread by Gauss with variance a2.
@@ -443,8 +450,8 @@ float seaDepth(vec3 rel, out float ease) {
   vec2 lastWin = vec2(textureSize(uWindowHeight, 0) - 1);
   vec2 w = fGround.xy + rel.xz * fSea.z;
   ease = clamp(min(min(w.x, w.y), min(lastWin.x - w.x, lastWin.y - w.y)) / ${g(EASE)}, 0.0, 1.0);
-  float h = ease < 1.0 ? floorAt(uMapHeight, m, lastMap) : 0.0;
-  if (ease > 0.0) h = mix(h, floorAt(uWindowHeight, w, lastWin), ease);
+  float h = ease < 1.0 ? floorAt(uMapHeight, m, lastMap, ivec2(0)) : 0.0;
+  if (ease > 0.0) h = mix(h, floorAt(uWindowHeight, w, lastWin, ivec2(fWindow.xy)), ease);
   return (fSea.x - h) * fSea.y + (fHaze.z + rel.y);
 }
 // The twins of foamHash and foamNoise.

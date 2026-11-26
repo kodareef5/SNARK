@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { partsFolder, readHead, writeMap } from "../../shared/world/mapfile.ts";
@@ -7,7 +7,7 @@ import { writeMapFile } from "../../tools/map/pack.ts";
 import { buildMapSet, mapReleaseManifest, verifyMapPackage } from "../../tools/mapworld/build-set.ts";
 import { flatMap } from "../fixtures/map.ts";
 
-test("map releases verify the actual raw and compressed parts and refuse an existing destination", async () => {
+test("map releases verify the compressed parts and their levels, and refuse an existing destination", async () => {
   const root = mkdtempSync(join(tmpdir(), "snark-map-release-"));
   try {
     const file = join(root, "fixture.snmap"), bytes = writeMap(flatMap(1));
@@ -24,6 +24,9 @@ test("map releases verify the actual raw and compressed parts and refuse an exis
     writeFileSync(metadata, JSON.stringify({ mapHash: head.hash, entrances: [] }));
     await expect(buildMapSet(root, ["fixture"])).rejects.toThrow("Refusing to replace");
     expect(readFileSync(file).equals(bytes)).toBe(true);
+    expect(verifyMapPackage(file, false).hash).toBe(head.hash);
+    expect(() => verifyMapPackage(file, true)).toThrow("Map copies are not at the release levels");
+    expect(existsSync(join(partsFolder(file), head.parts[0]!.name))).toBe(false);
     const part = join(partsFolder(file), head.parts[0]!.name);
     writeFileSync(`${part}.gz`, new Uint8Array([1, 2, 3]));
     expect(() => verifyMapPackage(file)).toThrow();

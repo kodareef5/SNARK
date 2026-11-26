@@ -140,5 +140,11 @@
     "yard_districts": [
       "The Port"
     ]
+  },
+  "height_units": "feet",
+  "ruins": {
+    "budgets": {
+      "maxHeight": 208
+    }
   }
 }

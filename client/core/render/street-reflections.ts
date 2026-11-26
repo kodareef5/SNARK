@@ -372,7 +372,7 @@ export class StreetReflections {
         const [sx, sz] = columns[i]!;
         const gx = Math.max(0, Math.min(hf.nx - 1, Math.round((this.x + distance * sx) / hf.cell)));
         const gz = Math.max(0, Math.min(hf.nz - 1, Math.round((this.z + distance * sz) / hf.cell)));
-        const tint = hf.tint[gz * hf.nx + gx];
+        const tint = hf.tintOf(gx, gz);
         for (let ch = 0; ch < 3; ch++) pixels[at * 4 + ch] = !tint ? captureByte(39/255) : this.groundColor[tint * 4 + ch]!;
         pixels[at * 4 + 3] = 255;
       }

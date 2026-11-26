@@ -2,6 +2,7 @@ import { frame as packedFrame, frameOf as packedFrameOf } from "../../shared/wor
 import { RUIN_SHAPES, type RuinShape } from "../../content/ruins.ts";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { binKey } from "./raster.ts";
 import type { Grid } from "./base.ts";
 import { Mason, type Frame, type Point } from "./ruin-geometry.ts";
 import type { Site, StaticPiece } from "./statics.ts";
@@ -121,14 +122,19 @@ export function makeBridges(site: Site, accept: (m: Mason) => boolean): { record
     const k = `${Math.floor(d.x / 16)},${Math.floor(d.z / 16)}`;
     if (!deckBins.has(k)) deckBins.set(k, []); deckBins.get(k)!.push({ d, width: p.width, path: p });
   }
-  for (let pass = 0; pass < 16; pass++) {
-    for (const { p, deck } of planned) for (const d of deck) {
-      const bx = Math.floor(d.x / 16); const bz = Math.floor(d.z / 16);
-      for (let x = bx - 2; x <= bx + 2; x++) for (let z = bz - 2; z <= bz + 2; z++) for (const other of deckBins.get(`${x},${z}`) ?? []) {
-        if (other.path === p) continue;
-        if (Math.abs(other.d.y - d.y) < 3.2 && Math.hypot(other.d.x - d.x, other.d.z - d.z) < (p.width + other.width) / 2 + 2) d.y = other.d.y = Math.max(d.y, other.d.y);
-      }
+  // Which other ways' deck points stand near enough beside each, in the order the bins list them: only heights change.
+  const beside = planned.map(({ p, deck }) => deck.map((d) => {
+    const near: DeckPoint[] = [];
+    const bx = Math.floor(d.x / 16); const bz = Math.floor(d.z / 16);
+    for (let x = bx - 2; x <= bx + 2; x++) for (let z = bz - 2; z <= bz + 2; z++) for (const other of deckBins.get(`${x},${z}`) ?? []) {
+      if (other.path !== p && Math.hypot(other.d.x - d.x, other.d.z - d.z) < (p.width + other.width) / 2 + 2) near.push(other.d);
     }
+    return near;
+  }));
+  for (let pass = 0; pass < 16; pass++) {
+    planned.forEach(({ deck }, k) => deck.forEach((d, n) => {
+      for (const o of beside[k]![n]!) if (Math.abs(o.y - d.y) < 3.2) d.y = o.y = Math.max(d.y, o.y);
+    }));
     for (const { deck } of planned) for (const direction of [1, -1]) {
       for (let i = direction > 0 ? 1 : deck.length - 2; i >= 0 && i < deck.length; i += direction) {
         const a = deck[i - direction]!; const b = deck[i]!;
@@ -369,18 +375,24 @@ export function bridgeHoles(frame: Frame, corridors: readonly Corridor[], base: 
   return { ...frame, rings };
 }
 
-export function corridorIndex(corridors: readonly Corridor[]): ((frame: Frame) => Corridor[]) & { add: (c: Corridor) => void } {
-  const bins = new Map<string, Corridor[]>();
+export function corridorIndex(corridors: readonly Corridor[]): ((frame: Frame) => Corridor[]) & { add: (c: Corridor) => void; some: (frame: Frame, test: (c: Corridor) => boolean) => boolean } {
+  const bins = new Map<number, Corridor[]>();
   const add = (c: Corridor): void => {
     for (let x = Math.floor((Math.min(c.a[0], c.b[0]) - c.width) / 128); x <= Math.floor((Math.max(c.a[0], c.b[0]) + c.width) / 128); x++) for (let z = Math.floor((Math.min(c.a[1], c.b[1]) - c.width) / 128); z <= Math.floor((Math.max(c.a[1], c.b[1]) + c.width) / 128); z++) {
-      const k = `${x},${z}`; if (!bins.has(k)) bins.set(k, []); bins.get(k)!.push(c);
+      const k = binKey(x, z); const bin = bins.get(k); if (bin) bin.push(c); else bins.set(k, [c]);
     }
   };
   for (const c of corridors) add(c);
   const lookup = (frame: Frame): Corridor[] => {
     const found = new Set<Corridor>(); const radius = Math.hypot(frame.width, frame.depth) / 2;
-    for (let x = Math.floor((frame.x - radius) / 128); x <= Math.floor((frame.x + radius) / 128); x++) for (let z = Math.floor((frame.z - radius) / 128); z <= Math.floor((frame.z + radius) / 128); z++) for (const c of bins.get(`${x},${z}`) ?? []) found.add(c);
+    for (let x = Math.floor((frame.x - radius) / 128); x <= Math.floor((frame.x + radius) / 128); x++) for (let z = Math.floor((frame.z - radius) / 128); z <= Math.floor((frame.z + radius) / 128); z++) for (const c of bins.get(binKey(x, z)) ?? []) found.add(c);
     return [...found];
   };
-  return Object.assign(lookup, { add });
+  /** Whether `test` holds for a corridor lookup would give, without making the list: one in more than one bin is tried more than once. */
+  const some = (frame: Frame, test: (c: Corridor) => boolean): boolean => {
+    const radius = Math.hypot(frame.width, frame.depth) / 2;
+    for (let x = Math.floor((frame.x - radius) / 128); x <= Math.floor((frame.x + radius) / 128); x++) for (let z = Math.floor((frame.z - radius) / 128); z <= Math.floor((frame.z + radius) / 128); z++) for (const c of bins.get(binKey(x, z)) ?? []) if (test(c)) return true;
+    return false;
+  };
+  return Object.assign(lookup, { add, some });
 }

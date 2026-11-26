@@ -277,7 +277,8 @@ export function resolveSlots(dims: MapDims, hf: Heightfield, seed: number, perCh
   }
   // A place is a whole number of 65536ths of a chunk, and samples are `per` of them apart.
   const per = (hf.cell * 65536) / CHUNK_SIZE;
-  const height = (i: number, j: number): number => hf.heights[Math.min(hf.nz - 1, Math.max(0, j)) * hf.nx + Math.min(hf.nx - 1, Math.max(0, i))]!;
+  const all = hf.view(0, 0, hf.nx - 1, hf.nz - 1);
+  const height = (i: number, j: number): number => all.heights[all.off + Math.min(hf.nz - 1, Math.max(0, j)) * all.stride + Math.min(hf.nx - 1, Math.max(0, i))]!;
   const fits = (kind: number, ux: number, uz: number): boolean => {
     const i = Math.floor((ux + per / 2) / per);
     const j = Math.floor((uz + per / 2) / per);
@@ -320,15 +321,17 @@ export function resolveSlots(dims: MapDims, hf: Heightfield, seed: number, perCh
  * one of its kind in the chunk already is takes the next variant along that none of them is, at its own size. So two
  * heaps side by side are two different heaps, but for two in neighbouring chunks.
  */
-export function placedNodes(dims: MapDims, hf: Heightfield, seed: number, perChunk: number, forms: NodeForms, kindsAt: KindsAt, out: Uint8Array, other: Uint8Array): NodeSource {
+export function placedNodes(dims: MapDims, hf: Heightfield, seed: number, perChunk: number, forms: NodeForms, kindsAt: KindsAt, slots: SlotsOf): NodeSource {
   const d: Drawn = { x: 0, z: 0, ux: 0, uz: 0, g: 0, key: 0 };
+  const bits: SlotBits = { out: NO_BITS, other: NO_BITS, at: 0 };
   /** The kind a slot grows as, 0 for none, with `d` drawn for it. */
   const kindOf = (chunk: number, index: number): number => {
-    const bit = chunk * perChunk + index;
-    if (isSet(out, bit)) return 0;
+    if (!slots(chunk, bits)) return 0;
+    const bit = bits.at + index;
+    if (isSet(bits.out, bit)) return 0;
     draw(dims, seed, chunk, index, d);
     const kind = drawnKind(kindsAt, d);
-    return kind !== 0 && isSet(other, bit) ? forms.footElse[kind]! : kind;
+    return kind !== 0 && isSet(bits.other, bit) ? forms.footElse[kind]! : kind;
   };
   // The forms of the last chunk asked for whose slots keep apart, worked out together.
   let held = -1;
@@ -380,7 +383,29 @@ export function placedNodes(dims: MapDims, hf: Heightfield, seed: number, perChu
 /** Nodes scattered by a hash on `hf`, whether each stands decided once as the source is made (resolveSlots, placedNodes). */
 export function scatterNodes(dims: MapDims, hf: Heightfield, seed: number, perChunk: number, forms: NodeForms, kindsAt: KindsAt): NodeSource {
   const { out, other } = resolveSlots(dims, hf, seed, perChunk, forms, kindsAt);
-  return placedNodes(dims, hf, seed, perChunk, forms, kindsAt, out, other);
+  return placedNodes(dims, hf, seed, perChunk, forms, kindsAt, denseSlots(out, other, perChunk));
+}
+
+/** Where a chunk's slots' bits are: bit `at + index` of `out` and `other` is its slot `index`'s. */
+export interface SlotBits {
+  out: Uint8Array;
+  other: Uint8Array;
+  at: number;
+}
+
+/** Sets `into` to where chunk `chunk`'s slots' bits are and gives true; false where none is held, and no slot stands. */
+export type SlotsOf = (chunk: number, into: SlotBits) => boolean;
+
+const NO_BITS = new Uint8Array(0);
+
+/** Every chunk's slots' bits in one pair of arrays, `perChunk` a chunk, as resolveSlots gives them. */
+export function denseSlots(out: Uint8Array, other: Uint8Array, perChunk: number): SlotsOf {
+  return (chunk, into) => {
+    into.out = out;
+    into.other = other;
+    into.at = chunk * perChunk;
+    return true;
+  };
 }
 
 /** chunk * 65536 + slot, as for structures. */

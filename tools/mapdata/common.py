@@ -45,8 +45,9 @@ class Map:
         return Affine(self.width / cols, 0, self.b[0], 0, -self.depth / rows, self.b[3])
 
     def fine_shape(self):
-        """Pixel areas of the fine layers, rows and columns: 8,192 across 8,128 m, so about 0.992 m, and a multiple of 4."""
-        return 4 * round(self.depth * 2048 / 8128), 4 * round(self.width * 2048 / 8128)
+        """Pixel areas of the fine layers, rows and columns: a metre each, edges on whole projection metres, so every cut
+        of a city puts its pixels in the same places."""
+        return round(self.depth), round(self.width)
 
     def lonlat_bounds(self, margin=0.0):
         c = self.cfg['corners_lon_lat']
@@ -97,6 +98,29 @@ def relation_polygon(members, to_map):
     return None if area.is_empty else area
 
 
+def nearest_from(m, path, band=512):
+    """A raster in its own projection sampled at the 2 m grid's samples, each taking the pixel its point falls in, the
+    point projected exactly: GDAL's warp picks pixels by the output's extent, so two cuts disagreed where they meet."""
+    import rasterio
+    from pyproj import Transformer
+    with rasterio.open(path) as src:
+        a, t, crs = src.read(1), src.transform, src.crs
+    to = Transformer.from_crs(m.crs, crs, always_xy=True)
+    step = m.cfg['spacing_m']
+    out = np.zeros(m.shape, a.dtype)
+    east = m.b[0] + step * np.arange(m.shape[1])
+    for r0 in range(0, m.shape[0], band):
+        rows = np.arange(r0, min(m.shape[0], r0 + band))
+        x, y = to.transform(*np.meshgrid(east, m.b[3] - step * rows))
+        c = np.floor((x - t.c) / t.a).astype(np.int64)
+        r = np.floor((y - t.f) / t.e).astype(np.int64)
+        ok = (c >= 0) & (c < a.shape[1]) & (r >= 0) & (r < a.shape[0])
+        v = np.zeros(c.shape, a.dtype)
+        v[ok] = a[r[ok], c[ok]]
+        out[rows] = v
+    return out
+
+
 def save(a, path):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -113,16 +137,32 @@ class Manifest:
     """downloads.json: per kept file, the exact request, its source and licence line, bytes, SHA-256 and time."""
 
     def __init__(self, m):
+        import threading
         self.path = m.root / 'downloads.json'
         self.records = json.loads(self.path.read_text()) if self.path.exists() else {}
+        self.lock = threading.Lock()
 
     def record(self, name, url, source, licence, data, method='GET', body=None):
-        self.records[name] = {'url': url, 'method': method, 'source': source, 'licence': licence, 'bytes': len(data),
-                              'sha256': hashlib.sha256(data).hexdigest(),
-                              'retrieved_utc': dt.datetime.now(dt.timezone.utc).isoformat()}
+        entry = {'url': url, 'method': method, 'source': source, 'licence': licence, 'bytes': len(data),
+                 'sha256': hashlib.sha256(data).hexdigest(), 'retrieved_utc': dt.datetime.now(dt.timezone.utc).isoformat()}
         if body is not None:
-            self.records[name]['body'] = body
-        self.path.write_text(json.dumps(self.records, indent=2, sort_keys=True) + '\n')
+            entry['body'] = body
+        with self.lock:
+            self.records[name] = entry
+            self.save()
+
+    def asked(self, name, url, method, body):
+        """Whether the file kept as `name` answers this request: a POST by its body alone, as any of its servers answers it."""
+        r = self.records.get(name)
+        if r is None or r.get('method', 'GET') != method:
+            return False
+        return r.get('body') == body if body is not None else r.get('url') == url
+
+    def save(self):
+        # Whole or not at all, however many threads record at once.
+        part = self.path.with_name(self.path.name + '.part')
+        part.write_text(json.dumps(self.records, indent=2, sort_keys=True) + '\n')
+        part.replace(self.path)
 
 
 def get(url, params=None, data=None, tries=6, pause=4, timeout=300, accept=None):

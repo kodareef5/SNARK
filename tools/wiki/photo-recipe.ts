@@ -19,7 +19,7 @@ export function photoChunks(dims: MapDims, shot: SceneBrief, position: Position)
 
 export interface PhotoStatus {
   near: boolean;
-  whole: boolean;
+  settled: boolean;
   left: number;
   roads: number;
   frames: number;
@@ -31,6 +31,6 @@ export interface PhotoStatus {
 }
 
 export function photoReady(shot: SceneBrief, status: PhotoStatus): boolean {
-  return status.near && status.whole && status.left === 0 && status.roads === 0 && status.frames >= 24
+  return status.near && status.settled && status.left === 0 && status.roads === 0 && status.frames >= 24
     && status.quiet >= 6 && status.milliseconds >= 3200 && (!shot.city || status.city > 0);
 }

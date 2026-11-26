@@ -22,6 +22,9 @@ function mix(a: number, b: number, c: number, d: number): number {
   return (h ^ (h >>> 15)) >>> 0;
 }
 
+/** 32 mixed bits of a building's id, all 48 of its bits read: what seeds its heap, its layout, its tint and its roof. */
+export const seedOf = (id: number): number => mix(id % 4294967296, Math.floor(id / 4294967296), 0x5eed, 0x48);
+
 /** The 48 bits of (x, z, area) and a place `nth` among those that share them. */
 function idOf(x: number, z: number, area: number, nth: number): number {
   return (mix(x, z, area, nth * 2 + 1) & 0xffff) * 4294967296 + mix(x, z, area, nth * 2);

@@ -74,7 +74,8 @@ export function nearClient(map: MapData) {
           const c = j * dims.chunksX + i;
           if (held[c] === 1) continue;
           held[c] = 1;
-          for (let s = city.first[c]!; s < city.first[c + 1]!; s++) structs.put(c, s - city.first[c]!, city.kind[s]!, city.x[s]!, city.y[s]!, city.z[s]!, city.yaw[s]!, 0, reg.maxHp[city.kind[s]!]!, 1);
+          const t = city.rows(c);
+          for (let s = t?.from(c) ?? 0; t && s < t.to(c); s++) structs.put(c, s - t.from(c), t.kind[s]!, t.x[s]!, t.y[s]!, t.z[s]!, t.yaw[s]!, 0, reg.maxHp[t.kind[s]!]!, 1);
           structs.setVersion(c, 1);
         }
       }
@@ -85,8 +86,8 @@ export function nearClient(map: MapData) {
     },
     /** Sets the map's piece down in `slot` of `chunk` again. */
     restore(chunk: number, slot: number): void {
-      const i = city.first[chunk]! + slot;
-      structs.put(chunk, slot, city.kind[i]!, city.x[i]!, city.y[i]!, city.z[i]!, city.yaw[i]!, 0, reg.maxHp[city.kind[i]!]!, ++version);
+      const t = city.rows(chunk)!, i = t.from(chunk) + slot;
+      structs.put(chunk, slot, t.kind[i]!, t.x[i]!, t.y[i]!, t.z[i]!, t.yaw[i]!, 0, reg.maxHp[t.kind[i]!]!, ++version);
     },
     frame(): FramePacket {
       scene.now = now += 1000 / 60;

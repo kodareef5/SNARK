@@ -7,7 +7,7 @@
 // of the walk network (base/walks.geojson); and the parking lots with stalls (base/stalls.json).
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { binKey } from "./raster.ts";
+import { binKey, textSeed } from "./raster.ts";
 
 /** A road piece's stretch between two of its points, in engine metres, with its class (TIGER MTFCC) and half width. */
 export interface Segment { ax: number; az: number; bx: number; bz: number; half: number; mtfcc: string; line: number; }
@@ -15,6 +15,10 @@ export interface Segment { ax: number; az: number; bx: number; bz: number; half:
 /** What the data says of a road piece. Sides are of its drawn direction: left, then right. */
 export interface Piece {
   id: string; mtfcc: string; highway: string | null; name: string | null; lanes: number; half: number;
+  /** 32 bits of its id, what seeds what stands along it. */
+  seed: number;
+  /** Metres along the whole piece where this cut's line of it starts: 0 but where the frame cut it. */
+  from: number;
   /** 1 one way as drawn, -1 one way against it, 0 both ways. */
   oneway: number;
   sidewalk: string | null; bridge: boolean; tunnel: boolean;
@@ -71,6 +75,12 @@ const read = <T,>(file: string): T | null => (existsSync(file) ? (JSON.parse(rea
 const text = (v: unknown): string | null => (typeof v === "string" ? v : null);
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
+/** A road piece's id in the data, or for one the data gives none its row's. */
+export const lineId = (f: { properties: Record<string, unknown> }, row: number): string => text(f.properties.id) ?? `line:${row}`;
+
+/** Two texts in order, as ids are ranked where a row's place in the data must not decide. */
+export const byText = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
 /** The street data of the work folder `source`, its metres turned to the engine's by `toLattice`. */
 export function readStreetGraph(source: string, toLattice: (e: number, n: number) => [number, number]): StreetGraph {
   const segments: Segment[] = []; const pieces: Piece[] = [];
@@ -88,7 +98,7 @@ export function readStreetGraph(source: string, toLattice: (e: number, n: number
     const oneway = num(p.oneway_dir) ?? (p.oneway === true ? 1 : 0);
     if ("oneway_dir" in p || "maxspeed_mph" in p || "lit" in p) tags = true;
     pieces.push({
-      id: text(p.id) ?? `line:${line}`, mtfcc: text(p.mtfcc) ?? "", highway: text(p.highway), name: text(p.name), lanes: num(p.lanes) ?? 2,
+      id: lineId(f, line), seed: textSeed(lineId(f, line)), from: num(p.from_m) ?? 0, mtfcc: text(p.mtfcc) ?? "", highway: text(p.highway), name: text(p.name), lanes: num(p.lanes) ?? 2,
       half: (num(p.width_m) ?? 8) / 2, oneway, sidewalk: text(p.sidewalk), bridge: p.bridge === true, tunnel: p.tunnel === true,
       maxspeed: num(p.maxspeed_mph), lit: typeof p.lit === "boolean" ? p.lit : null, parking: [text(p.parking_left), text(p.parking_right)],
     });
@@ -119,7 +129,7 @@ export function readStreetGraph(source: string, toLattice: (e: number, n: number
   const nodes = [...at.values()];
   for (const n of nodes) {
     const kept: Way[] = [];
-    for (const w of n.ways.sort((a, b) => pieces[b.line]!.half - pieces[a.line]!.half || a.line - b.line)) if (!kept.some((k) => k.dx * w.dx + k.dz * w.dz > 0.97)) kept.push(w);
+    for (const w of n.ways.sort((a, b) => pieces[b.line]!.half - pieces[a.line]!.half || byText(pieces[a.line]!.id, pieces[b.line]!.id) || a.line - b.line)) if (!kept.some((k) => k.dx * w.dx + k.dz * w.dz > 0.97)) kept.push(w);
     n.ways = kept.sort((a, b) => Math.atan2(a.dz, a.dx) - Math.atan2(b.dz, b.dx));
   }
   const junctions = nodes.filter((n) => n.ways.length >= 3);

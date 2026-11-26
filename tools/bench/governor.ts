@@ -130,7 +130,8 @@ export function cityScenes(path: string): [string, () => Counting][] {
     for (let j = cz - 3; j <= cz + 3; j++) {
       for (let i = cx - 3; i <= cx + 3; i++) {
         const c = j * map.dims.chunksX + i;
-        for (let s = statics.first[c]!; s < statics.first[c + 1]!; s++) structs.put(c, s - statics.first[c]!, statics.kind[s]!, statics.x[s]!, statics.y[s]!, statics.z[s]!, statics.yaw[s]!, 0, reg.maxHp[statics.kind[s]!]!, 1);
+        const t = statics.rows(c);
+        for (let s = t?.from(c) ?? 0; t && s < t.to(c); s++) structs.put(c, s - t.from(c), t.kind[s]!, t.x[s]!, t.y[s]!, t.z[s]!, t.yaw[s]!, 0, reg.maxHp[t.kind[s]!]!, 1);
         structs.setVersion(c, 1);
         held[c] = 1;
       }

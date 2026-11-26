@@ -2,9 +2,8 @@
 // of survivors (now, or the playhead's moment with where each had just been), with the chosen survivor's track and who
 // held the chosen item. It moves under one pointer, zooms under two or the wheel, and a tap chooses a survivor.
 
-import { CHUNK_SIZE } from "../../shared/coords.ts";
 import { readPart, type MapPart } from "../../shared/world/mapfile.ts";
-import { decodeStreets, type Stretch } from "../../shared/world/streets.ts";
+import type { Stretch } from "../../shared/world/streets.ts";
 import { latLonText, latOf, lonOf } from "../../shared/world/coords.ts";
 import { levelFor } from "../../shared/world/tactical.ts";
 import { baseSquares, readBases } from "../core/admin/bases.ts";
@@ -228,7 +227,7 @@ function wantStreets(): void {
       void fetch(url).then(async (r) => {
         if (!r.ok) throw Error(String(r.status));
         const piece = readPart(head, part, new Uint8Array(await r.arrayBuffer()));
-        if (piece.kind === "streets") streets.set(part.name, decodeStreets(piece.bytes, piece.sq.ox * CHUNK_SIZE, piece.sq.oz * CHUNK_SIZE).stretches);
+        if (piece.kind === "streets") streets.set(part.name, piece.part.stretches);
         while (streets.size > 42) streets.delete(streets.keys().next().value!);
       }).catch(() => {
         streets.set(part.name, []);

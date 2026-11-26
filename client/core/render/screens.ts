@@ -7,7 +7,7 @@
 import { CHUNK_SIZE } from "../../../shared/coords.ts";
 import { SCREENS } from "../../../shared/video/clip.ts";
 import type { ScreenFace } from "../../../shared/video/face.ts";
-import type { CityStatics } from "../../../shared/world/city.ts";
+import type { CitySquare, CityStatics } from "../../../shared/world/city.ts";
 import type { ChunkTable, StructureStore } from "../../../shared/world/structures.ts";
 import type { Camera } from "./camera.ts";
 import { FACE, FACE_CRT, FACE_FLOATS, FACE_HIGH, FACE_LED, FACE_TOP, FACE_TOP_BEFORE, FACE_WIDE, MAX_FACES, type FramePacket } from "./packet.ts";
@@ -66,10 +66,9 @@ export class FaceFinder {
   private readonly faces: readonly (ScreenFace | null)[];
   /** By kind, its type's place in SCREENS, or 0 where it has no face. */
   private readonly typeOf: Uint8Array;
-  /** The map's statics that have a face, by chunk: rows `first[c]` up to `first[c + 1]` of `rows`, for `statics`. */
+  /** The map's statics, a square a sector, and each square's rows that have a face. */
   private statics: CityStatics | null = null;
-  private first = new Uint32Array(1);
-  private rows = new Uint32Array(0);
+  private faced = new WeakMap<CitySquare, { first: Uint32Array; rows: Uint32Array }>();
   private held: Held[] = [];
 
   constructor(faces: readonly (ScreenFace | null)[]) {
@@ -109,10 +108,12 @@ export class FaceFinder {
             this.consider(cam, reach, chunk * 65536 + s, t.kind[s]!, t.x[s]!, t.y[s]!, t.z[s]!, (t.yaw[s]! / 65536) * TAU);
           }
         } else if (city) {
-          const from = city.first[chunk]!;
-          for (let k = this.first[chunk]!; k < this.first[chunk + 1]!; k++) {
-            const row = this.rows[k]!;
-            this.consider(cam, reach, chunk * 65536 + (row - from), city.kind[row]!, city.x[row]!, city.y[row]!, city.z[row]!, (city.yaw[row]! / 65536) * TAU);
+          const square = city.squareOf(chunk);
+          if (!square) continue;
+          const m = square.map, from = square.mapFrom(chunk), faced = this.facedOf(square, city.bentKind), at = square.at(chunk);
+          for (let k = faced.first[at]!; k < faced.first[at + 1]!; k++) {
+            const row = faced.rows[k]!, kind = city.bentKind[m.kind[row]!]!;
+            this.consider(cam, reach, chunk * 65536 + (row - from), kind, m.x[row]!, m.y[row]!, m.z[row]!, (m.yaw[row]! / 65536) * TAU);
           }
         }
       }
@@ -176,26 +177,30 @@ export class FaceFinder {
     return slots;
   }
 
-  /** The map's statics that have a face, by chunk. */
+  /** A new map's statics: what was found in the last is let go. */
   private index(statics: CityStatics | null): void {
     this.statics = statics;
     this.held = [];
-    if (!statics) {
-      this.first = new Uint32Array(1);
-      this.rows = new Uint32Array(0);
-      return;
-    }
-    const chunks = statics.first.length - 1, first = new Uint32Array(chunks + 1);
-    let n = 0;
+    this.faced = new WeakMap();
+  }
+
+  /** A square's map rows that have a face, by its chunks: rows `first[k]` up to `first[k + 1]` of `rows`. */
+  private facedOf(square: CitySquare, registryKinds: Uint16Array): { first: Uint32Array; rows: Uint32Array } {
+    const known = this.faced.get(square);
+    if (known) return known;
+    const m = square.map, chunks = m.first.length - 1, first = new Uint32Array(chunks + 1);
+    const rows: number[] = [];
     for (let c = 0; c < chunks; c++) {
-      first[c] = n;
-      for (let r = statics.first[c]!; r < statics.first[c + 1]!; r++) if (this.typeOf[statics.kind[r]!]! > 0) n++;
+      first[c] = rows.length;
+      for (let r = m.first[c]!; r < m.first[c + 1]!; r++) {
+        const kind = registryKinds[m.kind[r]!]!;
+        if (this.typeOf[kind]! > 0) rows.push(r);
+      }
     }
-    first[chunks] = n;
-    const rows = new Uint32Array(n);
-    for (let c = 0, k = 0; c < chunks; c++) for (let r = statics.first[c]!; r < statics.first[c + 1]!; r++) if (this.typeOf[statics.kind[r]!]! > 0) rows[k++] = r;
-    this.first = first;
-    this.rows = rows;
+    first[chunks] = rows.length;
+    const made = { first, rows: Uint32Array.from(rows) };
+    this.faced.set(square, made);
+    return made;
   }
 }
 

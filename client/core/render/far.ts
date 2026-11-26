@@ -39,6 +39,8 @@ export const FAR_TILE_SPAN = FAR_SPAN - 4096;
 export const FAR_BUFFER = 2 << 20;
 /** The far city's tiles and the city's blocks are drawn with the next one (farcity.ts, cityblocks.ts). */
 export const CITY_BUFFER = FAR_BUFFER + 1;
+/** The instance buffer the landmarks are drawn with: one instance a landmark, at the origin, turned by its yaw. */
+export const LANDMARK_BUFFER = FAR_BUFFER + 3;
 /** What the far blocks hold on the card, as residency.ts reserves it. */
 const RESERVE = "far blocks";
 /**
@@ -159,6 +161,9 @@ export function farColours(reg: Registry, pack: Pack, meshOf: (kind: number) => 
 
 /** The lowest ground any level of the drawn terrain puts under the cell of samples (i0, j0) to (i0 + n, j0 + n). */
 function lowestUnder(hf: Heightfield, i0: number, j0: number, n: number): number {
+  // The coarsest level's cells hold every finer one's.
+  const most = 1 << (FOOT_LEVELS - 1);
+  const v = hf.view(Math.min(hf.nx - 1, Math.floor(i0 / most) * most), Math.min(hf.nz - 1, Math.floor(j0 / most) * most), Math.min(hf.nx - 1, Math.ceil((i0 + n) / most) * most), Math.min(hf.nz - 1, Math.ceil((j0 + n) / most) * most));
   let low = Infinity;
   for (let level = 0; level < FOOT_LEVELS; level++) {
     const s = 1 << level;
@@ -166,7 +171,7 @@ function lowestUnder(hf: Heightfield, i0: number, j0: number, n: number): number
     const jb = Math.ceil((j0 + n) / s) * s;
     for (let j = Math.floor(j0 / s) * s; j <= jb; j += s) {
       for (let i = Math.floor(i0 / s) * s; i <= ib; i += s) {
-        const y = hf.sample(i < hf.nx ? i : hf.nx - 1, j < hf.nz ? j : hf.nz - 1);
+        const y = hf.minY + v.heights[v.off + (j < hf.nz ? j : hf.nz - 1) * v.stride + (i < hf.nx ? i : hf.nx - 1)]! * hf.stepY;
         if (y < low) low = y;
       }
     }

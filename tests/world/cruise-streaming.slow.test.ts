@@ -9,7 +9,7 @@ import { InlineCityMaker, type CityJob } from "../../client/core/render/citymake
 import { LANDMARK_BUFFER } from "../../client/core/render/farlandmarks.ts";
 import { DRAW_PLAIN, DRAW_RANGED, type FramePacket } from "../../client/core/render/packet.ts";
 import { NODE_BUFFERS } from "../../client/core/render/scene.ts";
-import { STRUCT_UNITS } from "../../shared/coords.ts";
+import { STRUCT_UNITS, chunkCount } from "../../shared/coords.ts";
 import { landmarkPoint } from "../../shared/world/landmark.ts";
 import { MODE_GHOST } from "../../shared/sim/character.ts";
 import { F_GROUNDED } from "../../shared/sim/entities.ts";
@@ -45,7 +45,10 @@ artTest("each drawn piece of the ship and the yacht has one owner from the quay 
     expect(marks.placed.map(l => l.far.name)).toEqual(names);
     // Each far piece belongs to the chunk where a static of its landmark stands at the point the piece stands.
     const statics = source.statics, stands = new Set<string>(), point = [0, 0, 0];
-    for (let c = 0; c < statics.first.length - 1; c++) for (let i = statics.first[c]!; i < statics.first[c + 1]!; i++) if (own.has(statics.kind[i]!)) stands.add(`${c}:${statics.x[i]},${statics.y[i]},${statics.z[i]}`);
+    for (let c = 0; c < chunkCount(statics.dims); c++) {
+      const t = statics.rows(c);
+      for (let i = t?.from(c) ?? 0; t && i < t.to(c); i++) if (own.has(t.kind[i]!)) stands.add(`${c}:${t.x[i]},${t.y[i]},${t.z[i]}`);
+    }
     const snap = (v: number) => Math.fround(Math.round(v * STRUCT_UNITS) / STRUCT_UNITS);
     for (const l of marks.placed) for (let i = 0; i < l.far.pieces; i++) {
       landmarkPoint(l.x, l.y, l.z, l.yaw, [l.far.at[i * 3]!, l.far.at[i * 3 + 1]!, l.far.at[i * 3 + 2]!], point);

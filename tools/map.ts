@@ -4,7 +4,7 @@
 //   bun tools/map.ts unpack <file.snmap> <folder>   the folder a map is built from
 //   bun tools/map.ts proving <out.snmap>            the proving ground, as the server runs it with no --map
 //   bun tools/map.ts info <file.snmap>              what a file holds
-//   bun tools/map.ts pack <file.snmap>              its head's and parts' files and their copies for the wire beside it
+//   bun tools/map.ts pack <file.snmap>              its head's and parts' copies for the wire beside it
 //                                                   (tools/map/pack.ts), which a build writes too
 //
 // build, proving and pack take --release for the tightest copies, as a map that ships has.
@@ -79,9 +79,8 @@ import { partsTable, writeMapFile } from "./map/pack.ts";
 const registry = () => compileContent(CORE_CONTENT).registry!;
 const WEBGL2_TEXTURE = 2048;
 
-/** What a map holds, in lines, and the content ids it names that the core pack lacks. */
-export function describe(file: Uint8Array): string[] {
-  const map = parseMap(file);
+/** What a map holds, in lines, and the content ids it names that the core pack lacks; `map` is the file parsed, if held. */
+export function describe(file: Uint8Array, map: ReturnType<typeof parseMap> = parseMap(file)): string[] {
   const { chunksX, chunksZ, frameX, frameZ, originX, originZ } = map.dims;
   let low = 65535;
   let high = 0;
@@ -147,7 +146,7 @@ export function made(map: MapData): MapData {
   return { ...resolveNodes(map, reg), tops: mapTops(map, reg) };
 }
 
-/** Writes the map and its parts' files with their copies, a release build's if `release`, and says what it holds and what a client fetches of it. */
+/** Writes the map and its parts' copies, a release build's if `release`, and says what it holds and what a client fetches of it. */
 export async function save(path: string, map: MapData | Uint8Array, release = false): Promise<void> {
   const file = map instanceof Uint8Array ? map : writeMap(map);
   const packed = await writeMapFile(path, file, release);

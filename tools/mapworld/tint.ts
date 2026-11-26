@@ -5,6 +5,7 @@
 
 import { S, type Ground, type World } from "./ground.ts";
 import { fbm, hash3 } from "./raster.ts";
+import { seedOf } from "./building-id.ts";
 import { VERGE_TINTS } from "../../shared/world/streets.ts";
 
 /** Each surface's colours: the first is the most common, and noise picks among the rest. */
@@ -102,8 +103,8 @@ export function makeTint(ground: Ground, world: World): Uint8Array {
       const ruin = heaps.ruins[owner]!;
       const style = world.districts[ruin.district - 1]?.style ?? "residential";
       const list = RUIN[style] ?? RUIN.residential!;
-      // By its footprint's own id, not its place among the ruins, so a footprint added or taken away recolours no other.
-      let k = list[hash3(ruin.building.id, 7, 0) % list.length]!;
+      // By its footprint's id from its place and shape: a footprint added, taken away or renumbered recolours no other.
+      let k = list[hash3(seedOf(ruin.building.id), 7, 0) % list.length]!;
       const v = fbm(x, z, 10, 401, 2);
       if (s === S.SPILL || s === S.FLOOR) k = v < 0.45 ? k - 1 : k;
       else k = v < 0.33 ? k - 1 : v > 0.68 ? k + 1 : k;

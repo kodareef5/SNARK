@@ -70,8 +70,9 @@ export function rayBox(ox: number, oy: number, oz: number, dx: number, dy: numbe
   return t0;
 }
 
-/** The first sample of the cell rayGround last met the ground in, and whether that was the cell's upper triangle, over its -X, +Z corner. */
-let groundCell = 0;
+/** The cell rayGround last met the ground in, and whether that was the cell's upper triangle, over its -X, +Z corner. */
+let groundI = 0;
+let groundJ = 0;
 let groundUpper = false;
 
 /**
@@ -108,7 +109,7 @@ export function rayGround(hf: Heightfield, ox: number, oy: number, oz: number, d
 
   const cell = hf.cell;
   const nx = hf.nx;
-  const hts = hf.heights;
+  const nz = hf.nz;
   const toCell = 1 / cell;
   // Heights are compared in stored units, which a power-of-two step makes exact.
   const toUnits = 1 / hf.stepY;
@@ -118,7 +119,17 @@ export function rayGround(hf: Heightfield, ox: number, oy: number, oz: number, d
   if (i < 0) i = 0;
   else if (i > nx - 2) i = nx - 2;
   if (j < 0) j = 0;
-  else if (j > hf.nz - 2) j = hf.nz - 2;
+  else if (j > nz - 2) j = nz - 2;
+  // The cells of the piece of the ground the ray is over, and its samples. Past its edge the ray asks for the next.
+  const span = hf.span;
+  let bi0 = i - (i % span);
+  let bj0 = j - (j % span);
+  let bi1 = bi0 + span - 1 < nx - 2 ? bi0 + span - 1 : nx - 2;
+  let bj1 = bj0 + span - 1 < nz - 2 ? bj0 + span - 1 : nz - 2;
+  let view = hf.view(bi0, bj0, bi1 + 1, bj1 + 1);
+  let hts = view.heights;
+  let stride = view.stride;
+  let off = view.off;
   const di = dx > 0 ? 1 : -1;
   const dj = dz > 0 ? 1 : -1;
   const ix = dx !== 0 ? 1 / dx : 0;
@@ -132,11 +143,11 @@ export function rayGround(hf: Heightfield, ox: number, oy: number, oz: number, d
     let tb = tx < tz ? tx : tz;
     if (tb > t1) tb = t1;
     const qb = (oy + dy * tb - minY) * toUnits;
-    const k = j * nx + i;
+    const k = off + j * stride + i;
     const h00 = hts[k]!;
     const h10 = hts[k + 1]!;
-    const h01 = hts[k + nx]!;
-    const h11 = hts[k + nx + 1]!;
+    const h01 = hts[k + stride]!;
+    const h11 = hts[k + stride + 1]!;
     const top = Math.max(h00, h10, h01, h11);
     // Over every corner at both ends, the ray is over the whole cell.
     if (qa <= top || qb <= top) {
@@ -149,7 +160,7 @@ export function rayGround(hf: Heightfield, ox: number, oy: number, oz: number, d
       const sb = ub - vb;
       // How far over the ground the ray is, at each end and where it crosses the diagonal.
       const fa = qa - groundIn(h00, h10, h01, h11, ua, va, sa < 0);
-      if (fa < 0) return metAt(k, sa < 0, ta);
+      if (fa < 0) return metAt(i, j, sa < 0, ta);
       let tm = tb;
       let fm = qb - groundIn(h00, h10, h01, h11, ub, vb, sa < 0);
       if (sa < 0 !== sb < 0) {
@@ -157,20 +168,36 @@ export function rayGround(hf: Heightfield, ox: number, oy: number, oz: number, d
         tm = ta + (tb - ta) * share;
         fm = (qa + (qb - qa) * share) - groundIn(h00, h10, h01, h11, ua + (ub - ua) * share, va + (vb - va) * share, sa < 0);
       }
-      if (fm < 0) return metAt(k, sa < 0, ta + ((tm - ta) * fa) / (fa - fm));
+      if (fm < 0) return metAt(i, j, sa < 0, ta + ((tm - ta) * fa) / (fa - fm));
       if (tm < tb) {
         const fb = qb - groundIn(h00, h10, h01, h11, ub, vb, sb < 0);
-        if (fb < 0) return metAt(k, sb < 0, tm + ((tb - tm) * fm) / (fm - fb));
+        if (fb < 0) return metAt(i, j, sb < 0, tm + ((tb - tm) * fm) / (fm - fb));
       }
     }
     if (tb >= t1) return Infinity;
     if (tx < tz) {
       i += di;
-      if (i < 0 || i > nx - 2) return Infinity;
+      if (i < bi0 || i > bi1) {
+        if (i < 0 || i > nx - 2) return Infinity;
+        bi0 = i - (i % span);
+        bi1 = bi0 + span - 1 < nx - 2 ? bi0 + span - 1 : nx - 2;
+        view = hf.view(bi0, bj0, bi1 + 1, bj1 + 1);
+        hts = view.heights;
+        stride = view.stride;
+        off = view.off;
+      }
       tx = ((dx > 0 ? i + 1 : i) * cell - ox) * ix;
     } else {
       j += dj;
-      if (j < 0 || j > hf.nz - 2) return Infinity;
+      if (j < bj0 || j > bj1) {
+        if (j < 0 || j > nz - 2) return Infinity;
+        bj0 = j - (j % span);
+        bj1 = bj0 + span - 1 < nz - 2 ? bj0 + span - 1 : nz - 2;
+        view = hf.view(bi0, bj0, bi1 + 1, bj1 + 1);
+        hts = view.heights;
+        stride = view.stride;
+        off = view.off;
+      }
       tz = ((dz > 0 ? j + 1 : j) * cell - oz) * iz;
     }
     ta = tb;
@@ -187,8 +214,9 @@ function groundIn(h00: number, h10: number, h01: number, h11: number, u: number,
   return upper ? h00 + (h11 - h01) * u + (h01 - h00) * v : h00 + (h10 - h00) * u + (h11 - h10) * v;
 }
 
-function metAt(cell: number, upper: boolean, t: number): number {
-  groundCell = cell;
+function metAt(i: number, j: number, upper: boolean, t: number): number {
+  groundI = i;
+  groundJ = j;
   groundUpper = upper;
   return t;
 }
@@ -286,9 +314,10 @@ export function castWorld(w: CollisionWorld, ox: number, oy: number, oz: number,
   rayHit.ref = ref;
   if (kind === HIT_TERRAIN) {
     // The face met, as drawn: its rise per metre along x and along z.
-    const k = groundCell;
-    const nx = hf.nx;
-    const hts = hf.heights;
+    const view = hf.view(groundI, groundJ, groundI + 1, groundJ + 1);
+    const hts = view.heights;
+    const nx = view.stride;
+    const k = view.off + groundJ * nx + groundI;
     const rise = hf.stepY / hf.cell;
     const sx = (groundUpper ? hts[k + nx + 1]! - hts[k + nx]! : hts[k + 1]! - hts[k]!) * rise;
     const sz = (groundUpper ? hts[k + nx]! - hts[k]! : hts[k + nx + 1]! - hts[k + 1]!) * rise;

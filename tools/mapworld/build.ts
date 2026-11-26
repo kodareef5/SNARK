@@ -6,12 +6,12 @@
 // var/maps/<name>/layers, then the map file var/maps/<name>.snmap, and says what it holds. The same inputs give the same
 // bytes. Its copies for the wire take a few seconds; --release writes the tightest, as a map that ships has (tools/map/pack.ts).
 
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync, writeSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { SECTOR_CHUNKS, chunkCount, framed } from "../../shared/coords.ts";
-import { MapStatics, mapHeightfield, mapNodes, mapTops, parseMap, resolveNodes, writeMap } from "../../shared/world/mapfile.ts";
+import { MapStatics, mapHeightfield, mapNodes, mapTops, parseMap, resolveNodes, writeMap, type MapStatic } from "../../shared/world/mapfile.ts";
 import { obeliskStatics } from "../../shared/world/obelisks.ts";
 import { describe } from "../map.ts";
 import { readLayers, toYaw, waterLayer, writeAttached, writeNodeLayers } from "../map/layers.ts";
@@ -21,7 +21,7 @@ import { writeGrey } from "../map/png.ts";
 import { Base } from "./base.ts";
 import type { BridgeRecord } from "./bridges.ts";
 import { groundClasses, makeGround, S, type World } from "./ground.ts";
-import { makeNodes, ZONE_CELL } from "./nodes.ts";
+import { clearingMask, makeNodes, ZONE_CELL } from "./nodes.ts";
 import { gradeTransferDecks, placeObelisks, placeRegions, placeSpawns, staticCover } from "./places.ts";
 import { STATIC_LAYERS, siteOf, type StaticPiece } from "./statics.ts";
 import { SPAWN_CLEAR, isFurniture } from "./street-furniture.ts";
@@ -45,7 +45,10 @@ import type { Buildings } from "../../shared/world/buildings.ts";
 
 const ROOT = resolve(import.meta.dir, "../..");
 
-export async function buildMap(named: string, release = false, output = join(ROOT, "var/maps"), options: { streets?: boolean } = {}): Promise<{ file: string; stats: Record<string, unknown> }> {
+/** Which cut and build key made a map, beside it as `<name>/stamp.json`: tools/maps/city.ts builds again unless they are its own. */
+export interface MapStamp { cut: string; key: string; bytes: number; mtimeMs: number }
+
+export async function buildMap(named: string, release = false, output = join(ROOT, "var/maps"), options: { streets?: boolean; stamp?: { cut: string; key: string } } = {}): Promise<{ file: string; stats: Record<string, unknown> }> {
   const t0 = performance.now();
   // Each step with the process's memory as it ends it and the most it has held: what a machine of 32 GB can build is
   // read here (/proc, so Linux alone; elsewhere the time alone).
@@ -58,7 +61,10 @@ export async function buildMap(named: string, release = false, output = join(ROO
   };
   const lap = (what: string): void => console.log(`${((performance.now() - t0) / 1000).toFixed(1).padStart(5)} s  ${what}${memory()}`);
   const source = named.includes("/") ? resolve(named) : workFolder(named);
-  const name = basename(source);
+  const name = mapNameOf(named);
+  // The map about to be written is no longer the one any stamp names, even if this build dies.
+  const stampPath = join(output, name, "stamp.json");
+  rmSync(stampPath, { force: true });
   const base = new Base(source);
   const world = JSON.parse(readFileSync(join(source, "world/world.json"), "utf8")) as World;
   const { grid } = base;
@@ -152,8 +158,12 @@ export async function buildMap(named: string, release = false, output = join(ROO
     waterAt: site.waterAt, groundAt: site.groundAt, inside, chunk: chunkOf,
     room: (x, z) => pieceCounts[chunkOf(x, z)]! < budget - 2, took: (x, z) => { pieceCounts[chunkOf(x, z)]!++; },
   }, districtAt, (mesh) => meshes.has(mesh), lanes);
-  // The street's furniture where a dock comes ashore is taken up, the last first so the others keep their places.
-  for (const i of [...new Set(marinas.cleared)].sort((a, b) => b - a)) { pieceCounts[chunkOf(statics[i]!.x, statics[i]!.z)]!--; statics.splice(i, 1); }
+  // The street's furniture where a dock comes ashore is taken up in one pass, the rest keeping their order.
+  const ashore = new Set(marinas.cleared);
+  for (const i of ashore) pieceCounts[chunkOf(statics[i]!.x, statics[i]!.z)]!--;
+  let stays = 0;
+  for (let i = 0; i < statics.length; i++) if (!ashore.has(i)) statics[stays++] = statics[i]!;
+  statics.length = stays;
   for (const p of marinas.pieces) statics.push(p);
   lap(`${marinas.runs.length} runs of dock and ${marinas.slips.length} boats moored at ${docks.size} marinas' mapped piers and ${marinas.slipped.size} marinas in all; ${marinas.pieces.length} pieces`);
   const wrecks = harbourWrecks(latticeSites, harbours, reg, statics, {
@@ -198,7 +208,8 @@ export async function buildMap(named: string, release = false, output = join(ROO
   // so none stands in it or before its terminal, nor within 6 m of a parked car.
   const clearings = [...spawns.map((s) => [(x1 - s.x) / 2, (z1 - s.z) / 2, 16] as const), ...obelisks.map((o) => [(x1 - o.x) / 2, (z1 - o.z) / 2, o.color ? (o.radius! / 2 + 2) ** 2 : 49] as const), ...vehicles.map((c) => [(x1 - c.x) / 2, (z1 - c.z) / 2, 9] as const)];
   const growth = world.heaps === false ? vocabulary(source).growth : undefined;
-  const nodes = makeNodes(ground, world, (col, row) => (!growth && site.clearPlants[Math.floor(row / 2) * ((nx - 1) / 2) + Math.floor(col / 2)] === 1) || berths[row * nx + col] === 1 || clearings.some(([c, r, d2]) => (c - col) ** 2 + (r - row) ** 2 < d2), (col, row) => site.lowPlants[Math.floor(row / 2) * ((nx - 1) / 2) + Math.floor(col / 2)] === 1, growth);
+  const clear = clearingMask((nx - 1) / 2, (nz - 1) / 2, clearings);
+  const nodes = makeNodes(ground, world, (col, row) => (!growth && site.clearPlants[Math.floor(row / 2) * ((nx - 1) / 2) + Math.floor(col / 2)] === 1) || berths[row * nx + col] === 1 || clear[Math.floor(row / 2) * ((nx - 1) / 2) + Math.floor(col / 2)] === 1, (col, row) => site.lowPlants[Math.floor(row / 2) * ((nx - 1) / 2) + Math.floor(col / 2)] === 1, growth);
   lap("nodes");
 
   const layers = join(output, name, "layers");
@@ -259,9 +270,12 @@ export async function buildMap(named: string, release = false, output = join(ROO
   }
   lap(`layers in ${layers}`);
 
-  // The statics from memory as statics.json says them (readLayers), not read back from it.
-  let map = readLayers(layers, statics.map((p) => ({ kind: p.kind, x: p.x - x0, y: p.y, z: p.z - z0, yaw: toYaw(p.yaw), ...(p.bend ? { bend: p.bend } : {}) })));
-  map = { ...map, statics: MapStatics.of(map.dims, map.statics), ...(buildings ? { buildings } : {}), ...(sited.length > 0 ? { content: { ...brought.content, landmarks: brought.content.landmarks.map(engine) } } : {}) };
+  // The statics from memory as statics.json says them (readLayers), not read back from it, each made as the columns take
+  // it: a copy of every piece at once, beside the pieces and the garbage of writing them, was the build's most memory.
+  Bun.gc(true);
+  const asFile = { *[Symbol.iterator]() { for (const p of statics) yield { kind: p.kind, x: p.x - x0, y: p.y, z: p.z - z0, yaw: toYaw(p.yaw), ...(p.bend ? { bend: p.bend } : {}) }; } };
+  let map = readLayers(layers, []);
+  map = { ...map, statics: MapStatics.of(map.dims, asFile as unknown as MapStatic[]), ...(buildings ? { buildings } : {}), ...(sited.length > 0 ? { content: { ...brought.content, landmarks: brought.content.landmarks.map(engine) } } : {}) };
   // The map holds the statics in columns now; the pieces as objects, 7 to 13 M of them, are let go for the rest of the
   // build, and only their count is kept for the numbers.
   const staticTotal = statics.length;
@@ -284,7 +298,7 @@ export async function buildMap(named: string, release = false, output = join(ROO
   const uses = new Map(facts.rows.map(row => [Number(row[idAt]), `${row[classAt] ?? ""} ${row[primaryAt] ?? ""}`.toLowerCase()]));
   const aircraftSites: HelicopterSite[] = [];
   for (const { building } of site.footprints) {
-    const use = uses.get(Math.floor(building.id / 4)) ?? "";
+    const use = uses.get(building.row) ?? "";
     const kind = /hospital/.test(use) ? "hospital" : /police|emergency response/.test(use) ? "police" : /industrial/.test(use) && building.area > 1200 ? "civilian" : null;
     if (!kind) continue;
     const [lx, lz] = site.toLattice(building.e, building.n); const [x, z] = [lx - x0, lz - z0];
@@ -337,10 +351,11 @@ export async function buildMap(named: string, release = false, output = join(ROO
   // The tile and storey each piece was placed at, which the map does not hold, for the check of its buildings (building-places.ts).
   if (known) writeFileSync(join(output, name, "known.bin"), encodeKnown(known));
   lap(`map file ${file} and its parts' files with their copies for the wire`);
-  for (const line of [...describe(bytes), ...partsTable(packed)]) console.log(`        ${line}`);
+  // Read back once, for what it holds and for the numbers.
+  const parsed = parseMap(bytes);
+  for (const line of [...describe(bytes, parsed), ...partsTable(packed)]) console.log(`        ${line}`);
 
   // The numbers: nodes by kind, how much land is walkable, the deepest water and the tallest heap.
-  const parsed = parseMap(bytes);
   if (world.heaps === false) {
     const bridges = JSON.parse(readFileSync(join(source, "reports", world.ruins?.report ?? "ruins", "bridges.json"), "utf8")) as BridgeRecord[];
     const entrances = bridges.flatMap(r => r.entrances.map(e => ({ ...engine(e), id: r.id, name: r.name, slabs: e.slabs.map(engine), runout: e.runout?.map(engine) })));
@@ -375,11 +390,9 @@ export async function buildMap(named: string, release = false, output = join(ROO
     }
   }
   const surfaces: Record<string, number> = {};
-  for (const [key, value] of Object.entries(S)) {
-    let m = 0;
-    for (let i = 0; i < nx * nz; i++) if (ground.surface[i] === value) m++;
-    surfaces[key.toLowerCase()] = Math.round(m * 4);
-  }
+  const bySurface = new Float64Array(256);
+  for (let i = 0; i < nx * nz; i++) bySurface[ground.surface[i]!]!++;
+  for (const [key, value] of Object.entries(S)) surfaces[key.toLowerCase()] = Math.round(bySurface[value]! * 4);
   // The tallest ruins as they stand, and for each a place on a street 60 to 140 m off to see it from.
   const top = new Float32Array(ground.heaps.ruins.length);
   for (let i = 0; i < nx * nz; i++) {
@@ -440,8 +453,18 @@ export async function buildMap(named: string, release = false, output = join(ROO
     surfaceSquareMetres: surfaces,
   };
   writeFileSync(join(output, name, "stats.json"), `${JSON.stringify(stats, null, 2)}\n`);
+  if (options.stamp) {
+    const made = statSync(file);
+    const stamp: MapStamp = { ...options.stamp, bytes: made.size, mtimeMs: made.mtimeMs };
+    writeFileSync(stampPath, `${JSON.stringify(stamp, null, 2)}\n`);
+  }
   lap("numbers");
   return { file, stats };
+}
+
+/** The map's name: a city's own, or its folder's, read through the link `current` a city's work folder is. */
+export function mapNameOf(named: string): string {
+  return named.includes("/") ? basename(realpathSync(resolve(named))) : named;
 }
 
 if (import.meta.main) {
@@ -450,6 +473,8 @@ if (import.meta.main) {
   const words = process.argv.slice(2), out = words.indexOf("--out");
   const output = out >= 0 ? resolve(words[out + 1] ?? "") : join(ROOT, "var/maps");
   const named = words.filter((w, k) => !w.startsWith("--") && (out < 0 || k !== out + 1))[0];
-  const { stats } = await buildMap(named ?? (() => { throw new Error("Map name required"); })(), words.includes("--release"), output, { streets: !words.includes("--no-streets") });
+  // tools/maps/city.ts names the cut and the build's key in SNARK_MAP_STAMP ({"cut", "key"}).
+  const stamp = process.env.SNARK_MAP_STAMP ? (JSON.parse(process.env.SNARK_MAP_STAMP) as { cut: string; key: string }) : undefined;
+  const { stats } = await buildMap(named ?? (() => { throw new Error("Map name required"); })(), words.includes("--release"), output, { streets: !words.includes("--no-streets"), stamp });
   console.log(JSON.stringify({ ...stats, spawns: undefined, surfaceSquareMetres: undefined }, null, 2));
 }

@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { binKey } from "./raster.ts";
 import type { Footprint } from "./statics.ts";
 import { readSurvey } from "./survey.ts";
 import type { Vocabulary } from "./ruin-vocabulary.ts";
@@ -64,23 +65,35 @@ export function readLabels(source: string): LabelData {
 }
 
 export function resolveLabels(primary: Map<number, Footprint>, data: LabelData, v: Vocabulary): Map<number, Facts> {
-  const bins = new Map<string, number[]>();
-  const cell = (e: number, n: number): string => `${Math.floor(e / 256)},${Math.floor(n / 256)}`;
-  for (const [id, l] of Object.entries(data.labels)) {
-    const k = cell(l.e, l.n); if (!bins.has(k)) bins.set(k, []); bins.get(k)!.push(Number(id));
+  // Every label within 500 m, in squares of 64 m; the list is sorted by distance and id, so the order it is read in is not kept.
+  const bins = new Map<number, { id: number; label: BuildingLabel; district: string | undefined }[]>();
+  for (const [key, l] of Object.entries(data.labels)) {
+    const id = Number(key); const k = binKey(Math.floor(l.e / 64), Math.floor(l.n / 64));
+    const row = { id, label: l, district: primary.get(id)?.district?.name };
+    const bin = bins.get(k); if (bin) bin.push(row); else bins.set(k, [row]);
   }
+  const neighboursOf = (id: number, l: BuildingLabel, district: string | undefined): { id: number; label: BuildingLabel; distance: number }[] => {
+    const neighbours: { id: number; label: BuildingLabel; distance: number }[] = [];
+    for (let bz = Math.floor((l.n - 500) / 64); bz <= Math.floor((l.n + 500) / 64); bz++) for (let bx = Math.floor((l.e - 500) / 64); bx <= Math.floor((l.e + 500) / 64); bx++) {
+      // A square whose nearest point is past 500 m and a metre holds no label within 500 m.
+      const gx = Math.max(0, bx * 64 - l.e, l.e - bx * 64 - 64), gz = Math.max(0, bz * 64 - l.n, l.n - bz * 64 - 64);
+      if (gx * gx + gz * gz > 501 * 501) continue;
+      for (const o of bins.get(binKey(bx, bz)) ?? []) {
+        if (o.id === id || o.district !== district) continue;
+        const other = o.label; const ex = other.e - l.e, en = other.n - l.n;
+        if (ex > 500 || ex < -500 || en > 500 || en < -500) continue;
+        const distance = Math.hypot(ex, en);
+        if (distance <= 500 && other.area_m2 / Math.max(1, l.area_m2) >= .25 && other.area_m2 / Math.max(1, l.area_m2) <= 4) neighbours.push({ id: o.id, label: other, distance });
+      }
+    }
+    return neighbours.sort((a, b) => a.distance - b.distance || a.id - b.id);
+  };
   const result = new Map<number, Facts>();
   for (const [id, f] of [...primary].sort((a, b) => a[0] - b[0])) {
     const b = f.building;
     const l = data.labels[id] ?? { name: null, also: [], kind: null, height_m: null, height_from: null, levels: null, address: null, uses: {}, use: b.use ?? "", primary_use: "", area_m2: b.area, e: b.e, n: b.n };
-    const neighbours: { id: number; label: BuildingLabel; distance: number }[] = [];
-    const c = Math.floor(l.e / 256); const r = Math.floor(l.n / 256);
-    for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) for (const nid of bins.get(`${c + dx},${r + dz}`) ?? []) {
-      if (nid === id || primary.get(nid)?.district?.name !== f.district?.name) continue;
-      const other = data.labels[nid]!; const distance = Math.hypot(other.e - l.e, other.n - l.n);
-      if (distance <= 500 && other.area_m2 / Math.max(1, l.area_m2) >= .25 && other.area_m2 / Math.max(1, l.area_m2) <= 4) neighbours.push({ id: nid, label: other, distance });
-    }
-    neighbours.sort((a, b) => a.distance - b.distance || a.id - b.id);
+    // Read only where a kind or a height is wanting.
+    const neighbours = !l.kind || (!positive(l.height_m) && !positive(l.levels)) ? neighboursOf(id, l, f.district?.name) : [];
     let kind = l.kind; let kindFrom = "label"; const used: number[] = [];
     if (!kind) {
       const near = neighbours.filter((n) => n.label.kind && n.distance <= 300).slice(0, 5);

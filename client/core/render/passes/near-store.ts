@@ -25,7 +25,8 @@ import { formPaint } from "../form-paint.ts";
 import { HAND_NEAR } from "../hand.ts";
 import type { Hiding } from "../hide.ts";
 import { LAMP_BIT } from "../lamp.ts";
-import { MESH_SLOT, NearCity, type NearMesh } from "../nearcity.ts";
+import type { NearCity, NearMesh } from "../nearcity.ts";
+import { MESH_SLOT } from "../near-slots.ts";
 import { BEND_BUFFERS, DRAW_PIECE, DRAW_RANGED, DRAW_SIZED, InstanceWriter, MAX_CASCADES, MAX_DRAWS, PASS_FAR, PASS_NEAR, type FramePacket } from "../packet.ts";
 import type { Frame, Pass } from "../pass.ts";
 import { FIT_YIELD, FrameTable, PIECE_FIT_AT, PIECE_FRAMED, PIECE_FRAMES, PIECE_STATE_AT, pieceWord, plainYaw, writePiece } from "../piece-fit.ts";
@@ -282,7 +283,8 @@ export class NearStore implements Pass {
   /** The shadow's reach `zones` found for the chunk it was last given. */
   private zoneStretch = 0;
   /** With the far city, the near store's chunks' statics drawn flat as their form as a mesh a chunk (nearcity.ts). */
-  readonly near: NearCity | null;
+  near: NearCity | null = null;
+  readonly startMeshes: (Mesh: typeof NearCity) => void;
   /** Whether a chunk the near store holds whole draws such statics from its mesh; false draws them as instances, for pictures held to them. */
   nearMesh = true;
   /** Who draws a chunk the store does not hold whole, which it then leaves to them: the scene sets each as it is made. */
@@ -390,8 +392,11 @@ export class NearStore implements Pass {
     this.cover = new CrownCover(world.dims);
     this.coverLooks = { meshOfForm: this.meshOfForm, sizeOfForm: this.sizeOfForm, treeOf: this.treeOf, side: table.side, low: table.low, high: table.high, hidden: (ref) => this.hiddenNodes.has(ref) };
     const flat = (k: number): boolean => this.meshOfKind[k] !== looks.missing && this.meshOfKind[k] !== HIDDEN && table.sections[this.meshOfKind[k]!]!.every((runs) => runs.length === 0);
-    this.near = farMesh >= 0 ? new NearCity(reg, farMesh, this.landmarkKinds, flat, packet) : null;
-    if (this.near) this.near.paint = formPaint(reg);
+    this.startMeshes = (Mesh) => {
+      if (farMesh < 0 || this.near) return;
+      this.near = new Mesh(reg, farMesh, this.landmarkKinds, flat, packet);
+      this.near.paint = formPaint(reg);
+    };
   }
 
   /** Before a frame: a chunk of nodes one of which was hidden or shown is laid out again, and nothing is yet drawn or cast. */
@@ -529,7 +534,7 @@ export class NearStore implements Pass {
       const flood = batch !== undefined && ((batch.differ > 0 && this.now - batch.since >= SETTLE) || (batch.holed >= 0 && (this.now - batch.holedLast >= SETTLE || this.now - batch.holed >= FLOOD_MOST)));
       // A chunk whose trims turn on the pieces of the chunks round it is laid out again when one of those gains or loses a piece.
       const met = batch !== undefined && batch.borders !== 0 && this.bordering(store, batch.bordered) !== batch.borderSum;
-      if (!batch || (!sizeOf && this.tekWalls.layouts.has(chunk)) || learnt || met || batch.mesh !== mesh || (batch.unbent && statics?.bent.bends.has(chunk)) || (batch.shape !== t.shape && !(turned && this.reform(batch, t, chunk, meshOf, colorOf) && (!own || !batch.mesh || this.keeps(batch, t, meshOf, own.drawn, x0, z0)))) || flood) {
+      if (!batch || (!sizeOf && this.tekWalls.layouts.has(chunk)) || learnt || met || batch.mesh !== mesh || (batch.unbent && statics?.squareOf(chunk)?.map.bends.has(chunk)) || (batch.shape !== t.shape && !(turned && this.reform(batch, t, chunk, meshOf, colorOf) && (!own || !batch.mesh || this.keeps(batch, t, meshOf, own.drawn, x0, z0)))) || flood) {
         batch = this.rebuild(store, chunk, id, batch, meshOf, colorOf, sizeOf, mesh, own?.drawn ?? null);
         if (!sizeOf) this.tekWalls.layouts.delete(chunk);
         laid += t.high;
@@ -681,7 +686,7 @@ export class NearStore implements Pass {
     if (this.breakForm[kind] === 0 || owner !== 0) return kind;
     const city = this.world.city?.statics;
     if (!city || s >= city.in(chunk)) return kind;
-    const placed = city.kind[city.first[chunk]! + s]!;
+    const t = city.rows(chunk)!, placed = t.kind[t.from(chunk) + s]!;
     return this.breakSet[placed] === this.breakSet[kind] ? placed : kind;
   }
 
@@ -1459,8 +1464,8 @@ export class NearStore implements Pass {
     const kinds = old && old.kinds.length === count ? old.kinds : new Uint16Array(count);
     const w = new InstanceWriter(data);
     // A bent piece's bend is the map's for its slot while the slot holds the piece the map set there, of the map's statics
-    // as they come, so a sector's are drawn once it has (city.ts CityStatics.bent).
-    const city = bent > 0 ? this.world.city?.statics : undefined, map = city?.bent, from = map ? map.first[chunk]! : 0, rows = map ? map.first[chunk + 1]! - from : 0;
+    // as they come, so a sector's are drawn once it has (city.ts CitySquare.map).
+    const city = bent > 0 ? this.world.city?.statics : undefined, square = city?.squareOf(chunk), map = square?.map, from = square ? square.mapFrom(chunk) : 0, rows = square ? square.mapTo(chunk) - from : 0;
     const bends = bent > 0 ? new Int16Array(count * 8) : null, chunkBends = map?.bends.get(chunk);
     const bordered = trims && trims.borders !== 0 ? this.bordersOf(chunk, trims.borders) : NO_CHUNKS;
     const b: ChunkBatch = {

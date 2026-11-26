@@ -124,7 +124,7 @@ function actorsOf(reg: Registry, hf: Heightfield, shot: Shot, rng: Rng): RemoteS
 
 async function start() {
   const named = await (await fetch("__wiki-photo-map.json")).json() as { head: string; first: Position };
-  const load = MapLoader.start(fetch, named.head, { wait: (ms) => new Promise((done) => setTimeout(done, ms)), pause: nextTask(new MessageChannel()) });
+  const load = MapLoader.start(fetch, named.head, { wait: (ms) => new Promise((done) => setTimeout(done, ms)), every: (ms) => new Promise((done) => setTimeout(done, ms)), pause: nextTask(new MessageChannel()) });
   const manifest = parseManifest(await (await fetch("assets/manifest.json")).text());
   const media = await (await fetch("entry-media.json")).json() as { content: string; sky: string };
   const [loader, base, boot, sky] = await Promise.all([
@@ -242,7 +242,7 @@ async function start() {
     snarkWikiPhotoStatus: () => {
       const map = loader.progress();
       return {
-        renderer: renderer.rendererName, near: precise, whole: map.whole, left: map.left, roads: map.roads, frames, quiet, frozen,
+        renderer: renderer.rendererName, near: precise, settled: map.settled, left: map.left, roads: map.roads, frames, quiet, frozen,
         pending: scene.assets.residency.flying + scene.assets.residency.waiting,
         milliseconds: performance.now() - started,
         errors: [...renderer.failed, ...renderer.failedTextures],

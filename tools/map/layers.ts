@@ -175,7 +175,7 @@ export function writeAttached(map: MapData, folder: string): void {
     put("streets.json", `[\n${list.map((s) => `  ${JSON.stringify(s)}`).join(",\n")}\n]\n`);
   }
   if (map.buildings?.sectors.some((t) => t)) {
-    const sectors = map.buildings.sectors.flatMap((t) => (t ? [{ col: t.col, row: t.row, file: `buildings-${t.col}-${t.row}.bin`, bytes: t.encode() }] : []));
+    const sectors = map.buildings.sectors.flatMap((t) => (t ? [{ col: t.col, row: t.row, file: `buildings-${t.col}-${t.row}.bin`, bytes: t.encode(map.buildings!.names) }] : []));
     for (const s of sectors) put(s.file, s.bytes);
     put("buildings.json", `${JSON.stringify({ names: map.buildings.names, sectors: sectors.map(({ col, row, file }) => ({ col, row, file })) }, null, 1)}\n`);
   }
