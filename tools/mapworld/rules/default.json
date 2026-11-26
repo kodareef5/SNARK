@@ -1963,8 +1963,8 @@
       "rail": [["rail", 4], ["rail_bent", 1]],
       "fence": [["fence", 5], ["fence_sagging", 3], ["fence_down", 1]],
       "billboard": [["billboard", 5], ["billboard_bare", 1]],
-      "billboard_highway": [["billboard_low", 5], ["billboard", 5], ["billboard_low_bare", 1], ["billboard_bare", 1]],
-      "billboard_avenue": [["billboard", 4], ["billboard_mid", 6], ["billboard_bare", 1], ["billboard_mid_bare", 1]],
+      "billboard_highway": [["billboard_tall", 6], ["billboard_grand", 4], ["billboard", 3], ["billboard_low", 2], ["billboard_tall_bare", 1], ["billboard_grand_bare", 1], ["billboard_bare", 1]],
+      "billboard_avenue": [["billboard", 5], ["billboard_mid", 7], ["billboard_tall", 3], ["billboard_bare", 1], ["billboard_mid_bare", 1], ["billboard_tall_bare", 1]],
       "billboard_street": [["billboard_small", 7], ["billboard_mid", 3], ["billboard_small_bare", 1], ["billboard_mid_bare", 1]]
     },
     "lamps": { "spacing": { "highway": 44, "avenue": 35, "street": 30, "ramp": 44, "lot": 40 }, "both": ["highway", "avenue"], "set": 0.9, "lit": { "highway": 0.15, "avenue": 0.3, "street": 0.1, "ramp": 0.15, "lot": 0.05 }, "dark": ["industrial"] },

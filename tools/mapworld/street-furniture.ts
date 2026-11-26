@@ -130,8 +130,14 @@ const pick = (rows: Forms, h: number): string => {
 };
 const chance = (h: number, p: number): boolean => h / 4294967296 < p;
 
-/** Each piece's parts as boxes in its own frame (a tilted part as the box round it), and the box round its parts within 2.2 m of the ground. */
-const PARTS = new Map(STREET_PIECES.map((p) => {
+/**
+ * Each piece's parts as boxes measured from the ground under it (a tilted part as the box round it; a piece whose origin
+ * is `lift` up, that much higher than its own frame has them), the box round its parts within 2.2 m of the ground, and
+ * the lift.
+ */
+const PARTS = new Map(STREET_PIECES.map((whole) => {
+  const lift = whole.lift ?? 0;
+  const p = lift === 0 ? whole : { ...whole, boxes: whole.boxes.map((b) => ({ at: [b.at[0], b.at[1] + lift, b.at[2]] as const, half: b.half })), hulls: whole.hulls?.map((h) => ({ ...h, corners: h.corners.map((c) => [c[0], c[1] + lift, c[2]] as [number, number, number]) })) };
   const parts: Part[] = p.boxes.map((b) => ({ lo: [b.at[0] - b.half[0], b.at[1] - b.half[1], b.at[2] - b.half[2]], hi: [b.at[0] + b.half[0], b.at[1] + b.half[1], b.at[2] + b.half[2]] }));
   for (const h of p.hulls ?? []) {
     const points = h.corners.map((c) => hullPoint(c, h.sixty === true));
@@ -146,7 +152,7 @@ const PARTS = new Map(STREET_PIECES.map((p) => {
     for (const a of corners) for (const b of corners) if (a[1] < FOOT && b[1] > FOOT) { const t = (FOOT - a[1]) / (b[1] - a[1]); points.push([a[0] + (b[0] - a[0]) * t, FOOT, a[2] + (b[2] - a[2]) * t]); }
   }
   const foot: Part = { lo: [Math.min(...points.map((q) => q[0]!)), 0, Math.min(...points.map((q) => q[2]!))], hi: [Math.max(...points.map((q) => q[0]!)), Math.max(...points.map((q) => q[1]!)), Math.max(...points.map((q) => q[2]!))] };
-  return [p.name, { parts, foot }];
+  return [p.name, { parts, foot, lift }];
 }));
 
 /** A part of a piece standing at (x, y, z) turned `yaw` as a box in the world. */
@@ -322,7 +328,7 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
     counts[chunk]!++;
     for (const b of boxes) { const k = binKey(Math.floor(b.x / 16), Math.floor(b.z / 16)); if (!mine.has(k)) mine.set(k, []); mine.get(k)!.push(b); }
     const kind = streetKind(name);
-    pieces.push({ kind, x, y, z, yaw });
+    pieces.push({ kind, x, y: y + shape.lift, z, yaw });
     summary.placed[kind] = (summary.placed[kind] ?? 0) + 1; summary.byRule[rule] = (summary.byRule[rule] ?? 0) + 1;
     return true;
   };

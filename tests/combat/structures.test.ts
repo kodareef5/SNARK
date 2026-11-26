@@ -401,3 +401,17 @@ test("damage to something built is saved with it, and a client is shown a blast"
   expect(fire.alight).toBe(0);
   expect(structs.chunks[chunk]!.kind[ref & 0xffff] === 0 || structs.chunks[chunk]!.hp[ref & 0xffff]! < 9900).toBe(true);
 });
+
+test("place sets billboard pillars on the ground at every screen height", () => {
+  const { h, ada } = camp({ place: clearing(24, 30, 1.5) });
+  const { structs, hf } = h.world;
+  for (const [name, lift] of [["billboard", 0], ["billboard_tall", 14], ["billboard_grand", 15], ["billboard_grand_bare", 15]] as const) {
+    const id = "core:zzstreet_" + name;
+    expect(h.say(ada, "place " + id).at(-1)).toContain("placed " + id);
+    const kind = h.reg.index.get(id)!;
+    const rows = Array.from(structs.held, (chunk) => structs.chunks[chunk]!);
+    const row = rows.find((r) => r.kind.includes(kind))!, slot = row.kind.indexOf(kind);
+    expect(row.y[slot]! - hf.heightAt(row.x[slot]!, row.z[slot]!)).toBeCloseTo(lift, 2);
+  }
+  h.host.shutdown();
+});

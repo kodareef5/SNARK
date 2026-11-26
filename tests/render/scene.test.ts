@@ -583,9 +583,9 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // Tek and the screen props shift the mesh indices in both packets.
   // It was 2684164804 until the laid fallen front (content/ruins.ts front12) and the three more billboards with their bare
   // forms (content/street.ts BOARDS) numbered the meshes after them on.
-  // It was 763957391 until the moored hulls came in four dead dyes a vessel, 44 kinds for 53 (content/docks.ts DEAD_DYES).
-  // And 3278228826 until each vessel's burning hull joined them.
-  expect(hash).toBe(3229345973);
+  // It was 763957391 until the tall and the grand billboard and their bare forms did the same.
+  // And 1984411619 until the moored hulls came in four dead dyes a vessel, 44 kinds for 53 (content/docks.ts DEAD_DYES), and each vessel's burning hull joined them.
+  expect(hash).toBe(3546832721);
 
   // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
   // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of
@@ -635,9 +635,9 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // And 1982246606 until the building pieces, as above (1220435809 with them and without the orb).
   // And 2246990923 until the map events' two crates, and 3436127037 until the UFO's core took its own mesh, as above.
   // And 3617411346 until the laid fallen front and the billboards' other sizes, as above.
-  // And 3606419820 until the moored hulls' dead dyes, as above.
-  // And 754500122 until the burning hulls, as above.
-  expect(saddled.hash).toBe(380125256);
+  // And 3606419820 until the tall and the grand billboard, as above.
+  // And 2316672820 until the moored hulls' dead dyes and the burning hulls, as above.
+  expect(saddled.hash).toBe(3249633160);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {
