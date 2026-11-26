@@ -1,6 +1,6 @@
 // Sheets of each built-in population: 24 of its people at full length, each in the outfit and dyes its seed draws, as
 // Cast dresses them. One sheet a population. `bun tools/snap/populations.ts [--out var/populations] [--graphics high]
-// [--width 160] [--only core:people_beach]`.
+// [--width 160] [--only core:people_beach,core:people_police]`.
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -53,7 +53,7 @@ function tile(look: Uint8Array, wear: readonly string[], dyes: readonly number[]
 
 mkdirSync(OUT, { recursive: true });
 for (const p of POPULATIONS) {
-  if (arg("only") && arg("only") !== p.id) continue;
+  if (arg("only") && !arg("only")!.split(",").includes(p.id)) continue;
   const rows = Math.ceil(PEOPLE / COLUMNS), SW = COLUMNS * W, SH = rows * H, pixels = new Uint8ClampedArray(SW * SH * 4);
   for (let k = 0; k < PEOPLE; k++) {
     const seed = partSeed(0x5eed, 0x5e00 + k), person = personFrom(seed, p, new Uint8Array(LOOK_BYTES));
