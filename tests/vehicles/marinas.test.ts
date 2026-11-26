@@ -166,6 +166,17 @@ test("a pier is a marina's dock when it lies near the marina's point over the wa
   expect(QUAY).toBeGreaterThan(0);
 });
 
+test("a found boat at its launch heading stays clear of the hulls left at angles", () => {
+  const { layout, found } = marinaHarbour(reg);
+  expect(found.length).toBeGreaterThan(0);
+  for (const live of found) {
+    const boat = hullOf(live.kind, live.x, live.z, live.yaw * 360 / 65536);
+    for (const p of layout.pieces) if (isMoored(p.kind)) {
+      expect(meets(boat, hullOf(mooredVessel(p.kind), p.x, p.z, p.yaw))).toBe(false);
+    }
+  }
+});
+
 test("no hull left to rot wears a paint a running vessel is found in, and each wears one of the dead dyes", () => {
   const dyes = new Set(DEAD_DYES.map((d) => d.paint));
   const liveries = new Set([BOAT_SPECIES, ...MARINE_FLEET].flatMap((s) => s.regions![0]!.colors.map(([c]) => c)));
