@@ -83,6 +83,21 @@ break mask, and `map.bathymetry` names the coastal raster relative to `base/`
 CLI tools require a map argument. No city names or named compositions live in
 these modules.
 
+A street yields to a building (`streets/yield.ts`). Every reader of the roads
+takes them through `readRoads`, which changes a piece whose line runs through a
+footprint, or within half a metre of one. A junction in the wall moves clear,
+up to 4 m, with every piece that meets there. The line shifts sideways, up to
+6 m, by the least that clears its full width, else to where it has most room; a
+piece squeezed for a third of its length narrows, an alley or a street of one
+lane to no less than 3 m and any other to 5.5 m. What still lies inside a
+building is cut out: each end stops half a metre off the wall, and an end under
+6 m is dropped. Left as the data has them: pieces marked bridge, tunnel or
+passage, a street where it joins one at the wall, and pieces that meet a parking
+structure (a label of kind `parking_garage` or primary use `Parking`). It reads
+only the piece, the footprints near it and the pieces it joins, in the data's
+metres, so a place gets the same line whatever cut is made round it. The
+build's log and `streets.json` count each.
+
 `statics.ts` is the seam. A `StaticLayer.make(site, placed)` returns kind, centre
 and yaw for each box, given the pieces the layers before it set down: the ruins,
 then the street furniture (`street-furniture.ts`, planning/reference/maps.md).

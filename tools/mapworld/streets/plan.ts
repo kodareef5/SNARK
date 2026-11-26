@@ -17,6 +17,7 @@ import type { World } from "../ground.ts";
 import { streetGraph } from "../street-graph.ts";
 import { cornerWithDrops, dropsOf, withDrops, type HeldPart } from "./drops.ts";
 import { fitRuns, readRuns, type Run, type SideFit } from "./fit.ts";
+import { yieldCount } from "./yield.ts";
 import { conflictRecord, conflictText, matchOverlay, overlayConflicts, readOverlay, sortedKey, type Applied } from "./overlay.ts";
 import { sideSection, streetRules, typeOf, widthOf, type Facts, type Rule, type Section, type StreetRules, type StreetType } from "./rules.ts";
 
@@ -203,6 +204,8 @@ export function planStreets(source: string, base: Base, world: World, vocab: { s
     if (hx >= -reach && lx <= grid.sizeX + reach && hz >= -reach && lz <= grid.sizeZ + reach) kept.push(k);
   });
   const runs = kept.map((k) => all[k]!);
+  const yielding = yieldCount(source), yielded = yielding?.count;
+  if (yielded) log(`streets: yielding to buildings, ${yielded.shifted} pieces shifted (${yielded.junctions} junctions moved), ${yielded.narrowed} narrowed, ${yielded.cut} ended at a wall and ${yielded.dropped} dropped; left, ${yielded.parking} at parking structures and ${yielded.marked} marked bridge, tunnel or passage, in ${yielding.seconds.toFixed(1)} s`);
   const applied: Applied[][] = kept.map((k) => allApplied[k]!);
   const fits = fitRuns(runs, base, toMap, world.districts, toSample);
   log(`streets: ${runs.length} stretches fitted, ${fits.filter((f) => f.pair).length} of them one of a pair, in ${((performance.now() - t0) / 1000).toFixed(1)} s`);
@@ -260,6 +263,7 @@ export function planStreets(source: string, base: Base, world: World, vocab: { s
       pair: fit.pair ? { id: runs[fit.pair.stretch]!.id, median: round(fit.pair.median, 1) } : null, fitSure: round(fit.sure),
       facts: Object.fromEntries(Object.entries(facts).map(([key, v]) => [key, typeof v === "number" ? round(v) : v])), type, rule, sure: round(Math.min(sure, fit.sure)),
       overlay: over.map((a) => `${a.entry.file}:${a.entry.line}`), section: { left: sideRecord(sides[0]!, 0), right: sideRecord(sides[1]!, 1) }, seed,
+      ...(r.yielded ? { yielded: r.yielded } : {}),
     }));
     return { type: types.indexOf(type), flags: (r.oneway !== 0 ? STREET_ONE_WAY : 0) | (fit.pair ? STREET_PAIRED : 0), seed: seed & 65535, sides: [sides[0]!.held, sides[1]!.held] as const, xz: r.xz };
   });
@@ -352,7 +356,7 @@ export function planStreets(source: string, base: Base, world: World, vocab: { s
     stretches: runs.length, km: round(fits.reduce((n, f) => n + f.length, 0) / 1000, 1), corners: corners.length, parts: parts.length, bytes, drops: drops.count,
     types: Object.fromEntries([...typeCount].sort((a, b) => b[1].km - a[1].km).map(([k, v]) => [k, { stretches: v.stretches, km: round(v.km, 1) }])),
     rules: Object.fromEntries([...ruleCount].sort((a, b) => b[1] - a[1])), sets: Object.fromEntries([...setCount].sort((a, b) => b[1] - a[1])), overlay: overlayUse,
-    conflicts: settled.map((c) => conflictRecord(c, all)), asked: { fields: asks, differ },
+    conflicts: settled.map((c) => conflictRecord(c, all)), asked: { fields: asks, differ }, ...(yielded ? { yielded } : {}),
   };
   log(`streets: the overlay set ${asks} fields of a side, ${differ.length} not in effect as asked${differ.length > 0 ? " (each in the report's summary.asked, and street.ts shows it with its stretch):" : ""}`);
   for (const d of differ.slice(0, 20)) log(`streets:   ${d}`);

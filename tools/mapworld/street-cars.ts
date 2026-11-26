@@ -8,6 +8,7 @@ import type { WheelVehicleDefinition } from "../../shared/sim/vehicle.ts";
 import { S } from "./ground.ts";
 import { binKey, hash3, textSeed } from "./raster.ts";
 import { byText, lineId } from "./street-graph.ts";
+import { readRoads } from "./streets/yield.ts";
 import { CHUNK_SIZE, SECTOR_CHUNKS } from "../../shared/coords.ts";
 import { meets, obstacleIndex, type Box } from "./ruin-obstacles.ts";
 import type { Site, StaticPiece } from "./statics.ts";
@@ -56,7 +57,7 @@ export function roadIndex(site: Site): { near: (x: number, z: number, reach: num
   const bins = new Map<number, Segment[]>(); const ends = new Map<number, Set<number>>();
   const key = (x: number, z: number): number => binKey(Math.floor(x / 32), Math.floor(z / 32));
   if (existsSync(file)) {
-    const lines = (JSON.parse(readFileSync(file, "utf8")) as { features: { geometry: { type: string; coordinates: number[][] | number[][][] }; properties: { mtfcc?: string; width_m?: number; from_m?: number; runs_from_m?: number[] } }[] }).features;
+    const lines = readRoads<{ geometry: { type: string; coordinates: number[][] | number[][][] }; properties: { mtfcc?: string; width_m?: number; from_m?: number; runs_from_m?: number[] } }>(site.source);
     lines.forEach((f, line) => {
       const runs = f.geometry.type === "MultiLineString" ? f.geometry.coordinates as number[][][] : [f.geometry.coordinates as number[][]];
       // Metres from the whole piece's start, where the frame cut it (tools/mapdata/streets.py from_m), and where each run

@@ -8,6 +8,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { binKey, textSeed } from "./raster.ts";
+import { readRoads } from "./streets/yield.ts";
 
 /** A road piece's stretch between two of its points, in engine metres, with its class (TIGER MTFCC) and half width. */
 export interface Segment {
@@ -94,7 +95,7 @@ export function readStreetGraph(source: string, toLattice: (e: number, n: number
     if (!n) { n = { x, z, ways: [], key }; at.set(key, n); }
     return n;
   };
-  const roads = read<{ features: Feature<Line>[] }>(join(source, "base/roads.geojson"))?.features ?? [];
+  const roads = readRoads<Feature<Line>>(source);
   const interior: [number, number, number, [number, number, number][]][] = [];
   let tags = false;
   roads.forEach((f, line) => {
