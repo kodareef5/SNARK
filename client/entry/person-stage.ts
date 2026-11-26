@@ -192,6 +192,11 @@ async function start(): Promise<void> {
     fault("WebGL 2 context lost");
   });
   const draw = (dt: number): void => {
+    // A change since the last frame unsettles it before a picture is judged: a picture may be asked before it is drawn.
+    if (stage.version !== drawnVersion) {
+      drawnVersion = stage.version;
+      settledFrames = 0;
+    }
     const picture = asked.length > 0 && settledFrames >= 3 ? asked.shift()! : null;
     const w = picture?.width ?? Math.round(canvas.clientWidth * Math.min(devicePixelRatio, 2));
     const h = picture?.height ?? Math.round(canvas.clientHeight * Math.min(devicePixelRatio, 2));
@@ -231,7 +236,7 @@ async function start(): Promise<void> {
     scene.viewDistance = 120;
     const packet = scene.build(cam, actors);
     renderer.draw(packet);
-    // Settled: nothing coming or waiting, the pose's clip here, and the person among the draws.
+    // Settled: nothing wanted, coming or waiting, every texture shown begun, the pose's clip here, and the person drawn.
     const residency = scene.assets.residency;
     const body = `core:human_${SEX_IDS[stage.look[LOOK_SEX]!]}`;
     const meshes = new Set<string>();
@@ -241,11 +246,8 @@ async function start(): Promise<void> {
     }
     // A seated pose without its clip once the emotes have come is drawn standing, as the game would.
     const posed = clip !== null || (stage.pose === "seated" && chars.emotesHere);
-    const settled = residency.flying === 0 && residency.waiting === 0 && meshes.size > 0 && posed;
-    if (stage.version !== drawnVersion) {
-      drawnVersion = stage.version;
-      settledFrames = 0;
-    } else settledFrames = settled ? settledFrames + 1 : 0;
+    const settled = residency.flying === 0 && residency.waiting === 0 && residency.wanting() === 0 && residency.bare() === 0 && meshes.size > 0 && posed;
+    settledFrames = settled ? settledFrames + 1 : 0;
     frames++;
     document.body.dataset.settled = String(settledFrames >= 3);
     if (!announced && frames > 2 && settledFrames >= 1) {
