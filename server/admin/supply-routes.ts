@@ -8,6 +8,7 @@
 // (server/supply/store.ts), and a drop is called, landed and cancelled by the console's own `supply` command, so the
 // page and an operator at the console do one thing and both are in the admin journal.
 
+import { withLoot } from "../../content/loot/starter.ts";
 import { PAGE_ACTOR, type Actor } from "../acts.ts";
 import type { Host } from "../host.ts";
 import { bookFaults, type BookFault, type SupplyBook } from "../../shared/supply/book.ts";
@@ -110,7 +111,8 @@ export class SupplyRoutes {
         starter: store.starter,
         kept: store.kept,
         map: world.mapId,
-        book: store.book,
+        // With world loot's sources, which a book saved before they existed lacks: the page shows and saves them.
+        book: withLoot(store.book),
         overrides: [...supply.overrides].map(([tier, t]) => ({ tier, plain: t.plain !== undefined, ringed: t.ringed !== undefined })),
         settings: { off: rules.on("bDisableLootCrates"), quality: rules.num("SupplyCrateLootQualityMultiplier"), random: rules.on("RandomSupplyCratePoints") },
       });

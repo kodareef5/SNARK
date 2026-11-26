@@ -17,7 +17,7 @@ import { compileContent } from "../shared/content/registry.ts";
 import { QUALITY_NAMES } from "../shared/sim/items.ts";
 import { bookFaults } from "../shared/supply/book.ts";
 import { catalogOf, withFuture, type Catalog } from "../shared/supply/catalog.ts";
-import { compileBook } from "../shared/supply/compile.ts";
+import { compileBook, sourceTarget, sourceWorth } from "../shared/supply/compile.ts";
 import { MEASURE_ROLLS, MEASURE_SEED, measure } from "../shared/supply/measure.ts";
 import { simulate } from "../shared/supply/simulate.ts";
 
@@ -119,6 +119,12 @@ if (import.meta.main) {
       for (const cell of cells.filter((c) => c.key.startsWith(`${tier.key}/`))) {
         console.log(`  ${cell.key.slice(tier.key.length + 1).padEnd(11)} ${cell.designed.mean.toFixed(0).padStart(6)} ${pct(cell.designed.mean, cell.target)}  least ${pct(cell.designed.min, cell.target)} | today ${cell.today.mean.toFixed(0).padStart(6)} ${pct(cell.today.mean, cell.target)}${cell.dormant ? " dormant" : ""} | ringed x${(cell.ringed.mean / cell.designed.mean).toFixed(2)}${cell.designed.jackpotShare > 0 ? ` | jackpot ${(cell.designed.jackpotShare * 100).toFixed(1)}%` : ""} | ${cell.designed.stacksMost} stacks`);
       }
+    }
+    // World loot: what one thing gets of each source, at each tier it rolls at, against what it is balanced to.
+    const { designed } = measure(book, catalog, 1);
+    for (const s of book.sources ?? []) {
+      const tiers = s.tier !== undefined ? [...new Set([s.tier, ...(s.ladder ?? []).map((step) => step.tier)])] : [""];
+      console.log(`source ${s.key.padEnd(12)} ${tiers.map((t) => `${t === "" ? "" : `${t} `}${sourceWorth(designed, s, t).toFixed(1)}${sourceTarget(book, s, t) === null ? "" : ` ${pct(sourceWorth(designed, s, t), sourceTarget(book, s, t)!)}`}`).join(" | ")}${s.on ? "" : " (off)"}`);
     }
     for (const l of today.report.lints) console.log(`lint ${l.path}: ${l.message}`);
   }

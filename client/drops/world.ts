@@ -4,7 +4,7 @@ import { adminContext } from "../admin/shell.ts";
 
 import { esc } from "../core/admin/format.ts";
 import { addSite, circuitOf, forecast, inWorld, looseSites, moveSite, siteNear, toPixel, toWorld } from "../core/drops/place.ts";
-import { css, num, pct, type Loaded } from "../core/drops/view.ts";
+import { css, num, pct, sourceRows, type Loaded } from "../core/drops/view.ts";
 import { ANNOUNCES, MARKS } from "../../shared/sim/supply.ts";
 import type { CircuitDoc, SiteDoc } from "../../shared/supply/book.ts";
 import { $, S, ask, field, say, type LiveWire } from "./state.ts";
@@ -223,3 +223,18 @@ export function dropPlace(): [number, number] | null {
 }
 
 export { $ };
+
+/** World loot: each source of the draft, switched by its tick, with its chance, its rolls and its worth against its target. */
+export function sourcesHtml(l: Loaded): string {
+  const rows = sourceRows(l).map((r, k) => {
+    const at = ["sources", k] as const;
+    const src = S.draft!.sources![k]!;
+    const tiers = r.tiers.map((t) => `<span class="chip${t.health === "ok" ? "" : " warn"}" style="white-space:nowrap;display:inline-block" title="${t.target === null ? "no target" : `balanced to ${num(t.target)}`}"><span class="swatch" style="background:${css(t.rgb)}"></span>${esc(t.name)} ${num(t.worth)}</span>`).join(" ");
+    const steps = (src.ladder ?? []).map((step, j) => `<label title="The level a body has reached to roll at this tier.">${esc(step.tier)} from level ${field([...at, "ladder", j, "level"], "whole", 50, false)}</label>`).join("");
+    return `<div class="slot"><div class="row"><h3>${esc(r.key)}</h3>${field([...at, "name"], "text", 150)}<label>on ${field([...at, "on"], "flag", 64, false)}</label><span class="dim">${esc(r.what)}: ${esc(r.tables)}</span></div>
+      <div class="line"><label title="The share of such things that hold anything of it; sure where empty.">holds loot % ${field([...at, "chance"], "share", 50)}</label><label title="How many of its tables are rolled; one where empty.">rolls ${field([...at, "rolls"], "pair", 70)}</label><label title="What one such thing is balanced to give, as a share of its tier's worth.">share % ${field([...at, "share"], "share", 50)}</label><label title="Or as a worth, for a source of no tier.">worth ${field([...at, "target"], "number", 60)}</label>${steps}</div>
+      <div style="margin-top:6px"><span class="dim">one find, on average</span> ${tiers}</div></div>`;
+  });
+  return `<section class="glass"><div class="row"><h2>World loot</h2><span class="dim">where loot lies besides drops. Every source that fits a thing rolls for it when it is first opened, so a narrower one adds to a wider one</span></div>
+    <div class="slots one">${rows.join("")}</div></section>`;
+}

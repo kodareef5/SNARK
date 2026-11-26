@@ -7,7 +7,7 @@ import { addEntry, addSlot, changes, differs, ensureAt, moveAt, parseBook, read,
 import { addCircuit, removeLoose, removeSite, takeOut } from "../core/drops/place.ts";
 import { arkHtml, liveHtml } from "./live.ts";
 import { $, S, TABS, ask, field, post, say, type ArkWire, type BookWire, type RevisionWire, type Tab } from "./state.ts";
-import { circuitsHtml, dropPlace, mapDraw, mapHtml, mapListen, mapRead, tiersHtml } from "./world.ts";
+import { circuitsHtml, dropPlace, mapDraw, mapHtml, mapListen, mapRead, sourcesHtml, tiersHtml } from "./world.ts";
 import type { CircuitDoc, SiteDoc } from "../../shared/supply/book.ts";
 import { catalogOfWire, css, load, matrix, nameOf, num, pct, simulation, tableDetail, waitingRows, type CatalogWire, type Loaded, type SlotView } from "../core/drops/view.ts";
 import { MARKS } from "../../shared/sim/supply.ts";
@@ -166,7 +166,7 @@ function draw(): void {
   // What is typed in the note outlives a redraw.
   const note = document.getElementById("note") as HTMLInputElement | null;
   const kept = note?.value ?? "";
-  const view: Record<Tab, (l: Loaded) => string> = { tables: tablesHtml, waiting: waitingHtml, sim: simHtml, tiers: tiersHtml, map: mapHtml, circuits: circuitsHtml, live: liveHtml, ark: arkHtml };
+  const view: Record<Tab, (l: Loaded) => string> = { tables: tablesHtml, waiting: waitingHtml, sim: simHtml, tiers: tiersHtml, map: mapHtml, circuits: circuitsHtml, sources: sourcesHtml, live: liveHtml, ark: arkHtml };
   $("main").innerHTML = barHtml() + view[S.tab](S.l);
   const failed = (err: unknown): void => say(err instanceof Error ? err.message : String(err), "bad");
   if (S.tab === "map") {

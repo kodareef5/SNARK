@@ -135,6 +135,27 @@ test("with body loot off a body holds nothing, and with every source off it hold
   expect(["core:meat", "core:hide", "core:meat_prime"]).toContain(got[0]![0]);
 });
 
+test("with world loot off nothing is rolled, and the amount setting multiplies what is found but not a blueprint", () => {
+  const off = camp({ config: snark("WorldLootEnabled=False") });
+  const body = killed(off.h, "core:rex", off.at.x, off.at.z + 6, 150);
+  open(off.h, off.ada, body);
+  expect(held(off.h, body)).toEqual([]);
+
+  const found = (lines: string): Map<string, number> => {
+    const { h } = camp({ config: snark(lines) });
+    const rec = h.host.records.create(h.reg.index.get("core:corpse")!, "dodo");
+    rec.inv = new Inventory(BODY_SLOTS);
+    h.host.loot.fill(rec, { kind: "body", species: "core:dodo", size: "small", level: 1 }, 3);
+    const inv = h.host.items.inv(rec);
+    const out = new Map<string, number>();
+    for (let s = 0; s < inv.cap; s++) if (inv.item[s] !== 0) out.set(h.reg.ids[inv.item[s]!]!, (out.get(h.reg.ids[inv.item[s]!]!) ?? 0) + inv.count[s]!);
+    return out;
+  };
+  const [plain, tripled] = [found("WorldLootChanceMultiplier=2"), found("WorldLootChanceMultiplier=2\nWorldLootAmountMultiplier=3")];
+  expect(plain.size).toBeGreaterThan(0);
+  expect([...tripled]).toEqual([...plain].map(([id, n]) => [id, n * 3]));
+});
+
 test("a body used up before anyone opened it leaves its loot in a cache", () => {
   const { h, at, me, id } = camp();
   const body = killed(h, "core:dodo", at.x, at.z + 3);
@@ -161,4 +182,14 @@ test("a module hears each roll and may refuse it or change its tier", () => {
   // What happened is told when the tick is done.
   h.run(100);
   expect(heard).toEqual(["body/any body 150 ", "body/apex body 150 red", "found body/apex white"]);
+});
+
+test("the console rolls a source into an admin's bag, the same for the same seed", () => {
+  const { h, ada, me } = camp();
+  const said = (line: string): string => h.say(ada, line, 200).join("\n");
+  const first = said("lootsource body/apex 120 7");
+  expect(first).toMatch(/^body\/apex at yellow, seed 7: \d+ core:/);
+  expect(h.host.items.inv(me).used()).toBeGreaterThan(0);
+  expect(said("lootsource body/apex 120 7")).toBe(first);
+  expect(said("lootsource body/none")).toBe('no source "body/none"; there are: body/any body/medium body/large body/apex');
 });

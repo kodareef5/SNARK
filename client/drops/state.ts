@@ -56,7 +56,7 @@ export interface ArkWire {
   unclear: { name: string; could: string[] }[];
 }
 
-export const TABS = [["tables", "Tables"], ["waiting", "Waiting"], ["sim", "Simulator"], ["tiers", "Tiers and classes"], ["map", "Map and sites"], ["circuits", "Circuits and rules"], ["live", "Live and log"], ["ark", "ARK paste"]] as const;
+export const TABS = [["tables", "Tables"], ["waiting", "Waiting"], ["sim", "Simulator"], ["tiers", "Tiers and classes"], ["map", "Map and sites"], ["circuits", "Circuits and rules"], ["sources", "World loot"], ["live", "Live and log"], ["ark", "ARK paste"]] as const;
 export type Tab = (typeof TABS)[number][0];
 
 /** The page's state. */

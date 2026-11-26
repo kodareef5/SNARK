@@ -2,7 +2,7 @@
 // for and a simulation, from a book and the catalogue as the server sends it.
 
 import { expect, test } from "bun:test";
-import { OFF_TARGET, catalogOfWire, css, load, matrix, nameOf, num, pct, setsOf, simulation, tableDetail, waitingRows, type CatalogWire } from "../../client/core/drops/view.ts";
+import { OFF_TARGET, catalogOfWire, css, load, matrix, nameOf, num, pct, setsOf, simulation, sourceRows, tableDetail, waitingRows, type CatalogWire } from "../../client/core/drops/view.ts";
 import { starterBook } from "../../content/supply/starter.ts";
 import { catalogOf } from "../../shared/supply/catalog.ts";
 import { compileBook } from "../../shared/supply/compile.ts";
@@ -108,3 +108,22 @@ test("the simulator rolls a table as this world's server does: at its SupplyCrat
   expect([held(twice), twice.today === twice.world.today, l.world.today === l.today, l.quality]).toEqual([held(load(book, catalog, 50)), false, true, 1]);
 });
 
+
+test("world loot's sources are listed with what each is the loot of, what it rolls and its worth at every tier", () => {
+  const rows = sourceRows(l);
+  expect(rows.map((r) => [r.key, r.on, r.what, r.tables])).toEqual([
+    ["body/any", true, "any body", "body/scraps"],
+    ["body/medium", true, "a medium body", "provisions prize, stable prize"],
+    ["body/large", true, "a large body", "provisions prize, works prize, stable prize"],
+    ["body/apex", true, "an apex body", "arms prize, armour prize, stable prize, works prize"],
+  ]);
+  const apex = rows[3]!;
+  expect(apex.tiers.map((t) => t.name)).toEqual(["White", "Green", "Blue", "Purple", "Yellow", "Red"]);
+  // A tier's worth doubles, and so does what an apex body gives.
+  for (const t of apex.tiers) expect([t.health, t.worth > t.target! * 0.65, t.worth < t.target! * 1.35]).toEqual(["ok", true, true]);
+  expect(rows[0]!.tiers.map((t) => [t.name, t.target])).toEqual([["", 4.3]]);
+  // A narrower source says its species and levels, and one whose worth is far from its target says so.
+  const narrow = { ...book, sources: [{ ...book.sources![3]!, when: { species: ["core:rex"], level: [100, 150] as [number, number] }, share: 0.9 }] };
+  const [row] = sourceRows(load(narrow, catalog, 10));
+  expect([row!.what, row!.tiers[0]!.health]).toEqual(["the body of a rex, level 100 to 150", "lean"]);
+});
