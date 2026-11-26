@@ -42,8 +42,6 @@ const driveCheck = selfcheck && params.has("urbanDrive");
 /** A measurement run. The camera flies itself and the page reports frame times and the GPU's by pass. */
 // The bench's own code comes only to a page told ?bench (D873).
 const bench = params.has("bench") ? new (await import("../core/bench-run.ts")).BenchRun() : null;
-// The far city and the city's blocks come as their own file, which the first frame does not wait for (D873).
-void import("../core/render/city-late.ts");
 /** A device probe (tools/device.ts). The page measures itself and reports. */
 const device = params.has("device") ? (await import("./device.ts")).devicePage(params.get("device")!) : null;
 const root = document.querySelector<HTMLElement>("#ui")!;
@@ -293,6 +291,7 @@ async function boot(): Promise<void> {
       : session.closeReason === REJECT_PASSWORD ? "Incorrect server password."
       : session.closeReason === REJECT_NAME ? "This survivor is unavailable." : "Disconnected from world.");
   }
+  let nextCityLoad = 0;
   let restored = 0;
   if (selfcheck) Object.assign(globalThis, { snarkProbe: () => ({ ...probeProgress(app), frames: progress!.frames, still: progress!.still, cache: port.cache, glErrors: renderer.errors, drawCalls: renderer.drawCalls, drive, dinosaur: drivingCheck?.dinosaur?.data }) });
   canvas.addEventListener("webglcontextlost", (e) => (e.preventDefault(), session.prediction.note("the graphics context was lost")));
@@ -357,6 +356,10 @@ async function boot(): Promise<void> {
     }
     if (packet.lit) surfaces?.start();
     renderer.draw(packet);
+    if (now >= nextCityLoad) {
+      nextCityLoad = Infinity;
+      void import("../core/render/city-late.ts").catch(() => { nextCityLoad = performance.now() + 5000; });
+    }
     if (light?.on && copy) {
       copy.drawImage(canvas, 0, 0, sampleW, sampleH);
       const sent = light.frame(now, packet, app, copy.getImageData(0, 0, sampleW, sampleH).data, { userAgent: navigator.userAgent, dpr: devicePixelRatio, renderer: renderer.rendererName, format: renderer.format });

@@ -25,7 +25,8 @@ import { formPaint } from "../form-paint.ts";
 import { HAND_NEAR } from "../hand.ts";
 import type { Hiding } from "../hide.ts";
 import { LAMP_BIT } from "../lamp.ts";
-import { MESH_SLOT, NearCity, type NearMesh } from "../nearcity.ts";
+import type { NearCity, NearMesh } from "../nearcity.ts";
+import { MESH_SLOT } from "../near-slots.ts";
 import { BEND_BUFFERS, DRAW_PIECE, DRAW_RANGED, DRAW_SIZED, InstanceWriter, MAX_CASCADES, MAX_DRAWS, PASS_FAR, PASS_NEAR, type FramePacket } from "../packet.ts";
 import type { Frame, Pass } from "../pass.ts";
 import { FIT_YIELD, FrameTable, PIECE_FIT_AT, PIECE_FRAMED, PIECE_FRAMES, PIECE_STATE_AT, pieceWord, plainYaw, writePiece } from "../piece-fit.ts";
@@ -282,7 +283,8 @@ export class NearStore implements Pass {
   /** The shadow's reach `zones` found for the chunk it was last given. */
   private zoneStretch = 0;
   /** With the far city, the near store's chunks' statics drawn flat as their form as a mesh a chunk (nearcity.ts). */
-  readonly near: NearCity | null;
+  near: NearCity | null = null;
+  readonly startMeshes: (Mesh: typeof NearCity) => void;
   /** Whether a chunk the near store holds whole draws such statics from its mesh; false draws them as instances, for pictures held to them. */
   nearMesh = true;
   /** Who draws a chunk the store does not hold whole, which it then leaves to them: the scene sets each as it is made. */
@@ -390,8 +392,11 @@ export class NearStore implements Pass {
     this.cover = new CrownCover(world.dims);
     this.coverLooks = { meshOfForm: this.meshOfForm, sizeOfForm: this.sizeOfForm, treeOf: this.treeOf, side: table.side, low: table.low, high: table.high, hidden: (ref) => this.hiddenNodes.has(ref) };
     const flat = (k: number): boolean => this.meshOfKind[k] !== looks.missing && this.meshOfKind[k] !== HIDDEN && table.sections[this.meshOfKind[k]!]!.every((runs) => runs.length === 0);
-    this.near = farMesh >= 0 ? new NearCity(reg, farMesh, this.landmarkKinds, flat, packet) : null;
-    if (this.near) this.near.paint = formPaint(reg);
+    this.startMeshes = (Mesh) => {
+      if (farMesh < 0 || this.near) return;
+      this.near = new Mesh(reg, farMesh, this.landmarkKinds, flat, packet);
+      this.near.paint = formPaint(reg);
+    };
   }
 
   /** Before a frame: a chunk of nodes one of which was hidden or shown is laid out again, and nothing is yet drawn or cast. */
