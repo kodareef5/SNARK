@@ -78,11 +78,11 @@ interface RecordRow {
 const EMPTY: PeopleView = { revision: -1, editions: [], byId: new Map(), made: new Map(), retired: new Set(), manifestId: "" };
 
 export class PeopleStore {
-  readonly media: string;
-  readonly tmp: string;
   private readonly path: string;
   private readonly now: () => number;
-  private readonly temp: string;
+  private readonly opts: PeopleOptions;
+  /** The temporary folder a store without a media folder makes when it first needs one, removed at its close. */
+  private temp = "";
   private db: Database | null = null;
   private cached: PeopleView = EMPTY;
   /** Each edition's line of the manifest, in id order. */
@@ -95,9 +95,21 @@ export class PeopleStore {
   constructor(opts: PeopleOptions) {
     this.path = opts.db;
     this.now = opts.now ?? Date.now;
-    const temp = (this.temp = opts.media ? "" : mkdtempSync(join(tmpdir(), "snark-people-")));
-    this.media = opts.media ?? join(temp, "media");
-    this.tmp = opts.tmp ?? (temp ? join(temp, "tmp") : `${this.media}.tmp`);
+    this.opts = opts;
+  }
+
+  private tempDir(): string {
+    return (this.temp ||= mkdtempSync(join(tmpdir(), "snark-people-")));
+  }
+
+  /** Where prints and manifests are kept. */
+  get media(): string {
+    return this.opts.media ?? join(this.tempDir(), "media");
+  }
+
+  /** Where uploads are written as they are checked. */
+  get tmp(): string {
+    return this.opts.tmp ?? (this.opts.media ? `${this.opts.media}.tmp` : join(this.tempDir(), "tmp"));
   }
 
   /** The manifest's id as last read, which a world sends its clients (OWN_PEOPLE). Reading it costs nothing. */
@@ -332,5 +344,6 @@ export class PeopleStore {
     this.db?.close();
     this.db = null;
     if (this.temp) rmSync(this.temp, { recursive: true, force: true });
+    this.temp = "";
   }
 }
