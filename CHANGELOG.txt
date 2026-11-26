@@ -9,6 +9,7 @@ Doors
 
 World loot
 - Hold E to search street bins, mailboxes, wrecks, beds and counters. Found vehicles can carry supplies, and wild creatures can leave loot on their bodies.
+- Wrecked cars and boats still hold loot. Only vehicles you can drive or sail glint as you approach.
 - Search weed-covered hulls in Miami for organic polymer, sunken hulks in Tampa for angler gel, and residential beds in San Francisco for pelt.
 
 Shadows
@@ -30,6 +31,9 @@ Item art
 - Hand tools have new silhouettes in hand, on the ground and in inventory. Camp gear and industrial stations have their own models, including the sleeping bag, grinder and forge.
 - Creature eggs keep their species markings when laid or dropped. A pale ring marks a fertile egg. The death cache, skate ramps, vehicle kits and depleted resource nodes are also easier to recognise.
 - Radio and GPS screens stay legible up close. Saddle leather, straps and stitching have clearer finishes, and dropped gear keeps its colours as it switches to simpler models at a distance.
+
+Joining a world
+- Hosts can offer sign-in with Discord and limit entry to members of a Discord server or role. On those worlds, signing in on a second device brings up your survivors. Browser-key sign-in remains the default.
 
 Touch controls
 - Tap or pull the left wheel for menus: turn it under your thumb and lift to open what it stops on. The right fan opens each family of actions beside it. Slide along the equipment shelf and lift to equip. Tap the vital signs for health and experience, or the radio beneath them to chat.
