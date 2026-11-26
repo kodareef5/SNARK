@@ -477,8 +477,8 @@ artTest("a body is drawn coarser as it goes off, its parts under the head at one
   };
   // A body is four levels (tools/pack/body.ts): on high it turns at about 10, 20 and 70 m walking out on this view.
   expect([levels(3), levels(15), levels(30), levels(80)]).toEqual([[0], [1], [2], [3]]);
-  // Seen afresh at 9.5 m it would be the next level. Walking out to there from near, it is still the finest.
-  expect([levels(3), levels(9.5), levels(10.6), levels(8), levels(7)]).toEqual([[0], [0], [1], [1], [0]]);
+  // Seen afresh at 10.5 m it would be the next level. Walking out to there from near, it is still the finest.
+  expect([levels(3), levels(10.5), levels(11.6), levels(8.8), levels(7.5)]).toEqual([[0], [0], [1], [1], [0]]);
   // Low poly starts at the first flat level, the third; it drew the second, textured, drawn flat, until it did.
   scene.assets.tier = tierOf("lowpoly");
   expect(levels(3)).toEqual([2]);
