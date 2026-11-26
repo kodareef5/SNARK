@@ -2064,7 +2064,10 @@ export class Characters {
     if (hide !== 0) {
       const held = this.zonesIn(m, part.lod);
       hide &= held;
-      if (hide !== 0 && hide === held) [only, hide] = [true, 0];
+      if (hide !== 0 && hide === held) {
+        only = true;
+        hide = 0;
+      }
     }
     const n = this.count++;
     if (!only) this.assets.wantTextured(m, part.lod, part.far);

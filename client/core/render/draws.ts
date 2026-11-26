@@ -358,7 +358,8 @@ export class Draws {
           continue;
         }
         if (stop > start) out.push(material, trunk, start, stop - start);
-        [start, stop] = [a, b];
+        start = a;
+        stop = b;
       }
       if (stop > start) out.push(material, trunk, start, stop - start);
     }
