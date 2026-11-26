@@ -16,6 +16,10 @@
 //
 // - In a building of 4 m bays, a cell beside a held one stands too: a slab reaches 4 m past what holds it.
 //
+// - A storey gives way when too little is left of the uprights the map stood on its floor: the walls, piers, fins, panels
+//   and shop fronts that carry, measured in metres along the ground. Its beams fall, and everything over it is then judged
+//   with nothing held, no stair and no pin, so all of it comes down (`judge`'s `share`).
+//
 // The ruins are composed loosely, so some pieces do not stand by this rule as the map placed them. Those are a
 // building's pins (`pins`). A pinned piece stands while anything stands under or beside it: something that carries, at
 // any height, under a place it covers or the next, a slab cell it touches, a cell next to one of its own. One that had
@@ -43,7 +47,7 @@ export const BIT_CARRIES = 1, BIT_CAN_HANG = 2, BIT_GONE = 4, BIT_HUNG = 8, BIT_
 export const BIT_GHOST = 32, BIT_UNDER = 64, BIT_FOOTED = 128;
 
 const family = (name: (typeof BREAK_FAMILIES)[number]): number => BREAK_FAMILIES.indexOf(name);
-const SLAB = family("slab"), BAR = family("bar"), PIER = family("pier");
+const SLAB = family("slab"), BAR = family("bar"), PIER = family("pier"), BEAM = family("beam");
 /** Families that carry what stands on them while whole or breached. A sill, a parapet, a pitched roof and a fixture carry nothing. */
 const CARRIES = new Uint8Array(BREAK_FAMILIES.length);
 for (const name of ["pier", "beam", "wall", "panel", "window", "store", "curtain", "clad", "balcony", "deck", "shell"] as const) CARRIES[family(name)] = 1;
@@ -78,6 +82,10 @@ export class Pieces {
   u1 = new Int16Array(64);
   v0 = new Int16Array(64);
   v1 = new Int16Array(64);
+  /** Metres along the ground of an upright the map stood on its level's floor to carry, and 0 for any other piece. */
+  post = new Float32Array(64);
+  /** Per level, the metres of such uprights as the map placed them: one several storeys tall counts on each it spans. */
+  posts = new Float32Array(256);
   cols = 0;
   rows = 0;
   /** Metres a tile. */
@@ -89,7 +97,7 @@ export class Pieces {
 
   /** Bytes held. */
   get bytes(): number {
-    return this.ref.byteLength + this.part.byteLength * 5 + this.u0.byteLength * 4 + this.stairs.byteLength;
+    return this.ref.byteLength + this.part.byteLength * 5 + this.u0.byteLength * 4 + this.post.byteLength + this.posts.byteLength + this.stairs.byteLength;
   }
 
   private grow(): void {
@@ -109,6 +117,9 @@ export class Pieces {
     this.u1 = more(this.u1);
     this.v0 = more(this.v0);
     this.v1 = more(this.v1);
+    const post = new Float32Array(cap);
+    post.set(this.post);
+    this.post = post;
   }
 
   /** Room for one more piece, and its place among them. */
@@ -147,6 +158,7 @@ export function gather(buildings: Buildings, handles: readonly number[], structs
   out.rows = rows;
   out.bay = bay;
   out.playable = buildings.playable(first);
+  out.posts.fill(0);
   if (out.stairs.length < cols * rows) out.stairs = new Uint8Array(cols * rows);
   else out.stairs.fill(0, 0, cols * rows);
   const t = buildings.table(first), b = first & 0xffff;
@@ -173,6 +185,7 @@ export function gather(buildings: Buildings, handles: readonly number[], structs
         out.level[k] = 0;
         out.tall[k] = 1;
         out.u0[k] = out.u1[k] = out.v0[k] = out.v1[k] = 0;
+        out.post[k] = 0;
         if (fam === 0 || mapKind === 0 || (!placed && rowsOf.owner[slot] !== 0)) continue;
         // Its reach along the frame, by the quarter turn it is nearest to.
         const side = (((rowsOf.yaw[slot]! - frame.yaw) & (YAW_UNITS - 1)) + YAW_UNITS / 8) >> 14;
@@ -212,6 +225,11 @@ export function gather(buildings: Buildings, handles: readonly number[], structs
         // tile's middle rides as a wall does.
         const level = fam === SLAB ? Math.round((y + structs.top[mapKind]!) / STOREY) : storey;
         out.level[k] = level < 0 ? 0 : level > 255 ? 255 : level;
+        if (carries && fam !== SLAB && fam !== BEAM && (bits & BIT_FOOTED) !== 0) {
+          const metres = 2 * (hx > hz ? hx : hz);
+          out.post[k] = metres;
+          for (let l = out.level[k]!, end = Math.min(256, l + out.tall[k]!); l < end; l++) out.posts[l]! += metres;
+        }
         const plate = fam === SLAB && odd(out.u0[k]!, out.u1[k]!) && odd(out.v0[k]!, out.v1[k]!);
         out.part[k] = plate ? PART_PLATE : PART_RIDER;
       }
@@ -237,15 +255,18 @@ let has = new Uint8Array(0), held = new Uint8Array(0), state = new Uint8Array(0)
 let mark = new Uint32Array(0), touched = new Uint32Array(0), queue = new Uint32Array(0), order = new Uint32Array(0);
 const starts = new Uint32Array(258);
 let marks = 0;
+/** Per level while `judge` sweeps: the metres of uprights found standing and carrying there so far. */
+const stood = new Float32Array(256);
 
 /** What the last judgement cost: pieces, places and cells looked at. */
 export const cost = { ops: 0 };
 
 /**
  * Says of each of `p`'s pieces whether it stands, hangs or falls, into `out`, with RESTS where its foot is on something
- * that stands. `pin` gives each piece's pin, if any. Returns how many do not stand.
+ * that stands. `pin` gives each piece's pin, if any. A storey left with under `share` of its uprights as placed gives
+ * way, and all over it falls; 0 asks no such thing. Returns how many do not stand.
  */
-export function judge(p: Pieces, out: Uint8Array, pin: Uint8Array | null = null): number {
+export function judge(p: Pieces, out: Uint8Array, pin: Uint8Array | null = null, share = 0): number {
   const { n, cols, rows } = p;
   const W = 2 * cols + 1, H = 2 * rows + 1, tiles = cols * rows;
   if (rideTop.length < W * H) [rideTop, holdTop, restTop] = [new Uint8Array(W * H), new Uint8Array(W * H), new Uint8Array(W * H)];
@@ -271,13 +292,43 @@ export function judge(p: Pieces, out: Uint8Array, pin: Uint8Array | null = null)
   for (let f = 0; f <= top; f++) starts[f + 2]! += starts[f + 1]!;
   for (let k = 0; k < n; k++) if (p.part[k] !== PART_FIXED && (p.bits[k]! & BIT_GONE) === 0) order[starts[p.level[k]! + 1]!++] = k;
   let down = 0;
+  let failed = false;
   cost.ops = n;
+  if (share > 0) stood.fill(0);
   for (let f = 0; f <= top; f++) {
     const from = starts[f]!, to = starts[f + 1]!;
-    if (from === to) continue;
     // Level 0 is the ground, which holds everything whose foot is on it.
-    if (f > 0) down += level(p, out, pin, f, from, to);
-    else for (let q = from; q < to; q++) if ((p.bits[order[q]!]! & BIT_FOOTED) === 0) out[order[q]!] = STANDS;
+    if (f > 0) {
+      if (from !== to) down += level(p, out, failed ? null : pin, f, from, to, !failed);
+    } else for (let q = from; q < to; q++) if ((p.bits[order[q]!]! & BIT_FOOTED) === 0) out[order[q]!] = STANDS;
+    // Over a storey that gave way nothing is held up.
+    if (failed) continue;
+    if (share > 0) {
+      for (let q = from; q < to; q++) {
+        const k = order[q]!;
+        if (p.post[k]! === 0 || (out[k]! & VERDICT) !== STANDS || (p.bits[k]! & (BIT_CARRIES | BIT_GHOST)) !== BIT_CARRIES) continue;
+        for (let l = f, end = Math.min(256, f + p.tall[k]!); l < end; l++) stood[l]! += p.post[k]!;
+      }
+      if (p.posts[f]! > 0 && stood[f]! < share * p.posts[f]!) {
+        failed = true;
+        // Its beams go with it, and what still stands on its floor carries nothing.
+        for (let q = from; q < to; q++) {
+          const k = order[q]!;
+          if (p.family[k] !== BEAM || p.part[k] !== PART_RIDER || (p.bits[k]! & (BIT_FOOTED | BIT_GHOST)) !== 0 || (out[k]! & VERDICT) !== STANDS) continue;
+          out[k] = FALLS;
+          down++;
+        }
+        rideTop.fill(0, 0, W * H);
+        holdTop.fill(0, 0, W * H);
+        // A heap may still lie on what stands there.
+        for (let q = from; q < to; q++) {
+          const k = order[q]!, upTo = f + p.tall[k]! > 255 ? 255 : f + p.tall[k]!;
+          if (p.part[k] !== PART_RIDER || (out[k]! & VERDICT) !== STANDS || (p.bits[k]! & (BIT_UNDER | BIT_GHOST)) !== BIT_UNDER) continue;
+          for (let v = p.v0[k]!; v <= p.v1[k]!; v++) for (let u = p.u0[k]!; u <= p.u1[k]!; u++) if (restTop[v * W + u]! < upTo) restTop[v * W + u] = upTo;
+        }
+        continue;
+      }
+    }
     // What stands holds up the level over its top.
     for (let q = from; q < to; q++) {
       const k = order[q]!, bits = p.bits[k]!;
@@ -313,8 +364,8 @@ function over(tops: Uint8Array, u: number, v: number, f: number, W: number, H: n
   return false;
 }
 
-/** Judges the pieces `order[from..to)` of level `f` over what stands under it. Returns how many do not stand. */
-function level(p: Pieces, out: Uint8Array, pin: Uint8Array | null, f: number, from: number, to: number): number {
+/** Judges the pieces `order[from..to)` of level `f` over what stands under it, a stair holding its tiles if `stairs`. Returns how many do not stand. */
+function level(p: Pieces, out: Uint8Array, pin: Uint8Array | null, f: number, from: number, to: number, stairs: boolean): number {
   const { cols, rows } = p;
   const W = 2 * cols + 1, H = 2 * rows + 1;
   let down = 0, cells = 0, plates = 0;
@@ -341,7 +392,7 @@ function level(p: Pieces, out: Uint8Array, pin: Uint8Array | null, f: number, fr
   for (let q = 0; q < cells; q++) {
     const cell = touched[q]!;
     const i = cell % cols, j = (cell - i) / cols;
-    if (!over(holdTop, 2 * i + 1, 2 * j + 1, f, W, H, 1) && !stairBy(p, i, j)) continue;
+    if (!over(holdTop, 2 * i + 1, 2 * j + 1, f, W, H, 1) && !(stairs && stairBy(p, i, j))) continue;
     held[cell] = 1;
     state[cell] = STANDS;
   }

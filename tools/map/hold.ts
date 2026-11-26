@@ -6,8 +6,9 @@
 //
 // The body stands at --at (map metres; the map's first spawn point if not given) or, with --drive, goes there plus
 // (dx, dz) at --speed and comes back, again and again. Every --every seconds it prints the bytes come over the link (as
-// Brotli), the parts held and asked for, and what the page holds by class (client/core/mapheld.ts), the city following
-// the statics held among them as the session makes it (HeldStatics.follow), and the most statics and city held at any
+// Brotli; cold, a part's first coming, and again, a part come before, which a browser's cache would serve and the page
+// decodes again, timed apart), the parts held and asked for, and what the page holds by class (client/core/mapheld.ts), the city following
+// the statics held among them as the session makes it (HeldStatics.follow) and read as the renderers read it (news), and the most statics and city held at any
 // step of a hand-over. The far shadow is told by its sizes, since it is made in the renderer. The page wants what --tier wants (map-want.ts), on a touch-first device with --touch. Time here is the link's
 // alone: the loader's own work takes none.
 
@@ -23,7 +24,7 @@ import { TOP_CELL, farCell } from "../../client/core/render/farshadow.ts";
 import { CHUNK_SIZE, chunkCount } from "../../shared/coords.ts";
 import { compileContent, withContent } from "../../shared/content/registry.ts";
 import type { CityStatics } from "../../shared/world/city.ts";
-import { partsFolder } from "../../shared/world/mapfile.ts";
+import { partsFolder, readHead, readPart } from "../../shared/world/mapfile.ts";
 import { headOf } from "../maps/diff.ts";
 
 const args = process.argv.slice(2);
@@ -55,6 +56,18 @@ const later = (ms: number, go: () => void): void => {
   timers.push({ at: now + ms, go });
 };
 const stats = { asked: 0, came: 0, wire: 0, raw: 0 };
+// A part's first coming is cold; one come before comes again warm, which a browser's cache would serve, and is decoded again.
+const again = { cold: 0, coldParts: 0, warm: 0, warmParts: 0, decodeMs: 0 };
+const fetched = new Set<string>();
+const partOf = new Map(head.parts.map((p) => [p.name, p]));
+/** Milliseconds to read `bytes` of `name` once more as the loader reads them, its hash checked. */
+function decodeAgain(name: string, bytes: Uint8Array): number {
+  const t0 = performance.now();
+  const p = partOf.get(name);
+  if (p) readPart(head, p, bytes);
+  else readHead(bytes);
+  return performance.now() - t0;
+}
 // A part's raw bytes are the map file's; its folder holds only the copies for the wire (tools/map/pack.ts).
 const fd = openSync(file, "r");
 const where = new Map([[head.name, { at: 0, length: head.bytes }], ...head.parts.map((p): [string, { at: number; length: number }] => [p.name, p])]);
@@ -75,6 +88,15 @@ const get: Get = (url) =>
         const bytes = new Uint8Array(part.length);
         readSync(fd, bytes, 0, part.length, part.at);
         stats.raw += bytes.length;
+        if (fetched.has(name)) {
+          again.warm += wire;
+          again.warmParts++;
+          again.decodeMs += decodeAgain(name, bytes);
+        } else {
+          fetched.add(name);
+          again.cold += wire;
+          again.coldParts++;
+        }
         done(new Response(bytes));
       },
     });
@@ -137,8 +159,15 @@ console.log(`${head.id}: ${head.dims.chunksX} by ${head.dims.chunksZ} chunks, ${
 let nextSample = 0;
 let askedThen = 0;
 let settledAt = -1;
+/** The squares the city's readers last took in (CityStatics.news), as the renderers follow them. */
+let readSquares = new Uint32Array(0);
 for (;;) {
   for (let k = 0; k < 4; k++) await turn();
+  const following = city as CityStatics | null;
+  if (following) {
+    if (readSquares.length !== following.size) readSquares = new Uint32Array(following.size);
+    following.news(readSquares, () => {});
+  }
   if (now >= nextSample && loader) {
     const rows = mapLedger({ loader, city, skip: [compiled.registry] });
     most.held = Math.max(most.held, heldNow());
@@ -147,7 +176,7 @@ for (;;) {
     if (!p.settled || stats.asked > askedThen) settledAt = -1;
     if (p.settled && settledAt < 0) settledAt = now;
     const still = settledAt >= 0 ? `, settled ${((now - settledAt) / 1000).toFixed(0)} s` : "";
-    console.log(`${(now / 1000).toFixed(0).padStart(4)} s  came ${mb(stats.wire).padStart(6)} MB in ${stats.came} parts, ${stats.asked - askedThen} asked since, ${p.left} of ${p.parts} wanted left${ready ? still : " (before the first frame)"}; ${loader.statics.size} sectors of statics, ${mb(loader.statics.bytes)} MB; holds ${mb(heldTotal(rows) + shadow)} MB: ${line(rows)}${shadow ? `, far shadow ${mb(shadow)} by its sizes` : ""}`);
+    console.log(`${(now / 1000).toFixed(0).padStart(4)} s  came ${mb(stats.wire).padStart(6)} MB in ${stats.came} parts (cold ${mb(again.cold)}, again ${mb(again.warm)}), ${stats.asked - askedThen} asked since, ${p.left} of ${p.parts} wanted left${ready ? still : " (before the first frame)"}; ${loader.statics.size} sectors of statics, ${mb(loader.statics.bytes)} MB; holds ${mb(heldTotal(rows) + shadow)} MB: ${line(rows)}${shadow ? `, far shadow ${mb(shadow)} by its sizes` : ""}`);
     askedThen = stats.asked;
     nextSample += EVERY;
   }
@@ -163,5 +192,6 @@ for (;;) {
   t.go();
 }
 console.log(`hand-overs: ${handed.join("; ") || "none"}`);
+console.log(`came ${mb(stats.wire)} MB in ${stats.came} parts: cold ${mb(again.cold)} MB, ${again.coldParts} parts the first time; again ${mb(again.warm)} MB, ${again.warmParts} parts come before, which a browser's cache would serve, decoded again in ${again.decodeMs.toFixed(0)} ms`);
 console.log(`statics and city held at most: ${mb(most.held)} MB at the samples, ${mb(most.handing)} MB at a hand-over; the city's kinds ${mb(city ? kindsBytes(city) : 0)} MB apart`);
 process.exit(0);

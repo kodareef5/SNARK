@@ -15,6 +15,7 @@ bun tools/mapworld/dock-walk.ts var/maps/<name>.snmap
 bun tools/mapworld/room-walk.ts var/maps/<name>.snmap
 bun tools/mapworld/obelisk-walk.ts var/maps/<name>.snmap
 bun tools/mapworld/server-bench.ts var/maps/<name>.snmap
+bun tools/mapworld/audit.ts var/maps/<name>.snmap
 bun tools/mapworld/verify.ts var/maps/<name>.snmap
 bun tools/mapworld/proof-views.ts var/maps/<name>.snmap
 bun tools/mapworld/views.ts var/maps/<name>.snmap <views.json> <output-folder> medium
@@ -287,7 +288,11 @@ runs over ground dug from under it.
 After admission, circulation removes conflicting overhangs from neighbouring
 buildings. Street grading reserves enough width for its slopes and rejects
 crossings with incompatible levels. Bridge decks constrain the final ground.
-`verify.ts` runs all nine proofs in sequence and exits; it opens no server socket.
+`verify.ts` runs all ten proofs in sequence and exits; it opens no server socket.
+`audit.ts` is one of them: it scans the whole map and prints a JSON line a check. Four are
+gates and must count 0 (pieces off the map, pieces placed twice, a lake wrapping a map edge,
+a hull inside another piece); four are numbers to watch (water ending in a wall, streets
+through buildings, doors off the ground, building pieces under the ground).
 
 Large inventories are generated, not committed. Keep counts, test summaries,
 cameras, selection records and the rasterizer images. The report tool makes a

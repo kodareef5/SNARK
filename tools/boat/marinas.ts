@@ -72,6 +72,8 @@ export interface DockRun { site: string; id: string; finger: boolean; points: { 
 /** An unbroken part of a run as it is laid: its modules' deck points, its level stretches over the water, and the range of the layout's pieces it put. */
 interface RunPart {
   id: string; tag: string; points: DockRun["points"]; landed: boolean; joins: string[]; pieces: [number, number];
+  /** The tags of the street furniture it came ashore over. */
+  cleared: string[];
   stretches: { from: [number, number]; d: [number, number]; length: number; outer: boolean }[];
 }
 export interface MarinaLayout {
@@ -87,6 +89,8 @@ export interface MarinaGround {
   inside(x: number, z: number, reach: number): boolean;
   /** Whether the chunk at a point has room for another piece, and that one is set down there. */
   room(x: number, z: number): boolean; took(x: number, z: number): void;
+  /** A piece set down there taken up again: its room is the chunk's once more. */
+  gave(x: number, z: number): void;
   chunk(x: number, z: number): number;
 }
 
@@ -260,9 +264,10 @@ export function layMarinas(sites: readonly BoatSite[], docks: ReadonlyMap<string
 
   /**
    * A boat set down in a slip, alongside or at anchor, where it floats clear: a moored static, or now and then a wreck.
-   * `tag` names the dock it lies against, which its hull may touch. Returns whether one was set down.
+   * `tag` names the dock it lies against, which its hull may touch, or is null for none: the boxes of ordinary pieces and
+   * swim lanes have no tag, which a boat at anchor once skipped as its own. Returns whether one was set down.
    */
-  const moor = (site: BoatSite, district: string, id: string, vessel: string, x: number, z: number, yaw: number, how: Slip["how"], dock: Slip["dock"], tag: string, run: string): boolean => {
+  const moor = (site: BoatSite, district: string, id: string, vessel: string, x: number, z: number, yaw: number, how: Slip["how"], dock: Slip["dock"], tag: string | null, run: string): boolean => {
     const def = defOf(vessel);
     // Tied up by hand: a degree or two off its line, a hand's breadth off its berth's middle.
     const h = hashString(id, 1359), slack = how === "anchored" ? 0 : 1;
@@ -270,7 +275,7 @@ export function layMarinas(sites: readonly BoatSite[], docks: ReadonlyMap<string
     const shift = slack * (((h >>> 8) % 5) - 2) * .04, across = (yaw + 90) * RAD;
     x += Math.sin(across) * shift; z += Math.cos(across) * shift;
     if (!floats(vessel, x, z, yaw, 0)) { refuse("shallow"); return false; }
-    if (boxes.hits(hull(vessel, x, z, yaw, .3), 0, (t) => t === tag)) { refuse("blocked"); return false; }
+    if (boxes.hits(hull(vessel, x, z, yaw, .3), 0, tag === null ? undefined : (t) => t === tag)) { refuse("blocked"); return false; }
     const wreck = how !== "anchored" && reg.index.has(hulkOf(vessel)) && hashString(id, 1301) / 4294967296 < M.wrecked;
     if (wreck) {
       const form: HarbourWreckForm = depth(x, z) <= def.spec.height * .7 && depth(x, z) >= def.spec.draft + .3 && hashString(id, 1303) & 1 ? "sunk" : "damaged";
@@ -294,6 +299,18 @@ export function layMarinas(sites: readonly BoatSite[], docks: ReadonlyMap<string
   // The runs a survivor reaches on foot, by marina and run: only their slips hold found vessels. And the pieces of the
   // runs it does not, taken up again.
   const walkable = new Set<string>(), gone = new Set<number>();
+  // The street furniture each run came ashore over, by its tag, and how many runs still standing did.
+  const clearedBy = new Map<string, number>();
+  /** A run taken up: its pieces, its boxes, its chunks' room and the furniture it cleared that no other run did. */
+  const takeUp = (run: RunPart): void => {
+    for (let i = run.pieces[0]; i < run.pieces[1]; i++) { gone.add(i); ground.gave(out.pieces[i]!.x, out.pieces[i]!.z); }
+    boxes.gone.add(run.tag);
+    for (const t of run.cleared) {
+      const n = clearedBy.get(t)! - 1;
+      clearedBy.set(t, n);
+      if (n === 0) boxes.gone.delete(t);
+    }
+  };
   // Each marina in turn, in the order of its id's hash.
   const order = civilian.filter((s) => s.waterfront === "marina").sort((a, b) => hashString(a.id) - hashString(b.id) || a.id.localeCompare(b.id));
   for (const site of order) {
@@ -322,16 +339,16 @@ export function layMarinas(sites: readonly BoatSite[], docks: ReadonlyMap<string
     let slips = 0;
     const tagOf = (run: string): string => `dock:${site.id}:${run}`;
     type Stretch = { run: string; from: [number, number]; d: [number, number]; length: number; outer: boolean };
-    const laid: { id: string; finger: boolean; record: DockRun; stretches: Stretch[]; pieces: [number, number] }[] = [];
+    const laid: { id: string; finger: boolean; record: DockRun; stretches: Stretch[]; part: RunPart }[] = [];
     for (const l of lines) {
       // The land end first: the end whose ground stands higher.
       let pts = l.points;
       if (ground.groundAt(pts[0]![0], pts[0]![1]) < ground.groundAt(pts.at(-1)![0], pts.at(-1)![1])) pts = [...pts].reverse();
       for (const run of layRun(l.id, pts, l.finger ? "finger" : "walk", H, tagOf(l.id))) {
         // A part all ashore, its way out to the water broken, leads nowhere: it is taken up.
-        if (run.points.every((p) => depth(p.x, p.z) <= .2)) { for (let i = run.pieces[0]; i < run.pieces[1]; i++) gone.add(i); continue; }
+        if (run.points.every((p) => depth(p.x, p.z) <= .2)) { takeUp(run); continue; }
         const record: DockRun = { site: site.id, id: run.id, finger: l.finger, points: run.points, landed: run.landed, joins: run.joins };
-        laid.push({ id: run.id, finger: l.finger, record, stretches: run.stretches.map((s) => ({ ...s, run: run.id })), pieces: run.pieces });
+        laid.push({ id: run.id, finger: l.finger, record, stretches: run.stretches.map((s) => ({ ...s, run: run.id })), part: run });
       }
     }
     // Two runs are one dock where either ran onto the other's deck.
@@ -356,13 +373,13 @@ export function layMarinas(sites: readonly BoatSite[], docks: ReadonlyMap<string
       if (!joint) { refuse("unreached run"); continue; }
       // An unbroken one, or none: a link with a module left out reaches nothing, and is taken up.
       const parts = layRun(`${r.id}/link`, joint, "walk", H, tagOf(`${r.id}/link`)), link = parts[0];
-      if (parts.length !== 1 || !link) { for (const p of parts) for (let i = p.pieces[0]; i < p.pieces[1]; i++) gone.add(i); refuse("unreached run"); continue; }
+      if (parts.length !== 1 || !link) { for (const p of parts) takeUp(p); refuse("unreached run"); continue; }
       out.runs.push({ site: site.id, id: link.id, finger: false, points: link.points, landed: link.landed, joins: [...link.joins, r.id] });
       reached.add(r.id);
       spread();
     }
     for (const r of laid) {
-      if (!reached.has(r.id)) { for (let i = r.pieces[0]; i < r.pieces[1]; i++) gone.add(i); continue; }
+      if (!reached.has(r.id)) { takeUp(r.part); continue; }
       out.runs.push(r.record);
       walkable.add(`${site.id}:${r.id}`);
     }
@@ -456,7 +473,7 @@ export function layMarinas(sites: readonly BoatSite[], docks: ReadonlyMap<string
         const vessel = drawSized(mix, id, 24);
         if (!vessel) continue;
         const yaw = anchored.heading + ((hashString(id, 1337) % (2 * anchored.swing + 1)) - anchored.swing);
-        if (moor(site, dname, id, vessel, x, z, yaw, "anchored", null, "", "")) set++;
+        if (moor(site, dname, id, vessel, x, z, yaw, "anchored", null, null, "")) set++;
       }
     }
   }
@@ -496,10 +513,11 @@ export function layMarinas(sites: readonly BoatSite[], docks: ReadonlyMap<string
       const vid = `${id}#${k}`, vessel = pick(mix, hashString(vid, 1351)), l = lengthOf(vessel);
       if (t - l < 2) break;
       const across = side * (p.width / 2 + D.gap + beamOf(vessel) / 2), at = lineBox(a, d, t - l / 2, across, 0, [0, 0, 0]);
-      moor(site, district?.name ?? "", vid, vessel, at.x, at.z, yawOf(d[0], d[1]) + (hashString(vid, 1317) & 1 ? 180 : 0), "pier", null, "", "");
+      moor(site, district?.name ?? "", vid, vessel, at.x, at.z, yawOf(d[0], d[1]) + (hashString(vid, 1317) & 1 ? 180 : 0), "pier", null, null, "");
       t -= l + 2;
     }
   }
+  out.cleared = [...clearedBy].filter(([, n]) => n > 0).map(([t]) => Number(t.slice(5)));
   return out;
 
   /**
@@ -554,7 +572,7 @@ export function layMarinas(sites: readonly BoatSite[], docks: ReadonlyMap<string
     const parts: RunPart[] = [];
     const fresh = (): RunPart => {
       const k = parts.length;
-      return { id: k ? `${id}~${k}` : id, tag: k ? `${tag}~${k}` : tag, points: [], stretches: [], landed: false, joins: [], pieces: [out.pieces.length, out.pieces.length] };
+      return { id: k ? `${id}~${k}` : id, tag: k ? `${tag}~${k}` : tag, points: [], stretches: [], landed: false, joins: [], pieces: [out.pieces.length, out.pieces.length], cleared: [] };
     };
     let now = fresh();
     const joins = new Set<string>();
@@ -586,7 +604,7 @@ export function layMarinas(sites: readonly BoatSite[], docks: ReadonlyMap<string
       const mine = tag.slice(0, tag.lastIndexOf(":") + 1), onto = boxes.tags(inner, (t) => t.startsWith(mine) && t !== now.tag);
       if (!ground.inside(m.x, m.z, 4) || !ground.room(m.x, m.z) || boxes.hits(inner, 0, (t) => t.startsWith(mine) || (dry && isFurn(t)))) { refuse(dry ? "module on land" : "module"); close(); breakRun(); continue; }
       for (const t of onto) joins.add(t.slice(mine.length));
-      if (dry) for (const t of boxes.tags({ ...box, y: box.y + 1, size: [width + .4, DOCK.deck + 2, DOCK.length] }, isFurn)) { boxes.gone.add(t); out.cleared.push(Number(t.slice(5))); }
+      if (dry) for (const t of boxes.tags({ ...box, y: box.y + 1, size: [width + .4, DOCK.deck + 2, DOCK.length] }, isFurn)) { boxes.gone.add(t); clearedBy.set(t, (clearedBy.get(t) ?? 0) + 1); now.cleared.push(t); }
       if (dry) now.landed = true;
       // Modules overlap where a line's length is not a whole number of them, and where a run meets another: every other
       // one stands a sixty-fourth lower, and one that runs onto another run a thirty-second, so no two decks share a plane.

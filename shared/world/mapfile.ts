@@ -3,7 +3,7 @@
 //
 // The head:
 //   0   "SNMP"
-//   4   u16 version 15, u16 reserved
+//   4   u16 version 16, u16 reserved
 //   8   u32 hash        FNV-1a of every byte of the head after it: the map's hash, which names each part by its own
 //   12  u32 bytes of the head. Its parts follow it in the order of its table, each where the one before ends.
 //   16  u16 chunksX, u16 chunksZ
@@ -145,7 +145,7 @@ import { StreetSectors, decodeStreets, type StreetsPart } from "./streets.ts";
 import { HIT_PREFIX, bentNext, madeHits, walkedFlush } from "./bends.ts";
 import { BUILDINGS_VERSION, Buildings, SectorBuildings, type BuildingNames } from "./buildings.ts";
 
-export const MAP_VERSION = 15;
+export const MAP_VERSION = 16;
 /** Read too, until the city maps in var/maps are built again: 11 is 15 with no streets part, no bent piece, and parts that name the head's kinds. */
 const MAGIC = 0x504d4e53;
 const HEADER_BYTES = 56;
@@ -409,12 +409,12 @@ function eachStatic(statics: MapStatics | readonly MapStatic[], each: (kind: str
  * the lattice, each to `each` with the chunk it stands in, those that stand on the map at a height a map holds: what a
  * map's writer counts and what its reader makes, from the same numbers on both sides.
  */
-export function madeOn(dims: MapDims, kind: string, ux: number, uy: number, uz: number, yaw: number, bend: ArrayLike<number>, each: (kind: string, ux: number, uy: number, uz: number, yaw: number, chunk: number) => void): void {
+export function madeOn(dims: MapDims, kind: string, ux: number, uy: number, uz: number, yaw: number, bend: ArrayLike<number>, each: (kind: string, ux: number, uy: number, uz: number, yaw: number, chunk: number) => void, keepRepeated = false): void {
   const wide = dims.chunksX * CHUNK_SIZE * STRUCT_UNITS, deep = dims.chunksZ * CHUNK_SIZE * STRUCT_UNITS;
   madeHits(ux, uy, uz, yaw, bend, walkedFlush(kind), (k, x, y, z, turn) => {
     if (x < 0 || x >= wide || z < 0 || z >= deep || y < WORLD_MIN_Y * STRUCT_UNITS || y > WORLD_MAX_Y * STRUCT_UNITS) return;
     each(k, x, y, z, turn, chunkAt(dims, x / STRUCT_UNITS, z / STRUCT_UNITS));
-  });
+  }, keepRepeated);
 }
 
 export interface MapSpawn {
@@ -1616,7 +1616,7 @@ export interface MapHead {
   readonly water: { readonly cell: number; readonly bodies: readonly WaterBody[] } | null;
   /** The whole map at every chunk's corner, which a client draws until each overview comes. */
   readonly coarse: CoarsePicture;
-  /** Its version: MAP_VERSION. */
+  /** The file version selects the slot layout of its generated bend colliders. */
   readonly version: number;
   /** The content ids its statics name by number. */
   readonly kinds: readonly string[];
@@ -1663,7 +1663,7 @@ export function readHead(file: Uint8Array, verify = true): MapHead {
   const v = new DataView(file.buffer, file.byteOffset, file.byteLength);
   if (file.length < 16 || v.getUint32(0, true) !== MAGIC) throw new Error("map: this is not a map file");
   const version = v.getUint16(4, true);
-  if (version !== MAP_VERSION) throw new Error(`map: version ${version} is not one this build reads: build the map again`);
+  if (version !== 15 && version !== MAP_VERSION) throw new Error(`map: version ${version} is not one this build reads: build the map again`);
   const bytes = v.getUint32(12, true);
   if (bytes < HEADER_BYTES || bytes > file.length) throw new Error("map: it is cut short");
   const hash = v.getUint32(8, true);
@@ -2125,7 +2125,7 @@ function* readStatics(head: MapHead, sq: Square, s: In): Generator<void, Statics
       made[3]!.push(hy);
       made[4]!.push(hz);
       made[5]!.push(c);
-    });
+    }, head.version === 15);
     if (q % MADE_SLICE === MADE_SLICE - 1) yield;
   }
   const all = n + made[0]!.length;

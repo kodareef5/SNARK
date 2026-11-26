@@ -182,4 +182,26 @@ test("the billboard's static carries an LED face on its road side, and its bare 
   const face = reg.screenFace[reg.index.get("core:zzstreet_billboard")!];
   expect(face).toEqual(BILLBOARD_FACE);
   expect(reg.screenFace[reg.index.get("core:zzstreet_billboard_bare")!]).toBeNull();
+  // Every size's face has the first's proportions, so one picture fits them all, and each bare form has none.
+  const wide = (f: readonly number[]): number => (f[1]! - f[0]!) / (f[3]! - f[2]!);
+  for (const board of ["_low", "_mid", "_small"]) {
+    const scaled = reg.screenFace[reg.index.get(`core:zzstreet_billboard${board}`)!]!;
+    expect([board, scaled.type, scaled.led, Math.abs(wide(scaled.face) - wide(face!.face)) < 1e-9]).toEqual([board, "billboard", true, true]);
+    expect(reg.screenFace[reg.index.get(`core:zzstreet_billboard${board}_bare`)!]).toBeNull();
+  }
+});
+
+test("a small billboard is drawn as far as its size carries: a face under half as wide, under half as far", () => {
+  const small: ScreenFace = { type: "billboard", face: [-3.07, 3.07, 3.45, 5.26, 0.115], led: true };
+  const s = store(), finder = new FaceFinder([null, BILLBOARD, small]), cam = eye();
+  const far = REACH.reach * 0.6;
+  s.add(1, 1280, 0, 1000 + far, FACING, 0, 1);
+  s.add(2, 1300, 0, 1000 + far, FACING, 0, 1);
+  // At six tenths of the reach the large one is drawn and the small one is not.
+  let list = finder.find({ structs: s }, cam, REACH);
+  expect(Array.from(list.kind.subarray(0, list.count))).toEqual([1]);
+  // Within its own share of the reach the small one is drawn too.
+  s.add(2, 1300, 0, 1000 + REACH.reach * 0.3, FACING, 0, 1);
+  list = finder.find({ structs: s }, cam, REACH);
+  expect(Array.from(list.kind.subarray(0, list.count))).toEqual([2, 1]);
 });

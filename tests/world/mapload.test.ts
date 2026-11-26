@@ -997,6 +997,23 @@ test("the store of statics finds a chunk's rows in its sector, and in the table 
   expect(same()).toBe(true);
 });
 
+test("a sector let go is told to the city's reader by its place, and its rows are not kept", async () => {
+  const held = new HeldStatics(head), city = held.follow(coreRegistry());
+  const p = head.parts.find((q) => q.kind === "statics")!, n = held.parts.indexOf(p);
+  const steps = held.set(p, readPart(head, p, file.subarray(p.at, p.at + p.length)) as StaticsPiece);
+  while (!steps.next().done);
+  const seen = new Uint32Array(city.size), told: [string, boolean][] = [];
+  const read = (): void => city.news(seen, (sq, on) => void told.push([`${sq.cx0} ${sq.cz0} ${sq.cx1} ${sq.cz1}`, on]));
+  read();
+  const square = new WeakRef(city.square(n)!), place = told[0]![0];
+  held.drop(p);
+  read();
+  expect(told).toEqual([[place, true], [place, false]]);
+  await settle();
+  Bun.gc(true);
+  expect(square.deref()).toBeUndefined();
+});
+
 test("a budget short of the statics wanted holds the nearest of them, as far as it reaches", async () => {
   const s = heldServer(file);
   let loader: MapLoader | null = null;
@@ -1013,4 +1030,53 @@ test("a budget short of the statics wanted holds the nearest of them, as far as 
   expect([...names].sort()).toEqual(wanted.slice(0, 3).map((p) => p.name).sort());
   expect(wanted.slice(3).some((p) => s.asked.includes(nameOf(p)))).toBe(false);
   expect(loader!.progress().settled).toBe(true);
+});
+
+test("a focus far from the body brings its ground in place past the budget, and its overviews", async () => {
+  const s = heldServer(file);
+  let loader: MapLoader | null = null;
+  void MapLoader.start(s.get, `map/${head.name}`, NOW).then((l) => (loader = l));
+  await s.drain();
+  const grounds = head.parts.filter((p) => p.kind === "ground"), page = (p: MapPart): number => pageBytes(squareOf(head.dims, SECTOR_CHUNKS, p.col, p.row)!);
+  const body = { x: 4400, z: 448, vx: 0, vz: 0 }, focus = { x: 100, z: 448 };
+  const round = (x: number): MapPart[] => grounds.filter((p) => off(p, x, 448) <= ROAD_REACH);
+  // Room for the body's pages alone; the west overview is past the body's view.
+  const budget = round(4400).reduce((n, p) => n + page(p), 0);
+  let sighted: { x: number; z: number } | null = null;
+  void loader!.follow(() => body, { want: () => ({ view: 1500, statics: 600, ground: budget, camera: body, focus: sighted }) });
+  const go = async (): Promise<void> => {
+    loader!.look();
+    for (let k = 0; k < 10; k++) {
+      await s.drain();
+      await settle();
+    }
+  };
+  await go();
+  const hf = loader!.staged.hf, held = (p: MapPart): boolean => hf.holds(squareOf(head.dims, SECTOR_CHUNKS, p.col, p.row)!);
+  expect([round(100).some(held), loader!.staged.overviews.held().some((b) => b.sq.cx0 === 0), loader!.progress().settled]).toEqual([false, false, true]);
+  sighted = focus;
+  await go();
+  expect([round(100).every(held), round(4400).every(held), loader!.staged.overviews.held().some((b) => b.sq.cx0 === 0), loader!.progress().settled]).toEqual([true, true, true, true]);
+});
+
+test("a sector's ground waiting for its overview is not counted as come", async () => {
+  const s = heldServer(file);
+  let loader: MapLoader | null = null;
+  void MapLoader.start(s.get, `map/${head.name}`, NOW).then((l) => (loader = l));
+  await s.drain();
+  // The first frame in the east; then a view short of the west overview, and the fine window's ground, which reaches into it.
+  const body = { x: 4400, z: 448, vx: 0, vz: 0 };
+  void loader!.follow(() => body, { want: () => ({ view: 300, statics: 300 }) });
+  const go = async (): Promise<void> => {
+    loader!.look();
+    for (let k = 0; k < 10; k++) {
+      await s.drain();
+      await settle();
+    }
+  };
+  await go();
+  body.x = 1700;
+  await go();
+  const waiting = head.parts.filter((p) => p.kind === "ground" && loader!.staged.waits(squareOf(head.dims, SECTOR_CHUNKS, p.col, p.row)!));
+  expect([waiting.length > 0, loader!.progress().left, loader!.progress().settled]).toEqual([true, waiting.length, false]);
 });

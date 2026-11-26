@@ -749,40 +749,51 @@ def rail_bent():
     return w_beam(m, -2.0, 2.0, crumple, 8)
 
 
-# The billboard: a monopole, a catwalk and a 14.6 by 4.3 m face on stringers.
-def billboard_frame(m, bare=False):
-    cylinder(m, (0, -0.8, 0), (0, 10.0, 0), 0.45, 0.36, 12, "galvanised")
-    box(m, (-7.4, 9.55, -0.35), (7.4, 9.75, -0.05), "rust")
-    if fine(3):
-        box(m, (-7.3, 9.6, 0.15), (7.3, 9.65, 1.05), "rust")
+# The billboards: a monopole, a catwalk and a face on stringers. The first is a 14.6 by 4.3 m face on a 10 m pole; the
+# others are that face times `scale` on a pole `pole` metres tall and `post` thick, the small one with no catwalk
+# (content/street.ts BOARDS has the same numbers).
+def billboard_frame(m, bare=False, scale=1.0, pole=10.0, post=0.45, walk=True):
+    w = 7.3 * scale
+    foot = pole - 0.05
+    top = foot + 4.3 * scale
+    cylinder(m, (0, -0.8, 0), (0, pole, 0), post, post * 0.8, 12, "galvanised")
+    box(m, (-w - 0.1, pole - 0.45, -0.35), (w + 0.1, pole - 0.25, -0.05), "rust")
+    if walk and fine(3):
+        box(m, (-w, pole - 0.4, 0.15), (w, pole - 0.35, 1.05), "rust")
     if fine():
-        box(m, (-0.5, 9.75, -0.4), (0.5, 9.95, 0.0), "rust")
-        for x in (-5.0, 0.0, 5.0):
-            box(m, (x - 0.025, 9.65, 1.0), (x + 0.025, 9.95, 1.4), "galvanised")
-            box(m, (x - 0.15, 9.95, 1.25), (x + 0.15, 10.08, 1.55), "galvanised")
+        box(m, (-0.5 * scale, pole - 0.25, -0.4), (0.5 * scale, foot, 0.0), "rust")
+        if walk:
+            for x in (-5.0 * scale, 0.0, 5.0 * scale):
+                box(m, (x - 0.025, pole - 0.35, 1.0), (x + 0.025, foot, 1.4), "galvanised")
+                box(m, (x - 0.15, foot, 1.25), (x + 0.15, pole + 0.08, 1.55), "galvanised")
     if fine() or bare:
-        for y in ((10.0, 11.1, 12.2, 13.3, 14.3) if fine(3) else (10.0, 14.3)):
-            box(m, (-7.3, y - 0.07, -0.18), (7.3, y + 0.07, -0.06), "rust")
+        for up in ((0.05, 1.15, 2.25, 3.35, 4.35) if fine(3) else (0.05, 4.35)):
+            y = foot + 0.05 + (up - 0.05) * scale
+            box(m, (-w, y - 0.07, -0.18), (w, y + 0.07, -0.06), "rust")
         for x in (range(-7, 8, 2) if fine() else (-7, 7)):
-            box(m, (x - 0.05, 9.9, -0.06), (x + 0.05, 14.35, 0.08), "rust")
+            box(m, (x * scale - 0.05, foot - 0.05, -0.06), (x * scale + 0.05, top + 0.1, 0.08), "rust")
     if not bare:
         if fine():
-            sheet(m, [(-7.3, 9.95, 0.1), (7.3, 9.95, 0.1), (7.3, 14.25, 0.1), (-7.3, 14.25, 0.1)], 1, 1, lambda fx, fy: part_uv("cut", "billboard", fx, 1 - fy), "street_cut", 0.01)
+            sheet(m, [(-w, foot, 0.1), (w, foot, 0.1), (w, top, 0.1), (-w, top, 0.1)], 1, 1, lambda fx, fy: part_uv("cut", "billboard", fx, 1 - fy), "street_cut", 0.01)
         else:
             # Far off the torn face is a whole one, in its colour.
-            box(m, (-7.3, 9.95, -0.06), (7.3, 14.25, 0.11), "rust", decals={"+z": ("cut", "billboard")})
+            box(m, (-w, foot, -0.06), (w, top, 0.11), "rust", decals={"+z": ("cut", "billboard")})
     return m
 
 
-@piece("billboard")
-def billboard():
-    return billboard_frame(Mesh())
+# Each board after the first: its face's scale, its pole's height and thickness, and whether it has a catwalk.
+BOARDS = {"": (1.0, 10.0, 0.45, True), "_low": (1.0, 5.5, 0.45, True), "_mid": (0.67, 6.0, 0.3, True), "_small": (0.42, 3.5, 0.18, False)}
 
 
-@piece("billboard_bare")
-def billboard_bare():
+def board(name, bare):
+    scale, pole, post, walk = BOARDS[name]
+    piece("billboard" + name + ("_bare" if bare else ""))(lambda: billboard_frame(Mesh(), bare=bare, scale=scale, pole=pole, post=post, walk=walk))
+
+
+for _name in BOARDS:
+    board(_name, False)
     # The face gone, its frame bare.
-    return billboard_frame(Mesh(), bare=True)
+    board(_name, True)
 
 
 @piece("newsbox")
