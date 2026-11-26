@@ -232,11 +232,13 @@ export function buildCatalogue(input: CatalogueInput = {}): Entry[] {
     } else picture = { meshes: [d.mesh], colors: d.regions?.map((r) => r?.colors[0]?.[0] ?? 0) ?? [], body: true };
     // A species with no art of its own is a stand-in, and not in the wiki (coverage.ts).
     if (!picture.meshes.every(has)) continue;
+    // The hidden jet is left out, whatever art it has: finding it is the point.
+    if (d.vehicle?.movement === "jet") continue;
     const vehicle = d.vehicle;
     // A road vehicle nobody drives is towed, whatever chassis it borrows.
     const group = vehicle?.movement === "boat" && vehicle.family ? marineGroups[vehicle.family]
       : vehicle && isWheelVehicle(vehicle) && !driven(vehicle) ? "Trailer"
-      : vehicle ? sentence(vehicle.movement === "rotor" || vehicle.movement === "boat" ? vehicle.movement : (vehicle.frame ?? "car").replace("_", " "))
+      : vehicle && isWheelVehicle(vehicle) ? sentence((vehicle.frame ?? "car").replace("_", " ")) : vehicle ? sentence(vehicle.movement ?? "car")
       : creature ? (d.fly ? "Flyer" : "Creature") : "Human";
     const e = entry(d.id, kind, group === "Skateboard" ? "Street skateboard" : labelOf(d), group, picture, [d.id]);
     const fact = facts(e);

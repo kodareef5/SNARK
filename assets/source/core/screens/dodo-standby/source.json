@@ -1,0 +1,15 @@
+{
+  "kind": "image",
+  "title": "Dodo on Standby",
+  "year": 2026,
+  "from": {
+    "by": "SNARK",
+    "sha256": "317e06706b3462b5959db67adf18716f785dda94a30c2f8b511936c79dd23b3d"
+  },
+  "rights": "Made for SNARK, 2026",
+  "licence": "Made for the game and given to it under CC0 1.0.",
+  "audio": false,
+  "types": [
+    "laptop"
+  ]
+}

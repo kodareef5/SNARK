@@ -6,7 +6,7 @@ import { MATERIAL_RECIPES } from "../../content/texgen/materials.ts";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { FACE_PLAIN, FACE_WEARS, FIT_CLASS_SHIFT, FIT_WALL, FrameTable, PIECE_FRAMED, PieceFit, pieceWord, writePiece } from "../../client/core/render/piece-fit.ts";
 import { PROGRAMS } from "../../client/core/render/programs.ts";
-import { PIECE_FIXED, PIECE_OVER_WEAR, PIECE_OWN, PIECE_PLAIN, PIECE_SEED, PIECE_SEEDS, pieceSeed, worldSurface, type PiecePixel, type WorldSample } from "../../client/core/render/world-surfaces.ts";
+import { PIECE_ALLOY, PIECE_FIXED, PIECE_OVER_WEAR, PIECE_OWN, PIECE_PLAIN, PIECE_SEED, PIECE_SEEDS, pieceSeed, worldSurface, type PiecePixel, type WorldSample } from "../../client/core/render/world-surfaces.ts";
 import { MADE_READS, materialIndex } from "../../client/core/texgen/layers.ts";
 import { TWIN_SLOTS, madeTwin } from "../../client/core/texgen/materials.ts";
 import { INSTANCE_BYTES } from "../../shared/pack/pack.ts";
@@ -150,7 +150,9 @@ test("frame and plate are two tones of one material: each face is dyed whole by 
 test("the lit program gives a piece's pixel its own frame, turn, seed and face bits; a city static's read is as it was", () => {
   for (const name of ["medium", "high", "ultra"] as const) {
     const p = PROGRAMS.flat!(tierOf(name), "bc");
-    expect(p.vertex).toContain(`vMade = int(wears | ((iRegB.x & 3u) << 5u) | (wears == 0u ? 0u : ${PIECE_OWN << PIECE_OVER_WEAR}u | ((aBone & ${FACE_PLAIN}u) << 2u) | (region ? 0u : ${PIECE_FIXED << PIECE_OVER_WEAR}u) | ((h >> 20u) << ${PIECE_OVER_WEAR + PIECE_SEED}u)));`);
+    expect(p.vertex).toContain(`bool alloy = field && (aBone & ${FACE_PLAIN}u) != 0u`);
+    expect(p.vertex).toContain(`(plain ? ${PIECE_PLAIN << PIECE_OVER_WEAR}u : 0u) | (alloy ? ${PIECE_ALLOY << PIECE_OVER_WEAR}u : 0u)`);
+    expect(p.vertex).toContain(`(region || inlay ? 0u : ${PIECE_FIXED << PIECE_OVER_WEAR}u) | ((h >> 20u) << ${PIECE_OVER_WEAR + PIECE_SEED}u)`);
     expect(p.vertex).toContain("pieceFit(tl, ts, tc);\n    vPlace = vec2(tc, ts);");
     expect(p.fragment).toContain(`worldPiece = vMade >> ${PIECE_OVER_WEAR};`);
     expect(p.fragment).toContain("if (worldPiece > 0) worldTurn = vPlace;");

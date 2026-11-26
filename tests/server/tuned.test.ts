@@ -381,15 +381,26 @@ test("the server's name and message of the day stay up for as long as the server
   run(1000);
   // The host's own message in place of the game's welcome, under the server's name, and the box behind them.
   expect([app.session.motdSeconds, rows()]).toEqual([30, ["The Proving Ground", "Welcome", "Be kind"]]);
-  expect(app.ui.frame.find(KEY_CHAT_PANEL)).not.toBeNull();
+  const panel = app.ui.frame.find(KEY_CHAT_PANEL)!;
+  const first = app.ui.frame.find(KEY_CHAT_ROW)!, last = app.ui.frame.find(KEY_CHAT_ROW + 2)!;
+  expect(panel.y).toBeLessThan(first.y);
+  expect(panel.y + panel.h).toBeGreaterThan(last.y + last.h);
+  expect(app.ui.frame.nodes.indexOf(panel)).toBeLessThan(app.ui.frame.nodes.indexOf(first));
   app.session.chat(TEXT_GLOBAL, "hello");
   run(1000);
   expect(rows()).toEqual(["The Proving Ground", "Welcome", "Be kind", "ada: hello"]);
-  // A chat line lasts twelve seconds. The message of the day lasts its thirty.
+  for (let i = 0; i < 105; i++) app.ui.chat.print(TEXT_GLOBAL, `Chat ${i}`, app.session.serverTick);
+  run(1000);
+  const recent = ["Chat 102", "Chat 103", "Chat 104"];
+  expect(rows()).toEqual(["The Proving Ground", "Welcome", "Be kind", ...recent]);
+  // Desktop radio keeps its three most recent lines dimmed after the ordinary hold.
   run(14000);
-  expect(rows()).toEqual(["The Proving Ground", "Welcome", "Be kind"]);
+  expect(rows()).toEqual(["The Proving Ground", "Welcome", "Be kind", ...recent]);
+  expect(app.ui.frame.find(KEY_CHAT_ROW + 5)!.alpha).toBeLessThan(1);
+  expect(app.ui.frame.find(KEY_CHAT_ROW)!.alpha).toBe(1);
   run(16000);
-  expect([rows(), app.ui.frame.find(KEY_CHAT_PANEL)]).toEqual([[], null]);
+  expect([rows(), app.ui.frame.find(KEY_CHAT_PANEL)]).toEqual([recent, null]);
+  h.host.shutdown();
 });
 
 test("as shipped, the chat box welcomes a survivor who joins: it stands behind the welcome for the server's twenty seconds and fades with it; a new survivor's waits until it has made itself", () => {

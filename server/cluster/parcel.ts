@@ -40,11 +40,13 @@ export interface ParcelHead {
   /** Every record's id, the first first. */
   pids: number[];
   /**
-   * The world it left had made records and teams up to these (Records.nextSeq, nextTeam). A save of that world restored from
-   * before it left numbers on from here, so it never gives out an id again that is travelling.
+   * The world it left had made records, teams and survivor IDs up to these (Records.nextSeq, nextTeam, nextSurvivor). A save
+   * of that world restored from before it left numbers on from here, so it never gives out an id again that is travelling.
+   * A parcel sealed before survivors had IDs has no `survivors`.
    */
   seq: number;
   teams: number;
+  survivors?: number;
 }
 
 interface ParcelBody extends ParcelHead {

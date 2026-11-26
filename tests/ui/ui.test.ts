@@ -9,15 +9,17 @@ import { IMAGE_ARROW, arrowSheet } from "../../client/core/ui/arrow.ts";
 import { ConsoleState, KEY_CONSOLE_INPUT, KEY_CONSOLE_PANEL, KEY_CONSOLE_ROW, MAX_LINE } from "../../client/core/ui/console.ts";
 import { bindTextInput } from "../../client/core/ui/events.ts";
 import { KEY_BANNER, KEY_CROSS, KEY_MARKER, KEY_SELF_ARROW, KEY_MINIMAP, KEY_READOUT, KEY_VITAL, KEY_VOICE } from "../../client/core/ui/hud.ts";
-import { K_BAR, K_INPUT, K_TEXT, textWidth, wrap, type UiFrame } from "../../client/core/ui/nodes.ts";
+import { K_BAR, K_INPUT, K_TEXT, canvasHeight, textWidth, wrap, type UiFrame, type UiNode } from "../../client/core/ui/nodes.ts";
+import { KEY_TOUCH_BUTTON, T_CLOSE, TouchPlay } from "../../client/core/touch.ts";
+import * as touchLayout from "../../client/core/ui/touch.ts";
 import type { ClientSession } from "../../client/core/session.ts";
 import { KEY_INV_INFO, KEY_INV_PANEL, KEY_INV_SLOT, type InventoryScreen } from "../../client/core/ui/inventory.ts";
-import { KEY_MAP_IMAGE, KEY_MAP_LINE, KEY_MAP_PIN } from "../../client/core/ui/screens.ts";
+import { KEY_MAP_IMAGE, KEY_MAP_TOOLS, KEY_MAP_ATLAS, KEY_MAP_LINE, KEY_MAP_PIN } from "../../client/core/ui/screens.ts";
 import { KEY_CHOOSE_FILTER, KEY_CHOOSE_MAP, KEY_CHOOSE_PAGE, KEY_CHOOSE_PANEL, KEY_CHOOSE_PIN, KEY_CHOOSE_RISE, KEY_CHOOSE_ROW, KEY_CHOOSE_TITLE, type ChoosingScreen } from "../../client/core/ui/choosing.ts";
 import { KEY_CHAR_ENGRAM, KEY_CHAR_JOBS, KEY_CHAR_PAGE, KEY_CHAR_PANEL, KEY_CHAR_POINTS, KEY_CHAR_RECIPE, KEY_CHAR_STAT, KEY_CHAR_TAB, KEY_CHAR_TITLE, engramOrder, type CharacterScreen } from "../../client/core/ui/character.ts";
-import { KEY_PIN_BUTTON, KEY_PIN_CLEAR, KEY_PIN_DIGITS, KEY_PIN_PANEL, KEY_STRUCT_BUTTON, KEY_STRUCT_NAME_INPUT, KEY_STRUCT_PANEL, type StructMenu } from "../../client/core/ui/structure.ts";
+import { KEY_PIN_BUTTON, KEY_PIN_CLEAR, KEY_PIN_DIGITS, KEY_PIN_PANEL, KEY_STRUCT_BUTTON, KEY_STRUCT_HEALTH, KEY_STRUCT_NAME_INPUT, KEY_STRUCT_PANEL, actionsOf, type StructMenu } from "../../client/core/ui/structure.ts";
 import { Ui } from "../../client/core/ui/ui.ts";
-import { NO_PIN, STRUCT_DEMOLISH, STRUCT_LOCK, STRUCT_NAME, STRUCT_PICKUP, STRUCT_PIN, STRUCT_TRAVEL, STRUCT_USE } from "../../shared/world/upkeep.ts";
+import { NO_PIN, STRUCT_DEMOLISH, STRUCT_LOCK, STRUCT_NAME, STRUCT_PICKUP, STRUCT_PIN, STRUCT_TEK_SOLID, STRUCT_TRAVEL, STRUCT_USE } from "../../shared/world/upkeep.ts";
 import { KEY_OPEN_LEVEL, KEY_OPEN_MATE, KEY_OPEN_ORDER, KEY_OPEN_PAGE, KEY_OPEN_SLOT, KEY_OPEN_SUBJECT, KEY_OPEN_UNSADDLE, waitWords } from "../../client/core/ui/inventory.ts";
 import { KEY_NAME_INPUT, KEY_NAME_PANEL, KEY_NAME_TITLE, type NamePrompt } from "../../client/core/ui/tame.ts";
 import { CMD_FEED, CMD_NAME, CMD_ORDER, ORDER_FOLLOW, ORDER_LEVEL, ORDER_MATE, ORDER_STANCE, ORDER_STAY, ORDER_UNMATE, RESULT_DENIED, RESULT_OK, RESULT_PIN } from "../../shared/net/protocol.ts";
@@ -163,21 +165,20 @@ test("every screen fits every window shape: nothing off the canvas, no clipped t
           const p = f.nodes[a]!;
           const q = f.nodes[b]!;
           if (p.interactive && q.interactive) expect(overlaps(f, a, b), `${name}: controls ${p.key} and ${q.key}`).toBe(false);
-          // The layers are the HUD, the console and a screen. One may cover another on purpose, but within a layer text must not collide.
-          // Combat marks (keys 2000 and up) are drawn over the world and belong to the HUD.
-          const layer = (k: number) => (k >= 2000 ? 0 : k >= KEY_INV_PANEL ? 2 : k >= KEY_CONSOLE_PANEL ? 1 : 0);
-          if (p.kind === K_TEXT && q.kind === K_TEXT && layer(p.key) === layer(q.key)) {
+          // Open screens may cover HUD text. Each screen still has to fit its own text.
+          const layer = (n: UiNode) => n.owner >= 0 && !n.inPlay ? n.owner + 2 : Number(n.key >= KEY_CONSOLE_PANEL && n.key < KEY_INV_PANEL);
+          if (p.kind === K_TEXT && q.kind === K_TEXT && layer(p) === layer(q)) {
             expect(overlaps(f, a, b), `${name}: text ${p.key} "${p.text}" and ${q.key} "${q.text}"`).toBe(false);
           }
         }
       }
-      expect(f.find(KEY_READOUT)!.text).toBe("2560.0 lat  2560.0 lon  NW 359");
+      expect(f.find(KEY_READOUT)!.text).toContain("FPS");
       expect(f.find(KEY_MINIMAP)).not.toBeNull();
       expect(f.find(KEY_VITAL + 9)!.value).toBe(0.5);
       expect(f.find(KEY_BANNER)!.text).toBe("SPECTATING");
       const said = f.find(KEY_VOICE)!;
       expect(textWidth(said.text, said.style), name).toBeLessThanOrEqual(said.w);
-      expect(said.y, name).toBeGreaterThanOrEqual(f.find(KEY_READOUT + 2)!.y + f.find(KEY_READOUT + 2)!.h);
+      expect(said.y, name).toBeGreaterThanOrEqual(f.find(KEY_READOUT)!.y + f.find(KEY_READOUT)!.h);
       expect(f.find(KEY_CONSOLE_INPUT) !== null).toBe(consoleOpen);
       // The latest chat rows show while the box is shut, and more while it is open.
       let rows = 0;
@@ -560,7 +561,13 @@ test("the choosing and map screens fit every window shape, and a place picked in
       });
       const ui = newUi();
       ui.registry = reg;
-      if (!dead) expect(ui.key("KeyM", true, false, session)).toBe(true);
+      if (!dead) {
+        expect(ui.key("KeyM", true, false, session)).toBe(true);
+        ui.build(aspect, fullHud(), session);
+        ui.pointer(0, KEY_MAP_TOOLS, 0, 0, 0, session);
+        ui.build(aspect, fullHud(), session);
+        ui.pointer(0, KEY_MAP_ATLAS, 0, 0, 0, session);
+      }
       ui.build(aspect, fullHud(), session);
       const f = ui.frame;
       for (let i = 0; i < f.count; i++) {
@@ -934,25 +941,22 @@ test("what is said goes to the chat box and what the console printed stays in th
   tell(TEXT_LOCAL, "bob: over here");
   tell(TEXT_TRIBE, "cy: the wall is up");
   ui.build(16 / 9, hud, session);
-  expect(rows().map((r) => r.text)).toEqual(["bob invites you to join Night Shift.", "ada: hello", "[Local] bob: over here", "[Tribe] cy: the wall is up"]);
-  expect(new Set(rows().map((r) => r.style)).size).toBe(4);
+  expect(rows().map((r) => r.text)).toEqual(["ada: hello", "[Local] bob: over here", "[Tribe] cy: the wall is up"]);
+  expect(new Set(rows().map((r) => r.style)).size).toBe(3);
   expect(rows().every((r) => r.alpha === 1)).toBe(true);
   expect(ui.console.lines).toEqual(["x 1.00  y 2.00  z 3.00  alive", "bob invites you to join Night Shift."]);
-  // A second build with nothing new takes nothing in twice.
   ui.build(16 / 9, hud, session);
-  expect(rows().length).toBe(4);
-
-  // After eleven seconds the lines are fading, and after twelve they are gone until the box is opened.
+  expect(rows().length).toBe(3);
   s.serverTick = 1000 + 11 * 30;
   ui.build(16 / 9, hud, session);
-  expect(rows().length).toBe(4);
-  expect(rows()[0]!.alpha).toBeCloseTo(0.5, 5);
+  expect(rows()[0]!.alpha).toBeCloseTo(.825, 5);
   tell(TEXT_GLOBAL, "ada: anyone?");
   ui.build(16 / 9, hud, session);
-  expect(rows().map((r) => r.alpha)).toEqual([0.5, 0.5, 0.5, 0.5, 1]);
+  expect(rows().slice(0, 2).every(r => Math.abs(r.alpha - .825) < .001)).toBe(true);
+  expect(rows()[2]!.alpha).toBe(1);
   s.serverTick = 1000 + 13 * 30;
   ui.build(16 / 9, hud, session);
-  expect(rows().map((r) => r.text)).toEqual(["ada: anyone?"]);
+  expect(rows().map((r) => r.alpha)).toEqual([.65, .65, 1]);
   ui.key("Enter", true, false, session);
   ui.build(16 / 9, hud, session);
   expect(rows().length).toBe(5);
@@ -1017,6 +1021,66 @@ test("the list of what can be done to a piece fits every window shape, whatever 
   world.structs.remove(refs[0]!);
   ui.build(16 / 9, fullHud(), session);
   expect([ui.screen<StructMenu>("structure").open, ui.frame.find(KEY_STRUCT_PANEL)]).toEqual([false, null]);
+});
+
+test("structure actions and dialogs fit touch screens with safe areas", () => {
+  const world = flatWorld(2);
+  const kinds = ["phase_wall_open_tek", "workstation", "fabricator_lit", "bed"].map((name) => reg.index.get(`core:${name}`)!);
+  const refs = kinds.map((kind, i) => world.structs.add(kind, 18 + i * 7, 1.5, 20, 0, 7, 1200));
+  const hud = fullHud();
+  for (const [width, height, left, top, right, bottom] of [[568, 320, 0, 0, 0, 0], [844, 390, 47, 0, 47, 21], [390, 844, 0, 47, 0, 34], [320, 568, 0, 20, 0, 0]] as const) {
+    const { session, sent } = fakeSession(new Inventory(40));
+    Object.assign(session, { sessionState: SESSION_ALIVE, world });
+    const ui = newUi(), f = ui.frame;
+    ui.registry = reg;
+    ui.inputDevice = 2;
+    ui.touchPlay = new TouchPlay();
+    ui.layer = touchLayout;
+    ui.canvasHeight = canvasHeight(width, height);
+    const unit = height / ui.canvasHeight;
+    Object.assign(f, { unit, left: left / unit, top: top / unit, right: right / unit, bottom: bottom / unit });
+    const menu = ui.screen<StructMenu>("structure");
+    const fits = (panelKey: number) => {
+      ui.build(width / height, hud, session);
+      const panel = f.find(panelKey)!;
+      expect(panel.x).toBeGreaterThanOrEqual(f.left);
+      expect(panel.y).toBeGreaterThanOrEqual(f.top);
+      expect(panel.x + panel.w).toBeLessThanOrEqual(f.width - f.right);
+      expect(panel.y + panel.h).toBeLessThanOrEqual(f.height - f.bottom);
+      expect(f.find(KEY_TOUCH_BUTTON + T_CLOSE)).not.toBeNull();
+      for (const [i, n] of f.nodes.slice(0, f.count).entries()) {
+        if (n.owner !== panel.owner || !n.interactive) continue;
+        expect(n.w * unit).toBeGreaterThanOrEqual(44);
+        expect(n.h * unit).toBeGreaterThanOrEqual(44);
+        for (let j = 0; j < f.count; j++) if (i !== j && f.nodes[j]!.interactive) expect(overlaps(f, i, j)).toBe(false);
+      }
+    };
+    menu.undoable = true;
+    for (const [i, ref] of refs.entries()) {
+      menu.begin(ref);
+      fits(KEY_STRUCT_PANEL);
+      const count = actionsOf(reg, kinds[i]!).length + 1;
+      expect(f.find(KEY_STRUCT_BUTTON + count - 1)!.text).toBe(`${count}  Undo your last piece`);
+    }
+    menu.begin(refs[0]!);
+    fits(KEY_STRUCT_PANEL);
+    expect(f.find(KEY_STRUCT_HEALTH)!.text).toContain("Open");
+    const phase = f.find(KEY_STRUCT_BUTTON)!;
+    expect(phase.text).toBe("1  Set to solid wall");
+    ui.pointer(0, phase.key, phase.x + 1, phase.y + 1, 0, session, 1);
+    expect(sent[0]!.bytes[4]).toBe(STRUCT_TEK_SOLID);
+
+    menu.begin(refs[1]!);
+    fits(KEY_STRUCT_PANEL);
+    expect(f.find(KEY_STRUCT_HEALTH)!.text).toContain("60 slots");
+    ui.key("Digit6", true, false, session);
+    fits(KEY_PIN_PANEL);
+    menu.begin(refs[3]!);
+    fits(KEY_STRUCT_PANEL);
+    ui.key("Digit4", true, false, session);
+    fits(KEY_PIN_PANEL);
+    expect(f.find(KEY_STRUCT_NAME_INPUT)!.focus).toBe(true);
+  }
 });
 
 test("what can be used can be locked and given a PIN from the list; the PIN panel takes four digits, fits every window, and remembers a PIN that worked", () => {

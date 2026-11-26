@@ -1,0 +1,15 @@
+{
+  "title": "Dozehaven Motor Court",
+  "year": 2026,
+  "from": {
+    "by": "SNARK",
+    "sha256": "435714eb15fd5b24dd4de928795b8c2c4f41fd3cac49e3b45d8a819da0a5d890"
+  },
+  "rights": "Made for SNARK, 2026",
+  "licence": "Made for the game and given to it under CC0 1.0.",
+  "poster": 5,
+  "audio": false,
+  "types": [
+    "billboard"
+  ]
+}

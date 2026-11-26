@@ -15,6 +15,7 @@ stays in its area.
 | `combat` | Weapons, shots, blows, buffs, damage |
 | `creatures` | Poses, taming, breeding, riding, corpses, flyers, each species |
 | `debug` | The debug bar: frame times, the socket's counts, the log, pictures |
+| `events` | Map events: the book, kinds that modules define, craft and their paths, the feed, the events page |
 | `items` | Inventories, crafting stations, loot, gathering, supply drops |
 | `net` | The wire, sessions, prediction under latency and loss |
 | `render` | The frame: what is drawn, lit, shadowed and left out, on every tier |

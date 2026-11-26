@@ -1,6 +1,7 @@
 // The client's part of the map: what the server has sent of structures and friends beyond the view, where the terrain's
 // picture comes from, and the pictures the minimap and the map screen show, composed of terrain, structure cells and grid.
 
+import { ChartStreets, tintChartRelief } from "./chart-streets.ts";
 import { G_WORLD, type KeyRow } from "./key-row.ts";
 import { CHUNK_SIZE, chunkAt, chunkCx, chunkCz } from "../../shared/coords.ts";
 import type { BitReader } from "../../shared/net/codec.ts";
@@ -107,6 +108,8 @@ export class ReliefTiles implements TileSource {
   private readonly hf: Heightfield;
   private readonly palette: Uint8Array;
   private readonly kept = new Map<number, { tile: Tile; used: number }>();
+  private readonly roads = new ChartStreets();
+  private readonly roadRegions: number[] = [];
   /** The finest tile asked for and not had since the last step, or -1. */
   private wanted = -1;
   private uses = 0;
@@ -114,26 +117,36 @@ export class ReliefTiles implements TileSource {
   private seen: number;
   private readonly stale = new Set<number>();
 
-  constructor(hf: Heightfield, palette: Uint8Array) {
+  private readonly field: boolean;
+
+  constructor(hf: Heightfield, palette: Uint8Array, field = false) {
+    this.field = field;
     this.hf = hf;
     this.palette = palette;
     this.seen = hf.changes.length;
   }
 
-  /** Marks each tile kept that shows ground changed since it was painted. */
+  /** A tile's slopes also read samples a pixel beyond its edges. */
+  private invalidate(cx0: number, cz0: number, cx1: number, cz1: number): void {
+    const hf = this.hf, whole = Math.max(hf.sizeX, hf.sizeZ);
+    for (const key of this.kept.keys()) {
+      const side = whole / (1 << (key >> 16));
+      const east = (hf.sizeX + whole) / 2 - (key & 255) * side;
+      const north = (hf.sizeZ + whole) / 2 - ((key >> 8) & 255) * side;
+      const margin = (2 * side) / RELIEF_SIZE + hf.cell;
+      if (east - side - margin < cx1 * CHUNK_SIZE && east + margin > cx0 * CHUNK_SIZE &&
+          north - side - margin < cz1 * CHUNK_SIZE && north + margin > cz0 * CHUNK_SIZE) this.stale.add(key);
+    }
+  }
+
   private take(): void {
-    const { hf, kept } = this;
-    const c = hf.changes;
-    const whole = Math.max(hf.sizeX, hf.sizeZ);
-    for (; this.seen < c.length; this.seen += 4) {
-      const [x0, z0, x1, z1] = [c[this.seen]! * CHUNK_SIZE, c[this.seen + 1]! * CHUNK_SIZE, c[this.seen + 2]! * CHUNK_SIZE, c[this.seen + 3]! * CHUNK_SIZE];
-      for (const key of kept.keys()) {
-        const side = whole / (1 << (key >> 16));
-        // A tile's pixels read the ground up to a pixel past their own.
-        const [e, n] = [(hf.sizeX + whole) / 2 - (key & 255) * side, (hf.sizeZ + whole) / 2 - ((key >> 8) & 255) * side];
-        const margin = (2 * side) / RELIEF_SIZE + hf.cell;
-        if (e - side - margin < x1 && e + margin > x0 && n - side - margin < z1 && n + margin > z0) this.stale.add(key);
-      }
+    const changes = this.hf.changes, roads = this.roadRegions;
+    if (this.roads.changed(this.hf.streets, roads)) {
+      if (!roads.length) for (const key of this.kept.keys()) this.stale.add(key);
+      for (let i = 0; i < roads.length; i += 4) this.invalidate(roads[i]!, roads[i + 1]!, roads[i + 2]!, roads[i + 3]!);
+    }
+    for (; this.seen < changes.length; this.seen += 4) {
+      this.invalidate(changes[this.seen]!, changes[this.seen + 1]!, changes[this.seen + 2]!, changes[this.seen + 3]!);
     }
   }
 
@@ -174,6 +187,8 @@ export class ReliefTiles implements TileSource {
     }
     rgba ??= new Uint32Array(RELIEF_SIZE * RELIEF_SIZE);
     paintRelief(this.hf, this.palette, key >> 16, key & 255, (key >> 8) & 255, RELIEF_SIZE, rgba);
+    if (this.field) tintChartRelief(rgba);
+    this.roads.paint(this.hf, key >> 16, key & 255, (key >> 8) & 255, RELIEF_SIZE, rgba);
     this.kept.set(key, { tile: { size: RELIEF_SIZE, rgba }, used: this.kept.get(key)?.used ?? ++this.uses });
     this.version++;
   }
@@ -245,8 +260,10 @@ function cellColour(palette: Uint8Array, tint: number, band: number, whose: numb
 
 /** A picture of the map as a screen shows it: terrain, then structure cells, then the grid and its numbers. */
 export class MapPicture {
-  private readonly coordinates: boolean;
-  constructor(coordinates = true) { this.coordinates = coordinates; }
+  /** The grid's numbers are drawn, and a faint line each unit where there is room. The corner chart shows sectors alone. */
+  coordinates: boolean;
+  private drawnWith = true;
+  constructor(coordinates = true) { this.coordinates = this.drawnWith = coordinates; }
   /** Made anew at the size asked for, so its pixels are the screen's and a line is never lost to scaling. */
   readonly image: UiImage = { width: 0, height: 0, data: new Uint8ClampedArray(0), version: 0 };
   readonly view = new MapView();
@@ -264,7 +281,8 @@ export class MapPicture {
     const [wasZoom, wasU, wasV] = [view.zoom, view.u0, view.v0];
     view.place(hf, zoom, u, v, px);
     const cells = store ? store.version : 0;
-    if (image.width === px && view.zoom === wasZoom && view.u0 === wasU && view.v0 === wasV && this.cellsAt === cells && this.tilesAt === tiles.version && this.team === team) return;
+    if (image.width === px && view.zoom === wasZoom && view.u0 === wasU && view.v0 === wasV && this.cellsAt === cells && this.tilesAt === tiles.version && this.team === team && this.drawnWith === this.coordinates) return;
+    this.drawnWith = this.coordinates;
     if (image.width !== px) {
       image.width = image.height = px;
       image.data = new Uint8ClampedArray(px * px * 4);
@@ -440,7 +458,7 @@ export class Chart {
   private readonly palette: Uint8Array;
 
   /** `tiles` is the terrain's picture: the plain one made from the heightfield unless a baked one is given. */
-  constructor(hf: Heightfield, palette: Uint8Array, tiles: TileSource = new ReliefTiles(hf, palette)) {
+  constructor(hf: Heightfield, palette: Uint8Array, tiles: TileSource = new ReliefTiles(hf, palette, true)) {
     this.hf = hf;
     this.palette = palette;
     this.tiles = tiles;

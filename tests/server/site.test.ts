@@ -6,14 +6,17 @@ import { afterAll, expect, test } from "bun:test";
 import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { Act } from "../../shared/acts.ts";
 import { ADMIN_TERRAIN_SIDE } from "../../shared/admin.ts";
 import { ClusterFolder } from "../../server/cluster/folder.ts";
 import { clientAddress, closeCode, frontRoute, frontWorlds, sendDown, startFront, type Pipe } from "../../server/front.ts";
 import { CH_RELIABLE, CH_UNRELIABLE } from "../../shared/net/transport.ts";
+import { RANK_MAP } from "../../shared/ranks.ts";
 import { startServer, type RunningServer } from "../../server/main.ts";
 import { loadConfig } from "../../server/settings/config.ts";
 import { linkOf, pathOf, placeOf, startPage, worldAddress } from "../../server/site.ts";
 import { splitPack } from "../../tools/pack/split.ts";
+import { xpHour } from "../fixtures/event-kinds.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
 
 // A built client, as far as these servers need one: the manifest and the files it names, a page, and a wiki's front page.
@@ -27,7 +30,7 @@ mkdirSync(join(dir, "wiki"));
 writeFileSync(join(dir, "wiki/index.html"), "<!doctype html><title>the wiki</title>");
 const adminDir = join(dir, "admin");
 mkdirSync(adminDir);
-for (const file of ["index", "cluster", "scene-studio", "settings", "loadouts", "drops", "cast", "first-frame", "sounds"]) {
+for (const file of ["index", "cluster", "scene-studio", "settings", "loadouts", "drops", "events", "cast", "first-frame", "sounds", "acts", "permissions"]) {
   writeFileSync(join(adminDir, `${file}.html`), `<title>admin ${file}</title>`);
 }
 writeFileSync(join(adminDir, "cluster.js"), "export {};");
@@ -137,7 +140,7 @@ test("standalone admin serves public navigation and gates each world tool", asyn
     const res = await get(`${at}${from}?tab=chat`);
     expect([res.status, res.headers.get("location")]).toEqual([308, `${to}?tab=chat`]);
   }
-  for (const page of ["map", "survivors", "items", "health", "saves", "restart", "settings", "loadouts", "drops", "cast", "first-frame", "sounds"]) {
+  for (const page of ["map", "survivors", "items", "acts", "health", "saves", "restart", "settings", "loadouts", "drops", "events", "cast", "first-frame", "sounds", "permissions"]) {
     const path = `${at}/admin/worlds/local/${page}/`;
     expect((await get(path)).status).toBe(401);
     const res = await get(path, good);
@@ -146,7 +149,7 @@ test("standalone admin serves public navigation and gates each world tool", asyn
   }
   const map = await get(`${at}/admin/worlds/local/?survivor=Ada`, good);
   expect([map.status, map.headers.get("location")]).toEqual([308, "/admin/worlds/local/map/?survivor=Ada"]);
-  for (const [old, page] of [["/sounds.html", "sounds"], ["/admin/index.html", "map"], ["/admin/drops.html", "drops"]]) {
+  for (const [old, page] of [["/sounds.html", "sounds"], ["/admin/index.html", "map"], ["/admin/drops.html", "drops"], ["/admin/events.html", "events"]]) {
     const res = await get(at + old, good);
     expect([res.status, res.headers.get("location")]).toEqual([308, `/admin/worlds/local/${page}/`]);
   }
@@ -217,7 +220,7 @@ test("the front sends each path to its world and the site to the lowest world, s
   const saves = mkdtempSync(join(dir, "cluster-"));
   const world = (name: string, adminPassword?: string): RunningServer => {
     const config = loadConfig({}, ["-clusterid=site", `-ClusterDirOverride=${saves}`, `?SessionName=${name}`]).rules;
-    const s = startServer({ hostname: "127.0.0.1", port: 0, clientDir: dir, publicUrl: `/${name.toLowerCase()}`, dbPath: join(saves, `${name}.db`), noBackups: true, config, ...(adminPassword ? { adminPassword } : {}) });
+    const s = startServer({ hostname: "127.0.0.1", port: 0, clientDir: dir, publicUrl: `/${name.toLowerCase()}`, dbPath: join(saves, `${name}.db`), noBackups: true, config, modules: name === "Tampa" ? [xpHour()] : [], ...(adminPassword ? { adminPassword } : {}) });
     running.push(s);
     return s;
   };
@@ -300,7 +303,7 @@ test("the front sends each path to its world and the site to the lowest world, s
   // Saved again from the page that still holds revision 0: 409, with the revision it lost to, and nothing changed.
   const stale = await post("book", { revision: 0, book: read.book });
   expect([stale.status, ((await stale.json()) as { revision: number }).revision, tampa.host.supplyBook.book.revision]).toEqual([409, 1, 1]);
-  expect((await (await get(`${drops}/revisions.json`, good)).json() as { revision: number; by: string; note: string }[]).map((r) => [r.revision, r.by, r.note])).toEqual([[1, "(admin page)", "ringed twice as often"]]);
+  expect((await (await get(`${drops}/revisions.json`, good)).json() as { revision: number; by: string; note: string }[]).map((r) => [r.revision, r.by, r.note])).toEqual([[1, "(x)", "ringed twice as often"]]);
   // The starter again is a revision too, and an old revision comes back as a new one.
   expect([(await post("reset", { revision: 0 })).status, await (await post("reset", { revision: 1 })).json()]).toEqual([409, { revision: 2 }]);
   expect([await (await post("restore", { revision: 2, to: 1 })).json(), tampa.host.supplyBook.book.rules.ringedChance, (await post("restore", { revision: 3, to: 77 })).status]).toEqual([{ revision: 3 }, 0.1, 404]);
@@ -311,6 +314,22 @@ test("the front sends each path to its world and the site to the lowest world, s
   const live = (await (await get(`${drops}/live.json`, good)).json()) as { drops: { id: number; state: string; tier: string }[]; acts: { what: string }[] };
   expect([live.drops.map((d) => [d.id, d.tier, d.state]), live.acts.length >= 5, live.acts.at(-1)!.what.startsWith("supply call 10 10 mauve arms plain: the book has no tier")]).toEqual([[[made.id, "blue", "coming"]], true, true]);
   expect([(await (await post("cancel", { id: made.id })).json() as { said: string }).said, tampa.host.supply.live(), (await post("land", { id: "x" })).status]).toEqual([`cancelled ${made.id}`, 0, 400]);
+  const eventsPage = `/admin/worlds/${listed[1]!.id}/events/`;
+  expect((await get(at + eventsPage, { headers: director })).status).toBe(401);
+  expect(await (await get(at + eventsPage, good)).text()).toBe("<title>admin events</title>");
+  const eventCall = (headers: Record<string, string>, origin = at) => get(`${at}/tampa/admin/events/call`, {
+    method: "POST", headers: { ...headers, origin, "content-type": "application/json" },
+    body: JSON.stringify({ kind: "xp_hour", seconds: 30, seed: 8 }),
+  });
+  expect((await eventCall(director)).status).toBe(401);
+  expect((await eventCall(good.headers, "https://elsewhere.example")).status).toBe(403);
+  expect([miami.host.mapEvents.calls, tampa.host.mapEvents.calls]).toEqual([0, 0]);
+  const event = await eventCall(good.headers);
+  expect([event.status, miami.host.mapEvents.calls, tampa.host.mapEvents.calls]).toEqual([200, 0, 1]);
+  const { acts } = (await (await get(`${at}/tampa/admin/acts.json`, good)).json()) as { acts: Act[] };
+  expect(acts.filter((a) => a.what.startsWith("event call"))).toMatchObject([
+    { name: "(x)", rank: RANK_MAP, via: "page", what: "event call xp_hour 30 8" },
+  ]);
   // The front passes these acts and nothing else under a world's admin pages.
   for (const path of ["/tampa/admin/stats.json", "/tampa/admin/supply/fake", "/tampa/admin/loadouts/fake", "/fake/tampa/admin/settings", `${tampaAdmin}`]) {
     expect((await get(at + path, { method: "POST", headers: good.headers })).status).toBe(405);

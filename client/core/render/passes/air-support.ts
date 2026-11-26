@@ -3,7 +3,7 @@ import { handleIndex, makeHandle } from "../../../../shared/ids.ts";
 import { AIR_BAYS, type AirCarrier, type AirDrone, type AirPod, type AirPose, type AirSupportView } from "../../../../shared/sim/air-support.ts";
 import type { VehicleRotor } from "../../../../shared/sim/vehicle.ts";
 import { AIR_FRAME as A, AIR_IMPELLERS, AIR_PIECES, airBayZ, airMesh, type AirPiece } from "../../../../shared/world/air-support-art.ts";
-import { AIR_CARRIER_LOAD } from "../../../../content/vehicles/air-freight.ts";
+import { AIR_CARRIER_LOAD } from "../../../../content/vehicles/air-freight-art.ts";
 import { vehicleRotation } from "../../../../shared/sim/vehicle-frame.ts";
 import type { Details } from "../../details/details.ts";
 import type { Assets } from "../../assets/assets.ts";

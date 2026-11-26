@@ -126,6 +126,14 @@ export interface Leaves {
 }
 
 export class ChunkTable {
+  /** Server tick of the last phase change, keyed by wall slot. */
+  phaseTick?: Map<number, number>;
+
+  setPhaseTick(slot: number, tick: number | undefined): void {
+    if (tick === undefined) this.phaseTick?.delete(slot);
+    else (this.phaseTick ??= new Map()).set(slot, tick);
+  }
+
   /** Bumped on every change to this chunk. 0 means never touched. */
   version = 0;
   /** Bumped when a slot's kind, position or yaw changes. Damage, repair and a change of owner leave it alone, so what is drawn need not be rebuilt for them. */
@@ -296,8 +304,8 @@ export class StructureStore {
   count = 0;
   /** Bumped with any chunk's `shape`. */
   shapes = 0;
-  /** Each is called with the chunk whose `shape` a piece set down or taken away has just bumped: once a chunk for pieces broken together. */
-  readonly onShape: ((chunk: number) => void)[] = [];
+  /** A single changed piece identifies its kind. Bulk changes notify once per chunk. */
+  readonly onShape: ((chunk: number, kind?: number) => void)[] = [];
   /** While above 0, shape listeners wait. `waiting` holds the chunks they are then told of. */
   private holding = 0;
   private readonly waiting: number[] = [];
@@ -934,9 +942,9 @@ export class StructureStore {
   }
 
   /** Tells the shape listeners of `chunk`, or keeps it for `release`. */
-  private shaped(chunk: number): void {
+  private shaped(chunk: number, kind?: number): void {
     if (this.holding === 0) {
-      for (let i = 0; i < this.onShape.length; i++) this.onShape[i]!(chunk);
+      for (let i = 0; i < this.onShape.length; i++) this.onShape[i]!(chunk, kind);
       return;
     }
     if (!this.waiting.includes(chunk)) this.waiting.push(chunk);
@@ -1360,7 +1368,7 @@ export class StructureStore {
     t.mod[slot] = mod;
     t.shape++;
     this.shapes++;
-    this.shaped(chunk);
+    this.shaped(chunk, kind);
     t.live++;
     this.count++;
     this.footprint(kind, x, z, yaw, t.twAt(slot));
@@ -1385,6 +1393,8 @@ export class StructureStore {
   }
 
   private erase(chunk: number, t: ChunkTable, slot: number, mod: number, stays = false): void {
+    const kind = t.kind[slot]!;
+    t.phaseTick?.delete(slot);
     if (!stays) t.placed++;
     if (t.fr !== null && t.fr[slot] !== 0) this.unkey(chunk, t, slot, stays);
     this.unlink(chunk, t, slot);
@@ -1404,7 +1414,7 @@ export class StructureStore {
     t.mod[slot] = mod;
     t.shape++;
     this.shapes++;
-    this.shaped(chunk);
+    this.shaped(chunk, kind);
     t.live--;
     this.count--;
   }

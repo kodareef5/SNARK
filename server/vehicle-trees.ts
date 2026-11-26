@@ -42,8 +42,8 @@ export class VehicleTrees extends StaticVehicleWorld {
   }
 
   /** Cold nodes are retained only for the swept neighbourhood of this wheel step, then released symmetrically. */
-  readonly step: typeof stepVehicleBody = (world, body, moveX, moveZ, buttons, definition, dt = TICK_DT, yaw = body.yaw, pilot = true) => {
-    if (!isWheelVehicle(definition)) { stepVehicleBody(world, body, moveX, moveZ, buttons, definition, dt, yaw, pilot); return; }
+  readonly step: typeof stepVehicleBody = (world, body, moveX, moveZ, buttons, definition, dt = TICK_DT, yaw = body.yaw, pilot = true, _environment, pitch = 0) => {
+    if (!isWheelVehicle(definition)) { stepVehicleBody(world, body, moveX, moveZ, buttons, definition, dt, yaw, pilot, undefined, pitch); return; }
     // A sleeping chassis' support heartbeat tests terrain/structures, without filling cold forest chunks.
     const still = !pilot && moveX === 0 && moveZ === 0 && body.grounded && body.vx === 0 && body.vz === 0 &&
       Math.abs(body.vy) < .001 && Math.abs(body.vehicleYawRate) < .001 && Math.abs(body.vehiclePitchRate) < .001 &&

@@ -8,6 +8,7 @@
 import { shapeHalf, type Def, type ShapeBox, type ShapeDef, type StructureDef } from "../shared/content/defs.ts";
 import { PI, detCos, detSin } from "../shared/math/scalar.ts";
 import type { HullDef } from "../shared/world/convex.ts";
+import type { ScreenFace } from "../shared/video/face.ts";
 import { BENT_SECTIONS } from "./bends.ts";
 import { CURB_RETURNS } from "./curbs.ts";
 
@@ -71,6 +72,11 @@ const SHELTER = [
 const YIELD_POST = box(-0.04, 0.04, 0.5, 2.84, -0.04, 0.04);
 const YIELD_FACE = box(-0.46, 0.46, 2.1, 2.89, 0.04, 0.06);
 const BILLBOARD = [box(-0.45, 0.45, 0, 10, -0.45, 0.45), box(-7.4, 7.4, 9.55, 14.4, -0.45, 1.55)];
+/**
+ * A billboard's LED face: the 14.6 by 4.3 m sheet its mesh hangs at z 0.1 (model.py `billboard_frame`, its far form's
+ * front at 0.11), toward the road, and 5 mm in front of it. The bare one, its broken form, has none.
+ */
+export const BILLBOARD_FACE: ScreenFace = { type: "billboard", face: [-7.3, 7.3, 9.95, 14.25, 0.115], led: true };
 /**
  * A crosswalk of `bars` bars, 1.2 m a bar across the road (x) and 3 m along it (z), drawn on the ground as paint is
  * (`paint`). Paint is walked and driven over as the road is, and a static has to have a box (shared/content/registry.ts):
@@ -174,6 +180,7 @@ const STATICS: readonly StructureDef[] = STREET_PIECES.map((p) => ({
   color: p.color, hp: p.hp, ...(p.material ? { material: p.material } : {}), ...(p.paint ? { paint: true as const } : {}),
   // Drawn near only: left out of the far city's lattice and mass, where a lamp would take a whole cell. A billboard is seen from afar.
   ...(p.name.startsWith("billboard") ? {} : { near: true as const }),
+  ...(p.name === "billboard" ? { screen: BILLBOARD_FACE } : {}),
 }));
 // The curb returns at street corners (content/curbs.ts) are the street's too.
 export const STREET: readonly Def[] = [...SHAPES, ...STATICS, ...CURB_RETURNS, ...BENT_SECTIONS];

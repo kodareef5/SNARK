@@ -3,7 +3,10 @@ import { Database } from "bun:sqlite";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Acts } from "../../server/acts.ts";
+import { refused, type AdminGate } from "../../server/admin/gate.ts";
 import { TitleScenes } from "../../server/admin/title-scenes.ts";
+import { Guesses } from "../../server/guesses.ts";
 import { DEFAULT_LOADER_SHOT, initialShots, type LoaderScene } from "../../shared/player-scenes.ts";
 import { OPENING_SHOT, validShot } from "../../shared/title-scene.ts";
 import { Camera } from "../../client/core/render/camera.ts";
@@ -81,6 +84,37 @@ test("title and loader publish their own composition and two frames", async () =
   } finally {
     first.close();
     another.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a shot saved in the studio is logged by which shot and for which screen", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "snark-logged-shots-"));
+  const store = new TitleScenes(join(dir, "shots.sqlite"));
+  const acts = new Acts({ persistence: null, tick: () => 0, wall: Date.now, say: () => {}, shown: () => false, tellAll: () => {} });
+  const gate: AdminGate = { dev: false, password: "kiwi", guesses: new Guesses(), tick: () => 0 };
+  const signed = async (data: object, category = "title", method = "POST"): Promise<number> => {
+    const req = new Request(`http://cluster/api?category=${category}`, {
+      method, headers: { "content-type": "application/json", authorization: `Basic ${btoa("kody:kiwi")}` }, ...(method === "POST" ? { body: JSON.stringify(data) } : {}),
+    });
+    return (refused(req, "1.2.3.4", gate) ?? (await store.admin(req, acts))).status;
+  };
+  const shot = { ...OPENING_SHOT, id: "harbor", name: "Harbor", camera: { ...OPENING_SHOT.camera, pan: 21 } };
+  try {
+    expect(await signed({ shot, revision: 0, publish: false })).toBe(200);
+    expect(await signed({ shot, revision: 1, publish: true, picture, portrait: picture })).toBe(200);
+    expect(await signed({ shot: { ...DEFAULT_LOADER_SHOT, name: "Wynwood dusk" }, revision: 0, publish: false }, "loaders")).toBe(200);
+    // Refused, stale or only read: nothing changed, and nothing is logged.
+    expect(await signed({ shot, revision: 0, publish: false })).toBe(409);
+    expect(await signed({ shot, revision: 2, publish: true, picture })).toBe(400);
+    expect(await signed({}, "title", "GET")).toBe(200);
+    expect(acts.recent().map((a) => [a.name, a.what])).toEqual([
+      ["(kody)", 'saved the shot "Harbor" for the title screen as a draft'],
+      ["(kody)", 'published the shot "Harbor" for the title screen'],
+      ["(kody)", 'saved the shot "Wynwood dusk" for the loading screen as a draft'],
+    ]);
+  } finally {
+    store.close();
     rmSync(dir, { recursive: true, force: true });
   }
 });

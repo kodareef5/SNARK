@@ -303,8 +303,8 @@ export class Shape {
   }
 
   /** Every triangle's three corners, in the recipe's frame. */
-  corners(): Vec[] {
-    return this.faces.flatMap((f) => triangles(f).map((v) => f.points[v]!));
+  corners(stableDiagonals = false): Vec[] {
+    return this.faces.flatMap((f) => triangles(f, stableDiagonals).map((v) => f.points[v]!));
   }
 
   /**
@@ -345,11 +345,16 @@ export class Shape {
 }
 
 /** A face's triangles as indices into its points. A four-cornered face is cut along its shorter diagonal. */
-function triangles(f: Face): number[] {
+function triangles(f: Face, stableDiagonals = false): number[] {
   if (f.tris) return f.tris;
   const p = f.points;
   if (p.length === 3) return [0, 1, 2];
-  if (p.length === 4) return length(sub(p[0]!, p[2]!)) <= length(sub(p[1]!, p[3]!)) ? [0, 1, 2, 0, 2, 3] : [0, 1, 3, 1, 2, 3];
+  if (p.length === 4) {
+    const a = sub(p[0]!, p[2]!), b = sub(p[1]!, p[3]!);
+    // Keep one diagonal when rounding is the only difference between the lengths.
+    const first = stableDiagonals ? dot(a, a) <= dot(b, b) * (1 + 1e-12) : length(a) <= length(b);
+    return first ? [0, 1, 2, 0, 2, 3] : [0, 1, 3, 1, 2, 3];
+  }
   // Laid flat along its two widest axes.
   let n: Vec = [0, 0, 0];
   p.forEach((a, k) => {
@@ -441,8 +446,8 @@ export function beamRings(rng: { uniform(a: number, b: number): number }, a: Vec
 }
 
 /** The triangles of a level's solids in the recipe's frame, nine numbers each, and each one's normal times twice its area. */
-function soup(shape: Shape): { at: Float64Array; normal: Float64Array } {
-  const corners = shape.corners(), n = corners.length / 3;
+function soup(shape: Shape, stableDiagonals: boolean): { at: Float64Array; normal: Float64Array } {
+  const corners = shape.corners(stableDiagonals), n = corners.length / 3;
   const at = new Float64Array(n * 9), normal = new Float64Array(n * 3);
   for (let t = 0; t < n; t++) {
     const [a, b, c] = [corners[t * 3]!, corners[t * 3 + 1]!, corners[t * 3 + 2]!];
@@ -476,14 +481,14 @@ function holds(tris: { at: Float64Array; normal: Float64Array }, p: Vec): number
  * takes a flat level. With `edges`, each four-cornered face at least `least` metres across also says its corners and
  * which of its borders are outer edges, in the byte a body's bone has (shared/world/city.ts cornerByte), so the flat
  * program wears them as it wears a static's: a border is outer unless the level's solids go on past it, or it is the
- * foot of an upright face on the level's lowest plane, where the piece stands on what is under it.
+ * foot of an upright face on the level's lowest plane. With `stableDiagonals`, near-equal diagonals use a fixed tie break.
  */
-export function flatLod(shape: Shape, colour: (mat: string) => number, edges = false, least = 0.04): SourceLod {
+export function flatLod(shape: Shape, colour: (mat: string) => number, edges = false, { least = 0.04, stableDiagonals = false } = {}): SourceLod {
   const positions: number[] = [], colors: number[] = [], indices: number[] = [], bones: number[] = [];
-  const tris = edges ? soup(shape) : null;
+  const tris = edges ? soup(shape, stableDiagonals) : null;
   const lowest = Math.min(...shape.faces.flatMap((f) => f.points.map((q) => q[2])));
   for (const f of shape.faces) {
-    const first = positions.length / 3, list = triangles(f), tone = colour(f.mat);
+    const first = positions.length / 3, list = triangles(f, stableDiagonals), tone = colour(f.mat);
     let outer = 0;
     const q = f.points;
     if (tris && !f.tris && q.length === 4) {

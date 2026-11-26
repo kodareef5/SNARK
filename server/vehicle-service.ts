@@ -11,7 +11,8 @@ import { FLAG_BLUEPRINT } from "../shared/sim/items.ts";
 import { V_HEALTH } from "../shared/sim/vitals.ts";
 import { VEHICLE_FUEL_PER_GASOLINE as FUEL_PER_ITEM, VEHICLE_REPAIR_STEP as REPAIR_STEP, VEHICLE_REPAIR_BILL as REPAIR_BILL } from "../shared/sim/vehicle-maintenance.ts";
 import { skatePlacement } from "../shared/world/skate-placement.ts";
-import { isSkateboard, PATROL_LIGHT_MODES, isBoatVehicle, isRotorVehicle, isWheelVehicle, type VehicleDefinition } from "../shared/sim/vehicle.ts";
+import { isSkateboard, PATROL_LIGHT_MODES, isAircraft, isBoatVehicle, isJetVehicle, isRotorVehicle, isWheelVehicle, type VehicleDefinition } from "../shared/sim/vehicle.ts";
+import { jetSpoolAt } from "../shared/sim/jet.ts";
 import { vehiclePoint } from "../shared/sim/vehicle-frame.ts";
 import { boatRestY } from "../shared/sim/boat.ts";
 import { capsuleFree, groundUnder, type CollisionWorld } from "../shared/world/collide.ts";
@@ -49,6 +50,10 @@ export interface VehicleServiceContext {
   spawn(kind: string, x: number, z: number, team: number, yaw: number, start: VehicleStart): number;
   /** Removes a packed vehicle or rolls back an assembly that failed to deploy. */
   discard(e: number): void;
+  /** An armed vehicle's rounds and missiles as words for an inspection; whether they are full; and filling them. */
+  arms?(vehicle: EntityRecord): string;
+  armed?(vehicle: EntityRecord): boolean;
+  rearm?(vehicle: EntityRecord): void;
 }
 
 /** Fraction of a full repair per action. The complete bill is intentionally much less than a new assembly. */
@@ -128,8 +133,9 @@ export class VehicleService {
         : Math.hypot(ents.vx[e]!, ents.vy[e]!, ents.vz[e]!) <= .15;
       if (!supported || !speedOK ||
         (isBoatVehicle(def) && ents.vehicleEngineOn[v] !== 0) ||
-        (!isRotorVehicle(def) && Math.hypot(ents.vehicleYawRate[v]!, ents.vehiclePitchRate[v]!, ents.vehicleRollRate[v]!) > (beached ? .3 : .12)) ||
-        (isRotorVehicle(def) && (ents.vehicleEngineOn[v] !== 0 || ents.vehicleRotorRpm[v]! > 30))) return RESULT_BUSY;
+        (!isAircraft(def) && Math.hypot(ents.vehicleYawRate[v]!, ents.vehiclePitchRate[v]!, ents.vehicleRollRate[v]!) > (beached ? .3 : .12)) ||
+        (isRotorVehicle(def) && (ents.vehicleEngineOn[v] !== 0 || ents.vehicleRotorRpm[v]! > 30)) ||
+        (isJetVehicle(def) && (ents.vehicleEngineOn[v] !== 0 || jetSpoolAt(ents, v) > .02))) return RESULT_BUSY;
     }
     return { e, v: ents.vrow[e]!, rec, actor, def };
   }
@@ -201,8 +207,9 @@ export class VehicleService {
     else if (isSkateboard(def)) game.sendText(c, TEXT_NOTICE, `Street skateboard · ${Math.round(this.health(rec)*100)}% health`);
     else {
       const hp = this.health(rec), engine = Math.round(ents.vehicleEngineCondition[v]! * 100), rotor = Math.round(ents.vehicleRotorCondition[v]! * 100);
-      const condition = isRotorVehicle(def) ? `hull ${Math.round(hp * 100)}%` : `health ${Math.round(hp * 100)}%, hull ${Math.round(ents.vehicleHullCondition[v]! * 100)}%`;
-      game.sendText(c, TEXT_NOTICE, `${rec.name || "Vehicle"}: ${condition}, fuel ${ents.fuel[v]!.toFixed(1)}/${def.spec.fuelCapacity}${isRotorVehicle(def) ? `, engine ${engine}%, rotor ${rotor}%` : isBoatVehicle(def) ? `, propulsion ${engine}%, flooding ${Math.round(ents.vehicleFlooding[v]! * 100)}%` : `, engine ${engine}%, flooding ${Math.round(ents.vehicleFlooding[v]! * 100)}%`}.`);
+      const condition = isAircraft(def) ? `hull ${Math.round(hp * 100)}%` : `health ${Math.round(hp * 100)}%, hull ${Math.round(ents.vehicleHullCondition[v]! * 100)}%`;
+      const arms = this.ctx.arms?.(rec) ?? "";
+      game.sendText(c, TEXT_NOTICE, `${rec.name || "Vehicle"}: ${condition}, fuel ${ents.fuel[v]!.toFixed(1)}/${def.spec.fuelCapacity}${isRotorVehicle(def) ? `, engine ${engine}%, rotor ${rotor}%` : isJetVehicle(def) ? `, engine ${engine}%` : isBoatVehicle(def) ? `, propulsion ${engine}%, flooding ${Math.round(ents.vehicleFlooding[v]! * 100)}%` : `, engine ${engine}%, flooding ${Math.round(ents.vehicleFlooding[v]! * 100)}%`}${arms ? `, ${arms}` : ""}.`);
     }
     if (c.open !== rec.pid && !game.mayOpen(c, rec.pid)) return RESULT_DENIED;
     c.open = c.open === rec.pid ? 0 : rec.pid;
@@ -233,11 +240,13 @@ export class VehicleService {
     const { e, v, rec, actor, def } = target, { world, items, survival, urban, game } = this.ctx, ents = world.ents;
     if (isWheelVehicle(def) && ents.y[e]! + def.spec.clearance < world.hf.waterAt(ents.x[e]!, ents.z[e]!)) return RESULT_BUSY;
     urban.changed(e); // Account for pending damage before maintenance restores health.
-    const hull = Math.min(REPAIR_STEP, Math.max(1 - this.health(rec), isRotorVehicle(def) ? 0 : 1 - ents.vehicleHullCondition[v]!));
+    const hull = Math.min(REPAIR_STEP, Math.max(1 - this.health(rec), isAircraft(def) ? 0 : 1 - ents.vehicleHullCondition[v]!));
     const engine = Math.min(REPAIR_STEP, 1 - ents.vehicleEngineCondition[v]!);
     const rotor = isRotorVehicle(def) ? Math.min(REPAIR_STEP, 1 - ents.vehicleRotorCondition[v]!) : 0;
-    const flooding = !isRotorVehicle(def) ? Math.min(REPAIR_STEP, ents.vehicleFlooding[v]!) : 0;
-    const fraction = Math.max(hull, engine, rotor, flooding);
+    const flooding = !isAircraft(def) ? Math.min(REPAIR_STEP, ents.vehicleFlooding[v]!) : 0;
+    // An armed vehicle's empty drum and racks are filled at the same bench, for one step's bill.
+    const rearm = def.weapons && this.ctx.armed && !this.ctx.armed(rec) ? REPAIR_STEP : 0;
+    const fraction = Math.max(hull, engine, rotor, flooding, rearm);
     if (fraction < .00001) return RESULT_FULL;
     const costs = REPAIR_BILL.map(([id, full]) => [world.reg.index.get(id) ?? 0, Math.ceil(full * fraction)] as const);
     const inv = items.inv(actor);
@@ -250,12 +259,14 @@ export class VehicleService {
     survival.add(rec, V_HEALTH, hull * (rec.vitals?.max[V_HEALTH] ?? 0) / 1e6);
     ents.vehicleEngineCondition[v] = Math.fround(Math.min(1, ents.vehicleEngineCondition[v]! + engine));
     if (isRotorVehicle(def)) ents.vehicleRotorCondition[v] = Math.fround(Math.min(1, ents.vehicleRotorCondition[v]! + rotor));
-    if (!isRotorVehicle(def)) {
+    if (!isAircraft(def)) {
       ents.vehicleFlooding[v] = Math.fround(Math.max(0, ents.vehicleFlooding[v]! - flooding));
       ents.vehicleHullCondition[v] = Math.fround(Math.min(1, ents.vehicleHullCondition[v]! + hull));
     }
+    if (rearm > 0) this.ctx.rearm?.(rec);
     urban.changed(e);
-    game.sendText(c, TEXT_NOTICE, "Repaired the hull and mechanical systems by up to 25%.");
+    const repaired = Math.max(hull, engine, rotor, flooding) >= .00001;
+    game.sendText(c, TEXT_NOTICE, !repaired ? "Rearmed the cannon and missiles." : `Repaired the hull and mechanical systems by up to 25%${rearm > 0 ? ", and rearmed" : ""}.`);
     return RESULT_OK;
   }
 
@@ -385,9 +396,9 @@ export function vehicleFitsWorld(world: CollisionWorld & { readonly unloaded?: S
   if (![x, y, z, yaw].every(Number.isFinite)) return false;
   if (isSkateboard(def)) return skatePlacement(world, x, y, z) && !world.unloaded?.meets(x, y+.04, z, .4, 1.8);
   if (!familyOf(def)!.supports(world, x, y, z, yaw, def)) return false;
-  if (isBoatVehicle(def)) {
-    // The compound hull already cleared terrain and loaded solids, including the waterway between sponsons.
-    // Unloaded resource nodes expose only a capsule query.
+  if (isBoatVehicle(def) || isJetVehicle(def)) {
+    // The compound hull already cleared terrain and loaded solids, including the waterway between sponsons, and a jet's
+    // parts were met exactly. Unloaded resource nodes expose only a capsule query.
     const unloaded = world.unloaded;
     return !unloaded || !hullParts(x, y, z, yaw, def).some(part =>
       part.height > .2 && unloaded.meets(part.x, part.y, part.z, part.radius, part.height));
@@ -433,7 +444,7 @@ export function vehiclePlaceFree(world: ServerWorld, x: number, y: number, z: nu
 export function vehiclePlaceProblem(world: ServerWorld, x: number, y: number, z: number, yaw: number, def: VehicleDefinition, under = -1): number {
   if (!vehicleFitsWorld(world, x, y, z, yaw, def)) return RESULT_NO_SUPPORT;
   const ents = world.ents, parkedRadius = largestParkedRadius(world.reg);
-  if (isRotorVehicle(def) || isBoatVehicle(def)) {
+  if (isAircraft(def) || isBoatVehicle(def)) {
     // The whole rigid vehicle against each body near, by its exact shape, adjacent rotor discs included.
     const posed = { x, y, z, yaw, pitch: 0, roll: 0 }, pad = vehicleSolidRadius(def) + parkedRadius;
     for (let cz = Math.max(0, Math.floor((z - pad) / CHUNK_SIZE)); cz <= Math.min(world.dims.chunksZ - 1, Math.floor((z + pad) / CHUNK_SIZE)); cz++) {

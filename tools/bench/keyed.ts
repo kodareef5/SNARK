@@ -10,6 +10,7 @@ import { compileContent } from "../../shared/content/registry.ts";
 import { BitWriter } from "../../shared/net/codec.ts";
 import { Rng } from "../../shared/rng.ts";
 import { RowCoder } from "../../shared/world/rows.ts";
+import { tekWallKinds } from "../../shared/world/lattice/tek-walls.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { BASE_TIERS, boxBase, layBase } from "./base.ts";
 
@@ -43,7 +44,7 @@ export function keyedRows(section: Section, record: Row, parent = "var"): void {
 
   // The wire: every chunk whole to a session that has been told no frame.
   const w = new BitWriter(4 << 20);
-  const coder = new RowCoder(structs.forms, reg.maxHp);
+  const coder = new RowCoder(structs.forms, reg.maxHp, { phaseKinds: tekWallKinds(reg.index) });
   const told = new Set<number>();
   let bits = 0;
   let t0 = performance.now();

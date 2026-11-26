@@ -60,7 +60,15 @@ test("code a page needs only after its first frame is not in the script the firs
     "client/core/render/orb.ts",
     "client/core/render/passes/orb.ts",
     "client/core/video/player.ts",
+    "client/core/video/faces.ts",
     "client/shell/screen-video.ts",
+    "client/shell/screen-faces.ts",
+    "client/core/ui/bag-panels.ts",
+    "client/core/ui/inventory.ts",
+    "client/core/ui/character.ts",
+    "client/core/ui/station.ts",
+    "shared/anim/authored.ts",
+    "shared/anim/emote-clips.ts",
     "client/core/selfcheck-tools.ts",
     "client/core/bench-run.ts",
     "client/core/selfcheck-report.ts",
@@ -71,6 +79,13 @@ test("code a page needs only after its first frame is not in the script the firs
     "client/core/ui/storage.ts",
     "client/core/assets/keeping.ts",
     "client/core/light-capture.ts",
+    "client/core/jet-late.ts",
+    "shared/sim/families/jet.ts",
+    "shared/sim/jet.ts",
+    "shared/world/jet.ts",
+    "client/core/render/jet-parts.ts",
+    "client/core/hud/fighter.ts",
+    "client/core/missile-trail.ts",
     ...SOUND_FILES,
     ...DEBUG_FILES,
   ];
@@ -81,7 +96,9 @@ test("code a page needs only after its first frame is not in the script the firs
   const fetchedBy = (file: string): string[] => [...readFileSync(join(CLIENT, file), "utf8").matchAll(/\bimport\(\s*"([^"]+)"\s*\)/g)].map((m) => m[1]!);
   expect(fetchedBy("shell/main.ts")).toEqual(expect.arrayContaining(["../core/ui/touch.ts", "../core/render/city-late.ts", "../core/render/orb-late.ts", "../core/selfcheck-tools.ts", "../core/bench-run.ts", "../core/assets/frames.ts", "../debug/debug-port.ts", "../core/light-capture.ts"]));
   expect(fetchedBy("shell/main.ts")).toContain("./screen-video.ts");
-  expect(fetchedBy("core/app.ts")).toEqual(expect.arrayContaining(["./ui/storage.ts", "./debug/debug.ts", "./sound-late.ts"]));
+  expect(fetchedBy("shell/main.ts")).toContain("./screen-faces.ts");
+  expect(fetchedBy("core/game-app.ts")).toEqual(expect.arrayContaining(["./ui/storage.ts", "./debug/debug.ts", "./sound-late.ts"]));
+  expect(fetchedBy("core/ui/bag-load.ts")).toContain("./bag-panels.ts");
 });
 
 test("the page's log is the first module the page runs, and takes only the levels", () => {

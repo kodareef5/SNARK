@@ -280,7 +280,7 @@ export class VehiclePrediction {
     const b = p.body, s = b.state, prior = b.prior;
     Object.assign(prior, s);
     if (b.response === 'fixed') return;
-    if (def && def.movement !== 'rotor' && def.movement !== 'boat') {
+    if (def && def.movement !== 'rotor' && def.movement !== 'boat' && def.movement !== 'jet') {
       // Stationary support needs no repeated suspension solve until a contact changes its motion.
       if (p.native.grounded && Math.abs(s.vx) + Math.abs(s.vy) + Math.abs(s.vz) + Math.abs(s.pitchRate) + Math.abs(s.yawRate) + Math.abs(s.rollRate) < .001) return;
       const native = p.native;

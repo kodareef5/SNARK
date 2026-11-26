@@ -3,6 +3,7 @@
 // A node's key stays the same from frame to frame.
 // Node objects are reused by list position, not key. Copy keys and values needed beyond the current frame.
 
+import type { TextRun } from "../../../shared/net/chat.ts";
 import { STYLES, LINE_HEIGHT, CHAR_ADVANCE } from "./style.ts";
 import { FONT_ADVANCES, FONT_UNITS } from "./font-metrics.ts";
 
@@ -65,6 +66,8 @@ export interface UiNode {
   /** Index into STYLES. */
   style: number;
   text: string;
+  /** `text` in runs of ink, or null for one ink. Compared by reference: the same runs are the same array. */
+  runs: readonly TextRun[] | null;
   /** Accessible name and hover detail, without permanent HUD text. */
   label: string;
   value: number;
@@ -83,11 +86,14 @@ export interface UiNode {
   tint: number;
   /** Opacity of the whole node, 0 to 1. */
   alpha: number;
-  /** The index in SCREENS of the screen that drew it, or -1. */
+  /** Who drew it: the index in SCREENS of a screen, WIDGET_OWNER - i for HUD widget i, or -1 for the interface itself. */
   owner: number;
   /** Its screen drew it with the HUD (Screen.play), not as the open screen. */
   inPlay: boolean;
 }
+
+/** HUD widget i stamps its nodes with this less i. */
+export const WIDGET_OWNER = -2;
 
 export interface UiImage {
   width: number;
@@ -143,7 +149,7 @@ export class UiFrame {
   add(key: number, kind: number, x: number, y: number, w: number, h: number, style: number): UiNode {
     let n = this.nodes[this.count];
     if (!n) {
-      n = { key: 0, kind: 0, x: 0, y: 0, w: 0, h: 0, style: 0, text: "", label: "", value: 0, step: .01, image: 0, sx: 0, sy: 0, sw: 0, sh: 0, interactive: false, focus: false, tint: -1, alpha: 1, owner: -1, inPlay: false };
+      n = { key: 0, kind: 0, x: 0, y: 0, w: 0, h: 0, style: 0, text: "", runs: null, label: "", value: 0, step: .01, image: 0, sx: 0, sy: 0, sw: 0, sh: 0, interactive: false, focus: false, tint: -1, alpha: 1, owner: -1, inPlay: false };
       this.nodes.push(n);
     }
     this.count++;
@@ -155,6 +161,7 @@ export class UiFrame {
     n.h = h;
     n.style = style;
     n.text = "";
+    n.runs = null;
     n.label = "";
     n.value = 0;
     n.step = .01;
@@ -264,6 +271,27 @@ export function wrapText(text: string, width: number, style: number, out: string
     rest = rest.slice(rest[cut] === " " ? cut + 1 : cut);
   }
   out.push(rest);
+}
+
+/** Appends the rows wrapText makes of the runs' text joined, each row its runs' pieces in their inks. */
+export function wrapRuns(runs: readonly TextRun[], width: number, style: number, out: TextRun[][]): void {
+  let all = "";
+  for (const r of runs) all += r.text;
+  const rows: string[] = [];
+  wrapText(all, width, style, rows);
+  let start = 0;
+  for (let i = 0; i < rows.length; i++) {
+    const end = start + rows[i]!.length;
+    const row: TextRun[] = [];
+    for (let k = 0, from = 0; k < runs.length && from < end; from += runs[k]!.text.length, k++) {
+      const r = runs[k]!;
+      const a = Math.max(start, from) - from, b = Math.min(end, from + r.text.length) - from;
+      if (b > a) row.push(r.ink === undefined ? { text: r.text.slice(a, b) } : { text: r.text.slice(a, b), ink: r.ink });
+    }
+    out.push(row);
+    // wrapText drops the space a row breaks at.
+    start = i < rows.length - 1 && all[end] === " " ? end + 1 : end;
+  }
 }
 
 /** Appends rows of at most `cols` characters to `out`, breaking at spaces where it can. */

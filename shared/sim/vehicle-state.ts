@@ -7,8 +7,9 @@ import { StaticVehicleWorld } from "../world/vehicle.ts";
 import type { BoatState, BoatStep } from "./boat.ts";
 import { MODE_WALK, type Body } from "./character.ts";
 import type { HelicopterState, HelicopterStep } from "./helicopter.ts";
+import type { JetState } from "./jet.ts";
 
-export const state: HelicopterState & BoatState = { qx: 0, qy: 0, qz: 0, qw: 1, collective: 0, rotorRpm: 0, rotorPhase: 0, engineCondition: 1, rotorCondition: 1, engineOn: false, hullCondition: 1, flooding: 0, x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, vx: 0, vz: 0, steering: 0, wheelAngle: 0, fuel: 0, vy: 0, grounded: true, yawRate: 0, pitchRate: 0, rollRate: 0, groundPitch: 0, groundRoll: 0, rideOffset: 0, rideVelocity: 0, gear: 0, engineRpm: 0, shiftTime: 0, payloadMass: 0 };
+export const state: HelicopterState & BoatState & JetState = { throttle: 0, spool: 0, nozzle: 0, qx: 0, qy: 0, qz: 0, qw: 1, collective: 0, rotorRpm: 0, rotorPhase: 0, engineCondition: 1, rotorCondition: 1, engineOn: false, hullCondition: 1, flooding: 0, x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, vx: 0, vz: 0, steering: 0, wheelAngle: 0, fuel: 0, vy: 0, grounded: true, yawRate: 0, pitchRate: 0, rollRate: 0, groundPitch: 0, groundRoll: 0, rideOffset: 0, rideVelocity: 0, gear: 0, engineRpm: 0, shiftTime: 0, payloadMass: 0 };
 export type FullState = typeof state;
 /** A towed trailer's, beside its tractor's. */
 export const trailerState: FullState = { ...state };

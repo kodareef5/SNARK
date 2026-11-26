@@ -6,13 +6,15 @@ import type { PackMaterial } from "../../../shared/pack/pack.ts";
 import type { TextureFormat } from "../../../shared/pack/texture.ts";
 import type { Tier } from "../assets/tiers.ts";
 import { AIR, SKY_FRAGMENT, SKY_VERTEX } from "./atmosphere.ts";
+import { tekPhaseFragment, tekPhaseVertex } from "./tek-phase.ts";
 import { DETAIL_FLAT_FRAGMENT, DETAIL_LIT_FRAGMENT, DETAIL_LIT_VERTEX, DETAIL_VERTEX } from "./detailtext.ts";
 import { FACADE_GLSL, FACADE_TIERS, facadeFarVertex, facadeVertex } from "./facade.ts";
 import { FIRE_FRAGMENT, FIRE_VERTEX } from "./fire-light.ts";
 import { FAR_MESH_VERTEX, FLAT_FAR_FRAGMENT, FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_SPLIT_FRAGMENT, FLAT_TERRAIN_VERTEX, LIT_FAR_FRAGMENT, LIT_MESH_FRAGMENT, LIT_SPLIT_FRAGMENT, LIT_TERRAIN_FRAGMENT, LIT_TERRAIN_VERTEX, PULLED_VERTEX, finishVertex } from "./glsl.ts";
 import { EYE_DOME_FRAGMENT, EYE_DOME_VERTEX, EYE_ENERGY_GLSL, EYE_STRIKE_GLSL } from "./tide-eye.ts";
 import { DROP_GLSL } from "./supply-light.ts";
-import { DRAW_BLEND, DRAW_EMISSIVE, DRAW_FIRE, DRAW_ORB, DRAW_SKYLINE, FRAME_BLOCK, SKYLINE_MAX_FOG, DRAW_CUTOUT, DRAW_PULLED, DRAW_TEXTURED, DRAW_WATER, SOURCE_MAP, SOURCE_WINDOW, WATER_MARK_COUNT, type FramePacket } from "./packet.ts";
+import { FACE_FRAGMENT, FACE_VERTEX } from "./screen-shade.ts";
+import { DRAW_BLEND, DRAW_EMISSIVE, DRAW_FIRE, DRAW_ORB, DRAW_SCREENS, DRAW_SKYLINE, FRAME_BLOCK, SKYLINE_MAX_FOG, DRAW_CUTOUT, DRAW_PULLED, DRAW_TEXTURED, DRAW_WATER, SOURCE_MAP, SOURCE_WINDOW, WATER_MARK_COUNT, type FramePacket } from "./packet.ts";
 import { BLOOM_DOWN, BLOOM_UP, FINISH, POST_VERTEX, drawsLight } from "./post.ts";
 import { DEPTH_CUTOUT_FRAGMENT, DEPTH_FRAGMENT, DEPTH_VERTEX, clampDepth, shadowDefines } from "./shadowtext.ts";
 import { PIECE_SPALL_RIM, PIECE_SPALL_TEXT, SURFACE_ANY, surfaceFragment, surfaceVertex, type SurfaceVariant } from "./surface.ts";
@@ -30,10 +32,10 @@ import { WATER_FRAGMENT } from "./water.ts";
  * (skyopen.ts); 17 to 21 a facade's atlases, 22 the terrain window's roads' frame, 23 the local reflection, 24 what stands
  * overhead (roof.ts), 25 and 26 the streets' distances and kinds round the camera (streets.ts), 27 the textures the
  * card makes (client/core/texgen), and 28 the states of the near chunks' pieces (pieces.ts), which only vertex texts
- * read; 29 an orb's screen picture (video/player.ts). WebGL2 has 32 units at the least, and no program's fragment text
- * reads more than sixteen.
+ * read; 29 an orb's screen picture (video/player.ts), and 30 the pictures of the screens on props (screens.ts). WebGL2
+ * has 32 units at the least, and no program's fragment text reads more than sixteen.
  */
-export const UNIT = { palette: 0, heights: 1, tint: 2, bones: 3, maps: 4, shadow: 9, sky: 10, windowHeights: 11, windowTint: 12, atlas: 13, layer: 14, details: 15, open: 16, facade: 17, road: 22, street: 23, roof: 24, streets: 25, streetKinds: 26, texgen: 27, pieces: 28, screen: 29 } as const;
+export const UNIT = { palette: 0, heights: 1, tint: 2, bones: 3, maps: 4, shadow: 9, sky: 10, windowHeights: 11, windowTint: 12, atlas: 13, layer: 14, details: 15, open: 16, facade: 17, road: 22, street: 23, roof: 24, streets: 25, streetKinds: 26, texgen: 27, pieces: 28, screen: 29, faces: 30 } as const;
 
 export interface ProgramText {
   readonly vertex: string;
@@ -101,6 +103,11 @@ const post = (fragment: string, samplers: Record<string, number>): ProgramText =
 /** A flat mesh program, whose vertices on a lit tier take their landmark's finishes (glsl.ts `finishVertex`). */
 const mesh = (tier: Tier, made: ProgramText): ProgramText => (tier.lit ? { ...made, vertex: finishVertex(made.vertex) } : made);
 
+function phaseMesh(tier: Tier, text: ProgramText): ProgramText {
+  const made = mesh(tier, text);
+  return { ...made, vertex: tekPhaseVertex(made.vertex), fragment: tekPhaseFragment(made.fragment), defines: made.defines + (tier.lit ? "#define TEK_CELLS\n" : "") };
+}
+
 function water(tier: Tier, hard: boolean, light: boolean, wakes: boolean): ProgramText {
   return {
     vertex: FLAT_MESH_VERTEX,
@@ -118,7 +125,7 @@ function water(tier: Tier, hard: boolean, light: boolean, wakes: boolean): Progr
 export const LATE: { orb: string | null } = { orb: null };
 
 const MAKE = {
-  flat: (tier, format, hard = false, light = false) => mesh(tier, flatOr(tier, format, hard, light, FLAT_MESH_VERTEX, FLAT_FRAGMENT, LIT_MESH_FRAGMENT, MESH, undefined, true)),
+  flat: (tier, format, hard = false, light = false) => phaseMesh(tier, flatOr(tier, format, hard, light, FLAT_MESH_VERTEX, FLAT_FRAGMENT, LIT_MESH_FRAGMENT, MESH, undefined, true)),
   // Where the tier reads the finishes in full, asphalt, sand and walks wear (world-surfaces.ts `roadWorn`, `walkWorn`).
   terrain: (tier, format, hard = false, light = false) => {
     const t = flatOr(tier, format, hard, light, FLAT_TERRAIN_VERTEX, FLAT_FRAGMENT, LIT_TERRAIN_FRAGMENT, tier.lit ? { ...GROUND, uRoad: UNIT.road, uStreets: UNIT.streets, uStreetKinds: UNIT.streetKinds } : GROUND, LIT_TERRAIN_VERTEX);
@@ -132,7 +139,7 @@ const MAKE = {
   },
   // See-through flat draws where the view is split in two depth ranges. A program of their own keeps the discard out of
   // the opaque draws, which some GPUs would then test for depth only after shading.
-  seeThrough: (tier, format, hard = false, light = false) => mesh(tier, flatOr(tier, format, hard, light, FLAT_MESH_VERTEX, FLAT_SPLIT_FRAGMENT, LIT_SPLIT_FRAGMENT, MESH, undefined, true)),
+  seeThrough: (tier, format, hard = false, light = false) => phaseMesh(tier, flatOr(tier, format, hard, light, FLAT_MESH_VERTEX, FLAT_SPLIT_FRAGMENT, LIT_SPLIT_FRAGMENT, MESH, undefined, true)),
   // Far blocks (far.ts), which fade out over the last of their reach, and nodes in the hand-over between the near store
   // and the far one (hand.ts). A program of their own keeps the discard out of the rest.
   far: (tier, format, hard = false, light = false) => mesh(tier, flatOr(tier, format, hard, light, FAR_MESH_VERTEX, FLAT_FAR_FRAGMENT, LIT_FAR_FRAGMENT, MESH)),
@@ -159,19 +166,21 @@ const MAKE = {
       ? { vertex: DETAIL_LIT_VERTEX, fragment: DETAIL_LIT_FRAGMENT, defines: "#define STREET\n" + shadowDefines(tier.shadows, hard) + lights(tier, light), samplers: { uDetails: UNIT.details, uStreetEnv: UNIT.street, uSkyTable: UNIT.sky, uShadow: UNIT.shadow } }
       : { vertex: DETAIL_VERTEX, fragment: DETAIL_FLAT_FRAGMENT, defines: "", samplers: {} },
   // A caster, a cut-out caster, and the ground, each drawn from the sun into a cascade's layer.
-  depth: () => ({ vertex: DEPTH_VERTEX, fragment: DEPTH_FRAGMENT, defines: "", samplers: { uBones: UNIT.bones, uPieces: UNIT.pieces } }),
-  depthCutout: () => ({ vertex: DEPTH_VERTEX, fragment: DEPTH_CUTOUT_FRAGMENT, defines: "", samplers: { uBones: UNIT.bones, uBase: UNIT.maps, uPieces: UNIT.pieces } }),
+  depth: () => ({ vertex: tekPhaseVertex(DEPTH_VERTEX), fragment: tekPhaseFragment(DEPTH_FRAGMENT, true), defines: "", samplers: { uBones: UNIT.bones, uPieces: UNIT.pieces } }),
+  depthCutout: () => ({ vertex: tekPhaseVertex(DEPTH_VERTEX), fragment: tekPhaseFragment(DEPTH_CUTOUT_FRAGMENT, true), defines: "", samplers: { uBones: UNIT.bones, uBase: UNIT.maps, uPieces: UNIT.pieces } }),
   depthTerrain: () => ({ vertex: clampDepth(FLAT_TERRAIN_VERTEX), fragment: DEPTH_FRAGMENT, defines: "", samplers: GROUND }),
   skyline: () => ({ vertex: FLAT_MESH_VERTEX, fragment: FLAT_FRAGMENT.replace("fog * fog", `min(fog * fog, ${SKYLINE_MAX_FOG})`), defines: "", samplers: MESH }),
   // An instrument's own lights (packet.ts DRAW_EMISSIVE) where they are drawn flat: energy in a channel by the site's
   // clock (tide-eye.ts eyeEnergy), along the instrument by where the point is and hotter on the faces turned to the eye,
   // as light that blooms where the frame is drawn into the light target, and never fogged. A supply drop's lights
   // drawn flat are its own (supply-light.ts), which the draw's effect says: a tube of its tier's colour, hot along its middle.
+  // Drawn see-through, as a map event's beam is, it shows its share of what is behind it (uAlpha).
   signal: (tier, _, __, light = false) => ({ vertex: FLAT_MESH_VERTEX, fragment: `#version 300 es
 precision highp float;
 in vec3 vRel;
 flat in vec3 vColor;
 uniform vec4 uEffect;
+uniform float uAlpha;
 out vec4 o;
 ${FRAME_BLOCK}${EYE_STRIKE_GLSL}${EYE_ENERGY_GLSL}${DROP_GLSL}
 void main() {
@@ -180,9 +189,9 @@ void main() {
   vec3 light = uEffect.y > 0. ? dropLight(0., sqrt(max(0., 1.-facing*facing)), uEffect)
     : fEyes[0].w > 0. ? eyeEnergy(vRel, -2.e9, .85*sqrt(max(0., 1.-facing*facing)), length(fwidth(vRel))) : vColor*vColor;
 #ifdef LIGHT_TARGET
-  o = vec4(light, 1.);
+  o = vec4(light, uAlpha);
 #else
-  o = vec4(1.-exp(-light), 1.);
+  o = vec4(1.-exp(-light), uAlpha);
 #endif
 }`, defines: drawsLight(tier, light) ? "#define LIGHT_TARGET\n" : "", samplers: MESH }),
   depthTerrainWindow: () => ({ vertex: clampDepth(FLAT_TERRAIN_VERTEX), fragment: DEPTH_FRAGMENT, defines: "", samplers: { ...GROUND, ...WINDOW } }),
@@ -191,6 +200,8 @@ void main() {
   fire: (tier, _, __, light = false) => ({ vertex: FIRE_VERTEX, fragment: FIRE_FRAGMENT, defines: (tier.lit ? "#define FIRE_LIT\n" : "") + (tier.bursts.noise > 0 ? "#define FIRE_NOISE\n" : "") + (tier.bursts.noise > 1 ? "#define FIRE_FINE\n" : "") + (drawsLight(tier, light) ? "#define LIGHT_TARGET\n" : ""), samplers: {} }),
   // An orb's screen (packet.ts DRAW_ORB, orb.ts): the tier's octaves of noise, its pucks or none, and its picture. Signal's text stands in until the late one has come.
   orb: (tier, format, hard, light = false): ProgramText => LATE.orb === null ? MAKE.signal(tier, format, hard, light) : { vertex: FLAT_MESH_VERTEX, fragment: LATE.orb, defines: `#define ORB_OCTAVES ${tier.orb.octaves}\n` + (tier.orb.pucks ? "#define ORB_PUCKS\n" : "") + (drawsLight(tier, light) ? "#define LIGHT_TARGET\n" : ""), samplers: { ...MESH, uScreen: UNIT.screen } },
+  // The screens on props (packet.ts DRAW_SCREENS, screen-shade.ts): a quad on each face, its picture a layer of theirs.
+  screens: (tier, _, __, light = false): ProgramText => ({ vertex: FACE_VERTEX, fragment: FACE_FRAGMENT, defines: drawsLight(tier, light) ? "#define LIGHT_TARGET\n" : "", samplers: { uFaces: UNIT.faces } }),
   // The finish (post.ts): bloom's chain down and up, and the pass into the canvas.
   bloomDown: () => post(BLOOM_DOWN, { uSource: UNIT.details }),
   bloomUp: () => post(BLOOM_UP, { uSource: UNIT.details }),
@@ -239,6 +250,7 @@ const ROWS: Readonly<Record<keyof typeof MAKE, readonly UniformRow[]>> = {
   depthTerrainWindow: WINDOW_TILES,
   fire: [...FRAME_ROWS, ...MESH_ROWS],
   orb: FLAT_DRAW,
+  screens: FRAME_ROWS,
   bloomDown: [],
   bloomUp: [],
   finish: [],
@@ -247,7 +259,7 @@ const ROWS: Readonly<Record<keyof typeof MAKE, readonly UniformRow[]>> = {
 export const UNIFORMS: readonly (readonly UniformRow[])[] = Object.keys(MAKE).map((name) => ROWS[name as keyof typeof MAKE]);
 
 /** The programs low poly draws with: no materials, dome, sea or shadows. */
-const UNLIT = ["skyline", "signal", "sky", "flat", "terrain", "terrainWindow", "seeThrough", "far", "pulled", "details", "fire", "orb"];
+const UNLIT = ["skyline", "signal", "sky", "flat", "terrain", "terrainWindow", "seeThrough", "far", "pulled", "details", "fire", "orb", "screens"];
 const POST = ["bloomDown", "bloomUp", "finish"];
 
 /** The programs a frame of `tier` may ask for, by number, which a shell may begin making before one does. */
@@ -280,6 +292,7 @@ const DROPS = DRAW_CUTOUT | IS_HANDED | IS_SWAPPING;
  * new kind of draw is a row here, before the first row that would take it otherwise.
  */
 export const CHOICE: readonly Choice[] = [
+  pick(PROGRAM.screens, DRAW_SCREENS),
   pick(PROGRAM.fire, DRAW_FIRE),
   pick(PROGRAM.orb, DRAW_ORB),
   // An instrument's light with its strip is a SURFACE draw, which its street material draws as a channel of energy.

@@ -3,7 +3,7 @@
 // tool go where the move says they are seen (a key's `eye` in shared/anim/strikes.ts), whatever the pitch or stance.
 // Only what this client draws of itself: the server and every other client keep the shared pose.
 
-import { PoseBuilder } from "../../../shared/anim/authored.ts";
+import { PoseBuilder } from "../../../shared/anim/pose-builder.ts";
 import { blendPose, type Pose } from "../../../shared/anim/clip.ts";
 import { B_FINGERS_L, B_FINGERS_R, B_FINGERTIPS_L, B_FINGERTIPS_R, B_PROP_L, B_PROP_R, B_SHOULDER_L, B_SHOULDER_R, B_UPPER_LEG_L, HUMAN } from "../../../shared/anim/human.ts";
 import { actElapsed, smooth, swingShare, type AnimState } from "../../../shared/anim/pose.ts";

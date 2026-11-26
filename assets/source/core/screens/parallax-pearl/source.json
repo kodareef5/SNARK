@@ -1,0 +1,15 @@
+{
+  "kind": "image",
+  "title": "Parallax Pearl — A second ahead of fashion.",
+  "year": 2026,
+  "from": {
+    "by": "SNARK",
+    "sha256": "10dcdbcf0e45dda210f17fdb996371667718743f1cc59a1ede0d6a5ee589d153"
+  },
+  "rights": "Made for SNARK, 2026",
+  "licence": "Made for the game and given to it under CC0 1.0.",
+  "audio": false,
+  "types": [
+    "billboard"
+  ]
+}

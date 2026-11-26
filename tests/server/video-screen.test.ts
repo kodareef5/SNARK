@@ -10,8 +10,8 @@ import { TICK_RATE } from "../../shared/coords.ts";
 import { BitReader } from "../../shared/net/codec.ts";
 import { OWN_SCREEN, S_OWN } from "../../shared/net/protocol.ts";
 import { offsetForHour } from "../../shared/sim/clock.ts";
-import type { Clip } from "../../shared/video/clip.ts";
-import { NO_CLIP, SCREEN_FILL, SCREEN_SOUND, SCREEN_FACING, SHOW_SCENES, SHOW_VIDEO, readScreens, type ScreenState, heldScene, newScreenState } from "../../shared/video/screen.ts";
+import { SCREENS, type Clip } from "../../shared/video/clip.ts";
+import { NO_CLIP, SCREEN_FILL, SCREEN_SOUND, SCREEN_FACING, SHOW_SCENES, SHOW_VIDEO, readScreens, type ScreenState, heldScene, newScreenState, NO_CHANNEL } from "../../shared/video/screen.ts";
 import { Harness } from "../fixtures/net.ts";
 
 const root = mkdtempSync(join(tmpdir(), "snark-video-screen-"));
@@ -80,14 +80,16 @@ test("the world sends the screens on a welcome and again only when the item chan
   h.run(400);
   expect(sent.length).toBe(1);
   const manifest = lib.view().manifestId;
-  expect(sent[0]).toEqual([{ manifest, show: SHOW_VIDEO, flags: SCREEN_FACING | SCREEN_FILL, clip: 0, start: birth, next: 1, scene: -1 }]);
+  // Every type is sent: the ball on the Strip from the library's birth; with no channel of their own the others are dark.
+  const dark = { manifest, show: SHOW_SCENES, flags: SCREEN_FACING | SCREEN_FILL, clip: NO_CLIP, start: 0, next: NO_CLIP, scene: -1, channel: NO_CHANNEL, epoch: 0 };
+  expect(sent[0]).toEqual([{ manifest, show: SHOW_VIDEO, flags: SCREEN_FACING | SCREEN_FILL, clip: 0, start: birth, next: 1, scene: -1, channel: 0, epoch: birth }, ...SCREENS.slice(1).map(() => dark)]);
 
   lib.edit(null, (doc) => ((doc.screens[0] = { ...doc.screens[0]!, sound: true }), null));
   wall += LIBRARY_CHECK_MS;
   feed.poll(wall, false);
   h.run(200);
   expect(sent.length).toBe(2);
-  expect(sent[1]![0]).toEqual({ manifest, show: SHOW_VIDEO, flags: SCREEN_FACING | SCREEN_FILL | SCREEN_SOUND, clip: 0, start: birth, next: 1, scene: -1 });
+  expect(sent[1]![0]).toEqual({ manifest, show: SHOW_VIDEO, flags: SCREEN_FACING | SCREEN_FILL | SCREEN_SOUND, clip: 0, start: birth, next: 1, scene: -1, channel: 0, epoch: birth });
 
   // The same item a few seconds on is no news, whatever the ticks did meanwhile.
   for (let s = 0; s < 4; s++) {

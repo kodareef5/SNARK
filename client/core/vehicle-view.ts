@@ -16,6 +16,7 @@ export function predictedVehiclePose(a: Body, b: Body, t: number, rotor: boolean
     wheelAngle: a.wheelAngle + Math.atan2(Math.sin(b.wheelAngle - a.wheelAngle), Math.cos(b.wheelAngle - a.wheelAngle)) * t,
     groundPitch: mix(a.vehicleGroundPitch, b.vehicleGroundPitch, t), groundRoll: mix(a.vehicleGroundRoll, b.vehicleGroundRoll, t),
     rideOffset: mix(a.vehicleRideOffset, b.vehicleRideOffset, t), grounded: b.grounded, thrust: b.vehicleThrust,
+    gear: b.vehicleGear, shifting: b.vehicleShiftTime > 0,
   };
   if (b.skate) {
     pose.skateMove = b.skate.move; pose.skateTrick = b.skate.trick; pose.switched = b.skate.switched;
@@ -48,6 +49,7 @@ export function remoteVehiclePose(r: RemoteSample, i: number, out?: VehicleRende
   pose.missingPanels = r.vehicleMissingPanels[i]!;
   pose.lightMode = r.vehicleLightMode[i]!;
   pose.thrust = r.vehicleThrust[i]!;
+  pose.gear = r.vehicleGear[i]!; pose.shifting = r.vehicleShifting[i] !== 0;
   if (r.vehicleQx[i] || r.vehicleQy[i] || r.vehicleQz[i] || r.vehicleQw[i]) {
     pose.qx = r.vehicleQx[i]!; pose.qy = r.vehicleQy[i]!; pose.qz = r.vehicleQz[i]!; pose.qw = r.vehicleQw[i]!;
     pose.engineRpm = r.vehicleRpm[i]!; pose.engineOn = r.vehicleEngineOn[i] !== 0;

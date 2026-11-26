@@ -1,4 +1,4 @@
-// The debug bar in a whole client on the harness: F3 fetches it and opens its drawer, the HUD stands over it, each tab
+// The debug bar in a whole client on the harness: Shift+F3 fetches it and opens its drawer, the HUD stands over it, each tab
 // lays out inside the drawer at the windows players have, the pointer goes between the drawer and the game, turning it
 // off lets go of every hook, and a save arrives in a report store as a capture.
 
@@ -58,19 +58,23 @@ async function barOf(app: App, run: (ms: number) => void): Promise<DebugBar> {
   return app.ui.debug!;
 }
 
-test("the bar is off at first, and F3 fetches it and opens its drawer", async () => {
+test("the bar is off at first, and Shift+F3 fetches it and opens its drawer", async () => {
   const h = new Harness({}, 1, 60, { dev: true }), { app, run } = client(h, fakePort());
   run(600);
   expect([app.ui.settings.debug, app.ui.debug]).toEqual([false, null]);
   expect(app.ui.frame.find(KEY_DEBUG)).toBeNull();
+  app.key("ShiftLeft", true);
   app.key("F3", true);
+  app.key("ShiftLeft", false);
   app.key("F3", false);
   expect(app.ui.settings.debug).toBe(true);
   const bar = await barOf(app, run);
   run(100);
   expect([bar.open, bar.holdsPointer, app.ui.wantsPointerLock]).toEqual([true, true, false]);
-  // F3 again closes the drawer and keeps the bar, which keeps the pointer no more.
+  // Shift+F3 again closes the drawer and keeps the bar, which keeps the pointer no more.
+  app.key("ShiftLeft", true);
   app.key("F3", true);
+  app.key("ShiftLeft", false);
   run(50);
   expect([app.ui.settings.debug, bar.open, app.ui.wantsPointerLock]).toEqual([true, false, true]);
 });

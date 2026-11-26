@@ -146,7 +146,12 @@ export interface PieceShapes {
 /** The far feed shows pieces, defences and map statics, never a container, station or bed. */
 export function pieceShapes(reg: Registry): PieceShapes {
   const tint = Uint8Array.from(reg.defs, (d) => (d?.type === "structure" ? d.color : 0));
-  const far = Uint8Array.from(reg.defs, (d) => (d?.type === "structure" && !EYE_COLLIDERS.has(d.id) && !orbCollider(d.id) && (d.class === "piece" || d.class === "defence" || d.class === "static") ? 1 : 0));
+  const far = Uint8Array.from(reg.defs, (d, k) => {
+    if (d?.type !== "structure" || EYE_COLLIDERS.has(d.id) || orbCollider(d.id)) return 0;
+    if (d.class !== "piece") return d.class === "defence" || d.class === "static" ? 1 : 0;
+    const { start, hulls } = reg.parts;
+    return start[k] !== start[k + 1] || hulls?.start[k] !== hulls?.start[k + 1] ? 1 : 0;
+  });
   return { halfX: reg.halfX, halfY: reg.halfY, halfZ: reg.halfZ, tint, far };
 }
 

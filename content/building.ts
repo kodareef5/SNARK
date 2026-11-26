@@ -48,6 +48,7 @@ const SHAPES: readonly ShapeDef[] = Object.keys(ROWS).map((name) => {
 interface Tier {
   readonly name: string;
   readonly color: number;
+  readonly material?: string;
   readonly hp: { readonly [piece: string]: number };
   /** The material made from a recipe (content/texgen/materials.ts) its pieces' faces in their own colour wear, where the tier has no pictures. */
   readonly made?: string;
@@ -78,6 +79,7 @@ const TIERS: readonly Tier[] = [
   { name: "stone", color: 5, hp: STONE },
   // A light steel grey, whose painted finish is steel (content/surfaces.ts); its pieces are made by tools/pack/pieces/metal.ts.
   { name: "metal", color: 90, hp: FULL, made: "plate" },
+  { name: "tek", color: 83, hp: Object.fromEntries(Object.entries(FULL).map(([form, hp]) => [form, Math.round(hp * 1.25)])), material: "metal", made: "tek_field" },
 ];
 /** The forms a tier is made in: those it has a health for that content places. */
 const formsOf = (tier: Tier): string[] => Object.keys(tier.hp).filter((name) => name in ROWS);
@@ -86,7 +88,7 @@ export const TIER_FORMS: Readonly<Record<string, readonly string[]>> = Object.fr
 
 function piece(tier: Tier, name: string): StructureDef {
   const form = SHAPES.find((s) => s.id === `core:shape_${name}`)!;
-  const base: StructureDef = { type: "structure", class: "piece", id: `core:${name}_${tier.name}`, mesh: "shape", shape: form.id, half: shapeHalf(form.boxes, form.hulls), color: tier.color, hp: tier.hp[SHUTS[name] ?? name]!, material: `core:mat_${tier.name}`, ...(tier.made ? { made: tier.made } : {}) };
+  const base: StructureDef = { type: "structure", class: "piece", id: `core:${name}_${tier.name}`, mesh: "shape", shape: form.id, half: shapeHalf(form.boxes, form.hulls), color: tier.color, hp: tier.hp[SHUTS[name] ?? name]!, material: `core:mat_${tier.material ?? tier.name}`, ...(tier.made ? { made: tier.made } : {}), ...(tier.material ? { trimTier: tier.name } : {}) };
   const other = OPENS[name] ?? SHUTS[name];
   return other === undefined ? base : { ...base, opens: `core:${other}_${tier.name}`, locked: true };
 }
@@ -158,10 +160,31 @@ interface Making {
   readonly weight: number;
   readonly cost?: number;
   readonly at?: string;
-  readonly pieces: { readonly [piece: string]: { readonly level: number; readonly cost?: number; readonly xp?: number; readonly needs: Needs } };
+  readonly pieces: { readonly [piece: string]: { readonly level: number; readonly cost?: number; readonly xp?: number; readonly needs: Needs; readonly requires?: readonly string[] } };
 }
 
+/** Ingot, polymer, crystal and electronics for each item on the Tek building wheel. */
+const TEK_COSTS: Record<string, readonly [number, number, number, number]> = {
+  foundation: [100, 45, 20, 4], wall: [35, 20, 15, 2], ceiling: [50, 25, 15, 2], door: [25, 12, 15, 8],
+  pillar: [40, 18, 8, 2], stairs: [55, 26, 14, 3], half_wall: [18, 10, 8, 1], railing: [18, 8, 5, 1],
+  triangle_foundation: [50, 23, 10, 2], triangle_ceiling: [25, 13, 8, 1], roof: [50, 25, 15, 2],
+  triangle_roof: [25, 13, 8, 1], sloped_wall: [18, 10, 8, 1], fence_foundation: [14, 6, 3, 1],
+  trapdoor_frame: [45, 22, 12, 2], trapdoor: [16, 8, 5, 2], ladder: [12, 5, 4, 1],
+  double_doorway: [50, 28, 20, 3], double_door: [40, 20, 18, 4], large_wall: [140, 80, 60, 8],
+  gateway: [220, 90, 44, 10], gate: [85, 40, 25, 6],
+};
+
 const MAKING: { readonly [tier: string]: Making } = {
+  tek: {
+    label: "Tek",
+    weight: 6,
+    cost: 12,
+    at: "core:fabricator",
+    pieces: Object.fromEntries(Object.entries(TEK_COSTS).map(([name, [ingot, polymer, crystal, electronics]]) => [name, {
+      level: 90, needs: [["ingot", ingot], ["polymer", polymer], ["crystal", crystal], ["electronics", electronics]] satisfies Needs,
+      requires: ["core:engram-piece_fabricator", `core:engram-piece_${name}_metal`],
+    }])),
+  },
   thatch: {
     label: "Thatch",
     weight: 2,
@@ -299,11 +322,11 @@ function kit(tier: Tier, name: string): Def[] {
   if (forms.length === 0) return [];
   const item = `core:piece_${name}_${tier.name}`;
   const label = `${m.label} ${name.replaceAll("_", " ")}`;
-  const { level, needs, cost, xp } = m.pieces[name]!;
+  const { level, needs, cost, xp, requires } = m.pieces[name]!;
   return [
     { type: "item", class: "structure", id: item, stack: 100, weight: m.weight, label: label.toLowerCase(), color: tier.color, places: forms.map((f) => `core:${f}_${tier.name}`) },
     ...crafting(item, { needs: needs.map(([n, count]) => ({ item: `core:${n}`, count })), seconds: 5, xp: xp ?? Math.max(1, Math.round(level / 3)), ...(m.at ? { at: m.at } : {}) }),
-    { type: "engram", id: `core:engram-piece_${name}_${tier.name}`, label, level, cost: cost ?? m.cost!, item: `core:piece_${name}_${tier.name}` },
+    { type: "engram", id: `core:engram-piece_${name}_${tier.name}`, label, level, cost: cost ?? m.cost!, item, ...(requires ? { requires } : {}) },
   ];
 }
 
@@ -317,12 +340,24 @@ const HAMMER: readonly Def[] = [
   ...making("template_hammer", "Template hammer", 26, 5, 1, 5, [["wood", 30], ["stone", 10], ["fiber", 20], ["hide", 10]]),
 ];
 
+/** The same lattice wall carries its neighbours while its field is down. */
+function phaseWalls(tier: Tier): Def[] {
+  const wall = piece(tier, "wall"), form = FORMS.wall;
+  const openShape: ShapeDef = {
+    type: "shape", id: "core:shape_phase_wall_open", role: "wall", boxes: [],
+    look: { boxes: formBoxes(form) }, form: { ...form, closes: "none" },
+  };
+  const door = { ...wall, id: "core:phase_wall_tek", mesh: wall.id, kit: "core:piece_wall_tek" };
+  return [openShape, door, { ...door, id: "core:phase_wall_open_tek", shape: openShape.id }];
+}
+
 export const BUILDING_CONTENT: readonly Def[] = [
   ...SHAPES,
   ...TIERS.flatMap((tier) => [
     // A leaf stood open is a structure of its own.
     ...formsOf(tier).flatMap((name) => (name in OPENS ? [piece(tier, name), piece(tier, OPENS[name]!)] : [piece(tier, name)])),
     ...Object.keys(MAKING[tier.name]!.pieces).flatMap((name) => kit(tier, name)),
+    ...(tier.name === "tek" ? phaseWalls(tier) : []),
   ]),
   ...STORES.flatMap(store),
   ...BEDS.flatMap(bed),

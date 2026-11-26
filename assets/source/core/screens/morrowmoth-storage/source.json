@@ -1,0 +1,15 @@
+{
+  "kind": "image",
+  "title": "Morrowmoth Storage — Tomorrow, you'll own this key.",
+  "year": 2026,
+  "from": {
+    "by": "SNARK",
+    "sha256": "3701db6ff254f071c4f5aa04474b093e798b28572e8b5f7b4c10a245b70a829c"
+  },
+  "rights": "Made for SNARK, 2026",
+  "licence": "Made for the game and given to it under CC0 1.0.",
+  "audio": false,
+  "types": [
+    "billboard"
+  ]
+}

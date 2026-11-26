@@ -76,10 +76,12 @@ export class Settings {
   compass = true;
   /** The view a survivor rises in: from behind, or from the eye. V changes it, and it is kept. */
   thirdPerson = true;
-  diagnostics = true;
-  /** The debug bar at the screen's foot (debug/debug.ts): F3, `/debug` or the Interface tab turn it on, and it is kept. */
+  diagnostics = false;
+  /** The debug bar at the screen's foot (debug/debug.ts): Shift+F3, `/debug` or the Interface tab turn it on, and it is kept. */
   debug = false;
   vitalLabels = false;
+  /** By touch, Jump, Stance and a held Attack stand by the right thumb (the field kit's Play controls). */
+  playControls = false;
   minimapZoom = -1;
   padGlyphs = 0;
   /** Transient screen state; excluded from saved preferences. `page` is of the tab's rows, where a short canvas cannot show them all. */
@@ -117,7 +119,7 @@ export class Settings {
   }
 }
 
-const SAVED_FLAGS = ["minimap", "compass", "thirdPerson", "diagnostics", "debug", "vitalLabels", "damageNumbers", "toggleTalk", "steady", "muted", "keepAll", "keepPaused", "viewShake", "viewKick", "videoScreens"] as const;
+const SAVED_FLAGS = ["minimap", "compass", "thirdPerson", "diagnostics", "debug", "vitalLabels", "playControls", "damageNumbers", "toggleTalk", "steady", "muted", "keepAll", "keepPaused", "viewShake", "viewKick", "videoScreens"] as const;
 const SAVED_NUMBERS = [["sensitivity", .2, 3], ["zoomSensitivity", .5, 1.5], ["fov", 50, 100], ["voiceVolume", 0, 2], ["masterVolume", 0, 2], ["soundVolume", 0, 2], ["ambienceVolume", 0, 2], ["musicVolume", 0, 2], ["interfaceVolume", 0, 2], ["minimapZoom", -1, 3], ["padGlyphs", 0, 1], ["finishGloss", 0.5, 2], ["roadFinish", 0, 2], ["resolution", 0, RESOLUTIONS.length - 1]] as const;
 
 export const VOLUME_MAX = 2;
@@ -197,6 +199,6 @@ export const SETTING_ROWS: readonly SettingRow[] = [
 export function toggleDebug(s: Settings): string {
   s.debug = !s.debug;
   s.changed();
-  return s.debug ? "debug bar on: F3 opens its drawer" : "debug bar off";
+  return s.debug ? "debug bar on: Shift+F3 opens its drawer" : "debug bar off";
 }
 

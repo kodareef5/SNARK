@@ -82,7 +82,7 @@ export interface Row {
   readonly note: string;
   /** A player may know its value: the wiki lists it (tools/wiki). */
   readonly public: boolean;
-  /** A password: its value is never sent anywhere, the admin page included, which says only that it is set. */
+  /** A password or a key: its value is never sent anywhere, the admin page included, which says only that it is set. */
   readonly secret: boolean;
 }
 

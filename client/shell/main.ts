@@ -12,7 +12,8 @@ import { WorkerPort } from "../assets/port.ts";
 import { WorkerCityMaker } from "../city/maker.ts";
 import { DEFAULT_TIER, canvasRatio, tierOf } from "../core/assets/tiers.ts";
 import { nodeLayers } from "../../shared/world/mapfile.ts";
-import { App } from "../core/app.ts";
+import { GameApp } from "../core/game-app.ts";
+import { playUi } from "../core/ui/bag-load.ts";
 import { fetchBytes, fetchContent, fetchJson, fetchSounds, fetchText, nextTask, withLandmarks } from "../core/fetched.ts";
 import { MapLoader } from "../core/mapload.ts";
 import { loadIdentity } from "../core/identity.ts";
@@ -131,6 +132,7 @@ async function boot(): Promise<void> {
     cityMaker: new WorkerCityMaker(),
     tops: loader.staged.tops,
     buildings: loader.staged.buildings,
+    chartPlaces: head.spawns,
     tideEyes: head.tideEyes,
     orbs: head.orbs,
     ...(land ? { landmarks: land.landmarks } : {}),
@@ -181,7 +183,7 @@ async function boot(): Promise<void> {
     });
   }
   const surfaces = checks ? new checks.SelfcheckSurfaces(manifest, port) : null;
-  const app = new App(session, reg, pack, { manifest, port: surfaces ?? port });
+  const app = new GameApp(session, reg, pack, playUi(), { manifest, port: surfaces ?? port });
   // The data utility's record of each frame comes as its own file, which the first frame does not wait for (D899).
   void import("../core/assets/frames.ts").then((m) => (app.frames = new m.FrameRing()));
   // The debug bar's part that needs the browser, fetched once the bar is first on; it takes the page's log from then.
@@ -269,6 +271,8 @@ async function boot(): Promise<void> {
   app.sound = sound;
   // A map with an orb plays its screen's video through a file of its own.
   if (head.orbs?.length) void import("./screen-video.ts").then((m) => (app.screenHost = m.videoHost(sound)), () => {});
+  // A visible prop screen fetches its player and browser adapter together.
+  app.loadFaces = () => import("./screen-faces.ts").then((m) => m.createFaceScreens());
   if (sound && typeof Worker !== "undefined") app.soundDecoder = new WorkerDecoder();
   // The music the build lists; without it the game has no music and plays on.
   if (sound) void fetch("assets/music/music.json").then((r) => (r.ok ? r.json() : null)).then((m) => (app.musicTracks = m?.tracks ?? null)).catch(() => {});

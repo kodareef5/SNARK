@@ -123,7 +123,7 @@ test("a channel draft knows when it differs and what is wrong with it", () => {
   moveIn(draft[0]!.items, 0, -1);
   expect([draft[0]!.items, draftDiffers(draft, saved)]).toEqual([["a", "c", "b"], true]);
   expect(draftDiffers([{ ...draftChannels(saved)[0]!, reset: true }], saved)).toBe(true);
-  const two = [...draft, { name: freeChannelName(draft), items: [], shuffle: true, reset: false }];
+  const two = [...draft, { name: freeChannelName(draft), items: [], shuffle: true, reset: false, type: "orb" as const }];
   expect([two[1]!.name, freeChannelName(two), draftFault(two)]).toEqual(["New channel", "New channel 2", ""]);
   expect(draftFault([...two, { ...two[0]! }])).toBe("Two channels are named strip.");
   expect(draftFault([{ ...two[0]!, name: "scenes" }])).toBe('A channel may not be named "scenes".');

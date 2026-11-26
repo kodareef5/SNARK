@@ -155,7 +155,7 @@ test("a page that is never touched does not pay for the touch layout: nothing a 
   // The interface holds the layout as `Ui.layer`, fetched on a first touch. A value imported from it, or from its
   // art, by what every page loads would put it back in every page's script.
   const root = join(import.meta.dir, "../../client");
-  for (const file of ["core/app.ts", "core/ui/ui.ts", "core/ui/hud.ts", "core/ui/menu.ts", "core/ui/chat.ts", "core/ui/inventory.ts", "core/ui/controls-help.ts", "core/touch.ts", "shell/ui.ts", "shell/input.ts"]) {
+  for (const file of ["core/game-app.ts", "core/ui/game-ui.ts", "core/ui/bag-load.ts", "core/ui/hud.ts", "core/ui/menu.ts", "core/ui/chat.ts", "core/ui/inventory.ts", "core/ui/controls-help.ts", "core/touch.ts", "shell/ui.ts", "shell/input.ts"]) {
     const source = readFileSync(join(root, file), "utf8");
     for (const line of source.split("\n")) {
       const from = /^import\s[^"']*["']([^"']+)["']/.exec(line)?.[1];
@@ -202,6 +202,7 @@ test("the stand-in sheet has every part in its cell, a hollow ring, and room for
 test("with no weapon to aim and a helmet's visor, the aim toggle holds the visor up, as the middle button; a glass held is aimed; a raised sight that zooms has zoom buttons, the arrows", async () => {
   const { touchControls } = await import("../../client/core/ui/touch.ts");
   const p = new TouchPlay(), f = new UiFrame(), m = new HudModel();
+  p.tools = true;
   const shown = (): Map<number, string> => {
     f.begin(16 / 9);
     touchControls(f, p, m, "foot", 0, f.height, 0);

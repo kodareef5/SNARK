@@ -19,6 +19,7 @@ import { BTN_CROUCH, BTN_JUMP, BTN_PRIMARY, BTN_RELOAD, BTN_SECONDARY, BTN_SPRIN
 import { F_ALIVE, F_PROP } from "../../shared/sim/entities.ts";
 import { FLAG_BLUEPRINT } from "../../shared/sim/items.ts";
 import { NO_PIN, STRUCT_LIGHT, STRUCT_NAME, STRUCT_PIN, STRUCT_TRAVEL, STRUCT_USE } from "../../shared/world/upkeep.ts";
+import { demote } from "../../server/creative.ts";
 import type { Client } from "../../server/game.ts";
 import type { ItemDef } from "../../shared/content/defs.ts";
 import { PIECES, builder } from "../fixtures/build.ts";
@@ -74,7 +75,8 @@ function survivor(seed: number) {
     c().admin = was;
   };
   // A house of four foundations, walls round it with a door, built as a survivor builds.
-  h.say(s, `tp ${at.x.toFixed(3)} ${(at.z + 4).toFixed(3)}`);
+  demote(h.host, c());
+  tp(at.x, at.z + 4);
   s.command(P.CMD_SELECT, (w) => w.u8(0));
   h.run(100);
   s.command(P.CMD_PLACE, (w) => writeNew(w, 0, Math.round(at.x * STRUCT_UNITS), Math.round((at.z + 8) * STRUCT_UNITS), 0));
@@ -86,7 +88,8 @@ function survivor(seed: number) {
   const door = b.join(s, "wall", sw, 2, 0, 1).ref;
   for (const [on, socket] of [[se, 2], [se, 1], [ne, 1], [ne, 0], [nw, 0], [nw, 3], [sw, 3]] as const) b.join(s, "wall", on, socket);
   b.join(s, "door", door, 0);
-  expect([sw, nw, se, ne].every((r) => r >= 0)).toBe(true);
+  expect(c().admin).toBe(false);
+  expect([sw, nw, se, ne, door].every((r) => r >= 0)).toBe(true);
   // A yard beside it: a crate, a forge, a mortar and a smithy, each with something in it, and a car.
   const yard = { x: at.x - 10, z: at.z + 4 };
   const me = h.host.records.byPid.get(c().pid)!;
@@ -124,7 +127,7 @@ function survivor(seed: number) {
   tp(yard.x - 4, yard.z - 4, Math.PI);
   h.say(s, "gmsummon raptor 20");
   h.say(s, "spawn dodo 3");
-  c().admin = false;
+  demote(h.host, c());
   h.run(300);
   const tame = (() => {
     const ents = h.world.ents;

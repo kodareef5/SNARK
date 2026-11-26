@@ -1,0 +1,79 @@
+[
+  {
+    "name": "strip",
+    "shuffle": false,
+    "items": [
+      "royal-flush",
+      "the-electric-derby",
+      "midnight-mirrorball",
+      "serpentine-silk",
+      "under-the-pacific",
+      "jovian-jets",
+      "solar-furnace",
+      "ink-acrobat",
+      "neon-rain",
+      "clouds"
+    ]
+  },
+  {
+    "name": "Billboard ads",
+    "shuffle": false,
+    "items": [
+      "apronwing-freight",
+      "backstep-parcel",
+      "cinder-cradle",
+      "curb-canary",
+      "dozehaven-motor-court",
+      "fen-and-frill",
+      "forkhorn-recovery",
+      "gravelark-saddlery",
+      "lid-and-louver",
+      "molt-and-marrow",
+      "morrowmoth-storage",
+      "ohm-orchard",
+      "orbside-rooms",
+      "palisade-picnic",
+      "parallax-pearl",
+      "peck-and-portion",
+      "penthouse-plumb",
+      "plumbfall-parcel",
+      "plumbfin-bait",
+      "proofpocket-color",
+      "rim-fare-coaches",
+      "seamsure-mutual",
+      "second-mile-tires",
+      "slipfax-portraits",
+      "stake-and-satin",
+      "underlot-lift"
+    ],
+    "type": "billboard"
+  },
+  {
+    "name": "Laptop screens",
+    "shuffle": false,
+    "items": [
+      "brinewire-exchange",
+      "collar-ferry",
+      "dodo-standby",
+      "keepsake-queue",
+      "lastplank-ledger",
+      "mammoth-appeal",
+      "parcel-weather",
+      "rex-key-finder"
+    ],
+    "type": "laptop"
+  },
+  {
+    "name": "TV spots",
+    "shuffle": false,
+    "items": [
+      "fussbudget-feed",
+      "plume-ledger",
+      "second-bell",
+      "strata-supper-club",
+      "tickaway-motor-tours",
+      "velvet-rope-appeals"
+    ],
+    "type": "tv"
+  }
+]

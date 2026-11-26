@@ -2,8 +2,9 @@
 // file checked against the caps with the ffmpeg line that brings it under them, and a clip's colour track made from
 // small frames, each band averaged in linear light and each second cut into COLOUR_RATE samples.
 
-import { COLOUR_PARTS, type Channel, type Clip, type Screen } from "../../../shared/video/clip.ts";
-import type { Playing, Timed } from "../../../shared/video/programme.ts";
+import { COLOUR_PARTS, SCREENS, STILL_MAX, STILL_MIN, channelType, isImage, isScreenType, type Channel, type Clip, type Screen, type ScreenType } from "../../../shared/video/clip.ts";
+import { probeImage, type ImageInfo } from "../../../shared/video/image.ts";
+import { heldFor, type Playing, type Timed } from "../../../shared/video/programme.ts";
 
 /** The caps as the state sends them. */
 export interface Caps {
@@ -14,9 +15,23 @@ export interface Caps {
   readonly bytes: number;
   readonly colourRate: number;
   readonly colourParts: number;
+  /** A still's longest side and size, the types it may be, and the seconds a channel holds one: by default, at least and at most. */
+  readonly imageLong?: number;
+  readonly imageBytes?: number;
+  readonly imageTypes?: readonly string[];
+  readonly still?: number;
+  readonly stillMin?: number;
+  readonly stillMax?: number;
 }
 
-export type StateClip = Clip & { readonly hidden: boolean; readonly kbps: number; readonly kBps: number };
+/** An item as the state lists it: its kind, and every type it is offered on. An image's rates are 0. */
+export type StateClip = Omit<Clip, "kind" | "types"> & {
+  readonly kind: "clip" | "image";
+  readonly types: readonly ScreenType[];
+  readonly hidden: boolean;
+  readonly kbps: number;
+  readonly kBps: number;
+};
 export type StateScreen = Screen & { readonly playing: Playing | null };
 
 /** An upload that has its file in place and waits for its poster and colour track. */
@@ -27,6 +42,7 @@ export interface PendingClip {
   readonly seconds: number;
   readonly bytes: number;
   readonly at: number;
+  readonly kind?: "image";
 }
 
 /** GET /admin/screens/state (server/video/routes.ts). */
@@ -44,8 +60,34 @@ export interface ScreensState {
   readonly pending: readonly PendingClip[];
 }
 
-/** What a screen may play: the clips that are not hidden, by id. */
-export const timedOf = (clips: readonly StateClip[]): Map<string, Timed> => new Map(clips.filter((c) => !c.hidden).map((c) => [c.id, { id: c.id, seconds: c.seconds }]));
+/** GET /admin/screens/live: what the page polls between full reads. `manifest` is the manifest's id, `pending` the waiting uploads' ids. */
+export interface ScreensLive {
+  readonly revision: number;
+  readonly now: number;
+  readonly night: boolean;
+  readonly world: ScreensState["world"];
+  readonly manifest: string;
+  readonly pending: readonly string[];
+  readonly screens: readonly StateScreen[];
+}
+
+/**
+ * What the page does with a live answer: read the whole state again where the library or its waiting uploads moved on,
+ * drop an answer older than what it shows, or run its clocks and screens on from it.
+ */
+export function liveStep(state: ScreensState, live: ScreensLive): "state" | "drop" | "merge" {
+  if (live.revision < state.revision) return "drop";
+  const pending = state.pending.map((p) => p.id);
+  const same = live.revision === state.revision && live.manifest === state.manifest.id && live.pending.length === pending.length && live.pending.every((id, i) => id === pending[i]);
+  return same ? "merge" : "state";
+}
+
+/** The state with a live answer's clocks and screens. */
+export const withLive = (state: ScreensState, live: ScreensLive): ScreensState => ({ ...state, now: live.now, night: live.night, world: live.world, screens: live.screens });
+
+/** What a screen may play: the items that are not hidden, by id, an image marked so its channel times it. */
+export const timedOf = (clips: readonly StateClip[]): Map<string, Timed> =>
+  new Map(clips.filter((c) => !c.hidden).map((c) => [c.id, isImage(c) ? { id: c.id, seconds: 0, image: true } : { id: c.id, seconds: c.seconds }]));
 
 /** Seconds as m:ss, or h:mm:ss from an hour. */
 export function lengthText(seconds: number): string {
@@ -220,28 +262,36 @@ export function base64(bytes: Uint8Array): string {
   return out;
 }
 
-/** How far into what plays `wall` is: seconds in, its length, and the share from 0 to 1. */
-export function progressOf(playing: Playing, timed: ReadonlyMap<string, Timed>, wall: number): { at: number; of: number; share: number } {
-  const of = timed.get(playing.clip)?.seconds ?? 0, at = Math.max(0, Math.min(of, (wall - playing.start) / 1000));
+/** How far into what plays `wall` is: seconds in, its length, and the share from 0 to 1. An image holds for its channel's still, or a once's where there is none. */
+export function progressOf(playing: Playing, timed: ReadonlyMap<string, Timed>, wall: number, channel: Channel | null = null): { at: number; of: number; share: number } {
+  const item = timed.get(playing.clip), of = item ? heldFor(item, channel) : 0, at = Math.max(0, Math.min(of, (wall - playing.start) / 1000));
   return { at, of, share: of > 0 ? at / of : 0 };
 }
 
-/** The channel list as the page edits it: names, items in order, loop or shuffle, and a restart asked for. */
+/** The channel list as the page edits it: names, items in order, loop or shuffle, a restart asked for, the type it is for and an image's seconds. */
 export interface ChannelDraft {
   name: string;
   items: string[];
   shuffle: boolean;
   reset: boolean;
+  type: ScreenType;
+  /** Seconds each image holds; undefined is the library's default. */
+  still?: number;
 }
 
-export const draftChannels = (channels: readonly Channel[]): ChannelDraft[] => channels.map((c) => ({ name: c.name, items: [...c.items], shuffle: c.shuffle, reset: false }));
+export const draftChannels = (channels: readonly Channel[]): ChannelDraft[] =>
+  channels.map((c) => ({ name: c.name, items: [...c.items], shuffle: c.shuffle, reset: false, type: channelType(c), ...(c.still !== undefined ? { still: c.still } : {}) }));
+
+/** The channels op's list from a draft: every type's channels, as the routes take them. */
+export const sentChannels = (draft: readonly ChannelDraft[]): Record<string, unknown>[] =>
+  draft.map((d) => ({ name: d.name, items: d.items, shuffle: d.shuffle, reset: d.reset, type: d.type, ...(d.still !== undefined ? { still: d.still } : {}) }));
 
 /** Whether a draft says anything the saved channels do not. */
 export function draftDiffers(draft: readonly ChannelDraft[], channels: readonly Channel[]): boolean {
   if (draft.length !== channels.length) return true;
   return draft.some((d, i) => {
     const c = channels[i]!;
-    return d.reset || d.name !== c.name || d.shuffle !== c.shuffle || d.items.length !== c.items.length || d.items.some((id, j) => id !== c.items[j]);
+    return d.reset || d.name !== c.name || d.shuffle !== c.shuffle || d.type !== channelType(c) || d.still !== c.still || d.items.length !== c.items.length || d.items.some((id, j) => id !== c.items[j]);
   });
 }
 
@@ -269,13 +319,14 @@ export function draftFault(draft: readonly ChannelDraft[]): string {
     if (d.name === "scenes") return 'A channel may not be named "scenes".';
     if (seen.has(d.name)) return `Two channels are named ${d.name}.`;
     seen.add(d.name);
+    if (d.still !== undefined && !(Number.isFinite(d.still) && d.still >= STILL_MIN && d.still <= STILL_MAX)) return `Channel ${d.name} holds each image ${STILL_MIN} to ${STILL_MAX} seconds.`;
   }
   return "";
 }
 
 // ---- The clip table: found by words of its title or rights line, and sorted by a column either way.
 
-export const CLIP_SORTS = ["added", "title", "length", "size", "rate"] as const;
+export const CLIP_SORTS = ["added", "title", "kind", "length", "size", "rate"] as const;
 export type ClipSort = (typeof CLIP_SORTS)[number];
 
 /** The clips whose title or rights line holds every word of `query`, those whose title holds them first; all for a blank one. */
@@ -294,10 +345,110 @@ export function sortClips<T extends StateClip>(clips: readonly T[], key: ClipSor
   const order: Record<ClipSort, (a: T, b: T) => number> = {
     added: (a, b) => at.get(a.id)! - at.get(b.id)!,
     title: byTitle,
+    kind: (a, b) => a.kind.localeCompare(b.kind) || byTitle(a, b),
     length: (a, b) => a.seconds - b.seconds || byTitle(a, b),
     size: (a, b) => a.bytes - b.bytes || byTitle(a, b),
     rate: (a, b) => a.kbps - b.kbps || byTitle(a, b),
   };
   const sorted = [...clips].sort(order[key]);
   return down ? sorted.reverse() : sorted;
+}
+
+// ---- The type tabs: one control room for each type of screen.
+
+/** The tab a page's address opens on (`?type=billboard`): the ball where it names none or no type. */
+export function typeOfSearch(search: string): ScreenType {
+  const pair = queryPairs(search).find(([k]) => k === "type");
+  return pair && isScreenType(pair[1]) ? pair[1] : "orb";
+}
+
+/** The address's query with `type` as its tab, keeping what else it says; the ball's is the bare page. */
+export function searchOfType(search: string, type: ScreenType): string {
+  const kept = queryPairs(search).filter(([k]) => k !== "type").map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`);
+  if (type !== "orb") kept.push(`type=${type}`);
+  return kept.length ? `?${kept.join("&")}` : "";
+}
+
+/** A query's names and values, decoded; a broken escape is kept as it is. */
+function queryPairs(search: string): [string, string][] {
+  const word = (w: string): string => {
+    try {
+      return decodeURIComponent(w.replace(/\+/g, " "));
+    } catch {
+      return w;
+    }
+  };
+  return search.replace(/^\?/, "").split("&").filter((p) => p !== "").map((p) => {
+    const at = p.indexOf("=");
+    return at < 0 ? [word(p), ""] : [word(p.slice(0, at)), word(p.slice(at + 1))];
+  });
+}
+
+/** One line on each tab saying what the type is. */
+export const TYPE_LINES: Readonly<Record<ScreenType, string>> = {
+  orb: "The Sphere on the Las Vegas strip. Every player in the city sees the same picture on it at the same moment.",
+  billboard: "Every roadside billboard in the cities shows this channel; each shows its own place in it, so neighbours differ.",
+  tv: "Every TV in the world shows this channel, each at its own place in it. A broken TV stays dark.",
+  laptop: "Every laptop, and the tek workstation's screen, shows this channel, each at its own place in it.",
+};
+
+/** A type's name in a sentence: "the Vegas ball", "billboards". */
+export const typeWords = (type: ScreenType): string => TYPE_WORDS[type];
+const TYPE_WORDS: Readonly<Record<ScreenType, string>> = { orb: "the Vegas ball", billboard: "billboards", tv: "TVs", laptop: "laptops" };
+
+/** The types an item is offered on with `type` ticked or not, in SCREENS order, or why not: an item is offered somewhere. */
+export function withType(types: readonly ScreenType[], type: ScreenType, on: boolean): ScreenType[] | string {
+  const next = SCREENS.filter((s) => (s === type ? on : types.includes(s)));
+  return next.length ? next : "An item is offered on one type of screen at least. Delete or hide it instead.";
+}
+
+/** The channels of `type` that list `id`, by name: those an item leaves when it is no longer offered there. */
+export const channelsLeft = (channels: readonly Channel[], id: string, type: ScreenType): string[] =>
+  channels.filter((c) => channelType(c) === type && c.items.includes(id)).map((c) => c.name);
+
+// ---- Still images: checked in the browser before they are sent, and their poster and one colour sample.
+
+const IMAGE_MIME: Readonly<Record<string, string>> = { "image/png": "png", "image/jpeg": "jpeg", "image/webp": "webp" };
+
+/**
+ * What `bytes` (a file called `name` the browser says is `mime`) are as a still for the caps the state sends, or each
+ * sentence saying why it may not be one. The header says the type and size; the file's own word for its type is only a
+ * first guess.
+ */
+export function checkImage(name: string, mime: string, bytes: Uint8Array, caps: Caps): ImageInfo | string[] {
+  const long = caps.imageLong ?? 1280, most = caps.imageBytes ?? 1048576, types = caps.imageTypes ?? ["png", "jpeg", "webp"];
+  const out: string[] = [];
+  if (mime && !IMAGE_MIME[mime]) out.push(`${name} is ${mime}; a still is a PNG, JPEG or WebP.`);
+  if (bytes.length > most) out.push(`${name} is ${megabytes(bytes.length)}; a still is ${megabytes(most)} at most.`);
+  if (out.length) return out;
+  const info = probeImage(bytes);
+  if (typeof info === "string") return [`${name}: ${info}`];
+  if (!types.includes(info.type)) return [`${name} is a ${info.type}; a still is a ${types.join(", ")}.`];
+  if (Math.max(info.width, info.height) > long) return [`${name} is ${info.width}×${info.height}; a still's longer side may be ${long} px.`];
+  return info;
+}
+
+/** A still's one-sample colour track: the mean of a small RGBA copy and its four edge bands, as sRGB bytes. */
+export function stillColours(rgba: ArrayLike<number>, width: number, height: number): Uint8Array {
+  const track = new ColourTrack(1);
+  track.add(0, bandMeans(rgba, width, height));
+  return track.finish(1);
+}
+
+/** The words a batch of stills shows as it goes. */
+export function batchWords(done: number, failed: number, total: number): string {
+  if (done + failed < total) return `Sending ${done + failed + 1} of ${total}…`;
+  return failed ? `${done} of ${total} are in the library; ${failed} could not be added.` : `All ${total} are in the library.`;
+}
+
+/**
+ * Puts `ids` at the end of the draft's channel `name` for `type`, making it where there is none, each id once; or says
+ * why not. A new channel holds each image `still` seconds.
+ */
+export function addToChannel(draft: ChannelDraft[], name: string, ids: readonly string[], type: ScreenType, still?: number): string {
+  let d = draft.find((c) => c.name === name);
+  if (d && d.type !== type) return `The channel ${name} is for ${typeWords(d.type)}.`;
+  if (!d) draft.push((d = { name, items: [], shuffle: false, reset: false, type, ...(still !== undefined ? { still } : {}) }));
+  for (const id of ids) if (!d.items.includes(id)) d.items.push(id);
+  return draftFault(draft);
 }

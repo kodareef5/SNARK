@@ -8,9 +8,9 @@ import { quatAxis, quatMul, type Numbers } from "../math/quat.ts";
 import { PI, TAU, clamp, detSin } from "../math/scalar.ts";
 import { BAIL, FLIP, GRAB, GRIND, MANUAL, OLLIE, PUSH, REVERT, SLIDE, SPECIAL } from "../sim/skate-state.ts";
 import { FAM_FLIP, FAM_GRAB, FAM_GRIND, FAM_MANUAL, FAM_SLIDE, FAM_SPECIAL, SKATE_TRICKS, T_5050, T_BOARDSLIDE, T_MANUAL, trickOf } from "../sim/skate-tricks.ts";
-import { clip, type PoseBuilder } from "./authored.ts";
+import { clip, type PoseBuilder } from "./pose-builder.ts";
 import { blendPose, type Clip, Pose, sampleClip } from "./clip.ts";
-import { foot, hand } from "./emote-clips.ts";
+import { foot, hand } from "./limb-pose.ts";
 import {
   B_CHEST, B_FOOT_L, B_FOOT_R, B_HAND_L, B_HAND_R, B_HEAD, B_HIPS, B_LOWER_ARM_L,
   B_LOWER_ARM_R, B_NECK, B_SPINE, B_UPPER_ARM_L, B_UPPER_ARM_R, HUMAN_BONES,

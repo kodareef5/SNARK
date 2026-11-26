@@ -60,7 +60,7 @@ interface Pair {
   pid: number;
   name: string;
 }
-const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+export const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 export class SurvivorAccess {
   private pairs = new Map<string, Pair>();
   private attempts = new Map<string, { time: number; n: number }>();

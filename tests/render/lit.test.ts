@@ -7,6 +7,7 @@ import { DRAW_BLEND, FRAME, FramePacket } from "../../client/core/render/packet.
 import { PROGRAMS, UNIT } from "../../client/core/render/programs.ts";
 import { SKY_GLSL, skyFrame, theSky } from "../../client/core/render/sky.ts";
 import { KNEE, LIGHT, lit, linearToSrgb, shown, srgbToLinear, tone } from "../../client/core/render/surface.ts";
+import { tekPhaseFragment } from "../../client/core/render/tek-phase.ts";
 import { parsePack, type Pack } from "../../shared/pack/pack.ts";
 import { finishTable } from "../../shared/pack/finish.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
@@ -50,10 +51,12 @@ test("the tone curve keeps what is under its knee, meets the line there with slo
   expect([LIGHT.includes(`peak <= ${KNEE}`), LIT_FRAGMENT.includes(LIGHT)]).toEqual([true, true]);
 });
 
-test("the lit tiers draw flat meshes with LIT and their finishes and the ground with its own lit text, the dome from the table and SURFACE mirroring it; low poly keeps FLAT", () => {
+test("meshes keep phase cuts while terrain and the dome keep their lighting", () => {
   for (const tier of TIERS) {
-    // A flat mesh's text reads the facades' normal map in its variant's channels (facade.ts); the ground does not weather, so reads no masks.
-    expect([PROGRAMS.flat!(tier, "rgba").fragment, PROGRAMS.terrain!(tier, "rgba").fragment]).toEqual(tier.lit ? [LIT_MESH_FRAGMENT.replaceAll("FACADE_NORMAL", "rg"), LIT_TERRAIN_FRAGMENT.replace("uniform highp sampler2DArray uTexgen;", "")] : [FLAT_FRAGMENT, FLAT_FRAGMENT]);
+    const wall = tier.lit ? LIT_MESH_FRAGMENT.replaceAll("FACADE_NORMAL", "rg") : FLAT_FRAGMENT;
+    const ground = tier.lit ? LIT_TERRAIN_FRAGMENT.replace("uniform highp sampler2DArray uTexgen;", "") : FLAT_FRAGMENT;
+    expect(PROGRAMS.flat!(tier, "rgba").fragment).toBe(tekPhaseFragment(wall));
+    expect(PROGRAMS.terrain!(tier, "rgba").fragment).toBe(ground);
     expect(PROGRAMS.flat!(tier, "rgba").vertex.includes("vFinish")).toBe(tier.lit);
   }
   const medium = tierOf("medium");

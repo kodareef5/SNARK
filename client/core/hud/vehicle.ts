@@ -4,7 +4,10 @@ import { SKATE_MOVES } from "../../../shared/sim/skate-state.ts";
 
 import { boostCooling, flipCooling, thrustAxis, thrustBoostLeft } from "../../../shared/sim/vehicle-thrusters.ts";
 import { BTN_JUMP, BTN_PRONE, BTN_SPRINT, type Body } from "../../../shared/sim/character.ts";
-import { PATROL_LIGHT_MODES, isSkateboard, isWheelVehicle, type BoatSpec, type HelicopterSpec, type VehicleSpec } from "../../../shared/sim/vehicle.ts";
+import { PATROL_LIGHT_MODES, isSkateboard, isWheelVehicle, type BoatSpec, type HelicopterSpec, type JetSpec, type VehicleSpec } from "../../../shared/sim/vehicle.ts";
+import { jetAngleOfAttack, jetNozzle, jetSpool, jetThrottle } from "../../../shared/sim/jet-gauge.ts";
+import { TICK_DT } from "../../../shared/coords.ts";
+import type { VehicleArms } from "../arms.ts";
 import { HIT_NONE, castWorld, rayHit } from "../../../shared/world/ray.ts";
 import type { AppFrame, FramePart } from "../frame.ts";
 import { DEFAULT_DRIVETRAIN } from "../../../shared/sim/vehicle-drivetrain.ts";
@@ -12,7 +15,7 @@ import { K_BAR } from "../ui/nodes.ts";
 import { glass } from "../ui/skin.ts";
 import { S_MENU_FOCUS, S_MENU_MAIN, S_MENU_NOTE, S_OXYGEN, S_WARNING } from "../ui/style.ts";
 import { BOAT_W, DASH_W, HELI_W } from "./layout.ts";
-import type { HudWidget } from "./widget.ts";
+import { band, type HudWidget } from "./widget.ts";
 
 /** Small driving instruments below the minimap, outside the chat and survivor's vitals. */
 export const KEY_VEHICLE = 3500;
@@ -58,11 +61,25 @@ export class VehicleTelemetry {
   flipReady = -1;
   boosting = false;
   bursting = false;
+  /**
+   * A jet's glass (hud/fighter.ts): its throttle and thrust as shares of military (the afterburner past 1), VTOL asked
+   * for, the load in weights, the wing past its angle, its weapons and lock as its driver was told (OWN_ARMS), and a
+   * seeker on the jet itself (OWN_WARNED).
+   */
+  jet = false;
+  throttle = 0;
+  thrust = 0;
+  afterburner = false;
+  vtol = false;
+  load = 1;
+  stalling = false;
+  arms: VehicleArms | null = null;
+  warned = 0;
 
-  stop(): void { this.active = false; this.id = -1; this.rpm = 0; }
+  stop(): void { this.active = false; this.id = -1; this.rpm = 0; this.jet = false; this.arms = null; this.warned = 0; }
 
   update(id: number, body: Body, throttle: number, handbrake: boolean, spec: VehicleSpec, _dt: number): void {
-    this.active = true; this.id = id; this.rotor = false; this.boat = false;
+    this.active = true; this.id = id; this.rotor = false; this.boat = false; this.jet = false;
     this.engineCondition = body.vehicleEngineCondition; this.engineOn = body.vehicleEngineOn;
     this.hullCondition = body.vehicleHullCondition; this.flooding = body.vehicleFlooding;
     const forward = body.vx * Math.sin(body.vehicleYaw) + body.vz * Math.cos(body.vehicleYaw), pedal = Math.max(-1, Math.min(1, throttle));
@@ -82,7 +99,7 @@ export class VehicleTelemetry {
     this.bursting = t !== undefined && thrustAxis(body.vehicleThrust) !== 0;
   }
   updateBoat(id: number, body: Body, spec: BoatSpec, precision: boolean): void {
-    this.active = true; this.boat = true; this.rotor = false; this.id = id; this.precision = precision;
+    this.active = true; this.boat = true; this.rotor = false; this.jet = false; this.id = id; this.precision = precision;
     this.speed = Math.hypot(body.vx, body.vz); this.vertical = body.vy; this.thrusters = this.boosting = this.bursting = false;
     this.fuel = Math.max(0, Math.min(1, body.fuel / spec.fuelCapacity));
     this.gear = body.vehicleGear; this.rpm = body.vehicleRpm; this.redline = spec.maxRpm;
@@ -92,7 +109,7 @@ export class VehicleTelemetry {
     this.grounded = body.grounded; this.handbrake = false; this.brake = 0;
   }
   updateRotor(id: number, body: Body, spec: HelicopterSpec, altitude: number, direct: boolean, recovery: boolean): void {
-    this.active = true; this.rotor = true; this.boat = false; this.id = id; this.direct = direct; this.recovery = recovery;
+    this.active = true; this.rotor = true; this.boat = false; this.jet = false; this.id = id; this.direct = direct; this.recovery = recovery;
     this.thrusters = this.boosting = this.bursting = false;
     this.speed = Math.hypot(body.vx, body.vz); this.vertical = body.vy; this.altitude = Math.max(0, altitude);
     this.grounded = body.grounded; this.fuel = Math.max(0, Math.min(1, body.fuel / spec.fuelCapacity));
@@ -100,7 +117,16 @@ export class VehicleTelemetry {
     this.engineCondition = body.vehicleEngineCondition; this.rotorCondition = body.vehicleRotorCondition; this.engineOn = body.vehicleEngineOn;
     this.gear = 0; this.handbrake = false; this.brake = 0;
   }
-
+  updateJet(id: number, body: Body, spec: JetSpec, altitude: number, vtol: boolean, load: number, stalling: boolean, arms: VehicleArms | null, warned: number): void {
+    this.active = true; this.jet = true; this.rotor = false; this.boat = false; this.board = false; this.thrusters = false; this.id = id;
+    this.speed = Math.hypot(body.vx, body.vy, body.vz); this.vertical = body.vy; this.altitude = Math.max(0, altitude);
+    this.grounded = body.grounded; this.fuel = Math.max(0, Math.min(1, body.fuel / spec.fuelCapacity));
+    this.throttle = jetThrottle(body); this.thrust = jetSpool(body); this.afterburner = body.vehicleShiftTime > 0;
+    this.rpm = body.vehicleRpm; this.redline = 10000; this.gear = body.vehicleGear;
+    this.engineCondition = body.vehicleEngineCondition; this.engineOn = body.vehicleEngineOn;
+    this.vtol = vtol; this.load = load; this.stalling = stalling; this.arms = arms; this.warned = warned;
+    this.handbrake = false; this.brake = 0;
+  }
 }
 
 /** Reads the instruments of the vehicle driven, and leaves them in the frame for the view and the HUD. */
@@ -121,6 +147,15 @@ export class Dash implements FramePart {
         const altitude = castWorld(world, f.bx, f.by + .05, f.bz, 0, -1, 0, 2000) !== HIT_NONE ? Math.max(0, rayHit.t - .05) : f.by - world.hf.heightAt(f.bx, f.bz);
         t.updateRotor(session.driving, session.own, car.spec, altitude, c.directFlight, f.steer && (c.buttons & BTN_PRONE) !== 0);
       } else if (car.movement === "boat") t.updateBoat(session.driving, session.own, car.spec, f.steer && (c.buttons & BTN_SPRINT) !== 0);
+      else if (car.movement === "jet") {
+        const altitude = castWorld(world, f.bx, f.by + .05, f.bz, 0, -1, 0, 3000) !== HIT_NONE ? Math.max(0, rayHit.t - .05) : f.by - world.hf.heightAt(f.bx, f.bz);
+        const p = session.ownPrev, o = session.own;
+        // The load the crew feels: the last tick's change of velocity, gravity taken out, in weights.
+        const load = Math.hypot(o.vx - p.vx, o.vy - p.vy + car.spec.gravity * TICK_DT, o.vz - p.vz) / TICK_DT / car.spec.gravity;
+        const alpha = jetAngleOfAttack(o.vehicleQx, o.vehicleQy, o.vehicleQz, o.vehicleQw, o.vx, o.vy, o.vz);
+        const stalling = !o.grounded && Math.hypot(o.vx, o.vy, o.vz) > 5 && alpha > car.spec.criticalAngle && jetNozzle(o) < .5;
+        t.updateJet(session.driving, o, car.spec, altitude, c.vtol, load, stalling, session.arms.now, session.arms.warned);
+      }
       else t.update(session.driving, session.own, f.steer ? c.moveZ : 0, f.steer && (c.buttons & BTN_JUMP) !== 0, car.spec, f.dt);
       t.lightMode = isWheelVehicle(car) && car.emergencyLights ? 0 : -1;
       f.dash = t;
@@ -143,6 +178,7 @@ export interface VehicleModel {
 
 export const VEHICLE: HudWidget<VehicleModel> = {
   name: "vehicle instruments",
+  bands: [band(KEY_VEHICLE, 20)],
   make: () => ({ vehicle: null }),
   fill(m, c) {
     const f = c.frame;
@@ -165,7 +201,7 @@ export const VEHICLE: HudWidget<VehicleModel> = {
         : lean ? "" : dash.gamepad ? "Hold Select for the tricks" : "Hold H for the tricks, E to step off";
       if (hint) f.text(KEY_VEHICLE + 3, x, y + 50, width, S_MENU_NOTE, hint);
     }
-    if (dash && !dash.board && !dash.rotor && !dash.boat) {
+    if (dash && !dash.board && !dash.rotor && !dash.boat && !dash.jet) {
       const x = dashX, y = dashY;
       glass(f, KEY_VEHICLE, x, y, DASH_W, dashH);
       f.text(KEY_VEHICLE, x + 12, y + 6, 52, S_MENU_MAIN, Math.round(dash.speed * 3.6).toString().padStart(3, "0"));

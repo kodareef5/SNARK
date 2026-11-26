@@ -16,6 +16,8 @@
 | `agent.ts` | An agent that plays on the harness: its tools called over the protocol while virtual time runs |
 | `pack.ts` | The core asset pack: built once by `bun run check` for every test file, or once per test process run alone |
 | `glb.ts` | A glTF binary file written in code, standing in for a Blender export |
+| `arkapi.ts` | ArkApi's Permissions database as the plugin writes it, and a copy with its -wal file taken while the ARK server runs |
+| `acts.ts` | A save's admin acts from its journal: decoded, or as `name`, a tab and what was done |
 | `crash-child.ts` | A process that trades items and commits until it is killed |
 | `device.ts` | The device probe's page on the harness: a browser and a phone's GPU made of numbers, a client to watch, a run until done |
 | `load.ts` | `hungAfter(file)`: the one time limit every test has, after which it is called hung, stretched with the machine's load and the check's workers; what marks a file of the slow tier |

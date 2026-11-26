@@ -4,7 +4,7 @@
 import { expect, test } from "bun:test";
 import { Readers } from "../../client/core/readers.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
-import { newScreenState, writeScreens, SHOW_VIDEO } from "../../shared/video/screen.ts";
+import { newScreenState, writeScreens, SHOW_VIDEO, NO_CHANNEL } from "../../shared/video/screen.ts";
 import { OWN_BUFFS, OWN_HELD, OWN_LOOK, OWN_MARKERS, OWN_PROGRESSION, OWN_RULES, OWN_SCREEN, OWN_SESSION, OWN_SLOTS, OWN_TRIBE, OWN_VITALS, OWN_VOICE, OWN_XP, S_OWN, TEXT_NOTICE } from "../../shared/net/protocol.ts";
 import { CH_RELIABLE } from "../../shared/net/transport.ts";
 import { Harness } from "../fixtures/net.ts";
@@ -100,5 +100,5 @@ test("a session keeps what the server says its screens play", () => {
   writeScreens(w, [{ ...newScreenState(), manifest: "0123456789abcdef", show: SHOW_VIDEO, flags: 3, clip: 2, start: -450, next: 0 }]);
   h.client(ada)!.conn.send(CH_RELIABLE, new Uint8Array([S_OWN, OWN_SCREEN, ...w.bytes()]));
   h.run(60);
-  expect(ada.screens).toEqual([{ manifest: "0123456789abcdef", show: SHOW_VIDEO, flags: 3, clip: 2, start: -450, next: 0, scene: -1 }]);
+  expect(ada.screens).toEqual([{ manifest: "0123456789abcdef", show: SHOW_VIDEO, flags: 3, clip: 2, start: -450, next: 0, scene: -1, channel: NO_CHANNEL, epoch: 0 }]);
 });

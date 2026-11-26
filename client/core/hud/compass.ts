@@ -1,9 +1,10 @@
 // The compass in the middle of the top, between what holds its corners, while the view is the body's own (ui/compass.ts draws it).
 
-import { Compass, TAPE_HEIGHT, buildCompass, tapeLayout } from "../ui/compass.ts";
+import { Compass, KEY_COMPASS, TAPE_HEIGHT, buildCompass, tapeLayout } from "../ui/compass.ts";
+import { glass } from "../ui/skin.ts";
 import { lineHeight } from "../ui/nodes.ts";
 import { S_LABEL } from "../ui/style.ts";
-import type { HudWidget } from "./widget.ts";
+import { band, type HudWidget } from "./widget.ts";
 
 export interface CompassModel {
   /** The compass at the top of the screen and the arrow on the maps: the heading as shown, on its spring. */
@@ -14,6 +15,7 @@ export interface CompassModel {
 
 export const COMPASS: HudWidget<CompassModel> = {
   name: "compass",
+  bands: [band(KEY_COMPASS, 101)],
   make: () => ({ dial: new Compass(), compassBottom: 0 }),
   fill(m, c) {
     // Without a time the compass shows the heading as it is.
@@ -32,6 +34,10 @@ export const COMPASS: HudWidget<CompassModel> = {
       const at = tapeLayout(f, held, options.minimap || touch ? mapX - 2 : right - (mapTools ? 36 : 0) + 8);
       const degrees = inspect || options.diagnostics;
       if (at) {
+        at.y = f.top + 2;
+        at.width = Math.min(at.width, touch ? 144 : 198);
+        // Glass under the tape, fading at its ends as the marks do, so it reads against the sky.
+        glass(f, KEY_COMPASS + 100, at.x - at.width / 2 - 4, at.y - 1, at.width + 8, TAPE_HEIGHT + 4, .5);
         buildCompass(f, m, at, degrees);
         m.compassBottom = at.y + TAPE_HEIGHT + 8 + (degrees ? lineHeight(S_LABEL) : 0);
       }

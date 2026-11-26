@@ -34,7 +34,7 @@ test("every part, the scene's build and each pass are timed in one tree", () => 
   const named = (parent: number): string[] => ring.children(parent, frame, []).map((s) => ring.names[s]!);
   const own = find(ring, "app", LANE_FRAME), turn = find(ring, "turn", own), build = find(ring, "build", own);
   expect(named(LANE_FRAME)).toEqual(["input", "app", "ui", "gl"]);
-  expect(named(own)).toEqual(["measure", "turn", "director", "dash", "sight", "body", "fallen", "place", "feed", "absorb", "build", "sound", "ghost", "prompts", "voice", "hud", "interface"]);
+  expect(named(own)).toEqual(["measure", "turn", "director", "dash", "sight", "body", "fallen", "place", "feed", "map events", "absorb", "missile trails", "build", "sound", "ghost", "prompts", "voice", "hud", "interface"]);
   expect([named(turn), named(build)]).toEqual([["update", "sample"], ["begin", "update", "draw", "order", "close"]]);
   // Each pass by its name, under each hook it has, in the frame's order.
   const passes = (hook: "update" | "draw"): string[] => scene.passes.filter((r) => r[1][hook] !== undefined).map((r) => r[0]);

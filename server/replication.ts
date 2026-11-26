@@ -14,8 +14,11 @@ import { packVehicleDrive, packVehiclePose, quantVehicleWheel, packVehicleRide }
 import { packSkateWord } from "../shared/sim/skate-state.ts";
 import { packVehicleRotor, packVehicleSystems, packVehicleQuaternionPair, packBoatWater } from "../shared/sim/vehicle-presentation.ts";
 import { drivetrainShifting } from "../shared/sim/vehicle-drivetrain.ts";
+import { isWheelVehicle } from "../shared/sim/vehicle.ts";
+import { jetNozzleAt, packJetNozzle } from "../shared/sim/jet.ts";
 import { F_ALIVE, F_PLAYER, F_PROP, F_GROUNDED } from "../shared/sim/entities.ts";
-import { ROW_BITS_MOST, RowCoder } from "../shared/world/rows.ts";
+import { tekWallKinds } from "../shared/world/lattice/tek-walls.ts";
+import { NET_ROW_BITS_MOST, RowCoder } from "../shared/world/rows.ts";
 import { GONE_BLAST, GONE_TAKEN, RECENT, TOUCH_KIND, TOUCH_LEFT, TOUCH_MOVED } from "../shared/world/structures.ts";
 import { sortU32 } from "../shared/sort.ts";
 import type { ChunkTable } from "../shared/world/structures.ts";
@@ -36,6 +39,11 @@ const PARK_KEPT = 16;
 export const CONE_KEEP = 150;
 /** The most entities a session's sight's cone adds to its view (D1079). */
 export const CONE_ENTITIES = 192;
+/** The most far entities a tick (Replication.far): four jets and their missiles. */
+export const FAR_MOST = 16;
+/** A far row's fuel is sent in this many steps of its tank, and its engine's speed in steps of this many rpm. */
+const FAR_STEPS = 32;
+const FAR_RPM = 500;
 
 // When a crowd fills the view, keep up to eight bodies within eight metres of the viewer.
 const NEAR_BODIES = 8;
@@ -111,6 +119,19 @@ export class Replication {
   /** Bytes of its chunk window left to the session whose chunks are being sent. A message's rows stop once they pass it. */
   private room = 0;
   private readonly ids = new Uint32Array(MAX_VIEW);
+  /**
+   * Entities sent to every view whose centre is within their reach, though past its ring: an airborne jet and its live
+   * missiles (server/vehicle-weapons.ts). Set afresh each tick through `far`.
+   */
+  private readonly farIds = new Int32Array(FAR_MOST);
+  private readonly farReach = new Float64Array(FAR_MOST);
+  private farCount = 0;
+  private farTick = -1;
+  /** The tick each entity was last made far at, by index, so a view asks it of one entity at once. */
+  private farAt = new Int32Array(0);
+  /** The far entities put in the view being gathered, past its ring. */
+  private readonly injected = new Int32Array(FAR_MOST);
+  private injectedCount = 0;
   private readonly movers = new Uint32Array(MAX_VIEW);
   private readonly idle = new Uint32Array(MAX_VIEW);
   private readonly entityOffsets: Int16Array;
@@ -124,11 +145,31 @@ export class Replication {
     this.w = ctx.w;
     this.parts = ctx.parts;
     this.cap = Math.max(1, Math.min(MAX_VIEW, Math.floor(this.opts.viewCap)));
-    this.rows = new RowCoder(world.structs.forms, world.reg.maxHp);
+    this.rows = new RowCoder(world.structs.forms, world.reg.maxHp, { phaseKinds: tekWallKinds(world.reg.index) });
     this.aroundTick = new Uint32Array(chunkCount(world.dims));
     this.aroundAt = new Uint16Array(chunkCount(world.dims));
     this.entityOffsets = nearestFirst(this.opts.entityRadius);
     this.structOffsets = nearestFirst(this.opts.structRadius);
+  }
+
+  /** Sends entity `e` this tick to every view centred within `reach` metres of it: a craft fast enough to cross a ring between two snapshots. */
+  far(e: number, reach: number): void {
+    const T = this.world.tick;
+    if (this.farTick !== T) { this.farTick = T; this.farCount = 0; }
+    if (this.farCount >= FAR_MOST || (e < this.farAt.length && this.farAt[e] === T)) return;
+    if (e >= this.farAt.length) {
+      const grown = new Int32Array(Math.max(e + 1, this.world.ents.flags.length)).fill(-1);
+      grown.set(this.farAt);
+      this.farAt = grown;
+    }
+    this.farAt[e] = T;
+    this.farIds[this.farCount] = e;
+    this.farReach[this.farCount++] = reach * reach;
+  }
+
+  /** Whether entity `i` is one of this tick's far entities. */
+  private isFar(i: number): boolean {
+    return this.farTick === this.world.tick && i < this.farAt.length && this.farAt[i] === this.farTick;
   }
 
   /** Ticks the loop gave up: every page is told, and moves its clock back as many. */
@@ -283,6 +324,21 @@ export class Replication {
         } else if (ni < cap) idle[ni++] = i;
       }
     }
+    // The far ones, ranked with the players: any outside the ring whose reach takes in the ring's middle.
+    this.injectedCount = 0;
+    if (this.farTick === T) {
+      const mx = (ccx + .5) * CHUNK_SIZE, mz = (ccz + .5) * CHUNK_SIZE, radius = this.opts.entityRadius;
+      for (let k = 0; k < this.farCount && n < cap; k++) {
+        const i = this.farIds[k]!;
+        if ((ents.flags[i]! & F_ALIVE) === 0) continue;
+        const fx = ents.x[i]!, fz = ents.z[i]!;
+        const ex = Math.floor(fx / CHUNK_SIZE) - ccx, ez = Math.floor(fz / CHUNK_SIZE) - ccz;
+        if (ex >= -radius && ex <= radius && ez >= -radius && ez <= radius) continue;
+        if ((fx - mx) * (fx - mx) + (fz - mz) * (fz - mz) > this.farReach[k]!) continue;
+        ids[n++] = i;
+        this.injected[this.injectedCount++] = i;
+      }
+    }
     const at = this.gathered++;
     this.candidates[at] = total;
     this.playersAndMounts[at] = n;
@@ -297,7 +353,7 @@ export class Replication {
     for (let k = 0; k < n; k++) {
       const i = Math.floor(ids[k]! / MAX_VIEW);
       rank[k] = ids[k]! % MAX_VIEW;
-      this.pushEntity(cur, i);
+      this.pushEntity(cur, i, this.injectedCount > 0 && this.wasInjected(i));
     }
     this.aroundTick[chunk] = T;
     this.aroundAt[chunk] = at;
@@ -384,24 +440,34 @@ export class Replication {
     return out;
   }
 
-  /** Adds entity `i` as it stands to `view`, and whether its changes go first. */
-  private pushEntity(view: SentView, i: number): void {
+  private wasInjected(i: number): boolean {
+    for (let k = 0; k < this.injectedCount; k++) if (this.injected[k] === i) return true;
+    return false;
+  }
+
+  /**
+   * Adds entity `i` as it stands to `view`, and whether its changes go first. One sent from `far` past the view's ring has
+   * its fuel and its engine's speed held to coarse steps, which a viewer that far off neither sees nor hears change, and
+   * no pose word: its attitude is its quaternion's.
+   */
+  private pushEntity(view: SentView, i: number, far = false): void {
     const ents = this.world.ents;
-    const vehicle = this.world.reg.vehicle[ents.kind[i]!], rotor = vehicle?.movement === "rotor", v = ents.vrow[i]!;
+    const vehicle = this.world.reg.vehicle[ents.kind[i]!], rotor = vehicle?.movement === "rotor", jet = vehicle?.movement === "jet", v = ents.vrow[i]!;
     const skate = vehicle ? ents.skate.get(v) : undefined;
     view.push(i, ents.gen[i]!, ents.kind[i]!, quantX(ents.x[i]!), quantY(ents.y[i]!), quantX(ents.z[i]!), ents.yaw[i]! >>> 6,
       (ents.flags[i]! >>> 1) & 0xf, ents.anim[i]!, ents.rev[i]!, ents.cue[i]!,
-      vehicle ? packVehiclePose(ents.vehiclePitch[v]!, ents.vehicleRoll[v]!, ents.steering[v]!) : 0,
+      vehicle && !far ? packVehiclePose(ents.vehiclePitch[v]!, ents.vehicleRoll[v]!, ents.steering[v]!) : 0,
       vehicle ? quantVehicleWheel(ents.wheelAngle[v]!) : 0,
       vehicle ? packVehicleRide(ents.vehicleGroundPitch[v]!, ents.vehicleGroundRoll[v]!, ents.vehicleRideOffset[v]!, (ents.flags[i]! & F_GROUNDED) !== 0) : 0,
-      ents.vehicleDoors[v]!, vehicle && !rotor ? packVehicleDrive(skate?.move ?? ents.vehicleGear[v]!, skate ? Math.hypot(ents.vx[i]!, ents.vz[i]!) * 100 : ents.vehicleRpm[v]!, skate ? skate.switched : vehicle.movement === "boat" ? ents.vehicleShiftTime[v]! > 0 : drivetrainShifting(ents.vehicleShiftTime[v]!, vehicle.spec.drivetrain), (ents.flags[i]! & F_PROP) === 0 ? ents.vehicleLightMode[v]! : 0, ents.vehicleMissingPanels[v]!) : 0,
+      ents.vehicleDoors[v]!, vehicle && !rotor ? packVehicleDrive(skate?.move ?? ents.vehicleGear[v]!, skate ? Math.hypot(ents.vx[i]!, ents.vz[i]!) * 100 : far ? Math.round(ents.vehicleRpm[v]! / FAR_RPM) * FAR_RPM : ents.vehicleRpm[v]!, skate ? skate.switched : !isWheelVehicle(vehicle) ? ents.vehicleShiftTime[v]! > 0 : drivetrainShifting(ents.vehicleShiftTime[v]!, vehicle.spec.drivetrain), (ents.flags[i]! & F_PROP) === 0 ? ents.vehicleLightMode[v]! : 0, ents.vehicleMissingPanels[v]!) : 0,
       // A car's rotor word is its thrusters' state, what fired on its last tick among it (shared/sim/vehicle-thrusters.ts).
-      rotor ? packVehicleRotor(ents.vehicleRotorRpm[v]!, ents.vehicleRotorPhase[v]!) : skate ? packSkateWord(skate) : vehicle?.movement !== "boat" && vehicle?.spec.thrusters ? ents.vehicleThrust[v]! : 0,
-      vehicle ? packVehicleSystems(ents.fuel[v]!, vehicle.spec.fuelCapacity, ents.vehicleEngineCondition[v]!, ents.vehicleRotorCondition[v]!, ents.vehicleEngineOn[v] !== 0) : 0,
+      // A jet's drive word is its wheels down, its engine speed and its afterburner, and its rotor word its nozzle alone.
+      rotor ? packVehicleRotor(ents.vehicleRotorRpm[v]!, ents.vehicleRotorPhase[v]!) : jet ? packJetNozzle(jetNozzleAt(ents, v)) : skate ? packSkateWord(skate) : vehicle && isWheelVehicle(vehicle) && vehicle.spec.thrusters ? ents.vehicleThrust[v]! : 0,
+      vehicle ? packVehicleSystems(far ? Math.ceil(ents.fuel[v]! / vehicle.spec.fuelCapacity * FAR_STEPS) / FAR_STEPS * vehicle.spec.fuelCapacity : ents.fuel[v]!, vehicle.spec.fuelCapacity, ents.vehicleEngineCondition[v]!, ents.vehicleRotorCondition[v]!, ents.vehicleEngineOn[v] !== 0) : 0,
       vehicle ? packVehicleQuaternionPair(ents.vehicleQx[v]!, ents.vehicleQy[v]!) : 0,
       vehicle ? packVehicleQuaternionPair(ents.vehicleQz[v]!, ents.vehicleQw[v]!) : 0,
       vehicle ? packBoatWater(ents.vehicleHullCondition[v]!, ents.vehicleFlooding[v]!) : 0, ents.emote[i]!, ents.react[i]!, this.world.history.strideOf(i, this.world.tick, this.world));
-    view.urgent[view.count - 1] = (ents.flags[i]! & F_PLAYER) !== 0 || ents.driven[i] !== 0 ? 1 : 0;
+    view.urgent[view.count - 1] = (ents.flags[i]! & F_PLAYER) !== 0 || ents.driven[i] !== 0 || (this.farCount > 0 && this.isFar(i)) ? 1 : 0;
   }
 
   /**
@@ -766,7 +832,7 @@ export class Replication {
     let final = true;
     // Rows stop where another might not fit, with a byte left for the count of removals, and once they pass what is left
     // of the window. The first row always goes, so a chunk begun moves on.
-    const room = Math.min(w.buf.length * 8 - ROW_BITS_MOST - 8, Math.max(w.pos, this.room * 8));
+    const room = Math.min(w.buf.length * 8 - NET_ROW_BITS_MOST - 8, Math.max(w.pos, this.room * 8));
     // A client a few changes behind is sent those from the chunk's log. Otherwise every slot is looked at.
     const logged = cursor === 0 && !filling ? this.changedSince(t, from, byRemoval, budget) : -1;
     if (logged >= 0) {
