@@ -551,10 +551,15 @@ export const LAMP_AT = SECTION.lamp;
  * fGlass: 1 where the frame's opaque pass has samples for a vehicle's glass to cover a share of (vehicle-glass.ts), 0
  * where it is drawn without, as a supersampled light target is.
  * fShore: 1 where the frame has a sea and the camera is out of the water, so the lit ground knows its height over the
- * sea from its own and is wet just over it (bank.ts shoreWet), else 0. Its other lanes are free.
+ * sea from its own and is wet just over it (bank.ts shoreWet), else 0. Its second lane is CONTACT_REACH_AT, its third
+ * FAR_LAYER_AT, the last is free.
  */
 export const GLASS_AT = SECTION.glass;
 export const SHORE_AT = SECTION.shore;
+/** fShore.y: how far the contact list reaches (contact.ts), short of its most where a body was left out for want of a slot; 0 for its most. */
+export const CONTACT_REACH_AT = SECTION.shore + 1;
+/** fShore.z: the layer of the shadow array the far map is looked up in (farshadow.ts), while fFarScale is over 0. */
+export const FAR_LAYER_AT = SECTION.shore + 2;
 /**
  * fDrops: the supply drops' casts in the sky (supply-sky.ts). Two lanes a streak, four streaks: the unit way to its
  * head from the eye and its strength, then the unit way to where its tail ends and its tier's colour as 0xRRGGBB. Then
@@ -730,12 +735,13 @@ export class FramePacket {
   /** The matrices the maps are drawn with, 16 floats each by their bits in `cascadesDrawn`: each cascade's, then the lamp's. */
   readonly maps = new Float32Array((MAX_CASCADES + 1) * 16);
   /**
-   * Rows of the far shadow's map (farshadow.ts) to put in the shadow array's layer after the cascades' before they are
+   * Rows of the far shadow's map (farshadow.ts) to put in layer `farLayer` of the shadow array before the cascades are
    * drawn: `farRows` of its layer's side from row `farRow`, none while it is empty. The scene owns the map.
    */
   farMap: Uint16Array = NO_ROWS;
   farRow = 0;
   farRows = 0;
+  farLayer = 0;
   /**
    * The sky's openness over the far map's grid (skyopen.ts), on its own unit: its cells across and down, none while
    * there is none for the grid the frame looks up on, in which case a renderer lets its texture go; and `openRows` of

@@ -19,7 +19,7 @@ import { tierOf } from "../../client/core/assets/tiers.ts";
 import { FarStore } from "../../client/core/farcells.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { farBeyondLookup, farLookup } from "../../client/core/render/farshadow.ts";
-import { FRAME, type FramePacket } from "../../client/core/render/packet.ts";
+import { FAR_LAYER_AT, FRAME, type FramePacket } from "../../client/core/render/packet.ts";
 import { Scene } from "../../client/core/render/scene.ts";
 import "../../client/core/render/city-late.ts";
 import { shadowCascade } from "../../client/core/render/shadowtext.ts";
@@ -64,15 +64,21 @@ interface Judged {
 
 const made = { judged: [] as Judged[], pictures: [] as { name: string; key: string; off: number; on: number }[] };
 
-/** The far map as the card holds it, from the rows each frame sent. */
+/** The far map's layers as the card holds them, from the rows each frame sent, and the one the frame looks up. */
 class Layer {
   size = 0;
-  map = new Uint16Array(0);
+  map: Uint16Array = new Uint16Array(0);
+  private readonly layers = new Map<number, Uint16Array>();
 
   take(p: FramePacket): void {
     const size = p.tier.shadows.size;
-    if (size !== this.size) [this.size, this.map] = [size, new Uint16Array(size * size)];
-    if (p.farRows > 0) this.map.set(p.farMap, p.farRow * size);
+    if (size !== this.size) {
+      [this.size, this.map] = [size, new Uint16Array(size * size)];
+      this.layers.clear();
+    }
+    const into = (at: number): Uint16Array => this.layers.get(at) ?? this.layers.set(at, new Uint16Array(size * size)).get(at)!;
+    if (p.farRows > 0) into(p.farLayer).set(p.farMap, p.farRow * size);
+    if (p.frame[FAR_LAYER_AT]! >= 0) this.map = into(p.frame[FAR_LAYER_AT]!);
   }
 }
 

@@ -1210,6 +1210,7 @@ export class Scene {
       else ch.add(p, own.kind, own.x - cam.x, own.y - cam.y, own.z - cam.z, own.yaw, own.state, own.tick, own.look, 0, own.colors, 0, own.gear, 0, own.id, own.firstPerson, own.firstPerson, 1, false, false, null, 0, own.vehicle, seat);
     }
     if (remote && unseen > 0) this.poseUnseen(remote, unseen);
+    if (remote) ch.unseenCorpses(p, cam);
     const from = p.drawCount;
     ch.flush(p, this.transient, false, this.drawBody, this.casting.on ? this.casting.castBody : null);
     if (cam.split > 0) this.bodyPasses(cam, from);

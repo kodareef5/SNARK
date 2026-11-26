@@ -155,7 +155,7 @@ export class GlRenderer {
     tex: [] as WebGLTexture[],
     bufs: [] as WebGLRenderbuffer[],
   };
-  /** The sun's shadow maps: a 16-bit depth layer a cascade and the far map's after them, a target on each cascade's, and their side. */
+  /** The sun's shadow maps: a 16-bit depth layer a cascade, the far map's two and the lamp's after them, a target on each, and their side. */
   private shadow = { texture: null as WebGLTexture | null, targets: [] as WebGLFramebuffer[], size: 0 };
   /** The sky's openness (skyopen.ts) on its unit, and its cells across times 65536 and down. */
   private open = { texture: null as WebGLTexture | null, size: 0 };
@@ -1442,7 +1442,8 @@ export class GlRenderer {
    * The shadow maps, made for the tier and kept bound on their unit, and each map the frame draws into its layer
    * (shadowtext.ts `shadowLayer`), a cascade's from the light it is cast from or the street lamp's from its lens: the
    * ground that casts into it, then its casters, back faces only unless a material shows both. Every layer has a target,
-   * the far map's too, which nothing draws into.
+   * the far map's two too, which nothing draws into. The array is laid out for the tier's cascades before the governor
+   * took any, so a governor's step keeps it.
    */
   private shadows(p: FramePacket, into: WebGLFramebuffer | null): void {
     const gl = this.gl;
@@ -1475,17 +1476,17 @@ export class GlRenderer {
         gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, map.texture, 0, k);
       }
     }
-    // Rows of the far shadow's map (farshadow.ts), in the layer after the cascades'.
+    // Rows of the far shadow's map (farshadow.ts), in the far layer not looked up.
     gl.activeTexture(gl.TEXTURE0 + UNIT.shadow);
     if (p.farRows > 0) {
-      gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, p.farRow, cascades, size, p.farRows, 1, gl.DEPTH_COMPONENT, gl.UNSIGNED_SHORT, p.farMap);
+      gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, p.farRow, p.farLayer, size, p.farRows, 1, gl.DEPTH_COMPONENT, gl.UNSIGNED_SHORT, p.farMap);
     }
     gl.viewport(0, 0, size, size);
     gl.polygonOffset(POLYGON_OFFSET[0], POLYGON_OFFSET[1]);
     gl.cullFace(gl.FRONT);
     for (let k = 0; k <= MAX_CASCADES; k++) {
       if ((p.cascadesDrawn & (1 << k)) === 0) continue;
-      gl.bindFramebuffer(gl.FRAMEBUFFER, map.targets[shadowLayer(k, cascades)]!);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, map.targets[shadowLayer(k, p.tier.shadows)]!);
       gl.clear(gl.DEPTH_BUFFER_BIT);
       this.view = this.serial * 16 + 8 + k;
       this.matrix = p.maps;
