@@ -451,17 +451,16 @@ function lowPoly(saddled: boolean) {
     }
     expect([p.texUploads.length, p.texDrops.length, p.assetUploads.filter((u) => u.of !== undefined).length, p.skipped, p.dropped]).toEqual([0, 0, 0, 0, 0]);
   }
-  return { hash, draws, rigid, uploads, worn, log: w.port.log, post: scene.assets.residency.slot(w.mesh(TUBE), 0), texLedger: scene.assets.residency.texLedger };
+  return { hash, draws, rigid, uploads, worn, log: w.port.log, texLedger: scene.assets.residency.texLedger };
 }
 
 test("low poly asks for no surface and no texture, draws nothing with a material, and its packets are what they were", () => {
-  const { hash, draws, rigid, uploads, log, post, texLedger, worn } = lowPoly(false);
-  // All it asked the network for was the finest level of the tube, for the post, no more urgently than it ever did,
-  // and again when the request was lost.
-  expect(log).toEqual([`17 ask ${post} 0.0000`, `1167 ask ${post} 0.0000`, `2733 ask ${post} 0.0000`]);
+  const { hash, draws, rigid, uploads, log, texLedger, worn } = lowPoly(false);
+  // It asked the network for nothing: the post is drawn at the tier's finest level, which the boot file holds.
+  expect(log).toEqual([]);
   // The far wood is about a draw a frame, every mesh of a tile in one, and the pulled draws' three levels are uploads in
   // place of the palm's last level.
-  expect([draws, rigid, uploads, texLedger, worn]).toEqual([7554, 108, 23, 0, []]);
+  expect([draws, rigid, uploads, texLedger, worn]).toEqual([7554, 108, 22, 0, []]);
   // Taken from the scene as it was before it drew anything with a material. A change here changes what low poly draws.
   // It was 3323304581 before the dodo's grey box joined the pack, which numbers the meshes after it one on, 289722570
   // before the palette was refitted and the horn's flat colour became 177, and 3173910610 until a loose thing's up
@@ -584,8 +583,8 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // It was 2684164804 until the laid fallen front (content/ruins.ts front12) and the three more billboards with their bare
   // forms (content/street.ts BOARDS) numbered the meshes after them on.
   // It was 763957391 until the tall and the grand billboard and their bare forms did the same.
-  // And 1984411619 until the moored hulls came in four dead dyes a vessel, 44 kinds for 53 (content/docks.ts DEAD_DYES), and each vessel's burning hull joined them.
-  expect(hash).toBe(3546832721);
+  // Boat wreck kinds renumber the meshes. Distant loose items now use their coarser levels.
+  expect(hash).toBe(766397611);
 
   // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
   // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of
@@ -636,8 +635,8 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // And 2246990923 until the map events' two crates, and 3436127037 until the UFO's core took its own mesh, as above.
   // And 3617411346 until the laid fallen front and the billboards' other sizes, as above.
   // And 3606419820 until the tall and the grand billboard, as above.
-  // And 2316672820 until the moored hulls' dead dyes and the burning hulls, as above.
-  expect(saddled.hash).toBe(3249633160);
+  // The saddled scene uses the same wreck kinds and distance-based loose item levels.
+  expect(saddled.hash).toBe(3070105846);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {

@@ -8,17 +8,29 @@ const views = {
   saddle_carbonemys: { around: 0.59, above: 0.91, roll: -0.07 },
 };
 
-const atlases = ["tack_hide", "tack_pad", "tack_fittings"] as const;
+const swatches = [
+  { relief: "leather", tiles: 0.22, colors: ["trail", "russet", "oxblood", "chestnut"] },
+  { relief: "weave", tiles: 0.36, colors: ["trail_weave", "olive"] },
+  { relief: "suede", tiles: 0.36, colors: ["rawhide"], tops: { normal: 128 } },
+  { relief: "wood", tiles: 0.16, colors: ["wood", "dark_wood"] },
+  { relief: "iron", tiles: 0.16, colors: ["iron"] },
+  { relief: "brass", tiles: 0.16, colors: ["brass"] },
+  { relief: "chitin", tiles: 0.16, colors: ["chitin"] },
+];
+
+const materials = Object.fromEntries(swatches.flatMap(({ relief, tiles, colors, tops }) => colors.map((name) => [name, {
+  base: `tex/${name}_base.png`,
+  normal: `tex/${relief}_normal.png`,
+  packed: `tex/${relief}_orm.png`,
+  height: `tex/${relief}_height.png`,
+  tiles,
+  tops,
+} satisfies MaterialSpec])));
 
 export default {
   kind: "pieces",
   source: { scripts: ["model.py"] },
   pieces: Object.entries(views).map(([object, icon]) => ({ id: `core:${object}/dropped`, object, icon })),
-  materials: Object.fromEntries(atlases.map((atlas) => [atlas, {
-    base: `tex/${atlas}_base.png`,
-    normal: `tex/${atlas}_normal.png`,
-    packed: `tex/${atlas}_orm.png`,
-    height: `tex/${atlas}_height.png`,
-  } satisfies MaterialSpec])),
-  budgets: { triangles: [8500, 3000, 1250, 550], texture: { top: 2048, megabytes: 40 } },
+  materials,
+  budgets: { triangles: [4000, 2500, 1000, 500], texture: { top: 256, megabytes: 3 } },
 } satisfies PiecesAsset;

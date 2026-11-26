@@ -2,7 +2,7 @@ import type { MaterialSpec, PiecesAsset, PieceSpec } from "../../../../../tools/
 
 const tiles = 0.115;
 const surfaces = [
-  "currant", "nightshade", "snowberry", "leaf", "purple_stem", "green_glass", "wax_paper", "seal",
+  "currant", "nightshade", "snowberry", "leaf", "purple_stem", "green_glass", "wax_paper",
   "hide", "twine", "crystal", "cement", "polymer", "steel", "rubber", "green_stem",
 ] as const;
 
@@ -12,7 +12,7 @@ const materials = Object.fromEntries(surfaces.map((name) => [
     normal: `tex/${name}_normal.png`,
     packed: `tex/${name}_orm.png`,
     height: `tex/${name}_height.png`,
-    tiles,
+    ...(name === "wax_paper" ? { flat: [214, 206, 181] as const } : { tiles }),
   } satisfies MaterialSpec,
 ]));
 
