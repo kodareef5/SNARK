@@ -179,22 +179,14 @@ def install_kit(city):
     if not found:
         raise SystemExit("No kit for that city. Run list to see them.")
     item = found[0]
-    location = ROOT / "var/mapdata" / city
-    marker = location / item["cut"] / ".installed-sha256"
-    if (location / item["cut"]).exists():
-        # Do not unpack over a running build, raw downloads or locally edited layers.
-        if marker.exists() and marker.read_text().strip() == item["sha256"]:
-            print(f"{city} kit already installed.")
-            return
-        raise SystemExit(f'Cut already exists at {location / item["cut"]}. Use a fresh checkout or move it aside.')
+    top = ROOT / "var/mapdata" / city
+    cut = top / item["cut"]
+    marker = cut / ".installed-sha256"
+    if marker.is_file() and marker.read_text().strip() == item["sha256"] and (top / "current").resolve() == cut / city:
+        print(f"{city} kit already installed.")
+        return
     fetch(KITS["release"], [item])
-    # kit.ts reads the city and the cut from the file's name.
-    named = CACHE / "kits" / item["sha256"][:12] / f'{city}-{item["cut"]}.tar.gz'
-    named.parent.mkdir(parents=True, exist_ok=True)
-    if not named.exists():
-        shutil.copyfile(CACHE / item["file"], named)
-    subprocess.run(["bun", "tools/maps/kit.ts", "unpack", named], cwd=ROOT, check=True)
-    marker.write_text(item["sha256"] + "\n")
+    subprocess.run(["bun", "tools/maps/kit.ts", "unpack", CACHE / item["file"]], cwd=ROOT, check=True)
 
 
 def show():
