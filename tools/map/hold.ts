@@ -8,7 +8,7 @@
 // (dx, dz) at --speed and comes back, again and again. Every --every seconds it prints the bytes come over the link (as
 // Brotli; cold, a part's first coming, and again, a part come before, which a browser's cache would serve and the page
 // decodes again, timed apart), the parts held and asked for, and what the page holds by class (client/core/mapheld.ts), the city following
-// the statics held among them as the session makes it (HeldStatics.follow), and the most statics and city held at any
+// the statics held among them as the session makes it (HeldStatics.follow) and read as the renderers read it (news), and the most statics and city held at any
 // step of a hand-over. The far shadow is told by its sizes, since it is made in the renderer. The page wants what --tier wants (map-want.ts), on a touch-first device with --touch. Time here is the link's
 // alone: the loader's own work takes none.
 
@@ -159,8 +159,15 @@ console.log(`${head.id}: ${head.dims.chunksX} by ${head.dims.chunksZ} chunks, ${
 let nextSample = 0;
 let askedThen = 0;
 let settledAt = -1;
+/** The squares the city's readers last took in (CityStatics.news), as the renderers follow them. */
+let readSquares = new Uint32Array(0);
 for (;;) {
   for (let k = 0; k < 4; k++) await turn();
+  const following = city as CityStatics | null;
+  if (following) {
+    if (readSquares.length !== following.size) readSquares = new Uint32Array(following.size);
+    following.news(readSquares, () => {});
+  }
   if (now >= nextSample && loader) {
     const rows = mapLedger({ loader, city, skip: [compiled.registry] });
     most.held = Math.max(most.held, heldNow());

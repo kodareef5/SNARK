@@ -997,6 +997,23 @@ test("the store of statics finds a chunk's rows in its sector, and in the table 
   expect(same()).toBe(true);
 });
 
+test("a sector let go is told to the city's reader by its place, and its rows are not kept", async () => {
+  const held = new HeldStatics(head), city = held.follow(coreRegistry());
+  const p = head.parts.find((q) => q.kind === "statics")!, n = held.parts.indexOf(p);
+  const steps = held.set(p, readPart(head, p, file.subarray(p.at, p.at + p.length)) as StaticsPiece);
+  while (!steps.next().done);
+  const seen = new Uint32Array(city.size), told: [string, boolean][] = [];
+  const read = (): void => city.news(seen, (sq, on) => void told.push([`${sq.cx0} ${sq.cz0} ${sq.cx1} ${sq.cz1}`, on]));
+  read();
+  const square = new WeakRef(city.square(n)!), place = told[0]![0];
+  held.drop(p);
+  read();
+  expect(told).toEqual([[place, true], [place, false]]);
+  await settle();
+  Bun.gc(true);
+  expect(square.deref()).toBeUndefined();
+});
+
 test("a budget short of the statics wanted holds the nearest of them, as far as it reaches", async () => {
   const s = heldServer(file);
   let loader: MapLoader | null = null;
