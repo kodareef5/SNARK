@@ -575,7 +575,7 @@ function render() {
       ? panel("Sign in", `<p class="lead">${esc(account.why || "This Discord account may not join yet.")}</p><p class="context">Signed in as ${esc(account.name)}</p>
         <div class="support">${invite}${button("signout", "Use another Discord account", "quiet")}</div>`, button("retry-world", "Check again", "primary"))
       : panel("Sign in", `<p class="lead">${esc(account?.why || world + " asks you to sign in with Discord.")}</p>
-        <p class="context">Your survivors here belong to your Discord account, on any browser.</p><div class="support">${invite}</div>`, button("discord", "Continue with Discord", "primary"));
+        <p class="context">Your survivors here belong to your Discord account, on any browser.</p><div class="support">${invite}</div>`, button("discord", "Continue with Discord", "primary discord"));
   }
   root.innerHTML = html;
   const content = root.querySelector<HTMLElement>(".entry-content");
