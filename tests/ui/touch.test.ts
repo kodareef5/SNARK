@@ -155,7 +155,7 @@ test("a page that is never touched does not pay for the touch layout: nothing a 
   // The interface holds the layout as `Ui.layer`, fetched on a first touch. A value imported from it, or from its
   // art, by what every page loads would put it back in every page's script.
   const root = join(import.meta.dir, "../../client");
-  for (const file of ["core/app.ts", "core/ui/ui.ts", "core/ui/hud.ts", "core/ui/menu.ts", "core/ui/chat.ts", "core/ui/inventory.ts", "core/ui/controls-help.ts", "core/touch.ts", "shell/ui.ts", "shell/input.ts"]) {
+  for (const file of ["core/game-app.ts", "core/ui/game-ui.ts", "core/ui/bag-load.ts", "core/ui/hud.ts", "core/ui/menu.ts", "core/ui/chat.ts", "core/ui/inventory.ts", "core/ui/controls-help.ts", "core/touch.ts", "shell/ui.ts", "shell/input.ts"]) {
     const source = readFileSync(join(root, file), "utf8");
     for (const line of source.split("\n")) {
       const from = /^import\s[^"']*["']([^"']+)["']/.exec(line)?.[1];

@@ -1,0 +1,15 @@
+{
+  "title": "Strata Supper Club",
+  "year": 2026,
+  "from": {
+    "by": "SNARK",
+    "sha256": "254aff0726be032bc77a744827f92d73accfa78f8ca13b968ffdebb9ee7df7a0"
+  },
+  "rights": "Made for SNARK, 2026",
+  "licence": "Made for the game and given to it under CC0 1.0.",
+  "poster": 2,
+  "audio": false,
+  "types": [
+    "tv"
+  ]
+}

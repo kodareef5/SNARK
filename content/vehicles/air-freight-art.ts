@@ -60,6 +60,9 @@ export const AIR_CARRIER_ART = {
   },
 } as const;
 
+/** Metres between the carrier's origin and the origin of its hanging trailer. */
+export const AIR_CARRIER_LOAD = -AIR_CARRIER_ART.load[1];
+
 /** The expendable camera drone, flown from its nose camera. Nose along +Z. */
 export const SURVEY_DRONE_ART = {
   id: "core:survey_drone",

@@ -4,7 +4,7 @@
 import { quatMul, quatNormalize, quatRotate, type Numbers } from "../math/quat.ts";
 import { clamp } from "../math/scalar.ts";
 import { skateClips, sampleSkater } from "./skate.ts";
-import { PoseBuilder } from "./authored.ts";
+import { PoseBuilder } from "./pose-builder.ts";
 import { Pose, blendPose, sampleClip, type Clip } from "./clip.ts";
 import {
   B_CHEST, B_FINGERS_L, B_FOOT_L, B_FOOT_R, B_HAND_L, B_HAND_R, B_HEAD, B_HIPS, B_LOWER_ARM_L, B_LOWER_ARM_R,

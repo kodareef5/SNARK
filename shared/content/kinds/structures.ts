@@ -13,6 +13,10 @@ import { ID, drawnFaults, f, f32, i8, list, mesh, row, u16, u8, type Fields, typ
 import { materialsById } from "./materials.ts";
 import { MAX_STRUCTURE_HALF, PIECE_ROLES, shapeHalf, shapesById, type ShapeDef } from "./shapes.ts";
 import { STATION_FIELDS, fuelFaults, type StationFields } from "./stations.ts";
+import { faceFault, type ScreenFace } from "../../video/face.ts";
+
+/** The types of screen a structure may carry: every type but the Vegas ball's. */
+const SCREEN_PROPS: readonly string[] = ["billboard", "tv", "laptop"];
 
 /** Parts a moving static may move, and the farthest one may stand from it in metres. */
 export const MAX_MOVING_PARTS = 32;
@@ -94,6 +98,10 @@ export interface StructureDef extends Named, StationFields {
   readonly under?: number;
   /** The material made from a recipe its faces wear in place of its colour's painted finish (content/texgen/materials.ts), which its colour dyes. */
   readonly made?: string;
+  /** The existing building kit returned by an alternate state. */
+  readonly kit?: string;
+  /** The mesh tier of its joints and skirts when it differs from its damage material. */
+  readonly trimTier?: string;
   /** Drawn near only: a street piece or a building's small kit, left out of the far city's lattice and mass levels. */
   readonly near?: true;
   /**
@@ -151,6 +159,8 @@ export interface StructureDef extends Named, StationFields {
   readonly breaks?: BreaksFacet;
   /** A wreck a map places: what salvaging it takes and gives. */
   readonly salvage?: SalvageFacet;
+  /** A screen on it: the rectangle in its own frame a picture is drawn on, and how (shared/video/face.ts). */
+  readonly screen?: ScreenFace;
 }
 
 const FIELDS = {
@@ -160,6 +170,8 @@ const FIELDS = {
   mesh: f("text"),
   color: f("number"),
   under: f("number", "the colour of its faces that look down"),
+  kit: f("text", "the item returned for this alternate state of a built piece", { refs: { "": "item" } }),
+  trimTier: f("text", "the mesh tier of its joints and skirts"),
   made: f("text", "the material made from a recipe its faces wear, which its colour dyes"),
   near: f("switch", "drawn near only, left out of the far city's lattice and mass"),
   paint: f("switch", "paint on the ground: each vertex drawn its own height over the ground under it, casting no shadow"),
@@ -184,6 +196,7 @@ const FIELDS = {
   rise: f("vec3"),
   breaks: f("facet"),
   salvage: f("facet", "", { refs: { "rungs[].gives[].item": "item" } }),
+  screen: f("facet", "a screen: the rectangle a picture is drawn on, a billboard's, a TV's or a laptop's"),
   ...STATION_FIELDS,
 } satisfies Fields<StructureDef>;
 
@@ -230,6 +243,8 @@ const columns = (n: number) => ({
   lights: u16(n),
   burning: u8(n),
   isBed: u8(n),
+  /** Per structure: its screen's face (StructureDef.screen), or null for one with none. */
+  screenFace: list<ScreenFace>(n),
   /**
    * Per structure that breaks (StructureDef.breaks): its break set's number, 0 for one that never breaks; its family
    * (BREAK_FAMILIES), halves, form (BREAK_FORMS) and variant; whether it bears in that form; and its panes' health.
@@ -277,11 +292,11 @@ export const structures: Kind<StructureDef, ReturnType<typeof columns>> = {
   fields: FIELDS,
   rows: [
     row("structure", "structure", FIELDS, { abstract: true, ark: "APrimalStructure", shelf: "structures", doc: "Anything built or standing in the world that is not alive." }),
-    row("structure/piece", "structure", FIELDS, { parent: "structure", ark: "a structure with snap points", shelf: "structures/pieces", must: [...BUILT, "shape", "material"], may: ["opens", "locked", "decayDays", "falls", "grindLine", "vehicleSurface", "made"], slots: STRUCTURE_SLOTS, doc: "A foundation, wall, ceiling, pillar, door or stair: it joins others and holds them up. A tier with no pictures names the material made from a recipe that its faces in its own colour wear." }),
+    row("structure/piece", "structure", FIELDS, { parent: "structure", ark: "a structure with snap points", shelf: "structures/pieces", must: [...BUILT, "shape", "material"], may: ["opens", "locked", "decayDays", "falls", "grindLine", "vehicleSurface", "made", "trimTier", "kit"], slots: STRUCTURE_SLOTS, doc: "A foundation, wall, ceiling, pillar, door or stair: it joins others and holds them up. A tier with no pictures names the material made from a recipe that its faces in its own colour wear." }),
     row("structure/container", "structure", FIELDS, { parent: "structure", ark: "an item container", shelf: "structures/containers", must: [...BUILT, "slots"], may: ["shape", "material", "decayDays", "locked", "falls", "keeps"], slots: STRUCTURE_SLOTS, doc: "Holds stacks: a box, a vault." }),
-    row("structure/station", "structure", FIELDS, { parent: "structure/container", ark: "a crafting inventory with its engrams and speed", status: "partial", waits: "stations", shelf: "structures/stations", must: BUILT, may: ["shape", "material", "decayDays", "locked", "falls", "slots", "lights", "lit", "burns", "cooks", "keeps", "charges", "powered", "dry"], slots: STRUCTURE_SLOTS, doc: "Things are made or changed at it. An item whose craft names it in `at` is made from what lies in it, for whoever queued it, and lands in it; a lit station and the same station out are one station to that. One that `lights` burns fuel while lit: every item's own `fuel`, or only what it names in `burns`, at its own times. A `powered` one (the fabricator) makes things only while it burns: it takes no job while out, and a unit under way when its fuel runs out waits with its ticks left until it is lit again. A fire makes its `fired` recipes by itself while it burns, and cooks what has `cooks` unless `cooks` is false. How fast it makes things waits: every station makes at the recipe's seconds." }),
+    row("structure/station", "structure", FIELDS, { parent: "structure/container", ark: "a crafting inventory with its engrams and speed", status: "partial", waits: "stations", shelf: "structures/stations", must: BUILT, may: ["shape", "material", "decayDays", "locked", "falls", "slots", "lights", "lit", "burns", "cooks", "keeps", "charges", "powered", "dry", "screen"], slots: STRUCTURE_SLOTS, doc: "Things are made or changed at it. An item whose craft names it in `at` is made from what lies in it, for whoever queued it, and lands in it; a lit station and the same station out are one station to that. One that `lights` burns fuel while lit: every item's own `fuel`, or only what it names in `burns`, at its own times. A `powered` one (the fabricator) makes things only while it burns: it takes no job while out, and a unit under way when its fuel runs out waits with its ticks left until it is lit again. A fire makes its `fired` recipes by itself while it burns, and cooks what has `cooks` unless `cooks` is false. How fast it makes things waits: every station makes at the recipe's seconds." }),
     row("structure/bed", "structure", FIELDS, { parent: "structure", ark: "a bed", shelf: "structures/beds", must: [...BUILT, "bed"], may: ["shape", "material", "decayDays", "falls", "wait", "once", "floor", "rise"], slots: STRUCTURE_SLOTS, doc: "Its tribe may come back to life at it, after its wait, and travel to it from another; a sleeping bag once, and only for whoever set it down." }),
-    row("structure/static", "structure", FIELDS, { parent: "structure", ark: "level geometry, ours", shelf: "structures/static", must: BUILT, may: ["material", "shape", "grindLine", "vehicleSurface", "opens", "motion", "under", "made", "near", "paint", "coarse", "colors", "bent", "breaks", "salvage"], slots: { mesh: mesh("must", "{mesh}", "{id}", "box", "shape") }, doc: "Part of a map: set there with the world and joined to nothing. A city piece that breaks names its break set, which its broken forms, each a kind of its own, name too. A wreck says what salvaging it takes and gives, a rung at a time. A ruin's piece may say the darker colour its faces looking down are drawn in, and a material made from a recipe its faces wear in place of its colour's painted finish, and a street piece or a building's small kit that it is drawn near only, and road paint that it is drawn on the ground, and scenery of many alike that its mesh's levels are chosen coarser and the colours of its mesh's other regions. With a shape it may be sloped, or drawn as a mesh of the pack, a wreck's, at the shape's origin, or as nothing where a landmark's cells draw it, or bent along the street by its instance's bend and walked as nothing (a bent kerb). A pair that opens each other is a public door. One with a motion moves its parts between two placements when used, as sails are set and struck." }),
+    row("structure/static", "structure", FIELDS, { parent: "structure", ark: "level geometry, ours", shelf: "structures/static", must: BUILT, may: ["material", "shape", "grindLine", "vehicleSurface", "opens", "motion", "under", "made", "near", "paint", "coarse", "colors", "bent", "breaks", "salvage", "screen"], slots: { mesh: mesh("must", "{mesh}", "{id}", "box", "shape") }, doc: "Part of a map: set there with the world and joined to nothing. A city piece that breaks names its break set, which its broken forms, each a kind of its own, name too. A wreck says what salvaging it takes and gives, a rung at a time. A ruin's piece may say the darker colour its faces looking down are drawn in, and a material made from a recipe its faces wear in place of its colour's painted finish, and a street piece or a building's small kit that it is drawn near only, and road paint that it is drawn on the ground, and scenery of many alike that its mesh's levels are chosen coarser and the colours of its mesh's other regions. With a shape it may be sloped, or drawn as a mesh of the pack, a wreck's, at the shape's origin, or as nothing where a landmark's cells draw it, or bent along the street by its instance's bend and walked as nothing (a bent kerb). A pair that opens each other is a public door. One with a motion moves its parts between two placements when used, as sails are set and struck." }),
     row("structure/defence", "structure", FIELDS, { parent: "structure", ark: "turrets and spikes", status: "stub", waits: "defences", shelf: "structures/defences", must: BUILT, may: ["shape", "material", "decayDays", "falls", "slots"], slots: STRUCTURE_SLOTS, doc: "Harms what comes near it." }),
   ],
   check(d, cx) {
@@ -294,6 +309,11 @@ export const structures: Kind<StructureDef, ReturnType<typeof columns>> = {
     if (d.motion !== undefined) errors.push(...motionFaults(d));
     if (d.grindLine !== undefined && (!Array.isArray(d.grindLine) || d.grindLine.length === 1 || d.grindLine.length > 64 || !d.grindLine.every(p => Array.isArray(p) && p.length === 3 && p.every(Number.isFinite)))) errors.push(`${d.id}: invalid grindLine`);
     if (d.vehicleSurface !== undefined && !validVehicleSurface(d.vehicleSurface)) errors.push(`${d.id}: invalid vehicleSurface grip/resistance`);
+    if (d.screen !== undefined) {
+      if (!SCREEN_PROPS.includes(d.screen.type)) errors.push(`${d.id}: a screen is a billboard, a tv or a laptop`);
+      else if (!Array.isArray(d.screen.face) || d.screen.face.length !== 5) errors.push(`${d.id}: a screen's face is x0, x1, y0, y1 and z`);
+      else if (faceFault(d.screen)) errors.push(`${d.id}: ${faceFault(d.screen)}`);
+    }
     positive(d, "half[0]", d.half[0], MAX_STRUCTURE_HALF);
     positive(d, "half[1]", d.half[1], MAX_STRUCTURE_HALF);
     positive(d, "half[2]", d.half[2], MAX_STRUCTURE_HALF);
@@ -374,6 +394,7 @@ export const structures: Kind<StructureDef, ReturnType<typeof columns>> = {
     if (d.falls) reg.fallsWhole[i] = 1;
     if (d.lit) reg.burning[i] = 1;
     if (d.bed) reg.isBed[i] = 1;
+    reg.screenFace[i] = d.screen ?? null;
     if (d.motion) reg.motion[i] = d.motion;
     const m = d.material !== undefined ? once(materialsById).get(d.material)! : null;
     if (m) reg.structTakes[i] = Float32Array.from(DAMAGE_TYPES, (t) => m.takes[t] ?? 0);
@@ -392,6 +413,7 @@ export const structures: Kind<StructureDef, ReturnType<typeof columns>> = {
     if (d.salvage) reg.salvageWork[i] = d.salvage.work;
   },
   link(d, i, reg) {
+    if (d.kit) reg.pieceItem[i] = reg.index.get(d.kit)!;
     if (d.salvage) {
       const totals = new Map<number, number>();
       reg.salvageYield[i] = d.salvage.rungs.map((rung) => {

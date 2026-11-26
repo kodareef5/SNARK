@@ -9,8 +9,8 @@ import { postFrame } from "../render/post.ts";
 import { withDefines } from "../render/programs.ts";
 import { base64Bytes } from "../video/player.ts";
 import { skyFrame, theSky } from "../render/sky.ts";
-import { SCENE_SHOW, heldSceneOf, type Channel } from "../../../shared/video/clip.ts";
-import { channelAt, screenAt } from "../../../shared/video/programme.ts";
+import { SCENE_SHOW, SCREEN_TYPES, channelType, heldSceneOf, isImage, offeredOn, type Channel, type ScreenType } from "../../../shared/video/clip.ts";
+import { channelAt, heldFor, onceShowing, screenAt } from "../../../shared/video/programme.ts";
 import { ORB_HOLD, ORB_SCENES, type OrbSite } from "../../../shared/world/orb.ts";
 import { timedOf, type ScreensState, type StateClip, type StateScreen } from "./screens.ts";
 
@@ -97,15 +97,20 @@ export function targetKey(t: Target): string {
   return t.kind === "clip" ? `clip:${t.clip}` : `channel:${t.name}`;
 }
 
+/** A type's screen in a state. */
+export const screenOf = (st: ScreensState, type: ScreenType): StateScreen | undefined => st.screens.find((s) => s.screen === type);
 /** The ball's screen in a state. */
-export const orbOf = (st: ScreensState): StateScreen | undefined => st.screens.find((s) => s.screen === "orb");
+export const orbOf = (st: ScreensState): StateScreen | undefined => screenOf(st, "orb");
 
 /** The scene the world's own setting holds, else -1, for a show of "scenes". */
 const sceneOfShow = (show: string, st: ScreensState): number => (show === "scenes" ? st.world.only : heldSceneOf(show));
 
-/** What the ball shows at `wall` (ms on the server's clock), as its players see it. */
-export function liveLook(st: ScreensState, wall: number): StageLook {
-  const orb = orbOf(st);
+/**
+ * What a type's screens show at `wall` (ms on the server's clock), as its players see it: the ball, or the one of a
+ * flat type at offset 0 in its channel. A flat type with no clip is dark.
+ */
+export function liveLook(st: ScreensState, wall: number, type: ScreenType = "orb"): StageLook {
+  const orb = screenOf(st, type);
   if (!orb) return { only: st.world.only, clip: null, clipSeconds: 0, facing: true, fill: true };
   const channels = new Map(st.channels.map((c) => [c.name, c] as const));
   const playing = screenAt(orb, channels, timedOf(st.clips), wall, st.night);
@@ -113,9 +118,9 @@ export function liveLook(st: ScreensState, wall: number): StageLook {
   return { only: sceneOfShow(orb.show, st), clip, clipSeconds: playing ? (wall - playing.start) / 1000 : 0, facing: orb.mode === "facing", fill: orb.fill };
 }
 
-/** What the ball would show of `target`, `since` ms after it was picked: a clip from its start, a channel as it plays now. */
-export function targetLook(st: ScreensState, target: Target, since: number, wall: number): StageLook {
-  const orb = orbOf(st), facing = orb ? orb.mode === "facing" : true, fill = orb ? orb.fill : true;
+/** What a type's screens would show of `target`, `since` ms after it was picked: a clip from its start, a channel as it plays now. */
+export function targetLook(st: ScreensState, target: Target, since: number, wall: number, type: ScreenType = "orb"): StageLook {
+  const orb = screenOf(st, type), facing = orb ? orb.mode === "facing" : true, fill = orb ? orb.fill : true;
   if (target.kind === "scenes") return { only: st.world.only, clip: null, clipSeconds: 0, facing, fill };
   if (target.kind === "scene") return { only: target.scene, clip: null, clipSeconds: 0, facing, fill };
   if (target.kind === "clip") {
@@ -128,20 +133,19 @@ export function targetLook(st: ScreensState, target: Target, since: number, wall
   return { only: -1, clip, clipSeconds: playing ? (wall - playing.start) / 1000 : 0, facing, fill };
 }
 
-/** The key of the tile that is live at `wall`: the clip playing once, else what the ball is set to show. */
-export function liveKey(st: ScreensState, wall: number): string {
-  const orb = orbOf(st);
+/** The key of the tile that is live at `wall`: the item playing once, else what a type's screens are set to show. */
+export function liveKey(st: ScreensState, wall: number, type: ScreenType = "orb"): string {
+  const orb = screenOf(st, type);
   if (!orb) return "scenes";
-  const once = orb.once ? st.clips.find((c) => c.id === orb.once!.clip) : undefined;
-  if (orb.once && once && wall >= orb.once.from && wall < orb.once.from + once.seconds * 1000) return `clip:${once.id}`;
+  if (orb.once && onceShowing(orb, timedOf(st.clips), wall)) return `clip:${orb.once.clip}`;
   if (orb.show === "scenes" || heldSceneOf(orb.show) >= 0) return orb.show;
   return `channel:${orb.show}`;
 }
 
-/** The edit that takes `target` live on the ball (server/video/routes.ts op "take"). */
-export function takeBody(target: Target): Record<string, unknown> {
-  if (target.kind === "clip") return { op: "take", screen: "orb", clip: target.clip };
-  return { op: "take", screen: "orb", show: target.kind === "scenes" ? "scenes" : target.kind === "scene" ? SCENE_SHOW + ORB_SCENES[target.scene] : target.name };
+/** The edit that takes `target` live on a type's screens (server/video/routes.ts op "take"). */
+export function takeBody(target: Target, type: ScreenType = "orb"): Record<string, unknown> {
+  if (target.kind === "clip") return { op: "take", screen: type, clip: target.clip };
+  return { op: "take", screen: type, show: target.kind === "scenes" ? "scenes" : target.kind === "scene" ? SCENE_SHOW + ORB_SCENES[target.scene] : target.name };
 }
 
 /** The scenes as the tiles name them, in ORB_SCENES order. */
@@ -166,39 +170,58 @@ export interface Tile {
 
 const minutes = (seconds: number): string => (seconds < 90 ? `${Math.round(seconds)} s` : `${Math.round(seconds / 60)} min`);
 
-/** Every tile: the scenes in turn, each scene, each clip a screen may play, and each channel with something to play. */
-export function stageTiles(st: ScreensState): Tile[] {
-  const held = st.world.only;
-  const tiles: Tile[] = [{
-    key: "scenes", target: { kind: "scenes" }, group: "scenes", title: "Scenes in turn",
-    note: held >= 0 ? `This world's setting holds it on ${SCENE_TILES[held]!.title}.` : `Each scene for ${minutes(ORB_HOLD)}, one wiped into the next.`, clip: null,
-  }];
-  SCENE_TILES.forEach((s, scene) => tiles.push({ key: targetKey({ kind: "scene", scene }), target: { kind: "scene", scene }, group: "scenes", title: s.title, note: s.note, clip: null }));
-  const timed = timedOf(st.clips);
-  for (const c of st.clips) if (timed.has(c.id)) tiles.push({ key: `clip:${c.id}`, target: { kind: "clip", clip: c.id }, group: "clips", title: c.title, note: `${minutes(c.seconds)}, once, then back`, clip: c });
+/** "2 clips and 3 images": what a list of items holds. */
+export function itemsWords(items: readonly StateClip[]): string {
+  const images = items.filter(isImage).length, clips = items.length - images;
+  const n = (k: number, one: string): string => `${k} ${one}${k === 1 ? "" : "s"}`;
+  return clips && images ? `${n(clips, "clip")} and ${n(images, "image")}` : images ? n(images, "image") : n(clips, "clip");
+}
+
+/**
+ * Every tile of a type: for the ball the scenes in turn and each scene, for another type its dark face; each item
+ * offered on it that may play; and each of its channels with something to play.
+ */
+export function stageTiles(st: ScreensState, type: ScreenType = "orb"): Tile[] {
+  const held = st.world.only, tiles: Tile[] = [];
+  if (type === "orb") {
+    tiles.push({
+      key: "scenes", target: { kind: "scenes" }, group: "scenes", title: "Scenes in turn",
+      note: held >= 0 ? `This world's setting holds it on ${SCENE_TILES[held]!.title}.` : `Each scene for ${minutes(ORB_HOLD)}, one wiped into the next.`, clip: null,
+    });
+    SCENE_TILES.forEach((s, scene) => tiles.push({ key: targetKey({ kind: "scene", scene }), target: { kind: "scene", scene }, group: "scenes", title: s.title, note: s.note, clip: null }));
+  } else tiles.push({ key: "scenes", target: { kind: "scenes" }, group: "channels", title: "Dark", note: `No ${SCREEN_TYPES[type].label === "TVs" ? "TV" : SCREEN_TYPES[type].label.toLowerCase().replace(/s$/, "")} shows anything.`, clip: null });
+  const timed = timedOf(st.clips), byId = new Map(st.clips.map((c) => [c.id, c] as const));
+  for (const c of st.clips) {
+    if (!timed.has(c.id) || !offeredOn(c, type)) continue;
+    const length = isImage(c) ? `a still for ${minutes(heldFor(timed.get(c.id)!, null))}` : minutes(c.seconds);
+    tiles.push({ key: `clip:${c.id}`, target: { kind: "clip", clip: c.id }, group: "clips", title: c.title, note: `${length}, once, then back`, clip: c });
+  }
   for (const ch of st.channels) {
-    const items = ch.items.filter((id) => timed.has(id));
+    if (channelType(ch) !== type) continue;
+    const items = ch.items.filter((id) => timed.has(id)).map((id) => byId.get(id)!);
     if (!items.length) continue;
-    tiles.push({ key: `channel:${ch.name}`, target: { kind: "channel", name: ch.name }, group: "channels", title: ch.name, note: `${items.length} clip${items.length === 1 ? "" : "s"}, ${ch.shuffle ? "shuffled" : "in order"}, round and round`, clip: st.clips.find((c) => c.id === items[0]) ?? null });
+    tiles.push({ key: `channel:${ch.name}`, target: { kind: "channel", name: ch.name }, group: "channels", title: ch.name, note: `${itemsWords(items)}, ${ch.shuffle ? "shuffled" : "in order"}, round and round`, clip: items[0]! });
   }
   return tiles;
 }
 
 /** What a tile shows when taken: words for the line under the monitors. */
-export function lookWords(st: ScreensState, look: StageLook): string {
+export function lookWords(st: ScreensState, look: StageLook, type: ScreenType = "orb"): string {
   if (look.clip) return look.clip.title;
+  if (type !== "orb") return "Dark";
   if (look.only >= 0) return SCENE_TILES[look.only]!.title;
   return "The scenes in turn";
 }
 
-/** The clip after the one playing on the ball, its title, or "" where the scenes follow or nothing plays. */
-export function nextWords(st: ScreensState, wall: number): string {
-  const orb = orbOf(st);
+/** The item after the one playing on a type's screens, its title, or "" where the scenes follow or nothing plays. */
+export function nextWords(st: ScreensState, wall: number, type: ScreenType = "orb"): string {
+  const orb = screenOf(st, type);
   if (!orb) return "";
   const playing = screenAt(orb, new Map<string, Channel>(st.channels.map((c) => [c.name, c])), timedOf(st.clips), wall, st.night);
   if (!playing) return "";
   if (playing.next) return st.clips.find((c) => c.id === playing.next)?.title ?? "";
   const back = heldSceneOf(orb.show);
+  if (type !== "orb") return orb.show === "scenes" ? "Dark" : "";
   return back >= 0 ? SCENE_TILES[back]!.title : orb.show === "scenes" ? "The scenes in turn" : "";
 }
 

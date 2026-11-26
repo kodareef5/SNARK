@@ -1,0 +1,15 @@
+{
+  "kind": "image",
+  "title": "Proofpocket Color — Prove it was pink.",
+  "year": 2026,
+  "from": {
+    "by": "SNARK",
+    "sha256": "0c21afb977e91d0b31c7f4da4e8695714a7f21b61e600451d0021578cd546fea"
+  },
+  "rights": "Made for SNARK, 2026",
+  "licence": "Made for the game and given to it under CC0 1.0.",
+  "audio": false,
+  "types": [
+    "billboard"
+  ]
+}

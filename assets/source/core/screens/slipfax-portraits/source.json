@@ -1,0 +1,15 @@
+{
+  "title": "Slipfax Portraits",
+  "year": 2026,
+  "from": {
+    "by": "SNARK",
+    "sha256": "482e402a7e1ad04c7e71c65d6ac433be98a43dc43555f850803030a6ce99a377"
+  },
+  "rights": "Made for SNARK, 2026",
+  "licence": "Made for the game and given to it under CC0 1.0.",
+  "poster": 4,
+  "audio": false,
+  "types": [
+    "billboard"
+  ]
+}

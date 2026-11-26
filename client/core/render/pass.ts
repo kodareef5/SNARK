@@ -33,6 +33,7 @@ export class Frame {
   tier!: Tier;
   /** The frame's time, in milliseconds. */
   now = 0;
+  tick = 0;
   /** Metres to the end of the view (Scene.viewDistance). */
   view = 0;
   /** The height of the view in pixels (Scene.viewHeight). */

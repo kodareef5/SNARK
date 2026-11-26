@@ -18,6 +18,8 @@ export interface Frame {
   /** The part of the work crowns near took that they could still give, and the part the far city took: none unless said. */
   crowns?: number;
   city?: number;
+  /** What the screens on props drew, as governor.ts SCREENS_ bits: none unless said. */
+  screens?: number;
   /** A gap before this frame, in ms: a hidden page or a stall. */
   gap?: number;
   /** The display's interval, which a frame is never shorter than: 16.7 ms unless said. */
@@ -56,7 +58,7 @@ export function run(minutes: number, at: (t: number, level: number) => Frame, o:
     interval += f.gap ?? 0;
     now += interval;
     g.tier(tier, true, dpr, now);
-    g.frame(now, interval, f.ours ?? 1, f.busy ?? false, f.work ?? 10, f.crowns ?? 0, f.city ?? 0);
+    g.frame(now, interval, f.ours ?? 1, f.busy ?? false, f.work ?? 10, f.crowns ?? 0, f.city ?? 0, f.screens ?? 0);
     if (f.gap === undefined) list.push(interval);
     most = Math.max(most, g.level);
     if (now >= (out.length + 1) * 60000) {

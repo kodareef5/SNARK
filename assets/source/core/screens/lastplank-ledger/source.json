@@ -1,0 +1,15 @@
+{
+  "kind": "image",
+  "title": "The Lastplank Night Ledger",
+  "year": 2026,
+  "from": {
+    "by": "SNARK",
+    "sha256": "553ff0d4441dff3775f3c5386307b37f2f8555c3bcb5d93b21d228d091979cd1"
+  },
+  "rights": "Made for SNARK, 2026",
+  "licence": "Made for the game and given to it under CC0 1.0.",
+  "audio": false,
+  "types": [
+    "laptop"
+  ]
+}

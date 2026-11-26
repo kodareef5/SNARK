@@ -1,0 +1,15 @@
+{
+  "title": "Second Bell Recall Whistle",
+  "year": 2026,
+  "from": {
+    "by": "SNARK",
+    "sha256": "59c9680d31b43dbf2b1ae9aed674971ac9c84b6a734836f6fc048075e4afee3d"
+  },
+  "rights": "Made for SNARK, 2026",
+  "licence": "Made for the game and given to it under CC0 1.0.",
+  "poster": 9,
+  "audio": false,
+  "types": [
+    "tv"
+  ]
+}

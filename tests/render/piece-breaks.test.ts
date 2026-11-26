@@ -33,6 +33,13 @@ import { coreRegistry } from "../fixtures/world.ts";
 
 const ROWS: Readonly<Record<string, FormDef>> = FORMS;
 const TIERS = Object.keys(TIER_FORMS);
+
+function materialOf(name: string, tier: string): string {
+  const reg = coreRegistry(), def = reg.defs[reg.index.get(`core:${name}_${tier}`)!];
+  if (def?.type !== "structure" || !def.material) throw new Error(`Missing material for ${name} ${tier}`);
+  return def.material.replace("core:mat_", "");
+}
+
 /** The tiers whose packs draw their pieces with materials, and so carry their breaks. Metal is flat: its sets are made on the client. */
 const PACKED = ["wood", "stone", "thatch"];
 
@@ -58,7 +65,7 @@ test("every placed form of every tier breaks into 6 to 10 groups that fill it", 
   let forms = 0;
   for (const tier of TIERS) {
     for (const name of TIER_FORMS[tier]!) {
-      const f = ROWS[name]!, groups = pieceBreak(f, tier), box = colliderBox(f);
+      const f = ROWS[name]!, groups = pieceBreak(f, materialOf(name, tier)), box = colliderBox(f);
       expect(groups.length, `${name} ${tier}`).toBeGreaterThanOrEqual(LEAST_GROUPS);
       expect(groups.length, `${name} ${tier}`).toBeLessThanOrEqual(MOST_PIECE_GROUPS);
       let filled = 0;
@@ -84,7 +91,7 @@ test("the client finds a break set for every placed piece and none for a city pi
     expect(kind, `core:${name}_${tier}`).toBeDefined();
     const set = sets.piece(kind!)!;
     expect(set.key % 4).toBe(SET_PIECE);
-    expect(set.groups.length).toBe(pieceBreak(ROWS[name]!, tier).length);
+    expect(set.groups.length).toBe(pieceBreak(ROWS[name]!, materialOf(name, tier)).length);
     expect(set.lump).toBe(set);
   }
   expect(sets.piece(reg.index.get("core:storage_box")!)).toBeNull();

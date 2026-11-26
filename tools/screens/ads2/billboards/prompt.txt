@@ -1,0 +1,5 @@
+Use case: ads-marketing. Make a single finished flat, horizontal, lavishly art-directed original American roadside advertising broadside for a fictional 1950s retro-future city inhabited by dinosaurs. Produce the actual ad face, edge to edge, NOT a photograph of a billboard or of a printed page. Extra-wide panorama, aspect ratio 3:1, target 1920 by 640. Design a bespoke typographic composition specific to this scene. Paint the lettering too; very few words, large and absolutely legible from a moving car. The brand and headline are the only two inscriptions. Render both EXACTLY ONCE. Do not use the product description as visible text. No small print, signatures, license plates, watermark, framing or extra writing. Colors should have real vintage ink depth, not a brown distressed nostalgia filter. Fully fictional characters and identity. Avoid existing brands, franchises, mascots and likenesses. No gore.
+Brand (exact): {brand}
+Headline (exact): {headline}
+Product for art direction only: {product}
+Art direction: {art}

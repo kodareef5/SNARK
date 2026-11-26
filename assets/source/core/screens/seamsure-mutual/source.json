@@ -1,0 +1,15 @@
+{
+  "kind": "image",
+  "title": "Seamsure Mutual — Covered on every floor.",
+  "year": 2026,
+  "from": {
+    "by": "SNARK",
+    "sha256": "a6d8ad93e47ac91b4c3f69cdd2c325295d1280a92158272315993a838a57c03c"
+  },
+  "rights": "Made for SNARK, 2026",
+  "licence": "Made for the game and given to it under CC0 1.0.",
+  "audio": false,
+  "types": [
+    "billboard"
+  ]
+}

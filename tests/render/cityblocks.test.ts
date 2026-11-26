@@ -158,7 +158,7 @@ test("past the far city's reach its buildings are blocks, faded in over the pixe
   expect(gained).toBeGreaterThan(1000);
 });
 
-test("before the map's statics the blocks draw all but what the far feed's blocks draw, and once they come the far city takes over as its tiles are made; a piece gone is not drawn as a block", () => {
+test("city blocks yield to streamed meshes and disappear when a tower falls", () => {
   const statics = grid(32, 4);
   // A tower of 20 storeys and 32 m a side beyond the far city's reach.
   statics.push(...building(14 * CHUNK_SIZE + 32, 14 * CHUNK_SIZE + 32, 0, 20, 4));
@@ -181,8 +181,10 @@ test("before the map's statics the blocks draw all but what the far feed's block
   expect(before.some((d) => p.drawFade[d] === -600)).toBe(true);
   // The statics come, and the far city's levels are made; then the blocks give way to it at its reach.
   w.arrive();
-  // A tile waits 300 ms for the lists of its pieces gone before it is first made.
-  for (let f = 0; f < 6; f++) p = w.frame(false, 60);
+  // The tile waits for missing-piece lists. Finish its mesh on the first eligible frame.
+  for (let f = 0; f < 5; f++) expect(cityDraws(w.frame(false, 60))).toEqual([]);
+  w.scene.city!.makeMs = Infinity;
+  p = w.frame(false, 60);
   expect(cityDraws(p).length).toBeGreaterThan(0);
   for (const d of blockDraws(p)) expect([0, Math.fround(-w.scene.alongGround(700))]).toContain(p.drawFade[d]!);
   const tower = w.chunkOf(14 * CHUNK_SIZE + 32, 14 * CHUNK_SIZE + 32);

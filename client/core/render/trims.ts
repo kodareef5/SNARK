@@ -27,12 +27,13 @@ import { ownDir, riseAt, type Frame } from "../../../shared/world/lattice/frames
 import { CLS_CORNERS, CLS_SQUARE, CLS_STEP, CLS_TRIANGLE, CLS_VERTEX, DIRECTIONS, LVL_MOST, M_MOST, SIDE, dirTurn, elementCorners, key0, key1, keyAnchor, keyCls, keyDir, keyFlip, keyLvl, keyM3, tupleStep, tupleWithin } from "../../../shared/world/lattice/module.ts";
 import { Cells, cellAt, edgeFaces, elementVertices, faceEdges, formCells, vertexEdges, vertexFaces } from "../../../shared/world/lattice/occupancy.ts";
 import type { ChunkTable, StructureStore } from "../../../shared/world/structures.ts";
+import { materialIndex } from "../texgen/layers.ts";
 import { DRAW_PIECE } from "./packet.ts";
 import { FIT_ENDS, PIECE_END_IN, PIECE_END_RUN, PIECE_END_SHIFT } from "./piece-fit.ts";
 import type { PieceLooks } from "./piece-state.ts";
 
 /** Each tier's rank, the highest at a corner giving its joint, and whether its walls run on through a straight run with no joint. */
-const TIER_RULES: Readonly<Record<string, readonly [rank: number, runsOn: boolean]>> = { thatch: [0, false], wood: [1, false], stone: [2, true], metal: [3, true] };
+const TIER_RULES: Readonly<Record<string, readonly [rank: number, runsOn: boolean]>> = { thatch: [0, false], wood: [1, false], stone: [2, true], metal: [3, true], tek: [4, true] };
 /**
  * Metres from a chunk's side within which a piece's trims may turn on what stands in the next chunk: two pieces that
  * share a corner, each a side from it. A wall over two edges has its origin a side from its end, and a triangle its
@@ -76,6 +77,7 @@ const SLAB = FORM_LAYERS.indexOf("slab");
 
 interface Tier {
   readonly rank: number;
+  readonly finish: number;
   readonly runsOn: boolean;
   /** Its meshes, -1 for one its pack has not. */
   readonly sq: number;
@@ -230,6 +232,8 @@ class Laid {
 }
 
 export class Trims {
+  /** The packed finish of each trim mesh, including joints drawn by a lower-tier neighbour. */
+  readonly finish: Uint8Array;
   /** Whether any tier has trims. With none, nothing is laid and no piece yields. */
   readonly any: boolean;
   /** Whether a laying keeps what the one before found of its chunk. False lays every chunk whole each time, for a before and after. */
@@ -293,6 +297,7 @@ export class Trims {
   constructor(reg: Registry, find: (id: string) => number, looks: PieceLooks) {
     this.forms = reg.forms;
     this.looks = looks;
+    this.finish = new Uint8Array(looks.flag.length);
     this.tierOf = new Int8Array(reg.defs.length).fill(-1);
     this.wallOf = new Uint8Array(reg.defs.length);
     this.sidesOf = new Uint8Array(reg.defs.length);
@@ -316,20 +321,24 @@ export class Trims {
       }
       const made = /^([^:]+):mat_(.+)$/.exec(d.material ?? "");
       if (!made) continue;
-      const id = `${made[1]}:${made[2]}`;
+      const tier = d.trimTier ?? made[2]!;
+      const id = `${made[1]}:${tier}`;
       if (!named.has(id)) {
-        const mesh = (name: string): number => find(`${made[1]}:${name}_${made[2]}`);
-        const rule = TIER_RULES[made[2]!] ?? [0, false];
+        const mesh = (name: string): number => find(`${made[1]}:${name}_${tier}`);
+        const rule = TIER_RULES[tier] ?? [0, false];
         const sq = mesh("joint_sq");
         named.set(id, this.tiers.length);
         // Without the square joint the tier's meshes are not made to give way, so it has none of the rest either.
-        this.tiers.push({ rank: rule[0], runsOn: rule[1], sq, r15: sq < 0 ? -1 : mesh("joint_r15"), r21: sq < 0 ? -1 : mesh("joint_r21"), skirt: sq < 0 ? -1 : mesh("skirt"), eave: sq < 0 ? -1 : mesh("eave"), ridge: sq < 0 ? -1 : mesh("ridge"), hip: sq < 0 ? -1 : mesh("hip"), saddle: sq < 0 ? -1 : mesh("saddle") });
+        this.tiers.push({ rank: rule[0], finish: materialIndex(d.made), runsOn: rule[1], sq, r15: sq < 0 ? -1 : mesh("joint_r15"), r21: sq < 0 ? -1 : mesh("joint_r21"), skirt: sq < 0 ? -1 : mesh("skirt"), eave: sq < 0 ? -1 : mesh("eave"), ridge: sq < 0 ? -1 : mesh("ridge"), hip: sq < 0 ? -1 : mesh("hip"), saddle: sq < 0 ? -1 : mesh("saddle") });
       }
       this.tierOf[k] = named.get(id)!;
     }
     this.any = this.tiers.some((t) => t.sq >= 0);
     // A trim is laid out as a piece is, so its mesh is drawn as one.
-    for (const t of this.tiers) for (const mesh of [t.sq, t.r15, t.r21, t.skirt, t.eave, t.ridge, t.hip, t.saddle]) if (mesh >= 0) looks.flag[mesh] = DRAW_PIECE;
+    for (const t of this.tiers) for (const mesh of [t.sq, t.r15, t.r21, t.skirt, t.eave, t.ridge, t.hip, t.saddle]) if (mesh >= 0) {
+      looks.flag[mesh] = DRAW_PIECE;
+      this.finish[mesh] = t.finish;
+    }
     this.eaves = this.tiers.some((t) => t.eave >= 0);
     this.hipped = this.tiers.some((t) => t.hip >= 0);
     this.ridged = this.hipped || this.tiers.some((t) => t.ridge >= 0);

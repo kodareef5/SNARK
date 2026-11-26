@@ -12,6 +12,7 @@ import { CLS_SQUARE, key0, key1 } from "../../shared/world/lattice/module.ts";
 import { Cells, formCells } from "../../shared/world/lattice/occupancy.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
 import { FRAMES_TOLD, ROW_BITS_MOST, ROW_FREE, ROW_KEYED, RowCoder } from "../../shared/world/rows.ts";
+import { tekWallKinds } from "../../shared/world/lattice/tek-walls.ts";
 import { Found, StructureStore, toldHealth } from "../../shared/world/structures.ts";
 import { boxBase, layBase, layPieces } from "../../tools/bench/base.ts";
 import { flatMap } from "../fixtures/map.ts";
@@ -79,7 +80,7 @@ function tap(h: Harness, s: ClientSession, only = -1): { bytes: number; messages
   const end = h.ends[h.sessions.indexOf(s)]!;
   const on = end.onMessage!;
   const r = new BitReader();
-  const coder = new RowCoder(h.reg.forms, h.reg.maxHp);
+  const coder = new RowCoder(h.reg.forms, h.reg.maxHp, { phaseKinds: tekWallKinds(h.reg.index) });
   end.onMessage = (ch, d) => {
     r.reset(d);
     if (r.u8() === S_CHUNK) {

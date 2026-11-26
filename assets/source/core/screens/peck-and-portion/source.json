@@ -1,0 +1,15 @@
+{
+  "kind": "image",
+  "title": "Peck & Portion — Table for thirty-seven.",
+  "year": 2026,
+  "from": {
+    "by": "SNARK",
+    "sha256": "bf5c48c806ce73cc1bf3e6a77f42f185fd679255307585993b025c1258daa819"
+  },
+  "rights": "Made for SNARK, 2026",
+  "licence": "Made for the game and given to it under CC0 1.0.",
+  "audio": false,
+  "types": [
+    "billboard"
+  ]
+}

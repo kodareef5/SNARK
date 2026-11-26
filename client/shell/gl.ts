@@ -4,7 +4,7 @@
 import { captureWidth, type StreetImage } from "../core/render/street-finish.ts";
 import {
   moved, ATLAS_ROWS, ATLAS_WIDTH, BEND_BUFFERS, BEND_BYTES, BONES_PER_ROW, DETAIL_FLOATS, DRAW_BENT, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_FIRE,
-  DRAW_RANGED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FRAME_FLOATS, FramePacket, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, SOURCE_MAP,
+  DRAW_SCREENS, FACE_FLOATS, FACE_HIGH, FACE_LEVELS, FACE_WIDE, DRAW_RANGED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FRAME_FLOATS, FramePacket, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, SOURCE_MAP,
   SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STREET_SIDE, STREET_TILE_BYTES, STREET_TILE_SIDE, TILE_CASTS, TRANSIENT_BUFFER, boneRows,
   quadIndices, stepOf, type TextureUpload,
 } from "../core/render/packet.ts";
@@ -161,6 +161,13 @@ export class GlRenderer {
   private open = { texture: null as WebGLTexture | null, size: 0 };
   /** An orb's screen picture on UNIT.screen (core/video/player.ts): its texture with every level, and its size. */
   private screen = { texture: null as WebGLTexture | null, w: 0, h: 0 };
+  /**
+   * The screens on props' pictures on UNIT.faces (core/render/screens.ts): their array and its layers, the targets a
+   * clip's frame is drawn into a layer through, and a texture each clip's frame is put in first, at its own size.
+   */
+  private faces = { texture: null as WebGLTexture | null, layers: 0, from: null as WebGLFramebuffer | null, to: null as WebGLFramebuffer | null, frames: [] as { texture: WebGLTexture; w: number; h: number }[] };
+  private faceVao!: WebGLVertexArrayObject;
+  private faceBuffer!: WebGLBuffer;
   private boneRows = 0;
   /**
    * Each tier's programs by number, as client/core/render/programs.ts numbers them, all begun when a frame of that tier
@@ -345,6 +352,7 @@ export class GlRenderer {
     this.shadow = { texture: null, targets: [], size: 0 };
     this.open = { texture: null, size: 0 };
     this.screen = { texture: null, w: 0, h: 0 };
+    this.faces = { texture: null, layers: 0, from: null, to: null, frames: [] };
     this.programs.clear();
     this.linked.clear();
     this.neutral = [];
@@ -457,6 +465,16 @@ export class GlRenderer {
       gl.enableVertexAttribArray(a);
       gl.vertexAttribDivisor(a, 1);
     }
+    // A screen's quad is drawn from the vertex's index, its numbers as packet.ts FACE lays them out.
+    this.vertexArray((this.faceVao = gl.createVertexArray()!));
+    this.array((this.faceBuffer = gl.createBuffer()!));
+    const stride = FACE_FLOATS * 4;
+    for (let a = 0; a < 7; a++) {
+      gl.enableVertexAttribArray(a);
+      gl.vertexAttribDivisor(a, 1);
+      if (a < 6) gl.vertexAttribPointer(a, a < 3 ? 3 : 4, gl.FLOAT, false, stride, a < 3 ? a * 12 : 36 + (a - 3) * 16);
+    }
+    gl.vertexAttribIPointer(6, 3, gl.UNSIGNED_INT, stride, 84);
     this.vertexArray(null);
     this.detailAtlas?.init();
     gl.enable(gl.DEPTH_TEST);
@@ -481,6 +499,88 @@ export class GlRenderer {
     gl.vertexAttribIPointer(6, 4, gl.UNSIGNED_BYTE, stride, at + 48);
     gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, p.drawInstances[d]!);
     this.drawCalls++;
+  }
+
+  /** The screens on props: one draw of a quad each, its picture from the faces' array, held off the face under it. */
+  private drawFaces(p: FramePacket, d: number): void {
+    const gl = this.gl;
+    if (!this.faces.texture) return;
+    const prog = this.use(PROGRAM.screens, p);
+    this.set(false, false, false, true);
+    gl.polygonOffset(-1, -4);
+    this.drawn.flags = p.drawFlags[d]!;
+    this.give(prog, prog.draw);
+    gl.activeTexture(gl.TEXTURE0 + UNIT.faces);
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.faces.texture);
+    this.vertexArray(this.faceVao);
+    gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, p.drawInstances[d]!);
+    this.drawCalls++;
+  }
+
+  /**
+   * The screens on props' pictures: their array made at the layers the frame asks, an image put in its layer as it is,
+   * a clip's frame drawn to a layer's size through a texture of its own, and the layer's levels made from it by halving.
+   * Made for the whole array at once, the levels took 0.66 ms of an RTX 4070 for 16 layers.
+   */
+  private facePictures(p: FramePacket): void {
+    const gl = this.gl, f = this.faces;
+    if (p.faceLayers !== f.layers) {
+      gl.deleteTexture(f.texture);
+      f.texture = null;
+      f.layers = p.faceLayers;
+      if (f.layers > 0) {
+        gl.activeTexture(gl.TEXTURE0 + UNIT.faces);
+        gl.bindTexture(gl.TEXTURE_2D_ARRAY, (f.texture = gl.createTexture()));
+        gl.texStorage3D(gl.TEXTURE_2D_ARRAY, FACE_LEVELS, gl.SRGB8_ALPHA8, FACE_WIDE, FACE_HIGH, f.layers);
+        gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      }
+    }
+    if (!f.texture || p.faceUploads === 0) return;
+    gl.activeTexture(gl.TEXTURE0 + UNIT.faces);
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, f.texture);
+    for (let k = 0, clips = 0; k < p.faceUploads; k++) {
+      const layer = p.faceLayer[k]!, source = p.faceSource[k] as TexImageSource | null, w = p.faceWidth[k]!, h = p.faceHeight[k]!;
+      if (!source || layer < 0 || layer >= f.layers || w <= 0 || h <= 0) continue;
+      try {
+        f.from ??= gl.createFramebuffer();
+        f.to ??= gl.createFramebuffer();
+        if (p.faceVideo[k] === 0) gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, layer, FACE_WIDE, FACE_HIGH, 1, gl.RGBA, gl.UNSIGNED_BYTE, source);
+        else this.faceClip(clips++, layer, source, w, h);
+        for (let level = 1; level < Math.min(FACE_LEVELS, p.faceMade[k]!); level++) {
+          gl.bindFramebuffer(gl.READ_FRAMEBUFFER, f.from);
+          gl.framebufferTextureLayer(gl.READ_FRAMEBUFFER, gl.COLOR_ATTACHMENT0, f.texture, level - 1, layer);
+          gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, f.to);
+          gl.framebufferTextureLayer(gl.DRAW_FRAMEBUFFER, gl.COLOR_ATTACHMENT0, f.texture, level, layer);
+          gl.blitFramebuffer(0, 0, FACE_WIDE >> (level - 1), FACE_HIGH >> (level - 1), 0, 0, FACE_WIDE >> level, FACE_HIGH >> level, gl.COLOR_BUFFER_BIT, gl.LINEAR);
+        }
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+      } catch {
+        this.errors++;
+      }
+    }
+  }
+
+  /** Clip `k`'s frame drawn into `layer`'s first level through a texture of its own at the frame's size. */
+  private faceClip(k: number, layer: number, source: TexImageSource, w: number, h: number): void {
+    const gl = this.gl, f = this.faces;
+    let frame = f.frames[k];
+    if (!frame || frame.w !== w || frame.h !== h) {
+      if (frame) gl.deleteTexture(frame.texture);
+      frame = f.frames[k] = { texture: gl.createTexture()!, w, h };
+      gl.bindTexture(gl.TEXTURE_2D, frame.texture);
+      gl.texStorage2D(gl.TEXTURE_2D, 1, gl.SRGB8_ALPHA8, w, h);
+    } else gl.bindTexture(gl.TEXTURE_2D, frame.texture);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, source);
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, f.from);
+    gl.framebufferTexture2D(gl.READ_FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, frame.texture, 0);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, f.to);
+    gl.framebufferTextureLayer(gl.DRAW_FRAMEBUFFER, gl.COLOR_ATTACHMENT0, f.texture, 0, layer);
+    gl.blitFramebuffer(0, 0, w, h, 0, 0, FACE_WIDE, FACE_HIGH, gl.COLOR_BUFFER_BIT, gl.LINEAR);
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, f.texture);
   }
 
   /**
@@ -1138,6 +1238,11 @@ export class GlRenderer {
     }
     if (p.openRows > 0) gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, p.openRow, p.openWidth, p.openRows, gl.RGBA, gl.UNSIGNED_BYTE, p.openMap);
     if (p.screenFresh && p.screenSource) this.screenPicture(p.screenSource as TexImageSource, p.screenWidth, p.screenHeight, p.screenMips);
+    this.facePictures(p);
+    if (p.faceCount > 0) {
+      this.array(this.faceBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, p.faces, gl.DYNAMIC_DRAW, 0, p.faceCount * FACE_FLOATS);
+    }
     // What stands overhead and the ground's colour (roof.ts) on its unit, one layer over the other, each map whole.
     if (p.roofMap.length > 0) {
       gl.activeTexture(gl.TEXTURE0 + UNIT.roof);
@@ -1194,6 +1299,10 @@ export class GlRenderer {
       const flags = p.drawFlags[d]!;
       if ((flags & DRAW_DETAILS) !== 0) {
         this.details(p, d);
+        continue;
+      }
+      if ((flags & DRAW_SCREENS) !== 0) {
+        this.drawFaces(p, d);
         continue;
       }
       const textured = (flags & DRAW_TEXTURED) !== 0;

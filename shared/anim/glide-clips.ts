@@ -5,9 +5,9 @@
 // at 0. Only exactly rounded arithmetic and detSin/detCos, so the clips are the same bits on every engine.
 
 import { TAU, detCos, detSin } from "../math/scalar.ts";
-import { clip, PoseBuilder } from "./authored.ts";
+import { clip, PoseBuilder } from "./pose-builder.ts";
 import type { Clip } from "./clip.ts";
-import { fist, reach, type Side } from "./emote-clips.ts";
+import { fist, reach, type Side } from "./limb-pose.ts";
 import {
   B_FOOT_L, B_FOOT_R, B_HAND_L, B_HAND_R, B_HEAD, B_HIPS, B_LOWER_ARM_L, B_LOWER_ARM_R, B_LOWER_LEG_L, B_LOWER_LEG_R, B_NECK, B_PROP_L, B_PROP_R,
   B_UPPER_ARM_L, B_UPPER_ARM_R, B_UPPER_LEG_L, B_UPPER_LEG_R, HUMAN,

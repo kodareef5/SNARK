@@ -157,6 +157,12 @@ export interface Tier {
    * without it the clip's poster stands still.
    */
   readonly orb: { readonly octaves: number; readonly pucks: boolean; readonly light: boolean; readonly ground: boolean; readonly video: boolean };
+  /**
+   * Screens on props (render/screens.ts): how far billboards and how far TVs and laptops are drawn, in metres; the most
+   * drawn at once, the nearest; the layers of pictures kept on the card, 640 by 360 each; the most clips decoded at once,
+   * and the most frames a second each is uploaded at. Without video the rest show their clips' posters.
+   */
+  readonly screens: { readonly reach: number; readonly near: number; readonly count: number; readonly layers: number; readonly video: number; readonly fps: number };
   /** Whether bodies that move take the sky's light from what is under them (render/contact.ts). */
   readonly contact: boolean;
   /**
@@ -212,6 +218,7 @@ export const TIERS: readonly Tier[] = [
     details: { pool: 384, share: 0.5, reach: 0.6, fill: 0.5 }, bursts: { particles: 20, lobes: 1, noise: 0 }, breaks: { pieces: 256, bones: 256, draws: 16, rest: 2 }, budget: { triangles: 2e6, draws: 2048 }, bodyError: 1,
     post: null,
     orb: { octaves: 2, pucks: false, light: false, ground: false, video: false },
+    screens: { reach: 800, near: 60, count: 8, layers: 8, video: 0, fps: 0 },
     contact: false,
     roofs: false,
   },
@@ -221,6 +228,7 @@ export const TIERS: readonly Tier[] = [
     details: { pool: 1536, share: 1, reach: 1, fill: 1 }, bursts: { particles: 60, lobes: 3, noise: 1 }, breaks: { pieces: 512, bones: 768, draws: 24, rest: 5 }, budget: { triangles: 4e6, draws: 1024, spend: 1, spendTo: 2.5e6 }, bodyError: 1,
     post: null,
     orb: { octaves: 3, pucks: true, light: false, ground: true, video: true },
+    screens: { reach: 800, near: 60, count: 16, layers: 12, video: 2, fps: 30 },
     contact: false,
     roofs: true,
   },
@@ -230,6 +238,7 @@ export const TIERS: readonly Tier[] = [
     details: { pool: 3072, share: 1, reach: 1, fill: 1.5 }, bursts: { particles: 100, lobes: 3, noise: 2 }, breaks: { pieces: 1024, bones: 2048, draws: 48, rest: 8 }, budget: { triangles: 6e6, draws: 2048, spend: 2, spendTo: 3.5e6 }, bodyError: 1,
     post: { bloom: 1, pixels: HIGH_PIXELS },
     orb: { octaves: 4, pucks: true, light: true, ground: true, video: true },
+    screens: { reach: 800, near: 60, count: 32, layers: 16, video: 2, fps: 30 },
     contact: true,
     roofs: true,
   },
@@ -239,6 +248,7 @@ export const TIERS: readonly Tier[] = [
     details: { pool: 6144, share: 1, reach: 1.25, fill: 2 }, bursts: { particles: 160, lobes: 3, noise: 2 }, breaks: { pieces: 1024, bones: 4096, draws: 64, rest: 12 }, budget: { triangles: 8e6, draws: 4096, spend: 2, spendTo: 5e6 }, bodyError: 1,
     post: { bloom: 1, pixels: 0 },
     orb: { octaves: 4, pucks: true, light: true, ground: true, video: true },
+    screens: { reach: 800, near: 60, count: 32, layers: 16, video: 2, fps: 30 },
     contact: true,
     roofs: true,
   },

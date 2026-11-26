@@ -6,8 +6,11 @@ import { levels, replay, sceneOf } from "../../tools/bench/governor.ts";
 import { phoneSoaks, run } from "../fixtures/frames.ts";
 import { artTest } from "../fixtures/needs-art.ts";
 
-/** Each step leaves this share of the GPU's time: a made-up card on which every step buys a little. */
-const leave = (level: number): number => 0.88 ** level;
+/** The screens' steps, which come first on every tier and are passed by where no screen is drawn, as in these frames. */
+const SCREEN_STEPS = ["screens: clips at 10 frames a second", "screens: stills only", "screens: the nearest 8", "screens: off"];
+const S = SCREEN_STEPS.length;
+/** Each step past the screens' leaves this share of the GPU's time: a made-up card on which every step buys a little. */
+const leave = (level: number): number => 0.88 ** Math.max(0, level - S);
 
 test("a tier's levels are its steps that change something, on a desktop's high the scene's pixels first, then levels and leaves, the light target and small details last, none takes the sun's shadows, and none touches the near nodes or the far bases", () => {
   const names = (tier: string, dpr: number) => ladder(tierOf(tier), dpr).map((l) => l.name);
@@ -17,20 +20,21 @@ test("a tier's levels are its steps that change something, on a desktop's high t
   const target = "no light target";
   const view = "the view to 4 km";
   const scene = ["the scene at 90% a side", "the scene at 80% a side", "the scene at 70% a side"];
-  expect(names("high", 3)).toEqual(["the tier", ...scene, levels[0], city, view, "leaves: the frame's triangles to 75%", "the farther cascade every other frame", levels[1], "far trees, rocks and bushes to 70% as far", "leaves: the frame's triangles to 50%", levels[2], "one cascade fewer", "bodies a level coarser", "85% of the pixels a side", "70% of the pixels a side", target, details]);
+  expect(names("high", 3)).toEqual(["the tier", ...SCREEN_STEPS, ...scene, levels[0], city, view, "leaves: the frame's triangles to 75%", "the farther cascade every other frame", levels[1], "far trees, rocks and bushes to 70% as far", "leaves: the frame's triangles to 50%", levels[2], "one cascade fewer", "bodies a level coarser", "85% of the pixels a side", "70% of the pixels a side", target, details]);
   // A screen of one device pixel a CSS pixel has no pixels to spare; low poly casts nothing.
   expect(names("medium", 1)).not.toContain("85% of the pixels a side");
-  expect(names("lowpoly", 1)).toEqual(["the tier", levels[0], city, "leaves: the frame's triangles to 75%", levels[1], "far trees, rocks and bushes to 70% as far", "leaves: the frame's triangles to 50%", levels[2], "bodies a level coarser", details]);
+  // Low poly decodes no clip and draws its eight screens at most, so it can only turn them off.
+  expect(names("lowpoly", 1)).toEqual(["the tier", "screens: off", levels[0], city, "leaves: the frame's triangles to 75%", levels[1], "far trees, rocks and bushes to 70% as far", "leaves: the frame's triangles to 50%", levels[2], "bodies a level coarser", details]);
   // The view comes in to 4 km on high and ultra, which see farther, and the touch rule's high sees no farther than that;
   // like the far city's levels nearer, it is passed by where the far city draws little.
   expect(TIERS.map((t) => ladder(t, 1).find((l) => l.name === view)?.tier.viewDistance ?? 0)).toEqual([0, 0, 4000, 4000]);
   expect(ladder(forTouch(tierOf("high"), true), 3).map((l) => l.name)).not.toContain(view);
   expect(ladder(tierOf("high"), 3).filter((l) => l.city).map((l) => l.name)).toEqual([city, view]);
   const medium = ladder(tierOf("medium"), 3).map((l) => [l.tier.budget.triangles, Math.round(l.tier.threshold * 100) / 100, l.tier.shadows.cascades, l.tier.bodyError, l.tier.pixelRatio, l.tier.details.pool]);
-  expect(medium).toEqual([[4e6, 0.22, 2, 1, 1.5, 1536], [4e6, 0.33, 2, 1, 1.5, 1536], [4e6, 0.33, 2, 1, 1.5, 1536], [3e6, 0.33, 2, 1, 1.5, 1536], [3e6, 0.33, 2, 1, 1.5, 1536], [3e6, 0.44, 2, 1, 1.5, 1536], [3e6, 0.44, 2, 1, 1.5, 1536], [2e6, 0.44, 2, 1, 1.5, 1536], [2e6, 0.66, 2, 1, 1.5, 1536], [2e6, 0.66, 1, 1, 1.5, 1536], [2e6, 0.66, 1, 2, 1.5, 1536], [2e6, 0.66, 1, 2, 1.27, 1536], [2e6, 0.66, 1, 2, 1.05, 1536], [2e6, 0.66, 1, 2, 1.05, 768]]);
+  expect(medium).toEqual([...Array(S + 1).fill([4e6, 0.22, 2, 1, 1.5, 1536]), [4e6, 0.33, 2, 1, 1.5, 1536], [4e6, 0.33, 2, 1, 1.5, 1536], [3e6, 0.33, 2, 1, 1.5, 1536], [3e6, 0.33, 2, 1, 1.5, 1536], [3e6, 0.44, 2, 1, 1.5, 1536], [3e6, 0.44, 2, 1, 1.5, 1536], [2e6, 0.44, 2, 1, 1.5, 1536], [2e6, 0.66, 2, 1, 1.5, 1536], [2e6, 0.66, 1, 1, 1.5, 1536], [2e6, 0.66, 1, 2, 1.5, 1536], [2e6, 0.66, 1, 2, 1.27, 1536], [2e6, 0.66, 1, 2, 1.05, 1536], [2e6, 0.66, 1, 2, 1.05, 768]]);
   // The far city's step draws the same forms nearer, so nothing made of them is made again.
   const form = ({ to: _, ...f }: { to: number }) => f;
-  const [atTier, nearer] = [ladder(tierOf("medium"), 3)[1]!.tier.city.levels, ladder(tierOf("medium"), 3)[2]!.tier.city.levels];
+  const [atTier, nearer] = [ladder(tierOf("medium"), 3)[S + 1]!.tier.city.levels, ladder(tierOf("medium"), 3)[S + 2]!.tier.city.levels];
   expect([nearer.map(form), nearer.map((l) => l.to)]).toEqual([atTier.map(form), atTier.map((l) => l.to * 0.7)]);
   for (const t of TIERS) {
     for (const { tier } of ladder(t, 3)) {
@@ -48,7 +52,7 @@ test("high and ultra give back the scene's pixels first, which the finish takes 
   const names = (tier: string, dpr: number) => ladder(tierOf(tier), dpr).map((l) => l.name);
   const scene = ["the scene at 90% a side", "the scene at 80% a side", "the scene at 70% a side"];
   const after = [target, "small details: half the pool, of each burst and of the fill"];
-  expect(names("ultra", 1).slice(0, 5)).toEqual(["the tier", ...scene, "levels: half again the error"]);
+  expect(names("ultra", 1).slice(0, S + 5)).toEqual(["the tier", ...SCREEN_STEPS, ...scene, "levels: half again the error"]);
   // With the light target the canvas's pixel steps are the scene's too, so a screen of one device pixel a CSS pixel has them.
   for (const dpr of [1, 1.5]) expect(names("ultra", dpr).slice(-5)).toEqual(["bodies a level coarser", "85% of the pixels a side", "70% of the pixels a side", ...after]);
   for (const t of TIERS) for (const dpr of [1, 1.5, 2, 3]) expect(names(t.name, dpr).includes(own)).toBe(false);
@@ -56,10 +60,10 @@ test("high and ultra give back the scene's pixels first, which the finish takes 
   // Each step takes its share of the scene a side, steps adding up, and the canvas keeps its pixels until the light target goes.
   const ultra = ladder(tierOf("ultra"), 1.5);
   expect(ultra.map((l) => [l.tier.post !== null, l.tier.contact])).toEqual([...ultra.slice(0, -2).map(() => [true, true]), [false, true], [false, true]]);
-  expect(ultra.map((l) => Math.round((l.tier.post?.scale ?? 1) * 1000) / 1000)).toEqual([1, 0.9, 0.8, 0.7, ...Array(11).fill(0.7), 0.595, 0.49, 1, 1]);
-  expect(ultra.map((l) => canvasRatio(l.tier, 1.5, 2560, 1440))).toEqual([...Array(17).fill(1.5), 1.05, 1.05]);
+  expect(ultra.map((l) => Math.round((l.tier.post?.scale ?? 1) * 1000) / 1000)).toEqual([...Array(S + 1).fill(1), 0.9, 0.8, 0.7, ...Array(11).fill(0.7), 0.595, 0.49, 1, 1]);
+  expect(ultra.map((l) => canvasRatio(l.tier, 1.5, 2560, 1440))).toEqual([...Array(S + 17).fill(1.5), 1.05, 1.05]);
   // A phone draws no light target, and its ladder is what it was.
-  expect(ladder(forTouch(tierOf("high"), true), 3).map((l) => l.name)).toEqual(["the tier", "levels: half again the error", "the far city's levels to 70% as far", "leaves: the frame's triangles to 75%", "the farther cascade every other frame", "levels: twice the error", "far trees, rocks and bushes to 70% as far", "leaves: the frame's triangles to 50%", "levels: three times the error", "one cascade fewer", "bodies a level coarser", "85% of the pixels a side", "70% of the pixels a side", "small details: half the pool, of each burst and of the fill"]);
+  expect(ladder(forTouch(tierOf("high"), true), 3).map((l) => l.name)).toEqual(["the tier", ...SCREEN_STEPS, "levels: half again the error", "the far city's levels to 70% as far", "leaves: the frame's triangles to 75%", "the farther cascade every other frame", "levels: twice the error", "far trees, rocks and bushes to 70% as far", "leaves: the frame's triangles to 50%", "levels: three times the error", "one cascade fewer", "bodies a level coarser", "85% of the pixels a side", "70% of the pixels a side", "small details: half the pool, of each burst and of the fill"]);
   expect(ladder(forTouch(tierOf("high"), true), 3).map((l) => l.tier.pixelRatio).slice(-3)).toEqual([1.7, 1.4, 1.4]);
 });
 
@@ -134,21 +138,21 @@ test("main-thread load is not the GPU's, and steps that buy nothing are undone",
   const rests = governor.steps.filter((s) => s.why.includes("not what is slow")).length;
   expect(rests).toBeLessThanOrEqual(5);
   expect(governor.steps.length).toBeLessThanOrEqual(rests * 3);
-  expect(governor.steps.filter((s) => s.why.endsWith("ms a frame")).map((s) => s.level)).toEqual([1, 3, 8, 10, 13]);
+  expect(governor.steps.filter((s) => s.why.endsWith("ms a frame")).map((s) => s.level - S)).toEqual([1, 3, 8, 10, 13]);
   // A step this card does not need is passed for the next, which it does.
-  const passed = run(2, (_, level) => ({ gpu: 20 * [1, 0.95, 0.95, 0.8][Math.min(level, 3)]!, crowns: 1, city: 1 })).governor;
-  expect(passed.steps.map((s) => s.level)).toEqual([1, 2, 3]);
+  const passed = run(2, (_, level) => ({ gpu: 20 * [1, 0.95, 0.95, 0.8][Math.min(Math.max(0, level - S), 3)]!, crowns: 1, city: 1 })).governor;
+  expect(passed.steps.map((s) => s.level - S)).toEqual([1, 2, 3]);
   expect(passed.steps[2]!.why).toBe("the step before took 19 ms to 19");
   // Two that buy nothing are undone and passed over, and the next miss goes to the step past them.
-  const over = run(3, (_, level) => ({ gpu: 22 * [1, 0.9, 0.9, 0.9, 0.7][Math.min(level, 4)]!, crowns: 1, city: 1 })).governor;
-  expect(over.steps.map((s) => s.level)).toEqual([1, 2, 3, 1, 4]);
+  const over = run(3, (_, level) => ({ gpu: 22 * [1, 0.9, 0.9, 0.9, 0.7][Math.min(Math.max(0, level - S), 4)]!, crowns: 1, city: 1 })).governor;
+  expect(over.steps.map((s) => s.level - S)).toEqual([1, 2, 3, 1, 4]);
 });
 
 test("leaves give where crowns near can and the far city's step where it draws much, and each is passed by where it cannot", () => {
   // A wood: crowns near take a third of the frame. The scene's pixels and levels give first, then leaves. The card is
   // as heavy past the scene's steps as one at 24 ms.
   const scene = ["the scene at 90% a side", "the scene at 80% a side", "the scene at 70% a side", "levels: half again the error"];
-  const heavy = 24 / leave(3);
+  const heavy = 24 / leave(S + 3);
   const wood = run(3, (_, level) => ({ gpu: heavy * leave(level), work: 20, crowns: 7 })).governor;
   expect(wood.steps.map((s) => s.name)).toEqual([...scene, "leaves: the frame's triangles to 75%"]);
   // A base with no trees: from levels to the farther cascade, the leaves' step passed by, and the far city's.
@@ -182,7 +186,7 @@ test("a scene that lightens is drawn at its tier again, and one that lightens an
 
 test("with no GPU timer and a display that shows only whole intervals, a GPU at 22 ms that reads as a steady 33.3 is stepped down until frames come at 16.7, and a try back up that finds 33.3 again is undone", () => {
   // A card with no crowns near and no far city, on which the leaves' and the far city's steps buy nothing.
-  const bought = (level: number): number => ladder(tierOf("high"), 3).slice(1, level + 1).filter((l) => !l.leaves && !l.city).length;
+  const bought = (level: number): number => ladder(tierOf("high"), 3).slice(1, level + 1).filter((l) => !l.leaves && !l.city && !l.screens).length;
   const { minutes, governor } = run(30, (_, level) => ({ gpu: 22 * leave(bought(level)) }), { quantized: true });
   expect(governor.steps[0]!.why).toBe("33 ms a frame, 2 display intervals");
   expect(governor.level).toBeGreaterThan(0);
@@ -198,7 +202,7 @@ test("a display at half rate, saving power, is told from a slow GPU by stepping 
     const { minutes, governor } = run(20, () => ({ gpu: 5, display: 1000 / 30 }), { quantized });
     // Every level but the leaves' and the far city's, passed by with no crowns near to give and no city, and then back to
     // the tier.
-    const every = ladder(tierOf("high"), 3).flatMap((l, k) => (k > 0 && !l.leaves && !l.city ? [k] : []));
+    const every = ladder(tierOf("high"), 3).flatMap((l, k) => (k > 0 && !l.leaves && !l.city && !l.screens ? [k] : []));
     expect(governor.steps.map((s) => s.level)).toEqual([...every, 0]);
     expect(governor.steps.at(-1)!.why).toBe("frames stayed at 33 ms at every level: the display's rate");
     expect([governor.level, Math.round(governor.paced)]).toEqual([0, 33]);
