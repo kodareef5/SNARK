@@ -16,10 +16,11 @@ test("a scene whose levels stream never draws what the card lacks, and ends with
   }
   whole.render();
   const first = stream.render();
-  // The first frame has the boot pack alone: every body part at its coarsest, and nothing left out.
+  // The first frame has the boot pack alone: every body part at its coarsest, and nothing left out. MakeHuman's head
+  // at its first flat level is past what the boot file holds of a finer level (split.ts HELD_LEVEL_BYTES), so its last.
   const head = stream.pack.meshIndex.get("core:human_m/head")!;
   const level = (p: typeof first): number => p.drawLod[[...Array(p.drawCount).keys()].find((i) => p.drawMesh[i] === head)!]!;
-  expect([level(first), first.skipped, first.drawCount]).toEqual([2, 0, whole.scene.packet.drawCount]);
+  expect([level(first), first.skipped, first.drawCount]).toEqual([3, 0, whole.scene.packet.drawCount]);
   expect(stream.raster.color).not.toEqual(whole.raster.color);
   let uploads = first.assetUploads.length;
   // The rasterizer throws at a draw of anything not uploaded, so each of these frames is a check.

@@ -252,7 +252,7 @@ artTest("the manifest lists every level with the bytes that hold it, and reads b
   const [a, b] = [new AssetTable(parseManifest(text), pack), new AssetTable(describePack(pack, { name: "", bytes: file.length }), pack)];
   expect([a.count, a.tris, a.error, [...a.radius], a.skeleton, [...a.rig], [...a.bone]]).toEqual([b.count, b.tris, b.error, [...b.radius], b.skeleton, [...b.rig], [...b.bone]]);
   // MakeHuman's torso: its share of the 26,000- and 3,400-triangle bodies, then the flat 1,480 and 420 (tools/pack/body.ts).
-  expect(a.tris[a.find("core:human_m/torso")]).toEqual([4826, 652, 324, 101]);
+  expect(a.tris[a.find("core:human_m/torso")]).toEqual([4818, 634, 318, 94]);
   expect(a.has("clip", "human/walk") && a.has("rig", "human_f") && !a.has("mesh", "core:nothing")).toBe(true);
   const binding = new Binding(CORE_CONTENT, a);
   const wall = a.find("core:wall_tek");

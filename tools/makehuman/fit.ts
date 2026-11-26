@@ -917,11 +917,28 @@ export interface FitStages {
  * Squashes each foot's body vertices below its ankle, in place, so the lowest stands on y = 0. The joint cubes are not
  * moved, so no joint moves. Returns the factor for each foot.
  */
+/** How far the ball of a levelled foot sits under its heel, in metres. */
+const BALL_LOWER = 0.0005;
+
 function soles(body: number, p: Float64Array, skin: Skin, rig: readonly number[]): [number, number] {
   return (["L", "R"] as const).map((side) => {
     const members = FOOT_GROUP.map((g) => sided(g, side));
     const ankle = rig[sided("foot", side) * 3 + 1]!;
     const on = (v: number): boolean => members.includes(skin.bones[v * MOST_INFLUENCES]!);
+    // The sole is first levelled, heel to ball, by a shear that fades out at the ankle, the ball left BALL_LOWER under the
+    // heel: the lowest point is what bears a stirrup or a tread (tools/pack/write.ts soles).
+    const heelZ = rig[sided("foot", side) * 3 + 2]!, ballZ = rig[sided("toe", side) * 3 + 2]!;
+    const lowIn = (z0: number, z1: number): [number, number] => {
+      let y = Infinity, at = 0;
+      for (let v = 0; v < body; v++) if (on(v) && p[v * 3 + 2]! >= z0 && p[v * 3 + 2]! < z1 && p[v * 3 + 1]! < y) [y, at] = [p[v * 3 + 1]!, p[v * 3 + 2]!];
+      return [y, at];
+    };
+    const [heelY, heelAt] = lowIn(-Infinity, heelZ);
+    const [ballY, ballAt] = lowIn(ballZ - 0.06, ballZ);
+    if (Number.isFinite(heelY + ballY) && ballAt > heelAt) {
+      const slope = (ballY - heelY + BALL_LOWER) / (ballAt - heelAt);
+      for (let v = 0; v < body; v++) if (on(v) && p[v * 3 + 1]! < ankle) p[v * 3 + 1]! -= slope * (p[v * 3 + 2]! - heelAt) * ((ankle - p[v * 3 + 1]!) / ankle);
+    }
     let lo = Infinity;
     for (let v = 0; v < body; v++) if (on(v)) lo = Math.min(lo, p[v * 3 + 1]!);
     if (lo >= 0) return 1;
