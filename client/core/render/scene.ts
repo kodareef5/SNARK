@@ -63,6 +63,9 @@ import { FarNodes, familyOf, type FarNodeSource } from "./farnodes.ts";
 import { Hiding } from "./hide.ts";
 import type { NearCity } from "./nearcity.ts";
 import { MADE_AT, OPTIC_AT, OPTIC_HEAT } from "./packet.ts";
+import { SLOT_HEAD } from "../../../shared/anim/human.ts";
+import { FACE_ROWS } from "../../../shared/people/faces.ts";
+import { HAIR_ROWS } from "./hair-motion.ts";
 import { BONE_FLOATS, GLASS_AT, DRAW_BENT, DRAW_BLEND, DRAW_CUTOUT, DRAW_GROUND, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SKINNED, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_DRAWS, MAX_TILES, PASS_FAR, PASS_NEAR, TRANSIENT_BUFFER, markJoins, texturedFlags, quadIndexCount, SHORE_AT } from "./packet.ts";
 import { MADE_MARK, WorldFinishes, citySurface, finishTaps, surfaceCity } from "./world-surfaces.ts";
 import { FIELD_PHASE, fieldPhase } from "./tek-field.ts";
@@ -182,6 +185,8 @@ const NO_EYES: readonly TideEyeSite[] = [];
 const MOUNT_OWN = -2;
 /** A survivor that drew its finest level last frame ranks for it as if this share as far, so two near one place do not swap it each frame. */
 const FINEST_KEPT = 0.8;
+/** The bones a survivor whose head is drawn finest may take past its thirty: its face rows, and long hair's guide rows. */
+const EXTRA_ROWS = FACE_ROWS + HAIR_ROWS;
 
 /** The index among the remote entities, which are sorted by id, of the one with this id, or -1. */
 function indexOfId(remote: RemoteSample, id: number): number {
@@ -1221,10 +1226,10 @@ export class Scene {
         wanted += ch.bones(kind);
         n++;
       }
-      // Which survivors may draw their finest level is known before their bones are counted.
-      this.rankNear(remote, n);
+      // Which survivors may draw their finest level is known before their bones are counted, and those may take rows more.
+      wanted += Math.min(this.rankNear(remote, n), p.tier.finestBodies[SLOT_HEAD] ?? 0) * EXTRA_ROWS;
       // The tier's bones less those taken, and those of the viewer's own body, which comes last.
-      const budget = Math.min(p.tier.bones, MAX_BONES) - p.boneCount - (own && ch.has(own.kind) ? ch.bones(own.kind) : 0);
+      const budget = Math.min(p.tier.bones, MAX_BONES) - p.boneCount - (own && ch.has(own.kind) ? ch.bones(own.kind) + EXTRA_ROWS : 0);
       this.bodyRigid.fill(0, 0, n);
       if (wanted > budget) this.thin(remote, n, wanted, budget);
       for (let k = 0; k < n; k++) if (this.bodyMount[k] !== -1) this.seatIn(remote, from[k]!, this.bodyMount[k]!, place, k);
@@ -1272,7 +1277,7 @@ export class Scene {
   }
 
   /** Ranks the survivors among the `n` bodies in view by how near they are on screen, for the tier's finestBodies. */
-  private rankNear(remote: RemoteSample, n: number): void {
+  private rankNear(remote: RemoteSample, n: number): number {
     const ch = this.characters;
     const place = this.bodyAt;
     const order = this.bodyOrder;
@@ -1287,6 +1292,7 @@ export class Scene {
     }
     sortU32(order, m);
     for (let r = 0; r < m; r++) this.bodyRank[order[r]! % MAX_VIEW] = r;
+    return m;
   }
 
   /**
@@ -1383,6 +1389,8 @@ export class Scene {
     st.seed = bodySeed(remote.id[i]!);
     const look = remote.hasLook[i] !== 0 ? remote.look : null;
     const size = remote.grown[i] !== 0 ? youngScale(this.birthScale[kind]!, remote.span[i]!, remote.grown[i]!, remote.tick) : 1;
+    this.characters.hairFrom = remote.hairFrom[i]!;
+    this.characters.hairRate = remote.hairRate;
     this.characters.add(this.packet, kind, at[k * 4]!, at[k * 4 + 1]!, at[k * 4 + 2]!, at[k * 4 + 3]!, st, remote.tick, look, i * LOOK_BYTES, remote.colors, i * 6, remote.gear, i * GEAR_COUNT, remote.id[i]!, false, this.own?.cockpitActor === remote.id[i]! || this.headless === remote.id[i]!, size, rigid, unseen, this.seated[i] !== 0 ? this.seatTurn : null, i * 9, this.characters.vehicle(kind) ? remoteVehiclePose(remote, i, this.vehiclePose) : undefined, this.vehicleSeats[i], this.seated[i] !== 2, remote.seatSlot[i] === IMPALE_SLOT, this.seated[i] ? this.riderFits[i] : undefined, rank);
   }
 

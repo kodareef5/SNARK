@@ -33,7 +33,7 @@ import { WARDROBE_SLOTS } from "../../../shared/sim/items.ts";
 import { cutMesh } from "../../../shared/people/cuts.ts";
 import { RiderSoles, soleOffsets } from "../../../shared/anim/rider-soles.ts";
 import { RiderGrips } from "../../../shared/anim/rider-grips.ts";
-import { BEARD_STYLES, HAIR_STYLES, LOOK_BEARD, LOOK_BODY_BYTES, LOOK_BYTES, LOOK_HAIR, LOOK_SEX, REGION_MAIN, REGION_SECOND, REGION_TRIM, SEX_IDS, defaultLook, lookColors, lookJoints, plantLookFeet, lookScales } from "../../../shared/anim/look.ts";
+import { BEARD_STYLES, HAIR_STYLES, LOOK_BEARD, LOOK_BEARD_LENGTH, LOOK_BODY_BYTES, LOOK_BYTES, LOOK_HAIR, LOOK_HAIR_LENGTH, LOOK_SEX, REGION_MAIN, REGION_SECOND, REGION_TRIM, SEX_IDS, defaultLook, lookColors, lookJoints, plantLookFeet, lookScales } from "../../../shared/anim/look.ts";
 import { EMOTES, EMOTE_GROUP, emoteClipId, emoteOf } from "../../../shared/anim/emotes.ts";
 import { AnimState, CUE_TORPOR, DIR_STEPS, HumanAnim, LAUNCHER_AT_MUZZLE, LAUNCHER_FETCHED, LAUNCHER_HOME, advanceHuman, humanPose, launcherReloadShare } from "../../../shared/anim/pose.ts";
 import { ROUND_HELD, ROUND_SLIDE } from "../../../shared/anim/launcher-pose.ts";
@@ -54,7 +54,9 @@ import { groundSpeedScale } from "../../../shared/anim/ground-conform.ts";
 import { poseCreatureOn } from "../../../shared/anim/creature.ts";
 import type { Assets } from "../assets/assets.ts";
 import { Faces, type MadeHead } from "./faces.ts";
+import { HAIR_ROWS, HairMotion } from "./hair-motion.ts";
 import { FACE_EYE_L, FACE_EYE_R, FACE_JAW, FACE_LID_L, FACE_LID_R, FACE_ROWS, PIVOT_EYE_L, PIVOT_EYE_R, PIVOT_JAW } from "../../../shared/people/faces.ts";
+import { HAIR_STAGES, NO_CLOCK, lengthAt, stageMesh, stageOf, underHat } from "../../../shared/people/hair.ts";
 import { Corpses, type Corpse, type HumanFall } from "../ragdoll.ts";
 import type { CorpseMotion } from "../../../shared/net/corpse.ts";
 import type { RemoteSample } from "../session.ts";
@@ -251,8 +253,12 @@ interface BodySet {
   slots: Int32Array;
   /** How far each level of the body lies from the finest, in metres. */
   error: readonly number[];
-  /** Pack mesh per hair style and per beard style, -1 for none. */
+  /**
+   * Pack mesh per hair style and stage of growth (style * HAIR_STAGES.length + stage), per hair style under a hat, and
+   * per beard style and stage; -1 for none. Stage 0 is in the boot file; the other stages and the hats come with a page.
+   */
   hair: Int32Array;
+  hat: Int32Array;
   beard: Int32Array;
   /** Rest positions of the joints of the body these meshes were made on. */
   rest: Float32Array;
@@ -581,6 +587,15 @@ export class Characters {
   /** Heads made from face tables (faces.ts), and the one the survivor being added draws. */
   readonly faces: Faces;
   private madeHead: MadeHead | null = null;
+  /** The hair and beard meshes the survivor being added draws, -1 for none (hairOf). */
+  private hairMesh = -1;
+  private beardMesh = -1;
+  /** The hair clock of the next body add() draws, which it then forgets, and how fast hair grows (shared/people/hair.ts). */
+  hairFrom = NO_CLOCK;
+  hairRate = 0;
+  /** The swing of long hair's guides, and the survivors that took guide rows this frame. */
+  readonly hairMotion = new HairMotion();
+  groomed = 0;
   /** Survivors that took face rows this frame. */
   faced = 0;
   /** How open a survivor's mouth is as it is heard speaking, 0 to 1, by its id; null where nothing is heard. */
@@ -694,8 +709,9 @@ export class Characters {
         soles, neutralSoles, grips,
         slots,
         error,
-        hair: Int32Array.from(HAIR_STYLES, (s) => human(bind.own(d.id, "hair", `${sex}/${s.id}`))),
-        beard: Int32Array.from(BEARD_STYLES, (s) => human(bind.own(d.id, "beard", `${sex}/${s.id}`))),
+        hair: Int32Array.from(HAIR_STYLES.flatMap((s) => HAIR_STAGES.map((_, g) => human(g === 0 ? bind.own(d.id, "hair", `${sex}/${s.id}`) : table.find(stageMesh(`${d.mesh}_${sex}/hair/${s.id}`, g)))))),
+        hat: Int32Array.from(HAIR_STYLES, (s) => human(table.find(underHat(`${d.mesh}_${sex}/hair/${s.id}`)))),
+        beard: Int32Array.from(BEARD_STYLES.flatMap((s) => HAIR_STAGES.map((_, g) => human(g === 0 ? bind.own(d.id, "beard", `${sex}/${s.id}`) : table.find(stageMesh(`${d.mesh}_${sex}/beard/${s.id}`, g)))))),
         rest,
         // A missing piece is -1 here, and the body's own part is drawn in the piece's colours.
         vents: Int32Array.from(sets.flatMap(set => SLOT_NAMES.map(part => human(bind.own(piece(set, part), "vents", body))))),
@@ -751,7 +767,12 @@ export class Characters {
       facesOf: (m) => r.facesOf(m), wantFaces: (m) => r.wantFaces(m), faces: (m) => r.faces(m), keepBytes: (m, l) => r.keepBytes(m, l), keptBytes: (m, l) => r.keptBytes(m, l),
       bounds: (m) => assets.manifest.meshes[m]!, spend: (b) => r.spend(b), reserve: (name, b) => r.reserve(name, b),
     });
-    for (const k of this.kinds) for (const set of k?.sets ?? []) this.faces.register(set.slots[SLOT_HEAD]!, set.rest);
+    for (const k of this.kinds) for (const set of k?.sets ?? []) {
+      const head = set.slots[SLOT_HEAD]!;
+      this.faces.register(head, set.rest);
+      for (const m of [...set.hair, ...set.hat]) this.faces.wear(head, m, false);
+      for (const m of set.beard) this.faces.wear(head, m, true);
+    }
     this.anims = this.creatures.map((c) => c?.anim ?? null);
     this.waiting = this.creatures.flatMap((c, kind) => (c && c.clips >= 0 ? [kind] : []));
     this.dead = new Corpses(this.anims, reg.birthScale, (kind) => survivorKind(reg, kind), (kind) => solidOf(reg, kind));
@@ -1717,6 +1738,26 @@ export class Characters {
   }
 
   /**
+   * Sets hairMesh and beardMesh to what a body of `set` in `view`, wearing `gear` at `gearAt`, draws: each at the stage
+   * it has grown to, the hair's form under a hat under open headgear, and neither under sealed headgear. A stage or a
+   * hat's form whose page has not come is asked for; the style as modelled stands in for a stage, and no hair for a hat's.
+   */
+  private hairOf(set: BodySet, view: Uint8Array, gear: Uint16Array | null, gearAt: number): void {
+    const worn = gear ? this.worn[gear[gearAt + GEAR_WORN + SLOT_HEAD]!] : null;
+    const cut = worn && worn.slot === SLOT_HEAD ? (set.armor[worn.set]?.[SLOT_HEAD] ?? -1) : -1;
+    const capped = cut >= 0 && this.assets.known(cut), stages = HAIR_STAGES.length;
+    const paged = (m: number): number => (m >= 0 && this.assets.known(m) ? m : -1);
+    if (capped && worn!.sealed) {
+      this.hairMesh = this.beardMesh = -1;
+      return;
+    }
+    const style = view[LOOK_HAIR]! * stages, beard = view[LOOK_BEARD]! * stages;
+    const grown = stageOf(view[LOOK_HAIR_LENGTH]!), bearded = stageOf(view[LOOK_BEARD_LENGTH]!);
+    this.hairMesh = capped ? paged(set.hat[view[LOOK_HAIR]!] ?? -1) : grown > 0 && paged(set.hair[style + grown] ?? -1) >= 0 ? set.hair[style + grown]! : (set.hair[style] ?? -1);
+    this.beardMesh = bearded > 0 && paged(set.beard[beard + bearded] ?? -1) >= 0 ? set.beard[beard + bearded]! : (set.beard[beard] ?? -1);
+  }
+
+  /**
    * Writes the face rows of the survivor posed from bone `first`: its jaw, each upper lid and each eye, its head's row
    * turned about a pivot of its made head. It blinks and glances on the clock; its jaw opens as it is heard to speak.
    */
@@ -1790,6 +1831,7 @@ export class Characters {
     if (++this.frame % FORGET_GAIT === 0) for (const id of this.gaits.keys()) if (this.frame - this.gaits.get(id)!.seen > FORGET_GAIT) this.gaits.delete(id);
     if (p) this.faces.begin(p.tier, p.assetUploads, p.assetDrops);
     this.faced = 0;
+    this.groomed = 0;
     if (this.waiting.length > 0) this.takeClips();
     if (this.emoteSlot >= 0 && this.emotesWanted) this.takeEmotes();
   }
@@ -1904,19 +1946,28 @@ export class Characters {
     const all = onOne !== null || stepShare(lying) === 1;
     const standing = !rigid ? null : lying >= 0 ? this.lyingStandIn(kind, at, lying, all ? STILL : standMove(st), all ? STANCE_STAND : st.stance) : this.standIn(kind, at, st, seat !== null, tick, impaled, rider, foot, hand);
     const stand = standing ? this.standInAt(p, standing) : -1;
-    // A head drawn at its finest level with a face of its own takes the face rows, decided before the bones are counted.
-    const headMesh = set.slots[SLOT_HEAD]!;
-    const faced = !rigid && !unseen && !headless && look !== null && headMesh >= 0 && this.headLevelAt(id, set, own ? 0 : Math.sqrt(x * x + y * y + z * z), own, rank) === 0 && this.faces.ready(headMesh);
-    const first = rigid && stand < 0 ? -1 : this.room(p, rigid ? 1 : faced ? HUMAN_BONES + FACE_ROWS : HUMAN_BONES, PARTS, !unseen);
-    if (first < 0) {
-      if (rigid && stand < 0 && !unseen) p.dropped++;
-      return false;
-    }
     // A modelled body without a look gets the plain one, so its regions have colours.
     let view: Uint8Array | null = k.sets.length > 1 ? PLAIN : null;
     if (look) {
       for (let q = 0; q < LOOK_BYTES; q++) this.lookView[q] = look[lookAt + q]!;
       view = this.lookView;
+      // Its hair and beard as grown by the tick drawn.
+      view[LOOK_HAIR_LENGTH] = lengthAt(view[LOOK_HAIR_LENGTH]!, this.hairFrom, tick, this.hairRate);
+      view[LOOK_BEARD_LENGTH] = lengthAt(view[LOOK_BEARD_LENGTH]!, this.hairFrom, tick, this.hairRate);
+    }
+    this.hairFrom = NO_CLOCK;
+    if (view) this.hairOf(set, view, gear, gearAt);
+    else this.hairMesh = this.beardMesh = -1;
+    // A head drawn at its finest level with a face of its own takes the face rows, and long hair on it the guide rows
+    // too, out of a seat (the vehicle fits are measured on hair that follows the head and chest), decided before the
+    // bones are counted.
+    const headMesh = set.slots[SLOT_HEAD]!;
+    const faced = !rigid && !unseen && !headless && look !== null && headMesh >= 0 && this.headLevelAt(id, set, own ? 0 : Math.sqrt(x * x + y * y + z * z), own, rank) === 0 && this.faces.ready(headMesh);
+    const groomed = faced && !seat && !vehicleSeat && this.hairMesh >= 0 && this.faces.groomed(this.hairMesh);
+    const first = rigid && stand < 0 ? -1 : this.room(p, rigid ? 1 : faced ? HUMAN_BONES + FACE_ROWS + (groomed ? HAIR_ROWS : 0) : HUMAN_BONES, PARTS, !unseen);
+    if (first < 0) {
+      if (rigid && stand < 0 && !unseen) p.dropped++;
+      return false;
     }
     if (view) lookColors(view, this.lookColor);
     if (rigid) {
@@ -1984,8 +2035,14 @@ export class Characters {
       this.posed++;
       if (faced) {
         this.faced++;
-        this.madeHead = this.faces.head(headMesh, look!, lookAt, scales ?? ONES, B_HEAD * 3, rank < 0 ? 0 : rank);
+        // Long hair made with guide rows is drawn made only on a body that takes them.
+        const hair = groomed || !this.faces.groomed(this.hairMesh) ? this.hairMesh : -1;
+        this.madeHead = this.faces.head(headMesh, look!, lookAt, scales ?? ONES, B_HEAD * 3, rank < 0 ? 0 : rank, hair, this.beardMesh);
         this.faceRows(p, first, this.madeHead.pivots, id, tick, own);
+        if (groomed) {
+          this.groomed++;
+          this.hairMotion.rows(p.bones, first, set.rest, solved, id, tick, TICK_RATE, p.camX, p.camY, p.camZ);
+        }
       }
       if (st.action >>> 3 === HOLD_CARRY) {
         // Where the palms are drawn, for the creature in them.
@@ -2047,7 +2104,7 @@ export class Characters {
     const hide = unseen ? 0 : this.hideOf(id, gear, gearAt);
     const tint = view ? this.lookColor : colors;
     const tintAt = view ? 0 : colorAt;
-    let covered = false, sealed = false;
+    let sealed = false;
     for (let slot = 0; slot < SLOT_COUNT; slot++) {
       const worn = gear ? this.worn[gear[gearAt + GEAR_WORN + slot]!] : null;
       const cut = worn && worn.slot === slot ? (set.armor[worn.set]?.[slot] ?? -1) : -1;
@@ -2063,7 +2120,7 @@ export class Characters {
         c[REGION_SECOND - REGION_BASE] = ((dye >>> 8) & 0xff) || worn!.colors[1];
         c[REGION_TRIM - REGION_BASE] = ((dye >>> 16) & 0xff) || worn!.colors[2];
         this.queuePart(set.slots[slot]!, c, 0, -1, unseen || hidden);
-        if (slot === SLOT_HEAD) { covered = true; sealed = worn!.sealed; }
+        if (slot === SLOT_HEAD) sealed = worn!.sealed;
         continue;
       }
       if (piece >= 0) {
@@ -2090,7 +2147,7 @@ export class Characters {
             part.casts = casts;
           }
         }
-        if (slot === SLOT_HEAD) { covered = true; sealed = worn!.sealed; }
+        if (slot === SLOT_HEAD) sealed = worn!.sealed;
       }
       // Open headgear keeps the underlying face visible.
       const body = set.slots[slot]!;
@@ -2102,14 +2159,15 @@ export class Characters {
       }
     }
     this.queueGarments(tint, tintAt);
-    // Hair and a beard go with the head; wings and what is held with the hands.
+    // Hair and a beard go with the head, made with a made head at its finest level; wings and what is held with the hands.
     part.lod = this.slotLod[SLOT_HEAD]!;
     if (view && (!headless || casts !== 0)) {
-      // Open headgear still shows the beard.
-      const hair = covered ? -1 : (set.hair[view[LOOK_HAIR]!] ?? -1);
-      if (hair >= 0) this.queuePart(hair, tint, tintAt, -1, unseen || headless);
-      const beard = sealed ? -1 : (set.beard[view[LOOK_BEARD]!] ?? -1);
-      if (beard >= 0) this.queuePart(beard, tint, tintAt, -1, unseen || headless);
+      const made = faced && part.lod === 0 && !(unseen || headless) && this.madeHead !== null;
+      part.made = made ? this.madeHead!.hair : 0;
+      if (this.hairMesh >= 0) this.queuePart(this.hairMesh, tint, tintAt, -1, unseen || headless);
+      part.made = made ? this.madeHead!.beard : 0;
+      if (this.beardMesh >= 0) this.queuePart(this.beardMesh, tint, tintAt, -1, unseen || headless);
+      part.made = 0;
     }
     // Under an open glider each hand has a wing on its prop bone, and what the body held is put away
     // (planning/workstreams/glider.md). An observer is not told which glider, and there is one kind.

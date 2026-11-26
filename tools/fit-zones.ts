@@ -1,13 +1,16 @@
 // Fits the skeleton's hit capsules to the modelled bodies and prints rows for shared/anim/human.ts, then tabulates
 // the zone drawn against the zone hit. With --check it only measures the capsules human.ts has now; with --looks it
 // measures them on both sexes in extreme and random looks, then lists the looks worst first. Given a creature's
-// asset id (`bun tools/fit-zones.ts core:dodo`) it measures that creature's capsules, which its build fits.
+// asset id (`bun tools/fit-zones.ts core:dodo`) it measures that creature's capsules, which its build fits. With --hair
+// [--graphics high] [--stage 0] it is the hair gate: each style's head share drawn flat and with its materials.
 
 import { readFileSync } from "node:fs";
 import { bodySeed } from "../client/core/render/scene.ts";
 import { CreatureAnim, rayCreature } from "../shared/anim/creature.ts";
 import { B_FOOT_L, B_HAND_L, B_HEAD, B_HIPS, B_LOWER_ARM_L, B_LOWER_LEG_L, B_NECK, B_SHOULDER_L, B_TOE_L, B_UPPER_ARM_L, B_UPPER_LEG_L, HUMAN, HUMAN_ZONE_COUNT, ZONE_HEAD, ZONE_NAMES } from "../shared/anim/human.ts";
-import { LOOK_BEARD, LOOK_BYTES, LOOK_SEX, REGIONS, REGION_COUNT, SEX_LABELS, defaultLook, randomLook, setRegion } from "../shared/anim/look.ts";
+import { BEARD_STYLES, HAIR_STYLES, LOOK_BEARD, LOOK_BEARD_LENGTH, LOOK_BYTES, LOOK_HAIR, LOOK_HAIR_LENGTH, LOOK_SEX, REGIONS, REGION_COUNT, SEX_LABELS, defaultLook, randomLook, setRegion } from "../shared/anim/look.ts";
+import { HAIR_STAGES } from "../shared/people/hair.ts";
+import { tierOf } from "../client/core/assets/tiers.ts";
 import { Rng } from "../shared/rng.ts";
 import { AnimState } from "../shared/anim/pose.ts";
 import { buildRigs } from "../shared/anim/rigs.ts";
@@ -17,7 +20,8 @@ import { STANCE_CROUCH, STANCE_PRONE } from "../shared/sim/character.ts";
 import { ACT_NONE, ACT_SWING, HOLD_HANDS } from "../shared/sim/weapon.ts";
 import { findAssets } from "./art/assets.ts";
 import { ZONES } from "./art/spec.ts";
-import { provingView } from "./snap.ts";
+import { provingView, settle, type ProvingView } from "./snap.ts";
+import { gameFiles, type GameFiles } from "./snap/files.ts";
 import { PICK_ENTITY, PICK_STRUCTURE } from "./snap/raster.ts";
 
 /** Share of a bone's vertices its capsule's radius reaches, and the share cut from each end of its length. */
@@ -109,10 +113,14 @@ export interface Agreement {
   phantom: number;
 }
 
-/** Draws a body in `look` in nine motions from five sides, casts a ray through every pixel, and counts zone drawn against zone hit. */
-function agreement(look: Uint8Array, label: string): Agreement {
-  const SIZE = 128;
-  const view = provingView(SIZE, SIZE);
+const SIZE = 128;
+
+/**
+ * Draws a body in `look` in nine motions from five sides, casts a ray through every pixel, and counts zone drawn against
+ * zone hit. `view` draws it, flat unless it is a client's view with its textures; `ready` runs once the camera is at the
+ * first shot, to fill the card for it.
+ */
+function agreement(look: Uint8Array, label: string, view: ProvingView = provingView(SIZE, SIZE), ready?: (view: ProvingView) => void): Agreement {
   const { raster, remote, cam } = view;
   const anim = view.scene.characters.anim;
   remote.count = 1;
@@ -149,6 +157,11 @@ function agreement(look: Uint8Array, label: string): Agreement {
       cam.pitch = -up;
       cam.fovY = 0.7;
       cam.aspect = 1;
+      // The first shot waits for the card and for the look's own head (client/core/render/faces.ts), one a frame.
+      if (shot === 1) {
+        ready?.(view);
+        for (let k = 0; k < 4; k++) view.render();
+      }
       view.render();
       for (let py = 0; py < SIZE; py++) {
         for (let px = 0; px < SIZE; px++) {
@@ -291,6 +304,63 @@ function measureLooks(): void {
   console.log(`\n${all.length} looks; missing each gate: ${gates.map((g) => `${g} ${all.filter((s) => s.misses.includes(g)).length}`).join(", ")}; missing none: ${all.filter((s) => s.misses.length === 0).length}`);
 }
 
+/** The share of head pixels a style keeps hit as head, with its materials loaded, that the hair gate holds each to. */
+export const HAIR_GATE = 0.8;
+
+export interface HairShare {
+  sex: number;
+  /** The style, or a beard worn with buzzed hair. */
+  label: string;
+  look: Uint8Array;
+  flat: AimShares;
+  materials: AimShares;
+}
+
+/** Each hair style, and each beard with buzzed hair, on each sex in the default look, at stage `stage` of its growth. */
+export function hairLooks(stage = 0): { sex: number; label: string; look: Uint8Array }[] {
+  const out: { sex: number; label: string; look: Uint8Array }[] = [];
+  for (let sex = 0; sex < SEX_LABELS.length; sex++) {
+    const of = (hair: number, beard: number, label: string): void => {
+      const look = defaultLook();
+      look[LOOK_SEX] = sex;
+      look[LOOK_HAIR] = hair;
+      look[LOOK_BEARD] = beard;
+      look[LOOK_HAIR_LENGTH] = look[LOOK_BEARD_LENGTH] = HAIR_STAGES[stage]!;
+      out.push({ sex, label, look });
+    };
+    HAIR_STYLES.forEach((s, k) => s.drawn && of(k, 0, s.label));
+    BEARD_STYLES.forEach((s, k) => s.drawn && of(HAIR_STYLES.findIndex((h) => h.id === "buzzed"), k, `${s.label} beard`));
+  }
+  return out;
+}
+
+/**
+ * The hair gate: the head share of each look of `looks` drawn flat, as the drawn-equals-hit audits draw it, and drawn as
+ * a client on `tier` draws it, with the cut-out cards' pictures loaded, so a card's clear texels are not counted as head.
+ */
+export async function hairShares(looks = hairLooks(), tier = "high", files?: GameFiles): Promise<HairShare[]> {
+  const given = files ?? (await gameFiles());
+  return looks.map(({ sex, label, look }) => {
+    const flat = sharesOf(agreement(look, label));
+    const view = provingView(SIZE, SIZE, {}, given);
+    view.scene.assets.tier = tierOf(tier);
+    const materials = sharesOf(agreement(look, label, view, (v) => void settle(v)));
+    return { sex, label, look, flat, materials };
+  });
+}
+
+function printHair(list: readonly HairShare[]): void {
+  console.log(`\nHead share, flat and with materials (gate ${pct(HAIR_GATE)} with materials)`);
+  console.log(`${"style".padEnd(22)} ${"male".padStart(16)} ${"female".padStart(16)}`);
+  for (const label of [...new Set(list.map((h) => h.label))]) {
+    const cell = (sex: number): string => {
+      const h = list.find((x) => x.label === label && x.sex === sex);
+      return h ? `${pct(h.flat.head)} / ${pct(h.materials.head)}${h.materials.head < HAIR_GATE ? "!" : " "}` : "";
+    };
+    console.log(`${label.padEnd(22)} ${cell(0).padStart(16)} ${cell(1).padStart(16)}`);
+  }
+}
+
 /**
  * A modelled creature (`core:dodo`): its capsules are fitted when its asset is built (asset.ts `zones`), so this only
  * measures them. It draws the creature standing, at several moments of its idle and its attack, from eight sides and
@@ -375,9 +445,14 @@ async function measureCreature(id: string): Promise<void> {
 }
 
 if (import.meta.main) {
-  const creature = process.argv.slice(2).find((a) => !a.startsWith("--"));
+  const creature = process.argv.slice(2).find((a, i, all) => !a.startsWith("--") && all[i - 1] !== "--stage" && all[i - 1] !== "--graphics");
   if (creature) {
     await measureCreature(creature);
+    process.exit(0);
+  }
+  if (process.argv.includes("--hair")) {
+    const i = process.argv.indexOf("--graphics"), stage = process.argv.indexOf("--stage");
+    printHair(await hairShares(hairLooks(stage > 0 ? Number(process.argv[stage + 1]) : 0), i > 0 ? process.argv[i + 1]! : "high"));
     process.exit(0);
   }
   if (process.argv.includes("--looks")) {

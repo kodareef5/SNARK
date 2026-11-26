@@ -2,13 +2,14 @@
 // twins in surface.ts within a level of 255: a normal through bone rows stretched more along one axis than another
 // (`normalUnder`), one light's wrap of skin's scattered light (`wrapped`), and how much of skin's own light a pixel keeps
 // (`skinNear`). Then whole frames: the scene fixture's tube on medium at noon, drawn as skin (content/street-finishes.ts
-// SKIN), as an eye (EYE) and as neither, one of each pair with its bones stretched as a look stretches a survivor's,
-// held to the rasterizer at points on one body with no edge near, as the layers check holds them.
+// SKIN), as an eye (EYE), as hair with its shifted highlights (HAIR) and as neither, one of each pair with its bones
+// stretched as a look stretches a survivor's, held to the rasterizer at points on one body with no edge near, as the
+// layers check holds them.
 
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { BONE_FLOATS, type FramePacket } from "../../client/core/render/packet.ts";
 import { NORMAL_UNDER, SKIN_GLSL, SKIN_WRAP, normalUnder, skinNear } from "../../client/core/render/surface.ts";
-import { EYE, SKIN } from "../../content/street-finishes.ts";
+import { EYE, HAIR, SKIN } from "../../content/street-finishes.ts";
 import { INSTANCE_BYTES } from "../../shared/pack/pack.ts";
 import { sceneSet, sceneWorld } from "../../tests/fixtures/sceneworld.ts";
 import { TUBE, TUBE_RIG } from "../../tests/fixtures/textured.ts";
@@ -46,6 +47,7 @@ const LEAST = 200;
 const FRAMES = [
   { key: "skin", label: SKIN },
   { key: "eye", label: EYE },
+  { key: "hair", label: HAIR },
   { key: "stretch", label: 0 },
 ] as const;
 const STRETCH = [1.45, 0.85, 0.7];

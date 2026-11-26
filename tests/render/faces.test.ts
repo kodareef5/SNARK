@@ -1,12 +1,14 @@
 // Made heads (client/core/render/faces.ts): the shared head first, one make a frame, each tier's cap, the least lately
-// drawn let go, nothing made or allocated on a steady frame, and every made vertex inside the hit head.
+// drawn let go, nothing made or allocated on a steady frame, and every made vertex inside the hit head; and the hair and
+// beard made with a head, which follow its face, its jaw and long hair's guides.
 
 import { expect, test } from "bun:test";
 import { heapStats } from "bun:jsc";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import type { AssetUpload } from "../../client/core/assets/residency.ts";
 import { FACE_HEADS, Faces, rowsSkin, type FaceAssets } from "../../client/core/render/faces.ts";
-import { B_HEAD, B_NECK, HUMAN, HUMAN_BONES } from "../../shared/anim/human.ts";
+import { B_HEAD, B_NECK, B_UPPER_CHEST, HUMAN, HUMAN_BONES } from "../../shared/anim/human.ts";
+import { HAIR_ROW } from "../../client/core/render/hair-motion.ts";
 import { FACE_COUNT, LOOK_BYTES, LOOK_FACE, defaultLook, setFace } from "../../shared/anim/look.ts";
 import { SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES } from "../../shared/pack/pack.ts";
 import { allowed, axisDistanceAt, encodeFaces, FACE_EYE_L, FACE_JAW, FACE_PIVOTS, headBound, type FaceTable } from "../../shared/people/faces.ts";
@@ -251,4 +253,111 @@ test("a made head keeps its stored normals and tangents where the face barely mo
     expect(p[0]! * q[0]! + p[1]! * q[1]! + p[2]! * q[2]!).toBeGreaterThan(0.99);
     expect(b.getUint32(v * SURFACE_BYTES + at, true) >>> 30).toBe(a.getUint32(v * SURFACE_BYTES + at, true) >>> 30);
   }
+});
+
+const HAIR = 4, BEARD = 5;
+
+/** A worn mesh of `points`, each on `bones` (one bone each, all its weight), in triangles (0, 1, 2), (1, 2, 3) and so on. */
+function wornLevel(points: number[][], bones: number[]): { level: Uint8Array; surface: Uint8Array; count: number } {
+  const n = points.length, indices: number[] = [];
+  for (let k = 0; k + 2 < n; k++) indices.push(k, k + 1, k + 2);
+  const vertexAt = (indices.length * 2 + 3) & ~3;
+  const level = new Uint8Array(vertexAt + n * VERTEX_BYTES), view = new DataView(level.buffer);
+  indices.forEach((i, k) => view.setUint16(k * 2, i, true));
+  points.forEach((p, v) => {
+    for (let c = 0; c < 3; c++) view.setInt16(vertexAt + v * VERTEX_BYTES + c * 2, Math.round(((p[c]! - CENTER[c]!) / HALF[c]!) * 32767), true);
+    level[vertexAt + v * VERTEX_BYTES + 7] = bones[v]!;
+  });
+  const surface = new Uint8Array(n * (SURFACE_BYTES + SKIN_BYTES));
+  bones.forEach((b, v) => {
+    const at = n * SURFACE_BYTES + v * SKIN_BYTES;
+    surface.fill(b, at, at + 4);
+    surface[at + 4] = 255;
+  });
+  return { level, surface, count: indices.length };
+}
+
+/** The head's fan vertex `v` at rest. */
+const fanPoint = (v: number): number[] => {
+  const a = (v / (N - 1)) * Math.PI;
+  return [CENTER[0]! + 0.08 * Math.cos(a), CENTER[1]! + 0.08 * Math.sin(a) - 0.04, CENTER[2]!];
+};
+
+/** The fake head, with hair: two points 1 and 2 mm over fan vertices 1 and 4, one far off it, one hanging behind on the upper chest; and a beard over 1 and 2. */
+function wornAssets(): ReturnType<typeof fakeAssets> {
+  const a = fakeAssets();
+  const hair = wornLevel([fanPoint(1).map((x, c) => x + (c === 2 ? 0.001 : 0)), fanPoint(4).map((x, c) => x + (c === 2 ? 0.002 : 0)), [CENTER[0]!, CENTER[1]! + 0.19, CENTER[2]!], [HEAD[0]!, HEAD[1]! - 0.1, HEAD[2]! - 0.08]], [B_HEAD, B_HEAD, B_HEAD, B_UPPER_CHEST]);
+  const beard = wornLevel([fanPoint(1).map((x, c) => x + (c === 2 ? 0.001 : 0)), fanPoint(2).map((x, c) => x + (c === 2 ? 0.001 : 0)), [CENTER[0]!, CENTER[1]! + 0.19, CENTER[2]!]], [B_HEAD, B_HEAD, B_HEAD]);
+  const kept = a.keptBytes;
+  return {
+    ...a,
+    keptBytes: (m, l) => (m === HAIR ? { level: inside(hair.level), surface: inside(hair.surface), indexCount: hair.count, indexBytes: 2, skinAt: 4 * SURFACE_BYTES } : m === BEARD ? { level: inside(beard.level), surface: inside(beard.surface), indexCount: beard.count, indexBytes: 2, skinAt: 3 * SURFACE_BYTES } : kept(m, l)),
+  };
+}
+
+/** Points of an upload's level, decoded within its bounds. */
+function pointsOf(u: AssetUpload, n: number): number[][] {
+  const vertexAt = (u.indexCount * 2 + 3) & ~3, box = u.bounds ?? { center: CENTER, half: HALF }, view = new DataView(u.data.buffer, u.data.byteOffset);
+  return Array.from({ length: n }, (_, v) => [0, 1, 2].map((c) => box.center[c]! + (view.getInt16(vertexAt + v * VERTEX_BYTES + c * 2, true) / 32767) * box.half[c]!));
+}
+
+/** Frames enough for the head, hair and beard to be read, their shared meshes made and `look`'s head; every upload, in order. */
+function wornFrames(f: Faces, look: Uint8Array, hair = HAIR, beard = BEARD): AssetUpload[] {
+  const uploads: AssetUpload[] = [];
+  for (let k = 0; k < 10; k++) {
+    f.begin(tierOf("high"), uploads, []);
+    f.groomed(hair);
+    if (f.ready(MESH)) f.head(MESH, look, 0, ONES, 0, 0, hair, beard);
+  }
+  return uploads;
+}
+
+test("hair near the skin moves as the face moves it; hair far off stays", () => {
+  const f = new Faces(wornAssets());
+  f.register(MESH, REST);
+  f.wear(MESH, HAIR, false);
+  f.wear(MESH, BEARD, true);
+  const look = lookOf(40);
+  const uploads = wornFrames(f, look);
+  const head = uploads.findLast((u) => u.mesh === MESH && u.of === undefined)!, hair = uploads.findLast((u) => u.mesh === HAIR && u.of === undefined)!;
+  expect(head.slot + 2).toBe(hair.slot);
+  const skin = pointsOf(head, N), worn = pointsOf(hair, 4);
+  for (const [w, v, lift] of [[0, 1, 0.001], [1, 4, 0.002]] as const) {
+    const moved = skin[v]!.map((x, c) => x - fanPoint(v)[c]!);
+    expect(Math.hypot(...moved)).toBeGreaterThan(0.005);
+    for (let c = 0; c < 3; c++) expect(worn[w]![c]!).toBeCloseTo(fanPoint(v)[c]! + (c === 2 ? lift : 0) + moved[c]!, 3);
+  }
+  expect(worn[2]![1]!).toBeCloseTo(CENTER[1]! + 0.19, 3);
+  // Drawn: the made head's hair and beard slots follow its own.
+  const drawn = f.head(MESH, look, 0, ONES, 0, 0, HAIR, BEARD);
+  expect([drawn.hair, drawn.beard]).toEqual([drawn.slot + 2, drawn.slot + 4]);
+});
+
+test("hair hanging on the upper chest takes the guide rows; a beard the jaw's", () => {
+  const f = new Faces(wornAssets());
+  f.register(MESH, REST);
+  f.wear(MESH, HAIR, false);
+  f.wear(MESH, BEARD, true);
+  wornFrames(f, defaultLook());
+  expect(f.groomed(HAIR)).toBe(true);
+  expect(f.groomed(BEARD)).toBe(false);
+  // A neutral face draws the shared head with shared hair and beard of their own, as both read rows.
+  const drawn = f.head(MESH, defaultLook(), 0, ONES, 0, 0, HAIR, BEARD);
+  expect(drawn.hair).toBeGreaterThan(0);
+  expect(drawn.beard).toBeGreaterThan(0);
+  const g = new Faces(wornAssets());
+  g.register(MESH, REST);
+  g.wear(MESH, HAIR, false);
+  g.wear(MESH, BEARD, true);
+  const uploads = wornFrames(g, defaultLook());
+  const weight = (u: AssetUpload, n: number, v: number, bone: number): number => [0, 1, 2, 3].reduce((s, k) => s + (u.data[n * SURFACE_BYTES + v * SKIN_BYTES + k] === bone ? u.data[n * SURFACE_BYTES + v * SKIN_BYTES + 4 + k]! : 0), 0);
+  const hairSkin = uploads.find((u) => u.mesh === HAIR && u.of !== undefined)!, beardSkin = uploads.find((u) => u.mesh === BEARD && u.of !== undefined)!;
+  // Straight behind the head it hangs between the guides at 150 and 210 degrees.
+  expect(weight(hairSkin, 4, 3, HAIR_ROW + 1) + weight(hairSkin, 4, 3, HAIR_ROW + 2)).toBe(255);
+  expect(Math.abs(weight(hairSkin, 4, 3, HAIR_ROW + 1) - weight(hairSkin, 4, 3, HAIR_ROW + 2))).toBeLessThanOrEqual(1);
+  expect(weight(hairSkin, 4, 0, B_HEAD)).toBe(255);
+  // Over the skin the jaw row takes all of, and half of, it takes the same.
+  expect(weight(beardSkin, 3, 0, HUMAN_BONES + FACE_JAW)).toBe(255);
+  expect(Math.abs(weight(beardSkin, 3, 1, HUMAN_BONES + FACE_JAW) - 128)).toBeLessThanOrEqual(1);
+  expect(weight(beardSkin, 3, 2, B_HEAD)).toBe(255);
 });

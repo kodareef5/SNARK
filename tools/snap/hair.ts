@@ -1,12 +1,17 @@
 // Every hair and beard style on both sexes, as one sheet: a column a style, and for each sex a row of portraits turned
 // aside, a row from the front and a row at 5 m. The beards are worn with buzzed hair. Drawn as a client on one graphics tier draws, textures and all.
+// With --looks the rows are each sex's portraits with every face slider at -1, then at +1, under a cloth hat and a flak
+// helmet, and its head turned well round on its shoulders, seen from behind it.
 //
-//   bun tools/snap/hair.ts [--graphics high] [--hour 10] [--size 200x240] [--out artifacts/hair.png]
+//   bun tools/snap/hair.ts [--looks] [--graphics high] [--hour 10] [--size 200x240] [--out artifacts/hair.png]
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { tierOf } from "../../client/core/assets/tiers.ts";
-import { BEARD_STYLES, HAIR_STYLES, LOOK_BEARD, LOOK_BYTES, LOOK_HAIR, LOOK_HAIR_COLOR, LOOK_SEX, LOOK_SKIN, defaultLook } from "../../shared/anim/look.ts";
+import { B_HEAD, B_NECK, B_UPPER_ARM_L, B_UPPER_ARM_R, SLOT_HEAD } from "../../shared/anim/human.ts";
+import { BEARD_STYLES, FACE_COUNT, HAIR_STYLES, LOOK_BEARD, LOOK_BYTES, LOOK_HAIR, LOOK_HAIR_COLOR, LOOK_SEX, LOOK_SKIN, defaultLook, setFace } from "../../shared/anim/look.ts";
+import { clip } from "../../shared/anim/pose-builder.ts";
+import { GEAR_COUNT, GEAR_WORN } from "../../shared/sim/entities.ts";
 import { HAIR_COLORS, SKIN_TONES } from "../../shared/pack/palette.ts";
 import { SOURCE } from "../art/source.ts";
 import { label, provingView, settle } from "../snap.ts";
@@ -62,7 +67,21 @@ if (import.meta.main) {
     r.hasLook[n] = 1;
     r.look.set(look.subarray(0, LOOK_BYTES), n * LOOK_BYTES);
   }));
-  const shots = [
+  const looks = args.includes("--looks");
+  // The head turned 70 degrees on the shoulders, arms at the sides.
+  const turned = clip("hair-turn", 1, false, (b) => {
+    b.turn(B_NECK, 0, 35).turn(B_HEAD, 0, 35);
+    b.aim(B_UPPER_ARM_L, 0.2, -1, 0).aim(B_UPPER_ARM_R, -0.2, -1, 0);
+  });
+  const portrait = { distance: 0.85, height: 1.62, aim: 1.6, fov: 0.42, turn: 0.55 };
+  type Shot = { name: string; distance: number; height: number; aim: number; fov: number; turn: number; face?: number; hat?: string; turned?: boolean };
+  const shots: Shot[] = looks ? [
+    { ...portrait, name: "faces -1", face: -1 },
+    { ...portrait, name: "faces +1", face: 1 },
+    { ...portrait, name: "cloth hat", hat: "core:cloth_hat" },
+    { ...portrait, name: "flak helmet", hat: "core:flak_hat" },
+    { ...portrait, name: "head turned", turn: 2.6, turned: true },
+  ] : [
     { name: "portrait", distance: 0.85, height: 1.62, aim: 1.6, fov: 0.42, turn: 0.55 },
     { name: "front", distance: 0.85, height: 1.62, aim: 1.6, fov: 0.42, turn: 0 },
     { name: "5 m", distance: 5, height: 1.6, aim: 0.95, fov: 0.42, turn: 0.35 },
@@ -73,6 +92,13 @@ if (import.meta.main) {
   for (let sex = 0; sex < 2; sex++) for (const [s, shot] of shots.entries()) for (let k = 0; k < across; k++) {
     const n = sex * across + k;
     const x = r.x[n]!, z = r.z[n]!, ground = r.y[n]!;
+    if (looks) {
+      const look = r.look.subarray(n * LOOK_BYTES, (n + 1) * LOOK_BYTES);
+      for (let f = 0; f < FACE_COUNT; f++) setFace(look, f, shot.face ?? 0);
+      r.gear.fill(0, n * GEAR_COUNT, (n + 1) * GEAR_COUNT);
+      if (shot.hat) r.gear[n * GEAR_COUNT + GEAR_WORN + SLOT_HEAD] = view.reg.index.get(shot.hat)!;
+      view.scene.characters.override = shot.turned ? { id: r.id[n]!, clip: turned, frame: 0 } : null;
+    }
     cam.x = x + Math.sin(shot.turn) * shot.distance;
     cam.z = z + Math.cos(shot.turn) * shot.distance;
     cam.y = ground + shot.height;

@@ -22,6 +22,7 @@ import { PIECE_SPALL_RIM, PIECE_SPALL_TEXT, SURFACE_ANY, surfaceFragment, surfac
 import { CASTER_ROWS, CUTOUT_CASTER_ROWS, DETAIL_ROWS, FLAT_ROWS, FRAME_ROWS, LAYER_ROWS, MATERIAL_ROWS, MESH_ROWS, PRINT_ROWS, tileRows, type UniformRow } from "./uniforms.ts";
 import { SPALL_GLSL, SPALL_RIM, ownVertex, worldVertex } from "./world-surfaces.ts";
 import { WATER_FRAGMENT } from "./water.ts";
+import { HAIR } from "../../../content/street-finishes.ts";
 
 /**
  * Texture units. 0 to 3 hold the palette, the whole map's heights and tints, and the bones. A material's five maps go
@@ -213,6 +214,8 @@ void main() {
   surfacePrinted: (tier, format, hard = false, light = false) => surface(tier, format, hard, light, { ...SURFACE_ANY, drops: false, printed: true }),
   surfacePrintedCut: (tier, format, hard = false, light = false) => surface(tier, format, hard, light, { ...SURFACE_ANY, printed: true }),
   surfacePrintedLayer: (tier, format, hard = false, light = false) => surface(tier, format, hard, light, { ...SURFACE_ANY, layered: true, printed: true }),
+  // Hair, cut-out cards and solid core both, with its shifted highlight (surface.ts hairBand).
+  surfaceHair: (tier, format, hard = false, light = false) => surface(tier, format, hard, light, { ...SURFACE_ANY, hair: true }),
 } satisfies Record<string, Make>;
 
 /**
@@ -264,6 +267,7 @@ const ROWS: Readonly<Record<keyof typeof MAKE, readonly UniformRow[]>> = {
   surfacePrinted: [...SURFACE_DRAW, ...PRINT_ROWS],
   surfacePrintedCut: [...SURFACE_DRAW, ...PRINT_ROWS],
   surfacePrintedLayer: [...SURFACE_DRAW, ...LAYER_ROWS, ...PRINT_ROWS],
+  surfaceHair: SURFACE_DRAW,
 };
 /** The same by a program's number. */
 export const UNIFORMS: readonly (readonly UniformRow[])[] = Object.keys(MAKE).map((name) => ROWS[name as keyof typeof MAKE]);
@@ -273,7 +277,7 @@ export const UNIFORMS: readonly (readonly UniformRow[])[] = Object.keys(MAKE).ma
  * By their own numbers, which come last, a printed body went after what it covers, and the GPU shaded that in full.
  */
 export function orderedAs(program: number): number {
-  return program === PROGRAM.surfacePrinted ? PROGRAM.surfaceWhole : program === PROGRAM.surfacePrintedCut ? PROGRAM.surface : program === PROGRAM.surfacePrintedLayer ? PROGRAM.surfaceLayer : program;
+  return program === PROGRAM.surfacePrinted ? PROGRAM.surfaceWhole : program === PROGRAM.surfacePrintedCut || program === PROGRAM.surfaceHair ? PROGRAM.surface : program === PROGRAM.surfacePrintedLayer ? PROGRAM.surfaceLayer : program;
 }
 
 /** The programs low poly draws with: no materials, dome, sea or shadows. */
@@ -290,9 +294,9 @@ export function tierPrograms(tier: Tier): number[] {
  * What picks a draw's program besides its DRAW_ flags, as bits over them (the flags stay under bit 24): it has a layer
  * (packet.ts drawLayer); its material is dyed, having a mask, or it has no material; it is in a node's hand-over; its
  * cell of trees is changing level (hand.ts swapKeeps); it fades out with distance; the frame has wakes on the water; the
- * frame's tier splits the view in two depth ranges.
+ * frame's tier splits the view in two depth ranges; it is hair (street-finishes.ts HAIR).
  */
-export const IS_LAYERED = 1 << 24, IS_DYED = 1 << 25, IS_HANDED = 1 << 26, IS_SWAPPING = 1 << 27, IS_FADED = 1 << 28, HAS_WAKES = 1 << 29, HAS_SPLIT = 1 << 30;
+export const IS_LAYERED = 1 << 24, IS_DYED = 1 << 25, IS_HANDED = 1 << 26, IS_SWAPPING = 1 << 27, IS_FADED = 1 << 28, HAS_WAKES = 1 << 29, HAS_SPLIT = 1 << 30, IS_HAIR = 1 << 31;
 
 /** A row of the choice: a program, for a draw with every flag and fact of `all`, one of `any` where it names some, and none of `none`. */
 export interface Choice {
@@ -322,6 +326,7 @@ export const CHOICE: readonly Choice[] = [
   pick(PROGRAM.surfacePrintedCut, DRAW_TEXTURED | DRAW_PRINTED | IS_DYED, DROPS),
   pick(PROGRAM.surfacePrinted, DRAW_TEXTURED | DRAW_PRINTED | IS_DYED),
   pick(PROGRAM.surfaceLayer, DRAW_TEXTURED | IS_LAYERED),
+  pick(PROGRAM.surfaceHair, DRAW_TEXTURED | IS_HAIR),
   pick(PROGRAM.surface, DRAW_TEXTURED | IS_DYED, DROPS),
   pick(PROGRAM.surfaceWhole, DRAW_TEXTURED | IS_DYED),
   pick(PROGRAM.surfaceUndyed, DRAW_TEXTURED, DROPS),
@@ -345,7 +350,8 @@ export function drawProgram(p: FramePacket, d: number, material: PackMaterial | 
     | (p.drawSwap[d] !== 0 ? IS_SWAPPING : 0)
     | (p.drawFade[d] !== 0 ? IS_FADED : 0)
     | (p.frame[WATER_MARK_COUNT]! > 0 ? HAS_WAKES : 0)
-    | (p.split > 0 ? HAS_SPLIT : 0);
+    | (p.split > 0 ? HAS_SPLIT : 0)
+    | (p.drawStreetMaterial[d] === HAIR ? IS_HAIR : 0);
   for (let k = 0; k < PICKS.length; k += 4) {
     const all = PICKS[k]!, any = PICKS[k + 1]!;
     if ((is & all) === all && (any === 0 || (is & any) !== 0) && (is & PICKS[k + 2]!) === 0) return PICKS[k + 3]!;
