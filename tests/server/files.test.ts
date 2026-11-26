@@ -17,6 +17,12 @@ writeFileSync(join(dir, "index.html"), "<p>hello</p>");
 const get = (path: string, headers: Record<string, string> = {}): Promise<Response> => serveFile(dir, new Request(`http://localhost${path}`, { headers }));
 const body = async (r: Response): Promise<Uint8Array> => new Uint8Array(await r.arrayBuffer());
 
+test("the browser receives the touch sheet as an SVG image", async () => {
+  writeFileSync(join(dir, "touch.svg"), '<svg xmlns="http://www.w3.org/2000/svg"/>');
+  const result = await get("/touch.svg");
+  expect(result.headers.get("content-type")).toBe("image/svg+xml");
+});
+
 test("a range of a file is answered with those bytes, and a range the file does not have is refused", async () => {
   const part = await get("/core.mesh.0123456789abcdef.snpk", { range: "bytes=100-299" });
   expect([part.status, part.headers.get("content-range"), part.headers.get("content-length"), part.headers.get("content-encoding")]).toEqual([206, "bytes 100-299/1000", "200", null]);

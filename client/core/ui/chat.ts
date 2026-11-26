@@ -273,7 +273,7 @@ export class ChatState {
       const size = 24 / f.unit;
       const margin = (toolSize - size) / 2;
       if (!f.picture(KEY_RADIO_ICON, toolsX + margin, toolsY + margin, size, size, S_CHAT, "ui:mobile-radio"))
-        hit.text = "Radio";
+        hit.text = "◈";
     }
     if (!this.open && !touch && controls) {
       if (welcome === 0) glass(f, KEY_RADIO_EDGE + 1, x0 - 4, headerY - 2, w + 4, shown * lh + 25, shown ? .57 : .27);

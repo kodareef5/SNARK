@@ -140,17 +140,17 @@ test("a new level lights the bar for a moment", () => {
   expect(at(4000).find(LIT)).toBeNull();
 });
 
-test("the call to spend shows while a stat point is unspent, by key and by touch", () => {
+test("the desktop level bar offers unspent points and the idle touch dock stays clear", () => {
   const { d, say } = told();
   expect(say(0, 2800, 24, 2).find(WORDS)!.text).toBe("Level 24 · P to spend");
   expect(say(100, 2800, 24, 1).find(WORDS)!.text).toBe("Level 24 · P to spend");
   expect(say(200, 2800, 24, 0).find(WORDS)!.text).toBe("Lv 24");
-  // A finger has no P: it has the bar's Character button.
+  // On a phone the vitals sheet holds the level and unspent points.
   const phone = direct(844, 390, [47, 0, 47, 21], { finger: true });
   Object.assign(phone.hud.levelBar, d.hud.levelBar);
   expect(phone.build().find(WORDS)).toBeNull();
-  Object.assign(phone.hud.levelBar, { points: 1, spendTouch: "Level 24 · Character to spend" });
-  expect(phone.build().find(WORDS)!.text).toBe("Level 24 · Character to spend");
+  phone.hud.levelBar.points = 1;
+  expect(phone.build().find(WORDS)).toBeNull();
 });
 
 test("a fill makes the line's words again only when the server says more", () => {
@@ -217,7 +217,7 @@ test("the level's line fits and overlaps nothing at four window shapes", () => {
   }
 });
 
-test("by touch the level's line overlaps nothing on any phone or tablet", () => {
+test("a level gain clears the touch dock and fits every phone and tablet", () => {
   for (const [name, width, height, insets] of PHONES) {
     for (const muted of [false, true]) {
       const d = direct(width, height, insets, { finger: true });
@@ -226,8 +226,12 @@ test("by touch the level's line overlaps nothing on any phone or tablet", () => 
       d.hud.prompt = "E  ride raptor";
       d.hud.ammo = "pistol round  6 / 54";
       // The longest it gets: the last level with a point to spend, a large gain, the bar lit.
-      Object.assign(d.hud.levelBar, { shown: true, points: 1, fraction: 0.5, spendTouch: `Level ${LAST} · Character to spend`, gainText: "+1,250.5 xp", gainAlpha: 1, flash: 1 });
-      clear(d.build(), `${name}${muted ? ", muted" : ""}`);
+      Object.assign(d.hud.levelBar, { shown: true, label: `Lv ${LAST}`, points: 1, gainText: "+1,250.5 xp", gainAlpha: 1, flash: 1 });
+      const f = d.build(), toast = f.find(GAIN)!;
+      expect(toast.text, name).toBe(`Lv ${LAST} · +1,250.5 xp`);
+      expect(f.find(BAR), name).toBeNull();
+      expect(toast.y + toast.h, name).toBeLessThan(f.height - f.bottom - 44 / f.unit);
+      expect(toast.x >= f.left && toast.x + toast.w <= f.width - f.right, name).toBe(true);
     }
   }
 });

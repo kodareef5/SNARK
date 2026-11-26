@@ -31,6 +31,10 @@ Item art
 - Creature eggs keep their species markings when laid or dropped. A pale ring marks a fertile egg. The death cache, skate ramps, vehicle kits and depleted resource nodes are also easier to recognise.
 - Radio and GPS screens stay legible up close. Saddle leather, straps and stitching have clearer finishes, and dropped gear keeps its colours as it switches to simpler models at a distance.
 
+Touch controls
+- Swipe the left wheel for menus or the right fan for actions. Slide along the equipment dock and lift to equip. Tap the vital signs for health and experience, or the radio beneath them to chat.
+- Hold a bin’s search button until its inventory opens. Field kit has extra controls for jumping and holding an attack.
+
 City maps
 - The map screen requests terrain around the point you select. Roadside lights keep their spacing where a road leaves the map and comes back.
 

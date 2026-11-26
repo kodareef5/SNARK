@@ -68,9 +68,8 @@ export class LevelBar {
   /** 0 to 1, from this level's threshold to the next. */
   fraction = 0;
   label = "";
-  /** The call to spend, for a keyboard and for a finger. "" with no points. */
+  /** The keyboard hint for unspent points. */
   spend = "";
-  spendTouch = "";
   /** What the gain line adds up to, its words, and how strongly they show. */
   gain = 0;
   gainText = "";
@@ -118,7 +117,6 @@ export const LEVEL: HudWidget<LevelModel> = {
       if (first || p.level !== v.level) v.label = `Lv ${p.level}`;
       if (first || p.level !== v.level || p.statPoints !== v.points) {
         v.spend = p.statPoints > 0 ? `Level ${p.level} · P to spend` : "";
-        v.spendTouch = p.statPoints > 0 ? `Level ${p.level} · Character to spend` : "";
       }
       v.level = p.level;
       v.points = p.statPoints;
@@ -133,11 +131,19 @@ export const LEVEL: HudWidget<LevelModel> = {
   },
   build(f, m, at) {
     const v = m.levelBar;
-    if (!v.shown || (at.touch && v.points === 0 && v.gainAlpha <= 0 && v.flash <= 0)) return;
+    if (!v.shown) return;
+    if (at.touch) {
+      if (m.dockPreview >= 0 || (v.gainAlpha <= 0 && v.flash <= 0)) return;
+      const text = [v.flash > 0 ? v.label : "", v.gainText].filter(Boolean).join(" · ");
+      const w = textWidth(text, S_HUD_KEY) + 12;
+      const n = f.text(KEY_LEVEL + 3, (f.width + f.left - f.right - w) / 2, f.height - f.bottom - 84 / f.unit, w, S_HUD_KEY, text);
+      n.alpha = Math.max(v.flash, v.gainAlpha);
+      return;
+    }
     const slots = m.hotbar.length || HOTBAR_SLOTS;
     const x = hotbarLeft(f, slots), y = hotbarBottom(f);
     const width = slots * (hotbarCell(f, slots) + 3) - 3;
-    const words = v.points > 0 ? (at.touch ? v.spendTouch : v.spend) : v.label;
+    const words = v.points > 0 ? v.spend : v.label;
     const wordsW = Math.ceil(textWidth(words, S_HUD_KEY)), barX = x + wordsW + GAP, barW = width - wordsW - GAIN_W - GAP * 2;
     f.text(KEY_LEVEL, x, y, wordsW, S_HUD_KEY, words);
     f.add(KEY_LEVEL + 1, K_BAR, barX, y + 6, barW, 3, S_OXYGEN).value = v.fraction;
