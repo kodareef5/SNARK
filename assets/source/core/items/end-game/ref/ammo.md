@@ -1,0 +1,5 @@
+# Plasma ammunition and shock dart
+
+- **Plasma charge.** The Amphenol GT straight plug has a stepped round shell and a broad grip collar. The pistol pickup uses a squat cap with one raised key, a cream shoulder and an inset cyan face. The offset crown and the key give it a lopsided outline. [Amphenol GT connector catalog](https://amphenol-industrial.com/wp-content/uploads/amphenol/aca-b-and-gt-series-ic-4.pdf)
+- **Plasma cell.** The Bosch ProCORE18V battery pack has a rectangular casing and raised slide rails. The rifle pickup uses a long cream case framed by dark skids, with two inset cyan windows along its spine. [Bosch Professional ProCORE18V pack](https://www.bosch-professional.com/ge/en/products/procore18v-4-0ah-1600A016GB)
+- **Shock dart.** SNARK's flying dart and tranquilizer pickup provide the tapered nose and flared tail. Three broad fins replace the fringe, and a cyan sleeve between dark guards widens the middle. [Flying dart](../../weapons/thrown/model.py) · [Tranquilizer pickup](../../projectile-drops/dart_hook.py)

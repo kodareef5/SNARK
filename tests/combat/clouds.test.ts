@@ -12,6 +12,7 @@ import { RemoteSample } from "../../client/core/session.ts";
 import { CLOUD_EVERY, MAX_CLOUDS } from "../../server/clouds.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { BTN_PRIMARY } from "../../shared/sim/character.ts";
+import { F_ALIVE } from "../../shared/sim/entities.ts";
 import { V_HEALTH, V_TORPOR } from "../../shared/sim/vitals.ts";
 import { flatGround } from "../fixtures/arena.ts";
 import { takeInHand } from "../fixtures/gather.ts";
@@ -39,6 +40,26 @@ test("the smoke and poison grenades are ARK's: no harm, their fuses, clouds of 4
   const engram = (item: number) => reg.defs.find((d) => d?.type === "engram" && d.item === reg.ids[item]) as { level: number; cost: number };
   expect([engram(smoke).level, engram(smoke).cost, engram(poison).level, engram(poison).cost]).toEqual([24, 18, 40, 18]);
   expect([reg.weight[smoke], reg.weight[poison], reg.stack[smoke], reg.stack[poison]]).toEqual([0.5, 1.5, 10, 10]);
+});
+
+test("lobbed smoke and poison use their own grounded mesh in flight", () => {
+  const h = new Harness({}, 1, 60, { dev: true });
+  const ada = h.join("ada");
+  h.run(500);
+  const client = h.client(ada)!;
+  const { projectiles, records } = h.host;
+  const { ents } = h.world;
+  const record = records.byPid.get(client.pid)!;
+  for (const name of ["grenade", "grenade_smoke", "grenade_poison"]) {
+    projectiles.lob(client, record, id(name), 1);
+    const prop = id(`${name}_live`);
+    const entity = ents.kind.indexOf(prop);
+    expect(entity, name).toBeGreaterThanOrEqual(0);
+    expect(ents.flags[entity]! & F_ALIVE, name).not.toBe(0);
+    const mesh = name === "grenade" ? "core:grenade_thrown" : `core:${name}/dropped`;
+    expect(reg.defs[prop], name).toMatchObject({ mesh });
+  }
+  expect(projectiles.thrownCount).toBe(3);
 });
 
 test("a thrown poison grenade gasses where it lies after 2.5 s: a survivor in it gains torpor at its rate and stops soon after leaving, a dodo in it gains none, and it ends on time", () => {

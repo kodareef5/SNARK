@@ -54,6 +54,8 @@ import {
   OWN_SCREEN,
   RULE_CORPSE_LOCATOR,
   RULE_CREATIVE,
+  RULE_SEARCH_STREET,
+  RULE_SEARCH_WRECKS,
   RULE_SURVIVORS_PASS,
   RULE_CROSSHAIR,
   RULE_DAMAGE_NUMBERS,
@@ -875,6 +877,9 @@ export class ClientSession {
   private readonly blockers = new Blockers();
   /** SurvivorsBlock is off on this server: survivors pass through one another (server/blocking.ts). */
   survivorsPass = false;
+  /** Whether street things, and dead wrecks and hulls, are searched for loot on this server (OWN_RULES). */
+  searchStreet = false;
+  searchWrecks = false;
   /** What the server holds an orb's screen to: a scene's number or -1 for its programme, and its brightness. */
   orbOnly = -1;
   orbGain = 1;
@@ -2151,6 +2156,8 @@ export class ClientSession {
         s.corpseLocator = (flags & RULE_CORPSE_LOCATOR) !== 0;
         s.creative = (flags & RULE_CREATIVE) !== 0;
         s.survivorsPass = (flags & RULE_SURVIVORS_PASS) !== 0;
+        s.searchStreet = (flags & RULE_SEARCH_STREET) !== 0;
+        s.searchWrecks = (flags & RULE_SEARCH_WRECKS) !== 0;
         s.orbOnly = only;
         s.orbGain = gain;
       },

@@ -3,10 +3,11 @@
 // entries, the list of what the book waits for, and a simulation's figures. Nothing here touches a page: client/drops
 // draws what these give.
 
+import { holdWord } from "../../../shared/sim/loot.ts";
 import { QUALITY_NAMES } from "../../../shared/sim/items.ts";
-import { tableKey, type EntryDoc, type SupplyBook } from "../../../shared/supply/book.ts";
+import { TIER_MARK, tableKey, type EntryDoc, type SupplyBook } from "../../../shared/supply/book.ts";
 import { catalogFrom, withFuture, type Catalog, type CatalogItem } from "../../../shared/supply/catalog.ts";
-import { compileBook, type Compiled } from "../../../shared/supply/compile.ts";
+import { compileBook, sourceTarget, sourceWorth, type Compiled } from "../../../shared/supply/compile.ts";
 import { measure, type Cell } from "../../../shared/supply/measure.ts";
 import { simulate, type SimStats } from "../../../shared/supply/simulate.ts";
 
@@ -262,4 +263,57 @@ export function pct(share: number): string {
 /** A tier's colour as CSS. */
 export function css(rgb: number): string {
   return `#${(rgb & 0xffffff).toString(16).padStart(6, "0")}`;
+}
+
+export interface SourceTier {
+  readonly key: string;
+  readonly name: string;
+  readonly rgb: number;
+  /** What one such thing gets on average, those that get nothing counted, and what the source is balanced to. */
+  readonly worth: number;
+  readonly target: number | null;
+  readonly health: Health;
+}
+
+export interface SourceRow {
+  readonly key: string;
+  readonly on: boolean;
+  /** "any body", "a large body", "the body of a rex, level 100 to 150", "a bin". */
+  readonly what: string;
+  /** "arms prize, armour prize" or "body/scraps". */
+  readonly tables: string;
+  /** Every tier it rolls at, lowest first; one with no name for a source of no tier. */
+  readonly tiers: readonly SourceTier[];
+}
+
+/** What a found vehicle is called by how it moves. */
+const MOVES: Readonly<Record<string, string>> = { wheeled: "car", rotor: "helicopter" };
+
+/** How far a source's worth may be from its target at one tier and still be sound: tables differ more by tier than a whole drop does. */
+export const SOURCE_OFF_TARGET = 0.35;
+
+/** Each source of the book: what it is the loot of, what it rolls, and its worth against its target at every tier it rolls at. */
+export function sourceRows(l: Loaded): SourceRow[] {
+  const { book } = l;
+  return (book.sources ?? []).map((s) => {
+    const w = s.when ?? {};
+    const of = w.species?.length ? `of a ${w.species.map((id) => nameOf(l, id)).join(" or a ")}` : "";
+    const size = w.size?.length ? `${w.size.join(" or ")} ` : "";
+    const level = w.level ? `, level ${w.level[0]} to ${w.level[1]}` : "";
+    const moves = w.vehicle?.length ? w.vehicle.map((m) => MOVES[m] ?? m).join(" or ") : "vehicle";
+    const a = (word: string): string => `${/^[aeiou]/.test(word) ? "an" : "a"} ${word}`;
+    // Where a static stands: its building, the storeys, the band of the map.
+    const where = `${w.building?.length ? ` in ${w.building.map((b) => a(b.replace(/_/g, " "))).join(" or ")}` : ""}${s.kind === "static" && w.level ? ` from storey ${w.level[0]}` : ""}${w.band?.length ? ` in the ${w.band.join(" or ")} band` : ""}`;
+    const what = s.kind === "vehicle" ? `a found ${w.species?.length ? w.species.map((id) => nameOf(l, id)).join(", ") : moves}` : s.kind === "static" ? `${w.holds?.length ? w.holds.map((tag) => a(holdWord(tag))).join(" or ") : "anything that holds loot"}${where}` : w.species?.length ? `the ${size}body ${of}${level}` : `${size === "" ? "any" : a(size.trim())} body${level}`;
+    const tables = s.tables.map((t) => `${t.table.replace(`${TIER_MARK}/`, "")}${t.slots ? ` ${t.slots.join(" and ")}` : ""}`).join(", ");
+    const keys = s.tier !== undefined ? [...new Set([s.tier, ...(s.ladder ?? []).map((step) => step.tier)])] : [""];
+    const tiers = keys.map((key): SourceTier => {
+      const tier = book.tiers.find((t) => t.key === key);
+      const worth = sourceWorth(l.designed, s, key);
+      const target = sourceTarget(book, s, key);
+      const health: Health = target === null || target === 0 ? "ok" : worth < target * (1 - SOURCE_OFF_TARGET) ? "lean" : worth > target * (1 + SOURCE_OFF_TARGET) ? "rich" : "ok";
+      return { key, name: tier?.name ?? "", rgb: tier?.rgb ?? 0x888888, worth, target, health };
+    });
+    return { key: s.key, on: s.on, what, tables, tiers };
+  });
 }

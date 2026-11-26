@@ -511,6 +511,8 @@ export class Scene {
   get near(): NearCity | null { return this.nearStore.near; }
   get cover(): CrownCover { return this.nearStore.cover; }
   get chunkCells(): number { return this.nearStore.chunkCells; }
+  /** The map's pieces that shimmer for a moment, as a usable vehicle does (near-store.ts `shine`). */
+  set shine(of: NearStore["shine"]) { this.nearStore.shine = of; }
   set chunkCells(n: number) { this.nearStore.chunkCells = n; }
   get nearMesh(): boolean { return this.nearStore.nearMesh; }
   set nearMesh(on: boolean) { this.nearStore.nearMesh = on; }
@@ -1256,6 +1258,7 @@ export class Scene {
       else ch.add(p, own.kind, own.x - cam.x, own.y - cam.y, own.z - cam.z, own.yaw, own.state, own.tick, own.look, 0, own.colors, 0, own.gear, 0, own.id, own.firstPerson, own.firstPerson, 1, false, false, null, 0, own.vehicle, seat);
     }
     if (remote && unseen > 0) this.poseUnseen(remote, unseen);
+    if (remote) ch.unseenCorpses(p, cam);
     const from = p.drawCount;
     ch.flush(p, this.transient, false, this.drawBody, this.casting.on ? this.casting.castBody : null);
     if (cam.split > 0) this.bodyPasses(cam, from);

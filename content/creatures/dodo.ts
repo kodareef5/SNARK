@@ -120,6 +120,7 @@ export const DODO: readonly Def[] = [
     zones: { head: 3 },
     // The experience the wiki's Experience page gives for a kill at level 1. Its data module's base is 0.5.
     killXp: 2,
+    size: "small",
     torporDrain: 0.3,
     regions: REGIONS,
     // Gains for a tame are the raw gain times ARK's default (index.ts). Speed is 1% a level as ARK Smart Breeding and

@@ -175,7 +175,7 @@ export const STEPS: readonly { readonly name: string; readonly knobs: Knobs; rea
 function governed(base: Tier, knobs: Knobs, dpr: number): Tier {
   const s = base.shadows;
   const ratio = base.pixelRatio > 0 ? Math.min(dpr, base.pixelRatio) : dpr;
-  const far = knobs.farReach ?? 1;
+  const far = knobs.farReach ?? 1, cascades = Math.max(1, s.cascades - (knobs.fewerCascades ?? 0));
   const post = knobs.noLightTarget || !base.post ? null : knobs.scale || knobs.ratio ? { ...base.post, scale: (knobs.scale ?? 1) * (knobs.ratio ?? 1) } : base.post;
   return {
     ...base,
@@ -185,7 +185,7 @@ function governed(base: Tier, knobs: Knobs, dpr: number): Tier {
     viewDistance: knobs.view ? Math.min(base.viewDistance, knobs.view) : base.viewDistance,
     reach: { ...base.reach, trees: base.reach.trees * far, rocks: base.reach.rocks * far, bushes: base.reach.bushes * far },
     city: knobs.city ? { levels: nearer(base.city.levels, knobs.city) } : base.city,
-    shadows: s.cascades === 0 || !base.lit ? s : { ...s, everyOther: s.everyOther || (knobs.everyOther === true && s.cascades > 1), cascades: Math.max(1, s.cascades - (knobs.fewerCascades ?? 0)) },
+    shadows: s.cascades === 0 || !base.lit ? s : { ...s, everyOther: s.everyOther || (knobs.everyOther === true && s.cascades > 1), cascades, ...(cascades < s.cascades ? { base: s.cascades } : {}) },
     budget: { ...base.budget, triangles: base.budget.triangles * (knobs.leaves ?? 1) },
     details: knobs.details ? { ...base.details, pool: Math.round(base.details.pool * knobs.details), share: base.details.share * knobs.details, fill: base.details.fill * knobs.details } : base.details,
     waterMarks: Math.min(base.waterMarks, knobs.details ? 0 : knobs.bodies ? 3 : knobs.levels ? 6 : base.waterMarks),

@@ -53,6 +53,8 @@ export interface StreetPiece {
   readonly hulls?: readonly HullDef[];
   /** Paint on the ground (shared/content/defs.ts StructureDef `paint`). */
   readonly paint?: true;
+  /** It holds loot (StructureDef `holds`): its tag, the seconds to search it, its slots. */
+  readonly holds?: readonly [tag: string, seconds: number, slots: number];
 }
 
 // Palette colours: galvanised steel, signal yellow, creosoted wood, rust, hydrant red, mailbox blue, bench green, sign white,
@@ -168,17 +170,17 @@ export const STREET_PIECES: readonly StreetPiece[] = [
   { name: "hydrant", color: RED, hp: 1500, material: "core:mat_metal", boxes: [box(-0.2, 0.2, 0, 0.8, -0.17, 0.21)] },
   { name: "bench", color: GREEN, hp: 800, material: "core:mat_metal", boxes: [box(-0.92, 0.92, 0, 0.47, -0.25, 0.26), box(-0.92, 0.92, 0.47, 0.88, -0.29, -0.17)] },
   { name: "bench_broken", color: GREEN, hp: 500, material: "core:mat_metal", boxes: [box(-0.92, 0.92, 0, 0.47, -0.25, 0.26), box(-0.92, 0.3, 0.47, 0.88, -0.29, -0.17)] },
-  { name: "bin", color: GREEN, hp: 500, material: "core:mat_metal", boxes: [box(-0.31, 0.31, 0, 0.97, -0.31, 0.31)] },
-  { name: "bin_tipped", color: GREEN, hp: 500, material: "core:mat_metal", boxes: [box(-0.8, 0.25, 0, 0.62, -0.31, 0.31), box(0.58, 1.22, 0, 0.06, -0.32, 0.32)] },
+  { name: "bin", color: GREEN, hp: 500, material: "core:mat_metal", holds: ["bin", 1.5, 6], boxes: [box(-0.31, 0.31, 0, 0.97, -0.31, 0.31)] },
+  { name: "bin_tipped", color: GREEN, hp: 500, material: "core:mat_metal", holds: ["bin", 1.5, 6], boxes: [box(-0.8, 0.25, 0, 0.62, -0.31, 0.31), box(0.58, 1.22, 0, 0.06, -0.32, 0.32)] },
   { name: "shelter", color: GALV, hp: 2500, material: "core:mat_metal", boxes: [...SHELTER, box(-2.1, 2.1, 2.38, 2.62, -0.9, 0.95), box(-1.2, 1.2, 0, 0.47, -0.72, -0.3)] },
   // The roof down at one end, the glass gone, the bench torn out.
   { name: "shelter_wrecked", color: RUST, hp: 2000, material: "core:mat_metal", boxes: [box(-2, 2, 0, 0.12, -0.8, -0.72), SHELTER[1]!, SHELTER[3]!, SHELTER[4]!, SHELTER[5]!], hulls: [{ corners: [[-2.1, 0.75, -0.9], [-2.1, 0.75, 0.95], [-2.1, 0.99, -0.9], [-2.1, 0.99, 0.95], [2.1, 2.38, -0.9], [2.1, 2.38, 0.95], [2.1, 2.62, -0.9], [2.1, 2.62, 0.95]] }] },
   // Its chute faces the walk, away from the road.
-  { name: "mailbox", color: BLUE, hp: 1200, material: "core:mat_metal", boxes: [box(-0.26, 0.26, 0, 1.27, -0.3, 0.29)] },
+  { name: "mailbox", color: BLUE, hp: 1200, material: "core:mat_metal", holds: ["mailbox", 2.5, 6], boxes: [box(-0.26, 0.26, 0, 1.27, -0.3, 0.29)] },
   { name: "meter", color: GALV, hp: 500, material: "core:mat_metal", boxes: [box(-0.04, 0.04, 0, 1.06, -0.04, 0.04), box(-0.13, 0.13, 1.06, 1.5, -0.11, 0.11)] },
   { name: "meter_broken", color: RUST, hp: 300, material: "core:mat_metal", boxes: [box(-0.04, 0.04, 0, 1.02, -0.04, 0.04)] },
   // A car park's pay station on its pedestal, its panel facing the walk.
-  { name: "paystation", color: KIOSK, hp: 800, material: "core:mat_metal", boxes: [box(-0.13, 0.13, 0, 0.5, -0.1, 0.1), box(-0.24, 0.24, 0.5, 1.65, -0.17, 0.17)] },
+  { name: "paystation", color: KIOSK, hp: 800, material: "core:mat_metal", holds: ["paystation", 3, 4], boxes: [box(-0.13, 0.13, 0, 0.5, -0.1, 0.1), box(-0.24, 0.24, 0.5, 1.65, -0.17, 0.17)] },
   // Torn from its pedestal at 0.45 m, lying on its back toward the road, turned 9 degrees, its screen smashed in.
   { name: "paystation_broken", color: KIOSK, hp: 500, material: "core:mat_metal", boxes: [box(-0.13, 0.13, 0, 0.45, -0.1, 0.1)], hulls: [{ corners: [[-0.1, 0.335, 0.522], [-0.1, 0, 0.522], [0.08, 0.335, 1.658], [0.08, 0, 1.658], [0.375, 0.335, 0.447], [0.375, 0, 0.447], [0.554, 0.335, 1.583], [0.554, 0, 1.583]] }] },
   { name: "bollard", color: YELLOW, hp: 2500, material: "core:mat_metal", boxes: [box(-0.09, 0.09, 0, 0.98, -0.09, 0.09)] },
@@ -193,7 +195,7 @@ export const STREET_PIECES: readonly StreetPiece[] = [
     { name: `billboard${board}_bare`, color: RUST, hp: Math.round(5000 * BOARDS[board].scale), material: "core:mat_metal", boxes: boardBoxes(BOARDS[board]), ...(BOARDS[board].lift > 0 ? { lift: BOARDS[board].lift } : {}) },
   ]),
   // Its window faces the walk.
-  { name: "newsbox", color: BLUE, hp: 600, material: "core:mat_metal", boxes: [box(-0.26, 0.26, 0, 1.06, -0.25, 0.24)] },
+  { name: "newsbox", color: BLUE, hp: 600, material: "core:mat_metal", holds: ["newsbox", 1.5, 4], boxes: [box(-0.26, 0.26, 0, 1.06, -0.25, 0.24)] },
   // Crosswalk bars on the road, 1, 2, 4 and 8 of them, fresh and worn; nothing harms paint.
   ...[1, 2, 4, 8].flatMap((bars): StreetPiece[] => [
     { name: `crosswalk${bars}`, color: WHITE, hp: 1000, boxes: crosswalk(), paint: true },
@@ -209,7 +211,7 @@ const SHAPES: readonly ShapeDef[] = STREET_PIECES.map((p) => ({ type: "shape", i
 const STATICS: readonly StructureDef[] = STREET_PIECES.map((p) => ({
   type: "structure", class: "static", id: streetKind(p.name), mesh: streetKind(p.name), shape: shapeId(p.name), half: shapeHalf(p.boxes, p.hulls),
   ...(p.name === "rail" ? { grindLine: [[-2, .85, .1], [2, .85, .1]] as const } : {}),
-  color: p.color, hp: p.hp, ...(p.material ? { material: p.material } : {}), ...(p.paint ? { paint: true as const } : {}),
+  color: p.color, hp: p.hp, ...(p.material ? { material: p.material } : {}), ...(p.paint ? { paint: true as const } : {}), ...(p.holds ? { holds: { tag: p.holds[0], seconds: p.holds[1], slots: p.holds[2] } } : {}),
   // Drawn near only: left out of the far city's lattice and mass, where a lamp would take a whole cell. A billboard is seen from afar.
   ...(p.name.startsWith("billboard") && !p.name.startsWith("billboard_small") ? {} : { near: true as const }),
   ...(p.name.startsWith("billboard") && !p.name.endsWith("_bare") ? { screen: boardFace(p.name.slice("billboard".length) as Board) } : {}),

@@ -88,6 +88,8 @@ export class CityBreaks {
   support: CitySupport | null = null;
   /** Told of each city piece harmed, for the clock its return is counted by (server/city-regrow.ts). */
   onHarm: ((ref: number) => void) | null = null;
+  /** The piece at a ref is about to go, still standing: what it held is its holder's to spill (server/holders.ts). */
+  onFell: ((ref: number) => void) | null = null;
   /** Of the last hit: the health left (0 for a piece gone), and whether the piece changed form, fell or was emptied. */
   left = 0;
   broke = false;
@@ -273,6 +275,7 @@ export class CityBreaks {
   private fell(by: EntityRecord | null, ref: number, heaps: boolean, x: number, y: number, z: number, was: number): number {
     this.spend(by);
     this.onHarm?.(ref);
+    this.onFell?.(ref);
     this.left = 0;
     (heaps ? this.falls : this.gone).push(ref);
     if (!this.gathering) this.drop(GONE_DESTROYED, x, y, z, 0);

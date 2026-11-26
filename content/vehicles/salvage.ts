@@ -62,9 +62,13 @@ export const wreckFormShape = (mesh: string): string => `core:zzzzzzzwreck_shape
  * it is dyed as the kind the map placed, and a swap keeps its row's health. Its own health is its body's, for a map
  * that sets one down itself, where it is a plain piece with no rungs.
  */
+/** A street wreck is searched as it is salvaged: whatever its look, it has a boot or a cab somebody left things in. */
+export const WRECK_HOLDS = { tag: "wreck", seconds: 2.5, slots: 8 } as const;
+
 export function wreckFormDef(mesh: string, form: WreckForm, as: { readonly mesh: string; readonly shape: string; readonly half: readonly [number, number, number]; readonly color: number; readonly hp: number }): StructureDef {
   return {
     type: "structure", class: "static", id: wreckFormKind(mesh, form), mesh: as.mesh, shape: as.shape, half: as.half, color: as.color, hp: as.hp, material: "core:mat_metal",
     breaks: { ...wreckWhole(mesh), form: WRECK_FORMS[form], variant: 0 },
+    holds: WRECK_HOLDS,
   };
 }

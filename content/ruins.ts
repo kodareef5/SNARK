@@ -574,6 +574,8 @@ function wholeBreaks(name: string, size: readonly [number, number, number]): Pic
   const { family, halves, bears } = shapeBreaks(name, size), glazed = glazedHalves(name);
   return family === "none" ? {} : { breaks: { set: name, form: "whole", family, halves, bears: bears[0], ...(glazed > 0 ? { glass: PANE_HEALTH * glazed } : {}) } };
 }
+/** The room's boxes that hold loot while they stand whole (planning/workstreams/loot.md): a bed and a counter. */
+const ROOM_HOLDS: Partial<Record<string, NonNullable<StructureDef["holds"]>>> = { zbed: { tag: "bed", seconds: 2, slots: 4 }, zcounter: { tag: "counter", seconds: 2, slots: 6 } };
 const BLOCKS: readonly StructureDef[] = (Object.entries(RUIN_SHAPES) as [RuinShape, readonly [number, number, number]][]).flatMap(([name, size]) =>
   (Object.keys(RUIN_FINISHES) as RuinFinish[]).filter((finish) => finished(name, finish)).map((finish): StructureDef => {
     const wear = worn(name, finish, size), id = ruinKind(name, finish);
@@ -591,6 +593,7 @@ const BLOCKS: readonly StructureDef[] = (Object.entries(RUIN_SHAPES) as [RuinSha
       // Far-feed colours average every static sharing a palette entry. Keep foliage separate from built wood. A plant is
       // no part of a building, and keeps the little health it had.
       ...(GROWN[name] ? { color: 196, hp: 500 } : {}),
+      ...(ROOM_HOLDS[name] ? { holds: ROOM_HOLDS[name] } : {}),
       ...wholeBreaks(name, size),
     };
   }),

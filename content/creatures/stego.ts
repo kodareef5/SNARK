@@ -63,6 +63,7 @@ export const STEGO: readonly Def[] = [
     food: { max: 6000, perHour: .005341 * 140 },
     breeds: { egg: "core:egg_stego", incubate: 9999.20006, mature: 185185.185, scale: .2 },
     feces: "core:feces_large", corpse: { health: 700, roll: 10 },
+    size: "large",
     drops: [{ item: "core:hide", min: 1, max: 2, favoured: "wood" }, { item: "core:meat", min: 1, max: 2, favoured: "stone" }],
     takes: { bullet: .7 }, zones: { head: 1.67, torso: .7 }, killXp: 15, torporDrain: .3, regions: STEGO_REGIONS,
     stats: { health: [650, .2, .054], stamina: [300, .1, .1], oxygen: [150, .1, .1], food: [6000, .1, .1],

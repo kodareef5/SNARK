@@ -74,6 +74,7 @@ import { CameraBody } from "../camera-body.ts";
 import { ThrusterPlumes } from "./thruster-plumes.ts";
 import { PatrolLights } from "./patrol-lights.ts";
 import { solidOf } from "../../../shared/sim/vehicle-movers.ts";
+import { sortU32 } from "../../../shared/sort.ts";
 
 /** A body is culled when its origin is farther than this outside the view. No pose reaches farther from its origin. */
 /** The places of a held item that has none. */
@@ -322,6 +323,8 @@ const CASTS = 2;
 const NONE = 3;
 /** Cascade masks an instance may have: a bit each for up to four, and one for the street lamp's map (lamp.ts LAMP_BIT). */
 const MASKS = 32;
+/** The most bodies of the dead out of view kept a frame to be posed for their shadows: the first found, not the nearest. */
+const UNSEEN_DEAD = 256;
 
 /**
  * A body's gait, the frame it was last drawn in and the frame its gait last moved, a survivor's look with the bone scales
@@ -605,6 +608,10 @@ export class Characters {
   private packet: FramePacket | null = null;
   /** Bodies that died, as their death clips and ragdolls pose them. */
   private readonly dead: Corpses;
+  /** This frame's dead out of view whose shadows may fall in it: how many, each one's place in `dead.list`, and nearest first. */
+  private unseenDead = 0;
+  private readonly unseenDeadAt = new Uint32Array(UNSEEN_DEAD);
+  private readonly unseenDeadOrder = new Uint32Array(UNSEEN_DEAD);
   /**
    * This frame: whose arms each held creature is in, by id; the point between the palms of each survivor posed holding one,
    * camera-relative, by id; and the held creatures posed, each its first bone, its bones, its place, facing, size, carrier,
@@ -1573,28 +1580,64 @@ export class Characters {
 
   /**
    * Finds the creatures that have died among the remote entities, moves the dead on through their death clips and
-   * ragdolls, and draws those in view where they lie. `world` is what a ragdoll falls on.
+   * ragdolls, and draws those in view where they lie. Those out of view whose shadows may fall in it are kept for
+   * `unseenCorpses`. `world` is what a ragdoll falls on.
    */
   corpses(p: FramePacket, cam: Camera, remote: RemoteSample, world: CollisionWorld, own = 0, ownDown = false): void {
     this.dead.update(remote, world, cam.x, cam.z, this.gaits, this.corpseMotions, own, ownDown);
     const lit = this.assets.tier.lit;
-    for (const d of this.dead.list) {
+    const s = this.shadows;
+    this.unseenDead = 0;
+    const list = this.dead.list;
+    for (let i = 0; i < list.length; i++) {
+      const d = list[i]!;
       const c = this.creatures[d.kind]!;
       const x = (d.drawn?.[0] ?? d.x) - cam.x;
       const y = (d.drawn?.[1] ?? d.y) - cam.y;
       const z = (d.drawn?.[2] ?? d.z) - cam.z;
       // A ragdoll may roll from where it died: its root bone says how far.
       const r = (c.anim.rig.reach + Math.abs(d.solved.pos[0]!) + Math.abs(d.solved.pos[2]!)) * d.size;
-      if (!cam.boxVisible(x - r, y - r, z - r, x + r, y + r, z + r)) continue;
+      if (!cam.boxVisible(x - r, y - r, z - r, x + r, y + r, z + r)) {
+        const n = this.unseenDead;
+        if (s === null || n === UNSEEN_DEAD || s.body(x, y, z, r) === 0) continue;
+        this.unseenDeadAt[n] = i;
+        this.unseenDeadOrder[n] = Math.min(Math.floor(Math.sqrt(x * x + y * y + z * z) * 256), 0xffffff) * UNSEEN_DEAD + n;
+        this.unseenDead = n + 1;
+        continue;
+      }
       const first = this.room(p, c.anim.rig.bones, 1);
       if (first < 0) return;
-      if (d.rigid) {
-        this.rotation[0] = d.qx; this.rotation[1] = d.qy; this.rotation[2] = d.qz; this.rotation[3] = d.qw;
-        orientSolved(d.solved, this.rotation, c.oriented);
-        writeBones(p.bones, first * BONE_FLOATS, c.oriented, c.anim.rig.rest, null, x, y, z, 0, d.size);
-      } else writeBones(p.bones, first * BONE_FLOATS, d.solved, c.anim.rig.rest, null, x, y, z, d.yaw, d.size);
-      this.queueCreature(c, c.wreck >= 0 ? c.wreck : c.mesh, c.wreck >= 0 ? c.wreckError : c.error, first, x, y, z, d.colors, 0, d.id, d.size, -1, false, lit ? this.layers.level(d.id, corpseWanted(d.decay), remote.tick, this.last.has(d.id)) : 0);
+      this.poseCorpse(p, d, c, first, x, y, z, false, lit ? this.layers.level(d.id, corpseWanted(d.decay), remote.tick, this.last.has(d.id)) : 0);
     }
+  }
+
+  /**
+   * Poses the dead `corpses` kept out of view, nearest first, for their shadows alone, with the bones those in view have
+   * left. Called after every body in view is posed; `cam` is the camera `corpses` was given.
+   */
+  unseenCorpses(p: FramePacket, cam: Camera): void {
+    const count = this.unseenDead;
+    this.unseenDead = 0;
+    if (count === 0 || this.shadows === null) return;
+    sortU32(this.unseenDeadOrder, count);
+    const list = this.dead.list;
+    for (let o = 0; o < count; o++) {
+      const d = list[this.unseenDeadAt[this.unseenDeadOrder[o]! % UNSEEN_DEAD]!]!;
+      const c = this.creatures[d.kind]!;
+      const first = this.room(p, c.anim.rig.bones, 1, false);
+      if (first < 0) continue;
+      this.poseCorpse(p, d, c, first, (d.drawn?.[0] ?? d.x) - cam.x, (d.drawn?.[1] ?? d.y) - cam.y, (d.drawn?.[2] ?? d.z) - cam.z, true, 0);
+    }
+  }
+
+  /** Writes a body of the dead's bones from `first`, camera-relative at (x, y, z), and queues its mesh or its wreck. */
+  private poseCorpse(p: FramePacket, d: Corpse, c: Creature, first: number, x: number, y: number, z: number, unseen: boolean, layer: number): void {
+    if (d.rigid) {
+      this.rotation[0] = d.qx; this.rotation[1] = d.qy; this.rotation[2] = d.qz; this.rotation[3] = d.qw;
+      orientSolved(d.solved, this.rotation, c.oriented);
+      writeBones(p.bones, first * BONE_FLOATS, c.oriented, c.anim.rig.rest, null, x, y, z, 0, d.size);
+    } else writeBones(p.bones, first * BONE_FLOATS, d.solved, c.anim.rig.rest, null, x, y, z, d.yaw, d.size);
+    this.queueCreature(c, c.wreck >= 0 ? c.wreck : c.mesh, c.wreck >= 0 ? c.wreckError : c.error, first, x, y, z, d.colors, 0, d.id, d.size, -1, unseen, layer);
   }
 
   /**

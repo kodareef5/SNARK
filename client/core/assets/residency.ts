@@ -18,7 +18,7 @@
 
 import type { ClipSet } from "../../../shared/anim/clip.ts";
 import { meshKnown, readPage, skeletonClips, storedBytes, type Manifest, type ManifestLevel } from "../../../shared/pack/manifest.ts";
-import { VERTEX_BYTES, type Pack } from "../../../shared/pack/pack.ts";
+import { MATERIAL_CUTOUT, VERTEX_BYTES, type Pack } from "../../../shared/pack/pack.ts";
 import { LAST_STEP, STEP0_SIZE, blockOf, pictureBytes, stepBytes, stepOf, topIn, type TextureFormat } from "../../../shared/pack/texture.ts";
 import { Rng } from "../../../shared/rng.ts";
 import type { TextureUpload } from "../render/packet.ts";
@@ -243,6 +243,8 @@ export class Residency {
   private readonly matSeen: Uint32Array;
   /** Per material: its hurt and decay layer, -1 for none. */
   private readonly matLayer: Int32Array;
+  /** Per material: 1 where it is cut out. */
+  private readonly matCut: Uint8Array;
   /**
    * Per texture: the step the card draws with and the step of the copy on its way, -1 for none, and the last step that
    * can be had, which is set lower where a step failed for good, and then `lowered`.
@@ -383,6 +385,7 @@ export class Residency {
     this.matTop = new Int8Array(materials.length);
     this.matSeen = new Uint32Array(materials.length);
     this.matLayer = new Int32Array(materials.length);
+    this.matCut = new Uint8Array(materials.length);
     materials.forEach((_, i) => this.learnMaterial(i));
     this.has = new Int8Array(textures.length).fill(-1);
     this.goal = new Int8Array(textures.length).fill(-1);
@@ -425,6 +428,7 @@ export class Residency {
     });
     const layer = m.layer ?? -1;
     this.matLayer[i] = layer;
+    this.matCut[i] = (m.flags & MATERIAL_CUTOUT) !== 0 ? 1 : 0;
   }
 
   /** What the manifest says of a mesh whose row is here, with the blob of its page where it has one. */
@@ -994,20 +998,31 @@ export class Residency {
     return bits;
   }
 
-  /** Whether a held level's cut-out sections can be drawn into a depth map without fetching: its surface is held and its materials' base colours are on the card. */
+  /** Whether a held level's cut-out sections can be drawn into a depth map without fetching: its surface is held and their materials' base colours are on the card. */
   heldCutouts(mesh: number, level: number): boolean {
-    const slot = this.first[mesh]! + level;
-    const s = this.levels + slot;
-    if (this.cap < 0 || this.can[slot] === 0 || (this.state[s] !== RESIDENT && this.inBoot[s] === 0)) return false;
-    const runs = this.runs[slot]!;
-    for (let k = 0; k < runs.length; k += 3) {
-      const t = this.matTex[runs[k]! * MAPS]!;
-      if (t >= 0 && this.has[t]! < 0) return false;
-    }
+    if (!this.heldSurface(mesh, level)) return false;
+    const runs = this.runs[this.first[mesh]! + level]!;
+    for (let k = 0; k < runs.length; k += 3) if (this.matCut[runs[k]!] === 1 && !this.heldBase(runs[k]!)) return false;
     return true;
   }
 
-  /** Keeps a held level on the card through this frame, as a draw of it does, and with `cutouts` its surface and its materials' base colours. */
+  /** Whether a held level's surface, which a cut-out section reads in a depth map, is held. */
+  heldSurface(mesh: number, level: number): boolean {
+    const slot = this.first[mesh]! + level;
+    const s = this.levels + slot;
+    return this.cap >= 0 && this.can[slot] !== 0 && (this.state[s] === RESIDENT || this.inBoot[s] === 1);
+  }
+
+  /** Whether material `m`'s base colour is on the card, or it has none. */
+  heldBase(m: number): boolean {
+    const t = this.matTex[m * MAPS]!;
+    return t < 0 || this.has[t]! >= 0;
+  }
+
+  /**
+   * Keeps a held level on the card through this frame, as a draw of it does, and with `cutouts` its surface and the base
+   * colours its cut-out sections have on the card.
+   */
   keep(mesh: number, level: number, cutouts: boolean): void {
     const slot = this.first[mesh]! + level;
     this.usable(slot);
@@ -1015,9 +1030,10 @@ export class Residency {
     this.usable(this.levels + slot);
     const runs = this.runs[slot]!;
     for (let k = 0; k < runs.length; k += 3) {
+      if (this.matCut[runs[k]!] === 0) continue;
       const t = this.matTex[runs[k]! * MAPS]!;
       const at = this.texBase + t;
-      if (t < 0 || this.seen[at] === this.frame) continue;
+      if (t < 0 || this.has[t]! < 0 || this.seen[at] === this.frame) continue;
       this.seen[at] = this.frame;
       this.urgency[at] = 0;
       this.px[t] = this.askedPx[t] = 0;

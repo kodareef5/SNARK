@@ -1,6 +1,7 @@
 // Judges every build request. The client names a frame and a slot's key, and the server works out the pose and every check from its own rows (shared/world/lattice/place.ts).
 // A door opens by becoming another kind in the same place. Locks, PINs and box contents are a record beside the row (server/fixtures.ts).
 
+import type { Holders } from "./holders.ts";
 import { STRUCT_UNITS } from "../shared/coords.ts";
 import type { StructureDef } from "../shared/content/defs.ts";
 import type { BitReader } from "../shared/net/codec.ts";
@@ -18,7 +19,7 @@ import { ROLE_FOUNDATION, ROLE_PILLAR, enemyGap, enemyGapFound, floorTop, freePo
 import { Collapse } from "../shared/world/collapse.ts";
 import { Found, GONE_FELL, GONE_TAKEN, toldHealth, type PartTable } from "../shared/world/structures.ts";
 import { Support } from "../shared/world/support.ts";
-import { ACT_REACH, NO_PIN, PIN_TRIES, PIN_WAIT_TICKS, STRUCT_DEMOLISH, STRUCT_LIGHT, STRUCT_LOCK, STRUCT_NAME, STRUCT_PICKUP, STRUCT_PIN, STRUCT_REPAIR, STRUCT_TRAVEL, STRUCT_TEK_DOOR, STRUCT_TEK_SOLID, STRUCT_UNLOCK, STRUCT_USE, cost, refundOf, repairCostOf } from "../shared/world/upkeep.ts";
+import { ACT_REACH, NO_PIN, PIN_TRIES, PIN_WAIT_TICKS, STRUCT_DEMOLISH, STRUCT_LIGHT, STRUCT_LOCK, STRUCT_NAME, STRUCT_PICKUP, STRUCT_PIN, STRUCT_REPAIR, STRUCT_TRAVEL, STRUCT_TEK_DOOR, STRUCT_SEARCH, STRUCT_TEK_SOLID, STRUCT_UNLOCK, STRUCT_USE, cost, refundOf, repairCostOf } from "../shared/world/upkeep.ts";
 import { TekPhaseWalls } from "./tek-phase-walls.ts";
 import { TekDoors } from "./tek-doors.ts";
 import { holds } from "./door-sensor.ts";
@@ -84,7 +85,7 @@ const BUILD_PLACED = event("build.placed");
 const STRUCTURE_ACT = event("structure.act");
 const STRUCTURE_GONE = event("structure.gone");
 /** What is done to a piece, as a module is told it, by STRUCT_ action. And why one is gone, by GONE_ cause. */
-const ACT_WORDS: readonly string[] = ["pickup", "demolish", "repair", "lock", "unlock", "pin", "use", "light", "name", "travel", "tekDoor", "tekSolid"];
+const ACT_WORDS: readonly string[] = ["pickup", "demolish", "repair", "lock", "unlock", "pin", "use", "light", "name", "travel", "tekDoor", "tekSolid", "search"];
 const GONE_WORDS: readonly string[] = ["taken", "destroyed", "fell"];
 
 /** A survivor who picked up or demolished a piece is owed what stood on it. `action` says which. `cache` takes what does not fit. */
@@ -411,6 +412,9 @@ export class Build {
     this.collapse.built();
   }
 
+  /** The map's things that hold loot, which a use of one goes to. The host sets it. */
+  holders: Holders | null = null;
+
   /**
    * `pin` is NO_PIN for the use button. A door opens or shuts. A box opens, or shuts if this session had it open.
    * Returns a RESULT code, or -1 if the thing cannot be used.
@@ -423,6 +427,8 @@ export class Build {
     const slot = ref & 0xffff;
     if (!t || slot >= t.high || t.kind[slot] === 0) return -1;
     const kind = t.kind[slot]!;
+    // A piece of the map that holds loot is searched, not opened as a box is.
+    if (reg.holds[kind] != null && t.owner[slot] === 0) return this.holders ? this.holders.use(c, ref) : -1;
     const opens = reg.opens[kind]!;
     if (opens === 0 && reg.structSlots[kind] === 0 && !reg.motion[kind]) return -1;
     const rec = records.byPid.get(c.pid);
@@ -567,6 +573,8 @@ export class Build {
     const t = world.structs.chunks[Math.floor(ref / 65536)];
     const slot = ref & 0xffff;
     if (!t || slot >= t.high || t.kind[slot] === 0) return false;
+    // What the map holds for anyone is nobody's to lock.
+    if (t.owner[slot] === 0 && world.reg.holds[t.kind[slot]!] != null) return true;
     if (tribes.may(records.byPid.get(c.pid), t.owner[slot]!) || !fixtures.locked(ref)) return true;
     const state = fixtures.find(ref);
     const gave = this.entered.get(c.pid);
@@ -670,6 +678,10 @@ export class Build {
       if (!mine) return RESULT_NOT_YOURS;
       if (!this.inSight(e, ref, x, y, z)) return RESULT_FAR;
       return this.phaseWalls.configure(ref, action === STRUCT_TEK_DOOR);
+    }
+    if (action === STRUCT_SEARCH) {
+      if (!this.holders) return RESULT_INVALID;
+      return this.inSight(e, ref, x, y, z) ? this.holders.start(c, ref) : RESULT_FAR;
     }
     if (action === STRUCT_USE) {
       // Every client is sent the ref and place of every piece near it, so reach alone would open a box through a wall.

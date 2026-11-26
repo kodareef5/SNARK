@@ -127,6 +127,10 @@ import { CarReturn } from "./car-return.ts";
 import { HANGARS, type HangarSite } from "../content/vehicles/hangars.ts";
 import { withSites } from "../content/supply/sites.ts";
 import { starterBook } from "../content/supply/starter.ts";
+import { withLoot } from "../content/loot/starter.ts";
+import { withSpecials } from "../content/loot/maps.ts";
+import { Loot, seal as sealLoot } from "./loot.ts";
+import { Holders } from "./holders.ts";
 import { catalogOf } from "../shared/supply/catalog.ts";
 import { SETTING as ARK_CRATES, arkCrates } from "./supply/ark.ts";
 import { AirSupport } from "./air-support.ts";
@@ -281,6 +285,8 @@ export interface Host {
   readonly corpses: Corpses;
   /** Changes to a made survivor's look: cuts, dyes and remakes (server/people/look.ts). */
   readonly relook: Relook;
+  readonly loot: Loot;
+  readonly holders: Holders;
   readonly carry: Carry;
   readonly emotes: Emotes;
   readonly feces: Feces;
@@ -691,7 +697,11 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     ents.fuel[v] = Math.fround((start.fuel ?? 1) * def.spec.fuelCapacity);
     ents.vehicleEngineCondition[v] = start.engine ?? 1; ents.vehicleRotorCondition[v] = start.rotor ?? 1;
     ents.vehicleHullCondition[v] = Math.max(.01, start.hull ?? 1); ents.vehicleFlooding[v] = 0;
-    if (start.origin) rec.extra.set(VEHICLE_ORIGIN, new TextEncoder().encode(start.origin));
+    if (start.origin) {
+      rec.extra.set(VEHICLE_ORIGIN, new TextEncoder().encode(start.origin));
+      // A found vehicle's hold is rolled when it is first opened (server/loot.ts).
+      sealLoot(rec, 0, opts.seed ?? 1, world.tick);
+    }
     if (persistence) persistence.attach(rec, e);
     records.dirty.add(rec.pid);
     items.inv(rec);
@@ -844,6 +854,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   combat.onPanelHit.on((target, panel, damage) => urban.hitPanel(target, panel, damage));
   const vehicles = new VehicleService({ world, game, records, items, survival, urban,
     may: (actor, vehicle) => urbanMay(actor, vehicle, null),
+    loot: (vehicle, by) => void loot.vehicle(vehicle, by),
     spawn: (kind, x, z, team, yaw, start) => parkVehicle(kind, x, z, team, yaw, "crafted", start),
     discard: e => { const pid = world.ents.pid[e]!; persistence?.detach(pid); creatures.remove(e); survival.forget(pid); records.delete(pid); },
   });
@@ -1526,7 +1537,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   // Supply drops (server/supply.ts). The drop book is a file beside the save, which a wipe of the world leaves; the
   // drops that are live are the save's, written in the commit that writes their capsules.
   // The starter book comes with the map's own sites and circuits (content/supply/sites.ts).
-  const supplyBook = new BookStore(opts.dbPath ? `${opts.dbPath}.supply.json` : null, world.mapId, () => withSites(starterBook(), world.mapId), say);
+  const supplyBook = new BookStore(opts.dbPath ? `${opts.dbPath}.supply.json` : null, world.mapId, () => withSpecials(withSites(starterBook(), world.mapId), world.mapId), say);
   const loadoutBook = new LoadoutStore(opts.dbPath ? `${opts.dbPath}.loadouts.json` : null, builtinLoadouts, reg, say);
   const supply = new Supply({ world, game, records, items, death, containers, progression, deadlines, bus, book: supplyBook, seed: opts.seed ?? 1, rules, say });
   /** ARK's own override of what a crate holds wins over the book, tier by tier, as an ARK operator expects. */
@@ -1537,6 +1548,14 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     for (const line of ark.passed) say(line);
   };
   recrate();
+  const loot = new Loot({ world, records, items, rules, bus, compiled: () => supply.compiled(), seed: opts.seed ?? 1 });
+  supply.sourced = (book) => loot.sourced(withLoot(book, world.mapId));
+  corpses.loot = loot;
+  const holders = new Holders({ world, game, records, items, fixtures, containers, death, deadlines, rules, loot, held: (x, z) => harvest?.held(x, z, 0) ?? false });
+  build.holders = holders;
+  combat.city.onFell = (ref) => holders.gone(ref);
+  holders.begin(persistence && !loaded!.fresh ? (persistence.store.meta("holders") as string | null) : null);
+  persistence?.sidecar("holders", holders.saved);
   supply.begin(persistence && !loaded!.fresh ? (persistence.store.meta("supply") as string | null) : null);
   persistence?.sidecar("supply", supply.saved);
   // Map events (server/mapevent/events.ts). Made before the modules, which define its kinds; begun after them.
@@ -2416,6 +2435,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     tactical,
     corpses,
     relook,
+    loot,
+    holders,
     carry,
     emotes,
     feces,

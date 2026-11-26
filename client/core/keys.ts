@@ -85,14 +85,15 @@ const USE: KeyRow = {
   keys: ["KeyE"],
   touch: { KeyE: T_USE },
   pad: { KeyE: 3 },
-  guide: [{ code: "KeyE", group: G_WORLD, title: "Use / ride", detail: "Tap to interact, or to get in or out of a seat or saddle. Hold on a structure to open its actions." }],
+  guide: [{ code: "KeyE", group: G_WORLD, title: "Use / ride", detail: "Tap to interact, or to get in or out of a seat or saddle. Hold on a structure to open its actions, or on a bin or a mailbox to search it." }],
   press(c, _code, down, repeat) {
     if (down && !repeat) {
       c.seatNotice.pressed(c.seatPress());
       c.useDownAt = c.nowMs;
-      c.useKept = c.aimed >= 0;
+      c.useKept = c.aimed >= 0 || c.searchAimed >= 0;
     } else if (!down) {
-      if (c.useKept && c.useDownAt >= 0) c.usePulse = 4;
+      // A tap on a thing that is searched by a hold is no press: the hold just ends.
+      if (c.useKept && c.useDownAt >= 0 && c.searchAimed < 0) c.usePulse = 4;
       c.useDownAt = -1;
     }
     if (!c.useKept) return undefined;
@@ -137,12 +138,12 @@ const DOOR_OR_THROW: KeyRow = {
   },
 };
 
-// F opens the occupied boat, the hull being aimed at, or a tribe creature's inventory.
+// F opens the vehicle driven, the hull or the car being aimed at, or a tribe creature's inventory.
 const OPEN: KeyRow = {
   name: "open",
   keys: ["KeyF"],
   pad: { KeyF: 2 },
-  guide: [{ code: "KeyF", group: G_WORLD, title: "Creature inventory", detail: "Opens the owned creature you are riding or looking at." }],
+  guide: [{ code: "KeyF", group: G_WORLD, title: "Inventory or hold", detail: "Opens the owned creature you are riding or looking at, or the hold of the car or boat you are in or beside." }],
   press(c, _code, down, repeat) {
     if (!down || repeat) return true;
     const s = c.session, r = c.remote, ids = r.id.subarray(0, r.count);
@@ -151,7 +152,7 @@ const OPEN: KeyRow = {
       const at = ids.indexOf(s.own.seat - 1);
       if (at >= 0 && r.gen[at] === s.own.seatGen && c.reg.vehicle[r.kind[at]!]?.movement === "boat") which = r.id[at]!;
     }
-    if (which < 0) which = c.aimedBoat >= 0 ? c.aimedBoat : c.lookedAt;
+    if (which < 0) which = c.aimedBoat >= 0 ? c.aimedBoat : c.aimedCar >= 0 ? c.aimedCar : c.lookedAt;
     if (which >= 0) {
       const at = ids.indexOf(which);
       const vehicle = at >= 0 ? c.reg.vehicle[r.kind[at]!] : undefined;

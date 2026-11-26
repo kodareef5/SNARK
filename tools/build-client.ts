@@ -60,8 +60,13 @@ function stressCards(): TextureSource[] {
  * A file's Brotli copy. The best takes a second or more of every build. `quick` is a tenth larger and takes a few
  * hundredths of that, for a rebuild while developing.
  */
-export function brotli(bytes: Uint8Array, quick: boolean): Uint8Array {
-  return quick ? brotliCompressSync(bytes, { params: { [constants.BROTLI_PARAM_QUALITY]: 9 } }) : brotliCompressSync(bytes);
+export function brotli(bytes: Uint8Array, quick: boolean, binary = false): Uint8Array {
+  if (quick) return brotliCompressSync(bytes, { params: { [constants.BROTLI_PARAM_QUALITY]: 9 } });
+  const standard = brotliCompressSync(bytes);
+  if (!binary) return standard;
+  // Font mode also compresses the numeric tables in the first frame's binary files.
+  const font = brotliCompressSync(bytes, { params: { [constants.BROTLI_PARAM_MODE]: constants.BROTLI_MODE_FONT } });
+  return font.length < standard.length ? font : standard;
 }
 
 export { withoutNotes };
@@ -266,7 +271,10 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
     .replace("FETCHED", JSON.stringify(["map.json", "assets/manifest.json", boot, skyName, contentName]));
   writeFileSync(join(dist, "index.html"), pageWithoutNotes(html));
   const fetchedWhole = ["index.html", "assets/manifest.json", boot, skyName, contentName, ...(rows ? [`assets/${manifest.soundRows}`] : []), ...scripts];
-  for (const name of fetchedWhole) writeFileSync(join(dist, `${name}.br`), brotli(readFileSync(join(dist, name)), opts.quick ?? false));
+  for (const name of fetchedWhole) {
+    const binary = name === boot || name === skyName;
+    writeFileSync(join(dist, `${name}.br`), brotli(readFileSync(join(dist, name)), opts.quick ?? false, binary));
+  }
   await buildEntry(dist);
   // The commit the client was built from and whether the tree had changes, which a bug report names (server/reports.ts).
   writeFileSync(join(dist, "build.json"), JSON.stringify({ ...checkoutBuild(root), at: new Date().toISOString(), wire }) + "\n");
