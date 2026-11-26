@@ -33,7 +33,7 @@ Item art
 - Radio and GPS screens stay legible up close. Saddle leather, straps and stitching have clearer finishes, and dropped gear keeps its colours as it switches to simpler models at a distance.
 
 Joining a world
-- Hosts can offer sign-in with Discord and limit entry to members of a Discord server or role. On those worlds, signing in on a second device brings up your survivors. Browser-key sign-in remains the default.
+- Hosts can require Discord sign-in and limit entry to members of a Discord server or role. On those worlds, signing in on a second device brings up your survivors. Browser-key sign-in remains the default.
 
 Touch controls
 - Tap or pull the left wheel for menus: turn it under your thumb and lift to open what it stops on. The right fan opens each family of actions beside it. Slide along the equipment shelf and lift to equip. Tap the vital signs for health and experience, or the radio beneath them to chat.
