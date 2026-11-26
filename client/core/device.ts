@@ -533,8 +533,9 @@ export interface DeviceReport {
     firstFrameMs: number;
     fullDetailMs: number;
     settled: boolean;
-    /** The page and what it fetched itself; the asset worker's parts from the network and from its disk cache. */
+    /** The page and what it fetched itself, from the network and from the browser's cache; the asset worker's parts the same. */
     pageBytes: number;
+    pageCached?: number;
     assetBytes: number;
     diskBytes: number;
     /** Asset requests that failed by then, how, and uploads the graphics card refused. */
@@ -906,8 +907,9 @@ export interface DeviceSide {
   /** When the game began to load, on the clock of `now`. */
   bootAt: number;
   now(): number;
-  /** Bytes the page and what it fetched itself have taken so far. */
+  /** Bytes the page and what it fetched itself have taken so far over the network, and from the browser's cache. */
   pageBytes(): number;
+  pageCached(): number;
   /** The server's hashes of deviceScenarios, by name. */
   expected: Record<string, string> | null;
   /** Bodies added on the page, which the run sets the number of. */
@@ -1129,7 +1131,7 @@ export class DeviceRun {
     if (!this.report.load) {
       this.apply(bare(tierOf(DEFAULT_TIER), 0));
       this.report.stage = "loading";
-      this.report.load = { firstFrameMs: tenth(now - side.bootAt), fullDetailMs: 0, settled: false, pageBytes: 0, assetBytes: 0, diskBytes: 0, failed: 0, failedHow: "", refused: 0, cache: "" };
+      this.report.load = { firstFrameMs: tenth(now - side.bootAt), fullDetailMs: 0, settled: false, pageBytes: 0, pageCached: 0, assetBytes: 0, diskBytes: 0, failed: 0, failedHow: "", refused: 0, cache: "" };
       this.at = now;
       return true;
     }
@@ -1139,6 +1141,7 @@ export class DeviceRun {
     load.settled = this.still >= STILL;
     load.fullDetailMs = tenth((load.settled ? this.stillSince : now) - side.bootAt);
     load.pageBytes = side.pageBytes();
+    load.pageCached = side.pageCached();
     load.assetBytes = r.stats.fetched;
     load.diskBytes = r.stats.cached;
     const f = this.failures();
@@ -2201,7 +2204,9 @@ export class DeviceProbe {
       maxTexture: gpu.maxTexture,
       bootAt: this.bootAt,
       now: () => b.now(),
-      pageBytes: () => b.entries().reduce((sum, e) => sum + (e.transferSize || e.encodedBodySize || 0), 0),
+      pageBytes: () => b.entries().reduce((sum, e) => sum + (e.transferSize ?? 0), 0),
+      // A cache hit transfers nothing.
+      pageCached: () => b.entries().reduce((sum, e) => sum + (e.transferSize ? 0 : (e.encodedBodySize ?? 0)), 0),
       expected: this.expected,
       bodies: new BodyCopies(side.app.session, side.hf, side.reg),
       base: (n, box) => this.within(() => b.fetch(`${box ? "box" : "base"}/${n}`, "").then((res) => (res.ok ? (res.json() as Promise<{ pieces: number }>) : null)).then((r) => r?.pieces ?? null), 20000, null),
