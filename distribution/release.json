@@ -2,7 +2,7 @@
   "repository": "kodareef5/SNARK",
   "art": {
     "release": "art",
-    "id": "e7851a45842f31aa",
+    "id": "89efc8fa215017dc",
     "files": [
       {"name": "core-creatures-allosaur", "file": "core-creatures-allosaur.5eb2682fdf0a.tar.zst", "bytes": 2833562, "sha256": "5eb2682fdf0abb902fa1807673cf9dc46c3111e728eda23299b3a910d74129e2"},
       {"name": "core-creatures-ankylo", "file": "core-creatures-ankylo.d19e9025be7c.tar.zst", "bytes": 1901178, "sha256": "d19e9025be7ccaeb84f4bf80f6554f9e9a6a2971b062a6666ab9f50e8901146b"},
@@ -62,7 +62,7 @@
       {"name": "core-items-frond-glider", "file": "core-items-frond-glider.0bf8f2a357f9.tar.zst", "bytes": 90313, "sha256": "0bf8f2a357f92691e34957703356e4f4e17fd6ee7c0b5a7a5f9151fbec2383cd"},
       {"name": "core-items-hand-tools", "file": "core-items-hand-tools.28d1291a4907.tar.zst", "bytes": 2508049, "sha256": "28d1291a49079383c29495f0a9f70dc812b559f350c717c509ebc4dc5b300874"},
       {"name": "core-items-instruments", "file": "core-items-instruments.bf09a5ee5fc2.tar.zst", "bytes": 12917904, "sha256": "bf09a5ee5fc213346fb726ed3f16ebc7ebafd5ef28f475b394abddb0a63f5438"},
-      {"name": "core-items-projectile-drops", "file": "core-items-projectile-drops.b67750267a79.tar.zst", "bytes": 278627, "sha256": "b67750267a79ef5d376251a60191e4cfaa64d5e2fbc1bec96c0bb14987527afb"},
+      {"name": "core-items-projectile-drops", "file": "core-items-projectile-drops.d1b960f17da3.tar.zst", "bytes": 278173, "sha256": "d1b960f17da3432c658403c2cb2ea04cec9c18777d20d05b469096ba171d388b"},
       {"name": "core-items-resource-minerals", "file": "core-items-resource-minerals.db37d6d137e4.tar.zst", "bytes": 658476, "sha256": "db37d6d137e43171bfe31e48ab9f838e4144961089a2210658e00e2bb20f4557"},
       {"name": "core-items-resource-organics", "file": "core-items-resource-organics.190dae046504.tar.zst", "bytes": 1030003, "sha256": "190dae0465044f09c03a83aeb7f271adcc248e1f6892acff5351b87d14c6d507"},
       {"name": "core-items-resource-supplies", "file": "core-items-resource-supplies.dc3d21486e74.tar.zst", "bytes": 904621, "sha256": "dc3d21486e7461c4fa870ed1ed72d57c316eed2f1ec55796e92dc472dc5a1d06"},
@@ -188,7 +188,7 @@
       {"name": "core-sky-dome", "file": "core-sky-dome.a1dce8fd704a.tar.zst", "bytes": 3738583, "sha256": "a1dce8fd704adca2b3bac33de424528d6f5b597ebb0c6d0412d472a8ccbf1923"},
       {"name": "core-sky-keys", "file": "core-sky-keys.473438c4c4ac.tar.zst", "bytes": 27082446, "sha256": "473438c4c4ac0685813561c2444292b974babaf163416e9d9bc51fd107054deb"},
       {"name": "core-sky-moon", "file": "core-sky-moon.1e753a0824fe.tar.zst", "bytes": 6678172, "sha256": "1e753a0824feead2ba46ece457cd76929440bc641942effc7d4fe7d64d6d466a"},
-      {"name": "core-structures-camp", "file": "core-structures-camp.ced878a6d93a.tar.zst", "bytes": 762812, "sha256": "ced878a6d93ad0b44823ae985cc184b45f44594aa28b4a8844169c335838dedb"},
+      {"name": "core-structures-camp", "file": "core-structures-camp.4ae5ce82e2d1.tar.zst", "bytes": 749293, "sha256": "4ae5ce82e2d1913d384ba20d6a2515b0be5ef5dfafc3e9982987c6e1ddd77130"},
       {"name": "core-structures-metal", "file": "core-structures-metal.1e5da85428e6.tar.zst", "bytes": 160383, "sha256": "1e5da85428e6fab09adb246d3f583a499a74132102ca87d235f595d98badbbbe"},
       {"name": "core-structures-stations", "file": "core-structures-stations.410055be0c5a.tar.zst", "bytes": 15740402, "sha256": "410055be0c5a211be6a8fd74e95b6b95a6cc9a5c501e03ba229748105d466ed8"},
       {"name": "core-structures-stone", "file": "core-structures-stone.3ddd9a012f0e.tar.zst", "bytes": 138689751, "sha256": "3ddd9a012f0eb482a68b80b5a348d1b7747a094036c4c2c7820763ac8b344a3b"},
