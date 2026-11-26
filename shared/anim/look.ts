@@ -270,7 +270,7 @@ export function lookScales(look: Uint8Array, out: Float32Array, rest: ArrayLike<
 }
 
 /** How far a limb's flesh may move off its hit capsule, as a share of the capsule's radius, from what the look widens and how far it moves the joints. */
-export const LIMB_SLACK = 0.25;
+export const LIMB_SLACK = 0.22;
 /** A joint slid along its own length moves its flesh along its capsule, so the slide counts for this much. */
 const SLIDE = 0.3;
 /** Each bone's hit capsule: its own, or its nearest ancestor's. */
