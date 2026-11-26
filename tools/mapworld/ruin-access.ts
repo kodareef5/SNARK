@@ -18,6 +18,29 @@ export const APPROACH_DEPTH = 2;
 /** The height a bridge's deck point digs the ground down to, a sample round it, once every building is planned (ruins.ts). */
 export const deckCeiling = (bridge: Pick<BridgeRecord, "kind">, d: DeckPoint): number => d.y - (bridge.kind === "road_bridge" ? .02 : .4);
 
+/**
+ * How far a way to a door keeps from every other building's outline where it can: the clearance's reach beside a way,
+ * which would take a wall standing on that outline (ruin-clearance.ts).
+ */
+export const NEIGHBOUR_CLEAR = 0.5;
+
+/** Metres from point (px, pz) to the segment a to b. */
+function toSegment(px: number, pz: number, ax: number, az: number, bx: number, bz: number): number {
+  const ex = bx - ax, ez = bz - az, t = Math.max(0, Math.min(1, ((px - ax) * ex + (pz - az) * ez) / (ex * ex + ez * ez || 1)));
+  return Math.hypot(px - ax - ex * t, pz - az - ez * t);
+}
+
+/** Whether the way from `a` to `b` comes within `within` metres of an outline's rings, or crosses one. */
+export function hugs(a: { x: number; z: number }, b: { x: number; z: number }, rings: readonly (readonly number[])[], within = NEIGHBOUR_CLEAR): boolean {
+  const turn = (px: number, pz: number, qx: number, qz: number, rx: number, rz: number): number => Math.sign((qx - px) * (rz - pz) - (qz - pz) * (rx - px));
+  for (const ring of rings) for (let i = 2; i < ring.length; i += 2) {
+    const [cx, cz, dx, dz] = [ring[i - 2]!, ring[i - 1]!, ring[i]!, ring[i + 1]!];
+    if (turn(a.x, a.z, b.x, b.z, cx, cz) !== turn(a.x, a.z, b.x, b.z, dx, dz) && turn(cx, cz, dx, dz, a.x, a.z) !== turn(cx, cz, dx, dz, b.x, b.z)) return true;
+    if (Math.min(toSegment(a.x, a.z, cx, cz, dx, dz), toSegment(b.x, b.z, cx, cz, dx, dz), toSegment(cx, cz, a.x, a.z, b.x, b.z), toSegment(dx, dz, a.x, a.z, b.x, b.z)) < within) return true;
+  }
+  return false;
+}
+
 export interface Approach { street: { x: number; y: number; z: number }; door: { x: number; y: number; z: number }; core: { x: number; y: number; z: number }; ramp: number; }
 /**
  * Plans each door's approach from the street. `bridges` are dug down under their decks after every building is planned,
@@ -89,6 +112,13 @@ export function accessPlanner(site: Site, infrastructure: readonly StaticPiece[]
       }
       return reservedHere;
     };
+    // Each neighbour's outline in lattice metres, as its points' x and z, worked out when a way first comes by it.
+    const outlines = new Map<number, number[][]>();
+    const outlineOf = (o: number): number[][] => {
+      let rings = outlines.get(o);
+      if (!rings) outlines.set(o, (rings = site.footprints[o]!.building.rings.map((ring) => ring.flatMap(([e, n]) => site.toLattice(e!, n!)))));
+      return rings;
+    };
     for (const entry of m.entries) {
       const insideLength = Math.hypot(entry.x - entry.coreX, entry.z - entry.coreZ);
       if (Array.from({ length: Math.ceil(insideLength) + 1 }, (_, i) => i / Math.ceil(insideLength)).some((t) => obstructed(entry.x + (entry.coreX - entry.x) * t, entry.z + (entry.coreZ - entry.z) * t, m.base))) continue;
@@ -103,23 +133,32 @@ export function accessPlanner(site: Site, infrastructure: readonly StaticPiece[]
       let shallowest = null as { street: { x: number; z: number }; ramp: number; depth: number } | null;
       // Which streets passed the squares beside their way with a margin: with none they pass them too, then fail as before.
       const besideClear = new Uint8Array(nearest.length);
-      const tries = (p: { x: number; z: number }, len: number, margin: number, j: number): boolean => {
+      const tries = (p: { x: number; z: number }, len: number, margin: number, j: number, off = NEIGHBOUR_CLEAR): boolean => {
         if (margin === 0 && besideClear[j]) return false;
         const groundY = groundAt(p.x, p.z); const y = streetLevel(groundY, m.base);
         if (len > 112 || len < 4 || y < .1 || Math.abs(y - m.base) / len > .12) return false;
         let boundary = len;
         // With no margin the squares beside are the square itself.
         const beside = margin > 0 ? [-margin, 0, margin, 0, 0, -margin, 0, margin] : [];
+        // The buildings whose ground lies within two samples to either side of the way.
+        const [sideX, sideZ] = [-(entry.z - p.z) / len * 1.5, (entry.x - p.x) / len * 1.5];
+        const neighbours = new Set<number>();
         for (let s = 0; s <= len; s += .25) {
           const x = p.x + (entry.x - p.x) * s / len; const z = p.z + (entry.z - p.z) * s / len;
           const other = heaps.owner[at(x, z)];
           if (other !== undefined && other >= 0 && other !== owner) return false;
+          for (const side of [-2, -1, 1, 2]) {
+            const near = heaps.owner[at(x + sideX * side, z + sideZ * side)];
+            if (near !== undefined && near >= 0 && near !== owner) neighbours.add(near);
+          }
           for (let i = 0; i < beside.length; i += 2) {
             const next = heaps.owner[at(x + beside[i]!, z + beside[i + 1]!)];
             if (next !== undefined && next >= 0 && next !== owner) return false;
           }
           if (other === owner) boundary = Math.min(boundary, s);
         }
+        // A way along a neighbour's wall would be cleared through it (ruin-clearance.ts): it keeps `off` every other outline.
+        for (const o of neighbours) if (hugs(p, entry, outlineOf(o), off)) return false;
         besideClear[j] = 1;
         ramp = Math.max(.05, (boundary - 3) / len);
         if (Math.abs(y - m.base) > .4) ramp = Math.floor(len * ramp / 4) * 4 / len;
@@ -146,8 +185,9 @@ export function accessPlanner(site: Site, infrastructure: readonly StaticPiece[]
         return true;
       };
       let found: { street: { x: number; z: number } } | undefined;
-      for (const margin of [4, 0]) {
-        for (let j = 0; j < nearest.length && !found; j++) if (tries(nearest[j]!.p, nearest[j]!.len, margin, j)) found = { street: nearest[j]!.p };
+      // Last, a way that only keeps from crossing a neighbour's outline: given up later if a wall does stand in it.
+      for (const [margin, off] of [[4, NEIGHBOUR_CLEAR], [0, NEIGHBOUR_CLEAR], [0, 0]] as const) {
+        for (let j = 0; j < nearest.length && !found; j++) if (tries(nearest[j]!.p, nearest[j]!.len, margin, j, off)) found = { street: nearest[j]!.p };
       }
       if (!found && shallowest) ramp = shallowest.ramp;
       const street = found?.street ?? shallowest?.street;

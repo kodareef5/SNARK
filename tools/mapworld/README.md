@@ -337,9 +337,11 @@ A door's approach runs from the nearest street, walk or plaza sample that passes
 (`ruin-access.ts`), graded 5 m either side to its level. Of those that pass, it
 takes the first that keeps within 2 m of the ground it crosses (`APPROACH_DEPTH`),
 since deeper leaves a trench or a bank no survivor climbs; where none does, the
-one that keeps nearest it, so a door keeps its way in. A way keeps 1 m off every
-other building's outline (`NEIGHBOUR_CLEAR`): along a wall it would be cleared
-through that wall, and a door with no other way has none. It is planned on the
+one that keeps nearest it, so a door keeps its way in. A way keeps half a metre
+off every other building's outline where it can (`NEIGHBOUR_CLEAR`, the
+clearance's reach beside a way), and never crosses one. A way that a neighbour's
+wall, fin or pier still stands in is given up before the clearance, with the
+slabs laid for it: cleared, it would cut that building open. It is planned on the
 ground as the bridges' decks leave it, which dig the ground under them out once
 the buildings are planned: beside a deck it starts at the dug level, and it never
 runs over ground dug from under it.
