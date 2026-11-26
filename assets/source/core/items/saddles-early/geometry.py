@@ -7,7 +7,7 @@ import sys
 import bpy
 from mathutils import Vector
 
-from surfaces import CLEAN_END, CLEAN_START, SEAM_MARGIN, SEAM_START, SWATCHES
+from surfaces import CLEAN_GUTTER, CLEAN_START, SEAM_MARGIN, SEAM_START, SWATCHES
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from resource_uv import loft_uv, planar_uv
@@ -42,12 +42,13 @@ def border_of(rows, columns):
             + [(j, columns) for j in range(rows - 2, 0, -1)])
 
 
-def clean_centers(stations):
+def clean_centers(stations, span):
     centers = []
+    width = span - CLEAN_START - CLEAN_GUTTER
     start = 0
     while start < len(stations) - 1:
         end = start + 1
-        while end < len(stations) - 1 and abs(stations[end + 1] - stations[start]) <= CLEAN_END - CLEAN_START:
+        while end < len(stations) - 1 and abs(stations[end + 1] - stations[start]) <= width:
             end += 1
         centers.extend([(stations[start] + stations[end]) / 2] * (end - start))
         start = end
@@ -81,13 +82,14 @@ class Tack:
             chart = planar_uv(vertices, origin=origin)
         swatch = SWATCHES[surface]
         if swatch.sewn and not seam:
+            end = swatch.span - CLEAN_GUTTER
             u, v = zip(*chart)
-            if max(v) - min(v) > CLEAN_END - CLEAN_START:
+            if max(v) - min(v) > end - CLEAN_START:
                 chart = [(-y, x) for x, y in chart]
                 v = u
                 v_center = None
             v_center = (min(v) + max(v)) / 2 if v_center is None else v_center
-            offset = (CLEAN_START + CLEAN_END) / 2 - v_center
+            offset = (CLEAN_START + end) / 2 - v_center
             chart = [(u, v + offset) for u, v in chart]
         self.uv.append([(u / swatch.span, v / swatch.span) for u, v in chart])
 
@@ -97,7 +99,11 @@ class Tack:
         self.points.extend(point for ring in rings for point in ring)
         charts = loft_uv([*rings, rings[0]] if closed else rings) if self.textured else []
         rows = len(rings) if closed else len(rings) - 1
-        centers = clean_centers([chart[0][0][1] for chart in charts] + [charts[-1][0][2][1]]) if charts else []
+        swatch = SWATCHES[self.aliases.get(surface, surface)]
+        centers = []
+        if charts and swatch.sewn:
+            stations = [chart[0][0][1] for chart in charts] + [charts[-1][0][2][1]]
+            centers = clean_centers(stations, swatch.span)
 
         for row in range(rows):
             low = start + row * count
@@ -105,7 +111,7 @@ class Tack:
             for index in range(count):
                 step = (index + 1) % count
                 chart = charts[row][index] if self.textured else None
-                v_center = centers[row] if self.textured else None
+                v_center = centers[row] if centers else None
                 self.face((low + index, low + step, high + step, high + index), surface, chart, v_center=v_center)
         if not closed:
             self.face(tuple(reversed(range(start, start + count))), surface, smooth=False)
@@ -135,7 +141,7 @@ class Tack:
         self.shell(rings, surface, closed)
 
     def pad(self, rows, surface, thickness, *, rim=None, sewn=False, bow=0.0, lip=0.0,
-            side_surface=None, nudge=0.0):
+            side_surface=None, nudge=0.0, rim_sides=6):
         """Each station gives z, half width, crown height, and edge height."""
         if self.level == 2:
             rows = [rows[i] for i in sorted({0, 1, len(rows) // 2, len(rows) - 2, len(rows) - 1})]
@@ -166,7 +172,8 @@ class Tack:
             self.seam(top, cols, len(rows), ring, outline, surface)
 
         stations = [z for z, *_ in rows]
-        centers = (clean_centers([-z for z in stations]), clean_centers(stations))
+        span = SWATCHES[self.aliases.get(surface, surface)].span
+        centers = (clean_centers([-z for z in stations], span), clean_centers(stations, span))
         for layer, start in enumerate((top, bottom)):
             for j in range(len(rows) - 1):
                 for i in range(cols):
@@ -185,7 +192,7 @@ class Tack:
             self.face((b_top, a_top, bottom + a, bottom + b), side_surface or surface, smooth=False)
         if rim and self.textured:
             self.sweep([point - Y * thickness * 0.18 for point in outline], side_surface or surface,
-                       rim, guide=Y, sides=(6, 4)[self.level], cuts=0, closed=True)
+                       rim, guide=Y, sides=(rim_sides, 4)[self.level], cuts=0, closed=True)
 
     def seam(self, top, cols, rows, ring, outline, surface):
         outer = len(self.points)

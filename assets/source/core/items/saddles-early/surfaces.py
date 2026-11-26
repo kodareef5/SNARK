@@ -12,10 +12,10 @@ class Swatch(NamedTuple):
 
 
 SWATCHES = {
-    "trail": Swatch("leather", (128, 83, 52), 256, 0.36, True),
-    "russet": Swatch("leather", (128, 72, 40), 256, 0.36, True),
-    "oxblood": Swatch("leather", (100, 55, 56), 256, 0.36, True),
-    "chestnut": Swatch("leather", (99, 60, 38), 256, 0.36, True),
+    "trail": Swatch("leather", (128, 83, 52), 128, 0.22, True),
+    "russet": Swatch("leather", (128, 72, 40), 128, 0.22, True),
+    "oxblood": Swatch("leather", (100, 55, 56), 128, 0.22, True),
+    "chestnut": Swatch("leather", (99, 60, 38), 128, 0.22, True),
     "trail_weave": Swatch("weave", (119, 99, 69), 256, 0.36, True),
     "olive": Swatch("weave", (77, 91, 72), 256, 0.36, True),
     "rawhide": Swatch("suede", (135, 99, 58), 256, 0.36, True),
@@ -30,4 +30,4 @@ SEAM_START = 0.014
 SEAM_LINE = 0.032
 SEAM_MARGIN = 0.027
 CLEAN_START = 0.052
-CLEAN_END = 0.352
+CLEAN_GUTTER = 0.008

@@ -21,7 +21,7 @@ def grain(rng, shape, across, along):
 
 
 def stitches(x, y, span, seed):
-    pitch = span / 12
+    pitch = span / round(span / 0.030)
     along = (x + pitch / 2) % pitch - pitch / 2
     waviness = 0.0006 * np.sin(tau * (3 * x / span + seed))
     across = y - SEAM_LINE - waviness
@@ -123,7 +123,14 @@ def field(swatch, seed):
 
 if __name__ == "__main__":
     DEST.mkdir(exist_ok=True)
+    seeds = {}
+    written = set()
     for index, (name, swatch) in enumerate(SWATCHES.items()):
-        for kind, pixels in field(swatch, 261126 + 11 * index).items():
-            data = np.uint8(np.clip(np.rint(pixels), 0, 255))
-            Image.fromarray(data).save(DEST / f"{name}_{kind}.png")
+        seed = seeds.setdefault(swatch.grain, 261126 + 11 * index)
+        for kind, pixels in field(swatch, seed).items():
+            stem = name if kind == "base" else swatch.grain
+            path = DEST / f"{stem}_{kind}.png"
+            if path not in written:
+                data = np.uint8(np.clip(np.rint(pixels), 0, 255))
+                Image.fromarray(data).save(path)
+                written.add(path)

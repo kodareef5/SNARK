@@ -8,15 +8,24 @@ const views = {
   saddle_carbonemys: { around: 0.59, above: 0.91, roll: -0.07 },
 };
 
-const sewn = ["trail", "russet", "oxblood", "chestnut", "trail_weave", "olive", "rawhide"];
-const rigid = ["wood", "dark_wood", "iron", "brass", "chitin"];
-const materials = Object.fromEntries([...sewn, ...rigid].map((name) => [name, {
+const swatches = [
+  { relief: "leather", tiles: 0.22, colors: ["trail", "russet", "oxblood", "chestnut"] },
+  { relief: "weave", tiles: 0.36, colors: ["trail_weave", "olive"] },
+  { relief: "suede", tiles: 0.36, colors: ["rawhide"], tops: { normal: 128 } },
+  { relief: "wood", tiles: 0.16, colors: ["wood", "dark_wood"] },
+  { relief: "iron", tiles: 0.16, colors: ["iron"] },
+  { relief: "brass", tiles: 0.16, colors: ["brass"] },
+  { relief: "chitin", tiles: 0.16, colors: ["chitin"] },
+];
+
+const materials = Object.fromEntries(swatches.flatMap(({ relief, tiles, colors, tops }) => colors.map((name) => [name, {
   base: `tex/${name}_base.png`,
-  normal: `tex/${name}_normal.png`,
-  packed: `tex/${name}_orm.png`,
-  height: `tex/${name}_height.png`,
-  tiles: sewn.includes(name) ? 0.36 : 0.16,
-} satisfies MaterialSpec]));
+  normal: `tex/${relief}_normal.png`,
+  packed: `tex/${relief}_orm.png`,
+  height: `tex/${relief}_height.png`,
+  tiles,
+  tops,
+} satisfies MaterialSpec])));
 
 export default {
   kind: "pieces",
