@@ -11,7 +11,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { DOCK, DOCK_KINDS, MOORED_PAINTS, mooredKind, type DockPart } from "../../content/docks.ts";
+import { DOCK, DOCK_KINDS, MOORED_PAINTS, burningKind, mooredKind, type DockPart } from "../../content/docks.ts";
 import { formMesh, hulkOf, waterlineOf, type HarbourWreckForm, type Waterline } from "../../content/vehicles/harbour-wrecks.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { hashString } from "../../shared/hash.ts";
@@ -59,6 +59,8 @@ const AWASH: readonly [number, number] = [0.2, 0.45];
 
 export interface MooredRules {
   fill: number; found: number; sternTo: number; wrecked: number;
+  /** `share` of the hulls left to rot burn where they lie, `most` of them a marina. */
+  burning?: { share: number; most: number };
   perChunk: { boats: number; meshes: number };
   piers: { share: number; most: number; longest: number };
   anchored: { share: number; least: number; most: number; out: [number, number]; depth: [number, number]; heading: number; swing: number };
@@ -237,7 +239,7 @@ export function layMarinas(sites: readonly BoatSite[], docks: ReadonlyMap<string
 
   const water = (x: number, z: number): number => ground.waterAt(x, z);
   const depth = (x: number, z: number): number => ground.waterAt(x, z) - ground.groundAt(x, z);
-  const boatsIn = new Map<number, number>(), meshesIn = new Map<number, Set<string>>();
+  const boatsIn = new Map<number, number>(), meshesIn = new Map<number, Set<string>>(), burningIn = new Map<string, number>();
   let waterlines: ReadonlyMap<string, Waterline> | undefined;
   /** Whether a moored static of this mesh may be set down in the chunk at a point: its room, and the caps on boats and meshes. */
   const chunkTakes = (x: number, z: number, mesh: string): boolean => {
@@ -305,7 +307,10 @@ export function layMarinas(sites: readonly BoatSite[], docks: ReadonlyMap<string
       if (how !== "anchored" && floats(vessel, x, z, turned, 0) && !boxes.hits(hull(vessel, x, z, turned, .3), 0, tag === null ? undefined : (t) => t === tag)) lies = turned;
       sunk = Math.max(0, Math.min((def.spec.height - def.spec.draft) * (AWASH[0] + ((state >>> 16) % 100) / 100 * (AWASH[1] - AWASH[0])), depth(x, z) - def.spec.draft - .05));
     }
-    put({ kind: mooredKind(vessel, paint), x, y: boatRestY(def.spec, water(x, z)) - sunk, z, yaw: lies }, vessel);
+    // A few burn, afloat at their own height so the fire stands on a deck.
+    const burns = M.burning !== undefined && hashString(id, 1363) / 4294967296 < M.burning.share && (burningIn.get(site.id) ?? 0) < M.burning.most && reg.index.has(burningKind(vessel));
+    if (burns) burningIn.set(site.id, (burningIn.get(site.id) ?? 0) + 1);
+    put({ kind: burns ? burningKind(vessel) : mooredKind(vessel, paint), x, y: boatRestY(def.spec, water(x, z)) - (burns ? 0 : sunk), z, yaw: lies }, vessel);
     boxes.add(hull(vessel, x, z, lies, .2), `boat:${id}`);
     out.slips.push({ id, site: site.id, district, vessel, x, z, yaw, found: false, how, dock, run });
     return true;

@@ -1924,7 +1924,7 @@
       "gap": 0.45, "fairway": 0.75
     },
     "moored": {
-      "fill": 0.7, "found": 0.12, "sternTo": 0.15, "wrecked": 0.25,
+      "fill": 0.7, "found": 0.12, "sternTo": 0.15, "wrecked": 0.25, "burning": { "share": 0.05, "most": 2 },
       "perChunk": { "boats": 22, "meshes": 5 },
       "piers": { "share": 0.45, "most": 2, "longest": 13 },
       "anchored": { "share": 0.6, "least": 2, "most": 5, "out": [90, 320], "depth": [2, 9], "heading": 248, "swing": 15 }

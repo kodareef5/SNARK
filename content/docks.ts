@@ -119,4 +119,9 @@ const MOORED: readonly StructureDef[] = [{ id: BOAT_SPECIES.id, shape: LAUNCH_SH
     coarse: MOORED_COARSE,
   })));
 
-export const DOCKS: readonly Def[] = [...SHAPES, ...STATICS, LAUNCH_SHAPE, ...MOORED];
+/** The static of a vessel burning at its mooring: its mesh charred, with fire on it (StructureDef.ablaze). */
+export const burningKind = (vessel: string): string => `${vessel.replace("core:", "core:zzzzhull_")}_burning`;
+const CHARRED = DEAD_DYES[0]!;
+const BURNING: readonly StructureDef[] = MOORED.filter((m) => m.color === CHARRED.paint).map((m): StructureDef => ({ ...m, id: burningKind(m.mesh as string), ablaze: true }));
+
+export const DOCKS: readonly Def[] = [...SHAPES, ...STATICS, LAUNCH_SHAPE, ...MOORED, ...BURNING];

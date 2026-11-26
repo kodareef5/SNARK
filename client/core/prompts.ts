@@ -58,7 +58,7 @@ const DEAD_BOAT_WORDS = ["", "derelict", "wreck", "burning wreck"] as const;
 export function deadBoatWord(reg: Registry, kind: number): string {
   let words = deadBoats.get(reg);
   if (!words) {
-    words = Uint8Array.from(reg.ids, (id, k) => (isMoored(id) ? 1 : id.startsWith("core:hulk_") ? 2 : 0));
+    words = Uint8Array.from(reg.ids, (id, k) => (reg.ablaze[k] === 1 ? 3 : isMoored(id) ? 1 : id.startsWith("core:hulk_") ? 2 : 0));
     deadBoats.set(reg, words);
   }
   return DEAD_BOAT_WORDS[words[kind] ?? 0]!;

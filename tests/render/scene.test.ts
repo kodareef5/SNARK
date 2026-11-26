@@ -584,7 +584,8 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // It was 2684164804 until the laid fallen front (content/ruins.ts front12) and the three more billboards with their bare
   // forms (content/street.ts BOARDS) numbered the meshes after them on.
   // It was 763957391 until the moored hulls came in four dead dyes a vessel, 44 kinds for 53 (content/docks.ts DEAD_DYES).
-  expect(hash).toBe(3278228826);
+  // And 3278228826 until each vessel's burning hull joined them.
+  expect(hash).toBe(3229345973);
 
   // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
   // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of
@@ -635,7 +636,8 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // And 2246990923 until the map events' two crates, and 3436127037 until the UFO's core took its own mesh, as above.
   // And 3617411346 until the laid fallen front and the billboards' other sizes, as above.
   // And 3606419820 until the moored hulls' dead dyes, as above.
-  expect(saddled.hash).toBe(754500122);
+  // And 754500122 until the burning hulls, as above.
+  expect(saddled.hash).toBe(380125256);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {

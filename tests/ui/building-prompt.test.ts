@@ -60,7 +60,7 @@ test("the prompt names the building of the piece looked at, and under it how the
 test("a moored hull says derelict and a harbour's wreck says wreck, and nothing else says either", () => {
   const reg = coreRegistry();
   const word = (id: string): string => deadBoatWord(reg, reg.index.get(id)!);
-  const hull = reg.ids.find((id) => id.startsWith("core:zzzzhull_needle_"))!;
-  expect([word(hull), word("core:hulk_needle_sunk"), word("core:hulk_needle_damaged")]).toEqual(["derelict", "wreck", "wreck"]);
+  const hull = reg.ids.find((id) => id.startsWith("core:zzzzhull_needle_") && !id.endsWith("_burning"))!;
+  expect([word(hull), word("core:hulk_needle_sunk"), word("core:hulk_needle_damaged"), word("core:zzzzhull_needle_burning")]).toEqual(["derelict", "wreck", "wreck", "burning wreck"]);
   expect([word("core:needle"), word("core:wall_wood"), word("core:compact_wreck")]).toEqual(["", "", ""]);
 });
