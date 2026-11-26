@@ -2,7 +2,11 @@ import { expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { HUMAN, HUMAN_BONES } from "../../shared/anim/human.ts";
 import { artModule } from "../../tools/art/source.ts";
-import { fitBody, collapsedBone, macroTargets, PART_NAMES, type FittedBody } from "../../tools/makehuman/fit.ts";
+import { B_FINGERS_L, B_FINGERTIPS_L, B_HAND_L } from "../../shared/anim/human.ts";
+import { quatAxis, quatMul } from "../../shared/math/quat.ts";
+import { fitBody, fitStages, collapsedBone, macroTargets, thumbRing, PART_NAMES, type FittedBody } from "../../tools/makehuman/fit.ts";
+import { readSkeleton } from "../../tools/makehuman/skeleton.ts";
+import { DEFAULT_SKELETON } from "../../tools/makehuman/index.ts";
 import { BASE_OBJ, MAKEHUMAN } from "../../tools/makehuman/index.ts";
 import { readObj } from "../../tools/makehuman/obj.ts";
 
@@ -112,4 +116,59 @@ mirrorTest("the same inputs fit the same body twice", () => {
   expect(Buffer.from(b.weights.buffer).equals(Buffer.from(a.weights.buffer))).toBe(true);
   expect(Buffer.from(b.joints.buffer).equals(Buffer.from(a.joints.buffer))).toBe(true);
   expect(Buffer.from(b.normals.buffer).equals(Buffer.from(a.normals.buffer))).toBe(true);
+});
+
+mirrorTest("every finger's knuckle and middle joint sit on the rig's finger hinges", () => {
+  const skel = readSkeleton(DEFAULT_SKELETON);
+  const base = readObj(BASE_OBJ);
+  for (const sex of ["male", "female"] as const) {
+    const rig = rigOf(sex);
+    const s = fitStages(sex, rig);
+    const off: string[] = [];
+    for (const side of ["L", "R"]) {
+      const bone = (n: string): number => HUMAN.names.indexOf(`${n}.${side}`);
+      for (const k of [2, 3, 4, 5]) {
+        for (const [j, hinge] of [[1, bone("fingers")], [2, bone("fingertips")]] as const) {
+          const verts = skel.joints.get(`finger${k}-${j}.${side}____head`)!;
+          let x = 0, y = 0;
+          for (const v of verts) (x += s.landed[v * 3]! / verts.length), (y += s.landed[v * 3 + 1]! / verts.length);
+          const miss = Math.hypot(x - rig[hinge * 3]!, y - rig[hinge * 3 + 1]!);
+          if (miss > 1e-5) off.push(`${sex} finger${k}-${j}.${side} ${(miss * 1000).toFixed(2)} mm`);
+        }
+      }
+      // Where the thumb meets the palm is near the joint it turns about, so a grip does not tear it from the palm.
+      const ring = thumbRing({ base, bodyFaces: base.groups.get("body")! }, s.landed, s.skin, bone("thumb"), bone("hand"));
+      const t = bone("thumb");
+      const gap = Math.hypot(ring[0]! - rig[t * 3]!, ring[1]! - rig[t * 3 + 1]!, ring[2]! - rig[t * 3 + 2]!);
+      if (gap > 0.012) off.push(`${sex} thumb.${side} meets the palm ${(gap * 100).toFixed(1)} cm from its joint`);
+    }
+    expect(off).toEqual([]);
+  }
+});
+
+mirrorTest("a closed fist folds every fingertip back under the palm", () => {
+  for (const sex of ["male", "female"] as const) {
+    const f = body(sex);
+    const rig = f.rest;
+    // The strike tables' fist, left hand: the fingers 75 degrees at the knuckles, the fingertips 95 more.
+    const q = new Float64Array(8);
+    quatAxis(q, 0, 0, 0, 1, (-75 * Math.PI) / 180);
+    quatAxis(q, 4, 0, 0, 1, (-95 * Math.PI) / 180);
+    quatMul(q, 4, q, 0, q, 4);
+    const F = [0, 1, 2].map((k) => rig[B_FINGERS_L * 3 + k]!), T = [0, 1, 2].map((k) => rig[B_FINGERTIPS_L * 3 + k]!);
+    const turn = (o: number, x: number, y: number): [number, number] => {
+      const c = 1 - 2 * q[o + 2]! ** 2, s = 2 * q[o + 2]! * q[o + 3]!;
+      return [c * x - s * y, s * x + c * y];
+    };
+    // The middle joint, turned with the fingers about the knuckle.
+    const [mx, my] = turn(0, T[0]! - F[0]!, T[1]! - F[1]!);
+    let reach = -Infinity;
+    for (let v = 0; v < f.positions.length / 3; v++) {
+      if (f.bone[v] !== B_FINGERTIPS_L) continue;
+      const [x] = turn(4, f.positions[v * 3]! - T[0]!, f.positions[v * 3 + 1]! - T[1]!);
+      reach = Math.max(reach, F[0]! + mx + x - rig[B_HAND_L * 3]!);
+    }
+    // No fingertip reaches past the knuckles' hinge by more than a finger's thickness.
+    expect(reach).toBeLessThan(F[0]! - rig[B_HAND_L * 3]! + 0.025);
+  }
 });
