@@ -19,7 +19,7 @@ import { makeBentWalks } from "./bent-walks.ts";
 import { ROAD_FLEET } from "../../content/vehicles/road-fleet.ts";
 import type { WheelVehicleDefinition } from "../../shared/sim/vehicle.ts";
 import { wreckLook } from "../../content/vehicles/wrecks.ts";
-import { S } from "./ground.ts";
+import { dryRestored, S } from "./ground.ts";
 import { compactWalls, reserveRoutes, frameOf, inRing, Mason, tilesOf, worldPoint, type Frame } from "./ruin-geometry.ts";
 import { assembly, layout } from "./ruin-layouts.ts";
 import { ruleFor, vocabulary, type Rule, type Vocabulary, type Walks } from "./ruin-vocabulary.ts";
@@ -269,8 +269,11 @@ export function makeRuins(site: Site): StaticPiece[] {
   gradeRoadEntrances(site, bridges.records.flatMap(r => r.entrances));
   // The floors, the roads and the ways to doors stand where they will, and nothing stands on the ground by a pool yet:
   // each pool is settled on that ground and given a way to walk out of it. The build settles them once more at its end.
-  const { lakes: pools, poolBeds } = site.ground;
-  if (pools && poolBeds) console.log(`ruins: ${settledLine(settleRims(pools, site.world.lakes, site.ground.height, site.ground.grid, site.world.minY, site.world.stepY, poolBeds))}`);
+  const { lakes, pools } = site.ground;
+  if (lakes && pools) {
+    console.log(`ruins: ${settledLine(settleRims(lakes, site.world.lakes, site.ground.height, site.ground.grid, site.world.minY, site.world.stepY, pools))}`);
+    dryRestored(site.ground);
+  }
   for (const r of records) {
     for (const a of r.approaches) site.growthRoutes.push({ points: [a.street, a.door, a.core], width: 2 });
     for (const route of [...r.rooms, ...r.escapes]) site.growthRoutes.push({ points: route.points, width: 2 });

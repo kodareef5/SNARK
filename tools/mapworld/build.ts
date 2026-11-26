@@ -20,7 +20,7 @@ import { lakeSquares, settledLine, settleRims } from "./lakes.ts";
 import { writeGrey } from "../map/png.ts";
 import { Base } from "./base.ts";
 import type { BridgeRecord } from "./bridges.ts";
-import { groundClasses, makeGround, S, type World } from "./ground.ts";
+import { dryRestored, groundClasses, makeGround, S, type World } from "./ground.ts";
 import { clearingMask, makeNodes, ZONE_CELL } from "./nodes.ts";
 import { gradeTransferDecks, placeObelisks, placeRegions, placeSpawns, staticCover } from "./places.ts";
 import { STATIC_LAYERS, siteOf, type StaticPiece } from "./statics.ts";
@@ -130,8 +130,9 @@ export async function buildMap(named: string, release = false, output = join(ROO
   const berths = layLandmarkGround(ground, sited, 0);
   // The street's pieces, the transfer decks and the landmarks graded ground after the ruins settled the pools: once
   // more, on the ground as it ends. It changes only a pool that grading reached.
-  if (ground.lakes && ground.poolBeds) {
-    const again = settleRims(ground.lakes, world.lakes, ground.height, grid, world.minY, world.stepY, ground.poolBeds);
+  if (ground.lakes && ground.pools) {
+    const again = settleRims(ground.lakes, world.lakes, ground.height, grid, world.minY, world.stepY, ground.pools);
+    dryRestored(ground);
     lap(`the pools settled again: ${settledLine(again)}`);
   }
   const brought = placeLandmarks(sited, reg, 0);

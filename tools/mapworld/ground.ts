@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { cutBridgeWater, pathsOf, readWays } from "./ways.ts";
 import type { Base, Grid } from "./base.ts";
 import { makeHeaps, readBuildings, PART_COURT, PART_FLOOR, PART_HEAP, PART_POOL, PART_SPILL, PART_WALL, type Heaps } from "./heaps.ts";
-import { carveLakes, poolBeds, raiseRims, readLakes, type LakeRules, type Lakes } from "./lakes.ts";
+import { carveLakes, dropPerched, poolGround, raiseRims, readLakes, type LakeRules, type Lakes, type PoolGround } from "./lakes.ts";
 import { roundGround, type Corner } from "./corners.ts";
 import { paintStreets } from "./streets/paint.ts";
 import type { StreetSectors } from "../../shared/world/streets.ts";
@@ -116,8 +116,8 @@ export interface Ground {
   /** Samples of bed at the foot of a graded soft bank, and samples the grading took out of the water (shared/world/banks.ts). */
   readonly bankBed?: ReadonlySet<number>;
   readonly bankEdge?: ReadonlySet<number>;
-  /** Each pool's and fountain's samples with their beds as last carved or settled (lakes.ts settleRims). */
-  readonly poolBeds?: Map<number, number>;
+  /** The pools' and fountains' ground as carved and settled (lakes.ts settleRims). */
+  readonly pools?: PoolGround;
   /** Per sample of a container stack, which container it is, for its colour. */
   readonly container: Uint8Array;
   /** Per sample in a street's verge, the verge's kind (shared/world/streets.ts VERGES), or 0: for its colour. */
@@ -252,6 +252,8 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
   const built = base.bytes("buildings");
   const lakes = readLakes(base, world.lakes, sea, world.minY, world.stepY, dem, (i) => built[i]! > 0);
   if (lakes) {
+    const perched = dropPerched(lakes, world.lakes, height, grid);
+    if (perched > 0) log(`ground: ${perched} pools left out, standing over the ground round them`);
     const deepest = carveLakes(lakes, world.lakes, height, grid);
     const left = lakes.made.filter((m) => m.left);
     log(`ground: ${lakes.made.length - left.length} lakes as ${lakes.bodies.length} bodies of water, to ${deepest.toFixed(1)} m deep; ${left.length} left marsh${left.map((m) => ` (${m.name || m.id}: ${m.left})`).join("")}`);
@@ -517,8 +519,14 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
   log(`ground: graded ${banks.moved} samples of soft banks, ${banks.edge.size} of them out of the water and ${banks.bed.size} of bed at their foot`);
   // After the banks, which would grade a rim down again. A floor is a footprint's as the ruins have it.
   const rims = lakes ? raiseRims(lakes, height, grid, (i) => roads[i] !== 0 || built[i]! > 0 || surface[i] === S.FLOOR) : null;
-  if (rims) log(`ground: ${rims.raised} of ${rims.rim.size} samples round pools and fountains raised to their rims`);
-  return { grid, height, surface, district, heaps, shore, beachBed, bankBed: banks.bed, bankEdge: banks.edge, ...(lakes ? { poolBeds: poolBeds(lakes, height) } : {}), container, ...(streets ? { verge, streets } : {}), sand, water, gaps, bridges: { standing: decks, fords, gaps: gapCount, cutSamples }, lakes };
+  if (rims) log(`ground: ${rims.raised.size} of ${rims.rim.size} samples round pools and fountains raised to their rims`);
+  return { grid, height, surface, district, heaps, shore, beachBed, bankBed: banks.bed, bankEdge: banks.edge, ...(lakes ? { pools: poolGround(lakes, height, rims!.raised) } : {}), container, ...(streets ? { verge, streets } : {}), sand, water, gaps, bridges: { standing: decks, fords, gaps: gapCount, cutSamples }, lakes };
+}
+
+/** Gives the samples of pools taken out (lakes.ts settleRims) a dry surface: open ground where they were a bed. */
+export function dryRestored(ground: Ground): void {
+  for (const i of ground.pools?.restored ?? []) if (ground.surface[i]! <= S.SHALLOW) ground.surface[i] = S.OPEN;
+  ground.pools?.restored.clear();
 }
 
 /** Ground a bank may be graded on: what grows, open ground and the desert's. */
