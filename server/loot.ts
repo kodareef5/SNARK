@@ -62,6 +62,13 @@ export function overridden(sources: readonly SourceDoc[], lines: readonly IniNod
   return { sources: out, unknown };
 }
 
+/** Marks `rec` as holding loot not yet rolled, with a level and a seed of its own from the world's. */
+export function seal(rec: EntityRecord, level: number, worldSeed: number, tick: number): void {
+  const seed = hashString(`sealed/${rec.pid}/${tick}`, (worldSeed + SEED) >>> 0);
+  const l = Math.max(0, Math.min(65535, Math.round(level)));
+  rec.extra.set(LOOT_TAG, Uint8Array.of(l & 255, l >> 8, seed & 255, (seed >>> 8) & 255, (seed >>> 16) & 255, seed >>> 24));
+}
+
 export class Loot {
   private readonly ctx: LootContext;
   /** Finds rolled since the world began, for the console and the tests. */
@@ -84,9 +91,7 @@ export class Loot {
 
   /** Marks `body`, a wild creature's of `level`, as holding loot not yet rolled. */
   seal(body: EntityRecord, level: number): void {
-    const seed = hashString(`body/${body.pid}/${this.ctx.world.tick}`, (this.ctx.seed + SEED) >>> 0);
-    const l = Math.max(0, Math.min(65535, Math.round(level)));
-    body.extra.set(LOOT_TAG, Uint8Array.of(l & 255, l >> 8, seed & 255, (seed >>> 8) & 255, (seed >>> 16) & 255, seed >>> 24));
+    seal(body, level, this.ctx.seed, this.ctx.world.tick);
   }
 
   sealed(rec: EntityRecord): boolean {
@@ -111,6 +116,22 @@ export class Loot {
     const seed = (tag[2]! | (tag[3]! << 8) | (tag[4]! << 16) | (tag[5]! << 24)) >>> 0;
     const stacks = this.fill(rec, { kind: "body", species: reg.ids[species]!, size: BODY_SIZES[reg.bodySize[species]!]!, level }, seed, by);
     return stacks > 0 ? stacks : this.own(rec, species, seed);
+  }
+
+  /**
+   * Rolls a found vehicle's hold, once, at its first opening: every source that is the loot of such a vehicle. `by` is
+   * who opened it, or 0. Returns the stacks put in.
+   */
+  vehicle(rec: EntityRecord, by = 0): number {
+    const { world, records, rules } = this.ctx;
+    const tag = rec.extra.get(LOOT_TAG);
+    if (!tag || tag.length < 6) return 0;
+    rec.extra.delete(LOOT_TAG);
+    records.dirty.add(rec.pid);
+    const def = world.reg.vehicle[rec.kind];
+    if (!def || !rules.on("WorldLootEnabled") || !rules.on("VehicleLootEnabled")) return 0;
+    const seed = (tag[2]! | (tag[3]! << 8) | (tag[4]! << 16) | (tag[5]! << 24)) >>> 0;
+    return this.fill(rec, { kind: "vehicle", species: world.reg.ids[rec.kind]!, vehicle: def.movement ?? "wheeled" }, seed, by);
   }
 
   /** Rolls every source that is the loot of `thing` into `rec`, each from `seed` and its own key. Returns the stacks put in. */

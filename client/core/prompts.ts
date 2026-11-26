@@ -103,6 +103,8 @@ export class Prompts implements FramePart {
   lookedAt = -1;
   /** Crosshair hit for boat service, including unclaimed hulls and salvage. */
   aimedBoat = -1;
+  /** A car or aircraft under the crosshair within reach whose hold may be opened: nobody's, or the tribe's. -1 for none. */
+  aimedCar = -1;
   /** Entity index of any body under the crosshair within NAME_RANGE, or -1: what the attack whistle names. */
   target = -1;
   /** useDownAt is when the use key went down, or -1. aimed is the ref of the player-built structure under the crosshair, or -1. */
@@ -175,7 +177,7 @@ export class Prompts implements FramePart {
       this.useKept = false;
       f.controls.release();
     }
-    const whom = alive ? this.who(f, world, eyeNow) : ((this.aimedBoat = this.lookedAt = this.target = -1), "");
+    const whom = alive ? this.who(f, world, eyeNow) : ((this.aimedBoat = this.aimedCar = this.lookedAt = this.target = -1), "");
     this.eggAimed = -1;
     // A move for two goes to the survivor the crosshair is on.
     const emotes = f.ui.screen<EmoteMenu>("emotes"), characters = f.scene.characters;
@@ -275,6 +277,8 @@ export class Prompts implements FramePart {
     this.target = hit >= 0 && (r.flags[hit]! & VIEW_FLAG_PROP) === 0 ? r.id[hit]! : -1;
     this.aimedBoat = hit >= 0 && reg.vehicle[r.kind[hit]!]?.movement === "boat" ? r.id[hit]! : -1;
     this.lookedAt = hit >= 0 && mine && (r.flags[hit]! & VIEW_FLAG_PROP) === 0 && !characters.human(r.kind[hit]!) ? r.id[hit]! : -1;
+    // A car nobody owns, or the tribe's, within reach: F opens its hold from outside, as a boat's (server/vehicle-service.ts).
+    this.aimedCar = hit >= 0 && best <= REACH + 1.5 && reg.vehicle[r.kind[hit]!] !== undefined && this.aimedBoat < 0 && (mine || r.team[hit] === 0) ? r.id[hit]! : -1;
     // A creature's name is in the mark over it (fillOverhead).
     if (hit < 0 || r.name[hit] === "" || (r.flags[hit]! & VIEW_FLAG_PROP) !== 0 || !characters.human(r.kind[hit]!)) return "";
     return `${r.name[hit]}${mine ? " (tribe)" : ""}  level ${r.level[hit]}`;
@@ -315,7 +319,8 @@ export class Prompts implements FramePart {
       const tag = reg.holds[kind];
       if (tag != null && rayHit.t <= REACH) {
         this.searchAimed = ref;
-        const name = holdWord(tag);
+        // A dead boat keeps its word, so that it is still told from one that sails.
+        const name = deadBoatWord(reg, kind) || holdWord(tag);
         if (this.spent.has(ref)) return `${name}  searched`;
         if (this.searching !== ref) return `hold E  search the ${name}`;
         const done = Math.min(1, (f.nowMs - this.searchFrom) / Math.max(1, reg.holdSeconds[kind]! * 1000));

@@ -187,14 +187,14 @@ export interface SiteDoc {
 }
 
 /** What a source is the loot of. More kinds come with the things that hold loot (planning/workstreams/loot.md). */
-export const SOURCE_KINDS = ["body", "static"] as const;
+export const SOURCE_KINDS = ["body", "static", "vehicle"] as const;
 export type SourceKind = (typeof SOURCE_KINDS)[number];
 /** Where a source's table key takes the key of the tier it is rolled at: "{tier}/arms". */
 export const TIER_MARK = "{tier}";
 
 /** Which things a source is the loot of. Each part not given lets everything by. */
 export interface SourceWhen {
-  /** A body's species, by content id. */
+  /** A body's species or a vehicle's kind, by content id. */
   species?: string[];
   /** A body's size (BODY_SIZES, shared/sim/loot.ts). */
   size?: string[];
@@ -202,6 +202,8 @@ export interface SourceWhen {
   level?: [number, number];
   /** A static's tag (StructureDef.holds): "bin", "mailbox". */
   holds?: string[];
+  /** How a found vehicle moves: "wheeled", "boat", "rotor", "jet". Its kind is told by `species`. */
+  vehicle?: string[];
 }
 
 /** A table a source rolls: its key, which may hold TIER_MARK, and the slots of it rolled, by name; all where not given. */
@@ -541,11 +543,12 @@ export function bookFaults(book: unknown): BookFault[] {
         if (s.rolls !== undefined && !(Array.isArray(s.rolls) && s.rolls.length === 2 && Number.isInteger(s.rolls[0]) && Number.isInteger(s.rolls[1]) && s.rolls[0] >= 0 && s.rolls[1] >= s.rolls[0] && s.rolls[1] <= MOST.slots)) bad(`${path}.rolls`, `[least, most], whole, from 0 to ${MOST.slots}`);
         const w = s.when;
         if (w !== undefined) {
-          if (!isObject(w)) bad(`${path}.when`, "{ species, size, level, holds }");
+          if (!isObject(w)) bad(`${path}.when`, "{ species, size, level, holds, vehicle }");
           else {
             if (w.species !== undefined && !(Array.isArray(w.species) && w.species.length <= MOST.items && w.species.every((id) => typeof id === "string" && id.length > 0 && id.length <= 96))) bad(`${path}.when.species`, `at most ${MOST.items} species ids`);
             if (w.size !== undefined && !(Array.isArray(w.size) && w.size.every((v) => (BODY_SIZES as readonly string[]).includes(v)))) bad(`${path}.when.size`, `of ${BODY_SIZES.join(", ")}`);
             if (w.holds !== undefined && !(Array.isArray(w.holds) && w.holds.length <= MOST.items && w.holds.every((v) => typeof v === "string" && /^[a-z][a-z0-9_/-]{0,31}$/.test(v)))) bad(`${path}.when.holds`, `at most ${MOST.items} tags of small letters`);
+            if (w.vehicle !== undefined && !(Array.isArray(w.vehicle) && w.vehicle.every((v) => ["wheeled", "boat", "rotor", "jet"].includes(v)))) bad(`${path}.when.vehicle`, "of wheeled, boat, rotor, jet");
             if (w.level !== undefined && !(Array.isArray(w.level) && w.level.length === 2 && finite(w.level[0]) && finite(w.level[1]) && w.level[0] >= 0 && w.level[1] >= w.level[0])) bad(`${path}.when.level`, "[least, most]");
           }
         }

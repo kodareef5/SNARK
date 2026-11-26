@@ -16,6 +16,9 @@ const BY_LEVEL: NonNullable<SourceDoc["ladder"]> = [
 ];
 const prize = (cls: string, weight = 1): SourceDoc["tables"][number] => ({ table: `{tier}/${cls}`, slots: ["prize"], ...(weight !== 1 ? { weight } : {}) });
 
+/** The found vehicles that carry a load: their kinds, without their pack. */
+const HAULERS = ["panel_van", "caravan", "bus", "semi", "monster_truck"] as const;
+
 export const LOOT_SETS: Readonly<Record<string, SetDoc>> = {
   // What a creature had eaten, and what was left in it by those who failed to kill it.
   "find.scraps": {
@@ -58,6 +61,47 @@ export const LOOT_SETS: Readonly<Record<string, SetDoc>> = {
   "find.post": { name: "post", min: 1, max: 1, entries: [some("fiber", 5, 12), some("sparkpowder", 3, 6, 0.6), some("narcotic", 1, 2, 0.4), some("stimulant", 1, 2, 0.4)] },
   "find.papers": { name: "papers", min: 1, max: 1, entries: [some("fiber", 4, 10), some("thatch", 3, 6, 0.5)] },
   "find.coins": { name: "coins and works", min: 1, max: 2, entries: [some("ingot", 2, 5), some("ore", 3, 8), some("electronics", 1, 2, 0.5), some("crystal", 1, 1, 0.2)] },
+  // What was left in a car that still runs: tools, fuel, rounds.
+  "find.trunk": {
+    name: "a boot",
+    min: 2,
+    max: 3,
+    entries: [
+      some("gasoline", 2, 6),
+      some("ingot", 3, 8),
+      some("fiber", 8, 16),
+      some("hide", 3, 8),
+      some("waterskin", 1, 1, 0.6),
+      some("torch", 1, 1, 0.6),
+      some("hatchet", 1, 1, 0.5),
+      some("pick", 1, 1, 0.5),
+      some("arrow_stone", 6, 12, 0.5),
+      some("round_pistol", 4, 10, 0.3),
+      some("electronics", 1, 3, 0.3),
+      some("polymer", 1, 3, 0.3),
+      some("narcotic", 1, 3, 0.3),
+    ],
+  },
+  // A van's or a lorry's load: a builder's or a trader's stock, in bulk.
+  "find.load": {
+    name: "a load",
+    min: 2,
+    max: 3,
+    entries: [some("wood", 40, 80), some("stone", 40, 80), some("thatch", 40, 80), some("fiber", 30, 60), some("ingot", 10, 20, 0.7), some("hide", 15, 30, 0.7), some("gasoline", 6, 12, 0.6), some("paste", 2, 5, 0.4), some("polymer", 3, 6, 0.3), some("electronics", 3, 6, 0.3)],
+  },
+  // A boat's locker: what a crew keeps aboard.
+  "find.locker": {
+    name: "a locker",
+    min: 2,
+    max: 3,
+    entries: [some("gasoline", 4, 10), some("fiber", 10, 20), some("jerky", 1, 3), some("waterskin", 1, 1, 0.7), some("oil", 2, 5, 0.5), some("flare_gun", 1, 1, 0.3), some("compass", 1, 1, 0.25), some("spyglass", 1, 1, 0.2), some("silica_pearls", 2, 6, 0.3)],
+  },
+  // An aircraft's stores.
+  "find.stores": { name: "stores", min: 2, max: 3, entries: [some("gasoline", 8, 16), some("electronics", 3, 8), some("polymer", 3, 8), some("ingot", 10, 20), some("flare_gun", 1, 2, 0.5), some("jerky", 2, 4, 0.5)] },
+  // What is left in a dead car after the years, and in a dead boat.
+  "find.wreck": { name: "a wreck's leavings", min: 1, max: 2, entries: [some("fiber", 3, 8), some("hide", 1, 3), some("ingot", 1, 3), some("flint", 2, 5), some("gasoline", 1, 2, 0.4), some("polymer", 1, 2, 0.3), some("electronics", 1, 1, 0.15), some("waterskin", 1, 1, 0.15)] },
+  "find.bilge": { name: "a dead boat's hold", min: 1, max: 2, entries: [some("fiber", 6, 14), some("wood", 5, 12), some("oil", 1, 3, 0.6), some("gasoline", 1, 3, 0.5), some("silica_pearls", 1, 4, 0.4), some("chitin", 2, 5, 0.4), some("flare_gun", 1, 1, 0.1), some("compass", 1, 1, 0.1)] },
+  "find.ash": { name: "what a fire leaves", min: 1, max: 1, entries: [some("charcoal", 4, 10), some("ingot", 1, 3, 0.5)] },
   // Plans for the first things a survivor makes, at the white tier's quality.
   "find.plans": {
     name: "plans",
@@ -78,6 +122,13 @@ export const LOOT_TABLES: Readonly<Record<string, TableDoc>> = {
   "street/bin": { slots: [{ name: "rubbish", from: [{ set: "find.rubbish" }] }], note: "A street bin." },
   "street/mailbox": { slots: [{ name: "post", from: [{ set: "find.post" }] }, { name: "plan", chance: 0.25, from: [{ set: "find.plans" }] }], note: "A mailbox: post, and now and then a plan somebody sent for." },
   "street/newsbox": { slots: [{ name: "papers", from: [{ set: "find.papers" }] }, { name: "plan", chance: 0.04, from: [{ set: "find.plans" }] }], note: "A newspaper box." },
+  "hold/car": { slots: [{ name: "boot", from: [{ set: "find.trunk" }] }], note: "A found car's boot." },
+  "hold/hauler": { slots: [{ name: "load", from: [{ set: "find.load" }] }, { name: "boot", chance: 0.5, from: [{ set: "find.trunk" }] }], note: "A found van's, bus's or lorry's load." },
+  "hold/boat": { slots: [{ name: "locker", from: [{ set: "find.locker" }] }], note: "A found boat's locker." },
+  "hold/aircraft": { slots: [{ name: "stores", from: [{ set: "find.stores" }] }], note: "A found helicopter's stores." },
+  "dead/wreck": { slots: [{ name: "leavings", from: [{ set: "find.wreck" }] }], note: "A street wreck." },
+  "dead/hull": { slots: [{ name: "hold", from: [{ set: "find.bilge" }] }], note: "A dead boat at its mooring, or a harbour's hulk." },
+  "dead/burnt": { slots: [{ name: "ash", from: [{ set: "find.ash" }] }], note: "A dead boat that burnt." },
   "street/paystation": { slots: [{ name: "coins", from: [{ set: "find.coins" }] }], note: "A car park's pay station: its coin box and its works." },
 };
 
@@ -95,6 +146,15 @@ export const LOOT_SOURCES: readonly SourceDoc[] = [
   { key: "street/mailbox", name: "Mailbox", on: true, kind: "static", when: { holds: ["mailbox"] }, chance: 0.5, tables: [{ table: "street/mailbox" }], refillHours: [40, 60], target: 10 },
   { key: "street/newsbox", name: "Newspaper box", on: true, kind: "static", when: { holds: ["newsbox"] }, chance: 0.35, tables: [{ table: "street/newsbox" }], refillHours: [20, 30], target: 2.6 },
   { key: "street/paystation", name: "Pay station", on: true, kind: "static", when: { holds: ["paystation"] }, chance: 0.7, tables: [{ table: "street/paystation" }], refillHours: [40, 60], target: 21 },
+  // A found vehicle is a prize already, so what it holds is a bonus; the haulers are few and hold the most.
+  { key: "vehicle/car", name: "Found car", on: true, kind: "vehicle", when: { vehicle: ["wheeled"] }, chance: 0.6, tables: [{ table: "hold/car" }], target: 40 },
+  { key: "vehicle/hauler", name: "Found van or lorry", on: true, kind: "vehicle", when: { species: HAULERS.map(id) }, chance: 0.8, tables: [{ table: "hold/hauler" }], target: 170 },
+  { key: "vehicle/boat", name: "Found boat", on: true, kind: "vehicle", when: { vehicle: ["boat"] }, chance: 0.7, tables: [{ table: "hold/boat" }], target: 55 },
+  { key: "vehicle/aircraft", name: "Found helicopter", on: true, kind: "vehicle", when: { vehicle: ["rotor"] }, chance: 0.9, tables: [{ table: "hold/aircraft" }], target: 280 },
+  // The dead are many: a street wreck is worth a look in passing, as a bin is.
+  { key: "dead/wreck", name: "Street wreck", on: true, kind: "static", when: { holds: ["wreck"] }, chance: 0.3, tables: [{ table: "dead/wreck" }], refillHours: [40, 60], target: 5 },
+  { key: "dead/hull", name: "Dead boat", on: true, kind: "static", when: { holds: ["hull", "hulk"] }, chance: 0.6, tables: [{ table: "dead/hull" }], refillHours: [40, 60], target: 11 },
+  { key: "dead/burnt", name: "Burnt boat", on: true, kind: "static", when: { holds: ["hull_burnt"] }, chance: 0.5, tables: [{ table: "dead/burnt" }], refillHours: [40, 60], target: 6.5 },
 ];
 
 /**

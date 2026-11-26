@@ -306,6 +306,8 @@ export interface Thing {
   readonly level?: number;
   /** A static's tag. */
   readonly holds?: string;
+  /** How a vehicle moves. */
+  readonly vehicle?: string;
 }
 
 /** Whether `source` is the loot of `thing`, switched on or not. */
@@ -316,6 +318,7 @@ export function matches(source: SourceDoc, thing: Thing): boolean {
   if (w.species && !(thing.species !== undefined && w.species.includes(thing.species))) return false;
   if (w.size && !(thing.size !== undefined && w.size.includes(thing.size))) return false;
   if (w.holds && !(thing.holds !== undefined && w.holds.includes(thing.holds))) return false;
+  if (w.vehicle && !(thing.vehicle !== undefined && w.vehicle.includes(thing.vehicle))) return false;
   if (w.level && !(thing.level !== undefined && thing.level >= w.level[0] && thing.level <= w.level[1])) return false;
   return true;
 }

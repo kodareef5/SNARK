@@ -439,6 +439,7 @@ export class GameApp {
   get aimedBoat(): number { return this.prompts.aimedBoat; }
   get target(): number { return this.prompts.target; }
   get searchAimed(): number { return this.prompts.searchAimed; }
+  get aimedCar(): number { return this.prompts.aimedCar; }
   get aimed(): number { return this.prompts.aimed; }
   set aimed(at: number) { this.prompts.aimed = at; }
   get eggAimed(): number { return this.prompts.eggAimed; }

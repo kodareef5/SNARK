@@ -286,6 +286,9 @@ export interface SourceRow {
   readonly tiers: readonly SourceTier[];
 }
 
+/** What a found vehicle is called by how it moves. */
+const MOVES: Readonly<Record<string, string>> = { wheeled: "car", rotor: "helicopter" };
+
 /** How far a source's worth may be from its target at one tier and still be sound: tables differ more by tier than a whole drop does. */
 export const SOURCE_OFF_TARGET = 0.35;
 
@@ -298,7 +301,8 @@ export function sourceRows(l: Loaded): SourceRow[] {
     const size = w.size?.length ? `${w.size.join(" or ")} ` : "";
     const level = w.level ? `, level ${w.level[0]} to ${w.level[1]}` : "";
     const a = (word: string): string => `${/^[aeiou]/.test(word) ? "an" : "a"} ${word}`;
-    const what = s.kind === "static" ? (w.holds?.length ? w.holds.map((tag) => a(holdWord(tag))).join(" or ") : "anything that holds loot") : w.species?.length ? `the ${size}body ${of}${level}` : `${size === "" ? "any" : a(size.trim())} body${level}`;
+    const moves = w.vehicle?.length ? w.vehicle.map((m) => MOVES[m] ?? m).join(" or ") : "vehicle";
+    const what = s.kind === "vehicle" ? `a found ${w.species?.length ? w.species.map((id) => nameOf(l, id)).join(", ") : moves}` : s.kind === "static" ? (w.holds?.length ? w.holds.map((tag) => a(holdWord(tag))).join(" or ") : "anything that holds loot") : w.species?.length ? `the ${size}body ${of}${level}` : `${size === "" ? "any" : a(size.trim())} body${level}`;
     const tables = s.tables.map((t) => `${t.table.replace(`${TIER_MARK}/`, "")}${t.slots ? ` ${t.slots.join(" and ")}` : ""}`).join(", ");
     const keys = s.tier !== undefined ? [...new Set([s.tier, ...(s.ladder ?? []).map((step) => step.tier)])] : [""];
     const tiers = keys.map((key): SourceTier => {

@@ -30,7 +30,7 @@ export interface LootDrop {
 export const MOST_LOOT = 10000;
 
 /** What a thing that holds loot is called, by its tag (StructureDef.holds), where the tag is not the word. */
-const HOLD_WORDS: Readonly<Record<string, string>> = { newsbox: "newspaper box", paystation: "pay station" };
+const HOLD_WORDS: Readonly<Record<string, string>> = { newsbox: "newspaper box", paystation: "pay station", hull: "dead boat", hulk: "harbour hulk", hull_burnt: "burnt boat" };
 export const holdWord = (tag: string): string => HOLD_WORDS[tag] ?? tag;
 
 /** How big a creature's body is, for the loot it holds (SpeciesDef.size); medium where a species does not say. */

@@ -54,6 +54,8 @@ export interface VehicleServiceContext {
   arms?(vehicle: EntityRecord): string;
   armed?(vehicle: EntityRecord): boolean;
   rearm?(vehicle: EntityRecord): void;
+  /** Rolls a found vehicle's hold if nobody has opened it yet (server/loot.ts). */
+  loot?(vehicle: EntityRecord, by: number): void;
 }
 
 /** Fraction of a full repair per action. The complete bill is intentionally much less than a new assembly. */
@@ -212,6 +214,7 @@ export class VehicleService {
       game.sendText(c, TEXT_NOTICE, `${rec.name || "Vehicle"}: ${condition}, fuel ${ents.fuel[v]!.toFixed(1)}/${def.spec.fuelCapacity}${isRotorVehicle(def) ? `, engine ${engine}%, rotor ${rotor}%` : isJetVehicle(def) ? `, engine ${engine}%` : isBoatVehicle(def) ? `, propulsion ${engine}%, flooding ${Math.round(ents.vehicleFlooding[v]! * 100)}%` : `, engine ${engine}%, flooding ${Math.round(ents.vehicleFlooding[v]! * 100)}%`}${arms ? `, ${arms}` : ""}.`);
     }
     if (c.open !== rec.pid && !game.mayOpen(c, rec.pid)) return RESULT_DENIED;
+    if (c.open !== rec.pid) this.ctx.loot?.(rec, c.pid);
     c.open = c.open === rec.pid ? 0 : rec.pid;
     return RESULT_OK;
   }

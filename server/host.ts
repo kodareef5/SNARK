@@ -127,7 +127,7 @@ import { HANGARS, type HangarSite } from "../content/vehicles/hangars.ts";
 import { withSites } from "../content/supply/sites.ts";
 import { starterBook } from "../content/supply/starter.ts";
 import { withLoot } from "../content/loot/starter.ts";
-import { Loot } from "./loot.ts";
+import { Loot, seal as sealLoot } from "./loot.ts";
 import { Holders } from "./holders.ts";
 import { catalogOf } from "../shared/supply/catalog.ts";
 import { SETTING as ARK_CRATES, arkCrates } from "./supply/ark.ts";
@@ -687,7 +687,11 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     ents.fuel[v] = Math.fround((start.fuel ?? 1) * def.spec.fuelCapacity);
     ents.vehicleEngineCondition[v] = start.engine ?? 1; ents.vehicleRotorCondition[v] = start.rotor ?? 1;
     ents.vehicleHullCondition[v] = Math.max(.01, start.hull ?? 1); ents.vehicleFlooding[v] = 0;
-    if (start.origin) rec.extra.set(VEHICLE_ORIGIN, new TextEncoder().encode(start.origin));
+    if (start.origin) {
+      rec.extra.set(VEHICLE_ORIGIN, new TextEncoder().encode(start.origin));
+      // A found vehicle's hold is rolled when it is first opened (server/loot.ts).
+      sealLoot(rec, 0, opts.seed ?? 1, world.tick);
+    }
     if (persistence) persistence.attach(rec, e);
     records.dirty.add(rec.pid);
     items.inv(rec);
@@ -833,6 +837,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   combat.onPanelHit.on((target, panel, damage) => urban.hitPanel(target, panel, damage));
   const vehicles = new VehicleService({ world, game, records, items, survival, urban,
     may: (actor, vehicle) => urbanMay(actor, vehicle, null),
+    loot: (vehicle, by) => void loot.vehicle(vehicle, by),
     spawn: (kind, x, z, team, yaw, start) => parkVehicle(kind, x, z, team, yaw, "crafted", start),
     discard: e => { const pid = world.ents.pid[e]!; persistence?.detach(pid); creatures.remove(e); survival.forget(pid); records.delete(pid); },
   });
