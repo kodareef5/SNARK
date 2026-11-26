@@ -1,0 +1,6 @@
+# Fire props
+
+- Desert rock rings set the campfire's uneven rim and shallow center. Crossed split billets read from above, with charred coals or three flame tips visible between the logs. [Joshua Tree National Park, Backcountry and Wilderness Management Plan, figure 2](https://parkplanning.nps.gov/showFile.cfm?projectID=103882&sfid=598816)
+- A narrow wooden shaft ends in a thick, dark resin head. The standing form uses small braces at the foot and a lashed crown of splayed wooden splints around the head. [Smithsonian, Pine Knot Torch, AG.MHI-MN-8182](https://www.si.edu/object/pine-knot-torch%3Anmah_872611)
+- The cast-iron cooking pot keeps the round belly, flared lip, paired ears, three splayed feet and raised bail of an open-hearth cauldron. Low stones sit behind and beside it, leaving space to see the fire below the bowl from the front. [Colonial Williamsburg, Cast Iron Pot, 1991-641](https://emuseum.colonialwilliamsburg.org/objects/725/cast-iron-pot)
+- A projecting hearth, upright jambs and a stepped chimney give the fireplace its cabin proportions. The arched opening has a deep stone reveal, split wood and a low bed of coals. [National Park Service, Stone Fireplace in Collier Homestead Cabin](https://npgallery.nps.gov/AssetDetail/cf69694f-c0c3-431c-9c1d-916ed3e7d870)
