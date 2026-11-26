@@ -9,7 +9,7 @@
 // reports, with raw/osm/all.json kept so the world stage can propose again, and the stages' keys. A stage's key is its
 // inputs and its code, never a path, so on a machine at the same commit tools/maps/city.ts finds every stage done, and an
 // edit to the build's code builds the map again from the kit alone. An edit that reaches a stage reading the downloads
-// (prepare to ways) makes city.ts fetch them first: raw/KIT marks a kit's work folder.
+// makes city.ts fetch them first (raw/KIT marks a kit's work folder) and hold them to downloads.json's digests.
 
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
@@ -104,6 +104,7 @@ export async function unpack(file: string, mapdata = MAPDATA): Promise<string> {
       const { build: _built, ...made } = kit.stages;
       writeFileSync(join(work, "stages.json"), `${JSON.stringify(made, null, 2)}\n`);
       mkdirSync(join(work, "raw"), { recursive: true });
+      rmSync(join(work, "raw/downloads.kit.json"), { force: true });
       writeFileSync(join(work, "raw/KIT"), `${kit.commit}\n`);
       writeFileSync(join(edition, ".installed-sha256"), `${digest}\n`);
       let saved = "";

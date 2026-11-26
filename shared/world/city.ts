@@ -396,12 +396,12 @@ export class CityStatics implements CityKinds {
       seen[n] = this.versions[n]!;
       const square = this.squares[n];
       const was = this.gone.get(n);
-      if (square) this.gone.set(n, square);
+      if (square) this.gone.set(n, { cx0: square.cx0, cz0: square.cz0, cx1: square.cx1, cz1: square.cz1 });
       if (square ?? was) fn(square ?? was!, square !== null);
     }
   }
 
-  /** The place of each square last held, so a reader is told where one went. */
+  /** The place of each square last held, its bounds alone, so a reader is told where one went. */
   private readonly gone = new Map<number, ChunkSquare>();
 
   /**

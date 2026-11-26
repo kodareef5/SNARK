@@ -124,7 +124,7 @@ test("pitched roofs on a four-metre house grid fit their tile groups", () => {
   }
 });
 
-test("the dropped floor palette is climbable, and the steep fallen frame slides a survivor", () => {
+test("the dropped floor palette is climbable, the steep fallen frame slides a survivor, and the laid one holds one", () => {
   for (const [shape, degrees, halfRun] of [["plate15", 15, 4], ["plate30", 30, 4], ["plate4", 24, 2]] as const) {
     const f = frame(157); const m = new Mason(f, 0); const size = RUIN_SHAPES[shape];
     m.put(shape, 0, size[1] / 2, 0);
@@ -152,6 +152,14 @@ test("the dropped floor palette is climbable, and the steep fallen frame slides 
   for (let tick = 0; tick < 120; tick++) stepBody(w, b, 0, 0, 0, 0, 0, w.reg.move[w.kind("core:survivor")]!, TICK_DT);
   expect(b.z).toBeLessThan(127);
   expect(b.y).toBeLessThan(1);
+  // The front the build lays down is low enough to stand on: a survivor set on its high bar stays there.
+  const low = flatWorld(4); const size = RUIN_SHAPES.front12;
+  expect(size[1]).toBeLessThan(2.6);
+  low.structs.add(low.kind("core:zruin_front12_concrete"), 128, size[1] / 2, 128, 0, 0, 1);
+  const on = new Body(); on.x = 128; on.z = 128 + size[2] / 2 - .5; on.y = size[1] + 1;
+  for (let tick = 0; tick < 120; tick++) stepBody(low, on, 0, 0, 0, 0, 0, low.reg.move[low.kind("core:survivor")]!, TICK_DT);
+  expect(Math.hypot(on.x - 128, on.z - (128 + size[2] / 2 - .5))).toBeLessThan(.3);
+  expect(on.y).toBeGreaterThan(1);
 });
 
 test("a tower podium does not cap the shaft stair, and identical seeds emit identical pieces", () => {
@@ -419,6 +427,34 @@ test("a hanging slab hangs from its bay's roof, which a tower's top may have bro
     }
   }
   expect(plates).toBeGreaterThan(0);
+});
+
+test("a slab hangs only two storeys up or more, square in its bay and of its bay's size", () => {
+  const v = vocabulary(source);
+  const square = (w: number, d: number): Frame => ({ ...frame(0), width: w, depth: d, rings: [[[-w / 2, -d / 2], [w / 2, -d / 2], [w / 2, d / 2], [-w / 2, d / 2], [-w / 2, -d / 2]]] });
+  for (const [w, d, height, bay, shape, other] of [[40, 40, 4, 8, "", ""], [40, 40, 12, 8, "plate30", "plate4"], [12, 8, 4, 4, "", ""], [12, 12, 12, 4, "plate4", "plate30"]] as const) {
+    let failed = 0, hung = 0;
+    for (let seed = 0; seed < 12; seed++) {
+      const m = new Mason(square(w, d), 0);
+      layout(m, { ...rule, recipe: "block", bay, height, form: v.forms[bay === 4 ? "house" : "office"], formName: bay === 4 ? "house" : "office", collapse: "hanging", damage: v.damage.hanging, assemblies: v.assemblies, interiors: v.interiors }, { seed, playable: 16, detail: 0 });
+      failed += m.falls.length;
+      const plates = m.pieces.filter((p) => /_plate\d+_/.test(p.kind));
+      // Under a roof one storey up nothing hangs: a slab there stood from the ground to the roof, where the walls were.
+      if (shape === "") { expect([seed, plates.length]).toEqual([seed, 0]); continue; }
+      for (const p of plates) {
+        hung++;
+        expect(p.kind).toContain(`_${shape}_`);
+        expect(p.kind).not.toContain(`_${other}_`);
+        // Its foot a storey off the ground or near it, unturned, over the middle of a failed bay: the bay's rubble lies 1 m behind.
+        expect(p.y - RUIN_SHAPES[shape][1] / 2).toBeGreaterThan(3.6);
+        expect(p.yaw).toBe(0);
+        expect(m.pieces.some((r) => r.kind.includes("_rubble4_") && Math.abs(r.x - p.x) < 1e-6 && Math.abs(r.z - p.z - 1) < 1e-6)).toBe(true);
+        expect(RUIN_SHAPES[shape][0]).toBeLessThanOrEqual(bay);
+      }
+    }
+    expect(failed).toBeGreaterThan(0);
+    if (shape !== "") expect(hung).toBeGreaterThan(0);
+  }
 });
 
 test("moss lies only along a parapet's coping, never over a broken wall's slab ends or a party wall", () => {

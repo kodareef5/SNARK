@@ -75,14 +75,15 @@ test("a map written in parts and read back is the map it was made of: every heig
   expect(writeMap(back)).toEqual(file);
 });
 
-test("a map of any version but this build's is refused", () => {
+test("the reader accepts the previous bend layout and refuses unknown formats", () => {
   const plain = writeMap({ ...wideMap(), statics: [] });
   const as = (version: number): Uint8Array<ArrayBuffer> => {
     const f = plain.slice();
     new DataView(f.buffer).setUint16(4, version, true);
     return f;
   };
-  for (const v of [10, 11, 13, 14, 16]) expect(() => readHead(as(v))).toThrow(`map: version ${v} is not one this build reads`);
+  expect(readHead(as(15)).version).toBe(15);
+  for (const v of [10, 11, 13, 14, 255]) expect(() => readHead(as(v))).toThrow(`map: version ${v} is not one this build reads`);
 });
 
 test("a sector's statics name their own kinds", () => {

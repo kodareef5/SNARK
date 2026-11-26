@@ -161,9 +161,12 @@ export function makeNodes(ground: Ground, world: World, clear: (col: number, row
           plant = P("spill");
           stone = industrial ? T("scrap") : T("rubble");
           break;
+        // Nothing grows where traffic ran: a tree or a bush in the carriageway reads as a mistake, and blocks the road.
         case S.STREET:
         case S.HIGHWAY:
         case S.CROSSWALK:
+          stone = T("street blocks");
+          break;
         case S.SIDEWALK:
         case S.PLAZA:
         case S.LOT:

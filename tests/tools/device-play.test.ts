@@ -73,7 +73,8 @@ test("a page shows which device it is on and the tests, starts nothing until one
   expect([...card.kinds].sort((a, b) => a - b)).toEqual([DRAW_SIZED, DRAW_PULLED]);
   expect([r.again?.tier, r.again?.scene]).toEqual(["lowpoly", "plain"]);
   expect(r.hashes!.every((x) => x.got === x.want)).toBe(true);
-  expect([r.load!.pageBytes, r.link.httpMs!.median, r.idleFrameMs, r.wakeLock, r.gpu!.maxTexture, r.gpu!.variant, r.device!.touch]).toEqual([500000, 0, 16.6, "held", 2048, "astc", 5]);
+  // A cache hit transfers nothing, and is counted apart.
+  expect([r.load!.pageBytes, r.load!.pageCached, r.link.httpMs!.median, r.idleFrameMs, r.wakeLock, r.gpu!.maxTexture, r.gpu!.variant, r.device!.touch]).toEqual([300000, 200000, 0, 16.6, "held", 2048, "astc", 5]);
   // Counted from the first snapshot, nothing is missed on the harness; the server's counts are this run's own.
   expect([r.link.missed, r.link.missedLoading, r.link.missedHidden, r.link.snapshots > 0]).toEqual([0, 0, 0, true]);
   expect(r.link.server).toEqual({ skipped: posts.length - 1, overflows: 0 });

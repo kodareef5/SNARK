@@ -1,6 +1,6 @@
 // A map as a folder of plain layers, which is how one is made outside the engine. tools/map.ts says what goes in the folder.
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, writeFileSync, writeSync } from "node:fs";
 import { join } from "node:path";
 import { CHUNK_SIZE, YAW_UNITS, chunkAt, chunkCount, chunkCx, chunkCz, framed } from "../../shared/coords.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
@@ -38,6 +38,60 @@ const ROAD_PLANES = ["across", "along", "half", "lanes"] as const;
 
 export const toYaw = (degrees = 0): number => Math.round((degrees / 360) * YAW_UNITS) & (YAW_UNITS - 1);
 const toDegrees = (yaw: number): number => (yaw * 360) / YAW_UNITS;
+
+const QUOTE = 0x22, BACKSLASH = 0x5c, OPEN = 0x7b, CLOSE = 0x7d, LIST = 0x5b, END = 0x5d, COMMA = 0x2c;
+const blank = (b: number): boolean => b === 0x20 || b === 0x0a || b === 0x0d || b === 0x09;
+
+/**
+ * Each object of the JSON array in `path`, in order, read `chunk` bytes at a time: Los Angeles's statics.json is 2.05 GB,
+ * more than one string holds. The rows between two reads are parsed as one array; a row cut by a read waits for the next.
+ */
+export function eachRow<T>(path: string, each: (row: T) => void, chunk = 1 << 24): void {
+  const fd = openSync(path, "r");
+  const decoder = new TextDecoder();
+  const bad = (why: string): never => { throw new Error(`${path}: ${why}`); };
+  try {
+    const buf = new Uint8Array(chunk);
+    let carry = new Uint8Array(0);
+    let depth = 0, inString = false, escaped = false, opened = false, closed = false;
+    for (;;) {
+      const n = readSync(fd, buf, 0, chunk, null);
+      if (n === 0) break;
+      const bytes = carry.length > 0 ? new Uint8Array(carry.length + n) : buf.subarray(0, n);
+      if (carry.length > 0) { bytes.set(carry); bytes.set(buf.subarray(0, n), carry.length); }
+      // A row carried over starts the bytes, and was scanned as far as it went.
+      let first = carry.length > 0 ? 0 : -1, row = first, last = -1;
+      for (let i = carry.length; i < bytes.length; i++) {
+        const b = bytes[i]!;
+        if (inString) {
+          if (escaped) escaped = false;
+          else if (b === BACKSLASH) escaped = true;
+          else if (b === QUOTE) inString = false;
+          continue;
+        }
+        if (depth >= 2) {
+          if (b === QUOTE) inString = true;
+          else if (b === OPEN || b === LIST) depth++;
+          else if (b === CLOSE || b === END) {
+            depth--;
+            if (depth === 1) { last = i + 1; row = -1; }
+          }
+        } else if (depth === 1) {
+          if (b === OPEN) { depth = 2; row = i; if (first < 0) first = i; }
+          else if (b === END) { depth = 0; closed = true; }
+          else if (b !== COMMA && !blank(b)) bad("its rows are not all objects");
+        } else if (blank(b)) continue;
+        else if (b === LIST && !opened) { opened = true; depth = 1; }
+        else bad(closed ? "it goes on after its array" : "it is not a JSON array");
+      }
+      if (last > first && first >= 0) for (const r of JSON.parse(`[${decoder.decode(bytes.subarray(first, last))}]`) as T[]) each(r);
+      carry = row >= 0 ? bytes.slice(row) : new Uint8Array(0);
+    }
+    if (!closed) bad(opened ? "it ends inside its array" : "it is empty");
+  } finally {
+    closeSync(fd);
+  }
+}
 
 /**
  * Reads the folder into a map. Throws, naming the file, if a layer is missing or the wrong shape. `statics`, where the
@@ -148,7 +202,7 @@ export function readLayers(folder: string, statics?: readonly MapStatic[]): MapD
     tint: (picture("tint", 8, nx, nz) as Uint8Array | null) ?? new Uint8Array(nx * nz),
     // The ground's class each two samples a side (MapData.ground), where the folder has one: every even sample's.
     ...((g) => (g ? { ground: g as Uint8Array } : {}))(picture("ground", 8, (nx + 1) >> 1, (nz + 1) >> 1)),
-    statics: statics ?? (json<Piece[]>("statics.json") ?? []).map((s): MapStatic => ({ kind: s.kind, x: s.x, y: s.y, z: s.z, yaw: toYaw(s.yaw), ...(s.bend ? { bend: s.bend } : {}) })),
+    statics: statics ?? readStatics(join(folder, "statics.json")),
     nodes,
     spawns: need(json<Spawn[]>("spawns.json"), "spawns.json").map((s): MapSpawn => ({ name: s.name, x: s.x, z: s.z, yaw: toYaw(s.yaw) })),
     ...(regions ? { regions: regions.map((r): MapZone => ({ kind: "spawn", spawns: r.spawns, count: r.count, at: [r.x, r.z], ...(r.half ? { half: r.half } : { radius: r.radius ?? 0 }) })) } : {}),
@@ -159,6 +213,29 @@ export function readLayers(folder: string, statics?: readonly MapStatic[]): MapD
     ...(buildings ? { buildings } : {}),
     ...(marks ? { content: { landmarks: marks.landmarks.map((l) => ({ ...l, yaw: toYaw(l.yaw) })), defs: marks.defs } } : {}),
   };
+}
+
+/** A folder's statics.json as the map's pieces, in the file's order, which a saved piece's number is a place in. */
+function readStatics(path: string): MapStatic[] {
+  const out: MapStatic[] = [];
+  if (!existsSync(path)) return out;
+  eachRow<Piece>(path, (s) => { out.push({ kind: s.kind, x: s.x, y: s.y, z: s.z, yaw: toYaw(s.yaw), ...(s.bend ? { bend: s.bend } : {}) }); });
+  return out;
+}
+
+/** The pieces as statics.json holds them, one a line, written a megabyte at a time as tools/mapworld/build.ts does. */
+function writeStatics(path: string, statics: Iterable<MapStatic>): void {
+  const fd = openSync(path, "w");
+  try {
+    let chunk = "[\n", i = 0;
+    for (const s of statics) {
+      chunk += `${i++ > 0 ? ",\n" : ""}  ${JSON.stringify({ kind: s.kind, x: s.x, y: s.y, z: s.z, yaw: toDegrees(s.yaw), ...(s.bend ? { bend: Array.from(s.bend) } : {}) } satisfies Piece)}`;
+      if (chunk.length > 1 << 20) { writeSync(fd, chunk); chunk = ""; }
+    }
+    writeSync(fd, `${chunk}\n]\n`);
+  } finally {
+    closeSync(fd);
+  }
 }
 
 /**
@@ -207,7 +284,7 @@ export function writeLayers(map: MapData, folder: string): void {
   put("heights.png", writeGrey(nx, nz, map.heights.slice().reverse()));
   put("tint.png", writeGrey(nx, nz, map.tint.slice().reverse(), defaultPalette()));
   if (map.ground) put("ground.png", writeGrey((nx + 1) >> 1, (nz + 1) >> 1, map.ground.slice().reverse()));
-  if (map.statics.length > 0) put("statics.json", lines([...map.statics].map((s): Piece => ({ kind: s.kind, x: s.x, y: s.y, z: s.z, yaw: toDegrees(s.yaw), ...(s.bend ? { bend: Array.from(s.bend) } : {}) }))));
+  if (map.statics.length > 0) writeStatics(join(folder, "statics.json"), map.statics);
   put("spawns.json", lines(map.spawns.map((s): Spawn => ({ name: s.name, x: s.x, z: s.z, yaw: toDegrees(s.yaw) }))));
   if (map.vehicles && map.vehicles.length > 0) put("vehicles.json", lines(map.vehicles.map((v): Vehicle => ({ ...v, yaw: toDegrees(v.yaw) }))));
   if (map.regions && map.regions.length > 0) put("regions.json", lines(map.regions.map((r): Region => ({ spawns: r.spawns!, count: r.count!, x: r.at[0], z: r.at[1], ...(r.half ? { half: [r.half[0], r.half[1]] } : { radius: r.radius! }) }))));

@@ -581,7 +581,10 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // It was 1436136949 until the map events' two crates (content/core.ts) moved the kinds' numbers after them.
   // It was 1377212791 until the UFO's core (content/core.ts) took its own mesh for the box.
   // Tek and the screen props shift the mesh indices in both packets.
-  expect(hash).toBe(2684164804);
+  // It was 2684164804 until the laid fallen front (content/ruins.ts front12) and the three more billboards with their bare
+  // forms (content/street.ts BOARDS) numbered the meshes after them on.
+  // It was 763957391 until the tall and the grand billboard and their bare forms did the same.
+  expect(hash).toBe(1984411619);
 
   // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
   // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of
@@ -630,7 +633,9 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // And 2924218475 until the kinds drawn as nothing lost their grey meshes, as above (3330468365 with the orb's shell's).
   // And 1982246606 until the building pieces, as above (1220435809 with them and without the orb).
   // And 2246990923 until the map events' two crates, and 3436127037 until the UFO's core took its own mesh, as above.
-  expect(saddled.hash).toBe(3617411346);
+  // And 3617411346 until the laid fallen front and the billboards' other sizes, as above.
+  // And 3606419820 until the tall and the grand billboard, as above.
+  expect(saddled.hash).toBe(2316672820);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {

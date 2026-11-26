@@ -3,12 +3,10 @@ import { making } from "../craft.ts";
 import { armorCovers } from "./armor-covers.ts";
 import { ARROWS, ATTACHMENTS, BLOW, BOW_AIM, PISTOL_AIM, RIFLE_AIM, SHOTGUN_AIM } from "./weapons.ts";
 
-// Things blocked out (planning/workstreams/supply.md, "Blocked out"; the owner on 2026-11-21: "block out, name, claim
-// the slot and render as squares ... the modelers can come behind and do art and polish"). Each is a real item under
-// ARK's name with ARK's weight, stack, recipe, station, level and engram cost, so that loot tables, recipes and the
-// economy can be built and balanced on it now. None has art of its own: its icon is its swatch, in the hand it is a
-// plain box, what is worn is drawn as hide is, and what is set down is a box. Each works as far as the game already
-// can make it work and is inert past that, and each line says where it stops.
+// The supply drops use these ARK items with their stack, weight, recipe, station, level and engram cost.
+// Resource items have drop meshes and inventory icons. The other entries still use swatches, held boxes,
+// hide armor or collider geometry. The notes below say which parts of each item's gameplay remain open.
+//
 //
 // Every number is ark.wiki.gg's, read on 2026-11-21 from the page of the thing's name, except where a line says chosen.
 // Where a page gives no making time it is 5 s, as DEV135 chooses for a station's. Where a page gives no stack, the

@@ -9,7 +9,7 @@
 // within the statics reach, then its sectors, then the rest, each sector's ground before its statics; URGENT_AT_ONCE at
 // once while what is urgent is wanted, AFTER_AT_ONCE otherwise. A part no longer wanted is let go a sector past its reach,
 // but statics of a sector the session still holds chunks of; statics and ground pages past their budgets farthest first,
-// but ground round the body and the camera; an overview a band at a time. Each sector's statics are a table of their own (map-statics.ts), which the city follows. Whenever those held
+// but ground round the body, the camera and a focus; an overview a band at a time. Each sector's statics are a table of their own (map-statics.ts), which the city follows. Whenever those held
 // change and every overview, ground and statics part within the statics reach of the body has come, the statics are
 // handed over: to a tool, a copy of them all, a step at a time. A sector asked for once (HeldStatics.once) comes after
 // what is urgent and is handed to who asked, not kept unless it is wanted. The city's tops come with the
@@ -24,6 +24,7 @@ import type { Def } from "../../shared/content/defs.ts";
 import { Buildings } from "../../shared/world/buildings.ts";
 import { TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { OVERVIEW_CHUNKS, listedRows, partHash, partSteps, readHead, readPart, squareOf, type GroundPiece, type MapContent, type MapHead, type MapPart, type MapPiece, type MapStatics, type NodeLayer, type StaticsPiece } from "../../shared/world/mapfile.ts";
+import { HeldWater } from "./ground/held-water.ts";
 import { Overviews } from "./ground/overviews.ts";
 import { GroundPages, pageBytes, type Chunks } from "./ground/pages.ts";
 import { MapWater } from "../../shared/world/water.ts";
@@ -106,6 +107,8 @@ export class StagedMap {
   readonly buildings: Buildings | null;
   /** The landmarks the head places and the definitions the land part adds, or undefined where the head has none. */
   content: MapContent | undefined;
+  /** The water as its overviews come and go, an overview's square at a time; null where the head has none. */
+  readonly waters: HeldWater | null;
   /** Each sector's come so far that has rows of a listed node layer: those rows, and none of its ground. */
   private readonly listed: GroundPiece[] = [];
   /** The overviews' squares held, and the sectors' grounds come before their overview, by its square. */
@@ -140,7 +143,8 @@ export class StagedMap {
     this.tops = new HeldTops(dims);
     this.buildings = head.buildings ? new Buildings(dims, head.buildings) : null;
     this.content = head.landmarks ? { landmarks: head.landmarks, defs: [] } : undefined;
-    if (head.water) this.hf.water = coarseWater(head);
+    this.waters = head.water ? new HeldWater(head, coarseWater(head)) : null;
+    if (this.waters) this.hf.water = this.waters.water;
   }
 
   /** Takes in a part read: the land's definitions, an overview's ground, node pictures and water, a sector's ground and its listed nodes, a square's tops, or a sector's buildings. */
@@ -149,27 +153,27 @@ export class StagedMap {
     while (!steps.next().done);
   }
 
-  /** `take` a step at a time: an overview's ground is filled BAND_CHUNKS chunk rows a step, and the rest of it set in at the last. */
+  /** `take` a step at a time: an overview's water at once, its ground and bounds BAND_CHUNKS chunk rows a step, and its nodes at the last. */
   *steps(piece: MapPiece): Generator<void, void> {
     const { dims } = this.head;
     if (piece.kind === "land") {
       if (this.content) this.content = { landmarks: this.content.landmarks, defs: piece.defs as Def[] };
     } else if (piece.kind === "overview") {
-      const sq = piece.sq;
-      // Its samples stand in a band at a time, each a change to the ground.
+      const sq = piece.sq, w = sq.cx1 - sq.cx0;
+      // Its water first, so each band's change carries it to the lakes, as a release lets its water go before its bands.
+      if (piece.water && this.waters) this.hf.water = takeWater(this.waters, piece.sq, piece.water);
+      // Its samples stand in a band at a time, each a change to the ground taken with its chunks' own bounds.
       const block = this.overviews.begin(piece);
       for (let z = sq.cz0; z < sq.cz1; z += BAND_CHUNKS) {
         const z1 = Math.min(sq.cz1, z + BAND_CHUNKS);
+        for (let k = (z - sq.cz0) * w; k < (z1 - sq.cz0) * w; k++) this.bound(sq.cx0 + (k % w), sq.cz0 + Math.floor(k / w), piece.low[k]!, piece.high[k]!);
         block.to = z1;
         this.hf.standing(sq.cx0, z, sq.cx1, z1);
         if (z1 < sq.cz1) yield;
         if (!this.overviews.holds(block)) return;
       }
-      const w = sq.cx1 - sq.cx0;
-      for (let k = 0; k < piece.low.length; k++) this.bound(sq.cx0 + (k % w), sq.cz0 + Math.floor(k / w), piece.low[k]!, piece.high[k]!);
       block.nodes = true;
       this.overviews.version++;
-      if (piece.water) this.hf.water = takeWater(this.head, this.hf.water!, piece.sq, piece.water);
       const key = squareKey(sq.col, sq.row);
       this.came.add(key);
       for (const g of this.early.get(key) ?? []) this.take(g);
@@ -201,7 +205,7 @@ export class StagedMap {
     this.came.delete(squareKey(col, row));
     block.nodes = false;
     this.overviews.version++;
-    if (this.hf.water && this.head.water) this.hf.water = coarseAgain(this.head, this.hf.water, sq);
+    if (this.waters) this.hf.water = coarseAgain(this.head, this.waters, sq);
     for (let z = sq.cz0; z < sq.cz1; z += BAND_CHUNKS) {
       if (!this.overviews.holds(block)) return;
       const z1 = Math.min(sq.cz1, z + BAND_CHUNKS);
@@ -210,6 +214,11 @@ export class StagedMap {
       if (z1 < sq.cz1) yield;
     }
     this.overviews.end(block);
+  }
+
+  /** Whether sector `sq`'s ground has come but waits for its overview. */
+  waits(sq: Chunks & { readonly col: number; readonly row: number }): boolean {
+    return this.early.get(overviewOf(sq))?.some((g) => g.sq.cx0 === sq.cx0 && g.sq.cz0 === sq.cz0) ?? false;
   }
 
   /** Sector `sq`'s ground let go: its samples stand in with its overview's, else the coarse picture's. */
@@ -307,26 +316,22 @@ function coarseSquares(head: MapHead, c: number, out: Uint16Array, at: number): 
   for (let s = 0; s < side * side; s++) out[at + s] = coarse.bodies![nearest(Math.floor(c / dims.chunksX), Math.floor(s / side)) * across + nearest(c % dims.chunksX, s % side)]!;
 }
 
-/** The water once an overview's square is let go: its chunks' squares the coarse picture's again, in the same layout. */
-function coarseAgain(head: MapHead, was: MapWater, sq: Chunks): MapWater {
-  const { dims, squares, block } = was;
-  for (let cz = sq.cz0; cz < sq.cz1; cz++) for (let cx = sq.cx0; cx < sq.cx1; cx++) if (block[cz * dims.chunksX + cx]! >= 0) coarseSquares(head, cz * dims.chunksX + cx, squares, block[cz * dims.chunksX + cx]!);
-  return new MapWater(dims, head.minY, head.stepY, was.cell, was.bodies, was.chunks(), squares);
+/** The water once an overview's square `sq` is let go: its chunks' squares the coarse picture's again, in the same layout. */
+function coarseAgain(head: MapHead, held: HeldWater, sq: Chunks & { readonly col: number; readonly row: number }): MapWater {
+  return held.change(sq, (chunks, was) => chunks.forEach((c) => coarseSquares(head, c, was.squares, was.block[c]!)));
 }
 
 /**
  * The water once an overview's has come: its chunks' squares its own, none where it holds none, in the same layout and
  * the same squares, so whatever was made of the water before reads them where they lie.
  */
-function takeWater(head: MapHead, was: MapWater, sq: { readonly cx0: number; readonly cz0: number; readonly cx1: number; readonly cz1: number }, water: { readonly chunks: Uint32Array; readonly squares: Uint16Array }): MapWater {
-  const { dims, squares, block } = was;
-  const per = was.side * was.side;
-  for (let cz = sq.cz0; cz < sq.cz1; cz++) for (let cx = sq.cx0; cx < sq.cx1; cx++) if (block[cz * dims.chunksX + cx]! >= 0) squares.fill(0, block[cz * dims.chunksX + cx]!, block[cz * dims.chunksX + cx]! + per);
-  water.chunks.forEach((c, k) => {
-    if (block[c]! < 0) throw new Error("map: an overview holds water where its head says there is none");
-    squares.set(water.squares.subarray(k * per, k * per + per), block[c]!);
+function takeWater(held: HeldWater, sq: Chunks & { readonly col: number; readonly row: number }, water: { readonly chunks: Uint32Array; readonly squares: Uint16Array }): MapWater {
+  const { squares, block, side } = held.water, per = side * side;
+  for (const c of water.chunks) if (block[c]! < 0) throw new Error("map: an overview holds water where its head says there is none");
+  return held.change(sq, (chunks) => {
+    for (const c of chunks) squares.fill(0, block[c]!, block[c]! + per);
+    water.chunks.forEach((c, k) => squares.set(water.squares.subarray(k * per, k * per + per), block[c]!));
   });
-  return new MapWater(dims, head.minY, head.stepY, was.cell, was.bodies, was.chunks(), squares);
 }
 
 const NO_HEIGHTS = new Uint16Array(0);
@@ -544,14 +549,19 @@ export class MapLoader {
     this.pump();
   }
 
-  /** Metres from the body, or the camera, to part `p`: a ground page within ROAD_REACH of either is pinned. */
+  /** Metres from the body, the camera or a sight's focus to part `p`: a ground page within ROAD_REACH of any is pinned. */
   private pinOff(p: MapPart): number {
-    const head = this.staged.head, cam = this.from().camera, { x, z } = this.place();
-    return Math.min(partDistance(head, p, x, z), cam ? partDistance(head, p, cam.x, cam.z) : Infinity);
+    const head = this.staged.head, { camera, focus } = this.from(), { x, z } = this.place();
+    return Math.min(partDistance(head, p, x, z), camera ? partDistance(head, p, camera.x, camera.z) : Infinity, focus ? partDistance(head, p, focus.x, focus.z) : Infinity);
+  }
+
+  /** Whether part `p` has come and is in place: a sector's ground that waits for its overview is not. */
+  private holds(p: MapPart): boolean {
+    return this.came.has(p) && !(p.kind === "ground" && this.staged.waits(squareOf(this.staged.head.dims, SECTOR_CHUNKS, p.col, p.row)!));
   }
 
   /**
-   * The ground wanted, nearest the body, where it heads or the camera first, as far as `budget` bytes of pages reach,
+   * The ground wanted, nearest the body, where it heads, the camera or a focus first, as far as `budget` bytes of pages reach,
    * and none past but those pinned. A page held counts a sector nearer.
    */
   private capGround(budget: number): void {
@@ -670,7 +680,7 @@ export class MapLoader {
   /** Whether every overview, ground and statics part wanted within the statics reach of the body has come. */
   private statsIn(): boolean {
     const reach = this.from().statics;
-    for (const p of this.want.parts.keys()) if ((p.kind === "statics" || p.kind === "ground" || p.kind === "overview") && !this.came.has(p) && !this.broken.has(p) && this.off(p) <= reach) return false;
+    for (const p of this.want.parts.keys()) if ((p.kind === "statics" || p.kind === "ground" || p.kind === "overview") && !this.holds(p) && !this.broken.has(p) && this.off(p) <= reach) return false;
     return true;
   }
 
@@ -799,7 +809,7 @@ export class MapLoader {
     const head = this.staged.head;
     let roads = 0, left = 0;
     for (const p of head.parts) if ((p.kind === "road" || p.kind === "streets") && !this.roadsHeld.has(p) && this.off(p) <= ROAD_REACH) roads++;
-    for (const p of this.want.parts.keys()) if (!this.came.has(p)) left++;
+    for (const p of this.want.parts.keys()) if (!this.holds(p)) left++;
     const settled = this.followed && left === 0 && this.going.size === 0 && this.waiting.size === 0 && !this.handing && this.handedAt === this.held.version;
     return { left, parts: this.want.parts.size, near: this.handedOnce, settled, roads };
   }

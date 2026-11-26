@@ -68,6 +68,11 @@ def edges(m, a, fine):
     return a
 
 
+def coarse_buildings(m, bld, fine):
+    """The 2 m footprint layer burnt from `bld`, its outer samples the 1 m layer's."""
+    return edges(m, m.burn([(g, 1) for g, p in bld], m.shape, m.grid), fine)
+
+
 def main():
     m = folder_arg()
     fine_grid = m.fine_shape()
@@ -102,7 +107,12 @@ def main():
             report[f'roads{suffix}_changes'] = int((r != before).sum())
         save(r, path)
     r_fine = np.asarray(Image.open(m.base / 'roads_fine.png'))
-    for name, fine in [('water', w_fine), ('buildings', b_fine), ('roads', r_fine)]:
+    # The 2 m footprints from the final buildings, as the 1 m are: prepare.py's were burnt before split.py added and reshaped them.
+    coarse = np.asarray(Image.open(m.base / 'buildings.png'))
+    b_coarse = coarse_buildings(m, bld, b_fine)
+    report['buildings_resampled'] = int((b_coarse != coarse).sum())
+    save(b_coarse, m.base / 'buildings.png')
+    for name, fine in [('water', w_fine), ('roads', r_fine)]:
         a = np.asarray(Image.open(m.base / f'{name}.png')).copy()
         before = a.copy()
         save(edges(m, a, fine), m.base / f'{name}.png')

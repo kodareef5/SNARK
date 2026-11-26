@@ -170,6 +170,14 @@ def straighten(pts, ends):
     return out, kept
 
 
+def run_starts(whole, g):
+    """Metres along the whole piece where each run of `g`, its part the frame holds, starts, so stations along it stand
+    where another cut's do: one for each run of a piece that leaves the frame and comes back, [0.0] for one it holds whole."""
+    if g.length >= whole.length - 1e-6:
+        return [0.0]
+    return [round(whole.project(Point(r.coords[0])), 3) for r in (g.geoms if hasattr(g, 'geoms') else [g])]
+
+
 def roads(m, elements, tiger_roads):
     """The roads to burn: OpenStreetMap's, cut at junctions and straightened, and TIGER's where OpenStreetMap has none."""
     to_map = Transformer.from_crs(4326, m.crs, always_xy=True).transform
@@ -200,16 +208,15 @@ def roads(m, elements, tiger_roads):
             g = whole.intersection(frame)
             if g.is_empty or g.length < .5:
                 continue
-            # Where a piece the frame cuts starts along the whole piece, so stations along it stand where another cut's do.
-            first = g.geoms[0] if hasattr(g, 'geoms') else g
-            from_m = round(whole.project(Point(first.coords[0])), 3) if g.length < whole.length - 1e-6 else 0.0
+            starts = run_starts(whole, g)
+            from_m = starts[0]
             tiger_name = None
             if tiger_tree is not None:
                 mid = g.interpolate(.5, normalized=True)
                 near = [i for i in tiger_tree.query(mid.buffer(12)) if tiger_roads[i][0].distance(mid) < 12]
                 if near:
                     tiger_name = tiger_roads[min(near, key=lambda i: (tiger_roads[i][0].distance(mid), tiger_roads[i][0].wkb))][1].get('name')
-            out.append((g, {'id': f"osm:{w['id']}:{k}", 'from_m': from_m, 'mtfcc': mtfcc, 'name': t.get('name') or tiger_name, 'tiger_name': tiger_name,
+            out.append((g, {'id': f"osm:{w['id']}:{k}", 'from_m': from_m, **({'runs_from_m': starts} if len(starts) > 1 else {}), 'mtfcc': mtfcc, 'name': t.get('name') or tiger_name, 'tiger_name': tiger_name,
                             # oneway_dir: 1 one way along the drawn direction, -1 against it (OpenStreetMap's oneway=-1), 0 both.
                             'highway': t['highway'], 'lanes': lanes, 'oneway': oneway, 'oneway_dir': cut[w['id']][1], 'width_m': width,
                             'bridge': t.get('bridge') not in (None, 'no'), 'tunnel': t.get('tunnel') == 'yes',  # a building passage runs at the street's own level

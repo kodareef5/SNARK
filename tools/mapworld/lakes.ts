@@ -60,6 +60,11 @@ export function readLakes(base: Base, rules: LakeRules | false | undefined, sea:
   const { nx, nz, cell, west, north } = base.grid;
   const N = nx * nz;
   const features = (JSON.parse(readFileSync(path, "utf8")) as { features: Feature[] }).features;
+  // A sample's four neighbours, -1 past the map's edge: a row's last sample's east is no sample, not the next row's first.
+  const around = (i: number): [number, number, number, number] => {
+    const col = i % nx;
+    return [col > 0 ? i - 1 : -1, col < nx - 1 ? i + 1 : -1, i - nx, i + nx];
+  };
   const snap = (m: number): number => minY + Math.round((m - minY) / stepY) * stepY;
   const body = new Uint16Array(N);
   const taken = new Uint8Array(N);
@@ -111,7 +116,7 @@ export function readLakes(base: Base, rules: LakeRules | false | undefined, sea:
         const i = wet[k]!;
         const d = reached.get(i)!;
         if (d >= r.past) continue;
-        for (const j of [i - 1, i + 1, i - nx, i + nx]) {
+        for (const j of around(i)) {
           if (j < 0 || j >= N || reached.has(j) || taken[j] === 1 || body[j] !== 0 || dry(j) || Number.isNaN(dem[j]!) || Math.abs(dem[j]! - sea - mode) > 0.05) continue;
           reached.set(j, d + 1);
           wet.push(j);
@@ -121,7 +126,7 @@ export function readLakes(base: Base, rules: LakeRules | false | undefined, sea:
       let rim = 0;
       let low = 0;
       for (const i of wet) {
-        for (const j of [i - 1, i + 1, i - nx, i + nx]) {
+        for (const j of around(i)) {
           if (j < 0 || j >= N || reached.has(j)) continue;
           rim++;
           if (!Number.isNaN(dem[j]!) && dem[j]! - sea < mode - r.bank) low++;

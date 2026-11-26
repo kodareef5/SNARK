@@ -4,7 +4,8 @@
 //
 // Every building is gathered whole and judged. A piece that does not stand is one the rule would drop or hang by itself,
 // so it is pinned at run time. This prints their share by family, by shape and by the building's recipe, the cost of a
-// judgement, and some of them. With --building it prints one building's pieces level by level.
+// judgement, and some of them. It also counts the buildings that would lose a storey as placed by the storey rule at the
+// default share: none should. With --building it prints one building's pieces level by level.
 
 import { readFileSync } from "node:fs";
 import { CORE_CONTENT } from "../content/core.ts";
@@ -28,6 +29,8 @@ export interface BearingReport {
   readonly buildings: number;
   /** Buildings with a piece that does not stand. */
   readonly pinned: number;
+  /** Buildings that lose a storey as placed, pins and all, by the storey rule at `share`: there should be none. */
+  readonly failing: number;
   readonly all: BearingCount;
   readonly families: Record<string, BearingCount>;
   readonly shapes: Record<string, BearingCount>;
@@ -59,12 +62,12 @@ export function* eachBuilding(buildings: Buildings): IterableIterator<number[]> 
 }
 
 /** Judges every building of a map set down in `structs` as placed. */
-export function bearingReport(buildings: Buildings, structs: StructureStore, reg: Registry, examples = 0): BearingReport {
+export function bearingReport(buildings: Buildings, structs: StructureStore, reg: Registry, examples = 0, share = 0.25): BearingReport {
   const families: Record<string, BearingCount> = {}, shapes: Record<string, BearingCount> = {}, recipes: Record<string, BearingCount> = {};
   const all = blank();
   const pieces = new Pieces();
   let out = new Uint8Array(1024), pin = new Uint8Array(1024), again = new Uint8Array(1024);
-  let n = 0, pinned = 0, mostOps = 0, mostPieces = 0, ms = 0;
+  let n = 0, pinned = 0, failing = 0, mostOps = 0, mostPieces = 0, ms = 0;
   const shown: string[] = [];
   const seenWhy = new Map<string, number>();
   for (const handles of eachBuilding(buildings)) {
@@ -80,6 +83,7 @@ export function bearingReport(buildings: Buildings, structs: StructureStore, reg
       pins(pieces, pin, again);
       if (judge(pieces, again, pin) !== 0) throw new Error(`building ${buildings.id(handles[0]!)} does not stand with its pins`);
     } else pin.fill(0, 0, pieces.n);
+    if (share > 0 && judge(pieces, again, pin, share) !== 0) failing++;
     const recipe = (recipes[buildings.recipe(handles[0]!)] ??= blank());
     for (let k = 0; k < pieces.n; k++) {
       const ref = pieces.ref[k]!;
@@ -102,13 +106,13 @@ export function bearingReport(buildings: Buildings, structs: StructureStore, reg
     }
   }
   const worst = [...seenWhy.entries()].sort((a, b) => b[1] - a[1]).slice(0, examples).map(([key, count]) => `${String(count).padStart(8)} ${key}`);
-  return { buildings: n, pinned, all, families, shapes, recipes, mostOps, mostPieces, ms, examples: [...worst, "", ...shown] };
+  return { buildings: n, pinned, failing, all, families, shapes, recipes, mostOps, mostPieces, ms, examples: [...worst, "", ...shown] };
 }
 
 const share = (c: BearingCount): string => `${String(c.pieces).padStart(9)} ${String(c.judged).padStart(9)} ${((100 * c.hang) / Math.max(1, c.pieces)).toFixed(2).padStart(6)} ${((100 * c.fall) / Math.max(1, c.pieces)).toFixed(2).padStart(6)} ${((100 * c.always) / Math.max(1, c.pieces)).toFixed(2).padStart(8)}`;
 
 export function bearingLines(r: BearingReport, most = 24): string[] {
-  const lines = [`${r.buildings} buildings, ${r.pinned} with a piece that does not stand as placed; ${r.ms.toFixed(0)} ms to judge all; the costliest ${r.mostOps} operations for ${r.mostPieces} pieces`];
+  const lines = [`${r.buildings} buildings, ${r.pinned} with a piece that does not stand as placed, ${r.failing} that lose a storey as placed; ${r.ms.toFixed(0)} ms to judge all; the costliest ${r.mostOps} operations for ${r.mostPieces} pieces`];
   lines.push(`${"".padEnd(16)} ${"pieces".padStart(9)} ${"judged".padStart(9)} ${"hang %".padStart(6)} ${"fall %".padStart(6)} ${"always %".padStart(8)}`);
   lines.push(`${"all".padEnd(16)} ${share(r.all)}`, `${r.all.hang} hang, ${r.all.fall} fall, ${r.all.always} of them with nothing under or beside them`);
   for (const [title, table] of [["by family", r.families], ["by shape", r.shapes], ["by recipe", r.recipes]] as const) {
