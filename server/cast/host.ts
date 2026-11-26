@@ -349,7 +349,6 @@ export class CastHost {
         rec.name = c.name;
         rec.extra.set(COMP_CAST, new TextEncoder().encode(c.id));
         const look = CAST_CATALOGUE.looks.find((l) => l.id === c.look);
-        if (look?.colors && rec.genome) look.colors.forEach((col, i) => void (i < rec.genome!.colors.length && (rec.genome!.colors[i] = col)));
         // Its body is a named person's record, or a person of its look's population sent as the seed it was drawn from.
         const body = castBody(c, look, CAST_CATALOGUE, reg, this.store, this.cast.casting.looks[c.look]);
         if (body) ents.setBodyLook(e, body.look, body.born);
