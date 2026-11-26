@@ -7,7 +7,7 @@ from pathlib import Path
 import bpy
 from mathutils import Vector
 
-from surfaces import SURFACES
+from surfaces import COLORS, DETAILS, DETAIL_CELLS, TILES
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from resource_uv import atlas_uv, loft_uv, planar_uv
@@ -28,13 +28,16 @@ def linear(channel):
 
 
 def material(surface, textured):
-    atlas, _, _, _, _, color = SURFACES[surface]
-    name = atlas if textured else f"flat_{surface}"
+    finish = DETAILS[surface][3] if surface in DETAILS else surface
+    name = (surface if surface in TILES else "details") if textured else f"flat_{finish}"
     existing = bpy.data.materials.get(name)
     if existing:
         return existing
     matte = bpy.data.materials.new(name)
-    matte.diffuse_color = (*map(linear, color if not textured else (128, 128, 128)), 1)
+    color = (1, 1, 1, 1) if textured else (*map(linear, COLORS[finish]), 1)
+    matte.diffuse_color = color
+    matte.use_nodes = True
+    matte.node_tree.nodes.get("Principled BSDF").inputs["Base Color"].default_value = color
     return matte
 
 
@@ -91,15 +94,21 @@ class Instrument:
         self.normals.extend(normal if normal is not None else [None] * len(indices))
         if not self.textured:
             return
+        tile = TILES.get(surface)
         if uv is None:
             if basis is None:
-                uv = planar_uv(points, origin=origin or points[0])
+                if origin is None and tile is None:
+                    origin = sum(points, Vector((0, 0, 0))) / len(points)
+                uv = planar_uv(points, origin=origin if origin is not None else (0, 0, 0))
             else:
                 across, up = basis
                 uv = [((point - origin).dot(across), (point - origin).dot(up)) for point in points]
-        _, cells, span, column, row, _ = SURFACES[surface]
-        cell = 1 / cells
-        self.uv.append(atlas_uv(uv, span=span, center=((column + 0.5) * cell, (row + 0.5) * cell), cell=(cell, cell)))
+        if tile is not None:
+            self.uv.append(atlas_uv(uv, span=tile[1]))
+        else:
+            column, row, span, _ = DETAILS[surface]
+            cell = 1 / DETAIL_CELLS
+            self.uv.append(atlas_uv(uv, span=span, center=((column + 0.5) * cell, (row + 0.5) * cell), cell=(cell, cell)))
 
     def shell(self, rings, surface, *, closed=False, smooth=False, cap_surface=None,
               cap_origin=None, cap_basis=None, planar_sides=False, band_surfaces=None,
@@ -129,14 +138,15 @@ class Instrument:
                 if normals_lower is not None:
                     normals = (normals_lower[side], normals_lower[next_side], normals_upper[next_side], normals_upper[side])
                 self.face((adjacent + side, adjacent + next_side, other + next_side, other + side), band_surface,
-                          uv=charts[row][side] if charts and not projected else None, normal=normals,
+                          uv=charts[row][side] if charts and not projected and band_surface in TILES else None,
+                          normal=normals,
                           origin=cap_origin if projected else None, basis=cap_basis if projected else None)
         if closed:
             return
         bottom = tuple(reversed(range(start, start + count)))
         top = tuple(range(start + (len(rings) - 1) * count, start + len(rings) * count))
-        self.face(bottom, surface, origin=cap_origin,
-                  basis=(-cap_basis[0], cap_basis[1]) if cap_basis is not None else None)
+        self.face(bottom, surface, origin=cap_origin if cap_surface is None else None,
+                  basis=(-cap_basis[0], cap_basis[1]) if cap_basis is not None and cap_surface is None else None)
         self.face(top, cap_surface or surface, origin=cap_origin, basis=cap_basis)
 
     def tube(self, center, axis, stations, count, surface, *, closed=False, smooth=True,
