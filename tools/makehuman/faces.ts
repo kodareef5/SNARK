@@ -1,7 +1,7 @@
 // Bakes the 32 face modifiers of a look (bytes 40 to 71) as sparse deltas on a fitted MakeHuman body (fit.ts): each
 // modifier's MakeHuman targets added to the shaped base, faded out across the neck, carried through the fit (the head
 // moves as one piece), with the eyes, brows, lashes, teeth and tongue bound again on the moved base. A modifier's side is
-// cut only where it alone would carry a vertex out of the hit head grown by HEAD_SLACK: the client holds each summed face
+// cut only where it alone would carry a vertex out of the hit head grown by FACE_SLACK: the client holds each summed face
 // inside that bound as it blends it (shared/people/faces.ts clampFace). The face rows (jaw, lids, eyes) come from
 // MakeHuman's own weights.
 

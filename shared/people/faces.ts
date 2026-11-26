@@ -11,7 +11,7 @@
 // each side of each modifier, minus then plus, how far it moves each pivot (f32).
 
 import { B_HEAD, B_HIPS, HUMAN } from "../anim/human.ts";
-import { FACE_COUNT, HEAD_SLACK, LOOK_FACE } from "../anim/look.ts";
+import { FACE_COUNT, LOOK_FACE } from "../anim/look.ts";
 import { len3 } from "../math/scalar.ts";
 
 export const FACES_VERSION = 1;
@@ -297,7 +297,13 @@ export function facePivots(table: FaceTable, values: ArrayLike<number>, out: Flo
 /** How much farther out than the neutral head a face may put a vertex the neutral head already has outside the bound. */
 export const OUTSIDE_TOLERANCE = 0.001;
 
-/** The hit head as the drawn head meets it at rest: its capsule's ends and radius grown by HEAD_SLACK, in model space. */
+/**
+ * How far past the hit head's capsule a face may reach, in metres: half of look.ts HEAD_SLACK, which is the room for
+ * where the head is across poses. With all of it, his face with every slider at +1 drew 94.9% of its pixels as head.
+ */
+export const FACE_SLACK = 0.01;
+
+/** The hit head as the drawn head meets it at rest: its capsule's ends and radius grown by FACE_SLACK, in model space. */
 export interface HeadBound {
   readonly a: readonly number[];
   readonly b: readonly number[];
@@ -316,7 +322,7 @@ export function headBound(rig: ArrayLike<number>): HeadBound {
   return {
     a: [0, 1, 2].map((k) => hit[k]! + HUMAN.capA[B_HEAD * 3 + k]!),
     b: [0, 1, 2].map((k) => hit[k]! + HUMAN.capB[B_HEAD * 3 + k]!),
-    r: HUMAN.capR[B_HEAD]! + HEAD_SLACK,
+    r: HUMAN.capR[B_HEAD]! + FACE_SLACK,
     drawn,
     rig: j(rig, B_HEAD),
   };

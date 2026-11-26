@@ -7,7 +7,7 @@ import { join, resolve } from "node:path";
 import { gzipSync } from "node:zlib";
 import { B_NECK } from "../../shared/anim/human.ts";
 import { FACE_COUNT, randomLook } from "../../shared/anim/look.ts";
-import { faceValues } from "../../shared/people/faces.ts";
+import { FACE_SLACK, faceValues } from "../../shared/people/faces.ts";
 import { personFrom } from "../../shared/people/person.ts";
 import { Rng } from "../../shared/rng.ts";
 import { CITY, WORKERS } from "../../content/people/defaults.ts";
@@ -128,9 +128,9 @@ function tile(c: FaceCook, tris: Uint32Array, at: Float32Array, view: View): Uin
     big[p * 3 + 1] = rgb[1]!;
     big[p * 3 + 2] = rgb[2]!;
   }
-  // The hit head's capsule as drawn at rest, and grown by HEAD_SLACK, as stadiums of its projected axis.
+  // The hit head's capsule as drawn at rest, and grown by FACE_SLACK, as stadiums of its projected axis.
   const pa = project(c.bound.a, centre, r, u, size, scale), pb = project(c.bound.b, centre, r, u, size, scale);
-  for (const [radius, col] of [[c.bound.r, [40, 110, 200]], [c.bound.r - 0.02, [40, 160, 90]]] as const) {
+  for (const [radius, col] of [[c.bound.r, [40, 110, 200]], [c.bound.r - FACE_SLACK, [40, 160, 90]]] as const) {
     const rad = radius * scale;
     const ex = pb[0] - pa[0], ey = pb[1] - pa[1], l2 = ex * ex + ey * ey;
     for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
