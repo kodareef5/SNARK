@@ -12,9 +12,11 @@ const families = {
   "core:food": ["meat", "meat_cooked", "meat_prime", "meat_prime_cooked", "spoiled_meat", "jerky", "jerky_prime"],
   "core:field-supplies": ["berry", "narcoberry", "stimberry", "narcotic", "stimulant", "waterskin", "water_jar", "canteen"],
   "core:instruments": ["spyglass", "template_hammer", "compass", "magnifying_glass", "radio", "gps"],
+  "core:saddles-early": ["saddle_parasaur", "saddle_pteranodon", "saddle_raptor", "saddle_trike", "saddle_carbonemys"],
+  "core:saddles-heavy": ["saddle_stego", "saddle_rex", "saddle_spino", "saddle_brachio"],
 };
 
-artTest("food, field supplies and instruments ship grounded drops and icons", async () => {
+artTest("field item packs ship grounded drops and inventory icons", async () => {
   const assets = await findAssets();
   const drops = new Set<string>();
   for (const [id, items] of Object.entries(families)) {

@@ -1,0 +1,11 @@
+# Grounded tack study
+
+Built-in ImageGen, 2026-11-26. See `grounded-tack-study.png`.
+
+```
+Use case: stylized-concept
+Asset type: original prop design study to guide hand-built 3D grounded item models
+Primary request: one production prop sheet showing five distinctly different handcrafted dinosaur saddles laid flat, detached and resting on the same plain light warm gray tabletop. No dinosaurs, riders or stands. Show their leather/wood volumes, dropped poses and material breakup. Realistic handmade construction, crisp realistic clay-render lighting. Arrange as a two-row study with separated objects of equal legibility, each at overhead three-quarter view. Top row left to right: Parasaur, Pteranodon, Raptor. Bottom row left to right: Trike, Carbonemys. No text whatsoever.
+Parasaur: medium brown compact trail saddle with a wide amber woven saddle pad, dark chestnut leather dished seat, flared low rolls at the front and rear, two tucked leather girths, forged dark gray stirrups and paired low russet hand loops. Pteranodon: the smallest, russet teardrop hide flight seat, cream chitin back plate on honey-colored bent wood cantle, pale cord-wrapped upright loop grips, thin cord reins folded close and pale wooden foot pegs on rope. No metal on the flight rig. Raptor: narrow compact new pursuit tack, dark burgundy supple hide over a slim split dark wooden saddle tree, modest low angled pommel, swept raised cantle and two short pewter stirrups beside the slender pad. Trike: widest saddle, expedition frame with two exposed rounded warm tan wood tree rails and their four spread feet, broad ochre hide blanket and heavy chestnut dished seat perched above it, upright rope-wrapped grip pair and wooden foot platforms. Carbonemys: broad rounded shell-following warm ochre pad, low chestnut rider seat, curved dark wooden rear bow and modest forward loops, dark double girths and twin warm brass foot bars against the pad. All flexible webbing curls or falls naturally against the tabletop, with a little asymmetry.
+Constraints: species distinct at small size, practical natural materials, plausible load bearing connections, broad readable shapes and controlled wear. No framing labels, borders, ornamental symbols, logo, text, environmental clutter, people, spikes, barrels, or alien machinery.
+```
