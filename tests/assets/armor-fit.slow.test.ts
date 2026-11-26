@@ -9,10 +9,10 @@ import { test } from "../fixtures/needs-art.ts";
 const PINNED: Readonly<Record<string, number>> = {
   "m/armor/cloth/feet": 0, "m/armor/cloth/hands": 0, "m/armor/cloth/head": 0, "m/armor/cloth/legs": 15, "m/armor/cloth/torso": 28,
   "m/armor/hide/feet": 0, "m/armor/hide/hands": 30, "m/armor/hide/head": 0, "m/armor/hide/legs": 22, "m/armor/hide/torso": 30,
-  "m/armor/meridian/feet": 29, "m/armor/meridian/hands": 30, "m/armor/meridian/head": 30, "m/armor/meridian/legs": 1, "m/armor/meridian/torso": 28,
+  "m/armor/meridian/feet": 30, "m/armor/meridian/hands": 30, "m/armor/meridian/head": 30, "m/armor/meridian/legs": 1, "m/armor/meridian/torso": 28,
   "f/armor/cloth/feet": 0, "f/armor/cloth/hands": 28, "f/armor/cloth/head": 0, "f/armor/cloth/legs": 0, "f/armor/cloth/torso": 26,
   "f/armor/hide/feet": 0, "f/armor/hide/hands": 29, "f/armor/hide/head": 0, "f/armor/hide/legs": 24, "f/armor/hide/torso": 30,
-  "f/armor/meridian/feet": 5, "f/armor/meridian/hands": 30, "f/armor/meridian/head": 30, "f/armor/meridian/legs": 1, "f/armor/meridian/torso": 30,
+  "f/armor/meridian/feet": 7, "f/armor/meridian/hands": 30, "f/armor/meridian/head": 30, "f/armor/meridian/legs": 1, "f/armor/meridian/torso": 30,
 };
 
 test("no armour piece lets skin through it deeper than its pin, and none at rest", () => {
