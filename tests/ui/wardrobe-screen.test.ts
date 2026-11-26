@@ -42,8 +42,9 @@ test("the wardrobe row shows each slot, a dyed garment's swatches, and refuses w
     expect(f.find(KEY_INV_DYE)?.tint).toBe((12 << 16) | (1 << 8) | 2);
     expect(f.find(KEY_INV_DYE + 1)).toBeNull();
     expect(f.find(KEY_INV_DYE + 2)?.tint).toBe((40 << 16) | (1 << 8) | 2);
-    // The cells sit below the armor's and inside the panel.
-    expect(f.find(cell(own.wardrobe))!.y).toBeGreaterThan(f.find(cell(own.armor))!.y);
+    // A row ten wide holds the armor and the wardrobe side by side.
+    expect(f.find(cell(own.wardrobe))!.y).toBe(f.find(cell(own.armor))!.y);
+    expect(f.find(cell(own.wardrobe))!.x).toBeGreaterThan(f.find(cell(own.armor + 4))!.x);
     // Hovered, the tee says its edition and dye.
     screen.press(2, cell(own.wardrobe), 0, s);
     draw();

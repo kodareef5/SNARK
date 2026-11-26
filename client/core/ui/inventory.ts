@@ -448,7 +448,9 @@ export class InventoryScreen implements Screen {
     // Own slots are the bag, then the hotbar and the armor if the inventory has them, each under a label.
     const tail = own.hotbar >= 0;
     const clothes = own.wardrobe >= 0;
-    const tailH = tail ? infoH * 2 + rows(HOTBAR_SLOTS) + rows(ARMOR_SLOTS) + 4 + (clothes ? infoH + rows(WARDROBE_SLOTS) : 0) : 0;
+    // The wardrobe shares the armor's row where the row holds both, and takes a row of its own under a label where not.
+    const besideArmor = clothes && cols >= ARMOR_SLOTS + WARDROBE_SLOTS;
+    const tailH = tail ? infoH * 2 + rows(HOTBAR_SLOTS) + rows(ARMOR_SLOTS) + 4 + (clothes && !besideArmor ? infoH + rows(WARDROBE_SLOTS) : 0) : 0;
     const actionH = tail ? 28 : 0;
     const ownH = titleH + rows(own.bag) + tailH + infoH + actionH + PAD * 2 + 6;
     this.pageSize = cols * OPEN_ROWS;
@@ -527,12 +529,12 @@ export class InventoryScreen implements Screen {
       return;
     }
 
-    /** Slots `from` .. `from + n - 1` of `inv` as a grid starting at `top`. */
-    const grid = (inv: Inventory, which: number, base: number, top: number, from: number, n: number): void => {
+    /** Slots `from` .. `from + n - 1` of `inv` as a grid starting at `top`, its first cell in column `at`. */
+    const grid = (inv: Inventory, which: number, base: number, top: number, from: number, n: number, at = 0): void => {
       for (let i = 0; i < n; i++) {
         const s = from + i;
-        const x = x0 + PAD + (i % cols) * (CELL + GAP);
-        const yy = top + Math.floor(i / cols) * (CELL + GAP);
+        const x = x0 + PAD + ((at + i) % cols) * (CELL + GAP);
+        const yy = top + Math.floor((at + i) / cols) * (CELL + GAP);
         const inHand = which === BOX_SELF && inv.hotbar >= 0 && s === inv.hotbar + session.held;
         const key = base + (which === BOX_OPEN ? i : s) * 3;
         const cell = f.add(key, K_BUTTON, x, yy, CELL, CELL, this.held === s && this.heldBox === which ? S_SLOT_HELD : S_SLOT);
@@ -681,11 +683,14 @@ export class InventoryScreen implements Screen {
       top += infoH;
       grid(own, BOX_SELF, KEY_INV_SLOT, top, own.hotbar, HOTBAR_SLOTS);
       top += rows(HOTBAR_SLOTS);
-      f.text(KEY_INV_ROW_LABEL + 1, x0 + PAD, top, w - PAD * 2, S_LABEL, "Worn");
+      const half = ARMOR_SLOTS * (CELL + GAP);
+      f.text(KEY_INV_ROW_LABEL + 1, x0 + PAD, top, besideArmor ? half - GAP : w - PAD * 2, S_LABEL, "Worn");
+      if (besideArmor) f.text(KEY_INV_ROW_LABEL + 2, x0 + PAD + half, top, w - PAD * 2 - half, S_LABEL, "Clothes");
       top += infoH;
       grid(own, BOX_SELF, KEY_INV_SLOT, top, own.armor, ARMOR_SLOTS);
+      if (besideArmor) grid(own, BOX_SELF, KEY_INV_SLOT, top, own.wardrobe, WARDROBE_SLOTS, ARMOR_SLOTS);
       top += rows(ARMOR_SLOTS);
-      if (clothes) {
+      if (clothes && !besideArmor) {
         f.text(KEY_INV_ROW_LABEL + 2, x0 + PAD, top, w - PAD * 2, S_LABEL, "Clothes");
         top += infoH;
         grid(own, BOX_SELF, KEY_INV_SLOT, top, own.wardrobe, WARDROBE_SLOTS);

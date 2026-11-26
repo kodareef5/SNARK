@@ -1409,8 +1409,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const gear = new Uint16Array(GEAR_COUNT);
   /** The held slot of each record at its last refresh. */
   const inHand = new Map<number, number>();
-  /** Per survivor pid, the inventory's worn stamp and the body's generation that refreshBody last worked out what it wears for. */
-  const wornSeen = new Map<number, number>();
+  /** Per survivor pid, the inventory's worn stamp and the body that refreshBody last worked out what it wears for. */
+  const wornSeen = new Map<number, { worn: number; e: number; gen: number }>();
   if (loaded && !loaded.fresh) {
     // Bodies saved under other rates are rated again as they load.
     survival.rerate = RATES.some((name) => wasAt(name) !== rules.num(name));
@@ -2144,9 +2144,12 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       gear[GEAR_HELD] = item;
       for (let k = 0; k < ARMOR_SLOTS; k++) gear[GEAR_WORN + k] = inv.item[inv.armor + k]!;
       // What it wears is worked out again only when its armor or wardrobe changed, or it is a new body. A shot changes neither.
-      const stamp = inv.worn * 65536 + ents.gen[e]!;
-      if (wornSeen.get(rec.pid) !== stamp) {
-        wornSeen.set(rec.pid, stamp);
+      let seen = wornSeen.get(rec.pid);
+      if (seen?.worn !== inv.worn || seen.e !== e || seen.gen !== ents.gen[e]) {
+        if (!seen) wornSeen.set(rec.pid, (seen = { worn: 0, e: 0, gen: 0 }));
+        seen.worn = inv.worn;
+        seen.e = e;
+        seen.gen = ents.gen[e]!;
         let suit = 0;
         // A piece that flies (WearFacet.jet) and is not worn out lends its slot's bit.
         for (let k = 0; k < ARMOR_SLOTS; k++) if (inv.dur[inv.armor + k]! > 0) suit |= reg.wearJet[inv.item[inv.armor + k]!]! << k;

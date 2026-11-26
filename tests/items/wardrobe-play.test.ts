@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ClientSession } from "../../client/core/session.ts";
 import { corpseWardrobe } from "../../server/corpses.ts";
+import { captureLoadout } from "../../server/loadout/capture.ts";
 import type { EntityRecord } from "../../server/records.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
 import { BOX_OPEN, BOX_SELF, CMD_DROP, CMD_MOVE, CMD_RESPAWN, CMD_TAKE, CMD_USE, RESULT_INVALID, RESULT_OK } from "../../shared/net/protocol.ts";
@@ -380,6 +381,17 @@ test("a body's worn gear is worked out again when the armor changes and on a new
     expect(h.host.items.inv(h.host.records.byPid.get(me.pid)!).worn).toBe(inv.worn);
     expect(h.world.ents.jetGear[h.ent(again)]! & JET_CUIRASS).not.toBe(0);
     expect(h.world.ents.gears.get(h.ent(again))!.slice(1, 1 + ARMOR_SLOTS)).toEqual(inv.item.slice(inv.armor, inv.armor + ARMOR_SLOTS));
+  } finally {
+    h.host.shutdown();
+  }
+});
+
+test("a loadout taken from a dressed survivor keeps its garments, in the bag and plain", () => {
+  const { h, me } = setup();
+  try {
+    const entries = captureLoadout(h.host, me);
+    const garments = entries.filter((e) => "item" in e && (e.item === "core:plain_tee" || e.item === "core:plain_trousers"));
+    expect(garments).toEqual([{ item: "core:plain_tee", count: 1, place: "bag" }, { item: "core:plain_trousers", count: 1, place: "bag" }]);
   } finally {
     h.host.shutdown();
   }

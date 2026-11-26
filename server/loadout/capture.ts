@@ -2,11 +2,11 @@
 // It reads and changes nothing. What a loadout may not hold is left out, so the entries pass the book's checks.
 
 import { MOST, type Entry, type ItemEntry } from "../../shared/loadout/book.ts";
-import { ARMOR_SLOTS, FLAG_BLUEPRINT, HOTBAR_SLOTS } from "../../shared/sim/items.ts";
+import { ARMOR_SLOTS, FLAG_BLUEPRINT, HOTBAR_SLOTS, WARDROBE_SLOTS } from "../../shared/sim/items.ts";
 import type { Host } from "../host.ts";
 import type { EntityRecord } from "../records.ts";
 
-/** Everything `rec` wears and carries: worn pieces first, then the hotbar in its order, then the bag with like stacks as one. */
+/** Everything `rec` wears and carries: worn pieces first, then the hotbar in its order, then the bag with like stacks as one, then garments. */
 export function carried(host: Host, rec: EntityRecord): Entry[] {
   const reg = host.world.reg;
   const inv = host.items.inv(rec);
@@ -51,6 +51,8 @@ export function carried(host: Host, rec: EntityRecord): Entry[] {
   if (inv.armor >= 0) for (let k = 0; k < ARMOR_SLOTS; k++) take(inv.armor + k, "wear");
   if (inv.hotbar >= 0) for (let k = 0; k < HOTBAR_SLOTS; k++) take(inv.hotbar + k, "hotbar");
   for (let s = 0; s < inv.bag; s++) take(s, "bag");
+  // A loadout wears armor only, so garments worn go in the bag, plain: their edition and dye are not kept.
+  if (inv.wardrobe >= 0) for (let k = 0; k < WARDROBE_SLOTS; k++) take(inv.wardrobe + k, "bag");
   return out;
 }
 
