@@ -43,7 +43,7 @@ export interface Round { at?: [number, number]; radius?: number; radii?: [number
 export interface Vocabulary {
   circulation: { ordinary: number; tower: number; tall: number; towerAbove: number; tallAbove: number };
   sightlines?: { place: string; from: [number, number]; length: number; width: number }[];
-  event: { travel: [number, number]; reach: number; near: number; far: number; shelter: number; cell: number; bands: { below: number; modes: string[] }[] };
+  event: { travel: [number, number]; reach: number; near: number; far: number; inland: number; shelter: number; cell: number; bands: { below: number; modes: string[] }[] };
   growth: { zones: Record<string, { bare?: number; kinds?: Record<string, number> }>; roofChance: number; lowAroundPlace: Record<string, number>; canopy: Record<string, [number, number]>; canopyBase: Record<string, number> };
   frontage: { gap: number; angle: number };
   interiors: Record<string, { divider: RuinShape | null; back: RuinShape | null; parts: Assembly["parts"] }>;

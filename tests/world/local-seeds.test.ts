@@ -109,7 +109,7 @@ test("a ruin's storm damage does not tell how far the water is past the bound", 
   const surge = (water: number): number => contextualize({ height: 12, matched: [] } as unknown as Rule, frame, [], water, undefined, v).event!.exposure;
   // The bound leaves room for a footprint's reach under the generator's 600 m.
   expect(v.event.far).toBeLessThanOrEqual(REACH - 150);
-  expect([surge(v.event.far), surge(2000), surge(5000), surge(Infinity)]).toEqual([0.18, 0.18, 0.18, 0.18]);
+  expect([v.event.inland, surge(v.event.far), surge(2000), surge(5000), surge(Infinity)]).toEqual([0.18, 0.18, 0.18, 0.18, 0.18]);
   expect([waterNear(v.event.far - 1, v), waterNear(v.event.far, v), waterNear(3000, v)]).toEqual([v.event.far - 1, Infinity, Infinity]);
   // Near the shore the curve is the one it was, then it falls to the far value without a step.
   for (const water of [0, 100, v.event.near]) expect(surge(water)).toBeCloseTo(0.18 + 0.82 * Math.exp(-water / v.event.reach), 12);

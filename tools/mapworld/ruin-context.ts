@@ -7,11 +7,14 @@ export interface Neighbour { frame: Frame; height: number; }
 /** A building's metres to water as its ruin reads them: at `far` and past it, far from water, however far. */
 export const waterNear = (water: number, v: Vocabulary): number => (water >= v.event.far ? Infinity : water);
 
-/** The share of a surge's force that reaches `water` metres inland: its falloff by `reach` out to `near`, eased to none at `far`. */
+/**
+ * A building's exposure by its metres to water alone: 0.18 and what `reach` leaves of a surge's force out to `near`,
+ * eased from there to `inland`, the exposure of a building far from water, at `far`.
+ */
 export function surgeAt(water: number, event: Vocabulary["event"]): number {
-  if (water >= event.far) return 0;
+  if (water >= event.far) return event.inland;
   const t = Math.max(0, (water - event.near) / (event.far - event.near));
-  return Math.exp(-water / event.reach) * (1 - t * t * (3 - 2 * t));
+  return event.inland + (.18 + .82 * Math.exp(-water / event.reach) - event.inland) * (1 - t * t * (3 - 2 * t));
 }
 
 /** Exposure and party edges follow geometry, independent of the order in which budgets admit buildings. */
@@ -35,7 +38,7 @@ export function contextualize(rule: Rule, frame: Frame, others: Neighbour[], wat
     }
   }
   const age = built && built < 1940 ? .12 : built && built >= 2000 ? -.08 : 0;
-  const exposure = Math.max(.05, Math.min(1, .18 + .82 * surgeAt(water, v.event) + age - shelter));
+  const exposure = Math.max(.05, Math.min(1, surgeAt(water, v.event) + age - shelter));
   const band = v.event.bands.find((b) => exposure < b.below) ?? v.event.bands.at(-1)!;
   const field = hash3(Math.floor(frame.x / v.event.cell), Math.floor(frame.z / v.event.cell), v.seed + 233);
   const collapse = rule.height > 60 ? (exposure > .48 ? "lost-top" : "hanging") : band.modes[field % band.modes.length]!;
