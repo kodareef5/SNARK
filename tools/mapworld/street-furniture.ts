@@ -667,11 +667,12 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
       const every = spacing(cls); if (!(every > 0)) continue;
       // Stations stand on the whole piece's own spacing, so a line the frame cut keeps another cut's stations and numbers.
       const from = graph.pieces[line]!.from; let next = phase ? phase(line, every) : hash3(lineSeed(line), salt, seed) % Math.max(1, Math.floor(every));
-      let k = next < from ? Math.ceil((from - next) / every) : 0; next += k * every; let walked = from;
+      let k = next < from ? Math.ceil((from - next) / every) : 0; next += k * every;
       for (const s of run) {
         const length = Math.hypot(s.bx - s.ax, s.bz - s.az); const dx = (s.bx - s.ax) / length; const dz = (s.bz - s.az) / length;
-        while (next <= walked + length) { const t = next - walked; at(s.ax + dx * t, s.az + dz * t, dx, dz, s.half, k++, line, cls); next += every; }
-        walked += length;
+        // Past a stretch the frame left out, the stations it would have held are skipped, and keep their numbers.
+        if (next < s.along) { const skip = Math.ceil((s.along - next) / every - 1e-9); k += skip; next += skip * every; }
+        while (next <= s.along + length) { const t = next - s.along; at(s.ax + dx * t, s.az + dz * t, dx, dz, s.half, k++, line, cls); next += every; }
       }
     }
   };

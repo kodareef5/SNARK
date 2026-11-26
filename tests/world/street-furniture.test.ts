@@ -577,3 +577,19 @@ test("a mapped give-way on a junction's way keeps the classes' stop off it, and 
   // The give-way the stop serves counts as standing: a sign faces its traffic.
   expect(summary.mapped?.give_way).toEqual({ mapped: 2, used: 2, rest: {} });
 });
+
+test("a road that leaves the map and comes back keeps its lamps where the whole road has them", () => {
+  const avenue: Line = { points: [[60, 500], [964, 500]], mtfcc: "S1200", width: 14 };
+  const whole = fixture([], [], { lines: [avenue] });
+  const cut = fixture([], [], { lines: [avenue] });
+  // The same piece as the frame would cut it, 203 m of its middle past the map's edge.
+  const path = join(cut.source, "base/roads.geojson");
+  const roads = JSON.parse(readFileSync(path, "utf8")) as { features: { geometry: unknown; properties: Record<string, unknown> }[] };
+  roads.features[0]!.geometry = { type: "MultiLineString", coordinates: [[[60, 500], [400, 500]], [[603, 500], [964, 500]]] };
+  roads.features[0]!.properties = { ...roads.features[0]!.properties, from_m: 0, runs_from_m: [0, 543] };
+  writeFileSync(path, JSON.stringify(roads));
+  const lamps = (site: Site): string[] => place(site).pieces.filter((p) => p.kind.startsWith(streetKind("lamp")) && p.x > 650 && p.x < 900).map((p) => `${p.x.toFixed(2)},${p.z.toFixed(2)}`).sort();
+  const want = lamps(whole);
+  expect(want.length).toBeGreaterThan(4);
+  expect(lamps(cut)).toEqual(want);
+});

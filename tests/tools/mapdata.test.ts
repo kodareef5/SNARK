@@ -92,6 +92,16 @@ print(past, across.bounds, within.area)
 `).trim()).toBe("None (90.0, 10.0, 100.0, 40.0) 900.0");
 });
 
+test("a road the frame cuts twice says where each of its runs starts along it", () => {
+  expect(python(`
+from shapely.geometry import LineString, box
+from streets import run_starts
+whole = LineString([(0, 0), (100, 0), (100, 50), (0, 50)])
+frame = box(-10, -10, 60, 60)
+print(run_starts(whole, whole.intersection(frame)), run_starts(whole, whole.intersection(box(-10, -10, 200, 200))), run_starts(whole, whole.intersection(box(20, -10, 200, 20))))
+`).trim()).toBe("[0.0, 190.0] [0.0] [20.0]");
+});
+
 test("a water relation whose ring is drawn in several ways keeps its lake and its island", () => {
   expect(python(`
 from common import relation_polygon
