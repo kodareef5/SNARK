@@ -177,7 +177,8 @@ test("a map given by its path is read and let go: the host keeps none of its byt
   console.log = (line: string) => said.push(line);
   const [cut, held] = [mapRoutes(path, host.world.mapId), mapRoutes(file, host.world.mapId)];
   console.log = log;
-  expect(said).toEqual([`map: ${path} has no files of its parts beside it, so they are cut and gzipped as they are asked for: bun tools/map.ts pack ${path} writes them`]);
+  const all = readHead(file).parts.length + 1;
+  expect(said).toEqual([`map: ${all} of the ${all} parts of ${path} have no Brotli or gzip copy beside it, so those are cut and gzipped as they are asked for: bun tools/map.ts pack ${path} writes them`]);
   expect(cut.link).toBe(held.link);
   const head = readHead(file);
   const ask = (route: typeof cut, name: string, accepts: string): Promise<Response> => Promise.resolve(route(`/map/${name}`, new Request(`http://x/map/${name}`, { headers: { "accept-encoding": accepts } }))!);
@@ -194,6 +195,36 @@ test("a map given by its path is read and let go: the host keeps none of its byt
   expect(new Uint8Array(await (await ask(disk, head.name, "")).arrayBuffer())).toEqual(file.subarray(0, head.bytes));
   expect((await ask(disk, "statics.1-1.0123456789abcdef.part", "br")).status).toBe(404);
   host.shutdown();
+});
+
+test("a part missing its gzip copy is cut alone; the other parts keep their Brotli", async () => {
+  const file = writeMap(busyMap());
+  const path = join(dir, "one-bare.snmap");
+  await writeMapFile(path, file);
+  const head = readHead(file);
+  const bare = head.parts.find((p) => p.kind === "statics")!;
+  rmSync(join(partsFolder(path), `${bare.name}.gz`));
+  const said: string[] = [];
+  const log = console.log;
+  console.log = (line: string) => said.push(line);
+  const route = mapRoutes(path, head.id);
+  console.log = log;
+  expect(said).toEqual([`map: 1 of the ${head.parts.length + 1} parts of ${path} have no Brotli or gzip copy beside it, so those are cut and gzipped as they are asked for: bun tools/map.ts pack ${path} writes them`]);
+  const ask = (name: string, headers: Record<string, string>): Promise<Response> => Promise.resolve(route(`/map/${name}`, new Request(`http://x/map/${name}`, { headers }))!);
+  for (const p of head.parts.filter((p) => p !== bare)) {
+    const res = await ask(p.name, { "accept-encoding": "gzip, br" });
+    expect([res.headers.get("content-encoding"), new Uint8Array(brotliDecompressSync(await res.arrayBuffer()))]).toEqual(["br", file.subarray(p.at, p.at + p.length)]);
+  }
+  const bytes = file.subarray(bare.at, bare.at + bare.length);
+  const br = await ask(bare.name, { "accept-encoding": "gzip, br" });
+  expect([br.headers.get("content-encoding"), new Uint8Array(brotliDecompressSync(await br.arrayBuffer()))]).toEqual(["br", bytes]);
+  const gz = await ask(bare.name, { "accept-encoding": "gzip" });
+  expect([gz.headers.get("content-encoding"), new Uint8Array(Bun.gunzipSync(await gz.arrayBuffer()))]).toEqual(["gzip", bytes]);
+  // No raw part is kept beside the map: a range and a client taking neither are read from the map file.
+  const range = await ask(bare.name, { range: "bytes=4-11", "accept-encoding": "br" });
+  expect([range.status, range.headers.get("content-range"), new Uint8Array(await range.arrayBuffer())]).toEqual([206, `bytes 4-11/${bare.length}`, bytes.subarray(4, 12)]);
+  expect(new Uint8Array(await (await ask(bare.name, {})).arrayBuffer())).toEqual(bytes);
+  route.close();
 });
 
 test("a map rebuilt in place beside a running server: a fresh client of that server gets the map it holds, whole, and a server started after gets the new one", async () => {

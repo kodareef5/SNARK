@@ -1,6 +1,7 @@
 import { pieceMiddle, RUIN_SHAPES, type RuinShape } from "../../content/ruins.ts";
 import type { BridgeRecord, DeckPoint } from "./bridges.ts";
 import { S } from "./ground.ts";
+import { SLACK } from "./cell-lists.ts";
 import { binKey } from "./raster.ts";
 import type { Mason } from "./ruin-geometry.ts";
 import type { Site, StaticPiece } from "./statics.ts";
@@ -31,15 +32,15 @@ export function accessPlanner(site: Site, infrastructure: readonly StaticPiece[]
     if (row >= 0 && col >= 0 && row < nz && col < nx && !kept.has(i)) dug.set(i, Math.min(dug.get(i) ?? Infinity, deckCeiling(r, d)));
   }
   const bins = new Map<string, { x: number; z: number }[]>();
-  // A solid is in every 4 m bin within w + d of its middle, past which no point it holds can lie, so a point's own bin
-  // holds every solid that can stand in its way.
+  // A solid is in every 4 m bin its turned box meets, past which no point it holds can lie, so a point's own bin holds
+  // every solid that can stand in its way.
   const index = (pieces: readonly StaticPiece[]): Map<number, Solid[]> => {
     const out = new Map<number, Solid[]>();
     for (const p of pieces) {
       const name = p.kind.split("_")[1] as RuinShape; const [w, h, d] = RUIN_SHAPES[name]; const angle = p.yaw * Math.PI / 180; const y = pieceMiddle(name, p.y);
       const o = { x: p.x, z: p.z, lo: y - h / 2, hi: y + h / 2, floor: p.kind.includes("_floor"), c: Math.cos(angle), s: Math.sin(angle), w: w / 2 + .45, d: d / 2 + .45 };
-      const reach = o.w + o.d;
-      for (let z = Math.floor((p.z - reach) / 4); z <= Math.floor((p.z + reach) / 4); z++) for (let x = Math.floor((p.x - reach) / 4); x <= Math.floor((p.x + reach) / 4); x++) {
+      const ex = o.w * Math.abs(o.c) + o.d * Math.abs(o.s) + SLACK, ez = o.w * Math.abs(o.s) + o.d * Math.abs(o.c) + SLACK;
+      for (let z = Math.floor((p.z - ez) / 4); z <= Math.floor((p.z + ez) / 4); z++) for (let x = Math.floor((p.x - ex) / 4); x <= Math.floor((p.x + ex) / 4); x++) {
         const bin = out.get(binKey(x, z)); if (bin) bin.push(o); else out.set(binKey(x, z), [o]);
       }
     }
@@ -63,11 +64,30 @@ export function accessPlanner(site: Site, infrastructure: readonly StaticPiece[]
   const plan = (m: Mason, owner: number): Approach[] => {
     const out: Approach[] = [];
     const own = index(m.pieces.filter((p) => { const name = p.kind.split("_")[1] as RuinShape; const h = RUIN_SHAPES[name][1]; const y = pieceMiddle(name, p.y); return y + h / 2 > m.base + .4 && y - h / 2 < m.base + 2.2; }));
+    // A walk's samples a quarter metre apart read one bin many times running: its lists are kept from the last.
+    let lastKey = NaN; let ownHere: Solid[] = []; let solidsHere: Solid[] = [];
     const obstructed = (x: number, z: number, y: number): boolean => {
       const k = binKey(Math.floor(x / 4), Math.floor(z / 4));
-      for (const o of own.get(k) ?? []) if (stands(o, x, z, y, false)) return true;
-      for (const o of solids.get(k) ?? []) if (stands(o, x, z, y, true)) return true;
+      if (k !== lastKey) { lastKey = k; ownHere = own.get(k) ?? []; solidsHere = solids.get(k) ?? []; }
+      for (const o of ownHere) if (stands(o, x, z, y, false)) return true;
+      for (const o of solidsHere) if (stands(o, x, z, y, true)) return true;
       return false;
+    };
+    // Approaches that come within 8 m of the box round the way being walked, of a bin's or this building's: no other clashes.
+    let lastReserved = NaN; let reservedHere: Approach[] = [];
+    let minX = 0, maxX = 0, minZ = 0, maxZ = 0;
+    const walking = (ax: number, az: number, bx: number, bz: number): void => {
+      minX = Math.min(ax, bx) - NEAR - SLACK; maxX = Math.max(ax, bx) + NEAR + SLACK; minZ = Math.min(az, bz) - NEAR - SLACK; maxZ = Math.max(az, bz) + NEAR + SLACK;
+      lastReserved = NaN;
+    };
+    const nearWay = (a: Approach): boolean => !((a.street.x < minX && a.door.x < minX) || (a.street.x > maxX && a.door.x > maxX) || (a.street.z < minZ && a.door.z < minZ) || (a.street.z > maxZ && a.door.z > maxZ));
+    const reservedAt = (x: number, z: number): Approach[] => {
+      const k = binKey(Math.floor(x / 32), Math.floor(z / 32));
+      if (k !== lastReserved) {
+        lastReserved = k;
+        reservedHere = (reserved.get(k) ?? []).filter(nearWay);
+      }
+      return reservedHere;
     };
     for (const entry of m.entries) {
       const insideLength = Math.hypot(entry.x - entry.coreX, entry.z - entry.coreZ);
@@ -75,12 +95,16 @@ export function accessPlanner(site: Site, infrastructure: readonly StaticPiece[]
       let ramp = 1;
       const bx = Math.floor(entry.x / 64); const bz = Math.floor(entry.z / 64); const candidates: { x: number; z: number }[] = [];
       for (let x = bx - 2; x <= bx + 2; x++) for (let z = bz - 2; z <= bz + 2; z++) candidates.push(...bins.get(`${x},${z}`) ?? []);
-      // The distances worked out once sort as they would worked out at every comparison.
-      const nearest = candidates.map((p) => ({ p, len: Math.hypot(p.x - entry.x, p.z - entry.z) })).sort((a, b) => a.len - b.len).slice(0, 48);
+      // The distances worked out once sort as they would worked out at every comparison. One past 112 m is never taken,
+      // and sorts after every one that may be, so leaving it out leaves the 48 nearest that may be as they were.
+      const nearest = candidates.filter((p) => !(Math.abs(p.x - entry.x) > 112 || Math.abs(p.z - entry.z) > 112)).map((p) => ({ p, len: Math.hypot(p.x - entry.x, p.z - entry.z) })).filter((c) => !(c.len > 112)).sort((a, b) => a.len - b.len).slice(0, 48);
       // The first that passes and keeps within APPROACH_DEPTH of the ground; where none keeps within it, the one that keeps
       // nearest it, so a door that has a way in keeps one.
       let shallowest = null as { street: { x: number; z: number }; ramp: number; depth: number } | null;
-      const found = [4, 0].flatMap((margin) => nearest.map(({ p, len }) => ({ street: p, len, margin }))).find(({ street: p, len, margin }) => {
+      // Which streets passed the squares beside their way with a margin: with none they pass them too, then fail as before.
+      const besideClear = new Uint8Array(nearest.length);
+      const tries = (p: { x: number; z: number }, len: number, margin: number, j: number): boolean => {
+        if (margin === 0 && besideClear[j]) return false;
         const groundY = groundAt(p.x, p.z); const y = streetLevel(groundY, m.base);
         if (len > 112 || len < 4 || y < .1 || Math.abs(y - m.base) / len > .12) return false;
         let boundary = len;
@@ -96,17 +120,20 @@ export function accessPlanner(site: Site, infrastructure: readonly StaticPiece[]
           }
           if (other === owner) boundary = Math.min(boundary, s);
         }
+        besideClear[j] = 1;
         ramp = Math.max(.05, (boundary - 3) / len);
         if (Math.abs(y - m.base) > .4) ramp = Math.floor(len * ramp / 4) * 4 / len;
         if (ramp <= 0) return false;
         if (Math.abs(y - m.base) / (len * ramp) > .18) return false;
         let depth = 0;
+        walking(p.x, p.z, entry.x, entry.z);
+        const outNear = out.filter(nearWay);
         for (let s = 0; s <= len; s += .25) {
           const t = s / len; const x = p.x + (entry.x - p.x) * t; const z = p.z + (entry.z - p.z) * t;
           const level = y + (m.base - y) * Math.min(1, t / ramp);
           if (obstructed(x, z, level)) return false;
-          for (const a of reserved.get(binKey(Math.floor(x / 32), Math.floor(z / 32))) ?? []) if (clashes(a, x, z, level)) return false;
-          for (const a of out) if (clashes(a, x, z, level)) return false;
+          for (const a of reservedAt(x, z)) if (clashes(a, x, z, level)) return false;
+          for (const a of outNear) if (clashes(a, x, z, level)) return false;
           // A bridge's deck dug under it on its way would leave its ramp standing over the hole.
           const i = at(x, z);
           if ((dug.get(i) ?? Infinity) < level - .4) return false;
@@ -117,7 +144,11 @@ export function accessPlanner(site: Site, infrastructure: readonly StaticPiece[]
           return false;
         }
         return true;
-      });
+      };
+      let found: { street: { x: number; z: number } } | undefined;
+      for (const margin of [4, 0]) {
+        for (let j = 0; j < nearest.length && !found; j++) if (tries(nearest[j]!.p, nearest[j]!.len, margin, j)) found = { street: nearest[j]!.p };
+      }
       if (!found && shallowest) ramp = shallowest.ramp;
       const street = found?.street ?? shallowest?.street;
       if (!street) continue;
@@ -157,6 +188,7 @@ export function accessPlanner(site: Site, infrastructure: readonly StaticPiece[]
   };
   return Object.assign(plan, { reserve });
 }
+const NEAR = 8.01;
 interface Solid { x: number; z: number; lo: number; hi: number; floor: boolean; c: number; s: number; w: number; d: number; }
 
 /** Whether a solid stands in the way of a walker at (x, y, z); a floor of the infrastructure's just under it does too. */
@@ -169,6 +201,9 @@ function stands(o: Solid, x: number, z: number, y: number, infrastructure: boole
 
 /** Whether an approach passes within 8 m of (x, z) at another level than `level`. */
 function clashes(a: Approach, x: number, z: number, level: number): boolean {
+  // Past 8 m and a centimetre off the box round its ends, it is past 8 m from the line: the test below says no.
+  const sx = a.street.x, sz = a.street.z, ex = a.door.x, ez = a.door.z;
+  if ((x < sx - NEAR && x < ex - NEAR) || (x > sx + NEAR && x > ex + NEAR) || (z < sz - NEAR && z < ez - NEAR) || (z > sz + NEAR && z > ez + NEAR)) return false;
   const dx = a.door.x - a.street.x; const dz = a.door.z - a.street.z;
   const along = Math.max(0, Math.min(1, ((x - a.street.x) * dx + (z - a.street.z) * dz) / (dx * dx + dz * dz)));
   if (Math.hypot(x - a.street.x - dx * along, z - a.street.z - dz * along) >= 8) return false;

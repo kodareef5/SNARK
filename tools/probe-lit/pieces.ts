@@ -86,10 +86,10 @@ export const piecesCheck: LitCheck = {
     // A plate of the top floor in the higher chunk, one of a merged box of two; a pier and a wall of the lower chunk.
     const meshes = made.uploads;
     const gone = (id: string, px: number): void => {
-      const chunk = w.chunkOf(px, z), t = w.structs.chunks[chunk]!, first = w.statics.first[chunk]!;
+      const chunk = w.chunkOf(px, z), t = w.structs.chunks[chunk]!, r = w.statics.rows(chunk)!, first = r.from(chunk);
       let best = -1;
       for (let s = 0; s < w.statics.in(chunk); s++) {
-        if (w.reg.defs[w.statics.kind[first + s]!]!.id === id && t.kind[s] !== 0 && (best < 0 || w.statics.y[first + s]! >= w.statics.y[first + best]!)) best = s;
+        if (w.reg.defs[r.kind[first + s]!]!.id === id && t.kind[s] !== 0 && (best < 0 || r.y[first + s]! >= r.y[first + best]!)) best = s;
       }
       w.structs.put(chunk, best, 0, 0, 0, 0, 0, 0, 0, t.version + ++made.gone);
       hold(`${made.gone} gone, a ${id.split("_")[1]} of chunk ${chunk}`, false);
@@ -101,10 +101,10 @@ export const piecesCheck: LitCheck = {
     // states alone, and the wall beside neither.
     let step = 0;
     const worn = (id: string, px: number, share: number): void => {
-      const chunk = w.chunkOf(px, z), t = w.structs.chunks[chunk]!, first = w.statics.first[chunk]!;
+      const chunk = w.chunkOf(px, z), t = w.structs.chunks[chunk]!, r = w.statics.rows(chunk)!, first = r.from(chunk);
       let best = -1;
       for (let s = 0; s < w.statics.in(chunk); s++) {
-        if (w.reg.defs[w.statics.kind[first + s]!]!.id === id && t.kind[s] !== 0 && (best < 0 || w.statics.y[first + s]! >= w.statics.y[first + best]!)) best = s;
+        if (w.reg.defs[r.kind[first + s]!]!.id === id && t.kind[s] !== 0 && (best < 0 || r.y[first + s]! >= r.y[first + best]!)) best = s;
       }
       const version = t.version + made.gone + ++step;
       w.structs.put(chunk, best, t.kind[best]!, t.x[best]!, t.y[best]!, t.z[best]!, t.yaw[best]!, 0, Math.fround(bodyHealth(w.reg, t.kind[best]!) * share), version);

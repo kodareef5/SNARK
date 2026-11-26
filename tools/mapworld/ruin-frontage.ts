@@ -12,7 +12,7 @@ export function joinFrontages(records: RuinRecord[], v: Vocabulary, accept: (m: 
     const a = r.yaw * Math.PI / 180; const c = Math.cos(a); const s = Math.sin(a);
     const bx = Math.floor(r.x / 64); const bz = Math.floor(r.z / 64);
     for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) for (const q of bins.get(`${bx + dx},${bz + dz}`) ?? []) {
-      if (q.part <= r.part || Math.abs(q.y - r.y) > .3 || Math.abs(q.yaw - r.yaw) > 4) continue;
+      if (q.id <= r.id || Math.abs(q.y - r.y) > .3 || Math.abs(q.yaw - r.yaw) > 4) continue;
       const u = (q.x - r.x) * c - (q.z - r.z) * s; const z = (q.x - r.x) * s + (q.z - r.z) * c;
       const width = Math.floor(r.width / 8) * 8; const qw = Math.floor(q.width / 8) * 8;
       const front = -Math.floor(r.depth / 8) * 4; const qfront = z - Math.floor(q.depth / 8) * 4;

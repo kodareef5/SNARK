@@ -2,7 +2,7 @@ import type { LiveWorld } from "../wiki/world.ts";
 
 export interface AdminWorld extends LiveWorld { id: number | "local" }
 
-export const cluster = [["overview", "Overview"], ["chat", "Chat"], ["scenes", "Scene studio"], ["screens", "Screens"], ["wardrobe", "Wardrobe"]] as const;
+export const cluster = [["overview", "Overview"], ["chat", "Chat"], ["scenes", "Scene studio"], ["screens", "Screens"], ["wardrobe", "Wardrobe"], ["people", "People"], ["populations", "Populations"]] as const;
 export const sections = [
   ["Investigate", [["map", "Map & replay"], ["survivors", "Survivors"], ["items", "Item history"], ["acts", "Admin log"]]],
   ["Manage", [["settings", "Settings"], ["permissions", "Permissions"], ["loadouts", "Loadouts"], ["drops", "Supply drops"], ["events", "Map events"], ["cast", "Cast"]]],

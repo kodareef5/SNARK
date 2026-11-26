@@ -16,11 +16,13 @@ import { GameApp } from "../core/game-app.ts";
 import { playUi } from "../core/ui/bag-load.ts";
 import { fetchBytes, fetchContent, fetchJson, fetchSounds, fetchText, nextTask, withLandmarks } from "../core/fetched.ts";
 import { MapLoader } from "../core/mapload.ts";
+import { pageWant } from "../core/map-want.ts";
 import { loadIdentity } from "../core/identity.ts";
 import { PassClock } from "../core/passes.ts";
 import { giveSky, SKY_FILE } from "../core/render/sky.ts";
 import { groundSize } from "../core/render/terrain.ts";
 import { ClientSession, PARK_CHUNKS_TOUCH } from "../core/session.ts";
+import { FETCH_TIMEOUT_MS } from "../core/people-book.ts";
 import { arrivalOf, socketAddress } from "../core/travel.ts";
 import { GlRenderer } from "./gl.ts";
 import { bindInput } from "./input.ts";
@@ -41,8 +43,6 @@ const driveCheck = selfcheck && params.has("urbanDrive");
 /** A measurement run. The camera flies itself and the page reports frame times and the GPU's by pass. */
 // The bench's own code comes only to a page told ?bench (D873).
 const bench = params.has("bench") ? new (await import("../core/bench-run.ts")).BenchRun() : null;
-// The far city and the city's blocks come as their own file, which the first frame does not wait for (D873).
-void import("../core/render/city-late.ts");
 /** A device probe (tools/device.ts). The page measures itself and reports. */
 const device = params.has("device") ? (await import("./device.ts")).devicePage(params.get("device")!) : null;
 const root = document.querySelector<HTMLElement>("#ui")!;
@@ -87,6 +87,7 @@ async function boot(): Promise<void> {
   const loading = fetchJson(fetch, "map.json").then((named) => MapLoader.start(fetch, (named as { head: string }).head, {
     say: (line) => showStage(loadingBar.value, line),
     wait: (ms) => new Promise((go) => setTimeout(go, ms)),
+    every: (ms) => new Promise((go) => setTimeout(go, ms)),
     pause: nextTask(new MessageChannel()),
   }));
   const manifestText = fetchText(fetch, "assets/manifest.json"), skyBytes = fetchBytes(fetch, SKY_FILE), content = fetchContent(fetch, __CONTENT_FILE__);
@@ -132,11 +133,13 @@ async function boot(): Promise<void> {
     cityMaker: new WorkerCityMaker(),
     tops: loader.staged.tops,
     buildings: loader.staged.buildings,
+    held: loader.held,
     chartPlaces: head.spawns,
     tideEyes: head.tideEyes,
     orbs: head.orbs,
     ...(land ? { landmarks: land.landmarks } : {}),
   });
+  session.peopleBook.fetcher = (path) => fetch(path, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) }).then((r) => (r.ok ? r.json() : Promise.reject(new Error(`${path}: ${r.status}`))));
   // Riding out a restart (client/core/waiting.ts). The page learns which start of the server it is on, and when the
   // server says "go", or the connection closes with no word, it notes who to bring back, for this tab alone.
   const tooled = selfcheck || bench !== null || device !== null || params.has("look") || params.has("trip");
@@ -184,6 +187,7 @@ async function boot(): Promise<void> {
   }
   const surfaces = checks ? new checks.SelfcheckSurfaces(manifest, port) : null;
   const app = new GameApp(session, reg, pack, playUi(), { manifest, port: surfaces ?? port });
+  app.mapLoader = loader;
   // The data utility's record of each frame comes as its own file, which the first frame does not wait for (D899).
   void import("../core/assets/frames.ts").then((m) => (app.frames = new m.FrameRing()));
   // The debug bar's part that needs the browser, fetched once the bar is first on; it takes the page's log from then.
@@ -293,6 +297,7 @@ async function boot(): Promise<void> {
       : session.closeReason === REJECT_PASSWORD ? "Incorrect server password."
       : session.closeReason === REJECT_NAME ? "This survivor is unavailable." : "Disconnected from world.");
   }
+  let nextCityLoad = 0;
   let restored = 0;
   if (selfcheck) Object.assign(globalThis, { snarkProbe: () => ({ ...probeProgress(app), frames: progress!.frames, still: progress!.still, cache: port.cache, glErrors: renderer.errors, drawCalls: renderer.drawCalls, drive, dinosaur: drivingCheck?.dinosaur?.data }) });
   canvas.addEventListener("webglcontextlost", (e) => (e.preventDefault(), session.prediction.note("the graphics context was lost")));
@@ -357,6 +362,10 @@ async function boot(): Promise<void> {
     }
     if (packet.lit) surfaces?.start();
     renderer.draw(packet);
+    if (now >= nextCityLoad) {
+      nextCityLoad = Infinity;
+      void import("../core/render/city-late.ts").catch(() => { nextCityLoad = performance.now() + 5000; });
+    }
     if (light?.on && copy) {
       copy.drawImage(canvas, 0, 0, sampleW, sampleH);
       const sent = light.frame(now, packet, app, copy.getImageData(0, 0, sampleW, sampleH).data, { userAgent: navigator.userAgent, dpr: devicePixelRatio, renderer: renderer.rendererName, format: renderer.format });
@@ -400,12 +409,12 @@ async function boot(): Promise<void> {
       void fetch("__selfcheck", { method: "POST", body: JSON.stringify(report) });
     }
   };
-  // The first frame waits for the ground round the body; the rest comes while the game is played, nearest first. From then
-  // on the console says when the map comes slowly, and the statics are handed over round the body and then whole.
+  // The first frame waits for the ground round the body; what the page wants comes while the game is played, nearest
+  // first. From then on the console says when the map comes slowly, and the statics held are handed over as they change.
   await session.welcomed;
   if(launch && session.state==="closed"){showEntryProblem();return;}
   showStage(3);
-  await loader.follow(() => session.mapFocus, { say: (line) => app.ui.console.print(line), arriving: (statics, whole) => session.staticsSteps(statics, whole), held: () => session.behind });
+  await loader.follow(() => session.mapFocus, { say: (line) => app.ui.console.print(line), arriving: () => session.staticsSteps(), want: () => pageWant(app), held: () => session.behind });
   showStage(4);
   // The interface takes the page's line from here.
   const view = new UiView(root, { text: (key, value) => app.textInput(key, value), pointer: (kind, key, x, y, button, finger) => app.pointer(kind, key, x, y, button, finger), typing: () => app.ui.typing });

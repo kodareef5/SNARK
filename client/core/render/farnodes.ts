@@ -585,7 +585,7 @@ export class FarNodes {
   /** The top bytes the map's own pieces make in the cells of `chunk`, where the far feed's cells do not count them and they are here. */
   private mapTops(chunk: number): Uint8Array | undefined {
     const city = this.city;
-    if (!city || !this.source.ground || (this.cells?.full[chunk] ?? 0) === 1 || city.first[chunk + 1] === city.first[chunk]) return undefined;
+    if (!city || !this.source.ground || (this.cells?.full[chunk] ?? 0) === 1 || city.in(chunk) === 0) return undefined;
     let tops = this.mapCells.get(chunk);
     if (!tops) this.mapCells.set(chunk, (tops = cityTops(city, chunk, this.source.ground, null)));
     return tops;

@@ -1,10 +1,11 @@
-// The far city, the city's blocks and the map of what stands overhead, kept out of the script a page waits for before its first frame (D873). Neither
-// draws anything until the map's buildings have come, which is after the first frame anyway. The page fetches this file
-// at boot without waiting for it; tests and tools import it up front. Loading it hands both to every scene.
-
+// The page loads city meshes and distant shadows after drawing its first frame. Tools can load them up front.
 import { CityBlocks } from "./cityblocks.ts";
 import { FarCity } from "./farcity.ts";
+import { FarLandmarks } from "./farlandmarks.ts";
+import { FarShadow } from "./farshadow.ts";
+import { NearCity } from "./nearcity.ts";
 import { RoofMap } from "./roofmap.ts";
 import { Scene } from "./scene.ts";
 
-Scene.late = { FarCity, CityBlocks, RoofMap };
+export const cityRenderers = { CityBlocks, FarCity, FarLandmarks, FarShadow, NearCity, RoofMap };
+Scene.late = cityRenderers;

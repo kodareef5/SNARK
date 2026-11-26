@@ -208,7 +208,6 @@ export function groundUnder(hf: Heightfield, x: number, z: number, r: number): n
   }
   const cell = hf.cell;
   const nx = hf.nx;
-  const hts = hf.heights;
   const minY = hf.minY;
   const stepY = hf.stepY;
   const perCell = 1 / cell;
@@ -220,8 +219,14 @@ export function groundUnder(hf: Heightfield, x: number, z: number, r: number): n
   if (j0 < 0) j0 = 0;
   if (i1 > nx - 2) i1 = nx - 2;
   if (j1 > hf.nz - 2) j1 = hf.nz - 2;
+  if (i1 < 0) i1 = 0;
+  if (j1 < 0) j1 = 0;
   if (i0 > i1) i0 = i1;
   if (j0 > j1) j0 = j1;
+  const view = hf.view(i0, j0, i1 + 1, j1 + 1);
+  const hts = view.heights;
+  const stride = view.stride;
+  const off = view.off;
   const wide = i1 - i0 + 1;
   const deep = j1 - j0 + 1;
   if (faceTop.length < 2 * wide * deep) faceTop = new Float64Array(4 * wide * deep);
@@ -250,11 +255,11 @@ export function groundUnder(hf: Heightfield, x: number, z: number, r: number): n
     const j = j0 + (ja + row < deep ? ja + row : ja + row - deep);
     const i = i0 + (ia + col < wide ? ia + col : ia + col - wide);
     const slot = (j - j0) * wide + i - i0;
-    const k = j * nx + i;
+    const k = off + j * stride + i;
     const h00 = minY + hts[k]! * stepY;
     const h10 = minY + hts[k + 1]! * stepY;
-    const h01 = minY + hts[k + nx]! * stepY;
-    const h11 = minY + hts[k + nx + 1]! * stepY;
+    const h01 = minY + hts[k + stride]! * stepY;
+    const h11 = minY + hts[k + stride + 1]! * stepY;
     const dx = x - i * cell;
     const dz = z - j * cell;
     // How far the axis is to the lower face's side of the diagonal, and how far it is from the cell, sideways squared.
@@ -333,11 +338,11 @@ export function groundUnder(hf: Heightfield, x: number, z: number, r: number): n
         const lower = faces[f]!;
         const upper = faces[f + 1]!;
         if (lower <= held[0]! && upper <= held[0]!) continue;
-        const k = j * nx + i;
+        const k = off + j * stride + i;
         const h00 = minY + hts[k]! * stepY;
         const h10 = minY + hts[k + 1]! * stepY;
-        const h01 = minY + hts[k + nx]! * stepY;
-        const h11 = minY + hts[k + nx + 1]! * stepY;
+        const h01 = minY + hts[k + stride]! * stepY;
+        const h11 = minY + hts[k + stride + 1]! * stepY;
         const ax = i * cell - x;
         const az = j * cell - z;
         // The diagonal, then the sides, each only if its line passes within the radius. The side toward -Z is also the upper
@@ -373,16 +378,21 @@ export function groundUnder(hf: Heightfield, x: number, z: number, r: number): n
 /** The upward part of the normal of the most level face with (x, z) on it or on its edge. */
 function levelAt(hf: Heightfield, x: number, z: number): number {
   const perCell = 1 / hf.cell;
-  const nx = hf.nx;
-  const hts = hf.heights;
   const rise = hf.stepY * perCell;
   const fx = x * perCell;
   const fz = z * perCell;
   const e = 1e-6;
+  const i0 = Math.max(0, Math.floor(fx - e)), i1 = Math.min(hf.nx - 2, Math.floor(fx + e));
+  const j0 = Math.max(0, Math.floor(fz - e)), j1 = Math.min(hf.nz - 2, Math.floor(fz + e));
+  if (i0 > i1 || j0 > j1) return 0;
+  const view = hf.view(i0, j0, i1 + 1, j1 + 1);
+  const hts = view.heights;
+  const nx = view.stride;
+  const off = view.off;
   let up = 0;
-  for (let j = Math.max(0, Math.floor(fz - e)), j1 = Math.min(hf.nz - 2, Math.floor(fz + e)); j <= j1; j++) {
-    for (let i = Math.max(0, Math.floor(fx - e)), i1 = Math.min(nx - 2, Math.floor(fx + e)); i <= i1; i++) {
-      const k = j * nx + i;
+  for (let j = j0; j <= j1; j++) {
+    for (let i = i0; i <= i1; i++) {
+      const k = off + j * nx + i;
       const u = fx - i;
       const v = fz - j;
       for (let upper = 0; upper < 2; upper++) {
@@ -444,17 +454,20 @@ export function groundNear(hf: Heightfield, x: number, y: number, z: number, r: 
   let count = 1;
   const cell = hf.cell;
   const perCell = 1 / cell;
-  const nx = hf.nx;
-  const hts = hf.heights;
   const i0 = Math.max(0, Math.floor((x - r) * perCell));
   const j0 = Math.max(0, Math.floor((z - r) * perCell));
-  const i1 = Math.min(nx - 2, Math.floor((x + r) * perCell));
+  const i1 = Math.min(hf.nx - 2, Math.floor((x + r) * perCell));
   const j1 = Math.min(hf.nz - 2, Math.floor((z + r) * perCell));
+  if (i0 > i1 || j0 > j1) return count;
+  const view = hf.view(i0, j0, i1 + 1, j1 + 1);
+  const hts = view.heights;
+  const nx = view.stride;
+  const off = view.off;
   // The height the centre would be at, lowered by `probe`.
   const low = y - probe + r;
   for (let j = j0; j <= j1; j++) {
     for (let i = i0; i <= i1; i++) {
-      const k = j * nx + i;
+      const k = off + j * nx + i;
       const h00 = hf.minY + hts[k]! * hf.stepY;
       const h10 = hf.minY + hts[k + 1]! * hf.stepY;
       const h01 = hf.minY + hts[k + nx]! * hf.stepY;

@@ -34,7 +34,7 @@ const none = (): null => null;
 const palette = new Uint8Array(256 * 4);
 palette.set([60, 60, 64, 255], 0);
 palette.set([214, 190, 150, 255], 3 * 4);
-palette.set([180, 180, 180, 255], city.color[city.kind[0]!]! * 4);
+palette.set([180, 180, 180, 255], city.color[city.rows(0)!.kind[0]!]! * 4);
 for (let j = 0; j < hf.nz; j++) for (let i = 132 / hf.cell; i < hf.nx; i++) hf.tint[j * hf.nx + i] = 3;
 
 function bake(colours: Uint8Array | null = palette): Uint8Array {

@@ -4,13 +4,14 @@
 import type { MotionFacet, PartPlacement } from "../../../shared/content/defs.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
 import { motionProgress, motionTicks, type MotionState } from "../../../shared/sim/motion.ts";
+import { CityStatics, type CitySquare } from "../../../shared/world/city.ts";
 import type { MapStatics } from "../../../shared/world/mapfile.ts";
 
-/** What the scene draws moving parts from: every static's state as the server told it, the clock, and the map's statics. */
+/** What the scene draws moving parts from: every static's state as the server told it, the clock, and the city of the map's statics or the map's own table. */
 export interface MotionSource {
   states(): ReadonlyMap<number, MotionState>;
   tick(): number;
-  statics(): MapStatics | null;
+  statics(): CityStatics | MapStatics | null;
 }
 
 /** Floats a part's pose takes: its 3x4 matrix from the static's origin, row by row, and how much it is scaled at most. */
@@ -41,8 +42,26 @@ export interface Moving {
 const ONE: readonly [number, number, number] = [1, 1, 1];
 const NONE: readonly [number, number, number, number] = [0, 0, 0, 1];
 
-/** The map's moving statics, once its statics have come. */
-export function movingOf(reg: Registry, statics: MapStatics): Moving[] {
+/** Each square's moving statics, found once. */
+const movingIn = new WeakMap<CitySquare, Moving[]>();
+
+/** The map's moving statics: in the squares of the city held, each square's found the first time it is asked for, or in the map's table. */
+export function movingOf(reg: Registry, city: CityStatics | MapStatics): Moving[] {
+  if (!(city instanceof CityStatics)) return mapMoving(reg, city);
+  const out: Moving[] = [];
+  const whole = city.squareOf(0);
+  for (let n = 0; n < (city.byParts ? city.size : 1); n++) {
+    const sq = city.byParts ? city.square(n) : whole;
+    if (!sq) continue;
+    let list = movingIn.get(sq);
+    if (!list) movingIn.set(sq, (list = squareMoving(reg, city, sq)));
+    out.push(...list);
+  }
+  return out;
+}
+
+/** The moving statics of the map's table `statics`. */
+function mapMoving(reg: Registry, statics: MapStatics): Moving[] {
   const out: Moving[] = [];
   const kinds = statics.kinds.map((id) => reg.index.get(id) ?? 0);
   // A whole map's millions of rows are looked through by the map's kind, 1 for one that moves.
@@ -52,9 +71,30 @@ export function movingOf(reg: Registry, statics: MapStatics): Moving[] {
   for (let row = 0, c = 0; row < of.length; row++) {
     if (moves[of[row]!] === 0) continue;
     while (first[c + 1]! <= row) c++;
-    const kind = kinds[of[row]!]!, facet = reg.motion[kind]!;
-    const d = reg.defs[kind]!;
-    out.push({ ref: c * 65536 + row - first[c]!, kind, facet, ticks: motionTicks(facet), x: statics.x[row]!, y: statics.y[row]!, z: statics.z[row]!, yaw: statics.yaw[row]!, color: d.type === "structure" ? d.color : 0, pose: new Float32Array(facet.parts.length * PART_FLOATS), level: new Int8Array(facet.parts.length).fill(-1), fixed: Uint8Array.from(facet.parts, (part) => (JSON.stringify(part.from) === JSON.stringify(part.to) ? 1 : 0)), away: Uint8Array.from(facet.parts, (part) => (part.from.away ? 1 : 0) | (part.to.away ? 2 : 0)), posed: -1, progress: 0 });
+    out.push(moving(reg, kinds[of[row]!]!, c * 65536 + row - first[c]!, statics.x[row]!, statics.y[row]!, statics.z[row]!, statics.yaw[row]!));
+  }
+  return out;
+}
+
+/** A moving static of `kind`, slot `ref` (its chunk times 65,536 and its slot), at (x, y, z) turned by `yaw`. */
+function moving(reg: Registry, kind: number, ref: number, x: number, y: number, z: number, yaw: number): Moving {
+  const facet = reg.motion[kind]!, d = reg.defs[kind]!;
+  return { ref, kind, facet, ticks: motionTicks(facet), x, y, z, yaw, color: d.type === "structure" ? d.color : 0, pose: new Float32Array(facet.parts.length * PART_FLOATS), level: new Int8Array(facet.parts.length).fill(-1), fixed: Uint8Array.from(facet.parts, (part) => (JSON.stringify(part.from) === JSON.stringify(part.to) ? 1 : 0)), away: Uint8Array.from(facet.parts, (part) => (part.from.away ? 1 : 0) | (part.to.away ? 2 : 0)), posed: -1, progress: 0 };
+}
+
+/** The moving statics of square `sq` of `city`, by the map's rows, so a ref is the map's slot. */
+function squareMoving(reg: Registry, city: CityStatics, sq: CitySquare): Moving[] {
+  const out: Moving[] = [];
+  const kinds = city.bentKind, map = sq.map;
+  // A square's many rows are looked through by the map's kind, 1 for one that moves.
+  const moves = Uint8Array.from(kinds, (k) => (reg.motion[k] ? 1 : 0));
+  if (!moves.includes(1)) return out;
+  const { first, kind: of } = map, w = sq.cx1 - sq.cx0;
+  for (let row = 0, k = 0; row < of.length; row++) {
+    if (moves[of[row]!] === 0) continue;
+    while (first[k + 1]! <= row) k++;
+    const c = (sq.cz0 + Math.floor(k / w)) * city.dims.chunksX + sq.cx0 + (k % w);
+    out.push(moving(reg, kinds[of[row]!]!, c * 65536 + row - first[k]!, map.x[row]!, map.y[row]!, map.z[row]!, map.yaw[row]!));
   }
   return out;
 }

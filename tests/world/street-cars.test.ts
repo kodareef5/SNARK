@@ -44,8 +44,8 @@ const streets = (from: number, to: number, every: number): Road[] => {
   return out;
 };
 const rules = (parked: Partial<Cars["parked"]>): Cars => ({ ...DEFAULTS, parked: { ...DEFAULTS.parked, ...parked } });
-// Many cars a district, so its mix can be counted.
-const MANY = { perKm: 100, least: 0, most: 80, apart: 12, kinds: { "core:compact": 1, "core:caravan": 1, "core:panel_van": 1, "core:veloce": 1 },
+// Many cars a sector, so each district's mix can be counted.
+const MANY = { perKm: 100, least: 0, most: 160, apart: 12, kinds: { "core:compact": 1, "core:caravan": 1, "core:panel_van": 1, "core:veloce": 1 },
   styles: { industrial: { "core:panel_van": 6, "core:veloce": 0 } }, districts: { Homes: { "core:caravan": 6, "core:panel_van": 0 } } };
 const park = (site: Site, cars: Cars, pieces: StaticPiece[] = []): Parked[] => parkCars(site, pieces, roadIndex(site), cars, 7, FLEET);
 
@@ -60,7 +60,7 @@ const count = (cars: readonly Parked[], kind: string): number => cars.filter((p)
 test("a district parks the fleet by its weights: the defaults, changed by its style and then by its name", () => {
   const site = fixture(streets(100, 900, 100)), cars = park(site, rules(MANY));
   const works = cars.filter((p) => p.district === "Works"), homes = cars.filter((p) => p.district === "Homes");
-  expect([works.length, homes.length]).toEqual([80, 80]);
+  expect(works.length + homes.length).toBe(160); expect(Math.min(works.length, homes.length)).toBeGreaterThan(60);
   // Works is industrial: vans weigh 6 of 8 and no sports car is found there. Homes takes caravans by its own name, and no van.
   expect(count(works, "core:veloce")).toBe(0);
   expect(count(works, "core:panel_van") / works.length).toBeGreaterThan(.6);
@@ -84,9 +84,9 @@ test("near a place a rule lists, its weights change the district's: patrol cars 
 test("the default rules weigh only cars of the fleet, and a kind they misname stops the build", () => {
   const site = fixture(streets(100, 300, 100));
   const cars = park(site, DEFAULTS);
-  // Two to four a district, spread 150 m apart.
-  expect(cars.filter((p) => p.district === "Works").length).toBeGreaterThanOrEqual(2);
-  expect(cars.filter((p) => p.district === "Homes").length).toBeLessThanOrEqual(4);
+  // At most two a sector, the square's one, spread 150 m apart.
+  expect(cars.length).toBeGreaterThanOrEqual(1); expect(cars.length).toBeLessThanOrEqual(2);
+  for (const [i, p] of cars.entries()) for (const q of cars.slice(i + 1)) expect(Math.hypot(q.x - p.x, q.z - p.z)).toBeGreaterThanOrEqual(150);
   for (const p of cars) expect(DEF.has(p.kind)).toBe(true);
   expect(() => park(site, rules({ styles: { industrial: { "core:lorry": 3 } } }))).toThrow("street.cars.parked weighs core:lorry, which is not a car of the fleet");
 });
@@ -110,7 +110,7 @@ test("no two parked cars' envelopes cross, nor one's door room the other's body,
   const route = { points: [{ x: 700, y: GROUND, z: 585 }, { x: 700, y: GROUND, z: 615 }], width: 2 };
   const crate: StaticPiece = { kind: "core:crate", x: 200, y: GROUND, z: 302.7, yaw: 0 };
   const site = fixture([...streets(100, 900, 100), lot], [route]);
-  const tight = rules({ ...MANY, apart: 6, lots: { classes: ["S1780"], least: 2, most: 4, apart: 6, perDistrict: 1 } });
+  const tight = rules({ ...MANY, apart: 6, lots: { classes: ["S1780"], least: 2, most: 4, apart: 6, perSector: 1 } });
   const cars = park(site, tight, [crate]);
   expect(cars.length).toBeGreaterThan(150);
   const clear = tight.parked.clear;
@@ -123,7 +123,7 @@ test("no two parked cars' envelopes cross, nor one's door room the other's body,
       expect(meets(room(p, clear), body(q)) || meets(room(q, clear), body(p))).toBe(false);
     }
   }
-  // The car park's road: two to four cars together on it, each the lot's `apart` from the next and the district's from any other.
+  // The car park's road: two to four cars together on it, each the lot's `apart` from the next and the sector's from any other.
   const parked = cars.filter((p) => p.lot);
   expect(parked.length).toBeGreaterThanOrEqual(2); expect(parked.length).toBeLessThanOrEqual(4);
   for (const p of parked) {
@@ -171,11 +171,11 @@ test("city parking puts buses on residential streets, semis in industrial distri
   }
 });
 
-test("detached trailers use dry level industrial hardstanding and respect the district limit and existing obstacles", () => {
+test("trailers stand on dry level industrial hardstanding, a few a sector, clear of pieces", () => {
   const site = fixture(streets(100, 400, 100));
   const roads = roadIndex(site);
   const pieces: StaticPiece[] = [];
-  const rules = { styles: ["industrial"], perDistrict: 2 };
+  const rules = { styles: ["industrial"], perSector: 2 };
   const place = (blocked: boolean) => parkFreightTrailers(site, roads, rules, () => blocked, m => { pieces.push(...m.pieces); return true; });
   place(false);
   expect(pieces).toHaveLength(0);

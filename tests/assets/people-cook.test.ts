@@ -95,7 +95,7 @@ artTest("a body's five slot meshes share one box, so their seams land on the sam
 });
 
 artTest("a section's zones go from the trunk outward, left and right side by side", () => {
-  const order = [0, 1, 2, 3, 4, 7, 5, 8, 6, 9, 10, 11, 12, 13, 16, 14, 17, 15, 18, 19, 20];
+  const order = [0, 1, 21, 2, 3, 22, 4, 7, 5, 8, 6, 9, 23, 24, 10, 11, 12, 13, 16, 14, 17, 15, 18, 25, 26, 19, 20];
   for (const sex of SEX_IDS) for (const slot of SLOT_NAMES) for (const lod of mesh(`core:human_${sex}/${slot}`).lods) {
     const runs = lod.zones!;
     for (let k = 3; k < runs.length; k += 3) {

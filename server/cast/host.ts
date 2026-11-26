@@ -7,7 +7,7 @@ import { Cast } from "./engine.ts";
 import type { PlayerView } from "./intent.ts";
 import { ModelGate, openRouter, type Ask } from "./model.ts";
 import { Planner } from "./planner.ts";
-import { castPerson } from "./people.ts";
+import { castBody, keepOf, type CastStore, type Worn } from "./people.ts";
 import { CastStage, type CastBodies, type IncidentKind, type StagePlayer } from "./stage.ts";
 import type { CastPlace, CastWorld } from "./world.ts";
 import type { Chat } from "../chat.ts";
@@ -21,18 +21,21 @@ import type { Records } from "../records.ts";
 import type { Rules } from "../settings/rules.ts";
 import type { Urban } from "../urban.ts";
 import type { Bus } from "../events/bus.ts";
+import type { PeopleStore } from "../people/store.ts";
 import type { EntityRecord } from "../records.ts";
 import { worldHour, type ServerWorld } from "../world.ts";
 import { GOAL_NONE, TEMPER_DEFENDS } from "../behavior.ts";
 import { CAST_CATALOGUE } from "../../content/cast/index.ts";
 import type { Archetype, Capability } from "../../shared/cast/catalogue.ts";
-import type { CastSettings, Character } from "../../shared/cast/state.ts";
+import type { CastSettings, Character, KeptPerson } from "../../shared/cast/state.ts";
 import { DEFAULT_SETTINGS } from "../../shared/cast/state.ts";
 import { EMOTES, EMOTE_NUMBER } from "../../shared/anim/emotes.ts";
 import { CHUNK_SIZE, TICK_RATE } from "../../shared/coords.ts";
 import { RESULT_OK, TEXT_LOCAL } from "../../shared/net/protocol.ts";
 import { BTN_JUMP } from "../../shared/sim/character.ts";
 import { F_ALIVE, F_AWAKE, GEAR_HELD } from "../../shared/sim/entities.ts";
+import { WARDROBE_SLOTS } from "../../shared/sim/items.ts";
+import type { Bodies, Revision, RevisedKind } from "../../shared/people/doc.ts";
 import { W_GUN } from "../../shared/sim/weapon.ts";
 import { groundUnder } from "../../shared/world/collide.ts";
 
@@ -69,6 +72,8 @@ export interface CastHostContext {
   ask?: Ask | null;
   /** Folder of the decision log; none keeps it in memory. */
   logDir?: string | null;
+  /** The cluster's people store: admin populations, outfits and named people. None draws everyone from the content. */
+  people?: PeopleStore | null;
 }
 
 export class CastHost {
@@ -83,15 +88,27 @@ export class CastHost {
   private readonly kind: number;
   private readonly players: StagePlayer[] = [];
   private readonly pool: StagePlayer[] = [];
+  /** The store as Cast reads it, or null. */
+  readonly store: CastStore | null;
+  /** The body each person in the world was drawn as, by character id, kept on it should it be made featured. */
+  private readonly shown = new Map<string, KeptPerson>();
 
   constructor(ctx: CastHostContext) {
     this.ctx = ctx;
+    const people = ctx.people ?? null;
+    this.store = people ? {
+      latest: <K extends RevisedKind>(kind: K, id: number) => (people.held().records[kind] as ReadonlyMap<number, readonly Revision<Bodies[K]>[]>).get(id)?.at(-1),
+      population: (id, rev) => people.population(id, rev),
+    } : null;
     const kind = ctx.world.reg.index.get("core:civilian");
     if (kind === undefined) throw new Error("cast: the content has no core:civilian");
     this.kind = kind;
     this.cast = new Cast(this.worldView(), CAST_CATALOGUE, ctx.seed, CAST_CAN, this.settingsNow());
     this.stage = new CastStage(this.cast, this.bodyView(), ctx.seed ^ 0x2545f491);
     this.cast.stage = this.stage;
+    this.cast.personName = (id) => this.store?.latest("person", id)?.body.name ?? null;
+    // Met or featured, a person keeps the body players saw.
+    this.cast.people.onPromote = (c) => void (c.kept ??= this.shown.get(c.id));
     // People hear what is said near them, as anyone standing there would: local chat only, never a tribe's or global, and
     // nothing while Cast is off. A line is kept two minutes at most for the planner's read of the speaker.
     ctx.chat.listeners.push((speaker, channel, x, z, text) => {
@@ -212,6 +229,8 @@ export class CastHost {
       this.retune();
       this.saved.dirty = true;
       this.forgetSaid();
+      // A body that died is never removed through the stage: what it was drawn as goes once it is off the stage.
+      for (const id of this.shown.keys()) if (!this.stage.has(id)) this.shown.delete(id);
     }
     if (!this.cast.settings.enabled) {
       // Turned off: the people still about walk off where no one sees, then nothing more happens.
@@ -338,19 +357,41 @@ export class CastHost {
         rec.extra.set(COMP_CAST, new TextEncoder().encode(c.id));
         const look = CAST_CATALOGUE.looks.find((l) => l.id === c.look);
         if (look?.colors && rec.genome) look.colors.forEach((col, i) => void (i < rec.genome!.colors.length && (rec.genome!.colors[i] = col)));
-        // Its body is a person of its look's population, sent as the seed it was drawn from.
-        const made = castPerson(c, look, CAST_CATALOGUE, reg);
-        if (made) ents.setBodyLook(e, made.person.look, made.born);
-        // What it wears, in its gear slots; and what it carries.
+        // Its body is a person of its look's population, sent as the seed it was drawn from, or the one it keeps.
+        const body = castBody(c, look, CAST_CATALOGUE, reg, this.store, this.cast.casting.looks[c.look]);
+        if (body) ents.setBodyLook(e, body.look, body.born);
+        // What it wears, in its gear slots and its wardrobe; and what it carries.
         const inv = items.inv(rec);
         /** Makes an item in its bag and moves it to `to`, a gear slot, if one is given. */
         const put = (item: number, n: number, to: number) => {
           if (items.mint(rec, item, n, 0, 0, -1, "cast") === 0 || to < 0) return;
           for (let k = 0; k < inv.hotbar; k++) if (inv.item[k] === item) return void items.move(rec, k, rec, to, n);
         };
-        for (const w of made?.wear ?? look?.wear ?? []) {
-          const item = reg.index.get(w), slot = item === undefined ? -1 : reg.wearSlot[item]!;
-          if (item !== undefined && slot >= 0 && inv.armor >= 0) put(item, 1, inv.armor + slot);
+        const slotOf = (item: number) => (reg.wearSlot[item]! >= 0 && inv.armor >= 0 ? inv.armor + reg.wearSlot[item]! : reg.garmentSlot[item]! >= 0 && inv.wardrobe >= 0 ? inv.wardrobe + reg.garmentSlot[item]! : -1);
+        for (const w of body?.wear ?? look?.wear ?? []) {
+          const item = reg.index.get(w), slot = item === undefined ? -1 : slotOf(item);
+          if (item !== undefined && slot >= 0 && inv.item[slot] === 0) put(item, 1, slot);
+        }
+        // Garments go through the items' own restyle, which takes only an edition the store holds of that garment.
+        for (const [k, w] of (body?.wardrobe ?? []).entries()) {
+          const item = w ? reg.index.get(w[0]) : undefined;
+          if (!w || item === undefined || inv.wardrobe < 0 || reg.garmentSlot[item] !== k) continue;
+          const s = inv.wardrobe + k;
+          if (inv.item[s] !== item) {
+            if (inv.item[s] !== 0) continue;
+            put(item, 1, s);
+          }
+          if (inv.item[s] === item && (w[1] !== 0 || w[2] !== 0)) void (items.restyle(rec, s, w[1], w[2]) || items.restyle(rec, s, w[1], 0) || items.restyle(rec, s, 0, w[2]));
+        }
+        if (body && !body.kept) {
+          const worn: (Worn | null)[] = [];
+          for (let k = 0; k < WARDROBE_SLOTS; k++) {
+            const s = inv.wardrobe + k, item = inv.wardrobe >= 0 ? inv.item[s]! : 0;
+            worn.push(item !== 0 ? [reg.defs[item]!.id, inv.editionOf(s), inv.dyeOf(s)] : null);
+          }
+          const kept = keepOf(body, worn);
+          if (c.tier === "featured" || c.person !== undefined) c.kept = kept;
+          else this.shown.set(c.id, kept);
         }
         // A weapon goes on its hotbar, ready to be drawn; the rest in its bag.
         let bar = 0;
@@ -366,7 +407,8 @@ export class CastHost {
         return rec.pid;
       },
       remove: (pid) => {
-        const rec = records.byPid.get(pid);
+        const rec = records.byPid.get(pid), id = rec?.extra.get(COMP_CAST);
+        if (id) this.shown.delete(new TextDecoder().decode(id));
         if (rec?.inv) items.burnAll(rec);
         const e = ent(pid);
         if (e >= 0) {

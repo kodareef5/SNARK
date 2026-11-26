@@ -11,7 +11,7 @@ list is refused. Names and ids are this engine's own. The ARK column says what
 the class corresponds to, so that what is known of ARK carries over.
 
 There are 50 classes: 37 built, 7 partly built, and 6 stubs that
-wait for a feature. The core pack holds 6191 definitions.
+wait for a feature. The core pack holds 6196 definitions.
 
 An asset slot is addressed `owner#slot`, or `owner#slot/key` for a slot with
 several values: `core:raptor#clip/walk`. Levels of detail are inside the asset
@@ -43,7 +43,7 @@ share a `tag`.
 | `item/feces` | the feces items, small to massive | built | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels`, `spoilHours`, `spoilsInto`, `fuel` | 4 |
 | `item/glider` | PrimalItemConsumable_Parachute, and the Glider Suit skin | built | `stack`, `glide` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels` | 1 |
 | `item/shield` | equipment type Shield | stub: cosmetics | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels` | 0 |
-| `item/garment` | the cloth and hide pieces' look, without their armor | built | `stack`, `garment` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels` | 2 |
+| `item/garment` | the cloth and hide pieces' look, without their armor | built | `stack`, `garment` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels` | 7 |
 | `item/costume` | equipment types Costume and Trophy | stub: cosmetics | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels` | 0 |
 | `item/skin` | PrimalItemSkin_ | stub: cosmetics | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels` | 0 |
 | `item/dye` | PrimalItemDye_ | partial: cosmetics | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels`, `groom` | 6 |
@@ -354,7 +354,7 @@ Packs may add to: `buffs`.
 
 - **`population`** on shelf `people`. Who a crowd is made of: by weight and range, each part of a person the generator draws from a seed.
 
-What names what: `outfits[].wear[]` names a `item/armor`.
+What names what: `outfits[].wear[]` names a `item/armor` or a `item/garment`.
 
 ## Renames
 
@@ -411,7 +411,7 @@ built.
 
 **`item/glider`** (1): frond_glider.
 
-**`item/garment`** (2): plain_tee, plain_trousers.
+**`item/garment`** (7): plain_tee, loose_tee, hoodie, plain_trousers, shorts, trainers, apron.
 
 **`item/dye`** (6): hair_dye_blond, hair_dye_ginger, hair_dye_brown, hair_dye_black, hair_dye_white, hair_dye_red.
 

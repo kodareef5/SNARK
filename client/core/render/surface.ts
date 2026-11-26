@@ -661,13 +661,15 @@ const ON_GROUND = `float onGround(vec3 rel, float lift) {
   if (any(lessThan(c, vec2(0.0))) || any(greaterThan(c, last))) return rel.y;
   ivec2 k = ivec2(min(floor(c), last - 1.0));
   vec2 f = c - vec2(k);
-  float h00 = float(texelFetch(uWindowHeight, k, 0).r), h11 = float(texelFetch(uWindowHeight, k + 1, 0).r);
+  // The window's picture holds its samples wrapped round its size from its corner (fWindow).
+  ivec2 n = textureSize(uWindowHeight, 0), w = ivec2(fWindow.xy);
+  float h00 = float(texelFetch(uWindowHeight, (k + w) % n, 0).r), h11 = float(texelFetch(uWindowHeight, (k + 1 + w) % n, 0).r);
   float h;
   if (f.x >= f.y) {
-    float h10 = float(texelFetch(uWindowHeight, k + ivec2(1, 0), 0).r);
+    float h10 = float(texelFetch(uWindowHeight, (k + ivec2(1, 0) + w) % n, 0).r);
     h = h00 + (h10 - h00) * f.x + (h11 - h10) * f.y;
   } else {
-    float h01 = float(texelFetch(uWindowHeight, k + ivec2(0, 1), 0).r);
+    float h01 = float(texelFetch(uWindowHeight, (k + ivec2(0, 1) + w) % n, 0).r);
     h = h00 + (h11 - h01) * f.x + (h01 - h00) * f.y;
   }
   return (h - fSea.x) * fSea.y - fHaze.z + lift;

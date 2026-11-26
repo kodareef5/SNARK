@@ -1,8 +1,8 @@
-// The terrain's pictures (D253): the whole map at every fourth sample and a window round the camera. A twin of what
-// the shell does with them, the rows it copies and the vertex fetch of the pinned terrain text, gives every tile the
-// map's own samples, and the lit texts' normal and cover the rasterizer's; fine tiles never read past their window; the
-// window follows within the upload allowance. A tile's mesh puts its ground before its skirts, which the shell draws
-// behind it.
+// The terrain's pictures (D253): the whole map at every fourth sample and a window round the camera, whose pictures hold
+// a sample at its own place modulo their size. A twin of what the shell does with them, the rectangles it puts and the
+// wrapped fetch of the pinned terrain text, gives every tile the map's own samples, and the lit texts' normal and cover
+// the rasterizer's; fine tiles never read past their window; the window steps within the upload allowance. A tile's
+// mesh puts its ground before its skirts, which the shell draws behind it.
 
 import { expect, test } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
@@ -10,9 +10,11 @@ import { Camera } from "../../client/core/render/camera.ts";
 import { zoomed } from "../../client/core/optics.ts";
 import { FramePacket, PASS_FAR, PASS_NEAR, SOURCE_MAP, SOURCE_WINDOW, TILE_QUADS } from "../../client/core/render/packet.ts";
 import { COARSE, TerrainLod, WINDOW, WINDOW_MOVE, coarseGround, groundNormal, groundSize, groundTint, tileMesh, tilePicture, type GroundBudget } from "../../client/core/render/terrain.ts";
+import { tileRows, type Drawn } from "../../client/core/render/uniforms.ts";
 import { groundCover, groundWander } from "../../client/core/render/world-surfaces.ts";
 import { Rng } from "../../shared/rng.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
+import { RoadSectors } from "../../shared/world/roadframe.ts";
 
 const MB = 1 << 20;
 
@@ -48,13 +50,17 @@ function allowance(bytes: number): GroundBudget & { spent: number; reserved: Map
   };
 }
 
-/** The shell's pictures as it fills them: the whole map's pair, and two copies of the window's into which it copies rows of the heightfield. */
+/**
+ * The shell's pictures as it fills them: the whole map's pair, and the window's, into which it puts each rectangle core
+ * put together at its texels; and where the window's corner is in them, as the tiles' uniform row says (uniforms.ts).
+ */
 class Twin {
   readonly hf: Heightfield;
   readonly size;
   readonly coarse;
-  readonly heights: Uint16Array[];
-  readonly tint: Uint8Array[];
+  readonly heights: Uint16Array;
+  readonly tint: Uint8Array;
+  readonly wrap = new Float64Array(2);
   drawn = -1;
 
   constructor(hf: Heightfield) {
@@ -62,20 +68,28 @@ class Twin {
     this.size = groundSize(hf);
     this.coarse = coarseGround(hf);
     const n = this.size.width[SOURCE_WINDOW]! * this.size.height[SOURCE_WINDOW]!;
-    this.heights = [new Uint16Array(n), new Uint16Array(n)];
-    this.tint = [new Uint8Array(n), new Uint8Array(n)];
+    this.heights = new Uint16Array(n);
+    this.tint = new Uint8Array(n);
   }
 
-  /** gl.ts draw(): rows `row` to `row + rows` of copy `copy`, from the heightfield with a row length of its width, starting at the corner's row and column. */
+  /** gl.ts draw(): each rectangle of the frame, its rows one after another, put at its texels. */
   take(p: FramePacket): void {
-    const [drawn, , , copy, i, j, row, rows] = p.groundWindow;
-    const w = this.size.width[SOURCE_WINDOW]!;
-    for (let r = row; copy >= 0 && r < row + rows; r++) {
-      const from = (j + r) * this.hf.nx + i;
-      this.heights[copy]!.set(this.hf.heights.subarray(from, from + w), r * w);
-      this.tint[copy]!.set(this.hf.tint.subarray(from, from + w), r * w);
+    const w = this.size.width[SOURCE_WINDOW]!, parts = p.groundParts;
+    for (let n = 0; n < p.groundPartCount * 5; n += 5) {
+      const [x, y, cols, rows, at] = [parts[n]!, parts[n + 1]!, parts[n + 2]!, parts[n + 3]!, parts[n + 4]!];
+      for (let r = 0; r < rows; r++) {
+        this.heights.set(p.groundHeights.subarray(at + r * cols, at + (r + 1) * cols), (y + r) * w + x);
+        this.tint.set(p.groundTint.subarray(at + r * cols, at + (r + 1) * cols), (y + r) * w + x);
+      }
     }
-    this.drawn = drawn;
+    this.drawn = p.groundWindow[0]!;
+    tileRows(SOURCE_WINDOW).find((r) => r.name === "uWrap")!.fill!({ p, ground: this.size } as unknown as Drawn, this.wrap);
+  }
+
+  /** Where the text fetches sample (i, j) of picture `source`: the window's wrapped round its size from its corner. */
+  texel(source: number, i: number, j: number): number {
+    const [w, h] = [this.size.width[source]!, this.size.height[source]!];
+    return source === SOURCE_MAP ? j * w + i : ((j + this.wrap[1]!) % h) * w + ((i + this.wrap[0]!) % w);
   }
 
   /** FLAT_TERRAIN_VERTEX's fetch of grid point (gx, gz) of tile `t`, as gl.ts step() feeds it: camera-relative x, height and z, and the tint. */
@@ -85,11 +99,12 @@ class Twin {
     const [w, h] = [this.size.width[source]!, this.size.height[source]!];
     const i = Math.min(oi + gx * stride, w - 1);
     const j = Math.min(oj + gz * stride, h - 1);
-    const heights = source === SOURCE_MAP ? this.coarse.heights : this.heights[this.drawn]!;
-    const tint = source === SOURCE_MAP ? this.coarse.tint : this.tint[this.drawn]!;
+    const heights = source === SOURCE_MAP ? this.coarse.heights : this.heights;
+    const tint = source === SOURCE_MAP ? this.coarse.tint : this.tint;
     const hf = this.hf;
     const cell = this.size.cell[source]!;
-    return [p.tiles[t * 4]! + (i - oi) * cell, hf.minY + heights[j * w + i]! * hf.stepY - p.camY, p.tiles[t * 4 + 1]! + (j - oj) * cell, tint[j * w + i]!];
+    const at = this.texel(source, i, j);
+    return [p.tiles[t * 4]! + (i - oi) * cell, hf.minY + heights[at]! * hf.stepY - p.camY, p.tiles[t * 4 + 1]! + (j - oj) * cell, tint[at]!];
   }
 
   /**
@@ -100,12 +115,13 @@ class Twin {
     const source = p.tileSource[t * 4 + 3]!;
     const [oi, oj, stride] = [p.tileSource[t * 4]!, p.tileSource[t * 4 + 1]!, p.tileSource[t * 4 + 2]!];
     const [w, h] = [this.size.width[source]!, this.size.height[source]!];
-    const heights = source === SOURCE_MAP ? this.coarse.heights : this.heights[this.drawn]!;
+    const heights = source === SOURCE_MAP ? this.coarse.heights : this.heights;
+    const at = (i: number, j: number): number => heights[this.texel(source, i, j)]!;
     const cell = this.size.cell[source]!;
     const [i, j] = [Math.min(oi + gx * stride, w - 1), Math.min(oj + gz * stride, h - 1)];
     const [l, r, b, f] = [Math.max(i - stride, 0), Math.min(i + stride, w - 1), Math.max(j - stride, 0), Math.min(j + stride, h - 1)];
-    const x = ((heights[j * w + r]! - heights[j * w + l]!) * this.hf.stepY) / ((r - l) * cell);
-    const z = ((heights[f * w + i]! - heights[b * w + i]!) * this.hf.stepY) / ((f - b) * cell);
+    const x = ((at(r, j) - at(l, j)) * this.hf.stepY) / ((r - l) * cell);
+    const z = ((at(i, f) - at(i, b)) * this.hf.stepY) / ((f - b) * cell);
     const n = Math.hypot(x, 1, z);
     return { n: [-x / n, 1 / n, -z / n], held: r - l < 2 * stride || f - b < 2 * stride };
   }
@@ -117,13 +133,22 @@ class Twin {
   cover(p: FramePacket, t: number, u: number, v: number, x: number, z: number, footprint: number): number {
     const source = p.tileSource[t * 4 + 3]!;
     const [w, h, cell] = [this.size.width[source]!, this.size.height[source]!, this.size.cell[source]!];
-    const tint = source === SOURCE_MAP ? this.coarse.tint : this.tint[this.drawn]!;
+    const tint = source === SOURCE_MAP ? this.coarse.tint : this.tint;
+    const at = (i: number, j: number): number => tint[this.texel(source, i, j)]!;
     const wander = new Float64Array(2);
     groundWander(x, z, footprint, wander);
     const s = Math.min(Math.max(p.tileSource[t * 4]! + u / cell + wander[0]! / cell, 0), w - 1);
     const r = Math.min(Math.max(p.tileSource[t * 4 + 1]! + v / cell + wander[1]! / cell, 0), h - 1);
     const [i, j] = [Math.min(Math.floor(s), w - 2), Math.min(Math.floor(r), h - 2)];
-    return groundCover(tint[j * w + i]!, tint[j * w + i + 1]!, tint[(j + 1) * w + i]!, tint[(j + 1) * w + i + 1]!, s - i, r - j);
+    return groundCover(at(i, j), at(i + 1, j), at(i, j + 1), at(i + 1, j + 1), s - i, r - j);
+  }
+
+  /** How many samples of the window drawn are not the map's own. */
+  off(p: FramePacket): number {
+    const [w, h] = [this.size.width[SOURCE_WINDOW]!, this.size.height[SOURCE_WINDOW]!], [wi, wj] = [p.groundWindow[1]!, p.groundWindow[2]!];
+    let off = 0;
+    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) if (this.heights[this.texel(SOURCE_WINDOW, i, j)] !== this.hf.heights[(wj + j) * this.hf.nx + wi + i] || this.tint[this.texel(SOURCE_WINDOW, i, j)] !== this.hf.tint[(wj + j) * this.hf.nx + wi + i]) off++;
+    return off;
   }
 }
 
@@ -168,7 +193,7 @@ function placed(hf: Heightfield, p: FramePacket): boolean {
   return true;
 }
 
-test("the shell's fetch, twinned, gives every vertex of every tile the map's height and tint and the lit tiers' normal and cover, from either pair, over tile lists split in two ranges and a refill", () => {
+test("the shell's wrapped fetch gives every tile's vertex the map's height, tint, normal and cover as the window steps", () => {
   const hf = rough(48);
   const lod = new TerrainLod(hf);
   const twin = new Twin(hf);
@@ -178,16 +203,19 @@ test("the shell's fetch, twinned, gives every vertex of every tile the map's hei
   const picture = { i: 0, j: 0, step: 1, lastI: 0, lastJ: 0 };
   const normal = new Float64Array(3);
   const rng = new Rng(6);
-  let [checked, fromWindow, inBoth, swaps, held, covers] = [0, 0, 0, 0, 0, 0];
-  // Along the map's diagonal, 30 m a frame, turning: windows are filled in bands and swapped on the way.
+  let [checked, fromWindow, inBoth, steps, held, covers] = [0, 0, 0, 0, 0, 0];
+  let corner = "";
+  // Along the map's diagonal, 30 m a frame, turning: the window steps on the way, its pictures wrapped.
   for (let f = 0; f < 64; f++) {
     budget.next();
     const cam = camera(700 + f * 30, 680 + f * 30, hf, f * 0.4);
     const p = frame(lod, cam, budget);
-    if (p.groundWindow[0] !== twin.drawn && twin.drawn >= 0) swaps++;
+    if (corner !== "" && corner !== `${p.groundWindow[1]} ${p.groundWindow[2]}`) steps++;
+    corner = `${p.groundWindow[1]} ${p.groundWindow[2]}`;
     twin.take(p);
     expect(placed(hf, p)).toBe(true);
-    // Every frame that fills or swaps, and every twelfth.
+    expect(twin.off(p)).toBe(0);
+    // Every frame that puts samples, and every twelfth.
     if (f % 12 !== 0 && p.groundWindow[3] < 0) continue;
     for (let t = 0; t < p.tileCount; t++) {
       if (p.tileSource[t * 4 + 3] === SOURCE_WINDOW) fromWindow++;
@@ -222,10 +250,10 @@ test("the shell's fetch, twinned, gives every vertex of every tile the map's hei
   expect(off).toEqual([]);
   expect(checked).toBeGreaterThan(200000);
   expect(covers).toBeGreaterThan(1500);
-  expect([fromWindow > 100, inBoth > 10, swaps >= 4, held > 100]).toEqual([true, true, true, true]);
+  expect([fromWindow > 100, inBoth > 10, steps >= 4, held > 100]).toEqual([true, true, true, true]);
 });
 
-test("no fine tile reads past its window over a 10 km random walk with 20 teleports; the window comes within the allowance and refills as the camera moves 256 m", () => {
+test("no fine tile reads past its window on a 10 km walk with 20 teleports; each step is in its frame", () => {
   const hf = rough(64);
   const lod = new TerrainLod(hf);
   const rng = new Rng(253);
@@ -233,8 +261,8 @@ test("no fine tile reads past its window over a 10 km random walk with 20 telepo
   const size = groundSize(hf);
   const rowBytes = size.width[SOURCE_WINDOW]! * 3;
   let [x, z, heading] = [2048, 2048, 0];
-  let [walked, teleports, fills, swaps, wait, longest, coarser, coarserWalking, spentMost] = [0, 0, 0, 0, 0, 0, 0, 0, 0];
-  let drawn = -1;
+  let [walked, teleports, fills, steps, wait, longest, coarser, coarserWalking, spentMost, stepMost] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+  let drawn = "";
   let middle = [0, 0];
   for (let f = 0; walked < 10000; f++) {
     budget.next();
@@ -253,9 +281,10 @@ test("no fine tile reads past its window over a 10 km random walk with 20 telepo
     expect(placed(hf, p)).toBe(true);
     if (f > 0) spentMost = Math.max(spentMost, budget.spent);
     if (p.groundWindow[3] >= 0) fills++;
-    if (p.groundWindow[0] !== drawn) {
-      swaps++;
-      drawn = p.groundWindow[0]!;
+    const now = `${p.groundWindow[0]} ${p.groundWindow[1]} ${p.groundWindow[2]}`;
+    if (now !== drawn) {
+      if (f % 25 > 5 && p.groundWindow[0] === 0) (steps++, (stepMost = Math.max(stepMost, budget.spent)));
+      drawn = now;
       middle = [(p.groundWindow[1]! + (WINDOW - 1) / 2) * hf.cell, (p.groundWindow[2]! + (WINDOW - 1) / 2) * hf.cell];
       longest = Math.max(longest, wait);
       wait = 0;
@@ -263,21 +292,23 @@ test("no fine tile reads past its window over a 10 km random walk with 20 telepo
     coarser += lod.coarser;
     if (teleports === 0 || f % 25 > 5) coarserWalking += lod.coarser;
   }
-  // 1,025 rows of 3,075 bytes at 1 MB a frame: four frames, each within the allowance, once the first window is in.
+  // A teleport's window: 1,025 rows of 3,075 bytes at 1 MB a frame, four frames, once the first window is in.
   expect(Math.ceil(WINDOW / Math.floor(MB / rowBytes))).toBe(4);
   expect(spentMost).toBeLessThanOrEqual(MB);
-  expect(longest).toBeLessThanOrEqual(4);
-  expect(swaps).toBeGreaterThan(teleports);
-  expect(fills).toBeGreaterThan(swaps * 3);
+  expect(longest).toBeLessThanOrEqual(1);
+  // A walking step is a strip of 128 columns or rows, 0.39 MB, or both, in the frame it is wanted.
+  expect(steps).toBeGreaterThan(10);
+  expect(stepMost).toBeLessThanOrEqual(2 * 128 * rowBytes);
+  expect(fills).toBeGreaterThan(steps);
   // Tiles are drawn coarser only for the frames after a teleport, before the new window is in.
   expect(coarser).toBeGreaterThan(0);
   expect(coarserWalking).toBe(0);
 });
 
-test("the pictures take 9.5 MB on the card on 8 km, from 50, reserved in the ledger and made again after a lost context", () => {
+test("the pictures take 6.3 MB on 8 km, from 50, reserved and made again after a lost context", () => {
   const eight = groundSize({ nx: 4097, nz: 4097, cell: TERRAIN_CELL });
   expect([eight.width, eight.height, eight.cell]).toEqual([[1025, 1025], [1025, 1025], [8, 2]]);
-  expect([+(eight.bytes / 1e6).toFixed(2), +((4097 * 4097 * 3) / 1e6).toFixed(1)]).toEqual([9.46, 50.4]);
+  expect([+(eight.bytes / 1e6).toFixed(2), +((4097 * 4097 * 3) / 1e6).toFixed(1)]).toEqual([6.3, 50.4]);
 
   const hf = rough(40);
   const lod = new TerrainLod(hf);
@@ -285,39 +316,139 @@ test("the pictures take 9.5 MB on the card on 8 km, from 50, reserved in the led
   const cam = camera(1200, 1300, hf);
   // The first window is filled whole, past the allowance, since nothing finer than 8 m can be drawn without it.
   let p = frame(lod, cam, budget);
-  expect([...p.groundWindow]).toEqual([0, 128, 128, 0, 128, 128, 0, 1025]);
+  // 1,153 rows and columns from 128, wrapped at 1,025: four rectangles.
+  const parts = (q: FramePacket): number[][] => Array.from({ length: q.groundPartCount }, (_, n) => [...q.groundParts.subarray(n * 5, n * 5 + 5)]);
+  expect([...p.groundWindow]).toEqual([0, 128, 128, 0]);
+  expect(parts(p)).toEqual([[128, 128, 897, 897, 0], [0, 128, 128, 897, 897 * 897], [128, 0, 897, 128, 1025 * 897], [0, 0, 128, 128, 1025 * 897 + 897 * 128]]);
   expect([budget.reserved.get("terrain"), budget.spent]).toEqual([groundSize(hf).bytes, 1025 * 1025 * 3]);
   budget.next();
   p = frame(lod, cam, budget);
-  expect([...p.groundWindow]).toEqual([0, 128, 128, -1, 0, 0, 0, 0]);
+  expect([...p.groundWindow, p.groundPartCount]).toEqual([0, 128, 128, -1, 0]);
   // A lost context: the next frame fills the window whole again, and the reserve is what it was.
   lod.reset();
   budget.next();
   p = frame(lod, cam, budget);
-  expect([p.groundWindow[0], p.groundWindow[3], p.groundWindow[7], budget.reserved.size]).toEqual([0, 0, 1025, 1]);
+  expect([p.groundWindow[0], p.groundWindow[3], p.groundPartCount, budget.spent, budget.reserved.size]).toEqual([0, 0, 4, 1025 * 1025 * 3, 1]);
 });
 
-test("a refill goes in bands within the allowance; tiles read the window drawn until the frame its last band goes", () => {
+test("a 340 m move puts the 128 columns the window gains, 0.39 MB, and is drawn from that frame", () => {
   const hf = rough(40);
   const lod = new TerrainLod(hf);
+  const twin = new Twin(hf);
   const budget = allowance(1 * MB);
-  frame(lod, camera(1200, 1300, hf), budget);
+  twin.take(frame(lod, camera(1200, 1300, hf), budget));
   const seen: number[][] = [];
-  for (let f = 0; f < 6; f++) {
+  for (let f = 0; f < 3; f++) {
     budget.next();
     const p = frame(lod, camera(1540, 1300, hf), budget);
+    twin.take(p);
+    expect(twin.off(p)).toBe(0);
     const fine = Array.from({ length: p.tileCount }, (_, t) => t).filter((t) => p.tileSource[t * 4 + 3] === SOURCE_WINDOW);
-    seen.push([...p.groundWindow, fine.length > 0 ? p.tileOrigin[fine[0]! * 2]! - p.tileSource[fine[0]! * 4]! : -1]);
+    seen.push([...p.groundWindow, budget.spent, fine.length > 0 ? p.tileOrigin[fine[0]! * 2]! - p.tileSource[fine[0]! * 4]! : -1]);
+    if (f === 0) {
+      // Columns 1,153 to 1,280 of the map, texels 128 to 255, all 1,025 rows from 128, wrapped at the picture's foot.
+      expect(Array.from({ length: p.groundPartCount }, (_, n) => [...p.groundParts.subarray(n * 5, n * 5 + 5)])).toEqual([[128, 128, 128, 897, 0], [128, 0, 128, 128, 128 * 897]]);
+    }
   }
-  // 341 rows a frame; the copy drawn and the corner fine tiles count from change in the frame of the fourth band.
   expect(seen).toEqual([
-    [0, 128, 128, 1, 256, 128, 0, 341, 128],
-    [0, 128, 128, 1, 256, 128, 341, 341, 128],
-    [0, 128, 128, 1, 256, 128, 682, 341, 128],
-    [1, 256, 128, 1, 256, 128, 1023, 2, 256],
-    [1, 256, 128, -1, 0, 0, 0, 0, 256],
-    [1, 256, 128, -1, 0, 0, 0, 0, 256],
+    [0, 256, 128, 0, 128 * 1025 * 3, 256],
+    [0, 256, 128, -1, 0, 256],
+    [0, 256, 128, -1, 0, 256],
   ]);
+});
+
+test("a corner that shares nothing with the window is filled in bands, drawn coarse until its last", () => {
+  const hf = rough(80);
+  const lod = new TerrainLod(hf);
+  const twin = new Twin(hf);
+  const budget = allowance(1 * MB);
+  twin.take(frame(lod, camera(1200, 1300, hf), budget));
+  const seen: number[][] = [];
+  for (let f = 0; f < 5; f++) {
+    budget.next();
+    const p = frame(lod, camera(3600, 3500, hf), budget);
+    twin.take(p);
+    let samples = 0;
+    for (let n = 0; n < p.groundPartCount; n++) samples += p.groundParts[n * 5 + 2]! * p.groundParts[n * 5 + 3]!;
+    seen.push([p.groundWindow[0]!, p.groundWindow[0]! >= 0 ? p.groundWindow[1]! : -1, samples / 1025, lod.coarser > 0 ? 1 : 0]);
+  }
+  // 341 rows a frame of 1,025 samples round corner (1,280, 1,280), 1,152 from the one before.
+  expect(seen).toEqual([
+    [-1, -1, 341, 1],
+    [-1, -1, 341, 1],
+    [-1, -1, 341, 1],
+    [0, 1280, 2, 0],
+    [0, 1280, 0, 0],
+  ]);
+  const p = frame(lod, camera(3600, 3500, hf));
+  expect([p.groundWindow[1], p.groundWindow[2], twin.off(p)]).toEqual([1280, 1280, 0]);
+});
+
+test("a sector held inside the window puts its own columns and rows again, in bands within the allowance", () => {
+  const hf = rough(40);
+  const lod = new TerrainLod(hf);
+  const twin = new Twin(hf);
+  const cam = camera(1200, 1300, hf);
+  const bandBytes = 32 * 161 * 3, budget = allowance(bandBytes);
+  twin.take(frame(lod, cam, budget));
+  budget.next();
+  twin.take(frame(lod, cam, budget));
+  // Chunks 5 to 9 across and 10 to 12 down take new samples, as a sector's ground sets them.
+  const per = 32;
+  for (let j = 10 * per; j <= 13 * per; j++) for (let i = 5 * per; i <= 10 * per; i++) hf.heights[j * hf.nx + i] = 9000 + ((i + j) % 50);
+  hf.hold(5, 10, 10, 13);
+  const bands: number[][] = [];
+  for (let f = 0; f < 6; f++) {
+    budget.next();
+    const p = frame(lod, cam, budget);
+    twin.take(p);
+    expect(budget.spent).toBeLessThanOrEqual(bandBytes);
+    for (let n = 0; n < p.groundPartCount; n++) bands.push([...p.groundParts.subarray(n * 5, n * 5 + 5)]);
+  }
+  // Columns 160 to 320 and rows 320 to 416 of the map, 32 rows a frame, at their own texels.
+  expect(bands).toEqual([[160, 320, 161, 32, 0], [160, 352, 161, 32, 0], [160, 384, 161, 32, 0], [160, 416, 161, 1, 0]]);
+  expect(twin.off(frame(lod, cam, budget))).toBe(0);
+});
+
+test("the roads' picture takes every cell for a new window, then only what a square or a step changes", () => {
+  const hf = rough(40);
+  const lod = new TerrainLod(hf);
+  hf.road = new RoadSectors();
+  const cam = camera(1200, 1300, hf);
+  const parts = (p: FramePacket): number[][] => Array.from({ length: p.roadPartCount }, (_, n) => [...p.roadParts.subarray(n * 5, n * 5 + 5)]);
+  const square = (d: number, v = 1) => ({ across: new Uint8Array(10 * d).fill(v), along: new Uint8Array(10 * d), half: new Uint8Array(10 * d), lanes: new Uint8Array(10 * d) });
+  const budget = allowance(MB);
+  const step = (): FramePacket => (budget.next(), frame(lod, cam, budget));
+  // The window's corner is sample 128 a side, cell 64 of the frame's, whose picture is 513 cells a side, wrapped.
+  expect(parts(step())).toEqual([[64, 64, 449, 449, 0], [0, 64, 64, 449, 449 * 449], [64, 0, 449, 64, 513 * 449], [0, 0, 64, 64, 513 * 449 + 449 * 64]]);
+  expect(parts(step())).toEqual([]);
+  hf.road.put(1, 200, 150, 10, square(5));
+  const p = step();
+  expect(parts(p)).toEqual([[200, 150, 10, 5, 0]]);
+  expect(p.roadBytes[0]).toBe(1);
+  expect(parts(step())).toEqual([]);
+  // Past the window's last cell nothing is copied; the square let go inside it is.
+  hf.road.put(2, 200, 600, 10, square(5));
+  expect(parts(step())).toEqual([]);
+  hf.road.drop(1);
+  expect(parts(step())).toEqual([[200, 150, 10, 5, 0]]);
+  // A square 400 cells tall at an allowance of 100 of its rows a frame goes in bands.
+  const tall = allowance(100 * 10 * 4);
+  hf.road.put(3, 100, 70, 10, square(400));
+  const got: number[][][] = [];
+  for (let f = 0; f < 6; f++) (tall.next(), got.push(parts(frame(lod, cam, tall))));
+  expect(got).toEqual([[[100, 70, 10, 100, 0]], [[100, 170, 10, 100, 0]], [[100, 270, 10, 100, 0]], [[100, 370, 10, 100, 0]], [], []]);
+  // Moved 340 m, the window steps 128 samples: the picture takes the 64 columns of cells it gains, that frame alone.
+  const moved: number[][][] = [];
+  for (let f = 0; f < 4; f++) (budget.next(), moved.push(parts(frame(lod, camera(1540, 1300, hf), budget))));
+  expect(moved).toEqual([[[64, 64, 64, 449, 0], [64, 0, 64, 64, 64 * 449]], [], [], []]);
+});
+
+test("with bounds kept by the heightfield, a chunk's box is its bound, read without a scan of its samples", () => {
+  const hf = rough(8);
+  hf.bounds = new Uint16Array(64 * 2).map((_, k) => (k % 2 ? 200 : 100));
+  const lod = new TerrainLod(hf);
+  expect([lod.lowest(10, 10, 300, 300), lod.farthestFrom(hf.minY)]).toEqual([hf.minY + 100 * hf.stepY, 200 * hf.stepY]);
 });
 
 test("a tile's mesh is its ground, then skirts that hang from the ground's border vertices, so the shell can draw the skirts apart, behind the ground", () => {

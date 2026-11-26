@@ -1,12 +1,20 @@
 // What the cluster's people store holds (server/people/store.ts), as the server keeps it, the admin pages send it and the
 // clients read its manifest. Every record is one revision of one thing of a kind, under an id that kind gives once and
 // never again; a revision is appended and never changed or deleted. A garment edition has one revision only: its cut,
-// colours and print are what it is, and a change is a new edition. Named people, outfits and populations are kinds to
-// come, whose revisions append.
+// colours and print are what it is, and a change is a new edition. A named person, an outfit and an admin population
+// take a new revision at every save, under the id they were first given.
+
+import { LOOK_BYTES, validLook } from "../anim/look.ts";
+import { populations as populationKind, REGION_KEYS, type PopulationDef, type Span } from "../content/kinds/populations.ts";
+import type { Checking } from "../content/kind.ts";
+import { WARDROBE_SLOTS } from "../sim/items.ts";
 
 /** The kinds of record the store holds. A new kind is appended; a kind's name is never reused. */
-export const STORE_KINDS = ["edition"] as const;
+export const STORE_KINDS = ["edition", "person", "outfit", "population"] as const;
 export type StoreKind = (typeof STORE_KINDS)[number];
+/** The kinds a save gives a new revision of. */
+export const REVISED_KINDS = ["person", "outfit", "population"] as const;
+export type RevisedKind = (typeof REVISED_KINDS)[number];
 
 /** The highest id a kind gives: an edition id is a slot's u32 (Inventory.edition). 0 is the plain item. */
 export const ID_MOST = 0xffffffff;
@@ -106,4 +114,293 @@ export function readDraft(sent: Record<string, unknown>): EditionDraft | string 
   if (!isNumber(turn) || Math.abs(turn) > Math.PI) return "A print's turn is -π to π radians.";
   // Its size is the picture's own, which the store reads from the uploaded file.
   return { ...draft, print: { hash: p.hash, width: 0, height: 0, place: { u, v, w, h, scale, turn } } };
+}
+
+// Named people, outfits and admin populations. Each is checked here for its shape only; the world checks what it names
+// against its content and the store (server/admin/people-routes.ts).
+
+/** A record's name: one line of 1 to this many letters. */
+export const RECORD_NAME_MAX = EDITION_NAME_MAX;
+export const NOTES_MAX = 1000;
+/** The most garments one outfit slot chooses among, and the most outfits one population has. Chosen. */
+export const CHOICES_MAX = 16;
+export const POPULATION_OUTFITS_MAX = 32;
+export const WEAR_MAX = 8;
+/** The most a weight is, as the content kind takes it. */
+export const WEIGHT_MAX = 1e6;
+
+/** One revision of a thing of a kind, as the store holds it and admin pages are sent it. */
+export interface Revision<T> {
+  readonly id: number;
+  readonly rev: number;
+  readonly body: T;
+  readonly made: Made;
+}
+
+/** The parts of a person the generator draws on streams of their own (shared/people/person.ts). */
+export const PART_NAMES = ["sex", "figure", "body", "skin", "hair", "beard", "brows", "face", "outfit"] as const;
+export type PartName = (typeof PART_NAMES)[number];
+/** A seed of its own for some parts, which then stay as they are when the person's seed is drawn again. */
+export type PartSeeds = Readonly<Partial<Record<PartName, number>>>;
+
+/** A population by its content id, or an admin population by its store id. */
+export type PopulationRef = string | number;
+
+/** A named person's look: its 72 bytes, or a seed drawn in one revision of a population with some parts locked. */
+export type PersonLook =
+  | { readonly bytes: readonly number[] }
+  | { readonly seed: number; readonly population: PopulationRef; readonly revision: number; readonly locks: PartSeeds };
+
+/** Three palette colours a piece is dyed, 0 for its own. */
+export type Dye = readonly [number, number, number];
+
+/** One piece worn: a garment, its edition (0 for the plain item) and its dye. */
+export interface WornDoc {
+  readonly garment: string;
+  readonly edition: number;
+  readonly dye: Dye;
+}
+
+/** A named person: what the people page makes and a Cast role may name. */
+export interface PersonDoc {
+  readonly name: string;
+  readonly look: PersonLook;
+  /** The outfit it wears, by id, at that outfit's latest revision; or null. */
+  readonly outfit: number | null;
+  /** What it wears where it names no outfit: one entry a wardrobe slot (WARDROBE_NAMES), null for nothing there. */
+  readonly wardrobe: readonly (WornDoc | null)[] | null;
+  readonly notes: string;
+}
+
+/** One garment an outfit slot may give, by weight. */
+export interface OutfitChoice {
+  readonly garment: string;
+  readonly edition: number;
+  readonly weight: number;
+}
+
+/** An outfit's slot: one garment, or a choice among several, and the dye it is worn in. */
+export interface OutfitSlot {
+  readonly choices: readonly OutfitChoice[];
+  readonly dye: Dye;
+}
+
+/** An outfit: one entry a wardrobe slot, null for nothing there. */
+export interface OutfitDoc {
+  readonly name: string;
+  readonly slots: readonly (OutfitSlot | null)[];
+}
+
+/** An admin population as the store keeps it: a content population without its type, id and revision. */
+export type PopulationDoc = Omit<PopulationDef, "type" | "id" | "revision">;
+
+/** A record's body by its kind. */
+export interface Bodies {
+  readonly person: PersonDoc;
+  readonly outfit: OutfitDoc;
+  readonly population: PopulationDoc;
+}
+
+/** The id an admin population goes by where a content id would: no content id has no colon. */
+export const storePopulationId = (id: number): string => `population/${id}`;
+
+/** An admin population's revision as the person generator takes it. */
+export const storePopulation = (id: number, rev: number, body: PopulationDoc): PopulationDef => ({ type: "population", id: storePopulationId(id), revision: rev, ...body });
+
+/** One revision of an admin population in the manifest clients fetch. */
+export interface ManifestPopulation {
+  readonly id: number;
+  readonly rev: number;
+  readonly population: PopulationDoc;
+}
+
+const CONTENT_ID = /^[a-z0-9_]+:[a-z0-9_/]+$/;
+const isId = (n: unknown): n is number => Number.isSafeInteger(n) && (n as number) >= 1 && (n as number) <= ID_MOST;
+const palette = (n: unknown): boolean => Number.isInteger(n) && (n as number) >= 0 && (n as number) <= 255;
+const weightOk = (n: unknown): n is number => isNumber(n) && n > 0 && n <= WEIGHT_MAX;
+const asObject = (v: unknown): Record<string, unknown> | null => (v !== null && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
+
+function dyeOf(v: unknown): Dye | null {
+  return Array.isArray(v) && v.length === 3 && v.every(palette) ? [v[0], v[1], v[2]] : null;
+}
+
+/** A piece worn, or why not. */
+function wornOf(v: unknown): WornDoc | string {
+  const o = asObject(v);
+  if (!o || typeof o.garment !== "string" || !CONTENT_ID.test(o.garment)) return "Name each garment by its content id.";
+  if (!(o.edition === 0 || isId(o.edition))) return "An edition is a store id, or 0 for the plain garment.";
+  const dye = dyeOf(o.dye ?? [0, 0, 0]);
+  if (!dye) return "A dye is three palette numbers 0 to 255 (0 for the garment's own).";
+  return { garment: o.garment, edition: o.edition as number, dye };
+}
+
+/** A part seed table as kept: only the parts there are, each a u32. */
+function locksOf(v: unknown): PartSeeds | null {
+  if (v === undefined || v === null) return {};
+  const o = asObject(v);
+  if (!o) return null;
+  const out: Partial<Record<PartName, number>> = {};
+  for (const key of Object.keys(o)) if (!(PART_NAMES as readonly string[]).includes(key)) return null;
+  for (const part of PART_NAMES) {
+    const s = o[part];
+    if (s === undefined) continue;
+    if (!(Number.isInteger(s) && (s as number) >= 0 && (s as number) <= 0xffffffff)) return null;
+    out[part] = s as number;
+  }
+  return out;
+}
+
+/** A named person as a page sent it, as the store keeps it, or why not. */
+export function readPerson(sent: Record<string, unknown>): PersonDoc | string {
+  const name = editionName(sent.name);
+  if (name === null) return `A person's name is 1 to ${RECORD_NAME_MAX} letters.`;
+  const notes = sent.notes === undefined ? "" : sent.notes;
+  if (typeof notes !== "string" || notes.length > NOTES_MAX) return `A person's notes are at most ${NOTES_MAX} letters.`;
+  const l = asObject(sent.look);
+  if (!l) return "A person has a look: its bytes, or a seed in a population.";
+  let look: PersonLook;
+  if (l.bytes !== undefined) {
+    const b = l.bytes;
+    if (!Array.isArray(b) || b.length !== LOOK_BYTES || !b.every(palette) || !validLook(Uint8Array.from(b as number[]))) return `A look's bytes are the ${LOOK_BYTES} of a valid look.`;
+    look = { bytes: [...(b as number[])] };
+  } else {
+    if (!(Number.isInteger(l.seed) && (l.seed as number) >= 0 && (l.seed as number) <= 0xffffffff)) return "A drawn look's seed is a whole number 0 to 4294967295.";
+    const p = l.population;
+    if (!((typeof p === "string" && CONTENT_ID.test(p)) || isId(p))) return "A drawn look names its population by content id or store id.";
+    if (!(Number.isSafeInteger(l.revision) && (l.revision as number) >= 1)) return "A drawn look names the revision of its population.";
+    const locks = locksOf(l.locks);
+    if (!locks) return `A look's locks are a seed for some of its parts (${PART_NAMES.join(", ")}).`;
+    look = { seed: l.seed as number, population: p as PopulationRef, revision: l.revision as number, locks };
+  }
+  const outfit = sent.outfit === undefined || sent.outfit === null ? null : sent.outfit;
+  if (outfit !== null && !isId(outfit)) return "An outfit is named by its store id.";
+  let wardrobe: (WornDoc | null)[] | null = null;
+  if (sent.wardrobe !== undefined && sent.wardrobe !== null) {
+    if (outfit !== null) return "A person wears an outfit or a wardrobe, not both.";
+    if (!Array.isArray(sent.wardrobe) || sent.wardrobe.length !== WARDROBE_SLOTS) return `A wardrobe has ${WARDROBE_SLOTS} slots, each a piece or null.`;
+    wardrobe = [];
+    for (const w of sent.wardrobe) {
+      if (w === null) wardrobe.push(null);
+      else {
+        const worn = wornOf(w);
+        if (typeof worn === "string") return worn;
+        wardrobe.push(worn);
+      }
+    }
+  }
+  return { name, look, outfit: outfit as number | null, wardrobe, notes };
+}
+
+/** An outfit as a page sent it, as the store keeps it, or why not. */
+export function readOutfit(sent: Record<string, unknown>): OutfitDoc | string {
+  const name = editionName(sent.name);
+  if (name === null) return `An outfit's name is 1 to ${RECORD_NAME_MAX} letters.`;
+  const s = sent.slots;
+  if (!Array.isArray(s) || s.length !== WARDROBE_SLOTS) return `An outfit has ${WARDROBE_SLOTS} slots, each a choice or null.`;
+  const slots: (OutfitSlot | null)[] = [];
+  for (const v of s) {
+    if (v === null) {
+      slots.push(null);
+      continue;
+    }
+    const o = asObject(v);
+    const c = o?.choices;
+    if (!o || !Array.isArray(c) || c.length < 1 || c.length > CHOICES_MAX) return `An outfit's slot chooses among 1 to ${CHOICES_MAX} garments.`;
+    const choices: OutfitChoice[] = [];
+    for (const one of c) {
+      const worn = wornOf({ ...asObject(one), dye: [0, 0, 0] });
+      if (typeof worn === "string") return worn;
+      const weight = asObject(one)?.weight ?? 1;
+      if (!weightOk(weight)) return `A choice's weight is above 0 and at most ${WEIGHT_MAX}.`;
+      choices.push({ garment: worn.garment, edition: worn.edition, weight });
+    }
+    const dye = dyeOf(o.dye ?? [0, 0, 0]);
+    if (!dye) return "A dye is three palette numbers 0 to 255 (0 for the garment's own).";
+    slots.push({ choices, dye });
+  }
+  if (slots.every((x) => x === null)) return "An outfit wears something.";
+  return { name, slots };
+}
+
+const spanOf = (v: unknown): Span | undefined => (Array.isArray(v) && v.length === 2 && v.every(isNumber) ? [v[0], v[1]] : undefined);
+const listOf = (v: unknown): readonly number[] | undefined => (Array.isArray(v) && v.every(isNumber) ? [...v] : undefined);
+
+/**
+ * An admin population as a page sent it, as the store keeps it, or why not: only the fields a content population has, in
+ * one order, held to the content kind's checks. What its outfits wear is checked against the world's content apart.
+ */
+export function readPopulation(sent: Record<string, unknown>): PopulationDoc | string {
+  const label = editionName(sent.label);
+  if (label === null) return `A population's label is 1 to ${RECORD_NAME_MAX} letters.`;
+  const hair = asObject(sent.hair), beard = asObject(sent.beard);
+  const body: Record<string, unknown> = {
+    label,
+    women: sent.women,
+    skin: listOf(sent.skin),
+    eyes: listOf(sent.eyes),
+    complexions: sent.complexions === undefined ? undefined : listOf(sent.complexions) ?? null,
+    hair: hair ? { men: listOf(hair.men), women: listOf(hair.women) } : undefined,
+    hairColors: listOf(sent.hairColors),
+    streak: sent.streak,
+    grey: sent.grey === undefined ? undefined : spanOf(sent.grey) ?? null,
+    beard: beard ? { men: beard.men, women: beard.women } : undefined,
+    brows: sent.brows === undefined ? undefined : listOf(sent.brows) ?? null,
+    build: spanOf(sent.build),
+    regions: undefined,
+    face: sent.face,
+    age: spanOf(sent.age),
+    weight: spanOf(sent.weight),
+    muscle: spanOf(sent.muscle),
+    hairLength: sent.hairLength === undefined ? undefined : spanOf(sent.hairLength) ?? null,
+    beardLength: sent.beardLength === undefined ? undefined : spanOf(sent.beardLength) ?? null,
+    outfits: undefined,
+  };
+  if (sent.regions !== undefined) {
+    const r = asObject(sent.regions);
+    if (!r) return "regions maps body regions to a low and a high.";
+    const regions: Record<string, Span | null> = {};
+    for (const key of REGION_KEYS) if (r[key] !== undefined) regions[key] = spanOf(r[key]) ?? null;
+    for (const key of Object.keys(r)) if (!REGION_KEYS.includes(key)) return `regions: ${key} is no body region (${REGION_KEYS.join(", ")})`;
+    body.regions = regions;
+  }
+  if (sent.outfits !== undefined) {
+    const o = sent.outfits;
+    if (!Array.isArray(o) || o.length > POPULATION_OUTFITS_MAX) return `A population has at most ${POPULATION_OUTFITS_MAX} outfits.`;
+    const outfits: { wear: string[]; weight: number }[] = [];
+    for (const one of o) {
+      const x = asObject(one);
+      if (!x || !Array.isArray(x.wear) || x.wear.length > WEAR_MAX || !x.wear.every((w) => typeof w === "string" && CONTENT_ID.test(w)) || !weightOk(x.weight)) {
+        return `An outfit is at most ${WEAR_MAX} pieces by content id and a weight above 0.`;
+      }
+      outfits.push({ wear: [...(x.wear as string[])], weight: x.weight });
+    }
+    body.outfits = outfits;
+  }
+  for (const key of Object.keys(body)) if (body[key] === undefined) delete body[key];
+  const errors: string[] = [];
+  const def = { type: "population", id: "population/0", revision: 1, ...body } as unknown as PopulationDef;
+  for (const [k, v] of Object.entries(body)) if (v === null) errors.push(`population/0: ${k} is not of its shape`);
+  if (Object.values(body.regions ?? {}).some((v) => v === null)) errors.push("population/0: regions: each is a low and a high");
+  try {
+    populationKind.check!(def, { errors } as unknown as Checking);
+  } catch {
+    errors.push("population/0: is not of a population's shape");
+  }
+  for (const must of ["women", "skin", "eyes", "hair", "hairColors", "beard", "build", "face", "age", "weight", "muscle"]) if (body[must] === undefined) errors.push(`population/0: ${must} is wanted`);
+  if (errors.length > 0) return errors[0]!.replace(/^population\/0: /, "");
+  return body as unknown as PopulationDoc;
+}
+
+/** What a manifest names, read as a client takes it: what is not of its shape is left out. */
+export function readPeopleManifest(json: unknown): { editions: Edition[]; populations: ManifestPopulation[] } {
+  const o = asObject(json);
+  const populations: ManifestPopulation[] = [];
+  for (const p of Array.isArray(o?.populations) ? (o!.populations as unknown[]) : []) {
+    const x = asObject(p), body = asObject(x?.population);
+    if (!x || !body || !isId(x.id) || !(Number.isSafeInteger(x.rev) && (x.rev as number) >= 1)) continue;
+    const read = readPopulation(body);
+    if (typeof read !== "string") populations.push({ id: x.id as number, rev: x.rev as number, population: read });
+  }
+  const editions = Array.isArray(o?.editions) ? (o!.editions as Edition[]) : [];
+  return { editions, populations };
 }

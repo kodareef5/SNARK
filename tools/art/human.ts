@@ -200,6 +200,15 @@ export function convertBodies(spec: HumanBodiesAsset, dir: string, described: Re
     warn(id, body.warnings);
     meshes.push(...body.meshes);
     rigs.push(body.rig);
+    // Garment cuts are made on the MakeHuman body's own surface, each cooked as a mesh of its own.
+    if (spec.garments && spec.body === "makehuman") for (const g of spec.garments.make(body.meshes, id, body.rig.rest)) {
+      const d = described.get(g.material);
+      if (!d) throw new Error(`${g.id}: asset.ts has no material "${g.material}"`);
+      const made = cookBody(g.body, { id, rig, scale: 1, onto: body.rig.rest, whole: g.id, zoned: true, triangles: g.triangles, flat: g.flat ?? spec.flat, palette, sections: {}, materials: [{ material: d.material, textures: d.textures, maps: d.maps }] });
+      warn(g.id, made.warnings);
+      lines.push(...g.lines.map((l) => `${id}: ${l}`));
+      meshes.push(...made.meshes);
+    }
     if (spec.tailored && finish) {
       // The tailored outfit is cut from the flat one-bone body it was designed on, so its counts and look stay its own.
       const eyes: MaterialRule = { image: readPng(join(raw, spec.eyes)), color: eye };

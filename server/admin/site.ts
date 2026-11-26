@@ -31,8 +31,10 @@ const UI_FILES = new Set([
   "admin.css", "investigate.css", "overview.css", "scene-studio.css",
   "admin.js", "cluster.js", "overview.js", "chat.js", "shell.js", "investigate.js", "map.js",
   "settings.js", "loadouts.js", "drops.js", "events.js", "cast.js", "first-frame.js", "sounds.js", "board.js", "scene-studio.js", "screens.js", "screens-stage.js", "permissions.js", "acts.js",
-  "wardrobe.js", "wardrobe.css",
+  "wardrobe.js", "wardrobe.css", "people.js", "populations.js", "people.css",
 ]);
+/** The cluster's pages behind the gate that are one HTML file each. */
+const CLUSTER_PAGES = ["wardrobe", "people", "populations"];
 const OLD_UI_FILES = /^(?:(?:scene-studio|board)\.js(?:\.map)?|scene-studio\.css)$/;
 
 export function worldAdminPage(path: string): { id: WorldId; page: WorldPage } | null {
@@ -121,8 +123,10 @@ export function adminSite(req: Request, url: URL, o: AdminSite): Promise<Respons
   if (path === "/admin/screens" || path === "/admin/screens/") {
     return refused(req, o.who, o.gate) ?? (!mayRead(req) ? refuseMethod() : path === "/admin/screens/" ? privatePage(o.dir, req, "screens.html") : redirect(`/admin/screens/${url.search}`));
   }
-  if (path === "/admin/wardrobe" || path === "/admin/wardrobe/") {
-    return refused(req, o.who, o.gate) ?? (!mayRead(req) ? refuseMethod() : path === "/admin/wardrobe/" ? privatePage(o.dir, req, "wardrobe.html") : redirect(`/admin/wardrobe/${url.search}`));
+  for (const page of CLUSTER_PAGES) {
+    if (path === `/admin/${page}` || path === `/admin/${page}/`) {
+      return refused(req, o.who, o.gate) ?? (!mayRead(req) ? refuseMethod() : path === `/admin/${page}/` ? privatePage(o.dir, req, `${page}.html`) : redirect(`/admin/${page}/${url.search}`));
+    }
   }
   // Permissions was the cluster's page. It is a world's now: its old address goes to this world's, and its old API is gone.
   if (OLD_PERMISSIONS_PATHS.includes(path)) return notFound();

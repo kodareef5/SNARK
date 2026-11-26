@@ -42,8 +42,9 @@ export interface Look {
   id: string;
   mesh: string;
   wear: string[];
-  /** The population its people are drawn from (content/people), the city's where not given. */
-  population?: string;
+  /** The population its people are drawn from: a content one by id (content/people), or an admin one by its store id at
+   * its latest revision; the city's where not given. */
+  population?: string | number;
   colors?: number[];
   placeholder?: boolean;
   /** For an artist: what this look is meant to be once it has its own art. */
@@ -85,6 +86,8 @@ export interface Role {
   role: string;
   archetypes: string[];
   count: [number, number];
+  /** A named person of the people store, by id, who plays the first of it when free. */
+  person?: number;
 }
 
 /** Where a step goes or looks: the scene's place, a free slot about it, another role (its first, or all of them), the
@@ -212,7 +215,7 @@ export function validateCatalogue(c: Catalogue, known: Known): string[] {
   for (const l of c.looks) {
     unique("look", l.id);
     for (const w of l.wear) if (!known.items.has(w)) out.push(`look ${l.id}: wears ${w}, which is no item`);
-    if (l.population !== undefined && known.populations && !known.populations.has(l.population)) out.push(`look ${l.id}: draws from ${l.population}, which is no population`);
+    if (typeof l.population === "number" ? !(Number.isSafeInteger(l.population) && l.population >= 1) : l.population !== undefined && known.populations && !known.populations.has(l.population)) out.push(`look ${l.id}: draws from ${l.population}, which is no population`);
     if (l.colors && (l.colors.length > 6 || l.colors.some((n) => !Number.isInteger(n) || n < 0 || n > 255))) out.push(`look ${l.id}: up to six palette colours, 0 to 255`);
   }
   for (const a of c.archetypes) {
@@ -241,6 +244,7 @@ export function validateCatalogue(c: Catalogue, known: Known): string[] {
     for (const r of s.roles) {
       if (!range(r.count) || r.count[1] < 1) out.push(`scene ${s.id}: role ${r.role} wants a count range of at least 1`);
       if (!r.archetypes.length) out.push(`scene ${s.id}: role ${r.role} needs an archetype`);
+      if (r.person !== undefined && !(Number.isSafeInteger(r.person) && r.person >= 1)) out.push(`scene ${s.id}: role ${r.role} names a person by store id`);
       for (const a of r.archetypes) if (!archetypes.has(a)) out.push(`scene ${s.id}: role ${r.role}: archetype ${a} is not in the catalogue`);
       const steps = s.script[r.role];
       if (!steps?.length) {

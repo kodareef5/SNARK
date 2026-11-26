@@ -166,10 +166,10 @@ export function censusWorld(map: MapData, centre: readonly [number, number], reg
     for (let j = Math.max(0, cz - RADIUS); j <= Math.min(dims.chunksZ - 1, cz + RADIUS); j++) {
       for (let i = Math.max(0, cx - RADIUS); i <= Math.min(dims.chunksX - 1, cx + RADIUS); i++) {
         const c = j * dims.chunksX + i;
-        const first = statics.first[c]!;
-        for (let s = first; s < statics.first[c + 1]!; s++) {
-          const k = statics.kind[s]!;
-          structs.put(c, s - first, k, statics.x[s]!, statics.y[s]!, statics.z[s]!, statics.yaw[s]!, 0, reg.maxHp[k]!, 1);
+        const t = statics.rows(c), first = t?.from(c) ?? 0;
+        for (let s = first; t && s < t.to(c); s++) {
+          const k = t.kind[s]!;
+          structs.put(c, s - first, k, t.x[s]!, t.y[s]!, t.z[s]!, t.yaw[s]!, 0, reg.maxHp[k]!, 1);
         }
         structs.setVersion(c, 1);
         held[c] = 1;

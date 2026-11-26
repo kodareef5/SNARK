@@ -1,6 +1,7 @@
 // The two modelled bodies, with hair, beards and armor sets fitted to each. The hair and beard styles are listed in
 // shared/anim/look.ts, since the character creator offers them, and made in ../hair/.
 
+import { garmentMaterials, garmentPieces } from "../garments/cook.ts";
 import { meridian } from "./meridian/model.ts";
 import { RIGS } from "./rigs.ts";
 import { SHEET_CELLS } from "../hair/sheet.ts";
@@ -42,7 +43,10 @@ export default {
       twoSided: true, borrows: { from: "hair_cards", roles: ["base", "normal", "mro", "mask", "mask2"] },
     },
     brows_mh: { base: "skin/mh-brows-base.png", normal: "skin/mh-brows-normal.png", packed: "skin/mh-brows-orm.png", regions: { mask: "skin/mh-brows-mask.png", mask2: "skin/mh-brows-mask2.png" }, cutout: true, twoSided: true },
+    // Painted by ../garments/paint.ts: each print sheet's weave and each cut's masks on each body.
+    ...garmentMaterials(),
   },
+  garments: { make: garmentPieces },
   dressed: {
     MI_Superhero_Male: "skin_m", MI_Superhero_Female: "skin_f", MI_Eyes: "eyes", MI_Hair_1: "hair_1", MI_Hair_2: "hair_2",
     MI_Peasant: "cloth", MI_Ranger: "hide", MI_Regular_Male: "regular_m", MI_Regular_Female: "regular_f",

@@ -17,7 +17,7 @@ const structs = new StructureStore(map.dims, reg.halfX, reg.halfY, reg.halfZ, nu
 const source = mapNodes(map, hf, reg); const nodes = source ? new NodeField(map.dims, reg, source) : null;
 const world = { hf, structs, ...(nodes ? { nodes: nodes.store } : {}) }; const params = reg.move[reg.index.get("core:survivor")!]!;
 const records = readReport<RuinRecord[]>(folder, "buildings.json", map.dims);
-const results: { part: number; name: string | null; route: number; ok: boolean; message: string }[] = [];
+const results: { id: number; name: string | null; route: number; ok: boolean; message: string }[] = [];
 for (const r of records) for (let i = 0; i < r.approaches.length; i++) {
   const a = r.approaches[i]!; const b = new Body(); b.x = a.street.x; b.z = a.street.z; b.y = hf.heightAt(b.x, b.z) + 1;
   const chunks = [...new Set([a.street, a.door, a.core].map((p) => chunkAt(map.dims, p.x, p.z)))];
@@ -33,10 +33,10 @@ for (const r of records) for (let i = 0; i < r.approaches.length; i++) {
     if (Math.hypot(b.x - p.x, b.z - p.z) > .4 || b.y < 0) { message = `target ${p.x.toFixed(2)},${p.z.toFixed(2)} reached ${b.x.toFixed(2)},${b.y.toFixed(2)},${b.z.toFixed(2)}`; break; }
   }
   for (const c of chunks) nodes?.retain(c, 1, -1, () => false);
-  results.push({ part: r.part, name: r.name, route: i, ok: !message, message });
+  results.push({ id: r.id, name: r.name, route: i, ok: !message, message });
 }
 if (records.some((r) => r.entries.length) && results.length === 0) throw new Error("No street approaches were generated");
 const failures = results.filter((r) => !r.ok);
-const summary = { mapHash: map.hash, routes: results.length, buildingsWithApproach: records.filter((r) => r.approaches.length).length, coresWithoutStreetApproach: records.filter((r) => r.routes.length && !r.approaches.length).map((r) => ({ part: r.part, name: r.name })), passed: results.length - failures.length, failed: failures.length, failures };
+const summary = { mapHash: map.hash, routes: results.length, buildingsWithApproach: records.filter((r) => r.approaches.length).length, coresWithoutStreetApproach: records.filter((r) => r.routes.length && !r.approaches.length).map((r) => ({ id: r.id, name: r.name })), passed: results.length - failures.length, failed: failures.length, failures };
 writeFileSync(`${folder}/access-test.json`, JSON.stringify(summary, null, 2) + "\n");
 console.log(JSON.stringify(summary, null, 2)); if (failures.length) process.exitCode = 1;

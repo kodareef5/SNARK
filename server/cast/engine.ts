@@ -5,7 +5,7 @@
 // story's choices and fill its slots before it begins, and nothing waits on it.
 
 import type { Capability, Catalogue, Scene, SceneTag, Step } from "../../shared/cast/catalogue.ts";
-import { DEFAULT_SETTINGS, type CastSettings, type Character, type Pace, type Part, type Region, type Spot, type Story } from "../../shared/cast/state.ts";
+import { DEFAULT_SETTINGS, type CastSettings, type Casting, type Character, type Pace, type Part, type Region, type Spot, type Story } from "../../shared/cast/state.ts";
 import { Rng } from "../../shared/rng.ts";
 import { People } from "./people.ts";
 import { PACE_STORIES, Regions } from "./regions.ts";
@@ -76,6 +76,10 @@ export class Cast {
   /** What the engine can do now: a scene needing more is never cast. */
   readonly can: Set<Capability>;
   stage: Stage | null = null;
+  /** What an admin chose of who plays what (server/admin/cast.ts). */
+  casting: Casting = { looks: {}, roles: {} };
+  /** A named person's name in the people store by its id, or null where the store holds none (the host's). */
+  personName: (id: number) => string | null = () => null;
   /** Trouble about the map: where, and the tick it is over. */
   readonly alarms: { x: number; z: number; until: number }[] = [];
   /** Stories a player engaged with since the planner last looked: it takes them first (server/cast/planner.ts). */
@@ -362,12 +366,20 @@ export class Cast {
       return [];
     };
     for (const role of sc.roles) {
+      const named = this.casting.roles[`${sc.id}/${role.role}`] ?? role.person;
       const [lo, hi] = role.count;
       let n = lo + this.rng.int(hi - lo + 1);
       if (sc.tags.includes("crowd")) n = Math.round(lo + (hi - lo) * Math.min(1, (0.3 + heat * 0.25) * this.settings.activity * (0.6 + this.rng.float() * 0.4)));
       n = Math.min(n, sc.tags.includes("crowd") ? this.settings.crowdMax : n, room - parts.length);
       if (n < lo) return undo();
       for (let k = 0; k < n; k++) {
+        const person = k === 0 && named !== undefined ? this.named(named, role.archetypes[0]!, s.region, busy, tick, minted) : null;
+        if (person) {
+          chosen.add(person.id);
+          busy.add(person.id);
+          parts.push({ character: person.id, role: role.role, step: 0, since: tick });
+          continue;
+        }
         const kind = role.archetypes[this.rng.int(role.archetypes.length)]!;
         const a = this.people.archetype(kind)!;
         // A featured kind always looks for its regulars; an everyday kind's featured ones (met by a player) half the time.
@@ -384,6 +396,25 @@ export class Cast {
     }
     for (const id of chosen) this.people.byId.get(id)!.story = s.id;
     return parts;
+  }
+
+  /**
+   * The character who plays named person `id` of the people store, made the first time it is cast; null where the store
+   * has no such person, or its character is in a story or busy. One killed stays dead, and the person comes back as another.
+   */
+  private named(id: number, archetype: string, region: number, busy: ReadonlySet<string>, tick: number, minted: string[]): Character | null {
+    const name = this.personName(id);
+    if (name === null) return null;
+    let c: Character | undefined;
+    for (const x of this.people.byId.values()) if (x.person === id && !x.dead) c = x;
+    if (c && (c.story || busy.has(c.id))) return null;
+    if (!c) {
+      c = this.people.mintNamed(archetype, region, id, name, tick);
+      minted.push(c.id);
+    }
+    // It goes by its record's name now, edited or not.
+    c.name = name;
+    return c;
   }
 
   /** Stories no player is near run by the clock: a woken one with nobody left about it ends after its length; one
@@ -485,6 +516,7 @@ export class Cast {
       regions: [...this.regions.byIndex.entries()],
       players: [...this.players.entries()].map(([n, p]) => [n, { hostileAt: p.hostileAt }]),
       next: this.nextStory,
+      casting: this.casting,
     };
     return JSON.stringify(data);
   }
@@ -513,6 +545,7 @@ export class Cast {
     for (const [i, r] of data.regions) this.regions.byIndex.set(i, r);
     for (const [n, p] of data.players) this.player(n).hostileAt = p.hostileAt;
     this.nextStory = Math.max(this.nextStory, data.next);
+    if (data.casting) this.casting = castingOf(data.casting);
   }
 
   private forget(s: Story): void {
@@ -534,6 +567,24 @@ export interface CastSave {
   regions: [number, Region][];
   players: [string, { hostileAt: number }][];
   next: number;
+  /** Absent in a save from before admins chose looks and roles. */
+  casting?: Casting;
+}
+
+const storeId = (n: unknown): n is number => Number.isSafeInteger(n) && (n as number) >= 1;
+
+/** A saved casting as kept: only store ids where they belong, the rest left out. */
+export function castingOf(saved: unknown): Casting {
+  const out: Casting = { looks: {}, roles: {} };
+  const o = (saved ?? {}) as { looks?: unknown; roles?: unknown };
+  for (const [id, v] of Object.entries(o.looks && typeof o.looks === "object" ? o.looks : {})) {
+    const l = (v ?? {}) as { population?: unknown; outfit?: unknown }, one: Casting["looks"][string] = {};
+    if (storeId(l.population)) one.population = l.population;
+    if (storeId(l.outfit)) one.outfit = l.outfit;
+    if (one.population !== undefined || one.outfit !== undefined) out.looks[id] = one;
+  }
+  for (const [key, v] of Object.entries(o.roles && typeof o.roles === "object" ? o.roles : {})) if (storeId(v)) out.roles[key] = v;
+  return out;
 }
 
 /** Whether a choice's option makes a role attack the player (allowed only at hostility 2). */

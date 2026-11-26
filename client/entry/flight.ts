@@ -96,6 +96,7 @@ async function start() {
           MapLoader.start(fetch, named.head, {
             say: () => {},
             wait: (ms) => new Promise((done) => setTimeout(done, ms)),
+            every: (ms) => new Promise((done) => setTimeout(done, ms)),
             pause: nextTask(new MessageChannel()),
           }),
         )

@@ -131,12 +131,16 @@
     ]
   },
   "ruins": {
-    "blocks_per_footprint": 130
+    "blocks_per_footprint": 130,
+    "budgets": {
+      "maxHeight": 336
+    }
   },
   "future": {
     "spans_why": "None: no bridge in the frame crosses water",
     "spans": [],
     "wrecks_why": "None: no water in the frame holds a hull",
     "wrecks": []
-  }
+  },
+  "height_units": "metres"
 }

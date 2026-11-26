@@ -21,6 +21,24 @@ export interface Relation {
   notes: string[];
 }
 
+/**
+ * A person's body as it was drawn, kept for good once a player has met it or it is featured: drawn again from this, never
+ * from a population or outfit that an admin may have edited since.
+ */
+export interface KeptPerson {
+  /** Its look's bytes, in base64. */
+  look: string;
+  /** The seed form it was drawn from: its population by content id or store id. Sent in place of the bytes while that
+   * revision still gives them. */
+  born?: { seed: number; population: string | number; revision: number };
+  /** Armour pieces put on, by item id. */
+  wear: string[];
+  /** One entry a wardrobe slot: the garment by item id, its edition and its dye as one number; or null. */
+  wardrobe: ([string, number, number] | null)[];
+  /** The revision of the named person it was drawn from. */
+  rev?: number;
+}
+
 export interface Character {
   /** "c" and a number, never reused. */
   id: string;
@@ -46,6 +64,17 @@ export interface Character {
   touched: number;
   /** Dead in the world: it stays for the memory of it, and is never cast again. */
   dead?: boolean;
+  /** The named person of the people store it plays, by store id. */
+  person?: number;
+  kept?: KeptPerson;
+}
+
+/** What an admin chose of who Cast's people are, over the catalogue: kept with Cast's save. */
+export interface Casting {
+  /** A look's people drawn from an admin population and dressed in an admin outfit, each by store id. */
+  looks: Record<string, { population?: number; outfit?: number }>;
+  /** A role (`scene/role`) whose first body is a named person, by store id. */
+  roles: Record<string, number>;
 }
 
 export type Phase = "planned" | "entering" | "active" | "leaving" | "done";

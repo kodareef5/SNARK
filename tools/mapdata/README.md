@@ -26,5 +26,5 @@ Between `prepare` and `split`, `tools/mapworld/fetch-attributes.ts` asks USA Str
 use and source. `steep.ts` walks a built city's steepest streets and stairs.
 
 The settings a stage reads, beyond the sources, are listed where each city sets them: [tools/maps/README.md](../maps/README.md).
-`fine.py` holds about 2.7 GB and the build 6 to 7 GB on an 8 km city, about four times that on a 16 km one; run one
-city at a time.
+`fine.py` makes its canopy a band of rows at a time and held 3.5 GB at most on the 16 km Miami; the build about 20 GB.
+Run one city at a time.
