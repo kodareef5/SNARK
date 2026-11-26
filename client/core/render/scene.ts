@@ -1229,9 +1229,10 @@ export class Scene {
         n++;
       }
       // Which survivors may draw their finest level is known before their bones are counted, and those may take rows more.
-      wanted += Math.min(this.rankNear(remote, n), p.tier.finestBodies[SLOT_HEAD] ?? 0) * EXTRA_ROWS;
+      const finest = p.tier.finestBodies[SLOT_HEAD] ?? 0;
+      wanted += Math.min(this.rankNear(remote, n), finest) * EXTRA_ROWS;
       // The tier's bones less those taken, and those of the viewer's own body, which comes last.
-      const budget = Math.min(p.tier.bones, MAX_BONES) - p.boneCount - (own && ch.has(own.kind) ? ch.bones(own.kind) + EXTRA_ROWS : 0);
+      const budget = Math.min(p.tier.bones, MAX_BONES) - p.boneCount - (own && ch.has(own.kind) ? ch.bones(own.kind) + (finest > 0 ? EXTRA_ROWS : 0) : 0);
       this.bodyRigid.fill(0, 0, n);
       if (wanted > budget) this.thin(remote, n, wanted, budget);
       for (let k = 0; k < n; k++) if (this.bodyMount[k] !== -1) this.seatIn(remote, from[k]!, this.bodyMount[k]!, place, k);
