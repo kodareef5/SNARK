@@ -1730,6 +1730,8 @@ export class GlRenderer {
     this.vertexArray(lod.vao);
     const entityIds = !!lod.surface && buffer === this.transient && this.warmed?.lit === true;
     if (lod.buffer === buffer && lod.first === first && lod.entityIds === entityIds) return;
+    // The level's vertex array keeps its streams on or off: each is turned only when that changes.
+    const hadIds = lod.entityIds;
     lod.entityIds = entityIds;
     lod.buffer = buffer;
     lod.first = first;
@@ -1742,10 +1744,12 @@ export class GlRenderer {
     gl.vertexAttribIPointer(5, 2, gl.UNSIGNED_BYTE, INSTANCE_BYTES, at + 18);
     if (entityIds) {
       this.array(this.ids);
-      gl.enableVertexAttribArray(12);
-      gl.vertexAttribDivisor(12, 1);
+      if (!hadIds) {
+        gl.enableVertexAttribArray(12);
+        gl.vertexAttribDivisor(12, 1);
+      }
       gl.vertexAttribIPointer(12, 1, gl.UNSIGNED_INT, 4, first * 4);
-    } else gl.disableVertexAttribArray(12);
+    } else if (hadIds) gl.disableVertexAttribArray(12);
     // A level's draws are all bent or none are; one bound bent and then not leaves the stream off.
     for (let a = 13; a < 15 && (bends || lod.bent); a++) {
       if (!bends) {
@@ -1753,8 +1757,10 @@ export class GlRenderer {
         continue;
       }
       this.array(bends);
-      gl.enableVertexAttribArray(a);
-      gl.vertexAttribDivisor(a, 1);
+      if (!lod.bent) {
+        gl.enableVertexAttribArray(a);
+        gl.vertexAttribDivisor(a, 1);
+      }
       gl.vertexAttribPointer(a, 4, gl.SHORT, false, BEND_BYTES, first * BEND_BYTES + (a - 13) * 8);
     }
     lod.bent = bends !== undefined;

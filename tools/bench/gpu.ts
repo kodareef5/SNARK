@@ -180,12 +180,12 @@ const PROFILE_MS = 5000;
 /**
  * Counts the page's GL calls over COUNT_FRAMES frames, by kind, a frame's on average: each method of the context and of
  * its multi-draw extension wrapped from one frame's end to another's and put back. A call is said again where it sets a
- * binding, a uniform, a pointer or a state to what the context holds. Of the draws, it counts those listed (a multi-draw
+ * binding, a uniform, a pointer, a state, or a vertex array's stream (on, off or its divisor) to what the context holds. Of the draws, it counts those listed (a multi-draw
  * call holds several), and those that could have gone in the call before them: with nothing but their run of indices
  * changed in between, or with only a vertex array, its pointers and three-float uniforms (another level and offset).
  */
 const COUNT_CALLS = `new Promise((done) => {
-  const kinds = [["draws", /^(multiD|d)raw(Arrays|Elements|RangeElements)/], ["uniforms", /^uniform[1-4M]/], ["binds", /^(bind|useProgram$|activeTexture$)/], ["pointers", /[vV]ertexAttrib/], ["state", /^(enable|disable|depth|cull|polygonOffset|blendFunc|viewport|clear|colorMask)/], ["other", /./]];
+  const kinds = [["draws", /^(multiD|d)raw(Arrays|Elements|RangeElements)/], ["uniforms", /^uniform[1-4M]/], ["binds", /^(bind|useProgram$|activeTexture$)/], ["arrays", /^((enable|disable)VertexAttribArray|vertexAttribDivisor)$/], ["pointers", /[vV]ertexAttrib/], ["state", /^(enable|disable|depth|cull|polygonOffset|blendFunc|viewport|clear|colorMask)/], ["other", /./]];
   const calls = {}, again = {}, draws = { listed: 0, runs: 0, levels: 0 };
   for (const [k] of kinds) calls[k] = again[k] = 0;
   const ids = new WeakMap();
@@ -203,6 +203,8 @@ const COUNT_CALLS = `new Promise((done) => {
     if (name === "bindFramebuffer") return ["framebuffer " + a[0], id(a[1])];
     if (name === "enable" || name === "disable") return ["cap " + a[0], name];
     if (/^uniform[1-4M]/.test(name)) return ["uniform " + id(a[0]), text(a.slice(1))];
+    if (/^(enable|disable)VertexAttribArray$/.test(name)) return ["array " + id(vao) + " " + a[0], name];
+    if (name === "vertexAttribDivisor") return ["divisor " + id(vao) + " " + a[0], String(a[1])];
     if (/^vertexAttribI?Pointer$/.test(name)) return ["attribute " + id(vao) + " " + a[0], text(a.slice(1)) + " " + held.get("buffer 34962")];
     if (/^(depthMask|depthFunc|depthRange|cullFace|polygonOffset|viewport|blendFuncSeparate|clearColor)$/.test(name)) return [name, text(a)];
     return null;
