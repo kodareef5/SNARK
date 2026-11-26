@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { writeMap, type MapData, type MapStatic } from "../../shared/world/mapfile.ts";
 import { MapWater } from "../../shared/world/water.ts";
-import { audit, bodiesSwum, doorsOffGround, hullsInPieces, lakeWraps, offMap, openMap, piecesUnderGround, streetsThroughBuildings, swimming, twins, waterWalls, type Audited } from "../../tools/mapworld/audit.ts";
+import { audit, bodiesSwum, poolsInPits, doorsOffGround, hullsInPieces, lakeWraps, offMap, openMap, piecesUnderGround, streetsThroughBuildings, swimming, twins, waterWalls, type Audited } from "../../tools/mapworld/audit.ts";
 import { flatMap } from "../fixtures/map.ts";
 import { builtSketch, SIDE_FRONT, Sketch } from "../fixtures/sketch.ts";
 
@@ -105,6 +105,53 @@ test("a survivor climbs a ladder two samples wide out of a pit; a stair one samp
   const w = opened({ heights, water });
   expect(bodiesSwum(w).map((s) => [s.body, s.swims, s.out])).toEqual([[1, true, true], [2, true, false]]);
   expect(swimming(w)).toMatchObject({ count: 1, swimmable: 2, swimmableWalkedOut: 1 });
+});
+
+test("two pools side by side, walled round, are both caught: the water of one is no way out of the other", () => {
+  // Each 16 m square, one sample of rim between them just over their water, the ground round both 3 m up.
+  const inA = (i: number, j: number): boolean => i >= 20 && i <= 27 && j >= 20 && j <= 27, inB = (i: number, j: number): boolean => i >= 29 && i <= 36 && j >= 20 && j <= 27;
+  const heights = Uint16Array.from({ length: SIDE * SIDE }, (_, k) => {
+    const [i, j] = [k % SIDE, Math.floor(k / SIDE)];
+    return units(inA(i, j) || inB(i, j) ? -1.5 : i === 28 && j >= 20 && j <= 27 ? 0.1 : 3);
+  });
+  // A's squares are those with a corner on one of its samples, and B's from the rim between them on.
+  const water = lakes([0, 0], (i, j) => (j < 19 || j > 27 ? 0 : i >= 19 && i <= 27 ? 1 : i >= 28 && i <= 36 ? 2 : 0));
+  const w = opened({ heights, water });
+  expect(bodiesSwum(w).map((s) => [s.body, s.swims, s.out, s.touches])).toEqual([[1, true, false, 1], [2, true, false, 1]]);
+  expect(swimming(w)).toMatchObject({ count: 2, swimmable: 2, swimmableWalkedOut: 0, touchingPairs: 1 });
+});
+
+test("a basin inside a tank is left through the tank's water and over its rim, or not at all", () => {
+  // A basin 8 m square, a rim just over the water round it, a tank's water 6 m wide round that, and ground 3 m up.
+  const basin = (i: number, j: number): boolean => i >= 60 && i <= 63 && j >= 30 && j <= 33;
+  const rim = (i: number, j: number): boolean => !basin(i, j) && i >= 59 && i <= 64 && j >= 29 && j <= 34;
+  const tank = (i: number, j: number): boolean => !basin(i, j) && !rim(i, j) && i >= 56 && i <= 67 && j >= 26 && j <= 37;
+  const made = (ladder: boolean): Audited => {
+    const heights = Uint16Array.from({ length: SIDE * SIDE }, (_, k) => {
+      const [i, j] = [k % SIDE, Math.floor(k / SIDE)];
+      // The ladder: two rows of the tank's west side, 1.5 m a step up to the ground.
+      if (ladder && (j === 31 || j === 32) && (i === 56 || i === 57)) return units(i === 56 ? 1.5 : 0);
+      return units(basin(i, j) || tank(i, j) ? -1.5 : rim(i, j) ? 0.1 : 3);
+    });
+    const water = lakes([0, 0], (i, j) => (i >= 59 && i <= 63 && j >= 29 && j <= 33 ? 1 : i >= 55 && i <= 67 && j >= 25 && j <= 37 ? 2 : 0));
+    return opened({ heights, water });
+  };
+  expect(bodiesSwum(made(false)).map((s) => [s.body, s.swims, s.out, s.touches])).toEqual([[1, true, false, 1], [2, true, false, 1]]);
+  expect(bodiesSwum(made(true)).map((s) => [s.body, s.swims, s.out])).toEqual([[1, true, true], [2, true, true]]);
+});
+
+test("water more than a metre under the ground two corners out stands in a pit", () => {
+  // Two pools 8 m square: one in ground level with its water, one with ground 3 m up round it.
+  const at = [20, 60];
+  const heights = Uint16Array.from({ length: SIDE * SIDE }, (_, k) => {
+    const [i, j] = [k % SIDE, Math.floor(k / SIDE)], p = at.findIndex((a) => i >= a && i <= a + 4 && j >= 20 && j <= 24);
+    return units(p >= 0 ? -1.5 : i > 50 ? 3 : 0.1);
+  });
+  const water = lakes([0, 0], (i, j) => 1 + at.findIndex((a) => i >= a - 1 && i <= a + 4 && j >= 19 && j <= 24));
+  const c = poolsInPits(opened({ heights, water }));
+  expect(c).toMatchObject({ gate: false, count: 1, bodies: 2 });
+  expect(c.deepest as string).toContain("body 2");
+  expect(c.deepest as string).toContain("3.00 m under");
 });
 
 test("a street along a building's wall is a run; one that only crosses it is not", () => {
